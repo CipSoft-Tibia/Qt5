@@ -64,7 +64,7 @@ const bool kSupports3pcBlocking = {
 
 #if !BUILDFLAG(IS_IOS)
 constexpr char kAllowedRequestsHistogram[] =
-    "API.StorageAccess.AllowedRequests2";
+    "API.StorageAccess.AllowedRequests4";
 #endif
 
 // To avoid an explosion of test cases, please don't just add a boolean to
@@ -848,28 +848,15 @@ TEST_F(CookieSettingsTestUserBypass, UserBypassTemporaryExceptions) {
       cookie_settings_->IsStoragePartitioningBypassEnabled(kBlockedSite));
 }
 
-TEST_F(CookieSettingsTestUserBypass,
-       TrackingProtectionUserBypassTemporaryExceptions) {
+TEST_F(CookieSettingsTestUserBypass, TrackingProtectionExceptions) {
   EXPECT_FALSE(
       cookie_settings_->IsStoragePartitioningBypassEnabled(kFirstPartySite));
   EXPECT_FALSE(
       cookie_settings_->IsStoragePartitioningBypassEnabled(kBlockedSite));
 
   tracking_protection_settings_->AddTrackingProtectionException(
-      kFirstPartySite, /*is_user_bypass_exception=*/true);
+      kFirstPartySite);
   EXPECT_TRUE(
-      cookie_settings_->IsStoragePartitioningBypassEnabled(kFirstPartySite));
-  EXPECT_FALSE(
-      cookie_settings_->IsStoragePartitioningBypassEnabled(kBlockedSite));
-
-  base::TimeDelta expiration =
-      content_settings::features::kUserBypassUIExceptionExpiration.Get();
-  ASSERT_FALSE(expiration.is_zero());
-
-  FastForwardTime(expiration + base::Seconds(1));
-  // Passing the expiry of the user bypass entries should disable user bypass
-  // for |kFirstPartySite| leaving non-bypassed site(s) unaffected.
-  EXPECT_FALSE(
       cookie_settings_->IsStoragePartitioningBypassEnabled(kFirstPartySite));
   EXPECT_FALSE(
       cookie_settings_->IsStoragePartitioningBypassEnabled(kBlockedSite));
@@ -1941,6 +1928,33 @@ TEST_F(CookieSettingsTest, ManagedThirdPartyException) {
       net::CookieSettingOverrides()));
   EXPECT_EQ(info.source, SettingSource::kPolicy);
 }
+
+#if !BUILDFLAG(IS_IOS)
+TEST_F(CookieSettingsTest, Allows3pcsInIncognitoWithCookieControlsModeOff) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(
+      privacy_sandbox::kAlwaysBlock3pcsIncognito);
+
+  prefs_.SetInteger(prefs::kCookieControlsMode,
+                    static_cast<int>(CookieControlsMode::kOff));
+  EXPECT_FALSE(cookie_settings_->ShouldBlockThirdPartyCookies());
+  prefs_.SetInteger(prefs::kCookieControlsMode,
+                    static_cast<int>(CookieControlsMode::kOff));
+  EXPECT_FALSE(cookie_settings_incognito_->ShouldBlockThirdPartyCookies());
+}
+
+TEST_F(CookieSettingsTest, Blocks3pcsInIncognitoWithCookieControlsModeOff) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(privacy_sandbox::kAlwaysBlock3pcsIncognito);
+
+  prefs_.SetInteger(prefs::kCookieControlsMode,
+                    static_cast<int>(CookieControlsMode::kOff));
+  EXPECT_FALSE(cookie_settings_->ShouldBlockThirdPartyCookies());
+  prefs_.SetInteger(prefs::kCookieControlsMode,
+                    static_cast<int>(CookieControlsMode::kOff));
+  EXPECT_TRUE(cookie_settings_incognito_->ShouldBlockThirdPartyCookies());
+}
+#endif
 
 TEST_F(CookieSettingsTest, ThirdPartySettingObserver) {
   CookieSettingsObserver observer(cookie_settings_.get());

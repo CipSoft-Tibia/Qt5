@@ -12,28 +12,15 @@
 
 namespace blink {
 
-namespace {
-
-// This converts -0.0 to 0.0, so that they have the same hash value. This
-// ensures that equal FontDescription have the same hash value.
-float NormalizeSign_FP(float number) {
-  if (number == 0.0) [[unlikely]] {
-    return 0.0;
-  }
-  return number;
-}
-
-}  // namespace
-
 unsigned FontPalette::GetHash() const {
   unsigned computed_hash = 0;
   WTF::AddIntToHash(computed_hash, palette_keyword_);
 
   if (palette_keyword_ == kInterpolablePalette) {
-    WTF::AddFloatToHash(computed_hash, NormalizeSign_FP(percentages_.start));
-    WTF::AddFloatToHash(computed_hash, NormalizeSign_FP(percentages_.end));
-    WTF::AddFloatToHash(computed_hash, NormalizeSign_FP(normalized_percentage_));
-    WTF::AddFloatToHash(computed_hash, NormalizeSign_FP(alpha_multiplier_));
+    WTF::AddFloatToHash(computed_hash, percentages_.start);
+    WTF::AddFloatToHash(computed_hash, percentages_.end);
+    WTF::AddFloatToHash(computed_hash, normalized_percentage_);
+    WTF::AddFloatToHash(computed_hash, alpha_multiplier_);
     WTF::AddIntToHash(computed_hash,
                       static_cast<uint8_t>(color_interpolation_space_));
     if (hue_interpolation_method_.has_value()) {

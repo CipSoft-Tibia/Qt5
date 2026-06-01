@@ -282,7 +282,7 @@
     // See also AnchorScope::Mode.
     anchor_mode: {
       valid_values: [
-        // anchor()
+        // anchor() / anchor-size()
         "left",
         "right",
         "top",
@@ -525,7 +525,7 @@
                        "border-style", "border-width", "contain-intrinsic-size",
                        "inset", "margin", "max-size", "min-size", "overflow",
                        "padding", "scroll-margin", "scroll-padding",
-                       "scroll-start", "scroll-start-target", "size",
+                       "scroll-start", "size",
                        "visited-border-color"],
       },
       // The name of the mapping function used to convert between equivalent
@@ -973,7 +973,6 @@
       // Animation properites are never incremental.
       supports_incremental_style: false,
       valid_for_keyframe: false,
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "animation-range-end",
@@ -988,7 +987,6 @@
       // Animation properites are never incremental.
       supports_incremental_style: false,
       valid_for_keyframe: false,
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "animation-timeline",
@@ -1001,7 +999,6 @@
       typedom_types: ["Keyword"],
       separator: ",",
       valid_for_marker: true,
-      runtime_flag: "ScrollTimeline",
       is_animation_property: true,
       // Animation properites are never incremental.
       supports_incremental_style: false,
@@ -1032,6 +1029,76 @@
       is_animation_property: true,
       // Animation properites are never incremental.
       supports_incremental_style: false,
+    },
+    {
+      name: "animation-trigger-range-start",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "InitialValue"],
+      style_builder_template: "animation",
+      style_builder_template_args: {
+        attribute: "TriggerRangeStart",
+      },
+      separator: ",",
+      valid_for_marker: true,
+      runtime_flag: "CSSAnimationTriggerRange",
+    },
+    {
+      name: "animation-trigger-range-end",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "InitialValue"],
+      style_builder_template: "animation",
+      style_builder_template_args: {
+        attribute: "TriggerRangeEnd",
+      },
+      separator: ",",
+      valid_for_marker: true,
+      runtime_flag: "CSSAnimationTriggerRange",
+    },
+    {
+      name: "animation-trigger-exit-range-start",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "InitialValue"],
+      style_builder_template: "animation",
+      style_builder_template_args: {
+        attribute: "TriggerExitRangeStart",
+      },
+      separator: ",",
+      valid_for_marker: true,
+      runtime_flag: "CSSAnimationTriggerRange",
+    },
+    {
+      name: "animation-trigger-exit-range-end",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "InitialValue"],
+      style_builder_template: "animation",
+      style_builder_template_args: {
+        attribute: "TriggerExitRangeEnd",
+      },
+      separator: ",",
+      valid_for_marker: true,
+      runtime_flag: "CSSAnimationTriggerRange",
+    },
+    {
+      name: "animation-trigger-timeline",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "InitialValue"],
+      style_builder_template: "animation",
+      style_builder_template_args: {
+        attribute: "TriggerTimeline",
+      },
+      keywords: ["none", "auto"],
+      typedom_types: ["Keyword"],
+      separator: ",",
+      valid_for_marker: true,
+      runtime_flag: "CSSAnimationTriggerTimeline",
+    },
+    {
+      name: "animation-trigger-type",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "InitialValue"],
+      style_builder_template: "animation",
+      style_builder_template_args: {
+        attribute: "TriggerType",
+      },
+      keywords: ["once", "repeat", "alternate", "state"],
+      typedom_types: ["Keyword"],
+      separator: ",",
+      valid_for_marker: true,
+      runtime_flag: "CSSAnimationTriggerType",
     },
     {
       name: "transition-delay",
@@ -1793,10 +1860,9 @@
     {
       name: "anchor-scope",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal" ],
-      include_paths: ["third_party/blink/renderer/core/style/scoped_css_name.h"],
-      type_name: "ScopedCSSNameList",
-      wrapper_pointer_name: "Member",
-      default_value: "nullptr",
+      include_paths: ["third_party/blink/renderer/core/style/style_anchor_scope.h"],
+      type_name: "StyleAnchorScope",
+      default_value: "StyleAnchorScope()",
       field_group: "*",
       field_template: "external",
       converter: "ConvertAnchorScope",
@@ -2632,6 +2698,17 @@
       invalidate: ["layout", "paint"],
     },
     {
+      name: "caret-animation",
+      property_methods: ["CSSValueFromComputedStyleInternal"],
+      inherited: true,
+      field_template: "keyword",
+      keywords: ["auto", "manual"],
+      default_value: "auto",
+      typedom_types: ["Keyword"],
+      invalidate: ["paint"],
+      runtime_flag: "CSSCaretAnimation",
+    },
+    {
       name: "caret-color",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "ColorIncludingFallback"],
       interpolable: true,
@@ -3016,6 +3093,7 @@
       style_builder_template_args: {
         initial_color: "ComputedStyleInitialValues::InitialFillPaint",
       },
+      style_builder_custom_functions: ["value"],
       valid_for_highlight_legacy: true,
       valid_for_highlight: true,
       invalidate: ["paint"],
@@ -3353,8 +3431,17 @@
       invalidate: ["layout", "paint"],
     },
     {
-      name: "popover-show-delay",
-      runtime_flag: "HTMLPopoverActionHover",
+      name: "interest-target-delay",
+      runtime_flag: "HTMLInterestTargetAttribute",
+      longhands: [
+        "interest-target-show-delay", "interest-target-hide-delay"
+      ],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      supports_incremental_style: true,
+    },
+    {
+      name: "interest-target-show-delay",
+      runtime_flag: "HTMLInterestTargetAttribute",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
       field_group: "*",
       field_template: "primitive",
@@ -3366,8 +3453,8 @@
       supports_incremental_style: true,
     },
     {
-      name: "popover-hide-delay",
-      runtime_flag: "HTMLPopoverActionHover",
+      name: "interest-target-hide-delay",
+      runtime_flag: "HTMLInterestTargetAttribute",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
       field_group: "*",
       field_template: "primitive",
@@ -3375,7 +3462,7 @@
       interpolable: true,
       typedom_types: ["Time"],
       converter: "ConvertTimeValue",
-      default_value: "HUGE_VALF",
+      default_value: "0.5",
       supports_incremental_style: true,
     },
     {
@@ -3451,6 +3538,18 @@
       invalidate: ["reshape", "layout", "paint"],
     },
     {
+      name: "interactivity",
+      property_methods: ["CSSValueFromComputedStyleInternal"],
+      inherited: true,
+      field_group: "*",
+      field_template: "keyword",
+      keywords: ["auto", "inert"],
+      typedom_types: ["Keyword"],
+      default_value: "auto",
+      invalidate: [],
+      runtime_flag: "CSSInert",
+    },
+    {
       name: "interpolate-size",
       property_methods: ["CSSValueFromComputedStyleInternal"],
       inherited: true,
@@ -3460,7 +3559,6 @@
       typedom_types: ["Keyword"],
       default_value: "numeric-only",
       invalidate: [],
-      runtime_flag: "CSSCalcSizeFunction",
     },
     {
       name: "isolation",
@@ -3652,6 +3750,7 @@
       valid_for_limited_page_context: true,
       valid_for_page_context: true,
       invalidate: ["margin", "out-of-flow", "scroll-anchor"],
+      anchor_mode: "height",
     },
     {
       name: "margin-left",
@@ -3676,6 +3775,7 @@
       valid_for_limited_page_context: true,
       valid_for_page_context: true,
       invalidate: ["margin", "out-of-flow", "scroll-anchor"],
+      anchor_mode: "width",
     },
     {
       name: "margin-right",
@@ -3700,6 +3800,7 @@
       valid_for_limited_page_context: true,
       valid_for_page_context: true,
       invalidate: ["margin", "out-of-flow", "scroll-anchor"],
+      anchor_mode: "width",
     },
     {
       name: "margin-top",
@@ -3724,6 +3825,7 @@
       valid_for_limited_page_context: true,
       valid_for_page_context: true,
       invalidate: ["margin", "out-of-flow", "scroll-anchor"],
+      anchor_mode: "height",
     },
     {
       name: "marker-end",
@@ -3736,7 +3838,7 @@
       wrapper_pointer_name: "Member",
       default_value: "nullptr",
       name_for_methods: "MarkerEndResource",
-      converter: "ConvertElementReference",
+      style_builder_custom_functions: ["value"],
       keywords: ["none"],
       typedom_types: ["Keyword"],
       invalidate: ["layout", "paint"],
@@ -3752,7 +3854,7 @@
       wrapper_pointer_name: "Member",
       default_value: "nullptr",
       name_for_methods: "MarkerMidResource",
-      converter: "ConvertElementReference",
+      style_builder_custom_functions: ["value"],
       keywords: ["none"],
       typedom_types: ["Keyword"],
       invalidate: ["layout", "paint"],
@@ -3768,7 +3870,7 @@
       wrapper_pointer_name: "Member",
       default_value: "nullptr",
       name_for_methods: "MarkerStartResource",
-      converter: "ConvertElementReference",
+      style_builder_custom_functions: ["value"],
       keywords: ["none"],
       typedom_types: ["Keyword"],
       invalidate: ["layout", "paint"],
@@ -3782,6 +3884,43 @@
       typedom_types: ["Keyword"],
       default_value: "luminance",
       invalidate: ["paint"],
+    },
+    {
+      name: "masonry-auto-tracks",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
+      field_group: "*",
+      field_template: "external",
+      include_paths: ["third_party/blink/renderer/core/style/grid_track_list.h"],
+      default_value: "NGGridTrackList(GridTrackSize(Length::Auto()))",
+      type_name: "NGGridTrackList",
+      converter: "ConvertGridTrackSizeList",
+      keywords: ["auto", "min-content", "max-content"],
+      typedom_types: ["Keyword", "Length", "Percentage", "Flex"],
+      separator: " ",
+      invalidate: ["layout", "paint"],
+      runtime_flag: "CSSMasonryLayout",
+    },
+    {
+      name: "masonry-direction",
+      property_methods: ["CSSValueFromComputedStyleInternal"],
+      field_group: "*",
+      field_template: "keyword",
+      typedom_types: ["Keyword"],
+      keywords: ["row", "row-reverse", "column", "column-reverse"],
+      default_value: "column",
+      invalidate: ["layout", "paint"],
+      runtime_flag: "CSSMasonryLayout",
+    },
+    {
+      name: "masonry-fill",
+      property_methods: ["CSSValueFromComputedStyleInternal"],
+      field_group: "*",
+      field_template: "keyword",
+      keywords: ["normal", "reverse"],
+      typedom_types: ["Keyword"],
+      default_value: "normal",
+      invalidate: ["layout", "paint"],
+      runtime_flag: "CSSMasonryLayout",
     },
     {
       // TODO(crbug.com/343257585): We might need to alter the spec's grammar to accept
@@ -4580,13 +4719,6 @@
       type_name: "PositionTryFallbacks",
       default_value: "nullptr",
       invalidate: ["layout", "paint"],
-      runtime_flag: "CSSPositionTryFallbacks",
-    },
-    {
-      name: "position-try-options",
-      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
-      surrogate_for: "position-try-fallbacks",
-      runtime_flag: "CSSPositionTryOptions",
     },
     {
       name: "position-try-order",
@@ -4765,6 +4897,7 @@
       ],
       typedom_types: ["Keyword"],
       invalidate: ["layout"],
+      field_group: "*",
     },
     {
       name: "scrollbar-width",
@@ -4789,6 +4922,17 @@
       type_name: "mojom::blink::ScrollBehavior",
       keywords: ["auto", "smooth"],
       typedom_types: ["Keyword"],
+    },
+    {
+      name: "scroll-initial-target",
+      property_methods: ["CSSValueFromComputedStyleInternal"],
+      field_group: "*",
+      field_template: "keyword",
+      type_name: "EScrollInitialTarget",
+      default_value: "none",
+      keywords: ["none", "nearest"],
+      invalidate: ["layout"],
+      runtime_flag: "CSSScrollInitialTarget",
     },
     {
       name: "scroll-margin-block-end",
@@ -5082,36 +5226,6 @@
       runtime_flag: "CSSScrollStart",
     },
     {
-      name: "scroll-start-target-x",
-      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
-      field_group: "*->target",
-      field_template: "keyword",
-      type_name: "EScrollStartTarget",
-      default_value: "none",
-      logical_property_group: {
-        name: "scroll-start-target",
-        resolver: "horizontal"
-      },
-      keywords: ["none", "auto"],
-      invalidate: ["layout"],
-      runtime_flag: "CSSScrollStartTarget",
-    },
-    {
-      name: "scroll-start-target-y",
-      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
-      field_group: "*->target",
-      field_template: "keyword",
-      type_name: "EScrollStartTarget",
-      default_value: "none",
-      logical_property_group: {
-        name: "scroll-start-target",
-        resolver: "vertical"
-      },
-      keywords: ["none", "auto"],
-      invalidate: ["layout"],
-      runtime_flag: "CSSScrollStartTarget",
-    },
-    {
       name: "scroll-timeline-axis",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal", "InitialValue"],
       field_group: "*->timeline",
@@ -5120,7 +5234,6 @@
       type_name: "Vector<TimelineAxis>",
       converter: "ConvertViewTimelineAxis",
       separator: ",",
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "scroll-timeline-name",
@@ -5132,7 +5245,6 @@
       wrapper_pointer_name: "Member",
       converter: "ConvertViewTimelineName",
       separator: ",",
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "shape-image-threshold",
@@ -5253,6 +5365,7 @@
       style_builder_template_args: {
         initial_color: "ComputedStyleInitialValues::InitialStrokePaint",
       },
+      style_builder_custom_functions: ["value"],
       valid_for_highlight_legacy: true,
       valid_for_highlight: true,
       invalidate: ["paint", "stroke"],
@@ -5738,7 +5851,6 @@
       wrapper_pointer_name: "Member",
       converter: "ConvertTimelineScope",
       separator: ",",
-      runtime_flag: "TimelineScope",
     },
     {
       name: "top",
@@ -5774,7 +5886,7 @@
       name: "touch-action",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
       field_group: "*",
-      field_size: 8, // FIXME: Make this use "kTouchActionBits".
+      field_size: 9, // FIXME: Make this use "kTouchActionBits".
       field_template: "primitive",
       include_paths: ["third_party/blink/renderer/platform/graphics/touch_action.h"],
       default_value: "TouchAction::kAuto",
@@ -5931,7 +6043,6 @@
       type_name: "Vector<TimelineAxis>",
       converter: "ConvertViewTimelineAxis",
       separator: ",",
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "view-timeline-inset",
@@ -5943,7 +6054,6 @@
       type_name: "Vector<TimelineInset>",
       converter: "ConvertViewTimelineInset",
       separator: ",",
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "view-timeline-name",
@@ -5955,7 +6065,19 @@
       wrapper_pointer_name: "Member",
       converter: "ConvertViewTimelineName",
       separator: ",",
-      runtime_flag: "ScrollTimeline",
+    },
+    {
+      name: "view-transition-capture-mode",
+      field_group: "*",
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
+      converter: "ConvertViewTransitionCaptureMode",
+      type_name: "StyleViewTransitionCaptureMode",
+      default_value: "StyleViewTransitionCaptureMode::kLayered",
+      field_size: 2,
+      field_template: "primitive",
+      keywords: ["flat", "layered"],
+      typedom_types: ["Keyword"],
+      runtime_flag: "ViewTransitionLayeredCapture",
     },
     {
       name: "view-transition-class",
@@ -5968,7 +6090,6 @@
       field_template: "external",
       keywords: ["none"],
       typedom_types: ["Keyword"],
-      runtime_flag: "CSSViewTransitionClass",
     },
     {
       name: "view-transition-group",
@@ -5988,10 +6109,11 @@
       field_group: "*",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
       converter: "ConvertViewTransitionName",
-      type_name: "ScopedCSSName",
+      type_name: "StyleViewTransitionName",
       default_value: "nullptr",
       field_template: "external",
-      keywords: ["none"],
+      include_paths: ["third_party/blink/renderer/core/style/style_view_transition_name.h"],
+      keywords: ["none", "auto"],
       typedom_types: ["Keyword"],
       wrapper_pointer_name: "Member",
     },
@@ -6002,7 +6124,7 @@
       interpolable: true,
       inherited: true,
       field_template: "keyword",
-      keywords: ["visible", "hidden", "collapse", "inert"],
+      keywords: ["visible", "hidden", "collapse"],
       typedom_types: ["Keyword"],
       default_value: "visible",
       valid_for_first_letter: true,
@@ -6011,7 +6133,6 @@
       valid_for_permission_element: true,
       valid_for_page_context: true,
       invalidate: ["paint", "visibility"],
-      computed_style_protected_functions: ["getter"],
     },
     {
       name: "x",
@@ -6047,10 +6168,10 @@
       field_template: "primitive",
       include_paths: ["third_party/blink/renderer/platform/theme_types.h"],
       computed_style_protected_functions: ["getter"],
-      default_value: "kNoControlPart",
-      type_name: "ControlPart",
+      default_value: "AppearanceValue::kNone",
+      type_name: "AppearanceValue",
       // appearance needs to be computed before
-      // -internal-appearance-auto-base-select() can be resolved.
+      // -internal-auto-base() can be resolved.
       priority: 1,
       invalidate: ["layout", "paint"],
     },
@@ -6239,28 +6360,29 @@
       interpolable: true,
       field_group: "*",
       field_template: "external",
-      include_paths: ["third_party/blink/renderer/core/css/style_color.h"],
-      default_value: "StyleColor::CurrentColor()",
-      type_name: "StyleColor",
-      computed_style_protected_functions: ["getter"],
+      include_paths: ["third_party/blink/renderer/core/style/gap_data_list.h",
+                      "third_party/blink/renderer/core/css/style_color.h"],
+      default_value: "GapDataList<StyleColor>::DefaultGapColorDataList()",
+      type_name: "GapDataList<StyleColor>",
       keywords: ["currentcolor"],
       typedom_types: ["Keyword"],
-      converter: "ConvertStyleColor",
-      style_builder_template: "color",
+      converter: "ConvertGapDecorationColorDataList",
       invalidate: ["paint"],
     },
     {
       name: "column-rule-style",
-      property_methods: ["CSSValueFromComputedStyleInternal"],
+      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
       field_group: "*",
-      field_template: "keyword",
+      field_template: "external",
+      include_paths: ["third_party/blink/renderer/core/style/gap_data_list.h"],
       keywords: [
         "none", "hidden", "inset", "groove", "outset", "ridge", "dotted",
         "dashed", "solid", "double"
       ],
-      default_value: "none",
-      type_name: "EBorderStyle",
+      default_value: "GapDataList<EBorderStyle>::DefaultGapStyleDataList()",
+      type_name: "GapDataList<EBorderStyle>",
       typedom_types: ["Keyword"],
+      converter: "ConvertGapDecorationStyleDataList",
       invalidate: ["paint"],
     },
     {
@@ -6269,10 +6391,11 @@
       interpolable: true,
       field_group: "*",
       field_template: "external",
-      default_value: "3",
-      type_name: "int",
+      default_value: "GapDataList<int>::DefaultGapWidthDataList()",
+      include_paths: ["third_party/blink/renderer/core/style/gap_data_list.h"],
+      type_name: "GapDataList<int>",
       computed_style_custom_functions: ["initial", "getter", "setter"],
-      converter: "ConvertColumnRuleWidth",
+      converter: "ConvertGapDecorationWidthDataList",
       keywords: ["thin", "medium", "thick"],
       typedom_types: ["Keyword", "Length"],
       invalidate: ["paint"],
@@ -6567,7 +6690,6 @@
       default_value: "space-around",
       valid_for_permission_element: true,
       invalidate: ["layout", "paint"],
-      runtime_flag: "CssRubyAlign",
     },
     {
       name: "-webkit-ruby-position",
@@ -6883,6 +7005,7 @@
     {
       name: "word-break",
       property_methods: ["CSSValueFromComputedStyleInternal"],
+      style_builder_custom_functions: ["value"],
       inherited: true,
       field_group: "*",
       field_template: "keyword",
@@ -7130,24 +7253,6 @@
         resolver: "inline"
       },
       runtime_flag: "CSSScrollStart",
-    },
-    {
-      name: "scroll-start-target-block",
-      property_methods: ["ParseSingleValue"],
-      logical_property_group: {
-        name: "scroll-start-target",
-        resolver: "block",
-      },
-      runtime_flag: "CSSScrollStartTarget",
-    },
-    {
-      name: "scroll-start-target-inline",
-      property_methods: ["ParseSingleValue"],
-      logical_property_group: {
-        name: "scroll-start-target",
-        resolver: "inline",
-      },
-      runtime_flag: "CSSScrollStartTarget",
     },
     {
       name: "border-inline-start-width",
@@ -7630,6 +7735,12 @@
       runtime_flag: "ViewTransitionOnNavigation",
     },
     {
+      name: "result",
+      is_descriptor: true,
+      is_property: false,
+      runtime_flag: "CSSFunctions",
+    },
+    {
       name: "position-area",
       property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
       style_builder_custom_functions: ["value", "inherit"],
@@ -7645,7 +7756,6 @@
       ],
       typedom_types: ["Keyword"],
       valid_for_position_try: true,
-      runtime_flag: "CSSPositionAreaProperty",
       valid_for_permission_element: true,
       // position-area needs to be applied before inset properties since
       // anchor() functions compute relative to the containing block that is
@@ -7653,47 +7763,18 @@
       priority: 1,
       invalidate: ["layout", "out-of-flow", "paint"],
     },
-    {
-      name: "inset-area",
-      surrogate_for: "position-area",
-      runtime_flag: "CSSInsetAreaProperty",
-
-      property_methods: ["ParseSingleValue", "CSSValueFromComputedStyleInternal"],
-      keywords: [
-        "none", "top", "bottom", "center", "left", "right", "x-start", "x-end",
-        "y-start", "y-end", "start", "end", "self-start", "self-end", "all"
-      ],
-      typedom_types: ["Keyword"],
-      valid_for_position_try: true,
-      priority: 1,
-    },
     // Shorthands
     {
       name: "animation",
       longhands: [
         "animation-duration", "animation-timing-function", "animation-delay",
         "animation-iteration-count", "animation-direction",
-        "animation-fill-mode", "animation-play-state", "animation-name"
-      ],
-      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
-      supports_incremental_style: false,
-      valid_for_keyframe: false,
-    },
-    {
-      // Variant of the "animation" shorthand which includes the
-      // animation-timeline and animation-range-* longhands.
-      name: "-alternative-animation-with-timeline",
-      alternative_of: "animation",
-      longhands: [
-        "animation-duration", "animation-timing-function",
-        "animation-delay", "animation-iteration-count", "animation-direction",
         "animation-fill-mode", "animation-play-state", "animation-name",
         "animation-timeline", "animation-range-start", "animation-range-end"
       ],
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
       supports_incremental_style: false,
       valid_for_keyframe: false,
-      runtime_flag: 'ScrollTimeline',
     },
     {
       name: "animation-range",
@@ -7703,7 +7784,40 @@
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
       supports_incremental_style: false,
       valid_for_keyframe: false,
-      runtime_flag: 'ScrollTimeline',
+    },
+    {
+      name: "animation-trigger",
+      longhands: [
+        "animation-trigger-timeline", "animation-trigger-type",
+        "animation-trigger-range-start", "animation-trigger-range-end",
+        "animation-trigger-exit-range-start",
+        "animation-trigger-exit-range-end",
+      ],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      supports_incremental_style: false,
+      valid_for_keyframe: false,
+      runtime_flag: "CSSAnimationTrigger",
+    },
+    {
+      name: "animation-trigger-range",
+      longhands: [
+        "animation-trigger-range-start", "animation-trigger-range-end",
+      ],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      supports_incremental_style: false,
+      valid_for_keyframe: false,
+      runtime_flag: "CSSAnimationTriggerRange",
+    },
+    {
+      name: "animation-trigger-exit-range",
+      longhands: [
+        "animation-trigger-exit-range-start",
+        "animation-trigger-exit-range-end",
+      ],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      supports_incremental_style: false,
+      valid_for_keyframe: false,
+      runtime_flag: "CSSAnimationTriggerRange",
     },
     {
       name: "background",
@@ -8142,6 +8256,12 @@
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
     },
     {
+      name: "masonry-flow",
+      longhands: ["masonry-direction", "masonry-fill"],
+      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
+      runtime_flag: "CSSMasonryLayout",
+    },
+    {
       name: "masonry-track",
       longhands: ["masonry-track-start", "masonry-track-end"],
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
@@ -8212,17 +8332,8 @@
     },
     {
       name: "position-try",
-      longhands: ["position-try-order", "position-try-options"],
-      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
-    },
-    {
-      // Variant of the "position-try" shorthand which has the new
-      // position-try-fallbacks instead of position-try-options.
-      name: "-alternative-position-try",
-      alternative_of: "position-try",
       longhands: ["position-try-order", "position-try-fallbacks"],
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
-      runtime_flag: "CSSPositionTryFallbacks",
     },
     {
       name: "scroll-margin",
@@ -8264,16 +8375,9 @@
       runtime_flag: "CSSScrollStart",
     },
     {
-      name: "scroll-start-target",
-      longhands: ["scroll-start-target-block", "scroll-start-target-inline"],
-      property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
-      runtime_flag: "CSSScrollStartTarget",
-    },
-    {
       name: "scroll-timeline",
       longhands: ["scroll-timeline-name", "scroll-timeline-axis"],
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "text-decoration",
@@ -8297,7 +8401,6 @@
       name: "view-timeline",
       longhands: ["view-timeline-name", "view-timeline-axis", "view-timeline-inset"],
       property_methods: ["ParseShorthand", "CSSValueFromComputedStyleInternal"],
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "-webkit-border-after",
@@ -8434,12 +8537,11 @@
       property_methods: ["ParseSingleValue", "ColorIncludingFallback"],
       field_group: "*->visited",
       field_template: "external",
-      include_paths: ["third_party/blink/renderer/core/css/style_color.h"],
-      default_value: "StyleColor::CurrentColor()",
-      type_name: "StyleColor",
-      computed_style_protected_functions: ["getter"],
-      converter: "ConvertStyleColor",
-      style_builder_template: "visited_color",
+      include_paths: ["third_party/blink/renderer/core/style/gap_data_list.h",
+                      "third_party/blink/renderer/core/css/style_color.h"],
+      default_value: "GapDataList<StyleColor>::DefaultGapColorDataList()",
+      type_name: "GapDataList<StyleColor>",
+      converter: "ConvertGapDecorationColorDataList",
       invalidate: ["paint"],
     },
     {
@@ -8873,18 +8975,6 @@
     {
       name: "-webkit-animation",
       alias_for: "animation",
-    },
-    {
-      // Since "animation" has an alternative property, "-webkit-animation"
-      // also needs to have an alternative property that is an alias of
-      // animation's alternative property. Unfortunately we can't just resolve
-      // -webkit-animation directly to animation's alternative, because we have
-      // to remember the -webkit-ness of the property to enable legacy parsing
-      // behavior. (See CSSParserLocalContext::UseAliasParsing).
-      name: "-webkit-alternative-animation-with-timeline",
-      alias_for: "-alternative-animation-with-timeline",
-      alternative_of: "-webkit-animation",
-      runtime_flag: "ScrollTimeline",
     },
     {
       name: "-webkit-animation-delay",

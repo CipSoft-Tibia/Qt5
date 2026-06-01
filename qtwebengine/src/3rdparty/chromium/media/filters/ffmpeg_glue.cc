@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "media/filters/ffmpeg_glue.h"
 
 #include "base/check_op.h"
@@ -16,21 +21,6 @@
 #include "media/ffmpeg/ffmpeg_common.h"
 
 namespace media {
-
-// Kill switches in case things explode. Remove after M132.
-// TODO(crbug.com/355485812): Re-enable this flag.
-BASE_FEATURE(kAllowOnlyAudioCodecsDuringDemuxing,
-             "AllowOnlyAudioCodecsDuringDemuxing",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-#if BUILDFLAG(IS_QTWEBENGINE) && BUILDFLAG(USE_SYSTEM_FFMPEG)
-BASE_FEATURE(kForbidH264ParsingDuringDemuxing,
-             "ForbidH264ParsingDuringDemuxing",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-#else
-BASE_FEATURE(kForbidH264ParsingDuringDemuxing,
-             "ForbidH264ParsingDuringDemuxing",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-#endif
 
 // Internal buffer size used by AVIO for reading.
 // TODO(dalecurtis): Experiment with this buffer size and measure impact on
@@ -72,7 +62,7 @@ static int64_t AVIOSeekOperation(void* opaque, int64_t offset, int whence) {
       break;
 
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
   return new_offset;
 }
@@ -127,9 +117,7 @@ FFmpegGlue::FFmpegGlue(FFmpegURLProtocol* protocol) {
   // We don't allow H.264 parsing during demuxing since we have our own parser
   // and the ffmpeg one increases memory usage unnecessarily.
 #if !BUILDFLAG(IS_QTWEBENGINE) && !BUILDFLAG(USE_SYSTEM_FFMPEG)
-  if (base::FeatureList::IsEnabled(kForbidH264ParsingDuringDemuxing)) {
-    format_context_->flags |= AVFMT_FLAG_NOH264PARSE;
-  }
+  format_context_->flags |= AVFMT_FLAG_NOH264PARSE;
 #endif
 
   // Ensures format parsing errors will bail out. From an audit on 11/2017, all
@@ -138,6 +126,17 @@ FFmpegGlue::FFmpegGlue(FFmpegURLProtocol* protocol) {
 
   format_context_->pb = avio_context_.get();
 
+  // Enhance security by forbidding ffmpeg from decoding / demuxing codecs and
+  // containers which should be unsupported.
+  //
+  // Normally these aren't even compiled in, but during codec/container
+  // deprecations and when an external ffmpeg is used this adds extra
+  // security.
+  //
+  // We also don't allow ffmpeg to use any video decoders during demuxing
+  // since it's unnecessary for the codecs we use and just increases
+  // memory usage.
+  //
   // Note: FFmpeg will try to free these strings, so we must duplicate them.
   format_context_->codec_whitelist = av_strdup(GetAllowedAudioDecoders());
   format_context_->format_whitelist = av_strdup(GetAllowedDemuxers());
@@ -159,8 +158,8 @@ bool FFmpegGlue::OpenContext(bool is_local_file) {
 
   // By passing nullptr for the filename (second parameter) we are telling
   // FFmpeg to use the AVIO context we setup from the AVFormatContext structure.
-  const int ret =
-      avformat_open_input(&format_context_, nullptr, nullptr, &options);
+  const int ret = avformat_open_input(&format_context_.AsEphemeralRawAddr(),
+                                      nullptr, nullptr, &options);
 
   if (options) {
     av_dict_free(&options);
@@ -260,7 +259,7 @@ FFmpegGlue::~FFmpegGlue() {
     return;
   }
 
-  avformat_close_input(&format_context_);
+  avformat_close_input(&format_context_.AsEphemeralRawAddr());
   av_free(avio_context_->buffer);
 }
 

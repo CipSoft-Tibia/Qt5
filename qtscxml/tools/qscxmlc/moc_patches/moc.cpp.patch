@@ -1,5 +1,5 @@
---- .upstream/moc.cpp	2024-11-22 10:57:14.673629148 +0100
-+++ moc.cpp	2024-11-29 15:00:06.897734418 +0100
+--- .upstream/moc.cpp	2025-06-30 09:17:40.517007436 +0200
++++ moc.cpp	2025-08-05 11:30:27.602092370 +0200
 @@ -12,15 +12,15 @@
  #include <QtCore/qdir.h>
  #include <QtCore/qjsondocument.h>
@@ -20,7 +20,7 @@
  // only moc needs this function
  static QByteArray normalizeType(const QByteArray &ba)
  {
-@@ -2006,6 +2006,7 @@
+@@ -2042,6 +2042,7 @@
          }
      }
  }
@@ -28,7 +28,7 @@
  
  QJsonObject ClassDef::toJson() const
  {
-@@ -2199,8 +2200,8 @@
+@@ -2235,8 +2236,8 @@
          def["alias"_L1] = QString::fromUtf8(enumName);
      if (!type.isEmpty())
          def["type"_L1] = QString::fromUtf8(type);

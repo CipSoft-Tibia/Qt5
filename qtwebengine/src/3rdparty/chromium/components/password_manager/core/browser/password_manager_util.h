@@ -55,8 +55,8 @@ void UpdateMetadataForUsage(password_manager::PasswordForm* credential);
 
 // A convenience function for testing that |client| has a non-null LogManager
 // and that that LogManager returns true for IsLoggingActive. This function can
-// be removed once PasswordManagerClient::GetLogManager is implemented on iOS
-// and required to always return non-null.
+// be removed once PasswordManagerClient::GetCurrentLogManager is implemented on
+// iOS and required to always return non-null.
 bool IsLoggingActive(password_manager::PasswordManagerClient* client);
 
 // True iff the manual password generation is enabled for the current site.
@@ -90,6 +90,12 @@ std::string_view GetSignonRealmWithProtocolExcluded(
 // For credentials returned from PasswordStore::GetLogins, specifies the type of
 // the match for the requested page.
 GetLoginMatchType GetMatchType(const password_manager::PasswordForm& form);
+
+// Returns true if the credential is a PSL match or a grouped match. Such
+// matches are called weak matches and do not trigger fill on page load.
+// If the form is submitted with weak match filled, credentials are saved on the
+// submitted form realm without prompting to the user.
+bool IsCredentialWeakMatch(const password_manager::PasswordForm& form);
 
 // Given all non-blocklisted |matches| returns best matches as the result of the
 // function. For comparing credentials the following rule is used:
@@ -136,8 +142,7 @@ password_manager::PasswordForm MakeNormalizedBlocklistedForm(
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
 bool ShouldBiometricAuthenticationForFillingToggleBeVisible(
     const PrefService* local_state);
-#endif
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+
 bool ShouldShowBiometricAuthenticationBeforeFillingPromo(
     password_manager::PasswordManagerClient* client);
 #endif
@@ -157,11 +162,12 @@ std::string GetSignonRealm(const GURL& url);
 #if BUILDFLAG(IS_IOS)
 // Returns a boolean indicating whether the user had enabled the credential
 // provider in their iOS settings at startup.
-bool IsCredentialProviderEnabledOnStartup(const PrefService* prefs);
+bool IsCredentialProviderEnabledOnStartup(const PrefService* local_state);
 
 // Sets the boolean indicating whether the user had enabled the credential
 // provider in their iOS settings at startup.
-void SetCredentialProviderEnabledOnStartup(PrefService* prefs, bool enabled);
+void SetCredentialProviderEnabledOnStartup(PrefService* local_state,
+                                           bool enabled);
 #endif
 
 // Contains all special symbols considered for password-generation.
@@ -185,6 +191,9 @@ bool IsSpecialSymbol(char16_t c);
 
 // Returns true if 'type' is a username in a password-less form.
 bool IsSingleUsernameType(autofill::FieldType type);
+
+// Returns the prettified version of |signon_realm| to be displayed on the UI.
+std::u16string GetHumanReadableRealm(const std::string& signon_realm);
 
 }  // namespace password_manager_util
 

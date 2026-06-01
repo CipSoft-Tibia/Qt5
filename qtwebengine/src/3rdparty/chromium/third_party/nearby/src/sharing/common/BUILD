@@ -22,7 +22,6 @@ cc_library(
     ],
     hdrs = [
         "nearby_share_prefs.h",
-        "nearby_share_profile_info_provider.h",
         "nearby_share_switches.h",
     ],
     visibility = ["//visibility:public"],
@@ -33,20 +32,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
-)
-
-cc_library(
-    name = "test_support",
-    testonly = True,
-    srcs = [
-        "fake_nearby_share_profile_info_provider.cc",
-    ],
-    hdrs = [
-        "fake_nearby_share_profile_info_provider.h",
-        "nearby_share_profile_info_provider.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [],
 )
 
 cc_library(
@@ -61,6 +46,7 @@ cc_library(
     hdrs = ["compatible_u8_string.h"],
     visibility = [
         "//location/nearby/apps/better_together:__subpackages__",
+        "//location/nearby/cpp/sharing/clients/dart:__subpackages__",
         "//location/nearby/sharing/sdk:__subpackages__",
         "//sharing:__subpackages__",
     ],

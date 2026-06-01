@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKSTACKELEMENT_P_P_H
 #define QQUICKSTACKELEMENT_P_P_H
@@ -43,13 +44,14 @@ class QQuickStackElement :
 public:
     ~QQuickStackElement();
 
-    static QQuickStackElement *fromString(const QString &str, QQuickStackView *view, QString *error);
+    static QQuickStackElement *fromString(QQmlEngine *engine, const QString &str, QQuickStackView *view, QString *error);
     static QQuickStackElement *fromObject(QObject *object, QQuickStackView *view, QString *error);
-    static QQuickStackElement *fromStackViewArg(QQuickStackView *view, QQuickStackViewArg arg);
+    static QQuickStackElement *fromStackViewArg(QQmlEngine *engine, QQuickStackView *view, QQuickStackViewArg arg);
 
-    bool load(QQuickStackView *parent);
-    void incubate(QObject *object, RequiredProperties *requiredProperties);
-    void initialize(RequiredProperties *requiredProperties);
+    bool load(QV4::ExecutionEngine *v4, QQuickStackView *parent);
+    void incubate(
+            QV4::ExecutionEngine *v4, QObject *object, RequiredProperties *requiredProperties);
+    void initialize(QV4::ExecutionEngine *v4, RequiredProperties *requiredProperties);
 
     void setIndex(int index);
     void setView(QQuickStackView *view);

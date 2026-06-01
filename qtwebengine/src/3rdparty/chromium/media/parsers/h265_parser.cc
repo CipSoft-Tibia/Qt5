@@ -356,7 +356,7 @@ H265Parser::Result H265Parser::ParseVPS(int* vps_id) {
   READ_BOOL_OR_RETURN(&vps->vps_base_layer_internal_flag);
   READ_BOOL_OR_RETURN(&vps->vps_base_layer_available_flag);
   READ_BITS_OR_RETURN(6, &vps->vps_max_layers_minus1);
-  IN_RANGE_OR_RETURN(vps->vps_max_layers_minus1, 0, 63);
+  IN_RANGE_OR_RETURN(vps->vps_max_layers_minus1, 0, 62);
   READ_BITS_OR_RETURN(3, &vps->vps_max_sub_layers_minus1);
   IN_RANGE_OR_RETURN(vps->vps_max_sub_layers_minus1, 0, 7);
   READ_BOOL_OR_RETURN(&vps->vps_temporal_id_nesting_flag);
@@ -399,7 +399,7 @@ H265Parser::Result H265Parser::ParseVPS(int* vps_id) {
   }
 
   READ_BITS_OR_RETURN(6, &vps->vps_max_layer_id);
-  IN_RANGE_OR_RETURN(vps->vps_max_layer_id, 0, 63);
+  IN_RANGE_OR_RETURN(vps->vps_max_layer_id, 0, 62);
   READ_UE_OR_RETURN(&vps->vps_num_layer_sets_minus1);
   IN_RANGE_OR_RETURN(vps->vps_num_layer_sets_minus1, 0, 1023);
   for (int i = 1; i <= vps->vps_num_layer_sets_minus1; ++i) {
@@ -534,18 +534,18 @@ H265Parser::Result H265Parser::ParseVPS(int* vps_id) {
     }
     bool splitting_flag;
     READ_BOOL_OR_RETURN(&splitting_flag);
-    bool scalability_mask_flag[16] = {false};
+    bool scalability_mask_flag[16] = {};
     int num_scalability_types = 0;
     for (int i = 0; i < 16; ++i) {
       READ_BOOL_OR_RETURN(&scalability_mask_flag[i]);
       num_scalability_types += scalability_mask_flag[i];
     }
-    int dimension_id_len_minus1[16] = {0};
+    int dimension_id_len_minus1[16] = {};
     for (int j = 0; j < (num_scalability_types - splitting_flag); ++j) {
       READ_BITS_OR_RETURN(3, &dimension_id_len_minus1[j]);
     }
 
-    int dim_bit_offset[17] = {0};
+    int dim_bit_offset[17] = {};
     if (splitting_flag) {
       // Equation F-2
       for (int j = 1; j <= num_scalability_types - 1; ++j) {
@@ -572,7 +572,7 @@ H265Parser::Result H265Parser::ParseVPS(int* vps_id) {
       if (vps_nuh_layer_id_present_flag) {
         READ_BITS_OR_RETURN(6, &layer_id_in_nuh_i);
       }
-      int dimension_id_i[16] = {0};
+      int dimension_id_i[16] = {};
       if (!splitting_flag) {
         for (int j = 0; j < num_scalability_types; ++j) {
           READ_BITS_OR_RETURN(dimension_id_len_minus1[j] + 1,
@@ -589,7 +589,7 @@ H265Parser::Result H265Parser::ParseVPS(int* vps_id) {
 
       // F.7.4.3.1.1 dimension_id
       // We can skip layer zero because all dimension_id[0][j] == 0.
-      int scalability_id_i[16] = {0};
+      int scalability_id_i[16] = {};
       for (int sm_idx = 0, j = 0; sm_idx < 16; ++sm_idx) {
         if (scalability_mask_flag[sm_idx]) {
           scalability_id_i[sm_idx] = dimension_id_i[j++];
@@ -1164,6 +1164,11 @@ H265Parser::Result H265Parser::ParseSliceHeader(const H265NALU& nalu,
   sps = GetSPS(pps->pps_seq_parameter_set_id);
   DCHECK(sps);  // We already validated this when we parsed the PPS.
 
+  // Workaround for crbug.com/369963046; Apple encoder produces L1T2 streams
+  // with sps_max_sub_layers_minus1 = 0.
+  int clamped_temporal_id =
+      std::min(shdr->temporal_id, sps->sps_max_sub_layers_minus1);
+
   if (!shdr->first_slice_segment_in_pic_flag) {
     if (pps->dependent_slice_segments_enabled_flag)
       READ_BOOL_OR_RETURN(&shdr->dependent_slice_segment_flag);
@@ -1187,7 +1192,7 @@ H265Parser::Result H265Parser::ParseSliceHeader(const H265NALU& nalu,
     // We also need to validate the fields that have conditions that depend on
     // anything unique in this slice (i.e. anything already parsed).
     if ((shdr->irap_pic ||
-         sps->sps_max_dec_pic_buffering_minus1[shdr->temporal_id] == 0) &&
+         sps->sps_max_dec_pic_buffering_minus1[clamped_temporal_id] == 0) &&
         nalu.nuh_layer_id == 0) {
       TRUE_OR_RETURN(shdr->slice_type == 2);
     }
@@ -1210,8 +1215,9 @@ H265Parser::Result H265Parser::ParseSliceHeader(const H265NALU& nalu,
     // slice_reserved_flag
     SKIP_BITS_OR_RETURN(pps->num_extra_slice_header_bits);
     READ_UE_OR_RETURN(&shdr->slice_type);
+    IN_RANGE_OR_RETURN(shdr->slice_type, 0, 2);
     if ((shdr->irap_pic ||
-         sps->sps_max_dec_pic_buffering_minus1[shdr->temporal_id] == 0) &&
+         sps->sps_max_dec_pic_buffering_minus1[clamped_temporal_id] == 0) &&
         nalu.nuh_layer_id == 0) {
       TRUE_OR_RETURN(shdr->slice_type == 2);
     }
@@ -1261,7 +1267,7 @@ H265Parser::Result H265Parser::ParseSliceHeader(const H265NALU& nalu,
         if (nalu.nuh_layer_id == 0) {
           TRUE_OR_RETURN(
               shdr->num_long_term_pics <=
-              (sps->sps_max_dec_pic_buffering_minus1[shdr->temporal_id] -
+              (sps->sps_max_dec_pic_buffering_minus1[clamped_temporal_id] -
                shdr->GetStRefPicSet(sps).num_negative_pics -
                shdr->GetStRefPicSet(sps).num_positive_pics -
                shdr->num_long_term_sps));
@@ -2172,6 +2178,8 @@ H265Parser::Result H265Parser::ParseSEI(H265SEI* sei) {
           READ_BITS_AND_MINUS_BITS_READ_OR_RETURN(
               3, &sei_msg.alpha_channel_info.alpha_channel_use_idc,
               &num_bits_remain);
+          IN_RANGE_OR_RETURN(sei_msg.alpha_channel_info.alpha_channel_use_idc,
+                             0, 2);
           READ_BITS_AND_MINUS_BITS_READ_OR_RETURN(
               3, &sei_msg.alpha_channel_info.alpha_channel_bit_depth_minus8,
               &num_bits_remain);

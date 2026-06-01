@@ -26,13 +26,30 @@ QT_BEGIN_NAMESPACE
 
 using namespace QtMiscUtils;
 
-uint nameToBuiltinType(const QByteArray &name)
+static int nameToBuiltinType(const QByteArray &name)
 {
     if (name.isEmpty())
         return 0;
 
-    uint tp = qMetaTypeTypeInternal(name.constData());
-    return tp < uint(QMetaType::User) ? tp : uint(QMetaType::UnknownType);
+    uint tp = QMetaType::UnknownType;
+    if (const QtPrivate::QMetaTypeInterface *iface = QMetaType::fromName(name).iface())
+        tp = iface->typeId.loadRelaxed(); // always registered
+
+#ifndef QT_BOOTSTRAPPED
+    if (tp >= uint(QMetaType::User))
+        tp = QMetaType::UnknownType;
+#endif
+
+    return int(tp);
+}
+
+/*
+  Returns \c true if the type is a built-in type.
+*/
+static bool isBuiltinType(const QByteArray &type)
+{
+    int id = nameToBuiltinType(type);
+    return id != QMetaType::UnknownType;
 }
 
 constexpr const char *cxxTypeTag(TypeTags t)
@@ -47,17 +64,6 @@ constexpr const char *cxxTypeTag(TypeTags t)
     if (t & TypeTag::HasClass) return "class ";
     if (t & TypeTag::HasStruct) return "struct ";
     return "";
-}
-
-/*
-  Returns \c true if the type is a built-in type.
-*/
-bool isBuiltinType(const QByteArray &type)
- {
-    int id = qMetaTypeTypeInternal(type.constData());
-    if (id == QMetaType::UnknownType)
-        return false;
-    return (id < QMetaType::User);
 }
 
 static const char *metaTypeEnumValueString(int type)
@@ -233,6 +239,7 @@ void Generator::generateCode()
             QByteArray alias = cdef->flagAliases.value(def.name);
             if (cdef->enumDeclarations.contains(alias)) {
                 def.name = alias;
+                def.flags |= cdef->enumDeclarations[alias];
                 enumList += def;
             }
         }
@@ -904,7 +911,7 @@ QMultiMap<QByteArray, int> Generator::automaticPropertyMetaTypesHelper()
     QMultiMap<QByteArray, int> automaticPropertyMetaTypes;
     for (int i = 0; i < int(cdef->propertyList.size()); ++i) {
         const PropertyDef &p = cdef->propertyList.at(i);
-        const QByteArray propertyType = p.type;
+        const QByteArray &propertyType = p.type;
         if (registerableMetaType(propertyType) && !isBuiltinType(propertyType))
             automaticPropertyMetaTypes.insert(cxxTypeTag(p.typeTag) + propertyType, i);
     }
@@ -918,7 +925,7 @@ Generator::methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList)
     for (int i = 0; i < methodList.size(); ++i) {
         const FunctionDef &f = methodList.at(i);
         for (int j = 0; j < f.arguments.size(); ++j) {
-            const QByteArray argType = f.arguments.at(j).normalizedType;
+            const QByteArray &argType = f.arguments.at(j).normalizedType;
             if (registerableMetaType(argType) && !isBuiltinType(argType))
                 methodsWithAutomaticTypes[i].insert(argType, j);
         }
@@ -1024,7 +1031,7 @@ void Generator::generateStaticMetacall()
                     const ArgumentDef &a = *it;
                     if (it != begin)
                         fprintf(out, ",");
-                    fprintf(out, "(*reinterpret_cast< %s>(_a[%d]))", disambiguatedTypeNameForCast(a.normalizedType).constData(), offset++);
+                    fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))", disambiguatedTypeNameForCast(a.normalizedType).constData(), offset++);
                     usedArgs |= UsedA;
                 }
                 if (f.isPrivateSignal) {
@@ -1035,7 +1042,7 @@ void Generator::generateStaticMetacall()
             }
             fprintf(out, ");");
             if (f.normalizedType != "void") {
-                fprintf(out, "\n            if (_a[0]) *reinterpret_cast< %s*>(_a[0]) = std::move(_r); } ",
+                fprintf(out, "\n            if (_a[0]) *reinterpret_cast<%s*>(_a[0]) = std::move(_r); } ",
                         disambiguatedTypeName(noRef(f.normalizedType)).constData());
                 usedArgs |= UsedA;
             }
@@ -1242,7 +1249,7 @@ void Generator::generateStaticMetacall()
         }
 
         if (needReset) {
-            fprintf(out, "if (_c == QMetaObject::ResetProperty) {\n");
+            fprintf(out, "    if (_c == QMetaObject::ResetProperty) {\n");
             fprintf(out, "        switch (_id) {\n");
             for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
                 const PropertyDef &p = cdef->propertyList.at(propindex);

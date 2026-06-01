@@ -23,6 +23,7 @@ static void initResources()
 QT_BEGIN_NAMESPACE
 
 Q_STATIC_LOGGING_CATEGORY(QQSHAPE_LOG_TIME_DIRTY_SYNC, "qt.shape.time.sync")
+Q_STATIC_LOGGING_CATEGORY(lcShapeSync, "qt.quick.shapes.shape.sync")
 
 /*!
     \keyword Qt Quick Shapes
@@ -90,7 +91,8 @@ QQuickShapeStrokeFillParams::QQuickShapeStrokeFillParams()
       strokeStyle(QQuickShapePath::SolidLine),
       dashOffset(0),
       fillGradient(nullptr),
-      fillItem(nullptr)
+      fillItem(nullptr),
+      trim(nullptr)
 {
     dashPattern << 4 << 2; // 4 * strokeWidth dash followed by 2 * strokeWidth space
 }
@@ -265,18 +267,8 @@ void QQuickShapePath::setFillColor(const QColor &color)
 }
 
 /*!
-    \qmlproperty enumeration QtQuick.Shapes::ShapePath::fillRule
-
-    This property holds the fill rule. The default value is
-    \c ShapePath.OddEvenFill. For an explanation on fill rules, see
-    QPainterPath::setFillRule().
-
-    \value ShapePath.OddEvenFill
-           Odd-even fill rule.
-
-    \value ShapePath.WindingFill
-           Non-zero winding fill rule.
- */
+    \include shapepath.qdocinc {fillRule-property} {QtQuick.Shapes::ShapePath}
+*/
 
 QQuickShapePath::FillRule QQuickShapePath::fillRule() const
 {
@@ -296,21 +288,8 @@ void QQuickShapePath::setFillRule(FillRule fillRule)
 }
 
 /*!
-    \qmlproperty enumeration QtQuick.Shapes::ShapePath::joinStyle
-
-    This property defines how joins between two connected lines are drawn. The
-    default value is \c ShapePath.BevelJoin.
-
-    \value ShapePath.MiterJoin
-           The outer edges of the lines are extended to meet at an angle, and
-           this area is filled.
-
-    \value ShapePath.BevelJoin
-           The triangular notch between the two lines is filled.
-
-    \value ShapePath.RoundJoin
-           A circular arc between the two lines is filled.
- */
+    \include shapepath.qdocinc {joinStyle-property} {QtQuick.Shapes::ShapePath}
+*/
 
 QQuickShapePath::JoinStyle QQuickShapePath::joinStyle() const
 {
@@ -356,21 +335,8 @@ void QQuickShapePath::setMiterLimit(int limit)
 }
 
 /*!
-    \qmlproperty enumeration QtQuick.Shapes::ShapePath::capStyle
-
-    This property defines how the end points of lines are drawn. The
-    default value is \c ShapePath.SquareCap.
-
-    \value ShapePath.FlatCap
-           A square line end that does not cover the end point of the line.
-
-    \value ShapePath.SquareCap
-           A square line end that covers the end point and extends beyond it
-           by half the line width.
-
-    \value ShapePath.RoundCap
-           A rounded line end.
- */
+    \include shapepath.qdocinc {capStyle-property} {QtQuick.Shapes::ShapePath}
+*/
 
 QQuickShapePath::CapStyle QQuickShapePath::capStyle() const
 {
@@ -390,14 +356,8 @@ void QQuickShapePath::setCapStyle(CapStyle style)
 }
 
 /*!
-    \qmlproperty enumeration QtQuick.Shapes::ShapePath::strokeStyle
-
-    This property defines the style of stroking. The default value is
-    ShapePath.SolidLine.
-
-    \value ShapePath.SolidLine  A plain line.
-    \value ShapePath.DashLine   Dashes separated by a few pixels.
- */
+    \include shapepath.qdocinc {strokeStyle-property} {QtQuick.Shapes::ShapePath}
+*/
 
 QQuickShapePath::StrokeStyle QQuickShapePath::strokeStyle() const
 {
@@ -417,15 +377,8 @@ void QQuickShapePath::setStrokeStyle(StrokeStyle style)
 }
 
 /*!
-    \qmlproperty real QtQuick.Shapes::ShapePath::dashOffset
-
-    This property defines the starting point on the dash pattern, measured in
-    units used to specify the dash pattern.
-
-    The default value is 0.
-
-    \sa QPen::setDashOffset()
- */
+    \include shapepath.qdocinc {dashOffset-property} {QtQuick.Shapes::ShapePath}
+*/
 
 qreal QQuickShapePath::dashOffset() const
 {
@@ -445,18 +398,8 @@ void QQuickShapePath::setDashOffset(qreal offset)
 }
 
 /*!
-    \qmlproperty list<real> QtQuick.Shapes::ShapePath::dashPattern
-
-    This property defines the dash pattern when ShapePath.strokeStyle is set
-    to ShapePath.DashLine. The pattern must be specified as an even number of
-    positive entries where the entries 1, 3, 5... are the dashes and 2, 4,
-    6... are the spaces. The pattern is specified in units of the pen's width.
-
-    The default value is (4, 2), meaning a dash of 4 * ShapePath.strokeWidth
-    pixels followed by a space of 2 * ShapePath.strokeWidth pixels.
-
-    \sa QPen::setDashPattern()
- */
+    \include shapepath.qdocinc {dashPattern-property} {QtQuick.Shapes::ShapePath}
+*/
 
 QVector<qreal> QQuickShapePath::dashPattern() const
 {
@@ -487,6 +430,9 @@ void QQuickShapePath::setDashPattern(const QVector<qreal> &array)
 
     \note If set to something other than \c{null}, the \c fillGradient will take precedence over
     both \l fillItem and \l fillColor.
+
+    By default, up to 256 different gradients may be displayed simultanously. This limit may be
+    customized with the \c QT_QUICKSHAPES_MAX_GRADIENTS environment variable.
  */
 
 QQuickShapeGradient *QQuickShapePath::fillGradient() const
@@ -584,6 +530,40 @@ void QQuickShapePath::setFillItem(QQuickItem *fillItem)
     }
 }
 
+/*!
+    \qmlpropertygroup QtQuick.Shapes::ShapePath::trim
+    \qmlproperty real QtQuick.Shapes::ShapePath::trim.start
+    \qmlproperty real QtQuick.Shapes::ShapePath::trim.end
+    \qmlproperty real QtQuick.Shapes::ShapePath::trim.offset
+    \since 6.10
+
+    Specifies the section of this path that will be displayed.
+
+    The section is defined by the path length fractions \c start and \c end. By default, \c start
+    is 0 (denoting the start of the path) and \c end is 1 (denoting the end of the path), so the
+    entire path is displayed.
+
+    The value of \c offset is added to \c start and \c end. If that causes over- or underrun of the
+    [0, 1] range, the values will be wrapped around, as will the resulting path section. The
+    effective range of \c offset is between -1 and 1. The default value is 0.
+*/
+
+QQuickShapeTrim *QQuickShapePath::trim()
+{
+    Q_D(QQuickShapePath);
+    if (!d->sfp.trim) {
+        d->sfp.trim = new QQuickShapeTrim;
+        QQml_setParent_noEvent(d->sfp.trim, this);
+    }
+    return d->sfp.trim;
+}
+
+bool QQuickShapePath::hasTrim() const
+{
+    Q_D(const QQuickShapePath);
+    return d->sfp.trim != nullptr;
+}
+
 void QQuickShapePathPrivate::_q_fillItemDestroyed()
 {
     Q_Q(QQuickShapePath);
@@ -592,6 +572,17 @@ void QQuickShapePathPrivate::_q_fillItemDestroyed()
     emit q->fillItemChanged();
     emit q->shapePathChanged();
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+void QQuickShapePathPrivate::writeToDebugStream(QDebug &debug) const
+{
+    debug.nospace() << "QQuickShapePath(" << (const void *)this
+        << " startX=" << startX
+        << " startY=" << startY
+        << " _pathElements=" << _pathElements
+        << ')';
+}
+#endif
 
 /*!
     \qmlproperty PathHints QtQuick.Shapes::ShapePath::pathHints
@@ -678,6 +669,69 @@ void QQuickShapePath::setFillTransform(const QMatrix4x4 &matrix)
         d->dirty |= QQuickShapePathPrivate::DirtyFillTransform;
         emit fillTransformChanged();
         emit shapePathChanged();
+    }
+}
+
+
+QQuickShapeTrim::QQuickShapeTrim(QObject *parent)
+    : QObject(parent)
+{
+}
+
+qreal QQuickShapeTrim::start() const
+{
+    return m_start;
+}
+
+void QQuickShapeTrim::setStart(qreal t)
+{
+    if (t == m_start)
+        return;
+    m_start = t;
+    QQuickShapePath *shapePath = qobject_cast<QQuickShapePath *>(parent());
+    if (shapePath) {
+        QQuickShapePathPrivate *d = QQuickShapePathPrivate::get(shapePath);
+        d->dirty |= QQuickShapePathPrivate::DirtyTrim;
+        emit startChanged();
+        emit shapePath->shapePathChanged();
+    }
+}
+
+qreal QQuickShapeTrim::end() const
+{
+    return m_end;
+}
+
+void QQuickShapeTrim::setEnd(qreal t)
+{
+    if (t == m_end)
+        return;
+    m_end = t;
+    QQuickShapePath *shapePath = qobject_cast<QQuickShapePath *>(parent());
+    if (shapePath) {
+        QQuickShapePathPrivate *d = QQuickShapePathPrivate::get(shapePath);
+        d->dirty |= QQuickShapePathPrivate::DirtyTrim;
+        emit endChanged();
+        emit shapePath->shapePathChanged();
+    }
+}
+
+qreal QQuickShapeTrim::offset() const
+{
+    return m_offset;
+}
+
+void QQuickShapeTrim::setOffset(qreal t)
+{
+    if (t == m_offset)
+        return;
+    m_offset = t;
+    QQuickShapePath *shapePath = qobject_cast<QQuickShapePath *>(parent());
+    if (shapePath) {
+        QQuickShapePathPrivate *d = QQuickShapePathPrivate::get(shapePath);
+        d->dirty |= QQuickShapePathPrivate::DirtyTrim;
+        emit offsetChanged();
+        emit shapePath->shapePathChanged();
     }
 }
 
@@ -802,6 +856,12 @@ QQuickShapePrivate::~QQuickShapePrivate()
     delete renderer;
 }
 
+void QQuickShapePrivate::init()
+{
+    Q_Q(QQuickShape);
+    q->setFlag(QQuickItem::ItemHasContents);
+}
+
 void QQuickShapePrivate::_q_shapePathChanged()
 {
     Q_Q(QQuickShape);
@@ -842,7 +902,15 @@ qreal QQuickShapePrivate::getImplicitHeight() const
 QQuickShape::QQuickShape(QQuickItem *parent)
   : QQuickItem(*(new QQuickShapePrivate), parent)
 {
-    setFlag(ItemHasContents);
+    Q_D(QQuickShape);
+    d->init();
+}
+
+QQuickShape::QQuickShape(QQuickShapePrivate &dd, QQuickItem *parent)
+    : QQuickItem(dd, parent)
+{
+    Q_D(QQuickShape);
+    d->init();
 }
 
 QQuickShape::~QQuickShape()
@@ -1469,15 +1537,21 @@ void QQuickShapePrivate::sync()
     renderer->beginSync(count, &countChanged);
     renderer->setTriangulationScale(triangulationScale);
 
+    qCDebug(lcShapeSync) << "syncing" << count << "path(s)";
     for (int i = 0; i < count; ++i) {
         QQuickShapePath *p = sp[i];
+        qCDebug(lcShapeSync) << "- syncing path:" << p;
         int &dirty(QQuickShapePathPrivate::get(p)->dirty);
         totalDirty |= dirty;
 
-        if (dirty & QQuickShapePathPrivate::DirtyPath)
+        if (dirty & (QQuickShapePathPrivate::DirtyPath | QQuickShapePathPrivate::DirtyTrim)) {
+            qCDebug(lcShapeSync) << "  - DirtyPath";
             renderer->setPath(i, p);
-        if (dirty & QQuickShapePathPrivate::DirtyStrokeColor)
+        }
+        if (dirty & QQuickShapePathPrivate::DirtyStrokeColor) {
+            qCDebug(lcShapeSync) << "  - DirtyStrokeColor:" << p->strokeColor();
             renderer->setStrokeColor(i, p->strokeColor());
+        }
         if (dirty & QQuickShapePathPrivate::DirtyStrokeWidth)
             renderer->setStrokeWidth(i, p->strokeWidth());
         if (dirty & QQuickShapePathPrivate::DirtyFillColor)

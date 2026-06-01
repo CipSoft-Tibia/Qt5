@@ -8,8 +8,8 @@ Item {
     id: base
     width: 800
     height: 600
-    property list<string> graphsTests: ["GraphsLineTest.qml", "GraphsAreaTest.qml", "GraphsBarTest.qml"]
-    property list<string> chartsTests: ["ChartsLineTest.qml", "ChartsAreaTest.qml", "ChartsBarTest.qml", "ChartsOpenGLLineTest.qml"]
+    property list<string> graphsTests: ["GraphsLineTest.qml", "GraphsAreaTest.qml", "GraphsBarTest.qml", "GraphsSplineTest.qml"]
+    property list<string> chartsTests: ["ChartsLineTest.qml", "ChartsAreaTest.qml", "ChartsBarTest.qml", "ChartsOpenGLLineTest.qml", "ChartsSplineTest.qml"]
     property list<string> tests: []
     property int testIndex: 0
     property int fps: 0
@@ -68,6 +68,14 @@ Item {
             text: "Show Bar Results"
             onClicked: {
                 base.resultType = "Bar"
+                loader.source = "Results.qml"
+            }
+        }
+
+        Button {
+            text: "Show Spline Results"
+            onClicked: {
+                base.resultType = "Spline"
                 loader.source = "Results.qml"
             }
         }

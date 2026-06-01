@@ -14,7 +14,7 @@
 
 import m from 'mithril';
 import {defer} from '../base/deferred';
-import {scheduleFullRedraw} from './raf';
+import {Icon} from './icon';
 
 // This module deals with modal dialogs. Unlike most components, here we want to
 // render the DOM elements outside of the corresponding vdom tree. For instance
@@ -78,7 +78,10 @@ export interface ModalButton {
 export class Modal implements m.ClassComponent<ModalAttrs> {
   onbeforeremove(vnode: m.VnodeDOM<ModalAttrs>) {
     const removePromise = defer<void>();
-    vnode.dom.addEventListener('animationend', () => removePromise.resolve());
+    vnode.dom.addEventListener('animationend', () => {
+      m.redraw();
+      removePromise.resolve();
+    });
     vnode.dom.classList.add('modal-fadeout');
 
     // Retuning `removePromise` will cause Mithril to defer the actual component
@@ -93,7 +96,6 @@ export class Modal implements m.ClassComponent<ModalAttrs> {
       // in turn will: (1) call the user's original attrs.onClose; (2) resolve
       // the promise returned by showModal().
       vnode.attrs.onClose();
-      scheduleFullRedraw();
     }
   }
 
@@ -154,7 +156,7 @@ export class Modal implements m.ClassComponent<ModalAttrs> {
           m(
             'button[aria-label=Close Modal]',
             {onclick: () => closeModal(attrs.key)},
-            m.trust('&#x2715'),
+            m(Icon, {icon: 'close'}),
           ),
         ),
         m('main', vnode.children),
@@ -222,7 +224,7 @@ export async function showModal(userAttrs: ModalAttrs): Promise<void> {
     },
   };
   currentModal = attrs;
-  scheduleFullRedraw();
+  redrawModal();
   return returnedClosePromise;
 }
 
@@ -231,7 +233,7 @@ export async function showModal(userAttrs: ModalAttrs): Promise<void> {
 // evident why a redraw is requested.
 export function redrawModal() {
   if (currentModal !== undefined) {
-    scheduleFullRedraw();
+    m.redraw();
   }
 }
 
@@ -250,7 +252,7 @@ export function closeModal(key?: string) {
     return;
   }
   currentModal = undefined;
-  scheduleFullRedraw();
+  m.redraw();
 }
 
 export function getCurrentModalKey(): string | undefined {

@@ -952,7 +952,7 @@ void QRegularExpressionPrivate::getPatternInfo()
 namespace {
 struct PcreJitStackFree
 {
-    void operator()(pcre2_jit_stack_16 *stack)
+    void operator()(pcre2_jit_stack_16 *stack) const
     {
         if (stack)
             pcre2_jit_stack_free_16(stack);
@@ -983,7 +983,7 @@ static bool isJitEnabled()
 
 #ifdef QT_DEBUG
     return false;
-#elif defined(Q_OS_MACOS)
+#elif defined(Q_OS_MACOS) && !defined(QT_BOOTSTRAPPED)
     return !qt_mac_runningUnderRosetta();
 #else
     return true;

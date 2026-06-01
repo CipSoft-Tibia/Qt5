@@ -36,11 +36,11 @@ You can get the FFmpeg source code in these ways:
 \list
 \li Download from the
 \l{https://ffmpeg.org/download.html#get-sources}{FFmpeg download page}.
-\li Clone from git. For example, these commands clone the version 7.1.1 of the
+\li Clone from git. For example, these commands clone the version \ffmpegversion of the
 FFmpeg sources to \c{~/ffmpeg/ffmpeg_src}.
 \badcode
 cd ~/ffmpeg/
-git clone --branch n7.1.1 https://git.ffmpeg.org/ffmpeg.git ffmpeg_src
+git clone --branch n7.1.3 https://git.ffmpeg.org/ffmpeg.git ffmpeg_src
 \endcode
 \endlist
 
@@ -68,6 +68,9 @@ To configure FFmpeg, run:
     --prefix=../installed \
     --cc="xcrun --sdk iphoneos clang -arch arm64" \
     --cxx="xcrun --sdk iphoneos clang++ -arch arm64" \
+    --extra-cflags="-miphoneos-version-min=16.0" \
+    --extra-cxxflags="-miphoneos-version-min=16.0" \
+    --extra-objcflags="-miphoneos-version-min=16.0" \
     --extra-ldflags="-miphoneos-version-min=16.0" \
     --install-name-dir='@rpath' \
     --disable-audiotoolbox

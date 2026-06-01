@@ -1,9 +1,11 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtCore/qpointer.h>
 #include <qtest.h>
 #include <QSignalSpy>
 #include <QDebug>
+#include <QtGui/private/qeventpoint_p.h>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlComponent>
 #include <QtQuick/QQuickItem>
@@ -12,18 +14,16 @@
 #include <QtQuick/private/qquickrectangle_p.h>
 #include <QtQuick/private/qquickflickable_p.h>
 #include <QtQuick/private/qquicklistview_p.h>
+#include <QtQuick/private/qquickmousearea_p.h>
 #include <QtQuick/private/qquickpointhandler_p.h>
 #include <QtQuick/private/qquickshadereffectsource_p.h>
 #include <QtQuick/private/qquicktaphandler_p.h>
 #include <QtQuick/private/qquickwindow_p.h>
+#include <QtQuick/private/qquickitem_p.h>
+#include <QtQuickTest/quicktest.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
 #include <QtQuickTestUtils/private/viewtestutils_p.h>
-#include <QtQuick/private/qquickmousearea_p.h>
-
-#include <QtGui/private/qeventpoint_p.h>
-
-#include <QtCore/qpointer.h>
 
 Q_LOGGING_CATEGORY(lcTests, "qt.quick.tests")
 
@@ -155,6 +155,7 @@ private slots:
     void deleteTargetOnPress();
     void compoundControlsFocusInSubscene();
     void hoverEventGlobalPosition();
+    void layerEnabledHoverCrash();
 
 private:
     std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
@@ -669,17 +670,17 @@ void tst_qquickdeliveryagent::compoundControlsFocusInSubscene()
     auto clickPos = spinboxFocusScope->boundingRect().translated(0, spinboxFocusScope->height() + 20).center().toPoint();
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, clickPos);
 
-    QVERIFY(textField->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(textField);
     QVERIFY(textField->hasFocus());
-    QTRY_VERIFY(spinbox->hasActiveFocus());
+    QTRY_VERIFY_ACTIVE_FOCUS(spinbox);
     QVERIFY(spinbox->hasFocus());
     QCOMPARE(spinbox->scopedFocusItem(), textField);
-    QVERIFY(spinboxFocusScope->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(spinboxFocusScope);
     QVERIFY(spinboxFocusScope->hasFocus());
     QCOMPARE(spinboxFocusScope->scopedFocusItem(), spinbox);
 
     QQuickDeliveryAgentPrivate *daPriv = static_cast<QQuickDeliveryAgentPrivate *>(QQuickDeliveryAgentPrivate::get(subscene.deliveryAgent));
-    QVERIFY(daPriv->rootItem->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(daPriv->rootItem);
     QCOMPARE(daPriv->activeFocusItem, textField);
     QCOMPARE(QQuickWindowPrivate::get(&window)->deliveryAgentPrivate()->activeFocusItem, textField);
     QCOMPARE(QQuickWindowPrivate::get(&window)->deliveryAgentPrivate()->rootItem->scopedFocusItem(), spinboxFocusScope);
@@ -708,6 +709,34 @@ void tst_qquickdeliveryagent::hoverEventGlobalPosition()
     QCOMPARE(child.hoverEnter, true);
     QTest::mousePress(&window, Qt::LeftButton, {}, point);
     QCOMPARE(child.globalHoverPosition, child.globalMousePosition);
+}
+
+void tst_qquickdeliveryagent::layerEnabledHoverCrash() // QTBUG-139561
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("layerEnabledHoverCrash.qml")));
+    QSignalSpy swapSpy(&window, &QQuickView::frameSwapped);
+    QQuickItem *testRect = window.rootObject()->findChild<QQuickRectangle*>();
+    QVERIFY(testRect);
+    QQuickMouseArea *mouseArea = window.rootObject()->findChild<QQuickMouseArea*>();
+    QVERIFY(mouseArea);
+    QVERIFY(mouseArea->hoverEnabled());
+    QQuickItemLayer *layer = qvariant_cast<QQuickItemLayer*>(testRect->property("layer"));
+    QVERIFY(layer);
+
+    for (int i = 0; i < 8; ++i) {
+        swapSpy.clear();
+        QTest::mouseMove(&window, QPoint(150, 130));
+        QTRY_COMPARE_GE(swapSpy.size(), 1);
+        QCOMPARE(mouseArea->hovered(), true);
+        QCOMPARE(layer->enabled(), true);
+        QTest::mouseMove(&window, QPoint(10, 10));
+        // hover delivery is frame-synchronous, so wait for rendering to ensure it has a chance to crash :-/
+        QTRY_COMPARE_GE(swapSpy.size(), 2);
+        QCOMPARE(mouseArea->hovered(), false);
+        QCOMPARE(layer->enabled(), false);
+        QTest::qWait(50); // visually verify that it gets un-hovered
+    }
 }
 
 QTEST_MAIN(tst_qquickdeliveryagent)

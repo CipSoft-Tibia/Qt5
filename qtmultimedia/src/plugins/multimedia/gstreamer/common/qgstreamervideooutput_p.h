@@ -17,6 +17,7 @@
 
 #include <QtCore/qobject.h>
 #include <QtCore/qpointer.h>
+#include <QtCore/private/qexpected_p.h>
 #include <QtMultimedia/private/qtmultimediaglobal_p.h>
 #include <QtMultimedia/private/qmultimediautils_p.h>
 #include <common/qgst_p.h>
@@ -32,11 +33,11 @@ class QGstreamerVideoOutput : public QObject, QAbstractSubtitleObserver
     Q_OBJECT
 
 public:
-    static QMaybe<QGstreamerVideoOutput *> create(QObject *parent = nullptr);
+    static q23::expected<QGstreamerVideoOutput *, QString> create(QObject *parent = nullptr);
     ~QGstreamerVideoOutput() override;
 
-    void setVideoSink(QVideoSink *sink);
-    QGstreamerVideoSink *gstreamerVideoSink() const { return m_platformVideoSink; }
+    void setVideoSink(QGstreamerRelayVideoSink *sink);
+    QGstreamerRelayVideoSink *gstreamerVideoSink() const { return m_gstVideoSink; }
 
     QGstElement gstElement() const { return m_outputBin; }
     QGstElement gstSubtitleElement() const { return m_subtitleSink; }
@@ -59,7 +60,7 @@ private:
 
     void updateNativeSize();
 
-    QPointer<QGstreamerVideoSink> m_platformVideoSink;
+    QPointer<QGstreamerRelayVideoSink> m_gstVideoSink;
 
     // Gst elements
     QGstBin m_outputBin;

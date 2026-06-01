@@ -124,7 +124,7 @@ $B1: {  # root
 
 TEST_F(IRToProgramRenameConflictsTest, Conflict_RootBlockVarAndStructWithSameName) {
     auto* s = ty.Struct(b.ir.symbols.New("v"), {{b.ir.symbols.New("x"), ty.i32()}});
-    b.Append(mod.root_block, [&] { b.ir.SetName(b.Var(ty.ptr(function, s)), "v"); });
+    b.Append(mod.root_block, [&] { b.ir.SetName(b.Var(ty.ptr(private_, s)), "v"); });
 
     auto* src = R"(
 v = struct @align(4) {
@@ -132,7 +132,7 @@ v = struct @align(4) {
 }
 
 $B1: {  # root
-  %v:ptr<function, v, read_write> = var
+  %v:ptr<private, v, read_write> = var
 }
 
 )";
@@ -144,7 +144,7 @@ v = struct @align(4) {
 }
 
 $B1: {  # root
-  %v_1:ptr<function, v, read_write> = var
+  %v_1:ptr<private, v, read_write> = var
 }
 
 )";
@@ -190,7 +190,7 @@ $B1: {  # root
     EXPECT_EQ(expect, str());
 }
 
-TEST_F(IRToProgramRenameConflictsTest, NoModify_RootBlockVar_ShadowedBy_FnVar) {
+TEST_F(IRToProgramRenameConflictsTest, RootBlockVar_ShadowedBy_FnVar) {
     b.Append(mod.root_block, [&] {
         auto* outer = b.Var(ty.ptr<private_, i32>());
         b.ir.SetName(outer, "v");
@@ -224,46 +224,6 @@ $B1: {  # root
 )";
     EXPECT_EQ(src, str());
 
-    auto* expect = src;
-
-    Run();
-
-    EXPECT_EQ(expect, str());
-}
-
-TEST_F(IRToProgramRenameConflictsTest, Conflict_RootBlockVar_ShadowedBy_FnVar) {
-    b.Append(mod.root_block, [&] {
-        auto* outer = b.Var(ty.ptr<private_, i32>());
-        b.ir.SetName(outer, "v");
-
-        auto* fn = b.Function("f", ty.i32());
-        b.Append(fn->Block(), [&] {
-            auto* inner = b.Var(ty.ptr<function, i32>());
-            b.ir.SetName(inner, "v");
-
-            auto* load_outer = b.Load(outer);
-            auto* load_inner = b.Load(inner);
-            b.Return(fn, b.Add(ty.i32(), load_outer, load_inner));
-        });
-    });
-
-    auto* src = R"(
-$B1: {  # root
-  %v:ptr<private, i32, read_write> = var
-}
-
-%f = func():i32 {
-  $B2: {
-    %v_1:ptr<function, i32, read_write> = var  # %v_1: 'v'
-    %4:i32 = load %v
-    %5:i32 = load %v_1
-    %6:i32 = add %4, %5
-    ret %6
-  }
-}
-)";
-    EXPECT_EQ(src, str());
-
     auto* expect = R"(
 $B1: {  # root
   %v:ptr<private, i32, read_write> = var
@@ -271,10 +231,10 @@ $B1: {  # root
 
 %f = func():i32 {
   $B2: {
+    %3:i32 = load %v
     %v_1:ptr<function, i32, read_write> = var
-    %4:i32 = load %v
     %5:i32 = load %v_1
-    %6:i32 = add %4, %5
+    %6:i32 = add %3, %5
     ret %6
   }
 }
@@ -285,40 +245,38 @@ $B1: {  # root
     EXPECT_EQ(expect, str());
 }
 
-TEST_F(IRToProgramRenameConflictsTest, NoModify_FnVar_ShadowedBy_IfVar) {
+TEST_F(IRToProgramRenameConflictsTest, NoModify_FnVar_After_IfVar) {
     auto* fn = b.Function("f", ty.i32());
     b.Append(fn->Block(), [&] {
-        auto* outer = b.Var(ty.ptr<function, i32>());
-        b.ir.SetName(outer, "v");
-
         auto* if_ = b.If(true);
         b.Append(if_->True(), [&] {
-            auto* load_outer = b.Load(outer);
-
             auto* inner = b.Var(ty.ptr<function, i32>());
             b.ir.SetName(inner, "v");
 
             auto* load_inner = b.Load(inner);
-            b.Return(fn, b.Add(ty.i32(), load_outer, load_inner));
+            b.Return(fn, load_inner);
         });
 
-        b.Unreachable();
+        auto* outer = b.Var(ty.ptr<function, i32>());
+        b.ir.SetName(outer, "v");
+
+        auto* load_outer = b.Load(outer);
+        b.Return(fn, load_outer);
     });
 
     auto* src = R"(
 %f = func():i32 {
   $B1: {
-    %v:ptr<function, i32, read_write> = var
     if true [t: $B2] {  # if_1
       $B2: {  # true
+        %v:ptr<function, i32, read_write> = var
         %3:i32 = load %v
-        %v_1:ptr<function, i32, read_write> = var  # %v_1: 'v'
-        %5:i32 = load %v_1
-        %6:i32 = add %3, %5
-        ret %6
+        ret %3
       }
     }
-    unreachable
+    %v_1:ptr<function, i32, read_write> = var  # %v_1: 'v'
+    %5:i32 = load %v_1
+    ret %5
   }
 }
 )";
@@ -448,7 +406,7 @@ TEST_F(IRToProgramRenameConflictsTest, Conflict_FnLet_ShadowedBy_IfVar) {
     EXPECT_EQ(expect, str());
 }
 
-TEST_F(IRToProgramRenameConflictsTest, NoModify_LoopInitVar_ShadowedBy_LoopBodyVar) {
+TEST_F(IRToProgramRenameConflictsTest, LoopInitVar_ShadowedBy_LoopBodyVar) {
     auto* fn = b.Function("f", ty.i32());
     b.Append(fn->Block(), [&] {
         auto* loop = b.Loop();
@@ -493,57 +451,6 @@ TEST_F(IRToProgramRenameConflictsTest, NoModify_LoopInitVar_ShadowedBy_LoopBodyV
 )";
     EXPECT_EQ(src, str());
 
-    auto* expect = src;
-
-    Run();
-
-    EXPECT_EQ(expect, str());
-}
-
-TEST_F(IRToProgramRenameConflictsTest, Conflict_LoopInitVar_ShadowedBy_LoopBodyVar) {
-    auto* fn = b.Function("f", ty.i32());
-    b.Append(fn->Block(), [&] {
-        auto* loop = b.Loop();
-        b.Append(loop->Initializer(), [&] {
-            auto* outer = b.Var(ty.ptr<function, i32>());
-            b.ir.SetName(outer, "v");
-            b.NextIteration(loop);
-
-            b.Append(loop->Body(), [&] {
-                auto* inner = b.Var(ty.ptr<function, i32>());
-                b.ir.SetName(inner, "v");
-
-                auto* load_outer = b.Load(outer);
-                auto* load_inner = b.Load(inner);
-                b.Return(fn, b.Add(ty.i32(), load_outer, load_inner));
-            });
-        });
-
-        b.Unreachable();
-    });
-
-    auto* src = R"(
-%f = func():i32 {
-  $B1: {
-    loop [i: $B2, b: $B3] {  # loop_1
-      $B2: {  # initializer
-        %v:ptr<function, i32, read_write> = var
-        next_iteration  # -> $B3
-      }
-      $B3: {  # body
-        %v_1:ptr<function, i32, read_write> = var  # %v_1: 'v'
-        %4:i32 = load %v
-        %5:i32 = load %v_1
-        %6:i32 = add %4, %5
-        ret %6
-      }
-    }
-    unreachable
-  }
-}
-)";
-    EXPECT_EQ(src, str());
-
     auto* expect = R"(
 %f = func():i32 {
   $B1: {
@@ -553,10 +460,10 @@ TEST_F(IRToProgramRenameConflictsTest, Conflict_LoopInitVar_ShadowedBy_LoopBodyV
         next_iteration  # -> $B3
       }
       $B3: {  # body
+        %3:i32 = load %v
         %v_1:ptr<function, i32, read_write> = var
-        %4:i32 = load %v
         %5:i32 = load %v_1
-        %6:i32 = add %4, %5
+        %6:i32 = add %3, %5
         ret %6
       }
     }
@@ -570,7 +477,7 @@ TEST_F(IRToProgramRenameConflictsTest, Conflict_LoopInitVar_ShadowedBy_LoopBodyV
     EXPECT_EQ(expect, str());
 }
 
-TEST_F(IRToProgramRenameConflictsTest, NoModify_LoopBodyVar_ShadowedBy_LoopContVar) {
+TEST_F(IRToProgramRenameConflictsTest, LoopBodyVar_ShadowedBy_LoopContVar) {
     auto* fn = b.Function("f", ty.i32());
     b.Append(fn->Block(), [&] {
         auto* loop = b.Loop();
@@ -619,61 +526,6 @@ TEST_F(IRToProgramRenameConflictsTest, NoModify_LoopBodyVar_ShadowedBy_LoopContV
 )";
     EXPECT_EQ(src, str());
 
-    auto* expect = src;
-
-    Run();
-
-    EXPECT_EQ(expect, str());
-}
-
-TEST_F(IRToProgramRenameConflictsTest, Conflict_LoopBodyVar_ShadowedBy_LoopContVar) {
-    auto* fn = b.Function("f", ty.i32());
-    b.Append(fn->Block(), [&] {
-        auto* loop = b.Loop();
-        b.Append(loop->Initializer(), [&] { b.NextIteration(loop); });
-        b.Append(loop->Body(), [&] {
-            auto* outer = b.Var(ty.ptr<function, i32>());
-            b.ir.SetName(outer, "v");
-            b.Continue(loop);
-
-            b.Append(loop->Continuing(), [&] {
-                auto* inner = b.Var(ty.ptr<function, i32>());
-                b.ir.SetName(inner, "v");
-
-                auto* load_outer = b.Load(outer);
-                auto* load_inner = b.Load(inner);
-                b.Return(fn, b.Add(ty.i32(), load_outer, load_inner));
-            });
-        });
-
-        b.Unreachable();
-    });
-
-    auto* src = R"(
-%f = func():i32 {
-  $B1: {
-    loop [i: $B2, b: $B3, c: $B4] {  # loop_1
-      $B2: {  # initializer
-        next_iteration  # -> $B3
-      }
-      $B3: {  # body
-        %v:ptr<function, i32, read_write> = var
-        continue  # -> $B4
-      }
-      $B4: {  # continuing
-        %v_1:ptr<function, i32, read_write> = var  # %v_1: 'v'
-        %4:i32 = load %v
-        %5:i32 = load %v_1
-        %6:i32 = add %4, %5
-        ret %6
-      }
-    }
-    unreachable
-  }
-}
-)";
-    EXPECT_EQ(src, str());
-
     auto* expect = R"(
 %f = func():i32 {
   $B1: {
@@ -686,10 +538,10 @@ TEST_F(IRToProgramRenameConflictsTest, Conflict_LoopBodyVar_ShadowedBy_LoopContV
         continue  # -> $B4
       }
       $B4: {  # continuing
+        %3:i32 = load %v
         %v_1:ptr<function, i32, read_write> = var
-        %4:i32 = load %v
         %5:i32 = load %v_1
-        %6:i32 = add %4, %5
+        %6:i32 = add %3, %5
         ret %6
       }
     }
@@ -854,6 +706,74 @@ TEST_F(IRToProgramRenameConflictsTest, Conflict_BuiltinMatrix_ShadowedBy_Param) 
 %f = func(%mat2x4_1:i32):void {
   $B1: {
     %3:ptr<function, mat2x4<f32>, read_write> = var
+    ret
+  }
+}
+)";
+
+    Run();
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(IRToProgramRenameConflictsTest, Conflict_BuiltinArray_ShadowedBy_Param) {
+    auto* fn = b.Function("f", ty.void_());
+    auto* p = b.FunctionParam("array", ty.array<i32, 4>());
+    fn->SetParams({p});
+
+    b.Append(fn->Block(), [&] {
+        b.Let("x", b.Splat(ty.array<i32, 4>(), 0_i));
+        b.Return(fn);
+    });
+
+    auto* src = R"(
+%f = func(%array:array<i32, 4>):void {
+  $B1: {
+    %x:array<i32, 4> = let array<i32, 4>(0i)
+    ret
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+%f = func(%array_1:array<i32, 4>):void {
+  $B1: {
+    %x:array<i32, 4> = let array<i32, 4>(0i)
+    ret
+  }
+}
+)";
+
+    Run();
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(IRToProgramRenameConflictsTest, Conflict_ArrayElement_ShadowedBy_Param) {
+    auto* fn = b.Function("f", ty.void_());
+    auto* p = b.FunctionParam("f32", ty.f32());
+    fn->SetParams({p});
+
+    b.Append(fn->Block(), [&] {
+        b.Let("x", b.Splat(ty.array<f32, 4>(), 0_f));
+        b.Return(fn);
+    });
+
+    auto* src = R"(
+%f = func(%f32:f32):void {
+  $B1: {
+    %x:array<f32, 4> = let array<f32, 4>(0.0f)
+    ret
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+%f = func(%f32_1:f32):void {
+  $B1: {
+    %x:array<f32, 4> = let array<f32, 4>(0.0f)
     ret
   }
 }

@@ -17,7 +17,10 @@ MainWindow::MainWindow(QWidget *parent)
     const QStringList headers({tr("Title"), tr("Description")});
 
     QFile file(":/default.txt"_L1);
-    file.open(QIODevice::ReadOnly | QIODevice::Text);
+    const bool res = file.open(QIODevice::ReadOnly | QIODevice::Text);
+    Q_ASSERT_X(res, Q_FUNC_INFO, "Failed to open ':/default.txt'");
+    if (!res)
+        return;
     auto *model = new TreeModel(headers, QString::fromUtf8(file.readAll()), this);
     file.close();
 

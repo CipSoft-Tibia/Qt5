@@ -12,10 +12,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <map>
 #include <sstream>
 
-#include "base/ranges/algorithm.h"
 #include "media/base/stream_parser_buffer.h"
 #include "media/base/test_data_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -84,7 +84,7 @@ class StreamParserTest : public testing::Test {
   size_t CountMatchingMergedBuffers(
       bool (*predicate)(scoped_refptr<StreamParserBuffer> buffer)) {
     return static_cast<size_t>(
-        base::ranges::count_if(merged_buffers_, predicate));
+        std::ranges::count_if(merged_buffers_, predicate));
   }
 
   // Appends test audio buffers in the sequence described by |decode_timestamps|
@@ -127,7 +127,7 @@ class StreamParserTest : public testing::Test {
             results_stream << "V";
             break;
           default:
-            NOTREACHED_IN_MIGRATION();
+            NOTREACHED();
         }
         results_stream << buffer.track_id() << ":";
       }

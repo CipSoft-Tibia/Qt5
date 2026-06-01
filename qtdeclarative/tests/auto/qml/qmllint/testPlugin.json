@@ -27,6 +27,12 @@
             "settingsName": "TestDefaultValue3",
             "description": "A warning to test defaults",
             "defaultLevel": "warning"
+        },
+        {
+            "name": "TestDefaultValue4",
+            "settingsName": "TestDefaultValue4",
+            "description": "A warning to test defaults",
+            "defaultLevel": "error"
         }
     ]
 }

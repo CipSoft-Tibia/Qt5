@@ -105,27 +105,30 @@ function(qt_internal_add_cmake_library target)
         )
     endif()
 
+    _qt_internal_forward_function_args(
+        FORWARD_PREFIX arg
+        FORWARD_OUT_VAR extend_target_args
+        FORWARD_MULTI
+            SOURCES
+            NO_PCH_SOURCES
+            INCLUDE_DIRECTORIES
+            SYSTEM_INCLUDE_DIRECTORIES
+            PUBLIC_INCLUDE_DIRECTORIES
+            PUBLIC_DEFINES
+            DEFINES
+            PUBLIC_LIBRARIES
+            COMPILE_OPTIONS
+            PUBLIC_COMPILE_OPTIONS
+            LINK_OPTIONS
+            PUBLIC_LINK_OPTIONS
+            MOC_OPTIONS
+            ENABLE_AUTOGEN_TOOLS
+            DISABLE_AUTOGEN_TOOLS
+    )
+
     qt_internal_extend_target("${target}"
-        SOURCES ${arg_SOURCES}
-        INCLUDE_DIRECTORIES
-            ${arg_INCLUDE_DIRECTORIES}
-        SYSTEM_INCLUDE_DIRECTORIES
-            ${arg_SYSTEM_INCLUDE_DIRECTORIES}
-        PUBLIC_INCLUDE_DIRECTORIES
-            ${arg_PUBLIC_INCLUDE_DIRECTORIES}
-        PUBLIC_DEFINES
-            ${arg_PUBLIC_DEFINES}
-        DEFINES
-            ${arg_DEFINES}
-        PUBLIC_LIBRARIES ${arg_PUBLIC_LIBRARIES}
+        ${extend_target_args}
         LIBRARIES ${arg_LIBRARIES} Qt::PlatformCommonInternal
-        COMPILE_OPTIONS ${arg_COMPILE_OPTIONS}
-        PUBLIC_COMPILE_OPTIONS ${arg_PUBLIC_COMPILE_OPTIONS}
-        LINK_OPTIONS ${arg_LINK_OPTIONS}
-        PUBLIC_LINK_OPTIONS ${arg_PUBLIC_LINK_OPTIONS}
-        MOC_OPTIONS ${arg_MOC_OPTIONS}
-        ENABLE_AUTOGEN_TOOLS ${arg_ENABLE_AUTOGEN_TOOLS}
-        DISABLE_AUTOGEN_TOOLS ${arg_DISABLE_AUTOGEN_TOOLS}
         NO_UNITY_BUILD # Disabled by default
     )
 endfunction()
@@ -260,6 +263,7 @@ function(qt_internal_add_3rdparty_library target)
     else()
         set(will_install FALSE)
     endif()
+    set_target_properties("${target}" PROPERTIES _qt_will_install ${will_install})
 
     if(will_install)
         qt_generate_3rdparty_lib_pri_file("${target}" "${arg_QMAKE_LIB_NAME}" pri_file)

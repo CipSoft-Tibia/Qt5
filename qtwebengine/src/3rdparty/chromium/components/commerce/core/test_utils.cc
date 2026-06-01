@@ -10,6 +10,8 @@
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/bookmarks/browser/bookmark_model.h"
+#include "components/commerce/core/commerce_feature_list.h"
+#include "components/commerce/core/mock_account_checker.h"
 #include "components/commerce/core/pref_names.h"
 #include "components/commerce/core/price_tracking_utils.h"
 #include "components/commerce/core/shopping_service.h"
@@ -87,18 +89,31 @@ void SetShoppingListEnterprisePolicyPref(TestingPrefServiceSimple* prefs,
   prefs->SetManagedPref(kShoppingListEnabledPrefName, base::Value(enabled));
 }
 
-void RegisterCommercePrefs(PrefRegistrySimple* registry) {
-  RegisterPrefs(registry);
-  registry->RegisterIntegerPref(
-      optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed,
-      0);
-}
-
 void SetTabCompareEnterprisePolicyPref(TestingPrefServiceSimple* prefs,
                                        int enabled_state) {
   prefs->SetManagedPref(
       optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed,
       base::Value(enabled_state));
+}
+
+void SetUpPriceInsightsEligibility(base::test::ScopedFeatureList* feature_list,
+                                   MockAccountChecker* account_checker,
+                                   bool is_eligible) {
+  feature_list->InitAndEnableFeature(kPriceInsights);
+  account_checker->SetAnonymizedUrlDataCollectionEnabled(is_eligible);
+}
+
+void SetUpDiscountEligibility(base::test::ScopedFeatureList* feature_list,
+                              MockAccountChecker* account_checker,
+                              bool is_eligible) {
+  feature_list->InitAndEnableFeature(kEnableDiscountInfoApi);
+  SetUpDiscountEligibilityForAccount(account_checker, is_eligible);
+}
+
+void SetUpDiscountEligibilityForAccount(MockAccountChecker* account_checker,
+                                        bool is_eligible) {
+  account_checker->SetSignedIn(is_eligible);
+  account_checker->SetAnonymizedUrlDataCollectionEnabled(is_eligible);
 }
 
 std::optional<PriceInsightsInfo> CreateValidPriceInsightsInfo(
@@ -159,4 +174,18 @@ DiscountInfo CreateValidDiscountInfo(const std::string& detail,
   return discount_info;
 }
 
+void EnableProductSpecificationsDataFetch(MockAccountChecker* account_checker,
+                                          TestingPrefServiceSimple* prefs) {
+  ON_CALL(*account_checker, IsSyncTypeEnabled)
+      .WillByDefault(testing::Return(true));
+  account_checker->SetAnonymizedUrlDataCollectionEnabled(true);
+  account_checker->SetSignedIn(true);
+  account_checker->SetIsSubjectToParentalControls(false);
+  account_checker->SetCanUseModelExecutionFeatures(true);
+
+  // 0 is the enabled enterprise state for the feature.
+  prefs->SetManagedPref(
+      optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed,
+      base::Value(0));
+}
 }  // namespace commerce

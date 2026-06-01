@@ -11,6 +11,8 @@ import SatelliteInformation
 Rectangle {
     id: root
 
+    signal cleanupFocus
+
     required property SortFilterModel sortFilterModel
     required property color inViewColor
     required property color inUseColor
@@ -302,6 +304,10 @@ Rectangle {
                 placeholderText: qsTr("Search")
                 Layout.fillWidth: true
                 onTextChanged: root.sortFilterModel.updateFilterString(text);
+                onVisibleChanged: {
+                    if (!visible && activeFocus)
+                        root.cleanupFocus()
+                }
             }
             IconButton {
                 selected: sortMenu.visible

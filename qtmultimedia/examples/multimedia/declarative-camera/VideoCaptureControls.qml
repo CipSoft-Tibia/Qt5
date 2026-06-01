@@ -7,13 +7,14 @@ import QtQuick.Layouts
 
 FocusScope {
     id : captureControls
-    property CaptureSession captureSession
+    required property CaptureSession captureSession
+    readonly property Camera camera: captureSession.camera
     property bool previewAvailable : false
 
     property int buttonsmargin: 8
-    property int buttonsPanelWidth
-    property int buttonsPanelPortraitHeight
-    property int buttonsWidth
+    required property int buttonsPanelWidth
+    required property int buttonsPanelPortraitHeight
+    required property int buttonsWidth
 
     signal previewSelected
     signal photoModeSelected
@@ -72,7 +73,7 @@ FocusScope {
 
             CameraListButton {
                 implicitWidth: captureControls.buttonsWidth
-                onValueChanged: captureControls.captureSession.camera.cameraDevice = value
+                onValueChanged: captureControls.camera.cameraDevice = value
                 state: captureControls.state
             }
 
@@ -91,6 +92,7 @@ FocusScope {
         }
     }
 
+    //! [0]
     ZoomControl {
         x : 0
         y : 0
@@ -98,11 +100,12 @@ FocusScope {
         height: parent.height - (flashControl.visible * flashControl.height) -
                 (captureControls.state === "MobilePortrait" ? buttonPaneShadow.height : 0)
 
-        currentZoom: captureControls.captureSession.camera.zoomFactor
-        maximumZoom: captureControls.captureSession.camera.maximumZoomFactor
-        minimumZoom: captureControls.captureSession.camera.minimumZoomFactor
-        onZoomTo: (target) => captureControls.captureSession.camera.zoomFactor = target
+        currentZoom: captureControls.camera.zoomFactor
+        maximumZoom: captureControls.camera.maximumZoomFactor
+        minimumZoom: captureControls.camera.minimumZoomFactor
+        onZoomTo: (target) => captureControls.camera.zoomFactor = target
     }
+    //! [0]
 
     FlashControl {
         id: flashControl
@@ -110,7 +113,7 @@ FocusScope {
         y : captureControls.state === "MobilePortrait" ?
                 parent.height - (buttonPaneShadow.height + height) : parent.height - height
 
-        cameraDevice: captureControls.captureSession.camera
+        camera: captureControls.camera
     }
 
     states: [

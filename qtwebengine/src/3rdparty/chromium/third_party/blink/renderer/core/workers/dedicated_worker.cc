@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/typed_macros.h"
@@ -151,11 +152,11 @@ void DedicatedWorker::Dispose() {
 
 void DedicatedWorker::postMessage(ScriptState* script_state,
                                   const ScriptValue& message,
-                                  HeapVector<ScriptValue>& transfer,
+                                  HeapVector<ScriptObject> transfer,
                                   ExceptionState& exception_state) {
   PostMessageOptions* options = PostMessageOptions::Create();
   if (!transfer.empty())
-    options->setTransfer(transfer);
+    options->setTransfer(std::move(transfer));
   postMessage(script_state, message, options, exception_state);
 }
 
@@ -213,7 +214,7 @@ void DedicatedWorker::PostCustomEvent(
         event_factory_callback,
     CrossThreadFunction<Event*(ScriptState*)> event_factory_error_callback,
     const ScriptValue& message,
-    HeapVector<ScriptValue>& transfer,
+    HeapVector<ScriptObject> transfer,
     ExceptionState& exception_state) {
   CHECK(!GetExecutionContext() || GetExecutionContext()->IsContextThread());
   if (!GetExecutionContext()) {
@@ -222,7 +223,7 @@ void DedicatedWorker::PostCustomEvent(
 
   StructuredSerializeOptions* options = StructuredSerializeOptions::Create();
   if (!transfer.empty()) {
-    options->setTransfer(transfer);
+    options->setTransfer(std::move(transfer));
   }
   CustomEventMessage transferable_message;
   Transferables transferables;
@@ -284,15 +285,13 @@ void DedicatedWorker::Start() {
     // https://html.spec.whatwg.org/C/#workeroptions
     auto credentials_mode = network::mojom::CredentialsMode::kSameOrigin;
     if (options_->type() == script_type_names::kModule) {
-      std::optional<network::mojom::CredentialsMode> result =
-          Request::ParseCredentialsMode(options_->credentials());
-      DCHECK(result);
-      credentials_mode = result.value();
+      credentials_mode = Request::V8RequestCredentialsToCredentialsMode(
+          options_->credentials().AsEnum());
     }
 
     mojo::PendingRemote<mojom::blink::BlobURLToken> blob_url_token;
     if (script_request_url_.ProtocolIs("blob")) {
-      GetExecutionContext()->GetPublicURLManager().Resolve(
+      GetExecutionContext()->GetPublicURLManager().ResolveForWorkerScriptFetch(
           script_request_url_, blob_url_token.InitWithNewPipeAndPassReceiver());
     }
 
@@ -382,11 +381,12 @@ void DedicatedWorker::OnHostCreated(
                   network::mojom::ReferrerPolicy::kDefault,
                   Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
                   String() /* source_code */, reject_coep_unsafe_none,
-                  std::move(back_forward_cache_controller_host));
+                  std::move(back_forward_cache_controller_host),
+                  /*coep_reporting_observer=*/mojo::NullReceiver(),
+                  /*dip_reporting_observer=*/mojo::NullReceiver());
     return;
   }
-  NOTREACHED_IN_MIGRATION()
-      << "Invalid type: " << IDLEnumAsString(options_->type());
+  NOTREACHED() << "Invalid type: " << IDLEnumAsString(options_->type());
 }
 
 void DedicatedWorker::terminate() {
@@ -416,6 +416,8 @@ void DedicatedWorker::OnWorkerHostCreated(
         dedicated_worker_host,
     const WebSecurityOrigin& origin) {
   TRACE_EVENT("blink.worker", "DedicatedWorker::OnWorkerHostCreated");
+  base::UmaHistogramTimes("Worker.TopLevelScript.WorkerHostCreatedTime",
+                          base::TimeTicks::Now() - start_time_);
   DCHECK(!browser_interface_broker_);
   browser_interface_broker_ = std::move(browser_interface_broker);
   pending_dedicated_worker_host_ = std::move(dedicated_worker_host);
@@ -427,7 +429,11 @@ void DedicatedWorker::OnScriptLoadStarted(
         worker_main_script_load_params,
     CrossVariantMojoRemote<
         mojom::blink::BackForwardCacheControllerHostInterfaceBase>
-        back_forward_cache_controller_host) {
+        back_forward_cache_controller_host,
+    CrossVariantMojoReceiver<mojom::blink::ReportingObserverInterfaceBase>
+        coep_reporting_observer,
+    CrossVariantMojoReceiver<mojom::blink::ReportingObserverInterfaceBase>
+        dip_reporting_observer) {
   DCHECK(base::FeatureList::IsEnabled(features::kPlzDedicatedWorker));
   TRACE_EVENT_NESTABLE_ASYNC_END0("blink.worker",
                                   "PlzDedicatedWorker Specific Setup",
@@ -439,7 +445,9 @@ void DedicatedWorker::OnScriptLoadStarted(
                 network::mojom::ReferrerPolicy::kDefault,
                 Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
                 String() /* source_code */, RejectCoepUnsafeNone(false),
-                std::move(back_forward_cache_controller_host));
+                std::move(back_forward_cache_controller_host),
+                std::move(coep_reporting_observer),
+                std::move(dip_reporting_observer));
 }
 
 void DedicatedWorker::OnScriptLoadStartFailed() {
@@ -511,7 +519,9 @@ void DedicatedWorker::OnFinished(
                               ->GetParsedPolicies())
             : Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
         classic_script_loader_->SourceText(), RejectCoepUnsafeNone(false),
-        std::move(back_forward_cache_controller_host));
+        std::move(back_forward_cache_controller_host),
+        /*coep_reporting_observer=*/mojo::NullReceiver(),
+        /*dip_reporting_observer=*/mojo::NullReceiver());
     probe::ScriptImported(GetExecutionContext(),
                           classic_script_loader_->Identifier(),
                           classic_script_loader_->SourceText());
@@ -529,7 +539,11 @@ void DedicatedWorker::ContinueStart(
     const String& source_code,
     RejectCoepUnsafeNone reject_coep_unsafe_none,
     mojo::PendingRemote<mojom::blink::BackForwardCacheControllerHost>
-        back_forward_cache_controller_host) {
+        back_forward_cache_controller_host,
+    mojo::PendingReceiver<mojom::blink::ReportingObserver>
+        coep_reporting_observer,
+    mojo::PendingReceiver<mojom::blink::ReportingObserver>
+        dip_reporting_observer) {
   UMA_HISTOGRAM_TIMES("Worker.TopLevelScript.LoadStartedTime",
                       base::TimeTicks::Now() - start_time_);
   TRACE_EVENT("blink.worker", "DedicatedWorker::ContinueStart");
@@ -549,15 +563,18 @@ void DedicatedWorker::ContinueStart(
                           std::move(referrer_policy),
                           std::move(response_content_security_policies),
                           source_code, reject_coep_unsafe_none,
-                          std::move(back_forward_cache_controller_host)),
+                          std::move(back_forward_cache_controller_host),
+                          std::move(coep_reporting_observer),
+                          std::move(dip_reporting_observer)),
             base::Milliseconds(features::kDedicatedWorkerStartDelayInMs.Get()));
     return;
   }
-  ContinueStartInternal(script_url, std::move(worker_main_script_load_params),
-                        std::move(referrer_policy),
-                        std::move(response_content_security_policies),
-                        source_code, reject_coep_unsafe_none,
-                        std::move(back_forward_cache_controller_host));
+  ContinueStartInternal(
+      script_url, std::move(worker_main_script_load_params),
+      std::move(referrer_policy), std::move(response_content_security_policies),
+      source_code, reject_coep_unsafe_none,
+      std::move(back_forward_cache_controller_host),
+      std::move(coep_reporting_observer), std::move(dip_reporting_observer));
 }
 
 void DedicatedWorker::ContinueStartInternal(
@@ -570,7 +587,11 @@ void DedicatedWorker::ContinueStartInternal(
     const String& source_code,
     RejectCoepUnsafeNone reject_coep_unsafe_none,
     mojo::PendingRemote<mojom::blink::BackForwardCacheControllerHost>
-        back_forward_cache_controller_host) {
+        back_forward_cache_controller_host,
+    mojo::PendingReceiver<mojom::blink::ReportingObserver>
+        coep_reporting_observer,
+    mojo::PendingReceiver<mojom::blink::ReportingObserver>
+        dip_reporting_observer) {
   TRACE_EVENT("blink.worker", "DedicatedWorker::ContinueStartInternal");
   if (!GetExecutionContext()) {
     return;
@@ -578,7 +599,9 @@ void DedicatedWorker::ContinueStartInternal(
   context_proxy_->StartWorkerGlobalScope(
       CreateGlobalScopeCreationParams(
           script_url, referrer_policy,
-          std::move(response_content_security_policies)),
+          std::move(response_content_security_policies),
+          std::move(coep_reporting_observer),
+          std::move(dip_reporting_observer)),
       std::move(worker_main_script_load_params), options_, script_url,
       *outside_fetch_client_settings_object_, v8_stack_trace_id_, source_code,
       reject_coep_unsafe_none, token_,
@@ -615,7 +638,11 @@ DedicatedWorker::CreateGlobalScopeCreationParams(
     const KURL& script_url,
     network::mojom::ReferrerPolicy referrer_policy,
     Vector<network::mojom::blink::ContentSecurityPolicyPtr>
-        response_content_security_policies) {
+        response_content_security_policies,
+    mojo::PendingReceiver<mojom::blink::ReportingObserver>
+        coep_reporting_observer,
+    mojo::PendingReceiver<mojom::blink::ReportingObserver>
+        dip_reporting_observer) {
   base::UnguessableToken parent_devtools_token;
   std::unique_ptr<WorkerSettings> settings;
   ExecutionContext* execution_context = GetExecutionContext();
@@ -682,7 +709,8 @@ DedicatedWorker::CreateGlobalScopeCreationParams(
       top_level_frame_security_origin,
       execution_context->GetStorageAccessApiStatus(),
       /*require_cross_site_request_for_cookies=*/false,
-      origin_ ? origin_->IsolatedCopy() : nullptr);
+      origin_ ? origin_->IsolatedCopy() : nullptr,
+      std::move(coep_reporting_observer), std::move(dip_reporting_observer));
   params->dedicated_worker_start_time = start_time_;
   return params;
 }

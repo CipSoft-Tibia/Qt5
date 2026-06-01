@@ -1709,10 +1709,10 @@ class PortTest(LoggingTestCase):
         self.assertEquals(
             ['virtual/virtual_passes/passes/test-virtual-passes.html'], tests)
 
-        tests = port.tests(['virtual/virtual_empty_bases'])
+        tests = sorted(port.tests(['virtual/virtual_empty_bases']))
         self.assertEquals([
+            'virtual/virtual_empty_bases/dir/physical2.html',
             'virtual/virtual_empty_bases/physical1.html',
-            'virtual/virtual_empty_bases/dir/physical2.html'
         ], tests)
 
         tests = port.tests(['virtual/virtual_empty_bases/dir'])
@@ -1727,8 +1727,10 @@ class PortTest(LoggingTestCase):
         # Test for a protected method - pylint: disable=protected-access
         # Test that optional paths are used regardless of whether they exist.
         options = optparse.Values({
-            'configuration': 'Release',
-            'build_directory': 'xcodebuild'
+            'configuration':
+            'Release',
+            'build_directory':
+            '/mock-checkout/xcodebuild/Release'
         })
         self.assertEqual(
             self.make_port(options=options).build_path(),
@@ -1915,6 +1917,31 @@ class PortTest(LoggingTestCase):
         self.assertTrue("virtual/v2/test/test.html" in port.tests())
         self.assertTrue("virtual/v3/test/test.html" in port.tests())
 
+    def test_virtual_test_disabled(self):
+        port = self.make_port()
+        fs = port.host.filesystem
+        web_tests_dir = port.web_tests_dir()
+        fs.write_text_file(
+            fs.join(web_tests_dir, 'VirtualTestSuites'), '['
+            '{"prefix": "v1", "platforms": ["Linux"], "bases": ["test"],'
+            ' "args": ["-a"], "disabled": false},'
+            '{"prefix": "v2", "platforms": ["Linux"], "bases": ["test"],'
+            ' "args": ["-b"], "disabled": true},'
+            '{"prefix": "v3", "platforms": ["Linux"], "bases": ["test"],'
+            ' "args": ["-c"]}'
+            ']')
+        fs.write_text_file(fs.join(web_tests_dir, 'test', 'test.html'), '')
+
+        self.assertFalse(
+            port.virtual_test_skipped_due_to_disabled(
+                "virtual/v1/test/test.html"))
+        self.assertTrue(
+            port.virtual_test_skipped_due_to_disabled(
+                "virtual/v2/test/test.html"))
+        self.assertFalse(
+            port.virtual_test_skipped_due_to_disabled(
+                "virtual/v3/test/test.html"))
+
     def test_virtual_exclusive_tests(self):
         port = self.make_port()
         fs = port.host.filesystem
@@ -1969,20 +1996,126 @@ class PortTest(LoggingTestCase):
             port.skipped_due_to_exclusive_virtual_tests(
                 'virtual/v2/b2/test2.html'))
 
+    def test_virtual_exclusive_tests_with_real_virtual_files(self):
+        port = self.make_port()
+        fs = port.host.filesystem
+        fs.write_text_file(
+            fs.join(port.web_tests_dir(), 'VirtualTestSuites'),
+            json.dumps([{
+                'prefix': 'v0',
+                'platforms': ['Linux'],
+                'bases': [],
+                'exclusive_tests': [],
+                'args': ['-a'],
+                'expires': 'never',
+            }, {
+                'prefix': 'v1',
+                'platforms': ['Linux'],
+                'bases': ['virtual/v0'],
+                'exclusive_tests': 'ALL',
+                'args': ['-a'],
+                'expires': 'never',
+            }, {
+                'prefix': 'v2',
+                'platforms': ['Linux'],
+                'bases': ['virtual/v0/a'],
+                'exclusive_tests': ['virtual/v0/a/c.html'],
+                'args': ['-a'],
+                'expires': 'never',
+            }]))
+        fs.write_text_file(
+            fs.join(port.web_tests_dir(), 'virtual', 'v0', 'a', 'b.html'), '')
+        fs.write_text_file(
+            fs.join(port.web_tests_dir(), 'virtual', 'v0', 'a', 'c.html'), '')
+
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests('virtual/v0'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests('virtual/v0/a/b.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests('virtual/v0/a/c.html'))
+
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v1/virtual/v0'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v1/virtual/v0/a/b.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v1/virtual/v0/a/c.html'))
+
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/virtual/v0'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/virtual/v0/a/b.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/virtual/v0/a/c.html'))
+
     def test_virtual_exclusive_tests_with_generated_tests(self):
         port = self.make_port()
+        port.set_option_default('manifest_update', False)
         fs = port.host.filesystem
         web_tests_dir = port.web_tests_dir()
         fs.write_text_file(
-            fs.join(web_tests_dir, 'VirtualTestSuites'), '['
-            '{"prefix": "v1", "platforms": ["Linux"], "bases": ["external/wpt/console/b1.any.js"],'
-            ' "exclusive_tests": "ALL", '
-            '"args": ["-a"], "expires": "never"},'
-            '{"prefix": "v2", "platforms": ["Linux"], "bases": ["external/wpt/console/b1.any.js",'
-            '                                                   "external/wpt/console/b2.any.js"],'
-            ' "exclusive_tests": ["external/wpt/console/b2.any.js"], '
-            '"args": ["-b"], "expires": "never"}'
-            ']')
+            fs.join(web_tests_dir, 'external', 'wpt', 'MANIFEST.json'),
+            json.dumps({
+                'items': {
+                    'testharness': {
+                        'console': {
+                            'b1.any.js': [
+                                'abcdef0',
+                                ['console/b1.any.html', {}],
+                                ['console/b1.any.worker.html', {}],
+                                ['console/b1.any.sharedworker.html', {}],
+                                [
+                                    'console/b1.https.any.shadowrealm-in-serviceworker.html',
+                                    {}
+                                ],
+                            ],
+                            'b2.any.js': [
+                                '0123457',
+                                ['console/b2.any.html', {}],
+                                ['console/b2.any.worker.html', {}],
+                                ['console/b2.any.sharedworker.html', {}],
+                            ],
+                        },
+                    },
+                },
+            }))
+        virtual_suites = [
+            {
+                'prefix': 'v1',
+                'platforms': ['Linux'],
+                'bases': ['external/wpt/console/b1.any.js'],
+                'exclusive_tests': 'ALL',
+                'args': ['-a'],
+                'expires': 'never',
+            },
+            {
+                'prefix':
+                'v2',
+                'platforms': ['Linux'],
+                'bases': [
+                    'external/wpt/console/b1.any.js',
+                    'external/wpt/console/b2.any.js',
+                ],
+                'exclusive_tests': [
+                    # Ensure `exclusive_tests` work with the generated URLs
+                    # themselves too.
+                    'external/wpt/console/b1.any.html',
+                    'external/wpt/console/b2.any.js',
+                ],
+                'args': ['-b'],
+                'expires':
+                'never',
+            },
+        ]
+        fs.write_text_file(fs.join(web_tests_dir, 'VirtualTestSuites'),
+                           json.dumps(virtual_suites))
         fs.write_text_file(
             fs.join(web_tests_dir, 'external/wpt/console', 'b1.any.js'), '')
         fs.write_text_file(
@@ -1997,6 +2130,10 @@ class PortTest(LoggingTestCase):
         self.assertTrue(
             port.skipped_due_to_exclusive_virtual_tests(
                 'external/wpt/console/b1.any.worker.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'external/wpt/console/'
+                'b1.https.any.shadowrealm-in-serviceworker.html'))
         self.assertFalse(
             port.skipped_due_to_exclusive_virtual_tests(
                 'virtual/v1/external/wpt/console/b1.any.html'))
@@ -2006,6 +2143,10 @@ class PortTest(LoggingTestCase):
         self.assertFalse(
             port.skipped_due_to_exclusive_virtual_tests(
                 'virtual/v1/external/wpt/console/b1.any.worker.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v1/external/wpt/console/'
+                'b1.https.any.shadowrealm-in-serviceworker.html'))
 
         self.assertTrue(
             port.skipped_due_to_exclusive_virtual_tests(
@@ -2016,7 +2157,7 @@ class PortTest(LoggingTestCase):
         self.assertTrue(
             port.skipped_due_to_exclusive_virtual_tests(
                 'external/wpt/console/b2.any.worker.html'))
-        self.assertTrue(
+        self.assertFalse(
             port.skipped_due_to_exclusive_virtual_tests(
                 'virtual/v2/external/wpt/console/b1.any.html'))
         self.assertTrue(
@@ -2025,6 +2166,10 @@ class PortTest(LoggingTestCase):
         self.assertTrue(
             port.skipped_due_to_exclusive_virtual_tests(
                 'virtual/v2/external/wpt/console/b1.any.worker.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/external/wpt/console/'
+                'b1.https.any.shadowrealm-in-serviceworker.html'))
         self.assertFalse(
             port.skipped_due_to_exclusive_virtual_tests(
                 'virtual/v2/external/wpt/console/b2.any.html'))

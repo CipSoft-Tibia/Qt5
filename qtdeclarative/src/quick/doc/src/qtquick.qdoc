@@ -59,8 +59,8 @@ shader effects.
     \li \l {Important Concepts In Qt Quick - Positioning} {Positioning}
     \li \l {Important Concepts in Qt Quick - States, Transitions and Animations}
            {States, Transitions And Animations}
-    \li \l {Important Concepts In Qt Quick - Data - Models, Views and data Storage}
-           {Data - Models, Views and Data Storage}
+    \li \l {Important Concepts In Qt Quick - Data - Models, Views, and data Storage}
+           {Data - Models, Views, and Data Storage}
     \li \list \l {Important Concepts In Qt Quick - Graphical Effects}
            {Particles And Graphical Effects}
        \li \l MultiEffect
@@ -158,4 +158,9 @@ these free software licenses are
 \l{GNU Lesser General Public License, version 3}, or
 the \l{GNU General Public License, version 2}.
 See \l{Qt Licensing} for further details.
+
+Furthermore Qt Quick in Qt \QtVersion may contain third party
+modules under following permissive licenses:
+
+\annotatedlist attributions-qtquick
 */

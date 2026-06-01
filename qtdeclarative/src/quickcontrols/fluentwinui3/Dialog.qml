@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Templates as T
@@ -18,10 +19,12 @@ T.Dialog {
                              + (implicitHeaderHeight > 0 ? implicitHeaderHeight + spacing : 0)
                              + (implicitFooterHeight > 0 ? implicitFooterHeight + spacing : 0))
 
-    leftInset: -32
-    topInset: -32
-    rightInset: -32
-    bottomInset: -32
+    readonly property bool __isHighContrast: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast
+
+    leftInset: __isHighContrast ? 0 : -32
+    topInset: __isHighContrast ? 0 : -32
+    rightInset: __isHighContrast ? 0 : -32
+    bottomInset: __isHighContrast ? 0 : -32
 
     padding: 24
     topPadding: 12
@@ -37,8 +40,13 @@ T.Dialog {
         NumberAnimation { property: "scale"; from: 1; to: control.modal ? 1.05 : 1; easing.type: Easing.OutCubic; duration: 167 }
     }
 
-    background: Item {
+    background: Rectangle {
+        color: control.__isHighContrast ? control.palette.window : "transparent"
+        border.color: control.__isHighContrast ? control.palette.text : "transparent"
+        border.width: 2
+        radius: 8
         MultiEffect {
+            visible: !control.__isHighContrast
             x: -control.leftInset
             y: -control.topInset
             width: source.width
@@ -74,6 +82,10 @@ T.Dialog {
 
     footer: DialogButtonBox {
         visible: count > 0
+        leftInset: control.__isHighContrast ? 1 : 0
+        topInset: control.__isHighContrast ? 1 : 0
+        rightInset: control.__isHighContrast ? 1 : 0
+        bottomInset: control.__isHighContrast ? 1 : 0
     }
 
     T.Overlay.modal: Rectangle {

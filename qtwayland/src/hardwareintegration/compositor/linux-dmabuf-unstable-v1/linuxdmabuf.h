@@ -129,8 +129,8 @@ private:
     std::array<QMetaObject::Connection, MaxDmabufPlanes> m_texturesAboutToBeDestroyedConnection = { {QMetaObject::Connection(), QMetaObject::Connection(), QMetaObject::Connection(), QMetaObject::Connection()} };
     QMutex m_texturesLock;
 
-    void freeResources();
     void buffer_destroy(Resource *resource) override;
+    void deleteTextures();
 
     friend class LinuxDmabufParams;
 };

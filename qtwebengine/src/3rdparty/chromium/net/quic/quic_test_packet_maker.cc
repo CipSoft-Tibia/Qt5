@@ -53,6 +53,7 @@ quic::QuicFrames CloneFrames(const quic::QuicFrames& frames) {
       case quic::STOP_SENDING_FRAME:
       case quic::PATH_CHALLENGE_FRAME:
       case quic::PATH_RESPONSE_FRAME:
+      case quic::IMMEDIATE_ACK_FRAME:
         break;
       case quic::ACK_FRAME:
         frame.ack_frame = new quic::QuicAckFrame(*frame.ack_frame);
@@ -221,19 +222,6 @@ QuicTestPacketMaker::MakeCombinedRetransmissionPacket(
     }
   }
   return builder.Build();
-}
-
-std::unique_ptr<quic::QuicReceivedPacket>
-QuicTestPacketMaker::MakeAckAndDataPacket(uint64_t packet_number,
-                                          quic::QuicStreamId stream_id,
-                                          uint64_t largest_received,
-                                          uint64_t smallest_received,
-                                          bool fin,
-                                          std::string_view data) {
-  return Packet(packet_number)
-      .AddAckFrame(/*first_received=*/1, largest_received, smallest_received)
-      .AddStreamFrame(stream_id, fin, data)
-      .Build();
 }
 
 std::unique_ptr<quic::QuicReceivedPacket>
@@ -605,8 +593,7 @@ std::string QuicTestPacketMaker::GenerateHttp3PriorityData(
 
 void QuicTestPacketMaker::AddPriorityHeader(spdy::SpdyPriority spdy_priority,
                                             quiche::HttpHeaderBlock* headers) {
-  if (use_priority_header_ &&
-      base::FeatureList::IsEnabled(net::features::kPriorityHeader)) {
+  if (use_priority_header_) {
     quic::HttpStreamPriority priority{
         spdy_priority, quic::HttpStreamPriority::kDefaultIncremental};
     if (client_priority_uses_incremental_) {

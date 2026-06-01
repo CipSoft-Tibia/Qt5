@@ -682,7 +682,8 @@ base::Status PerfettoSqlEngine::EnableSqlFunctionMemoization(
       sqlite_engine()->GetFunctionContext(name, kSupportedArgCount));
   if (!ctx) {
     return base::ErrStatus(
-        "EXPERIMENTAL_MEMOIZE: Function %s(INT) does not exist", name.c_str());
+        "EXPERIMENTAL_MEMOIZE: Function '%s'(INT) does not exist",
+        name.c_str());
   }
   return CreatedFunction::EnableMemoization(ctx);
 }
@@ -696,19 +697,28 @@ base::Status PerfettoSqlEngine::ExecuteInclude(
 
   std::string key = include.key;
   if (key == "*") {
-    for (auto moduleIt = modules_.GetIterator(); moduleIt; ++moduleIt) {
-      RETURN_IF_ERROR(IncludeModuleImpl(moduleIt.value(), key, parser));
+    for (auto package = packages_.GetIterator(); package; ++package) {
+      RETURN_IF_ERROR(IncludePackageImpl(package.value(), key, parser));
     }
     return base::OkStatus();
   }
 
-  std::string module_name = sql_modules::GetModuleName(key);
-  auto* module = FindModule(module_name);
-  if (!module) {
-    return base::ErrStatus("INCLUDE: Unknown module name provided - %s",
-                           key.c_str());
+  std::string package_name = sql_modules::GetPackageName(key);
+
+  auto* package = FindPackage(package_name);
+  if (!package) {
+    if (package_name == "common") {
+      return base::ErrStatus(
+          "INCLUDE: Package `common` has been removed and most of the "
+          "functionality has been moved to other packages. Check "
+          "`slices.with_context` for replacement for `common.slices` and "
+          "`time.conversion` for replacement for `common.timestamps`. The "
+          "documentation for Perfetto standard library can be found at "
+          "https://perfetto.dev/docs/analysis/stdlib-docs.");
+    }
+    return base::ErrStatus("INCLUDE: Package '%s' not found", key.c_str());
   }
-  return IncludeModuleImpl(*module, key, parser);
+  return IncludePackageImpl(*package, key, parser);
 }
 
 base::Status PerfettoSqlEngine::ExecuteCreateIndex(
@@ -721,7 +731,7 @@ base::Status PerfettoSqlEngine::ExecuteCreateIndex(
                       record->AddArg("cols", base::Join(index.col_names, ", "));
                     });
 
-  Table* t = GetMutableTableOrNull(index.table_name);
+  Table* t = GetTableOrNull(index.table_name);
   if (!t) {
     return base::ErrStatus("CREATE PERFETTO INDEX: Table '%s' not found",
                            index.table_name.c_str());
@@ -749,7 +759,7 @@ base::Status PerfettoSqlEngine::ExecuteDropIndex(
                       record->AddArg("table_name", index.table_name);
                     });
 
-  Table* t = GetMutableTableOrNull(index.table_name);
+  Table* t = GetTableOrNull(index.table_name);
   if (!t) {
     return base::ErrStatus("DROP PERFETTO INDEX: Table '%s' not found",
                            index.table_name.c_str());
@@ -758,35 +768,34 @@ base::Status PerfettoSqlEngine::ExecuteDropIndex(
   return base::OkStatus();
 }
 
-base::Status PerfettoSqlEngine::IncludeModuleImpl(
-    sql_modules::RegisteredModule& module,
-    const std::string& key,
+base::Status PerfettoSqlEngine::IncludePackageImpl(
+    sql_modules::RegisteredPackage& package,
+    const std::string& include_key,
     const PerfettoSqlParser& parser) {
-  if (!key.empty() && key.back() == '*') {
+  if (!include_key.empty() && include_key.back() == '*') {
     // If the key ends with a wildcard, iterate through all the keys in the
     // module and include matching ones.
-    std::string prefix = key.substr(0, key.size() - 1);
-    for (auto fileIt = module.include_key_to_file.GetIterator(); fileIt;
-         ++fileIt) {
-      if (!base::StartsWith(fileIt.key(), prefix))
+    std::string prefix = include_key.substr(0, include_key.size() - 1);
+    for (auto module = package.modules.GetIterator(); module; ++module) {
+      if (!base::StartsWith(module.key(), prefix))
         continue;
       PERFETTO_TP_TRACE(
           metatrace::Category::QUERY_TIMELINE,
           "Include (expanded from wildcard)",
-          [&](metatrace::Record* r) { r->AddArg("Module", fileIt.key()); });
-      RETURN_IF_ERROR(IncludeFileImpl(fileIt.value(), fileIt.key(), parser));
+          [&](metatrace::Record* r) { r->AddArg("Module", module.key()); });
+      RETURN_IF_ERROR(IncludeModuleImpl(module.value(), module.key(), parser));
     }
     return base::OkStatus();
   }
-  auto* module_file = module.include_key_to_file.Find(key);
+  auto* module_file = package.modules.Find(include_key);
   if (!module_file) {
-    return base::ErrStatus("INCLUDE: unknown module '%s'", key.c_str());
+    return base::ErrStatus("INCLUDE: unknown module '%s'", include_key.c_str());
   }
-  return IncludeFileImpl(*module_file, key, parser);
+  return IncludeModuleImpl(*module_file, include_key, parser);
 }
 
-base::Status PerfettoSqlEngine::IncludeFileImpl(
-    sql_modules::RegisteredModule::ModuleFile& file,
+base::Status PerfettoSqlEngine::IncludeModuleImpl(
+    sql_modules::RegisteredPackage::ModuleFile& file,
     const std::string& key,
     const PerfettoSqlParser& parser) {
   // INCLUDE is noop for already included files.
@@ -1006,16 +1015,16 @@ PerfettoSqlEngine::GetColumnNamesFromSelectStatement(
     std::string col_name =
         sqlite3_column_name(stmt.sqlite_stmt(), static_cast<int>(i));
     if (col_name.empty()) {
-      return base::ErrStatus("%s: column %d: name must not be empty", tag, i);
+      return base::ErrStatus("%s: column %u: name must not be empty", tag, i);
     }
     if (!std::isalpha(col_name.front())) {
       return base::ErrStatus(
-          "%s: Column %i: name '%s' has to start with a letter.", tag, i,
+          "%s: Column %u: name '%s' has to start with a letter.", tag, i,
           col_name.c_str());
     }
     if (!sql_argument::IsValidName(base::StringView(col_name))) {
       return base::ErrStatus(
-          "%s: Column %i: name '%s' has to contain only alphanumeric "
+          "%s: Column %u: name '%s' has to contain only alphanumeric "
           "characters and underscores.",
           tag, i, col_name.c_str());
     }
@@ -1105,8 +1114,7 @@ const RuntimeTable* PerfettoSqlEngine::GetRuntimeTableOrNull(
   return state ? state->runtime_table.get() : nullptr;
 }
 
-RuntimeTable* PerfettoSqlEngine::GetMutableRuntimeTableOrNull(
-    std::string_view name) {
+RuntimeTable* PerfettoSqlEngine::GetRuntimeTableOrNull(std::string_view name) {
   auto* state = runtime_table_context_->manager.FindStateByName(name);
   return state ? state->runtime_table.get() : nullptr;
 }
@@ -1117,7 +1125,7 @@ const Table* PerfettoSqlEngine::GetStaticTableOrNull(
   return state ? state->static_table : nullptr;
 }
 
-Table* PerfettoSqlEngine::GetMutableStaticTableOrNull(std::string_view name) {
+Table* PerfettoSqlEngine::GetStaticTableOrNull(std::string_view name) {
   auto* state = static_table_context_->manager.FindStateByName(name);
   return state ? state->static_table : nullptr;
 }

@@ -35,9 +35,9 @@ import * as VisualLogging from '../visual_logging/visual_logging.js';
 import * as ARIAUtils from './ARIAUtils.js';
 import {Constraints} from './Geometry.js';
 import {Events as ResizerWidgetEvents, type ResizeUpdatePositionEvent, SimpleResizerWidget} from './ResizerWidget.js';
-import splitWidgetStyles from './splitWidget.css.legacy.js';
+import splitWidgetStyles from './splitWidget.css.js';
 import {ToolbarButton} from './Toolbar.js';
-import {Widget} from './Widget.js';
+import {Widget, WidgetElement} from './Widget.js';
 import {Events as ZoomManagerEvents, ZoomManager} from './ZoomManager.js';
 
 export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typeof Widget>(Widget) {
@@ -79,8 +79,8 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
 
   constructor(
       isVertical: boolean, secondIsSidebar: boolean, settingName?: string, defaultSidebarWidth?: number,
-      defaultSidebarHeight?: number, constraintsInDip?: boolean) {
-    super(true);
+      defaultSidebarHeight?: number, constraintsInDip?: boolean, element?: SplitWidgetElement) {
+    super(true, undefined, element);
     this.element.classList.add('split-widget');
     this.registerRequiredCSS(splitWidgetStyles);
 
@@ -89,8 +89,24 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
         this.contentElement.createChild('div', 'shadow-split-widget-contents shadow-split-widget-sidebar vbox');
     this.mainElement =
         this.contentElement.createChild('div', 'shadow-split-widget-contents shadow-split-widget-main vbox');
-    (this.mainElement.createChild('slot') as HTMLSlotElement).name = 'insertion-point-main';
-    (this.sidebarElementInternal.createChild('slot') as HTMLSlotElement).name = 'insertion-point-sidebar';
+    const mainSlot = this.mainElement.createChild('slot');
+    mainSlot.name = 'main';
+    mainSlot.addEventListener('slotchange', (_: Event) => {
+      const assignedNode = mainSlot.assignedNodes()[0];
+      const widget = assignedNode instanceof HTMLElement ? Widget.getOrCreateWidget(assignedNode) : null;
+      if (widget && widget !== this.mainWidgetInternal) {
+        this.setMainWidget(widget);
+      }
+    });
+    const sidebarSlot = this.sidebarElementInternal.createChild('slot');
+    sidebarSlot.name = 'sidebar';
+    sidebarSlot.addEventListener('slotchange', (_: Event) => {
+      const assignedNode = sidebarSlot.assignedNodes()[0];
+      const widget = assignedNode instanceof HTMLElement ? Widget.getOrCreateWidget(assignedNode) : null;
+      if (widget && widget !== this.sidebarWidgetInternal) {
+        this.setSidebarWidget(widget);
+      }
+    });
     this.resizerElementInternal = this.contentElement.createChild('div', 'shadow-split-widget-resizer');
     this.resizerElementSize = null;
 
@@ -193,7 +209,7 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
     }
     this.mainWidgetInternal = widget;
     if (widget) {
-      widget.element.slot = 'insertion-point-main';
+      widget.element.slot = 'main';
       if (this.showModeInternal === ShowMode.ONLY_MAIN || this.showModeInternal === ShowMode.BOTH) {
         widget.show(this.element);
       }
@@ -211,7 +227,7 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
     }
     this.sidebarWidgetInternal = widget;
     if (widget) {
-      widget.element.slot = 'insertion-point-sidebar';
+      widget.element.slot = 'sidebar';
       if (this.showModeInternal === ShowMode.ONLY_SIDEBAR || this.showModeInternal === ShowMode.BOTH) {
         widget.show(this.element);
       }
@@ -891,6 +907,45 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
   }
 }
 
+interface SplitWidgetOptions {
+  vertical?: boolean;
+  secondIsSidebar?: boolean;
+  settingName?: string;
+  defaultSidebarWidth?: number;
+  defaultSidebarHeight?: number;
+  constraintsInDip?: boolean;
+  markAsRoot?: boolean;
+}
+
+export class SplitWidgetElement extends WidgetElement<SplitWidget> {
+  #options: SplitWidgetOptions = {};
+
+  set options(options: SplitWidgetOptions) {
+    this.#options = options;
+  }
+
+  override createWidget(): SplitWidget {
+    const {
+      vertical,
+      secondIsSidebar,
+      settingName,
+      defaultSidebarWidth,
+      defaultSidebarHeight,
+      constraintsInDip,
+      markAsRoot,
+    } = this.#options;
+    const widget = new SplitWidget(
+        Boolean(vertical), Boolean(secondIsSidebar), settingName, defaultSidebarWidth, defaultSidebarHeight,
+        constraintsInDip, this);
+    if (markAsRoot) {
+      widget.markAsRoot();
+    }
+    return widget;
+  }
+}
+
+customElements.define('devtools-split-widget', SplitWidgetElement);
+
 export const enum ShowMode {
   BOTH = 'Both',
   ONLY_MAIN = 'OnlyMain',
@@ -902,10 +957,10 @@ export const enum Events {
   SHOW_MODE_CHANGED = 'ShowModeChanged',
 }
 
-export type EventTypes = {
-  [Events.SIDEBAR_SIZE_CHANGED]: number,
-  [Events.SHOW_MODE_CHANGED]: string,
-};
+export interface EventTypes {
+  [Events.SIDEBAR_SIZE_CHANGED]: number;
+  [Events.SHOW_MODE_CHANGED]: string;
+}
 
 const MinPadding = 20;
 export interface SettingForOrientation {

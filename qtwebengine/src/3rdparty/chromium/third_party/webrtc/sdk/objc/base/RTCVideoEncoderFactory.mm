@@ -9,7 +9,7 @@
  */
 
 #import "RTCVideoEncoderFactory.h"
-#import "RTCMacros.h"
+#import "sdk/objc/base/RTCMacros.h"
 
 @implementation RTC_OBJC_TYPE (RTCVideoEncoderCodecSupport)
 
@@ -20,7 +20,8 @@
   return [self initWithSupported:isSupported isPowerEfficient:false];
 }
 
-- (instancetype)initWithSupported:(bool)isSupported isPowerEfficient:(bool)isPowerEfficient {
+- (instancetype)initWithSupported:(bool)isSupported
+                 isPowerEfficient:(bool)isPowerEfficient {
   self = [super init];
   if (self) {
     _isSupported = isSupported;

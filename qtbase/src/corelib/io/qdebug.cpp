@@ -130,6 +130,22 @@ QByteArray QtDebugUtils::toPrintable(const char *data, qint64 len, qsizetype max
 */
 
 /*!
+    \fn QDebug::QDebug(QByteArray *byteArray)
+    \since 6.9
+
+    Constructs a debug stream that writes to the given \a byteArray.
+
+    The data is encoded in UTF-8, which may not be the same as the system
+    locale, for example, on Windows.
+
+    With objects instantiated with this constructor, the data may be buffered
+    and won't be written to the byte array until the stream is flushed, for
+    example, by using \l Qt::flush.
+
+    \sa {QTextStream manipulators}
+*/
+
+/*!
     \fn QDebug::QDebug(QtMsgType t)
 
     Constructs a debug stream that writes to the handler for the message type \a t.
@@ -276,8 +292,8 @@ static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, si
                         buflen = 2;
                     } else {
                         buf[1] = 'U';
-                        buf[2] = '0'; // toHexUpper(ucs4 >> 32);
-                        buf[3] = '0'; // toHexUpper(ucs4 >> 28);
+                        buf[2] = '0'; // toHexUpper(ucs4 >> 28);
+                        buf[3] = '0'; // toHexUpper(ucs4 >> 24);
                         buf[4] = toHexUpper(ucs4 >> 20);
                         buf[5] = toHexUpper(ucs4 >> 16);
                         buf[6] = toHexUpper(ucs4 >> 12);
@@ -1224,8 +1240,8 @@ QDebug &QDebug::putTupleLikeImplImpl(const char *ns, const char *what,
     \relates QDebug
     \since 6.9
 
- Writes the contents of \a map to \a debug. Both \c Key and
- \c T need to support streaming into QDebug.
+    Writes the contents of \a map to \a debug. Both \c Key and
+    \c T need to support streaming into QDebug.
 */
 
 /*!
@@ -1233,10 +1249,9 @@ QDebug &QDebug::putTupleLikeImplImpl(const char *ns, const char *what,
     \relates QDebug
     \since 6.9
 
-Writes the contents of \a unordered_set to \a debug. The \c Key type
-needs to support streaming into QDebug.
+    Writes the contents of \a unordered_set to \a debug. The \c Key type
+    needs to support streaming into QDebug.
 */
-
 
 /*!
     \fn template <class Key, class T> QDebug operator<<(QDebug debug, const QHash<Key, T> &hash)

@@ -3,10 +3,10 @@
 
 #include <qbytearray.h>
 #include <qchar.h>
-#include <qdebug.h>
 #include <qfile.h>
 #include <qhash.h>
 #include <qlist.h>
+#include <qmap.h>
 #include <qspan.h>
 #include <qstring.h>
 #include <qbitarray.h>
@@ -16,16 +16,19 @@
 #include <private/qunicodetables_p.h>
 #endif
 
+#include <array>
 #include <QtCore/qxpfunctional.h>
 #include <QtCore/q26numeric.h>
+#include <vector>
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 9, 0)
 // QSpan, QIODevice::readLineInto()
+// QHash heterogeneous lookup
 #  error This tool needs Qt >= 6.9, even if you are building tables for Qt 6.5 or 6.8.
 #endif
 
-#define DATA_VERSION_S "16.0"
-#define DATA_VERSION_STR "QChar::Unicode_16_0"
+#define DATA_VERSION_S "17.0"
+#define DATA_VERSION_STR "QChar::Unicode_17_0"
 
 using namespace Qt::StringLiterals;
 
@@ -33,6 +36,23 @@ using namespace Qt::StringLiterals;
 // expands to x.size(), x.data() for use with "%.*s"
 #  define qPrintableView(x) q26::saturate_cast<int>((x).size()), (x).data()
 #endif
+
+namespace {
+struct Location {
+    const char *fileName;
+    int lineNo;
+
+    template <typename ...Args>
+    [[noreturn]] void die(const char *message, Args... args) const
+    {
+        char buf[256];
+        [[maybe_unused]]
+        int ret = std::snprintf(buf, sizeof(buf), "data/%%s:%%d: %s", message);
+        Q_ASSERT(size_t(ret) < sizeof(buf));
+        qFatal(buf, fileName, lineNo, args...);
+    }
+};
+} // namespace
 
 static QHash<QByteArray, QChar::UnicodeVersion> age_map;
 
@@ -69,6 +89,7 @@ static void initAgeMap()
         { QChar::Unicode_15_0,   "15.0" }, // UCD Revision 30
         { QChar::Unicode_15_1,   "15.1" }, // UCD Revision 32
         { QChar::Unicode_16_0,   "16.0" }, // UCD Revision 34
+        { QChar::Unicode_17_0,   "17.0" }, // UCD Revision 36
         { QChar::Unicode_Unassigned, 0 }
     };
     AgeMap *d = ageMap;
@@ -554,7 +575,7 @@ static const char *line_break_class_string =
     "    LineBreak_GL, LineBreak_NS, LineBreak_EX, LineBreak_SY,\n"
     "    LineBreak_IS, LineBreak_PR,\n"
     "    LineBreak_PO, LineBreak_NU, LineBreak_AL, LineBreak_HL, LineBreak_ID,\n"
-    "    LineBreak_IN, LineBreak_HY, LineBreak_WS_HY,\n"
+    "    LineBreak_IN, LineBreak_HY, LineBreak_WS_HY, LineBreak_HH,\n"
     "    LineBreak_BA, LineBreak_WS_BA,\n"
     "    LineBreak_HYBA,\n"
     "    LineBreak_BB, LineBreak_B2,\n"
@@ -578,7 +599,7 @@ enum LineBreakClass {
     LineBreak_GL, LineBreak_NS, LineBreak_EX, LineBreak_SY,
     LineBreak_IS, LineBreak_PR,
     LineBreak_PO, LineBreak_NU, LineBreak_AL, LineBreak_HL, LineBreak_ID,
-    LineBreak_IN, LineBreak_HY, LineBreak_WS_HY,
+    LineBreak_IN, LineBreak_HY, LineBreak_WS_HY, LineBreak_HH,
     LineBreak_BA, LineBreak_WS_BA,
     LineBreak_HYBA,
     LineBreak_BB, LineBreak_B2,
@@ -622,6 +643,7 @@ static void initLineBreak()
         { LineBreak_BA, "BA" },
         { LineBreak_BB, "BB" },
         { LineBreak_HY, "HY" },
+        { LineBreak_HH, "HH" },
         { LineBreak_CB, "CB" },
         { LineBreak_NS, "CJ" },
         { LineBreak_CL, "CL" },
@@ -867,6 +889,12 @@ static void initScriptMap()
         { QChar::Script_Todhri,                  "Todhri"},
         { QChar::Script_TuluTigalari,            "Tulu_Tigalari"},
 
+        // 17.0
+        { QChar::Script_Sidetic,                 "Sidetic"},
+        { QChar::Script_TaiYo,                   "Tai_Yo"},
+        { QChar::Script_TolongSiki,              "Tolong_Siki"},
+        { QChar::Script_BeriaErfe,               "Beria_Erfe"},
+
         // unhandled
         { QChar::Script_Unknown,                0 }
     };
@@ -984,6 +1012,11 @@ static const char *property_string =
     "    NumCases\n"
     "};\n"
     "\n"
+    "struct CaseConversion {\n"
+    "    ushort special    : 1;\n"
+    "    signed short diff : 15;\n"
+    "};\n"
+    "\n"
     "struct Properties {\n"
     "    ushort category            : 5;\n"
     "    ushort direction           : 5;\n"
@@ -995,27 +1028,20 @@ static const char *property_string =
     "    ushort unicodeVersion      : 5; /* 5 used */\n"
     "    ushort eastAsianWidth      : 3; /* 3 used */\n"
     "    ushort nfQuickCheck        : 8;\n" // could be narrowed
-    "#ifdef Q_OS_WASM\n"
-    "    unsigned char              : 0; //wasm 64 packing trick\n"
-    "#endif\n"
-    "    struct {\n"
-    "        ushort special    : 1;\n"
-    "        signed short diff : 15;\n"
-    "    } cases[NumCases];\n"
-    "#ifdef Q_OS_WASM\n"
-    "    unsigned char              : 0; //wasm 64 packing trick\n"
-    "#endif\n"
+    "    ushort caseIndex           : 16; /* 9 used */\n"
     "    ushort graphemeBreakClass  : 5; /* 5 used */\n"
     "    ushort wordBreakClass      : 5; /* 5 used */\n"
     "    ushort lineBreakClass      : 6; /* 6 used */\n"
     "    ushort sentenceBreakClass  : 4; /* 4 used */\n"
     "    ushort idnaStatus          : 4; /* 3 used */\n"
     "    ushort script              : 8;\n"
+    "    ushort reserved            : 16; /* makes sizeof a nice round 16 bytes */\n"
     "};\n\n"
     "Q_DECL_CONST_FUNCTION\n"
     "Q_CORE_EXPORT const Properties * QT_FASTCALL properties(char32_t ucs4) noexcept;\n"
-    "Q_DECL_CONST_FUNCTION\n"
-    "Q_CORE_EXPORT const Properties * QT_FASTCALL properties(char16_t ucs2) noexcept;\n"
+    "\n"
+    "Q_DECL_CONST_FUNCTION Q_CORE_EXPORT\n"
+    "QSpan<const CaseConversion, NumCases> QT_FASTCALL caseConversion(char32_t ucs4) noexcept;\n"
     "\n";
 
 static const char *methods =
@@ -1048,7 +1074,7 @@ static const char *methods =
     "{ return eastAsianWidth(ch.unicode()); }\n"
     "\n";
 
-static const int SizeOfPropertiesStruct = 20;
+static const int SizeOfPropertiesStruct = 16;
 
 static const QByteArray sizeOfPropertiesStructCheck =
         "static_assert(sizeof(Properties) == " + QByteArray::number(SizeOfPropertiesStruct) + ");\n\n";
@@ -1081,6 +1107,7 @@ struct PropertyFlags {
                 && upperCaseSpecial == o.upperCaseSpecial
                 && titleCaseSpecial == o.titleCaseSpecial
                 && caseFoldSpecial == o.caseFoldSpecial
+                // caseIndex is _not_ part of equality
                 && graphemeBreakClass == o.graphemeBreakClass
                 && wordBreakClass == o.wordBreakClass
                 && sentenceBreakClass == o.sentenceBreakClass
@@ -1114,6 +1141,7 @@ struct PropertyFlags {
     bool upperCaseSpecial = 0;
     bool titleCaseSpecial = 0;
     bool caseFoldSpecial = 0;
+    int caseIndex = -1; // not part of equality; replaces {lower,upper,title,fold}CaseDiff
     GraphemeBreakClass graphemeBreakClass = GraphemeBreak_Any;
     WordBreakClass wordBreakClass = WordBreak_Any;
     SentenceBreakClass sentenceBreakClass = SentenceBreak_Any;
@@ -1322,10 +1350,18 @@ static QHash<int, int> combiningClassUsage;
 static int maxLowerCaseDiff = 0;
 static int maxUpperCaseDiff = 0;
 static int maxTitleCaseDiff = 0;
+static int maxSeparatorCodepoint = 0;
 
-void readUnicodeFile(const char *fileName, qxp::function_ref<void(const QByteArray &, int)> yield)
+static void couldNotOpenFile(const QFile &file)
 {
-    qDebug("Reading %s", fileName);
+    qFatal("Cannot open output file: %ls error: %ls",
+           qUtf16Printable(file.fileName()), qUtf16Printable(file.errorString()));
+}
+
+void readUnicodeFile(const char *fileName,
+                     qxp::function_ref<void(QSpan<const QByteArrayView>, Location)> yield)
+{
+    qDebug("Reading data/%s", fileName);
 
     QFile f("data/"_L1 % QLatin1StringView{fileName});
     if (!f.open(QFile::ReadOnly))
@@ -1333,61 +1369,66 @@ void readUnicodeFile(const char *fileName, qxp::function_ref<void(const QByteArr
 
     int lineNo = 0;
     QByteArray line;
+    constexpr int MaxExpectedFields = 16; // it's currently 15; of course, code works with >16, too
+    QVarLengthArray<QByteArrayView, MaxExpectedFields> fields;
     while (f.readLineInto(&line)) {
         ++lineNo;
         const auto comment = line.indexOf('#');
         if (comment >= 0)
             line.truncate(comment);
         line = std::move(line).trimmed();
-        if (!line.isEmpty())
-            yield(line, lineNo);
+        if (line.isEmpty())
+            continue;
+        fields.clear();
+        qTokenize(QLatin1StringView{line}, u';', Qt::KeepEmptyParts)
+                .toContainer(fields);
+        for (auto &field: fields)
+            field = field.trimmed();
+        yield(fields, Location{fileName, lineNo});
     }
 }
 
-static int parseHex(QByteArrayView input, int lineNo)
+static int parseHex(QByteArrayView input, Location loc)
 {
     bool ok;
     const int result = input.trimmed().toUInt(&ok, 16); // uint to reject negative values
-    if (!ok) {
-        qFatal("Failed to parse \"%.*s\" as an unsigned hex number in line %d.",
-               qPrintableView(input), lineNo);
-    }
-    if (result > QChar::LastValidCodePoint) {
-        qFatal("Code point U+%05x is larger than allowed by Unicode in line %d.",
-               result, lineNo);
-    }
+    if (!ok)
+        loc.die("Failed to parse \"%.*s\" as an unsigned hex number.", qPrintableView(input));
+    if (result > QChar::LastValidCodePoint)
+        loc.die("Code point U+%05x is larger than allowed by Unicode.", result);
+
     return result;
 }
 
 template <typename Sep = char16_t>
-QVarLengthArray<int, 4> parseHexList(QByteArrayView input, int lineNo, Sep sep = u' ')
+QVarLengthArray<int, 4> parseHexList(QByteArrayView input, Location loc, Sep sep = u' ')
 {
     QVarLengthArray<int, 4> result;
     const auto sb = sep == u' ' ? Qt::SkipEmptyParts : Qt::KeepEmptyParts;
     for (auto e : qTokenize(QLatin1StringView{input}, sep, sb))
-        result.push_back(parseHex(e, lineNo));
+        result.push_back(parseHex(e, loc));
     return result;
 }
 
-static auto parseHexRange(QByteArrayView input, int lineNo)
+static auto parseHexRange(QByteArrayView input, Location loc)
 {
     struct R { int from, to; };
 
-    const auto pair = parseHexList(input, lineNo, ".."_L1);
+    const auto pair = parseHexList(input, loc, ".."_L1);
     Q_ASSERT(pair.size() <= 2);
     int from = pair[0];
     int to = from;
     if (pair.size() == 2) {
         to = pair[1];
         if (from > to)
-            qFatal("invalid range in line %d: %05x > %05x", lineNo, from, to);
+            loc.die("invalid range: %05x > %05x", from, to);
     }
     return R{from, to};
 }
 
 static void readUnicodeData()
 {
-    qDebug("Reading UnicodeData.txt");
+    qDebug("Reading data/UnicodeData.txt");
 
     enum UniDataFields {
         UD_Value,
@@ -1409,9 +1450,10 @@ static void readUnicodeData()
 
     QFile f("data/UnicodeData.txt");
     if (!f.open(QFile::ReadOnly))
-        qFatal() << "Couldn't open UnicodeData.txt:" << f.errorString();
+        couldNotOpenFile(f);
 
-    int lineNo = 0;
+    Location loc{"UnicodeData.txt", 0};
+    int &lineNo = loc.lineNo;
     while (!f.atEnd()) {
         ++lineNo;
         QByteArray line;
@@ -1426,7 +1468,7 @@ static void readUnicodeData()
             continue;
 
         QList<QByteArray> properties = line.split(';');
-        const int codepoint = parseHex(properties[UD_Value], lineNo);
+        const int codepoint = parseHex(properties[UD_Value], loc);
         Q_ASSERT(codepoint <= QChar::LastValidCodePoint);
         int lastCodepoint = codepoint;
 
@@ -1438,12 +1480,15 @@ static void readUnicodeData()
             ++lineNo;
             QList<QByteArray> properties = nextLine.split(';');
             Q_ASSERT(properties[UD_Name].startsWith('<') && properties[UD_Name].contains("Last"));
-            lastCodepoint = parseHex(properties[UD_Value], lineNo);
+            lastCodepoint = parseHex(properties[UD_Value], loc);
             Q_ASSERT(lastCodepoint <= QChar::LastValidCodePoint);
         }
 
         UnicodeData &data = UnicodeData::valueRef(codepoint);
         data.p.category = categoryMap.value(properties[UD_Category], QChar::Other_NotAssigned);
+        if (data.p.category == QChar::Separator_Space || data.p.category == QChar::Separator_Line
+                || data.p.category == QChar::Separator_Paragraph)
+            maxSeparatorCodepoint = codepoint;
         data.p.combiningClass = properties[UD_CombiningClass].toInt();
         if (!combiningClassUsage.contains(data.p.combiningClass))
             combiningClassUsage[data.p.combiningClass] = 1;
@@ -1456,7 +1501,7 @@ static void readUnicodeData()
         data.p.direction = QChar::Direction(dir);
 
         if (!properties[UD_UpperCase].isEmpty()) {
-            const int upperCase = parseHex(properties[UD_UpperCase], lineNo);
+            const int upperCase = parseHex(properties[UD_UpperCase], loc);
             int diff = upperCase - codepoint;
             // if the conditions below doesn't hold anymore we need to modify our upper casing code
             Q_ASSERT(QChar::requiresSurrogates(codepoint) == QChar::requiresSurrogates(upperCase));
@@ -1473,7 +1518,7 @@ static void readUnicodeData()
             }
         }
         if (!properties[UD_LowerCase].isEmpty()) {
-            const int lowerCase = parseHex(properties[UD_LowerCase], lineNo);
+            const int lowerCase = parseHex(properties[UD_LowerCase], loc);
             int diff = lowerCase - codepoint;
             // if the conditions below doesn't hold anymore we need to modify our lower casing code
             Q_ASSERT(QChar::requiresSurrogates(codepoint) == QChar::requiresSurrogates(lowerCase));
@@ -1493,7 +1538,7 @@ static void readUnicodeData()
         if (properties[UD_TitleCase].isEmpty())
             properties[UD_TitleCase] = properties[UD_UpperCase];
         if (!properties[UD_TitleCase].isEmpty()) {
-            const int titleCase = parseHex(properties[UD_TitleCase], lineNo);
+            const int titleCase = parseHex(properties[UD_TitleCase], loc);
             int diff = titleCase - codepoint;
             // if the conditions below doesn't hold anymore we need to modify our title casing code
             Q_ASSERT(QChar::requiresSurrogates(codepoint) == QChar::requiresSurrogates(titleCase));
@@ -1527,7 +1572,7 @@ static void readUnicodeData()
                 data.decompositionType = QChar::Canonical;
             }
             for (qsizetype i = 0; i < d.size(); ++i)
-                data.decomposition.append(parseHex(d[i], lineNo));
+                data.decomposition.append(parseHex(d[i], loc));
             ++decompositionLength[data.decomposition.size()];
         }
 
@@ -1541,17 +1586,16 @@ static int maxMirroredDiff = 0;
 static void readBidiMirroring()
 {
     readUnicodeFile("BidiMirroring.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> pair = line.split(';');
+                    [] (auto pair, Location loc) {
         Q_ASSERT(pair.size() == 2);
 
-        const int codepoint = parseHex(pair[0], lineNo);
-        const int mirror = parseHex(pair[1], lineNo);
+        const int codepoint = parseHex(pair[0], loc);
+        const int mirror = parseHex(pair[1], loc);
 
         if (QChar::requiresSurrogates(codepoint) || QChar::requiresSurrogates(mirror)) {
-            qFatal("QTextEngine assumes that no mirrored pairs exist beyond the BMP, "
-                   "but U+%05x and U+%05x (line %d) do. Fix the implementation.",
-                   codepoint, mirror, lineNo);
+            loc.die("QTextEngine assumes that no mirrored pairs exist beyond the BMP, "
+                    "but U+%05x and U+%05x do. Fix the implementation.",
+                    codepoint, mirror);
         }
 
         UnicodeData &d = UnicodeData::valueRef(codepoint);
@@ -1576,18 +1620,17 @@ static void readArabicShaping()
     }
 
     readUnicodeFile("ArabicShaping.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() == 4);
 
-        const int codepoint = parseHex(l[0], lineNo);
+        const int codepoint = parseHex(l[0], loc);
 
         UnicodeData &d = UnicodeData::valueRef(codepoint);
-        JoiningType joining = joining_map.value(l[2].trimmed(), Joining_Unassigned);
+        JoiningType joining = joining_map.value(l[2], Joining_Unassigned);
         switch (joining) {
         case Joining_Unassigned:
-            qFatal("%x: unassigned or unhandled joining type \"%.*s\" in line %d",
-                   codepoint, qPrintableView(l[2]), lineNo);
+            loc.die("%x: Unassigned or unhandled joining type \"%.*s\"",
+                    codepoint, qPrintableView(l[2]));
             break;
         case Joining_Transparent:
             switch (d.p.category) {
@@ -1597,9 +1640,9 @@ static void readArabicShaping()
             case QChar::Other_Format:
                 break;
             default:
-                qFatal("%x: joining type '%.*s' was met (category: %d) in line %d; "
-                       "the current implementation needs to be revised!",
-                       codepoint, qPrintableView(l[2]), d.p.category, lineNo);
+                loc.die("%x: Joining type '%.*s' was met (category: %d); the current "
+                        "implementation needs to be revised!",
+                        codepoint, qPrintableView(l[2]), d.p.category);
             }
             Q_FALLTHROUGH();
         default:
@@ -1612,18 +1655,15 @@ static void readArabicShaping()
 static void readDerivedAge()
 {
     readUnicodeFile("DerivedAge.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() == 2);
 
-        const auto [from, to] = parseHexRange(l[0], lineNo);
+        const auto [from, to] = parseHexRange(l[0], loc);
 
-        QChar::UnicodeVersion age = age_map.value(l[1].trimmed(), QChar::Unicode_Unassigned);
+        QChar::UnicodeVersion age = age_map.value(l[1], QChar::Unicode_Unassigned);
         //qDebug() << Qt::hex << from << ".." << to << ba << age;
-        if (age == QChar::Unicode_Unassigned) {
-            qFatal("unassigned or unhandled age value \"%.*s\" in line %d.",
-                   qPrintableView(l[1]), lineNo);
-        }
+        if (age == QChar::Unicode_Unassigned)
+            loc.die("Unassigned or unhandled age value \"%.*s\".", qPrintableView(l[1]));
 
         for (int codepoint = from; codepoint <= to; ++codepoint) {
             UnicodeData &d = UnicodeData::valueRef(codepoint);
@@ -1635,16 +1675,15 @@ static void readDerivedAge()
 static void readEastAsianWidth()
 {
     readUnicodeFile("EastAsianWidth.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> fields = line.split(';');
+                    [] (auto fields, Location loc) {
         Q_ASSERT(fields.size() == 2);
 
-        const auto [first, last] = parseHexRange(fields[0], lineNo);
+        const auto [first, last] = parseHexRange(fields[0], loc);
 
-        const QByteArray widthString = fields[1].trimmed();
+        const QByteArrayView widthString = fields[1];
         if (!eastAsianWidthMap.contains(widthString)) {
-            qFatal("Unhandled EastAsianWidth property value \"%.*s\" for %.*s in line %d",
-                   qPrintableView(widthString), qPrintableView(fields[0]), lineNo);
+            loc.die("Unhandled EastAsianWidth property value \"%.*s\" for %.*s",
+                    qPrintableView(widthString), qPrintableView(fields[0]));
         }
         auto width = eastAsianWidthMap.value(widthString);
 
@@ -1660,11 +1699,10 @@ static void readEastAsianWidth()
 static void readDerivedNormalizationProps()
 {
     readUnicodeFile("DerivedNormalizationProps.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() >= 2);
 
-        QByteArray propName = l[1].trimmed();
+        const QByteArrayView propName = l[1];
         if (propName != "Full_Composition_Exclusion" &&
             propName != "NFD_QC" && propName != "NFC_QC" &&
             propName != "NFKD_QC" && propName != "NFKC_QC") {
@@ -1672,7 +1710,7 @@ static void readDerivedNormalizationProps()
             return;
         }
 
-        const auto [from, to] = parseHexRange(l[0], lineNo);
+        const auto [from, to] = parseHexRange(l[0], loc);
 
         for (int codepoint = from; codepoint <= to; ++codepoint) {
             UnicodeData &d = UnicodeData::valueRef(codepoint);
@@ -1695,7 +1733,6 @@ static void readDerivedNormalizationProps()
                     form = QString::NormalizationForm_KC;
 
                 Q_ASSERT(l.size() == 3);
-                l[2] = l[2].trimmed();
 
                 enum { NFQC_YES = 0, NFQC_NO = 1, NFQC_MAYBE = 3 };
                 uchar ynm = (l[2] == "N" ? NFQC_NO : l[2] == "M" ? NFQC_MAYBE : NFQC_YES);
@@ -1751,24 +1788,21 @@ static QByteArray createNormalizationCorrections()
     int maxVersion = 0;
     int numCorrections = 0;
     readUnicodeFile("NormalizationCorrections.txt",
-                    [&] (const QByteArray &line, int lineNo) {
-        Q_ASSERT(!line.contains(".."));
+                    [&] (auto fields, Location loc) {
+        for (auto field : fields)
+            Q_ASSERT(!field.contains(".."));
 
-        QList<QByteArray> fields = line.split(';');
         Q_ASSERT(fields.size() == 4);
 
         NormalizationCorrection c = { 0, 0, 0 };
-        c.codepoint = parseHex(fields[0], lineNo);
-        c.mapped = parseHex(fields[1], lineNo);
-        fields[3] = std::move(fields[3]).trimmed();
-        if (fields[3] == "3.2.0") {
+        c.codepoint = parseHex(fields[0], loc);
+        c.mapped = parseHex(fields[1], loc);
+        if (fields[3] == "3.2.0")
             c.version = QChar::Unicode_3_2;
-        } else if (fields[3] == "4.0.0") {
+        else if (fields[3] == "4.0.0")
             c.version = QChar::Unicode_4_0;
-        } else {
-            qFatal("unknown unicode version \"%.*s\" in NormalizationCorrection.txt:%d",
-                   qPrintableView(fields[3]), lineNo);
-        }
+        else
+            loc.die("Unknown unicode version \"%.*s\"", qPrintableView(fields[3]));
 
         out += "    { 0x" + QByteArray::number(c.codepoint, 16) + ", 0x"
                + QByteArray::number(c.mapped, 16) + ", "
@@ -1790,19 +1824,18 @@ static QByteArray createNormalizationCorrections()
 static void readLineBreak()
 {
     readUnicodeFile("LineBreak.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() == 2);
 
-        const auto [from, to] = parseHexRange(l[0], lineNo);
+        const auto [from, to] = parseHexRange(l[0], loc);
 
-        LineBreakClass lb = line_break_map.value(l[1].trimmed(), LineBreak_Unassigned);
-        if (lb == LineBreak_Unassigned) {
-            qFatal("unassigned line break class \"%.*s\" in line %d",
-                   qPrintableView(l[1]), lineNo);
-        }
+        LineBreakClass lb = line_break_map.value(l[1], LineBreak_Unassigned);
+        if (lb == LineBreak_Unassigned)
+            loc.die("Unassigned line break class \"%.*s\"", qPrintableView(l[1]));
 
         for (int codepoint = from; codepoint <= to; ++codepoint) {
+            if (QChar::isSurrogate(codepoint) && lb != LineBreak_SG)
+                loc.die("Surrogate with line-break class != SG, fix line-break detection in QUnicodeTools");
             UnicodeData &d = UnicodeData::valueRef(codepoint);
             d.p.lineBreakClass = lb;
         }
@@ -1812,16 +1845,15 @@ static void readLineBreak()
 static void readSpecialCasing()
 {
     readUnicodeFile("SpecialCasing.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() >= 4);
 
-        QByteArray condition = l.size() < 5 ? QByteArray() : l[4].trimmed();
+        QByteArrayView condition = l.size() < 5 ? QByteArrayView() : l[4];
         if (!condition.isEmpty())
             // #####
             return;
 
-        const int codepoint = parseHex(l[0], lineNo);
+        const int codepoint = parseHex(l[0], loc);
 
         // if the condition below doesn't hold anymore we need to modify our
         // lower/upper/title casing code and case folding code
@@ -1830,9 +1862,9 @@ static void readSpecialCasing()
 //         qDebug() << "codepoint" << Qt::hex << codepoint;
 //         qDebug() << line;
 
-        const auto lowerMap = parseHexList(l[1], lineNo);
-        const auto titleMap = parseHexList(l[2], lineNo);
-        const auto upperMap = parseHexList(l[3], lineNo);
+        const auto lowerMap = parseHexList(l[1], loc);
+        const auto titleMap = parseHexList(l[2], loc);
+        const auto upperMap = parseHexList(l[3], loc);
 
 
         UnicodeData &ud = UnicodeData::valueRef(codepoint);
@@ -1860,19 +1892,17 @@ static int maxCaseFoldDiff = 0;
 static void readCaseFolding()
 {
     readUnicodeFile("CaseFolding.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() >= 3);
 
-        const int codepoint = parseHex(l[0], lineNo);
+        const int codepoint = parseHex(l[0], loc);
 
-        l[1] = l[1].trimmed();
         if (l[1] == "F" || l[1] == "T")
             return;
 
 //         qDebug() << "codepoint" << Qt::hex << codepoint;
 //         qDebug() << line;
-        const auto foldMap = parseHexList(l[2], lineNo);
+        const auto foldMap = parseHexList(l[2], loc);
 
         UnicodeData &ud = UnicodeData::valueRef(codepoint);
         if (foldMap.size() == 1) {
@@ -1903,17 +1933,14 @@ static void readCaseFolding()
 static void readGraphemeBreak()
 {
     readUnicodeFile("GraphemeBreakProperty.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() == 2);
 
-        const auto [from, to] = parseHexRange(l[0], lineNo);
+        const auto [from, to] = parseHexRange(l[0], loc);
 
-        GraphemeBreakClass brk = grapheme_break_map.value(l[1].trimmed(), GraphemeBreak_Unassigned);
-        if (brk == GraphemeBreak_Unassigned) {
-            qFatal("unassigned grapheme break class \"%.*s\" in line %d",
-                   qPrintableView(l[1]), lineNo);
-        }
+        GraphemeBreakClass brk = grapheme_break_map.value(l[1], GraphemeBreak_Unassigned);
+        if (brk == GraphemeBreak_Unassigned)
+            loc.die("Unassigned grapheme break class \"%.*s\"", qPrintableView(l[1]));
 
         for (int codepoint = from; codepoint <= to; ++codepoint) {
             UnicodeData &ud = UnicodeData::valueRef(codepoint);
@@ -1925,15 +1952,14 @@ static void readGraphemeBreak()
 static void readEmojiData()
 {
     readUnicodeFile("emoji-data.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() == 2);
 
-        EmojiFlags emojiFlags = emojiFlagsMap.value(l[1].trimmed(), EmojiFlags::NoEmoji);
+        EmojiFlags emojiFlags = emojiFlagsMap.value(l[1], EmojiFlags::NoEmoji);
         if (emojiFlags == EmojiFlags::NoEmoji)
             return;
 
-        const auto [from, to] = parseHexRange(l[0], lineNo);
+        const auto [from, to] = parseHexRange(l[0], loc);
 
         for (int codepoint = from; codepoint <= to; ++codepoint) {
             UnicodeData &ud = UnicodeData::valueRef(codepoint);
@@ -1952,17 +1978,14 @@ static void readEmojiData()
 static void readWordBreak()
 {
     readUnicodeFile("WordBreakProperty.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() == 2);
 
-        const auto [from, to] = parseHexRange(l[0], lineNo);
+        const auto [from, to] = parseHexRange(l[0], loc);
 
-        WordBreakClass brk = word_break_map.value(l[1].trimmed(), WordBreak_Unassigned);
-        if (brk == WordBreak_Unassigned) {
-            qFatal("unassigned word break class \"%.*s\" in line %d",
-                   qPrintableView(l[1]), lineNo);
-        }
+        WordBreakClass brk = word_break_map.value(l[1], WordBreak_Unassigned);
+        if (brk == WordBreak_Unassigned)
+            loc.die("Unassigned word break class \"%.*s\"", qPrintableView(l[1]));
 
         for (int codepoint = from; codepoint <= to; ++codepoint) {
             // ### [
@@ -1983,17 +2006,14 @@ static void readWordBreak()
 static void readSentenceBreak()
 {
     readUnicodeFile("SentenceBreakProperty.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> l = line.split(';');
+                    [] (auto l, Location loc) {
         Q_ASSERT(l.size() == 2);
 
-        const auto [from, to] = parseHexRange(l[0], lineNo);
+        const auto [from, to] = parseHexRange(l[0], loc);
 
-        SentenceBreakClass brk = sentence_break_map.value(l[1].trimmed(), SentenceBreak_Unassigned);
-        if (brk == SentenceBreak_Unassigned) {
-            qFatal("unassigned sentence break class \"%.*s\" in line %d.",
-                   qPrintableView(l[1]), lineNo);
-        }
+        SentenceBreakClass brk = sentence_break_map.value(l[1], SentenceBreak_Unassigned);
+        if (brk == SentenceBreak_Unassigned)
+            loc.die("Unassigned sentence break class \"%.*s\".", qPrintableView(l[1]));
 
         for (int codepoint = from; codepoint <= to; ++codepoint) {
             UnicodeData &ud = UnicodeData::valueRef(codepoint);
@@ -2144,7 +2164,7 @@ static QList<BlockInfo> blockInfoList;
 
 static void readBlocks()
 {
-    qDebug("Reading Blocks.txt");
+    qDebug("Reading data/Blocks.txt");
 
     QFile f("data/Blocks.txt");
     if (!f.open(QFile::ReadOnly))
@@ -2195,18 +2215,16 @@ static void readBlocks()
 static void readScripts()
 {
     readUnicodeFile("Scripts.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        int semicolon = line.indexOf(';');
-        Q_ASSERT(semicolon >= 0);
-        QByteArray codePoints = line.left(semicolon);
-        QByteArray scriptName = line.mid(semicolon + 1).trimmed();
+                    [] (auto fields, Location loc) {
+        Q_ASSERT(fields.size() == 2);
 
-        const auto [first, last] = parseHexRange(codePoints, lineNo);
+        const QByteArrayView codePoints = fields[0];
+        const QByteArrayView scriptName = fields[1];
 
-        if (!scriptMap.contains(scriptName)) {
-            qFatal("Unhandled script property value \"%.*s\" in line %d",
-                   qPrintableView(scriptName), lineNo);
-        }
+        const auto [first, last] = parseHexRange(codePoints, loc);
+
+        if (!scriptMap.contains(scriptName))
+            loc.die("Unhandled script property value \"%.*s\"", qPrintableView(scriptName));
         QChar::Script script = scriptMap.value(scriptName, QChar::Script_Unknown);
 
         for (int codepoint = first; codepoint <= last; ++codepoint) {
@@ -2221,16 +2239,15 @@ static QMap<char32_t, QString> idnaMappingTable;
 static void readIdnaMappingTable()
 {
     readUnicodeFile("IdnaMappingTable.txt",
-                    [] (const QByteArray &line, int lineNo) {
-        QList<QByteArray> fields = line.split(';');
+                    [] (auto fields, Location loc) {
         Q_ASSERT(fields.size() >= 2);
 
-        const auto [first, last] = parseHexRange(fields[0], lineNo);
+        const auto [first, last] = parseHexRange(fields[0], loc);
 
-        const QByteArray statusString = fields[1].trimmed();
+        const QByteArrayView statusString = fields[1];
         if (!idnaStatusMap.contains(statusString)) {
-            qFatal("Unhandled IDNA status property value \"%.*s\" for %.*s in line %d",
-                   qPrintableView(statusString), qPrintableView(fields[0]), lineNo);
+            loc.die("Unhandled IDNA status property value \"%.*s\" for %.*s",
+                    qPrintableView(statusString), qPrintableView(fields[0]));
         }
         IdnaRawStatus rawStatus = idnaStatusMap.value(statusString);
 
@@ -2248,13 +2265,13 @@ static void readIdnaMappingTable()
         case IdnaRawStatus::DisallowedStd3Mapped:
             Q_ASSERT(fields.size() >= 3);
 
-            for (char32_t val : parseHexList(fields[2], lineNo))
+            for (char32_t val : parseHexList(fields[2], loc))
                 mapping.append(QChar::fromUcs4(val));
 
             // Some deviations have empty mappings, others should not...
             if (mapping.isEmpty()) {
                 Q_ASSERT(rawStatus == IdnaRawStatus::Deviation);
-                qDebug() << "    Empty IDNA mapping for" << fields[0];
+                qDebug("    Empty IDNA mapping for: %.*s", qPrintableView(fields[0]));
             }
 
             break;
@@ -2317,7 +2334,7 @@ static void resolveIdnaStatus()
             }
 
             if (allow) {
-                qDebug() << "    Allowing" << Qt::hex << codepoint;
+                qDebug("    Allowing %x", codepoint);
                 ud.p.idnaStatus = IdnaStatus::Mapped;
             } else {
                 ud.p.idnaStatus = IdnaStatus::Disallowed;
@@ -2478,8 +2495,8 @@ static QByteArray createIdnaMapping()
     }
 
     QString idnaMappingData = buildSuperstring(std::move(values));
-    qDebug() << "    uncompressed size:" << uncompressedSize << "characters";
-    qDebug() << "    consolidated size:" << idnaMappingData.size() << "characters";
+    qDebug("    uncompressed size: %lld characters", qlonglong(uncompressedSize));
+    qDebug("    consolidated size: %lld characters", qlonglong(idnaMappingData.size()));
 
     qsizetype memoryUsage = 0;
 
@@ -2534,7 +2551,7 @@ static QByteArray createIdnaMapping()
         memoryUsage += 8;
     }
 
-    qDebug() << "    memory usage:" << memoryUsage << "bytes";
+    qDebug("    memory usage: %lld bytes", qlonglong(memoryUsage));
 
     out +=
         "};\n\n"
@@ -2581,6 +2598,77 @@ static void computeUniqueProperties()
         d.propertyIndex = index;
     }
     qDebug("    %" PRIdQSIZETYPE " unique unicode properties found", uniqueProperties.size());
+}
+
+struct CaseConversion {
+    ushort special : 1;
+    signed short diff : 15;
+
+    friend bool operator==(CaseConversion lhs, CaseConversion rhs) noexcept
+    {
+        static_assert(std::has_unique_object_representations_v<CaseConversion>);
+        return std::memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
+    }
+};
+using CaseConversions = std::array<CaseConversion, 4>;
+
+static std::vector<CaseConversions>
+computeUniqueCaseConversions(QList<PropertyFlags> &l)
+{
+    std::vector<CaseConversions> result;
+    result.emplace_back(); // all zeros should be at the beginning
+
+    qDebug("computeUniqueCaseConversions:");
+
+    size_t nonNullDuplicates = 0;
+
+    for (auto &e : l) {
+        CaseConversions candidate = {
+            CaseConversion{ e.lowerCaseSpecial, short(e.lowerCaseDiff) },
+            CaseConversion{ e.upperCaseSpecial, short(e.upperCaseDiff) },
+            CaseConversion{ e.titleCaseSpecial, short(e.titleCaseDiff) },
+            CaseConversion{ e.caseFoldSpecial,  short(e.caseFoldDiff)  },
+        };
+        const auto it = std::find(result.begin(), result.end(), candidate);
+        if (it == result.end()) {
+            // new one, add:
+            e.caseIndex = int(result.size());
+            result.push_back(std::move(candidate));
+        } else {
+            e.caseIndex = it - result.begin();
+            if (e.caseIndex != 0)
+                ++nonNullDuplicates;
+        }
+    }
+
+    qDebug("    %llu unique case conversions found (with %llu non-null duplicates)",
+           qulonglong(result.size()),
+           qulonglong(nonNullDuplicates));
+
+    return result;
+}
+
+static QByteArray createCaseConversions(std::vector<CaseConversions> conv)
+{
+    QByteArray out;
+
+    qDebug("createCaseConversions:");
+
+    out += "static constexpr std::array<CaseConversion, NumCases> caseConversions[] = {\n";
+    for (const auto &e : conv) {
+        out += "    { { ";
+        for (const auto &f : e) {
+            out += "{ ";
+            out += QByteArray::number(f.special);
+            out += ", ";
+            out += QByteArray::number(f.diff);
+            out += " }, ";
+        }
+        out.chop(2); // removes ", "
+        out += " } },\n";
+    }
+    out += "};\n\n";
+    return out;
 }
 
 struct UniqueBlock {
@@ -2678,7 +2766,12 @@ static QByteArray createPropertyInfo()
     Q_ASSERT(blockMap.size() == BMP_END/BMP_BLOCKSIZE +(SMP_END-BMP_END)/SMP_BLOCKSIZE); // 0x1870
     Q_ASSERT(blockMap.last() + blockMap.size() < (1<<(sizeof(unsigned short)*8)));
 
-    QByteArray out = "static constexpr unsigned short uc_property_trie[] = {\n";
+    QByteArray out;
+    out += "static constexpr char32_t MaxSeparatorCodepoint = 0x";
+    out += QByteArray::number(maxSeparatorCodepoint, 16);
+    out += ";\n";
+
+    out += "\nstatic constexpr unsigned short uc_property_trie[] = {\n";
     // First write the map from blockId to indices of unique blocks:
     out += "    // [0x0..0x" + QByteArray::number(BMP_END, 16) + ")";
     for (int i = 0; i < BMP_END/BMP_BLOCKSIZE; ++i) {
@@ -2766,27 +2859,9 @@ static QByteArray createPropertyInfo()
 //     "        ushort nfQuickCheck        : 8;\n"
         out += QByteArray::number( p.nfQuickCheck );
         out += ", ";
-//     "        struct {\n"
-//     "            ushort special    : 1;\n"
-//     "            signed short diff : 15;\n"
-//     "        } cases[NumCases];\n"
-        out += "{ {";
-        out += QByteArray::number( p.lowerCaseSpecial );
+//     "        ushort caseIndex; /* 9 used */\n"
+        out += QByteArray::number(p.caseIndex);
         out += ", ";
-        out += QByteArray::number( p.lowerCaseDiff );
-        out += "}, {";
-        out += QByteArray::number( p.upperCaseSpecial );
-        out += ", ";
-        out += QByteArray::number( p.upperCaseDiff );
-        out += "}, {";
-        out += QByteArray::number( p.titleCaseSpecial );
-        out += ", ";
-        out += QByteArray::number( p.titleCaseDiff );
-        out += "}, {";
-        out += QByteArray::number( p.caseFoldSpecial );
-        out += ", ";
-        out += QByteArray::number( p.caseFoldDiff );
-        out += "} }, ";
 //     "        ushort graphemeBreakClass  : 5; /* 5 used */\n"
 //     "        ushort wordBreakClass      : 5; /* 5 used */\n"
 //     "        ushort lineBreakClass      : 6; /* 6 used */\n"
@@ -2804,13 +2879,17 @@ static QByteArray createPropertyInfo()
         out += ", ";
 //     "        ushort script              : 8;\n"
         out += QByteArray::number( p.script );
+        out += ", ";
+//     "        ushort reserved;\n"
+        out += '0';
         out += " },";
     }
     if (out.endsWith(','))
         out.chop(1);
     out += "\n};\n\n";
 
-    out += "Q_DECL_CONST_FUNCTION static inline const Properties *qGetProp(char32_t ucs4) noexcept\n"
+    out += "Q_DECL_CONST_FUNCTION static Q_ALWAYS_INLINE\n"
+           "const Properties *qGetProp(char32_t ucs4) noexcept\n"
            "{\n"
            "    Q_ASSERT(ucs4 <= QChar::LastValidCodePoint);\n"
            "    if (ucs4 < 0x" + QByteArray::number(BMP_END, 16) + ")\n"
@@ -2826,21 +2905,14 @@ static QByteArray createPropertyInfo()
            + QByteArray::number(SMP_BLOCKSIZE - 1, 16) + ")];\n"
            "}\n"
            "\n"
-           "Q_DECL_CONST_FUNCTION static inline const Properties *qGetProp(char16_t ucs2) noexcept\n"
-           "{\n"
-           "    return uc_properties + uc_property_trie[uc_property_trie[ucs2 >> "
-           + QByteArray::number(BMP_SHIFT) + "] + (ucs2 & 0x"
-           + QByteArray::number(BMP_BLOCKSIZE - 1, 16) + ")];\n"
-           "}\n"
-           "\n"
            "const Properties * QT_FASTCALL properties(char32_t ucs4) noexcept\n"
            "{\n"
            "    return qGetProp(ucs4);\n"
            "}\n"
            "\n"
-           "const Properties * QT_FASTCALL properties(char16_t ucs2) noexcept\n"
+           "QSpan<const CaseConversion, NumCases> QT_FASTCALL caseConversion(char32_t ucs4) noexcept\n"
            "{\n"
-           "    return qGetProp(ucs2);\n"
+           "    return caseConversions[qGetProp(ucs4)->caseIndex];\n"
            "}\n\n";
 
     out += "Q_CORE_EXPORT GraphemeBreakClass QT_FASTCALL graphemeBreakClass(char32_t ucs4) noexcept\n"
@@ -3324,7 +3396,6 @@ QByteArray createCasingInfo()
     return out;
 }
 
-
 int main(int, char **)
 {
     initAgeMap();
@@ -3361,6 +3432,8 @@ int main(int, char **)
     resolveIdnaStatus();
 
     computeUniqueProperties();
+
+    const QByteArray caseConv = createCaseConversions(computeUniqueCaseConversions(uniqueProperties));
     QByteArray properties = createPropertyInfo();
     QByteArray specialCases = createSpecialCaseMap();
     QByteArray compositions = createCompositionInfo();
@@ -3368,10 +3441,13 @@ int main(int, char **)
     QByteArray normalizationCorrections = createNormalizationCorrections();
     QByteArray idnaMapping = createIdnaMapping();
 
+    // REUSE-IgnoreStart
     QByteArray header =
         "// Copyright (C) 2020 The Qt Company Ltd.\n"
         "// SPDX-License-Identifier: Unicode-3.0\n"
+        "// Qt-Security score:significant reason:default\n"
         "\n";
+    // REUSE-IgnoreEnd
 
     QByteArray note =
         "/* This file is autogenerated from the Unicode " DATA_VERSION_S " database. Do not edit */\n\n";
@@ -3390,12 +3466,13 @@ int main(int, char **)
 
     QFile f("../../src/corelib/text/qunicodetables.cpp");
     if (!f.open(QFile::WriteOnly|QFile::Truncate))
-        qFatal() << "Cannot open output file" << f.fileName() << "error:" << f.errorString();
+        couldNotOpenFile(f);
     f.write(header);
     f.write(note);
     f.write("#include \"qunicodetables_p.h\"\n\n");
     f.write("QT_BEGIN_NAMESPACE\n\n");
-    f.write("namespace QUnicodeTables {\n\n");
+    f.write("namespace QUnicodeTables {\n");
+    f.write(caseConv.data());
     f.write(properties);
     f.write(specialCases);
     f.write(compositions);
@@ -3410,7 +3487,7 @@ int main(int, char **)
 
     f.setFileName("../../src/corelib/text/qunicodetables_p.h");
     if (!f.open(QFile::WriteOnly | QFile::Truncate))
-        qFatal() << "Cannot open output file" << f.fileName() << "error:" << f.errorString();
+        couldNotOpenFile(f);
     f.write(header);
     f.write(note);
     f.write(warning);
@@ -3418,6 +3495,9 @@ int main(int, char **)
             "#define QUNICODETABLES_P_H\n\n"
             "#include <QtCore/private/qglobal_p.h>\n\n"
             "#include <QtCore/qchar.h>\n\n"
+            "#include <QtCore/qspan.h>\n\n"
+            "#include <array>\n"
+            "\n"
             "QT_BEGIN_NAMESPACE\n\n");
     f.write("#define UNICODE_DATA_VERSION " DATA_VERSION_STR "\n\n");
     f.write("namespace QUnicodeTables {\n\n");
@@ -3436,11 +3516,11 @@ int main(int, char **)
             "#endif // QUNICODETABLES_P_H\n");
     f.close();
 
-    qDebug() << "maxMirroredDiff  = " << Qt::hex << maxMirroredDiff;
-    qDebug() << "maxLowerCaseDiff = " << Qt::hex << maxLowerCaseDiff;
-    qDebug() << "maxUpperCaseDiff = " << Qt::hex << maxUpperCaseDiff;
-    qDebug() << "maxTitleCaseDiff = " << Qt::hex << maxTitleCaseDiff;
-    qDebug() << "maxCaseFoldDiff  = " << Qt::hex << maxCaseFoldDiff;
+    qDebug("maxMirroredDiff  = %x", maxMirroredDiff);
+    qDebug("maxLowerCaseDiff = %x", maxLowerCaseDiff);
+    qDebug("maxUpperCaseDiff = %x", maxUpperCaseDiff);
+    qDebug("maxTitleCaseDiff = %x", maxTitleCaseDiff);
+    qDebug("maxCaseFoldDiff  = %x", maxCaseFoldDiff);
 #if 0
 //     dump(0, 0x7f);
 //     dump(0x620, 0x640);

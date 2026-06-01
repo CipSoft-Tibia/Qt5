@@ -34,6 +34,7 @@
 #include "src/tint/lang/core/type/f16.h"
 #include "src/tint/lang/core/type/f32.h"
 #include "src/tint/lang/core/type/i32.h"
+#include "src/tint/lang/core/type/i8.h"
 #include "src/tint/lang/core/type/matrix.h"
 #include "src/tint/lang/core/type/pointer.h"
 #include "src/tint/lang/core/type/reference.h"
@@ -41,6 +42,7 @@
 #include "src/tint/lang/core/type/struct.h"
 #include "src/tint/lang/core/type/texture.h"
 #include "src/tint/lang/core/type/u32.h"
+#include "src/tint/lang/core/type/u8.h"
 #include "src/tint/lang/core/type/vector.h"
 #include "src/tint/utils/rtti/switch.h"
 
@@ -88,6 +90,10 @@ uint32_t Type::Align() const {
     return 0;
 }
 
+bool Type::IsScalar() const {
+    return IsFloatScalar() || IsIntegerScalar() || IsAnyOf<AbstractInt, Bool>();
+}
+
 bool Type::IsFloatScalar() const {
     return IsAnyOf<F16, F32, AbstractFloat>();
 }
@@ -105,7 +111,7 @@ bool Type::IsFloatScalarOrVector() const {
 }
 
 bool Type::IsIntegerScalar() const {
-    return IsAnyOf<U32, I32>();
+    return IsAnyOf<U32, I32, U8, I8>();
 }
 
 bool Type::IsIntegerVector() const {

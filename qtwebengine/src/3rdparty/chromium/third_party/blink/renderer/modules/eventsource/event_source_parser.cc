@@ -99,14 +99,14 @@ void EventSourceParser::ParseLine() {
     return;
   }
   if (field_name == "id") {
-    if (base::ranges::find(field_value, '\0') == field_value.end()) {
+    if (std::ranges::find(field_value, '\0') == field_value.end()) {
       id_ = AtomicString(FromUTF8(field_value));
     }
     return;
   }
   if (field_name == "retry") {
     const bool has_only_digits =
-        base::ranges::all_of(field_value, IsASCIIDigit<char>);
+        std::ranges::all_of(field_value, IsASCIIDigit<char>);
     if (field_value.empty()) {
       client_->OnReconnectionTimeSet(EventSource::kDefaultReconnectDelay);
     } else if (has_only_digits) {
@@ -120,9 +120,8 @@ void EventSourceParser::ParseLine() {
   // Unrecognized field name. Ignore!
 }
 
-String EventSourceParser::FromUTF8(base::span<const char> bytes) {
-  return codec_->Decode(bytes.data(), bytes.size(),
-                        WTF::FlushBehavior::kDataEOF);
+String EventSourceParser::FromUTF8(base::span<const char> chars) {
+  return codec_->Decode(base::as_bytes(chars), WTF::FlushBehavior::kDataEOF);
 }
 
 void EventSourceParser::Trace(Visitor* visitor) const {

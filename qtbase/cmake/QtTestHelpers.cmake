@@ -100,6 +100,10 @@ function(qt_internal_add_manual_test target)
     qt_internal_add_test(${ARGV} MANUAL)
 endfunction()
 
+macro(qt_internal_skip_docker_compose)
+    set(QT_SKIP_DOCKER_COMPOSE ON CACHE BOOL "Skip setting docker on Linux." FORCE)
+endmacro()
+
 # This function will configure the fixture for the network tests that require docker network services
 # qmake counterpart: qtbase/mkspecs/features/unsupported/testserver.prf
 function(qt_internal_setup_docker_test_fixture name)
@@ -119,6 +123,7 @@ function(qt_internal_setup_docker_test_fixture name)
     find_program(QT_DOCKER_COMPOSE docker-compose)
     if (NOT QT_DOCKER_COMPOSE)
         message(WARNING "docker-compose was not found. Docker network tests will not be run.")
+        qt_internal_skip_docker_compose()
         return()
     endif()
     if (NOT DEFINED QT_DOCKER_COMPOSE_VERSION)
@@ -130,6 +135,7 @@ function(qt_internal_setup_docker_test_fixture name)
     find_program(QT_DOCKER docker)
     if (NOT QT_DOCKER)
         message(WARNING "docker was not found. Docker network tests will not be run.")
+        qt_internal_skip_docker_compose()
         return()
     endif()
     if (NOT DEFINED QT_DOCKER_TEST_SERVER)
@@ -139,6 +145,7 @@ function(qt_internal_setup_docker_test_fixture name)
                 "Docker image qt-test-server-* not found.\n"
                 "Run the provisioning script (coin/provisioning/.../testserver/docker_testserver.sh) in advance\n"
                 "Docker network tests will not be run.")
+            qt_internal_skip_docker_compose()
             return()
         endif()
         set(QT_DOCKER_TEST_SERVER "ON" CACHE BOOL "docker qt-test-server-* present")
@@ -569,13 +576,17 @@ function(qt_internal_add_test name)
 
         # Manual tests can be bundle apps
         if(NOT arg_MANUAL)
-            # Tests should not be bundles on macOS even if arg_GUI is true, because some tests make
-            # assumptions about the location of helper processes, and those paths would be different
-            # if a test is built as a bundle.
-            set_property(TARGET "${name}" PROPERTY MACOSX_BUNDLE FALSE)
-            # The same goes for WIN32_EXECUTABLE, but because it will detach from the console window
-            # and not print anything.
-            set_property(TARGET "${name}" PROPERTY WIN32_EXECUTABLE FALSE)
+            if(NOT DEFINED CMAKE_MACOSX_BUNDLE)
+                # Tests should not be bundles on macOS even if arg_GUI is true, because some tests make
+                # assumptions about the location of helper processes, and those paths would be different
+                # if a test is built as a bundle.
+                set_property(TARGET "${name}" PROPERTY MACOSX_BUNDLE FALSE)
+            endif()
+            if(NOT DEFINED CMAKE_WIN32_EXECUTABLE)
+                # The same goes for WIN32_EXECUTABLE, but because it will detach from the console window
+                # and not print anything.
+                set_property(TARGET "${name}" PROPERTY WIN32_EXECUTABLE FALSE)
+            endif()
         endif()
 
         # Tests on iOS must be app bundles.
@@ -688,6 +699,10 @@ function(qt_internal_add_test name)
             list(APPEND extra_test_args "--verbose")
         endif()
 
+        if(build_environment STREQUAL "ci")
+            list(APPEND extra_test_args "--show-logcat")
+        endif()
+
         if(arg_ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS)
             foreach(command IN LISTS arg_ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS)
                 list(APPEND extra_test_args "--pre-test-adb-command" "${command}")
@@ -798,13 +813,22 @@ function(qt_internal_add_test name)
 
         qt_internal_collect_command_environment(test_env_path test_env_plugin_path)
 
+        set(add_test_args "")
+        if(test_working_dir)
+            list(APPEND add_test_args WORKING_DIRECTORY "${test_working_dir}")
+        endif()
+
         if(arg_NO_WRAPPER OR QT_NO_TEST_WRAPPERS)
             if(QT_BUILD_TESTS_BATCHED)
                 message(FATAL_ERROR "Wrapperless tests are unspupported with test batching")
             endif()
 
-            add_test(NAME "${testname}" COMMAND ${test_executable} ${extra_test_args}
-                    WORKING_DIRECTORY "${test_working_dir}")
+
+
+            add_test(NAME "${testname}"
+                COMMAND ${test_executable} ${extra_test_args}
+                ${add_test_args}
+            )
             set_property(TEST "${testname}" APPEND PROPERTY
                          ENVIRONMENT "PATH=${test_env_path}"
                                      "QT_TEST_RUNNING_IN_CTEST=1"
@@ -815,7 +839,7 @@ function(qt_internal_add_test name)
             qt_internal_create_test_script(NAME "${testname}"
                                    COMMAND "${test_executable}"
                                    ARGS "${extra_test_args}"
-                                   WORKING_DIRECTORY "${test_working_dir}"
+                                   ${add_test_args}
                                    OUTPUT_FILE "${test_wrapper_file}"
                                    ENVIRONMENT "QT_TEST_RUNNING_IN_CTEST" 1
                                                "PATH" "${test_env_path}"
@@ -1066,8 +1090,14 @@ for this function. Will be ignored")
     if(is_in_batch)
         _qt_internal_test_batch_target_name(executable_name)
     endif()
+
+    set(add_test_working_dir "")
+    if(arg_WORKING_DIRECTORY)
+        list(APPEND add_test_working_dir WORKING_DIRECTORY "${arg_WORKING_DIRECTORY}")
+    endif()
+
     add_test(NAME "${arg_NAME}" COMMAND "${CMAKE_COMMAND}" "-P" "${arg_OUTPUT_FILE}"
-                WORKING_DIRECTORY "${arg_WORKING_DIRECTORY}")
+                ${add_test_working_dir})
 
     # If crosscompiling is enabled, we should avoid run cmake in emulator environment.
     # Prepend emulator to test command in generated cmake script instead. Keep in mind that
@@ -1088,7 +1118,7 @@ for this function. Will be ignored")
                                            "\${env_test_args}"
                                            ${command_args}
                                       OUTPUT_FILE "${arg_OUTPUT_FILE}"
-                                      WORKING_DIRECTORY "${arg_WORKING_DIRECTORY}"
+                                      ${add_test_working_dir}
                                       ENVIRONMENT ${arg_ENVIRONMENT}
                                       PRE_RUN "separate_arguments(env_test_args NATIVE_COMMAND \
 \"\$ENV{TESTARGS}\")"
@@ -1195,7 +1225,7 @@ function(qt_internal_add_test_finalizers target)
     # specific platforms.
     # TODO: Remove once we confirm that the new way of running test finalizers for all platforms
     # doesn't cause any issues.
-    if(QT_INTERNAL_SKIP_TEST_FINALIZERS_V2)
+    if(NOT QT_INTERNAL_SKIP_TEST_FINALIZERS_V2)
         return()
     endif()
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QT_WINRTBASE_P_H
 #define QT_WINRTBASE_P_H
@@ -18,6 +19,7 @@
 #include <QtCore/qglobal.h>
 
 #if QT_CONFIG(cpp_winrt)
+#  include <guiddef.h> // required by clang-cl: https://github.com/microsoft/cppwinrt/issues/1179
 #  include <winrt/base.h>
 #  include <QtCore/private/qfactorycacheregistration_p.h>
 // Workaround for Windows SDK bug.

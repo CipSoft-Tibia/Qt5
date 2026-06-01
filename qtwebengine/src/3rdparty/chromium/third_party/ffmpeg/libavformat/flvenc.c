@@ -36,6 +36,7 @@
 #include "avformat.h"
 #include "flv.h"
 #include "internal.h"
+#include "nal.h"
 #include "mux.h"
 #include "libavutil/opt.h"
 #include "libavcodec/put_bits.h"
@@ -694,7 +695,7 @@ static void flv_write_codec_header(AVFormatContext* s, AVCodecParameters* par, i
             }
 
             if (par->codec_id == AV_CODEC_ID_HEVC)
-                ff_isom_write_hvcc(pb, par->extradata, par->extradata_size, 0);
+                ff_isom_write_hvcc(pb, par->extradata, par->extradata_size, 0, s);
             else if (par->codec_id == AV_CODEC_ID_AV1)
                 ff_isom_write_av1c(pb, par->extradata, par->extradata_size, 1);
             else if (par->codec_id == AV_CODEC_ID_VP9)
@@ -1076,7 +1077,7 @@ static int flv_write_packet(AVFormatContext *s, AVPacket *pkt)
     if (par->codec_id == AV_CODEC_ID_H264 || par->codec_id == AV_CODEC_ID_MPEG4) {
         /* check if extradata looks like mp4 formatted */
         if (par->extradata_size > 0 && *(uint8_t*)par->extradata != 1)
-            if ((ret = ff_avc_parse_nal_units_buf(pkt->data, &data, &size)) < 0)
+            if ((ret = ff_nal_parse_units_buf(pkt->data, &data, &size)) < 0)
                 return ret;
     } else if (par->codec_id == AV_CODEC_ID_HEVC) {
         if (par->extradata_size > 0 && *(uint8_t*)par->extradata != 1)

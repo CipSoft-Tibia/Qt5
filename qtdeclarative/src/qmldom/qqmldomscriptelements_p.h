@@ -123,7 +123,7 @@ public:
     bool iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const override
     {
         bool cont =
-                asList(self.pathFromOwner().key(QString())).iterateDirectSubpaths(self, visitor);
+                asList(self.pathFromOwner().withKey(QString())).iterateDirectSubpaths(self, visitor);
         return cont;
     }
     void updatePathFromOwner(const Path &p) override
@@ -131,7 +131,7 @@ public:
         BaseT::updatePathFromOwner(p);
         for (int i = 0; i < m_list.size(); ++i) {
             Q_ASSERT(m_list[i].base());
-            m_list[i].base()->updatePathFromOwner(p.index(i));
+            m_list[i].base()->updatePathFromOwner(p.withIndex(i));
         }
     }
     void createFileLocations(const FileLocations::Tree &base) override

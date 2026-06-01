@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickpropertychanges_p.h"
 
@@ -207,7 +208,7 @@ public:
         int column;
     };
 
-    QList<QPair<QString, QVariant> > properties;
+    QList<std::pair<QString, QVariant> > properties;
     QList<ExpressionChange> expressions;
     QList<QQuickReplaceSignalHandler*> signalReplacements;
 
@@ -332,7 +333,7 @@ void QQuickPropertyChangesPrivate::decodeBinding(const QString &propertyPrefix, 
         break;
     }
 
-    properties << qMakePair(propertyName, var);
+    properties << std::make_pair(propertyName, var);
 }
 
 void QQuickPropertyChangesParser::verifyBindings(
@@ -550,7 +551,7 @@ void QQuickPropertyChanges::setIsExplicit(bool e)
 bool QQuickPropertyChanges::containsValue(const QString &name) const
 {
     Q_D(const QQuickPropertyChanges);
-    typedef QPair<QString, QVariant> PropertyEntry;
+    typedef std::pair<QString, QVariant> PropertyEntry;
 
     for (const PropertyEntry &entry : d->properties) {
         if (entry.first == name) {
@@ -583,7 +584,7 @@ bool QQuickPropertyChanges::containsProperty(const QString &name) const
 void QQuickPropertyChanges::changeValue(const QString &name, const QVariant &value)
 {
     Q_D(QQuickPropertyChanges);
-    typedef QPair<QString, QVariant> PropertyEntry;
+    typedef std::pair<QString, QVariant> PropertyEntry;
 
     for (auto it = d->expressions.begin(), end = d->expressions.end(); it != end; ++it) {
         if (it->name == name) {
@@ -706,7 +707,7 @@ void QQuickPropertyChanges::changeExpression(const QString &name, const QString 
 QVariant QQuickPropertyChanges::property(const QString &name) const
 {
     Q_D(const QQuickPropertyChanges);
-    typedef QPair<QString, QVariant> PropertyEntry;
+    typedef std::pair<QString, QVariant> PropertyEntry;
     typedef QQuickPropertyChangesPrivate::ExpressionChange ExpressionEntry;
 
     for (const PropertyEntry &entry : d->properties) {
@@ -748,7 +749,7 @@ void QQuickPropertyChanges::removeProperty(const QString &name)
 QVariant QQuickPropertyChanges::value(const QString &name) const
 {
     Q_D(const QQuickPropertyChanges);
-    typedef QPair<QString, QVariant> PropertyEntry;
+    typedef std::pair<QString, QVariant> PropertyEntry;
 
     for (const PropertyEntry &entry : d->properties) {
         if (entry.first == name) {

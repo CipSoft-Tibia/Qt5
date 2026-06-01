@@ -83,22 +83,23 @@ HistoryDatabase::HistoryDatabase(
     DownloadInterruptReason download_interrupt_reason_crash)
     : DownloadDatabase(download_interrupt_reason_none,
                        download_interrupt_reason_crash),
-      db_(sql::DatabaseOptions{
-           // Note that we don't set exclusive locking here. That's done by
-           // BeginExclusiveMode below which is called later (we have to be in
-           // shared mode to start out for the in-memory backend to read the
-           // data).
-           // TODO(crbug.com/40159106) Remove this dependency on normal locking
-           // mode.
-           .exclusive_locking = false,
-           // Set the database page size to something a little larger to give us
-           // better performance (we're typically seek rather than bandwidth
-           // limited). Must be a power of 2 and a max of 65536.
-           .page_size = 4096,
-           // Set the cache size. The page size, plus a little extra, times this
-           // value, tells us how much memory the cache will use maximum.
-           // 1000 * 4kB = 4MB
-           .cache_size = 1000})
+      db_(sql::DatabaseOptions()
+              // Note that we don't set exclusive locking here. That's done by
+              // BeginExclusiveMode below which is called later (we have to be
+              // in shared mode to start out for the in-memory backend to read
+              // the data).
+              // TODO(crbug.com/40159106) Remove this dependency on normal
+              // locking mode.
+              .set_exclusive_locking(false)
+              // Set the database page size to something a little larger to give
+              // us better performance (we're typically seek rather than
+              // bandwidth limited). Must be a power of 2 and a max of 65536.
+              .set_page_size(4096)
+              // Set the cache size. The page size, plus a little extra, times
+              // this value, tells us how much memory the cache will use
+              // maximum. 1000 * 4kB = 4MB
+              .set_cache_size(1000),
+          /*tag=*/"History")
 #if !BUILDFLAG(IS_QTWEBENGINE)
       , history_metadata_db_(&db_, &meta_table_)
 #endif
@@ -107,8 +108,6 @@ HistoryDatabase::HistoryDatabase(
 HistoryDatabase::~HistoryDatabase() = default;
 
 sql::InitStatus HistoryDatabase::Init(const base::FilePath& history_name) {
-  db_.set_histogram_tag("History");
-
   if (!db_.Open(history_name))
     return LogInitFailure(InitStep::OPEN);
 
@@ -159,10 +158,11 @@ void HistoryDatabase::ComputeDatabaseMetrics(
     const base::FilePath& history_name) {
   base::TimeTicks start_time = base::TimeTicks::Now();
 #if !BUILDFLAG(IS_QTWEBENGINE)
-  int64_t file_size = 0;
-  if (!base::GetFileSize(history_name, &file_size))
+  std::optional<int64_t> file_size = base::GetFileSize(history_name);
+  if (!file_size.has_value()) {
     return;
-  int file_mb = static_cast<int>(file_size / (1024 * 1024));
+  }
+  int file_mb = static_cast<int>(file_size.value() / (1024 * 1024));
   UMA_HISTOGRAM_MEMORY_MB("History.DatabaseFileMB", file_mb);
 
   sql::Statement url_count(db_.GetUniqueStatement("SELECT count(*) FROM urls"));

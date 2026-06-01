@@ -82,7 +82,7 @@ IsolatedWebAppThrottle::MaybeCreateThrottleFor(NavigationHandle* handle) {
                                         .controller()
                                         .GetBrowserContext();
 
-  if (IsolatedWebAppsPolicy::AreIsolatedWebAppsEnabled(browser_context)) {
+  if (AreIsolatedWebAppsEnabled(browser_context)) {
     return std::make_unique<IsolatedWebAppThrottle>(handle);
   }
   return nullptr;
@@ -184,7 +184,8 @@ bool IsolatedWebAppThrottle::OpenUrlExternal(const GURL& url) {
       network::mojom::WebSandboxFlags::kNone, transition,
       navigation_request->HasUserGesture(),
       /*initiating_origin=*/std::nullopt,
-      /*initiator_document=*/nullptr, &loader_factory);
+      /*initiator_document=*/nullptr, navigation_request->GetIsolationInfo(),
+      &loader_factory);
 #endif
 }
 

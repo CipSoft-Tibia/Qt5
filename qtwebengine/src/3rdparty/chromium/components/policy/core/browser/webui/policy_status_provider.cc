@@ -44,7 +44,7 @@ std::u16string FormatAssociationState(const em::PolicyData* data) {
         return l10n_util::GetStringUTF16(
             IDS_POLICY_ASSOCIATION_STATE_DEPROVISIONED);
     }
-    NOTREACHED_IN_MIGRATION() << "Unknown state " << data->state();
+    NOTREACHED() << "Unknown state " << data->state();
   }
 
   // Default to UNMANAGED for the case of missing policy or bad state enum.
@@ -159,15 +159,6 @@ base::Value::Dict PolicyStatusProvider::GetStatusFromPolicyData(
     dict.Set(kGaiaIdKey, policy->gaia_id());
   }
 
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  // Include the "Managed by:" attribute for the user policy legend.
-  if (policy->state() == enterprise_management::PolicyData::ACTIVE) {
-    if (policy->has_managed_by())
-      dict.Set(kEnterpriseDomainManagerKey, policy->managed_by());
-    else if (policy->has_display_domain())
-      dict.Set(kEnterpriseDomainManagerKey, policy->display_domain());
-  }
-#endif
   return dict;
 }
 

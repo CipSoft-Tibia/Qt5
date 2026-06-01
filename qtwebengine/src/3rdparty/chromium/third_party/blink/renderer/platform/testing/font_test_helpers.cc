@@ -30,8 +30,8 @@ class TestFontSelector : public FontSelector {
         FontCustomPlatformData::Create(font_buffer.get(), ots_parse_message));
   }
 
-  static TestFontSelector* Create(const uint8_t* data, size_t size) {
-    scoped_refptr<SharedBuffer> font_buffer = SharedBuffer::Create(data, size);
+  static TestFontSelector* Create(base::span<const uint8_t> data) {
+    scoped_refptr<SharedBuffer> font_buffer = SharedBuffer::Create(data);
     String ots_parse_message;
     FontCustomPlatformData* font_custom_platform_data =
         FontCustomPlatformData::Create(font_buffer.get(), ots_parse_message);
@@ -126,11 +126,10 @@ class TestFontSelector : public FontSelector {
 
 }  // namespace
 
-Font* CreateTestFont(const AtomicString& family_name,
-                     const uint8_t* data,
-                     size_t data_size,
-                     float size,
-                     const FontDescription::VariantLigatures* ligatures) {
+Font CreateTestFont(const AtomicString& family_name,
+                    base::span<const uint8_t> data,
+                    float size,
+                    const FontDescription::VariantLigatures* ligatures) {
   FontDescription font_description;
   font_description.SetFamily(
       FontFamily(family_name, FontFamily::Type::kFamilyName));
@@ -139,16 +138,15 @@ Font* CreateTestFont(const AtomicString& family_name,
   if (ligatures)
     font_description.SetVariantLigatures(*ligatures);
 
-  return  MakeGarbageCollected<Font>(font_description,
-                                     TestFontSelector::Create(data, data_size));
+  return Font(font_description, TestFontSelector::Create(data));
 }
 
-Font* CreateTestFont(const AtomicString& family_name,
-                     const String& font_path,
-                     float size,
-                     const FontDescription::VariantLigatures* ligatures,
-                     const FontVariantEmoji variant_emoji,
-                     void (*init_font_description)(FontDescription*)) {
+Font CreateTestFont(const AtomicString& family_name,
+                    const String& font_path,
+                    float size,
+                    const FontDescription::VariantLigatures* ligatures,
+                    const FontVariantEmoji variant_emoji,
+                    void (*init_font_description)(FontDescription*)) {
   FontDescription font_description;
   font_description.SetFamily(
       FontFamily(family_name, FontFamily::Type::kFamilyName));
@@ -160,11 +158,10 @@ Font* CreateTestFont(const AtomicString& family_name,
   if (init_font_description)
     (*init_font_description)(&font_description);
 
-  return MakeGarbageCollected<Font>(font_description,
-                                    TestFontSelector::Create(font_path));
+  return Font(font_description, TestFontSelector::Create(font_path));
 }
 
-Font* CreateAhemFont(float size) {
+Font CreateAhemFont(float size) {
   return CreateTestFont(AtomicString("Ahem"), PlatformTestDataPath("Ahem.woff"),
                         size);
 }

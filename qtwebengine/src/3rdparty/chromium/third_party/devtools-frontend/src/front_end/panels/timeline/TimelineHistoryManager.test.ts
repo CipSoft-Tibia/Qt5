@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as Root from '../../core/root/root.js';
 import {
   describeWithEnvironment,
   registerNoopActions,
@@ -21,23 +20,25 @@ describeWithEnvironment('TimelineHistoryManager', function() {
 
   afterEach(() => {
     UI.ActionRegistry.ActionRegistry.reset();
-    Root.Runtime.experiments.disableForTest(Root.Runtime.ExperimentName.TIMELINE_OBSERVATIONS);
   });
 
-  it('shows the dropdown including a landing page link if the observations experiment is enabled', async function() {
-    Root.Runtime.experiments.enableForTest(Root.Runtime.ExperimentName.TIMELINE_OBSERVATIONS);
-    const {traceData} = await TraceLoader.traceEngine(this, 'web-dev-with-commit.json.gz');
+  it('shows the dropdown including a landing page link', async function() {
+    assert.strictEqual(historyManager.button().element.innerText!, 'Live metrics');
+
+    const {parsedTrace, metadata} = await TraceLoader.traceEngine(this, 'web-dev-with-commit.json.gz');
     historyManager.addRecording(
         {
           data: {
-            traceParseDataIndex: 1,
+            parsedTraceIndex: 1,
             type: 'TRACE_INDEX',
           },
           filmStripForPreview: null,
-          traceParsedData: traceData,
-          startTime: null,
+          parsedTrace,
+          metadata,
         },
     );
+
+    assert.strictEqual(historyManager.button().element.innerText!, 'web.dev #1');
 
     const showPromise = historyManager.showHistoryDropDown();
     const glassPane = document.querySelector('div[data-devtools-glass-pane]');
@@ -48,7 +49,7 @@ describeWithEnvironment('TimelineHistoryManager', function() {
     const menuItemText = Array.from(dropdown.querySelectorAll<HTMLDivElement>('[role="menuitem"]'), elem => {
       return elem.innerText.replaceAll('\n', '');
     });
-    assert.deepEqual(menuItemText, ['Live metrics', 'web.dev5.39 s']);
+    assert.deepEqual(menuItemText, ['Live metrics', 'web.dev1× slowdown, No throttling']);
 
     // Cancel the dropdown, which also resolves the show() promise, meaning we
     // don't leak it into other tests.
@@ -56,51 +57,20 @@ describeWithEnvironment('TimelineHistoryManager', function() {
     await showPromise;
   });
 
-  it('does not show if observations experiment is disabled + the user has not imported 2 traces', async function() {
-    const {traceData} = await TraceLoader.traceEngine(this, 'web-dev-with-commit.json.gz');
-    historyManager.addRecording(
-        {
-          data: {
-            traceParseDataIndex: 1,
-            type: 'TRACE_INDEX',
-          },
-          filmStripForPreview: null,
-          traceParsedData: traceData,
-          startTime: null,
-        },
-    );
+  it('uses Node specific landing page title', async function() {
+    historyManager = new Timeline.TimelineHistoryManager.TimelineHistoryManager(undefined, true);
+    assert.strictEqual(historyManager.button().element.innerText!, 'New recording');
 
-    const promise = historyManager.showHistoryDropDown();
-    const glassPane = document.querySelector('div[data-devtools-glass-pane]');
-    assert.isNull(glassPane);  // check that no DOM for the dropdown got created
-    // check the result of calling showHistoryDropDown which should be `null` if it didn't show
-    const result = await promise;
-    assert.isNull(result);
-  });
-
-  it('does not show the landing page link if the observations experiment is disabled', async function() {
-    const {traceData: traceData1} = await TraceLoader.traceEngine(this, 'web-dev-with-commit.json.gz');
+    const {parsedTrace, metadata} = await TraceLoader.traceEngine(this, 'web-dev-with-commit.json.gz');
     historyManager.addRecording(
         {
           data: {
-            traceParseDataIndex: 1,
+            parsedTraceIndex: 1,
             type: 'TRACE_INDEX',
           },
           filmStripForPreview: null,
-          traceParsedData: traceData1,
-          startTime: null,
-        },
-    );
-    const {traceData: traceData2} = await TraceLoader.traceEngine(this, 'timings-track.json.gz');
-    historyManager.addRecording(
-        {
-          data: {
-            traceParseDataIndex: 2,
-            type: 'TRACE_INDEX',
-          },
-          filmStripForPreview: null,
-          traceParsedData: traceData2,
-          startTime: null,
+          parsedTrace,
+          metadata,
         },
     );
 
@@ -113,10 +83,7 @@ describeWithEnvironment('TimelineHistoryManager', function() {
     const menuItemText = Array.from(dropdown.querySelectorAll<HTMLDivElement>('[role="menuitem"]'), elem => {
       return elem.innerText.replaceAll('\n', '');
     });
-    assert.deepEqual(menuItemText, [
-      'localhost3.16 s',
-      'web.dev5.39 s',
-    ]);
+    assert.deepEqual(menuItemText, ['New recording', 'web.dev1× slowdown, No throttling']);
 
     // Cancel the dropdown, which also resolves the show() promise, meaning we
     // don't leak it into other tests.
@@ -126,36 +93,38 @@ describeWithEnvironment('TimelineHistoryManager', function() {
 
   it('can select from multiple parsed data objects', async function() {
     // Add two parsed data objects to the history manager.
-    const {traceData: trace1Data} = await TraceLoader.traceEngine(this, 'slow-interaction-button-click.json.gz');
+    const {parsedTrace: trace1Data, metadata: metadata1} =
+        await TraceLoader.traceEngine(this, 'slow-interaction-button-click.json.gz');
     historyManager.addRecording(
         {
           data: {
-            traceParseDataIndex: 1,
+            parsedTraceIndex: 1,
             type: 'TRACE_INDEX',
           },
           filmStripForPreview: null,
-          traceParsedData: trace1Data,
-          startTime: null,
+          parsedTrace: trace1Data,
+          metadata: metadata1,
         },
     );
 
-    const {traceData: trace2Data} = await TraceLoader.traceEngine(this, 'slow-interaction-keydown.json.gz');
+    const {parsedTrace: trace2Data, metadata: metadata2} =
+        await TraceLoader.traceEngine(this, 'slow-interaction-keydown.json.gz');
     historyManager.addRecording({
       data: {
-        traceParseDataIndex: 2,
+        parsedTraceIndex: 2,
         type: 'TRACE_INDEX',
       },
       filmStripForPreview: null,
-      traceParsedData: trace2Data,
-      startTime: null,
+      parsedTrace: trace2Data,
+      metadata: metadata2,
     });
 
     // Make sure the correct model is returned when
     // using the history manager to navigate between trace files..
     const previousRecording = historyManager.navigate(1);
-    assert.strictEqual(previousRecording?.traceParseDataIndex, 1);
+    assert.strictEqual(previousRecording?.parsedTraceIndex, 1);
 
     const nextRecording = historyManager.navigate(-1);
-    assert.strictEqual(nextRecording?.traceParseDataIndex, 2);
+    assert.strictEqual(nextRecording?.parsedTraceIndex, 2);
   });
 });

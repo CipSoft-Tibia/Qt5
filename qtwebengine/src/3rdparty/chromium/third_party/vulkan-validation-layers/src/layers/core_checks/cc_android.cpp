@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  * Modifications Copyright (C) 2020-2022 Advanced Micro Devices, Inc. All rights reserved.
  *
@@ -22,6 +22,8 @@
 #include "core_validation.h"
 #include "state_tracker/image_state.h"
 #include "state_tracker/sampler_state.h"
+#include "generated/dispatch_functions.h"
+#include "error_message/error_strings.h"
 
 #if defined(VK_USE_PLATFORM_ANDROID_KHR)
 // Android-specific validation that uses types defined only on Android and only for NDK versions
@@ -211,7 +213,7 @@ bool CoreChecks::ValidateAllocateMemoryANDROID(const VkMemoryAllocateInfo &alloc
             pdebi.usage |= ahb_usage_map_a2v[AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER];
         }
         VkExternalBufferProperties ext_buf_props = vku::InitStructHelper();
-        DispatchGetPhysicalDeviceExternalBufferPropertiesHelper(physical_device, &pdebi, &ext_buf_props);
+        instance_state->DispatchGetPhysicalDeviceExternalBufferPropertiesHelper(physical_device, &pdebi, &ext_buf_props);
 
         //  If buffer is not NULL, Android hardware buffers must be supported for import, as reported by
         //  VkExternalImageFormatProperties or VkExternalBufferProperties.
@@ -239,7 +241,8 @@ bool CoreChecks::ValidateAllocateMemoryANDROID(const VkMemoryAllocateInfo &alloc
             VkExternalImageFormatProperties ext_img_fmt_props = vku::InitStructHelper();
             VkImageFormatProperties2 ifp2 = vku::InitStructHelper(&ext_img_fmt_props);
 
-            VkResult fmt_lookup_result = DispatchGetPhysicalDeviceImageFormatProperties2Helper(physical_device, &pdifi2, &ifp2);
+            VkResult fmt_lookup_result =
+                instance_state->DispatchGetPhysicalDeviceImageFormatProperties2Helper(physical_device, &pdifi2, &ifp2);
 
             if ((VK_SUCCESS != fmt_lookup_result) || (0 == (ext_img_fmt_props.externalMemoryProperties.externalMemoryFeatures &
                                                             VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT))) {
@@ -393,8 +396,8 @@ bool CoreChecks::ValidateAllocateMemoryANDROID(const VkMemoryAllocateInfo &alloc
                                      "is %s but allocationSize is 0.", FormatHandle(mem_ded_alloc_info->buffer).c_str());
                 }
             } else if (0 == allocate_info.allocationSize) {
-                skip |= LogError("VUID-VkMemoryAllocateInfo-pNext-07900", device, allocate_info_loc,
-                                 "pNext chain does not include VkMemoryDedicatedAllocateInfo, but allocationSize is 0.");
+                skip |= LogError("VUID-VkMemoryAllocateInfo-pNext-07900", device, allocate_info_loc.dot(Field::pNext),
+                                 "chain does not contain an instance of VkMemoryDedicatedAllocateInfo, but allocationSize is 0.");
             }
         }
     }
@@ -417,9 +420,9 @@ bool CoreChecks::ValidateGetImageMemoryRequirementsANDROID(const VkImage image, 
     return skip;
 }
 
-bool CoreChecks::ValidateGetPhysicalDeviceImageFormatProperties2ANDROID(const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo,
-                                                                        const VkImageFormatProperties2 *pImageFormatProperties,
-                                                                        const ErrorObject &error_obj) const {
+bool core::Instance::ValidateGetPhysicalDeviceImageFormatProperties2ANDROID(
+    VkPhysicalDevice physical_device, const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo,
+    const VkImageFormatProperties2 *pImageFormatProperties, const ErrorObject &error_obj) const {
     bool skip = false;
     const auto *ahb_usage = vku::FindStructInPNextChain<VkAndroidHardwareBufferUsageANDROID>(pImageFormatProperties->pNext);
     if (ahb_usage) {
@@ -594,13 +597,10 @@ bool CoreChecks::ValidateCreateImageViewANDROID(const VkImageViewCreateInfo &cre
 
         // Errors in create_info swizzles
         if (IsIdentitySwizzle(create_info.components) == false) {
-            skip |= LogError(
-                "VUID-VkImageViewCreateInfo-image-02401", create_info.image, create_info_loc.dot(Field::image),
-                "was chained with a VkExternalFormatANDROID struct, but "
-                "includes one or more non-identity component swizzles, r swizzle = %s, g swizzle = %s, b swizzle = %s, a swizzle "
-                "= %s.",
-                string_VkComponentSwizzle(create_info.components.r), string_VkComponentSwizzle(create_info.components.g),
-                string_VkComponentSwizzle(create_info.components.b), string_VkComponentSwizzle(create_info.components.a));
+            skip |= LogError("VUID-VkImageViewCreateInfo-image-02401", create_info.image, create_info_loc.dot(Field::image),
+                             "was chained with a VkExternalFormatANDROID struct, but "
+                             "includes one or more non-identity component swizzles\n%s.",
+                             string_VkComponentMapping(create_info.components).c_str());
         }
     }
 
@@ -613,9 +613,9 @@ bool CoreChecks::ValidateAllocateMemoryANDROID(const VkMemoryAllocateInfo &alloc
     return false;
 }
 
-bool CoreChecks::ValidateGetPhysicalDeviceImageFormatProperties2ANDROID(const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo,
-                                                                        const VkImageFormatProperties2 *pImageFormatProperties,
-                                                                        const ErrorObject &error_obj) const {
+bool core::Instance::ValidateGetPhysicalDeviceImageFormatProperties2ANDROID(
+    VkPhysicalDevice physical_device, const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo,
+    const VkImageFormatProperties2 *pImageFormatProperties, const ErrorObject &error_obj) const {
     return false;
 }
 

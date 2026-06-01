@@ -52,7 +52,8 @@ void SourceCodeView::setActivated(bool activated)
 
 void SourceCodeView::showSourceCode(const QString &absFileName, const int lineNum)
 {
-    QString fileText = fileHash.value(absFileName);
+    QPair<QString, QDateTime> hashKey {absFileName, QFileInfo(absFileName).lastModified()};
+    QString fileText = fileHash.value(hashKey);
 
     if (fileText.isNull()) { // File not in hash
         m_currentFileName.clear();
@@ -71,7 +72,7 @@ void SourceCodeView::showSourceCode(const QString &absFileName, const int lineNu
             return;
         }
         fileText = QString::fromUtf8(file.readAll());
-        fileHash.insert(absFileName, fileText);
+        fileHash.insert(hashKey, fileText);
     }
 
 

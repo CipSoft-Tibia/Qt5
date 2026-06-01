@@ -56,6 +56,7 @@ private slots:
     void rightLongPressIgnoreWheel();
     void negativeZStackingOrder();
     void nonTopLevelParentWindow();
+    void deactivatedOnPress();
     void nestedDoubleTap_data();
     void nestedDoubleTap();
     void nestedAndSiblingPropagation_data();
@@ -919,6 +920,11 @@ void tst_TapHandler::longPress()
     QQuickView window;
     QVERIFY(QQuickTest::showView(window, testFileUrl("buttons.qml")));
 
+    // TODO fix showView() after we know whether this fixes flakiness
+    const QPoint pos(485, 285);
+    window.setPosition(pos);
+    QTRY_COMPARE(window.position(), pos);
+
     QQuickItem *button = window.rootObject()->findChild<QQuickItem*>(buttonName);
     QVERIFY(button);
     QQuickTapHandler *tapHandler = button->findChild<QQuickTapHandler*>(buttonName);
@@ -1198,6 +1204,32 @@ void tst_TapHandler::nonTopLevelParentWindow() // QTBUG-91716
     QTest::touchEvent(window, touchscreen.get()).release(0, p1, parentWindow).commit();
 
     QCOMPARE(root->property("tapCount").toInt(), 2);
+}
+
+void tst_TapHandler::deactivatedOnPress() // QTBUG-124777 QTBUG-118454
+{
+    QQuickView window;
+    window.setTitle("first window");
+    QVERIFY(QQuickTest::showView(window, testFileUrl("simpleTapHandler.qml")));
+    QQuickItem *root = window.rootObject();
+    QQuickTapHandler *tapHandler = root->findChild<QQuickTapHandler*>();
+    QVERIFY(tapHandler);
+    tapHandler->setGesturePolicy(QQuickTapHandler::ReleaseWithinBounds); // get the exclusive grab on press
+
+    const auto p1 = QPoint(20, 20);
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, p1);
+    QTRY_VERIFY(tapHandler->isPressed());
+
+    // opening up another window deactivates the first one
+    QQuickView window2;
+    window2.setTitle("second window");
+    QVERIFY(QQuickTest::showView(window2, testFileUrl("simpleTapHandler.qml")));
+    QTRY_COMPARE(window.isActive(), false);
+
+    // don't crash, and don't stay pressed
+    QTRY_COMPARE(tapHandler->isPressed(), false);
+
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, p1);
 }
 
 void tst_TapHandler::nestedDoubleTap_data()

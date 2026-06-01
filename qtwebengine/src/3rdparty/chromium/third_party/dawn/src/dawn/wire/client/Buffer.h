@@ -35,7 +35,7 @@
 
 #include "dawn/common/FutureUtils.h"
 #include "dawn/common/Ref.h"
-#include "dawn/common/RefCounted.h"
+#include "dawn/common/RefCountedWithExternalCount.h"
 #include "dawn/wire/WireClient.h"
 #include "dawn/wire/client/ObjectBase.h"
 #include "partition_alloc/pointers/raw_ptr.h"
@@ -44,7 +44,7 @@ namespace dawn::wire::client {
 
 class Device;
 
-class Buffer final : public ObjectWithEventsBase {
+class Buffer final : public RefCountedWithExternalCount<ObjectWithEventsBase> {
   public:
     static WGPUBuffer Create(Device* device, const WGPUBufferDescriptor* descriptor);
     static WGPUBuffer CreateError(Device* device, const WGPUBufferDescriptor* descriptor);
@@ -57,19 +57,10 @@ class Buffer final : public ObjectWithEventsBase {
 
     ObjectType GetObjectType() const override;
 
-    void MapAsync(WGPUMapMode mode,
-                  size_t offset,
-                  size_t size,
-                  WGPUBufferMapCallback callback,
-                  void* userdata);
-    WGPUFuture MapAsyncF(WGPUMapMode mode,
-                         size_t offset,
-                         size_t size,
-                         const WGPUBufferMapCallbackInfo& callbackInfo);
-    WGPUFuture MapAsync2(WGPUMapMode mode,
-                         size_t offset,
-                         size_t size,
-                         const WGPUBufferMapCallbackInfo2& callbackInfo);
+    WGPUFuture MapAsync(WGPUMapMode mode,
+                        size_t offset,
+                        size_t size,
+                        const WGPUBufferMapCallbackInfo& callbackInfo);
     void* GetMappedRange(size_t offset, size_t size);
     const void* GetConstMappedRange(size_t offset, size_t size);
     void Unmap();
@@ -85,10 +76,11 @@ class Buffer final : public ObjectWithEventsBase {
   private:
     friend class Client;
     class MapAsyncEvent;
-    class MapAsyncEvent2;
+
+    void WillDropLastExternalRef() override;
 
     // Prepares the callbacks to be called and potentially calls them
-    void SetFutureStatus(WGPUBufferMapAsyncStatus status);
+    void SetFutureStatus(WGPUMapAsyncStatus status, std::string_view message);
 
     bool IsMappedForReading() const;
     bool IsMappedForWriting() const;
@@ -110,9 +102,6 @@ class Buffer final : public ObjectWithEventsBase {
         // Because validation for request type is validated via the backend, we use an optional type
         // here. This is nullopt when an invalid request type is passed to the wire.
         std::optional<MapRequestType> type;
-        // Currently needs an additional boolean to indicate which entry point was used for the map.
-        // TODO(crbug.com/42241461): Remove this once we don't need to support both on the wire.
-        bool isNewEntryPoint = false;
     };
     enum class MapState {
         Unmapped,

@@ -13,15 +13,29 @@
 #include <private/qquickshape_p.h>
 #include <private/qquicksvgparser_p.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
 
-PieRenderer::PieRenderer(QGraphsView *graph)
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+               "class PieRenderer;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieRendererAfterPolish_entry, int cleanupSeriesCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieRendererAfterPolish_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieRendererHandlePolish_entry, int sliceCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieRendererHandlePolish_exit);
+
+PieRenderer::PieRenderer(QGraphsView *graph, bool clipPlotArea)
     : QQuickItem(graph)
     , m_graph(graph)
     , m_painterPath()
 {
     setFlag(QQuickItem::ItemHasContents);
-    setClip(true);
+    setClip(clipPlotArea);
 
     m_shape = new QQuickShape(this);
     m_shape->setParentItem(this);
@@ -93,8 +107,10 @@ void PieRenderer::handlePolish(QPieSeries *series)
 
     QGraphsTheme *theme = m_graph->theme();
 
-    if (!theme)
+    if (!theme) {
+        qCCritical(lcCritical2D, "Theme not found.");
         return;
+    }
 
     if (m_colorIndex < 0)
         m_colorIndex = m_graph->graphSeriesCount();
@@ -104,6 +120,7 @@ void PieRenderer::handlePolish(QPieSeries *series)
     int sliceIndex = 0;
     QList<QLegendData> legendDataList;
     auto slicelist = series->slices();
+    Q_TRACE(QGraphs2DPieRendererHandlePolish_entry, static_cast<int>(slices.count()));
     for (QPieSlice *slice : std::as_const(slicelist)) {
         m_painterPath.clear();
 
@@ -115,19 +132,25 @@ void PieRenderer::handlePolish(QPieSeries *series)
         // update slice
         QQuickShapePath *shapePath = d->m_shapePath;
 
+        // border color
         const auto &borderColors = theme->borderColors();
         int index = sliceIndex % borderColors.size();
         QColor borderColor = borderColors.at(index);
-        if (d->m_borderColor.isValid())
+        if (d->m_borderColor.isValid() && d->m_borderColor.alpha() != 0)
             borderColor = d->m_borderColor;
+
+        // border width
         qreal borderWidth = theme->borderWidth();
         if (d->m_borderWidth >= 1.0)
             borderWidth = d->m_borderWidth;
+
+        // color
         const auto &seriesColors = theme->seriesColors();
         index = sliceIndex % seriesColors.size();
         QColor color = seriesColors.at(index);
-        if (d->m_color.isValid())
+        if (d->m_color.isValid() && d->m_color.alpha() != 0)
             color = d->m_color;
+
         shapePath->setStrokeWidth(borderWidth);
         shapePath->setStrokeColor(borderColor);
         shapePath->setFillColor(color);
@@ -220,12 +243,14 @@ void PieRenderer::handlePolish(QPieSeries *series)
         sliceIndex++;
         legendDataList.push_back({color, borderColor, d->m_labelText});
     }
+    Q_TRACE(QGraphs2DPieRendererAfterPolish_exit);
 
     series->d_func()->setLegendData(legendDataList);
 }
 
 void PieRenderer::afterPolish(QList<QAbstractSeries *> &cleanupSeries)
 {
+    Q_TRACE(QGraphs2DPieRendererAfterPolish_entry, static_cast<int>(cleanupSeries.count()));
     for (auto series : cleanupSeries) {
         auto pieSeries = qobject_cast<QPieSeries *>(series);
         if (pieSeries) {
@@ -245,6 +270,7 @@ void PieRenderer::afterPolish(QList<QAbstractSeries *> &cleanupSeries)
             }
         }
     }
+    Q_TRACE(QGraphs2DPieRendererAfterPolish_exit);
 }
 
 void PieRenderer::updateSeries(QPieSeries *series)
@@ -278,6 +304,11 @@ void PieRenderer::markedDeleted(QList<QPieSlice *> deleted)
         d->m_labelItem->deleteLater();
         m_activeSlices.remove(slice);
     }
+    // We could mark m_currentHoverSlice null only if
+    // it matches to a deleted slice, but as removals
+    // affect other slices positions it is probably
+    // better to just always disable current hovering.
+    m_currentHoverSlice = nullptr;
 }
 
 bool PieRenderer::isPointInSlice(QPointF point, QPieSlice *slice, qreal *angle)
@@ -332,9 +363,11 @@ bool PieRenderer::handleHoverMove(QHoverEvent *event)
 
             if (!m_currentHoverSlice) {
                 m_currentHoverSlice = slice;
+                slice->series()->setHovered(true);
                 emit slice->series()->hoverEnter(name, position, value);
             }
             if (m_currentHoverSlice != slice) {
+                slice->series()->setHovered(true);
                 emit m_currentHoverSlice->series()->hoverExit(name, position);
                 emit slice->series()->hoverEnter(name, position, value);
                 m_currentHoverSlice = slice;
@@ -347,6 +380,7 @@ bool PieRenderer::handleHoverMove(QHoverEvent *event)
     }
 
     if (!hovering && m_currentHoverSlice) {
+        m_currentHoverSlice->series()->setHovered(false);
         emit m_currentHoverSlice->series()->
             hoverExit(m_currentHoverSlice->series()->name(), position);
         m_currentHoverSlice = nullptr;

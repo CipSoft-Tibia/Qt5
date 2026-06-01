@@ -25,17 +25,14 @@ float TextAutoSpace::GetSpacingWidth(const Font* font) {
                font_data->PlatformData().size()) /
            8;
   }
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 // static
 TextAutoSpace::CharType TextAutoSpace::GetTypeAndNext(const String& text,
                                                       wtf_size_t& offset) {
   CHECK(!text.Is8Bit());
-  UChar32 ch;
-  U16_NEXT(text.Characters16(), offset, text.length(), ch);
-  return GetType(ch);
+  return GetType(CodePointAtAndNext(text.Span16(), offset));
 }
 
 // static

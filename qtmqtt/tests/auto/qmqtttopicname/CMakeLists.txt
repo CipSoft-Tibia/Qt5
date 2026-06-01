@@ -5,7 +5,9 @@
 ## tst_qmqtttopicname Test:
 #####################################################################
 
-qt_internal_add_test(tst_qmqtttopicname
+qtmqtt_add_test(
+    TARGET
+        tst_qmqtttopicname
     SOURCES
         tst_qmqtttopicname.cpp
     DEFINES

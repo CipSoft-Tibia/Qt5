@@ -161,22 +161,24 @@ installPackages+=(nfs-utils)
 # cifs-utils, for mounting smb drive
 installPackages+=(keyutils)
 installPackages+=(cifs-utils)
-# used for reading vcpkg packages version, from vcpkg.json
-installPackages+=(jq)
 # zip, needed for vcpkg caching
 installPackages+=(zip)
 # OpenSSL requirement, built by vcpkg
 installPackages+=(perl-IPC-Cmd)
 # password management support for Qt Creator
 installPackages+=(libsecret-devel)
+# for license-service library
+installPackages+=(libuuid-devel)
 # For Firebird in RTA
 installPackages+=(libtommath-devel)
 # For tst_license.pl with all the machines generating SBOM
 installPackages+=(perl-JSON)
+# Keep zoneinfo up-to-date (COIN-1282)
+installPackages+=(tzdata)
 
 sudo yum -y install "${installPackages[@]}"
 
-sudo dnf install nodejs-16.14.0-4.el9_0 -y
+sudo dnf -y module install nodejs:20
 # Required by QtCore
 sudo dnf install 'perl(English)' -y
 
@@ -190,10 +192,10 @@ sudo pip config --user set global.extra-index-url https://pypi.org/simple/
 sudo pip3 install virtualenv wheel
 # Just make sure we have virtualenv to run with python3.8 -m virtualenv
 sudo python -m pip install virtualenv wheel
-sudo python -m pip install -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
+sudo python -m pip install -r "${BASH_SOURCE%/*}/../common/shared/requirements.txt"
 
 sudo /usr/bin/pip3 install wheel
-sudo /usr/bin/pip3 install -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
+sudo /usr/bin/pip3 install -r "${BASH_SOURCE%/*}/../common/shared/requirements.txt"
 
 # Provisioning during installation says:
 # 'The script sbom2doc is installed in '/usr/local/bin' which is not on PATH.'

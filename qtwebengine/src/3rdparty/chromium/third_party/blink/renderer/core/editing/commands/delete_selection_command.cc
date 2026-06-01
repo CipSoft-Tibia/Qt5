@@ -25,7 +25,8 @@
 
 #include "third_party/blink/renderer/core/editing/commands/delete_selection_command.h"
 
-#include "base/ranges/algorithm.h"
+#include <algorithm>
+
 #include "build/build_config.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -254,16 +255,11 @@ void DeleteSelectionCommand::InitializePositionData(
     editing_state->Abort();
     return;
   }
-  if (!IsEditablePosition(end)) {
-    if (!RuntimeEnabledFeatures::
-            HandleDeletionWithNonEditableContentAtBlockBoundaryEnabled() ||
-        !(end.IsAfterAnchor() ||
-          Position::LastPositionInNode(*(end.AnchorNode()))
-              .IsEquivalent(end))) {
-      Node* highest_root = HighestEditableRoot(start);
-      DCHECK(highest_root);
-      end = LastEditablePositionBeforePositionInRoot(end, *highest_root);
-    }
+  if (!IsEditablePosition(end) && !end.IsAfterAnchor() &&
+      !Position::LastPositionInNode(*(end.AnchorNode())).IsEquivalent(end)) {
+    Node* highest_root = HighestEditableRoot(start);
+    DCHECK(highest_root);
+    end = LastEditablePositionBeforePositionInRoot(end, *highest_root);
   }
 
   upstream_start_ = MostBackwardCaretPosition(start);
@@ -609,7 +605,7 @@ void DeleteSelectionCommand::RemoveCompletelySelectedNodes(
   // this requires document.NeedsLayoutTreeUpdate() returning false.
   if (!need_placeholder_) {
     need_placeholder_ =
-        base::ranges::any_of(nodes_to_be_removed, [&](Node* node) {
+        std::ranges::any_of(nodes_to_be_removed, [&](Node* node) {
           if (node == start_block_) {
             VisiblePosition previous = PreviousPositionOf(
                 VisiblePosition::FirstPositionInNode(*start_block_.Get()));
@@ -718,6 +714,9 @@ void DeleteSelectionCommand::
         EditingState* editing_state) {
   Range* range = CreateRange(CreateVisibleSelection(selection_to_delete_)
                                  .ToNormalizedEphemeralRange());
+  if (!range) {
+    return;
+  }
   Node* node = range->FirstNode();
   while (node && node != range->PastLastNode()) {
     Node* next_node = NodeTraversal::Next(*node);
@@ -1214,14 +1213,8 @@ void DeleteSelectionCommand::DoApply(EditingState* editing_state) {
   // If selection has not been set to a custom selection when the command was
   // created, use the current ending selection.
   if (!has_selection_to_delete_) {
-    if (RuntimeEnabledFeatures::
-            HandleDeletionWithNonEditableContentAtBlockBoundaryEnabled()) {
-      selection_to_delete_ =
-          SelectionForUndoStep::From(EndingSelection().AsSelection());
-    } else {
-      selection_to_delete_ =
-          SelectionForUndoStep::From(EndingVisibleSelection().AsSelection());
-    }
+    selection_to_delete_ =
+        SelectionForUndoStep::From(EndingSelection().AsSelection());
   }
 
   if (!selection_to_delete_.IsValidFor(GetDocument()) ||
@@ -1244,27 +1237,19 @@ void DeleteSelectionCommand::DoApply(EditingState* editing_state) {
   const Node* downstream_container_node = downstream_end.ComputeContainerNode();
   const Element* downstream_container_root_element =
       RootEditableElement(*downstream_container_node);
-  bool root_will_stay_open_without_placeholder =
-      downstream_container_node == downstream_container_root_element;
 
   // Check to determine if the root will stay open without a placeholder.
   // This is done by checking if the downstream end is within a root editable
   // element that has an inline layout object, or if the downstream end's
   // container node is within a shadow host that is a text control.
-  if (RuntimeEnabledFeatures::
-          RootElementWithPlaceHolderAfterDeletingSelectionEnabled()) {
-    root_will_stay_open_without_placeholder |=
-        (downstream_container_root_element &&
-         downstream_container_root_element->GetLayoutObject() &&
-         downstream_container_root_element->GetLayoutObject()->IsInline()) ||
-        (downstream_container_node->OwnerShadowHost() &&
-         downstream_container_node->OwnerShadowHost()->IsTextControl());
-  } else {
-    root_will_stay_open_without_placeholder |=
-        (downstream_container_node->IsTextNode() &&
-         downstream_container_node->parentNode() ==
-             downstream_container_root_element);
-  }
+  bool root_will_stay_open_without_placeholder =
+      (downstream_container_node == downstream_container_root_element) ||
+      (downstream_container_root_element &&
+       downstream_container_root_element->GetLayoutObject() &&
+       downstream_container_root_element->GetLayoutObject()->IsInline()) ||
+      (downstream_container_node->OwnerShadowHost() &&
+       downstream_container_node->OwnerShadowHost()->IsTextControl());
+
   VisiblePosition visible_start = CreateVisiblePosition(
       selection_to_delete_.Start(),
       selection_to_delete_.IsRange() ? TextAffinity::kDownstream : affinity);

@@ -18,12 +18,43 @@ echo "Cloning the vcpkg repo"
 git clone "$vcpkgRepo" "$vcpkgRoot"
 git -C "$vcpkgRoot" checkout "tags/$vcpkgVersion"
 
-vcpkgToolReleaseTag=$(grep 'vcpkg_tool_release_tag=' "${BASH_SOURCE%/*}/../shared/vcpkg_tool_release_tag.txt" | cut -d '=' -f 2)
-nonDottedReleaseTag=${vcpkgVersion//-/}
+releaseTagFile="${BASH_SOURCE%/*}/../shared/vcpkg_tool_release_tag.txt"
+for line in $(cat "$releaseTagFile")
+do
+    IFS='='
+    read -ra keyValue <<< "$line"
+    unset IFS
+
+    case "${keyValue[0]}" in
+        "vcpkg_tool_release_tag")
+            vcpkgToolReleaseTag=${keyValue[1]}
+            ;;
+        "linux_sha1")
+            vcpkgToolSHA1=${keyValue[1]}
+            ;;
+    esac
+done
+
+if [ -z vcpkgToolReleaseTag ]
+then
+    echo "Unable to read release tag from $releaseTagFile"
+    echo "Content:"
+    cat $releaseTagFile
+    exit 1
+fi
+
+if [ -z vcpkgToolSHA1 ]
+then
+    echo "Unable to read vcpkg tool SHA1 from $releaseTagFile"
+    echo "Content:"
+    cat $releaseTagFile
+    exit 1
+fi
+
+nonDottedReleaseTag=${vcpkgToolReleaseTag//-/}
 
 vcpkgToolOfficialUrl="https://github.com/microsoft/vcpkg-tool/archive/refs/tags/$vcpkgToolReleaseTag.tar.gz"
 vcpkgToolCacheUrl="http://ci-files01-hki.ci.qt.io/input/vcpkg/vcpkg-tool-$nonDottedReleaseTag.tar.gz"
-vcpkgToolSHA1="c6029714fca0304779f10c9c1cbe4b061a2fd945"
 vcpkgToolSourceFolder="$HOME/vcpkg-tool-$vcpkgToolReleaseTag"
 vcpkgToolBuildFolder="$HOME/vcpkg-tool-$vcpkgToolReleaseTag/build"
 

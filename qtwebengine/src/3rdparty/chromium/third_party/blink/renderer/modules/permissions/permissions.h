@@ -51,7 +51,7 @@ class Permissions final : public ScriptWrappable,
                                          const ScriptValue&,
                                          ExceptionState&);
   ScriptPromise<IDLSequence<PermissionStatus>>
-  requestAll(ScriptState*, const HeapVector<ScriptValue>&, ExceptionState&);
+  requestAll(ScriptState*, const HeapVector<ScriptObject>&, ExceptionState&);
 
   // ExecutionContextLifecycleStateObserver:
   void ContextDestroyed() override;

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickfontdialogimpl_p.h"
 #include "qquickfontdialogimpl_p_p.h"
@@ -43,7 +44,6 @@ void QQuickFontDialogImplPrivate::handleClick(QQuickAbstractButton *button)
 QQuickFontDialogImpl::QQuickFontDialogImpl(QObject *parent)
     : QQuickDialog(*(new QQuickFontDialogImplPrivate), parent)
 {
-    setPopupType(QQuickPopup::Window);
 }
 
 QQuickFontDialogImplAttached *QQuickFontDialogImpl::qmlAttachedProperties(QObject *object)

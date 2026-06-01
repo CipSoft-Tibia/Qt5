@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLVALUETYPEWRAPPER_P_H
 #define QQMLVALUETYPEWRAPPER_P_H
@@ -37,7 +38,7 @@ DECLARE_HEAP_OBJECT(QQmlValueTypeWrapper, ReferenceObject) {
         const void *data, QMetaType metaType, const QMetaObject *metaObject,
         Object *object, int property, Flags flags)
     {
-        ReferenceObject::init(object, property, flags);
+        ReferenceObject::init(object, property, flags | IsDirty);
         setMetaType(metaType);
         setMetaObject(metaObject);
         if (data)
@@ -99,6 +100,7 @@ struct Q_QML_EXPORT QQmlValueTypeWrapper : public ReferenceObject
 {
     V4_OBJECT2(QQmlValueTypeWrapper, ReferenceObject)
     V4_PROTOTYPE(valueTypeWrapperPrototype)
+    Q_MANAGED_TYPE(QMLValueTypeWrapper)
     V4_NEEDS_DESTROY
 
 public:

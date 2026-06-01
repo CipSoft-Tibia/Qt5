@@ -133,10 +133,14 @@ QString QWebEngineClientHints::bitness() const
 
 /*!
     \property QWebEngineClientHints::fullVersionList
-    The value of the \c{Sec-CH-UA-Full-Version-List} HTTP header and \c{fullVersionList} member of NavigatorUAData in JavaScript.
+    The value of the \c{Sec-CH-UA-Full-Version-List} HTTP header and \c{fullVersionList} member of
+   NavigatorUAData in JavaScript.
 
-    It holds brand name and version number pairs in a QVariantMap. The provided values will be automatically extended by the currently used version
-    of Chromium and a semi-random brand.
+    The value of Sec-CH-UA header will also be generated from this by truncating the version
+   numbers.
+
+    It holds brand name and version number pairs in a QVariantMap. The provided values will be
+   automatically extended by the currently used version of Chromium and a semi-random brand.
 */
 QVariantMap QWebEngineClientHints::fullVersionList() const
 {
@@ -158,6 +162,22 @@ bool QWebEngineClientHints::isWow64() const
     if (!m_profileAdapter)
         return false;
     return m_profileAdapter->clientHint(QtWebEngineCore::ProfileAdapter::UAWOW64).toBool();
+}
+
+/*!
+    \property QWebEngineClientHints::formFactors
+    The value of the \c{Sec-CH-UA-Form-Factors} HTTP request header.
+
+    It gives a server information about the user agent's form-factors. It is a structured header
+    whose value must be a list. The header's values are case-sensitive. For more information refer
+    \l{https://wicg.github.io/ua-client-hints/#sec-ch-ua-form-factors}
+*/
+QStringList QWebEngineClientHints::formFactors() const
+{
+    if (!m_profileAdapter)
+        return QStringList();
+
+    return m_profileAdapter->clientHint(QtWebEngineCore::ProfileAdapter::UAFormFactors).toStringList();
 }
 
 void QWebEngineClientHints::setArch(const QString &arch)
@@ -188,11 +208,11 @@ void QWebEngineClientHints::setIsMobile(bool mobile)
     m_profileAdapter->setClientHint(QtWebEngineCore::ProfileAdapter::UAMobile, QVariant(mobile));
 }
 
-void QWebEngineClientHints::setFullVersion(const QString &fullVerson)
+void QWebEngineClientHints::setFullVersion(const QString &fullVersion)
 {
     if (!m_profileAdapter)
         return;
-    m_profileAdapter->setClientHint(QtWebEngineCore::ProfileAdapter::UAFullVersion, QVariant(fullVerson));
+    m_profileAdapter->setClientHint(QtWebEngineCore::ProfileAdapter::UAFullVersion, QVariant(fullVersion));
 }
 
 void QWebEngineClientHints::setPlatformVersion(const QString &platformVersion)
@@ -224,6 +244,14 @@ void QWebEngineClientHints::setIsWow64(bool wow64)
     if (!m_profileAdapter)
         return;
     m_profileAdapter->setClientHint(QtWebEngineCore::ProfileAdapter::UAWOW64, QVariant(wow64));
+}
+
+void QWebEngineClientHints::setFormFactors(const QStringList &formFactors)
+{
+    if (!m_profileAdapter)
+        return;
+    m_profileAdapter->setClientHint(QtWebEngineCore::ProfileAdapter::UAFormFactors,
+                                    QVariant(formFactors));
 }
 
 /*!

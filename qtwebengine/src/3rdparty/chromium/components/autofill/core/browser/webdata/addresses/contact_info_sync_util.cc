@@ -10,9 +10,9 @@
 #include "base/time/time.h"
 #include "base/uuid.h"
 #include "components/autofill/core/browser/country_type.h"
+#include "components/autofill/core/browser/data_quality/addresses/profile_token_quality.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/geo/country_names.h"
-#include "components/autofill/core/browser/profile_token_quality.h"
 #include "components/autofill/core/common/autofill_features.h"
 
 namespace autofill {
@@ -98,7 +98,7 @@ class EntryTokenDeleter {
     }
 
     token->clear_value();
-    return token->ByteSize() == 0;
+    return token->ByteSizeLong() == 0;
   }
 
  private:
@@ -106,7 +106,7 @@ class EntryTokenDeleter {
     metadata->clear_status();
     metadata->clear_observations();
     metadata->clear_value_hash();
-    return metadata->ByteSize() == 0;
+    return metadata->ByteSizeLong() == 0;
   }
 };
 
@@ -207,21 +207,21 @@ sync_pb::ContactInfoSpecifics ContactInfoSpecificsFromAutofillProfile(
 
   specifics.set_guid(profile.guid());
   specifics.set_address_type(RecordTypeToAddressType(profile.record_type()));
-  specifics.set_use_count(profile.use_count());
+  specifics.set_use_count(profile.usage_history().use_count());
   specifics.set_use_date_unix_epoch_seconds(
-      (profile.use_date() - base::Time::UnixEpoch()).InSeconds());
-  if (base::FeatureList::IsEnabled(features::kAutofillTrackMultipleUseDates)) {
-    if (auto use_date2 = profile.use_date(2)) {
-      specifics.set_use_date2_unix_epoch_seconds(
-          (*use_date2 - base::Time::UnixEpoch()).InSeconds());
-    }
-    if (auto use_date3 = profile.use_date(3)) {
-      specifics.set_use_date3_unix_epoch_seconds(
-          (*use_date3 - base::Time::UnixEpoch()).InSeconds());
-    }
+      (profile.usage_history().use_date() - base::Time::UnixEpoch())
+          .InSeconds());
+  if (auto use_date2 = profile.usage_history().use_date(2)) {
+    specifics.set_use_date2_unix_epoch_seconds(
+        (*use_date2 - base::Time::UnixEpoch()).InSeconds());
+  }
+  if (auto use_date3 = profile.usage_history().use_date(3)) {
+    specifics.set_use_date3_unix_epoch_seconds(
+        (*use_date3 - base::Time::UnixEpoch()).InSeconds());
   }
   specifics.set_date_modified_unix_epoch_seconds(
-      (profile.modification_date() - base::Time::UnixEpoch()).InSeconds());
+      (profile.usage_history().modification_date() - base::Time::UnixEpoch())
+          .InSeconds());
   specifics.set_language_code(profile.language_code());
   specifics.set_profile_label(profile.profile_label());
 
@@ -237,6 +237,14 @@ sync_pb::ContactInfoSpecifics ContactInfoSpecificsFromAutofillProfile(
   s.Set(specifics.mutable_name_last_conjunction(), NAME_LAST_CONJUNCTION);
   s.Set(specifics.mutable_name_last_second(), NAME_LAST_SECOND);
   s.Set(specifics.mutable_name_full(), NAME_FULL);
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillSupportPhoneticNameForJP)) {
+    // Set alternative name related values and statues.
+    s.Set(specifics.mutable_alternative_family_name(), ALTERNATIVE_FAMILY_NAME);
+    s.Set(specifics.mutable_alternative_given_name(), ALTERNATIVE_GIVEN_NAME);
+    s.Set(specifics.mutable_alternative_full_name(), ALTERNATIVE_FULL_NAME);
+  }
 
   // Set address-related values and statuses.
   s.Set(specifics.mutable_address_city(), ADDRESS_HOME_CITY);
@@ -336,24 +344,23 @@ std::optional<AutofillProfile> CreateAutofillProfileFromContactInfoSpecifics(
                           AddressTypeToRecordType(specifics.address_type()),
                           AddressCountryCode(country_code));
 
-  profile.set_use_count(specifics.use_count());
-  profile.set_use_date(base::Time::UnixEpoch() +
-                       base::Seconds(specifics.use_date_unix_epoch_seconds()));
-  if (base::FeatureList::IsEnabled(features::kAutofillTrackMultipleUseDates)) {
-    if (specifics.has_use_date2_unix_epoch_seconds()) {
-      profile.set_use_date(
-          base::Time::UnixEpoch() +
-              base::Seconds(specifics.use_date2_unix_epoch_seconds()),
-          2);
-    }
-    if (specifics.has_use_date3_unix_epoch_seconds()) {
-      profile.set_use_date(
-          base::Time::UnixEpoch() +
-              base::Seconds(specifics.use_date3_unix_epoch_seconds()),
-          3);
-    }
+  profile.usage_history().set_use_count(specifics.use_count());
+  profile.usage_history().set_use_date(
+      base::Time::UnixEpoch() +
+      base::Seconds(specifics.use_date_unix_epoch_seconds()));
+  if (specifics.has_use_date2_unix_epoch_seconds()) {
+    profile.usage_history().set_use_date(
+        base::Time::UnixEpoch() +
+            base::Seconds(specifics.use_date2_unix_epoch_seconds()),
+        2);
   }
-  profile.set_modification_date(
+  if (specifics.has_use_date3_unix_epoch_seconds()) {
+    profile.usage_history().set_use_date(
+        base::Time::UnixEpoch() +
+            base::Seconds(specifics.use_date3_unix_epoch_seconds()),
+        3);
+  }
+  profile.usage_history().set_modification_date(
       base::Time::UnixEpoch() +
       base::Seconds(specifics.date_modified_unix_epoch_seconds()));
   profile.set_language_code(specifics.language_code());
@@ -370,6 +377,14 @@ std::optional<AutofillProfile> CreateAutofillProfileFromContactInfoSpecifics(
   s.Set(specifics.name_last_conjunction(), NAME_LAST_CONJUNCTION);
   s.Set(specifics.name_last_second(), NAME_LAST_SECOND);
   s.Set(specifics.name_full(), NAME_FULL);
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillSupportPhoneticNameForJP)) {
+    // Set alternative name related values and statues.
+    s.Set(specifics.alternative_family_name(), ALTERNATIVE_FAMILY_NAME);
+    s.Set(specifics.alternative_given_name(), ALTERNATIVE_GIVEN_NAME);
+    s.Set(specifics.alternative_full_name(), ALTERNATIVE_FULL_NAME);
+  }
 
   // Set address-related values and statuses.
   s.Set(specifics.address_city(), ADDRESS_HOME_CITY);
@@ -427,10 +442,8 @@ sync_pb::ContactInfoSpecifics TrimContactInfoSpecificsDataForCaching(
   trimmed_specifics.clear_address_type();
   trimmed_specifics.clear_use_count();
   trimmed_specifics.clear_use_date_unix_epoch_seconds();
-  if (base::FeatureList::IsEnabled(features::kAutofillTrackMultipleUseDates)) {
-    trimmed_specifics.clear_use_date2_unix_epoch_seconds();
-    trimmed_specifics.clear_use_date3_unix_epoch_seconds();
-  }
+  trimmed_specifics.clear_use_date2_unix_epoch_seconds();
+  trimmed_specifics.clear_use_date3_unix_epoch_seconds();
   trimmed_specifics.clear_date_modified_unix_epoch_seconds();
   trimmed_specifics.clear_language_code();
   trimmed_specifics.clear_profile_label();
@@ -460,6 +473,21 @@ sync_pb::ContactInfoSpecifics TrimContactInfoSpecificsDataForCaching(
   if (d.Delete(trimmed_specifics.mutable_name_full())) {
     trimmed_specifics.clear_name_full();
   }
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillSupportPhoneticNameForJP)) {
+    // Delete alternative name related values and statues.
+    if (d.Delete(trimmed_specifics.mutable_alternative_family_name())) {
+      trimmed_specifics.clear_alternative_family_name();
+    }
+    if (d.Delete(trimmed_specifics.mutable_alternative_given_name())) {
+      trimmed_specifics.clear_alternative_given_name();
+    }
+    if (d.Delete(trimmed_specifics.mutable_alternative_full_name())) {
+      trimmed_specifics.clear_alternative_full_name();
+    }
+  }
+
   // Delete address-related values and statuses.;
   if (d.Delete(trimmed_specifics.mutable_address_city())) {
     trimmed_specifics.clear_address_city();

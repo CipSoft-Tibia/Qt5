@@ -300,6 +300,10 @@ void QWaylandQtTextInputMethod::sendInputMethodEvent(QInputMethodEvent *event)
                                                  attribute.length,
                                                  QString());
             break;
+        case QInputMethodEvent::MimeData:
+            qCWarning(qLcWaylandCompositorInputMethods())
+                << "Ignoring QInputMethodEvent::MimeData";
+            continue;
         }
     }
 

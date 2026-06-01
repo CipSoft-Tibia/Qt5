@@ -145,7 +145,7 @@ Item {
                                 id: coffeeSlider
                                 from: 0
                                 to: 100
-                                value: coffeeAmount
+                                value: root.coffeeAmount
                                 liquidAmount: value
                                 width: parent.width
                                 height: 10
@@ -177,7 +177,7 @@ Item {
                                 id: milkSlider
                                 from: 0
                                 to: 60
-                                value: milkAmount
+                                value: root.milkAmount
                                 liquidAmount: value
                                 width: parent.width
                                 height: 10
@@ -209,7 +209,7 @@ Item {
                                 id: foamSlider
                                 from: 0
                                 to: 60
-                                value: foamAmount
+                                value: root.foamAmount
                                 liquidAmount: value
                                 width: parent.width
                                 height: 10
@@ -241,7 +241,7 @@ Item {
                                 id: sugarSlider
                                 snapMode: Slider.SnapAlways
                                 stepSize: 0.25
-                                value: sugarAmount
+                                value: root.sugarAmount
                                 width: parent.width
                                 height: 10
                                 anchors.verticalCenter: parent.verticalCenter
@@ -327,10 +327,9 @@ Item {
                                         border.color: Colors.grey
                                         Text {
                                             id: sugarText
-                                            property int sugarAmount: 0
                                             anchors.verticalCenter: parent.verticalCenter
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            text: sugarAmount + "p"
+                                            text: (sugarSlider.position * 4) + "p"
                                             font.pixelSize: 12
                                             clip: false
                                             color: Colors.currentTheme.textColor

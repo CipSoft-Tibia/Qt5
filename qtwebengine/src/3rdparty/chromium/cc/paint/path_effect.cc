@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/377326291): Fix and remove.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "cc/paint/path_effect.h"
 
 #include <vector>
@@ -47,11 +52,7 @@ class DashPathEffect final : public PathEffect {
         .ValueOrDie();
   }
   void SerializeData(PaintOpWriter& writer) const override {
-    // This serialization is identical to the behavior of
-    // PaintOpWriter::Write(std::vector), which lets us use
-    // PaintOpReader::Read(std::vector) below.
-    writer.WriteSize(intervals_.size());
-    writer.WriteData(intervals_.size() * sizeof(float), intervals_.data());
+    writer.Write(intervals_);
     writer.Write(phase_);
   }
 
@@ -122,8 +123,7 @@ bool PathEffect::EqualsForTesting(const PathEffect& other) const {
     case Type::kCorner:
       return AreEqualForTesting<CornerPathEffect>(*this, other);
   }
-  NOTREACHED_IN_MIGRATION();
-  return true;
+  NOTREACHED();
 }
 
 sk_sp<PathEffect> PathEffect::Deserialize(PaintOpReader& reader, Type type) {
@@ -131,7 +131,7 @@ sk_sp<PathEffect> PathEffect::Deserialize(PaintOpReader& reader, Type type) {
     case Type::kDash: {
       std::vector<float> intervals;
       float phase;
-      reader.Read(&intervals);
+      reader.Read(intervals);
       reader.Read(&phase);
       return reader.valid()
                  ? MakeDash(intervals.data(),
@@ -144,8 +144,7 @@ sk_sp<PathEffect> PathEffect::Deserialize(PaintOpReader& reader, Type type) {
       return reader.valid() ? MakeCorner(radius) : nullptr;
     }
     default:
-      NOTREACHED_IN_MIGRATION();
-      return nullptr;
+      NOTREACHED();
   }
 }
 

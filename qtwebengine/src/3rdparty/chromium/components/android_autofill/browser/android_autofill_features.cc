@@ -20,7 +20,7 @@ namespace autofill::features {
 
 namespace {
 
-const base::Feature* kFeaturesExposedToJava[] = {
+const base::Feature* const kFeaturesExposedToJava[] = {
     &kAndroidAutofillBottomSheetWorkaround,
     &kAndroidAutofillDeprecateAccessibilityApi};
 
@@ -39,13 +39,6 @@ BASE_FEATURE(kAndroidAutofillBottomSheetWorkaround,
 // which provides alternative paths to handle autofill requests.
 BASE_FEATURE(kAndroidAutofillDeprecateAccessibilityApi,
              "AndroidAutofillDeprecateAccessibilityApi",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-// If enabled, we stop relying on `known_success` in FormSubmitted signal to
-// decide whether to defer submission on not, and instead we directly inform the
-// provider of submission.
-BASE_FEATURE(kAndroidAutofillDirectFormSubmission,
-             "AndroidAutofillDirectFormSubmission",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // If enabled, offer prefill requests (i.e. calls to

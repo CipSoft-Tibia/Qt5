@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Dialogs
@@ -17,15 +18,9 @@ SaturationLightnessPickerImpl {
         border.color: "#353637"
     }
 
-    contentItem: ShaderEffect {
-        scale: contentItem.width / width
-        layer.enabled: true
-        layer.smooth: true
+    contentItem: SaturationLightnessPickerCanvas {
         anchors.fill: parent
-
-        property alias hue: control.hue
-
-        fragmentShader: "qrc:/qt-project.org/imports/QtQuick/Dialogs/quickimpl/shaders/SaturationLightness.frag.qsb"
+        hue: control.hue
     }
 
     handle: PickerHandle {

@@ -15,6 +15,7 @@
 
 #include "base/feature_list.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/post_delayed_memory_reduction_task.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
@@ -154,7 +155,7 @@ class PLATFORM_EXPORT ParkableStringManager : public RAILModeObserver {
 
   void ParkAll(ParkableStringImpl::ParkingMode mode);
   void RecordStatisticsAfter5Minutes() const;
-  void AgeStringsAndPark();
+  void AgeStringsAndPark(base::MemoryReductionTaskContext context);
   void ScheduleAgingTaskIfNeeded();
 
   void RecordUnparkingTime(base::TimeDelta unparking_time) {
@@ -210,7 +211,7 @@ class PLATFORM_EXPORT ParkableStringManager : public RAILModeObserver {
       base::Seconds(10);
 
   bool backgrounded_ = false;
-  RAILMode rail_mode_ = RAILMode::kIdle;
+  RAILMode rail_mode_ = RAILMode::kDefault;
   bool has_pending_aging_task_ = false;
   bool has_posted_unparking_time_accounting_task_ = false;
   bool did_register_memory_pressure_listener_ = false;

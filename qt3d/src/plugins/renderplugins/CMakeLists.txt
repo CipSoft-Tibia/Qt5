@@ -3,4 +3,6 @@
 
 # Generated from renderplugins.pro.
 
-add_subdirectory(scene2d)
+if(QT_FEATURE_qt3d_render)
+    add_subdirectory(scene2d)
+endif()

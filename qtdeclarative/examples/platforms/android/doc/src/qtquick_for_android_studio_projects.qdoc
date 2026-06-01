@@ -8,20 +8,81 @@
     to embed Qt Quick content in Android projects.
     \ingroup qtquickexamples
 
+    \image portrait_java.png
+
     \include running-qtquick-for-android-examples.qdocinc
 
     \section1 Overview
 
-    This example contains a QML project that you can import into Android Studio
-    with the \l {Qt Tools for Android Studio} plugin
-    and Java and Kotlin projects that use the QML project as a View by
-    utilizing the \l {Qt Quick View Android Class}{QtQuickView} API.
+    This example contains a QML project you can import into Android Studio
+    with the \l {Qt Tools for Android Studio} plugin. There are Java and Kotlin
+    projects that use the QML project as a View by utilizing the
+    \l QtQuickView API.
 
-    For more information on how QML works, see the \l {Qt Qml}. This
-    documentation will focus on how a QML component is embedded into
-    Java- and Kotlin-based Android applications.
+    For more information on how QML works, see \l {Qt Qml}. This
+    documentation focuses on how a QML component is embedded into
+    Android Applications using Java or Kotlin.
 
-    \image portrait_java.png
+    \include qtquick-for-android-main().qdocinc
+
+    \section1 Setting up the layout
+
+    For both Java and Kotlin projects, we need to set up the layout for the \l{QtQuickView}s in
+    \c app/src/main/res/layout/activity_main.xml.
+
+    Inside the \c LinearLayout, we set up two FrameLayouts for each \l QtQuickView.
+
+    \badcode
+     <FrameLayout
+        android:id="@+id/firstQmlFrame"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/secondQmlFrame"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+    </FrameLayout>
+
+    \endcode
+
+    The \c id is what is referred to in the Kotlin or Java-coded MainActivity.
+
+    \section1 Importing automatically generated QML Type Java classes
+
+    The Java classes for our QML types are generated when the Qt Quick project is
+    built. These must be imported before we can use them in our MainActivity.
+
+    \if defined(onlinedocs)
+        \tab {import}{tab-java}{Java}{checked}
+        \tab {import}{tab-kotlin}{Kotlin}{}
+        \tabcontent {tab-java}
+    \else
+        For a Java-based project:
+    \endif
+
+    \snippet android/qtquickview_java/app/src/main/java/com/example/qtquickview_java/MainActivity.java qmlTypeImports
+
+    \if defined(onlinedocs)
+        \endtabcontent
+        \tabcontent {tab-kotlin}
+    \else
+        For a Kotlin-based project:
+    \endif
+
+    \snippet android/qtquickview_kotlin/app/src/main/java/com/example/qtquickview_kotlin/MainActivity.kt qmlTypeImports
+
+    \if defined(onlinedocs)
+        \endtabcontent
+    \endif
+
+    \note See the \l{QT_ANDROID_GENERATE_JAVA_QTQUICKVIEW_CONTENTS} CMake
+    variable for further information on Java code generation of QML components.
+
+    \section1 MainActivity's onCreate() method
 
     First, we look at the \c MainActivity's onCreate() method of the Java
     and Kotlin projects.
@@ -55,9 +116,8 @@
     \endif
 
     Inside the \c onCreate() method, previously declared variables
-    are initialized with new \l {Qt Quick View Android Class}{QtQuickView}
-    instances. These instances take the \c Context of the Java/Kotlin
-    Activity as arguments.
+    are initialized with new \l {QtQuickView} instances. These instances
+    take the \c Context of the Java/Kotlin Activity as arguments.
 
     \if defined(onlinedocs)
         \tab {m_qtQuickView}{tab-java}{Java}{checked}
@@ -82,9 +142,8 @@
         \endtabcontent
     \endif
 
-    The \c QtQuickView instances are added to the Android layout with appropriate layout
+    The \l QtQuickView instances are added to the Android layout with appropriate layout
     parameters.
-
 
     \if defined(onlinedocs)
         \tab {layoutParams}{tab-java}{Java}{checked}
@@ -110,7 +169,7 @@
     \endif
 
     The \c Main and \c Second Java classes inherit from the
-    \c QtQuickViewContent class. These classes are generated from the QML
+    \l QtQuickViewContent class. These classes are generated from the QML
     project that we've imported.
 
     \if defined(onlinedocs)
@@ -137,7 +196,7 @@
     \endif
 
     The Qt Quick content is loaded through the \c QtQuickView.loadContent()
-    method, which takes a \c QtQuickViewContent as an argument.
+    method, which takes a \l QtQuickViewContent as an argument.
 
     \if defined(onlinedocs)
         \tab {loadContent}{tab-java}{Java}{checked}
@@ -165,9 +224,9 @@
     \section1 Interacting with QML components
 
     To interact with the embedded QML components we implement the
-    \c QtQmlStatusChangeListener interface and override the \c onStatusChanged
-    method to get the loading status of the QtQuickViewContent currently being
-    loaded into the \l {Qt Quick View Android Class}{QtQuickView}.
+    \l QtQmlStatusChangeListener interface and override the \c onStatusChanged
+    method to get the loading status of the \l QtQuickViewContent currently being
+    loaded into the \l {QtQuickView}.
 
     \if defined(onlinedocs)
         \tab {listener}{tab-java}{Java}{checked}
@@ -256,7 +315,7 @@
 
     The overridden callback function \c onStatusChanged() receives
     \c StatusChanged() signal containing the current
-    status (public Enum QtQmlStatus) of the loading of the current
+    status, a \l QtQmlStatus Enum, of the loading of the current
     \c QtQuickViewContent into the \l QtQuickView. If this \c QtQmlStatus
     is confirmed to be \c QtQmlStatus.READY, we can start interacting
     with the QML view.
@@ -333,14 +392,14 @@
 
     The \c QtQuickViewContent class offers a
     \c connectSignalListener() and \c disconnectSignalListener() methods which
-    are used to connect and disconnect signal listener between signals that are
+    are used to connect and disconnect signal listeners between signals that are
     declared in the QML component root object.
     The \c QtQuickViewContent.connectSignalListener() returns a unique signal
-    listener id which we store and use later to identify and disconnect the
+    listener ID, which we store and use later to identify and disconnect the
     listener.
 
     Here we connect a signal listener to the \c onClicked()  signal of the
-    QML component.
+    QML component:
 
     \if defined(onlinedocs)
         \tab {signal_listener}{tab-java}{Java}{checked}
@@ -365,15 +424,14 @@
         \endtabcontent
     \endif
 
-    The \c onClicked() signal is emitted every time the button on the
-    QML component is clicked.
-    That signal is then received by this listener and the background
+    The \c onClicked() signal is emitted every time the button on the QML component is clicked.
+    This listener then receives that signal, and the background
     color of the layout holding the Android side of the application is set to
     a random color value fetched from the \c Colors.java class.
 
     Next, the signal listener is disconnected using the
     \c QtQuickViewContent.disconnectSignalListener()
-    method by giving it the unique signal listener id.
+    method by giving it the unique signal listener ID.
 
     \if defined(onlinedocs)
         \tab {qml_signal_listener}{tab-java}{Java}{checked}
@@ -397,4 +455,8 @@
     \if defined(onlinedocs)
         \endtabcontent
     \endif
+
+     If you haven't already, check out the
+     \l{Qt Academy: Embedding Qt Quick 3D Content in an Android App} course that introduces the
+     tools and APIs referenced in this example.
 */

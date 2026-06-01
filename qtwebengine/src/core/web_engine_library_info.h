@@ -1,6 +1,7 @@
 // Copyright (C) 2013 BlackBerry Limited. All rights reserved.
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:provides-trusted-directory-paths
 
 #ifndef WEB_ENGINE_LIBRARY_INFO_H
 #define WEB_ENGINE_LIBRARY_INFO_H
@@ -16,6 +17,10 @@ enum {
     QT_FRAMEWORK_BUNDLE = 5004
 };
 
+namespace base {
+class CommandLine;
+}
+
 class WebEngineLibraryInfo {
 public:
     static base::FilePath getPath(int key, bool showWarnings = false);
@@ -23,6 +28,7 @@ public:
     static std::u16string getApplicationName();
     static std::string getResolvedLocale();
     static std::string getApplicationLocale();
+    static void appendPathOverridesToCommandLine(base::CommandLine* commandLine);
 #if defined(Q_OS_WIN)
     static bool isRemoteDrivePath(const QString &path);
     static bool isUNCPath(const QString &path);

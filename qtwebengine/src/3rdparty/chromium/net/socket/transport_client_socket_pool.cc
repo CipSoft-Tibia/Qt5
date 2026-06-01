@@ -4,6 +4,7 @@
 
 #include "net/socket/transport_client_socket_pool.h"
 
+#include <algorithm>
 #include <string_view>
 #include <utility>
 
@@ -20,7 +21,6 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/not_fatal_until.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
@@ -356,9 +356,7 @@ int TransportClientSocketPool::RequestSockets(
     if (!base::Contains(group_map_, group_id)) {
       // Unexpected.  The group should only be getting deleted on synchronous
       // error.
-      NOTREACHED_IN_MIGRATION();
-      deleted_group = true;
-      break;
+      NOTREACHED();
     }
   }
 
@@ -678,8 +676,7 @@ LoadState TransportClientSocketPool::GetLoadState(
     // TODO(mmenke):  This is actually reached in the wild, for unknown reasons.
     // Would be great to understand why, and if it's a bug, fix it.  If not,
     // should have a test for that case.
-    NOTREACHED_IN_MIGRATION();
-    return LOAD_STATE_IDLE;
+    NOTREACHED();
   }
 
   const Group& group = *group_it->second;
@@ -1544,11 +1541,11 @@ std::unique_ptr<ConnectJob> TransportClientSocketPool::Group::RemoveUnboundJob(
   SanityCheck();
 
   // Check that |job| is in the list.
-  auto it = base::ranges::find(jobs_, job, &std::unique_ptr<ConnectJob>::get);
+  auto it = std::ranges::find(jobs_, job, &std::unique_ptr<ConnectJob>::get);
   CHECK(it != jobs_.end(), base::NotFatalUntil::M130);
 
   // Check if |job| is in the unassigned jobs list. If so, remove it.
-  auto it2 = base::ranges::find(unassigned_jobs_, job);
+  auto it2 = std::ranges::find(unassigned_jobs_, job);
   if (it2 != unassigned_jobs_.end()) {
     unassigned_jobs_.erase(it2);
   } else {
@@ -1584,8 +1581,7 @@ void TransportClientSocketPool::Group::OnBackupJobTimerFired(
   // If there are no more jobs pending, there is no work to do.
   // If we've done our cleanups correctly, this should not happen.
   if (jobs_.empty()) {
-    NOTREACHED_IN_MIGRATION();
-    return;
+    NOTREACHED();
   }
 
   // If the old job has already established a connection, don't start a backup
@@ -1886,7 +1882,7 @@ void TransportClientSocketPool::Group::SetPriority(ClientSocketHandle* handle,
   }
 
   // This function must be called with a valid ClientSocketHandle.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 bool TransportClientSocketPool::Group::RequestWithHandleHasJobForTesting(
@@ -1903,8 +1899,7 @@ bool TransportClientSocketPool::Group::RequestWithHandleHasJobForTesting(
       return false;
     pointer = unbound_requests_.GetNextTowardsLastMin(pointer);
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 TransportClientSocketPool::Group::BoundRequest::BoundRequest()

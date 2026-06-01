@@ -41,8 +41,6 @@ class Q_LOCATION_EXPORT QDeclarativeGeoRouteModel : public QAbstractListModel, p
     Q_OBJECT
     QML_NAMED_ELEMENT(RouteModel)
     QML_ADDED_IN_VERSION(5, 0)
-    Q_ENUMS(Status)
-    Q_ENUMS(RouteError)
 
     Q_PROPERTY(QDeclarativeGeoServiceProvider *plugin READ plugin WRITE setPlugin NOTIFY pluginChanged)
     Q_PROPERTY(QDeclarativeGeoRouteQuery *query READ query WRITE setQuery NOTIFY queryChanged)
@@ -66,6 +64,7 @@ public:
         Loading,
         Error
     };
+    Q_ENUM(Status)
 
     enum RouteError {
         NoError = QGeoRouteReply::NoError,
@@ -80,6 +79,7 @@ public:
         UnknownParameterError = 100,
         MissingRequiredParameterError
     };
+    Q_ENUM(RouteError)
 
     explicit QDeclarativeGeoRouteModel(QObject *parent = nullptr);
 
@@ -156,16 +156,6 @@ class Q_LOCATION_EXPORT QDeclarativeGeoRouteQuery : public QObject, public QQmlP
     Q_OBJECT
     QML_NAMED_ELEMENT(RouteQuery)
     QML_ADDED_IN_VERSION(5, 0)
-    Q_ENUMS(TravelMode)
-    Q_ENUMS(FeatureType)
-    Q_ENUMS(FeatureWeight)
-    Q_ENUMS(SegmentDetail)
-    Q_ENUMS(ManeuverDetail)
-    Q_ENUMS(RouteOptimization)
-    Q_FLAGS(RouteOptimizations)
-    Q_FLAGS(ManeuverDetails)
-    Q_FLAGS(SegmentDetails)
-    Q_FLAGS(TravelModes)
 
     Q_PROPERTY(int numberAlternativeRoutes READ numberAlternativeRoutes WRITE setNumberAlternativeRoutes NOTIFY numberAlternativeRoutesChanged)
     Q_PROPERTY(TravelModes travelModes READ travelModes WRITE setTravelModes NOTIFY travelModesChanged)
@@ -197,7 +187,9 @@ public:
         PublicTransitTravel = QGeoRouteRequest::PublicTransitTravel,
         TruckTravel = QGeoRouteRequest::TruckTravel
     };
+    Q_ENUM(TravelMode)
     Q_DECLARE_FLAGS(TravelModes, TravelMode)
+    Q_FLAG(TravelModes)
 
     enum FeatureType {
         NoFeature = QGeoRouteRequest::NoFeature,
@@ -212,6 +204,7 @@ public:
         TrafficFeature = QGeoRouteRequest::TrafficFeature
     };
     Q_DECLARE_FLAGS(FeatureTypes, FeatureType)
+    Q_FLAG(FeatureTypes);
 
     enum FeatureWeight {
         NeutralFeatureWeight = QGeoRouteRequest::NeutralFeatureWeight,
@@ -221,6 +214,7 @@ public:
         DisallowFeatureWeight = QGeoRouteRequest::DisallowFeatureWeight
     };
     Q_DECLARE_FLAGS(FeatureWeights, FeatureWeight)
+    Q_FLAG(FeatureWeight)
 
     enum RouteOptimization {
         ShortestRoute = QGeoRouteRequest::ShortestRoute,
@@ -228,19 +222,25 @@ public:
         MostEconomicRoute = QGeoRouteRequest::MostEconomicRoute,
         MostScenicRoute = QGeoRouteRequest::MostScenicRoute
     };
+    Q_ENUM(RouteOptimization)
     Q_DECLARE_FLAGS(RouteOptimizations, RouteOptimization)
+    Q_FLAG(RouteOptimizations)
 
     enum SegmentDetail {
         NoSegmentData = 0x0000,
         BasicSegmentData = 0x0001
     };
+    Q_ENUM(SegmentDetail)
     Q_DECLARE_FLAGS(SegmentDetails, SegmentDetail)
+    Q_FLAG(SegmentDetails)
 
     enum ManeuverDetail {
         NoManeuvers = 0x0000,
         BasicManeuvers = 0x0001
     };
+    Q_ENUM(ManeuverDetail)
     Q_DECLARE_FLAGS(ManeuverDetails, ManeuverDetail)
+    Q_FLAG(ManeuverDetails)
 
     void setNumberAlternativeRoutes(int numberAlternativeRoutes);
     int numberAlternativeRoutes() const;

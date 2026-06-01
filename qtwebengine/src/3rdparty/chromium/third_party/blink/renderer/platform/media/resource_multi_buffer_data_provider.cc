@@ -34,6 +34,7 @@
 #include "third_party/blink/renderer/platform/media/cache_util.h"
 #include "third_party/blink/renderer/platform/media/resource_fetch_context.h"
 #include "third_party/blink/renderer/platform/media/url_index.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 
 namespace blink {
 
@@ -63,7 +64,7 @@ ResourceMultiBufferDataProvider::ResourceMultiBufferDataProvider(
       url_data_(url_data),
       retries_(0),
       cors_mode_(url_data->cors_mode()),
-      origin_(url_data->url().DeprecatedGetOriginAsURL()),
+      original_url_(url_data->url()),
       is_client_audio_element_(is_client_audio_element),
       task_runner_(std::move(task_runner)) {
   DCHECK(url_data_) << " pos = " << pos;
@@ -135,8 +136,9 @@ bool ResourceMultiBufferDataProvider::Available() const {
     return false;
   if (fifo_.back()->end_of_stream())
     return true;
-  if (fifo_.front()->data_size() == block_size())
+  if (fifo_.front()->size() == static_cast<size_t>(block_size())) {
     return true;
+  }
   return false;
 }
 
@@ -145,7 +147,7 @@ int64_t ResourceMultiBufferDataProvider::AvailableBytes() const {
   for (const auto& i : fifo_) {
     if (i->end_of_stream())
       break;
-    bytes += i->data_size();
+    bytes += i->size();
   }
   return bytes;
 }
@@ -177,7 +179,7 @@ bool ResourceMultiBufferDataProvider::WillFollowRedirect(
   // This test is vital for security!
   if (cors_mode_ == UrlData::CORS_UNSPECIFIED) {
     // We allow the redirect if the origin is the same.
-    if (origin_ != redirects_to_.DeprecatedGetOriginAsURL()) {
+    if (!SecurityOrigin::AreSameOrigin(original_url_, redirects_to_)) {
       // We also allow the redirect if we don't have any data in the
       // cache, as that means that no dangerous data mixing can occur.
       if (url_data_->multibuffer()->map().empty() && fifo_.empty())
@@ -225,10 +227,10 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
 
   scoped_refptr<UrlData> destination_url_data(url_data_.get());
 
-  if (!redirects_to_.is_empty()) {
+  if (!redirects_to_.IsEmpty()) {
     destination_url_data = url_data_->url_index()->GetByUrl(
         redirects_to_, cors_mode_, url_data_->cache_lookup_mode());
-    redirects_to_ = GURL();
+    redirects_to_ = KURL();
   }
 
   base::Time last_modified;
@@ -260,7 +262,7 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
   // received a response from HTTP/HTTPS protocol or the request was
   // successful (in particular range request). So we only verify the partial
   // response for HTTP and HTTPS protocol.
-  if (destination_url_data->url().SchemeIsHTTPOrHTTPS()) {
+  if (destination_url_data->url().ProtocolIsInHTTPFamily()) {
     bool partial_response = (response.HttpStatusCode() == kHttpPartialContent);
     bool ok_response = (response.HttpStatusCode() == kHttpOK);
 
@@ -360,14 +362,14 @@ void ResourceMultiBufferDataProvider::DidReceiveResponse(
   // ResponseUrl(), but ResourceMultiBufferDataProvider disallows mixing
   // constructed responses (new Response()) and native server responses, even if
   // they have the same response URL.
-  GURL response_url;
+  KURL response_url;
   if (!response.WasFetchedViaServiceWorker() ||
       response.HasUrlListViaServiceWorker()) {
     response_url = response.ResponseUrl();
   }
 
   // This test is vital for security!
-  if (!url_data_->ValidateDataOrigin(response_url.DeprecatedGetOriginAsURL())) {
+  if (!url_data_->ValidateDataOrigin(response_url)) {
     active_loader_.reset();
     url_data_->Fail();
     return;  // "this" may be deleted now.
@@ -386,11 +388,13 @@ void ResourceMultiBufferDataProvider::DidReceiveData(
   DCHECK(active_loader_);
   DCHECK_GT(data.size(), 0u);
 
+  auto bytes_data = base::as_bytes(data);
   if (bytes_to_discard_) {
-    uint64_t tmp = std::min<uint64_t>(bytes_to_discard_, data.size());
-    data = data.subspan(static_cast<size_t>(tmp));
-    bytes_to_discard_ -= tmp;
-    if (data.empty()) {
+    const auto discard_length =
+        std::min<size_t>(bytes_to_discard_, bytes_data.size());
+    bytes_data = bytes_data.subspan(discard_length);
+    bytes_to_discard_ -= discard_length;
+    if (bytes_data.empty()) {
       return;
     }
   }
@@ -398,20 +402,19 @@ void ResourceMultiBufferDataProvider::DidReceiveData(
   // When we receive data, we allow more retries.
   retries_ = 0;
 
-  while (!data.empty()) {
-    if (fifo_.empty() || fifo_.back()->data_size() == block_size()) {
-      fifo_.push_back(base::MakeRefCounted<media::DataBuffer>(
-          static_cast<int>(block_size())));
-      fifo_.back()->set_data_size(0);
+  while (!bytes_data.empty()) {
+    const size_t buffer_size = static_cast<size_t>(block_size());
+    if (fifo_.empty() || fifo_.back()->size() == buffer_size) {
+      fifo_.push_back(base::MakeRefCounted<media::DataBuffer>(buffer_size));
     }
-    int last_block_size = fifo_.back()->data_size();
-    auto to_append =
-        std::min<int64_t>(data.size(), block_size() - last_block_size);
-    DCHECK_GT(to_append, 0);
-    memcpy(fifo_.back()->writable_data() + last_block_size, data.data(),
-           static_cast<size_t>(to_append));
-    data = data.subspan(static_cast<size_t>(to_append));
-    fifo_.back()->set_data_size(static_cast<int>(last_block_size + to_append));
+    const size_t last_block_size = fifo_.back()->size();
+    CHECK_GE(buffer_size, last_block_size);
+    const size_t to_append =
+        std::min(bytes_data.size(), buffer_size - last_block_size);
+    CHECK_GT(to_append, 0u);
+
+    fifo_.back()->Append(bytes_data.first(to_append));
+    bytes_data = bytes_data.subspan(to_append);
   }
 
   url_data_->multibuffer()->OnDataProviderEvent(this);
@@ -492,8 +495,7 @@ bool ResourceMultiBufferDataProvider::ParseContentRange(
     int64_t* last_byte_position,
     int64_t* instance_size) {
   const char kUpThroughBytesUnit[] = "bytes ";
-  if (!base::StartsWith(content_range_str, kUpThroughBytesUnit,
-                        base::CompareCase::SENSITIVE)) {
+  if (!content_range_str.starts_with(kUpThroughBytesUnit)) {
     return false;
   }
   std::string range_spec =
@@ -540,7 +542,7 @@ int64_t ResourceMultiBufferDataProvider::byte_pos() const {
   ret += fifo_.size();
   ret = ret << url_data_->multibuffer()->block_size_shift();
   if (!fifo_.empty()) {
-    ret += fifo_.back()->data_size() - block_size();
+    ret += fifo_.back()->size() - block_size();
   }
   return ret;
 }

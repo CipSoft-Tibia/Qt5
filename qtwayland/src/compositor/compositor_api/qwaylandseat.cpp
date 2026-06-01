@@ -21,7 +21,6 @@
 #endif
 #include <QtWaylandCompositor/private/qwaylandutils_p.h>
 
-#include "extensions/qwlqtkey_p.h"
 #include "extensions/qwaylandtextinput.h"
 #include "extensions/qwaylandtextinputv3.h"
 #include "extensions/qwaylandqttextinputmethod.h"
@@ -88,7 +87,8 @@ void QWaylandSeatPrivate::seat_destroy_resource(wl_seat::Resource *)
 
 void QWaylandSeatPrivate::seat_bind_resource(wl_seat::Resource *resource)
 {
-    wl_seat::send_name(resource->handle, QStringLiteral("seat%1").arg(QString::number(name)));
+    if (resource->version() >= WL_SEAT_NAME_SINCE_VERSION)
+        wl_seat::send_name(resource->handle, QLatin1String("seat") + QString::number(name));
     // The order of capabilities matches the order defined in the wayland protocol
     wl_seat::send_capabilities(resource->handle, (uint32_t)capabilities);
 }
@@ -484,10 +484,6 @@ void QWaylandSeat::sendFullKeyEvent(QKeyEvent *event)
         }
     }
 #endif
-
-    QtWayland::QtKeyExtensionGlobal *ext = QtWayland::QtKeyExtensionGlobal::findIn(d->compositor);
-    if (ext && ext->postQtKeyEvent(event, keyboardFocus()))
-        return;
 
     if (!d->keyboard.isNull() && !event->isAutoRepeat()) {
 

@@ -151,6 +151,13 @@ void tst_QJniArray::construct()
         QCOMPARE(list.toContainer(), strings);
     }
     {
+        constexpr qsizetype size = 5;
+        const QJniArray<jstring> list(size);
+        const QStringList strings = list.toContainer();
+        QCOMPARE(strings.at(0), QString());
+        QCOMPARE(strings.size(), size);
+    }
+    {
         QJniArray bytes = QJniArrayBase::fromContainer(QByteArray("abc"));
         static_assert(std::is_same_v<decltype(bytes)::value_type, jbyte>);
         QCOMPARE(bytes.size(), 3);

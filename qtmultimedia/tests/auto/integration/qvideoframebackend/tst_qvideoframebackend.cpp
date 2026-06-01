@@ -1,18 +1,20 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtCore/qdebug.h>
+#include <QtGui/rhi/qrhi.h>
+#include <QtMultimedia/qmediaplayer.h>
+#include <QtMultimedia/qvideoframe.h>
 #include <QtTest/qtest.h>
-#include <qmediaplayer.h>
-#include <qvideoframe.h>
-#include <qdebug.h>
 
-#include <private/mediafileselector_p.h>
 #include <private/mediabackendutils_p.h>
+#include <private/mediafileselector_p.h>
+#include <private/qthreadlocalrhi_p.h>
+#include <private/qvideotexturehelper_p.h>
+#include <private/qvideowindow_p.h>
 #include <private/testvideosink_p.h>
-#include "private/qvideotexturehelper_p.h"
-#include "private/qvideowindow_p.h"
-#include <thread>
 
+#include <thread>
 
 QT_USE_NAMESPACE
 
@@ -34,6 +36,7 @@ private slots:
     void toImage_rendersUpdatedFrame_afterMappingInWriteModeAndModifying_data();
     void toImage_rendersUpdatedFrame_afterMappingInWriteModeAndModifying();
 
+    void toImage_returnsImage_whenCalledFromSeparateThreadAndWhileRenderingToWindow_data();
     void toImage_returnsImage_whenCalledFromSeparateThreadAndWhileRenderingToWindow();
 
 private:
@@ -47,8 +50,8 @@ private:
     void addMediaPlayerFrameTestData(F &&f);
 
 private:
-    MaybeUrl m_oneRedFrameVideo{ QUnexpect{} };
-    MaybeUrl m_colorsVideo{ QUnexpect{} };
+    MaybeUrl m_oneRedFrameVideo{ q23::unexpect };
+    MaybeUrl m_colorsVideo{ q23::unexpect };
     MediaFileSelector m_mediaSelector;
 };
 
@@ -218,11 +221,29 @@ void tst_QVideoFrameBackend::toImage_rendersUpdatedFrame_afterMappingInWriteMode
     QCOMPARE(originalImage.pixel(1, 1), modifiedImage.pixel(1, 1));
 }
 
+void tst_QVideoFrameBackend::toImage_returnsImage_whenCalledFromSeparateThreadAndWhileRenderingToWindow_data()
+{
+    QTest::addColumn<QRhi::Implementation>("backend");
+
+#if QT_CONFIG(opengl)
+    QTest::newRow("OpenGL") << QRhi::OpenGLES2;
+#endif
+#if QT_CONFIG(metal)
+    QTest::newRow("Metal") << QRhi::Metal;
+#endif
+#if defined(Q_OS_WIN)
+    QTest::newRow("D3D11") << QRhi::D3D11;
+#endif
+}
+
 void tst_QVideoFrameBackend::toImage_returnsImage_whenCalledFromSeparateThreadAndWhileRenderingToWindow()
 {
+    QFETCH(QRhi::Implementation, backend);
+
     if (isCI()) {
 #ifdef Q_OS_MACOS
-        QSKIP("SKIP on macOS because of crash and error \"Failed to create QWindow::MetalSurface. Metal is not supported by any of the GPUs in this system.\"");
+        if (backend == QRhi::Metal)
+            QSKIP("SKIP on macOS because of crash and error \"Failed to create QWindow::MetalSurface. Metal is not supported by any of the GPUs in this system.\"");
 #elif defined(Q_OS_ANDROID)
         QSKIP("SKIP initTestCase on CI, because of QTBUG-118571");
 #endif
@@ -241,10 +262,14 @@ void tst_QVideoFrameBackend::toImage_returnsImage_whenCalledFromSeparateThreadAn
 
     // act
     connect(sink, &QVideoSink::videoFrameChanged, sink, [&](const QVideoFrame &frame) {
-
         // Run toImage on separate thread to exercise special code path
         QImage image;
-        auto t = std::thread([&] { image = frame.toImage(); });
+        auto t = std::thread([&] {
+            // Set thread-local QRhi implementation to use
+            qSetPreferredThreadLocalRhiBackend(backend);
+
+            image = frame.toImage();
+        });
         t.join();
 
         if (!image.isNull())

@@ -121,9 +121,11 @@ QT_BEGIN_NAMESPACE
 */
 QMediaRecorderPrivate::QMediaRecorderPrivate()
 {
+#if QT_CONFIG(mimetype)
     // Force an early initialization of the mime database
     // to avoid a delay when recording for the first time.
     encoderSettings.mimeType();
+#endif
 }
 
 QString QMediaRecorderPrivate::msgFailedStartRecording()
@@ -498,7 +500,8 @@ QT_WARNING_POP
         if (settings.videoResolution() != d->encoderSettings.videoResolution())
             emit videoResolutionChanged();
 
-        if (!qFuzzyCompare(settings.videoFrameRate(), d->encoderSettings.videoFrameRate()))
+        if (!QtPrivate::fuzzyCompare(settings.videoFrameRate(),
+                                     d->encoderSettings.videoFrameRate()))
             emit videoFrameRateChanged();
 
         if (settings.videoBitRate() != d->encoderSettings.videoBitRate())
@@ -882,6 +885,12 @@ void QMediaRecorder::setMediaFormat(const QMediaFormat &format)
 */
 
 /*!
+    \property QMediaRecorder::encodingMode
+    \brief the encoding mode.
+    \sa EncodingMode
+*/
+
+/*!
     Returns the encoding mode.
 
     \sa EncodingMode
@@ -1068,6 +1077,10 @@ void QMediaRecorder::setVideoBitRate(int bitRate)
 */
 
 /*!
+    \property QMediaRecorder::audioBitRate
+    \brief the bit rate of the compressed audio stream in bits per second.
+*/
+/*!
     Returns the bit rate of the compressed audio stream in bits per second.
 */
 int QMediaRecorder::audioBitRate() const
@@ -1097,6 +1110,11 @@ void QMediaRecorder::setAudioBitRate(int bitRate)
     \qmlproperty int QtMultimedia::MediaRecorder::audioChannelCount
     \since 6.6
     \brief This property holds the number of audio channels.
+*/
+
+/*!
+    \property QMediaRecorder::audioChannelCount
+    \brief the number of audio channels.
 */
 
 /*!
@@ -1132,6 +1150,11 @@ void QMediaRecorder::setAudioChannelCount(int channels)
     \qmlproperty int QtMultimedia::MediaRecorder::audioSampleRate
     \since 6.6
     \brief This property holds the audio sample rate in Hz.
+*/
+
+/*!
+    \property QMediaRecorder::audioSampleRate
+    \brief the audio sample rate in Hz.
 */
 
 /*!

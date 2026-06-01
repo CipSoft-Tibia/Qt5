@@ -4,6 +4,7 @@
 
 #include "device/fido/cable/v2_authenticator.h"
 
+#include <algorithm>
 #include <string_view>
 
 #include "base/containers/flat_set.h"
@@ -12,7 +13,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/weak_ptr.h"
-#include "base/ranges/algorithm.h"
 #include "base/sequence_checker.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/sequenced_task_runner.h"
@@ -276,11 +276,11 @@ class TunnelTransport : public Transport {
       GeneratePairingDataCallback generate_pairing_data,
       base::flat_set<Feature> features)
       : platform_(platform),
-        tunnel_id_(device::cablev2::Derive<EXTENT(tunnel_id_)>(
+        tunnel_id_(device::cablev2::Derive<kTunnelIdSize>(
             secret,
             base::span<uint8_t>(),
             DerivedValueType::kTunnelID)),
-        eid_key_(device::cablev2::Derive<EXTENT(eid_key_)>(
+        eid_key_(device::cablev2::Derive<kEIDKeySize>(
             secret,
             base::span<const uint8_t>(),
             device::cablev2::DerivedValueType::kEIDKey)),
@@ -310,7 +310,7 @@ class TunnelTransport : public Transport {
       bssl::UniquePtr<EC_KEY> local_identity)
       : platform_(platform),
         tunnel_id_(fido_parsing_utils::Materialize(tunnel_id)),
-        eid_key_(device::cablev2::Derive<EXTENT(eid_key_)>(
+        eid_key_(device::cablev2::Derive<kEIDKeySize>(
             secret,
             client_nonce,
             device::cablev2::DerivedValueType::kEIDKey)),
@@ -434,7 +434,7 @@ class TunnelTransport : public Transport {
 
     ble_advert_ =
         platform_->SendBLEAdvert(eid::Encrypt(plaintext_eid, eid_key_));
-    psk_ = device::cablev2::Derive<EXTENT(psk_)>(
+    psk_ = device::cablev2::Derive<kPSKSize>(
         secret_, plaintext_eid, device::cablev2::DerivedValueType::kPSK);
 
     update_callback_.Run(Platform::Status::TUNNEL_SERVER_CONNECT);
@@ -608,7 +608,7 @@ class TunnelTransport : public Transport {
       }
 
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
 
@@ -624,7 +624,7 @@ class TunnelTransport : public Transport {
           break;
       }
     }
-    base::ranges::sort(ret, [](const auto& a, const auto& b) {
+    std::ranges::sort(ret, [](const auto& a, const auto& b) {
       return a.GetString() < b.GetString();
     });
     return cbor::Value(std::move(ret));
@@ -720,8 +720,7 @@ class CTAP2Processor : public Transaction {
     if (message_bytes.empty()) {
       return Platform::Error::INVALID_CTAP;
     }
-    const auto command = message_bytes[0];
-    const auto cbor_bytes = message_bytes.subspan(1);
+    const auto [command, cbor_bytes] = message_bytes.split_at<1>();
 
     std::optional<cbor::Value> payload;
     if (!cbor_bytes.empty()) {
@@ -731,14 +730,13 @@ class CTAP2Processor : public Transaction {
                         << base::HexEncode(cbor_bytes);
         return Platform::Error::INVALID_CTAP;
       }
-      FIDO_LOG(DEBUG) << "<- (" << base::HexEncode(&command, 1) << ") "
+      FIDO_LOG(DEBUG) << "<- (" << base::HexEncode(command) << ") "
                       << cbor::DiagnosticWriter::Write(*payload);
     } else {
-      FIDO_LOG(DEBUG) << "<- (" << base::HexEncode(&command, 1)
-                      << ") <no payload>";
+      FIDO_LOG(DEBUG) << "<- (" << base::HexEncode(command) << ") <no payload>";
     }
 
-    switch (command) {
+    switch (command[0]) {
       case static_cast<uint8_t>(
           device::CtapRequestCommand::kAuthenticatorGetInfo): {
         if (payload) {
@@ -908,11 +906,6 @@ class CTAP2Processor : public Transaction {
           }
         }
 
-        // PRF inputs are already hashed when coming via CTAP so, if there are
-        // any PRF inputs, they're hashed.
-        params->extensions->prf_inputs_hashed =
-            !params->extensions->prf_inputs.empty();
-
         transaction_received_ = true;
         const bool empty_allowlist = params->allow_credentials.empty();
         platform_->GetAssertion(
@@ -933,7 +926,7 @@ class CTAP2Processor : public Transaction {
 
       default:
         FIDO_LOG(ERROR) << "Received unknown command "
-                        << static_cast<unsigned>(command);
+                        << static_cast<unsigned>(command[0]);
         return Platform::Error::INVALID_CTAP;
     }
   }
@@ -1204,14 +1197,14 @@ static std::array<uint8_t, 32> DerivePairedSecret(
     // first using the contact ID to derive a secret from the root secret, and
     // then using the pairing ID to generate a secret from that.
     per_contact_id_secret =
-        device::cablev2::Derive<EXTENT(per_contact_id_secret)>(
+        device::cablev2::Derive<per_contact_id_secret.size()>(
             root_secret, *contact_id,
             device::cablev2::DerivedValueType::kPerContactIDSecret);
     secret = per_contact_id_secret;
   }
 
   std::array<uint8_t, 32> paired_secret;
-  paired_secret = device::cablev2::Derive<EXTENT(paired_secret)>(
+  paired_secret = device::cablev2::Derive<paired_secret.size()>(
       secret, pairing_id, device::cablev2::DerivedValueType::kPairedSecret);
 
   return paired_secret;

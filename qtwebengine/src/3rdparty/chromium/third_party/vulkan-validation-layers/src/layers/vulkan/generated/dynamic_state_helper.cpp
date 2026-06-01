@@ -21,7 +21,6 @@
 
 // NOLINTBEGIN
 
-#include "core_checks/core_validation.h"
 #include "state_tracker/pipeline_state.h"
 
 VkDynamicState ConvertToDynamicState(CBDynamicState dynamic_state) {
@@ -74,6 +73,8 @@ VkDynamicState ConvertToDynamicState(CBDynamicState dynamic_state) {
             return VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE;
         case CB_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE:
             return VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE;
+        case CB_DYNAMIC_STATE_LINE_STIPPLE:
+            return VK_DYNAMIC_STATE_LINE_STIPPLE;
         case CB_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV:
             return VK_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV;
         case CB_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT:
@@ -168,8 +169,8 @@ VkDynamicState ConvertToDynamicState(CBDynamicState dynamic_state) {
             return VK_DYNAMIC_STATE_COVERAGE_REDUCTION_MODE_NV;
         case CB_DYNAMIC_STATE_ATTACHMENT_FEEDBACK_LOOP_ENABLE_EXT:
             return VK_DYNAMIC_STATE_ATTACHMENT_FEEDBACK_LOOP_ENABLE_EXT;
-        case CB_DYNAMIC_STATE_LINE_STIPPLE_KHR:
-            return VK_DYNAMIC_STATE_LINE_STIPPLE_KHR;
+        case CB_DYNAMIC_STATE_DEPTH_CLAMP_RANGE_EXT:
+            return VK_DYNAMIC_STATE_DEPTH_CLAMP_RANGE_EXT;
 
         default:
             return VK_DYNAMIC_STATE_MAX_ENUM;
@@ -226,6 +227,8 @@ CBDynamicState ConvertToCBDynamicState(VkDynamicState dynamic_state) {
             return CB_DYNAMIC_STATE_DEPTH_BIAS_ENABLE;
         case VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE:
             return CB_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE;
+        case VK_DYNAMIC_STATE_LINE_STIPPLE:
+            return CB_DYNAMIC_STATE_LINE_STIPPLE;
         case VK_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV:
             return CB_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV;
         case VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT:
@@ -320,8 +323,8 @@ CBDynamicState ConvertToCBDynamicState(VkDynamicState dynamic_state) {
             return CB_DYNAMIC_STATE_COVERAGE_REDUCTION_MODE_NV;
         case VK_DYNAMIC_STATE_ATTACHMENT_FEEDBACK_LOOP_ENABLE_EXT:
             return CB_DYNAMIC_STATE_ATTACHMENT_FEEDBACK_LOOP_ENABLE_EXT;
-        case VK_DYNAMIC_STATE_LINE_STIPPLE_KHR:
-            return CB_DYNAMIC_STATE_LINE_STIPPLE_KHR;
+        case VK_DYNAMIC_STATE_DEPTH_CLAMP_RANGE_EXT:
+            return CB_DYNAMIC_STATE_DEPTH_CLAMP_RANGE_EXT;
 
         default:
             return CB_DYNAMIC_STATE_STATUS_NUM;
@@ -466,8 +469,8 @@ std::string DescribeDynamicStateCommand(CBDynamicState dynamic_state) {
         case CB_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR:
             func = vvl::Func::vkCmdSetFragmentShadingRateKHR;
             break;
-        case CB_DYNAMIC_STATE_LINE_STIPPLE_KHR:
-            func = vvl::Func::vkCmdSetLineStippleKHR;
+        case CB_DYNAMIC_STATE_LINE_STIPPLE:
+            func = vvl::Func::vkCmdSetLineStipple;
             break;
         case CB_DYNAMIC_STATE_VERTEX_INPUT_EXT:
             func = vvl::Func::vkCmdSetVertexInputEXT;
@@ -579,6 +582,9 @@ std::string DescribeDynamicStateCommand(CBDynamicState dynamic_state) {
             break;
         case CB_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR:
             func = vvl::Func::vkCmdSetRayTracingPipelineStackSizeKHR;
+            break;
+        case CB_DYNAMIC_STATE_DEPTH_CLAMP_RANGE_EXT:
+            func = vvl::Func::vkCmdSetDepthClampRangeEXT;
             break;
         default:
             ss << "(Unknown Dynamic State) ";
@@ -740,6 +746,47 @@ std::string DescribeDynamicStateDependency(CBDynamicState dynamic_state, const v
                 ss << rasterizer_discard_enable_static;
             }
             break;
+        case CB_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_VIEWPORT_W_SCALING_ENABLE_NV)) {
+                ss << "vkCmdSetViewportWScalingEnableNV last set viewportWScalingEnable to VK_TRUE.\n";
+            } else {
+                ss << "VkPipelineViewportStateCreateInfo::pNext->VkPipelineViewportWScalingStateCreateInfoNV::"
+                      "viewportWScalingEnable was VK_TRUE in the last bound graphics pipeline.\n";
+            }
+            break;
+        case CB_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
+                ss << rasterizer_discard_enable_dynamic;
+            } else {
+                ss << rasterizer_discard_enable_static;
+            }
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_DISCARD_RECTANGLE_ENABLE_EXT)) {
+                ss << "vkCmdSetDiscardRectangleEnableEXT last set discardRectangleEnable to VK_TRUE.\n";
+            } else {
+                ss << "VkGraphicsPipelineCreateInfo::pNext->VkPipelineDiscardRectangleStateCreateInfoEXT::discardRectangleCount "
+                      "was greater than zero in the last bound graphics pipeline.\n";
+            }
+            break;
+        case CB_DYNAMIC_STATE_DISCARD_RECTANGLE_ENABLE_EXT:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
+                ss << rasterizer_discard_enable_dynamic;
+            } else {
+                ss << rasterizer_discard_enable_static;
+            }
+            break;
+        case CB_DYNAMIC_STATE_DISCARD_RECTANGLE_MODE_EXT:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
+                ss << rasterizer_discard_enable_dynamic;
+            } else {
+                ss << rasterizer_discard_enable_static;
+            }
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_DISCARD_RECTANGLE_ENABLE_EXT)) {
+                ss << "vkCmdSetDiscardRectangleEnableEXT last set discardRectangleEnable to VK_TRUE.\n";
+            } else {
+                ss << "VkGraphicsPipelineCreateInfo::pNext->VkPipelineDiscardRectangleStateCreateInfoEXT::discardRectangleCount "
+                      "was greater than zero in the last bound graphics pipeline.\n";
+            }
+            break;
         case CB_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT:
             if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
                 ss << rasterizer_discard_enable_dynamic;
@@ -753,6 +800,26 @@ std::string DescribeDynamicStateDependency(CBDynamicState dynamic_state, const v
                       "sampleLocationsEnable was VK_TRUE in the last bound graphics pipeline.\n";
             }
             break;
+        case CB_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
+                ss << rasterizer_discard_enable_dynamic;
+            } else {
+                ss << rasterizer_discard_enable_static;
+            }
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV)) {
+                ss << "vkCmdSetShadingRateImageEnableNV last set shadingRateImageEnable to VK_TRUE.\n";
+            } else {
+                ss << "VkPipelineViewportStateCreateInfo::pNext->VkPipelineViewportShadingRateImageStateCreateInfoNV::"
+                      "shadingRateImageEnable was VK_TRUE in the last bound graphics pipeline.\n";
+            }
+            break;
+        case CB_DYNAMIC_STATE_VIEWPORT_COARSE_SAMPLE_ORDER_NV:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
+                ss << rasterizer_discard_enable_dynamic;
+            } else {
+                ss << rasterizer_discard_enable_static;
+            }
+            break;
         case CB_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV:
             break;
         case CB_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR:
@@ -762,7 +829,7 @@ std::string DescribeDynamicStateDependency(CBDynamicState dynamic_state, const v
                 ss << rasterizer_discard_enable_static;
             }
             break;
-        case CB_DYNAMIC_STATE_LINE_STIPPLE_KHR:
+        case CB_DYNAMIC_STATE_LINE_STIPPLE:
             if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
                 ss << rasterizer_discard_enable_dynamic;
             } else {
@@ -771,7 +838,7 @@ std::string DescribeDynamicStateDependency(CBDynamicState dynamic_state, const v
             if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_LINE_STIPPLE_ENABLE_EXT)) {
                 ss << "vkCmdSetLineStippleEnableEXT last set stippledLineEnable to VK_TRUE.\n";
             } else {
-                ss << "VkPipelineRasterizationLineStateCreateInfoEXT::stippledLineEnable was VK_TRUE in the last bound graphics "
+                ss << "VkPipelineRasterizationLineStateCreateInfo::stippledLineEnable was VK_TRUE in the last bound graphics "
                       "pipeline.\n";
             }
             break;
@@ -822,6 +889,13 @@ std::string DescribeDynamicStateDependency(CBDynamicState dynamic_state, const v
                 ss << rasterizer_discard_enable_static;
             }
             break;
+        case CB_DYNAMIC_STATE_SAMPLE_LOCATIONS_ENABLE_EXT:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
+                ss << rasterizer_discard_enable_dynamic;
+            } else {
+                ss << rasterizer_discard_enable_static;
+            }
+            break;
         case CB_DYNAMIC_STATE_COVERAGE_TO_COLOR_ENABLE_NV:
             if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE)) {
                 ss << rasterizer_discard_enable_dynamic;
@@ -861,6 +935,13 @@ std::string DescribeDynamicStateDependency(CBDynamicState dynamic_state, const v
             } else {
                 ss << "VkPipelineMultisampleStateCreateInfo::pNext->VkPipelineCoverageModulationStateCreateInfoNV::"
                       "coverageModulationTableEnable was VK_TRUE in the last bound graphics pipeline.\n";
+            }
+            break;
+        case CB_DYNAMIC_STATE_DEPTH_CLAMP_RANGE_EXT:
+            if (!pipeline || pipeline->IsDynamic(CB_DYNAMIC_STATE_DEPTH_CLAMP_ENABLE_EXT)) {
+                ss << "vkCmdSetDepthClampEnableEXT last set depthClampEnable to VK_TRUE.\n";
+            } else {
+                ss << "VkPipelineRasterizationStateCreateInfo::depthClampEnable was VK_TRUE in the last bound graphics pipeline.\n";
             }
             break;
         default:

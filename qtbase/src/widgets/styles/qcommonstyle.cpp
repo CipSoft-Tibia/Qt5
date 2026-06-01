@@ -1,18 +1,16 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcommonstyle.h"
 #include "qcommonstyle_p.h"
 
-#include <qfile.h>
 #if QT_CONFIG(itemviews)
 #include <qabstractitemview.h>
 #endif
 #include <qapplication.h>
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformtheme.h>
-#include <qbitmap.h>
-#include <qcache.h>
 #if QT_CONFIG(dockwidget)
 #include <qdockwidget.h>
 #endif
@@ -60,18 +58,12 @@
 #endif
 #include <private/qcommonstylepixmaps_p.h>
 #include <private/qmath_p.h>
-#include <qdebug.h>
 #include <qtextformat.h>
 #if QT_CONFIG(wizard)
 #include <qwizard.h>
 #endif
 #if QT_CONFIG(filedialog)
 #include <qsidebar_p.h>
-#endif
-#include <qfileinfo.h>
-#include <qdir.h>
-#if QT_CONFIG(settings)
-#include <qsettings.h>
 #endif
 #include <qvariant.h>
 #include <qpixmapcache.h>
@@ -318,8 +310,9 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
         break;
     case PE_IndicatorHeaderArrow:
         if (const QStyleOptionHeader *header = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
-            QPen oldPen = p->pen();
+            QPainterStateGuard psg(p, QPainterStateGuard::InitialState::NoSave);
             if (header->sortIndicator & QStyleOptionHeader::SortUp) {
+                psg.save();
                 p->setPen(QPen(opt->palette.light(), 0));
                 p->drawLine(opt->rect.x() + opt->rect.width(), opt->rect.y(),
                             opt->rect.x() + opt->rect.width() / 2, opt->rect.y() + opt->rect.height());
@@ -331,6 +324,7 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
                 };
                 p->drawPolyline(points, sizeof points / sizeof *points);
             } else if (header->sortIndicator & QStyleOptionHeader::SortDown) {
+                psg.save();
                 p->setPen(QPen(opt->palette.light(), 0));
                 const QPoint points[] = {
                     QPoint(opt->rect.x(), opt->rect.y() + opt->rect.height()),
@@ -342,7 +336,6 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
                 p->drawLine(opt->rect.x(), opt->rect.y() + opt->rect.height(),
                             opt->rect.x() + opt->rect.width() / 2, opt->rect.y());
             }
-            p->setPen(oldPen);
         }
         break;
 #if QT_CONFIG(tabbar)
@@ -386,9 +379,7 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
         QIcon::Mode mode = opt->state & State_Enabled ?
                             (opt->state & State_Raised ? QIcon::Active : QIcon::Normal)
                             : QIcon::Disabled;
-        if (!(opt->state & State_Raised)
-            && !(opt->state & State_Sunken)
-            && !(opt->state & QStyle::State_Selected))
+        if (!opt->state.testAnyFlags(State_Raised | State_Sunken | State_Selected))
             mode = QIcon::Disabled;
 
         QIcon::State state = opt->state & State_Sunken ? QIcon::On : QIcon::Off;
@@ -573,13 +564,14 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
         if (const QStyleOptionTab *tab = qstyleoption_cast<const QStyleOptionTab *>(opt)) {
             bool rtl = tab->direction == Qt::RightToLeft;
             const bool horizontal = tab->rect.height() > tab->rect.width();
+            const bool isSelected = tab->state.testFlag(State_Selected);
             const int margin = 4;
             QPainterPath path;
 
             if (horizontal) {
                 QRect rect = tab->rect.adjusted(rtl ? margin : 0, 0, rtl ? 1 : -margin, 0);
-                rect.setTop(rect.top() + ((tab->state & State_Selected) ? 1 : 3));
-                rect.setBottom(rect.bottom() - ((tab->state & State_Selected) ? 0 : 2));
+                rect.setTop(rect.top() + (isSelected ? 1 : 3));
+                rect.setBottom(rect.bottom() - (isSelected ? 0 : 2));
 
                 path.moveTo(QPoint(rtl ? rect.right() : rect.left(), rect.top()));
                 int count = 4;
@@ -587,8 +579,8 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
                     path.lineTo(QPoint(rtl ? rect.left() : rect.right(), rect.top() + jags * rect.height()/count));
             } else {
                 QRect rect = tab->rect.adjusted(0, 0, 0, -margin);
-                rect.setLeft(rect.left() + ((tab->state & State_Selected) ? 1 : 3));
-                rect.setRight(rect.right() - ((tab->state & State_Selected) ? 0 : 2));
+                rect.setLeft(rect.left() + (isSelected ? 1 : 3));
+                rect.setRight(rect.right() - (isSelected ? 0 : 2));
 
                 path.moveTo(QPoint(rect.left(), rect.top()));
                 int count = 4;
@@ -698,10 +690,9 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
                 p->fillRect(vopt->rect, vopt->palette.brush(cg, QPalette::Highlight));
             } else {
                 if (vopt->backgroundBrush.style() != Qt::NoBrush) {
-                    QPointF oldBO = p->brushOrigin();
+                    QPainterStateGuard psg(p);
                     p->setBrushOrigin(vopt->rect.topLeft());
                     p->fillRect(vopt->rect, vopt->backgroundBrush);
-                    p->setBrushOrigin(oldBO);
                 }
 
                 if (vopt->state & QStyle::State_Selected) {
@@ -1209,7 +1200,7 @@ void QCommonStylePrivate::tabLayout(const QStyleOptionTab *opt, const QWidget *w
     int vpadding = proxyStyle->pixelMetric(QStyle::PM_TabBarTabVSpace, opt, widget) / 2;
     if (opt->shape == QTabBar::RoundedSouth || opt->shape == QTabBar::TriangularSouth)
         verticalShift = -verticalShift;
-    tr.adjust(hpadding, verticalShift - vpadding, horizontalShift - hpadding, vpadding);
+    tr.adjust(hpadding, verticalShift + vpadding, horizontalShift - hpadding, -vpadding);
     bool selected = opt->state & QStyle::State_Selected;
     if (selected) {
         tr.setTop(tr.top() - verticalShift);
@@ -1434,10 +1425,10 @@ void QCommonStyle::drawControl(ControlElement element, const QStyleOption *opt,
 
             if (!proxy()->styleHint(SH_UnderlineShortcut, btn, widget))
                 alignment |= Qt::TextHideMnemonic;
-            QPixmap pix;
             QRect textRect = btn->rect;
             if (!btn->icon.isNull()) {
-                pix = btn->icon.pixmap(btn->iconSize, QStyleHelper::getDpr(p), btn->state & State_Enabled ? QIcon::Normal : QIcon::Disabled);
+                const auto pix = btn->icon.pixmap(btn->iconSize, QStyleHelper::getDpr(p),
+                                                  btn->state & State_Enabled ? QIcon::Normal : QIcon::Disabled);
                 proxy()->drawItemPixmap(p, btn->rect, alignment, pix);
                 if (btn->direction == Qt::RightToLeft)
                     textRect.setRight(textRect.right() - btn->iconSize.width() - 4);
@@ -2166,7 +2157,7 @@ void QCommonStyle::drawControl(ControlElement element, const QStyleOption *opt,
 #endif // QT_CONFIG(dockwidget)
     case CE_Header:
         if (const QStyleOptionHeader *header = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
-            QRegion clipRegion = p->clipRegion();
+            QPainterStateGuard psg(p);
             p->setClipRect(opt->rect);
             proxy()->drawControl(CE_HeaderSection, header, p, widget);
             // opt can be a QStyleOptionHeaderV2 and we must pass it to the subcontrol drawings
@@ -2183,7 +2174,6 @@ void QCommonStyle::drawControl(ControlElement element, const QStyleOption *opt,
                 subopt.rect = subElementRect(SE_HeaderArrow, opt, widget);
                 proxy()->drawPrimitive(PE_IndicatorHeaderArrow, &subopt, p, widget);
             }
-            p->setClipRegion(clipRegion);
         }
         break;
     case CE_FocusFrame:
@@ -2539,7 +2529,7 @@ QRect QCommonStyle::subElementRect(SubElement sr, const QStyleOption *opt,
             QRect ir = visualRect(opt->direction, opt->rect,
                                   subElementRect(SE_RadioButtonIndicator, opt, widget));
             int spacing = proxy()->pixelMetric(PM_RadioButtonLabelSpacing, opt, widget);
-            r.setRect(ir.left() + ir.width() + spacing, opt->rect.y(), opt->rect.width() - ir.width() - spacing,
+            r.setRect(ir.right() + spacing, opt->rect.y(), opt->rect.width() - ir.width() - spacing,
                       opt->rect.height());
             r = visualRect(opt->direction, opt->rect, r);
             break;
@@ -2856,7 +2846,6 @@ QRect QCommonStyle::subElementRect(SubElement sr, const QStyleOption *opt,
             int verticalShift = proxy()->pixelMetric(QStyle::PM_TabBarTabShiftVertical, tab, widget);
             int horizontalShift = proxy()->pixelMetric(QStyle::PM_TabBarTabShiftHorizontal, tab, widget);
             int hpadding = proxy()->pixelMetric(QStyle::PM_TabBarTabHSpace, opt, widget) / 2;
-            hpadding = qMax(hpadding, 4); //workaround KStyle returning 0 because they workaround an old bug in Qt
 
             bool verticalTabs = tab->shape == QTabBar::RoundedEast
                     || tab->shape == QTabBar::RoundedWest
@@ -2884,8 +2873,6 @@ QRect QCommonStyle::subElementRect(SubElement sr, const QStyleOption *opt,
             QSize size = (sr == SE_TabBarTabLeftButton) ? tab->leftButtonSize : tab->rightButtonSize;
             int w = size.width();
             int h = size.height();
-            int midHeight = static_cast<int>(qCeil(float(tr.height() - h) / 2));
-            int midWidth = ((tr.width() - w) / 2);
 
             bool atTheTop = true;
             switch (tab->shape) {
@@ -2897,14 +2884,19 @@ QRect QCommonStyle::subElementRect(SubElement sr, const QStyleOption *opt,
             case QTabBar::TriangularEast:
                 atTheTop = (sr == SE_TabBarTabRightButton);
                 break;
-            default:
+            default: {
+                const int midHeight =
+                        tr.y() + static_cast<int>(qCeil(float(tr.height() - h) / 2));
                 if (sr == SE_TabBarTabLeftButton)
                     r = QRect(tab->rect.x() + hpadding, midHeight, w, h);
                 else
                     r = QRect(tab->rect.right() - w - hpadding, midHeight, w, h);
                 r = visualRect(tab->direction, tab->rect, r);
+                break;
+            }
             }
             if (verticalTabs) {
+                const int midWidth = tr.x() + ((tr.width() - w) / 2);
                 if (atTheTop)
                     r = QRect(midWidth, tr.y() + tab->rect.height() - hpadding - h, w, h);
                 else
@@ -3189,18 +3181,7 @@ QRect QCommonStyle::subElementRect(SubElement sr, const QStyleOption *opt,
 
 #if QT_CONFIG(dial)
 
-// in lieu of std::array, minimal API
-template <int N>
-struct StaticPolygonF
-{
-    QPointF data[N];
-
-    constexpr int size() const { return N; }
-    constexpr const QPointF *cbegin() const { return data; }
-    constexpr const QPointF &operator[](int idx) const { return data[idx]; }
-};
-
-static StaticPolygonF<3> calcArrow(const QStyleOptionSlider *dial, qreal &a)
+static std::array<QPointF, 3> calcArrow(const QStyleOptionSlider *dial, qreal &a)
 {
     int width = dial->rect.width();
     int height = dial->rect.height();
@@ -3224,14 +3205,14 @@ static StaticPolygonF<3> calcArrow(const QStyleOptionSlider *dial, qreal &a)
         len = 5;
     int back = len / 2;
 
-    StaticPolygonF<3> arrow = {{
+    std::array<QPointF, 3> arrow = {
         QPointF(0.5 + xc + len * qCos(a),
                 0.5 + yc - len * qSin(a)),
         QPointF(0.5 + xc + back * qCos(a + Q_PI * 5 / 6),
                 0.5 + yc - back * qSin(a + Q_PI * 5 / 6)),
         QPointF(0.5 + xc + back * qCos(a - Q_PI * 5 / 6),
                 0.5 + yc - back * qSin(a - Q_PI * 5 / 6)),
-    }};
+    };
     return arrow;
 }
 
@@ -3732,11 +3713,11 @@ void QCommonStyle::drawComplexControl(ComplexControl cc, const QStyleOptionCompl
             p->drawArc(br, 240 * 16, 180 * 16);
 
             qreal a;
-            const StaticPolygonF<3> arrow = calcArrow(dial, a);
+            const auto arrow = calcArrow(dial, a);
 
             p->setPen(Qt::NoPen);
             p->setBrush(pal.button());
-            p->drawPolygon(arrow.cbegin(), arrow.size());
+            p->drawPolygon(arrow.data(), int(arrow.size()));
 
             a = QStyleHelper::angle(QPointF(width / 2, height / 2), arrow[0]);
             p->setBrush(Qt::NoBrush);
@@ -4227,20 +4208,19 @@ QRect QCommonStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex 
 #if QT_CONFIG(toolbutton)
     case CC_ToolButton:
         if (const QStyleOptionToolButton *tb = qstyleoption_cast<const QStyleOptionToolButton *>(opt)) {
-            int mbi = proxy()->pixelMetric(PM_MenuButtonIndicator, tb, widget);
             ret = tb->rect;
             switch (sc) {
             case SC_ToolButton:
-                if ((tb->features
-                     & (QStyleOptionToolButton::MenuButtonPopup | QStyleOptionToolButton::PopupDelay))
-                    == QStyleOptionToolButton::MenuButtonPopup)
+                if (tb->features.testFlag(QStyleOptionToolButton::MenuButtonPopup)) {
+                    const int mbi = proxy()->pixelMetric(PM_MenuButtonIndicator, tb, widget);
                     ret.adjust(0, 0, -mbi, 0);
+                }
                 break;
             case SC_ToolButtonMenu:
-                if ((tb->features
-                     & (QStyleOptionToolButton::MenuButtonPopup | QStyleOptionToolButton::PopupDelay))
-                    == QStyleOptionToolButton::MenuButtonPopup)
+                if (tb->features.testFlag(QStyleOptionToolButton::MenuButtonPopup)) {
+                    const int mbi = proxy()->pixelMetric(PM_MenuButtonIndicator, tb, widget);
                     ret.adjust(ret.width() - mbi, 0, 0, 0);
+                }
                 break;
             default:
                 break;
@@ -4381,7 +4361,7 @@ QRect QCommonStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex 
                 }
 
                 QRect frameRect = groupBox->rect;
-                frameRect.setTop(topMargin);
+                frameRect.setTop(frameRect.top() + topMargin);
 
                 if (sc == SC_GroupBoxFrame) {
                     ret = frameRect;
@@ -5192,9 +5172,12 @@ int QCommonStyle::styleHint(StyleHint sh, const QStyleOption *opt, const QWidget
         ret = 75;
         break;
 
-    case SH_Menu_SelectionWrap:
-        ret = true;
+    case SH_Menu_SelectionWrap: {
+        const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme();
+        ret = theme ? theme->themeHint(QPlatformTheme::MenuSelectionWraps).toInt()
+                    : QPlatformTheme::defaultThemeHint(QPlatformTheme::MenuSelectionWraps).toInt();
         break;
+    }
 
     case SH_Menu_FillScreenWithScroll:
         ret = true;
@@ -5820,6 +5803,7 @@ QIcon QCommonStylePrivate::iconFromMacTheme(QCommonStyle::StandardPixmap standar
         case QStyle::SP_MessageBoxWarning:
         case QStyle::SP_MessageBoxCritical:
         case QStyle::SP_DesktopIcon:
+        case QStyle::SP_DirHomeIcon:
         case QStyle::SP_TrashIcon:
         case QStyle::SP_ComputerIcon:
         case QStyle::SP_DriveFDIcon:
@@ -5830,8 +5814,11 @@ QIcon QCommonStylePrivate::iconFromMacTheme(QCommonStyle::StandardPixmap standar
         case QStyle::SP_DirOpenIcon:
         case QStyle::SP_DirClosedIcon:
         case QStyle::SP_DirLinkIcon:
+        case QStyle::SP_DirLinkOpenIcon:
         case QStyle::SP_FileLinkIcon:
         case QStyle::SP_FileIcon:
+        case QStyle::SP_ToolBarHorizontalExtensionButton:
+        case QStyle::SP_ToolBarVerticalExtensionButton:
             if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme()) {
                 QPlatformTheme::StandardPixmap sp = static_cast<QPlatformTheme::StandardPixmap>(standardIcon);
                 QIcon retIcon;
@@ -5966,16 +5953,16 @@ QIcon QCommonStylePrivate::iconFromResourceTheme(QCommonStyle::StandardPixmap st
                                                     : QStyle::SP_ArrowLeft,
                                         option, widget);
     case QStyle::SP_ArrowLeft:
-        addIconFiles(u"left-", pngIconSizes, icon);
+        addIconFiles(u"arrow-left-", pngIconSizes, icon);
         break;
     case QStyle::SP_ArrowRight:
-        addIconFiles(u"right-", pngIconSizes, icon);
+        addIconFiles(u"arrow-right-", pngIconSizes, icon);
         break;
     case QStyle::SP_ArrowUp:
-        addIconFiles(u"up-", pngIconSizes, icon);
+        addIconFiles(u"arrow-up-", pngIconSizes, icon);
         break;
     case QStyle::SP_ArrowDown:
-        addIconFiles(u"down-", pngIconSizes, icon);
+        addIconFiles(u"arrow-down-", pngIconSizes, icon);
         break;
    case QStyle::SP_DirHomeIcon:
    case QStyle::SP_DirIcon:
@@ -6068,7 +6055,7 @@ QIcon QCommonStylePrivate::iconFromResourceTheme(QCommonStyle::StandardPixmap st
         addIconFiles(u"normalizedockup-", dockTitleIconSizes, icon);
         break;
     case QStyle::SP_ToolBarHorizontalExtensionButton:
-        addIconFiles(rtl(option) ? u"toolbar-ext-h-rtl-" : u"toolbar-ext-h-", toolBarExtHSizes, icon);
+        addIconFiles(rtl(option) ? u"toolbar-ext-h-rtl-"_sv : u"toolbar-ext-h-"_sv, toolBarExtHSizes, icon);
         break;
     case QStyle::SP_ToolBarVerticalExtensionButton:
         addIconFiles(u"toolbar-ext-v-", toolBarExtVSizes, icon);
@@ -6192,17 +6179,17 @@ QPixmap QCommonStyle::generatedIconPixmap(QIcon::Mode iconMode, const QPixmap &p
         return QPixmap::fromImage(std::move(im));
     }
     case QIcon::Selected: {
-        QImage img = pixmap.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
         QColor color = opt->palette.color(QPalette::Normal, QPalette::Highlight);
         color.setAlphaF(0.3f);
-        QPainter painter(&img);
+        QPixmap ret(pixmap);
+        QPainter painter(&ret);
         painter.setCompositionMode(QPainter::CompositionMode_SourceAtop);
-        painter.fillRect(0, 0, img.width(), img.height(), color);
+        painter.fillRect(0, 0, pixmap.width(), pixmap.height(), color);
         painter.end();
-        return QPixmap::fromImage(std::move(img)); }
+        return ret;
+    }
     case QIcon::Active:
-        return pixmap;
-    default:
+    case QIcon::Normal:
         break;
     }
     return pixmap;

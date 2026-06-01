@@ -13,7 +13,7 @@
     </message>
     <message>
         <source>Input Output Error</source>
-        <translation>Girdi Çıktı Hatası</translation>
+        <translation>Girdi–Çıktı Hatası</translation>
     </message>
     <message>
         <source>Bluetooth LE is not supported</source>
@@ -22,6 +22,10 @@
     <message>
         <source>Unknown error</source>
         <translation>Bilinmeyen hata</translation>
+    </message>
+    <message>
+        <source>Missing permission</source>
+        <translation>Eksik İzin</translation>
     </message>
     <message>
         <source>Cannot start device inquiry</source>
@@ -52,8 +56,16 @@
         <translation>İletilen adres yerel bir aygıt değil.</translation>
     </message>
     <message>
+        <source>Failed to start device discovery due to missing permissions.</source>
+        <translation>Eksik izinlerden dolayı aygıt algılaması başlatılamadı.</translation>
+    </message>
+    <message>
+        <source>Location permission not granted. Search is not possible.</source>
+        <translation>Konum izinleri verilmemiş. Arama olanaklı değil.</translation>
+    </message>
+    <message>
         <source>Missing Location permission. Search is not possible.</source>
-        <translation>Konum izni yok. Arama yapılamıyor.</translation>
+        <translation type="vanished">Konum izni yok. Arama yapılamıyor.</translation>
     </message>
     <message>
         <source>Location service turned off. Search is not possible.</source>
@@ -65,7 +77,7 @@
     </message>
     <message>
         <source>Low Energy Discovery not supported</source>
-        <translation>Düşük Enerji Bulma desteklenmiyor</translation>
+        <translation type="vanished">Düşük Enerji Bulma desteklenmiyor</translation>
     </message>
     <message>
         <source>Bluetooth adapter error</source>
@@ -78,6 +90,10 @@
     <message>
         <source>Cannot access adapter during service discovery</source>
         <translation>Hizmet bulma sırasında bağdaştırıcıya erişilemiyor</translation>
+    </message>
+    <message>
+        <source>Bluetooth adapter powered off.</source>
+        <translation>Bluetooth bağdaştırıcısı kapalı.</translation>
     </message>
 </context>
 <context>
@@ -100,7 +116,11 @@
     </message>
     <message>
         <source>Android API below v15 does not support SDP discovery</source>
-        <translation>V15’in altındaki Android API’si, SDP bulmayı desteklemiyor</translation>
+        <translation type="vanished">V15’in altındaki Android API’si, SDP bulmayı desteklemiyor</translation>
+    </message>
+    <message>
+        <source>Failed to start service discovery due to missing permissions.</source>
+        <translation>Eksik izinlerden dolayı hizmet algılaması başlatılamadı.</translation>
     </message>
     <message>
         <source>Cannot create Android BluetoothDevice</source>
@@ -120,7 +140,7 @@
     </message>
     <message>
         <source>Unable to find appointed local adapter</source>
-        <translation>Atanmış yerel bağdaştırıcı bulunamadı</translation>
+        <translation type="vanished">Atanmış yerel bağdaştırıcı bulunamadı</translation>
     </message>
     <message>
         <source>Cannot find local Bluetooth adapter</source>
@@ -140,7 +160,7 @@
     </message>
     <message>
         <source>Unable to access device</source>
-        <translation>Aygıta erişilemiyor</translation>
+        <translation type="vanished">Aygıta erişilemiyor</translation>
     </message>
     <message>
         <source>Service Discovery</source>
@@ -917,7 +937,7 @@
     </message>
     <message>
         <source>Location And Speed</source>
-        <translation>Konum Ve Hız</translation>
+        <translation>Konum ve Hız</translation>
     </message>
     <message>
         <source>Navigation</source>
@@ -960,25 +980,25 @@
     <message>
         <source>True Wind Speed</source>
         <extracomment>Wind speed while standing</extracomment>
-        <translation>Gerçek Rüzgar Hızı</translation>
+        <translation>Gerçek Rüzgâr Hızı</translation>
     </message>
     <message>
         <source>True Wind Direction</source>
-        <translation>Gerçek Rüzgar Yönü</translation>
+        <translation>Gerçek Rüzgâr Yönü</translation>
     </message>
     <message>
         <source>Apparent Wind Speed</source>
         <extracomment>Wind speed while observer is moving</extracomment>
-        <translation>Belirgin Rüzgar Hızı</translation>
+        <translation>Belirgin Rüzgâr Hızı</translation>
     </message>
     <message>
         <source>Apparent Wind Direction</source>
-        <translation>Belirgin Rüzgar Yönü</translation>
+        <translation>Belirgin Rüzgâr Yönü</translation>
     </message>
     <message>
         <source>Gust Factor</source>
         <extracomment>Factor by which wind gust is stronger than average wind</extracomment>
-        <translation>Ani Rüzgar Faktörü</translation>
+        <translation>Ani Rüzgâr Faktörü</translation>
     </message>
     <message>
         <source>Pollen Concentration</source>
@@ -998,7 +1018,7 @@
     </message>
     <message>
         <source>Wind Chill</source>
-        <translation>Rüzgar Soğutma</translation>
+        <translation>Serinletici Rüzgâr</translation>
     </message>
     <message>
         <source>Heat Index</source>
@@ -1006,7 +1026,7 @@
     </message>
     <message>
         <source>Dew Point</source>
-        <translation>Çiğ Noktası</translation>
+        <translation>Çiy Noktası</translation>
     </message>
     <message>
         <source>Descriptor Value Changed</source>
@@ -1145,6 +1165,10 @@
         <translation>Ağırlık Ölçümü</translation>
     </message>
     <message>
+        <source>Weight Scale Feature</source>
+        <translation>Ağırlık Ölçeği Özelliği</translation>
+    </message>
+    <message>
         <source>User Control Point</source>
         <translation>Kullanıcı Denetim Noktası</translation>
     </message>
@@ -1214,7 +1238,7 @@
     </message>
     <message>
         <source>Unknown Service</source>
-        <translation>Bilinmeyen Hizmet</translation>
+        <translation type="vanished">Bilinmeyen Hizmet</translation>
     </message>
 </context>
 <context>
@@ -1247,6 +1271,10 @@
         <source>Cannot connect to %1</source>
         <comment>%1 = uuid</comment>
         <translation>%1 bağlantısı yapılamıyor</translation>
+    </message>
+    <message>
+        <source>Bluetooth socket connect failed due to missing permissions.</source>
+        <translation>Eksik izinlerden dolayı Bluetooth yuvası bağlanamadı.</translation>
     </message>
     <message>
         <source>Device does not support Bluetooth</source>
@@ -1324,23 +1352,23 @@
     </message>
     <message>
         <source>Invalid Bluetooth address passed to connectToService()</source>
-        <translation>connectToService() öğesine geçersiz Bluetooth adresi iletildi</translation>
+        <translation>connectToService() ögesine geçersiz Bluetooth adresi iletildi</translation>
     </message>
     <message>
         <source>Unsupported protocol. Win32 only supports RFCOMM sockets</source>
-        <translation>Desteklenmeyen protokol. Win32 yalnızca RFCOMM yuvalarını destekler</translation>
+        <translation type="vanished">Desteklenmeyen protokol. Win32 yalnızca RFCOMM yuvalarını destekler</translation>
     </message>
     <message>
         <source>Failed to create socket</source>
-        <translation>Yuva oluşturulamadı</translation>
+        <translation type="vanished">Yuva oluşturulamadı</translation>
     </message>
     <message>
         <source>Socket type not handled: %1</source>
-        <translation>Yuva türü ele alınmadı: %1</translation>
+        <translation type="vanished">Yuva türü ele alınmadı: %1</translation>
     </message>
     <message>
         <source>Logic error: more bytes sent than passed to ::send</source>
-        <translation>Mantık hatası: ::send’e iletilenden daha fazla bayt gönderildi</translation>
+        <translation type="vanished">Mantık hatası: ::send’e iletilenden daha fazla bayt gönderildi</translation>
     </message>
     <message>
         <source>Network error</source>
@@ -1424,19 +1452,19 @@
     <name>QBluetoothTransferReplyBluez</name>
     <message>
         <source>Unknown Error</source>
-        <translation>Bilinmeyen Hata</translation>
+        <translation type="vanished">Bilinmeyen Hata</translation>
     </message>
     <message>
         <source>Could not open file for sending</source>
-        <translation>Dosya gönderilmek üzere açılamadı</translation>
+        <translation type="vanished">Dosya gönderilmek üzere açılamadı</translation>
     </message>
     <message>
         <source>The transfer was canceled</source>
-        <translation>Aktarım iptal edildi</translation>
+        <translation type="vanished">Aktarım iptal edildi</translation>
     </message>
     <message>
         <source>Operation canceled</source>
-        <translation>İşlem iptal edildi</translation>
+        <translation type="vanished">İşlem iptal edildi</translation>
     </message>
 </context>
 <context>
@@ -1456,6 +1484,10 @@
     <message>
         <source>Unknown Error</source>
         <translation>Bilinmeyen Hata</translation>
+    </message>
+    <message>
+        <source>Missing permission</source>
+        <translation>Eksik İzin</translation>
     </message>
     <message>
         <source>Advertisement data is larger than 31 bytes</source>
@@ -1488,6 +1520,14 @@
     <message>
         <source>Failed to authorize on the remote device</source>
         <translation>Uzak aygıtta yetkilendirme başarısız oldu</translation>
+    </message>
+    <message>
+        <source>Missing permissions error</source>
+        <translation>Eksik İzin Hatası</translation>
+    </message>
+    <message>
+        <source>Error reading RSSI value</source>
+        <translation>RSSI değeri okunurken hata</translation>
     </message>
 </context>
 </TS>

@@ -21,7 +21,7 @@ SiteInstanceGroupManager::~SiteInstanceGroupManager() {
 RenderProcessHost* SiteInstanceGroupManager::GetExistingGroupProcess(
     SiteInstanceImpl* site_instance) {
   if (!base::FeatureList::IsEnabled(
-          features::kProcessSharingWithStrictSiteInstances) ||
+          ::features::kProcessSharingWithStrictSiteInstances) ||
       !default_process_) {
     return nullptr;
   }
@@ -58,7 +58,7 @@ void SiteInstanceGroupManager::OnProcessSet(SiteInstanceImpl* site_instance) {
 void SiteInstanceGroupManager::MaybeSetDefaultProcess(
     SiteInstanceImpl* site_instance) {
   if (!base::FeatureList::IsEnabled(
-          features::kProcessSharingWithStrictSiteInstances)) {
+          ::features::kProcessSharingWithStrictSiteInstances)) {
     return;
   }
 

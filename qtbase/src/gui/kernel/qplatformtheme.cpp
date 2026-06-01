@@ -122,6 +122,11 @@ QT_BEGIN_NAMESPACE
 
     \value ContextMenuOnMouseRelease (bool) Whether the context menu should be shown on mouse release.
 
+    \value MenuSelectionWraps (bool) Determines whether menu selection wraps. That is, whether key navigation moves
+                                     the selection to the first menu item again after the last menu item has been
+                                     reached, and vice versa.
+                                     This enum value was added in Qt 6.10.
+
     \value TouchDoubleTapDistance (int) The maximum distance in logical pixels which a touchpoint can travel
                         between taps in order for the tap sequence to be handled as a double tap.
                         The default value is double the MouseDoubleClickDistance, or 10 logical pixels
@@ -153,6 +158,10 @@ QT_BEGIN_NAMESPACE
     \value MouseCursorSize (QSize) Size of the mouse cursor.
            This enum value has been added in Qt 6.5.
 
+    \value ScrollSingleStepDistance (int) The distance in logical pixels that scrollable
+           controls should scroll in response to a single step (e.g. scroll-bar arrow click,
+           mouse wheel line).
+
     \sa themeHint(), QStyle::pixelMetric()
 */
 
@@ -176,14 +185,19 @@ const QKeyBinding QPlatformThemePrivate::keyBindings[] = {
     //   StandardKey                            Priority    Key Sequence                            Platforms
     {QKeySequence::HelpContents,            1,          Qt::CTRL | Qt::Key_Question,            KB_Mac},
     {QKeySequence::HelpContents,            0,          Qt::Key_F1,                             KB_Win | KB_X11},
+    {QKeySequence::HelpContents,            0,          Qt::Key_Help,                           KB_All},
     {QKeySequence::WhatsThis,               1,          Qt::SHIFT | Qt::Key_F1,                 KB_All},
     {QKeySequence::Open,                    1,          Qt::CTRL | Qt::Key_O,                   KB_All},
+    {QKeySequence::Open,                    0,          Qt::Key_Open,                           KB_All},
     {QKeySequence::Close,                   0,          Qt::CTRL | Qt::Key_F4,                  KB_Mac},
     {QKeySequence::Close,                   1,          Qt::CTRL | Qt::Key_F4,                  KB_Win},
     {QKeySequence::Close,                   1,          Qt::CTRL | Qt::Key_W,                   KB_Mac},
     {QKeySequence::Close,                   0,          Qt::CTRL | Qt::Key_W,                   KB_Win | KB_X11},
+    {QKeySequence::Close,                   0,          Qt::Key_Close,                          KB_All},
     {QKeySequence::Save,                    1,          Qt::CTRL | Qt::Key_S,                   KB_All},
+    {QKeySequence::Save,                    0,          Qt::Key_Save,                           KB_All},
     {QKeySequence::New,                     1,          Qt::CTRL | Qt::Key_N,                   KB_All},
+    {QKeySequence::New,                     0,          Qt::Key_New,                            KB_All},
     {QKeySequence::Delete,                  0,          Qt::CTRL | Qt::Key_D,                   KB_X11}, //emacs (line edit only)
     {QKeySequence::Delete,                  1,          Qt::Key_Delete,                         KB_All},
     {QKeySequence::Delete,                  0,          Qt::META | Qt::Key_D,                   KB_Mac},
@@ -191,33 +205,43 @@ const QKeyBinding QPlatformThemePrivate::keyBindings[] = {
     {QKeySequence::Cut,                     0,          Qt::SHIFT | Qt::Key_Delete,             KB_Win | KB_X11}, //## Check if this should work on mac
     {QKeySequence::Cut,                     0,          Qt::Key_F20,                            KB_X11}, //Cut on sun keyboards
     {QKeySequence::Cut,                     0,          Qt::META | Qt::Key_K,                   KB_Mac},
+    {QKeySequence::Cut,                     0,          Qt::Key_Cut,                            KB_All},
     {QKeySequence::Copy,                    0,          Qt::CTRL | Qt::Key_Insert,              KB_X11 | KB_Win},
     {QKeySequence::Copy,                    1,          Qt::CTRL | Qt::Key_C,                   KB_All},
     {QKeySequence::Copy,                    0,          Qt::Key_F16,                            KB_X11}, //Copy on sun keyboards
+    {QKeySequence::Copy,                    0,          Qt::Key_Copy,                           KB_All},
     {QKeySequence::Paste,                   0,          Qt::CTRL | Qt::SHIFT | Qt::Key_Insert,  KB_X11},
     {QKeySequence::Paste,                   1,          Qt::CTRL | Qt::Key_V,                   KB_All},
     {QKeySequence::Paste,                   0,          Qt::SHIFT | Qt::Key_Insert,             KB_Win | KB_X11},
     {QKeySequence::Paste,                   0,          Qt::Key_F18,                            KB_X11}, //Paste on sun keyboards
     {QKeySequence::Paste,                   0,          Qt::META | Qt::Key_Y,                   KB_Mac},
+    {QKeySequence::Paste,                   0,          Qt::Key_Paste,                          KB_All},
     {QKeySequence::Undo,                    0,          Qt::ALT  | Qt::Key_Backspace,           KB_Win},
     {QKeySequence::Undo,                    1,          Qt::CTRL | Qt::Key_Z,                   KB_All},
     {QKeySequence::Undo,                    0,          Qt::Key_F14,                            KB_X11}, //Undo on sun keyboards
+    {QKeySequence::Undo,                    0,          Qt::Key_Undo,                           KB_All},
     {QKeySequence::Redo,                    0,          Qt::ALT  | Qt::SHIFT | Qt::Key_Backspace,KB_Win},
     {QKeySequence::Redo,                    0,          Qt::CTRL | Qt::SHIFT | Qt::Key_Z,       KB_Mac},
     {QKeySequence::Redo,                    0,          Qt::CTRL | Qt::SHIFT | Qt::Key_Z,       KB_Win | KB_X11},
     {QKeySequence::Redo,                    1,          Qt::CTRL | Qt::Key_Y,                   KB_Win},
+    {QKeySequence::Redo,                    0,          Qt::Key_Redo,                           KB_All},
     {QKeySequence::Back,                    1,          Qt::ALT  | Qt::Key_Left,                KB_Win | KB_X11},
     {QKeySequence::Back,                    0,          Qt::CTRL | Qt::Key_Left,                KB_Mac},
     {QKeySequence::Back,                    1,          Qt::CTRL | Qt::Key_BracketLeft,         KB_Mac},
     {QKeySequence::Back,                    0,          Qt::Key_Backspace,                      KB_Win},
+    {QKeySequence::Back,                    0,          Qt::Key_Back,                           KB_All},
     {QKeySequence::Forward,                 1,          Qt::ALT  | Qt::Key_Right,               KB_Win | KB_X11},
     {QKeySequence::Forward,                 0,          Qt::CTRL | Qt::Key_Right,               KB_Mac},
     {QKeySequence::Forward,                 1,          Qt::CTRL | Qt::Key_BracketRight,        KB_Mac},
     {QKeySequence::Forward,                 0,          Qt::SHIFT | Qt::Key_Backspace,          KB_Win},
+    {QKeySequence::Forward,                 0,          Qt::Key_Forward,                        KB_All},
     {QKeySequence::Refresh,                 1,          Qt::CTRL | Qt::Key_R,                   KB_Gnome | KB_Mac},
     {QKeySequence::Refresh,                 0,          Qt::Key_F5,                             KB_Win | KB_X11},
+    {QKeySequence::Refresh,                 0,          Qt::Key_Refresh,                        KB_All},
     {QKeySequence::ZoomIn,                  1,          Qt::CTRL | Qt::Key_Plus,                KB_All},
+    {QKeySequence::ZoomIn,                  0,          Qt::Key_ZoomIn,                         KB_All},
     {QKeySequence::ZoomOut,                 1,          Qt::CTRL | Qt::Key_Minus,               KB_All},
+    {QKeySequence::ZoomOut,                 0,          Qt::Key_ZoomOut,                        KB_All},
     {QKeySequence::Print,                   1,          Qt::CTRL | Qt::Key_P,                   KB_All},
     {QKeySequence::AddTab,                  1,          Qt::CTRL | Qt::SHIFT | Qt::Key_N,       KB_KDE},
     {QKeySequence::AddTab,                  0,          Qt::CTRL | Qt::Key_T,                   KB_All},
@@ -234,6 +258,7 @@ const QKeyBinding QPlatformThemePrivate::keyBindings[] = {
     {QKeySequence::PreviousChild,           0,          Qt::CTRL | Qt::Key_Period,              KB_KDE},
     {QKeySequence::PreviousChild,           0,          Qt::Key_Back,                           KB_All},
     {QKeySequence::Find,                    0,          Qt::CTRL | Qt::Key_F,                   KB_All},
+    {QKeySequence::Find,                    0,          Qt::Key_Find,                           KB_All},
     {QKeySequence::FindNext,                0,          Qt::CTRL | Qt::Key_G,                   KB_Win},
     {QKeySequence::FindNext,                1,          Qt::CTRL | Qt::Key_G,                   KB_Gnome | KB_Mac},
     {QKeySequence::FindNext,                1,          Qt::Key_F3,                             KB_Win},
@@ -326,9 +351,12 @@ const QKeyBinding QPlatformThemePrivate::keyBindings[] = {
     {QKeySequence::InsertLineSeparator,     0,          Qt::SHIFT | Qt::Key_Return,             KB_All},
     {QKeySequence::InsertLineSeparator,     0,          Qt::META | Qt::Key_O,                   KB_Mac},
     {QKeySequence::SaveAs,                  0,          Qt::CTRL | Qt::SHIFT | Qt::Key_S,       KB_All},
+    {QKeySequence::SaveAs,                  0,          Qt::SHIFT | Qt::Key_Save,               KB_All},
     {QKeySequence::Preferences,             0,          Qt::CTRL | Qt::Key_Comma,               KB_Mac},
     {QKeySequence::Preferences,             0,          Qt::CTRL | Qt::SHIFT | Qt::Key_Comma,   KB_KDE},
+    {QKeySequence::Preferences,             0,          Qt::Key_Settings,                       KB_All},
     {QKeySequence::Quit,                    0,          Qt::CTRL | Qt::Key_Q,                   KB_X11 | KB_Gnome | KB_KDE | KB_Mac},
+    {QKeySequence::Quit,                    0,          Qt::Key_Exit,                           KB_All},
     {QKeySequence::FullScreen,              1,          Qt::META | Qt::CTRL | Qt::Key_F,        KB_Mac},
     {QKeySequence::FullScreen,              0,          Qt::ALT  | Qt::Key_Enter,               KB_Win},
     {QKeySequence::FullScreen,              0,          Qt::CTRL | Qt::SHIFT | Qt::Key_F,       KB_KDE},
@@ -338,7 +366,8 @@ const QKeyBinding QPlatformThemePrivate::keyBindings[] = {
     {QKeySequence::Backspace,               1,          Qt::Key_Backspace,                      KB_Mac},
     {QKeySequence::Backspace,               0,          Qt::META | Qt::Key_H,                   KB_Mac},
     {QKeySequence::Cancel,                  0,          Qt::Key_Escape,                         KB_All},
-    {QKeySequence::Cancel,                  0,          Qt::CTRL | Qt::Key_Period,              KB_Mac}
+    {QKeySequence::Cancel,                  0,          Qt::CTRL | Qt::Key_Period,              KB_Mac},
+    {QKeySequence::Cancel,                  0,          Qt::Key_Cancel,                         KB_All}
 };
 
 const uint QPlatformThemePrivate::numberOfKeyBindings = sizeof(QPlatformThemePrivate::keyBindings)/(sizeof(QKeyBinding));
@@ -350,7 +379,8 @@ QPlatformThemePrivate::QPlatformThemePrivate()
 
 QPlatformThemePrivate::~QPlatformThemePrivate()
 {
-    delete systemPalette;
+    if (systemPalette)
+        delete systemPalette;
 }
 
 Q_GUI_EXPORT QPalette qt_fusionPalette()
@@ -450,8 +480,27 @@ Qt::ColorScheme QPlatformTheme::colorScheme() const
 void QPlatformTheme::requestColorScheme(Qt::ColorScheme scheme)
 {
     Q_UNUSED(scheme);
+    Q_D(QPlatformTheme);
+    if (d->systemPalette) {
+        delete d->systemPalette;
+        d->systemPalette = nullptr;
+    }
 }
 
+Qt::ContrastPreference QPlatformTheme::contrastPreference() const
+{
+    return Qt::ContrastPreference::NoPreference;
+}
+
+/*!
+    \internal
+    \brief Return a color palette for type \a type.
+
+    When relying on system color palette keep in mind that it is
+    lazily initialized and cached. If it needs to be updated
+    (i.e. due to ColorScheme changes), it's up to the caller
+    to take care of it. See \c requestColorScheme.
+*/
 const QPalette *QPlatformTheme::palette(Palette type) const
 {
     Q_D(const QPlatformTheme);
@@ -663,6 +712,10 @@ QVariant QPlatformTheme::defaultThemeHint(ThemeHint hint)
         return true;
     case PreferFileIconFromTheme:
         return false;
+    case MenuSelectionWraps:
+        return true;
+    case ScrollSingleStepDistance:
+        return 20;
     }
 
     return QVariant();

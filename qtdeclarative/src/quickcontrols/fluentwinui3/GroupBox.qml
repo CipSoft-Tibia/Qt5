@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -58,8 +59,14 @@ T.GroupBox {
         }
     }
 
-    background: Impl.StyleImage {
-        imageConfig: control.__config.background.filePath ? control.__config.background : Config.controls.frame["normal"].background // fallback to regular frame background
-        height: parent.height - control.topPadding + control.bottomPadding
+    background: Rectangle {
+        color: "transparent"
+        border.color: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast ? control.palette.text : "transparent"
+        radius: 4
+        Impl.StyleImage {
+            imageConfig: control.__config.background.filePath ? control.__config.background : Config.controls.frame["normal"].background // fallback to regular frame background
+            width: parent.width
+            height: parent.height
+        }
     }
 }

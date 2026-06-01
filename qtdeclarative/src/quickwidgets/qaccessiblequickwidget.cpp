@@ -10,7 +10,7 @@ QT_BEGIN_NAMESPACE
 #if QT_CONFIG(accessibility)
 
 QAccessibleQuickWidget::QAccessibleQuickWidget(QQuickWidget* widget)
-: QAccessibleWidget(widget)
+    : QAccessibleWidgetV2(widget)
 {
     // NOTE: m_accessibleWindow is a QAccessibleQuickWindow, and not a
     // QAccessibleQuickWidgetOffscreenWindow (defined below). This means

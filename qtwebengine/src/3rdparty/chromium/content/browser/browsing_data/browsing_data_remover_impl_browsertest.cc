@@ -61,6 +61,8 @@ namespace {
 const char kHstsPath[] = "/hsts";
 const char kHttpAuthPath[] = "/http_auth";
 const char kHstsResponseBody[] = "HSTS set";
+// Use a.test because 127.0.0.1/localhost cannot use HSTS.
+const char kHstsHostname[] = "a.test";
 
 std::unique_ptr<net::test_server::HttpResponse> HandleHstsRequest(
     const net::test_server::HttpRequest& request) {
@@ -106,9 +108,8 @@ class BrowsingDataRemoverImplBrowserTest
  public:
   BrowsingDataRemoverImplBrowserTest()
       : ssl_server_(net::test_server::EmbeddedTestServer::TYPE_HTTPS) {
-    // Use localhost instead of 127.0.0.1, as HSTS isn't allowed on IPs.
-    ssl_server_.SetSSLConfig(
-        net::test_server::EmbeddedTestServer::CERT_COMMON_NAME_IS_DOMAIN);
+    // HSTS tests must run on non-localhost, while other tests use localhost.
+    ssl_server_.SetCertHostnames({kHstsHostname, "localhost"});
     ssl_server_.AddDefaultHandlers(GetTestDataFilePath());
     ssl_server_.RegisterRequestHandler(base::BindRepeating(&HandleHstsRequest));
     ssl_server_.RegisterRequestHandler(
@@ -119,6 +120,7 @@ class BrowsingDataRemoverImplBrowserTest
   void SetUpOnMainThread() override {
     ukm_recorder_ = std::make_unique<ukm::TestAutoSetUkmRecorder>();
     histogram_tester_ = std::make_unique<base::HistogramTester>();
+    host_resolver()->AddRule(kHstsHostname, "127.0.0.1");
   }
 
   void RemoveAndWait(uint64_t remove_mask) {
@@ -150,7 +152,7 @@ class BrowsingDataRemoverImplBrowserTest
   void IssueRequestThatSetsHsts() {
     std::unique_ptr<network::ResourceRequest> request =
         std::make_unique<network::ResourceRequest>();
-    request->url = ssl_server_.GetURL("localhost", kHstsPath);
+    request->url = ssl_server_.GetURL(kHstsHostname, kHstsPath);
 
     SimpleURLLoaderTestHelper loader_helper;
     std::unique_ptr<network::SimpleURLLoader> loader =
@@ -165,19 +167,29 @@ class BrowsingDataRemoverImplBrowserTest
     EXPECT_TRUE(IsHstsSet());
   }
 
-  // Returns true if HSTS is set on localhost.  Does this by issuing an HTTP
-  // request to the embedded test server, and expecting it to be redirected from
-  // HTTP to HTTPS if HSTS is enabled.  If the request succeeds, it was sent
-  // over HTTPS, so HSTS is enabled. If it fails, the request was send using
-  // HTTP instead, so HSTS is not enabled for the domain.
+  // Returns true if HSTS is set on localhost.  Does this by issuing a main
+  // frame HTTP request to the embedded test server, and expecting it to be
+  // redirected from HTTP to HTTPS if HSTS is enabled.  If the request succeeds,
+  // it was sent over HTTPS, so HSTS is enabled. If it fails, the request was
+  // send using HTTP instead, so HSTS is not enabled for the domain.
+  //
+  // That the request be main frame is necessary when
+  // kHstsTopLevelNavigationsOnly is enabled.
   bool IsHstsSet() {
-    GURL url = ssl_server_.GetURL("localhost", "/echo");
+    GURL url = ssl_server_.GetURL(kHstsHostname, "/echo");
     GURL::Replacements replacements;
     replacements.SetSchemeStr("http");
     url = url.ReplaceComponents(replacements);
+    url::Origin origin = url::Origin::Create(url);
     std::unique_ptr<network::ResourceRequest> request =
         std::make_unique<network::ResourceRequest>();
     request->url = url;
+    request->site_for_cookies = net::SiteForCookies::FromOrigin(origin);
+    request->update_first_party_url_on_redirect = true;
+    request->trusted_params.emplace();
+    request->trusted_params->isolation_info = net::IsolationInfo::Create(
+        net::IsolationInfo::RequestType::kMainFrame, origin, origin,
+        net::SiteForCookies::FromOrigin(origin));
 
     std::unique_ptr<network::SimpleURLLoader> loader =
         network::SimpleURLLoader::Create(std::move(request),
@@ -221,9 +233,8 @@ class BrowsingDataRemoverImplBrowserTest
     bool login_requested = false;
     ShellContentBrowserClient::Get()->set_login_request_callback(
         base::BindLambdaForTesting(
-            [&](bool is_primary_main_frame /* unused */) {
-              login_requested = true;
-            }));
+            [&](bool is_primary_main_frame_navigation /* unused */,
+                bool is_navigation /* unused */) { login_requested = true; }));
 
     GURL url = ssl_server_.GetURL(kHttpAuthPath);
     bool navigation_suceeded = NavigateToURL(shell(), url);
@@ -390,7 +401,7 @@ IN_PROC_BROWSER_TEST_F(BrowsingDataRemoverImplBrowserTest,
   // matches the BFCached document's origin.
   filter = BrowsingDataFilterBuilder::Create(
       BrowsingDataFilterBuilder::Mode::kDelete);
-  filter->AddRegisterableDomain("localhost");
+  filter->AddRegisterableDomain(ssl_server().base_url().host());
   RemoveWithFilterAndWait(BrowsingDataRemover::DATA_TYPE_CACHE,
                           std::move(filter));
 
@@ -440,7 +451,7 @@ IN_PROC_BROWSER_TEST_F(
   // matches the BFCached document's origin.
   auto filter = BrowsingDataFilterBuilder::Create(
       BrowsingDataFilterBuilder::Mode::kDelete);
-  filter->AddRegisterableDomain("localhost");
+  filter->AddRegisterableDomain(ssl_server().base_url().host());
   RemoveWithFilterAndWait(BrowsingDataRemover::DATA_TYPE_COOKIES,
                           std::move(filter));
 
@@ -467,7 +478,7 @@ IN_PROC_BROWSER_TEST_F(
   // matches the BFCached document's origin.
   auto filter = BrowsingDataFilterBuilder::Create(
       BrowsingDataFilterBuilder::Mode::kDelete);
-  filter->AddRegisterableDomain("localhost");
+  filter->AddRegisterableDomain(ssl_server().base_url().host());
   RemoveWithFilterAndWait(BrowsingDataRemover::DATA_TYPE_COOKIES,
                           std::move(filter));
 
@@ -696,19 +707,6 @@ IN_PROC_BROWSER_TEST_F(CookiesBrowsingDataRemoverImplBrowserTest,
 }
 
 namespace {
-// Provide BrowsingDataRemoverImplTrustTokenTest the Trust Tokens
-// feature as a mixin so that it gets set before the superclass initializes
-// the test's NetworkContext, as the NetworkContext's initialization must
-// occur with the feature enabled.
-class WithTrustTokensEnabled {
- public:
-  WithTrustTokensEnabled() {
-    feature_list_.InitAndEnableFeature(network::features::kPrivateStateTokens);
-  }
-
- private:
-  base::test::ScopedFeatureList feature_list_;
-};
 
 // Tests Trust Tokens clearing by calling
 // TrustTokenQueryAnswerer::HasTrustTokens with a TrustTokenQueryAnswerer
@@ -781,7 +779,7 @@ class TrustTokensTester {
     // provided to HasTrustTokens(origin, _) calls in AddOrigin:
     // - If data has not been cleared,
     //     HasTrustToken(origin, https://probe.example)
-    //   is expected to fail with kResourceLimited because |origin| is at
+    //   is expected to fail with kSiteIssuerLimit because |origin| is at
     //   its number-of-associated-issuers limit, so the answerer will refuse
     //   to answer a query for an origin it has not yet seen.
     // - If data has been cleared, the answerer should be able to fulfill the
@@ -790,11 +788,11 @@ class TrustTokensTester {
         url::Origin::Create(GURL("https://probe.example")),
         base::BindLambdaForTesting(
             [&](network::mojom::HasTrustTokensResultPtr result) {
-              // HasTrustTokens will error out with kResourceLimited exactly
+              // HasTrustTokens will error out with kSiteIssuerLimit exactly
               // when the top-frame origin |origin| was previously added by
               // AddOrigin.
               if (result->status ==
-                  network::mojom::TrustTokenOperationStatus::kResourceLimited) {
+                  network::mojom::TrustTokenOperationStatus::kSiteIssuerLimit) {
                 has_origin = true;
               }
 
@@ -812,9 +810,8 @@ class TrustTokensTester {
 
 }  // namespace
 
-class BrowsingDataRemoverImplTrustTokenTest
-    : public WithTrustTokensEnabled,
-      public BrowsingDataRemoverImplBrowserTest {};
+using BrowsingDataRemoverImplTrustTokenTest =
+    BrowsingDataRemoverImplBrowserTest;
 
 IN_PROC_BROWSER_TEST_F(BrowsingDataRemoverImplTrustTokenTest, Remove) {
   TrustTokensTester tester(network_context());

@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickdial_p.h"
 #include "qquickdeferredexecute_p_p.h"
@@ -7,6 +8,7 @@
 #include <QtCore/qmath.h>
 #include <QtQuick/private/qquickflickable_p.h>
 #include <QtQuickTemplates2/private/qquickcontrol_p_p.h>
+#include <QtQuickTemplates2/private/qtquicktemplates2math_p.h>
 
 #include <cmath>
 
@@ -26,6 +28,7 @@ QT_BEGIN_NAMESPACE
     value within a range.
 
     \image qtquickcontrols-dial-no-wrap.gif
+           {Dial without wrap, stopping at ends}
 
     The value of the dial is set with the \l value property. The range is
     set with the \l from and \l to properties. To enable or disable wrapping,
@@ -340,12 +343,6 @@ void QQuickDialPrivate::executeHandle(bool complete)
         quickBeginDeferred(q, handleName(), handle);
     if (complete)
         quickCompleteDeferred(q, handleName(), handle);
-}
-
-template<typename ...Real>
-static bool areRepresentableAsInteger(Real... numbers) {
-    auto check = [](qreal number) -> bool { return std::nearbyint(number) == number; };
-    return (... && check(numbers));
 }
 
 void QQuickDialPrivate::updateAllValuesAreInteger()
@@ -720,11 +717,13 @@ void QQuickDial::setInputMode(QQuickDial::InputMode mode)
     \l from position, and vice versa:
 
     \image qtquickcontrols-dial-wrap.gif
+           {Dial with wrap, rotating continuously}
 
     When this property is \c false, it's not possible to drag the dial across
     the from and to values.
 
     \image qtquickcontrols-dial-no-wrap.gif
+           {Dial without wrap, stopping at ends}
 
     The default value is \c false.
 */

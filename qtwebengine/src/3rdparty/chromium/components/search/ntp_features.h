@@ -21,13 +21,10 @@ namespace ntp_features {
 // the .cc file.
 
 BASE_DECLARE_FEATURE(kConfirmSuggestionRemovals);
-BASE_DECLARE_FEATURE(kCustomizeChromeColorExtraction);
 BASE_DECLARE_FEATURE(kCustomizeChromeSidePanelExtensionsCard);
 BASE_DECLARE_FEATURE(kCustomizeChromeWallpaperSearch);
 BASE_DECLARE_FEATURE(kCustomizeChromeWallpaperSearchButton);
 BASE_DECLARE_FEATURE(kCustomizeChromeWallpaperSearchInspirationCard);
-BASE_DECLARE_FEATURE(kIframeOneGoogleBar);
-BASE_DECLARE_FEATURE(kOneGoogleBarModalOverlays);
 BASE_DECLARE_FEATURE(kRealboxCr23Theming);
 BASE_DECLARE_FEATURE(kRealboxMatchOmniboxTheme);
 BASE_DECLARE_FEATURE(kRealboxMatchSearchboxTheme);
@@ -47,12 +44,9 @@ BASE_DECLARE_FEATURE(kNtpLogo);
 BASE_DECLARE_FEATURE(kNtpMiddleSlotPromo);
 BASE_DECLARE_FEATURE(kNtpMiddleSlotPromoDismissal);
 BASE_DECLARE_FEATURE(kNtpModulesLoadTimeoutMilliseconds);
-BASE_DECLARE_FEATURE(kNtpWideModules);
 BASE_DECLARE_FEATURE(kNtpModulesOrder);
-BASE_DECLARE_FEATURE(kNtpModulesOverflowScrollbar);
 BASE_DECLARE_FEATURE(kNtpModulesDragAndDrop);
 BASE_DECLARE_FEATURE(kNtpModulesLoad);
-BASE_DECLARE_FEATURE(kNtpModulesRedesigned);
 BASE_DECLARE_FEATURE(kNtpOutlookCalendarModule);
 BASE_DECLARE_FEATURE(kNtpPhotosModule);
 BASE_DECLARE_FEATURE(kNtpPhotosModuleSoftOptOut);
@@ -61,19 +55,27 @@ BASE_DECLARE_FEATURE(kNtpPhotosModuleCustomizedOptInArtWork);
 BASE_DECLARE_FEATURE(kNtpPhotosModuleSplitSvgOptInArtWork);
 BASE_DECLARE_FEATURE(kNtpFeedModule);
 BASE_DECLARE_FEATURE(kNtpOneGoogleBar);
-BASE_DECLARE_FEATURE(kNtpLensDirectUpload);
 BASE_DECLARE_FEATURE(kNtpSafeBrowsingModule);
 BASE_DECLARE_FEATURE(kNtpSharepointModule);
+enum class NtpSharepointModuleDataType {
+  kTrendingInsights,
+  kNonInsights,
+  kTrendingInsightsFakeData,
+  kNonInsightsFakeData,
+};
 BASE_DECLARE_FEATURE(kNtpShortcuts);
 BASE_DECLARE_FEATURE(kNtpHandleMostVisitedNavigationExplicitly);
-BASE_DECLARE_FEATURE(kNtpModulesHeaderIcon);
 BASE_DECLARE_FEATURE(kNtpMostRelevantTabResumptionModule);
 BASE_DECLARE_FEATURE(kNtpMostRelevantTabResumptionModuleDeviceIcon);
+BASE_DECLARE_FEATURE(kNtpMostRelevantTabResumptionUseIsKnownToSync);
 BASE_DECLARE_FEATURE(kNtpTabResumptionModuleCategories);
 BASE_DECLARE_FEATURE(kNtpTabResumptionModuleTimeLimit);
 BASE_DECLARE_FEATURE(kNtpWallpaperSearchButton);
 BASE_DECLARE_FEATURE(kNtpWallpaperSearchButtonAnimation);
 BASE_DECLARE_FEATURE(kNtpWallpaperSearchButtonAnimationShownThreshold);
+BASE_DECLARE_FEATURE(kNtpMobilePromo);
+BASE_DECLARE_FEATURE(kNtpMicrosoftAuthenticationModule);
+BASE_DECLARE_FEATURE(kNtpOneGoogleBarAsyncBarParts);
 
 // Parameter for controlling the luminosity difference for NTP elements on light
 // backgrounds.
@@ -163,6 +165,8 @@ extern const char kNtpWallpaperSearchButtonAnimationShownThresholdParam[];
 extern const char kNtpWallpaperSearchButtonHideConditionParam[];
 // Parameter determining the trigger delay of the Wallpaper Search HaTS survey.
 extern const char kWallpaperSearchHatsDelayParam[];
+// Parameter determining the target url to go to from the Ntp Mobile Promo.
+extern const char kNtpMobilePromoTargetUrlParam[];
 
 // Parameter determining the experiment name to pass to the Google Calendar
 // API.
@@ -177,11 +181,37 @@ extern const base::FeatureParam<base::TimeDelta>
 // window.
 extern const base::FeatureParam<base::TimeDelta>
     kNtpCalendarModuleWindowStartDeltaParam;
+// Parameter determining whether the existence of Outlook attachment pages
+// should be checked.
+extern const base::FeatureParam<bool>
+    kNtpOutlookCalendarModuleAttachmentCheckParam;
+// Parameter determining whether attachments should be disabled.
+extern const base::FeatureParam<bool>
+    kNtpOutlookCalendarModuleDisableAttachmentsParam;
+// Parameter determining the max number of events to display on the Outlook
+// Calendar module.
+extern const base::FeatureParam<int> kNtpOutlookCalendarModuleMaxEventsParam;
+// Parameter determining the time range of events.
+extern const base::FeatureParam<base::TimeDelta>
+    kNtpOutlookCalendarModuleRetrievalWindowParam;
 // Parameter determining the background color of the expanded state realbox.
 extern const base::FeatureParam<bool>
     kNtpRealboxCr23ExpandedStateBgMatchesOmnibox;
 // Parameter determining the whether the steady state realbox has a shadow.
 extern const base::FeatureParam<bool> kNtpRealboxCr23SteadyStateShadow;
+// Parameter determining the impression limit for the NTP mobile promo. The
+// promo will not be shown again after the impression limit is reached.
+extern const base::FeatureParam<int> kNtpMobilePromoImpressionLimit;
+// Parameter determining the type of data to render.
+extern const base::FeatureParam<NtpSharepointModuleDataType>
+    kNtpSharepointModuleDataParam;
+// Parameter determining the max number of files to display on the Microsoft
+// files module.
+extern const base::FeatureParam<int> kNtpMicrosoftFilesModuleMaxFilesParam;
+// Parameter determining whether the tab resumption module should filter visits
+// that are associated with local tabs.
+extern const base::FeatureParam<bool>
+    kNtpMostRelevantTabResumptionModuleFilterLocalTabsParam;
 
 // Returns the timeout after which the load of a module should be aborted.
 base::TimeDelta GetModulesLoadTimeout();
@@ -204,6 +234,8 @@ int GetWallpaperSearchButtonAnimationShownThreshold();
 
 // Returns the condition to use to hide the wallpaper search button.
 int GetWallpaperSearchButtonHideCondition();
+
+std::string GetMobilePromoTargetURL();
 }  // namespace ntp_features
 
 #endif  // COMPONENTS_SEARCH_NTP_FEATURES_H_

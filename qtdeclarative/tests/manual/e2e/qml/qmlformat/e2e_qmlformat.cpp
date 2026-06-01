@@ -1,12 +1,13 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QTest>
-#include <QDir>
-#include <QFile>
-#include <QProcess>
-#include <QString>
-#include <QTemporaryDir>
+#include <QtCore/qdir.h>
+#include <QtCore/qfile.h>
+#include <QtCore/qlibraryinfo.h>
+#include <QtCore/qprocess.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qtemporarydir.h>
+#include <QtTest/qtest.h>
 #include <QtTest/private/qemulationdetector_p.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQmlDom/private/qqmldomitem_p.h>

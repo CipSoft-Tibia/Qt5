@@ -98,6 +98,7 @@ void tst_qqmlconsole::categorized_logging()
     std::unique_ptr<QObject> object { component.create() };
     QVERIFY2(object != nullptr, component.errorString().toUtf8());
 
+    QVERIFY(messageHandler.messages().contains("qt.test.early: in time"));
     QVERIFY(messageHandler.messages().contains("qt.test: console.info"));
     QVERIFY(messageHandler.messages().contains("qt.test: console.warn"));
     QVERIFY(messageHandler.messages().contains("qt.test: console.error"));
@@ -128,7 +129,7 @@ void tst_qqmlconsole::categorized_logging()
     QVERIFY(messageHandler.messages().contains(changedDefaultLogLevel));
 
 
-    QString useEmptyCategory = "default: " + QString::fromLatin1("%1:%2: ").arg(testUrl.toString()).arg(42) +
+    QString useEmptyCategory = "default: " + QString::fromLatin1("%1:%2: ").arg(testUrl.toString()).arg(57) +
                             "Error: A QmlLoggingCatgory was provided without a valid name";
     QVERIFY(messageHandler.messages().contains(useEmptyCategory));
 }

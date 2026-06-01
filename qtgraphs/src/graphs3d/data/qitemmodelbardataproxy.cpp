@@ -3,6 +3,7 @@
 
 #include "baritemmodelhandler_p.h"
 #include "qitemmodelbardataproxy_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -550,10 +551,13 @@ QAbstractItemModel *QItemModelBarDataProxy::itemModel() const
 void QItemModelBarDataProxy::setRowRole(const QString &role)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_rowRole != role) {
-        d->m_rowRole = role;
-        emit rowRoleChanged(role);
+    if (d->m_rowRole == role) {
+        qCDebug(lcProperties3D, "%s Value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_rowRole = role;
+    emit rowRoleChanged(role);
 }
 
 QString QItemModelBarDataProxy::rowRole() const
@@ -570,10 +574,13 @@ QString QItemModelBarDataProxy::rowRole() const
 void QItemModelBarDataProxy::setColumnRole(const QString &role)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_columnRole != role) {
-        d->m_columnRole = role;
-        emit columnRoleChanged(role);
+    if (d->m_columnRole == role) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_columnRole = role;
+    emit columnRoleChanged(role);
 }
 
 QString QItemModelBarDataProxy::columnRole() const
@@ -590,10 +597,13 @@ QString QItemModelBarDataProxy::columnRole() const
 void QItemModelBarDataProxy::setValueRole(const QString &role)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_valueRole != role) {
-        d->m_valueRole = role;
-        emit valueRoleChanged(role);
+    if (d->m_valueRole == role) {
+        qCDebug(lcProperties3D, "%s Value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_valueRole = role;
+    emit valueRoleChanged(role);
 }
 
 QString QItemModelBarDataProxy::valueRole() const
@@ -610,10 +620,13 @@ QString QItemModelBarDataProxy::valueRole() const
 void QItemModelBarDataProxy::setRotationRole(const QString &role)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_rotationRole != role) {
-        d->m_rotationRole = role;
-        emit rotationRoleChanged(role);
+    if (d->m_rotationRole == role) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_rotationRole = role;
+    emit rotationRoleChanged(role);
 }
 
 QString QItemModelBarDataProxy::rotationRole() const
@@ -630,10 +643,13 @@ QString QItemModelBarDataProxy::rotationRole() const
 void QItemModelBarDataProxy::setRowCategories(const QStringList &categories)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_rowCategories != categories) {
-        d->m_rowCategories = categories;
-        emit rowCategoriesChanged();
+    if (d->m_rowCategories == categories) {
+        qCDebug(lcProperties3D) << qUtf8Printable(QLatin1String(__FUNCTION__))
+                << "value is already set to:" << categories;
+        return;
     }
+    d->m_rowCategories = categories;
+    emit rowCategoriesChanged();
 }
 
 QStringList QItemModelBarDataProxy::rowCategories() const
@@ -650,10 +666,13 @@ QStringList QItemModelBarDataProxy::rowCategories() const
 void QItemModelBarDataProxy::setColumnCategories(const QStringList &categories)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_columnCategories != categories) {
-        d->m_columnCategories = categories;
-        emit columnCategoriesChanged();
+    if (d->m_columnCategories == categories) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << categories;
+        return;
     }
+    d->m_columnCategories = categories;
+    emit columnCategoriesChanged();
 }
 
 QStringList QItemModelBarDataProxy::columnCategories() const
@@ -673,10 +692,13 @@ QStringList QItemModelBarDataProxy::columnCategories() const
 void QItemModelBarDataProxy::setUseModelCategories(bool enable)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_useModelCategories != enable) {
-        d->m_useModelCategories = enable;
-        emit useModelCategoriesChanged(enable);
+    if (d->m_useModelCategories == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    d->m_useModelCategories = enable;
+    emit useModelCategoriesChanged(enable);
 }
 
 bool QItemModelBarDataProxy::useModelCategories() const
@@ -697,10 +719,13 @@ bool QItemModelBarDataProxy::useModelCategories() const
 void QItemModelBarDataProxy::setAutoRowCategories(bool enable)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_autoRowCategories != enable) {
-        d->m_autoRowCategories = enable;
-        emit autoRowCategoriesChanged(enable);
+    if (d->m_autoRowCategories == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    d->m_autoRowCategories = enable;
+    emit autoRowCategoriesChanged(enable);
 }
 
 bool QItemModelBarDataProxy::autoRowCategories() const
@@ -721,10 +746,13 @@ bool QItemModelBarDataProxy::autoRowCategories() const
 void QItemModelBarDataProxy::setAutoColumnCategories(bool enable)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_autoColumnCategories != enable) {
-        d->m_autoColumnCategories = enable;
-        emit autoColumnCategoriesChanged(enable);
+    if (d->m_autoColumnCategories == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    d->m_autoColumnCategories = enable;
+    emit autoColumnCategoriesChanged(enable);
 }
 
 bool QItemModelBarDataProxy::autoColumnCategories() const
@@ -794,10 +822,13 @@ qsizetype QItemModelBarDataProxy::columnCategoryIndex(const QString &category)
 void QItemModelBarDataProxy::setRowRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_rowRolePattern != pattern) {
-        d->m_rowRolePattern = pattern;
-        emit rowRolePatternChanged(pattern);
+    if (d->m_rowRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_rowRolePattern = pattern;
+    emit rowRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelBarDataProxy::rowRolePattern() const
@@ -822,10 +853,13 @@ QRegularExpression QItemModelBarDataProxy::rowRolePattern() const
 void QItemModelBarDataProxy::setColumnRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_columnRolePattern != pattern) {
-        d->m_columnRolePattern = pattern;
-        emit columnRolePatternChanged(pattern);
+    if (d->m_columnRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_columnRolePattern = pattern;
+    emit columnRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelBarDataProxy::columnRolePattern() const
@@ -849,10 +883,13 @@ QRegularExpression QItemModelBarDataProxy::columnRolePattern() const
 void QItemModelBarDataProxy::setValueRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_valueRolePattern != pattern) {
-        d->m_valueRolePattern = pattern;
-        emit valueRolePatternChanged(pattern);
+    if (d->m_valueRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_valueRolePattern = pattern;
+    emit valueRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelBarDataProxy::valueRolePattern() const
@@ -876,10 +913,13 @@ QRegularExpression QItemModelBarDataProxy::valueRolePattern() const
 void QItemModelBarDataProxy::setRotationRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_rotationRolePattern != pattern) {
-        d->m_rotationRolePattern = pattern;
-        emit rotationRolePatternChanged(pattern);
+    if (d->m_rotationRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_rotationRolePattern = pattern;
+    emit rotationRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelBarDataProxy::rotationRolePattern() const
@@ -902,10 +942,13 @@ QRegularExpression QItemModelBarDataProxy::rotationRolePattern() const
 void QItemModelBarDataProxy::setRowRoleReplace(const QString &replace)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_rowRoleReplace != replace) {
-        d->m_rowRoleReplace = replace;
-        emit rowRoleReplaceChanged(replace);
+    if (d->m_rowRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_rowRoleReplace = replace;
+    emit rowRoleReplaceChanged(replace);
 }
 
 QString QItemModelBarDataProxy::rowRoleReplace() const
@@ -928,10 +971,13 @@ QString QItemModelBarDataProxy::rowRoleReplace() const
 void QItemModelBarDataProxy::setColumnRoleReplace(const QString &replace)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_columnRoleReplace != replace) {
-        d->m_columnRoleReplace = replace;
-        emit columnRoleReplaceChanged(replace);
+    if (d->m_columnRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_columnRoleReplace = replace;
+    emit columnRoleReplaceChanged(replace);
 }
 
 QString QItemModelBarDataProxy::columnRoleReplace() const
@@ -954,10 +1000,13 @@ QString QItemModelBarDataProxy::columnRoleReplace() const
 void QItemModelBarDataProxy::setValueRoleReplace(const QString &replace)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_valueRoleReplace != replace) {
-        d->m_valueRoleReplace = replace;
-        emit valueRoleReplaceChanged(replace);
+    if (d->m_valueRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_valueRoleReplace = replace;
+    emit valueRoleReplaceChanged(replace);
 }
 
 QString QItemModelBarDataProxy::valueRoleReplace() const
@@ -981,10 +1030,13 @@ QString QItemModelBarDataProxy::valueRoleReplace() const
 void QItemModelBarDataProxy::setRotationRoleReplace(const QString &replace)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_rotationRoleReplace != replace) {
-        d->m_rotationRoleReplace = replace;
-        emit rotationRoleReplaceChanged(replace);
+    if (d->m_rotationRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_rotationRoleReplace = replace;
+    emit rotationRoleReplaceChanged(replace);
 }
 
 QString QItemModelBarDataProxy::rotationRoleReplace() const
@@ -1011,10 +1063,13 @@ void QItemModelBarDataProxy::setMultiMatchBehavior(
     QItemModelBarDataProxy::MultiMatchBehavior behavior)
 {
     Q_D(QItemModelBarDataProxy);
-    if (d->m_multiMatchBehavior != behavior) {
-        d->m_multiMatchBehavior = behavior;
-        emit multiMatchBehaviorChanged(behavior);
+    if (d->m_multiMatchBehavior == behavior) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << behavior;
+        return;
     }
+    d->m_multiMatchBehavior = behavior;
+    emit multiMatchBehaviorChanged(behavior);
 }
 
 QItemModelBarDataProxy::MultiMatchBehavior QItemModelBarDataProxy::multiMatchBehavior() const

@@ -162,6 +162,23 @@ Item {
                     gradientLabel.text = "Series gradient";
                 }
             }
+
+            Button {
+                id: toggleSeriesItemLabel
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                text: qsTr("Hide series itemLabel")
+
+                onClicked: {
+                    heightSeries.itemLabelVisible = !heightSeries.itemLabelVisible
+
+                    if (heightSeries.itemLabelVisible)
+                        text = "Hide series itemLabel"
+                    else
+                        text = "Show series itemLabel"
+                }
+            }
         }
 
         ColumnLayout {

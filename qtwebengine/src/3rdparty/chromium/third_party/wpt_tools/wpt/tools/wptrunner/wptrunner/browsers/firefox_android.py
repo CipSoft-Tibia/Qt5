@@ -92,7 +92,7 @@ def env_extras(**kwargs):
 
 
 def run_info_extras(logger, **kwargs):
-    rv = fx_run_info_extras(logger, **kwargs)
+    rv = fx_run_info_extras(logger, default_prefs=ProfileCreator.default_prefs(), **kwargs)
     rv.update({"headless": False})
 
     if kwargs["browser_version"] is None:
@@ -137,6 +137,10 @@ def get_environ(chaos_mode_flags, env_extras=None):
     env = {}
     if env_extras is not None:
         env.update(env_extras)
+
+    if "MINIDUMP_SAVE_PATH" in os.environ:
+        env["MINIDUMP_SAVE_PATH"] = os.environ["MINIDUMP_SAVE_PATH"]
+
     env["MOZ_CRASHREPORTER"] = "1"
     env["MOZ_CRASHREPORTER_SHUTDOWN"] = "1"
     env["MOZ_DISABLE_NONLOCAL_CONNECTIONS"] = "1"
@@ -155,6 +159,10 @@ class ProfileCreator(FirefoxProfileCreator):
                          disable_fission, debug_test, browser_channel, None,
                          package_name, certutil_binary, ca_certificate_path,
                          allow_list_paths)
+
+    @staticmethod
+    def default_prefs():
+        return {"fission.disableSessionHistoryInParent": True}
 
     def _set_required_prefs(self, profile):
         profile.set_preferences({
@@ -403,7 +411,7 @@ class FirefoxAndroidWdSpecBrowser(FirefoxWdSpecBrowser):
             self.logger.warning("Failed to remove forwarded or reversed ports: %s" % e)
         super().stop(force=force)
 
-    def get_env(self, binary, debug_info, headless, chaos_mode_flags, e10s):
+    def get_env(self, binary, debug_info, headless, gmp_path, chaos_mode_flags, e10s):
         env = get_environ(chaos_mode_flags)
         env["RUST_BACKTRACE"] = "1"
         return env

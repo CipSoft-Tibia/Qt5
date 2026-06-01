@@ -6,7 +6,6 @@
 
 #include <optional>
 
-#include "base/auto_reset.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -17,47 +16,12 @@
 #include "components/media_effects/media_effects_model_provider.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/gpu_client.h"
-#include "content/public/browser/service_process_host.h"
 #include "media/capture/mojom/video_effects_manager.mojom.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "services/video_effects/public/cpp/video_effects_service_host.h"
 #include "services/video_effects/public/mojom/video_effects_processor.mojom.h"
 #include "services/video_effects/public/mojom/video_effects_service.mojom.h"
 #include "services/viz/public/mojom/gpu.mojom.h"
-
-namespace {
-
-static mojo::Remote<video_effects::mojom::VideoEffectsService>*
-    g_service_remote = nullptr;
-
-video_effects::mojom::VideoEffectsService* GetVideoEffectsService() {
-  if (!g_service_remote) {
-    g_service_remote =
-        new mojo::Remote<video_effects::mojom::VideoEffectsService>();
-  }
-
-  if (!g_service_remote->is_bound()) {
-    content::ServiceProcessHost::Launch(
-        g_service_remote->BindNewPipeAndPassReceiver(),
-        content::ServiceProcessHost::Options()
-            .WithDisplayName("Video Effects Service")
-            .Pass());
-
-    g_service_remote->reset_on_disconnect();
-    g_service_remote->reset_on_idle_timeout(base::Seconds(5));
-  }
-
-  return g_service_remote->get();
-}
-
-}  // namespace
-
-base::AutoReset<mojo::Remote<video_effects::mojom::VideoEffectsService>*>
-SetVideoEffectsServiceRemoteForTesting(
-    mojo::Remote<video_effects::mojom::VideoEffectsService>* service_override) {
-  return base::AutoReset<
-      mojo::Remote<video_effects::mojom::VideoEffectsService>*>(
-      &g_service_remote, service_override);
-}
 
 MediaEffectsService::MediaEffectsService(
     PrefService* prefs,
@@ -84,9 +48,9 @@ MediaEffectsService::~MediaEffectsService() {
   }
 }
 
-void MediaEffectsService::BindVideoEffectsManager(
+void MediaEffectsService::BindReadonlyVideoEffectsManager(
     const std::string& device_id,
-    mojo::PendingReceiver<media::mojom::VideoEffectsManager>
+    mojo::PendingReceiver<media::mojom::ReadonlyVideoEffectsManager>
         effects_manager_receiver) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -100,11 +64,13 @@ void MediaEffectsService::BindVideoEffectsProcessor(
         effects_processor_receiver) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  mojo::PendingRemote<media::mojom::VideoEffectsManager> video_effects_manager;
-  BindVideoEffectsManager(
-      device_id, video_effects_manager.InitWithNewPipeAndPassReceiver());
+  mojo::PendingRemote<media::mojom::ReadonlyVideoEffectsManager>
+      readonly_video_effects_manager;
+  BindReadonlyVideoEffectsManager(
+      device_id,
+      readonly_video_effects_manager.InitWithNewPipeAndPassReceiver());
 
-  auto* video_effects_service = GetVideoEffectsService();
+  auto* video_effects_service = video_effects::GetVideoEffectsService();
   CHECK(video_effects_service);
 
   mojo::PendingRemote<viz::mojom::Gpu> gpu_remote;
@@ -120,14 +86,24 @@ void MediaEffectsService::BindVideoEffectsProcessor(
                                                     std::move(gpu_receiver)));
   }
 
+  LOG(WARNING) << "Calling CreateEffectsProcessor";
   video_effects_service->CreateEffectsProcessor(
-      device_id, std::move(gpu_remote), std::move(video_effects_manager),
+      device_id, std::move(gpu_remote),
+      std::move(readonly_video_effects_manager),
       std::move(effects_processor_receiver));
 }
 
 void MediaEffectsService::OnBackgroundSegmentationModelUpdated(
-    const base::FilePath& path) {
+    base::optional_ref<const base::FilePath> path) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!path.has_value()) {
+    // We have not received a valid path, so there is nothing to open.
+    // Just pass an invalid `base::File`, it will be handled by lower
+    // layers.
+    OnBackgroundSegmentationModelOpened(base::File());
+    return;
+  }
 
   // We have received new path to the model, let's open it and inform the Video
   // Effects Service about it. Opening a file is considered blocking, schedule
@@ -145,7 +121,7 @@ void MediaEffectsService::OnBackgroundSegmentationModelUpdated(
 
             return model;
           },
-          path),
+          *path),
       base::BindOnce(&MediaEffectsService::OnBackgroundSegmentationModelOpened,
                      weak_factory_.GetWeakPtr()));
 }
@@ -153,6 +129,9 @@ void MediaEffectsService::OnBackgroundSegmentationModelUpdated(
 void MediaEffectsService::OnBackgroundSegmentationModelOpened(
     base::File model_file) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  video_effects::GetVideoEffectsService()->SetBackgroundSegmentationModel(
+      model_file.Duplicate());
 
   // Swap newly opened file with the old one and then close the old one:
   std::swap(latest_segmentation_model_file_, model_file);
@@ -163,14 +142,6 @@ void MediaEffectsService::OnBackgroundSegmentationModelOpened(
         FROM_HERE, {base::MayBlock()},
         base::DoNothingWithBoundArgs(std::move(model_file)));
   }
-
-  // Propagate the new file to Video Effects Service if valid:
-  if (!latest_segmentation_model_file_.IsValid()) {
-    return;
-  }
-
-  GetVideoEffectsService()->SetBackgroundSegmentationModel(
-      latest_segmentation_model_file_.Duplicate());
 }
 
 VideoEffectsManagerImpl& MediaEffectsService::GetOrCreateVideoEffectsManager(

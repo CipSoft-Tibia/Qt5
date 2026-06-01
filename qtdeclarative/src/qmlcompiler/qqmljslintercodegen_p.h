@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSLINTERCODEGEN_P_H
 #define QQMLJSLINTERCODEGEN_P_H
@@ -19,7 +20,6 @@
 #include <QList>
 
 #include <variant>
-#include <memory>
 #include <private/qqmljsdiagnosticmessage_p.h>
 #include <private/qqmlirbuilder_p.h>
 #include <private/qqmljsscope_p.h>
@@ -28,6 +28,7 @@
 #include <QtQmlCompiler/private/qqmljstyperesolver_p.h>
 #include <QtQmlCompiler/private/qqmljslogger_p.h>
 #include <QtQmlCompiler/private/qqmljscompilepass_p.h>
+#include <QtQmlCompiler/private/qqmljscontextproperties_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -39,7 +40,8 @@ class QQmlJSLinterCodegen : public QQmlJSAotCompiler
 {
 public:
     QQmlJSLinterCodegen(QQmlJSImporter *importer, const QString &fileName,
-                        const QStringList &qmldirFiles, QQmlJSLogger *logger);
+                        const QStringList &qmldirFiles, QQmlJSLogger *logger,
+                        const QQmlJS::ContextProperties &knownContextProperties);
 
     void setDocument(const QmlIR::JSCodeGen *codegen, const QmlIR::Document *document) override;
     std::variant<QQmlJSAotFunction, QList<QQmlJS::DiagnosticMessage>>
@@ -63,9 +65,9 @@ public:
 private:
     QQmlSA::PassManager *m_passManager = nullptr;
 
-    bool analyzeFunction(const QV4::Compiler::Context *context,
-                         QQmlJSCompilePass::Function *function,
-                         QList<QQmlJS::DiagnosticMessage> *errors);
+    void analyzeFunction(const QV4::Compiler::Context *context,
+                         QQmlJSCompilePass::Function *function);
+    QQmlJS::ContextProperties m_knownContextProperties;
 };
 
 QT_END_NAMESPACE

@@ -12,7 +12,7 @@ class InvisibleBase : public QObject
 public:
     InvisibleBase(QObject *parent = nullptr) : QObject(parent) {}
 private:
-    int m_a = 12;
+    Q_DECL_UNUSED_MEMBER int m_a = 12;
 };
 
 #endif // BASE_H

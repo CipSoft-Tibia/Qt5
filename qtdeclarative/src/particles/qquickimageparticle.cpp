@@ -1437,7 +1437,7 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
 
         m_nodes.insert(groupId, node);
         m_idxStarts.insert(groupId, m_lastIdxStart);
-        m_startsIdx.append(qMakePair(m_lastIdxStart, groupId));
+        m_startsIdx.append(std::make_pair(m_lastIdxStart, groupId));
         m_lastIdxStart += count;
 
         //Create Particle Geometry

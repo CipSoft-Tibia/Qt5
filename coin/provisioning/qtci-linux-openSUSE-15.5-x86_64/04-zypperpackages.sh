@@ -76,9 +76,6 @@ sudo zypper -nq install zip
 # OpenSSL 3
 sudo zypper -nq install openssl-3
 
-# used for reading vcpkg packages version, from vcpkg.json
-sudo zypper -nq install jq
-
 # Valgrind (Needed for testlib selftests)
 sudo zypper -nq install valgrind-devel
 
@@ -87,6 +84,9 @@ sudo zypper -nq install cifs-utils
 
 # For Firebird in RTA
 sudo zypper -nq install libtommath-devel
+
+# Keep zoneinfo up-to-date (COIN-1282)
+sudo zypper -nq install timezone
 
 # Java
 sudo zypper -nq install java-17-openjdk

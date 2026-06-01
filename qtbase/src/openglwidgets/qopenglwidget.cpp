@@ -856,7 +856,7 @@ void QOpenGLWidgetPrivate::initialize()
     context = new QOpenGLContext;
     context->setFormat(requestedFormat);
 
-    QOpenGLContext *shareContext = contextFromRhi ? contextFromRhi : qt_gl_global_share_context();
+    QOpenGLContext *shareContext = contextFromRhi ? contextFromRhi : QOpenGLContext::globalShareContext();
     if (shareContext) {
         context->setShareContext(shareContext);
         context->setScreen(shareContext->screen());

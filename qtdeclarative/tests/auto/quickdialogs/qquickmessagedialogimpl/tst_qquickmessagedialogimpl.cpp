@@ -2,8 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/qtest.h>
+
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
+
+#include <bitset>
 #include <QtTest/qsignalspy.h>
 #include <QtQml/qqmlfile.h>
+#include <QtQuick/private/qquickmousearea_p.h>
 #include <QtQuickDialogs2/private/qquickmessagedialog_p.h>
 #include <QtQuickDialogs2QuickImpl/private/qquickmessagedialogimpl_p.h>
 #include <QtQuickTest/quicktest.h>
@@ -41,6 +48,9 @@ private slots:
     void changeStandardButtons();
     void detailedText();
     void resultReflectsLastStandardButtonPressed();
+    void checkModality_data();
+    void checkModality();
+    void checkFrameless();
 };
 
 // We don't want to fail on warnings until QTBUG-98964 is fixed,
@@ -163,6 +173,18 @@ void tst_QQuickMessageDialogImpl::changeStandardButtons()
 
     auto buttonBox = dialogHelper.quickDialog->findChild<QQuickDialogButtonBox *>("buttonBox");
     QVERIFY(buttonBox);
+
+    std::bitset<QPlatformDialogHelper::NRoles> availableButtonRoles;
+    auto verifyButtonBox = [&]() {
+        availableButtonRoles.reset();
+        for (int i = 0; i < buttonBox->count(); ++i) {
+            const auto button = qobject_cast<QQuickAbstractButton *>(buttonBox->itemAt(i));
+            const auto role = QQuickDialogPrivate::buttonRole(button);
+            QVERIFY(role > QPlatformDialogHelper::InvalidRole && role < QPlatformDialogHelper::NRoles);
+            availableButtonRoles.set(role);
+        }
+    };
+
     QCOMPARE(buttonBox->count(), 1);
     QVERIFY2(dialogHelper.dialog->buttons() & QPlatformDialogHelper::StandardButton::Ok,
              "The QMessageDialogOptionsPrivate constructor assures that the Ok button will be "
@@ -178,15 +200,10 @@ void tst_QQuickMessageDialogImpl::changeStandardButtons()
     dialogHelper.dialog->open();
     QCOMPARE(buttonBox->count(), 3);
 
-    auto saveButton = qobject_cast<QQuickAbstractButton *>(buttonBox->itemAt(0));
-    QVERIFY(saveButton);
-    QCOMPARE(saveButton, buttonBox->standardButton(QPlatformDialogHelper::StandardButton::Save));
-    auto applyButton = qobject_cast<QQuickAbstractButton *>(buttonBox->itemAt(1));
-    QVERIFY(applyButton);
-    QCOMPARE(applyButton, buttonBox->standardButton(QPlatformDialogHelper::StandardButton::Cancel));
-    auto cancelButton = qobject_cast<QQuickAbstractButton *>(buttonBox->itemAt(2));
-    QVERIFY(cancelButton);
-    QCOMPARE(cancelButton, buttonBox->standardButton(QPlatformDialogHelper::StandardButton::Apply));
+    verifyButtonBox();
+    QVERIFY(availableButtonRoles.test(QPlatformDialogHelper::AcceptRole));
+    QVERIFY(availableButtonRoles.test(QPlatformDialogHelper::RejectRole));
+    QVERIFY(availableButtonRoles.test(QPlatformDialogHelper::ApplyRole));
 
     // change buttons when the dialog is closed
     dialogHelper.dialog->close();
@@ -198,12 +215,9 @@ void tst_QQuickMessageDialogImpl::changeStandardButtons()
     dialogHelper.dialog->open();
     QCOMPARE(buttonBox->count(), 2);
 
-    auto okButton = qobject_cast<QQuickAbstractButton *>(buttonBox->itemAt(0));
-    QVERIFY(okButton);
-    QCOMPARE(okButton, buttonBox->standardButton(QPlatformDialogHelper::StandardButton::Ok));
-    auto closeButton = qobject_cast<QQuickAbstractButton *>(buttonBox->itemAt(1));
-    QVERIFY(closeButton);
-    QCOMPARE(closeButton, buttonBox->standardButton(QPlatformDialogHelper::StandardButton::Close));
+    verifyButtonBox();
+    QVERIFY(availableButtonRoles.test(QPlatformDialogHelper::AcceptRole));
+    QVERIFY(availableButtonRoles.test(QPlatformDialogHelper::RejectRole));
 
     dialogHelper.dialog->close();
 }
@@ -365,6 +379,75 @@ void tst_QQuickMessageDialogImpl::resultReflectsLastStandardButtonPressed()
     QCOMPARE(rejectedSpy.count(), expectedNumberOfRejectedSignals);
 
     dialogHelper.dialog->close();
+}
+
+void tst_QQuickMessageDialogImpl::checkModality_data()
+{
+    QTest::addColumn<Qt::WindowModality>("modality");
+    QTest::addColumn<int>("expectedRootWindowChildCount");
+    QTest::addColumn<int>("expectedChildWindowClickCount");
+
+    QTest::newRow("nonModal") << Qt::NonModal << 1 << 1;
+    QTest::newRow("windowModal") << Qt::WindowModal << 0 << 1;
+    // Verify application modal case only for the platform which supports multiple windows
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::MultipleWindows))
+        QTest::newRow("applicationModal") << Qt::ApplicationModal << 0 << 0;
+}
+
+void tst_QQuickMessageDialogImpl::checkModality()
+{
+    QFETCH(Qt::WindowModality, modality);
+    QFETCH(int, expectedRootWindowChildCount);
+    QFETCH(int, expectedChildWindowClickCount);
+
+    DialogTestHelper<QQuickMessageDialog, QQuickMessageDialogImpl> dialogHelper(this, "checkModality.qml");
+    QVERIFY2(dialogHelper.isWindowInitialized(), dialogHelper.failureMessage());
+    QVERIFY(dialogHelper.waitForWindowActive());
+
+    dialogHelper.dialog->setModality(modality);
+    QCOMPARE(dialogHelper.dialog->modality(), modality);
+
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    auto *childWindow = dialogHelper.window()->property("childWindow").value<QQuickWindow *>();
+    QVERIFY(childWindow);
+
+    // Setting the child window transient parent as root window won't allow it to receive mouse
+    // events, causing WindowModal case not to be tested. Thus, resetting the transient parent.
+    if (modality == Qt::WindowModal)
+        childWindow->setTransientParent(nullptr);
+
+    // Platforms such as Android have system bars obscuring the content item on
+    // top and bottom, which can lead to a mouse event being delivered to the
+    // system bar instead of the content item. To avoid this, safe area margin
+    // has been considered.
+    const QMargins safeAreaMargin = dialogHelper.window()->safeAreaMargins();
+    const auto *rootMouseArea = dialogHelper.window()->property("rootMArea").value<QQuickMouseArea *>();
+    QVERIFY(rootMouseArea);
+    QSignalSpy rmaMouseSpy(rootMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier,
+                    QPoint(5 + safeAreaMargin.left(), 5 + safeAreaMargin.top()));
+    QCOMPARE(rmaMouseSpy.size(), expectedRootWindowChildCount);
+
+    const auto *childMouseArea = dialogHelper.window()->property("childMArea").value<QQuickMouseArea *>();
+    QVERIFY(childMouseArea);
+    QSignalSpy cmaMouseSpy(childMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(childWindow, Qt::LeftButton, Qt::NoModifier,
+                    QPoint(5 + safeAreaMargin.left(), 5 + safeAreaMargin.top()));
+    QCOMPARE(cmaMouseSpy.size(), expectedChildWindowClickCount);
+}
+
+void tst_QQuickMessageDialogImpl::checkFrameless()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    QSKIP("Frameless window is not supported on Android/IOS");
+#endif
+    DialogTestHelper<QQuickMessageDialog, QQuickMessageDialogImpl> dialogHelper(this, "messageDialogFrameless.qml");
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    QVERIFY(dialogHelper.popupWindow()->flags().testFlag(Qt::FramelessWindowHint));
 }
 
 QTEST_MAIN(tst_QQuickMessageDialogImpl)

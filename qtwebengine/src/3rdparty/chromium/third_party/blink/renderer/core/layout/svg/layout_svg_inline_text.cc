@@ -205,14 +205,9 @@ const Font* LayoutSVGInlineText::ComputeNewScaledFontForStyle(
                                     scaling_factor / zoom);
   font_description.SetWordSpacing(font_description.WordSpacing() *
                                   scaling_factor / zoom);
+
   return MakeGarbageCollected<Font>(
       font_description, document.GetStyleEngine().GetFontSelector());
-}
-
-PhysicalRect LayoutSVGInlineText::VisualRectInDocument(
-    VisualRectFlags flags) const {
-  NOT_DESTROYED();
-  return Parent()->VisualRectInDocument(flags);
 }
 
 gfx::RectF LayoutSVGInlineText::VisualRectInLocalSVGCoordinates() const {

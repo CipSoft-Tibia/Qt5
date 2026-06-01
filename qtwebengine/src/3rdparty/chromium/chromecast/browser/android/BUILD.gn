@@ -159,16 +159,11 @@ common_android_library_deps = [
 
   # TODO(slan): We may need to pass this in as a parameter.
   "//third_party/androidx:androidx_localbroadcastmanager_localbroadcastmanager_java",
-  "//third_party/androidx:androidx_slice_slice_builders_java",
-
-  # Used internally for Settings UI.
-  "//third_party/androidx:androidx_slice_slice_core_java",
   "//ui/android:ui_java",
 ]
 
 common_java_src_dir = "//chromecast/browser/android/apk/src"
 common_java_sources = [
-  "$common_java_src_dir/org/chromium/chromecast/shell/CastAccessibilityHelper.java",
   "$common_java_src_dir/org/chromium/chromecast/shell/CastApplication.java",
   "$common_java_src_dir/org/chromium/chromecast/shell/CastBrowser.java",
   "$common_java_src_dir/org/chromium/chromecast/shell/CastBrowserHelper.java",
@@ -192,7 +187,6 @@ generate_product_config_srcjar("product_config_for_browser") {
 
 generate_jni("jni_headers") {
   sources = [
-    "apk/src/org/chromium/chromecast/shell/CastAccessibilityHelper.java",
     "apk/src/org/chromium/chromecast/shell/CastContentWindowAndroid.java",
     "apk/src/org/chromium/chromecast/shell/CastMetricsHelper.java",
   ]

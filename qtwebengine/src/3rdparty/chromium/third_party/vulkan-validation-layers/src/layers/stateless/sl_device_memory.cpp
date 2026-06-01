@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +18,13 @@
 
 #include "stateless/stateless_validation.h"
 
-bool StatelessValidation::manual_PreCallValidateAllocateMemory(VkDevice device, const VkMemoryAllocateInfo *pAllocateInfo,
-                                                               const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMemory,
-                                                               const ErrorObject &error_obj) const {
+namespace stateless {
+
+bool Device::manual_PreCallValidateAllocateMemory(VkDevice device, const VkMemoryAllocateInfo *pAllocateInfo,
+                                                  const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMemory,
+                                                  const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!pAllocateInfo) {
         return skip;
@@ -54,9 +57,8 @@ bool StatelessValidation::manual_PreCallValidateAllocateMemory(VkDevice device, 
     return skip;
 }
 
-bool StatelessValidation::ValidateDeviceImageMemoryRequirements(VkDevice device,
-                                                                const VkDeviceImageMemoryRequirements &memory_requirements,
-                                                                const Location &loc) const {
+bool Device::ValidateDeviceImageMemoryRequirements(VkDevice device, const VkDeviceImageMemoryRequirements &memory_requirements,
+                                                   const Location &loc) const {
     bool skip = false;
 
     const auto &create_info = *(memory_requirements.pCreateInfo);
@@ -70,9 +72,9 @@ bool StatelessValidation::ValidateDeviceImageMemoryRequirements(VkDevice device,
     }
 
     if (vkuFormatIsMultiplane(create_info.format) && (create_info.flags & VK_IMAGE_CREATE_DISJOINT_BIT) != 0) {
-        if (memory_requirements.planeAspect == VK_IMAGE_ASPECT_NONE_KHR) {
+        if (memory_requirements.planeAspect == VK_IMAGE_ASPECT_NONE) {
             skip |= LogError("VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06417", device, loc.dot(Field::planeAspect),
-                             "is VK_IMAGE_ASPECT_NONE_KHR with a multi-planar format and disjoint flag.");
+                             "is VK_IMAGE_ASPECT_NONE with a multi-planar format and disjoint flag.");
         } else if ((create_info.tiling == VK_IMAGE_TILING_LINEAR || create_info.tiling == VK_IMAGE_TILING_OPTIMAL) &&
                    !IsOnlyOneValidPlaneAspect(create_info.format, memory_requirements.planeAspect)) {
             skip |= LogError("VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06419", device, loc.dot(Field::planeAspect),
@@ -89,31 +91,32 @@ bool StatelessValidation::ValidateDeviceImageMemoryRequirements(VkDevice device,
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateGetDeviceImageMemoryRequirements(VkDevice device,
-                                                                                 const VkDeviceImageMemoryRequirements *pInfo,
-                                                                                 VkMemoryRequirements2 *pMemoryRequirements,
-                                                                                 const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateGetDeviceImageMemoryRequirements(VkDevice device, const VkDeviceImageMemoryRequirements *pInfo,
+                                                                    VkMemoryRequirements2 *pMemoryRequirements,
+                                                                    const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     skip |= ValidateDeviceImageMemoryRequirements(device, *pInfo, error_obj.location.dot(Field::pInfo));
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateGetDeviceImageSparseMemoryRequirements(
+bool Device::manual_PreCallValidateGetDeviceImageSparseMemoryRequirements(
     VkDevice device, const VkDeviceImageMemoryRequirements *pInfo, uint32_t *pSparseMemoryRequirementCount,
-    VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements, const ErrorObject &error_obj) const {
+    VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     skip |= ValidateDeviceImageMemoryRequirements(device, *pInfo, error_obj.location.dot(Field::pInfo));
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateQueueBindSparse(VkQueue queue, uint32_t bindInfoCount,
-                                                                const VkBindSparseInfo *pBindInfo, VkFence fence,
-                                                                const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateQueueBindSparse(VkQueue queue, uint32_t bindInfoCount, const VkBindSparseInfo *pBindInfo,
+                                                   VkFence fence, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     for (uint32_t bind_info_i = 0; bind_info_i < bindInfoCount; ++bind_info_i) {
         const VkBindSparseInfo &bind_info = pBindInfo[bind_info_i];
@@ -160,12 +163,14 @@ bool StatelessValidation::manual_PreCallValidateQueueBindSparse(VkQueue queue, u
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateSetDeviceMemoryPriorityEXT(VkDevice device, VkDeviceMemory memory, float priority,
-                                                                           const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateSetDeviceMemoryPriorityEXT(VkDevice device, VkDeviceMemory memory, float priority,
+                                                              const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (!IsBetweenInclusive(priority, 0.0F, 1.0F)) {
         skip |= LogError("VUID-vkSetDeviceMemoryPriorityEXT-priority-06258", device, error_obj.location.dot(Field::priority),
                          "is %f.", priority);
     }
     return skip;
 }
+}  // namespace stateless

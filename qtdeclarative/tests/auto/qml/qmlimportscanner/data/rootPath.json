@@ -26,6 +26,23 @@
         "type": "module"
     },
     {
+        "name": "Bar",
+        "type": "module"
+    },
+    {
+        "name": "Foo",
+        "type": "module"
+    },
+    {
+        "name": "With.Module",
+        "relativePath": "With/Module",
+        "type": "module"
+    },
+    {
+        "name": "private",
+        "type": "directory"
+    },
+    {
         "classname": "QtQmlModelsPlugin",
         "linkTarget": "Qt6::modelsplugin",
         "name": "QtQml.Models",

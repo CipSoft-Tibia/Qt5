@@ -52,6 +52,7 @@
 #include <QMimeData>
 #include <QtCore/QPointer>
 #include <QRect>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVariant>
@@ -131,6 +132,10 @@ QWebEnginePagePrivate::~QWebEnginePagePrivate()
 {
     delete history;
     delete settings;
+#if QT_CONFIG(webengine_printing_and_pdf)
+    if (printerThread)
+        printerThread->requestInterruption();
+#endif
     profile->d_ptr->removeWebContentsAdapterClient(this);
 }
 
@@ -539,10 +544,12 @@ void QWebEnginePagePrivate::didFetchDocumentInnerText(quint64 requestId, const Q
 void QWebEnginePagePrivate::didPrintPage(QSharedPointer<QByteArray> result)
 {
 #if QT_CONFIG(webengine_printing_and_pdf)
+    Q_Q(QWebEnginePage);
     Q_ASSERT(currentPrinter);
-    if (view)
-        view->didPrintPage(currentPrinter, result);
-    else
+    if (view) {
+        printerThread = view->didPrintPage(currentPrinter, result);
+        QObject::connect(printerThread, &QThread::finished, q, [this]() { printerThread = nullptr; });
+    } else
         currentPrinter = nullptr;
 #else
     // should not get here
@@ -590,49 +597,6 @@ void QWebEnginePagePrivate::showColorDialog(QSharedPointer<ColorChooserControlle
         view->showColorDialog(controller);
 }
 
-void QWebEnginePagePrivate::runMediaAccessPermissionRequest(const QUrl &securityOrigin, WebContentsAdapterClient::MediaRequestFlags requestFlags)
-{
-    Q_Q(QWebEnginePage);
-    QWebEnginePermission::PermissionType permissionType;
-
-    if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture)
-            && requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::MediaAudioVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture))
-        permissionType = QWebEnginePermission::PermissionType::MediaAudioCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::MediaVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopAudioCapture)
-            && requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::DesktopAudioVideoCapture;
-    else // if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::DesktopVideoCapture;
-
-    Q_EMIT q->permissionRequested(createFeaturePermissionObject(securityOrigin, permissionType));
-
-#if QT_DEPRECATED_SINCE(6, 8)
-    QT_WARNING_PUSH
-    QT_WARNING_DISABLE_DEPRECATED
-    QWebEnginePage::Feature deprecatedFeature;
-
-    if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture)
-            && requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        deprecatedFeature = QWebEnginePage::MediaAudioVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture))
-        deprecatedFeature = QWebEnginePage::MediaAudioCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        deprecatedFeature = QWebEnginePage::MediaVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopAudioCapture)
-            && requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        deprecatedFeature = QWebEnginePage::DesktopAudioVideoCapture;
-    else // if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        deprecatedFeature = QWebEnginePage::DesktopVideoCapture;
-
-    Q_EMIT q->featurePermissionRequested(securityOrigin, deprecatedFeature);
-    QT_WARNING_POP
-#endif // QT_DEPRECATED_SINCE(6, 8)
-}
-
 #if QT_DEPRECATED_SINCE(6, 8)
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
@@ -668,33 +632,19 @@ static QWebEnginePage::Feature toDeprecatedFeature(QWebEnginePermission::Permiss
 QT_WARNING_POP
 #endif // QT_DEPRECATED_SINCE(6, 8)
 
-void QWebEnginePagePrivate::runFeaturePermissionRequest(QWebEnginePermission::PermissionType permissionType, const QUrl &securityOrigin)
+void QWebEnginePagePrivate::runFeaturePermissionRequest(
+        QWebEnginePermission::PermissionType permissionType,
+        const QUrl &securityOrigin,
+        int childId, const std::string &serializedToken)
 {
     Q_Q(QWebEnginePage);
 
-    if (QWebEnginePermission::isPersistent(permissionType)) {
-        Q_EMIT q->permissionRequested(createFeaturePermissionObject(securityOrigin, permissionType));
-#if QT_DEPRECATED_SINCE(6, 8)
-        QT_WARNING_PUSH
-        QT_WARNING_DISABLE_DEPRECATED
-        Q_EMIT q->featurePermissionRequested(securityOrigin, toDeprecatedFeature(permissionType));
-        QT_WARNING_POP
-#endif // QT_DEPRECATED_SINCE(6, 8)
-        return;
-    }
-
-    Q_UNREACHABLE();
-}
-
-void QWebEnginePagePrivate::runMouseLockPermissionRequest(const QUrl &securityOrigin)
-{
-    Q_Q(QWebEnginePage);
-    Q_EMIT q->permissionRequested(createFeaturePermissionObject(securityOrigin, QWebEnginePermission::PermissionType::MouseLock));
-
+    Q_EMIT q->permissionRequested(QWebEnginePermission(
+        new QWebEnginePermissionPrivate(securityOrigin, permissionType, profileAdapter(), childId, serializedToken)));
 #if QT_DEPRECATED_SINCE(6, 8)
     QT_WARNING_PUSH
     QT_WARNING_DISABLE_DEPRECATED
-    Q_EMIT q->featurePermissionRequested(securityOrigin, QWebEnginePage::MouseLock);
+    Q_EMIT q->featurePermissionRequested(securityOrigin, toDeprecatedFeature(permissionType));
     QT_WARNING_POP
 #endif // QT_DEPRECATED_SINCE(6, 8)
 }
@@ -885,12 +835,6 @@ void QWebEnginePagePrivate::showWebAuthDialog(QWebEngineWebAuthUxRequest *reques
     Q_EMIT q->webAuthUxRequested(request);
 }
 
-QWebEnginePermission QWebEnginePagePrivate::createFeaturePermissionObject(const QUrl &securityOrigin, QWebEnginePermission::PermissionType feature)
-{
-    auto *returnPrivate = new QWebEnginePermissionPrivate(securityOrigin, feature, adapter, profileAdapter());
-    return QWebEnginePermission(returnPrivate);
-}
-
 QWebEnginePage::QWebEnginePage(QObject* parent)
     : QObject(parent)
     , d_ptr(new QWebEnginePagePrivate())
@@ -986,7 +930,10 @@ QWebEnginePage::QWebEnginePage(QObject* parent)
     \property QWebEnginePage::contentsSize
     \since 5.7
 
-    \brief The size of the page contents.
+    The size of the full page contents, measured in logical pixels. On devices with a
+    scale factor other than 100%, this will not correspond to the on-screen size; instead,
+    it will be the size before scaling is applied. In such cases, the size may contain
+    fractional values.
 */
 
 /*!
@@ -1001,10 +948,26 @@ QWebEnginePage::QWebEnginePage(QObject* parent)
     \fn void QWebEnginePage::recentlyAudibleChanged(bool recentlyAudible);
     \since 5.7
 
-    This signal is emitted when the page's audible state, \a recentlyAudible, changes, because
-    the audio is played or stopped.
+    This signal is emitted when the page's audible state, \a recentlyAudible, changes due to
+    audio being played or stopped.
 
-    \note The signal is also emitted when calling the setAudioMuted() method.
+    \note The signal is also emitted when the \l audioMuted property changes.
+    Also, if the audio is paused, this signal is emitted with an approximate \b{two-second
+    delay} from the moment the audio is paused.
+
+    If a web page contains two videos that are started in sequence, this signal
+    gets emitted only once for the first video to generate sound. After both
+    videos are stopped, the signal is emitted upon the last sound generated.
+    This means that the signal is emitted both when any kind of sound is
+    generated and when everything is completely silent within a web page,
+    regardless of the number of audio streams.
+
+    Spurious signal emissions might also happen. For example, when sound is
+    stopped, this signal gets emitted first with a value of \c true, and then
+    with a value of \c false. Further, when audio starts playing, the signal is
+    emitted twice with a value of \c true.
+
+    \sa recentlyAudible
 */
 
 /*!
@@ -1918,7 +1881,7 @@ void QWebEnginePage::setFeaturePermission(const QUrl &securityOrigin, QWebEngine
         Q_UNREACHABLE();
     }
 
-    d->adapter->setPermission(securityOrigin, f, s);
+    d->adapter->setPermission(securityOrigin, f, s, {});
 }
 QT_WARNING_POP
 #endif // QT_DEPRECATED_SINCE(6, 8)
@@ -2337,7 +2300,7 @@ QSizeF QWebEnginePage::contentsSize() const
     This signal is emitted when \a request is issued to load a page in a separate
     web engine window. This can either be because the current page requested it explicitly
     through a JavaScript call to \c window.open, or because the user clicked on a link
-    while holding Shift, Ctrl, or a built-in combination that triggers the page to open
+    while holding Shift, Cmd/Ctrl, or a built-in combination that triggers the page to open
     in a new window.
 
     The signal is handled by calling openIn() with the new page on the request.
@@ -2510,7 +2473,7 @@ void QWebEnginePage::setLifecycleState(LifecycleState state)
   Setting the lifecycle state to a lower resource usage state than the
   recommended state may cause side-effects such as stopping background audio
   playback or loss of HTML form input. Setting the lifecycle state to a higher
-  resource state is however completely safe.
+  resource state is, however, completely safe.
 
   \sa lifecycleState, {Page Lifecycle API}, {WebEngine Lifecycle Example}
 */
@@ -2532,7 +2495,7 @@ QWebEnginePage::LifecycleState QWebEnginePage::recommendedState() const
   to voluntarily reduce their resource usage if they are not visible to the
   user.
 
-  If the page is connected to a \e {view} then this property will be managed
+  If the page is connected to a \e {view}, then this property will be managed
   automatically by the view according to its own visibility.
 
   \sa lifecycleState

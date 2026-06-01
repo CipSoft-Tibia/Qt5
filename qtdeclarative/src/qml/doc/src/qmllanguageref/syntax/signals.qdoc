@@ -139,6 +139,96 @@ code difficult to read as it's unclear where the parameters come from, and resul
 lookups in the QML engine. Injecting parameters in this way is deprecated, and will cause runtime
 warnings if the parameter is actually used.
 
+\section3 Using the arguments special object
+
+In JavaScript you can refer to the \c arguments special
+object, which, when available, allows to access the values of the
+arguments passed to a non-arrow function as an array-like object.
+
+It is usually available in the body of a function or code block that
+is assigned to a signal handler.
+
+When a code block or an anonymous function is assigned to the signal
+handler, the special \c arguments object will provide the arguments
+that were passed over by the signal.
+
+For example, both of the following will print \c{[object Arguments] world undefined}:
+
+\qml
+import QtQml
+
+QtObject {
+    id: root
+
+    signal hello(message: string)
+
+    onHello: { console.log(arguments, arguments[0], arguments[1]) }
+
+    Component.onCompleted: root.hello("world")
+}
+\endqml
+
+\qml
+import QtQml
+
+QtObject {
+    id: root
+
+    signal hello(message: string)
+
+    onHello: function () { console.log(arguments, arguments[0], arguments[1]) }
+
+    Component.onCompleted: root.hello("world")
+}
+\endqml
+
+The behavior will differ when an arrow function is assigned to the signal handler.
+Then, it will still be possible to access the \c arguments
+special object, but it will be an empty array-like object.
+
+For example, the following will print \c{[object Arguments] undefined undefined}:
+
+\qml
+import QtQml
+
+QtObject {
+    id: root
+
+    signal hello(message: string)
+
+    onHello: () => { console.log(arguments, arguments[0], arguments[1]) }
+
+    Component.onCompleted: root.hello("world")
+}
+\endqml
+
+The difference in behavior is due to the way the \c{arguments} special
+object interacts with arrow functions but is consistent with the general
+behavior for bindings.
+
+By specification, an arrow function does not carry its own
+\c arguments special object.
+As an arrow function still borrows from its enclosing context, it can
+borrow the \c arguments special object if one is available.
+
+A binding provides its own scope on evaluation.
+In particular, the retrieval of the underlying arrow function is
+performed in the scope provided by the evaluation of the binding.
+
+In the scope of the binding no argument is provided, such that an
+empty \c arguments special object will be available and borrowed by
+the arrow function on retrieval.
+
+As a non-arrow function does provide the \c arguments special object
+in its own scope it can refer to the arguments that were provided to
+the underlying function itself, which are the forwarded arguments
+provided by the signal.
+
+Usage of the \c arguments special object should generally be avoided
+in favor of the usage of named parameters, which are more explicit and
+work consistently indepedently of the usage of an arrow or a non-arrow
+function.
+
 \section2 Using the Connections type
 
 In some cases it may be desirable to access a signal outside of the object that

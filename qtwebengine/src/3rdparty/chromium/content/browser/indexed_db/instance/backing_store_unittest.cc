@@ -95,12 +95,12 @@ class MockBlobStorageContext : public ::storage::mojom::BlobStorageContext {
   void RegisterFromDataItem(mojo::PendingReceiver<::blink::mojom::Blob> blob,
                             const std::string& uuid,
                             storage::mojom::BlobDataItemPtr item) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
   void RegisterFromMemory(mojo::PendingReceiver<::blink::mojom::Blob> blob,
                           const std::string& uuid,
                           ::mojo_base::BigBuffer data) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
   void WriteBlobToFile(mojo::PendingRemote<::blink::mojom::Blob> blob,
                        const base::FilePath& path,
@@ -179,7 +179,7 @@ class MockFileSystemAccessContext
       const std::vector<uint8_t>& bits,
       mojo::PendingReceiver<::blink::mojom::FileSystemAccessTransferToken>
           token) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
   void Clone(mojo::PendingReceiver<::storage::mojom::FileSystemAccessContext>
@@ -249,9 +249,9 @@ class BackingStoreTest : public testing::Test {
 
     bucket_context_ = std::make_unique<BucketContext>(
         bucket_info, temp_dir_.GetPath(), BucketContext::Delegate(),
-        quota_manager_proxy_, base::SequencedTaskRunner::GetCurrentDefault(),
-        std::move(blob_storage_context), std::move(fsa_context),
-        base::DoNothing());
+        scoped_refptr<base::UpdateableSequencedTaskRunner>(),
+        quota_manager_proxy_, std::move(blob_storage_context),
+        std::move(fsa_context));
     std::tie(std::ignore, std::ignore, data_loss_info_) =
         bucket_context_->InitBackingStoreIfNeeded(/*create_if_missing=*/true);
 
@@ -391,7 +391,7 @@ class BackingStoreTestWithExternalObjects
                   std::move(pending_receiver));
             },
             uuid, remote.InitWithNewPipeAndPassReceiver()));
-    IndexedDBExternalObject info(std::move(remote), uuid, file_name, type,
+    IndexedDBExternalObject info(std::move(remote), file_name, type,
                                  last_modified, size);
     return info;
   }
@@ -410,7 +410,7 @@ class BackingStoreTestWithExternalObjects
                   std::move(pending_receiver));
             },
             uuid, remote.InitWithNewPipeAndPassReceiver()));
-    IndexedDBExternalObject info(std::move(remote), uuid, type, size);
+    IndexedDBExternalObject info(std::move(remote), type, size);
     return info;
   }
 
@@ -535,19 +535,8 @@ class BackingStoreTestWithExternalObjects
         continue;
       }
 
-      base::RunLoop uuid_loop;
-      std::string uuid_out;
       DCHECK(desc.blob.is_bound());
       DCHECK(desc.blob.is_connected());
-      desc.blob->GetInternalUUID(
-          base::BindLambdaForTesting([&](const std::string& uuid) {
-            uuid_out = uuid;
-            uuid_loop.Quit();
-          }));
-      uuid_loop.Run();
-      if (uuid_out != info.uuid()) {
-        return false;
-      }
     }
     for (size_t i = 0; i < file_system_access_context_->writes().size(); ++i) {
       const IndexedDBExternalObject& info =
@@ -617,9 +606,12 @@ class BackingStoreTestWithExternalObjects
   std::vector<IndexedDBExternalObject> external_objects_;
 
   std::vector<std::string> blob_remote_uuids_;
+
+#if DCHECK_IS_ON()
   // Number of blob deletions previously counted by a call to
   // `VerifyNumBlobsRemoved()`.
   int removed_blobs_count_ = 0;
+#endif
 };
 
 INSTANTIATE_TEST_SUITE_P(
@@ -646,8 +638,7 @@ BlobWriteCallback CreateBlobWriteCallback(
          storage::mojom::WriteBlobToFileResult error) {
         switch (result) {
           case BlobWriteResult::kFailure:
-            NOTREACHED_IN_MIGRATION();
-            break;
+            NOTREACHED();
           case BlobWriteResult::kRunPhaseTwoAsync:
           case BlobWriteResult::kRunPhaseTwoAndReturnResult:
             DCHECK_EQ(error, storage::mojom::WriteBlobToFileResult::kSuccess);
@@ -657,7 +648,7 @@ BlobWriteCallback CreateBlobWriteCallback(
         if (!on_done.is_null()) {
           std::move(on_done).Run();
         }
-        return leveldb::Status::OK();
+        return Status::OK();
       },
       succeeded, std::move(on_done));
 }
@@ -673,7 +664,7 @@ TEST_F(BackingStoreTest, PutGetConsistency) {
         blink::mojom::IDBTransactionMode::ReadWrite);
     transaction1.Begin(CreateDummyLock());
     BackingStore::RecordIdentifier record;
-    leveldb::Status s =
+    Status s =
         backing_store()->PutRecord(&transaction1, 1, 1, key, &value, &record);
     EXPECT_TRUE(s.ok());
     bool succeeded = false;
@@ -1213,9 +1204,9 @@ TEST_F(BackingStoreTest, HighIds) {
         blink::mojom::IDBTransactionMode::ReadWrite);
     transaction1.Begin(CreateDummyLock());
     BackingStore::RecordIdentifier record;
-    leveldb::Status s = backing_store()->PutRecord(
-        &transaction1, high_database_id, high_object_store_id, key1, &value1,
-        &record);
+    Status s = backing_store()->PutRecord(&transaction1, high_database_id,
+                                          high_object_store_id, key1, &value1,
+                                          &record);
     EXPECT_TRUE(s.ok());
 
     s = backing_store()->PutIndexDataForRecord(
@@ -1242,7 +1233,7 @@ TEST_F(BackingStoreTest, HighIds) {
         blink::mojom::IDBTransactionMode::ReadWrite);
     transaction2.Begin(CreateDummyLock());
     IndexedDBValue result_value;
-    leveldb::Status s =
+    Status s =
         backing_store()->GetRecord(&transaction2, high_database_id,
                                    high_object_store_id, key1, &result_value);
     EXPECT_TRUE(s.ok());
@@ -1288,7 +1279,7 @@ TEST_F(BackingStoreTest, InvalidIds) {
   transaction1.Begin(CreateDummyLock());
 
   BackingStore::RecordIdentifier record;
-  leveldb::Status s = backing_store()->PutRecord(
+  Status s = backing_store()->PutRecord(
       &transaction1, database_id, KeyPrefix::kInvalidId, key, &value, &record);
   EXPECT_FALSE(s.ok());
   s = backing_store()->PutRecord(&transaction1, database_id, 0, key, &value,
@@ -1357,7 +1348,7 @@ TEST_F(BackingStoreTest, CreateDatabase) {
     IndexedDBDatabaseMetadata database;
     database.name = database_name;
     database.version = version;
-    leveldb::Status s = backing_store()->CreateDatabase(database);
+    Status s = backing_store()->CreateDatabase(database);
     EXPECT_TRUE(s.ok());
     EXPECT_GT(database.id, 0);
     database_id = database.id;
@@ -1390,8 +1381,8 @@ TEST_F(BackingStoreTest, CreateDatabase) {
   {
     IndexedDBDatabaseMetadata database;
     bool found;
-    leveldb::Status s = backing_store()->ReadMetadataForDatabaseName(
-        database_name, &database, &found);
+    Status s = backing_store()->ReadMetadataForDatabaseName(database_name,
+                                                            &database, &found);
     EXPECT_TRUE(s.ok());
     EXPECT_TRUE(found);
 
@@ -1427,7 +1418,7 @@ TEST_F(BackingStoreTest, GetDatabaseNames) {
   IndexedDBDatabaseMetadata db1;
   db1.name = db1_name;
   db1.version = db1_version;
-  leveldb::Status s = backing_store()->CreateDatabase(db1);
+  Status s = backing_store()->CreateDatabase(db1);
 
   EXPECT_TRUE(s.ok());
   EXPECT_GT(db1.id, 0LL);
@@ -1657,7 +1648,7 @@ TEST_F(BackingStoreTestWithBlobs, SchemaUpgradeV3ToV4) {
     IndexedDBDatabaseMetadata database;
     database.name = database_name;
     database.version = version;
-    leveldb::Status s = backing_store()->CreateDatabase(database);
+    Status s = backing_store()->CreateDatabase(database);
     EXPECT_TRUE(s.ok());
     EXPECT_GT(database.id, 0);
     database_id = database.id;
@@ -1741,8 +1732,8 @@ TEST_F(BackingStoreTestWithBlobs, SchemaUpgradeV3ToV4) {
   base::File file1(file1_path,
                    base::File::FLAG_WRITE | base::File::FLAG_CREATE_ALWAYS);
   ASSERT_TRUE(file1.IsValid());
-  ASSERT_TRUE(file1.WriteAtCurrentPosAndCheck(
-      base::as_bytes(base::make_span(kBlobFileData1))));
+  ASSERT_TRUE(
+      file1.WriteAtCurrentPosAndCheck(base::as_byte_span(kBlobFileData1)));
   ASSERT_TRUE(file1.SetTimes(external_objects()[1].last_modified(),
                              external_objects()[1].last_modified()));
   file1.Close();
@@ -1750,8 +1741,8 @@ TEST_F(BackingStoreTestWithBlobs, SchemaUpgradeV3ToV4) {
   base::File file2(file2_path,
                    base::File::FLAG_WRITE | base::File::FLAG_CREATE_ALWAYS);
   ASSERT_TRUE(file2.IsValid());
-  ASSERT_TRUE(file2.WriteAtCurrentPosAndCheck(
-      base::as_bytes(base::make_span(kBlobFileData2))));
+  ASSERT_TRUE(
+      file2.WriteAtCurrentPosAndCheck(base::as_byte_span(kBlobFileData2)));
   ASSERT_TRUE(file2.SetTimes(external_objects()[2].last_modified(),
                              external_objects()[2].last_modified()));
   file2.Close();
@@ -1808,7 +1799,7 @@ TEST_F(BackingStoreTestWithBlobs, SchemaUpgradeV4ToV5) {
     IndexedDBDatabaseMetadata database;
     database.name = database_name;
     database.version = version;
-    leveldb::Status s = backing_store()->CreateDatabase(database);
+    Status s = backing_store()->CreateDatabase(database);
     EXPECT_TRUE(s.ok());
     EXPECT_GT(database.id, 0);
     database_id = database.id;

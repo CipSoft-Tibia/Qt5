@@ -6,6 +6,7 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "net/storage_access_api/status.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
 #include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom-blink-forward.h"
 #include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
@@ -25,6 +26,9 @@ namespace {
 // This enum must match the numbering for RequestStorageResult in
 // histograms/enums.xml. Do not reorder or remove items, only add new items
 // at the end.
+//
+// This enum is used by both requestStorageAccess and requestStorageAccessFor
+// for but there is no guarantee that every enum value is used by each method.
 enum class RequestStorageResult {
   APPROVED_EXISTING_ACCESS = 0,
   // APPROVED_NEW_GRANT = 1,
@@ -49,9 +53,17 @@ void FireRequestStorageAccessHistogram(RequestStorageResult result) {
                                 result);
 }
 
-void FireRequestStorageAccessForHistogram(RequestStorageResult result) {
+void FireRequestStorageAccessForMetrics(RequestStorageResult result,
+                                        ExecutionContext* context) {
   base::UmaHistogramEnumeration(
       "API.TopLevelStorageAccess.RequestStorageAccessFor2", result);
+
+  CHECK(context);
+
+  ukm::builders::RequestStorageAccessFor_RequestStorageResult(
+      context->UkmSourceID())
+      .SetRequestStorageResult(static_cast<int64_t>(result))
+      .Record(context->UkmRecorder());
 }
 
 }  // namespace
@@ -154,7 +166,7 @@ ScriptPromise<IDLBoolean> DocumentStorageAccess::hasStorageAccess(
     }
 
     // #5: if global is not a secure context, return false.
-    if (!GetSupplementable()->dom_window_->isSecureContext()) {
+    if (!GetSupplementable()->dom_window_->IsSecureContext()) {
       return false;
     }
 
@@ -257,7 +269,7 @@ ScriptPromise<T> DocumentStorageAccess::RequestStorageAccessImpl(
   // can be changed when it is resolved or rejected.
   auto promise = resolver->Promise();
 
-  if (!GetSupplementable()->dom_window_->isSecureContext()) {
+  if (!GetSupplementable()->dom_window_->IsSecureContext()) {
     GetSupplementable()->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
         ConsoleMessage::Source::kSecurity, ConsoleMessage::Level::kError,
         "requestStorageAccess: May not be used in an insecure context."));
@@ -331,7 +343,7 @@ ScriptPromise<T> DocumentStorageAccess::RequestStorageAccessImpl(
   if (RuntimeEnabledFeatures::FedCmWithStorageAccessAPIEnabled(
           GetSupplementable()->GetExecutionContext()) &&
       GetSupplementable()->GetExecutionContext()->IsFeatureEnabled(
-          mojom::blink::PermissionsPolicyFeature::kIdentityCredentialsGet)) {
+          network::mojom::PermissionsPolicyFeature::kIdentityCredentialsGet)) {
     UseCounter::Count(GetSupplementable()->GetExecutionContext(),
                       WebFeature::kFedCmWithStorageAccessAPI);
   }
@@ -398,8 +410,8 @@ ScriptPromise<IDLUndefined> DocumentStorageAccess::requestStorageAccessFor(
     ScriptState* script_state,
     const AtomicString& origin) {
   if (!GetSupplementable()->GetFrame()) {
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::REJECTED_NO_ORIGIN);
+    FireRequestStorageAccessForMetrics(RequestStorageResult::REJECTED_NO_ORIGIN,
+                                       ExecutionContext::From(script_state));
     // Note that in detached frames, resolvers are not able to return a promise.
     return ScriptPromise<IDLUndefined>::RejectWithDOMException(
         script_state, MakeGarbageCollected<DOMException>(
@@ -420,8 +432,11 @@ ScriptPromise<IDLUndefined> DocumentStorageAccess::requestStorageAccessFor(
         ConsoleMessage::Source::kSecurity, ConsoleMessage::Level::kError,
         "requestStorageAccessFor: Only supported in primary top-level "
         "browsing contexts."));
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::REJECTED_INCORRECT_FRAME);
+    // RequestStorageResult values that only make sense from within an iframe
+    // are recorded as REJECTED_INCORRECT_FRAME.
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::REJECTED_INCORRECT_FRAME,
+        ExecutionContext::From(script_state));
     resolver->Reject(V8ThrowDOMException::CreateOrEmpty(
         script_state->GetIsolate(), DOMExceptionCode::kNotAllowedError,
         "requestStorageAccessFor not allowed"));
@@ -433,8 +448,9 @@ ScriptPromise<IDLUndefined> DocumentStorageAccess::requestStorageAccessFor(
         ConsoleMessage::Source::kSecurity, ConsoleMessage::Level::kError,
         "requestStorageAccessFor: Cannot be used by opaque origins."));
 
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::REJECTED_OPAQUE_ORIGIN);
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::REJECTED_OPAQUE_ORIGIN,
+        ExecutionContext::From(script_state));
     resolver->Reject(V8ThrowDOMException::CreateOrEmpty(
         script_state->GetIsolate(), DOMExceptionCode::kNotAllowedError,
         "requestStorageAccessFor not allowed"));
@@ -445,13 +461,14 @@ ScriptPromise<IDLUndefined> DocumentStorageAccess::requestStorageAccessFor(
   // particular, it must have been rejected by credentialless iframes:
   CHECK(!GetSupplementable()->dom_window_->credentialless());
 
-  if (!GetSupplementable()->dom_window_->isSecureContext()) {
+  if (!GetSupplementable()->dom_window_->IsSecureContext()) {
     GetSupplementable()->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
         ConsoleMessage::Source::kSecurity, ConsoleMessage::Level::kError,
         "requestStorageAccessFor: May not be used in an insecure "
         "context."));
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::REJECTED_INSECURE_CONTEXT);
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::REJECTED_INSECURE_CONTEXT,
+        ExecutionContext::From(script_state));
 
     resolver->Reject(V8ThrowDOMException::CreateOrEmpty(
         script_state->GetIsolate(), DOMExceptionCode::kNotAllowedError,
@@ -464,8 +481,9 @@ ScriptPromise<IDLUndefined> DocumentStorageAccess::requestStorageAccessFor(
     GetSupplementable()->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
         ConsoleMessage::Source::kSecurity, ConsoleMessage::Level::kError,
         "requestStorageAccessFor: Invalid origin."));
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::REJECTED_INVALID_ORIGIN);
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::REJECTED_INVALID_ORIGIN,
+        ExecutionContext::From(script_state));
     resolver->Reject(V8ThrowException::CreateTypeError(
         script_state->GetIsolate(), "Invalid origin"));
     return promise;
@@ -477,8 +495,9 @@ ScriptPromise<IDLUndefined> DocumentStorageAccess::requestStorageAccessFor(
     GetSupplementable()->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
         ConsoleMessage::Source::kSecurity, ConsoleMessage::Level::kError,
         "requestStorageAccessFor: Invalid origin parameter."));
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::REJECTED_OPAQUE_ORIGIN);
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::REJECTED_OPAQUE_ORIGIN,
+        ExecutionContext::From(script_state));
     resolver->Reject(V8ThrowDOMException::CreateOrEmpty(
         script_state->GetIsolate(), DOMExceptionCode::kNotAllowedError,
         "requestStorageAccessFor not allowed"));
@@ -489,8 +508,9 @@ ScriptPromise<IDLUndefined> DocumentStorageAccess::requestStorageAccessFor(
           supplied_origin.get())) {
     // Access is not actually disabled, so accept the request.
     resolver->Resolve();
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::APPROVED_EXISTING_ACCESS);
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::APPROVED_EXISTING_ACCESS,
+        ExecutionContext::From(script_state));
     return promise;
   }
 
@@ -526,13 +546,15 @@ void DocumentStorageAccess::ProcessTopLevelStorageAccessPermissionState(
   ScriptState::Scope scope(script_state);
 
   if (status == mojom::blink::PermissionStatus::GRANTED) {
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::APPROVED_NEW_OR_EXISTING_GRANT);
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::APPROVED_NEW_OR_EXISTING_GRANT,
+        ExecutionContext::From(script_state));
     resolver->Resolve();
   } else {
     LocalFrame::ConsumeTransientUserActivation(GetSupplementable()->GetFrame());
-    FireRequestStorageAccessForHistogram(
-        RequestStorageResult::REJECTED_GRANT_DENIED);
+    FireRequestStorageAccessForMetrics(
+        RequestStorageResult::REJECTED_GRANT_DENIED,
+        ExecutionContext::From(script_state));
     GetSupplementable()->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
         ConsoleMessage::Source::kSecurity, ConsoleMessage::Level::kError,
         "requestStorageAccessFor: Permission denied."));

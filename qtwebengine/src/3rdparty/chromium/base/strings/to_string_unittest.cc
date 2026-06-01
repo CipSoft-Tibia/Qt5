@@ -41,6 +41,7 @@ TEST(ToStringTest, Streamable) {
   // Types with built-in <<.
   EXPECT_EQ(ToString("foo"), "foo");
   EXPECT_EQ(ToString(123), "123");
+  EXPECT_EQ(ToString(true), "true");  // bools should become words, not numbers.
 }
 
 enum class StreamableTestEnum { kGreeting, kLocation };
@@ -83,6 +84,11 @@ enum class NonStreamableTestEnum { kGreeting = 0, kLocation };
 TEST(ToStringTest, ScopedEnum) {
   // Scoped enums without a defined << should print as their underlying type.
   EXPECT_EQ(ToString(NonStreamableTestEnum::kLocation), "1");
+}
+
+TEST(ToStringTest, WideChars) {
+  EXPECT_EQ(ToString(u'a'), "97");
+  EXPECT_EQ(ToString(L'a'), "97");
 }
 
 TEST(ToStringTest, IoManip) {

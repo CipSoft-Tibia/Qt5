@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef ANDROIDJNIACCESSIBILITY_H
 #define ANDROIDJNIACCESSIBILITY_H
@@ -13,7 +14,6 @@ class QJniEnvironment;
 
 namespace QtAndroidAccessibility
 {
-    void initialize();
     bool isActive();
     bool registerNatives(QJniEnvironment &env);
     void notifyLocationChange(uint accessibilityObjectId);

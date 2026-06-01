@@ -7,7 +7,7 @@ import QtQuick
 ImageViewer {
     id: viewer
 
-    currentImage.source: "http://qt.nokia.com/logo.png"
+    currentImage.source: "https://code.qt.io/cgit/qt/qtbase.git/plain/src/widgets/dialogs/images/qtlogo-64.png"
     currentImage.width: width
     currentImage.height: height
     currentImage.fillMode: Image.Tile

@@ -53,6 +53,8 @@ private slots:
     void invalidImportVersion_data();
     void invalidImportVersion();
 
+    void trailingCommaInUiArray();
+
 private:
     QStringList excludedDirs;
 
@@ -837,6 +839,18 @@ void tst_qqmlparser::invalidImportVersion()
     QRegularExpression regexp(
                 "^Invalid (major )?version. Version numbers must be >= 0 and < 255\\.$");
     QVERIFY(regexp.match(parser.errorMessage()).hasMatch());
+}
+
+void tst_qqmlparser::trailingCommaInUiArray()
+{
+    QFile file(testFile("trailingComma.qml"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+
+    QQmlJS::Engine engine;
+    QQmlJS::Lexer lexer(&engine);
+    lexer.setCode(file.readAll(), 1);
+    QQmlJS::Parser parser(&engine);
+    QVERIFY(parser.parse());
 }
 
 QTEST_MAIN(tst_qqmlparser)

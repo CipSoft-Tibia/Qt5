@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickstyleoption.h"
 
@@ -343,6 +344,20 @@ QStyleOptionComboBox::QStyleOptionComboBox(int versionIn)
 }
 
 /*!
+    Creates a QStyleOptionSearchField, initializing the members variables
+    to their default values.
+*/
+QStyleOptionSearchField::QStyleOptionSearchField()
+    : QStyleOptionComplex(Version, SO_SearchField), frame(true)
+{
+}
+
+QStyleOptionSearchField::QStyleOptionSearchField(int versionIn)
+    : QStyleOptionComplex(versionIn, SO_SearchField), frame(true)
+{
+}
+
+/*!
     Creates a QStyleOptionToolBox, initializing the members variables
     to their default values.
 */
@@ -570,6 +585,8 @@ QDebug operator<<(QDebug debug, const QStyleOption::OptionType &optionType)
         debug << "SO_RubberBand"; break;
     case QStyleOption::SO_Complex:
         debug << "SO_Complex"; break;
+    case QStyleOption::SO_SearchField:
+        debug << "SO_SearchField"; break;
     case QStyleOption::SO_Slider:
         debug << "SO_Slider"; break;
     case QStyleOption::SO_SpinBox:

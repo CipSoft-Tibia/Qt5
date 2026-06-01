@@ -13,10 +13,10 @@
 #include <cstring>
 #include <type_traits>
 
+#include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/dcheck_is_on.h"
 #include "base/numerics/safe_conversions.h"
-#include "third_party/abseil-cpp/absl/base/attributes.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/get_ptr.h"
 #include "third_party/blink/renderer/platform/wtf/text/code_point_iterator.h"
@@ -32,15 +32,15 @@ class AtomicString;
 class CodePointIterator;
 class String;
 
-enum UTF8ConversionMode {
+enum class Utf8ConversionMode : uint8_t {
   // Unpaired surrogates are encoded using the standard UTF-8 encoding scheme,
   // even though surrogate characters should not be present in a valid UTF-8
   // string.
-  kLenientUTF8Conversion,
+  kLenient,
   // Conversion terminates at the first unpaired surrogate, if any.
-  kStrictUTF8Conversion,
+  kStrict,
   // Unpaired surrogates are replaced with U+FFFD (REPLACEMENT CHARACTER).
-  kStrictUTF8ConversionReplacingUnpairedSurrogatesWithFFFD
+  kStrictReplacingErrors
 };
 
 // A string like object that wraps either an 8bit or 16bit byte sequence
@@ -60,16 +60,18 @@ class WTF_EXPORT StringView {
   // should rarely need to be used.
   class StackBackingStore {
    public:
-    // Returns a pointer to a buffer of size |length| that is valid for as long
-    // the StackBackingStore object is alive and Realloc() has not been called
+    // Returns a span of size |length| that is valid for as long the
+    // StackBackingStore object is alive and Realloc() has not been called
     // again.
     template <typename CharT>
-    CharT* Realloc(int length) {
+    base::span<CharT> Realloc(wtf_size_t length) {
       size_t size = length * sizeof(CharT);
       if (size > sizeof(stackbuf16_)) [[unlikely]] {
         heapbuf_.reset(reinterpret_cast<char*>(
             WTF::Partitions::BufferMalloc(size, "StackBackingStore")));
-        return reinterpret_cast<CharT*>(heapbuf_.get());
+        // SAFETY: `heapbuf_` is the result of BufferMalloc() for `length`.
+        return UNSAFE_BUFFERS(
+            base::span(reinterpret_cast<CharT*>(heapbuf_.get()), length));
       }
 
       // If the Realloc() shrinks the buffer size, |heapbuf_| will keep a copy
@@ -78,7 +80,9 @@ class WTF_EXPORT StringView {
       // another branch.
       static_assert(alignof(decltype(stackbuf16_)) % alignof(CharT) == 0,
                     "stack buffer must be sufficiently aligned");
-      return reinterpret_cast<CharT*>(&stackbuf16_[0]);
+      // SAFETY: `length` is smaller than the size of `stackbuf16_`.
+      return UNSAFE_BUFFERS(
+          base::span(reinterpret_cast<CharT*>(&stackbuf16_[0]), length));
     }
 
    public:
@@ -122,40 +126,50 @@ class WTF_EXPORT StringView {
   StringView(StringImpl&, unsigned offset, unsigned length);
 
   // From a String, implemented in wtf_string.h
-  inline StringView(const String& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
+  inline StringView(const String& string LIFETIME_BOUND,
                     unsigned offset,
                     unsigned length);
-  inline StringView(const String& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
-                    unsigned offset);
+  inline StringView(const String& string LIFETIME_BOUND, unsigned offset);
   // NOLINTNEXTLINE(google-explicit-constructor)
-  inline StringView(const String& string ABSL_ATTRIBUTE_LIFETIME_BOUND);
+  inline StringView(const String& string LIFETIME_BOUND);
 
   // From an AtomicString, implemented in atomic_string.h
-  inline StringView(const AtomicString& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
+  inline StringView(const AtomicString& string LIFETIME_BOUND,
                     unsigned offset,
                     unsigned length);
-  inline StringView(const AtomicString& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
-                    unsigned offset);
+  inline StringView(const AtomicString& string LIFETIME_BOUND, unsigned offset);
   // NOLINTNEXTLINE(google-explicit-constructor)
-  inline StringView(const AtomicString& string ABSL_ATTRIBUTE_LIFETIME_BOUND);
+  inline StringView(const AtomicString& string LIFETIME_BOUND);
 
   // From a literal string or LChar buffer:
-  StringView(const LChar* chars, unsigned length)
-      : impl_(StringImpl::empty_), bytes_(chars), length_(length) {}
-  StringView(const char* chars, unsigned length)
-      : StringView(reinterpret_cast<const LChar*>(chars), length) {}
+  explicit StringView(base::span<const LChar> chars)
+      : impl_(StringImpl::empty_),
+        bytes_(chars.data()),
+        length_(base::checked_cast<wtf_size_t>(chars.size())) {}
+  // NOLINTNEXTLINE(google-explicit-constructor)
   StringView(const LChar* chars)
-      : StringView(chars,
-                   chars ? base::checked_cast<unsigned>(
-                               strlen(reinterpret_cast<const char*>(chars)))
-                         : 0) {}
+      : impl_(StringImpl::empty_),
+        bytes_(chars),
+        length_(chars ? base::checked_cast<unsigned>(
+                            strlen(reinterpret_cast<const char*>(chars)))
+                      : 0) {}
+  // NOLINTNEXTLINE(google-explicit-constructor)
   StringView(const char* chars)
       : StringView(reinterpret_cast<const LChar*>(chars)) {}
 
   // From a wide literal string or UChar buffer.
-  StringView(const UChar* chars, unsigned length)
-      : impl_(StringImpl::empty16_bit_), bytes_(chars), length_(length) {}
+  explicit StringView(base::span<const UChar> chars)
+      : impl_(StringImpl::empty16_bit_),
+        bytes_(chars.data()),
+        length_(base::checked_cast<wtf_size_t>(chars.size())) {}
   StringView(const UChar* chars);
+
+  // StringView(const T*, unsigned) are deleted explicitly because `const T*` is
+  // converted to a StringView implicitly and StringView(const StringView&,
+  // unsigned offset) would be used unexpectedly.
+  StringView(const LChar*, unsigned) = delete;
+  StringView(const char*, unsigned) = delete;
+  StringView(const UChar*, unsigned) = delete;
 
 #if DCHECK_IS_ON()
   ~StringView();
@@ -172,7 +186,7 @@ class WTF_EXPORT StringView {
   }
 
   [[nodiscard]] std::string Utf8(
-      UTF8ConversionMode mode = kLenientUTF8Conversion) const;
+      Utf8ConversionMode mode = Utf8ConversionMode::kLenient) const;
 
   bool IsAtomic() const { return SharedImpl() && SharedImpl()->IsAtomic(); }
 
@@ -228,6 +242,11 @@ class WTF_EXPORT StringView {
   unsigned NextCodePointOffset(unsigned i) const;
 
   const void* Bytes() const { return bytes_; }
+
+  base::span<const uint8_t> RawByteSpan() const {
+    return {reinterpret_cast<const uint8_t*>(bytes_),
+            length_ * (Is8Bit() ? sizeof(LChar) : sizeof(UChar))};
+  }
 
   // This is not named impl() like String because it has different semantics.
   // String::impl() is never null if String::isNull() is false. For StringView
@@ -373,8 +392,9 @@ inline bool EqualIgnoringASCIICase(const StringView& a,
                                    const char (&literal)[N]) {
   if (a.length() != N - 1 || (N == 1 && a.IsNull()))
     return false;
-  return a.Is8Bit() ? EqualIgnoringASCIICase(a.Characters8(), literal, N - 1)
-                    : EqualIgnoringASCIICase(a.Characters16(), literal, N - 1);
+  base::span<const char> span = base::span(literal).template first<N - 1>();
+  return a.Is8Bit() ? EqualIgnoringASCIICase(a.Span8(), span)
+                    : EqualIgnoringASCIICase(a.Span16(), span);
 }
 
 // TODO(esprehn): Can't make this an overload of WTF::equal since that makes
@@ -392,8 +412,8 @@ inline bool operator!=(const StringView& a, const StringView& b) {
 
 inline wtf_size_t StringView::Find(CharacterMatchFunctionPtr match_function,
                                    wtf_size_t start) const {
-  return Is8Bit() ? WTF::Find(Characters8(), length_, match_function, start)
-                  : WTF::Find(Characters16(), length_, match_function, start);
+  return Is8Bit() ? WTF::Find(Span8(), match_function, start)
+                  : WTF::Find(Span16(), match_function, start);
 }
 
 template <bool isSpecialCharacter(UChar), typename CharacterType>

@@ -20,7 +20,11 @@ WordCount singleThreadedWordCount(const QStringList &files)
     WordCount wordCount;
     for (const QString &file : files) {
         QFile f(file);
-        f.open(QIODevice::ReadOnly);
+        if (!f.open(QIODevice::ReadOnly)) {
+            qWarning().noquote() << "Failed to open file:" << QDir::toNativeSeparators(file)
+                                 << ":" << f.errorString();
+            return {};
+        }
         QTextStream textStream(&f);
         while (!textStream.atEnd()) {
             const auto words =  textStream.readLine().split(' ', Qt::SkipEmptyParts);
@@ -37,7 +41,11 @@ WordCount singleThreadedWordCount(const QStringList &files)
 WordCount countWords(const QString &file)
 {
     QFile f(file);
-    f.open(QIODevice::ReadOnly);
+    if (!f.open(QIODevice::ReadOnly)) {
+        qWarning().noquote() << "Failed to open file:" << QDir::toNativeSeparators(file)
+                             << ":" << f.errorString();
+        return {};
+    }
     QTextStream textStream(&f);
     WordCount wordCount;
 

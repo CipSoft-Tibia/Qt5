@@ -24,6 +24,7 @@
                 \li \l{QML Sequence Types}
                 \li \l{QML Enumerations}
                 \li \l{QML Namespaces}
+                \li \l{QML Value Type and Sequence References}
                 \endlist
             \li \l{QML Modules}
                 \list
@@ -44,7 +45,6 @@
     \li \l{The QML Disk Cache}
     \li \l{Overview - QML and C++ Integration}{QML and C++ Integration}
         \list
-            \li \l{Exposing Attributes of C++ Types to QML}
             \li \l{Defining QML Types from C++}
             \li \l{Embedding C++ Objects into QML with Context Properties}
             \li \l{Data Type Conversion Between QML and C++}
@@ -70,6 +70,7 @@
             \li \l{List of JavaScript Objects and Functions}
         \endlist
     \li \l{Writing QML Modules}
+    \li \l{Modern QML modules}
     \li \l{Prototyping with the QML Runtime Tool}
     \li \l{Debugging QML Applications}
     \li \l{Deploying QML applications}
@@ -90,11 +91,13 @@
             \li \l{qmlcachegen}
         \endlist
     \li \l{Changes to Qt QML}{Upgrade from Qt 5}
+        \list
+            \li \l{Port QML modules to CMake}
+        \endlist
     \li \l{QML Lint Warning and Errors}
     \li \l{CMake Global Properties in Qt6 Qml}{CMake Global Properties}
     \li \l{CMake Source File Properties in Qt6 Qml}{CMake Source File Properties}
     \li \l{CMake Global Variables in Qt6 Qml}{CMake Global Variables}
-    \li \l{Qt Quick I18N}{Example - Qt Quick i18n}
     \endlist
 
 */

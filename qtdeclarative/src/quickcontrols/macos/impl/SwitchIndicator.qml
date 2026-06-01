@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Templates as T
@@ -21,6 +22,8 @@ Rectangle {
             ? indicator.palette.accent : "#d9d6d2", indicator.control.down ? indicator.downTintFactor : 1)
         : Qt.lighter(indicator.control.checked
             ? indicator.palette.accent : "#454545", indicator.control.down ? indicator.downTintFactor : 1)
+
+    border.color: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast ? Application.styleHints.colorScheme === Qt.Light ? "#b3000000" : "#b3ffffff" : "transparent"
 
     states: [
         State {
@@ -76,7 +79,7 @@ Rectangle {
 
     SwitchHandle {
         id: handle
-        x: Math.max(1, Math.min(parent.width - width - 1, indicator.control.visualPosition * parent.width - (width / 2)))
+        x: Math.max(0, Math.min(parent.width - width, indicator.control.visualPosition * parent.width - (width / 2)))
         y: (parent.height - height) / 2
         down: indicator.control.down
 

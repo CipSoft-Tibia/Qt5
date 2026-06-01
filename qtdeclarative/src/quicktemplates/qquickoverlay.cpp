@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickcontrol_p_p.h"
 #include "qquickoverlay_p.h"
@@ -428,6 +429,18 @@ void QQuickOverlay::wheelEvent(QWheelEvent *event)
 }
 #endif
 
+/*!
+    \internal
+
+    When clicking inside a scene with a single active popup, a few things can happen.
+    The click can be inside the popup item, in which case, we stop filtering to allow
+    normal event handling. Or the click can be outside the popup, in which case,
+    it will normally be inside the overlay, or the popup's dimmer item.
+
+    When dealing with nested popups, the second popup's dimmer (or popupItem if the dimmer is absent)
+    will become an exclusive grabber to the pointerEvent, during childMouseEventFilter.
+    (sometimes the overlay becomes the exclusive grabber instead, why?).
+*/
 bool QQuickOverlay::childMouseEventFilter(QQuickItem *item, QEvent *event)
 {
     Q_D(QQuickOverlay);
@@ -482,6 +495,22 @@ bool QQuickOverlay::childMouseEventFilter(QQuickItem *item, QEvent *event)
     return false;
 }
 
+/*!
+    \internal
+
+    The overlay installs itself as an event filter on the window it belongs to.
+    It will filter Touch, Mouse (press and release) and Wheel related events.
+
+    Touch and MousePress events will be passed to the delivery agent for normal event propagation,
+    where they will be filtered by the overlay again in QQuickOverlay::childMouseEventFilter.
+    All opened popups will then be iterated, to check if the event should close the popup or not.
+    Also modality is checked to determine the return type, which will cause the delivery agent to
+    continue normal propagation in this second childMouseEventFilter filtering step.
+
+    The reason for installing the eventFilter is to allow non-modal popups with CloseOnReleaseOutside
+    as the closing policy to close when clicking the overlay. The delivery agent won't send the
+    release event to the overlay when clicking it directly, only the press event.
+*/
 bool QQuickOverlay::eventFilter(QObject *object, QEvent *event)
 {
     Q_D(QQuickOverlay);
@@ -500,8 +529,10 @@ bool QQuickOverlay::eventFilter(QObject *object, QEvent *event)
 
         // allow non-modal popups to close on touch release outside
         if (!d->mouseGrabberPopup) {
-            for (const QTouchEvent::TouchPoint &point : static_cast<QTouchEvent *>(event)->points()) {
+            QTouchEvent *touchEvent = static_cast<QTouchEvent *>(event);
+            for (const QTouchEvent::TouchPoint &point : touchEvent->points()) {
                 if (point.state() == QEventPoint::Released) {
+                    QQuickDeliveryAgentPrivate::translateTouchEvent(touchEvent);
                     if (d->handleRelease(d->window->contentItem(), event, nullptr))
                         break;
                 }

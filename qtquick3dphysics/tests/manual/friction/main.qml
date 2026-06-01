@@ -78,8 +78,8 @@ Window {
                 }
                 Model {
                     source: "#Rectangle"
-                    materials: DefaultMaterial {
-                        diffuseColor: "green"
+                    materials: PrincipledMaterial {
+                        baseColor: "green"
                     }
                 }
             }

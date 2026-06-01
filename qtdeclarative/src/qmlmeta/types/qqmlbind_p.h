@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLBIND_H
 #define QQMLBIND_H
@@ -38,11 +39,11 @@ private:
     Q_DECLARE_PRIVATE(QQmlBind)
     Q_INTERFACES(QQmlParserStatus)
     Q_INTERFACES(QQmlPropertyValueSource)
-    Q_PROPERTY(QObject *target READ object WRITE setObject)
-    Q_PROPERTY(QString property READ property WRITE setProperty)
-    Q_PROPERTY(QVariant value READ value WRITE setValue)
-    Q_PROPERTY(bool when READ when WRITE setWhen)
-    Q_PROPERTY(bool delayed READ delayed WRITE setDelayed REVISION(2, 8))
+    Q_PROPERTY(QObject *target READ object WRITE setObject NOTIFY objectChanged)
+    Q_PROPERTY(QString property READ property WRITE setProperty NOTIFY propertyChanged)
+    Q_PROPERTY(QVariant value READ value WRITE setValue NOTIFY valueChanged)
+    Q_PROPERTY(bool when READ when WRITE setWhen NOTIFY whenChanged)
+    Q_PROPERTY(bool delayed READ delayed WRITE setDelayed NOTIFY delayedChanged REVISION(2, 8))
     Q_PROPERTY(RestorationMode restoreMode READ restoreMode WRITE setRestoreMode
                NOTIFY restoreModeChanged REVISION(2, 14))
     Q_ENUM(RestorationMode)
@@ -57,7 +58,7 @@ public:
     bool when() const;
     void setWhen(bool);
 
-    QObject *object();
+    QObject *object() const;
     void setObject(QObject *);
 
     QString property() const;
@@ -74,6 +75,11 @@ public:
 
 Q_SIGNALS:
     void restoreModeChanged();
+    Q_REVISION(6, 10) void objectChanged();
+    Q_REVISION(6, 10) void propertyChanged();
+    Q_REVISION(6, 10) void valueChanged();
+    Q_REVISION(6, 10) void whenChanged();
+    Q_REVISION(6, 10) void delayedChanged();
 
 protected:
     void setTarget(const QQmlProperty &) override;

@@ -19,8 +19,10 @@
 #include "components/fingerprinting_protection_filter/browser/fingerprinting_protection_web_contents_helper.h"
 #include "components/fingerprinting_protection_filter/common/fingerprinting_protection_filter_constants.h"
 #include "components/fingerprinting_protection_filter/common/fingerprinting_protection_filter_features.h"
+#include "components/fingerprinting_protection_filter/mojom/fingerprinting_protection_filter.mojom.h"
 #include "components/subresource_filter/content/shared/browser/activation_state_computing_navigation_throttle.h"
-#include "components/subresource_filter/content/shared/common/subresource_filter_utils.h"
+#include "components/subresource_filter/content/shared/browser/utils.h"
+#include "components/subresource_filter/content/shared/common/utils.h"
 #include "components/subresource_filter/core/browser/async_document_subresource_filter.h"
 #include "components/subresource_filter/core/browser/verified_ruleset_dealer.h"
 #include "components/subresource_filter/core/common/activation_decision.h"
@@ -32,10 +34,13 @@
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/page.h"
 #include "content/public/browser/render_frame_host.h"
+#include "mojo/public/cpp/bindings/associated_remote.h"
 #include "net/base/net_errors.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_source.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
+#include "url/gurl.h"
 
 namespace fingerprinting_protection_filter {
 namespace {
@@ -80,27 +85,60 @@ ThrottleManager::ChildActivationThrottleHandle::
 // static
 const int ThrottleManager::kUserDataKey;
 
+// static
+void ThrottleManager::BindReceiver(
+    mojo::PendingAssociatedReceiver<mojom::FingerprintingProtectionHost>
+        pending_receiver,
+    content::RenderFrameHost* render_frame_host) {
+  for (auto navigation_handle :
+       render_frame_host->GetPendingCommitCrossDocumentNavigations()) {
+    // TODO(https://crbug.com/347304498): Add `ThrottleManagers` to
+    // `RenderFrames` from creation time once activation is decoupled from
+    // navigations.
+    if (auto* manager = FromNavigationHandle(*navigation_handle)) {
+      manager->receivers_.Bind(render_frame_host, std::move(pending_receiver));
+      return;
+    }
+  }
+
+  if (auto* manager = FromPage(render_frame_host->GetPage())) {
+    manager->receivers_.Bind(render_frame_host, std::move(pending_receiver));
+  }
+}
+
 ThrottleManager::ThrottleManager(
     VerifiedRulesetDealer::Handle* dealer_handle,
-    FingerprintingProtectionWebContentsHelper& web_contents_helper)
-    : ruleset_handle_(dealer_handle ? std::make_unique<VerifiedRuleset::Handle>(
+    FingerprintingProtectionWebContentsHelper& web_contents_helper,
+    content::NavigationHandle& initiating_navigation_handle,
+    bool is_incognito)
+    : receivers_(initiating_navigation_handle.GetWebContents(), this),
+      ruleset_handle_(dealer_handle ? std::make_unique<VerifiedRuleset::Handle>(
                                           dealer_handle)
                                     : nullptr),
-      web_contents_helper_(web_contents_helper) {}
+      web_contents_helper_(web_contents_helper),
+      is_incognito_(is_incognito) {}
 
 ThrottleManager::~ThrottleManager() {
+  // All mojo callbacks must be run or their binding closed before they are
+  // destroyed.
   web_contents_helper_->WillDestroyThrottleManager(this);
 }
 
 // static
 std::unique_ptr<ThrottleManager> ThrottleManager::CreateForNewPage(
     VerifiedRulesetDealer::Handle* dealer_handle,
-    FingerprintingProtectionWebContentsHelper& web_contents_helper) {
-  if (!features::IsFingerprintingProtectionFeatureEnabled()) {
+    FingerprintingProtectionWebContentsHelper& web_contents_helper,
+    content::NavigationHandle& initiating_navigation_handle,
+    bool is_incognito) {
+  CHECK(IsInSubresourceFilterRoot(&initiating_navigation_handle));
+  if (!features::IsFingerprintingProtectionEnabledForIncognitoState(
+          is_incognito)) {
     return nullptr;
   }
 
-  return std::make_unique<ThrottleManager>(dealer_handle, web_contents_helper);
+  return std::make_unique<ThrottleManager>(dealer_handle, web_contents_helper,
+                                           initiating_navigation_handle,
+                                           is_incognito);
 }
 
 // static
@@ -125,12 +163,12 @@ void ThrottleManager::MaybeAppendNavigationThrottles(
     // Attempt to create root throttles.
     throttles->push_back(
         std::make_unique<FingerprintingProtectionPageActivationThrottle>(
-            navigation_handle,
+            navigation_handle, web_contents_helper_->content_settings(),
             web_contents_helper_->tracking_protection_settings(),
-            web_contents_helper_->pref_service()));
+            web_contents_helper_->pref_service(), is_incognito_));
     auto activation_throttle =
         ActivationStateComputingNavigationThrottle::CreateForRoot(
-            navigation_handle);
+            navigation_handle, kFingerprintingProtectionRulesetConfig.uma_tag);
     ChildActivationThrottleHandle::CreateForNavigationHandle(
         *navigation_handle, activation_throttle.get());
     throttles->push_back(std::move(activation_throttle));
@@ -141,20 +179,18 @@ void ThrottleManager::MaybeAppendNavigationThrottles(
     if (parent_filter) {
       throttles->push_back(
           std::make_unique<FingerprintingProtectionChildNavigationThrottle>(
-              navigation_handle, parent_filter,
+              navigation_handle, parent_filter, is_incognito_,
               base::BindRepeating([](const GURL& url) {
                 return base::StringPrintf(
                     kDisallowChildFrameConsoleMessageFormat,
                     url.possibly_invalid_spec().c_str());
               })));
       CHECK(ruleset_handle_);
-      // TODO(https://crbug.com/346583606): Create a simpler passthrough
-      // ActivationThrottle that defers child navigations until the parent
-      // activation is computed and then forwards it to the child.
       auto activation_throttle =
           ActivationStateComputingNavigationThrottle::CreateForChild(
               navigation_handle, ruleset_handle_.get(),
-              parent_filter->activation_state());
+              parent_filter->activation_state(),
+              kFingerprintingProtectionRulesetConfig.uma_tag);
       CHECK(!ChildActivationThrottleHandle::GetForNavigationHandle(
           *navigation_handle));
       ChildActivationThrottleHandle::CreateForNavigationHandle(
@@ -169,7 +205,6 @@ void ThrottleManager::MaybeAppendNavigationThrottles(
 // it for later filtering of child frame navigations.
 void ThrottleManager::ReadyToCommitInFrameNavigation(
     content::NavigationHandle* navigation_handle) {
-  // TODO(https://crbug.com/40280666): Notify blink using this activation state.
   std::ignore = ActivationStateForNextCommittedLoad(navigation_handle);
 }
 
@@ -224,13 +259,6 @@ void ThrottleManager::DidFinishInFrameNavigation(
       statistics_ = std::make_unique<subresource_filter::PageLoadStatistics>(
           filter->activation_state(),
           kFingerprintingProtectionRulesetConfig.uma_tag);
-      if (filter->activation_state().enable_logging) {
-        CHECK(filter->activation_state().activation_level !=
-              subresource_filter::mojom::ActivationLevel::kDisabled);
-        frame_host->AddMessageToConsole(
-            blink::mojom::ConsoleMessageLevel::kWarning,
-            kActivationConsoleMessage);
-      }
     }
     RecordUmaHistogramsForRootNavigation(
         navigation_handle,
@@ -245,7 +273,7 @@ void ThrottleManager::DidFinishLoad(content::RenderFrameHost* render_frame_host,
   if (!statistics_ || render_frame_host != &page_->GetMainDocument()) {
     return;
   }
-  statistics_->OnDidFinishLoad();
+  statistics_->OnDidFinishLoad(/*record_incognito_metrics=*/is_incognito_);
 }
 
 void ThrottleManager::DidBecomePrimaryPage() {
@@ -256,7 +284,8 @@ void ThrottleManager::DidBecomePrimaryPage() {
   // notification if a page transitioned from primary to non-primary and back
   // (BFCache).
   if (current_committed_load_has_notified_disallowed_load_) {
-    web_contents_helper_->NotifyOnBlockedResources();
+    web_contents_helper_->NotifyOnBlockedSubresource(
+        page_activation_state_.activation_level);
   }
 }
 
@@ -277,7 +306,9 @@ void ThrottleManager::OnPageActivationComputed(
   CHECK(IsInSubresourceFilterRoot(navigation_handle));
   CHECK(!navigation_handle->HasCommitted());
 
+  page_level_activation_computed_ = true;
   page_activation_decision_ = activation_decision;
+  page_activation_state_ = activation_state;
 
   ChildActivationThrottleHandle* throttle_handle =
       ChildActivationThrottleHandle::GetForNavigationHandle(*navigation_handle);
@@ -338,8 +369,6 @@ void ThrottleManager::LogActivationDecisionUkm(
   }
   if (filter_handle->filter()->activation_state().activation_level ==
       subresource_filter::mojom::ActivationLevel::kDryRun) {
-    DCHECK_EQ(subresource_filter::ActivationDecision::ACTIVATED,
-              page_activation_decision_);
     builder.SetDryRun(true);
   }
   builder.SetActivationDecision(
@@ -364,19 +393,22 @@ void ThrottleManager::MaybeNotifyOnBlockedResource(
     return;
   }
 
-  if (!filter_handle ||
-      filter_handle->filter()->activation_state().activation_level ==
-          subresource_filter::mojom::ActivationLevel::kDryRun) {
-    return;
-  }
-
   current_committed_load_has_notified_disallowed_load_ = true;
 
   // Non-primary pages shouldn't affect UI. When the page becomes primary we'll
   // check |current_committed_load_has_notified_disallowed_load_| and try
   // again.
   if (page_->IsPrimary()) {
-    web_contents_helper_->NotifyOnBlockedResources();
+    web_contents_helper_->NotifyOnBlockedSubresource(
+        filter_handle->filter()->activation_state().activation_level);
+
+    if (features::IsFingerprintingProtectionConsoleLoggingEnabled()) {
+      // Log generic "subresource blocked" message in non-debug builds. In debug
+      // builds, a more specific message logs per blocked subresource.
+      frame_host->GetMainFrame()->AddMessageToConsole(
+          blink::mojom::ConsoleMessageLevel::kError,
+          kDisallowFirstResourceConsoleMessage);
+    }
   }
 }
 
@@ -388,9 +420,6 @@ void ThrottleManager::NotifyDisallowLoadPolicy(
 subresource_filter::mojom::ActivationState
 ThrottleManager::ActivationStateForNextCommittedLoad(
     content::NavigationHandle* navigation_handle) {
-  // TODO(https://crbug.com/40280666): Simplify this logic when mojo pipe to the
-  // renderer is implemented. No need to guess whether a commit will happen if
-  // the pipe is document-scoped.
   if (navigation_handle->GetNetErrorCode() != net::OK) {
     return subresource_filter::mojom::ActivationState();
   }
@@ -421,7 +450,12 @@ ThrottleManager::ActivationStateForNextCommittedLoad(
 }
 
 void ThrottleManager::DidDisallowFirstSubresource() {
-  // TODO(https://crbug.com/40280666): Implement with communication with blink.
+  MaybeNotifyOnBlockedResource(receivers_.GetCurrentTargetFrame());
+}
+
+void ThrottleManager::CheckActivation(CheckActivationCallback callback) {
+  std::move(callback).Run(
+      subresource_filter::mojom::ActivationState::New(page_activation_state_));
 }
 
 void ThrottleManager::SetDocumentLoadStatistics(
@@ -480,7 +514,8 @@ AsyncDocumentSubresourceFilter* ThrottleManager::FilterForFinishedNavigation(
     // used. See the AsyncDocumentSubresourceFilter constructor for details.
     filter = std::make_unique<AsyncDocumentSubresourceFilter>(
         ruleset_handle_.get(), frame_host->GetLastCommittedOrigin(),
-        activation_to_inherit.value());
+        activation_to_inherit.value(),
+        kFingerprintingProtectionRulesetConfig.uma_tag);
   }
 
   if (!filter) {

@@ -17,6 +17,7 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace QtGuiPrivate; // for D-Bus accessibility wrappers
 
 /* note: do not change these to QStringLiteral;
    we are unloaded before QtDBus is done using the strings.

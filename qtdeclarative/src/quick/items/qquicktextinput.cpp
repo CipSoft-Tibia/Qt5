@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktextinput_p.h"
 #include "qquicktextinput_p_p.h"
@@ -2631,8 +2632,12 @@ bool QQuickTextInput::canPaste() const
 #if QT_CONFIG(clipboard)
     Q_D(const QQuickTextInput);
     if (!d->canPasteValid) {
-        if (const QMimeData *mimeData = QGuiApplication::clipboard()->mimeData())
-            const_cast<QQuickTextInputPrivate *>(d)->canPaste = !d->m_readOnly && mimeData->hasText() && !mimeData->text().isEmpty();
+        bool canPaste = false;
+        if (!d->m_readOnly) {
+            if (const QMimeData *mimeData = QGuiApplication::clipboard()->mimeData())
+                canPaste = mimeData->hasText() && !mimeData->text().isEmpty();
+        }
+        const_cast<QQuickTextInputPrivate *>(d)->canPaste = canPaste;
         const_cast<QQuickTextInputPrivate *>(d)->canPasteValid = true;
     }
     return d->canPaste;
@@ -3004,10 +3009,12 @@ void QQuickTextInput::q_canPasteChanged()
     Q_D(QQuickTextInput);
     bool old = d->canPaste;
 #if QT_CONFIG(clipboard)
-    if (const QMimeData *mimeData = QGuiApplication::clipboard()->mimeData())
-        d->canPaste = !d->m_readOnly && mimeData->hasText();
-    else
-        d->canPaste = false;
+    bool canPaste = false;
+    if (!d->m_readOnly) {
+        if (const QMimeData *mimeData = QGuiApplication::clipboard()->mimeData())
+            canPaste = mimeData->hasText() && !mimeData->text().isEmpty();
+    }
+    d->canPaste = canPaste;
 #endif
 
     bool changed = d->canPaste != old || !d->canPasteValid;
@@ -3095,7 +3102,7 @@ qreal QQuickTextInputPrivate::calculateImplicitWidthForText(const QString &text)
     layout.beginLayout();
 
     QTextLine line = layout.createLine();
-    line.setLineWidth(INT_MAX);
+    line.setLineWidth(qreal(INT_MAX));
     const qreal theImplicitWidth = qCeil(line.naturalTextWidth()) + q->leftPadding() + q->rightPadding();
 
     layout.endLayout();
@@ -3210,7 +3217,7 @@ void QQuickTextInputPrivate::updateLayout()
 
     QTextLine line = m_textLayout.createLine();
     if (requireImplicitWidth) {
-        line.setLineWidth(INT_MAX);
+        line.setLineWidth(qreal(INT_MAX));
         const bool wasInLayout = inLayout;
         inLayout = true;
         if (isImplicitResizeEnabled())
@@ -3219,7 +3226,7 @@ void QQuickTextInputPrivate::updateLayout()
         if (inLayout)       // probably the result of a binding loop, but by letting it
             return;         // get this far we'll get a warning to that effect.
     }
-    qreal lineWidth = q->widthValid() || !isImplicitResizeEnabled() ? q->width() - q->leftPadding() - q->rightPadding() : INT_MAX;
+    qreal lineWidth = q->widthValid() || !isImplicitResizeEnabled() ? q->width() - q->leftPadding() - q->rightPadding() : qreal(INT_MAX);
     qreal height = 0;
     qreal width = 0;
     do {
@@ -3631,9 +3638,11 @@ void QQuickTextInputPrivate::processInputMethodEvent(QInputMethodEvent *event)
         if (a.type == QInputMethodEvent::Selection) {
             // If we already called internalInsert(), the cursor position will
             // already be adjusted correctly. The attribute.start does
-            // not seem to take the mask into account, so it will reset cursor
-            // to an invalid position in such case.
-            if (!cursorPositionChanged)
+            // not seem to take the mask into account, so it will reset the cursor
+            // to an invalid position in such case. However, when the input mask
+            // is not active, we must apply the cursor position regardless of the
+            // commit string.
+            if (!cursorPositionChanged || !m_maskData)
                 m_cursor = qBound(0, a.start + a.length, m_text.size());
             if (a.length) {
                 m_selstart = qMax(0, qMin(a.start, m_text.size()));
@@ -3682,6 +3691,12 @@ void QQuickTextInputPrivate::processInputMethodEvent(QInputMethodEvent *event)
     }
     m_textLayout.setFormats(formats);
 
+    // Set cursor visible state. Do this before updating the text,
+    // since user code connected to onTextChanged may set a different
+    // cursor visible state (for instance by setting the focus), which
+    // we don't want to overwrite.
+    q->setCursorVisible(cursorVisible);
+
     updateDisplayText(/*force*/ true);
     if (cursorPositionChanged && emitCursorPositionChanged())
         q->updateInputMethod(Qt::ImCursorPosition | Qt::ImAnchorPosition);
@@ -3690,8 +3705,6 @@ void QQuickTextInputPrivate::processInputMethodEvent(QInputMethodEvent *event)
 
     if (isGettingInput)
         finishChange(priorState);
-
-    q->setCursorVisible(cursorVisible);
 
     if (selectionChange) {
         emit q->selectionChanged();

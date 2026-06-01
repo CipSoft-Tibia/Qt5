@@ -107,6 +107,7 @@ class EnumTypes_QtProtobufData;
 class EnumTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(enumTypes)
     Q_PROPERTY(qt::protobuf::GlobalEnumGadget::GlobalEnum field1 READ field1 WRITE setField1 SCRIPTABLE true)
     Q_PROPERTY(NestedEnum field2 READ field2 WRITE setField2 SCRIPTABLE true)
@@ -201,6 +202,7 @@ class ScalarTypes_QtProtobufData;
 class ScalarTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(scalarTypes)
     Q_PROPERTY(QtProtobuf::int32 field1 READ field1 WRITE setField1 SCRIPTABLE true)
     Q_PROPERTY(QtProtobuf::uint32 field2 READ field2 WRITE setField2 SCRIPTABLE true)
@@ -321,6 +323,7 @@ class ScalarRepeatedTypes_QtProtobufData;
 class ScalarRepeatedTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(scalarRepeatedTypes)
     Q_PROPERTY(QtProtobuf::int32List field1 READ field1 WRITE setField1 SCRIPTABLE true)
     Q_PROPERTY(QtProtobuf::uint32List field2 READ field2 WRITE setField2 SCRIPTABLE true)
@@ -453,6 +456,7 @@ class ScalarRepeatedNoPackedTypes_QtProtobufData;
 class ScalarRepeatedNoPackedTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(scalarRepeatedNoPackedTypes)
     Q_PROPERTY(QtProtobuf::int32List field1 READ field1 WRITE setField1 SCRIPTABLE true)
     Q_PROPERTY(QtProtobuf::uint32List field2 READ field2 WRITE setField2 SCRIPTABLE true)
@@ -591,6 +595,7 @@ class ScalarOneOfTypes_QtProtobufData;
 class ScalarOneOfTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(scalarOneOfTypes)
     Q_PROPERTY(QtProtobuf::int32 field1 READ field1_p WRITE setField1_p)
     Q_PROPERTY(bool hasField1 READ hasField1)
@@ -789,6 +794,7 @@ class ScalarOptionalTypes_QtProtobufData;
 class ScalarOptionalTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(scalarOptionalTypes)
     Q_PROPERTY(QtProtobuf::int32 field1 READ field1_p WRITE setField1_p)
     Q_PROPERTY(bool hasField1 READ hasField1)
@@ -979,6 +985,7 @@ class MapScalarTypes_QtProtobufData;
 class MapScalarTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(mapScalarTypes)
     Q_PROPERTY(qt::protobuf::MapScalarTypes::Field1Entry field1 READ field1 WRITE setField1 SCRIPTABLE true)
     Q_PROPERTY(qt::protobuf::MapScalarTypes::Field2Entry field2 READ field2 WRITE setField2 SCRIPTABLE true)
@@ -1104,6 +1111,7 @@ class MessageTypes_QtProtobufData;
 class MessageTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(messageTypes)
     Q_PROPERTY(qt::protobuf::ScalarTypes *field1_p READ field1_p WRITE setField1_p SCRIPTABLE false)
     Q_PROPERTY(bool hasField1 READ hasField1)
@@ -1147,12 +1155,14 @@ public:
 
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT bool hasField1() const;
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT const ScalarTypes &field1() const &;
+    QPB_TST_QTPROTOBUFGEN_QML_EXPORT ScalarTypes &mutField1() &;
     Q_INVOKABLE QPB_TST_QTPROTOBUFGEN_QML_EXPORT void clearField1();
 
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT const QList<ScalarTypes> &field2() const &;
 
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT bool hasField3() const;
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT const ScalarTypes &field3() const &;
+    QPB_TST_QTPROTOBUFGEN_QML_EXPORT ScalarTypes &mutField3() &;
     Q_INVOKABLE QPB_TST_QTPROTOBUFGEN_QML_EXPORT void clearField3();
 
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT EnumTypes_QtProtobufNested::NestedEnum field4() const;
@@ -1238,6 +1248,7 @@ class MessageNestedTypes_QtProtobufData;
 class MessageNestedTypes : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(messageNestedTypes)
     Q_PROPERTY(qt::protobuf::MessageNestedTypes::NestedMessage *field1_p READ field1_p WRITE setField1_p SCRIPTABLE false)
     Q_PROPERTY(bool hasField1 READ hasField1)
@@ -1265,6 +1276,7 @@ public:
 
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT bool hasField1() const;
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT const MessageNestedTypes_QtProtobufNested::NestedMessage &field1() const &;
+    QPB_TST_QTPROTOBUFGEN_QML_EXPORT MessageNestedTypes_QtProtobufNested::NestedMessage &mutField1() &;
     Q_INVOKABLE QPB_TST_QTPROTOBUFGEN_QML_EXPORT void clearField1();
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT void setField1(const MessageNestedTypes_QtProtobufNested::NestedMessage &field1);
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT void setField1(MessageNestedTypes_QtProtobufNested::NestedMessage &&field1);
@@ -1298,6 +1310,7 @@ class NestedMessage_QtProtobufData;
 class NestedMessage : public QProtobufMessage
 {
     Q_PROTOBUF_OBJECT_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_EXPORT)
+    QML_STRUCTURED_VALUE
     QML_VALUE_TYPE(nestedMessage)
     Q_PROPERTY(QtProtobuf::int32 field1 READ field1 WRITE setField1 SCRIPTABLE true)
     Q_PROPERTY(qt::protobuf::MessageTypes *field2_p READ field2_p WRITE setField2_p SCRIPTABLE false)
@@ -1327,6 +1340,7 @@ public:
 
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT bool hasField2() const;
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT const MessageTypes &field2() const &;
+    QPB_TST_QTPROTOBUFGEN_QML_EXPORT MessageTypes &mutField2() &;
     Q_INVOKABLE QPB_TST_QTPROTOBUFGEN_QML_EXPORT void clearField2();
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT void setField1(QtProtobuf::int32 field1);
     QPB_TST_QTPROTOBUFGEN_QML_EXPORT void setField2(const MessageTypes &field2);

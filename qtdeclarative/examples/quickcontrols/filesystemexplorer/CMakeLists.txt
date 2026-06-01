@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
-project(filesystemexplorer LANGUAGES CXX)
+project(FileSystemExplorer VERSION 1.0 LANGUAGES CXX)
 
 if (ANDROID OR IOS)
     message(FATAL_ERROR "Platform is not supported")
@@ -10,16 +10,11 @@ if (ANDROID OR IOS)
 endif ()
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg)
+
 qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(filesystemexplorer
     main.cpp
-)
-
-set_target_properties(filesystemexplorer
-    PROPERTIES
-        WIN32_EXECUTABLE TRUE
-        MACOSX_BUNDLE TRUE
 )
 
 set_source_files_properties(qml/Colors.qml
@@ -29,7 +24,6 @@ set_source_files_properties(qml/Colors.qml
 
 qt_add_qml_module(filesystemexplorer
     URI FileSystemModule
-    VERSION 1.0
     QML_FILES
         "Main.qml"
         "qml/About.qml"
@@ -67,6 +61,23 @@ target_link_libraries(filesystemexplorer
         Qt6::QuickControls2
         Qt6::Svg
 )
+
+set_target_properties(filesystemexplorer
+    PROPERTIES
+        WIN32_EXECUTABLE TRUE
+)
+
+if (APPLE)
+    set_target_properties(filesystemexplorer PROPERTIES
+        OUTPUT_NAME "File System Explorer"
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "File System Explorer"
+        MACOSX_BUNDLE_COPYRIGHT "Copyright (C) The Qt Company Ltd. and other contributors."
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.qt.examples.fsexplorer"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+    )
+endif()
 
 install(TARGETS filesystemexplorer
     BUNDLE  DESTINATION .

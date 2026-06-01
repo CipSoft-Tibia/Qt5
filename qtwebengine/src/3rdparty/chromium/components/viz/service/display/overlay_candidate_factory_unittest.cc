@@ -65,7 +65,7 @@ class OverlayCandidateFactoryTestBase : public testing::Test {
     child_resource_provider_.ReleaseAllExportedResources(true);
   }
 
-  ResourceId CreateResource(bool is_overlay_candidate) {
+  ResourceId CreateResource(bool is_overlay_candidate, GrSurfaceOrigin origin) {
     scoped_refptr<RasterContextProvider> child_context_provider =
         TestContextProvider::Create();
 
@@ -74,6 +74,7 @@ class OverlayCandidateFactoryTestBase : public testing::Test {
     auto resource = TransferableResource::MakeGpu(
         gpu::Mailbox::Generate(), GL_TEXTURE_2D, gpu::SyncToken(),
         gfx::Size(1, 1), SinglePlaneFormat::kRGBA_8888, is_overlay_candidate);
+    resource.origin = origin;
 
     ResourceId resource_id =
         child_resource_provider_.ImportResource(resource, base::DoNothing());
@@ -343,15 +344,15 @@ class OverlayCandidateFactoryArbitraryTransformTest
   TextureDrawQuad CreateUnclippedDrawQuad(
       AggregatedRenderPass& render_pass,
       const gfx::Rect& quad_rect,
-      const gfx::Transform& quad_to_target_transform) {
+      const gfx::Transform& quad_to_target_transform,
+      GrSurfaceOrigin origin = kTopLeft_GrSurfaceOrigin) {
     SharedQuadState* sqs = render_pass.CreateAndAppendSharedQuadState();
     sqs->quad_to_target_transform = quad_to_target_transform;
     TextureDrawQuad quad;
     quad.SetNew(sqs, quad_rect, quad_rect, false,
-                CreateResource(/*is_overlay_candidate=*/true), false,
+                CreateResource(/*is_overlay_candidate=*/true, origin), false,
                 gfx::PointF(), gfx::PointF(1, 1), SkColors::kTransparent, false,
-                false, false, gfx::ProtectedVideoType::kClear);
-
+                false, gfx::ProtectedVideoType::kClear);
     return quad;
   }
 };
@@ -424,8 +425,8 @@ TEST_F(OverlayCandidateFactoryArbitraryTransformTest, TransformIncludesYFlip) {
   // Use a non-axis aligned transform so it can't be converted to an
   // OverlayTransform.
   transform.SkewX(45.0);
-  auto quad = CreateUnclippedDrawQuad(render_pass, gfx::Rect(1, 1), transform);
-  quad.y_flipped = true;
+  auto quad = CreateUnclippedDrawQuad(render_pass, gfx::Rect(1, 1), transform,
+                                      /*origin=*/kBottomLeft_GrSurfaceOrigin);
 
   OverlayCandidate candidate;
   OverlayCandidate::CandidateStatus result =
@@ -650,7 +651,9 @@ TEST_F(OverlayCandidateFactoryArbitraryTransformTest,
                gfx::Vector2dF(1, 1), gfx::PointF(0, 0), gfx::RectF(), false,
                1.0);
 
-  base::flat_map<AggregatedRenderPassId, cc::FilterOperations*> filter_map;
+  base::flat_map<AggregatedRenderPassId,
+                 raw_ptr<cc::FilterOperations, CtnExperimental>>
+      filter_map;
   // The actual filter operation doesn't matter in this case.
   cc::FilterOperations filter_op;
   filter_map.insert({render_pass_id, &filter_op});
@@ -756,11 +759,11 @@ class TransformedOverlayClipRectTest : public OverlayCandidateFactoryTestBase {
     sqs->quad_to_target_transform = quad_to_target_transform;
     sqs->clip_rect = clip_rect;
     TextureDrawQuad quad;
-    quad.SetNew(sqs, quad_rect, quad_rect, false,
-                CreateResource(/*is_overlay_candidate=*/true), false,
-                quad_uv_rect.origin(), quad_uv_rect.bottom_right(),
-                SkColors::kTransparent, false, false, false,
-                gfx::ProtectedVideoType::kClear);
+    quad.SetNew(
+        sqs, quad_rect, quad_rect, false,
+        CreateResource(/*is_overlay_candidate=*/true, kTopLeft_GrSurfaceOrigin),
+        false, quad_uv_rect.origin(), quad_uv_rect.bottom_right(),
+        SkColors::kTransparent, false, false, gfx::ProtectedVideoType::kClear);
 
     return quad;
   }

@@ -414,3 +414,19 @@ template <class T = std::string>
 void func3() {QT_TRANSLATE_NOOP("global", "func3");}
 template <class T, class = std::enable_if_t<std::is_same_v<T, std::string>>>
 void func4() {QT_TRANSLATE_NOOP("global", "func4");}
+
+// parse translation in templates
+template <std::size_t N>
+struct string_literal
+{
+    constexpr string_literal(const char (&)[N]) noexcept { }
+};
+
+template <string_literal d>
+struct A
+{
+};
+
+struct B : A<QT_TRANSLATE_NOOP("context", "text")>
+{
+};

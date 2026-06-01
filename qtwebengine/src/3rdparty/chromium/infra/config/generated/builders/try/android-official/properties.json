@@ -10,25 +10,28 @@
             "builder_id": {
               "bucket": "ci",
               "builder": "android-official",
-              "project": "chromium-m130"
+              "project": "chromium-m134"
             },
             "builder_spec": {
               "builder_group": "chromium",
               "execution_mode": "COMPILE_AND_TEST",
               "legacy_android_config": {
-                "config": "main_builder"
+                "config": "base_config"
               },
               "legacy_chromium_config": {
                 "apply_configs": [
                   "mb"
                 ],
-                "config": "android",
+                "build_config": "Debug",
+                "config": "main_builder",
                 "target_arch": "arm",
+                "target_bits": 32,
                 "target_platform": "android"
               },
               "legacy_gclient_config": {
                 "apply_configs": [
-                  "android"
+                  "android",
+                  "checkout_pgo_profiles"
                 ],
                 "config": "chromium"
               }
@@ -40,7 +43,7 @@
         {
           "bucket": "ci",
           "builder": "android-official",
-          "project": "chromium-m130"
+          "project": "chromium-m134"
         }
       ],
       "targets_spec_directory": "src/infra/config/generated/builders/try/android-official/targets"

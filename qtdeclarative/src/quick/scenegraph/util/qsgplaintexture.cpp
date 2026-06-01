@@ -159,27 +159,67 @@ void QSGPlainTexture::commitTextureOperations(QRhi *rhi, QRhiResourceUpdateBatch
 
     QImage tmp;
     bool bgra = false;
-    bool needsConvert = false;
+    bool fp16 = false;
+    bool fp32 = false;
+    bool needsConvert8 = false;
+    bool needsConvertFP16 = false;
+    bool needsConvertFP32 = false;
+
     if (m_image.format() == QImage::Format_RGB32 || m_image.format() == QImage::Format_ARGB32_Premultiplied) {
 #if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
         if (rhi->isTextureFormatSupported(QRhiTexture::BGRA8)) {
             tmp = m_image;
             bgra = true;
         } else {
-            needsConvert = true;
+            needsConvert8 = true;
         }
 #else
-        needsConvert = true;
+        needsConvert8 = true;
+#endif
+    } else if (m_image.format() == QImage::Format_RGBX16FPx4 || m_image.format() == QImage::Format_RGBA16FPx4_Premultiplied) {
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        if (rhi->isTextureFormatSupported(QRhiTexture::RGBA16F)) {
+            tmp = m_image;
+            fp16 = true;
+        } else {
+            needsConvert8 = true;
+        }
+#else
+        needsConvert8 = true;
+#endif
+    } else if (m_image.format() == QImage::Format_RGBX32FPx4 || m_image.format() == QImage::Format_RGBA32FPx4_Premultiplied) {
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        if (rhi->isTextureFormatSupported(QRhiTexture::RGBA32F)) {
+            tmp = m_image;
+            fp32 = true;
+        } else if (rhi->isTextureFormatSupported(QRhiTexture::RGBA16F))  {
+            tmp = m_image;
+            fp16 = true;
+        } else {
+            needsConvert8 = true;
+        }
+#else
+        needsConvert8 = true;
 #endif
     } else if (m_image.format() == QImage::Format_RGBX8888 || m_image.format() == QImage::Format_RGBA8888_Premultiplied) {
         tmp = m_image;
+    } else if (m_image.format() == QImage::Format_RGBA16FPx4) {
+        needsConvertFP16 = true;
+    } else if (m_image.format() == QImage::Format_RGBA32FPx4) {
+        needsConvertFP32 = true;
     } else {
-        needsConvert = true;
+        needsConvert8 = true;
     }
 
-    if (needsConvert)
+    if (needsConvertFP16) {
+        tmp = m_image.convertToFormat(QImage::Format_RGBA16FPx4_Premultiplied);
+        fp16 = true;
+    } else if (needsConvertFP32) {
+        tmp = m_image.convertToFormat(QImage::Format_RGBA32FPx4_Premultiplied);
+        fp32 = true;
+    } else if (needsConvert8) {
         tmp = m_image.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
-
+    }
     // Downscale the texture to fit inside the max texture limit if it is too big.
     // It would be better if the image was already downscaled to the right size,
     // but this information is not always available at that time, so as a last
@@ -226,7 +266,15 @@ void QSGPlainTexture::commitTextureOperations(QRhi *rhi, QRhiResourceUpdateBatch
         if (hasMipMaps)
             f |= QRhiTexture::MipMapped | QRhiTexture::UsedWithGenerateMips;
 
-        m_texture = rhi->newTexture(bgra ? QRhiTexture::BGRA8 : QRhiTexture::RGBA8, m_texture_size, 1, f);
+        QRhiTexture::Format format = QRhiTexture::RGBA8;
+        if (fp16)
+            format = QRhiTexture::RGBA16F;
+        else if (fp32)
+            format = QRhiTexture::RGBA32F;
+        else if (bgra)
+            format = QRhiTexture::BGRA8;
+
+        m_texture = rhi->newTexture(format, m_texture_size, 1, f);
         needsRebuild = true;
     }
 

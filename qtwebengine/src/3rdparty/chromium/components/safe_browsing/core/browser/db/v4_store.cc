@@ -333,7 +333,6 @@ class BaseFileInputStream : public google::protobuf::io::ZeroCopyInputStream {
 
 }  // namespace
 
-using ::google::protobuf::int32;
 using ::google::protobuf::RepeatedField;
 using ::google::protobuf::RepeatedPtrField;
 
@@ -446,8 +445,8 @@ ApplyUpdateResult V4Store::ProcessUpdate(
     const HashPrefixMapView& hash_prefix_map_old,
     const std::unique_ptr<ListUpdateResponse>& response,
     bool delay_checksum_check) {
-  const RepeatedField<int32>* raw_removals = nullptr;
-  RepeatedField<int32> rice_removals;
+  const RepeatedField<int32_t>* raw_removals = nullptr;
+  RepeatedField<int32_t> rice_removals;
   size_t removals_size = response->removals_size();
   DCHECK_LE(removals_size, 1u);
   if (removals_size == 1) {
@@ -470,9 +469,7 @@ ApplyUpdateResult V4Store::ProcessUpdate(
       }
       raw_removals = &rice_removals;
     } else {
-      NOTREACHED_IN_MIGRATION()
-          << "Unexpected compression_type type: " << compression_type;
-      return UNEXPECTED_COMPRESSION_TYPE_REMOVALS_FAILURE;
+      NOTREACHED() << "Unexpected compression_type type: " << compression_type;
     }
   }
   if (raw_removals) {
@@ -536,9 +533,8 @@ void V4Store::ApplyUpdate(
     apply_update_result =
         new_store->ProcessFullUpdateAndWriteToDisk(metric, std::move(response));
   } else {
-    apply_update_result = UNEXPECTED_RESPONSE_TYPE_FAILURE;
-    NOTREACHED_IN_MIGRATION()
-        << "Failure: Unexpected response type: " << response->response_type();
+    NOTREACHED() << "Failure: Unexpected response type: "
+                 << response->response_type();
   }
 
   if (apply_update_result == APPLY_UPDATE_SUCCESS) {
@@ -605,9 +601,7 @@ ApplyUpdateResult V4Store::UpdateHashPrefixMapFromAdditions(
                                                 raw_hashes_size, additions_map);
       }
     } else {
-      NOTREACHED_IN_MIGRATION()
-          << "Unexpected compression_type type: " << compression_type;
-      return UNEXPECTED_COMPRESSION_TYPE_ADDITIONS_FAILURE;
+      NOTREACHED() << "Unexpected compression_type type: " << compression_type;
     }
 
     if (apply_update_result != APPLY_UPDATE_SUCCESS) {
@@ -635,12 +629,10 @@ ApplyUpdateResult V4Store::AddUnlumpedHashes(
     const size_t raw_hashes_length,
     std::unordered_map<PrefixSize, HashPrefixes>* additions_map) {
   if (prefix_size < kMinHashPrefixLength) {
-    NOTREACHED_IN_MIGRATION();
-    return PREFIX_SIZE_TOO_SMALL_FAILURE;
+    NOTREACHED();
   }
   if (prefix_size > kMaxHashPrefixLength) {
-    NOTREACHED_IN_MIGRATION();
-    return PREFIX_SIZE_TOO_LARGE_FAILURE;
+    NOTREACHED();
   }
   if (raw_hashes_length % prefix_size != 0) {
     return ADDITIONS_SIZE_UNEXPECTED_FAILURE;
@@ -686,33 +678,10 @@ void V4Store::InitializeIteratorMap(const HashPrefixMapView& hash_prefix_map,
   }
 }
 
-// static
-void V4Store::ReserveSpaceInPrefixMap(const HashPrefixMapView& old_map,
-                                      const HashPrefixMapView& additions_map,
-                                      size_t removals_count,
-                                      HashPrefixMap* prefix_map_to_update) {
-  std::unordered_map<PrefixSize, size_t> size_to_reserve;
-  for (const auto& [prefix_size, prefixes] : old_map) {
-    size_to_reserve[prefix_size] += prefixes.size();
-  }
-  for (const auto& [prefix_size, prefixes] : additions_map) {
-    size_to_reserve[prefix_size] += prefixes.size();
-  }
-
-  for (const auto& [prefix_size, capacity] : size_to_reserve) {
-    // Subtract the removals from capacity. Note this probably overcounts the
-    // removals since we subtract from all prefix sizes, but this shouldn't
-    // matter in practice since we usually only use a single prefix size per
-    // store.
-    size_t removals_size = std::min(capacity, removals_count * prefix_size);
-    prefix_map_to_update->Reserve(prefix_size, capacity - removals_size);
-  }
-}
-
 ApplyUpdateResult V4Store::MergeUpdate(
     const HashPrefixMapView& old_prefixes_map,
     const HashPrefixMapView& additions_map,
-    const RepeatedField<int32>* raw_removals,
+    const RepeatedField<int32_t>* raw_removals,
     const std::string& expected_checksum) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   DCHECK(hash_prefix_map_->view().empty());
@@ -724,9 +693,6 @@ ApplyUpdateResult V4Store::MergeUpdate(
   }
 
   hash_prefix_map_->Clear();
-  ReserveSpaceInPrefixMap(old_prefixes_map, additions_map,
-                          raw_removals ? raw_removals->size() : 0,
-                          hash_prefix_map_.get());
 
   IteratorMap old_iterator_map;
   HashPrefixStr next_smallest_prefix_old;
@@ -1007,10 +973,11 @@ bool V4Store::VerifyChecksum() {
 
   IteratorMap iterator_map;
   HashPrefixStr next_smallest_prefix;
-  InitializeIteratorMap(hash_prefix_map_->view(), &iterator_map);
-  CHECK_EQ(hash_prefix_map_->view().size(), iterator_map.size());
-  bool has_unmerged = GetNextSmallestUnmergedPrefix(
-      hash_prefix_map_->view(), iterator_map, &next_smallest_prefix);
+  HashPrefixMapView map_view = hash_prefix_map_->view();
+  InitializeIteratorMap(map_view, &iterator_map);
+  CHECK_EQ(map_view.size(), iterator_map.size());
+  bool has_unmerged = GetNextSmallestUnmergedPrefix(map_view, iterator_map,
+                                                    &next_smallest_prefix);
 
   std::unique_ptr<crypto::SecureHash> checksum_ctx(
       crypto::SecureHash::Create(crypto::SecureHash::SHA256));
@@ -1025,8 +992,8 @@ bool V4Store::VerifyChecksum() {
                          next_smallest_prefix_size);
 
     // Find the next smallest unmerged element in the map.
-    has_unmerged = GetNextSmallestUnmergedPrefix(
-        hash_prefix_map_->view(), iterator_map, &next_smallest_prefix);
+    has_unmerged = GetNextSmallestUnmergedPrefix(map_view, iterator_map,
+                                                 &next_smallest_prefix);
   }
 
   std::array<char, crypto::kSHA256Length> checksum;

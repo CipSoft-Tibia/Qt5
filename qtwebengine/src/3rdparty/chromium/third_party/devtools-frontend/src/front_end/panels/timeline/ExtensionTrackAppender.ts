@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 import * as i18n from '../../core/i18n/i18n.js';
-import * as TraceEngine from '../../models/trace/trace.js';
+import * as Trace from '../../models/trace/trace.js';
 import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 
 import {buildGroupStyle, buildTrackHeader, getFormattedTime} from './AppenderUtils.js';
 import {
   type CompatibilityTracksAppender,
-  type HighlightedEntryInfo,
+  type PopoverInfo,
   type TrackAppender,
   type TrackAppenderName,
   VisualLoggingTrackName,
@@ -33,11 +33,10 @@ const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 export class ExtensionTrackAppender implements TrackAppender {
   readonly appenderName: TrackAppenderName = 'Extension';
 
-  #extensionTopLevelTrack: TraceEngine.Types.Extensions.ExtensionTrackData;
+  #extensionTopLevelTrack: Trace.Types.Extensions.ExtensionTrackData;
   #compatibilityBuilder: CompatibilityTracksAppender;
   constructor(
-      compatibilityBuilder: CompatibilityTracksAppender,
-      extensionTracks: TraceEngine.Types.Extensions.ExtensionTrackData) {
+      compatibilityBuilder: CompatibilityTracksAppender, extensionTracks: Trace.Types.Extensions.ExtensionTrackData) {
     this.#extensionTopLevelTrack = extensionTracks;
     this.#compatibilityBuilder = compatibilityBuilder;
   }
@@ -92,26 +91,22 @@ export class ExtensionTrackAppender implements TrackAppender {
     return currentStartLevel;
   }
 
-  colorForEvent(event: TraceEngine.Types.TraceEvents.TraceEventData): string {
+  colorForEvent(event: Trace.Types.Events.Event): string {
     const defaultColor = ThemeSupport.ThemeSupport.instance().getComputedValue('--app-color-rendering');
-    if (!TraceEngine.Types.Extensions.isSyntheticExtensionEntry(event)) {
+    if (!Trace.Types.Extensions.isSyntheticExtensionEntry(event)) {
       return defaultColor;
     }
     return Extensions.ExtensionUI.extensionEntryColor(event);
   }
 
-  titleForEvent(event: TraceEngine.Types.TraceEvents.TraceEventData): string {
+  titleForEvent(event: Trace.Types.Events.Event): string {
     return event.name;
   }
 
-  /**
-   * Returns the info shown when an event added by this appender
-   * is hovered in the timeline.
-   */
-  highlightedEntryInfo(event: TraceEngine.Types.TraceEvents.TraceEventData): HighlightedEntryInfo {
-    const title = TraceEngine.Types.Extensions.isSyntheticExtensionEntry(event) && event.args.tooltipText ?
+  setPopoverInfo(event: Trace.Types.Events.Event, info: PopoverInfo): void {
+    info.title = Trace.Types.Extensions.isSyntheticExtensionEntry(event) && event.args.tooltipText ?
         event.args.tooltipText :
         this.titleForEvent(event);
-    return {title, formattedTime: getFormattedTime(event.dur)};
+    info.formattedTime = getFormattedTime(event.dur);
   }
 }

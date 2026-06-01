@@ -19,8 +19,7 @@
     \module QtCorePrivate
     \title Qt Core Private C++ Classes
     \qtvariable core-private
-    \qtcmakepackage Core
-    \qtcmaketargetitem CorePrivate
+    \qtcmakepackage CorePrivate
     \preliminary
     \brief Provides private core functionality.
 
@@ -28,7 +27,16 @@
     private Qt Core APIs:
 
     \badcode
-    find_package(Qt6 REQUIRED COMPONENTS Core)
+    find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
     target_link_libraries(mytarget PRIVATE Qt6::CorePrivate)
     \endcode
+*/
+
+/*!
+    \group corelib_examples
+    \title Qt Core Examples
+
+    \brief Examples for the Qt Core.
+
+    To learn how to use features of the Qt Core module, see examples:
 */

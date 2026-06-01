@@ -314,8 +314,7 @@ void ThemeHelperMac::LoadSystemColorsForCurrentAppearance(
         values[i] = NSColorToSkColor(NSColor.selectedTextBackgroundColor);
         break;
       case blink::MacSystemColorID::kCount:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
   }
 }
@@ -328,14 +327,14 @@ void ThemeHelperMac::LoadSystemColors() {
 
   [[NSAppearance appearanceNamed:NSAppearanceNameAqua]
       performAsCurrentDrawingAppearance:^{
-        LoadSystemColorsForCurrentAppearance(values.subspan(
-            0, static_cast<size_t>(blink::MacSystemColorID::kCount)));
+        LoadSystemColorsForCurrentAppearance(
+            values.first<blink::kMacSystemColorIDCount>());
       }];
   [[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]
       performAsCurrentDrawingAppearance:^{
-        LoadSystemColorsForCurrentAppearance(values.subspan(
-            static_cast<size_t>(blink::MacSystemColorID::kCount),
-            static_cast<size_t>(blink::MacSystemColorID::kCount)));
+        LoadSystemColorsForCurrentAppearance(
+            values.subspan<blink::kMacSystemColorIDCount,
+                           blink::kMacSystemColorIDCount>());
       }];
 }
 

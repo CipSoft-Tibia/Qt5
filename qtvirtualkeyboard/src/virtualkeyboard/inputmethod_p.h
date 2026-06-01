@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef INPUTMETHOD_P_H
 #define INPUTMETHOD_P_H
@@ -22,9 +23,12 @@
 QT_BEGIN_NAMESPACE
 namespace QtVirtualKeyboard {
 
+class InputMethodPrivate;
+
 class Q_VIRTUALKEYBOARD_EXPORT InputMethod : public QVirtualKeyboardAbstractInputMethod
 {
     Q_OBJECT
+    Q_DECLARE_PRIVATE(InputMethod)
     Q_PROPERTY(QVirtualKeyboardInputContext *inputContext READ inputContext CONSTANT)
     Q_PROPERTY(QVirtualKeyboardInputEngine *inputEngine READ inputEngine CONSTANT)
     Q_MOC_INCLUDE("qvirtualkeyboardinputcontext.h")

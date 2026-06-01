@@ -359,10 +359,8 @@ void LinuxDmabufClientBufferIntegration::deleteImage(EGLImageKHR image)
 QtWayland::ClientBuffer *LinuxDmabufClientBufferIntegration::createBufferFor(wl_resource *resource)
 {
     auto it = m_importedBuffers.find(resource);
-    if (it != m_importedBuffers.end()) {
-        m_importedBuffers.value(resource);
-        return new LinuxDmabufClientBuffer(this, it.value()->resource()->handle, m_importedBuffers.value(resource));
-    }
+    if (it != m_importedBuffers.end())
+        return new LinuxDmabufClientBuffer(this, resource, it.value());
 
     return nullptr;
 }
@@ -431,9 +429,8 @@ void LinuxDmabufClientBuffer::setDestroyed()
 
 LinuxDmabufClientBuffer::~LinuxDmabufClientBuffer()
 {
-    // resources are deleted by buffer_destroy_resource
     m_buffer = nullptr;
-    d = nullptr;
+    delete d;
 }
 
 QWaylandBufferRef::BufferFormatEgl LinuxDmabufClientBuffer::bufferFormatEgl() const

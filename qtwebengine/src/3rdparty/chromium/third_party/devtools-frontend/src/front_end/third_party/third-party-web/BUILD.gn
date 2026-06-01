@@ -23,7 +23,8 @@ devtools_entrypoint("bundle") {
 
   visibility = [
     "../../entrypoints/lighthouse_worker/*",
-    "../../models/trace/insights/*",
+    "../../models/issues_manager:issues_manager",
+    "../../models/trace/*",
   ]
 
   visibility += devtools_third_party_visibility

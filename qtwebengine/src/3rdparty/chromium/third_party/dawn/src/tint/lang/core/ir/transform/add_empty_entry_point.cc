@@ -30,8 +30,11 @@
 #include <utility>
 
 #include "src/tint/lang/core/ir/builder.h"
+#include "src/tint/lang/core/ir/constant.h"
 #include "src/tint/lang/core/ir/module.h"
 #include "src/tint/lang/core/ir/validator.h"
+
+using namespace tint::core::number_suffixes;  // NOLINT
 
 namespace tint::core::ir::transform {
 
@@ -39,21 +42,21 @@ namespace {
 
 void Run(ir::Module& ir) {
     for (auto& func : ir.functions) {
-        if (func->Stage() != Function::PipelineStage::kUndefined) {
+        if (func->IsEntryPoint()) {
             return;
         }
     }
 
     ir::Builder builder{ir};
-    auto* ep = builder.Function("unused_entry_point", ir.Types().void_(),
-                                Function::PipelineStage::kCompute, std::array{1u, 1u, 1u});
+    auto* ep = builder.ComputeFunction("unused_entry_point");
     ep->Block()->Append(builder.Return(ep));
 }
 
 }  // namespace
 
 Result<SuccessType> AddEmptyEntryPoint(Module& ir) {
-    auto result = ValidateAndDumpIfNeeded(ir, "AddEmptyEntryPoint transform");
+    auto result =
+        ValidateAndDumpIfNeeded(ir, "core.AddEmptyEntryPoint", kAddEmptyEntryPointCapabilities);
     if (result != Success) {
         return result.Failure();
     }

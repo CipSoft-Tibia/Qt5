@@ -82,6 +82,14 @@ ResultOrError<UnpackedPtr<PipelineLayoutDescriptor>> ValidatePipelineLayoutDescr
 
     BindingCounts bindingCounts = {};
     for (uint32_t i = 0; i < descriptor->bindGroupLayoutCount; ++i) {
+        if (descriptor->bindGroupLayouts[i] == nullptr) {
+            if (device->IsToggleEnabled(Toggle::AllowUnsafeAPIs)) {
+                continue;
+            } else {
+                return DAWN_VALIDATION_ERROR("bindGroupLayouts[%i] cannot be nullptr", i);
+            }
+        }
+
         DAWN_TRY(device->ValidateObject(descriptor->bindGroupLayouts[i]));
         DAWN_INVALID_IF(descriptor->bindGroupLayouts[i]->GetPipelineCompatibilityToken() !=
                             pipelineCompatibilityToken,
@@ -94,13 +102,29 @@ ResultOrError<UnpackedPtr<PipelineLayoutDescriptor>> ValidatePipelineLayoutDescr
             descriptor->bindGroupLayouts[i]->GetInternalBindGroupLayout()->GetBindingCountInfo());
     }
 
-    DAWN_TRY(ValidateBindingCounts(device->GetLimits(), bindingCounts));
+    DAWN_TRY(ValidateBindingCounts(device->GetLimits(), bindingCounts, device->GetAdapter()));
+
+    // Validate immediateDataRangeByteSize.
+    if (descriptor->immediateDataRangeByteSize) {
+        DAWN_INVALID_IF(!device->HasFeature(Feature::ChromiumExperimentalImmediateData),
+                        "Set non-zero immediateDatRangeByteSize without "
+                        "%s feature is not allowed.",
+                        ToAPI(Feature::ChromiumExperimentalImmediateData));
+
+        uint32_t maxImmediateDataRangeByteSize =
+            device->GetLimits().experimentalImmediateDataLimits.maxImmediateDataRangeByteSize;
+
+        DAWN_INVALID_IF(descriptor->immediateDataRangeByteSize > maxImmediateDataRangeByteSize,
+                        "immediateDataRangeByteSize (%i) is larger than the maximum allowed (%i).",
+                        descriptor->immediateDataRangeByteSize, maxImmediateDataRangeByteSize);
+    }
+
     return unpacked;
 }
 
 StageAndDescriptor::StageAndDescriptor(SingleShaderStage shaderStage,
                                        ShaderModuleBase* module,
-                                       const char* entryPoint,
+                                       StringView entryPoint,
                                        size_t constantCount,
                                        ConstantEntry const* constants)
     : shaderStage(shaderStage),
@@ -114,12 +138,19 @@ StageAndDescriptor::StageAndDescriptor(SingleShaderStage shaderStage,
 PipelineLayoutBase::PipelineLayoutBase(DeviceBase* device,
                                        const UnpackedPtr<PipelineLayoutDescriptor>& descriptor,
                                        ApiObjectBase::UntrackedByDeviceTag tag)
-    : ApiObjectBase(device, descriptor->label) {
+    : ApiObjectBase(device, descriptor->label),
+      mExplicitBindGroupLayoutsCount(static_cast<uint32_t>(descriptor->bindGroupLayoutCount)),
+      mImmediateDataRangeByteSize(descriptor->immediateDataRangeByteSize) {
     DAWN_ASSERT(descriptor->bindGroupLayoutCount <= kMaxBindGroups);
 
     auto bgls = ityp::SpanFromUntyped<BindGroupIndex>(descriptor->bindGroupLayouts,
                                                       descriptor->bindGroupLayoutCount);
     for (auto [group, bgl] : Enumerate(bgls)) {
+        // According to WebGPU SPEC of CreatePipelineLayout(), if bindGroupLayouts[i] is not null
+        // and bindGroupLayouts[i].[[descriptor]].entries is empty, set bindGroupLayouts[i] to null.
+        if (bgl == nullptr || bgl->IsEmpty()) {
+            continue;
+        }
         mBindGroupLayouts[group] = bgl;
         mMask.set(group);
     }
@@ -134,6 +165,23 @@ PipelineLayoutBase::PipelineLayoutBase(DeviceBase* device,
             mStorageAttachmentSlots[slot] = pls->storageAttachments[i].format;
         }
     }
+
+    BindingCounts bindingCounts = {};
+    for (uint32_t i = 0; i < descriptor->bindGroupLayoutCount; ++i) {
+        if (descriptor->bindGroupLayouts[i]) {
+            AccumulateBindingCounts(&bindingCounts, descriptor->bindGroupLayouts[i]
+                                                        ->GetInternalBindGroupLayout()
+                                                        ->GetBindingCountInfo());
+        }
+    }
+    mNumStorageBufferBindingsInVertexStage =
+        bindingCounts.perStage[SingleShaderStage::Vertex].storageBufferCount;
+    mNumStorageTextureBindingsInVertexStage =
+        bindingCounts.perStage[SingleShaderStage::Vertex].storageTextureCount;
+    mNumStorageBufferBindingsInFragmentStage =
+        bindingCounts.perStage[SingleShaderStage::Fragment].storageBufferCount;
+    mNumStorageTextureBindingsInFragmentStage =
+        bindingCounts.perStage[SingleShaderStage::Fragment].storageTextureCount;
 }
 
 PipelineLayoutBase::PipelineLayoutBase(DeviceBase* device,
@@ -144,7 +192,7 @@ PipelineLayoutBase::PipelineLayoutBase(DeviceBase* device,
 
 PipelineLayoutBase::PipelineLayoutBase(DeviceBase* device,
                                        ObjectBase::ErrorTag tag,
-                                       const char* label)
+                                       StringView label)
     : ApiObjectBase(device, tag, label) {}
 
 PipelineLayoutBase::~PipelineLayoutBase() = default;
@@ -154,7 +202,7 @@ void PipelineLayoutBase::DestroyImpl() {
 }
 
 // static
-Ref<PipelineLayoutBase> PipelineLayoutBase::MakeError(DeviceBase* device, const char* label) {
+Ref<PipelineLayoutBase> PipelineLayoutBase::MakeError(DeviceBase* device, StringView label) {
     return AcquireRef(new PipelineLayoutBase(device, ObjectBase::kError, label));
 }
 
@@ -174,17 +222,17 @@ ResultOrError<Ref<PipelineLayoutBase>> PipelineLayoutBase::CreateDefault(
             modifiedEntry->buffer.type == mergedEntry.buffer.type &&
             modifiedEntry->sampler.type == mergedEntry.sampler.type &&
             // Compatibility between these sample types is checked below.
-            (modifiedEntry->texture.sampleType != wgpu::TextureSampleType::Undefined) ==
-                (mergedEntry.texture.sampleType != wgpu::TextureSampleType::Undefined) &&
+            (modifiedEntry->texture.sampleType != wgpu::TextureSampleType::BindingNotUsed) ==
+                (mergedEntry.texture.sampleType != wgpu::TextureSampleType::BindingNotUsed) &&
             modifiedEntry->storageTexture.access == mergedEntry.storageTexture.access;
 
         // Minimum buffer binding size excluded because we take the maximum seen across stages.
-        if (modifiedEntry->buffer.type != wgpu::BufferBindingType::Undefined) {
+        if (modifiedEntry->buffer.type != wgpu::BufferBindingType::BindingNotUsed) {
             compatible = compatible && modifiedEntry->buffer.hasDynamicOffset ==
                                            mergedEntry.buffer.hasDynamicOffset;
         }
 
-        if (modifiedEntry->texture.sampleType != wgpu::TextureSampleType::Undefined) {
+        if (modifiedEntry->texture.sampleType != wgpu::TextureSampleType::BindingNotUsed) {
             // Sample types are compatible if they are exactly equal,
             // or if the |modifiedEntry| is Float and the |mergedEntry| is UnfilterableFloat.
             // Note that the |mergedEntry| never has type Float. Texture bindings all start
@@ -201,7 +249,7 @@ ResultOrError<Ref<PipelineLayoutBase>> PipelineLayoutBase::CreateDefault(
                 modifiedEntry->texture.multisampled == mergedEntry.texture.multisampled;
         }
 
-        if (modifiedEntry->storageTexture.access != wgpu::StorageTextureAccess::Undefined) {
+        if (modifiedEntry->storageTexture.access != wgpu::StorageTextureAccess::BindingNotUsed) {
             compatible =
                 compatible &&
                 modifiedEntry->storageTexture.format == mergedEntry.storageTexture.format &&
@@ -306,6 +354,8 @@ ResultOrError<Ref<PipelineLayoutBase>> PipelineLayoutBase::CreateDefault(
     // there's no issue with using the same struct multiple times.
     ExternalTextureBindingLayout externalTextureBindingLayout;
 
+    uint32_t immediateDataRangeByteSize = 0;
+
     // Loops over all the reflected BindGroupLayoutEntries from shaders.
     for (const StageAndDescriptor& stage : stages) {
         const EntryPointMetadata& metadata = stage.module->GetEntryPoint(stage.entryPoint);
@@ -342,6 +392,13 @@ ResultOrError<Ref<PipelineLayoutBase>> PipelineLayoutBase::CreateDefault(
                 entry->texture.sampleType = wgpu::TextureSampleType::Float;
             }
         }
+
+        // For render pipeline that might has vertex and
+        // fragment stages, it is possible that each stage has their own immediate data variable
+        // shares the same immediate data block. Pick the max size of immediate data variable from
+        // vertex and fragment stage as the pipelineLayout immediate data block size.
+        immediateDataRangeByteSize =
+            std::max(immediateDataRangeByteSize, metadata.immediateDataRangeByteSize);
     }
 
     // Create the bind group layouts. We need to keep track of the last non-empty BGL because
@@ -368,16 +425,19 @@ ResultOrError<Ref<PipelineLayoutBase>> PipelineLayoutBase::CreateDefault(
     PipelineLayoutDescriptor desc = {};
     desc.bindGroupLayouts = bgls.data();
     desc.bindGroupLayoutCount = static_cast<uint32_t>(pipelineBGLCount);
+    desc.immediateDataRangeByteSize = immediateDataRangeByteSize;
 
     Ref<PipelineLayoutBase> result;
     DAWN_TRY_ASSIGN(result, device->CreatePipelineLayout(&desc, pipelineCompatibilityToken));
     DAWN_ASSERT(!result->IsError());
 
-    // Check in debug that the pipeline layout is compatible with the current pipeline.
+    // That the auto pipeline layout is compatible with the current pipeline.
+    // Note: the currently specified rules can generate invalid default layouts.
+    // Hopefully the spec will be updated to prevent this.
+    // See: https://github.com/gpuweb/gpuweb/issues/4952
     for (const StageAndDescriptor& stage : stages) {
         const EntryPointMetadata& metadata = stage.module->GetEntryPoint(stage.entryPoint);
-        DAWN_ASSERT(
-            ValidateCompatibilityWithPipelineLayout(device, metadata, result.Get()).IsSuccess());
+        DAWN_TRY(ValidateCompatibilityWithPipelineLayout(device, metadata, result.Get()));
     }
 
     return std::move(result);
@@ -390,28 +450,30 @@ ObjectType PipelineLayoutBase::GetType() const {
 const BindGroupLayoutBase* PipelineLayoutBase::GetFrontendBindGroupLayout(
     BindGroupIndex group) const {
     DAWN_ASSERT(!IsError());
-    DAWN_ASSERT(group < kMaxBindGroupsTyped);
-    DAWN_ASSERT(mMask[group]);
-    const BindGroupLayoutBase* bgl = mBindGroupLayouts[group].Get();
-    DAWN_ASSERT(bgl != nullptr);
-    return bgl;
+    DAWN_ASSERT(static_cast<uint32_t>(group) < mExplicitBindGroupLayoutsCount);
+    if (mMask[group]) {
+        const BindGroupLayoutBase* bgl = mBindGroupLayouts[group].Get();
+        DAWN_ASSERT(bgl != nullptr);
+        return bgl;
+    } else {
+        return GetDevice()->GetEmptyBindGroupLayout();
+    }
 }
 
 BindGroupLayoutBase* PipelineLayoutBase::GetFrontendBindGroupLayout(BindGroupIndex group) {
     DAWN_ASSERT(!IsError());
-    DAWN_ASSERT(group < kMaxBindGroupsTyped);
-    DAWN_ASSERT(mMask[group]);
-    BindGroupLayoutBase* bgl = mBindGroupLayouts[group].Get();
-    DAWN_ASSERT(bgl != nullptr);
-    return bgl;
+    DAWN_ASSERT(static_cast<uint32_t>(group) < mExplicitBindGroupLayoutsCount);
+    if (mMask[group]) {
+        BindGroupLayoutBase* bgl = mBindGroupLayouts[group].Get();
+        DAWN_ASSERT(bgl != nullptr);
+        return bgl;
+    } else {
+        return GetDevice()->GetEmptyBindGroupLayout();
+    }
 }
 
 const BindGroupLayoutInternalBase* PipelineLayoutBase::GetBindGroupLayout(
     BindGroupIndex group) const {
-    return GetFrontendBindGroupLayout(group)->GetInternalBindGroupLayout();
-}
-
-BindGroupLayoutInternalBase* PipelineLayoutBase::GetBindGroupLayout(BindGroupIndex group) {
     return GetFrontendBindGroupLayout(group)->GetInternalBindGroupLayout();
 }
 
@@ -457,6 +519,7 @@ size_t PipelineLayoutBase::ComputeContentHash() {
     ObjectContentHasher recorder;
     recorder.Record(mMask);
 
+    recorder.Record(mExplicitBindGroupLayoutsCount);
     for (BindGroupIndex group : IterateBitSet(mMask)) {
         recorder.Record(GetBindGroupLayout(group)->GetContentHash());
     }
@@ -467,12 +530,19 @@ size_t PipelineLayoutBase::ComputeContentHash() {
         recorder.Record(slotFormat);
     }
 
+    // Hash the immediate data range byte size
+    recorder.Record(mImmediateDataRangeByteSize);
+
     return recorder.GetContentHash();
 }
 
 bool PipelineLayoutBase::EqualityFunc::operator()(const PipelineLayoutBase* a,
                                                   const PipelineLayoutBase* b) const {
     if (a->mMask != b->mMask) {
+        return false;
+    }
+
+    if (a->mExplicitBindGroupLayoutsCount != b->mExplicitBindGroupLayoutsCount) {
         return false;
     }
 
@@ -495,7 +565,36 @@ bool PipelineLayoutBase::EqualityFunc::operator()(const PipelineLayoutBase* a,
         }
     }
 
+    // Check immediate data range
+    if (a->mImmediateDataRangeByteSize != b->mImmediateDataRangeByteSize) {
+        return false;
+    }
+
     return true;
+}
+
+uint32_t PipelineLayoutBase::GetExplicitBindGroupLayoutsCount() const {
+    return mExplicitBindGroupLayoutsCount;
+}
+
+uint32_t PipelineLayoutBase::GetImmediateDataRangeByteSize() const {
+    return mImmediateDataRangeByteSize;
+}
+
+uint32_t PipelineLayoutBase::GetNumStorageBufferBindingsInVertexStage() const {
+    return mNumStorageBufferBindingsInVertexStage;
+}
+
+uint32_t PipelineLayoutBase::GetNumStorageTextureBindingsInVertexStage() const {
+    return mNumStorageTextureBindingsInVertexStage;
+}
+
+uint32_t PipelineLayoutBase::GetNumStorageBufferBindingsInFragmentStage() const {
+    return mNumStorageBufferBindingsInFragmentStage;
+}
+
+uint32_t PipelineLayoutBase::GetNumStorageTextureBindingsInFragmentStage() const {
+    return mNumStorageTextureBindingsInFragmentStage;
 }
 
 }  // namespace dawn::native

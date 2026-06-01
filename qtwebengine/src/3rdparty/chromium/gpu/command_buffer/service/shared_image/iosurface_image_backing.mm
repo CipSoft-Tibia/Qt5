@@ -88,8 +88,7 @@ gfx::BufferFormat GetBufferFormatForPlane(viz::SharedImageFormat format,
       return num_channels == 2 ? gfx::BufferFormat::RG_1616
                                : gfx::BufferFormat::R_16;
   }
-  NOTREACHED_IN_MIGRATION();
-  return gfx::BufferFormat::RGBA_8888;
+  NOTREACHED();
 }
 
 #if BUILDFLAG(USE_DAWN)
@@ -118,21 +117,7 @@ wgpu::Texture CreateWGPUTexture(wgpu::SharedTextureMemory shared_texture_memory,
   texture_descriptor.viewFormats = view_formats.data();
 
   wgpu::DawnTextureInternalUsageDescriptor internalDesc;
-  if (base::FeatureList::IsEnabled(
-          features::kDawnSIRepsUseClientProvidedInternalUsages)) {
-    internalDesc.internalUsage = internal_usage;
-  } else {
-    // We need to have internal usages of CopySrc for copies. If texture is not
-    // for video frame import, which has bi-planar format, we also need
-    // RenderAttachment usage for clears, and TextureBinding for
-    // copyTextureForBrowser.
-    internalDesc.internalUsage =
-        wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::TextureBinding;
-    if (wgpu_format != wgpu::TextureFormat::R8BG8Biplanar420Unorm &&
-        wgpu_format != wgpu::TextureFormat::R10X6BG10X6Biplanar420Unorm) {
-      internalDesc.internalUsage |= wgpu::TextureUsage::RenderAttachment;
-    }
-  }
+  internalDesc.internalUsage = internal_usage;
 
   texture_descriptor.nextInChain = &internalDesc;
 
@@ -436,8 +421,8 @@ IOSurfaceImageBacking::SkiaGaneshRepresentation::BeginWriteAccess(
   for (int plane_index = 0; plane_index < format().NumberOfPlanes();
        plane_index++) {
     // Use the color type per plane for multiplanar formats.
-    SkColorType sk_color_type = viz::ToClosestSkColorType(
-        /*gpu_compositing=*/true, format(), plane_index);
+    SkColorType sk_color_type =
+        viz::ToClosestSkColorType(format(), plane_index);
     // Gray is not a renderable single channel format, but alpha is.
     if (sk_color_type == kGray_8_SkColorType) {
       sk_color_type = kAlpha_8_SkColorType;
@@ -588,8 +573,7 @@ IOSurfaceImageBacking::SkiaGraphiteRepresentation::BeginWriteAccess(
   int num_planes = format().NumberOfPlanes();
   write_surfaces_.reserve(num_planes);
   for (int plane = 0; plane < num_planes; plane++) {
-    SkColorType sk_color_type = viz::ToClosestSkColorType(
-        /*gpu_compositing=*/true, format(), plane);
+    SkColorType sk_color_type = viz::ToClosestSkColorType(format(), plane);
     // Gray is not a renderable single channel format, but alpha is.
     if (sk_color_type == kGray_8_SkColorType) {
       sk_color_type = kAlpha_8_SkColorType;
@@ -713,7 +697,7 @@ bool IOSurfaceImageBacking::OverlayRepresentation::IsInUseByWindowServer()
   // IOSurfaceIsInUse() will always return true if the IOSurface is wrapped in
   // a CVPixelBuffer. Ignore the signal for such IOSurfaces (which are the
   // ones output by hardware video decode and video capture).
-  if (backing()->usage() & SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX) {
+  if (backing()->usage().Has(SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX)) {
     return false;
   }
 
@@ -771,11 +755,8 @@ class IOSurfaceImageBacking::DawnRepresentation final
 wgpu::Texture IOSurfaceImageBacking::DawnRepresentation::BeginAccess(
     wgpu::TextureUsage wgpu_texture_usage,
     wgpu::TextureUsage internal_usage) {
-  const bool readonly =
-      (wgpu_texture_usage & ~kReadOnlyUsage) == 0 &&
-      (!base::FeatureList::IsEnabled(
-           features::kDawnSIRepsUseClientProvidedInternalUsages) ||
-       (internal_usage & ~kReadOnlyUsage) == 0);
+  const bool readonly = (wgpu_texture_usage & ~kReadOnlyUsage) == 0 &&
+                        (internal_usage & ~kReadOnlyUsage) == 0;
 
   IOSurfaceImageBacking* iosurface_backing =
       static_cast<IOSurfaceImageBacking*>(backing());
@@ -888,11 +869,8 @@ void IOSurfaceImageBacking::DawnRepresentation::EndAccess() {
   // its state tracking.
   IOSurfaceImageBacking* iosurface_backing =
       static_cast<IOSurfaceImageBacking*>(backing());
-  const bool readonly =
-      (usage_ & ~kReadOnlyUsage) == 0 &&
-      (!base::FeatureList::IsEnabled(
-           features::kDawnSIRepsUseClientProvidedInternalUsages) ||
-       (internal_usage_ & ~kReadOnlyUsage) == 0);
+  const bool readonly = (usage_ & ~kReadOnlyUsage) == 0 &&
+                        (internal_usage_ & ~kReadOnlyUsage) == 0;
   iosurface_backing->EndAccess(readonly);
   int num_outstanding_accesses =
       iosurface_backing->TrackEndAccessToWGPUTexture(texture_);
@@ -1027,7 +1005,7 @@ IOSurfaceImageBacking::IOSurfaceImageBacking(
   // If this will be bound to different GL backends, then make RetainGLTexture
   // and ReleaseGLTexture actually create and destroy the texture.
   // https://crbug.com/1251724
-  if (usage & SHARED_IMAGE_USAGE_HIGH_PERFORMANCE_GPU) {
+  if (usage.Has(SHARED_IMAGE_USAGE_HIGH_PERFORMANCE_GPU)) {
     return;
   }
 
@@ -1228,7 +1206,7 @@ base::trace_event::MemoryAllocatorDump* IOSurfaceImageBacking::OnMemoryDump(
   // The client tracing id is to identify the GpuMemoryBuffer client that
   // created the allocation. For CVPixelBufferRefs, there is no corresponding
   // GpuMemoryBuffer, so use an invalid client id.
-  if (usage() & SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX) {
+  if (usage().Has(SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX)) {
     client_tracing_id =
         base::trace_event::MemoryDumpManager::kInvalidTracingProcessId;
   }
@@ -1385,14 +1363,6 @@ std::unique_ptr<DawnImageRepresentation> IOSurfaceImageBacking::ProduceDawn(
   if (io_surface_format_ == 'BGRA') {
     wgpu_format = wgpu::TextureFormat::BGRA8Unorm;
   }
-  // TODO(crbug.com/40213546): Remove these if conditions after using single
-  // multiplanar mailbox for which wgpu_format should already be correct.
-  if (io_surface_format_ == '420v') {
-    wgpu_format = wgpu::TextureFormat::R8BG8Biplanar420Unorm;
-  }
-  if (io_surface_format_ == 'x420') {
-    wgpu_format = wgpu::TextureFormat::R10X6BG10X6Biplanar420Unorm;
-  }
   if (wgpu_format == wgpu::TextureFormat::Undefined) {
     LOG(ERROR) << "Unsupported format for Dawn: " << format().ToString();
     return nullptr;
@@ -1411,8 +1381,23 @@ std::unique_ptr<DawnImageRepresentation> IOSurfaceImageBacking::ProduceDawn(
     wgpu::SharedTextureMemory shared_texture_memory =
         dawn_texture_holder_->GetSharedTextureMemory(device);
     if (!shared_texture_memory) {
+      // NOTE: `shared_dawn_context` may be null if Graphite is not being used.
+      const auto* shared_dawn_context = context_state->dawn_context_provider();
+      const bool is_graphite_device =
+          shared_dawn_context &&
+          shared_dawn_context->GetDevice().Get() == device.Get();
+
       wgpu::SharedTextureMemoryIOSurfaceDescriptor io_surface_desc;
       io_surface_desc.ioSurface = io_surface_.get();
+      // Set storage binding usage only if explicitly needed for WebGPU - this
+      // forces the MTLTexture wrapping the IOSurface to have ShaderWrite usage
+      // which in turn prevents texture compression. It's possible this doesn't
+      // have any effect given that IOSurfaces have linear layout, but it might
+      // if the kernel chooses to create a separate allocation for the GPU.
+      io_surface_desc.allowStorageBinding =
+          (usage() & SHARED_IMAGE_USAGE_WEBGPU_STORAGE_TEXTURE) &&
+          !is_graphite_device;
+
       wgpu::SharedTextureMemoryDescriptor desc = {};
       desc.nextInChain = &io_surface_desc;
 
@@ -1425,11 +1410,7 @@ std::unique_ptr<DawnImageRepresentation> IOSurfaceImageBacking::ProduceDawn(
       // We cache the SharedTextureMemory instance that is associated with the
       // Graphite device.
       // TODO(crbug.com/345674550): Extend caching to WebGPU devices as well.
-      // NOTE: `dawn_context_provider` may be null if Graphite is not being
-      // used.
-      auto* dawn_context_provider = context_state->dawn_context_provider();
-      if (dawn_context_provider &&
-          dawn_context_provider->GetDevice().Get() == device.Get()) {
+      if (is_graphite_device) {
         // This is the Graphite device, so we cache its SharedTextureMemory
         // instance.
         dawn_texture_holder_->MaybeCacheSharedTextureMemory(
@@ -1591,7 +1572,7 @@ bool IOSurfaceImageBacking::BeginAccess(bool readonly) {
     return false;
   }
   // Track reads and writes if not being used for concurrent read/writes.
-  if (!(usage() & SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE)) {
+  if (!(usage().Has(SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE))) {
     if (readonly && ongoing_write_access_) {
       DLOG(ERROR) << "Unable to begin read access because another "
                      "write access is in progress";
@@ -1616,13 +1597,13 @@ bool IOSurfaceImageBacking::BeginAccess(bool readonly) {
 void IOSurfaceImageBacking::EndAccess(bool readonly) {
   if (readonly) {
     CHECK_GT(num_ongoing_read_accesses_, 0u);
-    if (!(usage() & SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE)) {
+    if (!(usage().Has(SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE))) {
       CHECK(!ongoing_write_access_);
     }
     num_ongoing_read_accesses_--;
   } else {
     CHECK(ongoing_write_access_);
-    if (!(usage() & SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE)) {
+    if (!(usage().Has(SHARED_IMAGE_USAGE_CONCURRENT_READ_WRITE))) {
       CHECK_EQ(num_ongoing_read_accesses_, 0u);
     }
     ongoing_write_access_ = false;

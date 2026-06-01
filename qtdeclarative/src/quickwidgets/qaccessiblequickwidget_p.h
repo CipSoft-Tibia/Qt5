@@ -27,7 +27,7 @@ QT_BEGIN_NAMESPACE
 // These classes implement the QQuickWiget accessibility switcharoo,
 // where the child items of the QQuickWidgetOffscreenWindow are reported
 // as child accessible interfaces of the QAccessibleQuickWidget.
-class QAccessibleQuickWidget: public QAccessibleWidget
+class QAccessibleQuickWidget: public QAccessibleWidgetV2
 {
 public:
     QAccessibleQuickWidget(QQuickWidget* widget);

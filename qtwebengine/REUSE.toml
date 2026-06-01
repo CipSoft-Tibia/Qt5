@@ -23,6 +23,8 @@ path = ["tests/auto/widgets/qwebenginepage/resources/*",
         "tests/auto/widgets/qwebenginescript/resources/*",
         "tests/auto/widgets/qwebengineview/resources/*",
         "tests/auto/widgets/qwebengineprofile/resources/*",
+        "tests/auto/widgets/qwebengineprofilebuilder/resources/*",
+        "tests/auto/widgets/qwebenginepermission/resources/*",
         "tests/auto/widgets/qwebenginehistory/resources/*",
         "tests/auto/core/certificateerror/resources/*",
         "tests/auto/core/origins/resources/subdir/*",
@@ -49,10 +51,10 @@ path = ["tests/auto/widgets/qwebenginepage/resources/*",
         "tests/auto/widgets/spellchecking/resources/index.html",
         "tests/auto/quick/dialogs/index.html",
         "tests/auto/quick/inspectorserver/html/basic_page.html",
-        "tests/auto/quick/qmltests/mock-delegates/TestParams/qmldir",
         "tests/auto/quick/qquickwebenginedefaultsurfaceformat/html/basic_page.html",
         "tests/auto/quick/qtbug-70248/test.qml",
         "tests/auto/widgets/defaultsurfaceformat/resources/index.html",
+        "tests/auto/widgets/extensions/resources/**",
         "tests/auto/widgets/offscreen/test.html",
         "tests/auto/widgets/printing/resources/basic_printing_page.html",
         "tests/auto/widgets/proxypac/proxy.pac",
@@ -94,7 +96,7 @@ SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
 SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR BSD-3-Clause"
 
 [[annotations]]
-path = ["**/doc/images/**", "**.qdocconf", "config_help.txt"]
+path = ["**/doc/images/**", "**.qdocconf", "**.qdocinc", "config_help.txt"]
 comment = "documentation"
 precedence = "closest"
 SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
@@ -120,4 +122,3 @@ precedence = "override"
 comment = "License file."
 SPDX-FileCopyrightText = "None"
 SPDX-License-Identifier = "CC0-1.0"
-

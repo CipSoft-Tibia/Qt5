@@ -352,6 +352,9 @@ public:
     inline QNoDebug &operator<<(const T &) { return *this; }
 };
 
+QNoDebug QMessageLogger::noDebug(...) const noexcept
+{ return {}; }
+
 inline QDebug &QDebug::operator=(const QDebug &other)
 {
     QDebug{other}.swap(*this);

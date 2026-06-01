@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "q3dscene_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -234,7 +235,7 @@ void Q3DScene::setPrimarySubViewport(QRect primarySubViewport)
     Q_D(Q3DScene);
     if (d->m_primarySubViewport != primarySubViewport) {
         if (!primarySubViewport.isValid() && !primarySubViewport.isNull()) {
-            qWarning("Viewport is invalid.");
+            qCWarning(lcGraphsScene3D, "Viewport is invalid.");
             return;
         }
 
@@ -317,7 +318,7 @@ void Q3DScene::setSecondarySubViewport(QRect secondarySubViewport)
     Q_D(Q3DScene);
     if (d->m_secondarySubViewport != secondarySubViewport) {
         if (!secondarySubViewport.isValid() && !secondarySubViewport.isNull()) {
-            qWarning("Viewport is invalid.");
+            qCWarning(lcGraphsScene3D, "Viewport is invalid.");
             return;
         }
 

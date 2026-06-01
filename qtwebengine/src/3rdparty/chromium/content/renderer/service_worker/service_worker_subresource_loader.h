@@ -135,8 +135,6 @@ class CONTENT_EXPORT ServiceWorkerSubresourceLoader
       const std::optional<GURL>& new_url) override;
   void SetPriority(net::RequestPriority priority,
                    int intra_priority_value) override;
-  void PauseReadingBodyFromNet() override;
-  void ResumeReadingBodyFromNet() override;
 
   int StartBlobReading(mojo::ScopedDataPipeConsumerHandle* body_pipe);
   void OnSideDataReadingComplete(mojo::ScopedDataPipeConsumerHandle data_pipe,
@@ -213,10 +211,6 @@ class CONTENT_EXPORT ServiceWorkerSubresourceLoader
   base::TimeTicks completion_time_;
 
   void TransitionToStatus(Status new_status);
-
-  // If eligible, dispatch the network request which races the ServiceWorker
-  // fetch handler.
-  bool MaybeStartRaceNetworkRequest();
 
   // Returns false if fails to start race network request.
   // A caller should handle the case.

@@ -321,13 +321,6 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
     kTerminationUnnecessary,
   };
 
-  enum class TerminationProgress {
-    kNotRequested,
-    kRequested,
-    kPrepared,
-    kPerforming,
-  };
-
   // Returns true if we should synchronously terminate the script execution so
   // that a shutdown task can be handled by the thread event loop.
   TerminationState ShouldTerminateScriptExecution()
@@ -424,10 +417,8 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
   // A unique identifier among all WorkerThreads.
   const int worker_thread_id_;
 
-  // Represents progress after the Terminate() call.
-  TerminationProgress termination_progress_ GUARDED_BY(lock_) =
-      TerminationProgress::kNotRequested;
-  size_t num_child_threads_ GUARDED_BY(lock_) = 0;
+  // Set on the parent thread.
+  bool requested_to_terminate_ GUARDED_BY(lock_) = false;
 
   ThreadState thread_state_ GUARDED_BY(lock_) = ThreadState::kNotStarted;
   ExitCode exit_code_ GUARDED_BY(lock_) = ExitCode::kNotTerminated;

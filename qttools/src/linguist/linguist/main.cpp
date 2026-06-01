@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
-#include "globals.h"
 
 #include <QtCore/QFile>
 #include <QtCore/QLibraryInfo>
@@ -18,6 +17,8 @@
 #endif // Q_OS_MAC
 
 QT_USE_NAMESPACE
+
+using namespace Qt::Literals::StringLiterals;
 
 #ifdef Q_OS_MAC
 class ApplicationEventFilter : public QObject
@@ -76,7 +77,7 @@ int main(int argc, char **argv)
 
     for (int i = 1; i < args.size(); ++i) {
         QString argument = args.at(i);
-        if (argument == QLatin1String("-resourcedir")) {
+        if (argument == "-resourcedir"_L1) {
             if (i + 1 < args.size()) {
                 resourceDir = QFile::decodeName(args.at(++i).toLocal8Bit());
             } else {
@@ -89,16 +90,16 @@ int main(int argc, char **argv)
 
     QTranslator translator;
     QTranslator qtTranslator;
-    if (translator.load(QLocale(), QLatin1String("linguist"), QLatin1String("_"), resourceDir)) {
+    if (translator.load(QLocale(), "linguist"_L1, "_"_L1, resourceDir)) {
         app.installTranslator(&translator);
-        if (qtTranslator.load(QLocale(), QLatin1String("qt"), QLatin1String("_"), resourceDir))
+        if (qtTranslator.load(QLocale(), "qt"_L1, "_"_L1, resourceDir))
             app.installTranslator(&qtTranslator);
         else
             app.removeTranslator(&translator);
     }
 
-    app.setOrganizationName(QLatin1String("QtProject"));
-    app.setApplicationName(QLatin1String("Linguist"));
+    app.setOrganizationName("QtProject"_L1);
+    app.setApplicationName("Linguist"_L1);
 
     MainWindow mw;
 #ifdef Q_OS_MAC

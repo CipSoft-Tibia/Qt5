@@ -39,7 +39,7 @@ class QClipData;
 class QRasterPaintEngineState : public QPainterState
 {
 public:
-    QRasterPaintEngineState(QRasterPaintEngineState &other);
+    QRasterPaintEngineState(const QRasterPaintEngineState &other);
     QRasterPaintEngineState();
     ~QRasterPaintEngineState();
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qtextstream.h>
 #include <QtGui/private/qguiapplication_p.h>
@@ -32,7 +33,7 @@
 #endif
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixthemes_p.h>
+#include <QtGui/private/qgenericunixtheme_p.h>
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
 #include <QtFbSupport/private/qfbvthandler_p.h>
 #ifndef QT_NO_OPENGL
@@ -232,6 +233,7 @@ bool QEglFSIntegration::hasCapability(QPlatformIntegration::Capability cap) cons
 #endif
     case WindowManagement: return false;
     case OpenGLOnRasterSurface: return true;
+    case OffscreenSurface: return true;
     default: return QPlatformIntegration::hasCapability(cap);
     }
 }

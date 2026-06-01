@@ -8,6 +8,7 @@
 #include <stddef.h>
 
 #include <array>
+#include <cstddef>
 #include <iterator>
 #include <type_traits>
 
@@ -229,7 +230,7 @@ class V8_EXPORT MemorySpan {
 
     constexpr Iterator& operator+=(difference_type rhs) {
       ptr_ += rhs;
-      return this;
+      return *this;
     }
 
     [[nodiscard]] friend constexpr Iterator operator+(Iterator lhs,
@@ -245,7 +246,7 @@ class V8_EXPORT MemorySpan {
 
     constexpr Iterator& operator-=(difference_type rhs) {
       ptr_ -= rhs;
-      return this;
+      return *this;
     }
 
     [[nodiscard]] friend constexpr Iterator operator-(Iterator lhs,
@@ -304,6 +305,18 @@ template <class T, std::size_t N, std::size_t... I>
     T (&&a)[N], std::index_sequence<I...>) {
   return {{std::move(a[I])...}};
 }
+
+template <typename Element>
+struct MemorySpanIteratorPointerTraits {
+  using pointer = typename ::v8::MemorySpan<Element>::Iterator;
+  using element_type = Element;
+  using difference_type = ptrdiff_t;
+
+  static constexpr element_type* to_address(const pointer& p) noexcept {
+    return std::to_address(p.operator->());
+  }
+};
+
 }  // namespace detail
 
 template <class T, std::size_t N>
@@ -319,4 +332,13 @@ template <class T, std::size_t N>
 }
 
 }  // namespace v8
+
+template <>
+struct std::pointer_traits<::v8::MemorySpan<const unsigned char>::Iterator> :
+  v8::detail::MemorySpanIteratorPointerTraits<const unsigned char> {};
+
+template <>
+struct std::pointer_traits<::v8::MemorySpan<unsigned char>::Iterator> :
+  v8::detail::MemorySpanIteratorPointerTraits<unsigned char> {};
+
 #endif  // INCLUDE_V8_MEMORY_SPAN_H_

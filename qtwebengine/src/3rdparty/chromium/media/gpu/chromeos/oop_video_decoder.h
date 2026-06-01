@@ -6,6 +6,7 @@
 #define MEDIA_GPU_CHROMEOS_OOP_VIDEO_DECODER_H_
 
 #include "base/containers/lru_cache.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/sequenced_task_runner.h"
@@ -108,7 +109,7 @@ class MEDIA_GPU_EXPORT OOPVideoDecoder
   // stable::mojom::MediaLog implementation.
   void AddLogRecord(const MediaLogRecord& event) final;
 
-  FrameResource* GetOriginalFrame(gfx::GenericSharedMemoryId frame_id);
+  FrameResource* GetOriginalFrame(const base::UnguessableToken& tracking_token);
 
  private:
   OOPVideoDecoder(std::unique_ptr<media::MediaLog> media_log,
@@ -226,7 +227,7 @@ class MEDIA_GPU_EXPORT OOPVideoDecoder
   bool needs_transcryption_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
 
   // |received_id_to_decoded_frame_map_| and
-  // |generated_id_to_decoded_frame_map_| are maps that allow us to recycle
+  // |generated_token_to_decoded_frame_map_| are maps that allow us to recycle
   // buffers safely. In the absence of them, the MailboxVideoFrameConverter
   // would create a SharedImage for every single incoming frame, and it would
   // destroy the SharedImage every time the client returns the decoded frame. To
@@ -239,8 +240,10 @@ class MEDIA_GPU_EXPORT OOPVideoDecoder
   // least among all clients of media::GetNextGpuMemoryBufferId()).
   base::flat_map<gfx::GpuMemoryBufferId, scoped_refptr<FrameResource>>
       received_id_to_decoded_frame_map_ GUARDED_BY_CONTEXT(sequence_checker_);
-  base::flat_map<gfx::GenericSharedMemoryId, FrameResource*>
-      generated_id_to_decoded_frame_map_ GUARDED_BY_CONTEXT(sequence_checker_);
+  base::flat_map<base::UnguessableToken,
+                 raw_ptr<FrameResource, CtnExperimental>>
+      generated_token_to_decoded_frame_map_
+          GUARDED_BY_CONTEXT(sequence_checker_);
 
   SEQUENCE_CHECKER(sequence_checker_);
 

@@ -17,7 +17,9 @@ import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.os.Build;
 
 import java.util.HashMap;
@@ -30,6 +32,7 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
     private QtWindow m_parentWindow;
     private GestureDetector m_gestureDetector;
     private final QtEditText m_editText;
+    private boolean m_editTextFocusInitialized = false;
     private final QtInputConnection.QtInputConnectionListener m_inputConnectionListener;
     private boolean m_firstSafeMarginsDelivered = false;
     private int m_actionBarHeight = -1;
@@ -60,6 +63,8 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         if (!isForeignWindow && context instanceof Activity) {
             // TODO QTBUG-122552 - Service keyboard input not implemented
             m_editText = new QtEditText(context, listener);
+            m_editText.setFocusable(false);
+            m_editText.setFocusableInTouchMode(false);
             m_editText.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             LayoutParams layoutParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -228,12 +233,7 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
 
     @UsedFromNativeCode
     void setVisible(boolean visible) {
-        QtNative.runAction(() -> {
-            if (visible)
-                setVisibility(View.VISIBLE);
-            else
-                setVisibility(View.INVISIBLE);
-        });
+        QtNative.runAction(() -> setVisibility(visible ? View.VISIBLE : View.INVISIBLE));
     }
 
     @Override
@@ -245,6 +245,14 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
     @Override
     public boolean onTouchEvent(MotionEvent event)
     {
+        // Enable focus for the edit text on first touch event to avoid
+        // early QtInputConnection callbacks from blocking the UI thread.
+        if (!m_editTextFocusInitialized) {
+            m_editTextFocusInitialized = true;
+            m_editText.setFocusable(true);
+            m_editText.setFocusableInTouchMode(true);
+        }
+
         windowFocusChanged(true, getId());
         if (m_editText != null && m_inputConnectionListener != null)
             m_inputConnectionListener.onEditTextChanged(m_editText);

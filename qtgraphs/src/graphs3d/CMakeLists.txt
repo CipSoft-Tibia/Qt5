@@ -32,8 +32,11 @@ else()
             utils/qutils.h
             utils/utils.cpp utils/utils_p.h
             utils/qgraphs3dnamespace.cpp utils/qgraphs3dnamespace.h
+            utils/qgraphs3dlogging.cpp utils/qgraphs3dlogging_p.h
 
             qml/qquickgraphsitem.cpp qml/qquickgraphsitem_p.h
+            qml/qquickgraphsnode.cpp qml/qquickgraphsnode_p.h
+
             qml/qquickgraphstexturedata.cpp qml/qquickgraphstexturedata_p.h
             qml/gradientholder_p.h
         INCLUDE_DIRECTORIES
@@ -57,6 +60,7 @@ else()
             engine/barinstancing.cpp engine/barinstancing_p.h
 
             qml/qquickgraphsbars.cpp qml/qquickgraphsbars_p.h
+            qml/qquickgraphsbarsnode.cpp qml/qquickgraphsbarsnode_p.h
             qml/qquickgraphsbarsseries.cpp qml/qquickgraphsbarsseries_p.h
         INCLUDE_DIRECTORIES
             data
@@ -76,6 +80,7 @@ else()
             engine/scatterinstancing.cpp engine/scatterinstancing_p.h
 
             qml/qquickgraphsscatter.cpp qml/qquickgraphsscatter_p.h
+            qml/qquickgraphsscatternode.cpp qml/qquickgraphsscatternode_p.h
             qml/qquickgraphsscatterseries.cpp qml/qquickgraphsscatterseries_p.h
             qml/qquickgraphssplineseries.cpp qml/qquickgraphssplineseries_p.h
         INCLUDE_DIRECTORIES
@@ -94,6 +99,7 @@ else()
             data/surfaceitemmodelhandler.cpp data/surfaceitemmodelhandler_p.h
 
             qml/qquickgraphssurface.cpp qml/qquickgraphssurface_p.h
+            qml/qquickgraphssurfacenode.cpp qml/qquickgraphssurfacenode_p.h
             qml/qquickgraphssurfaceseries.cpp qml/qquickgraphssurfaceseries_p.h
         INCLUDE_DIRECTORIES
             data
@@ -109,7 +115,50 @@ else()
         PRIVATE_MODULE_INTERFACE
             Qt::GuiPrivate
     )
+
     add_subdirectory(qml/designer)
+
+    set(
+        LOCAL_TRACE_SOURCES
+            graphs3d/qml/qquickgraphsitem.cpp
+            graphs3d/qml/qquickgraphstexturedata.cpp
+            graphs3d/data/qcustom3dvolume.cpp
+    )
+
+    if(QT_FEATURE_graphs_3d_surface3d)
+        set(
+            LOCAL_TRACE_SOURCES
+                ${LOCAL_TRACE_SOURCES}
+                graphs3d/qml/qquickgraphssurface.cpp
+                graphs3d/data/qheightmapsurfacedataproxy.cpp
+                graphs3d/data/surfaceitemmodelhandler.cpp
+        )
+    endif()
+
+
+    if(QT_FEATURE_graphs_3d_scatter3d)
+        set(
+            LOCAL_TRACE_SOURCES
+                ${LOCAL_TRACE_SOURCES}
+                graphs3d/qml/qquickgraphsscatter.cpp
+                graphs3d/data/scatteritemmodelhandler.cpp
+        )
+    endif()
+
+    if(QT_FEATURE_graphs_3d_bars3d)
+        set(
+            LOCAL_TRACE_SOURCES
+                ${LOCAL_TRACE_SOURCES}
+                graphs3d/data/baritemmodelhandler.cpp
+                graphs3d/qml/qquickgraphsbars.cpp
+        )
+    endif()
+
+    set(
+        TRACE_SOURCES
+            ${LOCAL_TRACE_SOURCES}
+        PARENT_SCOPE
+    )
 endif()
 if(TARGET Qt::Widgets)
     add_subdirectory(widget)

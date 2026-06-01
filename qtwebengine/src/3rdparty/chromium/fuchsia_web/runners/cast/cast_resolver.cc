@@ -81,7 +81,7 @@ void CastResolver::Resolve(CastResolver::ResolveRequest& request,
                   .source = Ref::WithParent({}),
                   .source_name = "svc",
                   .target_path = "/svc",
-                  .rights = fuchsia_io::kRwStarDir,
+                  .rights = fuchsia_io::wire::kRStarDir,
                   .dependency_type =
                       fuchsia_component_decl::DependencyType::kStrong,
               }}),
@@ -133,4 +133,13 @@ void CastResolver::ResolveWithContext(
 
   completer.Reply(
       fit::error(fuchsia_component_resolution::ResolverError::kNotSupported));
+}
+
+void CastResolver::handle_unknown_method(
+    fidl::UnknownMethodMetadata<fuchsia_component_resolution::Resolver>
+        metadata,
+    fidl::UnknownMethodCompleter::Sync& completer) {
+  LOG(ERROR) << "Unknown method called on CastResolver. Ordinal: "
+             << metadata.method_ordinal;
+  completer.Close(ZX_ERR_NOT_SUPPORTED);
 }

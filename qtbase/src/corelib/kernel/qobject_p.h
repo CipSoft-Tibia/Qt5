@@ -39,6 +39,19 @@ QT_BEGIN_NAMESPACE
 #define QT_ANONYMOUS_PRIVATE_PROPERTY(d, text) QT_ANNOTATE_CLASS2(qt_anonymous_private_property, d, text)
 #endif
 
+#define QT_CONCAT(B, M, m, u)   QT_CONCAT2(B, M, m, u)
+#define QT_CONCAT2(B, M, m, u)  B ## M ## _ ## m ## _ ## u
+#if defined(QT_BUILD_INTERNAL) && !QT_CONFIG(elf_private_full_version)
+// Don't check the version parameter in internal builds.
+// This allows incompatible versions to be loaded, possibly for testing.
+enum QObjectPrivateVersionEnum
+#else
+enum QT_CONCAT(QtPrivate_, QT_VERSION_MAJOR, QT_VERSION_MINOR, QT_VERSION_PATCH)
+#endif
+{ QObjectPrivateVersion = QT_VERSION };
+#undef QT_CONCAT
+#undef QT_CONCAT2
+
 class QVariant;
 class QThreadData;
 class QObjectConnectionListVector;
@@ -57,8 +70,6 @@ struct QSignalSpyCallbackSet
 void Q_CORE_EXPORT qt_register_signal_spy_callbacks(QSignalSpyCallbackSet *callback_set);
 
 extern Q_CORE_EXPORT QBasicAtomicPointer<QSignalSpyCallbackSet> qt_signal_spy_callback_set;
-
-enum { QObjectPrivateVersion = QT_VERSION };
 
 class Q_CORE_EXPORT QAbstractDeclarativeData
 {
@@ -130,13 +141,11 @@ public:
         linked list.
     */
 
-    QObjectPrivate(int version = QObjectPrivateVersion);
+    QObjectPrivate(decltype(QObjectPrivateVersion) version = QObjectPrivateVersion);
     virtual ~QObjectPrivate();
     void deleteChildren();
     // used to clear binding storage early in ~QObject
     void clearBindingStorage();
-
-    inline void checkForIncompatibleLibraryVersion(int version) const;
 
     void setParent_helper(QObject *);
     void moveToThread_helper();
@@ -215,28 +224,6 @@ public:
     // plus QPointer, which keeps a separate list
     QAtomicPointer<QtSharedPointer::ExternalRefCountData> sharedRefcount;
 };
-
-/*
-    Catch mixing of incompatible library versions.
-
-    Should be called from the constructor of every non-final subclass
-    of QObjectPrivate, to ensure we catch incompatibilities between
-    the intermediate base and subclasses thereof.
-*/
-inline void QObjectPrivate::checkForIncompatibleLibraryVersion(int version) const
-{
-#if defined(QT_BUILD_INTERNAL)
-    // Don't check the version parameter in internal builds.
-    // This allows incompatible versions to be loaded, possibly for testing.
-    Q_UNUSED(version);
-#else
-    if (Q_UNLIKELY(version != QObjectPrivateVersion)) {
-        qFatal("Cannot mix incompatible Qt library (%d.%d.%d) with this library (%d.%d.%d)",
-                (version >> 16) & 0xff, (version >> 8) & 0xff, version & 0xff,
-                (QObjectPrivateVersion >> 16) & 0xff, (QObjectPrivateVersion >> 8) & 0xff, QObjectPrivateVersion & 0xff);
-    }
-#endif
-}
 
 inline bool QObjectPrivate::isDeclarativeSignalConnected(uint signal_index) const
 {
@@ -395,25 +382,6 @@ public:
 
     ~QMetaCallEvent() override;
 
-    template<typename ...Args>
-    static QMetaCallEvent *create(QtPrivate::QSlotObjectBase *slotObj, const QObject *sender,
-                                  int signal_index, const Args &...argv)
-    {
-        const void* const argp[] = { nullptr, std::addressof(argv)... };
-        const QMetaType metaTypes[] = { QMetaType::fromType<void>(), QMetaType::fromType<Args>()... };
-        constexpr auto argc = sizeof...(Args) + 1;
-        return create_impl(slotObj, sender, signal_index, argc, argp, metaTypes);
-    }
-    template<typename ...Args>
-    static QMetaCallEvent *create(QtPrivate::SlotObjUniquePtr slotObj, const QObject *sender,
-                                  int signal_index, const Args &...argv)
-    {
-        const void* const argp[] = { nullptr, std::addressof(argv)... };
-        const QMetaType metaTypes[] = { QMetaType::fromType<void>(), QMetaType::fromType<Args>()... };
-        constexpr auto argc = sizeof...(Args) + 1;
-        return create_impl(std::move(slotObj), sender, signal_index, argc, argp, metaTypes);
-    }
-
     inline int id() const { return d.method_offset_ + d.method_relative_; }
     inline const void * const* args() const { return d.args_; }
     inline void ** args() { return d.args_; }
@@ -423,18 +391,6 @@ public:
     virtual void placeMetaCall(QObject *object) override;
 
 private:
-    static QMetaCallEvent *create_impl(QtPrivate::QSlotObjectBase *slotObj, const QObject *sender,
-                                       int signal_index, size_t argc, const void * const argp[],
-                                       const QMetaType metaTypes[])
-    {
-        if (slotObj)
-            slotObj->ref();
-        return create_impl(QtPrivate::SlotObjUniquePtr{slotObj}, sender,
-                           signal_index, argc, argp, metaTypes);
-    }
-    static QMetaCallEvent *create_impl(QtPrivate::SlotObjUniquePtr slotObj, const QObject *sender,
-                                       int signal_index, size_t argc, const void * const argp[],
-                                       const QMetaType metaTypes[]);
     inline void allocArgs();
 
     struct Data {
@@ -447,20 +403,6 @@ private:
     } d;
     // preallocate enough space for three arguments
     alignas(void *) char prealloc_[3 * sizeof(void *) + 3 * sizeof(QMetaType)];
-};
-
-class QBoolBlocker
-{
-    Q_DISABLE_COPY_MOVE(QBoolBlocker)
-public:
-    Q_NODISCARD_CTOR explicit QBoolBlocker(bool &b, bool value = true)
-        : block(b), reset(b)
-    { block = value; }
-    inline ~QBoolBlocker() { block = reset; }
-
-private:
-    bool &block;
-    bool reset;
 };
 
 struct QAbstractDynamicMetaObject;

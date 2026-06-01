@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKSTACKVIEW_P_P_H
 #define QQUICKSTACKVIEW_P_P_H
@@ -50,20 +51,20 @@ public:
     void setCurrentItem(QQuickStackElement *element);
 
     QList<QQuickStackElement *> parseElements(int from, QQmlV4FunctionPtr args, QStringList *errors);
-    QList<QQuickStackElement *> parseElements(const QList<QQuickStackViewArg> &args);
+    QList<QQuickStackElement *> parseElements(QQmlEngine *engine, const QList<QQuickStackViewArg> &args);
     QQuickStackElement *findElement(QQuickItem *item) const;
     QQuickStackElement *findElement(const QV4::Value &value) const;
     QQuickStackElement *createElement(const QV4::Value &value, const QQmlRefPointer<QQmlContextData> &context, QString *error);
-    bool pushElements(const QList<QQuickStackElement *> &elements);
-    bool pushElement(QQuickStackElement *element);
-    bool popElements(QQuickStackElement *element);
-    bool replaceElements(QQuickStackElement *element, const QList<QQuickStackElement *> &elements);
+    bool pushElements(QV4::ExecutionEngine *v4, const QList<QQuickStackElement *> &elements);
+    bool pushElement(QV4::ExecutionEngine *v4, QQuickStackElement *element);
+    bool popElements(QV4::ExecutionEngine *v4, QQuickStackElement *element);
+    bool replaceElements(QV4::ExecutionEngine *v4, QQuickStackElement *element, const QList<QQuickStackElement *> &elements);
 
     enum class CurrentItemPolicy {
         DoNotPop,
         Pop
     };
-    QQuickItem *popToItem(QQuickItem *item, QQuickStackView::Operation operation, CurrentItemPolicy currentItemPolicy);
+    QQuickItem *popToItem(QV4::ExecutionEngine *v4, QQuickItem *item, QQuickStackView::Operation operation, CurrentItemPolicy currentItemPolicy);
 
 #if QT_CONFIG(quick_viewtransitions)
     void ensureTransitioner();

@@ -84,6 +84,11 @@ public:
         OwnerGroup
     };
 
+    enum class TriStateResult : qint8 {
+        NotSupported = -1,
+        Failed = 0,
+        Success = 1,
+    };
 
     virtual ~QAbstractFileEngine();
 
@@ -120,7 +125,7 @@ public:
     virtual QDateTime fileTime(QFile::FileTime time) const;
     virtual void setFileName(const QString &file);
     virtual int handle() const;
-    virtual bool cloneTo(QAbstractFileEngine *target);
+    virtual TriStateResult cloneTo(QAbstractFileEngine *target);
     bool atEnd() const;
     uchar *map(qint64 offset, qint64 size, QFile::MemoryMapFlags flags);
     bool unmap(uchar *ptr);

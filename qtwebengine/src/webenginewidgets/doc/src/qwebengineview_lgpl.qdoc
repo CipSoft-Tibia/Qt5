@@ -370,7 +370,7 @@
 /*!
     \fn QWebEngineSettings *QWebEngineView::settings() const
 
-    Returns a pointer to the view or page specific settings object.
+    Returns a pointer to the view- or page-specific settings object.
 
     It is equivalent to:
 

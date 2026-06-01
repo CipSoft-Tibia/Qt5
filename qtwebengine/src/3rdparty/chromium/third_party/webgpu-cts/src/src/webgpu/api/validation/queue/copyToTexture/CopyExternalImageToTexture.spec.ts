@@ -178,8 +178,8 @@ class CopyExternalImageToTextureTest extends ValidationTest {
   }
 
   runTest(
-    imageBitmapCopyView: GPUImageCopyExternalImage,
-    textureCopyView: GPUImageCopyTextureTagged,
+    imageBitmapCopyView: GPUCopyExternalImageSourceInfo,
+    textureCopyView: GPUCopyExternalImageDestInfo,
     copySize: GPUExtent3D,
     validationScopeSuccess: boolean,
     exceptionName?: string
@@ -682,6 +682,7 @@ g.test('destination_texture,format')
     const { format } = t.params;
     t.skipIfTextureFormatNotSupported(format);
     t.selectDeviceOrSkipTestCase(kTextureFormatInfo[format].feature);
+    t.skipIfColorRenderableNotSupportedForFormat(format);
   })
   .fn(async t => {
     const { format, copySize } = t.params;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QGraphicsSceneEvent
@@ -1797,10 +1798,8 @@ QDebug operator<<(QDebug debug, const QGraphicsSceneEvent *event)
 {
     QDebugStateSaver saver(debug);
     debug.nospace();
-    if (!event) {
-        debug << "QGraphicsSceneEvent(0)";
-        return debug;
-    }
+    if (!event)
+        return debug << "QGraphicsSceneEvent(0x0)";
 
     const QEvent::Type type = event->type();
     switch (type) {

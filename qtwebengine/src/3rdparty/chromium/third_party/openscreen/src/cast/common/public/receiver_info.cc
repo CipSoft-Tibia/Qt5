@@ -20,7 +20,7 @@ namespace {
 
 // Maximum size for the receiver model prefix at start of MDNS service instance
 // names. Any model names that are larger than this size will be truncated.
-const size_t kMaxReceiverModelSize = 20;
+constexpr size_t kMaxReceiverModelSize = 20;
 
 // Build the MDNS instance name for service. This will be the receiver model (up
 // to 20 bytes) appended with the virtual receiver ID (receiver UUID) and
@@ -29,7 +29,7 @@ const size_t kMaxReceiverModelSize = 20;
 // into a single domain name label.
 //
 // NOTE: This value is based on what is currently done by Eureka, not what is
-// called out in the CastV2 spec. Eureka uses |model|-|uuid|, so the same
+// called out in the CastV2 spec. Eureka uses `model`-`uuid`, so the same
 // convention will be followed here. That being said, the Eureka receiver does
 // not use the instance ID in any way, so the specific calculation used should
 // not be important.

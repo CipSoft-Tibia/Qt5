@@ -11,6 +11,7 @@
 #include <sstream>
 
 #include "base/command_line.h"
+#include "base/cpu_reduction_experiment.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
@@ -46,11 +47,24 @@ BASE_FEATURE(kAVFoundationOverlays,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_MAC)
-// Use CVDisplayLink timing for PresentationFeedback timestamps.
-BASE_FEATURE(kNewPresentationFeedbackTimeStamps,
-             "NewPresentationFeedbackTimeStamps",
+BASE_FEATURE(kPresentationDelayForInteractiveFrames,
+             "PresentationDelayForInteractiveFrames",
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Record the delay from the system CVDisplayLink or CADisplaylink source to
+// CrGpuMain OnVSyncPresentation().
+void RecordVSyncCallbackDelay(base::TimeDelta delay) {
+  if (!base::ShouldLogHistogramForCpuReductionExperiment()) {
+    return;
+  }
+
+  UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+      "GPU.Presentation.VSyncCallbackDelay", delay,
+      /*min=*/base::Microseconds(10),
+      /*max=*/base::Milliseconds(33), /*bucket_count=*/50);
+}
 #endif  // BUILDFLAG(IS_MAC)
+
 }  // namespace
 
 ImageTransportSurfaceOverlayMacEGL::ImageTransportSurfaceOverlayMacEGL(
@@ -62,14 +76,9 @@ ImageTransportSurfaceOverlayMacEGL::ImageTransportSurfaceOverlayMacEGL(
   auto buffer_presented_callback =
       base::BindRepeating(&ImageTransportSurfaceOverlayMacEGL::BufferPresented,
                           weak_ptr_factory_.GetWeakPtr());
-  bool use_new_presentation_timestamps = false;
-#if BUILDFLAG(IS_MAC)
-  use_new_presentation_timestamps =
-      base::FeatureList::IsEnabled(kNewPresentationFeedbackTimeStamps);
-#endif
+
   ca_layer_tree_coordinator_ = std::make_unique<ui::CALayerTreeCoordinator>(
-      !av_disabled_at_command_line, use_new_presentation_timestamps,
-      std::move(buffer_presented_callback));
+      !av_disabled_at_command_line, std::move(buffer_presented_callback));
 }
 
 ImageTransportSurfaceOverlayMacEGL::~ImageTransportSurfaceOverlayMacEGL() {
@@ -93,6 +102,7 @@ void ImageTransportSurfaceOverlayMacEGL::Present(
   // Commit the first pending frame before adding one more in Present() if there
   // are more than supported .
   if (ca_layer_tree_coordinator_->NumPendingSwaps() >= cap_max_pending_swaps_) {
+    TRACE_EVENT0("gpu", "Commit now. Exceeds the max pending swaps.");
     CommitPresentedFrameToCA();
   }
 
@@ -151,6 +161,12 @@ void ImageTransportSurfaceOverlayMacEGL::Present(
   bool delay_presenetation_until_next_vsync =
       features::IsVSyncAlignedPresentEnabled();
 
+  if (base::FeatureList::IsEnabled(kPresentationDelayForInteractiveFrames) &&
+      !ca_layer_tree_coordinator_->NumPendingSwaps() &&
+      !data.is_handling_interaction_or_animation) {
+    delay_presenetation_until_next_vsync = false;
+  }
+
   if (vsync_callback_mac_) {
     vsync_callback_mac_keep_alive_counter_ = kMaxKeepAliveCounter;
     if (delay_presenetation_until_next_vsync) {
@@ -176,13 +192,14 @@ void ImageTransportSurfaceOverlayMacEGL::CommitPresentedFrameToCA() {
   // Update the CALayer tree in the GPU process.
   {
     base::TimeTicks before_transaction_time = base::TimeTicks::Now();
-    TRACE_EVENT0("gpu", "CommitPresentedFrameToCA");
     base::TimeTicks display_time;
     base::TimeDelta frame_interval;
 #if BUILDFLAG(IS_MAC)
     display_time = GetDisplaytime(base::TimeTicks::Now());
     frame_interval = frame_interval_;
 #endif
+    TRACE_EVENT1("gpu", "CommitPresentedFrameToCA", "now_to_display",
+                 (display_time - base::TimeTicks::Now()).InMicroseconds());
     ca_layer_tree_coordinator_->CommitPresentedFrameToCA(frame_interval,
                                                          display_time);
 
@@ -248,8 +265,8 @@ bool ImageTransportSurfaceOverlayMacEGL::Resize(
 void ImageTransportSurfaceOverlayMacEGL::SetMaxPendingSwaps(
     int max_pending_swaps) {
 #if BUILDFLAG(IS_MAC)
-  cap_max_pending_swaps_ =
-      std::min(max_pending_swaps, features::NumPendingFrameSupported());
+  cap_max_pending_swaps_ = max_pending_swaps;
+
   // MaxCALayerTrees is equal to the number of max_pending_swaps + one
   // that has been displayed.
   ca_layer_tree_coordinator_->SetMaxCALayerTrees(cap_max_pending_swaps_ + 1);
@@ -258,11 +275,6 @@ void ImageTransportSurfaceOverlayMacEGL::SetMaxPendingSwaps(
 
 #if BUILDFLAG(IS_MAC)
 void ImageTransportSurfaceOverlayMacEGL::SetVSyncDisplayID(int64_t display_id) {
-  if (!features::IsVSyncAlignedPresentEnabled() &&
-      !base::FeatureList::IsEnabled(kNewPresentationFeedbackTimeStamps)) {
-    return;
-  }
-
   if ((!display_link_mac_ || display_id != display_id_) &&
       display_id != display::kInvalidDisplayId) {
     vsync_callback_mac_ = nullptr;
@@ -317,11 +329,26 @@ void ImageTransportSurfaceOverlayMacEGL::OnVSyncPresentation(
   // Documentation for the CVDisplayLink display_time
   // https://developer.apple.com/documentation/corevideo/cvdisplaylinkoutputcallback
 
+  base::TimeDelta callback_delay;
+  base::TimeDelta callback_timebase_to_display;
+  if (params.callback_times_valid && params.display_times_valid) {
+    callback_delay = base::TimeTicks::Now() - params.callback_timebase;
+    callback_timebase_to_display =
+        params.display_timebase - params.callback_timebase;
+  }
+  TRACE_EVENT2("gpu", "OnVSyncPresentation", "callback_timebase_to_display",
+               callback_timebase_to_display.InMicroseconds(), "callback_delay",
+               callback_delay.InMicroseconds());
+
   current_display_time_ = next_display_time_;
 
   if (params.display_times_valid) {
     next_display_time_ = params.display_timebase;
     frame_interval_ = params.display_interval;
+  }
+
+  if (params.callback_times_valid) {
+    RecordVSyncCallbackDelay(base::TimeTicks::Now() - params.callback_timebase);
   }
 
   if (ca_layer_tree_coordinator_->NumPendingSwaps()) {

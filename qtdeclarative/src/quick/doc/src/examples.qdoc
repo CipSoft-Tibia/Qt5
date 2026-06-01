@@ -71,7 +71,6 @@ Qt Quick Applications and related modules, visit the \l{QML Applications} page.
         \li \l{qtquick-usecase-animations.html}{Animations in QML}
         \li \l{qtquick-usecase-text.html}{Displaying Text in QML}
         \li \l{qtquick-usecase-layouts.html}{Layouts in QML}
-        \li \l{qtquick-usecase-styling.html}{Style and Theme Support}
         \li \l{qtquick-usecase-integratingjs.html}{Integrating JavaScript in QML}
         \endlist
     \enddiv

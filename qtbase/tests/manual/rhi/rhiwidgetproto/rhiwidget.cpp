@@ -154,7 +154,6 @@ QPlatformBackingStoreRhiConfig QRhiWidgetPrivate::rhiConfig() const
 
 void QRhiWidgetPrivate::ensureRhi()
 {
-    Q_Q(QRhiWidget);
     QRhi *currentRhi = QWidgetPrivate::rhi();
     if (currentRhi && currentRhi->backend() != QBackingStoreRhiSupport::apiToRhiBackend(config.api())) {
         qWarning("The top-level window is already using another graphics API for composition, "

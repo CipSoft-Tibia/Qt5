@@ -168,7 +168,7 @@ public:
     int attributes() const;
     void setAttributes(int value);
 
-    int isConst() const;
+    bool isConst() const;
     void setConst(bool methodIsConst=true);
 
     int revision() const;

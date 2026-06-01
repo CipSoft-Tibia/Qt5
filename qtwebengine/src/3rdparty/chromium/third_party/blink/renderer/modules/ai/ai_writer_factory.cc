@@ -7,7 +7,7 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "third_party/blink/public/mojom/ai/ai_manager.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_ai_writer_create_options.h"
-#include "third_party/blink/renderer/modules/ai/ai_mojo_session_create_client.h"
+#include "third_party/blink/renderer/modules/ai/ai_mojo_client.h"
 #include "third_party/blink/renderer/modules/ai/ai_writer.h"
 #include "third_party/blink/renderer/modules/ai/exception_helpers.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
@@ -21,24 +21,66 @@ namespace {
 const char kExceptionMessageUnableToCreateWriter[] =
     "The writer cannot be created.";
 
+mojom::blink::AIWriterTone ToMojoAIWriterTone(V8AIWriterTone tone) {
+  switch (tone.AsEnum()) {
+    case V8AIWriterTone::Enum::kFormal:
+      return mojom::blink::AIWriterTone::kFormal;
+    case V8AIWriterTone::Enum::kNeutral:
+      return mojom::blink::AIWriterTone::kNeutral;
+    case V8AIWriterTone::Enum::kCasual:
+      return mojom::blink::AIWriterTone::kCasual;
+  }
+  NOTREACHED();
+}
+
+mojom::blink::AIWriterFormat ToMojoAIWriterFormat(V8AIWriterFormat format) {
+  switch (format.AsEnum()) {
+    case V8AIWriterFormat::Enum::kPlainText:
+      return mojom::blink::AIWriterFormat::kPlainText;
+    case V8AIWriterFormat::Enum::kMarkdown:
+      return mojom::blink::AIWriterFormat::kMarkdown;
+  }
+  NOTREACHED();
+}
+
+mojom::blink::AIWriterLength ToMojoAIWriterLength(V8AIWriterLength length) {
+  switch (length.AsEnum()) {
+    case V8AIWriterLength::Enum::kShort:
+      return mojom::blink::AIWriterLength::kShort;
+    case V8AIWriterLength::Enum::kMedium:
+      return mojom::blink::AIWriterLength::kMedium;
+    case V8AIWriterLength::Enum::kLong:
+      return mojom::blink::AIWriterLength::kLong;
+  }
+  NOTREACHED();
+}
+
 class CreateWriterClient : public GarbageCollected<CreateWriterClient>,
                            public mojom::blink::AIManagerCreateWriterClient,
-                           public AIMojoSessionCreateClient<AIWriter> {
+                           public AIMojoClient<AIWriter> {
  public:
-  CreateWriterClient(AI* ai,
+  CreateWriterClient(ScriptState* script_state,
+                     AI* ai,
                      ScriptPromiseResolver<AIWriter>* resolver,
-                     AbortSignal* signal,
-                     String shared_context_string)
-      : AIMojoSessionCreateClient(ai, resolver, signal),
+                     AIWriterCreateOptions* options)
+      : AIMojoClient(script_state, ai, resolver, options->getSignalOr(nullptr)),
+        ai_(ai),
         receiver_(this, ai->GetExecutionContext()),
-        shared_context_string_(shared_context_string) {
+        options_(options) {
     mojo::PendingRemote<mojom::blink::AIManagerCreateWriterClient>
         client_remote;
     receiver_.Bind(client_remote.InitWithNewPipeAndPassReceiver(),
                    ai->GetTaskRunner());
-    GetAI()->GetAIRemote()->CreateWriter(
+    ai_->GetAIRemote()->CreateWriter(
         std::move(client_remote),
-        mojom::blink::AIWriterCreateOptions::New(shared_context_string_));
+        mojom::blink::AIWriterCreateOptions::New(
+            options->getSharedContextOr(g_empty_string),
+            ToMojoAIWriterTone(options->tone()),
+            ToMojoAIWriterFormat(options->format()),
+            ToMojoAIWriterLength(options->length()),
+            options->getExpectedInputLanguagesOr({}),
+            options->getExpectedContextLanguagesOr({}),
+            options->getOutputLanguageOr(g_empty_string)));
   }
   ~CreateWriterClient() override = default;
 
@@ -46,7 +88,9 @@ class CreateWriterClient : public GarbageCollected<CreateWriterClient>,
   CreateWriterClient& operator=(const CreateWriterClient&) = delete;
 
   void Trace(Visitor* visitor) const override {
-    AIMojoSessionCreateClient::Trace(visitor);
+    AIMojoClient::Trace(visitor);
+    visitor->Trace(ai_);
+    visitor->Trace(options_);
     visitor->Trace(receiver_);
   }
 
@@ -56,8 +100,8 @@ class CreateWriterClient : public GarbageCollected<CreateWriterClient>,
     }
     if (writer) {
       GetResolver()->Resolve(MakeGarbageCollected<AIWriter>(
-          GetAI()->GetExecutionContext(), GetAI()->GetTaskRunner(),
-          std::move(writer), shared_context_string_));
+          ai_->GetExecutionContext(), ai_->GetTaskRunner(), std::move(writer),
+          options_));
     } else {
       GetResolver()->Reject(DOMException::Create(
           kExceptionMessageUnableToCreateWriter,
@@ -66,11 +110,14 @@ class CreateWriterClient : public GarbageCollected<CreateWriterClient>,
     Cleanup();
   }
 
+  void ResetReceiver() override { receiver_.reset(); }
+
  private:
+  Member<AI> ai_;
   HeapMojoReceiver<mojom::blink::AIManagerCreateWriterClient,
                    CreateWriterClient>
       receiver_;
-  const String shared_context_string_;
+  Member<AIWriterCreateOptions> options_;
 };
 
 }  // namespace
@@ -84,31 +131,73 @@ void AIWriterFactory::Trace(Visitor* visitor) const {
   visitor->Trace(ai_);
 }
 
+ScriptPromise<V8AICapabilityAvailability> AIWriterFactory::availability(
+    ScriptState* script_state,
+    AIWriterCreateCoreOptions* options,
+    ExceptionState& exception_state) {
+  if (!script_state->ContextIsValid()) {
+    ThrowInvalidContextException(exception_state);
+    return ScriptPromise<V8AICapabilityAvailability>();
+  }
+
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<V8AICapabilityAvailability>>(
+          script_state);
+  auto promise = resolver->Promise();
+  if (!ai_->GetAIRemote().is_connected()) {
+    RejectPromiseWithInternalError(resolver);
+    return promise;
+  }
+
+  ai_->GetAIRemote()->CanCreateWriter(
+      mojom::blink::AIWriterCreateOptions::New(
+          /*shared_context=*/g_empty_string,
+          ToMojoAIWriterTone(options->tone()),
+          ToMojoAIWriterFormat(options->format()),
+          ToMojoAIWriterLength(options->length()),
+          options->getExpectedInputLanguagesOr({}),
+          options->getExpectedContextLanguagesOr({}),
+          options->getOutputLanguageOr(g_empty_string)),
+      WTF::BindOnce(
+          [](ScriptPromiseResolver<V8AICapabilityAvailability>* resolver,
+             AIWriterFactory* factory,
+             mojom::blink::ModelAvailabilityCheckResult result) {
+            AICapabilityAvailability availability =
+                HandleModelAvailabilityCheckResult(
+                    factory->GetExecutionContext(),
+                    AIMetrics::AISessionType::kWriter, result);
+            resolver->Resolve(AICapabilityAvailabilityToV8(availability));
+          },
+          WrapPersistent(resolver), WrapWeakPersistent(this)));
+  return promise;
+}
+
 ScriptPromise<AIWriter> AIWriterFactory::create(
     ScriptState* script_state,
-    const AIWriterCreateOptions* options,
+    AIWriterCreateOptions* options,
     ExceptionState& exception_state) {
   if (!script_state->ContextIsValid()) {
     ThrowInvalidContextException(exception_state);
     return ScriptPromise<AIWriter>();
   }
   CHECK(options);
-  AbortSignal* signal = options->getSignalOr(nullptr);
-  if (signal && signal->aborted()) {
-    exception_state.ThrowDOMException(DOMExceptionCode::kAbortError, "Aborted");
-    return ScriptPromise<AIWriter>();
-  }
   auto* resolver =
       MakeGarbageCollected<ScriptPromiseResolver<AIWriter>>(script_state);
   auto promise = resolver->Promise();
+
+  AbortSignal* signal = options->getSignalOr(nullptr);
+  if (signal && signal->aborted()) {
+    resolver->Reject(signal->reason(script_state));
+    return promise;
+  }
 
   if (!ai_->GetAIRemote().is_connected()) {
     RejectPromiseWithInternalError(resolver);
     return promise;
   }
 
-  MakeGarbageCollected<CreateWriterClient>(
-      ai_, resolver, signal, options->getSharedContextOr(String()));
+  MakeGarbageCollected<CreateWriterClient>(script_state, ai_, resolver,
+                                           options);
   return promise;
 }
 

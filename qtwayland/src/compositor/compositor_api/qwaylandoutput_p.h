@@ -76,6 +76,8 @@ public:
     void sendMode(const Resource *resource, const QWaylandOutputMode &mode);
     void sendModesInfo();
     void sendDone();
+    void maybeSendDone(const Resource *resource);
+    void maybeSendScale(const Resource *resource, int scale);
 
     void handleWindowPixelSizeChanged();
 

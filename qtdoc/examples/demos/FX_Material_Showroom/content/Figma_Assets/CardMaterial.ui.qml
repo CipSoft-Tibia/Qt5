@@ -13,6 +13,8 @@ Item {
     property string selectionID: "test"
     state: "state_state_Idle"
 
+    required property Item popUp
+
     Rectangle {
         id: bg
         x: 0
@@ -61,12 +63,14 @@ Item {
         anchors.fill: parent
         highlighted: true
         checkable: true
-        checked: material_pop_up.state == cardMaterial.selectionID
+        checked: cardMaterial.popUp.state === cardMaterial.selectionID
         display: AbstractButton.TextOnly
 
         Connections {
             target: button
-            onClicked: material_pop_up.state = cardMaterial.selectionID
+            function onClicked() {
+                cardMaterial.popUp.state = cardMaterial.selectionID
+            }
         }
     }
     states: [

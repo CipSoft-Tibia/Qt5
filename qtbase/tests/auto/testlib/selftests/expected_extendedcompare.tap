@@ -123,10 +123,10 @@ not ok 21 - compareFloats(EQ:left < right)
   ---
   type: QCOMPARE_EQ
   message: The computed value is expected to be equal to the baseline, but is not
-  wanted: == 1.1 (rhs)
-  found: 1 (lhs)
-  expected: == 1.1 (rhs)
-  actual: 1 (lhs)
+  wanted: == 1.1 (0x1.19999ap+0) (rhs)
+  found: 1 (0x1p+0) (lhs)
+  expected: == 1.1 (0x1.19999ap+0) (rhs)
+  actual: 1 (0x1p+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -135,10 +135,10 @@ not ok 22 - compareFloats(EQ:left > right)
   ---
   type: QCOMPARE_EQ
   message: The computed value is expected to be equal to the baseline, but is not
-  wanted: == 1 (rhs)
-  found: 1.1 (lhs)
-  expected: == 1 (rhs)
-  actual: 1.1 (lhs)
+  wanted: == 1 (0x1p+0) (rhs)
+  found: 1.1 (0x1.19999ap+0) (lhs)
+  expected: == 1 (0x1p+0) (rhs)
+  actual: 1.1 (0x1.19999ap+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -147,10 +147,10 @@ not ok 23 - compareFloats(NE:left == right)
   ---
   type: QCOMPARE_NE
   message: The computed value is expected to be different from the baseline, but is not
-  wanted: != 1 (rhs)
-  found: 1 (lhs)
-  expected: != 1 (rhs)
-  actual: 1 (lhs)
+  wanted: != 1 (0x1p+0) (rhs)
+  found: 1 (0x1p+0) (lhs)
+  expected: != 1 (0x1p+0) (rhs)
+  actual: 1 (0x1p+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -161,10 +161,10 @@ not ok 26 - compareFloats(LT:left == right)
   ---
   type: QCOMPARE_LT
   message: The computed value is expected to be less than the baseline, but is not
-  wanted: < 1 (rhs)
-  found: 1 (lhs)
-  expected: < 1 (rhs)
-  actual: 1 (lhs)
+  wanted: < 1 (0x1p+0) (rhs)
+  found: 1 (0x1p+0) (lhs)
+  expected: < 1 (0x1p+0) (rhs)
+  actual: 1 (0x1p+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -174,10 +174,10 @@ not ok 28 - compareFloats(LT:left > right)
   ---
   type: QCOMPARE_LT
   message: The computed value is expected to be less than the baseline, but is not
-  wanted: < 1 (rhs)
-  found: 1.1 (lhs)
-  expected: < 1 (rhs)
-  actual: 1.1 (lhs)
+  wanted: < 1 (0x1p+0) (rhs)
+  found: 1.1 (0x1.19999ap+0) (lhs)
+  expected: < 1 (0x1p+0) (rhs)
+  actual: 1.1 (0x1.19999ap+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -188,10 +188,10 @@ not ok 31 - compareFloats(LE:left > right)
   ---
   type: QCOMPARE_LE
   message: The computed value is expected to be less than or equal to the baseline, but is not
-  wanted: <= 1 (rhs)
-  found: 1.1 (lhs)
-  expected: <= 1 (rhs)
-  actual: 1.1 (lhs)
+  wanted: <= 1 (0x1p+0) (rhs)
+  found: 1.1 (0x1.19999ap+0) (lhs)
+  expected: <= 1 (0x1p+0) (rhs)
+  actual: 1.1 (0x1.19999ap+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -200,10 +200,10 @@ not ok 32 - compareFloats(GT:left == right)
   ---
   type: QCOMPARE_GT
   message: The computed value is expected to be greater than the baseline, but is not
-  wanted: > 1 (rhs)
-  found: 1 (lhs)
-  expected: > 1 (rhs)
-  actual: 1 (lhs)
+  wanted: > 1 (0x1p+0) (rhs)
+  found: 1 (0x1p+0) (lhs)
+  expected: > 1 (0x1p+0) (rhs)
+  actual: 1 (0x1p+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -212,10 +212,10 @@ not ok 33 - compareFloats(GT:left < right)
   ---
   type: QCOMPARE_GT
   message: The computed value is expected to be greater than the baseline, but is not
-  wanted: > 1.1 (rhs)
-  found: 1 (lhs)
-  expected: > 1.1 (rhs)
-  actual: 1 (lhs)
+  wanted: > 1.1 (0x1.19999ap+0) (rhs)
+  found: 1 (0x1p+0) (lhs)
+  expected: > 1.1 (0x1.19999ap+0) (rhs)
+  actual: 1 (0x1p+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -226,10 +226,10 @@ not ok 36 - compareFloats(GE:left < right)
   ---
   type: QCOMPARE_GE
   message: The computed value is expected to be greater than or equal to the baseline, but is not
-  wanted: >= 1.1 (rhs)
-  found: 1 (lhs)
-  expected: >= 1.1 (rhs)
-  actual: 1 (lhs)
+  wanted: >= 1.1 (0x1.19999ap+0) (rhs)
+  found: 1 (0x1p+0) (lhs)
+  expected: >= 1.1 (0x1.19999ap+0) (rhs)
+  actual: 1 (0x1p+0) (lhs)
   at: tst_ExtendedCompare::compareFloats() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -240,10 +240,10 @@ not ok 39 - compareDoubles(EQ:left < right)
   ---
   type: QCOMPARE_EQ
   message: The computed value is expected to be equal to the baseline, but is not
-  wanted: == 0.1 (rhs)
-  found: 0 (lhs)
-  expected: == 0.1 (rhs)
-  actual: 0 (lhs)
+  wanted: == 0.1 (0x1.999999999999ap-4) (rhs)
+  found: 0 (0x0p+0) (lhs)
+  expected: == 0.1 (0x1.999999999999ap-4) (rhs)
+  actual: 0 (0x0p+0) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -252,10 +252,10 @@ not ok 40 - compareDoubles(EQ:left > right)
   ---
   type: QCOMPARE_EQ
   message: The computed value is expected to be equal to the baseline, but is not
-  wanted: == 0 (rhs)
-  found: 0.1 (lhs)
-  expected: == 0 (rhs)
-  actual: 0.1 (lhs)
+  wanted: == 0 (0x0p+0) (rhs)
+  found: 0.1 (0x1.999999999999ap-4) (lhs)
+  expected: == 0 (0x0p+0) (rhs)
+  actual: 0.1 (0x1.999999999999ap-4) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -264,10 +264,10 @@ not ok 41 - compareDoubles(NE:left == right)
   ---
   type: QCOMPARE_NE
   message: The computed value is expected to be different from the baseline, but is not
-  wanted: != 0 (rhs)
-  found: 0 (lhs)
-  expected: != 0 (rhs)
-  actual: 0 (lhs)
+  wanted: != 0 (0x0p+0) (rhs)
+  found: 0 (0x0p+0) (lhs)
+  expected: != 0 (0x0p+0) (rhs)
+  actual: 0 (0x0p+0) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -278,10 +278,10 @@ not ok 44 - compareDoubles(LT:left == right)
   ---
   type: QCOMPARE_LT
   message: The computed value is expected to be less than the baseline, but is not
-  wanted: < 0 (rhs)
-  found: 0 (lhs)
-  expected: < 0 (rhs)
-  actual: 0 (lhs)
+  wanted: < 0 (0x0p+0) (rhs)
+  found: 0 (0x0p+0) (lhs)
+  expected: < 0 (0x0p+0) (rhs)
+  actual: 0 (0x0p+0) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -291,10 +291,10 @@ not ok 46 - compareDoubles(LT:left > right)
   ---
   type: QCOMPARE_LT
   message: The computed value is expected to be less than the baseline, but is not
-  wanted: < 0 (rhs)
-  found: 0.1 (lhs)
-  expected: < 0 (rhs)
-  actual: 0.1 (lhs)
+  wanted: < 0 (0x0p+0) (rhs)
+  found: 0.1 (0x1.999999999999ap-4) (lhs)
+  expected: < 0 (0x0p+0) (rhs)
+  actual: 0.1 (0x1.999999999999ap-4) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -305,10 +305,10 @@ not ok 49 - compareDoubles(LE:left > right)
   ---
   type: QCOMPARE_LE
   message: The computed value is expected to be less than or equal to the baseline, but is not
-  wanted: <= 0 (rhs)
-  found: 0.1 (lhs)
-  expected: <= 0 (rhs)
-  actual: 0.1 (lhs)
+  wanted: <= 0 (0x0p+0) (rhs)
+  found: 0.1 (0x1.999999999999ap-4) (lhs)
+  expected: <= 0 (0x0p+0) (rhs)
+  actual: 0.1 (0x1.999999999999ap-4) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -317,10 +317,10 @@ not ok 50 - compareDoubles(GT:left == right)
   ---
   type: QCOMPARE_GT
   message: The computed value is expected to be greater than the baseline, but is not
-  wanted: > 0 (rhs)
-  found: 0 (lhs)
-  expected: > 0 (rhs)
-  actual: 0 (lhs)
+  wanted: > 0 (0x0p+0) (rhs)
+  found: 0 (0x0p+0) (lhs)
+  expected: > 0 (0x0p+0) (rhs)
+  actual: 0 (0x0p+0) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -329,10 +329,10 @@ not ok 51 - compareDoubles(GT:left < right)
   ---
   type: QCOMPARE_GT
   message: The computed value is expected to be greater than the baseline, but is not
-  wanted: > 0.1 (rhs)
-  found: 0 (lhs)
-  expected: > 0.1 (rhs)
-  actual: 0 (lhs)
+  wanted: > 0.1 (0x1.999999999999ap-4) (rhs)
+  found: 0 (0x0p+0) (lhs)
+  expected: > 0.1 (0x1.999999999999ap-4) (rhs)
+  actual: 0 (0x0p+0) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0
@@ -343,10 +343,10 @@ not ok 54 - compareDoubles(GE:left < right)
   ---
   type: QCOMPARE_GE
   message: The computed value is expected to be greater than or equal to the baseline, but is not
-  wanted: >= 0.1 (rhs)
-  found: 0 (lhs)
-  expected: >= 0.1 (rhs)
-  actual: 0 (lhs)
+  wanted: >= 0.1 (0x1.999999999999ap-4) (rhs)
+  found: 0 (0x0p+0) (lhs)
+  expected: >= 0.1 (0x1.999999999999ap-4) (rhs)
+  actual: 0 (0x0p+0) (lhs)
   at: tst_ExtendedCompare::compareDoubles() (qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/extendedcompare/tst_extendedcompare.cpp
   line: 0

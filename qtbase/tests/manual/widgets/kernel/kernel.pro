@@ -1,2 +1,3 @@
 TEMPLATE = subdirs
-SUBDIRS = qtooltip sizeonhide layoutreplace setscreen
+SUBDIRS = qtooltip layoutreplace
+

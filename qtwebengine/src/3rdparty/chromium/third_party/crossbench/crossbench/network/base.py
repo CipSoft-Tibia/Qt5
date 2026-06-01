@@ -9,12 +9,12 @@ import contextlib
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from crossbench import plt
-from crossbench.flags.base import Flags
-from crossbench.network.traffic_shaping.base import (NoTrafficShaper,
-                                                     TrafficShaper)
+from crossbench.network.traffic_shaping.live import NoTrafficShaper
 
 if TYPE_CHECKING:
-  from crossbench.browsers.browser import Browser
+  from crossbench.browsers.attributes import BrowserAttributes
+  from crossbench.flags.base import Flags
+  from crossbench.network.traffic_shaping.base import TrafficShaper
   from crossbench.runner.groups.session import BrowserSessionRunGroup
 
 
@@ -22,10 +22,11 @@ class Network(abc.ABC):
 
   def __init__(self,
                traffic_shaper: Optional[TrafficShaper] = None,
-               browser_platform: plt.Platform = plt.PLATFORM) -> None:
+               browser_platform: Optional[plt.Platform] = None) -> None:
+    browser_platform = browser_platform or plt.PLATFORM
     self._traffic_shaper = traffic_shaper or NoTrafficShaper(browser_platform)
     self._browser_platform = browser_platform
-    self._runner_platform = browser_platform.host_platform
+    self._host_platform = browser_platform.host_platform
     self._is_running: bool = False
 
   @property
@@ -37,8 +38,8 @@ class Network(abc.ABC):
     return self._browser_platform
 
   @property
-  def runner_platform(self) -> plt.Platform:
-    return self._runner_platform
+  def host_platform(self) -> plt.Platform:
+    return self._host_platform
 
   @property
   def is_running(self) -> bool:
@@ -48,6 +49,16 @@ class Network(abc.ABC):
   def is_live(self) -> bool:
     """Return True if the network is the default live/direct connection, as
     opposed to a replay network or local file server."""
+    return False
+
+  @property
+  def is_wpr(self) -> bool:
+    """Return True if the network is the replay network."""
+    return False
+
+  @property
+  def is_local_file_server(self) -> bool:
+    """Return True if the network is the local file server network."""
     return False
 
   @property
@@ -65,9 +76,9 @@ class Network(abc.ABC):
     """Host for non-live server-based networks."""
     return None
 
-  def extra_flags(self, browser: Browser) -> Flags:
+  def extra_flags(self, browser_attributes: BrowserAttributes) -> Flags:
     assert self.is_running, "Network is not running."
-    return self.traffic_shaper.extra_flags(browser)
+    return self.traffic_shaper.extra_flags(browser_attributes)
 
   @contextlib.contextmanager
   def open(self, session: BrowserSessionRunGroup) -> Iterator[Network]:

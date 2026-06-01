@@ -28,6 +28,8 @@ public:
     Q_WEBENGINECORE_EXPORT QWebEngineProfileBuilder &setHttpCacheMaximumSize(int maxSizeInBytes);
     Q_WEBENGINECORE_EXPORT QWebEngineProfileBuilder &setPersistentPermissionsPolicy(
             QWebEngineProfile::PersistentPermissionsPolicy persistentPermissionPolicy);
+    Q_WEBENGINECORE_EXPORT QWebEngineProfileBuilder &
+    setAdditionalTrustedCertificates(const QList<QSslCertificate> &additionalTrustedCertificates);
 
 private:
     Q_DISABLE_COPY_MOVE(QWebEngineProfileBuilder)

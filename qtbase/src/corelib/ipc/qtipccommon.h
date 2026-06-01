@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 // Qt-Security score:significant reason:default
 
-#ifndef QNATIVEIPCKEY_H
-#define QNATIVEIPCKEY_H
+#ifndef QTIPCCOMMON_H
+#define QTIPCCOMMON_H
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qtcore-config.h>
@@ -208,4 +208,4 @@ QT_END_NAMESPACE
 #endif // QT_CONFIG(sharedmemory) || QT_CONFIG(systemsemaphore)
 
 
-#endif // QNATIVEIPCKEY_H
+#endif // QTIPCCOMMON_H

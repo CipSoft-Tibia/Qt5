@@ -19,9 +19,9 @@
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qspan.h>
 #include <QtCore/qbytearray.h>
+#include <QtCore/private/qexpected_p.h>
 #include <QtCore/private/qcomobject_p.h>
 #include <QtCore/private/qcomptr_p.h>
-#include <QtMultimedia/private/qmaybe_p.h>
 
 #include <mfobjects.h>
 
@@ -39,10 +39,10 @@ using IMFBufferReaderReturnType = std::invoke_result_t<Functor, QSpan<BYTE>, QSp
 template <typename Functor>
 [[nodiscard]]
 auto withLockedBuffer(IMFMediaBuffer *buffer, Functor &&f)
-        -> QMaybe<IMFBufferReaderReturnType<Functor>, HRESULT>
+        -> q23::expected<IMFBufferReaderReturnType<Functor>, HRESULT>
 {
     if (!buffer)
-        return QUnexpected{ E_POINTER };
+        return q23::unexpected{ E_POINTER };
 
     BYTE *data = nullptr;
     DWORD maxLength = 0;
@@ -50,7 +50,7 @@ auto withLockedBuffer(IMFMediaBuffer *buffer, Functor &&f)
 
     HRESULT hr = buffer->Lock(&data, &maxLength, &currentLength);
     if (FAILED(hr))
-        return QUnexpected{ hr };
+        return q23::unexpected{ hr };
 
     auto unlockGuard = qScopeGuard([buffer]() {
         buffer->Unlock();
@@ -66,7 +66,7 @@ auto withLockedBuffer(IMFMediaBuffer *buffer, Functor &&f)
 template <typename Functor>
 [[nodiscard]]
 auto withLockedBuffer(const ComPtr<IMFMediaBuffer> &buffer, Functor &&f)
-        -> QMaybe<IMFBufferReaderReturnType<Functor>, HRESULT>
+        -> q23::expected<IMFBufferReaderReturnType<Functor>, HRESULT>
 {
     return withLockedBuffer(buffer.Get(), std::forward<Functor>(f));
 }

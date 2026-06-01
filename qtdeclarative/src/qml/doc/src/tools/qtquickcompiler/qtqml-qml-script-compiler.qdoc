@@ -88,6 +88,8 @@ To enable direct mode, you should consider the followings:
 
     \li Link all the relavant private Qt modules instead of their public counterparts.
 \badcode
+    find_package(Qt6 COMPONENTS QmlPrivate QuickPrivate)
+
     qt_add_qml_module(someTarget
     ...
     )

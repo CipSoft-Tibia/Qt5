@@ -5,7 +5,9 @@
 ## tst_qmqttsubscription Test:
 #####################################################################
 
-qt_internal_add_test(tst_qmqttsubscription
+qtmqtt_add_test(
+    TARGET
+        tst_qmqttsubscription
     SOURCES
         ../../common/broker_connection.h
         tst_qmqttsubscription.cpp

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef VIRTUALKEYBOARDSETTINGS_H
 #define VIRTUALKEYBOARDSETTINGS_H
@@ -35,7 +36,7 @@ class QQuickVirtualKeyboardSettings : public QObject
     Q_PROPERTY(QString locale READ locale WRITE setLocale NOTIFY localeChanged)
     Q_PROPERTY(QStringList availableLocales READ availableLocales NOTIFY availableLocalesChanged)
     Q_PROPERTY(QStringList activeLocales READ activeLocales WRITE setActiveLocales NOTIFY activeLocalesChanged)
-    Q_PROPERTY(QQuickWordCandidateListSettings *wordCandidateList READ wordCandidateList CONSTANT)
+    Q_PROPERTY(QtVirtualKeyboard::QQuickWordCandidateListSettings *wordCandidateList READ wordCandidateList CONSTANT)
     Q_PROPERTY(bool fullScreenMode READ fullScreenMode WRITE setFullScreenMode NOTIFY fullScreenModeChanged)
     Q_PROPERTY(QString userDataPath READ userDataPath WRITE setUserDataPath NOTIFY userDataPathChanged REVISION(6, 1))
     Q_PROPERTY(int hwrTimeoutForAlphabetic READ hwrTimeoutForAlphabetic WRITE setHwrTimeoutForAlphabetic NOTIFY hwrTimeoutForAlphabeticChanged REVISION(6, 1))
@@ -56,7 +57,7 @@ class QQuickVirtualKeyboardSettings : public QObject
 
 public:
     static QQuickVirtualKeyboardSettings *create(QQmlEngine *qmlEngine, QJSEngine *jsEngine);
-    QString style() const;
+    QUrl style() const;
 
     QUrl layoutPath() const;
     void setLayoutPath(const QUrl &layoutPath);

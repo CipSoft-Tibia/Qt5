@@ -27,18 +27,18 @@ class QSSGLayerRenderData;
 struct QSSGRenderableImage;
 struct QSSGRenderLayer;
 struct QSSGRenderLight;
-struct QSSGRenderCamera;
+class QSSGRenderCamera;
 struct QSSGReflectionMapEntry;
 class QRhiTexture;
 
 class QSSGParticleRenderer
 {
 public:
-    static void updateUniformsForParticles(QSSGRhiShaderPipeline &shaderPipeline,
-                                         QSSGRhiContext *rhiCtx,
-                                         char *ubufData,
-                                         QSSGParticlesRenderable &renderable,
-                                         const QSSGRenderCameraList &cameras);
+    static void updateUniformsForParticles(const QSSGLayerRenderData &inData, QSSGRhiShaderPipeline &shaderPipeline,
+                                           QSSGRhiContext *rhiCtx,
+                                           char *ubufData,
+                                           QSSGParticlesRenderable &renderable,
+                                           const QSSGRenderCameraList &cameras);
     static void updateUniformsForParticleModel(QSSGRhiShaderPipeline &shaderPipeline,
                                                char *ubufData,
                                                const QSSGRenderModel *model, quint32 offset);

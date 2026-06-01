@@ -7,7 +7,6 @@ import QtQml.Models
 import TestTableModel
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt.labs.qmlmodels
 
 ApplicationWindow {
     id: window
@@ -39,7 +38,7 @@ ApplicationWindow {
                 ColumnLayout {
                     ComboBox {
                         id: delegateComboBox
-                        model: ["TableViewDelegate", "Custom TableViewDelegate", "Custom Item"]
+                        model: ["Default Delegate", "Custom Delegate", "Custom Item"]
                         Layout.fillWidth: true
                         currentIndex: 2
                     }
@@ -548,20 +547,8 @@ ApplicationWindow {
             columnCount: modelSize.value
         }
 
-        delegate: Rectangle {
-            required property bool containsDrag
-            implicitHeight: topHeader.height
-            implicitWidth: 20
-            border.width: containsDrag ? 1 : 0
-            border.color: containsDrag ? window.palette.text : window.palette.alternateBase
-            color: window.palette.alternateBase
-            Label {
-                anchors.centerIn: parent
-                visible: drawText.checked
-                text: column
-                font.pointSize: 8
-            }
-        }
+        delegate: [defaultHorizontalHeaderDelegate, customHorizontalHeaderDelegate,
+            customHorizontalItem][delegateComboBox.currentIndex]
 
         columnSpacing: 1
         rowSpacing: 1
@@ -570,6 +557,56 @@ ApplicationWindow {
         syncDirection: Qt.Horizontal
         movableColumns: movableColumnEnabled.checked
         resizableColumns: resizableColumnsEnabled.checked
+
+        Component {
+            id: defaultHorizontalHeaderDelegate
+            HorizontalHeaderViewDelegate { }
+        }
+
+        Component {
+            id: customHorizontalHeaderDelegate
+            HorizontalHeaderViewDelegate {
+                id: horizontalHeaderDelegate
+
+                required property bool containsDrag
+                required property int column
+
+                background: Rectangle {
+                    color: window.palette.alternateBase
+                    border.width: horizontalHeaderDelegate.containsDrag ? 1 : 0
+                    border.color: horizontalHeaderDelegate.containsDrag
+                                  ? window.palette.text
+                                  : window.palette.alternateBase
+                }
+
+                contentItem: Label {
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    visible: drawText.checked
+                    text: horizontalHeaderDelegate.column
+                    font.pointSize: 8
+                }
+            }
+        }
+
+        Component {
+            id: customHorizontalItem
+
+            Rectangle {
+                required property bool containsDrag
+                implicitHeight: topHeader.height
+                implicitWidth: 20
+                border.width: containsDrag ? 1 : 0
+                border.color: containsDrag ? window.palette.text : window.palette.alternateBase
+                color: window.palette.alternateBase
+                Label {
+                    anchors.centerIn: parent
+                    visible: drawText.checked
+                    text: column
+                    font.pointSize: 8
+                }
+            }
+        }
     }
 
     VerticalHeaderView {
@@ -586,20 +623,8 @@ ApplicationWindow {
             columnCount: 1
         }
 
-        delegate: Rectangle {
-            required property bool containsDrag
-            implicitHeight: 50
-            implicitWidth: leftHeader.width
-            border.width: containsDrag ? 1 : 0
-            border.color: containsDrag ? window.palette.text : window.palette.alternateBase
-            color: window.palette.alternateBase
-            Label {
-                anchors.centerIn: parent
-                visible: drawText.checked
-                text: row
-                font.pointSize: 8
-            }
-        }
+        delegate: [defaultVerticalHeaderDelegate, customVerticalHeaderDelegate,
+            customVerticalItem][delegateComboBox.currentIndex]
 
         columnSpacing: 1
         rowSpacing: 1
@@ -608,6 +633,57 @@ ApplicationWindow {
         syncDirection: Qt.Vertical
         movableRows: movableRowEnabled.checked
         resizableRows: resizableRowsEnabled.checked
+
+        Component {
+            id: defaultVerticalHeaderDelegate
+            VerticalHeaderViewDelegate { }
+        }
+
+        Component {
+            id: customVerticalHeaderDelegate
+            VerticalHeaderViewDelegate {
+                id: verticalHeaderDelegate
+
+                required property bool containsDrag
+                required property int row
+
+                background: Rectangle {
+                    color: window.palette.alternateBase
+                    border.width: verticalHeaderDelegate.containsDrag ? 1 : 0
+                    border.color: verticalHeaderDelegate.containsDrag
+                                  ? window.palette.text
+                                  : window.palette.alternateBase
+                }
+
+                contentItem: Label {
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    visible: drawText.checked
+                    text: verticalHeaderDelegate.row
+                    font.pointSize: 8
+                }
+            }
+        }
+
+        Component {
+            id: customVerticalItem
+
+            Rectangle {
+                required property bool containsDrag
+                implicitHeight: 50
+                implicitWidth: leftHeader.width
+                border.width: containsDrag ? 1 : 0
+                border.color: containsDrag ? window.palette.text
+                                           : window.palette.alternateBase
+                color: window.palette.alternateBase
+                Label {
+                    anchors.centerIn: parent
+                    visible: drawText.checked
+                    text: row
+                    font.pointSize: 8
+                }
+            }
+        }
     }
 
     Item {

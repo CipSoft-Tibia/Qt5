@@ -82,6 +82,10 @@ CHECK_GET(MyVariant, const &&);
 #include <QUrl>
 #include <QUuid>
 
+#if QT_CONFIG(library) && defined(QT_SHARED)
+#  include <QLibrary>
+#endif
+
 #include <private/qcomparisontesthelper_p.h>
 #include <private/qlocale_p.h>
 #include <private/qmetatype_p.h>
@@ -92,6 +96,9 @@ CHECK_GET(MyVariant, const &&);
 #include <cmath>
 #include <variant>
 #include <unordered_map>
+
+#define WHICH_TYPE_IS_RELOCATABLE RelocatableInAppType
+#include "relocatable_change.h"
 
 using namespace Qt::StringLiterals;
 
@@ -273,6 +280,9 @@ private slots:
     void toRectF_data();
     void toRectF();
 
+    void qvariant_cast_fromNull_int() { qvariant_cast_fromNull_impl(42); }
+    void qvariant_cast_fromNull_QString() { qvariant_cast_fromNull_impl(u"string"_s); }
+    void qvariant_cast_fromNull_QTransform() { qvariant_cast_fromNull_impl(QTransform{1, 2, 3, 4, 5, 6, 7, 8, 9}); }
     void qvariant_cast_QObject_data();
     void qvariant_cast_QObject();
     void qvariant_cast_QObject_derived();
@@ -380,6 +390,9 @@ private slots:
     void saveInvalid();
     void saveNewBuiltinWithOldStream();
 
+    void relocatabilityChange_data();
+    void relocatabilityChange();
+
     void implicitConstruction();
 
     void iterateSequentialContainerElements_data();
@@ -432,6 +445,9 @@ private slots:
     void get_QTransform() { get_impl(QTransform{1, 2, 3, 4, 5, 6, 7, 8, 9}); } // too large
     void get_NonDefaultConstructible();
 
+    void reference();
+    void pointer();
+
 private:
     using StdVariant = std::variant<std::monostate,
             // list here all the types with which we instantiate getIf_impl:
@@ -440,6 +456,7 @@ private:
             QTransform,
             NonDefaultConstructible
         >;
+    template <typename T> void qvariant_cast_fromNull_impl(T t) const;
     template <typename T>
     void getIf_impl(T t) const;
     template <typename T>
@@ -455,7 +472,20 @@ private:
 };
 
 const qlonglong intMax1 = (qlonglong)INT_MAX + 1;
-const qulonglong uintMax1 = (qulonglong)UINT_MAX + 1;
+
+template <typename T>
+T mutate(const T &t) { return t + t; }
+template <>
+QTransform mutate(const QTransform &t)
+{
+    return t * 2;
+}
+
+template <typename T>
+QVariant make_null_QVariant_of_type()
+{
+    return QVariant(QMetaType::fromType<T>());
+}
 
 void tst_QVariant::constructor()
 {
@@ -922,8 +952,20 @@ template <typename To> static void addNumberConversions()
         }
     }
 
-    if constexpr (std::is_integral_v<To>)
+    if constexpr (std::is_integral_v<To>) {
         QTest::newRow("QChar") << QVariant(QChar('a')) << To('a') << true;
+
+        QTest::newRow("NaN") << QVariant::fromValue(qQNaN()) << To(0) << false;
+
+        constexpr qint64 maximal = std::numeric_limits<qint64>::max();
+        constexpr qint64 minimal = std::numeric_limits<qint64>::min();
+
+        QTest::newRow("positive overflow") << QVariant(1.0e200) << To(maximal) << true;
+        QTest::newRow("positive inf") << QVariant(qInf()) << To(maximal) << true;
+        QTest::newRow("negative overflow") << QVariant(-1.0e200) << To(minimal) << true;
+        QTest::newRow("negative inf") << QVariant(-qInf()) << To(minimal) << true;
+    }
+
     QTest::newRow("nonint-QByteArray") << QVariant(QByteArray("zzzz")) << To{} << false;
     QTest::newRow("nonint-QString") << QVariant(QString("zzzz")) << To{} << false;
     QTest::newRow("undefined-QCborValue") << QVariant::fromValue<QCborValue>({}) << To{} << false;
@@ -2644,6 +2686,59 @@ void tst_QVariant::cleanupTestCase()
     qDeleteAll(objectPointerTestData);
 }
 
+struct NonConvertible
+{
+    std::array<qint8, QVariant::Private::MaxInternalSize> payload;
+    NonConvertible()
+    {
+        payload.fill(-1);
+    }
+};
+template <typename T> void tst_QVariant::qvariant_cast_fromNull_impl(T t) const
+{
+    auto operate = [](T &v) {
+        // some random operations on the type to ensure it is valid
+        v = mutate(v);
+        if constexpr (std::is_same_v<T, QString>)
+            (void)v.toUtf8();
+        else if constexpr (std::is_same_v<T, QTransform>)
+            (void)v.m11();
+    };
+
+    // create a null QVariant of the same type
+    QVariant null = make_null_QVariant_of_type<T>();
+
+    QVERIFY(null.isNull());
+    T v = qvariant_cast<T>(null);
+    QCOMPARE_EQ(v, T{});
+    QCOMPARE_NE(v, t);
+    operate(v);
+
+    // move from null
+    QVERIFY(null.isNull());
+    v = qvariant_cast<T>(std::move(null));
+    QCOMPARE_EQ(v, T{});
+    QCOMPARE_NE(v, t);
+    operate(v);
+
+    // repeat, but now make this variant null via failed conversion
+    null = QVariant::fromValue(NonConvertible{});
+    QVERIFY(!null.convert(QMetaType::fromType<T>()));
+
+    QVERIFY(null.isNull());
+    v = qvariant_cast<T>(null);
+    QCOMPARE_EQ(v, T{});
+    QCOMPARE_NE(v, t);
+    operate(v);
+
+    // move from null
+    QVERIFY(null.isNull());
+    v = qvariant_cast<T>(std::move(null));
+    QCOMPARE_EQ(v, T{});
+    QCOMPARE_NE(v, t);
+    operate(v);
+}
+
 void tst_QVariant::qvariant_cast_QObject_data()
 {
     QTest::addColumn<QVariant>("data");
@@ -3217,6 +3312,8 @@ QT_WARNING_POP
     addComparePair(EnumTest_Enum0_value, 0U);
     addComparePair(EnumTest_Enum0_value, 0LL);
     addComparePair(EnumTest_Enum0_value, 0ULL);
+    addComparePair(EnumTest_Enum0_value, -1);
+    addComparePair(EnumTest_Enum0_value, -1LL);
     addComparePair(EnumTest_Enum0_value, int(EnumTest_Enum0_value));
     addComparePair(EnumTest_Enum0_value, qint64(EnumTest_Enum0_value));
     addComparePair(EnumTest_Enum0_value, quint64(EnumTest_Enum0_value));
@@ -3231,6 +3328,8 @@ QT_WARNING_POP
     addComparePair(EnumTest_Enum1_value, 0U);
     addComparePair(EnumTest_Enum1_value, 0LL);
     addComparePair(EnumTest_Enum1_value, 0ULL);
+    addComparePair(EnumTest_Enum1_value, -1);
+    addComparePair(EnumTest_Enum1_value, -1LL);
     addComparePair(EnumTest_Enum1_value, int(EnumTest_Enum1_value));
     addComparePair(EnumTest_Enum1_value, qint64(EnumTest_Enum1_value));
     addComparePair(EnumTest_Enum1_value, quint64(EnumTest_Enum1_value));
@@ -3245,6 +3344,8 @@ QT_WARNING_POP
     addComparePair(EnumTest_Enum3_value, 0U);
     addComparePair(EnumTest_Enum3_value, 0LL);
     addComparePair(EnumTest_Enum3_value, 0ULL);
+    addComparePair(EnumTest_Enum3_value, -1);
+    addComparePair(EnumTest_Enum3_value, -1LL);
     addComparePair(EnumTest_Enum3_value, int(EnumTest_Enum3_value));
     addComparePair(EnumTest_Enum3_value, qint64(EnumTest_Enum3_value));
     addComparePair(EnumTest_Enum3_value, quint64(EnumTest_Enum3_value));
@@ -3255,8 +3356,45 @@ QT_WARNING_POP
     addComparePair(EnumTest_Enum3_bigValue, qint64(EnumTest_Enum3_bigValue));
     addComparePair(EnumTest_Enum3_bigValue, quint64(EnumTest_Enum3_bigValue));
 
+    // unsigned enums
+    addComparePair(EnumTest_Enum4{}, 0);
+    addComparePair(EnumTest_Enum4{}, 0U);
+    addComparePair(EnumTest_Enum4{}, 0LL);
+    addComparePair(EnumTest_Enum4{}, 0ULL);
+    addComparePair(EnumTest_Enum4{}, -1);
+    addComparePair(EnumTest_Enum4{}, -1LL);
+    addComparePair(EnumTest_Enum4{}, ~0U);
+    addComparePair(EnumTest_Enum4{}, ~0ULL);
+    addComparePair(EnumTest_Enum4{}, EnumTest_Enum4(-1));
+
+    addComparePair(EnumTest_Enum5{}, 0);
+    addComparePair(EnumTest_Enum5{}, 0U);
+    addComparePair(EnumTest_Enum5{}, 0LL);
+    addComparePair(EnumTest_Enum5{}, 0ULL);
+    addComparePair(EnumTest_Enum5{}, -1);
+    addComparePair(EnumTest_Enum5{}, -1LL);
+    addComparePair(EnumTest_Enum5{}, ~0U);
+    addComparePair(EnumTest_Enum5{}, ~0ULL);
+    addComparePair(EnumTest_Enum5{}, EnumTest_Enum5(-1));
+
+    addComparePair(EnumTest_Enum6{}, 0);
+    addComparePair(EnumTest_Enum6{}, 0U);
+    addComparePair(EnumTest_Enum6{}, 0LL);
+    addComparePair(EnumTest_Enum6{}, 0ULL);
+    addComparePair(EnumTest_Enum6{}, -1);
+    addComparePair(EnumTest_Enum6{}, -1LL);
+    addComparePair(EnumTest_Enum6{}, ~0U);
+    addComparePair(EnumTest_Enum6{}, ~0ULL);
+    addComparePair(EnumTest_Enum6{}, EnumTest_Enum6(-1));
+
     // enums of different types always compare as unordered
     addComparePairWithResult(EnumTest_Enum0_value, EnumTest_Enum1_value, QPartialOrdering::Unordered);
+
+    // QCborSimpleType behaves like quint8
+    addComparePairWithResult(QCborSimpleType{}, 0, QPartialOrdering::Equivalent);
+    addComparePairWithResult(QCborSimpleType{}, -1, QPartialOrdering::Greater);
+    addComparePairWithResult(QCborSimpleType{0xff}, -128, QPartialOrdering::Greater);
+    addComparePairWithResult(QCborSimpleType{0xff}, qint8(-128), QPartialOrdering::Greater);
 }
 
 void tst_QVariant::compareNumerics() const
@@ -4046,7 +4184,7 @@ struct MyNotMovable
         return ok;
     }
     // Make it too big to store it in the variant itself
-    void *dummy[4];
+    char dummy[QVariant::Private::MaxInternalSize * 2];
 };
 
 int MyNotMovable::count  = 0;
@@ -4057,6 +4195,7 @@ struct MyShared : QSharedData {
 
 QT_BEGIN_NAMESPACE
 Q_DECLARE_TYPEINFO(MyMovable, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(RelocatableInAppType, Q_RELOCATABLE_TYPE);
 QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(MyPrimitive)
@@ -4679,6 +4818,107 @@ void tst_QVariant::saveNewBuiltinWithOldStream()
     QCOMPARE(int(data.constData()[3]), 0);
 }
 
+using PluginCreateVariantFn = QVariant (*)(bool relocatable);
+static PluginCreateVariantFn pluginCreateVariant = nullptr;
+void tst_QVariant::relocatabilityChange_data()
+{
+#if defined(Q_OS_DARWIN) || (defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)) || defined(Q_OS_WIN)
+// plugin must be found and be loaded
+#  define SKIP    QFAIL
+#else
+#  define SKIP    QSKIP
+#endif
+#if !QT_CONFIG(library) || !defined(QT_SHARED)
+    QSKIP("Test needs to be able to load a plugin.");
+#else
+    QLibrary lib(QCoreApplication::applicationDirPath() + "/tst_qvariant_relocatabilitychange");
+    if (!lib.load())
+        SKIP("Could not find and load plugin: " + lib.errorString().toLocal8Bit());
+
+    pluginCreateVariant = (PluginCreateVariantFn)lib.resolve("pluginCreateVariant");
+    if (!pluginCreateVariant)
+        SKIP("Could not find entry point in plugin");
+
+    QTest::addColumn<bool>("pluginIsRelocatable");
+    QTest::newRow("becomes-relocatable") << false;
+    QTest::newRow("becomes-non-relocatable") << true;
+
+    // we invoke the plugin early to ensure it gets to register the metatype
+    // (shouldn't make a difference, but let's be consistent)
+    pluginCreateVariant(false);
+    pluginCreateVariant(true);
+#endif
+#undef SKIP
+}
+
+void tst_QVariant::relocatabilityChange()
+{
+    Q_ASSERT(pluginCreateVariant);
+    QFETCH(bool, pluginIsRelocatable);
+    const QVariant variant = pluginCreateVariant(pluginIsRelocatable);
+
+    // the plugin has the opposite of our setting
+    QMetaType expectedMetaType;
+    QVariant local;
+    if (pluginIsRelocatable) {
+        expectedMetaType = QMetaType::fromType<RelocatableInPluginType>();
+        local = relocatabilityChange_create<RelocatableInPluginType>();
+        QVERIFY(!QVariant::Private::canUseInternalSpace(expectedMetaType.iface()));
+    } else {
+        local = relocatabilityChange_create<RelocatableInAppType>();
+        expectedMetaType = QMetaType::fromType<RelocatableInAppType>();
+        QVERIFY(QVariant::Private::canUseInternalSpace(expectedMetaType.iface()));
+    }
+    QCOMPARE(local.typeName(), expectedMetaType.name());
+
+    // the plugin's variant must have the same type
+    QMetaType mt = variant.metaType();
+    QCOMPARE(mt.name(), expectedMetaType.name());
+    QCOMPARE(variant.typeId(), expectedMetaType.id());
+    QCOMPARE(mt, expectedMetaType);
+
+    // verify the address of the interface is *not* the same
+    // Note: this next line and the rest of the test depend on -fvisibility=hidden or equivalent
+    QCOMPARE_NE(mt.iface(), expectedMetaType.iface());
+    QCOMPARE(bool(mt.flags() & QMetaType::RelocatableType), pluginIsRelocatable);
+    QCOMPARE(QVariant::Private::canUseInternalSpace(mt.iface()), pluginIsRelocatable);
+
+    const QVariant::Private &d = variant.data_ptr();
+    if (pluginIsRelocatable) {
+        // check that we can access the expected values
+        auto value = get_if<RelocatableInPluginType>(&variant);
+        QCOMPARE(value->value, get_if<RelocatableInPluginType>(&local)->value);
+
+        // check that it copies correctly
+        QVariant copy(variant);
+        auto copied = get_if<RelocatableInPluginType>(&std::as_const(copy));
+        QCOMPARE(copied->value, value->value);
+        QCOMPARE(copied->ptr, value->ptr);
+
+        // check that it was stored inside the QVariant in both variables
+        // using internal API!
+        QVERIFY(!d.is_shared);
+        QCOMPARE_EQ(variant.constData(), static_cast<const void *>(d.data.data));
+        QCOMPARE_EQ(copy.constData(), &copy.data_ptr().data);
+    } else {
+        // check that we can access the expected values
+        auto value = get_if<RelocatableInAppType>(&variant);
+        QCOMPARE(value->value, get_if<RelocatableInAppType>(&local)->value);
+
+        // check that it copies correctly
+        QVariant copy(variant);
+        auto copied = get_if<RelocatableInAppType>(&std::as_const(copy));
+        QCOMPARE(copied->value, value->value);
+        QCOMPARE(copied->ptr, value->ptr);
+
+        // check that the address was shared (so copy-check above is redundant)
+        // using internal API!
+        QVERIFY(d.is_shared);
+        QCOMPARE_NE(variant.constData(), static_cast<const void *>(d.data.data));
+        QCOMPARE_EQ(copy.constData(), variant.constData());
+    }
+}
+
 template<typename Container, typename Value_Type = typename Container::value_type>
 struct ContainerAPI
 {
@@ -5223,7 +5463,7 @@ void tst_QVariant::pairElements_data()
         if constexpr (std::is_integral_v<T> || std::is_floating_point_v<T>) {
             return QString::number(value);
         } else if constexpr (std::is_same_v<T, QVariant>) {
-            return value.toString();
+            return u"QVariant(" + value.toString() + u')';
         } else {
             return value;
         }
@@ -5371,6 +5611,7 @@ void tst_QVariant::enums_data()
     ADD(EnumTest_Enum0_negValue);
     ADD(EnumTest_Enum1_value);
     ADD(EnumTest_Enum1_bigValue);
+    ADD(EnumTest_Enum3_value);
     ADD(EnumTest_Enum3::EnumTest_Enum3_value);
     ADD(EnumTest_Enum3::EnumTest_Enum3_bigValue);
     ADD(EnumTest_Enum4::EnumTest_Enum4_value);
@@ -5379,7 +5620,6 @@ void tst_QVariant::enums_data()
     ADD(EnumTest_Enum6::EnumTest_Enum6_value);
     ADD(EnumTest_Enum7::EnumTest_Enum7_value);
     ADD(EnumTest_Enum8::EnumTest_Enum8_value);
-    ADD(EnumTest_Enum3::EnumTest_Enum3_value);
 #undef ADD
 }
 
@@ -6186,23 +6426,77 @@ void tst_QVariant::get_NonDefaultConstructible()
     get_impl(NonDefaultConstructible{42});
 }
 
-template <typename T>
-T mutate(const T &t) { return t + t; }
-template <>
-QTransform mutate(const QTransform &t)
+struct QVariantWrapper
 {
-    return t * 2;
+public:
+    static constexpr bool canNoexceptConvertToQVariant
+            = std::is_nothrow_copy_constructible_v<QVariant>;
+    static constexpr bool canNoexceptAssignQVariant
+            = std::is_nothrow_copy_assignable_v<QVariant>;
+
+    QVariantWrapper(QVariant *content = nullptr) noexcept : m_content(content) {}
+
+    QVariant content() const noexcept(canNoexceptConvertToQVariant)  {  return *m_content;  }
+    void setContent(const QVariant &content) noexcept(canNoexceptAssignQVariant)
+    {
+        *m_content = content;
+    }
+
+private:
+    QVariant *m_content = nullptr;
+};
+
+QT_BEGIN_NAMESPACE
+template<>
+QVariant::ConstReference<QVariantWrapper>::operator QVariant() const
+        noexcept(QVariantWrapper::canNoexceptConvertToQVariant)
+{
+    return m_referred.content();
 }
+
+template<>
+QVariant::Reference<QVariantWrapper> &QVariant::Reference<QVariantWrapper>::operator=(
+        const QVariant &content) noexcept(QVariantWrapper::canNoexceptAssignQVariant)
+{
+    m_referred.setContent(content);
+    return *this;
+}
+QT_END_NAMESPACE
+
+void tst_QVariant::reference()
+{
+    QVariant content(5);
+
+    QVariant::ConstReference<QVariantWrapper> constRef(&content);
+    QCOMPARE(QVariant(constRef), QVariant(5));
+
+    QVariant::Reference<QVariantWrapper> ref(&content);
+    QCOMPARE(QVariant(ref), QVariant(5));
+
+    ref = QVariant(12);
+    QCOMPARE(QVariant(ref), QVariant(12));
+    QCOMPARE(content, QVariant(12));
+}
+
+void tst_QVariant::pointer()
+{
+    QVariant content(5);
+
+    QVariant::ConstPointer<QVariantWrapper> constPtr(&content);
+    QCOMPARE(*constPtr, QVariant(5));
+
+    QVariant::Pointer<QVariantWrapper> ptr(&content);
+    QCOMPARE(*ptr, QVariant(5));
+
+    *ptr = QVariant(12);
+    QCOMPARE(*ptr, QVariant(12));
+    QCOMPARE(content, QVariant(12));
+}
+
 template <>
 NonDefaultConstructible mutate(const NonDefaultConstructible &t)
 {
     return NonDefaultConstructible{t.i + t.i};
-}
-
-template <typename T>
-QVariant make_null_QVariant_of_type()
-{
-    return QVariant(QMetaType::fromType<T>());
 }
 
 template <typename T>

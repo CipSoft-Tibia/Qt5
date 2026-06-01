@@ -13,7 +13,7 @@
     </message>
     <message>
         <source>&amp;Case sensitive</source>
-        <translation>&amp;BÜYÜK/küçük harfe duyarlı</translation>
+        <translation>&amp;BÜYÜK/küçük harf duyarlı</translation>
     </message>
     <message>
         <source>Whole &amp;words</source>
@@ -1052,15 +1052,15 @@
     <name>IconSelector</name>
     <message>
         <source>The pixmap file &apos;%1&apos; cannot be read.</source>
-        <translation>“%1” pixmap dosyası okunamıyor.</translation>
+        <translation type="vanished">“%1” pixmap dosyası okunamıyor.</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; does not appear to be a valid pixmap file: %2</source>
-        <translation>“%1” dosyası geçerli bir pixmap dosyası gibi görünmüyor: %2</translation>
+        <translation type="vanished">“%1” dosyası geçerli bir pixmap dosyası gibi görünmüyor: %2</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; could not be read: %2</source>
-        <translation>“%1” dosyası okunamadı: %2</translation>
+        <translation type="vanished">“%1” dosyası okunamadı: %2</translation>
     </message>
     <message>
         <source>All Pixmaps (</source>
@@ -1068,15 +1068,15 @@
     </message>
     <message>
         <source>Choose a Pixmap</source>
-        <translation>Bir Pixmap seçin</translation>
+        <translation type="vanished">Bir Pixmap seçin</translation>
     </message>
     <message>
         <source>Pixmap Read Error</source>
-        <translation>Pixmap Okuma Hatası</translation>
+        <translation type="vanished">Pixmap Okuma Hatası</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>…</translation>
+        <translation type="vanished">…</translation>
     </message>
     <message>
         <source>Normal Off</source>
@@ -1112,19 +1112,19 @@
     </message>
     <message>
         <source>Choose Resource...</source>
-        <translation>Özkaynak Seç…</translation>
+        <translation type="vanished">Özkaynak Seç…</translation>
     </message>
     <message>
         <source>Choose File...</source>
-        <translation>Dosya Seç…</translation>
+        <translation type="vanished">Dosya Seç…</translation>
     </message>
     <message>
         <source>Reset</source>
-        <translation>Sıfırla</translation>
+        <translation type="vanished">Sıfırla</translation>
     </message>
     <message>
         <source>Reset All</source>
-        <translation>Tümünü Sıfırla</translation>
+        <translation type="vanished">Tümünü Sıfırla</translation>
     </message>
 </context>
 <context>
@@ -1922,7 +1922,7 @@ Kapsayıcı sayfaları, yalnızca özel araç takımının domXml() yöntemi tar
     </message>
     <message>
         <source>Preview in</source>
-        <translation>içinde önizle</translation>
+        <translation>Şurada önizle:</translation>
     </message>
     <message>
         <source>&amp;View</source>
@@ -3739,7 +3739,7 @@ Do you want overwrite the template?</source>
     <name>qdesigner_internal::DesignerPropertyManager</name>
     <message>
         <source>translatable</source>
-        <translation type="vanished">çeviri yapılabilir</translation>
+        <translation>çeviri yapılabilir</translation>
     </message>
     <message>
         <source>disambiguation</source>
@@ -3747,7 +3747,7 @@ Do you want overwrite the template?</source>
     </message>
     <message>
         <source>comment</source>
-        <translation type="vanished">yorum</translation>
+        <translation>yorum</translation>
     </message>
     <message>
         <source>id</source>
@@ -5244,6 +5244,10 @@ Class: %2</source>
         <translation>Nesne: %1
 Sınıf: %2</translation>
     </message>
+    <message>
+        <source>Deprecated since Qt %1: %2</source>
+        <translation>Qt %1 sonrasında kullanılmıyor: %2</translation>
+    </message>
 </context>
 <context>
     <name>qdesigner_internal::PropertyLineEdit</name>
@@ -6094,11 +6098,11 @@ Bu, arayüz dosyasında bir tutarsızlık gösterir.</translation>
     <name>qdesigner_internal::PropertySheetValue</name>
     <message>
         <source>translatable</source>
-        <translation>çevrilebilir</translation>
+        <translation type="vanished">çevrilebilir</translation>
     </message>
     <message>
         <source>comment</source>
-        <translation>yorum</translation>
+        <translation type="vanished">yorum</translation>
     </message>
 </context>
 <context>
@@ -6120,7 +6124,7 @@ Bu, arayüz dosyasında bir tutarsızlık gösterir.</translation>
     </message>
     <message>
         <source>Unexpected element &lt;%1&gt; encountered when parsing for &lt;widget&gt; or &lt;ui&gt;</source>
-        <translation>&lt;widget&gt; veya &lt;ui&gt; için ayrıştırılırken beklenmeyen &lt;%1&gt; ögesiyle karşılaşıldı.</translation>
+        <translation>&lt;widget&gt; veya &lt;ui&gt; için ayrıştırılırken beklenmeyen &lt;%1&gt; ögesiyle karşılaşıldı</translation>
     </message>
     <message>
         <source>Unexpected end of file encountered when parsing widgets.</source>
@@ -6143,6 +6147,49 @@ Bu, arayüz dosyasında bir tutarsızlık gösterir.</translation>
     <message>
         <source>3DView</source>
         <translation>3B Görünüm</translation>
+    </message>
+</context>
+<context>
+    <name>qdesigner_internal::IconSelector</name>
+    <message>
+        <source>The pixmap file &apos;%1&apos; cannot be read.</source>
+        <translation>“%1” pixmap dosyası okunamadı.</translation>
+    </message>
+    <message>
+        <source>The file &apos;%1&apos; does not appear to be a valid pixmap file: %2</source>
+        <translation>“%1” dosyası geçerli bir pixmap dosyası gibi görünmüyor: %2</translation>
+    </message>
+    <message>
+        <source>The file &apos;%1&apos; could not be read: %2</source>
+        <translation>“%1” dosyası okunamadı: %2</translation>
+    </message>
+    <message>
+        <source>Choose a Pixmap</source>
+        <translation>Bir Pixmap Seç</translation>
+    </message>
+    <message>
+        <source>Pixmap Read Error</source>
+        <translation>Pixmap Okuma Hatası</translation>
+    </message>
+    <message>
+        <source>...</source>
+        <translation>…</translation>
+    </message>
+    <message>
+        <source>Choose Resource...</source>
+        <translation>Özkaynak Seç…</translation>
+    </message>
+    <message>
+        <source>Choose File...</source>
+        <translation>Dosya Seç…</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Sıfırla</translation>
+    </message>
+    <message>
+        <source>Reset All</source>
+        <translation>Tümünü Sıfırla</translation>
     </message>
 </context>
 </TS>

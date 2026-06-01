@@ -1215,8 +1215,6 @@ void QPdfEngine::setupGraphicsState(QPaintEngine::DirtyFlags flags)
         setPen();
 }
 
-extern QPainterPath qt_regionToPath(const QRegion &region);
-
 void QPdfEngine::updateClipPath(const QPainterPath &p, Qt::ClipOperation op)
 {
     Q_D(QPdfEngine);
@@ -3215,6 +3213,7 @@ int QPdfEnginePrivate::addImage(const QImage &img, bool *bitmap, bool lossless, 
             // a format without alpha channel first
 
             QImage alphaLessImage(image.width(), image.height(), QImage::Format_RGB32);
+            alphaLessImage.setDevicePixelRatio(image.devicePixelRatioF());
             alphaLessImage.fill(Qt::white);
 
             QPainter p(&alphaLessImage);

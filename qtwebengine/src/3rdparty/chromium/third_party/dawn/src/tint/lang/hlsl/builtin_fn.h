@@ -40,7 +40,8 @@
 #include <cstdint>
 #include <string>
 
-#include "src/tint/utils/traits/traits.h"
+#include "src/tint/lang/core/ir/call.h"
+#include "src/tint/utils/rtti/traits.h"
 
 // \cond DO_NOT_DOCUMENT
 namespace tint::hlsl {
@@ -66,6 +67,7 @@ enum class BuiltinFn : uint8_t {
     kPackU8,
     kPackS8,
     kPackClampS8,
+    kConvert,
     kSign,
     kTextureStore,
     kUnpackS8S32,
@@ -73,6 +75,8 @@ enum class BuiltinFn : uint8_t {
     kWaveGetLaneIndex,
     kWaveGetLaneCount,
     kWaveReadLaneAt,
+    kModf,
+    kFrexp,
     kLoad,
     kLoad2,
     kLoad3,
@@ -113,6 +117,9 @@ template <typename STREAM, typename = traits::EnableIfIsOStream<STREAM>>
 auto& operator<<(STREAM& o, BuiltinFn i) {
     return o << str(i);
 }
+
+/// @returns access restrictions for a function
+tint::core::ir::Instruction::Accesses GetSideEffects(BuiltinFn fn);
 
 }  // namespace tint::hlsl
 // \endcond

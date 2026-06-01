@@ -7,6 +7,7 @@
 #include <QQmlComponent>
 #include <QQuickItem>
 #include <QTest>
+#include <QtTest/qsignalspy.h>
 
 /*!
     QProcess wrapper around byzanz-record (sudo apt-get install byzanz).

@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4variantassociationobject_p.h"
 
@@ -129,8 +130,6 @@ namespace QV4 {
                 new (m_variantAssociation) QVariantMap(variantMap);
             else
                 createElementWrappers(variantMap);
-
-            propertyIndexMapping = new std::vector<QString>(variantMap.keyBegin(), variantMap.keyEnd());
         }
 
         void VariantAssociationObject::init(
@@ -145,8 +144,6 @@ namespace QV4 {
                 new (m_variantAssociation) QVariantHash(variantHash);
             else
                 createElementWrappers(variantHash);
-
-            propertyIndexMapping = new std::vector<QString>(variantHash.keyBegin(), variantHash.keyEnd());
         }
 
         void VariantAssociationObject::destroy() {
@@ -154,7 +151,6 @@ namespace QV4 {
                 visitVariantAssociation<void>(
                         this, std::destroy_at<QVariantMap>, std::destroy_at<QVariantHash>);
             }
-            delete propertyIndexMapping;
             ReferenceObject::destroy();
         }
 
@@ -202,15 +198,6 @@ namespace QV4 {
                 std::destroy_at(reinterpret_cast<QVariantMap *>(&m_variantAssociation));
                 new(m_variantAssociation) QVariantHash(variant.toHash());
                 m_type = AssociationType::VariantHash;
-            }
-
-            const auto keys = visitVariantAssociation<QStringList>(
-                this, [](auto *association){ return association->keys(); });
-            for (const QString &key : keys) {
-                auto it = std::find(
-                        propertyIndexMapping->cbegin(), propertyIndexMapping->cend(), key);
-                if (it == propertyIndexMapping->cend())
-                    propertyIndexMapping->emplace_back(key);
             }
 
             return true;
@@ -266,17 +253,30 @@ namespace QV4 {
 
                 *hasProperty = true;
 
-                const auto jt = std::find(
-                        propertyIndexMapping->cbegin(), propertyIndexMapping->cend(), key);
-                qsizetype i = 0;
-                if (jt == propertyIndexMapping->cend()) {
-                    i = propertyIndexMapping->size();
-                    propertyIndexMapping->emplace_back(key);
+                Scope scope(internalClass->engine);
+                ScopedString scopedKey(scope, scope.engine->newString(key));
+
+                uint i = 0;
+                if (propertyIndexMapping) {
+                    Scoped<QV4::ArrayData> arrayData(scope, propertyIndexMapping->arrayData);
+                    const uint end = arrayData->length();
+                    for (; i < end; ++i) {
+                        QV4::ScopedString value(scope, arrayData->get(i));
+                        Q_ASSERT(value);
+                        if (value->equals(scopedKey))
+                            break;
+                    }
+
+                    if (i == end) {
+                        ScopedArrayObject mapping(scope, propertyIndexMapping);
+                        mapping->push_back(scopedKey);
+                    }
                 } else {
-                    i = std::distance(propertyIndexMapping->cbegin(), jt);
+                    propertyIndexMapping.set(
+                            scope.engine, scope.engine->newArrayObject(scopedKey, 1));
                 }
 
-                return internalClass->engine->fromVariant(
+                return scope.engine->fromVariant(
                         *it, this, i,
                         ReferenceObject::Flag::CanWriteBack | ReferenceObject::Flag::IsVariant);
             });
@@ -427,17 +427,20 @@ namespace QV4 {
         Q_ASSERT(heapAssociation->object());
 
         Q_ASSERT(heapAssociation->propertyIndexMapping);
-        if (index < 0 || index >= static_cast<int>(heapAssociation->propertyIndexMapping->size()))
+
+        Scope scope(heapAssociation->internalClass->engine);
+        Scoped<QV4::ArrayData> arrayData(scope, heapAssociation->propertyIndexMapping->arrayData);
+        if (index < 0 || uint(index) >= arrayData->length())
             return 0;
 
-        const QString &key = (*heapAssociation->propertyIndexMapping)[index];
+        ScopedString scopedKey(scope, arrayData->get(index));
 
         switch (call) {
         case QMetaObject::ReadProperty: {
             QV4::ReferenceObject::readReference(heapAssociation);
 
             if (!visitVariantAssociation<bool>(heapAssociation, [&](const auto *association) {
-                const auto it = association->constFind(key);
+                const auto it = association->constFind(scopedKey->toQString());
                 if (it == association->constEnd())
                     return false;
 
@@ -451,7 +454,7 @@ namespace QV4 {
         }
         case QMetaObject::WriteProperty: {
             if (!visitVariantAssociation<bool>(heapAssociation, [&](auto *association) {
-                const auto it = association->find(key);
+                const auto it = association->find(scopedKey->toQString());
                 if (it == association->end())
                     return false;
                 *it = *static_cast<const QVariant *>(a[0]);

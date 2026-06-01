@@ -28,7 +28,7 @@ QOpcUaKeyPairPrivate::~QOpcUaKeyPairPrivate()
 static int passwordCallback(char *passphraseBuffer, int maximumPassphraseSize, int writeOperation, void *userData) {
     QOpcUaKeyPair *source = reinterpret_cast<QOpcUaKeyPair*>(userData);
     QString passphrase;
-    source->passphraseNeeded(passphrase, maximumPassphraseSize, writeOperation == 1);
+    emit source->passphraseNeeded(passphrase, maximumPassphraseSize, writeOperation == 1);
 
     if (passphrase.isEmpty())
         return -1;

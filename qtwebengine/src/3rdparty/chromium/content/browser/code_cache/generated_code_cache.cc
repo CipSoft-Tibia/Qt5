@@ -197,7 +197,7 @@ net::CacheType CodeCacheTypeToNetCacheType(
     case GeneratedCodeCache::CodeCacheType::kWebUIJavaScript:
       return net::GENERATED_WEBUI_BYTE_CODE_CACHE;
   }
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void CollectStatisticsForEmbedderWebUIPages(
@@ -245,16 +245,6 @@ bool GeneratedCodeCache::IsValidHeader(
     return buffer_size == kHeaderSizeInBytes;
   }
   return buffer_size == kHeaderSizeInBytes + kSHAKeySizeInBytes;
-}
-
-void GeneratedCodeCache::ReportPeriodicalHistograms() {
-  DCHECK_EQ(cache_type_, CodeCacheType::kJavaScript);
-  base::UmaHistogramCustomCounts(
-      "SiteIsolatedCodeCache.JS.PotentialMemoryBackedCodeCacheSize2",
-      lru_cache_.GetSize(),
-      /*min=*/0,
-      /*exclusive_max=*/kLruCacheCapacity,
-      /*buckets=*/50);
 }
 
 std::string GeneratedCodeCache::GetResourceURLFromKey(const std::string& key) {
@@ -376,7 +366,7 @@ class GeneratedCodeCache::PendingOperation {
       const bool code_cache_hit = data.size() > 0;
       const bool in_memory_code_cache_hit = code_cache->lru_cache_.Has(key_);
       if (code_cache_hit && !in_memory_code_cache_hit) {
-        code_cache->lru_cache_.Put(key_, response_time, base::make_span(data));
+        code_cache->lru_cache_.Put(key_, response_time, base::span(data));
       }
       if (!base::FeatureList::IsEnabled(features::kInMemoryCodeCache)) {
         if (code_cache_hit && in_memory_code_cache_hit) {
@@ -458,12 +448,6 @@ GeneratedCodeCache::GeneratedCodeCache(const base::FilePath& path,
                      ? kLruCacheCapacity
                      : std::min<int64_t>(kLruCacheCapacity, max_size_bytes)) {
   CreateBackend();
-  if (cache_type == CodeCacheType::kJavaScript) {
-    histograms_timer_.Start(
-        FROM_HERE, base::Minutes(5),
-        base::BindRepeating(&GeneratedCodeCache::ReportPeriodicalHistograms,
-                            base::Unretained(this)));
-  }
 }
 
 GeneratedCodeCache::~GeneratedCodeCache() = default;
@@ -500,7 +484,7 @@ void GeneratedCodeCache::WriteEntry(const GURL& url,
 
   const std::string key = GetCacheKey(url, origin_lock, nik, cache_type_);
   if (cache_type_ == CodeCacheType::kJavaScript) {
-    lru_cache_.Put(key, response_time, base::make_span(data));
+    lru_cache_.Put(key, response_time, base::span(data));
   }
 
   scoped_refptr<net::IOBufferWithSize> small_buffer;

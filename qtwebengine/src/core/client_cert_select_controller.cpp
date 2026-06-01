@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "client_cert_select_controller.h"
 
@@ -77,8 +78,8 @@ void ClientCertSelectController::select(const QSslCertificate &certificate)
     }
     const QByteArray derCertificate = certificate.toDer();
     scoped_refptr<net::X509Certificate> selectedCert =
-            net::X509Certificate::CreateFromBytes(base::make_span((const unsigned char *)derCertificate.constData(),
-                                                                  (long unsigned)derCertificate.length()));
+            net::X509Certificate::CreateFromBytes(base::span<const unsigned char>((const unsigned char *)derCertificate.constData(),
+                                                                                  (long unsigned)derCertificate.length()));
     for (auto &certInfo : m_clientCerts) {
         scoped_refptr<net::X509Certificate> cert = certInfo->certificate();
         if (cert->EqualsExcludingChain(selectedCert.get())) {

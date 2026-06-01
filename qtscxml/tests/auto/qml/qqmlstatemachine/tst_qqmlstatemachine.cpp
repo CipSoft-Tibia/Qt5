@@ -32,13 +32,13 @@ class CppObject : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(ObjectState objectState READ objectState WRITE setObjectState NOTIFY objectStateChanged)
-    Q_ENUMS(ObjectState)
 public:
     enum ObjectState {
         State0,
         State1,
         State2
     };
+    Q_ENUM(ObjectState)
 
 public:
     CppObject() {}

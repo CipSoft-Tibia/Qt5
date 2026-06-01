@@ -17,12 +17,14 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <set>
 #include <sstream>
 #include <string>
 
 #include "base/atomic_sequence_num.h"
+#include "base/atomicops.h"
 #include "base/bits.h"
 #include "base/compiler_specific.h"
 #include "base/functional/bind.h"
@@ -102,20 +104,6 @@ namespace {
 BASE_FEATURE(kDisableErrorHandlingForReadback,
              "kDisableErrorHandlingForReadback",
              base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kPaintCacheBudgetConfigurableFeature,
-             "PaintCacheBudgetConfigurableFeature",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-MIRACLE_PARAMETER_FOR_INT(GetNormalPaintCacheBudget,
-                          kPaintCacheBudgetConfigurableFeature,
-                          "NormalPaintCacheBudgetBytes",
-                          4 * 1024 * 1024)
-
-MIRACLE_PARAMETER_FOR_INT(GetLowEndPaintCacheBudget,
-                          kPaintCacheBudgetConfigurableFeature,
-                          "LowEndPaintCacheBudgetBytes",
-                          256 * 1024)
 
 const uint32_t kMaxTransferCacheEntrySizeForTransferBuffer = 1024;
 const size_t kMaxImmediateDeletedPaintCachePaths = 1024;
@@ -211,7 +199,7 @@ class RasterImplementation::TransferCacheSerializeHelperImpl final
     }
 
     bool succeeded =
-        entry.Serialize(base::make_span(static_cast<uint8_t*>(data), size));
+        entry.Serialize(base::span(static_cast<uint8_t*>(data), size));
     DCHECK(succeeded);
     ri_->UnmapAndCreateTransferCacheEntry(entry.UnsafeType(), entry.Id());
     return 0u;
@@ -251,7 +239,7 @@ class RasterImplementation::TransferCacheSerializeHelperImpl final
     }
 
     bool succeeded = entry.Serialize(
-        base::make_span(reinterpret_cast<uint8_t*>(memory), bytes_remaining));
+        base::span(reinterpret_cast<uint8_t*>(memory), bytes_remaining));
     DCHECK(succeeded);
     ri_->transfer_cache_.AddTransferCacheEntry(
         entry.UnsafeType(), entry.Id(), buffer->shm_id(),
@@ -538,8 +526,13 @@ struct RasterImplementation::AsyncYUVReadbackRequest {
                     uint8_t* out_buffer) {
     // RasterDecoder writes the pixels into |in_buffer| with the requested
     // stride so we can copy the whole block here.
-    memcpy(out_buffer, static_cast<uint8_t*>(in_buffer) + plane_offset,
-           plane_height * plane_stride);
+    // We need to use `RelaxedAtomicWriteMemcpy` because we might be writing
+    // into memory observed by JS at the same time.
+    size_t plane_size = plane_height * plane_stride;
+    auto dst = base::span(out_buffer, plane_size);
+    auto src =
+        base::span(static_cast<uint8_t*>(in_buffer) + plane_offset, plane_size);
+    base::subtle::RelaxedAtomicWriteMemcpy(dst, src);
   }
 };
 
@@ -663,8 +656,7 @@ void RasterImplementation::SetAggressivelyFreeResources(
 }
 
 uint64_t RasterImplementation::ShareGroupTracingGUID() const {
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 void RasterImplementation::SetErrorMessageCallback(
@@ -674,19 +666,17 @@ void RasterImplementation::SetErrorMessageCallback(
 
 bool RasterImplementation::ThreadSafeShallowLockDiscardableTexture(
     uint32_t texture_id) {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 void RasterImplementation::CompleteLockDiscardableTexureOnContextThread(
     uint32_t texture_id) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 bool RasterImplementation::ThreadsafeDiscardableTextureIsDeletedForTracing(
     uint32_t texture_id) {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 void* RasterImplementation::MapTransferCacheEntry(uint32_t serialized_size) {
@@ -851,7 +841,7 @@ GLenum RasterImplementation::GetGLError() {
 #if defined(RASTER_CLIENT_FAIL_GL_ERRORS)
 void RasterImplementation::FailGLError(GLenum error) {
   if (error != GL_NO_ERROR) {
-    NOTREACHED_IN_MIGRATION() << "Error:" << error;
+    NOTREACHED() << "Error:" << error;
   }
 }
 // NOTE: Calling GetGLError overwrites data in the result buffer.
@@ -1216,15 +1206,12 @@ void RasterImplementation::UnmapRasterCHROMIUM(uint32_t raster_written_size,
 
 void RasterImplementation::CopySharedImage(const gpu::Mailbox& source_mailbox,
                                            const gpu::Mailbox& dest_mailbox,
-                                           GLenum dest_target,
                                            GLint xoffset,
                                            GLint yoffset,
                                            GLint x,
                                            GLint y,
                                            GLsizei width,
-                                           GLsizei height,
-                                           GLboolean unpack_flip_y,
-                                           GLboolean unpack_premultiply_alpha) {
+                                           GLsizei height) {
   GPU_CLIENT_SINGLE_THREAD_CHECK();
   GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glCopySharedImage("
                      << source_mailbox.ToDebugString() << ", "
@@ -1244,7 +1231,7 @@ void RasterImplementation::CopySharedImage(const gpu::Mailbox& source_mailbox,
   memcpy(mailboxes + sizeof(source_mailbox.name), dest_mailbox.name,
          sizeof(dest_mailbox.name));
   helper_->CopySharedImageINTERNALImmediate(xoffset, yoffset, x, y, width,
-                                            height, unpack_flip_y, mailboxes);
+                                            height, mailboxes);
   CheckGLError();
 }
 
@@ -1327,7 +1314,7 @@ void RasterImplementation::WritePixelsYUV(const gpu::Mailbox& dest_mailbox,
   memcpy(static_cast<uint8_t*>(address), src_sk_pixmaps[0].addr(),
          src_sk_pixmaps[0].computeByteSize());
 
-  GLuint plane_offsets[SkYUVAInfo::kMaxPlanes] = {};
+  std::array<GLuint, SkYUVAInfo::kMaxPlanes> plane_offsets = {};
   for (int plane = 1; plane < src_yuv_info.numPlanes(); plane++) {
     CHECK(src_sk_pixmaps[plane].addr());
     // Calculate the offset based on previous plane offset and previous plane
@@ -1351,73 +1338,6 @@ void RasterImplementation::WritePixelsYUV(const gpu::Mailbox& dest_mailbox,
       static_cast<int>(src_yuv_info.subsampling()),
       static_cast<int>(src_yuv_pixmap_info.dataType()), shm_id, shm_offset,
       plane_offsets[1], plane_offsets[2], plane_offsets[3], dest_mailbox.name);
-}
-
-namespace {
-constexpr size_t kNumMailboxes = SkYUVAInfo::kMaxPlanes + 1;
-}  // namespace
-
-void RasterImplementation::ConvertYUVAMailboxesToRGB(
-    const gpu::Mailbox& dest_mailbox,
-    GLint src_x,
-    GLint src_y,
-    GLsizei width,
-    GLsizei height,
-    SkYUVColorSpace planes_yuv_color_space,
-    const SkColorSpace* planes_rgb_color_space,
-    SkYUVAInfo::PlaneConfig plane_config,
-    SkYUVAInfo::Subsampling subsampling,
-    const gpu::Mailbox yuva_plane_mailboxes[]) {
-  skcms_Matrix3x3 primaries = {{{0}}};
-  skcms_TransferFunction transfer = {0};
-  if (planes_rgb_color_space) {
-    planes_rgb_color_space->toXYZD50(&primaries);
-    planes_rgb_color_space->transferFn(&transfer);
-  } else {
-    // Specify an invalid transfer function exponent, to ensure that when
-    // SkColorSpace::MakeRGB is called in the decoder, the result is nullptr.
-    transfer.g = -99;
-  }
-
-  constexpr size_t kByteSize = sizeof(gpu::Mailbox) * (kNumMailboxes) +
-                               sizeof(skcms_TransferFunction) +
-                               sizeof(skcms_Matrix3x3);
-  static_assert(kByteSize == 144);
-  GLbyte bytes[kByteSize] = {0};
-  size_t offset = 0;
-  for (int i = 0; i < SkYUVAInfo::NumPlanes(plane_config); ++i) {
-    memcpy(bytes + offset, yuva_plane_mailboxes + i, sizeof(gpu::Mailbox));
-    offset += sizeof(gpu::Mailbox);
-  }
-  offset = SkYUVAInfo::kMaxPlanes * sizeof(gpu::Mailbox);
-  memcpy(bytes + offset, &dest_mailbox, sizeof(gpu::Mailbox));
-  offset += sizeof(gpu::Mailbox);
-  memcpy(bytes + offset, &transfer, sizeof(transfer));
-  offset += sizeof(transfer);
-  memcpy(bytes + offset, &primaries, sizeof(primaries));
-  offset += sizeof(primaries);
-  DCHECK_EQ(offset, kByteSize);
-
-  helper_->ConvertYUVAMailboxesToRGBINTERNALImmediate(
-      src_x, src_y, width, height, planes_yuv_color_space,
-      static_cast<GLenum>(plane_config), static_cast<GLenum>(subsampling),
-      reinterpret_cast<GLbyte*>(bytes));
-}
-
-void RasterImplementation::ConvertRGBAToYUVAMailboxes(
-    SkYUVColorSpace planes_yuv_color_space,
-    SkYUVAInfo::PlaneConfig plane_config,
-    SkYUVAInfo::Subsampling subsampling,
-    const gpu::Mailbox yuva_plane_mailboxes[],
-    const gpu::Mailbox& source_mailbox) {
-  gpu::Mailbox mailboxes[kNumMailboxes]{};
-  for (int i = 0; i < SkYUVAInfo::NumPlanes(plane_config); ++i) {
-    mailboxes[i] = yuva_plane_mailboxes[i];
-  }
-  mailboxes[kNumMailboxes - 1] = source_mailbox;
-  helper_->ConvertRGBAToYUVAMailboxesINTERNALImmediate(
-      planes_yuv_color_space, static_cast<GLenum>(plane_config),
-      static_cast<GLenum>(subsampling), reinterpret_cast<GLbyte*>(mailboxes));
 }
 
 void RasterImplementation::BeginRasterCHROMIUM(
@@ -1640,9 +1560,12 @@ bool RasterImplementation::ReadbackImagePixelsINTERNAL(
     if (!*readback_result) {
       return false;
     }
-
-    memcpy(dst_pixels, static_cast<uint8_t*>(shm_address) + pixels_offset,
-           dst_size);
+    // We need to use `RelaxedAtomicWriteMemcpy` because we might be writing
+    // into memory observed by JS at the same time.
+    auto dst = base::span<uint8_t>(static_cast<uint8_t*>(dst_pixels), dst_size);
+    auto src = base::span<uint8_t>(
+        static_cast<uint8_t*>(shm_address) + pixels_offset, dst_size);
+    base::subtle::RelaxedAtomicWriteMemcpy(dst, src);
   }
 
   return true;
@@ -1667,10 +1590,16 @@ void RasterImplementation::OnAsyncARGBReadbackDone(
         static_cast<cmds::ReadbackARGBImagePixelsINTERNALImmediate::Result*>(
             request->shared_memory->address());
     if (*result) {
-      memcpy(request->dst_pixels,
-             static_cast<uint8_t*>(request->shared_memory->address()) +
-                 request->pixels_offset,
-             request->dst_size);
+      // We need to use `RelaxedAtomicWriteMemcpy` because we might be writing
+      // into memory observed by JS at the same time.
+      size_t plane_size = request->dst_size;
+      auto dst = base::span<uint8_t>(
+          static_cast<uint8_t*>(request->dst_pixels.get()), plane_size);
+      auto src = base::span<uint8_t>(
+          static_cast<uint8_t*>(request->shared_memory->address()) +
+              request->pixels_offset,
+          plane_size);
+      base::subtle::RelaxedAtomicWriteMemcpy(dst, src);
       request->readback_successful = true;
     }
 
@@ -1909,48 +1838,45 @@ void RasterImplementation::IssueImageDecodeCacheEntryCreation(
 
 GLuint RasterImplementation::CreateAndConsumeForGpuRaster(
     const gpu::Mailbox& mailbox) {
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 GLuint RasterImplementation::CreateAndConsumeForGpuRaster(
     const scoped_refptr<gpu::ClientSharedImage>& shared_image) {
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 void RasterImplementation::DeleteGpuRasterTexture(GLuint texture) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void RasterImplementation::BeginGpuRaster() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 void RasterImplementation::EndGpuRaster() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void RasterImplementation::BeginSharedImageAccessDirectCHROMIUM(GLuint texture,
                                                                 GLenum mode) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void RasterImplementation::EndSharedImageAccessDirectCHROMIUM(GLuint texture) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void RasterImplementation::InitializeDiscardableTextureCHROMIUM(
     GLuint texture) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void RasterImplementation::UnlockDiscardableTextureCHROMIUM(GLuint texture) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 bool RasterImplementation::LockDiscardableTextureCHROMIUM(GLuint texture) {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 void RasterImplementation::TraceBeginCHROMIUM(const char* category_name,
@@ -2007,9 +1933,9 @@ cc::ClientPaintCache* RasterImplementation::GetOrCreatePaintCache() {
   if (!paint_cache_) {
     size_t paint_cache_budget = 0u;
     if (base::SysInfo::IsLowEndDevice()) {
-      paint_cache_budget = GetLowEndPaintCacheBudget();
+      paint_cache_budget = 256 * 1024;
     } else {
-      paint_cache_budget = GetNormalPaintCacheBudget();
+      paint_cache_budget = 4 * 1024 * 1024;
     }
     paint_cache_ = std::make_unique<cc::ClientPaintCache>(paint_cache_budget);
   }

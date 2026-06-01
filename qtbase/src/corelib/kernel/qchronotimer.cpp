@@ -279,10 +279,18 @@ QBindable<bool> QChronoTimer::bindableSingleShot()
     stop() and then start() the timer, and acquire a new id().
     If the timer is not running, only the interval is changed.
 
+    \include timers-common.qdocinc negative-intervals-not-allowed
+
     \sa singleShot
 */
 void QChronoTimer::setInterval(std::chrono::nanoseconds nsec)
 {
+    if (nsec < 0ns) {
+        qWarning("QChronoTimer::setInterval: negative intervals aren't allowed; the "
+                 "interval will be set to 1ms.");
+        nsec = 1ms;
+    }
+
     auto *d = d_func();
     d->intervalDuration.removeBindingUnlessInWrapper();
     const bool intervalChanged = nsec != d->intervalDuration.valueBypassingBindings();

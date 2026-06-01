@@ -9,7 +9,7 @@ this file manually, you might introduce QML code that is not supported by Qt Des
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Thermostat
 import ThermostatCustomControls
@@ -22,7 +22,7 @@ Pane {
     bottomPadding: 15
 
     property int currentRoomIndex: 0
-    required property var roomsList
+    required property list<Room> roomsList
 
     background: Rectangle {
         color: Constants.backgroundColor
@@ -34,7 +34,7 @@ Pane {
         readonly property int contentHeight: root.height - title.height
                                              - root.topPadding - root.bottomPadding
         readonly property int contentWidth: root.width - root.rightPadding - root.leftPadding
-        readonly property bool isOneColumn: contentWidth < 900
+        readonly property bool isOneColumn: Constants.isSmallLayout || Constants.isMobileLayout
     }
 
     Column {
@@ -66,9 +66,14 @@ Pane {
             }
 
             CustomComboBox {
-                model: roomsList
+                id: customComboBox
+                roomsList: root.roomsList
                 currentIndex: root.currentRoomIndex
-                onCurrentIndexChanged: root.currentRoomIndex = currentIndex
+                Connections {
+                    function onCurrentIndexChanged() {
+                        root.currentRoomIndex = customComboBox.currentIndex
+                    }
+                }
             }
         }
     }
@@ -83,7 +88,7 @@ Pane {
         height: internal.contentHeight
 
         isOneColumn: internal.isOneColumn
-        model: roomsList
+        model: root.roomsList
         currentRoomIndex: root.currentRoomIndex
     }
 
@@ -97,7 +102,7 @@ Pane {
 
         isOneColumn: internal.isOneColumn
         currentRoomIndex: root.currentRoomIndex
-        model: roomsList
+        model: root.roomsList
         swipe.onCurrentIndexChanged: root.currentRoomIndex = swipe.currentIndex
     }
 

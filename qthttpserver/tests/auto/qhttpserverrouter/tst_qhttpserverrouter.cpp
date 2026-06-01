@@ -226,8 +226,7 @@ void tst_QHttpServerRouter::viewHandlerMemberFunction()
                   "viewClassNoArg: Args::Count == 0");
     static_assert(ArgsNoArg::CapturableCount == 0,
                   "viewClassNoArg: Args::CapturableCount == 0");
-    static_assert(ArgsNoArg::PlaceholdersCount == 0,
-                  "viewClassNoArg: Args::PlaceholdersCount == 0");
+    static_assert(ArgsNoArg::SpecialsCount == 0, "viewClassNoArg: Args::SpecialsCount == 0");
     static_assert(ArgsNoArg::Valid, "viewClassNoArg: Args::Valid");
     static_assert(ArgsNoArg::StaticAssert, "viewClassNoArg: Args::StaticAssert");
 
@@ -241,8 +240,7 @@ void tst_QHttpServerRouter::viewHandlerMemberFunction()
                   "viewOneArg: Args::Count == 1");
     static_assert(ArgsOneArg::CapturableCount == 1,
                   "viewOneArg: Args::CapturableCount == 1");
-    static_assert(ArgsOneArg::PlaceholdersCount == 0,
-                  "viewOneArg: Args::PlaceholdersCount == 0");
+    static_assert(ArgsOneArg::SpecialsCount == 0, "viewOneArg: Args::SpecialsCount == 0");
     static_assert(ArgsOneArg::Last::IsRequest::Value == 0,
                   "viewOneArg: Args::Last::IsRequest::Value == 0");
     static_assert(ArgsOneArg::Last::IsRequest::Valid == 0,
@@ -289,8 +287,7 @@ void tst_QHttpServerRouter::viewHandlerNoArg()
                   "viewNonArg: Args::Count == 0");
     static_assert(Args::CapturableCount == 0,
                   "viewNonArg: Args::CapturableCount == 0");
-    static_assert(Args::PlaceholdersCount == 0,
-                  "viewNonArg: Args::PlaceholdersCount == 0");
+    static_assert(Args::SpecialsCount == 0, "viewNonArg: Args::SpecialsCount == 0");
 
     static_assert(Args::Valid, "viewNonArg: Args::Valid");
     static_assert(Args::StaticAssert, "viewNonArg: Args::StaticAssert");
@@ -312,8 +309,7 @@ void tst_QHttpServerRouter::viewHandlerOneArg()
                   "viewOneArg: Args::Count == 1");
     static_assert(Args::CapturableCount == 1,
                   "viewOneArg: Args::CapturableCount == 1");
-    static_assert(Args::PlaceholdersCount == 0,
-                  "viewOneArg: Args::PlaceholdersCount == 0");
+    static_assert(Args::SpecialsCount == 0, "viewOneArg: Args::SpecialsCount == 0");
     static_assert(Args::Last::IsRequest::Value == 0,
                   "viewOneArg: Args::Last::IsRequest::Value == 0");
     static_assert(Args::Last::IsRequest::Valid == 0,
@@ -352,8 +348,7 @@ void tst_QHttpServerRouter::viewHandlerTwoArgs()
                   "viewTwoArgs: Args::Count == 2");
     static_assert(Args::CapturableCount == 1,
                   "viewTwoArgs: Args::CapturableCount == 1");
-    static_assert(Args::PlaceholdersCount == 1,
-                  "viewTwoArgs: Args::PlaceholdersCount == 0");
+    static_assert(Args::SpecialsCount == 1, "viewTwoArgs: Args::SpecialsCount == 0");
 
     using Arg0 = typename Args::template Arg<0>;
     static_assert(Arg0::IsRequest::Value == 0,
@@ -421,8 +416,7 @@ void tst_QHttpServerRouter::viewHandlerResponder()
                   "viewResponder: Args::Count == 1");
     static_assert(Args::CapturableCount == 0,
                   "viewResponder: Args::CapturableCount == 0");
-    static_assert(Args::PlaceholdersCount == 1,
-                  "viewResponder: Args::PlaceholdersCount == 1");
+    static_assert(Args::SpecialsCount == 1, "viewResponder: Args::SpecialsCount == 1");
     static_assert(Args::Last::IsRequest::Value == 0,
                   "viewResponder: Args::Last::IsRequest::Value == 0");
     static_assert(Args::Last::IsRequest::Valid == 0,
@@ -461,8 +455,7 @@ void tst_QHttpServerRouter::viewHandlerRequest()
                   "viewResponder: Args::Count == 1");
     static_assert(Args::CapturableCount == 0,
                   "viewResponder: Args::CapturableCount == 0");
-    static_assert(Args::PlaceholdersCount == 1,
-                  "viewResponder: Args::PlaceholdersCount == 1");
+    static_assert(Args::SpecialsCount == 1, "viewResponder: Args::SpecialsCount == 1");
     static_assert(Args::Last::IsRequest::Value,
                   "viewResponder: Args::Last::IsRequest::Value");
     static_assert(Args::Last::IsRequest::Valid,
@@ -501,8 +494,7 @@ void tst_QHttpServerRouter::viewHandlerLastTwoSpecials()
                   "viewTwoSpecialArgs: Args::Count == 2");
     static_assert(Args::CapturableCount == 0,
                   "viewTwoSpecialArgs: Args::CapturableCount == 1");
-    static_assert(Args::PlaceholdersCount == 2,
-                  "viewTwoSpecialArgs: Args::PlaceholdersCount == 0");
+    static_assert(Args::SpecialsCount == 2, "viewTwoSpecialArgs: Args::SpecialsCount == 0");
 
     using Arg0 = typename Args::template Arg<0>;
     static_assert(Arg0::IsRequest::Value,

@@ -33,15 +33,19 @@
 //
 // The macro uses the High level ABI to emit track events.
 
-#define PERFETTO_I_TE_HL_MACRO_PARAMS_(NAME_AND_TYPE, ...)            \
+#define PERFETTO_I_TE_HL_MACRO_PARAMS__(NAME_AND_TYPE, ...)           \
   NAME_AND_TYPE.type, NAME_AND_TYPE.name,                             \
       PERFETTO_I_TE_COMPOUND_LITERAL_ARRAY(struct PerfettoTeHlExtra*, \
                                            {__VA_ARGS__})
 
+// Level of indirection for MSVC traditional preprocessor.
+#define PERFETTO_I_TE_HL_MACRO_PARAMS_(MACRO, ARGS) MACRO ARGS
+
 // Provides an initializer for `struct PerfettoTeHlMacroParams` and sets all the
 // unused extra fields to PERFETTO_NULL.
-#define PERFETTO_I_TE_HL_MACRO_PARAMS(...) \
-  PERFETTO_I_TE_HL_MACRO_PARAMS_(__VA_ARGS__, PERFETTO_NULL)
+#define PERFETTO_I_TE_HL_MACRO_PARAMS(...)                        \
+  PERFETTO_I_TE_HL_MACRO_PARAMS_(PERFETTO_I_TE_HL_MACRO_PARAMS__, \
+                                 (__VA_ARGS__, PERFETTO_NULL))
 
 // Implementation of the PERFETTO_TE macro. If `CAT` is enabled, emits the
 // tracing event specified by the params.
@@ -319,6 +323,38 @@ struct PerfettoTeHlMacroNameAndType {
       {{PERFETTO_TE_HL_EXTRA_TYPE_PROTO_FIELDS},                            \
        PERFETTO_I_TE_COMPOUND_LITERAL_ARRAY(struct PerfettoTeHlProtoField*, \
                                             {__VA_ARGS__, PERFETTO_NULL})})
+
+// Specifies (manually) the track for this event
+// * `UUID` can be computed with e.g.:
+//   * PerfettoTeCounterTrackUuid()
+//   * PerfettoTeNamedTrackUuid()
+// * `...` the rest of the params should be PERFETTO_TE_PROTO_FIELD_* macros
+//   and should be fields of the perfetto.protos.TrackDescriptor protobuf
+//   message.
+#define PERFETTO_TE_PROTO_TRACK(UUID, ...)                                  \
+  PERFETTO_I_TE_EXTRA(                                                      \
+      PerfettoTeHlExtraProtoTrack,                                          \
+      {{PERFETTO_TE_HL_EXTRA_TYPE_PROTO_TRACK},                             \
+       UUID,                                                                \
+       PERFETTO_I_TE_COMPOUND_LITERAL_ARRAY(struct PerfettoTeHlProtoField*, \
+                                            {__VA_ARGS__, PERFETTO_NULL})})
+
+// Specifies that the current track for this event is a counter track named
+// `const char *NAME`, child of a track whose uuid is `PARENT_UUID`. `NAME`
+// and `PARENT_UUID` uniquely identify a track. Common values for `PARENT_UUID`
+// include PerfettoTeProcessTrackUuid(), PerfettoTeThreadTrackUuid() or
+// PerfettoTeGlobalTrackUuid().
+#define PERFETTO_TE_COUNTER_TRACK(NAME, PARENT_UUID)                           \
+  PERFETTO_TE_PROTO_TRACK(                                                     \
+      PerfettoTeCounterTrackUuid(NAME, PARENT_UUID),                           \
+      PERFETTO_TE_PROTO_FIELD_VARINT(                                          \
+          perfetto_protos_TrackDescriptor_parent_uuid_field_number,            \
+          PARENT_UUID),                                                        \
+      PERFETTO_TE_PROTO_FIELD_CSTR(                                            \
+          perfetto_protos_TrackDescriptor_name_field_number, NAME),            \
+      PERFETTO_TE_PROTO_FIELD_BYTES(                                           \
+          perfetto_protos_TrackDescriptor_counter_field_number, PERFETTO_NULL, \
+          0))
 
 // ----------------------------------
 // The main PERFETTO_TE tracing macro

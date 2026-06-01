@@ -29,7 +29,7 @@ class BoundsManager;
 class Clip;
 class Context;
 class DrawContext;
-enum class DstReadRequirement;
+enum class DstReadStrategy;
 class Geometry;
 class Image;
 enum class LoadOp : uint8_t;
@@ -145,11 +145,12 @@ public:
     void drawRect(const SkRect& r, const SkPaint& paint) override;
     void drawOval(const SkRect& oval, const SkPaint& paint) override;
     void drawRRect(const SkRRect& rr, const SkPaint& paint) override;
+    void drawArc(const SkArc& arc, const SkPaint& paint) override;
     void drawPoints(SkCanvas::PointMode mode, size_t count,
                     const SkPoint[], const SkPaint& paint) override;
     void drawPath(const SkPath& path, const SkPaint& paint, bool pathIsMutable = false) override;
 
-    // No need to specialize drawDRRect, drawArc, drawRegion, drawPatch as the default impls all
+    // No need to specialize drawDRRect, drawRegion, drawPatch as the default impls all
     // route to drawPath, drawRect, or drawVertices as desired.
 
     void drawEdgeAAQuad(const SkRect& rect, const SkPoint clip[4],
@@ -279,7 +280,7 @@ private:
                                                           const SkStrokeRec&,
                                                           bool requireMSAA) const;
 
-    bool needsFlushBeforeDraw(int numNewRenderSteps, DstReadRequirement) const;
+    bool needsFlushBeforeDraw(int numNewRenderSteps, DstReadStrategy) const;
 
     // Flush internal work, such as pending clip draws and atlas uploads, into the Device's DrawTask
     void internalFlush();

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "render_widget_host_view_qt.h"
 #include "touch_handle_drawable_qt.h"
@@ -13,6 +14,9 @@
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
 #include "ui/gfx/geometry/size_conversions.h"
+#include "ui/color/color_provider.h"
+#include "ui/color/color_provider_manager.h"
+#include "ui/native_theme/native_theme.h"
 
 #include <QClipboard>
 #include <QGuiApplication>
@@ -37,17 +41,17 @@ TouchSelectionControllerClientQt::~TouchSelectionControllerClientQt()
 
 bool TouchSelectionControllerClientQt::handleContextMenu(const content::ContextMenuParams& params)
 {
-    if ((params.source_type == ui::MENU_SOURCE_LONG_PRESS ||
-         params.source_type == ui::MENU_SOURCE_LONG_TAP) &&
+    if ((params.source_type == ui::mojom::MenuSourceType::kLongPress ||
+         params.source_type == ui::mojom::MenuSourceType::kLongTap) &&
         params.is_editable && params.selection_text.empty()) {
         m_menuRequested = true;
         updateMenu();
         return true;
     }
 
-    const bool from_touch = params.source_type == ui::MENU_SOURCE_LONG_PRESS ||
-                            params.source_type == ui::MENU_SOURCE_LONG_TAP ||
-                            params.source_type == ui::MENU_SOURCE_TOUCH;
+    const bool from_touch = params.source_type == ui::mojom::MenuSourceType::kLongPress ||
+                            params.source_type == ui::mojom::MenuSourceType::kLongTap ||
+                            params.source_type == ui::mojom::MenuSourceType::kTouch;
     if (from_touch && !params.selection_text.empty())
         return true;
 
@@ -132,7 +136,7 @@ void TouchSelectionControllerClientQt::RunContextMenu()
 
     content::RenderWidgetHostImpl *host = m_rwhv->host();
     host->ShowContextMenuAtPoint(gfx::ToRoundedPoint(anchorPoint),
-                                 ui::MENU_SOURCE_TOUCH_EDIT_MENU);
+                                 ui::mojom::MenuSourceType::kTouchEditMenu);
 
     // Hide selection handles after getting rect-between-bounds from touch
     // selection controller; otherwise, rect would be empty and the above
@@ -260,12 +264,16 @@ std::unique_ptr<ui::TouchHandleDrawable> TouchSelectionControllerClientQt::Creat
 {
     Q_ASSERT(m_rwhv);
     Q_ASSERT(m_rwhv->adapterClient());
+
+    auto color_provider = ui::ColorProviderManager::Get().GetColorProviderFor(
+            ui::NativeTheme::GetInstanceForNativeUi()->GetColorProviderKey(nullptr));
     QMap<int, QImage> images;
     for (int orientation = 0; orientation < static_cast<int>(ui::TouchHandleOrientation::UNDEFINED);
          ++orientation) {
-        gfx::Image *image = TouchHandleDrawableQt::GetHandleImage(
+        ui::ImageModel imageModel = TouchHandleDrawableQt::GetHandleVectorIcon(
                 static_cast<ui::TouchHandleOrientation>(orientation));
-        images.insert(orientation, toQImage(image->AsBitmap()));
+        gfx::ImageSkia image = imageModel.Rasterize(color_provider);
+        images.insert(orientation, toQImage(*image.bitmap()));
     }
     auto delegate = m_rwhv->adapterClient()->createTouchHandleDelegate(images);
     return std::unique_ptr<ui::TouchHandleDrawable>(new TouchHandleDrawableQt(delegate));

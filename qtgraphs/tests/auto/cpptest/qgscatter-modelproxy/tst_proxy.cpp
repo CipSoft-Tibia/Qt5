@@ -75,17 +75,7 @@ void tst_proxy::construct()
     QCOMPARE(proxy->yPosRole(), QString("y"));
     QCOMPARE(proxy->zPosRole(), QString("z"));
     QCOMPARE(proxy->rotationRole(), QString(""));
-    delete proxy;
-    delete series;
-
-    proxy = new QItemModelScatterDataProxy(table->model(), "x", "y", "z", "rot");
-    series = new QScatter3DSeries(proxy);
-    QVERIFY(proxy);
-    QVERIFY(series);
-    QCOMPARE(proxy->xPosRole(), QString("x"));
-    QCOMPARE(proxy->yPosRole(), QString("y"));
-    QCOMPARE(proxy->zPosRole(), QString("z"));
-    QCOMPARE(proxy->rotationRole(), QString("rot"));
+    QCOMPARE(proxy->scaleRole(), QString(""));
     delete proxy;
     delete series;
 }
@@ -99,6 +89,9 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->rotationRole(), QString());
     QCOMPARE(m_proxy->rotationRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->rotationRoleReplace(), QString());
+    QCOMPARE(m_proxy->scaleRole(), QString());
+    QCOMPARE(m_proxy->scaleRolePattern(), QRegularExpression());
+    QCOMPARE(m_proxy->scaleRoleReplace(), QString());
     QCOMPARE(m_proxy->xPosRole(), QString());
     QCOMPARE(m_proxy->xPosRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->xPosRoleReplace(), QString());
@@ -110,6 +103,7 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->zPosRoleReplace(), QString());
 
     QCOMPARE(m_proxy->itemCount(), 0);
+    QCOMPARE(m_proxy->series()->scaleArray().size(), 0);
 
     QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataType::Scatter);
 }
@@ -124,14 +118,17 @@ void tst_proxy::initializeProperties()
     QSignalSpy yPosRoleSpy(m_proxy, &QItemModelScatterDataProxy::yPosRoleChanged);
     QSignalSpy zPosRoleSpy(m_proxy, &QItemModelScatterDataProxy::zPosRoleChanged);
     QSignalSpy rotationRoleSpy(m_proxy, &QItemModelScatterDataProxy::rotationRoleChanged);
+    QSignalSpy scaleRoleSpy(m_proxy, &QItemModelScatterDataProxy::scaleRoleChanged);
     QSignalSpy xPosRolePatternSpy(m_proxy, &QItemModelScatterDataProxy::xPosRolePatternChanged);
     QSignalSpy yPosRolePatternSpy(m_proxy, &QItemModelScatterDataProxy::yPosRolePatternChanged);
     QSignalSpy zPosRolePatternSpy(m_proxy, &QItemModelScatterDataProxy::zPosRolePatternChanged);
     QSignalSpy rotationRolePatternSpy(m_proxy, &QItemModelScatterDataProxy::rotationRolePatternChanged);
+    QSignalSpy scaleRolePatternSpy(m_proxy, &QItemModelScatterDataProxy::scaleRolePatternChanged);
     QSignalSpy xPosRoleReplaceSpy(m_proxy, &QItemModelScatterDataProxy::xPosRoleReplaceChanged);
     QSignalSpy yPosRoleReplaceSpy(m_proxy, &QItemModelScatterDataProxy::yPosRoleReplaceChanged);
     QSignalSpy zPosRoleReplaceSpy(m_proxy, &QItemModelScatterDataProxy::zPosRoleReplaceChanged);
     QSignalSpy rotationRoleReplaceSpy(m_proxy, &QItemModelScatterDataProxy::rotationRoleReplaceChanged);
+    QSignalSpy scaleRoleReplaceSpy(m_proxy, &QItemModelScatterDataProxy::scaleRoleReplaceChanged);
 
     QTableWidget table;
 
@@ -139,6 +136,9 @@ void tst_proxy::initializeProperties()
     m_proxy->setRotationRole("rotation");
     m_proxy->setRotationRolePattern(QRegularExpression("/-/"));
     m_proxy->setRotationRoleReplace("\\\\1");
+    m_proxy->setScaleRole("scale");
+    m_proxy->setScaleRolePattern(QRegularExpression("/-/"));
+    m_proxy->setScaleRoleReplace("\\\\1");
     m_proxy->setXPosRole("X");
     m_proxy->setXPosRolePattern(QRegularExpression("/-/"));
     m_proxy->setXPosRoleReplace("\\\\1");
@@ -153,6 +153,9 @@ void tst_proxy::initializeProperties()
     QCOMPARE(m_proxy->rotationRole(), QString("rotation"));
     QCOMPARE(m_proxy->rotationRolePattern(), QRegularExpression("/-/"));
     QCOMPARE(m_proxy->rotationRoleReplace(), QString("\\\\1"));
+    QCOMPARE(m_proxy->scaleRole(), QString("scale"));
+    QCOMPARE(m_proxy->scaleRolePattern(), QRegularExpression("/-/"));
+    QCOMPARE(m_proxy->scaleRoleReplace(), QString("\\\\1"));
     QCOMPARE(m_proxy->xPosRole(), QString("X"));
     QCOMPARE(m_proxy->xPosRolePattern(), QRegularExpression("/-/"));
     QCOMPARE(m_proxy->xPosRoleReplace(), QString("\\\\1"));
@@ -168,14 +171,17 @@ void tst_proxy::initializeProperties()
     QCOMPARE(yPosRoleSpy.size(), 1);
     QCOMPARE(zPosRoleSpy.size(), 1);
     QCOMPARE(rotationRoleSpy.size(), 1);
+    QCOMPARE(scaleRoleSpy.size(), 1);
     QCOMPARE(xPosRolePatternSpy.size(), 1);
     QCOMPARE(yPosRolePatternSpy.size(), 1);
     QCOMPARE(zPosRolePatternSpy.size(), 1);
     QCOMPARE(rotationRolePatternSpy.size(), 1);
+    QCOMPARE(scaleRolePatternSpy.size(), 1);
     QCOMPARE(xPosRoleReplaceSpy.size(), 1);
     QCOMPARE(yPosRoleReplaceSpy.size(), 1);
     QCOMPARE(zPosRoleReplaceSpy.size(), 1);
     QCOMPARE(rotationRoleReplaceSpy.size(), 1);
+    QCOMPARE(scaleRoleReplaceSpy.size(), 1);
 }
 
 void tst_proxy::addModel()
@@ -211,6 +217,7 @@ void tst_proxy::addModel()
     QCoreApplication::processEvents();
 
     QCOMPARE(m_proxy->itemCount(), 2);
+    QCOMPARE(m_proxy->series()->scaleArray().size(), 0);
     QVERIFY(m_proxy->series());
     QCOMPARE(m_proxy->series(), m_series);
 

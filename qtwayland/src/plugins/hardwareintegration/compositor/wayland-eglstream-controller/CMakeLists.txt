@@ -1,6 +1,9 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_protocols_dir(protocols_dir)
+
 # Generated from wayland-eglstream-controller.pro.
 
 #####################################################################
@@ -26,12 +29,12 @@ qt_internal_add_plugin(QWaylandEglStreamClientBufferIntegrationPlugin
         Wayland::Egl
         Wayland::Server
     ATTRIBUTION_FILE_DIR_PATHS
-        ../../../../hardwareintegration/compositor/wayland-eglstream-controller/../../../3rdparty/protocol/wl-eglstream
+        ${protocols_dir}/wl-eglstream
 )
 
 qt6_generate_wayland_protocol_server_sources(QWaylandEglStreamClientBufferIntegrationPlugin
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../hardwareintegration/compositor/wayland-eglstream-controller/../../../3rdparty/protocol/wl-eglstream/wl-eglstream-controller.xml
+        ${protocols_dir}/wl-eglstream/wl-eglstream-controller.xml
 )
 
 #### Keys ignored in scope 1:.:.:wayland-eglstream-controller.pro:<TRUE>:

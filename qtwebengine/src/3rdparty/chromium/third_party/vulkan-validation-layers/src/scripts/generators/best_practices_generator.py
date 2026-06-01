@@ -1,8 +1,8 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2015-2024 The Khronos Group Inc.
-# Copyright (c) 2015-2024 Valve Corporation
-# Copyright (c) 2015-2024 LunarG, Inc.
+# Copyright (c) 2015-2025 The Khronos Group Inc.
+# Copyright (c) 2015-2025 Valve Corporation
+# Copyright (c) 2015-2025 LunarG, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,9 +82,9 @@ class BestPracticesOutputGenerator(BaseGenerator):
 
             /***************************************************************************
             *
-            * Copyright (c) 2015-2024 The Khronos Group Inc.
-            * Copyright (c) 2015-2024 Valve Corporation
-            * Copyright (c) 2015-2024 LunarG, Inc.
+            * Copyright (c) 2015-2025 The Khronos Group Inc.
+            * Copyright (c) 2015-2025 Valve Corporation
+            * Copyright (c) 2015-2025 LunarG, Inc.
             *
             * Licensed under the Apache License, Version 2.0 (the "License");
             * you may not use this file except in compliance with the License.
@@ -106,11 +106,13 @@ class BestPracticesOutputGenerator(BaseGenerator):
                 self.no_autogen_list.append(name)
             # This is just to remove un-used commands from be generated
             # This can be removed if another use for these commands are needed
-            if (command.errorCodes is None and not hasNonVkSuccess(command.successCodes)):
+            elif (command.errorCodes is None and not hasNonVkSuccess(command.successCodes)):
                 self.no_autogen_list.append(name)
 
-        if self.filename == 'best_practices.h':
-            self.generateHeader()
+        if self.filename == 'best_practices_instance_methods.h':
+            self.generateInstanceHeader()
+        elif self.filename == 'best_practices_device_methods.h':
+            self.generateDeviceHeader()
         elif self.filename == 'best_practices.cpp':
             self.generateSource()
         else:
@@ -118,11 +120,13 @@ class BestPracticesOutputGenerator(BaseGenerator):
 
         self.write('// NOLINTEND') # Wrap for clang-tidy to ignore
 
-    def generateHeader(self):
+    def generateHeader(self, want_instance):
         out = []
         guard_helper = PlatformGuardHelper()
         # List all Function declarations
         for command in [x for x in self.vk.commands.values() if x.name not in self.no_autogen_list]:
+            if command.instance != want_instance:
+                continue
             out.extend(guard_helper.add_guard(command.protect))
             prototype = command.cPrototype.split("VKAPI_CALL ")[1]
             prototype = f'void PostCallRecord{prototype[2:]}'
@@ -136,11 +140,16 @@ class BestPracticesOutputGenerator(BaseGenerator):
         out.extend(guard_helper.add_guard(None))
         self.write("".join(out))
 
+    def generateDeviceHeader(self):
+        self.generateHeader(False)
+
+    def generateInstanceHeader(self):
+        self.generateHeader(True)
+
     def generateSource(self):
         guard_helper = PlatformGuardHelper()
         out = []
         out.append('''
-            #include "chassis.h"
             #include "best_practices/best_practices_validation.h"
 
             DeprecationData GetDeprecatedData(vvl::Extension extension_name) {
@@ -199,9 +208,10 @@ class BestPracticesOutputGenerator(BaseGenerator):
                 paramList.append('chassis_state')
             params = ', '.join(paramList)
 
+            class_name = 'BestPractices' if not command.instance else 'bp_state::Instance'
             out.extend(guard_helper.add_guard(command.protect, extra_newline=True))
             prototype = command.cPrototype.split("VKAPI_CALL ")[1]
-            prototype = f'void BestPractices::PostCallRecord{prototype[2:]}'
+            prototype = f'void {class_name}::PostCallRecord{prototype[2:]}'
             prototype = prototype.replace(');', ', const RecordObject& record_obj) {\n')
             if command.name in self.extra_parameter_map:
                 prototype = prototype.replace(')', f', {self.extra_parameter_map[command.name]}& chassis_state)')
@@ -216,22 +226,18 @@ class BestPracticesOutputGenerator(BaseGenerator):
                 params = ', '.join(paramList)
                 out.append(f'PostCallRecord{command.alias[2:]}({params});')
             else:
-                out.append(f'ValidationStateTracker::PostCallRecord{command.name[2:]}({params});\n')
+                out.append(f'BaseClass::PostCallRecord{command.name[2:]}({params});\n')
                 if command.name in self.manual_postcallrecord_list:
                     out.append(f'ManualPostCallRecord{command.name[2:]}({params});\n')
 
-                if hasNonVkSuccess(command.successCodes):
-                    out.append('''
-                        if (record_obj.result > VK_SUCCESS) {
-                            LogPositiveSuccessCode(record_obj);
-                            return;
-                        }''')
-
-                if command.errorCodes is not None:
-                    out.append('''
-                        if (record_obj.result < VK_SUCCESS) {
-                            LogErrorCode(record_obj);
-                        }''')
+                if (command.errorCodes is not None or hasNonVkSuccess(command.successCodes)):
+                    if command.name == 'vkCreateInstance':
+                        handle = '*pInstance'
+                    elif command.name.startswith('vkEnumerateInstance'):
+                        handle = '(VkInstance)VK_NULL_HANDLE'
+                    else:
+                        handle = command.params[0].name
+                    out.append(f'bp_state::LogResult(*this, {handle}, record_obj);\n')
 
             out.append('}\n')
         out.extend(guard_helper.add_guard(None, extra_newline=True))

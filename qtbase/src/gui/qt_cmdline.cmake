@@ -28,8 +28,12 @@ qt_commandline_option(opengl TYPE optionalString VALUES no yes desktop es2 dynam
 qt_commandline_option(opengl-es-2 TYPE void NAME opengl VALUE es2)
 qt_commandline_option(opengles3 TYPE boolean)
 qt_commandline_option(openvg TYPE boolean)
-qt_commandline_option(qpa TYPE string NAME qpa_platforms)
-qt_commandline_option(default-qpa TYPE string NAME qpa_default_platform)
+qt_commandline_option(qpa TYPE stringList NAME qpa_platforms CMAKE_VARIABLE QT_QPA_PLATFORMS)
+qt_commandline_option(default-qpa
+    TYPE string
+    NAME qpa_default_platform
+    CMAKE_VARIABLE QT_QPA_DEFAULT_PLATFORM
+)
 qt_commandline_option(sm TYPE boolean NAME sessionmanager)
 qt_commandline_option(tslib TYPE boolean)
 qt_commandline_option(vulkan TYPE boolean)

@@ -7,23 +7,26 @@
 
 #include <memory>
 
+#include "discovery/common/reporting_client.h"
 #include "discovery/dnssd/public/dns_sd_service.h"
 #include "discovery/public/dns_sd_service_publisher.h"
-#include "osp/impl/service_publisher_impl.h"
-#include "platform/api/task_runner_deleter.h"
+#include "osp/public/service_publisher.h"
+#include "platform/api/task_runner.h"
 
-namespace openscreen {
+namespace openscreen::osp {
 
-class TaskRunner;
-
-namespace osp {
-
-class DnsSdPublisherClient final : public ServicePublisherImpl::Delegate {
+class DnsSdPublisherClient final
+    : public ServicePublisher::Delegate,
+      public openscreen::discovery::ReportingClient {
  public:
   explicit DnsSdPublisherClient(TaskRunner& task_runner);
+  DnsSdPublisherClient(const DnsSdPublisherClient&) = delete;
+  DnsSdPublisherClient& operator=(const DnsSdPublisherClient&) = delete;
+  DnsSdPublisherClient(DnsSdPublisherClient&&) noexcept = delete;
+  DnsSdPublisherClient& operator=(DnsSdPublisherClient&&) noexcept = delete;
   ~DnsSdPublisherClient() override;
 
-  // ServicePublisherImpl::Delegate overrides.
+  // ServicePublisher::Delegate overrides.
   void StartPublisher(const ServicePublisher::Config& config) override;
   void StartAndSuspendPublisher(
       const ServicePublisher::Config& config) override;
@@ -32,15 +35,16 @@ class DnsSdPublisherClient final : public ServicePublisherImpl::Delegate {
   void ResumePublisher(const ServicePublisher::Config& config) override;
 
  private:
-  DnsSdPublisherClient(const DnsSdPublisherClient&) = delete;
-  DnsSdPublisherClient(DnsSdPublisherClient&&) noexcept = delete;
+  // openscreen::discovery::ReportingClient overrides.
+  void OnFatalError(const Error&) override;
+  void OnRecoverableError(const Error&) override;
 
   void StartPublisherInternal(const ServicePublisher::Config& config);
-  std::unique_ptr<discovery::DnsSdService, TaskRunnerDeleter>
-  CreateDnsSdServiceInternal(const ServicePublisher::Config& config);
+  discovery::DnsSdServicePtr CreateDnsSdServiceInternal(
+      const ServicePublisher::Config& config);
 
   TaskRunner& task_runner_;
-  std::unique_ptr<discovery::DnsSdService, TaskRunnerDeleter> dns_sd_service_;
+  discovery::DnsSdServicePtr dns_sd_service_;
 
   using OspDnsSdPublisher =
       discovery::DnsSdServicePublisher<ServicePublisher::Config>;
@@ -48,7 +52,6 @@ class DnsSdPublisherClient final : public ServicePublisherImpl::Delegate {
   std::unique_ptr<OspDnsSdPublisher> dns_sd_publisher_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_DNS_SD_PUBLISHER_CLIENT_H_

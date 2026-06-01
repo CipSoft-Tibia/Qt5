@@ -23,6 +23,11 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "third_party/blink/renderer/modules/indexeddb/idb_key.h"
 
 #include <algorithm>
@@ -79,8 +84,7 @@ std::unique_ptr<IDBKey> IDBKey::Clone(const IDBKey* rkey) {
     case mojom::IDBKeyType::Min:
       break;  // Not used, NOTREACHED.
   }
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 IDBKey::IDBKey()
@@ -174,12 +178,10 @@ int IDBKey::Compare(const IDBKey* other) const {
     case mojom::IDBKeyType::Invalid:
     case mojom::IDBKeyType::None:
     case mojom::IDBKeyType::Min:
-      NOTREACHED_IN_MIGRATION();
-      return 0;
+      NOTREACHED();
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 v8::Local<v8::Value> IDBKey::ToV8(ScriptState* script_state) const {
@@ -188,8 +190,7 @@ v8::Local<v8::Value> IDBKey::ToV8(ScriptState* script_state) const {
   switch (type_) {
     case mojom::IDBKeyType::Invalid:
     case mojom::IDBKeyType::Min:
-      NOTREACHED_IN_MIGRATION();
-      return v8::Local<v8::Value>();
+      NOTREACHED();
     case mojom::IDBKeyType::None:
       return v8::Null(isolate);
     case mojom::IDBKeyType::Number:
@@ -221,8 +222,7 @@ v8::Local<v8::Value> IDBKey::ToV8(ScriptState* script_state) const {
     }
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return v8::Local<v8::Value>();
+  NOTREACHED();
 }
 
 bool IDBKey::IsLessThan(const IDBKey* other) const {

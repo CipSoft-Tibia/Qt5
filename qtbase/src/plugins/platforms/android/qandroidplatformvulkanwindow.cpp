@@ -1,7 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#include "androiddeadlockprotector.h"
 #include "androidjnimain.h"
 #include "qandroideventdispatcher.h"
 #include "qandroidplatformscreen.h"
@@ -15,6 +15,8 @@
 #include <android/native_window_jni.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QAndroidPlatformVulkanWindow::QAndroidPlatformVulkanWindow(QWindow *window)
     : QAndroidPlatformWindow(window),
@@ -46,10 +48,10 @@ void QAndroidPlatformVulkanWindow::setGeometry(const QRect &rect)
 
 void QAndroidPlatformVulkanWindow::applicationStateChanged(Qt::ApplicationState state)
 {
-    QAndroidPlatformWindow::applicationStateChanged(state);
     if (state <= Qt::ApplicationHidden) {
         destroyAndClearSurface();
     }
+    QAndroidPlatformWindow::applicationStateChanged(state);
 }
 
 QSurfaceFormat QAndroidPlatformVulkanWindow::format() const
@@ -68,6 +70,8 @@ void QAndroidPlatformVulkanWindow::clearSurface()
         ANativeWindow_release(m_nativeWindow);
         m_nativeWindow = nullptr;
     }
+
+    decrementSurfacesCount();
 }
 
 void QAndroidPlatformVulkanWindow::destroyAndClearSurface()
@@ -80,23 +84,27 @@ void QAndroidPlatformVulkanWindow::destroyAndClearSurface()
 
 VkSurfaceKHR *QAndroidPlatformVulkanWindow::vkSurface()
 {
-    if (QAndroidEventDispatcherStopper::stopped())
+    if (QAndroidEventDispatcherStopper::stopped() ||
+        QGuiApplication::applicationState() == Qt::ApplicationSuspended) {
+        qDebug(lcQpaWindow) << "Application not active, return existing surface.";
         return &m_vkSurface;
+    }
 
     bool needsExpose = false;
     if (!m_vkSurface) {
         clearSurface();
 
         QMutexLocker lock(&m_surfaceMutex);
-        if (!m_surfaceCreated) {
-            AndroidDeadlockProtector protector;
+        if (!m_androidSurfaceCreated) {
+            QtAndroidPrivate::AndroidDeadlockProtector protector(
+                u"QAndroidPlatformVulkanWindow::vkSurface()"_s);
             if (!protector.acquire())
                 return &m_vkSurface;
             createSurface();
             m_surfaceWaitCondition.wait(&m_surfaceMutex);
         }
 
-        if (!m_surfaceCreated || !m_androidSurfaceObject.isValid())
+        if (!m_androidSurfaceCreated || !m_androidSurfaceObject.isValid())
             return &m_vkSurface;
 
         QJniEnvironment env;
@@ -128,6 +136,8 @@ VkSurfaceKHR *QAndroidPlatformVulkanWindow::vkSurface()
 
     if (needsExpose)
         sendExpose();
+
+    incrementSurfacesCount();
 
     return &m_vkSurface;
 }

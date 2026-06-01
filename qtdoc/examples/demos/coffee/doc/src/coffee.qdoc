@@ -72,7 +72,7 @@
     be shown as maximized or fullscreen on platforms that require it,
     such as mobile platforms.
 
-    \snippet demos/coffee/main.qml Set application window size
+    \snippet demos/coffee/Main.qml Set application window size
 
     From there child objects of the \c ApplicationWindow fetch the size of the
     \c ApplicationWindow to determine their own sizes accordingly.
@@ -191,10 +191,10 @@
     made possible by binding the height of the liquid images inside \c Cup.qml to
     the values of corresponding sliders.
 
-    The values of the sliders will be stored to property variables in
-    \c ApplicationFLow.qml through \c onValueChanged function.
+    Values of the sliders in \c Settings page are stored in \c CoffeeConfig for
+    later use using \c Synchronizer Qml type.
 
-    \snippet demos/coffee/Settings.qml Value changed
+    \snippet demos/coffee/Settings.qml synchronizer
 
     Clicking on Start button changes the state of \c ApplicationFlow.qml to
     "Insert", and the app displays the \c Insert.qml.
@@ -241,5 +241,8 @@
     \section1 Source files
 
     \sa {Qt Quick Examples and Tutorials} {All Qt Examples}
+
+    \include squish-tested-example.qdocinc
+
 */
 

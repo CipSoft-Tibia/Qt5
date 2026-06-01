@@ -65,10 +65,6 @@ LayerTreeFrameSink::LayerTreeFrameSink(
       gpu_memory_buffer_manager_(gpu_memory_buffer_manager),
       shared_image_interface_(std::move(shared_image_interface)) {
   DETACH_FROM_THREAD(thread_checker_);
-
-  if (!base::FeatureList::IsEnabled(features::kSharedBitmapToSharedImage)) {
-    shared_image_interface_.reset();
-  }
 }
 
 LayerTreeFrameSink::~LayerTreeFrameSink() {
@@ -168,6 +164,13 @@ std::unique_ptr<LayerContext> LayerTreeFrameSink::CreateLayerContext(
   return nullptr;
 }
 
+void LayerTreeFrameSink::CrashGpuProcessForTesting() {
+  if (shared_image_interface_) {
+    shared_image_interface_->gpu_channel()
+        ->CrashGpuProcessForTesting();  // IN-TEST
+  }
+}
+
 void LayerTreeFrameSink::OnContextLost() {
   DCHECK(client_);
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
@@ -196,9 +199,7 @@ void LayerTreeFrameSink::GpuChannelLostOnClientThread() {
 
 scoped_refptr<gpu::ClientSharedImageInterface>
 LayerTreeFrameSink::shared_image_interface() const {
-  return base::FeatureList::IsEnabled(features::kSharedBitmapToSharedImage)
-             ? shared_image_interface_
-             : nullptr;
+  return shared_image_interface_;
 }
 
 }  // namespace cc

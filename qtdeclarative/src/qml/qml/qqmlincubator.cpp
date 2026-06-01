@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlincubator.h"
 #include "qqmlcomponent.h"
@@ -7,6 +8,8 @@
 
 #include "qqmlobjectcreator_p.h"
 #include <private/qqmlcomponent_p.h>
+
+QT_BEGIN_NAMESPACE
 
 void QQmlEnginePrivate::incubate(
         QQmlIncubator &i, const QQmlRefPointer<QQmlContextData> &forContext)
@@ -396,7 +399,7 @@ void QQmlIncubatorPrivate::incubateCppBasedComponent(QQmlComponent *component, Q
     Q_ASSERT(compPriv->loadedType().isCreatable());
     std::unique_ptr<QObject> object(component->beginCreate(context));
     component->setInitialProperties(object.get(), initialProperties);
-    if (auto props = compPriv->state.requiredProperties()) {
+    if (auto props = compPriv->requiredProperties()) {
         requiredPropertiesFromComponent = props;
         requiredPropertiesFromComponent.setTag(HadTopLevelRequired::Yes);
     }
@@ -807,3 +810,4 @@ QQmlIncubator::Status QQmlIncubatorPrivate::calculateStatus() const
         return QQmlIncubator::Null;
 }
 
+QT_END_NAMESPACE

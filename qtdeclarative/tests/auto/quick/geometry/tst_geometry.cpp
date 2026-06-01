@@ -16,6 +16,10 @@ private Q_SLOTS:
     void testPoint2D();
     void testTexturedPoint2D();
     void testCustomGeometry();
+    void testEmptyGeometry();
+    void testSetVertexCount();
+    void testSetIndexCount();
+    void testPreallocBufferCornercases();
 
 private:
 };
@@ -134,9 +138,128 @@ void GeometryTest::testCustomGeometry()
         QCOMPARE(ii[i], (quint16) i);
     for (int i=0; i<1000; ++i)
         QCOMPARE(v[i].v1, float(6));
-
 }
 
+void GeometryTest::testEmptyGeometry()
+{
+    // This test verifies that behavior of vertexData() does not change with
+    // new-to-6.9 functions: setVertexCount() and setIndexCount().
+    //
+    // Prior to Qt 6.9, vertexData() returns nullptr if geometry is first
+    // created with zero vertices, but returns the address of the m_prealloc
+    // buffer if created with non-zero \a vertexCount and is resized to 0.
+    //
+    // This behavior seems inconsistent, but it allows testing whether a
+    // geometry ever had vertices. It is unknown whether this side-effect
+    // is desired or used.
+
+    QSGGeometry geometry(QSGGeometry::defaultAttributes_ColoredPoint2D(), 0);
+
+    // when constructed with zero vertices, vertex data returns nulltpr
+    QCOMPARE(geometry.vertexData(), nullptr);
+
+    // Allocate storage for vertices
+    geometry.allocate(16);
+
+    auto *v = (QSGGeometry::ColoredPoint2D *) geometry.vertexData();
+
+    QVERIFY(v != nullptr);
+
+    // Clear storage for vertices
+    geometry.allocate(0);
+
+    // With zero vertices, vertex data points to m_prealloc buffer
+    QVERIFY(geometry.vertexData() != nullptr);
+    QVERIFY(geometry.vertexData() != v);
+}
+
+void GeometryTest::testSetVertexCount()
+{
+    QSGGeometry geometry(QSGGeometry::defaultAttributes_ColoredPoint2D(), 2000);
+
+    QCOMPARE(geometry.attributeCount(), 2);
+    QCOMPARE(geometry.sizeOfVertex(), (int) (sizeof(float) * 2 + sizeof(char) * 4));
+
+    QCOMPARE(geometry.vertexCount(), 2000);
+
+    auto *v = (QSGGeometry::ColoredPoint2D *) geometry.vertexData();
+
+    geometry.setVertexCount(0);
+    QCOMPARE(geometry.vertexCount(), 0);
+
+    geometry.setVertexCount(2000);
+    QCOMPARE(geometry.vertexCount(), 2000);
+
+    // Verify same location in memory is still used
+    QCOMPARE(geometry.vertexData(), v);
+}
+
+void GeometryTest::testSetIndexCount()
+{
+    QSGGeometry geometry(QSGGeometry::defaultAttributes_ColoredPoint2D(), 2000, 3000);
+
+    QCOMPARE(geometry.attributeCount(), 2);
+
+    // Verify that indexes are unaffected by changing the count
+    quint16 *ii = geometry.indexDataAsUShort();
+    for (int i=0; i<geometry.indexCount(); ++i) {
+        ii[i] = i;
+    }
+
+    QCOMPARE(geometry.indexCount(), 3000);
+
+    geometry.setIndexCount(0);
+    QCOMPARE(geometry.indexCount(), 0);
+
+    geometry.setIndexCount(3000);
+    QCOMPARE(geometry.indexCount(), 3000);
+
+    // Verify same location in memory is still used
+    QCOMPARE(geometry.indexDataAsUShort(), ii);
+
+    // Verify all indexes remain consistent
+    for (int i=0; i<3000; ++i)
+        QCOMPARE(ii[i], (quint16) i);
+}
+
+void GeometryTest::testPreallocBufferCornercases()
+{
+    // This test verifies m_prealloc behavior as it existed prior to adding
+    // setVertexCount() and setIndexCount() for Qt 6.9. Given that it is
+    // undocumented, this test will inform whoever breaks it in the future.
+
+    struct V {
+        float x, y, alpha;
+    };
+
+    static QSGGeometry::Attribute attributes[] = {
+        QSGGeometry::Attribute::create(0, 3, QSGGeometry::FloatType, false),
+    };
+    static QSGGeometry::AttributeSet set = { 1, 3 * sizeof(float), attributes };
+
+    QSGGeometry geometry(set, 1);
+
+    // Store address of the m_prealloc buffer for buffer checks
+    const auto *v = geometry.vertexData();
+
+    QCOMPARE(geometry.vertexCount(), 1);
+    QCOMPARE(geometry.indexCount(), 0);
+    QCOMPARE(geometry.indexData(), nullptr);
+
+    // Verify the maximum number of points that fit without reallocating
+    geometry.allocate(5);
+    QCOMPARE(geometry.vertexData(), v);
+
+    // Verify "one more" requires allocating heap memory
+    geometry.allocate(6);
+    QVERIFY(v != geometry.vertexData());
+
+    // Verify that resizing down fits uses m_prealloc buffer again
+    geometry.allocate(2);
+    QCOMPARE(geometry.vertexData(), v);
+    geometry.allocate(5);
+    QCOMPARE(geometry.vertexData(), v);
+}
 
 QTEST_MAIN(GeometryTest);
 

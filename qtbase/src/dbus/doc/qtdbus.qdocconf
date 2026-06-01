@@ -25,6 +25,9 @@ excludedirs += ../../../examples/widgets/doc
 
 examplesinstallpath     = dbus
 
+# Path to the root of qtbase (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 tagfile = qtdbus.tags
 
 depends += qtcore qtdoc qmake qtcmake

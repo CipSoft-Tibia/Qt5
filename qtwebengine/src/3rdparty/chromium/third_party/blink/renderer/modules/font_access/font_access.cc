@@ -82,7 +82,7 @@ ScriptPromise<IDLSequence<FontMetadata>> FontAccess::QueryLocalFontsImpl(
   }
   ExecutionContext* context = ExecutionContext::From(script_state);
   if (!context->IsFeatureEnabled(
-          mojom::blink::PermissionsPolicyFeature::kLocalFonts,
+          network::mojom::PermissionsPolicyFeature::kLocalFonts,
           ReportOptions::kReportOnFailure)) {
     exception_state.ThrowSecurityError(kFeaturePolicyBlocked);
     return ScriptPromise<IDLSequence<FontMetadata>>();
@@ -163,10 +163,10 @@ void FontAccess::DidGetEnumerationResponse(
     }
 
     auto entry = FontEnumerationEntry{
-        .postscript_name = String::FromUTF8(element.postscript_name().c_str()),
-        .full_name = String::FromUTF8(element.full_name().c_str()),
-        .family = String::FromUTF8(element.family().c_str()),
-        .style = String::FromUTF8(element.style().c_str()),
+        .postscript_name = String::FromUTF8(element.postscript_name()),
+        .full_name = String::FromUTF8(element.full_name()),
+        .family = String::FromUTF8(element.family()),
+        .style = String::FromUTF8(element.style()),
     };
     entries.push_back(FontMetadata::Create(std::move(entry)));
   }

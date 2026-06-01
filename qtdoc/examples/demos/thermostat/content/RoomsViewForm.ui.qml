@@ -9,18 +9,15 @@ this file manually, you might introduce QML code that is not supported by Qt Des
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import Thermostat
+import ThermostatCustomControls
 
 Pane {
     id: root
 
-    topPadding: 4
-    leftPadding: 27
-    rightPadding: 27
-    bottomPadding: 13
-
-    required property var roomsList
+    required property list<Room> roomsList
 
     background: Rectangle {
         anchors.fill: parent
@@ -32,24 +29,74 @@ Pane {
 
         width: internal.contentWidth
 
-        Label {
-            id: heading
+        RowLayout {
+            id: smallHeading
+            width: parent.width
 
-            text: qsTr("Welcome")
-            font: Constants.desktopTitleFont
-            color: Constants.primaryTextColor
-            elide: Text.ElideRight
+            Label {
+                id: smallHeadingLabel
+                Layout.fillWidth: true
+
+                text: qsTr("Welcome")
+                font: Constants.desktopTitleFont
+                color: Constants.primaryTextColor
+                elide: Text.ElideRight
+            }
+
+
+            CustomSwitch {
+                id: activeToggle
+
+                checked: AppSettings.isThermostatActive
+                Connections {
+                    function onClicked() {
+                        AppSettings.isThermostatActive = activeToggle.checked
+                    }
+                }
+            }
         }
 
-        Label {
-            id: heading2
+        RowLayout {
+            id: largeHeading
 
-            text: qsTr("Here's the list of your Rooms at Home")
-            font.pixelSize: 24
-            font.weight: 600
-            font.family: "Titillium Web"
-            color: Constants.accentTextColor
-            elide: Text.ElideRight
+            width: parent.width
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Here's the list of your Rooms at Home")
+                font.pixelSize: 24
+                font.weight: 600
+                font.family: "Titillium Web"
+                color: Constants.accentTextColor
+                elide: Text.ElideRight
+            }
+
+            Rectangle {
+                implicitWidth: 120
+                implicitHeight: 32
+                radius: 8
+                color: "transparent"
+                border.color: Constants.accentTextColor
+
+                CustomRoundButton {
+                    id: otherButton
+                    x: !checked ? 0 : 50
+                    width: 70
+                    height: 32
+                    radius: 8
+
+                    font.pixelSize: 10
+                    font.family: "Inter"
+                    font.weight: 600
+                    text: qsTr("At home")
+                    checked: AppSettings.isThermostatActive
+                    Connections {
+                        function onClicked() {
+                            AppSettings.isThermostatActive = otherButton.checked
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -68,7 +115,7 @@ Pane {
         delegatePreferredHeight: internal.delegatePreferredHeight
 
         columns: root.width < 1140 ? 1 : 2
-        model: roomsList
+        roomsList: root.roomsList
     }
 
     RoomsSwipeView {
@@ -84,7 +131,7 @@ Pane {
         delegatePreferredHeight: internal.delegatePreferredHeight
         delegatePreferredWidth: internal.delegatePreferredWidth
 
-        model: roomsList
+        roomsList: root.roomsList
         visible: false
     }
 
@@ -103,12 +150,12 @@ Pane {
             name: "desktopLayout"
             when: Constants.isBigDesktopLayout || Constants.isSmallDesktopLayout
             PropertyChanges {
-                target: heading
+                target: smallHeadingLabel
                 text: qsTr("Welcome")
                 font: Constants.desktopTitleFont
             }
             PropertyChanges {
-                target: heading2
+                target: largeHeading
                 visible: true
             }
             PropertyChanges {
@@ -128,17 +175,21 @@ Pane {
                 target: root
                 leftPadding: 27
             }
+            PropertyChanges {
+                target: activeToggle
+                visible: false
+            }
         },
         State {
             name: "mobileLayout"
             when: Constants.isMobileLayout
             PropertyChanges {
-                target: heading
+                target: smallHeadingLabel
                 text: qsTr("Rooms")
                 font: Constants.mobileTitleFont
             }
             PropertyChanges {
-                target: heading2
+                target: largeHeading
                 visible: false
             }
             PropertyChanges {
@@ -158,17 +209,21 @@ Pane {
                 target: root
                 leftPadding: 27
             }
+            PropertyChanges {
+                target: activeToggle
+                visible: true
+            }
         },
         State {
             name: "smallLayout"
             when: Constants.isSmallLayout
             PropertyChanges {
-                target: heading
+                target: smallHeadingLabel
                 text: qsTr("Rooms")
                 font: Constants.smallTitleFont
             }
             PropertyChanges {
-                target: heading2
+                target: largeHeading
                 visible: false
             }
             PropertyChanges {
@@ -187,6 +242,10 @@ Pane {
             PropertyChanges {
                 target: root
                 leftPadding: 11
+            }
+            PropertyChanges {
+                target: activeToggle
+                visible: true
             }
         }
     ]

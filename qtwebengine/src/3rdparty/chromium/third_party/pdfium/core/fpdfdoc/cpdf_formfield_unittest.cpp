@@ -31,8 +31,8 @@ class ScopedCPDF_PageModule {
  public:
   FX_STACK_ALLOCATED();
 
-  ScopedCPDF_PageModule() { CPDF_PageModule::Create(); }
-  ~ScopedCPDF_PageModule() { CPDF_PageModule::Destroy(); }
+  ScopedCPDF_PageModule() { pdfium::InitializePageModule(); }
+  ~ScopedCPDF_PageModule() { pdfium::DestroyPageModule(); }
 };
 
 void TestMultiselectFieldDict(RetainPtr<CPDF_Array> opt_array,
@@ -46,7 +46,7 @@ void TestMultiselectFieldDict(RetainPtr<CPDF_Array> opt_array,
   form_dict->SetNewFor<CPDF_Name>("Subtype", "Widget");
   form_dict->SetNewFor<CPDF_Name>(pdfium::form_fields::kFT,
                                   pdfium::form_fields::kCh);
-  constexpr int kMuliSelectFlag = pdfium::form_flags::kChoiceMultiSelect;
+  static constexpr int kMuliSelectFlag = pdfium::form_flags::kChoiceMultiSelect;
   form_dict->SetNewFor<CPDF_Number>(pdfium::form_fields::kFf, kMuliSelectFlag);
   form_dict->SetFor("Opt", opt_array);
   form_dict->SetFor(pdfium::form_fields::kV, values);
@@ -67,7 +67,7 @@ void TestMultiselectFieldDict(RetainPtr<CPDF_Array> opt_array,
 
 }  // namespace
 
-TEST(CPDF_FormFieldTest, GetFullNameForDict) {
+TEST(CPDFFormFieldTest, GetFullNameForDict) {
   WideString name = CPDF_FormField::GetFullNameForDict(nullptr);
   EXPECT_TRUE(name.IsEmpty());
 
@@ -105,7 +105,7 @@ TEST(CPDF_FormFieldTest, GetFullNameForDict) {
   EXPECT_EQ("bar.foo.qux", name.ToUTF8());
 }
 
-TEST(CPDF_FormFieldTest, IsItemSelected) {
+TEST(CPDFFormFieldTest, IsItemSelected) {
   ScopedCPDF_PageModule page_module;
 
   auto opt_array = pdfium::MakeRetain<CPDF_Array>();

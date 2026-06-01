@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qapplication.h"
 #include "qbitmap.h"
@@ -45,6 +46,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtWidgets
 
     \image fusion-pushbutton.png
+           {Push button for creating a new document}
 
     The push button, or command button, is perhaps the most commonly
     used widget in any graphical user interface. Push (click) a button
@@ -512,7 +514,8 @@ bool QPushButton::hitButton(const QPoint &pos) const
 
     Ownership of the menu is \e not transferred to the push button.
 
-    \image fusion-pushbutton-menu.png Screenshot of a Fusion style push button with popup menu.
+    \image fusion-pushbutton-menu.png
+           {Push button with popup menu}
     A push button with popup menus shown in the \l{Qt Widget Gallery}
     {Fusion widget style}.
 

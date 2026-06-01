@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "components/favicon_base/favicon_url_parser.h"
 
 #include <string_view>
@@ -167,8 +172,7 @@ bool ParseFaviconPath(const std::string& path,
     case FaviconUrlFormat::kFavicon2:
       return ParseFaviconPathWithFavicon2Format(path, parsed);
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 }  // namespace chrome

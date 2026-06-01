@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include <array>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,7 @@
 #include "core/fxcrt/span.h"
 #include "core/fxcrt/utf16.h"
 #include "core/fxcrt/widestring.h"
+#include "third_party/fast_float/src/include/fast_float/fast_float.h"
 
 #if !defined(WCHAR_T_IS_16_BIT) && !defined(WCHAR_T_IS_32_BIT)
 #error "Unknown wchar_t size"
@@ -63,6 +65,67 @@ void AppendCodePointToByteString(char32_t code_point, ByteString& buffer) {
   }
 }
 
+template <typename IntType, typename StringViewType>
+IntType StringToIntImpl(StringViewType str) {
+  if (str.IsEmpty()) {
+    return 0;
+  }
+
+  // Process the sign.
+  bool neg = str.CharAt(0u) == '-';
+  if (neg || str.CharAt(0u) == '+') {
+    str = str.Substr(1u);
+  }
+
+  IntType num = 0;
+  while (!str.IsEmpty() && FXSYS_IsDecimalDigit(str.CharAt(0u))) {
+    IntType val = FXSYS_DecimalCharToInt(str.CharAt(0u));
+    if (num > (std::numeric_limits<IntType>::max() - val) / 10) {
+      if (neg && std::numeric_limits<IntType>::is_signed) {
+        // Return MIN when the represented number is signed type and is smaller
+        // than the min value.
+        return std::numeric_limits<IntType>::min();
+      }
+      // Return MAX when the represented number is signed type and is larger
+      // than the max value, or the number is unsigned type and out of range.
+      return std::numeric_limits<IntType>::max();
+    }
+    num = num * 10 + val;
+    str = str.Substr(1u);
+  }
+  // When it is a negative value, -num should be returned. Since num may be of
+  // unsigned type, use ~num + 1 to avoid the warning of applying unary minus
+  // operator to unsigned type.
+  return neg ? ~num + 1 : num;
+}
+
+// Intended to work for the cases where `T` is float or double.
+template <class T>
+T StringToFloatImpl(ByteStringView strc) {
+  // Skip leading whitespaces.
+  size_t start = 0;
+  size_t len = strc.GetLength();
+  while (start < len && strc[start] == ' ') {
+    ++start;
+  }
+
+  // Skip a leading '+' sign.
+  if (start < len && strc[start] == '+') {
+    ++start;
+  }
+
+  ByteStringView sub_strc = strc.Substr(start, len - start);
+
+  T value;
+  auto result = fast_float::from_chars(sub_strc.begin(), sub_strc.end(), value);
+
+  // Return 0 for parsing errors. Some examples of errors are an empty string
+  // and a string that cannot be converted to T.
+  return result.ec == std::errc() || result.ec == std::errc::result_out_of_range
+             ? value
+             : 0;
+}
+
 }  // namespace
 
 ByteString FX_UTF8Encode(WideStringView wsStr) {
@@ -96,62 +159,16 @@ std::u16string FX_UTF16Encode(WideStringView wsStr) {
   return result;
 }
 
-namespace {
-
-constexpr float kFractionScalesFloat[] = {
-    0.1f,         0.01f,         0.001f,        0.0001f,
-    0.00001f,     0.000001f,     0.0000001f,    0.00000001f,
-    0.000000001f, 0.0000000001f, 0.00000000001f};
-
-const double kFractionScalesDouble[] = {
-    0.1,       0.01,       0.001,       0.0001,       0.00001,      0.000001,
-    0.0000001, 0.00000001, 0.000000001, 0.0000000001, 0.00000000001};
-
-template <class T>
-T StringTo(ByteStringView strc, pdfium::span<const T> fractional_scales) {
-  if (strc.IsEmpty())
-    return 0;
-
-  bool bNegative = false;
-  size_t cc = 0;
-  size_t len = strc.GetLength();
-  if (strc[0] == '+') {
-    cc++;
-  } else if (strc[0] == '-') {
-    bNegative = true;
-    cc++;
-  }
-  while (cc < len) {
-    if (strc[cc] != '+' && strc[cc] != '-')
-      break;
-    cc++;
-  }
-  T value = 0;
-  while (cc < len) {
-    if (strc[cc] == '.')
-      break;
-    value = value * 10 + FXSYS_DecimalCharToInt(strc.CharAt(cc));
-    cc++;
-  }
-  size_t scale = 0;
-  if (cc < len && strc[cc] == '.') {
-    cc++;
-    while (cc < len) {
-      value +=
-          fractional_scales[scale] * FXSYS_DecimalCharToInt(strc.CharAt(cc));
-      scale++;
-      if (scale == fractional_scales.size())
-        break;
-      cc++;
-    }
-  }
-  return bNegative ? -value : value;
+int32_t StringToInt(ByteStringView str) {
+  return StringToIntImpl<int32_t, ByteStringView>(str);
 }
 
-}  // namespace
+int32_t StringToInt(WideStringView wsStr) {
+  return StringToIntImpl<int32_t, WideStringView>(wsStr);
+}
 
 float StringToFloat(ByteStringView strc) {
-  return StringTo<float>(strc, kFractionScalesFloat);
+  return StringToFloatImpl<float>(strc);
 }
 
 float StringToFloat(WideStringView wsStr) {
@@ -159,7 +176,7 @@ float StringToFloat(WideStringView wsStr) {
 }
 
 double StringToDouble(ByteStringView strc) {
-  return StringTo<double>(strc, kFractionScalesDouble);
+  return StringToFloatImpl<double>(strc);
 }
 
 double StringToDouble(WideStringView wsStr) {

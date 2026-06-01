@@ -83,6 +83,7 @@ private:
                          const QList<QSSGRenderGraphObject *> &resourceLoaders);
     void addNodeToLayer(QSSGRenderNode *node);
     void removeNodeFromLayer(QSSGRenderNode *node);
+    void maybeSetupLightmapBaking(QQuick3DViewport *view3D);
     std::shared_ptr<QSSGRenderContextInterface> m_sgContext;
     QSSGRenderLayer *m_layer = nullptr;
     QPointer<QQuick3DWindowAttachment> winAttacment;
@@ -121,9 +122,13 @@ private:
     QPointer<QQuick3DRenderStats> m_renderStats;
 
     QSSGRenderNode *m_sceneRootNode = nullptr;
-    QSSGRenderNode *m_importRootNode = nullptr;
+    QSSGRenderNode *m_importSceneRootNode = nullptr;
 
     bool m_prepared = false;
+
+    QSSGLightmapperOptions lmOptions;
+    bool m_lightmapBakingFromCmdRequested = false;
+    bool m_lightmapDenoisingFromCmdRequested = false;
 
     int m_requestedFramesCount = 0;
     bool m_postProcessingStack = false;

@@ -73,6 +73,8 @@ private slots:
     void checkDate();
     void checkDateTime_data();
     void checkDateTime();
+    void checkDateTimeParsing_data();
+    void checkDateTimeParsing();
     void idShortcutInvalidates();
     void boolPropertiesEvaluateAsBool();
     void methods();
@@ -101,6 +103,7 @@ private slots:
     void attachedProperties();
     void enums();
     void valueTypeFunctions();
+    void valueTypeReadAfterWrite();
     void constantsOverrideBindings();
     void outerBindingOverridesInnerBinding();
     void groupPropertyBindingOrder();
@@ -440,6 +443,9 @@ private slots:
 
     void jittedJavaScriptExpressionDoesNotCrashOnExceptionBeingThrown();
 
+    void anonymousFunctionReturnTypeAnnotationIsPreserved();
+    void namedFunctionExpressionReturnTypeIsPreserved();
+
 private:
 //    static void propertyVarWeakRefCallback(v8::Persistent<v8::Value> object, void* parameter);
     static void verifyContextLifetime(const QQmlRefPointer<QQmlContextData> &ctxt);
@@ -738,9 +744,6 @@ void tst_qqmlecmascript::checkDateTime_data()
     QTest::newRow("nonstandard-format")
         << testFileUrl("checkDateTime-nonstandardFormat.qml")
         << QDateTime::fromString("1991-08-25 20:57:08 GMT+0000", "yyyy-MM-dd hh:mm:ss t");
-    QTest::newRow("nonstandard-format2")
-        << testFileUrl("checkDateTime-nonstandardFormat2.qml")
-        << QDateTime::fromString("Sun, 25 Mar 2018 11:10:49 GMT", "ddd, d MMM yyyy hh:mm:ss t");
 }
 
 void tst_qqmlecmascript::checkDateTime()
@@ -755,6 +758,40 @@ void tst_qqmlecmascript::checkDateTime()
     QVERIFY(object != nullptr);
     QCOMPARE(object->dateTimeProperty(), when);
     QVERIFY(object->boolProperty());
+}
+
+void tst_qqmlecmascript::checkDateTimeParsing_data()
+{
+    QTest::addColumn<QString>("string");
+    QTest::addColumn<QDateTime>("when");
+
+    QTest::newRow("rfc2822-with-timezone-name")
+            << u"Sun, 25 Mar 2018 11:10:49 GMT"_s
+            << QDateTime(QDate(2018, 3, 25), QTime(11, 10, 49), QTimeZone::utc());
+    QTest::newRow("rfc2822-with-2-digit-year")
+            << u"Mon, 07 Feb 22 11:48:12 -0500"_s
+            << QDateTime(QDate(2022, 2, 7), QTime(11, 48, 12),
+                         QTimeZone::fromSecondsAheadOfUtc(-5 * 60 * 60));
+    QTest::newRow("rfc2822-with-1-digit-hour")
+            << u"Mon, 07 Feb 22 1:48:12 -0500"_s
+            << QDateTime(QDate(2022, 2, 7), QTime(1, 48, 12),
+                         QTimeZone::fromSecondsAheadOfUtc(-5 * 60 * 60));
+}
+
+void tst_qqmlecmascript::checkDateTimeParsing()
+{
+    QFETCH(QString, string);
+    QFETCH(const QDateTime, when);
+
+    QQmlEngine e;
+    QQmlComponent component(&e, testFileUrl("checkDateTimeParsing.qml"));
+    QScopedPointer<QObject> obj(component.create());
+    QVERIFY2(obj, qPrintable(component.errorString()));
+
+    obj->setProperty("myString", string);
+    QCOMPARE(obj->property("myDateTime").toDateTime(), when);
+    QCOMPARE(obj->property("myTime").toLongLong(), when.toMSecsSinceEpoch());
+    QCOMPARE(obj->property("isValid").toBool(), when.isValid());
 }
 
 void tst_qqmlecmascript::idShortcutInvalidates()
@@ -1608,6 +1645,22 @@ void tst_qqmlecmascript::valueTypeFunctions()
     QVERIFY(obj != nullptr);
     QCOMPARE(obj->rectProperty(), QRect(0,0,100,100));
     QCOMPARE(obj->rectFProperty(), QRectF(0,0.5,100,99.5));
+}
+
+void tst_qqmlecmascript::valueTypeReadAfterWrite()
+{
+    QQmlEngine engine;
+    {
+        QQmlComponent testComponent(&engine);
+        testComponent.loadFromModule("QtQuick", "Item");
+        if (!testComponent.isReady())
+            QSKIP("Test requires QtQuick");
+    }
+    QQmlComponent component(&engine, testFileUrl("valueTypeReadAfterWrite.qml"));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY2(object, qPrintable(component.errorString()));
+    QString result = object->property("result").toString();
+    QVERIFY2(result.contains("\"b\":1"), result.toUtf8().constData());
 }
 
 /*
@@ -10752,6 +10805,36 @@ void tst_qqmlecmascript::jittedJavaScriptExpressionDoesNotCrashOnExceptionBeingT
     QVERIFY(timer);
 
     QTRY_VERIFY(!timer->isRunning());
+}
+
+void tst_qqmlecmascript::anonymousFunctionReturnTypeAnnotationIsPreserved() {
+    QQmlEngine engine;
+
+    QQmlComponent c(&engine, testFileUrl("anonymousFunctionReturnTypeAnnotationIsPreserved.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY2(o, qPrintable(c.errorString()));
+
+    QJSValue func = o->property("func").value<QJSValue>();
+    auto signature = QJSValuePrivate::asManagedType<QV4::JavaScriptFunctionObject>(&func)->d()->function->jsTypedFunction.types;
+
+    QVERIFY(!signature.empty());
+    QCOMPARE(signature.first(), QQmlMetaType::qmlType(QMetaType::fromType<int>()));
+}
+
+void tst_qqmlecmascript::namedFunctionExpressionReturnTypeIsPreserved() {
+    QQmlEngine engine;
+
+    QQmlComponent c(&engine, testFileUrl("namedFunctionExpressionReturnTypeIsPreserved.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY2(o, qPrintable(c.errorString()));
+
+    QJSValue func = o->property("func").value<QJSValue>();
+    auto signature = QJSValuePrivate::asManagedType<QV4::JavaScriptFunctionObject>(&func)->d()->function->jsTypedFunction.types;
+
+    QVERIFY(!signature.empty());
+    QCOMPARE(signature.first(), QQmlMetaType::qmlType(QMetaType::fromType<int>()));
 }
 
 QTEST_MAIN(tst_qqmlecmascript)

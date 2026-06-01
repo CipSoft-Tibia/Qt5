@@ -34,6 +34,7 @@ class AidaClient {
   void PrepareRequestOrFail(
       base::OnceCallback<
           void(absl::variant<network::ResourceRequest, std::string>)> callback);
+  void RemoveAccessToken();
 
   // Needed because VariationsService is not available for unit tests.
   static ScopedOverride OverrideCountryForTesting(std::string country_code);
@@ -54,6 +55,8 @@ class AidaClient {
     bool blocked_by_geo = true;
     bool blocked_by_rollout = false;
     bool disallow_logging = true;
+    DevToolsGenAiEnterprisePolicyValue enterprise_policy_value =
+        DevToolsGenAiEnterprisePolicyValue::kAllow;
   };
 
   static Availability CanUseAida(Profile* profile);

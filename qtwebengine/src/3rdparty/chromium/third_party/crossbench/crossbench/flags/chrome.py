@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Dict, Iterable, Iterator, Optional, Tuple
+from typing import Dict, Final, Iterable, Iterator, Optional, Tuple
 
 from ordered_set import OrderedSet
 
 from crossbench import path as pth
-from crossbench.flags.base import Flags, Freezable
+from crossbench.flags.base import Flags, FlagsData, Freezable
 from crossbench.flags.js_flags import JSFlags
 from crossbench.flags.known_js_flags import KNOWN_JS_FLAGS
 
@@ -25,7 +25,30 @@ class ChromeFlags(Flags):
   """
   _JS_FLAG = "--js-flags"
 
-  def __init__(self, initial_data: Flags.InitialDataType = None) -> None:
+  # All flags that might affect how finch / field-trials are loaded.
+  FIELD_TRIAL_FLAGS: Final[Tuple[str, ...]] = (
+      "--force-fieldtrials",
+      "--variations-server-url",
+      "--variations-insecure-server-url",
+      "--variations-test-seed-path",
+      "--enable-field-trial-config",
+      "--disable-variations-safe-mode",
+      # The benchmarking flag without value is a no-experiment flag. However,
+      # when used as '--enable-benchmarking=enable-field-trial-config' it
+      # works with experiments.
+      "--enable-benchmarking",
+  )
+
+  NO_EXPERIMENTS_FLAGS: Final[Tuple[str, ...]] = (
+      "--no-experiments",
+      # The benchmarking flag without value is a no-experiment flag. However,
+      # when used as '--enable-benchmarking=enable-field-trial-config' it
+      # works with experiments.
+      "--enable-benchmarking",
+      "--disable-field-trial-config",
+  )
+
+  def __init__(self, initial_data: FlagsData = None) -> None:
     self._features = ChromeFeatures()
     self._blink_features = ChromeBlinkFeatures()
     self._js_flags = JSFlags()
@@ -47,7 +70,8 @@ class ChromeFlags(Flags):
       return self._features.disabled_str()
     if key == ChromeBlinkFeatures.ENABLE_FLAG and self._blink_features.enabled:
       return self._blink_features.enabled_str()
-    if key == ChromeBlinkFeatures.DISABLE_FLAG and self._blink_features.disabled:
+    if (key == ChromeBlinkFeatures.DISABLE_FLAG and
+        self._blink_features.disabled):
       return self._blink_features.disabled_str()
     return super().__getitem__(key)
 
@@ -150,7 +174,36 @@ class ChromeFlags(Flags):
   def js_flags(self) -> JSFlags:
     return self._js_flags
 
-  def merge(self, other: Flags.InitialDataType) -> None:
+  def has_enable_benchmarking_field_trials(self):
+    # Enable the benchmarking extension with field trial configs which
+    # requires a special value. See `ShouldUseFieldTrialTestingConfig()`.
+    # https://crsrc.org/c/components/variations/service/variations_field_trial_creator_base.cc;l=138;drc=27d34700b83f381c62e3a348de2e6dfdc08364b8
+    return self.get("--enable-benchmarking") == "enable-field-trial-config"
+
+  @property
+  def field_trial_flags(self) -> ChromeFlags:
+    filtered = self.filtered(self.FIELD_TRIAL_FLAGS)
+    if "--enable-benchmarking" in self and (
+        not self.has_enable_benchmarking_field_trials()):
+      del filtered["--enable-benchmarking"]
+    return filtered
+
+  @property
+  def no_experiments_flags(self) -> ChromeFlags:
+    filtered = self.filtered(self.NO_EXPERIMENTS_FLAGS)
+    # Special case for --enable-benchmarking which disables field trials
+    # by default, unless it has a "enable-field-trial-config" value.
+    if self.has_enable_benchmarking_field_trials():
+      del filtered["--enable-benchmarking"]
+    return filtered
+
+  def enable_benchmarking_extension(self):
+    if self.field_trial_flags:
+      self.set("--enable-benchmarking", "enable-field-trial-config")
+    else:
+      self.set("--enable-benchmarking")
+
+  def merge(self, other: FlagsData) -> None:
     if not isinstance(other, ChromeFlags):
       other = ChromeFlags(other)
     self.features.merge(other.features)
@@ -162,7 +215,7 @@ class ChromeFlags(Flags):
   def base_items(self) -> Iterable[Tuple[str, Optional[str]]]:
     yield from super().items()
 
-  def items(self) -> Iterable[Tuple[str, Optional[str]]]:
+  def items(self) -> Iterable[Tuple[str, Optional[str]]]:  # type: ignore
     yield from self.base_items()
     if self._js_flags:
       yield (self._JS_FLAG, str(self.js_flags))

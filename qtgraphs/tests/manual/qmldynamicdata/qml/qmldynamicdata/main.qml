@@ -4,10 +4,12 @@
 import QtQuick
 import QtGraphs
 import QtQuick.Controls
+import QtQuick.Layouts
 import "."
 
 Item {
     id: mainView
+
     width: 1280
     height: 720
     visible: true
@@ -199,45 +201,95 @@ Item {
         }
     }
 
-    Button {
-        id: shadowToggle
-        width: parent.width / 3 // We're adding 3 buttons and want to divide them equally
-        text: "Hide Shadows"
+    RowLayout {
+        id: buttonLayout
+
         anchors.left: parent.left
+        anchors.right: parent.right
 
-        onClicked: {
-            if (scatterGraph.shadowQuality === Graphs3D.ShadowQuality.None) {
-                scatterGraph.shadowQuality = Graphs3D.ShadowQuality.SoftMedium;
-                text = "Hide Shadows";
-            } else {
-                scatterGraph.shadowQuality = Graphs3D.ShadowQuality.None;
-                text = "Show Shadows";
+        Button {
+            id: shadowToggle
+
+            Layout.fillWidth: true
+            text: "Hide Shadows"
+
+            onClicked: {
+                if (scatterGraph.shadowQuality === Graphs3D.ShadowQuality.None) {
+                    scatterGraph.shadowQuality = Graphs3D.ShadowQuality.SoftMedium;
+                    text = "Hide Shadows";
+                } else {
+                    scatterGraph.shadowQuality = Graphs3D.ShadowQuality.None;
+                    text = "Show Shadows";
+                }
             }
         }
-    }
 
-    Button {
-        id: cameraToggle
-        width: parent.width / 3
-        text: "Pause Camera"
-        anchors.left: shadowToggle.right
+        Button {
+            id: cameraToggle
+            Layout.fillWidth: true
+            text: "Pause Camera"
 
-        onClicked: {
-            cameraAnimationX.paused = !cameraAnimationX.paused;
-            cameraAnimationY.paused = cameraAnimationX.paused;
-            if (cameraAnimationX.paused) {
-                text = "Animate Camera";
-            } else {
-                text = "Pause Camera";
+            onClicked: {
+                cameraAnimationX.paused = !cameraAnimationX.paused;
+                cameraAnimationY.paused = cameraAnimationX.paused;
+                if (cameraAnimationX.paused) {
+                    text = "Animate Camera";
+                } else {
+                    text = "Pause Camera";
+                }
             }
         }
-    }
 
-    Button {
-        id: exitButton
-        width: parent.width / 3
-        text: "Quit"
-        anchors.left: cameraToggle.right
-        onClicked: Qt.quit();
+        Button {
+            id: dynamicDataToggle
+            Layout.fillWidth: true
+            text: "Stop dynamic data"
+
+            onClicked: {
+                dataTimer.running = !dataTimer.running
+
+                if (dataTimer.running)
+                    text = "Stop dynamic data";
+                 else
+                    text = "Start dynamic data";
+            }
+        }
+
+        Button {
+            id: autoSelectionToggle
+            Layout.fillWidth: true
+            text: "Stop autoselection"
+
+            onClicked: {
+                reselectTimer.running = !reselectTimer.running
+
+                if (reselectTimer.running)
+                    text = "Stop autoselection";
+                 else
+                    text = "Start autoselection";
+            }
+        }
+
+        Button {
+            id: seriesItemLabelToggle
+            Layout.fillWidth: true
+            text: "Hide series item label"
+
+            onClicked: {
+                scatterSeries.itemLabelVisible = !scatterSeries.itemLabelVisible
+
+                if (scatterSeries.itemLabelVisible)
+                    text = "Hide series item label";
+                 else
+                    text = "Show series item label";
+            }
+        }
+
+        Button {
+            id: exitButton
+            Layout.fillWidth: true
+            text: "Quit"
+            onClicked: Qt.quit();
+        }
     }
 }

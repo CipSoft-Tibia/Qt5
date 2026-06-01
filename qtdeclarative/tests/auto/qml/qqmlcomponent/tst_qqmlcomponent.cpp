@@ -66,14 +66,17 @@ class ComponentWatcher : public QObject
 {
     Q_OBJECT
 public:
-    ComponentWatcher(QQmlComponent *comp) : loading(0), error(0), ready(0) {
-        connect(comp, SIGNAL(statusChanged(QQmlComponent::Status)),
-                this, SLOT(statusChanged(QQmlComponent::Status)));
+    ComponentWatcher(QQmlComponent *comp)
+    {
+        progresses.append(comp->progress());
+        connect(comp, &QQmlComponent::statusChanged, this, &ComponentWatcher::statusChanged);
+        connect(comp, &QQmlComponent::progressChanged, this, &ComponentWatcher::progressChanged);
     }
 
-    int loading;
-    int error;
-    int ready;
+    int loading = 0;
+    int error = 0;
+    int ready = 0;
+    QList<qreal> progresses;
 
 public slots:
     void statusChanged(QQmlComponent::Status status) {
@@ -90,6 +93,11 @@ public slots:
         default:
             break;
         }
+    }
+
+    void progressChanged(qreal progress)
+    {
+        progresses.append(progress);
     }
 };
 
@@ -110,6 +118,7 @@ private slots:
     void qmlCreateObjectDirty();
     void qmlIncubateObject();
     void qmlCreateParentReference();
+    void async_data();
     void async();
     void asyncHierarchy();
     void asyncForceSync();
@@ -143,13 +152,17 @@ private slots:
     void loadFromModuleFailures_data();
     void loadFromModuleFailures();
     void loadFromModuleRequired();
+    void loadUrlRequired();
     void loadFromQrc();
+    void loadFromRelativeQrcPath();
     void removeBinding();
     void complexObjectArgument();
     void bindingEvaluationOrder();
     void compilationUnitsWithSameUrl();
     void bindingInRequired();
     void repeatedSetDataWithInlineComponent();
+    void invalidBaseUrl();
+    void uselessGroupProperty();
 
 private:
     QQmlEngine engine;
@@ -357,7 +370,7 @@ void tst_qqmlcomponent::qmlCreateObjectClean()
 {
     QQmlEngine engine;
     QVERIFY(engine.outputWarningsToStandardError());
-    QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError> &) {
+    QObject::connect(&engine, &QQmlEngine::warnings, this, [](const QList<QQmlError> &) {
         QFAIL("Calls with suitable parameters should not generate any warnings.");
     });
     QQmlComponent component(&engine, testFileUrl("createObjectClean.qml"));
@@ -375,7 +388,7 @@ void tst_qqmlcomponent::qmlCreateObjectDirty()
 {
     QQmlEngine engine;
     engine.setOutputWarningsToStandardError(false);
-    QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError> &warnings) {
+    QObject::connect(&engine, &QQmlEngine::warnings, this, [](const QList<QQmlError> &warnings) {
         QCOMPARE(warnings.size(), 1);
         QCOMPARE(warnings[0].description(),
                 "QML Component: Unsuitable arguments passed to createObject(). The first argument "
@@ -411,12 +424,31 @@ void tst_qqmlcomponent::qmlCreateParentReference()
     QVERIFY2(messageHandler.messages().isEmpty(), qPrintable(messageHandler.messageString()));
 }
 
+void tst_qqmlcomponent::async_data()
+{
+    // We cannot really test for the number of progress changes since the TCP protocol will do
+    // its own thing with the chunks we send. By creating smaller chunks we merely increase the
+    // chances of them being sent separately.
+
+    QTest::addColumn<qsizetype>("chunkSize");
+    QTest::addRow("all in one") << std::numeric_limits<qsizetype>::max();
+    QTest::addRow("512 bytes") << qsizetype(512);
+
+    // Anything smaller than this will probably make the test time out on some platform.
+    QTest::addRow("128 bytes") << qsizetype(128);
+}
+
 void tst_qqmlcomponent::async()
 {
+    QFETCH(qsizetype, chunkSize);
+
     TestHTTPServer server;
+    server.setChunkSize(chunkSize);
+
     QVERIFY2(server.listen(), qPrintable(server.errorString()));
     server.serveDirectory(dataDirectory());
 
+    QQmlEngine engine;
     QQmlComponent component(&engine);
     ComponentWatcher watcher(&component);
     component.loadUrl(server.url("/TestComponent.qml"), QQmlComponent::Asynchronous);
@@ -424,6 +456,12 @@ void tst_qqmlcomponent::async()
     QTRY_VERIFY(component.isReady());
     QCOMPARE(watcher.ready, 1);
     QCOMPARE(watcher.error, 0);
+
+    QVERIFY(watcher.progresses.length() >= 2);
+    QCOMPARE(watcher.progresses.first(), 0);
+    QCOMPARE(watcher.progresses.last(), 1);
+    for (qsizetype i = 1, end = watcher.progresses.length(); i < end; ++i)
+        QVERIFY(watcher.progresses[i - 1] < watcher.progresses[i]);
 
     std::unique_ptr<QObject> object { component.create() };
     QVERIFY(object != nullptr);
@@ -990,9 +1028,72 @@ struct ComponentWithPublicSetInitial : QQmlComponent
     }
 };
 
+class MyObject : public QObject
+{
+public:
+    enum E { };
+    Q_ENUM(E)
+    Q_OBJECT
+    Q_PROPERTY(int resettable MEMBER m_resettable RESET resetIt NOTIFY resettableChanged)
+    Q_PROPERTY(QObject * resettableObject MEMBER m_resettableObj RESET resetObject NOTIFY resettableChanged)
+    Q_PROPERTY(MyObject::E resettableEnum MEMBER m_resettableEnum RESET resetEnum NOTIFY resettableChanged)
+    void resetIt() { resetCalled = true; }
+    void resetObject() { resetObjectCalled = true; }
+    void resetEnum() { resetEnumCalled = true; }
+
+public:
+    MyObject(QObject *parent = nullptr) : QObject(parent) { }
+    int m_resettable;
+    QObject *m_resettableObj = nullptr;
+    E m_resettableEnum = {};
+    bool resetCalled = false;
+    bool resetObjectCalled = false;
+    bool resetEnumCalled = false;
+
+signals:
+    void resettableChanged();
+};
+
+
 void tst_qqmlcomponent::testSetInitialProperties()
 {
     QQmlEngine eng;
+    qmlRegisterType<MyObject>("ResetTest", 1, 0, "MyObject");
+    // reset logic
+    {
+        QQmlComponent comp(&eng);
+        comp.loadFromModule("ResetTest", "MyObject");
+        std::unique_ptr<QObject>  obj {comp.createWithInitialProperties({{u"resettable"_s, QVariant() }}) };
+        QVERIFY(obj);
+        QVERIFY(qobject_cast<MyObject *>(obj.get())->resetCalled);
+    }
+    // reset logic - works also with object properties
+    {
+        QQmlComponent comp(&eng);
+        comp.loadFromModule("ResetTest", "MyObject");
+        std::unique_ptr<QObject>  obj {comp.createWithInitialProperties({{u"resettableObject"_s, QVariant() }}) };
+        QVERIFY(obj);
+        QVERIFY(qobject_cast<MyObject *>(obj.get())->resetObjectCalled);
+    }
+    // reset logic - works also with enums
+    {
+        QQmlComponent comp(&eng);
+        comp.loadFromModule("ResetTest", "MyObject");
+        std::unique_ptr<QObject>  obj {comp.createWithInitialProperties({{u"resettableEnum"_s, QVariant() }}) };
+        QVERIFY(obj);
+        QVERIFY(qobject_cast<MyObject *>(obj.get())->resetEnumCalled);
+    }
+    // reset logic - null != undefined
+    {
+        QQmlComponent comp(&eng);
+        comp.loadFromModule("ResetTest", "MyObject");
+        QVariant var = QVariant::fromValue(nullptr);
+        QVERIFY(var.isNull() && var.isValid());
+        QTest::ignoreMessage(QtMsgType::QtWarningMsg, QRegularExpression(".*Could not set initial property resettable"_L1));
+        std::unique_ptr<QObject>  obj {comp.createWithInitialProperties({{u"resettable"_s, var }}) };
+        QVERIFY(obj);
+        QVERIFY(!qobject_cast<MyObject *>(obj.get())->resetCalled);
+    }
     {
         //  QVariant
         ComponentWithPublicSetInitial comp(&eng);
@@ -1341,7 +1442,7 @@ void tst_qqmlcomponent::loadFromModule_data()
 #endif
 
     QTest::addRow("IC") << u"test"_s << u"TestComponentWithIC"_s << u"TestComponentWithIC"_s; // sanity check for next test
-    QTest::addRow("IC") << u"test"_s << u"TestComponentWithIC.InnerIC"_s << u"InnerIC"_s;
+    QTest::addRow("InnerIC") << u"test"_s << u"TestComponentWithIC.InnerIC"_s << u"InnerIC"_s;
 
     QTest::addRow("plainQML") << u"plainqml"_s << u"Plain"_s << u"Plain"_s;
 }
@@ -1578,12 +1679,28 @@ void tst_qqmlcomponent::loadFromModuleRequired()
     QQmlEngine engine;
     qmlRegisterType<SingleRequiredProperty>("qqmlcomponenttest", 1, 0, "SingleRequiredProperty");
     qmlRegisterType<SingleRequiredPropertyDynamic>("qqmlcomponenttest", 1, 0, "SingleRequiredPropertyDynamic");
+    const QString error = QStringLiteral("Required property i was not initialized");
     {
         QQmlComponent component(&engine, "qqmlcomponenttest", "SingleRequiredProperty");
         QVERIFY2(!component.isError(), qPrintable(component.errorString()));
-
         QScopedPointer<QObject> root(component.create());
         QVERIFY(!root);
+        QVERIFY(component.isError());
+        QCOMPARE(component.errorString(), qPrintable(":-1 " + error  + "\n"));
+    }
+    {
+        QQmlComponent component(&engine, "qqmlcomponenttest", "SingleRequiredProperty");
+        QVERIFY2(!component.isError(), qPrintable(component.errorString()));
+        QScopedPointer<QObject> root(component.beginCreate(engine.rootContext()));
+        QVERIFY(!root.isNull());
+        QVERIFY2(!component.isError(), qPrintable(component.errorString()));
+
+        // forgetting to set the required properties ...
+        component.completeCreate();
+
+        // ... produces an error.
+        QVERIFY(component.isError());
+        QCOMPARE(component.errorString(), qPrintable(":-1 " + error  + "\n"));
     }
     {
         QQmlComponent component(&engine, "qqmlcomponenttest", "SingleRequiredPropertyDynamic");
@@ -1591,6 +1708,38 @@ void tst_qqmlcomponent::loadFromModuleRequired()
         QScopedPointer<QObject> root(component.create());
         QEXPECT_FAIL("", "Can't check required properties when there's a dynamic metaobject", Continue);
         QVERIFY(!root);
+    }
+}
+
+void tst_qqmlcomponent::loadUrlRequired()
+{
+    QQmlEngine engine;
+    qmlRegisterType<SingleRequiredProperty>("qqmlcomponenttest2", 1, 0, "SingleRequiredProperty");
+    const QUrl url = testFileUrl("loadUrlRequired.qml");
+    const QString error = QStringLiteral("Required property i was not initialized");
+    {
+        QQmlComponent component(&engine);
+        component.loadUrl(url);
+        QVERIFY2(!component.isError(), qPrintable(component.errorString()));
+        QScopedPointer<QObject> root(component.create());
+        QVERIFY(!root);
+        QVERIFY(component.isError());
+        QCOMPARE(component.errorString(), qPrintable(url.toString() + ":2 " + error  + "\n"));
+    }
+    {
+        QQmlComponent component(&engine);
+        component.loadUrl(url);
+        QVERIFY2(!component.isError(), qPrintable(component.errorString()));
+        QScopedPointer<QObject> root(component.beginCreate(engine.rootContext()));
+        QVERIFY(!root.isNull());
+        QVERIFY2(!component.isError(), qPrintable(component.errorString()));
+
+        // forgetting to set the required properties ...
+        component.completeCreate();
+
+        // ... produces an error.
+        QVERIFY(component.isError());
+        QCOMPARE(component.errorString(), qPrintable(url.toString() + ":2 " + error  + "\n"));
     }
 }
 
@@ -1602,8 +1751,22 @@ void tst_qqmlcomponent::loadFromQrc()
 
     QQmlComponentPrivate *p = QQmlComponentPrivate::get(&component);
     QVERIFY(p);
-    QVERIFY(p->compilationUnit);
-    QVERIFY(p->compilationUnit->baseCompilationUnit()->aotCompiledFunctions);
+    QVERIFY(p->compilationUnit());
+    QVERIFY(p->compilationUnit()->baseCompilationUnit()->aotCompiledFunctions);
+}
+
+void tst_qqmlcomponent::loadFromRelativeQrcPath()
+{
+    QQmlEngine e;
+    QQmlComponent c(&e);
+    const QUrl url = QUrl("qrc:main.qml");
+    QTest::ignoreMessage(
+            QtMsgType::QtWarningMsg,
+            "QQmlComponent: attempted to load via a relative URL '%1' in resource file system. "
+            "This is not fully supported and may not work"_L1.arg(url.toString())
+                    .toLocal8Bit()
+                    .data());
+    c.loadUrl(url);
 }
 
 void tst_qqmlcomponent::removeBinding()
@@ -1741,6 +1904,31 @@ void tst_qqmlcomponent::repeatedSetDataWithInlineComponent()
         QScopedPointer<QObject> secondObject(secondComp.create());
         QVERIFY2(!secondObject.isNull(), qPrintable(secondComp.errorString()));
     }
+}
+
+void tst_qqmlcomponent::invalidBaseUrl()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import "."
+        FooBar {}
+    )", QUrl());
+
+    QVERIFY(component.isError());
+    QVERIFY(component.errorString().contains(
+            "Can't resolve relative qmldir URL ./qmldir on invalid base URL"_L1));
+}
+
+void tst_qqmlcomponent::uselessGroupProperty()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("uselessGroupProperty.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> object(component.create());
+    QVERIFY(!object);
+    QVERIFY(component.errorString().contains(
+            "Using grouped property syntax on restoreMode which has no properties"));
 }
 
 QTEST_MAIN(tst_qqmlcomponent)

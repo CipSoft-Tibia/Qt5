@@ -22,6 +22,8 @@
 #include <private/qstroker_p.h>
 #include <private/qtextengine_p.h>
 
+#include <cmath>
+
 #include <limits.h>
 
 #if 0
@@ -133,8 +135,9 @@ static void qt_debug_path(const QPainterPath &path)
 /*!
     \class QPainterPath
     \ingroup painting
-    \ingroup shared
     \inmodule QtGui
+
+    \reentrant
 
     \brief The QPainterPath class provides a container for painting operations,
     enabling graphical shapes to be constructed and reused.
@@ -478,7 +481,7 @@ void QPainterPath::setElementPositionAt(int i, qreal x, qreal y)
 {
     Q_ASSERT(d_ptr);
     Q_ASSERT(i >= 0 && i < elementCount());
-    detach();
+    setDirty(true);
     QPainterPath::Element &e = d_ptr->elements[i];
     e.x = x;
     e.y = y;
@@ -507,7 +510,19 @@ QPainterPath::QPainterPath() noexcept
 
     \sa operator=()
 */
-QPainterPath::QPainterPath(const QPainterPath &other) = default;
+QPainterPath::QPainterPath(const QPainterPath &other)
+    : d_ptr(other.d_ptr ? new QPainterPathPrivate(*other.d_ptr) : nullptr)
+{
+}
+
+/*!
+    \fn QPainterPath::QPainterPath(QPainterPath &&other)
+    \since 6.10
+
+    Move-constructs a new painter path from \a other.
+
+    The moved-from object \a other is placed in the default-constructed state.
+*/
 
 /*!
     Creates a QPainterPath object with the given \a startPoint as its
@@ -519,22 +534,17 @@ QPainterPath::QPainterPath(const QPointF &startPoint)
 {
 }
 
-void QPainterPath::detach()
-{
-    d_ptr.detach();
-    setDirty(true);
-}
-
 /*!
     \internal
 */
 void QPainterPath::ensureData_helper()
 {
+    Q_ASSERT(d_ptr == nullptr);
     QPainterPathPrivate *data = new QPainterPathPrivate;
     data->elements.reserve(16);
     QPainterPath::Element e = { 0, 0, QPainterPath::MoveToElement };
     data->elements << e;
-    d_ptr.reset(data);
+    d_ptr = data;
     Q_ASSERT(d_ptr != nullptr);
 }
 
@@ -571,6 +581,7 @@ QPainterPath &QPainterPath::operator=(const QPainterPath &other)
 */
 QPainterPath::~QPainterPath()
 {
+    delete d_ptr;
 }
 
 /*!
@@ -586,7 +597,7 @@ void QPainterPath::clear()
     if (!d_ptr)
         return;
 
-    detach();
+    setDirty(true);
     d_func()->clear();
     d_func()->elements.append( {0, 0, MoveToElement} );
 }
@@ -604,7 +615,7 @@ void QPainterPath::reserve(int size)
     Q_D(QPainterPath);
     if ((!d && size > 0) || (d && d->elements.capacity() < size)) {
         ensureData();
-        detach();
+        setDirty(true);
         d_func()->elements.reserve(size);
     }
 }
@@ -642,7 +653,7 @@ void QPainterPath::closeSubpath()
 #endif
     if (isEmpty())
         return;
-    detach();
+    setDirty(true);
 
     d_func()->close();
 }
@@ -679,7 +690,7 @@ void QPainterPath::moveTo(const QPointF &p)
     }
 
     ensureData();
-    detach();
+    setDirty(true);
 
     QPainterPathPrivate *d = d_func();
     Q_ASSERT(!d->elements.isEmpty());
@@ -729,7 +740,7 @@ void QPainterPath::lineTo(const QPointF &p)
     }
 
     ensureData();
-    detach();
+    setDirty(true);
 
     QPainterPathPrivate *d = d_func();
     Q_ASSERT(!d->elements.isEmpty());
@@ -788,7 +799,7 @@ void QPainterPath::cubicTo(const QPointF &c1, const QPointF &c2, const QPointF &
     }
 
     ensureData();
-    detach();
+    setDirty(true);
 
     QPainterPathPrivate *d = d_func();
     Q_ASSERT(!d->elements.isEmpty());
@@ -844,7 +855,7 @@ void QPainterPath::quadTo(const QPointF &c, const QPointF &e)
     }
 
     ensureData();
-    detach();
+    setDirty(true);
 
     Q_D(QPainterPath);
     Q_ASSERT(!d->elements.isEmpty());
@@ -918,7 +929,7 @@ void QPainterPath::arcTo(const QRectF &rect, qreal startAngle, qreal sweepLength
         return;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     int point_count;
     QPointF pts[15];
@@ -1023,7 +1034,7 @@ void QPainterPath::addRect(const QRectF &r)
         return;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     bool first = d_func()->elements.size() < 2;
 
@@ -1062,7 +1073,7 @@ void QPainterPath::addPolygon(const QPolygonF &polygon)
         return;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     moveTo(polygon.constFirst());
     for (int i=1; i<polygon.size(); ++i) {
@@ -1103,7 +1114,7 @@ void QPainterPath::addEllipse(const QRectF &boundingRect)
         return;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     bool first = d_func()->elements.size() < 2;
 
@@ -1148,7 +1159,7 @@ void QPainterPath::addText(const QPointF &point, const QFont &f, const QString &
         return;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     QTextLayout layout(text, f);
     layout.setCacheEnabled(true);
@@ -1222,7 +1233,7 @@ void QPainterPath::addPath(const QPainterPath &other)
         return;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     QPainterPathPrivate *d = d_func();
     // Remove last moveto so we don't get multiple moveto's
@@ -1253,7 +1264,7 @@ void QPainterPath::connectPath(const QPainterPath &other)
         return;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     QPainterPathPrivate *d = d_func();
     // Remove last moveto so we don't get multiple moveto's
@@ -1288,7 +1299,7 @@ void QPainterPath::connectPath(const QPainterPath &other)
 void QPainterPath::addRegion(const QRegion &region)
 {
     ensureData();
-    detach();
+    setDirty(true);
 
     for (const QRect &rect : region)
         addRect(rect);
@@ -1302,7 +1313,7 @@ void QPainterPath::addRegion(const QRegion &region)
 */
 Qt::FillRule QPainterPath::fillRule() const
 {
-    return !d_func() ? Qt::OddEvenFill : d_func()->fillRule;
+    return d_func() && d_func()->hasWindingFill ? Qt::WindingFill : Qt::OddEvenFill;
 }
 
 /*!
@@ -1325,11 +1336,12 @@ Qt::FillRule QPainterPath::fillRule() const
 void QPainterPath::setFillRule(Qt::FillRule fillRule)
 {
     ensureData();
-    if (d_func()->fillRule == fillRule)
+    const bool isWindingRequested = (fillRule == Qt::WindingFill);
+    if (d_func()->hasWindingFill == isWindingRequested)
         return;
-    detach();
+    setDirty(true);
 
-    d_func()->fillRule = fillRule;
+    d_func()->hasWindingFill = isWindingRequested;
 }
 
 #define QT_BEZIER_A(bezier, coord) 3 * (-bezier.coord##1 \
@@ -1728,7 +1740,7 @@ static void qt_painterpath_isect_line(const QPointF &p1,
 
     int dir = 1;
 
-    if (qFuzzyCompare(y1, y2)) {
+    if (QtPrivate::fuzzyCompare(y1, y2)) {
         // ignore horizontal lines according to scan conversion rule
         return;
     } else if (y2 < y1) {
@@ -1835,7 +1847,7 @@ bool QPainterPath::contains(const QPointF &pt) const
     if (last_pt != last_start)
         qt_painterpath_isect_line(last_pt, last_start, pt, &winding_number);
 
-    return (d->fillRule == Qt::WindingFill
+    return (d->hasWindingFill
             ? (winding_number != 0)
             : ((winding_number % 2) != 0));
 }
@@ -1983,8 +1995,7 @@ static bool qt_painterpath_check_crossing(const QPainterPath *path, const QRectF
 
         case QPainterPath::MoveToElement:
             if (i > 0
-                && qFuzzyCompare(last_pt.x(), last_start.x())
-                && qFuzzyCompare(last_pt.y(), last_start.y())
+                && qFuzzyCompare(last_pt, last_start)
                 && qt_painterpath_isect_line_rect(last_pt.x(), last_pt.y(),
                                                   last_start.x(), last_start.y(), rect))
                 return true;
@@ -2112,7 +2123,7 @@ void QPainterPath::translate(qreal dx, qreal dy)
     if (elementsLeft <= 0)
         return;
 
-    detach();
+    setDirty(true);
     QPainterPath::Element *element = d_func()->elements.data();
     Q_ASSERT(element);
     while (elementsLeft--) {
@@ -2257,13 +2268,13 @@ bool QPainterPath::operator==(const QPainterPath &path) const
     if (other_d == d) {
         return true;
     } else if (!d || !other_d) {
-        if (!other_d && isEmpty() && elementAt(0) == QPointF() && d->fillRule == Qt::OddEvenFill)
+        if (!other_d && isEmpty() && elementAt(0) == QPointF() && !d->hasWindingFill)
             return true;
-        if (!d && path.isEmpty() && path.elementAt(0) == QPointF() && other_d->fillRule == Qt::OddEvenFill)
+        if (!d && path.isEmpty() && path.elementAt(0) == QPointF() && !other_d->hasWindingFill)
             return true;
         return false;
     }
-    else if (d->fillRule != other_d->fillRule)
+    else if (d->hasWindingFill != other_d->hasWindingFill)
         return false;
     else if (d->elements.size() != other_d->elements.size())
         return false;
@@ -2419,7 +2430,7 @@ QDataStream &operator<<(QDataStream &s, const QPainterPath &p)
         s << double(e.x) << double(e.y);
     }
     s << p.d_func()->cStart;
-    s << int(p.d_func()->fillRule);
+    s << int(p.fillRule());
     return s;
 }
 
@@ -2444,7 +2455,7 @@ QDataStream &operator>>(QDataStream &s, QPainterPath &p)
     }
 
     p.ensureData(); // in case if p.d_func() == 0
-    p.detach();
+    p.setDirty(true);
     p.d_func()->elements.clear();
     for (int i=0; i<size; ++i) {
         int type;
@@ -2467,7 +2478,7 @@ QDataStream &operator>>(QDataStream &s, QPainterPath &p)
     int fillRule;
     s >> fillRule;
     Q_ASSERT(fillRule == Qt::OddEvenFill || fillRule == Qt::WindingFill);
-    p.d_func()->fillRule = Qt::FillRule(fillRule);
+    p.d_func()->hasWindingFill = (Qt::FillRule(fillRule) == Qt::WindingFill);
     if (errorDetected || p.d_func()->elements.isEmpty())
         p = QPainterPath();  // Better than to return path with possibly corrupt datastructure, which would likely cause crash
     return s;
@@ -2820,6 +2831,44 @@ QPolygonF QPainterPath::toFillPolygon(const QTransform &matrix) const
     return polygon;
 }
 
+/*!
+    Returns true if caching is enabled; otherwise returns false.
+
+    \since 6.10
+    \sa setCachingEnabled()
+*/
+bool QPainterPath::isCachingEnabled() const
+{
+    Q_D(QPainterPath);
+    return d && d->cacheEnabled;
+}
+
+/*!
+    Enables or disables length caching according to the value of \a enabled.
+
+    Enabling caching speeds up repeated calls to the member functions involving path length
+    and percentage values, such as length(), percentAtLength(), pointAtPercent() etc., at the cost
+    of some extra memory usage for storage of intermediate calculations. By default it is disabled.
+
+    Disabling caching will release any allocated cache memory.
+
+    \since 6.10
+    \sa isCachingEnabled(), length(), percentAtLength(), pointAtPercent(), trimmed()
+*/
+void QPainterPath::setCachingEnabled(bool enabled)
+{
+    ensureData();
+    if (d_func()->cacheEnabled == enabled)
+        return;
+    setDirty(true);
+    QPainterPathPrivate *d = d_func();
+    d->cacheEnabled = enabled;
+    if (!enabled) {
+        d->m_runLengths.clear();
+        d->m_runLengths.squeeze();
+    }
+}
+
 //derivative of the equation
 static inline qreal slopeAt(qreal t, qreal a, qreal b, qreal c, qreal d)
 {
@@ -2834,6 +2883,11 @@ qreal QPainterPath::length() const
     Q_D(QPainterPath);
     if (isEmpty())
         return 0;
+    if (d->cacheEnabled) {
+        if (d->dirtyRunLengths)
+            d->computeRunLengths();
+        return d->m_runLengths.last();
+    }
 
     qreal len = 0;
     for (int i=1; i<d->elements.size(); ++i) {
@@ -2882,6 +2936,34 @@ qreal QPainterPath::percentAtLength(qreal len) const
     if (len > totalLength)
         return 1;
 
+    Q_ASSERT(totalLength != 0);
+
+    if (d->cacheEnabled) {
+        const int ei = qMax(d->elementAtT(len / totalLength), 1); // Skip initial MoveTo
+        qreal res = 0;
+        const QPainterPath::Element &e = d->elements[ei];
+        switch (e.type) {
+        case QPainterPath::LineToElement:
+            res = len / totalLength;
+            break;
+        case CurveToElement:
+        {
+            QBezier b = QBezier::fromPoints(d->elements.at(ei-1),
+                                            e,
+                                            d->elements.at(ei+1),
+                                            d->elements.at(ei+2));
+            qreal prevLen = d->m_runLengths[ei - 1];
+            qreal blen = d->m_runLengths[ei] - prevLen;
+            qreal elemRes = b.tAtLength(len - prevLen);
+            res = (elemRes * blen + prevLen) / totalLength;
+            break;
+        }
+        default:
+            Q_UNREACHABLE();
+        }
+        return res;
+    }
+
     qreal curLen = 0;
     for (int i=1; i<d->elements.size(); ++i) {
         const Element &e = d->elements.at(i);
@@ -2926,7 +3008,8 @@ qreal QPainterPath::percentAtLength(qreal len) const
     return 0;
 }
 
-static inline QBezier bezierAtT(const QPainterPath &path, qreal t, qreal *startingLength, qreal *bezierLength)
+static inline QBezier uncached_bezierAtT(const QPainterPath &path, qreal t, qreal *startingLength,
+                                         qreal *bezierLength)
 {
     *startingLength = 0;
     if (t > 1)
@@ -2980,6 +3063,35 @@ static inline QBezier bezierAtT(const QPainterPath &path, qreal t, qreal *starti
     return QBezier();
 }
 
+QBezier QPainterPathPrivate::bezierAtT(const QPainterPath &path, qreal t, qreal *startingLength,
+                                       qreal *bezierLength) const
+{
+    Q_ASSERT(t >= 0 && t <= 1);
+    QPainterPathPrivate *d = path.d_func();
+    if (!path.isEmpty() && d->cacheEnabled) {
+        const int ei = qMax(d->elementAtT(t), 1); // Avoid the initial MoveTo element
+        const qreal prevRunLength = d->m_runLengths[ei - 1];
+        *startingLength = prevRunLength;
+        *bezierLength = d->m_runLengths[ei] - prevRunLength;
+        const QPointF prev = d->elements[ei - 1];
+        const QPainterPath::Element &e = d->elements[ei];
+        switch (e.type) {
+        case QPainterPath::LineToElement:
+        {
+            QPointF delta = (e - prev) / 3;
+            return QBezier::fromPoints(prev, prev + delta, prev + 2 * delta, e);
+        }
+        case QPainterPath::CurveToElement:
+            return QBezier::fromPoints(prev, e, elements[ei + 1], elements[ei + 2]);
+            break;
+        default:
+            Q_UNREACHABLE();
+        }
+    }
+
+    return uncached_bezierAtT(path, t, startingLength, bezierLength);
+}
+
 /*!
     Returns the point at at the percentage \a t of the current path.
     The argument \a t has to be between 0 and 1.
@@ -3005,7 +3117,8 @@ QPointF QPainterPath::pointAtPercent(qreal t) const
     qreal totalLength = length();
     qreal curLen = 0;
     qreal bezierLen = 0;
-    QBezier b = bezierAtT(*this, t, &curLen, &bezierLen);
+    QBezier b = d_ptr->bezierAtT(*this, t, &curLen, &bezierLen);
+    Q_ASSERT(bezierLen != 0);
     qreal realT = (totalLength * t - curLen) / bezierLen;
 
     return b.pointAt(qBound(qreal(0), realT, qreal(1)));
@@ -3030,10 +3143,14 @@ qreal QPainterPath::angleAtPercent(qreal t) const
         return 0;
     }
 
+    if (isEmpty())
+        return 0;
+
     qreal totalLength = length();
     qreal curLen = 0;
     qreal bezierLen = 0;
-    QBezier bez = bezierAtT(*this, t, &curLen, &bezierLen);
+    QBezier bez = d_ptr->bezierAtT(*this, t, &curLen, &bezierLen);
+    Q_ASSERT(bezierLen != 0);
     qreal realT = (totalLength * t - curLen) / bezierLen;
 
     qreal m1 = slopeAt(realT, bez.x1, bez.x2, bez.x3, bez.x4);
@@ -3059,10 +3176,14 @@ qreal QPainterPath::slopeAtPercent(qreal t) const
         return 0;
     }
 
+    if (isEmpty())
+        return 0;
+
     qreal totalLength = length();
     qreal curLen = 0;
     qreal bezierLen = 0;
-    QBezier bez = bezierAtT(*this, t, &curLen, &bezierLen);
+    QBezier bez = d_ptr->bezierAtT(*this, t, &curLen, &bezierLen);
+    Q_ASSERT(bezierLen != 0);
     qreal realT = (totalLength * t - curLen) / bezierLen;
 
     qreal m1 = slopeAt(realT, bez.x1, bez.x2, bez.x3, bez.x4);
@@ -3087,6 +3208,177 @@ qreal QPainterPath::slopeAtPercent(qreal t) const
 
     return slope;
 }
+
+/*!
+  \since 6.10
+
+  Returns the section of the path between the length fractions \a fromFraction and \a toFraction.
+  The effective range of the fractions are from 0, denoting the start point of the path, to 1,
+  denoting its end point. The fractions are linear with respect to path length, in contrast to the
+  percentage \e t values.
+
+  The value of \a offset will be added to the fraction values. If that causes an over- or underflow
+  of the [0, 1] range, the values will be wrapped around, as will the resulting path. The effective
+  range of the offset is between -1 and 1.
+
+  Repeated calls to this function can be optimized by {enabling caching}{setCachingEnabled()}.
+
+  \sa length(), percentAtLength(), setCachingEnabled()
+*/
+
+QPainterPath QPainterPath::trimmed(qreal fromFraction, qreal toFraction, qreal offset) const
+{
+    if (isEmpty())
+        return *this;
+
+    // We need length caching enabled for the calculations.
+    if (!isCachingEnabled()) {
+        QPainterPath copy(*this);
+        copy.setCachingEnabled(true);
+        return copy.trimmed(fromFraction, toFraction, offset);
+    }
+
+    qreal f1 = qBound(qreal(0), fromFraction, qreal(1));
+    qreal f2 = qBound(qreal(0), toFraction, qreal(1));
+    if (qFuzzyIsNull(f1 - f2)) // ie. f1 == f2 (even if one of them is 0.0)
+        return QPainterPath();
+    if (f1 > f2)
+        qSwap(f1, f2);
+    if (qFuzzyCompare(f2 - f1, qreal(1)))  // Shortcut for no trimming
+        return *this;
+
+    QPainterPath res;
+    res.setFillRule(fillRule());
+
+    if (offset) {
+        qreal dummy;
+        offset = std::modf(offset, &dummy); // Use only the fractional part of offset, range <-1, 1>
+
+        qreal of1 = f1 + offset;
+        qreal of2 = f2 + offset;
+        if (offset < 0) {
+            f1 = of1 < 0 ? of1 + 1 : of1;
+            f2 = of2 + 1 > 1 ? of2 : of2 + 1;
+        } else if (offset > 0) {
+            f1 = of1 - 1 < 0 ? of1 : of1 - 1;
+            f2 = of2 > 1 ? of2 - 1 : of2;
+        }
+    }
+    const bool wrapping = (f1 > f2);
+    //qDebug() << "ADJ:" << f1 << f2 << wrapping << "(" << of1 << of2 << ")";
+
+    QPainterPathPrivate *d = d_func();
+    if (d->dirtyRunLengths)
+        d->computeRunLengths();
+    const qreal totalLength = d->m_runLengths.last();
+    if (qFuzzyIsNull(totalLength))
+        return res;
+
+    const qreal l1 = f1 * totalLength;
+    const qreal l2 = f2 * totalLength;
+    const int e1 = d->elementAtLength(l1);
+    const bool mustTrimE1 = !QtPrivate::fuzzyCompare(d->m_runLengths.at(e1), l1);
+    const int e2 = d->elementAtLength(l2);
+    const bool mustTrimE2 = !QtPrivate::fuzzyCompare(d->m_runLengths.at(e2), l2);
+
+    //qDebug() << "Trim [" << f1 << f2 << "] e1:" << e1 << mustTrimE1 << "e2:" << e2 << mustTrimE2 << "wrapping:" << wrapping;
+    if (e1 == e2 && !wrapping && mustTrimE1 && mustTrimE2) {
+        // Entire result is one element, clipped in both ends
+        d->appendSliceOfElement(&res, e1, l1, l2);
+    } else {
+        // Add partial start element (or just its end point, being the start of the next)
+        if (mustTrimE1)
+            d->appendEndOfElement(&res, e1, l1);
+        else
+            res.moveTo(d->endPointOfElement(e1));
+
+        // Add whole elements between start and end
+        int firstWholeElement = e1 + 1;
+        int lastWholeElement = (mustTrimE2 ? e2 - 1 : e2);
+        if (!wrapping) {
+            d->appendElementRange(&res, firstWholeElement, lastWholeElement);
+        } else {
+            int lastIndex = d->elements.size() - 1;
+            d->appendElementRange(&res, firstWholeElement, lastIndex);
+            bool isClosed = (QPointF(d->elements.at(0)) == QPointF(d->elements.at(lastIndex)));
+            // If closed we can skip the initial moveto
+            d->appendElementRange(&res, (isClosed ? 1 : 0), lastWholeElement);
+        }
+
+        // Partial end element
+        if (mustTrimE2)
+            d->appendStartOfElement(&res, e2, l2);
+    }
+
+    return res;
+}
+
+void QPainterPathPrivate::appendTrimmedElement(QPainterPath *to, int elemIdx, int trimFlags,
+                                               qreal startLen, qreal endLen)
+{
+    Q_ASSERT(cacheEnabled);
+    Q_ASSERT(!dirtyRunLengths);
+
+    if (elemIdx <= 0 || elemIdx >= elements.size())
+        return;
+
+    const qreal prevLen = m_runLengths.at(elemIdx - 1);
+    const qreal elemLen = m_runLengths.at(elemIdx) - prevLen;
+    const qreal len1 = startLen - prevLen;
+    const qreal len2 = endLen - prevLen;
+    if (qFuzzyIsNull(elemLen))
+        return;
+
+    const QPointF pp = elements.at(elemIdx - 1);
+    const QPainterPath::Element e = elements.at(elemIdx);
+    if (e.isLineTo()) {
+        QLineF l(pp, e);
+        QPointF p1 = (trimFlags & TrimStart) ? l.pointAt(len1 / elemLen) : pp;
+        QPointF p2 = (trimFlags & TrimEnd) ? l.pointAt(len2 / elemLen) : e;
+        if (to->isEmpty())
+            to->moveTo(p1);
+        to->lineTo(p2);
+    } else if (e.isCurveTo()) {
+        Q_ASSERT(elemIdx < elements.size() - 2);
+        QBezier b = QBezier::fromPoints(pp, e, elements.at(elemIdx + 1), elements.at(elemIdx + 2));
+        qreal t1 = (trimFlags & TrimStart) ? b.tAtLength(len1) : 0.0;  // or simply len1/elemLen to trim by t instead of len
+        qreal t2 = (trimFlags & TrimEnd) ? b.tAtLength(len2) : 1.0;
+        QBezier c = b.getSubRange(t1, t2);
+        if (to->isEmpty())
+            to->moveTo(c.pt1());
+        to->cubicTo(c.pt2(), c.pt3(), c.pt4());
+    } else {
+        Q_UNREACHABLE();
+    }
+}
+
+void QPainterPathPrivate::appendElementRange(QPainterPath *to, int first, int last)
+{
+    if (first < 0 || first >= elements.size() || last < 0 || last >= elements.size())
+        return;
+
+    // (Could optimize by direct copy of elements, but must ensure correct state flags)
+    for (int i = first; i <= last; i++) {
+        const QPainterPath::Element &e = elements.at(i);
+        switch (e.type) {
+        case QPainterPath::MoveToElement:
+            to->moveTo(e);
+            break;
+        case QPainterPath::LineToElement:
+            to->lineTo(e);
+            break;
+        case QPainterPath::CurveToElement:
+            Q_ASSERT(i < elements.size() - 2);
+            to->cubicTo(e, elements.at(i + 1), elements.at(i + 2));
+            i += 2;
+            break;
+        default:
+            // 'first' may point to CurveToData element, just skip it
+            break;
+        }
+    }
+}
+
 
 /*!
   \since 4.4
@@ -3144,7 +3436,7 @@ void QPainterPath::addRoundedRect(const QRectF &rect, qreal xRadius, qreal yRadi
     qreal ryy2 = h*yRadius/100;
 
     ensureData();
-    detach();
+    setDirty(true);
 
     bool first = d_func()->elements.size() < 2;
 
@@ -3282,9 +3574,10 @@ bool QPainterPath::contains(const QPainterPath &p) const
 
 void QPainterPath::setDirty(bool dirty)
 {
+    d_func()->pathConverter.reset();
     d_func()->dirtyBounds        = dirty;
     d_func()->dirtyControlBounds = dirty;
-    d_func()->pathConverter.reset();
+    d_func()->dirtyRunLengths = dirty;
     d_func()->convex = false;
 }
 
@@ -3355,6 +3648,43 @@ void QPainterPath::computeControlPointRect() const
         else if (e.y < miny) miny = e.y;
     }
     d->controlBounds = QRectF(minx, miny, maxx - minx, maxy - miny);
+}
+
+void QPainterPathPrivate::computeRunLengths()
+{
+    Q_ASSERT(!elements.isEmpty());
+
+    m_runLengths.clear();
+    const int numElems = elements.size();
+    m_runLengths.reserve(numElems);
+
+    QPointF runPt = elements[0];
+    qreal runLen = 0.0;
+    for (int i = 0; i < numElems; i++) {
+        QPainterPath::Element e = elements[i];
+        switch (e.type) {
+        case QPainterPath::LineToElement:
+            runLen += QLineF(runPt, e).length();
+            runPt = e;
+            break;
+        case QPainterPath::CurveToElement: {
+            Q_ASSERT(i < numElems - 2);
+            QPainterPath::Element ee = elements[i + 2];
+            runLen += QBezier::fromPoints(runPt, e, elements[i + 1], ee).length();
+            runPt = ee;
+            break;
+        }
+        case QPainterPath::MoveToElement:
+            runPt = e;
+            break;
+        case QPainterPath::CurveToDataElement:
+            break;
+        }
+        m_runLengths.append(runLen);
+    }
+    Q_ASSERT(m_runLengths.size() == elements.size());
+
+    dirtyRunLengths = false;
 }
 
 #ifndef QT_NO_DEBUG_STREAM

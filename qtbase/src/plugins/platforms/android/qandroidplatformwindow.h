@@ -1,6 +1,7 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef ANDROIDPLATFORMWINDOW_H
 #define ANDROIDPLATFORMWINDOW_H
@@ -43,7 +44,6 @@ public:
 
     void setWindowState(Qt::WindowStates state) override;
     void setWindowFlags(Qt::WindowFlags flags) override;
-    Qt::WindowFlags windowFlags() const;
     void setParent(const QPlatformWindow *window) override;
 
     WId winId() const override;
@@ -58,7 +58,7 @@ public:
 
     void propagateSizeHints() override;
     void requestActivateWindow() override;
-    void updateSystemUiVisibility();
+    void updateSystemUiVisibility(Qt::WindowStates states, Qt::WindowFlags flags);
     void updateFocusedEditText();
     inline bool isRaster() const { return m_isRaster; }
     bool isExposed() const override;
@@ -73,6 +73,8 @@ public:
     void lockSurface() { m_surfaceMutex.lock(); }
     void unlockSurface() { m_surfaceMutex.unlock(); }
 
+    static int surfacesCount();
+
 protected:
     void setGeometry(const QRect &rect) override;
     void createSurface();
@@ -81,9 +83,9 @@ protected:
     bool blockedByModal() const;
     bool isEmbeddingContainer() const;
     virtual void clearSurface() {}
+    static void incrementSurfacesCount();
+    static void decrementSurfacesCount();
 
-    Qt::WindowFlags m_windowFlags;
-    Qt::WindowStates m_windowState;
     bool m_isRaster;
 
     int m_nativeViewId = -1;
@@ -97,7 +99,7 @@ protected:
     // destroy the Surface.
     QtJniTypes::Surface m_androidSurfaceObject;
     QWaitCondition m_surfaceWaitCondition;
-    bool m_surfaceCreated = false;
+    bool m_androidSurfaceCreated = false;
     QMutex m_surfaceMutex;
     QMutex m_destructionMutex;
 

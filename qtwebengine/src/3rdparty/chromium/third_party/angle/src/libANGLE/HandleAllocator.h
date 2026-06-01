@@ -20,16 +20,13 @@ namespace gl
 class HandleAllocator final : angle::NonCopyable
 {
   public:
-    // Maximum handle = MAX_UINT-1
-    HandleAllocator();
-    // Specify maximum handle value. Used for testing.
-    HandleAllocator(GLuint maximumHandleValue);
+    explicit HandleAllocator(GLuint maximumHandleValue);
 
     ~HandleAllocator();
 
     void setBaseHandle(GLuint value);
 
-    GLuint allocate();
+    bool allocate(GLuint *outId);
     void release(GLuint handle);
     void reserve(GLuint handle);
     void reset();

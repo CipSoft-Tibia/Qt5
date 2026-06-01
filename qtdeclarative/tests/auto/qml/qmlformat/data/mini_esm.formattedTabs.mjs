@@ -2,7 +2,7 @@
 import defaultExport from "module-name";
 import "module-name";
 export class ClassName {
-	constructor(h){
+	constructor(h) {
 		this.h = h;
 	}
 }

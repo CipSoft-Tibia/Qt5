@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_forward.h"
 #include "base/functional/callback_helpers.h"
@@ -38,8 +39,12 @@ constexpr int kCurrentSchemaVersion = 1;
 // amount of groups are limited once numbers are known.
 constexpr size_t kMaxNumEntriesInDB = 20000;
 
+base::FilePath GetGroupDataStoreDBPath(const base::FilePath& data_sharing_dir) {
+  return data_sharing_dir.Append(FILE_PATH_LITERAL("DataSharingDB"));
+}
+
 GroupDataStore::DBInitStatus InitOnDBSequence(
-    base::FilePath db_path,
+    base::FilePath db_dir_path,
     sql::Database* db,
     sqlite_proto::ProtoTableManager* table_manager,
     sqlite_proto::KeyValueData<data_sharing_pb::GroupEntity>*
@@ -48,7 +53,15 @@ GroupDataStore::DBInitStatus InitOnDBSequence(
   CHECK(table_manager);
   CHECK(group_entity_data);
 
+  if (!base::CreateDirectory(db_dir_path)) {
+    LOG(ERROR) << "Failed to create or open DB directory: " << db_dir_path;
+    return GroupDataStore::DBInitStatus::kFailure;
+  }
+
+  const base::FilePath db_path = GetGroupDataStoreDBPath(db_dir_path);
   if (!db->Open(db_path)) {
+    LOG(ERROR) << "Failed to open DB " << db_path << ": "
+               << db->GetErrorMessage();
     return GroupDataStore::DBInitStatus::kFailure;
   }
 
@@ -61,11 +74,12 @@ GroupDataStore::DBInitStatus InitOnDBSequence(
 
 }  // namespace
 
-GroupDataStore::GroupDataStore(const base::FilePath& db_path,
+GroupDataStore::GroupDataStore(const base::FilePath& db_dir_path,
                                DBLoadedCallback db_loaded_callback)
     : db_task_runner_(
           base::ThreadPool::CreateSequencedTaskRunner(kDBTaskTraits)),
-      db_(std::make_unique<sql::Database>(sql::DatabaseOptions{})),
+      db_(std::make_unique<sql::Database>(
+          sql::Database::Tag("DataSharingGroupStorage"))),
       proto_table_manager_(
           base::MakeRefCounted<sqlite_proto::ProtoTableManager>(
               db_task_runner_)),
@@ -84,7 +98,8 @@ GroupDataStore::GroupDataStore(const base::FilePath& db_path,
   // that these objects outlive any task posted to DB sequence.
   db_task_runner_->PostTaskAndReplyWithResult(
       FROM_HERE,
-      base::BindOnce(&InitOnDBSequence, db_path, base::Unretained(db_.get()),
+      base::BindOnce(&InitOnDBSequence, db_dir_path,
+                     base::Unretained(db_.get()),
                      base::Unretained(proto_table_manager_.get()),
                      base::Unretained(group_entity_data_.get())),
       base::BindOnce(&GroupDataStore::OnDBReady, weak_ptr_factory_.GetWeakPtr(),
@@ -92,29 +107,40 @@ GroupDataStore::GroupDataStore(const base::FilePath& db_path,
 }
 
 GroupDataStore::~GroupDataStore() {
-  // Shutdown `proto_table_manager_` and delete it together with `db_` on DB
-  // sequence, then deletes KeyValueTable/KeyValueData on the main sequence.
+  // Shutdown `proto_table_manager_` and delete it together with `db_` and
+  // KeyValueTable on DB sequence, then deletes KeyValueData and runs
+  // `shutdown_callback_` on the main sequence.
   // This ensures that DB objects outlive any other task posted to DB sequence,
   // since their deletion is the very last posted task.
   db_task_runner_->PostTaskAndReply(
       FROM_HERE,
       base::BindOnce(
           [](std::unique_ptr<sql::Database> db,
-             scoped_refptr<sqlite_proto::ProtoTableManager> table_manager) {
-            table_manager->WillShutdown();
+             scoped_refptr<sqlite_proto::ProtoTableManager> table_manager,
+             auto group_entity_table) { table_manager->WillShutdown(); },
+          std::move(db_), std::move(proto_table_manager_),
+          std::move(group_entity_table_)),
+      base::BindOnce(
+          [](auto group_entity_data, base::OnceClosure shutdown_callback) {
+            if (shutdown_callback) {
+              std::move(shutdown_callback).Run();
+            }
           },
-          std::move(db_), std::move(proto_table_manager_)),
-      base::DoNothingWithBoundArgs(std::move(group_entity_table_),
-                                   std::move(group_entity_data_)));
+          std::move(group_entity_data_), std::move(shutdown_callback_)));
 }
 
 void GroupDataStore::StoreGroupData(const VersionToken& version_token,
+                                    const base::Time& last_updated_timestamp,
                                     const GroupData& group_data) {
   CHECK_EQ(db_init_status_, DBInitStatus::kSuccess);
 
+  // TODO(crbug.com/301390275): support batching StoreGroupData() (by setting
+  // `flush_delay`?).
   data_sharing_pb::GroupEntity entity;
   entity.mutable_metadata()->set_last_processed_version_token(
       version_token.value());
+  entity.mutable_metadata()->set_last_updated_timestamp_millis_since_unix_epoch(
+      last_updated_timestamp.InMillisecondsSinceUnixEpoch());
   *entity.mutable_data() = GroupDataToProto(group_data);
   group_entity_data_->UpdateData(group_data.group_token.group_id.value(),
                                  entity);
@@ -139,6 +165,19 @@ std::optional<VersionToken> GroupDataStore::GetGroupVersionToken(
   }
 
   return VersionToken(entity.metadata().last_processed_version_token());
+}
+
+base::Time GroupDataStore::GetGroupLastUpdatedTimestamp(
+    const GroupId& group_id) const {
+  CHECK_EQ(db_init_status_, DBInitStatus::kSuccess);
+
+  data_sharing_pb::GroupEntity entity;
+  if (!group_entity_data_->TryGetData(group_id.value(), &entity)) {
+    return base::Time();
+  }
+
+  return base::Time::FromMillisecondsSinceUnixEpoch(
+      entity.metadata().last_updated_timestamp_millis_since_unix_epoch());
 }
 
 std::optional<GroupData> GroupDataStore::GetGroupData(
@@ -168,6 +207,11 @@ void GroupDataStore::OnDBReady(DBLoadedCallback db_loaded_callback,
                                DBInitStatus status) {
   db_init_status_ = status;
   std::move(db_loaded_callback).Run(status);
+}
+
+void GroupDataStore::SetShutdownCallbackForTesting(
+    base::OnceClosure shutdown_callback) {
+  shutdown_callback_ = std::move(shutdown_callback);
 }
 
 }  // namespace data_sharing

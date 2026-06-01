@@ -35,7 +35,7 @@
 import * as ThemeSupport from '../../theme_support/theme_support.js';
 
 import {DEFAULT_FONT_SIZE, getFontFamilyForCanvas} from './Font.js';
-import timelineGridStyles from './timelineGrid.css.legacy.js';
+import timelineGridStyles from './timelineGrid.css.js';
 
 const labelMap = new Map<HTMLDivElement|HTMLElement, HTMLDivElement>();
 
@@ -275,9 +275,11 @@ export class TimelineGrid {
   }
 }
 
+// The TimelineGrid is used in the Performance panel and Memory panel -> Allocating sampling, so the value can be either
+// milliseconds or bytes
 export interface Calculator {
-  computePosition(time: number): number;
-  formatValue(time: number, precision?: number): string;
+  computePosition(value: number): number;
+  formatValue(value: number, precision?: number): string;
   minimumBoundary(): number;
   zeroTime(): number;
   maximumBoundary(): number;

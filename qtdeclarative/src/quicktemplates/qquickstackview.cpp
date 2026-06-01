@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickstackview_p.h"
 #include "qquickstackview_p_p.h"
@@ -64,6 +65,7 @@ QDebug operator<<(QDebug debug, const QQuickStackViewArg &arg)
     \brief Provides a stack-based navigation model.
 
     \image qtquickcontrols-stackview-wireframe.webp
+           {Stack view wireframe showing page navigation}
 
     StackView can be used with a set of inter-linked information pages. For
     example, an email application with separate views to list the latest emails,
@@ -139,6 +141,7 @@ QDebug operator<<(QDebug debug, const QQuickStackViewArg &arg)
     stack view with the \l push() function:
 
     \image qtquickcontrols-stackview-push.gif
+           {Stack view pushing new page with transition}
 
     The stack now contains the following items: \c [A, B, C].
 
@@ -152,6 +155,7 @@ QDebug operator<<(QDebug debug, const QQuickStackViewArg &arg)
     removed with a call to \l pop():
 
     \image qtquickcontrols-stackview-pop.gif
+           {Stack view popping page with transition}
 
     The stack now contains the following items: \c [A, B].
 
@@ -173,6 +177,7 @@ QDebug operator<<(QDebug debug, const QQuickStackViewArg &arg)
     calling \c pop(null):
 
     \image qtquickcontrols-stackview-unwind.gif
+           {Stack view unwinding to deep page}
 
     The stack now contains a single item: \c [A].
 
@@ -181,6 +186,7 @@ QDebug operator<<(QDebug debug, const QQuickStackViewArg &arg)
     In the following animation, we \l replace the topmost item with \c D:
 
     \image qtquickcontrols-stackview-replace.gif
+           {Stack view replacing page with transition}
 
     The stack now contains the following items: \c [A, B, D].
 
@@ -457,8 +463,12 @@ QQuickItem *QQuickStackView::get(int index, LoadBehavior behavior)
     Q_D(QQuickStackView);
     QQuickStackElement *element = d->elements.value(index);
     if (element) {
-        if (behavior == ForceLoad)
-            element->load(this);
+        if (behavior == ForceLoad) {
+            // It's possible for a slot to still be connected during destruction of the receiver's
+            // parent (QTBUG-140018), so only try to load new things if our engine is alive.
+            if (QQmlEngine *engine = qmlEngine(this))
+                element->load(engine->handle(), this);
+        }
         return element->item;
     }
     return nullptr;
@@ -492,7 +502,7 @@ QQuickItem *QQuickStackView::find(const QJSValue &callback, LoadBehavior behavio
     for (int i = d->elements.size() - 1; i >= 0; --i) {
         QQuickStackElement *element = d->elements.at(i);
         if (behavior == ForceLoad)
-            element->load(this);
+            element->load(engine->handle(), this);
         if (element->item) {
             QJSValue rv = func.call(QJSValueList() << engine->newQObject(element->item) << i);
             if (rv.toBool())
@@ -624,7 +634,7 @@ void QQuickStackView::push(QQmlV4FunctionPtr args)
 #endif
 
     int oldDepth = d->elements.size();
-    if (d->pushElements(elements)) {
+    if (d->pushElements(v4, elements)) {
         d->depthChange(d->elements.size(), oldDepth);
         QQuickStackElement *enter = d->elements.top();
 #if QT_CONFIG(quick_viewtransitions)
@@ -737,7 +747,7 @@ void QQuickStackView::pop(QQmlV4FunctionPtr args)
 
     QPointer<QQuickItem> previousItem;
 
-    if (d->popElements(enter)) {
+    if (d->popElements(v4, enter)) {
         if (exit) {
             exit->removal = true;
             d->removing.insert(exit);
@@ -907,7 +917,7 @@ void QQuickStackView::replace(QQmlV4FunctionPtr args)
     if (!d->elements.isEmpty())
         exit = d->elements.pop();
 
-    if (exit != target ? d->replaceElements(target, elements) : d->pushElements(elements)) {
+    if (exit != target ? d->replaceElements(v4, target, elements) : d->pushElements(v4, elements)) {
         d->depthChange(d->elements.size(), oldDepth);
         if (exit) {
             exit->removal = true;
@@ -991,10 +1001,14 @@ QQuickItem *QQuickStackView::pushItems(QList<QQuickStackViewArg> args, Operation
         return nullptr;
     }
 
+    QQmlEngine *engine = qmlEngine(this);
+    if (!engine)
+        return nullptr;
+
     QScopedValueRollback<bool> modifyingElements(d->modifyingElements, true);
     QScopedValueRollback<QString> operationNameRollback(d->operation, operationName);
 
-    const QList<QQuickStackElement *> stackElements = d->parseElements(args);
+    const QList<QQuickStackElement *> stackElements = d->parseElements(engine, args);
 
 #if QT_CONFIG(quick_viewtransitions)
     QQuickStackElement *exit = nullptr;
@@ -1003,7 +1017,7 @@ QQuickItem *QQuickStackView::pushItems(QList<QQuickStackViewArg> args, Operation
 #endif
 
     const int oldDepth = d->elements.size();
-    if (d->pushElements(stackElements)) {
+    if (d->pushElements(engine->handle(), stackElements)) {
         d->depthChange(d->elements.size(), oldDepth);
         QQuickStackElement *enter = d->elements.top();
 #if QT_CONFIG(quick_viewtransitions)
@@ -1109,7 +1123,11 @@ QQuickItem *QQuickStackView::pushItem(const QUrl &url, const QVariantMap &proper
 QQuickItem *QQuickStackView::popToItem(QQuickItem *item, Operation operation)
 {
     Q_D(QQuickStackView);
-    return d->popToItem(item, operation, QQuickStackViewPrivate::CurrentItemPolicy::DoNotPop);
+    QQmlEngine *engine = qmlEngine(this);
+    if (!engine)
+        return nullptr;
+    return d->popToItem(
+            engine->handle(), item, operation, QQuickStackViewPrivate::CurrentItemPolicy::DoNotPop);
 }
 
 /*!
@@ -1149,8 +1167,13 @@ QQuickItem *QQuickStackView::popToIndex(int index, Operation operation)
     }
 
     QQuickStackElement *element = d->elements.at(index);
-    element->load(this);
-    return d->popToItem(element->item, operation, QQuickStackViewPrivate::CurrentItemPolicy::Pop);
+    QQmlEngine *engine = qmlEngine(this);
+    if (!engine)
+        return nullptr;
+    QV4::ExecutionEngine *v4 = engine->handle();
+    element->load(v4, this);
+    return d->popToItem(
+            v4, element->item, operation, QQuickStackViewPrivate::CurrentItemPolicy::Pop);
 }
 
 /*!
@@ -1178,7 +1201,13 @@ QQuickItem *QQuickStackView::popCurrentItem(Operation operation)
         clear(operation);
         return lastItemRemoved;
     }
-    return d->popToItem(d->currentItem, operation, QQuickStackViewPrivate::CurrentItemPolicy::Pop);
+
+    QQmlEngine *engine = qmlEngine(this);
+    if (!engine)
+        return nullptr;
+    return d->popToItem(
+            engine->handle(), d->currentItem, operation,
+            QQuickStackViewPrivate::CurrentItemPolicy::Pop);
 }
 
 /*!
@@ -1232,12 +1261,16 @@ QQuickItem *QQuickStackView::replaceCurrentItem(const QList<QQuickStackViewArg> 
         return nullptr;
     }
 
+    QQmlEngine *engine = qmlEngine(this);
+    if (!engine)
+        return nullptr;
+
     QScopedValueRollback<bool> modifyingElements(d->modifyingElements, true);
     QScopedValueRollback<QString> operationNameRollback(d->operation, operationName);
 
     QQuickStackElement *currentElement = !d->elements.isEmpty() ? d->elements.top() : nullptr;
 
-    const QList<QQuickStackElement *> stackElements = d->parseElements(args);
+    const QList<QQuickStackElement *> stackElements = d->parseElements(engine, args);
 
     int oldDepth = d->elements.size();
     QQuickStackElement* exit = nullptr;
@@ -1245,8 +1278,8 @@ QQuickItem *QQuickStackView::replaceCurrentItem(const QList<QQuickStackViewArg> 
         exit = d->elements.pop();
 
     const bool successfullyReplaced = exit != currentElement
-        ? d->replaceElements(currentElement, stackElements)
-        : d->pushElements(stackElements);
+        ? d->replaceElements(engine->handle(), currentElement, stackElements)
+        : d->pushElements(engine->handle(), stackElements);
     if (successfullyReplaced) {
         d->depthChange(d->elements.size(), oldDepth);
         if (exit) {
@@ -1607,14 +1640,19 @@ void QQuickStackView::componentComplete()
     QQuickStackElement *element = nullptr;
     QString error;
     int oldDepth = d->elements.size();
+
+    QQmlEngine *engine = qmlEngine(this);
+    if (!engine)
+        return;
+
     if (QObject *o = d->initialItem.toQObject())
         element = QQuickStackElement::fromObject(o, this, &error);
     else if (d->initialItem.isString())
-        element = QQuickStackElement::fromString(d->initialItem.toString(), this, &error);
+        element = QQuickStackElement::fromString(engine, d->initialItem.toString(), this, &error);
     if (!error.isEmpty()) {
         d->warn(error);
         delete element;
-    } else if (d->pushElement(element)) {
+    } else if (d->pushElement(engine->handle(), element)) {
         d->depthChange(d->elements.size(), oldDepth);
         d->setCurrentItem(element);
         element->setStatus(QQuickStackView::Active);
@@ -1772,6 +1810,7 @@ QQuickStackView::Status QQuickStackViewAttached::status() const
           items underneath can be seen.
 
     \image qtquickcontrols-stackview-visible.png
+           {Stack view showing visibility behavior}
 
     \snippet qtquickcontrols-stackview-visible.qml 1
 */

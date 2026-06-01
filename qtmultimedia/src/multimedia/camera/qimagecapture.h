@@ -29,6 +29,7 @@ class Q_MULTIMEDIA_EXPORT QImageCapture : public QObject
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorChanged)
     Q_PROPERTY(FileFormat fileFormat READ fileFormat WRITE setFileFormat NOTIFY fileFormatChanged)
     Q_PROPERTY(Quality quality READ quality WRITE setQuality NOTIFY qualityChanged)
+    Q_PROPERTY(QList<FileFormat> supportedFormats READ supportedFormats CONSTANT REVISION(6, 10))
 public:
     enum Error
     {

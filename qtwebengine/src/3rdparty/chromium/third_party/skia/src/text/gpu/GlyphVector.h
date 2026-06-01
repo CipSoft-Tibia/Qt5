@@ -67,7 +67,7 @@ public:
     // the sub runs.
     int unflattenSize() const { return GlyphVectorSize(fGlyphs.size()); }
 
-    void packedGlyphIDToGlyph(StrikeCache* cache);
+    void packedGlyphIDToGlyph(StrikeCache* cache, skgpu::MaskFormat);
 
     static size_t GlyphVectorSize(size_t count) {
         return sizeof(Variant) * count;

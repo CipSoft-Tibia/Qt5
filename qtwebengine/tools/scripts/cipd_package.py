@@ -50,6 +50,8 @@ class Package:
         self.version = version
         self.path = path
         self.fileName = name.replace('/','.') + '.pkg'
+        if not os.path.exists(path):
+          os.makedirs(path)
 
     def fetchAndDeploy(self):
         if os.path.isdir(self.path):
@@ -59,7 +61,7 @@ class Package:
             subprocessCall(['cipd', 'pkg-deploy', self.fileName , '-root', '.' ])
             os.chdir(currentDir)
         else:
-            print('-- missing directory' + self.path + ' skipping')
+            print('-- missing directory ' + self.path + ' skipping')
 
     def listFiles(self):
         if os.path.isdir(self.path):
@@ -74,7 +76,7 @@ class Package:
             os.chdir(currentDir)
             return files
         else:
-            print('-- missing directory' + self.path + ' skipping')
+            print('-- missing directory ' + self.path + ' skipping')
         return []
 
 class CIPDEntity:

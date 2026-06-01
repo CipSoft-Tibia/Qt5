@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -20,16 +21,17 @@ T.ProgressBar {
     leftPadding: __config.leftPadding || 0
     rightPadding: __config.rightPadding || 0
 
-    topInset: -__config.topInset || 0
-    bottomInset: -__config.bottomInset || 0
-    leftInset: -__config.leftInset || 0
-    rightInset: -__config.rightInset || 0
+    topInset: (__isHighContrast ? -1 : 0) - (__config.topInset || 0)
+    bottomInset: (__isHighContrast ? -1 : 0) - (__config.bottomInset || 0)
+    leftInset: (__isHighContrast ? -1 : 0) - (__config.leftInset || 0)
+    rightInset: (__isHighContrast ? -1 : 0) - (__config.rightInset || 0)
 
     readonly property string __currentState: [
         !control.enabled && "disabled",
         control.indeterminate && "indeterminate"
     ].filter(Boolean).join("_") || "normal"
     readonly property var __config: Config.controls.progressbar[__currentState] || {}
+    readonly property bool __isHighContrast: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast
 
     contentItem: Item {
         implicitWidth: control.indeterminate ? parent.availableWidth : progress.implicitWidth
@@ -38,8 +40,8 @@ T.ProgressBar {
         clip: control.indeterminate
 
         readonly property Rectangle progress: Rectangle {
-            x: control.background.groove?.x - 1
-            y: control.background.groove?.y - 1
+            x: control.background.groove?.x - (control.__isHighContrast ? 0 : 1)
+            y: control.background.groove?.y - (control.__isHighContrast ? 0 : 1)
             parent: control.contentItem
             visible: !control.indeterminate && control.value
             implicitWidth: control.__config.track.width
@@ -103,16 +105,17 @@ T.ProgressBar {
         }
     }
 
-    background: Item {
+    background: Rectangle {
         implicitWidth: groove.width
+        radius: height * 0.5
+        color: control.__isHighContrast ? control.palette.window : "transparent"
+        border.color: control.__isHighContrast ? control.palette.text : "transparent"
         property Item groove: Impl.StyleImage {
             imageConfig: control.__config.groove
-            visible: !control.indeterminate
+            visible: !control.indeterminate && !control.__isHighContrast
             parent: control.background
             height: implicitHeight
             width: parent.width
-            x: (parent.width - width) / 2
-            y: (parent.height - height) / 2
         }
     }
 }

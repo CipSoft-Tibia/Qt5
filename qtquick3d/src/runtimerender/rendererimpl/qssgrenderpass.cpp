@@ -149,7 +149,7 @@ void ReflectionMapPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &
                   QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled,
                   QSSGRhiGraphicsPipelineState::Flag::BlendEnabled };
 
-    reflectionProbes = data.reflectionProbes;
+    reflectionProbes = { data.reflectionProbesView.begin(), data.reflectionProbesView.end() };
     reflectionMapManager = data.requestReflectionMapManager();
 
     const auto &sortedOpaqueObjects = data.getSortedOpaqueRenderableObjects(*camera);
@@ -896,10 +896,12 @@ void SkyboxCubeMapPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &
     ps.viewCount = data.layer.viewCount;
     ps.polygonMode = QRhiGraphicsPipeline::Fill;
 
-    const auto &shaderCache = renderer.contextInterface()->shaderCache();
-    skyBoxCubeShader = shaderCache->getBuiltInRhiShaders().getRhiSkyBoxCubeShader(data.layer.viewCount);
+    QSSGRenderLayer::TonemapMode tonemapMode = skipTonemapping && (layer->tonemapMode != QSSGRenderLayer::TonemapMode::Custom) ?  QSSGRenderLayer::TonemapMode::None : layer->tonemapMode;
 
-    RenderHelpers::rhiPrepareSkyBox(rhiCtx.get(), this, *layer, data.renderedCameras, renderer);
+    const auto &shaderCache = renderer.contextInterface()->shaderCache();
+    skyBoxCubeShader = shaderCache->getBuiltInRhiShaders().getRhiSkyBoxCubeShader(tonemapMode, !data.layer.skyBoxIsSrgb, data.layer.viewCount);
+
+    RenderHelpers::rhiPrepareSkyBox(rhiCtx.get(), this, *layer, data.renderedCameras, renderer, uint(tonemapMode));
 }
 
 void SkyboxCubeMapPass::renderPass(QSSGRenderer &renderer)
@@ -912,7 +914,7 @@ void SkyboxCubeMapPass::renderPass(QSSGRenderer &renderer)
     QSSG_ASSERT(srb, return);
 
     Q_QUICK3D_PROFILE_START(QQuick3DProfiler::Quick3DRenderPass);
-    Q_TRACE_SCOPE(QSSG_renderPass, QStringLiteral("Quick3D render skybox"));
+    Q_TRACE_SCOPE(QSSG_renderPass, QStringLiteral("Quick3D render cubemap skybox"));
 
     QSSGRhiGraphicsPipelineStatePrivate::setShaderPipeline(ps, skyBoxCubeShader.get());
     renderer.rhiCubeRenderer()->recordRenderCube(rhiCtx.get(), &ps, srb, rpDesc, { QSSGRhiQuadRenderer::DepthTest | QSSGRhiQuadRenderer::RenderBehind });
@@ -931,26 +933,22 @@ void Item2DPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
     QSSG_ASSERT(rhiCtx->rhi()->isRecordingFrame(), return);
     const auto &layer = data.layer;
 
-    ps = data.getPipelineState();
-
-    // objects rendered by Qt Quick 2D
-    ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::BlendEnabled, false);
-
-    item2Ds = data.getRenderableItem2Ds();
-    item2DDataMap.reserve(size_t(item2Ds.size()));
+    const auto &item2Ds = data.getRenderableItem2Ds();
     prepdItem2DRenderers.reserve(size_t(item2Ds.size()));
-    renderer.populateItem2DDataMapForLayer(data.layer, item2DDataMap);
     // NOTE: This marks the start of the 2D sub-scene rendering as it might result in
     // a nested 3D scene to be rendered and if we don't save the state here, we can
     // end up with a mismatched state in the QtQuick3D renderer.
     // See the end of this function for the corresponding end call (endSubLayerRender()).
     renderer.beginSubLayerRender(data);
-    for (const auto &item2D: std::as_const(item2Ds)) {
+    const auto &rpd = data.getItem2DRenderPassDescriptor();
+    QSSG_ASSERT(rpd, return);
+    for (const auto *item2D: std::as_const(item2Ds)) {
         // Find data for item
-        auto item2DData = getItem2DData(item2D);
-        const auto &mvps = item2DData.mvps;
-        QSGRenderer *renderer2d = item2DData.renderer;
-        QRhiRenderPassDescriptor *rpd = item2DData.rpd;
+        auto item2DData = data.getItem2DRenderer(*item2D);
+        const auto &mvps = data.getItem2DMvps(*item2D);
+        QSGRenderer *renderer2d = item2DData;
+
+        QSSG_ASSERT(renderer2d, continue);
 
         // NOTE: We shouldn't get into this state...
         if (renderer2d && renderer2d->currentRhi() != rhiCtx->rhi()) {
@@ -986,7 +984,7 @@ void Item2DPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
             renderer2d->setViewportRect(RenderHelpers::correctViewportCoordinates(layerPrepResult.viewport, deviceRect));
         }
         renderer2d->setDeviceRect(deviceRect);
-        QSGRenderTarget sgRt(renderTarget, rpd, rhiCtx->commandBuffer());
+        QSGRenderTarget sgRt(renderTarget, rpd.get(), rhiCtx->commandBuffer());
         sgRt.multiViewCount = data.layer.viewCount;
         renderer2d->setRenderTarget(sgRt);
         renderer2d->prepareSceneInline();
@@ -997,7 +995,7 @@ void Item2DPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
 
 void Item2DPass::renderPass(QSSGRenderer &renderer)
 {
-    QSSG_ASSERT(!item2Ds.isEmpty(), return);
+    QSSG_ASSERT(prepdItem2DRenderers.size() > 0, return);
 
     const auto &rhiCtx = renderer.contextInterface()->rhiContext();
     QSSG_ASSERT(rhiCtx->rhi()->isRecordingFrame(), return);
@@ -1017,16 +1015,7 @@ void Item2DPass::renderPass(QSSGRenderer &renderer)
 
 void Item2DPass::resetForFrame()
 {
-    item2Ds.clear();
-    item2DDataMap.clear();
     prepdItem2DRenderers.clear();
-    ps = {};
-}
-
-QSSGRenderer::Item2DData Item2DPass::getItem2DData(QSSGRenderItem2D *item2D)
-{
-    const auto foundIt = item2DDataMap.find(item2D);
-    return (foundIt != item2DDataMap.cend()) ? foundIt->second : QSSGRenderer::Item2DData{};
 }
 
 void InfiniteGridPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
@@ -1098,9 +1087,11 @@ void DebugDrawPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data
             dcd.ubuf->create();
         }
         char *ubufData = dcd.ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+        QMatrix4x4 viewProjection(Qt::Uninitialized);
+        QMatrix4x4 cameraGlobalTransform(Qt::Uninitialized);
         for (qsizetype viewIdx = 0; viewIdx < data.renderedCameras.count(); ++viewIdx) {
-            QMatrix4x4 viewProjection(Qt::Uninitialized);
-            data.renderedCameras[viewIdx]->calculateViewProjectionMatrix(viewProjection);
+            cameraGlobalTransform = data.getGlobalTransform(*data.renderedCameras[viewIdx]);
+            data.renderedCameras[viewIdx]->calculateViewProjectionMatrix(cameraGlobalTransform, viewProjection);
             viewProjection = rhi->clipSpaceCorrMatrix() * viewProjection;
             memcpy(ubufData, viewProjection.constData() + viewIdx * 64, 64);
         }

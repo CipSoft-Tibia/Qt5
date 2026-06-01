@@ -986,12 +986,8 @@ Drücken Sie ESC, um abzubrechen</translation>
         <translation>Eine sequentielle Datei wird nicht durch blockweises Kopieren umbenannt</translation>
     </message>
     <message>
-        <source>Cannot remove source file</source>
-        <translation>Die Quelldatei kann nicht entfernt werden</translation>
-    </message>
-    <message>
-        <source>Cannot open destination file: %1</source>
-        <translation>Die Zieldatei kann nicht geöffnet werden: %1</translation>
+        <source>Cannot remove source file: %1</source>
+        <translation>Die Quelldatei kann nicht entfernt werden: %1</translation>
     </message>
     <message>
         <source>Cannot open %1 for input</source>
@@ -1002,12 +998,12 @@ Drücken Sie ESC, um abzubrechen</translation>
         <translation>Kann nicht zum Schreiben geöffnet werden: %1</translation>
     </message>
     <message>
-        <source>Failure to write block: %1</source>
-        <translation>Der Datenblock konnte nicht geschrieben werden: %1</translation>
+        <source>Could not copy to %1: %2</source>
+        <translation>Es kann nicht nach %1 kopiert werden: %2</translation>
     </message>
     <message>
-        <source>Cannot create %1 for output: %2</source>
-        <translation>%1 kann nicht erstellt werden: %2</translation>
+        <source>Failure to write block: %1</source>
+        <translation>Datenblock konnte nicht geschrieben werden: %1</translation>
     </message>
 </context>
 <context>
@@ -1672,6 +1668,7 @@ Möchten Sie die Datei trotzdem löschen?</translation>
     </message>
     <message>
         <source>Brotli error: %1</source>
+        <extracomment>Brotli (compression algorithm) decoding error, e.g. corrupted input or memory allocation problem.</extracomment>
         <translation>Brotli-Fehler: %1</translation>
     </message>
     <message>
@@ -3743,6 +3740,7 @@ Bitte deaktivieren Sie eine der beiden.</translation>
     </message>
     <message>
         <source>%1%</source>
+        <extracomment>Zoom factor percentage value, % is the percent sign</extracomment>
         <translation>%1%</translation>
     </message>
     <message>
@@ -5572,6 +5570,10 @@ Bitte deaktivieren Sie eine der beiden.</translation>
         <translation>Zeit</translation>
     </message>
     <message>
+        <source>Keyboard</source>
+        <translation>Tastatur</translation>
+    </message>
+    <message>
         <source>Select</source>
         <translation>Auswählen</translation>
     </message>
@@ -6791,14 +6793,6 @@ Bitte deaktivieren Sie eine der beiden.</translation>
         <translation>Es wurde ein ungültiges Protokoll gewählt</translation>
     </message>
     <message>
-        <source>The certificate provided cannot be used for a client.</source>
-        <translation>Das bereitgestellte Zertifikat kann nicht für einen Client verwendet werden.</translation>
-    </message>
-    <message>
-        <source>The certificate provided cannot be used for a server.</source>
-        <translation>Das bereitgestellte Zertifikat kann nicht für einen Server verwendet werden.</translation>
-    </message>
-    <message>
         <source>Server did not accept any certificate we could present.</source>
         <translation>Der Server hat keines der angegebenen Zertifikate akzeptiert.</translation>
     </message>
@@ -6886,6 +6880,10 @@ Bitte deaktivieren Sie eine der beiden.</translation>
         <translation>Gemeinsame Statusdaten</translation>
     </message>
     <message>
+        <source>Downloads</source>
+        <translation>Downloads</translation>
+    </message>
+    <message>
         <source>Application Configuration</source>
         <translation>Anwendungskonfiguration</translation>
     </message>
@@ -6920,10 +6918,6 @@ Bitte deaktivieren Sie eine der beiden.</translation>
     <message>
         <source>Shared Cache</source>
         <translation>Gemeinsamer Zwischenspeicher</translation>
-    </message>
-    <message>
-        <source>Download</source>
-        <translation>Download</translation>
     </message>
     <message>
         <source>Temporary Items</source>
@@ -7288,6 +7282,10 @@ Die minimal erforderliche Version von Direct2D ist %1 Die auf diesem System inst
         <translation>Überzähliger Inhalt nach Ende des Dokuments.</translation>
     </message>
     <message>
+        <source>Unexpected token while reading raw inner data.</source>
+        <translation>Nicht erwartetes Token beim Lesen der enthaltenen Rohdaten.</translation>
+    </message>
+    <message>
         <source>Invalid entity value.</source>
         <translation>Ungültiger Entity-Wert.</translation>
     </message>
@@ -7394,6 +7392,22 @@ Die minimal erforderliche Version von Direct2D ist %1 Die auf diesem System inst
     <message>
         <source>Expected character data.</source>
         <translation>Es wurden Zeichendaten erwartet.</translation>
+    </message>
+    <message>
+        <source>An I/O error occurred while writing</source>
+        <translation>Beim Schreiben trat ein Ein/Ausgabefehler auf</translation>
+    </message>
+    <message>
+        <source>An encoding error occurred while writing</source>
+        <translation>Beim Schreiben trat ein Kodierungsfehler auf</translation>
+    </message>
+    <message>
+        <source>Encountered an invalid XML 1.0 character while writing</source>
+        <translation>Beim Schreiben wurde ein ungültiges XML 1.0-Zeichen festgestellt</translation>
+    </message>
+    <message>
+        <source>An error occurred while writing</source>
+        <translation>Beim Schreiben trat ein Fehler auf</translation>
     </message>
     <message>
         <source>Unexpected token type %1 in %2.</source>
@@ -7733,6 +7747,14 @@ Die minimal erforderliche Version von Direct2D ist %1 Die auf diesem System inst
     <message>
         <source>blockquote</source>
         <translation>Zitatblock</translation>
+    </message>
+</context>
+<context>
+    <name>QProgressBar</name>
+    <message>
+        <source>%p%</source>
+        <extracomment>%p is the percent value, % is the percent sign. When translated to the identical %p%, then the second % symbol will be replaced by the percentage-symbol from the user&apos;s locale.</extracomment>
+        <translation>%p%</translation>
     </message>
 </context>
 </TS>

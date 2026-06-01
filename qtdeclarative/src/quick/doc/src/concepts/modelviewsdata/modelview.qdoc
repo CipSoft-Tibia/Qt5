@@ -491,9 +491,68 @@ by a Repeater. This is specified using the \l{Repeater::}{delegate} property.
 
 \section1 Changing Model Data
 
-To change model data, you can assign updated values to the \c model properties.
-The QML ListModel is editable by default whereas C++ models must implement
-setData() to become editable. Integer and JavaScript array models are read-only.
+All the relevant views have a property called \e delegateModelAccess that governs
+if and how you can change model data from the delegate. For most use cases you
+should set it to \e{DelegateModel.ReadWrite}. This will allow your delegate to
+change model data in the most flexible way. Alternately, you can set it to
+\e{DelegateModel.ReadOnly} if you don't want the delegate to change any model data
+at all.
+
+The following table describes in detail all the values that the property can hold.
+
+\table
+    \row
+    \li \e{DelegateModel.Qt5ReadWrite}
+    \li The delegate \e can assign values to any context properties provided by the
+        view in order to change the relevant model item. Furthermore, it can also
+        assign values to properties of the \c model object provided as either a
+        context property or required property to the same effect. The delegate
+        \e can't change model data by assigning values to required properties
+        populated by the view, though. If you assign a value to a required
+        property of a delegate, the binding that updates the required property
+        from the model data breaks. This leaves the required property to hold the
+        value you've assigned even if the model changes later on.
+        \e{DelegateModel.Qt5ReadWrite} is the default value of
+        \e{delegateModelAccess}.
+    \row
+    \li \e{DelegateModel.ReadOnly}
+    \li The delegate \e can't assign values to context properties provided by the
+        view, nor can it assign values to properties of the \c model object.
+        Assigning a value to a required property populated by the view does not
+        break the internal binding, neither will it change any model data. The
+        required property will hold the value assigned to it until the model
+        item changes again.
+    \row
+    \li \e{DelegateModel.ReadWrite}
+    \li The delegate \e can assign values to any context properties provided by the
+        view in order to change the relevant model item. Furthermore, it can also
+        assign values to properties of the \c model object provided as either a
+        context property or required property to the same effect. The delegate
+        \e can also change model data by assigning values to required properties
+        populated by the view. Assigning a value to a required property will
+        propagate the value to the respective model item and \e not break internal
+        bindings.
+\endtable
+
+Some models are objects with independent identities that the view references.
+The original object is the sole source of truth for creating delegates. It
+is not copied. Such models will be visibly updated when writing through delegates.
+
+Other models do not have an independent identity and are copied when assigning
+them to the view. For such models, only the internals of the view are updated
+when writing through the delegate. The original model remains unchanged.
+
+In general \l{QML Object Types} have independent identities, while
+\l{QML Value Types} do not. So \l{ListModel}, anything derived from
+\l{QAbstractItemModel}, as well as either a single instance of an
+\l{QML Object Types}{object type} or a list of instances of
+\l{QML Object Types}{object types} will be updated when passed as a model and
+written through the delegate. However, JavaScript arrays, lists of value types,
+or simple numbers do not receive updates when you change model data via the
+delegate.
+
+Furthermore, when implementing your own C++ model, you need to implement
+\l{QAbstractItemModel::}{setData} to receive any updates passed from delegates.
 
 Supposed a \l{QAbstractItemModel} based C++ model that implements the
 \l{QAbstractItemModel::}{setData} method is registered as a QML type named
@@ -503,8 +562,29 @@ Supposed a \l{QAbstractItemModel} based C++ model that implements the
 ListView {
     anchors.fill: parent
     model: EditableModel {}
+
+    // Make sure that changes to the required property are propagated
+    delegateModelAccess: DelegateModel.ReadWrite
+
     delegate: TextEdit {
-        required property var model
+        required property string edit
+
+        width: ListView.view.width
+        height: 30
+        text: edit
+        Keys.onReturnPressed: edit = text
+    }
+}
+\endqml
+
+You can also change model data by manipulating the \c model object like this:
+
+\qml
+ListView {
+    anchors.fill: parent
+    model: EditableModel {}
+    delegate: TextEdit {
+        required property QtObject model
 
         width: ListView.view.width
         height: 30
@@ -516,12 +596,6 @@ ListView {
 
 \note The \c edit role is equal to \l Qt::EditRole. See \l{QAbstractItemModel::}{roleNames}()
 for the built-in role names. However, real life models would usually register custom roles.
-
-\note If a model role is bound to a \l{Required Properties}{required property}, assigning to
-that property will not modify the model. It will instead break the binding to the model (just
-like assigning to any other property breaks existing bindings). If you want to use
-required properties and change the model data, make model also a required property and assign to
-\e model.propertyName.
 
 For more information, visit the \l{qtquick-modelviewsdata-cppmodels.html#changing-model-data}{Using C++ Models with Qt Quick Views}
 article.

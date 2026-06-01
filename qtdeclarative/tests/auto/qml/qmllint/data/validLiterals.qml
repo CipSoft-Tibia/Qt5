@@ -10,7 +10,8 @@ QtObject {
     property real real1: 5.3
 
     property var var1: null
-    property var var2: 3
+    property var var2
+    var2: 3
 
     property Item item: null
 

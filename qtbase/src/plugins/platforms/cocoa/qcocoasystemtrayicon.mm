@@ -23,9 +23,9 @@
 #include "qcocoascreen.h"
 #include <QtGui/private/qcoregraphics_p.h>
 
-#warning NSUserNotification was deprecated in macOS 11. \
-We should be using UserNotifications.framework instead. \
-See QTBUG-110998 for more information.
+// NSUserNotification was deprecated in macOS 11.
+// We should be using UserNotifications.framework instead.
+// See QTBUG-110998 for more information.
 #define NSUserNotificationCenter QT_IGNORE_DEPRECATIONS(NSUserNotificationCenter)
 #define NSUserNotification QT_IGNORE_DEPRECATIONS(NSUserNotification)
 
@@ -83,6 +83,19 @@ void QCocoaSystemTrayIcon::updateIcon(const QIcon &icon)
 {
     if (!m_statusItem)
         return;
+
+    if (auto *image = [NSImage internalImageFromQIcon:icon]) {
+        // The icon is backed by QAppleIconEngine, in which case we
+        // want to pass on the underlying NSImage instead of flattening
+        // to a QImage. This preserves the isTemplate property of the
+        // image, and allows AppKit to size and configure the icon for
+        // the status bar. We also enable NSVariableStatusItemLength,
+        // to match the behavior of SwiftUI's MenuBarExtra.
+        m_statusItem.button.image = [[image copy] autorelease];
+        m_statusItem.button.imageScaling = NSImageScaleProportionallyDown;
+        m_statusItem.length = NSVariableStatusItemLength;
+        return;
+    }
 
     // The recommended maximum title bar icon height is 18 points
     // (device independent pixels). The menu height on past and
@@ -205,7 +218,17 @@ void QCocoaSystemTrayIcon::showMessage(const QString &title, const QString &mess
     auto *notification = [[NSUserNotification alloc] init];
     notification.title = title.toNSString();
     notification.informativeText = message.toNSString();
-    notification.contentImage = [NSImage imageFromQIcon:icon];
+
+    // Request a size that looks good on the highest resolution screen available
+    // for icon engines that don't have an intrinsic size (like SVG).
+    auto image = icon.pixmap(QSize(64, 64), qGuiApp->devicePixelRatio()).toImage();
+
+    // The assigned image is scaled by the system to fit into the tile,
+    // but without taking aspect ratio into account, so let's pad the
+    // image up front if it's not already square.
+    image = qt_mac_padToSquareImage(image);
+
+    notification.contentImage = [NSImage imageFromQImage:image];
 
     NSUserNotificationCenter *center = NSUserNotificationCenter.defaultUserNotificationCenter;
     center.delegate = m_delegate;

@@ -27,11 +27,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/core/css/media_query_exp.h"
 
 #include "third_party/blink/renderer/core/css/css_math_expression_node.h"
@@ -206,6 +201,30 @@ static inline bool FeatureWithValidIdent(const String& media_feature,
         case CSSValueID::kInline:
         case CSSValueID::kX:
         case CSSValueID::kY:
+        case CSSValueID::kBoth:
+          return true;
+        default:
+          return false;
+      }
+    }
+  }
+
+  if (RuntimeEnabledFeatures::CSSScrollableContainerQueriesEnabled()) {
+    if (media_feature == media_feature_names::kScrollableMediaFeature) {
+      switch (ident) {
+        case CSSValueID::kNone:
+        case CSSValueID::kTop:
+        case CSSValueID::kLeft:
+        case CSSValueID::kBottom:
+        case CSSValueID::kRight:
+        case CSSValueID::kBlockStart:
+        case CSSValueID::kBlockEnd:
+        case CSSValueID::kInlineStart:
+        case CSSValueID::kInlineEnd:
+        case CSSValueID::kBlock:
+        case CSSValueID::kInline:
+        case CSSValueID::kX:
+        case CSSValueID::kY:
           return true;
         default:
           return false;
@@ -219,8 +238,7 @@ static inline bool FeatureWithValidIdent(const String& media_feature,
 static inline bool FeatureWithValidLength(const String& media_feature,
                                           const CSSPrimitiveValue* value) {
   if (!(value->IsLength() ||
-        (value->IsNumber() &&
-         value->IsZero() == CSSPrimitiveValue::BoolStatus::kTrue))) {
+        (value->IsNumber() && value->GetValueIfKnown() == 0.0))) {
     return false;
   }
 
@@ -249,8 +267,8 @@ static inline bool FeatureWithValidDensity(const String& media_feature,
   // NOTE: The allowed range of <resolution> values always excludes negative
   // values, in addition to any explicit ranges that might be specified.
   // https://drafts.csswg.org/css-values/#resolution
-  if (!value->IsResolution() ||
-      value->IsNegative() == CSSPrimitiveValue::BoolStatus::kTrue) {
+  if (!value->IsResolution() || (value->GetValueIfKnown().has_value() &&
+                                 *value->GetValueIfKnown() < 0.0)) {
     return false;
   }
 
@@ -310,8 +328,8 @@ static inline bool FeatureWithNumber(const String& media_feature,
 static inline bool FeatureWithZeroOrOne(const String& media_feature,
                                         const CSSPrimitiveValue* value) {
   if (!value->IsInteger() ||
-      (value->IsOne() == CSSPrimitiveValue::BoolStatus::kFalse &&
-       value->IsZero() == CSSPrimitiveValue::BoolStatus::kFalse)) {
+      (value->GetValueIfKnown().has_value() &&
+       *value->GetValueIfKnown() != 1.0 && *value->GetValueIfKnown() != 0.0)) {
     return false;
   }
 
@@ -404,12 +422,12 @@ MediaQueryExp::MediaQueryExp(const String& media_feature,
                              const MediaQueryExpBounds& bounds)
     : media_feature_(media_feature), bounds_(bounds) {}
 
-MediaQueryExp MediaQueryExp::Create(const String& media_feature,
+MediaQueryExp MediaQueryExp::Create(const AtomicString& media_feature,
                                     CSSParserTokenStream& stream,
                                     const CSSParserContext& context) {
-  String feature = AttemptStaticStringCreation(media_feature);
-  if (auto value = MediaQueryExpValue::Consume(feature, stream, context)) {
-    return MediaQueryExp(feature, *value);
+  if (auto value =
+          MediaQueryExpValue::Consume(media_feature, stream, context)) {
+    return MediaQueryExp(media_feature, *value);
   }
   return Invalid();
 }
@@ -468,7 +486,8 @@ std::optional<MediaQueryExpValue> MediaQueryExpValue::Consume(
   // Now we have |value| as a number, length or resolution
   // Create value for media query expression that must have 1 or more values.
   if (FeatureWithAspectRatio(media_feature)) {
-    if (value->IsNegative() == CSSPrimitiveValue::BoolStatus::kTrue) {
+    if (value->GetValueIfKnown().has_value() &&
+        *value->GetValueIfKnown() < 0.0) {
       return std::nullopt;
     }
     if (!css_parsing_utils::ConsumeSlashIncludingWhitespace(stream)) {
@@ -481,8 +500,8 @@ std::optional<MediaQueryExpValue> MediaQueryExpValue::Consume(
     if (!denominator) {
       return std::nullopt;
     }
-    if (value->IsZero() == CSSPrimitiveValue::BoolStatus::kTrue &&
-        denominator->IsZero() == CSSPrimitiveValue::BoolStatus::kTrue) {
+    if (value->GetValueIfKnown() == 0.0 &&
+        denominator->GetValueIfKnown() == 0.0) {
       return MediaQueryExpValue(*CSSNumericLiteralValue::Create(
                                     1, CSSPrimitiveValue::UnitType::kNumber),
                                 *CSSNumericLiteralValue::Create(
@@ -520,13 +539,12 @@ const char* MediaQueryOperatorToString(MediaQueryOperator op) {
       return ">=";
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return "";
+  NOTREACHED();
 }
 
 }  // namespace
 
-MediaQueryExp MediaQueryExp::Create(const String& media_feature,
+MediaQueryExp MediaQueryExp::Create(const AtomicString& media_feature,
                                     const MediaQueryExpBounds& bounds) {
   return MediaQueryExp(media_feature, bounds);
 }
@@ -595,7 +613,7 @@ String MediaQueryExpValue::CssText() const {
       output.Append(Denominator().CssText());
       break;
     case Type::kId:
-      output.Append(getValueName(Id()));
+      output.Append(GetCSSValueNameAs<StringView>(Id()));
       break;
   }
 
@@ -746,6 +764,9 @@ MediaQueryExpNode::FeatureFlags MediaQueryFeatureExpNode::CollectFeatureFlags()
     return kFeatureSticky;
   } else if (exp_.MediaFeature() == media_feature_names::kSnappedMediaFeature) {
     return kFeatureSnap;
+  } else if (exp_.MediaFeature() ==
+             media_feature_names::kScrollableMediaFeature) {
+    return kFeatureScrollable;
   } else if (exp_.IsInlineSizeDependent()) {
     return kFeatureInlineSize;
   } else if (exp_.IsBlockSizeDependent()) {

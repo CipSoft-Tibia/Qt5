@@ -8,8 +8,10 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Effects
 import ThermostatCustomControls
@@ -18,19 +20,12 @@ import Thermostat
 Pane {
     id: root
 
+    required property Room room
+
     property bool isSmallLayout: false
 
     property alias isEnabled: toggle.checked
     property alias toggle: toggle
-
-    required property string name
-    required property string floor
-    required property string iconName
-    required property int temp
-    required property int humidity
-    required property int energy
-    required property bool active
-    required property var model
 
     width: internal.width
     height: internal.height
@@ -62,7 +57,7 @@ Pane {
             Image {
                 id: icon
 
-                source: "images/" + root.iconName
+                source: "images/" + root.room.iconName
                 sourceSize.width: internal.iconSize
                 sourceSize.height: internal.iconSize
             }
@@ -82,7 +77,7 @@ Pane {
             spacing: internal.titleSpacing
 
             Label {
-                text: root.name
+                text: root.room.name
                 font.pixelSize: !root.isSmallLayout ? 24 : 18
                 font.weight: 600
                 font.family: "Titillium Web"
@@ -90,7 +85,7 @@ Pane {
             }
 
             Label {
-                text: root.floor
+                text: root.room.floor
                 font.pixelSize: 10
                 font.weight: 400
                 font.family: "Titillium Web"
@@ -100,8 +95,15 @@ Pane {
 
         CustomSwitch {
             id: toggle
-            checked: root.active
-            onCheckedChanged: model.active = toggle.checked
+            Layout.alignment: Qt.AlignRight | Qt.AlignTop
+            enabled: AppSettings.isThermostatActive
+            checked: root.room.active && AppSettings.isThermostatActive
+            Connections {
+                function onCheckedChanged() {
+                    if (AppSettings.isThermostatActive)
+                        root.room.active = toggle.checked
+                }
+            }
         }
     }
 
@@ -115,10 +117,11 @@ Pane {
         anchors.topMargin: !root.isSmallLayout ? 10 : 8
 
         Repeater {
-            model: [qsTr("Humidity: %1%".arg(humidity)), qsTr(
-                    "Energy Usage: %1 kWh".arg(energy))]
+            model: [qsTr("Humidity: %1%".arg(root.room.humidity)), qsTr(
+                    "Energy Usage: %1 kWh".arg(root.room.energy))]
 
             Label {
+                required property string modelData
                 text: modelData
                 font.pixelSize: !root.isSmallLayout ? 14 : 12
                 font.weight: 400
@@ -135,8 +138,8 @@ Pane {
         anchors.right: parent.right
         anchors.rightMargin: internal.rightMargin
         isEnabled: root.isEnabled
-        isHeating: root.model.thermostatTemp > root.model.temp
-        tempValue: root.temp
+        isHeating: root.room.thermostatTemp > root.room.temp
+        tempValue: root.room.temp
     }
 
     Rectangle {
@@ -190,11 +193,11 @@ Pane {
 
                 isEnabled: root.isEnabled
                 isSmallLayout: root.isSmallLayout
-                isActive: root.model.mode === roomOption.name
+                isActive: root.room.mode === roomOption.name
 
                 Connections {
                     function onClicked() {
-                        root.model.mode = roomOption.name
+                        root.room.mode = roomOption.name
                     }
                 }
             }

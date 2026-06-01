@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKABSTRACTDIALOG_P_H
 #define QQUICKABSTRACTDIALOG_P_H
@@ -25,6 +26,7 @@
 #include <QtQml/qqmllist.h>
 #include <QtQml/qqml.h>
 #include <QtQuickDialogs2Utils/private/qquickdialogtype_p.h>
+#include <QtQuickTemplates2/private/qquickpopup_p_p.h>
 
 #include "qtquickdialogs2global_p.h"
 
@@ -44,6 +46,7 @@ class Q_QUICKDIALOGS2_EXPORT QQuickAbstractDialog : public QObject, public QQmlP
     Q_PROPERTY(QString title READ title WRITE setTitle NOTIFY titleChanged FINAL)
     Q_PROPERTY(Qt::WindowFlags flags READ flags WRITE setFlags NOTIFY flagsChanged FINAL)
     Q_PROPERTY(Qt::WindowModality modality READ modality WRITE setModality NOTIFY modalityChanged FINAL)
+    Q_PROPERTY(QQuickPopup::PopupType popupType READ popupType WRITE setPopupType RESET resetPopupType NOTIFY popupTypeChanged FINAL REVISION(6, 10))
     Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged FINAL)
     Q_PROPERTY(int result READ result WRITE setResult NOTIFY resultChanged FINAL)
     Q_CLASSINFO("DefaultProperty", "data")
@@ -81,6 +84,10 @@ public:
     int result() const;
     void setResult(int result);
 
+    QQuickPopup::PopupType popupType() const;
+    void setPopupType(QQuickPopup::PopupType popupType);
+    void resetPopupType();
+
 public Q_SLOTS:
     void open();
     void close();
@@ -97,6 +104,7 @@ Q_SIGNALS:
     void modalityChanged();
     void visibleChanged();
     void resultChanged();
+    Q_REVISION(6, 10) void popupTypeChanged();
 
 protected:
     void classBegin() override;
@@ -124,6 +132,7 @@ protected:
     QQuickDialogType m_type = QQuickDialogType::FileDialog;
     QList<QObject *> m_data;
     std::unique_ptr<QPlatformDialogHelper> m_handle;
+    QQuickPopup::PopupType m_popupType = QQuickPopup::Window;
     bool m_visibleRequested = false;
     bool m_visible = false;
     bool m_complete = false;

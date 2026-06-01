@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtoolbar.h"
 
@@ -106,6 +107,8 @@ void QToolBarPrivate::updateWindowFlags(bool floating, bool unplug)
     // the platform window when it would be removed later
     if (unplug && !QMainWindowLayout::needsPlatformDrag())
         flags |= Qt::X11BypassWindowManagerHint;
+#else
+    Q_UNUSED(unplug);
 #endif
 
     q->setWindowFlags(flags);

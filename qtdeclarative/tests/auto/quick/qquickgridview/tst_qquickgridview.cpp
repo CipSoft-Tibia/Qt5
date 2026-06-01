@@ -17,6 +17,7 @@
 #include <QtQuick/private/qquickgridview_p.h>
 #include <QtQuick/private/qquicktext_p.h>
 #include <QtQmlModels/private/qqmllistmodel_p.h>
+#include <QtQuickTest/quicktest.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/viewtestutils_p.h>
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
@@ -31,6 +32,7 @@ Q_DECLARE_METATYPE(QQuickItemView::VerticalLayoutDirection)
 Q_DECLARE_METATYPE(QQuickItemView::PositionMode)
 Q_DECLARE_METATYPE(Qt::Key)
 
+using namespace Qt::StringLiterals;
 using namespace QQuickViewTestUtils;
 using namespace QQuickVisualTestUtils;
 
@@ -524,9 +526,9 @@ void tst_QQuickGridView::inserted_defaultLayout(QQuickGridView::Flow flow,
     if (setContentPos(gridview, contentYRowOffset))
         QVERIFY(QQuickTest::qWaitForPolish(gridview));
 
-    QList<QPair<QString, QString> > newData;
+    QList<std::pair<QString, QString> > newData;
     for (int i=0; i<insertCount; i++)
-        newData << qMakePair(QString("value %1").arg(i), QString::number(i));
+        newData << std::make_pair(QString("value %1").arg(i), QString::number(i));
     model.insertItems(insertIndex, newData);
     gridview->forceLayout();
     QTRY_COMPARE(gridview->property("count").toInt(), model.count());
@@ -721,9 +723,9 @@ void tst_QQuickGridView::insertBeforeVisible()
     QVERIFY(item);
     QCOMPARE(item->y(), gridview->contentY());
 
-    QList<QPair<QString, QString> > newData;
+    QList<std::pair<QString, QString> > newData;
     for (int i=0; i<insertCount; i++)
-        newData << qMakePair(QString("value %1").arg(i), QString::number(i));
+        newData << std::make_pair(QString("value %1").arg(i), QString::number(i));
     model.insertItems(insertIndex, newData);
     gridview->forceLayout();
     QTRY_COMPARE(gridview->property("count").toInt(), model.count());
@@ -1553,9 +1555,9 @@ void tst_QQuickGridView::multipleChanges(bool condensed)
         switch (changes[i].type) {
             case ListChange::Inserted:
             {
-                QList<QPair<QString, QString> > items;
+                QList<std::pair<QString, QString> > items;
                 for (int j=changes[i].index; j<changes[i].index + changes[i].count; ++j)
-                    items << qMakePair(QString("new item %1").arg(j), QString::number(j));
+                    items << std::make_pair(QString("new item %1").arg(j), QString::number(j));
                 model.insertItems(changes[i].index, items);
                 break;
             }
@@ -2711,22 +2713,25 @@ void tst_QQuickGridView::mirroring()
     QTRY_VERIFY(gridviewA != nullptr);
     qApp->processEvents();
 
-    QList<QString> objectNames;
-    objectNames << "item1" << "item2"; // << "item3"
+    const QString objectNames[] = {
+        u"item1"_s,
+        u"item2"_s,
+        // "item3"
+    };
 
     gridviewA->setProperty("layoutDirection", Qt::LeftToRight);
     gridviewB->setProperty("layoutDirection", Qt::RightToLeft);
     QCOMPARE(gridviewA->layoutDirection(), gridviewA->effectiveLayoutDirection());
 
     // LTR != RTL
-    for (const QString &objectName : std::as_const(objectNames))
+    for (const QString &objectName : objectNames)
         QVERIFY(findItem<QQuickItem>(gridviewA, objectName)->x() != findItem<QQuickItem>(gridviewB, objectName)->x());
 
     gridviewA->setProperty("layoutDirection", Qt::LeftToRight);
     gridviewB->setProperty("layoutDirection", Qt::LeftToRight);
 
     // LTR == LTR
-    for (const QString &objectName : std::as_const(objectNames))
+    for (const QString &objectName : objectNames)
         QCOMPARE(findItem<QQuickItem>(gridviewA, objectName)->x(), findItem<QQuickItem>(gridviewB, objectName)->x());
 
     QCOMPARE(gridviewB->layoutDirection(), gridviewB->effectiveLayoutDirection());
@@ -2734,25 +2739,25 @@ void tst_QQuickGridView::mirroring()
     QVERIFY(gridviewB->layoutDirection() != gridviewB->effectiveLayoutDirection());
 
     // LTR != LTR+mirror
-    for (const QString &objectName : std::as_const(objectNames))
+    for (const QString &objectName : objectNames)
         QVERIFY(findItem<QQuickItem>(gridviewA, objectName)->x() != findItem<QQuickItem>(gridviewB, objectName)->x());
 
     gridviewA->setProperty("layoutDirection", Qt::RightToLeft);
 
     // RTL == LTR+mirror
-    for (const QString &objectName : std::as_const(objectNames))
+    for (const QString &objectName : objectNames)
         QCOMPARE(findItem<QQuickItem>(gridviewA, objectName)->x(), findItem<QQuickItem>(gridviewB, objectName)->x());
 
     gridviewB->setProperty("layoutDirection", Qt::RightToLeft);
 
     // RTL != RTL+mirror
-    for (const QString &objectName : std::as_const(objectNames))
+    for (const QString &objectName : objectNames)
         QVERIFY(findItem<QQuickItem>(gridviewA, objectName)->x() != findItem<QQuickItem>(gridviewB, objectName)->x());
 
     gridviewA->setProperty("layoutDirection", Qt::LeftToRight);
 
     // LTR == RTL+mirror
-    for (const QString &objectName : std::as_const(objectNames))
+    for (const QString &objectName : objectNames)
         QCOMPARE(findItem<QQuickItem>(gridviewA, objectName)->x(), findItem<QQuickItem>(gridviewB, objectName)->x());
 
     delete windowA;
@@ -3965,9 +3970,9 @@ void tst_QQuickGridView::onAdd()
     gridview->setProperty("height", window->height());
     qApp->processEvents();
 
-    QList<QPair<QString, QString> > items;
+    QList<std::pair<QString, QString> > items;
     for (int i=0; i<itemsToAdd; i++)
-        items << qMakePair(QString("value %1").arg(i), QString::number(i));
+        items << std::make_pair(QString("value %1").arg(i), QString::number(i));
     model.addItems(items);
 
     gridview->forceLayout();
@@ -4768,15 +4773,15 @@ void tst_QQuickGridView::addTransitions()
         QVERIFY(QQuickTest::qWaitForPolish(gridview));
     }
 
-    QList<QPair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
+    QList<std::pair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
 
     // only target items that will become visible should be animated
-    QList<QPair<QString, QString> > newData;
-    QList<QPair<QString, QString> > expectedTargetData;
+    QList<std::pair<QString, QString> > newData;
+    QList<std::pair<QString, QString> > expectedTargetData;
     QList<int> targetIndexes;
     if (shouldAnimateTargets) {
         for (int i=insertionIndex; i<insertionIndex+insertionCount; i++) {
-            newData << qMakePair(QString("New item %1").arg(i), QString(""));
+            newData << std::make_pair(QString("New item %1").arg(i), QString(""));
 
             // last visible item is the first item of the row beneath the view
             if (i >= (gridview->contentY() / 60)*3 && i < qCeil((gridview->contentY() + gridview->height()) / 60.0)*3) {
@@ -4973,11 +4978,11 @@ void tst_QQuickGridView::moveTransitions()
         QVERIFY(QQuickTest::qWaitForPolish(gridview));
     }
 
-    QList<QPair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
+    QList<std::pair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
 
     // Items moving to *or* from visible positions should be animated.
     // Otherwise, they should not be animated.
-    QList<QPair<QString, QString> > expectedTargetData;
+    QList<std::pair<QString, QString> > expectedTargetData;
     QList<int> targetIndexes;
     for (int i=moveFrom; i<moveFrom+moveCount; i++) {
         int toIndex = moveTo + (i - moveFrom);
@@ -4985,7 +4990,7 @@ void tst_QQuickGridView::moveTransitions()
         int lastVisibleIndex = (qCeil((gridview->contentY() + gridview->height()) / 60.0)*3) - 1;
         if ((i >= firstVisibleIndex && i <= lastVisibleIndex)
                 || (toIndex >= firstVisibleIndex && toIndex <= lastVisibleIndex)) {
-            expectedTargetData << qMakePair(model.name(i), model.number(i));
+            expectedTargetData << std::make_pair(model.name(i), model.number(i));
             targetIndexes << i;
         }
     }
@@ -5218,17 +5223,17 @@ void tst_QQuickGridView::removeTransitions()
         QVERIFY(QQuickTest::qWaitForPolish(gridview));
     }
 
-    QList<QPair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
+    QList<std::pair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
 
     // only target items that are visible should be animated
-    QList<QPair<QString, QString> > expectedTargetData;
+    QList<std::pair<QString, QString> > expectedTargetData;
     QList<int> targetIndexes;
     if (shouldAnimateTargets) {
         for (int i=removalIndex; i<removalIndex+removalCount; i++) {
             int firstVisibleIndex = (gridview->contentY() / 60.0)*3;
             int lastVisibleIndex = (qCeil((gridview->contentY() + gridview->height()) / 60.0)*3) - 1;
             if (i >= firstVisibleIndex && i <= lastVisibleIndex) {
-                expectedTargetData << qMakePair(model.name(i), model.number(i));
+                expectedTargetData << std::make_pair(model.name(i), model.number(i));
                 targetIndexes << i;
             }
         }
@@ -5431,15 +5436,15 @@ void tst_QQuickGridView::displacedTransitions()
     QVERIFY(contentItem != nullptr);
     QVERIFY(QQuickTest::qWaitForPolish(gridview));
 
-    QList<QPair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
+    QList<std::pair<QString,QString> > expectedDisplacedValues = expectedDisplacedIndexes.getModelDataValues(model);
     gridview->setProperty("displaceTransitionsDone", false);
 
     switch (change.type) {
         case ListChange::Inserted:
         {
-            QList<QPair<QString, QString> > targetItemData;
+            QList<std::pair<QString, QString> > targetItemData;
             for (int i=change.index; i<change.index + change.count; ++i)
-                targetItemData << qMakePair(QString("new item %1").arg(i), QString::number(i));
+                targetItemData << std::make_pair(QString("new item %1").arg(i), QString::number(i));
             model.insertItems(change.index, targetItemData);
             QTRY_COMPARE(model.count(), gridview->count());
             break;
@@ -5661,9 +5666,9 @@ void tst_QQuickGridView::multipleTransitions()
         switch (changes[i].type) {
             case ListChange::Inserted:
             {
-                QList<QPair<QString, QString> > targetItems;
+                QList<std::pair<QString, QString> > targetItems;
                 for (int j=changes[i].index; j<changes[i].index + changes[i].count; ++j)
-                    targetItems << qMakePair(QString("new item %1").arg(j), QString::number(j));
+                    targetItems << std::make_pair(QString("new item %1").arg(j), QString::number(j));
                 model.insertItems(changes[i].index, targetItems);
                 gridview->forceLayout();
                 QTRY_COMPARE(model.count(), gridview->count());
@@ -6750,7 +6755,7 @@ void tst_QQuickGridView::keyNavigationEnabled()
     QCOMPARE(gridView->isKeyNavigationEnabled(), true);
 
     gridView->setFocus(true);
-    QVERIFY(gridView->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(gridView);
 
     gridView->setHighlightMoveDuration(0);
 

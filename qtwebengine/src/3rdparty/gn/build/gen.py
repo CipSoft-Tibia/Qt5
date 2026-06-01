@@ -204,6 +204,8 @@ def main(argv):
                     help='The path to cc compiler.')
   args_list.add('--cxx',
                     help='The path to cxx compiler.')
+  args_list.add('--cxx-wrapper',
+                    help='The path to cxx compiler wrapper (e.g. ccache).')
   args_list.add('--ld',
                     help='The path to ld.')
   args_list.add('--ar',
@@ -293,7 +295,7 @@ def GenerateLastCommitPosition(host, header):
 
 
 def WriteGenericNinja(path, static_libraries, executables,
-                      cxx, ar, ld, platform, host, options,
+                      cxx, cxx_wrapper, ar, ld, platform, host, options,
                       args_list, cflags=[], ldflags=[],
                       libflags=[], include_dirs=[], solibs=[]):
   args = args_list.gen_command_line_args(options)
@@ -301,7 +303,7 @@ def WriteGenericNinja(path, static_libraries, executables,
     args = " " + args
 
   ninja_header_lines = [
-    'cxx = ' + cxx,
+    'cxx = ' + cxx_wrapper + ' ' + cxx,
     'ar = ' + ar,
     'ld = ' + ld,
     '',
@@ -447,6 +449,7 @@ def WriteGNNinja(path, platform, host, options, args_list):
 
   cc = options.cc
   cxx = options.cxx
+  cxx_wrapper = '"' + options.cxx_wrapper + '"' if options.cxx_wrapper else ''
   ld = options.ld
   ar = options.ar
 
@@ -1026,7 +1029,7 @@ def WriteGNNinja(path, platform, host, options, args_list):
   executables['gn']['libs'].extend(static_libraries.keys())
   executables['gn_unittests']['libs'].extend(static_libraries.keys())
 
-  WriteGenericNinja(path, static_libraries, executables, cxx, ar, ld,
+  WriteGenericNinja(path, static_libraries, executables, cxx, cxx_wrapper, ar, ld,
                     platform, host, options, args_list,
                     cflags, ldflags, libflags, include_dirs, libs)
 

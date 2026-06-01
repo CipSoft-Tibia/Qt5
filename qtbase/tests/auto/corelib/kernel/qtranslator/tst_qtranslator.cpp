@@ -75,6 +75,7 @@ private slots:
     void loadLocale_data();
     void loadLocale();
     void threadLoad();
+    void install();
     void testLanguageChange();
     void plural();
     void translate_qm_file_generated_with_msgfmt();
@@ -250,7 +251,7 @@ void tst_QTranslator::loadLocale()
     for (const auto &filePath : files)
         QVERIFY(QFile::exists(filePath));
 
-    const QRegularExpression localeExpr("foo-(.*)(\\.qm|$)");
+    const QRegularExpression localeExpr("foo-(.*)(\\.qm|)$");
     QTranslator tor;
     // Load the translation for the wanted locale
     QVERIFY(tor.load(wantedLocale, "foo", "-", path, ".qm"));
@@ -290,6 +291,30 @@ void tst_QTranslator::threadLoad()
     TranslatorThread thread;
     thread.start();
     QVERIFY(thread.wait(10 * 1000));
+}
+
+void tst_QTranslator::install()
+{
+    {
+        // normal translation
+        QTranslator tor;
+        QVERIFY(tor.load("hellotr_la.qm"));
+        QCOMPARE(qApp->installTranslator(&tor), true);
+        QCOMPARE(qApp->removeTranslator(&tor), true);
+    }
+    {
+        // empty translation
+        QTranslator tor;
+        QVERIFY(tor.load("hellotr_empty.qm"));
+        QCOMPARE(qApp->installTranslator(&tor), true);
+        QCOMPARE(qApp->removeTranslator(&tor), true);
+    }
+    {
+        // nullptr
+        QCOMPARE(qApp->installTranslator(nullptr), false);
+        QCOMPARE(qApp->removeTranslator(nullptr), false);
+    }
+
 }
 
 void tst_QTranslator::testLanguageChange()

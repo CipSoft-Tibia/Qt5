@@ -48,6 +48,7 @@ private slots:
     void framePositioning();
     void framePositioning_data();
     void framePositioningStableAfterDestroy();
+    void geometryAfterWmUpdateAndDestroyCreate();
     void positioningDuringMinimized();
     void childWindowPositioning_data();
     void childWindowPositioning();
@@ -692,6 +693,36 @@ void tst_QWindow::framePositioningStableAfterDestroy()
     QTRY_COMPARE(window.framePosition(), stableFramePosition);
 }
 
+void tst_QWindow::geometryAfterWmUpdateAndDestroyCreate()
+{
+    if (isPlatformWayland())
+        QSKIP("A window can't be moved programmatically on Wayland");
+
+    QWindow window;
+    window.setFlag(Qt::FramelessWindowHint);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    if (window.windowState() != Qt::WindowNoState)
+        QSKIP("Default window state is not Qt::WindowNoState");
+
+    const QRect geometryAfterShow = window.geometry();
+
+    // Check that the geometry is retained for create/destroy/create,
+    // if the user has moved and resized the window via the window-manager
+    // (i.e. no explicit setGeometry calls from user code).
+    QRect modifiedGeometry = geometryAfterShow.translated(42, 42);
+    modifiedGeometry.setSize(modifiedGeometry.size() + QSize(42, 42));
+    QWindowSystemInterface::handleGeometryChange<QWindowSystemInterface::SynchronousDelivery>(
+        &window, QHighDpi::toNativeWindowGeometry(modifiedGeometry, &window));
+
+    window.destroy();
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QTRY_COMPARE(window.geometry(), modifiedGeometry);
+}
+
 void tst_QWindow::positioningDuringMinimized()
 {
     // QTBUG-39544, setting a geometry in minimized state should work as well.
@@ -934,6 +965,9 @@ void tst_QWindow::isActive()
     QTRY_COMPARE(window.received(QEvent::Resize), 1);
     QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
     QVERIFY(window.isActive());
+
+    if (isPlatformWayland())
+        QSKIP("A nested window or a subsurface in wayland terms can't get focus.");
 
     Window child;
     child.setParent(&window);
@@ -1202,7 +1236,7 @@ void tst_QWindow::testInputEvents()
     InputTestWindow window;
     window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.showNormal();
-    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QTRY_VERIFY(window.isActive());
 
     QTest::keyClick(&window, Qt::Key_A, Qt::NoModifier);
     QCoreApplication::processEvents();
@@ -1567,6 +1601,9 @@ void tst_QWindow::touchCancelWithTouchToMouse()
 
 void tst_QWindow::touchInterruptedByPopup()
 {
+    if (isPlatformWayland())
+        QSKIP("Wayland: need real user action like a button press, key press, or touch down event.");
+
     InputTestWindow window;
     window.setObjectName("main");
     window.setTitle(QLatin1String(QTest::currentTestFunction()));
@@ -1920,6 +1957,28 @@ void tst_QWindow::mouseEventSequence()
     QCOMPARE(window.mouseReleasedCount, 4);
     QCOMPARE(window.mouseDoubleClickedCount, 0);
     QCOMPARE(window.mouseSequenceSignature, QLatin1String("prprprpr"));
+
+    // Test double click across windows
+    InputTestWindow windowNew;
+    windowNew.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
+    windowNew.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&windowNew));
+
+    timestamp += doubleClickInterval;
+    windowNew.resetCounters();
+    window.resetCounters();
+
+    simulateMouseClick(&windowNew, timestamp, local, local);
+    simulateMouseClick(&window, timestamp, local, local);
+    QCoreApplication::processEvents();
+    QCOMPARE(windowNew.mousePressedCount, 1);
+    QCOMPARE(windowNew.mouseReleasedCount, 1);
+    QCOMPARE(windowNew.mouseDoubleClickedCount, 0);
+    QCOMPARE(windowNew.mouseSequenceSignature, QLatin1String("pr"));
+    QCOMPARE(window.mousePressedCount, 1);
+    QCOMPARE(window.mouseReleasedCount, 1);
+    QCOMPARE(window.mouseDoubleClickedCount, 0);
+    QCOMPARE(window.mouseSequenceSignature, QLatin1String("pr"));
 }
 
 void tst_QWindow::windowModality()
@@ -2406,6 +2465,9 @@ void tst_QWindow::modalDialogClosingOneOfTwoModal()
 
 void tst_QWindow::modalWithChildWindow()
 {
+    if (isPlatformWayland())
+        QSKIP("A nested window or a subsurface in wayland terms can't get focus.");
+
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
         QSKIP("QWindow::requestActivate() is not supported.");
 
@@ -2441,6 +2503,8 @@ void tst_QWindow::modalWithChildWindow()
 
 void tst_QWindow::modalWindowModallity()
 {
+    if (isPlatformWayland() && qgetenv("XDG_CURRENT_DESKTOP").toLower().contains("ubuntu:gnome"))
+        QSKIP("Wayland: This will trigger a 'X is ready' system notification in GNOME.");
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
         QSKIP("QWindow::requestActivate() is not supported.");
 
@@ -2518,7 +2582,7 @@ void tst_QWindow::modalWindowEnterEventOnHide_QTBUG35109()
     if (isPlatformOffscreenOrMinimal())
         QSKIP("Can't test window focusing on offscreen/minimal");
 
-    if (isPlatformEglFS())
+    if (isPlatformEglFS() || isPlatformWayland())
         QSKIP("QCursor::setPos() is not supported on this platform");
 
     const QPoint center = QGuiApplication::primaryScreen()->availableGeometry().center();
@@ -2797,13 +2861,26 @@ void tst_QWindow::requestUpdate()
 void tst_QWindow::flags()
 {
     Window window;
+    QSignalSpy spy(&window, SIGNAL(flagsChanged(Qt::WindowFlags)));
+
     const auto baseFlags = window.flags();
     window.setFlags(window.flags() | Qt::FramelessWindowHint);
     QCOMPARE(window.flags(), baseFlags | Qt::FramelessWindowHint);
+    QCOMPARE(spy.size(), 1);
+    window.setFlags(window.flags());
+    QCOMPARE(spy.size(), 1);
+
     window.setFlag(Qt::WindowStaysOnTopHint, true);
     QCOMPARE(window.flags(), baseFlags | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    QCOMPARE(spy.size(), 2);
+    window.setFlags(window.flags());
+    QCOMPARE(spy.size(), 2);
+
     window.setFlag(Qt::FramelessWindowHint, false);
     QCOMPARE(window.flags(), baseFlags | Qt::WindowStaysOnTopHint);
+    QCOMPARE(spy.size(), 3);
+    window.setFlags(window.flags());
+    QCOMPARE(spy.size(), 3);
 }
 
 class EventWindow : public QWindow
@@ -2976,6 +3053,9 @@ void tst_QWindow::qobject_castOnDestruction()
 
 void tst_QWindow::touchToMouseTranslationByPopup()
 {
+    if (isPlatformWayland())
+        QSKIP("Wayland: need real user action like a button press, key press, or touch down event.");
+
     InputTestWindow window;
     window.setTitle(QLatin1String(QTest::currentTestFunction()));
     window.ignoreTouch = true;
@@ -3026,7 +3106,7 @@ void tst_QWindow::stateChangeSignal()
     // - wait for signal spy to have reached target count
     // - extract state from signal and compare to target
 #define CHECK_STATE(State)\
-    QTRY_VERIFY(QTest::qWaitFor([&w](){return (w.windowState() == State); }));\
+    QVERIFY(QTest::qWaitFor([&w](){return (w.windowState() == State); }));\
     CHECK_SIGNAL(State)
 #define CHECK_SIGNAL(State)\
     QTRY_COMPARE(spy.count(), signalCount);\
@@ -3162,7 +3242,6 @@ void tst_QWindow::enterLeaveOnWindowShowHide()
         QSKIP("We can't move the cursor");
 
     window.show();
-    window.requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     ++expectedEnter;

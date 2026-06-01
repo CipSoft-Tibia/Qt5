@@ -23,6 +23,7 @@
 #include <private/qobject_p.h>
 
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qtimer.h>
 
 #include <vector>
 
@@ -59,6 +60,12 @@ public:
     void handleNewLocalConnections();
 #endif
 
+    void createHttp1Handler(QIODevice *socket);
+#if QT_CONFIG(ssl) && QT_CONFIG(http)
+    void createHttp2Handler(QIODevice *socket);
+#endif
+    void restartHeartbeatTimer();
+
 #if defined(QT_WEBSOCKETS_LIB)
     mutable bool handlingWebSocketUpgrade = false;
     struct WebSocketUpgradeVerifier
@@ -73,6 +80,7 @@ public:
 #endif
     QHttpServerConfiguration configuration;
     QHttpServerRequestFilter requestFilter;
+    QTimer heartbeatTimer;
 };
 
 QT_END_NAMESPACE

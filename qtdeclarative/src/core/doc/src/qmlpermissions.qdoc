@@ -19,6 +19,10 @@
 
     \annotatedlist qml-permissions
 
+    \note The available permission types cover core functionality of Qt modules
+    like Qt Multimedia and Qt Positioning, but do not encompass all platform-specific
+    permissions. Custom permission types are not currently supported.
+
     \section1 Usage
 
     To check and request a specific permission in your application,

@@ -23,11 +23,22 @@
         //
         //  CLICK: {
         //      action: "click",
-        //      selector: [CSS_SELECTOR, XPATH_SELECTOR],
-        //      required: BOOL,
-        //      scroll_into_view: BOOL,
+        //      position: POSITION,
         //      timeout: DURATION,
+        //      verify: [CSS_SELECTOR, XPATH_SELECTOR],
         //  }
+        //
+        //  POSITION: {
+        //    x: NUMBER,
+        //    y: NUMBER,
+        //  } | {
+        //    selector: [CSS_SELECTOR, XPATH_SELECTOR],
+        //    scroll_into_view: BOOL = false,
+        //    required: BOOL = true,
+        //    wait: BOOL = false,
+        //  } | [
+        //    CSS_SELECTOR, XPATH_SELECTOR
+        //  ]
         //
         //  WAIT: {
         //      action: "wait",
@@ -51,13 +62,17 @@
             // Click away the cookie banner:
       {
         "action": "click",
-        "required": false,
-        "selector": "xpath///button/div[contains(text(),'akzeptieren')]"
+        "position": {
+          "required": false,
+          "selector": "xpath///button/div[contains(text(),'akzeptieren')]",
+        },
       },
       {
         "action": "click",
-        "required": false,
-        "selector": "xpath///button/div[contains(text(),'Accept')]"
+        "position": {
+          "required": false,
+          "selector": "xpath///button/div[contains(text(),'Accept')]",
+        },
       },
       {
         "action": "scroll",
@@ -97,13 +112,17 @@
             // Click away the cookie banner:
       {
         "action": "click",
-        "required": false,
-        "selector": "xpath///*/button[contains(@aria-label, 'akzeptieren')]"
+        "position": {
+          "required": false,
+          "selector": "xpath///*/button[contains(@aria-label, 'akzeptieren')]",
+        },
       },
       {
         "action": "click",
-        "required": false,
-        "selector": "xpath///*/button[contains(@aria-label, 'Accept')]"
+        "position": {
+          "required": false,
+          "selector": "xpath///*/button[contains(@aria-label, 'Accept')]",
+        },
       },
       {
         "action": "scroll",

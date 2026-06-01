@@ -726,7 +726,7 @@ QDebug operator<<(QDebug debug, const QPointingDevice *device)
         if (device->uniqueId().isValid())
             debug << " uniqueId=" << Qt::hex << device->uniqueId().numericId() << Qt::dec;
     } else {
-        debug << '0';
+        debug << "0x0";
     }
     debug << ')';
     return debug;

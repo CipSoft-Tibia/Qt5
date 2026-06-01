@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickloader_p_p.h"
 
@@ -205,11 +206,6 @@ qreal QQuickLoaderPrivate::getImplicitHeight() const
     \li \snippet qml/loader/connections.qml 0
     \li \snippet qml/loader/MyItem.qml 0
     \endtable
-
-    Alternatively, since \c MyItem.qml is loaded within the scope of the
-    Loader, it could also directly call any function defined in the Loader or
-    its parent \l Item.
-
 
     \section2 Focus and Key Events
 
@@ -648,8 +644,8 @@ void QQuickLoaderPrivate::setInitialState(QObject *obj)
         return;
 
     QQmlComponentPrivate *d = QQmlComponentPrivate::get(component);
-    Q_ASSERT(d && d->engine);
-    QV4::ExecutionEngine *v4 = d->engine->handle();
+    Q_ASSERT(d && d->engine());
+    QV4::ExecutionEngine *v4 = d->engine()->handle();
     Q_ASSERT(v4);
     QV4::Scope scope(v4);
     QV4::ScopedValue ipv(scope, initialPropertyValues.value());

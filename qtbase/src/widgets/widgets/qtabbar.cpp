@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "private/qlayoutengine_p.h"
 #if QT_CONFIG(itemviews)
@@ -280,9 +281,9 @@ void QTabBar::initStyleOption(QStyleOptionTab *option, int tabIndex) const
     returns the visual geometry of a single tab.
 
     \table 100%
-    \row \li \inlineimage {fusion-tabbar.png} {Screenshot of a Fusion style tab bar}
+    \row \li \inlineimage {fusion-tabbar.png} {Tab bar with three tabs}
          \li A tab bar shown in the \l{Qt Widget Gallery}{Fusion widget style}.
-    \row \li \inlineimage {fusion-tabbar-truncated.png} {Screenshot of a truncated Fusion tab bar}
+    \row \li \inlineimage {fusion-tabbar-truncated.png} {Truncated tab bar}
          \li A truncated tab bar shown in the Fusion widget style.
     \endtable
 
@@ -738,7 +739,7 @@ void QTabBarPrivate::layoutTab(int index)
     if (tab->leftWidget) {
         QRect rect = q->style()->subElementRect(QStyle::SE_TabBarTabLeftButton, &opt, q);
         QPoint p = rect.topLeft();
-        if ((index == pressedIndex) || paintWithOffsets) {
+        if (tab->dragOffset != 0) {
             if (vertical)
                 p.setY(p.y() + tab->dragOffset);
             else
@@ -749,7 +750,7 @@ void QTabBarPrivate::layoutTab(int index)
     if (tab->rightWidget) {
         QRect rect = q->style()->subElementRect(QStyle::SE_TabBarTabRightButton, &opt, q);
         QPoint p = rect.topLeft();
-        if ((index == pressedIndex) || paintWithOffsets) {
+        if (tab->dragOffset != 0) {
             if (vertical)
                 p.setY(p.y() + tab->dragOffset);
             else
@@ -824,7 +825,7 @@ void QTabBarPrivate::scrollTabs()
             const auto &tabRect = tab->rect;
             int start = horizontal ? tabRect.left() : tabRect.top();
             int end = horizontal ? tabRect.right() : tabRect.bottom();
-            if (end > scrollRect.right() && start > scrollOffset) {
+            if (end > scrollRect.right() && start > scrollRect.left()) {
                 makeVisible(i);
                 return;
             }
@@ -1002,7 +1003,7 @@ int QTabBar::insertTab(int index, const QIcon& icon, const QString &text)
             ++tab->lastTab;
     }
 
-    if (tabAt(d->mousePosition) == index) {
+    if (isVisible() && tabAt(d->mousePosition) == index) {
         d->hoverIndex = index;
         d->hoverRect = tabRect(index);
     }
@@ -1858,7 +1859,7 @@ void QTabBar::paintEvent(QPaintEvent *)
             continue;
         QStyleOptionTab tabOption;
         initStyleOption(&tabOption, i);
-        if (d->paintWithOffsets && tab->dragOffset != 0) {
+        if (tab->dragOffset != 0) {
             if (vertical) {
                 tabOption.rect.moveTop(tabOption.rect.y() + tab->dragOffset);
             } else {
@@ -1900,7 +1901,7 @@ void QTabBar::paintEvent(QPaintEvent *)
         const auto tab = d->tabList.at(selected);
         initStyleOption(&tabOption, selected);
 
-        if (d->paintWithOffsets && tab->dragOffset != 0) {
+        if (tab->dragOffset != 0) {
             // if the drag offset is != 0, a move is in progress (drag or animation)
             // => set the tab position to Moving to preserve the rect
             tabOption.position = QStyleOptionTab::TabPosition::Moving;
@@ -2412,14 +2413,17 @@ void QTabBar::wheelEvent(QWheelEvent *event)
                 if (!d->rightB->isVisible())
                     scrollRectExtent += tabsVertical ? d->rightB->height() : d->rightB->width();
 
+                const QRect scrollRect0 = d->normalizedScrollRect(0);
+                const int minScrollOffset = -1 * scrollRect0.left();
                 const int maxScrollOffset = qMax((tabsVertical ?
                                                   lastTabRect.bottom() :
                                                   lastTabRect.right()) - scrollRectExtent, 0);
-                d->scrollOffset = qBound(0, d->scrollOffset - delta, maxScrollOffset);
+                d->scrollOffset = qBound(minScrollOffset, d->scrollOffset - delta, maxScrollOffset);
                 d->leftB->setEnabled(d->scrollOffset > -scrollRect.left());
                 d->rightB->setEnabled(maxScrollOffset > d->scrollOffset);
                 if (oldScrollOffset != d->scrollOffset) {
                     event->accept();
+                    d->layoutTabs();
                     update();
                     return;
                 }

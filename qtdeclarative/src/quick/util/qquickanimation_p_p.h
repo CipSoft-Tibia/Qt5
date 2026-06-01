@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKANIMATION2_P_H
 #define QQUICKANIMATION2_P_H
@@ -240,7 +241,7 @@ class Q_QUICK_EXPORT QQuickPropertyAnimationPrivate : public QQuickAbstractAnima
 public:
     QQuickPropertyAnimationPrivate()
     : QQuickAbstractAnimationPrivate(), target(nullptr), fromIsDefined(false), toIsDefined(false), ourPropertiesDirty(false),
-      defaultToInterpolatorType(0), interpolatorType(0), interpolator(nullptr), duration(250), actions(nullptr) {}
+      defaultToInterpolatorType(0), interpolatorType(0), interpolator(nullptr), extendedInterpolator(nullptr), duration(250), actions(nullptr) {}
 
     void animationCurrentLoopChanged(QAbstractAnimationJob *job) override;
 
@@ -260,13 +261,14 @@ public:
     bool defaultToInterpolatorType:1;
     int interpolatorType;
     QVariantAnimation::Interpolator interpolator;
+    typedef QVariant (*ExtendedInterpolator)(const void *from, const void *to, const QVariant &currentValue, qreal progress);
+    ExtendedInterpolator extendedInterpolator;
     int duration;
     QEasingCurve easing;
 
     // for animations that don't use the QQuickBulkValueAnimator
     QQuickStateActions *actions;
 
-    static QVariant interpolateVariant(const QVariant &from, const QVariant &to, qreal progress);
     static void convertVariant(QVariant &variant, QMetaType type);
 };
 
@@ -282,7 +284,7 @@ public:
 class Q_AUTOTEST_EXPORT QQuickAnimationPropertyUpdater : public QQuickBulkValueUpdater
 {
 public:
-    QQuickAnimationPropertyUpdater() : interpolatorType(0), interpolator(nullptr), prevInterpolatorType(0), reverse(false), fromIsSourced(false), fromIsDefined(false), wasDeleted(nullptr) {}
+    QQuickAnimationPropertyUpdater() : interpolatorType(0), interpolator(nullptr), extendedInterpolator(nullptr), prevInterpolatorType(0), reverse(false), fromIsSourced(false), fromIsDefined(false), wasDeleted(nullptr) {}
     ~QQuickAnimationPropertyUpdater() override;
 
     void setValue(qreal v) override;
@@ -292,6 +294,7 @@ public:
     QQuickStateActions actions;
     int interpolatorType;       //for Number/ColorAnimation
     QVariantAnimation::Interpolator interpolator;
+    QQuickPropertyAnimationPrivate::ExtendedInterpolator extendedInterpolator;
     int prevInterpolatorType;   //for generic
     bool reverse;
     bool fromIsSourced;

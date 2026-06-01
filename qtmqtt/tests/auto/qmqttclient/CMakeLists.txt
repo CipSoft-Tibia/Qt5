@@ -5,7 +5,9 @@
 ## tst_qmqttclient Test:
 #####################################################################
 
-qt_internal_add_test(tst_qmqttclient
+qtmqtt_add_test(
+    TARGET
+        tst_qmqttclient
     SOURCES
         ../../common/broker_connection.h
         tst_qmqttclient.cpp

@@ -56,7 +56,10 @@ HEVCDecoderConfigurationRecord::HEVCDecoderConfigurationRecord()
       numOfArrays(0),
       alpha_mode(VideoDecoderConfig::AlphaMode::kIsOpaque) {}
 
-HEVCDecoderConfigurationRecord::~HEVCDecoderConfigurationRecord() {}
+HEVCDecoderConfigurationRecord::HEVCDecoderConfigurationRecord(
+    const HEVCDecoderConfigurationRecord& other) = default;
+HEVCDecoderConfigurationRecord::~HEVCDecoderConfigurationRecord() = default;
+
 FourCC HEVCDecoderConfigurationRecord::BoxType() const { return FOURCC_HVCC; }
 
 bool HEVCDecoderConfigurationRecord::Parse(BoxReader* reader) {
@@ -424,7 +427,6 @@ BitstreamConverter::AnalysisResult HEVC::AnalyzeAnnexB(
     size_t size,
     const std::vector<SubsampleEntry>& subsamples) {
   DVLOG(3) << __func__;
-  DCHECK(buffer);
 
   BitstreamConverter::AnalysisResult result;
   result.is_conformant = false;  // Will change if needed before return.
@@ -620,8 +622,7 @@ BitstreamConverter::AnalysisResult HEVC::AnalyzeAnnexB(
         break;
 
       default:
-        NOTREACHED_IN_MIGRATION()
-            << "Unsupported NALU type " << nalu.nal_unit_type;
+        NOTREACHED() << "Unsupported NALU type " << nalu.nal_unit_type;
     }
   }
 

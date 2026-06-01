@@ -68,7 +68,7 @@ QT_BEGIN_NAMESPACE
     If an error should occur, you can fetch its reason with error().
     The possible error reasons are described by the QtAudio::Error
     enum. The QAudioSource will enter the \l{QtAudio::}{StoppedState} when
-    an error is encountered.  Connect to the stateChanged() signal to
+    an error is encountered. Connect to the stateChanged() signal to
     handle the error:
 
     \snippet multimedia-snippets/audio.cpp Audio input state changed
@@ -79,7 +79,8 @@ QT_BEGIN_NAMESPACE
 /*!
     Construct a new audio input and attach it to \a parent.
     The default audio input device is used with the output
-    \a format parameters.
+    \a format parameters. If \a format is default-initialized,
+    the format will be set to the preferred format of the audio device.
 */
 
 QAudioSource::QAudioSource(const QAudioFormat &format, QObject *parent)
@@ -90,7 +91,8 @@ QAudioSource::QAudioSource(const QAudioFormat &format, QObject *parent)
 /*!
     Construct a new audio input and attach it to \a parent.
     The device referenced by \a audioDevice is used with the input
-    \a format parameters.
+    \a format parameters. If \a format is default-initialized,
+    the format will be set to the preferred format of \a audioDevice.
 */
 
 QAudioSource::QAudioSource(const QAudioDevice &audioDevice, const QAudioFormat &format, QObject *parent):
@@ -250,10 +252,8 @@ void QAudioSource::suspend()
 /*!
     Resumes processing audio data after a suspend().
 
-    Sets error() to QtAudio::NoError.
-    Sets state() to QtAudio::ActiveState if you previously called start(QIODevice*).
-    Sets state() to QtAudio::IdleState if you previously called start().
-    emits stateChanged() signal.
+    Sets state() to the state the sink had when suspend() was called. This function does nothing if
+    the audio sink's state is not QtAudio::SuspendedState.
 */
 
 void QAudioSource::resume()
@@ -270,6 +270,8 @@ void QAudioSource::resume()
     set is the actual buffer size used, calling bufferSize() anytime after start()
     will return the actual buffer size being used.
 
+    \sa setBufferFrameCount
+    \since 6.10
 */
 
 void QAudioSource::setBufferSize(qsizetype value)
@@ -281,11 +283,14 @@ void QAudioSource::setBufferSize(qsizetype value)
 /*!
     Returns the audio buffer size in bytes.
 
-    If called before start(), returns platform default value.
-    If called before start() but setBufferSize() was called prior, returns value set by setBufferSize().
-    If called after start(), returns the actual buffer size being used. This may not be what was set previously
-    by setBufferSize().
+    If called before \l start(), returns platform default value.
+    If called before \c start() but \l setBufferSize() or \l setBufferFrameCount() was called prior, returns
+    value set by \c setBufferSize() or \c setBufferFrameCount(). If called after \c start(), returns the actual
+    buffer size being used. This may not be what was set previously by
+    \c setBufferSize() or \c setBufferFrameCount().
 
+    \sa bufferFrameCount
+    \since 6.10
 */
 
 qsizetype QAudioSource::bufferSize() const
@@ -294,19 +299,67 @@ qsizetype QAudioSource::bufferSize() const
 }
 
 /*!
+    Sets the audio buffer size to \a value in frame count.
+
+    \note This function can be called anytime before start().  Calls to this
+    are ignored after start(). It should not be assumed that the buffer size
+    set is the actual buffer size used - call bufferFrameCount() anytime
+    after start() to return the actual buffer size being used.
+
+    \sa setBufferSize
+*/
+
+void QAudioSource::setBufferFrameCount(qsizetype value)
+{
+    if (d)
+        setBufferSize(d->format().bytesForFrames(value));
+}
+
+/*!
+    Returns the audio buffer size in frames.
+
+    If called before \l start(), returns platform default value.
+    If called before \c start() but \l setBufferSize() or \l setBufferFrameCount() was called prior, returns
+    value set by \c setBufferSize() or \c setBufferFrameCount(). If called after \c start(), returns the actual
+    buffer size being used. This may not be what was set previously by
+    \c setBufferSize() or \c setBufferFrameCount().
+
+    \sa bufferSize
+*/
+
+qsizetype QAudioSource::bufferFrameCount() const
+{
+    return d ? d->format().framesForBytes(bufferSize()) : 0;
+}
+
+/*!
     Returns the amount of audio data available to read in bytes.
 
     \note returned value is only valid while in QtAudio::ActiveState or QtAudio::IdleState
     state, otherwise returns zero.
+
+    \sa framesAvailable
 */
 
 qsizetype QAudioSource::bytesAvailable() const
 {
-    /*
-    -If not ActiveState|IdleState, return 0
-    -return amount of audio data available to read
-    */
     return d ? d->bytesReady() : 0;
+}
+
+/*!
+    Returns the amount of audio data available to read in frames.
+
+    Note: returned value is only valid while in QtAudio::ActiveState or QtAudio::IdleState
+    state, otherwise returns zero.
+
+    \sa bytesAvailable
+    \since 6.10
+*/
+
+qsizetype QAudioSource::framesAvailable() const
+{
+
+    return d ? d->format().framesForBytes(bytesAvailable()) : 0;
 }
 
 /*!

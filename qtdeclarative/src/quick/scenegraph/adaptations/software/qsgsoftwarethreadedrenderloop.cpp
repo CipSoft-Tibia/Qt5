@@ -477,7 +477,7 @@ void QSGSoftwareRenderThread::syncAndRender()
             qCDebug(QSG_RASTER_LOG_RENDERLOOP, "RT - blocking for %d ms", blockTime);
             msleep(blockTime);
         }
-        renderThrottleTimer.restart();
+        renderThrottleTimer.start();
 
         wd->fireFrameSwapped();
     } else {

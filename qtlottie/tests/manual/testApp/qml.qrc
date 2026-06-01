@@ -16,7 +16,7 @@
         <file>rect_gfill_linear.json</file>
         <file>trim_path1.json</file>
         <file>trim_path2.json</file>
-        <file>trim_path2_individual.json</file>
+        <file>trim_path2_parallel.json</file>
         <file>path_and_ellipse.json</file>
         <file>trim_path2_offset.json</file>
         <file>trim_path_multiple1.json</file>
@@ -29,7 +29,7 @@
         <file>rect_rotate_shape.json</file>
         <file>rect_rotate_layer.json</file>
         <file>rect_rotate_layer2.json</file>
-        <file>trim_path_simultaneous2.json</file>
+        <file>trim_path_sequential2.json</file>
         <file>shape_bezier_simple.json</file>
         <file>layer_effect_fill.json</file>
         <file>layer_effect_slider.json</file>

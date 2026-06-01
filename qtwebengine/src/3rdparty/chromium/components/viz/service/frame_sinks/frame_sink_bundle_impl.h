@@ -69,12 +69,10 @@ class FrameSinkBundleImpl : public mojom::FrameSinkBundle {
   void SetWantsBeginFrameAcks(uint32_t sink_id) override;
   void Submit(
       std::vector<mojom::BundledFrameSubmissionPtr> submissions) override;
-  void DidAllocateSharedBitmap(uint32_t sink_id,
-                               base::ReadOnlySharedMemoryRegion region,
-                               const SharedBitmapId& id) override;
+
 #if BUILDFLAG(IS_ANDROID)
-  void SetThreadIds(uint32_t sink_id,
-                    const std::vector<int32_t>& thread_ids) override;
+  void SetThreads(uint32_t sink_id,
+                  const std::vector<Thread>& threads) override;
 #endif
 
   // Helpers used by each CompositorFrameSinkImpl to proxy their client messages

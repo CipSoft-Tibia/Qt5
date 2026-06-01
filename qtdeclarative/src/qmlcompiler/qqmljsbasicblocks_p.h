@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSBASICBLOCKS_P_H
 #define QQMLJSBASICBLOCKS_P_H
@@ -26,9 +27,8 @@ class Q_QMLCOMPILER_EXPORT QQmlJSBasicBlocks : public QQmlJSCompilePass
 public:
     QQmlJSBasicBlocks(const QV4::Compiler::Context *context,
                       const QV4::Compiler::JSUnitGenerator *unitGenerator,
-                      const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                      QList<QQmlJS::DiagnosticMessage> *errors)
-        : QQmlJSCompilePass(unitGenerator, typeResolver, logger, errors), m_context{ context }
+                      const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger)
+        : QQmlJSCompilePass(unitGenerator, typeResolver, logger), m_context{ context }
     {
     }
 

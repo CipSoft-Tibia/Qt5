@@ -40,7 +40,19 @@ qt_feature("qml-table-model" PRIVATE
     PURPOSE "Provides the TableModel QML type."
     CONDITION QT_FEATURE_qml_itemmodel AND QT_FEATURE_qml_delegate_model
 )
+qt_feature("qml-tree-model" PRIVATE
+    SECTION "QML"
+    LABEL "QML tree model"
+    PURPOSE "Provides the TreeModel QML type."
+    CONDITION QT_FEATURE_qml_itemmodel AND QT_FEATURE_qml_delegate_model
+)
+qt_feature("qml-sfpm-model" PRIVATE
+    SECTION "QML"
+    LABEL "QML sortfilterproxy model"
+    PURPOSE "Provides the SortFilterProxyModel QML type."
+)
 qt_configure_add_summary_section(NAME "Qt QML Models")
 qt_configure_add_summary_entry(ARGS "qml-list-model")
 qt_configure_add_summary_entry(ARGS "qml-delegate-model")
+qt_configure_add_summary_entry(ARGS "qml-sfpm-model")
 qt_configure_end_summary_section() # end of "Qt QML Models" section

@@ -1,9 +1,9 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 pragma ComponentBehavior: Bound
 
-import QtQuick
 import QtQuick.Templates as T
 
 T.HorizontalHeaderView {
@@ -17,24 +17,5 @@ T.HorizontalHeaderView {
     // TableView won't bother loading any delegates at all.
     implicitHeight: Math.max(1, contentHeight)
 
-    delegate: Rectangle {
-        id: delegate
-
-        required property var model
-
-        readonly property real cellPadding: 8
-
-        implicitWidth: text.implicitWidth + (cellPadding * 2)
-        implicitHeight: Math.max(control.height, text.implicitHeight + (cellPadding * 2))
-        color: control.palette.button
-
-        Label {
-            id: text
-            text: delegate.model[control.textRole]
-            width: delegate.width
-            height: delegate.height
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
+    delegate: HorizontalHeaderViewDelegate { }
 }

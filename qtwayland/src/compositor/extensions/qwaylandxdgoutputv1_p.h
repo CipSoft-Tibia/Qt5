@@ -57,6 +57,7 @@ public:
     void sendLogicalPosition(const QPoint &position);
     void sendLogicalSize(const QSize &size);
     void sendDone();
+    void maybeSendDone(const Resource *resource);
 
     void setManager(QWaylandXdgOutputManagerV1 *manager);
     void setOutput(QWaylandOutput *output);

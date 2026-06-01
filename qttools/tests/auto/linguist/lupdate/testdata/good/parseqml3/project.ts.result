@@ -13,5 +13,10 @@
         <source>templated literal without arguments is allowed</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <location filename="main.qml" line="17"/>
+        <source>translate command inside templated literal is allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

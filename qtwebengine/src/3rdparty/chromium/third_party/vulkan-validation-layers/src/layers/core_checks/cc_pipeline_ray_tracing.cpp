@@ -19,7 +19,6 @@
  */
 
 #include <vulkan/vk_enum_string_helper.h>
-#include "generated/chassis.h"
 #include "core_validation.h"
 #include "chassis/chassis_modification_state.h"
 
@@ -96,7 +95,7 @@ bool CoreChecks::ValidateRayTracingPipeline(const vvl::Pipeline &pipeline,
         skip |= ValidateShaderStage(pipeline.stage_states[i], &pipeline, create_info_loc.dot(Field::pStages, i));
     }
 
-    if (const auto *pipeline_robustness_info = vku::FindStructInPNextChain<VkPipelineRobustnessCreateInfoEXT>(create_info.pNext)) {
+    if (const auto *pipeline_robustness_info = vku::FindStructInPNextChain<VkPipelineRobustnessCreateInfo>(create_info.pNext)) {
         skip |= ValidatePipelineRobustnessCreateInfo(pipeline, *pipeline_robustness_info, create_info_loc);
     }
 
@@ -171,8 +170,8 @@ bool CoreChecks::PreCallValidateCreateRayTracingPipelinesNV(VkDevice device, VkP
                                                             const VkAllocationCallbacks *pAllocator, VkPipeline *pPipelines,
                                                             const ErrorObject &error_obj, PipelineStates &pipeline_states,
                                                             chassis::CreateRayTracingPipelinesNV &chassis_state) const {
-    bool skip = StateTracker::PreCallValidateCreateRayTracingPipelinesNV(device, pipelineCache, count, pCreateInfos, pAllocator,
-                                                                         pPipelines, error_obj, pipeline_states, chassis_state);
+    bool skip = BaseClass::PreCallValidateCreateRayTracingPipelinesNV(device, pipelineCache, count, pCreateInfos, pAllocator,
+                                                                      pPipelines, error_obj, pipeline_states, chassis_state);
 
     skip |= ValidateDeviceQueueSupport(error_obj.location);
     for (uint32_t i = 0; i < count; i++) {
@@ -216,9 +215,9 @@ bool CoreChecks::PreCallValidateCreateRayTracingPipelinesKHR(VkDevice device, Vk
                                                              const VkAllocationCallbacks *pAllocator, VkPipeline *pPipelines,
                                                              const ErrorObject &error_obj, PipelineStates &pipeline_states,
                                                              chassis::CreateRayTracingPipelinesKHR &chassis_state) const {
-    bool skip = StateTracker::PreCallValidateCreateRayTracingPipelinesKHR(device, deferredOperation, pipelineCache, count,
-                                                                          pCreateInfos, pAllocator, pPipelines, error_obj,
-                                                                          pipeline_states, chassis_state);
+    bool skip =
+        BaseClass::PreCallValidateCreateRayTracingPipelinesKHR(device, deferredOperation, pipelineCache, count, pCreateInfos,
+                                                               pAllocator, pPipelines, error_obj, pipeline_states, chassis_state);
 
     skip |= ValidateDeviceQueueSupport(error_obj.location);
     skip |= ValidateDeferredOperation(device, deferredOperation, error_obj.location.dot(Field::deferredOperation),
@@ -277,17 +276,16 @@ bool CoreChecks::PreCallValidateCreateRayTracingPipelinesKHR(VkDevice device, Vk
 
                 if ((lib->create_flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR) == 0) {
                     skip |= LogError("VUID-VkPipelineLibraryCreateInfoKHR-pLibraries-03381", device, library_loc,
-                                     "was created with %s.", string_VkPipelineCreateFlags2KHR(lib->create_flags).c_str());
+                                     "was created with %s.", string_VkPipelineCreateFlags2(lib->create_flags).c_str());
                 }
-                for (const auto &pair : vuid_map) {
-                    if (pipeline->create_flags & pair.second) {
-                        if ((lib->create_flags & pair.second) == 0) {
-                            skip |= LogError(pair.first, device, library_loc,
-                                             "was created with %s, which is missing %s included in %s (%s).",
-                                             string_VkPipelineCreateFlags2KHR(lib->create_flags).c_str(),
-                                             string_VkPipelineCreateFlags2KHR(pair.second).c_str(),
-                                             create_info_loc.dot(Field::flags).Fields().c_str(),
-                                             string_VkPipelineCreateFlags2KHR(pipeline->create_flags).c_str());
+                for (const auto &[vuid, flag] : vuid_map) {
+                    if (pipeline->create_flags & flag) {
+                        if ((lib->create_flags & flag) == 0) {
+                            skip |= LogError(
+                                vuid, device, library_loc, "was created with %s, which is missing %s included in %s (%s).",
+                                string_VkPipelineCreateFlags2(lib->create_flags).c_str(),
+                                string_VkPipelineCreateFlags2(flag).c_str(), create_info_loc.dot(Field::flags).Fields().c_str(),
+                                string_VkPipelineCreateFlags2(pipeline->create_flags).c_str());
                         }
                     }
                 }

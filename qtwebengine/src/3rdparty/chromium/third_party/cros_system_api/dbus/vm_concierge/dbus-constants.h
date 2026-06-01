@@ -41,6 +41,7 @@ const char kInstallPflashMethod[] = "InstallPflash";
 const char kListUsbDeviceMethod[] = "ListUsbDevices";
 const char kListVmDisksMethod[] = "ListVmDisks";
 const char kListVmsMethod[] = "ListVms";
+const char kModifyFakePowerConfigMethod[] = "ModifyFakePowerConfig";
 const char kReclaimVmMemoryMethod[] = "ReclaimVmMemory";
 const char kResizeDiskImageMethod[] = "ResizeDiskImage";
 const char kResumeVmMethod[] = "ResumeVm";
@@ -55,6 +56,7 @@ const char kStopVmWithoutOwnerIdMethod[] = "StopVmWithoutOwnerId";
 const char kSuspendVmMethod[] = "SuspendVm";
 const char kSwapVmMethod[] = "SwapVm";
 const char kSyncVmTimesMethod[] = "SyncVmTimes";
+const char kSetUpVmUserMethod[] = "SetUpVmUser";
 
 const char kDiskImageProgressSignal[] = "DiskImageProgress";
 const char kDnsSettingsChangedSignal[] = "DnsSettingsChanged";

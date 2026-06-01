@@ -266,11 +266,11 @@ void PageLoadTrackerDecorator::UpdateLoadIdleStatePage(
 
     // This should never occur.
     case LoadIdleState::kLoadedAndIdle:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 
   // All paths of the switch statement return.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 // static

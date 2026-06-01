@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLPROPERTY_P_H
 #define QQMLPROPERTY_P_H
@@ -47,6 +48,14 @@ public:
     };
     Q_DECLARE_FLAGS(InitFlags, InitFlag);
 
+    // like SequencePrototype, but we want to avoid tight coupling
+    enum class ListCopyResult
+    {
+        Copied,
+        WasEqual,
+        TypeMismatch
+    };
+
     QQmlRefPointer<QQmlContextData> context;
     QPointer<QQmlEngine> engine;
     QPointer<QObject> object;
@@ -90,6 +99,18 @@ public:
                                    const QQmlPropertyData &, const QQmlPropertyData &valueTypeData,
                                    const QQmlRefPointer<QQmlContextData> &,
                                    QQmlPropertyData::WriteFlags flags = {});
+
+    /*!
+      \internal
+      Attempts to convert \a value to a QQmlListProperty. The existing \a listProperty will be modified (so use a
+      temporary one if that is not desired).
+      \a listProperty is passed as a QQmlListProperty<QObject>, but might actually be a list property of a more specific
+      type. The actual type of the list property is given by \a actualListType.
+    */
+    static ListCopyResult convertToQQmlListProperty(QQmlListProperty<QObject> *listProperty,
+                                                    QMetaType actualListType,
+                                                    const QVariant &value);
+    static QVariant convertToWriteTargetType(const QVariant &value, QMetaType targetMetaType);
     static bool write(QObject *, const QQmlPropertyData &, const QVariant &,
                       const QQmlRefPointer<QQmlContextData> &,
                       QQmlPropertyData::WriteFlags flags = {});
@@ -111,16 +132,17 @@ public:
 
     enum BindingFlag {
         None = 0,
-        DontEnable = 0x1
+        DontEnable = 0x1,
+        OverrideSticky = 0x2
     };
     Q_DECLARE_FLAGS(BindingFlags, BindingFlag)
 
     static void setBinding(QQmlAbstractBinding *binding, BindingFlags flags = None,
                            QQmlPropertyData::WriteFlags writeFlags = QQmlPropertyData::DontRemoveBinding);
 
-    static void removeBinding(const QQmlProperty &that);
-    static void removeBinding(QObject *o, QQmlPropertyIndex index);
-    static void removeBinding(QQmlAbstractBinding *b);
+    static bool removeBinding(const QQmlProperty &that, BindingFlags flags = None);
+    static bool removeBinding(QObject *o, QQmlPropertyIndex index, BindingFlags flags = None);
+    static bool removeBinding(QQmlAbstractBinding *b, QQmlPropertyPrivate::BindingFlags flags = None);
     static QQmlAbstractBinding *binding(QObject *, QQmlPropertyIndex index);
 
     static QQmlProperty restore(QObject *, const QQmlPropertyData &, const QQmlPropertyData *,
@@ -152,7 +174,6 @@ public:
             QObject *target, const QString &propertyName,
             const QQmlRefPointer<QQmlContextData> &context,
             QQmlPropertyPrivate::InitFlags flags);
-
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QQmlPropertyPrivate::BindingFlags)

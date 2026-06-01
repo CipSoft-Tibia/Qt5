@@ -4835,7 +4835,7 @@ QDebug operator<<(QDebug debug, const QOpenGLTexture *t)
             << ", features=" << d->features << ", minificationFilter=" << d->minFilter
             << ", magnificationFilter=" << d->magFilter << ", wrapMode=" << d->wrapModes[0];
     } else {
-        debug << '0';
+        debug << "0x0";
     }
     debug << ')';
     return debug;

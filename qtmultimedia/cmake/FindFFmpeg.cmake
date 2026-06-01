@@ -251,6 +251,10 @@ endforeach()
 function(qt_internal_multimedia_try_add_dynamic_resolve_dependency _component dep)
     set(dynamic_resolve_added FALSE PARENT_SCOPE)
 
+    if (NOT QT_FEATURE_library)
+         return()
+    endif()
+
     if (NOT ANDROID AND NOT LINUX)
         return()
     endif()

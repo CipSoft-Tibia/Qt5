@@ -8,7 +8,7 @@
     The Material Style is based on the Google Material Design Guidelines.
     \l{detailed-desc-material}{More...}
 
-    \styleimport {QtQuick.Controls.Material 2.12} {Qt 5.7}
+    \styleimport {QtQuick.Controls.Material} {Qt 5.7}
 
     \section1 Attached Properties
 
@@ -67,6 +67,7 @@
     \endlist
 
     \image qtquickcontrols-material-attributes.png
+           {Material style buttons showing theme and elevation attributes}
 
     The remaining attributes do not propagate to children:
     \list
@@ -110,6 +111,7 @@
                 \endqml
             \li
                 \image qtquickcontrols-material-purple.png
+                       {Material style controls with custom purple accent}
     \endtable
 
     In addition to specifying the attributes in QML, it is also possible to
@@ -238,8 +240,10 @@
         \row
             \li
                 \image qtquickcontrols-material-variant-normal.png
+                       {Material style controls in normal size variant}
             \li
                 \image qtquickcontrols-material-variant-dense.png
+                       {Material style controls in dense size variant}
     \endtable
 
     Note that the heights shown above may vary based on differences in fonts
@@ -288,6 +292,7 @@
                 \snippet qtquickcontrols-material-accent.qml 1
             \li
                 \image qtquickcontrols-material-accent.png
+                       {Material style controls demonstrating accent color}
     \endtable
 
     \note Even though the accent can be any \l {colorvaluetypedocs}{color}, it is
@@ -312,6 +317,7 @@
                 \snippet qtquickcontrols-material-background.qml 1
             \li
                 \image qtquickcontrols-material-background.png
+                       {Material style controls demonstrating background color}
     \endtable
 
     \endstyleproperty
@@ -335,6 +341,7 @@
                 \snippet qtquickcontrols-material-elevation.qml 1
             \li
                 \image qtquickcontrols-material-elevation.png
+                       {Material style controls showing elevation levels}
     \endtable
 
     \endstyleproperty
@@ -355,6 +362,7 @@
                 \snippet qtquickcontrols-material-foreground.qml 1
             \li
                 \image qtquickcontrols-material-foreground.png
+                       {Button with pink foreground in Material style}
     \endtable
 
     \endstyleproperty
@@ -397,6 +405,7 @@
                 \snippet qtquickcontrols-material-theme.qml 1
             \li
                 \image qtquickcontrols-material-theme.png
+                       {Pane and button in Material dark theme}
     \endtable
 
     \endstyleproperty

@@ -51,6 +51,7 @@ Module {
             bindable: "rsvpBindable"
             read: "rsvp"
             write: "setRsvp"
+            notify: "rsvpChanged"
             index: 0
         }
     }
@@ -188,6 +189,7 @@ Module {
             name: "data"
             type: "QVariantMap"
             read: "data"
+            notify: "dataChanged"
             index: 0
         }
     }
@@ -197,5 +199,17 @@ Module {
         prototype: "QObject"
         exports: ["TestTypes/Foo 1.0"]
         Method { name: "print" }
+    }
+    Component {
+        file: "testtypes.h"
+        name: "StaleBindingPropertyRead"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["StaticTest/StaleBindingPropertyRead 1.0"]
+        Property { name: "cppStale"; type: "int"; index: 1 }
+        Property { name: "cppConstant"; type: "int"; isPropertyConstant: true; index: 2 }
+        Property { name: "cppNotifiable"; type: "int"; notify: "cppNotifiableChanged"; index: 3 }
+        Property { name: "cppConstantNotifiable"; type: "int"; isPropertyConstant: true; notify: "cppConstantNotifiableChanged"; index: 4 }
+        Property { name: "cppReadonly"; type: "int"; isReadonly: true; index: 5 }
     }
 }

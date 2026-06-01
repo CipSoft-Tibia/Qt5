@@ -20,6 +20,7 @@
 // code lives here is that some special apps/libraries for e.g., QtJambi,
 // Gammaray need access to the structs in this file.
 
+#include <QtCore/qalloc.h>
 #include <QtCore/qobject.h>
 #include <QtCore/private/qobject_p.h>
 
@@ -152,8 +153,9 @@ struct QObjectPrivate::ConnectionData
             deleteOrphaned(c);
         SignalVector *v = signalVector.loadRelaxed();
         if (v) {
+            const size_t allocSize = sizeof(SignalVector) + (v->allocated + 1) * sizeof(ConnectionList);
             v->~SignalVector();
-            free(v);
+            QtPrivate::sizedFree(v, allocSize);
         }
     }
 
@@ -179,13 +181,13 @@ struct QObjectPrivate::ConnectionData
         return signalVector.loadRelaxed()->at(signal);
     }
 
-    void resizeSignalVector(uint size)
+    void resizeSignalVector(size_t size)
     {
         SignalVector *vector = this->signalVector.loadRelaxed();
         if (vector && vector->allocated > size)
             return;
         size = (size + 7) & ~7;
-        void *ptr = malloc(sizeof(SignalVector) + (size + 1) * sizeof(ConnectionList));
+        void *ptr = QtPrivate::fittedMalloc(sizeof(SignalVector), &size, sizeof(ConnectionList), 1);
         auto newVector = new (ptr) SignalVector;
 
         int start = -1;

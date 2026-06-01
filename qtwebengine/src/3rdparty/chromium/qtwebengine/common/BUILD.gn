@@ -4,6 +4,7 @@ mojom("mojo_bindings") {
   disable_variants = true
 
   sources = [
+    "plugin.mojom",
     "renderer_configuration.mojom",
     "media/webrtc_logging.mojom",
   ]

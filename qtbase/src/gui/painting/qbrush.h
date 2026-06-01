@@ -134,6 +134,9 @@ struct QBrushData
     Qt::BrushStyle style;
     QColor color;
     QTransform transform;
+protected:
+    QBrushData() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QBrushData)
 };
 
 inline Qt::BrushStyle QBrush::style() const { return d->style; }

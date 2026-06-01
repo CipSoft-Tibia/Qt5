@@ -8,7 +8,9 @@ if(TARGET Qt::Quick)
     add_subdirectory(scenegraph)
 endif()
 
-add_subdirectory(qmllint)
+if((NOT CMAKE_CROSSCOMPILING) OR QT_FORCE_BUILD_TOOLS)
+    add_subdirectory(qmllint)
+endif()
 
 if(TARGET Qt::QmlLSPrivate)
     add_subdirectory(qmlls)

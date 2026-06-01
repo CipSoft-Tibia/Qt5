@@ -3,17 +3,8 @@
 // found in the LICENSE file.
 
 import {describeWithEnvironment} from '../../../testing/EnvironmentHelpers.js';
-import {TraceLoader} from '../../../testing/TraceLoader.js';
-import * as TraceModel from '../trace.js';
-
-export async function processTrace(testContext: Mocha.Suite|Mocha.Context|null, traceFile: string) {
-  const {traceData, insights} = await TraceLoader.traceEngine(testContext, traceFile);
-  if (!insights) {
-    throw new Error('No insights');
-  }
-
-  return {data: traceData, insights};
-}
+import {createContextForNavigation, getFirst, processTrace} from '../../../testing/InsightHelpers.js';
+import * as Trace from '../trace.js';
 
 describeWithEnvironment('InteractionToNextPaint', function() {
   const test = (traceFile: string, longest?: number, highPercentile?: number) => {
@@ -23,17 +14,12 @@ describeWithEnvironment('InteractionToNextPaint', function() {
 
     it(`process ${traceFile}`, async () => {
       const {data} = await processTrace(this, traceFile);
-
-      // TODO(crbug.com/313905799): The traces don't all have navigations, and currently #computeInsights
-      // doesn't account for analyzing stuff outside a navigation bound. So instead of this ...
-      //      const insight = getInsight(insights, data.Meta.navigationsByNavigationId.keys().next().value);
-      // we manually run the insight.
-      const [navigationId, navigation] = data.Meta.navigationsByNavigationId.entries().next().value ?? [];
-      const insight = TraceModel.Insights.InsightRunners.InteractionToNextPaint.generateInsight(data, {
+      const navigation = getFirst(data.Meta.navigationsByNavigationId.values());
+      const context = navigation ? createContextForNavigation(data, navigation, data.Meta.mainFrameId) : {
+        bounds: data.Meta.traceBounds,
         frameId: data.Meta.mainFrameId,
-        navigation,
-        navigationId,
-      });
+      };
+      const insight = Trace.Insights.Models.InteractionToNextPaint.generateInsight(data, context);
       assert.strictEqual(insight.longestInteractionEvent?.dur, longest);
       assert.strictEqual(insight.highPercentileInteractionEvent?.dur, highPercentile);
     });

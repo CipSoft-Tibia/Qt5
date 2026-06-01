@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "components/supervised_user/core/browser/supervised_user_settings_service.h"
 
 #include <memory>
@@ -32,8 +37,8 @@ const char kSplitItemName[] = "X-SuperMoosePowers";
 
 class SupervisedUserSettingsServiceTest : public ::testing::Test {
  protected:
-  SupervisedUserSettingsServiceTest() {}
-  ~SupervisedUserSettingsServiceTest() override {}
+  SupervisedUserSettingsServiceTest() = default;
+  ~SupervisedUserSettingsServiceTest() override = default;
 
   std::unique_ptr<syncer::SyncChangeProcessor> CreateSyncProcessor() {
     sync_processor_ = std::make_unique<syncer::FakeSyncChangeProcessor>();

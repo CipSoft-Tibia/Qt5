@@ -12,6 +12,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/notreached.h"
 #include "base/strings/string_util.h"
 #include "base/types/pass_key.h"
 #include "build/build_config.h"
@@ -49,6 +50,7 @@
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 #include "net/device_bound_sessions/session_service.h"
+#include "net/device_bound_sessions/session_store.h"
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 
 namespace net {
@@ -153,7 +155,7 @@ void URLRequestContext::AssertNoURLRequests() const {
     DEBUG_ALIAS_FOR_GURL(url_buf, request->url());
     base::debug::Alias(&num_requests);
     base::debug::Alias(&load_flags);
-    CHECK(false) << "Leaked " << num_requests << " URLRequest(s). First URL: "
+    NOTREACHED() << "Leaked " << num_requests << " URLRequest(s). First URL: "
                  << request->url().spec().c_str() << ".";
   }
 }
@@ -262,6 +264,11 @@ void URLRequestContext::set_device_bound_session_service(
     std::unique_ptr<device_bound_sessions::SessionService>
         device_bound_session_service) {
   device_bound_session_service_ = std::move(device_bound_session_service);
+}
+void URLRequestContext::set_device_bound_session_store(
+    std::unique_ptr<device_bound_sessions::SessionStore>
+        device_bound_session_store) {
+  device_bound_session_store_ = std::move(device_bound_session_store);
 }
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 

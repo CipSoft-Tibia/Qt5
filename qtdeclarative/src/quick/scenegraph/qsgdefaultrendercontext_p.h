@@ -81,6 +81,7 @@ public:
 
     void preprocess() override;
     void invalidateGlyphCaches() override;
+    void flushGlyphCaches() override;
     QSGDistanceFieldGlyphCache *distanceFieldGlyphCache(const QRawFont &font, int renderTypeQuality) override;
     QSGCurveGlyphAtlas *curveGlyphAtlas(const QRawFont &font) override;
 

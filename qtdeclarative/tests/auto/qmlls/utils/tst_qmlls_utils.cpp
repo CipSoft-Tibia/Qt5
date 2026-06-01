@@ -2551,9 +2551,6 @@ void tst_qmlls_utils::completions_data()
                         { u"default required property type name: value;"_s,
                           CompletionItemKind::Snippet,
                           u"default required property ${1:type} ${2:name}: ${0:value};"_s },
-                        { u"required default property type name: value;"_s,
-                          CompletionItemKind::Snippet,
-                          u"required default property ${1:type} ${2:name}: ${0:value};"_s },
                         { u"required property type name: value;"_s, CompletionItemKind::Snippet,
                           u"required property ${1:type} ${2:name}: ${0:value};"_s },
                         { u"property type name;"_s, CompletionItemKind::Snippet,
@@ -2564,8 +2561,17 @@ void tst_qmlls_utils::completions_data()
                           u"default property ${1:type} ${0:name};"_s },
                         { u"default required property type name;"_s, CompletionItemKind::Snippet,
                           u"default required property ${1:type} ${0:name};"_s },
-                        { u"required default property type name;"_s, CompletionItemKind::Snippet,
-                          u"required default property ${1:type} ${0:name};"_s },
+                        { u"final property type name;"_s, CompletionItemKind::Snippet,
+                          u"final property ${1:type} ${0:name};"_s },
+                        { u"default final property type name;"_s, CompletionItemKind::Snippet,
+                          u"default final property ${1:type} ${0:name};"_s },
+                        { u"final required property type name;"_s, CompletionItemKind::Snippet,
+                          u"final required property ${1:type} ${0:name};"_s },
+                        { u"final readonly property type name;"_s, CompletionItemKind::Snippet,
+                          u"final readonly property ${1:type} ${0:name};"_s },
+                        { u"default final required property type name;"_s,
+                          CompletionItemKind::Snippet,
+                          u"default final required property ${1:type} ${0:name};"_s },
                         { u"signal name(arg1:type1, ...)"_s, CompletionItemKind::Snippet,
                           u"signal ${1:name}($0)"_s },
                         { u"signal name;"_s, CompletionItemKind::Snippet, u"signal ${0:name};"_s },
@@ -4527,7 +4533,7 @@ void tst_qmlls_utils::completions()
 void tst_qmlls_utils::cmakeBuildCommand()
 {
     const QString path = u"helloWorldPath"_s;
-    const QPair<QString, QStringList> expected{
+    const std::pair<QString, QStringList> expected{
         u"cmake"_s, { u"--build"_s, path, u"-t"_s, u"all_qmltyperegistrations"_s }
     };
     QCOMPARE(QQmlLSUtils::cmakeBuildCommand(path), expected);

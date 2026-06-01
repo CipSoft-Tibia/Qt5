@@ -5,6 +5,8 @@ cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+# To see both QtCharts and QtGraphs benchmarks in one graph, first build and run this with
+# set(USE_CHARTS true) and the again with set(USE_CHARTS false)
 set(USE_CHARTS false)
 
 if (USE_CHARTS)
@@ -61,9 +63,11 @@ set(qmlbenchmark2d_resource_files
     "ChartsAreaTest.qml"
     "ChartsBarTest.qml"
     "ChartsOpenGLLineTest.qml"
+    "ChartsSplineTest.qml"
     "GraphsLineTest.qml"
     "GraphsAreaTest.qml"
     "GraphsBarTest.qml"
+    "GraphsSplineTest.qml"
 )
 
 qt_internal_add_resource(tst_qmlbenchmark2d "qmlbenchmark2d"

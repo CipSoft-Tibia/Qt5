@@ -71,13 +71,19 @@ typedef struct SchTask {
     int                 thread_running;
 } SchTask;
 
+typedef struct SchDecOutput {
+    SchedulerNode      *dst;
+    uint8_t            *dst_finished;
+    unsigned         nb_dst;
+} SchDecOutput;
+
 typedef struct SchDec {
     const AVClass      *class;
 
     SchedulerNode       src;
-    SchedulerNode      *dst;
-    uint8_t            *dst_finished;
-    unsigned         nb_dst;
+
+    SchDecOutput       *outputs;
+    unsigned         nb_outputs;
 
     SchTask             task;
     // Queue for receiving input packets, one stream.
@@ -279,8 +285,9 @@ struct Scheduler {
     pthread_mutex_t     mux_ready_lock;
 
     unsigned         nb_mux_done;
-    pthread_mutex_t     mux_done_lock;
-    pthread_cond_t      mux_done_cond;
+    unsigned            task_failed;
+    pthread_mutex_t     finish_lock;
+    pthread_cond_t      finish_cond;
 
 
     SchDec             *dec;
@@ -300,7 +307,6 @@ struct Scheduler {
 
     enum SchedulerState state;
     atomic_int          terminate;
-    atomic_int          task_failed;
 
     pthread_mutex_t     schedule_lock;
 
@@ -513,8 +519,14 @@ void sch_free(Scheduler **psch)
 
         av_thread_message_queue_free(&dec->queue_end_ts);
 
-        av_freep(&dec->dst);
-        av_freep(&dec->dst_finished);
+        for (unsigned j = 0; j < dec->nb_outputs; j++) {
+            SchDecOutput *o = &dec->outputs[j];
+
+            av_freep(&o->dst);
+            av_freep(&o->dst_finished);
+        }
+
+        av_freep(&dec->outputs);
 
         av_frame_free(&dec->send_frame);
     }
@@ -559,8 +571,8 @@ void sch_free(Scheduler **psch)
 
     pthread_mutex_destroy(&sch->mux_ready_lock);
 
-    pthread_mutex_destroy(&sch->mux_done_lock);
-    pthread_cond_destroy(&sch->mux_done_cond);
+    pthread_mutex_destroy(&sch->finish_lock);
+    pthread_cond_destroy(&sch->finish_cond);
 
     av_freep(psch);
 }
@@ -590,11 +602,11 @@ Scheduler *sch_alloc(void)
     if (ret)
         goto fail;
 
-    ret = pthread_mutex_init(&sch->mux_done_lock, NULL);
+    ret = pthread_mutex_init(&sch->finish_lock, NULL);
     if (ret)
         goto fail;
 
-    ret = pthread_cond_init(&sch->mux_done_cond, NULL);
+    ret = pthread_cond_init(&sch->finish_cond, NULL);
     if (ret)
         goto fail;
 
@@ -712,14 +724,28 @@ int sch_add_demux_stream(Scheduler *sch, unsigned demux_idx)
     return ret < 0 ? ret : d->nb_streams - 1;
 }
 
+int sch_add_dec_output(Scheduler *sch, unsigned dec_idx)
+{
+    SchDec *dec;
+    int ret;
+
+    av_assert0(dec_idx < sch->nb_dec);
+    dec = &sch->dec[dec_idx];
+
+    ret = GROW_ARRAY(dec->outputs, dec->nb_outputs);
+    if (ret < 0)
+        return ret;
+
+    return dec->nb_outputs - 1;
+}
+
 static const AVClass sch_dec_class = {
     .class_name                = "SchDec",
     .version                   = LIBAVUTIL_VERSION_INT,
     .parent_log_context_offset = offsetof(SchDec, task.func_arg),
 };
 
-int sch_add_dec(Scheduler *sch, SchThreadFunc func, void *ctx,
-                int send_end_ts)
+int sch_add_dec(Scheduler *sch, SchThreadFunc func, void *ctx, int send_end_ts)
 {
     const unsigned idx = sch->nb_dec;
 
@@ -738,6 +764,10 @@ int sch_add_dec(Scheduler *sch, SchThreadFunc func, void *ctx,
     dec->send_frame = av_frame_alloc();
     if (!dec->send_frame)
         return AVERROR(ENOMEM);
+
+    ret = sch_add_dec_output(sch, idx);
+    if (ret < 0)
+        return ret;
 
     ret = queue_alloc(&dec->queue, 1, 0, QUEUE_PACKETS);
     if (ret < 0)
@@ -943,15 +973,19 @@ int sch_connect(Scheduler *sch, SchedulerNode src, SchedulerNode dst)
         }
     case SCH_NODE_TYPE_DEC: {
         SchDec *dec;
+        SchDecOutput *o;
 
         av_assert0(src.idx < sch->nb_dec);
         dec = &sch->dec[src.idx];
 
-        ret = GROW_ARRAY(dec->dst, dec->nb_dst);
+        av_assert0(src.idx_stream < dec->nb_outputs);
+        o = &dec->outputs[src.idx_stream];
+
+        ret = GROW_ARRAY(o->dst, o->nb_dst);
         if (ret < 0)
             return ret;
 
-        dec->dst[dec->nb_dst - 1] = dst;
+        o->dst[o->nb_dst - 1] = dst;
 
         // decoded frames go to filters or encoding
         switch (dst.type) {
@@ -1077,22 +1111,52 @@ static int mux_task_start(SchMux *mux)
         return ret;
 
     /* flush the pre-muxing queues */
-    for (unsigned i = 0; i < mux->nb_streams; i++) {
-        SchMuxStream *ms = &mux->streams[i];
+    while (1) {
+        int       min_stream = -1;
+        Timestamp min_ts     = { .ts = AV_NOPTS_VALUE };
+
         AVPacket *pkt;
 
-        while (av_fifo_read(ms->pre_mux_queue.fifo, &pkt, 1) >= 0) {
+        // find the stream with the earliest dts or EOF in pre-muxing queue
+        for (unsigned i = 0; i < mux->nb_streams; i++) {
+            SchMuxStream *ms = &mux->streams[i];
+
+            if (av_fifo_peek(ms->pre_mux_queue.fifo, &pkt, 1, 0) < 0)
+                continue;
+
+            if (!pkt || pkt->dts == AV_NOPTS_VALUE) {
+                min_stream = i;
+                break;
+            }
+
+            if (min_ts.ts == AV_NOPTS_VALUE ||
+                av_compare_ts(min_ts.ts, min_ts.tb, pkt->dts, pkt->time_base) > 0) {
+                min_stream = i;
+                min_ts     = (Timestamp){ .ts = pkt->dts, .tb = pkt->time_base };
+            }
+        }
+
+        if (min_stream >= 0) {
+            SchMuxStream *ms = &mux->streams[min_stream];
+
+            ret = av_fifo_read(ms->pre_mux_queue.fifo, &pkt, 1);
+            av_assert0(ret >= 0);
+
             if (pkt) {
                 if (!ms->init_eof)
-                    ret = tq_send(mux->queue, i, pkt);
+                    ret = tq_send(mux->queue, min_stream, pkt);
                 av_packet_free(&pkt);
                 if (ret == AVERROR_EOF)
                     ms->init_eof = 1;
                 else if (ret < 0)
                     return ret;
             } else
-                tq_send_finish(mux->queue, i);
+                tq_send_finish(mux->queue, min_stream);
+
+            continue;
         }
+
+        break;
     }
 
     atomic_store(&mux->mux_started, 1);
@@ -1417,15 +1481,20 @@ static int start_prepare(Scheduler *sch)
                    "Decoder not connected to a source\n");
             return AVERROR(EINVAL);
         }
-        if (!dec->nb_dst) {
-            av_log(dec, AV_LOG_ERROR,
-                   "Decoder not connected to any sink\n");
-            return AVERROR(EINVAL);
-        }
 
-        dec->dst_finished = av_calloc(dec->nb_dst, sizeof(*dec->dst_finished));
-        if (!dec->dst_finished)
-            return AVERROR(ENOMEM);
+        for (unsigned j = 0; j < dec->nb_outputs; j++) {
+            SchDecOutput *o = &dec->outputs[j];
+
+            if (!o->nb_dst) {
+                av_log(dec, AV_LOG_ERROR,
+                       "Decoder output %u not connected to any sink\n", j);
+                return AVERROR(EINVAL);
+            }
+
+            o->dst_finished = av_calloc(o->nb_dst, sizeof(*o->dst_finished));
+            if (!o->dst_finished)
+                return AVERROR(ENOMEM);
+        }
     }
 
     for (unsigned i = 0; i < sch->nb_enc; i++) {
@@ -1595,29 +1664,27 @@ fail:
 
 int sch_wait(Scheduler *sch, uint64_t timeout_us, int64_t *transcode_ts)
 {
-    int ret, err;
+    int ret;
 
     // convert delay to absolute timestamp
     timeout_us += av_gettime();
 
-    pthread_mutex_lock(&sch->mux_done_lock);
+    pthread_mutex_lock(&sch->finish_lock);
 
     if (sch->nb_mux_done < sch->nb_mux) {
         struct timespec tv = { .tv_sec  =  timeout_us / 1000000,
                                .tv_nsec = (timeout_us % 1000000) * 1000 };
-        pthread_cond_timedwait(&sch->mux_done_cond, &sch->mux_done_lock, &tv);
+        pthread_cond_timedwait(&sch->finish_cond, &sch->finish_lock, &tv);
     }
 
-    ret = sch->nb_mux_done == sch->nb_mux;
+    // abort transcoding if any task failed
+    ret = sch->nb_mux_done == sch->nb_mux || sch->task_failed;
 
-    pthread_mutex_unlock(&sch->mux_done_lock);
+    pthread_mutex_unlock(&sch->finish_lock);
 
     *transcode_ts = atomic_load(&sch->last_dts);
 
-    // abort transcoding if any task failed
-    err = atomic_load(&sch->task_failed);
-
-    return ret || err;
+    return ret;
 }
 
 static int enc_open(Scheduler *sch, SchEnc *enc, const AVFrame *frame)
@@ -2083,14 +2150,14 @@ static int mux_done(Scheduler *sch, unsigned mux_idx)
 
     pthread_mutex_unlock(&sch->schedule_lock);
 
-    pthread_mutex_lock(&sch->mux_done_lock);
+    pthread_mutex_lock(&sch->finish_lock);
 
     av_assert0(sch->nb_mux_done < sch->nb_mux);
     sch->nb_mux_done++;
 
-    pthread_cond_signal(&sch->mux_done_cond);
+    pthread_cond_signal(&sch->finish_cond);
 
-    pthread_mutex_unlock(&sch->mux_done_lock);
+    pthread_mutex_unlock(&sch->finish_lock);
 
     return 0;
 }
@@ -2171,21 +2238,26 @@ finish:
     return AVERROR_EOF;
 }
 
-int sch_dec_send(Scheduler *sch, unsigned dec_idx, AVFrame *frame)
+int sch_dec_send(Scheduler *sch, unsigned dec_idx,
+                 unsigned out_idx, AVFrame *frame)
 {
     SchDec *dec;
-    int ret = 0;
+    SchDecOutput *o;
+    int ret;
     unsigned nb_done = 0;
 
     av_assert0(dec_idx < sch->nb_dec);
     dec = &sch->dec[dec_idx];
 
-    for (unsigned i = 0; i < dec->nb_dst; i++) {
-        uint8_t *finished = &dec->dst_finished[i];
+    av_assert0(out_idx < dec->nb_outputs);
+    o = &dec->outputs[out_idx];
+
+    for (unsigned i = 0; i < o->nb_dst; i++) {
+        uint8_t *finished = &o->dst_finished[i];
         AVFrame *to_send  = frame;
 
         // sending a frame consumes it, so make a temporary reference if needed
-        if (i < dec->nb_dst - 1) {
+        if (i < o->nb_dst - 1) {
             to_send = dec->send_frame;
 
             // frame may sometimes contain props only,
@@ -2196,19 +2268,18 @@ int sch_dec_send(Scheduler *sch, unsigned dec_idx, AVFrame *frame)
                 return ret;
         }
 
-        ret = dec_send_to_dst(sch, dec->dst[i], finished, to_send);
+        ret = dec_send_to_dst(sch, o->dst[i], finished, to_send);
         if (ret < 0) {
             av_frame_unref(to_send);
             if (ret == AVERROR_EOF) {
                 nb_done++;
-                ret = 0;
                 continue;
             }
             return ret;
         }
     }
 
-    return (nb_done == dec->nb_dst) ? AVERROR_EOF : 0;
+    return (nb_done == o->nb_dst) ? AVERROR_EOF : 0;
 }
 
 static int dec_done(Scheduler *sch, unsigned dec_idx)
@@ -2223,10 +2294,14 @@ static int dec_done(Scheduler *sch, unsigned dec_idx)
     if (dec->queue_end_ts)
         av_thread_message_queue_set_err_recv(dec->queue_end_ts, AVERROR_EOF);
 
-    for (unsigned i = 0; i < dec->nb_dst; i++) {
-        int err = dec_send_to_dst(sch, dec->dst[i], &dec->dst_finished[i], NULL);
-        if (err < 0 && err != AVERROR_EOF)
-            ret = err_merge(ret, err);
+    for (unsigned i = 0; i < dec->nb_outputs; i++) {
+        SchDecOutput *o = &dec->outputs[i];
+
+        for (unsigned j = 0; j < o->nb_dst; j++) {
+            int err = dec_send_to_dst(sch, o->dst[j], &o->dst_finished[j], NULL);
+            if (err < 0 && err != AVERROR_EOF)
+                ret = err_merge(ret, err);
+        }
     }
 
     return ret;
@@ -2475,8 +2550,12 @@ static void *task_wrapper(void *arg)
     // EOF is considered normal termination
     if (ret == AVERROR_EOF)
         ret = 0;
-    if (ret < 0)
-        atomic_store(&sch->task_failed, 1);
+    if (ret < 0) {
+        pthread_mutex_lock(&sch->finish_lock);
+        sch->task_failed = 1;
+        pthread_cond_signal(&sch->finish_cond);
+        pthread_mutex_unlock(&sch->finish_lock);
+    }
 
     av_log(task->func_arg, ret < 0 ? AV_LOG_ERROR : AV_LOG_VERBOSE,
            "Terminating thread with return code %d (%s)\n", ret,

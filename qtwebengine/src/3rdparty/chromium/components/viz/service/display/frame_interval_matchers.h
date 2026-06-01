@@ -18,16 +18,20 @@
 #include "components/viz/common/surfaces/surface_id.h"
 #include "components/viz/service/viz_service_export.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
+#include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 
 namespace viz {
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
 enum class FrameIntervalMatcherType {
-  kNone,
-  kInputBoost,
-  kOnlyVideo,
-  kVideoConference,
-  kOnlyAnimatingImage,
-  kOnlyScrollBarFadeOut,
+  kNone = 0,
+  kInputBoost = 1,
+  kOnlyVideo = 2,
+  kVideoConference = 3,
+  kOnlyAnimatingImage = 4,
+  kOnlyScrollBarFadeOut = 5,
+  kMaxValue = kOnlyScrollBarFadeOut,
 };
 
 // Works with `FrameIntervalDecider` to compute the ideal frame interval.
@@ -57,7 +61,7 @@ class VIZ_SERVICE_EXPORT FrameIntervalMatcher {
     FixedIntervalSettings(const FixedIntervalSettings&);
     ~FixedIntervalSettings();
 
-    base::TimeDelta default_interval;  // Must be in `supported_intervals`.
+    base::TimeDelta default_interval;  // Used for FrameIntervalClass::kDefault.
     base::flat_set<base::TimeDelta> supported_intervals;  // Cannot be empty.
   };
 
@@ -68,7 +72,8 @@ class VIZ_SERVICE_EXPORT FrameIntervalMatcher {
     ContinuousRangeSettings(const ContinuousRangeSettings&);
     ~ContinuousRangeSettings();
 
-    base::TimeDelta min_interval;  // Used as default value.
+    base::TimeDelta default_interval;  // Used for FrameIntervalClass::kDefault.
+    base::TimeDelta min_interval;
     base::TimeDelta max_interval;
   };
 
@@ -116,6 +121,9 @@ class VIZ_SERVICE_EXPORT FrameIntervalMatcher {
 
     Inputs(const Inputs& other);
     Inputs& operator=(const Inputs& other);
+
+    // Serializes this struct into a trace.
+    void WriteIntoTrace(perfetto::TracedValue trace_context) const;
 
     base::raw_ref<const Settings> settings;
     base::TimeTicks aggregated_frame_time;

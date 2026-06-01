@@ -24,11 +24,13 @@ target_link_libraries(tst_qmlinjection PUBLIC
 set(qmlinjection_resource_files
     "qml/qmlinjection/main.qml"
     "qml/qmlinjection/GraphInjection.qml"
+    "qml/qmlinjection/GraphNodeInjection.qml"
     "qml/qmlinjection/MultiView.qml"
     "qml/qmlinjection/MultiGraph.qml"
     "qml/qmlinjection/australia.png"
     "qml/qmlinjection/australiaSatellite.jpg"
     "qml/qmlinjection/plane.mesh"
+    "qml/qmlinjection/layer_1.png"
     )
 
 qt_internal_add_resource(tst_qmlinjection "qmlinjection"

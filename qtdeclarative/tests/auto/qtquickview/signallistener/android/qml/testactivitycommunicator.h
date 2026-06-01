@@ -29,6 +29,7 @@ signals:
     void boolSignal(bool value);
     void doubleSignal(double value);
     void stringSignal(QString value);
+    void manyTypeSignal(int intValue, bool boolValue, double doubleValue, QString stringValue);
 
 private:
     QtJniTypes::TestActivity m_activity;
@@ -44,6 +45,12 @@ private:
     Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(onDoubleSignal)
     static void onStringSignal(JNIEnv *, jclass, QtJniTypes::String value);
     Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(onStringSignal)
+    static void onManyTypeSignal(JNIEnv *, jclass,
+                                QtJniTypes::Integer intValue,
+                                QtJniTypes::Boolean boolValue,
+                                QtJniTypes::Double doubleValue,
+                                QtJniTypes::String stringValue);
+    Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(onManyTypeSignal)
 };
 
 #endif // TESTACTIVITYCOMMUNICATOR_H

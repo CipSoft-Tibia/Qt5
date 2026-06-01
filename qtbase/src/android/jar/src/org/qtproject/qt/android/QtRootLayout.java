@@ -7,7 +7,6 @@ package org.qtproject.qt.android;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
-import android.view.Surface;
 
 /**
     A layout which corresponds to one Activity, i.e. is the root layout where the top level window
@@ -15,44 +14,32 @@ import android.view.Surface;
 */
 class QtRootLayout extends QtLayout
 {
-    private int m_previousRotation = -1;
-
     QtRootLayout(Context context)
     {
         super(context);
     }
 
     @Override
-    protected void onSizeChanged (int w, int h, int oldw, int oldh)
+    protected void onSizeChanged(int w, int h, int oldw, int oldh)
     {
-        Activity activity = (Activity)getContext();
-        if (activity == null)
+        Activity activity = (Activity) getContext();
+        if (activity == null || (w == oldw && h == oldh))
             return;
 
-        QtDisplayManager.setApplicationDisplayMetrics(activity, w, h);
-        QtDisplayManager.handleOrientationChanges(activity);
+        QtDisplayManager.handleLayoutSizeChanged(w, h);
     }
 
     @Override
     public void onConfigurationChanged(Configuration configuration)
     {
-        Context context = getContext();
-        if (context instanceof Activity) {
-            Activity activity = (Activity)context;
-            //if orientation change is betwen invertedPortrait and portrait or
-            //invertedLandscape and landscape, we do not get sizeChanged callback.
-            int rotation = QtDisplayManager.getDisplayRotation(activity);
-            if (isSameSizeForOrientations(rotation, m_previousRotation))
-                QtDisplayManager.handleOrientationChanges(activity);
-            m_previousRotation = rotation;
-        }
-    }
+        Activity activity = (Activity) getContext();
+        if (activity == null)
+            return;
 
-    boolean isSameSizeForOrientations(int r1, int r2) {
-        return (r1 == r2) ||
-                (r1 == Surface.ROTATION_0 && r2 == Surface.ROTATION_180)
-                || (r1 == Surface.ROTATION_180 && r2 == Surface.ROTATION_0)
-                || (r1 == Surface.ROTATION_90 && r2 == Surface.ROTATION_270)
-                || (r1 == Surface.ROTATION_270 && r2 == Surface.ROTATION_90);
+        // Post the orientation handling just in case the onSizeChanged() is
+        // called a bit late (QTBUG-94459).
+        QtNative.runAction(() -> {
+            QtDisplayManager.handleOrientationChange(activity);
+        });
     }
 }

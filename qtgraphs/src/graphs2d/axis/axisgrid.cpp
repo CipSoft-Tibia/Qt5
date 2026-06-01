@@ -44,7 +44,7 @@ qreal AxisGrid::smoothing() const
 
 void AxisGrid::setSmoothing(qreal newSmoothing)
 {
-    if (qFuzzyCompare(m_smoothing, newSmoothing))
+    if (QtPrivate::fuzzyCompare(m_smoothing, newSmoothing))
         return;
     m_smoothing = newSmoothing;
     emit smoothingChanged();
@@ -83,7 +83,7 @@ qreal AxisGrid::gridWidth() const
 
 void AxisGrid::setGridWidth(qreal newGridWidth)
 {
-    if (qFuzzyCompare(m_gridWidth, newGridWidth))
+    if (QtPrivate::fuzzyCompare(m_gridWidth, newGridWidth))
         return;
     m_gridWidth = newGridWidth;
     emit gridWidthChanged();
@@ -96,7 +96,7 @@ qreal AxisGrid::gridHeight() const
 
 void AxisGrid::setGridHeight(qreal newGridHeight)
 {
-    if (qFuzzyCompare(m_gridHeight, newGridHeight))
+    if (QtPrivate::fuzzyCompare(m_gridHeight, newGridHeight))
         return;
     m_gridHeight = newGridHeight;
     emit gridHeightChanged();
@@ -161,7 +161,7 @@ qreal AxisGrid::subGridLineWidth() const
 
 void AxisGrid::setSubGridLineWidth(qreal newSubGridLineWidth)
 {
-    if (qFuzzyCompare(m_subGridLineWidth, newSubGridLineWidth))
+    if (QtPrivate::fuzzyCompare(m_subGridLineWidth, newSubGridLineWidth))
         return;
     m_subGridLineWidth = newSubGridLineWidth;
     emit subGridLineWidthChanged();
@@ -174,7 +174,7 @@ qreal AxisGrid::gridLineWidth() const
 
 void AxisGrid::setGridLineWidth(qreal newGridLineWidth)
 {
-    if (qFuzzyCompare(m_gridLineWidth, newGridLineWidth))
+    if (QtPrivate::fuzzyCompare(m_gridLineWidth, newGridLineWidth))
         return;
     m_gridLineWidth = newGridLineWidth;
     emit gridLineWidthChanged();
@@ -187,7 +187,7 @@ qreal AxisGrid::verticalSubGridScale() const
 
 void AxisGrid::setVerticalSubGridScale(qreal newVerticalSubGridScale)
 {
-    if (qFuzzyCompare(m_verticalSubGridScale, newVerticalSubGridScale))
+    if (QtPrivate::fuzzyCompare(m_verticalSubGridScale, newVerticalSubGridScale))
         return;
     m_verticalSubGridScale = newVerticalSubGridScale;
     emit verticalSubGridScaleChanged();
@@ -200,7 +200,7 @@ qreal AxisGrid::horizontalSubGridScale() const
 
 void AxisGrid::setHorizontalSubGridScale(qreal newHorizontalSubGridScale)
 {
-    if (qFuzzyCompare(m_horizontalSubGridScale, newHorizontalSubGridScale))
+    if (QtPrivate::fuzzyCompare(m_horizontalSubGridScale, newHorizontalSubGridScale))
         return;
     m_horizontalSubGridScale = newHorizontalSubGridScale;
     emit horizontalSubGridScaleChanged();

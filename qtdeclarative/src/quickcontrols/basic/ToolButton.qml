@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -35,7 +36,19 @@ T.ToolButton {
         implicitWidth: 40
         implicitHeight: 40
 
-        opacity: control.down ? 1.0 : 0.5
+        opacity: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast || control.down ? 1.0 : 0.5
         color: control.down || control.checked || control.highlighted ? control.palette.mid : control.palette.button
+
+        border.color: {
+            if (control.visualFocus)
+                return control.palette.highlight
+            else if (Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast)
+                return Color.blend(control.palette.buttonText, control.palette.button,
+                                   control.enabled ? 0.0 : 0.8)
+            else
+                return control.palette.windowText
+        }
+        border.width: control.visualFocus ? 2 :
+                      Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast ? 1 : 0
     }
 }

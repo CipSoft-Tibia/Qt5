@@ -3,6 +3,8 @@
 import QtQuick
 
 HomeForm {
+    state: Config.mode
+
     grid.states: [
         State {
             name: "small"

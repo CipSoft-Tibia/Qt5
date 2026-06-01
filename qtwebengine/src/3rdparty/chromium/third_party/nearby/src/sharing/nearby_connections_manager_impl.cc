@@ -27,6 +27,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/bind_front.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -39,7 +40,6 @@
 #include "sharing/common/nearby_share_enums.h"
 #include "sharing/constants.h"
 #include "sharing/flags/generated/nearby_sharing_feature_flags.h"
-#include "sharing/internal/api/bluetooth_adapter.h"
 #include "sharing/internal/base/encode.h"
 #include "sharing/internal/public/connectivity_manager.h"
 #include "sharing/internal/public/context.h"
@@ -50,8 +50,7 @@
 #include "sharing/nearby_connections_types.h"
 #include "sharing/transfer_manager.h"
 
-namespace nearby {
-namespace sharing {
+namespace nearby::sharing {
 namespace {
 using ::nearby::sharing::proto::DataUsage;
 
@@ -79,7 +78,7 @@ bool ShouldUseInternet(ConnectivityManager& connectivity_manager,
 
   // Verify that this network has an internet connection.
   if (connection_type == ConnectivityManager::ConnectionType::kNone) {
-    NL_VLOG(1) << __func__ << ": No internet connection.";
+    VLOG(1) << __func__ << ": No internet connection.";
     return false;
   }
 
@@ -116,6 +115,17 @@ bool ShouldEnableWifiLan(ConnectivityManager& connectivity_manager) {
   return is_connection_wifi_or_ethernet;
 }
 
+// Temporarily fix to get around wifi hotspot issues for HP Aero with Realtek.
+// See b/380191431 for more details.
+
+bool ShouldEnableWifiHotspot(ConnectivityManager& connectivity_manager) {
+  if (connectivity_manager.IsHPRealtekDevice()) {
+    LOG(WARNING) << __func__ << ": Disable wifi hotspot for HP with Realtek";
+    return false;
+  }
+  return true;
+}
+
 bool ShouldEnableBleForTransfers() {
   return NearbyFlags::GetInstance().GetBoolFlag(
       config_package_nearby::nearby_sharing_feature::kEnableBleForTransfer);
@@ -128,6 +138,7 @@ std::string MediumSelectionToString(const MediumSelection& mediums) {
   if (mediums.ble) ss << "ble ";
   if (mediums.web_rtc) ss << "webrtc ";
   if (mediums.wifi_lan) ss << "wifilan ";
+  if (mediums.wifi_hotspot) ss << "wifihotspot ";
   ss << "}";
 
   return ss.str();
@@ -145,7 +156,6 @@ std::string PayloadStatusToString(PayloadStatus status) {
       return "Canceled";
   }
 }
-
 }  // namespace
 
 NearbyConnectionsManagerImpl::NearbyConnectionsManagerImpl(
@@ -168,8 +178,8 @@ void NearbyConnectionsManagerImpl::StartAdvertising(
     std::vector<uint8_t> endpoint_info, IncomingConnectionListener* listener,
     PowerLevel power_level, DataUsage data_usage, bool use_stable_endpoint_id,
     ConnectionsCallback callback) {
-  NL_DCHECK(listener);
-  NL_DCHECK(!incoming_connection_listener_);
+  DCHECK(listener);
+  DCHECK(!incoming_connection_listener_);
 
   if (!nearby_connections_service_) {
     std::move(callback)(ConnectionsStatus::kError);
@@ -186,14 +196,12 @@ void NearbyConnectionsManagerImpl::StartAdvertising(
       // upgrades from this advertisement.
       ShouldEnableWebRtc(connectivity_manager_, data_usage,
                          PowerLevel::kHighPower),
-      /*wifi_lan=*/
       ShouldEnableWifiLan(connectivity_manager_),
-      /*wifi_hotspot=*/true);
-  NL_VLOG(1) << __func__ << ": "
-             << "is_high_power=" << (is_high_power ? "yes" : "no")
-             << ", data_usage=" << static_cast<int>(data_usage)
-             << ", allowed_mediums="
-             << MediumSelectionToString(allowed_mediums);
+      ShouldEnableWifiHotspot(connectivity_manager_));
+  VLOG(1) << __func__ << ": "
+          << "is_high_power=" << (is_high_power ? "yes" : "no")
+          << ", data_usage=" << static_cast<int>(data_usage)
+          << ", allowed_mediums=" << MediumSelectionToString(allowed_mediums);
 
   // Nearby Sharing manually controls Wi-Fi/Bluetooth upgrade. Frequent
   // Bluetooth connection drops were observed during upgrades for Bluetooth
@@ -206,7 +214,7 @@ void NearbyConnectionsManagerImpl::StartAdvertising(
   NearbyConnectionsService::ConnectionListener connection_listener;
   connection_listener.initiated_cb =
       [this](absl::string_view endpoint_id,
-          const ConnectionInfo& connection_info) {
+             const ConnectionInfo& connection_info) {
         OnConnectionInitiated(endpoint_id, connection_info);
       };
   connection_listener.accepted_cb = [this](absl::string_view endpoint_id) {
@@ -232,7 +240,7 @@ void NearbyConnectionsManagerImpl::StartAdvertising(
 
   Uuid fast_advertisement_service_uuid;
 
-  NL_LOG(INFO) << __func__ << ": Nearby Sharing flag kEnableBleV2 is enabled.";
+  LOG(INFO) << __func__ << ": Nearby Sharing flag kEnableBleV2 is enabled.";
   // Uses fast advertisement when advertisement data size is less than
   // kMinimumAdvertisementSize. Nearby Connections will decide whether to use
   // GATT server with this information.
@@ -271,13 +279,12 @@ void NearbyConnectionsManagerImpl::StopAdvertising(
 void NearbyConnectionsManagerImpl::StartDiscovery(
     DiscoveryListener* listener, DataUsage data_usage,
     ConnectionsCallback callback) {
-  NL_DCHECK(listener);
+  DCHECK(listener);
 
   if (!nearby_connections_service_) {
     std::move(callback)(ConnectionsStatus::kError);
     return;
   }
-
   MediumSelection allowed_mediums = MediumSelection(
       /*bluetooth=*/true,
       /*ble=*/true,
@@ -286,11 +293,10 @@ void NearbyConnectionsManagerImpl::StartDiscovery(
                          PowerLevel::kHighPower),
       /*wifi_lan=*/
       ShouldEnableWifiLan(connectivity_manager_),
-      /*wifi_hotspot=*/true);
-  NL_VLOG(1) << __func__ << ": "
-             << "data_usage=" << static_cast<int>(data_usage)
-             << ", allowed_mediums="
-             << MediumSelectionToString(allowed_mediums);
+      ShouldEnableWifiHotspot(connectivity_manager_));
+  VLOG(1) << __func__ << ": "
+          << "data_usage=" << static_cast<int>(data_usage)
+          << ", allowed_mediums=" << MediumSelectionToString(allowed_mediums);
 
   discovery_listener_ = listener;
 
@@ -321,10 +327,10 @@ void NearbyConnectionsManagerImpl::StopDiscovery() {
 
   nearby_connections_service_->StopDiscovery(
       kServiceId, [&](ConnectionsStatus status) {
-        NL_VLOG(1) << __func__
-                   << ": Stop discovery attempted over Nearby "
-                      "Connections with result: "
-                   << ConnectionsStatusToString(status);
+        VLOG(1) << __func__
+                << ": Stop discovery attempted over Nearby "
+                   "Connections with result: "
+                << ConnectionsStatusToString(status);
       });
 }
 
@@ -335,7 +341,7 @@ void NearbyConnectionsManagerImpl::Connect(
     NearbyConnectionCallback callback) {
   MutexLock lock(&mutex_);
   if (!nearby_connections_service_) {
-    callback(nullptr, Status::kError);
+    callback(endpoint_id, nullptr, Status::kError);
     return;
   }
 
@@ -350,14 +356,17 @@ void NearbyConnectionsManagerImpl::Connect(
                          PowerLevel::kHighPower),
       /*wifi_lan=*/
       ShouldEnableWifiLan(connectivity_manager_),
-      /*wifi_hotspot=*/transport_type == TransportType::kHighQuality);
-  NL_VLOG(1) << __func__ << ": "
-             << "data_usage=" << static_cast<int>(data_usage)
-             << ", allowed_mediums="
-             << MediumSelectionToString(allowed_mediums);
+      // Note: this only affects sending since this function is only for
+      // outgoing connections.
+      /*wifi_hotspot=*/
+      IsTransportTypeFlagsSet(transport_type, TransportType::kHighQuality) &&
+          ShouldEnableWifiHotspot(connectivity_manager_));
+  VLOG(1) << __func__ << ": "
+          << "data_usage=" << static_cast<int>(data_usage)
+          << ", allowed_mediums=" << MediumSelectionToString(allowed_mediums);
   [[maybe_unused]] auto result =
       pending_outgoing_connections_.emplace(endpoint_id, std::move(callback));
-  NL_DCHECK(result.second);
+  DCHECK(result.second);
 
   auto timeout_timer = context_->CreateTimer();
   timeout_timer->Start(
@@ -397,10 +406,12 @@ void NearbyConnectionsManagerImpl::Connect(
 
   nearby_connections_service_->RequestConnection(
       kServiceId, endpoint_info, endpoint_id,
-      ConnectionOptions(std::move(allowed_mediums),
-                        std::move(bluetooth_mac_address),
-                        /*keep_alive_interval=*/std::nullopt,
-                        /*keep_alive_timeout=*/std::nullopt),
+      ConnectionOptions(
+          std::move(allowed_mediums), std::move(bluetooth_mac_address),
+          /*keep_alive_interval=*/std::nullopt,
+          /*keep_alive_timeout=*/std::nullopt,
+          IsTransportTypeFlagsSet(transport_type,
+                                  TransportType::kHighQualityNonDisruptive)),
       std::move(connection_listener),
       [this, endpoint_id = std::string(endpoint_id)](ConnectionsStatus status) {
         MutexLock lock(&mutex_);
@@ -411,7 +422,7 @@ void NearbyConnectionsManagerImpl::Connect(
       });
 
   // Setup transfer manager.
-  if (transport_type == TransportType::kHighQuality) {
+  if (IsTransportTypeFlagsSet(transport_type, TransportType::kHighQuality)) {
     transfer_managers_[endpoint_id] =
         std::make_unique<TransferManager>(context_, endpoint_id);
   }
@@ -420,7 +431,7 @@ void NearbyConnectionsManagerImpl::Connect(
 void NearbyConnectionsManagerImpl::OnConnectionTimedOut(
     absl::string_view endpoint_id) {
   MutexLock lock(&mutex_);
-  NL_LOG(ERROR) << "Failed to connect to the remote shareTarget: Timed out.";
+  LOG(ERROR) << "Failed to connect to the remote shareTarget: Timed out.";
   if (pending_outgoing_connections_.contains(endpoint_id)) {
     auto it = connection_info_map_.find(endpoint_id);
     if (it != connection_info_map_.end()) {
@@ -436,8 +447,8 @@ void NearbyConnectionsManagerImpl::OnConnectionRequested(
   auto it = pending_outgoing_connections_.find(endpoint_id);
   if (it == pending_outgoing_connections_.end()) return;
   if (status != ConnectionsStatus::kSuccess) {
-    NL_LOG(ERROR) << "Failed to connect to the remote shareTarget: "
-                  << ConnectionsStatusToString(status);
+    LOG(ERROR) << "Failed to connect to the remote shareTarget: "
+               << ConnectionsStatusToString(status);
     auto info_it = connection_info_map_.find(endpoint_id);
     if (info_it != connection_info_map_.end()) {
       info_it->second.connection_layer_status = status;
@@ -451,13 +462,13 @@ void NearbyConnectionsManagerImpl::Disconnect(absl::string_view endpoint_id) {
   MutexLock lock(&mutex_);
   if (!pending_outgoing_connections_.contains(endpoint_id) &&
       !connection_info_map_.contains(endpoint_id)) {
-    NL_LOG(WARNING) << "No connection for endpoint " << endpoint_id;
+    LOG(WARNING) << "No connection for endpoint " << endpoint_id;
     return;
   }
 
   if (disconnecting_endpoints_.contains(endpoint_id)) {
-    NL_LOG(INFO) << "Another Disconnecting is running for endpoint_id "
-                 << endpoint_id;
+    LOG(INFO) << "Another Disconnecting is running for endpoint_id "
+              << endpoint_id;
     return;
   }
 
@@ -465,10 +476,9 @@ void NearbyConnectionsManagerImpl::Disconnect(absl::string_view endpoint_id) {
   nearby_connections_service_->DisconnectFromEndpoint(
       kServiceId, endpoint_id,
       [&, endpoint_id = std::string(endpoint_id)](ConnectionsStatus status) {
-        NL_VLOG(1) << __func__ << ": Disconnecting from endpoint "
-                   << endpoint_id
-                   << " attempted over Nearby Connections with result: "
-                   << ConnectionsStatusToString(status);
+        VLOG(1) << __func__ << ": Disconnecting from endpoint " << endpoint_id
+                << " attempted over Nearby Connections with result: "
+                << ConnectionsStatusToString(status);
 
         connections_callback_task_runner_->PostTask([this, endpoint_id]() {
           OnDisconnected(endpoint_id);
@@ -477,7 +487,7 @@ void NearbyConnectionsManagerImpl::Disconnect(absl::string_view endpoint_id) {
             disconnecting_endpoints_.erase(endpoint_id);
           }
         });
-        NL_LOG(INFO) << "Disconnected from " << endpoint_id;
+        LOG(INFO) << "Disconnected from " << endpoint_id;
       });
 }
 
@@ -490,15 +500,15 @@ void NearbyConnectionsManagerImpl::Send(
   }
 
   if (transfer_managers_.contains(endpoint_id) && payload->content.is_file()) {
-    NL_LOG(INFO) << __func__ << ": Send payload " << payload->id << " to "
-                 << endpoint_id << " to transfer manager. payload is file: "
-                 << payload->content.is_file() << ", is bytes "
-                 << payload->content.is_bytes();
+    LOG(INFO) << __func__ << ": Send payload " << payload->id << " to "
+              << endpoint_id << " to transfer manager. payload is file: "
+              << payload->content.is_file() << ", is bytes "
+              << payload->content.is_bytes();
     transfer_managers_.at(endpoint_id)
         ->Send([&, endpoint_id = std::string(endpoint_id),
                 payload_copy = *payload]() {
-          NL_LOG(INFO) << __func__ << ": Send payload " << payload_copy.id
-                       << " to " << endpoint_id;
+          LOG(INFO) << __func__ << ": Send payload " << payload_copy.id
+                    << " to " << endpoint_id;
           auto sent_payload = std::make_unique<Payload>(payload_copy);
           SendWithoutDelay(endpoint_id, std::move(sent_payload));
         });
@@ -511,15 +521,14 @@ void NearbyConnectionsManagerImpl::Send(
 
 void NearbyConnectionsManagerImpl::SendWithoutDelay(
     absl::string_view endpoint_id, std::unique_ptr<Payload> payload) {
-  NL_LOG(INFO) << __func__ << ": Send payload " << payload->id << " to "
-               << endpoint_id;
+  LOG(INFO) << __func__ << ": Send payload " << payload->id << " to "
+            << endpoint_id;
   nearby_connections_service_->SendPayload(
       kServiceId, {std::string(endpoint_id)}, std::move(payload),
       [endpoint_id = std::string(endpoint_id)](ConnectionsStatus status) {
-        NL_LOG(INFO) << __func__ << ": Sending payload to endpoint "
-                     << endpoint_id
-                     << " attempted over Nearby Connections with result: "
-                     << ConnectionsStatusToString(status);
+        LOG(INFO) << __func__ << ": Sending payload to endpoint " << endpoint_id
+                  << " attempted over Nearby Connections with result: "
+                  << ConnectionsStatusToString(status);
       });
 }
 
@@ -549,21 +558,20 @@ void NearbyConnectionsManagerImpl::Cancel(int64_t payload_id) {
     // with another payload in the same transfer.
     if (auto status_listener = listener.lock()) {
       status_listener->OnStatusUpdate(std::make_unique<PayloadTransferUpdate>(
-                                          payload_id, PayloadStatus::kCanceled,
-                                          /*total_bytes=*/0,
-                                          /*bytes_transferred=*/0),
-                                      /*upgraded_medium=*/std::nullopt);
+          payload_id, PayloadStatus::kCanceled,
+          /*total_bytes=*/0,
+          /*bytes_transferred=*/0));
     }
   }
 
   nearby_connections_service_->CancelPayload(
       kServiceId, payload_id, [&, payload_id](ConnectionsStatus status) {
-        NL_VLOG(1) << __func__ << ": Cancelling payload to id " << payload_id
-                   << " attempted over Nearby Connections with result: "
-                   << ConnectionsStatusToString(status);
+        VLOG(1) << __func__ << ": Cancelling payload to id " << payload_id
+                << " attempted over Nearby Connections with result: "
+                << ConnectionsStatusToString(status);
       });
 
-  NL_LOG(INFO) << "Cancelling payload: " << payload_id;
+  LOG(INFO) << "Cancelling payload: " << payload_id;
 }
 
 void NearbyConnectionsManagerImpl::ClearIncomingPayloads() {
@@ -603,9 +611,9 @@ void NearbyConnectionsManagerImpl::UpgradeBandwidth(
   nearby_connections_service_->InitiateBandwidthUpgrade(
       kServiceId, endpoint_id,
       [&, endpoint_id = std::string(endpoint_id)](ConnectionsStatus status) {
-        NL_VLOG(1) << __func__ << ": Bandwidth upgrade attempted to endpoint "
-                   << endpoint_id << "over Nearby Connections with result: "
-                   << ConnectionsStatusToString(status);
+        VLOG(1) << __func__ << ": Bandwidth upgrade attempted to endpoint "
+                << endpoint_id << "over Nearby Connections with result: "
+                << ConnectionsStatusToString(status);
       });
 }
 
@@ -613,44 +621,44 @@ void NearbyConnectionsManagerImpl::OnEndpointFound(
     absl::string_view endpoint_id, const DiscoveredEndpointInfo& info) {
   MutexLock lock(&mutex_);
   if (!discovery_listener_) {
-    NL_LOG(INFO) << "Ignoring discovered endpoint "
-                 << nearby::utils::HexEncode(info.endpoint_info)
-                 << " because we're no longer "
-                    "in discovery mode";
+    LOG(INFO) << "Ignoring discovered endpoint "
+              << nearby::utils::HexEncode(info.endpoint_info)
+              << " because we're no longer "
+                 "in discovery mode";
     return;
   }
 
   auto result = discovered_endpoints_.insert(std::string(endpoint_id));
   if (!result.second) {
-    NL_LOG(INFO) << "Ignoring discovered endpoint "
-                 << nearby::utils::HexEncode(info.endpoint_info)
-                 << " because we've already "
-                    "reported this endpoint";
+    LOG(INFO) << "Ignoring discovered endpoint "
+              << nearby::utils::HexEncode(info.endpoint_info)
+              << " because we've already "
+                 "reported this endpoint";
     return;
   }
 
   discovery_listener_->OnEndpointDiscovered(endpoint_id, info.endpoint_info);
-  NL_LOG(INFO) << "Discovered " << nearby::utils::HexEncode(info.endpoint_info)
-               << " over Nearby Connections";
+  LOG(INFO) << "Discovered " << nearby::utils::HexEncode(info.endpoint_info)
+            << " over Nearby Connections";
 }
 
 void NearbyConnectionsManagerImpl::OnEndpointLost(
     absl::string_view endpoint_id) {
   MutexLock lock(&mutex_);
   if (!discovered_endpoints_.erase(endpoint_id)) {
-    NL_LOG(INFO) << "Ignoring lost endpoint " << endpoint_id
-                 << " because we haven't reported this endpoint";
+    LOG(INFO) << "Ignoring lost endpoint " << endpoint_id
+              << " because we haven't reported this endpoint";
     return;
   }
 
   if (!discovery_listener_) {
-    NL_LOG(INFO) << "Ignoring lost endpoint " << endpoint_id
-                 << " because we're no longer in discovery mode";
+    LOG(INFO) << "Ignoring lost endpoint " << endpoint_id
+              << " because we're no longer in discovery mode";
     return;
   }
 
   discovery_listener_->OnEndpointLost(endpoint_id);
-  NL_LOG(INFO) << "Endpoint " << endpoint_id << " lost over Nearby Connections";
+  LOG(INFO) << "Endpoint " << endpoint_id << " lost over Nearby Connections";
 }
 
 void NearbyConnectionsManagerImpl::OnConnectionInitiated(
@@ -658,30 +666,24 @@ void NearbyConnectionsManagerImpl::OnConnectionInitiated(
   MutexLock lock(&mutex_);
   [[maybe_unused]] auto result =
       connection_info_map_.emplace(endpoint_id, std::move(info));
-  NL_DCHECK(result.second);
+  DCHECK(result.second);
 
   NearbyConnectionsService::PayloadListener payload_listener;
 
   payload_listener.payload_cb = [this](absl::string_view endpoint_id,
-                                    Payload payload) {
+                                       Payload payload) {
     OnPayloadReceived(endpoint_id, payload);
   };
 
-  payload_listener.payload_progress_cb =
-      [this](absl::string_view endpoint_id,
-             const PayloadTransferUpdate& update) {
-        connections_callback_task_runner_->PostTask(
-            [this, endpoint_id = std::string(endpoint_id), update = update]() {
-              OnPayloadTransferUpdate(endpoint_id, update);
-            });
-      };
+  payload_listener.payload_progress_cb = absl::bind_front(
+      &NearbyConnectionsManagerImpl::OnPayloadTransferUpdate, this);
 
   nearby_connections_service_->AcceptConnection(
       kServiceId, endpoint_id, std::move(payload_listener),
       [endpoint_id = std::string(endpoint_id)](ConnectionsStatus status) {
-        NL_VLOG(1) << __func__ << ": Accept connection attempted to endpoint "
-                   << endpoint_id << " over Nearby Connections with result: "
-                   << ConnectionsStatusToString(status);
+        VLOG(1) << __func__ << ": Accept connection attempted to endpoint "
+                << endpoint_id << " over Nearby Connections with result: "
+                << ConnectionsStatusToString(status);
       });
 }
 
@@ -698,10 +700,10 @@ void NearbyConnectionsManagerImpl::OnConnectionAccepted(
       return;
     }
 
-    auto result = connections_.emplace(std::string(endpoint_id),
-                                       std::make_unique<NearbyConnectionImpl>(
-                                           device_info_, this, endpoint_id));
-    NL_DCHECK(result.second);
+    auto result = connections_.emplace(
+        std::string(endpoint_id),
+        std::make_unique<NearbyConnectionImpl>(device_info_));
+    DCHECK(result.second);
     incoming_connection_listener_->OnIncomingConnection(
         endpoint_id, it->second.endpoint_info, result.first->second.get());
   } else {
@@ -712,10 +714,10 @@ void NearbyConnectionsManagerImpl::OnConnectionAccepted(
     }
 
     auto result = connections_.emplace(
-        endpoint_id, std::make_unique<NearbyConnectionImpl>(device_info_, this,
-                                                            endpoint_id));
-    NL_DCHECK(result.second);
-    std::move(it->second)(result.first->second.get(), Status::kSuccess);
+        endpoint_id, std::make_unique<NearbyConnectionImpl>(device_info_));
+    DCHECK(result.second);
+    std::move(it->second)(endpoint_id, result.first->second.get(),
+                          Status::kSuccess);
     pending_outgoing_connections_.erase(it);
     connect_timeout_timers_.erase(endpoint_id);
   }
@@ -728,7 +730,7 @@ void NearbyConnectionsManagerImpl::OnConnectionRejected(
 
   auto it = pending_outgoing_connections_.find(endpoint_id);
   if (it != pending_outgoing_connections_.end()) {
-    std::move(it->second)(nullptr, status);
+    std::move(it->second)(endpoint_id, nullptr, status);
     pending_outgoing_connections_.erase(it);
     connect_timeout_timers_.erase(endpoint_id);
   }
@@ -752,7 +754,7 @@ void NearbyConnectionsManagerImpl::OnDisconnected(
 
   auto it = pending_outgoing_connections_.find(endpoint_id);
   if (it != pending_outgoing_connections_.end()) {
-    std::move(it->second)(nullptr, connection_layer_status);
+    std::move(it->second)(endpoint_id, nullptr, connection_layer_status);
     pending_outgoing_connections_.erase(it);
     connect_timeout_timers_.erase(endpoint_id);
   }
@@ -766,9 +768,9 @@ void NearbyConnectionsManagerImpl::OnDisconnected(
 void NearbyConnectionsManagerImpl::OnBandwidthChanged(
     absl::string_view endpoint_id, Medium medium) {
   MutexLock lock(&mutex_);
-  NL_VLOG(1) << __func__
-             << ": Bandwidth changed to medium=" << static_cast<int>(medium)
-             << "; endpoint_id=" << endpoint_id;
+  VLOG(1) << __func__
+          << ": Bandwidth changed to medium=" << static_cast<int>(medium)
+          << "; endpoint_id=" << endpoint_id;
 
   if (transfer_managers_.contains(endpoint_id)) {
     transfer_managers_[endpoint_id]->OnMediumQualityChanged(medium);
@@ -781,28 +783,50 @@ void NearbyConnectionsManagerImpl::OnBandwidthChanged(
 void NearbyConnectionsManagerImpl::OnPayloadReceived(
     absl::string_view endpoint_id, Payload& payload) {
   MutexLock lock(&mutex_);
-  NL_LOG(INFO) << "Received payload id=" << payload.id;
-  [[maybe_unused]] auto result =
+  LOG(INFO) << "Received payload id=" << payload.id;
+  if (NearbyFlags::GetInstance().GetBoolFlag(
+          sharing::config_package_nearby::nearby_sharing_feature::
+              kDeleteUnexpectedReceivedFileFix)) {
+    if (payload.content.type != PayloadContent::Type::kBytes &&
+        !payload_status_listeners_.contains(payload.id)) {
+      LOG(WARNING) << __func__ << ": Received unknown payload. Canceling.";
+      DeleteUnknownFilePayloadAndCancel(payload);
+      return;
+    }
+    if (!incoming_payloads_.contains(payload.id)) {
       incoming_payloads_.emplace(payload.id, std::move(payload));
-  NL_DCHECK(result.second);
+      return;
+    }
+    LOG(WARNING) << __func__ << ": Payload id already exists. Canceling.";
+    DeleteUnknownFilePayloadAndCancel(payload);
+  } else {
+    [[maybe_unused]] auto result =
+        incoming_payloads_.emplace(payload.id, std::move(payload));
+    DCHECK(result.second);
+  }
+}
+
+void NearbyConnectionsManagerImpl::DeleteUnknownFilePayloadAndCancel(
+    Payload& payload) {
+  if (payload.content.type == PayloadContent::Type::kFile) {
+    MutexLock lock(&mutex_);
+    file_paths_to_delete_.insert(payload.content.file_payload.file.path);
+  }
+  Cancel(payload.id);
 }
 
 void NearbyConnectionsManagerImpl::ProcessUnknownFilePathsToDelete(
     PayloadStatus status, PayloadContent::Type type,
     const std::filesystem::path& path) {
-  if (NearbyFlags::GetInstance().GetBoolFlag(
-          sharing::config_package_nearby::nearby_sharing_feature::
-              kDeleteUnexpectedReceivedFile)) {
-    // Unknown payload comes as kInProgress and kCanceled status with kFile type
-    // from NearbyConnections. Delete it.
-    if ((status == PayloadStatus::kCanceled ||
-         status == PayloadStatus::kInProgress) &&
-        type == PayloadContent::Type::kFile) {
-      NL_LOG(WARNING) << __func__
-                      << ": Unknown payload has been canceled, removing.";
-      MutexLock lock(&mutex_);
-      file_paths_to_delete_.insert(path);
-    }
+  // Unknown payload comes as kInProgress and kCanceled status with kFile type
+  // from NearbyConnections. Delete it.
+  if ((status == PayloadStatus::kCanceled ||
+       status == PayloadStatus::kInProgress) &&
+      type == PayloadContent::Type::kFile) {
+    LOG(WARNING) << __func__
+                 << ": Unknown payload has been canceled, removing.";
+    MutexLock lock(&mutex_);
+    file_paths_to_delete_.insert(path);
   }
 }
 
@@ -834,10 +858,10 @@ void NearbyConnectionsManagerImpl::RemoveStatusListenerForPayloadId(
 
 void NearbyConnectionsManagerImpl::OnPayloadTransferUpdate(
     absl::string_view endpoint_id, const PayloadTransferUpdate& update) {
-  NL_LOG(INFO) << "Received payload transfer update id=" << update.payload_id
-               << ",status=" << PayloadStatusToString(update.status)
-               << ",total=" << update.total_bytes
-               << ",bytes_transferred=" << update.bytes_transferred;
+  LOG(INFO) << "Received payload transfer update id=" << update.payload_id
+            << ",status=" << PayloadStatusToString(update.status)
+            << ",total=" << update.total_bytes
+            << ",bytes_transferred=" << update.bytes_transferred;
 
   // If this is a payload we've registered for, then forward its status to
   // the PayloadStatusListener if it still exists. We don't need to do
@@ -859,8 +883,7 @@ void NearbyConnectionsManagerImpl::OnPayloadTransferUpdate(
     // with another payload in the same transfer.
     if (auto status_listener = listener->lock()) {
       status_listener->OnStatusUpdate(
-          std::make_unique<PayloadTransferUpdate>(update),
-          GetUpgradedMedium(endpoint_id));
+          std::make_unique<PayloadTransferUpdate>(update));
     }
     return;
   }
@@ -871,13 +894,17 @@ void NearbyConnectionsManagerImpl::OnPayloadTransferUpdate(
   auto payload = GetIncomingPayload(update.payload_id);
   if (payload == nullptr) return;
 
-  if (payload->content.type != PayloadContent::Type::kBytes) {
-    NL_LOG(WARNING) << "Received unknown payload of file type. Cancelling.";
-    nearby_connections_service_->CancelPayload(kServiceId, payload->id,
-                                               [](Status status) {});
-    ProcessUnknownFilePathsToDelete(update.status, payload->content.type,
-                                    payload->content.file_payload.file.path);
-    return;
+  if (!NearbyFlags::GetInstance().GetBoolFlag(
+          sharing::config_package_nearby::nearby_sharing_feature::
+              kDeleteUnexpectedReceivedFileFix)) {
+    if (payload->content.type != PayloadContent::Type::kBytes) {
+      LOG(WARNING) << "Received unknown payload of file type. Cancelling.";
+      nearby_connections_service_->CancelPayload(kServiceId, payload->id,
+                                                 [](Status status) {});
+      ProcessUnknownFilePathsToDelete(update.status, payload->content.type,
+                                      payload->content.file_payload.file.path);
+      return;
+    }
   }
 
   if (update.status != PayloadStatus::kSuccess) return;
@@ -885,17 +912,17 @@ void NearbyConnectionsManagerImpl::OnPayloadTransferUpdate(
   NearbyConnectionImpl* connection = GetConnectionForId(endpoint_id);
   if (connection == nullptr) return;
 
-  NL_LOG(INFO) << "Writing incoming byte message to NearbyConnection.";
+  LOG(INFO) << "Writing incoming byte message to NearbyConnection.";
   connection->WriteMessage(payload->content.bytes_payload.bytes);
 }
 
 void NearbyConnectionsManagerImpl::Reset() {
   MutexLock lock(&mutex_);
   nearby_connections_service_->StopAllEndpoints([](ConnectionsStatus status) {
-    NL_VLOG(1) << __func__
-               << ": Stop all endpoints attempted over Nearby "
-                  "Connections with result: "
-               << ConnectionsStatusToString(status);
+    VLOG(1) << __func__
+            << ": Stop all endpoints attempted over Nearby "
+               "Connections with result: "
+            << ConnectionsStatusToString(status);
   });
 
   discovered_endpoints_.clear();
@@ -915,7 +942,8 @@ void NearbyConnectionsManagerImpl::Reset() {
   transfer_managers_.clear();
 
   for (auto& entry : pending_outgoing_connections_)
-    std::move(entry.second)(/*connection=*/nullptr, Status::kReset);
+    std::move(entry.second)(entry.first, /*connection=*/nullptr,
+                            Status::kReset);
 
   pending_outgoing_connections_.clear();
 }
@@ -934,10 +962,10 @@ void NearbyConnectionsManagerImpl::SetCustomSavePath(
   MutexLock lock(&mutex_);
   nearby_connections_service_->SetCustomSavePath(
       custom_save_path, [&](Status status) {
-        NL_VLOG(1) << __func__
-                   << ": SetCustomSavePath attempted over Nearby "
-                      "Connections with result: "
-                   << static_cast<int>(status);
+        VLOG(1) << __func__
+                << ": SetCustomSavePath attempted over Nearby "
+                   "Connections with result: "
+                << static_cast<int>(status);
       });
 }
 
@@ -977,9 +1005,13 @@ void NearbyConnectionsManagerImpl::OnPayloadTransferUpdateForTesting(
   OnPayloadTransferUpdate(endpoint_id, update);
 }
 
+void NearbyConnectionsManagerImpl::OnPayloadReceivedForTesting(
+    absl::string_view endpoint_id, Payload& payload) {
+  OnPayloadReceived(endpoint_id, payload);
+}
+
 std::string NearbyConnectionsManagerImpl::Dump() const {
   return nearby_connections_service_->Dump();
 }
 
-}  // namespace sharing
-}  // namespace nearby
+}  // namespace nearby::sharing

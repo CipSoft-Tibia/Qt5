@@ -4,27 +4,46 @@
 
 #include "ui/native_theme/native_theme_features.h"
 
+#include "base/feature_list.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 
 namespace features {
 
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS_ASH) ||    \
-    BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_CHROMEOS_LACROS) || \
-    BUILDFLAG(IS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || \
+    BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_IOS)
 constexpr base::FeatureState kOverlayScrollbarFeatureState =
     base::FEATURE_ENABLED_BY_DEFAULT;
 #else
 constexpr base::FeatureState kOverlayScrollbarFeatureState =
     base::FEATURE_DISABLED_BY_DEFAULT;
 #endif
-
 // Enables or disables overlay scrollbars in Blink (i.e. web content) on Aura
 // or Linux.  The status of native UI overlay scrollbars is determined in
 // PlatformStyle::CreateScrollBar. Does nothing on Mac.
 BASE_FEATURE(kOverlayScrollbar,
              "OverlayScrollbar",
              kOverlayScrollbarFeatureState);
+
+// Disable to keep scrollbars visible forever once shown, and immediately
+// update scrollbar states instead of animating. This is used to ensure
+// ref tests in WPT do not flake based on the time taken before the
+// screenshot is captured.
+BASE_FEATURE(kScrollbarAnimations,
+             "ScrollbarAnimations",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enables the os settings of overlay scrollbars for ChromeOS.
+// TODO(crbug.com/392961914): Deprecate the overlay scrollbar related feature
+// flags in M135: `kOverlayScrollbarsOSSetting` and `kOverlayScrollbar`.
+#if BUILDFLAG(IS_CHROMEOS)
+BASE_FEATURE(kOverlayScrollbarsOSSetting,
+             "OverlayScrollbarsOSSetting",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+bool IsOverlayScrollbarOSSettingEnabled() {
+  return base::FeatureList::IsEnabled(features::kOverlayScrollbarsOSSetting);
+}
+#endif
 
 // Fluent scrollbars aim to modernize the Chromium scrollbars (both overlay and
 // non-overlay) to fit the Fluent design language. For now, the feature will
@@ -43,13 +62,22 @@ BASE_FEATURE(kFluentOverlayScrollbar,
              "FluentOverlayScrollbar",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Enables modifying CSS `scrollbar-color` foreground elements colors on hover
+// or press. This feature flag is meant to be used as a killswitch.
+BASE_FEATURE(kModifyScrollbarCssColorOnHoverOrPress,
+             "ModifyScrollbarCssColorOnHoverOrPress",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 }  // namespace features
 
 namespace ui {
 
-bool IsOverlayScrollbarEnabled() {
-  return base::FeatureList::IsEnabled(features::kOverlayScrollbar) ||
-         IsFluentOverlayScrollbarEnabled();
+bool IsFluentOverlayScrollbarEnabled() {
+// Fluent scrollbars are only used for some OSes due to UI design guidelines.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+  return base::FeatureList::IsEnabled(features::kFluentOverlayScrollbar);
+#else
+  return false;
+#endif
 }
 
 bool IsFluentScrollbarEnabled() {
@@ -61,13 +89,15 @@ bool IsFluentScrollbarEnabled() {
   return false;
 #endif
 }
-bool IsFluentOverlayScrollbarEnabled() {
-// Fluent scrollbars are only used for some OSes due to UI design guidelines.
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
-  return base::FeatureList::IsEnabled(features::kFluentOverlayScrollbar);
-#else
-  return false;
-#endif
+
+bool IsOverlayScrollbarEnabledByFeatureFlag() {
+  return base::FeatureList::IsEnabled(features::kOverlayScrollbar) ||
+         IsFluentOverlayScrollbarEnabled();
+}
+
+bool IsModifyScrollbarCssColorOnHoverOrPressEnabled() {
+  return base::FeatureList::IsEnabled(
+      features::kModifyScrollbarCssColorOnHoverOrPress);
 }
 
 }  // namespace ui

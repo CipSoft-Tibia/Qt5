@@ -12,6 +12,7 @@
     Quick primitives, and keeps animations and transitions to the minimum.
 
     \image qtquickcontrols-basic.png
+           {Gallery of controls in Basic style}
 
     The style is selected by default when running Qt Quick Controls applications.
     It is built into the module's resources, so by default it is shipped with

@@ -180,13 +180,13 @@ QString QNativeModifierEvent::toString() const
 
 QDebug operator<<(QDebug d, QNativeEvent *e)
 {
-    Q_UNUSED(e);
-    return d << e->toString();
+    if (e)
+        return d << e->toString();
+    return d << "QNativeEvent(0x0)";
 }
 
 QDebug operator<<(QDebug d, const QNativeEvent &e)
 {
-    Q_UNUSED(e);
     return d << e.toString();
 }
 

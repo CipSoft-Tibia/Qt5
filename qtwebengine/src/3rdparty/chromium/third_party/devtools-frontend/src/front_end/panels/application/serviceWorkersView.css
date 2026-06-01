@@ -107,9 +107,7 @@
 }
 
 .report-field-value-filename {
-  /* hack to prevent focus-ring from being cut off on the left */
-  padding-left: 2px;
-  margin-left: -2px;
+  display: contents;
 }
 
 .report-field-value-subtitle {
@@ -140,11 +138,6 @@
 .service-workers-this-origin {
   flex-shrink: 0;
   flex-grow: 0;
-}
-
-.service-workers-this-origin,
-.service-workers-other-origin {
-  min-width: max-content;
 }
 
 .service-worker-has-current .service-workers-other-origin {

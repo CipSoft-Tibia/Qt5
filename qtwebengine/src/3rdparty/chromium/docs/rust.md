@@ -19,8 +19,11 @@ The Rust toolchain is enabled for and supports all platforms and development
 environments that are supported by the Chromium project. The first milestone
 to include full production-ready support was M119.
 
-Rust is approved by Chrome ATLs for production use in
-[certain third-party scenarios](../docs/adding_to_third_party.md#Rust).
+Rust can be used anywhere in the Chromium repository (not just `//third_party`)
+subject to [current interop capabilities][interop-rust-doc], however it is
+currently subject to a internal approval and FYI process. Googlers can view
+go/chrome-rust for details. New usages of Rust are documented at
+[`rust-fyi@chromium.org`](https://groups.google.com/a/chromium.org/g/rust-fyi).
 
 For questions or help, reach out to `rust-dev@chromium.org` or `#rust` on the
 [Chromium Slack](https://www.chromium.org/developers/slack/).
@@ -240,11 +243,39 @@ file, rooted in the `gen` output directory, use
 #include "the/path/to/the/rust/file.rs.h"
 ```
 
-# Debugging hints
+# Logging
 
-There are not yet Rust wrappers for Chromium's base logging APIs. We recommend
-use of Rust's standard [`eprintln`](https://doc.rust-lang.org/std/macro.eprintln.html)
-and [`dbg`](https://doc.rust-lang.org/std/macro.dbg.html) macros.
+Use the [log](https://docs.rs/log) crate's macros in place of base `LOG`
+macros from C++. They do the same things. The `debug!` macro maps to
+`DLOG(INFO)`, the `info!` macro maps to `LOG(INFO)`, and `warn!` and `error!`
+map to `LOG(WARNING)` and `LOG(ERROR)` respectively. The additional `trace!`
+macro maps to `DLOG(INFO)` (but there is [WIP to map it to `DVLOG(INFO)`](
+https://chromium-review.googlesource.com/c/chromium/src/+/5996820)).
+
+Note that the standard library also includes a helpful
+[`dbg!`](https://doc.rust-lang.org/std/macro.dbg.html) macro which writes
+everything about a variable to `stderr`.
+
+Logging may not yet work in component builds:
+[crbug.com/374023535](https://crbug.com/374023535).
+
+# Tracing
+
+TODO: [crbug.com/377915495](https://crbug.com/377915495).
+
+# Strings
+
+Prefer to use [`BString`](https://docs.rs/bstr/latest/bstr/struct.BString.html)
+and [`BStr`](https://docs.rs/bstr/latest/bstr/struct.BStr.html) to work with
+strings in first-party code instead of `std::String` and `str`. These types do
+not require the strings to be valid UTF-8, and avoid error handling or panic
+crashes when working with strings from C++ and/or from the web. Because the
+web is not UTF-8 encoded, many strings in Chromium are also not.
+
+In cross-language bindings, `&[u8]` can be used to represent a string until
+native support for `BStr` is available in our interop tooling. A `u8` slice
+can be converted to `BStr` or treated as a string with
+[`ByteSlice`](https://docs.rs/bstr/latest/bstr/trait.ByteSlice.html).
 
 # Using VSCode
 
@@ -306,3 +337,5 @@ but you can still add dependencies manually to your `Cargo.toml`:
 [dependencies]
 log = "0.4"
 ```
+
+[interop-rust-doc]: https://docs.google.com/document/d/1kvgaVMB_isELyDQ4nbMJYWrqrmL3UZI4tDxnyxy9RTE/edit?tab=t.0#heading=h.fpqr6hf3c3j0

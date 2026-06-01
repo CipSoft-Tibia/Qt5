@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKPOPUP_P_P_H
 #define QQUICKPOPUP_P_P_H
@@ -120,7 +121,8 @@ public:
 
     virtual void opened();
 
-    virtual Qt::WindowFlags popupWindowType() const;
+    Qt::WindowFlags popupWindowFlags() const;
+    void setPopupWindowFlags(Qt::WindowFlags flags);
 
     QMarginsF getMargins() const;
 
@@ -173,7 +175,7 @@ public:
     bool inDestructor = false;
     bool relaxEdgeConstraint = false;
     bool popupWindowDirty = false;
-    bool savedLastActiveFocusItem = false;
+    QPointer<QQuickItem> lastActiveFocusItem;
     int touchId = -1;
     qreal x = 0;
     qreal y = 0;
@@ -203,6 +205,8 @@ public:
     qreal prevScale = 0;
     QString title;
     QQuickPopup::PopupType popupType = QQuickPopup::Item;
+    Qt::WindowModality popupWndModality = Qt::NonModal;
+    Qt::WindowFlags windowFlags = Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
 
     friend class QQuickPopupTransitionManager;
 };

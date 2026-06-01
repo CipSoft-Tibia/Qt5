@@ -224,7 +224,7 @@ void LayoutBlock::AddChildBeforeDescendant(LayoutObject* new_child,
     // that is not inline level, although IsInline() is true.
     if ((new_child->IsInline() && !new_child->IsLayoutOutsideListMarker()) ||
         (new_child->IsFloatingOrOutOfFlowPositioned() &&
-         (StyleRef().IsDeprecatedFlexboxUsingFlexLayout() ||
+         (StyleRef().IsDeprecatedFlexbox() ||
           (!IsFlexibleBox() && !IsLayoutGrid()))) ||
         before_descendant->Parent()->SlowFirstChild() != before_descendant) {
       before_descendant_container->AddChild(new_child, before_descendant);
@@ -266,10 +266,9 @@ void LayoutBlock::AddChild(LayoutObject* new_child,
   // here.
   DCHECK(!ChildrenInline());
 
-  if (new_child->IsInline() ||
-      (new_child->IsFloatingOrOutOfFlowPositioned() &&
-       (StyleRef().IsDeprecatedFlexboxUsingFlexLayout() ||
-        (!IsFlexibleBox() && !IsLayoutGrid())))) {
+  if (new_child->IsInline() || (new_child->IsFloatingOrOutOfFlowPositioned() &&
+                                (StyleRef().IsDeprecatedFlexbox() ||
+                                 (!IsFlexibleBox() && !IsLayoutGrid())))) {
     // If we're inserting an inline child but all of our children are blocks,
     // then we have to make sure it is put into an anomyous block box. We try to
     // use an existing anonymous box if possible, otherwise a new one is created
@@ -587,6 +586,8 @@ bool LayoutBlock::HasLineIfEmpty() const {
   return FirstLineStyleRef().HasLineIfEmpty();
 }
 
+// This function should return the distance from the block-start, not from
+// the line-over.
 std::optional<LayoutUnit> LayoutBlock::BaselineForEmptyLine() const {
   NOT_DESTROYED();
   const ComputedStyle* style = FirstLineStyle();
@@ -596,6 +597,15 @@ std::optional<LayoutUnit> LayoutBlock::BaselineForEmptyLine() const {
   const auto& font_metrics = font_data->GetFontMetrics();
   const auto baseline_type = style->GetFontBaseline();
   const LayoutUnit line_height = FirstLineHeight();
+  if (RuntimeEnabledFeatures::SidewaysWritingModesEnabled()) {
+    int ascent_or_descent = IsFlippedLinesWritingMode(style->GetWritingMode())
+                                ? font_metrics.Descent(baseline_type)
+                                : font_metrics.Ascent(baseline_type);
+    return LayoutUnit((ascent_or_descent +
+                       (line_height - font_metrics.Height()) / 2 +
+                       BorderAndPaddingBlockStart())
+                          .ToInt());
+  }
   const LayoutUnit border_padding = style->IsHorizontalWritingMode()
                                         ? BorderTop() + PaddingTop()
                                         : BorderRight() + PaddingRight();
@@ -659,14 +669,12 @@ inline bool LayoutBlock::IsInlineBoxWrapperActuallyChild() const {
          GetNode() && EditingIgnoresContent(*GetNode());
 }
 
-PhysicalRect LayoutBlock::LocalCaretRect(
-    int caret_offset,
-    LayoutUnit* extra_width_to_end_of_line) const {
+PhysicalRect LayoutBlock::LocalCaretRect(int caret_offset) const {
   NOT_DESTROYED();
   // Do the normal calculation in most cases.
   if ((FirstChild() && !FirstChild()->IsPseudoElement()) ||
       IsInlineBoxWrapperActuallyChild()) {
-    return LayoutBox::LocalCaretRect(caret_offset, extra_width_to_end_of_line);
+    return LayoutBox::LocalCaretRect(caret_offset);
   }
 
   const ComputedStyle& style = StyleRef();
@@ -675,9 +683,6 @@ PhysicalRect LayoutBlock::LocalCaretRect(
   LayoutUnit inline_size = is_horizontal ? Size().width : Size().height;
   LogicalRect caret_rect =
       LocalCaretRectForEmptyElement(inline_size, TextIndentOffset());
-  if (extra_width_to_end_of_line) {
-    *extra_width_to_end_of_line = inline_size - caret_rect.InlineEndOffset();
-  }
   return CreateWritingModeConverter().ToPhysical(caret_rect);
 }
 
@@ -717,8 +722,7 @@ LayoutBox* LayoutBlock::CreateAnonymousBoxWithSameTypeAs(
 
 const char* LayoutBlock::GetName() const {
   NOT_DESTROYED();
-  NOTREACHED_IN_MIGRATION();
-  return "LayoutBlock";
+  NOTREACHED();
 }
 
 LayoutBlock* LayoutBlock::CreateAnonymousWithParentAndDisplay(

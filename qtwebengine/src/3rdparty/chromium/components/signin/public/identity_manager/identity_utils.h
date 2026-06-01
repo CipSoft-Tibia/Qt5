@@ -9,11 +9,12 @@
 
 #include "base/containers/flat_set.h"
 
+class GaiaId;
 class PrefService;
 
 namespace signin {
 
-struct AccountsInCookieJarInfo;
+class AccountsInCookieJarInfo;
 class IdentityManager;
 
 // Returns true if the username is allowed based on a pattern registered
@@ -47,8 +48,8 @@ bool AreGoogleCookiesRebuiltAfterClearingWhenSignedIn(IdentityManager& manager,
 // rebuilt immediately, and in that case it is very important to not clear the
 // preferences.
 // `identity_manager` may be nullptr.
-// `accounts_in_cookie_jar_info.accounts_are_fresh` must be true.
-base::flat_set<std::string> GetAllGaiaIdsForKeyedPreferences(
+// `accounts_in_cookie_jar_info.AreAccountsFresh()` must be true.
+base::flat_set<GaiaId> GetAllGaiaIdsForKeyedPreferences(
     const IdentityManager* identity_manager,
     const AccountsInCookieJarInfo& accounts_in_cookie_jar_info);
 

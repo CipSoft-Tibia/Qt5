@@ -10,12 +10,11 @@
 #include "content_settings_observer_qt.h"
 
 #include "content/public/renderer/render_frame.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "url/origin.h"
-
-#include "common/qt_messages.h"
 
 namespace {
 
@@ -29,6 +28,28 @@ bool IsUniqueFrame(blink::WebFrame *frame)
 
 namespace QtWebEngineCore {
 
+using ContentSettingsManager = content_settings::mojom::ContentSettingsManager;
+ContentSettingsManager::StorageType ConvertToMojoStorageType(
+        ContentSettingsObserverQt::StorageType storage_type)
+{
+    switch (storage_type) {
+    case ContentSettingsObserverQt::StorageType::kDatabase:
+        return ContentSettingsManager::StorageType::DATABASE;
+    case ContentSettingsObserverQt::StorageType::kIndexedDB:
+        return ContentSettingsManager::StorageType::INDEXED_DB;
+    case ContentSettingsObserverQt::StorageType::kCacheStorage:
+        return ContentSettingsManager::StorageType::CACHE;
+    case ContentSettingsObserverQt::StorageType::kWebLocks:
+        return ContentSettingsManager::StorageType::WEB_LOCKS;
+    case ContentSettingsObserverQt::StorageType::kFileSystem:
+        return ContentSettingsManager::StorageType::FILE_SYSTEM;
+    case ContentSettingsObserverQt::StorageType::kLocalStorage:
+        return ContentSettingsManager::StorageType::LOCAL_STORAGE;
+    case ContentSettingsObserverQt::StorageType::kSessionStorage:
+        return ContentSettingsManager::StorageType::SESSION_STORAGE;
+    }
+}
+
 ContentSettingsObserverQt::ContentSettingsObserverQt(content::RenderFrame *render_frame)
     : content::RenderFrameObserver(render_frame)
     , content::RenderFrameObserverTracker<ContentSettingsObserverQt>(render_frame)
@@ -39,19 +60,6 @@ ContentSettingsObserverQt::ContentSettingsObserverQt(content::RenderFrame *rende
 }
 
 ContentSettingsObserverQt::~ContentSettingsObserverQt() {}
-
-#if BUILDFLAG(CONTENT_ENABLE_LEGACY_IPC)
-bool ContentSettingsObserverQt::OnMessageReceived(const IPC::Message &message)
-{
-    bool handled = true;
-    IPC_BEGIN_MESSAGE_MAP(ContentSettingsObserverQt, message)
-        IPC_MESSAGE_HANDLER(QtWebEngineMsg_RequestStorageAccessAsyncResponse, OnRequestStorageAccessAsyncResponse)
-        IPC_MESSAGE_UNHANDLED(handled = false)
-    IPC_END_MESSAGE_MAP()
-
-    return handled;
-}
-#endif
 
 void ContentSettingsObserverQt::DidCommitProvisionalLoad(ui::PageTransition /*transition*/)
 {
@@ -75,23 +83,21 @@ void ContentSettingsObserverQt::OnDestruct()
 void ContentSettingsObserverQt::AllowStorageAccess(StorageType storage_type,
                                                    base::OnceCallback<void(bool)> callback)
 {
-    blink::WebFrame *frame = render_frame()->GetWebFrame();
+    blink::WebLocalFrame *frame = render_frame()->GetWebFrame();
     if (IsUniqueFrame(frame)) {
         std::move(callback).Run(false);
         return;
     }
 
-    ++m_currentRequestId;
-    bool inserted = m_permissionRequests.insert(std::make_pair(m_currentRequestId, std::move(callback))).second;
+    base::OnceCallback<void(bool)> allowStorageCallBack =
+            base::BindOnce([](base::OnceCallback<void(bool)> original_cb,
+                              bool result) { std::move(original_cb).Run(result); },
+                           std::move(callback));
 
-    // Verify there are no duplicate insertions.
-    DCHECK(inserted);
-#if BUILDFLAG(CONTENT_ENABLE_LEGACY_IPC)
-    Send(new QtWebEngineHostMsg_RequestStorageAccessAsync(routing_id(), m_currentRequestId,
-                                                          url::Origin(frame->GetSecurityOrigin()).GetURL(),
-                                                          url::Origin(frame->Top()->GetSecurityOrigin()).GetURL(),
-                                                          int(storage_type)));
-#endif
+    GetContentSettingsManager()->AllowStorageAccess(
+            frame->GetLocalFrameToken(), ConvertToMojoStorageType(storage_type),
+            frame->GetSecurityOrigin(), frame->GetDocument().SiteForCookies(),
+            frame->GetDocument().TopFrameOrigin(), std::move(allowStorageCallBack));
 }
 
 bool ContentSettingsObserverQt::AllowStorageAccessSync(StorageType storage_type)
@@ -109,26 +115,22 @@ bool ContentSettingsObserverQt::AllowStorageAccessSync(StorageType storage_type)
     }
 
     bool result = false;
-#if BUILDFLAG(CONTENT_ENABLE_LEGACY_IPC)
-    Send(new QtWebEngineHostMsg_AllowStorageAccess(routing_id(), url::Origin(frame->GetSecurityOrigin()).GetURL(),
-                                                   url::Origin(frame->Top()->GetSecurityOrigin()).GetURL(),
-                                                   int(storage_type), &result));
-#endif
+    GetContentSettingsManager()->AllowStorageAccess(
+            frame->GetLocalFrameToken(), ConvertToMojoStorageType(storage_type),
+            frame->GetSecurityOrigin(), frame->GetDocument().SiteForCookies(),
+            frame->GetDocument().TopFrameOrigin(), &result);
     if (sameOrigin)
         m_cachedStoragePermissions[key] = result;
     return result;
 }
 
-void ContentSettingsObserverQt::OnRequestStorageAccessAsyncResponse(int request_id, bool allowed)
+mojo::Remote<ContentSettingsManager> &ContentSettingsObserverQt::GetContentSettingsManager()
 {
-    auto it = m_permissionRequests.find(request_id);
-    if (it == m_permissionRequests.end())
-        return;
-
-    base::OnceCallback<void(bool)> callback = std::move(it->second);
-    m_permissionRequests.erase(it);
-
-    std::move(callback).Run(allowed);
+    if (!m_contentSettingsManager) {
+        render_frame()->GetBrowserInterfaceBroker().GetInterface(
+                m_contentSettingsManager.BindNewPipeAndPassReceiver());
+    }
+    return m_contentSettingsManager;
 }
 
 void ContentSettingsObserverQt::ClearBlockedContentSettings()

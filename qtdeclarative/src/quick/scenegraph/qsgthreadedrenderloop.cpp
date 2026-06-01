@@ -1174,7 +1174,7 @@ void QSGThreadedRenderLoop::hide(QQuickWindow *window)
 
 void QSGThreadedRenderLoop::resize(QQuickWindow *window)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) << "reisze()" << window;
+    qCDebug(QSG_LOG_RENDERLOOP) << "resize()" << window;
 
     Window *w = windowFor(window);
     if (!w)
@@ -1661,8 +1661,14 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_polishItems_exit);
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                               QQuickProfiler::SceneGraphPolishAndSyncPolish);
-    Q_TRACE(QSG_wait_entry);
 
+    w = windowFor(window);
+    if (!w || !w->thread || !w->thread->window) {
+        qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
+        return;
+    }
+
+    Q_TRACE(QSG_wait_entry);
     w->updateDuringSync = false;
 
     emit window->afterAnimating();

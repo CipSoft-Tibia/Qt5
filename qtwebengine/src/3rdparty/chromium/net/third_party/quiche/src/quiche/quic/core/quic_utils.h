@@ -183,7 +183,8 @@ class QUICHE_EXPORT QuicUtils {
 
   // Returns true if the connection ID is valid for this QUIC version.
   static bool IsConnectionIdValidForVersion(
-      QuicConnectionId connection_id, QuicTransportVersion transport_version);
+      const QuicConnectionId& connection_id,
+      QuicTransportVersion transport_version);
 
   // Returns a connection ID suitable for QUIC use-cases that do not need the
   // connection ID for multiplexing. If the version allows variable lengths,
@@ -192,7 +193,7 @@ class QUICHE_EXPORT QuicUtils {
 
   // Generates a 128bit stateless reset token based on a connection ID.
   static StatelessResetToken GenerateStatelessResetToken(
-      QuicConnectionId connection_id);
+      const QuicConnectionId& connection_id);
 
   // Determines packet number space from |encryption_level|.
   static PacketNumberSpace GetPacketNumberSpace(
@@ -225,6 +226,15 @@ bool IsValidWebTransportSessionId(WebTransportSessionId id,
                                   ParsedQuicVersion transport_version);
 
 QuicByteCount MemSliceSpanTotalSize(absl::Span<quiche::QuicheMemSlice> span);
+
+// Returns the part of the path after the final "/".  If there is no "/" in the
+// path, the result is the same as the input.
+// Note that this function's behavior differs from the POSIX standard basename
+// function if path ends with "/". For such paths, this function returns the
+// empty string.
+// This function returns path as-is, if it's windows path with backslash
+// separators.
+QUICHE_EXPORT absl::string_view PosixBasename(absl::string_view path);
 
 // Computes a SHA-256 hash and returns the raw bytes of the hash.
 QUICHE_EXPORT std::string RawSha256(absl::string_view input);

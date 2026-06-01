@@ -5,8 +5,6 @@
 #include "qqmldomlinewriter_p.h"
 #include "qqmldomitem_p.h"
 #include "qqmldomcomments_p.h"
-#include "qqmldomexternalitems_p.h"
-#include "qqmldomtop_p.h"
 
 #include <QtCore/QLoggingCategory>
 
@@ -14,81 +12,44 @@ QT_BEGIN_NAMESPACE
 namespace QQmlJS {
 namespace Dom {
 
-OutWriterState::OutWriterState(
-        const Path &itCanonicalPath, const DomItem &it, const FileLocations::Tree &fLoc)
-    : itemCanonicalPath(itCanonicalPath), item(it), currentMap(fLoc)
+static inline OutWriter::RegionToCommentMap extractComments(const DomItem &it)
 {
-    DomItem cRegions = it.field(Fields::comments);
-    if (const RegionComments *cRegionsPtr = cRegions.as<RegionComments>())
-        pendingComments = cRegionsPtr->regionComments();
-}
-
-void OutWriterState::closeState(OutWriter &w)
-{
-    if (!pendingRegions.isEmpty()) {
-        qCWarning(writeOutLog) << "PendingRegions non empty when closing item"
-                               << pendingRegions.keys();
-        auto iend = pendingRegions.end();
-        auto it = pendingRegions.begin();
-        while (it == iend) {
-            w.lineWriter.endSourceLocation(it.value());
-            ++it;
-        }
+    OutWriter::RegionToCommentMap comments;
+    if (const RegionComments *cRegionsPtr = it.field(Fields::comments).as<RegionComments>()) {
+        comments = cRegionsPtr->regionComments();
     }
-    if (!w.skipComments && !pendingComments.isEmpty())
-        qCWarning(writeOutLog) << "PendingComments when closing item "
-                               << item.canonicalPath().toString() << "for regions"
-                               << pendingComments.keys();
-}
-
-OutWriterState &OutWriter::state(int i)
-{
-    return states[states.size() - 1 - i];
+    return comments;
 }
 
 void OutWriter::itemStart(const DomItem &it)
 {
-    if (!topLocation->path())
-        topLocation->setPath(it.canonicalPath());
-    FileLocations::Tree newFLoc = topLocation;
-    Path itP = it.canonicalPath();
-
-    states.append(OutWriterState(itP, it, newFLoc));
-
+    pendingComments.push(extractComments(it));
     regionStart(MainRegion);
 }
 
-void OutWriter::itemEnd(const DomItem &it)
+void OutWriter::itemEnd()
 {
-    Q_ASSERT(states.size() > 0);
-    Q_ASSERT(state().item == it);
+    Q_ASSERT(!pendingComments.isEmpty());
     regionEnd(MainRegion);
-    state().closeState(*this);
-    states.removeLast();
+    pendingComments.pop();
 }
 
 void OutWriter::regionStart(FileLocationRegion region)
 {
-    Q_ASSERT(!state().pendingRegions.contains(region));
-    FileLocations::Tree fMap = state().currentMap;
-    if (!skipComments && state().pendingComments.contains(region)) {
-        state().pendingComments[region].writePre(*this, nullptr);
+    const auto &comments = pendingComments.top();
+    if (!skipComments && comments.contains(region)) {
+        comments[region].writePre(*this);
     }
-    state().pendingRegions[region] = lineWriter.startSourceLocation(
-            [region, fMap](SourceLocation l) { FileLocations::addRegion(fMap, region, l); });
 }
 
 void OutWriter::regionEnd(FileLocationRegion region)
 {
-    Q_ASSERT(state().pendingRegions.contains(region));
-    FileLocations::Tree fMap = state().currentMap;
-    lineWriter.endSourceLocation(state().pendingRegions.value(region));
-    state().pendingRegions.remove(region);
-    if (state().pendingComments.contains(region)) {
+    auto &comments = pendingComments.top();
+    if (comments.contains(region)) {
         if (!skipComments) {
-            state().pendingComments[region].writePost(*this, nullptr);
+            comments[region].writePost(*this);
         }
-        state().pendingComments.remove(region);
+        comments.remove(region);
     }
 }
 
@@ -100,6 +61,7 @@ Helper method for writeRegion(FileLocationRegion region) that allows to use
 */
 OutWriter &OutWriter::writeRegion(FileLocationRegion region)
 {
+    using namespace Qt::Literals::StringLiterals;
     QString codeForRegion;
     switch (region) {
     case ComponentKeywordRegion:
@@ -241,6 +203,9 @@ OutWriter &OutWriter::writeRegion(FileLocationRegion region)
     case LeftBacktickTokenRegion:
     case RightBacktickTokenRegion:
         codeForRegion = u"`"_s;
+        break;
+    case FinalKeywordRegion:
+        codeForRegion = u"final"_s;
         break;
     // not keywords:
     case ImportUriRegion:

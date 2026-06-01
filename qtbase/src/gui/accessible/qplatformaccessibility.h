@@ -19,6 +19,8 @@
 #include <QtCore/qobject.h>
 #include <QtGui/qaccessible.h>
 
+#include <optional>
+
 QT_BEGIN_NAMESPACE
 
 
@@ -35,9 +37,11 @@ public:
 
     inline bool isActive() const { return m_active; }
     void setActive(bool active);
+    void clearActiveNotificationState();
 
 private:
-    bool m_active;
+    bool m_active = false;
+    std::optional<bool> m_activeNotificationState = std::nullopt;
 };
 
 QT_END_NAMESPACE

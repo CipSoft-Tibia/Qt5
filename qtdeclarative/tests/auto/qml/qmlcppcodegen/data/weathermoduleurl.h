@@ -56,11 +56,24 @@ class WeatherModelUrlDerived : public WeatherModelUrl
     QML_VALUE_TYPE(weatherModelUrlDerived)
 };
 
+class WeatherModelUrlExtended : public QObject
+{
+    Q_OBJECT
+public:
+    WeatherModelUrlExtended(QObject *parent = nullptr) : QObject(parent) {}
+};
+
 class WeatherModelUrlUtils : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
+
+    // Hack: Add an extension to mark the singleton as not shadowable
+    // TODO: Remove this when we either can assign QVariant to WeatherModuleUrl or
+    //       when we can mark the url() method as final or when moc can recognize
+    //       a whole class as final and we can draw conclusions from that.
+    QML_EXTENDED(WeatherModelUrlExtended)
 
 public:
     WeatherModelUrlUtils(QObject *parent = nullptr) : QObject(parent) {}

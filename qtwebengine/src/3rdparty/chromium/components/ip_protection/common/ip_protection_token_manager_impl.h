@@ -15,20 +15,21 @@
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
-#include "components/ip_protection/common/ip_protection_config_cache.h"
-#include "components/ip_protection/common/ip_protection_config_getter.h"
-#include "components/ip_protection/common/ip_protection_data_types.h"
 #include "components/ip_protection/common/ip_protection_token_manager.h"
 
 namespace ip_protection {
 
+class IpProtectionTokenFetcher;
+class IpProtectionCore;
+enum class ProxyLayer;
+
 // An implementation of IpProtectionTokenManager that populates itself
-// using a passed in IpProtectionConfigGetter pointer from the cache.
+// using a passed in IpProtectionTokenFetcher pointer from the cache.
 class IpProtectionTokenManagerImpl : public IpProtectionTokenManager {
  public:
   explicit IpProtectionTokenManagerImpl(
-      IpProtectionConfigCache* config_cache,
-      IpProtectionConfigGetter* config_getter,
+      IpProtectionCore* core,
+      std::unique_ptr<IpProtectionTokenFetcher> fetcher,
       ProxyLayer proxy_layer,
       bool disable_cache_management_for_testing = false);
   ~IpProtectionTokenManagerImpl() override;
@@ -36,6 +37,7 @@ class IpProtectionTokenManagerImpl : public IpProtectionTokenManager {
   // IpProtectionTokenManager implementation.
   bool IsAuthTokenAvailable() override;
   bool IsAuthTokenAvailable(const std::string& geo_id) override;
+  bool WasTokenCacheEverFilled() override;
   std::optional<BlindSignedAuthToken> GetAuthToken() override;
   std::optional<BlindSignedAuthToken> GetAuthToken(
       const std::string& geo_id) override;
@@ -63,6 +65,8 @@ class IpProtectionTokenManagerImpl : public IpProtectionTokenManager {
     return !disable_cache_management_for_testing_;
   }
 
+  // Disable active cache management and reset the manager back to its base
+  // state: no tokens, no backoff, no active token fetches, no pending timers.
   void DisableCacheManagementForTesting(
       base::OnceClosure on_cache_management_disabled);
 
@@ -90,7 +94,7 @@ class IpProtectionTokenManagerImpl : public IpProtectionTokenManager {
   bool IsTokenLimitExceeded(const std::string& geo_id) const;
 
   // Current geo of the client.
-  // This value should only be set by the `IpProtectionConfigCache` using the
+  // This value should only be set by the `IpProtectionCore` using the
   // `IpProtectionTokenManager::SetCurrentGeo()` function.
   std::string current_geo_id_ = "";
 
@@ -112,21 +116,23 @@ class IpProtectionTokenManagerImpl : public IpProtectionTokenManager {
   std::map<std::string, std::deque<BlindSignedAuthToken>> cache_by_geo_;
 
   // Source of proxy list, when needed.
-  raw_ptr<IpProtectionConfigGetter> config_getter_;
+  std::unique_ptr<IpProtectionTokenFetcher> fetcher_;
 
   // The proxy layer which the cache of tokens will be used for.
   ProxyLayer proxy_layer_;
 
-  // Pointer to the `IpProtectionConfigCache` that holds the proxy list and
+  // Pointer to the `IpProtectionCore` that holds the proxy list and
   // tokens. Required to observe geo changes from retrieved tokens.
-  // The lifetime of the `IpProtectionConfigCache` object WILL ALWAYS outlive
-  // this class b/c `ip_protection_config_cache_` owns this (at least outside of
+  // The lifetime of the `IpProtectionCore` object WILL ALWAYS outlive
+  // this class b/c `ip_protection_core_` owns this (at least outside of
   // testing).
-  const raw_ptr<IpProtectionConfigCache> ip_protection_config_cache_;
+  const raw_ptr<IpProtectionCore> ip_protection_core_;
 
-  // True if an invocation of `config_getter_.TryGetAuthTokens()` is
-  // outstanding.
+  // True if an attempt to fetch tokens is outstanding.
   bool fetching_auth_tokens_ = false;
+
+  // True if the cache has been filled at least once.
+  bool cache_has_been_filled_ = false;
 
   // True if the "NetworkService.IpProtection.GeoChangeTokenPresence" metric
   // needs to be sampled. False if the presence has already been sampled. This

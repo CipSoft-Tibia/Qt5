@@ -59,7 +59,9 @@ private:
     bool newFrame(const Render::OpenGL::RenderView *renderView);
     void renderDrawList(ImDrawData *draw_data);
     void onMouseChange(QMouseEvent *event);
+#if QT_CONFIG(wheelevent)
     void onWheel(QWheelEvent *event);
+#endif
     void onKeyPressRelease(QKeyEvent *event);
     void showGLInfo();
     void showRenderDetails(const std::vector<Render::OpenGL::RenderView *> &renderViews);

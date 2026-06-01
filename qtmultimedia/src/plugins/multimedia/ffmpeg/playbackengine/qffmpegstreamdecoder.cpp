@@ -11,8 +11,10 @@ Q_STATIC_LOGGING_CATEGORY(qLcStreamDecoder, "qt.multimedia.ffmpeg.streamdecoder"
 
 namespace QFFmpeg {
 
-StreamDecoder::StreamDecoder(const CodecContext &codecContext, TrackPosition absSeekPos)
-    : m_codecContext(codecContext),
+StreamDecoder::StreamDecoder(const PlaybackEngineObjectID &id, const CodecContext &codecContext,
+                             TrackPosition absSeekPos)
+    : PlaybackEngineObject(id),
+      m_codecContext(codecContext),
       m_absSeekPos(absSeekPos),
       m_trackType(MediaDataHolder::trackTypeFromMediaType(codecContext.context()->codec_type))
 {
@@ -26,23 +28,30 @@ StreamDecoder::~StreamDecoder()
     avcodec_flush_buffers(m_codecContext.context());
 }
 
-void StreamDecoder::onFinalPacketReceived()
+void StreamDecoder::onFinalPacketReceived(PlaybackEngineObjectID sourceID)
 {
-    decode({});
+    if (checkSessionID(sourceID.sessionID))
+        decode({});
 }
 
 void StreamDecoder::decode(Packet packet)
 {
-    m_packets.enqueue(packet);
+    if (packet.isValid() && !checkSessionID(packet.sourceID().sessionID)) {
+        qCDebug(qLcStreamDecoder) << "Packet session outdated. Source id:" << packet.sourceID()
+                                  << "current id" << id();
+        // no need to report packetProcessed: demuxer must be cleaned up
+        return;
+    }
 
+    m_packets.enqueue(std::move(packet));
     scheduleNextStep();
 }
 
 void StreamDecoder::doNextStep()
 {
-    auto packet = m_packets.dequeue();
+    Packet packet = m_packets.dequeue();
 
-    auto decodePacket = [this](Packet packet) {
+    auto decodePacket = [this](const Packet &packet) {
         if (trackType() == QPlatformMediaPlayer::SubtitleStream)
             decodeSubtitle(packet);
         else
@@ -64,9 +73,9 @@ void StreamDecoder::doNextStep()
     setAtEnd(!packet.isValid());
 
     if (packet.isValid())
-        emit packetProcessed(packet);
+        emit packetProcessed(std::move(packet));
 
-    scheduleNextStep(false);
+    scheduleNextStep();
 }
 
 QPlatformMediaPlayer::TrackType StreamDecoder::trackType() const
@@ -91,7 +100,7 @@ qint32 StreamDecoder::maxQueueSize(QPlatformMediaPlayer::TrackType type)
 
 void StreamDecoder::onFrameProcessed(Frame frame)
 {
-    if (frame.sourceId() != id())
+    if (!checkID(frame.sourceID()))
         return;
 
     --m_pendingFramesCount;
@@ -118,7 +127,7 @@ void StreamDecoder::onFrameFound(Frame frame)
     emit requestHandleFrame(frame);
 }
 
-void StreamDecoder::decodeMedia(Packet packet)
+void StreamDecoder::decodeMedia(const Packet &packet)
 {
     auto sendPacketResult = sendAVPacket(packet);
 
@@ -139,7 +148,7 @@ void StreamDecoder::decodeMedia(Packet packet)
         receiveAVFrames(!packet.isValid());
 }
 
-int StreamDecoder::sendAVPacket(Packet packet)
+int StreamDecoder::sendAVPacket(const Packet &packet)
 {
     return avcodec_send_packet(m_codecContext.context(), packet.isValid() ? packet.avPacket() : nullptr);
 }
@@ -182,7 +191,7 @@ void StreamDecoder::receiveAVFrames(bool flushPacket)
     }
 }
 
-void StreamDecoder::decodeSubtitle(Packet packet)
+void StreamDecoder::decodeSubtitle(const Packet &packet)
 {
     if (!packet.isValid())
         return;

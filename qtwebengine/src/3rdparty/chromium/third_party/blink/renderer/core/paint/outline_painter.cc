@@ -151,7 +151,7 @@ void IterateRightAnglePath(const SkPath& path, const Action& contour_action) {
         break;
       }
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
 }
@@ -506,7 +506,7 @@ class ComplexOutlinePainter {
                                   outline_style_ == EBorderStyle::kInset);
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
 
     if (use_alpha_layer)
@@ -751,7 +751,9 @@ FloatRoundedRect::Radii GetFocusRingCornerRadii(
     const PhysicalRect& reference_border_rect,
     const LayoutObject::OutlineInfo& info) {
   if (style.HasBorderRadius() &&
-      (!style.HasEffectiveAppearance() || style.HasAuthorBorderRadius())) {
+      ((style.HasEffectiveAppearance() &&
+        style.EffectiveAppearance() == AppearanceValue::kBaseSelect) ||
+       style.HasAuthorBorderRadius())) {
     auto radii = ComputeCornerRadii(style, reference_border_rect, info.offset);
     radii.SetMinimumRadius(DefaultFocusRingCornerRadius(style));
     return radii;
@@ -763,20 +765,20 @@ FloatRoundedRect::Radii GetFocusRingCornerRadii(
     // drawing the element.
     std::optional<ui::NativeTheme::Part> part;
     switch (style.EffectiveAppearance()) {
-      case kCheckboxPart:
+      case AppearanceValue::kCheckbox:
         part = ui::NativeTheme::kCheckbox;
         break;
-      case kRadioPart:
+      case AppearanceValue::kRadio:
         part = ui::NativeTheme::kRadio;
         break;
-      case kPushButtonPart:
-      case kSquareButtonPart:
-      case kButtonPart:
+      case AppearanceValue::kPushButton:
+      case AppearanceValue::kSquareButton:
+      case AppearanceValue::kButton:
         part = ui::NativeTheme::kPushButton;
         break;
-      case kTextFieldPart:
-      case kTextAreaPart:
-      case kSearchFieldPart:
+      case AppearanceValue::kTextField:
+      case AppearanceValue::kTextArea:
+      case AppearanceValue::kSearchField:
         part = ui::NativeTheme::kTextField;
         break;
       default:

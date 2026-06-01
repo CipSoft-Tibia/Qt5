@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qmainwindowlayout_p.h"
 
@@ -146,8 +147,9 @@ QDebug operator<<(QDebug debug, const QDockAreaLayout &layout)
 
 QDebug operator<<(QDebug debug, const QMainWindowLayout *layout)
 {
-    debug << layout->layoutState.dockAreaLayout;
-    return debug;
+    if (layout)
+        return std::move(debug) << layout->layoutState.dockAreaLayout;
+    return debug << "QMainWindowLayout(0x0)";
 }
 
 // Use this to dump item lists of all populated main window docks.
@@ -725,14 +727,18 @@ void QDockWidgetGroupWindow::destroyIfSingleItemLeft()
 
     // Unplug the last remaining dock widget and hide the group window, to avoid flickering
     mwLayout->unplug(lastDockWidget, QDockWidgetPrivate::DragScope::Widget);
-    lastDockWidget->setGeometry(geometry());
+    const QPoint position = pos();
     hide();
 
     // Re-parent last dock widget
     reparentToMainWindow(lastDockWidget);
 
+    // setVisible() might have restored it's last docked position.
+    // => If the last dock widget is floating, move it to the group window's position.
+    if (lastDockWidget->isFloating())
+        lastDockWidget->move(position);
+
     // the group window could still have placeholder items => clear everything
-    layoutInfo()->deleteAllLayoutItems();
     layoutInfo()->item_list.clear();
 
     destroyOrHideIfEmpty();
@@ -741,17 +747,17 @@ void QDockWidgetGroupWindow::destroyIfSingleItemLeft()
 void QDockWidgetGroupWindow::reparentToMainWindow(QDockWidget *dockWidget)
 {
     // reparent a dockWidget to the main window
+    // - abort ongoing animations
     // - remove it from the floating dock's layout info
     // - insert it to the main dock's layout info
-    // Finally, set draggingDock to nullptr, since the drag is finished.
     Q_ASSERT(qobject_cast<QMainWindow *>(parentWidget()));
     auto *mainWindow = static_cast<QMainWindow *>(parentWidget());
     QMainWindowLayout *mwLayout = qt_mainwindow_layout(mainWindow);
     Q_ASSERT(mwLayout);
+    mwLayout->widgetAnimator.abort(dockWidget);
     QDockAreaLayoutInfo &parentInfo = mwLayout->layoutState.dockAreaLayout.docks[layoutInfo()->dockPos];
     dockWidget->removeEventFilter(this);
     parentInfo.add(dockWidget);
-    std::unique_ptr<QLayoutItem> cleanup = layoutInfo()->takeWidgetItem(dockWidget);
     layoutInfo()->remove(dockWidget);
     const bool wasFloating = dockWidget->isFloating();
     const bool wasVisible = dockWidget->isVisible();
@@ -1829,6 +1835,15 @@ void QMainWindowLayout::setTabPosition(Qt::DockWidgetAreas areas, QTabWidget::Ta
 QTabBar::Shape _q_tb_tabBarShapeFrom(QTabWidget::TabShape shape, QTabWidget::TabPosition position);
 #endif // QT_CONFIG(tabwidget)
 
+void QMainWindowLayout::showTabBars()
+{
+    const auto usedTabBarsCopy = usedTabBars; // list potentially modified by animations
+    for (QTabBar *tab_bar : usedTabBarsCopy) {
+        if (usedTabBars.contains(tab_bar)) // Showing a tab bar can cause another to be deleted.
+            tab_bar->show();
+    }
+}
+
 void QMainWindowLayout::updateTabBarShapes()
 {
 #if QT_CONFIG(tabwidget)
@@ -2119,7 +2134,7 @@ bool QMainWindowLayout::isDockWidgetTabbed(const QDockWidget *dockWidget) const
 void QMainWindowLayout::unuseTabBar(QTabBar *bar)
 {
     Q_ASSERT(qobject_cast<QMainWindowTabBar *>(bar));
-    delete bar;
+    bar->deleteLater();
 }
 
 QTabBar *QMainWindowLayout::getTabBar()
@@ -2671,11 +2686,7 @@ void QMainWindowLayout::animationFinished(QWidget *widget)
 #if QT_CONFIG(dockwidget)
         parentWidget()->update(layoutState.dockAreaLayout.separatorRegion());
 #if QT_CONFIG(tabbar)
-        const auto usedTabBarsCopy = usedTabBars; // list potentially modified by animations
-        for (QTabBar *tab_bar : usedTabBarsCopy) {
-            if (usedTabBars.contains(tab_bar)) // Showing a tab bar can cause another to be deleted.
-               tab_bar->show();
-        }
+        showTabBars();
 #endif // QT_CONFIG(tabbar)
 #endif // QT_CONFIG(dockwidget)
     }
@@ -3272,15 +3283,10 @@ bool QMainWindowLayout::restoreState(QDataStream &stream)
     savedState.deleteAllLayoutItems();
     savedState.clear();
 
-#if QT_CONFIG(dockwidget)
-    if (parentWidget()->isVisible()) {
-#if QT_CONFIG(tabbar)
-        for (QTabBar *tab_bar : std::as_const(usedTabBars))
-            tab_bar->show();
-
-#endif
-    }
-#endif // QT_CONFIG(dockwidget)
+#if QT_CONFIG(dockwidget) && QT_CONFIG(tabbar)
+    if (parentWidget()->isVisible())
+        showTabBars();
+#endif // QT_CONFIG(dockwidget)/QT_CONFIG(tabbar)
 
     return true;
 }

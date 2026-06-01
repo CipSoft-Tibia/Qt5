@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qjsengine.h"
 #include "qjsengine_p.h"
@@ -1170,7 +1171,9 @@ void QJSEngine::throwError(QJSValue::ErrorType errorType, const QString &message
 void QJSEngine::throwError(const QJSValue &error)
 {
     // safe, QJSValue holds a persistent reference
-    m_v4Engine->throwError(QV4::Value::fromReturnedValue(QJSValuePrivate::asReturnedValue(&error)));
+    m_v4Engine->throwError(
+            QV4::Value::fromReturnedValue(
+                    QJSValuePrivate::convertToReturnedValue(m_v4Engine, error)));
 }
 
 /*!

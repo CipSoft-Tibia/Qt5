@@ -37,16 +37,19 @@ private:
     QString m_yPosRole;
     QString m_zPosRole;
     QString m_rotationRole;
+    QString m_scaleRole;
 
     QRegularExpression m_xPosRolePattern;
     QRegularExpression m_yPosRolePattern;
     QRegularExpression m_zPosRolePattern;
     QRegularExpression m_rotationRolePattern;
+    QRegularExpression m_scaleRolePattern;
 
     QString m_xPosRoleReplace;
     QString m_yPosRoleReplace;
     QString m_zPosRoleReplace;
     QString m_rotationRoleReplace;
+    QString m_scaleRoleReplace;
 };
 
 QT_END_NAMESPACE

@@ -241,9 +241,9 @@ constexpr inline const QDoubleVector3D operator/(const QDoubleVector3D &vector, 
 
 constexpr inline bool qFuzzyCompare(const QDoubleVector3D &v1, const QDoubleVector3D &v2)
 {
-    return qFuzzyCompare(v1.xp, v2.xp) &&
-           qFuzzyCompare(v1.yp, v2.yp) &&
-           qFuzzyCompare(v1.zp, v2.zp);
+    return QtPrivate::fuzzyCompare(v1.xp, v2.xp)
+        && QtPrivate::fuzzyCompare(v1.yp, v2.yp)
+        && QtPrivate::fuzzyCompare(v1.zp, v2.zp);
 }
 
 constexpr inline QDoubleVector2D QDoubleVector3D::toVector2D() const

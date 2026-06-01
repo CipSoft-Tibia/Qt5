@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4qmlcontext_p.h"
 
@@ -230,8 +231,9 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
                         } else {
                             QJSValue singleton = e->singletonInstance<QJSValue>(r.type);
 
-                            // QSrting values should already have been put on the engine heap at this point
-                            // to manage their memory. We later assume this has already happened.
+                            // QString values should already have been put on the engine heap at
+                            // this point to manage their memory. We later assume this has already
+                            // happened.
                             Q_ASSERT(!QJSValuePrivate::asQString(&singleton));
 
                             if (QV4::Value *val = QJSValuePrivate::takeManagedValue(&singleton)) {
@@ -324,8 +326,8 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
                                                QV4::QObjectWrapper::wrap(v4, scopeObject)));
                         if (QObjectMethod *method = result->as<QObjectMethod>()) {
                             QV4::setupQObjectMethodLookup(
-                                        lookup, ddata, propertyData, val->objectValue(),
-                                        method->d());
+                                    lookup, ddata->propertyCache, propertyData,
+                                    val->objectValue(), method->d());
                             lookup->call = Lookup::Call::ContextGetterScopeObjectMethod;
                         } else {
                             QV4::setupQObjectLookup(
@@ -364,8 +366,8 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
                                                QV4::QObjectWrapper::wrap(v4, contextObject)));
                         if (QObjectMethod *method = result->as<QObjectMethod>()) {
                             setupQObjectMethodLookup(
-                                        lookup, ddata, propertyData, val->objectValue(),
-                                        method->d());
+                                    lookup, ddata->propertyCache, propertyData,
+                                    val->objectValue(), method->d());
                             if (contextGetterCall == Lookup::Call::ContextGetterScopeObjectProperty)
                                 lookup->call = Lookup::Call::ContextGetterScopeObjectMethod;
                             else

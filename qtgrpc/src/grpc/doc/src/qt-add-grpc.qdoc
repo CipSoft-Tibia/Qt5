@@ -8,9 +8,14 @@
 \title qt_add_grpc
 \target qt_add_grpc
 \summary {Generates Qt-based C++ services using a protobuf schema}
+
+\include cmake-find-package-grpc.qdocinc
+
 \cmakecommandsince 6.5
 
 Usually \c qtgrpcgen is invoked through the \c qt_add_grpc CMake macro.
+
+\section1 Synopsis
 
 \badcode
     qt_add_grpc(<target> <CLIENT|SERVER>
@@ -28,6 +33,10 @@ Usually \c qtgrpcgen is invoked through the \c qt_add_grpc CMake macro.
 \endcode
 
 \note Only \c {CLIENT} code generation is currently supported.
+
+\versionlessCMakeCommandsNote qt6_add_grpc()
+
+\section1 Description
 
 The source files are created by \c qtgrpcgen and added to the target.
 If the target already exists, the files are \e added to the target source
@@ -73,7 +82,7 @@ target to the protobuf one:
     target_link_libraries(test_service_client PRIVATE test_service_protobuf)
 \endcode
 
-\section1 Arguments
+\section2 Arguments
 \list
     \include qtprotoccommon.qdocinc proto_files-li
     \include qtprotoccommon.qdocinc proto_includes-li

@@ -23,25 +23,26 @@
 
 QT_BEGIN_NAMESPACE
 class QVideoFrameFormat;
-class QGstreamerVideoSink;
+class QGstreamerRelayVideoSink;
 class QOpenGLContext;
 
 class QGstVideoBuffer final : public QHwVideoBuffer
 {
 public:
-    QGstVideoBuffer(QGstBufferHandle buffer, const GstVideoInfo &info, QGstreamerVideoSink *sink,
+    QGstVideoBuffer(QGstBufferHandle buffer, const GstVideoInfo &info, QGstreamerRelayVideoSink *sink,
                     const QVideoFrameFormat &frameFormat, QGstCaps::MemoryFormat format);
     ~QGstVideoBuffer() override;
 
     MapData map(QVideoFrame::MapMode mode) override;
     void unmap() override;
 
+    bool isDmaBuf() const override;
+
     QVideoFrameTexturesUPtr mapTextures(QRhi &, QVideoFrameTexturesUPtr& /*oldTextures*/) override;
 
 private:
     const QGstCaps::MemoryFormat m_memoryFormat = QGstCaps::CpuMemory;
     const QVideoFrameFormat m_frameFormat;
-    QRhi *m_rhi = nullptr;
     mutable GstVideoInfo m_videoInfo;
     mutable GstVideoFrame m_frame{};
     const QGstBufferHandle m_buffer;

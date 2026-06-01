@@ -20,14 +20,11 @@ import {
 } from './metricUtils';
 import {NUM} from '../../../trace_processor/query_result';
 import {Trace} from '../../../public/trace';
-import {SimpleSliceTrackConfig} from '../../../frontend/simple_slice_track';
 
 // TODO(primiano): make deps check stricter, we shouldn't allow plugins to
 // depend on each other.
-import {
-  addAndPinSliceTrack,
-  focusOnSlice,
-} from '../../dev.perfetto.AndroidCujs/trackUtils';
+import {focusOnSlice} from '../../dev.perfetto.AndroidCujs/trackUtils';
+import {addDebugSliceTrack} from '../../../components/tracks/debug_tracks';
 
 const ENABLE_FOCUS_ON_FIRST_JANK = true;
 
@@ -63,12 +60,11 @@ class PinCujScopedJank implements MetricHandler {
    */
   public async addMetricTrack(metricData: CujScopedMetricData, ctx: Trace) {
     // TODO: b/349502258 - Refactor to single API
-    const {
-      config: cujScopedJankSlice,
-      trackName: trackName,
-      tableName: tableName,
-    } = await this.cujScopedTrackConfig(metricData, ctx);
-    addAndPinSliceTrack(ctx, cujScopedJankSlice, trackName);
+    const {tableName, ...config} = await this.cujScopedTrackConfig(
+      metricData,
+      ctx,
+    );
+    addDebugSliceTrack({trace: ctx, ...config});
     if (ENABLE_FOCUS_ON_FIRST_JANK) {
       await this.focusOnFirstJank(ctx, tableName);
     }
@@ -77,11 +73,7 @@ class PinCujScopedJank implements MetricHandler {
   private async cujScopedTrackConfig(
     metricData: CujScopedMetricData,
     ctx: Trace,
-  ): Promise<{
-    config: SimpleSliceTrackConfig;
-    trackName: string;
-    tableName: string;
-  }> {
+  ) {
     let jankTypeFilter;
     let jankTypeDisplayName = 'all';
     if (metricData.jankType?.includes('app')) {
@@ -97,50 +89,48 @@ class PinCujScopedJank implements MetricHandler {
     const tableWithJankyFramesName = `_janky_frames_during_cuj_from_metric_key_${Math.floor(Math.random() * 1_000_000)}`;
 
     const createJankyCujFrameTable = `
-    CREATE OR REPLACE PERFETTO TABLE ${tableWithJankyFramesName} AS
-    SELECT
-      f.vsync as id,
-      f.ts AS ts,
-      f.dur as dur
-    FROM android_jank_cuj_frame f LEFT JOIN android_jank_cuj cuj USING (cuj_id)
-    WHERE cuj.process_name = "${processName}"
-    AND cuj_name = "${cuj}" ${jankTypeFilter}
+      CREATE OR REPLACE PERFETTO TABLE ${tableWithJankyFramesName} AS
+      SELECT
+        f.vsync as id,
+        f.ts AS ts,
+        f.dur as dur
+      FROM android_jank_cuj_frame f LEFT JOIN android_jank_cuj cuj USING (cuj_id)
+      WHERE cuj.process_name = "${processName}"
+      AND cuj_name = "${cuj}" ${jankTypeFilter}
     `;
 
     await ctx.engine.query(createJankyCujFrameTable);
 
     const jankyFramesDuringCujQuery = `
-        SELECT id, ts, dur
-        FROM ${tableWithJankyFramesName}
+      SELECT id, ts, dur
+      FROM ${tableWithJankyFramesName}
     `;
 
-    const cujScopedJankSlice: SimpleSliceTrackConfig = {
+    const trackName = jankTypeDisplayName + ' missed frames in ' + processName;
+
+    const cujScopedJankSlice = {
       data: {
         sqlSource: jankyFramesDuringCujQuery,
         columns: ['id', 'ts', 'dur'],
       },
       columns: {ts: 'ts', dur: 'dur', name: 'id'},
       argColumns: ['id', 'ts', 'dur'],
+      trackName,
     };
 
-    const trackName = jankTypeDisplayName + ' missed frames in ' + processName;
-
     return {
-      config: cujScopedJankSlice,
-      trackName: trackName,
+      ...cujScopedJankSlice,
       tableName: tableWithJankyFramesName,
     };
   }
 
   private async focusOnFirstJank(ctx: Trace, tableWithJankyFramesName: string) {
     const queryForFirstJankyFrame = `
-        SELECT slice_id, track_id
-        FROM slice
-        WHERE type = "actual_frame_timeline_slice"
-          AND name =
-              CAST(
-                      (SELECT id FROM ${tableWithJankyFramesName} LIMIT 1)
-                  AS VARCHAR(20));
+      SELECT id as slice_id, track_id
+      FROM actual_frame_timeline_slice
+      WHERE name = cast_string!(
+        (SELECT id FROM ${tableWithJankyFramesName} LIMIT 1)
+      );
     `;
     const queryResult = await ctx.engine.query(queryForFirstJankyFrame);
     if (queryResult.numRows() === 0) {
@@ -150,7 +140,7 @@ class PinCujScopedJank implements MetricHandler {
       slice_id: NUM,
       track_id: NUM,
     });
-    focusOnSlice(ctx, row.slice_id, row.track_id);
+    focusOnSlice(ctx, row.slice_id);
   }
 }
 

@@ -29,6 +29,7 @@
 
 #include "base/check_op.h"
 #include "base/functional/callback_helpers.h"
+#include "base/strings/to_string.h"
 #include "build/build_config.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/platform/modules/mediastream/web_media_stream_track.h"
@@ -37,6 +38,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_double_range.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_long_range.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_media_stream_track_state.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_track_capabilities.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_track_constraints.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_track_settings.h"
@@ -216,8 +218,7 @@ WebString GetDisplaySurfaceString(
     case media::mojom::DisplayCaptureSurfaceType::BROWSER:
       return WebString::FromUTF8("browser");
   }
-  NOTREACHED_IN_MIGRATION();
-  return WebString();
+  NOTREACHED();
 }
 
 }  // namespace
@@ -297,6 +298,10 @@ MediaStreamTrackImpl::MediaStreamTrackImpl(
   if (ready_state_ != MediaStreamSource::kReadyStateEnded) {
     EnsureFeatureHandleForScheduler();
   }
+  const std::optional<const MediaStreamDevice> source_device = device();
+  if (source_device && source_device->display_media_info) {
+    zoom_level_ = source_device->display_media_info->initial_zoom_level;
+  }
 }
 
 MediaStreamTrackImpl::~MediaStreamTrackImpl() = default;
@@ -312,8 +317,7 @@ String MediaStreamTrackImpl::kind() const {
       return video_kind;
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return audio_kind;
+  NOTREACHED();
 }
 
 String MediaStreamTrackImpl::id() const {
@@ -335,8 +339,8 @@ void MediaStreamTrackImpl::setEnabled(bool enabled) {
 
   component_->SetEnabled(enabled);
 
-  SendLogMessage(
-      String::Format("%s({enabled=%s})", __func__, enabled ? "true" : "false"));
+  SendLogMessage(String::Format("%s({enabled=%s})", __func__,
+                                base::ToString(enabled).c_str()));
 }
 
 bool MediaStreamTrackImpl::muted() const {
@@ -387,11 +391,11 @@ void MediaStreamTrackImpl::SetContentHint(const String& hint) {
   component_->SetContentHint(translated_hint);
 }
 
-String MediaStreamTrackImpl::readyState() const {
+V8MediaStreamTrackState MediaStreamTrackImpl::readyState() const {
   if (Ended()) {
-    return "ended";
+    return V8MediaStreamTrackState(V8MediaStreamTrackState::Enum::kEnded);
   }
-  return ReadyStateToString(ready_state_);
+  return ReadyStateToV8TrackState(ready_state_);
 }
 
 void MediaStreamTrackImpl::setReadyState(
@@ -400,7 +404,7 @@ void MediaStreamTrackImpl::setReadyState(
       ready_state_ != ready_state) {
     ready_state_ = ready_state;
     SendLogMessage(String::Format("%s({ready_state=%s})", __func__,
-                                  readyState().Utf8().c_str()));
+                                  readyState().AsCStr()));
 
     // Observers may dispatch events which create and add new Observers;
     // take a snapshot so as to safely iterate.
@@ -483,10 +487,6 @@ MediaTrackCapabilities* MediaStreamTrackImpl::getCapabilities() const {
       voice_isolation.push_back(value);
     }
     capabilities->setVoiceIsolation(voice_isolation);
-    Vector<String> echo_cancellation_type;
-    for (String value : platform_capabilities.echo_cancellation_type) {
-      echo_cancellation_type.push_back(value);
-    }
     // Sample size.
     if (platform_capabilities.sample_size.size() == 2) {
       LongRange* sample_size = LongRange::Create();
@@ -752,6 +752,19 @@ CaptureHandle* MediaStreamTrackImpl::getCaptureHandle() const {
   return capture_handle;
 }
 
+void MediaStreamTrackImpl::Dispose() {
+  // `MediaStreamTrackImpl` and the `SpeechRecognitionMediaStreamAudioSink`
+  // which it owns may be destroyed before the `MediaStreamAudioTrack`. Remove
+  // the sinks before destroying them to prevent `MediaStreamAudioTrack` from
+  // using them after destruction.
+  if (MediaStreamAudioTrack* audio_track =
+          MediaStreamAudioTrack::From(Component())) {
+    for (SpeechRecognitionMediaStreamAudioSink* sink : registered_sinks_) {
+      audio_track->RemoveSink(sink);
+    }
+  }
+}
+
 ScriptPromise<IDLUndefined> MediaStreamTrackImpl::applyConstraints(
     ScriptState* script_state,
     const MediaTrackConstraints* constraints) {
@@ -930,6 +943,18 @@ void MediaStreamTrackImpl::SourceChangedCaptureHandle() {
   DispatchEvent(*Event::Create(event_type_names::kCapturehandlechange));
 }
 
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+void MediaStreamTrackImpl::SourceChangedZoomLevel(int zoom_level) {
+  DCHECK(IsMainThread());
+  if (Ended()) {
+    return;
+  }
+
+  zoom_level_ = zoom_level;
+  // TODO(383946052): Send an event to notify resolution change.
+}
+#endif
+
 void MediaStreamTrackImpl::PropagateTrackEnded() {
   CHECK(!is_iterating_registered_media_streams_);
   is_iterating_registered_media_streams_ = true;
@@ -1038,6 +1063,11 @@ void MediaStreamTrackImpl::UnregisterMediaStream(MediaStream* media_stream) {
   registered_media_streams_.erase(iter);
 }
 
+void MediaStreamTrackImpl::RegisterSink(
+    SpeechRecognitionMediaStreamAudioSink* sink) {
+  registered_sinks_.insert(sink);
+}
+
 const AtomicString& MediaStreamTrackImpl::InterfaceName() const {
   return event_target_names::kMediaStreamTrack;
 }
@@ -1056,6 +1086,7 @@ void MediaStreamTrackImpl::AddedEventListener(
 
 void MediaStreamTrackImpl::Trace(Visitor* visitor) const {
   visitor->Trace(registered_media_streams_);
+  visitor->Trace(registered_sinks_);
   visitor->Trace(component_);
   visitor->Trace(image_capture_);
   visitor->Trace(execution_context_);
@@ -1119,7 +1150,7 @@ void MediaStreamTrackImpl::SendLogMessage(const WTF::String& message) {
           "readyState: %s, remote=%s]",
           message.Utf8().c_str(), kind().Utf8().c_str(), id().Utf8().c_str(),
           label().Utf8().c_str(), enabled() ? "true" : "false",
-          muted() ? "true" : "false", readyState().Utf8().c_str(),
+          muted() ? "true" : "false", readyState().AsCStr(),
           component_->Remote() ? "true" : "false")
           .Utf8());
 }

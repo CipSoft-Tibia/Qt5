@@ -77,7 +77,7 @@ public:
     bool addListener();
 
     std::vector<std::unique_ptr<Listener>> listeners;
-    HANDLE eventHandle;
+    HANDLE eventHandle = nullptr;
     QWinEventNotifier *connectionEventNotifier;
 #else
     void setError(const QString &function);

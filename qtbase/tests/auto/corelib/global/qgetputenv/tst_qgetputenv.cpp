@@ -6,6 +6,9 @@
 #include <QTest>
 
 #include <qglobal.h>
+
+#include <q20utility.h>
+
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
 #endif
@@ -28,6 +31,7 @@ void tst_QGetPutEnv::getSetCheck()
 
     QVERIFY(!qEnvironmentVariableIsSet(varName));
     QVERIFY(qEnvironmentVariableIsEmpty(varName));
+    QCOMPARE(qEnvironmentVariableIntegerValue(varName), std::nullopt);
     ok = true;
     QCOMPARE(qEnvironmentVariableIntValue(varName), 0);
     QCOMPARE(qEnvironmentVariableIntValue(varName, &ok), 0);
@@ -44,6 +48,7 @@ void tst_QGetPutEnv::getSetCheck()
 
     QVERIFY(qEnvironmentVariableIsSet(varName));
     QVERIFY(qEnvironmentVariableIsEmpty(varName));
+    QCOMPARE(qEnvironmentVariableIntegerValue(varName), std::nullopt);
     ok = true;
     QCOMPARE(qEnvironmentVariableIntValue(varName), 0);
     QCOMPARE(qEnvironmentVariableIntValue(varName, &ok), 0);
@@ -68,6 +73,7 @@ void tst_QGetPutEnv::getSetCheck()
 
     QVERIFY(qEnvironmentVariableIsSet(varName));
     QVERIFY(!qEnvironmentVariableIsEmpty(varName));
+    QCOMPARE(qEnvironmentVariableIntegerValue(varName), std::nullopt);
     ok = true;
     QCOMPARE(qEnvironmentVariableIntValue(varName), 0);
     QCOMPARE(qEnvironmentVariableIntValue(varName, &ok), 0);
@@ -85,6 +91,7 @@ void tst_QGetPutEnv::getSetCheck()
     QVERIFY(qunsetenv(varName));
     QVERIFY(!qEnvironmentVariableIsSet(varName)); // note: might fail on some systems!
     QVERIFY(qEnvironmentVariableIsEmpty(varName));
+    QCOMPARE(qEnvironmentVariableIntegerValue(varName), std::nullopt);
     ok = true;
     QCOMPARE(qEnvironmentVariableIntValue(varName), 0);
     QCOMPARE(qEnvironmentVariableIntValue(varName, &ok), 0);
@@ -132,17 +139,17 @@ void tst_QGetPutEnv::encoding()
 void tst_QGetPutEnv::intValue_data()
 {
     QTest::addColumn<QByteArray>("value");
-    QTest::addColumn<int>("expected");
+    QTest::addColumn<qint64>("expected");
     QTest::addColumn<bool>("ok");
 
     // some repetition from what is tested in getSetCheck()
-    QTest::newRow("empty") << QByteArray() << 0 << false;
-    QTest::newRow("spaces-heading") << QByteArray(" \n\r\t1") << 1 << true;
-    QTest::newRow("spaces-trailing") << QByteArray("1 \n\r\t") << 1 << true;
-    QTest::newRow("junk-heading") << QByteArray("x1") << 0 << false;
-    QTest::newRow("junk-trailing") << QByteArray("1x") << 0 << false;
+    QTest::newRow("empty") << QByteArray() << qint64(0) << false;
+    QTest::newRow("spaces-heading") << QByteArray(" \n\r\t1") << qint64(1) << true;
+    QTest::newRow("spaces-trailing") << QByteArray("1 \n\r\t") << qint64(1) << true;
+    QTest::newRow("junk-heading") << QByteArray("x1") << qint64(0) << false;
+    QTest::newRow("junk-trailing") << QByteArray("1x") << qint64(0) << false;
 
-    auto addRow = [](const char *text, int expected, bool ok) {
+    auto addRow = [](const char *text, qint64 expected, bool ok) {
         QTest::newRow(text) << QByteArray(text) << expected << ok;
     };
     addRow("auto", 0, false);
@@ -157,17 +164,15 @@ void tst_QGetPutEnv::intValue_data()
     addRow("0x", 0, false);
     addRow("0xg", 0, false);
     addRow("0x1g", 0, false);
-    addRow("000000000000000000000000000000000000000000000000001", 0, false);
-    addRow("+000000000000000000000000000000000000000000000000001", 0, false);
+    addRow("000000000000000000000000000000000000000000000000001", 1, true);
+    addRow("+000000000000000000000000000000000000000000000000001", 1, true);
     addRow("000000000000000000000000000000000000000000000000001g", 0, false);
     addRow("-0", 0, true);
     addRow("-1", -1, true);
     addRow("-010", -8, true);
-    addRow("-000000000000000000000000000000000000000000000000001", 0, false);
-    // addRow("0xffffffff", -1, true); // could be expected, but not how QByteArray::toInt() works
-    addRow("0xffffffff", 0, false);
+    addRow("-000000000000000000000000000000000000000000000000001", -1, true);
 
-    auto addNumWithBase = [](qlonglong num, int base) {
+    auto addNumWithBase = [](auto num, int base) {
         QByteArray text;
         {
             QTextStream s(&text);
@@ -175,41 +180,56 @@ void tst_QGetPutEnv::intValue_data()
             s << Qt::showbase << num;
         }
         QTestData &row = QTest::addRow("%s", text.constData()) << text;
-        if (num == int(num))
-            row << int(num) << true;
+        bool ok = true;
+        if constexpr (std::is_same_v<decltype(num), quint64>)
+            ok = num <= quint64(LLONG_MAX);
+        if (ok)
+            row << qint64(num) << true;
         else
-            row << 0 << false;
+            row << qint64(0) << false;
     };
     for (int base : {10, 8, 16}) {
         addNumWithBase(INT_MAX, base);
         addNumWithBase(qlonglong(INT_MAX) + 1, base);
+        addNumWithBase(UINT_MAX, base);
         addNumWithBase(INT_MIN, base);
         addNumWithBase(qlonglong(INT_MIN) - 1 , base);
+        addNumWithBase(LLONG_MAX, base);
+        addNumWithBase(LLONG_MIN, base);
+        addNumWithBase(ULLONG_MAX, base);
     };
 }
 
 void tst_QGetPutEnv::intValue()
 {
-    const int maxlen = (sizeof(int) * CHAR_BIT + 2) / 3;
+    const int maxlen = (sizeof(qint64) * CHAR_BIT + 2) / 3;
     const char varName[] = "should_not_exist";
 
     QFETCH(QByteArray, value);
-    QFETCH(int, expected);
+    QFETCH(qint64, expected);
     QFETCH(bool, ok);
 
     bool actualOk = !ok;
+    bool is32Bit = q20::in_range<int>(expected);
 
     // Self-test: confirm that it was like the docs said it should be
     if (value.size() < maxlen) {
-        QCOMPARE(value.toInt(&actualOk, 0), expected);
+        // 32-bit
+        QCOMPARE(value.toInt(&actualOk, 0), is32Bit ? expected : 0);
+        QCOMPARE(actualOk, ok && is32Bit);
+        QCOMPARE(value.toLongLong(&actualOk, 0), expected);
         QCOMPARE(actualOk, ok);
     }
 
     actualOk = !ok;
     QVERIFY(qputenv(varName, value));
-    QCOMPARE(qEnvironmentVariableIntValue(varName), expected);
-    QCOMPARE(qEnvironmentVariableIntValue(varName, &actualOk), expected);
-    QCOMPARE(actualOk, ok);
+    QCOMPARE(qEnvironmentVariableIntValue(varName), is32Bit ? expected : 0);
+    QCOMPARE(qEnvironmentVariableIntValue(varName, &actualOk), is32Bit ? expected : 0);
+    QCOMPARE(actualOk, ok && is32Bit);
+    if (ok)
+        QCOMPARE(qEnvironmentVariableIntegerValue(varName), expected);
+    else
+        QCOMPARE(qEnvironmentVariableIntegerValue(varName), std::nullopt);
 }
 
 QTEST_MAIN(tst_QGetPutEnv)

@@ -32,9 +32,11 @@ public:
     QScatter3DSeries *series() const;
     qsizetype itemCount() const;
     const QScatterDataItem &itemAt(qsizetype index) const;
+    QVector3D scaleAt(qsizetype index) const;
 
     void resetArray();
     void resetArray(QScatterDataArray newArray);
+    void resetScaleArray(QList<QVector3D> newArray);
 
     void setItem(qsizetype index, QScatterDataItem item);
     void setItems(qsizetype index, QScatterDataArray items);
@@ -51,6 +53,7 @@ public:
 
 Q_SIGNALS:
     void arrayReset();
+    void scaleArrayReset();
     void itemsAdded(qsizetype startIndex, qsizetype count);
     void itemsChanged(qsizetype startIndex, qsizetype count);
     void itemsRemoved(qsizetype startIndex, qsizetype count);

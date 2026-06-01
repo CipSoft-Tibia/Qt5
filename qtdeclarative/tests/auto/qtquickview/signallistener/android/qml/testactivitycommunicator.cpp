@@ -14,13 +14,13 @@ TestActivityCommunicator::TestActivityCommunicator(QObject *parent)
       m_view(m_activity.callMethod<TestView>("testView"))
 {
     s_instance = this;
-    TestActivity::registerNativeMethods({
-        Q_JNI_NATIVE_SCOPED_METHOD(onBasicSignal, TestActivityCommunicator),
-        Q_JNI_NATIVE_SCOPED_METHOD(onIntSignal, TestActivityCommunicator),
-        Q_JNI_NATIVE_SCOPED_METHOD(onBoolSignal, TestActivityCommunicator),
-        Q_JNI_NATIVE_SCOPED_METHOD(onDoubleSignal, TestActivityCommunicator),
-        Q_JNI_NATIVE_SCOPED_METHOD(onStringSignal, TestActivityCommunicator),
-    });
+    TestActivity::registerNativeMethods(
+            { Q_JNI_NATIVE_SCOPED_METHOD(onBasicSignal, TestActivityCommunicator),
+              Q_JNI_NATIVE_SCOPED_METHOD(onIntSignal, TestActivityCommunicator),
+              Q_JNI_NATIVE_SCOPED_METHOD(onBoolSignal, TestActivityCommunicator),
+              Q_JNI_NATIVE_SCOPED_METHOD(onDoubleSignal, TestActivityCommunicator),
+              Q_JNI_NATIVE_SCOPED_METHOD(onStringSignal, TestActivityCommunicator),
+              Q_JNI_NATIVE_SCOPED_METHOD(onManyTypeSignal, TestActivityCommunicator) });
 }
 
 TestActivityCommunicator::~TestActivityCommunicator()
@@ -61,4 +61,18 @@ void TestActivityCommunicator::onStringSignal(JNIEnv *, jclass, String value)
 {
     Q_ASSERT(s_instance);
     emit s_instance->stringSignal(value.toString());
+}
+
+void TestActivityCommunicator::onManyTypeSignal(JNIEnv *, jclass,
+                                                Integer intValue,
+                                                Boolean boolValue,
+                                                Double doubleValue,
+                                                String stringValue)
+{
+    Q_ASSERT(s_instance);
+    emit s_instance->manyTypeSignal(
+            intValue.callMethod<jint>("intValue"),
+            boolValue.callMethod<jboolean>("booleanValue"),
+            doubleValue.callMethod<jdouble>("doubleValue"),
+            stringValue.toString());
 }

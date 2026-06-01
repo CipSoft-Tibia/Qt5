@@ -27,7 +27,6 @@ buildflag_header("buildflags") {
   flags = [
     "USE_EXTERNAL_POPUP_MENU=$use_external_popup_menu",
     "ALLOW_CRITICAL_MEMORY_PRESSURE_HANDLING_IN_FOREGROUND=$allow_critical_memory_pressure_handling_in_foreground",
-    "ENABLE_SCREEN_CAPTURE=$enable_screen_capture",
     "MBI_MODE_PER_RENDER_PROCESS_HOST=$_mbi_mode_per_render_process_host",
     "MBI_MODE_PER_SITE_INSTANCE=$_mbi_mode_per_site_instance",
     "CONTENT_ENABLE_LEGACY_IPC=$content_enable_legacy_ipc",
@@ -111,8 +110,6 @@ jumbo_source_set("common") {
     "in_process_child_thread_params.h",
     "input/actions_parser.cc",
     "input/actions_parser.h",
-    "input/events_helper.cc",
-    "input/events_helper.h",
     "input/synthetic_gesture.cc",
     "input/synthetic_gesture.h",
     "input/synthetic_gesture_controller.cc",
@@ -160,8 +157,6 @@ jumbo_source_set("common") {
     "navigation_gesture.h",
     "navigation_params_utils.h",
     "origin_util.cc",
-    "peak_gpu_memory_callback.cc",
-    "peak_gpu_memory_callback.h",
     "process_type.cc",
     "process_visibility_tracker.cc",
     "process_visibility_tracker.h",
@@ -171,6 +166,8 @@ jumbo_source_set("common") {
     "service_worker/forwarded_race_network_request_url_loader_factory.h",
     "service_worker/race_network_request_read_buffer_manager.cc",
     "service_worker/race_network_request_read_buffer_manager.h",
+    "service_worker/race_network_request_simple_buffer_manager.cc",
+    "service_worker/race_network_request_simple_buffer_manager.h",
     "service_worker/race_network_request_url_loader_client.cc",
     "service_worker/race_network_request_url_loader_client.h",
     "service_worker/race_network_request_write_buffer_manager.cc",
@@ -191,6 +188,8 @@ jumbo_source_set("common") {
     "user_level_memory_pressure_signal_features.h",
     "web_package/signed_exchange_utils.cc",
     "web_package/signed_exchange_utils.h",
+    "web_ui_loading_util.cc",
+    "web_ui_loading_util.h",
     "webid/identity_url_loader_throttle.cc",
     "webid/identity_url_loader_throttle.h",
   ]
@@ -226,7 +225,6 @@ jumbo_source_set("common") {
     "//base",
     "//base/allocator:buildflags",
     "//build:branding_buildflags",
-    "//build:chromeos_buildflags",
     "//build/util:chromium_git_revision",
     "//components/discardable_memory/common",
     "//components/input",
@@ -345,8 +343,8 @@ jumbo_source_set("common") {
     sources += [
       "mac/attributed_string_type_converters.h",
       "mac/attributed_string_type_converters.mm",
-      "mac/task_port_policy.cc",
-      "mac/task_port_policy.h",
+      "mac/system_policy.cc",
+      "mac/system_policy.h",
     ]
     deps += [ "//sandbox/mac:seatbelt" ]
   }
@@ -389,7 +387,7 @@ jumbo_source_set("common") {
       "//third_party/webrtc_overrides:webrtc_component",
     ]
   }
-  if (!is_chromeos_ash) {
+  if (!is_chromeos) {
     sources -= [ "cursors/webcursor_ash.cc" ]
   }
 
@@ -400,7 +398,7 @@ jumbo_source_set("common") {
   if (is_qtwebengine) {
      sources -= [ "cursors/webcursor_aura.cc" ]
   }
-  
+
   if (is_linux || is_chromeos) {
     sources += [
       "gpu_pre_sandbox_hook_linux.cc",
@@ -525,6 +523,10 @@ mojom("mojo_bindings") {
 
   if (is_android) {
     sources += [ "gin_java_bridge.mojom" ]
+  }
+
+  if (is_win) {
+    sources += [ "sandbox_support.mojom" ]
   }
 
   enabled_features = []
@@ -693,7 +695,7 @@ mojom("mojo_bindings") {
   if (is_mac) {
     sources += [
       "render_widget_host_ns_view.mojom",
-      "sandbox_support_mac.mojom",
+      "sandbox_support.mojom",
       "web_contents_ns_view_bridge.mojom",
     ]
     public_deps += [

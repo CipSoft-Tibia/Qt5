@@ -1,10 +1,12 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsbasicblocks_p.h"
-#include "qqmljsutils_p.h"
 
-#include <QtQml/private/qv4instr_moth_p.h>
+#include <private/qqmlglobal_p.h>
+#include <private/qqmljsutils_p.h>
+#include <private/qv4instr_moth_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -21,11 +23,11 @@ void QQmlJSBasicBlocks::dumpBasicBlocks()
         debug << "Block " << (blockOffset < 0 ? "Function prolog"_L1 : QString::number(blockOffset))
               << ":\n";
         debug << "  jumpOrigins[" << block.jumpOrigins.size() << "]: ";
-        for (auto origin : block.jumpOrigins) {
+        for (auto origin : std::as_const(block.jumpOrigins)) {
             debug << origin << ", ";
         }
         debug << "\n  readRegisters[" << block.readRegisters.size() << "]: ";
-        for (auto reg : block.readRegisters) {
+        for (auto reg : std::as_const(block.readRegisters)) {
             debug << reg << ", ";
         }
         debug << "\n  jumpTarget: " << block.jumpTarget;
@@ -46,7 +48,7 @@ void QQmlJSBasicBlocks::dumpDOTGraph()
 
     QFlatMap<int, BasicBlock> blocks{ m_basicBlocks };
     for (const auto &[blockOffset, block] : blocks) {
-        for (int originOffset : block.jumpOrigins) {
+        for (int originOffset : std::as_const(block.jumpOrigins)) {
             const auto originBlockIt = basicBlockForInstruction(blocks, originOffset);
             const auto isBackEdge = originOffset > blockOffset && originBlockIt->second.jumpIsUnconditional;
             s << "    %1 -> %2%3\n"_L1.arg(QString::number(originBlockIt.key()))
@@ -70,6 +72,7 @@ void QQmlJSBasicBlocks::dumpDOTGraph()
                 m_context->lineAndStatementNumberMapping);
         dump = dump.replace(" "_L1, "&#160;"_L1); // prevent collapse of extra whitespace for formatting
         dump = dump.replace("\n"_L1, "\\l"_L1); // new line + left aligned
+        dump = dump.replace("<"_L1, "\\<"_L1).replace(">"_L1, "\\>"_L1); // escape < and > for "SetUnwindHandler <null>" instruction
         s << "    %1 [shape=record, fontname=\"Monospace\", label=\"{Block %1: | %2}\"]\n"_L1
                         .arg(QString::number(blockOffset))
                         .arg(dump);

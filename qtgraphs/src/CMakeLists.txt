@@ -36,7 +36,6 @@ else()
 
     set(qml_axis_resources
         "graphs3d/qml/resources/AxisLabel.qml"
-        "graphs3d/qml/resources/GridLine.qml"
         "graphs3d/qml/resources/ItemLabel.qml"
         "graphs3d/qml/resources/TitleLabel.qml"
     )
@@ -177,6 +176,7 @@ else()
                 QtQuick3D
             LIBRARIES
                 # Common
+                Qt::CorePrivate
                 Qt::QuickPrivate
                 # 2D specific
                 Qt::QuickShapesPrivate
@@ -190,6 +190,7 @@ else()
                 Qt::Quick3D
             PRIVATE_MODULE_INTERFACE
                 # Common
+                Qt::CorePrivate
                 Qt::QuickPrivate
                 # 3D specific
                 Qt::Quick3DPrivate
@@ -359,6 +360,9 @@ qt_configure_add_summary_entry(ARGS "graphs-2d")
 qt_configure_add_summary_entry(ARGS "graphs-3d")
 qt_configure_end_summary_section() # end of "Qt Graphs Support" section
 
+set(TRACE_SOURCES "")
+set(TRACE_SOURCES_2D "")
+
 add_subdirectory(common)
 
 qt_internal_extend_target(Graphs
@@ -373,6 +377,13 @@ endif()
 if(QT_FEATURE_graphs_2d)
     add_subdirectory(graphs2d)
 endif()
+
+
+qt_internal_generate_tracepoints(Graphs graphs
+    SOURCES
+        ${TRACE_SOURCES}
+        ${TRACE_SOURCES_2D}
+)
 
 qt_internal_add_docs(Graphs
     doc/qtgraphs.qdocconf

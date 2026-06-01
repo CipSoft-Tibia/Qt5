@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "quiche/quic/core/io/quic_default_event_loop.h"
 #include "quiche/quic/core/io/quic_event_loop.h"
 #include "quiche/quic/core/quic_alarm_factory.h"
@@ -57,17 +58,17 @@ std::string TestPacketOut(const std::string& body) {
 class DataSavingQbonePacketWriter : public QbonePacketWriter {
  public:
   void WritePacketToNetwork(const char* packet, size_t size) override {
-    quiche::QuicheWriterMutexLock lock(&mu_);
+    absl::WriterMutexLock lock(&mu_);
     data_.push_back(std::string(packet, size));
   }
 
   std::vector<std::string> data() {
-    quiche::QuicheWriterMutexLock lock(&mu_);
+    absl::WriterMutexLock lock(&mu_);
     return data_;
   }
 
  private:
-  quiche::QuicheMutex mu_;
+  absl::Mutex mu_;
   std::vector<std::string> data_;
 };
 
@@ -215,8 +216,7 @@ TEST_P(QboneClientTest, SendDataFromClient) {
   std::unique_ptr<QuicEventLoop> event_loop =
       GetDefaultEventLoop()->Create(quic::QuicDefaultClock::Get());
   QboneTestClient client(
-      server_address,
-      QuicServerId("test.example.com", server_address.port(), false),
+      server_address, QuicServerId("test.example.com", server_address.port()),
       ParsedQuicVersionVector{GetParam()}, event_loop.get(),
       crypto_test_utils::ProofVerifierForTesting());
   ASSERT_TRUE(client.Initialize());

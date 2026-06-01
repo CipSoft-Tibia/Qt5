@@ -44,7 +44,6 @@ private:
     QList<QVariant> propList;
 
 private slots:
-    void defined();
 #if QT_CONFIG(thread)
     void threadSafety();
 #endif

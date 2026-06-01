@@ -355,8 +355,7 @@ int32_t OverlayTransformToWindowTransform(gfx::OverlayTransform transform) {
       return ANATIVEWINDOW_TRANSFORM_MIRROR_HORIZONTAL |
              ANATIVEWINDOW_TRANSFORM_ROTATE_90;
   };
-  NOTREACHED_IN_MIGRATION();
-  return ANATIVEWINDOW_TRANSFORM_IDENTITY;
+  NOTREACHED();
 }
 
 inline ADataSpace operator|(ADataSpace a, ADataSpace b) {
@@ -421,7 +420,7 @@ bool SetDataSpaceTransfer(const gfx::ColorSpace& color_space,
       skcms_TransferFunction trfn;
       // Detect scaled versions of sRGB and linear for HDR content.
       if (color_space.GetTransferFunction(&trfn)) {
-        if (skia::IsScaledTransferFunction(SkNamedTransferFnExt::kSRGB, trfn,
+        if (skia::IsScaledTransferFunction(SkNamedTransferFn::kSRGB, trfn,
                                            &extended_range_brightness_ratio)) {
           dataspace |= TRANSFER_SRGB;
           return true;

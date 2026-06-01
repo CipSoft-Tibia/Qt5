@@ -63,10 +63,8 @@ QString QPlatformMediaRecorder::findActualLocation(const QMediaEncoderSettings &
 
     const auto primaryLocation =
             audioOnly ? QStandardPaths::MusicLocation : QStandardPaths::MoviesLocation;
-    const QMimeType mimeType = settings.mimeType();
-    const QString suffix = mimeType.preferredSuffix();
     QString location = QMediaStorageLocation::generateFileName(
-            outputLocation().toString(QUrl::PreferLocalFile), primaryLocation, suffix);
+            outputLocation().toString(QUrl::PreferLocalFile), primaryLocation, settings.preferredSuffix());
 
     Q_ASSERT(!location.isEmpty());
 

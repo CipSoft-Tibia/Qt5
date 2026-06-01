@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qtqmlworkerscriptglobal_p.h"
 #include "qquickworkerscript_p.h"
@@ -112,9 +113,12 @@ public:
         WorkerDestroyEvent = QEvent::User + 100
     };
 
-    QQuickWorkerScriptEnginePrivate(QQmlEngine *eng);
+    QQuickWorkerScriptEnginePrivate(QQmlTypeLoader *typeLoader)
+        : m_typeLoader(typeLoader), m_nextId(0)
+    {
+    }
 
-    QQmlEngine *qmlengine;
+    QQmlTypeLoader *m_typeLoader = nullptr;
 
     QMutex m_lock;
     QWaitCondition m_wait;
@@ -125,7 +129,7 @@ public:
     // the worker script.
     QHash<int, QBiPointer<QV4::ExecutionEngine, QQuickWorkerScript>> workers;
 
-    int m_nextId;
+    int m_nextId = 0;
 
     static QV4::ReturnedValue method_sendMessage(const QV4::FunctionObject *, const QV4::Value *thisObject, const QV4::Value *argv, int argc);
     QV4::ExecutionEngine *workerEngine(int id);
@@ -141,11 +145,6 @@ private:
     void processLoad(int, const QUrl &);
     void reportScriptException(WorkerScript *, const QQmlError &error);
 };
-
-QQuickWorkerScriptEnginePrivate::QQuickWorkerScriptEnginePrivate(QQmlEngine *engine)
-: qmlengine(engine), m_nextId(0)
-{
-}
 
 QV4::ReturnedValue QQuickWorkerScriptEnginePrivate::method_sendMessage(const QV4::FunctionObject *b,
                                                                        const QV4::Value *, const QV4::Value *argv, int argc)
@@ -344,7 +343,8 @@ QQmlError WorkerErrorEvent::error() const
 }
 
 QQuickWorkerScriptEngine::QQuickWorkerScriptEngine(QQmlEngine *parent)
-: QThread(parent), d(new QQuickWorkerScriptEnginePrivate(parent))
+    : QThread(parent)
+    , d(new QQuickWorkerScriptEnginePrivate(&QQmlEnginePrivate::get(parent)->typeLoader))
 {
     connect(d, SIGNAL(stopThread()), this, SLOT(quit()), Qt::DirectConnection);
     QMutexLocker locker(&d->m_lock);
@@ -389,12 +389,10 @@ WorkerScript::WorkerScript(QV4::ExecutionEngine *engine)
 #if QT_CONFIG(qml_network)
     engine->networkAccessManager = [](QV4::ExecutionEngine *engine) {
         WorkerScript *workerScript = workerScriptExtension(engine);
-        if (workerScript->scriptLocalNAM)
-            return workerScript->scriptLocalNAM.get();
-        if (auto *namFactory = workerScript->p->qmlengine->networkAccessManagerFactory())
-            workerScript->scriptLocalNAM.reset(namFactory->create(workerScript->p));
-        else
-            workerScript->scriptLocalNAM.reset(new QNetworkAccessManager(workerScript->p));
+        if (!workerScript->scriptLocalNAM) {
+            workerScript->scriptLocalNAM.reset(
+                    workerScript->p->m_typeLoader->createNetworkAccessManager(workerScript->p));
+        }
         return workerScript->scriptLocalNAM.get();
     };
 #endif // qml_network

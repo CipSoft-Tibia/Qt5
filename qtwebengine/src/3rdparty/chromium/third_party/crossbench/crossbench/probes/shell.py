@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional, Type
 
-from crossbench import cli_helper
+from crossbench.parse import ObjectParser
 from crossbench.probes.probe import Probe, ProbeConfigParser, ProbeKeyT
 from crossbench.probes.probe_context import ProbeContext
 from crossbench.probes.result_location import ResultLocation
@@ -34,42 +34,37 @@ class ShellProbe(Probe):
     parser.add_argument(
         "setup_cmd",
         aliases=("setup",),
-        type=cli_helper.parse_sh_cmd,
-        required=False,
+        type=ObjectParser.sh_cmd,
         help="CMD is run before the browser is started.")
     parser.add_argument(
         "start_cmd",
-        type=cli_helper.parse_sh_cmd,
+        type=ObjectParser.sh_cmd,
         aliases=("start",),
-        required=False,
         help=("CMD is run right before each story is started "
               "and the browser is already running."))
     parser.add_argument(
         "start_story_run_cmd",
         aliases=("start-story",),
-        type=cli_helper.parse_sh_cmd,
-        required=False,
+        type=ObjectParser.sh_cmd,
         help=("CMD is run right before the measurement phase "
               "of a story is started."))
     parser.add_argument(
         "stop_story_run_cmd",
         aliases=("stop-story",),
-        type=cli_helper.parse_sh_cmd,
-        required=False,
+        type=ObjectParser.sh_cmd,
         help=("CMD is run right after the measurement phase "
               "of a story has ended."))
     parser.add_argument(
         "stop_cmd",
         aliases=("cmd", "stop"),
-        type=cli_helper.parse_sh_cmd,
+        type=ObjectParser.sh_cmd,
         required=True,
         help=("CMD is run right after the workload ended and the browser "
-             "is still running."))
+              "is still running."))
     parser.add_argument(
         "teardown_cmd",
         aliases=("teardown",),
-        type=cli_helper.parse_sh_cmd,
-        required=False,
+        type=ObjectParser.sh_cmd,
         help="CMD is run after the browser is stopped.")
     return parser
 
@@ -128,12 +123,12 @@ class ShellProbe(Probe):
 
   def validate_env(self, env: HostEnvironment) -> None:
     super().validate_env(env)
-    if env.runner.repetitions != 1:
+    if env.repetitions != 1:
       env.handle_warning(f"Probe={self.NAME} cannot merge data over multiple "
-                         f"repetitions={env.runner.repetitions}.")
+                         f"repetitions={env.repetitions}.")
 
-  def get_context(self, run: Run) -> ShellProbeContext:
-    return ShellProbeContext(self, run)
+  def get_context_cls(self) -> Type[ShellProbeContext]:
+    return ShellProbeContext
 
 
 class ShellProbeContext(ProbeContext[ShellProbe]):
@@ -146,16 +141,16 @@ class ShellProbeContext(ProbeContext[ShellProbe]):
     if not cmd:
       return
     stdout_path = self.local_result_path / f"{name}.stdout.txt"
-    self.runner_platform.touch(stdout_path)
+    self.host_platform.touch(stdout_path)
     self._result_files.append(stdout_path)
     stderr_path = self.local_result_path / f"{name}.stderr.txt"
-    self.runner_platform.touch(stderr_path)
+    self.host_platform.touch(stderr_path)
     self._result_files.append(stderr_path)
     with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
       self.browser_platform.sh(*cmd, shell=True, stdout=stdout, stderr=stderr)
 
   def setup(self) -> None:
-    self.runner_platform.mkdir(self.local_result_path)
+    self.host_platform.mkdir(self.local_result_path)
     self._maybe_run_cmd("setup", self.probe.setup_cmd)
 
   def start(self) -> None:

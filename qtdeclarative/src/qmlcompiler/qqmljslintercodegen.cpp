@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljslintercodegen_p.h"
 
@@ -9,6 +10,7 @@
 #include <QtQmlCompiler/private/qqmljsstorageinitializer_p.h>
 #include <QtQmlCompiler/private/qqmljstypepropagator_p.h>
 #include <QtQmlCompiler/private/qqmljsfunctioninitializer_p.h>
+#include <QtQmlCompiler/private/qqmljsbasicblocks_p.h>
 
 #include <QFileInfo>
 
@@ -17,9 +19,12 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 QQmlJSLinterCodegen::QQmlJSLinterCodegen(QQmlJSImporter *importer, const QString &fileName,
-                                         const QStringList &qmldirFiles, QQmlJSLogger *logger)
-    : QQmlJSAotCompiler(importer, fileName, qmldirFiles, logger)
+                                         const QStringList &qmldirFiles, QQmlJSLogger *logger,
+                                         const QQmlJS::ContextProperties &knownContextProperties)
+    : QQmlJSAotCompiler(importer, fileName, qmldirFiles, logger),
+      m_knownContextProperties(knownContextProperties)
 {
+    m_flags |= QQmlJSAotCompiler::IsLintCompiler;
 }
 
 void QQmlJSLinterCodegen::setDocument(const QmlIR::JSCodeGen *codegen,
@@ -34,31 +39,24 @@ std::variant<QQmlJSAotFunction, QList<QQmlJS::DiagnosticMessage>>
 QQmlJSLinterCodegen::compileBinding(const QV4::Compiler::Context *context,
                                     const QmlIR::Binding &irBinding, QQmlJS::AST::Node *astNode)
 {
-    QQmlJSFunctionInitializer initializer(
-                &m_typeResolver, m_currentObject->location, m_currentScope->location);
-
-    QList<QQmlJS::DiagnosticMessage> initializationErrors;
     const QString name = m_document->stringAt(irBinding.propertyNameIndex);
-    QQmlJSCompilePass::Function function =
-            initializer.run(context, name, astNode, irBinding, &initializationErrors);
-    for (const auto &error : initializationErrors) {
-        diagnose(u"Could not determine signature of binding for %1: %2"_s.arg(name, error.message),
-                 error.type, error.loc);
-    }
+    m_logger->setCompileErrorPrefix(
+            u"Could not determine signature of binding for %1: "_s.arg(name));
 
-    QList<QQmlJS::DiagnosticMessage> analyzeErrors;
-    if (!analyzeFunction(context, &function, &analyzeErrors)) {
-        // If it's a signal and the function just returns a closure, it's harmless.
-        // Otherwise promote the message to warning level.
-        for (auto &error : analyzeErrors) {
-            error = diagnose(u"Could not compile binding for %1: %2"_s.arg(name, error.message),
-                             (function.isSignalHandler && error.type == QtDebugMsg)
-                                     ? QtDebugMsg
-                                     : QtWarningMsg,
-                             error.loc);
-        }
-        return analyzeErrors;
-    }
+    QQmlJSFunctionInitializer initializer(
+                &m_typeResolver, m_currentObject->location, m_currentScope->location, m_logger);
+    QQmlJSCompilePass::Function function = initializer.run(context, name, astNode, irBinding);
+
+    m_logger->iterateCurrentFunctionMessages([this](const Message &error) {
+        diagnose(error.message, error.type, error.loc);
+    });
+
+    m_logger->setCompileErrorPrefix(u"Could not compile binding for %1: "_s.arg(name));
+    m_logger->setCompileSkipPrefix(u"Compilation of binding for %1 was skipped: "_s.arg(name));
+
+    analyzeFunction(context, &function);
+    if (const auto errors = finalizeBindingOrFunction())
+        return *errors;
 
     return QQmlJSAotFunction {};
 }
@@ -67,24 +65,22 @@ std::variant<QQmlJSAotFunction, QList<QQmlJS::DiagnosticMessage>>
 QQmlJSLinterCodegen::compileFunction(const QV4::Compiler::Context *context,
                                      const QString &name, QQmlJS::AST::Node *astNode)
 {
-    QList<QQmlJS::DiagnosticMessage> initializationErrors;
-    QQmlJSFunctionInitializer initializer(
-                &m_typeResolver, m_currentObject->location, m_currentScope->location);
-    QQmlJSCompilePass::Function function =
-            initializer.run(context, name, astNode, &initializationErrors);
-    for (const auto &error : initializationErrors) {
-        diagnose(u"Could not determine signature of function %1: %2"_s.arg(name, error.message),
-                 error.type, error.loc);
-    }
+    m_logger->setCompileErrorPrefix(u"Could not determine signature of function %1: "_s.arg(name));
 
-    QList<QQmlJS::DiagnosticMessage> analyzeErrors;
-    if (!analyzeFunction(context, &function, &analyzeErrors)) {
-        for (auto &error : analyzeErrors) {
-            error = diagnose(u"Could not compile function %1: %2"_s.arg(name, error.message),
-                             QtWarningMsg, error.loc);
-        }
-        return analyzeErrors;
-    }
+    QQmlJSFunctionInitializer initializer(
+                &m_typeResolver, m_currentObject->location, m_currentScope->location, m_logger);
+    QQmlJSCompilePass::Function function = initializer.run(context, name, astNode);
+
+    m_logger->iterateCurrentFunctionMessages([this](const Message &error) {
+        diagnose(error.message, error.type, error.loc);
+    });
+
+    m_logger->setCompileErrorPrefix(u"Could not compile function %1: "_s.arg(name));
+    m_logger->setCompileSkipPrefix(u"Compilation of function %1 was skipped: "_s.arg(name));
+    analyzeFunction(context, &function);
+
+    if (const auto errors = finalizeBindingOrFunction())
+        return *errors;
 
     return QQmlJSAotFunction {};
 }
@@ -96,39 +92,43 @@ void QQmlJSLinterCodegen::setPassManager(QQmlSA::PassManager *passManager)
     managerPriv->m_typeResolver = typeResolver();
 }
 
-bool QQmlJSLinterCodegen::analyzeFunction(const QV4::Compiler::Context *context,
-                                          QQmlJSCompilePass::Function *function,
-                                          QList<QQmlJS::DiagnosticMessage> *errors)
+void QQmlJSLinterCodegen::analyzeFunction(const QV4::Compiler::Context *context,
+                                          QQmlJSCompilePass::Function *function)
 {
-    QQmlJSTypePropagator propagator(m_unitGenerator, &m_typeResolver, m_logger, errors, {}, {},
-                                    m_passManager);
-    auto [basicBlocks, annotations] = propagator.run(function);
-    if (errors->isEmpty()) {
-        QQmlJSShadowCheck shadowCheck(m_unitGenerator, &m_typeResolver, m_logger, errors,
-                                      basicBlocks, annotations);
-        shadowCheck.run(function);
+    bool dummy = false;
+    QQmlJSCompilePass::BlocksAndAnnotations blocksAndAnnotations =
+            QQmlJSBasicBlocks(context, m_unitGenerator, &m_typeResolver, m_logger)
+                    .run(function, ValidateBasicBlocks, dummy);
+
+    blocksAndAnnotations =
+            QQmlJSTypePropagator(m_unitGenerator, &m_typeResolver, m_logger,
+                                 blocksAndAnnotations.basicBlocks, blocksAndAnnotations.annotations,
+                                 m_passManager, m_knownContextProperties)
+                    .run(function);
+
+    if (m_logger->isCategoryIgnored(qmlCompiler))
+        return;
+
+    if (!m_logger->currentFunctionHasCompileError()) {
+        blocksAndAnnotations = QQmlJSShadowCheck(m_unitGenerator, &m_typeResolver, m_logger,
+                                                 blocksAndAnnotations.basicBlocks,
+                                                 blocksAndAnnotations.annotations)
+                                       .run(function);
     }
 
-    if (errors->isEmpty()) {
-        QQmlJSStorageInitializer initializer(m_unitGenerator, &m_typeResolver, m_logger, errors,
-                                             basicBlocks, annotations);
-        initializer.run(function);
+    if (!m_logger->currentFunctionHasCompileError()) {
+        blocksAndAnnotations = QQmlJSStorageInitializer(m_unitGenerator, &m_typeResolver, m_logger,
+                                                        blocksAndAnnotations.basicBlocks,
+                                                        blocksAndAnnotations.annotations)
+                                       .run(function);
     }
 
-    if (errors->isEmpty()) {
-        QQmlJSStorageGeneralizer generalizer(m_unitGenerator, &m_typeResolver, m_logger, errors,
-                                             basicBlocks, annotations);
-        generalizer.run(function);
+    if (!m_logger->currentFunctionHasCompileError()) {
+        blocksAndAnnotations = QQmlJSStorageGeneralizer(m_unitGenerator, &m_typeResolver, m_logger,
+                                                        blocksAndAnnotations.basicBlocks,
+                                                        blocksAndAnnotations.annotations)
+                                       .run(function);
     }
-
-    if (!errors->isEmpty()) {
-        QtMsgType type = context->returnsClosure ? QtDebugMsg : QtWarningMsg;
-        for (auto &error : *errors)
-            error.type = type;
-        return false;
-    }
-
-    return true;
 }
 
 QT_END_NAMESPACE

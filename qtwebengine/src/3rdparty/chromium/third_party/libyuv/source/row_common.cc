@@ -799,14 +799,13 @@ static __inline uint8_t RGBToYJ(uint8_t r, uint8_t g, uint8_t b) {
 }
 #endif
 
-#if defined(LIBYUV_ARGBTOUV_PAVGB)
 static __inline uint8_t RGBToUJ(uint8_t r, uint8_t g, uint8_t b) {
   return (127 * b - 84 * g - 43 * r + 0x8080) >> 8;
 }
 static __inline uint8_t RGBToVJ(uint8_t r, uint8_t g, uint8_t b) {
   return (127 * r - 107 * g - 20 * b + 0x8080) >> 8;
 }
-#else
+#if !defined(LIBYUV_ARGBTOUV_PAVGB)
 static __inline uint8_t RGB2xToUJ(uint16_t r, uint16_t g, uint16_t b) {
   return ((127 / 2) * b - (84 / 2) * g - (43 / 2) * r + 0x8080) >> 8;
 }
@@ -1230,6 +1229,23 @@ void ARGBToUV444Row_C(const uint8_t* src_argb,
   }
 }
 
+void ARGBToUVJ444Row_C(const uint8_t* src_argb,
+                       uint8_t* dst_u,
+                       uint8_t* dst_v,
+                       int width) {
+  int x;
+  for (x = 0; x < width; ++x) {
+    uint8_t ab = src_argb[0];
+    uint8_t ag = src_argb[1];
+    uint8_t ar = src_argb[2];
+    dst_u[0] = RGBToUJ(ar, ag, ab);
+    dst_v[0] = RGBToVJ(ar, ag, ab);
+    src_argb += 4;
+    dst_u += 1;
+    dst_v += 1;
+  }
+}
+
 void ARGBGrayRow_C(const uint8_t* src_argb, uint8_t* dst_argb, int width) {
   int x;
   for (x = 0; x < width; ++x) {
@@ -1375,34 +1391,29 @@ void ARGBShadeRow_C(const uint8_t* src_argb,
 #undef REPEAT8
 #undef SHADE
 
-#define REPEAT8(v) (v) | ((v) << 8)
-#define SHADE(f, v) v* f >> 16
-
 void ARGBMultiplyRow_C(const uint8_t* src_argb,
                        const uint8_t* src_argb1,
                        uint8_t* dst_argb,
                        int width) {
   int i;
   for (i = 0; i < width; ++i) {
-    const uint32_t b = REPEAT8(src_argb[0]);
-    const uint32_t g = REPEAT8(src_argb[1]);
-    const uint32_t r = REPEAT8(src_argb[2]);
-    const uint32_t a = REPEAT8(src_argb[3]);
+    const uint32_t b = src_argb[0];
+    const uint32_t g = src_argb[1];
+    const uint32_t r = src_argb[2];
+    const uint32_t a = src_argb[3];
     const uint32_t b_scale = src_argb1[0];
     const uint32_t g_scale = src_argb1[1];
     const uint32_t r_scale = src_argb1[2];
     const uint32_t a_scale = src_argb1[3];
-    dst_argb[0] = STATIC_CAST(uint8_t, SHADE(b, b_scale));
-    dst_argb[1] = STATIC_CAST(uint8_t, SHADE(g, g_scale));
-    dst_argb[2] = STATIC_CAST(uint8_t, SHADE(r, r_scale));
-    dst_argb[3] = STATIC_CAST(uint8_t, SHADE(a, a_scale));
+    dst_argb[0] = STATIC_CAST(uint8_t, (b * b_scale + 128) >> 8);
+    dst_argb[1] = STATIC_CAST(uint8_t, (g * g_scale + 128) >> 8);
+    dst_argb[2] = STATIC_CAST(uint8_t, (r * r_scale + 128) >> 8);
+    dst_argb[3] = STATIC_CAST(uint8_t, (a * a_scale + 128) >> 8);
     src_argb += 4;
     src_argb1 += 4;
     dst_argb += 4;
   }
 }
-#undef REPEAT8
-#undef SHADE
 
 #define SHADE(f, v) clamp255(v + f)
 
@@ -3242,6 +3253,24 @@ void Convert8To16Row_C(const uint8_t* src_y,
   scale *= 0x0101;  // replicates the byte.
   for (x = 0; x < width; ++x) {
     dst_y[x] = (src_y[x] * scale) >> 16;
+  }
+}
+
+// Use scale to convert J420 to I420
+// scale parameter is 8.8 fixed point but limited to 0 to 255
+// Function is based on DivideRow, but adds a bias
+// Does not clamp
+void Convert8To8Row_C(const uint8_t* src_y,
+                      uint8_t* dst_y,
+                      int scale,
+                      int bias,
+                      int width) {
+  int x;
+  assert(scale >= 0);
+  assert(scale <= 255);
+
+  for (x = 0; x < width; ++x) {
+    dst_y[x] = ((src_y[x] * scale) >> 8) + bias;
   }
 }
 

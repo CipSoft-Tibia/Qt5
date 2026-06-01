@@ -23,7 +23,7 @@ for MODULE in qtgrpc qtprotobuf; do
         export PACKAGE="Add-ons"
     elif [ "$MODULE" == "qtprotobuf" ]
     then
-        export TARGET_NAME="build/lib/libQt6QtProtobuf.so.*.ir:build/lib/libQt6ProtobufQtGuiTypes.so:build/lib/libQt6ProtobufQtCoreTypes.so.*.ir:build/lib/libQt6ProtobufWellKnownTypes.so.*.ir"
+        export TARGET_NAME="build/lib/libQt6Protobuf.so.*.ir:build/lib/libQt6ProtobufQtGuiTypes.so:build/lib/libQt6ProtobufQtCoreTypes.so.*.ir:build/lib/libQt6ProtobufWellKnownTypes.so.*.ir:build/lib/libQt6ProtobufQuick.so.*.ir"
         export PACKAGE="Add-ons"
     fi
     axivion_ci "$@"

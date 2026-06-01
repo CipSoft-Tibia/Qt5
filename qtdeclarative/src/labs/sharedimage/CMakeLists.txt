@@ -15,7 +15,7 @@ qt_internal_add_qml_module(LabsSharedImage
         qtlabssharedimageglobal_p.h
     DEFINES
         QT_BUILD_LABSSHAREDIMAGE_LIB
-    PUBLIC_LIBRARIES
+    LIBRARIES
         Qt::CorePrivate
         Qt::GuiPrivate
         Qt::QuickPrivate
@@ -25,5 +25,7 @@ qt_internal_add_qml_module(LabsSharedImage
 # plugin class rather than using the generated one
 qt_internal_extend_target(sharedimageplugin
     SOURCES   qsharedimageplugin.cpp
-    LIBRARIES Qt::LabsSharedImagePrivate
+    LIBRARIES
+        Qt::LabsSharedImagePrivate
+        Qt::QuickPrivate
 )

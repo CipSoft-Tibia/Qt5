@@ -12,6 +12,11 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 /*!
+    \class QDeclarativeTextToSpeech
+    \internal
+*/
+
+/*!
     \internal
 
     Constructor that delays the initialization of the text-to-speech

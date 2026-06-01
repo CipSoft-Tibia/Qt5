@@ -11,7 +11,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/trace_event/common/trace_event_common.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "content/browser/child_process_host_impl.h"
 #include "content/browser/renderer_host/media/service_video_capture_device_launcher.h"
 #include "content/browser/renderer_host/media/virtual_video_capture_devices_changed_observer.h"
@@ -28,22 +27,22 @@
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "services/video_capture/public/mojom/video_capture_service.mojom.h"
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 #include "content/public/browser/chromeos/delegate_to_browser_gpu_service_accelerator_factory.h"
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace {
 
 using GetSourceInfosResult =
     video_capture::mojom::VideoSourceProvider::GetSourceInfosResult;
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 std::unique_ptr<video_capture::mojom::AcceleratorFactory>
 CreateAcceleratorFactory() {
   return std::make_unique<
       content::DelegateToBrowserGpuServiceAcceleratorFactory>();
 }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 // Do not reorder, used for UMA Media.VideoCapture.GetDeviceInfosResult
 enum class GetDeviceInfosResult {
@@ -119,7 +118,7 @@ class ServiceVideoCaptureProvider::ServiceProcessObserver
   const base::RepeatingClosure stop_callback_;
 };
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 ServiceVideoCaptureProvider::ServiceVideoCaptureProvider(
     base::RepeatingCallback<void(const std::string&)> emit_log_message_cb)
     : ServiceVideoCaptureProvider(base::NullCallback(),
@@ -131,20 +130,20 @@ ServiceVideoCaptureProvider::ServiceVideoCaptureProvider(
     : create_accelerator_factory_cb_(std::move(create_accelerator_factory_cb)),
       emit_log_message_cb_(std::move(emit_log_message_cb)),
       launcher_has_connected_to_source_provider_(false) {
-#else   // BUILDFLAG(IS_CHROMEOS_ASH)
+#else   // BUILDFLAG(IS_CHROMEOS)
 ServiceVideoCaptureProvider::ServiceVideoCaptureProvider(
     base::RepeatingCallback<void(const std::string&)> emit_log_message_cb)
     : emit_log_message_cb_(std::move(emit_log_message_cb)),
       launcher_has_connected_to_source_provider_(false) {
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
-  if (features::IsVideoCaptureServiceEnabledForOutOfProcess()) {
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  if (::features::IsVideoCaptureServiceEnabledForOutOfProcess()) {
     service_process_observer_.emplace(
         GetUIThreadTaskRunner({}),
         base::BindRepeating(&ServiceVideoCaptureProvider::OnServiceStarted,
                             weak_ptr_factory_.GetWeakPtr()),
         base::BindRepeating(&ServiceVideoCaptureProvider::OnServiceStopped,
                             weak_ptr_factory_.GetWeakPtr()));
-  } else if (features::IsVideoCaptureServiceEnabledForBrowserProcess()) {
+  } else if (::features::IsVideoCaptureServiceEnabledForBrowserProcess()) {
     // Connect immediately and permanently when the service runs in-process.
     GetIOThreadTaskRunner({})->PostTask(
         FROM_HERE,
@@ -251,7 +250,7 @@ ServiceVideoCaptureProvider::LazyConnectToService() {
   time_of_last_connect_ = base::TimeTicks::Now();
 
   auto ui_task_runner = GetUIThreadTaskRunner({});
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
   mojo::PendingRemote<video_capture::mojom::AcceleratorFactory>
       accelerator_factory;
   if (!create_accelerator_factory_cb_)
@@ -262,7 +261,7 @@ ServiceVideoCaptureProvider::LazyConnectToService() {
       accelerator_factory.InitWithNewPipeAndPassReceiver());
   GetVideoCaptureService().InjectGpuDependencies(
       std::move(accelerator_factory));
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN)
   // Pass active gpu info.
@@ -334,7 +333,7 @@ void ServiceVideoCaptureProvider::OnDeviceInfosRequestDropped(
     scoped_refptr<RefCountedVideoSourceProvider> service_connection) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
   if (base::FeatureList::IsEnabled(
-          features::kRetryGetVideoCaptureDeviceInfos)) {
+          ::features::kRetryGetVideoCaptureDeviceInfos)) {
     if (!get_device_infos_retried_) {
       get_device_infos_retried_ = true;
       // Do nothing, OnServiceStopped will retry the query automatically when

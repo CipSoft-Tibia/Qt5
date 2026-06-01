@@ -11,21 +11,22 @@
 #include "base/metrics/histogram_macros.h"
 #include "third_party/blink/public/common/scheduler/task_attribution_id.h"
 #include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_value.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_scheduler_post_task_callback.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
 #include "third_party/blink/renderer/core/dom/abort_signal.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
-#include "third_party/blink/renderer/core/frame/local_dom_window.h"
-#include "third_party/blink/renderer/core/inspector/identifiers_factory.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/core/scheduler/dom_task_signal.h"
 #include "third_party/blink/renderer/core/scheduler/script_wrappable_task_state.h"
 #include "third_party/blink/renderer/core/scheduler/web_scheduling_task_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
+#include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/scheduler/public/task_attribution_info.h"
 #include "third_party/blink/renderer/platform/scheduler/public/task_attribution_tracker.h"
@@ -38,47 +39,21 @@ namespace blink {
 
 namespace {
 
-void GenericTaskData(perfetto::TracedDictionary& dict,
-                     ExecutionContext* context,
-                     const uint64_t task_id) {
-  dict.Add("taskId", task_id);
-  if (auto* window = DynamicTo<LocalDOMWindow>(context)) {
-    if (auto* frame = window->GetFrame()) {
-      dict.Add("frame", IdentifiersFactory::FrameId(frame));
-    }
+class TaskPromiseResolveHandler final
+    : public ThenCallable<IDLAny, TaskPromiseResolveHandler> {
+ public:
+  explicit TaskPromiseResolveHandler(DOMTask* task) : task_(task) {}
+
+  void Trace(Visitor* visitor) const override {
+    ThenCallable<IDLAny, TaskPromiseResolveHandler>::Trace(visitor);
+    visitor->Trace(task_);
   }
-}
 
-void SchedulePostTaskCallbackTraceEventData(perfetto::TracedValue trace_context,
-                                            ExecutionContext* execution_context,
-                                            const uint64_t task_id,
-                                            const String& priority,
-                                            const double delay) {
-  auto dict = std::move(trace_context).WriteDictionary();
-  GenericTaskData(dict, execution_context, task_id);
-  dict.Add("priority", priority);
-  dict.Add("delay", delay);
-  SetCallStack(execution_context->GetIsolate(), dict);
-}
+  void React(ScriptState*, ScriptValue) { task_->OnPendingPromiseSettled(); }
 
-void RunPostTaskCallbackTraceEventData(perfetto::TracedValue trace_context,
-                                       ExecutionContext* execution_context,
-                                       const uint64_t task_id,
-                                       const String& priority,
-                                       const double delay) {
-  auto dict = std::move(trace_context).WriteDictionary();
-  GenericTaskData(dict, execution_context, task_id);
-  dict.Add("priority", priority);
-  dict.Add("delay", delay);
-}
-
-void AbortPostTaskCallbackTraceEventData(perfetto::TracedValue trace_context,
-                                         ExecutionContext* execution_context,
-                                         uint64_t task_id) {
-  auto dict = std::move(trace_context).WriteDictionary();
-  GenericTaskData(dict, execution_context, task_id);
-  SetCallStack(execution_context->GetIsolate(), dict);
-}
+ private:
+  Member<DOMTask> task_;
+};
 
 }  // namespace
 
@@ -87,14 +62,15 @@ DOMTask::DOMTask(ScriptPromiseResolver<IDLAny>* resolver,
                  AbortSignal* abort_source,
                  DOMTaskSignal* priority_source,
                  DOMScheduler::DOMTaskQueue* task_queue,
-                 base::TimeDelta delay)
+                 base::TimeDelta delay,
+                 uint64_t task_id_for_tracing)
     : callback_(callback),
       resolver_(resolver),
       abort_source_(abort_source),
       priority_source_(priority_source),
       task_queue_(task_queue),
       delay_(delay),
-      task_id_for_tracing_(NextIdForTracing()) {
+      task_id_for_tracing_(task_id_for_tracing) {
   CHECK(task_queue_);
   CHECK(callback_);
 
@@ -120,9 +96,8 @@ DOMTask::DOMTask(ScriptPromiseResolver<IDLAny>* resolver,
 
   auto* context = ExecutionContext::From(script_state);
   DEVTOOLS_TIMELINE_TRACE_EVENT_INSTANT(
-      "SchedulePostTaskCallback", SchedulePostTaskCallbackTraceEventData,
-      context, task_id_for_tracing_,
-      WebSchedulingPriorityToString(task_queue_->GetPriority()),
+      "SchedulePostTaskCallback", inspector_scheduler_schedule_event::Data,
+      context, task_id_for_tracing_, task_queue_->GetPriority(),
       delay_.InMillisecondsF());
   async_task_context_.Schedule(context, "postTask");
 }
@@ -138,7 +113,8 @@ void DOMTask::Trace(Visitor* visitor) const {
 }
 
 void DOMTask::Invoke() {
-  DCHECK(callback_);
+  CHECK(callback_);
+  CHECK_EQ(execution_state_, ExecutionState::kNotStarted);
 
   // Tasks are not runnable if the document associated with this task's
   // scheduler's global is not fully active, which happens if the
@@ -147,6 +123,7 @@ void DOMTask::Invoke() {
   ExecutionContext* scheduler_context = resolver_->GetExecutionContext();
   if (!scheduler_context || scheduler_context->IsContextDestroyed()) {
     RemoveAbortAlgorithm();
+    execution_state_ = ExecutionState::kFinished;
     return;
   }
 
@@ -165,11 +142,14 @@ void DOMTask::Invoke() {
     // context.
     resolver_->Detach();
     RemoveAbortAlgorithm();
+    execution_state_ = ExecutionState::kFinished;
     return;
   }
 
   InvokeInternal(script_state);
-  RemoveAbortAlgorithm();
+  if (execution_state_ == ExecutionState::kFinished) {
+    RemoveAbortAlgorithm();
+  }
   callback_.Release();
 }
 
@@ -181,9 +161,8 @@ void DOMTask::InvokeInternal(ScriptState* script_state) {
   ExecutionContext* context = ExecutionContext::From(script_state);
   DCHECK(context);
   DEVTOOLS_TIMELINE_TRACE_EVENT(
-      "RunPostTaskCallback", RunPostTaskCallbackTraceEventData, context,
-      task_id_for_tracing_,
-      WebSchedulingPriorityToString(task_queue_->GetPriority()),
+      "RunPostTaskCallback", inspector_scheduler_run_event::Data, context,
+      task_id_for_tracing_, task_queue_->GetPriority(),
       delay_.InMillisecondsF());
   probe::AsyncTask async_task(context, &async_task_context_);
 
@@ -207,19 +186,30 @@ void DOMTask::InvokeInternal(ScriptState* script_state) {
         MakeGarbageCollected<ScriptWrappableTaskState>(task_state));
   }
 
+  execution_state_ = ExecutionState::kRunningSync;
   ScriptValue result;
+  ScriptPromise<IDLAny> pending_result;
   if (callback_->Invoke(nullptr).To(&result)) {
+    v8::Local<v8::Value> v8_result = result.V8Value();
+    if (v8_result->IsPromise()) {
+      auto promise = v8_result.As<v8::Promise>();
+      if (promise->State() == v8::Promise::PromiseState::kPending) {
+        pending_result = ScriptPromise<IDLAny>::FromV8Promise(isolate, promise);
+        auto* handler = MakeGarbageCollected<TaskPromiseResolveHandler>(this);
+        pending_result.Then(script_state, handler, handler);
+      }
+    }
     resolver_->Resolve(result);
   } else if (try_catch.HasCaught()) {
     resolver_->Reject(try_catch.Exception());
   }
+  execution_state_ = pending_result.IsEmpty() ? ExecutionState::kFinished
+                                              : ExecutionState::kRunningAsync;
 }
 
 void DOMTask::OnAbort() {
-  // If the task has already finished running, the promise is either resolved or
-  // rejected, in which case abort will no longer have any effect.
-  if (!callback_)
-    return;
+  // If the task finished, `RemoveAbortAlgorithm()` should have been called.
+  CHECK_NE(execution_state_, ExecutionState::kFinished);
 
   task_handle_.Cancel();
   async_task_context_.Cancel();
@@ -233,14 +223,26 @@ void DOMTask::OnAbort() {
     return;
   }
 
+  auto* context = ExecutionContext::From(resolver_script_state);
+  CHECK(context);
+
+  if (execution_state_ == ExecutionState::kRunningAsync) {
+    UseCounter::Count(*context, WebFeature::kSchedulerPostTaskAsyncAbort);
+    // The abort won't have an effect because the promise has already been
+    // resolved.
+    return;
+  }
+  UseCounter::Count(*context,
+                    execution_state_ == ExecutionState::kRunningSync
+                        ? WebFeature::kSchedulerPostTaskSelfAbort
+                        : WebFeature::kSchedulerPostTaskAbortBeforeRunning);
+
   // Switch to the resolver's context to let DOMException pick up the resolver's
   // JS stack.
   ScriptState::Scope script_state_scope(resolver_script_state);
 
-  auto* context = ExecutionContext::From(resolver_script_state);
-  DCHECK(context);
   DEVTOOLS_TIMELINE_TRACE_EVENT("AbortPostTaskCallback",
-                                AbortPostTaskCallbackTraceEventData, context,
+                                inspector_scheduler_abort_event::Data, context,
                                 task_id_for_tracing_);
 
   // TODO(crbug.com/1293949): Add an error message.
@@ -254,6 +256,11 @@ void DOMTask::RemoveAbortAlgorithm() {
     abort_source_->RemoveAlgorithm(abort_handle_);
     abort_handle_ = nullptr;
   }
+}
+
+void DOMTask::OnPendingPromiseSettled() {
+  execution_state_ = ExecutionState::kFinished;
+  RemoveAbortAlgorithm();
 }
 
 }  // namespace blink

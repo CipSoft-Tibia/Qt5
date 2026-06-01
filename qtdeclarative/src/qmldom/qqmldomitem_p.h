@@ -1156,7 +1156,7 @@ public:
     DomItem subOwnerItem(const PathEls::PathComponent &c, Owner o) const
     {
         if constexpr (domTypeIsUnattachedOwningItem(Owner::element_type::kindValue))
-            return DomItem(m_top, o, canonicalPath().appendComponent(c), o.get());
+            return DomItem(m_top, o, canonicalPath().withComponent(c), o.get());
         else
             return DomItem(m_top, o, Path(), o.get());
     }
@@ -1323,7 +1323,7 @@ static DomItem keyMultiMapHelper(const DomItem &self, const QString &key,
         QList<const T *> values;
         while (it != end && it.key() == key)
             values.append(&(*it++));
-        ListP ll(self.pathFromOwner().appendComponent(PathEls::Key(key)), values, QString(),
+        ListP ll(self.pathFromOwner().withComponent(PathEls::Key(key)), values, QString(),
                  ListOptions::Reverse);
         return self.copy(ll);
     }
@@ -1601,7 +1601,7 @@ public:
     QString internalKindStr() { return domTypeToString(internalKind()); }
     DomKind domKind() { return kind2domKind(internalKind()); }
 
-    Path canonicalPath() const { return m_owner.canonicalPath().path(m_pathFromOwner); }
+    Path canonicalPath() const { return m_owner.canonicalPath().withPath(m_pathFromOwner); }
     MutableDomItem containingObject()
     {
         if (m_pathFromOwner)
@@ -1827,7 +1827,7 @@ Path insertUpdatableElementInMultiMap(const Path &mapPathFromOwner, QMultiMap<K,
                 qWarning() << " requested overwrite of " << key
                            << " that contains aleready multiple entries in" << mapPathFromOwner;
             }
-            Path newPath = mapPathFromOwner.key(key).index(0);
+            Path newPath = mapPathFromOwner.withKey(key).withIndex(0);
             v.updatePathFromOwner(newPath);
             if (valuePtr)
                 *valuePtr = &v;
@@ -1842,7 +1842,7 @@ Path insertUpdatableElementInMultiMap(const Path &mapPathFromOwner, QMultiMap<K,
        ++nVal;
         ++it2;
     }
-    Path newPath = mapPathFromOwner.key(key).index(nVal-1);
+    Path newPath = mapPathFromOwner.withKey(key).withIndex(nVal-1);
     T &v = *it;
     v.updatePathFromOwner(newPath);
     if (valuePtr)
@@ -1856,7 +1856,7 @@ Path appendUpdatableElementInQList(const Path &listPathFromOwner, QList<T> &list
 {
     int idx = list.size();
     list.append(value);
-    Path newPath = listPathFromOwner.index(idx);
+    Path newPath = listPathFromOwner.withIndex(idx);
     T &targetV = list[idx];
     targetV.updatePathFromOwner(newPath);
     if (vPtr)
@@ -1874,9 +1874,9 @@ void updatePathFromOwnerMultiMap(QMultiMap<K, T> &mmap, const Path &newPath)
     QList<T*> els;
     while (it != end) {
         if (i > 0 && name != it.key()) {
-            Path pName = newPath.key(QString(name));
+            Path pName = newPath.withKey(QString(name));
             for (T *el : els)
-                el->updatePathFromOwner(pName.index(--i));
+                el->updatePathFromOwner(pName.withIndex(--i));
             els.clear();
             els.append(&(*it));
             name = it.key();
@@ -1888,9 +1888,9 @@ void updatePathFromOwnerMultiMap(QMultiMap<K, T> &mmap, const Path &newPath)
         }
         ++it;
     }
-    Path pName = newPath.key(name);
+    Path pName = newPath.withKey(name);
     for (T *el : els)
-        el->updatePathFromOwner(pName.index(--i));
+        el->updatePathFromOwner(pName.withIndex(--i));
 }
 
 template <typename T>
@@ -1900,7 +1900,7 @@ void updatePathFromOwnerQList(QList<T> &list, const Path &newPath)
     auto end = list.end();
     index_type i = 0;
     while (it != end)
-        (it++)->updatePathFromOwner(newPath.index(i++));
+        (it++)->updatePathFromOwner(newPath.withIndex(i++));
 }
 
 constexpr bool domTypeIsObjWrap(DomType k)
@@ -2020,13 +2020,13 @@ DomItem DomItem::subValueItem(const PathEls::PathComponent &c, const T &value,
                     QCborValue,
                     BaseT> || std::is_base_of_v<QCborArray, BaseT> || std::is_base_of_v<QCborMap, BaseT>) {
         return DomItem(m_top, m_owner, m_ownerPath,
-                       ConstantData(pathFromOwner().appendComponent(c), value, options));
+                       ConstantData(pathFromOwner().withComponent(c), value, options));
     } else if constexpr (std::is_same_v<DomItem, BaseT>) {
         Q_UNUSED(options);
         return value;
     } else if constexpr (IsList<T>::value && !std::is_convertible_v<BaseT, QStringView>) {
         return subListItem(List::fromQList<typename BaseT::value_type>(
-                pathFromOwner().appendComponent(c), value,
+                pathFromOwner().withComponent(c), value,
                 [options](const DomItem &list, const PathEls::PathComponent &p,
                           const typename T::value_type &v) { return list.subValueItem(p, v, options); }));
     } else if constexpr (IsSharedPointerToDomObject<BaseT>::value) {
@@ -2046,11 +2046,11 @@ DomItem DomItem::subDataItem(const PathEls::PathComponent &c, const T &value,
         return this->copy(value);
     } else if constexpr (std::is_base_of_v<QCborValue, BaseT>) {
         return DomItem(m_top, m_owner, m_ownerPath,
-                       ConstantData(pathFromOwner().appendComponent(c), value, options));
+                       ConstantData(pathFromOwner().withComponent(c), value, options));
     } else {
         return DomItem(
                 m_top, m_owner, m_ownerPath,
-                ConstantData(pathFromOwner().appendComponent(c), QCborValue(value), options));
+                ConstantData(pathFromOwner().withComponent(c), QCborValue(value), options));
     }
 }
 
@@ -2099,7 +2099,7 @@ DomItem DomItem::wrap(const PathEls::PathComponent &c, const T &obj) const
     } else if constexpr (IsDomObject<BaseT>::value) {
         if constexpr (domTypeIsObjWrap(BaseT::kindValue) || domTypeIsValueWrap(BaseT::kindValue)) {
             return this->subObjectWrapItem(
-                    SimpleObjectWrap::fromObjectRef(this->pathFromOwner().appendComponent(c), obj));
+                    SimpleObjectWrap::fromObjectRef(this->pathFromOwner().withComponent(c), obj));
         } else if constexpr (domTypeIsDomElement(BaseT::kindValue)) {
             return this->copy(&obj);
         } else {
@@ -2118,14 +2118,14 @@ DomItem DomItem::wrap(const PathEls::PathComponent &c, const T &obj) const
     } else if constexpr (IsMultiMap<BaseT>::value) {
         if constexpr (std::is_same_v<typename BaseT::key_type, QString>) {
             return subMapItem(Map::fromMultiMapRef<typename BaseT::mapped_type>(
-                    pathFromOwner().appendComponent(c), obj));
+                    pathFromOwner().withComponent(c), obj));
         } else {
             Q_ASSERT_X(false, "DomItem::wrap", "non string keys not supported (try .toString()?)");
         }
     } else if constexpr (IsMap<BaseT>::value) {
         if constexpr (std::is_same_v<typename BaseT::key_type, QString>) {
             return subMapItem(Map::fromMapRef<typename BaseT::mapped_type>(
-                    pathFromOwner().appendComponent(c), obj,
+                    pathFromOwner().withComponent(c), obj,
                     [](const DomItem &map, const PathEls::PathComponent &p,
                        const typename BaseT::mapped_type &el) { return map.wrap(p, el); }));
         } else {
@@ -2134,7 +2134,7 @@ DomItem DomItem::wrap(const PathEls::PathComponent &c, const T &obj) const
     } else if constexpr (IsList<BaseT>::value) {
         if constexpr (IsDomObject<typename BaseT::value_type>::value) {
             return subListItem(List::fromQListRef<typename BaseT::value_type>(
-                    pathFromOwner().appendComponent(c), obj,
+                    pathFromOwner().withComponent(c), obj,
                     [](const DomItem &list, const PathEls::PathComponent &p,
                        const typename BaseT::value_type &el) { return list.wrap(p, el); }));
         } else {

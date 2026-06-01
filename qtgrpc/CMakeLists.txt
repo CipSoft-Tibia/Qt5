@@ -13,7 +13,14 @@ project(QtGrpc
 
 set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
 
-find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
+find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals)
+
+# This should be called as early as possible, just after find_package(BuildInternals) where it is
+# defined.
+qt_internal_project_setup()
+
+find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED Core)
+
 # Try to find Qt6::qtprotobufgen and Qt6::qtgrpcgen targets from host tools
 # when cross-compiling.
 if(NOT "${QT_HOST_PATH}" STREQUAL "")
@@ -22,7 +29,6 @@ endif()
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG OPTIONAL_COMPONENTS Network Gui Widgets Quick
     QmlNetwork QuickControls2 QuickTest)
-qt_internal_project_setup()
 
 include("${CMAKE_CURRENT_LIST_DIR}/src/tools/qtprotobufgen/Qt6ProtobufToolsMacros.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/src/tools/qtgrpcgen/Qt6GrpcToolsMacros.cmake")

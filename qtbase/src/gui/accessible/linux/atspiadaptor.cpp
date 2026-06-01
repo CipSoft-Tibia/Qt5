@@ -45,6 +45,7 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace QtGuiPrivate; // for D-Bus accessibility wrappers
 
 Q_STATIC_LOGGING_CATEGORY(lcAccessibilityAtspi, "qt.accessibility.atspi")
 Q_STATIC_LOGGING_CATEGORY(lcAccessibilityAtspiCreation, "qt.accessibility.atspi.creation")
@@ -131,7 +132,7 @@ AtSpiAdaptor::~AtSpiAdaptor()
   */
 QString AtSpiAdaptor::introspect(const QString &path) const
 {
-    static const QLatin1StringView accessibleIntrospection(
+    constexpr auto accessibleIntrospection =
                 "  <interface name=\"org.a11y.atspi.Accessible\">\n"
                 "    <property access=\"read\" type=\"s\" name=\"Name\"/>\n"
                 "    <property access=\"read\" type=\"s\" name=\"Description\"/>\n"
@@ -181,9 +182,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"s\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView actionIntrospection(
+    constexpr auto actionIntrospection =
                 "  <interface name=\"org.a11y.atspi.Action\">\n"
                 "    <property access=\"read\" type=\"i\" name=\"NActions\"/>\n"
                 "    <method name=\"GetDescription\">\n"
@@ -207,9 +208,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"b\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView applicationIntrospection(
+    constexpr auto applicationIntrospection =
                 "  <interface name=\"org.a11y.atspi.Application\">\n"
                 "    <property access=\"read\" type=\"s\" name=\"ToolkitName\"/>\n"
                 "    <property access=\"read\" type=\"s\" name=\"Version\"/>\n"
@@ -222,9 +223,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"s\" name=\"address\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView componentIntrospection(
+    constexpr auto componentIntrospection =
                 "  <interface name=\"org.a11y.atspi.Component\">\n"
                 "    <method name=\"Contains\">\n"
                 "      <arg direction=\"in\" type=\"i\" name=\"x\"/>\n"
@@ -285,9 +286,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"b\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView editableTextIntrospection(
+    constexpr auto editableTextIntrospection =
                 "  <interface name=\"org.a11y.atspi.EditableText\">\n"
                 "    <method name=\"SetTextContents\">\n"
                 "      <arg direction=\"in\" type=\"s\" name=\"newContents\"/>\n"
@@ -318,9 +319,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"b\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView selectionIntrospection(
+    constexpr auto selectionIntrospection =
                 "  <interface name=\"org.a11y.atspi.Selection\">\n"
                 "    <property name=\"NSelectedChildren\" type=\"i\" access=\"read\"/>\n"
                 "    <method name=\"GetSelectedChild\">\n"
@@ -351,9 +352,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"b\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView tableIntrospection(
+    constexpr auto tableIntrospection =
                 "  <interface name=\"org.a11y.atspi.Table\">\n"
                 "    <property access=\"read\" type=\"i\" name=\"NRows\"/>\n"
                 "    <property access=\"read\" type=\"i\" name=\"NColumns\"/>\n"
@@ -459,9 +460,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"b\" name=\"is_selected\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView tableCellIntrospection(
+    constexpr auto tableCellIntrospection =
                 "  <interface name=\"org.a11y.atspi.TableCell\">\n"
                 "    <property access=\"read\" name=\"ColumnSpan\" type=\"i\" />\n"
                 "    <property access=\"read\" name=\"Position\" type=\"(ii)\">\n"
@@ -487,9 +488,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <annotation value=\"QSpiObjectReferenceArray\" name=\"org.qtproject.QtDBus.QtTypeName.Out0\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView textIntrospection(
+    constexpr auto textIntrospection =
                 "  <interface name=\"org.a11y.atspi.Text\">\n"
                 "    <property access=\"read\" type=\"i\" name=\"CharacterCount\"/>\n"
                 "    <property access=\"read\" type=\"i\" name=\"CaretOffset\"/>\n"
@@ -626,9 +627,9 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" type=\"b\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
-    static const QLatin1StringView valueIntrospection(
+    constexpr auto valueIntrospection =
                 "  <interface name=\"org.a11y.atspi.Value\">\n"
                 "    <property access=\"read\" type=\"d\" name=\"MinimumValue\"/>\n"
                 "    <property access=\"read\" type=\"d\" name=\"MaximumValue\"/>\n"
@@ -638,7 +639,7 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"in\" type=\"d\" name=\"value\"/>\n"
                 "    </method>\n"
                 "  </interface>\n"
-                );
+                ""_L1;
 
     QAccessibleInterface * interface = interfaceFromPath(path);
     if (!interface) {
@@ -1536,7 +1537,8 @@ bool AtSpiAdaptor::applicationInterface(QAccessibleInterface *interface, const Q
         QDBusMessage reply = message.createReply(QVariant::fromValue(QLocale().name()));
         return connection.send(reply);
     }
-    qCDebug(lcAccessibilityAtspi) << "AtSpiAdaptor::applicationInterface " << message.path() << interface << function;
+    qCWarning(lcAccessibilityAtspi) << "AtSpiAdaptor::applicationInterface does not implement"
+                                    << function << message.path();
     return false;
 }
 
@@ -1545,13 +1547,12 @@ bool AtSpiAdaptor::applicationInterface(QAccessibleInterface *interface, const Q
   */
 void AtSpiAdaptor::registerApplication()
 {
-    OrgA11yAtspiSocketInterface *registry;
-    registry = new OrgA11yAtspiSocketInterface(ATSPI_DBUS_NAME_REGISTRY ""_L1,
-                                               ATSPI_DBUS_PATH_ROOT ""_L1, m_dbus->connection());
+    OrgA11yAtspiSocketInterface registry(ATSPI_DBUS_NAME_REGISTRY ""_L1, ATSPI_DBUS_PATH_ROOT ""_L1,
+                                         m_dbus->connection());
 
     QDBusPendingReply<QSpiObjectReference> reply;
     QSpiObjectReference ref = QSpiObjectReference(m_dbus->connection(), QDBusObjectPath(ATSPI_DBUS_PATH_ROOT));
-    reply = registry->Embed(ref);
+    reply = registry.Embed(ref);
     reply.waitForFinished(); // TODO: make this async
     if (reply.isValid ()) {
         const QSpiObjectReference &socket = reply.value();
@@ -1561,7 +1562,6 @@ void AtSpiAdaptor::registerApplication()
                    << reply.error().name()
                    << reply.error().message();
     }
-    delete registry;
 }
 
 // Accessible
@@ -1648,6 +1648,16 @@ bool AtSpiAdaptor::accessibleInterface(QAccessibleInterface *interface, const QS
     } else if (function == "GetApplication"_L1) {
         sendReply(connection, message, QVariant::fromValue(
                       QSpiObjectReference(connection, QDBusObjectPath(ATSPI_DBUS_PATH_ROOT))));
+    } else if (function == "GetLocale"_L1) {
+        QLocale locale;
+        if (QAccessibleAttributesInterface *attributesIface = interface->attributesInterface()) {
+            const QVariant localeVariant = attributesIface->attributeValue(QAccessible::Attribute::Locale);
+            if (localeVariant.isValid()) {
+                Q_ASSERT(localeVariant.canConvert<QLocale>());
+                locale = localeVariant.toLocale();
+            }
+        }
+        sendReply(connection, message, QVariant::fromValue(QDBusVariant(locale.name())));
     } else if (function == "GetChildren"_L1) {
         QSpiObjectReferenceArray children;
         const int numChildren = interface->childCount();

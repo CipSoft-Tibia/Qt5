@@ -43,10 +43,6 @@ namespace gfx {
 class Image;
 }  // namespace gfx
 
-namespace blink {
-struct DeviceEmulationParams;
-}
-
 namespace content {
 
 class BackForwardCacheCanStoreDocumentResult;
@@ -102,6 +98,10 @@ class PageHandler : public DevToolsDomainHandler,
   void DidCloseJavaScriptDialog(bool success, const std::u16string& user_input);
   void NavigationReset(NavigationRequest* navigation_request);
   void DownloadWillBegin(FrameTreeNode* ftn, download::DownloadItem* item);
+  void DidStartNavigating(FrameTreeNode& ftn,
+                          const GURL& url,
+                          const base::UnguessableToken& loader_id,
+                          const blink::mojom::NavigationType& navigation_type);
 
   void OnFrameDetached(const base::UnguessableToken& frame_id);
   void DidChangeFrameLoadingState(const FrameTreeNode& ftn);
@@ -119,15 +119,15 @@ class PageHandler : public DevToolsDomainHandler,
 
   Response Crash() override;
   Response Close() override;
-  void Reload(Maybe<bool> bypassCache,
-              Maybe<std::string> script_to_evaluate_on_load,
-              Maybe<std::string> loader_id,
+  void Reload(std::optional<bool> bypassCache,
+              std::optional<std::string> script_to_evaluate_on_load,
+              std::optional<std::string> loader_id,
               std::unique_ptr<ReloadCallback> callback) override;
   void Navigate(const std::string& url,
-                Maybe<std::string> referrer,
-                Maybe<std::string> transition_type,
-                Maybe<std::string> frame_id,
-                Maybe<std::string> referrer_policy,
+                std::optional<std::string> referrer,
+                std::optional<std::string> transition_type,
+                std::optional<std::string> frame_id,
+                std::optional<std::string> referrer_policy,
                 std::unique_ptr<NavigateCallback> callback) override;
   Response StopLoading() override;
 
@@ -139,34 +139,36 @@ class PageHandler : public DevToolsDomainHandler,
   Response ResetNavigationHistory() override;
 
   void CaptureScreenshot(
-      Maybe<std::string> format,
-      Maybe<int> quality,
-      Maybe<Page::Viewport> clip,
-      Maybe<bool> from_surface,
-      Maybe<bool> capture_beyond_viewport,
-      Maybe<bool> optimize_for_speed,
+      std::optional<std::string> format,
+      std::optional<int> quality,
+      std::unique_ptr<Page::Viewport> clip,
+      std::optional<bool> from_surface,
+      std::optional<bool> capture_beyond_viewport,
+      std::optional<bool> optimize_for_speed,
       std::unique_ptr<CaptureScreenshotCallback> callback) override;
   void CaptureSnapshot(
-      Maybe<std::string> format,
+      std::optional<std::string> format,
       std::unique_ptr<CaptureSnapshotCallback> callback) override;
-  Response StartScreencast(Maybe<std::string> format,
-                           Maybe<int> quality,
-                           Maybe<int> max_width,
-                           Maybe<int> max_height,
-                           Maybe<int> every_nth_frame) override;
+  Response StartScreencast(std::optional<std::string> format,
+                           std::optional<int> quality,
+                           std::optional<int> max_width,
+                           std::optional<int> max_height,
+                           std::optional<int> every_nth_frame) override;
   Response StopScreencast() override;
   Response ScreencastFrameAck(int session_id) override;
 
-  Response HandleJavaScriptDialog(bool accept,
-                                  Maybe<std::string> prompt_text) override;
+  Response HandleJavaScriptDialog(
+      bool accept,
+      std::optional<std::string> prompt_text) override;
 
   Response BringToFront() override;
 
-  Response SetDownloadBehavior(const std::string& behavior,
-                               Maybe<std::string> download_path) override;
+  Response SetDownloadBehavior(
+      const std::string& behavior,
+      std::optional<std::string> download_path) override;
 
   void GetAppManifest(
-      protocol::Maybe<std::string> manifest_id,
+      std::optional<std::string> manifest_id,
       std::unique_ptr<GetAppManifestCallback> callback) override;
 
   Response SetWebLifecycleState(const std::string& state) override;
@@ -187,14 +189,16 @@ class PageHandler : public DevToolsDomainHandler,
   Response AssureTopLevelActiveFrame();
 
  private:
+  struct PendingScreenshotRequest;
+
   using BitmapEncoder =
-      base::RepeatingCallback<bool(const SkBitmap& bitmap,
-                                   std::vector<uint8_t>& output)>;
+      base::RepeatingCallback<std::optional<std::vector<uint8_t>>(
+          const SkBitmap& bitmap)>;
 
   void CaptureFullPageScreenshot(
-      Maybe<std::string> format,
-      Maybe<int> quality,
-      Maybe<bool> optimize_for_speed,
+      std::optional<std::string> format,
+      std::optional<int> quality,
+      std::optional<bool> optimize_for_speed,
       std::unique_ptr<CaptureScreenshotCallback> callback,
       const gfx::Size& full_page_size);
   bool ShouldCaptureNextScreencastFrame();
@@ -205,16 +209,10 @@ class PageHandler : public DevToolsDomainHandler,
       const SkBitmap& bitmap);
   void ScreencastFrameEncoded(
       std::unique_ptr<Page::ScreencastFrameMetadata> metadata,
-      std::vector<uint8_t> data);
+      std::optional<std::vector<uint8_t>> data);
 
-  void ScreenshotCaptured(
-      std::unique_ptr<CaptureScreenshotCallback> callback,
-      BitmapEncoder encoder,
-      const gfx::Size& original_view_size,
-      const gfx::Size& requested_image_size,
-      const blink::DeviceEmulationParams& original_params,
-      const std::optional<blink::web_pref::WebPreferences>& original_web_prefs,
-      const gfx::Image& image);
+  void ScreenshotCaptured(std::unique_ptr<PendingScreenshotRequest> request,
+                          const gfx::Image& image);
 
   // RenderWidgetHostObserver overrides.
   void RenderWidgetHostVisibilityChanged(RenderWidgetHost* widget_host,

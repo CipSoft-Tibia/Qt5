@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef RENDER_WIDGET_HOST_VIEW_QT_H
 #define RENDER_WIDGET_HOST_VIEW_QT_H
@@ -153,8 +154,8 @@ public:
     void OnLocalSurfaceIdChanged(const cc::RenderFrameMetadata &) override {}
 
     // Overridden from content::RenderWidgetHost::InputEventObserver
-    void OnInputEvent(const blink::WebInputEvent &) override { }
-    void OnInputEventAck(blink::mojom::InputEventResultSource,
+    void OnInputEventAck(const content::RenderWidgetHost &,
+                         blink::mojom::InputEventResultSource,
                          blink::mojom::InputEventResultState state,
                          const blink::WebInputEvent &event) override;
 
@@ -189,7 +190,7 @@ private:
 
     bool isPopup() const;
 
-    bool updateCursorFromResource(ui::mojom::CursorType type);
+    bool updateCursorFromResource(const ui::Cursor &cursorInfo);
 
     scoped_refptr<base::SingleThreadTaskRunner> m_taskRunner;
 

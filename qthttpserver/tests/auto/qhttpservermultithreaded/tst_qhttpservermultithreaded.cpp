@@ -17,6 +17,10 @@
 #include <QtNetwork/qtcpserver.h>
 #include <QtNetwork/qtcpsocket.h>
 
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
+
 #if QT_CONFIG(localserver)
 #include <QtNetwork/qlocalsocket.h>
 #include <QtNetwork/qlocalserver.h>
@@ -120,10 +124,12 @@ NQZlAZc2w1Ha9lqisaWWpt42QVhQM64=
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 enum ServerType
 {
-    TCP,
+    HTTP1_0,
+    HTTP1_1,
 #if QT_CONFIG(ssl)
     SSL,
 #endif
@@ -143,35 +149,37 @@ class LocalHttpClient
 public:
     LocalHttpClient(ServerType type);
     ~LocalHttpClient();
-    QString get(const QString &url);
-    QString getSlowRead(const QString &url, qsizetype chunkSize, qsizetype mSleep);
+    QString get(const QString &url, const QHttpHeaders &headers = {});
+    QString getSlowRead(const QString &url, qsizetype chunkSize, qsizetype mSleep,
+                        const QHttpHeaders &headers);
     void pipelinedSendGet(const QString &url);
     QString piplinedFetchResults();
     QString postSlow(const QString &url, const QHttpHeaders &headers, qsizetype mSleep);
 
 private:
-    void sendGet(const QString &url);
+    void sendGet(const QString &url, const QHttpHeaders &headers = {});
     QString fetchResults();
+    void fetchStatusLine();
+    void fetchCrLf();
     QIODevice *socket = nullptr;
+    QByteArray version;
+    ServerType serverType;
 };
 
 LocalHttpClient::LocalHttpClient(ServerType type)
+    : version(type == HTTP1_0 ? "HTTP/1.0" : "HTTP/1.1"), serverType(type)
 {
-    if (type == TCP) {
+    if (type == HTTP1_0 || type == HTTP1_1) {
         QTcpSocket *tcpSocket = new QTcpSocket();
         tcpSocket->connectToHost("localhost", port);
         tcpSocket->waitForConnected();
-        if (!tcpSocket->waitForConnected()) {
-            qCritical("Failed waiting for client TCP socket to be connected");
-            return;
-        }
+        QVERIFY2(tcpSocket->waitForConnected(),
+                 "Failed waiting for client TCP socket to be connected");
         socket = tcpSocket;
 #if QT_CONFIG(ssl)
     } else if (type == SSL) {
-        if (!QSslSocket::supportsSsl()) {
-            qCritical("Client SSL socket requested even though it is not supported");
-            return;
-        }
+        QVERIFY2(QSslSocket::supportsSsl(),
+                 "Client SSL socket requested even though it is not supported");
         QSslSocket *sslSocket = new QSslSocket();
         const QList<QSslError> expectedSslErrors = {
             QSslError(QSslError::SelfSignedCertificate, QSslCertificate(g_certificate)),
@@ -182,24 +190,20 @@ LocalHttpClient::LocalHttpClient(ServerType type)
         };
         sslSocket->ignoreSslErrors(expectedSslErrors);
         sslSocket->connectToHostEncrypted("localhost", sslPort);
-        if (!sslSocket->waitForEncrypted()) {
-            qCritical("Failed waiting for client SSL socket to be encrypted");
-            return;
-        }
+        QVERIFY2(sslSocket->waitForEncrypted(),
+                 "Failed waiting for client SSL socket to be encrypted");
         socket = sslSocket;
 #endif
 #if QT_CONFIG(localserver)
     } else if (type == LOCAL) {
         QLocalSocket *localSocket = new QLocalSocket();
         localSocket->connectToServer(local);
-        if (!localSocket->waitForConnected()) {
-            qCritical("Failed waiting for client local socket to be connected");
-            return;
-        }
+        QVERIFY2(localSocket->waitForConnected(),
+                 "Failed waiting for client local socket to be connected");
         socket = localSocket;
 #endif
     } else {
-        qCritical("Unknown server type");
+        QFAIL("Unknown server type");
     }
 }
 
@@ -218,15 +222,16 @@ QString LocalHttpClient::piplinedFetchResults()
     return fetchResults();
 }
 
-QString LocalHttpClient::get(const QString &url)
+QString LocalHttpClient::get(const QString &url, const QHttpHeaders &headers)
 {
-    sendGet(url);
+    sendGet(url, headers);
     return fetchResults();
 }
 
-QString LocalHttpClient::getSlowRead(const QString &url, qsizetype chunkSize, qsizetype mSleep)
+QString LocalHttpClient::getSlowRead(const QString &url, qsizetype chunkSize, qsizetype mSleep,
+                                     const QHttpHeaders &headers)
 {
-    sendGet(url);
+    sendGet(url, headers);
 
     qint64 contentLength = -1;
     constexpr qint64 headerBufferSize = 4 * 1024;
@@ -237,8 +242,7 @@ QString LocalHttpClient::getSlowRead(const QString &url, qsizetype chunkSize, qs
             socket->waitForReadyRead(10);
         }
         read = socket->readLine(headerBuffer, headerBufferSize);
-        if (read < 0)
-            return u"IO ERROR READING HEADERS"_s; // Error reading header
+        QVERIFY2(read >= 0, "IO error reading headers");
         if (read <= 2)
             break; // End of headers
         QByteArrayView line(headerBuffer, read);
@@ -250,17 +254,15 @@ QString LocalHttpClient::getSlowRead(const QString &url, qsizetype chunkSize, qs
         }
     };
 
-    if (contentLength < 0)
-        return u"CONTENT LENGTH MISSING"_s;
-    else if (contentLength == 0)
+    QVERIFY2(contentLength != -1, "Content-Length field missing");
+    if (contentLength == 0)
         return u""_s; // No content
 
     read = 0;
     QByteArray buffer(contentLength, 0);
     forever {
         qint64 result = socket->read(&buffer[read], qMin(contentLength - read, chunkSize));
-        if (result == -1)
-            return u"IO ERROR READING CONTENT"_s; // IO Error
+        QVERIFY2(result >= 0, "IO error reading content");
         read += result;
         if (read == contentLength)
             break;
@@ -275,9 +277,8 @@ QString LocalHttpClient::getSlowRead(const QString &url, qsizetype chunkSize, qs
 QString LocalHttpClient::postSlow(const QString &url, const QHttpHeaders &headers, qsizetype mSleep)
 {
     Q_ASSERT(socket);
-    qint64 result = socket->write(u"POST %1 HTTP/1.1\r\n"_s.arg(url).toUtf8());
-    if (result == -1)
-        return u"ERROR WRITING POST METHOD"_s;
+    qint64 result = socket->write(u"POST %1 %2\r\n"_s.arg(url, version).toUtf8());
+    QVERIFY2(result != -1, "Error writing POST method");
 
     for (qsizetype i = 0; i < headers.size(); ++i) {
         QByteArray output;
@@ -286,8 +287,7 @@ QString LocalHttpClient::postSlow(const QString &url, const QHttpHeaders &header
         output.append(headers.valueAt(i));
         output.append("\r\n");
         result = socket->write(output);
-        if (result == -1)
-            return u"ERROR WRITING HEADER LINE"_s;
+        QVERIFY2(result >= 0, "Error writing header line");
 
         QTimer timer;
         timer.setSingleShot(true);
@@ -298,22 +298,51 @@ QString LocalHttpClient::postSlow(const QString &url, const QHttpHeaders &header
             QThread::msleep(remaining);
     }
     result = socket->write("\r\n");
-    if (result == -1)
-        return u"ERROR ENDING HEADERS"_s;
+    QVERIFY2(result >= 0, "Error ending headers");
 
     return fetchResults();
 }
 
-void LocalHttpClient::sendGet(const QString &url)
+void LocalHttpClient::sendGet(const QString &url, const QHttpHeaders &headers)
 {
     Q_ASSERT(socket);
-    socket->write(u"GET %1 HTTP/1.1\r\n\r\n"_s.arg(url).toUtf8());
+    socket->write(u"GET %1 %2\r\n"_s.arg(url, version).toUtf8());
+    for (qsizetype i = 0; i < headers.size(); ++i) {
+        QByteArray output;
+        output.append(headers.nameAt(i));
+        output.append(": ");
+        output.append(headers.valueAt(i));
+        output.append("\r\n");
+        socket->write(output);
+    }
+    socket->write("\r\n");
+}
+
+void LocalHttpClient::fetchStatusLine()
+{
+    Q_ASSERT(socket);
+    constexpr qint64 bufferSize = 4 * 1024;
+    char buffer[bufferSize];
+    qint64 read = 0;
+    while (!socket->canReadLine())
+        socket->waitForReadyRead(10);
+    read = socket->readLine(buffer, bufferSize);
+    QVERIFY2(read > 2, "Status line too short");
+
+    QByteArrayView line(buffer, read);
+    auto space = line.indexOf(' ');
+    QVERIFY2(space != -1, "Error parsing status line");
+
+    auto httpVersion = line.first(space);
+    QCOMPARE(httpVersion, version);
 }
 
 QString LocalHttpClient::fetchResults()
 {
     Q_ASSERT(socket);
+    fetchStatusLine();
     qint64 contentLength = -1;
+    QByteArray transferEncoding;
     constexpr qint64 bufferSize = 4 * 1024;
     char buffer[bufferSize];
     qint64 read = 0;
@@ -322,8 +351,7 @@ QString LocalHttpClient::fetchResults()
             socket->waitForReadyRead(10);
         }
         read = socket->readLine(buffer, bufferSize);
-        if (read < 0)
-            return u"IO ERROR READING HEADERS"_s; // Error reading header
+        QVERIFY2(read >= 0, "IO error reading header");
         if (read <= 2)
             break; // End of headers
         QByteArrayView line(buffer, read);
@@ -332,29 +360,145 @@ QString LocalHttpClient::fetchResults()
             auto headerTitle = line.first(colon);
             if (headerTitle.compare("Content-Length", Qt::CaseInsensitive) == 0)
                 contentLength = line.sliced(colon + 1).trimmed().toLongLong();
+            else if (headerTitle.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0)
+                transferEncoding = line.sliced(colon + 1).trimmed().toByteArray();
         }
     };
 
-    if (contentLength == -1)
-        return u"CONTENT LENGTH MISSING"_s;
-    else if (contentLength > bufferSize)
-        return u"BUFFER TOO SMALL"_s; // Buffer too small
-    else if (contentLength == 0)
+    QVERIFY2(contentLength < bufferSize, "Buffer too small");
+    if (contentLength == 0)
         return u""_s; // No content
 
-    read = 0;
-    forever {
-        qint64 result = socket->read(&buffer[read], contentLength - read);
-        if (result == -1)
-            return u"IO ERROR READING CONTENT"_s; // IO Error
-        read += result;
-        if (read == contentLength)
-            break;
-        socket->waitForReadyRead(10);
-    };
-
+    if (contentLength > 0) {
+        read = 0;
+        while (read < contentLength) {
+            socket->waitForReadyRead(10);
+            qint64 result = socket->read(&buffer[read], contentLength - read);
+            QVERIFY2(result >= 0, "IO Error reading content");
+            read += result;
+        };
+    } else if (transferEncoding.compare("chunked", Qt::CaseInsensitive) == 0) {
+        if (serverType == HTTP1_0)
+            QEXPECT_FAIL("", "QTBUG-138410: The HTTP/1.0 support is incomplete", Abort);
+        QVERIFY2(serverType != HTTP1_0, "Chunked encoding not supported for HTTP/1.0");
+        read = 0;
+        forever {
+            while (!socket->canReadLine())
+                socket->waitForReadyRead(10);
+            QByteArray line = socket->readLine();
+            qint64 result = line.trimmed().toInt(nullptr, 16);
+            if (result == 0) {
+                fetchCrLf();
+                contentLength = read;
+                break;
+            }
+            qint64 toRead = qMin(result, bufferSize - read);
+            while (toRead > 0) {
+                result = socket->read(&buffer[read], toRead);
+                QVERIFY2(result >= 0, "Read error decoding chunked encoding");
+                read += result;
+                toRead -= result;
+                if (toRead)
+                    socket->waitForReadyRead(10);
+            }
+            fetchCrLf();
+        };
+    } else {
+        // Read until closed
+        read = 0;
+        while (read < bufferSize) {
+            socket->waitForReadyRead(10);
+            qint64 result = socket->read(&buffer[read], bufferSize - read);
+            if (result == -1) {
+                contentLength = read;
+                break;
+            }
+            read += result;
+        };
+    }
     return QString::fromUtf8(buffer, contentLength);
 }
+
+void LocalHttpClient::fetchCrLf()
+{
+    qint64 read = 0;
+    char buffer[2];
+    while (read < 2) {
+        qint64 toRead = 2 - read;
+        qint64 result = socket->read(&buffer[read], toRead);
+        QVERIFY2(result >= 0, "Read error decoding chunked encoding");
+        read += result;
+        if (read < 2)
+            socket->waitForReadyRead(10);
+    }
+    QVERIFY2(buffer[0] == '\r' && buffer[1] == '\n', "Read error decoding chunked encoding");
+}
+
+class SequentialIODevice : public QIODevice
+{
+    Q_OBJECT
+
+public:
+    SequentialIODevice(const QByteArray &data, int times, std::chrono::milliseconds readInterval)
+        : message(data), times(times)
+    {
+        setOpenMode(QIODeviceBase::ReadOnly);
+        timer = new QTimer(this);
+        timer->callOnTimeout(this, &SequentialIODevice::onTimeout);
+        timer->setSingleShot(false);
+        timer->setInterval(readInterval);
+        timer->start();
+    }
+
+    bool isSequential() const override { return true; }
+    qint64 bytesAvailable() const override { return buffer.size() - readPos; }
+    qint64 bytesToWrite() const override { return 0; }
+
+    bool seek(qint64) override
+    {
+        return false; // No random accesss on sequential devices
+    }
+
+    qint64 readData(char *data, qint64 maxSize) override
+    {
+        qint64 length = qMin(maxSize, buffer.size() - readPos);
+        if (length == 0)
+            return finishedReading ? -1 : 0;
+        QVERIFY(length + readPos <= buffer.size());
+        memcpy(data, buffer.constData() + readPos, length);
+        readPos += length;
+
+        if (readPos == buffer.size()) {
+            readPos = 0;
+            buffer.clear();
+        }
+        return length;
+    }
+
+    qint64 writeData(const char *, qint64) override { return -1; }
+
+    void onTimeout()
+    {
+        if (times > 0) {
+            buffer.append(message);
+            emit readyRead();
+        }
+
+        if (--times <= 0) {
+            timer->stop();
+            finishedReading = true;
+            emit readChannelFinished();
+        }
+    }
+
+private:
+    QTimer *timer;
+    const QByteArray message;
+    QByteArray buffer;
+    qsizetype readPos = 0;
+    int times;
+    bool finishedReading = false;
+};
 
 class tst_QHttpServerMultithreaded final : public QObject
 {
@@ -383,6 +527,8 @@ private slots:
     void waitPipelinedQnam();
     void manyWaitingToRespond();
     void oneSlowManyFast();
+    void multipartBack();
+    void sequentialDevice();
 
 private:
     static constexpr qsizetype NumberOfThreads = 6;
@@ -429,7 +575,8 @@ QString tst_QHttpServerMultithreaded::toString(qsizetype input) const
 void tst_QHttpServerMultithreaded::initTestCase_data()
 {
     QTest::addColumn<ServerType>("serverType");
-    QTest::addRow("TCP") << ServerType::TCP;
+    QTest::addRow("HTTP/1.0") << ServerType::HTTP1_0;
+    QTest::addRow("HTTP/1.1") << ServerType::HTTP1_1;
 #if QT_CONFIG(ssl)
     if (QSslSocket::supportsSsl() && !QTestPrivate::isSecureTransportBlockingTest())
         QTest::addRow("SSL") << ServerType::SSL;
@@ -480,6 +627,27 @@ void tst_QHttpServerMultithreaded::initTestCase()
                                  result += QString::fromUtf8(header.first) + "\n";
                              return QHttpServerResponse(result);
                          });
+                     });
+
+    httpserver.route("/multipart/<arg>/<arg>",
+                     [this](QString message, int times, QHttpServerResponder &responder) {
+                         ++callCounter;
+                         if (times > 0) {
+                             QByteArray ba = message.toUtf8();
+                             responder.writeBeginChunked("text/plain"_ba);
+                             for (int i = 1; i < times; ++i)
+                                 responder.writeChunk(ba);
+                             responder.writeEndChunked(ba);
+                         } else {
+                             responder.write();
+                         }
+                     });
+
+    httpserver.route("/sequential/<arg>/<arg>",
+                     [this](QString message, int times, QHttpServerResponder &responder) {
+                         ++callCounter;
+                         auto device = new SequentialIODevice(message.toUtf8(), times, 50ms);
+                         responder.write(device, QHttpHeaders());
                      });
 
     auto tcpserver = std::make_unique<QTcpServer>();
@@ -558,8 +726,7 @@ void tst_QHttpServerMultithreaded::singleCall()
 
     // Wait for incoming requests to be handled in main thread before they are
     // processed in separate threads
-    while (!future.isFinished())
-        QTest::qWait(1);
+    QTRY_VERIFY(future.isFinished());
 
     QString returned = future.result();
     QCOMPARE(returned, result);
@@ -578,22 +745,25 @@ void tst_QHttpServerMultithreaded::multipleCallsOnEachConnection()
 
     QFuture<QList<QString>> futureLower = QtConcurrent::run(&clientThreadPool, [&]() {
         LocalHttpClient client(serverType);
+        QHttpHeaders headers;
+        headers.append(QHttpHeaders::WellKnownHeader::Connection, "keep-alive");
         QList<QString> results;
         for (auto &input : inputs)
-            results.push_back(client.get(u"/convert-lowercase/%1"_s.arg(input)));
+            results.push_back(client.get(u"/convert-lowercase/%1"_s.arg(input), headers));
         return results;
     });
 
     QFuture<QList<QString>> futureUpper = QtConcurrent::run(&clientThreadPool, [&]() {
         LocalHttpClient client(serverType);
+        QHttpHeaders headers;
+        headers.append(QHttpHeaders::WellKnownHeader::Connection, "keep-alive");
         QList<QString> results;
         for (auto &input : inputs)
-            results.push_back(client.get(u"/convert-uppercase/%1"_s.arg(input)));
+            results.push_back(client.get(u"/convert-uppercase/%1"_s.arg(input), headers));
         return results;
     });
 
-    while (!futureLower.isFinished() || !futureUpper.isFinished())
-        QTest::qWait(1);
+    QTRY_VERIFY_WITH_TIMEOUT(futureLower.isFinished() && futureUpper.isFinished(), 10s);
 
     QList<QString> convertedToLower = futureLower.result();
     QList<QString> convertedToUpper = futureUpper.result();
@@ -621,19 +791,20 @@ void tst_QHttpServerMultithreaded::moreConnectionsThanServerThreads()
         futures[i] = QtConcurrent::run(&clientThreadPool, [&]() {
             LocalHttpClient client(serverType);
             QList<std::pair<QString, QString>> results;
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::Connection, "keep-alive");
             for (auto &input : inputs) {
-                QString lower = client.get(u"/convert-lowercase/%1"_s.arg(input));
-                QString upper = client.get(u"/convert-uppercase/%1"_s.arg(input));
+                QString lower = client.get(u"/convert-lowercase/%1"_s.arg(input), headers);
+                QString upper = client.get(u"/convert-uppercase/%1"_s.arg(input), headers);
                 results.push_back(std::make_pair(lower, upper));
             }
             return results;
         });
     };
 
-    while (!std::all_of(futures.begin(), futures.end(),
-                        [](auto &future) { return future.isFinished(); } )) {
-        QTest::qWait(1);
-    }
+    QTRY_VERIFY_WITH_TIMEOUT(std::all_of(futures.begin(), futures.end(),
+                                         [](auto &future) { return future.isFinished(); }),
+                             10s);
 
     QCOMPARE(getCallCount(), inputs.size() * NumberOfTasks * 2);
     for (qsizetype i = 0; i < NumberOfTasks; ++i) {
@@ -655,15 +826,18 @@ void tst_QHttpServerMultithreaded::readSlow()
     for (qsizetype i = 0; i < NumberOfTasks; ++i) {
         futures[i] = QtConcurrent::run([&](QPromise<QString> &promise) {
             LocalHttpClient client(serverType);
-            promise.addResult(client.getSlowRead(u"/convert-lowercase/%1"_s.arg(input), 10, 3000));
-            promise.addResult(client.getSlowRead(u"/convert-uppercase/%1"_s.arg(input), 10, 1000));
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::Connection, "keep-alive");
+            promise.addResult(
+                    client.getSlowRead(u"/convert-lowercase/%1"_s.arg(input), 10, 3000, headers));
+            promise.addResult(
+                    client.getSlowRead(u"/convert-uppercase/%1"_s.arg(input), 10, 1000, headers));
         });
     }
 
-    while (!std::all_of(futures.begin(), futures.end(),
-                        [](auto &future) { return future.isFinished(); } )) {
-        QTest::qWait(1);
-    }
+    QTRY_VERIFY_WITH_TIMEOUT(std::all_of(futures.begin(), futures.end(),
+                                         [](auto &future) { return future.isFinished(); }),
+                             20s);
 
     for (qsizetype i = 0; i < NumberOfTasks; ++i) {
         QList<QString> returned = futures[i].results();
@@ -694,10 +868,9 @@ void tst_QHttpServerMultithreaded::postSlow()
         });
     }
 
-    while (!std::all_of(futures.begin(), futures.end(),
-                        [](auto &future) { return future.isFinished(); })) {
-        QTest::qWait(1);
-    }
+    QTRY_VERIFY_WITH_TIMEOUT(std::all_of(futures.begin(), futures.end(),
+                                         [](auto &future) { return future.isFinished(); }),
+                             30s);
 
     for (qsizetype i = 0; i < NumberOfTasks; ++i) {
         QList<QString> returned = futures[i].results();
@@ -733,10 +906,8 @@ void tst_QHttpServerMultithreaded::useSemaphores()
     readySem.acquire(NumberProcessed);
     routeSem.release(NumberProcessed);
 
-    while (!std::all_of(futures.begin(), futures.end(),
-                        [](auto &future) { return future.isFinished(); })) {
-        QTest::qWait(1);
-    }
+    QTRY_VERIFY(std::all_of(futures.begin(), futures.end(),
+                            [](auto &future) { return future.isFinished(); }));
 
     for (qsizetype i = 0; i < NumberProcessed; ++i)
         QCOMPARE(futures[i].result(), QString::number(i));
@@ -753,20 +924,23 @@ void tst_QHttpServerMultithreaded::waitingInParallel()
 
     QFuture<QString> future1 = QtConcurrent::run(&clientThreadPool, [&]() {
         LocalHttpClient client(serverType);
-        QString result = client.get(u"/wait/2001"_s);
-        result += client.get(u"/wait/9"_s);
+        QHttpHeaders headers;
+        headers.append(QHttpHeaders::WellKnownHeader::Connection, "keep-alive");
+        QString result = client.get(u"/wait/2001"_s, headers);
+        result += client.get(u"/wait/9"_s, headers);
         return result;
     });
 
     QFuture<QString> future2 = QtConcurrent::run(&clientThreadPool, [&]() {
         LocalHttpClient client(serverType);
-        QString result = client.get(u"/wait/2000"_s);
-        result += client.get(u"/wait/10"_s);
+        QHttpHeaders headers;
+        headers.append(QHttpHeaders::WellKnownHeader::Connection, "keep-alive");
+        QString result = client.get(u"/wait/2000"_s, headers);
+        result += client.get(u"/wait/10"_s, headers);
         return result;
     });
 
-    while (!future1.isFinished() || !future2.isFinished())
-        QTest::qWait(1);
+    QTRY_VERIFY(future1.isFinished() && future2.isFinished());
 
     QCOMPARE(getCallCount(), 4);
 }
@@ -774,6 +948,8 @@ void tst_QHttpServerMultithreaded::waitingInParallel()
 void tst_QHttpServerMultithreaded::waitPipelined()
 {
     QFETCH_GLOBAL(ServerType, serverType);
+    if (serverType == HTTP1_0)
+        QSKIP("Pipelining is not supported for HTTP/1.0");
     QList<qsizetype> waitTimes = { 3000, 1000, 1 };
     constexpr qsizetype NumberOfTasks = NumberOfThreads;
 
@@ -789,10 +965,9 @@ void tst_QHttpServerMultithreaded::waitPipelined()
         });
     }
 
-    while (!std::all_of(futures.begin(), futures.end(),
-                        [](auto &future) { return future.isFinished(); })) {
-        QTest::qWait(1);
-    }
+    QTRY_VERIFY_WITH_TIMEOUT(std::all_of(futures.begin(), futures.end(),
+                                         [](auto &future) { return future.isFinished(); }),
+                             20s);
 
     QCOMPARE(getCallCount(), waitTimes.size() * NumberOfTasks);
     for (qsizetype i = 0; i < NumberOfTasks; ++i) {
@@ -806,8 +981,8 @@ void tst_QHttpServerMultithreaded::waitPipelined()
 void tst_QHttpServerMultithreaded::waitPipelinedQnam()
 {
     QFETCH_GLOBAL(ServerType, serverType);
-    if (serverType != TCP)
-        QSKIP("This test only supports TCP");
+    if (serverType != HTTP1_1)
+        QSKIP("This test only supports HTTP/1.1 over TCP");
 
     QList<qsizetype> waitTimes = { 3000, 1000, 1 };
     constexpr qsizetype NumberOfTasks = NumberOfThreads;
@@ -834,10 +1009,9 @@ void tst_QHttpServerMultithreaded::waitPipelinedQnam()
                            [](QNetworkReply *reply) { return reply->isFinished(); });
     };
 
-    while (!std::all_of(repliesForTasks.begin(), repliesForTasks.end(),
-                        [&](auto &replies) { return allRepliesFinished(replies); })) {
-        QTest::qWait(1);
-    }
+    QTRY_VERIFY_WITH_TIMEOUT(std::all_of(repliesForTasks.begin(), repliesForTasks.end(),
+                                         [&](auto &task) { return allRepliesFinished(task); }),
+                             10s);
 
     QCOMPARE(getCallCount(), waitTimes.size() * NumberOfTasks);
     QCOMPARE(repliesForTasks.size(), NumberOfTasks);
@@ -869,10 +1043,8 @@ void tst_QHttpServerMultithreaded::manyWaitingToRespond()
         });
     }
 
-    while (!std::all_of(futures.begin(), futures.end(),
-                        [](auto &future) { return future.isFinished(); })) {
-        QTest::qWait(1);
-    }
+    QTRY_VERIFY(std::all_of(futures.begin(), futures.end(),
+                            [](auto &future) { return future.isFinished(); }));
 
     QCOMPARE(getCallCount(), NumberOfTasks);
 }
@@ -898,16 +1070,44 @@ void tst_QHttpServerMultithreaded::oneSlowManyFast()
         });
     }
 
-    forever {
-        if (slowFuture.isFinished()) {
-            for (auto &fastFuture : fastFutures)
-                QVERIFY(fastFuture.isFinished());
-            break;
-        } else {
-            QTest::qWait(10);
-        }
-    }
+    QTRY_VERIFY(slowFuture.isFinished());
+    QVERIFY(std::all_of(fastFutures.begin(), fastFutures.end(),
+                        [](auto &future) { return future.isFinished(); }));
     QCOMPARE(getCallCount(), NumberOfFastTasks + 1);
+}
+
+void tst_QHttpServerMultithreaded::multipartBack()
+{
+    QFETCH_GLOBAL(ServerType, serverType);
+
+    QFuture<QString> future = QtConcurrent::run([&]() {
+        LocalHttpClient client(serverType);
+        return client.get("/multipart/Hey/3");
+    });
+
+    QTRY_VERIFY(future.isFinished());
+
+    QString returned = future.result();
+    QCOMPARE(returned, u"HeyHeyHey"_s);
+    QCOMPARE(getCallCount(), 1);
+}
+
+void tst_QHttpServerMultithreaded::sequentialDevice()
+{
+    QFETCH_GLOBAL(ServerType, serverType);
+
+    QFuture<QString> future = QtConcurrent::run([&]() {
+        LocalHttpClient client(serverType);
+        return client.get("/sequential/Hey/3");
+    });
+
+    QTRY_VERIFY(future.isFinished());
+
+    QString returned = future.result();
+    if (serverType == HTTP1_0)
+        QSKIP("QTBUG-138410: The HTTP/1.0 support is incomplete: Flaky, mostly fails on HTTP/1.0");
+    QCOMPARE(returned, u"HeyHeyHey"_s);
+    QCOMPARE(getCallCount(), 1);
 }
 
 QT_END_NAMESPACE

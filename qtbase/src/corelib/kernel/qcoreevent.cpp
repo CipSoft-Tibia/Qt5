@@ -329,7 +329,7 @@ QEvent::QEvent(Type type)
 
 QEvent::~QEvent()
 {
-    if (m_posted && QCoreApplication::instance())
+    if (m_posted && QCoreApplication::instanceExists())
         QCoreApplicationPrivate::removePostedEvent(this);
 }
 

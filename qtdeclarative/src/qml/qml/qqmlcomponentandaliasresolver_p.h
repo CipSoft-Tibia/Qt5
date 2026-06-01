@@ -1,5 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
+
 #ifndef QQMLCOMPONENTANDALIASRESOLVER_P_H
 #define QQMLCOMPONENTANDALIASRESOLVER_P_H
 
@@ -47,7 +49,6 @@ public:
 
     QQmlComponentAndAliasResolver(
             ObjectContainer *compiler,
-            QQmlEnginePrivate *enginePrivate,
             QQmlPropertyCacheVector *propertyCaches);
 
     [[nodiscard]] QQmlError resolve(int root = 0);
@@ -64,7 +65,20 @@ private:
     void setObjectId(int index) const;
     [[nodiscard]] bool markAsComponent(int index) const;
     [[nodiscard]] AliasResolutionResult resolveAliasesInObject(
-            const CompiledObject &component, int objectIndex, QQmlError *error);
+            const CompiledObject &component, int objectIndex,
+            QQmlPropertyCacheAliasCreator<ObjectContainer> *aliasCacheCreator, QQmlError *error);
+    [[nodiscard]] bool appendAliasToPropertyCache(
+            const CompiledObject *component, const QV4::CompiledData::Alias *alias, int objectIndex,
+            int aliasIndex, int encodedPropertyIndex,
+            QQmlPropertyCacheAliasCreator<ObjectContainer> *aliasCacheCreator, QQmlError *error)
+    {
+        *error = aliasCacheCreator->appendAliasToPropertyCache(
+                *component, *alias, objectIndex, aliasIndex, encodedPropertyIndex);
+        resolvedAliases.insert(alias);
+        return !error->isValid();
+    }
+
+
     void resolveGeneralizedGroupProperty(const CompiledObject &component, CompiledBinding *binding);
     [[nodiscard]] bool wrapImplicitComponent(CompiledBinding *binding);
 
@@ -114,7 +128,6 @@ private:
     }
 
     ObjectContainer *m_compiler = nullptr;
-    QQmlEnginePrivate *m_enginePrivate = nullptr;
 
     // Implicit component insertion may have added objects and thus we also need
     // to extend the symmetric propertyCaches. Therefore, non-const propertyCaches.
@@ -124,16 +137,15 @@ private:
     QVector<quint32> m_componentRoots;
     QVector<int> m_objectsWithAliases;
     QVector<CompiledBinding *> m_generalizedGroupProperties;
+    QSet<const QV4::CompiledData::Alias *> resolvedAliases;
     typename ObjectContainer::IdToObjectMap m_idToObjectIndex;
 };
 
 template<typename ObjectContainer>
 QQmlComponentAndAliasResolver<ObjectContainer>::QQmlComponentAndAliasResolver(
         ObjectContainer *compiler,
-        QQmlEnginePrivate *enginePrivate,
         QQmlPropertyCacheVector *propertyCaches)
     : m_compiler(compiler)
-    , m_enginePrivate(enginePrivate)
     , m_propertyCaches(propertyCaches)
 {
 }
@@ -439,15 +451,12 @@ QQmlError QQmlComponentAndAliasResolver<ObjectContainer>::resolveAliases(int com
 
             QQmlError error;
             const auto &component = *m_compiler->objectAt(componentIndex);
-            const auto result = resolveAliasesInObject(component, objectIndex, &error);
+            const auto result
+                    = resolveAliasesInObject(component, objectIndex, &aliasCacheCreator, &error);
             if (error.isValid())
                 return error;
 
             if (result == AllAliasesResolved) {
-                QQmlError error = aliasCacheCreator.appendAliasesToPropertyCache(
-                            component, objectIndex, m_enginePrivate);
-                if (error.isValid())
-                    return error;
                 atLeastOneAliasResolved = true;
             } else if (result == SomeAliasesResolved) {
                 atLeastOneAliasResolved = true;
@@ -462,7 +471,7 @@ QQmlError QQmlComponentAndAliasResolver<ObjectContainer>::resolveAliases(int com
     if (!atLeastOneAliasResolved && !m_objectsWithAliases.isEmpty()) {
         const CompiledObject *obj = m_compiler->objectAt(m_objectsWithAliases.first());
         for (auto alias = obj->aliasesBegin(), end = obj->aliasesEnd(); alias != end; ++alias) {
-            if (!alias->hasFlag(QV4::CompiledData::Alias::Resolved))
+            if (!resolvedAliases.contains(alias))
                 return error(alias->location, QQmlComponentAndAliasResolverBase::tr("Circular alias reference detected"));
         }
     }

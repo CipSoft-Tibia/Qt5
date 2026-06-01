@@ -16,6 +16,7 @@
 #include "base/bits.h"
 #include "base/check.h"
 #include "base/command_line.h"
+#include "base/containers/span.h"
 #include "base/files/file.h"
 #include "base/json/json_writer.h"
 #include "base/logging.h"
@@ -468,15 +469,14 @@ int main(int argc, char** argv) {
 
   std::string json_string;
   bool ok = base::JSONWriter::WriteWithOptions(
-      overall_dump, base::JSONWriter::Options::OPTIONS_PRETTY_PRINT,
-      &json_string);
+      overall_dump, base::JSONWriter::OPTIONS_PRETTY_PRINT, &json_string);
 
   if (ok) {
     base::FilePath json_filename = command_line->GetSwitchValuePath("json");
     auto f = base::File(json_filename, base::File::Flags::FLAG_CREATE_ALWAYS |
                                            base::File::Flags::FLAG_WRITE);
     if (f.IsValid()) {
-      f.WriteAtCurrentPos(json_string.c_str(), json_string.size());
+      f.WriteAtCurrentPos(base::as_byte_span(json_string));
       LOG(WARNING) << "\n\nDumped JSON to " << json_filename;
       return 0;
     }

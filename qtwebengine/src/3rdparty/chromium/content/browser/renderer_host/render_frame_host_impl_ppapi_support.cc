@@ -124,7 +124,7 @@ void RenderFrameHostImplPpapiSupport::GetPluginInfo(
   WebPluginInfo info;
   std::string actual_mime_type;
   bool found = PluginServiceImpl::GetInstance()->GetPluginInfo(
-      render_frame_host().GetProcess()->GetID(), render_frame_host().GetRoutingID(),
+      render_frame_host().GetProcess()->GetDeprecatedID(), render_frame_host().GetRoutingID(),
       render_frame_host().GetBrowserContext(), url, mime_type, allow_wildcard,
       nullptr, &info, &actual_mime_type);
   std::move(callback).Run(found, info, actual_mime_type);

@@ -16,6 +16,8 @@
 #include <QtCore/qvariant.h>
 #include <QtDBus/qdbusextratypes.h>
 
+#include <tuple>
+
 #ifndef QT_NO_DBUS
 
 QT_BEGIN_NAMESPACE
@@ -118,6 +120,27 @@ protected:
     QDBusArgument(QDBusArgumentPrivate *d);
     friend class QDBusArgumentPrivate;
     mutable QDBusArgumentPrivate *d;
+
+private:
+    template <typename... T>
+    friend QDBusArgument &operator<<(QDBusArgument &argument, const std::tuple<T...> &tuple)
+    {
+        static_assert(sizeof...(T) != 0, "D-Bus doesn't allow empty structs");
+        argument.beginStructure();
+        std::apply([&argument](const auto &...elements) { (argument << ... << elements); }, tuple);
+        argument.endStructure();
+        return argument;
+    }
+
+    template <typename... T>
+    friend const QDBusArgument &operator>>(const QDBusArgument &argument, std::tuple<T...> &tuple)
+    {
+        static_assert(sizeof...(T) != 0, "D-Bus doesn't allow empty structs");
+        argument.beginStructure();
+        std::apply([&argument](auto &...elements) { (argument >> ... >> elements); }, tuple);
+        argument.endStructure();
+        return argument;
+    }
 };
 Q_DECLARE_SHARED(QDBusArgument)
 

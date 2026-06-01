@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKITEMCHANGELISTENER_P_H
 #define QQUICKITEMCHANGELISTENER_P_H
@@ -17,6 +18,7 @@
 
 #include <QtCore/qxptype_traits.h>
 #include <QtQml/private/qqmldata_p.h>
+#include <QtQuick/qquickitem.h>
 #include <QtQuick/private/qtquickglobal_p.h>
 
 QT_BEGIN_NAMESPACE

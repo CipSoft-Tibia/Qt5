@@ -32,7 +32,7 @@ Item {
                     running: true
                     repeat: true
                     onTriggered: {
-                        const str = 'Qt Rocks! 012345678901234567890123456789'
+                        const str = 'Qt Rocks! ABCDEFGHIJKLMNOPQRSTUVWXYZ0123'
                         if (offset > 0) {
                             offset = offset - 1;
                             label = str.substring(offset);
@@ -46,9 +46,11 @@ Item {
                     fillColor: "orange"
                     strokeColor: topItem.outlineColor
                     strokeWidth: 1.5
+                    fillRule: ShapePath.WindingFill
 
                     PathText {
                         y: 15
+                        font.family: "Arial"
                         font.pixelSize: 64
                         text: shape.label
                     }

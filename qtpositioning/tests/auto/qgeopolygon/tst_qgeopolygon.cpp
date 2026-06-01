@@ -38,6 +38,8 @@ private slots:
     void boundingGeoRectangle();
 
     void hashing();
+
+    void toString();
 };
 
 void tst_QGeoPolygon::defaultConstructor()
@@ -377,6 +379,16 @@ void tst_QGeoPolygon::hashing()
     QGeoPolygon similarPolygon({ QGeoCoordinate(1, 1), QGeoCoordinate(2, 2),
                                  QGeoCoordinate(3, 0) });
     QCOMPARE(qHash(similarPolygon), polygonHash);
+}
+
+void tst_QGeoPolygon::toString()
+{
+    const QGeoPolygon p({QGeoCoordinate(1, 1), QGeoCoordinate(2, 2), QGeoCoordinate(3, 0)});
+
+    const QString str = p.toString();
+    QCOMPARE(str, QStringLiteral("QGeoPolygon([ 1° 0' 0.0\" N, 1° 0' 0.0\" E; "
+                                 "2° 0' 0.0\" N, 2° 0' 0.0\" E; "
+                                 "3° 0' 0.0\" N, 0° 0' 0.0\" ])"));
 }
 
 QTEST_MAIN(tst_QGeoPolygon)

@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickscrollbar_p.h"
 #include "qquickscrollbar_p_p.h"
@@ -23,6 +24,7 @@ QT_BEGIN_NAMESPACE
     \brief Vertical or horizontal interactive scroll bar.
 
     \image qtquickcontrols-scrollbar.gif
+           {Scroll bar handle moving along track}
 
     ScrollBar is an interactive bar that can be used to scroll to a specific
     position. A scroll bar can be either \l vertical or \l horizontal, and can
@@ -107,6 +109,7 @@ QT_BEGIN_NAMESPACE
     \snippet qtquickcontrols-scrollbar-non-attached.qml 1
 
     \image qtquickcontrols-scrollbar-non-attached.png
+           {Scroll bar used standalone without attached property}
 
     When using a non-attached ScrollBar, the following must be done manually:
 
@@ -603,9 +606,15 @@ void QQuickScrollBar::setOrientation(Qt::Orientation orientation)
     \table
     \header
         \row \li \b Value \li \b Example
-        \row \li \c ScrollBar.NoSnap \li \image qtquickcontrols-scrollbar-nosnap.gif
-        \row \li \c ScrollBar.SnapAlways \li \image qtquickcontrols-scrollbar-snapalways.gif
-        \row \li \c ScrollBar.SnapOnRelease \li \image qtquickcontrols-scrollbar-snaponrelease.gif
+        \row \li \c ScrollBar.NoSnap
+             \li \image qtquickcontrols-scrollbar-nosnap.gif
+                        {Scroll bar without snap mode, sliding freely}
+        \row \li \c ScrollBar.SnapAlways
+             \li \image qtquickcontrols-scrollbar-snapalways.gif
+                        {Scroll bar snapping to items while dragging}
+        \row \li \c ScrollBar.SnapOnRelease
+             \li \image qtquickcontrols-scrollbar-snaponrelease.gif
+                        {Scroll bar snapping to items on release}
     \endtable
 
     \sa stepSize
@@ -1007,7 +1016,7 @@ void QQuickScrollBarAttachedPrivate::initVertical()
 
 void QQuickScrollBarAttachedPrivate::cleanupHorizontal()
 {
-    Q_ASSERT(flickable && horizontal);
+    Q_ASSERT(horizontal);
 
     QQuickControlPrivate::hideOldItem(horizontal);
     // ScrollBar.qml has a binding to visible and ScrollView.qml has a binding to parent.
@@ -1019,6 +1028,9 @@ void QQuickScrollBarAttachedPrivate::cleanupHorizontal()
     QQmlPropertyPrivate::removeBinding(visibleProperty);
     QQmlPropertyPrivate::removeBinding(parentProperty);
 
+    if (!flickable)
+        return;
+
     disconnect(flickable, &QQuickFlickable::movingHorizontallyChanged, this, &QQuickScrollBarAttachedPrivate::activateHorizontal);
 
     // TODO: export QQuickFlickableVisibleArea
@@ -1029,13 +1041,16 @@ void QQuickScrollBarAttachedPrivate::cleanupHorizontal()
 
 void QQuickScrollBarAttachedPrivate::cleanupVertical()
 {
-    Q_ASSERT(flickable && vertical);
+    Q_ASSERT(vertical);
 
     QQuickControlPrivate::hideOldItem(vertical);
     const QQmlProperty visibleProperty(vertical, QStringLiteral("visible"));
     const QQmlProperty parentProperty(vertical, QStringLiteral("parent"));
     QQmlPropertyPrivate::removeBinding(visibleProperty);
     QQmlPropertyPrivate::removeBinding(parentProperty);
+
+    if (!flickable)
+        return;
 
     disconnect(flickable, &QQuickFlickable::movingVerticallyChanged, this, &QQuickScrollBarAttachedPrivate::activateVertical);
 
@@ -1220,8 +1235,9 @@ void QQuickScrollBarAttached::setHorizontal(QQuickScrollBar *horizontal)
         QQuickItemPrivate::get(d->horizontal)->removeItemChangeListener(d, QsbHorizontalChangeTypes);
         QObjectPrivate::disconnect(d->horizontal, &QQuickScrollBar::positionChanged, d, &QQuickScrollBarAttachedPrivate::scrollHorizontal);
 
-        if (d->flickable)
-            d->cleanupHorizontal();
+        // Call this regardless of whether we have a flickable, because we need to clean up the old
+        // horizontal item.
+        d->cleanupHorizontal();
     }
 
     d->horizontal = horizontal;
@@ -1271,8 +1287,9 @@ void QQuickScrollBarAttached::setVertical(QQuickScrollBar *vertical)
         QObjectPrivate::disconnect(d->vertical, &QQuickScrollBar::mirroredChanged, d, &QQuickScrollBarAttachedPrivate::mirrorVertical);
         QObjectPrivate::disconnect(d->vertical, &QQuickScrollBar::positionChanged, d, &QQuickScrollBarAttachedPrivate::scrollVertical);
 
-        if (d->flickable)
-            d->cleanupVertical();
+        // Call this regardless of whether we have a flickable, because we need to clean up the old
+        // vertical item.
+        d->cleanupVertical();
     }
 
     d->vertical = vertical;

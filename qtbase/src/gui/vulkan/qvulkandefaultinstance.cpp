@@ -38,8 +38,8 @@ QVulkanInstance *QVulkanDefaultInstance::instance()
     s_vulkanInstance = new QVulkanInstance;
 
     // With a Vulkan implementation >= 1.1 we can check what
-    // vkEnumerateInstanceVersion() says and request 1.3/1.2/1.1 based on the
-    // result. To prevent future surprises, be conservative and ignore any > 1.3
+    // vkEnumerateInstanceVersion() says and request 1.4-1.1 based on the
+    // result. To prevent future surprises, be conservative and ignore any > 1.4
     // versions for now. For 1.0 implementations nothing will be requested, the
     // default 0 in VkApplicationInfo means 1.0.
     //
@@ -54,7 +54,9 @@ QVulkanInstance *QVulkanDefaultInstance::instance()
     // be able to make an appropriate setApiVersion() call on it.
 
     const QVersionNumber supportedVersion = s_vulkanInstance->supportedApiVersion();
-    if (supportedVersion >= QVersionNumber(1, 3))
+    if (supportedVersion >= QVersionNumber(1, 4))
+        s_vulkanInstance->setApiVersion(QVersionNumber(1, 4));
+    else if (supportedVersion >= QVersionNumber(1, 3))
         s_vulkanInstance->setApiVersion(QVersionNumber(1, 3));
     else if (supportedVersion >= QVersionNumber(1, 2))
         s_vulkanInstance->setApiVersion(QVersionNumber(1, 2));

@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "location_provider_qt.h"
 
@@ -175,7 +176,7 @@ void QtPositioningHelper::updatePosition(const QGeoPositionInfo &pos)
 
     // Chromium's geoposition needs a valid (as in >=0.) accuracy field.
     // try and get an accuracy estimate from QGeoPositionInfo.
-    // If we don't have any accuracy info, 100m seems a pesimistic enough default.
+    // If we don't have any accuracy info, 100m seems a pessimistic enough default.
     if (!pos.hasAttribute(QGeoPositionInfo::VerticalAccuracy) && !pos.hasAttribute(QGeoPositionInfo::HorizontalAccuracy))
         newPos->accuracy = 100;
     else {

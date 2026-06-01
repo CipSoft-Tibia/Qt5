@@ -167,10 +167,11 @@ const char* TaskTypeNames::TaskTypeToString(TaskType task_type) {
       return "WebGPU";
     case TaskType::kInternalPostMessageForwarding:
       return "InternalPostMessageForwarding";
+    case TaskType::kInternalAutofill:
+      return "InternalAutofill";
   }
   // FrameSchedulerImpl should not call this for invalid TaskTypes.
-  NOTREACHED_IN_MIGRATION();
-  return "";
+  NOTREACHED();
 }
 
 }  // namespace scheduler

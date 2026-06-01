@@ -136,7 +136,7 @@ std::vector<std::unique_ptr<ContentPredicateEvaluator>> CreateTestEvaluator(
 
 class DeclarativeChromeContentRulesRegistryTest : public testing::Test {
  public:
-  DeclarativeChromeContentRulesRegistryTest() {}
+  DeclarativeChromeContentRulesRegistryTest() = default;
 
   DeclarativeChromeContentRulesRegistryTest(
       const DeclarativeChromeContentRulesRegistryTest&) = delete;
@@ -213,6 +213,40 @@ TEST_F(DeclarativeChromeContentRulesRegistryTest, ActiveRulesDoesntGrow) {
   evaluator->RequestEvaluationOnNextOperation(tab.get(), false);
   registry->DidFinishNavigation(tab.get(), &navigation_handle2);
   EXPECT_EQ(0u, registry->GetActiveRulesCountForTesting());
+}
+
+TEST_F(DeclarativeChromeContentRulesRegistryTest, RemoveDuplicateRules) {
+  TestPredicateEvaluator* evaluator = nullptr;
+  scoped_refptr<ChromeContentRulesRegistry> registry(
+      new ChromeContentRulesRegistry(
+          env()->profile(), nullptr,
+          base::BindOnce(&CreateTestEvaluator, &evaluator)));
+
+  auto rule = api::events::Rule::FromValue(base::test::ParseJsonDict(R"({
+          "id": "rule1",
+          "priority": 100,
+          "conditions": [
+           {
+             "instanceType": "declarativeContent.PageStateMatcher",
+             "test_predicate": []
+           }],
+          "actions": [
+            {"instanceType": "declarativeContent.ShowAction"}
+          ]
+      })"));
+  ASSERT_TRUE(rule.has_value());
+  std::vector<const api::events::Rule*> rules({&rule.value()});
+
+  const Extension* extension =
+      env()->MakeExtension(base::test::ParseJsonDict("{\"page_action\": {}}"));
+  registry->AddRulesImpl(extension->id(), rules);
+
+  // Removing duplicate rule IDs should not cause memory corruption.
+  // This test validates that passing the same rule ID multiple times
+  // into RemoveRulesImpl does not result in the same internal rule
+  // iterator being erased more than once.
+  std::vector<std::string> remove_rules_dup = {"rule1", "rule1"};
+  registry->RemoveRulesImpl(extension->id(), remove_rules_dup);
 }
 
 }  // namespace extensions

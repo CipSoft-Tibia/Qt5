@@ -508,6 +508,8 @@ QStringList QWebEngineViewPrivate::chooseFiles(QWebEnginePage::FileSelectionMode
     QStringList ret;
     QString str;
     switch (static_cast<QtWebEngineCore::FilePickerController::FileChooserMode>(mode)) {
+    case QtWebEngineCore::FilePickerController::OpenDirectory:
+        Q_FALLTHROUGH();
     case QtWebEngineCore::FilePickerController::OpenMultiple:
         ret = QFileDialog::getOpenFileNames(q, QString(), QString(),
                                             filter.join(QStringLiteral(";;")), nullptr,
@@ -847,7 +849,7 @@ QObject *QWebEngineViewPrivate::accessibilityParentObject()
     return q;
 }
 
-void QWebEngineViewPrivate::didPrintPage(QPrinter *&currentPrinter, QSharedPointer<QByteArray> result)
+QThread* QWebEngineViewPrivate::didPrintPage(QPrinter *&currentPrinter, QSharedPointer<QByteArray> result)
 {
 #if QT_CONFIG(webengine_printing_and_pdf)
     Q_Q(QWebEngineView);
@@ -879,9 +881,11 @@ void QWebEngineViewPrivate::didPrintPage(QPrinter *&currentPrinter, QSharedPoint
     printerWorker->moveToThread(printerThread);
     QMetaObject::invokeMethod(printerWorker, "print");
 
+    return printerThread;
 #else
     Q_UNUSED(currentPrinter);
     Q_UNUSED(result);
+    return nullptr;
 #endif
 }
 
@@ -1477,13 +1481,16 @@ void QWebEngineView::printToPdf(const std::function<void(const QByteArray&)> &re
 /*!
     Renders the current content of the page into a temporary PDF document, then prints it using \a printer.
 
+
     The settings for creating and printing the PDF document will be retrieved from the \a printer
     object.
 
     When finished the signal printFinished() is emitted with the \c true for success or \c false for failure.
 
     It is the user's responsibility to ensure the \a printer remains valid until printFinished()
-    has been emitted.
+    has been emitted. If the page is destroyed before printFinished() is emitted, printing will
+    continue to run in the background for a short while. Users should ensure the printer remains
+    valid until its state is no longer active.
 
     \note Printing runs on the browser process, which is by default not sandboxed.
 
@@ -1491,7 +1498,7 @@ void QWebEngineView::printToPdf(const std::function<void(const QByteArray&)> &re
     the \l QWebEnginePage::Stop web action.
 
     \note This function rasterizes the result when rendering onto \a printer. Please consider raising
-    the default resolution of \a printer to at least 300 DPI or using printToPdf() to produce
+    the default resolution of \a printer to at least 300 DPI, or using printToPdf() to produce
     PDF file output more effectively.
 
     \since 6.2
@@ -1704,7 +1711,6 @@ void QWebEngineViewPrivate::hideTouchSelectionMenu()
 void QWebEngineViewPrivate::showTouchSelectionMenu(
         QtWebEngineCore::TouchSelectionMenuController *controller, const QRect &selectionBounds)
 {
-    Q_ASSERT(m_touchSelectionMenu == nullptr);
     Q_Q(QWebEngineView);
 
     // Do not show outside of view

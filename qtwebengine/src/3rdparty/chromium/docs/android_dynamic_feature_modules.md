@@ -457,7 +457,7 @@ on all Chrome build variants, including Monochrome (unlike base module JNI).
 
 extern "C" {
 // This JNI registration method is found and called by module framework code.
-JNI_BOUNDARY_EXPORT bool JNI_OnLoad_foo(JNIEnv* env) {
+JNI_ZERO_BOUNDARY_EXPORT bool JNI_OnLoad_foo(JNIEnv* env) {
   if (!foo::RegisterNatives(env)) {
     return false;
   }
@@ -600,7 +600,7 @@ pointer to a DFM-created object or factory (implemented by the feature), and
 call its virtual methods.
 
 Ideally, the interface to the feature will avoid feature-specific types. If a
-feature defines complex data types, and uses them in its own interface, then its
+feature defines complex data types, and uses them in its own interface, then it's
 likely the main library will utilize the code backing these types. That code,
 and anything it references, will in turn be pulled back into the main library,
 negating the intent to house code in the DFM.
@@ -643,10 +643,7 @@ follows:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<grit
-    current_release="1"
-    latest_public_release="0"
-    output_all_resource_defines="false">
+<grit current_release="1" latest_public_release="0">
   <outputs>
     <output
         filename="values-am/android_foo_strings.xml"
@@ -949,7 +946,8 @@ target, add the `java` target to the template in
 }
 ```
 
-You may also have to add `java` as a dependency of `chrome_test_java` if you want
-to call into Foo from test code.
+You may also have to add `java` as a dependency of
+`//chrome/android/javatests/chrome_test_java_org.chromium.chrome.browser.foo`
+if you want to call into Foo from test code.
 
 [play-core-local-testing]: https://developer.android.com/guide/playcore/feature-delivery/on-demand#local-testing

@@ -228,8 +228,10 @@ void ServiceWorkerHost::CreateBlobUrlStoreProvider(
   }
 
   storage_partition_impl->GetBlobUrlRegistry()->AddReceiver(
-      version()->key(), version()->key().origin(), GetProcessHost()->GetID(),
-      std::move(receiver));
+      version()->key(), version()->key().origin(),
+      GetProcessHost()->GetDeprecatedID(), std::move(receiver),
+      !(GetContentClient()->browser()->IsBlobUrlPartitioningEnabled(
+          GetProcessHost()->GetBrowserContext())));
 }
 
 void ServiceWorkerHost::CreateBucketManagerHost(
@@ -286,9 +288,8 @@ void ServiceWorkerHost::BindAIManager(
     mojo::PendingReceiver<blink::mojom::AIManager> receiver) {
   auto* process = GetProcessHost();
   if (process) {
-    GetContentClient()->browser()->BindAIManager(
-        process->GetBrowserContext(),
-        static_cast<base::SupportsUserData*>(this), std::move(receiver));
+    GetContentClient()->browser()->BindAIManager(process->GetBrowserContext(),
+                                                 this, std::move(receiver));
   }
 }
 

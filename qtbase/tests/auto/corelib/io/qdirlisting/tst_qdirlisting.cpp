@@ -89,8 +89,8 @@ private slots:
     void uncPaths();
 #endif
 #ifndef Q_OS_WIN
-    void hiddenFiles();
-    void hiddenDirs();
+    void hidden_data();
+    void hidden();
 #endif
 
     void withStdAlgorithms();
@@ -618,7 +618,7 @@ void tst_QDirListing::recurseWithFilters() const
     expectedEntries.insert(QString::fromLatin1("recursiveDirs/dir1/textFileB.txt"));
     expectedEntries.insert(QString::fromLatin1("recursiveDirs/textFileA.txt"));
 
-    constexpr auto flags = ItFlag::ExcludeDirs | ItFlag::ExcludeSpecial| ItFlag::Recursive;
+    constexpr auto flags = ItFlag::ExcludeDirs | ItFlag::ExcludeOther| ItFlag::Recursive;
     for (const auto &dirEntry : QDirListing(u"recursiveDirs/"_s, QStringList{u"*.txt"_s}, flags))
         actualEntries.insert(dirEntry.filePath());
 
@@ -638,7 +638,7 @@ void tst_QDirListing::longPath()
         dirName.append('x');
     }
 
-    constexpr auto flags = ItFlag::ExcludeFiles | ItFlag::ExcludeSpecial| ItFlag::Recursive;
+    constexpr auto flags = ItFlag::ExcludeFiles | ItFlag::ExcludeOther| ItFlag::Recursive;
     QDirListing dirList(dir.absolutePath(), flags);
     qsizetype m = 0;
     for (auto it = dirList.begin(); it != dirList.end(); ++it)
@@ -767,47 +767,46 @@ void tst_QDirListing::uncPaths()
 // anything starting by a '.' is a hidden file.
 // For that reason these two tests aren't run on Windows.
 
-void tst_QDirListing::hiddenFiles()
+void tst_QDirListing::hidden_data()
 {
-    QStringList expected = {
-        "hiddenDirs_hiddenFiles/normalFile"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenFile"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/normalFile"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/.hiddenFile"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory/normalFile"_L1,
+    QTest::addColumn<QDirListing::IteratorFlags>("flags");
+    QTest::addColumn<QStringList>("expected");
+
+    using F = QDirListing::IteratorFlag;
+
+    QTest::newRow("Recursive-ExcludeDirs")
+        << (F::ExcludeDirs | F::IncludeHidden | F::Recursive)
+        << QStringList{
         "hiddenDirs_hiddenFiles/.hiddenDirectory/.hiddenFile"_L1,
-    };
-    expected.sort();
+        "hiddenDirs_hiddenFiles/.hiddenDirectory/normalFile"_L1,
+        "hiddenDirs_hiddenFiles/.hiddenFile"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/.hiddenFile"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/normalFile"_L1,
+        "hiddenDirs_hiddenFiles/normalFile"_L1,
+        };
 
-    constexpr auto flags = ItFlag::ExcludeDirs | ItFlag::IncludeHidden | ItFlag::Recursive;
-    QStringList list;
-    list.reserve(expected.size());
-    for (const auto &dirEntry : QDirListing(u"hiddenDirs_hiddenFiles"_s, flags)) {
-        QVERIFY(dirEntry.isFile());
-        list.emplace_back(dirEntry.filePath());
-    }
-    list.sort();
-
-    QCOMPARE_EQ(list, expected);
+    QTest::newRow("Recursive-ExcludeFiles")
+        << (F::ExcludeFiles | F::IncludeHidden | F::Recursive)
+        << QStringList{
+        "hiddenDirs_hiddenFiles/.hiddenDirectory"_L1,
+        "hiddenDirs_hiddenFiles/.hiddenDirectory/.hidden-subdir"_L1,
+        "hiddenDirs_hiddenFiles/.hiddenDirectory/subdir"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/.hidden-subdir"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/subdir"_L1,
+        };
 }
 
-void tst_QDirListing::hiddenDirs()
+void tst_QDirListing::hidden()
 {
-    QStringList expected = {
-        "hiddenDirs_hiddenFiles/normalDirectory"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/subdir"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/.hidden-subdir"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory/subdir"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory/.hidden-subdir"_L1,
-    };
-    expected.sort();
+    QFETCH(QDirListing::IteratorFlags, flags);
+    QFETCH(QStringList, expected);
 
-    constexpr auto flags = ItFlag::ExcludeFiles | ItFlag::IncludeHidden | ItFlag::Recursive;
     QStringList list;
     list.reserve(expected.size());
+    bool isDir = flags.testFlags(ItFlag::ExcludeFiles);
     for (const auto &dirEntry : QDirListing(u"hiddenDirs_hiddenFiles"_s, flags)) {
-        QVERIFY(dirEntry.isDir());
+        QVERIFY(isDir ? dirEntry.isDir() : dirEntry.isFile());
         list.emplace_back(dirEntry.filePath());
     }
     list.sort();

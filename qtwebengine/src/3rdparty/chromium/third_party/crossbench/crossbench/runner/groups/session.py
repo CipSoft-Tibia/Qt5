@@ -7,12 +7,13 @@ from __future__ import annotations
 import contextlib
 import enum
 import logging
-from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional, Tuple
 
 from crossbench.exception import TInfoStack
 from crossbench.flags.base import Flags
 from crossbench.flags.js_flags import JSFlags
-from crossbench.helper import ChangeCWD, Durations
+from crossbench.helper.cwd import ChangeCWD
+from crossbench.helper.durations import Durations
 from crossbench.helper.state import BaseState, StateMachine
 from crossbench.probes.probe_context import ProbeSessionContext
 from crossbench.probes.results import EmptyProbeResult, ProbeResultDict
@@ -24,14 +25,14 @@ if TYPE_CHECKING:
   from selenium.webdriver.common.options import ArgOptions
 
   from crossbench.browsers.browser import Browser
+  from crossbench.env import HostEnvironment
   from crossbench.network.base import Network
-  from crossbench.path import LocalPath, RemotePath
+  from crossbench.path import AnyPath, LocalPath
   from crossbench.probes.probe import Probe
   from crossbench.probes.results import ProbeResult
   from crossbench.runner.run import Run
-  from crossbench.runner.runner import Runner
   from crossbench.runner.timing import Timing
-  from crossbench.types import JsonDict
+  from crossbench.types import JsonDict, JsonMapping
 
 
 @enum.unique
@@ -52,20 +53,23 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
   browser is (re-)started.
   """
 
-  def __init__(self, runner: Runner, browser: Browser, index: int,
-               root_dir: LocalPath, throw: bool) -> None:
+  def __init__(self, env: HostEnvironment, probes: Iterable[Probe],
+               browser: Browser, extra_flags: Flags, index: int,
+               root_dir: LocalPath, create_symlinks: bool, throw: bool) -> None:
     super().__init__(throw)
     self._state: StateMachine[State] = StateMachine(State.BUILDING)
-    self._runner = runner
+    self._env = env
+    self._create_symlinks = create_symlinks
+    self._probes: Tuple[Probe, ...] = tuple(probes)
     self._durations = Durations()
     self._browser = browser
     self._network: Network = browser.network
     self._index: int = index
     self._runs: List[Run] = []
     self._root_dir: LocalPath = root_dir
-    self._browser_tmp_dir: Optional[RemotePath] = None
+    self._browser_tmp_dir: Optional[AnyPath] = None
     self._extra_js_flags = JSFlags()
-    self._extra_flags = runner.benchmark.extra_flags(browser)
+    self._extra_flags = extra_flags
     # Temporary objects, reset after all runs are ready (see set_ready).
     self._probe_results = ProbeResultDict(root_dir)
     self._probe_context_manager = ProbeSessionContextManager(
@@ -91,9 +95,9 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
   def _validate(self) -> None:
     if not self._runs:
       raise ValueError("BrowserSessionRunGroup must be non-empty.")
-    self.browser.validate_env(self.runner.env)
+    self.browser.validate_env(self.env)
     for run in self.runs:
-      run.validate_env(self.runner.env)
+      run.validate_env(self.env)
     self._validate_same_browser_probes()
 
   def _validate_same_browser_probes(self) -> None:
@@ -135,12 +139,20 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
     return self._get_session_dir()
 
   @property
+  def browser_dir(self) -> LocalPath:
+    return self.root_dir / self.browser.unique_name
+
+  @property
   def durations(self) -> Durations:
     return self._durations
 
   @property
-  def runner(self) -> Runner:
-    return self._runner
+  def env(self) -> HostEnvironment:
+    return self._env
+
+  @property
+  def probes(self) -> Iterable[Probe]:
+    return iter(self._probes)
 
   @property
   def network(self) -> Network:
@@ -196,8 +208,8 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
             f"browser={self.browser.unique_name}", f"session={self.index}")
 
   @property
-  def info(self) -> JsonDict:
-    info_dict = super().info
+  def info(self) -> JsonMapping:
+    info_dict = dict(super().info)
     info_dict.update({"index": self.index})
     return info_dict
 
@@ -205,13 +217,13 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
     return f"Session({self.browser}, {self.index})"
 
   @property
-  def browser_tmp_dir(self) -> RemotePath:
+  def browser_tmp_dir(self) -> AnyPath:
     if not self._browser_tmp_dir:
       prefix = f"cb_browser_session_{self.index}"
       self._browser_tmp_dir = self.browser_platform.mkdtemp(prefix)
     return self._browser_tmp_dir
 
-  def merge(self, runner: Runner) -> None:
+  def merge(self, probes: Iterable[Probe]) -> None:
     # TODO: implement merging of session probes
     pass
 
@@ -224,6 +236,7 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
     yielded = False
     with self.exceptions.capture():
       self._setup_session_dir()
+      self._setup_browser()
       with ChangeCWD(self.path):
         with self._open(is_dry_run):
           yielded = True
@@ -265,13 +278,18 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
                      run.index)
         run.setup(is_dry_run)
 
-  def _setup_session_dir(self):
+  def _setup_browser(self) -> None:
+    self._state.expect(State.SETUP)
+    self.browser.setup_binary()
+
+  def _setup_session_dir(self) -> None:
+    self._state.expect(State.SETUP)
     with self.measure("browser-session-setup-dir"):
       self.path.mkdir(parents=True, exist_ok=True)
-      if not self.runner.create_symlinks:
+      if not self._create_symlinks:
         logging.debug("Symlink disabled by command line option")
         return
-      if self.runner_platform.is_win:
+      if self.host_platform.is_win:
         logging.debug("Skipping session_dir symlink on windows.")
         return
       if self.is_single_run:
@@ -337,7 +355,7 @@ class BrowserSessionRunGroup(RunGroup, ResultOrigin):
     # This can happen if a browser / probe setup error occurs and we're
     # in a unclean state.
     if self.browser.is_running:
-      self._runs[-1]._teardown_browser(is_dry_run)
+      self._runs[-1]._teardown_browser(is_dry_run)  # pylint: disable=protected-access
 
   # TODO: remove once cleanly implemented
   def is_first_run(self, run: Run) -> bool:

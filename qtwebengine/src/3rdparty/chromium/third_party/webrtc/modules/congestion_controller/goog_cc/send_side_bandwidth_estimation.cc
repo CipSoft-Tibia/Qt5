@@ -192,7 +192,8 @@ TimeDelta RttBasedBackoff::CorrectedRtt() const {
 RttBasedBackoff::~RttBasedBackoff() = default;
 
 SendSideBandwidthEstimation::SendSideBandwidthEstimation(
-    const FieldTrialsView* key_value_config, RtcEventLog* event_log)
+    const FieldTrialsView* key_value_config,
+    RtcEventLog* event_log)
     : key_value_config_(key_value_config),
       rtt_backoff_(key_value_config),
       lost_packets_since_last_loss_update_(0),
@@ -372,8 +373,8 @@ void SendSideBandwidthEstimation::SetAcknowledgedRate(
 
 void SendSideBandwidthEstimation::UpdateLossBasedEstimator(
     const TransportPacketsFeedback& report,
-    BandwidthUsage delay_detector_state,
-    std::optional<DataRate> probe_bitrate,
+    BandwidthUsage /* delay_detector_state */,
+    std::optional<DataRate> /* probe_bitrate */,
     bool in_alr) {
   if (LossBasedBandwidthEstimatorV1Enabled()) {
     loss_based_bandwidth_estimator_v1_.UpdateLossStatistics(

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmldebugserviceinterfaces_p.h"
 
@@ -46,6 +47,8 @@ QQmlDebugStatesDelegate *QQmlEngineDebugService::createStatesDelegate()
 QQmlDebugTranslationService::~QQmlDebugTranslationService()
     = default;
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wmaybe-uninitialized") // known GCC bug with std::optional and std::variant
 const TranslationBindingInformation TranslationBindingInformation::create(
         const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
         const QV4::CompiledData::Binding *binding, QObject *scopeObject,
@@ -89,6 +92,7 @@ const TranslationBindingInformation TranslationBindingInformation::create(
              binding->location.line(),
              binding->location.column() };
 }
+QT_WARNING_POP
 #endif
 
 QT_END_NAMESPACE

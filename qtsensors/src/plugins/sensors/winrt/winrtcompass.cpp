@@ -16,7 +16,7 @@ using namespace ABI::Windows::Devices::Sensors;
 
 typedef ITypedEventHandler<Compass *, CompassReadingChangedEventArgs *> CompassReadingHandler;
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtCompassPrivate
 {
@@ -196,3 +196,5 @@ void WinRtCompass::stop()
     }
     d->token.value = 0;
 }
+
+QT_END_NAMESPACE

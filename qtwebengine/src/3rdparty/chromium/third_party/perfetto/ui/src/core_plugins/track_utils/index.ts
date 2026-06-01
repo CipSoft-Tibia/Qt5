@@ -12,67 +12,133 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {
-  getTimeSpanOfSelectionOrVisibleWindow,
-  globals,
-} from '../../frontend/globals';
 import {OmniboxMode} from '../../core/omnibox_manager';
 import {Trace} from '../../public/trace';
-import {PromptOption} from '../../public/omnibox';
-import {PerfettoPlugin, PluginDescriptor} from '../../public/plugin';
+import {PerfettoPlugin} from '../../public/plugin';
+import {AppImpl} from '../../core/app_impl';
+import {getTimeSpanOfSelectionOrVisibleWindow} from '../../public/utils';
+import {exists, RequiredField} from '../../base/utils';
+import {LONG, NUM, NUM_NULL} from '../../trace_processor/query_result';
+import {TrackNode} from '../../public/workspace';
 
-class TrackUtilsPlugin implements PerfettoPlugin {
+export default class implements PerfettoPlugin {
+  static readonly id = 'perfetto.TrackUtils';
   async onTraceLoad(ctx: Trace): Promise<void> {
     ctx.commands.registerCommand({
       id: 'perfetto.RunQueryInSelectedTimeWindow',
       name: `Run query in selected time window`,
       callback: async () => {
-        const window = await getTimeSpanOfSelectionOrVisibleWindow();
-        globals.omnibox.setMode(OmniboxMode.Query);
-        globals.omnibox.setText(
+        const window = await getTimeSpanOfSelectionOrVisibleWindow(ctx);
+        const omnibox = AppImpl.instance.omnibox;
+        omnibox.setMode(OmniboxMode.Query);
+        omnibox.setText(
           `select  where ts >= ${window.start} and ts < ${window.end}`,
         );
-        globals.omnibox.focus(7);
+        omnibox.focus(/* cursorPlacement= */ 7);
       },
     });
 
     ctx.commands.registerCommand({
-      // Selects & reveals the first track on the timeline with a given URI.
-      id: 'perfetto.FindTrack',
+      id: 'perfetto.FindTrackByName',
+      name: 'Find track by name',
+      callback: async () => {
+        const tracksWithUris = ctx.workspace.flatTracksOrdered.filter(
+          (track) => track.uri !== undefined,
+        ) as ReadonlyArray<RequiredField<TrackNode, 'uri'>>;
+        const track = await ctx.omnibox.prompt('Choose a track...', {
+          values: tracksWithUris,
+          getName: (track) => track.title,
+        });
+        track &&
+          ctx.selection.selectTrack(track.uri, {
+            scrollToSelection: true,
+          });
+      },
+    });
+
+    ctx.commands.registerCommand({
+      id: 'perfetto.FindTrackByUri',
       name: 'Find track by URI',
       callback: async () => {
-        const tracks = globals.trackManager.getAllTracks();
-        const options = tracks.map(({uri}): PromptOption => {
-          return {key: uri, displayName: uri};
+        const tracksWithUris = ctx.workspace.flatTracksOrdered.filter(
+          (track) => track.uri !== undefined,
+        ) as ReadonlyArray<RequiredField<TrackNode, 'uri'>>;
+        const track = await ctx.omnibox.prompt('Choose a track...', {
+          values: tracksWithUris,
+          getName: (track) => track.uri,
         });
+        track &&
+          ctx.selection.selectTrack(track.uri, {
+            scrollToSelection: true,
+          });
+      },
+    });
 
-        // Sort tracks in a natural sort order
-        const collator = new Intl.Collator('en', {
-          numeric: true,
-          sensitivity: 'base',
+    ctx.commands.registerCommand({
+      id: 'perfetto.PinTrackByName',
+      name: 'Pin track by name',
+      callback: async () => {
+        const tracksWithUris = ctx.workspace.flatTracksOrdered.filter(
+          (track) => track.uri !== undefined,
+        ) as ReadonlyArray<RequiredField<TrackNode, 'uri'>>;
+        const track = await ctx.omnibox.prompt('Choose a track...', {
+          values: tracksWithUris,
+          getName: (track) => track.title,
         });
-        const sortedOptions = options.sort((a, b) => {
-          return collator.compare(a.displayName, b.displayName);
-        });
+        track && track.pin();
+      },
+    });
 
-        const selectedUri = await ctx.omnibox.prompt(
-          'Choose a track...',
-          sortedOptions,
-        );
-        if (selectedUri === undefined) return; // Prompt cancelled.
-        ctx.scrollTo({track: {uri: selectedUri, expandGroup: true}});
-        const traceTime = globals.traceContext;
-        globals.selectionManager.setArea({
-          start: traceTime.start,
-          end: traceTime.end,
-          trackUris: [selectedUri],
-        });
+    ctx.commands.registerCommand({
+      id: 'perfetto.SelectNextTrackEvent',
+      name: 'Select next track event',
+      defaultHotkey: '.',
+      callback: async () => {
+        await selectAdjacentTrackEvent(ctx, 'next');
+      },
+    });
+
+    ctx.commands.registerCommand({
+      id: 'perfetto.SelectPreviousTrackEvent',
+      name: 'Select previous track event',
+      defaultHotkey: ',',
+      callback: async () => {
+        await selectAdjacentTrackEvent(ctx, 'prev');
       },
     });
   }
 }
 
-export const plugin: PluginDescriptor = {
-  pluginId: 'perfetto.TrackUtils',
-  plugin: TrackUtilsPlugin,
-};
+/**
+ * If a track event is currently selected, select the next or previous event on
+ * that same track chronologically ordered by `ts`.
+ */
+async function selectAdjacentTrackEvent(
+  ctx: Trace,
+  direction: 'next' | 'prev',
+) {
+  const selection = ctx.selection.selection;
+  if (selection.kind !== 'track_event') return;
+
+  const td = ctx.tracks.getTrack(selection.trackUri);
+  const dataset = td?.track.getDataset?.();
+  if (!dataset || !dataset.implements({id: NUM, ts: LONG})) return;
+
+  const windowFunc = direction === 'next' ? 'LEAD' : 'LAG';
+  const result = await ctx.engine.query(`
+      WITH
+        CTE AS (
+          SELECT
+            id,
+            ${windowFunc}(id) OVER (ORDER BY ts) AS resultId
+          FROM (${dataset.query()})
+        )
+      SELECT * FROM CTE WHERE id = ${selection.eventId}
+    `);
+  const resultId = result.maybeFirstRow({resultId: NUM_NULL})?.resultId;
+  if (!exists(resultId)) return;
+
+  ctx.selection.selectTrackEvent(selection.trackUri, resultId, {
+    scrollToSelection: true,
+  });
+}

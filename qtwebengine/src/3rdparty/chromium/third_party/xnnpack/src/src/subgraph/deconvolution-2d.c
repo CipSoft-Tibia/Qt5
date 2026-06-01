@@ -12,6 +12,7 @@
 #include "xnnpack/common.h"
 #include "xnnpack/log.h"
 #include "xnnpack/node-type.h"
+#include "xnnpack/internal.h"
 #include "xnnpack/operator-type.h"
 #include "xnnpack/operator.h"
 #include "xnnpack/requantization.h"
@@ -39,8 +40,9 @@ static enum xnn_status create_deconvolution_operator(
   assert(filter_id < num_values);
 
   const void* bias_data = NULL;
+  uint32_t bias_id = XNN_INVALID_VALUE_ID;
   if (use_bias) {
-    const uint32_t bias_id = node->inputs[2];
+    bias_id = node->inputs[2];
     assert(bias_id != XNN_INVALID_VALUE_ID);
     assert(bias_id < num_values);
 
@@ -57,8 +59,18 @@ static enum xnn_status create_deconvolution_operator(
   assert(filter_data != NULL);
 
   enum xnn_status status = xnn_status_uninitialized;
-  switch (node->compute_type) {
-    case xnn_compute_type_fp16:
+  const enum xnn_datatype input_datatype = values[input_id].datatype;
+  const enum xnn_datatype filter_datatype = values[filter_id].datatype;
+  const enum xnn_datatype bias_datatype = bias_id != XNN_INVALID_VALUE_ID
+                                              ? values[filter_id].datatype
+                                              : xnn_datatype_invalid;
+  const enum xnn_datatype output_datatype = values[output_id].datatype;
+  switch (output_datatype) {
+    case xnn_datatype_fp16: {
+      uint32_t flags = node->flags;
+      if (filter_datatype == xnn_datatype_fp32) {
+        flags = XNN_FLAG_FP32_STATIC_WEIGHTS;
+      }
       status = xnn_create_deconvolution2d_nhwc_f16(
           node->params.deconvolution_2d.padding_top,
           node->params.deconvolution_2d.padding_right,
@@ -79,113 +91,212 @@ static enum xnn_status create_deconvolution_operator(
           bias_data,
           node->activation.output_min,
           node->activation.output_max,
-          node->flags | XNN_FLAG_FP32_STATIC_WEIGHTS,
-          code_cache,
-          weights_cache,
-          &opdata->operator_objects[0]);
-      break;
-    case xnn_compute_type_fp32:
-      status = xnn_create_deconvolution2d_nhwc_f32(
-          node->params.deconvolution_2d.padding_top,
-          node->params.deconvolution_2d.padding_right,
-          node->params.deconvolution_2d.padding_bottom,
-          node->params.deconvolution_2d.padding_left,
-          node->params.deconvolution_2d.kernel_height,
-          node->params.deconvolution_2d.kernel_width,
-          node->params.deconvolution_2d.upsampling_height,
-          node->params.deconvolution_2d.upsampling_width,
-          node->params.deconvolution_2d.dilation_height,
-          node->params.deconvolution_2d.dilation_width,
-          node->params.deconvolution_2d.groups,
-          node->params.deconvolution_2d.group_input_channels,
-          node->params.deconvolution_2d.group_output_channels,
-          node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
-          node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
-          filter_data,
-          bias_data,
-          node->activation.output_min,
-          node->activation.output_max,
-          node->flags,
-          code_cache,
-          weights_cache,
-          &opdata->operator_objects[0]);
-      break;
-    case xnn_compute_type_qs8:
-    {
-      const float output_scale = values[output_id].quantization.scale;
-      const int32_t output_zero_point = values[output_id].quantization.zero_point;
-      const int8_t output_min = xnn_qs8_quantize(node->activation.output_min, output_scale, output_zero_point);
-      const int8_t output_max = xnn_qs8_quantize(node->activation.output_max, output_scale, output_zero_point);
-      status = xnn_create_deconvolution2d_nhwc_qs8(
-          node->params.deconvolution_2d.padding_top,
-          node->params.deconvolution_2d.padding_right,
-          node->params.deconvolution_2d.padding_bottom,
-          node->params.deconvolution_2d.padding_left,
-          node->params.deconvolution_2d.kernel_height,
-          node->params.deconvolution_2d.kernel_width,
-          node->params.deconvolution_2d.upsampling_height,
-          node->params.deconvolution_2d.upsampling_width,
-          node->params.deconvolution_2d.dilation_height,
-          node->params.deconvolution_2d.dilation_width,
-          node->params.deconvolution_2d.groups,
-          node->params.deconvolution_2d.group_input_channels,
-          node->params.deconvolution_2d.group_output_channels,
-          node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
-          node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
-          (int8_t) values[input_id].quantization.zero_point,
-          values[input_id].quantization.scale,
-          values[filter_id].quantization.scale,
-          filter_data,
-          bias_data,
-          output_zero_point,
-          output_scale,
-          output_min,
-          output_max,
-          node->flags,
+          flags,
           code_cache,
           weights_cache,
           &opdata->operator_objects[0]);
       break;
     }
-    case xnn_compute_type_qc8:
-    {
-      const float output_scale = values[output_id].quantization.scale;
-      const int32_t output_zero_point = values[output_id].quantization.zero_point;
-      const int8_t output_min = xnn_qs8_quantize(node->activation.output_min, output_scale, output_zero_point);
-      const int8_t output_max = xnn_qs8_quantize(node->activation.output_max, output_scale, output_zero_point);
-      status = xnn_create_deconvolution2d_nhwc_qs8_qc8w(
-          node->params.deconvolution_2d.padding_top,
-          node->params.deconvolution_2d.padding_right,
-          node->params.deconvolution_2d.padding_bottom,
-          node->params.deconvolution_2d.padding_left,
-          node->params.deconvolution_2d.kernel_height,
-          node->params.deconvolution_2d.kernel_width,
-          node->params.deconvolution_2d.upsampling_height,
-          node->params.deconvolution_2d.upsampling_width,
-          node->params.deconvolution_2d.dilation_height,
-          node->params.deconvolution_2d.dilation_width,
-          node->params.deconvolution_2d.groups,
-          node->params.deconvolution_2d.group_input_channels,
-          node->params.deconvolution_2d.group_output_channels,
-          node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
-          node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
-          (int8_t) values[input_id].quantization.zero_point,
-          values[input_id].quantization.scale,
-          values[filter_id].quantization.channelwise_scale,
-          filter_data,
-          bias_data,
-          output_zero_point,
-          output_scale,
-          output_min,
-          output_max,
-          node->flags,
-          code_cache,
-          weights_cache,
-          &opdata->operator_objects[0]);
+    case xnn_datatype_fp32:
+      switch (filter_datatype) {
+        case xnn_datatype_fp16: {
+          uint32_t flags = node->flags;
+          if (bias_datatype == xnn_datatype_fp32) {
+            flags |= XNN_FLAG_FP32_STATIC_BIASES;
+          }
+          status = xnn_create_deconvolution2d_nhwc_f32_f16(
+              node->params.deconvolution_2d.padding_top,
+              node->params.deconvolution_2d.padding_right,
+              node->params.deconvolution_2d.padding_bottom,
+              node->params.deconvolution_2d.padding_left,
+              node->params.deconvolution_2d.kernel_height,
+              node->params.deconvolution_2d.kernel_width,
+              node->params.deconvolution_2d.upsampling_height,
+              node->params.deconvolution_2d.upsampling_width,
+              node->params.deconvolution_2d.dilation_height,
+              node->params.deconvolution_2d.dilation_width,
+              node->params.deconvolution_2d.groups,
+              node->params.deconvolution_2d.group_input_channels,
+              node->params.deconvolution_2d.group_output_channels,
+              node->params.deconvolution_2d.group_input_channels *
+                  node->params.deconvolution_2d.groups /* input_pixel_stride */,
+              node->params.deconvolution_2d.group_output_channels *
+                  node->params.deconvolution_2d
+                      .groups /* output_pixel_stride */,
+              filter_data, bias_data, node->activation.output_min,
+              node->activation.output_max, flags, code_cache, weights_cache,
+              &opdata->operator_objects[0]);
+          break;
+        }
+        case xnn_datatype_fp32:
+          status = xnn_create_deconvolution2d_nhwc_f32(
+              node->params.deconvolution_2d.padding_top,
+              node->params.deconvolution_2d.padding_right,
+              node->params.deconvolution_2d.padding_bottom,
+              node->params.deconvolution_2d.padding_left,
+              node->params.deconvolution_2d.kernel_height,
+              node->params.deconvolution_2d.kernel_width,
+              node->params.deconvolution_2d.upsampling_height,
+              node->params.deconvolution_2d.upsampling_width,
+              node->params.deconvolution_2d.dilation_height,
+              node->params.deconvolution_2d.dilation_width,
+              node->params.deconvolution_2d.groups,
+              node->params.deconvolution_2d.group_input_channels,
+              node->params.deconvolution_2d.group_output_channels,
+              node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
+              node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
+              filter_data,
+              bias_data,
+              node->activation.output_min,
+              node->activation.output_max,
+              node->flags,
+              code_cache,
+              weights_cache,
+              &opdata->operator_objects[0]);
+          break;
+        case xnn_datatype_qcint8:
+          switch (input_datatype) {
+            case xnn_datatype_qdint8:
+              status = xnn_create_deconvolution2d_nhwc_qd8_f32_qc8w(
+                  node->params.deconvolution_2d.padding_top,
+                  node->params.deconvolution_2d.padding_right,
+                  node->params.deconvolution_2d.padding_bottom,
+                  node->params.deconvolution_2d.padding_left,
+                  node->params.deconvolution_2d.kernel_height,
+                  node->params.deconvolution_2d.kernel_width,
+                  node->params.deconvolution_2d.upsampling_height,
+                  node->params.deconvolution_2d.upsampling_width,
+                  node->params.deconvolution_2d.dilation_height,
+                  node->params.deconvolution_2d.dilation_width,
+                  node->params.deconvolution_2d.groups,
+                  node->params.deconvolution_2d.group_input_channels,
+                  node->params.deconvolution_2d.group_output_channels,
+                  node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
+                  node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
+                  values[filter_id].quantization.channelwise_scale,
+                  filter_data,
+                  bias_data,
+                  node->activation.output_min,
+                  node->activation.output_max,
+                  node->flags,
+                  code_cache,
+                  weights_cache,
+                  &opdata->operator_objects[0]);
+              break;
+            case xnn_datatype_qduint8:
+              status = xnn_create_deconvolution2d_nhwc_qdu8_f32_qc8w(
+                  node->params.deconvolution_2d.padding_top,
+                  node->params.deconvolution_2d.padding_right,
+                  node->params.deconvolution_2d.padding_bottom,
+                  node->params.deconvolution_2d.padding_left,
+                  node->params.deconvolution_2d.kernel_height,
+                  node->params.deconvolution_2d.kernel_width,
+                  node->params.deconvolution_2d.upsampling_height,
+                  node->params.deconvolution_2d.upsampling_width,
+                  node->params.deconvolution_2d.dilation_height,
+                  node->params.deconvolution_2d.dilation_width,
+                  node->params.deconvolution_2d.groups,
+                  node->params.deconvolution_2d.group_input_channels,
+                  node->params.deconvolution_2d.group_output_channels,
+                  node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
+                  node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
+                  values[filter_id].quantization.channelwise_scale,
+                  filter_data,
+                  bias_data,
+                  node->activation.output_min,
+                  node->activation.output_max,
+                  node->flags,
+                  code_cache,
+                  weights_cache,
+                  &opdata->operator_objects[0]);
+              break;
+            default:
+              XNN_UNREACHABLE;
+          }
+          break;
+        default:
+          XNN_UNREACHABLE;
+      }
       break;
-    }
-    case xnn_compute_type_qu8:
-    {
+    case xnn_datatype_qint8:
+      switch (filter_datatype) {
+        case xnn_datatype_qint8: {
+          const float output_scale = values[output_id].quantization.scale;
+          const int32_t output_zero_point = values[output_id].quantization.zero_point;
+          const int8_t output_min = xnn_qs8_quantize(node->activation.output_min, output_scale, output_zero_point);
+          const int8_t output_max = xnn_qs8_quantize(node->activation.output_max, output_scale, output_zero_point);
+          status = xnn_create_deconvolution2d_nhwc_qs8(
+              node->params.deconvolution_2d.padding_top,
+              node->params.deconvolution_2d.padding_right,
+              node->params.deconvolution_2d.padding_bottom,
+              node->params.deconvolution_2d.padding_left,
+              node->params.deconvolution_2d.kernel_height,
+              node->params.deconvolution_2d.kernel_width,
+              node->params.deconvolution_2d.upsampling_height,
+              node->params.deconvolution_2d.upsampling_width,
+              node->params.deconvolution_2d.dilation_height,
+              node->params.deconvolution_2d.dilation_width,
+              node->params.deconvolution_2d.groups,
+              node->params.deconvolution_2d.group_input_channels,
+              node->params.deconvolution_2d.group_output_channels,
+              node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
+              node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
+              (int8_t) values[input_id].quantization.zero_point,
+              values[input_id].quantization.scale,
+              values[filter_id].quantization.scale,
+              filter_data,
+              bias_data,
+              output_zero_point,
+              output_scale,
+              output_min,
+              output_max,
+              node->flags,
+              code_cache,
+              weights_cache,
+              &opdata->operator_objects[0]);
+          break;
+        }
+        case xnn_datatype_qcint8: {
+          const float output_scale = values[output_id].quantization.scale;
+          const int32_t output_zero_point = values[output_id].quantization.zero_point;
+          const int8_t output_min = xnn_qs8_quantize(node->activation.output_min, output_scale, output_zero_point);
+          const int8_t output_max = xnn_qs8_quantize(node->activation.output_max, output_scale, output_zero_point);
+          status = xnn_create_deconvolution2d_nhwc_qs8_qc8w(
+              node->params.deconvolution_2d.padding_top,
+              node->params.deconvolution_2d.padding_right,
+              node->params.deconvolution_2d.padding_bottom,
+              node->params.deconvolution_2d.padding_left,
+              node->params.deconvolution_2d.kernel_height,
+              node->params.deconvolution_2d.kernel_width,
+              node->params.deconvolution_2d.upsampling_height,
+              node->params.deconvolution_2d.upsampling_width,
+              node->params.deconvolution_2d.dilation_height,
+              node->params.deconvolution_2d.dilation_width,
+              node->params.deconvolution_2d.groups,
+              node->params.deconvolution_2d.group_input_channels,
+              node->params.deconvolution_2d.group_output_channels,
+              node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
+              node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
+              (int8_t) values[input_id].quantization.zero_point,
+              values[input_id].quantization.scale,
+              values[filter_id].quantization.channelwise_scale,
+              filter_data,
+              bias_data,
+              output_zero_point,
+              output_scale,
+              output_min,
+              output_max,
+              node->flags,
+              code_cache,
+              weights_cache,
+              &opdata->operator_objects[0]);
+          break;
+        }
+        default:
+          XNN_UNREACHABLE;
+      }
+      break;
+    case xnn_datatype_quint8: {
       const float output_scale = values[output_id].quantization.scale;
       const int32_t output_zero_point = values[output_id].quantization.zero_point;
       const uint8_t output_min = xnn_qu8_quantize(node->activation.output_min, output_scale, output_zero_point);
@@ -222,33 +333,6 @@ static enum xnn_status create_deconvolution_operator(
           &opdata->operator_objects[0]);
       break;
     }
-    case xnn_compute_type_qd8_to_fp32:
-      status = xnn_create_deconvolution2d_nhwc_qd8_f32_qc8w(
-          node->params.deconvolution_2d.padding_top,
-          node->params.deconvolution_2d.padding_right,
-          node->params.deconvolution_2d.padding_bottom,
-          node->params.deconvolution_2d.padding_left,
-          node->params.deconvolution_2d.kernel_height,
-          node->params.deconvolution_2d.kernel_width,
-          node->params.deconvolution_2d.upsampling_height,
-          node->params.deconvolution_2d.upsampling_width,
-          node->params.deconvolution_2d.dilation_height,
-          node->params.deconvolution_2d.dilation_width,
-          node->params.deconvolution_2d.groups,
-          node->params.deconvolution_2d.group_input_channels,
-          node->params.deconvolution_2d.group_output_channels,
-          node->params.deconvolution_2d.group_input_channels * node->params.deconvolution_2d.groups /* input_pixel_stride */,
-          node->params.deconvolution_2d.group_output_channels * node->params.deconvolution_2d.groups /* output_pixel_stride */,
-          values[filter_id].quantization.channelwise_scale,
-          filter_data,
-          bias_data,
-          node->activation.output_min,
-          node->activation.output_max,
-          node->flags,
-          code_cache,
-          weights_cache,
-          &opdata->operator_objects[0]);
-      break;
     default:
       XNN_UNREACHABLE;
   }
@@ -336,6 +420,18 @@ static enum xnn_status reshape_deconvolution_operator(
       break;
     case xnn_operator_type_deconvolution_nhwc_qd8_f32_qc8w:
       status = xnn_reshape_deconvolution2d_nhwc_qd8_f32_qc8w(
+          opdata->operator_objects[0],
+          batch_size,
+          input_height,
+          input_width,
+          opdata->adjustment_height,
+          opdata->adjustment_width,
+          &output_height,
+          &output_width,
+          threadpool);
+      break;
+    case xnn_operator_type_deconvolution_nhwc_qdu8_f32_qc8w:
+      status = xnn_reshape_deconvolution2d_nhwc_qdu8_f32_qc8w(
           opdata->operator_objects[0],
           batch_size,
           input_height,
@@ -434,12 +530,23 @@ static enum xnn_status setup_deconvolution_operator(
             quantization_params);
       }
       break;
+    case xnn_operator_type_deconvolution_nhwc_qdu8_f32_qc8w:
+      {
+        const void* quantization_params = input_value->quantization.dynamic_params;
+        assert(quantization_params != NULL);
+        return xnn_setup_deconvolution2d_nhwc_qdu8_f32_qc8w(
+            opdata->operator_objects[0],
+            input_data,
+            output_data,
+            quantization_params);
+      }
+      break;
     default:
       XNN_UNREACHABLE;
   }
 }
 
-static inline enum xnn_compute_type validate_datatypes_with_bias(
+static inline bool validate_datatypes_with_bias(
   enum xnn_datatype input_datatype,
   enum xnn_datatype filter_datatype,
   enum xnn_datatype bias_datatype,
@@ -451,12 +558,24 @@ static inline enum xnn_compute_type validate_datatypes_with_bias(
           bias_datatype == xnn_datatype_fp32 &&
           output_datatype == xnn_datatype_fp32)
       {
-        return xnn_compute_type_fp32;
+        return true;
       } else if (input_datatype == xnn_datatype_fp16 &&
           bias_datatype == xnn_datatype_fp32 &&
           output_datatype == xnn_datatype_fp16) {
         // Flag: XNN_FLAG_FP32_STATIC_WEIGHTS
-        return xnn_compute_type_fp16;
+        return true;
+      }
+      break;
+    case xnn_datatype_fp16:
+      if (input_datatype == xnn_datatype_fp32 &&
+          bias_datatype == xnn_datatype_fp16 &&
+          output_datatype == xnn_datatype_fp32) {
+        return true;
+      } else if (input_datatype == xnn_datatype_fp32 &&
+                 bias_datatype == xnn_datatype_fp32 &&
+                 output_datatype == xnn_datatype_fp32) {
+        // Flag: XNN_FLAG_FP32_STATIC_BIASES
+        return true;
       }
       break;
     case xnn_datatype_qint8:
@@ -464,7 +583,7 @@ static inline enum xnn_compute_type validate_datatypes_with_bias(
           bias_datatype == xnn_datatype_qint32 &&
           output_datatype == xnn_datatype_qint8)
       {
-        return xnn_compute_type_qs8;
+        return true;
       }
       break;
     case xnn_datatype_quint8:
@@ -472,29 +591,29 @@ static inline enum xnn_compute_type validate_datatypes_with_bias(
           bias_datatype == xnn_datatype_qint32 &&
           output_datatype == xnn_datatype_quint8)
       {
-        return xnn_compute_type_qu8;
+        return true;
       }
       break;
     case xnn_datatype_qcint8:
       if (input_datatype == xnn_datatype_qdint8 &&
           bias_datatype == xnn_datatype_fp32 &&
           output_datatype == xnn_datatype_fp32) {
-        return xnn_compute_type_qd8_to_fp32;
+        return true;
       }
       if (input_datatype == xnn_datatype_qint8 &&
           bias_datatype == xnn_datatype_qcint32 &&
           output_datatype == xnn_datatype_qint8)
       {
-        return xnn_compute_type_qc8;
+        return true;
       }
       break;
     default:
       XNN_UNREACHABLE;
   }
-  return xnn_compute_type_invalid;
+  return false;
 }
 
-static inline enum xnn_compute_type validate_datatypes_without_bias(
+static inline bool validate_datatypes_without_bias(
   enum xnn_datatype input_datatype,
   enum xnn_datatype filter_datatype,
   enum xnn_datatype output_datatype)
@@ -502,33 +621,39 @@ static inline enum xnn_compute_type validate_datatypes_without_bias(
   switch (filter_datatype) {
     case xnn_datatype_fp32:
       if (input_datatype == xnn_datatype_fp32 && output_datatype == xnn_datatype_fp32) {
-        return xnn_compute_type_fp32;
+        return true;
       } else if (input_datatype == xnn_datatype_fp16 && output_datatype == xnn_datatype_fp16) {
         // Flag: XNN_FLAG_FP32_STATIC_WEIGHTS
-        return xnn_compute_type_fp16;
+        return true;
+      }
+      break;
+    case xnn_datatype_fp16:
+      if (input_datatype == xnn_datatype_fp32 &&
+          output_datatype == xnn_datatype_fp32) {
+        return true;
       }
       break;
     case xnn_datatype_qint8:
       if (input_datatype == xnn_datatype_qint8 && output_datatype == xnn_datatype_qint8) {
-        return xnn_compute_type_qs8;
+        return true;
       }
       break;
     case xnn_datatype_quint8:
       if (input_datatype == xnn_datatype_quint8 && output_datatype == xnn_datatype_quint8) {
-        return xnn_compute_type_qu8;
+        return true;
       }
       break;
     case xnn_datatype_qcint8:
       if (input_datatype == xnn_datatype_qdint8 && output_datatype == xnn_datatype_fp32) {
-        return xnn_compute_type_qd8_to_fp32;
+        return true;
       } else if (input_datatype == xnn_datatype_qint8 && output_datatype == xnn_datatype_qint8) {
-        return xnn_compute_type_qc8;
+        return true;
       }
       break;
     default:
       XNN_UNREACHABLE;
   }
-  return xnn_compute_type_invalid;
+  return false;
 }
 
 enum xnn_status xnn_define_deconvolution_2d(
@@ -753,11 +878,9 @@ enum xnn_status xnn_define_deconvolution_2d(
       return xnn_status_invalid_parameter;
   }
 
-  enum xnn_compute_type compute_type = xnn_compute_type_invalid;
   if (bias_value != NULL) {
-    compute_type = validate_datatypes_with_bias(
-      input_value->datatype, filter_value->datatype, bias_value->datatype, output_value->datatype);
-    if (compute_type == xnn_compute_type_invalid) {
+    if (!validate_datatypes_with_bias(
+        input_value->datatype, filter_value->datatype, bias_value->datatype, output_value->datatype)) {
       xnn_log_error(
         "failed to define %s operator with input ID #%" PRIu32 ", filter ID #%" PRIu32 ", bias ID #%" PRIu32 ", and output ID #%" PRIu32
         ": mismatching datatypes across input (%s), filter (%s), bias (%s), and output (%s)",
@@ -769,9 +892,8 @@ enum xnn_status xnn_define_deconvolution_2d(
       return xnn_status_invalid_parameter;
     }
   } else {
-    compute_type = validate_datatypes_without_bias(
-      input_value->datatype, filter_value->datatype, output_value->datatype);
-    if (compute_type == xnn_compute_type_invalid) {
+    if (!validate_datatypes_without_bias(
+        input_value->datatype, filter_value->datatype, output_value->datatype)) {
       xnn_log_error(
         "failed to define %s operator with input ID #%" PRIu32 ", filter ID #%" PRIu32 ", and output ID #%" PRIu32
         ": mismatching datatypes across input (%s), filter (%s), and output (%s)",
@@ -808,7 +930,6 @@ enum xnn_status xnn_define_deconvolution_2d(
   }
 
   node->type = xnn_node_type_deconvolution_2d;
-  node->compute_type = compute_type;
   node->params.deconvolution_2d.padding_top = padding_top;
   node->params.deconvolution_2d.padding_right = padding_right;
   node->params.deconvolution_2d.padding_bottom = padding_bottom;

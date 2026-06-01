@@ -51,13 +51,30 @@ void fputs(const char *s, QIODevice &out)
 }
 // -- QtScxml
 
-uint nameToBuiltinType(const QByteArray &name)
+static int nameToBuiltinType(const QByteArray &name)
 {
     if (name.isEmpty())
         return 0;
 
-    uint tp = qMetaTypeTypeInternal(name.constData());
-    return tp < uint(QMetaType::User) ? tp : uint(QMetaType::UnknownType);
+    uint tp = QMetaType::UnknownType;
+    if (const QtPrivate::QMetaTypeInterface *iface = QMetaType::fromName(name).iface())
+        tp = iface->typeId.loadRelaxed(); // always registered
+
+#ifndef QT_BOOTSTRAPPED
+    if (tp >= uint(QMetaType::User))
+        tp = QMetaType::UnknownType;
+#endif
+
+    return int(tp);
+}
+
+/*
+  Returns \c true if the type is a built-in type.
+*/
+static bool isBuiltinType(const QByteArray &type)
+{
+    int id = nameToBuiltinType(type);
+    return id != QMetaType::UnknownType;
 }
 
 constexpr const char *cxxTypeTag(TypeTags t)
@@ -72,17 +89,6 @@ constexpr const char *cxxTypeTag(TypeTags t)
     if (t & TypeTag::HasClass) return "class ";
     if (t & TypeTag::HasStruct) return "struct ";
     return "";
-}
-
-/*
-  Returns \c true if the type is a built-in type.
-*/
-bool isBuiltinType(const QByteArray &type)
- {
-    int id = qMetaTypeTypeInternal(type.constData());
-    if (id == QMetaType::UnknownType)
-        return false;
-    return (id < QMetaType::User);
 }
 
 static const char *metaTypeEnumValueString(int type)
@@ -260,6 +266,7 @@ void Generator::generateCode()
             QByteArray alias = cdef->flagAliases.value(def.name);
             if (cdef->enumDeclarations.contains(alias)) {
                 def.name = alias;
+                def.flags |= cdef->enumDeclarations[alias];
                 enumList += def;
             }
         }
@@ -660,11 +667,11 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         if (f.isConstructor)
             fprintf(out, "Constructor(");
         else
-            fprintf(out, "%s(", f.type.name.constData());   // return type
+            fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());   // return type
 
         const char *comma = "";
         for (const auto &argument : f.arguments) {
-            fprintf(out, "%s%s", comma, argument.type.name.constData());
+            fprintf(out, "%s%s", comma, disambiguatedTypeName(argument.type.name).constData());
             comma = ", ";
         }
 
@@ -757,7 +764,9 @@ void Generator::addProperties()
     for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
         fprintf(out, "        // property '%s'\n"
                      "        QtMocHelpers::PropertyData<%s%s>(%d, ",
-                p.name.constData(), cxxTypeTag(p.typeTag), p.type.constData(), stridx(p.name));
+                p.name.constData(), cxxTypeTag(p.typeTag),
+                disambiguatedTypeName(p.type, p.typeTag).constData(),
+                stridx(p.name));
         generateTypeInfo(p.type);
         fputc(',', out);
 
@@ -842,7 +851,7 @@ void Generator::addEnums()
         fprintf(out, "        // %s '%s'\n"
                      "        QtMocHelpers::EnumData<%s>(%d, %d,",
                 e.flags & EnumIsFlag ? "flag" : "enum", e.name.constData(),
-                e.name.constData(), stridx(e.name), stridx(typeName));
+                disambiguatedTypeName(e.name).constData(), stridx(e.name), stridx(typeName));
 
         if (e.flags) {
             const char *separator = "";
@@ -935,7 +944,7 @@ QMultiMap<QByteArray, int> Generator::automaticPropertyMetaTypesHelper()
     QMultiMap<QByteArray, int> automaticPropertyMetaTypes;
     for (int i = 0; i < int(cdef->propertyList.size()); ++i) {
         const PropertyDef &p = cdef->propertyList.at(i);
-        const QByteArray propertyType = p.type;
+        const QByteArray &propertyType = p.type;
         if (registerableMetaType(propertyType) && !isBuiltinType(propertyType))
             automaticPropertyMetaTypes.insert(cxxTypeTag(p.typeTag) + propertyType, i);
     }
@@ -949,7 +958,7 @@ Generator::methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList)
     for (int i = 0; i < methodList.size(); ++i) {
         const FunctionDef &f = methodList.at(i);
         for (int j = 0; j < f.arguments.size(); ++j) {
-            const QByteArray argType = f.arguments.at(j).normalizedType;
+            const QByteArray &argType = f.arguments.at(j).normalizedType;
             if (registerableMetaType(argType) && !isBuiltinType(argType))
                 methodsWithAutomaticTypes[i].insert(argType, j);
         }
@@ -991,7 +1000,7 @@ void Generator::generateStaticMetacall()
             if (it != begin)
                 fprintf(out, ",");
             fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))",
-                    a.typeNameForCast.constData(), offset++);
+                    disambiguatedTypeNameForCast(a.normalizedType).constData(), offset++);
         }
     };
 
@@ -1045,7 +1054,7 @@ void Generator::generateStaticMetacall()
             }
             // -- QtScxml
             if (f.normalizedType != "void")
-                fprintf(out, "{ %s _r = ", noRef(f.normalizedType).constData());
+                fprintf(out, "{ %s _r = ", disambiguatedTypeName(noRef(f.normalizedType)).constData());
             fprintf(out, "_t->");
             if (f.inPrivateClass.size())
                 fprintf(out, "%s->", f.inPrivateClass.constData());
@@ -1062,7 +1071,7 @@ void Generator::generateStaticMetacall()
                     const ArgumentDef &a = *it;
                     if (it != begin)
                         fprintf(out, ",");
-                    fprintf(out, "(*reinterpret_cast< %s>(_a[%d]))",a.typeNameForCast.constData(), offset++);
+                    fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))", disambiguatedTypeNameForCast(a.normalizedType).constData(), offset++);
                     usedArgs |= UsedA;
                 }
                 if (f.isPrivateSignal) {
@@ -1073,8 +1082,8 @@ void Generator::generateStaticMetacall()
             }
             fprintf(out, ");");
             if (f.normalizedType != "void") {
-                fprintf(out, "\n            if (_a[0]) *reinterpret_cast< %s*>(_a[0]) = std::move(_r); } ",
-                        noRef(f.normalizedType).constData());
+                fprintf(out, "\n            if (_a[0]) *reinterpret_cast<%s*>(_a[0]) = std::move(_r); } ",
+                        disambiguatedTypeName(noRef(f.normalizedType)).constData());
                 usedArgs |= UsedA;
             }
             fprintf(out, " break;\n");
@@ -1212,22 +1221,22 @@ void Generator::generateStaticMetacall()
 #if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
                 else if (auto eflags = cdef->enumDeclarations.value(p.type); eflags & EnumIsFlag)
                     fprintf(out, "        case %d: QtMocHelpers::assignFlags<%s>(_v, %s%s()); break;\n",
-                            propindex, p.type.constData(), prefix.constData(), p.read.constData());
+                            propindex, disambiguatedTypeName(p.type, p.typeTag).constData(), prefix.constData(), p.read.constData());
 #endif
                 else if (p.read == "default")
                     fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s().value(); break;\n",
-                            propindex, cxxTypeTag(p.typeTag), p.type.constData(),
+                            propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
                             prefix.constData(), p.bind.constData());
                 else if (!p.read.isEmpty())
                     // -- QtScxml
-                        fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s%s; break;\n",
-                                propindex, cxxTypeTag(p.typeTag), p.type.constData(),
-                                prefix.constData(), p.read.constData(),
-                                p.read.endsWith(')') ? "" : "()");
+                    fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s%s; break;\n",
+                            propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
+                            prefix.constData(), p.read.constData(),
+                            p.read.endsWith(')') ? "" : "()");
                     // -- QtScxml
                 else
                     fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s; break;\n",
-                            propindex, cxxTypeTag(p.typeTag), p.type.constData(),
+                            propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
                             prefix.constData(), p.member.constData());
             }
             fprintf(out, "        default: break;\n");
@@ -1252,21 +1261,24 @@ void Generator::generateStaticMetacall()
                 if (p.write == "default") {
                     fprintf(out, "        case %d: {\n", propindex);
                     fprintf(out, "            %s%s().setValue(*reinterpret_cast<%s%s*>(_v));\n",
-                            prefix.constData(), p.bind.constData(), cxxTypeTag(p.typeTag), p.type.constData());
+                            prefix.constData(), p.bind.constData(), cxxTypeTag(p.typeTag),
+                            disambiguatedTypeName(p.type, p.typeTag).constData());
                     fprintf(out, "            break;\n");
                     fprintf(out, "        }\n");
                 } else if (!p.write.isEmpty()) {
                     fprintf(out, "        case %d: %s%s(*reinterpret_cast<%s%s*>(_v)); break;\n",
                             propindex, prefix.constData(), p.write.constData(),
-                            cxxTypeTag(p.typeTag), p.type.constData());
+                            cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData());
                 } else {
                     fprintf(out, "        case %d:", propindex);
                     if (p.notify.isEmpty()) {
                         fprintf(out, " QtMocHelpers::setProperty(%s%s, *reinterpret_cast<%s%s*>(_v)); break;\n",
-                                prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag), p.type.constData());
+                                prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag),
+                                disambiguatedTypeName(p.type, p.typeTag).constData());
                     } else {
                         fprintf(out, "\n            if (QtMocHelpers::setProperty(%s%s, *reinterpret_cast<%s%s*>(_v)))\n",
-                                prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag), p.type.constData());
+                                prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag),
+                                disambiguatedTypeName(p.type, p.typeTag).constData());
                         fprintf(out, "                Q_EMIT _t->%s(", p.notify.constData());
                         if (p.notifyId > -1) {
                             const FunctionDef &f = cdef->signalList.at(p.notifyId);
@@ -1284,7 +1296,7 @@ void Generator::generateStaticMetacall()
         }
 
         if (needReset) {
-            fprintf(out, "if (_c == QMetaObject::ResetProperty) {\n");
+            fprintf(out, "    if (_c == QMetaObject::ResetProperty) {\n");
             fprintf(out, "        switch (_id) {\n");
             for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
                 const PropertyDef &p = cdef->propertyList.at(propindex);
@@ -1562,16 +1574,38 @@ void Generator::generatePluginMetaData()
 
     fputs("\n", out);
 }
+#endif
+// -- QtScxml
+
+QByteArray Generator::disambiguatedTypeName(const QByteArray &name)
+{
+    if (cdef->allEnumNames.contains(name))
+        return "enum " + name;
+    return name;
+}
+
+// in contexts where we already print the type tag, we don't want to do the
+// disambiguation
+QByteArray Generator::disambiguatedTypeName(const QByteArray &name, TypeTags tag)
+{
+    if (tag == TypeTag::None)
+        return disambiguatedTypeName(name);
+    return name;
+}
+
+QByteArray Generator::disambiguatedTypeNameForCast(const QByteArray &name)
+{
+    return QByteArray("std::add_pointer_t<"+ disambiguatedTypeName(name) +">");
+}
 
 QT_WARNING_DISABLE_GCC("-Wunused-function")
 QT_WARNING_DISABLE_CLANG("-Wunused-function")
 QT_WARNING_DISABLE_CLANG("-Wundefined-internal")
 QT_WARNING_DISABLE_MSVC(4334) // '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
 
+#define CBOR_NO_HALF_FLOAT_TYPE         1
 #define CBOR_ENCODER_WRITER_CONTROL     1
 #define CBOR_ENCODER_WRITE_FUNCTION     CborDevice::callback
-#endif
-// -- QtScxml
 
 QT_END_NAMESPACE
 

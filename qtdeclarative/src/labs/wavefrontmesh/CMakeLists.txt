@@ -13,7 +13,7 @@ qt_internal_add_qml_module(LabsWavefrontMesh
         qqmlwavefrontmeshglobal_p.h
     DEFINES
         QT_BUILD_LABSWAVEFRONTMESH_LIB
-    PUBLIC_LIBRARIES
+    LIBRARIES
         Qt::CorePrivate
         Qt::GuiPrivate
         Qt::QuickPrivate

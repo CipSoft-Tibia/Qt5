@@ -25,13 +25,13 @@ Rectangle {
     states: [
         State {
             name: "NORMAL"
-            PropertyChanges { target: signal; color: "green"}
-            PropertyChanges { target: flag; state: "FLAG_DOWN"}
+            PropertyChanges { signal.color: "green"}
+            PropertyChanges { flag.state: "FLAG_DOWN"}
         },
         State {
             name: "CRITICAL"
-            PropertyChanges { target: signal; color: "red"}
-            PropertyChanges { target: flag; state: "FLAG_UP"}
+            PropertyChanges { signal.color: "red"}
+            PropertyChanges { flag.state: "FLAG_UP"}
         }
     ]
 }
@@ -64,7 +64,7 @@ Rectangle {
     states: State {
                 name: "RINGING"
                 when: (signal.state == "CRITICAL")
-                PropertyChanges {target: speaker; play: "RING!"}
+                PropertyChanges {speaker.play: "RING!"}
             }
 }
 //![when property]

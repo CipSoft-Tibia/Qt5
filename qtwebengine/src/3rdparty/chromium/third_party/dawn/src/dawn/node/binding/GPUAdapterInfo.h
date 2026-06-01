@@ -41,19 +41,22 @@ namespace wgpu::binding {
 // GPUAdapterInfo is an implementation of interop::GPUAdapterInfo.
 class GPUAdapterInfo final : public interop::GPUAdapterInfo {
   public:
-    explicit GPUAdapterInfo(WGPUAdapterInfo);
+    explicit GPUAdapterInfo(const wgpu::AdapterInfo& info);
 
     // interop::GPUAdapterInfo interface compliance
     std::string getVendor(Napi::Env) override;
     std::string getArchitecture(Napi::Env) override;
     std::string getDevice(Napi::Env) override;
     std::string getDescription(Napi::Env) override;
+    uint32_t getSubgroupMinSize(Napi::Env) override;
+    uint32_t getSubgroupMaxSize(Napi::Env) override;
 
   private:
     std::string vendor_;
     std::string architecture_;
     std::string device_;
     std::string description_;
+    wgpu::AdapterPropertiesSubgroups subgroup_properties_;
 };
 
 }  // namespace wgpu::binding

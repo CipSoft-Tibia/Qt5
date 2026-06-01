@@ -13,15 +13,14 @@
 #include "util/big_endian.h"
 #include "util/osp_logging.h"
 
-namespace openscreen::cast {
-namespace message_serialization {
+namespace openscreen::cast::message_serialization {
 
 namespace {
 
-static constexpr size_t kHeaderSize = sizeof(uint32_t);
+constexpr size_t kHeaderSize = sizeof(uint32_t);
 
 // Cast specifies a max message body size of 64 KiB.
-static constexpr size_t kMaxBodySize = 65536;
+constexpr size_t kMaxBodySize = 65536;
 
 }  // namespace
 
@@ -62,5 +61,4 @@ ErrorOr<DeserializeResult> TryDeserialize(ByteView input) {
   return result;
 }
 
-}  // namespace message_serialization
-}  // namespace openscreen::cast
+}  // namespace openscreen::cast::message_serialization

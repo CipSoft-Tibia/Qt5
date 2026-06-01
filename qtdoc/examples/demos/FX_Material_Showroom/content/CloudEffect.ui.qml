@@ -4,10 +4,12 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: cloud
+
+    required property Camera sceneCamera
+
     ParticleEmitter3D {
         id: modelShapeEmitter7
         x: 0
@@ -26,7 +28,7 @@ ParticleSystem3D {
             sortMode: Particle3D.SortDistance
             alignMode: Particle3D.AlignNone
             maxAmount: 50
-            alignTargetPosition: sceneCamera.position
+            alignTargetPosition: cloud.sceneCamera.position
             fadeInDuration: 12500
             hasTransparency: true
             unifiedColorVariation: false
@@ -69,7 +71,7 @@ ParticleSystem3D {
         source: "#Sphere"
         castsReflections: true
         receivesReflections: true
-        materials: cloudMat
+        materials: [cloudMat]
         scale.y: 0.1
         receivesShadows: true
         castsShadows: true
@@ -86,7 +88,7 @@ ParticleSystem3D {
         uniqueAmount.z: 1
         globalPaceStart.z: 0.1
         uniquePaceVariation: 1
-        particles: particleRed9
+        particles: [particleRed9]
         globalAmount.z: 0
         uniquePace.z: 0.1
         globalPace.y: 0.1

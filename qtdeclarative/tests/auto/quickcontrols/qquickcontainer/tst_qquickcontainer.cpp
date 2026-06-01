@@ -9,7 +9,6 @@
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
 #include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 #include <QtQuick/private/qquicklistview_p.h>
-#include <QtQmlModels/private/qqmlobjectmodel_p.h>
 
 using namespace QQuickVisualTestUtils;
 using namespace QQuickControlsTestUtils;

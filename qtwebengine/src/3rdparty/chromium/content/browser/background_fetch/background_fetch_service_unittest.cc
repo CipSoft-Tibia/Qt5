@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <utility>
 
 #include "base/auto_reset.h"
 #include "base/functional/bind.h"
-#include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -66,7 +66,7 @@ blink::Manifest::ImageResource CreateIcon(const std::string& src,
 
 bool ContainsHeader(const base::flat_map<std::string, std::string>& headers,
                     const std::string& target) {
-  return base::ranges::any_of(headers, [target](const auto& pair) {
+  return std::ranges::any_of(headers, [target](const auto& pair) {
     return base::EqualsCaseInsensitiveASCII(pair.first, target);
   });
 }
@@ -683,7 +683,7 @@ TEST_F(BackgroundFetchServiceTest, FetchSuccessEventDispatch) {
         EXPECT_FALSE(ContainsHeader(fetches[i]->response->headers, "X-Cat"));
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
 
     // TODO(peter): change-detector tests for unsupported properties.
@@ -787,7 +787,7 @@ TEST_F(BackgroundFetchServiceTest, FetchFailEventDispatch) {
         EXPECT_FALSE(fetches[i]->response);
         continue;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
 
     EXPECT_TRUE(fetches[i]->response->headers.empty());

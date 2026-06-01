@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwasmsocket_p.h"
+#include "qwasmglobal_p.h"
+
+#include <QtCore/qcoreapplication.h>
 #include <QtCore/qsocketnotifier.h>
 
 #include "emscripten.h"
@@ -28,7 +31,7 @@ void QWasmSocket::registerSocketNotifier(QSocketNotifier *notifier)
     bool wasEmpty = g_socketNotifiers.empty();
     g_socketNotifiers.insert({notifier->socket(), notifier});
     if (wasEmpty)
-        QEventDispatcherWasm::runOnMainThread([] { setEmscriptenSocketCallbacks(); });
+        qwasmglobal::runOnMainThread([] { setEmscriptenSocketCallbacks(); });
 
     int count;
     ioctl(notifier->socket(), FIONREAD, &count);
@@ -52,7 +55,7 @@ void QWasmSocket::unregisterSocketNotifier(QSocketNotifier *notifier)
     }
 
     if (g_socketNotifiers.empty())
-        QEventDispatcherWasm::runOnMainThread([] { clearEmscriptenSocketCallbacks(); });
+        qwasmglobal::runOnMainThread([] { clearEmscriptenSocketCallbacks(); });
 }
 
 void QWasmSocket::clearSocketNotifiers()
@@ -104,7 +107,7 @@ void QWasmSocket::socketError(int socket, int err, const char* msg, void *contex
     // the Qt handler.
     // It is currently unclear if this problem is caused by code in Qt or in Emscripten, or
     // if this completely fixes the problem.
-    QEventDispatcherWasm::runAsync([socket](){
+    qwasmglobal::runAsync([socket](){
         auto notifiersRange = g_socketNotifiers.equal_range(socket);
         std::vector<std::pair<int, QSocketNotifier *>> notifiers(notifiersRange.first, notifiersRange.second);
         for (auto [_, notifier]: notifiers) {
@@ -118,7 +121,7 @@ void QWasmSocket::socketOpen(int socket, void *context)
 {
     Q_UNUSED(context);
 
-    QEventDispatcherWasm::runAsync([socket](){
+    qwasmglobal::runAsync([socket](){
         auto notifiersRange = g_socketNotifiers.equal_range(socket);
         std::vector<std::pair<int, QSocketNotifier *>> notifiers(notifiersRange.first, notifiersRange.second);
         for (auto [_, notifier]: notifiers) {
@@ -146,7 +149,7 @@ void QWasmSocket::socketMessage(int socket, void *context)
 {
     Q_UNUSED(context);
 
-    QEventDispatcherWasm::runAsync([socket](){
+    qwasmglobal::runAsync([socket](){
         auto notifiersRange = g_socketNotifiers.equal_range(socket);
         std::vector<std::pair<int, QSocketNotifier *>> notifiers(notifiersRange.first, notifiersRange.second);
         for (auto [_, notifier]: notifiers) {
@@ -167,7 +170,7 @@ void QWasmSocket::socketClose(int socket, void *context)
     if (socket == 0)
         return;
 
-    QEventDispatcherWasm::runAsync([socket](){
+    qwasmglobal::runAsync([socket](){
         auto notifiersRange = g_socketNotifiers.equal_range(socket);
         std::vector<std::pair<int, QSocketNotifier *>> notifiers(notifiersRange.first, notifiersRange.second);
         for (auto [_, notifier]: notifiers)

@@ -11,6 +11,7 @@
 #include "third_party/blink/renderer/core/css/property_registration.h"
 #include "third_party/blink/renderer/core/css/property_registry.h"
 #include "third_party/blink/renderer/core/css/resolver/style_builder_converter.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 
 namespace blink {
@@ -97,6 +98,10 @@ void CustomProperty::ApplyInitial(StyleResolverState& state) const {
 }
 
 void CustomProperty::ApplyInherit(StyleResolverState& state) const {
+  if (!state.ParentStyle()) {
+    ApplyInitial(state);
+    return;
+  }
   ComputedStyleBuilder& builder = state.StyleBuilder();
   bool is_inherited_property = IsInherited();
 
@@ -114,20 +119,19 @@ void CustomProperty::ApplyInherit(StyleResolverState& state) const {
 void CustomProperty::ApplyValue(StyleResolverState& state,
                                 const CSSValue& value,
                                 ValueMode value_mode) const {
-  // Highlight Pseudos do not allow custom property definitions.
-  // Properties are copied from the originating element when the
-  // style is created.
-  if (state.UsesHighlightPseudoInheritance()) {
-    return;
-  }
-
   ComputedStyleBuilder& builder = state.StyleBuilder();
   DCHECK(!value.IsCSSWideKeyword());
+
+  if (builder.StyleType() == kPseudoIdSelection) {
+    UseCounter::Count(state.GetDocument(),
+                      WebFeature::kSelectionCustomProperty);
+  }
 
   builder.SetHasVariableDeclaration();
 
   if (value.IsInvalidVariableValue()) {
     if (!SupportsGuaranteedInvalid()) {
+      state.SetHasUnsupportedGuaranteedInvalid();
       ApplyUnset(state);
       return;
     }
@@ -189,6 +193,7 @@ void CustomProperty::ApplyValue(StyleResolverState& state,
   }
 
   if (!registered_value) {
+    state.SetHasUnsupportedGuaranteedInvalid();
     if (is_inherited_property) {
       ApplyInherit(state);
     } else {
@@ -199,12 +204,20 @@ void CustomProperty::ApplyValue(StyleResolverState& state,
 
   bool is_animation_tainted = value_mode == ValueMode::kAnimated;
 
+  // Note that the computed value ("SetVariableValue") is stored separately
+  // from the substitution value ("SetVariableData") on ComputedStyle.
+  // The substitution value is used for substituting var() references to
+  // the custom property, and the computed value is generally used in other
+  // cases (e.g. serialization).
+
+  bool is_attr_tainted = declaration && declaration->VariableDataValue() &&
+                         declaration->VariableDataValue()->IsAttrTainted();
+
   registered_value = &StyleBuilderConverter::ConvertRegisteredPropertyValue(
       state, *registered_value, context);
   CSSVariableData* data =
       StyleBuilderConverter::ConvertRegisteredPropertyVariableData(
-          *registered_value, is_animation_tainted);
-
+          *registered_value, is_animation_tainted, is_attr_tainted);
   builder.SetVariableData(name_, data, is_inherited_property);
   builder.SetVariableValue(name_, registered_value, is_inherited_property);
 }
@@ -213,8 +226,7 @@ const CSSValue* CustomProperty::ParseSingleValue(
     CSSParserTokenStream& stream,
     const CSSParserContext& context,
     const CSSParserLocalContext& local_context) const {
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 const CSSValue* CustomProperty::CSSValueFromComputedStyleInternal(

@@ -161,7 +161,7 @@ protected:
     static const qreal simulationCutoff;
 
     QPointF m_offset;
-    QSet<QPair<int, int>> m_onceOffed;
+    QSet<std::pair<int, int>> m_onceOffed;
 private:
     QSet<int> m_groupIds;
     bool m_updateIntSet;

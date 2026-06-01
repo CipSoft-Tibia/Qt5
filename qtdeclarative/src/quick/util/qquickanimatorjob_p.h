@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKANIMATORJOB_P_H
 #define QQUICKANIMATORJOB_P_H
@@ -59,6 +60,8 @@ public Q_SLOTS:
     void sceneGraphInitialized();
 
 private:
+    friend class tst_Animators;
+
     void syncBackCurrentValues();
     void readyToAnimate();
     void setWindow(QQuickWindow *window);

@@ -119,9 +119,17 @@ function(_qt_internal_add_shaders_impl target resourcename)
 
         set(qsb_args "")
 
+        # GL_OVR_multiview works best starting with these GLSL versions
+        set(multiview_glsl "330,300es")
+
         if (NOT arg_NOGLSL)
             if (arg_GLSL)
                 set(glsl_versions "${arg_GLSL}")
+                if (glsl_versions MATCHES "4[0-9]0|3[12]0")
+                    set(multiview_glsl ${arg_GLSL})
+                endif()
+            elseif(EMSCRIPTEN)
+                set(glsl_versions "100es,300es")
             else()
                 set(glsl_versions "100es,120,150") # both 'es' and ' es' are accepted by qsb
             endif()
@@ -129,7 +137,7 @@ function(_qt_internal_add_shaders_impl target resourcename)
             list(APPEND qsb_args "${glsl_versions}")
         endif()
 
-        if (NOT arg_NOHLSL)
+        if (NOT arg_NOHLSL AND NOT EMSCRIPTEN)
             if (arg_HLSL)
                 set(shader_model_versions "${arg_HLSL}")
             else()
@@ -139,7 +147,7 @@ function(_qt_internal_add_shaders_impl target resourcename)
             list(APPEND qsb_args "${shader_model_versions}")
         endif()
 
-        if (NOT arg_NOMSL)
+        if (NOT arg_NOMSL AND NOT EMSCRIPTEN)
             if (arg_MSL)
                 set(metal_lang_versions "${arg_MSL}")
             else()
@@ -267,9 +275,8 @@ function(_qt_internal_add_shaders_impl target resourcename)
             # Add a pre-defined suffix to the output filename.
             set(qsb_multiview2_result "${CMAKE_CURRENT_BINARY_DIR}/.qsb/${output_file}.mv2qsb")
             set(qsb_multiview2_args "")
-            # GL_OVR_multiview works best starting with these GLSL versions
             list(APPEND qsb_multiview2_args "--glsl")
-            list(APPEND qsb_multiview2_args "330,300es")
+            list(APPEND qsb_multiview2_args "${multiview_glsl}")
             # view instancing needs Shader Model 6.1
             list(APPEND qsb_multiview2_args "--hlsl")
             list(APPEND qsb_multiview2_args "61")

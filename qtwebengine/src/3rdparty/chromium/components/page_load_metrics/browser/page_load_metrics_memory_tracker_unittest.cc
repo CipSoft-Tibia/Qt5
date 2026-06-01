@@ -49,10 +49,10 @@ class TestPageLoadMetricsEmbedder
     return false;
   }
   bool IsExtensionUrl(const GURL& url) override { return false; }
-  bool IsSidePanel(content::WebContents* web_contents) override {
+  bool IsNonTabWebUI(const GURL& url) override { return false; }
+  bool IsIncognito(content::WebContents* web_contents) override {
     return false;
   }
-  bool IsNonTabWebUI() override { return false; }
 
   page_load_metrics::PageLoadMetricsMemoryTracker*
   GetMemoryTrackerForBrowserContext(
@@ -62,11 +62,6 @@ class TestPageLoadMetricsEmbedder
 
     return &memory_tracker_;
   }
-
- protected:
-  // page_load_metrics::PageLoadMetricsEmbedderBase:
-  void RegisterEmbedderObservers(
-      page_load_metrics::PageLoadTracker* tracker) override {}
 
  private:
   page_load_metrics::PageLoadMetricsMemoryTracker memory_tracker_;
@@ -177,10 +172,8 @@ class PageLoadMetricsMemoryTrackerTest
 
     content::GlobalRenderFrameHostId global_routing_id =
         render_frame_host->GetGlobalId();
-    int process_id = render_frame_host->GetProcess()->GetID();
-
     performance_manager::RenderProcessHostId pm_process_id =
-        static_cast<performance_manager::RenderProcessHostId>(process_id);
+        render_frame_host->GetProcess()->GetID();
     performance_manager::v8_memory::V8DetailedMemoryProcessData process_data;
     V8DetailedMemoryExecutionContextData frame_data;
     frame_data.set_v8_bytes_used(bytes);

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSSHADOWCHECK_P_H
 #define QQMLJSSHADOWCHECK_P_H
@@ -23,9 +24,8 @@ class Q_QMLCOMPILER_EXPORT QQmlJSShadowCheck : public QQmlJSCompilePass
 public:
     QQmlJSShadowCheck(const QV4::Compiler::JSUnitGenerator *jsUnitGenerator,
                       const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                      QList<QQmlJS::DiagnosticMessage> *errors, const BasicBlocks &basicBlocks,
-                      const InstructionAnnotations &annotations)
-        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, errors, basicBlocks, annotations)
+                      const BasicBlocks &basicBlocks, const InstructionAnnotations &annotations)
+        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, basicBlocks, annotations)
     {}
 
     ~QQmlJSShadowCheck() = default;

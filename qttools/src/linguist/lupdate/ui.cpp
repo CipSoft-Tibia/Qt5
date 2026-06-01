@@ -25,8 +25,7 @@ public:
           m_cd(cd),
           m_lineNumber(-1),
           m_isTrString(false),
-          m_insideStringList(false),
-          m_idBasedTranslations(false)
+          m_insideStringList(false)
     {
     }
     ~UiReader() override = default;
@@ -49,12 +48,12 @@ private:
     QString m_comment;
     QString m_extracomment;
     QString m_id;
+    QString m_label;
 
     QString m_accum;
     int m_lineNumber;
     bool m_isTrString;
     bool m_insideStringList;
-    bool m_idBasedTranslations;
 };
 
 bool UiReader::startElement(QStringView namespaceURI, QStringView localName,
@@ -63,18 +62,14 @@ bool UiReader::startElement(QStringView namespaceURI, QStringView localName,
     Q_UNUSED(namespaceURI);
     Q_UNUSED(localName);
 
-    if (qName == QLatin1String("string")) {
+    if (qName == "string"_L1) {
         flush();
         if (!m_insideStringList)
             readTranslationAttributes(atts);
-    } else if (qName == QLatin1String("stringlist")) {
+    } else if (qName == "stringlist"_L1) {
         flush();
         m_insideStringList = true;
         readTranslationAttributes(atts);
-    } else if (qName == QLatin1String("ui")) { // UI "header"
-        const auto attr = QStringLiteral("idbasedtr");
-        m_idBasedTranslations =
-                atts.hasAttribute(attr) && atts.value(attr) == QLatin1String("true");
     }
     m_accum.clear();
     return true;
@@ -86,17 +81,17 @@ bool UiReader::endElement(QStringView namespaceURI, QStringView localName,
     Q_UNUSED(namespaceURI);
     Q_UNUSED(localName);
 
-    m_accum.replace(QLatin1String("\r\n"), QLatin1String("\n"));
+    m_accum.replace("\r\n"_L1, "\n"_L1);
 
-    if (qName == QLatin1String("class")) { // UI "header"
+    if (qName == "class"_L1) { // UI "header"
         if (m_context.isEmpty())
             m_context = m_accum;
-    } else if (qName == QLatin1String("string") && m_isTrString) {
+    } else if (qName == "string"_L1 && m_isTrString) {
         m_source = m_accum;
-    } else if (qName == QLatin1String("comment")) { // FIXME: what's that?
+    } else if (qName == "comment"_L1) { // FIXME: what's that?
         m_comment = m_accum;
         flush();
-    } else if (qName == QLatin1String("stringlist")) {
+    } else if (qName == "stringlist"_L1) {
         m_insideStringList = false;
     } else {
         flush();
@@ -122,12 +117,15 @@ bool UiReader::fatalError(qint64 line, qint64 column, const QString &message)
 
 void UiReader::flush()
 {
-    if (!m_context.isEmpty() && !m_source.isEmpty()) {
+    if ((!m_context.isEmpty() || !m_id.isEmpty()) && !m_source.isEmpty()) {
         TranslatorMessage msg(m_context, m_source,
            m_comment, QString(), m_cd.m_sourceFileName,
            m_lineNumber, QStringList());
         msg.setExtraComment(m_extracomment);
+        msg.setLabel(m_label);
         msg.setId(m_id);
+        if (!m_id.isEmpty())
+            msg.setContext({});
         m_translator.extend(msg, m_cd);
     }
     m_source.clear();
@@ -145,8 +143,14 @@ void UiReader::readTranslationAttributes(const QXmlStreamAttributes &atts)
         m_isTrString = true;
         m_comment = atts.value(QStringLiteral("comment")).toString();
         m_extracomment = atts.value(QStringLiteral("extracomment")).toString();
-        if (m_idBasedTranslations)
-            m_id = atts.value(QStringLiteral("id")).toString();
+        m_id = atts.value(QStringLiteral("id")).toString();
+        QString label = atts.value(QStringLiteral("label")).toString();
+        if (!m_id.isEmpty())
+            m_label = std::move(label);
+        else if (!label.isEmpty())
+            m_cd.appendError("%1:%2: labels cannot be used with text-based translation. "
+                             "Ignoring\n"_L1.arg(m_cd.m_sourceFileName)
+                                     .arg(m_lineNumber));
         if (!m_cd.m_noUiLines)
             m_lineNumber = static_cast<int>(reader.lineNumber());
     } else {
@@ -159,7 +163,7 @@ bool loadUI(Translator &translator, const QString &filename, ConversionData &cd)
     cd.m_sourceFileName = filename;
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly)) {
-        cd.appendError(QStringLiteral("Cannot open %1: %2").arg(filename, file.errorString()));
+        cd.appendError("Cannot open %1: %2"_L1.arg(filename, file.errorString()));
         return false;
     }
 

@@ -4,7 +4,8 @@
 qt_add_library(CustomStyle STATIC)
 qt6_add_qml_module(CustomStyle
     URI "CustomStyle"
-    VERSION 1.0
+    DEPENDENCIES
+        TARGET ToDoList
     QML_FILES
         Button.qml
         CheckBox.qml

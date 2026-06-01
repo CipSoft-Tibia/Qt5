@@ -1,7 +1,7 @@
-diff --git a/third_party/libxslt/src/libxslt/functions.c b/third_party/libxslt/src/libxslt/functions.c
+diff --git a/chromium/third_party/libxslt/src/libxslt/functions.c b/chromium/third_party/libxslt/src/libxslt/functions.c
 index 72a58dc4d6592..309af458c22f7 100644
---- a/third_party/libxslt/src/libxslt/functions.c
-+++ b/third_party/libxslt/src/libxslt/functions.c
+--- a/chromium/third_party/libxslt/src/libxslt/functions.c
++++ b/chromium/third_party/libxslt/src/libxslt/functions.c
 @@ -760,7 +760,7 @@ xsltGenerateIdFunction(xmlXPathParserContextPtr ctxt, int nargs){
      }
  
@@ -29,10 +29,10 @@ index 72a58dc4d6592..309af458c22f7 100644
          xsltSetSourceNodeFlags(tctxt, cur, XSLT_SOURCE_NODE_HAS_ID);
      }
  
-diff --git a/third_party/libxslt/src/libxslt/xsltutils.c b/third_party/libxslt/src/libxslt/xsltutils.c
+diff --git a/chromium/third_party/libxslt/src/libxslt/xsltutils.c b/chromium/third_party/libxslt/src/libxslt/xsltutils.c
 index 0155e7fc5a89f..aec8be4ad077c 100644
---- a/third_party/libxslt/src/libxslt/xsltutils.c
-+++ b/third_party/libxslt/src/libxslt/xsltutils.c
+--- a/chromium/third_party/libxslt/src/libxslt/xsltutils.c
++++ b/chromium/third_party/libxslt/src/libxslt/xsltutils.c
 @@ -2018,6 +2018,54 @@ xsltClearSourceNodeFlags(xmlNodePtr node, int flags) {
      }
  }
@@ -88,10 +88,10 @@ index 0155e7fc5a89f..aec8be4ad077c 100644
  /**
   * xsltGetPSVIPtr:
   * @cur:  Node
-diff --git a/third_party/libxslt/src/libxslt/xsltutils.h b/third_party/libxslt/src/libxslt/xsltutils.h
+diff --git a/chromium/third_party/libxslt/src/libxslt/xsltutils.h b/chromium/third_party/libxslt/src/libxslt/xsltutils.h
 index d15d22726afaa..1e753eebadd98 100644
---- a/third_party/libxslt/src/libxslt/xsltutils.h
-+++ b/third_party/libxslt/src/libxslt/xsltutils.h
+--- a/chromium/third_party/libxslt/src/libxslt/xsltutils.h
++++ b/chromium/third_party/libxslt/src/libxslt/xsltutils.h
 @@ -263,6 +263,8 @@ XSLTPUBFUN xmlXPathCompExprPtr XSLTCALL
  #define XSLT_SOURCE_NODE_HAS_ID     2u
  #define XSLT_SOURCE_NODE_SHIFT_16   12u

@@ -6,10 +6,11 @@
     \title Touch Knobs Example
     \examplecategory {User Interface Components}
     \ingroup touchinputexamples
+    \ingroup examples-user-input
     \brief Shows how to create custom controls that accept touch input.
 
     The Touch Knobs example shows how to create custom controls that
     accept touch input.
 
-    \image touch-knobs-example.png
+    \image touch-knobs-example.png {Two knobs that respond to touch input}
 */

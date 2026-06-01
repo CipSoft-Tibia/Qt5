@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 import * as Common from '../../core/common/common.js';
+import * as Protocol from '../../generated/protocol.js';
 import * as IssuesManager from '../../models/issues_manager/issues_manager.js';
-import type * as Protocol from '../../generated/protocol.js';
 
-type AggregationKeyTag = {
-  aggregationKeyTag: undefined,
-};
+interface AggregationKeyTag {
+  aggregationKeyTag: undefined;
+}
 
 /**
  * An opaque type for the key which we use to aggregate issues. The key must be
@@ -30,7 +30,8 @@ export class AggregatedIssue extends IssuesManager.Issue.Issue {
     hasRequest: boolean,
   }>();
   #affectedRawCookieLines = new Map<string, {rawCookieLine: string, hasRequest: boolean}>();
-  #affectedRequests = new Map<string, Protocol.Audits.AffectedRequest>();
+  #affectedRequests = new Array<Protocol.Audits.AffectedRequest>();
+  #affectedRequestIds = new Set<Protocol.Network.RequestId>();
   #affectedLocations = new Map<string, Protocol.Audits.SourceCodeLocation>();
   #heavyAdIssues = new Set<IssuesManager.HeavyAdIssue.HeavyAdIssue>();
   #blockedByResponseDetails = new Map<string, Protocol.Audits.BlockedByResponseIssueDetails>();
@@ -175,9 +176,13 @@ export class AggregatedIssue extends IssuesManager.Issue.Issue {
     this.#issueKind = IssuesManager.Issue.unionIssueKind(this.#issueKind, issue.getKind());
     let hasRequest = false;
     for (const request of issue.requests()) {
+      const {requestId} = request;
       hasRequest = true;
-      if (!this.#affectedRequests.has(request.requestId)) {
-        this.#affectedRequests.set(request.requestId, request);
+      if (requestId === undefined) {
+        this.#affectedRequests.push(request);
+      } else if (!this.#affectedRequestIds.has(requestId)) {
+        this.#affectedRequests.push(request);
+        this.#affectedRequestIds.add(requestId);
       }
     }
     for (const cookie of issue.cookies()) {
@@ -280,7 +285,16 @@ export class IssueAggregator extends Common.ObjectWrapper.ObjectWrapper<EventTyp
     this.dispatchEventToListeners(Events.FULL_UPDATE_REQUIRED);
   }
 
-  #aggregateIssue(issue: IssuesManager.Issue.Issue): AggregatedIssue {
+  #aggregateIssue(issue: IssuesManager.Issue.Issue): AggregatedIssue|undefined {
+    const excludeFromAggregate = [
+      Protocol.Audits.CookieWarningReason.WarnThirdPartyCookieHeuristic,
+      Protocol.Audits.CookieWarningReason.WarnDeprecationTrialMetadata,
+    ];
+
+    if (excludeFromAggregate.some(exclude => issue.code().includes(exclude))) {
+      return;
+    }
+
     const map = issue.isHidden() ? this.#hiddenAggregatedIssuesByKey : this.#aggregatedIssuesByKey;
     const aggregatedIssue = this.#aggregateIssueByStatus(map, issue);
     this.dispatchEventToListeners(Events.AGGREGATED_ISSUE_UPDATED, aggregatedIssue);
@@ -345,7 +359,7 @@ export const enum Events {
   FULL_UPDATE_REQUIRED = 'FullUpdateRequired',
 }
 
-export type EventTypes = {
-  [Events.AGGREGATED_ISSUE_UPDATED]: AggregatedIssue,
-  [Events.FULL_UPDATE_REQUIRED]: void,
-};
+export interface EventTypes {
+  [Events.AGGREGATED_ISSUE_UPDATED]: AggregatedIssue;
+  [Events.FULL_UPDATE_REQUIRED]: void;
+}

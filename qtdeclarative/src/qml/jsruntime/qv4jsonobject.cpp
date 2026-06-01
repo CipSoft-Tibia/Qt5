@@ -584,7 +584,7 @@ bool JsonParser::parseString(QString *string)
     return true;
 }
 
-
+namespace {
 struct Stringify
 {
     ExecutionEngine *v4;
@@ -634,7 +634,7 @@ private:
     ExecutionEngineCallDepthRecorder<1> m_callDepthRecorder;
 };
 
-static QString quote(const QString &str)
+QString quote(const QString &str)
 {
     QString product;
     const int length = str.size();
@@ -871,6 +871,7 @@ QString Stringify::JA(Object *a)
     return result;
 }
 
+} // namespace
 
 void Heap::JsonObject::init()
 {

@@ -58,11 +58,16 @@ class LockScreenStartReauthDialog
   void DismissLockScreenCaptivePortalDialog();
   void ShowLockScreenNetworkDialog();
   void ShowLockScreenCaptivePortalDialog();
-  static gfx::Size CalculateLockScreenReauthDialogSize(
-      bool is_new_layout_enabled);
 
   // Forces network state update because webview reported frame loading error.
   void OnWebviewLoadAborted();
+
+  // Autoreload is active if `DeviceAuthenticationFlowAutoReloadInterval` policy
+  // is set and the lockscreen dialog is shown. Once authentication is
+  // successful or the lockscreen dialog is closed/hidden, the autoreload should
+  // be terminated to prevent the timer from running indefinitely.
+  void TerminateAutoReload();
+  void ReactivateAutoReload();
 
   // Used for waiting for the corresponding dialogs in tests.
   // Similar methods exist for the main dialog in InSessionPasswordSyncManager.

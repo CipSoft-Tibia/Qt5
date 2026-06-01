@@ -30,7 +30,7 @@
 #include <utility>
 
 #include "src/tint/lang/core/ir/builder.h"
-#include "src/tint/lang/core/ir/transform/common/referenced_module_vars.h"
+#include "src/tint/lang/core/ir/referenced_module_vars.h"
 #include "src/tint/lang/core/ir/validator.h"
 
 namespace tint::msl::writer::raise {
@@ -62,7 +62,7 @@ struct State {
     Hashmap<core::ir::Block*, core::ir::Function*, 64> block_to_function{};
 
     /// The mapping from functions to their transitively referenced workgroup variables.
-    core::ir::ReferencedModuleVars referenced_module_vars{ir};
+    core::ir::ReferencedModuleVars<core::ir::Module> referenced_module_vars{ir};
 
     // The name of the module-scope variables structure.
     static constexpr const char* kModuleVarsName = "tint_module_vars";
@@ -159,7 +159,7 @@ struct State {
         // Add the structure the holds the module-scope variable pointers to the function and record
         // it in the map. Entry points will create the structure, other functions will declare it as
         // a parameter.
-        if (func->Stage() != core::ir::Function::PipelineStage::kUndefined) {
+        if (func->IsEntryPoint()) {
             function_to_struct_value.Add(func, AddModuleVarsToEntryPoint(func, refs));
         } else {
             function_to_struct_value.Add(func, AddModuleVarsToFunction(func));
@@ -172,7 +172,7 @@ struct State {
     /// @returns the structure that holds the module-scope variables
     core::ir::Value* AddModuleVarsToEntryPoint(
         core::ir::Function* func,
-        const core::ir::ReferencedModuleVars::VarSet& referenced_vars) {
+        const core::ir::ReferencedModuleVars<core::ir::Module>::VarSet& referenced_vars) {
         core::ir::Value* module_var_struct = nullptr;
         core::ir::FunctionParam* workgroup_allocation_param = nullptr;
         Vector<core::type::Manager::StructMemberDesc, 4> workgroup_struct_members;
@@ -317,7 +317,7 @@ struct State {
 }  // namespace
 
 Result<SuccessType> ModuleScopeVars(core::ir::Module& ir) {
-    auto result = ValidateAndDumpIfNeeded(ir, "ModuleScopeVars transform");
+    auto result = ValidateAndDumpIfNeeded(ir, "msl.ModuleScopeVars");
     if (result != Success) {
         return result.Failure();
     }

@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2019 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qbitarray.h"
 #include <qalgorithms.h>
@@ -545,7 +546,7 @@ static QBitArray sizedForOverwrite(const QBitArray &a1, const QBitArray &a2)
     return result;
 }
 
-template <typename BitwiseOp> static Q_NEVER_INLINE
+template <typename BitwiseOp> Q_NEVER_INLINE static
 QBitArray &performBitwiseOperationHelper(QBitArray &out, const QBitArray &a1,
                                          const QBitArray &a2, BitwiseOp op)
 {
@@ -581,7 +582,7 @@ QBitArray &performBitwiseOperationHelper(QBitArray &out, const QBitArray &a1,
     return out;
 }
 
-template <typename BitwiseOp> static Q_NEVER_INLINE
+template <typename BitwiseOp> Q_NEVER_INLINE static
 QBitArray &performBitwiseOperationInCopy(QBitArray &self, const QBitArray &other, BitwiseOp op)
 {
     QBitArray tmp(std::move(self));
@@ -589,7 +590,7 @@ QBitArray &performBitwiseOperationInCopy(QBitArray &self, const QBitArray &other
     return performBitwiseOperationHelper(self, tmp, other, op);
 }
 
-template <typename BitwiseOp> static Q_NEVER_INLINE
+template <typename BitwiseOp> Q_NEVER_INLINE static
 QBitArray &performBitwiseOperationInPlace(QBitArray &self, const QBitArray &other, BitwiseOp op)
 {
     if (self.size() < other.size())

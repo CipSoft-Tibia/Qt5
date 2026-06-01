@@ -4,11 +4,9 @@
  * found in the LICENSE file.
  */
 
-/* Linter does not work with CSS nesting correctly. */
-/* stylelint-disable no-descending-specificity */
 .tree-outline {
   li.storage-group-list-item,
-  li.storage-group-list-item:not(:has(span[is="dt-checkbox"])) {
+  li.storage-group-list-item:not(:has(dt-checkbox)) {
     padding: 0 var(--sys-size-8) 0 var(--sys-size-3);
 
     &::before {
@@ -29,7 +27,6 @@
     margin-top: var(--sys-size-6);
   }
 }
-/* stylelint-enable no-descending-specificity */
 
 .icons-container devtools-icon.red-icon {
   color: var(--icon-error);

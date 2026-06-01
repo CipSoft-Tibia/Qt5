@@ -16,11 +16,11 @@ class CPDF_TestLinkExtract final : public CPDF_LinkExtract {
  private:
   // Add test cases as friends to access protected member functions.
   // Access CheckMailLink and CheckWebLink.
-  FRIEND_TEST(CPDF_LinkExtractTest, CheckMailLink);
-  FRIEND_TEST(CPDF_LinkExtractTest, CheckWebLink);
+  FRIEND_TEST(CPDFLinkExtractTest, CheckMailLink);
+  FRIEND_TEST(CPDFLinkExtractTest, CheckWebLink);
 };
 
-TEST(CPDF_LinkExtractTest, CheckMailLink) {
+TEST(CPDFLinkExtractTest, CheckMailLink) {
   CPDF_TestLinkExtract extractor;
   // Check cases that fail to extract valid mail link.
   const wchar_t* const kInvalidStrings[] = {
@@ -43,7 +43,7 @@ TEST(CPDF_LinkExtractTest, CheckMailLink) {
     const wchar_t* expected_output;
   };
   // Check cases that can extract valid mail link.
-  constexpr IOPair kValidStrings[] = {
+  static constexpr IOPair kValidStrings[] = {
       {L"peter@abc.d", L"peter@abc.d"},
       {L"red.teddy.b@abc.com", L"red.teddy.b@abc.com"},
       {L"abc_@gmail.com", L"abc_@gmail.com"},  // '_' is ok before '@'.
@@ -65,7 +65,7 @@ TEST(CPDF_LinkExtractTest, CheckMailLink) {
   }
 }
 
-TEST(CPDF_LinkExtractTest, CheckWebLink) {
+TEST(CPDFLinkExtractTest, CheckWebLink) {
   CPDF_TestLinkExtract extractor;
   // Check cases that fail to extract valid web link.
   // The last few are legit web addresses that we don't handle now.

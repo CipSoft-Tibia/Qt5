@@ -104,7 +104,7 @@ Alternatively, a custom property of an object type may be defined in
 an object declaration in a QML document with the following syntax:
 
 \code
-    [default] [required] [readonly] property <propertyType> <propertyName>
+    [default] [final] [required] [readonly] property <propertyType> <propertyName>
 \endcode
 
 In this way an object declaration may \l {Defining Object Types from QML}
@@ -114,10 +114,11 @@ state more easily.
 Property names must begin with a lower case letter and can only contain
 letters, numbers and underscores. \l {JavaScript Reserved Words}
 {JavaScript reserved words} are not valid property names.  The \c default,
-\c required, and \c readonly keywords are optional, and modify the semantics
-of the property being declared.
+\c final, \c required, and \c readonly keywords are optional, and modify the
+semantics of the property being declared.
 See the upcoming sections on \l {Default Properties}{default properties},
-\l {Required Properties}{required properties} and,
+\l {Final Properties}{final properties},
+\l {Required Properties}{required properties}, and
 \l {Read-Only Properties}{read-only properties} for more information
 about their respective meaning.
 
@@ -510,22 +511,6 @@ the displayed text at all, as property bindings are not bi-directional: the
 \c buttonText value would have changed if textItem.text was changed, but not
 the other way around.
 
-
-\section4 Considerations for Property Aliases
-
-It is possible for an aliasing property to have the same name as an existing
-property, effectively overwriting the existing property. For example,
-the following QML type has a \c color alias property, named the same as the
-built-in \l {Rectangle::color} property:
-
-\snippet qml/properties.qml alias overwrite
-
-Any object that use this type and refer to its \c color property will be
-referring to the alias rather than the ordinary \l {Rectangle::color} property.
-Internally, however, the rectangle can correctly set its \c color
-property and refer to the actual defined property rather than the alias.
-
-
 \section4 Property Aliases and Types
 
 Property aliases cannot have explicit type specifications. The type of a
@@ -655,6 +640,18 @@ Item {
 }
 \endqml
 
+\section3 Final Properties
+
+By default, properties can be shadowed: You can re-declare a property in a
+derived QML type, possibly with a new type and new attributes. The result will
+be two properties of the same name, only one of which is accessible in any given
+context. This is rarely what you want.
+
+The \c final keyword prohibits any shadowing of a property. It is equivalent in
+meaning to the \c FINAL attribute to \l{Requirements for Declaring Properties}{Q_PROPERTY}. By
+declaring your properties \c final, you can help the \l{Qt Quick Compiler} analyze your QML code.
+This will result in better generated code.
+
 \section3 Required Properties
 
 An object declaration may define a property as required, using the \c required
@@ -719,7 +716,6 @@ Item {
 
 \note A read-only property cannot also be a \l{Default Properties}{default}
 property.
-
 
 \section3 Property Modifier Objects
 

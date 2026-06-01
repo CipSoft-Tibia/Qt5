@@ -34,6 +34,19 @@ SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
 SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR BSD-3-Clause"
 
 [[annotations]]
+path = ["examples/quickeffectmaker/wiggly/WigglyEffect/WigglyEffect.qep"]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (C) The Qt Company Ltd."
+SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR BSD-3-Clause"
+
+[[annotations]]
+path = ["tools/qqem/qml/about_effect/AboutEffect1.qep"]
+precedence = "override"
+comment = "module and plugin"
+SPDX-FileCopyrightText = "Copyright (C) The Qt Company Ltd."
+SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR BSD-3-Clause"
+
+[[annotations]]
 path = ["nodes/**"]
 precedence = "closest"
 comment = "examples and snippets"

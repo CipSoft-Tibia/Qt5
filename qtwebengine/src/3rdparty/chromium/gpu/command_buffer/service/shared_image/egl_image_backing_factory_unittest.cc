@@ -247,7 +247,7 @@ class EGLImageBackingFactoryThreadSafeTest
     wgpu::FutureWaitInfo wait_info{
         buffer.MapAsync(wgpu::MapMode::Read, 0, buffer_desc.size,
                         wgpu::CallbackMode::WaitAnyOnly,
-                        [&](wgpu::MapAsyncStatus status, const char*) {
+                        [&](wgpu::MapAsyncStatus status, wgpu::StringView) {
                           ASSERT_EQ(status, wgpu::MapAsyncStatus::Success);
                         })};
     wgpu::WaitStatus status =
@@ -509,7 +509,7 @@ TEST_P(EGLImageBackingFactoryThreadSafeTest, Dawn_SampledTexture) {
   // Create a Dawn OpenGLES device.
   wgpu::RequestAdapterOptions adapter_options;
   adapter_options.backendType = wgpu::BackendType::OpenGLES;
-  adapter_options.compatibilityMode = true;
+  adapter_options.featureLevel = wgpu::FeatureLevel::Compatibility;
 
   std::vector<dawn::native::Adapter> adapters =
       instance.EnumerateAdapters(&adapter_options);

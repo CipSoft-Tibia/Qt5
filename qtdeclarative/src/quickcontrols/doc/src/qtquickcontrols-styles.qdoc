@@ -12,6 +12,7 @@
     \section2 Basic Style
 
     \image qtquickcontrols-basic.png
+           {Gallery of controls in Basic style}
 
     The \l {Basic Style} is a simple and light-weight all-round style that offers
     the maximum performance for Qt Quick Controls.
@@ -26,6 +27,7 @@
     \section2 Imagine Style
 
     \image qtquickcontrols-imagine.png
+           {Gallery of controls in Imagine style}
 
     The \l {Imagine Style} is based on image assets. The style comes with a default
     set of images which can easily be changed by providing a directory
@@ -65,6 +67,7 @@
     \section2 Windows Style
 
     \image qtquickcontrols-windows.png
+           {Gallery of controls in Windows style}
 
     The \l {Windows Style} is a native-looking style for Windows.
     \note this style is only available for applications running on Windows.
@@ -110,7 +113,7 @@
     }
     \endqml
 
-    Notice that QtQuick.Controls (which is responsible for run-time style
+    Notice that \c {QtQuick.Controls} (which is responsible for run-time style
     selection) is not imported. The fallback style is specified by the qmldir
     of the style:
 
@@ -124,7 +127,7 @@
     \l {The QML script compiler}{QML compiler} knows which specific style
     is in use and can generate C++ code for bindings.
 
-    Another benefit is that the QtQuick.Controls plugin is not used and
+    Another benefit is that the \c {QtQuick.Controls} plugin is not used and
     therefore does not need to be deployed with the application.
 
     Explicit imports are also necessary if your application is built
@@ -145,7 +148,7 @@
     import QtQuick.Controls
     \endqml
 
-    The QtQuick.Controls plugin will import the style that was set at runtime
+    The \c{QtQuick.Controls} plugin will import the style that was set at runtime
     via one of the following approaches:
 
     \list

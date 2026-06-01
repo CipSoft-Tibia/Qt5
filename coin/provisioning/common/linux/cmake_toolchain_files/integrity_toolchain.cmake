@@ -107,10 +107,11 @@ set(IntegrityPlatformGraphics_LIBRARIES_PACK
     "${EGL_LIBRARY_CHK_PATH}/libivfs.a"
 )
 
-list(APPEND _qt_igy_gui_libs
+set(IntegrityPlatformGraphics_REQUIRED_LIBRARIES
     "${GLESv2_LIBRARY}"
     "${IntegrityPlatformGraphics_LIBRARY}"
-    "${IntegrityPlatformGraphics_LIBRARIES_PACK}")
+    "${IntegrityPlatformGraphics_LIBRARIES_PACK}"
+)
 
 set(OPENGL_INCLUDE_DIR ${GL_INC_DIR})
 set(OPENGL_opengl_LIBRARY ${EGL_LIBRARY})

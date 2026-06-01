@@ -22,6 +22,8 @@ private slots:
     void headerValueField();
     void valueEncoding();
     void replaceOrAppend();
+    void intValues();
+    void dateTimeValues();
 
 private:
     static constexpr QAnyStringView n1{"name1"};
@@ -543,6 +545,99 @@ void tst_QHttpHeaders::replaceOrAppend()
     QVERIFY(!h1.replaceOrAppend("", V1));
     QTest::ignoreMessage(QtMsgType::QtWarningMsg, re);
     QVERIFY(!h1.replaceOrAppend(v1, "foo\x08"));
+}
+
+void tst_QHttpHeaders::intValues()
+{
+    QHttpHeaders h1;
+    h1.append("Content-Length", "12345");
+    h1.append(QHttpHeaders::WellKnownHeader::ContentLength, "67890");
+
+    std::optional<qint64> intValueString = h1.intValue("content-length");
+    QCOMPARE(intValueString, 12345);
+
+    std::optional<qint64> intValueWKH =
+            h1.intValue(QHttpHeaders::WellKnownHeader::ContentLength);
+    QCOMPARE(intValueWKH, 12345);
+
+    std::optional<QList<qint64>> intStringValuesList = h1.intValues("content-length");
+    QVERIFY(intStringValuesList);
+    QCOMPARE(intStringValuesList->size(), 2);
+    QCOMPARE(intStringValuesList->at(0), 12345);
+    QCOMPARE(intStringValuesList->at(1), 67890);
+
+    std::optional<QList<qint64>> intWKHValuesList =
+            h1.intValues(QHttpHeaders::WellKnownHeader::ContentLength);
+    QVERIFY(intWKHValuesList);
+    QCOMPARE(intWKHValuesList->size(), 2);
+    QCOMPARE(intWKHValuesList->at(0), 12345);
+    QCOMPARE(intWKHValuesList->at(1), 67890);
+
+    std::optional<qint64> intValueAtIndex = h1.intValueAt(1);
+    QCOMPARE(intValueAtIndex, 67890);
+
+    h1.clear();
+    h1.append("Content-Length", "Invalid Number");
+    h1.append("Content-Length", "");
+    QCOMPARE(h1.intValueAt(0), std::nullopt);
+    QCOMPARE(h1.intValue("content-length"), std::nullopt);
+    QCOMPARE(h1.intValue("non-existing-header"), std::nullopt);
+    QCOMPARE(h1.intValues("content-length"), std::nullopt);
+}
+
+void tst_QHttpHeaders::dateTimeValues()
+{
+    QHttpHeaders h1;
+    h1.append("Date", "Tue, 25 Feb 2025 10:10:10 GMT");
+    h1.append(QHttpHeaders::WellKnownHeader::Date, "Mon, 24 Feb 2025 11:11:11 GMT");
+
+    std::optional<QDateTime> dateTimeString = h1.dateTimeValue("date");
+    QVERIFY(dateTimeString);
+    QCOMPARE(dateTimeString->date(), QDate(2025, 2, 25));
+    QCOMPARE(dateTimeString->time(), QTime(10, 10, 10, 0));
+    std::optional<QDateTime> dateTimeWKH =
+            h1.dateTimeValue(QHttpHeaders::WellKnownHeader::Date);
+    QVERIFY(dateTimeWKH);
+    QCOMPARE(dateTimeWKH->date(), QDate(2025, 2, 25));
+    QCOMPARE(dateTimeWKH->time(), QTime(10, 10, 10, 0));
+
+    std::optional<QList<QDateTime>> dateTimeStringValueList = h1.dateTimeValues("date");
+    QVERIFY(dateTimeStringValueList);
+    QCOMPARE(dateTimeStringValueList->size(), 2);
+    QCOMPARE(dateTimeStringValueList->at(0).date(), QDate(2025, 2, 25));
+    QCOMPARE(dateTimeStringValueList->at(0).time(), QTime(10, 10, 10, 0));
+    QCOMPARE(dateTimeStringValueList->at(1).date(), QDate(2025, 2, 24));
+    QCOMPARE(dateTimeStringValueList->at(1).time(), QTime(11, 11, 11, 0));
+
+    std::optional<QList<QDateTime>> dateTimeWHKValueList =
+            h1.dateTimeValues(QHttpHeaders::WellKnownHeader::Date);
+    QVERIFY(dateTimeWHKValueList);
+    QCOMPARE(dateTimeWHKValueList->size(), 2);
+    QCOMPARE(dateTimeWHKValueList->at(0).date(), QDate(2025, 2, 25));
+    QCOMPARE(dateTimeWHKValueList->at(0).time(), QTime(10, 10, 10, 0));
+    QCOMPARE(dateTimeWHKValueList->at(1).date(), QDate(2025, 2, 24));
+    QCOMPARE(dateTimeWHKValueList->at(1).time(), QTime(11, 11, 11, 0));
+
+    std::optional<QDateTime> dateTimeValueAtIndex = h1.dateTimeValueAt(1);
+    QVERIFY(dateTimeValueAtIndex);
+    QCOMPARE(dateTimeValueAtIndex->date(), QDate(2025, 2, 24));
+    QCOMPARE(dateTimeValueAtIndex->time(), QTime(11, 11, 11, 0));
+
+    QDateTime dateTimeValue3{QDate{2049, 4, 3}, QTime{12, 30, 00, 0}};
+    dateTimeValue3.setTimeZone(QTimeZone::UTC);
+    h1.setDateTimeValue("date", dateTimeValue3);
+    std::optional<QDateTime> setDateTimeValue = h1.dateTimeValue("date");
+    QVERIFY(setDateTimeValue);
+    QCOMPARE(setDateTimeValue->date(), QDate(2049, 4, 3));
+    QCOMPARE(setDateTimeValue->time(), QTime(12, 30, 00, 0));
+
+    h1.clear();
+    h1.append("Date", "InvalidDateFormat");
+    h1.append("Date", "");
+    QCOMPARE(h1.dateTimeValueAt(0), std::nullopt);
+    QCOMPARE(h1.dateTimeValue("date"), std::nullopt);
+    QCOMPARE(h1.dateTimeValue("non-existing-header"), std::nullopt);
+    QCOMPARE(h1.dateTimeValues("date"), std::nullopt);
 }
 
 QTEST_MAIN(tst_QHttpHeaders)

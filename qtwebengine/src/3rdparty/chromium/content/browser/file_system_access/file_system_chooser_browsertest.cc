@@ -48,8 +48,6 @@ using base::test::RunOnceCallback;
 using blink::mojom::PermissionStatus;
 using SensitiveEntryResult =
     FileSystemAccessPermissionContext::SensitiveEntryResult;
-using PathInfo = FileSystemAccessPermissionContext::PathInfo;
-using PathType = FileSystemAccessPermissionContext::PathType;
 
 static constexpr char kTestMountPoint[] = "testfs";
 
@@ -197,6 +195,24 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, OpenFileNonASCII) {
              "return await file.text(); })()"));
 }
 
+IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
+                       OpenFile_DisplayNameNotBaseName) {
+  const base::FilePath test_file = CreateTestFile("hello world!");
+  std::string display_name = "display-name";
+  ui::SelectedFileInfo selected_file = {test_file, test_file};
+  selected_file.display_name = base::FilePath::FromASCII(display_name).value();
+
+  ui::SelectFileDialog::SetFactory(
+      std::make_unique<FakeSelectFileDialogFactory>(
+          std::vector<ui::SelectedFileInfo>{selected_file}, &dialog_params_));
+  ASSERT_TRUE(
+      NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
+  EXPECT_EQ(display_name, EvalJs(shell(),
+                                 "(async () => {"
+                                 "  let [e] = await self.showOpenFilePicker();"
+                                 "  return e.name; })()"));
+}
+
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, FullscreenOpenFile) {
   const std::string file_contents = "hello world!";
   const base::FilePath test_file = CreateTestFile(file_contents);
@@ -336,10 +352,10 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        SaveFile_NoEnterpriseChecks) {
-  const base::FilePath test_file = CreateTestFile("Save File");
+  const PathInfo test_file_info(CreateTestFile("Save File"));
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_file}, &dialog_params_));
+          std::vector<base::FilePath>{test_file_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -358,13 +374,21 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
 
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
   EXPECT_CALL(permission_context, CanObtainWritePermission(origin))
       .WillOnce(testing::Return(true));
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
 
   EXPECT_CALL(permission_context,
               GetWellKnownDirectoryPath(
@@ -375,32 +399,32 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(testing::_, testing::_, testing::_,
-                                     testing::_));
+              SetLastPickedDirectory(testing::_, testing::_, testing::_));
   EXPECT_CALL(permission_context,
               OnFileCreatedFromShowSaveFilePicker(testing::_, testing::_))
       .WillOnce(testing::Return());
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_file,
+                  origin, test_file_info,
                   FileSystemAccessPermissionContext::HandleType::kFile,
                   FileSystemAccessPermissionContext::UserAction::kSave,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_file,
+                  origin, test_file_info,
                   FileSystemAccessPermissionContext::HandleType::kFile,
                   FileSystemAccessPermissionContext::UserAction::kSave))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_file,
+                  origin, test_file_info,
                   FileSystemAccessPermissionContext::HandleType::kFile,
                   FileSystemAccessPermissionContext::UserAction::kSave))
       .WillOnce(testing::Return(write_grant));
+
   EXPECT_CALL(permission_context, CheckPathsAgainstEnterprisePolicy(
                                       testing::_, testing::_, testing::_))
                                       .Times(0);
@@ -412,13 +436,12 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
-  EXPECT_EQ(
-      test_file.BaseName().AsUTF8Unsafe(),
-      EvalJs(shell(),
-             "(async () => {"
-             "  let e = await self.showSaveFilePicker();"
-             "  self.selected_entry = e;"
-             "  return e.name; })()"));
+  EXPECT_EQ(test_file_info.path.BaseName().AsUTF8Unsafe(),
+            EvalJs(shell(),
+                   "(async () => {"
+                   "  let e = await self.showSaveFilePicker();"
+                   "  self.selected_entry = e;"
+                   "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_SAVEAS_FILE, dialog_params_.type);
 }
 
@@ -576,10 +599,10 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, OpenDirectory_DenyAccess) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -593,13 +616,21 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, OpenDirectory_DenyAccess) {
   auto read_grant = base::MakeRefCounted<
       testing::StrictMock<MockFileSystemAccessPermissionGrant>>();
   auto write_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
-      PermissionStatus::ASK, base::FilePath());
+      PermissionStatus::ASK, PathInfo());
 
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
 
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
@@ -613,26 +644,25 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, OpenDirectory_DenyAccess) {
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -666,10 +696,10 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, OpenDirectory_DenyAccess) {
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        OpenDirectoryWithReadAccess) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -688,8 +718,16 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
 
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
@@ -703,26 +741,25 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -749,7 +786,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
-  EXPECT_EQ(test_dir.BaseName().AsUTF8Unsafe(),
+  EXPECT_EQ(test_dir_info.path.BaseName().AsUTF8Unsafe(),
             EvalJs(shell(),
                    "(async () => {"
                    "  let e = await self.showDirectoryPicker({mode: 'read'});"
@@ -760,10 +797,10 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        OpenDirectoryWithReadWriteAccess) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -782,8 +819,16 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
 
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
@@ -800,26 +845,25 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -858,7 +902,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
   EXPECT_EQ(
-      test_dir.BaseName().AsUTF8Unsafe(),
+      test_dir_info.path.BaseName().AsUTF8Unsafe(),
       EvalJs(shell(),
              "(async () => {"
              "  let e = await self.showDirectoryPicker({mode: 'readwrite'});"
@@ -888,13 +932,21 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
 
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
   EXPECT_CALL(permission_context, CanObtainWritePermission(origin))
       .WillOnce(testing::Return(true));
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
 
   EXPECT_CALL(permission_context,
               GetWellKnownDirectoryPath(
@@ -907,11 +959,11 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_file,
+                  origin, PathInfo(test_file),
                   FileSystemAccessPermissionContext::HandleType::kFile,
                   FileSystemAccessPermissionContext::UserAction::kSave,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAbort));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAbort));
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
@@ -954,13 +1006,21 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
 
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
   EXPECT_CALL(permission_context, CanObtainWritePermission(origin))
       .WillOnce(testing::Return(true));
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
 
   EXPECT_CALL(permission_context,
               GetWellKnownDirectoryPath(
@@ -973,11 +1033,11 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_file,
+                  origin, PathInfo(test_file),
                   FileSystemAccessPermissionContext::HandleType::kFile,
                   FileSystemAccessPermissionContext::UserAction::kSave,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAbort));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAbort));
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
@@ -1046,11 +1106,11 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, UndefinedAccepts) {
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        OpenDirectory_LastPickedDirExists) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
 
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -1064,45 +1124,52 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto read_grant = base::MakeRefCounted<
       testing::StrictMock<MockFileSystemAccessPermissionGrant>>();
   auto write_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
-      PermissionStatus::GRANTED, base::FilePath());
+      PermissionStatus::GRANTED, PathInfo());
 
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
+
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
 
   // The last picked directory exists.
-  PathInfo good_dir_info;
-  good_dir_info.path = temp_dir_.GetPath();
+  PathInfo good_dir_info(temp_dir_.GetPath());
 
   EXPECT_CALL(permission_context, GetLastPickedDirectory(origin, std::string()))
       .WillOnce(testing::Return(good_dir_info));
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -1129,23 +1196,24 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
-  EXPECT_EQ(test_dir.BaseName().AsUTF8Unsafe(),
+  EXPECT_EQ(test_dir_info.path.BaseName().AsUTF8Unsafe(),
             EvalJs(shell(),
                    "(async () => {"
                    "  let e = await self.showDirectoryPicker();"
                    "  self.selected_entry = e;"
                    "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(good_dir_info.path, dialog_params_.default_path);
+  EXPECT_EQ(good_dir_info.path.AsEndingWithSeparator(),
+            dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        OpenDirectory_LastPickedDirNotExists) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
 
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -1159,20 +1227,28 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto read_grant = base::MakeRefCounted<
       testing::StrictMock<MockFileSystemAccessPermissionGrant>>();
   auto write_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
-      PermissionStatus::GRANTED, base::FilePath());
+      PermissionStatus::GRANTED, PathInfo());
 
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
+
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
 
   // The last picked directory no longer exists, so resort to showing the
   // default directory, then set the test_file's dir as last picked.
-  PathInfo bad_dir_info;
-  bad_dir_info.path = temp_dir_.GetPath().AppendASCII("nonexistent");
+  PathInfo bad_dir_info(temp_dir_.GetPath().AppendASCII("nonexistent"));
   base::FilePath default_dir;
   default_dir = temp_dir_.GetPath().AppendASCII("default");
 
@@ -1185,26 +1261,25 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -1231,23 +1306,23 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
-  EXPECT_EQ(test_dir.BaseName().AsUTF8Unsafe(),
+  EXPECT_EQ(test_dir_info.path.BaseName().AsUTF8Unsafe(),
             EvalJs(shell(),
                    "(async () => {"
                    "  let e = await self.showDirectoryPicker();"
                    "  self.selected_entry = e;"
                    "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(default_dir, dialog_params_.default_path);
+  EXPECT_EQ(default_dir.AsEndingWithSeparator(), dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        OpenDirectory_LastPickedDirExistsExternal) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
 
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -1261,13 +1336,22 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto read_grant = base::MakeRefCounted<
       testing::StrictMock<MockFileSystemAccessPermissionGrant>>();
   auto write_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
-      PermissionStatus::GRANTED, base::FilePath());
+      PermissionStatus::GRANTED, PathInfo());
 
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
+
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
 
@@ -1281,26 +1365,25 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -1327,7 +1410,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
-  EXPECT_EQ(test_dir.BaseName().AsUTF8Unsafe(),
+  EXPECT_EQ(test_dir_info.path.BaseName().AsUTF8Unsafe(),
             EvalJs(shell(),
                    "(async () => {"
                    "  let e = await self.showDirectoryPicker();"
@@ -1335,16 +1418,17 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                    "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
   // temp_dir_.GetPath() maps to kTestMountPoint.
-  EXPECT_EQ(temp_dir_.GetPath(), dialog_params_.default_path);
+  EXPECT_EQ(temp_dir_.GetPath().AsEndingWithSeparator(),
+            dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        OpenDirectory_LastPickedDirNotExistsExternal) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
 
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -1358,13 +1442,22 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto read_grant = base::MakeRefCounted<
       testing::StrictMock<MockFileSystemAccessPermissionGrant>>();
   auto write_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
-      PermissionStatus::GRANTED, base::FilePath());
+      PermissionStatus::GRANTED, PathInfo());
 
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
+
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
 
@@ -1385,26 +1478,25 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -1431,23 +1523,23 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
-  EXPECT_EQ(test_dir.BaseName().AsUTF8Unsafe(),
+  EXPECT_EQ(test_dir_info.path.BaseName().AsUTF8Unsafe(),
             EvalJs(shell(),
                    "(async () => {"
                    "  let e = await self.showDirectoryPicker();"
                    "  self.selected_entry = e;"
                    "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(default_dir, dialog_params_.default_path);
+  EXPECT_EQ(default_dir.AsEndingWithSeparator(), dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                        StartIn_WellKnownDirectory) {
-  base::FilePath test_dir = CreateTestDir();
+  PathInfo test_dir_info(CreateTestDir());
 
   ui::SelectFileDialog::SetFactory(
       std::make_unique<FakeSelectFileDialogFactory>(
-          std::vector<base::FilePath>{test_dir}, &dialog_params_));
+          std::vector<base::FilePath>{test_dir_info.path}, &dialog_params_));
 
   testing::StrictMock<MockFileSystemAccessPermissionContext> permission_context;
   static_cast<FileSystemAccessManagerImpl*>(
@@ -1461,12 +1553,16 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   auto read_grant = base::MakeRefCounted<
       testing::StrictMock<MockFileSystemAccessPermissionGrant>>();
   auto write_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
-      PermissionStatus::GRANTED, base::FilePath());
+      PermissionStatus::GRANTED, PathInfo());
 
   auto origin =
       url::Origin::Create(embedded_test_server()->GetURL("/title1.html"));
   auto frame_id = GlobalRenderFrameHostId(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID());
   EXPECT_CALL(permission_context, CanObtainReadPermission(origin))
       .WillOnce(testing::Return(true));
@@ -1488,26 +1584,29 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   EXPECT_CALL(permission_context, GetPickerTitle(testing::_))
       .WillOnce(testing::Return(std::u16string()));
   EXPECT_CALL(permission_context,
-              SetLastPickedDirectory(origin, std::string(), test_dir,
-                                     PathType::kLocal));
+              SetLastPickedDirectory(origin, std::string(), test_dir_info));
 
   EXPECT_CALL(permission_context,
               ConfirmSensitiveEntryAccess_(
-                  origin, PathType::kLocal, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen,
                   frame_id, testing::_))
-      .WillOnce(RunOnceCallback<6>(SensitiveEntryResult::kAllowed));
+      .WillOnce(RunOnceCallback<5>(SensitiveEntryResult::kAllowed));
+
+  EXPECT_CALL(permission_context,
+              CanShowFilePicker(shell()->web_contents()->GetPrimaryMainFrame()))
+      .WillOnce(testing::Return(base::ok()));
 
   EXPECT_CALL(permission_context,
               GetReadPermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(read_grant));
   EXPECT_CALL(permission_context,
               GetWritePermissionGrant(
-                  origin, test_dir,
+                  origin, test_dir_info,
                   FileSystemAccessPermissionContext::HandleType::kDirectory,
                   FileSystemAccessPermissionContext::UserAction::kOpen))
       .WillOnce(testing::Return(write_grant));
@@ -1535,14 +1634,14 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
   EXPECT_EQ(
-      test_dir.BaseName().AsUTF8Unsafe(),
+      test_dir_info.path.BaseName().AsUTF8Unsafe(),
       EvalJs(shell(),
              "(async () => {"
              "  let e = await self.showDirectoryPicker({ startIn: 'desktop' });"
              "  self.selected_entry = e;"
              "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(desktop_dir, dialog_params_.default_path);
+  EXPECT_EQ(desktop_dir.AsEndingWithSeparator(), dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_FileHandle) {
@@ -1582,7 +1681,8 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_FileHandle) {
   EXPECT_EQ(ui::SelectFileDialog::SELECT_OPEN_FILE, dialog_params_.type);
   // Windows file system is case-insensitive.
   EXPECT_TRUE(base::FilePath::CompareEqualIgnoreCase(
-      test_file_dir.value(), dialog_params_.default_path.value()));
+      test_file_dir.AsEndingWithSeparator().value(),
+      dialog_params_.default_path.value()));
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_DirectoryHandle) {
@@ -1618,7 +1718,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_DirectoryHandle) {
                    "  self.selected_entry = e;"
                    "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(test_dir, dialog_params_.default_path);
+  EXPECT_EQ(test_dir.AsEndingWithSeparator(), dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
@@ -1655,7 +1755,8 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest,
                    "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_OPEN_FILE, dialog_params_.type);
   // temp_dir_.GetPath() maps to kTestMountPoint.
-  EXPECT_EQ(temp_dir_.GetPath(), dialog_params_.default_path);
+  EXPECT_EQ(temp_dir_.GetPath().AsEndingWithSeparator(),
+            dialog_params_.default_path);
 }
 
 // Correctly saving a symlink as the starting directory should work on all OSes,
@@ -1696,7 +1797,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_Symlink) {
                    "  self.selected_entry = e;"
                    "  return e.name; })()"));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(symlink, dialog_params_.default_path);
+  EXPECT_EQ(symlink.AsEndingWithSeparator(), dialog_params_.default_path);
 }
 #endif  // BUILDFLAG(IS_POSIX)
 
@@ -1884,8 +1985,6 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_ID) {
 
   // Specify an `id` for the directory that is picked.
   std::string id = "testing";
-  PathInfo test_dir_info;
-  test_dir_info.path = test_dir;
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
@@ -1911,7 +2010,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_ID) {
                        "  return e.name; })()",
                        id)));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(test_dir, dialog_params_.default_path);
+  EXPECT_EQ(test_dir.AsEndingWithSeparator(), dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_Priority) {
@@ -1961,10 +2060,6 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_Priority) {
 
   // Specify an `id` for the directory that is picked.
   std::string id = "testing";
-  PathInfo test_dir_info;
-  test_dir_info.path = test_dir;
-  PathInfo desktop_dir_info;
-  desktop_dir_info.path = desktop_dir;
 
   ASSERT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
@@ -1996,7 +2091,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_Priority) {
                                 "  return e.name; })()",
                                 id)));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(dir_handle, dialog_params_.default_path);
+  EXPECT_EQ(dir_handle.AsEndingWithSeparator(), dialog_params_.default_path);
 
   // (C) Since this new `id` has not yet been set, fall back on using the
   // WellKnownDirectory specified via `startIn`.
@@ -2012,7 +2107,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_Priority) {
                                 "  return e.name; })()",
                                 id)));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(desktop_dir, dialog_params_.default_path);
+  EXPECT_EQ(desktop_dir.AsEndingWithSeparator(), dialog_params_.default_path);
 
   // (D) The `id` is set. Use the LastPickedDirectory given this `id`.
   EXPECT_EQ(
@@ -2024,7 +2119,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_Priority) {
                                 "  return e.name; })()",
                                 id)));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(desktop_dir, dialog_params_.default_path);
+  EXPECT_EQ(desktop_dir.AsEndingWithSeparator(), dialog_params_.default_path);
 
   // (E) A directory handle is specified via `startIn`, so prioritize this over
   // the stored ID.
@@ -2040,7 +2135,7 @@ IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, StartIn_Priority) {
                                 "  return e.name; })()",
                                 id)));
   EXPECT_EQ(ui::SelectFileDialog::SELECT_FOLDER, dialog_params_.type);
-  EXPECT_EQ(dir_handle, dialog_params_.default_path);
+  EXPECT_EQ(dir_handle.AsEndingWithSeparator(), dialog_params_.default_path);
 }
 
 IN_PROC_BROWSER_TEST_F(FileSystemChooserBrowserTest, PickerTitle) {

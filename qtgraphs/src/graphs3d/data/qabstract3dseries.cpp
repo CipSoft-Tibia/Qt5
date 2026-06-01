@@ -5,6 +5,7 @@
 #include "qabstractdataproxy_p.h"
 #include "qquickgraphsitem_p.h"
 #include "utils_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -59,6 +60,7 @@ QT_BEGIN_NAMESPACE
  *        Series type for Q3DSurfaceWidgetItem.
  */
 
+
 /*!
  *  \enum QAbstract3DSeries::Mesh
  *
@@ -93,6 +95,17 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
+ *  \enum QAbstract3DSeries::LightingMode
+ *
+ *  Predefined lighting modes
+ *
+ *  \value Shaded
+ *      Graphs respond to real time lighting
+ *  \value Unshaded
+ *      Graphs do not respond to real time lighting
+ */
+
+/*!
  * \qmlproperty Abstract3DSeries.SeriesType Abstract3DSeries::type
  * The type of the series. One of the QAbstract3DSeries::SeriesType values.
  *
@@ -110,13 +123,13 @@ QT_BEGIN_NAMESPACE
 
 /*!
  * \qmlproperty bool Abstract3DSeries::visible
- * Sets the visibility of the series. If \c false, the series is not rendered.
+ * The visibility of the series. If \c false, the series is not rendered.
  */
 
 /*!
  * \qmlproperty Abstract3DSeries.Mesh Abstract3DSeries::mesh
  *
- * Sets the mesh of the items in the series, or the selection pointer in case of
+ * The mesh of the items in the series, or the selection pointer in case of
  * Surface3DSeries. If the mesh is
  * \l{QAbstract3DSeries::Mesh::UserDefined}{Abstract3DSeries.Mesh.UserDefined},
  * then the userDefinedMesh property must also be set for items to render
@@ -138,7 +151,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty quaternion Abstract3DSeries::meshRotation
  *
- * Sets the mesh rotation that is applied to all items of the series.
+ * The mesh rotation that is applied to all items of the series.
  * The rotation should be a normalized quaternion.
  * For those series types that support item specific rotation, the rotations are
  * multiplied together.
@@ -150,7 +163,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty string Abstract3DSeries::userDefinedMesh
  *
- * Sets the filename for a user defined custom mesh for objects that is used
+ * The filename for a user defined custom mesh for objects that is used
  * when \l mesh is
  * \l{QAbstract3DSeries::Mesh::UserDefined}{Abstract3DSeries.Mesh.UserDefined}.
  * \note The file needs to be in the QtQuick3D mesh format. Use the \c balsam
@@ -160,7 +173,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty GraphsTheme.ColorStyle Abstract3DSeries::colorStyle
  *
- * Sets the color style for the series.
+ * The color style for the series.
  *
  * \sa {QGraphsTheme::ColorStyle}{GraphsTheme.ColorStyle}
  */
@@ -168,7 +181,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty color Abstract3DSeries::baseColor
  *
- * Sets the base color of the series.
+ * The base color of the series.
  *
  * \sa colorStyle, {GraphsTheme::seriesColors}{GraphsTheme.seriesColors}
  */
@@ -176,7 +189,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty Gradient Abstract3DSeries::baseGradient
  *
- * Sets the base gradient of the series.
+ * The base gradient of the series.
  *
  * \sa colorStyle
  */
@@ -184,7 +197,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty color Abstract3DSeries::singleHighlightColor
  *
- * Sets the single item highlight color of the series.
+ * The single item highlight color of the series.
  *
  * \sa colorStyle, {GraphsTheme::singleHighlightColor}{GraphsTheme.singleHighlightColor}
  */
@@ -192,7 +205,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty Gradient Abstract3DSeries::singleHighlightGradient
  *
- * Sets the single item highlight gradient of the series.
+ * The single item highlight gradient of the series.
  *
  * \sa colorStyle,
  * {GraphsTheme::singleHighlightGradient}{GraphsTheme.singleHighlightGradient}
@@ -201,7 +214,7 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty color Abstract3DSeries::multiHighlightColor
  *
- * Sets the multiple item highlight color of the series.
+ * The multiple item highlight color of the series.
  *
  * \sa colorStyle, {GraphsTheme::multiHighlightColor}{GraphsTheme.multiHighlightColor}
  */
@@ -209,10 +222,20 @@ QT_BEGIN_NAMESPACE
 /*!
  * \qmlproperty Gradient Abstract3DSeries::multiHighlightGradient
  *
- * Sets the multiple item highlight gradient of the series.
+ * The multiple item highlight gradient of the series.
  *
  * \sa colorStyle,
  * {GraphsTheme::multiHighlightGradient}{GraphsTheme.multiHighlightGradient}
+ */
+
+/*!
+ * \qmlproperty Abstract3DSeries.LightingMode Abstract3DSeries::lightingMode
+ * \since 6.10
+ *
+ * The lighting mode of the items in the series.
+ * The default value is \l{QAbstract3DSeries::LightingMode::Shaded}
+ *
+ * \sa QAbstract3DSeries::LightingMode
  */
 
 /*!
@@ -319,6 +342,12 @@ QT_BEGIN_NAMESPACE
     This signal is emitted when multiHighlightGradient changes to \a gradient.
 */
 /*!
+    \qmlsignal Abstract3DSeries::lightingModeChanged(Abstract3DSeries.LightingMode lightingMode)
+
+    This signal is emitted when \l lightingMode changes to \a lightingMode.
+    \since 6.10
+*/
+/*!
     \qmlsignal Abstract3DSeries::nameChanged(string name)
 
     This signal is emitted when \l name changes to \a name.
@@ -371,10 +400,14 @@ QAbstract3DSeries::SeriesType QAbstract3DSeries::type() const
 void QAbstract3DSeries::setItemLabelFormat(const QString &format)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_itemLabelFormat != format) {
-        d->setItemLabelFormat(format);
-        emit itemLabelFormatChanged(format);
+    if (d->m_itemLabelFormat == format) {
+        qCDebug(lcProperties3D, "%s value: %s is same than it already was.",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(format));
+        return;
     }
+
+    d->setItemLabelFormat(format);
+    emit itemLabelFormatChanged(format);
 }
 
 QString QAbstract3DSeries::itemLabelFormat() const
@@ -394,10 +427,14 @@ QString QAbstract3DSeries::itemLabelFormat() const
 void QAbstract3DSeries::setVisible(bool visible)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_visible != visible) {
-        d->setVisible(visible);
-        emit visibleChanged(visible);
+    if (d->m_visible == visible) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << visible;
+        return;
     }
+
+    d->setVisible(visible);
+    emit visibleChanged(visible);
 }
 
 bool QAbstract3DSeries::isVisible() const
@@ -423,11 +460,17 @@ void QAbstract3DSeries::setMesh(QAbstract3DSeries::Mesh mesh)
     if ((mesh == QAbstract3DSeries::Mesh::Point || mesh == QAbstract3DSeries::Mesh::Minimal
          || mesh == QAbstract3DSeries::Mesh::Arrow)
         && type() != QAbstract3DSeries::SeriesType::Scatter) {
-        qWarning("Specified style is only supported for QScatter3DSeries.");
-    } else if (d->m_mesh != mesh) {
-        d->setMesh(mesh);
-        emit meshChanged(mesh);
+        qCWarning(lcProperties3D, "%s specified style is only supported for QScatter3DSeries.",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
+        return;
+    } else if (d->m_mesh == mesh) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << mesh;
+        return;
     }
+
+    d->setMesh(mesh);
+    emit meshChanged(mesh);
 }
 
 QAbstract3DSeries::Mesh QAbstract3DSeries::mesh() const
@@ -448,10 +491,14 @@ QAbstract3DSeries::Mesh QAbstract3DSeries::mesh() const
 void QAbstract3DSeries::setMeshSmooth(bool enable)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_meshSmooth != enable) {
-        d->setMeshSmooth(enable);
-        emit meshSmoothChanged(enable);
+    if (d->m_meshSmooth == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+
+    d->setMeshSmooth(enable);
+    emit meshSmoothChanged(enable);
 }
 
 bool QAbstract3DSeries::isMeshSmooth() const
@@ -475,10 +522,14 @@ bool QAbstract3DSeries::isMeshSmooth() const
 void QAbstract3DSeries::setMeshRotation(const QQuaternion &rotation)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_meshRotation != rotation) {
-        d->setMeshRotation(rotation);
-        emit meshRotationChanged(rotation);
+    if (d->m_meshRotation == rotation) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << rotation;
+        return;
     }
+
+    d->setMeshRotation(rotation);
+    emit meshRotationChanged(rotation);
 }
 
 QQuaternion QAbstract3DSeries::meshRotation() const
@@ -510,10 +561,14 @@ void QAbstract3DSeries::setMeshAxisAndAngle(QVector3D axis, float angle)
 void QAbstract3DSeries::setUserDefinedMesh(const QString &fileName)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_userDefinedMesh != fileName) {
-        d->setUserDefinedMesh(fileName);
-        emit userDefinedMeshChanged(fileName);
+    if (d->m_userDefinedMesh == fileName) {
+        qCDebug(lcProperties3D, "%s value %s is same than what is already being used.",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(fileName));
+        return;
     }
+
+    d->setUserDefinedMesh(fileName);
+    emit userDefinedMeshChanged(fileName);
 }
 
 QString QAbstract3DSeries::userDefinedMesh() const
@@ -532,10 +587,16 @@ QString QAbstract3DSeries::userDefinedMesh() const
 void QAbstract3DSeries::setColorStyle(QGraphsTheme::ColorStyle style)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_colorStyle != style) {
-        d->setColorStyle(style);
-        emit colorStyleChanged(style);
+    if (d->m_colorStyle == style) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << style;
+        d->m_themeTracker.colorStyleOverride = true;
+        return;
     }
+
+    d->setColorStyle(style);
+    emit colorStyleChanged(style);
+
     d->m_themeTracker.colorStyleOverride = true;
 }
 
@@ -555,10 +616,16 @@ QGraphsTheme::ColorStyle QAbstract3DSeries::colorStyle() const
 void QAbstract3DSeries::setBaseColor(QColor color)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_baseColor != color) {
-        d->setBaseColor(color);
-        emit baseColorChanged(color);
+    if (d->m_baseColor == color) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(color.name()));
+        d->m_themeTracker.baseColorOverride = true;
+        return;
     }
+
+    d->setBaseColor(color);
+    emit baseColorChanged(color);
+
     d->m_themeTracker.baseColorOverride = true;
 }
 
@@ -578,10 +645,15 @@ QColor QAbstract3DSeries::baseColor() const
 void QAbstract3DSeries::setBaseGradient(const QLinearGradient &gradient)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_baseGradient != gradient) {
-        d->setBaseGradient(gradient);
-        emit baseGradientChanged(gradient);
+    if (d->m_baseGradient == gradient) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << gradient;
+        d->m_themeTracker.baseGradientOverride = true;
+        return;
     }
+    d->setBaseGradient(gradient);
+    emit baseGradientChanged(gradient);
+
     d->m_themeTracker.baseGradientOverride = true;
 }
 
@@ -601,10 +673,15 @@ QLinearGradient QAbstract3DSeries::baseGradient() const
 void QAbstract3DSeries::setSingleHighlightColor(QColor color)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_singleHighlightColor != color) {
-        d->setSingleHighlightColor(color);
-        emit singleHighlightColorChanged(color);
+    if (d->m_singleHighlightColor == color) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(color.name()));
+        d->m_themeTracker.singleHighlightColorOverride = true;
+        return;
     }
+
+    d->setSingleHighlightColor(color);
+    emit singleHighlightColorChanged(color);
     d->m_themeTracker.singleHighlightColorOverride = true;
 }
 
@@ -624,10 +701,15 @@ QColor QAbstract3DSeries::singleHighlightColor() const
 void QAbstract3DSeries::setSingleHighlightGradient(const QLinearGradient &gradient)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_singleHighlightGradient != gradient) {
-        d->setSingleHighlightGradient(gradient);
-        emit singleHighlightGradientChanged(gradient);
+    if (d->m_singleHighlightGradient == gradient) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << gradient;
+        d->m_themeTracker.singleHighlightGradientOverride = true;
+        return;
     }
+
+    d->setSingleHighlightGradient(gradient);
+    emit singleHighlightGradientChanged(gradient);
     d->m_themeTracker.singleHighlightGradientOverride = true;
 }
 
@@ -647,10 +729,15 @@ QLinearGradient QAbstract3DSeries::singleHighlightGradient() const
 void QAbstract3DSeries::setMultiHighlightColor(QColor color)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_multiHighlightColor != color) {
-        d->setMultiHighlightColor(color);
-        emit multiHighlightColorChanged(color);
+    if (d->m_multiHighlightColor == color) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(color.name()));
+        d->m_themeTracker.multiHighlightColorOverride = true;
+        return;
     }
+
+    d->setMultiHighlightColor(color);
+    emit multiHighlightColorChanged(color);
     d->m_themeTracker.multiHighlightColorOverride = true;
 }
 
@@ -670,10 +757,15 @@ QColor QAbstract3DSeries::multiHighlightColor() const
 void QAbstract3DSeries::setMultiHighlightGradient(const QLinearGradient &gradient)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_multiHighlightGradient != gradient) {
-        d->setMultiHighlightGradient(gradient);
-        emit multiHighlightGradientChanged(gradient);
+    if (d->m_multiHighlightGradient == gradient) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << gradient;
+        d->m_themeTracker.multiHighlightGradientOverride = true;
+        return;
     }
+
+    d->setMultiHighlightGradient(gradient);
+    emit multiHighlightGradientChanged(gradient);
     d->m_themeTracker.multiHighlightGradientOverride = true;
 }
 
@@ -681,6 +773,28 @@ QLinearGradient QAbstract3DSeries::multiHighlightGradient() const
 {
     Q_D(const QAbstract3DSeries);
     return d->m_multiHighlightGradient;
+}
+
+/*!
+ * \property QAbstract3DSeries::lightingMode
+ *
+ * \brief The lighting mode of the series
+ * \since 6.10
+ * \sa LightingMode
+ */
+void QAbstract3DSeries::setLightingMode(LightingMode lightingMode)
+{
+    Q_D(QAbstract3DSeries);
+    if (d->m_lightingMode != lightingMode) {
+        d->setLightingMode(lightingMode);
+        emit lightingModeChanged(lightingMode);
+    }
+}
+
+QAbstract3DSeries::LightingMode QAbstract3DSeries::lightingMode() const
+{
+    Q_D(const QAbstract3DSeries);
+    return d->m_lightingMode;
 }
 
 /*!
@@ -696,10 +810,14 @@ QLinearGradient QAbstract3DSeries::multiHighlightGradient() const
 void QAbstract3DSeries::setName(const QString &name)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_name != name) {
-        d->setName(name);
-        emit nameChanged(name);
+    if (d->m_name == name) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(name));
+        return;
     }
+
+    d->setName(name);
+    emit nameChanged(name);
 }
 
 QString QAbstract3DSeries::name() const
@@ -738,10 +856,14 @@ QString QAbstract3DSeries::itemLabel()
 void QAbstract3DSeries::setItemLabelVisible(bool visible)
 {
     Q_D(QAbstract3DSeries);
-    if (d->m_itemLabelVisible != visible) {
-        d->setItemLabelVisible(visible);
-        emit itemLabelVisibleChanged(visible);
+    if (d->m_itemLabelVisible == visible) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << visible;
+        return;
     }
+
+    d->setItemLabelVisible(visible);
+    emit itemLabelVisibleChanged(visible);
 }
 
 bool QAbstract3DSeries::isItemLabelVisible() const
@@ -765,6 +887,7 @@ QAbstract3DSeriesPrivate::QAbstract3DSeriesPrivate(QAbstract3DSeries::SeriesType
     , m_multiHighlightColor(Qt::black)
     , m_itemLabelDirty(true)
     , m_itemLabelVisible(true)
+    , m_lightingMode(QAbstract3DSeries::LightingMode::Shaded)
 {}
 
 QAbstract3DSeriesPrivate::~QAbstract3DSeriesPrivate() {}
@@ -916,6 +1039,14 @@ void QAbstract3DSeriesPrivate::setMultiHighlightGradient(const QLinearGradient &
     m_changeTracker.multiHighlightGradientChanged = true;
     if (m_graph)
         m_graph->markSeriesVisualsDirty();
+}
+
+void QAbstract3DSeriesPrivate::setLightingMode(QAbstract3DSeries::LightingMode lightingMode)
+{
+    m_lightingMode = lightingMode;
+    if (m_graph)
+        m_graph->markSeriesVisualsDirty();
+    m_changeTracker.lightingModeChanged = true;
 }
 
 void QAbstract3DSeriesPrivate::setName(const QString &name)

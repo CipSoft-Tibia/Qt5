@@ -81,7 +81,7 @@ inline bool operator!=(const QVulkanLayer &lhs, const QVulkanLayer &rhs) noexcep
 
 inline size_t qHash(const QVulkanLayer &key, size_t seed = 0) noexcept
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombine hash(seed);
     seed = hash(seed, key.name);
     seed = hash(seed, key.version);
     seed = hash(seed, key.specVersion);
@@ -104,7 +104,7 @@ inline bool operator!=(const QVulkanExtension &lhs, const QVulkanExtension &rhs)
 
 inline size_t qHash(const QVulkanExtension &key, size_t seed = 0) noexcept
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombine hash(seed);
     seed = hash(seed, key.name);
     seed = hash(seed, key.version);
     return seed;

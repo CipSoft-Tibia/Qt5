@@ -1171,11 +1171,11 @@ void tst_QVarLengthArray::squeeze()
     list.resize(0);
     QCOMPARE(list.capacity(), sizeOnStack);
     list.resize(sizeOnHeap);
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
     list.resize(sizeOnStack);
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
     list.resize(0);
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
     list.squeeze();
     QCOMPARE(list.capacity(), sizeOnStack);
     list.resize(sizeOnStack);
@@ -1183,7 +1183,7 @@ void tst_QVarLengthArray::squeeze()
     QCOMPARE(list.capacity(), sizeOnStack);
     list.resize(sizeOnHeap);
     list.squeeze();
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
 }
 
 void tst_QVarLengthArray::operators()
@@ -1545,14 +1545,14 @@ void tst_QVarLengthArray::reserve()
 
     arr.reserve(150);
     // Allocate memory on heap, as we reserve more than pre-allocated
-    QCOMPARE(arr.capacity(), 150);
+    QCOMPARE_GE(arr.capacity(), 150);
     QCOMPARE(arr.size(), 0);
     const auto *heapPtr = arr.constData();
     QVERIFY(heapPtr != stackPtr);
 
     arr.reserve(50);
     // Nothing changed
-    QCOMPARE(arr.capacity(), 150);
+    QCOMPARE_GE(arr.capacity(), 150);
     QCOMPARE(arr.constData(), heapPtr);
 
     arr.squeeze();

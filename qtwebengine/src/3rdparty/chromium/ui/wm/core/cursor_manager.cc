@@ -9,6 +9,7 @@
 #include "base/check_op.h"
 #include "base/observer_list.h"
 #include "base/trace_event/trace_event.h"
+#include "third_party/skia/include/core/SkColor.h"
 #include "ui/aura/client/cursor_client_observer.h"
 #include "ui/base/cursor/cursor_size.h"
 #include "ui/base/cursor/mojom/cursor_type.mojom-shared.h"
@@ -24,11 +25,7 @@ namespace internal {
 // always invisible.
 class CursorState {
  public:
-  CursorState()
-      : visible_(true),
-        cursor_size_(ui::CursorSize::kNormal),
-        mouse_events_enabled_(true),
-        visible_on_mouse_events_enabled_(true) {}
+  CursorState() = default;
 
   CursorState(const CursorState&) = delete;
   CursorState& operator=(const CursorState&) = delete;
@@ -47,6 +44,9 @@ class CursorState {
   void set_cursor_size(ui::CursorSize cursor_size) {
     cursor_size_ = cursor_size;
   }
+
+  SkColor cursor_color() const { return cursor_color_; }
+  void set_cursor_color(SkColor cursor_color) { cursor_color_ = cursor_color; }
 
   const gfx::Size& system_cursor_size() const { return system_cursor_size_; }
   void set_system_cursor_size(const gfx::Size& system_cursor_size) {
@@ -70,12 +70,13 @@ class CursorState {
 
  private:
   gfx::NativeCursor cursor_;
-  bool visible_;
-  ui::CursorSize cursor_size_;
-  bool mouse_events_enabled_;
+  bool visible_ = true;
+  ui::CursorSize cursor_size_ = ui::CursorSize::kNormal;
+  SkColor cursor_color_ = ui::kDefaultCursorColor;
+  bool mouse_events_enabled_ = true;
 
   // The visibility to set when mouse events are enabled.
-  bool visible_on_mouse_events_enabled_;
+  bool visible_on_mouse_events_enabled_ = true;
 
   gfx::Size system_cursor_size_;
 };
@@ -121,8 +122,8 @@ void CursorManager::ShowCursor() {
     delegate_->SetVisibility(state_on_unlock_->visible(), this);
     if (GetCursor().type() != ui::mojom::CursorType::kNone) {
       // If the cursor is a visible type, notify the observers.
-      for (auto& observer : observers_)
-        observer.OnCursorVisibilityChanged(true);
+      observers_.Notify(
+          &aura::client::CursorClientObserver::OnCursorVisibilityChanged, true);
     }
   }
 }
@@ -133,8 +134,8 @@ void CursorManager::HideCursor() {
   if (cursor_lock_count_ == 0 &&
       IsCursorVisible() != state_on_unlock_->visible()) {
     delegate_->SetVisibility(state_on_unlock_->visible(), this);
-    for (auto& observer : observers_)
-      observer.OnCursorVisibilityChanged(false);
+    observers_.Notify(
+        &aura::client::CursorClientObserver::OnCursorVisibilityChanged, false);
   }
 }
 
@@ -146,13 +147,24 @@ void CursorManager::SetCursorSize(ui::CursorSize cursor_size) {
   state_on_unlock_->set_cursor_size(cursor_size);
   if (GetCursorSize() != state_on_unlock_->cursor_size()) {
     delegate_->SetCursorSize(state_on_unlock_->cursor_size(), this);
-    for (auto& observer : observers_)
-      observer.OnCursorSizeChanged(cursor_size);
+    observers_.Notify(&aura::client::CursorClientObserver::OnCursorSizeChanged,
+                      cursor_size);
   }
 }
 
 ui::CursorSize CursorManager::GetCursorSize() const {
   return current_state_->cursor_size();
+}
+
+void CursorManager::SetCursorColor(SkColor color) {
+  state_on_unlock_->set_cursor_color(color);
+  if (GetCursorColor() != state_on_unlock_->cursor_color()) {
+    delegate_->SetCursorColor(state_on_unlock_->cursor_color(), this);
+  }
+}
+
+SkColor CursorManager::GetCursorColor() const {
+  return current_state_->cursor_color();
 }
 
 void CursorManager::EnableMouseEvents() {
@@ -181,8 +193,8 @@ bool CursorManager::IsMouseEventsEnabled() const {
 
 void CursorManager::SetDisplay(const display::Display& display) {
   display_ = display;
-  for (auto& observer : observers_)
-    observer.OnCursorDisplayChanged(display);
+  observers_.Notify(&aura::client::CursorClientObserver::OnCursorDisplayChanged,
+                    display);
 
   delegate_->SetDisplay(display, this);
 }
@@ -252,15 +264,18 @@ void CursorManager::CommitCursor(gfx::NativeCursor cursor) {
 void CursorManager::CommitVisibility(bool visible) {
   // TODO(tdanderson): Find a better place for this so we don't
   // notify the observers more than is necessary.
-  for (auto& observer : observers_) {
-    observer.OnCursorVisibilityChanged(
-        GetCursor().type() == ui::mojom::CursorType::kNone ? false : visible);
-  }
+  observers_.Notify(
+      &aura::client::CursorClientObserver::OnCursorVisibilityChanged,
+      GetCursor().type() == ui::mojom::CursorType::kNone ? false : visible);
   current_state_->SetVisible(visible);
 }
 
 void CursorManager::CommitCursorSize(ui::CursorSize cursor_size) {
   current_state_->set_cursor_size(cursor_size);
+}
+
+void CursorManager::CommitCursorColor(SkColor color) {
+  current_state_->set_cursor_color(color);
 }
 
 void CursorManager::CommitMouseEventsEnabled(bool enabled) {
@@ -274,9 +289,9 @@ gfx::Size CursorManager::GetSystemCursorSize() const {
 void CursorManager::CommitSystemCursorSize(
     const gfx::Size& system_cursor_size) {
   current_state_->set_system_cursor_size(system_cursor_size);
-  for (auto& observer : observers_) {
-    observer.OnSystemCursorSizeChanged(system_cursor_size);
-  }
+  observers_.Notify(
+      &aura::client::CursorClientObserver::OnSystemCursorSizeChanged,
+      system_cursor_size);
 }
 
 void CursorManager::SetCursorImpl(gfx::NativeCursor cursor, bool forced) {
@@ -287,8 +302,9 @@ void CursorManager::SetCursorImpl(gfx::NativeCursor cursor, bool forced) {
     delegate_->SetCursor(state_on_unlock_->cursor(), this);
     bool is_visible = cursor.type() != ui::mojom::CursorType::kNone;
     if (is_visible != previously_visible) {
-      for (auto& observer : observers_)
-        observer.OnCursorVisibilityChanged(is_visible);
+      observers_.Notify(
+          &aura::client::CursorClientObserver::OnCursorVisibilityChanged,
+          is_visible);
     }
   }
 }

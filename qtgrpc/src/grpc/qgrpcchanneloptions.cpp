@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtGrpc/private/qgrpccommonoptions_p.h>
 #include <QtGrpc/qgrpcchanneloptions.h>
 #include <QtGrpc/qgrpcserializationformat.h>
 #include <QtGrpc/qtgrpcnamespace.h>
@@ -25,17 +26,34 @@ using namespace QtGrpc;
     to all remote procedure calls (RPCs) that operate on the associated
     channel, which is used to communicate with services.
 
-    Override options for specific RPCs with QGrcCallOptions.
+    Override options for specific RPCs with QGrpcCallOptions.
+
+    \code
+        QGrpcChannelOptions channelOpts;
+        // Apply common metadata to every RPC
+        channelOpts.setMetadata({
+            { "header" , "value1" },
+            { "header" , "value2" },
+        });
+        const auto &md = channelOpts.metadata(QtGrpc::MultiValue);
+        qDebug() << "Channel Metadata: " << md;
+
+        // Apply a 2-second deadline to every RPC
+        channelOpts.setDeadlineTimeout(2s);
+        qDebug() << "Channel timeout: " << channelOpts.deadlineTimeout();
+
+        // Configure SSL/TLS configuration
+        channelOpts.setSslConfiguration(QSslConfiguration());
+    \endcode
+
 
     \note It is up to the channel's implementation to determine the specifics
     of these options.
 */
 
-class QGrpcChannelOptionsPrivate : public QSharedData
+class QGrpcChannelOptionsPrivate : public QGrpcCommonOptions
 {
 public:
-    std::optional<std::chrono::milliseconds> timeout;
-    QHash<QByteArray, QByteArray> metadata;
     QGrpcSerializationFormat serializationFormat;
 #if QT_CONFIG(ssl)
     std::optional<QSslConfiguration> sslConfiguration;
@@ -101,55 +119,193 @@ QGrpcChannelOptions::operator QVariant() const
 }
 
 /*!
-    Sets the \a timeout for the channel and returns a reference to the updated
-    object.
+    \include qgrpccommonoptions.cpp set-deadline-timeout
 
-    \include qgrpccalloptions.cpp set-deadline-desc
+//! [channel-note]
+    \note Setting this field applies to all RPCs that operate on the channel,
+    except those overriden by
+//! [channel-note]
+    \l{QGrpcCallOptions::setDeadlineTimeout()}
 
-    \note The deadline set via the channel options applies to all RPCs that
-    operate on the channel, except those overridden by
-    QGrpcCallOptions::setDeadline().
+    \sa deadlineTimeout()
 */
 QGrpcChannelOptions &QGrpcChannelOptions::setDeadlineTimeout(std::chrono::milliseconds timeout)
 {
-    if (d_ptr->timeout == timeout)
+    if (d_ptr->deadlineTimeout() == timeout)
         return *this;
     d_ptr.detach();
     Q_D(QGrpcChannelOptions);
-    d->timeout = timeout;
+    d->setDeadlineTimeout(timeout);
     return *this;
+}
+
+#if QT_DEPRECATED_SINCE(6, 13)
+
+/*!
+    \fn const QHash<QByteArray, QByteArray> &QGrpcChannelOptions::metadata() const &
+    \fn QHash<QByteArray, QByteArray> QGrpcChannelOptions::metadata() &&
+    \deprecated [6.13] Use \l{metadata(QtGrpc::MultiValue_t)}{metadata(QtGrpc::MultiValue)} instead.
+
+    \include qgrpccommonoptions.cpp metadata
+
+    \sa metadata(QtGrpc::MultiValue_t), setMetadata()
+*/
+const QHash<QByteArray, QByteArray> &QGrpcChannelOptions::metadata() const & noexcept
+{
+    Q_D(const QGrpcChannelOptions);
+    return d->metadata();
+}
+QHash<QByteArray, QByteArray> QGrpcChannelOptions::metadata() &&
+{
+    Q_D(QGrpcChannelOptions);
+    if (d->ref.loadRelaxed() != 1) // return copy if shared
+        return d->metadata();
+    return std::move(*d_ptr).metadata();
 }
 
 /*!
     \fn QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(const QHash<QByteArray, QByteArray> &metadata)
     \fn QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(QHash<QByteArray, QByteArray> &&metadata)
+    \deprecated [6.13] Use the QMultiHash overload instead.
 
-    Sets the client \a metadata for the channel and returns a reference to the
-    updated object.
+    \include qgrpccommonoptions.cpp set-metadata
 
-    \include qtgrpc-shared.qdocinc http2-metadata-note
+//! [merge-md-note]
+    \note This metadata is included in every RPC made through the channel.
+    Channel metadata is \b{merged} with any call-specific metadata when the RPC
+    starts — see
+//! [merge-md-note]
+    \l{QGrpcCallOptions::setMetadata(const QMultiHash<QByteArray,
+    QByteArray>&)}{QGrpcCallOptions::setMetadata(QMultiHash)}
 
-    \note The metadata set via the channel options applies to all RPCs that
-    operate on the channel, except those overridden by
-    QGrpcCallOptions::setMetadata().
+    \sa metadata()
 */
 QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(const QHash<QByteArray, QByteArray> &metadata)
 {
-    if (d_ptr->metadata == metadata)
+    if (d_ptr->metadata() == metadata)
         return *this;
     d_ptr.detach();
     Q_D(QGrpcChannelOptions);
-    d->metadata = metadata;
+    d->setMetadata(metadata);
+    return *this;
+}
+QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(QHash<QByteArray, QByteArray> &&metadata)
+{
+    if (d_ptr->metadata() == metadata)
+        return *this;
+    d_ptr.detach();
+    Q_D(QGrpcChannelOptions);
+    d->setMetadata(std::move(metadata));
     return *this;
 }
 
-QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(QHash<QByteArray, QByteArray> &&metadata)
+#endif // QT_DEPRECATED_SINCE(6, 13)
+
+/*!
+    \since 6.10
+    \fn const QMultiHash<QByteArray, QByteArray> &QGrpcChannelOptions::metadata(QtGrpc::MultiValue_t) const &
+    \fn QMultiHash<QByteArray, QByteArray> QGrpcChannelOptions::metadata(QtGrpc::MultiValue_t) &&
+
+    \include qgrpccommonoptions.cpp metadata-multi
+
+    \sa {setMetadata(const QMultiHash<QByteArray, QByteArray>&)}{setMetadata}
+*/
+const QMultiHash<QByteArray, QByteArray> &
+QGrpcChannelOptions::metadata(QtGrpc::MultiValue_t tag) const & noexcept
 {
-    if (d_ptr->metadata == metadata)
+    Q_D(const QGrpcChannelOptions);
+    return d->metadata(tag);
+}
+
+QMultiHash<QByteArray, QByteArray>
+QGrpcChannelOptions::metadata(QtGrpc::MultiValue_t tag) &&
+{
+    Q_D(QGrpcChannelOptions);
+    if (d->ref.loadRelaxed() != 1)
+        return d->metadata(tag);
+    return std::move(*d_ptr).metadata(tag);
+}
+
+/*!
+    \since 6.10
+    \fn QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(const QMultiHash<QByteArray, QByteArray> &metadata)
+    \fn QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(QMultiHash<QByteArray, QByteArray> &&metadata)
+    \fn QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(std::initializer_list<std::pair<QByteArray, QByteArray>> list)
+
+    \include qgrpccommonoptions.cpp set-metadata-multi
+
+    \include qgrpcchanneloptions.cpp merge-md-note
+    \l{QGrpcCallOptions::setMetadata(const QMultiHash<QByteArray,
+    QByteArray>&)}{QGrpcCallOptions::setMetadata(QMultiHash)}
+
+    \sa metadata(QtGrpc::MultiValue_t)
+*/
+QGrpcChannelOptions &
+QGrpcChannelOptions::setMetadata(const QMultiHash<QByteArray, QByteArray> &metadata)
+{
+    if (d_ptr->metadata(QtGrpc::MultiValue) == metadata)
         return *this;
     d_ptr.detach();
     Q_D(QGrpcChannelOptions);
-    d->metadata = std::move(metadata);
+    d->setMetadata(metadata);
+    return *this;
+}
+QGrpcChannelOptions &QGrpcChannelOptions::setMetadata(QMultiHash<QByteArray, QByteArray> &&metadata)
+{
+    if (d_ptr->metadata(QtGrpc::MultiValue) == metadata)
+        return *this;
+    d_ptr.detach();
+    Q_D(QGrpcChannelOptions);
+    d->setMetadata(std::move(metadata));
+    return *this;
+}
+QGrpcChannelOptions &
+QGrpcChannelOptions::setMetadata(std::initializer_list<std::pair<QByteArray, QByteArray>> list)
+{
+    return setMetadata(QMultiHash<QByteArray, QByteArray>(list));
+}
+
+/*!
+    \include qgrpccommonoptions.cpp add-metadata
+
+    \include qgrpcchanneloptions.cpp merge-md-note
+    \l{QGrpcCallOptions::addMetadata()}
+*/
+QGrpcChannelOptions &QGrpcChannelOptions::addMetadata(QByteArrayView key, QByteArrayView value)
+{
+    if (d_ptr->containsMetadata(key, value))
+        return *this;
+    d_ptr.detach();
+    Q_D(QGrpcChannelOptions);
+    d->addMetadata(key.toByteArray(), value.toByteArray());
+    return *this;
+}
+
+/*!
+    \include qgrpccommonoptions.cpp filterServerMetadata
+    \sa QGrpcCallOptions::filterServerMetadata()
+*/
+std::optional<bool> QGrpcChannelOptions::filterServerMetadata() const noexcept
+{
+    Q_D(const QGrpcChannelOptions);
+    return d->filterServerMetadata();
+}
+
+/*!
+    \include qgrpccommonoptions.cpp setFilterServerMetadata
+
+    \include qgrpcchanneloptions.cpp channel-note
+    \l{QGrpcCallOptions::filterServerMetadata}
+
+    \sa QGrpcCallOptions::setFilterServerMetadata()
+*/
+QGrpcChannelOptions &QGrpcChannelOptions::setFilterServerMetadata(bool value)
+{
+    if (filterServerMetadata() == value)
+        return *this;
+    d_ptr.detach();
+    Q_D(QGrpcChannelOptions);
+    d->setFilterServerMetadata(value);
     return *this;
 }
 
@@ -179,31 +335,7 @@ QGrpcChannelOptions::setSerializationFormat(const QGrpcSerializationFormat &form
 std::optional<std::chrono::milliseconds> QGrpcChannelOptions::deadlineTimeout() const noexcept
 {
     Q_D(const QGrpcChannelOptions);
-    return d->timeout;
-}
-
-/*!
-    \fn const QHash<QByteArray, QByteArray> &QGrpcChannelOptions::metadata() const &
-    \fn QHash<QByteArray, QByteArray> QGrpcChannelOptions::metadata() &&
-
-    Returns the client metadata for the channel.
-
-    If this field is unset, returns empty metadata.
-
-    \include qtgrpc-shared.qdocinc http2-metadata-note
-*/
-const QHash<QByteArray, QByteArray> &QGrpcChannelOptions::metadata() const & noexcept
-{
-    Q_D(const QGrpcChannelOptions);
-    return d->metadata;
-}
-
-QHash<QByteArray, QByteArray> QGrpcChannelOptions::metadata() &&
-{
-    Q_D(QGrpcChannelOptions);
-    if (d->ref.loadRelaxed() != 1) // return copy if shared
-        return { d->metadata };
-    return std::move(d->metadata);
+    return d->deadlineTimeout();
 }
 
 /*!
@@ -260,7 +392,7 @@ QDebug operator<<(QDebug debug, const QGrpcChannelOptions &chOpts)
     const QDebugStateSaver save(debug);
     debug.nospace().noquote();
     debug << "QGrpcChannelOptions(deadline: " << chOpts.deadlineTimeout()
-          << ", metadata: " << chOpts.metadata()
+          << ", metadata: " << chOpts.metadata(QtGrpc::MultiValue)
           << ", serializationFormat: " << chOpts.serializationFormat().suffix()
           << ", sslConfiguration: ";
 #  if QT_CONFIG(ssl)

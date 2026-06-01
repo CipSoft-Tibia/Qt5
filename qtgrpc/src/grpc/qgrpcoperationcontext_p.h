@@ -43,8 +43,12 @@ public:
     QByteArray argument;
     QGrpcCallOptions options;
     std::shared_ptr<QAbstractProtobufSerializer> serializer;
-    QHash<QByteArray, QByteArray> serverMetadata;
     QMetaType responseMetaType;
+    QMultiHash<QByteArray, QByteArray> serverInitialMetadata;
+#if QT_DEPRECATED_SINCE(6, 13)
+    QHash<QByteArray, QByteArray> deprServerInitialMetadata;
+#endif
+    QMultiHash<QByteArray, QByteArray> serverTrailingMetadata;
 };
 
 QT_END_NAMESPACE

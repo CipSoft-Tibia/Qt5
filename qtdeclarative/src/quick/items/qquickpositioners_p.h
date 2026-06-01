@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKPOSITIONERS_P_H
 #define QQUICKPOSITIONERS_P_H
@@ -24,10 +25,11 @@ QT_REQUIRE_CONFIG(quick_positioners);
 #include "qquickitemviewtransition_p.h"
 #endif
 
-#include <private/qpodvector_p.h>
-
 #include <QtCore/qobject.h>
 #include <QtCore/qstring.h>
+
+#include <memory>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 
@@ -162,8 +164,8 @@ protected:
     {
     public :
         PositionedItem(QQuickItem *i);
-        ~PositionedItem();
         bool operator==(const PositionedItem &other) const { return other.item == item; }
+        bool operator==(const QQuickItem *other) const { return other == this->item; }
 
         qreal itemX() const;
         qreal itemY() const;
@@ -180,7 +182,7 @@ protected:
 
         QQuickItem *item;
 #if QT_CONFIG(quick_viewtransitions)
-        QQuickItemViewTransitionableItem *transitionableItem;
+        std::unique_ptr<QQuickItemViewTransitionableItem> transitionableItem;
 #endif
         int index;
         bool isNew;
@@ -192,15 +194,12 @@ protected:
         qreal bottomPadding;
     };
 
-    QPODVector<PositionedItem,8> positionedItems;
-    QPODVector<PositionedItem,8> unpositionedItems;//Still 'in' the positioner, just not positioned
+    std::vector<PositionedItem> positionedItems;
+    std::vector<PositionedItem> unpositionedItems; //Still 'in' the positioner, just not positioned
 
     void positionItem(qreal x, qreal y, PositionedItem *target);
     void positionItemX(qreal, PositionedItem *target);
     void positionItemY(qreal, PositionedItem *target);
-
-    void removePositionedItem(QPODVector<PositionedItem,8> *items, int index);
-    void clearPositionedItems(QPODVector<PositionedItem,8> *items);
 
 private:
     Q_DISABLE_COPY(QQuickBasePositioner)
@@ -314,9 +313,9 @@ Q_SIGNALS:
     void effectiveLayoutDirectionChanged();
     void rowSpacingChanged();
     void columnSpacingChanged();
-    Q_REVISION(2, 1) void horizontalAlignmentChanged(HAlignment alignment);
-    Q_REVISION(2, 1) void effectiveHorizontalAlignmentChanged(HAlignment alignment);
-    Q_REVISION(2, 1) void verticalAlignmentChanged(VAlignment alignment);
+    Q_REVISION(2, 1) void horizontalAlignmentChanged(QQuickGrid::HAlignment alignment);
+    Q_REVISION(2, 1) void effectiveHorizontalAlignmentChanged(QQuickGrid::HAlignment alignment);
+    Q_REVISION(2, 1) void verticalAlignmentChanged(QQuickGrid::VAlignment alignment);
 
 protected:
     void doPositioning(QSizeF *contentSize) override;

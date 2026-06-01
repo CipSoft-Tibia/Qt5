@@ -11,6 +11,7 @@
 #include <winioctl.h>
 #include <winusb.h>
 
+#include <algorithm>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -24,7 +25,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/not_fatal_until.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/scoped_blocking_call.h"
@@ -716,8 +716,7 @@ UsbDeviceHandleWin::Interface* UsbDeviceHandleWin::GetFirstInterfaceForFunction(
     Interface* interface) {
   switch (device_->driver_type()) {
     case UsbDeviceWin::DriverType::kUnsupported:
-      NOTREACHED_IN_MIGRATION();
-      return nullptr;
+      NOTREACHED();
     case UsbDeviceWin::DriverType::kWinUSB:
       // If WinUSB has been loaded for a composite device then all of its
       // interfaces must be treated as a single function.
@@ -1013,8 +1012,8 @@ UsbDeviceHandleWin::Request* UsbDeviceHandleWin::MakeRequest(
 
 std::unique_ptr<UsbDeviceHandleWin::Request> UsbDeviceHandleWin::UnlinkRequest(
     UsbDeviceHandleWin::Request* request_ptr) {
-  auto it = base::ranges::find(requests_, request_ptr,
-                               &std::unique_ptr<Request>::get);
+  auto it =
+      std::ranges::find(requests_, request_ptr, &std::unique_ptr<Request>::get);
   CHECK(it != requests_.end(), base::NotFatalUntil::M130);
   std::unique_ptr<Request> request = std::move(*it);
   requests_.erase(it);
@@ -1133,8 +1132,7 @@ void UsbDeviceHandleWin::ReportIsochronousError(
 bool UsbDeviceHandleWin::AllFunctionsEnumerated() const {
   switch (device_->driver_type()) {
     case UsbDeviceWin::DriverType::kUnsupported:
-      NOTREACHED_IN_MIGRATION();
-      return false;
+      NOTREACHED();
     case UsbDeviceWin::DriverType::kWinUSB:
       return true;
     case UsbDeviceWin::DriverType::kComposite:

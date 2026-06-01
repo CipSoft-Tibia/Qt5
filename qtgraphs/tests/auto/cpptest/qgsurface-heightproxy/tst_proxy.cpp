@@ -160,19 +160,46 @@ void tst_proxy::initializeProperties()
 
 void tst_proxy::invalidProperties()
 {
-    // Verify we're getting this warning
-    QTest::ignoreMessage(QtWarningMsg, "Height map file :/nonexistenttexture.jpg does not exist.");
+#ifdef Q_CC_MSVC
+    QTest::ignoreMessage(QtWarningMsg, "QHeightMapSurfaceDataProxy::setHeightMapFile height map file"
+                        " :/nonexistenttexture.jpg does not exist.");
+    QTest::ignoreMessage(QtWarningMsg, "QHeightMapSurfaceDataProxyPrivate::setMaxXValue tried to set"
+                        " maximum X to equal or smaller than minimum X for value range."
+                        " Minimum automatically adjusted to a valid one: 0.000000 --> -11.000000");
+    QTest::ignoreMessage(QtWarningMsg, "QHeightMapSurfaceDataProxyPrivate::setMaxZValue tried to set"
+                        " maximum Z to equal or smaller than minimum Z for value range."
+                        " Minimum automatically adjusted to a valid one: 0.000000 --> -11.000000");
+    QTest::ignoreMessage(QtWarningMsg, "QHeightMapSurfaceDataProxyPrivate::setMinXValue tried to set"
+                        " minimum X to equal or larger than maximum X for value range."
+                        " Maximum automatically adjusted to a valid one: -10.000000 --> 11.000000");
+    QTest::ignoreMessage(QtWarningMsg, "QHeightMapSurfaceDataProxyPrivate::setMinZValue tried to set"
+                        " minimum Z to equal or larger than maximum Z for value range."
+                        " Maximum automatically adjusted to a valid one: -10.000000 --> 11.000000");
+#else
+    QTest::ignoreMessage(QtWarningMsg, "setHeightMapFile height map file"
+                        " :/nonexistenttexture.jpg does not exist.");
+    QTest::ignoreMessage(QtWarningMsg, "setMaxXValue tried to set"
+                        " maximum X to equal or smaller than minimum X for value range."
+                        " Minimum automatically adjusted to a valid one: 0.000000 --> -11.000000");
+    QTest::ignoreMessage(QtWarningMsg, "setMaxZValue tried to set"
+                        " maximum Z to equal or smaller than minimum Z for value range."
+                        " Minimum automatically adjusted to a valid one: 0.000000 --> -11.000000");
+    QTest::ignoreMessage(QtWarningMsg, "setMinXValue tried to set"
+                        " minimum X to equal or larger than maximum X for value range."
+                        " Maximum automatically adjusted to a valid one: -10.000000 --> 11.000000");
+    QTest::ignoreMessage(QtWarningMsg, "setMinZValue tried to set"
+                        " minimum Z to equal or larger than maximum Z for value range."
+                        " Maximum automatically adjusted to a valid one: -10.000000 --> 11.000000");
+#endif
     m_proxy->setHeightMapFile(":/nonexistenttexture.jpg");
     QEXPECT_FAIL("", "Nonexistent file given", Continue);
     QCOMPARE(m_proxy->heightMapFile(), QString(":/nonexistenttexture.jpg"));
-
     m_proxy->setMaxXValue(-10.0f);
     m_proxy->setMaxZValue(-10.0f);
     QCOMPARE(m_proxy->maxXValue(), -10.0f);
     QCOMPARE(m_proxy->maxZValue(), -10.0f);
     QCOMPARE(m_proxy->minXValue(), -11.0f);
     QCOMPARE(m_proxy->minZValue(), -11.0f);
-
     m_proxy->setMinXValue(10.0f);
     m_proxy->setMinZValue(10.0f);
     QCOMPARE(m_proxy->maxXValue(), 11.0f);

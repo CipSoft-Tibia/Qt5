@@ -65,6 +65,10 @@ Item {
             name: "Scatter Properties"
             file: "ScatterProperties.qml"
         }
+        ListElement {
+            name: "Multi Axis"
+            file: "MultiAxis.qml"
+        }
     }
     ListModel {
         id: testsModel2

@@ -11,9 +11,11 @@
 #include <QtCore/private/wcharhelpers_win_p.h>
 
 #include "qfilesystementry_p.h"
-#include "private/qsystemlibrary_p.h"
 
 #include "qntdll_p.h"
+
+extern "C" NTSTATUS NTSYSCALLAPI NTAPI NtQueryVolumeInformationFile(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG,
+    FS_INFORMATION_CLASS);
 
 QT_BEGIN_NAMESPACE
 
@@ -209,59 +211,8 @@ bool QStorageInfoPrivate::queryStorageProperty()
     return result;
 }
 
-struct Helper
-{
-    QBasicMutex mutex;
-    QSystemLibrary ntdll {u"ntdll"_s};
-};
-Q_GLOBAL_STATIC(Helper, gNtdllHelper)
-
-inline QFunctionPointer resolveSymbol(QSystemLibrary *ntdll, const char *name)
-{
-    QFunctionPointer symbolFunctionPointer = ntdll->resolve(name);
-    if (Q_UNLIKELY(!symbolFunctionPointer))
-        qWarning("Failed to resolve the symbol: %s", name);
-    return symbolFunctionPointer;
-}
-
-#define GENERATE_SYMBOL(symbolName, returnType, ...) \
-using Qt##symbolName = returnType (NTAPI *) (__VA_ARGS__); \
-static Qt##symbolName qt##symbolName = nullptr;
-
-#define RESOLVE_SYMBOL(name) \
-    do { \
-        qt##name = reinterpret_cast<Qt##name>(resolveSymbol(ntdll, #name)); \
-        if (!qt##name) \
-            return false; \
-    } while (false)
-
-GENERATE_SYMBOL(RtlInitUnicodeString, void, PUNICODE_STRING, PCWSTR);
-GENERATE_SYMBOL(NtCreateFile, NTSTATUS, PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES,
-    PIO_STATUS_BLOCK, PLARGE_INTEGER, ULONG, ULONG, ULONG, ULONG, PVOID, ULONG);
-GENERATE_SYMBOL(NtQueryVolumeInformationFile, NTSTATUS, HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG,
-    FS_INFORMATION_CLASS);
-
 void QStorageInfoPrivate::queryFileFsSectorSizeInformation()
 {
-    static bool symbolsResolved = [](auto ntdllHelper) {
-        QMutexLocker locker(&ntdllHelper->mutex);
-        auto ntdll = &ntdllHelper->ntdll;
-        if (!ntdll->isLoaded()) {
-            if (!ntdll->load()) {
-                qWarning("Unable to load ntdll.dll.");
-                return false;
-            }
-        }
-
-        RESOLVE_SYMBOL(RtlInitUnicodeString);
-        RESOLVE_SYMBOL(NtCreateFile);
-        RESOLVE_SYMBOL(NtQueryVolumeInformationFile);
-
-        return true;
-    }(gNtdllHelper());
-    if (!symbolsResolved)
-        return;
-
     FILE_FS_SECTOR_SIZE_INFORMATION ffssi;
     memset(&ffssi, 0, sizeof(ffssi));
 
@@ -278,11 +229,11 @@ void QStorageInfoPrivate::queryFileFsSectorSizeInformation()
         path.append(u'\\');
 
     UNICODE_STRING name;
-    qtRtlInitUnicodeString(&name, qt_castToWchar(path));
+    ::RtlInitUnicodeString(&name, qt_castToWchar(path));
 
     InitializeObjectAttributes(&attrs, &name, 0, nullptr, nullptr);
 
-    NTSTATUS status = qtNtCreateFile(&handle,
+    NTSTATUS status = ::NtCreateFile(&handle,
                                      FILE_READ_ATTRIBUTES,
                                      &attrs,
                                      &isb,
@@ -297,7 +248,7 @@ void QStorageInfoPrivate::queryFileFsSectorSizeInformation()
         return;
 
     memset(&isb, 0, sizeof(isb));
-    status = qtNtQueryVolumeInformationFile(handle,
+    status = ::NtQueryVolumeInformationFile(handle,
                                             &isb,
                                             &ffssi,
                                             sizeof(ffssi),

@@ -34,7 +34,7 @@ qt_internal_add_example(simplefog)
 qt_internal_add_example(sceneeffects)
 qt_internal_add_example(volumeraycaster)
 qt_internal_add_example(virtualassistant)
-qt_internal_add_example(extensions/stenciloutline)
+qt_internal_add_example(extensions/stenciloutline3d)
 qt_internal_add_example(cascadedshadowmaps)
 qt_internal_add_example(orderindependenttransparency)
 
@@ -53,6 +53,8 @@ if(QT_FEATURE_quick3dxr_openxr)
     set(reused_dir_targets
         xr_interaction_shared
         xr_interaction_shared_init
+        xr_touch_shared
+        xr_touch_shared_init
     )
 endif()
 

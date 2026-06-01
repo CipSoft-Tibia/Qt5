@@ -1,6 +1,6 @@
 /* This script file handles the game logic */
-.import QtQuick.LocalStorage 2.0 as Sql
-.import QtQuick 2.0 as Quick
+.import QtQuick.LocalStorage as Sql
+.import QtQuick as Quick
 
 var maxColumn = 10;
 var maxRow = 15;

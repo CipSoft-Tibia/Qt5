@@ -52,6 +52,66 @@ TEST(fxstring, FXUTF8EncodeSurrogateErrorRecovery) {
 }
 #endif  // defined(WCHAR_T_IS_16_BIT)
 
+TEST(fxstring, ByteStringToInt) {
+  EXPECT_EQ(0, StringToInt(""));
+  EXPECT_EQ(0, StringToInt("0"));
+  EXPECT_EQ(-1, StringToInt("-1"));
+  EXPECT_EQ(2345, StringToInt("+2345"));
+  EXPECT_EQ(2345, StringToInt("2345"));
+  EXPECT_EQ(-2147483647, StringToInt("-2147483647"));
+  // The max value.
+  EXPECT_EQ(2147483647, StringToInt("2147483647"));
+  // The min value.
+  EXPECT_EQ(-2147483647 - 1, StringToInt("-2147483648"));
+
+  // Out of range values.
+  EXPECT_EQ(2147483647, StringToInt("2147483623423412348"));
+  EXPECT_EQ(2147483647, StringToInt("2147483648"));
+  EXPECT_EQ(-2147483647 - 1, StringToInt("-2147483652"));
+
+  // Other edge cases.
+  EXPECT_EQ(0, StringToInt("-"));
+  EXPECT_EQ(0, StringToInt("c--"));
+  EXPECT_EQ(0, StringToInt("--i"));
+  EXPECT_EQ(0, StringToInt("+"));
+  EXPECT_EQ(0, StringToInt("c++"));
+  EXPECT_EQ(0, StringToInt("++i"));
+  EXPECT_EQ(1, StringToInt("1beef"));
+  EXPECT_EQ(0, StringToInt("beef1"));
+  EXPECT_EQ(0, StringToInt("b33f"));
+  EXPECT_EQ(33, StringToInt("33f"));
+}
+
+TEST(fxstring, WideStringToInt) {
+  EXPECT_EQ(0, StringToInt(L""));
+  EXPECT_EQ(0, StringToInt(L"0"));
+  EXPECT_EQ(-1, StringToInt(L"-1"));
+  EXPECT_EQ(2345, StringToInt(L"2345"));
+  EXPECT_EQ(2345, StringToInt(L"+2345"));
+  EXPECT_EQ(-2147483647, StringToInt(L"-2147483647"));
+  // The max value.
+  EXPECT_EQ(2147483647, StringToInt(L"2147483647"));
+  // The min value.
+  EXPECT_EQ(-2147483647 - 1, StringToInt(L"-2147483648"));
+
+  // Out of range values.
+  EXPECT_EQ(2147483647, StringToInt(L"2147483623423412348"));
+  EXPECT_EQ(2147483647, StringToInt(L"2147483648"));
+  EXPECT_EQ(-2147483647 - 1, StringToInt(L"-2147483652"));
+
+  // Other edge cases.
+  EXPECT_EQ(0, StringToInt(L"-"));
+  EXPECT_EQ(0, StringToInt(L"c--"));
+  EXPECT_EQ(0, StringToInt(L"--i"));
+  EXPECT_EQ(0, StringToInt(L"+"));
+  EXPECT_EQ(0, StringToInt(L"c++"));
+  EXPECT_EQ(0, StringToInt(L"++i"));
+  EXPECT_EQ(1, StringToInt(L"1beef"));
+  EXPECT_EQ(0, StringToInt(L"beef1"));
+  EXPECT_EQ(0, StringToInt(L"b33f"));
+  EXPECT_EQ(33, StringToInt(L"33f"));
+}
+
 TEST(fxstring, ByteStringToFloat) {
   EXPECT_FLOAT_EQ(0.0f, StringToFloat(""));
   EXPECT_FLOAT_EQ(0.0f, StringToFloat("0"));
@@ -73,6 +133,21 @@ TEST(fxstring, ByteStringToFloat) {
 
   EXPECT_FLOAT_EQ(1.000000119f, StringToFloat("1.000000119"));
   EXPECT_FLOAT_EQ(1.999999881f, StringToFloat("1.999999881"));
+
+  EXPECT_FLOAT_EQ(0.25f, StringToFloat(L"+0.25"));
+
+  EXPECT_FLOAT_EQ(1.2e34f, StringToFloat("1.2e34"));
+
+  EXPECT_FLOAT_EQ(std::numeric_limits<float>::infinity(),
+                  StringToFloat("999999999999999999999999999999999999999"));
+  EXPECT_FLOAT_EQ(-std::numeric_limits<float>::infinity(),
+                  StringToFloat("-999999999999999999999999999999999999999"));
+
+  EXPECT_FLOAT_EQ(0.0f, StringToFloat("invalid"));
+
+  // Test the exact float value. Use EXPECT_EQ, which does an exact comparison,
+  // instead of EXPECT_FLOAT_EQ, which allows slight precision error.
+  EXPECT_EQ(38.89528656005859375f, StringToFloat("38.895285"));
 }
 
 TEST(fxstring, WideStringToFloat) {
@@ -96,52 +171,121 @@ TEST(fxstring, WideStringToFloat) {
 
   EXPECT_FLOAT_EQ(1.000000119f, StringToFloat(L"1.000000119"));
   EXPECT_FLOAT_EQ(1.999999881f, StringToFloat(L"1.999999881"));
+
+  EXPECT_FLOAT_EQ(0.25f, StringToFloat(L"+0.25"));
+
+  EXPECT_FLOAT_EQ(1.2e34f, StringToFloat(L"1.2e34"));
+
+  EXPECT_FLOAT_EQ(std::numeric_limits<float>::infinity(),
+                  StringToFloat(L"999999999999999999999999999999999999999"));
+  EXPECT_FLOAT_EQ(-std::numeric_limits<float>::infinity(),
+                  StringToFloat(L"-999999999999999999999999999999999999999"));
+
+  EXPECT_FLOAT_EQ(0.0f, StringToFloat(L"invalid"));
+
+  // Test the exact float value. Use EXPECT_EQ, which does an exact comparison,
+  // instead of EXPECT_FLOAT_EQ, which allows slight precision error.
+  EXPECT_EQ(38.89528656005859375f, StringToFloat(L"38.895285"));
 }
 
 TEST(fxstring, ByteStringToDouble) {
-  EXPECT_FLOAT_EQ(0.0, StringToDouble(""));
-  EXPECT_FLOAT_EQ(0.0, StringToDouble("0"));
-  EXPECT_FLOAT_EQ(0.0, StringToDouble("0.0"));
-  EXPECT_FLOAT_EQ(0.0, StringToDouble("-0.0"));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble(""));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble("0"));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble("0.0"));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble("-0.0"));
 
-  EXPECT_FLOAT_EQ(0.25, StringToDouble("0.25"));
-  EXPECT_FLOAT_EQ(-0.25, StringToDouble("-0.25"));
+  EXPECT_DOUBLE_EQ(0.25, StringToDouble("0.25"));
+  EXPECT_DOUBLE_EQ(-0.25, StringToDouble("-0.25"));
 
-  EXPECT_FLOAT_EQ(100.0, StringToDouble("100"));
-  EXPECT_FLOAT_EQ(100.0, StringToDouble("100.0"));
-  EXPECT_FLOAT_EQ(100.0, StringToDouble("    100.0"));
-  EXPECT_FLOAT_EQ(-100.0, StringToDouble("-100.0000"));
+  EXPECT_DOUBLE_EQ(100.0, StringToDouble("100"));
+  EXPECT_DOUBLE_EQ(100.0, StringToDouble("100.0"));
+  EXPECT_DOUBLE_EQ(100.0, StringToDouble("    100.0"));
+  EXPECT_DOUBLE_EQ(-100.0, StringToDouble("-100.0000"));
 
-  EXPECT_FLOAT_EQ(3.402823e+38,
-                  StringToDouble("340282300000000000000000000000000000000"));
-  EXPECT_FLOAT_EQ(-3.402823e+38,
-                  StringToDouble("-340282300000000000000000000000000000000"));
+  EXPECT_DOUBLE_EQ(3.402823e+38,
+                   StringToDouble("340282300000000000000000000000000000000"));
+  EXPECT_DOUBLE_EQ(-3.402823e+38,
+                   StringToDouble("-340282300000000000000000000000000000000"));
 
-  EXPECT_FLOAT_EQ(1.000000119, StringToDouble("1.000000119"));
-  EXPECT_FLOAT_EQ(1.999999881, StringToDouble("1.999999881"));
+  EXPECT_DOUBLE_EQ(1.000000119, StringToDouble("1.000000119"));
+  EXPECT_DOUBLE_EQ(1.999999881, StringToDouble("1.999999881"));
+
+  EXPECT_DOUBLE_EQ(0.25, StringToDouble("+0.25"));
+
+  EXPECT_DOUBLE_EQ(1.2e34, StringToDouble("1.2e34"));
+
+  EXPECT_DOUBLE_EQ(
+      std::numeric_limits<double>::infinity(),
+      StringToDouble(
+          "99999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999"));
+  EXPECT_DOUBLE_EQ(
+      -std::numeric_limits<double>::infinity(),
+      StringToDouble(
+          "-9999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999999999999999999999999999999999"
+          "99999999999999999999999999999999999999"));
+
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble("invalid"));
+
+  // Test the exact double value. Use EXPECT_EQ, which does an exact comparison,
+  // instead of EXPECT_DOUBLE_EQ, which allows slight precision error.
+  EXPECT_EQ(1.9998779296892903, StringToDouble("1.99987792968929034"));
 }
 
 TEST(fxstring, WideStringToDouble) {
-  EXPECT_FLOAT_EQ(0.0, StringToDouble(L""));
-  EXPECT_FLOAT_EQ(0.0, StringToDouble(L"0"));
-  EXPECT_FLOAT_EQ(0.0, StringToDouble(L"0.0"));
-  EXPECT_FLOAT_EQ(0.0, StringToDouble(L"-0.0"));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble(L""));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble(L"0"));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble(L"0.0"));
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble(L"-0.0"));
 
-  EXPECT_FLOAT_EQ(0.25, StringToDouble(L"0.25"));
-  EXPECT_FLOAT_EQ(-0.25, StringToDouble(L"-0.25"));
+  EXPECT_DOUBLE_EQ(0.25, StringToDouble(L"0.25"));
+  EXPECT_DOUBLE_EQ(-0.25, StringToDouble(L"-0.25"));
 
-  EXPECT_FLOAT_EQ(100.0, StringToDouble(L"100"));
-  EXPECT_FLOAT_EQ(100.0, StringToDouble(L"100.0"));
-  EXPECT_FLOAT_EQ(100.0, StringToDouble(L"    100.0"));
-  EXPECT_FLOAT_EQ(-100.0, StringToDouble(L"-100.0000"));
+  EXPECT_DOUBLE_EQ(100.0, StringToDouble(L"100"));
+  EXPECT_DOUBLE_EQ(100.0, StringToDouble(L"100.0"));
+  EXPECT_DOUBLE_EQ(100.0, StringToDouble(L"    100.0"));
+  EXPECT_DOUBLE_EQ(-100.0, StringToDouble(L"-100.0000"));
 
-  EXPECT_FLOAT_EQ(3.402823e+38,
-                  StringToDouble(L"340282300000000000000000000000000000000"));
-  EXPECT_FLOAT_EQ(-3.402823e+38,
-                  StringToDouble(L"-340282300000000000000000000000000000000"));
+  EXPECT_DOUBLE_EQ(3.402823e+38,
+                   StringToDouble(L"340282300000000000000000000000000000000"));
+  EXPECT_DOUBLE_EQ(-3.402823e+38,
+                   StringToDouble(L"-340282300000000000000000000000000000000"));
 
-  EXPECT_FLOAT_EQ(1.000000119, StringToDouble(L"1.000000119"));
-  EXPECT_FLOAT_EQ(1.999999881, StringToDouble(L"1.999999881"));
+  EXPECT_DOUBLE_EQ(1.000000119, StringToDouble(L"1.000000119"));
+  EXPECT_DOUBLE_EQ(1.999999881, StringToDouble(L"1.999999881"));
+
+  EXPECT_DOUBLE_EQ(0.25, StringToDouble(L"+0.25"));
+
+  EXPECT_DOUBLE_EQ(1.2e34, StringToDouble(L"1.2e34"));
+
+  EXPECT_DOUBLE_EQ(
+      std::numeric_limits<double>::infinity(),
+      StringToDouble(
+          L"9999999999999999999999999999999999999999999999999999999999999999999"
+          L"9999999999999999999999999999999999999999999999999999999999999999999"
+          L"9999999999999999999999999999999999999999999999999999999999999999999"
+          L"9999999999999999999999999999999999999999999999999999999999999999999"
+          L"999999999999999999999999999999999999999999"));
+  EXPECT_DOUBLE_EQ(
+      -std::numeric_limits<double>::infinity(),
+      StringToDouble(
+          L"-999999999999999999999999999999999999999999999999999999999999999999"
+          L"9999999999999999999999999999999999999999999999999999999999999999999"
+          L"9999999999999999999999999999999999999999999999999999999999999999999"
+          L"9999999999999999999999999999999999999999999999999999999999999999999"
+          L"999999999999999999999999999999999999999999"));
+
+  EXPECT_DOUBLE_EQ(0.0, StringToDouble(L"invalid"));
+
+  // Test the exact double value. Use EXPECT_EQ, which does an exact comparison,
+  // instead of EXPECT_DOUBLE_EQ, which allows slight precision error.
+  EXPECT_EQ(1.9998779296892903, StringToDouble(L"1.99987792968929034"));
 }
 
 TEST(fxstring, SplitByteString) {

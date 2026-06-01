@@ -15,21 +15,21 @@ void SortFilterModel::updateFilterString(const QString &str)
 {
     beginFilterChange();
     m_filterString = str;
-    invalidateFilter();
+    endFilterChange();
 }
 
 void SortFilterModel::updateShowInView(bool show)
 {
     beginFilterChange();
     m_showInView = show;
-    invalidateFilter();
+    endFilterChange();
 }
 
 void SortFilterModel::updateShowInUse(bool show)
 {
     beginFilterChange();
     m_showInUse = show;
-    invalidateFilter();
+    endFilterChange();
 }
 
 void SortFilterModel::updateSelectedSystems(int id, bool show)
@@ -39,7 +39,7 @@ void SortFilterModel::updateSelectedSystems(int id, bool show)
         m_selectedSystems.insert(id);
     else
         m_selectedSystems.remove(id);
-    invalidateFilter();
+    endFilterChange();
 }
 
 void SortFilterModel::updateSortRoles(int role, bool use)

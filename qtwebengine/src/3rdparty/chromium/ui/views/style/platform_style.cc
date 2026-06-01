@@ -5,7 +5,6 @@
 #include "ui/views/style/platform_style.h"
 
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/range/range.h"
 #include "ui/gfx/utf16_indexing.h"
@@ -23,38 +22,7 @@
 
 namespace views {
 
-#if BUILDFLAG(IS_WIN)
-const bool PlatformStyle::kIsOkButtonLeading = true;
-#else
-const bool PlatformStyle::kIsOkButtonLeading = false;
-#endif
-
 #if !BUILDFLAG(IS_MAC)
-
-const int PlatformStyle::kMinLabelButtonWidth = 70;
-const int PlatformStyle::kMinLabelButtonHeight = 33;
-const bool PlatformStyle::kDialogDefaultButtonCanBeCancel = true;
-const bool PlatformStyle::kSelectWordOnRightClick = false;
-const bool PlatformStyle::kSelectAllOnRightClickWhenUnfocused = false;
-const Button::KeyClickAction PlatformStyle::kKeyClickActionOnSpace =
-    Button::KeyClickAction::kOnKeyRelease;
-const bool PlatformStyle::kReturnClicksFocusedControl = true;
-const bool PlatformStyle::kTableViewSupportsKeyboardNavigationByCell = true;
-const bool PlatformStyle::kTreeViewSelectionPaintsEntireRow = false;
-const bool PlatformStyle::kUseRipples = true;
-const bool PlatformStyle::kTextfieldUsesDragCursorWhenDraggable = true;
-const bool PlatformStyle::kInactiveWidgetControlsAppearDisabled = false;
-const View::FocusBehavior PlatformStyle::kDefaultFocusBehavior =
-    View::FocusBehavior::ALWAYS;
-
-// Linux clips bubble windows that extend outside their parent window
-// bounds.
-const bool PlatformStyle::kAdjustBubbleIfOffscreen =
-#if BUILDFLAG(IS_LINUX)
-    false;
-#else
-    true;
-#endif
 
 // static
 std::unique_ptr<ScrollBar> PlatformStyle::CreateScrollBar(

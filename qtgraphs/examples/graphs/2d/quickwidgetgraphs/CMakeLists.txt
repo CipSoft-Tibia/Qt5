@@ -43,13 +43,6 @@ target_link_libraries(quickwidgetgraphs PUBLIC
     Qt::Widgets
 )
 
-qt6_add_qml_module(quickwidgetgraphs
-    URI QuickWidgetExample
-    NO_RESOURCE_TARGET_PATH
-    QML_FILES
-        qml/quickwidgetgraphs/main.qml
-)
-
 install(TARGETS quickwidgetgraphs
     RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
     BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"

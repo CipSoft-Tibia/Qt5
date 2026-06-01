@@ -10,7 +10,7 @@ import dataclasses
 import datetime as dt
 from typing import Iterator
 
-from crossbench import cli_helper
+from crossbench.parse import DurationParser, NumberParser
 
 
 class PlaybackController(abc.ABC):
@@ -26,13 +26,13 @@ class PlaybackController(abc.ABC):
           f"Missing unit suffix: '{value}'\n"
           "Use 'x' for repetitions or time unit 's', 'm', 'h'")
     if value[-1] == "x":
-      loops = cli_helper.parse_positive_int(value[:-1], "Repeat-count")
+      loops = NumberParser.positive_int(value[:-1], "Repeat-count")
       return cls.repeat(loops)
-    duration = cli_helper.Duration.parse_non_zero(value)
+    duration = DurationParser.positive_duration(value)
     return cls.timeout(duration)
 
   @classmethod
-  def default(cls):
+  def default(cls) -> PlaybackController:
     return cls.once()
 
   @classmethod
@@ -70,10 +70,11 @@ class TimeoutPlaybackController(PlaybackController):
 
   def __iter__(self) -> Iterator[None]:
     end = dt.datetime.now() + self.duration
-    while True:
+    yield None
+    if not self.duration:
+      return
+    while dt.datetime.now() <= end:
       yield None
-      if dt.datetime.now() > end:
-        return
 
 
 @dataclasses.dataclass(frozen=True)
@@ -81,7 +82,7 @@ class RepeatPlaybackController(PlaybackController):
   count : int
 
   def __post_init__(self):
-    cli_helper.parse_positive_int(self.count, " page playback count")
+    NumberParser.positive_int(self.count, " page playback count")
 
   def __iter__(self) -> Iterator[None]:
     for _ in range(self.count):

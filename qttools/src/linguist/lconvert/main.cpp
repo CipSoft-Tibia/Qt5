@@ -14,12 +14,14 @@
 
 QT_USE_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 static int usage(const QStringList &args)
 {
     Q_UNUSED(args);
 
     QString loaders;
-    QString line(QLatin1String("    %1 - %2\n"));
+    QString line("    %1 - %2\n"_L1);
     for (const Translator::FileFormat &format : std::as_const(Translator::registeredFileFormats()))
         loaders += line.arg(format.extension, -5).arg(format.description());
 
@@ -69,6 +71,8 @@ static int usage(const QStringList &args)
         "           Drop untranslated messages.\n\n"
         "    -sort-contexts\n"
         "           Sort contexts in output TS file alphabetically.\n\n"
+        "    -sort-messages\n"
+        "           Sort messages in a context alphabetically in TS files.\n\n"
         "    -locations {absolute|relative|none}\n"
         "           Override how source code references are saved in TS files.\n"
         "           Default is absolute.\n\n"
@@ -100,10 +104,9 @@ int main(int argc, char *argv[])
 #ifndef Q_OS_WIN32
     QTranslator translator;
     QTranslator qtTranslator;
-    QString sysLocale = QLocale::system().name();
     QString resourceDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
-    if (translator.load(QLatin1String("linguist_") + sysLocale, resourceDir)
-        && qtTranslator.load(QLatin1String("qt_") + sysLocale, resourceDir)) {
+    if (translator.load("linguist_en"_L1, resourceDir)
+        && qtTranslator.load("qt_en"_L1, resourceDir)) {
         app.installTranslator(&translator);
         app.installTranslator(&qtTranslator);
     }
@@ -112,9 +115,9 @@ int main(int argc, char *argv[])
 
     QStringList args = app.arguments();
     QList<File> inFiles;
-    QString inFormat(QLatin1String("auto"));
+    QString inFormat("auto"_L1);
     QString outFileName;
-    QString outFormat(QLatin1String("auto"));
+    QString outFormat("auto"_L1);
     QString targetLanguage;
     QString sourceLanguage;
     bool dropTranslations = false;
@@ -130,74 +133,73 @@ int main(int argc, char *argv[])
     Translator tr;
 
     for (int i = 1; i < args.size(); ++i) {
-        if (args[i].startsWith(QLatin1String("--")))
+        const QString &arg = args.at(i);
+        if (arg.startsWith("--"_L1))
             args[i].remove(0, 1);
-        if (args[i] == QLatin1String("-o")
-         || args[i] == QLatin1String("-output-file")) {
+        if (arg == "-o"_L1 || arg == "-output-file"_L1) {
             if (++i >= args.size())
                 return usage(args);
             outFileName = args[i];
-        } else if (args[i] == QLatin1String("-of")
-                || args[i] == QLatin1String("-output-format")) {
+        } else if (arg == "-of"_L1 || arg == "-output-format"_L1) {
             if (++i >= args.size())
                 return usage(args);
             outFormat = args[i];
-        } else if (args[i] == QLatin1String("-i")
-                || args[i] == QLatin1String("-input-file")) {
+        } else if (arg == "-i"_L1 || arg == "-input-file"_L1) {
             if (++i >= args.size())
                 return usage(args);
             File file;
             file.name = args[i];
             file.format = inFormat;
             inFiles.append(file);
-        } else if (args[i] == QLatin1String("-if")
-                || args[i] == QLatin1String("-input-format")) {
+        } else if (arg == "-if"_L1 || arg == "-input-format"_L1) {
             if (++i >= args.size())
                 return usage(args);
             inFormat = args[i];
-        } else if (args[i] == QLatin1String("-drop-tag") || args[i] == QLatin1String("-drop-tags")) {
+        } else if (arg == "-drop-tag"_L1 || arg == "-drop-tags"_L1) {
             if (++i >= args.size())
                 return usage(args);
             cd.m_dropTags.append(args[i]);
-        } else if (args[i] == QLatin1String("-drop-translations")) {
+        } else if (arg == "-drop-translations"_L1) {
             dropTranslations = true;
-        } else if (args[i] == QLatin1String("-target-language")) {
+        } else if (arg == "-target-language"_L1) {
             if (++i >= args.size())
                 return usage(args);
             targetLanguage = args[i];
-        } else if (args[i] == QLatin1String("-source-language")) {
+        } else if (arg == "-source-language"_L1) {
             if (++i >= args.size())
                 return usage(args);
             sourceLanguage = args[i];
-        } else if (args[i].startsWith(QLatin1String("-h"))) {
+        } else if (arg.startsWith("-h"_L1)) {
             usage(args);
             return 0;
-        } else if (args[i] == QLatin1String("-no-obsolete")) {
+        } else if (arg == "-no-obsolete"_L1) {
             noObsolete = true;
-        } else if (args[i] == QLatin1String("-no-finished")) {
+        } else if (arg == "-no-finished"_L1) {
             noFinished = true;
-        } else if (args[i] == QLatin1String("-no-untranslated")) {
+        } else if (arg == "-no-untranslated"_L1) {
             noUntranslated = true;
-        } else if (args[i] == QLatin1String("-sort-contexts")) {
+        } else if (arg == "-sort-contexts"_L1) {
             cd.m_sortContexts = true;
-        } else if (args[i] == QLatin1String("-locations")) {
+        } else if (arg == "-sort-messages"_L1) {
+            cd.m_sortMessages = true;
+        } else if (arg == "-locations"_L1) {
             if (++i >= args.size())
                 return usage(args);
-            if (args[i] == QLatin1String("none"))
+            if (args[i] == "none"_L1)
                 locations = Translator::NoLocations;
-            else if (args[i] == QLatin1String("relative"))
+            else if (args[i] == "relative"_L1)
                 locations = Translator::RelativeLocations;
-            else if (args[i] == QLatin1String("absolute"))
+            else if (args[i] == "absolute"_L1)
                 locations = Translator::AbsoluteLocations;
             else
                 return usage(args);
-        } else if (args[i] == QLatin1String("-no-ui-lines")) {
+        } else if (arg == "-no-ui-lines"_L1) {
             noUiLines = true;
-        } else if (args[i] == QLatin1String("-pluralonly")) {
+        } else if (arg == "-pluralonly"_L1) {
             pluralOnly = true;
-        } else if (args[i] == QLatin1String("-verbose")) {
+        } else if (arg == "-verbose"_L1) {
             verbose = true;
-        } else if (args[i].startsWith(QLatin1Char('-'))) {
+        } else if (arg.startsWith(u'-')) {
             return usage(args);
         } else {
             File file;

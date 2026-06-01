@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickplatformcolordialog_p.h"
 
@@ -10,6 +11,7 @@
 #include <QtQml/qqmlcomponent.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuickTemplates2/private/qquickdialog_p.h>
+#include <QtQuickTemplates2/private/qquickdialog_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopupanchors_p.h>
 
@@ -104,12 +106,13 @@ bool QQuickPlatformColorDialog::show(Qt::WindowFlags flags, Qt::WindowModality m
 
     auto popupPrivate = QQuickPopupPrivate::get(m_dialog);
     popupPrivate->getAnchors()->setCenterIn(m_dialog->parentItem());
+    popupPrivate->setPopupWindowFlags(flags);
 
     QSharedPointer<QColorDialogOptions> options = QPlatformColorDialogHelper::options();
 
     m_dialog->setTitle(options->windowTitle());
     m_dialog->setOptions(options);
-
+    m_dialog->setWindowModality(modality);
     m_dialog->open();
     return true;
 }

@@ -13,22 +13,26 @@
 // limitations under the License.
 
 import m from 'mithril';
-import {raf} from '../core/raf_scheduler';
+import {assertExists} from '../base/logging';
+import {AppImpl} from '../core/app_impl';
+import {HotkeyGlyphs} from '../widgets/hotkey_glyphs';
 import {showModal} from '../widgets/modal';
 import {Spinner} from '../widgets/spinner';
-import {globals} from './globals';
 import {
   KeyboardLayoutMap,
   nativeKeyboardLayoutMap,
   NotSupportedError,
-} from './keyboard_layout_map';
-import {KeyMapping} from './pan_and_zoom_handler';
-import {HotkeyGlyphs} from '../widgets/hotkey_glyphs';
-import {assertExists} from '../base/logging';
+} from '../base/keyboard_layout_map';
+import {KeyMapping} from './viewer_page/wasd_navigation_handler';
+import {raf} from '../core/raf_scheduler';
 
 export function toggleHelp() {
-  globals.logging.logEvent('User Actions', 'Show help');
-  showHelp();
+  AppImpl.instance.analytics.logEvent('User Actions', 'Show help');
+  showModal({
+    title: 'Perfetto Help',
+    content: () => m(KeyMappingsHelp),
+    buttons: [],
+  });
 }
 
 function keycap(glyph: m.Children): m.Children {
@@ -75,32 +79,7 @@ class KeyMappingsHelp implements m.ClassComponent {
       });
   }
 
-  view(_: m.Vnode): m.Children {
-    const queryPageInstructions = globals.hideSidebar
-      ? []
-      : [
-          m('h2', 'Making SQL queries from the query page'),
-          m(
-            'table',
-            m(
-              'tr',
-              m('td', keycap('Ctrl'), ' + ', keycap('Enter')),
-              m('td', 'Execute query'),
-            ),
-            m(
-              'tr',
-              m(
-                'td',
-                keycap('Ctrl'),
-                ' + ',
-                keycap('Enter'),
-                ' (with selection)',
-              ),
-              m('td', 'Execute selection'),
-            ),
-          ),
-        ];
-
+  view(): m.Children {
     return m(
       '.help',
       m('h2', 'Navigation'),
@@ -163,11 +142,24 @@ class KeyMappingsHelp implements m.ClassComponent {
           ),
         ),
       ),
-      ...queryPageInstructions,
+      m('h2', 'Making SQL queries from the query page'),
+      m(
+        'table',
+        m(
+          'tr',
+          m('td', keycap('Ctrl'), ' + ', keycap('Enter')),
+          m('td', 'Execute query'),
+        ),
+        m(
+          'tr',
+          m('td', keycap('Ctrl'), ' + ', keycap('Enter'), ' (with selection)'),
+          m('td', 'Execute selection'),
+        ),
+      ),
       m('h2', 'Command Hotkeys'),
       m(
         'table',
-        globals.commandManager.commands
+        AppImpl.instance.commands.commands
           .filter(({defaultHotkey}) => defaultHotkey)
           .sort((a, b) => a.name.localeCompare(b.name))
           .map(({defaultHotkey, name}) => {
@@ -188,12 +180,4 @@ class KeyMappingsHelp implements m.ClassComponent {
       return keycap(m(Spinner));
     }
   }
-}
-
-function showHelp() {
-  showModal({
-    title: 'Perfetto Help',
-    content: () => m(KeyMappingsHelp),
-    buttons: [],
-  });
 }

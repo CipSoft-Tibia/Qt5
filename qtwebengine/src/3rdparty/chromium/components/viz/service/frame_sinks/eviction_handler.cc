@@ -4,8 +4,6 @@
 
 #include "components/viz/service/frame_sinks/eviction_handler.h"
 
-#include <GLES2/gl2.h>
-
 #include <utility>
 
 #include "base/functional/callback_helpers.h"
@@ -16,7 +14,9 @@
 #include "components/viz/service/display/display.h"
 #include "components/viz/service/frame_sinks/compositor_frame_sink_support.h"
 #include "components/viz/service/frame_sinks/frame_sink_manager_impl.h"
+#include "gpu/command_buffer/common/shared_image_usage.h"
 #include "ui/gfx/video_types.h"
+#include "ui/gl/gl_bindings.h"
 
 namespace viz {
 
@@ -133,6 +133,55 @@ void EvictionHandler::TakeSnapshotForEviction(const SurfaceId& to_evict,
   display_->ForceImmediateDrawAndSwapIfPossible();
 }
 
+std::optional<TransferableResource>
+EvictionHandler::CreateTransferableResourceFromCopyOutputResult(
+    CopyOutputResult* copy_result,
+    scoped_refptr<gpu::ClientSharedImage>& output_software_shared_image) {
+  if (!copy_result || copy_result->IsEmpty()) {
+    return std::nullopt;
+  }
+
+  if (copy_result->GetTextureResult()) {
+    return TransferableResource::MakeGpu(
+        copy_result->GetTextureResult()->mailbox, GL_TEXTURE_2D,
+        gpu::SyncToken(), copy_result->size(), SinglePlaneFormat::kRGBA_8888,
+        /*is_overlay_candidate=*/false,
+        TransferableResource::ResourceSource::kStaleContent);
+  } else if (copy_result->destination() ==
+             CopyOutputResult::Destination::kSystemMemory) {
+    auto* frame_sink_manager = support_->frame_sink_manager();
+    if (!frame_sink_manager) {
+      return std::nullopt;
+    }
+    auto* sii = frame_sink_manager->GetSharedImageInterface();
+    if (!sii) {
+      return std::nullopt;
+    }
+
+    auto scoped_bitmap = copy_result->ScopedAccessSkBitmap();
+    auto bitmap = scoped_bitmap.bitmap();
+    auto size = gfx::Size(bitmap.width(), bitmap.height());
+    DCHECK_EQ(size, copy_result->size());
+
+    auto shared_image = sii->CreateSharedImageForSoftwareCompositor(
+        {SinglePlaneFormat::kRGBA_8888, size, gfx::ColorSpace(),
+         gpu::SHARED_IMAGE_USAGE_CPU_WRITE_ONLY,
+         "CopyOutputResultAsSoftwareSharedImage"});
+    output_software_shared_image = shared_image;
+
+    SkImageInfo info = SkImageInfo::MakeN32Premul(size.width(), size.height());
+    auto mapping = shared_image->Map();
+    bitmap.readPixels(info, mapping->GetMemoryForPlane(0).data(),
+                      info.minRowBytes(), 0, 0);
+
+    return TransferableResource::MakeSoftwareSharedImage(
+        shared_image, shared_image->creation_sync_token(), size,
+        SinglePlaneFormat::kRGBA_8888,
+        TransferableResource::ResourceSource::kStaleContent);
+  }
+  return std::nullopt;
+}
+
 void EvictionHandler::SubmitPlaceholderContentForEviction(
     SurfaceId to_evict,
     int64_t snapshot_seq_id,
@@ -175,15 +224,11 @@ void EvictionHandler::SubmitPlaceholderContentForEviction(
                      /*blend=*/SkBlendMode::kSrcOver, /*sorting_context=*/0,
                      /*layer_id=*/0u, /*fast_rounded_corner=*/false);
 
-  // TODO(edcourtney): Handle this for software rendering, where there is no
-  // texture result but a SkBitmap instead.
-  if (copy_result && !copy_result->IsEmpty() &&
-      copy_result->GetTextureResult()) {
-    auto resource = TransferableResource::MakeGpu(
-        copy_result->GetTextureResult()->mailbox, GL_TEXTURE_2D,
-        gpu::SyncToken(), copy_result->size(), SinglePlaneFormat::kRGBA_8888,
-        /*is_overlay_candidate=*/false,
-        TransferableResource::ResourceSource::kStaleContent);
+  scoped_refptr<gpu::ClientSharedImage> software_shared_image;
+  auto resource_opt = CreateTransferableResourceFromCopyOutputResult(
+      copy_result.get(), software_shared_image);
+  if (resource_opt) {
+    auto resource = resource_opt.value();
 
     // The first ref will come from `ReceiveFromChild`.
     resource.id = id_tracker_->AllocId(
@@ -201,14 +246,17 @@ void EvictionHandler::SubmitPlaceholderContentForEviction(
         /*premultiplied=*/false, /*top_left=*/gfx::PointF(0.0, 0.0),
         /*bottom_right=*/gfx::PointF(1.0, 1.0),
         /*background=*/SkColors::kBlack,
-        /*flipped=*/false,
         /*nearest=*/false,
         /*secure_output=*/false, gfx::ProtectedVideoType::kClear);
 
     // It's possible that if the eviction process is cancelled and then started
     // again quickly, the previous copy request may still be in use.
     DCHECK(!base::Contains(copy_output_results_, resource.id));
-    copy_output_results_[resource.id] = std::move(copy_result);
+    if (software_shared_image) {
+      copy_output_results_[resource.id] = std::move(software_shared_image);
+    } else {
+      copy_output_results_[resource.id] = std::move(copy_result);
+    }
   } else {
     SolidColorDrawQuad* solid_quad =
         render_pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();

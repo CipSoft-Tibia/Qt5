@@ -29,16 +29,24 @@ class AutofillAgentTestApi {
     agent_->FocusedElementChanged(new_focused_element);
   }
 
-  void QueryAutofillSuggestions(
-      const blink::WebFormControlElement& element,
-      AutofillSuggestionTriggerSource trigger_source) {
-    agent_->QueryAutofillSuggestions(element, trigger_source);
+  void QueryAutofillSuggestions(const blink::WebFormControlElement& element,
+                                AutofillSuggestionTriggerSource trigger_source,
+                                const SynchronousFormCache& form_cache) {
+    agent_->QueryAutofillSuggestions(element, trigger_source, form_cache);
   }
 
   void ShowSuggestionsForContentEditable(
       const blink::WebElement& element,
       AutofillSuggestionTriggerSource trigger_source) {
     agent_->ShowSuggestionsForContentEditable(element, trigger_source);
+  }
+
+  void OnFormNoLongerSubmittable() { agent_->OnFormNoLongerSubmittable(); }
+
+  const FormCache& form_cache() { return agent_->form_cache_; }
+
+  const base::OneShotTimer& process_forms_after_dynamic_change_timer() {
+    return agent_->process_forms_after_dynamic_change_timer_;
   }
 
  private:

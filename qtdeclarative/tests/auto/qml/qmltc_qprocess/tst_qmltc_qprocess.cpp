@@ -169,11 +169,6 @@ void tst_qmltc_qprocess::inlineComponent()
         const auto errors = runQmltc(u"inlineComponentInvalidAlias.qml"_s, false);
         QVERIFY(errors.contains(u"Cannot resolve alias \"myHello\" [unresolved-alias]"_s));
     }
-    {
-        const auto errors = runQmltc(u"inlineComponentWithEnum.qml"_s, false);
-        QVERIFY(errors.contains(
-                u"inlineComponentWithEnum.qml:5:9: Enums declared inside of inline component are ignored. [syntax]"_s));
-    }
 }
 
 void tst_qmltc_qprocess::singleton()
@@ -339,11 +334,10 @@ void tst_qmltc_qprocess::unboundRequiredPropertyInInlineComponent()
 void tst_qmltc_qprocess::componentDefinitionInnerRequiredProperty()
 {
     {
-        QEXPECT_FAIL("", "QTBUG-131777", Continue);
-        QFAIL("QTBUG-131777");
         const auto errors = runQmltc(u"componentDefinitionInnerRequiredProperty.qml"_s, false);
         QVERIFY(errors.contains(
-                u"componentDefinitionInnerRequiredProperty.qml:11:13: Component is missing required property bar from here [required]"
+                u"componentDefinitionInnerRequiredProperty.qml:11:13: "
+                "Component is missing required property bar from Rectangle [required]"
         ));
     }
 }

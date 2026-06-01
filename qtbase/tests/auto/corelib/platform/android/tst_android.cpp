@@ -251,6 +251,12 @@ void tst_Android::safeAreaWithWindowFlagsAndStates()
     QFETCH(Qt::WindowStates, windowStates);
     QFETCH(Qt::WindowFlags, windowFlags);
 
+    if ((QNativeInterface::QAndroidApplication::sdkVersion() > __ANDROID_API_V__) &&
+             qgetenv("QTEST_ENVIRONMENT").split(' ').contains("ci") &
+                (!(windowFlags & Qt::ExpandedClientAreaHint) &&
+                     !(windowStates & Qt::WindowFullScreen)))
+        QSKIP("Normal fails on Android 16 (QTBUG-140846).");
+
     QWidget widget;
     QPalette palette = widget.palette();
     palette.setColor(QPalette::Window, Qt::red);
@@ -338,6 +344,10 @@ void tst_Android::safeAreaWithWindowFlagsAndStates()
 // QTBUG-107604
 void tst_Android::testFullScreenDimensions()
 {
+    if ((QNativeInterface::QAndroidApplication::sdkVersion() > __ANDROID_API_V__) &&
+            qgetenv("QTEST_ENVIRONMENT").split(' ').contains("ci") )
+        QSKIP("Keep on failing on Android 16 (QTBUG-141712).");
+
     QJniObject activity = QNativeInterface::QAndroidApplication::context();
     QVERIFY(activity.isValid());
 
@@ -366,6 +376,10 @@ void tst_Android::testFullScreenDimensions()
     display.callMethod<void>("getRealSize", realSize);
 
     QWidget widget;
+    QPalette palette = widget.palette();
+    palette.setColor(QPalette::Window, Qt::red);
+    widget.setAutoFillBackground(true);
+    widget.setPalette(palette);
     QPlatformScreen *screen = QGuiApplication::primaryScreen()->handle();
     {
         // Normal -
@@ -459,6 +473,10 @@ void tst_Android::orientationChange()
         QSKIP("Android 9 orientation changes callbacks are buggy (QTBUG-124890).");
 
     QWidget widget;
+    QPalette palette = widget.palette();
+    palette.setColor(QPalette::Window, Qt::red);
+    widget.setAutoFillBackground(true);
+    widget.setPalette(palette);
     widget.show();
 
     QScreen *screen = QGuiApplication::primaryScreen();
@@ -489,7 +507,7 @@ void tst_Android::orientationChange()
     };
 
     auto requestOrientation = [nativeOrientation, context](Qt::ScreenOrientation expected) {
-        context.callMethod<void>("setRequestedOrientation", nativeOrientation(expected));
+        context.callMethod("setRequestedOrientation", nativeOrientation(expected));
     };
 
     auto restoreOrientation = qScopeGuard([&] {

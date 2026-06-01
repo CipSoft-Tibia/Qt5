@@ -28,7 +28,7 @@ class Node:
   _CONTENT_TYPE_MIXED = 2  # CDATA and children, possibly intermingled
 
   # Types of files to be compressed by default.
-  _COMPRESS_BY_DEFAULT_EXTENSIONS = ('.js', '.html', '.css', '.svg')
+  _COMPRESS_BY_DEFAULT_EXTENSIONS = ('.js', '.html', '.css', '.svg', '.json')
 
   # Types of files to disallow compressing, as it provides no benefit, and can
   # potentially even make the file larger.
@@ -179,7 +179,8 @@ class Node:
     if self._IsValidAttribute(attrib, value):
       self.attrs[attrib] = value
     else:
-      raise exception.UnexpectedAttribute(attrib)
+      raise exception.UnexpectedAttribute("'%s' in file '%s'" %
+                                          (attrib, self.source))
 
   def EndParsing(self):
     '''Called at the end of parsing.'''

@@ -158,7 +158,8 @@ QT_BEGIN_NAMESPACE
 
     The default is Qt::BevelJoin.
 
-    \image qpen-miterlimit.png
+    \image qpen-miterlimit.png {Illustration showing how miterLimit controls
+           the length of the sharp corner for miterJoin}
 
     When the Qt::MiterJoin style is applied, it is possible to use the
     setMiterLimit() function to specify how far the miter join can
@@ -1014,20 +1015,10 @@ QDataStream &operator>>(QDataStream &s, QPen &p)
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QPen &p)
 {
-    const char *PEN_STYLES[] = {
-        "NoPen",
-        "SolidLine",
-        "DashLine",
-        "DotLine",
-        "DashDotLine",
-        "DashDotDotLine",
-        "CustomDashLine"
-    };
-
     QDebugStateSaver saver(dbg);
     dbg.nospace() << "QPen(" << p.width() << ',' << p.brush()
-                  << ',' << PEN_STYLES[p.style()] << ',' << int(p.capStyle())
-                  << ',' << int(p.joinStyle()) << ',' << p.dashPattern()
+                  << ',' << p.style() << ',' << p.capStyle()
+                  << ',' << p.joinStyle() << ',' << p.dashPattern()
                   << ',' << p.dashOffset()
                   << ',' << p.miterLimit() << ')';
     return dbg;

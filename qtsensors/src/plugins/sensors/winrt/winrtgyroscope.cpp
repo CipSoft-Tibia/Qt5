@@ -16,7 +16,7 @@ using namespace ABI::Windows::Devices::Sensors;
 
 typedef ITypedEventHandler<Gyrometer *, GyrometerReadingChangedEventArgs *> GyrometerReadingHandler;
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtGyroscopePrivate
 {
@@ -177,3 +177,5 @@ void WinRtGyroscope::stop()
     }
     d->token.value = 0;
 }
+
+QT_END_NAMESPACE

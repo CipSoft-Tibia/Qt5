@@ -92,7 +92,7 @@ class DecompositionCascade : public AutofillParsingProcess {
 
  private:
   const std::string_view condition_regex_;
-  const base::span<const AutofillParsingProcess* const> alternatives_;
+  const base::raw_span<const AutofillParsingProcess* const> alternatives_;
 };
 
 constexpr DecompositionCascade::~DecompositionCascade() = default;
@@ -146,7 +146,7 @@ class ExtractParts : public AutofillParsingProcess {
 
  private:
   const std::string_view condition_regex_;
-  const base::span<const ExtractPart* const> pieces_;
+  const base::raw_span<const ExtractPart* const> pieces_;
 };
 
 constexpr ExtractParts::~ExtractParts() = default;

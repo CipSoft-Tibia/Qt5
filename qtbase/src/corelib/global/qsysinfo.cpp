@@ -36,11 +36,11 @@
 #  include <sys/sysctl.h>
 #endif
 
-#if defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
+#ifdef Q_OS_WIN
 #  include "qoperatingsystemversion_win_p.h"
 #  include "private/qwinregistry_p.h"
 #  include "qt_windows.h"
-#endif // Q_OS_WIN || Q_OS_CYGWIN
+#endif // Q_OS_WIN
 
 #include "archdetect.cpp"
 
@@ -122,7 +122,7 @@ static const char *osVer_helper(QOperatingSystemVersion version = QOperatingSyst
     return nullptr;
 }
 
-#elif defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
+#elif defined(Q_OS_WIN)
 
 #  ifndef QT_BOOTSTRAPPED
 class QWindowsSockInit
@@ -1059,7 +1059,7 @@ QByteArray QSysInfo::machineUniqueId()
 #elif defined(Q_OS_WIN)
     // Let's poke at the registry
     const QString machineGuid = QWinRegistryKey(HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Cryptography)")
-                                .stringValue(u"MachineGuid"_s);
+                                .stringValue(L"MachineGuid");
     if (!machineGuid.isEmpty())
         return machineGuid.toLatin1();
 #endif

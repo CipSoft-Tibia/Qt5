@@ -10,6 +10,8 @@ endif()
 qt_internal_add_test(tst_qgrpcchanneloptions
     SOURCES
         tst_qgrpcchanneloptions.cpp
+    INCLUDE_DIRECTORIES
+        "${CMAKE_CURRENT_LIST_DIR}/../shared"
     LIBRARIES
         Qt::Core
         Qt::Test

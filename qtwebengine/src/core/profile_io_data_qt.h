@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef PROFILE_IO_DATA_QT_H
 #define PROFILE_IO_DATA_QT_H
@@ -42,7 +43,7 @@ private:
 };
 
 // ProfileIOData contains data that lives on the IOthread
-// we still use shared memebers and use mutex which breaks
+// we still use shared members and use mutex which breaks
 // idea for this object, but this is wip.
 
 class ProfileIODataQt : public content::StoragePartition::NetworkContextCreatedObserver {

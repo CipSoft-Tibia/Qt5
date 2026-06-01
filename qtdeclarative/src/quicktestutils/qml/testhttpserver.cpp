@@ -107,7 +107,7 @@ QString TestHTTPServer::errorString() const
 
 bool TestHTTPServer::serveDirectory(const QString &dir, Mode mode)
 {
-    m_directories.append(qMakePair(dir, mode));
+    m_directories.append(std::make_pair(dir, mode));
     return true;
 }
 
@@ -249,6 +249,11 @@ void TestHTTPServer::readyRead()
                 m_data += socket->readAll();
                 break;
             } else {
+                qsizetype prefixIndex = line.indexOf(':');
+                if (prefixIndex > 0) {
+                    const QByteArray prefix = line.left(prefixIndex);
+                    line = std::move(line).replace(prefix, prefix.toLower());
+                }
                 bool prefixFound = false;
                 for (const QByteArray &prefix : m_waitData.headerPrefixes) {
                     if (line.startsWith(prefix)) {
@@ -328,13 +333,24 @@ bool TestHTTPServer::reply(QTcpSocket *socket, const QByteArray &fileNameIn)
             response += data;
 
             if (mode == Delay) {
-                m_toSend.append(qMakePair(socket, response));
+                m_toSend.append(std::make_pair(socket, response));
                 QTimer::singleShot(500, this, &TestHTTPServer::sendOne);
                 return false;
-            } else {
+            }
+
+            if (response.length() <= m_chunkSize) {
                 socket->write(response);
                 return true;
             }
+
+            socket->write(response.left(m_chunkSize));
+            for (qsizetype offset = m_chunkSize, end = response.length(); offset < end;
+                 offset += m_chunkSize) {
+                m_toSend.append(std::make_pair(socket, response.mid(offset, m_chunkSize)));
+            }
+
+            QTimer::singleShot(1, this, &TestHTTPServer::sendChunk);
+            return false;
         }
     }
 
@@ -355,6 +371,16 @@ void TestHTTPServer::sendOne()
         m_toSend.first().first->close();
         m_toSend.removeFirst();
     }
+}
+
+void TestHTTPServer::sendChunk()
+{
+    const auto chunk = m_toSend.takeFirst();
+    chunk.first->write(chunk.second);
+    if (m_toSend.isEmpty())
+        chunk.first->close();
+    else
+        QTimer::singleShot(1, this, &TestHTTPServer::sendChunk);
 }
 
 void TestHTTPServer::serveGET(QTcpSocket *socket, const QByteArray &data)

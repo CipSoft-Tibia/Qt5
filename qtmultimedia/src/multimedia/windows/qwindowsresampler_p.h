@@ -19,9 +19,9 @@
 #include <QtCore/qbytearray.h>
 #include <QtCore/qbytearrayview.h>
 #include <QtCore/private/qcomptr_p.h>
+#include <QtCore/private/qexpected_p.h>
 #include <QtMultimedia/qaudioformat.h>
 #include <QtMultimedia/private/qcominitializer_p.h>
-#include <QtMultimedia/private/qmaybe_p.h>
 #include <QtMultimedia/private/qplatformaudioresampler_p.h>
 #include <QtMultimedia/private/qwindowsmediafoundation_p.h>
 
@@ -72,7 +72,7 @@ private:
     auto processOutput(ComPtr<IMFMediaBuffer> buffer, Functor &&f)
             -> std::invoke_result_t<Functor, const ComPtr<IMFMediaBuffer> &>;
 
-    QMaybe<QByteArray, HRESULT> processOutput();
+    q23::expected<QByteArray, HRESULT> processOutput();
 
     QComInitializer m_comInitializer;
     QWindowsMediaFoundation *m_wmf{ QWindowsMediaFoundation::instance() };

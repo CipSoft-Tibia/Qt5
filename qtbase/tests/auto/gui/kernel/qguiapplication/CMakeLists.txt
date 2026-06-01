@@ -76,6 +76,8 @@ if(QT_FEATURE_library)
         MODULE
         SOURCES
             ../../../corelib/kernel/qcoreapplication/apphelper_plugin.cpp
+        NO_PCH_SOURCES
+            ../../../corelib/kernel/qcoreapplication/apphelper_plugin.cpp
         LIBRARIES
             Qt::Gui
     )

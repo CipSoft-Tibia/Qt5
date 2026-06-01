@@ -115,14 +115,14 @@ void QQuickParticlePainter::load(QQuickParticleData* d)
     initialize(d->groupId, d->index);
     if (m_pleaseReset)
         return;
-    m_pendingCommits << qMakePair(d->groupId, d->index);
+    m_pendingCommits << std::make_pair(d->groupId, d->index);
 }
 
 void QQuickParticlePainter::reload(QQuickParticleData* d)
 {
     if (m_pleaseReset)
         return;
-    m_pendingCommits << qMakePair(d->groupId, d->index);
+    m_pendingCommits << std::make_pair(d->groupId, d->index);
 }
 
 void QQuickParticlePainter::reset()
@@ -156,7 +156,7 @@ void QQuickParticlePainter::calcSystemOffset(bool resetPending)
         }
     }
 }
-typedef QPair<int,int> intPair;
+typedef std::pair<int,int> intPair;
 void QQuickParticlePainter::performPendingCommits()
 {
     calcSystemOffset();

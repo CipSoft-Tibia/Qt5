@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qapplication.h"
 #include "qboxlayout.h"
@@ -431,7 +432,7 @@ int QBoxLayoutPrivate::validateIndex(int index) const
     the parentWidget()), divides it up into a row of boxes, and makes
     each managed widget fill one box.
 
-    \image qhboxlayout-with-5-children.png Horizontal box layout with five child widgets
+    \image qhboxlayout-with-5-children.png {Five buttons in horizontal layout}
 
     If the QBoxLayout's orientation is Qt::Horizontal the boxes are
     placed in a row, with suitable sizes. Each widget (or other box)
@@ -439,7 +440,7 @@ int QBoxLayoutPrivate::validateIndex(int index) const
     Any excess space is shared according to the stretch factors (more
     about that below).
 
-    \image qvboxlayout-with-5-children.png Vertical box layout with five child widgets
+    \image qvboxlayout-with-5-children.png {Five buttons in vertical layout}
 
     If the QBoxLayout's orientation is Qt::Vertical, the boxes are
     placed in a column, again with suitable sizes.
@@ -817,6 +818,8 @@ void QBoxLayout::addItem(QLayoutItem *item)
     inclusive. If \a index is negative or count(), the item is
     added at the end.
 
+    The ownership of \a item is passed to this layout.
+
     \sa addItem(), insertWidget(), insertLayout(), insertStretch(),
         insertSpacing()
 */
@@ -884,6 +887,8 @@ void QBoxLayout::insertStretch(int index, int stretch)
     size and stretch factor. If \a index is negative the
     space is added at the end.
 
+    The ownership of \a spacerItem is passed to this layout.
+
     \sa addSpacerItem(), insertStretch(), insertSpacing()
 */
 void QBoxLayout::insertSpacerItem(int index, QSpacerItem *spacerItem)
@@ -929,11 +934,13 @@ void QBoxLayout::insertLayout(int index, QLayout *layout, int stretch)
 
     If the stretch factor is 0 and nothing else in the QBoxLayout has
     a stretch factor greater than zero, the space is distributed
-    according to the QWidget:sizePolicy() of each widget that's
+    according to the QWidget::sizePolicy() of each widget that's
     involved.
 
     The alignment is specified by \a alignment. The default alignment
     is 0, which means that the widget fills the entire cell.
+
+    \a widget becomes a child of the QLayout::parentWidget().
 
     \sa addWidget(), insertItem()
 */
@@ -981,6 +988,8 @@ void QBoxLayout::addStretch(int stretch)
 
     Adds \a spacerItem to the end of this box layout.
 
+    The ownership of \a spacerItem is passed to this layout.
+
     \sa addSpacing(), addStretch()
 */
 void QBoxLayout::addSpacerItem(QSpacerItem *spacerItem)
@@ -999,11 +1008,13 @@ void QBoxLayout::addSpacerItem(QSpacerItem *spacerItem)
 
     If the stretch factor is 0 and nothing else in the QBoxLayout has
     a stretch factor greater than zero, the space is distributed
-    according to the QWidget:sizePolicy() of each widget that's
+    according to the QWidget::sizePolicy() of each widget that's
     involved.
 
     The alignment is specified by \a alignment. The default
     alignment is 0, which means that the widget fills the entire cell.
+
+    \a widget becomes a child of the QLayout::parentWidget().
 
     \sa insertWidget(), addItem(), addLayout(), addStretch(),
         addSpacing(), addStrut()
@@ -1016,6 +1027,8 @@ void QBoxLayout::addWidget(QWidget *widget, int stretch, Qt::Alignment alignment
 /*!
     Adds \a layout to the end of the box, with serial stretch factor
     \a stretch.
+
+    \a layout becomes a child of the box layout.
 
     \sa insertLayout(), addItem(), addWidget()
 */
@@ -1212,7 +1225,8 @@ QBoxLayout::Direction QBoxLayout::direction() const
     object onto \c window. At that point, the widgets in the layout are
     reparented to have \c window as their parent.
 
-    \image qhboxlayout-with-5-children.png Horizontal box layout with five child widgets
+    \image qhboxlayout-with-5-children.png
+           {Five buttons in horizontal layout}
 
     \sa QVBoxLayout, QGridLayout, QStackedLayout, {Layout Management}, {Basic Layouts Example}
 */
@@ -1285,7 +1299,8 @@ QHBoxLayout::~QHBoxLayout()
     object onto \c window. At that point, the widgets in the layout are
     reparented to have \c window as their parent.
 
-    \image qvboxlayout-with-5-children.png Horizontal box layout with five child widgets
+    \image qvboxlayout-with-5-children.png
+           {Horizontal box layout with five child widgets}
 
     \sa QHBoxLayout, QGridLayout, QStackedLayout, {Layout Management}, {Basic Layouts Example}
 */

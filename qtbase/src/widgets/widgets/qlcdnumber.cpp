@@ -1,9 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qlcdnumber.h"
 
 #include "qbitarray.h"
+#include "qnumeric.h"
 #include "qpainter.h"
 #include "private/qframe_p.h"
 
@@ -38,7 +40,7 @@ public:
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-lcdnumber.png
+    \image fusion-lcdnumber.png {"1234" with LCD-like digital appearance}
 
     It can display a number in just about any size. It can display
     decimal, hexadecimal, octal or binary numbers. It is easy to
@@ -109,22 +111,17 @@ public:
 */
 
 
-static QString int2string(int num, int base, int ndigits, bool *oflow)
+static QString int2string(int number, int base, int ndigits, bool *oflow)
 {
     QString s;
-    bool negative;
-    if (num < 0) {
-        negative = true;
-        num      = -num;
-    } else {
-        negative = false;
-    }
+    const bool negative = number < 0;
+    const uint num = QtPrivate::qUnsignedAbs(number);
     switch(base) {
         case QLCDNumber::Hex:
             s = QString::asprintf("%*x", ndigits, num);
             break;
         case QLCDNumber::Dec:
-            s = QString::asprintf("%*i", ndigits, num);
+            s = QString::asprintf("%*u", ndigits, num);
             break;
         case QLCDNumber::Oct:
             s = QString::asprintf("%*o", ndigits, num);

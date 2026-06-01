@@ -11,7 +11,8 @@
 #include <sys/types.h>
 
 #include "absl/base/optimization.h"
-#include "quiche/quic/core/io/socket.h"
+#include "quiche/quic/core/flow_label.h"
+#include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_udp_socket.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_flag_utils.h"
@@ -145,6 +146,17 @@ void PopulatePacketInfoFromControlMessage(
     }
   }
 
+#if defined(__linux__)
+  if (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_FLOWINFO) {
+    if (packet_info_interested.IsSet(QuicUdpPacketInfoBit::V6_FLOW_LABEL)) {
+      uint32_t flow_label = 0;
+      memcpy(&flow_label, CMSG_DATA(cmsg), sizeof(flow_label));
+      flow_label = IPV6_FLOWINFO_FLOWLABEL & ntohl(flow_label);
+      packet_info->SetFlowLabel(flow_label);
+    }
+  }
+#endif
+
   if (packet_info_interested.IsSet(
           QuicUdpPacketInfoBit::GOOGLE_PACKET_HEADER)) {
     BufferSpan google_packet_headers;
@@ -205,37 +217,58 @@ bool QuicUdpSocketApi::SetupSocket(QuicUdpSocketFd fd, int address_family,
     return false;
   }
 
-  if (!(address_family == AF_INET6 && ipv6_only)) {
+  unsigned int set = 1;
+  if (address_family == AF_INET) {
+    if (setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &set, sizeof(set)) != 0) {
+      QUIC_LOG_FIRST_N(ERROR, 100)
+          << "Failed to request to receive ECN on IPv4 socket";
+      return false;
+    }
     if (!EnableReceiveSelfIpAddressForV4(fd)) {
       QUIC_LOG_FIRST_N(ERROR, 100)
           << "Failed to enable receiving of self v4 ip";
       return false;
     }
-  }
-  unsigned int set = 1;
-  if (address_family == AF_INET &&
-      setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &set, sizeof(set)) != 0) {
-    QUIC_LOG_FIRST_N(ERROR, 100) << "Failed to request to receive ECN on "
-                                 << "IPv4 socket";
-    return false;
-  }
-  if (address_family == AF_INET6) {
+  } else if (address_family == AF_INET6) {
     if (setsockopt(fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &set, sizeof(set)) != 0) {
       QUIC_LOG_FIRST_N(ERROR, 100) << "Failed to request to receive ECN on "
                                    << "IPv6 socket";
       return false;
     }
-    if (!ipv6_only &&
-        setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &set, sizeof(set)) != 0) {
-      QUIC_LOG_FIRST_N(ERROR, 100) << "Could not receive IPv4 ECN on "
-                                   << "dual-stack socket";
-      return false;
+#if defined(__linux__) && !defined(__ANDROID__)
+    if (GetQuicRestartFlag(quic_support_flow_label2)) {
+      QUIC_RESTART_FLAG_COUNT_N(quic_support_flow_label2, 5, 6);
+      if (setsockopt(fd, SOL_IPV6, IPV6_FLOWINFO, &set, sizeof(set)) != 0) {
+        QUIC_LOG_FIRST_N(ERROR, 100)
+            << "Failed to request to receive flow label on "
+            << "IPv6 socket";
+        return false;
+      }
     }
+#endif
     if (!EnableReceiveSelfIpAddressForV6(fd)) {
       QUIC_LOG_FIRST_N(ERROR, 100)
           << "Failed to enable receiving of self v6 ip";
       return false;
     }
+
+#if !defined(__APPLE__)
+    // On macOS, the IPv6 socket options take care of this for us, and these
+    // fail with EINVAL. On linux, we need to set the IPv4 socket options for
+    // dual-stack sockets.
+    if (!ipv6_only) {
+      if (setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &set, sizeof(set)) != 0) {
+        QUIC_LOG_FIRST_N(ERROR, 100)
+            << "Could not receive IPv4 ECN on dual-stack socket";
+        return false;
+      }
+      if (!EnableReceiveSelfIpAddressForV4(fd)) {
+        QUIC_LOG_FIRST_N(ERROR, 100)
+            << "Failed to enable receiving of self v4 ip on dual-stack socket";
+        return false;
+      }
+    }
+#endif
   }
 
   return true;
@@ -478,6 +511,20 @@ WriteResult QuicUdpSocketApi::WritePacket(
 
   cmsghdr* cmsg = nullptr;
 
+  // Set IPv6 flow label.
+#if defined(__linux__)
+  if (packet_info.HasValue(QuicUdpPacketInfoBit::V6_FLOW_LABEL) &&
+      packet_info.flow_label() != 0) {
+    uint32_t flowlabel = packet_info.flow_label();
+    if (!NextCmsg(&hdr, control_buffer, sizeof(control_buffer), SOL_IPV6,
+                  IPV6_FLOWINFO, sizeof(flowlabel), &cmsg)) {
+      QUIC_LOG_FIRST_N(ERROR, 100) << "Not enough buffer to set flow label.";
+      return WriteResult(WRITE_STATUS_ERROR, EINVAL);
+    }
+    *reinterpret_cast<uint32_t*>(CMSG_DATA(cmsg)) =
+        htonl(flowlabel & IPV6_FLOWINFO_FLOWLABEL);
+  }
+#endif
   // Set self IP.
   if (packet_info.HasValue(QuicUdpPacketInfoBit::V4_SELF_IP) &&
       packet_info.self_v4_ip().IsInitialized()) {
@@ -517,26 +564,20 @@ WriteResult QuicUdpSocketApi::WritePacket(
 
   // TODO(b/270584616): This code block might go away when full support for
   // marking ECN is implemented.
-  if (packet_info.HasValue(QuicUdpPacketInfoBit::ECN)) {
+  if (packet_info.HasValue(QuicUdpPacketInfoBit::ECN) &&
+      packet_info.ecn_codepoint() != ECN_NOT_ECT) {
     int cmsg_level =
         packet_info.peer_address().host().IsIPv4() ? IPPROTO_IP : IPPROTO_IPV6;
     int cmsg_type;
     unsigned char value_buf[20];
     socklen_t value_len = sizeof(value_buf);
-    if (GetQuicRestartFlag(quic_support_ect1)) {
-      QUIC_RESTART_FLAG_COUNT_N(quic_support_ect1, 9, 9);
-      if (GetEcnCmsgArgsPreserveDscp(
-              fd, packet_info.peer_address().host().address_family(),
-              packet_info.ecn_codepoint(), cmsg_type, value_buf,
-              value_len) != 0) {
-        QUIC_LOG_FIRST_N(ERROR, 100)
-            << "Could not get ECN msg type for this platform.";
-        return WriteResult(WRITE_STATUS_ERROR, EINVAL);
-      }
-    } else {
-      cmsg_type = (cmsg_level == IPPROTO_IP) ? IP_TOS : IPV6_TCLASS;
-      *(int*)value_buf = static_cast<int>(packet_info.ecn_codepoint());
-      value_len = sizeof(int);
+    if (GetEcnCmsgArgsPreserveDscp(
+            fd, packet_info.peer_address().host().address_family(),
+            packet_info.ecn_codepoint(), cmsg_type, value_buf,
+            value_len) != 0) {
+      QUIC_LOG_FIRST_N(ERROR, 100)
+          << "Could not get ECN msg type for this platform.";
+      return WriteResult(WRITE_STATUS_ERROR, EINVAL);
     }
     if (!NextCmsg(&hdr, control_buffer, sizeof(control_buffer), cmsg_level,
                   cmsg_type, value_len, &cmsg)) {

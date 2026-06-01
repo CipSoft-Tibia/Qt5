@@ -6,8 +6,12 @@
 #define COMPONENTS_IP_PROTECTION_COMMON_IP_PROTECTION_DATA_TYPES_H_
 
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "base/containers/contains.h"
 #include "base/time/time.h"
+#include "components/privacy_sandbox/masked_domain_list/masked_domain_list.pb.h"
 
 namespace ip_protection {
 
@@ -86,22 +90,21 @@ struct GeoHint {
   bool operator==(const GeoHint& geo_hint) const = default;
 };
 
-// GeoId is a string representation of a ip_protection::GeoHint. A GeoId is
-// constructed by concatenating values of the ip_protection::GeoHint in order of
+// GeoId is a string representation of a GeoHint. A GeoId is
+// constructed by concatenating values of the GeoHint in order of
 // increasing granularity. If a finer granularity is missing, a trailing commas
 // is not appended.
 // Ex. GeoHint{"US", "US-CA", "MOUNTAIN VIEW"} => "US,US-CA,MOUNTAIN VIEW"
 // Ex. GeoHint{"US"} => "US"
 //
-// Returns a formatted version of the ip_protection::GeoHint. In the case
+// Returns a formatted version of the GeoHint. In the case
 // of a nullptr or empty `GeoHintPtr`, an empty string will be returned.
-std::string GetGeoIdFromGeoHint(std::optional<ip_protection::GeoHint> geo_hint);
+std::string GetGeoIdFromGeoHint(std::optional<GeoHint> geo_hint);
 
-// Constructs a ip_protection::GeoHint from a GeoId string. The function
+// Constructs a GeoHint from a GeoId string. The function
 // requires a correctly formatted GeoId string. It DOES NOT handle invalid
 // formats.
-std::optional<ip_protection::GeoHint> GetGeoHintFromGeoIdForTesting(
-    const std::string& geo_id);
+std::optional<GeoHint> GetGeoHintFromGeoIdForTesting(const std::string& geo_id);
 
 // A blind-signed auth token, suitable for use with IP protection proxies.
 struct BlindSignedAuthToken {
@@ -122,6 +125,33 @@ struct BlindSignedAuthToken {
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
 enum class ProxyLayer { kProxyA = 0, kProxyB = 1, kMaxValue = kProxyB };
+
+// The type of MDL that is being represented. This is used to determine which
+// MDL to use for a given matching request.
+enum class MdlType {
+  // The default MDL type which is for IPP in incognito browsing.
+  kDefault,
+
+  // The MDL type for IPP experiments within regular browsing.
+  kRegularBrowsing,
+};
+
+// Returns all MDL types that are represented by the given MDL resource.
+//
+// A given MDL resource may represent multiple MDL types. For example, a
+// resource that is in the default MDL group and the regular browsing MDL group
+// would return both kDefault and kRegularBrowsing. Also, an empty vector
+// indicates that the resource does not represent any MDL types which is
+// unexpected and will be logged as such.
+std::vector<MdlType> FromMdlResourceProto(
+    masked_domain_list::Resource resource);
+
+struct IssuerToken {
+  std::int32_t version;
+  std::string u;
+  std::string e;
+  bool operator==(const IssuerToken& token) const = default;
+};
 
 }  // namespace ip_protection
 

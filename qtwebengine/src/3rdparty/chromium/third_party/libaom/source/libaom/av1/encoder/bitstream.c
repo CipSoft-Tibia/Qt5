@@ -3101,12 +3101,34 @@ static inline void write_uncompressed_header_obu(
         const int gld_ref = get_ref_frame_map_idx(cm, GOLDEN_FRAME);
         aom_wb_write_literal(wb, gld_ref, REF_FRAMES_LOG2);
       }
-
+      int first_ref_map_idx = INVALID_IDX;
+      if (cpi->ppi->rtc_ref.set_ref_frame_config) {
+        for (ref_frame = LAST_FRAME; ref_frame <= ALTREF_FRAME; ++ref_frame) {
+          if (cpi->ppi->rtc_ref.reference[ref_frame - 1] == 1) {
+            first_ref_map_idx = cpi->ppi->rtc_ref.ref_idx[ref_frame - 1];
+            break;
+          }
+        }
+      }
       for (ref_frame = LAST_FRAME; ref_frame <= ALTREF_FRAME; ++ref_frame) {
         assert(get_ref_frame_map_idx(cm, ref_frame) != INVALID_IDX);
-        if (!current_frame->frame_refs_short_signaling)
-          aom_wb_write_literal(wb, get_ref_frame_map_idx(cm, ref_frame),
-                               REF_FRAMES_LOG2);
+        if (!current_frame->frame_refs_short_signaling) {
+          if (cpi->ppi->rtc_ref.set_ref_frame_config &&
+              first_ref_map_idx != INVALID_IDX &&
+              cpi->svc.number_spatial_layers == 1 &&
+              !seq_params->order_hint_info.enable_order_hint) {
+            // For the usage of set_ref_frame_config:
+            // for any reference not used set their ref_map_idx
+            // to the first used reference.
+            const int map_idx = cpi->ppi->rtc_ref.reference[ref_frame - 1]
+                                    ? get_ref_frame_map_idx(cm, ref_frame)
+                                    : first_ref_map_idx;
+            aom_wb_write_literal(wb, map_idx, REF_FRAMES_LOG2);
+          } else {
+            aom_wb_write_literal(wb, get_ref_frame_map_idx(cm, ref_frame),
+                                 REF_FRAMES_LOG2);
+          }
+        }
         if (seq_params->frame_id_numbers_present_flag) {
           int i = get_ref_frame_map_idx(cm, ref_frame);
           int frame_id_len = seq_params->frame_id_length;
@@ -3357,7 +3379,8 @@ static int remux_tiles(const CommonTileParams *const tiles, uint8_t *dst,
 uint32_t av1_write_obu_header(AV1LevelParams *const level_params,
                               int *frame_header_count, OBU_TYPE obu_type,
                               bool has_nonzero_operating_point_idc,
-                              int obu_extension, uint8_t *const dst) {
+                              bool is_layer_specific_obu, int obu_extension,
+                              uint8_t *const dst) {
   assert(IMPLIES(!has_nonzero_operating_point_idc, obu_extension == 0));
 
   if (level_params->keep_level_stats &&
@@ -3366,29 +3389,22 @@ uint32_t av1_write_obu_header(AV1LevelParams *const level_params,
 
   uint32_t size = 0;
 
-  // The AV1 spec Version 1.0.0 with Errata 1 has the following requirements on
-  // the OBU extension header:
+  // The AV1 spec draft version (as of git commit 5e04f)
+  // has the following requirements on the OBU extension header:
   //
   // 6.4.1. General sequence header OBU semantics:
+  //   If operating_point_idc[ op ] is not equal to 0 for any value of op from 0
+  //   to operating_points_cnt_minus_1, it is a requirement of bitstream
+  //   conformance that obu_extension_flag is equal to 1 for all layer-specific
+  //   OBUs in the coded video sequence.
+  //   (...)
   //   It is a requirement of bitstream conformance that if OperatingPointIdc
   //   is equal to 0, then obu_extension_flag is equal to 0 for all OBUs that
   //   follow this sequence header until the next sequence header.
   //
-  // 7.5. Ordering of OBUs:
-  //   If a coded video sequence contains at least one enhancement layer (OBUs
-  //   with spatial_id greater than 0 or temporal_id greater than 0) then all
-  //   frame headers and tile group OBUs associated with base (spatial_id
-  //   equals 0 and temporal_id equals 0) and enhancement layer (spatial_id
-  //   greater than 0 or temporal_id greater than 0) data must include the OBU
-  //   extension header.
-  //
   // Set obu_extension_flag to satisfy these requirements.
-  int obu_extension_flag = 0;
-  if (has_nonzero_operating_point_idc) {
-    obu_extension_flag =
-        (obu_type == OBU_FRAME_HEADER || obu_type == OBU_TILE_GROUP ||
-         obu_type == OBU_FRAME || obu_type == OBU_REDUNDANT_FRAME_HEADER);
-  }
+  const int obu_extension_flag =
+      has_nonzero_operating_point_idc && is_layer_specific_obu;
   const int obu_has_size_field = 1;
 
   dst[0] = ((int)obu_type << 3) | (obu_extension_flag << 2) |
@@ -3403,28 +3419,27 @@ uint32_t av1_write_obu_header(AV1LevelParams *const level_params,
   return size;
 }
 
-int av1_write_uleb_obu_size(size_t obu_header_size, size_t obu_payload_size,
-                            uint8_t *dest, size_t dest_size) {
-  const size_t offset = obu_header_size;
+int av1_write_uleb_obu_size(size_t obu_payload_size, uint8_t *dest,
+                            size_t dest_size) {
   size_t coded_obu_size = 0;
 
-  if (offset > dest_size) {
+  if (aom_uleb_encode(obu_payload_size, dest_size, dest, &coded_obu_size) !=
+      0) {
     return AOM_CODEC_ERROR;
   }
-  if (aom_uleb_encode(obu_payload_size, dest_size - offset, dest + offset,
-                      &coded_obu_size) != 0) {
+  if (coded_obu_size != dest_size) {
     return AOM_CODEC_ERROR;
   }
 
   return AOM_CODEC_OK;
 }
 
-int av1_write_uleb_obu_size_unsafe(size_t obu_header_size,
-                                   size_t obu_payload_size, uint8_t *dest) {
-  const size_t offset = obu_header_size;
+// Deprecated. Use av1_write_uleb_obu_size() instead.
+static int av1_write_uleb_obu_size_unsafe(size_t obu_payload_size,
+                                          uint8_t *dest) {
   size_t coded_obu_size = 0;
 
-  if (aom_uleb_encode(obu_payload_size, sizeof(uint32_t), dest + offset,
+  if (aom_uleb_encode(obu_payload_size, sizeof(uint32_t), dest,
                       &coded_obu_size) != 0) {
     return AOM_CODEC_ERROR;
   }
@@ -3436,10 +3451,15 @@ int av1_write_uleb_obu_size_unsafe(size_t obu_header_size,
 static size_t obu_memmove(size_t obu_header_size, size_t obu_payload_size,
                           uint8_t *data, size_t data_size) {
   const size_t length_field_size = aom_uleb_size_in_bytes(obu_payload_size);
-  const size_t move_dst_offset = length_field_size + obu_header_size;
+  const size_t move_dst_offset = obu_header_size + length_field_size;
   const size_t move_src_offset = obu_header_size;
   const size_t move_size = obu_payload_size;
-  if (move_dst_offset + move_size > data_size) {
+  if (move_size > data_size || move_src_offset > data_size - move_size) {
+    assert(0 && "obu_memmove: output buffer overflow");
+    return 0;
+  }
+  if (move_dst_offset > data_size - move_size) {
+    // Buffer full.
     return 0;
   }
   memmove(data + move_dst_offset, data + move_src_offset, move_size);
@@ -3450,7 +3470,7 @@ static size_t obu_memmove(size_t obu_header_size, size_t obu_payload_size,
 static size_t obu_memmove_unsafe(size_t obu_header_size,
                                  size_t obu_payload_size, uint8_t *data) {
   const size_t length_field_size = aom_uleb_size_in_bytes(obu_payload_size);
-  const size_t move_dst_offset = length_field_size + obu_header_size;
+  const size_t move_dst_offset = obu_header_size + length_field_size;
   const size_t move_src_offset = obu_header_size;
   const size_t move_size = obu_payload_size;
   memmove(data + move_dst_offset, data + move_src_offset, move_size);
@@ -3596,7 +3616,7 @@ static uint32_t init_large_scale_tile_obu_header(
   lst_obu->tg_hdr_size = av1_write_obu_header(
       level_params, &cpi->frame_header_count, obu_type,
       cpi->common.seq_params->has_nonzero_operating_point_idc,
-      obu_extension_header, *data);
+      /*is_layer_specific_obu=*/true, obu_extension_header, *data);
   *data += lst_obu->tg_hdr_size;
 
   const uint32_t frame_header_size =
@@ -3639,8 +3659,8 @@ static void write_large_scale_tile_obu_size(
   const uint32_t obu_payload_size = *total_size - lst_obu->tg_hdr_size;
   const size_t length_field_size =
       obu_memmove_unsafe(lst_obu->tg_hdr_size, obu_payload_size, dst);
-  if (av1_write_uleb_obu_size_unsafe(lst_obu->tg_hdr_size, obu_payload_size,
-                                     dst) != AOM_CODEC_OK)
+  if (av1_write_uleb_obu_size_unsafe(
+          obu_payload_size, dst + lst_obu->tg_hdr_size) != AOM_CODEC_OK)
     assert(0);
 
   *total_size += (uint32_t)length_field_size;
@@ -3796,7 +3816,8 @@ void av1_write_obu_tg_tile_headers(AV1_COMP *const cpi, MACROBLOCKD *const xd,
   *curr_tg_hdr_size = av1_write_obu_header(
       &cpi->ppi->level_params, &cpi->frame_header_count, obu_type,
       cm->seq_params->has_nonzero_operating_point_idc,
-      pack_bs_params->obu_extn_header, pack_bs_params->tile_data_curr);
+      /*is_layer_specific_obu=*/true, pack_bs_params->obu_extn_header,
+      pack_bs_params->tile_data_curr);
   pack_bs_params->obu_header_size = *curr_tg_hdr_size;
 
   if (cpi->num_tg == 1)
@@ -3865,8 +3886,8 @@ void av1_write_last_tile_info(
   const size_t obu_payload_size = *curr_tg_data_size - obu_header_size;
   const size_t length_field_size =
       obu_memmove_unsafe(obu_header_size, obu_payload_size, curr_tg_start);
-  if (av1_write_uleb_obu_size_unsafe(obu_header_size, obu_payload_size,
-                                     curr_tg_start) != AOM_CODEC_OK) {
+  if (av1_write_uleb_obu_size_unsafe(
+          obu_payload_size, curr_tg_start + obu_header_size) != AOM_CODEC_OK) {
     aom_internal_error(cpi->common.error, AOM_CODEC_ERROR,
                        "av1_write_last_tile_info: output buffer full");
   }
@@ -3898,7 +3919,8 @@ void av1_write_last_tile_info(
         &cpi->ppi->level_params, &cpi->frame_header_count,
         OBU_REDUNDANT_FRAME_HEADER,
         cpi->common.seq_params->has_nonzero_operating_point_idc,
-        obu_extn_header, &curr_tg_start[fh_info->obu_header_byte_offset]);
+        /*is_layer_specific_obu=*/true, obu_extn_header,
+        &curr_tg_start[fh_info->obu_header_byte_offset]);
 
     *curr_tg_data_size += fh_info->total_length;
     *total_size += (uint32_t)fh_info->total_length;
@@ -4210,9 +4232,13 @@ static size_t av1_write_metadata_array(AV1_COMP *const cpi, uint8_t *dst,
           aom_internal_error(cm->error, AOM_CODEC_ERROR,
                              "av1_write_metadata_array: output buffer full");
         }
+        // According to the AV1 spec draft version (as of git commit 5e04f)
+        // Section 6.7.1, some metadata types can be layer specific, but we
+        // currently only support non-layer specific metadata.
         obu_header_size = av1_write_obu_header(
             &cpi->ppi->level_params, &cpi->frame_header_count, OBU_METADATA,
-            cm->seq_params->has_nonzero_operating_point_idc, 0, dst);
+            cm->seq_params->has_nonzero_operating_point_idc,
+            /*is_layer_specific_obu=*/false, 0, dst);
         assert(obu_header_size <= 2);
         obu_payload_size =
             av1_write_metadata_obu(current_metadata, dst + obu_header_size,
@@ -4227,10 +4253,10 @@ static size_t av1_write_metadata_array(AV1_COMP *const cpi, uint8_t *dst,
           aom_internal_error(cm->error, AOM_CODEC_ERROR,
                              "av1_write_metadata_array: output buffer full");
         }
-        if (av1_write_uleb_obu_size(obu_header_size, obu_payload_size, dst,
-                                    dst_size) == AOM_CODEC_OK) {
+        if (av1_write_uleb_obu_size(obu_payload_size, dst + obu_header_size,
+                                    length_field_size) == AOM_CODEC_OK) {
           const size_t obu_size =
-              obu_header_size + obu_payload_size + length_field_size;
+              obu_header_size + length_field_size + obu_payload_size;
           dst += obu_size;
           dst_size -= obu_size;
           total_bytes_written += obu_size;
@@ -4279,7 +4305,8 @@ int av1_pack_bitstream(AV1_COMP *const cpi, uint8_t *dst, size_t dst_size,
     }
     obu_header_size = av1_write_obu_header(
         level_params, &cpi->frame_header_count, OBU_SEQUENCE_HEADER,
-        cm->seq_params->has_nonzero_operating_point_idc, 0, data);
+        cm->seq_params->has_nonzero_operating_point_idc,
+        /*is_layer_specific_obu=*/false, 0, data);
     assert(obu_header_size <= 2);
     obu_payload_size = av1_write_sequence_header_obu(
         cm->seq_params, data + obu_header_size, data_size - obu_header_size);
@@ -4288,13 +4315,13 @@ int av1_pack_bitstream(AV1_COMP *const cpi, uint8_t *dst, size_t dst_size,
     if (length_field_size == 0) {
       return AOM_CODEC_ERROR;
     }
-    if (av1_write_uleb_obu_size(obu_header_size, obu_payload_size, data,
-                                data_size) != AOM_CODEC_OK) {
+    if (av1_write_uleb_obu_size(obu_payload_size, data + obu_header_size,
+                                length_field_size) != AOM_CODEC_OK) {
       return AOM_CODEC_ERROR;
     }
 
     const size_t bytes_written =
-        obu_header_size + obu_payload_size + length_field_size;
+        obu_header_size + length_field_size + obu_payload_size;
     data += bytes_written;
     data_size -= bytes_written;
   }
@@ -4319,8 +4346,8 @@ int av1_pack_bitstream(AV1_COMP *const cpi, uint8_t *dst, size_t dst_size,
     }
     obu_header_size = av1_write_obu_header(
         level_params, &cpi->frame_header_count, OBU_FRAME_HEADER,
-        cm->seq_params->has_nonzero_operating_point_idc, obu_extension_header,
-        data);
+        cm->seq_params->has_nonzero_operating_point_idc,
+        /*is_layer_specific_obu=*/true, obu_extension_header, data);
     // TODO: bug 42302568 - Pass data_size - obu_header_size to
     // write_frame_header_obu().
     obu_payload_size = write_frame_header_obu(cpi, &cpi->td.mb.e_mbd, &saved_wb,
@@ -4331,13 +4358,13 @@ int av1_pack_bitstream(AV1_COMP *const cpi, uint8_t *dst, size_t dst_size,
     if (length_field == 0) {
       return AOM_CODEC_ERROR;
     }
-    if (av1_write_uleb_obu_size(obu_header_size, obu_payload_size, data,
-                                data_size) != AOM_CODEC_OK) {
+    if (av1_write_uleb_obu_size(obu_payload_size, data + obu_header_size,
+                                length_field) != AOM_CODEC_OK) {
       return AOM_CODEC_ERROR;
     }
 
     fh_info.obu_header_byte_offset = 0;
-    fh_info.total_length = obu_header_size + obu_payload_size + length_field;
+    fh_info.total_length = obu_header_size + length_field + obu_payload_size;
     // Make sure it is safe to cast fh_info.total_length to uint32_t.
     if (fh_info.total_length > UINT32_MAX) {
       return AOM_CODEC_ERROR;

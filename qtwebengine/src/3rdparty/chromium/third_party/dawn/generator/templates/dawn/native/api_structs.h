@@ -24,7 +24,7 @@
 //* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 //* OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 //* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-{% from 'dawn/cpp_macros.tmpl' import wgpu_string_constructors with context %}
+{% from 'dawn/cpp_macros.tmpl' import wgpu_string_members with context %}
 
 {% set namespace_name = Name(metadata.native_namespace) %}
 {% set DIR = namespace_name.concatcase().upper() %}
@@ -32,6 +32,7 @@
 #ifndef {{DIR}}_{{namespace.upper()}}_STRUCTS_H_
 #define {{DIR}}_{{namespace.upper()}}_STRUCTS_H_
 
+#include "absl/strings/string_view.h"
 {% set api = metadata.api.lower() %}
 {% set CAPI = metadata.c_prefix %}
 #include "dawn/{{api}}_cpp.h"
@@ -46,8 +47,10 @@
 
 namespace {{native_namespace}} {
 
-{% macro render_cpp_default_value(member) -%}
-    {%- if member.annotation in ["*", "const*"] and member.optional or member.default_value == "nullptr" -%}
+{% macro render_cpp_default_value(member, forced_default_value="") -%}
+    {%- if forced_default_value -%}
+        {{" "}}= {{forced_default_value}}
+    {%- elif member.annotation in ["*", "const*"] and member.optional or member.default_value == "nullptr" -%}
         {{" "}}= nullptr
     {%- elif member.type.category == "object" and member.optional -%}
         {{" "}}= nullptr
@@ -67,7 +70,34 @@ namespace {{native_namespace}} {
     using {{namespace}}::ChainedStruct;
     using {{namespace}}::ChainedStructOut;
 
-    {% for type in by_category["structure"] %}
+    //* Special structures that are manually written.
+    {% set SpecialStructures = ["string view"] %}
+
+    struct StringView {
+        char const * data = nullptr;
+        size_t length = WGPU_STRLEN;
+
+        {{wgpu_string_members("StringView")}}
+
+        // Equality operators, mostly for testing. Note that this tests
+        // strict pointer-pointer equality if the struct contains member pointers.
+        bool operator==(const StringView& rhs) const;
+
+        #ifndef ABSL_USES_STD_STRING_VIEW
+        // NOLINTNEXTLINE(runtime/explicit) allow implicit conversion
+        operator absl::string_view() const {
+            if (this->length == wgpu::kStrlen) {
+                if (IsUndefined()) {
+                    return {};
+                }
+                return {this->data};
+            }
+            return {this->data, this->length};
+        }
+        #endif
+    };
+
+    {% for type in by_category["structure"] if type.name.get() not in SpecialStructures %}
         {% set CppType = as_cppType(type.name) %}
         {% if type.chained %}
             {% set chainedStructType = "ChainedStructOut" if type.chained == "out" else "ChainedStruct" %}
@@ -94,7 +124,18 @@ namespace {{native_namespace}} {
                 {{chainedStructType}} * nextInChain = nullptr;
             {% endif %}
             {% for member in type.members %}
-                {% set member_declaration = as_annotated_frontendType(member) + render_cpp_default_value(member) %}
+                {% if type.name.get() == "bind group layout entry" %}
+                    {% if member.name.canonical_case() == "buffer" %}
+                        {% set forced_default_value = "{ nullptr, wgpu::BufferBindingType::BindingNotUsed, false, 0 }" %}
+                    {% elif member.name.canonical_case() == "sampler" %}
+                        {% set forced_default_value = "{ nullptr, wgpu::SamplerBindingType::BindingNotUsed }" %}
+                    {% elif member.name.canonical_case() == "texture" %}
+                        {% set forced_default_value = "{ nullptr, wgpu::TextureSampleType::BindingNotUsed, wgpu::TextureViewDimension::e2D, false }" %}
+                    {% elif member.name.canonical_case() == "storage texture" %}
+                        {% set forced_default_value = "{ nullptr, wgpu::StorageTextureAccess::BindingNotUsed, wgpu::TextureFormat::Undefined, wgpu::TextureViewDimension::e2D }" %}
+                    {% endif %}
+                {% endif %}
+                {% set member_declaration = as_annotated_frontendType(member) + render_cpp_default_value(member, forced_default_value) %}
                 {% if type.chained and loop.first %}
                     //* Align the first member after ChainedStruct to match the C struct layout.
                     //* It has to be aligned both to its natural and ChainedStruct's alignment.
@@ -103,19 +144,6 @@ namespace {{native_namespace}} {
                     {{member_declaration}};
                 {% endif %}
             {% endfor %}
-
-            //* Custom string constructors / conversion
-            {% if type.name.get() == "string view" %}
-                {{wgpu_string_constructors(CppType, false) | indent(8)}}
-
-                // NOLINTNEXTLINE(runtime/explicit) allow implicit conversion
-                operator std::string_view() const;
-            {% elif type.name.get() == "nullable string view" %}
-                {{wgpu_string_constructors(CppType, true) | indent(8)}}
-
-                // NOLINTNEXTLINE(runtime/explicit) allow implicit conversion
-                operator std::optional<std::string_view>() const;
-            {% endif %}
 
             {% if type.any_member_requires_struct_defaulting %}
                 // This method makes a copy of the struct, then, for any enum members with trivial

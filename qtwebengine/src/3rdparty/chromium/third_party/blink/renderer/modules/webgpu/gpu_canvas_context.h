@@ -7,6 +7,7 @@
 
 #include "base/containers/heap_array.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_canvas_alpha_mode.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_canvas_tone_mapping_mode.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context_factory.h"
@@ -61,17 +62,16 @@ class GPUCanvasContext : public CanvasRenderingContext,
   // CanvasRenderingContext implementation
   V8RenderingContext* AsV8RenderingContext() final;
   V8OffscreenRenderingContext* AsV8OffscreenRenderingContext() final;
-  SkColorInfo CanvasRenderingContextSkColorInfo() const override;
+  SkAlphaType GetAlphaType() const override;
+  SkColorType GetSkColorType() const override;
+  viz::SharedImageFormat GetSharedImageFormat() const override;
+  gfx::ColorSpace GetColorSpace() const override;
   // Produces a snapshot of the current contents of the swap chain if possible.
   // If that texture has already been sent to the compositor, will produce a
   // snapshot of the just released texture associated to this gpu context.
   // todo(crbug/1267243) Make snapshot always return the current frame.
   scoped_refptr<StaticBitmapImage> GetImage(FlushReason) final;
   bool PaintRenderingResultsToCanvas(SourceDrawingBuffer) final;
-  // Copies the back buffer to given shared image resource provider which must
-  // be webgpu compatible. Returns true on success.
-  bool CopyRenderingResultsFromDrawingBuffer(CanvasResourceProvider*,
-                                             SourceDrawingBuffer) final;
   bool CopyRenderingResultsToVideoFrame(
       WebGraphicsContext3DVideoFramePool* frame_pool,
       SourceDrawingBuffer src_buffer,
@@ -80,8 +80,6 @@ class GPUCanvasContext : public CanvasRenderingContext,
   void PageVisibilityChanged() override {}
   bool isContextLost() const override { return false; }
   bool IsComposited() const final { return true; }
-  bool IsOriginTopLeft() const final { return true; }
-  void SetFilterQuality(cc::PaintFlags::FilterQuality) override;
   bool IsPaintable() const final { return true; }
   int ExternallyAllocatedBufferCountPerPixel() final { return 1; }
   void Stop() final;
@@ -107,10 +105,12 @@ class GPUCanvasContext : public CanvasRenderingContext,
 
   void configure(const GPUCanvasConfiguration* descriptor, ExceptionState&);
   void unconfigure();
+  GPUCanvasConfiguration* getConfiguration();
   GPUTexture* getCurrentTexture(ScriptState*, ExceptionState&);
 
   // WebGPUSwapBufferProvider::Client implementation
   void OnTextureTransferred() override;
+  void InitializeLayer(cc::Layer* layer) override;
   void SetNeedsCompositingUpdate() override;
 
  private:
@@ -134,8 +134,6 @@ class GPUCanvasContext : public CanvasRenderingContext,
   base::WeakPtr<WebGraphicsContext3DProviderWrapper> GetContextProviderWeakPtr()
       const;
 
-  cc::PaintFlags::FilterQuality filter_quality_ =
-      cc::PaintFlags::FilterQuality::kLow;
   Member<GPUDevice> device_;
 
   // If the system doesn't support the requested format but it's one that WebGPU
@@ -149,6 +147,7 @@ class GPUCanvasContext : public CanvasRenderingContext,
 
   PredefinedColorSpace color_space_ = PredefinedColorSpace::kSRGB;
   V8GPUCanvasAlphaMode::Enum alpha_mode_;
+  V8GPUCanvasToneMappingMode::Enum tone_mapping_mode_;
   scoped_refptr<WebGPUTextureAlphaClearer> alpha_clearer_;
   scoped_refptr<WebGPUSwapBufferProvider> swap_buffers_;
 

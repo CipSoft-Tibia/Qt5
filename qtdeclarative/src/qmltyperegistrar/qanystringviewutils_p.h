@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QANYSTRINGVIEWUTILS_P_H
 #define QANYSTRINGVIEWUTILS_P_H
@@ -17,35 +18,10 @@
 #include <QtCore/private/qjson_p.h>
 
 #include <QtCore/qanystringview.h>
-#include <QtCore/qcbormap.h>
-#include <QtCore/qcborvalue.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QAnyStringViewUtils {
-
-inline QAnyStringView toStringView(const QCborValue &value)
-{
-    const QCborContainerPrivate *container = QJsonPrivate::Value::container(value);
-    if (!container)
-        return QAnyStringView();
-
-    const qint64 n = QJsonPrivate::Value::valueHelper(value);
-    const auto &e = container->elements.at(n);
-    const auto data = container->byteData(e);
-    if (!data)
-        return QAnyStringView();
-    if (e.flags & QtCbor::Element::StringIsUtf16)
-        return data->asStringView();
-    if (e.flags & QtCbor::Element::StringIsAscii)
-        return data->asLatin1();
-    return data->asUtf8StringView();
-}
-
-inline QAnyStringView toStringView(const QCborMap &map, QLatin1StringView key)
-{
-    return toStringView(map[key]);
-}
 
 // Note: This only works if part is US-ASCII, but there is no type to encode this information!
 inline bool endsWith(QAnyStringView whole, QLatin1StringView part)

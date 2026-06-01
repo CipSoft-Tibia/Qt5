@@ -103,6 +103,12 @@ void QIOSIntegration::initialize()
     QWindowSystemInterface::registerInputDevice(m_touchDevice);
 #if QT_CONFIG(tabletevent)
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
+    m_pencilDevice = new QPointingDevice(
+            "Apple Pencil", 0, QInputDevice::DeviceType::Stylus, QPointingDevice::PointerType::Pen,
+            QInputDevice::Capability::Position | QInputDevice::Capability::Pressure
+                    | QInputDevice::Capability::XTilt | QInputDevice::Capability::YTilt,
+            1, 0);
+    QWindowSystemInterface::registerInputDevice(m_pencilDevice);
 #endif
     QMacMimeRegistry::initializeMimeTypes();
 
@@ -272,6 +278,13 @@ QPointingDevice *QIOSIntegration::touchDevice()
 {
     return m_touchDevice;
 }
+
+#if QT_CONFIG(tabletevent)
+QPointingDevice *QIOSIntegration::pencilDevice()
+{
+    return m_pencilDevice;
+}
+#endif
 
 #if QT_CONFIG(accessibility)
 QPlatformAccessibility *QIOSIntegration::accessibility() const

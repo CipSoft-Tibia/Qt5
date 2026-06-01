@@ -4,7 +4,6 @@
 
 package org.qtproject.qt.android;
 
-import android.content.Context;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
@@ -242,12 +241,15 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
                 return;
             }
 
-            final AccessibilityEvent event =
-                    AccessibilityEvent.obtain(AccessibilityEvent.TYPE_ANNOUNCEMENT);
+            final CharSequence className = getNodeForVirtualViewId(viewId).getClassName();
+            final int eventType =
+                    className != null && className.equals("android.widget.ProgressBar")
+                    ? AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    : AccessibilityEvent.TYPE_ANNOUNCEMENT;
+            final AccessibilityEvent event = obtainAccessibilityEvent(eventType);
 
             event.setEnabled(true);
-            event.setClassName(getNodeForVirtualViewId(viewId).getClassName());
-
+            event.setClassName(className);
             event.setContentDescription(value);
 
             if (event.getText().isEmpty() && TextUtils.isEmpty(event.getContentDescription())) {
@@ -286,7 +288,7 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
             }
 
             final AccessibilityEvent event =
-                    AccessibilityEvent.obtain(AccessibilityEvent.TYPE_ANNOUNCEMENT);
+                    obtainAccessibilityEvent(AccessibilityEvent.TYPE_ANNOUNCEMENT);
             event.getText().add(message);
             event.setClassName(getNodeForVirtualViewId(viewId).getClassName());
             event.setPackageName(m_view.getContext().getPackageName());
@@ -350,7 +352,7 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
         if (m_layout == null || m_layout.getChildCount() == 0)
             return null;
 
-        final AccessibilityEvent event = AccessibilityEvent.obtain(eventType);
+        final AccessibilityEvent event = obtainAccessibilityEvent(eventType);
 
         event.setEnabled(true);
         event.setClassName(getNodeForVirtualViewId(virtualViewId).getClassName());
@@ -381,12 +383,12 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
     private AccessibilityNodeInfo getNodeForView()
     {
         if (m_view == null || m_layout == null)
-            return AccessibilityNodeInfo.obtain();
+            return obtainAccessibilityNodeInfo();
 
         // Since we don't want the parent to be focusable, but we can't remove
         // actions from a node, copy over the necessary fields.
-        final AccessibilityNodeInfo result = AccessibilityNodeInfo.obtain(m_view);
-        final AccessibilityNodeInfo source = AccessibilityNodeInfo.obtain(m_view);
+        final AccessibilityNodeInfo result = obtainAccessibilityNodeInfo(m_view);
+        final AccessibilityNodeInfo source = obtainAccessibilityNodeInfo(m_view);
         m_view.onInitializeAccessibilityNodeInfo(source);
 
         // Get the actual position on screen, taking the status bar into account.
@@ -396,8 +398,8 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
 
         // Copy over parent and screen bounds.
         final Rect m_tempParentRect = new Rect();
-        source.getBoundsInParent(m_tempParentRect);
-        result.setBoundsInParent(m_tempParentRect);
+        getBoundsInParent(source, m_tempParentRect);
+        setBoundsInParent(result, m_tempParentRect);
 
         final Rect m_tempScreenRect = new Rect();
         source.getBoundsInScreen(m_tempScreenRect);
@@ -445,9 +447,9 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
     private AccessibilityNodeInfo getNodeForVirtualViewId(int virtualViewId)
     {
         if (m_view == null || m_layout == null)
-            return AccessibilityNodeInfo.obtain();
+            return obtainAccessibilityNodeInfo();
 
-        final AccessibilityNodeInfo node = AccessibilityNodeInfo.obtain();
+        final AccessibilityNodeInfo node = obtainAccessibilityNodeInfo();
 
         node.setPackageName(m_view.getContext().getPackageName());
 
@@ -472,7 +474,7 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
 
         Rect parentScreenRect = QtNativeAccessibility.screenRect(parentId);
         screenRect.offset(-parentScreenRect.left, -parentScreenRect.top);
-        node.setBoundsInParent(screenRect);
+        setBoundsInParent(node, screenRect);
 
         // Manage internal accessibility focus state.
         if (m_focusedVirtualViewId == virtualViewId) {
@@ -487,11 +489,7 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
         for (int id : ids)
             node.addChild(m_view, id);
         if (node.isScrollable()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                node.setCollectionInfo(new CollectionInfo(ids.length, 1, false));
-            } else {
-                node.setCollectionInfo(CollectionInfo.obtain(ids.length, 1, false));
-            }
+            setCollectionInfo(node, ids.length, 1, false);
         }
 
         return node;
@@ -519,17 +517,6 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
             boolean handled = false;
             //Log.i(TAG, "PERFORM ACTION: " + action + " on " + virtualViewId);
             switch (action) {
-                case AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS:
-                    // Only handle the FOCUS action if it's placing focus on
-                    // a different view that was previously focused.
-                    if (m_focusedVirtualViewId != virtualViewId) {
-                        m_focusedVirtualViewId = virtualViewId;
-                        m_view.invalidate();
-                        sendEventForVirtualViewId(virtualViewId,
-                                AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);
-                        handled = true;
-                    }
-                    break;
                 case AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS:
                     if (m_focusedVirtualViewId == virtualViewId) {
                         m_focusedVirtualViewId = INVALID_ID;
@@ -570,19 +557,68 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
                 sendEventForVirtualViewId(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED);
             break;
         case AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS:
-            success = QtNativeAccessibility.focusAction(virtualViewId);
+            if (m_focusedVirtualViewId != virtualViewId) {
+                success = QtNativeAccessibility.focusAction(virtualViewId);
+                if (!success) {
+                    notifyObjectFocus(virtualViewId);
+                    success = true;
+                }
+            }
             break;
         case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
             success = QtNativeAccessibility.scrollForward(virtualViewId);
-            if (success)
-                sendEventForVirtualViewId(virtualViewId, AccessibilityEvent.TYPE_VIEW_SCROLLED);
             break;
         case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD:
             success = QtNativeAccessibility.scrollBackward(virtualViewId);
-            if (success)
-                sendEventForVirtualViewId(virtualViewId, AccessibilityEvent.TYPE_VIEW_SCROLLED);
             break;
         }
         return success;
+    }
+
+    @SuppressWarnings("deprecation")
+    private AccessibilityEvent obtainAccessibilityEvent(int eventType) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return new AccessibilityEvent(eventType);
+        } else {
+            return AccessibilityEvent.obtain(eventType);
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private AccessibilityNodeInfo obtainAccessibilityNodeInfo() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return new AccessibilityNodeInfo();
+        } else {
+            return AccessibilityNodeInfo.obtain();
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private AccessibilityNodeInfo obtainAccessibilityNodeInfo(View source) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return new AccessibilityNodeInfo(source);
+        } else {
+            return AccessibilityNodeInfo.obtain(source);
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void getBoundsInParent(AccessibilityNodeInfo node, Rect outBounds) {
+        node.getBoundsInParent(outBounds);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void setBoundsInParent(AccessibilityNodeInfo node, Rect bounds) {
+        node.setBoundsInParent(bounds);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void setCollectionInfo(AccessibilityNodeInfo node, int rowCount, int columnCount,
+                                   boolean hierarchical) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            node.setCollectionInfo(new CollectionInfo(rowCount, columnCount, hierarchical));
+        } else {
+            node.setCollectionInfo(CollectionInfo.obtain(rowCount, columnCount, hierarchical));
+        }
     }
 }

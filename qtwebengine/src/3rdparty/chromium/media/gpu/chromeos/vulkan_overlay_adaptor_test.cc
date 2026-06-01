@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/gpu/chromeos/vulkan_overlay_adaptor.h"
 
 #include <linux/videodev2.h>
@@ -33,7 +38,6 @@
 #include "media/base/video_frame.h"
 #include "media/base/video_frame_layout.h"
 #include "media/base/video_types.h"
-#include "media/gpu/chromeos/chromeos_compressed_gpu_memory_buffer_video_frame_utils.h"
 #include "media/gpu/chromeos/fourcc.h"
 #include "media/gpu/chromeos/perf_test_util.h"
 #include "media/gpu/chromeos/platform_video_frame_utils.h"
@@ -421,7 +425,6 @@ scoped_refptr<VideoFrame> ProcessFrameLibyuv(scoped_refptr<VideoFrame> in_frame,
       break;
     default:
       NOTREACHED() << "Invalid overlay transform: " << transform;
-      return nullptr;
   }
 
   // Assemble a graph of the available LibYUV conversion functions.
@@ -707,8 +710,7 @@ scoped_refptr<VideoFrame> VulkanOverlayAdaptorTest::CreateVideoFrame(
       VideoFrameMapperFactory::CreateMapper(
           VideoPixelFormat::PIXEL_FORMAT_NV12,
           VideoFrame::STORAGE_GPU_MEMORY_BUFFER,
-          /*force_linear_buffer_mapper=*/true,
-          /*must_support_intel_media_compressed_buffers=*/false);
+          /*force_linear_buffer_mapper=*/true);
   scoped_refptr<VideoFrame> mapped_frame =
       frame_mapper->Map(frame, PROT_READ | PROT_WRITE);
 
@@ -762,8 +764,7 @@ scoped_refptr<VideoFrame> VulkanOverlayAdaptorTest::CreateFramebuffer(
           is_10bit ? VideoPixelFormat::PIXEL_FORMAT_XR30
                    : VideoPixelFormat::PIXEL_FORMAT_ARGB,
           VideoFrame::STORAGE_GPU_MEMORY_BUFFER,
-          /*force_linear_buffer_mapper=*/true,
-          /*must_support_intel_media_compressed_buffers=*/false);
+          /*force_linear_buffer_mapper=*/true);
   scoped_refptr<VideoFrame> mapped_frame =
       frame_mapper->Map(frame, PROT_READ | PROT_WRITE);
 
@@ -797,7 +798,7 @@ TEST_P(VulkanOverlayAdaptorTest, Correctness) {
       VulkanOverlayAdaptor::Create(/*is_protected=*/false, GetParam().tiling);
 
   bool performed_cleanup = false;
-  auto fence_helper =
+  auto* fence_helper =
       vulkan_overlay_adaptor->GetVulkanDeviceQueue()->GetFenceHelper();
   fence_helper->EnqueueCleanupTaskForSubmittedWork(base::BindOnce(
       [](bool* cleanup_flag, gpu::VulkanDeviceQueue* device_queue,

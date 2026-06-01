@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 include(Qt6QmlBuildInternals.cmake)
-
+include(Qt6QmlProperties.cmake)
 #####################################################################
 ## Qml Module:
 #####################################################################
@@ -113,7 +113,7 @@ qt_internal_add_qml_module(Qml
         common/qqmljsmemorypool_p.h
         common/qqmljssourcelocation_p.h
         common/qqmlsignalnames_p.h common/qqmlsignalnames.cpp
-        common/qqmltranslation.cpp common/qqmltranslation_p.h
+        common/qqmltranslation_p.h
         common/qv4alloca_p.h
         common/qv4calldata_p.h
         common/qv4compileddata.cpp common/qv4compileddata_p.h
@@ -139,7 +139,7 @@ qt_internal_add_qml_module(Qml
         inlinecomponentutils_p.h
         jsapi/qjsengine.cpp jsapi/qjsengine.h jsapi/qjsengine_p.h
         jsapi/qjslist.cpp jsapi/qjslist.h
-        jsapi/qjsmanagedvalue.cpp jsapi/qjsmanagedvalue.h
+        jsapi/qjsmanagedvalue.cpp jsapi/qjsmanagedvalue.h jsapi/qjsmanagedvalue_p.h
         jsapi/qjsprimitivevalue.cpp jsapi/qjsprimitivevalue.h
         jsapi/qjsvalue.cpp jsapi/qjsvalue.h jsapi/qjsvalue_p.h
         jsapi/qjsvalueiterator.cpp jsapi/qjsvalueiterator.h jsapi/qjsvalueiterator_p.h
@@ -239,7 +239,6 @@ qt_internal_add_qml_module(Qml
         qml/ftw/qbipointer_p.h
         qml/ftw/qdoubleendedlist_p.h
         qml/ftw/qfieldlist_p.h
-        qml/ftw/qfinitestack_p.h
         qml/ftw/qhashedstring.cpp qml/ftw/qhashedstring_p.h
         qml/ftw/qintrusivelist.cpp qml/ftw/qintrusivelist_p.h
         qml/ftw/qlazilyallocated_p.h
@@ -329,6 +328,7 @@ qt_internal_add_qml_module(Qml
         qml/qqmltypecompiler.cpp qml/qqmltypecompiler_p.h
         qml/qqmltypedata.cpp qml/qqmltypedata_p.h
         qml/qqmltypeloader.cpp qml/qqmltypeloader_p.h
+        qml/qqmltypeloaderdata.cpp qml/qqmltypeloaderdata_p.h
         qml/qqmltypeloaderqmldircontent.cpp qml/qqmltypeloaderqmldircontent_p.h
         qml/qqmltypeloaderthread.cpp qml/qqmltypeloaderthread_p.h
         qml/qqmltypemodule.cpp qml/qqmltypemodule_p.h
@@ -437,10 +437,12 @@ qt_internal_add_qml_module(Qml
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}QmltcFileMappingTemplate.qrc.in"
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}QmlPublicCMakeHelpers.cmake"
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}UpdateQmllsIni.cmake"
+        "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}QmlProperties.cmake"
         ${extra_cmake_files}
     EXTRA_CMAKE_INCLUDES
         "${INSTALL_CMAKE_NAMESPACE}QmlFindQmlscInternal.cmake"
         "${INSTALL_CMAKE_NAMESPACE}QmlPublicCMakeHelpers.cmake"
+        "${INSTALL_CMAKE_NAMESPACE}QmlProperties.cmake"
         ${extra_cmake_includes}
     POLICIES
         QTP0001
@@ -521,7 +523,6 @@ set_source_files_properties(compat/removed_api.cpp
 #    ""
 #)
 
-qt_declarative_write_tag_header(Qml)
 set(_qt_qlalr_flags "--no-debug" "--qt")
 qt_process_qlalr(Qml "${CMAKE_CURRENT_SOURCE_DIR}/parser/qqmljs.g" "${_qt_qlalr_flags}")
 qt_declarative_generate_reg_exp_jit_tables(Qml)
@@ -623,6 +624,25 @@ qt_internal_extend_target(Qml CONDITION GCC AND QT_COMPILER_VERSION_MAJOR STREQU
         -fno-strict-aliasing
 )
 
+if(ANDROID)
+    string(JOIN "" application_type_condition
+        "$<STREQUAL:$<TARGET_PROPERTY:_qt_android_target_type>,APPLICATION>"
+    )
+else()
+    string(JOIN "" application_type_condition
+        "$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>"
+    )
+endif()
+
+string(JOIN "" qt_qml_debug_definition
+    "$<$<AND:"
+            "${application_type_condition},"
+            "$<BOOL:$<TARGET_PROPERTY:QT_ENABLE_QML_DEBUG>>"
+        ">:"
+        "QT_QML_DEBUG"
+    ">"
+)
+
 qt_internal_extend_target(Qml CONDITION QT_FEATURE_qml_debug
     SOURCES
         debugger/qqmlabstractprofileradapter.cpp debugger/qqmlabstractprofileradapter_p.h
@@ -640,6 +660,10 @@ qt_internal_extend_target(Qml CONDITION QT_FEATURE_qml_debug
         debugger/qqmlprofilerdefinitions_p.h
         jsruntime/qv4profiling.cpp
 )
+
+if(QT_FEATURE_qml_debug)
+    target_compile_definitions(Qml INTERFACE "${qt_qml_debug_definition}")
+endif()
 
 qt_internal_extend_target(Qml CONDITION UNIX
     SOURCES
@@ -759,11 +783,7 @@ qt_internal_add_docs(Qml
     doc/qtqml.qdocconf
 )
 
-# include snippet projects for developer shared builds
-# static builds fail with
-#   CMake Error: AUTOMOC for target qt_target_qml_sources_example_resources_3:
-#   The "moc" executable does not exist
-if(QT_FEATURE_private_tests AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.19" AND QT_BUILD_SHARED_LIBS)
+if(QT_FEATURE_doc_snippets)
     add_subdirectory(doc/snippets/cmake/qt_target_qml_sources)
     qt_autogen_tools(qt_target_qml_sources_example ENABLE_AUTOGEN_TOOLS moc)
     qt_autogen_tools(qt_target_qml_sources_exampleplugin ENABLE_AUTOGEN_TOOLS moc)

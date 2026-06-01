@@ -7,7 +7,7 @@
 namespace chrome_pdf {
 
 bool AccessibilityDocInfo::operator==(const AccessibilityDocInfo& other) const {
-  return page_count == other.page_count &&
+  return page_count == other.page_count && is_tagged == other.is_tagged &&
          text_accessible == other.text_accessible &&
          text_copyable == other.text_copyable;
 }
@@ -45,10 +45,30 @@ AccessibilityTextRunInfo::AccessibilityTextRunInfo() = default;
 
 AccessibilityTextRunInfo::AccessibilityTextRunInfo(
     uint32_t len,
+    const std::string& tag_type,
     const gfx::RectF& bounds,
     AccessibilityTextDirection direction,
     const AccessibilityTextStyleInfo& style)
-    : len(len), bounds(bounds), direction(direction), style(style) {}
+    : AccessibilityTextRunInfo(len,
+                               tag_type,
+                               bounds,
+                               direction,
+                               style,
+                               /*is_searchified=*/false) {}
+
+AccessibilityTextRunInfo::AccessibilityTextRunInfo(
+    uint32_t len,
+    const std::string& tag_type,
+    const gfx::RectF& bounds,
+    AccessibilityTextDirection direction,
+    const AccessibilityTextStyleInfo& style,
+    bool is_searchified)
+    : len(len),
+      tag_type(tag_type),
+      bounds(bounds),
+      direction(direction),
+      style(style),
+      is_searchified(is_searchified) {}
 
 AccessibilityTextRunInfo::AccessibilityTextRunInfo(
     const AccessibilityTextRunInfo& other) = default;

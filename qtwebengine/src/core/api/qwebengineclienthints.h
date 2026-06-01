@@ -29,6 +29,7 @@ class Q_WEBENGINECORE_EXPORT QWebEngineClientHints : public QObject
     Q_PROPERTY(QString bitness READ bitness WRITE setBitness FINAL)
     Q_PROPERTY(QVariantMap fullVersionList READ fullVersionList WRITE setFullVersionList FINAL)
     Q_PROPERTY(bool wow64 READ isWow64 WRITE setIsWow64 FINAL)
+    Q_PROPERTY(QStringList formFactors READ formFactors WRITE setFormFactors REVISION(6, 10) FINAL)
 
     Q_PROPERTY(bool isAllClientHintsEnabled READ isAllClientHintsEnabled WRITE setAllClientHintsEnabled FINAL)
 
@@ -44,6 +45,7 @@ public:
     QString bitness() const;
     QVariantMap fullVersionList() const;
     bool isWow64() const;
+    Q_REVISION(6, 10) QStringList formFactors() const;
 
     void setArch(const QString &);
     void setPlatform(const QString &);
@@ -54,6 +56,7 @@ public:
     void setBitness(const QString &);
     void setFullVersionList(const QVariantMap &);
     void setIsWow64(bool);
+    Q_REVISION(6, 10) void setFormFactors(const QStringList &);
 
     bool isAllClientHintsEnabled();
     void setAllClientHintsEnabled(bool enabled);

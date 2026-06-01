@@ -21,7 +21,7 @@ namespace {
 
 // Default timeout to receive a reply message in response to a request message
 // sent by us.
-constexpr std::chrono::milliseconds kReplyTimeout{4000};
+constexpr std::chrono::milliseconds kReplyTimeout(4000);
 
 // Special character indicating message was sent to all receivers or senders.
 constexpr char kAnyDestination[] = "*";
@@ -115,12 +115,11 @@ Error SenderSessionMessenger::SendOutboundMessage(SenderMessage message) {
                                        jsonified.value());
 }
 
-Error SenderSessionMessenger::SendRpcMessage(
-    const std::vector<uint8_t>& message) {
-  return SendOutboundMessage(
-      SenderMessage{openscreen::cast::SenderMessage::Type::kRpc,
-                    -1 /* sequence_number, unused by RPC messages */,
-                    true /* valid */, message});
+Error SenderSessionMessenger::SendRpcMessage(ByteView message) {
+  return SendOutboundMessage(SenderMessage{
+      openscreen::cast::SenderMessage::Type::kRpc,
+      -1 /* sequence_number, unused by RPC messages */, true /* valid */,
+      std::vector<uint8_t>(message.begin(), message.end())});
 }
 
 Error SenderSessionMessenger::SendRequest(SenderMessage message,

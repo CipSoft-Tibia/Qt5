@@ -4,6 +4,7 @@
 #include <QtGraphsWidgets/q3dsurfacewidgetitem.h>
 #include <private/q3dsurfacewidgetitem_p.h>
 #include <private/qquickgraphssurface_p.h>
+#include "q3dsurfacewidgetitem.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -285,6 +286,46 @@ void Q3DSurfaceWidgetItem::releaseAxis(QValue3DAxis *axis)
 }
 
 /*!
+ * Exports the requested slice view to an image.
+ * The sliced result is the series of \a index. To export all series, set
+ * \a index to -1.
+ * The exported slice is a line of row or column, which is defined by \a sliceType,
+ * at a given \a requestedIndex.
+ *
+ * The \l sliceImageChanged signal is emitted when the image is ready, and can
+ * be captured as follows:
+ *
+ * \code
+ * connect(item, &Q3DSurfaceWidgetItem::sliceImageChanged, this, [](const QImage &image) {
+ *     // ~~~
+ * });
+ *
+ * item->renderSliceToImage(sliceType, index);
+ * \endcode
+ *
+ * Image is rendered with the current antialiasing settings.
+ *
+ * \sa QQuickItem::grabToImage(), sliceImageChanged()
+ *
+ * \since 6.10
+ */
+void Q3DSurfaceWidgetItem::renderSliceToImage(int index,
+                                              int requestedIndex,
+                                              QtGraphs3D::SliceCaptureType sliceType)
+{
+    auto graph = graphSurface();
+    disconnect(graph,
+               &QQuickGraphsSurface::sliceImageChanged,
+               this,
+               &Q3DSurfaceWidgetItem::sliceImageChanged);
+    connect(graph,
+            &QQuickGraphsSurface::sliceImageChanged,
+            this,
+            &Q3DSurfaceWidgetItem::sliceImageChanged);
+    graphSurface()->renderSliceToImage(index, requestedIndex, sliceType);
+}
+
+/*!
  * Returns the list of all added axes.
  *
  * \sa addAxis()
@@ -298,6 +339,12 @@ QList<QValue3DAxis *> Q3DSurfaceWidgetItem::axes() const
 
     return retList;
 }
+
+/*!
+ * \fn Q3DSurfaceWidgetItem::sliceImageChanged(const QImage &image)
+ * \since 6.10
+ * Emitted when \l renderSliceToImage has prepared the \a{image}.
+ */
 
 /*!
  * \internal

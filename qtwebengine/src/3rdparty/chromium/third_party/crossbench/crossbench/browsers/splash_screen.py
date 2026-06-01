@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import abc
+import dataclasses
 import html
 import urllib.parse
 from argparse import ArgumentTypeError
@@ -13,7 +14,15 @@ from typing import TYPE_CHECKING, Any, Dict
 from crossbench import path as pth
 
 if TYPE_CHECKING:
-  from crossbench.runner.run import Run
+  from crossbench.browsers.browser import Browser
+  from crossbench.runner.actions import Actions
+
+
+@dataclasses.dataclass(frozen=True)
+class SplashScreenData:
+  is_warmup: bool
+  browser: Browser
+  run_details: Dict
 
 
 class SplashScreen:
@@ -39,7 +48,7 @@ class SplashScreen:
       return URLSplashScreen(maybe_path.absolute().as_uri())
     raise ArgumentTypeError(f"Unknown splashscreen: {value}")
 
-  def run(self, run: Run) -> None:
+  def run(self, action: Actions, info: SplashScreenData) -> None:
     pass
 
 
@@ -47,33 +56,31 @@ _BLANK_PAGE_HTML = "<html></html>"
 _BLANK_PAGE_DATA_URL = (
     f"data:text/html;charset=utf-8,{urllib.parse.quote(_BLANK_PAGE_HTML)}")
 
-
 class BaseURLSplashScreen(SplashScreen, metaclass=abc.ABCMeta):
 
   def __init__(self, timeout: float = 2) -> None:
     super().__init__()
     self._timeout = timeout
 
-  def run(self, run: Run) -> None:
-    with run.actions("SplashScreen") as action:
-      action.show_url(self.get_url(run))
-      action.wait(self._timeout)
-      action.show_url(_BLANK_PAGE_DATA_URL)
+  def run(self, action: Actions, info: SplashScreenData) -> None:
+    action.show_url(self.get_url(info))
+    action.wait(self._timeout)
+    action.show_url(_BLANK_PAGE_DATA_URL)
 
   @abc.abstractmethod
-  def get_url(self, run: Run) -> str:
+  def get_url(self, info: SplashScreenData) -> str:
     pass
 
 
 class DetailedSplashScreen(BaseURLSplashScreen):
 
-  def get_url(self, run: Run) -> str:
-    browser = run.browser
+  def get_url(self, info: SplashScreenData) -> str:
+    browser: Browser = info.browser
     title = html.escape(browser.app_name.title())
     version = html.escape(browser.version)
     run_type = "Run"
     bg_color = "#000"
-    if run.is_warmup:
+    if info.is_warmup:
       title = f"Warmup: {title}"
       run_type = "Warmup Run"
       bg_color = "#444"
@@ -92,8 +99,8 @@ class DetailedSplashScreen(BaseURLSplashScreen):
         "</style>",
         "</head><body>",
         f"<h1>{title} {version}</h1>",
-        self._render_browser_details(run),
-        self._render_run_details(run),
+        self._render_browser_details(info),
+        self._render_run_details(info),
         "</body></html>",
     ))
     data_url = f"data:text/html;charset=utf-8,{urllib.parse.quote(page)}"
@@ -107,22 +114,19 @@ class DetailedSplashScreen(BaseURLSplashScreen):
     section += "</dl>"
     return section
 
-  def _render_browser_details(self, run: Run) -> str:
-    browser = run.browser
-    properties = {
-        "User Agent": browser.user_agent(run.runner),
-        **browser.details_json()
-    }
+  def _render_browser_details(self, info: SplashScreenData) -> str:
+    browser: Browser = info.browser
+    properties = {"User Agent": browser.user_agent(), **browser.details_json()}
     return self._render_properties("Browser Details", properties)
 
-  def _render_run_details(self, run: Run) -> str:
-    return self._render_properties("Run Details", run.details_json())
+  def _render_run_details(self, info: SplashScreenData) -> str:
+    return self._render_properties("Run Details", info.run_details)
 
 
 class MinimalSplashScreen(DetailedSplashScreen):
 
-  def _render_browser_details(self, run: Run) -> str:
-    properties = {"User Agent": run.browser.user_agent(run.runner)}
+  def _render_browser_details(self, info: SplashScreenData) -> str:
+    properties = {"User Agent": info.browser.user_agent()}
     return self._render_properties("Browser Details", properties)
 
 
@@ -132,7 +136,8 @@ class URLSplashScreen(BaseURLSplashScreen):
     super().__init__(timeout)
     self._url = url
 
-  def get_url(self, run: Run) -> str:
+  def get_url(self, info: SplashScreenData) -> str:
+    del info
     return self._url
 
   @property

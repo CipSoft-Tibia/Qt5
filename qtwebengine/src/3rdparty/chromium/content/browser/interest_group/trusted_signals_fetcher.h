@@ -11,6 +11,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/functional/callback.h"
@@ -18,13 +19,16 @@
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/types/expected.h"
+#include "base/unguessable_token.h"
 #include "base/values.h"
 #include "content/common/content_export.h"
 #include "content/services/auction_worklet/public/mojom/trusted_signals_cache.mojom.h"
 #include "net/third_party/quiche/src/quiche/oblivious_http/buffers/oblivious_http_request.h"
 #include "services/data_decoder/public/cpp/data_decoder.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/ip_address_space.mojom-forward.h"
 #include "services/network/public/mojom/url_loader_factory.mojom-forward.h"
+#include "services/network/public/mojom/url_response_head.mojom-forward.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -59,7 +63,6 @@ class CONTENT_EXPORT TrustedSignalsFetcher {
     BiddingPartition(int partition_id,
                      const std::set<std::string>* interest_group_names,
                      const std::set<std::string>* keys,
-                     const std::string* hostname,
                      const base::Value::Dict* additional_params);
     BiddingPartition(BiddingPartition&&);
 
@@ -71,7 +74,6 @@ class CONTENT_EXPORT TrustedSignalsFetcher {
 
     base::raw_ref<const std::set<std::string>> interest_group_names;
     base::raw_ref<const std::set<std::string>> keys;
-    base::raw_ref<const std::string> hostname;
 
     // At the moment, valid keys are "experimentGroupId", "slotSize", and
     // "allSlotsRequestedSizes". We could take them separately, but seems better
@@ -86,7 +88,6 @@ class CONTENT_EXPORT TrustedSignalsFetcher {
     ScoringPartition(int partition_id,
                      const GURL* render_url,
                      const std::set<GURL>* component_render_urls,
-                     const std::string* hostname,
                      const base::Value::Dict* additional_params);
     ScoringPartition(ScoringPartition&&);
 
@@ -101,7 +102,6 @@ class CONTENT_EXPORT TrustedSignalsFetcher {
     base::raw_ref<const GURL> render_url;
 
     base::raw_ref<const std::set<GURL>> component_render_urls;
-    base::raw_ref<const std::string> hostname;
 
     // At the moment, valid keys are "experimentGroupId", "slotSize", and
     // "allSlotsRequestedSizes". We could take them separately, but seems better
@@ -151,19 +151,54 @@ class CONTENT_EXPORT TrustedSignalsFetcher {
   TrustedSignalsFetcher(const TrustedSignalsFetcher&) = delete;
   TrustedSignalsFetcher& operator=(const TrustedSignalsFetcher&) = delete;
 
-  // `partitions` is a map of all partitions in the request, indexed by
+  // `main_frame_origin` and `network_partition_nonce` are used to create an
+  // IsolationInfo identifying the network partition to use.
+  // `main_frame_origin`'s host is also sent as part of the encrypted request.
+  //
+  // `ip_address_space` is the IPAddressSpace of the frame that's running the
+  // auction. It's used to create a ClientSecurityState that, depending on
+  // global settings, can have a PrivateNetworkRequestPolicy that sends CORS
+  // preflight requests if the signals URL maps to an IP on a less public
+  // address space. The other members of ClientSecurityState use default values.
+  // Default values are safe since these are credentialless requests. Any data
+  // taken from the frame would also potentially be a leak.
+  //
+  // `script_origin` is the owner of the interest group the request is for. Used
+  // as the initiator for CORS.
+  //
+  // `compression_groups` is a map of all partitions in the request, indexed by
   // compression group id. Virtual for tests.
   virtual void FetchBiddingSignals(
       network::mojom::URLLoaderFactory* url_loader_factory,
+      const url::Origin& main_frame_origin,
+      network::mojom::IPAddressSpace ip_address_space,
+      base::UnguessableToken network_partition_nonce,
+      const url::Origin& script_origin,
       const GURL& trusted_bidding_signals_url,
       const BiddingAndAuctionServerKey& bidding_and_auction_key,
       const std::map<int, std::vector<BiddingPartition>>& compression_groups,
       Callback callback);
 
-  // `partitions` is a map of all partitions in the request, indexed by
+  // `main_frame_origin` and `network_partition_nonce` are used to create an
+  // IsolationInfo identifying the network partition to use.
+  // `main_frame_origin`'s host is also sent as part of the encrypted request.
+  //
+  // `ip_address_space` is the IPAddressSpace of the frame that's running the
+  // auction. The other members of ClientSecurityState are either based on its
+  // value or use defaults. Defaults are safe since these are credentialless
+  // requests. Any data taken from the frame would also potentially be a leak.
+  //
+  // `script_origin` is the seller for the auction. Used as the initiator for
+  // CORS.
+  //
+  // `compression_groups` is a map of all partitions in the request, indexed by
   // compression group id. Virtual for tests.
   virtual void FetchScoringSignals(
       network::mojom::URLLoaderFactory* url_loader_factory,
+      const url::Origin& main_frame_origin,
+      network::mojom::IPAddressSpace ip_address_space,
+      base::UnguessableToken network_partition_nonce,
+      const url::Origin& script_origin,
       const GURL& trusted_scoring_signals_url,
       const BiddingAndAuctionServerKey& bidding_and_auction_key,
       const std::map<int, std::vector<ScoringPartition>>& compression_groups,
@@ -178,10 +213,17 @@ class CONTENT_EXPORT TrustedSignalsFetcher {
   // this class.
   void EncryptRequestBodyAndStart(
       network::mojom::URLLoaderFactory* url_loader_factory,
+      const url::Origin& main_frame_origin,
+      network::mojom::IPAddressSpace ip_address_space,
+      base::UnguessableToken network_partition_nonce,
+      const url::Origin& script_origin,
       const GURL& trusted_signals_url,
       const BiddingAndAuctionServerKey& bidding_and_auction_key,
       std::string plaintext_request_body,
       Callback callback);
+
+  void OnResponseStarted(const GURL& final_url,
+                         const network::mojom::URLResponseHead& response_head);
 
   void OnRequestComplete(std::unique_ptr<std::string> response_body);
 

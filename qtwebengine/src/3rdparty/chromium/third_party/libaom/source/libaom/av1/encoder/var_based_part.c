@@ -421,14 +421,11 @@ static inline void fill_variance_4x4avg(const uint8_t *src_buf, int src_stride,
   }
 }
 
-// TODO(kyslov) Bring back threshold adjustment based on content state
 static int64_t scale_part_thresh_content(int64_t threshold_base, int speed,
-                                         int width, int height,
-                                         int non_reference_frame) {
-  (void)width;
-  (void)height;
+                                         int non_reference_frame,
+                                         int is_static) {
   int64_t threshold = threshold_base;
-  if (non_reference_frame) threshold = (3 * threshold) >> 1;
+  if (non_reference_frame && !is_static) threshold = (3 * threshold) >> 1;
   if (speed >= 8) {
     return (5 * threshold) >> 2;
   }
@@ -645,11 +642,11 @@ static inline int64_t tune_base_thresh_content(AV1_COMP *cpi,
       updated_thresh_base = (5 * updated_thresh_base) >> 2;
   }
   updated_thresh_base = scale_part_thresh_content(
-      updated_thresh_base, cpi->oxcf.speed, cm->width, cm->height,
-      cpi->ppi->rtc_ref.non_reference_frame);
+      updated_thresh_base, cpi->oxcf.speed,
+      cpi->ppi->rtc_ref.non_reference_frame, cpi->rc.frame_source_sad == 0);
   if (cpi->oxcf.speed >= 11 && source_sad_nonrd > kLowSad &&
       cpi->rc.high_motion_content_screen_rtc)
-    updated_thresh_base = updated_thresh_base << 5;
+    updated_thresh_base = updated_thresh_base << 4;
   return updated_thresh_base;
 }
 
@@ -1011,6 +1008,11 @@ static inline void chroma_check(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize,
   if (cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN &&
       cpi->rc.high_source_sad) {
     shift_lower_limit = 7;
+  } else if (cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN &&
+             cpi->rc.percent_blocks_with_motion > 90 &&
+             cpi->rc.frame_source_sad > 10000 && source_sad_nonrd > kLowSad) {
+    shift_lower_limit = 8;
+    shift_upper_limit = 3;
   } else if (source_sad_nonrd >= kMedSad && x->source_variance > 500 &&
              cpi->common.width * cpi->common.height >= 640 * 360) {
     shift_upper_limit = 2;
@@ -1024,6 +1026,10 @@ static inline void chroma_check(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize,
   const YV12_BUFFER_CONFIG *yv12_alt = get_ref_frame_yv12_buf(cm, ALTREF_FRAME);
   const struct scale_factors *const sf =
       get_ref_scale_factors_const(cm, LAST_FRAME);
+  const struct scale_factors *const sf_g =
+      get_ref_scale_factors_const(cm, GOLDEN_FRAME);
+  const struct scale_factors *const sf_alt =
+      get_ref_scale_factors_const(cm, ALTREF_FRAME);
   struct buf_2d dst;
   unsigned int uv_sad_g = 0;
   unsigned int uv_sad_alt = 0;
@@ -1060,7 +1066,7 @@ static inline void chroma_check(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize,
         uint8_t *src = (plane == 1) ? yv12_g->u_buffer : yv12_g->v_buffer;
         setup_pred_plane(&dst, xd->mi[0]->bsize, src, yv12_g->uv_crop_width,
                          yv12_g->uv_crop_height, yv12_g->uv_stride, xd->mi_row,
-                         xd->mi_col, sf, xd->plane[plane].subsampling_x,
+                         xd->mi_col, sf_g, xd->plane[plane].subsampling_x,
                          xd->plane[plane].subsampling_y);
         uv_sad_g = cpi->ppi->fn_ptr[bs].sdf(p->src.buf, p->src.stride, dst.buf,
                                             dst.stride);
@@ -1071,7 +1077,7 @@ static inline void chroma_check(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize,
         uint8_t *src = (plane == 1) ? yv12_alt->u_buffer : yv12_alt->v_buffer;
         setup_pred_plane(&dst, xd->mi[0]->bsize, src, yv12_alt->uv_crop_width,
                          yv12_alt->uv_crop_height, yv12_alt->uv_stride,
-                         xd->mi_row, xd->mi_col, sf,
+                         xd->mi_row, xd->mi_col, sf_alt,
                          xd->plane[plane].subsampling_x,
                          xd->plane[plane].subsampling_y);
         uv_sad_alt = cpi->ppi->fn_ptr[bs].sdf(p->src.buf, p->src.stride,
@@ -1323,6 +1329,53 @@ static inline void evaluate_neighbour_mvs(AV1_COMP *cpi, MACROBLOCK *x,
   }
 }
 
+static void do_int_pro_motion_estimation(AV1_COMP *cpi, MACROBLOCK *x,
+                                         unsigned int *y_sad, int mi_row,
+                                         int mi_col, int source_sad_nonrd) {
+  AV1_COMMON *const cm = &cpi->common;
+  MACROBLOCKD *xd = &x->e_mbd;
+  MB_MODE_INFO *mi = xd->mi[0];
+  const int is_screen = cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN;
+  const int increase_col_sw = source_sad_nonrd > kMedSad &&
+                              !cpi->rc.high_motion_content_screen_rtc &&
+                              (cpi->svc.temporal_layer_id == 0 ||
+                               cpi->rc.num_col_blscroll_last_tl0 > 2);
+  int me_search_size_col = is_screen
+                               ? increase_col_sw ? 512 : 96
+                               : block_size_wide[cm->seq_params->sb_size] >> 1;
+  // For screen use larger search size row motion to capture
+  // vertical scroll, which can be larger motion.
+  int me_search_size_row = is_screen
+                               ? source_sad_nonrd > kMedSad ? 512 : 192
+                               : block_size_high[cm->seq_params->sb_size] >> 1;
+  unsigned int y_sad_zero;
+  *y_sad = av1_int_pro_motion_estimation(
+      cpi, x, cm->seq_params->sb_size, mi_row, mi_col, &kZeroMv, &y_sad_zero,
+      me_search_size_col, me_search_size_row);
+  // The logic below selects whether the motion estimated in the
+  // int_pro_motion() will be used in nonrd_pickmode. Only do this
+  // for screen for now.
+  if (is_screen) {
+    unsigned int thresh_sad =
+        (cm->seq_params->sb_size == BLOCK_128X128) ? 50000 : 20000;
+    if (*y_sad < (y_sad_zero >> 1) && *y_sad < thresh_sad) {
+      x->sb_me_partition = 1;
+      x->sb_me_mv.as_int = mi->mv[0].as_int;
+      if (cpi->svc.temporal_layer_id == 0) {
+        if (abs(mi->mv[0].as_mv.col) > 16 && abs(mi->mv[0].as_mv.row) == 0)
+          cpi->rc.num_col_blscroll_last_tl0++;
+        else if (abs(mi->mv[0].as_mv.row) > 16 && abs(mi->mv[0].as_mv.col) == 0)
+          cpi->rc.num_row_blscroll_last_tl0++;
+      }
+    } else {
+      x->sb_me_partition = 0;
+      // Fall back to using zero motion.
+      *y_sad = y_sad_zero;
+      mi->mv[0].as_int = 0;
+    }
+  }
+}
+
 static void setup_planes(AV1_COMP *cpi, MACROBLOCK *x, unsigned int *y_sad,
                          unsigned int *y_sad_g, unsigned int *y_sad_alt,
                          unsigned int *y_sad_last,
@@ -1416,40 +1469,11 @@ static void setup_planes(AV1_COMP *cpi, MACROBLOCK *x, unsigned int *y_sad,
     // so for now force it to 2 based on superblock sad.
     if (est_motion > 2 && source_sad_nonrd > kMedSad) est_motion = 2;
 
-    if (est_motion == 1 || est_motion == 2) {
-      if (xd->mb_to_right_edge >= 0 && xd->mb_to_bottom_edge >= 0) {
-        // For screen only do int_pro_motion for spatial variance above
-        // threshold and motion level above LowSad.
-        if (x->source_variance > 100 && source_sad_nonrd > kLowSad) {
-          int is_screen = cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN;
-          int me_search_size_col =
-              is_screen ? 96 : block_size_wide[cm->seq_params->sb_size] >> 1;
-          // For screen use larger search size row motion to capture
-          // vertical scroll, which can be larger motion.
-          int me_search_size_row =
-              is_screen ? 192 : block_size_high[cm->seq_params->sb_size] >> 1;
-          unsigned int y_sad_zero;
-          *y_sad = av1_int_pro_motion_estimation(
-              cpi, x, cm->seq_params->sb_size, mi_row, mi_col, &kZeroMv,
-              &y_sad_zero, me_search_size_col, me_search_size_row);
-          // The logic below selects whether the motion estimated in the
-          // int_pro_motion() will be used in nonrd_pickmode. Only do this
-          // for screen for now.
-          if (is_screen) {
-            unsigned int thresh_sad =
-                (cm->seq_params->sb_size == BLOCK_128X128) ? 50000 : 20000;
-            if (*y_sad < (y_sad_zero >> 1) && *y_sad < thresh_sad) {
-              x->sb_me_partition = 1;
-              x->sb_me_mv.as_int = mi->mv[0].as_int;
-            } else {
-              x->sb_me_partition = 0;
-              // Fall back to using zero motion.
-              *y_sad = y_sad_zero;
-              mi->mv[0].as_int = 0;
-            }
-          }
-        }
-      }
+    if ((est_motion == 1 || est_motion == 2) && xd->mb_to_right_edge >= 0 &&
+        xd->mb_to_bottom_edge >= 0 && x->source_variance > 100 &&
+        source_sad_nonrd > kLowSad) {
+      do_int_pro_motion_estimation(cpi, x, y_sad, mi_row, mi_col,
+                                   source_sad_nonrd);
     }
 
     if (*y_sad == UINT_MAX) {

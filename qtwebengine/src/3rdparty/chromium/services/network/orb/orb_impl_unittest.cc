@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 // This file contains the ResponseAnalyzerTests (which test the response
 // analyzer's behavior in several parameterized test scenarios) and at the end
 // includes the CrossOriginReadBlockingTests, which are more typical unittests.
@@ -1711,11 +1716,11 @@ class ResponseAnalyzerTest : public testing::Test,
         url::Origin::Create(GURL(scenario.initiator_origin)));
 
     // Check if this is a CORS request.
-    std::string cors_header_value;
-    response.headers->GetNormalizedHeader("access-control-allow-origin",
-                                          &cors_header_value);
-    auto request_mode = cors_header_value == "" ? mojom::RequestMode::kNoCors
-                                                : mojom::RequestMode::kCors;
+    auto request_mode =
+        response.headers->GetNormalizedHeader("access-control-allow-origin")
+                    .value_or(std::string()) == ""
+            ? mojom::RequestMode::kNoCors
+            : mojom::RequestMode::kCors;
 
     // Initialize the `analyzer`.
     //

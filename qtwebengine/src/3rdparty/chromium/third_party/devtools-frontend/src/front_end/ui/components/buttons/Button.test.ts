@@ -7,7 +7,7 @@ import {dispatchKeyDownEvent, renderElementIntoDOM} from '../../../testing/DOMHe
 import * as Buttons from './buttons.js';
 
 describe('Button', () => {
-  const iconUrl = new URL('../../../Images/file-image.svg', import.meta.url).toString();
+  const iconName = 'file-image';
 
   function renderButton(
       data: Buttons.Button.ButtonData = {
@@ -46,6 +46,34 @@ describe('Button', () => {
     assert.strictEqual(clicks, expectedClickCount);
   }
 
+  it('changes to `disabled` state are reflect in the property', () => {
+    const button = renderButton();
+    button.disabled = false;
+    assert.isFalse(button.disabled);
+    button.disabled = true;
+    assert.isTrue(button.disabled);
+  });
+
+  describe('focus', () => {
+    it('correctly focuses the <button> element in the shadow DOM', () => {
+      const button = renderButton();
+
+      button.focus();
+
+      assert.isTrue(button.shadowRoot!.querySelector('button')!.hasFocus());
+    });
+  });
+
+  describe('hasFocus', () => {
+    it('correctly reflects the focus state of the button', () => {
+      const button = renderButton();
+
+      button.focus();
+
+      assert.isTrue(button.hasFocus());
+    });
+  });
+
   it('primary button can be clicked', () => {
     testClick({
       variant: Buttons.Button.Variant.PRIMARY,
@@ -79,7 +107,7 @@ describe('Button', () => {
   it('toolbar button can be clicked', () => {
     testClick({
       variant: Buttons.Button.Variant.TOOLBAR,
-      iconUrl,
+      iconName,
     });
   });
 
@@ -87,7 +115,7 @@ describe('Button', () => {
     testClick(
         {
           variant: Buttons.Button.Variant.TOOLBAR,
-          iconUrl,
+          iconName,
           disabled: true,
         },
         0);
@@ -116,7 +144,7 @@ describe('Button', () => {
     const button = renderButton(
         {
           variant: Buttons.Button.Variant.PRIMARY,
-          iconUrl,
+          iconName,
         },
         'text');
     const innerButton = button.shadowRoot?.querySelector('button') as HTMLButtonElement;
@@ -128,7 +156,7 @@ describe('Button', () => {
     const button = renderButton(
         {
           variant: Buttons.Button.Variant.PRIMARY,
-          iconUrl,
+          iconName,
         },
         '');
     const innerButton = button.shadowRoot?.querySelector('button') as HTMLButtonElement;
@@ -151,11 +179,25 @@ describe('Button', () => {
     const button = renderButton(
         {
           variant: Buttons.Button.Variant.PRIMARY,
-          iconUrl,
+          iconName,
         },
         '');
     const innerButton = button.shadowRoot?.querySelector('button') as HTMLButtonElement;
     assert.isFalse(innerButton.classList.contains('small'));
+  });
+
+  it('prevents only "keydown" events for Enter and Space to bubble up', () => {
+    const button = renderButton({variant: Buttons.Button.Variant.PRIMARY});
+    const onKeydown = sinon.spy();
+    button.addEventListener('keydown', onKeydown);
+
+    const innerButton = button.shadowRoot!.querySelector('button') as HTMLButtonElement;
+    dispatchKeyDownEvent(innerButton, {bubbles: true, composed: true, key: 'Enter'});
+    dispatchKeyDownEvent(innerButton, {bubbles: true, composed: true, key: ' '});
+    dispatchKeyDownEvent(innerButton, {bubbles: true, composed: true, key: 'x'});
+
+    assert.isTrue(onKeydown.calledOnce);
+    assert.strictEqual(onKeydown.getCall(0).args[0].key, 'x');
   });
 
   describe('in forms', () => {

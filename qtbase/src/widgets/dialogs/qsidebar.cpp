@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsidebar_p.h"
 
@@ -51,10 +52,12 @@ QUrlModel::~QUrlModel()
 
 constexpr char uriListMimeType[] = "text/uri-list";
 
+#if QT_CONFIG(draganddrop)
 static bool hasSupportedFormat(const QMimeData *data)
 {
     return data->hasFormat(QLatin1StringView(uriListMimeType));
 }
+#endif // QT_CONFIG(draganddrop)
 
 /*!
     \reimp
@@ -195,8 +198,11 @@ void QUrlModel::setUrl(const QModelIndex &index, const QUrl &url, const QModelIn
         // Make sure that we have at least 32x32 images
             const QSize size = newIcon.actualSize(QSize(32,32));
             if (size.width() < 32) {
-                QPixmap smallPixmap = newIcon.pixmap(QSize(32, 32));
-                newIcon.addPixmap(smallPixmap.scaledToWidth(32, Qt::SmoothTransformation));
+                const auto widget = qobject_cast<QWidget *>(parent());
+                const auto dpr = widget ? widget->devicePixelRatio() : qApp->devicePixelRatio();
+                const auto smallPixmap = newIcon.pixmap(QSize(32, 32), dpr);
+                const auto newPixmap = smallPixmap.scaledToWidth(32 * dpr, Qt::SmoothTransformation);
+                newIcon.addPixmap(newPixmap);
             }
         }
 

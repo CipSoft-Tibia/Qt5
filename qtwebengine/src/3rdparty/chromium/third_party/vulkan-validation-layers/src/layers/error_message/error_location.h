@@ -24,6 +24,7 @@
 #include "logging.h"
 #include "containers/custom_containers.h"
 #include "chassis/chassis_handle_data.h"
+#include "utils/hash_util.h"
 
 // Holds the 'Location' of where the code is inside a function/struct/etc
 // see docs/error_object.md for more details
@@ -31,13 +32,14 @@ struct Location {
     static const uint32_t kNoIndex = vvl::kU32Max;
 
     // name of the vulkan function we're checking
-    const vvl::Func function;
+    const vvl::Func function{};
 
-    const vvl::Struct structure;
-    const vvl::Field field;
-    const uint32_t index;  // optional index if checking an array.
-    const bool isPNext;    // will print the struct is from a 'pNext` chain
-    const Location* prev;
+    const vvl::Struct structure{};
+    const vvl::Field field{};
+    const uint32_t index{};  // optional index if checking an array.
+    const bool isPNext{};    // will print the struct is from a 'pNext` chain
+    const Location* prev{};
+    mutable const std::string* debug_region{};
 
     Location(vvl::Func func, vvl::Struct s, vvl::Field f = vvl::Field::Empty, uint32_t i = kNoIndex)
         : function(func), structure(s), field(f), index(i), isPNext(false), prev(nullptr) {}
@@ -45,6 +47,14 @@ struct Location {
         : function(func), structure(vvl::Struct::Empty), field(f), index(i), isPNext(false), prev(nullptr) {}
     Location(const Location& prev_loc, vvl::Struct s, vvl::Field f, uint32_t i, bool p)
         : function(prev_loc.function), structure(s), field(f), index(i), isPNext(p), prev(&prev_loc) {}
+    Location(const Location& loc, std::string& debug_region)
+        : function(loc.function),
+          structure(loc.structure),
+          field(loc.field),
+          index(loc.index),
+          isPNext(loc.isPNext),
+          prev(loc.prev),
+          debug_region(&debug_region) {}
 
     void AppendFields(std::ostream &out) const;
     std::string Fields() const;
@@ -143,9 +153,20 @@ struct Key {
         : function(fn), structure(Struct::Empty), field(f), recurse_field(recurse) {}
     Key(Func fn, Struct r, Field f = Field::Empty, bool recurse = false)
         : function(fn), structure(r), field(f), recurse_field(recurse) {}
+
+    struct hash {
+      public:
+        std::size_t operator()(const Key& key) const {
+            hash_util::HashCombiner hc;
+            hc << static_cast<uint32_t>(key.function) << static_cast<uint32_t>(key.structure) << static_cast<uint32_t>(key.field)
+               << key.recurse_field;
+            return hc.Value();
+        }
+    };
 };
 
 bool operator<(const Key& lhs, const Key& rhs);
+bool operator==(const Key& lhs, const Key& rhs);
 bool operator==(const Key& key, const Location& loc);
 
 // Entry in a VUID lookup table
@@ -157,34 +178,9 @@ struct Entry {
 // look for a matching VUID in a vector or array-ish table
 template <typename Table>
 static const std::string& FindVUID(const Location& loc, const Table& table) {
-    // TODO - Remove having to squash KHR version here
-    Func f = loc.function;
-    if (f == Func::vkQueueSubmit2KHR) {
-        f = Func::vkQueueSubmit2;
-    } else if (f == Func::vkCmdPipelineBarrier2KHR) {
-        f = Func::vkCmdPipelineBarrier2;
-    } else if (f == Func::vkCmdResetEvent2KHR) {
-        f = Func::vkCmdResetEvent2;
-    } else if (f == Func::vkCmdSetEvent2KHR) {
-        f = Func::vkCmdSetEvent2;
-    } else if (f == Func::vkCmdWaitEvents2KHR) {
-        f = Func::vkCmdWaitEvents2;
-    } else if (f == Func::vkCmdWriteTimestamp2KHR) {
-        f = Func::vkCmdWriteTimestamp2;
-    } else if (f == Func::vkCmdBlitImage2KHR) {
-        f = Func::vkCmdBlitImage2;
-    } else if (f == Func::vkCmdCopyBufferToImage2KHR) {
-        f = Func::vkCmdCopyBufferToImage2;
-    } else if (f == Func::vkCmdCopyBuffer2KHR) {
-        f = Func::vkCmdCopyBuffer2;
-    } else if (f == Func::vkCmdCopyImage2KHR) {
-        f = Func::vkCmdCopyImage2;
-    } else if (f == Func::vkCmdCopyImageToBuffer2KHR) {
-        f = Func::vkCmdCopyImageToBuffer2;
-    } else if (f == Func::vkCmdResolveImage2KHR) {
-        f = Func::vkCmdResolveImage2;
-    }
-    const Location core_loc(f, loc.structure, loc.field, loc.index);
+    // For anything function promoted, we will get the alias here
+    // While annoying to have to make copy, better then making Location non-const
+    const Location core_loc(FindAlias(loc.function), loc.structure, loc.field, loc.index);
 
     static const std::string empty;
     auto predicate = [&core_loc](const Entry& entry) { return entry.k == core_loc; };
@@ -200,35 +196,9 @@ static const std::string& FindVUID(const Location& loc, const Table& table) {
 // different VUIDs for different values of an enum or bitfield
 template <typename OuterKey, typename Table>
 static const std::string& FindVUID(OuterKey key, const Location& loc, const Table& table) {
-    // Currently need to squash all the KHR versions to find in the table
-    // Only need for functions because they are now generated in the chassis
-    Func f = loc.function;
-    if (f == Func::vkQueueSubmit2KHR) {
-        f = Func::vkQueueSubmit2;
-    } else if (f == Func::vkCmdPipelineBarrier2KHR) {
-        f = Func::vkCmdPipelineBarrier2;
-    } else if (f == Func::vkCmdResetEvent2KHR) {
-        f = Func::vkCmdResetEvent2;
-    } else if (f == Func::vkCmdSetEvent2KHR) {
-        f = Func::vkCmdSetEvent2;
-    } else if (f == Func::vkCmdWaitEvents2KHR) {
-        f = Func::vkCmdWaitEvents2;
-    } else if (f == Func::vkCmdWriteTimestamp2KHR) {
-        f = Func::vkCmdWriteTimestamp2;
-    } else if (f == Func::vkCmdBlitImage2KHR) {
-        f = Func::vkCmdBlitImage2;
-    } else if (f == Func::vkCmdCopyBufferToImage2KHR) {
-        f = Func::vkCmdCopyBufferToImage2;
-    } else if (f == Func::vkCmdCopyBuffer2KHR) {
-        f = Func::vkCmdCopyBuffer2;
-    } else if (f == Func::vkCmdCopyImage2KHR) {
-        f = Func::vkCmdCopyImage2;
-    } else if (f == Func::vkCmdCopyImageToBuffer2KHR) {
-        f = Func::vkCmdCopyImageToBuffer2;
-    } else if (f == Func::vkCmdResolveImage2KHR) {
-        f = Func::vkCmdResolveImage2;
-    }
-    const Location core_loc(f, loc.structure, loc.field, loc.index);
+    // For anything function promoted, we will get the alias here
+    // While annoying to have to make copy, better then making Location non-const
+    const Location core_loc(FindAlias(loc.function), loc.structure, loc.field, loc.index);
 
     static const std::string empty;
     const auto entry = table.find(key);

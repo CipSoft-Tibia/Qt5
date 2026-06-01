@@ -170,7 +170,8 @@ class ChromeDriverVersion(ChromiumVersion):
   def _validate_prefix(cls, prefix: Optional[str]) -> bool:
     if not prefix:
       return False
-    return prefix.lower() in ("chromedriver ", "chromedriver-")
+    return prefix.lower() in ("chromedriver ", "chromedriver-",
+                              "microsoft edge webdriver ")
 
   @classmethod
   def _parse_default_channel(cls, full_version: str) -> BrowserVersionChannel:

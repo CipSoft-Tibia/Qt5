@@ -2,7 +2,16 @@
 {
   probes: {
     trace_processor: {
-      queries: ["speedometer_cpu_time"],
+      queries: [
+        // Queries can be specified as a reference to a file in
+        // crossbench/probes/perfetto/trace_processor/queries:
+        "speedometer_cpu_time",
+        // Or specified inline:
+        {
+          name: "my_query",
+          sql: "select dur from slice where slice.name = 'my_slice'",
+        },
+      ],
       metrics: ["trace_stats"],
     },
     perfetto: {

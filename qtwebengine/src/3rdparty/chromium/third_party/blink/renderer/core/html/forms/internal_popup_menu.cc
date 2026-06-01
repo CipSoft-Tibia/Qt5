@@ -19,7 +19,6 @@
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/events/scoped_event_queue.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/exported/web_view_impl.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
@@ -60,12 +59,12 @@ const char* FontStyleToString(FontSelectionValue slope) {
   return "normal";
 }
 
-const char* TextTransformToString(ETextTransform transform) {
-  return getValueName(PlatformEnumToCSSValueID(transform));
+StringView TextTransformToString(ETextTransform transform) {
+  return GetCSSValueNameAs<StringView>(PlatformEnumToCSSValueID(transform));
 }
 
-const char* TextAlignToString(ETextAlign align) {
-  return getValueName(PlatformEnumToCSSValueID(align));
+StringView TextAlignToString(ETextAlign align) {
+  return GetCSSValueNameAs<StringView>(PlatformEnumToCSSValueID(align));
 }
 
 const String SerializeComputedStyleForProperty(const ComputedStyle& style,
@@ -197,10 +196,8 @@ class InternalPopupMenu::ItemIterationContext {
                   buffer_);
     }
     AddProperty("textTransform",
-                String(TextTransformToString(BaseStyle().TextTransform())),
-                buffer_);
-    AddProperty("textAlign",
-                String(TextAlignToString(BaseStyle().GetTextAlign(false))),
+                TextTransformToString(BaseStyle().TextTransform()), buffer_);
+    AddProperty("textAlign", TextAlignToString(BaseStyle().GetTextAlign(false)),
                 buffer_);
     AddProperty("fontSize", BaseFont().ComputedPixelSize(), buffer_);
     AddProperty("fontStyle", String(FontStyleToString(BaseFont().Style())),
@@ -220,6 +217,7 @@ class InternalPopupMenu::ItemIterationContext {
   }
 
   Color BackgroundColor() const {
+    CHECK(!is_in_group_ || group_style_);
     return is_in_group_ ? group_style_->VisitedDependentColor(
                               GetCSSPropertyBackgroundColor())
                         : background_color_;
@@ -227,17 +225,26 @@ class InternalPopupMenu::ItemIterationContext {
   // Do not use baseStyle() for background-color, use backgroundColor()
   // instead.
   const ComputedStyle& BaseStyle() {
+    CHECK(!is_in_group_ || group_style_);
     return is_in_group_ ? *group_style_ : base_style_;
   }
   const FontDescription& BaseFont() {
+    CHECK(!is_in_group_ || group_style_);
     return is_in_group_ ? group_style_->GetFontDescription()
                         : base_style_.GetFontDescription();
   }
-  void StartGroupChildren(const ComputedStyle& group_style) {
+  bool ShouldAddDisplayNone(const ComputedStyle* item_style) {
+    if (is_in_group_ && !group_style_) {
+      // No need to add display:none if the parent is display:none.
+      return false;
+    }
+    return !item_style || item_style->Display() == EDisplay::kNone;
+  }
+  void StartGroupChildren(const ComputedStyle* group_style) {
     DCHECK(!is_in_group_);
     PagePopupClient::AddString("children: [", buffer_);
     is_in_group_ = true;
-    group_style_ = &group_style;
+    group_style_ = group_style;
   }
   void FinishGroupIfNecessary() {
     if (!is_in_group_)
@@ -309,8 +316,7 @@ void InternalPopupMenu::WriteDocument(SegmentedBuffer& data) {
       {kPseudoIdScrollbarCorner, "select::-webkit-scrollbar-corner"}};
 
   Scrollbar* temp_scrollbar = nullptr;
-  const LayoutBox* box =
-      owner_element.InnerElementForAppearanceAuto().GetLayoutBox();
+  const LayoutBox* box = owner_element.InnerElement().GetLayoutBox();
   if (box && box->GetScrollableArea()) {
     if (ScrollableArea* scrollable = box->GetScrollableArea()) {
       temp_scrollbar = MakeGarbageCollected<CustomScrollbar>(
@@ -379,6 +385,7 @@ void InternalPopupMenu::WriteDocument(SegmentedBuffer& data) {
   const HeapVector<Member<HTMLElement>>& items = owner_element.GetListItems();
   for (; context.list_index_ < items.size(); ++context.list_index_) {
     Element& child = *items[context.list_index_];
+    // TODO this shouldn't just look at parentNode right??
     if (!IsA<HTMLOptGroupElement>(child.parentNode()))
       context.FinishGroupIfNecessary();
     if (auto* option = DynamicTo<HTMLOptionElement>(child))
@@ -410,83 +417,88 @@ void InternalPopupMenu::WriteDocument(SegmentedBuffer& data) {
 void InternalPopupMenu::AddElementStyle(ItemIterationContext& context,
                                         HTMLElement& element) {
   const ComputedStyle* style = owner_element_->ItemComputedStyle(element);
-  DCHECK(style);
   SegmentedBuffer& data = context.buffer_;
   // TODO(tkent): We generate unnecessary "style: {\n},\n" even if no
   // additional style.
   PagePopupClient::AddString("style: {\n", data);
-  if (style->UsedVisibility() == EVisibility::kHidden) {
-    AddProperty("visibility", String("hidden"), data);
-  }
-  if (style->Display() == EDisplay::kNone) {
+
+  if (context.ShouldAddDisplayNone(style)) {
     AddProperty("display", String("none"), data);
   }
-  const ComputedStyle& base_style = context.BaseStyle();
-  if (base_style.Direction() != style->Direction()) {
-    AddProperty(
-        "direction",
-        String(style->Direction() == TextDirection::kRtl ? "rtl" : "ltr"),
-        data);
-  }
-  if (IsOverride(style->GetUnicodeBidi()))
-    AddProperty("unicodeBidi", String("bidi-override"), data);
-
-  if (!base_style.ColorSchemeForced()) {
-    bool color_applied = false;
-    Color foreground_color =
-        style->VisitedDependentColor(GetCSSPropertyColor());
-    if (base_style.VisitedDependentColor(GetCSSPropertyColor()) !=
-        foreground_color) {
-      AddProperty("color", foreground_color.SerializeAsCSSColor(), data);
-      color_applied = true;
+  if (style) {
+    if (style->Visibility() == EVisibility::kHidden) {
+      AddProperty("visibility", String("hidden"), data);
     }
-    Color background_color =
-        style->VisitedDependentColor(GetCSSPropertyBackgroundColor());
-    if (background_color != Color::kTransparent &&
-        (context.BackgroundColor() != background_color)) {
-      AddProperty("backgroundColor", background_color.SerializeAsCSSColor(),
+    const ComputedStyle& base_style = context.BaseStyle();
+    if (base_style.Direction() != style->Direction()) {
+      AddProperty(
+          "direction",
+          String(style->Direction() == TextDirection::kRtl ? "rtl" : "ltr"),
+          data);
+    }
+    if (IsOverride(style->GetUnicodeBidi())) {
+      AddProperty("unicodeBidi", String("bidi-override"), data);
+    }
+
+    if (!base_style.ColorSchemeForced()) {
+      bool color_applied = false;
+      Color foreground_color =
+          style->VisitedDependentColor(GetCSSPropertyColor());
+      if (base_style.VisitedDependentColor(GetCSSPropertyColor()) !=
+          foreground_color) {
+        AddProperty("color", foreground_color.SerializeAsCSSColor(), data);
+        color_applied = true;
+      }
+      Color background_color =
+          style->VisitedDependentColor(GetCSSPropertyBackgroundColor());
+      if (background_color != Color::kTransparent &&
+          (context.BackgroundColor() != background_color)) {
+        AddProperty("backgroundColor", background_color.SerializeAsCSSColor(),
+                    data);
+        color_applied = true;
+      }
+      if (color_applied) {
+        AddProperty("colorScheme", SerializeColorScheme(*style), data);
+      }
+    }
+
+    const FontDescription& base_font = context.BaseFont();
+    const FontDescription& font_description =
+        style->GetFont()->GetFontDescription();
+    if (base_font.ComputedPixelSize() != font_description.ComputedPixelSize()) {
+      // We don't use FontDescription::specifiedSize() because this element
+      // might have its own zoom level.
+      AddProperty("fontSize", font_description.ComputedPixelSize(), data);
+    }
+    // Our UA stylesheet has font-weight:normal for OPTION.
+    if (kNormalWeightValue != font_description.Weight()) {
+      AddProperty("fontWeight", font_description.Weight().ToString(), data);
+    }
+    if (base_font.Family() != font_description.Family()) {
+      AddProperty(
+          "fontFamily",
+          ComputedStyleUtils::ValueForFontFamily(font_description.Family())
+              ->CssText(),
+          data);
+    }
+    if (base_font.Style() != font_description.Style()) {
+      AddProperty("fontStyle",
+                  String(FontStyleToString(font_description.Style())), data);
+    }
+
+    if (base_font.VariantCaps() != font_description.VariantCaps() &&
+        font_description.VariantCaps() == FontDescription::kSmallCaps) {
+      AddProperty("fontVariant", String("small-caps"), data);
+    }
+
+    if (base_style.TextTransform() != style->TextTransform()) {
+      AddProperty("textTransform",
+                  TextTransformToString(style->TextTransform()), data);
+    }
+    if (base_style.GetTextAlign(false) != style->GetTextAlign(false)) {
+      AddProperty("textAlign", TextAlignToString(style->GetTextAlign(false)),
                   data);
-      color_applied = true;
     }
-    if (color_applied)
-      AddProperty("colorScheme", SerializeColorScheme(*style), data);
-  }
-
-  const FontDescription& base_font = context.BaseFont();
-  const FontDescription& font_description =
-      style->GetFont()->GetFontDescription();
-  if (base_font.ComputedPixelSize() != font_description.ComputedPixelSize()) {
-    // We don't use FontDescription::specifiedSize() because this element
-    // might have its own zoom level.
-    AddProperty("fontSize", font_description.ComputedPixelSize(), data);
-  }
-  // Our UA stylesheet has font-weight:normal for OPTION.
-  if (kNormalWeightValue != font_description.Weight()) {
-    AddProperty("fontWeight", font_description.Weight().ToString(), data);
-  }
-  if (base_font.Family() != font_description.Family()) {
-    AddProperty(
-        "fontFamily",
-        ComputedStyleUtils::ValueForFontFamily(font_description.Family())
-            ->CssText(),
-        data);
-  }
-  if (base_font.Style() != font_description.Style()) {
-    AddProperty("fontStyle",
-                String(FontStyleToString(font_description.Style())), data);
-  }
-
-  if (base_font.VariantCaps() != font_description.VariantCaps() &&
-      font_description.VariantCaps() == FontDescription::kSmallCaps)
-    AddProperty("fontVariant", String("small-caps"), data);
-
-  if (base_style.TextTransform() != style->TextTransform()) {
-    AddProperty("textTransform",
-                String(TextTransformToString(style->TextTransform())), data);
-  }
-  if (base_style.GetTextAlign(false) != style->GetTextAlign(false)) {
-    AddProperty("textAlign",
-                String(TextAlignToString(style->GetTextAlign(false))), data);
   }
 
   PagePopupClient::AddString("},\n", data);
@@ -521,7 +533,7 @@ void InternalPopupMenu::AddOptGroup(ItemIterationContext& context,
               data);
   AddProperty("disabled", element.IsDisabledFormControl(), data);
   AddElementStyle(context, element);
-  context.StartGroupChildren(*owner_element_->ItemComputedStyle(element));
+  context.StartGroupChildren(owner_element_->ItemComputedStyle(element));
   // We should call ItemIterationContext::finishGroupIfNecessary() later.
 }
 

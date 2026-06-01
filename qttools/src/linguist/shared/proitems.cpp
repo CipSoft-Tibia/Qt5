@@ -195,7 +195,7 @@ ProString &ProString::append(const ProString &other, bool *pending)
             if (m_length != m_string.size())
                 m_string = toQString();
             if (pending && !*pending) {
-                m_string += QLatin1Char(' ') + other.toQStringView();
+                m_string += u' ' + other.toQStringView();
             } else {
                 m_string += other.toQStringView();
             }
@@ -231,7 +231,7 @@ ProString &ProString::append(const ProStringList &other, bool *pending, bool ski
             m_offset = 0;
             for (int i = startIdx; i < sz; ++i) {
                 if (putSpace)
-                    m_string += QLatin1Char(' ');
+                    m_string += u' ';
                 else
                     putSpace = true;
                 const ProString &str = other.at(i);
@@ -432,9 +432,10 @@ ProFile::ProFile(int id, const QString &fileName)
       m_ok(true),
       m_hostBuild(false)
 {
-    if (!fileName.startsWith(QLatin1Char('(')))
+    if (!fileName.startsWith(u'('))
         m_directoryName = QFileInfo( // qmake sickness: canonicalize only the directory!
-                fileName.left(fileName.lastIndexOf(QLatin1Char('/')))).canonicalFilePath();
+                                  fileName.left(fileName.lastIndexOf(u'/')))
+                                  .canonicalFilePath();
 }
 
 ProFile::~ProFile()

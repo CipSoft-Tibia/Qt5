@@ -25,7 +25,7 @@ private Q_SLOTS:
 private:
     QProcess m_brokerProcess;
     QString m_testBroker;
-    quint16 m_port{1883};
+    quint16 m_port{0};
 };
 
 Tst_QMqttClient::Tst_QMqttClient()
@@ -54,9 +54,8 @@ void Tst_QMqttClient::stressTest_data()
 void Tst_QMqttClient::stressTest()
 {
     QFETCH(int, qos);
-
-    QMqttClient subscriber;
-    QMqttClient publisher;
+    VersionClient(0, subscriber);
+    VersionClient(0, publisher);
 
     subscriber.setHostname(m_testBroker);
     subscriber.setPort(m_port);
@@ -110,7 +109,7 @@ void Tst_QMqttClient::stressTest2()
     QSet<qint32> msgIds;
     msgIds.reserve(msgCount);
 
-    QMqttClient publisher;
+    VersionClient(0, publisher);
     publisher.setHostname(m_testBroker);
     publisher.setPort(m_port);
 

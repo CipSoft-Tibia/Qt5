@@ -26,6 +26,10 @@
 
 #if defined(__OBJC__)
 
+#import <AppKit/NSDragging.h>
+#import <AppKit/NSEvent.h>
+#import <AppKit/NSButton.h>
+
 Q_FORWARD_DECLARE_OBJC_CLASS(QT_MANGLE_NAMESPACE(QNSView));
 
 struct mach_header;
@@ -42,7 +46,6 @@ Q_DECLARE_LOGGING_CATEGORY(lcQpaApplication)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaClipboard)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaDialogs)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaMenus)
-Q_DECLARE_LOGGING_CATEGORY(lcQpaServices)
 
 class QPixmap;
 class QString;
@@ -183,6 +186,8 @@ QT_END_NAMESPACE
 
 QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSPanelContentsWrapper);
 
+QT_BEGIN_NAMESPACE
+
 // -------------------------------------------------------------------------
 
 struct InputMethodQueryResult : public QHash<int, QVariant>
@@ -223,6 +228,8 @@ QDebug operator<<(QDebug, const NSRange &);
 QDebug operator<<(QDebug, SEL);
 
 #endif // __OBJC__
+
+QT_END_NAMESPACE
 
 #endif //QCOCOAHELPERS_H
 

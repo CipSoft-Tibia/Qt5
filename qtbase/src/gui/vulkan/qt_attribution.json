@@ -8,12 +8,12 @@
         "Files": "vk.xml",
 
         "Homepage": "https://www.khronos.org/",
-        "PURL": "pkg:github/KhronosGroup/Vulkan-Docs@v$<VERSION>?download_url=https://github.com/KhronosGroup/Vulkan-Docs/blob/v1.3.223/xml/vk.xml",
-        "CPE": "cpe:2.3:a:khronos:vulkan:1.3.223:*:*:*:*:*:*:*",
-        "Version": "1.3.223",
+        "PURL": "pkg:github/KhronosGroup/Vulkan-Docs@v$<VERSION>?download_url=https://github.com/KhronosGroup/Vulkan-Docs/blob/v1.4.308/xml/vk.xml",
+        "CPE": "cpe:2.3:a:khronos:vulkan:1.4.308:*:*:*:*:*:*:*",
+        "Version": "1.4.308",
         "License": "Apache License 2.0 or MIT License",
         "LicenseId": "Apache-2.0 OR MIT",
         "LicenseFile": "LICENSE.txt",
-        "Copyright": "Copyright (c) 2015-2022 The Khronos Group Inc."
+        "Copyright": "Copyright (c) 2015-2025 The Khronos Group Inc."
     }
 ]

@@ -268,41 +268,94 @@ void tst_QGeoPath::valid()
 
 void tst_QGeoPath::contains_data()
 {
-    QTest::addColumn<QGeoCoordinate>("c1");
-    QTest::addColumn<QGeoCoordinate>("c2");
-    QTest::addColumn<QGeoCoordinate>("c3");
+    QTest::addColumn<QList<QGeoCoordinate>>("coordinates");
     QTest::addColumn<qreal>("width");
     QTest::addColumn<QGeoCoordinate>("probe");
     QTest::addColumn<bool>("result");
 
-    QList<QGeoCoordinate> c;
-    c.append(QGeoCoordinate(1,1));
-    c.append(QGeoCoordinate(2,2));
-    c.append(QGeoCoordinate(3,0));
+    const QList<QGeoCoordinate> c {
+        QGeoCoordinate(1, 1),
+        QGeoCoordinate(2, 2),
+        QGeoCoordinate(3, 0)
+    };
 
-    QTest::newRow("One of the points") << c[0] << c[1] << c[2] << 0.0 << QGeoCoordinate(2, 2) << true;
-    QTest::newRow("Not so far away") << c[0] << c[1] << c[2] << 0.0 << QGeoCoordinate(0.8, 0.8) << false;
-    QTest::newRow("Not so far away and large line") << c[0] << c[1] << c[2] << 100000.0 << QGeoCoordinate(0.8, 0.8) << true;
+    QTest::newRow("One of the points") << c << 0.0 << QGeoCoordinate(2, 2) << true;
+    QTest::newRow("Not so far away") << c << 0.0 << QGeoCoordinate(0.8, 0.8) << false;
+    QTest::newRow("Not so far away and thick line")
+            << c << 100000.0 << QGeoCoordinate(0.8, 0.8) << true;
+
+    // Test case from QTBUG-142317
+    QTest::newRow("coord-lon-left-from-path-no-wrap-needed")
+            << QList{QGeoCoordinate(50, 7), QGeoCoordinate(52, 6.999)} << 10000.0
+            << QGeoCoordinate(51, 6.95) << true;
+
+    // Testing various cases:
+    // - wrapped line, need to wrap the coord
+    // - wrapped line, no need to wrap the coord
+    // - non-wrapped line, need to wrap the coord
+    // - non-wrapped line, no need to wrap the coord
+
+    const qreal width{10000.0};
+    const QList<QGeoCoordinate> wrappedPath {
+        QGeoCoordinate(50, 179.95),
+        QGeoCoordinate(52, -179.95)
+    };
+
+    QTest::newRow("wrap-path-no-wrap-coord")
+            << wrappedPath << width << QGeoCoordinate(50.2, 179.94) << true;
+    QTest::newRow("wrap-path-wrap-coord")
+            << wrappedPath << width << QGeoCoordinate(52, -179.98) << true;
+
+    // As close to the 180/-180 wrap line as possible
+    const QList<QGeoCoordinate> notWrappedPathWest {
+        QGeoCoordinate(50, -179.99),
+        QGeoCoordinate(52, -179.98)
+    };
+
+    QTest::newRow("no-wrap-path-no-wrap-coord")
+            << notWrappedPathWest << width << QGeoCoordinate(50.2, -180.0) << true;
+    QTest::newRow("no-wrap-path-wrap-coord-subtract")
+            << notWrappedPathWest << width << QGeoCoordinate(50.5, 179.99) << true;
+
+    const QList<QGeoCoordinate> notWrappedPathEast {
+        QGeoCoordinate(50, 179.99),
+        QGeoCoordinate(52, 179.98)
+    };
+
+    QTest::newRow("no-wrap-path-wrap-coord-add")
+            << notWrappedPathEast << width << QGeoCoordinate(50.5, -179.99) << true;
+
+    const QList<QGeoCoordinate> cycledOverlap {
+        QGeoCoordinate(-70, 171), // i.e. -189
+        QGeoCoordinate(-50, -135), // Each step is + (20, 54)
+        QGeoCoordinate(-30, -81),
+        QGeoCoordinate(-10, -27),
+        QGeoCoordinate(10, 27),
+        QGeoCoordinate(30, 81),
+        QGeoCoordinate(50, 135), // (58, 153) is near this last step
+        QGeoCoordinate(70, -171), // i.e. 189
+    };
+    // Bounding box is -70 <= lat <= 70, 171 <= lon <= -171 = 189 ;^>
+
+    QTest::newRow("cycled-wrap")
+            << cycledOverlap << qreal(23000) << QGeoCoordinate(58, 153) << true;
+    // Witness:
+    // QWebMercator::coordinateInterpolation(QGC(50, 135), QGC(70, -171), 1./3); is QGC(58.094, 153)
+    QCOMPARE_LT(QGeoCoordinate(58, 153).distanceTo(QGeoCoordinate(58.094, 153)), 11000);
 }
 
 void tst_QGeoPath::contains()
 {
-    QFETCH(QGeoCoordinate, c1);
-    QFETCH(QGeoCoordinate, c2);
-    QFETCH(QGeoCoordinate, c3);
-    QFETCH(qreal, width);
-    QFETCH(QGeoCoordinate, probe);
-    QFETCH(bool, result);
+    QFETCH(const QList<QGeoCoordinate>, coordinates);
+    QFETCH(const qreal, width);
+    QFETCH(const QGeoCoordinate, probe);
+    QFETCH(const bool, result);
 
-    QList<QGeoCoordinate> coords;
-    coords.append(c1);
-    coords.append(c2);
-    coords.append(c3);
-    QGeoPath p(coords, width);
+    const QGeoPath p(coordinates, width);
 
     QCOMPARE(p.contains(probe), result);
 
-    QGeoShape area = p;
+    const QGeoShape area = p;
     QCOMPARE(area.contains(probe), result);
 }
 

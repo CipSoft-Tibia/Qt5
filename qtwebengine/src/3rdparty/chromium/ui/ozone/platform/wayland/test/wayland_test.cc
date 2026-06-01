@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "ui/ozone/platform/wayland/test/wayland_test.h"
 
 #include <memory>
@@ -54,8 +59,6 @@ WaylandTestBase::WaylandTestBase(wl::ServerConfig config)
 WaylandTestBase::~WaylandTestBase() = default;
 
 void WaylandTestBase::SetUp() {
-  disabled_features_.push_back(ui::kWaylandSurfaceSubmissionInPixelCoordinates);
-
   feature_list_.InitWithFeatures(enabled_features_, disabled_features_);
 
   if (DeviceDataManager::HasInstance()) {
@@ -66,6 +69,9 @@ void WaylandTestBase::SetUp() {
   }
 
   ASSERT_TRUE(server_.Start());
+  if (server_.wp_linux_drm_syncobj_manager_v1()) {
+    WaylandConnectionTestApi(connection_.get()).EnableLinuxDrmSyncobj();
+  }
   ASSERT_TRUE(connection_->Initialize());
   screen_ = connection_->wayland_output_manager()->CreateWaylandScreen();
   connection_->wayland_output_manager()->InitWaylandScreen(screen_.get());
@@ -184,12 +190,6 @@ void WaylandTestBase::ActivateSurface(uint32_t surface_id,
   SendConfigureEvent(surface_id, {0, 0}, state, serial);
 }
 
-void WaylandTestBase::InitializeSurfaceAugmenter() {
-  PostToServerAndWait([](wl::TestWaylandServerThread* server) {
-    server->EnsureSurfaceAugmenter();
-  });
-}
-
 void WaylandTestBase::MaybeSetUpXkb() {
 #if BUILDFLAG(USE_XKBCOMMON)
   PostToServerAndWait([](wl::TestWaylandServerThread* server) {
@@ -281,10 +281,6 @@ void WaylandTest::TearDown() {
   WaylandTestBase::TearDown();
 }
 
-bool WaylandTest::IsAuraShellEnabled() {
-  return GetParam().enable_aura_shell == wl::EnableAuraShellProtocol::kEnabled;
-}
-
 WaylandTestSimple::WaylandTestSimple()
     : WaylandTestSimple(wl::ServerConfig{}) {}
 
@@ -301,18 +297,5 @@ void WaylandTestSimple::TearDown() {
   WaylandTestBase::TearDown();
 }
 
-WaylandTestSimpleWithAuraShell::WaylandTestSimpleWithAuraShell()
-    : WaylandTestBase(
-          {.enable_aura_shell = wl::EnableAuraShellProtocol::kEnabled}) {}
-
-WaylandTestSimpleWithAuraShell::~WaylandTestSimpleWithAuraShell() = default;
-
-void WaylandTestSimpleWithAuraShell::SetUp() {
-  WaylandTestBase::SetUp();
-}
-
-void WaylandTestSimpleWithAuraShell ::TearDown() {
-  WaylandTestBase::TearDown();
-}
 
 }  // namespace ui

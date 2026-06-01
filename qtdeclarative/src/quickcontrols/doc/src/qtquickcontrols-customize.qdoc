@@ -533,6 +533,7 @@
     The end result:
 
     \image qtquickcontrols-customize-buttons.png
+           {Custom styled buttons}
 
     Note that the \c {import MyStyle 1.0} statement is only necessary
     because we are using the attached property belonging to \c MyStyle.
@@ -555,7 +556,7 @@
         ApplicationWindow consists of one visual item:
         \l {ApplicationWindow::background}{background}.
 
-        \code
+        \qml
         import QtQuick
         import QtQuick.Controls.Basic
 
@@ -569,7 +570,7 @@
                 }
             }
         }
-        \endcode
+        \endqml
 
 
     \section2 Customizing BusyIndicator
@@ -578,6 +579,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-busyindicator-custom.png
+               {Custom styled busy indicator}
 
         \snippet qtquickcontrols-busyindicator-custom.qml file
 
@@ -588,6 +590,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-button-custom.png
+               {Custom styled button}
 
         \snippet qtquickcontrols-button-custom.qml file
 
@@ -598,6 +601,7 @@
         \l {Control::}{contentItem} and \l {AbstractButton::indicator}{indicator}.
 
         \image qtquickcontrols-checkbox-custom.png
+               {Custom styled checkbox}
 
         \snippet qtquickcontrols-checkbox-custom.qml file
 
@@ -607,6 +611,7 @@
         \l {Control::}{contentItem} and \l {AbstractButton::indicator}{indicator}.
 
         \image qtquickcontrols-checkdelegate-custom.png
+               {Custom styled check delegate}
 
         \snippet qtquickcontrols-checkdelegate-custom.qml file
 
@@ -618,6 +623,7 @@
         \l {ComboBox::indicator}{indicator}, and \l {ComboBox::delegate}{delegate}.
 
         \image qtquickcontrols-combobox-custom.png
+               {Custom styled combo box}
 
         \snippet qtquickcontrols-combobox-custom.qml file
 
@@ -644,6 +650,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-delaybutton-custom.png
+               {Custom styled delay button}
 
         \snippet qtquickcontrols-delaybutton-custom.qml file
 
@@ -654,6 +661,7 @@
         and \l {Dial::handle}{handle}.
 
         \image qtquickcontrols-dial-custom.png
+               {Custom styled dial}
 
         \snippet qtquickcontrols-dial-custom.qml file
 
@@ -680,6 +688,7 @@
         Frame consists of one visual item: \l {Control::background}{background}.
 
         \image qtquickcontrols-frame-custom.png
+               {Custom styled frame}
 
         \snippet qtquickcontrols-frame-custom.qml file
 
@@ -690,6 +699,7 @@
         and \l {GroupBox::label}{label}.
 
         \image qtquickcontrols-groupbox-custom.png
+               {Custom styled group box}
 
         \snippet qtquickcontrols-groupbox-custom.qml file
 
@@ -700,6 +710,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-itemdelegate-custom.png
+               {Custom styled item delegate}
 
         \snippet qtquickcontrols-itemdelegate-custom.qml file
 
@@ -709,6 +720,7 @@
         Label can have a visual \l {Label::background}{background} item.
 
         \image qtquickcontrols-label-custom.png
+               {Custom styled label}
 
         \snippet qtquickcontrols-label-custom.qml file
 
@@ -725,6 +737,7 @@
         \endlist
 
         \image qtquickcontrols-menu-custom.png
+               {Custom styled menu}
 
         \quotefromfile qtquickcontrols-menu-custom.qml
         \skipto import QtQuick
@@ -740,6 +753,7 @@
         {background} and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-menubar-custom.png
+               {Custom styled menu bar with File and Edit menus}
 
         \quotefromfile qtquickcontrols-menubar-custom.qml
         \skipto import QtQuick
@@ -753,6 +767,7 @@
         PageIndicator consists of a \l {Control::background}{background}, \l {Control::}{contentItem}, and \l {PageIndicator::delegate}{delegate}.
 
         \image qtquickcontrols-pageindicator-custom.png
+               {Custom styled page indicator showing multiple pages}
 
         \snippet qtquickcontrols-pageindicator-custom.qml file
 
@@ -762,6 +777,7 @@
         Pane consists of a \l {Control::background}{background}.
 
         \image qtquickcontrols-pane-custom.png
+               {Custom styled pane with decorative background}
 
         \snippet qtquickcontrols-pane-custom.qml file
 
@@ -772,6 +788,7 @@
         \l {Popup::contentItem}{contentItem}.
 
         \image qtquickcontrols-popup-custom.png
+               {Custom styled popup with border and shadow}
 
         \quotefromfile qtquickcontrols-popup-custom.qml
         \skipto import QtQuick
@@ -790,6 +807,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-progressbar-custom.png
+               {Custom styled progress bar showing partial completion}
 
         \snippet qtquickcontrols-progressbar-custom.qml file
 
@@ -803,6 +821,7 @@
         \l {Control::}{contentItem} and \l {AbstractButton::indicator}{indicator}.
 
         \image qtquickcontrols-radiobutton-custom.png
+               {Custom styled radio button in selected state}
 
         \snippet qtquickcontrols-radiobutton-custom.qml file
 
@@ -813,6 +832,7 @@
         \l {Control::}{contentItem} and \l {AbstractButton::indicator}{indicator}.
 
         \image qtquickcontrols-radiodelegate-custom.png
+               {Custom styled radio delegate in list}
 
         \snippet qtquickcontrols-radiodelegate-custom.qml file
 
@@ -825,6 +845,7 @@
         \l {RangeSlider::second.handle}{second.handle}.
 
         \image qtquickcontrols-rangeslider-custom.png
+               {Custom styled range slider}
 
         \snippet qtquickcontrols-rangeslider-custom.qml file
 
@@ -841,6 +862,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-scrollbar-custom.png
+               {Custom styled scroll bar}
 
         \snippet qtquickcontrols-scrollbar-custom.qml file
 
@@ -851,6 +873,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-scrollindicator-custom.png
+               {Custom styled scroll indicator}
 
         \snippet qtquickcontrols-scrollindicator-custom.qml file
 
@@ -861,6 +884,7 @@
         and horizontal and vertical scroll bars.
 
         \image qtquickcontrols-scrollview-custom.png
+               {Custom styled scroll view}
 
         \snippet qtquickcontrols-scrollview-custom.qml file
 
@@ -871,6 +895,7 @@
         and \l {Slider::handle}{handle}.
 
         \image qtquickcontrols-slider-custom.png
+               {Custom styled slider}
 
         \snippet qtquickcontrols-slider-custom.qml file
 
@@ -882,6 +907,7 @@
         and \l {SpinBox::down.indicator}{down indicator}.
 
         \image qtquickcontrols-spinbox-custom.png
+               {Custom styled spin box}
 
         \snippet qtquickcontrols-spinbox-custom.qml file
 
@@ -891,6 +917,7 @@
         SplitView consists of a visual \l {SplitView::handle}{handle} delegate.
 
         \image qtquickcontrols-splitview-custom.png
+               {Custom styled split view}
 
         \snippet qtquickcontrols-splitview-custom.qml 1
 
@@ -911,6 +938,7 @@
         \c swipe.left, \c swipe.right, and \c swipe.behind.
 
         \image qtquickcontrols-swipedelegate-custom.png
+               {Custom styled swipe delegate}
 
         \snippet qtquickcontrols-swipedelegate-custom.qml file
 
@@ -929,6 +957,7 @@
         \l {Control::}{contentItem} and \l {AbstractButton::indicator}{indicator}.
 
         \image qtquickcontrols-switch-custom.png
+               {Custom styled switch}
 
         \snippet qtquickcontrols-switch-custom.qml file
 
@@ -938,6 +967,7 @@
         \l {Control::}{contentItem} and \l {AbstractButton::indicator}{indicator}.
 
         \image qtquickcontrols-switchdelegate-custom.png
+               {Custom styled switch delegate}
 
         \snippet qtquickcontrols-switchdelegate-custom.qml file
 
@@ -948,6 +978,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-tabbar-custom.png
+               {Custom styled tab bar}
 
         \snippet qtquickcontrols-tabbar-custom.qml file
 
@@ -963,6 +994,7 @@
         TextArea consists of a \l {TextArea::background}{background} item.
 
         \image qtquickcontrols-textarea-custom.png
+               {Custom styled text area}
 
         \snippet qtquickcontrols-textarea-custom.qml file
 
@@ -972,6 +1004,7 @@
         TextField consists of a \l {TextField::background}{background} item.
 
         \image qtquickcontrols-textfield-custom.png
+               {Custom styled text field}
 
         \snippet qtquickcontrols-textfield-custom.qml file
 
@@ -981,6 +1014,7 @@
         ToolBar consists of one visual item: \l {Control::background}{background}.
 
         \image qtquickcontrols-toolbar-custom.png
+               {Custom styled tool bar}
 
         \snippet qtquickcontrols-toolbar-custom.qml file
 
@@ -991,6 +1025,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-toolbutton-custom.png
+               {Custom styled tool button}
 
         \snippet qtquickcontrols-toolbutton-custom.qml file
 
@@ -1001,6 +1036,7 @@
         and \l {Control::}{contentItem}.
 
         \image qtquickcontrols-toolseparator-custom.png
+               {Custom styled tool separator}
 
         \snippet qtquickcontrols-toolseparator-custom.qml file
 
@@ -1028,6 +1064,7 @@
         \l {Tumbler::delegate}{delegate}.
 
         \image qtquickcontrols-tumbler-custom.png
+               {Custom styled tumbler}
 
         \snippet qtquickcontrols-tumbler-custom.qml file
 
@@ -1052,7 +1089,26 @@
         outside what the default edit delegate offers.
 
         \image qtquickcontrols-tableviewdelegate-custom.png
+               {Custom styled table view delegate}
 
         \snippet qtquickcontrols-tableviewdelegate-custom.qml delegate
 
+    \section2 Customizing HeaderViewDelegate
+
+        HeaderViewDelegate inherits \l TableViewDelegate, which means that it's
+        composed of two items:
+        \l [QML]{Control::}{background} and
+        \l [QML]{Control::}{contentItem}.
+        You can always customize them with any arbitrary items.
+
+        \image qtquickcontrols-headerviewdelegate-custom.png
+               {Custom styled header view delegate}
+
+        Here is an example of customizing the horizontal header view delegate:
+
+        \snippet qtquickcontrols-headerviewdelegate-custom.qml horizontal-delegate
+
+        Here is an example of customizing the vertical header view delegate:
+
+        \snippet qtquickcontrols-headerviewdelegate-custom.qml vertical-delegate
 */

@@ -240,3 +240,24 @@
     For example, qCountLeadingZeroBits(quint64(1)) returns 63 and
     qCountLeadingZeroBits(quint64(8)) returns 60.
  */
+
+/*!
+    \fn template <typename InputIterator, typename Result, typename Separator = Result, typename Projection = q20::identity> Result qJoin(InputIterator first, InputIterator last, Result init, const Separator &separator, Projection p)
+    \relates <QtAlgorithms>
+    \since 6.10
+
+    Starts with initial value \a init and cumulatively adds to it each entry in
+    the range from \a first to \a last. Each entry is, before adding, mapped
+    through the projection \a p (which defaults to the identity). Between each
+    entry and the next, an optional \a separator is added. For example:
+
+    \code
+        QList<int> l = {1, 2, 3};
+        QString res = qJoin(l.cbegin(), l.cend(), QString(), u" / ",
+                            [](int n) { return QString::number(2 * n);});
+        // res == "2 / 4 / 6"
+    \endcode
+
+    \note \c{q20::identity} is a C++17 backport of C++20's
+    \l{https://en.cppreference.com/w/cpp/utility/functional/identity}{\c{std::identity}}.
+*/

@@ -1259,7 +1259,7 @@ QCalendar::QCalendar(QAnyStringView name)
 
     Months are numbered consecutively, starting with 1 for the first month of
     each year. If \a year is \c Unspecified (its default, if not passed), the
-    month's length in a normal year is returned.
+    month's greatest length in any year is returned.
 
     \sa maximumDaysInMonth(), minimumDaysInMonth()
 */

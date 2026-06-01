@@ -126,6 +126,10 @@ typedef enum : unsigned {
     LAST_ELEMENT_MARKER(EShLanguageMaskCount),
 } EShLanguageMask;
 
+#ifdef __cplusplus
+    }
+#endif
+
 namespace QtShaderTools {
 namespace glslang {
 
@@ -222,6 +226,10 @@ GLSLANG_EXPORT const char* StageName(EShLanguage);
 
 } // end namespace glslang
 } // namespace QtShaderTools
+
+#ifdef __cplusplus
+    extern "C" {
+#endif
 
 //
 // Types of output the linker will create.

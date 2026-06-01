@@ -111,15 +111,6 @@ extern "C" void __asan_unpoison_memory_region(void const volatile*, size_t);
 #define PERFETTO_EXPORT_ENTRYPOINT
 #endif
 
-// Disables thread safety analysis for functions where the compiler can't
-// accurate figure out which locks are being held.
-#if defined(__clang__)
-#define PERFETTO_NO_THREAD_SAFETY_ANALYSIS \
-  __attribute__((no_thread_safety_analysis))
-#else
-#define PERFETTO_NO_THREAD_SAFETY_ANALYSIS
-#endif
-
 // Disables undefined behavior analysis for a function.
 #if defined(__clang__)
 #define PERFETTO_NO_SANITIZE_UNDEFINED __attribute__((no_sanitize("undefined")))
@@ -138,6 +129,18 @@ extern "C" void __asan_unpoison_memory_region(void const volatile*, size_t);
 
 // Macro for telling -Wimplicit-fallthrough that a fallthrough is intentional.
 #define PERFETTO_FALLTHROUGH [[fallthrough]]
+
+// Depending on the version of the compiler, __has_builtin can be provided or
+// not.
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_stack_address)
+#define PERFETTO_HAS_BUILTIN_STACK_ADDRESS() 1
+#else
+#define PERFETTO_HAS_BUILTIN_STACK_ADDRESS() 0
+#endif
+#else
+#define PERFETTO_HAS_BUILTIN_STACK_ADDRESS() 0
+#endif
 
 namespace perfetto::base {
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLLIST_H
 #define QQMLLIST_H
@@ -95,7 +96,13 @@ public:
             if (append == qlist_append)
                 return *static_cast<QList<T *> *>(data);
         }
+        return toList_impl<List>();
+    }
 
+private:
+    template<typename List>
+    List toList_impl()
+    {
         const qsizetype size = count(this);
 
         List result;

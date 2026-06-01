@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSSTORAGEGENERALIZER_P_H
 #define QQMLJSSTORAGEGENERALIZER_P_H
@@ -23,10 +24,9 @@ class Q_QMLCOMPILER_EXPORT QQmlJSStorageGeneralizer : public QQmlJSCompilePass
 public:
     QQmlJSStorageGeneralizer(const QV4::Compiler::JSUnitGenerator *jsUnitGenerator,
                              const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                             QList<QQmlJS::DiagnosticMessage> *errors,
                              const BasicBlocks &basicBlocks,
                              const InstructionAnnotations &annotations)
-        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, errors, basicBlocks, annotations)
+        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, basicBlocks, annotations)
     {}
 
     BlocksAndAnnotations run(Function *function);

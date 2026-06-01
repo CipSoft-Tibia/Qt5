@@ -99,7 +99,11 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID reserved) {
     (void)hinst;
     switch (reason) {
         case DLL_PROCESS_ATTACH:
-            loader_initialize();
+            // Only initialize necessary sync primitives
+            loader_platform_thread_create_mutex(&loader_lock);
+            loader_platform_thread_create_mutex(&loader_preload_icd_lock);
+            loader_platform_thread_create_mutex(&loader_global_instance_list_lock);
+            init_global_loader_settings();
             break;
         case DLL_PROCESS_DETACH:
             if (NULL == reserved) {
@@ -141,7 +145,7 @@ bool windows_add_json_entry(const struct loader_instance *inst,
             loader_instance_heap_realloc(inst, *reg_data, *total_size, *total_size * 2, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
         if (NULL == new_ptr) {
             loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0,
-                       "windows_add_json_entry: Failed to reallocate space for registry value of size %d for key %s",
+                       "windows_add_json_entry: Failed to reallocate space for registry value of size %ld for key %s",
                        *total_size * 2, json_path);
             *result = VK_ERROR_OUT_OF_HOST_MEMORY;
             return false;
@@ -179,7 +183,7 @@ bool windows_get_device_registry_entry(const struct loader_instance *inst, char 
     CONFIGRET status = CM_Open_DevNode_Key(dev_id, KEY_QUERY_VALUE, 0, RegDisposition_OpenExisting, &hkrKey, CM_REGISTRY_SOFTWARE);
     if (status != CR_SUCCESS) {
         loader_log(inst, VULKAN_LOADER_WARN_BIT | VULKAN_LOADER_DRIVER_BIT, 0,
-                   "windows_get_device_registry_entry: Failed to open registry key for DeviceID(%d)", dev_id);
+                   "windows_get_device_registry_entry: Failed to open registry key for DeviceID(%ld)", dev_id);
         *result = VK_ERROR_INCOMPATIBLE_DRIVER;
         return false;
     }
@@ -190,10 +194,10 @@ bool windows_get_device_registry_entry(const struct loader_instance *inst, char 
     if (ret != ERROR_SUCCESS) {
         if (ret == ERROR_FILE_NOT_FOUND) {
             loader_log(inst, VULKAN_LOADER_INFO_BIT | VULKAN_LOADER_DRIVER_BIT, 0,
-                       "windows_get_device_registry_entry: Device ID(%d) Does not contain a value for \"%s\"", dev_id, value_name);
+                       "windows_get_device_registry_entry: Device ID(%ld) Does not contain a value for \"%s\"", dev_id, value_name);
         } else {
             loader_log(inst, VULKAN_LOADER_INFO_BIT | VULKAN_LOADER_DRIVER_BIT, 0,
-                       "windows_get_device_registry_entry: DeviceID(%d) Failed to obtain %s size", dev_id, value_name);
+                       "windows_get_device_registry_entry: DeviceID(%ld) Failed to obtain %s size", dev_id, value_name);
         }
         goto out;
     }
@@ -210,7 +214,7 @@ bool windows_get_device_registry_entry(const struct loader_instance *inst, char 
 
     if (ret != ERROR_SUCCESS) {
         loader_log(inst, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_DRIVER_BIT, 0,
-                   "windows_get_device_registry_entry: DeviceID(%d) Failed to obtain %s", value_name);
+                   "windows_get_device_registry_entry: DeviceID(%ld) Failed to obtain %s", dev_id, value_name);
         *result = VK_ERROR_INCOMPATIBLE_DRIVER;
         goto out;
     }
@@ -304,7 +308,7 @@ VkResult windows_get_device_registry_files(const struct loader_instance *inst, u
             status = CM_Get_Child(&childID, devID, 0);
             if (status != CR_SUCCESS) {
                 loader_log(inst, VULKAN_LOADER_INFO_BIT | log_target_flag, 0,
-                           "windows_get_device_registry_files: unable to open child-device error:%d", status);
+                           "windows_get_device_registry_files: unable to open child-device error:%ld", status);
                 continue;
             }
 
@@ -313,12 +317,12 @@ VkResult windows_get_device_registry_files(const struct loader_instance *inst, u
                 CM_Get_Device_IDW(childID, buffer, MAX_DEVICE_ID_LEN, 0);
 
                 loader_log(inst, VULKAN_LOADER_INFO_BIT | log_target_flag, 0,
-                           "windows_get_device_registry_files: Opening child device %d - %ls", childID, buffer);
+                           "windows_get_device_registry_files: Opening child device %ld - %ls", childID, buffer);
 
                 status = CM_Get_DevNode_Registry_PropertyW(childID, CM_DRP_CLASSGUID, NULL, &childGuid, &childGuidSize, 0);
                 if (status != CR_SUCCESS) {
                     loader_log(inst, VULKAN_LOADER_ERROR_BIT | log_target_flag, 0,
-                               "windows_get_device_registry_files: unable to obtain GUID for:%d error:%d", childID, status);
+                               "windows_get_device_registry_files: unable to obtain GUID for:%ld error:%ld", childID, status);
 
                     result = VK_ERROR_INCOMPATIBLE_DRIVER;
                     continue;
@@ -326,7 +330,7 @@ VkResult windows_get_device_registry_files(const struct loader_instance *inst, u
 
                 if (wcscmp(childGuid, softwareComponentGUID) != 0) {
                     loader_log(inst, VULKAN_LOADER_DEBUG_BIT | log_target_flag, 0,
-                               "windows_get_device_registry_files: GUID for %d is not SoftwareComponent skipping", childID);
+                               "windows_get_device_registry_files: GUID for %ld is not SoftwareComponent skipping", childID);
                     continue;
                 }
 
@@ -447,7 +451,7 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
                         if (NULL == new_ptr) {
                             loader_log(
                                 inst, VULKAN_LOADER_ERROR_BIT | log_target_flag, 0,
-                                "windows_get_registry_files: Failed to reallocate space for registry value of size %d for key %s",
+                                "windows_get_registry_files: Failed to reallocate space for registry value of size %ld for key %s",
                                 *reg_data_size * 2, name);
                             RegCloseKey(key);
                             result = VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -964,20 +968,6 @@ VkResult windows_read_sorted_physical_devices(struct loader_instance *inst, uint
             continue;
         }
 
-        if (icd_phys_devs_array_size <= i) {
-            uint32_t old_size = icd_phys_devs_array_size * sizeof(struct loader_icd_physical_devices);
-            *icd_phys_devs_array = loader_instance_heap_realloc(inst, *icd_phys_devs_array, old_size, 2 * old_size,
-                                                                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-            if (*icd_phys_devs_array == NULL) {
-                adapter->lpVtbl->Release(adapter);
-                res = VK_ERROR_OUT_OF_HOST_MEMORY;
-                goto out;
-            }
-            icd_phys_devs_array_size *= 2;
-        }
-        (*icd_phys_devs_array)[*icd_phys_devs_array_count].device_count = 0;
-        (*icd_phys_devs_array)[*icd_phys_devs_array_count].physical_devices = NULL;
-
         icd_term = inst->icd_terms;
         while (NULL != icd_term) {
             // This is the new behavior, which cannot be run unless the ICD provides EnumerateAdapterPhysicalDevices
@@ -985,6 +975,20 @@ VkResult windows_read_sorted_physical_devices(struct loader_instance *inst, uint
                 icd_term = icd_term->next;
                 continue;
             }
+
+            if (icd_phys_devs_array_size <= *icd_phys_devs_array_count) {
+                uint32_t old_size = icd_phys_devs_array_size * sizeof(struct loader_icd_physical_devices);
+                *icd_phys_devs_array = loader_instance_heap_realloc(inst, *icd_phys_devs_array, old_size, 2 * old_size,
+                                                                    VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+                if (*icd_phys_devs_array == NULL) {
+                    adapter->lpVtbl->Release(adapter);
+                    res = VK_ERROR_OUT_OF_HOST_MEMORY;
+                    goto out;
+                }
+                icd_phys_devs_array_size *= 2;
+            }
+            (*icd_phys_devs_array)[*icd_phys_devs_array_count].device_count = 0;
+            (*icd_phys_devs_array)[*icd_phys_devs_array_count].physical_devices = NULL;
 
             res = enumerate_adapter_physical_devices(inst, icd_term, description.AdapterLuid, icd_phys_devs_array_count,
                                                      *icd_phys_devs_array);
@@ -1190,12 +1194,15 @@ VkResult get_settings_path_if_exists_in_registry_key(const struct loader_instanc
             }
         }
 
-        // Make sure the path exists first
-        if (*out_path && !loader_platform_file_exists(name)) {
-            return VK_ERROR_INITIALIZATION_FAILED;
-        }
-
         if (strcmp(VK_LOADER_SETTINGS_FILENAME, &(name[start_of_path_filename])) == 0) {
+            // Make sure the path exists first
+            if (!loader_platform_file_exists(name)) {
+                loader_log(
+                    inst, VULKAN_LOADER_DEBUG_BIT, 0,
+                    "Registry contained entry to vk_loader_settings.json but the corresponding file does not exist, ignoring");
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+
             *out_path = loader_instance_heap_calloc(inst, name_size + 1, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
             if (*out_path == NULL) {
                 return VK_ERROR_OUT_OF_HOST_MEMORY;

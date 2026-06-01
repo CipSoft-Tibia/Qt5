@@ -332,15 +332,17 @@ CORE_EXPORT float ToRestrictedFloat(v8::Isolate*,
                                     ExceptionState&);
 
 inline std::optional<base::Time> ToCoreNullableDate(
-    v8::Isolate* isolate,
-    v8::Local<v8::Value> object,
+    const ScriptObject& script_object,
     ExceptionState& exception_state) {
   // https://html.spec.whatwg.org/C/#common-input-element-apis:dom-input-valueasdate-2
   //   ... otherwise if the new value is null or a Date object representing the
   //   NaN time value, then set the value of the element to the empty string;
   // We'd like to return same values for |null| and an invalid Date object.
-  if (object->IsNull())
+  if (script_object.IsNull()) {
     return std::nullopt;
+  }
+
+  v8::Local<v8::Object> object = script_object.V8Object();
   if (!object->IsDate()) {
     exception_state.ThrowTypeError("The provided value is not a Date.");
     return std::nullopt;
@@ -349,6 +351,18 @@ inline std::optional<base::Time> ToCoreNullableDate(
   if (!std::isfinite(time_value))
     return std::nullopt;
   return base::Time::FromMillisecondsSinceUnixEpoch(time_value);
+}
+
+inline ScriptObject ToV8FromDate(ScriptState* script_state,
+                                 const std::optional<base::Time>& date) {
+  if (!date) {
+    return ScriptObject::CreateNull(script_state->GetIsolate());
+  }
+  return ScriptObject(
+      script_state->GetIsolate(),
+      v8::Date::New(script_state->GetContext(),
+                    date->InMillisecondsFSinceUnixEpochIgnoringNull())
+          .ToLocalChecked());
 }
 
 // USVString conversion helper.
@@ -481,28 +495,8 @@ CORE_EXPORT ScriptState* ToScriptStateForMainWorld(LocalFrame*);
 // a context, if the window is currently being displayed in a Frame.
 CORE_EXPORT LocalFrame* ToLocalFrameIfNotDetached(v8::Local<v8::Context>);
 
-CORE_EXPORT bool IsValidEnum(const String& value,
-                             const char* const* valid_values,
-                             size_t length,
-                             const String& enum_name,
-                             ExceptionState&);
-CORE_EXPORT bool IsValidEnum(const Vector<String>& values,
-                             const char* const* valid_values,
-                             size_t length,
-                             const String& enum_name,
-                             ExceptionState&);
-
-CORE_EXPORT v8::Local<v8::Value> FromJSONString(v8::Isolate*,
-                                                v8::Local<v8::Context>,
-                                                const String& stringified_json,
-                                                ExceptionState&);
-
-// The `TryRethrowScope` parameter is unused, but expected to be on stack to
-// handle any exceptions thrown by V8 if JSON parsing fails.
-CORE_EXPORT v8::Local<v8::Value> FromJSONString(v8::Isolate*,
-                                                v8::Local<v8::Context>,
-                                                const String& stringified_json,
-                                                TryRethrowScope&);
+CORE_EXPORT v8::Local<v8::Value> FromJSONString(ScriptState* script_state,
+                                                const String& stringified_json);
 
 // Ensure that a typed array value is not backed by a SharedArrayBuffer. If it
 // is, an exception will be thrown. The return value will use the NotShared
@@ -555,6 +549,59 @@ CORE_EXPORT bool IsInParallelAlgorithmRunnable(
 CORE_EXPORT void ApplyContextToException(ScriptState*,
                                          v8::Local<v8::Value> exception,
                                          const ExceptionContext&);
+CORE_EXPORT void ApplyContextToException(v8::Isolate*,
+                                         v8::Local<v8::Context>,
+                                         v8::Local<v8::Value> exception,
+                                         v8::ExceptionContext type,
+                                         const char* class_name,
+                                         const String& property_name);
+
+class CORE_EXPORT DictionaryConversionContext {
+ public:
+  DictionaryConversionContext(v8::Isolate* isolate, const char* dictionary_name)
+      : per_isolate_data_(V8PerIsolateData::From(isolate)),
+        dictionary_name_(dictionary_name) {
+    auto* per_isolate_data = V8PerIsolateData::From(isolate);
+    previous_ = per_isolate_data->TopOfDictionaryStack();
+    per_isolate_data->SetTopOfDictionaryStack(this);
+  }
+  DictionaryConversionContext(const DictionaryConversionContext&) = delete;
+  DictionaryConversionContext& operator=(const DictionaryConversionContext&) =
+      delete;
+
+  ~DictionaryConversionContext() {
+    per_isolate_data_->SetTopOfDictionaryStack(previous_);
+  }
+
+  void SetCurrentPropertyName(const char* property_name) {
+    property_name_ = property_name;
+  }
+
+  DictionaryConversionContext* Previous() const { return previous_; }
+  const char* DictionaryName() const { return dictionary_name_; }
+  const char* PropertyName() const { return property_name_; }
+
+ private:
+  V8PerIsolateData* const per_isolate_data_;
+  const char* const dictionary_name_;
+  const char* property_name_ = nullptr;
+  DictionaryConversionContext* previous_;
+};
+
+class OmitExceptionContextInformation {
+ public:
+  explicit OmitExceptionContextInformation(v8::Isolate* isolate)
+      : per_isolate_data_(V8PerIsolateData::From(isolate)) {
+    per_isolate_data_->SetOmitExceptionContextInformation(true);
+  }
+
+  ~OmitExceptionContextInformation() {
+    per_isolate_data_->SetOmitExceptionContextInformation(false);
+  }
+
+ private:
+  V8PerIsolateData* const per_isolate_data_;
+};
 
 }  // namespace blink
 

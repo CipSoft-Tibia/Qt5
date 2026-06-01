@@ -1,4 +1,4 @@
-QT += bodymovin-private
+QT += lottie-private
 CONFIG += c++11 console
 CONFIG -= app_bundle
 

@@ -8,7 +8,7 @@ import QtQuick3D.Physics
 // TestBody is a DynamicRigidBody with a "stable" property
 
 DynamicRigidBody {
-    property alias color: cubemat.diffuseColor
+    property alias color: cubemat.baseColor
     massMode: DynamicRigidBody.CustomDensity
     density: 1000
     collisionShapes: BoxShape { extents: Qt.vector3d(1, 1, 1) }
@@ -16,9 +16,9 @@ DynamicRigidBody {
         source: "#Cube"
         scale: Qt.vector3d(1, 1, 1).times(0.01)
         eulerRotation: Qt.vector3d(0, 90, 0)
-        materials: DefaultMaterial {
+        materials: PrincipledMaterial {
             id: cubemat
-            diffuseColor: "red"
+            baseColor: "red"
         }
     }
     property bool stable: false

@@ -4,13 +4,15 @@
 
 #include "third_party/blink/renderer/core/view_transition/view_transition.h"
 
+#include <algorithm>
 #include <vector>
 
-#include "base/ranges/algorithm.h"
+#include "base/auto_reset.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "cc/trees/layer_tree_host.h"
 #include "cc/trees/paint_holding_reason.h"
+#include "components/viz/common/view_transition_element_resource_id.h"
 #include "third_party/blink/public/platform/web_content_settings_client.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_sync_iterator_view_transition_type_set.h"
 #include "third_party/blink/renderer/core/css/css_rule.h"
@@ -102,8 +104,7 @@ const char* ViewTransition::StateToString(State state) {
     case State::kTransitionStateCallbackDispatched:
       return "TransitionStateCallbackDispatched";
   };
-  NOTREACHED_IN_MIGRATION();
-  return "";
+  NOTREACHED();
 }
 
 // static
@@ -231,6 +232,7 @@ ViewTransition::ViewTransition(PassKey,
 
 void ViewTransition::SkipTransition(PromiseResponse response) {
   DCHECK_NE(response, PromiseResponse::kResolve);
+  pending_skip_view_transitions_ = false;
   if (IsTerminalState(state_))
     return;
 
@@ -278,6 +280,10 @@ void ViewTransition::SkipTransition(PromiseResponse response) {
   // This should be the last call in this function to avoid erroneously checking
   // the `state_` against the wrong state.
   AdvanceTo(State::kAborted);
+}
+
+void ViewTransition::SkipTransitionSoon() {
+  pending_skip_view_transitions_ = true;
 }
 
 bool ViewTransition::AdvanceTo(State state) {
@@ -356,8 +362,7 @@ bool ViewTransition::CanAdvanceTo(State state) const {
     case State::kTimedOut:
       return false;
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 // static
@@ -385,8 +390,7 @@ bool ViewTransition::StateRunsInViewTransitionStepsDuringMainFrame(
     case State::kTransitionStateCallbackDispatched:
       return false;
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 // static
@@ -548,7 +552,7 @@ void ViewTransition::ProcessCurrentState() {
 
       case State::kAnimateTagDiscovery:
         DCHECK(!in_main_lifecycle_update_);
-        document_->View()->UpdateLifecycleToPrePaintClean(
+        document_->View()->UpdateAllLifecyclePhasesExceptPaint(
             DocumentUpdateReason::kViewTransition);
         DCHECK_GE(document_->Lifecycle().GetState(),
                   DocumentLifecycle::kPrePaintClean);
@@ -628,9 +632,7 @@ ViewTransitionTypeSet* ViewTransition::Types() {
 }
 
 void ViewTransition::InitTypes(const Vector<String>& types) {
-  if (RuntimeEnabledFeatures::ViewTransitionTypesEnabled()) {
-    types_ = MakeGarbageCollected<ViewTransitionTypeSet>(this, types);
-  }
+  types_ = MakeGarbageCollected<ViewTransitionTypeSet>(this, types);
 }
 
 void ViewTransition::Trace(Visitor* visitor) const {
@@ -651,13 +653,11 @@ bool ViewTransition::MatchForOnlyChild(
 }
 
 bool ViewTransition::MatchForActiveViewTransition() {
-  CHECK(RuntimeEnabledFeatures::ViewTransitionTypesEnabled());
   return !IsTerminalState(state_);
 }
 
 bool ViewTransition::MatchForActiveViewTransitionType(
     const Vector<AtomicString>& pseudo_types) {
-  CHECK(RuntimeEnabledFeatures::ViewTransitionTypesEnabled());
   if (IsTerminalState(state_)) {
     return false;
   }
@@ -670,7 +670,7 @@ bool ViewTransition::MatchForActiveViewTransitionType(
   }
 
   // At least one pseudo type has to match at least one of the transition types.
-  return base::ranges::any_of(pseudo_types, [&](const String& pseudo_type) {
+  return std::ranges::any_of(pseudo_types, [&](const String& pseudo_type) {
     return ViewTransitionTypeSet::IsValidType(pseudo_type) &&
            types_->Contains(pseudo_type);
   });
@@ -686,11 +686,15 @@ void ViewTransition::ContextDestroyed() {
   SkipTransition(PromiseResponse::kRejectAbort);
 }
 
-void ViewTransition::NotifyCaptureFinished() {
+void ViewTransition::NotifyCaptureFinished(
+    const std::unordered_map<viz::ViewTransitionElementResourceId, gfx::RectF>&
+        capture_rects) {
   if (state_ != State::kCapturing) {
     DCHECK(IsTerminalState(state_));
     return;
   }
+
+  style_tracker_->SetCaptureRectsFromCompositor(capture_rects);
   bool process_next_state = AdvanceTo(State::kCaptured);
   DCHECK(process_next_state);
   ProcessCurrentState();
@@ -808,8 +812,9 @@ void ViewTransition::RunViewTransitionStepsOutsideMainFrame() {
          DocumentLifecycle::kPrePaintClean);
   DCHECK(!in_main_lifecycle_update_);
 
-  if (state_ == State::kAnimating && style_tracker_ &&
-      !style_tracker_->RunPostPrePaintSteps()) {
+  if (pending_skip_view_transitions_ ||
+      (state_ == State::kAnimating && style_tracker_ &&
+       !style_tracker_->RunPostPrePaintSteps())) {
     SkipTransition(PromiseResponse::kRejectInvalidState);
   }
 }
@@ -825,9 +830,10 @@ void ViewTransition::RunViewTransitionStepsDuringMainFrame() {
   if (StateRunsInViewTransitionStepsDuringMainFrame(state_))
     ProcessCurrentState();
 
-  if (style_tracker_ &&
-      document_->Lifecycle().GetState() >= DocumentLifecycle::kPrePaintClean &&
-      !style_tracker_->RunPostPrePaintSteps()) {
+  if (pending_skip_view_transitions_ ||
+      (style_tracker_ &&
+       document_->Lifecycle().GetState() >= DocumentLifecycle::kPrePaintClean &&
+       !style_tracker_->RunPostPrePaintSteps())) {
     SkipTransition(PromiseResponse::kRejectInvalidState);
   }
 }
@@ -893,19 +899,16 @@ void ViewTransition::PauseRendering() {
 
   TRACE_EVENT_NESTABLE_ASYNC_BEGIN0("blink", "ViewTransition::PauseRendering",
                                     this);
-  const base::TimeDelta kTimeout = [this]() {
-    if (auto* settings = document_->GetFrame()->GetContentSettingsClient();
-        settings && settings->IncreaseViewTransitionCallbackTimeout()) {
-      return base::Seconds(15);
-    } else {
-      return base::Seconds(4);
-    }
-  }();
+  static const base::TimeDelta timeout_delay =
+      RuntimeEnabledFeatures::
+              ViewTransitionLongCallbackTimeoutForTestingEnabled()
+          ? base::Seconds(15)
+          : base::Seconds(4);
   document_->GetTaskRunner(TaskType::kInternalFrameLifecycleControl)
       ->PostDelayedTask(FROM_HERE,
                         WTF::BindOnce(&ViewTransition::OnRenderingPausedTimeout,
                                       WrapWeakPersistent(this)),
-                        kTimeout);
+                        timeout_delay);
 }
 
 void ViewTransition::OnRenderingPausedTimeout() {

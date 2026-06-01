@@ -17,7 +17,6 @@
 
 #include "qabstractwebview_p.h"
 #include "qwebviewinterface_p.h"
-#include "qnativeviewcontroller_p.h"
 #include <QtCore/qobject.h>
 #include <QtCore/qurl.h>
 #include <QtCore/qvariant.h>
@@ -25,11 +24,15 @@
 
 #include <QtCore/qpointer.h>
 
+class tst_QWebView;
+
 QT_BEGIN_NAMESPACE
 
 class QWebViewLoadRequestPrivate;
 
-class Q_WEBVIEW_EXPORT QWebViewSettings : public QObject
+class QWindow;
+
+class Q_WEBVIEW_EXPORT QWebViewSettings : public QAbstractWebViewSettings
 {
     Q_OBJECT
     Q_PROPERTY(bool localStorageEnabled READ localStorageEnabled WRITE setLocalStorageEnabled NOTIFY localStorageEnabledChanged)
@@ -41,31 +44,30 @@ public:
     explicit QWebViewSettings(QAbstractWebViewSettings *webview);
     ~QWebViewSettings() override;
 
-    bool localStorageEnabled() const;
-    bool javaScriptEnabled() const;
-    bool allowFileAccess() const;
-    bool localContentCanAccessFileUrls() const;
+    bool localStorageEnabled() const override;
+    bool javaScriptEnabled() const override;
+    bool allowFileAccess() const override;
+    bool localContentCanAccessFileUrls() const override;
 
 public Q_SLOTS:
-    void setLocalStorageEnabled(bool enabled);
-    void setJavaScriptEnabled(bool enabled);
-    void setAllowFileAccess(bool enabled);
-    void setLocalContentCanAccessFileUrls(bool enabled);
+    void setLocalStorageEnabled(bool enabled) override;
+    void setJavaScriptEnabled(bool enabled) override;
+    void setAllowFileAccess(bool enabled) override;
+    void setLocalContentCanAccessFileUrls(bool enabled) override;
 
 signals:
     void localStorageEnabledChanged();
     void javaScriptEnabledChanged();
     void allowFileAccessChanged();
     void localContentCanAccessFileUrlsChanged();
+    void nativeWindowChanged(QWindow *window);
 
 private:
     QPointer<QAbstractWebViewSettings> d;
 };
 
 class Q_WEBVIEW_EXPORT QWebView
-        : public QObject
-        , public QWebViewInterface
-        , public QNativeViewController
+        : public QAbstractWebView
 {
     Q_OBJECT
 public:
@@ -89,14 +91,12 @@ public:
     int loadProgress() const override;
     bool isLoading() const override;
 
-    void setParentView(QObject *view) override;
-    QObject *parentView() const override;
-    void setGeometry(const QRect &geometry) override;
-    void setVisibility(QWindow::Visibility visibility) override;
-    void setVisible(bool visible) override;
-    void setFocus(bool focus) override;
-    void updatePolish() override;
-    QWebViewSettings *getSettings() const;
+    QWebViewSettings *getSettings() const override;
+    QWindow *nativeWindow() const override;
+
+    // NOTE: This is a temporary solution for WASM and should
+    // be removed once window containers are supported.
+    static QAbstractWebView *get(QWebView &q) { return q.d; }
 
 public Q_SLOTS:
     void goBack() override;
@@ -115,13 +115,11 @@ Q_SIGNALS:
     void loadingChanged(const QWebViewLoadRequestPrivate &loadRequest);
     void loadProgressChanged();
     void javaScriptResult(int id, const QVariant &result);
-    void requestFocus(bool focus);
     void httpUserAgentChanged();
     void cookieAdded(const QString &domain, const QString &name);
     void cookieRemoved(const QString &domain, const QString &name);
 
 protected:
-    void init() override;
     void runJavaScriptPrivate(const QString &script,
                               int callbackId) override;
 
@@ -133,11 +131,11 @@ private Q_SLOTS:
     void onHttpUserAgentChanged(const QString &httpUserAgent);
 
 private:
-    friend class QQuickViewController;
     friend class QQuickWebView;
+    friend class ::tst_QWebView;
 
-    QAbstractWebView *d;
-    QWebViewSettings *m_settings;
+    QAbstractWebView *d = nullptr;
+    QWebViewSettings *m_settings = nullptr;
 
     // provisional data
     int m_progress;

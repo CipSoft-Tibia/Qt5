@@ -84,11 +84,12 @@ class ServiceWorkerControlleeRequestHandlerTest : public testing::Test {
               TRAFFIC_ANNOTATION_FOR_TESTS)),
           handler_(std::make_unique<ServiceWorkerControlleeRequestHandler>(
               test->context()->AsWeakPtr(),
+              /*fetch_event_client_id=*/"",
               test->service_worker_client_,
-              destination,
               /*skip_service_worker=*/false,
               FrameTreeNodeId(),
-              base::DoNothing())) {}
+              base::DoNothing())),
+          service_worker_client_(test->service_worker_client_) {}
 
     void MaybeCreateLoader() {
       network::ResourceRequest resource_request;
@@ -96,10 +97,12 @@ class ServiceWorkerControlleeRequestHandlerTest : public testing::Test {
       resource_request.destination = destination_;
       resource_request.headers = request()->extra_request_headers();
       DCHECK(!loader_loop_.AnyQuitCalled());
+      service_worker_client_->UpdateUrls(
+          resource_request.url, url::Origin::Create(resource_request.url),
+          blink::StorageKey::CreateFirstParty(
+              url::Origin::Create(resource_request.url)));
       handler_->MaybeCreateLoader(
           resource_request,
-          blink::StorageKey::CreateFirstParty(
-              url::Origin::Create(resource_request.url)),
           nullptr,
           base::BindOnce(
               [](base::OnceClosure closure,
@@ -126,6 +129,7 @@ class ServiceWorkerControlleeRequestHandlerTest : public testing::Test {
     const network::mojom::RequestDestination destination_;
     std::unique_ptr<net::URLRequest> request_;
     std::unique_ptr<ServiceWorkerControlleeRequestHandler> handler_;
+    base::WeakPtr<ServiceWorkerClient> service_worker_client_;
     base::RunLoop loader_loop_;
   };
 
@@ -489,8 +493,8 @@ TEST_F(ServiceWorkerControlleeRequestHandlerTest, SkipServiceWorker) {
       network::mojom::RequestDestination::kDocument);
   test_resources.SetHandler(
       std::make_unique<ServiceWorkerControlleeRequestHandler>(
-          context()->AsWeakPtr(), service_worker_client_,
-          network::mojom::RequestDestination::kDocument,
+          context()->AsWeakPtr(),
+          /*fetch_event_client_id=*/"", service_worker_client_,
           /*skip_service_worker=*/true, FrameTreeNodeId(), base::DoNothing()));
 
   // Conduct a main resource load.
@@ -530,9 +534,9 @@ TEST_F(ServiceWorkerControlleeRequestHandlerTest, NullContext) {
       network::mojom::RequestDestination::kDocument);
   test_resources.SetHandler(
       std::make_unique<ServiceWorkerControlleeRequestHandler>(
-          context()->AsWeakPtr(), service_worker_client_,
-          network::mojom::RequestDestination::kDocument,
-          /*skip_service_worker=*/false, FrameTreeNodeId(), base::DoNothing()));
+          context()->AsWeakPtr(), /*fetch_event_client_id=*/"",
+          service_worker_client_, /*skip_service_worker=*/false,
+          FrameTreeNodeId(), base::DoNothing()));
 
   // Destroy the context and make a new one.
   DeleteAndStartOverWaiter delete_and_start_over_waiter(

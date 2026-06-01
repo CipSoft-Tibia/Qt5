@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "components/metrics/unsent_log_store.h"
 
 #include <cmath>
@@ -108,7 +103,7 @@ class LogsPrefWriter {
     std::reverse(list_value_->begin(), list_value_->end());
   }
 
-  base::HistogramBase::Count unsent_samples_count() const {
+  base::HistogramBase::Count32 unsent_samples_count() const {
     return unsent_samples_count_;
   }
 
@@ -124,7 +119,7 @@ class LogsPrefWriter {
   bool finished_ = false;
 
   // The total number of histogram samples written so far.
-  base::HistogramBase::Count unsent_samples_count_ = 0;
+  base::HistogramBase::Count32 unsent_samples_count_ = 0;
 
   // The total size of logs written so far.
   size_t unsent_persisted_size_ = 0;
@@ -161,9 +156,8 @@ void UnsentLogStore::LogInfo::Init(const std::string& log_data,
 
   hash = base::SHA1HashString(log_data);
 
-  if (!ComputeHMACForLog(log_data, signing_key, &signature)) {
-    NOTREACHED_IN_MIGRATION() << "HMAC signing failed";
-  }
+  CHECK(ComputeHMACForLog(log_data, signing_key, &signature))
+    << "HMAC signing failed";
 
   timestamp = log_timestamp;
   this->log_metadata = optional_log_metadata;
@@ -312,8 +306,7 @@ void UnsentLogStore::TrimAndPersistUnsentLogs(bool overwrite_in_memory_store) {
           writer.unsent_logs_count() >= log_store_limits_.min_log_count) {
         // The rest of the logs (including the current one) are trimmed.
         if (overwrite_in_memory_store) {
-          NotifyLogsEvent(base::span<std::unique_ptr<LogInfo>>(
-                              list_.begin(), list_.begin() + i + 1),
+          NotifyLogsEvent(base::span(list_).first(static_cast<size_t>(i + 1)),
                           MetricsLogsEventManager::LogEvent::kLogTrimmed);
         }
         break;
@@ -516,8 +509,8 @@ void UnsentLogStore::ReadLogsFromPrefList(const base::Value::List& list_value) {
 }
 
 void UnsentLogStore::WriteToMetricsPref(
-    base::HistogramBase::Count unsent_samples_count,
-    base::HistogramBase::Count sent_samples_count,
+    base::HistogramBase::Count32 unsent_samples_count,
+    base::HistogramBase::Count32 sent_samples_count,
     size_t unsent_persisted_size) const {
   if (metadata_pref_name_ == nullptr)
     return;

@@ -55,7 +55,7 @@ MaybeError ValidateSamplerDescriptor(DeviceBase* device, const SamplerDescriptor
                             descriptor->mipmapFilter != wgpu::MipmapFilterMode::Linear,
                         "One of minFilter (%s), magFilter (%s) or mipmapFilter (%s) is not %s "
                         "while using anisotropic filter (maxAnisotropy is %f)",
-                        descriptor->magFilter, descriptor->minFilter, descriptor->mipmapFilter,
+                        descriptor->minFilter, descriptor->magFilter, descriptor->mipmapFilter,
                         wgpu::FilterMode::Linear, descriptor->maxAnisotropy);
     } else if (descriptor->maxAnisotropy == 0u) {
         return DAWN_VALIDATION_ERROR("Max anisotropy (%f) is less than 1.",
@@ -107,7 +107,7 @@ SamplerBase::SamplerBase(DeviceBase* device, const SamplerDescriptor* descriptor
     GetObjectTrackingList()->Track(this);
 }
 
-SamplerBase::SamplerBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label)
+SamplerBase::SamplerBase(DeviceBase* device, ObjectBase::ErrorTag tag, StringView label)
     : ApiObjectBase(device, tag, label) {}
 
 SamplerBase::~SamplerBase() = default;
@@ -117,7 +117,7 @@ void SamplerBase::DestroyImpl() {
 }
 
 // static
-Ref<SamplerBase> SamplerBase::MakeError(DeviceBase* device, const char* label) {
+Ref<SamplerBase> SamplerBase::MakeError(DeviceBase* device, StringView label) {
     return AcquireRef(new SamplerBase(device, ObjectBase::kError, label));
 }
 
@@ -136,6 +136,11 @@ bool SamplerBase::IsFiltering() const {
 
 bool SamplerBase::IsYCbCr() const {
     return mIsYCbCr;
+}
+
+YCbCrVkDescriptor SamplerBase::GetYCbCrVkDescriptor() const {
+    DAWN_ASSERT(IsYCbCr());
+    return mYCbCrVkDescriptor;
 }
 
 size_t SamplerBase::ComputeContentHash() {

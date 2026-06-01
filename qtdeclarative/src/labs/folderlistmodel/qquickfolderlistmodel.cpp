@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //![code]
 #include "qquickfolderlistmodel_p.h"
@@ -258,7 +259,6 @@ QString QQuickFolderListModelPrivate::resolvePath(const QUrl &path)
     \list
     \li \c fileName (\c string)
     \li \c filePath (\c string)
-    \li \c fileURL (\c url) (since Qt 5.2; deprecated since Qt 5.15)
     \li \c fileUrl (\c url) (since Qt 5.15)
     \li \c fileBaseName (\c string)
     \li \c fileSuffix (\c string)
@@ -340,7 +340,6 @@ QQuickFolderListModel::QQuickFolderListModel(QObject *parent)
     d->roleNames[FileLastReadRole] = "fileAccessed";
     d->roleNames[FileIsDirRole] = "fileIsDir";
     d->roleNames[FileUrlRole] = "fileUrl";
-    d->roleNames[FileURLRole] = "fileURL";
     d->init();
 }
 
@@ -384,7 +383,6 @@ QVariant QQuickFolderListModel::data(const QModelIndex &index, int role) const
             rv = d->data.at(row).isDir();
             break;
         case FileUrlRole:
-        case FileURLRole:
             rv = QUrl::fromLocalFile(d->data.at(row).filePath());
             break;
         default:
@@ -498,9 +496,11 @@ void QQuickFolderListModel::setRootFolder(const QUrl &path)
     QFileInfo info(resolvedPath);
     if (!info.exists() || !info.isDir())
         return;
-
-    d->fileInfoThread.setRootPath(resolvedPath);
-    d->rootDir = path;
+    if (path != d->rootDir) {
+        d->fileInfoThread.setRootPath(resolvedPath);
+        d->rootDir = path;
+        emit rootFolderChanged();
+    }
 }
 
 
@@ -559,6 +559,7 @@ void QQuickFolderListModel::setNameFilters(const QStringList &filters)
         return;
     d->fileInfoThread.setNameFilters(filters);
     d->nameFilters = filters;
+    emit nameFilterChanged();
 }
 
 void QQuickFolderListModel::classBegin()
@@ -597,9 +598,11 @@ QQuickFolderListModel::SortField QQuickFolderListModel::sortField() const
 void QQuickFolderListModel::setSortField(SortField field)
 {
     Q_D(QQuickFolderListModel);
+
     if (field != d->sortField) {
         d->sortField = field;
         d->updateSorting();
+        emit sortFieldChanged();
     }
 }
 
@@ -629,6 +632,7 @@ void QQuickFolderListModel::setSortReversed(bool rev)
     if (rev != d->sortReversed) {
         d->sortReversed = rev;
         d->updateSorting();
+        emit sortReversedChanged();
     }
 }
 
@@ -672,8 +676,11 @@ void QQuickFolderListModel::setShowFiles(bool on)
 {
     Q_D(QQuickFolderListModel);
 
-    d->fileInfoThread.setShowFiles(on);
-    d->showFiles = on;
+    if (on != d->showFiles) {
+        d->fileInfoThread.setShowFiles(on);
+        d->showFiles = on;
+        emit showFilesChanged();
+    }
 }
 
 /*!
@@ -698,8 +705,11 @@ void  QQuickFolderListModel::setShowDirs(bool on)
 {
     Q_D(QQuickFolderListModel);
 
-    d->fileInfoThread.setShowDirs(on);
-    d->showDirs = on;
+    if (on != d->showDirs) {
+        d->fileInfoThread.setShowDirs(on);
+        d->showDirs = on;
+        emit showDirsChanged();
+    }
 }
 
 /*!
@@ -721,8 +731,11 @@ void  QQuickFolderListModel::setShowDirsFirst(bool on)
 {
     Q_D(QQuickFolderListModel);
 
-    d->fileInfoThread.setShowDirsFirst(on);
-    d->showDirsFirst = on;
+    if (on != d->showDirsFirst) {
+       d->fileInfoThread.setShowDirsFirst(on);
+       d->showDirsFirst = on;
+       emit showDirsFirstChanged();
+    }
 }
 
 
@@ -749,6 +762,7 @@ void  QQuickFolderListModel::setShowDotAndDotDot(bool on)
     if (on != d->showDotAndDotDot) {
         d->fileInfoThread.setShowDotAndDotDot(on);
         d->showDotAndDotDot = on;
+        emit showDotAndDotDotChanged();
     }
 }
 
@@ -775,6 +789,7 @@ void QQuickFolderListModel::setShowHidden(bool on)
     if (on != d->showHidden) {
         d->fileInfoThread.setShowHidden(on);
         d->showHidden = on;
+        emit showHiddenChanged();
     }
 }
 
@@ -801,6 +816,7 @@ void QQuickFolderListModel::setShowOnlyReadable(bool on)
     if (on != d->showOnlyReadable) {
         d->fileInfoThread.setShowOnlyReadable(on);
         d->showOnlyReadable = on;
+        emit showOnlyReadableChanged();
     }
 }
 
@@ -826,6 +842,7 @@ void QQuickFolderListModel::setCaseSensitive(bool on)
     if (on != d->caseSensitive) {
         d->fileInfoThread.setCaseSensitive(on);
         d->caseSensitive = on;
+        emit caseSensitiveChanged();
     }
 }
 
@@ -889,6 +906,7 @@ void QQuickFolderListModel::setSortCaseSensitive(bool on)
     if (on != d->sortCaseSensitive) {
         d->sortCaseSensitive = on;
         d->updateSorting();
+        emit sortCaseSensitiveChanged();
     }
 }
 
@@ -901,7 +919,6 @@ void QQuickFolderListModel::setSortCaseSensitive(bool on)
     \list
         \li \c fileName (\c string)
         \li \c filePath (\c string)
-        \li \c fileURL (\c url) (since Qt 5.2; deprecated since Qt 5.15)
         \li \c fileUrl (\c url) (since Qt 5.15)
         \li \c fileBaseName (\c string)
         \li \c fileSuffix (\c string)
@@ -915,7 +932,7 @@ QVariant QQuickFolderListModel::get(int idx, const QString &property) const
 {
     int role = roleFromString(property);
     if (role >= 0 && idx >= 0)
-        return data(index(idx, 0), role);
+        return data(index(idx), role);
     else
         return QVariant();
 }

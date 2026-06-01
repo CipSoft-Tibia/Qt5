@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLJSLEXER_P_H
 #define QQMLJSLEXER_P_H
@@ -40,7 +41,6 @@ public:
         T_BYTE = T_RESERVED_WORD,
         T_CHAR = T_RESERVED_WORD,
         T_DOUBLE = T_RESERVED_WORD,
-        T_FINAL = T_RESERVED_WORD,
         T_FLOAT = T_RESERVED_WORD,
         T_GOTO = T_RESERVED_WORD,
         T_IMPLEMENTS = T_RESERVED_WORD,
@@ -231,7 +231,7 @@ public:
     void setState(const State &state);
 
 protected:
-    static int classify(const QChar *s, int n, int parseModeFlags);
+    static int classify(QStringView s, int parseModeFlags);
 
 private:
     int parseModeFlags() const;

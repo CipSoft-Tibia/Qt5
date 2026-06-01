@@ -2,17 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Host from '../../../core/host/host.js';
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as Platform from '../../../core/platform/platform.js';
 import * as CrUXManager from '../../../models/crux-manager/crux-manager.js';
+import * as Buttons from '../../../ui/components/buttons/buttons.js';
 import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as Lit from '../../../ui/lit/lit.js';
 
-import metricCardStyles from './metricCard.css.js';
+import metricCardStylesRaw from './metricCard.css.js';
 import {type CompareRating, renderCompareText, renderDetailedCompareText} from './MetricCompareStrings.js';
-import metricValueStyles from './metricValueStyles.css.js';
+import metricValueStylesRaw from './metricValueStyles.css.js';
 import {
   CLS_THRESHOLDS,
+  determineCompareRating,
   INP_THRESHOLDS,
   LCP_THRESHOLDS,
   type MetricRating,
@@ -21,7 +24,15 @@ import {
   renderMetricValue,
 } from './Utils.js';
 
-const {html, nothing} = LitHtml;
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const metricCardStyles = new CSSStyleSheet();
+metricCardStyles.replaceSync(metricCardStylesRaw.cssContent);
+
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const metricValueStyles = new CSSStyleSheet();
+metricValueStyles.replaceSync(metricValueStylesRaw.cssContent);
+
+const {html, nothing} = Lit;
 
 const UIStrings = {
   /**
@@ -29,7 +40,7 @@ const UIStrings = {
    */
   localValue: 'Local',
   /**
-   * @description Label for the 75th percentile of a metric according to data collected from real users in the field.
+   * @description Label for the 75th percentile of a metric according to data collected from real users in the field. This should be interpreted as "75th percentile of real users".
    */
   field75thPercentile: 'Field 75th percentile',
   /**
@@ -113,6 +124,28 @@ const UIStrings = {
    * @description Text block explaining how dynamic content can affect layout shifts. "layout shifts" refer to page instability where content moving around can create a jarring experience.
    */
   recDynamicContentCLS: 'Dynamic content can influence what layout shifts happen.',
+  /**
+   * @description Column header for table cell values representing the phase/component/stage/section of a larger duration.
+   */
+  phase: 'Phase',
+  /**
+   * @description Column header for table cell values representing a phase duration (in milliseconds) that was measured in the developers local environment.
+   */
+  duration: 'Local duration (ms)',
+  /**
+   * @description Tooltip text for a link that goes to documentation explaining the Largest Contentful Paint (LCP) metric. "LCP" is an acronym and should not be translated.
+   */
+  lcpHelpTooltip:
+      'LCP reports the render time of the largest image, text block, or video visible in the viewport. Click here to learn more about LCP.',
+  /**
+   * @description Tooltip text for a link that goes to documentation explaining the Cumulative Layout Shift (CLS) metric. "CLS" is an acronym and should not be translated.
+   */
+  clsHelpTooltip: 'CLS measures the amount of unexpected shifted content. Click here to learn more about CLS.',
+  /**
+   * @description Tooltip text for a link that goes to documentation explaining the Interaction to Next Paint (INP) metric. "INP" is an acronym and should not be translated.
+   */
+  inpHelpTooltip:
+      'INP measures the overall responsiveness to all click, tap, and keyboard interactions. Click here to learn more about INP.',
 };
 
 const str_ = i18n.i18n.registerUIStrings('panels/timeline/components/MetricCard.ts', UIStrings);
@@ -124,10 +157,11 @@ export interface MetricCardData {
   fieldValue?: number|string;
   histogram?: CrUXManager.MetricResponse['histogram'];
   tooltipContainer?: HTMLElement;
+  phases?: Array<[string, number]>;
+  warnings?: string[];
 }
 
 export class MetricCard extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-metric-card`;
   readonly #shadow = this.attachShadow({mode: 'open'});
 
   constructor() {
@@ -236,17 +270,6 @@ export class MetricCard extends HTMLElement {
     });
   }
 
-  #getCompareThreshold(): number {
-    switch (this.#data.metric) {
-      case 'LCP':
-        return 1000;
-      case 'CLS':
-        return 0.1;
-      case 'INP':
-        return 200;
-    }
-  }
-
   #getTitle(): string {
     switch (this.#data.metric) {
       case 'LCP':
@@ -272,11 +295,36 @@ export class MetricCard extends HTMLElement {
   #getFormatFn(): (value: number) => string {
     switch (this.#data.metric) {
       case 'LCP':
-        return v => i18n.TimeUtilities.millisToString(v);
+        return v => {
+          const micro = (v * 1000) as Platform.Timing.MicroSeconds;
+          return i18n.TimeUtilities.formatMicroSecondsAsSeconds(micro);
+        };
       case 'CLS':
         return v => v === 0 ? '0' : v.toFixed(2);
       case 'INP':
-        return v => i18n.TimeUtilities.millisToString(v);
+        return v => i18n.TimeUtilities.preciseMillisToString(v);
+    }
+  }
+
+  #getHelpLink(): Platform.DevToolsPath.UrlString {
+    switch (this.#data.metric) {
+      case 'LCP':
+        return 'https://web.dev/articles/lcp' as Platform.DevToolsPath.UrlString;
+      case 'CLS':
+        return 'https://web.dev/articles/cls' as Platform.DevToolsPath.UrlString;
+      case 'INP':
+        return 'https://web.dev/articles/inp' as Platform.DevToolsPath.UrlString;
+    }
+  }
+
+  #getHelpTooltip(): string {
+    switch (this.#data.metric) {
+      case 'LCP':
+        return i18nString(UIStrings.lcpHelpTooltip);
+      case 'CLS':
+        return i18nString(UIStrings.clsHelpTooltip);
+      case 'INP':
+        return i18nString(UIStrings.inpHelpTooltip);
     }
   }
 
@@ -316,28 +364,10 @@ export class MetricCard extends HTMLElement {
       return;
     }
 
-    const thresholds = this.#getThresholds();
-    const localRating = rateMetric(localValue, thresholds);
-    const fieldRating = rateMetric(fieldValue, thresholds);
-
-    // It's not worth highlighting a significant difference when both #s
-    // are rated "good"
-    if (localRating === 'good' && fieldRating === 'good') {
-      return 'similar';
-    }
-
-    const compareThreshold = this.#getCompareThreshold();
-    if (localValue - fieldValue > compareThreshold) {
-      return 'worse';
-    }
-    if (fieldValue - localValue > compareThreshold) {
-      return 'better';
-    }
-
-    return 'similar';
+    return determineCompareRating(this.#data.metric, localValue, fieldValue);
   }
 
-  #renderCompareString(): LitHtml.LitTemplate {
+  #renderCompareString(): Lit.LitTemplate {
     const localValue = this.#getLocalValue();
     if (localValue === undefined) {
       if (this.#data.metric === 'INP') {
@@ -345,7 +375,7 @@ export class MetricCard extends HTMLElement {
           <div class="compare-text">${i18nString(UIStrings.interactToMeasure)}</div>
         `;
       }
-      return LitHtml.nothing;
+      return Lit.nothing;
     }
 
     const compare = this.#getCompareRating();
@@ -368,10 +398,10 @@ export class MetricCard extends HTMLElement {
     // clang-format on
   }
 
-  #renderEnvironmentRecommendations(): LitHtml.LitTemplate {
+  #renderEnvironmentRecommendations(): Lit.LitTemplate {
     const compare = this.#getCompareRating();
     if (!compare || compare === 'similar') {
-      return LitHtml.nothing;
+      return Lit.nothing;
     }
 
     const recs: string[] = [];
@@ -406,7 +436,7 @@ export class MetricCard extends HTMLElement {
     }
 
     if (!recs.length) {
-      return LitHtml.nothing;
+      return Lit.nothing;
     }
 
     return html`
@@ -421,7 +451,7 @@ export class MetricCard extends HTMLElement {
     return `timeline.landing.${isLocal ? 'local' : 'field'}-${this.#data.metric.toLowerCase()}`;
   }
 
-  #renderDetailedCompareString(): LitHtml.LitTemplate {
+  #renderDetailedCompareString(): Lit.LitTemplate {
     const localValue = this.#getLocalValue();
     if (localValue === undefined) {
       if (this.#data.metric === 'INP') {
@@ -429,7 +459,7 @@ export class MetricCard extends HTMLElement {
           <div class="detailed-compare-text">${i18nString(UIStrings.interactToMeasure)}</div>
         `;
       }
-      return LitHtml.nothing;
+      return Lit.nothing;
     }
 
     const localRating = rateMetric(localValue, this.#getThresholds());
@@ -486,7 +516,7 @@ export class MetricCard extends HTMLElement {
     return i18nString(UIStrings.percentage, {PH1: percent});
   }
 
-  #renderFieldHistogram(): LitHtml.LitTemplate {
+  #renderFieldHistogram(): Lit.LitTemplate {
     const fieldEnabled = CrUXManager.CrUXManager.instance().getConfigSetting().get().enabled;
 
     const format = this.#getFormatFn();
@@ -542,14 +572,46 @@ export class MetricCard extends HTMLElement {
     // clang-format on
   }
 
+  #renderPhaseTable(): Lit.LitTemplate {
+    const localValue = this.#getLocalValue();
+    const phases = this.#data.phases;
+    if (!phases || !localValue) {
+      return Lit.nothing;
+    }
+
+    return html`
+      <hr class="divider">
+      <div class="phase-table" role="table">
+        <div class="phase-table-row phase-table-header-row" role="row">
+          <div role="columnheader">${i18nString(UIStrings.phase)}</div>
+          <div role="columnheader">${i18nString(UIStrings.duration)}</div>
+        </div>
+        ${phases.map(phase => html`
+          <div class="phase-table-row" role="row">
+            <div role="cell">${phase[0]}</div>
+            <div role="cell">${Math.round(phase[1])}</div>
+          </div>
+        `)}
+      </div>
+    `;
+  }
+
   #render = (): void => {
     const fieldEnabled = CrUXManager.CrUXManager.instance().getConfigSetting().get().enabled;
+    const helpLink = this.#getHelpLink();
 
     // clang-format off
     const output = html`
       <div class="metric-card">
         <h3 class="title">
           ${this.#getTitle()}
+          <devtools-button
+            class="title-help"
+            title=${this.#getHelpTooltip()}
+            .iconName=${'help'}
+            .variant=${Buttons.Button.Variant.ICON}
+            @click=${() => Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(helpLink)}
+          ></devtools-button>
         </h3>
         <div tabindex="0" class="metric-values-section"
           @mouseenter=${() => this.#showTooltip(500)}
@@ -584,15 +646,19 @@ export class MetricCard extends HTMLElement {
             ${this.#renderDetailedCompareString()}
             <hr class="divider">
             ${this.#renderFieldHistogram()}
+            ${this.#renderPhaseTable()}
           </div>
         </div>
         ${fieldEnabled ? html`<hr class="divider">` : nothing}
         ${this.#renderCompareString()}
+        ${this.#data.warnings?.map(warning => html`
+          <div class="warning">${warning}</div>
+        `)}
         ${this.#renderEnvironmentRecommendations()}
-        <slot name="extra-info"><slot>
+        <slot name="extra-info"></slot>
       </div>
     `;
-    LitHtml.render(output, this.#shadow, {host: this});
+    Lit.render(output, this.#shadow, {host: this});
   };
   // clang-format on
 }

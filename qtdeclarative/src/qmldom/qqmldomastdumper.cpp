@@ -168,14 +168,14 @@ public:
         start(QLatin1String("UiPublicMember type=%1 typeModifier=%2 name=%3 isDefaultMember=%4 "
                             "isReadonlyMember=%5 isRequired=%6 "
                             "defaultToken=%7 readonlyToken=%8 propertyToken=%9 requiredToken=%10 "
-                            "typeModifierToken=%11 typeToken=%12 "
-                            "identifierToken=%13 colonToken=%14%15")
+                            "finalToken=%11 typeModifierToken=%12 typeToken=%13 "
+                            "identifierToken=%14 colonToken=%15%16")
                       .arg(quotedString(typeStr), quotedString(el->typeModifier),
                            quotedString(el->name), boolStr(el->isDefaultMember()),
                            boolStr(el->isReadonly()), boolStr(el->isRequired()),
                            loc(el->defaultToken()), loc(el->readonlyToken()),
                            loc(el->propertyToken()), loc(el->requiredToken()),
-                           loc(el->typeModifierToken), loc(el->typeToken),
+                           loc(el->finalToken()), loc(el->typeModifierToken), loc(el->typeToken),
                            loc(el->identifierToken), loc(el->colonToken),
                            semicolonToken(el->semicolonToken)));
         if (!noAnnotations()) // put annotations inside the node they refer to

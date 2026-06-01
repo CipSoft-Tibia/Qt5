@@ -198,7 +198,7 @@ void FileSystemAccessHandleBase::DidRequestPermission(
           writable ? GetWritePermissionStatus() : GetReadPermissionStatus());
       return;
   }
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void FileSystemAccessHandleBase::DoMove(
@@ -240,12 +240,24 @@ void FileSystemAccessHandleBase::DoRename(
   CHECK(sibling_safe_name.has_value());
   storage::FileSystemURL destination_url =
       url().CreateSibling(*sibling_safe_name);
+#if BUILDFLAG(IS_ANDROID)
+  // Android Content-URIs do not support CreateSibling().
+  if (!destination_url.is_valid()) {
+    CHECK(url().path().IsContentUri());
+    std::move(callback).Run(file_system_access_error::FromStatus(
+        blink::mojom::FileSystemAccessStatus::kInvalidModificationError));
+    return;
+  }
+#endif
+  CHECK(destination_url.is_valid());
 
   SharedHandleState destination_shared_handle_state =
       url().type() == storage::FileSystemType::kFileSystemTypeTemporary
           ? manager()->GetSharedHandleStateForSandboxedPath()
           : manager()->GetSharedHandleStateForNonSandboxedPath(
-                destination_url.virtual_path(), context().storage_key,
+                content::PathInfo(destination_url.virtual_path(),
+                                  new_entry_name),
+                context().storage_key,
                 // TODO(crbug.com/40198034): Support directory moves.
                 FileSystemAccessPermissionContext::HandleType::kFile,
                 FileSystemAccessPermissionContext::UserAction::kNone);
@@ -389,12 +401,13 @@ void FileSystemAccessHandleBase::DidTakeMoveLocks(
     // However, it might still point to a blocklisted file type. Request a
     // sensitive entry access check which will decide if the destination path
     // should be allowed or blocked, and may spawn a confirmation UI.
+    content::PathInfo path_info{
+        destination_url.type() == storage::FileSystemType::kFileSystemTypeLocal
+            ? PathType::kLocal
+            : PathType::kExternal,
+        destination_url.path()};
     manager()->permission_context()->ConfirmSensitiveEntryAccess(
-        context().storage_key.origin(),
-        (destination_url.type() == storage::FileSystemType::kFileSystemTypeLocal
-            ? FileSystemAccessPermissionContext::PathType::kLocal
-            : FileSystemAccessPermissionContext::PathType::kExternal),
-        destination_url.path(),
+        context().storage_key.origin(), path_info,
         // TODO(crbug.com/40198034): Update once moving directory is supported.
         FileSystemAccessPermissionContext::HandleType::kFile,
         // This must be kSave as the move operation will save the file.
@@ -516,7 +529,8 @@ void FileSystemAccessHandleBase::DidMove(
     if (ShouldTrackUsage(url_) && ShouldTrackUsage(destination_url) &&
         manager()->permission_context()) {
       manager()->permission_context()->NotifyEntryMoved(
-          context_.storage_key.origin(), url_.path(), destination_url.path());
+          context_.storage_key.origin(), content::PathInfo(url_.path()),
+          content::PathInfo(destination_url.path()));
     }
     url_ = std::move(destination_url);
   }

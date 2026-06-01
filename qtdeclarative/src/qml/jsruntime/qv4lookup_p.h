@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 #ifndef QV4LOOKUP_H
 #define QV4LOOKUP_H
 
@@ -63,6 +64,7 @@ struct Q_QML_EXPORT Lookup {
         Getter0MemberDataGetter0MemberData,
         GetterAccessor,
         GetterAccessorPrimitive,
+        GetterEnum,
         GetterEnumValue,
         GetterGeneric,
         GetterIndexed,
@@ -76,7 +78,6 @@ struct Q_QML_EXPORT Lookup {
         GetterQObjectMethodFallback,
         GetterQObjectProperty,
         GetterQObjectPropertyFallback,
-        GetterScopedEnum,
         GetterSingletonMethod,
         GetterSingletonProperty,
         GetterStringLength,
@@ -158,6 +159,10 @@ struct Q_QML_EXPORT Lookup {
             const QQmlPropertyData *propertyData;
         } qobjectMethodLookup;
         struct {
+            // NB: None of this is actually cache-able. The metaobject may change at any time.
+            //     We invalidate this data every time the lookup is invoked and thereby force a
+            //     re-initialization next time.
+
             quintptr isConstant; // This is a bool, encoded as 0 or 1. Both values are ignored by gc
             quintptr metaObject; // a (const QMetaObject* & 1) or nullptr
             int coreIndex;
@@ -205,8 +210,8 @@ struct Q_QML_EXPORT Lookup {
         } qmlEnumValueLookup;
         struct {
             HeapObjectWrapper<Heap::InternalClass, 13> ic;
-            HeapObjectWrapper<Heap::Object, 14> qmlScopedEnumWrapper;
-        } qmlScopedEnumWrapperLookup;
+            HeapObjectWrapper<Heap::Object, 14> qmlEnumWrapper;
+        } qmlEnumWrapperLookup;
     };
 
     Call call;
@@ -378,8 +383,8 @@ struct Q_QML_EXPORT Lookup {
             return stringLengthGetter(this, engine, object);
         case Call::GetterValueTypeProperty:
             return getterValueType(this, engine, object);
-        case Call::GetterScopedEnum:
-            return QQmlTypeWrapper::lookupScopedEnum(this, engine, object);
+        case Call::GetterEnum:
+            return QQmlTypeWrapper::lookupEnum(this, engine, object);
         default:
             break;
         }
@@ -472,15 +477,15 @@ inline void setupQObjectLookup(
 // template parameter is an ugly trick to avoid pulling in the QObjectMethod header here
 template<typename QObjectMethod = Heap::QObjectMethod>
 inline void setupQObjectMethodLookup(
-        Lookup *lookup, const QQmlData *ddata, const QQmlPropertyData *propertyData,
-        const Object *self, QObjectMethod *method)
+        Lookup *lookup, const QQmlPropertyCache::ConstPtr &propertyCache,
+        const QQmlPropertyData *propertyData, const Object *self, QObjectMethod *method)
 {
     lookup->releasePropertyCache();
-    Q_ASSERT(!ddata->propertyCache.isNull());
+    Q_ASSERT(!propertyCache.isNull());
     auto engine = self->engine();
     lookup->qobjectMethodLookup.method.set(engine, method);
     lookup->qobjectMethodLookup.ic.set(engine, self->internalClass());
-    lookup->qobjectMethodLookup.propertyCache = ddata->propertyCache.data();
+    lookup->qobjectMethodLookup.propertyCache = propertyCache.data();
     lookup->qobjectMethodLookup.propertyCache->addref();
     lookup->qobjectMethodLookup.propertyData = propertyData;
 }

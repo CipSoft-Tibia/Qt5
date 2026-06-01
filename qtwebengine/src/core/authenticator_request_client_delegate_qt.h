@@ -1,11 +1,13 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef AUTHENTICATOR_REQUEST_CLIENT_DELEGATE_QT_H
 #define AUTHENTICATOR_REQUEST_CLIENT_DELEGATE_QT_H
 
 #include "qtwebenginecoreglobal_p.h"
 #include "content/public/browser/authenticator_request_client_delegate.h"
+#include "content/public/browser/web_authentication_delegate.h"
 #include <unordered_map>
 #include <QSharedPointer>
 
@@ -31,7 +33,7 @@ public:
     operator=(const AuthenticatorRequestClientDelegateQt &) = delete;
     ~AuthenticatorRequestClientDelegateQt();
 
-    // content::AuthenticatorRequestClientDelegate ovverrides
+    // content::AuthenticatorRequestClientDelegate overrides
     void SetRelyingPartyId(const std::string &rp_id) override;
     bool DoesBlockRequestOnFailure(InterestingFailureReason reason) override;
     void RegisterActionCallbacks(
@@ -46,9 +48,7 @@ public:
     void SelectAccount(
             std::vector<device::AuthenticatorGetAssertionResponse> responses,
             base::OnceCallback<void(device::AuthenticatorGetAssertionResponse)> callback) override;
-    void DisableUI() override;
-    bool IsWebAuthnUIEnabled() override;
-    void SetConditionalRequest(bool is_conditional) override;
+    void SetUIPresentation(UIPresentation ui_presentation) override;
 
     // device::FidoRequestHandlerBase::Observer overrides:
     // This method will not be invoked until the observer is set.
@@ -69,7 +69,6 @@ public:
 private:
     content::RenderFrameHost *m_renderFrameHost;
     bool m_isUiDisabled = false;
-    bool m_isConditionalRequest = false;
 
     base::OnceClosure m_cancelCallback;
     base::RepeatingClosure m_startOverCallback;

@@ -349,6 +349,9 @@ void QValueAxis::setLabelDecimals(int decimals)
         d->m_decimals = decimals;
         emit update();
         emit labelDecimalsChanged(decimals);
+    } else {
+        qCDebug(lcAxis2D, "QValueAxis::setLabelDecimals. Label decimals is already set to: %d",
+                decimals);
     }
 }
 
@@ -365,6 +368,9 @@ void QValueAxis::setZoom(qreal zoom)
         d->m_zoom = zoom;
         emit update();
         emit zoomChanged(zoom);
+    } else {
+        qCDebug(lcAxis2D, "QValueAxis::setZoom. Zoom is already set to: %f",
+                zoom);
     }
 }
 
@@ -381,6 +387,9 @@ void QValueAxis::setPan(qreal pan)
         d->m_pan = pan;
         emit update();
         emit panChanged(pan);
+    } else {
+        qCDebug(lcAxis2D, "QValueAxis::setPan. Panning is already set to: %f",
+                pan);
     }
 }
 
@@ -446,11 +455,13 @@ void QValueAxisPrivate::setRange(qreal min, qreal max)
     Q_Q(QValueAxis);
     bool changed = false;
 
-    if (min > max)
+    if (min > max) {
+        qCWarning(lcAxis2D, "min value is higher than max vaue.");
         return;
+    }
 
     if (!isValidValue(min, max)) {
-        qWarning("Attempting to set invalid range for value axis: [%f - %f]", min, max);
+        qCWarning(lcAxis2D, "attempting to set invalid range for value axis: [%f - %f]", min, max);
         return;
     }
 

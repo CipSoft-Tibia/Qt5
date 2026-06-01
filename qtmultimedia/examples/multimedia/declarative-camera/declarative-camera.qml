@@ -1,7 +1,10 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+import QtCore
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import QtMultimedia
 
 Rectangle {
@@ -17,6 +20,26 @@ Rectangle {
     property int buttonsPanelLandscapeWidth: cameraUI.width/2
     property int buttonsPanelPortraitHeight: cameraUI.height/3
 
+    CameraPermission {
+        id: cameraPermission
+
+        onStatusChanged: {
+            // In case the application does not already have permissions at startup
+            if (status === Qt.PermissionStatus.Granted)
+                camera.start()
+            else if (status === Qt.PermissionStatus.Denied)
+                camera.stop()
+        }
+    }
+    Component.onCompleted: {
+        // In case the application already has permissions at startup
+        if (cameraPermission.status === Qt.PermissionStatus.Granted)
+            camera.start()
+        else
+            cameraPermission.request()
+    }
+
+    //! [0]
     states: [
         State {
             name: "PhotoCapture"
@@ -46,6 +69,7 @@ Rectangle {
             }
         }
     ]
+    //! [0]
 
     CaptureSession {
         id: captureSession
@@ -84,6 +108,21 @@ Rectangle {
         source: visible ? recorder.actualLocation : ""
     }
 
+    // Display text and a button to request permission
+    RowLayout {
+        visible: cameraPermission.status !== Qt.PermissionStatus.Granted
+        anchors.centerIn: parent
+        Text {
+            color: "white"
+            text: "Camera permission not granted"
+        }
+
+        Button {
+            text: "Press to request"
+            onClicked: cameraPermission.request()
+        }
+    }
+
     VideoOutput {
         id: viewfinder
         visible: ((cameraUI.state === "PhotoCapture") || (cameraUI.state === "VideoCapture"))
@@ -91,6 +130,7 @@ Rectangle {
         //        autoOrientation: true
     }
 
+    //! [1]
     Item {
         id: controlLayout
 
@@ -117,7 +157,9 @@ Rectangle {
             console.log("State: " + controlLayout.state)
         }
     }
+    //! [1]
 
+    //! [2]
     PhotoCaptureControls {
         id: stillControls
         state: controlLayout.state
@@ -131,6 +173,7 @@ Rectangle {
         onVideoModeSelected: cameraUI.state = "VideoCapture"
         previewAvailable: imageCapture.preview.length !== 0
     }
+    //! [2]
 
     VideoCaptureControls {
         id: videoControls

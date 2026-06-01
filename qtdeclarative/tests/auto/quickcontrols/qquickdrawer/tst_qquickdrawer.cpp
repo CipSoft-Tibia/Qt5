@@ -21,6 +21,7 @@
 #include <QtQuickTemplates2/private/qquickoverlay_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p_p.h>
 #include <QtQuickTemplates2/private/qquickdrawer_p.h>
+#include <QtQuickTemplates2/private/qquickdrawer_p_p.h>
 #include <QtQuickTemplates2/private/qquickbutton_p.h>
 #include <QtQuickTemplates2/private/qquickslider_p.h>
 #include <QtQuickTestUtils/private/viewtestutils_p.h>
@@ -57,6 +58,7 @@ private slots:
 
     void reposition();
     void rotate();
+    void rotateTouchOpen();
     void header();
 
     void dragHandlerInteraction();
@@ -536,6 +538,40 @@ void tst_QQuickDrawer::rotate()
             std::swap(virtualWidth, virtualHeight);
         }
     }
+}
+
+void tst_QQuickDrawer::rotateTouchOpen()
+{
+    QQuickControlsApplicationHelper helper(this, u"rotate.qml"_s);
+    QVERIFY2(helper.ready, helper.failureMessage());
+
+    QQuickApplicationWindow *window = helper.appWindow;
+    window->setProperty("rotated", true);
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    QQuickDrawer *drawer_LR = window->property("drawer_LR").value<QQuickDrawer*>();
+    QQuickDrawer *drawer_TB = window->property("drawer_TB").value<QQuickDrawer*>();
+    QVERIFY(drawer_LR);
+    QVERIFY(drawer_TB);
+    QCOMPARE(drawer_LR->edge(), Qt::LeftEdge);
+    QCOMPARE(drawer_TB->edge(), Qt::TopEdge);
+    QCOMPARE(drawer_LR->position(), 0.0);
+    QCOMPARE(drawer_TB->position(), 0.0);
+    QCOMPARE(window->QQuickWindow::contentItem()->rotation(), 90);
+    QCOMPARE(QQuickDrawerPrivate::get(drawer_LR)->effectiveEdge(), Qt::TopEdge);
+    QCOMPARE(QQuickDrawerPrivate::get(drawer_TB)->effectiveEdge(), Qt::RightEdge);
+
+    // Swipe down from the window's top edge
+    const int hCenter = window->width()/2;
+    const int vCenter = window->height()/2;
+    QTest::touchEvent(window, touchDevice.data()).press(0, QPoint(hCenter, 0));
+    QTest::touchEvent(window, touchDevice.data()).move(0, QPoint(hCenter, vCenter/2));
+    QTest::touchEvent(window, touchDevice.data()).move(0, QPoint(hCenter, vCenter));
+    QTest::touchEvent(window, touchDevice.data()).release(0, QPoint(hCenter, vCenter));
+
+    QTRY_COMPARE(drawer_LR->position(), 1.0); // "Left Drawer" is at the window's top edge
+    QTRY_COMPARE(drawer_TB->position(), 0.0); // "Top Drawer" is at the window's right edge
 }
 
 void tst_QQuickDrawer::header()

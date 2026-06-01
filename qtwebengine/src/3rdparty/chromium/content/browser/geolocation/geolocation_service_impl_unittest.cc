@@ -97,6 +97,7 @@ class GeolocationServiceTest : public RenderViewHostImplTestHarness {
   }
 
   void TearDown() override {
+    service_.reset();
     context_.reset();
     geolocation_overrider_.reset();
     RenderViewHostImplTestHarness::TearDown();
@@ -108,7 +109,7 @@ class GeolocationServiceTest : public RenderViewHostImplTestHarness {
     blink::ParsedPermissionsPolicy frame_policy = {};
     if (allow_via_permissions_policy) {
       frame_policy.push_back(
-          {blink::mojom::PermissionsPolicyFeature::kGeolocation,
+          {network::mojom::PermissionsPolicyFeature::kGeolocation,
            std::vector{*blink::OriginWithPossibleWildcards::FromOrigin(
                url::Origin::Create(kEmbeddedUrl))},
            /*self_if_matches=*/std::nullopt,

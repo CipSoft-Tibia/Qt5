@@ -194,11 +194,14 @@ typedef struct {
   uint64_t avg_source_sad;
   uint64_t prev_avg_source_sad;
   uint64_t frame_source_sad;
-  uint64_t spatial_variance_keyframe;
+  uint64_t frame_spatial_variance;
+  int static_since_last_scene_change;
   int last_encoded_size_keyframe;
   int last_target_size_keyframe;
   int frames_since_scene_change;
-  int perc_flat_blocks_keyframe;
+  int perc_spatial_flat_blocks;
+  int num_col_blscroll_last_tl0;
+  int num_row_blscroll_last_tl0;
 
   int avg_frame_bandwidth;  // Average frame size target for clip
   int min_frame_bandwidth;  // Minimum allocation used for any frame
@@ -587,6 +590,9 @@ int av1_estimate_bits_at_q(const struct AV1_COMP *cpi, int q,
 
 double av1_convert_qindex_to_q(int qindex, aom_bit_depth_t bit_depth);
 
+// Converts a Q value to a qindex.
+int av1_convert_q_to_qindex(double q, aom_bit_depth_t bit_depth);
+
 void av1_rc_init_minq_luts(void);
 
 int av1_rc_get_default_min_gf_interval(int width, int height, double framerate);
@@ -823,20 +829,6 @@ int av1_encodedframe_overshoot_cbr(struct AV1_COMP *cpi, int *q);
  * function returns 1 (frame is dropped).
  */
 int av1_postencode_drop_cbr(struct AV1_COMP *cpi, size_t *size);
-
-/*!\brief Compute the q_indices for a single frame.
- *
- * Intended to be used with AOM_Q mode.
- *
- * \param[in]       base_q_index      Base q index
- * \param[in]       gf_update_type    GOP update type
- * \param[in]       gf_pyramid_level  GOP level of the current frame
- * \param[in]       arf_q             ARF q_index
- *
- * \return Returns the q_index for the current frame.
- */
-int av1_q_mode_get_q_index(int base_q_index, int gf_update_type,
-                           int gf_pyramid_level, int arf_q);
 
 #ifdef __cplusplus
 }  // extern "C"

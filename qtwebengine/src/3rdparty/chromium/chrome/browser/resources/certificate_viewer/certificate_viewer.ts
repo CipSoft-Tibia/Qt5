@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import './strings.m.js';
+import '/strings.m.js';
 import 'chrome://resources/cr_elements/cr_tab_box/cr_tab_box.js';
 import 'chrome://resources/cr_elements/cr_tree/cr_tree.js';
 import 'chrome://resources/cr_elements/cr_tree/cr_tree_item.js';
+import './browser_proxy.js';
+import './modifications_panel.js';
 
 import type {CrTreeElement} from 'chrome://resources/cr_elements/cr_tree/cr_tree.js';
 import type {CrTreeItemElement} from 'chrome://resources/cr_elements/cr_tree/cr_tree_item.js';
@@ -18,10 +20,26 @@ interface TreeInfo {
   label: string;
 }
 
+export enum CertificateTrust {
+  // LINT.IfChange(CertificateTrustType)
+  CERTIFICATE_TRUST_DISTRUSTED = 0,
+  CERTIFICATE_TRUST_UNSPECIFIED = 1,
+  CERTIFICATE_TRUST_TRUSTED = 2,
+  // LINT.ThenChange(//chrome/browser/ui/webui/certificate_viewer/certificate_viewer_webui.cc:CertificateTrustType)
+}
+
+interface CertificateMetadata {
+  trust: CertificateTrust;
+  constraints?: string[];
+  isEditable: boolean;
+}
+
 interface CertificateInfo {
   general: {[key: string]: string};
   hierarchy: TreeInfo[];
   isError: boolean;
+
+  certMetadata?: CertificateMetadata;
 }
 
 export interface TreeItemDetail {
@@ -44,6 +62,7 @@ function initialize() {
   const args =
       JSON.parse(chrome.getVariableValue('dialogArguments')) as CertificateInfo;
   getCertificateInfo(args);
+  getCertificateMetadata(args);
 
   /**
    * Initialize the second tab's contents.
@@ -80,6 +99,29 @@ function initialize() {
   const exportButton = document.querySelector<HTMLElement>('#export');
   assert(exportButton);
   exportButton.onclick = exportCertificate;
+}
+
+function getCertificateMetadata(certInfo: CertificateInfo) {
+  if (certInfo.certMetadata === undefined) {
+    return;
+  }
+
+  const modificationsTab =
+      document.querySelector<HTMLElement>('#modifications-tab');
+  assert(modificationsTab);
+  modificationsTab.hidden = false;
+
+  const modificationsPanel = document.querySelector('modifications-panel');
+  assert(modificationsPanel);
+  modificationsPanel.trustStateValue = certInfo.certMetadata.trust.toString();
+
+  if (certInfo.certMetadata.isEditable) {
+    modificationsPanel.isEditable = true;
+  }
+
+  if (certInfo.certMetadata.constraints !== undefined) {
+    modificationsPanel.constraints = certInfo.certMetadata.constraints;
+  }
 }
 
 /**

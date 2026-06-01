@@ -5,6 +5,7 @@
 #define QWEBVIEWGLOBAL_H
 
 #include <QtCore/qglobal.h>
+#include <QtWebView/qtwebview-config.h>
 
 QT_BEGIN_NAMESPACE
 

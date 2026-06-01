@@ -67,7 +67,6 @@ signals:
     void copyAvailable(bool avail);
     void pasteAvailable(bool avail);
 #endif
-    void beginFromSourceAvailable(bool enable);
 
 public slots:
     void undo();
@@ -120,7 +119,6 @@ private:
     MessageEditorData *modelForWidget(const QObject *o);
     int activeTranslationNumerus() const;
     QStringList translations(int model) const;
-    void updateBeginFromSource();
     void updateUndoRedo();
 #ifndef QT_NO_CLIPBOARD
     void updateCanCutCopy();

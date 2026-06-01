@@ -20,7 +20,7 @@ extern "C" {
 
 #import <AppKit/NSScreen.h>
 
-#include <dispatch/dispatch.h>
+#import <dispatch/dispatch.h>
 
 namespace {
 
@@ -38,11 +38,13 @@ CGDirectDisplayID findDisplayByName(const QString &name)
 
 QT_BEGIN_NAMESPACE
 
+namespace QFFmpeg {
+
 class QAVFScreenCapture::Grabber
 {
 public:
     Grabber(QAVFScreenCapture &capture, QScreen *screen, CGDirectDisplayID screenID,
-            std::unique_ptr<QFFmpeg::HWAccel> hwAccel)
+            std::unique_ptr<HWAccel> hwAccel)
     {
         m_captureSession = [[AVCaptureSession alloc] init];
 
@@ -83,8 +85,19 @@ public:
         if (m_captureSession)
             [m_captureSession stopRunning];
 
-        if (m_dispatchQueue)
+        if (m_dispatchQueue) {
+            // Push a blocking job to the background frame thread,
+            // so we guarantee future frames are discarded. This
+            // causes the frameHandler to be destroyed, and the reference
+            // to this QAVFScreenCapture is cleared.
+            dispatch_sync(
+                m_dispatchQueue,
+                [this]() {
+                    [m_sampleBufferDelegate discardFutureSamples];
+                });
+
             dispatch_release(m_dispatchQueue);
+        }
 
         [m_sampleBufferDelegate release];
         [m_screenInput release];
@@ -173,7 +186,7 @@ bool QAVFScreenCapture::initScreenCapture(QScreen *screen)
         return false;
     }
 
-    auto hwAccel = QFFmpeg::HWAccel::create(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
+    auto hwAccel = HWAccel::create(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
 
     if (!hwAccel) {
         updateError(CaptureFailed, QLatin1String("Couldn't create videotoolbox hw acceleration"));
@@ -197,6 +210,13 @@ void QAVFScreenCapture::resetCapture()
     m_grabber.reset();
     m_format = {};
 }
+
+std::unique_ptr<QPlatformSurfaceCapture> makeQAvfScreenCapture()
+{
+    return std::make_unique<QAVFScreenCapture>();
+}
+
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

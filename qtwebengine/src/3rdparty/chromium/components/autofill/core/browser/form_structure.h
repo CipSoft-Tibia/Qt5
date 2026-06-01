@@ -25,7 +25,6 @@
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/form_parsing/field_candidates.h"
 #include "components/autofill/core/browser/form_types.h"
-#include "components/autofill/core/browser/metrics/autofill_metrics.h"
 #include "components/autofill/core/browser/proto/api_v1.pb.h"
 #include "components/autofill/core/common/autofill_constants.h"
 #include "components/autofill/core/common/dense_set.h"
@@ -72,13 +71,12 @@ class FormStructure {
   // types.
   void DetermineHeuristicTypes(
       const GeoIpCountryCode& client_country,
-      AutofillMetrics::FormInteractionsUkmLogger* form_interactions_ukm_logger,
       LogManager* log_manager);
 
   // Returns predictions using the details from the given |form_structures| and
   // their fields' predicted types.
   static std::vector<FormDataPredictions> GetFieldTypePredictions(
-      const std::vector<raw_ptr<FormStructure, VectorExperimental>>&
+      base::span<const raw_ptr<FormStructure, VectorExperimental>>
           form_structures);
 
   // Creates FormStructure that has bare minimum information for uploading
@@ -96,10 +94,24 @@ class FormStructure {
   bool IsAutofillable() const;
 
 #if !BUILDFLAG(IS_QTWEBENGINE)
-  // Returns whether |this| form represents a complete Credit Card form, which
-  // consists in having at least a credit card number field and an expiration
-  // field.
-  bool IsCompleteCreditCardForm() const;
+  // This enum defines two different states of completeness for a credit card
+  // form, each used for a distinct purpose to check if the required credit card
+  // fields exist.
+  enum class CreditCardFormCompleteness {
+    // This represents a minimal complete credit card form which has at least a
+    // credit card number field and an expiration date field.
+    kCompleteCreditCardForm,
+    // This represents a credit card form which has a CVC field and a cardholder
+    // name field in addition to the credit card number field and the expiration
+    // date field. For example, this level is required for offering `Save and
+    // Fill`.
+    kCompleteCreditCardFormIncludingCvcAndName,
+  };
+
+  // Returns whether |this| form represents a complete Credit Card form, as
+  // defined by the given CreditCardFormCompleteness level.
+  bool IsCompleteCreditCardForm(
+      CreditCardFormCompleteness credit_card_form_completeness) const;
 #endif
 
   // Resets |autofill_count_| and counts the number of auto-fillable fields.
@@ -120,7 +132,7 @@ class FormStructure {
   // Returns true if autofill's heuristic field type detection should be
   // attempted for this form given that |kMinRequiredFieldsForHeuristics| is not
   // met.
-  bool ShouldRunHeuristicsForSingleFieldForms() const;
+  bool ShouldRunHeuristicsForSingleFields() const;
 
   // Returns true if we should query the crowd-sourcing server to determine this
   // form's field types. If the form includes author-specified types, this will
@@ -134,6 +146,12 @@ class FormStructure {
   // Returns true if we should upload Autofill votes for this form to the
   // crowd-sourcing server. It is not applied for Password Manager votes.
   bool ShouldBeUploaded() const;
+
+  // Returns whether the form is considered parseable and meets a couple of
+  // other requirements which makes uploading UKM data worthwhile. E.g. the
+  // form should not be a search form, the forms should have at least one
+  // focusable input field with a type from heuristics or the server.
+  bool ShouldUploadUkm(bool require_classified_field) const;
 
   // This enum defines the behavior of RetrieveFromCache, which needs to adapt
   // to the reason for retrieving data from the cache.
@@ -233,15 +251,15 @@ class FormStructure {
   std::set<std::u16string> PossibleValues(FieldType type);
 
 #if !BUILDFLAG(IS_QTWEBENGINE)
-  // Rationalize phone number fields in a given section, that is only fill
-  // the fields that are considered composing a first complete phone number.
-  void RationalizePhoneNumbersInSection(const Section& section);
+  // Rationalize phone number fields so that, in every section, only the first
+  // complete phone number is filled automatically. This is useful for when a
+  // form contains a first phone number and second phone number, which usually
+  // should be distinct.
+  void RationalizePhoneNumberFieldsForFilling();
 
   // Rationalize the form's autocomplete attributes, repeated fields and field
   // type predictions.
-  void RationalizeFormStructure(
-      AutofillMetrics::FormInteractionsUkmLogger* form_interactions_ukm_logger,
-      LogManager* log_manager);
+  void RationalizeFormStructure(LogManager* log_manager);
 #endif
 
   // Returns the FieldGlobalIds of the |fields_| that are eligible for manual
@@ -259,11 +277,6 @@ class FormStructure {
 
   const AutofillField* GetFieldById(FieldGlobalId field_id) const;
   AutofillField* GetFieldById(FieldGlobalId field_id);
-
-  void AddSingleUsernameData(
-      AutofillUploadContents::SingleUsernameData single_username_data) {
-    single_username_data_.push_back(single_username_data);
-  }
 
   // Returns the number of fields that are part of the form signature and that
   // are included in queries to the Autofill server.
@@ -381,11 +394,6 @@ class FormStructure {
 
   const GeoIpCountryCode& client_country() const { return client_country_; }
 
-  std::vector<AutofillUploadContents::SingleUsernameData> single_username_data()
-      const {
-    return single_username_data_;
-  }
-
   // The signatures of forms recently submitted on the same origin within a
   // small period of time.
   struct FormAssociations {
@@ -398,7 +406,16 @@ class FormStructure {
     form_associations_ = associations;
   }
 
-  FormAssociations form_associations() const { return form_associations_; }
+  const FormAssociations& form_associations() const {
+    return form_associations_;
+  }
+
+  base::flat_map<FieldGlobalId, AutofillType::ServerPrediction>
+  GetServerPredictions(const std::vector<FieldGlobalId>& field_ids) const;
+
+  base::flat_map<FieldGlobalId, FieldType> GetHeuristicPredictions(
+      HeuristicSource source,
+      const std::vector<FieldGlobalId>& field_ids) const;
 
  private:
   friend class FormStructureTestApi;
@@ -443,9 +460,6 @@ class FormStructure {
   [[nodiscard]] bool ShouldBeParsed(ShouldBeParsedParams params,
                                     LogManager* log_manager = nullptr) const;
 
-  // Further processes the extracted |fields_|.
-  void ProcessExtractedFields();
-
   // Extracts the parseable field name by removing a common affix.
   void ExtractParseableFieldNames();
 
@@ -482,7 +496,8 @@ class FormStructure {
   GURL source_url_;
 
   // The full source URL including query parameters and fragment identifiers.
-  // This value should be set only for password forms.
+  // If `kAutofillIncludeUrlInCrowdsourcing` is disabled, this value should only
+  // be set for password forms.
   GURL full_source_url_;
 
   // The target URL.
@@ -532,9 +547,6 @@ class FormStructure {
   // The timestamp when this form or one of its fields was last filled.
   std::optional<base::TimeTicks> last_filling_timestamp_;
 
-  // If phone number rationalization has been performed for a given section.
-  std::set<Section> phone_rationalized_;
-
   // Used to record whether developer has used autocomplete markup or
   // UPI-VPA hints, This is a bitmask of DeveloperEngagementMetric and set in
   // DetermineHeuristicTypes().
@@ -565,9 +577,6 @@ class FormStructure {
   // A vector of all iframes in the form.
   std::vector<FrameTokenWithPredecessor> child_frames_;
 
-  // Single username details, if applicable.
-  std::vector<AutofillUploadContents::SingleUsernameData> single_username_data_;
-
   // The signatures of forms recently submitted on the same origin within a
   // small period of time.
   // Only used for voting-purposes.
@@ -576,23 +585,6 @@ class FormStructure {
 
 LogBuffer& operator<<(LogBuffer& buffer, const FormStructure& form);
 std::ostream& operator<<(std::ostream& buffer, const FormStructure& form);
-
-// Helper struct for `GetFormDataAndServerPredictions`.
-struct FormDataAndServerPredictions {
-  FormDataAndServerPredictions();
-  FormDataAndServerPredictions(const FormDataAndServerPredictions&);
-  FormDataAndServerPredictions& operator=(const FormDataAndServerPredictions&);
-  FormDataAndServerPredictions(FormDataAndServerPredictions&&);
-  FormDataAndServerPredictions& operator=(FormDataAndServerPredictions&&);
-  ~FormDataAndServerPredictions();
-
-  FormData form_data;
-  base::flat_map<FieldGlobalId, AutofillType::ServerPrediction> predictions;
-};
-
-// Returns the `FormData` and `ServerPrediction` objects underlying `form`.
-FormDataAndServerPredictions GetFormDataAndServerPredictions(
-    const FormStructure& form);
 
 }  // namespace autofill
 

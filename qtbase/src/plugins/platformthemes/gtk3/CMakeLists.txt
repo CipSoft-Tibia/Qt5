@@ -1,10 +1,10 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-qt_find_package(GTK3)
+qt_find_package(GTK3 MODULE)
 
 if(QT_FEATURE_xlib)
-    qt_find_package(X11)
+    qt_find_package(X11 MODULE)
 endif()
 
 #####################################################################
@@ -37,8 +37,6 @@ qt_internal_add_plugin(QGtk3ThemePlugin
 )
 
 qt_internal_extend_target(QGtk3ThemePlugin CONDITION QT_FEATURE_dbus
-    SOURCES
-        qgtk3portalinterface.cpp
     LIBRARIES
         Qt::DBus
 )

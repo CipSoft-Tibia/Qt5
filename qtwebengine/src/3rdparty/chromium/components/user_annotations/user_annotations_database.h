@@ -32,9 +32,12 @@ class UserAnnotationsDatabase {
   UserAnnotationsDatabase& operator=(const UserAnnotationsDatabase&) = delete;
   ~UserAnnotationsDatabase();
 
-  // Updates the `entries` to database and returns whether it succeeded.
+  // Updates the database and returns whether it succeeded. `upserted_entries`
+  // contains entries that are new or updated. `deleted_entry_ids` contains the
+  // entry IDs to be deleted.
   UserAnnotationsExecutionResult UpdateEntries(
-      const UserAnnotationsEntries& entries);
+      const UserAnnotationsEntries& upserted_entries,
+      const std::set<EntryID>& deleted_entry_ids);
 
   // Returns all the annotations from database.
   UserAnnotationsEntryRetrievalResult RetrieveAllEntries();
@@ -53,12 +56,16 @@ class UserAnnotationsDatabase {
   void RemoveAnnotationsInRange(const base::Time& delete_begin,
                                 const base::Time& delete_end);
 
+  // Returns the number of unique user annotations that were last modified
+  // between [`begin`, `end`).
+  int GetCountOfValuesContainedBetween(base::Time begin, base::Time end);
+
  private:
   sql::InitStatus InitInternal(const base::FilePath& storage_dir);
 
   // The underlying SQL database.
   sql::Database db_ GUARDED_BY_CONTEXT(sequence_checker_) =
-      sql::Database(sql::DatabaseOptions{});
+      sql::Database(sql::DatabaseOptions{}, /*tag=*/"UserAnnotations");
   os_crypt_async::Encryptor encryptor_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   SEQUENCE_CHECKER(sequence_checker_);

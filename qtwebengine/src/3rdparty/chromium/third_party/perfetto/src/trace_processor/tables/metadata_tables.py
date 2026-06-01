@@ -62,7 +62,7 @@ PROCESS_TABLE = Table(
         C('uid', CppOptional(CppUint32())),
         C('android_appid', CppOptional(CppUint32())),
         C('cmdline', CppOptional(CppString())),
-        C('arg_set_id', CppUint32()),
+        C('arg_set_id', CppOptional(CppUint32())),
         C('machine_id', CppOptional(CppTableId(MACHINE_TABLE))),
     ],
     wrapping_sql_view=WrappingSqlView(view_name='process',),
@@ -201,7 +201,9 @@ CPU_TABLE = Table(
         C('processor', CppString()),
         C('machine_id', CppOptional(CppTableId(MACHINE_TABLE))),
         C('capacity', CppOptional(CppUint32())),
+        C('arg_set_id', CppOptional(CppUint32())),
     ],
+    wrapping_sql_view=WrappingSqlView('cpu'),
     tabledoc=TableDoc(
         doc='''
           Contains information of processes seen during the trace
@@ -211,8 +213,7 @@ CPU_TABLE = Table(
             'cpu':
                 '''the index (0-based) of the CPU core on the device''',
             'cluster_id':
-                '''the cluster id is shared by CPUs in
-the same cluster''',
+                '''the cluster id is shared by CPUs in the same cluster''',
             'processor':
                 '''a string describing this core''',
             'machine_id':
@@ -223,28 +224,43 @@ the same cluster''',
                 '''
                   Capacity of a CPU of a device, a metric which indicates the
                   relative performance of a CPU on a device
-                  For details see: 
+                  For details see:
                   https://www.kernel.org/doc/Documentation/devicetree/bindings/arm/cpu-capacity.txt
                 ''',
+            'arg_set_id':
+                '''Extra args associated with the CPU''',
         }))
 
-RAW_TABLE = Table(
+CHROME_RAW_TABLE = Table(
     python_module=__file__,
-    class_name='RawTable',
-    sql_name='__intrinsic_raw',
+    class_name='ChromeRawTable',
+    sql_name='__intrinsic_chrome_raw',
+    columns=[
+        C('ts', CppInt64(), flags=ColumnFlag.SORTED),
+        C('name', CppString()),
+        C('utid', CppTableId(THREAD_TABLE)),
+        C('arg_set_id', CppUint32()),
+    ])
+
+FTRACE_EVENT_TABLE = Table(
+    python_module=__file__,
+    class_name='FtraceEventTable',
+    sql_name='__intrinsic_ftrace_event',
     columns=[
         C('ts', CppInt64(), flags=ColumnFlag.SORTED),
         C('name', CppString()),
         C('utid', CppTableId(THREAD_TABLE)),
         C('arg_set_id', CppUint32()),
         C('common_flags', CppUint32()),
-        C('ucpu', CppTableId(CPU_TABLE))
+        C('ucpu', CppTableId(CPU_TABLE)),
     ],
+    wrapping_sql_view=WrappingSqlView('ftrace_event'),
     tabledoc=TableDoc(
         doc='''
-          Contains 'raw' events from the trace for some types of events. This
-          table only exists for debugging purposes and should not be relied on
-          in production usecases (i.e. metrics, standard library etc).
+          Contains all the ftrace events in the trace. This table exists only
+          for debugging purposes and should not be relied on in production
+          usecases (i.e. metrics, standard library etc). Note also that this
+          table might be empty if raw ftrace parsing has been disabled.
         ''',
         group='Events',
         columns={
@@ -272,28 +288,14 @@ RAW_TABLE = Table(
                 ''',
         }))
 
-FTRACE_EVENT_TABLE = Table(
-    python_module=__file__,
-    class_name='FtraceEventTable',
-    sql_name='__intrinsic_ftrace_event',
-    parent=RAW_TABLE,
-    columns=[],
-    tabledoc=TableDoc(
-        doc='''
-          Contains all the ftrace events in the trace. This table exists only
-          for debugging purposes and should not be relied on in production
-          usecases (i.e. metrics, standard library etc). Note also that this
-          table might be empty if raw ftrace parsing has been disabled.
-        ''',
-        group='Events',
-        columns={}))
-
 ARG_TABLE = Table(
     python_module=__file__,
     class_name='ArgTable',
     sql_name='__intrinsic_args',
     columns=[
-        C('arg_set_id', CppUint32(), flags=ColumnFlag.SORTED),
+        C('arg_set_id',
+          CppUint32(),
+          flags=ColumnFlag.SORTED | ColumnFlag.SET_ID),
         C('flat_key', CppString()),
         C('key', CppString()),
         C('int_value', CppOptional(CppInt64())),
@@ -398,6 +400,7 @@ CPU_FREQ_TABLE = Table(
         C('ucpu', CppTableId(CPU_TABLE)),
         C('freq', CppUint32()),
     ],
+    wrapping_sql_view=WrappingSqlView('cpu_freq'),
     tabledoc=TableDoc(
         doc='''''', group='Misc', columns={
             'ucpu': '''''',
@@ -452,7 +455,9 @@ TRACE_FILE_TABLE = Table(
         C('name', CppOptional(CppString())),
         C('size', CppInt64()),
         C('trace_type', CppString()),
+        C('processing_order', CppOptional(CppInt64())),
     ],
+    wrapping_sql_view=WrappingSqlView('trace_file'),
     tabledoc=TableDoc(
         doc='''
             Metadata related to the trace file parsed. Note the order in which
@@ -472,11 +477,14 @@ TRACE_FILE_TABLE = Table(
                 '''Size in bytes''',
             'trace_type':
                 '''Trace type''',
+            'processing_order':
+                '''In which order where the files were processed.''',
         }))
 
 # Keep this list sorted.
 ALL_TABLES = [
     ARG_TABLE,
+    CHROME_RAW_TABLE,
     CLOCK_SNAPSHOT_TABLE,
     CPU_FREQ_TABLE,
     CPU_TABLE,
@@ -486,7 +494,6 @@ ALL_TABLES = [
     MACHINE_TABLE,
     METADATA_TABLE,
     PROCESS_TABLE,
-    RAW_TABLE,
     THREAD_TABLE,
     TRACE_FILE_TABLE,
 ]

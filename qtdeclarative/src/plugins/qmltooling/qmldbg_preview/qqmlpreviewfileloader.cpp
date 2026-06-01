@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlpreviewfileloader.h"
 #include "qqmlpreviewservice.h"
@@ -11,8 +12,13 @@
 
 QT_BEGIN_NAMESPACE
 
-QQmlPreviewFileLoader::QQmlPreviewFileLoader(QQmlPreviewServiceImpl *service) : m_service(service)
+QQmlPreviewFileLoader::QQmlPreviewFileLoader(QQmlPreviewServiceImpl *service)
 {
+    // This is created from stateChanged() on the debug server thread, but that's not where we
+    // want it to live. It logically belongs to the service. Mind that the service does not live
+    // on the debug server thread, but does process messageReceived() on the debug server thread.
+    moveToThread(service->thread());
+
     // Exclude some resource paths used by Qt itself. There is no point in loading those from the
     // client as the client will not have the files (or even worse, it may have different ones).
     m_blacklist.blacklist(":/qt-project.org");
@@ -46,19 +52,20 @@ QQmlPreviewFileLoader::QQmlPreviewFileLoader(QQmlPreviewServiceImpl *service) : 
 
     m_blacklist.whitelist(QLibraryInfo::path(QLibraryInfo::TestsPath));
 
+    // We absolutely want those signals to be connected directly. The service's (directly connected)
+    // load() signal should not be able to sneak in between a file() signal submission and its
+    // arrival. All the file loader's methods are protected by the contentMutex. So we can connect
+    // directly.
     connect(this, &QQmlPreviewFileLoader::request, service, &QQmlPreviewServiceImpl::forwardRequest,
             Qt::DirectConnection);
-    connect(service, &QQmlPreviewServiceImpl::directory, this, &QQmlPreviewFileLoader::directory);
-    connect(service, &QQmlPreviewServiceImpl::file, this, &QQmlPreviewFileLoader::file);
-    connect(service, &QQmlPreviewServiceImpl::error, this, &QQmlPreviewFileLoader::error);
-    connect(service, &QQmlPreviewServiceImpl::clearCache, this, &QQmlPreviewFileLoader::clearCache);
-    moveToThread(&m_thread);
-    m_thread.start();
-}
-
-QQmlPreviewFileLoader::~QQmlPreviewFileLoader() {
-    m_thread.quit();
-    m_thread.wait();
+    connect(service, &QQmlPreviewServiceImpl::directory, this, &QQmlPreviewFileLoader::directory,
+            Qt::DirectConnection);
+    connect(service, &QQmlPreviewServiceImpl::file, this, &QQmlPreviewFileLoader::file,
+            Qt::DirectConnection);
+    connect(service, &QQmlPreviewServiceImpl::error, this, &QQmlPreviewFileLoader::error,
+            Qt::DirectConnection);
+    connect(service, &QQmlPreviewServiceImpl::clearCache, this, &QQmlPreviewFileLoader::clearCache,
+            Qt::DirectConnection);
 }
 
 QQmlPreviewFileLoader::Result QQmlPreviewFileLoader::load(const QString &path)

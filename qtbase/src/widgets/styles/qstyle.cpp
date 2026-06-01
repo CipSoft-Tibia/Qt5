@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstyle.h"
 #include "qapplication.h"
@@ -78,6 +79,7 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     is a zero pointer.
 
     \image paintsystem-stylepainter.png
+           {Diagram showing QStylePainter inherits from QPainter}
 
     The paint system also provides the QStylePainter class inheriting
     from QPainter.  QStylePainter is a convenience class for drawing
@@ -88,7 +90,7 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
 
     \table 100%
     \row
-    \li \inlineimage paintsystem-icon.png
+    \li \inlineimage paintsystem-icon.png {Icon used in Qt}
     \li \b QIcon
 
     The QIcon class provides scalable icons in different modes and states.
@@ -128,7 +130,7 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     native widgets. The diagram below shows a QComboBox in nine
     different styles.
 
-    \image qstyle-comboboxes.png Nine combo boxes
+    \image qstyle-comboboxes.png {Nine combo boxes showing different styles}
 
     Topics:
 

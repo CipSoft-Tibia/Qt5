@@ -216,18 +216,12 @@ QSignalSpy::ObjectSignal QSignalSpy::verify(const QObject *obj, QMetaMethod sign
         return {};
 }
 
-static QList<int> makeArgs(QMetaMethod member, const QObject *obj)
+static QList<int> makeArgs(QMetaMethod member)
 {
     QList<int> result;
     result.reserve(member.parameterCount());
     for (int i = 0; i < member.parameterCount(); ++i) {
         QMetaType tp = member.parameterMetaType(i);
-        if (!tp.isValid() && obj) {
-            void *argv[] = { &tp, &i };
-            QMetaObject::metacall(const_cast<QObject*>(obj),
-                                  QMetaObject::RegisterMethodArgumentMetaType,
-                                  member.methodIndex(), argv);
-        }
         if (!tp.isValid()) {
             qWarning("QSignalSpy: Unable to handle parameter '%s' of type '%s' of method '%s',"
                      " use qRegisterMetaType to register it.",
@@ -251,7 +245,7 @@ public:
 
 QSignalSpy::QSignalSpy(ObjectSignal os)
     : sig(os.sig.methodSignature()),
-      args(os.obj ? makeArgs(os.sig, os.obj) : QList<int>{})
+      args(os.obj ? makeArgs(os.sig) : QList<int>{})
 {
     if (!os.obj)
         return;

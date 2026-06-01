@@ -11,15 +11,16 @@
 #include "third_party/blink/public/common/privacy_budget/identifiable_token.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/core/dom/dom_node_ids.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
 #include "third_party/blink/renderer/core/event_target_names.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context_host.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap_source.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.h"
+#include "third_party/blink/renderer/platform/graphics/dom_node_id.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/prefinalizer.h"
 #include "ui/gfx/geometry/size.h"
@@ -38,7 +39,6 @@ class ScriptState;
 
 class CORE_EXPORT OffscreenCanvas final
     : public EventTarget,
-      public ImageBitmapSource,
       public CanvasRenderingContextHost,
       public CanvasResourceDispatcherClient {
   DEFINE_WRAPPERTYPEINFO();
@@ -60,8 +60,6 @@ class CORE_EXPORT OffscreenCanvas final
 
   // CanvasResourceDispatcherClient
   bool BeginFrame() override;
-  void SetFilterQualityInResource(
-      cc::PaintFlags::FilterQuality filter_quality) override;
 
   // API Methods
   ImageBitmap* transferToImageBitmap(ScriptState*, ExceptionState&);
@@ -83,7 +81,7 @@ class CORE_EXPORT OffscreenCanvas final
   void SetNeutered();
   CanvasRenderingContext* GetCanvasRenderingContext(
       ExecutionContext*,
-      const String&,
+      CanvasRenderingContext::CanvasRenderingAPI,
       const CanvasContextCreationAttributesCore&);
 
   static void RegisterRenderingContextFactory(
@@ -140,7 +138,13 @@ class CORE_EXPORT OffscreenCanvas final
   // Because OffscreenCanvas is not tied to a DOM, it's visibility cannot be
   // determined synchronously.
   // TODO(junov): Propagate changes in visibility from the placeholder canvas.
-  bool IsPageVisible() override { return true; }
+  bool IsPageVisible() const override { return true; }
+  void SetTransferToGPUTextureWasInvoked() override {
+    transfer_to_gpu_texture_was_invoked_ = true;
+  }
+  bool TransferToGPUTextureWasInvoked() override {
+    return transfer_to_gpu_texture_was_invoked_;
+  }
 
   // EventTarget implementation
   const AtomicString& InterfaceName() const final {
@@ -159,7 +163,6 @@ class CORE_EXPORT OffscreenCanvas final
   }
 
   // ImageBitmapSource implementation
-  gfx::Size BitmapSourceSize() const final;
   ScriptPromise<ImageBitmap> CreateImageBitmap(ScriptState*,
                                                std::optional<gfx::Rect>,
                                                const ImageBitmapOptions*,
@@ -195,6 +198,11 @@ class CORE_EXPORT OffscreenCanvas final
   void CheckForGpuContextLost();
   void SetRestoringGpuContext(bool restoring_gpu_context) {
     restoring_gpu_context_ = restoring_gpu_context;
+  }
+
+  TextDirection GetTextDirection(const ComputedStyle*) override;
+  void SetTextDirection(TextDirection direction) {
+    text_direction_ = direction;
   }
 
   FontSelector* GetFontSelector() override;
@@ -262,6 +270,7 @@ class CORE_EXPORT OffscreenCanvas final
   WeakMember<ExecutionContext> execution_context_;
 
   DOMNodeId placeholder_canvas_id_ = kInvalidDOMNodeId;
+  std::optional<TextDirection> text_direction_;
 
   bool disposing_ = false;
   bool is_neutered_ = false;
@@ -289,6 +298,9 @@ class CORE_EXPORT OffscreenCanvas final
   uint32_t sink_id_ = 0;
 
   bool restoring_gpu_context_ = false;
+  bool transfer_to_gpu_texture_was_invoked_ = false;
+
+  NO_UNIQUE_ADDRESS V8ExternalMemoryAccounterBase external_memory_accounter_;
 };
 
 }  // namespace blink

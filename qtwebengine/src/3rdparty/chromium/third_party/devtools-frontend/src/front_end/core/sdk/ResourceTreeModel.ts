@@ -41,7 +41,7 @@ import * as Platform from '../platform/platform.js';
 import {type DeferredDOMNode, DOMModel, type DOMNode} from './DOMModel.js';
 import {FrameManager} from './FrameManager.js';
 import {Events as NetworkManagerEvents, NetworkManager, type RequestUpdateDroppedEventData} from './NetworkManager.js';
-import {type NetworkRequest} from './NetworkRequest.js';
+import type {NetworkRequest} from './NetworkRequest.js';
 import {Resource} from './Resource.js';
 import {ExecutionContext, RuntimeModel} from './RuntimeModel.js';
 import {SDKModel} from './SDKModel.js';
@@ -639,26 +639,26 @@ export enum Events {
   /* eslint-enable @typescript-eslint/naming-convention */
 }
 
-export type EventTypes = {
-  [Events.FrameAdded]: ResourceTreeFrame,
-  [Events.FrameNavigated]: ResourceTreeFrame,
-  [Events.FrameDetached]: {frame: ResourceTreeFrame, isSwap: boolean},
-  [Events.FrameResized]: void,
-  [Events.FrameWillNavigate]: ResourceTreeFrame,
-  [Events.PrimaryPageChanged]: {frame: ResourceTreeFrame, type: PrimaryPageChangeType},
-  [Events.ResourceAdded]: Resource,
-  [Events.WillLoadCachedResources]: void,
-  [Events.CachedResourcesLoaded]: ResourceTreeModel,
-  [Events.DOMContentLoaded]: number,
-  [Events.LifecycleEvent]: {frameId: Protocol.Page.FrameId, name: string},
-  [Events.Load]: {resourceTreeModel: ResourceTreeModel, loadTime: number},
-  [Events.PageReloadRequested]: ResourceTreeModel,
-  [Events.WillReloadPage]: void,
-  [Events.InterstitialShown]: void,
-  [Events.InterstitialHidden]: void,
-  [Events.BackForwardCacheDetailsUpdated]: ResourceTreeFrame,
-  [Events.JavaScriptDialogOpening]: Protocol.Page.JavascriptDialogOpeningEvent,
-};
+export interface EventTypes {
+  [Events.FrameAdded]: ResourceTreeFrame;
+  [Events.FrameNavigated]: ResourceTreeFrame;
+  [Events.FrameDetached]: {frame: ResourceTreeFrame, isSwap: boolean};
+  [Events.FrameResized]: void;
+  [Events.FrameWillNavigate]: ResourceTreeFrame;
+  [Events.PrimaryPageChanged]: {frame: ResourceTreeFrame, type: PrimaryPageChangeType};
+  [Events.ResourceAdded]: Resource;
+  [Events.WillLoadCachedResources]: void;
+  [Events.CachedResourcesLoaded]: ResourceTreeModel;
+  [Events.DOMContentLoaded]: number;
+  [Events.LifecycleEvent]: {frameId: Protocol.Page.FrameId, name: string};
+  [Events.Load]: {resourceTreeModel: ResourceTreeModel, loadTime: number};
+  [Events.PageReloadRequested]: ResourceTreeModel;
+  [Events.WillReloadPage]: void;
+  [Events.InterstitialShown]: void;
+  [Events.InterstitialHidden]: void;
+  [Events.BackForwardCacheDetailsUpdated]: ResourceTreeFrame;
+  [Events.JavaScriptDialogOpening]: Protocol.Page.JavascriptDialogOpeningEvent;
+}
 
 export class ResourceTreeFrame {
   #model: ResourceTreeModel;
@@ -1129,6 +1129,9 @@ export class PageDispatcher implements ProtocolProxyApi.PageDispatcher {
   }
 
   frameClearedScheduledNavigation({}: Protocol.Page.FrameClearedScheduledNavigationEvent): void {
+  }
+
+  frameStartedNavigating({}: Protocol.Page.FrameStartedNavigatingEvent): void {
   }
 
   navigatedWithinDocument({}: Protocol.Page.NavigatedWithinDocumentEvent): void {

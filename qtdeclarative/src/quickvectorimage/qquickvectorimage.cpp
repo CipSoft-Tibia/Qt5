@@ -6,11 +6,20 @@
 #include "qquickvectorimage_p_p.h"
 #include <QtQuickVectorImageGenerator/private/qquickitemgenerator_p.h>
 #include <QtQuickVectorImageGenerator/private/qquickvectorimageglobal_p.h>
+#include <QtQuickVectorImageGenerator/private/qquickvectorimageplugin_p.h>
 #include <QtCore/qloggingcategory.h>
 
 #include <private/qquicktranslate_p.h>
 
+#include <private/qfactoryloader_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, vectorImagePluginLoader,
+                          (QQuickVectorImageFormatsPluginFactory_iid,
+                           QLatin1String("/vectorimageformats"),
+                           Qt::CaseInsensitive))
+
 
 /*!
     \qmlmodule QtQuick.VectorImage
@@ -28,10 +37,12 @@ QT_BEGIN_NAMESPACE
     Qt Quick Vector Image provides support for displaying vector image files in a Qt Quick
     scene.
 
-    It currently supports the \c SVG file format.
+    It currently supports the \c SVG file format. In addition, Lottie support can be enabled by
+    setting the \l{assumeTrustedSource} property to true and including the plugin from the
+    \l{Qt Lottie Animation} module. This plugin is currently considered tech preview.
 
-    Qt supports multiple options for displaying SVG files. For an overview and comparison of the
-    different ones, see the documentation of the \l{svgtoqml} tool.
+    Qt supports multiple options for displaying SVG files. For an overview and comparison of
+    the different ones, see the documentation of the \l{svgtoqml} tool.
 
     \section1 QML Types
 */
@@ -43,13 +54,16 @@ void QQuickVectorImagePrivate::setSource(const QUrl &source)
         return;
 
     sourceFile = source;
-    loadSvg();
+    loadFile();
     emit q->sourceChanged();
 }
 
-void QQuickVectorImagePrivate::loadSvg()
+void QQuickVectorImagePrivate::loadFile()
 {
     Q_Q(QQuickVectorImage);
+
+    if (!q->isComponentComplete())
+        return;
 
     QUrl resolvedUrl = qmlContext(q)->resolvedUrl(sourceFile);
     QString localFile = QQmlFile::urlToLocalFileOrQrc(resolvedUrl);
@@ -57,45 +71,45 @@ void QQuickVectorImagePrivate::loadSvg()
     if (localFile.isEmpty())
         return;
 
-    QQuickVectorImagePrivate::Format fileFormat = formatFromFilePath(localFile);
+    if (rootItem)
+        rootItem->deleteLater();
 
-    if (fileFormat != QQuickVectorImagePrivate::Format::Svg) {
-        qCWarning(lcQuickVectorImage) << "Unsupported file format";
-        return;
-    }
-
-    if (svgItem)
-        svgItem->deleteLater();
-
-    svgItem = new QQuickItem(q);
+    rootItem = new QQuickItem(q);
+    rootItem->setParentItem(q);
 
     QQuickVectorImageGenerator::GeneratorFlags flags;
     if (preferredRendererType == QQuickVectorImage::CurveRenderer)
         flags.setFlag(QQuickVectorImageGenerator::CurveRenderer);
-    QQuickItemGenerator generator(localFile, flags, svgItem);
-    generator.generate();
+    if (assumeTrustedSource)
+        flags.setFlag(QQuickVectorImageGenerator::AssumeTrustedSource);
 
-    svgItem->setParentItem(q);
-    q->setImplicitWidth(svgItem->width());
-    q->setImplicitHeight(svgItem->height());
+    if (!m_qmlContext || m_qmlContext->engine() != qmlContext(q)->engine())
+        m_qmlContext.reset(new QQmlContext(qmlContext(q)->engine()));
 
-    q->updateSvgItemScale();
+    QQuickItemGenerator generator(localFile, flags, rootItem, m_qmlContext.get());
 
-    q->update();
-}
+    // If we assume trusted source, we try plugins first
+    bool generatedWithPlugin = false;
+    if (assumeTrustedSource) {
+        QFactoryLoader *loader = vectorImagePluginLoader();
 
-QQuickVectorImagePrivate::Format QQuickVectorImagePrivate::formatFromFilePath(const QString &filePath)
-{
-    Q_UNUSED(filePath)
-
-    QQuickVectorImagePrivate::Format res = QQuickVectorImagePrivate::Format::Unknown;
-
-    if (filePath.endsWith(QLatin1String(".svg")) || filePath.endsWith(QLatin1String(".svgz"))
-        || filePath.endsWith(QLatin1String(".svg.gz"))) {
-        res = QQuickVectorImagePrivate::Format::Svg;
+        const qsizetype count = loader->keyMap().size();
+        for (qsizetype i = 0; i <= count && !generatedWithPlugin; ++i) {
+            QQuickVectorImagePlugin *plugin = qobject_cast<QQuickVectorImagePlugin *>(loader->instance(i));
+            if (plugin != nullptr)
+                generatedWithPlugin = plugin->generate(localFile, &generator);
+        }
     }
 
-    return res;
+    if (!generatedWithPlugin)
+        generator.generate();
+
+    q->setImplicitWidth(rootItem->width());
+    q->setImplicitHeight(rootItem->height());
+
+    q->updateAnimationProperties();
+    q->updateRootItemScale();
+    q->update();
 }
 
 /*!
@@ -106,7 +120,11 @@ QQuickVectorImagePrivate::Format QQuickVectorImagePrivate::formatFromFilePath(co
     \since 6.8
 
     The VectorImage can be used to load a vector image file and display this as an item in a Qt
-    Quick scene. It currently supports the \c SVG file format.
+    Quick scene.
+
+    It currently supports the \c SVG file format. In addition, Lottie support can be enabled by
+    setting the \l{assumeTrustedSource} property to true and including the plugin from the
+    \l{Qt Lottie Animation} module. This plugin is currently considered tech preview.
 
     \note This complements the approach of loading the vector image file through an \l Image
     element: \l Image creates a raster version of the image at the requested size. VectorImage
@@ -119,9 +137,9 @@ QQuickVectorImage::QQuickVectorImage(QQuickItem *parent)
 {
     setFlag(QQuickItem::ItemHasContents, true);
 
-    QObject::connect(this, &QQuickItem::widthChanged, this, &QQuickVectorImage::updateSvgItemScale);
-    QObject::connect(this, &QQuickItem::heightChanged, this, &QQuickVectorImage::updateSvgItemScale);
-    QObject::connect(this, &QQuickVectorImage::fillModeChanged, this, &QQuickVectorImage::updateSvgItemScale);
+    QObject::connect(this, &QQuickItem::widthChanged, this, &QQuickVectorImage::updateRootItemScale);
+    QObject::connect(this, &QQuickItem::heightChanged, this, &QQuickVectorImage::updateRootItemScale);
+    QObject::connect(this, &QQuickVectorImage::fillModeChanged, this, &QQuickVectorImage::updateRootItemScale);
 }
 
 /*!
@@ -129,7 +147,9 @@ QQuickVectorImage::QQuickVectorImage(QQuickItem *parent)
 
     This property holds the URL of the vector image file to load.
 
-    VectorImage currently only supports the \c SVG file format.
+    VectorImage currently supports the \c SVG file format. In addition, Lottie support can be
+    enabled by setting the \l{assumeTrustedSource} property to true and including the plugin from
+    the \l{Qt Lottie Animation} module. This plugin is currently considered tech preview.
 */
 QUrl QQuickVectorImage::source() const
 {
@@ -143,29 +163,29 @@ void QQuickVectorImage::setSource(const QUrl &source)
     d->setSource(source);
 }
 
-void QQuickVectorImage::updateSvgItemScale()
+void QQuickVectorImage::updateRootItemScale()
 {
     Q_D(QQuickVectorImage);
 
-    if (d->svgItem == nullptr
-        || qFuzzyIsNull(d->svgItem->width())
-        || qFuzzyIsNull(d->svgItem->height())) {
+    if (d->rootItem == nullptr
+        || qFuzzyIsNull(d->rootItem->width())
+        || qFuzzyIsNull(d->rootItem->height())) {
         return;
     }
 
-    auto xformProp = d->svgItem->transform();
+    auto xformProp = d->rootItem->transform();
     QQuickScale *scaleTransform = nullptr;
     if (xformProp.count(&xformProp) == 0) {
         scaleTransform = new QQuickScale;
-        scaleTransform->setParent(d->svgItem);
+        scaleTransform->setParent(d->rootItem);
         xformProp.append(&xformProp, scaleTransform);
     } else {
         scaleTransform = qobject_cast<QQuickScale *>(xformProp.at(&xformProp, 0));
     }
 
     if (scaleTransform != nullptr) {
-        qreal xScale = width() / d->svgItem->width();
-        qreal yScale = height() / d->svgItem->height();
+        qreal xScale = width() / d->rootItem->width();
+        qreal yScale = height() / d->rootItem->height();
 
         switch (d->fillMode) {
         case QQuickVectorImage::NoResize:
@@ -185,6 +205,32 @@ void QQuickVectorImage::updateSvgItemScale()
         scaleTransform->setXScale(xScale);
         scaleTransform->setYScale(yScale);
     }
+}
+
+void QQuickVectorImage::updateAnimationProperties()
+{
+    Q_D(QQuickVectorImage);
+    if (Q_UNLIKELY(d->rootItem == nullptr || d->rootItem->childItems().isEmpty()))
+        return;
+
+    QQuickItem *childItem = d->rootItem->childItems().first();
+    if (Q_LIKELY(d->animations != nullptr)) {
+        childItem->setProperty("loops", d->animations->loops());
+        childItem->setProperty("paused", d->animations->paused());
+    }
+}
+
+QQuickVectorImageAnimations *QQuickVectorImage::animations()
+{
+    Q_D(QQuickVectorImage);
+    if (d->animations == nullptr) {
+        d->animations = new QQuickVectorImageAnimations;
+        QQml_setParent_noEvent(d->animations, this);
+        QObject::connect(d->animations, &QQuickVectorImageAnimations::loopsChanged, this, &QQuickVectorImage::updateAnimationProperties);
+        QObject::connect(d->animations, &QQuickVectorImageAnimations::pausedChanged, this, &QQuickVectorImage::updateAnimationProperties);
+    }
+
+    return d->animations;
 }
 
 /*!
@@ -249,8 +295,109 @@ void QQuickVectorImage::setPreferredRendererType(RendererType newPreferredRender
     if (d->preferredRendererType == newPreferredRendererType)
         return;
     d->preferredRendererType = newPreferredRendererType;
-    d->loadSvg();
+    d->loadFile();
     emit preferredRendererTypeChanged();
+}
+
+/*!
+    \qmlproperty bool QtQuick.VectorImage::VectorImage::assumeTrustedSource
+    \since 6.10
+
+    Setting this to true when loading trusted source files expands support for some features that
+    may be unsafe in an uncontrolled setting. For SVG in particular, this maps to the
+    \l{QtSvg::Option}{AssumeTrustedSource option}.
+
+    When this is set to true, VectorImage will also try to load the image using the Lottie format
+    plugin if this is available. This plugin is currently considered tech preview. See
+    \l{Qt Lottie Animation} for additional information.
+
+    By default this property is \c false.
+
+    \sa svgtoqml, lottietoqml
+ */
+
+bool QQuickVectorImage::assumeTrustedSource() const
+{
+    Q_D(const QQuickVectorImage);
+    return d->assumeTrustedSource;
+}
+
+void QQuickVectorImage::setAssumeTrustedSource(bool assumeTrustedSource)
+{
+    Q_D(QQuickVectorImage);
+    if (d->assumeTrustedSource == assumeTrustedSource)
+        return;
+    d->assumeTrustedSource = assumeTrustedSource;
+    d->loadFile();
+    emit assumeTrustedSourceChanged();
+}
+
+void QQuickVectorImage::componentComplete()
+{
+    Q_D(QQuickVectorImage);
+    QQuickItem::componentComplete();
+
+    d->loadFile();
+}
+
+/*!
+    \qmlpropertygroup QtQuick.VectorImage::VectorImage::animations
+    \qmlproperty bool QtQuick.VectorImage::VectorImage::animations.paused
+    \qmlproperty int QtQuick.VectorImage::VectorImage::animations.loops
+    \since 6.10
+
+    These properties can be used to control animations in the image, if it contains any.
+
+    The \c paused property can be set to true to temporarily pause all animations. When the
+    property is reset to \c false, the animations will resume where they were. By default this
+    property is \c false.
+
+    The \c loops property defines the number of times the animations in the document will repeat.
+    By default this property is 1. Any animations that is set to loop indefinitely in the source
+    image will be unaffected by this property. To make all animations in the document repeat
+    indefinitely, the \c loops property can be set to \c{Animation.Infinite}.
+*/
+int QQuickVectorImageAnimations::loops() const
+{
+    return m_loops;
+}
+
+void QQuickVectorImageAnimations::setLoops(int loops)
+{
+    if (m_loops == loops)
+        return;
+    m_loops = loops;
+    emit loopsChanged();
+}
+
+bool QQuickVectorImageAnimations::paused() const
+{
+    return m_paused;
+}
+
+void QQuickVectorImageAnimations::setPaused(bool paused)
+{
+    if (m_paused == paused)
+        return;
+    m_paused = paused;
+    emit pausedChanged();
+}
+
+void QQuickVectorImageAnimations::restart()
+{
+    QQuickVectorImage *parentVectorImage = qobject_cast<QQuickVectorImage *>(parent());
+    if (Q_UNLIKELY(parentVectorImage == nullptr)) {
+        qCWarning(lcQuickVectorImage) << Q_FUNC_INFO << "Parent is not a VectorImage";
+        return;
+    }
+
+    QQuickVectorImagePrivate *d = QQuickVectorImagePrivate::get(parentVectorImage);
+
+    if (Q_UNLIKELY(d->rootItem == nullptr || d->rootItem->childItems().isEmpty()))
+        return;
+
+    QQuickItem *childItem = d->rootItem->childItems().first();
+    QMetaObject::invokeMethod(childItem, "restart");
 }
 
 QT_END_NAMESPACE

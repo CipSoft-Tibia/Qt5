@@ -124,10 +124,11 @@ class RunThreadGroup(threading.Thread):
     if not browser_session.is_single_run:
       self._log_run(run)
     if not run.is_success:
-      logging.info("%s: Skipping %s due to setup errors.", self, run)
-    else:
-      run.run(self.is_dry_run)
+      logging.warning("%s: Got setup errors.", run)
+    run.run(self.is_dry_run)
+    run.log_annotations()
     if run.is_success:
       run.log_results()
     else:
       browser_session.exceptions.extend(run.exceptions)
+      run.log_failure()

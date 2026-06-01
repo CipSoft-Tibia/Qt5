@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QARRAYDATAOPS_H
 #define QARRAYDATAOPS_H
@@ -74,7 +75,7 @@ public:
     {
         Q_ASSERT(this->isMutable());
         Q_ASSERT(!this->isShared());
-        Q_ASSERT(newSize < size_t(this->size));
+        Q_ASSERT(newSize <= size_t(this->size));
 
         this->size = qsizetype(newSize);
     }
@@ -82,7 +83,7 @@ public:
     void destroyAll() noexcept // Call from destructors, ONLY!
     {
         Q_ASSERT(this->d);
-        Q_ASSERT(this->d->m_ref.loadRelaxed() == 0);
+        Q_ASSERT(this->d->ref_.loadRelaxed() == 0);
 
         // As this is to be called only from destructor, it doesn't need to be
         // exception safe; size not updated.
@@ -333,7 +334,7 @@ public:
     {
         Q_ASSERT(this->isMutable());
         Q_ASSERT(!this->isShared());
-        Q_ASSERT(newSize < size_t(this->size));
+        Q_ASSERT(newSize <= size_t(this->size));
 
         std::destroy(this->begin() + newSize, this->end());
         this->size = newSize;
@@ -345,7 +346,7 @@ public:
         // As this is to be called only from destructor, it doesn't need to be
         // exception safe; size not updated.
 
-        Q_ASSERT(this->d->m_ref.loadRelaxed() == 0);
+        Q_ASSERT(this->d->ref_.loadRelaxed() == 0);
 
         std::destroy(this->begin(), this->end());
     }

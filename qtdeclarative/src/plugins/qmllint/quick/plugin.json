@@ -44,8 +44,19 @@
         {
             "name": "attached-property-reuse",
             "settingsName": "AttachedPropertyReuse",
-            "description": "Warn about failure to re-use any attached objects. Implies ControlsAttachedPropertyReuse.",
+            "description":
+                    "Warn about failure to re-use any attached objects. Implies ControlsAttachedPropertyReuse.",
             "enabled": false
+        },
+        {
+            "name": "color",
+            "settingsName": "Color",
+            "description": "Warn about invalid color values."
+        },
+        {
+            "name": "state-no-child-item",
+            "settingsName": "StateNoChildItem",
+            "description": "Warn about State Objects that have illegal child items"
         }
     ]
 }

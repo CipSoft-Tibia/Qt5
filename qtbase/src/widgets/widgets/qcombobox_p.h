@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOMBOBOX_P_H
 #define QCOMBOBOX_P_H
@@ -47,49 +48,13 @@ class QComboBoxListView : public QListView
 {
     Q_OBJECT
 public:
-    QComboBoxListView(QComboBox *cmb = nullptr) : combo(cmb)
-    {
-        if (cmb)
-            setScreen(cmb->screen());
-    }
+    explicit QComboBoxListView(QComboBox *cmb = nullptr);
+    ~QComboBoxListView() override;
 
 protected:
-    void resizeEvent(QResizeEvent *event) override
-    {
-        resizeContents(viewport()->width(), contentsSize().height());
-        QListView::resizeEvent(event);
-    }
-
-    void initViewItemOption(QStyleOptionViewItem *option) const override
-    {
-        QListView::initViewItemOption(option);
-        option->showDecorationSelected = true;
-        if (combo)
-            option->font = combo->font();
-    }
-
-    void paintEvent(QPaintEvent *e) override
-    {
-        if (combo) {
-            QStyleOptionComboBox opt;
-            opt.initFrom(combo);
-            opt.editable = combo->isEditable();
-            if (combo->style()->styleHint(QStyle::SH_ComboBox_Popup, &opt, combo)) {
-                //we paint the empty menu area to avoid having blank space that can happen when scrolling
-                QStyleOptionMenuItem menuOpt;
-                menuOpt.initFrom(this);
-                menuOpt.palette = palette();
-                menuOpt.state = QStyle::State_None;
-                menuOpt.checkType = QStyleOptionMenuItem::NotCheckable;
-                menuOpt.menuRect = e->rect();
-                menuOpt.maxIconWidth = 0;
-                menuOpt.reservedShortcutWidth = 0;
-                QPainter p(viewport());
-                combo->style()->drawControl(QStyle::CE_MenuEmptyArea, &menuOpt, &p, this);
-            }
-        }
-        QListView::paintEvent(e);
-    }
+    void resizeEvent(QResizeEvent *event) override;
+    void initViewItemOption(QStyleOptionViewItem *option) const override;
+    void paintEvent(QPaintEvent *e) override;
 
 private:
     QComboBox *combo;
@@ -100,72 +65,21 @@ class Q_AUTOTEST_EXPORT QComboBoxPrivateScroller : public QWidget
     Q_OBJECT
 
 public:
-    QComboBoxPrivateScroller(QAbstractSlider::SliderAction action, QWidget *parent)
-        : QWidget(parent), sliderAction(action)
-    {
-        setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-        setAttribute(Qt::WA_NoMousePropagation);
-    }
-    QSize sizeHint() const override {
-        return QSize(20, style()->pixelMetric(QStyle::PM_MenuScrollerHeight, nullptr, this));
-    }
+    explicit QComboBoxPrivateScroller(QAbstractSlider::SliderAction action, QWidget *parent);
+    ~QComboBoxPrivateScroller() override;
+
+    QSize sizeHint() const override;
 
 protected:
-    inline void stopTimer() {
-        timer.stop();
-    }
+    void stopTimer();
+    void startTimer();
 
-    inline void startTimer() {
-        timer.start(100, this);
-        fast = false;
-    }
-
-    void enterEvent(QEnterEvent *) override {
-        startTimer();
-    }
-
-    void leaveEvent(QEvent *) override {
-        stopTimer();
-    }
-    void timerEvent(QTimerEvent *e) override {
-        if (e->timerId() == timer.timerId()) {
-            emit doScroll(sliderAction);
-            if (fast) {
-                emit doScroll(sliderAction);
-                emit doScroll(sliderAction);
-            }
-        }
-    }
-    void hideEvent(QHideEvent *) override {
-        stopTimer();
-    }
-
-    void mouseMoveEvent(QMouseEvent *e) override
-    {
-        // Enable fast scrolling if the cursor is directly above or below the popup.
-        const int mouseX = e->position().toPoint().x();
-        const int mouseY = e->position().toPoint().y();
-        const bool horizontallyInside = pos().x() < mouseX && mouseX < rect().right() + 1;
-        const bool verticallyOutside = (sliderAction == QAbstractSlider::SliderSingleStepAdd) ?
-                                        rect().bottom() + 1 < mouseY : mouseY < pos().y();
-
-        fast = horizontallyInside && verticallyOutside;
-    }
-
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        QStyleOptionMenuItem menuOpt;
-        menuOpt.initFrom(this);
-        menuOpt.checkType = QStyleOptionMenuItem::NotCheckable;
-        menuOpt.menuRect = rect();
-        menuOpt.maxIconWidth = 0;
-        menuOpt.reservedShortcutWidth = 0;
-        menuOpt.menuItemType = QStyleOptionMenuItem::Scroller;
-        if (sliderAction == QAbstractSlider::SliderSingleStepAdd)
-            menuOpt.state |= QStyle::State_DownArrow;
-        p.eraseRect(rect());
-        style()->drawControl(QStyle::CE_MenuScroller, &menuOpt, &p);
-    }
+    void enterEvent(QEnterEvent *) override;
+    void leaveEvent(QEvent *) override;
+    void timerEvent(QTimerEvent *e) override;
+    void hideEvent(QHideEvent *) override;
+    void mouseMoveEvent(QMouseEvent *e) override;
+    void paintEvent(QPaintEvent *) override;
 
 Q_SIGNALS:
     void doScroll(int action);
@@ -233,24 +147,15 @@ class Q_AUTOTEST_EXPORT QComboMenuDelegate : public QAbstractItemDelegate
 {
     Q_OBJECT
 public:
-    QComboMenuDelegate(QObject *parent, QComboBox *cmb)
-    : QAbstractItemDelegate(parent), mCombo(cmb), pressedIndex(-1)
-    {}
+    explicit QComboMenuDelegate(QObject *parent, QComboBox *cmb);
+    ~QComboMenuDelegate() override;
 
 protected:
     void paint(QPainter *painter,
                const QStyleOptionViewItem &option,
-               const QModelIndex &index) const override {
-        QStyleOptionMenuItem opt = getStyleOption(option, index);
-        painter->fillRect(option.rect, opt.palette.window());
-        mCombo->style()->drawControl(QStyle::CE_MenuItem, &opt, painter, mCombo);
-    }
+               const QModelIndex &index) const override;
     QSize sizeHint(const QStyleOptionViewItem &option,
-                   const QModelIndex &index) const override {
-        QStyleOptionMenuItem opt = getStyleOption(option, index);
-        return mCombo->style()->sizeFromContents(
-            QStyle::CT_MenuItem, &opt, option.rect.size(), mCombo);
-    }
+                   const QModelIndex &index) const override;
     bool editorEvent(QEvent *event, QAbstractItemModel *model,
                      const QStyleOptionViewItem &option, const QModelIndex &index) override;
 
@@ -265,45 +170,19 @@ class Q_AUTOTEST_EXPORT QComboBoxDelegate : public QStyledItemDelegate
 {
     Q_OBJECT
 public:
-    QComboBoxDelegate(QObject *parent, QComboBox *cmb)
-        : QStyledItemDelegate(parent), mCombo(cmb)
-    {}
+    explicit QComboBoxDelegate(QObject *parent, QComboBox *cmb);
+    ~QComboBoxDelegate() override;
 
-    static bool isSeparator(const QModelIndex &index) {
-        return index.data(Qt::AccessibleDescriptionRole).toString()
-                == QLatin1StringView("separator");
-    }
-    static void setSeparator(QAbstractItemModel *model, const QModelIndex &index) {
-        model->setData(index, QString::fromLatin1("separator"), Qt::AccessibleDescriptionRole);
-        if (QStandardItemModel *m = qobject_cast<QStandardItemModel*>(model))
-            if (QStandardItem *item = m->itemFromIndex(index))
-                item->setFlags(item->flags() & ~(Qt::ItemIsSelectable|Qt::ItemIsEnabled));
-    }
+    static bool isSeparator(const QModelIndex &index);
+    static void setSeparator(QAbstractItemModel *model, const QModelIndex &index);
 
 protected:
     void paint(QPainter *painter,
                const QStyleOptionViewItem &option,
-               const QModelIndex &index) const override {
-        if (isSeparator(index)) {
-            QRect rect = option.rect;
-            if (const QAbstractItemView *view = qobject_cast<const QAbstractItemView*>(option.widget))
-                rect.setWidth(view->viewport()->width());
-            QStyleOption opt;
-            opt.rect = rect;
-            mCombo->style()->drawPrimitive(QStyle::PE_IndicatorToolBarSeparator, &opt, painter, mCombo);
-        } else {
-            QStyledItemDelegate::paint(painter, option, index);
-        }
-    }
+               const QModelIndex &index) const override;
 
     QSize sizeHint(const QStyleOptionViewItem &option,
-                   const QModelIndex &index) const override {
-        if (isSeparator(index)) {
-            int pm = mCombo->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, mCombo);
-            return QSize(pm, pm);
-        }
-        return QStyledItemDelegate::sizeHint(option, index);
-    }
+                   const QModelIndex &index) const override;
 private:
     QComboBox *mCombo;
 };

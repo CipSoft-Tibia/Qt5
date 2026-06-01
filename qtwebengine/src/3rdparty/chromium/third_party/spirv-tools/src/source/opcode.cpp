@@ -1,6 +1,6 @@
 // Copyright (c) 2015-2022 The Khronos Group Inc.
-// Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights
-// reserved.
+// Modifications Copyright (C) 2020-2024 Advanced Micro Devices, Inc. All
+// rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -102,7 +102,7 @@ spv_result_t spvOpcodeTableNameLookup(spv_target_env env,
   const auto version = spvVersionForTargetEnv(env);
   for (uint64_t opcodeIndex = 0; opcodeIndex < table->count; ++opcodeIndex) {
     const spv_opcode_desc_t& entry = table->entries[opcodeIndex];
-    // We considers the current opcode as available as long as
+    // We consider the current opcode as available as long as
     // 1. The target environment satisfies the minimal requirement of the
     //    opcode; or
     // 2. There is at least one extension enabling this opcode.
@@ -110,13 +110,34 @@ spv_result_t spvOpcodeTableNameLookup(spv_target_env env,
     // Note that the second rule assumes the extension enabling this instruction
     // is indeed requested in the SPIR-V code; checking that should be
     // validator's work.
-    if (((version >= entry.minVersion && version <= entry.lastVersion) ||
-         entry.numExtensions > 0u || entry.numCapabilities > 0u) &&
-        nameLength == strlen(entry.name) &&
-        !strncmp(name, entry.name, nameLength)) {
-      // NOTE: Found out Opcode!
-      *pEntry = &entry;
-      return SPV_SUCCESS;
+    if ((version >= entry.minVersion && version <= entry.lastVersion) ||
+        entry.numExtensions > 0u || entry.numCapabilities > 0u) {
+      // Exact match case.
+      if (nameLength == strlen(entry.name) &&
+          !strncmp(name, entry.name, nameLength)) {
+        *pEntry = &entry;
+        return SPV_SUCCESS;
+      }
+      // Lack of binary search really hurts here. There isn't an easy filter to
+      // apply before checking aliases since we need to handle promotion from
+      // vendor to KHR/EXT and KHR/EXT to core. It would require a sure-fire way
+      // of dropping suffices. Fortunately, most lookup are based on token
+      // value.
+      //
+      // If this was a binary search we could iterate between the lower and
+      // upper bounds.
+      if (entry.numAliases > 0) {
+        for (uint32_t aliasIndex = 0; aliasIndex < entry.numAliases;
+             aliasIndex++) {
+          // Skip Op prefix. Should this be encoded in the table instead?
+          const auto alias = entry.aliases[aliasIndex] + 2;
+          const size_t aliasLength = strlen(alias);
+          if (nameLength == aliasLength && !strncmp(name, alias, nameLength)) {
+            *pEntry = &entry;
+            return SPV_SUCCESS;
+          }
+        }
+      }
     }
   }
 
@@ -133,8 +154,8 @@ spv_result_t spvOpcodeTableValueLookup(spv_target_env env,
   const auto beg = table->entries;
   const auto end = table->entries + table->count;
 
-  spv_opcode_desc_t needle = {"",    opcode, 0, nullptr, 0,   {},
-                              false, false,  0, nullptr, ~0u, ~0u};
+  spv_opcode_desc_t needle = {"", opcode, 0,     nullptr, 0,       {},  0,
+                              {}, false,  false, 0,       nullptr, ~0u, ~0u};
 
   auto comp = [](const spv_opcode_desc_t& lhs, const spv_opcode_desc_t& rhs) {
     return lhs.opcode < rhs.opcode;
@@ -188,6 +209,7 @@ const char* spvOpcodeString(const uint32_t opcode) {
   const auto end = kOpcodeTableEntries + ARRAY_SIZE(kOpcodeTableEntries);
   spv_opcode_desc_t needle = {"",    static_cast<spv::Op>(opcode),
                               0,     nullptr,
+                              0,     {},
                               0,     {},
                               false, false,
                               0,     nullptr,
@@ -243,12 +265,14 @@ int32_t spvOpcodeIsConstant(const spv::Op opcode) {
     case spv::Op::OpConstantSampler:
     case spv::Op::OpConstantNull:
     case spv::Op::OpConstantFunctionPointerINTEL:
+    case spv::Op::OpConstantStringAMDX:
     case spv::Op::OpSpecConstantTrue:
     case spv::Op::OpSpecConstantFalse:
     case spv::Op::OpSpecConstant:
     case spv::Op::OpSpecConstantComposite:
     case spv::Op::OpSpecConstantCompositeReplicateEXT:
     case spv::Op::OpSpecConstantOp:
+    case spv::Op::OpSpecConstantStringAMDX:
       return true;
     default:
       return false;
@@ -279,6 +303,7 @@ int32_t spvOpcodeIsComposite(const spv::Op opcode) {
     case spv::Op::OpTypeRuntimeArray:
     case spv::Op::OpTypeCooperativeMatrixNV:
     case spv::Op::OpTypeCooperativeMatrixKHR:
+    case spv::Op::OpTypeCooperativeVectorNV:
       return true;
     default:
       return false;
@@ -296,6 +321,7 @@ bool spvOpcodeReturnsLogicalVariablePointer(const spv::Op opcode) {
     case spv::Op::OpFunctionParameter:
     case spv::Op::OpImageTexelPointer:
     case spv::Op::OpCopyObject:
+    case spv::Op::OpAllocateNodePayloadsAMDX:
     case spv::Op::OpSelect:
     case spv::Op::OpPhi:
     case spv::Op::OpFunctionCall:
@@ -322,6 +348,7 @@ int32_t spvOpcodeReturnsLogicalPointer(const spv::Op opcode) {
     case spv::Op::OpImageTexelPointer:
     case spv::Op::OpCopyObject:
     case spv::Op::OpRawAccessChainNV:
+    case spv::Op::OpAllocateNodePayloadsAMDX:
       return true;
     default:
       return false;
@@ -355,11 +382,15 @@ int32_t spvOpcodeGeneratesType(spv::Op op) {
     case spv::Op::OpTypeAccelerationStructureNV:
     case spv::Op::OpTypeCooperativeMatrixNV:
     case spv::Op::OpTypeCooperativeMatrixKHR:
+    case spv::Op::OpTypeCooperativeVectorNV:
     // case spv::Op::OpTypeAccelerationStructureKHR: covered by
     // spv::Op::OpTypeAccelerationStructureNV
     case spv::Op::OpTypeRayQueryKHR:
     case spv::Op::OpTypeHitObjectNV:
     case spv::Op::OpTypeUntypedPointerKHR:
+    case spv::Op::OpTypeNodePayloadArrayAMDX:
+    case spv::Op::OpTypeTensorLayoutNV:
+    case spv::Op::OpTypeTensorViewNV:
       return true;
     default:
       // In particular, OpTypeForwardPointer does not generate a type,
@@ -397,6 +428,7 @@ bool spvOpcodeIsLoad(const spv::Op opcode) {
     case spv::Op::OpImageSampleProjExplicitLod:
     case spv::Op::OpImageSampleProjDrefImplicitLod:
     case spv::Op::OpImageSampleProjDrefExplicitLod:
+    case spv::Op::OpImageSampleFootprintNV:
     case spv::Op::OpImageFetch:
     case spv::Op::OpImageGather:
     case spv::Op::OpImageDrefGather:
@@ -723,6 +755,7 @@ bool spvOpcodeIsImageSample(const spv::Op opcode) {
     case spv::Op::OpImageSparseSampleExplicitLod:
     case spv::Op::OpImageSparseSampleDrefImplicitLod:
     case spv::Op::OpImageSparseSampleDrefExplicitLod:
+    case spv::Op::OpImageSampleFootprintNV:
       return true;
     default:
       return false;

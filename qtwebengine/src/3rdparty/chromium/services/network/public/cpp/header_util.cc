@@ -107,14 +107,14 @@ bool AreRequestHeadersSafe(const net::HttpRequestHeaders& request_headers) {
 
 mojom::ReferrerPolicy ParseReferrerPolicy(
     const net::HttpResponseHeaders& response_headers) {
-  std::string referrer_policy_header;
-  if (!response_headers.GetNormalizedHeader("Referrer-Policy",
-                                            &referrer_policy_header)) {
+  std::optional<std::string> referrer_policy_header =
+      response_headers.GetNormalizedHeader("Referrer-Policy");
+  if (!referrer_policy_header) {
     return mojom::ReferrerPolicy::kDefault;
   }
 
   std::optional<net::ReferrerPolicy> net_policy =
-      net::ReferrerPolicyFromHeader(referrer_policy_header);
+      net::ReferrerPolicyFromHeader(*referrer_policy_header);
 
   if (!net_policy) {
     return mojom::ReferrerPolicy::kDefault;
@@ -147,8 +147,9 @@ bool ShouldSniffContent(const GURL& url,
                         const mojom::URLResponseHead& response) {
   std::string content_type_options;
   if (response.headers) {
-    response.headers->GetNormalizedHeader("x-content-type-options",
-                                          &content_type_options);
+    content_type_options =
+        response.headers->GetNormalizedHeader("x-content-type-options")
+            .value_or(std::string());
   }
   bool sniffing_blocked =
       base::EqualsCaseInsensitiveASCII(content_type_options, "nosniff");

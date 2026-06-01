@@ -50,8 +50,9 @@ bool RHIBuffer::bind(SubmissionContext *ctx, Type t)
     if (this->m_datasToUpload.empty())
         return bool(m_rhiBuffer);
 
-    const auto uploadMethod = m_dynamic ? &QRhiResourceUpdateBatch::updateDynamicBuffer
-                                        : qOverload<QRhiBuffer *, quint32, quint32, const void *>(
+    const auto uploadMethod = m_dynamic ? qOverload<QRhiBuffer *, quint32, QByteArray>(
+                                                &QRhiResourceUpdateBatch::updateDynamicBuffer)
+                                        : qOverload<QRhiBuffer *, quint32, QByteArray>(
                                                 &QRhiResourceUpdateBatch::uploadStaticBuffer);
     if (!m_rhiBuffer) {
         if (m_allocSize <= 0)
@@ -69,9 +70,7 @@ bool RHIBuffer::bind(SubmissionContext *ctx, Type t)
 #if defined(QT_DEBUG)
         {
             // for debug: we set the buffer to zero
-            auto ptr = new char[m_allocSize] {};
-            (ctx->m_currentUpdates->*uploadMethod)(m_rhiBuffer, 0, m_allocSize, ptr);
-            delete[] ptr;
+            (ctx->m_currentUpdates->*uploadMethod)(m_rhiBuffer, 0, QByteArray(m_allocSize, 0));
         }
 #endif
     }
@@ -82,10 +81,8 @@ bool RHIBuffer::bind(SubmissionContext *ctx, Type t)
     assert(m_rhiBuffer->usage() == bufferTypeToRhi(t));
 #endif
 
-    for (const std::pair<QByteArray, int> &pair : this->m_datasToUpload) {
-        const QByteArray &data = pair.first;
-        int offset = pair.second;
-        (ctx->m_currentUpdates->*uploadMethod)(m_rhiBuffer, offset, data.size(), data.constData());
+    for (auto &[data, offset] : m_datasToUpload) {
+        (ctx->m_currentUpdates->*uploadMethod)(m_rhiBuffer, offset, std::move(data));
     }
 
     m_datasToUpload.clear();

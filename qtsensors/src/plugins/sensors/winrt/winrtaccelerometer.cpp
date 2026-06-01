@@ -17,7 +17,7 @@ using namespace ABI::Windows::Devices::Sensors;
 
 typedef ITypedEventHandler<Accelerometer *, AccelerometerReadingChangedEventArgs *> AccelerometerReadingHandler;
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 #define GRAVITY_EARTH_MS2 9.80665
 
@@ -181,3 +181,5 @@ void WinRtAccelerometer::stop()
     }
     d->token.value = 0;
 }
+
+QT_END_NAMESPACE

@@ -1,9 +1,14 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickfontdialog_p.h"
 
 #include <QtCore/qloggingcategory.h>
+#if QT_CONFIG(quick_listview) && QT_CONFIG(quick_draganddrop)
+#include <QtQuickDialogs2QuickImpl/private/qquickplatformfontdialog_p.h>
+#include <QtQuickDialogs2QuickImpl/private/qquickfontdialogimpl_p.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -183,6 +188,10 @@ void QQuickFontDialog::onShow(QPlatformDialogHelper *dialog)
         fontDialog->setOptions(m_options); // setOptions only assigns a member and isn't virtual
         fontDialog->setCurrentFont(m_selectedFont);
     }
+#if QT_CONFIG(quick_listview) && QT_CONFIG(quick_draganddrop)
+    if (QQuickPlatformFontDialog *fontDialog = qobject_cast<QQuickPlatformFontDialog *>(dialog))
+        fontDialog->dialog()->setPopupType(m_popupType);
+#endif
 
     QQuickAbstractDialog::onShow(dialog);
 }

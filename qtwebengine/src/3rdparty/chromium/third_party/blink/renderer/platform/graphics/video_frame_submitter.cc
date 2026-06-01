@@ -52,6 +52,12 @@ BASE_FEATURE(kUseVideoFrameSinkBundle,
              "UseVideoFrameSinkBundle",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// When VideoFrameSubmitter::ReclaimResources() is called in background,
+// trigger a clean of recycled video frames.
+BASE_FEATURE(kClearVideoFrameResourcesInBackground,
+             "ClearVideoFrameResourcesInBackground",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 // Builds a cc::FrameInfo representing a video frame, which is considered
 // Compositor-only.
 cc::FrameInfo CreateFrameInfo(cc::FrameInfo::FrameFinalState final_state) {
@@ -82,11 +88,6 @@ void RecordUmaPreSubmitBufferingDelay(bool is_media_stream,
     base::UmaHistogramTimes(
         "Media.VideoFrameSubmitter.Video.PreSubmitBuffering", delay);
   }
-
-  // TODO(crbug.com/364352012): This will be removed once expired, kept for now
-  // due to internal dependencies.
-  base::UmaHistogramTimes("Media.VideoFrameSubmitter.PreSubmitBuffering",
-                          delay);
 }
 
 }  // namespace
@@ -131,8 +132,8 @@ class VideoFrameSubmitter::FrameSinkBundleProxy
   }
 
   // Not used by VideoFrameSubmitter.
-  void SetWantsAnimateOnlyBeginFrames() override { NOTREACHED_IN_MIGRATION(); }
-  void SetAutoNeedsBeginFrame() override { NOTREACHED_IN_MIGRATION(); }
+  void SetWantsAnimateOnlyBeginFrames() override { NOTREACHED(); }
+  void SetAutoNeedsBeginFrame() override { NOTREACHED(); }
 
   void SubmitCompositorFrame(
       const viz::LocalSurfaceId& local_surface_id,
@@ -155,7 +156,7 @@ class VideoFrameSubmitter::FrameSinkBundleProxy
       std::optional<viz::HitTestRegionList> hit_test_region_list,
       uint64_t submit_time,
       SubmitCompositorFrameSyncCallback callback) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
   void DidNotProduceFrame(const viz::BeginFrameAck& ack) override {
@@ -163,22 +164,6 @@ class VideoFrameSubmitter::FrameSinkBundleProxy
       return;
     }
     bundle_->DidNotProduceFrame(frame_sink_id_.sink_id(), ack);
-  }
-
-  void DidAllocateSharedBitmap(base::ReadOnlySharedMemoryRegion region,
-                               const viz::SharedBitmapId& id) override {
-    if (!bundle_) {
-      return;
-    }
-    bundle_->DidAllocateSharedBitmap(frame_sink_id_.sink_id(),
-                                     std::move(region), id);
-  }
-
-  void DidDeleteSharedBitmap(const viz::SharedBitmapId& id) override {
-    if (!bundle_) {
-      return;
-    }
-    bundle_->DidDeleteSharedBitmap(frame_sink_id_.sink_id(), id);
   }
 
   void InitializeCompositorFrameSinkType(
@@ -193,8 +178,8 @@ class VideoFrameSubmitter::FrameSinkBundleProxy
       viz::mojom::blink::PendingLayerContextPtr context) override {}
 
 #if BUILDFLAG(IS_ANDROID)
-  void SetThreadIds(const WTF::Vector<int32_t>& thread_ids) override {
-    bundle_->SetThreadIds(frame_sink_id_.sink_id(), thread_ids);
+  void SetThreads(const WTF::Vector<viz::Thread>& threads) override {
+    bundle_->SetThreads(frame_sink_id_.sink_id(), threads);
   }
 #endif
 
@@ -229,8 +214,6 @@ VideoFrameSubmitter::~VideoFrameSubmitter() {
     shared_image_interface_->gpu_channel()->RemoveObserver(this);
   }
 
-  // Release VideoFrameResourceProvider early since its destruction will make
-  // calls back into this class via the viz::SharedBitmapReporter interface.
   resource_provider_.reset();
 }
 
@@ -588,20 +571,17 @@ void VideoFrameSubmitter::ReclaimResources(
     WTF::Vector<viz::ReturnedResource> resources) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   resource_provider_->ReceiveReturnsFromParent(std::move(resources));
-}
 
-void VideoFrameSubmitter::DidAllocateSharedBitmap(
-    base::ReadOnlySharedMemoryRegion region,
-    const viz::SharedBitmapId& id) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK(compositor_frame_sink_);
-  compositor_frame_sink_->DidAllocateSharedBitmap(std::move(region), id);
-}
-
-void VideoFrameSubmitter::DidDeleteSharedBitmap(const viz::SharedBitmapId& id) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK(compositor_frame_sink_);
-  compositor_frame_sink_->DidDeleteSharedBitmap(id);
+  // We've already submitted an empty frame so post a delayed task to clear
+  // frame resources.
+  if (!ShouldSubmit() && !last_frame_id_.has_value() &&
+      base::FeatureList::IsEnabled(kClearVideoFrameResourcesInBackground)) {
+    task_runner_->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(&VideoFrameSubmitter::ClearFrameResources,
+                       weak_ptr_factory_.GetWeakPtr()),
+        base::Seconds(5));
+  }
 }
 
 void VideoFrameSubmitter::OnReceivedContextProvider(
@@ -609,13 +589,24 @@ void VideoFrameSubmitter::OnReceivedContextProvider(
     scoped_refptr<viz::RasterContextProvider> context_provider,
     scoped_refptr<gpu::ClientSharedImageInterface> shared_image_interface) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  constexpr base::TimeDelta kGetContextProviderRetryTimeout =
+      base::Milliseconds(150);
 
   if (!use_gpu_compositing) {
     shared_image_interface_ = std::move(shared_image_interface);
-    if (shared_image_interface_) {
-      shared_image_interface_->gpu_channel()->AddObserver(this);
+    if (!shared_image_interface_) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(
+              context_provider_callback_, context_provider_,
+              base::BindOnce(&VideoFrameSubmitter::OnReceivedContextProvider,
+                             weak_ptr_factory_.GetWeakPtr())),
+          kGetContextProviderRetryTimeout);
+      return;
     }
-    resource_provider_->Initialize(nullptr, this, shared_image_interface_);
+
+    shared_image_interface_->gpu_channel()->AddObserver(this);
+    resource_provider_->Initialize(nullptr, shared_image_interface_);
     if (frame_sink_id_.is_valid()) {
       StartSubmitting();
     }
@@ -623,8 +614,6 @@ void VideoFrameSubmitter::OnReceivedContextProvider(
   }
 
   if (!MaybeAcceptContextProvider(std::move(context_provider))) {
-    constexpr base::TimeDelta kGetContextProviderRetryTimeout =
-        base::Milliseconds(150);
     base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
         FROM_HERE,
         base::BindOnce(
@@ -636,7 +625,7 @@ void VideoFrameSubmitter::OnReceivedContextProvider(
   }
 
   context_provider_->AddObserver(this);
-  resource_provider_->Initialize(context_provider_.get(), nullptr,
+  resource_provider_->Initialize(context_provider_.get(),
                                  /*shared_image_interface*/ nullptr);
 
   if (frame_sink_id_.is_valid())
@@ -697,10 +686,12 @@ void VideoFrameSubmitter::StartSubmitting() {
                        : viz::mojom::CompositorFrameSinkType::kVideo);
 
 #if BUILDFLAG(IS_ANDROID)
-  WTF::Vector<base::PlatformThreadId> thread_ids;
-  thread_ids.push_back(base::PlatformThread::CurrentId());
-  thread_ids.push_back(Platform::Current()->GetIOThreadId());
-  compositor_frame_sink_->SetThreadIds(thread_ids);
+  WTF::Vector<viz::Thread> threads;
+  threads.push_back(viz::Thread{base::PlatformThread::CurrentId(),
+                                viz::Thread::Type::kVideo});
+  threads.push_back(viz::Thread{Platform::Current()->GetIOThreadId(),
+                                viz::Thread::Type::kIO});
+  compositor_frame_sink_->SetThreads(threads);
 #endif
 
   UpdateSubmissionState();
@@ -826,6 +817,10 @@ bool VideoFrameSubmitter::SubmitFrame(
 
   last_frame_id_ = video_frame->unique_id();
 
+  Opacity new_opacity = media::IsOpaque(video_frame->format())
+                            ? Opacity::kIsOpaque
+                            : Opacity::kIsNotOpaque;
+
   auto frame_token = ++next_frame_token_;
   auto source_id = begin_frame_ack.frame_id.source_id;
   if (source_id != viz::BeginFrameArgs::kManualSourceId) {
@@ -836,16 +831,18 @@ bool VideoFrameSubmitter::SubmitFrame(
   auto compositor_frame = CreateCompositorFrame(
       frame_token, begin_frame_ack, std::move(video_frame), transform);
 
-  WebVector<viz::ResourceId> resources;
+  std::vector<viz::ResourceId> resources;
   const auto& quad_list = compositor_frame.render_pass_list.back()->quad_list;
   if (!quad_list.empty()) {
     DCHECK_EQ(quad_list.size(), 1u);
-    resources.Assign(quad_list.front()->resources);
+    auto resource_id = quad_list.front()->resource_id;
+    if (resource_id != viz::kInvalidResourceId) {
+      resources.push_back(resource_id);
+    }
   }
 
-  WebVector<viz::TransferableResource> resource_list;
-  resource_provider_->PrepareSendToParent(resources, &resource_list);
-  compositor_frame.resource_list = resource_list.ReleaseVector();
+  compositor_frame.resource_list =
+      resource_provider_->PrepareSendToParent(resources);
 
   // We can pass nullptr for the HitTestData as the CompositorFram will not
   // contain any SurfaceDrawQuads.
@@ -853,6 +850,8 @@ bool VideoFrameSubmitter::SubmitFrame(
       child_local_surface_id_allocator_.GetCurrentLocalSurfaceId(),
       std::move(compositor_frame), std::nullopt, 0);
   resource_provider_->ReleaseFrameResources();
+
+  NotifyOpacityIfNeeded(new_opacity);
 
   ++waiting_for_compositor_ack_;
   return true;
@@ -879,6 +878,7 @@ void VideoFrameSubmitter::SubmitEmptyFrame() {
   compositor_frame_sink_->SubmitCompositorFrame(
       child_local_surface_id_allocator_.GetCurrentLocalSurfaceId(),
       std::move(compositor_frame), std::nullopt, 0);
+  NotifyOpacityIfNeeded(Opacity::kIsNotOpaque);
 
   // We set `waiting_for_compositor_ack_` to zero here since we want to allow a
   // subsequent real frame to replace it at any time if needed.
@@ -998,6 +998,26 @@ void VideoFrameSubmitter::GenerateNewSurfaceId() {
 
   surface_embedder_->SetLocalSurfaceId(
       child_local_surface_id_allocator_.GetCurrentLocalSurfaceId());
+}
+
+void VideoFrameSubmitter::NotifyOpacityIfNeeded(Opacity new_opacity) {
+  if (opacity_ == new_opacity || !surface_embedder_.is_bound()) {
+    return;
+  }
+
+  opacity_ = new_opacity;
+  surface_embedder_->OnOpacityChanged(new_opacity == Opacity::kIsOpaque);
+}
+
+void VideoFrameSubmitter::ClearFrameResources() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+
+  // If we are allowed to submit real frames, then don't clear frame resources.
+  if (ShouldSubmit()) {
+    return;
+  }
+
+  resource_provider_->ClearFrameResources();
 }
 
 }  // namespace blink

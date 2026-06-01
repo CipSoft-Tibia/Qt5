@@ -63,10 +63,14 @@ void CaptureSessionFixture::start(RunMode mode, AutoStop autoStop)
     if (m_recorder.outputLocation().isEmpty()) {
         // Create a temporary file.
         // The file name is not available without opening.
-        m_tempFile.open();
-        m_tempFile.close();
+        if (!m_tempFile.open()) {
+            qWarning("Failed to open file: %s (%s)",
+                     qPrintable(m_tempFile.fileName()), qPrintable(m_tempFile.errorString()));
+        } else {
+            m_tempFile.close();
 
-        m_recorder.setOutputLocation(m_tempFile.fileName());
+            m_recorder.setOutputLocation(m_tempFile.fileName());
+        }
     }
     // else: outputLocation has been already set
 

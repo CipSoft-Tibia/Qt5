@@ -17,6 +17,7 @@
 #include <QtCore/qthreadpool.h>
 #include <QtCore/qexception.h>
 #include <QtCore/qpromise.h>
+#include <QtCore/qvariant.h>
 
 #include <memory>
 
@@ -49,6 +50,9 @@ WhenAnyResult(qsizetype, const QFuture<T> &) -> WhenAnyResult<T>;
 }
 
 namespace QtPrivate {
+
+// implemented in qfutureinterface.cpp
+Q_CORE_EXPORT void qfutureWarnIfUnusedResults(qsizetype numResults);
 
 template<class T>
 using EnableForVoid = std::enable_if_t<std::is_same_v<T, void>>;
@@ -492,7 +496,12 @@ struct ContinuationWrapper
     ContinuationWrapper(ContinuationWrapper &&other) = default;
     ContinuationWrapper &operator=(ContinuationWrapper &&) = default;
 
+    template <typename F = Function,
+              std::enable_if_t<std::is_invocable_v<F, const QFutureInterfaceBase &>, bool> = true>
     void operator()(const QFutureInterfaceBase &parentData) { function(parentData); }
+
+    template <typename F = Function, std::enable_if_t<std::is_invocable_v<F>, bool> = true>
+    void operator()() { function(); }
 
 private:
     Function function;
@@ -545,7 +554,8 @@ void CompactContinuation<Function, ResultType, ParentResultType>::create(F &&fun
             continuationJob = nullptr;
         }
     };
-    f->d.setContinuation(ContinuationWrapper(std::move(continuation)), fi.d);
+    f->d.setContinuation(ContinuationWrapper(std::move(continuation)), fi.d,
+                         QFutureInterfaceBase::ContinuationType::Then);
 }
 
 template<typename Function, typename ResultType, typename ParentResultType>
@@ -573,16 +583,8 @@ void CompactContinuation<Function, ResultType, ParentResultType>::create(F &&fun
             continuationJob = nullptr;
         }
     };
-    f->d.setContinuation(ContinuationWrapper(std::move(continuation)), fi.d);
-}
-
-template <typename Continuation>
-void watchContinuation(const QObject *context, Continuation &&c, QFutureInterfaceBase &fi)
-{
-    using Prototype = typename QtPrivate::Callable<Continuation>::Function;
-    watchContinuationImpl(context,
-                          QtPrivate::makeCallableObject<Prototype>(std::forward<Continuation>(c)),
-                          fi);
+    f->d.setContinuation(ContinuationWrapper(std::move(continuation)), fi.d,
+                         QFutureInterfaceBase::ContinuationType::Then);
 }
 
 template<typename Function, typename ResultType, typename ParentResultType>
@@ -605,12 +607,15 @@ void CompactContinuation<Function, ResultType, ParentResultType>::create(F &&fun
         continuationJob.execute();
     };
 
-    QtPrivate::watchContinuation(context, std::move(continuation), f->d);
+    f->d.setContinuation(context, ContinuationWrapper(std::move(continuation)),
+                         QVariant::fromValue(fi),
+                         QFutureInterfaceBase::ContinuationType::Then);
 }
 
 template<typename Function, typename ResultType, typename ParentResultType>
 void CompactContinuation<Function, ResultType, ParentResultType>::fulfillPromiseWithResult()
 {
+    qfutureWarnIfUnusedResults(parentFuture.resultCount());
     if constexpr (std::is_copy_constructible_v<ParentResultType>)
         fulfillPromise(parentFuture.result());
     else
@@ -620,6 +625,7 @@ void CompactContinuation<Function, ResultType, ParentResultType>::fulfillPromise
 template<typename Function, typename ResultType, typename ParentResultType>
 void CompactContinuation<Function, ResultType, ParentResultType>::fulfillVoidPromise()
 {
+    qfutureWarnIfUnusedResults(parentFuture.resultCount());
     if constexpr (std::is_copy_constructible_v<ParentResultType>)
         this->object()(parentFuture.result());
     else
@@ -679,7 +685,8 @@ void FailureHandler<Function, ResultType>::create(F &&function, QFuture<ResultTy
         failureHandler.run();
     };
 
-    future->d.setContinuation(ContinuationWrapper(std::move(failureContinuation)));
+    future->d.setContinuation(ContinuationWrapper(std::move(failureContinuation)), fi.d,
+                              QFutureInterfaceBase::ContinuationType::OnFailed);
 }
 
 template<class Function, class ResultType>
@@ -697,7 +704,9 @@ void FailureHandler<Function, ResultType>::create(F &&function, QFuture<ResultTy
         failureHandler.run();
     };
 
-    QtPrivate::watchContinuation(context, std::move(failureContinuation), future->d);
+    future->d.setContinuation(context, ContinuationWrapper(std::move(failureContinuation)),
+                              QVariant::fromValue(fi),
+                              QFutureInterfaceBase::ContinuationType::OnFailed);
 }
 
 template<class Function, class ResultType>
@@ -777,7 +786,8 @@ public:
             auto parentFuture = QFutureInterface<ResultType>(parentData).future();
             run(std::forward<F>(handler), parentFuture, std::move(promise));
         };
-        future->d.setContinuation(ContinuationWrapper(std::move(canceledContinuation)));
+        future->d.setContinuation(ContinuationWrapper(std::move(canceledContinuation)), fi.d,
+                                  QFutureInterfaceBase::ContinuationType::OnCanceled);
     }
 
     template<class F = Function>
@@ -791,7 +801,9 @@ public:
             run(std::forward<F>(handler), parentFuture, std::move(promise));
         };
 
-        QtPrivate::watchContinuation(context, std::move(canceledContinuation), future->d);
+        future->d.setContinuation(context, ContinuationWrapper(std::move(canceledContinuation)),
+                                  QVariant::fromValue(fi),
+                                  QFutureInterfaceBase::ContinuationType::OnCanceled);
     }
 
     template<class F = Function>
@@ -833,7 +845,7 @@ struct UnwrapHandler
         using NestedType = typename QtPrivate::Future<ResultType>::type;
         QFutureInterface<NestedType> promise(QFutureInterfaceBase::State::Pending);
 
-        outer->then([promise](const QFuture<ResultType> &outerFuture) mutable {
+        auto chain = outer->then([promise](const QFuture<ResultType> &outerFuture) mutable {
             // We use the .then([](QFuture<ResultType> outerFuture) {...}) version
             // (where outerFuture == *outer), to propagate the exception if the
             // outer future has failed.
@@ -871,6 +883,13 @@ struct UnwrapHandler
             promise.reportCanceled();
             promise.reportFinished();
         });
+
+        // Inject the promise into the chain.
+        // We use a fake function as a continuation, since the promise is
+        // managed by the outer future
+        chain.d.setContinuation(ContinuationWrapper(std::move([](const QFutureInterfaceBase &) {})),
+                                promise.d, QFutureInterfaceBase::ContinuationType::Then);
+
         return promise.future();
     }
 };

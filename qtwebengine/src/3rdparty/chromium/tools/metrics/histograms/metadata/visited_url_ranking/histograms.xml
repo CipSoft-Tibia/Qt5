@@ -85,7 +85,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="VisitedURLRanking.ScoredURLAction" enum="ScoredURLUserAction"
-    expires_after="2025-03-22">
+    expires_after="2025-05-25">
   <owner>romanarora@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>
@@ -100,7 +100,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="VisitedURLRanking.TransformType.{URLVisitAggregatesTransformType}.InOutPercentage"
-    units="%" expires_after="2025-03-22">
+    units="%" expires_after="2025-06-08">
   <owner>romanarora@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>
@@ -138,11 +138,24 @@ chromium-metrics-reviews@google.com.
     the visited url ranking service feature is enabled. Only logged when the
     tranform had data to process and when the transform was successful.
   </summary>
+  <token key="URLVisitAggregatesTransformType">
+    <variant name="BookmarkData" summary="Bookmark data"/>
+    <variant name="DefaultAppUrlFilter" summary="Default app URL filter"/>
+    <variant name="HistoryCategoriesFilter"
+        summary="History caetgories filter"/>
+    <variant name="HistoryVisibilityScoreFilter"
+        summary="History visibility score filter"/>
+    <variant name="None" summary="None"/>
+    <variant name="RecencyFilter" summary="Recency filter"/>
+    <variant name="SegmentationMetricsData"
+        summary="Segmentation metrics data"/>
+    <variant name="ShoppingData" summary="Shopping data"/>
+  </token>
 </histogram>
 
 <histogram
     name="VisitedURLRanking.TransformType.{URLVisitAggregatesTransformType}.Success"
-    enum="BooleanSuccess" expires_after="2025-03-22">
+    enum="BooleanSuccess" expires_after="2025-06-08">
   <owner>romanarora@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>

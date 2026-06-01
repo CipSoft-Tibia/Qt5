@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKTEXT_P_H
 #define QQUICKTEXT_P_H
@@ -266,7 +267,7 @@ Q_SIGNALS:
     void contentHeightChanged(qreal contentHeight);
 
     void lineHeightChanged(qreal lineHeight);
-    void lineHeightModeChanged(LineHeightMode mode);
+    void lineHeightModeChanged(QQuickText::LineHeightMode mode);
     void fontSizeModeChanged();
     void minimumPixelSizeChanged();
     void minimumPointSizeChanged();

@@ -351,7 +351,9 @@ void QSystemInformationService::writePreviousFrameTraces()
 
 void QSystemInformationService::revealLogFolder()
 {
+#if QT_CONFIG(desktopservices)
     QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::currentPath()));
+#endif
 }
 
 QVariant QSystemInformationService::executeCommand(const QString &command)

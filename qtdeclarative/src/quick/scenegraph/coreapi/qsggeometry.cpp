@@ -210,6 +210,16 @@ const QSGGeometry::AttributeSet &QSGGeometry::defaultAttributes_ColoredPoint2D()
     vertexDataAsTexturedPoint2D(). Vertex data is allocated by passing
     a vertex count to the constructor or by calling allocate() later.
 
+    The number of vertices and indices can be changed after construction
+    by using the allocate() method to resize the data buffer. However,
+    allocate() requires updating all vertex and index data each time
+    called. Since Qt 6.10, setVertexCount() and setIndexCount() allow
+    adjusting the number of vertices or indices without reallocating the
+    data buffer and only require updating new vertices or indices. In
+    either case, the caller must mark the geometry node as dirty, by calling
+    \c{node->markDirty(QSGNode::DirtyGeometry)}, to ensure that the renderer
+    has a chance to update internal buffers.
+
     The QSGGeometry can optionally contain indices of either unsigned
     32-bit, unsigned 16-bit, or unsigned 8-bit integers. The index type
     must be specified during construction and cannot be changed.
@@ -440,15 +450,62 @@ QSGGeometry::~QSGGeometry()
 /*!
     \fn int QSGGeometry::vertexCount() const
 
-    Returns the number of vertices in this geometry object.
+    Returns the number of vertices that can be rendered, or if indices are used,
+    it returns the number of vertices that can be accessed through indices.
+
+    \sa setVertexCount()
  */
+
+/*!
+    Sets the number of vertices to be rendered.
+
+    The \a count is not validated and it is the users responsibility to ensure
+    that only values between zero and the number of allocated vertices are
+    specified.
+
+    Vertex data is not invalidated after this call, but the caller must mark
+    the geometry node as dirty, by calling \c{node->markDirty(QSGNode::DirtyGeometry)},
+    to ensure that the renderer has a chance to update internal buffers.
+
+    \since 6.10
+
+    \sa vertexCount()
+ */
+void QSGGeometry::setVertexCount(int count)
+{
+    m_vertex_count = count;
+}
+
 
 /*!
     \fn int QSGGeometry::indexCount() const
 
-    Returns the number of indices in this geometry object.
+    Returns the number of indices that are processed when the geometry object
+    is rendered.
+
+    \sa setIndexCount()
  */
 
+/*!
+    Sets the number of indices to be processed each time the geometry object is
+    rendered.
+
+    The \a count is not validated and it is the users responsibility to ensure
+    that only values between zero and the number of allocated indices are
+    specified.
+
+    Vertex and index data is not invalidated after this call, but the caller must
+    mark the geometry node as dirty, by calling \c{node->markDirty(QSGNode::DirtyGeometry)},
+    to ensure that the renderer has a chance to update internal buffers.
+
+    \since 6.10
+
+    \sa indexCount()
+ */
+void QSGGeometry::setIndexCount(int count)
+{
+    m_index_count = count;
+}
 
 
 /*!
@@ -556,7 +613,7 @@ void QSGGeometry::setDrawingMode(unsigned int mode)
     \note The width of \c 1.0 is always supported.
 
     \sa setLineWidth(), drawingMode()
-*/
+ */
 float QSGGeometry::lineWidth() const
 {
     return m_line_width;
@@ -576,7 +633,7 @@ float QSGGeometry::lineWidth() const
     \note The width of \c 1.0 is always supported.
 
     \sa lineWidth(), drawingMode()
-*/
+ */
 void QSGGeometry::setLineWidth(float width)
 {
     m_line_width = width;
@@ -600,12 +657,18 @@ void QSGGeometry::setLineWidth(float width)
 
 /*!
     Resizes the vertex and index data of this geometry object to fit \a vertexCount
-    vertices and \a indexCount indices.
+    vertices and \a indexCount indices and sets the number of vertices and
+    indices accordingly.
+
+    Use setVertexCount() or setIndexCount() to change the number of vertices
+    or indices without calling allocate() again.
 
     Vertex and index data will be invalidated after this call and the caller must
     mark the associated geometry node as dirty, by calling
-    node->markDirty(QSGNode::DirtyGeometry) to ensure that the renderer has
+    \c{node->markDirty(QSGNode::DirtyGeometry)}, to ensure that the renderer has
     a chance to update internal buffers.
+
+    \sa setVertexCount(), setIndexCount()
  */
 void QSGGeometry::allocate(int vertexCount, int indexCount)
 {
@@ -622,6 +685,8 @@ void QSGGeometry::allocate(int vertexCount, int indexCount)
         free(m_data);
 
     if (canUsePrealloc && vertexByteSize <= (int) sizeof(m_prealloc)) {
+        // The preallocated buffer is suitable for simple geometry objects like
+        // rectangles and avoids a malloc/free but does not support index data.
         m_data = (void *) &m_prealloc[0];
         m_index_data_offset = -1;
         m_owns_data = false;
@@ -642,7 +707,6 @@ void QSGGeometry::allocate(int vertexCount, int indexCount)
         markIndexDataDirty();
         markVertexDataDirty();
     }
-
 }
 
 /*!

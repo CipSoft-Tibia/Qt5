@@ -25,10 +25,12 @@ ScrollablePage {
 
             RadioButton {
                 text: qsTr("First")
+                enabled: !GalleryConfig.disabled
             }
             RadioButton {
                 text: qsTr("Second")
                 checked: true
+                enabled: !GalleryConfig.disabled
             }
             RadioButton {
                 text: qsTr("Third")

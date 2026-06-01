@@ -56,6 +56,7 @@ public:
                                       QJSValue newGradient,
                                       GradientType type,
                                       QJSValue &memberGradient);
+    static bool imageHasTransparency(const QImage &image);
 
 private:
     static ParamType mapFormatCharToParamType(char formatSpec);

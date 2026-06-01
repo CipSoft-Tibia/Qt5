@@ -81,11 +81,11 @@
 
     To expose a C++ enum to JavaScript (that is, \l QJSEngine, not
     \l QQmlEngine or \l QQmlApplicationEngine), use
-    \l QJSEngine::newQMetaObject():
+    \l {QJSEngine::}{newQMetaObject()} and \l {QJSEngine::}{registerModule()}:
 
     \quotefromfile how-tos/how-to-cpp-enum-js/tst_how-to-cpp-enum-js.cpp
     \skipto QJSEngine engine
-    \printuntil setProperty
+    \printuntil registerModule
     \skipto Backend backend
     \printuntil backend.load()
 

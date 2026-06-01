@@ -1,6 +1,9 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_extensions_dir(extensions_dir)
+
 # Generated from cpp-client.pro.
 
 #####################################################################
@@ -25,8 +28,8 @@ qt_internal_add_manual_test(cpp-client
 qt6_generate_wayland_protocol_client_sources(cpp-client
     PRIVATE_CODE
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src/extensions/qt-texture-sharing-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src/extensions/server-buffer-extension.xml
+        ${extensions_dir}/qt-texture-sharing-unstable-v1.xml
+        ${extensions_dir}/server-buffer-extension.xml
 )
 
 #### Keys ignored in scope 1:.:.:cpp-client.pro:<TRUE>:

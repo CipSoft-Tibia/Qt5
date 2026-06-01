@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/quic/moqt/moqt_publisher.h"
 #include "quiche/common/platform/api/quiche_mem_slice.h"
 
@@ -18,7 +19,9 @@ namespace moqt {
 struct CachedObject {
   FullSequence sequence;
   MoqtObjectStatus status;
+  MoqtPriority publisher_priority;
   std::shared_ptr<quiche::QuicheMemSlice> payload;
+  bool fin_after_this;  // This is the last object before FIN.
 };
 
 // Transforms a CachedObject into a PublishedObject.

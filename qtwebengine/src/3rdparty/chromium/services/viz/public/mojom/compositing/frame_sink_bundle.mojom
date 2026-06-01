@@ -8,10 +8,10 @@ import "mojo/public/mojom/base/shared_memory.mojom";
 import "services/viz/public/mojom/compositing/begin_frame_args.mojom";
 import "services/viz/public/mojom/compositing/compositor_frame.mojom";
 import "services/viz/public/mojom/compositing/compositor_frame_sink.mojom";
-import "services/viz/public/mojom/compositing/shared_bitmap_id.mojom";
 import "services/viz/public/mojom/compositing/local_surface_id.mojom";
 import "services/viz/public/mojom/compositing/frame_timing_details.mojom";
 import "services/viz/public/mojom/compositing/returned_resource.mojom";
+import "services/viz/public/mojom/compositing/thread.mojom";
 import "services/viz/public/mojom/hit_test/hit_test_region_list.mojom";
 
 // Encapsulates either a single SubmitCompositorFrame call or a single
@@ -33,9 +33,6 @@ union BundledFrameSubmissionData {
 
   // Data for a DidNotProduceFrame call.
   BeginFrameAck did_not_produce_frame;
-
-  // Data for a DidDeleteSharedBitmap call.
-  SharedBitmapId did_delete_shared_bitmap;
 };
 
 // SubmitCompositorFrame parameters, as bundled by BundledFrameSubmissionData
@@ -72,14 +69,8 @@ interface FrameSinkBundle {
 
   // Corresponds to a single message of the same name on CompositorFrameSink
   // for the identified sink.
-  DidAllocateSharedBitmap(
-      uint32 sink_id, mojo_base.mojom.ReadOnlySharedMemoryRegion region,
-      SharedBitmapId id);
-
-  // Corresponds to a single message of the same name on CompositorFrameSink
-  // for the identified sink.
   [EnableIf=is_android]
-  SetThreadIds(uint32 sink_id, array<int32> thread_ids);
+  SetThreads(uint32 sink_id, array<Thread> threads);
 };
 
 // A set of ReturnedResources belonging to a specific frame sink.

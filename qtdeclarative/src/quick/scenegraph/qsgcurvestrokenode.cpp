@@ -64,7 +64,7 @@ void QSGCurveStrokeNode::appendTriangle(const std::array<QVector2D, 3> &v,
 
     int currentVertex = m_uncookedVertexes.count();
 
-//    for (auto v : QList<QPair<QVector2D, QVector2D>>({{v0, n0}, {v1, n1}, {v2, n2}})) {
+//    for (auto v : QList<std::pair<QVector2D, QVector2D>>({{v0, n0}, {v1, n1}, {v2, n2}})) {
     for (int i = 0; i < 3; ++i) {
         m_uncookedVertexes.append( { v[i].x(), v[i].y(),
                                    A.x(), A.y(), B.x(), B.y(), C.x(), C.y(),

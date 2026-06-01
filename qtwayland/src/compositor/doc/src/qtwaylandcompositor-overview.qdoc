@@ -61,6 +61,8 @@
           integration plugin to use.
       \li \b QT_WAYLAND_SERVER_BUFFER_INTEGRATION Selects the server
           integration plugin to use.
+      \li \b QT_IVI_SURFACE_ID Specifies the IVI surface ID for the client's surface
+          in IVI-compositor environments.
       \endlist
   \li Command-line arguments:
       \list
@@ -164,6 +166,6 @@
   Qt Wayland Compositor and the Qt Wayland integration plugin
   use protocol definitions under following permissive licenses:
 
-  \generatelist{groupsbymodule attributions-qtwaylandcompositor}
+  \annotatedlist attributions-qtwaylandcompositor
 
 */

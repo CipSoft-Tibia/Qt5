@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qpa/qwindowsysteminterface.h>
 #include <private/qguiapplication_p.h>
@@ -12,17 +13,21 @@
 
 #include "qwasmbase64iconstore.h"
 #include "qwasmdom.h"
+#if QT_CONFIG(clipboard)
 #include "qwasmclipboard.h"
+#endif
 #include "qwasmintegration.h"
 #include "qwasmkeytranslator.h"
 #include "qwasmwindow.h"
-#include "qwasmwindowclientarea.h"
 #include "qwasmscreen.h"
 #include "qwasmcompositor.h"
 #include "qwasmevent.h"
 #include "qwasmeventdispatcher.h"
 #include "qwasmaccessibility.h"
-#include "qwasmclipboard.h"
+#if QT_CONFIG(draganddrop)
+#include "qwasmdrag.h"
+#endif
+#include "qwasmopenglcontext.h"
 
 #include <iostream>
 #include <sstream>
@@ -34,21 +39,11 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace {
-QWasmWindowStack::PositionPreference positionPreferenceFromWindowFlags(Qt::WindowFlags flags)
-{
-    if (flags.testFlag(Qt::WindowStaysOnTopHint))
-        return QWasmWindowStack::PositionPreference::StayOnTop;
-    if (flags.testFlag(Qt::WindowStaysOnBottomHint))
-        return QWasmWindowStack::PositionPreference::StayOnBottom;
-    return QWasmWindowStack::PositionPreference::Regular;
-}
-} // namespace
-
 Q_GUI_EXPORT int qt_defaultDpiX();
 
 QWasmWindow::QWasmWindow(QWindow *w, QWasmDeadKeySupport *deadKeySupport,
-                         QWasmCompositor *compositor, QWasmBackingStore *backingStore)
+                         QWasmCompositor *compositor, QWasmBackingStore *backingStore,
+                         WId nativeHandle)
     : QPlatformWindow(w),
       m_compositor(compositor),
       m_backingStore(backingStore),
@@ -57,7 +52,10 @@ QWasmWindow::QWasmWindow(QWindow *w, QWasmDeadKeySupport *deadKeySupport,
       m_decoratedWindow(m_document.call<emscripten::val>("createElement", emscripten::val("div"))),
       m_window(m_document.call<emscripten::val>("createElement", emscripten::val("div"))),
       m_a11yContainer(m_document.call<emscripten::val>("createElement", emscripten::val("div"))),
-      m_canvas(m_document.call<emscripten::val>("createElement", emscripten::val("canvas")))
+      m_canvas(m_document.call<emscripten::val>("createElement", emscripten::val("canvas"))),
+      m_focusHelper(m_document.call<emscripten::val>("createElement", emscripten::val("div"))),
+      m_inputElement(m_document.call<emscripten::val>("createElement", emscripten::val("input")))
+
 {
     m_decoratedWindow.set("className", "qt-decorated-window");
     m_decoratedWindow["style"].set("display", std::string("none"));
@@ -65,31 +63,65 @@ QWasmWindow::QWasmWindow(QWindow *w, QWasmDeadKeySupport *deadKeySupport,
     m_nonClientArea = std::make_unique<NonClientArea>(this, m_decoratedWindow);
     m_nonClientArea->titleBar()->setTitle(window()->title());
 
-    m_clientArea = std::make_unique<ClientArea>(this, compositor->screen(), m_window);
+    // If we are wrapping a foregin window, a.k.a. a native html element then that element becomes
+    // the m_window element. In this case setting up event handlers and accessibility etc is not
+    // needed since that is (presumably) handled by the native html element.
+    //
+    // The WId is an emscripten::val *, owned by QWindow user code. We dereference and make
+    // a copy of the val here and don't strictly need it to be kept alive, but that's an
+    // implementation detail. The pointer will be dereferenced again if the window is destroyed
+    // and recreated.
+    if (nativeHandle) {
+        m_window = *(emscripten::val *)(nativeHandle);
+        m_winId = nativeHandle;
+        m_decoratedWindow.set("id", "qt-window-" + std::to_string(m_winId));
+        m_decoratedWindow.call<void>("appendChild", m_window);
+        return;
+    }
 
     m_window.set("className", "qt-window");
     m_decoratedWindow.call<void>("appendChild", m_window);
 
     m_canvas["classList"].call<void>("add", emscripten::val("qt-window-canvas"));
 
-    // Set contentEditable for two reasons;
-    //   1) so that the window gets clipboard events,
-    //   2) For applications who will handle keyboard events, but without having inputMethodAccepted()
-    //
-    // Set inputMode to none to avoid keyboard popping up on push buttons
-    // This is a tradeoff, we are not able to separate between a push button and
-    // a widget that reads keyboard events.
-    m_canvas.call<void>("setAttribute", std::string("inputmode"), std::string("none"));
-    m_canvas.call<void>("setAttribute", std::string("contenteditable"), std::string("true"));
-    m_canvas["style"].set("outline", std::string("none"));
-
 #if QT_CONFIG(clipboard)
-    QWasmClipboard::installEventHandlers(m_canvas);
+    if (QWasmClipboard::shouldInstallWindowEventHandlers()) {
+        m_cutCallback = QWasmEventHandler(m_canvas, "cut", QWasmClipboard::cut);
+        m_copyCallback = QWasmEventHandler(m_canvas, "copy", QWasmClipboard::copy);
+        m_pasteCallback = QWasmEventHandler(m_canvas, "paste", QWasmClipboard::paste);
+    }
 #endif
 
-    // Set inputMode to none to stop the mobile keyboard from opening
-    // when the user clicks on the window.
-    m_window.set("inputMode", std::string("none"));
+    // Set up m_focusHelper, which is an invisible child element of the window which takes
+    // focus on behalf of the window any time the window has focus in general, but none
+    // of the special child elements such as the inputElment or a11y elements have focus.
+    // Set inputMode=none set to prevent the virtual keyboard from popping up.
+    m_focusHelper["classList"].call<void>("add", emscripten::val("qt-window-focus-helper"));
+    m_focusHelper.set("inputMode", std::string("none"));
+    m_focusHelper.call<void>("setAttribute", std::string("contenteditable"), std::string("true"));
+    m_focusHelper["style"].set("position", "absolute");
+    m_focusHelper["style"].set("left", 0);
+    m_focusHelper["style"].set("top", 0);
+    m_focusHelper["style"].set("width", "1px");
+    m_focusHelper["style"].set("height", "1px");
+    m_focusHelper["style"].set("z-index", -2);
+    m_focusHelper["style"].set("opacity", 0);
+    m_window.call<void>("appendChild", m_focusHelper);
+
+    // Set up m_inputElement, which takes focus whenever a Qt text input UI element has
+    // foucus.
+    m_inputElement["classList"].call<void>("add", emscripten::val("qt-window-input-element"));
+    m_inputElement.call<void>("setAttribute", std::string("contenteditable"), std::string("true"));
+    m_inputElement.set("type", "text");
+    m_inputElement["style"].set("position", "absolute");
+    m_inputElement["style"].set("left", 0);
+    m_inputElement["style"].set("top", 0);
+    m_inputElement["style"].set("width", "1px");
+    m_inputElement["style"].set("height", "1px");
+    m_inputElement["style"].set("z-index", -2);
+    m_inputElement["style"].set("opacity", 0);
+    m_inputElement["style"].set("display", "");
+    m_window.call<void>("appendChild", m_inputElement);
 
     // Hide the canvas from screen readers.
     m_canvas.call<void>("setAttribute", std::string("aria-hidden"), std::string("true"));
@@ -98,56 +130,159 @@ QWasmWindow::QWasmWindow(QWindow *w, QWasmDeadKeySupport *deadKeySupport,
     m_a11yContainer["classList"].call<void>("add", emscripten::val("qt-window-a11y-container"));
     m_window.call<void>("appendChild", m_a11yContainer);
 
+    if (QWasmAccessibility::isEnabled())
+        onAccessibilityEnable();
+
     const bool rendersTo2dContext = w->surfaceType() != QSurface::OpenGLSurface;
     if (rendersTo2dContext)
         m_context2d = m_canvas.call<emscripten::val>("getContext", emscripten::val("2d"));
-    static int serialNo = 0;
-    m_winId = ++serialNo;
+
+    m_winId = WId(&m_window);
     m_decoratedWindow.set("id", "qt-window-" + std::to_string(m_winId));
     emscripten::val::module_property("specialHTMLTargets").set(canvasSelector(), m_canvas);
 
     m_flags = window()->flags();
 
-    m_pointerEnterCallback = std::make_unique<qstdweb::EventCallback>(m_window, "pointerenter",
-        [this](emscripten::val event) { this->handlePointerEvent(PointerEvent(EventType::PointerEnter, event)); }
-    );
-    m_pointerLeaveCallback = std::make_unique<qstdweb::EventCallback>(m_window, "pointerleave",
-        [this](emscripten::val event) { this->handlePointerEvent(PointerEvent(EventType::PointerLeave, event)); }
-    );
-    m_wheelEventCallback = std::make_unique<qstdweb::EventCallback>( m_window, "wheel",
-        [this](emscripten::val event) { this->handleWheelEvent(event); });
+    registerEventHandlers();
 
-    QWasmInputContext *wasmInput = QWasmIntegration::get()->wasmInputContext();
-    if (wasmInput) {
-        m_keyDownCallbackForInputContext =
-            std::make_unique<qstdweb::EventCallback>(wasmInput->m_inputElement, "keydown",
-            [this](emscripten::val event) { this->handleKeyForInputContextEvent(event); });
-        m_keyUpCallbackForInputContext =
-            std::make_unique<qstdweb::EventCallback>(wasmInput->m_inputElement, "keyup",
-            [this](emscripten::val event) { this->handleKeyForInputContextEvent(event); });
-    }
+    m_transientWindowChangedConnection =
+        QObject::connect(
+            window(), &QWindow::transientParentChanged,
+            window(), [this](QWindow *tp) { onTransientParentChanged(tp); });
 
-    m_keyDownCallback = std::make_unique<qstdweb::EventCallback>(m_canvas, "keydown",
-        [this](emscripten::val event) { this->handleKeyEvent(event); });
-    m_keyUpCallback =std::make_unique<qstdweb::EventCallback>(m_canvas, "keyup",
-        [this](emscripten::val event) { this->handleKeyEvent(event); });
+    m_modalityChangedConnection =
+            QObject::connect(
+                window(), &QWindow::modalityChanged,
+                window(), [this](Qt::WindowModality) { onModalityChanged(); });
 
     setParent(parent());
 }
 
+void QWasmWindow::registerEventHandlers()
+{
+    m_pointerDownCallback = QWasmEventHandler(m_window, "pointerdown",
+        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerDown, event)); }
+    );
+    m_pointerMoveCallback = QWasmEventHandler(m_window, "pointermove",
+        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerMove, event)); }
+    );
+    m_pointerUpCallback = QWasmEventHandler(m_window, "pointerup",
+        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerUp, event)); }
+    );
+    m_pointerCancelCallback = QWasmEventHandler(m_window, "pointercancel",
+        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerCancel, event)); }
+    );
+    m_pointerEnterCallback = QWasmEventHandler(m_window, "pointerenter",
+        [this](emscripten::val event) { this->handlePointerEnterLeaveEvent(PointerEvent(EventType::PointerEnter, event)); }
+    );
+    m_pointerLeaveCallback = QWasmEventHandler(m_window, "pointerleave",
+        [this](emscripten::val event) { this->handlePointerEnterLeaveEvent(PointerEvent(EventType::PointerLeave, event)); }
+    );
+
+#if QT_CONFIG(draganddrop)
+    m_window.call<void>("setAttribute", emscripten::val("draggable"), emscripten::val("true"));
+    m_dragStartCallback = QWasmEventHandler(m_window, "dragstart",
+        [this](emscripten::val event) {
+            DragEvent dragEvent(EventType::DragStart, event, window());
+            QWasmDrag::instance()->onNativeDragStarted(&dragEvent);
+        }
+    );
+    m_dragOverCallback = QWasmEventHandler(m_window, "dragover",
+        [this](emscripten::val event) {
+            DragEvent dragEvent(EventType::DragOver, event, window());
+            QWasmDrag::instance()->onNativeDragOver(&dragEvent);
+        }
+    );
+    m_dropCallback = QWasmEventHandler(m_window, "drop",
+        [this](emscripten::val event) {
+            DragEvent dragEvent(EventType::Drop, event, window());
+            QWasmDrag::instance()->onNativeDrop(&dragEvent);
+        }
+    );
+    m_dragEndCallback = QWasmEventHandler(m_window, "dragend",
+        [this](emscripten::val event) {
+            DragEvent dragEvent(EventType::DragEnd, event, window());
+            QWasmDrag::instance()->onNativeDragFinished(&dragEvent);
+        }
+    );
+    m_dragLeaveCallback = QWasmEventHandler(m_window, "dragleave",
+        [this](emscripten::val event) {
+            DragEvent dragEvent(EventType::DragLeave, event, window());
+            QWasmDrag::instance()->onNativeDragLeave(&dragEvent);
+        }
+    );
+#endif // QT_CONFIG(draganddrop)
+
+    m_wheelEventCallback = QWasmEventHandler(m_window, "wheel",
+        [this](emscripten::val event) { this->handleWheelEvent(event); });
+
+    m_keyDownCallback = QWasmEventHandler(m_window, "keydown",
+        [this](emscripten::val event) { this->handleKeyEvent(KeyEvent(EventType::KeyDown, event, m_deadKeySupport)); });
+    m_keyUpCallback =QWasmEventHandler(m_window, "keyup",
+        [this](emscripten::val event) {this->handleKeyEvent(KeyEvent(EventType::KeyUp, event, m_deadKeySupport)); });
+
+    m_inputCallback = QWasmEventHandler(m_window, "input",
+        [this](emscripten::val event){ handleInputEvent(event); });
+    m_compositionUpdateCallback = QWasmEventHandler(m_window, "compositionupdate",
+        [this](emscripten::val event){ handleCompositionUpdateEvent(event); });
+    m_compositionStartCallback = QWasmEventHandler(m_window, "compositionstart",
+        [this](emscripten::val event){ handleCompositionStartEvent(event); });
+    m_compositionEndCallback = QWasmEventHandler(m_window, "compositionend",
+        [this](emscripten::val event){ handleCompositionEndEvent(event); });
+    m_beforeInputCallback = QWasmEventHandler(m_window, "beforeinput",
+        [this](emscripten::val event){ handleBeforeInputEvent(event); });
+    }
+
 QWasmWindow::~QWasmWindow()
 {
+    QWasmOpenGLContext::destroyWebGLContext(this);
+
+#if QT_CONFIG(accessibility)
+    QWasmAccessibility::onRemoveWindow(window());
+#endif
+    QObject::disconnect(m_transientWindowChangedConnection);
+    QObject::disconnect(m_modalityChangedConnection);
+
     shutdown();
 
     emscripten::val::module_property("specialHTMLTargets").delete_(canvasSelector());
     m_window.call<void>("removeChild", m_canvas);
+    m_window.call<void>("removeChild", m_a11yContainer);
     m_context2d = emscripten::val::undefined();
     commitParent(nullptr);
     if (m_requestAnimationFrameId > -1)
         emscripten_cancel_animation_frame(m_requestAnimationFrameId);
-#if QT_CONFIG(accessibility)
-    QWasmAccessibility::removeAccessibilityEnableButton(window());
-#endif
+}
+
+void QWasmWindow::shutdown()
+{
+    if (!window() ||
+        (QGuiApplication::focusWindow() && // Don't act if we have a focus window different from this
+         QGuiApplication::focusWindow() != window()))
+        return;
+
+    // Make a list of all windows sorted on active index.
+    // Skip windows with active index 0 as they have
+    // never been active.
+    std::map<uint64_t, QWasmWindow *> allWindows;
+    for (const auto &w : platformScreen()->allWindows()) {
+        if (w->getActiveIndex() > 0)
+            allWindows.insert({w->getActiveIndex(), w});
+    }
+
+    // window is not in all windows
+    if (getActiveIndex() > 0)
+        allWindows.insert({getActiveIndex(), this});
+
+    if (allWindows.size() >= 2) {
+        const auto lastIt = std::prev(allWindows.end());
+        const auto prevIt = std::prev(lastIt);
+        const auto lastW = lastIt->second;
+        const auto prevW = prevIt->second;
+
+        if (lastW == this) // Only act if window is last to be active
+            prevW->requestActivateWindow();
+    }
 }
 
 QSurfaceFormat QWasmWindow::format() const
@@ -155,9 +290,29 @@ QSurfaceFormat QWasmWindow::format() const
     return window()->requestedFormat();
 }
 
-QWasmWindow *QWasmWindow::fromWindow(QWindow *window)
+QWasmWindow *QWasmWindow::fromWindow(const QWindow *window)
 {
+    if (!window ||!window->handle())
+        return nullptr;
     return static_cast<QWasmWindow *>(window->handle());
+}
+
+QWasmWindow *QWasmWindow::transientParent() const
+{
+    if (!window())
+        return nullptr;
+
+    return fromWindow(window()->transientParent());
+}
+
+Qt::WindowFlags QWasmWindow::windowFlags() const
+{
+    return window()->flags();
+}
+
+bool QWasmWindow::isModal() const
+{
+    return window()->isModal();
 }
 
 void QWasmWindow::onRestoreClicked()
@@ -216,7 +371,7 @@ void QWasmWindow::initialize()
 #if QT_CONFIG(accessibility)
     // Add accessibility-enable button. The user can activate this
     // button to opt-in to accessibility.
-     if (window()->isTopLevel())
+    if (window()->isTopLevel())
         QWasmAccessibility::addAccessibilityEnableButton(window());
 #endif
 }
@@ -330,8 +485,12 @@ void QWasmWindow::setVisible(bool visible)
     if (window() == QGuiApplication::focusWindow())
         focus();
 
-    if (visible)
+    if (visible) {
         applyWindowState();
+#if QT_CONFIG(accessibility)
+        QWasmAccessibility::onShowWindow(window());
+#endif
+    }
 }
 
 bool QWasmWindow::isVisible() const
@@ -390,30 +549,14 @@ void QWasmWindow::onActivationChanged(bool active)
     dom::syncCSSClassWith(m_decoratedWindow, "inactive", !active);
 }
 
-// Fix top level window flags in case only the type flags are passed.
-static inline Qt::WindowFlags fixTopLevelWindowFlags(Qt::WindowFlags flags)
-{
-    if (!(flags.testFlag(Qt::CustomizeWindowHint))) {
-        if (flags.testFlag(Qt::Window)) {
-            flags |= Qt::WindowTitleHint | Qt::WindowSystemMenuHint
-                  |Qt::WindowMaximizeButtonHint|Qt::WindowCloseButtonHint;
-        }
-        if (flags.testFlag(Qt::Dialog) || flags.testFlag(Qt::Tool))
-            flags |= Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowCloseButtonHint;
-
-        if ((flags & Qt::WindowType_Mask) == Qt::SplashScreen)
-            flags |= Qt::FramelessWindowHint;
-    }
-    return flags;
-}
-
 void QWasmWindow::setWindowFlags(Qt::WindowFlags flags)
 {
     flags = fixTopLevelWindowFlags(flags);
 
-    if (flags.testFlag(Qt::WindowStaysOnTopHint) != m_flags.testFlag(Qt::WindowStaysOnTopHint)
-        || flags.testFlag(Qt::WindowStaysOnBottomHint)
-                != m_flags.testFlag(Qt::WindowStaysOnBottomHint)) {
+    if ((flags.testFlag(Qt::WindowStaysOnTopHint) != m_flags.testFlag(Qt::WindowStaysOnTopHint))
+        || (flags.testFlag(Qt::WindowStaysOnBottomHint)
+            != m_flags.testFlag(Qt::WindowStaysOnBottomHint))
+        || shouldBeAboveTransientParentFlags(flags) != shouldBeAboveTransientParentFlags(m_flags)) {
         onPositionPreferenceChanged(positionPreferenceFromWindowFlags(flags));
     }
     m_flags = flags;
@@ -503,12 +646,18 @@ void QWasmWindow::commitParent(QWasmWindowTreeNode *parent)
     m_commitedParent = parent;
 }
 
-void QWasmWindow::handleKeyEvent(const emscripten::val &event)
+void QWasmWindow::handleKeyEvent(const KeyEvent &event)
 {
-    qCDebug(qLcQpaWasmInputContext) << "processKey as KeyEvent";
-    if (processKey(*KeyEvent::fromWebWithDeadKeyTranslation(event, m_deadKeySupport)))
-        event.call<void>("preventDefault");
-    event.call<void>("stopPropagation");
+    qCDebug(qLcQpaWasmInputContext) << "handleKeyEvent";
+
+    if (QWasmInputContext *inputContext = QWasmIntegration::get()->wasmInputContext(); inputContext->isActive()) {
+        handleKeyForInputContextEvent(event);
+    } else {
+        if (processKey(event)) {
+            event.webEvent.call<void>("preventDefault");
+            event.webEvent.call<void>("stopPropagation");
+        }
+    }
 }
 
 bool QWasmWindow::processKey(const KeyEvent &event)
@@ -516,63 +665,40 @@ bool QWasmWindow::processKey(const KeyEvent &event)
     constexpr bool ProceedToNativeEvent = false;
     Q_ASSERT(event.type == EventType::KeyDown || event.type == EventType::KeyUp);
 
+#if QT_CONFIG(clipboard)
     const auto clipboardResult =
             QWasmIntegration::get()->getWasmClipboard()->processKeyboard(event);
 
     using ProcessKeyboardResult = QWasmClipboard::ProcessKeyboardResult;
     if (clipboardResult == ProcessKeyboardResult::NativeClipboardEventNeeded)
         return ProceedToNativeEvent;
+#endif
 
     const auto result = QWindowSystemInterface::handleKeyEvent(
             0, event.type == EventType::KeyDown ? QEvent::KeyPress : QEvent::KeyRelease, event.key,
             event.modifiers, event.text, event.autoRepeat);
+
+#if QT_CONFIG(clipboard)
     return clipboardResult == ProcessKeyboardResult::NativeClipboardEventAndCopiedDataNeeded
             ? ProceedToNativeEvent
             : result;
+#else
+    return result;
+#endif
 }
 
-void QWasmWindow::handleKeyForInputContextEvent(const emscripten::val &event)
+void QWasmWindow::handleKeyForInputContextEvent(const KeyEvent &keyEvent)
 {
-    //
-    // Things to consider:
-    //
-    // (Alt + '̃~') + a      -> compose('~', 'a')
-    // (Compose) + '\'' + e -> compose('\'', 'e')
-    // complex (i.e Chinese et al) input handling
-    // Multiline text edit backspace at start of line
-    //
-    const QWasmInputContext *wasmInput = QWasmIntegration::get()->wasmInputContext();
-    if (wasmInput) {
-        const auto keyString = QString::fromStdString(event["key"].as<std::string>());
-        qCDebug(qLcQpaWasmInputContext) << "Key callback" << keyString << keyString.size();
-        if (keyString == "Unidentified") {
-            // Android makes a bunch of KeyEvents as "Unidentified"
-            // They will be processed just in InputContext.
-            return;
-        } else if (event["isComposing"].as<bool>()) {
-            // Handled by the input context
-            return;
-        } else if (event["ctrlKey"].as<bool>()
-                || event["altKey"].as<bool>()
-                || event["metaKey"].as<bool>()) {
-            // Not all platforms use 'isComposing' for '~' + 'a', in this
-            // case send the key with state ('ctrl', 'alt', or 'meta') to
-            // processKeyForInputContext
-
-            ; // fallthrough
-        } else if (keyString.size() != 1) {
-            // This is like; 'Shift','ArrowRight','AltGraph', ...
-            // send all of these to processKeyForInputContext
-
-            ; // fallthrough
-        } else if (wasmInput->inputMethodAccepted()) {
-            // processed in inputContext with skipping processKey
-            return;
-        }
-    }
+    // Don't send Qt key events if the key event is a part of input composition,
+    // let those be handled by by the input event key handler. Check for the
+    // keyCode 229 as well as isComposing in order catch all cases (see mdn
+    // docs for the keyDown event)
+    if (keyEvent.isComposing || keyEvent.keyCode == 229)
+        return;
 
     qCDebug(qLcQpaWasmInputContext) << "processKey as KeyEvent";
-    if (processKeyForInputContext(*KeyEvent::fromWebWithDeadKeyTranslation(event, m_deadKeySupport)))
+    emscripten::val event = keyEvent.webEvent;
+    if (processKeyForInputContext(keyEvent))
         event.call<void>("preventDefault");
     event.call<void>("stopImmediatePropagation");
 }
@@ -593,20 +719,62 @@ bool QWasmWindow::processKeyForInputContext(const KeyEvent &event)
             0, event.type == EventType::KeyDown ? QEvent::KeyPress : QEvent::KeyRelease, event.key,
             event.modifiers, event.text);
 
+#if QT_CONFIG(clipboard)
     // Copy/Cut callback required to copy qtClipboard to system clipboard
     if (keySeq == QKeySequence::Copy || keySeq == QKeySequence::Cut)
         return false;
+#endif
 
     return result;
 }
 
-void QWasmWindow::handlePointerEvent(const PointerEvent &event)
+void QWasmWindow::handleInputEvent(emscripten::val event)
 {
-    if (processPointer(event))
+    if (QWasmInputContext *inputContext = QWasmIntegration::get()->wasmInputContext(); inputContext->isActive())
+        inputContext->inputCallback(event);
+    else
+        m_focusHelper.set("innerHTML", std::string());
+}
+
+void QWasmWindow::handleCompositionStartEvent(emscripten::val event)
+{
+    if (QWasmInputContext *inputContext = QWasmIntegration::get()->wasmInputContext(); inputContext->isActive())
+        inputContext->compositionStartCallback(event);
+    else
+        m_focusHelper.set("innerHTML", std::string());
+}
+
+void QWasmWindow::handleCompositionUpdateEvent(emscripten::val event)
+{
+    if (QWasmInputContext *inputContext = QWasmIntegration::get()->wasmInputContext(); inputContext->isActive())
+        inputContext->compositionUpdateCallback(event);
+    else
+        m_focusHelper.set("innerHTML", std::string());
+}
+
+void QWasmWindow::handleCompositionEndEvent(emscripten::val event)
+{
+    if (QWasmInputContext *inputContext = QWasmIntegration::get()->wasmInputContext(); inputContext->isActive())
+        inputContext->compositionEndCallback(event);
+    else
+        m_focusHelper.set("innerHTML", std::string());
+}
+
+void QWasmWindow::handleBeforeInputEvent(emscripten::val event)
+{
+     if (QWasmInputContext *inputContext = QWasmIntegration::get()->wasmInputContext(); inputContext->isActive())
+        inputContext->beforeInputCallback(event);
+    else
+        m_focusHelper.set("innerHTML", std::string());
+}
+
+void QWasmWindow::handlePointerEnterLeaveEvent(const PointerEvent &event)
+{
+    if (processPointerEnterLeave(event))
         event.webEvent.call<void>("preventDefault");
 }
 
-bool QWasmWindow::processPointer(const PointerEvent &event)
+bool QWasmWindow::processPointerEnterLeave(const PointerEvent &event)
 {
     if (event.pointerType != PointerType::Mouse && event.pointerType != PointerType::Pen)
         return false;
@@ -627,6 +795,142 @@ bool QWasmWindow::processPointer(const PointerEvent &event)
     }
 
     return false;
+}
+
+void QWasmWindow::processPointer(const PointerEvent &event)
+{
+    switch (event.type) {
+    case EventType::PointerDown:
+        if (event.isTargetedForQtElement())
+            m_window.call<void>("setPointerCapture", event.pointerId);
+
+        if ((window()->flags() & Qt::WindowDoesNotAcceptFocus)
+                    != Qt::WindowDoesNotAcceptFocus
+            && window()->isTopLevel())
+                window()->requestActivate();
+        break;
+    case EventType::PointerUp:
+        if (event.isTargetedForQtElement())
+            m_window.call<void>("releasePointerCapture", event.pointerId);
+        break;
+    default:
+        break;
+    };
+
+    const bool eventAccepted = deliverPointerEvent(event);
+    if (!eventAccepted && event.type == EventType::PointerDown)
+        QGuiApplicationPrivate::instance()->closeAllPopups();
+
+    if (eventAccepted) {
+        event.webEvent.call<void>("preventDefault");
+        event.webEvent.call<void>("stopPropagation");
+    }
+}
+
+bool QWasmWindow::deliverPointerEvent(const PointerEvent &event)
+{
+    const auto pointInScreen = platformScreen()->mapFromLocal(
+        dom::mapPoint(event.target(), platformScreen()->element(), event.localPoint));
+
+    const auto geometryF = platformScreen()->geometry().toRectF();
+    const QPointF targetPointClippedToScreen(
+            qBound(geometryF.left(), pointInScreen.x(), geometryF.right()),
+            qBound(geometryF.top(), pointInScreen.y(), geometryF.bottom()));
+
+    if (event.pointerType == PointerType::Mouse) {
+        const QEvent::Type eventType =
+                MouseEvent::mouseEventTypeFromEventType(event.type, WindowArea::Client);
+
+        return eventType != QEvent::None
+                && QWindowSystemInterface::handleMouseEvent(
+                        window(), QWasmIntegration::getTimestamp(),
+                        window()->mapFromGlobal(targetPointClippedToScreen),
+                        targetPointClippedToScreen, event.mouseButtons, event.mouseButton,
+                        eventType, event.modifiers);
+    }
+
+    if (event.pointerType == PointerType::Pen) {
+        qreal pressure;
+        switch (event.type) {
+            case EventType::PointerDown :
+            case EventType::PointerMove :
+                pressure = event.pressure;
+                break;
+            case EventType::PointerUp :
+                pressure = 0.0;
+                break;
+            default:
+                return false;
+        }
+        // Tilt in the browser is in the range +-90, but QTabletEvent only goes to +-60.
+        qreal xTilt = qBound(-60.0, event.tiltX, 60.0);
+        qreal yTilt = qBound(-60.0, event.tiltY, 60.0);
+        // Barrel rotation is reported as 0 to 359, but QTabletEvent wants a signed value.
+        qreal rotation = event.twist > 180.0 ? 360.0 - event.twist : event.twist;
+        return QWindowSystemInterface::handleTabletEvent(
+            window(), QWasmIntegration::getTimestamp(), platformScreen()->tabletDevice(),
+            window()->mapFromGlobal(targetPointClippedToScreen),
+            targetPointClippedToScreen, event.mouseButtons, pressure, xTilt, yTilt,
+            event.tangentialPressure, rotation, event.modifiers);
+    }
+
+    QWindowSystemInterface::TouchPoint *touchPoint;
+
+    QPointF pointInTargetWindowCoords =
+            QPointF(window()->mapFromGlobal(targetPointClippedToScreen));
+    QPointF normalPosition(pointInTargetWindowCoords.x() / window()->width(),
+                           pointInTargetWindowCoords.y() / window()->height());
+
+    const auto tp = m_pointerIdToTouchPoints.find(event.pointerId);
+    if (event.pointerType != PointerType::Pen && tp != m_pointerIdToTouchPoints.end()) {
+        touchPoint = &tp.value();
+    } else {
+        touchPoint = &m_pointerIdToTouchPoints
+                              .insert(event.pointerId, QWindowSystemInterface::TouchPoint())
+                              .value();
+
+        // Assign touch point id. TouchPoint::id is int, but QGuiApplicationPrivate::processTouchEvent()
+        // will not synthesize mouse events for touch points with negative id; use the absolute value for
+        // the touch point id.
+        touchPoint->id = qAbs(event.pointerId);
+
+        touchPoint->state = QEventPoint::State::Pressed;
+    }
+
+    const bool stationaryTouchPoint = (normalPosition == touchPoint->normalPosition);
+    touchPoint->normalPosition = normalPosition;
+    touchPoint->area = QRectF(targetPointClippedToScreen, QSizeF(event.width, event.height))
+                                   .translated(-event.width / 2, -event.height / 2);
+    touchPoint->pressure = event.pressure;
+
+    switch (event.type) {
+    case EventType::PointerUp:
+        touchPoint->state = QEventPoint::State::Released;
+        break;
+    case EventType::PointerMove:
+        touchPoint->state = (stationaryTouchPoint ? QEventPoint::State::Stationary
+                                                  : QEventPoint::State::Updated);
+        break;
+    default:
+        break;
+    }
+
+    QList<QWindowSystemInterface::TouchPoint> touchPointList;
+    touchPointList.reserve(m_pointerIdToTouchPoints.size());
+    std::transform(m_pointerIdToTouchPoints.begin(), m_pointerIdToTouchPoints.end(),
+                   std::back_inserter(touchPointList),
+                   [](const QWindowSystemInterface::TouchPoint &val) { return val; });
+
+    if (event.type == EventType::PointerUp || event.type == EventType::PointerCancel)
+        m_pointerIdToTouchPoints.remove(event.pointerId);
+
+    return event.type == EventType::PointerCancel
+            ? QWindowSystemInterface::handleTouchCancelEvent(
+                    window(), QWasmIntegration::getTimestamp(), platformScreen()->touchDevice(),
+                    event.modifiers)
+            : QWindowSystemInterface::handleTouchEvent(
+                    window(), QWasmIntegration::getTimestamp(), platformScreen()->touchDevice(),
+                    touchPointList, event.modifiers);
 }
 
 void QWasmWindow::handleWheelEvent(const emscripten::val &event)
@@ -657,6 +961,55 @@ bool QWasmWindow::processWheel(const WheelEvent &event)
             pointInScreen, (event.delta * scrollFactor).toPoint(),
             (event.delta * scrollFactor).toPoint(), event.modifiers, Qt::NoScrollPhase,
             Qt::MouseEventNotSynthesized, event.webkitDirectionInvertedFromDevice);
+}
+
+// Fix top level window flags in case only the type flags are passed.
+Qt::WindowFlags QWasmWindow::fixTopLevelWindowFlags(Qt::WindowFlags flags) const
+{
+    if (!(flags.testFlag(Qt::CustomizeWindowHint))) {
+        if (flags.testFlag(Qt::Window)) {
+            flags |= Qt::WindowTitleHint | Qt::WindowSystemMenuHint
+                  |Qt::WindowMaximizeButtonHint|Qt::WindowCloseButtonHint;
+        }
+        if (flags.testFlag(Qt::Dialog) || flags.testFlag(Qt::Tool))
+            flags |= Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowCloseButtonHint;
+
+        if ((flags & Qt::WindowType_Mask) == Qt::SplashScreen)
+            flags |= Qt::FramelessWindowHint;
+    }
+    return flags;
+}
+
+bool QWasmWindow::shouldBeAboveTransientParentFlags(Qt::WindowFlags flags) const
+{
+    if (!transientParent())
+        return false;
+
+    if (isModal())
+        return true;
+
+    if (flags.testFlag(Qt::Tool) ||
+        flags.testFlag(Qt::SplashScreen) ||
+        flags.testFlag(Qt::ToolTip) ||
+        flags.testFlag(Qt::Popup))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+QWasmWindowStack<>::PositionPreference QWasmWindow::positionPreferenceFromWindowFlags(Qt::WindowFlags flags) const
+{
+    flags = fixTopLevelWindowFlags(flags);
+
+    if (flags.testFlag(Qt::WindowStaysOnTopHint))
+        return QWasmWindowStack<>::PositionPreference::StayOnTop;
+    if (flags.testFlag(Qt::WindowStaysOnBottomHint))
+        return QWasmWindowStack<>::PositionPreference::StayOnBottom;
+    if (shouldBeAboveTransientParentFlags(flags))
+        return QWasmWindowStack<>::PositionPreference::StayAboveTransientParent;
+    return QWasmWindowStack<>::PositionPreference::Regular;
 }
 
 QRect QWasmWindow::normalGeometry() const
@@ -726,7 +1079,13 @@ void QWasmWindow::requestActivateWindow()
 
 void QWasmWindow::focus()
 {
-    m_canvas.call<void>("focus");
+    m_focusHelper.call<void>("focus");
+}
+
+void QWasmWindow::onAccessibilityEnable()
+{
+    m_focusHelper.call<void>("setAttribute", std::string("aria-hidden"), std::string("true"));
+    m_inputElement.call<void>("setAttribute", std::string("aria-hidden"), std::string("true"));
 }
 
 bool QWasmWindow::setMouseGrabEnabled(bool grab)
@@ -769,6 +1128,22 @@ void QWasmWindow::setMask(const QRegion &region)
     m_decoratedWindow["style"].set("clipPath", emscripten::val(cssClipPath.str()));
 }
 
+void QWasmWindow::onTransientParentChanged(QWindow *newTransientParent)
+{
+    Q_UNUSED(newTransientParent);
+
+    const auto positionPreference = positionPreferenceFromWindowFlags(window()->flags());
+    QWasmWindowTreeNode::onParentChanged(parentNode(), nullptr, positionPreference);
+    QWasmWindowTreeNode::onParentChanged(nullptr, parentNode(), positionPreference);
+}
+
+void QWasmWindow::onModalityChanged()
+{
+    const auto positionPreference = positionPreferenceFromWindowFlags(window()->flags());
+    QWasmWindowTreeNode::onParentChanged(parentNode(), nullptr, positionPreference);
+    QWasmWindowTreeNode::onParentChanged(nullptr, parentNode(), positionPreference);
+}
+
 void QWasmWindow::setParent(const QPlatformWindow *)
 {
     // The window flags depend on whether we are a
@@ -788,7 +1163,7 @@ emscripten::val QWasmWindow::containerElement()
     return m_window;
 }
 
-QWasmWindowTreeNode *QWasmWindow::parentNode()
+QWasmWindowTreeNode<> *QWasmWindow::parentNode()
 {
     if (parent())
         return static_cast<QWasmWindow *>(parent());
@@ -801,7 +1176,7 @@ QWasmWindow *QWasmWindow::asWasmWindow()
 }
 
 void QWasmWindow::onParentChanged(QWasmWindowTreeNode *previous, QWasmWindowTreeNode *current,
-                                  QWasmWindowStack::PositionPreference positionPreference)
+                                  QWasmWindowStack<>::PositionPreference positionPreference)
 {
     if (previous)
         previous->containerElement().call<void>("removeChild", m_decoratedWindow);

@@ -513,11 +513,7 @@ function(qt6_android_add_apk_target target)
     endif()
     # Use genex to get path to the deployment settings, the above check only to confirm that
     # qt6_android_add_apk_target is called on an android executable target.
-    string(JOIN "" deployment_file
-        "$<GENEX_EVAL:"
-            "$<TARGET_PROPERTY:${target},QT_ANDROID_DEPLOYMENT_SETTINGS_FILE>"
-        ">"
-    )
+    _qt_internal_android_get_deployment_settings_file_genex(deployment_file)
 
     # Make global apk and aab targets depend on the current apk target.
     if(TARGET aab)
@@ -1494,17 +1490,8 @@ function(_qt_internal_configure_android_multiabi_target target)
         return()
     endif()
 
-    get_target_property(target_abis ${target} QT_ANDROID_ABIS)
-    if(target_abis)
-        # Use target-specific Qt for Android ABIs.
-        set(android_abis ${target_abis})
-    elseif(QT_ANDROID_BUILD_ALL_ABIS)
-        # Use autodetected Qt for Android ABIs.
-        set(android_abis ${QT_DEFAULT_ANDROID_ABIS})
-    elseif(QT_ANDROID_ABIS)
-        # Use project-wide Qt for Android ABIs.
-        set(android_abis ${QT_ANDROID_ABIS})
-    else()
+    _qt_internal_android_get_target_abis(android_abis ${target})
+    if(NOT android_abis)
         # User have an empty list of Qt for Android ABIs.
         message(FATAL_ERROR
             "The list of Android ABIs is empty, when building ${target}.\n"
@@ -1875,6 +1862,24 @@ function(_qt_internal_android_get_deployment_type_option out_var release_flag de
     endif()
 endfunction()
 
+function(_qt_internal_android_get_target_abis out_abis target)
+    get_target_property(target_abis ${target} QT_ANDROID_ABIS)
+    if(target_abis)
+        # Use target-specific Qt for Android ABIs.
+        set(android_abis ${target_abis})
+    elseif(QT_ANDROID_BUILD_ALL_ABIS)
+        # Use autodetected Qt for Android ABIs.
+        set(android_abis ${QT_DEFAULT_ANDROID_ABIS})
+    elseif(QT_ANDROID_ABIS)
+        # Use project-wide Qt for Android ABIs.
+        set(android_abis ${QT_ANDROID_ABIS})
+    else()
+        set(android_abis "")
+    endif()
+
+    set(${out_abis} "${android_abis}" PARENT_SCOPE)
+endfunction()
+
 function(_qt_internal_android_find_asan_runtime_lib out_asan_lib_path)
     set(cached_asan_lib "_qt_android_asan_lib_${CMAKE_ANDROID_ARCH_ABI}")
 
@@ -1947,6 +1952,17 @@ endfunction()
 # Returns the path to the Android platform-tools(adb is located there).
 function(_qt_internal_android_get_platform_tools_path out_var)
     set(${out_var} "${ANDROID_SDK_ROOT}/platform-tools" PARENT_SCOPE)
+endfunction()
+
+# Returns path to the android deployment settings
+function(_qt_internal_android_get_deployment_settings_file_genex out_var)
+    string(JOIN "" deployment_file
+        "$<GENEX_EVAL:"
+            "$<TARGET_PROPERTY:${target},QT_ANDROID_DEPLOYMENT_SETTINGS_FILE>"
+        ">"
+    )
+
+    set(${out_var} "${deployment_file}" PARENT_SCOPE)
 endfunction()
 
 set(QT_INTERNAL_ANDROID_TARGET_BUILD_DIR_SUPPORT ON CACHE INTERNAL

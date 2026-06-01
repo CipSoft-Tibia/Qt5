@@ -140,39 +140,7 @@ public:
 
     void reset() noexcept(BaseResetIsNoexcept) { BaseClass::reset(); }
 
-    [[nodiscard]] friend bool operator==(const QSharedHandle &lhs,
-                                         const QSharedHandle &rhs) noexcept
-    {
-        return lhs.get() == rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator!=(const QSharedHandle &lhs,
-                                         const QSharedHandle &rhs) noexcept
-    {
-        return lhs.get() != rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator<(const QSharedHandle &lhs, const QSharedHandle &rhs) noexcept
-    {
-        return lhs.get() < rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator<=(const QSharedHandle &lhs,
-                                         const QSharedHandle &rhs) noexcept
-    {
-        return lhs.get() <= rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator>(const QSharedHandle &lhs, const QSharedHandle &rhs) noexcept
-    {
-        return lhs.get() > rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator>=(const QSharedHandle &lhs,
-                                         const QSharedHandle &rhs) noexcept
-    {
-        return lhs.get() >= rhs.get();
-    }
+    Q_DECLARE_STRONGLY_ORDERED(QSharedHandle);
 
     using BaseClass::get;
     using BaseClass::isValid;

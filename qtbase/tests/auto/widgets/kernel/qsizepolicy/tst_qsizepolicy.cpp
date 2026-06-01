@@ -4,7 +4,6 @@
 #include <qsizepolicy.h>
 
 Q_DECLARE_METATYPE(Qt::Orientations)
-Q_DECLARE_METATYPE(QSizePolicy)
 Q_DECLARE_METATYPE(QSizePolicy::Policy)
 Q_DECLARE_METATYPE(QSizePolicy::ControlType)
 

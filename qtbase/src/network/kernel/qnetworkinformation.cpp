@@ -16,9 +16,11 @@
 
 #include <algorithm>
 #include <memory>
-#include <mutex>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
 Q_DECLARE_LOGGING_CATEGORY(lcNetInfo)
 Q_LOGGING_CATEGORY(lcNetInfo, "qt.network.info");
 
@@ -50,8 +52,6 @@ static void networkInfoCleanup()
 
     dataHolder->instanceHolder.reset();
 }
-
-using namespace Qt::Literals::StringLiterals;
 
 class QNetworkInformationDummyBackend : public QNetworkInformationBackend {
     Q_OBJECT
@@ -413,18 +413,62 @@ QNetworkInformationBackendFactory::~QNetworkInformationBackendFactory()
     network-related information through plugins.
 
     Various plugins can have various functionality supported, and so
-    you can load() plugins based on which features are needed.
+    you can load plugins based on which features are needed.
+
+    In most cases, the recommended approach is to load the
+    platform-specific backend by calling loadDefaultBackend(). This will
+    automatically select the most appropriate backend available on the
+    current platform and is suitable for the majority of applications.
+
+    \snippet code/src_network_kernel_qnetworkinformation.cpp file
+
+    For more advanced uses cases, developers may prefer to load a backend
+    based on specific capabilities or preferences. loadBackendByFeatures()
+    allows selecting a backend that supports a specific set of features,
+    such as reporting the transport mediom or signal strength. Alternatively,
+    loadBackendByName() allows loading a plugin by its name, which can include
+    platform-specific or custom backend implementations.
 
     QNetworkInformation is a singleton and stays alive from the first
-    successful load() until destruction of the QCoreApplication object.
-    If you destroy and re-create the QCoreApplication object you must call
-    load() again.
+    successful load until destruction of the QCoreApplication object.
+    If you destroy and re-create the QCoreApplication object you must load it
+    again to reinitialize the plugin.
 
     \note Because the class is a singleton while also relying on
     QCoreApplication, QNetworkInformation should always first be loaded
     in the same thread as the QCoreApplication object. This is because the
     object will also be destroyed in this thread, and various backend-specific
     components may rely on being destroyed in the same thread as it is created.
+
+    One possible use case for QNetworkInformation is to monitor network
+    connectivity status. reachability() provides an indication of whether the
+    system is considered online, based on information reported by the
+    underlying operating system or plugin. However, this information may not
+    always be accurate. For example, on Windows, the online check may rely on
+    connectivity to a Microsoft-owned server; if that server is unreachable
+    (e.g., due to firewall rules), the system may incorrectly report that it is
+    offline. As such, reachability() should not be used as a definitive
+    pre-check before attempting a network connection, but rather as a general
+    signal of connectivity state.
+
+    To use reachability() effectively, the application must also understand
+    what kind of destination it is trying to reach. For example, if the target
+    is a local IP address, then Reachability::Local or Reachability::Site may
+    be sufficient. If the destination is on the public internet, then
+    Reachability::Online is required. Without this context, interpretring the
+    reported reachability may lead to incorrect assumptions about actual
+    network access.
+
+    \warning Only Linux and Windows provide support for the finer-grained
+    Reachability::Site and Reachability::Local options. On Android and Apple
+    platforms reachability() is limited to reporting only Online, Offline or
+    Unknown. Therefore, any logic that relies on detecting Local or Site level
+    connectivity must include appropriate platform checks or fallbacks.
+
+    \snippet code/src_network_kernel_qnetworkinformation_reachability.cpp 0
+    \dots
+    \snippet code/src_network_kernel_qnetworkinformation_reachability.cpp 1
+    \dots
 
     \sa QNetworkInformation::Feature
 */
@@ -433,7 +477,7 @@ QNetworkInformationBackendFactory::~QNetworkInformationBackendFactory()
     \enum QNetworkInformation::Feature
 
     Lists all of the features that a plugin may currently support.
-    This can be used in QNetworkInformation::load().
+    This can be used in QNetworkInformation::loadBackendByFeatures().
 
     \value Reachability
         If the plugin supports this feature then the \c reachability property
@@ -598,6 +642,14 @@ QNetworkInformation::TransportMedium QNetworkInformation::transportMedium() cons
     application should perform certain network requests or uploads.
     For instance, you may not want to upload logs or diagnostics while this
     property is \c true.
+
+    \snippet code/src_network_kernel_qnetworkinformation_metering.cpp 0
+    \dots
+    \snippet code/src_network_kernel_qnetworkinformation_metering.cpp 1
+    \dots
+    \snippet code/src_network_kernel_qnetworkinformation_metering.cpp 2
+    \dots
+    \snippet code/src_network_kernel_qnetworkinformation_metering.cpp 3
 */
 bool QNetworkInformation::isMetered() const
 {
@@ -653,7 +705,7 @@ QNetworkInformation::Features QNetworkInformation::supportedFeatures() const
         \li networklistmanager
     \row
         \li Apple (macOS/iOS)
-        \li scnetworkreachability
+        \li applenetworkinformation
     \row
         \li Android
         \li android
@@ -671,7 +723,7 @@ QNetworkInformation::Features QNetworkInformation::supportedFeatures() const
     other backend has already been loaded, or if loading of the selected
     backend fails.
 
-    \sa instance(), load()
+    \sa instance(), loadBackendByName(), loadBackendByFeatures()
 */
 bool QNetworkInformation::loadDefaultBackend()
 {
@@ -765,9 +817,10 @@ QStringList QNetworkInformation::availableBackends()
 
 /*!
     Returns a pointer to the instance of the QNetworkInformation,
-    if any.
+    if any. If this method is called before a backend is loaded,
+    it returns a null pointer.
 
-    \sa load()
+    \sa loadBackendByName(), loadDefaultBackend(), loadBackendByFeatures()
 */
 QNetworkInformation *QNetworkInformation::instance()
 {

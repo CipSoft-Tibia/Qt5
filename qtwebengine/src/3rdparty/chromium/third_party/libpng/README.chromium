@@ -1,15 +1,16 @@
 Name: libpng
 URL: http://libpng.org/
-Version: 1.6.43
-CPEPrefix: cpe:/a:libpng:libpng:1.6.43
+Version: 1.6.55
+Update Mechanism: Manual
+CPEPrefix: cpe:/a:libpng:libpng:1.6.55
 Security Critical: yes
 Shipped: yes
-License: libpng license
+License: Libpng-2.0, Libpng
 License File: LICENSE
 License Android Compatible: yes
 
 Description:
-Updated to 1.6.43, stripped all unneeded files.
+Updated to 1.6.55, stripped all unneeded files.
 
 - Use custom configuration file pnglibconf.h, which turns off all features that
   are not in use.

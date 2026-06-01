@@ -4,7 +4,6 @@
 
 import("//build/buildflag_header.gni")
 import("//build/config/chrome_build.gni")
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/linux/pkg_config.gni")
 import("//build/config/ozone.gni")
@@ -147,6 +146,8 @@ jumbo_component("gl") {
     "shader_tracking.h",
     "shared_gl_fence_egl.cc",
     "shared_gl_fence_egl.h",
+    "startup_trace.cc",
+    "startup_trace.h",
     "sync_control_vsync_provider.cc",
     "sync_control_vsync_provider.h",
     "trace_util.cc",
@@ -165,7 +166,7 @@ jumbo_component("gl") {
 
   deps = [
     ":buildflags",
-    "//build:chromeos_buildflags",
+    "//build:android_buildflags",
     "//mojo/public/cpp/bindings",
     "//ui/base:ozone_buildflags",
     "//ui/gfx/mojom",
@@ -191,6 +192,10 @@ jumbo_component("gl") {
     sources += [
       "gl_angle_util_vulkan.cc",
       "gl_angle_util_vulkan.h",
+    ]
+
+    jumbo_excluded_sources += [
+      "gl_angle_util_vulkan.cc",
     ]
   }
 
@@ -261,8 +266,14 @@ jumbo_component("gl") {
       "swap_chain_presenter.h",
       "vsync_provider_win.cc",
       "vsync_provider_win.h",
+      "vsync_provider_win_dcomp.cc",
+      "vsync_provider_win_dcomp.h",
       "vsync_thread_win.cc",
       "vsync_thread_win.h",
+      "vsync_thread_win_dcomp.cc",
+      "vsync_thread_win_dcomp.h",
+      "vsync_thread_win_dxgi.cc",
+      "vsync_thread_win_dxgi.h",
     ]
 
     libs = [
@@ -362,7 +373,10 @@ jumbo_component("gl") {
 
     libs = [ "android" ]
 
-    deps += [ ":gl_jni_headers" ]
+    deps += [
+      ":gl_jni_headers",
+      "//third_party/angle:angle_gpu_info_util",
+    ]
   }
 
   if (is_android || is_chromeos || is_linux) {
@@ -578,14 +592,16 @@ group("gl_unittests_ozone") {
 
 if (is_android) {
   generate_jar_jni("surface_jni_headers") {
-    classes = [ "android/view/Surface.class" ]
+    classes = [
+      "android/view/Surface.class",
+      "android/window/InputTransferToken.class",
+    ]
   }
 
   generate_jni("gl_jni_headers") {
     sources = [
+      "../android/java/src/org/chromium/ui/gl/ChromeSurfaceTexture.java",
       "../android/java/src/org/chromium/ui/gl/ScopedJavaSurfaceControl.java",
-      "../android/java/src/org/chromium/ui/gl/SurfaceTextureListener.java",
-      "../android/java/src/org/chromium/ui/gl/SurfaceTexturePlatformWrapper.java",
     ]
     public_deps = [ ":surface_jni_headers" ]
   }

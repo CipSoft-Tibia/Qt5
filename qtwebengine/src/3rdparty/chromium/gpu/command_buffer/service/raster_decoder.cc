@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -365,7 +366,7 @@ class RasterCommandsCompletedQuery : public QueryManager::Query {
   }
 
   void QueryCounter(base::subtle::Atomic32 submit_count) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
   void Pause() override { MarkAsPaused(); }
@@ -610,8 +611,7 @@ class RasterDecoderImpl final : public RasterDecoder,
  private:
   gles2::ContextState* state() const {
     if (use_passthrough_) {
-      NOTREACHED_IN_MIGRATION();
-      return nullptr;
+      NOTREACHED();
     }
     return shared_context_state_->context_state();
   }
@@ -693,7 +693,6 @@ class RasterDecoderImpl final : public RasterDecoder,
                                  GLint y,
                                  GLsizei width,
                                  GLsizei height,
-                                 GLboolean unpack_flip_y,
                                  const volatile GLbyte* mailboxes);
   void DoWritePixelsINTERNAL(GLint x_offset,
                              GLint y_offset,
@@ -750,19 +749,6 @@ class RasterDecoderImpl final : public RasterDecoder,
                                         GLuint v_offset,
                                         GLuint v_stride,
                                         const volatile GLbyte* mailbox);
-
-  void DoConvertYUVAMailboxesToRGBINTERNAL(GLint src_x,
-                                           GLint src_y,
-                                           GLsizei width,
-                                           GLsizei height,
-                                           GLenum yuv_color_space,
-                                           GLenum plane_config,
-                                           GLenum subsampling,
-                                           const volatile GLbyte* mailboxes);
-  void DoConvertRGBAToYUVAMailboxesINTERNAL(GLenum yuv_color_space,
-                                            GLenum plane_config,
-                                            GLenum subsampling,
-                                            const volatile GLbyte* mailboxes);
 
   void DoLoseContextCHROMIUM(GLenum current, GLenum other);
   void DoBeginRasterCHROMIUM(GLfloat r,
@@ -1282,7 +1268,7 @@ Capabilities RasterDecoderImpl::GetCapabilities() {
   }
 #endif  // BUILDFLAG(SKIA_USE_DAWN)
   else {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
@@ -1294,8 +1280,7 @@ GLCapabilities RasterDecoderImpl::GetGLCapabilities() {
 }
 
 const gles2::ContextState* RasterDecoderImpl::GetContextState() {
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 void RasterDecoderImpl::RestoreGlobalState() const {
@@ -1648,8 +1633,7 @@ bool RasterDecoderImpl::ClearLevel(gles2::Texture* texture,
                                    int yoffset,
                                    int width,
                                    int height) {
-  NOTREACHED_IN_MIGRATION();
-  return true;
+  NOTREACHED();
 }
 
 bool RasterDecoderImpl::ClearCompressedTextureLevel(gles2::Texture* texture,
@@ -1658,8 +1642,7 @@ bool RasterDecoderImpl::ClearCompressedTextureLevel(gles2::Texture* texture,
                                                     unsigned format,
                                                     int width,
                                                     int height) {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 bool RasterDecoderImpl::ClearCompressedTextureLevel3D(gles2::Texture* texture,
@@ -1669,8 +1652,7 @@ bool RasterDecoderImpl::ClearCompressedTextureLevel3D(gles2::Texture* texture,
                                                       int width,
                                                       int height,
                                                       int depth) {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 int RasterDecoderImpl::GetRasterDecoderId() const {
@@ -1956,12 +1938,11 @@ void RasterDecoderImpl::DoCopySharedImageINTERNAL(
     GLint y,
     GLsizei width,
     GLsizei height,
-    GLboolean unpack_flip_y,
     const volatile GLbyte* mailboxes) {
   CopySharedImageHelper helper(&shared_image_representation_factory_,
                                shared_context_state_.get());
-  auto result = helper.CopySharedImage(xoffset, yoffset, x, y, width, height,
-                                       unpack_flip_y, mailboxes);
+  auto result =
+      helper.CopySharedImage(xoffset, yoffset, x, y, width, height, mailboxes);
   if (!result.has_value()) {
     LOCAL_SET_GL_ERROR(result.error().gl_error,
                        result.error().function_name.c_str(),
@@ -2005,7 +1986,7 @@ void RasterDecoderImpl::DoWritePixelsINTERNAL(GLint x_offset,
   }
 
   viz::SharedImageFormat dest_format = dest_shared_image->format();
-  if (SkColorTypeBytesPerPixel(viz::ToClosestSkColorType(true, dest_format)) !=
+  if (SkColorTypeBytesPerPixel(viz::ToClosestSkColorType(dest_format)) !=
       SkColorTypeBytesPerPixel(static_cast<SkColorType>(src_sk_color_type))) {
     LOCAL_SET_GL_ERROR(GL_INVALID_OPERATION, "glWritePixels",
                        "Bytes per pixel for src SkColorType and dst "
@@ -2229,13 +2210,13 @@ void RasterDecoderImpl::DoWritePixelsYUVINTERNAL(
     return;
   }
 
-  size_t row_bytes[SkYUVAInfo::kMaxPlanes];
+  std::array<size_t, SkYUVAInfo::kMaxPlanes> row_bytes;
   row_bytes[0] = src_row_bytes_plane1;
   row_bytes[1] = src_row_bytes_plane2;
   row_bytes[2] = src_row_bytes_plane3;
   row_bytes[3] = src_row_bytes_plane4;
 
-  size_t plane_offsets[SkYUVAInfo::kMaxPlanes];
+  std::array<size_t, SkYUVAInfo::kMaxPlanes> plane_offsets;
   plane_offsets[0] = 0;
   plane_offsets[1] = plane2_offset;
   plane_offsets[2] = plane3_offset;
@@ -2245,7 +2226,7 @@ void RasterDecoderImpl::DoWritePixelsYUVINTERNAL(
 
   size_t prev_byte_size = 0;
   for (int plane = 0; plane < yuv_info.numPlanes(); plane++) {
-    auto color_type = viz::ToClosestSkColorType(true, dest_format, plane);
+    auto color_type = viz::ToClosestSkColorType(dest_format, plane);
     auto plane_size =
         dest_format.GetPlaneSize(plane, gfx::Size(src_width, src_height));
     SkImageInfo src_info =
@@ -2744,43 +2725,6 @@ void RasterDecoderImpl::DoReadbackYUVImagePixelsINTERNAL(
   *result = 1;
 }
 
-void RasterDecoderImpl::DoConvertYUVAMailboxesToRGBINTERNAL(
-    GLint src_x,
-    GLint src_y,
-    GLsizei width,
-    GLsizei height,
-    GLenum planes_yuv_color_space,
-    GLenum plane_config,
-    GLenum subsampling,
-    const volatile GLbyte* bytes_in) {
-  CopySharedImageHelper helper(&shared_image_representation_factory_,
-                               shared_context_state_.get());
-  auto result = helper.ConvertYUVAMailboxesToRGB(
-      src_x, src_y, width, height, planes_yuv_color_space, plane_config,
-      subsampling, bytes_in);
-  if (!result.has_value()) {
-    LOCAL_SET_GL_ERROR(result.error().gl_error,
-                       result.error().function_name.c_str(),
-                       result.error().msg.c_str());
-  }
-}
-
-void RasterDecoderImpl::DoConvertRGBAToYUVAMailboxesINTERNAL(
-    GLenum yuv_color_space,
-    GLenum plane_config,
-    GLenum subsampling,
-    const volatile GLbyte* mailboxes_in) {
-  CopySharedImageHelper helper(&shared_image_representation_factory_,
-                               shared_context_state_.get());
-  auto result = helper.ConvertRGBAToYUVAMailboxes(yuv_color_space, plane_config,
-                                                  subsampling, mailboxes_in);
-  if (!result.has_value()) {
-    LOCAL_SET_GL_ERROR(result.error().gl_error,
-                       result.error().function_name.c_str(),
-                       result.error().msg.c_str());
-  }
-}
-
 void RasterDecoderImpl::DoLoseContextCHROMIUM(GLenum current, GLenum other) {
   MarkContextLost(gles2::GetContextLostReasonFromResetStatus(current));
 }
@@ -2917,8 +2861,7 @@ void RasterDecoderImpl::DoBeginRasterCHROMIUM(GLfloat r,
   DCHECK(locked_handles_.empty());
   DCHECK(!raster_canvas_);
 
-  SkColorType sk_color_type = viz::ToClosestSkColorType(
-      /*gpu_compositing=*/true, shared_image->format());
+  SkColorType sk_color_type = viz::ToClosestSkColorType(shared_image->format());
 
   int final_msaa_count;
   uint32_t flags;
@@ -3317,7 +3260,7 @@ void RasterDecoderImpl::DoCreateTransferCacheEntryINTERNAL(
                                          entry_id),
           handle, use_gpu ? gr_context() : nullptr,
           use_gpu ? graphite_recorder() : nullptr,
-          base::make_span(data_memory, data_size))) {
+          base::span(data_memory, data_size))) {
     LOCAL_SET_GL_ERROR(GL_INVALID_VALUE, "glCreateTransferCacheEntryINTERNAL",
                        "Failure to deserialize transfer cache entry.");
     return;

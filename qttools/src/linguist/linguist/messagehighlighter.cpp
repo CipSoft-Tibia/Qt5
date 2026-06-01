@@ -10,6 +10,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 MessageHighlighter::MessageHighlighter(QTextEdit *textEdit)
     : QSyntaxHighlighter(textEdit->document())
 {
@@ -18,18 +20,18 @@ MessageHighlighter::MessageHighlighter(QTextEdit *textEdit)
 
 void MessageHighlighter::highlightBlock(const QString &text)
 {
-    static const QLatin1Char tab = QLatin1Char('\t');
-    static const QLatin1Char space = QLatin1Char(' ');
-    static const QLatin1Char amp = QLatin1Char('&');
-    static const QLatin1Char endTag = QLatin1Char('>');
-    static const QLatin1Char quot = QLatin1Char('"');
-    static const QLatin1Char apos = QLatin1Char('\'');
-    static const QLatin1Char semicolon = QLatin1Char(';');
-    static const QLatin1Char equals = QLatin1Char('=');
-    static const QLatin1Char percent = QLatin1Char('%');
-    static const QLatin1String startComment = QLatin1String("<!--");
-    static const QLatin1String endComment = QLatin1String("-->");
-    static const QLatin1String endElement = QLatin1String("/>");
+    static constexpr QLatin1Char tab('\t');
+    static constexpr QLatin1Char space(' ');
+    static constexpr QLatin1Char amp('&');
+    static constexpr QLatin1Char endTag('>');
+    static constexpr QLatin1Char quot('"');
+    static constexpr QLatin1Char apos('\'');
+    static constexpr QLatin1Char semicolon(';');
+    static constexpr QLatin1Char equals('=');
+    static constexpr QLatin1Char percent('%');
+    static constexpr auto startComment = "<!--"_L1;
+    static constexpr auto endComment = "-->"_L1;
+    static constexpr auto endElement = "/>"_L1;
 
     int state = previousBlockState();
     int len = text.size();
@@ -42,7 +44,7 @@ void MessageHighlighter::highlightBlock(const QString &text)
         default:
             while (pos < len) {
                 QChar ch = text.at(pos);
-                if (ch == QLatin1Char('<')) {
+                if (ch == u'<') {
                     if (text.mid(pos, 4) == startComment) {
                         state = InComment;
                     } else {
@@ -77,7 +79,7 @@ void MessageHighlighter::highlightBlock(const QString &text)
                     // %[1-9]*
                     for (++pos; pos < len && text.at(pos).isDigit(); ++pos) {}
                     // %n
-                    if (pos < len && pos == start + 1 && text.at(pos) == QLatin1Char('n'))
+                    if (pos < len && pos == start + 1 && text.at(pos) == u'n')
                         ++pos;
                     setFormat(start, pos - start, m_formats[Variable]);
                 } else {

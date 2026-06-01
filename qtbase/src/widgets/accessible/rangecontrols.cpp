@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "rangecontrols_p.h"
 
@@ -35,7 +36,7 @@ using namespace Qt::StringLiterals;
 
 #if QT_CONFIG(spinbox)
 QAccessibleAbstractSpinBox::QAccessibleAbstractSpinBox(QWidget *w)
-: QAccessibleWidget(w, QAccessible::SpinBox), lineEdit(nullptr)
+    : QAccessibleWidgetV2(w, QAccessible::SpinBox), lineEdit(nullptr)
 {
     Q_ASSERT(abstractSpinBox());
 }
@@ -65,11 +66,21 @@ QAccessibleInterface *QAccessibleAbstractSpinBox::lineEditIface() const
 #endif
 }
 
+QAccessible::State QAccessibleAbstractSpinBox::state() const
+{
+    QAccessible::State state = QAccessibleWidgetV2::state();
+    if (abstractSpinBox()->isReadOnly())
+        state.readOnly = true;
+    else
+        state.editable = true;
+    return state;
+}
+
 QString QAccessibleAbstractSpinBox::text(QAccessible::Text t) const
 {
     if (t == QAccessible::Value)
         return abstractSpinBox()->text();
-    return QAccessibleWidget::text(t);
+    return QAccessibleWidgetV2::text(t);
 }
 
 void *QAccessibleAbstractSpinBox::interface_cast(QAccessible::InterfaceType t)
@@ -80,7 +91,7 @@ void *QAccessibleAbstractSpinBox::interface_cast(QAccessible::InterfaceType t)
         return static_cast<QAccessibleTextInterface*>(this);
     if (t == QAccessible::EditableTextInterface)
         return static_cast<QAccessibleEditableTextInterface*>(this);
-    return QAccessibleWidget::interface_cast(t);
+    return QAccessibleWidgetV2::interface_cast(t);
 }
 
 QVariant QAccessibleAbstractSpinBox::currentValue() const
@@ -105,7 +116,7 @@ QVariant QAccessibleAbstractSpinBox::minimumValue() const
 
 QVariant QAccessibleAbstractSpinBox::minimumStepSize() const
 {
-    return abstractSpinBox()->property("stepSize");
+    return abstractSpinBox()->property("singleStep");
 }
 
 void QAccessibleAbstractSpinBox::addSelection(int startOffset, int endOffset)
@@ -251,7 +262,7 @@ QString QAccessibleDoubleSpinBox::text(QAccessible::Text textType) const
 {
     if (textType == QAccessible::Value)
         return doubleSpinBox()->textFromValue(doubleSpinBox()->value());
-    return QAccessibleWidget::text(textType);
+    return QAccessibleWidgetV2::text(textType);
 }
 
 #endif // QT_CONFIG(spinbox)
@@ -326,7 +337,7 @@ QString QAccessibleSlider::text(QAccessible::Text t) const
 }
 
 QAccessibleAbstractSlider::QAccessibleAbstractSlider(QWidget *w, QAccessible::Role r)
-    : QAccessibleWidget(w, r)
+    : QAccessibleWidgetV2(w, r)
 {
     Q_ASSERT(qobject_cast<QAbstractSlider *>(w));
 }
@@ -335,7 +346,7 @@ void *QAccessibleAbstractSlider::interface_cast(QAccessible::InterfaceType t)
 {
     if (t == QAccessible::ValueInterface)
         return static_cast<QAccessibleValueInterface*>(this);
-    return QAccessibleWidget::interface_cast(t);
+    return QAccessibleWidgetV2::interface_cast(t);
 }
 
 QVariant QAccessibleAbstractSlider::currentValue() const

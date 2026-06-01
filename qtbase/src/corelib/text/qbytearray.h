@@ -104,7 +104,7 @@ public:
     inline void swap(QByteArray &other) noexcept
     { d.swap(other.d); }
 
-    bool isEmpty() const noexcept { return size() == 0; }
+    constexpr bool isEmpty() const noexcept { return size() == 0; }
     void resize(qsizetype size);
     void resize(qsizetype size, char c);
     void resizeForOverwrite(qsizetype size);
@@ -119,6 +119,18 @@ public:
     inline operator const char *() const;
     inline operator const void *() const;
 #endif
+
+    // Some compilers consider this conversion ambiguous, so
+    // we're not offering it there:
+    // * QCC 8.3 on QNX
+    // * GHS 2022.1.4 on INTEGRITY
+#if (!defined(Q_OS_QNX) || !defined(Q_CC_GNU_ONLY) || Q_CC_GNU_ONLY > 803) && \
+    (!defined(Q_CC_GHS) || !defined(__GHS_VERSION_NUMBER) || __GHS_VERSION_NUMBER > 202214)
+# define QT_BYTEARRAY_CONVERTS_TO_STD_STRING_VIEW
+    Q_IMPLICIT operator std::string_view() const noexcept
+    { return std::string_view(data(), std::size_t(size())); }
+#endif
+
     inline char *data();
     inline const char *data() const noexcept;
     const char *constData() const noexcept { return data(); }
@@ -411,7 +423,7 @@ public:
     [[nodiscard]] static QByteArray number(double, char format = 'g', int precision = 6);
     [[nodiscard]] static QByteArray fromRawData(const char *data, qsizetype size)
     {
-        return QByteArray(DataPointer(nullptr, const_cast<char *>(data), size));
+        return QByteArray(DataPointer::fromRawData(data, size));
     }
 
     class FromBase64Result;
@@ -498,13 +510,18 @@ public:
         // -1 to deal with the NUL terminator
         return Data::maxSize() - 1;
     }
-    inline qsizetype size() const noexcept { return d.size; }
+    constexpr qsizetype size() const noexcept
+    {
+        constexpr size_t MaxSize = maxSize();
+        Q_PRESUME(size_t(d.size) <= MaxSize);
+        return d.size;
+    }
 #if QT_DEPRECATED_SINCE(6, 4)
     QT_DEPRECATED_VERSION_X_6_4("Use size() or length() instead.")
-    inline qsizetype count() const noexcept { return size(); }
+    constexpr qsizetype count() const noexcept { return size(); }
 #endif
-    inline qsizetype length() const noexcept { return size(); }
-    QT_CORE_INLINE_SINCE(6, 4)
+    constexpr qsizetype length() const noexcept { return size(); }
+    QT_CORE_CONSTEXPR_INLINE_SINCE(6, 4)
     bool isNull() const noexcept;
 
     inline const DataPointer &data_ptr() const { return d; }
@@ -513,6 +530,10 @@ public:
     explicit inline QByteArray(const DataPointer &dd) : d(dd) {}
 #endif
     explicit inline QByteArray(DataPointer &&dd) : d(std::move(dd)) {}
+
+    [[nodiscard]] QByteArray nullTerminated() const &;
+    [[nodiscard]] QByteArray nullTerminated() &&;
+    QByteArray &nullTerminate();
 
 private:
     friend bool comparesEqual(const QByteArray &lhs, const QByteArrayView &rhs) noexcept
@@ -524,7 +545,6 @@ private:
         return Qt::compareThreeWay(res, 0);
     }
     Q_DECLARE_STRONGLY_ORDERED(QByteArray)
-    Q_DECLARE_STRONGLY_ORDERED(QByteArray, QByteArrayView)
     Q_DECLARE_STRONGLY_ORDERED(QByteArray, const char *)
 #if defined(__GLIBCXX__) && defined(__cpp_lib_three_way_comparison)
     // libstdc++ has a bug [0] when `operator const void *()` is preferred over
@@ -720,6 +740,7 @@ inline QByteArray &QByteArray::setNum(float n, char format, int precision)
 { return setNum(double(n), format, precision); }
 
 #if QT_CORE_INLINE_IMPL_SINCE(6, 4)
+QT_CORE_CONSTEXPR_INLINE_SINCE(6, 4)
 bool QByteArray::isNull() const noexcept
 {
     return d.isNull();

@@ -45,6 +45,7 @@ cc_library(
         "byte_array.h",
         "callable.h",
         "exception.h",
+        "expected.h",
         "feature_flags.h",
         "input_stream.h",
         "listeners.h",
@@ -62,6 +63,7 @@ cc_library(
     visibility = [
         "//:__subpackages__",
         "//chrome/chromeos/assistant/data_migration/lib:__pkg__",
+        "//connections:partners",
     ],
     deps = [
         "//proto:connections_enums_cc_proto",
@@ -89,6 +91,7 @@ cc_library(
     ],
     visibility = [
         "//connections:__subpackages__",
+        "//connections:partners",
         "//internal/platform/implementation:__subpackages__",
     ],
     deps = [
@@ -147,7 +150,6 @@ cc_library(
     ],
     visibility = [
         "//connections/implementation:__subpackages__",
-        "//fastpair:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
         "//presence:__subpackages__",
     ],
@@ -242,26 +244,23 @@ cc_library(
     ],
     visibility = [
         "//connections:__subpackages__",
-        "//fastpair:__subpackages__",
         "//internal/account:__subpackages__",
         "//internal/auth:__subpackages__",
         "//internal/auth/credential_store:__subpackages__",
         "//internal/base:__subpackages__",
         "//internal/crypto:__subpackages__",
         "//internal/data:__subpackages__",
-        "//internal/flags:__subpackages__",
         "//internal/interop:__pkg__",
         "//internal/network:__subpackages__",
         "//internal/platform:__subpackages__",
         "//internal/platform/implementation/g3:__pkg__",
-        "//internal/platform/implementation/windows:__subpackages__",
         "//internal/preferences:__subpackages__",
         "//internal/proto/analytics:__subpackages__",
         "//internal/test:__subpackages__",
         "//internal/weave:__subpackages__",
         "//location/nearby/apps:__subpackages__",
         "//location/nearby/cpp:__subpackages__",
-        "//location/nearby/sharing/sdk/test_client:__pkg__",
+        "//location/nearby/sharing/sdk:__subpackages__",
         "//location/nearby/testing/nearby_native:__subpackages__",
         "//presence:__subpackages__",
         "//sharing:__subpackages__",
@@ -269,6 +268,7 @@ cc_library(
     deps = [
         ":base",
         ":util",
+        "//connections/implementation/flags:connections_flags",
         "//internal/base:files",
         "//internal/crypto_cros",
         "//internal/flags:nearby_flags",
@@ -299,7 +299,6 @@ cc_library(
         "wifi_direct.cc",
         "wifi_hotspot.cc",
         "wifi_lan.cc",
-        "wifi_utils.cc",
     ],
     hdrs = [
         "ble.h",
@@ -312,7 +311,6 @@ cc_library(
         "wifi_direct.h",
         "wifi_hotspot.h",
         "wifi_lan.h",
-        "wifi_utils.h",
     ],
     copts = [
         "-DCORE_ADAPTER_DLL",
@@ -320,7 +318,6 @@ cc_library(
     ],
     visibility = [
         "//connections:__subpackages__",
-        "//fastpair:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
         "//internal/test:__subpackages__",
         "//presence:__subpackages__",
@@ -333,13 +330,13 @@ cc_library(
         "//internal/base",
         "//internal/platform/implementation:comm",
         "//internal/platform/implementation:platform",
+        "//internal/platform/implementation:wifi_utils",
         # TODO: Support WebRTC
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -355,7 +352,6 @@ cc_library(
     ],
     visibility = [
         "//connections:__subpackages__",
-        "//fastpair:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
         "//presence:__subpackages__",
     ],
@@ -392,6 +388,7 @@ cc_test(
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
@@ -406,6 +403,7 @@ cc_test(
         ":base",
         ":util",
         "@com_github_protobuf_matchers//protobuf-matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -420,6 +418,17 @@ cc_test(
         ":cancellation_flag",
         ":test_util",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
+        "@com_github_protobuf_matchers//protobuf-matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "expected_test",
+    srcs = ["expected_test.cc"],
+    deps = [
+        ":base",
+        "//proto:connections_enums_cc_proto",
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_googletest//:gtest_main",
     ],
@@ -447,6 +456,7 @@ cc_test(
         "ble_connection_info_test.cc",
         "ble_test.cc",
         "ble_v2_test.cc",
+        "blocking_queue_stream_test.cc",
         "bluetooth_adapter_test.cc",
         "bluetooth_classic_test.cc",
         "bluetooth_connection_info_test.cc",
@@ -456,7 +466,6 @@ cc_test(
         "wifi_lan_connection_info_test.cc",
         "wifi_lan_test.cc",
         "wifi_test.cc",
-        "wifi_utils_test.cc",
     ],
     deps = [
         ":base",
@@ -465,6 +474,8 @@ cc_test(
         ":connection_info",
         ":test_util",
         ":types",
+        "//connections/implementation/flags:connections_flags",
+        "//internal/flags:nearby_flags",
         "//internal/platform/implementation:comm",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "//proto:connections_enums_cc_proto",

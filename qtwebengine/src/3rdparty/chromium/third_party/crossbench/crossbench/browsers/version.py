@@ -291,7 +291,7 @@ class BrowserVersion(abc.ABC):
       raise ValueError(f"Cannot compare {self} against channel {other}")
     return self.key <= other.key
 
-  def contains(self, other: BrowserVersion):
+  def contains(self, other: BrowserVersion) -> bool:
     if not isinstance(other, type(self)):
       raise TypeError("Cannot compare versions from different browsers: "
                       f"{self} vs. {other}.")

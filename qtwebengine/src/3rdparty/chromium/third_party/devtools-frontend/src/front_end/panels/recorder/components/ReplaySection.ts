@@ -5,7 +5,7 @@
 import * as Host from '../../../core/host/host.js';
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as Lit from '../../../ui/lit/lit.js';
 import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 import type * as Extensions from '../extensions/extensions.js';
 import type * as Models from '../models/models.js';
@@ -13,12 +13,13 @@ import {PlayRecordingSpeed} from '../models/RecordingPlayer.js';
 import * as Actions from '../recorder-actions/recorder-actions.js';
 
 import {
-  SelectButton,
   type SelectButtonClickEvent,
   type SelectButtonItem,
   type SelectMenuSelectedEvent,
   Variant as SelectButtonVariant,
 } from './SelectButton.js';
+
+const {html} = Lit;
 
 const UIStrings = {
   /**
@@ -130,7 +131,6 @@ export interface ReplaySectionData {
 const REPLAY_EXTENSION_PREFIX = 'extension';
 
 export class ReplaySection extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-replay-section`;
   readonly #shadow = this.attachShadow({mode: 'open'});
   readonly #boundRender = this.#render.bind(this);
   readonly #props: ReplaySectionProps = {disabled: false};
@@ -223,20 +223,20 @@ export class ReplaySection extends HTMLElement {
     }
 
     // clang-format off
-    LitHtml.render(
-      LitHtml.html`
-    <${SelectButton.litTagName}
+    Lit.render(
+      html`
+    <devtools-select-button
       @selectmenuselected=${this.#handleSelectMenuSelected}
       @selectbuttonclick=${this.#handleSelectButtonClick}
       .variant=${SelectButtonVariant.PRIMARY}
       .showItemDivider=${false}
       .disabled=${this.#props.disabled}
       .action=${Actions.RecorderActions.REPLAY_RECORDING}
-      .value=${this.#settings?.replayExtension || this.#settings?.speed}
+      .value=${this.#settings?.replayExtension || this.#settings?.speed || ''}
       .buttonLabel=${i18nString(UIStrings.Replay)}
       .groups=${groups}
       jslog=${VisualLogging.action(Actions.RecorderActions.REPLAY_RECORDING).track({click: true})}>
-    </${SelectButton.litTagName}>`,
+    </devtools-select-button>`,
       this.#shadow,
       { host: this },
     );

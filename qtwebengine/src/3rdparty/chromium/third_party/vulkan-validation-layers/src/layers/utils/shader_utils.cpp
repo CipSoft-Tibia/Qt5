@@ -1,7 +1,7 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
- * Copyright (C) 2015-2023 Google Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
+ * Copyright (C) 2015-2025 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +20,13 @@
 #include "shader_utils.h"
 
 #include "generated/device_features.h"
+#include "generated/vk_api_version.h"
+#include "generated/vk_extension_helper.h"
 #include "utils/hash_util.h"
 
 #include "generated/spirv_tools_commit_id.h"
+
+#include <fstream>
 
 void ValidationCache::GetUUID(uint8_t *uuid) {
     const char *sha1_str = SPIRV_TOOLS_COMMIT_ID;
@@ -134,6 +138,7 @@ void AdjustValidatorOptions(const DeviceExtensions &device_extensions, const Dev
         bool scalar_block_layout;
         bool workgroup_scalar_block_layout;
         bool allow_local_size_id;
+        bool allow_offset_texture_operand;
     } settings;
 
     // VK_KHR_relaxed_block_layout never had a feature bit so just enabling the extension allows relaxed layout
@@ -145,6 +150,7 @@ void AdjustValidatorOptions(const DeviceExtensions &device_extensions, const Dev
     settings.scalar_block_layout = enabled_features.scalarBlockLayout == VK_TRUE;
     settings.workgroup_scalar_block_layout = enabled_features.workgroupMemoryExplicitLayoutScalarBlockLayout == VK_TRUE;
     settings.allow_local_size_id = enabled_features.maintenance4 == VK_TRUE;
+    settings.allow_offset_texture_operand = enabled_features.maintenance8 == VK_TRUE;
 
     if (settings.relax_block_layout) {
         // --relax-block-layout
@@ -166,6 +172,10 @@ void AdjustValidatorOptions(const DeviceExtensions &device_extensions, const Dev
         // --allow-localsizeid
         out_options.SetAllowLocalSizeId(true);
     }
+    if (settings.allow_offset_texture_operand) {
+        // --allow-offset-texture-operand
+        out_options.SetAllowOffsetTextureOperand(true);
+    }
 
     // Faster validation without friendly names.
     out_options.SetFriendlyNames(false);
@@ -174,4 +184,10 @@ void AdjustValidatorOptions(const DeviceExtensions &device_extensions, const Dev
     if (out_hash) {
         *out_hash = hash_util::ShaderHash(&settings, sizeof(Settings));
     }
+}
+
+// This is used to help dump SPIR-V while debugging intermediate phases of any altercations to the SPIR-V
+void DumpSpirvToFile(std::string file_name, const char *spirv_data, size_t spirv_size) {
+    std::ofstream debug_file(file_name, std::ios::out | std::ios::binary);
+    debug_file.write(spirv_data, spirv_size);
 }

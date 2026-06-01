@@ -160,7 +160,7 @@ class OutsideSettingsCSPDelegate final
   void ReportBlockedScriptExecutionToInspector(
       const String& directive_text) override {
     // This shouldn't be called during top-level worker script fetch.
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
   void DidAddContentSecurityPolicies(
@@ -248,10 +248,8 @@ WorkerOrWorkletGlobalScope::~WorkerOrWorkletGlobalScope() = default;
 
 // EventTarget
 const AtomicString& WorkerOrWorkletGlobalScope::InterfaceName() const {
-  NOTREACHED_IN_MIGRATION()
-      << "Each global scope that uses events should define its own "
-         "interface name.";
-  return g_null_atom;
+  NOTREACHED() << "Each global scope that uses events should define its own "
+                  "interface name.";
 }
 
 v8::Local<v8::Value> WorkerOrWorkletGlobalScope::Wrap(ScriptState*) {
@@ -549,7 +547,7 @@ void WorkerOrWorkletGlobalScope::InitContentSecurityPolicyFromVector(
         GetSecurityOrigin()->Protocol()));
 
     // Check if the embedder wants to add any default policies, and add them.
-    WebVector<WebContentSecurityPolicyHeader> embedder_default_csp;
+    std::vector<WebContentSecurityPolicyHeader> embedder_default_csp;
     Platform::Current()->AppendContentSecurityPolicy(WebURL(Url()),
                                                      &embedder_default_csp);
     for (const auto& header : embedder_default_csp) {

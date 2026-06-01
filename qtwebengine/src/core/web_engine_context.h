@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef WEB_ENGINE_CONTEXT_H
 #define WEB_ENGINE_CONTEXT_H
@@ -80,8 +81,7 @@ public:
     void removeProfileAdapter(ProfileAdapter *profileAdapter);
     bool profileExistOnPath(const QString &dataPath);
     void destroy();
-    static base::CommandLine *initCommandLine(bool &useEmbeddedSwitches,
-                                              bool &enableGLSoftwareRendering);
+    static base::CommandLine *initCommandLine(bool *useEmbeddedSwitches);
 
 private:
     friend class base::RefCounted<WebEngineContext>;

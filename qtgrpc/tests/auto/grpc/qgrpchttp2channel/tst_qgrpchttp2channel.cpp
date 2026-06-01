@@ -75,8 +75,12 @@ void QGrpcHttp2ChannelTest::attachChannelThreadTest()
     thread->wait();
 
     TestService::Client client;
+    QSignalSpy spy(&client, &QGrpcClientBase::channelChanged);
     QVERIFY(!client.attachChannel(threadChannel));
-    QVERIFY(client.attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl())));
+    auto validChannel = std::make_shared<QGrpcHttp2Channel>(QUrl());
+    QVERIFY(client.attachChannel(validChannel));
+    QVERIFY(!client.attachChannel(validChannel));
+    QCOMPARE_EQ(spy.count(), 1);
 }
 
 void QGrpcHttp2ChannelTest::rpcThreadTest()

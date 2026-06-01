@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsloggingutils_p.h"
 
@@ -149,7 +150,6 @@ namespace LoggingUtils {
 
 QString levelToString(const QQmlJS::LoggerCategory &category)
 {
-    Q_ASSERT(category.isIgnored() || category.level() != QtCriticalMsg);
     if (category.isIgnored())
         return QStringLiteral("disable");
 
@@ -158,6 +158,8 @@ QString levelToString(const QQmlJS::LoggerCategory &category)
         return QStringLiteral("info");
     case QtWarningMsg:
         return QStringLiteral("warning");
+    case QtCriticalMsg:
+        return QStringLiteral("error");
     default:
         Q_UNREACHABLE();
         break;
@@ -167,9 +169,30 @@ QString levelToString(const QQmlJS::LoggerCategory &category)
 static QStringList settingsNamesForCategory(const LoggerCategory &category)
 {
     const QString name = category.settingsName();
-    const QStringList result{ QStringLiteral("Warnings/") += name,
-                              QStringLiteral("Warnings/") += name.sliced(name.indexOf(u'.') + 1) };
+    QStringList result{ QStringLiteral("Warnings/") + name };
+    const QString sliced = "Warnings/"_L1 + name.sliced(name.indexOf(u'.') + 1);
+    if (sliced != result.last())
+        result.append(sliced);
     return result;
+}
+
+static QString lookInSettings(const LoggerCategory &category, const QQmlToolingSettings &settings,
+                              const QString &settingsName)
+{
+    if (settings.isSet(settingsName))
+        return settings.value(settingsName).toString();
+    static constexpr QLatin1String propertyAliasCyclesKey = "Warnings/PropertyAliasCycles"_L1;
+
+    // keep compatibility to deprecated settings
+    if (category.name() == qmlAliasCycle.name() || category.name() == qmlUnresolvedAlias.name()) {
+        if (settings.isSet(propertyAliasCyclesKey)) {
+            qWarning()
+                    << "Detected deprecated setting name \"PropertyAliasCycles\". Use %1 or %2 instead."_L1
+                               .arg(qmlAliasCycle.name(), qmlUnresolvedAlias.name());
+            return settings.value(propertyAliasCyclesKey).toString();
+        }
+    }
+    return {};
 }
 
 static QString levelValueForCategory(const LoggerCategory &category,
@@ -182,9 +205,9 @@ static QString levelValueForCategory(const LoggerCategory &category,
 
     const QStringList settingsName = settingsNamesForCategory(category);
     for (const QString &settingsName : settingsName) {
-        if (!settings.isSet(settingsName))
+        const QString value = lookInSettings(category, settings, settingsName);
+        if (value.isEmpty())
             continue;
-        const QString value = settings.value(settingsName).toString();
 
         // Do not try to set the levels if it's due to a default config option.
         // This way we can tell which options have actually been overwritten by the user.
@@ -198,6 +221,10 @@ static QString levelValueForCategory(const LoggerCategory &category,
 
 bool applyLevelToCategory(const QStringView level, LoggerCategory &category)
 {
+    // you can't downgrade errors
+    if (category.level() == QtCriticalMsg && !category.isIgnored() && level != "error"_L1)
+        return false;
+
     if (level == "disable"_L1) {
         category.setLevel(QtCriticalMsg);
         category.setIgnored(true);
@@ -213,6 +240,12 @@ bool applyLevelToCategory(const QStringView level, LoggerCategory &category)
         category.setIgnored(false);
         return true;
     }
+    if (level == "error"_L1) {
+        category.setLevel(QtCriticalMsg);
+        category.setIgnored(false);
+        return true;
+    }
+
     return false;
 };
 
@@ -237,9 +270,9 @@ void updateLogLevels(QList<LoggerCategory> &categories,
         if (!applyLevelToCategory(value, category)) {
             qWarning() << "Invalid logging level" << value << "provided for"
                        << category.id().name().toString()
-                       << "(allowed are: disable, info, warning)";
+                       << "(allowed are: disable, info, warning, error)\n."
+                          "You can't change categories that have level \"error\" by default.";
             success = false;
-
         }
     }
     if (!success && parser)

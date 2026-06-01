@@ -8,5 +8,6 @@ QtObject {
     property color test5: Qt.hsva(1.2, 1.3, 1.4, 1.5);
     property color test6: Qt.hsva(-0.1, -0.2, -0.3, -0.4);
     property color test7: Qt.hsva(-1, 0, 0.5, 1);
+    property color test8: Qt.hsva(undefined, undefined, undefined, undefined); // should not crash
 }
 

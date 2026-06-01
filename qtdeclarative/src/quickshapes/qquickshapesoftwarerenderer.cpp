@@ -17,11 +17,6 @@ void QQuickShapeSoftwareRenderer::beginSync(int totalCount, bool *countChanged)
     }
 }
 
-void QQuickShapeSoftwareRenderer::setPath(int index, const QQuickPath *path)
-{
-    setPath(index, path ? path->path() : QPainterPath());
-}
-
 void QQuickShapeSoftwareRenderer::setPath(int index, const QPainterPath &path, QQuickShapePath::PathHints)
 {
     ShapePathGuiData &d(m_sp[index]);

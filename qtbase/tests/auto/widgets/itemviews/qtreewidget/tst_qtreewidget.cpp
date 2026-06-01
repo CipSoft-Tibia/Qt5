@@ -130,8 +130,9 @@ private slots:
     void persistentChildIndex();
     void createPersistentOnLayoutAboutToBeChanged();
     void createPersistentOnLayoutAboutToBeChangedAutoSort();
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     void clearItemData();
+#if QT_CONFIG(draganddrop)
+    void supportedDragActions();
 #endif
 
 public slots:
@@ -3589,7 +3590,6 @@ void tst_QTreeWidget::persistentChildIndex() // QTBUG-90030
     QCOMPARE(persistentIdx.data().toString(), QStringLiteral("child2"));
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 void tst_QTreeWidget::clearItemData()
 {
     QTreeWidget tree;
@@ -3625,7 +3625,6 @@ void tst_QTreeWidget::clearItemData()
     QCOMPARE(dataChangeArgs.at(1).value<QModelIndex>(), childIdx);
     QVERIFY(dataChangeArgs.at(2).value<QList<int>>().isEmpty());
 }
-#endif
 
 void tst_QTreeWidget::createPersistentOnLayoutAboutToBeChanged() // QTBUG-93466
 {
@@ -3693,6 +3692,27 @@ void tst_QTreeWidget::createPersistentOnLayoutAboutToBeChangedAutoSort() // QTBU
     QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
     QCOMPARE(layoutChangedSpy.size(), 1);
 }
+
+#if QT_CONFIG(draganddrop)
+class MoveOnlyTreeWidget : public QTreeWidget
+{
+    Q_OBJECT
+public:
+    using QTreeWidget::QTreeWidget;
+    Qt::DropActions supportedDropActions() const override { return Qt::MoveAction; }
+};
+
+void tst_QTreeWidget::supportedDragActions()
+{
+    MoveOnlyTreeWidget treeWidget;
+    QCOMPARE(treeWidget.model()->supportedDropActions(), Qt::MoveAction);
+    // For Qt < 6.8 compatibility reasons, supportedDragActions defaults to supportedDropActions
+    QCOMPARE(treeWidget.model()->supportedDragActions(), Qt::MoveAction);
+
+    treeWidget.setSupportedDragActions(Qt::CopyAction);
+    QCOMPARE(treeWidget.model()->supportedDragActions(), Qt::CopyAction);
+}
+#endif // QT_CONFIG(draganddrop)
 
 QTEST_MAIN(tst_QTreeWidget)
 #include "tst_qtreewidget.moc"

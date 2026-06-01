@@ -129,11 +129,6 @@ void QQuickShapeGenericRenderer::beginSync(int totalCount, bool *countChanged)
         d.syncDirty = 0;
 }
 
-void QQuickShapeGenericRenderer::setPath(int index, const QQuickPath *path)
-{
-    setPath(index, path ? path->path() : QPainterPath());
-}
-
 void QQuickShapeGenericRenderer::setPath(int index, const QPainterPath &path, QQuickShapePath::PathHints)
 {
     ShapePathData &d(m_sp[index]);

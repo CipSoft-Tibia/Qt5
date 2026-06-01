@@ -90,10 +90,12 @@ GeolocationPositionError* CreatePositionError(
       error_code = GeolocationPositionError::kPositionUnavailable;
       break;
     default:
-      // On Blink side, it should only handles W3C defined error codes.
-      // If it reaches here that means an unexpected error type being propagated
-      // to Blink. This should never happen.
-      NOTREACHED_NORETURN();
+      // On the Blink side, it should only handle W3C-defined error codes. If it
+      // reaches here, that means a platform-specific error type is being
+      // propagated to Blink. We will now just use kPositionUnavailable until
+      // more explicit error codes are defined in the W3C spec.
+      error_code = GeolocationPositionError::kPositionUnavailable;
+      break;
   }
   return MakeGarbageCollected<GeolocationPositionError>(error_code,
                                                         error.error_message);
@@ -211,6 +213,11 @@ void Geolocation::getCurrentPosition(V8PositionCallback* success_callback,
   if (!GetFrame())
     return;
 
+  if (GetFrame()->IsAdScriptInStack()) {
+    UseCounter::Count(GetExecutionContext(),
+                      WebFeature::kAdScriptInStackOnGeoLocation);
+  }
+
   probe::BreakableLocation(GetExecutionContext(),
                            "Geolocation.getCurrentPosition");
 
@@ -256,7 +263,7 @@ void Geolocation::StartRequest(GeoNotifier* notifier) {
   }
 
   if (!GetExecutionContext()->IsFeatureEnabled(
-          mojom::blink::PermissionsPolicyFeature::kGeolocation,
+          network::mojom::PermissionsPolicyFeature::kGeolocation,
           ReportOptions::kReportOnFailure, kFeaturePolicyConsoleWarning)) {
     UseCounter::Count(GetExecutionContext(),
                       WebFeature::kGeolocationDisabledByFeaturePolicy);
@@ -462,8 +469,9 @@ void Geolocation::StartUpdating(GeoNotifier* notifier) {
   updating_ = true;
   if (notifier->Options()->enableHighAccuracy() && !enable_high_accuracy_) {
     enable_high_accuracy_ = true;
-    if (geolocation_.is_bound())
-      geolocation_->SetHighAccuracy(true);
+    if (geolocation_.is_bound()) {
+      geolocation_->SetHighAccuracyHint(/*high_accuracy=*/true);
+    }
   }
   UpdateGeolocationConnection(notifier);
 }
@@ -501,8 +509,9 @@ void Geolocation::UpdateGeolocationConnection(GeoNotifier* notifier) {
 
   geolocation_.set_disconnect_handler(WTF::BindOnce(
       &Geolocation::OnGeolocationConnectionError, WrapWeakPersistent(this)));
-  if (enable_high_accuracy_)
-    geolocation_->SetHighAccuracy(true);
+  if (enable_high_accuracy_) {
+    geolocation_->SetHighAccuracyHint(/*high_accuracy=*/true);
+  }
   QueryNextPosition();
 }
 

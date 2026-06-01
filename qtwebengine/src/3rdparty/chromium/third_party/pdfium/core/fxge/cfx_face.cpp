@@ -115,8 +115,8 @@ int GetSkewFromAngle(int angle) {
 
 int FTPosToCBoxInt(FT_Pos pos) {
   // Boundary values to avoid integer overflow when multiplied by 1000.
-  constexpr FT_Pos kMinCBox = -2147483;
-  constexpr FT_Pos kMaxCBox = 2147483;
+  static constexpr FT_Pos kMinCBox = -2147483;
+  static constexpr FT_Pos kMaxCBox = 2147483;
   return static_cast<int>(std::clamp(pos, kMinCBox, kMaxCBox));
 }
 
@@ -282,7 +282,7 @@ fxge::FontEncoding ToFontEncoding(uint32_t ft_encoding) {
     case FT_ENCODING_WANSUNG:
       return fxge::FontEncoding::kWansung;
   }
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 }  // namespace
@@ -536,30 +536,32 @@ std::unique_ptr<CFX_GlyphBitmap> CFX_Face::RenderGlyph(const CFX_Font* pFont,
   }
 
   int dest_pitch = pGlyphBitmap->GetBitmap()->GetPitch();
-  uint8_t* pDestBuf = pGlyphBitmap->GetBitmap()->GetWritableBuffer().data();
+  pdfium::span<uint8_t> dest_span = pGlyphBitmap->GetBitmap()->GetWritableBuffer();
   const uint8_t* pSrcBuf = bitmap.buffer;
-  UNSAFE_TODO({
-    if (anti_alias != FT_RENDER_MODE_MONO &&
-        bitmap.pixel_mode == FT_PIXEL_MODE_MONO) {
-      unsigned int bytes = anti_alias == FT_RENDER_MODE_LCD ? 3 : 1;
-      for (unsigned int i = 0; i < bitmap.rows; i++) {
-        for (unsigned int n = 0; n < bitmap.width; n++) {
-          uint8_t data =
-              (pSrcBuf[i * bitmap.pitch + n / 8] & (0x80 >> (n % 8))) ? 255 : 0;
-          for (unsigned int b = 0; b < bytes; b++) {
-            pDestBuf[i * dest_pitch + n * bytes + b] = data;
-          }
+  if (anti_alias != FT_RENDER_MODE_MONO &&
+      bitmap.pixel_mode == FT_PIXEL_MODE_MONO) {
+    unsigned int bytes = anti_alias == FT_RENDER_MODE_LCD ? 3 : 1;
+    for (unsigned int i = 0; i < bitmap.rows; i++) {
+      for (unsigned int n = 0; n < bitmap.width; n++) {
+        uint8_t data = (UNSAFE_TODO(pSrcBuf[i * bitmap.pitch + n / 8]) &
+                        (0x80 >> (n % 8)))
+                           ? 255
+                           : 0;
+        for (unsigned int b = 0; b < bytes; b++) {
+          dest_span[i * dest_pitch + n * bytes + b] = data;
         }
       }
-    } else {
-      FXSYS_memset(pDestBuf, 0, dest_pitch * bitmap.rows);
-      int rowbytes = std::min(abs(bitmap.pitch), dest_pitch);
-      for (unsigned int row = 0; row < bitmap.rows; row++) {
-        FXSYS_memcpy(pDestBuf + row * dest_pitch, pSrcBuf + row * bitmap.pitch,
-                     rowbytes);
-      }
     }
-  });
+  } else {
+    std::fill(dest_span.begin(), dest_span.begin() + dest_pitch * bitmap.rows,
+              0);
+    int rowbytes = std::min(abs(bitmap.pitch), dest_pitch);
+    for (unsigned int row = 0; row < bitmap.rows; row++) {
+      fxcrt::spancpy(dest_span.subspan(row * dest_pitch),
+                     UNSAFE_TODO(pdfium::span(pSrcBuf + row * bitmap.pitch,
+                                              static_cast<size_t>(rowbytes))));
+    }
+  }
   return pGlyphBitmap;
 }
 

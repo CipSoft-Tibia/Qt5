@@ -32,7 +32,8 @@ enum UpdateOption {
     NoLocations = 1024,
     NoUiLines = 2048,
     SourceIsUtf16 = 4096,
-    Werror = 8192
+    Werror = 8192,
+    SortMessages = 16384
 };
 
 Q_DECLARE_FLAGS(UpdateOptions, UpdateOption)

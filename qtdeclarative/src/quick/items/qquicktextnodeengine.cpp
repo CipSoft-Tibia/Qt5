@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktextnodeengine_p.h"
 
@@ -11,6 +12,7 @@
 #include <QtGui/qtextobject.h>
 #include <QtGui/qtexttable.h>
 #include <QtGui/qtextlist.h>
+#include <QtGui/qimageiohandler.h>
 
 #include <private/qquicktext_p.h>
 #include <private/qtextdocumentlayout_p.h>
@@ -51,7 +53,7 @@ QQuickTextNodeEngine::BinaryTreeNode::BinaryTreeNode(const QGlyphRun &g,
     , rightChildIndex(-1)
 {
     QGlyphRunPrivate *d = QGlyphRunPrivate::get(g);
-    ranges.append(qMakePair(d->textRangeStart, d->textRangeEnd));
+    ranges.append(std::make_pair(d->textRangeStart, d->textRangeEnd));
 }
 
 
@@ -261,7 +263,7 @@ void QQuickTextNodeEngine::processCurrentLine()
                     pendingStrikeOuts.append(textDecoration);
 
                 if (currentDecorations & Decoration::Background)
-                    m_backgrounds.append(qMakePair(decorationRect, lastBackgroundColor));
+                    m_backgrounds.append(std::make_pair(decorationRect, lastBackgroundColor));
             }
 
             // If we've reached an unselected node from a selected node, we add the
@@ -434,12 +436,15 @@ void QQuickTextNodeEngine::addTextObject(const QTextBlock &block, const QPointF 
         }
 
         if (image.isNull()) {
-            image = QImage((size * m_devicePixelRatio).toSize(), QImage::Format_ARGB32_Premultiplied);
-            image.setDevicePixelRatio(m_devicePixelRatio);
-            image.fill(Qt::transparent);
-            {
-                QPainter painter(&image);
-                handler->drawObject(&painter, QRectF({}, size), textDocument, pos, format);
+            if (QImageIOHandler::allocateImage((size * m_devicePixelRatio).toSize(),
+                                               QImage::Format_ARGB32_Premultiplied,
+                                               &image)) {
+                image.setDevicePixelRatio(m_devicePixelRatio);
+                image.fill(Qt::transparent);
+                {
+                    QPainter painter(&image);
+                    handler->drawObject(&painter, QRectF({}, size), textDocument, pos, format);
+                }
             }
         }
 
@@ -627,10 +632,10 @@ void QQuickTextNodeEngine::addBorder(const QRectF &rect, qreal border,
     // Currently we don't support other styles than solid
     Q_UNUSED(borderStyle);
 
-    m_backgrounds.append(qMakePair(QRectF(rect.left(), rect.top(), border, rect.height() + border), color));
-    m_backgrounds.append(qMakePair(QRectF(rect.left() + border, rect.top(), rect.width(), border), color));
-    m_backgrounds.append(qMakePair(QRectF(rect.right(), rect.top() + border, border, rect.height() - border), color));
-    m_backgrounds.append(qMakePair(QRectF(rect.left() + border, rect.bottom(), rect.width(), border), color));
+    m_backgrounds.append(std::make_pair(QRectF(rect.left(), rect.top(), border, rect.height() + border), color));
+    m_backgrounds.append(std::make_pair(QRectF(rect.left() + border, rect.top(), rect.width(), border), color));
+    m_backgrounds.append(std::make_pair(QRectF(rect.right(), rect.top() + border, border, rect.height() - border), color));
+    m_backgrounds.append(std::make_pair(QRectF(rect.left() + border, rect.bottom(), rect.width(), border), color));
 }
 
 void QQuickTextNodeEngine::addFrameDecorations(QTextDocument *document, QTextFrame *frame)
@@ -648,7 +653,7 @@ void QQuickTextNodeEngine::addFrameDecorations(QTextDocument *document, QTextFra
 
     QBrush bg = frame->frameFormat().background();
     if (bg.style() != Qt::NoBrush)
-        m_backgrounds.append(qMakePair(boundingRect, bg.color()));
+        m_backgrounds.append(std::make_pair(boundingRect, bg.color()));
 
     if (!frameFormat.hasProperty(QTextFormat::FrameBorder))
         return;
@@ -833,12 +838,12 @@ void QQuickTextNodeEngine::addToSceneGraph(QSGInternalTextNode *parentNode,
             bool drawCurrent = false;
             if (previousNode != nullptr || nextNode != nullptr) {
                 for (int i = 0; i < node->ranges.size(); ++i) {
-                    const QPair<int, int> &range = node->ranges.at(i);
+                    const std::pair<int, int> &range = node->ranges.at(i);
 
                     int rangeLength = range.second - range.first + 1;
                     if (previousNode != nullptr) {
                         for (int j = 0; j < previousNode->ranges.size(); ++j) {
-                            const QPair<int, int> &otherRange = previousNode->ranges.at(j);
+                            const std::pair<int, int> &otherRange = previousNode->ranges.at(j);
 
                             if (range.first < otherRange.second && range.second > otherRange.first) {
                                 int start = qMax(range.first, otherRange.first);
@@ -852,7 +857,7 @@ void QQuickTextNodeEngine::addToSceneGraph(QSGInternalTextNode *parentNode,
 
                     if (nextNode != nullptr && rangeLength > 0) {
                         for (int j = 0; j < nextNode->ranges.size(); ++j) {
-                            const QPair<int, int> &otherRange = nextNode->ranges.at(j);
+                            const std::pair<int, int> &otherRange = nextNode->ranges.at(j);
 
                             if (range.first < otherRange.second && range.second > otherRange.first) {
                                 int start = qMax(range.first, otherRange.first);
@@ -976,7 +981,7 @@ void QQuickTextNodeEngine::addTextBlock(QTextDocument *textDocument, const QText
     }
 
     if (charFormat.background().style() != Qt::NoBrush)
-        m_backgrounds.append(qMakePair(blockBoundingRect, charFormat.background().color()));
+        m_backgrounds.append(std::make_pair(blockBoundingRect, charFormat.background().color()));
 
     if (QTextList *textList = block.textList()) {
         QPointF pos = blockBoundingRect.topLeft();

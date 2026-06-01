@@ -12,6 +12,7 @@
 #import "base/task/single_thread_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
+#include "ui/accessibility/accessibility_features.h"
 #import "ui/accessibility/platform/browser_accessibility_cocoa.h"
 #include "ui/accessibility/platform/browser_accessibility_manager_mac.h"
 
@@ -44,13 +45,11 @@ BrowserAccessibilityCocoa* BrowserAccessibilityMac::GetNativeWrapper() const {
 
 void BrowserAccessibilityMac::OnDataChanged() {
   BrowserAccessibility::OnDataChanged();
-
-  if (GetNativeWrapper()) {
+  if (!GetNativeWrapper()) {
+    CreatePlatformNodes();
+  } else if (!features::IsMacAccessibilityOptimizeChildrenChangedEnabled()) {
     [GetNativeWrapper() childrenChanged];
-    return;
   }
-
-  CreatePlatformNodes();
 }
 
 // Replace a native object and refocus if it had focus.
@@ -61,10 +60,8 @@ void BrowserAccessibilityMac::ReplaceNativeObject() {
   // could have never called this method without a platform node having been
   // created.
   if (!platform_node_) {
-    NOTREACHED_IN_MIGRATION()
-        << "No platform node exists, so there should not be any "
-           "native wrapper to replace.";
-    return;
+    NOTREACHED() << "No platform node exists, so there should not be any "
+                    "native wrapper to replace.";
   }
 
   // We need to keep the old native wrapper alive until we set up the new one
@@ -75,9 +72,7 @@ void BrowserAccessibilityMac::ReplaceNativeObject() {
   // We should have never called this method if a native wrapper has not been
   // created, but keep a null check just in case.
   if (!old_native_obj) {
-    NOTREACHED_IN_MIGRATION()
-        << "No native wrapper exists, so there is nothing to replace.";
-    return;
+    NOTREACHED() << "No native wrapper exists, so there is nothing to replace.";
   }
 
   // Replace child in parent.

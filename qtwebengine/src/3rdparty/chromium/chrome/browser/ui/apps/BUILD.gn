@@ -2,9 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
-import("//extensions/buildflags/buildflags.gni")
 import("//media/media_options.gni")
+import("//extensions/buildflags/buildflags.gni")
 
 assert(is_win || is_mac || is_linux || is_chromeos)
 
@@ -37,10 +36,10 @@ source_set("impl") {
 
   deps = [
     ":apps",
-    "//build:chromeos_buildflags",
     "//chrome/app:generated_resources",
     "//chrome/app:generated_resources_grit",
     "//chrome/browser:primitives",
+    "//chrome/browser:shell_integration",
     "//chrome/browser/devtools",
     "//chrome/browser/favicon",
     "//chrome/browser/file_system_access",
@@ -62,7 +61,6 @@ source_set("impl") {
       "//chrome/browser/media/webrtc",
     ]
   }
-
   if (enable_extensions) {
     deps += [
       "//chrome/browser/apps/platform_apps",
@@ -70,9 +68,6 @@ source_set("impl") {
       "//extensions/common:common_constants",
       "//extensions/common:mojom",
     ]
-  }
-  if (is_chromeos_ash) {
-    deps += [ "//chrome/browser/ash/lock_screen_apps:lock_screen_apps" ]
   }
 
   if (is_chromeos) {

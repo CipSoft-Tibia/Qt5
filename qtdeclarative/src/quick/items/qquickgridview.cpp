@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickgridview_p.h"
 #include "qquickflickable_p_p.h"
@@ -1355,6 +1356,13 @@ void QQuickGridView::setHighlightFollowsCurrentItem(bool autoHighlight)
 
     \note Delegates are instantiated as needed and may be destroyed at any time.
     State should \e never be stored in a delegate.
+*/
+
+/*!
+    \qmlproperty enumeration QtQuick::GridView::delegateModelAccess
+    \since 6.10
+
+    \include delegatemodelaccess.qdocinc
 */
 
 /*!

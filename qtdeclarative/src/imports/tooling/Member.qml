@@ -5,4 +5,5 @@ import QML
 
 QtObject {
     required property string name
+    property int lineNumber: 0
 }

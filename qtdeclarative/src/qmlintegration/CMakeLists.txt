@@ -3,6 +3,7 @@
 
 qt_internal_add_module(QmlIntegration
     HEADER_MODULE
+    NO_PRIVATE_MODULE
     SOURCES
         qqmlintegration.h
     LIBRARIES

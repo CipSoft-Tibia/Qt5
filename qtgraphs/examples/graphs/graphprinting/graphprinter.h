@@ -6,7 +6,6 @@
 
 #include <QtCore/qfile.h>
 #include <QtGui>
-#include <QtPrintSupport>
 #include <QtQml/qqmlregistration.h>
 
 class GraphPrinter : public QObject {

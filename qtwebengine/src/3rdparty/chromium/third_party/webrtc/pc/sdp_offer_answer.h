@@ -38,6 +38,7 @@
 #include "api/set_remote_description_observer_interface.h"
 #include "api/uma_metrics.h"
 #include "api/video/video_bitrate_allocator_factory.h"
+#include "call/payload_type.h"
 #include "media/base/media_channel.h"
 #include "media/base/stream_params.h"
 #include "p2p/base/port_allocator.h"
@@ -80,7 +81,8 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
       PeerConnectionSdpMethods* pc,
       const PeerConnectionInterface::RTCConfiguration& configuration,
       PeerConnectionDependencies& dependencies,
-      ConnectionContext* context);
+      ConnectionContext* context,
+      PayloadTypeSuggester* pt_suggester);
 
   void ResetSessionDescFactory() {
     RTC_DCHECK_RUN_ON(signaling_thread());
@@ -179,6 +181,8 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
     return false;
   }
 
+  SdpMungingType sdp_munging_type() const { return last_sdp_munging_type_; }
+
  private:
   class RemoteDescriptionOperation;
   class ImplicitCreateSessionDescriptionObserver;
@@ -210,7 +214,8 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
   void Initialize(
       const PeerConnectionInterface::RTCConfiguration& configuration,
       PeerConnectionDependencies& dependencies,
-      ConnectionContext* context);
+      ConnectionContext* context,
+      PayloadTypeSuggester* pt_suggester);
 
   rtc::Thread* signaling_thread() const;
   rtc::Thread* network_thread() const;
@@ -600,6 +605,11 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
       RTC_GUARDED_BY(signaling_thread());
   std::unique_ptr<SessionDescriptionInterface> pending_remote_description_
       RTC_GUARDED_BY(signaling_thread());
+  std::unique_ptr<SessionDescriptionInterface> last_created_offer_
+      RTC_GUARDED_BY(signaling_thread());
+  std::unique_ptr<SessionDescriptionInterface> last_created_answer_
+      RTC_GUARDED_BY(signaling_thread());
+  SdpMungingType last_sdp_munging_type_ = SdpMungingType::kNoModification;
 
   PeerConnectionInterface::SignalingState signaling_state_
       RTC_GUARDED_BY(signaling_thread()) = PeerConnectionInterface::kStable;

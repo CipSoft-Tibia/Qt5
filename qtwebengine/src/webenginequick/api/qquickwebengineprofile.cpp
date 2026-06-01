@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickwebengineprofile.h"
 #include "qquickwebengineprofile_p.h"
@@ -26,6 +27,10 @@
 #include <QtQml/qqmlinfo.h>
 
 using QtWebEngineCore::ProfileAdapter;
+
+#if QT_CONFIG(webengine_extensions)
+#include <QtWebEngineCore/qwebengineextensionmanager.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -1164,6 +1169,16 @@ QWebEngineClientHints *QQuickWebEngineProfile::clientHints() const
     return d->m_clientHints.data();
 }
 
+QWebEngineExtensionManager *QQuickWebEngineProfile::extensionManager()
+{
+#if QT_CONFIG(webengine_extensions)
+    Q_D(QQuickWebEngineProfile);
+    return d->profileAdapter()->extensionManager();
+#else
+    return nullptr;
+#endif
+}
+
 /*!
     \fn QQuickWebEngineProfile::queryPermission(const QUrl &securityOrigin, QWebEnginePermission::PermissionType permissionType) const
 
@@ -1203,7 +1218,7 @@ QWebEnginePermission QQuickWebEngineProfile::queryPermission(const QUrl &securit
         return QWebEnginePermission(new QWebEnginePermissionPrivate());
     }
 
-    auto *pvt = new QWebEnginePermissionPrivate(securityOrigin, permissionType, nullptr, d->profileAdapter());
+    auto *pvt = new QWebEnginePermissionPrivate(securityOrigin, permissionType, d->profileAdapter());
     return QWebEnginePermission(pvt);
 }
 

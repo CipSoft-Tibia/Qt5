@@ -1,7 +1,10 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickcolordialogutils_p.h"
+
+QT_BEGIN_NAMESPACE
 
 std::pair<qreal, qreal> getSaturationAndValue(qreal saturation, qreal lightness)
 {
@@ -22,3 +25,5 @@ std::pair<qreal, qreal> getSaturationAndLightness(qreal saturation, qreal value)
     const qreal s = (value - l) / qMin(l, 1 - l);
     return { s, l };
 }
+
+QT_END_NAMESPACE

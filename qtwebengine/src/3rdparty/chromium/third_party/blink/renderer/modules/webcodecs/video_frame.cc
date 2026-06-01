@@ -32,6 +32,7 @@
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_graphics_context_3d_provider.h"
 #include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_background_blur.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_plane_layout.h"
 #include "third_party/blink/renderer/modules/shorter_includes.h"
 #include SHORT_INCLUDE_FILE(third_party/blink/renderer/bindings/modules/v8/v8_union,cssimagevalue_htmlcanvaselement_htmlimageelement_htmlvideoelement_imagebitmap_offscreencanvas_svgimageelement_videoframe)
@@ -39,6 +40,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_video_frame_buffer_init.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_video_frame_copy_to_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_video_frame_init.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_video_frame_metadata.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_video_pixel_format.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_state_observer.h"
 #include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
@@ -54,10 +56,8 @@
 #include "third_party/blink/renderer/modules/webcodecs/background_readback.h"
 #include "third_party/blink/renderer/modules/webcodecs/video_color_space.h"
 #include "third_party/blink/renderer/modules/webcodecs/video_frame_init_util.h"
-#include "third_party/blink/renderer/modules/webcodecs/video_frame_layout.h"
 #include "third_party/blink/renderer/modules/webcodecs/video_frame_rect_util.h"
 #include "third_party/blink/renderer/platform/geometry/geometry_hash_traits.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_color_params.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_provider.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types.h"
@@ -71,7 +71,7 @@
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/libyuv/include/libyuv/planar_functions.h"
-#include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "v8/include/v8.h"
 
@@ -89,10 +89,11 @@ namespace blink {
 
 namespace {
 
-// Controls if VideoFrame.copyTo() reads GPU frames asynchronously
+// Controls if VideoFrame.copyTo() reads GPU frames asynchronously when it's given a
+// SharedArrayBuffer.
 BASE_FEATURE(kVideoFrameAsyncCopyTo,
              "VideoFrameAsyncCopyTo",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 media::VideoPixelFormat ToMediaPixelFormat(V8VideoPixelFormat::Enum fmt) {
   switch (fmt) {
@@ -210,8 +211,7 @@ std::optional<V8VideoPixelFormat> ToV8VideoPixelFormat(
     case media::PIXEL_FORMAT_XRGB:
       return V8VideoPixelFormat(V8VideoPixelFormat::Enum::kBGRX);
     default:
-      NOTREACHED_IN_MIGRATION();
-      return std::nullopt;
+      NOTREACHED();
   }
 }
 
@@ -445,19 +445,23 @@ const base::TimeDelta CanvasResourceProviderCache::kIdleTimeout =
 std::optional<media::VideoPixelFormat> CopyToFormat(
     const media::VideoFrame& frame) {
   const bool mappable = frame.IsMappable() || frame.HasMappableGpuBuffer();
-  const bool texturable = frame.HasTextures();
-  if (!(mappable || texturable))
+  const bool texturable = frame.HasSharedImage();
+  if (!(mappable || texturable)) {
     return std::nullopt;
+  }
 
   // Readback is not supported for high bit-depth formats.
   if (!mappable && frame.BitDepth() != 8u) {
     return std::nullopt;
   }
 
+  bool si_prefers_external_sampler =
+      frame.HasSharedImage() &&
+      frame.shared_image()->format().PrefersExternalSampler();
   // Externally-sampled frames read back as RGB, regardless of the format.
   // TODO(crbug.com/40215121): Enable alpha readback for supported formats.
-  if (!mappable && frame.RequiresExternalSampler()) {
-    DCHECK_EQ(frame.NumTextures(), 1u);
+  if (!mappable && si_prefers_external_sampler) {
+    DCHECK(frame.HasSharedImage());
     return media::PIXEL_FORMAT_XRGB;
   }
 
@@ -469,17 +473,6 @@ std::optional<media::VideoPixelFormat> CopyToFormat(
     DCHECK_EQ(frame.layout().num_planes(),
               media::VideoFrame::NumPlanes(frame.format()));
     return frame.format();
-  }
-
-  // Per-plane readback is not possible for multiplanar SI with external
-  // sampling. Similarly, for legacy shared image formats, readback is only
-  // possible when planes and textures are 1:1.
-  auto format_type = frame.shared_image_format_type();
-  if (format_type ==
-          media::SharedImageFormatType::kSharedImageFormatExternalSampler ||
-      (format_type == media::SharedImageFormatType::kLegacy &&
-       frame.NumTextures() != media::VideoFrame::NumPlanes(frame.format()))) {
-    return std::nullopt;
   }
 
   return frame.format();
@@ -515,11 +508,7 @@ bool CopyTexturablePlanes(media::VideoFrame& src_frame,
   if (!wrapper)
     return false;
 
-  auto* provider = wrapper->ContextProvider();
-  if (!provider)
-    return false;
-
-  auto* ri = provider->RasterInterface();
+  auto* ri = wrapper->ContextProvider().RasterInterface();
   if (!ri)
     return false;
 
@@ -528,9 +517,9 @@ bool CopyTexturablePlanes(media::VideoFrame& src_frame,
         media::VideoFrame::SampleSize(dest_layout.Format(), i);
     gfx::Rect plane_src_rect = PlaneRect(src_rect, sample_size);
     uint8_t* dest_pixels = dest_buffer.data() + dest_layout.Offset(i);
-    if (!media::ReadbackTexturePlaneToMemorySync(
-            src_frame, i, plane_src_rect, dest_pixels, dest_layout.Stride(i),
-            ri, provider->GetCapabilities())) {
+    if (!media::ReadbackTexturePlaneToMemorySync(src_frame, i, plane_src_rect,
+                                                 dest_pixels,
+                                                 dest_layout.Stride(i), ri)) {
       // It's possible to fail after copying some but not all planes, leaving
       // the output buffer in a corrupt state D:
       return false;
@@ -634,10 +623,10 @@ VideoFrame::VideoFrame(scoped_refptr<media::VideoFrame> frame,
   handle_ = base::MakeRefCounted<VideoFrameHandle>(
       frame, std::move(sk_image), context, std::move(monitoring_source_id),
       use_capture_timestamp);
-  external_allocated_memory_ =
+  size_t external_allocated_memory =
       media::VideoFrame::AllocationSize(frame->format(), frame->coded_size());
-  context->GetIsolate()->AdjustAmountOfExternalAllocatedMemory(
-      external_allocated_memory_);
+  external_memory_accounter_.Increase(context->GetIsolate(),
+                                      external_allocated_memory);
 }
 
 VideoFrame::VideoFrame(scoped_refptr<VideoFrameHandle> handle)
@@ -650,10 +639,10 @@ VideoFrame::VideoFrame(scoped_refptr<VideoFrameHandle> handle)
   if (!local_frame)
     return;
 
-  external_allocated_memory_ = media::VideoFrame::AllocationSize(
+  size_t external_allocated_memory = media::VideoFrame::AllocationSize(
       local_frame->format(), local_frame->coded_size());
-  v8::Isolate::GetCurrent()->AdjustAmountOfExternalAllocatedMemory(
-      external_allocated_memory_);
+  external_memory_accounter_.Increase(v8::Isolate::GetCurrent(),
+                                      external_allocated_memory);
 }
 
 VideoFrame::~VideoFrame() {
@@ -677,6 +666,13 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
     return nullptr;
   }
 
+  media::VideoTransformation transformation = media::kNoTransformation;
+  bool transformed = false;
+  if (RuntimeEnabledFeatures::WebCodecsOrientationEnabled()) {
+    transformation = media::VideoTransformation(init->rotation(), init->flip());
+    transformed = transformation != media::kNoTransformation;
+  }
+
   constexpr char kAlphaDiscard[] = "discard";
 
   // Special case <video> and VideoFrame to directly use the underlying frame.
@@ -691,7 +687,7 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
           source_frame = wmp->GetCurrentFrameThenUpdate();
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
 
     if (!source_frame) {
@@ -718,7 +714,7 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
     // We can't modify frame metadata directly since there may be other owners
     // accessing these fields concurrently.
     if (init->hasTimestamp() || init->hasDuration() || force_opaque ||
-        init->hasVisibleRect() || init->hasDisplayWidth()) {
+        init->hasVisibleRect() || transformed || init->hasDisplayWidth()) {
       auto wrapped_frame = media::VideoFrame::WrapVideoFrame(
           source_frame, wrapped_format, parsed_init.visible_rect,
           parsed_init.display_size);
@@ -743,6 +739,12 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
         wrapped_frame->metadata().frame_duration =
             base::Microseconds(init->duration());
       }
+      if (transformed) {
+        wrapped_frame->metadata().transformation =
+            wrapped_frame->metadata()
+                .transformation.value_or(media::kNoTransformation)
+                .add(transformation);
+      }
       source_frame = std::move(wrapped_frame);
     }
 
@@ -755,8 +757,7 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
       // Note: It's possible for another realm (Worker) to destroy our handle if
       // this frame was transferred via BroadcastChannel to multiple realms.
       if (local_handle && local_handle->sk_image() && !force_opaque &&
-          !init->hasVisibleRect() && !init->hasDisplayWidth() &&
-          !init->hasDisplayHeight()) {
+          !init->hasVisibleRect() && !transformed && !init->hasDisplayWidth()) {
         sk_image = local_handle->sk_image();
       }
     }
@@ -819,8 +820,6 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
       return nullptr;
 
     auto* sbi = static_cast<StaticBitmapImage*>(image.get());
-    gpu::MailboxHolder mailbox_holder = sbi->GetMailboxHolder();
-    const bool is_origin_top_left = sbi->IsOriginTopLeft();
 
     // The sync token needs to be updated when |frame| is released, but
     // AcceleratedStaticBitmapImage::UpdateSyncToken() is not thread-safe.
@@ -833,19 +832,11 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
             std::move(image))));
 
     auto client_shared_image = sbi->GetSharedImage();
-    if (client_shared_image) {
-      frame = media::VideoFrame::WrapSharedImage(
-          format, std::move(client_shared_image), mailbox_holder.sync_token,
-          mailbox_holder.texture_target, std::move(release_cb), coded_size,
-          parsed_init.visible_rect, parsed_init.display_size, timestamp);
-    } else {
-      frame = media::VideoFrame::WrapNativeTexture(
-          format, mailbox_holder, std::move(release_cb), coded_size,
-          parsed_init.visible_rect, parsed_init.display_size, timestamp);
-    }
-
-    if (frame)
-      frame->metadata().texture_origin_is_top_left = is_origin_top_left;
+    CHECK(client_shared_image);
+    frame = media::VideoFrame::WrapSharedImage(
+        format, std::move(client_shared_image), sbi->GetSyncToken(),
+        std::move(release_cb), coded_size, parsed_init.visible_rect,
+        parsed_init.display_size, timestamp);
 
     // Note: We could add the StaticBitmapImage to the VideoFrameHandle so we
     // can round trip through VideoFrame back to canvas w/o any copies, but
@@ -912,10 +903,8 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
   if (init->hasDuration()) {
     frame->metadata().frame_duration = base::Microseconds(init->duration());
   }
-  if (orientation != ImageOrientationEnum::kDefault) {
-    frame->metadata().transformation =
-        ImageOrientationToVideoTransformation(orientation);
-  }
+  frame->metadata().transformation =
+      ImageOrientationToVideoTransformation(orientation).add(transformation);
   return MakeGarbageCollected<VideoFrame>(
       base::MakeRefCounted<VideoFrameHandle>(
           std::move(frame), std::move(sk_image),
@@ -928,10 +917,7 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
                                ExceptionState& exception_state) {
   ExecutionContext* execution_context = ExecutionContext::From(script_state);
   auto* isolate = script_state->GetIsolate();
-
-  // Handle format; the string was validated by the V8 binding.
-  auto typed_fmt = V8VideoPixelFormat::Create(init->format());
-  auto media_fmt = ToMediaPixelFormat(typed_fmt->AsEnum());
+  auto media_fmt = ToMediaPixelFormat(init->format().AsEnum());
 
   if (!IsFormatEnabled(media_fmt)) {
     exception_state.ThrowTypeError("Unsupported format.");
@@ -1081,6 +1067,11 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
     frame->metadata().frame_duration = base::Microseconds(init->duration());
   }
 
+  if (RuntimeEnabledFeatures::WebCodecsOrientationEnabled()) {
+    frame->metadata().transformation =
+        media::VideoTransformation(init->rotation(), init->flip());
+  }
+
   return MakeGarbageCollected<VideoFrame>(std::move(frame),
                                           ExecutionContext::From(script_state));
 }
@@ -1138,6 +1129,37 @@ DOMRectReadOnly* VideoFrame::visibleRect() {
   return visible_rect_.Get();
 }
 
+uint32_t VideoFrame::rotation() const {
+  auto local_frame = handle_->frame();
+  if (!local_frame) {
+    return 0;
+  }
+
+  const auto transform =
+      local_frame->metadata().transformation.value_or(media::kNoTransformation);
+  switch (transform.rotation) {
+    case media::VIDEO_ROTATION_0:
+      return 0;
+    case media::VIDEO_ROTATION_90:
+      return 90;
+    case media::VIDEO_ROTATION_180:
+      return 180;
+    case media::VIDEO_ROTATION_270:
+      return 270;
+  }
+}
+
+bool VideoFrame::flip() const {
+  auto local_frame = handle_->frame();
+  if (!local_frame) {
+    return false;
+  }
+
+  const auto transform =
+      local_frame->metadata().transformation.value_or(media::kNoTransformation);
+  return transform.mirrored;
+}
+
 uint32_t VideoFrame::displayWidth() const {
   auto local_frame = handle_->frame();
   if (!local_frame)
@@ -1145,8 +1167,7 @@ uint32_t VideoFrame::displayWidth() const {
 
   const auto transform =
       local_frame->metadata().transformation.value_or(media::kNoTransformation);
-  if (transform == media::kNoTransformation ||
-      transform.rotation == media::VIDEO_ROTATION_0 ||
+  if (transform.rotation == media::VIDEO_ROTATION_0 ||
       transform.rotation == media::VIDEO_ROTATION_180) {
     return local_frame->natural_size().width();
   }
@@ -1157,10 +1178,10 @@ uint32_t VideoFrame::displayHeight() const {
   auto local_frame = handle_->frame();
   if (!local_frame)
     return 0;
+
   const auto transform =
       local_frame->metadata().transformation.value_or(media::kNoTransformation);
-  if (transform == media::kNoTransformation ||
-      transform.rotation == media::VIDEO_ROTATION_0 ||
+  if (transform.rotation == media::VIDEO_ROTATION_0 ||
       transform.rotation == media::VIDEO_ROTATION_180) {
     return local_frame->natural_size().height();
   }
@@ -1191,6 +1212,27 @@ VideoColorSpace* VideoFrame::colorSpace() {
         MakeGarbageCollected<VideoColorSpace>(local_frame->ColorSpace());
   }
   return color_space_.Get();
+}
+
+VideoFrameMetadata* VideoFrame::metadata(ExceptionState& exception_state) {
+  auto local_frame = handle_->frame();
+  if (!local_frame) {
+    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
+                                      "VideoFrame is closed.");
+    return nullptr;
+  }
+
+  auto* metadata = VideoFrameMetadata::Create();
+
+  if (!local_frame->metadata().background_blur) {
+    return metadata;
+  }
+
+  auto* background_blur = BackgroundBlur::Create();
+  background_blur->setEnabled(local_frame->metadata().background_blur->enabled);
+  metadata->setBackgroundBlur(background_blur);
+
+  return metadata;
 }
 
 uint32_t VideoFrame::allocationSize(VideoFrameCopyToOptions* options,
@@ -1241,9 +1283,11 @@ void VideoFrame::ConvertAndCopyToRGB(scoped_refptr<media::VideoFrame> frame,
   cc::SkiaPaintCanvas canvas(sk_canvas.get());
   // TODO(crbug.com/1442991): Cache this instance of PaintCanvasVideoRenderer
   media::PaintCanvasVideoRenderer renderer;
+  media::PaintCanvasVideoRenderer::PaintParams paint_params;
+  paint_params.dest_rect = gfx::RectF(src_rect.size());
   auto context_provider = GetRasterContextProvider();
-  renderer.Paint(std::move(frame), &canvas, gfx::RectF(src_rect.size()), flags,
-                 media::kNoTransformation, context_provider.get());
+  renderer.Paint(std::move(frame), &canvas, flags, paint_params,
+                 context_provider.get());
 }
 
 bool VideoFrame::CopyToAsync(
@@ -1254,12 +1298,16 @@ bool VideoFrame::CopyToAsync(
     const VideoFrameLayout& dest_layout) {
   auto* background_readback = BackgroundReadback::From(
       *ExecutionContext::From(resolver->GetScriptState()));
-  if (!background_readback)
+  if (!background_readback) {
     return false;
+  }
 
-  ArrayBufferContents contents = PinArrayBufferContent(destination);
-  if (!contents.DataLength())
+  ArrayBufferContents contents = PinSharedArrayBufferContent(destination);
+  if (!contents.IsValid() || !contents.DataLength()) {
+    // `contents` is empty, most likely destination isn't a shared buffer.
+    // Async copyTo() can't be used.
     return false;
+  }
 
   auto readback_done_handler =
       [](ArrayBufferContents contents,
@@ -1342,15 +1390,17 @@ ScriptPromise<IDLSequence<PlaneLayout>> VideoFrame::copyTo(
     }
     CopyMappablePlanes(*mapped_frame, src_rect, dest_layout, buffer);
   } else {
-    DCHECK(local_frame->HasTextures());
+    DCHECK(local_frame->HasSharedImage());
 
     if (base::FeatureList::IsEnabled(kVideoFrameAsyncCopyTo)) {
+      // Check if we can run copyTo() asynchronously.
       if (CopyToAsync(resolver, local_frame, src_rect, destination,
                       dest_layout)) {
         return promise;
       }
     }
 
+    // Async version didn't work, let's copy planes synchronously.
     if (!CopyTexturablePlanes(*local_frame, src_rect, dest_layout, buffer)) {
       exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                         "Failed to read VideoFrame data.");
@@ -1439,21 +1489,20 @@ bool VideoFrame::WouldTaintOrigin() const {
 gfx::SizeF VideoFrame::ElementSize(
     const gfx::SizeF& default_object_size,
     const RespectImageOrientationEnum respect_orientation) const {
-  // BitmapSourceSize() will always ignore orientation.
+  auto local_frame = handle_->frame();
+  if (!local_frame) {
+    return gfx::SizeF();
+  }
+  gfx::SizeF size(local_frame->natural_size());
   if (respect_orientation == kRespectImageOrientation) {
-    auto local_frame = handle_->frame();
-    if (!local_frame)
-      return gfx::SizeF();
-
     const auto orientation_enum = VideoTransformationToImageOrientation(
         local_frame->metadata().transformation.value_or(
             media::kNoTransformation));
-    auto orientation_adjusted_size = gfx::SizeF(local_frame->natural_size());
-    if (ImageOrientation(orientation_enum).UsesWidthAsHeight())
-      orientation_adjusted_size.Transpose();
-    return orientation_adjusted_size;
+    if (ImageOrientation(orientation_enum).UsesWidthAsHeight()) {
+      size.Transpose();
+    }
   }
-  return gfx::SizeF(BitmapSourceSize());
+  return size;
 }
 
 bool VideoFrame::IsVideoFrame() const {
@@ -1476,20 +1525,15 @@ bool VideoFrame::IsAccelerated() const {
 }
 
 void VideoFrame::ResetExternalMemory() {
-  if (external_allocated_memory_) {
-    v8::Isolate::GetCurrent()->AdjustAmountOfExternalAllocatedMemory(
-        -external_allocated_memory_);
-    external_allocated_memory_ = 0;
-  }
+  external_memory_accounter_.Clear(v8::Isolate::GetCurrent());
 }
 
-gfx::Size VideoFrame::BitmapSourceSize() const {
+ImageBitmapSourceStatus VideoFrame::CheckUsability() const {
   auto local_frame = handle_->frame();
-  if (!local_frame)
-    return gfx::Size();
-
-  // ImageBitmaps should always return the size w/o respecting orientation.
-  return local_frame->natural_size();
+  if (!local_frame) {
+    return base::unexpected(ImageBitmapSourceError::kInvalid);
+  }
+  return base::ok();
 }
 
 ScriptPromise<ImageBitmap> VideoFrame::CreateImageBitmap(

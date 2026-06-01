@@ -648,6 +648,10 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
     OMX_BUFFERHEADERTYPE *buffer;
     OMX_ERRORTYPE err;
 
+    av_log(avctx, AV_LOG_WARNING,
+           "The %s encoder is deprecated and will be removed in future versions\n",
+           avctx->codec->name);
+
     /* cleanup relies on the mutexes/conditions being initialized first. */
     ret = ff_pthread_init(s, omx_codec_context_offsets);
     if (ret < 0)
@@ -948,6 +952,7 @@ const FFCodec ff_mpeg4_omx_encoder = {
     FF_CODEC_ENCODE_CB(omx_encode_frame),
     .close            = omx_encode_end,
     .p.pix_fmts       = omx_encoder_pix_fmts,
+    .color_ranges     = AVCOL_RANGE_MPEG,
     .p.capabilities   = AV_CODEC_CAP_DELAY,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
     .p.priv_class     = &omx_mpeg4enc_class,
@@ -969,6 +974,7 @@ const FFCodec ff_h264_omx_encoder = {
     FF_CODEC_ENCODE_CB(omx_encode_frame),
     .close            = omx_encode_end,
     .p.pix_fmts       = omx_encoder_pix_fmts,
+    .color_ranges     = AVCOL_RANGE_MPEG, /* FIXME: implement tagging */
     .p.capabilities   = AV_CODEC_CAP_DELAY,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
     .p.priv_class     = &omx_h264enc_class,

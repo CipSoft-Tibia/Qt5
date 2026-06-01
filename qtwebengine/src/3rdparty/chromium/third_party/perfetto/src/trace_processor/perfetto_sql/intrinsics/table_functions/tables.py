@@ -80,6 +80,21 @@ CONNECTED_FLOW_TABLE = Table(
     ],
     parent=FLOW_TABLE)
 
+ARGS_WITH_DEFAULTS_TABLE = Table(
+    python_module=__file__,
+    class_name='WinscopeArgsWithDefaultsTable',
+    sql_name='__intrinsic_winscope_proto_to_args_with_defaults',
+    columns=[
+        C("table_name", CppString(), flags=ColumnFlag.HIDDEN),
+        C('base64_proto_id', CppUint32()),
+        C('flat_key', CppString()),
+        C('key', CppString()),
+        C('int_value', CppOptional(CppInt64())),
+        C('string_value', CppOptional(CppString())),
+        C('real_value', CppOptional(CppDouble())),
+        C('value_type', CppString()),
+    ])
+
 DESCENDANT_SLICE_TABLE = Table(
     python_module=__file__,
     class_name="DescendantSliceTable",
@@ -109,25 +124,6 @@ EXPERIMENTAL_ANNOTATED_CALLSTACK_TABLE = Table(
           flags=ColumnFlag.HIDDEN),
     ],
     parent=STACK_PROFILE_CALLSITE_TABLE)
-
-EXPERIMENTAL_COUNTER_DUR_TABLE = Table(
-    python_module=__file__,
-    class_name="ExperimentalCounterDurTable",
-    sql_name="experimental_counter_dur",
-    columns=[
-        C("dur", CppInt64()),
-        C("delta", CppDouble()),
-    ],
-    parent=COUNTER_TABLE)
-
-EXPERIMENTAL_SCHED_UPID_TABLE = Table(
-    python_module=__file__,
-    class_name="ExperimentalSchedUpidTable",
-    sql_name="__intrinsic_sched_upid",
-    columns=[
-        C("upid", CppOptional(CppTableId(PROCESS_TABLE))),
-    ],
-    parent=SCHED_SLICE_TABLE)
 
 EXPERIMENTAL_SLICE_LAYOUT_TABLE = Table(
     python_module=__file__,
@@ -169,12 +165,11 @@ ALL_TABLES = [
     ANCESTOR_SLICE_TABLE,
     ANCESTOR_STACK_PROFILE_CALLSITE_TABLE,
     CONNECTED_FLOW_TABLE,
+    ARGS_WITH_DEFAULTS_TABLE,
     DESCENDANT_SLICE_BY_STACK_TABLE,
     DESCENDANT_SLICE_TABLE,
     DFS_WEIGHT_BOUNDED_TABLE,
     EXPERIMENTAL_ANNOTATED_CALLSTACK_TABLE,
-    EXPERIMENTAL_COUNTER_DUR_TABLE,
-    EXPERIMENTAL_SCHED_UPID_TABLE,
     EXPERIMENTAL_SLICE_LAYOUT_TABLE,
     TABLE_INFO_TABLE,
 ]

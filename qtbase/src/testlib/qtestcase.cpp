@@ -40,7 +40,7 @@
 #if QT_CONFIG(batch_test_support)
 #include <QtTest/private/qtestregistry_p.h>
 #endif  // QT_CONFIG(batch_test_support)
-#include <QtTest/private/cycle_p.h>
+#include <QtTest/private/cycle_include_p.h>
 #include <QtTest/private/qtestblacklist_p.h>
 #include <QtTest/private/qtestcrashhandler_p.h>
 #if defined(HAVE_XCTEST)
@@ -375,11 +375,13 @@ void setThrowOnSkip(bool enable) noexcept
     g_throwOnSkip.fetchAndAddRelaxed(enable ? 1 : -1);
 }
 
-QString Internal::formatTryTimeoutDebugMessage(q_no_char8_t::QUtf8StringView expr, int timeout, int actual)
+QString Internal::formatTryTimeoutDebugMessage(q_no_char8_t::QUtf8StringView expr,
+                                               std::chrono::milliseconds timeout,
+                                               std::chrono::milliseconds actual)
 {
     return "QTestLib: This test case check (\"%1\") failed because the requested timeout (%2 ms) "
            "was too short, %3 ms would have been sufficient this time."_L1
-            .arg(expr, QString::number(timeout), QString::number(actual));
+            .arg(expr, QString::number(timeout.count()), QString::number(actual.count()));
 }
 
 extern Q_TESTLIB_EXPORT int lastMouseTimestamp;
@@ -391,6 +393,7 @@ static QString mainSourcePath;
 static bool inTestFunction = false;
 
 #if defined(Q_OS_MACOS)
+static std::optional<QTestPrivate::AppNapDisabler> appNapDisabler;
 static IOPMAssertionID macPowerSavingDisabled = 0;
 #endif
 
@@ -974,10 +977,8 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, const char *const argv[], bool 
                 QTest::testFunctions += QString::fromLatin1(argv[i]);
                 QTest::testTags += QString();
             } else {
-                QTest::testFunctions +=
-                    QString::fromLatin1(argv[i], colon);
-                QTest::testTags +=
-                    QString::fromLatin1(argv[i] + colon + 1);
+                QTest::testFunctions += QString::fromLatin1(argv[i], colon);
+                QTest::testTags += QString::fromLatin1(argv[i] + colon + 1);
             }
         }
     }
@@ -1879,7 +1880,8 @@ void QTest::qInit(QObject *testObject, int argc, char **argv)
     QTestPrivate::disableWindowRestore();
 
     // Disable App Nap which may cause tests to stall
-    QTestPrivate::AppNapDisabler appNapDisabler;
+    if (!appNapDisabler)
+        appNapDisabler.emplace();
 
     if (qApp && (qstrcmp(qApp->metaObject()->className(), "QApplication") == 0)) {
         IOPMAssertionCreateWithName(kIOPMAssertionTypeNoDisplaySleep,
@@ -1947,9 +1949,10 @@ int QTest::qRun()
         if (!Internal::noCrashHandler)
             handler.emplace();
 
-        bool seenBad = false;
         TestMethods::MetaMethods commandLineMethods;
         commandLineMethods.reserve(static_cast<size_t>(QTest::testFunctions.size()));
+        std::vector<size_t> badFunctionIndices;
+        size_t index = 0;
         for (const QString &tf : std::as_const(QTest::testFunctions)) {
             const QByteArray tfB = tf.toLatin1();
             const QByteArray signature = tfB + QByteArrayLiteral("()");
@@ -1963,23 +1966,40 @@ int QTest::qRun()
                 QTestResult::setCurrentTestFunction(tfB.constData());
                 QTestResult::addFailure(qPrintable("Function not found: %1"_L1.arg(tf)));
                 QTestResult::finishedCurrentTestFunction();
-                // Ditch the tag that came with tf as test function:
-                QTest::testTags.remove(commandLineMethods.size());
-                seenBad = true;
+                // Record bad indices in reverse order to make removal easier:
+                badFunctionIndices.insert(badFunctionIndices.begin(), index);
             }
+            ++index;
         }
-        if (seenBad) {
+        if (badFunctionIndices.size() > 0) {
             // Provide relevant help to do better next time:
             std::fprintf(stderr, "\n%s -functions\nlists all available test functions.\n\n",
                                  QTestResult::currentAppName());
             if (commandLineMethods.empty()) // All requested functions missing.
                 return 1;
+
+            // List is in decreasing order, so we delete later entries before
+            // earlier, avoiding problems with entries after each deletion
+            // changing index:
+            for (size_t i : std::as_const(badFunctionIndices)) {
+                // Purge the bogus entries from testFunctions and testTags. We
+                // need to do this from testTags so that its indexing matches
+                // commandLineMethods. Quick Test will be calling qRun() again
+                // later, once for each style, so we need testFunctions to stay
+                // in sync with testTags, so we don't attempt to remove the same
+                // tag again on each repeat (QTBUG-143440).
+                QTest::testFunctions.removeAt(i);
+                QTest::testTags.removeAt(i);
+            }
         }
+        // If commandLineMethods is empty, constructor uses all available instead:
         TestMethods test(currentTestObject, std::move(commandLineMethods));
 
         int remainingRepetitions = repetitions;
         const bool repeatForever = repetitions < 0;
-        while (QTestLog::failCount() == 0 && (repeatForever || remainingRepetitions-- > 0)) {
+        const int badArgCount = QTestLog::failCount(); // Stop if anything else fails.
+        while (!(QTestLog::failCount() > badArgCount)
+               && (repeatForever || remainingRepetitions-- > 0)) {
             QTestTable::globalTestTable();
             test.invokeTests(currentTestObject);
             QTestTable::clearGlobalTestTable();
@@ -2039,6 +2059,7 @@ void QTest::qCleanup()
 
 #if defined(Q_OS_MACOS)
     IOPMAssertionRelease(macPowerSavingDisabled);
+    appNapDisabler = std::nullopt;
 #endif
 }
 
@@ -3107,57 +3128,34 @@ TO_STRING_IMPL(bool, %d)
 TO_STRING_IMPL(signed char, %hhd)
 TO_STRING_IMPL(unsigned char, %hhu)
 
-/*!
-  \internal
-
-  Be consistent about leading 0 in exponent.
-
-  POSIX specifies that %e (hence %g when using it) uses at least two digits in
-  the exponent, requiring a leading 0 on single-digit exponents; (at least)
-  MinGW includes a leading zero also on an already-two-digit exponent,
-  e.g. 9e-040, which differs from more usual platforms.  So massage that away.
-*/
-static void massageExponent(char *text)
-{
-    char *p = strchr(text, 'e');
-    if (!p)
-        return;
-    const char *const end = p + strlen(p); // *end is '\0'
-    p += (p[1] == '-' || p[1] == '+') ? 2 : 1;
-    if (p[0] != '0' || end - 2 <= p)
-        return;
-    // We have a leading 0 on an exponent of at least two more digits
-    const char *n = p + 1;
-    while (end - 2 > n && n[0] == '0')
-        ++n;
-    memmove(p, n, end + 1 - n);
-}
-
 // Be consistent about display of infinities and NaNs (snprintf()'s varies,
 // notably on MinGW, despite POSIX documenting "[-]inf" or "[-]infinity" for %f,
 // %e and %g, uppercasing for their capital versions; similar for "nan"):
-#define TO_STRING_FLOAT(TYPE, FORMAT) \
-template <> Q_TESTLIB_EXPORT char *QTest::toString<TYPE>(const TYPE &t) \
-{ \
-    char *msg = new char[128]; \
-    switch (qFpClassify(t)) { \
-    case FP_INFINITE: \
-        qstrncpy(msg, (t < 0 ? "-inf" : "inf"), 128); \
-        break; \
-    case FP_NAN: \
-        qstrncpy(msg, "nan", 128); \
-        break; \
-    default: \
-        std::snprintf(msg, 128, #FORMAT, double(t));    \
-        massageExponent(msg); \
-        break; \
-    } \
-    return msg; \
+static char *toStringFp(double t, int digits10)
+{
+    char *msg = new char[128];
+    switch (qFpClassify(t)) {
+    case FP_INFINITE:
+        qstrncpy(msg, (t < 0 ? "-inf" : "inf"), 128);
+        break;
+    case FP_NAN:
+        qstrncpy(msg, "nan", 128);
+        break;
+    default:
+        std::snprintf(msg, 128, "%.*g (%a)", digits10, t, t);
+        break;
+    }
+    return msg;
 }
 
-TO_STRING_FLOAT(qfloat16, %.3g)
-TO_STRING_FLOAT(float, %g)
-TO_STRING_FLOAT(double, %.12g)
+#define TO_STRING_FLOAT(TYPE) \
+template <> Q_TESTLIB_EXPORT char *QTest::toString<TYPE>(const TYPE &t) \
+{ \
+    return toStringFp(t, std::numeric_limits<TYPE>::digits10 + 1); \
+}
+TO_STRING_FLOAT(qfloat16)
+TO_STRING_FLOAT(float)
+TO_STRING_FLOAT(double)
 
 template <> Q_TESTLIB_EXPORT char *QTest::toString<char>(const char &t)
 {

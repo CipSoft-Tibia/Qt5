@@ -1,6 +1,7 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QANDROIDPLATFORMSCREEN_H
 #define QANDROIDPLATFORMSCREEN_H
@@ -16,7 +17,6 @@
 QT_BEGIN_NAMESPACE
 
 class QAndroidPlatformWindow;
-
 
 class QAndroidPlatformScreen : public QObject,
                                public QPlatformScreen,
@@ -48,12 +48,14 @@ public:
     void topVisibleWindowChanged();
     int displayId() const override;
 
+    static QRect &defaultAvailableGeometry();
+    static QSize sizeForDisplayId(int displayId);
+
 public slots:
     void setPhysicalSize(const QSize &size);
+    void setPhysicalSizeFromPixels(const QSize &size);
     void setAvailableGeometry(const QRect &rect);
     void setSize(const QSize &size);
-    void setSizeParameters(const QSize &physicalSize, const QSize &size,
-                           const QRect &availableGeometry);
     void setRefreshRate(qreal refreshRate);
     void setOrientation(Qt::ScreenOrientation orientation);
 
@@ -69,6 +71,8 @@ protected:
     QList<Mode> m_modes;
     int m_currentMode = 0;
     int m_displayId = -1;
+    int m_xdpi;
+    int m_ydpi;
 
 private:
     QDpi logicalDpi() const override;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickvalidator_p.h"
 
@@ -27,6 +28,20 @@ QT_BEGIN_NAMESPACE
     text color to highlight invalid input:
 
     \snippet qml/intvalidator.qml 0
+
+    The validator will prevent the submission of text which can't possibly be
+    valid. However, while editing, only easily identified invalidity will be
+    blocked, for example sign conflicts or too many non-zero digits. This can
+    sometimes be surprising. The validator in the example above will for
+    instance allow entering "999", as values consisting of a number of digits
+    equal to or less than the max value are considered "intermediate" --
+    meaning that they are in a state where they are not valid, but could be
+    adjusted to be so. This is intended because the digit that prevents a
+    number from being in range is not necessarily the last digit typed. This
+    also means that an intermediate number can have leading zeros.
+
+    Adding a visual indicator based on TextInput's \l{TextInput::acceptableInput}{acceptableInput}
+    property can make clear to the user whether what they've typed will actually be accepted.
 
     \sa DoubleValidator, RegularExpressionValidator, {Validating Input Text}
 */

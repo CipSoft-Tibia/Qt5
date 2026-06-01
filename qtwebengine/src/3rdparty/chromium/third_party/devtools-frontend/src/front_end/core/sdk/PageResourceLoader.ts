@@ -17,7 +17,7 @@ import {
   type ResourceTreeFrame,
   ResourceTreeModel,
 } from './ResourceTreeModel.js';
-import {type Target} from './Target.js';
+import type {Target} from './Target.js';
 import {TargetManager} from './TargetManager.js';
 
 const UIStrings = {
@@ -411,6 +411,6 @@ export const enum Events {
   UPDATE = 'Update',
 }
 
-export type EventTypes = {
-  [Events.UPDATE]: void,
-};
+export interface EventTypes {
+  [Events.UPDATE]: void;
+}

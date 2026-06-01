@@ -5,7 +5,9 @@
 ## tst_conformance Test:
 #####################################################################
 
-qt_internal_add_test(tst_conformance
+qtmqtt_add_test(
+    TARGET
+        tst_conformance
     SOURCES
         ../../common/broker_connection.h
         tst_conformance.cpp

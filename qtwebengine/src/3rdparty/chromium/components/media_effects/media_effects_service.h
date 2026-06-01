@@ -7,7 +7,6 @@
 
 #include <memory>
 
-#include "base/auto_reset.h"
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
 #include "components/keyed_service/core/keyed_service.h"
@@ -18,11 +17,6 @@
 #include "media/capture/mojom/video_effects_manager.mojom-forward.h"
 #include "services/video_effects/public/mojom/video_effects_processor.mojom.h"
 #include "services/video_effects/public/mojom/video_effects_service.mojom-forward.h"
-
-[[nodiscard]] base::AutoReset<
-    mojo::Remote<video_effects::mojom::VideoEffectsService>*>
-SetVideoEffectsServiceRemoteForTesting(
-    mojo::Remote<video_effects::mojom::VideoEffectsService>* service_override);
 
 class MediaEffectsService : public KeyedService,
                             public MediaEffectsModelProvider::Observer {
@@ -50,16 +44,10 @@ class MediaEffectsService : public KeyedService,
   //
   // Note that this API only allows interacting with the manager via mojo in
   // order to support communication with the VideoCaptureService in a different
-  // process. The usages in Browser UI could potentially directly interact with
-  // a manager instance in order to avoid the mojo overhead, interactions
-  // are expected to be very low frequency and this approach is worth that
-  // tradeoff given the benefits:
-  //   * A consistent interaction mechanism for both in-process and
-  //     out-of-process clients
-  //   * Automatic cleanup when all remotes are disconnected
-  void BindVideoEffectsManager(
+  // process.
+  void BindReadonlyVideoEffectsManager(
       const std::string& device_id,
-      mojo::PendingReceiver<media::mojom::VideoEffectsManager>
+      mojo::PendingReceiver<media::mojom::ReadonlyVideoEffectsManager>
           effects_manager_receiver);
 
   // Connects a `VideoEffectsManagerImpl` to the provided
@@ -77,7 +65,7 @@ class MediaEffectsService : public KeyedService,
   //
   // Note that this API does not expose the `VideoEffectsManagerImpl` in any
   // way. If you need to interact with the manager, call
-  // `BindVideoEffectsManager()` instead.
+  // `BindReadonlyVideoEffectsManager()` instead.
   //
   // Calling this method will launch a new instance of Video Effects Service if
   // it's not already running.
@@ -88,12 +76,12 @@ class MediaEffectsService : public KeyedService,
 
   // MediaEffectsModelProvider::Observer:
   void OnBackgroundSegmentationModelUpdated(
-      const base::FilePath& path) override;
+      base::optional_ref<const base::FilePath> path) override;
 
- private:
   VideoEffectsManagerImpl& GetOrCreateVideoEffectsManager(
       const std::string& device_id);
 
+ private:
   void OnLastReceiverDisconnected(const std::string& device_id);
 
   // Invoked when the background segmentation model file has been opened.

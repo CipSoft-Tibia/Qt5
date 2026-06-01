@@ -85,6 +85,7 @@ Pane {
                     id: itemDelegateComponent
 
                     ItemDelegate {
+                        enabled: !GalleryConfig.disabled
                         text: delegateLoader.value
                         width: delegateLoader.width
                     }
@@ -95,6 +96,7 @@ Pane {
 
                     SwipeDelegate {
                         id: swipeDelegate
+                        enabled: !GalleryConfig.disabled
                         text: delegateLoader.value
                         width: delegateLoader.width
 
@@ -152,6 +154,7 @@ Pane {
                     id: checkDelegateComponent
 
                     CheckDelegate {
+                        enabled: !GalleryConfig.disabled
                         text: delegateLoader.value
                     }
                 }
@@ -160,6 +163,7 @@ Pane {
                     id: radioDelegateComponent
 
                     RadioDelegate {
+                        enabled: !GalleryConfig.disabled
                         text: delegateLoader.value
 
                         ButtonGroup.group: radioButtonGroup
@@ -170,6 +174,7 @@ Pane {
                     id: switchDelegateComponent
 
                     SwitchDelegate {
+                        enabled: !GalleryConfig.disabled
                         text: delegateLoader.value
                     }
                 }

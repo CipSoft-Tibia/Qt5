@@ -86,6 +86,7 @@ private slots:
     void mapComplexKeys_data() { basics_data(); }
     void mapComplexKeys();
     void mapNested();
+    void mapItemsRange();
 
     void sorting_data();
     void sorting();
@@ -342,6 +343,7 @@ static void basicTypeCheck(QCborValue::Type type, const QCborValue &v, const QVa
         QVERIFY(validexpr)
     CMP(v.toByteArray(), QByteArray, v.toByteArray().isNull());
     CMP(v.toString(), QString, v.toString().isNull());
+    CMP(v.toStringView(), QString, v.toStringView().isNull());
     CMP(v.toDateTime(), QDateTime, !v.toDateTime().isValid());
     CMP(v.toUrl(), QUrl, !v.toUrl().isValid());
     CMP(v.toRegularExpression(), QRegularExpression, v.toRegularExpression().pattern().isNull());
@@ -886,6 +888,7 @@ void tst_QCborValue::mapSimpleInitializerList()
         QCborValue v = m.value(2);
         QVERIFY(v.isString());
         QCOMPARE(v.toString(), "Hello");
+        QCOMPARE(v.toStringView(), u8"Hello");
         QCOMPARE(vmap[2], v);
     }
     {
@@ -893,6 +896,7 @@ void tst_QCborValue::mapSimpleInitializerList()
         QCborValue v = m.value(3);
         QVERIFY(v.isString());
         QCOMPARE(v.toString(), "World");
+        QCOMPARE(v.toStringView(), "World"_L1);
         QCOMPARE(vmap[3], v);
     }
     {
@@ -934,6 +938,7 @@ void tst_QCborValue::mapSimpleInitializerList()
     QCOMPARE((it + 1).key(), QCborValue(2));
     QVERIFY((it + 1)->isString());
     QCOMPARE((it + 1)->toString(), "Hello");
+    QCOMPARE((it + 1)->toStringView(), u8"Hello");
     it += 2;
     QCOMPARE(it.key(), QCborValue("Hello"));
     QVERIFY(it->isInteger());
@@ -941,6 +946,7 @@ void tst_QCborValue::mapSimpleInitializerList()
     QCOMPARE(it.key(), QCborValue(3));
     QVERIFY(it->isString());
     QCOMPARE(it.value().toString(), "World");
+    QCOMPARE(it.value().toStringView(), "World"_L1);
     --end;
     QCOMPARE(end.key(), QCborValue("World"));
     QCOMPARE(end.value(), QCborValue(3));
@@ -1462,6 +1468,7 @@ void tst_QCborValue::arrayStringElements()
 
     QCborValueRef r1 = a[0];
     QCOMPARE(r1.toString(), "Hello");
+    QCOMPARE(r1.toStringView(), u8"Hello");
     QCOMPARE(r1.operator QCborValue(), QCborValue("Hello"));
     QT_TEST_EQUALITY_OPS(r1, QCborValue("Hello"), true);
 
@@ -1476,10 +1483,11 @@ void tst_QCborValue::arrayStringElements()
 
     v2 = a.at(1);
     QCOMPARE(v2.toString(), "World");
+    QCOMPARE(v2.toStringView(), u8"World");
     QT_TEST_EQUALITY_OPS(v2, QCborValue("World"), true);
 
     QCOMPARE(a.takeAt(1).toString(), "World");
-    QCOMPARE(a.takeAt(0).toString(), "Hello");
+    QCOMPARE(a.takeAt(0).toStringView(), "Hello"_L1);
     QVERIFY(a.isEmpty());
 }
 
@@ -1492,6 +1500,7 @@ void tst_QCborValue::mapStringValues()
 
     QCborValueRef r1 = m[0];
     QCOMPARE(r1.toString(), "Hello");
+    QCOMPARE(r1.toStringView(), "Hello"_L1);
     QCOMPARE(r1.operator QCborValue(), QCborValue("Hello"));
     QT_TEST_EQUALITY_OPS(r1, QCborValue("Hello"), true);
 
@@ -1506,10 +1515,11 @@ void tst_QCborValue::mapStringValues()
 
     v2 = (m.begin() + 1).value();
     QCOMPARE(v2.toString(), "World");
+    QCOMPARE(v2.toStringView(), "World"_L1);
     QCOMPARE(v2, QCborValue("World"));
 
     QCOMPARE(m.extract(m.begin() + 1).toString(), "World");
-    QCOMPARE(m.take(0).toString(), "Hello");
+    QCOMPARE(m.take(0).toStringView(), u8"Hello");
     QVERIFY(m.isEmpty());
 }
 
@@ -1530,6 +1540,7 @@ void tst_QCborValue::mapStringKeys()
     QVERIFY(m2.value(QCborValue(QByteArray("foo"))).isUndefined());
     QVERIFY(m.value(QCborValue(QLatin1String("foo"))).isUndefined());
     QCOMPARE(m.value(QCborValue(QByteArray("foo"))).toString(), "bar");
+    QCOMPARE(m.value(QCborValue(QByteArray("foo"))).toStringView(), "bar");
 
     m.insert(u"World"_s, QCborValue(3));    // replaces
     QCOMPARE(m.size(), 3);
@@ -1796,7 +1807,7 @@ void tst_QCborValue::mapComplexKeys()
 
         // basics_data() strings are Latin1
         QByteArray latin1 = v.toString().toLatin1();
-        Q_ASSERT(v.toString() == QString::fromLatin1(latin1));
+        Q_ASSERT(v.toStringView() == QString::fromLatin1(latin1));
         QCOMPARE(m[QLatin1String(latin1)].toInteger(), 42);
     }
 
@@ -1912,6 +1923,112 @@ void tst_QCborValue::mapNested()
         QCOMPARE(first, QCborMap());
         QCOMPARE(first.toMap(wrongMap), QCborMap());
     }
+}
+
+template <typename T>
+using ItemsRangeType = decltype(std::declval<T>().asKeyValueRange());
+
+void tst_QCborValue::mapItemsRange()
+{
+    auto makeMap = [] {
+        return QCborMap{
+            { "a", 1 },
+            { "b", true },
+            { "c", QCborValue::Null },
+            { "d", QCborValue::Undefined },
+            { "e", "ee" },
+            { QLatin1String("f"), QLatin1String("g") },
+            { "h", QCborMap{ { "h1", false } } },
+            { "i", QCborArray{ 1, 2, false } },
+            { true, 1 },
+            { QCborMap{ { 1, 1 }, { 2, 4 } }, true },
+        };
+    };
+    QCborMap obj = makeMap();
+
+    for (auto &&[key, value] : obj.asKeyValueRange()) {
+        static_assert(std::is_same_v<std::remove_reference_t<decltype(value)>, QCborValueRef>);
+
+        if (key.isString()) {
+            QVERIFY(key.toStringView().length() == 1);
+        } else if (key.isMap()) {
+            QVERIFY(key.toMap().size() == 2);
+        } else {
+            QVERIFY(key.isBool());
+        }
+    }
+    for (auto &&[key, value] : std::as_const(obj).asKeyValueRange()) {
+        static_assert(std::is_same_v<std::remove_reference_t<decltype(value)>, QCborValueConstRef>);
+        QVERIFY(obj.contains(key));
+    }
+    for (auto &&[key, value] : makeMap().asKeyValueRange()) {
+        static_assert(std::is_same_v<std::remove_reference_t<decltype(value)>, QCborValueRef>);
+        QVERIFY(obj.contains(key));
+    }
+
+    for (auto &&[key, value] :
+         QCborMap{ { "a", "a" }, { "b", "b" }, { "c", "c" } }.asKeyValueRange()) {
+        QVERIFY(key.toStringView() == value.toStringView());
+    }
+
+    QCborMap modify = makeMap();
+    for (auto &&[key, value] : modify.asKeyValueRange()) {
+        if (key == "a") {
+            value = "modified";
+        }
+    }
+    QVERIFY(modify[QLatin1String("a")] == "modified");
+
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges > 202110L // P2415R2
+    static_assert(std::ranges::viewable_range<ItemsRangeType<QCborMap>>);
+    static_assert(std::ranges::viewable_range<ItemsRangeType<QCborMap &>>);
+    static_assert(std::ranges::viewable_range<ItemsRangeType<const QCborMap>>);
+    static_assert(std::ranges::viewable_range<ItemsRangeType<const QCborMap &>>);
+
+    static_assert(!std::ranges::view<ItemsRangeType<QCborMap>>);
+    static_assert(std::ranges::view<ItemsRangeType<QCborMap &>>);
+    static_assert(!std::ranges::view<ItemsRangeType<const QCborMap>>);
+    static_assert(std::ranges::view<ItemsRangeType<const QCborMap &>>);
+
+    const auto keyValueTest = [](auto &&pair) {
+        return pair.first.toStringView("default key") == pair.second.toStringView();
+    };
+    {
+        auto range = obj.asKeyValueRange();
+        static_assert(std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = std::as_const(obj).asKeyValueRange();
+        static_assert(std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = makeMap().asKeyValueRange();
+        static_assert(!std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = const_cast<const QCborMap &&>(makeMap()).asKeyValueRange();
+        static_assert(!std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+#endif
 }
 
 void tst_QCborValue::sorting_data()
@@ -3007,6 +3124,7 @@ template <typename ValueRef> static void cborValueRef_template()
     QCOMPARE(ref.toDouble(47), v.toDouble(47));
     QCOMPARE(ref.toByteArray("other"), v.toByteArray("other"));
     QCOMPARE(ref.toString("other"), v.toString("other"));
+    QCOMPARE(ref.toStringView("other"_L1), v.toStringView("other"));
     QCOMPARE(ref.toArray(otherArray), v.toArray(otherArray));
     QCOMPARE(ref.toMap(otherMap), v.toMap(otherMap));
     QCOMPARE(ref.toDateTime(otherDateTime), v.toDateTime(otherDateTime));
@@ -3325,6 +3443,9 @@ void tst_QCborValue::debugOutput()
 
 void tst_QCborValue::testlibFormatting_data()
 {
+    auto formattedDouble = [](double d) {
+        return QString::fromLatin1(std::unique_ptr<char[]>(QTest::toString(d)).get());
+    };
     QTest::addColumn<QCborValue>("v");
     QTest::addColumn<QString>("expected");
 
@@ -3337,7 +3458,8 @@ void tst_QCborValue::testlibFormatting_data()
     QTest::newRow("simpletype")
             << QCborValue(QCborSimpleType(0)) << "QCborValue(QCborSimpleType(0))";
     QTest::newRow("Integer:0") << QCborValue(0) << "QCborValue(Integer, 0)";
-    QTest::newRow("Double:0") << QCborValue(0.) << "QCborValue(Double, 0)"; // must be integer!
+    QTest::newRow("Double:0")
+            << QCborValue(0.) << "QCborValue(Double, " + formattedDouble(0) + ')'; // must be integer!
     QTest::newRow("ByteArray")
             << QCborValue(raw("Hello\0World")) << "QCborValue(ByteArray, \"Hello\\x00World\")";
     QTest::newRow("String")
@@ -3360,11 +3482,11 @@ void tst_QCborValue::testlibFormatting_data()
     QTest::newRow("Map:Empty") << QCborValue(QCborMap()) << "QCborValue(Map, {})";
     QTest::newRow("Array")
             << QCborValue(QCborArray{1, 2., nullptr})
-            << "QCborValue(Array, [QCborValue(Integer, 1), QCborValue(Double, 2), QCborValue(nullptr)])";
+            << "QCborValue(Array, [QCborValue(Integer, 1), QCborValue(Double, " + formattedDouble(2)  + "), QCborValue(nullptr)])";
     QTest::newRow("Map")
             << QCborValue(QCborMap{{1, 2.}, {nullptr, "Hello"}, {"World", QCborArray()}})
             << "QCborValue(Map, {"
-               "QCborValue(Integer, 1): QCborValue(Double, 2), "
+               "QCborValue(Integer, 1): QCborValue(Double, " + formattedDouble(2) + "), "
                "QCborValue(nullptr): QCborValue(String, \"Hello\"), "
                "QCborValue(String, \"World\"): QCborValue(Array, [])"
                "})";

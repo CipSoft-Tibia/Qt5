@@ -85,12 +85,6 @@ bool CanEnableDiceForBuild() {
 
 }  // namespace
 
-// static
-AccountConsistencyModeManager* AccountConsistencyModeManager::GetForProfile(
-    Profile* profile) {
-  return AccountConsistencyModeManagerFactory::GetForProfile(profile);
-}
-
 AccountConsistencyModeManager::AccountConsistencyModeManager(Profile* profile)
     : profile_(profile),
       account_consistency_(signin::AccountConsistencyMethod::kDisabled),
@@ -118,7 +112,7 @@ AccountConsistencyModeManager::AccountConsistencyModeManager(Profile* profile)
   account_consistency_initialized_ = true;
 }
 
-AccountConsistencyModeManager::~AccountConsistencyModeManager() {}
+AccountConsistencyModeManager::~AccountConsistencyModeManager() = default;
 
 // static
 void AccountConsistencyModeManager::RegisterProfilePrefs(
@@ -132,7 +126,7 @@ AccountConsistencyMethod AccountConsistencyModeManager::GetMethodForProfile(
   if (!ShouldBuildServiceForProfile(profile))
     return AccountConsistencyMethod::kDisabled;
 
-  return AccountConsistencyModeManager::GetForProfile(profile)
+  return AccountConsistencyModeManagerFactory::GetForProfile(profile)
       ->GetAccountConsistencyMethod();
 }
 
@@ -149,7 +143,7 @@ bool AccountConsistencyModeManager::IsDiceSignInAllowed(
   // are sync-ed to Google. Otherwise, we won't have a valid GAIA ID to sign in
   // to.
   bool is_oidc_sign_in_disallowed =
-      entry && !entry->GetProfileManagementOidcTokens().auth_token.empty() &&
+      entry && !entry->GetProfileManagementOidcTokens().id_token.empty() &&
       entry->IsDasherlessManagement();
   return CanEnableDiceForBuild() && IsBrowserSigninAllowedByCommandLine() &&
          !is_oidc_sign_in_disallowed &&
@@ -223,6 +217,5 @@ AccountConsistencyModeManager::ComputeAccountConsistencyMethod(
   return AccountConsistencyMethod::kDice;
 #endif
 
-  NOTREACHED_IN_MIGRATION();
-  return AccountConsistencyMethod::kDisabled;
+  NOTREACHED();
 }

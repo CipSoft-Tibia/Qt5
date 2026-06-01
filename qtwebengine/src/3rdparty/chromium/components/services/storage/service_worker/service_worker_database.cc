@@ -1105,8 +1105,7 @@ const char* ServiceWorkerDatabase::StatusToString(
     case ServiceWorkerDatabase::Status::kErrorStorageDisconnected:
       return "Storage is disconnected";
   }
-  NOTREACHED_IN_MIGRATION();
-  return "Database unknown error";
+  NOTREACHED();
 }
 
 ServiceWorkerDatabase::ServiceWorkerDatabase(const base::FilePath& path)
@@ -1255,6 +1254,8 @@ ServiceWorkerDatabase::GetRegistrationsForStorageKey(
           opt_resources_list->clear();
         break;
       }
+      // TODO(crbug.com/372879072): remove this CHECK
+      CHECK_EQ(key.origin(), url::Origin::Create(registration->scope));
       registrations->push_back(std::move(registration));
     }
   }
@@ -2413,8 +2414,7 @@ ServiceWorkerDatabase::Status ServiceWorkerDatabase::LazyOpen(
       return Status::kOk;
     default:
       // Other cases should be handled in ReadDatabaseVersion.
-      NOTREACHED_IN_MIGRATION();
-      return Status::kErrorCorrupted;
+      NOTREACHED();
   }
 }
 
@@ -2794,10 +2794,26 @@ ServiceWorkerDatabase::Status ServiceWorkerDatabase::ParseRegistrationData(
             source.network_source.emplace();
             break;
           case ServiceWorkerRegistrationData::RouterRules::RuleV1::Source::
-              kRaceSource:
+              kRaceSource: {
             source.type = network::mojom::ServiceWorkerRouterSourceType::kRace;
-            source.race_source.emplace();
+            blink::ServiceWorkerRouterRaceSource race_source;
+            if (s.race_source().has_target()) {
+              switch (s.race_source().target()) {
+                case ServiceWorkerRegistrationData::RouterRules::RuleV1::
+                    Source::RaceSource::kNetworkAndFetchHandler:
+                  race_source.target = blink::ServiceWorkerRouterRaceSource::
+                      TargetEnum::kNetworkAndFetchHandler;
+                  break;
+              }
+            } else {
+              // This happens when reading an old registration.
+              // It means kNetworkAndFetchHandler.
+              race_source.target = blink::ServiceWorkerRouterRaceSource::
+                  TargetEnum::kNetworkAndFetchHandler;
+            }
+            source.race_source = race_source;
             break;
+          }
           case ServiceWorkerRegistrationData::RouterRules::RuleV1::Source::
               kFetchEventSource:
             source.type =
@@ -2805,7 +2821,7 @@ ServiceWorkerDatabase::Status ServiceWorkerDatabase::ParseRegistrationData(
             source.fetch_event_source.emplace();
             break;
           case ServiceWorkerRegistrationData::RouterRules::RuleV1::Source::
-              kCacheSource:
+              kCacheSource: {
             source.type = network::mojom::ServiceWorkerRouterSourceType::kCache;
             blink::ServiceWorkerRouterCacheSource cache_source;
             if (s.cache_source().has_cache_name()) {
@@ -2813,6 +2829,7 @@ ServiceWorkerDatabase::Status ServiceWorkerDatabase::ParseRegistrationData(
             }
             source.cache_source = cache_source;
             break;
+          }
         }
         router_rule.sources.emplace_back(source);
       }
@@ -2918,7 +2935,7 @@ void ServiceWorkerDatabase::WriteRegistrationDataInBatch(
             ServiceWorkerRegistrationData::SKIPPABLE_EMPTY_FETCH_HANDLER);
         break;
       case blink::mojom::ServiceWorkerFetchHandlerType::kNoHandler:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
   data.set_last_update_check_time(
@@ -3015,18 +3032,28 @@ void ServiceWorkerDatabase::WriteRegistrationDataInBatch(
           case network::mojom::ServiceWorkerRouterSourceType::kNetwork:
             source->mutable_network_source();
             break;
-          case network::mojom::ServiceWorkerRouterSourceType::kRace:
-            source->mutable_race_source();
+          case network::mojom::ServiceWorkerRouterSourceType::kRace: {
+            auto* race_source = source->mutable_race_source();
+            switch (s.race_source->target) {
+              case blink::ServiceWorkerRouterRaceSource::TargetEnum::
+                  kNetworkAndFetchHandler:
+                race_source->set_target(
+                    ServiceWorkerRegistrationData::RouterRules::RuleV1::Source::
+                        RaceSource::kNetworkAndFetchHandler);
+                break;
+            }
             break;
+          }
           case network::mojom::ServiceWorkerRouterSourceType::kFetchEvent:
             source->mutable_fetch_event_source();
             break;
-          case network::mojom::ServiceWorkerRouterSourceType::kCache:
+          case network::mojom::ServiceWorkerRouterSourceType::kCache: {
             auto* cache_source = source->mutable_cache_source();
             if (s.cache_source->cache_name) {
               cache_source->set_cache_name(*s.cache_source->cache_name);
             }
             break;
+          }
         }
       }
     }

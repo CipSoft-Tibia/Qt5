@@ -30,7 +30,6 @@
 
 #include <d3d12.h>
 #include <dxgi1_4.h>
-#include <windows.h>
 #include <wrl/client.h>
 
 #include "dawn/native/D3DBackend.h"
@@ -63,6 +62,8 @@ struct DAWN_NATIVE_EXPORT SharedBufferMemoryD3D12ResourceDescriptor : wgpu::Chai
     // WGPUDevice.
     Microsoft::WRL::ComPtr<ID3D12Resource> resource;
 };
+
+DAWN_NATIVE_EXPORT Microsoft::WRL::ComPtr<ID3D12Resource> TextureImplToID3D12Resource(WGPUTexture &);
 
 }  // namespace dawn::native::d3d12
 

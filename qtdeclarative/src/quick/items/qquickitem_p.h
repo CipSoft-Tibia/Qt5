@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKITEM_P_H
 #define QQUICKITEM_P_H
@@ -63,6 +64,7 @@ class QQuickPointerHandler;
 
 class QQuickContents : public QSafeQuickItemChangeListener<QQuickContents>
 {
+    Q_DISABLE_COPY(QQuickContents)
 public:
     QQuickContents(QQuickItem *item);
     ~QQuickContents() override;
@@ -419,7 +421,7 @@ public:
     }
 
     struct ExtraData {
-        ExtraData();
+        Q_QUICK_EXPORT ExtraData();
 
         qreal z;
         qreal scale;
@@ -616,6 +618,8 @@ public:
 
     void refWindow(QQuickWindow *);
     void derefWindow();
+
+    qreal effectiveDevicePixelRatio() const;
 
     QPointer<QQuickItem> subFocusItem;
     void updateSubFocusItem(QQuickItem *scope, bool focus);

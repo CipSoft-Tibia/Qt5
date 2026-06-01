@@ -18,6 +18,8 @@
 #include <private/qquickitem_p.h>
 #include <private/qquickrectangle_p.h>
 
+QT_BEGIN_NAMESPACE
+
 class QQuickLayoutItemProxyAttachedData;
 class QQuickLayoutItemProxyPrivate;
 class QQuickLayoutItemProxy : public QQuickItem
@@ -141,6 +143,8 @@ private:
     QList<QQuickLayoutItemProxy*> proxies;
     QQuickLayoutItemProxy* controllingProxy;
 };
+
+QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(QQuickLayoutItemProxyAttachedData*);
 

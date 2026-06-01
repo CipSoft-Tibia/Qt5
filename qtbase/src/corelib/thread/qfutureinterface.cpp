@@ -8,6 +8,7 @@
 
 #include <QtCore/qatomic.h>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qloggingcategory.h>
 #include <QtCore/qthread.h>
 #include <QtCore/qvarlengtharray.h>
 #include <private/qthreadpool_p.h>
@@ -21,6 +22,8 @@
 QT_WARNING_DISABLE_GCC("-Wstringop-overflow")
 
 QT_BEGIN_NAMESPACE
+
+Q_STATIC_LOGGING_CATEGORY(lcQFutureContinuations, "qt.core.qfuture.continuations")
 
 enum {
     MaxProgressEmitsPerSecond = 25
@@ -43,6 +46,20 @@ const auto suspendingOrSuspended =
 
 } // unnamed namespace
 
+namespace QtPrivate {
+
+void qfutureWarnIfUnusedResults(qsizetype numResults)
+{
+    if (numResults > 1) {
+        qCWarning(lcQFutureContinuations,
+                  "Parent future has %" PRIdQSIZETYPE " result(s), but only the first result "
+                  "will be handled in the continuation.",
+                  numResults);
+    }
+}
+
+} // namespace QtPrivate
+
 class QObjectContinuationWrapper : public QObject
 {
     Q_OBJECT
@@ -55,56 +72,6 @@ public:
 signals:
     void run();
 };
-
-void QtPrivate::watchContinuationImpl(const QObject *context, QSlotObjectBase *slotObj,
-                                      QFutureInterfaceBase &fi)
-{
-    Q_ASSERT(context);
-    Q_ASSERT(slotObj);
-
-    auto slot = SlotObjUniquePtr(slotObj);
-
-    auto *watcher = new QObjectContinuationWrapper;
-    watcher->moveToThread(context->thread());
-
-    // We need to protect acccess to the watcher. The context object (and in turn, the watcher)
-    // could be destroyed while the continuation that emits the signal is running. We have to
-    // prevent that.
-    // The mutex has to be recursive, because the continuation itself could delete the context
-    // object (and thus the watcher), which will try to lock the mutex from the same thread twice.
-    auto watcherMutex = std::make_shared<QRecursiveMutex>();
-    const auto destroyWatcher = [watcherMutex, watcher]() mutable {
-        QMutexLocker lock(watcherMutex.get());
-        delete watcher;
-    };
-
-    // ### we're missing a convenient way to `QObject::connect()` to a `QSlotObjectBase`...
-    QObject::connect(watcher, &QObjectContinuationWrapper::run,
-                     // for the following, cf. QMetaObject::invokeMethodImpl():
-                     // we know `slot` is a lambda returning `void`, so we can just
-                     // `call()` with `obj` and `args[0]` set to `nullptr`:
-                     context, [slot = std::move(slot)] {
-                         void *args[] = { nullptr }; // for `void` return value
-                         slot->call(nullptr, args);
-                     });
-    QObject::connect(watcher, &QObjectContinuationWrapper::run, watcher, destroyWatcher);
-
-    // We need to connect to destroyWatcher here, instead of delete or deleteLater().
-    // If the continuation is called from a separate thread, emit watcher->run() can't detect that
-    // the watcher has been deleted in the separate thread, causing a race condition and potential
-    // heap-use-after-free issue inside QObject::doActivate. destroyWatcher forces the deletion of
-    // the watcher to occur after emit watcher->run() completes and prevents the race condition.
-    QObject::connect(context, &QObject::destroyed, watcher, destroyWatcher);
-
-    fi.setContinuation([watcherMutex, watcher = QPointer(watcher)]
-                       (const QFutureInterfaceBase &parentData)
-    {
-        Q_UNUSED(parentData);
-        QMutexLocker lock(watcherMutex.get());
-        if (watcher)
-            emit watcher->run();
-    });
-}
 
 QFutureCallOutInterface::~QFutureCallOutInterface()
     = default;
@@ -146,46 +113,87 @@ static inline int switch_from_to(QAtomicInt &a, int from, int to)
     return value;
 }
 
+void QFutureInterfaceBasePrivate::cancelImpl(QFutureInterfaceBase::CancelMode mode,
+                                             CancelOptions options)
+{
+    QMutexLocker locker(&m_mutex);
+
+    const auto oldState = state.loadRelaxed();
+
+    switch (mode) {
+    case QFutureInterfaceBase::CancelMode::CancelAndFinish:
+        if ((oldState & QFutureInterfaceBase::Finished)
+            && (oldState & QFutureInterfaceBase::Canceled)) {
+            return;
+        }
+        switch_from_to(state, suspendingOrSuspended | QFutureInterfaceBase::Running,
+                       QFutureInterfaceBase::Canceled | QFutureInterfaceBase::Finished);
+        break;
+    case QFutureInterfaceBase::CancelMode::CancelOnly:
+        if (oldState & QFutureInterfaceBase::Canceled)
+            return;
+        switch_from_to(state, suspendingOrSuspended, QFutureInterfaceBase::Canceled);
+        break;
+    }
+
+    if (options & CancelOption::CancelContinuations) {
+        // Cancel the continuations chain
+        QMutexLocker continuationLocker(&continuationMutex);
+        QFutureInterfaceBasePrivate *next = continuationData;
+        while (next) {
+            QMutexLocker nextLocker(&next->continuationMutex);
+            if (next->continuationType == QFutureInterfaceBase::ContinuationType::Then) {
+                next->continuationState = QFutureInterfaceBasePrivate::Canceled;
+                next = next->continuationData;
+            } else {
+                break;
+            }
+        }
+    }
+
+    waitCondition.wakeAll();
+    pausedWaitCondition.wakeAll();
+
+    if (!(oldState & QFutureInterfaceBase::Canceled))
+        sendCallOut(QFutureCallOutEvent(QFutureCallOutEvent::Canceled));
+    if (mode == QFutureInterfaceBase::CancelMode::CancelAndFinish
+        && !(oldState & QFutureInterfaceBase::Finished)) {
+        sendCallOut(QFutureCallOutEvent(QFutureCallOutEvent::Finished));
+    }
+
+    isValid = false;
+}
+
 void QFutureInterfaceBase::cancel()
 {
     cancel(CancelMode::CancelOnly);
 }
 
+void QFutureInterfaceBase::cancelChain()
+{
+    cancelChain(CancelMode::CancelOnly);
+}
+
 void QFutureInterfaceBase::cancel(QFutureInterfaceBase::CancelMode mode)
 {
-    QMutexLocker locker(&d->m_mutex);
+    d->cancelImpl(mode, QFutureInterfaceBasePrivate::CancelOption::CancelContinuations);
+}
 
-    const auto oldState = d->state.loadRelaxed();
-
-    switch (mode) {
-    case CancelMode::CancelAndFinish:
-        if ((oldState & Finished) && (oldState & Canceled))
-            return;
-        switch_from_to(d->state, suspendingOrSuspended | Running, Canceled | Finished);
-        break;
-    case CancelMode::CancelOnly:
-        if (oldState & Canceled)
-            return;
-        switch_from_to(d->state, suspendingOrSuspended, Canceled);
-        break;
+void QFutureInterfaceBase::cancelChain(QFutureInterfaceBase::CancelMode mode)
+{
+    // go up through the list of continuations, cancelling each of them
+    {
+        QMutexLocker locker(&d->continuationMutex);
+        QFutureInterfaceBasePrivate *prev = d->nonConcludedParent;
+        while (prev) {
+            // Do not cancel continuations, because we're going bottom-to-top
+            prev->cancelImpl(mode, QFutureInterfaceBasePrivate::CancelOption::None);
+            QMutexLocker prevLocker(&prev->continuationMutex);
+            prev = prev->nonConcludedParent;
+        }
     }
-
-    // Cancel the continuations chain
-    QFutureInterfaceBasePrivate *next = d->continuationData;
-    while (next) {
-        next->continuationState = QFutureInterfaceBasePrivate::Canceled;
-        next = next->continuationData;
-    }
-
-    d->waitCondition.wakeAll();
-    d->pausedWaitCondition.wakeAll();
-
-    if (!(oldState & Canceled))
-        d->sendCallOut(QFutureCallOutEvent(QFutureCallOutEvent::Canceled));
-    if (mode == CancelMode::CancelAndFinish && !(oldState & Finished))
-        d->sendCallOut(QFutureCallOutEvent(QFutureCallOutEvent::Finished));
-
-    d->isValid = false;
+    // finally, cancel self and all next continuations
+    d->cancelImpl(mode, QFutureInterfaceBasePrivate::CancelOption::CancelContinuations);
 }
 
 void QFutureInterfaceBase::setSuspended(bool suspend)
@@ -876,14 +884,11 @@ void QFutureInterfaceBasePrivate::setState(QFutureInterfaceBase::State newState)
     state.storeRelaxed(newState);
 }
 
-void QFutureInterfaceBase::setContinuation(std::function<void(const QFutureInterfaceBase &)> func)
+void QFutureInterfaceBase::setContinuation(std::function<void (const QFutureInterfaceBase &)> func,
+                                           void *continuationFutureData, ContinuationType type)
 {
-    setContinuation(std::move(func), nullptr);
-}
+    auto *futureData = static_cast<QFutureInterfaceBasePrivate *>(continuationFutureData);
 
-void QFutureInterfaceBase::setContinuation(std::function<void(const QFutureInterfaceBase &)> func,
-                                           QFutureInterfaceBasePrivate *continuationFutureData)
-{
     QMutexLocker lock(&d->continuationMutex);
 
     // If the state is ready, run continuation immediately,
@@ -901,10 +906,96 @@ void QFutureInterfaceBase::setContinuation(std::function<void(const QFutureInter
         if (d->continuation) {
             qWarning("Adding a continuation to a future which already has a continuation. "
                      "The existing continuation is overwritten.");
+            if (d->continuationData)
+                d->continuationData->nonConcludedParent = nullptr;
         }
         d->continuation = std::move(func);
-        d->continuationData = continuationFutureData;
+        if (futureData) {
+            futureData->continuationType = type;
+            futureData->nonConcludedParent = d;
+        }
+        d->continuationData = futureData;
+        Q_ASSERT_X(!futureData || futureData->continuationType != ContinuationType::Unknown,
+                   "setContinuation", "Make sure to provide a correct continuation type!");
     }
+}
+
+/*
+    For continuations with context we expect all the needed data to be captured
+    directly by the continuation data, because this simplifies the slot
+    invocation. That's why func has no parameters.
+
+    We pass continuation data as a QVariant, because we need to keep the
+    QFutureInterface<T> for the entire lifetime of the continuation, but we
+    cannot pass a template type T as a parameter.
+*/
+void QFutureInterfaceBase::setContinuation(const QObject *context, std::function<void()> func,
+                                           const QVariant &continuationFuture,
+                                           ContinuationType type)
+{
+    Q_ASSERT(context);
+
+    using FuncType = void();
+    using Prototype = typename QtPrivate::Callable<FuncType>::Function;
+    auto slotObj = QtPrivate::makeCallableObject<Prototype>(std::move(func));
+
+    auto slot = QtPrivate::SlotObjUniquePtr(slotObj);
+
+    auto *watcher = new QObjectContinuationWrapper;
+    watcher->moveToThread(context->thread());
+
+   // We need to protect acccess to the watcher. The context object (and in turn, the watcher)
+   // could be destroyed while the continuation that emits the signal is running. We have to
+   // prevent that.
+   // The mutex has to be recursive, because the continuation itself could delete the context
+   // object (and thus the watcher), which will try to lock the mutex from the same thread twice.
+    auto watcherMutex = std::make_shared<QRecursiveMutex>();
+    const auto destroyWatcher = [watcherMutex, watcher]() mutable {
+        QMutexLocker lock(watcherMutex.get());
+        delete watcher;
+    };
+
+    // ### we're missing a convenient way to `QObject::connect()` to a `QSlotObjectBase`...
+    QObject::connect(watcher, &QObjectContinuationWrapper::run,
+                     // for the following, cf. QMetaObject::invokeMethodImpl():
+                     // we know `slot` is a lambda returning `void`, so we can just
+                     // `call()` with `obj` and `args[0]` set to `nullptr`:
+                     context, [slot = std::move(slot)] {
+                         void *args[] = { nullptr }; // for `void` return value
+                         slot->call(nullptr, args);
+                     });
+    QObject::connect(watcher, &QObjectContinuationWrapper::run, watcher, destroyWatcher);
+
+    // We need to connect to destroyWatcher here, instead of delete or deleteLater().
+    // If the continuation is called from a separate thread, emit watcher->run() can't detect that
+    // the watcher has been deleted in the separate thread, causing a race condition and potential
+    // heap-use-after-free issue inside QObject::doActivate. destroyWatcher forces the deletion of
+    // the watcher to occur after emit watcher->run() completes and prevents the race condition.
+    QObject::connect(context, &QObject::destroyed, watcher, destroyWatcher);
+
+    // Extract a QFutureInterfaceBasePrivate pointer from the QVariant. We rely
+    // on the fact that QVariant contains QFutureInterface<T>.
+    QFutureInterfaceBasePrivate *continuationFutureData = nullptr;
+    if (continuationFuture.isValid()) {
+        Q_ASSERT(QLatin1StringView(continuationFuture.typeName())
+                         .startsWith(QLatin1StringView("QFutureInterface")));
+        const auto continuationPtr =
+                static_cast<const QFutureInterfaceBase *>(continuationFuture.constData());
+        continuationFutureData = continuationPtr->d;
+    }
+
+    // Capture continuationFuture so that it lives as long as the continuation,
+    // and the continuation data remains valid.
+    setContinuation([watcherMutex = std::move(watcherMutex),
+                     watcher = QPointer(watcher), continuationFuture]
+                    (const QFutureInterfaceBase &parentData)
+    {
+        Q_UNUSED(parentData);
+        Q_UNUSED(continuationFuture);
+        QMutexLocker lock(watcherMutex.get());
+        if (watcher)
+            emit watcher->run();
+    }, continuationFutureData, type);
 }
 
 void QFutureInterfaceBase::cleanContinuation()
@@ -922,6 +1013,10 @@ void QFutureInterfaceBase::runContinuation() const
 {
     QMutexLocker lock(&d->continuationMutex);
     if (d->continuation && !d->continuationExecuted) {
+        // If we run the next continuation, then this future is concluded, so
+        // we wouldn't need to revisit it in the cancelChain()
+        if (d->continuationData)
+            d->continuationData->nonConcludedParent = nullptr;
         // Save the continuation in a local function, to avoid calling
         // a null std::function below, in case cleanContinuation() is
         // called from some other thread right after unlock() below.

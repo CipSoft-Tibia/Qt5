@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWASMEVENT_H
 #define QWASMEVENT_H
@@ -56,6 +57,8 @@ struct Event
 {
     Event(EventType type, emscripten::val webEvent);
 
+    bool isTargetedForQtElement() const;
+
     emscripten::val webEvent;
     EventType type;
     emscripten::val target() const { return webEvent["target"]; }
@@ -63,16 +66,15 @@ struct Event
 
 struct KeyEvent : public Event
 {
-    static std::optional<KeyEvent>
-    fromWebWithDeadKeyTranslation(emscripten::val webEvent, QWasmDeadKeySupport *deadKeySupport);
-
-    KeyEvent(EventType type, emscripten::val webEvent);
+    KeyEvent(EventType type, emscripten::val webEvent, QWasmDeadKeySupport *deadKeySupport);
 
     Qt::Key key;
     QFlags<Qt::KeyboardModifier> modifiers;
     bool deadKey;
     QString text;
     bool autoRepeat;
+    bool isComposing;
+    int keyCode;
 };
 
 struct MouseEvent : public Event

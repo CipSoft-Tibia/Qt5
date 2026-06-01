@@ -75,13 +75,15 @@ class CORE_EXPORT MessageEvent final : public Event {
                               const String& last_event_id = String(),
                               EventTarget* source = nullptr) {
     return MakeGarbageCollected<MessageEvent>(
-        std::move(data), origin, message_origin_kind, last_event_id, source, ports, nullptr);
+        std::move(data), origin, message_origin_kind, last_event_id, source,
+        ports, nullptr);
   }
   static MessageEvent* Create(MessagePortArray* ports,
                               scoped_refptr<SerializedScriptValue> data,
                               UserActivation* user_activation) {
-    return MakeGarbageCollected<MessageEvent>(
-        std::move(data), String(), kMessageIsSameOrigin, String(), nullptr, ports, user_activation);
+    return MakeGarbageCollected<MessageEvent>(std::move(data), String(),
+                                kMessageIsSameOrigin, String(),
+                                nullptr, ports, user_activation);
   }
   static MessageEvent* Create(
       Vector<MessagePortChannel> channels,
@@ -151,7 +153,7 @@ class CORE_EXPORT MessageEvent final : public Event {
                         const String& origin,
                         const String& last_event_id,
                         EventTarget* source,
-                        MessagePortArray& ports);
+                        MessagePortArray ports);
   void initMessageEvent(const AtomicString& type,
                         bool bubbles,
                         bool cancelable,

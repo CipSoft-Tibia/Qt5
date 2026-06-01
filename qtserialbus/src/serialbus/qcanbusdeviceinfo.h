@@ -1,5 +1,6 @@
 // Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCANBUSDEVICEINFO_H
 #define QCANBUSDEVICEINFO_H
@@ -12,11 +13,14 @@ QT_BEGIN_NAMESPACE
 
 class QCanBusDeviceInfoPrivate;
 
+QT_DECLARE_QSDP_SPECIALIZATION_DTOR(QCanBusDeviceInfoPrivate)
+
 class Q_SERIALBUS_EXPORT QCanBusDeviceInfo
 {
 public:
     QCanBusDeviceInfo() = delete;
     QCanBusDeviceInfo(const QCanBusDeviceInfo &other);
+    QCanBusDeviceInfo(QCanBusDeviceInfo &&other) noexcept = default;
     ~QCanBusDeviceInfo();
 
     void swap(QCanBusDeviceInfo &other) noexcept

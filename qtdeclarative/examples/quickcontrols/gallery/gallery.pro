@@ -24,6 +24,7 @@ RESOURCES += \
     pages/ScrollablePage.qml \
     pages/ScrollBarPage.qml \
     pages/ScrollIndicatorPage.qml \
+    pages/SearchFieldPage.qml \
     pages/SliderPage.qml \
     pages/SpinBoxPage.qml \
     pages/StackViewPage.qml \

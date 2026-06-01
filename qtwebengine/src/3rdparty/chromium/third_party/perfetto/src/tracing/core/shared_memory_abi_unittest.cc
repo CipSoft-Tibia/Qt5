@@ -17,7 +17,6 @@
 #include "perfetto/ext/tracing/core/shared_memory_abi.h"
 
 #include "perfetto/ext/tracing/core/basic_types.h"
-#include "src/base/test/gtest_test_suite.h"
 #include "src/tracing/test/aligned_buffer_test.h"
 #include "test/gtest_and_gmock.h"
 
@@ -82,8 +81,8 @@ TEST_P(SharedMemoryABITest, NominalCases) {
   for (size_t page_idx = 0; page_idx <= 4; page_idx++) {
     uint8_t* const page_start = buf() + page_idx * page_size();
     uint8_t* const page_end = page_start + page_size();
-    const size_t num_chunks =
-        SharedMemoryABI::GetNumChunksForLayout(abi.GetPageLayout(page_idx));
+    const size_t num_chunks = SharedMemoryABI::GetNumChunksFromHeaderBitmap(
+        abi.GetPageHeaderBitmap(page_idx));
     Chunk chunks[14];
 
     for (size_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
@@ -209,7 +208,7 @@ TEST_P(SharedMemoryABITest, ShmemEmulation) {
   ASSERT_FALSE(abi.is_page_free(0));
 
   const size_t num_chunks =
-      SharedMemoryABI::GetNumChunksForLayout(abi.GetPageLayout(0));
+      SharedMemoryABI::GetNumChunksFromHeaderBitmap(abi.GetPageHeaderBitmap(0));
   Chunk chunks[14];
 
   for (size_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
@@ -238,7 +237,8 @@ TEST_P(SharedMemoryABITest, ShmemEmulation) {
   }
 
   for (size_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
-    Chunk chunk = abi.GetChunkUnchecked(0, abi.GetPageLayout(0), chunk_idx);
+    Chunk chunk =
+        abi.GetChunkUnchecked(0, abi.GetPageHeaderBitmap(0), chunk_idx);
 
     // If this was the last chunk in the page, the full page should be marked
     // as free.

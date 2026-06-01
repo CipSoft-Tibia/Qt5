@@ -23,25 +23,9 @@
 
 #include <QtCore/qpointer.h>
 
-#if defined(Q_OS_IOS) && defined(__OBJC__)
-#include <UIKit/UIGestureRecognizer.h>
-
-@interface QIOSNativeViewSelectedRecognizer : UIGestureRecognizer <UIGestureRecognizerDelegate>
-{
-@public
-    QNativeViewController *m_item;
-}
-- (id)initWithQWindowControllerItem:(QNativeViewController *)item;
-@end
-#endif
-
 Q_FORWARD_DECLARE_OBJC_CLASS(WKWebView);
 Q_FORWARD_DECLARE_OBJC_CLASS(WKNavigation);
 Q_FORWARD_DECLARE_OBJC_CLASS(WKWebViewConfiguration);
-
-#ifdef Q_OS_IOS
-Q_FORWARD_DECLARE_OBJC_CLASS(UIGestureRecognizer);
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -52,13 +36,13 @@ public:
     explicit QDarwinWebViewSettingsPrivate(WKWebViewConfiguration *conf, QObject *p = nullptr);
 
     bool localStorageEnabled() const;
-    bool javascriptEnabled() const;
+    bool javaScriptEnabled() const;
     bool localContentCanAccessFileUrls() const;
     bool allowFileAccess() const;
 
 public Q_SLOTS:
     void setLocalContentCanAccessFileUrls(bool enabled);
-    void setJavascriptEnabled(bool enabled);
+    void setJavaScriptEnabled(bool enabled);
     void setLocalStorageEnabled(bool enabled);
     void setAllowFileAccess(bool enabled);
 
@@ -85,13 +69,7 @@ public:
     int loadProgress() const override;
     bool isLoading() const override;
 
-    void setParentView(QObject *view) override;
-    QObject *parentView() const override;
-    void setGeometry(const QRect &geometry) override;
-    void setVisibility(QWindow::Visibility visibility) override;
-    void setVisible(bool visible) override;
-    void setFocus(bool focus) override;
-    void updatePolish() override;
+    QWindow *nativeWindow() const override { return m_window; }
     QAbstractWebViewSettings *getSettings() const override;
 
 public Q_SLOTS:
@@ -112,10 +90,7 @@ public:
     WKWebView *wkWebView;
     WKNavigation *wkNavigation;
     QDarwinWebViewSettingsPrivate *m_settings = nullptr;
-#ifdef Q_OS_IOS
-    UIGestureRecognizer *m_recognizer;
-#endif
-    QPointer<QObject> m_parentView;
+    QWindow *m_window = nullptr;
 };
 
 QT_END_NAMESPACE

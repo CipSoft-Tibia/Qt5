@@ -1,4 +1,4 @@
-<!-- Copyright 2021-2024 LunarG, Inc. -->
+<!-- Copyright 2021-2025 LunarG, Inc. -->
 [![Khronos Vulkan][1]][2]
 
 [1]: https://vulkan.lunarg.com/img/Vulkan_100px_Dec16.png "https://www.khronos.org/vulkan/"
@@ -463,7 +463,7 @@ Note that not all legacy code, such as `ForbidInheritedViewportScissor()` has be
 
 ##### Queries
 
-During queue submission, query validation is performed via lambda functions added to `vvl::CommandBuffer::queryUpdates` by various CoreChecks methods. During the Validate phase, these are executed with the do_validate parameter set to true. And they are executed again during PostRecord with do_validate set to false. During submission, the final state of each `QueryObject` is updated into the corresponding `vvl::QueryPool` object, which has a thread safe interface. When the command buffer is retired, all used `QueryObject` states are reset to `AVAILABLE`.
+During queue submission, query validation is performed via lambda functions added to `vvl::CommandBuffer::query_updates` by various CoreChecks methods. During the Validate phase, these are executed with the do_validate parameter set to true. And they are executed again during PostRecord with do_validate set to false. During submission, the final state of each `QueryObject` is updated into the corresponding `vvl::QueryPool` object, which has a thread safe interface. When the command buffer is retired, all used `QueryObject` states are reset to `AVAILABLE`.
 
 
 ##### Events
@@ -541,12 +541,12 @@ The `p_driver_data` pointer is only used by Best Practices validation, but it is
 
 
 ```
-    struct MEM_BINDING {
-        std::shared_ptr<vvl::DeviceMemory> mem_state;
+    struct MemoryBinding {
+        std::shared_ptr<vvl::DeviceMemory> memory_state;
         VkDeviceSize offset;
         VkDeviceSize size;
     };
-    using BoundMemoryMap = small_unordered_map<VkDeviceMemory, MEM_BINDING, 1>;
+    using BoundMemoryMap = small_unordered_map<VkDeviceMemory, MemoryBinding, 1>;
     BoundMemoryMap bound_memory_;
 ```
 
@@ -632,10 +632,10 @@ Each `vvl::CommandBuffer` maintains its own copy of the image layout state, in a
 
 ```
    typedef vvl::unordered_map<const vvl::Image *,
-                                    std::shared_ptr<ImageSubresourceLayoutMap>>  CommandBufferImageLayoutMap;
+                                    std::shared_ptr<ImageLayoutRegistry>>  CommandBufferImageLayoutMap;
    CommandBufferImageLayoutMap image_layout_map;
    typedef vvl::unordered_map<const GlobalImageLayoutRangeMap *,
-                                     std::shared_ptr<ImageSubresourceLayoutMap>>
+                                     std::shared_ptr<ImageLayoutRegistry>>
                                                                                CommandBufferAliasedLayoutMap;
    CommandBufferAliasedLayoutMap aliased_image_layout_map;  // storage for potentially aliased images
 

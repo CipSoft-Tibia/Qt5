@@ -1,10 +1,10 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qandroidplatformwindow.h"
 #include "androidbackendregister.h"
-#include "qandroidplatformopenglcontext.h"
 #include "qandroidplatformscreen.h"
 
 #include "androidjnimain.h"
@@ -56,15 +56,12 @@ void QAndroidPlatformWindow::initialize()
             isForeignWindow(), m_nativeParentQtWindow, listener);
     m_nativeViewId = m_nativeQtWindow.callMethod<jint>("getId");
 
-    m_windowFlags = Qt::Widget;
-    m_windowState = Qt::WindowNoState;
     // the surfaceType is overwritten in QAndroidPlatformOpenGLWindow ctor so let's save
     // the fact that it's a raster window for now
     m_isRaster = window->surfaceType() == QSurface::RasterSurface;
-    setWindowState(window->windowStates());
 
     // the following is in relation to the virtual geometry
-    const bool forceMaximize = m_windowState & (Qt::WindowMaximized | Qt::WindowFullScreen);
+    const bool forceMaximize = window->windowStates() & (Qt::WindowMaximized | Qt::WindowFullScreen);
     const QRect nativeScreenGeometry = platformScreen()->availableGeometry();
     if (forceMaximize) {
         setGeometry(nativeScreenGeometry);
@@ -123,7 +120,7 @@ void QAndroidPlatformWindow::raise()
         QWindowSystemInterface::handleFocusWindowChanged(window(), Qt::ActiveWindowFocusReason);
         return;
     }
-    updateSystemUiVisibility();
+    updateSystemUiVisibility(window()->windowStates(), window()->flags());
     platformScreen()->raise(this);
 }
 
@@ -139,8 +136,6 @@ void QAndroidPlatformWindow::setSafeAreaMargins(const QMargins safeMargins)
 
 void QAndroidPlatformWindow::setGeometry(const QRect &rect)
 {
-    QPlatformWindow::setGeometry(rect);
-
     if (!isEmbeddingContainer()) {
         Q_ASSERT(m_nativeQtWindow.isValid());
 
@@ -164,51 +159,44 @@ void QAndroidPlatformWindow::setVisible(bool visible)
 {
     if (isEmbeddingContainer())
         return;
-    m_nativeQtWindow.callMethod<void>("setVisible", visible);
 
-    if (visible) {
-        if (window()->isTopLevel()) {
-            updateSystemUiVisibility();
-            if ((m_windowState & Qt::WindowFullScreen)
-                || (window()->flags() & Qt::ExpandedClientAreaHint)) {
+    if (window()->isTopLevel()) {
+        if (!visible && window() == qGuiApp->focusWindow()) {
+            platformScreen()->topVisibleWindowChanged();
+        } else {
+            const Qt::WindowStates states = window()->windowStates();
+            const Qt::WindowFlags flags = window()->flags();
+            updateSystemUiVisibility(states, flags);
+            if (states & Qt::WindowFullScreen || flags & Qt::ExpandedClientAreaHint)
                 setGeometry(platformScreen()->geometry());
-            } else if (m_windowState & Qt::WindowMaximized) {
+            else if (states & Qt::WindowMaximized)
                 setGeometry(platformScreen()->availableGeometry());
-            }
             requestActivateWindow();
         }
-    } else if (window()->isTopLevel() && window() == qGuiApp->focusWindow()) {
-        platformScreen()->topVisibleWindowChanged();
     }
 
-    QRect availableGeometry = screen()->availableGeometry();
-    if (geometry().width() > 0 && geometry().height() > 0 && availableGeometry.width() > 0 && availableGeometry.height() > 0)
-        QPlatformWindow::setVisible(visible);
+    m_nativeQtWindow.callMethod<void>("setVisible", visible);
+
+    if (geometry().isEmpty() || screen()->availableGeometry().isEmpty())
+        return;
+
+    QPlatformWindow::setVisible(visible);
 }
 
 void QAndroidPlatformWindow::setWindowState(Qt::WindowStates state)
 {
-    if (m_windowState == state)
-        return;
-
     QPlatformWindow::setWindowState(state);
-    m_windowState = state;
 
     if (window()->isVisible())
-        updateSystemUiVisibility();
+        updateSystemUiVisibility(state, window()->flags());
 }
 
 void QAndroidPlatformWindow::setWindowFlags(Qt::WindowFlags flags)
 {
-    if (m_windowFlags == flags)
-        return;
+    QPlatformWindow::setWindowFlags(flags);
 
-    m_windowFlags = flags;
-}
-
-Qt::WindowFlags QAndroidPlatformWindow::windowFlags() const
-{
-    return m_windowFlags;
+    if (window()->isVisible())
+        updateSystemUiVisibility(window()->windowStates(), flags);
 }
 
 void QAndroidPlatformWindow::setParent(const QPlatformWindow *window)
@@ -256,12 +244,11 @@ void QAndroidPlatformWindow::requestActivateWindow()
         raise();
 }
 
-void QAndroidPlatformWindow::updateSystemUiVisibility()
+void QAndroidPlatformWindow::updateSystemUiVisibility(Qt::WindowStates states, Qt::WindowFlags flags)
 {
-    const int flags = window()->flags();
     const bool isNonRegularWindow = flags & (Qt::Popup | Qt::Dialog | Qt::Sheet) & ~Qt::Window;
     if (!isNonRegularWindow) {
-        const bool isFullScreen = (m_windowState & Qt::WindowFullScreen);
+        const bool isFullScreen = (states & Qt::WindowFullScreen);
         const bool expandedToCutout = (flags & Qt::ExpandedClientAreaHint);
         QtAndroid::backendRegister()->callInterface<QtJniTypes::QtWindowInterface, void>(
             "setSystemUiVisibility", isFullScreen, expandedToCutout);
@@ -297,14 +284,14 @@ void QAndroidPlatformWindow::createSurface()
 
     m_nativeQtWindow.callMethod<void>("createSurface", windowStaysOnTop, 32, isOpaque,
                                       m_surfaceContainerType);
-    m_surfaceCreated = true;
+    m_androidSurfaceCreated = true;
 }
 
 void QAndroidPlatformWindow::destroySurface()
 {
-    if (m_surfaceCreated) {
+    if (m_androidSurfaceCreated) {
         m_nativeQtWindow.callMethod<void>("destroySurface");
-        m_surfaceCreated = false;
+        m_androidSurfaceCreated = false;
     }
 }
 
@@ -312,7 +299,7 @@ void QAndroidPlatformWindow::onSurfaceChanged(QtJniTypes::Surface surface)
 {
     lockSurface();
     const bool surfaceIsValid = surface.isValid();
-    qCDebug(lcQpaWindow) << "onSurfaceChanged():, valid Surface received" << surfaceIsValid;
+    qCDebug(lcQpaWindow) << "onSurfaceChanged(): valid Surface received" << surfaceIsValid;
     m_androidSurfaceObject = surface;
     if (surfaceIsValid) {
         // wait until we have a valid surface to draw into
@@ -364,7 +351,7 @@ void QAndroidPlatformWindow::setSurface(JNIEnv *env, jobject object, jint window
         QAndroidPlatformWindow *platformWindow =
                                 static_cast<QAndroidPlatformWindow *>(window->handle());
         const auto guard = platformWindow->destructionGuard();
-        if (!platformWindow->m_surfaceCreated)
+        if (!platformWindow->m_androidSurfaceCreated)
             continue;
         if (platformWindow->nativeViewId() == windowId)
             platformWindow->onSurfaceChanged(surface);
@@ -467,6 +454,30 @@ Q_DECLARE_JNI_NATIVE_METHOD(updateWindows)
 QMutexLocker<QMutex> QAndroidPlatformWindow::destructionGuard()
 {
     return QMutexLocker(&m_destructionMutex);
+}
+
+Q_CONSTINIT static QBasicAtomicInt g_surfacesCounter = Q_BASIC_ATOMIC_INITIALIZER(0);
+
+int QAndroidPlatformWindow::surfacesCount()
+{
+    return g_surfacesCounter.loadRelaxed();
+}
+
+void QAndroidPlatformWindow::incrementSurfacesCount()
+{
+    g_surfacesCounter.fetchAndAddRelaxed(1);
+}
+
+void QAndroidPlatformWindow::decrementSurfacesCount()
+{
+    int cur = g_surfacesCounter.loadRelaxed();
+    while (true) {
+        if (cur == 0)
+            return;
+
+        if (g_surfacesCounter.testAndSetRelaxed(cur, cur - 1))
+            return;
+    }
 }
 
 bool QAndroidPlatformWindow::registerNatives(QJniEnvironment &env)

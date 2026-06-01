@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //
 //  W A R N I N G
@@ -16,6 +17,7 @@
 #define PROFILE_ADAPTER_H
 
 #include <QtWebEngineCore/private/qtwebenginecoreglobal_p.h>
+#include <QtWebEngineCore/private/qwebenginepermission_p.h>
 
 #include <QHash>
 #include <QList>
@@ -26,6 +28,7 @@
 
 #include <QtWebEngineCore/qwebengineclientcertificatestore.h>
 #include <QtWebEngineCore/qwebenginecookiestore.h>
+#include <QtWebEngineCore/qwebengineextensionmanager.h>
 #include <QtWebEngineCore/qwebengineurlrequestinterceptor.h>
 #include <QtWebEngineCore/qwebengineurlschemehandler.h>
 #include <QtWebEngineCore/qwebenginepermission.h>
@@ -85,6 +88,7 @@ public:
         UABitness,
         UAFullVersionList,
         UAWOW64,
+        UAFormFactors,
     };
 
     explicit ProfileAdapter(
@@ -93,7 +97,12 @@ public:
             PersistentCookiesPolicy persistentCookiesPolicy = AllowPersistentCookies,
             int httpCacheMaximumSize = 0,
             PersistentPermissionsPolicy persistentPermissionPolicy =
-                    PersistentPermissionsPolicy::StoreOnDisk);
+                    PersistentPermissionsPolicy::StoreOnDisk
+#if QT_CONFIG(ssl)
+            ,
+            const QList<QSslCertificate> &additionalTrustedCertificates = {}
+#endif
+    );
     virtual ~ProfileAdapter();
 
     static ProfileAdapter* createDefaultProfileAdapter();
@@ -183,9 +192,9 @@ public:
     UserResourceControllerHost *userResourceController();
 
     void setPermission(const QUrl &origin, QWebEnginePermission::PermissionType permissionType,
-        QWebEnginePermission::State state, content::RenderFrameHost *rfh = nullptr);
+        QWebEnginePermission::State state, int childId = -1, const std::string &serializedToken = std::string());
     QWebEnginePermission::State getPermissionState(const QUrl &origin, QWebEnginePermission::PermissionType permissionType,
-        content::RenderFrameHost *rfh = nullptr);
+        int childId = -1, const std::string &serializedToken = std::string());
     QList<QWebEnginePermission> listPermissions(const QUrl &origin = QUrl(),
         QWebEnginePermission::PermissionType permissionType = QWebEnginePermission::PermissionType::Unsupported);
 
@@ -199,11 +208,13 @@ public:
     void setClientHintsEnabled(bool enabled);
     void resetClientHints();
 
-
     void clearHttpCache();
-
+#if QT_CONFIG(webengine_extensions)
+    QWebEngineExtensionManager *extensionManager();
+#endif
 #if QT_CONFIG(ssl)
     QWebEngineClientCertificateStore *clientCertificateStore();
+    QList<QSslCertificate> additionalTrustedCertificates() const;
 #endif
 
     QHash<QByteArray, QWeakPointer<UserNotificationController>> &ephemeralNotifications()
@@ -246,6 +257,9 @@ private:
     PersistentCookiesPolicy m_persistentCookiesPolicy;
     PersistentPermissionsPolicy m_persistentPermissionsPolicy;
     VisitedLinksPolicy m_visitedLinksPolicy;
+#if QT_CONFIG(ssl)
+    QList<QSslCertificate> m_additionalTrustedCertificates;
+#endif
     QHash<QByteArray, QPointer<QWebEngineUrlSchemeHandler>> m_customUrlSchemeHandlers;
     QHash<QByteArray, QWeakPointer<UserNotificationController>> m_ephemeralNotifications;
     QHash<QByteArray, QSharedPointer<UserNotificationController>> m_persistentNotifications;
@@ -257,6 +271,9 @@ private:
     int m_httpCacheMaxSize;
     QrcUrlSchemeHandler m_qrcHandler;
     std::unique_ptr<base::CancelableTaskTracker> m_cancelableTaskTracker;
+#if QT_CONFIG(webengine_extensions)
+    std::unique_ptr<QWebEngineExtensionManager> m_extensionManager;
+#endif
 
     Q_DISABLE_COPY(ProfileAdapter)
 };

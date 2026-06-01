@@ -25,9 +25,13 @@ The Debug Printf settings are managed by configuring the Validation Layer. These
 
 Debug Printf settings can also be managed using the [Vulkan Configurator](https://vulkan.lunarg.com/doc/sdk/latest/windows/vkconfig.html) included with the Vulkan SDK.
 
+For those who "just need to quick use it" there is also a `set VK_LAYER_PRINTF_ONLY_PRESET=1` environment variable that will turn on DebugPrintf and turn off all of the other validation logic.
+
 ### Settings
 
 > All settings are found in Vulkan Configurator (`VkConfig`)
+>
+> Even if you use `VK_LAYER_PRINTF_ONLY_PRESET` you need to set those settings yourself as desired
 
 There are currently 3 environment variables that are used for settings in Debug Printf
 
@@ -46,7 +50,7 @@ There are currently 3 environment variables that are used for settings in Debug 
 To use Debug Printf in GLSL shaders, you need to enable the GL_EXT_debug_printf extension.
 Then add debugPrintfEXT calls at the locations in your shader where you want to print
 messages and/or values
-Here is a very simple example:
+Here is a very simple example ([Try Online](https://godbolt.org/z/MnYGj8azM)):
 ```
 #version 450
 #extension GL_EXT_debug_printf : enable
@@ -64,7 +68,7 @@ in a vertex shader and a triangle was drawn, it would be printed 3 times.
 
 ## Using Debug Printf in HLSL Shaders
 
-In HLSL, debug printf can be invoked as follows:
+In HLSL, debug printf can be invoked as follows ([Try Online](https://godbolt.org/z/3ThznsdK8)):
 ```
 void main() {
     float myfloat = 3.1415;
@@ -182,8 +186,6 @@ Would print **"Here's a vector of floats 1.20, 2.20, 3.20, 4.20"**
 Would print **"Unsigned long as decimal 2305843009213693953 and as hex 0x2000000000000001"**
 
 ### Limitations
-* Debug Printf cannot be used at the same time as GPU Assisted Validation.
-  * https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8192
 * Debug Printf consumes a descriptor set. If your application uses every last
 descriptor set on the GPU, Debug Printf will not work.
   * Suggest using `VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT`
@@ -193,8 +195,7 @@ buffer size.
   * Can be controlled with `VK_LAYER_PRINTF_BUFFER_SIZE`
 * Validation Layers version: `1.2.135.0` or later is required
 * Vulkan API version 1.1 or greater is required
-* VkPhysicalDevice features: `fragmentStoresAndAtomics` and `vertexPipelineStoresAndAtomics`
-are required
+* When using Validation Layers, the `fragmentStoresAndAtomics`, `vertexPipelineStoresAndAtomics`, and `timelineSemaphore` features are required
 * The `VK_KHR_shader_non_semantic_info` extension must be supported and enabled
   * If using the Validation Layers, we attempt to strip it out to allow wider range of users to still use Debug Printf
 * RenderDoc release 1.14 or later

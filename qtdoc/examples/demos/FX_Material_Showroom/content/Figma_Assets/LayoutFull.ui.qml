@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
-import QtQuick.Controls 6.3
+import QtQuick.Controls
 
 Rectangle {
     id: layoutFull
@@ -11,6 +11,9 @@ Rectangle {
     color: "#00ffffff"
     border.color: "#00000000"
     property bool debugOn: button.checked
+
+    required property NumberAnimation openmenuTransition
+    required property real openmenuTransitionPhase
 
     LabelQt {
         id: labelQt
@@ -35,8 +38,8 @@ Rectangle {
         y: 972
         width: 311
         height: 80
-        scale: 1.0 - menutransition_open.phase * 0.5
-        opacity: 1 - menutransition_open.phase
+        scale: 1.0 - layoutFull.openmenuTransitionPhase * 0.5
+        opacity: 1 - layoutFull.openmenuTransitionPhase
         state: "state_state_Idle"
 
         background: Rectangle {
@@ -51,7 +54,9 @@ Rectangle {
 
         Connections {
             target: settingsbutton
-            onClicked: menutransition_open.start()
+            function onClicked() {
+                layoutFull.openmenuTransition.start()
+            }
         }
 
         Rectangle {

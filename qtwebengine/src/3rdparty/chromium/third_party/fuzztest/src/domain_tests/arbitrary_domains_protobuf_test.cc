@@ -26,11 +26,14 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/random.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "./fuzztest/domain.h"  // IWYU pragma: keep
 #include "./domain_tests/domain_testing.h"
 #include "./fuzztest/internal/test_protobuf.pb.h"
 #include "google/protobuf/descriptor.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/message_lite.h"
 #include "google/protobuf/util/message_differencer.h"
 
 namespace fuzztest {
@@ -88,7 +91,7 @@ TEST(ProtocolBuffer,
     int iterations = 10'000;
     while (--iterations > 0 && values.size() < 2) {
       values.insert(optional_get());
-      val.Mutate(domain, bitgen, false);
+      val.Mutate(domain, bitgen, {}, false);
     }
     EXPECT_GT(iterations, 0)
         << "Field: " << name << " -- " << testing::PrintToString(values);
@@ -106,7 +109,7 @@ TEST(ProtocolBuffer,
       if (field.size() > 0) {
         elem0.insert(field[0]);
       }
-      val.Mutate(domain, bitgen, false);
+      val.Mutate(domain, bitgen, {}, false);
     }
     EXPECT_GT(iterations, 0)
         << "Field: " << name << " -- " << testing::PrintToString(sizes)
@@ -143,7 +146,7 @@ TEST(ProtocolBuffer,
   Value val(domain, bitgen);
 
   for (int i = 0; i < 10'000; ++i) {
-    val.Mutate(domain, bitgen, /*only_shrink=*/false);
+    val.Mutate(domain, bitgen, {}, false);
   }
 
   // We verify that the object actually has things in it. This can technically
@@ -155,7 +158,7 @@ TEST(ProtocolBuffer,
   for (int iteration = 0;
        val.user_value.ByteSizeLong() > 0 && iteration < 50'000; ++iteration) {
     const auto prev = val;
-    val.Mutate(domain, bitgen, /*only_shrink=*/true);
+    val.Mutate(domain, bitgen, {}, true);
     ASSERT_TRUE(TowardsZero(prev.user_value, val.user_value))
         << prev << " -vs- " << val;
   }
@@ -172,7 +175,7 @@ TEST(ProtocolBufferWithRequiredFields, OptionalFieldIsEventuallySet) {
   ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
 
   for (int i = 0; i < 1000; ++i) {
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
     if (val.user_value.has_i32()) break;
   }
@@ -193,7 +196,7 @@ TEST(ProtocolBufferWithRequiredFields, OptionalFieldIsEventuallyUnset) {
   // at least 1/800. Hence, within 11000 iterations we'll fail to observe this
   // event with probability at most 10^(-6).
   for (int i = 0; i < 11000; ++i) {
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
     if (!val.user_value.has_i32()) break;
   }
@@ -211,7 +214,7 @@ TEST(ProtocolBufferWithRequiredFields, OptionalFieldInSubprotoIsEventuallySet) {
   ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
 
   for (int i = 0; i < 1000; ++i) {
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
     if (val.user_value.has_req_sub() &&
         val.user_value.req_sub().has_subproto_i32())
@@ -236,7 +239,7 @@ TEST(ProtocolBufferWithRequiredFields,
   // req_sub.subproto_i32 is at least 1/800. Hence, within 11000 iterations
   // we'll fail to observe this event with probability at most 10^(-6).
   for (int i = 0; i < 11000; ++i) {
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
     if (val.user_value.has_req_sub() &&
         !val.user_value.req_sub().has_subproto_i32())
@@ -268,7 +271,7 @@ TEST(ProtocolBufferWithRequiredFields,
   ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
 
   for (int i = 0; i < 1000; ++i) {
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
     if (val.user_value.has_sub_req()) {
       ASSERT_TRUE(val.user_value.sub_req().IsInitialized()) << val.user_value;
@@ -295,7 +298,7 @@ TEST(ProtocolBufferWithRequiredFields, MapFieldIsEventuallyPopulated) {
 
   bool found = false;
   for (int i = 0; i < 1000 && !found; ++i) {
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
     for (const auto& pair : val.user_value.map_sub_req()) {
       found = true;
@@ -321,7 +324,7 @@ TEST(ProtocolBufferWithRequiredFields, ShrinkingNeverRemovesRequiredFields) {
   ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
 
   for (int i = 0; i < 1000; ++i) {
-    val.Mutate(domain, bitgen, /*only_shrink=*/false);
+    val.Mutate(domain, bitgen, {}, false);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
   }
 
@@ -332,7 +335,7 @@ TEST(ProtocolBufferWithRequiredFields, ShrinkingNeverRemovesRequiredFields) {
   };
 
   while (!is_minimal(val.user_value)) {
-    val.Mutate(domain, bitgen, /*only_shrink=*/true);
+    val.Mutate(domain, bitgen, {}, true);
     ASSERT_TRUE(val.user_value.IsInitialized()) << val.user_value;
   }
 }
@@ -372,7 +375,7 @@ TEST(ProtocolBuffer, CanUsePerFieldDomains) {
   while (i32_values.size() < i32_count || str_values.size() < str_count ||
          e_values.size() < e_count || rep_b_values.size() < rep_p_count ||
          subproto_i32_values.size() < subproto_i32_count) {
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
     if (val.user_value.has_i32()) i32_values.insert(val.user_value.i32());
     if (val.user_value.has_str()) str_values.insert(val.user_value.str());
     if (val.user_value.has_e()) e_values.insert(val.user_value.e());
@@ -613,9 +616,9 @@ TEST(ProtocolBufferEnum, Arbitrary) {
   Set<TestProtobuf_Enum> s;
   while (s.size() < internal::TestProtobuf_Enum_descriptor()->value_count()) {
     s.insert(val.user_value);
-    val.Mutate(domain, bitgen, false);
+    val.Mutate(domain, bitgen, {}, false);
   }
-  val.Mutate(domain, bitgen, true);
+  val.Mutate(domain, bitgen, {}, true);
 }
 
 TEST(ArbitraryProtocolBufferEnum, InitGeneratesSeeds) {
@@ -657,6 +660,70 @@ TEST(ProtocolBuffer, CountNumberOfFieldsCorrect) {
   EXPECT_EQ(domain.CountNumberOfFields(
                 corpus_v_initizalize_one_repeated_proto_2.value()),
             32);
+}
+
+auto FieldNameHasSubstr(absl::string_view field_name) {
+  return [field_name = std::string(field_name)](const FieldDescriptor* field) {
+    return absl::StrContains(field->name(), field_name);
+  };
+}
+
+TEST(ProtocolBuffer, ProtobufOfIsCustomizable) {
+  auto domain =
+      ProtobufOf([] { return &TestProtobuf::default_instance(); })
+          .WithFieldsAlwaysSet(FieldNameHasSubstr("i32"))
+          .WithFieldsUnset(FieldNameHasSubstr("i64"))
+          .WithOptionalFieldsUnset(FieldNameHasSubstr("u32"))
+          .WithOptionalFieldsAlwaysSet(FieldNameHasSubstr("u64"))
+          .WithRepeatedFieldsUnset(FieldNameHasSubstr("32"))
+          .WithRepeatedFieldsAlwaysSet(FieldNameHasSubstr("64"))
+          .WithRepeatedFieldsMinSize(FieldNameHasSubstr("rep_b"), 3)
+          .WithRepeatedFieldsMaxSize(FieldNameHasSubstr("rep_b"), 4)
+          .WithFloatFields(InRange(1.0f, 2.0f))
+          .WithOptionalDoubleFields(InRange(-1.0, 1.0))
+          .WithRepeatedDoubleFields(InRange(-1.0, 1.0))
+          .WithProtobufFields(FieldNameHasSubstr("subproto"),
+                              Arbitrary<TestSubProtobuf>().WithFieldsUnset())
+          .WithRepeatedProtobufFields(
+              FieldNameHasSubstr("subproto"),
+              Arbitrary<TestSubProtobuf>().WithFieldsAlwaysSet());
+  EXPECT_THAT(
+      GenerateInitialValues(domain, 1000),
+      Each(ResultOf(
+          [](const Value<decltype(domain)>& val) {
+            auto v =
+              *dynamic_cast<TestProtobuf*>(val.user_value.get());
+            for (const auto& s : v.rep_subproto()) {
+              if (!s.has_subproto_i32()) return false;
+              if (s.subproto_rep_i32_size() == 0) return false;
+            }
+            if (v.has_subproto()) {
+              auto& s = v.subproto();
+              if (s.has_subproto_i32()) return false;
+              if (s.subproto_rep_i32_size() > 0) return false;
+            }
+            for (const auto& d : v.rep_d()) {
+              if (d < -1 || d > 1) return false;
+            }
+            if (v.has_d()) {
+              if (v.d() < -1 || v.d() > 1) return false;
+            }
+            if (v.has_f()) {
+              if (v.f() < 1 || v.f() > 2) return false;
+            }
+            if (v.rep_b_size() < 3) return false;
+            if (v.rep_b_size() > 4) return false;
+            if (v.rep_i32_size() > 0) return false;
+            if (v.rep_u32_size() > 0) return false;
+            if (v.rep_i64_size() == 0) return false;
+            if (v.rep_u64_size() == 0) return false;
+            if (v.has_u32()) return false;
+            if (!v.has_u64()) return false;
+            if (!v.has_i32()) return false;
+            if (v.has_i64()) return false;
+            return true;
+          },
+          true)));
 }
 
 }  // namespace

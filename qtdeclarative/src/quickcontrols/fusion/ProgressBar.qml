@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Templates as T
@@ -25,7 +26,7 @@ T.ProgressBar {
             width: (control.indeterminate ? 1.0 : control.position) * parent.width
 
             radius: 2
-            border.color: Qt.darker(Fusion.highlight(control.palette), 1.4)
+            border.color: Fusion.highContrast ? Fusion.outline(control.palette) : Qt.darker(Fusion.highlight(control.palette), 1.4)
             gradient: Gradient {
                 GradientStop {
                     position: 0

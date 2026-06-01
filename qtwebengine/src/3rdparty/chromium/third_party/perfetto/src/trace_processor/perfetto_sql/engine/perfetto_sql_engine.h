@@ -194,16 +194,16 @@ class PerfettoSqlEngine {
 
   SqliteEngine* sqlite_engine() { return engine_.get(); }
 
-  // Makes new SQL module available to import.
-  void RegisterModule(const std::string& name,
-                      sql_modules::RegisteredModule module) {
-    modules_.Erase(name);
-    modules_.Insert(name, std::move(module));
+  // Makes new SQL package available to include.
+  void RegisterPackage(const std::string& name,
+                       sql_modules::RegisteredPackage package) {
+    packages_.Erase(name);
+    packages_.Insert(name, std::move(package));
   }
 
-  // Fetches registered SQL module.
-  sql_modules::RegisteredModule* FindModule(const std::string& name) {
-    return modules_.Find(name);
+  // Fetches registered SQL package.
+  sql_modules::RegisteredPackage* FindPackage(const std::string& name) {
+    return packages_.Find(name);
   }
 
   // Returns the number of objects (tables, views, functions etc) registered
@@ -231,32 +231,11 @@ class PerfettoSqlEngine {
 
   // Find table (Static or Runtime) registered with engine with provided name.
   const Table* GetTableOrNull(std::string_view name) const {
-    if (auto maybe_runtime = GetRuntimeTableOrNull(name); maybe_runtime) {
-      return maybe_runtime;
+    if (const auto* r = GetRuntimeTableOrNull(name); r) {
+      return r;
     }
     return GetStaticTableOrNull(name);
   }
-
-  // Find RuntimeTable registered with engine with provided name.
-  const RuntimeTable* GetRuntimeTableOrNull(std::string_view) const;
-
-  // Find static table registered with engine with provided name.
-  const Table* GetStaticTableOrNull(std::string_view) const;
-
-  // Find table (Static or Runtime) registered with engine with provided name.
-  Table* GetMutableTableOrNull(std::string_view name) {
-    if (auto maybe_runtime = GetMutableRuntimeTableOrNull(name);
-        maybe_runtime) {
-      return maybe_runtime;
-    }
-    return GetMutableStaticTableOrNull(name);
-  }
-
-  // Find RuntimeTable registered with engine with provided name.
-  RuntimeTable* GetMutableRuntimeTableOrNull(std::string_view);
-
-  // Find static table registered with engine with provided name.
-  Table* GetMutableStaticTableOrNull(std::string_view);
 
  private:
   base::Status ExecuteCreateFunction(const PerfettoSqlParser::CreateFunction&);
@@ -317,18 +296,37 @@ class PerfettoSqlEngine {
       const std::vector<sql_argument::ArgumentDefinition>& schema,
       const char* tag) const;
 
-  // Given a module and a key, include the correct file(s) from the module.
+  // Given a package and a key, include the correct file(s) from the package.
   // The key can contain a wildcard to include all files in the module with the
   // matching prefix.
-  base::Status IncludeModuleImpl(sql_modules::RegisteredModule& module,
-                                 const std::string& key,
-                                 const PerfettoSqlParser& parser);
+  base::Status IncludePackageImpl(sql_modules::RegisteredPackage&,
+                                  const std::string& key,
+                                  const PerfettoSqlParser&);
 
-  // Import a given file.
-  base::Status IncludeFileImpl(
-      sql_modules::RegisteredModule::ModuleFile& module,
-      const std::string& key,
-      const PerfettoSqlParser& parser);
+  // Include a given module.
+  base::Status IncludeModuleImpl(sql_modules::RegisteredPackage::ModuleFile&,
+                                 const std::string& key,
+                                 const PerfettoSqlParser&);
+
+  // Find table (Static or Runtime) registered with engine with provided name.
+  Table* GetTableOrNull(std::string_view name) {
+    if (auto* maybe_runtime = GetRuntimeTableOrNull(name); maybe_runtime) {
+      return maybe_runtime;
+    }
+    return GetStaticTableOrNull(name);
+  }
+
+  // Find RuntimeTable registered with engine with provided name.
+  RuntimeTable* GetRuntimeTableOrNull(std::string_view);
+
+  // Find static table registered with engine with provided name.
+  Table* GetStaticTableOrNull(std::string_view);
+
+  // Find RuntimeTable registered with engine with provided name.
+  const RuntimeTable* GetRuntimeTableOrNull(std::string_view) const;
+
+  // Find static table registered with engine with provided name.
+  const Table* GetStaticTableOrNull(std::string_view) const;
 
   StringPool* pool_ = nullptr;
   // If true, engine will perform additional consistency checks when e.g.
@@ -344,7 +342,7 @@ class PerfettoSqlEngine {
   DbSqliteModule::Context* runtime_table_context_ = nullptr;
   DbSqliteModule::Context* static_table_context_ = nullptr;
   DbSqliteModule::Context* static_table_fn_context_ = nullptr;
-  base::FlatHashMap<std::string, sql_modules::RegisteredModule> modules_;
+  base::FlatHashMap<std::string, sql_modules::RegisteredPackage> packages_;
   base::FlatHashMap<std::string, PerfettoSqlPreprocessor::Macro> macros_;
   std::unique_ptr<SqliteEngine> engine_;
 };

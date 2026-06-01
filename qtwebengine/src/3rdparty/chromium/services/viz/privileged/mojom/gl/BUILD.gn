@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/ml.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//media/gpu/args.gni")
@@ -36,15 +35,9 @@ mojom("gl") {
     ]
   }
 
-  # Used for conditional imports in gpu_service.mojom
-  enabled_features = []
-  if (!is_chromeos && use_ml) {
-    enabled_features += [ "use_ml" ]
-  }
-
-  if (is_chromeos_ash) {
+  if (is_chromeos) {
     public_deps += [
-      "//ash/components/arc/mojom:media",
+      "//chromeos/ash/experiences/arc/mojom:media",
       "//components/chromeos_camera/common",
     ]
   }
@@ -54,16 +47,18 @@ mojom("gl") {
     public_deps += [ "//ui/gfx/mojom:dxgi_info" ]
   }
 
+  # Used for conditional imports in gpu_service.mojom
   enabled_features = []
-  if (!is_android) {
-    enabled_features += [ "is_not_android" ]
+
+  if (use_ml) {
+    enabled_features += [ "use_ml" ]
   }
 
   if (use_clang_profiling_inside_sandbox) {
     enabled_features += [ "use_clang_profiling_inside_sandbox" ]
   }
 
-  if (is_chromeos_ash && (use_vaapi || use_v4l2_codec)) {
+  if (is_chromeos && (use_vaapi || use_v4l2_codec)) {
     enabled_features += [ "enable_arc_media" ]
   }
 

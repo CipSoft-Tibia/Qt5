@@ -18,7 +18,7 @@
 
 #include "qlibrary_p.h"
 
-#if defined(Q_OS_WIN)
+#if defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
 
 QT_BEGIN_NAMESPACE
 
@@ -29,6 +29,6 @@ struct QCoffPeParser
 
 QT_END_NAMESPACE
 
-#endif // defined(Q_OF_ELF) && defined(Q_CC_GNU)
+#endif // Q_OS_WIN || Q_OS_CYGWIN
 
 #endif // QCOFFPEPARSER_H

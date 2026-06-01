@@ -9,6 +9,7 @@ import QtQuick.Controls
 StackView {
     id: stackView
     initialItem: page
+    enabled: !GalleryConfig.disabled
 
     Component {
         id: page

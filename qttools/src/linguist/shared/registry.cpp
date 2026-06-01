@@ -6,6 +6,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 #ifdef Q_OS_WIN32
 /*
   Returns the path part of a registry key.
@@ -17,7 +19,7 @@ QT_BEGIN_NAMESPACE
 */
 static QString keyPath(const QString &rKey)
 {
-    int idx = rKey.lastIndexOf(QLatin1Char('\\'));
+    int idx = rKey.lastIndexOf(u'\\');
     if (idx == -1)
         return QString();
     return rKey.left(idx + 1);
@@ -33,12 +35,12 @@ static QString keyPath(const QString &rKey)
 */
 static QString keyName(const QString &rKey)
 {
-    int idx = rKey.lastIndexOf(QLatin1Char('\\'));
+    int idx = rKey.lastIndexOf(u'\\');
     if (idx == -1)
         return rKey;
 
     QString res(rKey.mid(idx + 1));
-    if (res == QLatin1String("Default") || res == QLatin1String("."))
+    if (res == "Default"_L1 || res == "."_L1)
         res = QString();
     return res;
 }
@@ -95,7 +97,7 @@ QString qt_readRegistryKey(HKEY parentHandle, const QString &rSubkey, unsigned l
                     break;
                 l.append(s);
             }
-            result = l.join(QLatin1String(", "));
+            result = l.join(", "_L1);
             break;
         }
 

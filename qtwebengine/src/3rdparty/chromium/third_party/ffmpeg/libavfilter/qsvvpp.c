@@ -27,7 +27,7 @@
 #include "libavutil/time.h"
 #include "libavutil/pixdesc.h"
 
-#include "internal.h"
+#include "filters.h"
 #include "qsvvpp.h"
 #include "video.h"
 
@@ -297,16 +297,17 @@ static int map_frame_to_surface(AVFrame *frame, mfxFrameSurface1 *surface)
 /* fill the surface info */
 static int fill_frameinfo_by_link(mfxFrameInfo *frameinfo, AVFilterLink *link)
 {
+    FilterLink *l = ff_filter_link(link);
     enum AVPixelFormat        pix_fmt;
     AVHWFramesContext        *frames_ctx;
     AVQSVFramesContext       *frames_hwctx;
     const AVPixFmtDescriptor *desc;
 
     if (link->format == AV_PIX_FMT_QSV) {
-        if (!link->hw_frames_ctx)
+        if (!l->hw_frames_ctx)
             return AVERROR(EINVAL);
 
-        frames_ctx   = (AVHWFramesContext *)link->hw_frames_ctx->data;
+        frames_ctx   = (AVHWFramesContext *)l->hw_frames_ctx->data;
         frames_hwctx = frames_ctx->hwctx;
         *frameinfo   = frames_hwctx->nb_surfaces ? frames_hwctx->surfaces[0].Info : *frames_hwctx->info;
     } else {
@@ -334,8 +335,8 @@ static int fill_frameinfo_by_link(mfxFrameInfo *frameinfo, AVFilterLink *link)
 
     frameinfo->CropW          = link->w;
     frameinfo->CropH          = link->h;
-    frameinfo->FrameRateExtN  = link->frame_rate.num;
-    frameinfo->FrameRateExtD  = link->frame_rate.den;
+    frameinfo->FrameRateExtN  = l->frame_rate.num;
+    frameinfo->FrameRateExtD  = l->frame_rate.den;
 
     /* Apparently VPP in the SDK requires the frame rate to be set to some value, otherwise
      * init will fail */
@@ -470,8 +471,10 @@ static QSVFrame *submit_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *p
 }
 
 /* get the output surface */
-static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFrame *in)
+static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFrame *in,
+                             const AVFrame *propref)
 {
+    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     QSVFrame        *out_frame;
     int              ret;
@@ -489,7 +492,7 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFr
         if (!out_frame->frame)
             return NULL;
 
-        ret = av_hwframe_get_buffer(outlink->hw_frames_ctx, out_frame->frame, 0);
+        ret = av_hwframe_get_buffer(l->hw_frames_ctx, out_frame->frame, 0);
         if (ret < 0) {
             av_log(ctx, AV_LOG_ERROR, "Can't allocate a surface.\n");
             return NULL;
@@ -511,8 +514,17 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFr
             return NULL;
     }
 
-    if (outlink->frame_rate.num && outlink->frame_rate.den)
-        out_frame->frame->duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+    if (propref) {
+        ret = av_frame_copy_props(out_frame->frame, propref);
+        if (ret < 0) {
+            av_frame_free(&out_frame->frame);
+            av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
+            return NULL;
+        }
+    }
+
+    if (l->frame_rate.num && l->frame_rate.den)
+        out_frame->frame->duration = av_rescale_q(1, av_inv_q(l->frame_rate), outlink->time_base);
     else
         out_frame->frame->duration = 0;
 
@@ -546,7 +558,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
 static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
 {
     AVFilterLink                 *inlink = avctx->inputs[0];
+    FilterLink                      *inl = ff_filter_link(inlink);
     AVFilterLink                *outlink = avctx->outputs[0];
+    FilterLink                     *outl = ff_filter_link(outlink);
     AVQSVFramesContext  *in_frames_hwctx = NULL;
     AVQSVFramesContext *out_frames_hwctx = NULL;
 
@@ -559,8 +573,8 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
     mfxIMPL impl;
     int ret, i;
 
-    if (inlink->hw_frames_ctx) {
-        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)inlink->hw_frames_ctx->data;
+    if (inl->hw_frames_ctx) {
+        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)inl->hw_frames_ctx->data;
 
         device_ref      = frames_ctx->device_ref;
         in_frames_hwctx = frames_ctx->hwctx;
@@ -657,8 +671,8 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
             s->surface_ptrs_out[i] = out_frames_hwctx->surfaces + i;
         s->nb_surface_ptrs_out = out_frames_hwctx->nb_surfaces;
 
-        av_buffer_unref(&outlink->hw_frames_ctx);
-        outlink->hw_frames_ctx = out_frames_ref;
+        av_buffer_unref(&outl->hw_frames_ctx);
+        outl->hw_frames_ctx = out_frames_ref;
     } else
         s->out_mem_mode = MFX_MEMTYPE_SYSTEM_MEMORY;
 
@@ -981,7 +995,7 @@ int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picr
     }
 
     do {
-        out_frame = query_frame(s, outlink, in_frame->frame);
+        out_frame = query_frame(s, outlink, in_frame->frame, propref);
         if (!out_frame) {
             av_log(ctx, AV_LOG_ERROR, "Failed to query an output frame.\n");
             return AVERROR(ENOMEM);
@@ -1003,15 +1017,6 @@ int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picr
             if (ret == MFX_ERR_MORE_DATA)
                 return AVERROR(EAGAIN);
             break;
-        }
-
-        if (propref) {
-            ret1 = av_frame_copy_props(out_frame->frame, propref);
-            if (ret1 < 0) {
-                av_frame_free(&out_frame->frame);
-                av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
-                return ret1;
-            }
         }
 
         out_frame->frame->pts = av_rescale_q(out_frame->surface.Data.TimeStamp,
@@ -1099,11 +1104,6 @@ int ff_qsvvpp_create_mfx_session(void *ctx,
     if (sts < 0)
         return ff_qsvvpp_print_error(ctx, sts,
                                      "Error creating a MFX session");
-    else if (sts > 0) {
-        ff_qsvvpp_print_warning(ctx, sts,
-                                "Warning in MFX session creation");
-        return AVERROR_UNKNOWN;
-    }
 
     *psession = session;
 

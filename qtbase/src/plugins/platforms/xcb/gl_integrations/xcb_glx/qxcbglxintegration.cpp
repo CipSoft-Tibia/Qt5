@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbglxintegration.h"
 
@@ -174,25 +175,27 @@ QOpenGLContext *QXcbGlxIntegration::createOpenGLContext(GLXContext glxContext, v
 
 QPlatformOffscreenSurface *QXcbGlxIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
 {
-    static bool vendorChecked = false;
-    static bool glxPbufferUsable = true;
-    if (!vendorChecked) {
-        vendorChecked = true;
+    if (canCreatePlatformOffscreenSurface())
+        return new QGLXPbuffer(surface);
+    else
+        return nullptr; // trigger fallback to hidden QWindow
+
+}
+
+bool QXcbGlxIntegration::canCreatePlatformOffscreenSurface() const {
+    static bool glxPbufferUsable = [&] {
         Display *display = glXGetCurrentDisplay();
         if (!display)
             display = static_cast<Display *>(m_connection->xlib_display());
 
         const char *glxvendor = glXGetClientString(display, GLX_VENDOR);
-        if (glxvendor) {
+        if (glxvendor)
             if (!strcmp(glxvendor, "ATI") || !strcmp(glxvendor, "Chromium"))
-                glxPbufferUsable = false;
-        }
-    }
-    if (glxPbufferUsable)
-        return new QGLXPbuffer(surface);
-    else
-        return nullptr; // trigger fallback to hidden QWindow
+                return false;
+        return true;
+    }();
 
+    return glxPbufferUsable;
 }
 
 bool QXcbGlxIntegration::supportsThreadedOpenGL() const

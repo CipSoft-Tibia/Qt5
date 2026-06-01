@@ -30,18 +30,20 @@ public:
     virtual ~QQuickVectorImagePrivate() = default;
 
     void setSource(const QUrl &source);
-    void loadSvg();
+    void loadFile();
 
-    enum Format {
-        Unknown,
-        Svg
-    };
-    QQuickVectorImagePrivate::Format formatFromFilePath(const QString &filePath);
+    static QQuickVectorImagePrivate *get(QQuickVectorImage *q)
+    {
+        return q->d_func();
+    }
 
     QUrl sourceFile;
-    QQuickItem *svgItem = nullptr;
+    QQuickItem *rootItem = nullptr;
     QQuickVectorImage::FillMode fillMode = QQuickVectorImage::Stretch;
     QQuickVectorImage::RendererType preferredRendererType = QQuickVectorImage::GeometryRenderer;
+    QQuickVectorImageAnimations *animations = nullptr;
+    bool assumeTrustedSource = false;
+    std::unique_ptr<QQmlContext> m_qmlContext;
 };
 
 QT_END_NAMESPACE

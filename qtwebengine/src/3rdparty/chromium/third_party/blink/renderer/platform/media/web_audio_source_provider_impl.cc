@@ -13,6 +13,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/task/bind_post_task.h"
 #include "base/thread_annotations.h"
 #include "media/base/audio_glitch_info.h"
@@ -175,7 +176,7 @@ void WebAudioSourceProviderImpl::SetClient(
 }
 
 void WebAudioSourceProviderImpl::ProvideInput(
-    const WebVector<float*>& audio_data,
+    base::span<const base::span<float>> audio_data,
     int number_of_frames) {
   if (!bus_wrapper_ ||
       static_cast<size_t>(bus_wrapper_->channels()) != audio_data.size()) {
@@ -184,8 +185,9 @@ void WebAudioSourceProviderImpl::ProvideInput(
   }
 
   bus_wrapper_->set_frames(number_of_frames);
-  for (size_t i = 0; i < audio_data.size(); ++i)
+  for (size_t i = 0; i < audio_data.size(); ++i) {
     bus_wrapper_->SetChannelData(static_cast<int>(i), audio_data[i]);
+  }
 
   // Use a try lock to avoid contention in the real-time audio thread.
   base::AutoTryLock auto_try_lock(sink_lock_);
@@ -286,9 +288,7 @@ bool WebAudioSourceProviderImpl::SetVolume(double volume) {
 }
 
 media::OutputDeviceInfo WebAudioSourceProviderImpl::GetOutputDeviceInfo() {
-  NOTREACHED_IN_MIGRATION();  // The blocking API is intentionally not
-                              // supported.
-  return media::OutputDeviceInfo();
+  NOTREACHED();  // The blocking API is intentionally not supported.
 }
 
 void WebAudioSourceProviderImpl::GetOutputDeviceInfoAsync(

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLTHREAD_P_H
 #define QQMLTHREAD_P_H
@@ -32,17 +33,11 @@ public:
     QQmlThread();
     virtual ~QQmlThread();
 
-    void startup();
-    void shutdown();
-    bool isShutdown() const;
-
     void lock();
     void unlock();
     void wakeOne();
     void wait();
 
-    QThread *thread() const;
-    QObject *threadObject() const;
     bool isThisThread() const;
 
     // Synchronously invoke a method in the thread
@@ -65,6 +60,13 @@ public:
 
     void waitForNextMessage();
     void discardMessages();
+
+    void startup();
+    void shutdown();
+
+protected:
+    QThread *thread() const;
+    QObject *threadObject() const;
 
 private:
     friend class QQmlThreadPrivate;

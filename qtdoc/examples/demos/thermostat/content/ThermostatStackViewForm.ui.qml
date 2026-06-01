@@ -8,19 +8,22 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
+import Thermostat
 
 Item {
     id: root
 
     property bool isOneColumn: false
-    property var model
+    required property list<Room> model
     property int currentRoomIndex
 
     StackLayout {
         anchors.fill: parent
-        currentIndex: currentRoomIndex
+        currentIndex: root.currentRoomIndex
 
         Repeater {
             id: repeater
@@ -29,15 +32,12 @@ Item {
             ThermostatScrollView {
                 id: delegate
 
-                required property string name
-                required property var model
+                required property Room modelData
 
+                room: modelData
                 width: root.width
                 height: root.height
                 isOneColumn: root.isOneColumn
-
-                roomName: name
-                isActive: model.active
             }
         }
     }

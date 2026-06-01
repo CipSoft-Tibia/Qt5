@@ -195,8 +195,7 @@
     \value AA_ShareOpenGLContexts Enables resource sharing between the OpenGL
            contexts used by classes like QOpenGLWidget and QQuickWidget. This
            allows sharing OpenGL resources, like textures, between QOpenGLWidget
-           instances that belong to different top-level windows. This attribute
-           must be set before QGuiApplication is constructed.
+           instances that belong to different top-level windows.
            This value was added in Qt 5.4.
 
     \value AA_SetPalette Indicates whether a palette was explicitly set on the
@@ -915,7 +914,8 @@
     This enum type defines what happens to the aspect ratio when
     scaling an rectangle.
 
-    \image qimage-scaling.png
+    \image qimage-scaling.png {Illustration showing three different
+           ways to scale images with Aspect Ratio Mode}
 
     \value IgnoreAspectRatio  The size is scaled freely. The aspect
                               ratio is not preserved.
@@ -1832,6 +1832,7 @@
     \value Key_Settings
     \value Key_MicVolumeUp
     \value Key_MicVolumeDown
+    \value Key_Keyboard
     \value Key_New
     \value Key_Open
     \value Key_Find
@@ -2827,6 +2828,10 @@
     \omitvalue ToolTipPropertyRole
     \omitvalue StatusTipPropertyRole
     \omitvalue WhatsThisPropertyRole
+    \omitvalue RangeModelDataRole
+    \omitvalue StandardItemFlagsRole
+    \omitvalue FileInfoRole
+    \omitvalue RemoteObjectsCacheRole
 
     For user roles, it is up to the developer to decide which types to use and ensure that
     components use the correct types when accessing and setting data.

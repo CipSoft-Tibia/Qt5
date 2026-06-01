@@ -86,7 +86,6 @@ def CheckNoDisallowedJS(input_api, output_api):
   # Also exempt any externs or eslint files, which must be in JS.
   EXCLUDE_PATH_SUFFIXES = [
     '_externs.js',
-    '.eslintrc.js',
   ]
 
   def allow_js(f):
@@ -102,6 +101,11 @@ def CheckNoDisallowedJS(input_api, output_api):
   from web_dev_style import presubmit_support
   return presubmit_support.DisallowNewJsFiles(input_api, output_api,
                                               lambda f: not allow_js(f))
+
+
+def CheckNoNewPolymer(input_api, output_api):
+  from web_dev_style import presubmit_support
+  return presubmit_support.DisallowNewPolymerElements(input_api, output_api)
 
 
 def CheckPatchFormatted(input_api, output_api):

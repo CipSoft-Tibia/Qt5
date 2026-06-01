@@ -26,24 +26,24 @@ namespace {
 // Type names corresponding to MCSProtoTags. Useful for identifying what type
 // of MCS protobuf is contained within a google::protobuf::MessageLite object.
 // WARNING: must match the order in MCSProtoTag.
-const char* const kProtoNames[] = {
-  "mcs_proto.HeartbeatPing",
-  "mcs_proto.HeartbeatAck",
-  "mcs_proto.LoginRequest",
-  "mcs_proto.LoginResponse",
-  "mcs_proto.Close",
-  "mcs_proto.MessageStanza",
-  "mcs_proto.PresenceStanza",
-  "mcs_proto.IqStanza",
-  "mcs_proto.DataMessageStanza",
-  "mcs_proto.BatchPresenceStanza",
-  "mcs_proto.StreamErrorStanza",
-  "mcs_proto.HttpRequest",
-  "mcs_proto.HttpResponse",
-  "mcs_proto.BindAccountRequest",
-  "mcs_proto.BindAccountResponse",
-  "mcs_proto.TalkMetadata"
-};
+const auto kProtoNames = std::to_array<const char*>({
+    "mcs_proto.HeartbeatPing",
+    "mcs_proto.HeartbeatAck",
+    "mcs_proto.LoginRequest",
+    "mcs_proto.LoginResponse",
+    "mcs_proto.Close",
+    "mcs_proto.MessageStanza",
+    "mcs_proto.PresenceStanza",
+    "mcs_proto.IqStanza",
+    "mcs_proto.DataMessageStanza",
+    "mcs_proto.BatchPresenceStanza",
+    "mcs_proto.StreamErrorStanza",
+    "mcs_proto.HttpRequest",
+    "mcs_proto.HttpResponse",
+    "mcs_proto.BindAccountRequest",
+    "mcs_proto.BindAccountResponse",
+    "mcs_proto.TalkMetadata",
+});
 static_assert(std::size(kProtoNames) == kNumProtoTypes,
               "Proto Names Must Include All Tags");
 
@@ -194,7 +194,7 @@ void SetPersistentId(const std::string& persistent_id,
         set_persistent_id(persistent_id);
     return;
   }
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 uint32_t GetLastStreamIdReceived(
@@ -242,7 +242,7 @@ void SetLastStreamIdReceived(uint32_t val,
         set_last_stream_id_received(val);
     return;
   }
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 bool HasTTLExpired(const google::protobuf::MessageLite& protobuf,

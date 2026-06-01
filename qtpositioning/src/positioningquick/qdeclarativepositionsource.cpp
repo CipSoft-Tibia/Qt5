@@ -435,13 +435,14 @@ int QDeclarativePositionSource::updateInterval() const
     This property holds the supported positioning methods of the
     current source.
 
-    \list
-    \li PositionSource.NoPositioningMethods - No positioning methods supported (no source).
-    \li PositionSource.SatellitePositioningMethods - Satellite-based positioning methods such as GPS are supported.
-    \li PositionSource.NonSatellitePositioningMethods - Non-satellite-based methods are supported.
-    \li PositionSource.AllPositioningMethods - Both satellite-based and non-satellite positioning methods are supported.
-    \endlist
-
+    \value PositionSource.NoPositioningMethods
+        No positioning methods supported (no source).
+    \value PositionSource.SatellitePositioningMethods
+        Satellite-based positioning methods such as GPS are supported.
+    \value PositionSource.NonSatellitePositioningMethods
+        Non-satellite-based methods are supported.
+    \value PositionSource.AllPositioningMethods
+        Both satellite-based and non-satellite positioning methods are supported.
 */
 
 QDeclarativePositionSource::PositioningMethods
@@ -472,13 +473,14 @@ QDeclarativePositionSource::bindableSupportedPositioningMethods() const
     This property holds the preferred positioning methods of the
     current source.
 
-    \list
-    \li PositionSource.NoPositioningMethods - No positioning method is preferred.
-    \li PositionSource.SatellitePositioningMethods - Satellite-based positioning methods such as GPS should be preferred.
-    \li PositionSource.NonSatellitePositioningMethods - Non-satellite-based methods should be preferred.
-    \li PositionSource.AllPositioningMethods - Any positioning methods are acceptable.
-    \endlist
-
+    \value PositionSource.NoPositioningMethods
+        No positioning method is preferred.
+    \value PositionSource.SatellitePositioningMethods
+        Satellite-based positioning methods such as GPS should be preferred.
+    \value PositionSource.NonSatellitePositioningMethods
+        Non-satellite-based methods should be preferred.
+    \value PositionSource.AllPositioningMethods
+        Any positioning methods are acceptable.
 */
 
 void QDeclarativePositionSource::setPreferredPositioningMethods(PositioningMethods methods)
@@ -674,19 +676,19 @@ void QDeclarativePositionSource::positionUpdateReceived(const QGeoPositionInfo &
 
     This property holds the error which last occurred with the PositionSource.
 
-    \list
-    \li PositionSource.AccessError - The connection setup to the remote positioning backend failed because the
+    \value PositionSource.AccessError
+        The connection setup to the remote positioning backend failed because the
         application lacked the required privileges.
-    \li PositionSource.ClosedError - The positioning backend closed the connection, which happens for example in case
+    \value PositionSource.ClosedError
+        The positioning backend closed the connection, which happens for example in case
         the user is switching location services to off. As soon as the location service is re-enabled
         regular updates will resume.
-    \li PositionSource.NoError - No error has occurred.
-    \li PositionSource.UnknownSourceError - An unidentified error occurred.
-    \li PositionSource.UpdateTimeoutError - The current position could not be
+    \value PositionSource.NoError No error has occurred.
+    \value PositionSource.UnknownSourceError An unidentified error occurred.
+    \value PositionSource.UpdateTimeoutError
+        The current position could not be
         retrieved within the specified timeout, or this PositionSource determined
         that it will not be able to provide further regular updates.
-    \endlist
-
 */
 
 QDeclarativePositionSource::SourceError QDeclarativePositionSource::sourceError() const

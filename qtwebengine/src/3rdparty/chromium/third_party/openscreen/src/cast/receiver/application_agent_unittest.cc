@@ -171,7 +171,7 @@ class ApplicationAgentTest : public ::testing::Test {
   }
   CastSocket* sender_outbound() { return socket_pair_.peer_socket.get(); }
 
-  // Examines the |message| for the correct source/destination transport IDs and
+  // Examines the `message` for the correct source/destination transport IDs and
   // namespace, confirms there is JSON in the payload, and returns parsed JSON
   // (or an empty object if the parse fails).
   static Json::Value ValidateAndParseMessage(const CastMessage& message,
@@ -370,13 +370,13 @@ TEST_F(ApplicationAgentTest, HandlesGetAppAvailability) {
 TEST_F(ApplicationAgentTest, HandlesGetStatus) {
   EXPECT_CALL(*sender_inbound(), OnMessage(_, _))
       .WillOnce(Invoke([&](CastSocket*, CastMessage message) {
+        // NOTE: These appIDs and the displayName come from `idle_app_`.
         constexpr char kExpectedJson[] = R"({
           "requestId":123,
           "type":"RECEIVER_STATUS",
           "status":{
             "applications":[
               {
-                // NOTE: These IDs and the displayName come from |idle_app_|.
                 "sessionId":"E8C28D3C-9ABC-DEF0-1234-000000000001",
                 "appId":"E8C28D3C",
                 "universalAppId":"E8C28D3C",
@@ -450,13 +450,15 @@ TEST_F(ApplicationAgentTest, LaunchesApp_PassesMessages_ThenStopsApp) {
         port_for_app = port;
         port->SetClient(some_app);
       }));
+  // Notes:
+  // - requestId is 0 for broadcast (no requestor).
+  // - These appIDs and the displayName come from `some_app`.
   const std::string kRunningAppReceiverStatus = R"({
-      "requestId":0,  // Note: 0 for broadcast (no requestor).
+      "requestId":0,
       "type":"RECEIVER_STATUS",
       "status":{
         "applications":[
           {
-            // NOTE: These IDs and the displayName come from |some_app|.
             "transportId":"1A2B3C4D-9ABC-DEF0-1234-000000000001",
             "sessionId":"1A2B3C4D-9ABC-DEF0-1234-000000000001",
             "appId":"1A2B3C4D",
@@ -542,16 +544,18 @@ TEST_F(ApplicationAgentTest, LaunchesApp_PassesMessages_ThenStopsApp) {
   Sequence phase3;
   EXPECT_CALL(some_app, DidStop()).InSequence(phase3);
   EXPECT_CALL(*idle_app(), DidLaunch(_, NotNull())).InSequence(phase3);
+  // Notes:
+  // - requestId is 0 for broadcast (no requestor).
+  // - These appIDs and the displayName come from `idle_app_`.
   EXPECT_CALL(*sender_inbound(), OnMessage(_, _))
       .InSequence(phase3)
       .WillOnce(Invoke([&](CastSocket*, CastMessage message) {
         const std::string kExpectedJson = R"({
-          "requestId":0,  // Note: 0 for broadcast (no requestor).
+          "requestId":0,
           "type":"RECEIVER_STATUS",
           "status":{
             "applications":[
               {
-                // NOTE: These IDs and the displayName come from |idle_app_|.
                 "sessionId":"E8C28D3C-9ABC-DEF0-1234-000000000002",
                 "appId":"E8C28D3C",
                 "universalAppId":"E8C28D3C",
@@ -644,7 +648,7 @@ TEST_F(ApplicationAgentTest, AllowsVirtualConnectionsToApp) {
   agent()->UnregisterApplication(&some_app);
 
   // With the app stopped, check that the policy no longer allows connections to
-  // the now-stale |transport_id|.
+  // the now-stale `transport_id`.
   EXPECT_TRUE(policy->IsConnectionAllowed(
       VirtualConnection{kPlatformReceiverId, "any-sender-12345", 0}));
   EXPECT_FALSE(policy->IsConnectionAllowed(

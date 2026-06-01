@@ -2,32 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <private/qtmultimediaglobal_p.h>
-#include "qvideowidget_p.h"
 
-#include <QtCore/qobject.h>
+#include <QtMultimediaWidgets/private/qvideowidget_p.h>
+
 #include <QtMultimedia/qtmultimediaglobal.h>
-#include <qvideosink.h>
-#include <private/qvideowindow_p.h>
+#include <QtMultimedia/qvideoframeformat.h>
+#include <QtMultimedia/qvideosink.h>
+#include <QtMultimedia/private/qvideowindow_p.h>
 
-#include <qobject.h>
-#include <qvideoframeformat.h>
-#include <qpainter.h>
-
-#include <qapplication.h>
-#include <qevent.h>
-#include <qboxlayout.h>
-#include <qnamespace.h>
-
-#include <qwindow.h>
-#include <private/qhighdpiscaling_p.h>
-
-#ifdef Q_OS_WIN
-#include <QtCore/qt_windows.h>
-#endif
-
-using namespace Qt;
+#include <QtGui/qevent.h>
+#include <QtGui/qguiapplication.h>
+#include <QtCore/qobject.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::Literals;
 
 /*!
     \class QVideoWidget
@@ -47,6 +36,8 @@ QT_BEGIN_NAMESPACE
     \b {Note}: Only a single display output can be attached to a media
     object at one time.
 
+    \warning QVideoWidget is not supported on the \c eglfs platform plugin.
+
     \sa QCamera, QMediaPlayer, QGraphicsVideoItem
 */
 /*!
@@ -63,13 +54,20 @@ QVideoWidget::QVideoWidget(QWidget *parent)
     , d_ptr(new QVideoWidgetPrivate)
 {
     d_ptr->q_ptr = this;
-    d_ptr->videoWindow = new QVideoWindow;
-    d_ptr->videoWindow->setFlag(Qt::WindowTransparentForInput, true);
-    d_ptr->windowContainer = QWidget::createWindowContainer(d_ptr->videoWindow, this, Qt::WindowTransparentForInput);
-    d_ptr->windowContainer->move(0, 0);
-    d_ptr->windowContainer->resize(size());
+    d_ptr->isEglfs = QGuiApplication::platformName().startsWith("eglfs"_L1, Qt::CaseInsensitive);
 
-    connect(d_ptr->videoWindow, &QVideoWindow::aspectRatioModeChanged, this, &QVideoWidget::aspectRatioModeChanged);
+    if (d_ptr->isEglfs) {
+        qWarning("QVideoWidget is not supported on eglfs");
+        d_ptr->fakeVideoSink = new QVideoSink(this);
+    } else {
+        d_ptr->videoWindow = new QVideoWindow;
+        d_ptr->videoWindow->setFlag(Qt::WindowTransparentForInput, true);
+        d_ptr->windowContainer = QWidget::createWindowContainer(d_ptr->videoWindow, this, Qt::WindowTransparentForInput);
+        d_ptr->windowContainer->move(0, 0);
+        d_ptr->windowContainer->resize(size());
+        connect(d_ptr->videoWindow, &QVideoWindow::aspectRatioModeChanged, this,
+                &QVideoWidget::aspectRatioModeChanged);
+    }
 }
 
 /*!
@@ -86,7 +84,7 @@ QVideoWidget::~QVideoWidget()
 */
 QVideoSink *QVideoWidget::videoSink() const
 {
-    return d_ptr->videoWindow->videoSink();
+    return d_ptr->videoWindow ? d_ptr->videoWindow->videoSink() : d_ptr->fakeVideoSink;
 }
 
 /*!
@@ -96,12 +94,13 @@ QVideoSink *QVideoWidget::videoSink() const
 
 Qt::AspectRatioMode QVideoWidget::aspectRatioMode() const
 {
-    return d_ptr->videoWindow->aspectRatioMode();
+    return d_ptr->videoWindow ? d_ptr->videoWindow->aspectRatioMode() : Qt::KeepAspectRatio;
 }
 
 void QVideoWidget::setAspectRatioMode(Qt::AspectRatioMode mode)
 {
-    d_ptr->videoWindow->setAspectRatioMode(mode);
+    if (d_ptr->videoWindow)
+        d_ptr->videoWindow->setAspectRatioMode(mode);
 }
 
 /*!
@@ -113,6 +112,9 @@ void QVideoWidget::setFullScreen(bool fullScreen)
 {
     Q_D(QVideoWidget);
     if (isFullScreen() == fullScreen)
+        return;
+
+    if (d_ptr->isEglfs)
         return;
 
     Qt::WindowFlags flags = windowFlags();
@@ -198,7 +200,8 @@ void QVideoWidget::hideEvent(QHideEvent *event)
  */
 void QVideoWidget::resizeEvent(QResizeEvent *event)
 {
-    d_ptr->windowContainer->resize(event->size());
+    if (!d_ptr->isEglfs)
+        d_ptr->windowContainer->resize(event->size());
     QWidget::resizeEvent(event);
 }
 
@@ -206,8 +209,10 @@ void QVideoWidget::resizeEvent(QResizeEvent *event)
   \reimp
   Handles the move \a event.
  */
-void QVideoWidget::moveEvent(QMoveEvent * /*event*/)
+void QVideoWidget::moveEvent(QMoveEvent *event)
 {
+    if (!d_ptr->isEglfs)
+        QWidget::moveEvent(event);
 }
 
 QT_END_NAMESPACE

@@ -20,6 +20,7 @@ import org.jni_zero.NativeMethods;
 
 import org.chromium.base.ContextUtils;
 import org.chromium.base.IntentUtils;
+import org.chromium.build.annotations.NullMarked;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -28,10 +29,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Owned by its native counterpart declared in
- * usb_midi_device_factory_android.h. Refer to that class for general comments.
+ * Owned by its native counterpart declared in usb_midi_device_factory_android.h. Refer to that
+ * class for general comments.
  */
 @JNINamespace("midi")
+@NullMarked
 class UsbMidiDeviceFactoryAndroid {
     /** The UsbManager of this system. */
     private UsbManager mUsbManager;
@@ -71,7 +73,7 @@ class UsbMidiDeviceFactoryAndroid {
                     public void onReceive(Context context, Intent intent) {
                         if (!IntentUtils.isTrustedIntentFromSelf(intent)) return;
                         assert ACTION_USB_PERMISSION.equals(intent.getAction());
-                        onUsbDevicePermissionRequestDone(context, intent);
+                        onUsbDevicePermissionRequestDone(intent);
                     }
                 };
         mDeviceChangeReceiver =
@@ -79,6 +81,7 @@ class UsbMidiDeviceFactoryAndroid {
                     @Override
                     public void onReceive(Context context, Intent intent) {
                         UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                        assert device != null;
                         if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
                             requestDevicePermissionIfNecessary(device);
                         }
@@ -207,13 +210,9 @@ class UsbMidiDeviceFactoryAndroid {
     }
 
     /**
-     * Called when the user accepts or rejects the permission request requested by
-     * EnumerateDevices.
-     *
-     * @param context
-     * @param intent
+     * Called when the user accepts or rejects the permission request requested by EnumerateDevices.
      */
-    private void onUsbDevicePermissionRequestDone(Context context, Intent intent) {
+    private void onUsbDevicePermissionRequestDone(Intent intent) {
         UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
         UsbMidiDeviceAndroid midiDevice = null;
         if (mRequestedDevices.contains(device)) {

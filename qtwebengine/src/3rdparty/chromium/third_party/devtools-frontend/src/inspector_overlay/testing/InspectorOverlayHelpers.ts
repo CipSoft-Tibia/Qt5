@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {type AreaBounds, type Bounds} from '../common.js';
+import type {AreaBounds, Bounds} from '../common.js';
 import {
   type CanvasSize,
   drawGridAreaNames,
@@ -44,9 +44,9 @@ const renderElementIntoDOM = (element: HTMLElement, renderOptions: RenderOptions
   return element;
 };
 
-type Constructor<T> = {
-  new (...args: unknown[]): T,
-};
+interface Constructor<T> {
+  new(...args: unknown[]): T;
+}
 
 function assertElements<T extends Element>(
     nodeList: NodeListOf<Element>, elementClass: Constructor<T>): asserts nodeList is NodeListOf<T> {

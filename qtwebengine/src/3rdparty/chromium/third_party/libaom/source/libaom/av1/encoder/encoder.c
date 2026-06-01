@@ -751,7 +751,9 @@ void av1_change_config_seq(struct AV1_PRIMARY *ppi,
         10;  // Default value (not signaled)
   }
 
+#if !CONFIG_REALTIME_ONLY
   av1_update_film_grain_parameters_seq(ppi, oxcf);
+#endif
 
   int sb_size = seq_params->sb_size;
   // Superblock size should not be updated after the first key frame.
@@ -807,7 +809,9 @@ void av1_change_config(struct AV1_COMP *cpi, const AV1EncoderConfig *oxcf,
 
   cpi->oxcf = *oxcf;
 
+#if !CONFIG_REALTIME_ONLY
   av1_update_film_grain_parameters(cpi, oxcf);
+#endif
 
   // When user provides superres_mode = AOM_SUPERRES_AUTO, we still initialize
   // superres mode for current encoding = AOM_SUPERRES_NONE. This is to ensure
@@ -1045,129 +1049,115 @@ AV1_PRIMARY *av1_create_primary_compressor(
     }
   }
 
-#define BFP(BT, SDF, SDAF, VF, SVF, SVAF, SDX4DF, SDX3DF, JSDAF, JSVAF) \
-  ppi->fn_ptr[BT].sdf = SDF;                                            \
-  ppi->fn_ptr[BT].sdaf = SDAF;                                          \
-  ppi->fn_ptr[BT].vf = VF;                                              \
-  ppi->fn_ptr[BT].svf = SVF;                                            \
-  ppi->fn_ptr[BT].svaf = SVAF;                                          \
-  ppi->fn_ptr[BT].sdx4df = SDX4DF;                                      \
-  ppi->fn_ptr[BT].jsdaf = JSDAF;                                        \
-  ppi->fn_ptr[BT].jsvaf = JSVAF;                                        \
+#define BFP(BT, SDF, SDAF, VF, SVF, SVAF, SDX4DF, SDX3DF) \
+  ppi->fn_ptr[BT].sdf = SDF;                              \
+  ppi->fn_ptr[BT].sdaf = SDAF;                            \
+  ppi->fn_ptr[BT].vf = VF;                                \
+  ppi->fn_ptr[BT].svf = SVF;                              \
+  ppi->fn_ptr[BT].svaf = SVAF;                            \
+  ppi->fn_ptr[BT].sdx4df = SDX4DF;                        \
   ppi->fn_ptr[BT].sdx3df = SDX3DF;
 
 // Realtime mode doesn't use 4x rectangular blocks.
 #if !CONFIG_REALTIME_ONLY
-  BFP(BLOCK_4X16, aom_sad4x16, aom_sad4x16_avg, aom_variance4x16,
+  // sdaf (used in compound prediction, get_mvpred_compound_sad()) is unused
+  // for 4xN and Nx4 blocks.
+  BFP(BLOCK_4X16, aom_sad4x16, /*SDAF=*/NULL, aom_variance4x16,
       aom_sub_pixel_variance4x16, aom_sub_pixel_avg_variance4x16,
-      aom_sad4x16x4d, aom_sad4x16x3d, aom_dist_wtd_sad4x16_avg,
-      aom_dist_wtd_sub_pixel_avg_variance4x16)
+      aom_sad4x16x4d, aom_sad4x16x3d)
 
-  BFP(BLOCK_16X4, aom_sad16x4, aom_sad16x4_avg, aom_variance16x4,
+  // sdaf (used in compound prediction, get_mvpred_compound_sad()) is unused
+  // for 4xN and Nx4 blocks.
+  BFP(BLOCK_16X4, aom_sad16x4, /*SDAF=*/NULL, aom_variance16x4,
       aom_sub_pixel_variance16x4, aom_sub_pixel_avg_variance16x4,
-      aom_sad16x4x4d, aom_sad16x4x3d, aom_dist_wtd_sad16x4_avg,
-      aom_dist_wtd_sub_pixel_avg_variance16x4)
+      aom_sad16x4x4d, aom_sad16x4x3d)
 
   BFP(BLOCK_8X32, aom_sad8x32, aom_sad8x32_avg, aom_variance8x32,
       aom_sub_pixel_variance8x32, aom_sub_pixel_avg_variance8x32,
-      aom_sad8x32x4d, aom_sad8x32x3d, aom_dist_wtd_sad8x32_avg,
-      aom_dist_wtd_sub_pixel_avg_variance8x32)
+      aom_sad8x32x4d, aom_sad8x32x3d)
 
   BFP(BLOCK_32X8, aom_sad32x8, aom_sad32x8_avg, aom_variance32x8,
       aom_sub_pixel_variance32x8, aom_sub_pixel_avg_variance32x8,
-      aom_sad32x8x4d, aom_sad32x8x3d, aom_dist_wtd_sad32x8_avg,
-      aom_dist_wtd_sub_pixel_avg_variance32x8)
+      aom_sad32x8x4d, aom_sad32x8x3d)
 
   BFP(BLOCK_16X64, aom_sad16x64, aom_sad16x64_avg, aom_variance16x64,
       aom_sub_pixel_variance16x64, aom_sub_pixel_avg_variance16x64,
-      aom_sad16x64x4d, aom_sad16x64x3d, aom_dist_wtd_sad16x64_avg,
-      aom_dist_wtd_sub_pixel_avg_variance16x64)
+      aom_sad16x64x4d, aom_sad16x64x3d)
 
   BFP(BLOCK_64X16, aom_sad64x16, aom_sad64x16_avg, aom_variance64x16,
       aom_sub_pixel_variance64x16, aom_sub_pixel_avg_variance64x16,
-      aom_sad64x16x4d, aom_sad64x16x3d, aom_dist_wtd_sad64x16_avg,
-      aom_dist_wtd_sub_pixel_avg_variance64x16)
+      aom_sad64x16x4d, aom_sad64x16x3d)
 #endif  // !CONFIG_REALTIME_ONLY
 
   BFP(BLOCK_128X128, aom_sad128x128, aom_sad128x128_avg, aom_variance128x128,
       aom_sub_pixel_variance128x128, aom_sub_pixel_avg_variance128x128,
-      aom_sad128x128x4d, aom_sad128x128x3d, aom_dist_wtd_sad128x128_avg,
-      aom_dist_wtd_sub_pixel_avg_variance128x128)
+      aom_sad128x128x4d, aom_sad128x128x3d)
 
   BFP(BLOCK_128X64, aom_sad128x64, aom_sad128x64_avg, aom_variance128x64,
       aom_sub_pixel_variance128x64, aom_sub_pixel_avg_variance128x64,
-      aom_sad128x64x4d, aom_sad128x64x3d, aom_dist_wtd_sad128x64_avg,
-      aom_dist_wtd_sub_pixel_avg_variance128x64)
+      aom_sad128x64x4d, aom_sad128x64x3d)
 
   BFP(BLOCK_64X128, aom_sad64x128, aom_sad64x128_avg, aom_variance64x128,
       aom_sub_pixel_variance64x128, aom_sub_pixel_avg_variance64x128,
-      aom_sad64x128x4d, aom_sad64x128x3d, aom_dist_wtd_sad64x128_avg,
-      aom_dist_wtd_sub_pixel_avg_variance64x128)
+      aom_sad64x128x4d, aom_sad64x128x3d)
 
   BFP(BLOCK_32X16, aom_sad32x16, aom_sad32x16_avg, aom_variance32x16,
       aom_sub_pixel_variance32x16, aom_sub_pixel_avg_variance32x16,
-      aom_sad32x16x4d, aom_sad32x16x3d, aom_dist_wtd_sad32x16_avg,
-      aom_dist_wtd_sub_pixel_avg_variance32x16)
+      aom_sad32x16x4d, aom_sad32x16x3d)
 
   BFP(BLOCK_16X32, aom_sad16x32, aom_sad16x32_avg, aom_variance16x32,
       aom_sub_pixel_variance16x32, aom_sub_pixel_avg_variance16x32,
-      aom_sad16x32x4d, aom_sad16x32x3d, aom_dist_wtd_sad16x32_avg,
-      aom_dist_wtd_sub_pixel_avg_variance16x32)
+      aom_sad16x32x4d, aom_sad16x32x3d)
 
   BFP(BLOCK_64X32, aom_sad64x32, aom_sad64x32_avg, aom_variance64x32,
       aom_sub_pixel_variance64x32, aom_sub_pixel_avg_variance64x32,
-      aom_sad64x32x4d, aom_sad64x32x3d, aom_dist_wtd_sad64x32_avg,
-      aom_dist_wtd_sub_pixel_avg_variance64x32)
+      aom_sad64x32x4d, aom_sad64x32x3d)
 
   BFP(BLOCK_32X64, aom_sad32x64, aom_sad32x64_avg, aom_variance32x64,
       aom_sub_pixel_variance32x64, aom_sub_pixel_avg_variance32x64,
-      aom_sad32x64x4d, aom_sad32x64x3d, aom_dist_wtd_sad32x64_avg,
-      aom_dist_wtd_sub_pixel_avg_variance32x64)
+      aom_sad32x64x4d, aom_sad32x64x3d)
 
   BFP(BLOCK_32X32, aom_sad32x32, aom_sad32x32_avg, aom_variance32x32,
       aom_sub_pixel_variance32x32, aom_sub_pixel_avg_variance32x32,
-      aom_sad32x32x4d, aom_sad32x32x3d, aom_dist_wtd_sad32x32_avg,
-      aom_dist_wtd_sub_pixel_avg_variance32x32)
+      aom_sad32x32x4d, aom_sad32x32x3d)
 
   BFP(BLOCK_64X64, aom_sad64x64, aom_sad64x64_avg, aom_variance64x64,
       aom_sub_pixel_variance64x64, aom_sub_pixel_avg_variance64x64,
-      aom_sad64x64x4d, aom_sad64x64x3d, aom_dist_wtd_sad64x64_avg,
-      aom_dist_wtd_sub_pixel_avg_variance64x64)
+      aom_sad64x64x4d, aom_sad64x64x3d)
 
   BFP(BLOCK_16X16, aom_sad16x16, aom_sad16x16_avg, aom_variance16x16,
       aom_sub_pixel_variance16x16, aom_sub_pixel_avg_variance16x16,
-      aom_sad16x16x4d, aom_sad16x16x3d, aom_dist_wtd_sad16x16_avg,
-      aom_dist_wtd_sub_pixel_avg_variance16x16)
+      aom_sad16x16x4d, aom_sad16x16x3d)
 
   BFP(BLOCK_16X8, aom_sad16x8, aom_sad16x8_avg, aom_variance16x8,
       aom_sub_pixel_variance16x8, aom_sub_pixel_avg_variance16x8,
-      aom_sad16x8x4d, aom_sad16x8x3d, aom_dist_wtd_sad16x8_avg,
-      aom_dist_wtd_sub_pixel_avg_variance16x8)
+      aom_sad16x8x4d, aom_sad16x8x3d)
 
   BFP(BLOCK_8X16, aom_sad8x16, aom_sad8x16_avg, aom_variance8x16,
       aom_sub_pixel_variance8x16, aom_sub_pixel_avg_variance8x16,
-      aom_sad8x16x4d, aom_sad8x16x3d, aom_dist_wtd_sad8x16_avg,
-      aom_dist_wtd_sub_pixel_avg_variance8x16)
+      aom_sad8x16x4d, aom_sad8x16x3d)
 
   BFP(BLOCK_8X8, aom_sad8x8, aom_sad8x8_avg, aom_variance8x8,
       aom_sub_pixel_variance8x8, aom_sub_pixel_avg_variance8x8, aom_sad8x8x4d,
-      aom_sad8x8x3d, aom_dist_wtd_sad8x8_avg,
-      aom_dist_wtd_sub_pixel_avg_variance8x8)
+      aom_sad8x8x3d)
 
-  BFP(BLOCK_8X4, aom_sad8x4, aom_sad8x4_avg, aom_variance8x4,
+  // sdaf (used in compound prediction, get_mvpred_compound_sad()) is unused
+  // for 4xN and Nx4 blocks.
+  BFP(BLOCK_8X4, aom_sad8x4, /*SDAF=*/NULL, aom_variance8x4,
       aom_sub_pixel_variance8x4, aom_sub_pixel_avg_variance8x4, aom_sad8x4x4d,
-      aom_sad8x4x3d, aom_dist_wtd_sad8x4_avg,
-      aom_dist_wtd_sub_pixel_avg_variance8x4)
+      aom_sad8x4x3d)
 
-  BFP(BLOCK_4X8, aom_sad4x8, aom_sad4x8_avg, aom_variance4x8,
+  // sdaf (used in compound prediction, get_mvpred_compound_sad()) is unused
+  // for 4xN and Nx4 blocks.
+  BFP(BLOCK_4X8, aom_sad4x8, /*SDAF=*/NULL, aom_variance4x8,
       aom_sub_pixel_variance4x8, aom_sub_pixel_avg_variance4x8, aom_sad4x8x4d,
-      aom_sad4x8x3d, aom_dist_wtd_sad4x8_avg,
-      aom_dist_wtd_sub_pixel_avg_variance4x8)
+      aom_sad4x8x3d)
 
-  BFP(BLOCK_4X4, aom_sad4x4, aom_sad4x4_avg, aom_variance4x4,
+  // sdaf (used in compound prediction, get_mvpred_compound_sad()) is unused
+  // for 4xN and Nx4 blocks.
+  BFP(BLOCK_4X4, aom_sad4x4, /*SDAF=*/NULL, aom_variance4x4,
       aom_sub_pixel_variance4x4, aom_sub_pixel_avg_variance4x4, aom_sad4x4x4d,
-      aom_sad4x4x3d, aom_dist_wtd_sad4x4_avg,
-      aom_dist_wtd_sub_pixel_avg_variance4x4)
+      aom_sad4x4x3d)
 
 #if !CONFIG_REALTIME_ONLY
 #define OBFP(BT, OSDF, OVF, OSVF) \
@@ -1268,16 +1258,11 @@ AV1_PRIMARY *av1_create_primary_compressor(
 
   SDSFP(BLOCK_16X32, aom_sad_skip_16x32, aom_sad_skip_16x32x4d)
   SDSFP(BLOCK_16X16, aom_sad_skip_16x16, aom_sad_skip_16x16x4d)
-  SDSFP(BLOCK_16X8, aom_sad_skip_16x8, aom_sad_skip_16x8x4d)
   SDSFP(BLOCK_8X16, aom_sad_skip_8x16, aom_sad_skip_8x16x4d)
-  SDSFP(BLOCK_8X8, aom_sad_skip_8x8, aom_sad_skip_8x8x4d)
-
-  SDSFP(BLOCK_4X8, aom_sad_skip_4x8, aom_sad_skip_4x8x4d)
 
 #if !CONFIG_REALTIME_ONLY
   SDSFP(BLOCK_64X16, aom_sad_skip_64x16, aom_sad_skip_64x16x4d)
   SDSFP(BLOCK_16X64, aom_sad_skip_16x64, aom_sad_skip_16x64x4d)
-  SDSFP(BLOCK_32X8, aom_sad_skip_32x8, aom_sad_skip_32x8x4d)
   SDSFP(BLOCK_8X32, aom_sad_skip_8x32, aom_sad_skip_8x32x4d)
   SDSFP(BLOCK_4X16, aom_sad_skip_4x16, aom_sad_skip_4x16x4d)
 #endif
@@ -2647,7 +2632,8 @@ static int encode_without_recode(AV1_COMP *cpi) {
   }
 
   av1_set_quantizer(cm, q_cfg->qm_minlevel, q_cfg->qm_maxlevel, q,
-                    q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq);
+                    q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq,
+                    cpi->oxcf.mode == ALLINTRA, cpi->oxcf.tune_cfg.tuning);
   av1_set_speed_features_qindex_dependent(cpi, cpi->oxcf.speed);
   av1_init_quantizer(&cpi->enc_quant_dequant_params, &cm->quant_params,
                      cm->seq_params->bit_depth);
@@ -2661,7 +2647,8 @@ static int encode_without_recode(AV1_COMP *cpi) {
       cpi->rc.high_source_sad) {
     if (av1_encodedframe_overshoot_cbr(cpi, &q)) {
       av1_set_quantizer(cm, q_cfg->qm_minlevel, q_cfg->qm_maxlevel, q,
-                        q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq);
+                        q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq,
+                        cpi->oxcf.mode == ALLINTRA, cpi->oxcf.tune_cfg.tuning);
       av1_set_speed_features_qindex_dependent(cpi, cpi->oxcf.speed);
       av1_init_quantizer(&cpi->enc_quant_dequant_params, &cm->quant_params,
                          cm->seq_params->bit_depth);
@@ -2688,20 +2675,24 @@ static int encode_without_recode(AV1_COMP *cpi) {
 
   // This is for rtc temporal filtering case.
   if (is_psnr_calc_enabled(cpi) && cpi->sf.rt_sf.use_rtc_tf) {
-    const SequenceHeader *seq_params = cm->seq_params;
-
     if (cpi->orig_source.buffer_alloc_sz == 0 ||
-        cpi->rc.prev_coded_width != cpi->oxcf.frm_dim_cfg.width ||
-        cpi->rc.prev_coded_height != cpi->oxcf.frm_dim_cfg.height) {
-      // Allocate a source buffer to store the true source for psnr calculation.
-      if (aom_alloc_frame_buffer(
-              &cpi->orig_source, cpi->oxcf.frm_dim_cfg.width,
-              cpi->oxcf.frm_dim_cfg.height, seq_params->subsampling_x,
-              seq_params->subsampling_y, seq_params->use_highbitdepth,
-              cpi->oxcf.border_in_pixels, cm->features.byte_alignment, false,
-              0))
+        cpi->orig_source.y_crop_width != cpi->source->y_crop_width ||
+        cpi->orig_source.y_crop_height != cpi->source->y_crop_height ||
+        cpi->orig_source.subsampling_x != cpi->source->subsampling_x ||
+        cpi->orig_source.subsampling_y != cpi->source->subsampling_y ||
+        cpi->orig_source.flags != cpi->source->flags) {
+      // Allocate a source buffer to store the original source for psnr
+      // calculation.
+      const int use_highbitdepth =
+          (cpi->source->flags & YV12_FLAG_HIGHBITDEPTH) != 0;
+      if (aom_alloc_frame_buffer(&cpi->orig_source, cpi->source->y_crop_width,
+                                 cpi->source->y_crop_height,
+                                 cpi->source->subsampling_x,
+                                 cpi->source->subsampling_y, use_highbitdepth,
+                                 cpi->oxcf.border_in_pixels,
+                                 cm->features.byte_alignment, false, 0))
         aom_internal_error(cm->error, AOM_CODEC_MEM_ERROR,
-                           "Failed to allocate scaled buffer");
+                           "Failed to allocate cpi->orig_source buffer");
     }
 
     aom_yv12_copy_y(cpi->source, &cpi->orig_source, 1);
@@ -2965,7 +2956,8 @@ static int encode_with_recode_loop(AV1_COMP *cpi, size_t *size, uint8_t *dest,
     }
 
     av1_set_quantizer(cm, q_cfg->qm_minlevel, q_cfg->qm_maxlevel, q,
-                      q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq);
+                      q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq,
+                      oxcf->mode == ALLINTRA, oxcf->tune_cfg.tuning);
     av1_set_speed_features_qindex_dependent(cpi, oxcf->speed);
     av1_init_quantizer(&cpi->enc_quant_dequant_params, &cm->quant_params,
                        cm->seq_params->bit_depth);
@@ -3394,7 +3386,8 @@ static int encode_with_and_without_superres(AV1_COMP *cpi, size_t *size,
 
     // Note: Both use common rdmult based on base qindex of fullres.
     const int64_t rdmult = av1_compute_rd_mult_based_on_qindex(
-        bit_depth, update_type, cm->quant_params.base_qindex);
+        bit_depth, update_type, cm->quant_params.base_qindex,
+        cpi->oxcf.tune_cfg.tuning);
 
     // Find the best rdcost among all superres denoms.
     int best_denom = -1;
@@ -3458,7 +3451,8 @@ static int encode_with_and_without_superres(AV1_COMP *cpi, size_t *size,
 
     // Note: Both use common rdmult based on base qindex of fullres.
     const int64_t rdmult = av1_compute_rd_mult_based_on_qindex(
-        bit_depth, update_type, cm->quant_params.base_qindex);
+        bit_depth, update_type, cm->quant_params.base_qindex,
+        cpi->oxcf.tune_cfg.tuning);
     proj_rdcost1 =
         RDCOST_DBL_WITH_NATIVE_BD_DIST(rdmult, rate1, sse1, bit_depth);
     const double proj_rdcost2 =
@@ -3783,7 +3777,8 @@ static int encode_frame_to_data_rate(AV1_COMP *cpi, size_t *size, uint8_t *dest,
     }
   }
 
-  if (oxcf->tune_cfg.tuning == AOM_TUNE_SSIM) {
+  if (oxcf->tune_cfg.tuning == AOM_TUNE_SSIM ||
+      oxcf->tune_cfg.tuning == AOM_TUNE_SSIMULACRA2) {
     av1_set_mb_ssim_rdmult_scaling(cpi);
   }
 #if CONFIG_SALIENCY_MAP
@@ -4010,7 +4005,7 @@ static int encode_frame_to_data_rate(AV1_COMP *cpi, size_t *size, uint8_t *dest,
 int av1_encode(AV1_COMP *const cpi, uint8_t *const dest, size_t dest_size,
                const EncodeFrameInput *const frame_input,
                const EncodeFrameParams *const frame_params,
-               EncodeFrameResults *const frame_results) {
+               size_t *const frame_size) {
   AV1_COMMON *const cm = &cpi->common;
   CurrentFrame *const current_frame = &cm->current_frame;
 
@@ -4059,7 +4054,7 @@ int av1_encode(AV1_COMP *const cpi, uint8_t *const dest, size_t dest_size,
 #endif
   } else if (cpi->oxcf.pass == AOM_RC_ONE_PASS ||
              cpi->oxcf.pass >= AOM_RC_SECOND_PASS) {
-    if (encode_frame_to_data_rate(cpi, &frame_results->size, dest, dest_size) !=
+    if (encode_frame_to_data_rate(cpi, frame_size, dest, dest_size) !=
         AOM_CODEC_OK) {
       return AOM_CODEC_ERROR;
     }
@@ -4070,7 +4065,7 @@ int av1_encode(AV1_COMP *const cpi, uint8_t *const dest, size_t dest_size,
   return AOM_CODEC_OK;
 }
 
-#if CONFIG_DENOISE
+#if CONFIG_DENOISE && !CONFIG_REALTIME_ONLY
 static int apply_denoise_2d(AV1_COMP *cpi, const YV12_BUFFER_CONFIG *sd,
                             int block_size, float noise_level,
                             int64_t time_stamp, int64_t end_time) {
@@ -4159,11 +4154,11 @@ int av1_receive_raw_frame(AV1_COMP *cpi, aom_enc_frame_flags_t frame_flags,
       }
       cpi->oxcf.noise_level = (float)AOMMIN(5.0, cpi->oxcf.noise_level);
     }
-#endif
 
     if (apply_denoise_2d(cpi, sd, cpi->oxcf.noise_block_size,
                          cpi->oxcf.noise_level, time_stamp, end_time) < 0)
       res = -1;
+#endif  // !CONFIG_REALTIME_ONLY
   }
 #endif  //  CONFIG_DENOISE
 
@@ -4687,7 +4682,7 @@ void av1_post_encode_updates(AV1_COMP *const cpi,
   }
 #endif
 
-  if (ppi->rtc_ref.set_ref_frame_config) {
+  if (ppi->rtc_ref.set_ref_frame_config && !cpi->is_dropped_frame) {
     av1_svc_update_buffer_slot_refreshed(cpi);
     av1_svc_set_reference_was_previous(cpi);
   }
@@ -4972,7 +4967,10 @@ AV1_COMP *av1_get_parallel_frame_enc_data(AV1_PRIMARY *const ppi,
   {
     AV1_COMP_DATA *data = &ppi->parallel_frames_data[cpi_idx - 1];
     assert(data->frame_size > 0);
-    assert(first_cpi_data->cx_data_sz > data->frame_size);
+    if (data->frame_size > first_cpi_data->cx_data_sz) {
+      aom_internal_error(&ppi->error, AOM_CODEC_ERROR,
+                         "first_cpi_data->cx_data buffer full");
+    }
 
     first_cpi_data->lib_flags = data->lib_flags;
     first_cpi_data->ts_frame_start = data->ts_frame_start;
@@ -5224,56 +5222,61 @@ int av1_get_quantizer(AV1_COMP *cpi) {
   return cpi->common.quant_params.base_qindex;
 }
 
-int av1_convert_sect5obus_to_annexb(uint8_t *buffer, size_t *frame_size) {
+int av1_convert_sect5obus_to_annexb(uint8_t *buffer, size_t buffer_size,
+                                    size_t *frame_size) {
+  assert(*frame_size <= buffer_size);
   size_t output_size = 0;
-  size_t total_bytes_read = 0;
   size_t remaining_size = *frame_size;
   uint8_t *buff_ptr = buffer;
 
   // go through each OBUs
-  while (total_bytes_read < *frame_size) {
+  while (remaining_size > 0) {
     uint8_t saved_obu_header[2];
     uint64_t obu_payload_size;
     size_t length_of_payload_size;
     size_t length_of_obu_size;
-    uint32_t obu_header_size = (buff_ptr[0] >> 2) & 0x1 ? 2 : 1;
+    const uint32_t obu_header_size = (buff_ptr[0] >> 2) & 0x1 ? 2 : 1;
     size_t obu_bytes_read = obu_header_size;  // bytes read for current obu
 
     // save the obu header (1 or 2 bytes)
-    memmove(saved_obu_header, buff_ptr, obu_header_size);
+    memcpy(saved_obu_header, buff_ptr, obu_header_size);
     // clear the obu_has_size_field
-    saved_obu_header[0] = saved_obu_header[0] & (~0x2);
+    saved_obu_header[0] &= ~0x2;
 
     // get the payload_size and length of payload_size
-    if (aom_uleb_decode(buff_ptr + obu_header_size, remaining_size,
-                        &obu_payload_size, &length_of_payload_size) != 0) {
+    if (aom_uleb_decode(buff_ptr + obu_header_size,
+                        remaining_size - obu_header_size, &obu_payload_size,
+                        &length_of_payload_size) != 0) {
       return AOM_CODEC_ERROR;
     }
     obu_bytes_read += length_of_payload_size;
 
     // calculate the length of size of the obu header plus payload
-    length_of_obu_size =
-        aom_uleb_size_in_bytes((uint64_t)(obu_header_size + obu_payload_size));
+    const uint64_t obu_size = obu_header_size + obu_payload_size;
+    length_of_obu_size = aom_uleb_size_in_bytes(obu_size);
 
+    if (length_of_obu_size + obu_header_size >
+        buffer_size - output_size - (remaining_size - obu_bytes_read)) {
+      return AOM_CODEC_ERROR;
+    }
     // move the rest of data to new location
     memmove(buff_ptr + length_of_obu_size + obu_header_size,
             buff_ptr + obu_bytes_read, remaining_size - obu_bytes_read);
     obu_bytes_read += (size_t)obu_payload_size;
 
     // write the new obu size
-    const uint64_t obu_size = obu_header_size + obu_payload_size;
     size_t coded_obu_size;
-    if (aom_uleb_encode(obu_size, sizeof(obu_size), buff_ptr,
-                        &coded_obu_size) != 0) {
+    if (aom_uleb_encode(obu_size, length_of_obu_size, buff_ptr,
+                        &coded_obu_size) != 0 ||
+        coded_obu_size != length_of_obu_size) {
       return AOM_CODEC_ERROR;
     }
 
     // write the saved (modified) obu_header following obu size
-    memmove(buff_ptr + length_of_obu_size, saved_obu_header, obu_header_size);
+    memcpy(buff_ptr + length_of_obu_size, saved_obu_header, obu_header_size);
 
-    total_bytes_read += obu_bytes_read;
     remaining_size -= obu_bytes_read;
-    buff_ptr += length_of_obu_size + obu_size;
+    buff_ptr += length_of_obu_size + (size_t)obu_size;
     output_size += length_of_obu_size + (size_t)obu_size;
   }
 
@@ -5414,7 +5417,8 @@ aom_fixed_buf_t *av1_get_global_headers(AV1_PRIMARY *ppi) {
 
   if (av1_write_obu_header(&ppi->level_params, &ppi->cpi->frame_header_count,
                            OBU_SEQUENCE_HEADER,
-                           ppi->seq_params.has_nonzero_operating_point_idc, 0,
+                           ppi->seq_params.has_nonzero_operating_point_idc,
+                           /*is_layer_specific_obu=*/false, 0,
                            &header_buf[0]) != obu_header_size) {
     return NULL;
   }

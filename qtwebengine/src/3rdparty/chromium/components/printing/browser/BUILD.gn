@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//build/config/jumbo.gni")
+import("//components/enterprise/buildflags/buildflags.gni")
 
 jumbo_static_library("browser") {
   sources = [
@@ -18,9 +19,9 @@ jumbo_static_library("browser") {
 
   deps = [
     "//base",
-    "//build:chromeos_buildflags",
     "//components/crash/core/common",
     "//components/discardable_memory/service",
+    "//components/enterprise/buildflags",
     "//components/printing/common",
     "//components/printing/common:mojo_interfaces",
     "//components/services/print_compositor/public/cpp",
@@ -33,4 +34,8 @@ jumbo_static_library("browser") {
     "//ui/base",
     "//ui/gfx/geometry",
   ]
+
+  if (enterprise_watermark) {
+    deps += [ "//components/enterprise/watermarking/content" ]
+  }
 }

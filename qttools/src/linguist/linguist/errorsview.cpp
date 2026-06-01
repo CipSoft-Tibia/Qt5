@@ -18,6 +18,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 ErrorsView::ErrorsView(MultiDataModel *dataModel, QWidget *parent) :
     QListView(parent),
     m_dataModel(dataModel)
@@ -68,10 +70,10 @@ QString ErrorsView::firstError()
 
 void ErrorsView::addError(int model, const QString &error)
 {
-    static QIcon pxDanger = MarkIcon::create(MarkIcon::dangerMark);
+    static QIcon pxDanger = createMarkIcon(TranslationMarks::DangerMark);
     QString lang;
     if (m_dataModel->modelCount() > 1)
-        lang = m_dataModel->model(model)->localizedLanguage() + QLatin1String(": ");
+        lang = m_dataModel->model(model)->localizedLanguage() + ": "_L1;
     QStandardItem *item = new QStandardItem(pxDanger, lang + error);
     item->setEditable(false);
     m_list->appendRow(QList<QStandardItem*>() << item);

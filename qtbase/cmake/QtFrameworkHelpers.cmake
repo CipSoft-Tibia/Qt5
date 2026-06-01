@@ -34,10 +34,12 @@ macro(qt_find_apple_system_frameworks)
         qt_internal_find_apple_system_framework(FWGameController GameController)
         qt_internal_find_apple_system_framework(FWCoreBluetooth CoreBluetooth)
         qt_internal_find_apple_system_framework(FWAVFoundation AVFoundation)
+        qt_internal_find_apple_system_framework(FWPhotos Photos)
         qt_internal_find_apple_system_framework(FWContacts Contacts)
         qt_internal_find_apple_system_framework(FWEventKit EventKit)
         qt_internal_find_apple_system_framework(FWHealthKit HealthKit)
         qt_internal_find_apple_system_framework(FWUniformTypeIdentifiers UniformTypeIdentifiers)
+        qt_internal_find_apple_system_framework(FWNetwork Network)
         qt_internal_find_apple_system_framework(FWOpenGL OpenGL)
     endif()
 endmacro()
@@ -51,6 +53,33 @@ function(qt_internal_find_apple_system_framework out_var framework_name)
     # hardcoded, like with Xcode11.app on the CI.
     # We might revisit this later.
     set(cache_var_name "${out_var}Internal")
+
+    # vcpkg.cmake sets CMAKE_FIND_FRAMEWORK to LAST and this setting will find e.g.
+    # libnetwork.tbd instead of Network.framework.
+    # On the other side, homebrew always sets CMAKE_FIND_FRAMEWORK to FIRST.
+    # Force the default value to FIRST, to ensure we always find the framework file
+    # and not the tbd file.
+    # Allow opt outs, as well as not setting it at all if the opt out var is set to an empty
+    # string.
+    if(DEFINED QT_FIND_APPLE_SYSTEM_FRAMEWORKS_MODE)
+        set(valid_values "FIRST" "LAST" "ONLY" "NEVER")
+
+        if("${QT_FIND_APPLE_SYSTEM_FRAMEWORKS_MODE}" STREQUAL "")
+            # Empty on purpose to allow keeping the var empty, and skipping the
+            # CMAKE_FIND_FRAMEWORK assignment.
+            set(cmake_find_framework_value "")
+        elseif(NOT QT_FIND_APPLE_SYSTEM_FRAMEWORKS_MODE IN_LIST valid_values)
+            message(FATAL_ERROR "QT_FIND_APPLE_SYSTEM_FRAMEWORKS_MODE must be one of: ${valid_values}")
+        else()
+            set(cmake_find_framework_value "${QT_FIND_APPLE_SYSTEM_FRAMEWORKS_MODE}")
+        endif()
+    else()
+        set(cmake_find_framework_value "FIRST")
+    endif()
+
+    if(cmake_find_framework_value)
+        set(CMAKE_FIND_FRAMEWORK "${cmake_find_framework_value}")
+    endif()
 
     find_library(${cache_var_name} "${framework_name}")
 

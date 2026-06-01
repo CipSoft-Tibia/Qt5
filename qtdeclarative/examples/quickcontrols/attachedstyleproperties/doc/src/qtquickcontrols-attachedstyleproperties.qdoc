@@ -10,6 +10,7 @@
     \brief Demonstrates use of QQuickAttachedPropertyPropagator.
 
     \image qtquickcontrols-attachedstyleproperties.png
+           {Window with toolbar containing dark mode toggle and buttons}
 
     The Attached Style Properties example is a simple application that shows
     how to use \l QQuickAttachedPropertyPropagator to propagate attached

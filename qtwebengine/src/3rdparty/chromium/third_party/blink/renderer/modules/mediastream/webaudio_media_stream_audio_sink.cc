@@ -8,6 +8,7 @@
 #include <string>
 
 #include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "media/base/audio_fifo.h"
 #include "media/base/audio_parameters.h"
@@ -43,8 +44,13 @@ WebAudioMediaStreamAudioSink::WebAudioMediaStreamAudioSink(
 }
 
 WebAudioMediaStreamAudioSink::~WebAudioMediaStreamAudioSink() {
-  if (audio_converter_.get())
-    audio_converter_->RemoveInput(this);
+  // Use the lock to protect access to audio_converter_.
+  {
+    base::AutoLock auto_lock(lock_);
+    if (audio_converter_.get()) {
+      audio_converter_->RemoveInput(this);
+    }
+  }
 
   // If the track is still active, it is necessary to notify the track before
   // the source provider goes away.
@@ -150,11 +156,11 @@ void WebAudioMediaStreamAudioSink::OnData(
 
 void WebAudioMediaStreamAudioSink::SetClient(
     WebAudioSourceProviderClient* client) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void WebAudioMediaStreamAudioSink::ProvideInput(
-    const WebVector<float*>& audio_data,
+    base::span<const base::span<float>> audio_data,
     int number_of_frames) {
   NON_REENTRANT_SCOPE(provide_input_reentrancy_checker_);
   DCHECK_EQ(number_of_frames, kWebAudioRenderBufferSize);
@@ -170,8 +176,9 @@ void WebAudioMediaStreamAudioSink::ProvideInput(
   }
 
   output_wrapper_->set_frames(number_of_frames);
-  for (size_t i = 0; i < audio_data.size(); ++i)
+  for (size_t i = 0; i < audio_data.size(); ++i) {
     output_wrapper_->SetChannelData(static_cast<int>(i), audio_data[i]);
+  }
 
   base::AutoLock auto_lock(lock_);
   if (!audio_converter_)
@@ -212,7 +219,7 @@ double WebAudioMediaStreamAudioSink::ProvideInput(
       media::AudioTimestampHelper::FramesToTime(
           frames_delayed + fifo_->frames(), source_params_.sample_rate())
           .InMillisecondsF());
-  if (fifo_->frames() >= audio_bus->frames()) {
+  if (fifo_->frames() >= static_cast<size_t>(audio_bus->frames())) {
     fifo_->Consume(audio_bus, 0, audio_bus->frames());
     TRACE_COUNTER_ID1(TRACE_DISABLED_BY_DEFAULT("mediastream"),
                       "WebAudioMediaStreamAudioSink fifo space", this,

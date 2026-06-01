@@ -350,6 +350,7 @@ void QCALayerBackingStore::flush(QWindow *flushedWindow, const QRegion &region, 
     QMacAutoReleasePool pool;
 
     NSView *flushedView = static_cast<QCocoaWindow *>(flushedWindow->handle())->view();
+    CALayer *layer = static_cast<QCocoaWindow *>(flushedWindow->handle())->contentLayer();
 
     // If the backingstore is just flushed, without being painted to first, then we may
     // end in a situation where the backingstore is flushed to a layer with a different
@@ -360,11 +361,11 @@ void QCALayerBackingStore::flush(QWindow *flushedWindow, const QRegion &region, 
     // we at least cover the whole layer. This is necessary since we set the view's
     // contents placement policy to NSViewLayerContentsPlacementTopLeft, which means
     // AppKit will not do any scaling on our behalf.
-    if (m_buffers.back()->devicePixelRatio() != flushedView.layer.contentsScale) {
+    if (m_buffers.back()->devicePixelRatio() != layer.contentsScale) {
         qCWarning(lcQpaBackingStore) << "Back buffer dpr of" << m_buffers.back()->devicePixelRatio()
-            << "doesn't match" << flushedView.layer << "contents scale of" << flushedView.layer.contentsScale
+            << "doesn't match" << layer << "contents scale of" << layer.contentsScale
             << "- updating layer to match.";
-        flushedView.layer.contentsScale = m_buffers.back()->devicePixelRatio();
+        layer.contentsScale = m_buffers.back()->devicePixelRatio();
     }
 
     const bool isSingleBuffered = window()->format().swapBehavior() == QSurfaceFormat::SingleBuffer;
@@ -380,13 +381,13 @@ void QCALayerBackingStore::flush(QWindow *flushedWindow, const QRegion &region, 
     if (isSingleBuffered) {
         // The private API [CALayer reloadValueForKeyPath:@"contents"] would be preferable,
         // but barring any side effects or performance issues we opt for the hammer for now.
-        flushedView.layer.contents = nil;
+        layer.contents = nil;
     }
 
     qCInfo(lcQpaBackingStore) << "Flushing" << backBufferSurface
-        << "to" << flushedView.layer << "of" << flushedView;
+        << "to" << layer << "of" << flushedView;
 
-    flushedView.layer.contents = backBufferSurface;
+    layer.contents = backBufferSurface;
 
     if (!isSingleBuffered) {
         // Mark the surface as in use, so that we don't end up rendering
@@ -428,7 +429,8 @@ void QCALayerBackingStore::flushSubWindow(QWindow *subWindow)
     NSView *backingStoreView = static_cast<QCocoaWindow *>(window()->handle())->view();
     NSView *flushedView = static_cast<QCocoaWindow *>(subWindow->handle())->view();
     auto subviewRect = [flushedView convertRect:flushedView.bounds toView:backingStoreView];
-    auto scale = flushedView.layer.contentsScale;
+    CALayer *layer = static_cast<QCocoaWindow *>(subWindow->handle())->contentLayer();
+    auto scale = layer.contentsScale;
     subviewRect = CGRectApplyAffineTransform(subviewRect, CGAffineTransformMakeScale(scale, scale));
 
     m_buffers.back()->lock(QPlatformGraphicsBuffer::SWReadAccess);

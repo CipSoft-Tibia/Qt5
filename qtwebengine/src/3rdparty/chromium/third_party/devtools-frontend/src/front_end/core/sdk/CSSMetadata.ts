@@ -131,9 +131,17 @@ export class CSSMetadata {
     }
   }
 
+  static isCSSWideKeyword(a: string): a is CSSWideKeyword {
+    return CSSWideKeywords.includes(a as CSSWideKeyword);
+  }
+
+  static isPositionTryOrderKeyword(a: string): a is PositionTryOrderKeyword {
+    return PositionTryOrderKeywords.includes(a as PositionTryOrderKeyword);
+  }
+
   private static sortPrefixesAndCSSWideKeywordsToEnd(a: string, b: string): 1|- 1|0 {
-    const aIsCSSWideKeyword = CSSWideKeywords.includes(a);
-    const bIsCSSWideKeyword = CSSWideKeywords.includes(b);
+    const aIsCSSWideKeyword = CSSMetadata.isCSSWideKeyword(a);
+    const bIsCSSWideKeyword = CSSMetadata.isCSSWideKeyword(b);
 
     if (aIsCSSWideKeyword && !bIsCSSWideKeyword) {
       return 1;
@@ -354,10 +362,61 @@ export class CSSMetadata {
   }
 }
 
+// The following regexes are used within in the StylesSidebarPropertyRenderer class
+// and will parse both invalid and valid values. They both match full strings.
+// [^- ][a-zA-Z-]+ matches property key values (e.g. smaller, x-large, initial)
+// -?\+?(?:[0-9]+\.[0-9]+|\.[0-9]+|[0-9]+) matches numeric property values (e.g. -.23, 3.3, 55)
+// [a-zA-Z%]{0,4} matches the units of numeric property values (e.g. px, vmin, or blank units)
+export const FontPropertiesRegex: RegExp = /^[^- ][a-zA-Z-]+$|^-?\+?(?:[0-9]+\.[0-9]+|\.[0-9]+|[0-9]+)[a-zA-Z%]{0,4}$/;
+
+// "[\w \,-]+",? ? matches double quoted values and the trailing comma/space (e.g. "Tahoma", )
+// ('[\w \,-]+',? ?) matches single quoted values and the trailing comma/space (e.g. 'Segoe UI', )
+// ([\w \,-]+,? ?) matches non quoted values and the trailing comma/space (e.g. Helvetica)
+// (?: ...)+ will match 1 or more of the groups above such that it would match a value with fallbacks (e.g. "Tahoma", 'Segoe UI', Helvetica)
+export const FontFamilyRegex: RegExp = /^("[\w \,-]+"?, ?|'[\w \,-]+',? ?|[\w \-]+,? ?)+$/;
+
+export const CubicBezierKeywordValues = new Map([
+  ['linear', 'cubic-bezier(0, 0, 1, 1)'],
+  ['ease', 'cubic-bezier(0.25, 0.1, 0.25, 1)'],
+  ['ease-in', 'cubic-bezier(0.42, 0, 1, 1)'],
+  ['ease-in-out', 'cubic-bezier(0.42, 0, 0.58, 1)'],
+  ['ease-out', 'cubic-bezier(0, 0, 0.58, 1)'],
+]);
+
 // CSS-wide keywords.
+export const enum CSSWideKeyword {
+  INHERIT = 'inherit',
+  INITIAL = 'initial',
+  REVERT = 'revert',
+  REVERT_LAYER = 'revert-layer',
+  UNSET = 'unset',
+}
 // Spec: https://drafts.csswg.org/css-cascade/#defaulting-keywords
 // https://drafts.csswg.org/css-cascade-5/#revert-layer
-export const CSSWideKeywords = ['inherit', 'initial', 'revert', 'revert-layer', 'unset'];
+export const CSSWideKeywords: CSSWideKeyword[] = [
+  CSSWideKeyword.INHERIT,
+  CSSWideKeyword.INITIAL,
+  CSSWideKeyword.REVERT,
+  CSSWideKeyword.REVERT_LAYER,
+  CSSWideKeyword.UNSET,
+];
+
+// https://www.w3.org/TR/css-anchor-position-1/#typedef-try-size
+export const enum PositionTryOrderKeyword {
+  NORMAL = 'normal',
+  MOST_HEIGHT = 'most-height',
+  MOST_WIDTH = 'most-width',
+  MOST_BLOCK_SIZE = 'most-block-size',
+  MOST_INLINE_SIZE = 'most-inline-size',
+}
+
+export const PositionTryOrderKeywords: PositionTryOrderKeyword[] = [
+  PositionTryOrderKeyword.NORMAL,
+  PositionTryOrderKeyword.MOST_HEIGHT,
+  PositionTryOrderKeyword.MOST_WIDTH,
+  PositionTryOrderKeyword.MOST_BLOCK_SIZE,
+  PositionTryOrderKeyword.MOST_INLINE_SIZE,
+];
 
 export const VariableNameRegex = /(\s*--.*?)/gs;
 export const VariableRegex = /(var\(\s*--.*?\))/gs;
@@ -786,6 +845,7 @@ const extraPropertyValues = new Map<string, Set<string>>([
       'self-end',
       'flex-start',
       'flex-end',
+      'anchor-center',
     ]),
   ],
   [
@@ -804,6 +864,7 @@ const extraPropertyValues = new Map<string, Set<string>>([
       'left',
       'right',
       'legacy',
+      'anchor-center',
     ]),
   ],
   [
@@ -819,6 +880,7 @@ const extraPropertyValues = new Map<string, Set<string>>([
       'self-end',
       'flex-start',
       'flex-end',
+      'anchor-center',
     ]),
   ],
   [
@@ -834,6 +896,7 @@ const extraPropertyValues = new Map<string, Set<string>>([
       'self-end',
       'flex-start',
       'flex-end',
+      'anchor-center',
     ]),
   ],
   [
@@ -851,6 +914,7 @@ const extraPropertyValues = new Map<string, Set<string>>([
       'flex-end',
       'left',
       'right',
+      'anchor-center',
     ]),
   ],
   [
@@ -866,6 +930,7 @@ const extraPropertyValues = new Map<string, Set<string>>([
       'self-end',
       'flex-start',
       'flex-end',
+      'anchor-center',
     ]),
   ],
   ['perspective-origin', new Set(['left', 'center', 'right', 'top', 'bottom'])],

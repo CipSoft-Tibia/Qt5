@@ -4,6 +4,8 @@
 #include <QtTest/QtTest>
 #include <QLinkedList>
 
+#include <list>
+
 struct Movable
 {
     Movable(char input = 'j') : i(input), state(Constructed) { ++liveCount; }
@@ -131,6 +133,8 @@ class tst_QLinkedList : public QObject
     Q_OBJECT
 private slots:
     void eraseValidIteratorsOnSharedList() const;
+    void rangeEraseValidIteratorsOnSharedList_data() const;
+    void rangeEraseValidIteratorsOnSharedList() const;
     void insertWithIteratorsOnSharedList() const;
     void lengthInt() const;
     void lengthMovable() const;
@@ -308,7 +312,7 @@ void tst_QLinkedList::eraseValidIteratorsOnSharedList() const
     a.append(5);
     a.append(10);
     a.append(20);
-    a.append(20);
+    a.append(20); // ← to erase
     a.append(20);
     a.append(20);
     a.append(30);
@@ -323,7 +327,72 @@ void tst_QLinkedList::eraseValidIteratorsOnSharedList() const
     QCOMPARE(a.size(), 6);
     --r;
     --r;
-    QCOMPARE(*r, 10); // Ensure that number 2 instance was removed;
+    QCOMPARE(*r, 10);
+}
+
+void tst_QLinkedList::rangeEraseValidIteratorsOnSharedList_data() const
+{
+    QTest::addColumn<QLinkedList<int>>("list");
+    QTest::addColumn<int>("startIndex");
+    QTest::addColumn<int>("endIndex");
+    QTest::addColumn<QLinkedList<int>>("result");
+
+    constexpr auto row = [](std::initializer_list<int> il, int s, int e) {
+        QLinkedList ql = il;
+        // We use std::list as the reference implementation against which we check QLinkedList:
+        std::list sl = il;
+        sl.erase(std::next(sl.begin(), s), std::next(sl.begin(), e));
+        QByteArray name;
+        for (int i : il) {
+            name += QByteArray::number(i);
+            name += ", ";
+        }
+        if (il.size())
+            name.chop(2); // remove trailing ", "
+        QTest::addRow("{%s}/%d/%d", std::as_const(name).data(), s, e)
+                << ql << s << e << QLinkedList<int>::fromStdList(sl);
+    };
+
+    row({}, 0, 0);
+
+    row({1}, 0, 0);
+    row({1}, 0, 1);
+    row({1}, 1, 1);
+
+    row({1, 2}, 0, 0);
+    row({1, 2}, 0, 1);
+    row({1, 2}, 0, 2);
+
+    row({1, 2}, 1, 1);
+    row({1, 2}, 1, 2);
+
+    row({1, 2}, 2, 2);
+}
+
+void tst_QLinkedList::rangeEraseValidIteratorsOnSharedList() const
+{
+    QFETCH(const QLinkedList<int>, list);
+    QFETCH(const int, startIndex);
+    QFETCH(const int, endIndex);
+    QFETCH(const QLinkedList<int>, result);
+
+    QCOMPARE_GE(endIndex, startIndex);
+    QCOMPARE_LE(endIndex, list.size());
+
+    auto l = list;
+    QVERIFY(l.isSharedWith(list));
+
+    const auto b = l.begin(); // detaches
+    QVERIFY(l.isDetached());
+
+    const auto copy = l;
+    QVERIFY(copy.isSharedWith(l));
+
+    l.erase(std::next(b, startIndex), std::next(b, endIndex));
+    QCOMPARE_EQ(l.isSharedWith(copy), startIndex == endIndex);
+
+    QCOMPARE_EQ(copy, list);
+    QCOMPARE_EQ(l, result);
 }
 
 void tst_QLinkedList::insertWithIteratorsOnSharedList() const

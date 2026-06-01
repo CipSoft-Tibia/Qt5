@@ -40,6 +40,7 @@
 #include "src/tint/lang/core/ir/loop.h"
 #include "src/tint/lang/core/ir/module.h"
 #include "src/tint/lang/core/ir/switch.h"
+#include "src/tint/lang/core/ir/type/array_count.h"
 #include "src/tint/lang/core/ir/value.h"
 #include "src/tint/lang/core/type/pointer.h"
 #include "src/tint/lang/core/type/reference.h"
@@ -87,6 +88,7 @@
 #include "src/tint/lang/wgsl/ast/while_statement.h"
 #include "src/tint/lang/wgsl/ir/builtin_call.h"
 #include "src/tint/lang/wgsl/program/program.h"
+#include "src/tint/lang/wgsl/sem/array_count.h"
 #include "src/tint/lang/wgsl/sem/builtin_enum_expression.h"
 #include "src/tint/lang/wgsl/sem/builtin_fn.h"
 #include "src/tint/lang/wgsl/sem/call.h"
@@ -267,7 +269,6 @@ class Impl {
         auto* ir_func = builder_.Function(ast_func->name->symbol.NameView(),
                                           sem->ReturnType()->Clone(clone_ctx_.type_ctx));
         current_function_ = ir_func;
-
         scopes_.Set(ast_func->name->symbol, ir_func);
 
         if (ast_func->IsEntryPoint()) {
@@ -281,9 +282,13 @@ class Impl {
                 case ast::PipelineStage::kCompute: {
                     ir_func->SetStage(core::ir::Function::PipelineStage::kCompute);
 
+                    // TODO(dsinclair): When overrides are supported, this will have to change. The
+                    // `sem` does not hold information on override workgroup sizes so we'll have to
+                    // pull this from elsewhere.
                     auto wg_size = sem->WorkgroupSize();
-                    ir_func->SetWorkgroupSize(wg_size[0].value(), wg_size[1].value_or(1),
-                                              wg_size[2].value_or(1));
+                    ir_func->SetWorkgroupSize(builder_.Constant(u32(wg_size[0].value())),
+                                              builder_.Constant(u32(wg_size[1].value_or(1))),
+                                              builder_.Constant(u32(wg_size[2].value_or(1))));
                     break;
                 }
                 default: {
@@ -714,10 +719,7 @@ class Impl {
     // the code has to continue as before it just predicates writes. If WGSL grows some kind of
     // terminating discard that would probably make sense as a Block but would then require
     // figuring out the multi-level exit that is triggered.
-    void EmitDiscard(const ast::DiscardStatement*) {
-        auto* inst = builder_.Discard();
-        current_block_->Append(inst);
-    }
+    void EmitDiscard(const ast::DiscardStatement*) { current_block_->Append(builder_.Discard()); }
 
     void EmitBreakIf(const ast::BreakIfStatement* stmt) {
         auto* current_control = FindEnclosingControl(ControlFlags::kExcludeSwitch);
@@ -914,9 +916,8 @@ class Impl {
                 if (!val) {
                     return;
                 }
-                auto* sem = impl.program_.Sem().Get(expr);
-                auto* ty = sem->Type()->Clone(impl.clone_ctx_.type_ctx);
                 core::ir::Instruction* inst = nullptr;
+                auto* sem = impl.program_.Sem().Get(expr);
                 switch (expr->op) {
                     case core::UnaryOp::kAddressOf:
                     case core::UnaryOp::kIndirection:
@@ -924,15 +925,21 @@ class Impl {
                         // pointer.
                         Bind(expr, val);
                         return;
-                    case core::UnaryOp::kComplement:
+                    case core::UnaryOp::kComplement: {
+                        auto* ty = sem->Type()->Clone(impl.clone_ctx_.type_ctx);
                         inst = impl.builder_.Complement(ty, val);
                         break;
-                    case core::UnaryOp::kNegation:
+                    }
+                    case core::UnaryOp::kNegation: {
+                        auto* ty = sem->Type()->Clone(impl.clone_ctx_.type_ctx);
                         inst = impl.builder_.Negation(ty, val);
                         break;
-                    case core::UnaryOp::kNot:
+                    }
+                    case core::UnaryOp::kNot: {
+                        auto* ty = sem->Type()->Clone(impl.clone_ctx_.type_ctx);
                         inst = impl.builder_.Not(ty, val);
                         break;
+                    }
                 }
                 impl.current_block_->Append(inst);
                 Bind(expr, inst->Result(0));
@@ -976,9 +983,8 @@ class Impl {
                     if (b->Fn() == wgsl::BuiltinFn::kBitcast) {
                         inst = impl.builder_.Bitcast(ty, args[0]);
                     } else {
-                        auto* res = impl.builder_.InstructionResult(ty);
-                        inst = impl.builder_.ir.CreateInstruction<wgsl::ir::BuiltinCall>(
-                            res, b->Fn(), std::move(args));
+                        inst =
+                            impl.builder_.Call<wgsl::ir::BuiltinCall>(ty, b->Fn(), std::move(args));
                     }
                 } else if (sem->Target()->As<sem::ValueConstructor>()) {
                     inst = impl.builder_.Construct(ty, std::move(args));
@@ -1158,6 +1164,7 @@ class Impl {
     core::ir::Value* EmitValueExpression(const ast::Expression* root) {
         auto res = EmitExpression(root);
         if (auto** val = std::get_if<core::ir::Value*>(&res)) {
+            builder_.ir.SetSource(*val, root->source);
             return *val;
         }
         TINT_ICE() << "expression did not resolve to a value";
@@ -1172,9 +1179,38 @@ class Impl {
             var,
             [&](const ast::Var* v) {
                 auto* ref = sem->Type()->As<core::type::Reference>();
-                auto* ty = builder_.ir.Types().Get<core::type::Pointer>(
-                    ref->AddressSpace(), ref->StoreType()->Clone(clone_ctx_.type_ctx),
-                    ref->Access());
+                const core::type::Type* store_ty = nullptr;
+
+                const auto* ary = ref->StoreType()->As<core::type::Array>();
+                // If the array has an override count
+                if (ary && !ary->Count()
+                                ->IsAnyOf<core::type::RuntimeArrayCount,
+                                          core::type::ConstantArrayCount>()) {
+                    core::ir::Value* count = tint::Switch(
+                        ary->Count(),  //
+                        [&](const sem::UnnamedOverrideArrayCount* u) {
+                            return EmitValueExpression(u->expr->Declaration());
+                        },
+                        [&](const sem::NamedOverrideArrayCount* n) {
+                            return scopes_.Get(n->variable->Declaration()->name->symbol);
+                        },
+                        TINT_ICE_ON_NO_MATCH);
+
+                    if (!count) {
+                        return;
+                    }
+
+                    auto* ary_count =
+                        builder_.ir.Types().Get<core::ir::type::ValueArrayCount>(count);
+                    store_ty = builder_.ir.Types().Get<core::type::Array>(
+                        ary->ElemType()->Clone(clone_ctx_.type_ctx), ary_count, ary->Align(),
+                        ary->Size(), ary->Stride(), ary->ImplicitStride());
+                } else {
+                    store_ty = ref->StoreType()->Clone(clone_ctx_.type_ctx);
+                }
+
+                auto* ty = builder_.ir.Types().Get<core::type::Pointer>(ref->AddressSpace(),
+                                                                        store_ty, ref->Access());
 
                 auto* val = builder_.Var(ty);
                 if (v->initializer) {
@@ -1200,8 +1236,9 @@ class Impl {
                 // Store the declaration so we can get the instruction to store too
                 scopes_.Set(v->name->symbol, val->Result(0));
 
-                // Record the original name of the var
+                // Record the original name and source of the var
                 builder_.ir.SetName(val, v->name->symbol.Name());
+                builder_.ir.SetSource(val, v->source);
             },
             [&](const ast::Let* l) {
                 auto init = EmitValueExpression(l->initializer);
@@ -1213,20 +1250,37 @@ class Impl {
 
                 // Store the results of the initialization
                 scopes_.Set(l->name->symbol, let->Result(0));
+                builder_.ir.SetSource(let, l->source);
             },
-            [&](const ast::Override*) {
-                AddError(var->source) << "found an `Override` variable. The SubstituteOverrides "
-                                         "transform must be run before converting to IR";
+            [&](const ast::Override* o) {
+                auto* o_sem = program_.Sem().Get(o);
+                auto* ty = sem->Type()->Clone(clone_ctx_.type_ctx);
+
+                auto* override = builder_.Override(ty);
+                if (o->initializer) {
+                    auto init = EmitValueExpression(o->initializer);
+                    if (!init) {
+                        return;
+                    }
+                    override->SetInitializer(init);
+                }
+                current_block_->Append(override);
+
+                TINT_ASSERT(o_sem->Attributes().override_id.has_value());
+                override->SetOverrideId(o_sem->Attributes().override_id.value());
+
+                // Store the declaration so we can get the instruction to store too
+                scopes_.Set(o->name->symbol, override->Result(0));
+
+                // Record the original name and source of the var
+                builder_.ir.SetName(override, o->name->symbol.Name());
+                builder_.ir.SetSource(override, o->source);
             },
             [&](const ast::Const*) {
                 // Skip. This should be handled by const-eval already, so the const will be a
                 // `core::constant::` value at the usage sites. Can just ignore the `const` variable
                 // as it should never be used.
-                //
-                // TODO(dsinclair): Probably want to store the const variable somewhere and then
-                // in identifier expression log an error if we ever see a const identifier. Add
-                // this when identifiers and variables are supported.
-            },  //
+            },
             TINT_ICE_ON_NO_MATCH);
     }
 

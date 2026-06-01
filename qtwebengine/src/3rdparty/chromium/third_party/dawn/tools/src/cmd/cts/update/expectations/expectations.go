@@ -60,10 +60,11 @@ func (i *arrayFlags) Set(value string) error {
 
 type cmd struct {
 	flags struct {
-		results      common.ResultSource
-		expectations arrayFlags
-		auth         authcli.Flags
-		verbose      bool
+		results              common.ResultSource
+		expectations         arrayFlags
+		auth                 authcli.Flags
+		verbose              bool
+		generateExplicitTags bool // If true, the most explicit tags will be used instead of several broad ones
 	}
 }
 
@@ -79,6 +80,8 @@ func (c *cmd) RegisterFlags(ctx context.Context, cfg common.Config) ([]string, e
 	c.flags.results.RegisterFlags(cfg)
 	c.flags.auth.Register(flag.CommandLine, auth.DefaultAuthOptions())
 	flag.BoolVar(&c.flags.verbose, "verbose", false, "emit additional logging")
+	flag.BoolVar(&c.flags.generateExplicitTags, "generate-explicit-tags", false,
+		"Use the most explicit tags for expectations instead of several broad ones")
 	flag.Var(&c.flags.expectations, "expectations", "path to CTS expectations file(s) to update")
 	return nil, nil
 }
@@ -109,7 +112,7 @@ func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
 
 	// Fetch the results
 	log.Println("fetching results...")
-	resultsByExecutionMode, err := c.flags.results.GetResults(ctx, cfg, auth)
+	resultsByExecutionMode, err := c.flags.results.GetUnsuppressedFailingResults(ctx, cfg, auth)
 	if err != nil {
 		return err
 	}
@@ -134,6 +137,8 @@ func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
 			return err
 		}
 
+		(&ex).RemoveExpectationsForUnknownTests(&testlist)
+
 		log.Printf("validating %s...\n", expectationsFilename)
 		if diag := ex.Validate(); diag.NumErrors() > 0 {
 			diag.Print(os.Stdout, expectationsFilename)
@@ -146,7 +151,10 @@ func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
 		if strings.Contains(expectationsFilename, "compat") {
 			name = "compat"
 		}
-		diag, err := ex.Update(resultsByExecutionMode[name], testlist, c.flags.verbose)
+
+		err = ex.AddExpectationsForFailingResults(resultsByExecutionMode[name], c.flags.generateExplicitTags, c.flags.verbose)
+		// TODO(crbug.com/372730248): Report actual diagnostics.
+		diag := expectations.Diagnostics{}
 		if err != nil {
 			return err
 		}

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtabwidget.h"
 
@@ -29,7 +30,7 @@ using namespace Qt::StringLiterals;
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-tabwidget.png
+    \image fusion-tabwidget.png {Tab widget with two tabs}
 
     A tab widget provides a tab bar (see QTabBar) and a "page area"
     that is used to display pages related to each tab. By default, the

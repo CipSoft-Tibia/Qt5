@@ -148,7 +148,7 @@ ci.builder(
         consoles.console_view_entry(
             branch_selector = branches.selector.MAIN,
             console_view = "sheriff.fuchsia",
-            category = "gardener|fuchsia ci|arm64",
+            category = "fuchsia ci|arm64",
             short_name = "dbg",
         ),
     ],
@@ -189,7 +189,9 @@ ci.builder(
         ],
     ),
     targets = targets.bundle(
-        targets = "fuchsia_standard_tests",
+        # Passthrough is used since these emulators use SwiftShader, which
+        # forces use of the passthrough decoder even if validating is specified.
+        targets = "fuchsia_standard_passthrough_tests",
         mixins = [
             "linux-jammy",
             targets.mixin(
@@ -248,7 +250,7 @@ ci.builder(
         consoles.console_view_entry(
             branch_selector = branches.selector.MAIN,
             console_view = "sheriff.fuchsia",
-            category = "gardener|fuchsia ci|x64",
+            category = "fuchsia ci|x64",
             short_name = "asan",
         ),
     ],

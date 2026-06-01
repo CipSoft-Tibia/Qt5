@@ -11,18 +11,21 @@ import shlex
 import subprocess
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
-from crossbench import cli_helper
+from crossbench import path as pth
+from crossbench.parse import NumberParser, PathParser
 from crossbench.plt.arch import MachineArch
 from crossbench.plt.posix import RemotePosixPlatform
 
+# Defines the Android permissions to be granted.
+# TODO(381985595): make this configurable.
+ANDROID_PERMISSIONS = ["POST_NOTIFICATIONS", "CAMERA", "RECORD_AUDIO"]
+
 if TYPE_CHECKING:
-  from crossbench.path import (LocalPath, LocalPathLike, RemotePath,
-                               RemotePathLike)
   from crossbench.plt.base import CmdArg, ListCmdArgs, Platform
   from crossbench.types import JsonDict
 
 
-def _find_adb_bin(platform: Platform) -> RemotePath:
+def _find_adb_bin(platform: Platform) -> pth.AnyPath:
   adb_bin = platform.search_platform_binary(
       name="adb",
       macos=["adb", "~/Library/Android/sdk/platform-tools/adb"],
@@ -37,7 +40,7 @@ def _find_adb_bin(platform: Platform) -> RemotePath:
 
 def adb_devices(
     platform: Platform,
-    adb_bin: Optional[RemotePath] = None) -> Dict[str, Dict[str, str]]:
+    adb_bin: Optional[pth.AnyPath] = None) -> Dict[str, Dict[str, str]]:
   adb_bin = adb_bin or _find_adb_bin(platform)
   output = platform.sh_stdout(adb_bin, "devices", "-l")
   raw_lines = output.strip().splitlines()[1:]
@@ -49,25 +52,31 @@ def adb_devices(
 
 
 def _parse_adb_device_info(value: str) -> Dict[str, str]:
+  """
+  Convert a line from adb devices -l into a descriptive dictionary.
+  `value` is a line of output, typically:
+  ABCDEF01234567 device 2-1 product:shiba model:AOSP device:shiba transport_id:3
+
+  Some older versions of adb would not contain the `2-1` part.
+  """
   parts = value.split(" ")
   assert parts[0], "device"
-  return dict(part.split(":") for part in parts[1:])
+  return dict(part.split(":") for part in parts[1:] if ":" in part)
 
 
 class Adb:
 
   _serial_id: str
   _device_info: Dict[str, str]
-  _adb_bin: RemotePath
+  _adb_bin: pth.AnyPath
 
   def __init__(self,
                host_platform: Platform,
                device_identifier: Optional[str] = None,
-               adb_bin: Optional[RemotePath] = None) -> None:
+               adb_bin: Optional[pth.AnyPath] = None) -> None:
     self._host_platform = host_platform
     if adb_bin:
-      self._adb_bin = cli_helper.parse_binary_path(
-          adb_bin, platform=host_platform)
+      self._adb_bin = PathParser.binary_path(adb_bin, platform=host_platform)
     else:
       self._adb_bin = _find_adb_bin(host_platform)
     self.start_server()
@@ -116,8 +125,8 @@ class Adb:
   def has_root(self) -> bool:
     return self.shell_stdout("id").startswith("uid=0(root)")
 
-  def path(self, path: RemotePathLike) -> RemotePath:
-    return self._host_platform.path(path)
+  def path(self, path: pth.AnyPathLike) -> pth.AnyPath:
+    return pth.AnyPosixPath(path)
 
   @property
   def serial_id(self) -> str:
@@ -131,22 +140,22 @@ class Adb:
   def device_info(self) -> Dict[str, str]:
     return self._device_info
 
-  def popen(self,
-            *args: CmdArg,
-            shell: bool = False,
-            stdout=None,
-            stderr=None,
-            stdin=None,
-            env: Optional[Mapping[str, str]] = None,
-            quiet: bool = False) -> subprocess.Popen:
-    del shell
-    assert not env, "ADB does not support setting env vars."
-    if not quiet:
-      logging.debug("SHELL: %s", shlex.join(map(str, args)))
-    adb_cmd: ListCmdArgs = [self._adb_bin, "-s", self._serial_id, "shell"]
+  def build_adb_cmd(self,
+                     *args: CmdArg,
+                     use_serial_id: bool = True) -> ListCmdArgs:
+    adb_cmd: ListCmdArgs = [self._adb_bin]
+    if use_serial_id:
+      adb_cmd.extend(("-s", self._serial_id))
     adb_cmd.extend(args)
-    return self._host_platform.popen(
-        *adb_cmd, stdout=stdout, stderr=stderr, stdin=stdin)
+    return adb_cmd
+
+  def _build_shell_args(self,
+                        *args: CmdArg,
+                        shell: bool = False) -> ListCmdArgs:
+    if shell and len(args) != 1:
+      raise ValueError("Expected single sh arg with shell=True, "
+                       f"but got: {args}")
+    return [shlex.join(map(str, args))]
 
   def _adb(self,
            *args: CmdArg,
@@ -160,12 +169,7 @@ class Adb:
            check: bool = True,
            use_serial_id: bool = True) -> subprocess.CompletedProcess:
     del shell
-    adb_cmd: ListCmdArgs = []
-    if use_serial_id:
-      adb_cmd = [self._adb_bin, "-s", self._serial_id]
-    else:
-      adb_cmd = [self._adb_bin]
-    adb_cmd.extend(args)
+    adb_cmd = self.build_adb_cmd(*args, use_serial_id=use_serial_id)
     return self._host_platform.sh(
         *adb_cmd,
         capture_output=capture_output,
@@ -179,24 +183,47 @@ class Adb:
   def _adb_stdout(self,
                   *args: CmdArg,
                   quiet: bool = False,
+                  stdin=None,
                   encoding: str = "utf-8",
                   use_serial_id: bool = True,
                   check: bool = True) -> str:
-    adb_cmd: ListCmdArgs = []
-    if use_serial_id:
-      adb_cmd = [self._adb_bin, "-s", self._serial_id]
-    else:
-      adb_cmd = [self._adb_bin]
-    adb_cmd.extend(args)
-    return self._host_platform.sh_stdout(
-        *adb_cmd, quiet=quiet, encoding=encoding, check=check)
+    result = self._adb_stdout_bytes(
+        *args,
+        quiet=quiet,
+        stdin=stdin,
+        use_serial_id=use_serial_id,
+        check=check)
+    return result.decode(encoding)
+
+  def _adb_stdout_bytes(self,
+                        *args: CmdArg,
+                        quiet: bool = False,
+                        stdin=None,
+                        use_serial_id: bool = True,
+                        check: bool = True) -> bytes:
+    adb_cmd = self.build_adb_cmd(*args, use_serial_id=use_serial_id)
+    return self._host_platform.sh_stdout_bytes(
+        *adb_cmd, quiet=quiet, check=check, stdin=stdin)
 
   def shell_stdout(self,
                    *args: CmdArg,
+                   shell: bool = False,
                    quiet: bool = False,
                    encoding: str = "utf-8",
+                   stdin=None,
                    env: Optional[Mapping[str, str]] = None,
                    check: bool = True) -> str:
+    result = self.shell_stdout_bytes(
+        *args, shell=shell, quiet=quiet, stdin=stdin, env=env, check=check)
+    return result.decode(encoding)
+
+  def shell_stdout_bytes(self,
+                         *args: CmdArg,
+                         shell: bool = False,
+                         quiet: bool = False,
+                         stdin=None,
+                         env: Optional[Mapping[str, str]] = None,
+                         check: bool = True) -> bytes:
     # -e: choose escape character, or "none"; default '~'
     # -n: don't read from stdin
     # -T: disable pty allocation
@@ -204,10 +231,9 @@ class Adb:
     # -x: disable remote exit codes and stdout/stderr separation
     if env:
       raise ValueError("ADB shell only supports an empty env for now.")
-    # Need to escape spaces in args for adb shell
-    args = map(lambda x: str(x).replace(" ", "\\ "), args)
-    return self._adb_stdout(
-        "shell", *args, quiet=quiet, encoding=encoding, check=check)
+    shell_args = self._build_shell_args(*args, shell=shell)
+    return self._adb_stdout_bytes(
+        "shell", *shell_args, stdin=stdin, quiet=quiet, check=check)
 
   def shell(self,
             *args: CmdArg,
@@ -219,10 +245,13 @@ class Adb:
             env: Optional[Mapping[str, str]] = None,
             quiet: bool = False,
             check: bool = True) -> subprocess.CompletedProcess:
+    if env:
+      raise ValueError("ADB shell only supports an empty env for now.")
     # See shell_stdout for more `adb shell` options.
-    adb_cmd: ListCmdArgs = ["shell", *args]
+    shell_args = self._build_shell_args(*args, shell=shell)
     return self._adb(
-        *adb_cmd,
+        "shell",
+        *shell_args,
         shell=shell,
         capture_output=capture_output,
         stdout=stdout,
@@ -241,21 +270,39 @@ class Adb:
   def kill_server(self) -> None:
     self._adb_stdout("kill-server", use_serial_id=False)
 
+  def root(self) -> None:
+    self._adb("root", use_serial_id=False)
+
+  def unroot(self) -> None:
+    self._adb("unroot", use_serial_id=False)
+
   def devices(self) -> Dict[str, Dict[str, str]]:
     return adb_devices(self._host_platform, self._adb_bin)
 
-  def reverse(self, remote: int, local: int, protocol: str = "tcp") -> None:
-    self._adb("reverse", f"{protocol}:{remote}", f"{protocol}:{local}")
+  def forward(self, local: int, remote: int, protocol: str = "tcp") -> int:
+    stdout = self._adb_stdout(
+        "forward", f"{protocol}:{local}", f"{protocol}:{remote}")
+    local_port = NumberParser.port_number(stdout, "local_port")
+    return local_port
+
+  def forward_remove(self, local: int, protocol: str = "tcp") -> None:
+    self._adb("forward", "--remove", f"{protocol}:{local}")
+
+  def reverse(self, remote: int, local: int, protocol: str = "tcp") -> int:
+    stdout = self._adb_stdout(
+        "reverse", f"{protocol}:{remote}", f"{protocol}:{local}")
+    remote_port = NumberParser.port_number(stdout, "remote_port")
+    return remote_port
 
   def reverse_remove(self, remote: int, protocol: str = "tcp") -> None:
     self._adb("reverse", "--remove", f"{protocol}:{remote}")
 
-  def pull(self, device_src_path: RemotePath,
-           local_dest_path: LocalPath) -> None:
+  def pull(self, device_src_path: pth.AnyPath,
+           local_dest_path: pth.LocalPath) -> None:
     self._adb("pull", self.path(device_src_path), local_dest_path)
 
-  def push(self, local_src_path: LocalPath,
-           device_dest_path: RemotePath) -> None:
+  def push(self, local_src_path: pth.LocalPath,
+           device_dest_path: pth.AnyPath) -> None:
     self._adb("push", local_src_path, self.path(device_dest_path))
 
   def cmd(self,
@@ -300,8 +347,18 @@ class Adb:
       raise ValueError("Got empty package name")
     self.shell("am", "force-stop", package_name)
 
+  def force_clear(self, package_name: str) -> None:
+    if not package_name:
+      raise ValueError("Got empty package name")
+    cmd: ListCmdArgs = ["pm", "clear"]
+    if self.build_version >= 14:
+      user = self.cmd("user", "get-main-user").strip()
+      cmd.extend(["--user", user])
+    cmd.extend([package_name])
+    self.shell(*cmd)
+
   def install(self,
-              bundle: LocalPath,
+              bundle: pth.LocalPath,
               allow_downgrade: bool = False,
               modules: Optional[str] = None) -> None:
     if bundle.suffix == ".apks":
@@ -309,7 +366,9 @@ class Adb:
     if bundle.suffix == ".apk":
       self.install_apk(bundle, allow_downgrade)
 
-  def install_apk(self, apk: LocalPath, allow_downgrade: bool = False) -> None:
+  def install_apk(self,
+                  apk: pth.LocalPath,
+                  allow_downgrade: bool = False) -> None:
     if not apk.exists():
       raise ValueError(f"APK {apk} does not exist.")
     args = ["install"]
@@ -319,7 +378,7 @@ class Adb:
     self._adb(*args)
 
   def install_apks(self,
-                   apks: LocalPath,
+                   apks: pth.LocalPath,
                    allow_downgrade: bool = False,
                    modules: Optional[str] = None) -> None:
     if not apks.exists():
@@ -347,19 +406,22 @@ class Adb:
       else:
         raise
 
-  def grant_notification_permissions(self, package_name: str) -> None:
+  def grant_permissions(self, package_name: str) -> None:
     if self.build_version < 13:
       # Notification permission setting is needed for Android 13 and above.
       # https://developer.android.com/develop/ui/views/notifications/notification-permission  # pylint: disable=line-too-long
       return
     if not package_name:
       raise ValueError("Got empty package name")
-    cmd: ListCmdArgs = ["pm", "grant"]
+    user: Optional[str] = None
     if self.build_version >= 14:
       user = self.cmd("user", "get-main-user").strip()
-      cmd.extend(["--user", user])
-    cmd.extend([package_name, "android.permission.POST_NOTIFICATIONS"])
-    self.shell(*cmd)
+    for perm in ANDROID_PERMISSIONS:
+      cmd: ListCmdArgs = ["pm", "grant"]
+      if user:
+        cmd.extend(["--user", user])
+      cmd.extend([package_name, f"android.permission.{perm}"])
+      self.shell(*cmd)
 
 
 class AndroidAdbPlatform(RemotePosixPlatform):
@@ -369,8 +431,6 @@ class AndroidAdbPlatform(RemotePosixPlatform):
                device_identifier: Optional[str] = None,
                adb: Optional[Adb] = None) -> None:
     super().__init__(host_platform)
-    self._system_details: Optional[Dict[str, Any]] = None
-    self._cpu_details: Optional[Dict[str, Any]] = None
     assert not host_platform.is_remote, (
         "adb on remote platform is not supported yet")
     self._adb = adb or Adb(host_platform, device_identifier)
@@ -391,13 +451,17 @@ class AndroidAdbPlatform(RemotePosixPlatform):
   def device(self) -> str:  #pylint: disable=invalid-overridden-method
     return self.adb.getprop("ro.product.model")
 
+  @property
+  def serial_id(self):
+    return self._adb.serial_id
+
   @functools.cached_property
   def cpu(self) -> str:  #pylint: disable=invalid-overridden-method
     variant = self.adb.getprop("dalvik.vm.isa.arm.variant")
     platform = self.adb.getprop("ro.board.platform")
     cpu_str = f"{variant} {platform}"
-    if cores_info := self._get_cpu_cores_info():
-      cpu_str = f"{cpu_str} {cores_info}"
+    if num_cores := self.cpu_cores:
+      cpu_str = f"{cpu_str} {num_cores} cores"
     return cpu_str
 
   @property
@@ -419,17 +483,32 @@ class AndroidAdbPlatform(RemotePosixPlatform):
       raise ValueError(f"Unknown android CPU ABI: {cpu_abi}")
     return arch
 
-  def app_path_to_package(self, app_path: RemotePathLike) -> str:
+  def get_relative_cpu_speed(self) -> float:
+    # TODO figure out
+    return 1.0
+
+  @functools.lru_cache(maxsize=1)
+  def python_details(self) -> JsonDict:
+    # Python is not available on android.
+    return {}
+
+  @functools.lru_cache(maxsize=1)
+  def os_details(self) -> JsonDict:
+    # TODO: add more info
+    return {"version": self.version}
+
+  def app_path_to_package(self, app_path: pth.AnyPathLike) -> str:
     path = self.path(app_path)
-    if len(path.parts) > 1:
+    parts = path.parts
+    if len(parts) > 1:
       raise ValueError(f"Invalid android package name: '{path}'")
-    package: str = path.parts[0]
+    package: str = parts[0]
     packages = self.adb.packages()
     if package not in packages:
       raise ValueError(f"Package '{package}' is not installed on {self._adb}")
     return package
 
-  def search_binary(self, app_or_bin: RemotePathLike) -> Optional[RemotePath]:
+  def search_binary(self, app_or_bin: pth.AnyPathLike) -> Optional[pth.AnyPath]:
     app_or_bin_path = self.path(app_or_bin)
     if not app_or_bin_path.parts:
       raise ValueError("Got empty path")
@@ -439,12 +518,12 @@ class AndroidAdbPlatform(RemotePosixPlatform):
       return app_or_bin_path
     return None
 
-  def home(self) -> RemotePath:
+  def home(self) -> pth.AnyPath:
     raise RuntimeError("Cannot access home dir on (non-rooted) android device")
 
   _VERSION_NAME_RE = re.compile(r"versionName=(?P<version>.+)")
 
-  def app_version(self, app_or_bin: RemotePathLike) -> str:
+  def app_version(self, app_or_bin: pth.AnyPathLike) -> str:
     # adb shell dumpsys package com.chrome.canary | grep versionName -C2
     package = self.app_path_to_package(app_or_bin)
     package_info = self.adb.dumpsys("package", str(package))
@@ -465,18 +544,6 @@ class AndroidAdbPlatform(RemotePosixPlatform):
     # TODO: implement
     return None
 
-  def get_relative_cpu_speed(self) -> float:
-    # TODO figure out
-    return 1.0
-
-  def python_details(self) -> JsonDict:
-    # Python is not available on android.
-    return {}
-
-  def os_details(self) -> JsonDict:
-    # TODO: add more info
-    return {"version": self.version}
-
   def check_autobrightness(self) -> bool:
     # adb shell dumpsys display
     # TODO: implement.
@@ -493,8 +560,11 @@ class AndroidAdbPlatform(RemotePosixPlatform):
     return int(float(match_result.group("brightness")) * 100)
 
   @property
-  def default_tmp_dir(self) -> RemotePath:
+  def default_tmp_dir(self) -> pth.AnyPath:
     return self.path("/data/local/tmp/")
+
+  def build_shell_cmd(self, *args: CmdArg) -> ListCmdArgs:
+    return self.adb.build_adb_cmd("shell", *args)
 
   def sh(self,
          *args: CmdArg,
@@ -517,70 +587,52 @@ class AndroidAdbPlatform(RemotePosixPlatform):
         quiet=quiet,
         check=check)
 
-  def sh_stdout(self,
-                *args: CmdArg,
-                shell: bool = False,
-                quiet: bool = False,
-                encoding: str = "utf-8",
-                env: Optional[Mapping[str, str]] = None,
-                check: bool = True) -> str:
-    # The shell option is not supported on adb.
-    del shell
-    return self.adb.shell_stdout(
-        *args, env=env, quiet=quiet, encoding=encoding, check=check)
+  def sh_stdout_bytes(self,
+                      *args: CmdArg,
+                      shell: bool = False,
+                      quiet: bool = False,
+                      stdin=None,
+                      env: Optional[Mapping[str, str]] = None,
+                      check: bool = True) -> bytes:
+    return self.adb.shell_stdout_bytes(
+        *args, shell=shell, stdin=stdin, env=env, quiet=quiet, check=check)
 
-  def popen(self,
-            *args: CmdArg,
-            shell: bool = False,
-            stdout=None,
-            stderr=None,
-            stdin=None,
-            env: Optional[Mapping[str, str]] = None,
-            quiet: bool = False) -> subprocess.Popen:
-    return self.adb.popen(
-        *args,
-        shell=shell,
-        stdout=stdout,
-        stderr=stderr,
-        stdin=stdin,
-        env=env,
-        quiet=quiet)
+  def port_forward(self, local_port: int, remote_port: int) -> int:
+    local_port = NumberParser.positive_zero_int(local_port, "local_port")
+    remote_port = NumberParser.port_number(remote_port, "remote_port")
+    local_port = self.adb.forward(local_port, remote_port, protocol="tcp")
+    logging.debug("Forwarded Remote Port: %s:%s <= %s:%s",
+                  self._host_platform.name, local_port, self, remote_port)
+    return local_port
 
-  def reverse_port_forward(self, remote_port: int, local_port: int) -> None:
-    self.adb.reverse(remote_port, local_port, protocol="tcp")
+  def stop_port_forward(self, local_port: int) -> None:
+    self.adb.forward_remove(local_port, protocol="tcp")
+
+  def reverse_port_forward(self, remote_port: int, local_port: int) -> int:
+    remote_port = NumberParser.positive_zero_int(remote_port, "remote_port")
+    local_port = NumberParser.port_number(local_port, "local_port")
+    remote_port = self.adb.reverse(remote_port, local_port, protocol="tcp")
+    logging.debug("Forwarded Local Port: %s:%s => %s:%s", self._host_platform,
+                  local_port, self, remote_port)
+    return remote_port
 
   def stop_reverse_port_forward(self, remote_port: int) -> None:
     self.adb.reverse_remove(remote_port, protocol="tcp")
 
-  def rsync(self, from_path: RemotePath, to_path: LocalPath) -> LocalPath:
-    return self.pull(from_path, to_path)
-
-  def pull(self, from_path: RemotePath, to_path: LocalPath) -> LocalPath:
+  def pull(self, from_path: pth.AnyPath,
+           to_path: pth.LocalPath) -> pth.LocalPath:
     device_path = self.path(from_path)
-    assert self.exists(device_path), (
-        f"Source file '{from_path}' does not exist on {self}")
+    if not self.exists(device_path):
+      raise ValueError(f"Source file '{from_path}' does not exist on {self}")
     local_host_path = self.host_path(to_path)
     local_host_path.parent.mkdir(parents=True, exist_ok=True)
     self.adb.pull(device_path, local_host_path)
     return to_path
 
-  def push(self, from_path: LocalPath, to_path: RemotePath) -> RemotePath:
-    self.adb.push(from_path, self.path(to_path))
+  def push(self, from_path: pth.LocalPath, to_path: pth.AnyPath) -> pth.AnyPath:
+    to_path = self.path(to_path)
+    self.adb.push(self.host_path(from_path), to_path)
     return to_path
-
-  def set_file_contents(self,
-                        file: RemotePathLike,
-                        data: str,
-                        encoding: str = "utf-8") -> None:
-    # self.push a tmp file with the given contents
-    tmp_dir: LocalPath = self.host_path(self.host_platform.mkdtemp())
-    try:
-      tmp_file = tmp_dir / "push.data"
-      with tmp_file.open("w", encoding=encoding) as f:
-        f.write(data)
-      self.push(tmp_file, self.path(file))
-    finally:
-      self.host_platform.rm(tmp_dir, dir=True, missing_ok=True)
 
   def processes(self,
                 attrs: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -595,11 +647,10 @@ class AndroidAdbPlatform(RemotePosixPlatform):
       res.append({"pid": int(tokens[0]), "name": tokens[1]})
     return res
 
+  @functools.lru_cache(maxsize=1)
   def cpu_details(self) -> Dict[str, Any]:
-    if self._cpu_details:
-      return self._cpu_details
     # TODO: Implement properly (i.e. remove all n/a values)
-    self._cpu_details = {
+    return {
         "info": self.cpu,
         "physical cores": "n/a",
         "logical cores": "n/a",
@@ -610,7 +661,6 @@ class AndroidAdbPlatform(RemotePosixPlatform):
         "min frequency": "n/a",
         "current frequency": "n/a",
     }
-    return self._cpu_details
 
   _GETPROP_RE = re.compile(r"^\[(?P<key>[^\]]+)\]: \[(?P<value>[^\]]+)\]$")
 
@@ -624,12 +674,10 @@ class AndroidAdbPlatform(RemotePosixPlatform):
     details["android"] = properties
     return details
 
+  @functools.lru_cache(maxsize=1)
   def system_details(self) -> Dict[str, Any]:
-    if self._system_details:
-      return self._system_details
-
     # TODO: Implement properly (i.e. remove all n/a values)
-    self._system_details = {
+    return {
         "machine": self.sh_stdout("uname", "-m").split()[0],
         "os": {
             "system": self.sh_stdout("uname", "-s").split()[0],
@@ -644,7 +692,17 @@ class AndroidAdbPlatform(RemotePosixPlatform):
         "CPU": self.cpu_details(),
         "Android": self._getprop_system_details(),
     }
-    return self._system_details
 
-  def screenshot(self, result_path: RemotePath) -> None:
+  def screenshot(self, result_path: pth.AnyPath) -> None:
     self.sh("screencap", "-p", result_path)
+
+  _WM_SIZE_RE = re.compile(r"Physical size: (?P<x>\d+)x(?P<y>\d+)")
+
+  def display_resolution(self) -> Tuple[int, int]:
+    wm_size_out = self.sh_stdout("wm", "size")
+    match_result = self._WM_SIZE_RE.match(wm_size_out)
+    if match_result is None:
+      raise ValueError(f"Could not find display resolution in '{wm_size_out}'")
+    x = NumberParser.positive_int(match_result.group("x"))
+    y = NumberParser.positive_int(match_result.group("y"))
+    return (x, y)

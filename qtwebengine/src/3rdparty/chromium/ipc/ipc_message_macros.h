@@ -200,7 +200,6 @@
 
 #include "base/export_template.h"
 #include "base/hash/md5_constexpr.h"
-#include "base/notreached.h"
 #include "base/task/common/task_annotator.h"
 #include "ipc/ipc_message_templates.h"
 #include "ipc/ipc_message_utils.h"
@@ -395,11 +394,6 @@
         code;                                                                  \
       }                                                                        \
       break;
-
-#define IPC_MESSAGE_UNHANDLED_ERROR()                     \
-  IPC_MESSAGE_UNHANDLED(NOTREACHED_IN_MIGRATION()         \
-                        << "Invalid message with type = " \
-                        << ipc_message__.type())
 
 #define IPC_END_MESSAGE_MAP() \
   } \

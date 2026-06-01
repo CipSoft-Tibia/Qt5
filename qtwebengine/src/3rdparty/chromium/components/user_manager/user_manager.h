@@ -7,6 +7,7 @@
 
 #include <string>
 
+#include "base/containers/span.h"
 #include "base/functional/callback_forward.h"
 #include "base/scoped_observation_traits.h"
 #include "components/user_manager/include_exclude_account_id_filter.h"
@@ -15,11 +16,10 @@
 #include "components/user_manager/user_type.h"
 
 class AccountId;
+class PrefRegistrySimple;
 class PrefService;
 
 namespace user_manager {
-
-class MultiUserSignInPolicyController;
 
 namespace internal {
 class ScopedUserManagerImpl;
@@ -34,9 +34,10 @@ enum class UserRemovalReason : int32_t {
   GAIA_REMOVED = 5,
   MISCONFIGURED_USER = 6,
   DEVICE_LOCAL_ACCOUNT_UPDATED = 7,
+  DEMO_ACCOUNT_CLEAN_UP = 8,
 };
 
-// Interface for UserManagerBase - that provides base implementation for
+// Interface for UserManagerImpl - that provides base implementation for
 // Chrome OS user management. Typical features:
 // * Get list of all know users (who have logged into this Chrome OS device)
 // * Keep track for logged in/LRU users, active user in multi-user session.
@@ -71,6 +72,9 @@ class USER_MANAGER_EXPORT UserManager {
 
     // Called when the Profile instance for the user is created.
     virtual void OnUserProfileCreated(const User& user);
+
+    // Called when the Profile instance for the user will be destroyed soon.
+    virtual void OnUserProfileWillBeDestroyed(const User& user);
 
     // Called when the profile image download for the given user fails or
     // user has the default profile image or no porfile image at all.
@@ -161,6 +165,10 @@ class USER_MANAGER_EXPORT UserManager {
     std::optional<std::u16string> display_name;
   };
 
+  // Registers UserManager preferences.
+  static void RegisterPrefs(PrefRegistrySimple* registry);
+  static void RegisterProfilePrefs(PrefRegistrySimple* registry);
+
   // Initializes UserManager instance to this. Normally should be called right
   // after creation so that user_manager::UserManager::Get() doesn't fail.
   // Tests could call this method if they are replacing existing UserManager
@@ -198,7 +206,7 @@ class USER_MANAGER_EXPORT UserManager {
   // are regular users (i.e. not a public session/supervised etc.).
   // Returns an empty list in case when primary user is not a regular one or
   // has a policy that prohibits it to be part of multi-profile session.
-  virtual UserList GetUsersAllowedForMultiProfile() const = 0;
+  virtual UserList GetUsersAllowedForMultiUserSignIn() const = 0;
 
   // Returns users allowed on login screen in the given `users` list.
   virtual UserList FindLoginAllowedUsersFrom(const UserList& users) const = 0;
@@ -222,6 +230,9 @@ class USER_MANAGER_EXPORT UserManager {
   // Returns account Id of the owner user. Returns an empty Id if there is
   // no owner for the device.
   virtual const AccountId& GetOwnerAccountId() const = 0;
+
+  // Sets the account Id as an owner.
+  virtual void SetOwnerId(const AccountId& owner_account_id) = 0;
 
   // Provides the caller with account Id of the Owner user once it is loaded.
   // Would provide empty account id if there is no owner on the device (e.g.
@@ -265,6 +276,14 @@ class USER_MANAGER_EXPORT UserManager {
   // Invoked by session manager to inform session start.
   virtual void OnSessionStarted() = 0;
 
+  // Replaces the list of device local accounts with those found in
+  // `device_local_accounts`. Ensures that data belonging to accounts no longer
+  // on the list is removed. Returns `true` if the list has changed.
+  // Device local accounts are defined by policy. This method is called whenever
+  // an updated list of device local accounts is received from policy.
+  virtual bool UpdateDeviceLocalAccountUser(
+      const base::span<DeviceLocalAccountInfo>& device_local_accounts) = 0;
+
   // Removes the user from the device while providing a reason for enterprise
   // reporting. Note, it will verify that the given user isn't the owner, so
   // calling this method for the owner will take no effect.
@@ -288,6 +307,11 @@ class USER_MANAGER_EXPORT UserManager {
   // TODO(b/270040728): Remove this method once internal architecture allows
   // better solution.
   virtual void RemoveUserFromListForRecreation(const AccountId& account_id) = 0;
+
+  // Removes stale ephemeral users from the list, except owner one if there is.
+  // Returns true if any user is removed.
+  // This can be called only when no user is logged in.
+  virtual bool RemoveStaleEphemeralUsers() = 0;
 
   // Removes the user from the device in case when user's cryptohome is lost
   // for some reason to ensure that user is correctly re-created.
@@ -340,6 +364,10 @@ class USER_MANAGER_EXPORT UserManager {
   // Updates data upon User Account download.
   virtual void UpdateUserAccountData(const AccountId& account_id,
                                      const UserAccountData& account_data) = 0;
+
+  // Sets account locale for user with id |account_id|.
+  virtual void UpdateUserAccountLocale(const AccountId& account_id,
+                                       const std::string& locale) = 0;
 
   // Saves user's displayed (non-canonical) email in local state preferences.
   // Ignored If there is no such user.
@@ -417,6 +445,9 @@ class USER_MANAGER_EXPORT UserManager {
   // Returns true if we're logged in as a Web kiosk app.
   virtual bool IsLoggedInAsWebKioskApp() const = 0;
 
+  // Returns true if we're logged in as an Isolated web app (IWA) kiosk.
+  virtual bool IsLoggedInAsKioskIWA() const = 0;
+
   // Returns true if we're logged in as chrome, or Web kiosk app.
   virtual bool IsLoggedInAsAnyKioskApp() const = 0;
 
@@ -477,6 +508,9 @@ class USER_MANAGER_EXPORT UserManager {
   // policies.
   virtual bool IsEphemeralAccountId(const AccountId& account_id) const = 0;
 
+  virtual void SetEphemeralModeConfig(
+      EphemeralModeConfig ephemeral_mode_config) = 0;
+
   // Returns "Local State" PrefService instance.
   virtual PrefService* GetLocalState() const = 0;
 
@@ -491,18 +525,14 @@ class USER_MANAGER_EXPORT UserManager {
   virtual bool IsDeviceLocalAccountMarkedForRemoval(
       const AccountId& account_id) const = 0;
 
-  // Sets affiliation status for the user identified with `account_id`
-  // to `is_affiliated`.
-  virtual void SetUserAffiliated(const AccountId& account_id,
-                                 bool is_affiliated) = 0;
+  // Sets policy status for the user identified with `account_id`.
+  virtual void SetUserPolicyStatus(const AccountId& account_id,
+                                   bool is_managed,
+                                   bool is_affiliated) = 0;
 
   // Returns true when the browser has crashed and restarted during the current
   // user's session.
   virtual bool HasBrowserRestarted() const = 0;
-
-  // Returns the instance of multi user sign-in policy controller.
-  virtual MultiUserSignInPolicyController*
-  GetMultiUserSignInPolicyController() = 0;
 
   UserType CalculateUserType(const AccountId& account_id,
                              const User* user,

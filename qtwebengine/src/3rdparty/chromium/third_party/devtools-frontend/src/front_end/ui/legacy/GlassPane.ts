@@ -4,8 +4,8 @@
 
 import * as Platform from '../../core/platform/platform.js';
 
-import {type Size} from './Geometry.js';
-import glassPaneStyles from './glassPane.css.legacy.js';
+import type {Size} from './Geometry.js';
+import glassPaneStyles from './glassPane.css.js';
 import {deepElementFromEvent, measuredScrollbarWidth} from './UIUtils.js';
 import {Widget} from './Widget.js';
 
@@ -16,6 +16,7 @@ export class GlassPane {
   private readonly arrowElement: HTMLSpanElement;
   private readonly onMouseDownBound: (event: Event) => void;
   private onClickOutsideCallback: ((arg0: Event) => void)|null;
+  #onHideCallback: (() => void)|null = null;
   private maxSize: Size|null;
   private positionX: number|null;
   private positionY: number|null;
@@ -61,12 +62,8 @@ export class GlassPane {
     return this.widgetInternal.isShowing();
   }
 
-  registerRequiredCSS(cssFile: {cssContent: string}): void {
-    this.widgetInternal.registerRequiredCSS(cssFile);
-  }
-
-  registerCSSFiles(cssFiles: CSSStyleSheet[]): void {
-    this.widgetInternal.registerCSSFiles(cssFiles);
+  registerRequiredCSS(...cssFiles: {cssContent: string}[]): void {
+    this.widgetInternal.registerRequiredCSS(...cssFiles);
   }
 
   setDefaultFocusedElement(element: Element|null): void {
@@ -86,6 +83,10 @@ export class GlassPane {
 
   setOutsideClickCallback(callback: ((arg0: Event) => void)|null): void {
     this.onClickOutsideCallback = callback;
+  }
+
+  setOnHideCallback(cb: () => void): void {
+    this.#onHideCallback = cb;
   }
 
   setMaxContentSize(size: Size|null): void {

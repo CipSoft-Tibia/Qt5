@@ -157,15 +157,9 @@ void IDBValueWrapper::DoneCloning() {
                           << " called on wrapper with serialization exception";
   DCHECK(!done_cloning_) << __func__ << " called twice";
   done_cloning_ = true;
-  DCHECK(owns_blob_handles_)
-      << __func__ << " called after TakeBlobDataHandles()";
   DCHECK(owns_blob_info_) << __func__ << " called after TakeBlobInfo()";
   DCHECK(owns_wire_bytes_) << __func__ << " called after TakeWireBytes()";
 #endif  // DCHECK_IS_ON()
-
-  for (const auto& kvp : serialized_value_->BlobDataHandles()) {
-    blob_handles_.push_back(std::move(kvp.value));
-  }
 
   wire_data_ = serialized_value_->GetWireData();
   MaybeCompress();
@@ -220,9 +214,7 @@ void IDBValueWrapper::MaybeCompress() {
     wire_data_buffer_.resize(static_cast<wtf_size_t>(wire_data_size));
   }
 
-  wire_data_ = base::make_span(
-      reinterpret_cast<const uint8_t*>(wire_data_buffer_.data()),
-      wire_data_buffer_.size());
+  wire_data_ = base::as_byte_span(wire_data_buffer_);
 }
 
 void IDBValueWrapper::MaybeStoreInBlob() {
@@ -246,10 +238,8 @@ void IDBValueWrapper::MaybeStoreInBlob() {
     wrapper_blob_data->AppendData(std::move(raw_data));
   }
   const size_t wire_data_size = wire_data_.size();
-  scoped_refptr<BlobDataHandle> wrapper_handle =
-      BlobDataHandle::Create(std::move(wrapper_blob_data), wire_data_size);
-  blob_info_.emplace_back(wrapper_handle);
-  blob_handles_.push_back(std::move(wrapper_handle));
+  blob_info_.emplace_back(
+      BlobDataHandle::Create(std::move(wrapper_blob_data), wire_data_size));
 
   DCHECK(wire_data_buffer_.empty());
   wire_data_buffer_.push_back(kVersionTag);
@@ -257,12 +247,9 @@ void IDBValueWrapper::MaybeStoreInBlob() {
   wire_data_buffer_.push_back(kReplaceWithBlob);
   IDBValueWrapper::WriteVarInt(base::checked_cast<unsigned>(wire_data_size),
                                wire_data_buffer_);
-  IDBValueWrapper::WriteVarInt(serialized_value_->BlobDataHandles().size(),
-                               wire_data_buffer_);
+  IDBValueWrapper::WriteVarInt(blob_info_.size() - 1, wire_data_buffer_);
 
-  wire_data_ = base::make_span(
-      reinterpret_cast<const uint8_t*>(wire_data_buffer_.data()),
-      wire_data_buffer_.size());
+  wire_data_ = base::as_byte_span(wire_data_buffer_);
   DCHECK(!wire_data_buffer_.empty());
 }
 
@@ -416,7 +403,7 @@ bool IDBValueUnwrapper::ReadBytes(Vector<uint8_t>& value) {
     return false;
   Vector<uint8_t> result;
   result.ReserveInitialCapacity(length);
-  result.Append(current_, length);
+  result.AppendSpan(base::span(current_, end_).first(length));
   value = std::move(result);
   current_ += length;
   return true;

@@ -7,7 +7,11 @@
 
 #include <qsensorbackend.h>
 
+namespace QtSensorsPrivate {
+
 class OrgFreedesktopDBusPropertiesInterface;
+
+} // namespace QtSensorsPrivate
 
 class IIOSensorProxySensorBase : public QSensorBackend
 {
@@ -33,7 +37,7 @@ private slots:
 
 private:
     bool m_serviceRunning;
-    OrgFreedesktopDBusPropertiesInterface *m_propertiesInterface;
+    QtSensorsPrivate::OrgFreedesktopDBusPropertiesInterface *m_propertiesInterface;
     QString m_dbusInterface;
 };
 

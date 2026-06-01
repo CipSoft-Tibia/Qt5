@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTABBAR_P_H
 #define QTABBAR_P_H
@@ -55,7 +56,7 @@ public:
     QTabBarPrivate()
     : layoutDirty(false), drawBase(true), elideModeSetByUser(false), useScrollButtons(false),
       useScrollButtonsSetByUser(false), expanding(true), closeButtonOnTabs(false),
-      paintWithOffsets(true), movable(false), dragInProgress(false), documentMode(false),
+      movable(false), dragInProgress(false), documentMode(false),
       autoHide(false), changeCurrentOnDrag(false)
     {}
     ~QTabBarPrivate()
@@ -94,7 +95,6 @@ public:
     bool useScrollButtonsSetByUser : 1;
     bool expanding : 1;
     bool closeButtonOnTabs : 1;
-    bool paintWithOffsets : 1;
     bool movable : 1;
     bool dragInProgress : 1;
     bool documentMode : 1;

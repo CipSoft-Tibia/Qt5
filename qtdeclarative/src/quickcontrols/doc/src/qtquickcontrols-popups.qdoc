@@ -16,6 +16,7 @@
     \section1 Drawer Control
 
     \image qtquickcontrols-drawer-expanded-wireframe.webp
+           {Drawer expanded from screen edge}
 
     \l Drawer provides a swipe-based side panel, similar to those often used
     in touch interfaces to provide a central location for navigation.
@@ -27,6 +28,7 @@
     \section1 Menu Control
 
     \image qtquickcontrols-menu.png
+           {Menu displaying items with shortcuts}
 
     The \l Menu control displays a vertical list of items that can be selected. It can
     be used for offering a list of actions that can be taken in a given context.
@@ -36,6 +38,7 @@
     \section1 Popup Control
 
     \image qtquickcontrols-popup-settings.png
+           {Popup displaying settings with controls}
 
     A \l Popup displays content over other application content.
     It prompts the user to make a decision or enter information.
@@ -54,6 +57,7 @@
     \section1 ToolTip Control
 
     \image qtquickcontrols-tooltip.png
+           {Tooltip displaying helpful text}
 
     \l ToolTip shows a short piece of text that informs the user of a control's
     function. It is typically placed above or below the parent control.

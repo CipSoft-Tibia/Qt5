@@ -14,6 +14,7 @@
 #include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/not_fatal_until.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
@@ -64,6 +65,13 @@ SpeechRecognitionManager* SpeechRecognitionManager::manager_for_tests_;
 namespace {
 
 SpeechRecognitionManagerImpl* g_speech_recognition_manager_impl;
+
+constexpr char kWebSpeechAudioOnDeviceAvailableHistogram[] =
+    "Accessibility.WebSpeech.OnDeviceAvailable";
+constexpr char kWebSpeechAudioUseOnDeviceHistogram[] =
+    "Accessibility.WebSpeech.UseOnDevice";
+constexpr char kWebSpeechAudioUseAudioForwarderHistogram[] =
+    "Accessibility.WebSpeech.UseAudioForwarder";
 
 }  // namespace
 
@@ -206,9 +214,16 @@ int SpeechRecognitionManagerImpl::CreateSession(
   const int session_id = GetNextSessionID();
   DCHECK(!SessionExists(session_id));
 
+  base::UmaHistogramBoolean(kWebSpeechAudioOnDeviceAvailableHistogram,
+                            IsOnDeviceSpeechRecognitionAvailable(config));
+  base::UmaHistogramBoolean(kWebSpeechAudioUseOnDeviceHistogram,
+                            UseOnDeviceSpeechRecognition(config));
+  base::UmaHistogramBoolean(kWebSpeechAudioUseAudioForwarderHistogram,
+                            audio_forwarder_config.has_value());
+
   // If on-device speech recognition must be used but is not available, throw a
   // language-not-supported error and don't create the session.
-  if (config.on_device && !config.allow_cloud_fallback &&
+  if (UseOnDeviceSpeechRecognition(config) &&
       !IsOnDeviceSpeechRecognitionAvailable(config)) {
     mojo::Remote<media::mojom::SpeechRecognitionSessionClient> client(
         std::move(client_remote));
@@ -228,7 +243,7 @@ int SpeechRecognitionManagerImpl::CreateSession(
 
 #if !BUILDFLAG(IS_ANDROID)
 #if !BUILDFLAG(IS_FUCHSIA) && !BUILDFLAG(IS_QTWEBENGINE)
-  if (IsOnDeviceSpeechRecognitionAvailable(config) &&
+  if (UseOnDeviceSpeechRecognition(config) &&
       audio_forwarder_config.has_value()) {
     CHECK_GT(audio_forwarder_config.value().channel_count, 0);
     CHECK_GT(audio_forwarder_config.value().sample_rate, 0);
@@ -259,6 +274,7 @@ int SpeechRecognitionManagerImpl::CreateSession(
     options->recognizer_client_type =
         media::mojom::RecognizerClientType::kLiveCaption;
     options->skip_continuously_empty_audio = true;
+    options->recognition_context = config.recognition_context;
 
     speech_recognition_context_->BindWebSpeechRecognizer(
         std::move(session_receiver), std::move(client_remote),
@@ -314,7 +330,7 @@ int SpeechRecognitionManagerImpl::CreateSession(
 
     std::unique_ptr<NetworkSpeechRecognitionEngineImpl> google_remote_engine =
         std::make_unique<NetworkSpeechRecognitionEngineImpl>(
-            config.shared_url_loader_factory, config.accept_language);
+            config.shared_url_loader_factory);
     google_remote_engine->SetConfig(remote_engine_config);
     speech_recognition_engine = std::move(google_remote_engine);
   }
@@ -505,6 +521,22 @@ void SpeechRecognitionManagerImpl::StopAudioCaptureForSession(int session_id) {
       FROM_HERE, base::BindOnce(&SpeechRecognitionManagerImpl::DispatchEvent,
                                 weak_factory_.GetWeakPtr(), session_id,
                                 EVENT_STOP_CAPTURE));
+}
+
+void SpeechRecognitionManagerImpl::UpdateRecognitionContextForSession(
+    int session_id,
+    const media::SpeechRecognitionRecognitionContext& recognition_context) {
+  CHECK_CURRENTLY_ON(BrowserThread::IO);
+  auto iter = sessions_.find(session_id);
+  if (iter == sessions_.end()) {
+    return;
+  }
+  iter->second->recognition_context = recognition_context;
+
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&SpeechRecognitionManagerImpl::DispatchEvent,
+                                weak_factory_.GetWeakPtr(), session_id,
+                                EVENT_UPDATE_RECOGNITION_CONTEXT));
 }
 
 // Here begins the SpeechRecognitionEventListener interface implementation,
@@ -710,6 +742,8 @@ void SpeechRecognitionManagerImpl::ExecuteTransitionAndGetNextState(
       switch (event) {
         case EVENT_START:
           return SessionStart(*session);
+        case EVENT_UPDATE_RECOGNITION_CONTEXT:
+          return SessionUpdateRecognitionContext(*session);
         case EVENT_ABORT:
           return SessionAbort(*session);
         case EVENT_RECOGNITION_ENDED:
@@ -722,6 +756,8 @@ void SpeechRecognitionManagerImpl::ExecuteTransitionAndGetNextState(
       break;
     case SESSION_STATE_CAPTURING_AUDIO:
       switch (event) {
+        case EVENT_UPDATE_RECOGNITION_CONTEXT:
+          return SessionUpdateRecognitionContext(*session);
         case EVENT_STOP_CAPTURE:
           return SessionStopAudioCapture(*session);
         case EVENT_ABORT:
@@ -735,6 +771,8 @@ void SpeechRecognitionManagerImpl::ExecuteTransitionAndGetNextState(
       break;
     case SESSION_STATE_WAITING_FOR_RESULT:
       switch (event) {
+        case EVENT_UPDATE_RECOGNITION_CONTEXT:
+          return SessionUpdateRecognitionContext(*session);
         case EVENT_ABORT:
           return SessionAbort(*session);
         case EVENT_AUDIO_ENDED:
@@ -784,6 +822,12 @@ void SpeechRecognitionManagerImpl::SessionStart(const Session& session) {
   session.recognizer->StartRecognition(device_id);
 }
 
+void SpeechRecognitionManagerImpl::SessionUpdateRecognitionContext(
+    const Session& session) {
+  CHECK(session.recognizer.get());
+  session.recognizer->UpdateRecognitionContext(session.recognition_context);
+}
+
 void SpeechRecognitionManagerImpl::SessionAbort(const Session& session) {
   if (primary_session_id_ == session.id)
     primary_session_id_ = kSessionIDInvalid;
@@ -815,9 +859,8 @@ void SpeechRecognitionManagerImpl::SessionDelete(Session* session) {
 
 void SpeechRecognitionManagerImpl::NotFeasible(const Session& session,
                                                FSMEvent event) {
-  NOTREACHED_IN_MIGRATION()
-      << "Unfeasible event " << event << " in state "
-      << GetSessionState(session.id) << " for session " << session.id;
+  NOTREACHED() << "Unfeasible event " << event << " in state "
+               << GetSessionState(session.id) << " for session " << session.id;
 }
 
 int SpeechRecognitionManagerImpl::GetNextSessionID() {

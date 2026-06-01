@@ -17,6 +17,8 @@
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "quiche/http2/core/http2_constants.h"
+#include "quiche/http2/core/http2_structures.h"
 #include "quiche/http2/core/spdy_alt_svc_wire_format.h"
 #include "quiche/http2/core/spdy_headers_handler_interface.h"
 #include "quiche/http2/core/spdy_protocol.h"
@@ -24,13 +26,11 @@
 #include "quiche/http2/decoder/decode_status.h"
 #include "quiche/http2/decoder/http2_frame_decoder.h"
 #include "quiche/http2/hpack/decoder/hpack_decoding_error.h"
+#include "quiche/http2/hpack/hpack_decoder_adapter.h"
 #include "quiche/http2/hpack/hpack_header_table.h"
-#include "quiche/http2/http2_constants.h"
-#include "quiche/http2/http2_structures.h"
 #include "quiche/common/platform/api/quiche_bug_tracker.h"
 #include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/quiche_endian.h"
-#include "quiche/spdy/core/hpack/hpack_decoder_adapter.h"
 
 using ::spdy::ExtensionVisitorInterface;
 using ::spdy::HpackDecoderAdapter;

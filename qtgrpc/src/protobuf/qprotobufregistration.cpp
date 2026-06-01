@@ -3,12 +3,15 @@
 
 #include <QtProtobuf/qprotobufregistration.h>
 
+#include <QtProtobuf/private/qtprotobuf-config_p.h>
 #include <QtProtobuf/private/qprotobufregistration_p.h>
 #include <QtProtobuf/qtprotobuftypes.h>
 
 #include <QtCore/qmutex.h>
 #include <QtCore/qmetatype.h>
-#include <QtCore/qreadwritelock.h>
+#if !QT_CONFIG(protobuf_unsafe_registry)
+#   include <QtCore/qreadwritelock.h>
+#endif
 
 #include <mutex>
 
@@ -122,13 +125,17 @@ struct HandlersRegistry
     void registerHandler(QMetaType type, QtProtobufPrivate::Serializer serializer,
                          QtProtobufPrivate::Deserializer deserializer)
     {
+#if !QT_CONFIG(protobuf_unsafe_registry)
         QWriteLocker locker(&m_lock);
+#endif
         m_registry[type] = { serializer, deserializer };
     }
 
     QtProtobufPrivate::SerializationHandler findHandler(QMetaType type)
     {
+#if !QT_CONFIG(protobuf_unsafe_registry)
         QReadLocker locker(&m_lock);
+#endif
         auto it = m_registry.constFind(type);
         if (it != m_registry.constEnd())
             return it.value();
@@ -136,7 +143,9 @@ struct HandlersRegistry
     }
 
 private:
+# if !QT_CONFIG(protobuf_unsafe_registry)
     QReadWriteLock m_lock;
+# endif
     QHash<QMetaType, QtProtobufPrivate::SerializationHandler> m_registry;
 };
 Q_GLOBAL_STATIC(HandlersRegistry, handlersRegistry)

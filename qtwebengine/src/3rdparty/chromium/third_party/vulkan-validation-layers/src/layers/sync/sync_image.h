@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2019-2024 Valve Corporation
- * Copyright (c) 2019-2024 LunarG, Inc.
+ * Copyright (c) 2019-2025 Valve Corporation
+ * Copyright (c) 2019-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,18 +23,17 @@ namespace syncval_state {
 
 class ImageState : public vvl::Image {
   public:
-    ImageState(const ValidationStateTracker &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo,
-               VkFormatFeatureFlags2KHR features)
+    ImageState(const vvl::Device &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo, VkFormatFeatureFlags2 features)
         : vvl::Image(dev_data, handle, pCreateInfo, features), opaque_base_address_(0U) {}
 
-    ImageState(const ValidationStateTracker &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo,
-               VkSwapchainKHR swapchain, uint32_t swapchain_index, VkFormatFeatureFlags2KHR features)
+    ImageState(const vvl::Device &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo, VkSwapchainKHR swapchain,
+               uint32_t swapchain_index, VkFormatFeatureFlags2 features)
         : vvl::Image(dev_data, handle, pCreateInfo, swapchain, swapchain_index, features), opaque_base_address_(0U) {}
     bool IsLinear() const { return fragment_encoder->IsLinearImage(); }
     bool IsTiled() const { return !IsLinear(); }
     bool IsSimplyBound() const;
 
-    void SetOpaqueBaseAddress(ValidationStateTracker &dev_data);
+    void SetOpaqueBaseAddress(vvl::Device &dev_data);
 
     VkDeviceSize GetOpaqueBaseAddress() const { return opaque_base_address_; }
     bool HasOpaqueMapping() const { return 0U != opaque_base_address_; }
@@ -50,9 +49,10 @@ class ImageState : public vvl::Image {
 class ImageViewState : public vvl::ImageView {
   public:
     ImageViewState(const std::shared_ptr<vvl::Image> &image_state, VkImageView handle, const VkImageViewCreateInfo *ci,
-                   VkFormatFeatureFlags2KHR ff, const VkFilterCubicImageViewImageFormatPropertiesEXT &cubic_props);
+                   VkFormatFeatureFlags2 ff, const VkFilterCubicImageViewImageFormatPropertiesEXT &cubic_props);
     const ImageState *GetImageState() const { return static_cast<const syncval_state::ImageState *>(image_state.get()); }
-    ImageRangeGen MakeImageRangeGen(const VkOffset3D &offset, const VkExtent3D &extent, VkImageAspectFlags aspect_mask = 0) const;
+    ImageRangeGen MakeImageRangeGen(const VkOffset3D &offset, const VkExtent3D &extent,
+                                    VkImageAspectFlags override_depth_stencil_aspect_mask = 0) const;
     const ImageRangeGen &GetFullViewImageRangeGen() const { return view_range_gen; }
 
   protected:
@@ -63,7 +63,7 @@ class ImageViewState : public vvl::ImageView {
 
 class Swapchain : public vvl::Swapchain {
   public:
-    Swapchain(ValidationStateTracker &dev_data, const VkSwapchainCreateInfoKHR *pCreateInfo, VkSwapchainKHR handle);
+    Swapchain(vvl::Device &dev_data, const VkSwapchainCreateInfoKHR *pCreateInfo, VkSwapchainKHR handle);
     ~Swapchain() { Destroy(); }
     void RecordPresentedImage(PresentedImage &&presented_images);
     PresentedImage MovePresentedImage(uint32_t image_index);

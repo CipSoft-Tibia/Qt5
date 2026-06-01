@@ -56,6 +56,9 @@ Rectangle {
                 border.color: pointColor
                 radius: width / 2
             }
+            axisY: ValueAxis {
+                max: 200
+            }
         }
     }
     Component {
@@ -70,6 +73,9 @@ Rectangle {
                 border.width: 2
                 border.color: pointColor
                 radius: width / 2
+            }
+            axisX: ValueAxis {
+                max: 2
             }
         }
     }

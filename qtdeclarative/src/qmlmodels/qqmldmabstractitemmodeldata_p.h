@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDMABSTRACTITEMMODELDATA_P_H
 #define QQMLDMABSTRACTITEMMODELDATA_P_H
@@ -85,10 +86,19 @@ public:
     {
     }
 
-    void notifyItem(const QQmlGuard<QQmlDMAbstractItemModelData> &item, const QVector<int> &signalIndexes) const
+    void notifyItem(
+            const QQmlGuard<QQmlDMAbstractItemModelData> &item,
+            const QVector<int> &indexes,
+            QQmlDelegateModel::DelegateModelAccess access) const
     {
-        for (const int signalIndex : signalIndexes) {
-            QMetaObject::activate(item, signalIndex, nullptr);
+        for (const int index : indexes) {
+            if (access == QQmlDelegateModel::DelegateModelAccess::ReadWrite) {
+                QQmlDelegateModelReadOnlyMetaObject readOnly(item, index + propertyOffset);
+                QMetaObject::activate(item, index + signalOffset, nullptr);
+            } else {
+                QMetaObject::activate(item, index + signalOffset, nullptr);
+            }
+
             if (item.isNull())
                 return;
         }
@@ -96,7 +106,7 @@ public:
     }
 
     bool notify(
-            const QQmlAdaptorModel &,
+            const QQmlAdaptorModel &model,
             const QList<QQmlDelegateModelItem *> &items,
             int index,
             int count,
@@ -113,7 +123,7 @@ public:
             const_cast<VDMAbstractItemModelDataType *>(this)->watchedRoleIds = roleIds;
         }
 
-        QVector<int> signalIndexes;
+        QVector<int> indexes;
         for (int i = 0; i < roles.size(); ++i) {
             const int role = roles.at(i);
             if (!changed && watchedRoleIds.contains(role))
@@ -121,13 +131,13 @@ public:
 
             int propertyId = propertyRoles.indexOf(role);
             if (propertyId != -1)
-                signalIndexes.append(propertyId + signalOffset);
+                indexes.append(propertyId);
         }
         if (roles.isEmpty()) {
             const int propertyRolesCount = propertyRoles.size();
-            signalIndexes.reserve(propertyRolesCount);
+            indexes.reserve(propertyRolesCount);
             for (int propertyId = 0; propertyId < propertyRolesCount; ++propertyId)
-                signalIndexes.append(propertyId + signalOffset);
+                indexes.append(propertyId);
         }
 
         QVarLengthArray<QQmlGuard<QQmlDMAbstractItemModelData>> guardedItems;
@@ -142,7 +152,7 @@ public:
 
             const int idx = item->modelIndex();
             if (idx >= index && idx < index + count)
-                notifyItem(item, signalIndexes);
+                notifyItem(item, indexes, model.delegateModelAccess);
         }
         return changed;
     }
@@ -169,9 +179,10 @@ public:
 
         const QQmlAdaptorModel *const model
                 = static_cast<QQmlDMAbstractItemModelData *>(o->d()->item)->type()->model;
-        if (o->d()->item->index >= 0) {
+        if (o->d()->item->modelIndex() >= 0) {
             if (const QAbstractItemModel *const aim = model->aim())
-                RETURN_RESULT(QV4::Encode(aim->hasChildren(aim->index(o->d()->item->index, 0, model->rootIndex))));
+                RETURN_RESULT(QV4::Encode(aim->hasChildren(
+                        aim->index(o->d()->item->modelIndex(), 0, model->rootIndex))));
         }
         RETURN_RESULT(QV4::Encode(false));
     }
@@ -245,7 +256,7 @@ public:
     {
         if (!metaObject) {
             VDMAbstractItemModelDataType *dataType = const_cast<VDMAbstractItemModelDataType *>(this);
-            dataType->initializeMetaType(model);
+            dataType->initializeMetaObject(model);
         }
 
         if (const QAbstractItemModel *aim = model.aim()) {
@@ -306,11 +317,11 @@ public:
             int index, int row, int column) override
     {
         if (!metaObject)
-            initializeMetaType(model);
+            initializeMetaObject(model);
         return new QQmlDMAbstractItemModelData(metaType, this, index, row, column);
     }
 
-    void initializeMetaType(const QQmlAdaptorModel &model)
+    void initializeMetaObject(const QQmlAdaptorModel &model)
     {
         QMetaObjectBuilder builder;
         QQmlAdaptorModelEngineData::setModelDataType<QQmlDMAbstractItemModelData>(&builder, this);
@@ -322,7 +333,9 @@ public:
             const int propertyId = propertyRoles.size();
             propertyRoles.append(it.key());
             roleNames.insert(it.value(), it.key());
-            QQmlAdaptorModelEngineData::addProperty(&builder, propertyId, it.value(), propertyType);
+            QQmlAdaptorModelEngineData::addProperty(
+                    &builder, propertyId, it.value(), propertyType,
+                    model.delegateModelAccess != QQmlDelegateModel::ReadOnly);
         }
 
         metaObject.reset(builder.toMetaObject());

@@ -22,6 +22,7 @@
 #include "base/debug/alias.h"
 #include "base/debug/crash_logging.h"
 #include "base/feature_list.h"
+#include "base/feature_visitor.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/memory_mapped_file.h"
@@ -31,8 +32,8 @@
 #include "base/notreached.h"
 #include "base/path_service.h"
 #include "base/rand_util.h"
+#include "base/strings/span_printf.h"
 #include "base/strings/string_split.h"
-#include "base/strings/string_util.h"
 #include "base/system/sys_info.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
@@ -115,12 +116,10 @@ const char* GetSnapshotFileName(const V8SnapshotFileType file_type) {
 #if BUILDFLAG(USE_V8_CONTEXT_SNAPSHOT)
       return kV8ContextSnapshotFileName;
 #else
-      NOTREACHED_IN_MIGRATION();
-      return nullptr;
+      NOTREACHED();
 #endif
   }
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 void GetV8FilePath(const char* file_name, base::FilePath* path_out) {
@@ -195,7 +194,7 @@ void SetV8FlagsFormatted(const char* format, ...) {
   char buffer[128];
   va_list args;
   va_start(args, format);
-  int length = base::vsnprintf(buffer, sizeof(buffer), format, args);
+  int length = base::VSpanPrintf(buffer, format, args);
   if (length <= 0 || sizeof(buffer) <= static_cast<unsigned>(length)) {
     PLOG(ERROR) << "Invalid formatted V8 flag: " << format;
     return;
@@ -218,10 +217,96 @@ void SetV8FlagsIfOverridden(const base::Feature& feature,
   }
 }
 
+constexpr std::string_view kV8FlagFeaturePrefix = "V8Flag_";
+
+}  // namespace
+
+class V8FeatureVisitor : public base::FeatureVisitor {
+ public:
+  void Visit(const std::string& feature_name,
+             base::FeatureList::OverrideState override_state,
+             const std::map<std::string, std::string>& params,
+             const std::string& trial_name,
+             const std::string& group_name) override {
+    std::string_view feature_name_view(feature_name);
+
+    // VisitFeaturesAndParams is called with kV8FlagFeaturePrefix as a filter
+    // prefix, so we expect all feature names to start with "V8Flag_". Strip
+    // this prefix off to get the corresponding V8 flag name.
+    DCHECK(feature_name_view.starts_with(kV8FlagFeaturePrefix));
+    std::string flag_name(
+        feature_name_view.substr(kV8FlagFeaturePrefix.size()));
+
+    switch (override_state) {
+      case base::FeatureList::OverrideState::OVERRIDE_USE_DEFAULT:
+        return;
+
+      case base::FeatureList::OverrideState::OVERRIDE_DISABLE_FEATURE:
+        SetV8FlagsFormatted("--no-%s", flag_name.c_str());
+        // Do not set parameters for disabled features.
+        break;
+
+      case base::FeatureList::OverrideState::OVERRIDE_ENABLE_FEATURE:
+        SetV8FlagsFormatted("--%s", flag_name.c_str());
+        for (const auto& [param_name, param_value] : params) {
+          SetV8FlagsFormatted("--%s=%s", param_name.c_str(),
+                              param_value.c_str());
+        }
+        break;
+    }
+  }
+};
+
+namespace {
+
+// Sets mandatory V8 flags.
 void SetFlags(IsolateHolder::ScriptMode mode,
-              const std::string js_command_line_flags) {
-  // We assume that all feature flag defaults correspond to the default
-  // values of the corresponding V8 flags.
+              const std::string& js_command_line_flags) {
+
+  if (IsolateHolder::kStrictMode == mode) {
+    SetV8Flags("--use_strict");
+  }
+
+  // Apply any --js-flags explicitly specified by the caller.
+  if (!js_command_line_flags.empty()) {
+    std::vector<std::string_view> flag_list = base::SplitStringPiece(
+        js_command_line_flags, ",", base::TRIM_WHITESPACE,
+        base::SPLIT_WANT_NONEMPTY);
+    for (const auto& flag : flag_list) {
+      v8::V8::SetFlagsFromString(std::string(flag).c_str(), flag.size());
+    }
+  }
+}
+
+// Sets feature controlled V8 flags.
+void SetFeatureFlags() {
+  // Chromium features prefixed with "V8Flag_" are forwarded to V8 as V8 flags,
+  // with the "V8Flag_" prefix stripped off. For example, an enabled feature
+  // "V8Flag_foo_bar" will be passed to V8 as the flag `--foo_bar`. Similarly,
+  // if that feature is explicitly disabled, it will be passed to V8 as
+  // `--no-foo_bar`. No Chromium-side declaration of a V8Flag_foo_bar feature
+  // is necessary, the matching is done on strings.
+  //
+  // Parameters attached to features will also be passed through, with the same
+  // name as the parameter and the value passed by string, to be decoded by V8's
+  // flag parsing.
+  //
+  // Thus, running Chromium with:
+  //
+  //   --enable-features=V8Flag_foo,V8Flag_bar:bar_param/20
+  //   --disable-features=V8Flag_baz
+  //
+  // will be converted, on V8 initialization, to V8 flags:
+  //
+  //   --foo --bar --bar_param=20 --no-baz
+  V8FeatureVisitor feature_visitor;
+  base::FeatureList::VisitFeaturesAndParams(feature_visitor,
+                                            kV8FlagFeaturePrefix);
+
+  // Otherwise, feature flags explicitly defined in Chromium are translated
+  // to V8 flags as follows. We ignore feature flag default values, instead
+  // using the corresponding V8 flags default values if there is no explicit
+  // feature override.
   SetV8FlagsIfOverridden(features::kV8CompactCodeSpaceWithStack,
                          "--compact-code-space-with-stack",
                          "--no-compact-code-space-with-stack");
@@ -269,10 +354,12 @@ void SetFlags(IsolateHolder::ScriptMode mode,
       features::kV8ExperimentalRegexpEngine,
       "--enable-experimental-regexp-engine-on-excessive-backtracks",
       "--no-enable-experimental-regexp-engine-on-excessive-backtracks");
-  SetV8FlagsIfOverridden(
-      features::kV8ExternalMemoryAccountedInGlobalLimit,
-      "--enable-external-memory-accounted-in-global-limit",
-      "--no-enable-external-memory-accounted-in-global-limit");
+  SetV8FlagsIfOverridden(features::kV8ExternalMemoryAccountedInGlobalLimit,
+                         "--external-memory-accounted-in-global-limit",
+                         "--no-external-memory-accounted-in-global-limit");
+  SetV8FlagsIfOverridden(features::kV8GCSpeedUsesCounters,
+                         "--gc-speed-uses-counters",
+                         "--no-gc-speed-uses-counters");
   SetV8FlagsIfOverridden(features::kV8TurboFastApiCalls,
                          "--turbo-fast-api-calls", "--no-turbo-fast-api-calls");
   SetV8FlagsIfOverridden(features::kV8MegaDomIC, "--mega-dom-ic",
@@ -376,16 +463,6 @@ void SetFlags(IsolateHolder::ScriptMode mode,
     SetV8FlagsFormatted("--no-efficiency-mode-for-tiering-heuristics");
   }
 
-  if (base::FeatureList::IsEnabled(
-          features::kWebAssemblyMoreAggressiveCodeCaching)) {
-    SetV8FlagsFormatted(
-        "--wasm-caching-threshold=%d --wasm-caching-hard-threshold=%d "
-        "--wasm-caching-timeout-ms=%d",
-        features::kWebAssemblyMoreAggressiveCodeCachingThreshold.Get(),
-        features::kWebAssemblyMoreAggressiveCodeCachingHardThreshold.Get(),
-        features::kWebAssemblyMoreAggressiveCodeCachingTimeoutMs.Get());
-  }
-
   // Make sure aliases of kV8SlowHistograms only enable the feature to
   // avoid contradicting settings between multiple finch experiments.
   bool any_slow_histograms_alias =
@@ -444,25 +521,13 @@ void SetFlags(IsolateHolder::ScriptMode mode,
   SetV8FlagsIfOverridden(features::kJavaScriptPromiseTry, "--js-promise-try",
                          "--no-js-promise-try");
 
-  if (IsolateHolder::kStrictMode == mode) {
-    SetV8Flags("--use_strict");
-  }
-
   // WebAssembly features.
 
   SetV8FlagsIfOverridden(features::kWebAssemblyDeopt, "--wasm-deopt",
                          "--no-wasm-deopt");
-  SetV8FlagsIfOverridden(features::kWebAssemblyInlining,
-                         "--experimental-wasm-inlining",
-                         "--no-experimental-wasm-inlining");
   SetV8FlagsIfOverridden(features::kWebAssemblyInliningCallIndirect,
                          "--wasm-inlining-call-indirect",
                          "--no-wasm-inlining-call-indirect");
-  SetV8FlagsIfOverridden(features::kWebAssemblyLiftoffCodeFlushing,
-                         "--flush-liftoff-code", "--no-flush-liftoff-code");
-  SetV8FlagsIfOverridden(features::kWebAssemblyGenericWrapper,
-                         "--wasm-to-js-generic-wrapper",
-                         "--no-wasm-to-js-generic-wrapper");
   SetV8FlagsIfOverridden(features::kWebAssemblyMultipleMemories,
                          "--experimental-wasm-multi-memory",
                          "--no-experimental-wasm-multi-memory");
@@ -471,32 +536,26 @@ void SetFlags(IsolateHolder::ScriptMode mode,
   SetV8FlagsIfOverridden(features::kWebAssemblyTurboshaftInstructionSelection,
                          "--turboshaft-wasm-instruction-selection-staged",
                          "--no-turboshaft-wasm-instruction-selection-staged");
-
-  if (js_command_line_flags.empty())
-    return;
-
-  // Allow the --js-flags switch to override existing flags:
-  std::vector<std::string_view> flag_list =
-      base::SplitStringPiece(js_command_line_flags, ",", base::TRIM_WHITESPACE,
-                             base::SPLIT_WANT_NONEMPTY);
-  for (const auto& flag : flag_list) {
-    v8::V8::SetFlagsFromString(std::string(flag).c_str(), flag.size());
-  }
 }
 
 }  // namespace
 
 // static
 void V8Initializer::Initialize(IsolateHolder::ScriptMode mode,
-                               const std::string js_command_line_flags,
+                               const std::string& js_command_line_flags,
+                               bool disallow_v8_feature_flag_overrides,
                                v8::OOMErrorCallback oom_error_callback) {
   static bool v8_is_initialized = false;
   if (v8_is_initialized)
     return;
 
-  // Flags need to be set before InitializePlatform as they are used for
-  // system instrumentation initialization.
-  // See https://crbug.com/v8/11043
+  // Flags need to be set before InitializePlatform as they are used for system
+  // instrumentation initialization, see https://crbug.com/v8/11043. --js-flags
+  // and other mandatory flags in `SetFlags` must be ordered after feature flag
+  // overrides.
+  if (!disallow_v8_feature_flag_overrides) {
+    SetFeatureFlags();
+  }
   SetFlags(mode, js_command_line_flags);
 
   v8::V8::InitializePlatform(V8Platform::Get());

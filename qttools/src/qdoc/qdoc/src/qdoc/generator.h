@@ -17,15 +17,22 @@
 
 QT_BEGIN_NAMESPACE
 
-typedef QMultiMap<QString, Node *> NodeMultiMap;
-
 class Aggregate;
+class ClassNode;
 class CodeMarker;
+class CollectionNode;
 class ExampleNode;
 class FunctionNode;
+class INode;
 class Location;
 class Node;
+class PageNode;
 class QDocDatabase;
+class QmlTypeNode;
+
+struct RelatedClass;
+
+typedef QMultiMap<QString, Node *> NodeMultiMap;
 
 class Generator
 {
@@ -115,7 +122,7 @@ protected:
     QMap<QString, QString> &formattingRightMap();
     const Atom *generateAtomList(const Atom *atom, const Node *relative, CodeMarker *marker,
                                  bool generate, int &numGeneratedAtoms);
-    void generateEnumValuesForQmlProperty(const Node *node, CodeMarker *marker);
+    void generateEnumValuesForQmlReference(const Node *node, CodeMarker *marker);
     void generateRequiredLinks(const Node *node, CodeMarker *marker);
     void generateLinkToExample(const ExampleNode *en, CodeMarker *marker,
                                const QString &exampleUrl);
@@ -134,8 +141,9 @@ protected:
     bool generateComparisonCategory(const Node *node, CodeMarker *marker = nullptr);
     bool generateComparisonList(const Node *node);
 
-    void generateOverloadedSignal(const Node *node, CodeMarker *marker);
-    static QString getOverloadedSignalCode(const Node *node);
+    QString generateOverloadSnippet(const FunctionNode *func);
+    QString generateObjectName(const QString &className);
+
     QString indent(int level, const QString &markedCode);
     QTextStream &out();
     QString outFileName();
@@ -143,10 +151,10 @@ protected:
                   QStringView *par1 = nullptr);
     void unknownAtom(const Atom *atom);
     int appendSortedQmlNames(Text &text, const Node *base, const QStringList &knownTypes,
-                             const NodeList &subs);
+                             const QList<Node *> &subs);
 
-    static bool hasExceptions(const Node *node, NodeList &reentrant, NodeList &threadsafe,
-                              NodeList &nonreentrant);
+    static bool hasExceptions(const Node *node, QList<Node *> &reentrant, QList<Node *> &threadsafe,
+                              QList<Node *> &nonreentrant);
 
     QString naturalLanguage;
     QString tagFile_;
@@ -159,7 +167,7 @@ protected:
     int appendSortedNames(Text &text, const ClassNode *classe,
                           const QList<RelatedClass> &classes);
     void appendSignature(Text &text, const Node *node);
-    void signatureList(const NodeList &nodes, const Node *relative, CodeMarker *marker);
+    void signatureList(const QList<Node *> &nodes, const Node *relative, CodeMarker *marker);
 
     void addImageToCopy(const ExampleNode *en, const ResolvedFile& resolved_file);
     // TODO: This seems to be used as the predicate in std::sort calls.
@@ -171,10 +179,15 @@ protected:
     static bool appendTrademark(const Atom *atom);
     static std::optional<std::pair<QString, QString>> cmakeRequisite(const CollectionNode *cn);
 
+public:
     static Qt::SortOrder sortOrder(const QString &str)
     {
         return (str == "descending") ? Qt::DescendingOrder : Qt::AscendingOrder;
     }
+
+    static void addNodeLink(Text &text, const QString &nodeRef, const QString &linkText);
+    static void addNodeLink(Text &text, const INode *node, const QString &linkText = QString());
+
 
 private:
     static Generator *s_currentGenerator;
@@ -191,7 +204,6 @@ private:
     static QHash<QString, QString> s_outputSuffixes;
     static bool s_noLinkErrors;
     static bool s_autolinkErrors;
-    static bool s_redirectDocumentationToDevNull;
     static bool s_useOutputSubdirs;
     static QmlTypeNode *s_qmlTypeContext;
 
@@ -199,6 +211,7 @@ private:
     static void copyTemplateFiles(const QString &configVar, const QString &subDir);
 
 protected:
+    static bool s_redirectDocumentationToDevNull;
     FileResolver& file_resolver;
 
     QDocDatabase *m_qdb { nullptr };

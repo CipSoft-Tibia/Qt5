@@ -52,10 +52,12 @@ function(_qt_internal_sbom_handle_target_binary_files target)
         THIRD_PARTY_LIBRARY
         THIRD_PARTY_LIBRARY_WITH_FILES
         THIRD_PARTY_SOURCES
+        SBOM_PROJECT
         EXECUTABLE
         LIBRARY
         TRANSLATIONS
         RESOURCES
+        BUILD_TOOL
         CUSTOM
         CUSTOM_NO_INFIX
     )
@@ -75,8 +77,10 @@ function(_qt_internal_sbom_handle_target_binary_files target)
         SYSTEM_LIBRARY
         THIRD_PARTY_LIBRARY
         THIRD_PARTY_SOURCES
+        SBOM_PROJECT
         TRANSLATIONS
         RESOURCES
+        BUILD_TOOL
         CUSTOM
         CUSTOM_NO_INFIX
     )
@@ -143,7 +147,7 @@ function(_qt_internal_sbom_handle_target_binary_files target)
             list(APPEND valid_executable_types "MODULE_LIBRARY")
         endif()
         if(NOT target_type IN_LIST valid_executable_types)
-            message(FATAL_ERROR "Unsupported target type: ${target_type}")
+            message(FATAL_ERROR "Unsupported target type of target '${target}': ${target_type}")
         endif()
 
         get_target_property(app_is_bundle ${target} MACOSX_BUNDLE)
@@ -797,6 +801,7 @@ function(_qt_internal_sbom_map_path_to_reproducible_relative_path out_var)
 
     set(is_in_source_dir FALSE)
     set(is_in_build_dir FALSE)
+    set(is_in_sysroot_dir FALSE)
 
     if(NOT arg_REPO_PROJECT_NAME_LOWERCASE)
         _qt_internal_sbom_get_root_project_name_lower_case(repo_project_name)
@@ -820,16 +825,18 @@ function(_qt_internal_sbom_map_path_to_reproducible_relative_path out_var)
         if(IS_ABSOLUTE "${path}")
             set(path_in "${path}")
 
-            string(FIND "${path}" "${PROJECT_SOURCE_DIR}/" src_idx)
-            string(FIND "${path}" "${PROJECT_BINARY_DIR}/" dest_idx)
-
-            if(src_idx EQUAL "0")
-                set(is_in_source_dir TRUE)
-            elseif(dest_idx EQUAL "0")
-                set(is_in_build_dir TRUE)
+            _qt_internal_path_is_prefix(PROJECT_SOURCE_DIR "${path}" is_in_source_dir)
+            if(NOT is_in_source_dir)
+                _qt_internal_path_is_prefix(PROJECT_BINARY_DIR "${path}" is_in_build_dir)
             endif()
             if(NOT is_in_source_dir AND NOT is_in_build_dir)
                 _qt_internal_path_is_prefix(CMAKE_INSTALL_PREFIX "${path}" is_in_prefix_dir)
+            endif()
+            if(CMAKE_SYSROOT
+                AND NOT is_in_source_dir
+                AND NOT is_in_build_dir
+                AND NOT is_in_prefix_dir)
+                _qt_internal_path_is_prefix(CMAKE_SYSROOT "${path}" is_in_sysroot_dir)
             endif()
         else()
             # We consider relative paths to be relative to the current source dir.
@@ -858,6 +865,10 @@ function(_qt_internal_sbom_map_path_to_reproducible_relative_path out_var)
             set(handled TRUE)
             set(marker "/install_dir")
             string(REPLACE "${CMAKE_INSTALL_PREFIX}/" "${marker}/" path_out "${path_in_real}")
+        elseif(is_in_sysroot_dir)
+            set(handled TRUE)
+            set(marker "/sysroot_dir")
+            string(REPLACE "${CMAKE_SYSROOT}/" "${marker}/" path_out "${path_in_real}")
         else()
             # If it's not a source dir, a build dir, or install dir, it might be some kind of
             # weird genex or marker that we don't handle yet.
@@ -1163,6 +1174,8 @@ endfunction()
 # Get a sanitized spdx id for a file.
 # For consistency, we prefix the id with SPDXRef-PackagedFile-. This is not a requirement.
 function(_qt_internal_sbom_get_file_spdx_id target out_var)
-    _qt_internal_sbom_get_sanitized_spdx_id(spdx_id "SPDXRef-PackagedFile-${target}")
+    _qt_internal_sbom_get_spdx_id_unique_suffix(spdx_id_unique_suffix)
+    _qt_internal_sbom_get_sanitized_spdx_id(spdx_id
+        "SPDXRef-PackagedFile-${target}${spdx_id_unique_suffix}")
     set(${out_var} "${spdx_id}" PARENT_SCOPE)
 endfunction()

@@ -9,10 +9,12 @@
 
 #include "base/check_op.h"
 #include "base/dcheck_is_on.h"
+#include "base/memory/stack_allocated.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/core/layout/inline/fragment_item.h"
 #include "third_party/blink/renderer/core/layout/inline/fragment_items.h"
+#include "third_party/blink/renderer/core/layout/style_variant.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_view.h"
@@ -33,7 +35,6 @@ class LayoutObject;
 class Node;
 class PhysicalBoxFragment;
 class ShapeResultView;
-enum class StyleVariant;
 struct LayoutSelectionStatus;
 struct PhysicalOffset;
 struct PhysicalRect;
@@ -44,6 +45,8 @@ struct PhysicalSize;
 // 2. Allows to save |Current()|, and can move back later. Moving to |Position|
 // is faster than moving to |FragmentItem|.
 class CORE_EXPORT InlineCursorPosition {
+  STACK_ALLOCATED();
+
  public:
   using ItemsSpan = FragmentItems::Span;
 
@@ -107,7 +110,7 @@ class CORE_EXPORT InlineCursorPosition {
   // |ComputedStyle| and related functions.
   StyleVariant GetStyleVariant() const { return item_->GetStyleVariant(); }
   bool UsesFirstLineStyle() const {
-    return GetStyleVariant() == StyleVariant::kFirstLine;
+    return blink::UsesFirstLineStyle(GetStyleVariant());
   }
   const ComputedStyle& Style() const { return item_->Style(); }
 

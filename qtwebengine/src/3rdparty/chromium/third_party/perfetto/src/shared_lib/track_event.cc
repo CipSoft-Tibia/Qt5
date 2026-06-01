@@ -26,6 +26,7 @@
 
 #include "perfetto/base/compiler.h"
 #include "perfetto/base/flat_set.h"
+#include "perfetto/base/thread_annotations.h"
 #include "perfetto/ext/base/file_utils.h"
 #include "perfetto/ext/base/no_destructor.h"
 #include "perfetto/ext/base/string_splitter.h"
@@ -307,14 +308,15 @@ class TrackEvent
   static internal::DataSourceThreadLocalState** GetTlsState();
 
  private:
-  struct GlobalState {
+  class GlobalState {
+   public:
     static GlobalState& Instance() {
       static GlobalState* instance = new GlobalState();
       return *instance;
     }
 
     void OnStart(const perfetto::protos::gen::TrackEventConfig& config,
-                 uint32_t instance_id) {
+                 uint32_t instance_id) PERFETTO_LOCKS_EXCLUDED(mu_) {
       std::lock_guard<std::mutex> lock(mu_);
       EnableRegisteredCategory(perfetto_te_any_categories, instance_id);
       for (PerfettoTeCategoryImpl* cat : categories_) {
@@ -324,15 +326,16 @@ class TrackEvent
       }
     }
 
-    void OnStop(uint32_t instance_id) {
-      std::lock_guard<std::mutex> lock(GlobalState::Instance().mu_);
-      for (PerfettoTeCategoryImpl* cat : GlobalState::Instance().categories_) {
+    void OnStop(uint32_t instance_id) PERFETTO_LOCKS_EXCLUDED(mu_) {
+      std::lock_guard<std::mutex> lock(mu_);
+      for (PerfettoTeCategoryImpl* cat : categories_) {
         DisableRegisteredCategory(cat, instance_id);
       }
       DisableRegisteredCategory(perfetto_te_any_categories, instance_id);
     }
 
-    void RegisterCategory(PerfettoTeCategoryImpl* cat) {
+    void RegisterCategory(PerfettoTeCategoryImpl* cat)
+        PERFETTO_LOCKS_EXCLUDED(mu_) {
       {
         std::lock_guard<std::mutex> lock(mu_);
         Trace([cat](TraceContext ctx) {
@@ -343,11 +346,12 @@ class TrackEvent
           }
         });
         categories_.push_back(cat);
-        cat->cat_iid = ++GlobalState::Instance().interned_categories_;
+        cat->cat_iid = ++interned_categories_;
       }
     }
 
-    void UnregisterCategory(PerfettoTeCategoryImpl* cat) {
+    void UnregisterCategory(PerfettoTeCategoryImpl* cat)
+        PERFETTO_LOCKS_EXCLUDED(mu_) {
       std::lock_guard<std::mutex> lock(mu_);
       categories_.erase(
           std::remove(categories_.begin(), categories_.end(), cat),
@@ -356,7 +360,7 @@ class TrackEvent
 
     void CategorySetCallback(struct PerfettoTeCategoryImpl* cat,
                              PerfettoTeCategoryImplCallback cb,
-                             void* user_arg) {
+                             void* user_arg) PERFETTO_LOCKS_EXCLUDED(mu_) {
       std::lock_guard<std::mutex> lock(mu_);
       cat->cb = cb;
       cat->cb_user_arg = user_arg;
@@ -376,14 +380,18 @@ class TrackEvent
       }
     }
 
-    DataSourceDescriptor GenerateDescriptorFromCategories() const {
+    DataSourceDescriptor GenerateDescriptorFromCategories() const
+        PERFETTO_LOCKS_EXCLUDED(mu_) {
       DataSourceDescriptor dsd;
       dsd.set_name("track_event");
 
       protozero::HeapBuffered<perfetto::protos::pbzero::TrackEventDescriptor>
           ted;
-      for (PerfettoTeCategoryImpl* cat : categories_) {
-        SerializeCategory(*cat->desc, ted.get());
+      {
+        std::lock_guard<std::mutex> lock(mu_);
+        for (PerfettoTeCategoryImpl* cat : categories_) {
+          SerializeCategory(*cat->desc, ted.get());
+        }
       }
       dsd.set_track_event_descriptor_raw(ted.SerializeAsString());
       return dsd;
@@ -395,10 +403,9 @@ class TrackEvent
       perfetto_te_any_categories_enabled = &perfetto_te_any_categories->flag;
     }
 
-    // Guards categories and interned_categories;
-    std::mutex mu_;
-    std::vector<PerfettoTeCategoryImpl*> categories_;
-    uint64_t interned_categories_;
+    mutable std::mutex mu_;
+    std::vector<PerfettoTeCategoryImpl*> categories_ PERFETTO_GUARDED_BY(mu_);
+    uint64_t interned_categories_ PERFETTO_GUARDED_BY(mu_);
   };
 
   uint32_t inst_id_;
@@ -962,8 +969,10 @@ static void InstanceOp(
     return;
   }
 
-  const PerfettoTeRegisteredTrackImpl* registered_track = nullptr;
-  const PerfettoTeHlExtraNamedTrack* named_track = nullptr;
+  std::variant<std::monostate, const PerfettoTeRegisteredTrackImpl*,
+               const PerfettoTeHlExtraNamedTrack*,
+               const PerfettoTeHlExtraProtoTrack*>
+      track;
   std::optional<uint64_t> track_uuid;
 
   const struct PerfettoTeHlExtraTimestamp* custom_timestamp = nullptr;
@@ -979,12 +988,13 @@ static void InstanceOp(
       const auto& cast =
           reinterpret_cast<const struct PerfettoTeHlExtraRegisteredTrack&>(
               extra);
-      registered_track = cast.track;
-      named_track = nullptr;
+      track = cast.track;
     } else if (extra.type == PERFETTO_TE_HL_EXTRA_TYPE_NAMED_TRACK) {
-      registered_track = nullptr;
-      named_track =
+      track =
           &reinterpret_cast<const struct PerfettoTeHlExtraNamedTrack&>(extra);
+    } else if (extra.type == PERFETTO_TE_HL_EXTRA_TYPE_PROTO_TRACK) {
+      track =
+          &reinterpret_cast<const struct PerfettoTeHlExtraProtoTrack&>(extra);
     } else if (extra.type == PERFETTO_TE_HL_EXTRA_TYPE_TIMESTAMP) {
       custom_timestamp =
           &reinterpret_cast<const struct PerfettoTeHlExtraTimestamp&>(extra);
@@ -1032,7 +1042,9 @@ static void InstanceOp(
   ResetIncrementalStateIfRequired(ii->instance->trace_writer.get(), incr_state,
                                   track_event_tls, ts);
 
-  if (registered_track) {
+  if (std::holds_alternative<const PerfettoTeRegisteredTrackImpl*>(track)) {
+    auto* registered_track =
+        std::get<const PerfettoTeRegisteredTrackImpl*>(track);
     if (incr_state->seen_track_uuids.insert(registered_track->uuid).second) {
       auto packet = ii->instance->trace_writer->NewTracePacket();
       auto* track_descriptor = packet->set_track_descriptor();
@@ -1040,7 +1052,9 @@ static void InstanceOp(
                                             registered_track->descriptor_size);
     }
     track_uuid = registered_track->uuid;
-  } else if (named_track) {
+  } else if (std::holds_alternative<const PerfettoTeHlExtraNamedTrack*>(
+                 track)) {
+    auto* named_track = std::get<const PerfettoTeHlExtraNamedTrack*>(track);
     uint64_t uuid = named_track->parent_uuid;
     uuid ^= PerfettoFnv1a(named_track->name, strlen(named_track->name));
     uuid ^= named_track->id;
@@ -1052,6 +1066,17 @@ static void InstanceOp(
         track_descriptor->set_parent_uuid(named_track->parent_uuid);
       }
       track_descriptor->set_name(named_track->name);
+    }
+    track_uuid = uuid;
+  } else if (std::holds_alternative<const PerfettoTeHlExtraProtoTrack*>(
+                 track)) {
+    auto* counter_track = std::get<const PerfettoTeHlExtraProtoTrack*>(track);
+    uint64_t uuid = counter_track->uuid;
+    if (incr_state->seen_track_uuids.insert(uuid).second) {
+      auto packet = ii->instance->trace_writer->NewTracePacket();
+      auto* track_descriptor = packet->set_track_descriptor();
+      track_descriptor->set_uuid(uuid);
+      AppendHlProtoFields(track_descriptor, counter_track->fields);
     }
     track_uuid = uuid;
   }

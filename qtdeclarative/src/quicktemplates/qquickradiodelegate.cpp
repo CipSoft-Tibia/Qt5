@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickradiodelegate_p.h"
 #include "qquickabstractbutton_p_p.h"
@@ -19,6 +20,7 @@ QT_BEGIN_NAMESPACE
     \brief Exclusive item delegate with a radio indicator that can be toggled on or off.
 
     \image qtquickcontrols-radiodelegate.gif
+           {Radio delegates showing exclusive selection behavior}
 
     RadioDelegate presents an item delegate that can be toggled on (checked) or
     off (unchecked). Radio delegates are typically used to select one option

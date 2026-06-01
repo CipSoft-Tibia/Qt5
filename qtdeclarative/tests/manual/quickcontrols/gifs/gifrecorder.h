@@ -12,6 +12,8 @@
 #include <QString>
 #include <QTimer>
 
+QT_USE_NAMESPACE
+
 class GifRecorder : public QObject
 {
     Q_OBJECT

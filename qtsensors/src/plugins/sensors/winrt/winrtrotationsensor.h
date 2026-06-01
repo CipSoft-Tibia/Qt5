@@ -7,7 +7,7 @@
 #include <QtSensors/QSensorBackend>
 #include <QtCore/QScopedPointer>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtRotationSensorPrivate;
 class WinRtRotationSensor : public QSensorBackend
@@ -31,5 +31,7 @@ private:
     QScopedPointer<WinRtRotationSensorPrivate> d_ptr;
     Q_DECLARE_PRIVATE(WinRtRotationSensor)
 };
+
+QT_END_NAMESPACE
 
 #endif // WINRTROTATIONSENSOR_H

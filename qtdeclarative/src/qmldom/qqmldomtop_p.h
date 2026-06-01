@@ -386,7 +386,7 @@ private:
     // - current ExternalItemPair, current value in the map (might be empty, or equal to curValue)
     // - new current ExternalItemPair, value in the map after after the execution of this function
     template <typename T>
-    QPair<std::shared_ptr<ExternalItemPair<T>>, std::shared_ptr<ExternalItemPair<T>>>
+    std::pair<std::shared_ptr<ExternalItemPair<T>>, std::shared_ptr<ExternalItemPair<T>>>
     insertOrUpdateEntry(std::shared_ptr<T> newItem)
     {
         std::shared_ptr<ExternalItemPair<T>> curValue;
@@ -427,7 +427,7 @@ private:
                 map.insert(canonicalPath, newCurValue);
             }
         }
-        return qMakePair(curValue, newCurValue);
+        return std::make_pair(curValue, newCurValue);
     }
 
     // Inserts or updates an entry reflecting ExternalItem in the corresponding map
@@ -1047,7 +1047,7 @@ private:
     }
 
     using FetchResult =
-            QPair<std::shared_ptr<ExternalItemInfoBase>, std::shared_ptr<ExternalItemInfoBase>>;
+            std::pair<std::shared_ptr<ExternalItemInfoBase>, std::shared_ptr<ExternalItemInfoBase>>;
     // This function tries to get an Info object about the ExternalItem from the current env
     // and depending on the result and options tries to fetch it from the Parent env,
     // saving a copy with an updated timestamp
@@ -1057,7 +1057,7 @@ private:
         const auto &path = file.canonicalPath();
         // lookup only in the current env
         if (auto value = lookup<T>(path, EnvLookup::NoBase)) {
-            return qMakePair(value, value);
+            return std::make_pair(value, value);
         }
         // try to find the file in the base(parent) Env and insert if found
         if (options() & Option::NoReload) {
@@ -1076,14 +1076,14 @@ private:
                     auto &map = getMutableRefToMap<T>();
                     const auto &it = map.find(path);
                     if (it != map.end())
-                        return qMakePair(*it, *it);
+                        return std::make_pair(*it, *it);
                     // otherwise insert
                     map.insert(path, curV);
                 }
-                return qMakePair(baseV, curV);
+                return std::make_pair(baseV, curV);
             }
         }
-        return qMakePair(nullptr, nullptr);
+        return std::make_pair(nullptr, nullptr);
     }
 
     Callback getLoadCallbackFor(DomType fileType, const Callback &loadCallback);
@@ -1132,6 +1132,9 @@ private:
     std::optional<SemanticAnalysis> m_semanticAnalysis;
 public:
     SemanticAnalysis semanticAnalysis();
+
+private:
+    SemanticAnalysis semanticAnalysisUnlocked();
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(DomEnvironment::Options)
 

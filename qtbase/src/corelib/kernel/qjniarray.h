@@ -325,7 +325,6 @@ private:
 
 template <typename T> // need to specialize traits for it, so can't be nested
 struct QJniArrayMutableValueRef {
-    using refwrapper = T;
     T value;
     QJniArrayMutableIterator<T> back = {-1, nullptr};
 
@@ -466,11 +465,17 @@ public:
     // forward-iterable container, so explicitly remove that from the overload
     // set so that the copy constructors get used instead.
     // Used also in the deduction guide, so must be public
+    template <typename C>
+    using IsSequentialOrContiguous = std::bool_constant<
+                                        IsSequentialContainerHelper<C>::isForwardIterable
+                                || (isContiguousContainer<C> && ElementTypeHelper<C>::isPrimitive)
+                                >;
     template <typename CRef, typename C = q20::remove_cvref_t<CRef>>
-    static constexpr bool isCompatibleSourceContainer =
-        (IsSequentialContainerHelper<C>::isForwardIterable
-         || (isContiguousContainer<C> && ElementTypeHelper<C>::isPrimitive))
-        && !std::is_base_of_v<QJniArrayBase, C>;
+    static constexpr bool isCompatibleSourceContainer = std::conjunction_v<
+        std::negation<std::is_same<QString, C>>,
+        IsSequentialOrContiguous<C>,
+        std::negation<std::is_base_of<QJniArrayBase, C>>
+    >;
 
     template <typename C>
     using if_compatible_source_container = std::enable_if_t<isCompatibleSourceContainer<C>, bool>;
@@ -568,8 +573,7 @@ protected:
                                         std::is_same<ElementType, QString>,
                                         std::is_base_of<QtJniTypes::JObjectBase, ElementType>
                              >) {
-            using ResultType = decltype(std::declval<QJniObject::LocalFrame<void>>().convertToJni(
-                                            std::declval<ElementType>()));
+            using ResultType = decltype(QtJniTypes::Traits<ElementType>::convertToJni(nullptr, {}));
             const auto className = QtJniTypes::Traits<ResultType>::className();
             jclass elementClass = env.findClass(className);
             if (!elementClass) {
@@ -689,9 +693,7 @@ public:
 
     auto arrayObject() const
     {
-        if constexpr (std::is_convertible_v<jobject, T>)
-            return object<jobjectArray>();
-        else if constexpr (std::is_same_v<T, QString>)
+        if constexpr (QtJniTypes::isObjectType<T>())
             return object<jobjectArray>();
         else if constexpr (QtJniTypes::sameTypeForJni<T, jbyte>)
             return object<jbyteArray>();
@@ -736,26 +738,12 @@ public:
     const_reference at(size_type i) const
     {
         JNIEnv *env = jniEnv();
-        if constexpr (std::is_convertible_v<jobject, T>) {
+        if constexpr (QtJniTypes::isObjectType<T>()) {
             jobject element = env->GetObjectArrayElement(object<jobjectArray>(), i);
-            if constexpr (std::is_base_of_v<QJniObject, T>)
-                return QJniObject::fromLocalRef(element);
-            else if constexpr (std::is_base_of_v<QtJniTypes::JObjectBase, T>)
-                return T::fromLocalRef(element);
+            if constexpr (std::is_base_of_v<std::remove_pointer_t<jobject>, std::remove_pointer_t<T>>)
+                return static_cast<T>(element);
             else
-                return T{element};
-        } else if constexpr (std::is_same_v<QString, T>) {
-            jstring string = static_cast<jstring>(env->GetObjectArrayElement(arrayObject(), i));
-            if (string) {
-                QString res = QtJniTypes::Detail::toQString(string, env);
-                env->DeleteLocalRef(string);
-                return res;
-            } else {
-                return QString();
-            }
-        } else if constexpr (std::is_base_of_v<std::remove_pointer_t<jobject>, std::remove_pointer_t<T>>) {
-            // jstring, jclass etc
-            return static_cast<T>(env->GetObjectArrayElement(object<jobjectArray>(), i));
+                return QtJniTypes::Traits<T>::convertFromJni(QJniObject::fromLocalRef(element));
         } else {
             T res = {};
             if constexpr (QtJniTypes::sameTypeForJni<T, jbyte>)
@@ -782,15 +770,10 @@ public:
     {
         JNIEnv *env = jniEnv();
 
-        if constexpr (std::disjunction_v<std::is_base_of<QtJniTypes::JObjectBase, T>,
-                                         std::is_same<QJniObject, T>>) {
-            env->SetObjectArrayElement(object<jobjectArray>(), i, val.object());
-        } else if constexpr (std::is_same_v<QString, T>) {
-            env->SetObjectArrayElement(object<jobjectArray>(), i,
-                                       QJniObject::fromString(val).template object<jstring>());
-        } else if constexpr (std::is_base_of_v<std::remove_pointer_t<jobject>, std::remove_pointer_t<T>>) {
-            // jstring, jclass etc
-            env->SetObjectArrayElement(object<jobjectArray>(), i, val);
+        if constexpr (QtJniTypes::isObjectType<T>()) {
+            QtJniTypes::Detail::LocalFrame<T> frame(env);
+            jobject element = frame.convertToJni(val);
+            env->SetObjectArrayElement(object<jobjectArray>(), i, element);
         } else { // primitive types
             if constexpr (QtJniTypes::sameTypeForJni<T, jbyte>)
                 env->SetByteArrayRegion(object<jbyteArray>(), i, 1, &val);
@@ -913,9 +896,8 @@ template <typename List>
 auto QJniArrayBase::makeObjectArray(List &&list)
 {
     using ElementType = typename q20::remove_cvref_t<List>::value_type;
-    using ResultType = QJniArray<decltype(std::declval<QJniObject::LocalFrame<>>().convertToJni(
-                                    std::declval<ElementType>()))
-                                >;
+    using ResultType = QJniArray<decltype(QtJniTypes::Traits<ElementType>::convertToJni(nullptr,
+                                                                                        {}))>;
 
     if (std::size(list) == 0)
         return ResultType();
@@ -941,8 +923,6 @@ auto QJniArrayBase::makeObjectArray(List &&list)
     }
 
     // explicitly manage the frame for local references in chunks of 100
-    QJniObject::LocalFrame frame(env);
-    frame.hasFrame = true;
     constexpr jint frameCapacity = 100;
     qsizetype i = 0;
     for (const auto &element : std::as_const(list)) {
@@ -952,41 +932,81 @@ auto QJniArrayBase::makeObjectArray(List &&list)
             if (env->PushLocalFrame(frameCapacity) != 0)
                 return ResultType{};
         }
-        jobject object = frame.convertToJni(element);
+        jobject object = QtJniTypes::Traits<ElementType>::convertToJni(env, element);
         env->SetObjectArrayElement(localArray, i, object);
         ++i;
     }
     if (i)
         env->PopLocalFrame(nullptr);
-    frame.hasFrame = false;
     return ResultType(QJniObject::fromLocalRef(localArray));
 }
 
 namespace QtJniTypes
 {
-template <typename T> struct IsJniArray: std::false_type {};
-template <typename T> struct IsJniArray<QJniArray<T>> : std::true_type {};
-template <typename T> struct Traits<QJniArray<T>> {
+template <typename T> struct Traits<QJniArray<T>>
+{
     template <IfValidFieldType<T> = true>
     static constexpr auto signature()
     {
         return CTString("[") + Traits<T>::signature();
+    }
+    static auto convertToJni(JNIEnv *, const QJniArray<T> &value)
+    {
+        return value.arrayObject();
+    }
+    static auto convertFromJni(QJniObject &&object)
+    {
+        return QJniArray<T>(std::move(object));
     }
 };
 
 template <typename T> struct Traits<QJniArrayMutableValueRef<T>> : public Traits<T> {};
 
-template <typename T> struct Traits<QList<T>> {
-    template <IfValidFieldType<T> = true>
+template<typename T> struct Traits<T, std::enable_if_t<QJniArrayBase::isCompatibleSourceContainer<T>>>
+{
+    // QByteArray::value_type is char, which maps to 'C'; we need 'B', i.e. jbyte
+    using ElementType = std::conditional_t<std::is_same_v<T, QByteArray>,
+                                           jbyte, typename T::value_type>;
+
+    template <typename U = ElementType, IfValidFieldType<U> = true>
     static constexpr auto signature()
     {
-        return CTString("[") + Traits<T>::signature();
+        return CTString("[") + Traits<ElementType>::signature();
+    }
+
+    static auto convertToJni(JNIEnv *env, const T &value)
+    {
+        using QJniArrayType = decltype(QJniArrayBase::fromContainer(value));
+        using ArrayType = decltype(std::declval<QJniArrayType>().arrayObject());
+        return static_cast<ArrayType>(env->NewLocalRef(QJniArray(value).arrayObject()));
+    }
+
+    static auto convertFromJni(QJniObject &&object)
+    {
+        // if we were to create a QJniArray from Type...
+        using QJniArrayType = decltype(QJniArrayBase::fromContainer(std::declval<T>()));
+        // then that QJniArray would have elements of type
+        using ArrayType = typename QJniArrayType::Type;
+        // construct a QJniArray from a jobject pointer of that type
+        return QJniArray<ArrayType>(object.template object<jarray>()).toContainer();
     }
 };
-template <> struct Traits<QByteArray> {
+
+template<typename T> struct Traits<T, std::enable_if_t<std::is_array_v<T>>>
+{
+    using ElementType = std::remove_extent_t<T>;
+
+    template <typename U = ElementType, IfValidFieldType<U> = true>
     static constexpr auto signature()
     {
-        return CTString("[B");
+        static_assert(!std::is_array_v<ElementType>,
+                    "Traits::signature() does not handle multi-dimensional arrays");
+        return CTString("[") + Traits<U>::signature();
+    }
+
+    static constexpr auto convertFromJni(QJniObject &&object)
+    {
+        return QJniArray<ElementType>(std::move(object));
     }
 };
 }

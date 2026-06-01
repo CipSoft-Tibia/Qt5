@@ -11,6 +11,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkFontMgr.h"
+#include "include/core/SkFontScanner.h"
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkFontTypes.h"
 #include "include/core/SkImage.h"
@@ -18,6 +19,12 @@
 #include "include/core/SkPixelRef.h"  // IWYU pragma: keep
 #include "include/core/SkStream.h"
 #include "include/core/SkTypeface.h"
+#if defined(SK_TYPEFACE_FACTORY_FONTATIONS)
+#include "include/ports/SkFontScanner_Fontations.h"
+#endif
+#if defined(SK_TYPEFACE_FACTORY_FREETYPE)
+#include "include/ports/SkFontScanner_FreeType.h"
+#endif
 #include "include/private/base/SkMutex.h"
 #include "include/utils/SkCustomTypeface.h"
 #include "src/base/SkUTF.h"
@@ -33,7 +40,12 @@
 
 #if defined(SK_BUILD_FOR_ANDROID) && defined(SK_FONTMGR_ANDROID_AVAILABLE)
 #include "include/ports/SkFontMgr_android.h"
-#include "src/ports/SkTypeface_FreeType.h"
+#include "include/ports/SkFontScanner_FreeType.h"
+#endif
+
+#if defined(SK_BUILD_FOR_ANDROID) && defined(SK_FONTMGR_ANDROID_NDK_AVAILABLE)
+#include "include/ports/SkFontMgr_android_ndk.h"
+#include "include/ports/SkFontScanner_FreeType.h"
 #endif
 
 #if defined(SK_FONTMGR_CORETEXT_AVAILABLE) && (defined(SK_BUILD_FOR_IOS) || \
@@ -45,8 +57,9 @@
 #include "include/ports/SkFontMgr_Fontations.h"
 #endif
 
-#if defined(SK_FONTMGR_FONTCONFIG_AVAILABLE)
+#if defined(SK_BUILD_FOR_UNIX) && defined(SK_FONTMGR_FONTCONFIG_AVAILABLE)
 #include "include/ports/SkFontMgr_fontconfig.h"
+#include "include/ports/SkFontScanner_FreeType.h"
 #endif
 
 #if defined(SK_FONTMGR_FREETYPE_DIRECTORY_AVAILABLE)
@@ -68,6 +81,9 @@ static DEFINE_bool(gdi, false, "Use GDI instead of DirectWrite for font renderin
 #endif
 #if defined(SK_FONTMGR_FONTATIONS_AVAILABLE)
 static DEFINE_bool(fontations, false, "Use Fontations for native font rendering.");
+#endif
+#if defined(SK_FONTMGR_ANDROID_NDK_AVAILABLE)
+static DEFINE_bool(androidndkfonts, false, "Use AndroidNDK for native font rendering.");
 #endif
 
 sk_sp<SkTypeface> PlanetTypeface() {
@@ -244,6 +260,22 @@ sk_sp<SkImage> CreateStringImage(int w, int h, SkColor c, int x, int y, int text
 #  endif
 #endif
 
+std::unique_ptr<SkFontScanner> TestFontScanner() {
+#if defined(SK_TYPEFACE_FACTORY_FONTATIONS) && defined(SK_FONTMGR_FONTATIONS_AVAILABLE)
+    if (FLAGS_fontations) {
+        auto result = SkFontScanner_Make_Fontations();
+        if (result) {
+            return result;
+        }
+    }
+#endif
+#if defined(SK_TYPEFACE_FACTORY_FREETYPE)
+    return SkFontScanner_Make_FreeType();
+#else
+    return nullptr;
+#endif
+}
+
 sk_sp<SkFontMgr> TestFontMgr() {
     static sk_sp<SkFontMgr> mgr;
     static SkOnce once;
@@ -261,16 +293,21 @@ sk_sp<SkFontMgr> TestFontMgr() {
             mgr = SkFontMgr_New_Fontations_Empty();
         }
 #endif
+#if defined(SK_BUILD_FOR_ANDROID) && defined(SK_FONTMGR_ANDROID_NDK_AVAILABLE) && defined(SK_TYPEFACE_FACTORY_FREETYPE)
+        else if (FLAGS_androidndkfonts) {
+            mgr = SkFontMgr_New_AndroidNDK(false, SkFontScanner_Make_FreeType());
+        }
+#endif
         else {
-#if defined(SK_BUILD_FOR_ANDROID) && defined(SK_FONTMGR_ANDROID_AVAILABLE)
-            mgr = SkFontMgr_New_Android(nullptr, std::make_unique<SkFontScanner_FreeType>());
+#if defined(SK_BUILD_FOR_ANDROID) && defined(SK_FONTMGR_ANDROID_AVAILABLE) && defined(SK_TYPEFACE_FACTORY_FREETYPE)
+            mgr = SkFontMgr_New_Android(nullptr, SkFontScanner_Make_FreeType());
 #elif defined(SK_BUILD_FOR_WIN) && defined(SK_FONTMGR_DIRECTWRITE_AVAILABLE)
             mgr = SkFontMgr_New_DirectWrite();
 #elif defined(SK_FONTMGR_CORETEXT_AVAILABLE) && (defined(SK_BUILD_FOR_IOS) || \
                                                 defined(SK_BUILD_FOR_MAC))
             mgr = SkFontMgr_New_CoreText(nullptr);
-#elif defined(SK_FONTMGR_FONTCONFIG_AVAILABLE)
-            mgr = SkFontMgr_New_FontConfig(nullptr);
+#elif defined(SK_FONTMGR_FONTCONFIG_AVAILABLE) && defined(SK_TYPEFACE_FACTORY_FREETYPE)
+            mgr = SkFontMgr_New_FontConfig(nullptr, SkFontScanner_Make_FreeType());
 #elif defined(SK_FONTMGR_FREETYPE_DIRECTORY_AVAILABLE)
             // In particular, this is used on ChromeOS, which is Linux-like but doesn't have
             // FontConfig.

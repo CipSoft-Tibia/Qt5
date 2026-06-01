@@ -41,7 +41,7 @@ public:
         WindowFrameExclusive
     };
 
-    QWindowPrivate();
+    QWindowPrivate(decltype(QObjectPrivateVersion) version = QObjectPrivateVersion);
     ~QWindowPrivate() override;
 
     void init(QWindow *parent, QScreen *targetScreen = nullptr);

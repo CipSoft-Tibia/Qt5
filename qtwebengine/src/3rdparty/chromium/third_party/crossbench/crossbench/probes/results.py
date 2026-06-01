@@ -12,13 +12,13 @@ from typing import (TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple,
 from immutabledict import immutabledict
 from ordered_set import OrderedSet
 
-from crossbench import cli_helper
 from crossbench import path as pth
+from crossbench.parse import ObjectParser
 from crossbench.probes.helper import INTERNAL_NAME_PREFIX
+from crossbench.probes.probe_result_key import ProbeResultKey
+from crossbench.runner.probe_result_origin import ProbeResultOrigin
 
 if TYPE_CHECKING:
-  from crossbench.probes.probe import Probe
-  from crossbench.runner.result_origin import ResultOrigin
   from crossbench.types import JsonDict
 
 
@@ -42,11 +42,11 @@ class ProbeResult(abc.ABC):
                **kwargs: Iterable[pth.LocalPath]):
     self._url_list: Tuple[str, ...] = ()
     if url:
-      self._url_list = cli_helper.parse_unique_sequence(
+      self._url_list = ObjectParser.unique_sequence(
           tuple(url), "urls", DuplicateProbeResult)
     self._trace_list: Tuple[pth.LocalPath, ...] = ()
     if trace:
-      self._trace_list = cli_helper.parse_unique_sequence(
+      self._trace_list = ObjectParser.unique_sequence(
           tuple(trace), "traces", DuplicateProbeResult)
     tmp_files: Dict[str, OrderedSet[pth.LocalPath]] = {}
     if file:
@@ -101,8 +101,10 @@ class ProbeResult(abc.ABC):
         raise ValueError(f"Expected exactly one file with suffix {suffix}, "
                          f"but got {files_with_suffix}")
       return files_with_suffix[0]
-    raise ValueError(f"No files with suffix '.{suffix}'. "
-                     f"Options are {tuple(self._files.keys())}")
+    choices: str = f"Options are {tuple(self._files.keys())}."
+    if self.is_empty:
+      choices = "Empty ProbeResult."
+    raise ValueError(f"No files with suffix '.{suffix}'. {choices}")
 
   def get_all(self, suffix: str) -> List[pth.LocalPath]:
     if files_with_suffix := self._files.get(suffix):
@@ -230,10 +232,10 @@ class BrowserProbeResult(ProbeResult):
   """
 
   def __init__(self,
-               result_origin: ResultOrigin,
+               result_origin: ProbeResultOrigin,
                url: Optional[Iterable[str]] = None,
-               file: Optional[Iterable[pth.RemotePath]] = None,
-               **kwargs: Iterable[pth.RemotePath]):
+               file: Optional[Iterable[pth.AnyPath]] = None,
+               **kwargs: Iterable[pth.AnyPath]):
     self._browser_file = file
     local_file: Optional[Iterable[pth.LocalPath]] = None
     local_kwargs: Dict[str, Iterable[pth.LocalPath]] = {}
@@ -254,8 +256,8 @@ class BrowserProbeResult(ProbeResult):
   def is_remote(self) -> bool:
     return self._is_remote
 
-  def _copy_files(self, result_origin: ResultOrigin,
-                  paths: Iterable[pth.RemotePath]) -> Iterable[pth.LocalPath]:
+  def _copy_files(self, result_origin: ProbeResultOrigin,
+                  paths: Iterable[pth.AnyPath]) -> Iterable[pth.LocalPath]:
     assert paths, "Got no remote paths to copy."
     # Copy result files from remote tmp dir to local results dir
     browser_platform = result_origin.browser_platform
@@ -269,10 +271,9 @@ class BrowserProbeResult(ProbeResult):
         logging.debug(
             "Browser result is not in browser tmp dir: "
             "only using the name of '%s'", remote_path)
-        relative_path = result_origin.runner_platform.local_path(
-            remote_path.name)
+        relative_path = result_origin.host_platform.local_path(remote_path.name)
       local_result_path = out_dir / relative_path
-      browser_platform.rsync(remote_path, local_result_path)
+      browser_platform.pull(remote_path, local_result_path)
       assert local_result_path.exists(), "Failed to copy result file."
       local_result_paths.append(local_result_path)
     return local_result_paths
@@ -283,21 +284,21 @@ class ProbeResultDict:
   Maps Probes to their result files Paths.
   """
 
-  def __init__(self, path: pth.RemotePath) -> None:
+  def __init__(self, path: pth.AnyPath) -> None:
     self._path = path
     self._dict: Dict[str, ProbeResult] = {}
 
-  def __setitem__(self, probe: Probe, result: ProbeResult) -> None:
+  def __setitem__(self, probe: ProbeResultKey, result: ProbeResult) -> None:
     assert isinstance(result, ProbeResult)
     self._dict[probe.name] = result
 
-  def __getitem__(self, probe: Probe) -> ProbeResult:
+  def __getitem__(self, probe: ProbeResultKey) -> ProbeResult:
     name = probe.name
     if name not in self._dict:
       raise KeyError(f"No results for probe='{name}'")
     return self._dict[name]
 
-  def __contains__(self, probe: Probe) -> bool:
+  def __contains__(self, probe: ProbeResultKey) -> bool:
     return probe.name in self._dict
 
   def __bool__(self) -> bool:
@@ -306,7 +307,7 @@ class ProbeResultDict:
   def __len__(self) -> int:
     return len(self._dict)
 
-  def get(self, probe: Probe, default: Any = None) -> ProbeResult:
+  def get(self, probe: ProbeResultKey, default: Any = None) -> ProbeResult:
     return self._dict.get(probe.name, default)
 
   def get_by_name(self, name: str, default: Any = None) -> ProbeResult:
@@ -317,7 +318,7 @@ class ProbeResultDict:
   def to_json(self) -> JsonDict:
     data: JsonDict = {}
     for probe_name, results in self._dict.items():
-      if isinstance(results, (pth.RemotePath, str)):
+      if isinstance(results, (pth.AnyPath, str)):
         data[probe_name] = str(results)
       else:
         if results.is_empty:

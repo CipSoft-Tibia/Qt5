@@ -16,6 +16,7 @@ qt_add_qml_module(confused_test_module
         Main2.qml
         Test/test.js
         Test/broken.js
+    NO_GENERATE_EXTRA_QMLDIRS # Avoid QTP0004 warning
     RESOURCES
         Test/qmldir
 )

@@ -7,6 +7,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QApplication>
+#include <QMainWindow>
 
 #include <private/qhighdpiscaling_p.h>
 #include <private/qwidget_p.h>
@@ -261,6 +262,7 @@ private slots:
     void scroll();
     void paintOnScreenUpdates();
     void evaluateRhi();
+    void rhiRecreateMaintainsWindowProperties();
 
 #if defined(QT_BUILD_INTERNAL)
     void scrollWithOverlap();
@@ -799,6 +801,33 @@ void tst_QWidgetRepaintManager::evaluateRhi()
 #endif // QT_CONFIG(metal)
 
 #endif // QT_CONFIG(opengl)
+}
+
+void tst_QWidgetRepaintManager::rhiRecreateMaintainsWindowProperties()
+{
+#if !QT_CONFIG(run_opengl_tests)
+    QSKIP("Skip test as run-opengl-tests feature is off.");
+#endif
+
+    const auto *integration = QGuiApplicationPrivate::platformIntegration();
+    if (!integration->hasCapability(QPlatformIntegration::RhiBasedRendering))
+        QSKIP("Platform does not support RHI based rendering");
+
+#if !QT_CONFIG(opengl)
+    QSKIP("Platform does not support OpenGL RHI based rendering");
+#endif
+
+    // Reparenting Rhi widget into a window causes the window to be
+    // recreated, but after recreation the window properties such as
+    // window position must remain the same
+    QMainWindow topLevel;
+    topLevel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+    QPoint windowPos = topLevel.pos();
+    RhiWidget nativeRhiWidget(QPlatformBackingStoreRhiConfig::OpenGL, &topLevel);
+    QVERIFY(QWidgetPrivate::get(&topLevel)->usesRhiFlush);
+    QVERIFY(QWidgetPrivate::get(&topLevel)->rhi());
+    QCOMPARE(topLevel.pos(), windowPos);
 }
 
 #if defined(QT_BUILD_INTERNAL)

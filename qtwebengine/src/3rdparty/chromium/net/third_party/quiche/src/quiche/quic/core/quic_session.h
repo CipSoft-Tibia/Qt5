@@ -20,6 +20,7 @@
 #include "absl/types/span.h"
 #include "quiche/quic/core/crypto/tls_connection.h"
 #include "quiche/quic/core/frames/quic_ack_frequency_frame.h"
+#include "quiche/quic/core/frames/quic_reset_stream_at_frame.h"
 #include "quiche/quic/core/frames/quic_stop_sending_frame.h"
 #include "quiche/quic/core/frames/quic_window_update_frame.h"
 #include "quiche/quic/core/handshaker_delegate_interface.h"
@@ -136,6 +137,7 @@ class QUICHE_EXPORT QuicSession
   void OnStreamFrame(const QuicStreamFrame& frame) override;
   void OnCryptoFrame(const QuicCryptoFrame& frame) override;
   void OnRstStream(const QuicRstStreamFrame& frame) override;
+  void OnResetStreamAt(const QuicResetStreamAtFrame& frame) override;
   void OnGoAway(const QuicGoAwayFrame& frame) override;
   void OnMessageReceived(absl::string_view message) override;
   void OnHandshakeDoneReceived() override;
@@ -171,6 +173,7 @@ class QUICHE_EXPORT QuicSession
   std::string GetStreamsInfoForLogging() const override;
   void OnPathDegrading() override;
   void OnForwardProgressMadeAfterPathDegrading() override;
+  void OnForwardProgressMadeAfterFlowLabelChange() override;
   bool AllowSelfAddressChange() const override;
   HandshakeState GetHandshakeState() const override;
   bool OnMaxStreamsFrame(const QuicMaxStreamsFrame& frame) override;
@@ -407,7 +410,9 @@ class QUICHE_EXPORT QuicSession
   // connection-level flow control but not by its own stream-level flow control.
   // The stream will be given a chance to write when a connection-level
   // WINDOW_UPDATE arrives.
-  virtual void MarkConnectionLevelWriteBlocked(QuicStreamId id);
+  // TODO(b/235204908) Remove the return value.
+  // Returns false if an error occurred.
+  bool MarkConnectionLevelWriteBlocked(QuicStreamId id);
 
   // Called to close zombie stream |id|.
   void MaybeCloseZombieStream(QuicStreamId id);
@@ -615,6 +620,12 @@ class QUICHE_EXPORT QuicSession
   virtual void MaybeSendRstStreamFrame(QuicStreamId id,
                                        QuicResetStreamError error,
                                        QuicStreamOffset bytes_written);
+  // Does actual work of sending RESET_STREAM_AT, if the stream type allows.
+  // Also informs the connection so that pending stream frames can be flushed.
+  virtual void MaybeSendResetStreamAtFrame(QuicStreamId id,
+                                           QuicResetStreamError error,
+                                           QuicStreamOffset bytes_written,
+                                           QuicStreamOffset reliable_size);
 
   // Sends a STOP_SENDING frame if the stream type allows.
   virtual void MaybeSendStopSendingFrame(QuicStreamId id,
@@ -689,6 +700,14 @@ class QUICHE_EXPORT QuicSession
 
   // Returns the priority type used by the streams in the session.
   QuicPriorityType priority_type() const { return priority_type_; }
+
+  bool enable_stop_sending_for_zombie_streams() const {
+    return enable_stop_sending_for_zombie_streams_;
+  }
+
+  bool notify_stream_soon_to_destroy() const {
+    return notify_stream_soon_to_destroy_;
+  }
 
  protected:
   using StreamMap =
@@ -953,6 +972,7 @@ class QUICHE_EXPORT QuicSession
   // Creates or gets pending strea, feed it with |frame|, and closes the pending
   // stream.
   void PendingStreamOnRstStream(const QuicRstStreamFrame& frame);
+  void PendingStreamOnResetStreamAt(const QuicResetStreamAtFrame& frame);
 
   // Creates or gets pending stream, feeds it with |frame|, and records the
   // max_data in the pending stream.
@@ -968,6 +988,15 @@ class QUICHE_EXPORT QuicSession
   QuicStream* ProcessPendingStream(PendingStream* pending);
 
   bool ExceedsPerLoopStreamLimit() const;
+
+  // Moves the stream pointed by |it| from stream_map_ to closed_streams_.
+  void PrepareStreamForDestruction(StreamMap::iterator it);
+
+  // Called by applications to perform |action| on streams that have received
+  // and sent FIN, but still waiting for ACK. Stream iteration will be stopped
+  // if action returns false.
+  void PerformActionOnNonStaticStreams(
+      quiche::UnretainedCallback<bool(QuicStream*)> action);
 
   // Keep track of highest received byte offset of locally closed streams, while
   // waiting for a definitive final highest offset from the peer.
@@ -1024,7 +1053,7 @@ class QUICHE_EXPORT QuicSession
 
   // Received information for a connection close.
   QuicConnectionCloseFrame on_closed_frame_;
-  std::optional<ConnectionCloseSource> source_;
+  std::optional<ConnectionCloseSource> connection_close_source_;
 
   // Used for connection-level flow control.
   QuicFlowController flow_controller_;
@@ -1094,6 +1123,12 @@ class QUICHE_EXPORT QuicSession
   std::unique_ptr<QuicAlarm> stream_count_reset_alarm_;
 
   QuicPriorityType priority_type_;
+
+  const bool enable_stop_sending_for_zombie_streams_ =
+      GetQuicReloadableFlag(quic_deliver_stop_sending_to_zombie_streams);
+
+  const bool notify_stream_soon_to_destroy_ =
+      GetQuicReloadableFlag(quic_notify_stream_soon_to_destroy);
 };
 
 }  // namespace quic

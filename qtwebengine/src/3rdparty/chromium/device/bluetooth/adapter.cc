@@ -169,7 +169,7 @@ void Adapter::RegisterAdvertisement(const device::BluetoothUUID& service_uuid,
     // ordering 0xf3 first, then 0xfe in for this example.
     auto service_id_bytes = service_uuid.GetBytes();
     // Take bytes 2 and 3.
-    auto id_bytes = base::make_span(service_id_bytes).subspan(2, 2);
+    auto id_bytes = base::span(service_id_bytes).subspan<2, 2>();
     // Add them in reverse order (little endian).
     scan_response_data.insert(scan_response_data.begin(), id_bytes.rbegin(),
                               id_bytes.rend());
@@ -478,7 +478,9 @@ void Adapter::OnGattConnect(
     std::optional<device::BluetoothDevice::ConnectErrorCode> error_code) {
   if (error_code.has_value()) {
     std::move(callback).Run(
-        mojo::ConvertTo<mojom::ConnectResult>(error_code.value()),
+        mojo::TypeConverter<
+          mojom::ConnectResult,
+          device::BluetoothDevice::ConnectErrorCode>::Convert(error_code.value()),
         /*device=*/mojo::NullRemote());
     return;
   }

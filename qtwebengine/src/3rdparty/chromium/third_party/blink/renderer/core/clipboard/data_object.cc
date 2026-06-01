@@ -231,8 +231,9 @@ String DataObject::GetData(const String& type) const {
 
 void DataObject::SetData(const String& type, const String& data) {
   ClearData(type);
-  if (!Add(data, type))
-    NOTREACHED_IN_MIGRATION();
+  if (!Add(data, type)) {
+    NOTREACHED();
+  }
 }
 
 void DataObject::UrlAndTitle(String& url, String* title) const {
@@ -260,6 +261,17 @@ void DataObject::HtmlAndBaseURL(String& html, KURL& base_url) const {
 void DataObject::SetHTMLAndBaseURL(const String& html, const KURL& base_url) {
   ClearData(kMimeTypeTextHTML);
   InternalAddStringItem(DataObjectItem::CreateFromHTML(html, base_url));
+}
+
+Vector<String> DataObject::Urls() const {
+  Vector<String> results;
+  for (const auto& item : item_list_) {
+    if (item->Kind() == DataObjectItem::kStringKind &&
+        item->GetType() == kMimeTypeTextURIList) {
+      results.push_back(ConvertURIListToURL(item->GetAsString()));
+    }
+  }
+  return results;
 }
 
 bool DataObject::ContainsFilenames() const {
@@ -421,7 +433,7 @@ DataObject* DataObject::Create(const WebDragData& data) {
 
 WebDragData DataObject::ToWebDragData() {
   WebDragData data;
-  WebVector<WebDragData::Item> item_list(length());
+  std::vector<WebDragData::Item> item_list(length());
 
   for (wtf_size_t i = 0; i < length(); ++i) {
     DataObjectItem* original_item = Item(i);
@@ -467,7 +479,7 @@ WebDragData DataObject::ToWebDragData() {
             string_item.data = file->name();
           }
         } else {
-          NOTREACHED_IN_MIGRATION();
+          NOTREACHED();
         }
         break;
       }

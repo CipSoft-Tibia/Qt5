@@ -8,6 +8,7 @@
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/not_fatal_until.h"
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
 #include "components/performance_manager/decorators/decorators_utils.h"
@@ -44,6 +45,14 @@ class PageLiveStateDataImpl
   bool IsConnectedToBluetoothDevice() const override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return is_connected_to_bluetooth_device_;
+  }
+  bool IsConnectedToHidDevice() const override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    return is_connected_to_hid_device_;
+  }
+  bool IsConnectedToSerialPort() const override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    return is_connected_to_serial_port_;
   }
   bool IsCapturingVideo() const override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -85,10 +94,6 @@ class PageLiveStateDataImpl
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return is_dev_tools_open_;
   }
-  ui::AXMode GetAccessibilityMode() const override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    return accessibility_mode_;
-  }
   bool UpdatedTitleOrFaviconInBackground() const override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return updated_title_or_favicon_in_background_;
@@ -99,6 +104,12 @@ class PageLiveStateDataImpl
   }
   void SetIsConnectedToBluetoothDeviceForTesting(bool value) override {
     set_is_connected_to_bluetooth_device(value);
+  }
+  void SetIsConnectedToHidDeviceForTesting(bool value) override {
+    set_is_connected_to_hid_device(value);
+  }
+  void SetIsConnectedToSerialPortForTesting(bool value) override {
+    set_is_connected_to_serial_port(value);
   }
   void SetIsCapturingVideoForTesting(bool value) override {
     set_is_capturing_video(value);
@@ -130,9 +141,6 @@ class PageLiveStateDataImpl
   void SetIsDevToolsOpenForTesting(bool value) override {
     set_is_dev_tools_open(value);
   }
-  void SetAccessibilityModeForTesting(ui::AXMode value) override {
-    set_accessibility_mode(value);
-  }
   void SetUpdatedTitleOrFaviconInBackgroundForTesting(bool value) override {
     set_updated_title_or_favicon_in_background(value);
   }
@@ -153,6 +161,26 @@ class PageLiveStateDataImpl
     is_connected_to_bluetooth_device_ = is_connected_to_bluetooth_device;
     for (auto& obs : observers_)
       obs.OnIsConnectedToBluetoothDeviceChanged(page_node_);
+  }
+  void set_is_connected_to_hid_device(bool is_connected_to_hid_device) {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    if (is_connected_to_hid_device_ == is_connected_to_hid_device) {
+      return;
+    }
+    is_connected_to_hid_device_ = is_connected_to_hid_device;
+    for (auto& obs : observers_) {
+      obs.OnIsConnectedToHidDeviceChanged(page_node_);
+    }
+  }
+  void set_is_connected_to_serial_port(bool is_connected_to_serial_port) {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    if (is_connected_to_serial_port_ == is_connected_to_serial_port) {
+      return;
+    }
+    is_connected_to_serial_port_ = is_connected_to_serial_port;
+    for (auto& obs : observers_) {
+      obs.OnIsConnectedToSerialPortChanged(page_node_);
+    }
   }
   void set_is_capturing_video(bool is_capturing_video) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -207,8 +235,6 @@ class PageLiveStateDataImpl
     if (was_discarded_ == was_discarded)
       return;
     was_discarded_ = was_discarded;
-    for (auto& obs : observers_)
-      obs.OnWasDiscardedChanged(page_node_);
   }
   void set_is_active_tab(bool is_active_tab) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -238,16 +264,6 @@ class PageLiveStateDataImpl
       obs.OnIsDevToolsOpenChanged(page_node_);
     }
   }
-  void set_accessibility_mode(ui::AXMode accessibility_mode) {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    if (accessibility_mode_ == accessibility_mode) {
-      return;
-    }
-    accessibility_mode_ = accessibility_mode;
-    for (auto& obs : observers_) {
-      obs.OnAccessibilityModeChanged(page_node_);
-    }
-  }
   void set_updated_title_or_favicon_in_background(bool updated) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     updated_title_or_favicon_in_background_ = updated;
@@ -257,6 +273,10 @@ class PageLiveStateDataImpl
   bool is_connected_to_usb_device_ GUARDED_BY_CONTEXT(sequence_checker_) =
       false;
   bool is_connected_to_bluetooth_device_ GUARDED_BY_CONTEXT(sequence_checker_) =
+      false;
+  bool is_connected_to_hid_device_ GUARDED_BY_CONTEXT(sequence_checker_) =
+      false;
+  bool is_connected_to_serial_port_ GUARDED_BY_CONTEXT(sequence_checker_) =
       false;
   bool is_capturing_video_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
   bool is_capturing_audio_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
@@ -268,7 +288,6 @@ class PageLiveStateDataImpl
   bool is_active_tab_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
   bool is_pinned_tab_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
   bool is_dev_tools_open_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
-  ui::AXMode accessibility_mode_ GUARDED_BY_CONTEXT(sequence_checker_);
   bool updated_title_or_favicon_in_background_
       GUARDED_BY_CONTEXT(sequence_checker_) = false;
 
@@ -281,21 +300,36 @@ PageLiveStateDecorator::PageLiveStateDecorator() = default;
 PageLiveStateDecorator::~PageLiveStateDecorator() = default;
 
 // static
-void PageLiveStateDecorator::OnIsConnectedToUSBDeviceChanged(
+void PageLiveStateDecorator::OnCapabilityTypesChanged(
     content::WebContents* contents,
-    bool is_connected_to_usb_device) {
-  SetPropertyForWebContentsPageNode(
-      contents, &PageLiveStateDataImpl::set_is_connected_to_usb_device,
-      is_connected_to_usb_device);
-}
+    content::WebContentsCapabilityType capability_type,
+    bool used) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
-// static
-void PageLiveStateDecorator::OnIsConnectedToBluetoothDeviceChanged(
-    content::WebContents* contents,
-    bool is_connected_to_bluetooth_device) {
-  SetPropertyForWebContentsPageNode(
-      contents, &PageLiveStateDataImpl::set_is_connected_to_bluetooth_device,
-      is_connected_to_bluetooth_device);
+  switch (capability_type) {
+    case content::WebContentsCapabilityType::kUSB:
+      SetPropertyForWebContentsPageNode(
+          contents, &PageLiveStateDataImpl::set_is_connected_to_usb_device,
+          used);
+      break;
+    case content::WebContentsCapabilityType::kBluetoothConnected:
+      SetPropertyForWebContentsPageNode(
+          contents,
+          &PageLiveStateDataImpl::set_is_connected_to_bluetooth_device, used);
+      break;
+    case content::WebContentsCapabilityType::kHID:
+      SetPropertyForWebContentsPageNode(
+          contents, &PageLiveStateDataImpl::set_is_connected_to_hid_device,
+          used);
+      break;
+    case content::WebContentsCapabilityType::kSerial:
+      SetPropertyForWebContentsPageNode(
+          contents, &PageLiveStateDataImpl::set_is_connected_to_serial_port,
+          used);
+      break;
+    default:
+      break;
+  }
 }
 
 // static
@@ -355,6 +389,11 @@ void PageLiveStateDecorator::SetIsAutoDiscardable(
 // static
 void PageLiveStateDecorator::SetWasDiscarded(content::WebContents* contents,
                                              bool was_discarded) {
+  // TODO(crbug.com/391179510): This check validates the assumption that the
+  // WasDiscarded() property is not set correctly. If that assumption holds,
+  // remove all code that depends on it as discussed on the bug.
+  CHECK(!was_discarded, base::NotFatalUntil::M136);
+
   SetPropertyForWebContentsPageNode(
       contents, &PageLiveStateDataImpl::set_was_discarded, was_discarded);
 }
@@ -381,15 +420,6 @@ void PageLiveStateDecorator::SetIsDevToolsOpen(content::WebContents* contents,
       is_dev_tools_open);
 }
 
-// static
-void PageLiveStateDecorator::SetAccessibilityMode(
-    content::WebContents* contents,
-    ui::AXMode accessibility_mode) {
-  SetPropertyForWebContentsPageNode(
-      contents, &PageLiveStateDataImpl::set_accessibility_mode,
-      accessibility_mode);
-}
-
 void PageLiveStateDecorator::OnPassedToGraph(Graph* graph) {
   graph->GetNodeDataDescriberRegistry()->RegisterDescriber(this,
                                                            "PageLiveStateDecorator");
@@ -410,6 +440,8 @@ base::Value::Dict PageLiveStateDecorator::DescribePageNodeData(
   base::Value::Dict ret;
   ret.Set("IsConnectedToUSBDevice", data->IsConnectedToUSBDevice());
   ret.Set("IsConnectedToBluetoothDevice", data->IsConnectedToBluetoothDevice());
+  ret.Set("IsConnectedToHidDevice", data->IsConnectedToHidDevice());
+  ret.Set("IsConnectedToSerialPort", data->IsConnectedToSerialPort());
   ret.Set("IsCapturingVideo", data->IsCapturingVideo());
   ret.Set("IsCapturingAudio", data->IsCapturingAudio());
   ret.Set("IsBeingMirrored", data->IsBeingMirrored());
@@ -420,7 +452,6 @@ base::Value::Dict PageLiveStateDecorator::DescribePageNodeData(
   ret.Set("IsActiveTab", data->IsActiveTab());
   ret.Set("IsPinnedTab", data->IsPinnedTab());
   ret.Set("IsDevToolsOpen", data->IsDevToolsOpen());
-  ret.Set("AccessibilityMode", data->GetAccessibilityMode().ToString());
   ret.Set("UpdatedTitleOrFaviconInBackground",
           data->UpdatedTitleOrFaviconInBackground());
 

@@ -259,6 +259,7 @@ bool Moc::parseEnum(EnumDef *def, ClassDef *containingClass)
             return false; // anonymous enum
         isTypdefEnum = true;
     }
+    def->lineNumber = symbol().lineNum;
     if (test(COLON)) { // C++11 strongly typed enum
         // enum Foo : unsigned long { ... };
         def->type = normalizeType(parseType().name);
@@ -464,6 +465,8 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
     }
     next(LPAREN, "Not a signal or slot declaration");
     def->name = tempType.name;
+    def->lineNumber = symbol().lineNum;
+
     scopedFunctionName = tempType.isScoped;
 
     if (!test(RPAREN)) {
@@ -550,6 +553,7 @@ bool Moc::parseMaybeFunction(const ClassDef *cdef, FunctionDef *def)
     bool scopedFunctionName = false;
     if (test(LPAREN)) {
         def->name = def->type.name;
+        def->lineNumber = symbol().lineNum;
         scopedFunctionName = def->type.isScoped;
         if (def->name == cdef->classname) {
             def->isDestructor = tilde;
@@ -583,6 +587,7 @@ bool Moc::parseMaybeFunction(const ClassDef *cdef, FunctionDef *def)
         if (!test(LPAREN))
             return false;
         def->name = tempType.name;
+        def->lineNumber = symbol().lineNum;
         scopedFunctionName = tempType.isScoped;
     }
 
@@ -1047,7 +1052,10 @@ void Moc::parse()
                 QByteArray msg("Potential QML registration macro was found, but no header containing it was included.\n"
                                "This might cause runtime errors in QML applications\n"
                                "Include <QtQmlIntegration/qqmlintegration.h> or <QtQml/qqmlregistration.h> to fix this.");
-                warning(qmlRegistrationMacroSymbol, msg.constData());
+                if (qmlMacroWarningIsFatal)
+                    error(qmlRegistrationMacroSymbol, msg.constData());
+                else
+                    warning(qmlRegistrationMacroSymbol, msg.constData());
             }
 
             if (!def.hasQObject && !def.hasQGadget && def.signalList.isEmpty() && def.slotList.isEmpty()
@@ -1100,6 +1108,18 @@ void Moc::parse()
                 classList += def;
         }
     }
+}
+
+QByteArrayView Moc::strippedFileName() const
+{
+    QByteArrayView fn = QByteArrayView(filename);
+
+    auto isSlash = [](char ch) { return ch == '/' || ch == '\\'; };
+    auto rit = std::find_if(fn.crbegin(), fn.crend(), isSlash);
+    if (rit != fn.crend())
+        fn = fn.last(rit - fn.crbegin());
+
+    return fn;
 }
 
 static bool any_type_contains(const QList<PropertyDef> &properties, const QByteArray &pattern)
@@ -1169,12 +1189,7 @@ static QByteArrayList requiredQtContainers(const QList<ClassDef> &classes)
 
 void Moc::generate(FILE *out, FILE *jsonOutput)
 {
-    QByteArrayView fn = QByteArrayView(filename);
-
-    auto isSlash = [](char ch) { return ch == '/' || ch == '\\'; };
-    auto rit = std::find_if(fn.crbegin(), fn.crend(), isSlash);
-    if (rit != fn.crend())
-        fn = fn.last(rit - fn.crbegin());
+    QByteArrayView fn = strippedFileName();
 
     fprintf(out, "/****************************************************************************\n"
             "** Meta object code from reading C++ file '%s'\n**\n" , fn.constData());
@@ -1356,6 +1371,7 @@ void Moc::createPropertyDef(PropertyDef &propDef, int propertyIndex, Moc::Proper
 {
     propDef.location = index;
     propDef.relativeIndex = propertyIndex;
+    propDef.lineNumber = symbol().lineNum;
 
     Type t = parseType();
     QByteArray type = t.name;
@@ -2146,6 +2162,7 @@ QJsonObject FunctionDef::toJson(int index) const
 
     if (revision > 0)
         fdef["revision"_L1] = revision;
+    fdef["lineNumber"_L1] = lineNumber;
 
     if (wasCloned)
         fdef["isCloned"_L1] = true;
@@ -2210,6 +2227,7 @@ QJsonObject PropertyDef::toJson() const
     prop["final"_L1] = final;
     prop["required"_L1] = required;
     prop["index"_L1] = relativeIndex;
+    prop["lineNumber"_L1] = lineNumber;
     if (revision > 0)
         prop["revision"_L1] = revision;
 
@@ -2221,6 +2239,7 @@ QJsonObject EnumDef::toJson(const ClassDef &cdef) const
     QJsonObject def;
     uint flags = this->flags | cdef.enumDeclarations.value(name);
     def["name"_L1] = QString::fromUtf8(name);
+    def["lineNumber"_L1] = lineNumber;
     if (!enumName.isEmpty())
         def["alias"_L1] = QString::fromUtf8(enumName);
     if (!type.isEmpty())

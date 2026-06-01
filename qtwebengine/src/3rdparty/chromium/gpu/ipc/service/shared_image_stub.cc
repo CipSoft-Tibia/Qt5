@@ -64,11 +64,11 @@ SharedImageStub::SharedImageStub(GpuChannel* channel, int32_t route_id)
     : channel_(channel),
       command_buffer_id_(
           CommandBufferIdFromChannelAndRoute(channel->client_id(), route_id)),
-      sequence_(channel->scheduler()->CreateSequence(SchedulingPriority::kLow,
-                                                     channel_->task_runner())) {
-  channel->scheduler()->CreateSyncPointClientState(
-      sequence_, CommandBufferNamespace::GPU_IO, command_buffer_id_);
-}
+      sequence_(
+          channel->scheduler()->CreateSequence(SchedulingPriority::kLow,
+                                               channel_->task_runner(),
+                                               CommandBufferNamespace::GPU_IO,
+                                               command_buffer_id_)) {}
 
 SharedImageStub::~SharedImageStub() {
   channel_->scheduler()->DestroySequence(sequence_);
@@ -150,6 +150,16 @@ void SharedImageStub::ExecuteDeferredRequest(
       break;
     }
 
+    case mojom::DeferredSharedImageRequest::Tag::kCreateSharedImagePool:
+      OnCreateSharedImagePool(
+          std::move(request->get_create_shared_image_pool()));
+      break;
+
+    case mojom::DeferredSharedImageRequest::Tag::kDestroySharedImagePool:
+      OnDestroySharedImagePool(
+          std::move(request->get_destroy_shared_image_pool()));
+      break;
+
 #if BUILDFLAG(IS_WIN)
     case mojom::DeferredSharedImageRequest::Tag::kCreateSwapChain:
       OnCreateSwapChain(std::move(request->get_create_swap_chain()));
@@ -197,15 +207,17 @@ bool SharedImageStub::GetGpuMemoryBufferHandleInfo(
   return true;
 }
 
-bool SharedImageStub::CreateSharedImage(const Mailbox& mailbox,
-                                        gfx::GpuMemoryBufferHandle handle,
-                                        viz::SharedImageFormat format,
-                                        const gfx::Size& size,
-                                        const gfx::ColorSpace& color_space,
-                                        GrSurfaceOrigin surface_origin,
-                                        SkAlphaType alpha_type,
-                                        SharedImageUsageSet usage,
-                                        std::string debug_label) {
+bool SharedImageStub::CreateSharedImage(
+    const Mailbox& mailbox,
+    gfx::GpuMemoryBufferHandle handle,
+    viz::SharedImageFormat format,
+    const gfx::Size& size,
+    const gfx::ColorSpace& color_space,
+    GrSurfaceOrigin surface_origin,
+    SkAlphaType alpha_type,
+    SharedImageUsageSet usage,
+    std::string debug_label,
+    std::optional<SharedImagePoolId> pool_id) {
   TRACE_EVENT2("gpu", "SharedImageStub::CreateSharedImage", "width",
                size.width(), "height", size.height());
 #if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN)
@@ -222,9 +234,9 @@ bool SharedImageStub::CreateSharedImage(const Mailbox& mailbox,
     return false;
   }
 
-  if (!factory_->CreateSharedImage(mailbox, format, size, color_space,
-                                   surface_origin, alpha_type, usage,
-                                   GetLabel(debug_label), std::move(handle))) {
+  if (!factory_->CreateSharedImage(
+          mailbox, format, size, color_space, surface_origin, alpha_type, usage,
+          GetLabel(debug_label), std::move(handle), std::move(pool_id))) {
     LOG(ERROR) << kSICreationFailureError;
     OnError();
     return false;
@@ -271,9 +283,34 @@ void SharedImageStub::OnCreateSharedImage(
           params->si_info->meta.size, params->si_info->meta.color_space,
           params->si_info->meta.surface_origin,
           params->si_info->meta.alpha_type, gpu::kNullSurfaceHandle,
-          params->si_info->meta.usage,
-          GetLabel(params->si_info->debug_label))) {
+          params->si_info->meta.usage, GetLabel(params->si_info->debug_label),
+          std::move(params->pool_id))) {
     LOG(ERROR) << kSICreationFailureError;
+    OnError();
+    return;
+  }
+}
+
+void SharedImageStub::OnCreateSharedImagePool(
+    mojom::CreateSharedImagePoolParamsPtr params) {
+  TRACE_EVENT1("gpu", "SharedImageStub::OnCreateSharedImagePool", "pool_id",
+               params->pool_id.ToString());
+
+  if (!factory_->CreateSharedImagePool(params->pool_id,
+                                       std::move(params->client_remote))) {
+    LOG(ERROR) << "Unable to create SharedImagePool.";
+    OnError();
+    return;
+  }
+}
+
+void SharedImageStub::OnDestroySharedImagePool(
+    mojom::DestroySharedImagePoolParamsPtr params) {
+  TRACE_EVENT1("gpu", "SharedImageStub::OnDestroySharedImagePool", "pool_id",
+               params->pool_id.ToString());
+
+  if (!factory_->DestroySharedImagePool(params->pool_id)) {
+    LOG(ERROR) << "Unable to destroy SharedImagePool.";
     OnError();
     return;
   }
@@ -284,8 +321,19 @@ void SharedImageStub::OnCreateSharedImageWithData(
   TRACE_EVENT2("gpu", "SharedImageStub::OnCreateSharedImageWithData", "width",
                params->si_info->meta.size.width(), "height",
                params->si_info->meta.size.height());
-  bool needs_gl = HasGLES2ReadOrWriteUsage(params->si_info->meta.usage);
+
+  auto& metadata = params->si_info->meta;
+
+  bool needs_gl = HasGLES2ReadOrWriteUsage(metadata.usage);
   if (!MakeContextCurrent(needs_gl)) {
+    OnError();
+    return;
+  }
+
+  auto min_size = metadata.format.MaybeEstimatedSizeInBytes(metadata.size);
+  if (params->pixel_data_size == 0 || !min_size ||
+      params->pixel_data_size < min_size.value()) {
+    LOG(ERROR) << "SharedImageStub: upload data size is invalid";
     OnError();
     return;
   }
@@ -312,10 +360,8 @@ void SharedImageStub::OnCreateSharedImageWithData(
       memory.subspan(params->pixel_data_offset, params->pixel_data_size);
 
   if (!factory_->CreateSharedImage(
-          params->mailbox, params->si_info->meta.format,
-          params->si_info->meta.size, params->si_info->meta.color_space,
-          params->si_info->meta.surface_origin,
-          params->si_info->meta.alpha_type, params->si_info->meta.usage,
+          params->mailbox, metadata.format, metadata.size, metadata.color_space,
+          metadata.surface_origin, metadata.alpha_type, metadata.usage,
           GetLabel(params->si_info->debug_label), subspan)) {
     LOG(ERROR) << kSICreationFailureError;
     OnError();
@@ -340,7 +386,7 @@ void SharedImageStub::OnCreateSharedImageWithBuffer(
           params->si_info->meta.color_space,
           params->si_info->meta.surface_origin,
           params->si_info->meta.alpha_type, params->si_info->meta.usage,
-          GetLabel(params->si_info->debug_label))) {
+          GetLabel(params->si_info->debug_label), std::move(params->pool_id))) {
     return;
   }
 }

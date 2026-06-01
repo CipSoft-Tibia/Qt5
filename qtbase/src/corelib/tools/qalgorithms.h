@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QALGORITHMS_H
 #define QALGORITHMS_H
@@ -9,6 +10,7 @@
 #endif
 
 #include <QtCore/qglobal.h>
+#include <QtCore/q20functional.h>
 
 #if __has_include(<bit>) && __cplusplus > 201703L
 #include <bit>
@@ -435,6 +437,25 @@ QT_POPCOUNT_RELAXED_CONSTEXPR inline uint qCountLeadingZeroBits(unsigned long v)
 }
 
 #undef QT_POPCOUNT_RELAXED_CONSTEXPR
+
+template <typename InputIterator, typename Result, typename Separator = Result,
+          typename Projection = q20::identity>
+Result qJoin(InputIterator first, InputIterator last, Result init, const Separator &separator = {},
+             Projection p = {})
+{
+    if (first != last) {
+        init += std::invoke(p, *first);
+        ++first;
+    }
+
+    while (first != last) {
+        init += separator;
+        init += std::invoke(p, *first);
+        ++first;
+    }
+
+    return init;
+}
 
 namespace QtPrivate {
 

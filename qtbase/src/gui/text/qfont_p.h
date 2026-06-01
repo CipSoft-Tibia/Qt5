@@ -163,12 +163,19 @@ private:
 class Q_GUI_EXPORT QFontPrivate
 {
 public:
+    enum class EngineQueryOption {
+        Default = 0,
+        IgnoreSmallCapsEngine = 0x1,
+    };
+    Q_DECLARE_FLAGS(EngineQueryOptions, EngineQueryOption)
 
     QFontPrivate();
     QFontPrivate(const QFontPrivate &other);
+    QFontPrivate &operator=(const QFontPrivate &) = delete;
     ~QFontPrivate();
 
     QFontEngine *engineForScript(int script) const;
+    QFontEngine *engineForCharacter(char32_t c, EngineQueryOptions opt = {}) const;
     void alterCharForCapitalization(QChar &c) const;
 
     QAtomicInt ref;
@@ -185,7 +192,7 @@ public:
 
     QFixed letterSpacing;
     QFixed wordSpacing;
-    QHash<QFont::Tag, quint32> features;
+    QMap<QFont::Tag, quint32> features;
 
     mutable QFontPrivate *scFont;
     QFont smallCapsFont() const { return QFont(smallCapsFontPrivate()); }
@@ -206,10 +213,8 @@ public:
     void setVariableAxis(QFont::Tag tag, float value);
     void unsetVariableAxis(QFont::Tag tag);
     bool hasVariableAxis(QFont::Tag tag, float value) const;
-
-private:
-    QFontPrivate &operator=(const QFontPrivate &) { return *this; }
 };
+Q_DECLARE_OPERATORS_FOR_FLAGS(QFontPrivate::EngineQueryOptions)
 
 
 class Q_GUI_EXPORT QFontCache : public QObject
@@ -293,6 +298,7 @@ private:
     const int m_id;
 };
 
+Q_GUI_EXPORT QPoint qt_defaultDpis();
 Q_GUI_EXPORT int qt_defaultDpiX();
 Q_GUI_EXPORT int qt_defaultDpiY();
 Q_GUI_EXPORT int qt_defaultDpi();

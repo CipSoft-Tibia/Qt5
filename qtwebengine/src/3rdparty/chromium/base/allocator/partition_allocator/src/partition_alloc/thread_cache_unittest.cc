@@ -89,7 +89,6 @@ std::unique_ptr<PartitionAllocatorForTesting> CreateAllocator(
 #if !PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
   opts.thread_cache = PartitionOptions::kEnabled;
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
-  opts.star_scan_quarantine = PartitionOptions::kAllowed;
   opts.use_pool_offset_freelists =
       (encoding == internal::PartitionFreelistEncoding::kPoolOffsetFreeList)
           ? PartitionOptions::kEnabled
@@ -117,6 +116,7 @@ class PartitionAllocThreadCacheTest
       ThreadCache::RemoveTombstoneForTesting();
     }
   }
+
  protected:
   void SetUp() override {
     PartitionRoot* root = allocator_->root();
@@ -163,7 +163,7 @@ class PartitionAllocThreadCacheTest
   // Returns the size of the smallest bucket fitting an allocation of
   // |sizeof(ThreadCache)| bytes.
   size_t GetBucketSizeForThreadCache() {
-    size_t tc_bucket_index = root()->SizeToBucketIndex(
+    size_t tc_bucket_index = PartitionRoot::SizeToBucketIndex(
         sizeof(ThreadCache), PartitionRoot::BucketDistribution::kNeutral);
     auto* tc_bucket = &root()->buckets[tc_bucket_index];
     return tc_bucket->slot_size;
@@ -301,7 +301,6 @@ TEST_P(PartitionAllocThreadCacheTest, Purge) {
 
 TEST_P(PartitionAllocThreadCacheTest, NoCrossPartitionCache) {
   PartitionOptions opts;
-  opts.star_scan_quarantine = PartitionOptions::kAllowed;
   PartitionAllocatorForTesting allocator(opts);
 
   size_t bucket_index = FillThreadCacheAndReturnIndex(kSmallSize);
@@ -809,7 +808,7 @@ PA_NO_THREAD_SAFETY_ANALYSIS {
 
 TEST_P(PartitionAllocThreadCacheTest, PeriodicPurge) {
   auto& registry = ThreadCacheRegistry::Instance();
-  auto NextInterval = [&registry]() {
+  auto NextInterval = [&registry] {
     return internal::base::Microseconds(
         registry.GetPeriodicPurgeNextIntervalInMicroseconds());
   };
@@ -914,7 +913,7 @@ class ThreadDelegateForPeriodicPurgeSumsOverAllThreads
 TEST_P(PartitionAllocThreadCacheTest,
        DISABLED_PeriodicPurgeSumsOverAllThreads) {
   auto& registry = ThreadCacheRegistry::Instance();
-  auto NextInterval = [&registry]() {
+  auto NextInterval = [&registry] {
     return internal::base::Microseconds(
         registry.GetPeriodicPurgeNextIntervalInMicroseconds());
   };
@@ -1399,19 +1398,19 @@ TEST_P(PartitionAllocThreadCacheTest, AllocationRecording) {
   void* ptr =
       root()->Alloc(root()->AdjustSizeForExtrasSubtract(kSmallSize), "");
   ASSERT_TRUE(ptr);
-  expected_total_size += root()->GetUsableSize(ptr);
+  expected_total_size += PartitionRoot::GetUsableSize(ptr);
   void* ptr2 = root()->Alloc(
       root()->AdjustSizeForExtrasSubtract(kBucketedNotCached), "");
   ASSERT_TRUE(ptr2);
-  expected_total_size += root()->GetUsableSize(ptr2);
+  expected_total_size += PartitionRoot::GetUsableSize(ptr2);
   void* ptr3 =
       root()->Alloc(root()->AdjustSizeForExtrasSubtract(kDirectMapped), "");
   ASSERT_TRUE(ptr3);
-  expected_total_size += root()->GetUsableSize(ptr3);
+  expected_total_size += PartitionRoot::GetUsableSize(ptr3);
   void* ptr4 =
       root()->Alloc(root()->AdjustSizeForExtrasSubtract(kSingleSlot), "");
   ASSERT_TRUE(ptr4);
-  expected_total_size += root()->GetUsableSize(ptr4);
+  expected_total_size += PartitionRoot::GetUsableSize(ptr4);
 
   EXPECT_EQ(4u, tcache->thread_alloc_stats().alloc_count);
   EXPECT_EQ(expected_total_size, tcache->thread_alloc_stats().alloc_total_size);
@@ -1460,7 +1459,7 @@ TEST_P(PartitionAllocThreadCacheTest, AllocationRecordingAligned) {
     void* ptr = root()->AlignedAlloc(alignment, requested_size);
     ASSERT_TRUE(ptr);
     alloc_count++;
-    total_size += root()->GetUsableSize(ptr);
+    total_size += PartitionRoot::GetUsableSize(ptr);
     EXPECT_EQ(alloc_count, tcache->thread_alloc_stats().alloc_count);
     EXPECT_EQ(total_size, tcache->thread_alloc_stats().alloc_total_size);
     root()->Free(ptr);
@@ -1499,14 +1498,14 @@ TEST_P(PartitionAllocThreadCacheTest, AllocationRecordingRealloc) {
     void* ptr = root()->Alloc(size);
     ASSERT_TRUE(ptr);
     alloc_count++;
-    size_t usable_size = root()->GetUsableSize(ptr);
+    size_t usable_size = PartitionRoot::GetUsableSize(ptr);
     total_alloc_size += usable_size;
 
     ptr = root()->Realloc(ptr, new_size, "");
     ASSERT_TRUE(ptr);
     total_dealloc_size += usable_size;
     dealloc_count++;
-    usable_size = root()->GetUsableSize(ptr);
+    usable_size = PartitionRoot::GetUsableSize(ptr);
     total_alloc_size += usable_size;
     alloc_count++;
 

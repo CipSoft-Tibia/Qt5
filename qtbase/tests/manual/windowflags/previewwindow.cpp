@@ -21,7 +21,7 @@ PreviewWindow::PreviewWindow(QWindow *parent)
     resize(400, 400);
 }
 
-void PreviewWindow::paintEvent(QPaintEvent *event)
+void PreviewWindow::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     QRect rect(0, 0, width(), height());

@@ -27,6 +27,7 @@
 #include "core/fxge/dib/fx_dib.h"
 
 class CPDF_Document;
+class CPDF_IccProfile;
 class CPDF_IndexedCS;
 class CPDF_PatternCS;
 
@@ -110,6 +111,8 @@ class CPDF_ColorSpace : public Retainable, public Observable {
   virtual std::optional<FX_RGB_STRUCT<float>> GetRGB(
       pdfium::span<const float> pBuf) const = 0;
 
+  virtual RetainPtr<CPDF_IccProfile> GetIccProfile() const;
+
   virtual void GetDefaultValue(int iComponent,
                                float* value,
                                float* min,
@@ -147,8 +150,8 @@ class CPDF_ColorSpace : public Retainable, public Observable {
   bool HasSameArray(const CPDF_Object* pObj) const { return m_pArray == pObj; }
 
  private:
-  friend class CPDF_CalGray_TranslateImageLine_Test;
-  friend class CPDF_CalRGB_TranslateImageLine_Test;
+  friend class CPDFCalGrayTest_TranslateImageLine_Test;
+  friend class CPDFCalRGBTest_TranslateImageLine_Test;
 
   static RetainPtr<CPDF_ColorSpace> AllocateColorSpace(
       ByteStringView bsFamilyName);

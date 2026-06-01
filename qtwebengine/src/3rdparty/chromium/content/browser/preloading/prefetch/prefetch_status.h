@@ -181,7 +181,9 @@ enum class PrefetchStatus {
 
   // Whether this prefetch is heldback for counterfactual logging.
   kPrefetchHeldback = 40,
-  kPrefetchAllowed = 41,
+
+  // DEPRECATED
+  // kPrefetchAllowed = 41,
 
   // The response of the prefetch is used for the next navigation. This is the
   // final successful state.
@@ -224,7 +226,7 @@ enum class PrefetchStatus {
   // The max value of the PrefetchStatus. Update this when new enums are added.
   kMaxValue = kPrefetchEvictedForNewerPrefetch,
 };
-// LINT.ThenChange()
+// LINT.ThenChange(/tools/metrics/histograms/enums.xml)
 
 // Mapping from `PrefetchStatus` to `PreloadingFailureReason`.
 static_assert(

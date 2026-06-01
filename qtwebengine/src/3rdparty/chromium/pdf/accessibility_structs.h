@@ -17,11 +17,24 @@
 
 namespace chrome_pdf {
 
+struct PageCharacterIndex {
+  // Index of PDF page.
+  uint32_t page_index = 0;
+  // Index of character within the PDF page.
+  uint32_t char_index = 0;
+};
+
+struct Selection {
+  PageCharacterIndex start;
+  PageCharacterIndex end;
+};
+
 struct AccessibilityDocInfo {
   bool operator==(const AccessibilityDocInfo& other) const;
   bool operator!=(const AccessibilityDocInfo& other) const;
 
   uint32_t page_count = 0;
+  bool is_tagged = false;
   bool text_accessible = false;
   bool text_copyable = false;
 };
@@ -31,6 +44,7 @@ struct AccessibilityPageInfo {
   gfx::Rect bounds;
   uint32_t text_run_count = 0;
   uint32_t char_count = 0;
+  bool is_searchified = false;
 };
 
 // See PDF Reference 1.7, page 402, table 5.3.
@@ -84,16 +98,27 @@ enum class AccessibilityTextDirection {
 struct AccessibilityTextRunInfo {
   AccessibilityTextRunInfo();
   AccessibilityTextRunInfo(uint32_t len,
+                           const std::string& tag_type,
                            const gfx::RectF& bounds,
                            AccessibilityTextDirection direction,
                            const AccessibilityTextStyleInfo& style);
+  AccessibilityTextRunInfo(uint32_t len,
+                           const std::string& tag_type,
+                           const gfx::RectF& bounds,
+                           AccessibilityTextDirection direction,
+                           const AccessibilityTextStyleInfo& style,
+                           bool is_searchified);
   AccessibilityTextRunInfo(const AccessibilityTextRunInfo& other);
   ~AccessibilityTextRunInfo();
 
   uint32_t len = 0;
+  // One of various types defined in a PDF tag, such as "Span", "P", "H1", "LI",
+  // etc.
+  std::string tag_type;
   gfx::RectF bounds;
   AccessibilityTextDirection direction = AccessibilityTextDirection::kNone;
   AccessibilityTextStyleInfo style;
+  bool is_searchified = false;
 };
 
 struct AccessibilityCharInfo {
@@ -368,10 +393,7 @@ struct AccessibilityViewportInfo {
   gfx::Point scroll;
   gfx::Point offset;
   uint32_t orientation = 0;
-  uint32_t selection_start_page_index = 0;
-  uint32_t selection_start_char_index = 0;
-  uint32_t selection_end_page_index = 0;
-  uint32_t selection_end_char_index = 0;
+  Selection selection;
   AccessibilityFocusInfo focus_info;
 };
 
@@ -416,13 +438,6 @@ enum class AccessibilityScrollAlignment {
   kClosestToEdge,
   // Last enum value marker.
   kMaxValue = kClosestToEdge,
-};
-
-struct PageCharacterIndex {
-  // Index of PDF page.
-  uint32_t page_index = 0;
-  // Index of character within the PDF page.
-  uint32_t char_index = 0;
 };
 
 struct AccessibilityActionData {

@@ -47,11 +47,11 @@ private slots:
     void construction();
 
     // lines
-    void readLineFromDevice_data();
+    void readLineFromDevice_data() { generateLineData(false); }
     void readLineFromDevice();
-    void readLineFromString_data();
+    void readLineFromString_data() { generateLineData(true); }
     void readLineFromString();
-    void readLineFromTextDevice_data();
+    void readLineFromTextDevice_data() { generateLineData(false); }
     void readLineFromTextDevice();
     void readLineUntilNull();
     void readLineMaxlen_data();
@@ -60,9 +60,9 @@ private slots:
     void readLineInto();
 
     // all
-    void readAllFromDevice_data();
+    void readAllFromDevice_data() { generateAllData(false); }
     void readAllFromDevice();
-    void readAllFromString_data();
+    void readAllFromString_data() { generateAllData(true); }
     void readAllFromString();
     void readLineFromStringThenChangeString();
 
@@ -70,40 +70,40 @@ private slots:
     void setDevice();
 
     // char operators
-    void QChar_operators_FromDevice_data();
+    void QChar_operators_FromDevice_data() { generateOperatorCharData(false); }
     void QChar_operators_FromDevice();
-    void char16_t_operators_FromDevice_data();
+    void char16_t_operators_FromDevice_data() { generateOperatorCharData(false); }
     void char16_t_operators_FromDevice();
-    void char_operators_FromDevice_data();
+    void char_operators_FromDevice_data() { generateOperatorCharData(false); }
     void char_operators_FromDevice();
 
     // natural number read operator
-    void signedShort_read_operator_FromDevice_data();
-    void signedShort_read_operator_FromDevice();
-    void unsignedShort_read_operator_FromDevice_data();
-    void unsignedShort_read_operator_FromDevice();
-    void signedInt_read_operator_FromDevice_data();
-    void signedInt_read_operator_FromDevice();
-    void unsignedInt_read_operator_FromDevice_data();
-    void unsignedInt_read_operator_FromDevice();
-    void qlonglong_read_operator_FromDevice_data();
-    void qlonglong_read_operator_FromDevice();
-    void qulonglong_read_operator_FromDevice_data();
-    void qulonglong_read_operator_FromDevice();
+    void signedShort_read_operator_FromDevice_data() { generateNaturalNumbersData(false); }
+    void signedShort_read_operator_FromDevice() { integral_read_operator_FromDevice<signed short>(); }
+    void unsignedShort_read_operator_FromDevice_data() { generateNaturalNumbersData(false); }
+    void unsignedShort_read_operator_FromDevice() { integral_read_operator_FromDevice<unsigned short>(); }
+    void signedInt_read_operator_FromDevice_data() { generateNaturalNumbersData(false); }
+    void signedInt_read_operator_FromDevice() { integral_read_operator_FromDevice<signed int>(); }
+    void unsignedInt_read_operator_FromDevice_data() { generateNaturalNumbersData(false); }
+    void unsignedInt_read_operator_FromDevice() { integral_read_operator_FromDevice<unsigned int>(); }
+    void qlonglong_read_operator_FromDevice_data() { generateNaturalNumbersData(false); }
+    void qlonglong_read_operator_FromDevice() { integral_read_operator_FromDevice<qlonglong>(); }
+    void qulonglong_read_operator_FromDevice_data() { generateNaturalNumbersData(false); }
+    void qulonglong_read_operator_FromDevice() { integral_read_operator_FromDevice<qulonglong>(); }
 
     // natural number write operator
     void signedShort_write_operator_ToDevice_data();
-    void signedShort_write_operator_ToDevice();
+    void signedShort_write_operator_ToDevice() { integral_write_operator_ToDevice<signed short>(); }
     void unsignedShort_write_operator_ToDevice_data();
-    void unsignedShort_write_operator_ToDevice();
+    void unsignedShort_write_operator_ToDevice() { integral_write_operator_ToDevice<unsigned short>(); }
     void signedInt_write_operator_ToDevice_data();
-    void signedInt_write_operator_ToDevice();
+    void signedInt_write_operator_ToDevice() { integral_write_operator_ToDevice<signed int>(); }
     void unsignedInt_write_operator_ToDevice_data();
-    void unsignedInt_write_operator_ToDevice();
+    void unsignedInt_write_operator_ToDevice() { integral_write_operator_ToDevice<unsigned int>(); }
     void qlonglong_write_operator_ToDevice_data();
-    void qlonglong_write_operator_ToDevice();
+    void qlonglong_write_operator_ToDevice() { integral_write_operator_ToDevice<qlonglong>(); }
     void qulonglong_write_operator_ToDevice_data();
-    void qulonglong_write_operator_ToDevice();
+    void qulonglong_write_operator_ToDevice() { integral_write_operator_ToDevice<qulonglong>(); }
 
     void int_read_with_locale_data();
     void int_read_with_locale();
@@ -112,16 +112,16 @@ private slots:
     void int_write_with_locale();
 
     // real number read operator
-    void float_read_operator_FromDevice_data();
-    void float_read_operator_FromDevice();
-    void double_read_operator_FromDevice_data();
-    void double_read_operator_FromDevice();
+    void float_read_operator_FromDevice_data() { generateRealNumbersData(false); }
+    void float_read_operator_FromDevice() { real_read_operator_FromDevice<float>(); }
+    void double_read_operator_FromDevice_data() { generateRealNumbersData(false); }
+    void double_read_operator_FromDevice() { real_read_operator_FromDevice<double>(); }
 
     // real number write operator
-    void float_write_operator_ToDevice_data();
-    void float_write_operator_ToDevice();
-    void double_write_operator_ToDevice_data();
-    void double_write_operator_ToDevice();
+    void float_write_operator_ToDevice_data() { generateRealNumbersDataWrite(); }
+    void float_write_operator_ToDevice() { real_write_operator_ToDevice<float>(); }
+    void double_write_operator_ToDevice_data() { generateRealNumbersDataWrite(); }
+    void double_write_operator_ToDevice() { real_write_operator_ToDevice<double>(); }
 
     void double_write_with_flags_data();
     void double_write_with_flags();
@@ -130,11 +130,11 @@ private slots:
     void double_write_with_precision();
 
     // text read operators
-    void charPtr_read_operator_FromDevice_data();
+    void charPtr_read_operator_FromDevice_data() { generateStringData(false); }
     void charPtr_read_operator_FromDevice();
-    void stringRef_read_operator_FromDevice_data();
+    void stringRef_read_operator_FromDevice_data() { generateStringData(false); }
     void stringRef_read_operator_FromDevice();
-    void byteArray_read_operator_FromDevice_data();
+    void byteArray_read_operator_FromDevice_data() { generateStringData(false); }
     void byteArray_read_operator_FromDevice();
 
     // text write operators
@@ -143,6 +143,9 @@ private slots:
     void latin1String_write_operator_ToDevice();
     void stringref_write_operator_ToDevice();
     void stringview_write_operator_ToDevice();
+
+    // bool operator
+    void stream_bool_operator_Test();
 
     // other
     void skipWhiteSpace_data();
@@ -209,13 +212,17 @@ private slots:
     void autodetectUnicode();
 
 private:
-    void generateLineData(bool for_QString);
-    void generateAllData(bool for_QString);
-    void generateOperatorCharData(bool for_QString);
-    void generateNaturalNumbersData(bool for_QString);
-    void generateRealNumbersData(bool for_QString);
-    void generateStringData(bool for_QString);
-    void generateRealNumbersDataWrite();
+    void generateLineData(bool for_QString) const;
+    void generateAllData(bool for_QString) const;
+    void generateOperatorCharData(bool for_QString) const;
+    template <typename Whole> void integral_read_operator_FromDevice() const;
+    void generateNaturalNumbersData(bool for_QString) const;
+    template <typename Whole> void integral_write_operator_ToDevice() const;
+    template <typename Real> void real_read_operator_FromDevice() const;
+    void generateRealNumbersData(bool for_QString) const;
+    void generateStringData(bool for_QString) const;
+    template <typename Real> void real_write_operator_ToDevice() const;
+    void generateRealNumbersDataWrite() const;
 
     QTemporaryDir tempDir;
     QString testFileName;
@@ -397,7 +404,7 @@ void tst_QTextStream::construction()
 
 }
 
-void tst_QTextStream::generateLineData(bool for_QString)
+void tst_QTextStream::generateLineData(bool for_QString) const
 {
     QTest::addColumn<QByteArray>("data");
     QTest::addColumn<QStringList>("lines");
@@ -485,12 +492,6 @@ void tst_QTextStream::generateLineData(bool for_QString)
     QTest::newRow("oneline/cr") << QByteArray("ole\r") << (QStringList() << "ole");
     if (!for_QString)
         QTest::newRow("utf16-BE/cr") << QByteArray("\xfe\xff\x00\xe5\x00\x67\x00\x65\x00\x0d", 10) << (QStringList() << QLatin1String("\345ge"));
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::readLineFromDevice_data()
-{
-    generateLineData(false);
 }
 
 // ------------------------------------------------------------------------------
@@ -645,12 +646,6 @@ void tst_QTextStream::readLineInto()
 }
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::readLineFromString_data()
-{
-    generateLineData(true);
-}
-
-// ------------------------------------------------------------------------------
 void tst_QTextStream::readLineFromString()
 {
     QFETCH(QByteArray, data);
@@ -696,18 +691,12 @@ void tst_QTextStream::setDevice()
 
     QString text;
     QTextStream stream(&bufferOld);
-    stream >> text;
+    QVERIFY(stream >> text);
     QCOMPARE(text, QString("Hello"));
 
     stream.setDevice(&bufferNew);
-    stream >> text;
+    QVERIFY(stream >> text);
     QCOMPARE(text, QString("How"));
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::readLineFromTextDevice_data()
-{
-    generateLineData(false);
 }
 
 // ------------------------------------------------------------------------------
@@ -732,8 +721,7 @@ void tst_QTextStream::readLineFromTextDevice()
             if (i & 1) {
                 QChar c;
                 while (!stream.atEnd()) {
-                    stream >> c;
-                    if (stream.status() == QTextStream::Ok) {
+                    if (stream >> c) {
                         if (c != QLatin1Char('\n') && c != QLatin1Char('\r'))
                             line += c;
                         if (c == QLatin1Char('\n'))
@@ -753,7 +741,7 @@ void tst_QTextStream::readLineFromTextDevice()
 }
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::generateAllData(bool for_QString)
+void tst_QTextStream::generateAllData(bool for_QString) const
 {
     QTest::addColumn<QByteArray>("input");
     QTest::addColumn<QString>("output");
@@ -832,12 +820,6 @@ void tst_QTextStream::readLineUntilNull()
 }
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::readAllFromDevice_data()
-{
-    generateAllData(false);
-}
-
-// ------------------------------------------------------------------------------
 void tst_QTextStream::readAllFromDevice()
 {
     QFETCH(QByteArray, input);
@@ -848,12 +830,6 @@ void tst_QTextStream::readAllFromDevice()
 
     QTextStream stream(&buffer);
     QCOMPARE(stream.readAll(), output);
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::readAllFromString_data()
-{
-    generateAllData(true);
 }
 
 // ------------------------------------------------------------------------------
@@ -1111,7 +1087,7 @@ void tst_QTextStream::binTest()
     QByteArray array;
     QTextStream stream(&array);
 
-    stream << Qt::showbase << Qt::bin << number;
+    QVERIFY(stream << Qt::showbase << Qt::bin << number);
     stream.flush();
     QCOMPARE(array.constData(), data.constData());
 }
@@ -1135,7 +1111,7 @@ void tst_QTextStream::octTest()
     QByteArray array;
     QTextStream stream(&array);
 
-    stream << Qt::showbase << Qt::oct << number;
+    QVERIFY(stream << Qt::showbase << Qt::oct << number);
     stream.flush();
     QCOMPARE(array, data);
 }
@@ -1147,13 +1123,13 @@ void tst_QTextStream::zeroTermination()
     char c = '@';
 
     QTest::ignoreMessage(QtWarningMsg, "QTextStream: No device");
-    stream >> c;
+    QVERIFY(stream >> c);
     QCOMPARE(c, '\0');
 
     c = '@';
 
     QTest::ignoreMessage(QtWarningMsg, "QTextStream: No device");
-    stream >> &c;
+    QVERIFY(stream >> &c);
     QCOMPARE(c, '\0');
 }
 
@@ -1165,7 +1141,7 @@ void tst_QTextStream::ws_manipulator()
         QTextStream stream(&string);
 
         char a, b, c, d;
-        stream >> a >> b >> c >> d;
+        QVERIFY(stream >> a >> b >> c >> d);
         QCOMPARE(a, 'a');
         QCOMPARE(b, ' ');
         QCOMPARE(c, 'b');
@@ -1176,7 +1152,7 @@ void tst_QTextStream::ws_manipulator()
         QTextStream stream(&string);
 
         char a, b, c, d;
-        stream >> a >> Qt::ws >> b >> Qt::ws >> c >> Qt::ws >> d;
+        QVERIFY(stream >> a >> Qt::ws >> b >> Qt::ws >> c >> Qt::ws >> d);
         QCOMPARE(a, 'a');
         QCOMPARE(b, 'b');
         QCOMPARE(c, 'c');
@@ -1245,42 +1221,42 @@ void tst_QTextStream::seek()
 
     QTextStream stream(&file);
     QString tmp;
-    stream >> tmp;
+    QVERIFY(stream >> tmp);
     QCOMPARE(tmp, QString::fromLatin1("Network"));
 
     // QTextStream::seek(0) should both clear its internal read/write buffers
     // and seek the device.
     for (int i = 0; i < 4; ++i) {
         stream.seek(12 + i);
-        stream >> tmp;
+        QVERIFY(stream >> tmp);
         QCOMPARE(tmp, QString("Network").mid(i));
     }
     for (int i = 0; i < 4; ++i) {
         stream.seek(16 - i);
-        stream >> tmp;
+        QVERIFY(stream >> tmp);
         QCOMPARE(tmp, QString("Network").mid(4 - i));
     }
     stream.seek(139181);
-    stream >> tmp;
+    QVERIFY(stream >> tmp);
     QCOMPARE(tmp, QString("information"));
     stream.seek(388683);
-    stream >> tmp;
+    QVERIFY(stream >> tmp);
     QCOMPARE(tmp, QString("telephone"));
 
     // Also test this with a string
     QString words = QLatin1String("thisisa");
     QTextStream stream2(&words, QIODevice::ReadOnly);
-    stream2 >> tmp;
+    QVERIFY(stream2 >> tmp);
     QCOMPARE(tmp, QString::fromLatin1("thisisa"));
 
     for (int i = 0; i < 4; ++i) {
         stream2.seek(i);
-        stream2 >> tmp;
+        QVERIFY(stream2 >> tmp);
         QCOMPARE(tmp, QString("thisisa").mid(i));
     }
     for (int i = 0; i < 4; ++i) {
         stream2.seek(4 - i);
-        stream2 >> tmp;
+        QVERIFY(stream2 >> tmp);
         QCOMPARE(tmp, QString("thisisa").mid(4 - i));
     }
 }
@@ -1306,7 +1282,7 @@ void tst_QTextStream::pos()
         QVERIFY(stream.seek(0));
 
         QChar ch;
-        stream >> ch;
+        QVERIFY(stream >> ch);
         QCOMPARE(ch, QChar('t'));
 
         QCOMPARE(stream.pos(), qint64(1));
@@ -1315,19 +1291,19 @@ void tst_QTextStream::pos()
         QVERIFY(stream.seek(0));
 
         QString strtmp;
-        stream >> strtmp;
+        QVERIFY(stream >> strtmp);
         QCOMPARE(strtmp, QString("this"));
 
         QCOMPARE(stream.pos(), qint64(4));
         stream.seek(0);
         stream.seek(4);
 
-        stream >> ch;
+        QVERIFY(stream >> ch);
         QCOMPARE(ch, QChar(' '));
         QCOMPARE(stream.pos(), qint64(5));
 
         stream.seek(10);
-        stream >> strtmp;
+        QVERIFY(stream >> strtmp);
         QCOMPARE(strtmp, QString("test"));
         QCOMPARE(stream.pos(), qint64(14));
     }
@@ -1352,13 +1328,13 @@ void tst_QTextStream::pos()
         stream.seek(0);
 
         QString strtmp;
-        stream >> strtmp;
+        QVERIFY(stream >> strtmp);
         QCOMPARE(strtmp, QString("Network"));
         QCOMPARE(stream.pos(), qint64(19));
 
         stream.seek(2598);
         QCOMPARE(stream.pos(), qint64(2598));
-        stream >> strtmp;
+        QVERIFY(stream >> strtmp);
         QCOMPARE(stream.pos(), qint64(2607));
         QCOMPARE(strtmp, QString("locations"));
     }
@@ -1376,28 +1352,28 @@ void tst_QTextStream::pos2()
     QChar ch;
 
     QCOMPARE(stream.pos(), qint64(0));
-    stream >> ch;
+    QVERIFY(stream >> ch);
     QCOMPARE(ch, QChar('a'));
     QCOMPARE(stream.pos(), qint64(1));
 
     QString str;
-    stream >> str;
+    QVERIFY(stream >> str);
     QCOMPARE(str, QString("bcdef"));
     QCOMPARE(stream.pos(), qint64(6));
 
-    stream >> str;
+    QVERIFY(stream >> str);
     QCOMPARE(str, QString("ghijkl"));
     QCOMPARE(stream.pos(), qint64(14));
 
     // Seek back and try again
     stream.seek(1);
     QCOMPARE(stream.pos(), qint64(1));
-    stream >> str;
+    QVERIFY(stream >> str);
     QCOMPARE(str, QString("bcdef"));
     QCOMPARE(stream.pos(), qint64(6));
 
     stream.seek(6);
-    stream >> str;
+    QVERIFY(stream >> str);
     QCOMPARE(str, QString("ghijkl"));
     QCOMPARE(stream.pos(), qint64(14));
 }
@@ -1414,7 +1390,7 @@ void tst_QTextStream::pos3LargeFile()
         // Approximately 5kb text file (more is too slow (QTBUG-138435))
         const int NbLines = (5 * 1024) / lineString.size() + 1;
         for (int line = 0; line < NbLines; ++line)
-            out << lineString;
+            QVERIFY(out << lineString);
         // File is automatically flushed and closed on destruction.
     }
     QFile file(testFileName);
@@ -1432,8 +1408,7 @@ void tst_QTextStream::pos3LargeFile()
     while (true) {
         for (size_t i = 0; i < std::size(testValues); ++i) {
             int value = -42;
-            in >> value;
-            if (in.status() != QTextStream::Ok) {
+            if (!(in >> value)) {
                 // End case, i == 0 && eof reached.
                 QCOMPARE(i, 0);
                 QCOMPARE(in.status(), QTextStream::ReadPastEnd);
@@ -1458,16 +1433,16 @@ void tst_QTextStream::readStdin()
     stdinProcess.setReadChannel(QProcess::StandardError);
 
     QTextStream stream(&stdinProcess);
-    stream << "1" << Qt::endl;
-    stream << "2" << Qt::endl;
-    stream << "3" << Qt::endl;
+    QVERIFY(stream << "1" << Qt::endl);
+    QVERIFY(stream << "2" << Qt::endl);
+    QVERIFY(stream << "3" << Qt::endl);
 
     stdinProcess.closeWriteChannel();
 
     QVERIFY(stdinProcess.waitForFinished(5000));
 
     int a, b, c;
-    stream >> a >> b >> c;
+    QVERIFY(stream >> a >> b >> c);
     QCOMPARE(a, 1);
     QCOMPARE(b, 2);
     QCOMPARE(c, 3);
@@ -1486,7 +1461,7 @@ void tst_QTextStream::readAllFromStdin()
 
     QTextStream stream(&stdinProcess);
     stream.setEncoding(QStringConverter::Latin1);
-    stream << "hello world" << Qt::flush;
+    QVERIFY(stream << "hello world" << Qt::flush);
 
     stdinProcess.closeWriteChannel();
 
@@ -1506,12 +1481,12 @@ void tst_QTextStream::readLineFromStdin()
     stdinProcess.setReadChannel(QProcess::StandardError);
 
     stdinProcess.write("abc\n");
-    QVERIFY(stdinProcess.waitForReadyRead(5000));
-    QCOMPARE(stdinProcess.readAll().data(), QByteArray("abc").data());
+    QVERIFY(stdinProcess.waitForReadyRead());
+    QCOMPARE(stdinProcess.readAll(), "abc");
 
     stdinProcess.write("def\n");
-    QVERIFY(stdinProcess.waitForReadyRead(5000));
-    QCOMPARE(stdinProcess.readAll(), QByteArray("def"));
+    QVERIFY(stdinProcess.waitForReadyRead());
+    QCOMPARE(stdinProcess.readAll(), "def");
 
     stdinProcess.closeWriteChannel();
 
@@ -1566,7 +1541,7 @@ void tst_QTextStream::qbool()
 {
     QString s;
     QTextStream stream(&s);
-    stream << s.contains(QString("hei"));
+    QVERIFY(stream << s.contains(QString("hei")));
     QCOMPARE(s, QString("0"));
 }
 
@@ -1575,18 +1550,20 @@ void tst_QTextStream::forcePoint()
 {
     QString str;
     QTextStream stream(&str);
-    stream << Qt::fixed << Qt::forcepoint << 1.0 << ' ' << 1 << ' ' << 0 << ' ' << -1.0 << ' ' << -1;
+    QVERIFY(stream << Qt::fixed << Qt::forcepoint << 1.0 << ' ' << 1 << ' ' << 0
+                   << ' ' << -1.0 << ' ' << -1);
     QCOMPARE(str, QString("1.000000 1 0 -1.000000 -1"));
 
     str.clear();
     stream.seek(0);
-    stream << Qt::scientific << Qt::forcepoint << 1.0 << ' ' << 1 << ' ' << 0 << ' ' << -1.0 << ' ' << -1;
+    QVERIFY(stream << Qt::scientific << Qt::forcepoint << 1.0 << ' ' << 1
+                   << ' ' << 0 << ' ' << -1.0 << ' ' << -1);
     QCOMPARE(str, QString("1.000000e+00 1 0 -1.000000e+00 -1"));
 
     str.clear();
     stream.seek(0);
     stream.setRealNumberNotation(QTextStream::SmartNotation);
-    stream << Qt::forcepoint << 1.0 << ' ' << 1 << ' ' << 0 << ' ' << -1.0 << ' ' << -1;
+    QVERIFY(stream << Qt::forcepoint << 1.0 << ' ' << 1 << ' ' << 0 << ' ' << -1.0 << ' ' << -1);
     QCOMPARE(str, QString("1.00000 1 0 -1.00000 -1"));
 
 }
@@ -1596,7 +1573,7 @@ void tst_QTextStream::forceSign()
 {
     QString str;
     QTextStream stream(&str);
-    stream << Qt::forcesign << 1.2 << ' ' << -1.2 << ' ' << 0;
+    QVERIFY(stream << Qt::forcesign << 1.2 << ' ' << -1.2 << ' ' << 0);
     QCOMPARE(str, QString("+1.2 -1.2 +0"));
 }
 
@@ -1678,7 +1655,7 @@ void tst_QTextStream::numeralCase()
 
     QString str;
     QTextStream stream(&str);
-    stream << func1 << func2 << func3 << func4 << value;
+    QVERIFY(stream << func1 << func2 << func3 << func4 << value);
     QCOMPARE(str, expected);
 }
 
@@ -1693,53 +1670,53 @@ void tst_QTextStream::nanInf()
     QTextStream stream(&str);
 
     double tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsNaN(tmpD)); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD < 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD < 0); tmpD = 0;
-    stream >> tmpD; QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD < 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsNaN(tmpD)); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD > 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD < 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD < 0); tmpD = 0;
+    QVERIFY(stream >> tmpD); QVERIFY(qIsInf(tmpD)); QVERIFY(tmpD < 0); tmpD = 0;
 
     stream.seek(0);
 
     float tmpF = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsNaN(tmpF)); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF < 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF < 0); tmpD = 0;
-    stream >> tmpF; QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF < 0);
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsNaN(tmpF)); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF > 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF < 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF < 0); tmpD = 0;
+    QVERIFY(stream >> tmpF); QVERIFY(qIsInf(tmpF)); QVERIFY(tmpF < 0);
 
     QString s;
     QTextStream out(&s);
-    out << qInf() << ' ' << -qInf() << ' ' << qQNaN()
-        << Qt::uppercasedigits << ' '
-        << qInf() << ' ' << -qInf() << ' ' << qQNaN()
-        << Qt::flush;
+    QVERIFY(out << qInf() << ' ' << -qInf() << ' ' << qQNaN()
+                << Qt::uppercasedigits << ' '
+                << qInf() << ' ' << -qInf() << ' ' << qQNaN()
+                << Qt::flush);
 
     QCOMPARE(s, QString("inf -inf nan INF -INF NAN"));
 }
@@ -1775,7 +1752,7 @@ void tst_QTextStream::utf8IncompleteAtBufferBoundary()
         out.setFieldWidth(3);
 
         for (int i = 0; i < 1000; ++i) {
-            out << i << lineContents << Qt::endl;
+            QVERIFY(out << i << lineContents << Qt::endl);
         }
     }
     data.close();
@@ -1813,23 +1790,23 @@ void tst_QTextStream::writeSeekWriteNoBOM()
     int number = 0;
     QString sizeStr = QLatin1String("Size=")
         + QString::number(number).rightJustified(10, QLatin1Char('0'));
-    stream << sizeStr << Qt::endl;
-    stream << "Version=" << QString::number(14) << Qt::endl;
-    stream << "blah blah blah" << Qt::endl;
+    QVERIFY(stream << sizeStr << Qt::endl);
+    QVERIFY(stream << "Version=" << QString::number(14) << Qt::endl);
+    QVERIFY(stream << "blah blah blah" << Qt::endl);
     stream.flush();
 
-    QCOMPARE(out.buffer().constData(), "Size=0000000000\nVersion=14\nblah blah blah\n");
+    QCOMPARE(out.data(), "Size=0000000000\nVersion=14\nblah blah blah\n");
 
     // Now overwrite the size header item
     number = 42;
     stream.seek(0);
     sizeStr = QLatin1String("Size=")
         + QString::number(number).rightJustified(10, QLatin1Char('0'));
-    stream << sizeStr << Qt::endl;
+    QVERIFY(stream << sizeStr << Qt::endl);
     stream.flush();
 
     // Check buffer is still OK
-    QCOMPARE(out.buffer().constData(), "Size=0000000042\nVersion=14\nblah blah blah\n");
+    QCOMPARE(out.data(), "Size=0000000042\nVersion=14\nblah blah blah\n");
 
 
     //Then UTF-16
@@ -1839,46 +1816,51 @@ void tst_QTextStream::writeSeekWriteNoBOM()
     QTextStream stream16(&out16);
     stream16.setEncoding(QStringConverter::Utf16);
 
-    stream16 << "one" << "two" << QLatin1String("three");
+    QVERIFY(stream16 << "one" << "two" << QLatin1String("three"));
     stream16.flush();
 
     // save that output
-    QByteArray first = out16.buffer();
+    const QByteArray first = out16.data();
 
     stream16.seek(0);
-    stream16 << "one";
+    QVERIFY(stream16 << "one");
     stream16.flush();
 
-    QCOMPARE(out16.buffer(), first);
+    QCOMPARE(out16.data(), first);
 }
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::generateOperatorCharData(bool for_QString)
+void tst_QTextStream::generateOperatorCharData(bool for_QString) const
 {
     QTest::addColumn<QByteArray>("input");
     QTest::addColumn<QChar>("qchar_output");
     QTest::addColumn<char>("char_output");
     QTest::addColumn<QByteArray>("write_output");
+    QTest::addColumn<bool>("status");
 
-    QTest::newRow("empty") << QByteArray() << QChar('\0') << '\0' << QByteArray("\0", 1);
-    QTest::newRow("a") << QByteArray("a") << QChar('a') << 'a' << QByteArray("a");
-    QTest::newRow("\\na") << QByteArray("\na") << QChar('\n') << '\n' << QByteArray("\n");
-    QTest::newRow("\\0") << QByteArray("\0") << QChar('\0') << '\0' << QByteArray("\0", 1);
-    QTest::newRow("\\xff") << QByteArray("\xff") << QChar('\xff') << '\xff' << QByteArray("\xff");
-    QTest::newRow("\\xfe") << QByteArray("\xfe") << QChar('\xfe') << '\xfe' << QByteArray("\xfe");
+    QTest::newRow("empty") << QByteArray() << QChar('\0') << '\0'
+                           << QByteArray("\0", 1) << false;
+    QTest::newRow("a") << QByteArray("a") << QChar('a') << 'a'
+                       << QByteArray("a") << true;
+    QTest::newRow("\\na") << QByteArray("\na") << QChar('\n') << '\n'
+                          << QByteArray("\n") << true;
+    QTest::newRow("\\0") << QByteArray("\0") << QChar('\0') << '\0'
+                         << QByteArray("\0", 1) << false;
+    QTest::newRow("\\xff") << QByteArray("\xff") << QChar('\xff') << '\xff'
+                           << QByteArray("\xff") << true;
+    QTest::newRow("\\xfe") << QByteArray("\xfe") << QChar('\xfe') << '\xfe'
+                           << QByteArray("\xfe") << true;
 
     if (!for_QString) {
-        QTest::newRow("utf16-BE (empty)") << QByteArray("\xff\xfe", 2) << QChar('\0') << '\0' << QByteArray("\0", 1);
-        QTest::newRow("utf16-BE (a)") << QByteArray("\xff\xfe\x61\x00", 4) << QChar('a') << 'a' << QByteArray("a");
-        QTest::newRow("utf16-LE (empty)") << QByteArray("\xfe\xff", 2) << QChar('\0') << '\0' << QByteArray("\0", 1);
-        QTest::newRow("utf16-LE (a)") << QByteArray("\xfe\xff\x00\x61", 4) << QChar('a') << 'a' << QByteArray("a");
+        QTest::newRow("utf16-BE (empty)") << QByteArray("\xff\xfe", 2) << QChar('\0') << '\0'
+                                          << QByteArray("\0", 1) << false;
+        QTest::newRow("utf16-BE (a)") << QByteArray("\xff\xfe\x61\x00", 4) << QChar('a') << 'a'
+                                      << QByteArray("a") << true;
+        QTest::newRow("utf16-LE (empty)") << QByteArray("\xfe\xff", 2) << QChar('\0') << '\0'
+                                          << QByteArray("\0", 1) << false;
+        QTest::newRow("utf16-LE (a)") << QByteArray("\xfe\xff\x00\x61", 4) << QChar('a') << 'a'
+                                      << QByteArray("a") << true;
     }
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::QChar_operators_FromDevice_data()
-{
-    generateOperatorCharData(false);
 }
 
 // ------------------------------------------------------------------------------
@@ -1887,13 +1869,14 @@ void tst_QTextStream::QChar_operators_FromDevice()
     QFETCH(QByteArray, input);
     QFETCH(QChar, qchar_output);
     QFETCH(QByteArray, write_output);
+    QFETCH(bool, status);
 
     QBuffer buf(&input);
     buf.open(QBuffer::ReadOnly);
     QTextStream stream(&buf);
     stream.setEncoding(QStringConverter::Latin1);
     QChar tmp;
-    stream >> tmp;
+    QCOMPARE(static_cast<bool>(stream >> tmp), status);
     QCOMPARE(tmp, qchar_output);
 
     QBuffer writeBuf;
@@ -1901,17 +1884,10 @@ void tst_QTextStream::QChar_operators_FromDevice()
 
     QTextStream writeStream(&writeBuf);
     writeStream.setEncoding(QStringConverter::Latin1);
-    writeStream << qchar_output;
+    QVERIFY(writeStream << qchar_output);
     writeStream.flush();
 
-    QCOMPARE(writeBuf.buffer().size(), write_output.size());
-    QCOMPARE(writeBuf.buffer().constData(), write_output.constData());
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::char16_t_operators_FromDevice_data()
-{
-    generateOperatorCharData(false);
+    QCOMPARE(writeBuf.data(), write_output);
 }
 
 // ------------------------------------------------------------------------------
@@ -1920,6 +1896,7 @@ void tst_QTextStream::char16_t_operators_FromDevice()
     QFETCH(QByteArray, input);
     QFETCH(const QChar, qchar_output);
     QFETCH(const QByteArray, write_output);
+    QFETCH(bool, status);
     const char16_t char16_t_output = qchar_output.unicode();
 
     QBuffer buf(&input);
@@ -1927,7 +1904,7 @@ void tst_QTextStream::char16_t_operators_FromDevice()
     QTextStream stream(&buf);
     stream.setEncoding(QStringConverter::Latin1);
     char16_t tmp;
-    stream >> tmp;
+    QCOMPARE(static_cast<bool>(stream >> tmp), status);
     QCOMPARE(tmp, qchar_output);
 
     QBuffer writeBuf;
@@ -1935,17 +1912,10 @@ void tst_QTextStream::char16_t_operators_FromDevice()
 
     QTextStream writeStream(&writeBuf);
     writeStream.setEncoding(QStringConverter::Latin1);
-    writeStream << char16_t_output;
+    QVERIFY(writeStream << char16_t_output);
     writeStream.flush();
 
-    QCOMPARE(writeBuf.buffer().size(), write_output.size());
-    QCOMPARE(writeBuf.buffer().constData(), write_output.constData());
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::char_operators_FromDevice_data()
-{
-    generateOperatorCharData(false);
+    QCOMPARE(writeBuf.data(), write_output);
 }
 
 // ------------------------------------------------------------------------------
@@ -1954,13 +1924,14 @@ void tst_QTextStream::char_operators_FromDevice()
     QFETCH(QByteArray, input);
     QFETCH(char, char_output);
     QFETCH(QByteArray, write_output);
+    QFETCH(bool, status);
 
     QBuffer buf(&input);
     buf.open(QBuffer::ReadOnly);
     QTextStream stream(&buf);
     stream.setEncoding(QStringConverter::Latin1);
     char tmp;
-    stream >> tmp;
+    QCOMPARE(static_cast<bool>(stream >> tmp), status);
     QCOMPARE(tmp, char_output);
 
     QBuffer writeBuf;
@@ -1968,15 +1939,14 @@ void tst_QTextStream::char_operators_FromDevice()
 
     QTextStream writeStream(&writeBuf);
     writeStream.setEncoding(QStringConverter::Latin1);
-    writeStream << char_output;
+    QVERIFY(writeStream << char_output);
     writeStream.flush();
 
-    QCOMPARE(writeBuf.buffer().size(), write_output.size());
-    QCOMPARE(writeBuf.buffer().constData(), write_output.constData());
+    QCOMPARE(writeBuf.data(), write_output);
 }
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::generateNaturalNumbersData(bool for_QString)
+void tst_QTextStream::generateNaturalNumbersData(bool for_QString) const
 {
     QTest::addColumn<QByteArray>("input");
     QTest::addColumn<qulonglong>("output");
@@ -2072,28 +2042,19 @@ void tst_QTextStream::generateNaturalNumbersData(bool for_QString)
 }
 
 // ------------------------------------------------------------------------------
-#define IMPLEMENT_STREAM_RIGHT_INT_OPERATOR_TEST(texttype, type) \
-    void tst_QTextStream:: texttype##_read_operator_FromDevice_data() \
-    { generateNaturalNumbersData(false); } \
-    void tst_QTextStream:: texttype##_read_operator_FromDevice() \
-    { \
-        QFETCH(QByteArray, input); \
-        QFETCH(qulonglong, output); \
-        type sh; \
-        QTextStream stream(&input); \
-        stream >> sh; \
-        QCOMPARE(sh, (type)output); \
-    }
-IMPLEMENT_STREAM_RIGHT_INT_OPERATOR_TEST(signedShort, signed short)
-IMPLEMENT_STREAM_RIGHT_INT_OPERATOR_TEST(unsignedShort, unsigned short)
-IMPLEMENT_STREAM_RIGHT_INT_OPERATOR_TEST(signedInt, signed int)
-IMPLEMENT_STREAM_RIGHT_INT_OPERATOR_TEST(unsignedInt, unsigned int)
-IMPLEMENT_STREAM_RIGHT_INT_OPERATOR_TEST(qlonglong, qlonglong)
-IMPLEMENT_STREAM_RIGHT_INT_OPERATOR_TEST(qulonglong, qulonglong)
-    ;
+template <typename Whole>
+void tst_QTextStream::integral_read_operator_FromDevice() const
+{
+    QFETCH(QByteArray, input);
+    QFETCH(qulonglong, output);
+    QTextStream stream(&input);
+    Whole sh;
+    stream >> sh;
+    QCOMPARE(sh, Whole(output));
+}
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::generateRealNumbersData(bool for_QString)
+void tst_QTextStream::generateRealNumbersData(bool for_QString) const
 {
     QTest::addColumn<QByteArray>("input");
     QTest::addColumn<double>("output");
@@ -2120,50 +2081,45 @@ void tst_QTextStream::generateRealNumbersData(bool for_QString)
 }
 
 // ------------------------------------------------------------------------------
-#define IMPLEMENT_STREAM_RIGHT_REAL_OPERATOR_TEST(texttype, type) \
-    void tst_QTextStream:: texttype##_read_operator_FromDevice_data() \
-    { generateRealNumbersData(false); } \
-    void tst_QTextStream:: texttype##_read_operator_FromDevice() \
-    { \
-        QFETCH(QByteArray, input); \
-        QFETCH(double, output); \
-        type sh; \
-        QTextStream stream(&input); \
-        stream >> sh; \
-        QCOMPARE(sh, (type)output); \
-    }
-IMPLEMENT_STREAM_RIGHT_REAL_OPERATOR_TEST(float, float)
-IMPLEMENT_STREAM_RIGHT_REAL_OPERATOR_TEST(double, double)
-    ;
+template <typename Real>
+void tst_QTextStream::real_read_operator_FromDevice() const
+{
+    QFETCH(QByteArray, input);
+    QFETCH(double, output);
+    QTextStream stream(&input);
+    Real sh;
+    stream >> sh;
+    QCOMPARE(sh, Real(output));
+}
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::generateStringData(bool for_QString)
+void tst_QTextStream::generateStringData(bool for_QString) const
 {
     QTest::addColumn<QByteArray>("input");
     QTest::addColumn<QByteArray>("array_output");
     QTest::addColumn<QString>("string_output");
+    QTest::addColumn<bool>("status");
 
-    QTest::newRow("empty") << QByteArray() << QByteArray() << QString();
-    QTest::newRow("a") << QByteArray("a") << QByteArray("a") << QString("a");
-    QTest::newRow("a b") << QByteArray("a b") << QByteArray("a") << QString("a");
-    QTest::newRow(" a b") << QByteArray(" a b") << QByteArray("a") << QString("a");
-    QTest::newRow("a1") << QByteArray("a1") << QByteArray("a1") << QString("a1");
-    QTest::newRow("a1 b1") << QByteArray("a1 b1") << QByteArray("a1") << QString("a1");
-    QTest::newRow(" a1 b1") << QByteArray(" a1 b1") << QByteArray("a1") << QString("a1");
-    QTest::newRow("\\n\\n\\nole i dole\\n") << QByteArray("\n\n\nole i dole\n") << QByteArray("ole") << QString("ole");
+    QTest::newRow("empty") << QByteArray() << QByteArray() << QString() << false;
+    QTest::newRow("a") << QByteArray("a") << QByteArray("a") << QString("a") << true;
+    QTest::newRow("a b") << QByteArray("a b") << QByteArray("a") << QString("a") << true;
+    QTest::newRow(" a b") << QByteArray(" a b") << QByteArray("a") << QString("a") << true;
+    QTest::newRow("a1") << QByteArray("a1") << QByteArray("a1") << QString("a1") << true;
+    QTest::newRow("a1 b1") << QByteArray("a1 b1") << QByteArray("a1") << QString("a1") << true;
+    QTest::newRow(" a1 b1") << QByteArray(" a1 b1") << QByteArray("a1") << QString("a1") << true;
+    QTest::newRow("\\n\\n\\nole i dole\\n") << QByteArray("\n\n\nole i dole\n")
+                                            << QByteArray("ole") << QString("ole") << true;
 
     if (!for_QString) {
-        QTest::newRow("utf16-BE (empty)") << QByteArray("\xff\xfe", 2) << QByteArray() << QString();
-        QTest::newRow("utf16-BE (corrupt)") << QByteArray("\xff", 1) << QByteArray("\xc3\xbf") << QString::fromUtf8("\xc3\xbf");
-        QTest::newRow("utf16-LE (empty)") << QByteArray("\xfe\xff", 2) << QByteArray() << QString();
-        QTest::newRow("utf16-LE (corrupt)") << QByteArray("\xfe", 1) << QByteArray("\xc3\xbe") << QString::fromUtf8("\xc3\xbe");
+        QTest::newRow("utf16-BE (empty)") << QByteArray("\xff\xfe", 2) << QByteArray()
+                                          << QString() << false;
+        QTest::newRow("utf16-BE (corrupt)") << QByteArray("\xff", 1) << QByteArray("\xc3\xbf")
+                                            << QString::fromUtf8("\xc3\xbf") << true;
+        QTest::newRow("utf16-LE (empty)") << QByteArray("\xfe\xff", 2) << QByteArray()
+                                          << QString() << false;
+        QTest::newRow("utf16-LE (corrupt)") << QByteArray("\xfe", 1) << QByteArray("\xc3\xbe")
+                                            << QString::fromUtf8("\xc3\xbe") << true;
     }
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::charPtr_read_operator_FromDevice_data()
-{
-    generateStringData(false);
 }
 
 // ------------------------------------------------------------------------------
@@ -2171,6 +2127,7 @@ void tst_QTextStream::charPtr_read_operator_FromDevice()
 {
     QFETCH(QByteArray, input);
     QFETCH(QByteArray, array_output);
+    QFETCH(bool, status);
 
     QBuffer buffer(&input);
     buffer.open(QBuffer::ReadOnly);
@@ -2179,15 +2136,9 @@ void tst_QTextStream::charPtr_read_operator_FromDevice()
     stream.setAutoDetectUnicode(true);
 
     char buf[1024];
-    stream >> buf;
+    QCOMPARE(static_cast<bool>(stream >> buf), status);
 
     QCOMPARE((const char *)buf, array_output.constData());
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::stringRef_read_operator_FromDevice_data()
-{
-    generateStringData(false);
 }
 
 // ------------------------------------------------------------------------------
@@ -2195,6 +2146,7 @@ void tst_QTextStream::stringRef_read_operator_FromDevice()
 {
     QFETCH(QByteArray, input);
     QFETCH(QString, string_output);
+    QFETCH(bool, status);
 
     QBuffer buffer(&input);
     buffer.open(QBuffer::ReadOnly);
@@ -2203,15 +2155,9 @@ void tst_QTextStream::stringRef_read_operator_FromDevice()
     stream.setAutoDetectUnicode(true);
 
     QString tmp;
-    stream >> tmp;
+    QCOMPARE(static_cast<bool>(stream >> tmp), status);
 
     QCOMPARE(tmp, string_output);
-}
-
-// ------------------------------------------------------------------------------
-void tst_QTextStream::byteArray_read_operator_FromDevice_data()
-{
-    generateStringData(false);
 }
 
 // ------------------------------------------------------------------------------
@@ -2219,6 +2165,7 @@ void tst_QTextStream::byteArray_read_operator_FromDevice()
 {
     QFETCH(QByteArray, input);
     QFETCH(QByteArray, array_output);
+    QFETCH(bool, status);
 
     QBuffer buffer(&input);
     buffer.open(QBuffer::ReadOnly);
@@ -2227,48 +2174,48 @@ void tst_QTextStream::byteArray_read_operator_FromDevice()
     stream.setAutoDetectUnicode(true);
 
     QByteArray array;
-    stream >> array;
+    QCOMPARE(static_cast<bool>(stream >> array), status);
 
     QCOMPARE(array, array_output);
 }
 
 // ------------------------------------------------------------------------------
-#define IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(texttype, type) \
-    void tst_QTextStream:: texttype##_write_operator_ToDevice() \
-    { \
-        QFETCH(qulonglong, number); \
-        QFETCH(QByteArray, data); \
-        QFETCH(QByteArray, dataWithSeparators); \
-        \
-        QBuffer buffer; \
-        buffer.open(QBuffer::WriteOnly); \
-        QTextStream stream(&buffer); \
-        stream.setLocale(QLocale::c()); \
-        stream << (type)number; \
-        stream.flush(); \
-        QCOMPARE(buffer.data().constData(), data.constData()); \
-        \
-        QLocale locale("en-US"); \
-        buffer.reset(); buffer.buffer().clear(); \
-        stream.setLocale(locale); \
-        stream << (type)number; \
-        stream.flush(); \
-        QCOMPARE(buffer.data(), dataWithSeparators); \
-        \
-        locale.setNumberOptions(QLocale::OmitGroupSeparator); \
-        buffer.reset(); buffer.buffer().clear(); \
-        stream.setLocale(locale); \
-        stream << (type)number; \
-        stream.flush(); \
-        QCOMPARE(buffer.data().constData(), data.constData()); \
-        \
-        locale = QLocale("de-DE"); \
-        buffer.reset(); buffer.buffer().clear(); \
-        stream.setLocale(locale); \
-        stream << (type)number; \
-        stream.flush(); \
-        QCOMPARE(buffer.data(), dataWithSeparators.replace(',', '.')); \
-    }
+template <typename Whole>
+void tst_QTextStream::integral_write_operator_ToDevice() const
+{
+    QFETCH(qulonglong, number);
+    QFETCH(QByteArray, data);
+    QFETCH(QByteArray, dataWithSeparators);
+
+    QBuffer buffer;
+    buffer.open(QBuffer::WriteOnly);
+    QTextStream stream(&buffer);
+    stream.setLocale(QLocale::c());
+    QVERIFY(stream << Whole(number));
+    stream.flush();
+    QCOMPARE(buffer.data(), data);
+
+    QLocale locale("en-US");
+    buffer.reset(); buffer.buffer().clear();
+    stream.setLocale(locale);
+    QVERIFY(stream << Whole(number));
+    stream.flush();
+    QCOMPARE(buffer.data(), dataWithSeparators);
+
+    locale.setNumberOptions(QLocale::OmitGroupSeparator);
+    buffer.reset(); buffer.buffer().clear();
+    stream.setLocale(locale);
+    QVERIFY(stream << Whole(number));
+    stream.flush();
+    QCOMPARE(buffer.data(), data);
+
+    locale = QLocale("de-DE");
+    buffer.reset(); buffer.buffer().clear();
+    stream.setLocale(locale);
+    QVERIFY(stream << Whole(number));
+    stream.flush();
+    QCOMPARE(buffer.data(), dataWithSeparators.replace(',', '.'));
+}
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::signedShort_write_operator_ToDevice_data()
@@ -2288,8 +2235,6 @@ void tst_QTextStream::signedShort_write_operator_ToDevice_data()
     QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("1") << QByteArray("1");
     QTest::newRow("-32768") << quint64(-32768) << QByteArray("-32768") << QByteArray("-32,768");
 }
-IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(signedShort, signed short)
-    ;
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::unsignedShort_write_operator_ToDevice_data()
@@ -2308,8 +2253,6 @@ void tst_QTextStream::unsignedShort_write_operator_ToDevice_data()
     QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("0") << QByteArray("0");
     QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("1") << QByteArray("1");
 }
-IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(unsignedShort, unsigned short)
-    ;
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::signedInt_write_operator_ToDevice_data()
@@ -2335,8 +2278,6 @@ void tst_QTextStream::signedInt_write_operator_ToDevice_data()
     QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("1") << QByteArray("1");
     QTest::newRow("-2147483648") << quint64(-2147483648) << QByteArray("-2147483648") << QByteArray("-2,147,483,648");
 }
-IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(signedInt, signed int)
-    ;
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::unsignedInt_write_operator_ToDevice_data()
@@ -2361,8 +2302,6 @@ void tst_QTextStream::unsignedInt_write_operator_ToDevice_data()
     QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("0") << QByteArray("0");
     QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("1") << QByteArray("1");
 }
-IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(unsignedInt, unsigned int)
-    ;
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::qlonglong_write_operator_ToDevice_data()
@@ -2392,8 +2331,6 @@ void tst_QTextStream::qlonglong_write_operator_ToDevice_data()
     QTest::newRow("18446744073709551615") << Q_UINT64_C(18446744073709551615) << QByteArray("-1") << QByteArray("-1");
     QTest::newRow("-9223372036854775808") << quint64(Q_INT64_C(-9223372036854775807) - 1) << QByteArray("-9223372036854775808") << QByteArray("-9,223,372,036,854,775,808");
 }
-IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(qlonglong, qlonglong)
-    ;
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::qulonglong_write_operator_ToDevice_data()
@@ -2422,12 +2359,9 @@ void tst_QTextStream::qulonglong_write_operator_ToDevice_data()
     QTest::newRow("9223372036854775809") << Q_UINT64_C(9223372036854775809) << QByteArray("9223372036854775809") << QByteArray("9,223,372,036,854,775,809");
     QTest::newRow("18446744073709551615") << Q_UINT64_C(18446744073709551615) << QByteArray("18446744073709551615") << QByteArray("18,446,744,073,709,551,615");
 }
-IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(qulonglong, qulonglong)
-    ;
-
 
 // ------------------------------------------------------------------------------
-void tst_QTextStream::generateRealNumbersDataWrite()
+void tst_QTextStream::generateRealNumbersDataWrite() const
 {
     QTest::addColumn<double>("number");
     QTest::addColumn<QByteArray>("data");
@@ -2442,33 +2376,28 @@ void tst_QTextStream::generateRealNumbersDataWrite()
 }
 
 // ------------------------------------------------------------------------------
-#define IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(texttype, type) \
-    void tst_QTextStream:: texttype##_write_operator_ToDevice_data() \
-    { generateRealNumbersDataWrite(); } \
-    void tst_QTextStream:: texttype##_write_operator_ToDevice() \
-    { \
-        QFETCH(double, number); \
-        QFETCH(QByteArray, data); \
-        QFETCH(QByteArray, dataWithSeparators); \
-        \
-        QBuffer buffer; \
-        buffer.open(QBuffer::WriteOnly); \
-        QTextStream stream(&buffer); \
-        stream.setLocale(QLocale::c()); \
-        type f = type(number); \
-        stream << f; \
-        stream.flush(); \
-        QCOMPARE(buffer.data().constData(), data.constData()); \
-        \
-        buffer.reset(); \
-        stream.setLocale(QLocale("en-US")); \
-        stream << f; \
-        stream.flush(); \
-        QCOMPARE(buffer.data(), dataWithSeparators); \
-    }
-IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(float, float)
-IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(double, double)
-    ;
+template <typename Real>
+void tst_QTextStream::real_write_operator_ToDevice() const
+{
+    QFETCH(double, number);
+    QFETCH(QByteArray, data);
+    QFETCH(QByteArray, dataWithSeparators);
+
+    QBuffer buffer;
+    buffer.open(QBuffer::WriteOnly);
+    QTextStream stream(&buffer);
+    stream.setLocale(QLocale::c());
+    Real f = Real(number);
+    QVERIFY(stream << f);
+    stream.flush();
+    QCOMPARE(buffer.data(), data);
+
+    buffer.reset();
+    stream.setLocale(QLocale("en-US"));
+    QVERIFY(stream << f);
+    stream.flush();
+    QCOMPARE(buffer.data(), dataWithSeparators);
+}
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::string_write_operator_ToDevice_data()
@@ -2508,9 +2437,11 @@ void tst_QTextStream::string_write_operator_ToDevice()
         stream.setEncoding(QStringConverter::Latin1);
         stream.setAutoDetectUnicode(true);
 
-        stream << bytedata.constData();
+        QVERIFY(stream << bytedata.constData());
         stream.flush();
-        QCOMPARE(buf.buffer().constData(), result.constData());
+        // Size information is discarded, so "empty" doesn't get its (size 1)
+        // null byte transmitted, so only compare to constData(), ignoring size.
+        QCOMPARE(buf.data().constData(), result.constData());
     }
     {
         // QByteArray
@@ -2520,9 +2451,9 @@ void tst_QTextStream::string_write_operator_ToDevice()
         stream.setEncoding(QStringConverter::Latin1);
         stream.setAutoDetectUnicode(true);
 
-        stream << bytedata;
+        QVERIFY(stream << bytedata);
         stream.flush();
-        QCOMPARE(buf.buffer().constData(), result.constData());
+        QCOMPARE(buf.data(), result);
     }
     {
         // QString
@@ -2532,9 +2463,9 @@ void tst_QTextStream::string_write_operator_ToDevice()
         stream.setEncoding(QStringConverter::Latin1);
         stream.setAutoDetectUnicode(true);
 
-        stream << stringdata;
+        QVERIFY(stream << stringdata);
         stream.flush();
-        QCOMPARE(buf.buffer().constData(), result.constData());
+        QCOMPARE(buf.data(), result);
     }
 }
 
@@ -2546,10 +2477,10 @@ void tst_QTextStream::latin1String_write_operator_ToDevice()
     stream.setEncoding(QStringConverter::Latin1);
     stream.setAutoDetectUnicode(true);
 
-    stream << QLatin1String("No explicit length");
-    stream << QLatin1String("Explicit length - ignore this part", 15);
+    QVERIFY(stream << QLatin1String("No explicit length"));
+    QVERIFY(stream << QLatin1String("Explicit length - ignore this part", 15));
     stream.flush();
-    QCOMPARE(buf.buffer().constData(), "No explicit lengthExplicit length");
+    QCOMPARE(buf.data(), "No explicit lengthExplicit length");
 }
 
 void tst_QTextStream::stringref_write_operator_ToDevice()
@@ -2562,10 +2493,10 @@ void tst_QTextStream::stringref_write_operator_ToDevice()
 
     const QStringView expected = u"No explicit lengthExplicit length";
 
-    stream << expected.left(18);
-    stream << expected.mid(18);
+    QVERIFY(stream << expected.left(18));
+    QVERIFY(stream << expected.mid(18));
     stream.flush();
-    QCOMPARE(buf.buffer().constData(), "No explicit lengthExplicit length");
+    QCOMPARE(buf.data(), "No explicit lengthExplicit length");
 }
 
 void tst_QTextStream::stringview_write_operator_ToDevice()
@@ -2574,9 +2505,42 @@ void tst_QTextStream::stringview_write_operator_ToDevice()
     buf.open(QBuffer::WriteOnly);
     QTextStream stream(&buf);
     const QStringView expected = u"expectedStringView";
-    stream << expected;
+    QVERIFY(stream << expected);
     stream.flush();
-    QCOMPARE(buf.buffer().constData(), "expectedStringView");
+    QCOMPARE(buf.data(), "expectedStringView");
+}
+
+// ------------------------------------------------------------------------------
+void tst_QTextStream::stream_bool_operator_Test()
+{
+    const QStringView expected = u"expectedStringView";
+    QString line("exp");
+    QTextStream stream(&line);
+    QChar ch1, ch2, ch3;
+
+    QVERIFY(stream >> ch1);
+    QCOMPARE(ch1, 'e');
+    QVERIFY(stream >> ch2);
+    QCOMPARE(ch2, 'x');
+    QVERIFY(stream >> ch3);
+    QCOMPARE(ch3, 'p');
+
+    QVERIFY(stream << "ectedStringView");
+    stream.flush();
+    QCOMPARE(*stream.string(), expected);
+
+    QTextStream emptyStream("");
+    QVERIFY(!(emptyStream >> ch1));
+    QVERIFY(!(emptyStream << "Hello"));
+
+    QTextStream textStream("1 2 3 error");
+    int n;
+    for (int i = 0; i < 3; ++i) {
+        QVERIFY(textStream >> n);
+        QCOMPARE_EQ(n, i + 1);
+    }
+    QVERIFY(!textStream.atEnd());
+    QVERIFY(!(textStream >> n));
 }
 
 // ------------------------------------------------------------------------------
@@ -2595,7 +2559,7 @@ void tst_QTextStream::useCase1()
     }
 
     file.seek(0);
-    QCOMPARE(file.readAll(), QByteArray("4.15 abc ole"));
+    QCOMPARE(file.readAll(), "4.15 abc ole");
     file.seek(0);
 
     {
@@ -2611,7 +2575,7 @@ void tst_QTextStream::useCase1()
         stream >> s;
 
         QCOMPARE(d, 4.15);
-        QCOMPARE(a, QByteArray("abc"));
+        QCOMPARE(a, "abc");
         QCOMPARE(s, QString("ole"));
     }
 }
@@ -2632,7 +2596,7 @@ void tst_QTextStream::useCase2()
     file.close();
     QVERIFY(file.open(QFile::ReadWrite));
 
-    QCOMPARE(file.readAll(), QByteArray("4.15 abc ole"));
+    QCOMPARE(file.readAll(), "4.15 abc ole");
 
     file.close();
     QVERIFY(file.open(QFile::ReadWrite));
@@ -2644,13 +2608,13 @@ void tst_QTextStream::useCase2()
     stream2.setEncoding(QStringConverter::Latin1);
     stream2.setAutoDetectUnicode(true);
 
-    stream2 >> d;
-    stream2 >> a;
-    stream2 >> s;
+    QVERIFY(stream2 >> d);
+    QVERIFY(stream2 >> a);
+    QVERIFY(stream2 >> s);
 
     QCOMPARE(d, 4.15);
-    QCOMPARE(a, QByteArray("abc"));
-    QCOMPARE(s, QString("ole"));
+    QCOMPARE(a, "abc");
+    QCOMPARE(s, "ole");
 }
 
 // ------------------------------------------------------------------------------
@@ -2719,9 +2683,9 @@ void tst_QTextStream::manipulators()
     stream.setFieldAlignment(alignFlag);
     stream.setNumberFlags(numberFlag);
     stream.setFieldWidth(width);
-    stream << realNumber;
-    stream << intNumber;
-    stream << textData;
+    QVERIFY(stream << realNumber);
+    QVERIFY(stream << intNumber);
+    QVERIFY(stream << textData);
     stream.flush();
 
     QCOMPARE(buffer.data(), result);
@@ -2750,7 +2714,7 @@ void tst_QTextStream::generateBOM()
 
         QTextStream stream(&file);
         stream.setEncoding(QStringConverter::Utf16LE);
-        stream << Qt::bom << "Hello" << Qt::endl;
+        QVERIFY(stream << Qt::bom << "Hello" << Qt::endl);
 
         file.close();
         QVERIFY(file.open(QFile::ReadOnly));
@@ -2770,10 +2734,10 @@ void tst_QTextStream::readBomSeekBackReadBomAgain()
     QTextStream stream(&file);
     stream.setEncoding(QStringConverter::Utf8);
     QString Andreas;
-    stream >> Andreas;
+    QVERIFY(stream >> Andreas);
     QCOMPARE(Andreas, QString("Andreas"));
     stream.seek(0);
-    stream >> Andreas;
+    QVERIFY(stream >> Andreas);
     QCOMPARE(Andreas, QString("Andreas"));
 }
 
@@ -2823,16 +2787,16 @@ void tst_QTextStream::status_integer_read()
     QTextStream s("123 abc   ");
     int i;
     QString w;
-    s >> i;
+    QVERIFY(s >> i);
     QCOMPARE(s.status(), QTextStream::Ok);
-    s >> i;
+    QVERIFY(!(s >> i));
     QCOMPARE(s.status(), QTextStream::ReadCorruptData);
     s.resetStatus();
     QCOMPARE(s.status(), QTextStream::Ok);
-    s >> w;
+    QVERIFY(s >> w);
     QCOMPARE(s.status(), QTextStream::Ok);
     QCOMPARE(w, QString("abc"));
-    s >> i;
+    QVERIFY(!(s >> i));
     QCOMPARE(s.status(), QTextStream::ReadPastEnd);
 }
 
@@ -2840,9 +2804,9 @@ void tst_QTextStream::status_word_read()
 {
     QTextStream s("abc ");
     QString w;
-    s >> w;
+    QVERIFY(s >> w);
     QCOMPARE(s.status(), QTextStream::Ok);
-    s >> w;
+    QVERIFY(!(s >> w));
     QCOMPARE(s.status(), QTextStream::ReadPastEnd);
 }
 
@@ -2864,22 +2828,22 @@ void tst_QTextStream::status_write_error()
     QTextStream fs(&fb);
     fs.setEncoding(QStringConverter::Latin1);
     /* first write some initial content */
-    fs << "hello";
+    QVERIFY(fs << "hello");
     fs.flush();
     QCOMPARE(fs.status(), QTextStream::Ok);
-    QCOMPARE(fb.data(), QByteArray("hello"));
+    QCOMPARE(fb.data(), "hello");
     /* then test that writing can cause an error */
     fb.setLocked(true);
-    fs << "error";
+    QVERIFY(fs << "error");
     fs.flush();
     QCOMPARE(fs.status(), QTextStream::WriteFailed);
-    QCOMPARE(fb.data(), QByteArray("hello"));
+    QCOMPARE(fb.data(), "hello");
     /* finally test that writing after an error doesn't change the stream any more */
     fb.setLocked(false);
     fs << "can't do that";
     fs.flush();
     QCOMPARE(fs.status(), QTextStream::WriteFailed);
-    QCOMPARE(fb.data(), QByteArray("hello"));
+    QCOMPARE(fb.data(), "hello");
 }
 
 void tst_QTextStream::alignAccountingStyle()
@@ -2900,7 +2864,7 @@ void tst_QTextStream::alignAccountingStyle()
     out.setFieldAlignment(QTextStream::AlignAccountingStyle);
     out.setFieldWidth(4);
     out.setPadChar('0');
-    out << "-1";
+    QVERIFY(out << "-1");
     QCOMPARE(result, QLatin1String("00-1"));
     }
 
@@ -2910,7 +2874,7 @@ void tst_QTextStream::alignAccountingStyle()
     out.setFieldAlignment(QTextStream::AlignAccountingStyle);
     out.setFieldWidth(6);
     out.setPadChar('0');
-    out << -1.2;
+    QVERIFY(out << -1.2);
     QCOMPARE(result, QLatin1String("-001.2"));
     }
 
@@ -2920,7 +2884,7 @@ void tst_QTextStream::alignAccountingStyle()
     out.setFieldAlignment(QTextStream::AlignAccountingStyle);
     out.setFieldWidth(6);
     out.setPadChar('0');
-    out << "-1.2";
+    QVERIFY(out << "-1.2");
     QCOMPARE(result, QLatin1String("00-1.2"));
     }
 }
@@ -2970,7 +2934,7 @@ void tst_QTextStream::double_write_with_flags()
         stream.setNumberFlags(QTextStream::NumberFlag(numberFlags));
     if (realNumberNotation)
         stream.setRealNumberNotation(QTextStream::RealNumberNotation(realNumberNotation));
-    stream << number;
+    QVERIFY(stream << number);
     QCOMPARE(buf, output);
 }
 
@@ -3001,7 +2965,7 @@ void tst_QTextStream::double_write_with_precision()
     QString buf;
     QTextStream stream(&buf);
     stream.setRealNumberPrecision(precision);
-    stream << value;
+    QVERIFY(stream << value);
     QCOMPARE(buf, result);
 }
 
@@ -3010,18 +2974,19 @@ void tst_QTextStream::int_read_with_locale_data()
     QTest::addColumn<QString>("locale");
     QTest::addColumn<QString>("input");
     QTest::addColumn<int>("output");
+    QTest::addColumn<bool>("status");
 
-    QTest::newRow("C -123") << QString("C") << QString("-123") << -123;
-    QTest::newRow("C +123") << QString("C") << QString("+123") << 123;
-    QTest::newRow("C 12345") << QString("C") << QString("12345") << 12345;
-    QTest::newRow("C 12,345") << QString("C") << QString("12,345") << 12;
-    QTest::newRow("C 12.345") << QString("C") << QString("12.345") << 12;
+    QTest::newRow("C -123") << QString("C") << QString("-123") << -123 << true;
+    QTest::newRow("C +123") << QString("C") << QString("+123") << 123 << true;
+    QTest::newRow("C 12345") << QString("C") << QString("12345") << 12345 << true;
+    QTest::newRow("C 12,345") << QString("C") << QString("12,345") << 12 << true;
+    QTest::newRow("C 12.345") << QString("C") << QString("12.345") << 12 << true;
 
-    QTest::newRow("de_DE -123") << QString("de_DE") << QString("-123") << -123;
-    QTest::newRow("de_DE +123") << QString("de_DE") << QString("+123") << 123;
-    QTest::newRow("de_DE 12345") << QString("de_DE") << QString("12345") << 12345;
-    QTest::newRow("de_DE 12.345") << QString("de_DE") << QString("12.345") << 12345;
-    QTest::newRow("de_DE .12345") << QString("de_DE") << QString(".12345") << 0;
+    QTest::newRow("de_DE -123") << QString("de_DE") << QString("-123") << -123 << true;
+    QTest::newRow("de_DE +123") << QString("de_DE") << QString("+123") << 123 << true;
+    QTest::newRow("de_DE 12345") << QString("de_DE") << QString("12345") << 12345 << true;
+    QTest::newRow("de_DE 12.345") << QString("de_DE") << QString("12.345") << 12345 << true;
+    QTest::newRow("de_DE .12345") << QString("de_DE") << QString(".12345") << 0 << false;
 }
 
 void tst_QTextStream::int_read_with_locale()
@@ -3029,11 +2994,12 @@ void tst_QTextStream::int_read_with_locale()
     QFETCH(QString, locale);
     QFETCH(QString, input);
     QFETCH(int, output);
+    QFETCH(bool, status);
 
     QTextStream stream(&input);
     stream.setLocale(QLocale(locale));
     int result;
-    stream >> result;
+    QCOMPARE(static_cast<bool>(stream >> result), status);
     QCOMPARE(result, output);
 }
 
@@ -3098,7 +3064,7 @@ void tst_QTextStream::int_write_with_locale()
     if (fieldWidth)
         stream.setFieldWidth(fieldWidth);
 
-    stream << input;
+    QVERIFY(stream << input);
     QCOMPARE(result, output);
 }
 
@@ -3143,7 +3109,7 @@ void tst_QTextStream::autodetectUnicode()
     {
         QTextStream in(&file);
         QString actual;
-        in >> actual;
+        QVERIFY(in >> actual);
         QCOMPARE(actual, original);
         QCOMPARE(in.encoding(), encoding);
     }
@@ -3159,7 +3125,7 @@ void tst_QTextStream::autodetectUnicode()
     {
         QTextStream in(&file);
         QString actual;
-        in >> actual;
+        QVERIFY(in >> actual);
         QCOMPARE(actual, original);
         QCOMPARE(in.encoding(), encoding);
     }

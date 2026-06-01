@@ -379,6 +379,8 @@ void tst_StyleImports::attachedTypesAvailable_data()
     // QtQuick.Controls import.
     QTest::newRow("Controls") << "";
 
+    // use builtins style, otherwise testStyles() returns the style last set by a previous test
+    QQuickStyle::setStyle(QLatin1String(""));
     const QStringList styles = testStyles();
     for (const QString &styleImport : styles)
         QTest::newRow(qPrintable(styleImport)) << styleImport;

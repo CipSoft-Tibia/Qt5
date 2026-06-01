@@ -10,7 +10,7 @@
 #include "content/public/browser/isolated_web_apps_policy.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 
 namespace extensions {
 
@@ -22,7 +22,7 @@ BrowserFrameContextData::CloneFrameContextData() const {
 bool BrowserFrameContextData::HasControlledFrameCapability() const {
   return frame_ &&
          frame_->IsFeatureEnabled(
-             blink::mojom::PermissionsPolicyFeature::kControlledFrame) &&
+             network::mojom::PermissionsPolicyFeature::kControlledFrame) &&
          content::HasIsolatedContextCapability(frame_);
 }
 
@@ -74,13 +74,11 @@ url::Origin BrowserFrameContextData::GetOrigin() const {
 // BrowserFrameContextData::CanAccess is unable to replicate all of the
 // WebSecurityOrigin::CanAccess checks, so these methods should not be called.
 bool BrowserFrameContextData::CanAccess(const url::Origin& target) const {
-  NOTREACHED_IN_MIGRATION();
-  return true;
+  NOTREACHED();
 }
 
 bool BrowserFrameContextData::CanAccess(const FrameContextData& target) const {
-  NOTREACHED_IN_MIGRATION();
-  return true;
+  NOTREACHED();
 }
 
 uintptr_t BrowserFrameContextData::GetId() const {

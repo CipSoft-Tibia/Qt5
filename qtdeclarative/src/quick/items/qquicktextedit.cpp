@@ -1977,10 +1977,7 @@ bool QQuickTextEdit::event(QEvent *event)
     Q_D(QQuickTextEdit);
     bool state = QQuickImplicitSizeItem::event(event);
     if (event->type() == QEvent::ShortcutOverride && !event->isAccepted()) {
-        QQuickItemPrivate *itemPriv = QQuickItemPrivate::get(this);
-        if (!itemPriv->extra.isAllocated() || !itemPriv->extra->keyHandler) {
-            d->control->processEvent(event, QPointF(-d->xoff, -d->yoff));
-        }
+        d->control->processEvent(event, QPointF(-d->xoff, -d->yoff));
         state = true;
     }
     return state;
@@ -2504,7 +2501,7 @@ QSGNode *QQuickTextEdit::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
     while (nodeIterator != d->textNodeMap.end() && !nodeIterator->dirty())
         ++nodeIterator;
 
-    const auto dpr = window()->effectiveDevicePixelRatio();
+    const auto dpr = d->effectiveDevicePixelRatio();
     QQuickTextNodeEngine engine;
     engine.setDevicePixelRatio(dpr);
     QQuickTextNodeEngine frameDecorationsEngine;

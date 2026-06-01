@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <atomic>
 #include <string_view>
 #include <tuple>
@@ -25,7 +26,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/numerics/safe_math.h"
 #include "base/rand_util.h"
-#include "base/ranges/algorithm.h"
 #include "base/threading/sequence_local_storage_slot.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/trace_id_helper.h"
@@ -36,6 +36,10 @@
 #include "mojo/public/cpp/bindings/lib/unserialized_message_context.h"
 
 namespace mojo {
+
+BASE_FEATURE(kMojoMessageAlwaysUseLatestVersion,
+             "MojoMessageAlwaysUseLatestVersion",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 namespace {
 
@@ -93,13 +97,26 @@ uint64_t GetTraceId(uint32_t name, uint32_t trace_nonce) {
          static_cast<uint64_t>(trace_nonce);
 }
 
+void WriteMessageHeaderV1(uint32_t name,
+                          uint32_t flags,
+                          uint32_t trace_nonce,
+                          internal::Buffer* payload_buffer) {
+  internal::MessageHeaderV1* header;
+  AllocateHeaderFromBuffer(payload_buffer, &header);
+  header->version = 1;
+  header->name = name;
+  header->flags = flags;
+  header->trace_nonce = trace_nonce;
+}
+
 void WriteMessageHeader(uint32_t name,
                         uint32_t flags,
                         uint32_t trace_nonce,
                         size_t payload_interface_id_count,
                         internal::Buffer* payload_buffer,
                         int64_t creation_timeticks_us) {
-  if (creation_timeticks_us > 0) {
+  if (creation_timeticks_us > 0 ||
+      base::FeatureList::IsEnabled(kMojoMessageAlwaysUseLatestVersion)) {
     // Version 3
     internal::MessageHeaderV3* header;
     AllocateHeaderFromBuffer(payload_buffer, &header);
@@ -123,12 +140,7 @@ void WriteMessageHeader(uint32_t name,
   } else if (flags &
              (Message::kFlagExpectsResponse | Message::kFlagIsResponse)) {
     // Version 1
-    internal::MessageHeaderV1* header;
-    AllocateHeaderFromBuffer(payload_buffer, &header);
-    header->version = 1;
-    header->name = name;
-    header->flags = flags;
-    header->trace_nonce = trace_nonce;
+    WriteMessageHeaderV1(name, flags, trace_nonce, payload_buffer);
   } else {
     internal::MessageHeader* header;
     AllocateHeaderFromBuffer(payload_buffer, &header);
@@ -343,9 +355,8 @@ Message::Message(ScopedMessageHandle handle,
     return;
 
   payload_buffer_ = internal::Buffer(handle_.get(), 0, buffer, buffer_size);
-  WriteMessageHeader(header.name, header.flags, trace_nonce,
-                     /*payload_interface_id_count=*/0, &payload_buffer_,
-                     /*creation_timeticks_us=*/0);
+  WriteMessageHeaderV1(header.name, header.flags, trace_nonce,
+                       &payload_buffer_);
 
   // We need to copy additional header data which may have been set after
   // original message construction, as this codepath may be reached at some
@@ -386,7 +397,7 @@ Message::Message(base::span<const uint8_t> payload,
     std::ignore = handle.release();
 
   payload_buffer_ = internal::Buffer(buffer, payload.size(), payload.size());
-  base::ranges::copy(payload, static_cast<uint8_t*>(payload_buffer_.data()));
+  std::ranges::copy(payload, static_cast<uint8_t*>(payload_buffer_.data()));
   transferable_ = true;
   serialized_ = true;
 }

@@ -6,8 +6,8 @@ import * as Common from '../../core/common/common.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import type * as Protocol from '../../generated/protocol.js';
 
-import {type ContrastIssue} from './CSSOverviewCompletedView.js';
-import {type UnusedDeclaration} from './CSSOverviewUnusedDeclarations.js';
+import type {ContrastIssue} from './CSSOverviewCompletedView.js';
+import type {UnusedDeclaration} from './CSSOverviewUnusedDeclarations.js';
 
 export class OverviewController extends Common.ObjectWrapper.ObjectWrapper<EventTypes> {
   currentUrl: string;
@@ -65,11 +65,11 @@ export const enum Events {
   RESET = 'Reset',
 }
 
-export type EventTypes = {
-  [Events.REQUEST_OVERVIEW_START]: void,
-  [Events.REQUEST_NODE_HIGHLIGHT]: number,
-  [Events.POPULATE_NODES]: {payload: PopulateNodesEvent},
-  [Events.REQUEST_OVERVIEW_CANCEL]: void,
-  [Events.OVERVIEW_COMPLETED]: void,
-  [Events.RESET]: void,
-};
+export interface EventTypes {
+  [Events.REQUEST_OVERVIEW_START]: void;
+  [Events.REQUEST_NODE_HIGHLIGHT]: number;
+  [Events.POPULATE_NODES]: {payload: PopulateNodesEvent};
+  [Events.REQUEST_OVERVIEW_CANCEL]: void;
+  [Events.OVERVIEW_COMPLETED]: void;
+  [Events.RESET]: void;
+}

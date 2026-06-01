@@ -73,6 +73,7 @@ private slots:
     void aotstatsSerialization();
     void aotstatsGeneration_data();
     void aotstatsGeneration();
+    void aotstatsFormatRevisionMissmatch();
 
     void crash_data();
     void crash();
@@ -257,7 +258,7 @@ void tst_qmlcachegen::loadGeneratedFile()
 
     auto componentPrivate = QQmlComponentPrivate::get(&component);
     QVERIFY(componentPrivate);
-    auto compilationUnit = componentPrivate->compilationUnit;
+    auto compilationUnit = componentPrivate->compilationUnit();
     QVERIFY(compilationUnit);
     auto unitData = compilationUnit->unitData();
     QVERIFY(unitData);
@@ -376,7 +377,7 @@ void tst_qmlcachegen::signalHandlerParameters()
     {
         auto componentPrivate = QQmlComponentPrivate::get(&component);
         QVERIFY(componentPrivate);
-        auto compilationUnit = componentPrivate->compilationUnit;
+        auto compilationUnit = componentPrivate->compilationUnit();
         QVERIFY(compilationUnit);
         QVERIFY(compilationUnit->unitData());
 
@@ -675,7 +676,7 @@ void tst_qmlcachegen::qrcScriptImport()
 
     auto componentPrivate = QQmlComponentPrivate::get(&component);
     QVERIFY(componentPrivate);
-    auto compilationUnit = componentPrivate->compilationUnit;
+    auto compilationUnit = componentPrivate->compilationUnit();
     QVERIFY(compilationUnit);
     auto unitData = compilationUnit->unitData();
     QVERIFY(unitData);
@@ -756,7 +757,7 @@ void tst_qmlcachegen::moduleScriptImport()
     {
         auto componentPrivate = QQmlComponentPrivate::get(&component);
         QVERIFY(componentPrivate);
-        auto compilationUnit = componentPrivate->compilationUnit->dependentScriptsPtr()
+        auto compilationUnit = componentPrivate->compilationUnit()->dependentScriptsPtr()
                                        ->first()->compilationUnit();
         QVERIFY(compilationUnit);
         auto unitData = compilationUnit->unitData();
@@ -937,22 +938,26 @@ void tst_qmlcachegen::saveableUnitPointer()
 
 void tst_qmlcachegen::aotstatsSerialization()
 {
+    const QQmlJS::CodegenResult success = QQmlJS::CodegenResult::Success;
+    const QQmlJS::CodegenResult skip = QQmlJS::CodegenResult::Skip;
+    const QQmlJS::CodegenResult failure = QQmlJS::CodegenResult::Failure;
+
     const auto createEntry = [](const auto &d, const auto &n, const auto &e, const auto &l,
                                 const auto &c, const auto &s) -> QQmlJS::AotStatsEntry {
         QQmlJS::AotStatsEntry entry;
         entry.codegenDuration = d;
         entry.functionName = n;
-        entry.errorMessage = e;
+        entry.message = e;
         entry.line = l;
         entry.column = c;
-        entry.codegenSuccessful = s;
+        entry.codegenResult = s;
         return entry;
     };
 
     const auto equal = [](const auto &e1, const auto &e2) -> bool {
         return e1.codegenDuration == e2.codegenDuration && e1.functionName == e2.functionName
-                && e1.errorMessage == e2.errorMessage && e1.line == e2.line
-                && e1.column == e2.column && e1.codegenSuccessful == e2.codegenSuccessful;
+                && e1.message == e2.message && e1.line == e2.line
+                && e1.column == e2.column && e1.codegenResult == e2.codegenResult;
     };
 
     // AotStats
@@ -965,18 +970,24 @@ void tst_qmlcachegen::aotstatsSerialization()
     // +-ModuleB
     // | +-File3
     // | | +-e4
+    // | | +-e5
 
+    using namespace std::chrono_literals;
     QQmlJS::AotStats original;
-    QQmlJS::AotStatsEntry e1 = createEntry(std::chrono::microseconds(500), "f1", "", 1, 1, true);
-    QQmlJS::AotStatsEntry e2 = createEntry(std::chrono::microseconds(200), "f2", "err1", 5, 4, false);
-    QQmlJS::AotStatsEntry e3 = createEntry(std::chrono::microseconds(750), "f3", "", 20, 4, true);
-    QQmlJS::AotStatsEntry e4 = createEntry(std::chrono::microseconds(300), "f4", "err2", 5, 8, false);
+    QQmlJS::AotStatsEntry e1 = createEntry(50us, "f1", "", 1, 1, success);
+    QQmlJS::AotStatsEntry e2 = createEntry(200us, "f2", "err1", 5, 4, failure);
+    QQmlJS::AotStatsEntry e3 = createEntry(750us, "f3", "", 20, 4, success);
+    QQmlJS::AotStatsEntry e4 = createEntry(300us, "f4", "err2", 5, 8, failure);
+    QQmlJS::AotStatsEntry e5 = createEntry(400us, "f5", "", 6, 8, skip);
     original.addEntry("ModuleA", "File1", e1);
     original.addEntry("ModuleA", "File1", e2);
     original.addEntry("ModuleA", "File2", e3);
     original.addEntry("ModuleB", "File3", e4);
+    original.addEntry("ModuleB", "File3", e5);
 
-    const auto parsed = QQmlJS::AotStats::fromJsonDocument(original.toJsonDocument());
+    const auto opt = QQmlJS::AotStats::fromJsonDocument(original.toJsonDocument());
+    QVERIFY(opt.has_value());
+    const auto parsed = opt.value();
     QCOMPARE(parsed.entries().size(), original.entries().size());
 
     const auto &parsedA = parsed.entries()["ModuleA"];
@@ -993,13 +1004,14 @@ void tst_qmlcachegen::aotstatsSerialization()
     QCOMPARE(parsedB.size(), originalB.size());
     QCOMPARE(parsedB["File3"].size(), originalB["File3"].size());
     QVERIFY(equal(parsedB["File3"][0], originalB["File3"][0]));
+    QVERIFY(equal(parsedB["File3"][1], originalB["File3"][1]));
 }
 
 struct FunctionEntry
 {
     QString name;
-    QString errorMessage;
-    bool codegenSuccessful;
+    QString message;
+    QQmlJS::CodegenResult codegenResult;
 };
 
 void tst_qmlcachegen::aotstatsGeneration_data()
@@ -1008,8 +1020,8 @@ void tst_qmlcachegen::aotstatsGeneration_data()
     QTest::addColumn<QString>("aotstatsFile");
     QTest::addColumn<QList<FunctionEntry>>("entries");
 
-    QList<FunctionEntry> functionEntries{ { "j", "", true },
-                                          { "s", "", true } };
+    QList<FunctionEntry> functionEntries{ { "j", "", QQmlJS::CodegenResult::Success },
+                                          { "s", "", QQmlJS::CodegenResult::Success } };
     QTest::addRow("clean") << "AotstatsClean.qml"
                            << "tst_qmlcachegen_aotstats_AotstatsClean_qml.cpp.aotstats"
                            << functionEntries;
@@ -1018,9 +1030,12 @@ void tst_qmlcachegen::aotstatsGeneration_data()
     const QString fError = "function without return type annotation returns int. This may prevent "
                            "proper compilation to Cpp.";
     const QString sError = "method g cannot be resolved.";
-    functionEntries = QList<FunctionEntry>{ { "i", "", true },
-                                            { "f", fError, false },
-                                            { "s", sError, false } };
+    const QString numSkip = "Skipped code generation for binding for property of type "
+                            "QQmlScriptString; nothing to do.";
+    functionEntries = QList<FunctionEntry>{ { "i", "", QQmlJS::CodegenResult::Success },
+                                            { "f", fError, QQmlJS::CodegenResult::Failure },
+                                            { "s", sError, QQmlJS::CodegenResult::Failure },
+                                            { "num", numSkip, QQmlJS::CodegenResult::Skip } };
     QTest::addRow("mixed") << "AotstatsMixed.qml"
                            << "tst_qmlcachegen_aotstats_AotstatsMixed_qml.cpp.aotstats"
                            << functionEntries;
@@ -1040,7 +1055,9 @@ void tst_qmlcachegen::aotstatsGeneration()
     QVERIFY(file.exists());
     QVERIFY(file.open(QIODevice::Text | QIODevice::ReadOnly));
     const auto document = QJsonDocument::fromJson(file.readAll());
-    const auto aotstats = QQmlJS::AotStats::fromJsonDocument(document);
+    const auto opt = QQmlJS::AotStats::fromJsonDocument(document);
+    QVERIFY(opt.has_value());
+    const auto aotstats = opt.value();
 
     QVERIFY(aotstats.entries().size() == 1);  // One module
     const auto &moduleEntries = aotstats.entries()["Aotstats(tst_qmlcachegen_aotstats)"];
@@ -1052,9 +1069,17 @@ void tst_qmlcachegen::aotstatsGeneration()
         const auto it = std::find_if(fileEntries.cbegin(), fileEntries.cend(),
                                      [&](const auto &e) { return e.functionName == entry.name; });
         QVERIFY(it != fileEntries.cend());
-        QVERIFY(it->codegenSuccessful == entry.codegenSuccessful);
-        QVERIFY(it->errorMessage == entry.errorMessage);
+        QVERIFY(it->codegenResult == entry.codegenResult);
+        QVERIFY(it->message == entry.message);
     }
+}
+
+void tst_qmlcachegen::aotstatsFormatRevisionMissmatch()
+{
+    QTest::ignoreMessage(QtDebugMsg, "AotStats format revision missmatch. Please try again with "
+                                     "a clean build.");
+    auto document = QJsonDocument::fromJson(testFile("aotstatsFormatRevisionMissmatch.json").toLatin1());
+    QVERIFY(!QQmlJS::AotStats::fromJsonDocument(document).has_value());
 }
 
 void tst_qmlcachegen::crash_data()

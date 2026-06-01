@@ -69,6 +69,7 @@ using PAProplistHandle = std::unique_ptr<pa_proplist, PAProplistDeleter>;
 struct PaMainLoopDeleter
 {
     void operator()(pa_threaded_mainloop *m) const { pa_threaded_mainloop_free(m); }
+    void operator()(pa_mainloop *m) const { pa_mainloop_free(m); }
 };
 
 pa_sample_spec audioFormatToSampleSpec(const QAudioFormat &format);
@@ -78,6 +79,16 @@ QAudioFormat::ChannelConfig channelConfigFromMap(const pa_channel_map &map);
 
 QUtf8StringView currentError(const pa_context *);
 QUtf8StringView currentError(const pa_stream *);
+
+[[nodiscard]] PAOperationHandle streamCork(const PAStreamHandle &, bool);
+
+enum class PulseaudioServerType {
+    NotConnected,
+    Pulseaudio,
+    Pipewire,
+};
+
+PulseaudioServerType pulseaudioDetectServerType();
 
 } // namespace QPulseAudioInternal
 

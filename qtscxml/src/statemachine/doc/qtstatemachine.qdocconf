@@ -12,6 +12,9 @@ examplesinstallpath     = statemachine
 exampledirs             = ../../../examples/statemachine \
                           snippets
 
+# Path to the root of qtscxml (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 qhp.projects            = QtStateMachine
 
 qhp.QtStateMachine.file                = qtstatemachine.qhp

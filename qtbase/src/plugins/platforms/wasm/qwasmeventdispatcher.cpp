@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwasmeventdispatcher.h"
 #include "qwasmintegration.h"
@@ -8,11 +9,17 @@
 
 QT_BEGIN_NAMESPACE
 
+QWasmEventDispatcher::QWasmEventDispatcher(std::shared_ptr<QWasmSuspendResumeControl> suspendResume)
+    :QEventDispatcherWasm(suspendResume)
+{
+
+}
+
 // Note: All event dispatcher functionality is implemented in QEventDispatcherWasm
 // in QtCore, except for processPostedEvents() below which uses API from QtGui.
-bool QWasmEventDispatcher::processPostedEvents()
+bool QWasmEventDispatcher::sendPostedEvents()
 {
-    QEventDispatcherWasm::processPostedEvents();
+    QEventDispatcherWasm::sendPostedEvents();
     return QWindowSystemInterface::sendWindowSystemEvents(QEventLoop::AllEvents);
 }
 

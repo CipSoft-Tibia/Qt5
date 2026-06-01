@@ -6,8 +6,10 @@
 
 #include "qiosdocumentpickercontroller.h"
 
+#include <QtCore/qpointer.h>
+
 @implementation QIOSDocumentPickerController {
-    QIOSFileDialog *m_fileDialog;
+    QPointer<QIOSFileDialog> m_fileDialog;
 }
 
 - (instancetype)initWithQIOSFileDialog:(QIOSFileDialog *)fileDialog
@@ -24,6 +26,19 @@
 
         docTypes = [self computeAllowedFileTypes:results];
     }
+
+    // FIXME: Handle security scoped URLs instead of copying resource
+    bool asCopy = [&]{
+        switch (fileDialog->options()->fileMode()) {
+        case QFileDialogOptions::AnyFile:
+        case QFileDialogOptions::ExistingFile:
+        case QFileDialogOptions::ExistingFiles:
+            return true;
+        default:
+            // Folders can't be imported
+            return false;
+        }
+    }();
 
     if (!docTypes.count) {
         switch (fileDialog->options()->fileMode()) {
@@ -42,7 +57,7 @@
         }
     }
 
-    if (self = [super initForOpeningContentTypes:docTypes]) {
+    if (self = [super initForOpeningContentTypes:docTypes asCopy:asCopy]) {
         m_fileDialog = fileDialog;
         self.modalPresentationStyle = UIModalPresentationFormSheet;
         self.delegate = self;
@@ -60,6 +75,9 @@
 {
     Q_UNUSED(controller);
 
+    if (!m_fileDialog)
+        return;
+
     QList<QUrl> files;
     for (NSURL* url in urls)
         files.append(QUrl::fromNSURL(url));
@@ -70,12 +88,18 @@
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller
 {
+    if (!m_fileDialog)
+        return;
+
     Q_UNUSED(controller);
     emit m_fileDialog->reject();
 }
 
 - (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController
 {
+    if (!m_fileDialog)
+        return;
+
     Q_UNUSED(presentationController);
 
     // "Called on the delegate when the user has taken action to dismiss the

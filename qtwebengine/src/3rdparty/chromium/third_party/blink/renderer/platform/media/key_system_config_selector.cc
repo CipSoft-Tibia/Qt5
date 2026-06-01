@@ -7,6 +7,7 @@
 #include <stddef.h>
 
 #include <utility>
+#include <vector>
 
 #include "base/functional/bind.h"
 #include "base/logging.h"
@@ -28,9 +29,8 @@
 #include "third_party/blink/public/platform/web_content_settings_client.h"
 #include "third_party/blink/public/platform/web_media_key_system_configuration.h"
 #include "third_party/blink/public/platform/web_string.h"
-#include "third_party/blink/public/platform/web_vector.h"
-#include "third_party/blink/public/web/modules/media/web_media_player_util.h"
 #include "third_party/blink/public/web/web_local_frame.h"
+#include "third_party/blink/renderer/platform/media/media_player_util.h"
 
 namespace blink {
 namespace {
@@ -47,8 +47,7 @@ EmeConfig::Rule GetDistinctiveIdentifierConfigRule(
     EmeFeatureSupport support,
     EmeFeatureRequirement requirement) {
   if (support == EmeFeatureSupport::INVALID) {
-    NOTREACHED_IN_MIGRATION();
-    return EmeConfig::UnsupportedRule();
+    NOTREACHED();
   }
 
   // For kNotAllowed and kRequired, the result is as expected. For kRecommended,
@@ -88,8 +87,7 @@ EmeConfig::Rule GetPersistentStateConfigRule(
     EmeFeatureSupport support,
     EmeFeatureRequirement requirement) {
   if (support == EmeFeatureSupport::INVALID) {
-    NOTREACHED_IN_MIGRATION();
-    return EmeConfig::UnsupportedRule();
+    NOTREACHED();
   }
 
   // For kNotAllowed and kRequired, the result is as expected. For kRecommended,
@@ -138,8 +136,7 @@ bool IsPersistentSessionType(WebEncryptedMediaSessionType sessionType) {
       break;
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 bool IsSupportedMediaType(const std::string& container_mime_type,
@@ -206,7 +203,7 @@ bool KeySystemConfigSelector::WebLocalFrameDelegate::AllowStorageAccessSync(
 
 struct KeySystemConfigSelector::SelectionRequest {
   std::string key_system;
-  WebVector<WebMediaKeySystemConfiguration> candidate_configurations;
+  std::vector<WebMediaKeySystemConfiguration> candidate_configurations;
   SelectConfigCB cb;
   bool was_permission_requested = false;
   bool is_permission_granted = false;
@@ -330,8 +327,7 @@ class KeySystemConfigSelector::ConfigState {
 
     // No rule specified, this should not happen
     if (!rule.has_value()) {
-      NOTREACHED_IN_MIGRATION();
-      return;
+      NOTREACHED();
     }
 
     // Rule does not require or prohibit anything, so can be skipped.
@@ -485,14 +481,13 @@ EmeConfig::Rule KeySystemConfigSelector::GetEncryptionSchemeConfigRule(
       return EmeConfig::UnsupportedRule();
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return EmeConfig::UnsupportedRule();
+  NOTREACHED();
 }
 
 bool KeySystemConfigSelector::GetSupportedCapabilities(
     const std::string& key_system,
     EmeMediaType media_type,
-    const WebVector<WebMediaKeySystemMediaCapability>&
+    const std::vector<WebMediaKeySystemMediaCapability>&
         requested_media_capabilities,
     // Corresponds to the partial configuration, plus restrictions.
     KeySystemConfigSelector::ConfigState* config_state,
@@ -768,7 +763,7 @@ KeySystemConfigSelector::GetSupportedConfiguration(
   //         let session types be candidate configuration's sessionTypes member.
   //       - Otherwise, let session types be [ "temporary" ].
   //         (Done in MediaKeySystemAccessInitializer.)
-  WebVector<WebEncryptedMediaSessionType> session_types =
+  std::vector<WebEncryptedMediaSessionType> session_types =
       candidate.session_types;
 
   // 13. For each value in session types:
@@ -798,8 +793,7 @@ KeySystemConfigSelector::GetSupportedConfiguration(
     EmeConfig::Rule session_type_rule = EmeConfig::UnsupportedRule();
     switch (session_type) {
       case WebEncryptedMediaSessionType::kUnknown:
-        NOTREACHED_IN_MIGRATION();
-        return CONFIGURATION_NOT_SUPPORTED;
+        NOTREACHED();
       case WebEncryptedMediaSessionType::kTemporary:
         session_type_rule = EmeConfig::SupportedRule();
         break;
@@ -929,8 +923,7 @@ KeySystemConfigSelector::GetSupportedConfiguration(
       config_state->AddRule(required_rule);
     } else {
       // We should not have passed step 6.
-      NOTREACHED_IN_MIGRATION();
-      return CONFIGURATION_NOT_SUPPORTED;
+      NOTREACHED();
     }
   }
 
@@ -968,8 +961,7 @@ KeySystemConfigSelector::GetSupportedConfiguration(
       config_state->AddRule(required_rule);
     } else {
       // We should not have passed step 5.
-      NOTREACHED_IN_MIGRATION();
-      return CONFIGURATION_NOT_SUPPORTED;
+      NOTREACHED();
     }
   }
 
@@ -1014,7 +1006,7 @@ KeySystemConfigSelector::GetSupportedConfiguration(
 
 void KeySystemConfigSelector::SelectConfig(
     const WebString& key_system,
-    const WebVector<WebMediaKeySystemConfiguration>& candidate_configurations,
+    const std::vector<WebMediaKeySystemConfiguration>& candidate_configurations,
     SelectConfigCB cb) {
   // Continued from requestMediaKeySystemAccess(), step 6, from
   // https://w3c.github.io/encrypted-media/#requestmediakeysystemaccess

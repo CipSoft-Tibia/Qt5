@@ -21,6 +21,8 @@
     \table
         \row
             \li \image qtquickcontrols-windows.png
+                       {Settings with Font Size radio buttons and Audio sliders
+                        in Windows style}
                 \caption The Windows style
     \endtable
 

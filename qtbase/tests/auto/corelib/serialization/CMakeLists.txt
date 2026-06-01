@@ -2,19 +2,14 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 add_subdirectory(json)
-if (NOT WASM) # QTBUG-121822
 add_subdirectory(qcborstreamreader)
-endif()
 if(QT_FEATURE_cborstreamwriter)
-    if (NOT WASM) # QTBUG-121822
     add_subdirectory(qcborstreamwriter)
-    endif()
 endif()
-# also (but not only!) QTBUG-121822:
-if(NOT WASM)
-    add_subdirectory(qcborvalue)
+add_subdirectory(qcborvalue)
+if (NOT QT_BUILD_WASM_BATCHED_TESTS)
+	add_subdirectory(qcborvalue_json)
 endif()
-add_subdirectory(qcborvalue_json)
 if(TARGET Qt::Gui)
     add_subdirectory(qdatastream)
     add_subdirectory(qdatastream_core_pixmap)

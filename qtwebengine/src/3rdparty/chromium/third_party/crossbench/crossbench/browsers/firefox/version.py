@@ -15,7 +15,9 @@ class FirefoxVersion(BrowserVersion):
   _PREFIX_RE = re.compile(r"(mozilla )?(ff|firefox)[ -]?", re.I)
   _VERSION_RE = re.compile(r"(?P<prefix>[^\d]*)"
                            r"(?P<version>"
-                           r"(?P<parts>\d+\.\d+(?P<channel>[ab.])\d+)"
+                           r"(?P<parts>\d+\.\d+"
+                           r"(?:(?P<channel_short>[ab.])\d+)?"
+                           r")"
                            r") ?(?P<channel_long>esr|any)?")
   _SPLIT_RE = re.compile(r"[ab.]")
   _CHANNEL_LOOKUP: Dict[str, BrowserVersionChannel] = {
@@ -26,6 +28,10 @@ class FirefoxVersion(BrowserVersion):
       "b": BrowserVersionChannel.BETA,
       "a": BrowserVersionChannel.ALPHA,
       "any": BrowserVersionChannel.ANY,
+  }
+  _CHANNEL_LONG_LOOKUP: Dict[str, BrowserVersionChannel] = {
+      "developer edition": BrowserVersionChannel.BETA,
+      "nightly": BrowserVersionChannel.ALPHA,
   }
 
   @classmethod
@@ -41,19 +47,27 @@ class FirefoxVersion(BrowserVersion):
     version_str = matches["version"]
     version_parts = matches["parts"]
     assert version_parts and version_str
-    if matches["channel_long"] and matches["channel"] != ".":
-      raise cls.parse_error("Invalid ESR/Any channel version", full_version)
-    browser_channel = cls._parse_channel(matches)
-    parts = tuple(map(int, cls._SPLIT_RE.split(version_parts)))
+    browser_channel = cls._parse_channel(full_version, matches)
+    parts: Tuple[int, ...] = tuple(map(int, cls._SPLIT_RE.split(version_parts)))
+    if len(parts) == 2:
+      parts += (0,)
     if len(parts) != 3:
       raise cls.parse_error("Invalid number of version number parts",
                             full_version)
     return parts, browser_channel, version_str
 
   @classmethod
-  def _parse_channel(cls, matches) -> BrowserVersionChannel:
-    channel_str: str = (matches["channel_long"] or matches["channel"] or
-                        "stable").lower()
+  def _parse_channel(cls, full_version: str, matches) -> BrowserVersionChannel:
+    channel_long: Optional[str] = matches["channel_long"]
+    channel_short: Optional[str] = matches["channel_short"]
+    if not channel_long and not channel_short:
+      full_version_lower = full_version.lower()
+      for long_name, channel in cls._CHANNEL_LONG_LOOKUP.items():
+        if long_name in full_version_lower:
+          return channel
+    if channel_long and channel_short != ".":
+      raise cls.parse_error("Invalid ESR/Any channel version", full_version)
+    channel_str: str = (channel_long or channel_short or "stable").lower()
     return cls._CHANNEL_LOOKUP[channel_str]
 
   @classmethod

@@ -48,6 +48,7 @@ source_set("test_support") {
     "//chrome/browser/profiles:profile",
     "//chrome/test:test_support",
     "//components/enterprise/connectors/core",
+    "//components/enterprise/connectors/core:test_support",
     "//components/enterprise/data_controls/core/browser",
     "//components/policy/core/browser",
     "//components/policy/core/common",
@@ -74,7 +75,7 @@ source_set("test_support") {
     ]
   }
 
-  if (is_win || is_linux || is_mac || is_chromeos_lacros) {
+  if (is_win || is_linux || is_mac) {
     public += [ "browser/management_context_mixin_browser.h" ]
     sources += [ "browser/management_context_mixin_browser.cc" ]
 

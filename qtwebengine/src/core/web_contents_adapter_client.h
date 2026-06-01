@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //
 //  W A R N I N G
@@ -16,6 +17,7 @@
 #define WEB_CONTENTS_ADAPTER_CLIENT_H
 
 #include <QtWebEngineCore/private/qtwebenginecoreglobal_p.h>
+#include <QtWebEngineCore/private/qwebenginepermission_p.h>
 #include <QtWebEngineCore/qwebenginepermission.h>
 
 #include "profile_adapter.h"
@@ -195,9 +197,8 @@ public:
     virtual QObject *accessibilityParentObject() = 0;
     virtual void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level, const QString& message, int lineNumber, const QString& sourceID) = 0;
     virtual void authenticationRequired(QSharedPointer<AuthenticationDialogController>) = 0;
-    virtual void runFeaturePermissionRequest(QWebEnginePermission::PermissionType, const QUrl &securityOrigin) = 0;
-    virtual void runMediaAccessPermissionRequest(const QUrl &securityOrigin, MediaRequestFlags requestFlags) = 0;
-    virtual void runMouseLockPermissionRequest(const QUrl &securityOrigin) = 0;
+    virtual void runFeaturePermissionRequest(QWebEnginePermission::PermissionType, const QUrl &securityOrigin,
+        int childId, const std::string &serializedToken) = 0;
     virtual void runRegisterProtocolHandlerRequest(QWebEngineRegisterProtocolHandlerRequest) = 0;
     virtual void runFileSystemAccessRequest(QWebEngineFileSystemAccessRequest) = 0;
     virtual QWebEngineSettings *webEngineSettings() const = 0;
@@ -229,7 +230,6 @@ public:
     virtual WebContentsAdapter* webContentsAdapter() = 0;
     virtual void releaseProfile() = 0;
     virtual void showWebAuthDialog(QWebEngineWebAuthUxRequest *request) = 0;
-    virtual QWebEnginePermission createFeaturePermissionObject(const QUrl &securityOrigin, QWebEnginePermission::PermissionType permissionType) = 0;
 };
 
 } // namespace QtWebEngineCore

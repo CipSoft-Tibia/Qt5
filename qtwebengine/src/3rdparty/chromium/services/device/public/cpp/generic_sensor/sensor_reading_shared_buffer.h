@@ -9,6 +9,7 @@
 #include "services/device/public/cpp/generic_sensor/sensor_reading.h"
 #include "services/device/public/mojom/sensor.mojom-shared.h"
 #include "base/memory/shared_memory_safety_checker.h"
+#include "base/containers/span.h"
 
 namespace device {
 
@@ -32,7 +33,8 @@ uint64_t GetSensorReadingSharedBufferOffset(mojom::SensorType type);
 }  // namespace device
 
 #if defined(COMPILER_MSVC)
-SKIP_SAFETY_CHECK_FOR(device::SensorReadingSharedBuffer)
+SKIP_SHARED_MEMORY_SAFETY_CHECK_FOR(device::SensorReadingSharedBuffer)
+SKIP_BYTE_SPAN_SAFETY_CHECK_FOR(device::SensorReadingSharedBuffer)
 #else
 // SensorReadingSharedBuffer is used in shared memory, so it must be trivially
 // copyable.

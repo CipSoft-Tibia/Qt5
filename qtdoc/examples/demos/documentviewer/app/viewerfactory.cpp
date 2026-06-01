@@ -17,6 +17,12 @@
 
 using namespace Qt::StringLiterals;
 
+namespace {
+    struct Tr {
+        Q_DECLARE_TR_FUNCTIONS(ViewerFactory);
+    };
+}
+
 ViewerFactory::ViewerFactory(QWidget *displayWidget, QMainWindow *mainWindow, DefaultPolicy policy)
     : m_defaultPolicy(policy),
       m_displayWidget(displayWidget),
@@ -74,16 +80,23 @@ void ViewerFactory::loadViewerPlugins()
 //! [shared]
     // Load shared plugins
     QDir pluginsDir = QDir(QApplication::applicationDirPath());
-
-#if defined(Q_OS_WINDOWS)
-    pluginsDir.cd("app"_L1);
-#elif defined(Q_OS_DARWIN)
-    if (pluginsDir.dirName() == "MacOS"_L1) {
-        pluginsDir.cdUp();
-        pluginsDir.cdUp();
-        pluginsDir.cdUp();
+#if defined(Q_OS_DARWIN)
+    if (pluginsDir.exists("../PlugIns"_L1)) { // installed build
+        pluginsDir.cd("../PlugIns"_L1);
+    } else {
+        pluginsDir.cd("../../../../plugins"_L1); // non-installed build
     }
+#elif defined(Q_OS_WIN)
+    if (pluginsDir.exists("plugins"_L1)) { // non-installed build
+        pluginsDir.cd("plugins"_L1);
+    } else {
+        pluginsDir.cd("../plugins"_L1); // installed build
+    }
+#else
+    pluginsDir.cd("../plugins"_L1); // installed and non-installed build
 #endif
+
+    // qDebug("Loading plugins from %s...", qUtf8Printable(pluginsDir.path()));
     const auto entryList = pluginsDir.entryList(QDir::Files);
     for (const QString &fileName : entryList) {
         QPluginLoader loader(pluginsDir.absoluteFilePath(fileName));
@@ -168,11 +181,20 @@ AbstractViewer *ViewerFactory::viewer(const QMimeType &mimeType) const
     }
 
     AbstractViewer *viewer = defaultViewer();
+    if (!viewer) {
+        QMessageBox mbox;
+        mbox.setIcon(QMessageBox::Warning);
+        mbox.setText(Tr::tr("No viewers for the chosen file format."));
+        mbox.setStandardButtons(QMessageBox::Ok);
+        QTimer::singleShot(8000, &mbox, [&mbox]() { mbox.close(); });
+        mbox.exec();
+        return nullptr;
+    }
 
     if (m_defaultWarning) {
         QMessageBox mbox;
         mbox.setIcon(QMessageBox::Warning);
-        mbox.setText(QObject::tr("Mime type %1 not supported. Falling back to %2.")
+        mbox.setText(Tr::tr("Mime type %1 not supported. Falling back to %2.")
                      .arg(mimeType.name(), viewer->viewerName()));
         mbox.setStandardButtons(QMessageBox::Ok);
         QTimer::singleShot(8000, &mbox, [&mbox](){ mbox.close(); });
@@ -217,7 +239,7 @@ QStringList ViewerFactory::supportedMimeTypes() const
         const QStringList &extensions = viewer->supportedExtensions();
         if (extensions.isEmpty())
             continue;
-        mimeTypes << (QObject::tr("Plus extensions: %1").arg(extensions.join(","_L1)));
+        mimeTypes << (Tr::tr("Plus extensions: %1").arg(extensions.join(","_L1)));
     }
 
     return mimeTypes;

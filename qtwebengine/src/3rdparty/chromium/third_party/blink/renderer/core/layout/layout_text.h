@@ -188,9 +188,7 @@ class CORE_EXPORT LayoutText : public LayoutObject {
                                 TextOffsetMap& offset_map) const;
 
   PhysicalRect LocalSelectionVisualRect() const final;
-  PhysicalRect LocalCaretRect(
-      int caret_offset,
-      LayoutUnit* extra_width_to_end_of_line = nullptr) const override;
+  PhysicalRect LocalCaretRect(int caret_offset) const override;
 
   // Compute the rect and offset of text boxes for this LayoutText.
   struct TextBoxInfo {
@@ -334,7 +332,7 @@ class CORE_EXPORT LayoutText : public LayoutObject {
 
   void InvalidateSubtreeLayoutForFontUpdates() override;
 
-  void DetachAbstractInlineTextBoxesIfNeeded();
+  void DetachAxHooksIfNeeded();
 
   // Returns the logical location of the first line box, and the logical height
   // of the LayoutText.
@@ -398,15 +396,14 @@ class CORE_EXPORT LayoutText : public LayoutObject {
   // See the class comment as to why we shouldn't call this function directly.
   void Paint(const PaintInfo&) const final {
     NOT_DESTROYED();
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const PhysicalOffset&,
                    HitTestPhase) final {
     NOT_DESTROYED();
-    NOTREACHED_IN_MIGRATION();
-    return false;
+    NOTREACHED();
   }
 
   void DeleteTextBoxes();
@@ -420,8 +417,6 @@ class CORE_EXPORT LayoutText : public LayoutObject {
     NOT_DESTROYED();
     return true;
   }
-
-  PhysicalRect LocalVisualRectIgnoringVisibility() const final;
 
   const DisplayItemClient* GetSelectionDisplayItemClient() const final;
 
@@ -443,7 +438,8 @@ class CORE_EXPORT LayoutText : public LayoutObject {
 
  private:
   ContentCaptureManager* GetOrResetContentCaptureManager();
-  void DetachAbstractInlineTextBoxes();
+  void DetachAxHooks();
+  void ClearBlockFlowCachedData(const LayoutBlockFlow* block_flow);
 
   virtual unsigned NonCollapsedCaretMaxOffset() const;
 
@@ -475,10 +471,15 @@ inline wtf_size_t LayoutText::FirstInlineFragmentItemIndex() const {
   return first_fragment_item_index_;
 }
 
-inline void LayoutText::DetachAbstractInlineTextBoxesIfNeeded() {
+inline void LayoutText::DetachAxHooksIfNeeded() {
   if (has_abstract_inline_text_box_) [[unlikely]] {
-    DetachAbstractInlineTextBoxes();
+    DetachAxHooks();
   }
+  if (!IsInLayoutNGInlineFormattingContext()) {
+    return;
+  }
+
+  ClearBlockFlowCachedData(FragmentItemsContainer());
 }
 
 template <>

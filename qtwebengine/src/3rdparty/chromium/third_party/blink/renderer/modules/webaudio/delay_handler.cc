@@ -71,18 +71,18 @@ void DelayHandler::Process(uint32_t frames_to_process) {
           // Assumes that the automation rate cannot change in the middle of
           // the process function. (See crbug.com/357391257)
           CHECK(delay_time_->IsAudioRate());
-          delay_time_->CalculateSampleAccurateValues(kernels_[i]->DelayTimes(),
-                                                     frames_to_process);
-          kernels_[i]->ProcessARate(source_bus->Channel(i)->Data(),
-                                    destination_bus->Channel(i)->MutableData(),
+          delay_time_->CalculateSampleAccurateValues(
+              kernels_[i]->DelayTimes().first(frames_to_process));
+          kernels_[i]->ProcessARate(source_bus->Channel(i)->Span(),
+                                    destination_bus->Channel(i)->MutableSpan(),
                                     frames_to_process);
         }
       } else {
         for (unsigned i = 0; i < kernels_.size(); ++i) {
           CHECK(!delay_time_->IsAudioRate());
           kernels_[i]->SetDelayTime(delay_time_->FinalValue());
-          kernels_[i]->ProcessKRate(source_bus->Channel(i)->Data(),
-                                    destination_bus->Channel(i)->MutableData(),
+          kernels_[i]->ProcessKRate(source_bus->Channel(i)->Span(),
+                                    destination_bus->Channel(i)->MutableSpan(),
                                     frames_to_process);
         }
       }
@@ -103,7 +103,8 @@ void DelayHandler::ProcessOnlyAudioParams(uint32_t frames_to_process) {
   CHECK_EQ(render_quantum_frames_, render_quantum_frames_expected);
   DCHECK_LE(frames_to_process, render_quantum_frames_expected);
   float values[render_quantum_frames_expected];
-  delay_time_->CalculateSampleAccurateValues(values, frames_to_process);
+  delay_time_->CalculateSampleAccurateValues(
+      base::span(values).first(frames_to_process));
 }
 
 void DelayHandler::Initialize() {

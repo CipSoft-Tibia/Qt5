@@ -53,6 +53,7 @@
 #include "absl/types/span.h"
 #include "internal/platform/os_name.h"
 #include "internal/platform/scheduled_executor.h"
+#include "internal/proto/analytics/connections_log.pb.h"
 
 namespace nearby {
 namespace connections {
@@ -101,6 +102,9 @@ class ClientProxy final {
       const std::string& service_id, Strategy strategy,
       const ConnectionListener& connection_lifecycle_listener,
       absl::Span<location::nearby::proto::connections::Medium> mediums,
+      const std::vector<location::nearby::analytics::proto::ConnectionsLog::
+                            OperationResultWithMedium>&
+          operation_result_with_medium,
       const AdvertisingOptions& advertising_options = AdvertisingOptions{});
   // Marks this client as not advertising.
   void StoppedAdvertising();
@@ -123,6 +127,9 @@ class ClientProxy final {
       const std::string& service_id, Strategy strategy,
       DiscoveryListener discovery_listener,
       absl::Span<location::nearby::proto::connections::Medium> mediums,
+      const std::vector<location::nearby::analytics::proto::ConnectionsLog::
+                            OperationResultWithMedium>&
+          operation_result_with_medium,
       const DiscoveryOptions& discovery_options = DiscoveryOptions{});
   // Marks this client as not discovering at all.
   void StoppedDiscovery();
@@ -179,6 +186,9 @@ class ClientProxy final {
   // ConnectionListener.disconnected_cb() callback.
   void OnDisconnected(const std::string& endpoint_id, bool notify);
 
+  // Returns the medium we're currently connected to the endpoint over, or
+  // UNKNOWN if we don't know or don't have a connection.
+  Medium GetConnectedMedium(const std::string& endpoint_id) const;
   // Returns all mediums eligible for upgrade.
   BooleanMediumSelector GetUpgradeMediums(const std::string& endpoint_id) const;
   // Returns if this endpoint support 5G for WIFI.
@@ -323,6 +333,12 @@ class ClientProxy final {
   // Returns true if the multiplex socket is supported for the given medium.
   bool IsMultiplexSocketSupported(absl::string_view endpoint_id, Medium medium);
 
+  // Gets the WebRTC non cellular network status.
+  bool GetWebRtcNonCellular();
+
+  // Sets the WebRTC non cellular network status.
+  void SetWebRtcNonCellular(bool webrtc_non_cellular);
+
   /** Bitmask for bt multiplex connection support. */
   // Note. Deprecates the first and second bit of BT_MULTIPLEX_ENABLED and
   // WIFI_LAN_MULTIPLEX_ENABLED and shift them to the third and the forth bit.
@@ -357,6 +373,7 @@ class ClientProxy final {
       kConnected = 1 << 4,
     };
     bool is_incoming{false};
+    Medium connected_medium{Medium::UNKNOWN_MEDIUM};
     Status status{kPending};
     ConnectionListener connection_listener;
     ConnectionOptions connection_options;
@@ -502,6 +519,8 @@ class ClientProxy final {
   bool supports_safe_to_disconnect_;
   bool support_auto_reconnect_;
   std::int32_t local_safe_to_disconnect_version_;
+  // Allowed to use WebRTC over non-cellular networks.
+  bool webrtc_non_cellular_ = false;
 };
 
 }  // namespace connections

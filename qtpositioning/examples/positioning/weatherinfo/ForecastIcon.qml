@@ -4,7 +4,7 @@
 import QtQuick
 
 Item {
-    id: top
+    id: topItem
 
     property string topText: "Mon"
     property string middleIcon: "sunny"
@@ -15,7 +15,7 @@ Item {
         id: dayText
         horizontalAlignment: Text.AlignHCenter
         width: parent.width
-        text: top.topText
+        text: topItem.topText
         color: "white"
         font.pixelSize: 24
 
@@ -26,7 +26,7 @@ Item {
 
     WeatherIcon {
         id: icon
-        weatherIcon: top.middleIcon
+        weatherIcon: topItem.middleIcon
 
         width: height
         anchors.top: dayText.bottom
@@ -38,8 +38,8 @@ Item {
     Text {
         id: tempText
         horizontalAlignment: Text.AlignHCenter
-        width: top.width
-        text: top.bottomText
+        width: topItem.width
+        text: topItem.bottomText
         font.pixelSize: 16
 
         anchors.bottom: parent.bottom

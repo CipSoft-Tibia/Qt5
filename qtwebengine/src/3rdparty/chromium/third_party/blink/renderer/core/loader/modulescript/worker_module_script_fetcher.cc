@@ -12,6 +12,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_source_location_type.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/origin_trials/origin_trial_context.h"
+#include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_client_settings_object.h"
@@ -56,10 +57,9 @@ void WorkerModuleScriptFetcher::Fetch(
     DCHECK_EQ(level_, ModuleGraphLevel::kTopLevelModuleFetch);
 
     auto identifier = CreateUniqueIdentifier();
-    if (global_scope_->IsServiceWorkerGlobalScope()) {
-      global_scope_->SetMainResoureIdentifier(identifier);
-    }
-
+    global_scope_->SetMainResoureIdentifier(identifier);
+    probe::WillSendWorkerMainRequest(global_scope_.Get(), identifier,
+                                     fetch_params.Url());
     fetch_params.MutableResourceRequest().SetInspectorId(identifier);
     worker_main_script_loader_ = MakeGarbageCollected<WorkerMainScriptLoader>();
     worker_main_script_loader_->Start(
@@ -85,12 +85,11 @@ void WorkerModuleScriptFetcher::Fetch(
       kNoCompileHintsProducer = nullptr;
   constexpr v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*
       kNoCompileHintsConsumer = nullptr;
-  constexpr bool kNoV8CompileHintsMagicCommentRuntimeEnabledFeature = false;
   ScriptResource::Fetch(fetch_params, fetch_client_settings_object_fetcher,
                         this, global_scope_->GetIsolate(),
                         ScriptResource::kNoStreaming, kNoCompileHintsProducer,
                         kNoCompileHintsConsumer,
-                        kNoV8CompileHintsMagicCommentRuntimeEnabledFeature);
+                        v8_compile_hints::MagicCommentMode::kNever);
 }
 
 void WorkerModuleScriptFetcher::Trace(Visitor* visitor) const {

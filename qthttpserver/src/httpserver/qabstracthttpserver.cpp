@@ -38,6 +38,7 @@ Q_STATIC_LOGGING_CATEGORY(lcHttpServer, "qt.httpserver")
 */
 QAbstractHttpServerPrivate::QAbstractHttpServerPrivate()
 {
+    restartHeartbeatTimer();
 }
 
 /*!
@@ -52,9 +53,9 @@ void QAbstractHttpServerPrivate::handleNewConnections()
         while (auto socket = qobject_cast<QSslSocket *>(sslServer->nextPendingConnection())) {
             if (socket->sslConfiguration().nextNegotiatedProtocol()
                             == QSslConfiguration::ALPNProtocolHTTP2) {
-                new QHttpServerHttp2ProtocolHandler(q, socket, &requestFilter);
+                createHttp2Handler(socket);
             } else {
-                new QHttpServerHttp1ProtocolHandler(q, socket, &requestFilter);
+                createHttp1Handler(socket);
             }
         }
         return;
@@ -65,7 +66,7 @@ void QAbstractHttpServerPrivate::handleNewConnections()
     Q_ASSERT(tcpServer);
 
     while (auto socket = tcpServer->nextPendingConnection())
-        new QHttpServerHttp1ProtocolHandler(q, socket, &requestFilter);
+        createHttp1Handler(socket);
 }
 
 /*!
@@ -81,6 +82,36 @@ bool QAbstractHttpServerPrivate::verifyThreadAffinity(const QObject *contextObje
     return true;
 }
 
+void QAbstractHttpServerPrivate::createHttp1Handler(QIODevice *socket)
+{
+    Q_Q(QAbstractHttpServer);
+
+    auto handler = new QHttpServerHttp1ProtocolHandler(q, socket, &requestFilter);
+    QObject::connect(&heartbeatTimer, &QTimer::timeout,
+            handler, &QHttpServerHttp1ProtocolHandler::checkKeepAliveTimeout);
+}
+
+#if QT_CONFIG(ssl) && QT_CONFIG(http)
+void QAbstractHttpServerPrivate::createHttp2Handler(QIODevice *socket)
+{
+    Q_Q(QAbstractHttpServer);
+
+    auto handler = new QHttpServerHttp2ProtocolHandler(q, socket, &requestFilter);
+    QObject::connect(&heartbeatTimer, &QTimer::timeout,
+            handler, &QHttpServerHttp2ProtocolHandler::checkKeepAliveTimeout);
+}
+#endif
+
+void QAbstractHttpServerPrivate::restartHeartbeatTimer()
+{
+    if (heartbeatTimer.isActive())
+        heartbeatTimer.stop();
+
+    const auto timerInterval = qMax(configuration.keepAliveTimeout() / 2,
+                                    std::chrono::seconds(5));
+    heartbeatTimer.start(timerInterval);
+}
+
 
 #if QT_CONFIG(localserver)
 /*!
@@ -93,7 +124,7 @@ void QAbstractHttpServerPrivate::handleNewLocalConnections()
     Q_ASSERT(localServer);
 
     while (auto socket = localServer->nextPendingConnection())
-        new QHttpServerHttp1ProtocolHandler(q, socket, &requestFilter);
+        createHttp1Handler(socket);
 }
 #endif
 
@@ -437,6 +468,7 @@ void QAbstractHttpServer::setConfiguration(const QHttpServerConfiguration &confi
     Q_D(QAbstractHttpServer);
     d->configuration = config;
     d->requestFilter.setConfiguration(config);
+    d->restartHeartbeatTimer();
 }
 
 /*!

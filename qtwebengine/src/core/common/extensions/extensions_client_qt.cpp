@@ -112,7 +112,7 @@ const GURL &ExtensionsClientQt::GetWebstoreBaseURL() const
 const GURL &ExtensionsClientQt::GetWebstoreUpdateURL() const
 {
     if (update_url_.is_empty())
-        update_url_ = GURL(extension_urls::GetWebstoreUpdateUrl());
+        update_url_ = GURL(extension_urls::kChromeWebstoreUpdateURL);
     return update_url_;
 }
 

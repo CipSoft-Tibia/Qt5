@@ -358,28 +358,6 @@ void tst_QMetaType::registerGadget(const char *name, const QList<GadgetPropertyT
     s_managedTypes[gadgetTypeId] = qMakePair(dynamicGadgetProperties, std::shared_ptr<QMetaObject>{meta, [](QMetaObject *ptr){ ::free(ptr); }});
 }
 
-void tst_QMetaType::defined()
-{
-    QCOMPARE(int(QMetaTypeId2<QString>::Defined), 1);
-    QCOMPARE(int(QMetaTypeId2<Foo>::Defined), 0);
-    QCOMPARE(int(QMetaTypeId2<void*>::Defined), 1);
-    QCOMPARE(int(QMetaTypeId2<int*>::Defined), 0);
-    QCOMPARE(int(QMetaTypeId2<CustomQObject::CustomQEnum>::Defined), 1);
-    QCOMPARE(int(QMetaTypeId2<CustomGadget>::Defined), 1);
-    QCOMPARE(int(QMetaTypeId2<CustomGadget*>::Defined), 1);
-    QVERIFY(!QMetaTypeId2<GadgetDerived>::Defined);
-    QVERIFY(!QMetaTypeId2<GadgetDerived*>::Defined);
-    QVERIFY(int(QMetaTypeId2<CustomQObject*>::Defined));
-    QVERIFY(!QMetaTypeId2<CustomQObject>::Defined);
-    QVERIFY(!QMetaTypeId2<CustomNonQObject>::Defined);
-    QVERIFY(!QMetaTypeId2<CustomNonQObject*>::Defined);
-    QVERIFY(!QMetaTypeId2<CustomGadget_NonDefaultConstructible>::Defined);
-
-    // registered with Q_DECLARE_METATYPE
-    QVERIFY(QMetaTypeId2<GadgetDerivedAndTyped<int>>::Defined);
-    QVERIFY(QMetaTypeId2<GadgetDerivedAndTyped<int>*>::Defined);
-}
-
 struct Bar
 {
     Bar()

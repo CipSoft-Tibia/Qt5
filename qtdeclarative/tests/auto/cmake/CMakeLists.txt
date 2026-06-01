@@ -109,7 +109,7 @@ if(TARGET Qt::Qml)
         )
     endif()
     # TODO: Plugin targets are not available in shared builds at the moment QTBUG-94066
-    if(NOT QT6_IS_SHARED_LIBS_BUILD)
+    if(NOT QT6_IS_SHARED_LIBS_BUILD AND QT_FEATURE_qml_network AND QT_FEATURE_localserver)
         _qt_internal_test_expect_pass(test_plugins)
     endif()
     _qt_internal_test_expect_pass(empty_qmldir)
@@ -132,6 +132,23 @@ if(TARGET Qt::Qml)
     )
 
     _qt_internal_test_expect_fail(test_invalid_qml_uri)
+
+    set(test_duplicate_files_extra_args "")
+    if(NOT CMAKE_CROSSCOMPILING)
+        list(APPEND test_duplicate_files_extra_args BINARY main)
+    endif()
+    _qt_internal_test_expect_pass(test_duplicate_files
+        TESTNAME test_duplicate_files_qml_files
+        BUILD_OPTIONS -Drun=case_qml_files
+        ${test_duplicate_files_extra_args}
+    )
+    _qt_internal_test_expect_pass(test_duplicate_files
+        TESTNAME test_duplicate_files_resources
+        BUILD_OPTIONS -Drun=case_resources
+        ${test_duplicate_files_extra_args}
+    )
+
+    _qt_internal_test_expect_pass(test_separate_qml_and_resources)
 
     _qt_internal_test_expect_pass(test_deduplicate_metatypes TESTNAME cmake_test_duplicate_metatypes)
     set_tests_properties(cmake_test_duplicate_metatypes PROPERTIES
@@ -156,7 +173,10 @@ if(TARGET Qt::Quick)
             )
         endif()
         if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19")
-            _qt_internal_test_expect_pass(test_generate_qmlls_ini BINARY tst_generate_qmlls_ini)
+            # we can't use qtpaths with --query without the settings feature flag
+            if(QT_FEATURE_settings)
+                _qt_internal_test_expect_pass(test_generate_qmlls_ini BINARY tst_generate_qmlls_ini)
+            endif()
             _qt_internal_test_expect_pass(test_aotstats_integration BINARY tst_aotstats_integration)
         endif()
         _qt_internal_test_expect_pass(

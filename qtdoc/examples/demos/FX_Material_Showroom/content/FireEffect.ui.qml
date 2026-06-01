@@ -4,10 +4,12 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: fire
+
+    required property Camera sceneCamera
+
     ParticleEmitter3D {
         id: modelShapeEmitter4
         x: 0
@@ -30,7 +32,7 @@ ParticleSystem3D {
             color: "#ffffff"
             unifiedColorVariation: false
             fadeInDuration: 1250
-            alignTargetPosition: sceneCamera.position
+            alignTargetPosition: fire.sceneCamera.position
             hasTransparency: true
             colorVariation.z: 1
             sortMode: Particle3D.SortDistance
@@ -79,7 +81,7 @@ ParticleSystem3D {
         receivesShadows: true
         scale.z: 0.1
         instancing: particleRed4.instanceTable
-        materials: fireMat
+        materials: [fireMat]
         scale.y: 0.1
         scale.x: 0.1
         receivesReflections: true
@@ -95,7 +97,7 @@ ParticleSystem3D {
         uniquePaceVariation: 1
         globalPace.y: 0.1
         uniquePace.y: 0.1
-        particles: particleRed4
+        particles: [particleRed4]
         uniquePace.z: 0.1
         globalPaceStart.y: 0.1
         uniqueAmount.z: 10

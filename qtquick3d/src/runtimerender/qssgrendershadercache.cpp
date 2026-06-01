@@ -450,12 +450,15 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::compileForRhi(const QByteArray &inKey,
        qDebug("\n*****\n");
    };
 
-   static auto dumpShaderToFile = [](QShader::Stage stage, const QByteArray &data) {
-       QFile f(dumpFilename(stage));
-       f.open(QIODevice::WriteOnly | QIODevice::Text);
-       f.write(data);
-       f.close();
-   };
+    static auto dumpShaderToFile = [](QShader::Stage stage, const QByteArray &data) {
+        QFile f(dumpFilename(stage));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            f.write(data);
+        } else {
+            qWarning("Failed to write to file: %s (%s)\n",
+                    qPrintable(f.fileName()), qPrintable(f.errorString()));
+        }
+    };
 
     baker.setSourceString(vertexCode, QShader::VertexStage);
     QShader vertexShader = baker.bake();

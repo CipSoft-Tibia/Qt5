@@ -7,8 +7,11 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
+import Thermostat
 
 Item {
     id: root
@@ -16,7 +19,7 @@ Item {
     property alias swipe: swipeView
     property alias currentRoomIndex: swipeView.currentIndex
 
-    property var model
+    required property list<Room> model
     property bool isOneColumn: false
 
     ListView {
@@ -27,13 +30,14 @@ Item {
         width: root.width
         height: 28
         spacing: 26
+        clip: true
         delegate: Label {
             id: labelDelegate
 
-            required property string name
+            required property Room modelData
             required property int index
 
-            text: name
+            text: modelData.name
             font.pixelSize: 12
             font.family: "Titillium Web"
             font.weight: 400
@@ -69,17 +73,13 @@ Item {
 
             ThermostatScrollView {
                 id: delegate
-                required property int index
-                required property string name
-                required property bool active
-                required property var model
+
+                required property Room modelData
+                room: modelData
 
                 width: swipeView.width
                 height: swipeView.height
                 isOneColumn: root.isOneColumn
-
-                roomName: name
-                isActive: model.active
             }
         }
     }

@@ -13,6 +13,12 @@ project(QtCoap
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core Network)
 find_package(Qt6 ${PROJECT_VERSION} CONFIG OPTIONAL_COMPONENTS Gui Widgets Quick Qml)
+
+if(NOT QT_FEATURE_udpsocket)
+    message(NOTICE "UDP socket support is required for QtCoap, skipping module")
+    return()
+endif()
+
 qt_internal_project_setup()
 
 qt_build_repo()

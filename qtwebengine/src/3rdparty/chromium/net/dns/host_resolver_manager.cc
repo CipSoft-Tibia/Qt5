@@ -4,6 +4,7 @@
 
 #include "net/dns/host_resolver_manager.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iterator>
@@ -44,7 +45,6 @@
 #include "base/not_fatal_until.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/observer_list.h"
-#include "base/ranges/algorithm.h"
 #include "base/sequence_checker.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
@@ -218,15 +218,13 @@ PrioritizedDispatcher::Limits GetDispatcherLimits(
   std::vector<std::string_view> group_parts = base::SplitStringPiece(
       group, ":", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   if (group_parts.size() != NUM_PRIORITIES + 1) {
-    NOTREACHED_IN_MIGRATION();
-    return limits;
+    NOTREACHED();
   }
 
   std::vector<size_t> parsed(group_parts.size());
   for (size_t i = 0; i < group_parts.size(); ++i) {
     if (!base::StringToSizeT(group_parts[i], &parsed[i])) {
-      NOTREACHED_IN_MIGRATION();
-      return limits;
+      NOTREACHED();
     }
   }
 
@@ -239,8 +237,7 @@ PrioritizedDispatcher::Limits GetDispatcherLimits(
   // There must be some unreserved slots available for the all priorities.
   if (total_reserved_slots > total_jobs ||
       (total_reserved_slots == total_jobs && parsed[MINIMUM_PRIORITY] == 0)) {
-    NOTREACHED_IN_MIGRATION();
-    return limits;
+    NOTREACHED();
   }
 
   limits.total_jobs = total_jobs;
@@ -266,12 +263,11 @@ std::vector<IPEndPoint> FilterAddresses(std::vector<IPEndPoint> addresses,
     return addresses;
 
   // Keep only the endpoints that match `want_family`.
-  addresses.erase(
-      base::ranges::remove_if(
-          addresses,
-          [want_family](AddressFamily family) { return family != want_family; },
-          &IPEndPoint::GetFamily),
-      addresses.end());
+  auto removed = std::ranges::remove_if(
+      addresses,
+      [want_family](AddressFamily family) { return family != want_family; },
+      &IPEndPoint::GetFamily);
+  addresses.erase(removed.begin(), removed.end());
   return addresses;
 }
 
@@ -904,7 +900,7 @@ HostCache::Entry HostResolverManager::ResolveLocally(
         return resolved.value();
       }
     } else {
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
     }
   }
 
@@ -1112,10 +1108,10 @@ std::optional<HostCache::Entry> HostResolverManager::ServeFromHosts(
   // If got only loopback addresses and the family was restricted, resolve
   // again, without restrictions. See SystemHostResolverCall for rationale.
   if (default_family_due_to_no_ipv6 &&
-      base::ranges::all_of(addresses, &IPAddress::IsIPv4,
-                           &IPEndPoint::address) &&
-      base::ranges::all_of(addresses, &IPAddress::IsLoopback,
-                           &IPEndPoint::address)) {
+      std::ranges::all_of(addresses, &IPAddress::IsIPv4,
+                          &IPEndPoint::address) &&
+      std::ranges::all_of(addresses, &IPAddress::IsLoopback,
+                          &IPEndPoint::address)) {
     query_types.Put(DnsQueryType::AAAA);
     return ServeFromHosts(hostname, query_types, false, tasks);
   }
@@ -1201,9 +1197,9 @@ bool HostResolverManager::ShouldForceSystemResolverDueToTestOverride() const {
   if (HostResolverProc::GetDefault() && system_resolver_disabled_for_testing_) {
     DCHECK(dns_client_);
     DCHECK(dns_client_->GetEffectiveConfig());
-    DCHECK(base::ranges::none_of(dns_client_->GetEffectiveConfig()->nameservers,
-                                 &IPAddress::IsPubliclyRoutable,
-                                 &IPEndPoint::address))
+    DCHECK(std::ranges::none_of(dns_client_->GetEffectiveConfig()->nameservers,
+                                &IPAddress::IsPubliclyRoutable,
+                                &IPEndPoint::address))
         << "Test could query a publicly-routable address.";
   }
   return !host_resolver_system_params_.resolver_proc &&
@@ -1272,13 +1268,12 @@ void HostResolverManager::PushDnsTasks(bool system_task_allowed,
         out_tasks->push_back(TaskType::DNS);
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 
   constexpr TaskType kWantTasks[] = {TaskType::DNS, TaskType::SECURE_DNS};
   const bool no_dns_or_secure_tasks =
-      base::ranges::find_first_of(*out_tasks, kWantTasks) == out_tasks->end();
+      std::ranges::find_first_of(*out_tasks, kWantTasks) == out_tasks->end();
   // The system resolver can be used as a fallback for a non-existent or
   // failing DnsTask if allowed by the request parameters.
   if (system_task_allowed &&
@@ -1384,8 +1379,8 @@ void HostResolverManager::CreateTaskSequence(
 
   // `HOST_RESOLVER_CANONNAME` is only supported through system resolution.
   if (job_key.flags & HOST_RESOLVER_CANONNAME) {
-    DCHECK(base::ranges::find(*out_tasks, TaskType::DNS) == out_tasks->end());
-    DCHECK(base::ranges::find(*out_tasks, TaskType::MDNS) == out_tasks->end());
+    DCHECK(std::ranges::find(*out_tasks, TaskType::DNS) == out_tasks->end());
+    DCHECK(std::ranges::find(*out_tasks, TaskType::MDNS) == out_tasks->end());
   }
 }
 
@@ -1643,9 +1638,9 @@ void HostResolverManager::OnSystemDnsConfigChanged(
   // that we are not at risk of sending queries beyond the local network.
   if (HostResolverProc::GetDefault() && system_resolver_disabled_for_testing_ &&
       config.has_value()) {
-    DCHECK(base::ranges::none_of(config->nameservers,
-                                 &IPAddress::IsPubliclyRoutable,
-                                 &IPEndPoint::address))
+    DCHECK(std::ranges::none_of(config->nameservers,
+                                &IPAddress::IsPubliclyRoutable,
+                                &IPEndPoint::address))
         << "Test could query a publicly-routable address.";
   }
 
@@ -1717,8 +1712,7 @@ int HostResolverManager::GetOrCreateMdnsClient(MDnsClient** out_client) {
   return rv;
 #else
   // Should not request MDNS resoltuion unless MDNS is enabled.
-  NOTREACHED_IN_MIGRATION();
-  return ERR_UNEXPECTED;
+  NOTREACHED();
 #endif
 }
 

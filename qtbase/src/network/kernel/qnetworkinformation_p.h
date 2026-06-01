@@ -33,9 +33,9 @@ class Q_NETWORK_EXPORT QNetworkInformationBackend : public QObject
     using TransportMedium = QNetworkInformation::TransportMedium;
 
 public:
-    static inline const char16_t PluginNames[4][22] = {
+    static inline const char16_t PluginNames[4][24] = {
         { u"networklistmanager" },
-        { u"scnetworkreachability" },
+        { u"applenetworkinformation" },
         { u"android" },
         { u"networkmanager" },
     };

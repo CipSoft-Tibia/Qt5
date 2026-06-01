@@ -159,10 +159,6 @@ BASE_FEATURE(kPartitionConnectionsByNetworkIsolationKey,
              "PartitionConnectionsByNetworkIsolationKey",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kTLS13KeyUpdate,
-             "TLS13KeyUpdate",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 BASE_FEATURE(kPostQuantumKyber,
              "PostQuantumKyber",
@@ -173,10 +169,10 @@ BASE_FEATURE(kPostQuantumKyber,
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
-BASE_FEATURE(kUseMLKEM, "UseMLKEM", base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kUseMLKEM, "UseMLKEM", base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kNetUnusedIdleSocketTimeout,
-             "NetUnusedIdleSocketTimeout",
+BASE_FEATURE(kSearchEnginePreconnectInterval,
+             "SearchEnginePreconnectInterval",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kShortLaxAllowUnsafeThreshold,
@@ -185,14 +181,6 @@ BASE_FEATURE(kShortLaxAllowUnsafeThreshold,
 
 BASE_FEATURE(kSameSiteDefaultChecksMethodRigorously,
              "SameSiteDefaultChecksMethodRigorously",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kTurnOffStreamingMediaCachingOnBattery,
-             "TurnOffStreamingMediaCachingOnBattery",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kTurnOffStreamingMediaCachingAlways,
-             "TurnOffStreamingMediaCachingAlways",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kSchemefulSameSite,
@@ -227,14 +215,12 @@ extern const base::FeatureParam<base::TimeDelta> kTimeoutTcpConnectAttemptMax(
     "TimeoutTcpConnectAttemptMax",
     base::Seconds(30));
 
-#if BUILDFLAG(ENABLE_REPORTING)
-BASE_FEATURE(kDocumentReporting,
-             "DocumentReporting",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(ENABLE_REPORTING)
-
 BASE_FEATURE(kCookieSameSiteConsidersRedirectChain,
              "CookieSameSiteConsidersRedirectChain",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAllowSameSiteNoneCookiesInSandbox,
+             "AllowSameSiteNoneCookiesInSandbox",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kWaitForFirstPartySetsInit,
@@ -252,6 +238,14 @@ extern const base::FeatureParam<base::TimeDelta>
 BASE_FEATURE(kAncestorChainBitEnabledInPartitionedCookies,
              "AncestorChainBitEnabledInPartitionedCookies",
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kRequestStorageAccessNoCorsRequired,
+             "RequestStorageAccessNoCorsRequired",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kStorageAccessApiFollowsSameOriginPolicy,
+             "StorageAccessApiFollowsSameOriginPolicy",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kStaticKeyPinningEnforcement,
              "StaticKeyPinningEnforcement",
@@ -310,6 +304,10 @@ BASE_FEATURE(kEnableGetNetworkConnectivityHintAPI,
 BASE_FEATURE(kEnableTcpPortRandomization,
              "EnableTcpPortRandomization",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kTcpSocketIoCompletionPortWin,
+             "TcpSocketIoCompletionPortWin",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
 BASE_FEATURE(kAvoidEntryCreationForNoStore,
@@ -323,7 +321,7 @@ const base::FeatureParam<int> kAvoidEntryCreationForNoStoreCacheSize{
 // https://crbug.com/1345207
 BASE_FEATURE(kPrefetchFollowsNormalCacheSemantics,
              "PrefetchFollowsNormalCacheSemantics",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // A flag for new Kerberos feature, that suggests new UI
 // when Kerberos authentication in browser fails on ChromeOS.
@@ -363,12 +361,21 @@ BASE_FEATURE(kEnableIpProtectionProxy,
 
 const base::FeatureParam<std::string> kIpPrivacyTokenServer{
     &kEnableIpProtectionProxy, /*name=*/"IpPrivacyTokenServer",
-    /*default_value=*/"https://phosphor-pa.googleapis.com"};
+    /*default_value=*/"https://prod.ipprotectionauth.goog"};
+
+const base::FeatureParam<std::string> kIpPrivacyIssuerTokenServer{
+    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyIssuerTokenServer",
+    /*default_value=*/"https://prod.issuertoken.goog"};
 
 const base::FeatureParam<std::string> kIpPrivacyTokenServerGetInitialDataPath{
     &kEnableIpProtectionProxy,
     /*name=*/"IpPrivacyTokenServerGetInitialDataPath",
     /*default_value=*/"/v1/ipblinding/getInitialData"};
+
+const base::FeatureParam<std::string> kIpPrivacyIssuerTokenServerPath{
+    &kEnableIpProtectionProxy,
+    /*name=*/"IpPrivacyIssuerTokenServerPath",
+    /*default_value=*/"/v1/ipblinding/getIssuerToken"};
 
 const base::FeatureParam<std::string> kIpPrivacyTokenServerGetTokensPath{
     &kEnableIpProtectionProxy, /*name=*/"IpPrivacyTokenServerGetTokensPath",
@@ -424,6 +431,22 @@ const base::FeatureParam<base::TimeDelta> kIpPrivacyExpirationFuzz{
     &kEnableIpProtectionProxy, /*name=*/"IpPrivacyExpirationFuzz",
     /*default_value=*/base::Minutes(15)};
 
+const base::FeatureParam<base::TimeDelta>
+    kIpPrivacyTryGetAuthTokensNotEligibleBackoff{
+        &kEnableIpProtectionProxy,
+        /*name=*/"IpPrivacyTryGetAuthTokensNotEligibleBackoff",
+        /*default_value=*/base::Hours(1)};
+
+const base::FeatureParam<base::TimeDelta>
+    kIpPrivacyTryGetAuthTokensTransientBackoff{
+        &kEnableIpProtectionProxy,
+        /*name=*/"IpPrivacyTryGetAuthTokensTransientBackoff",
+        /*default_value=*/base::Seconds(5)};
+
+const base::FeatureParam<base::TimeDelta> kIpPrivacyTryGetAuthTokensBugBackoff{
+    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyTryGetAuthTokensBugBackoff",
+    /*default_value=*/base::Minutes(10)};
+
 const base::FeatureParam<bool> kIpPrivacyRestrictTopLevelSiteSchemes{
     &kEnableIpProtectionProxy,
     /*name=*/"IpPrivacyRestrictTopLevelSiteSchemes",
@@ -464,6 +487,16 @@ const base::FeatureParam<bool> kIpPrivacyCacheTokensByGeo{
     /*name=*/"IpPrivacyCacheTokensByGeo",
     /*default_value=*/false};
 
+const base::FeatureParam<bool> kIpPrivacyAlwaysCreateCore{
+    &kEnableIpProtectionProxy,
+    /*name=*/"IpPrivacyAlwaysCreateCore",
+    /*default_value=*/false};
+
+const base::FeatureParam<bool> kIpPrivacyOnlyInIncognito{
+    &kEnableIpProtectionProxy,
+    /*name=*/"IpPrivacyOnlyInIncognito",
+    /*default_value=*/false};
+
 // Network-change migration requires NetworkHandle support, which are currently
 // only supported on Android (see
 // NetworkChangeNotifier::AreNetworkHandlesSupported).
@@ -499,6 +532,12 @@ BASE_FEATURE(kEnableSchemeBoundCookies,
              "EnableSchemeBoundCookies",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Disallows cookies to have non ascii values in their name or value.
+NET_EXPORT BASE_DECLARE_FEATURE(kDisallowNonAsciiCookies);
+BASE_FEATURE(kDisallowNonAsciiCookies,
+             "kDisallowNonAsciiCookies",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kTimeLimitedInsecureCookies,
              "TimeLimitedInsecureCookies",
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -516,10 +555,6 @@ BASE_FEATURE(kEnableWebTransportDraft07,
              "EnableWebTransportDraft07",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kZstdContentEncoding,
-             "ZstdContentEncoding",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 // When enabled, partitioned storage will be allowed even if third-party cookies
 // are disabled by default. Partitioned storage will not be allowed if
 // third-party cookies are disabled due to a specific rule.
@@ -527,15 +562,11 @@ BASE_FEATURE(kThirdPartyPartitionedStorageAllowedByDefault,
              "ThirdPartyPartitionedStorageAllowedByDefault",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kPriorityHeader,
-             "PriorityHeader",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kSpdyHeadersToHttpResponseUseBuilder,
              "SpdyHeadersToHttpResponseUseBuilder",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kReportEcn, "ReportEcn", base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kReportEcn, "ReportEcn", base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kUseNewAlpsCodepointHttp2,
              "UseNewAlpsCodepointHttp2",
@@ -562,10 +593,9 @@ BASE_FEATURE(kReduceIPAddressChangeNotification,
 BASE_FEATURE(kDeviceBoundSessions,
              "DeviceBoundSessions",
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kStoreConnectionSubtype,
-             "StoreConnectionSubtype",
-             base::FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE(kPersistDeviceBoundSessions,
+             "PersistDeviceBoundSessions",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPartitionProxyChains,
              "PartitionProxyChains",
@@ -593,7 +623,15 @@ BASE_FEATURE(kReportingApiEnableEnterpriseCookieIssues,
 
 BASE_FEATURE(kOptimizeParsingDataUrls,
              "OptimizeParsingDataUrls",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSimdutfBase64Support,
+             "SimdutfBase64Support",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kFurtherOptimizeParsingDataUrls,
+             "FurtherOptimizeParsingDataUrls",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // TODO(crbug.com/347047841): Remove this flag when we branch for M131 or later,
 // if we haven't had to turn this off.
@@ -608,5 +646,76 @@ BASE_FEATURE(kKeepWhitespaceForDataUrls,
 BASE_FEATURE(kNoVarySearchIgnoreUnrecognizedKeys,
              "NoVarySearchIgnoreUnrecognizedKeys",
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kEncryptedAndPlaintextValuesAreInvalid,
+             "EncryptedAndPlaintextValuesAreInvalid",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kEnableStaticCTAPIEnforcement,
+             "EnableStaticCTAPIEnforcement",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kDiskCacheBackendExperiment,
+             "DiskCacheBackendExperiment",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+constexpr base::FeatureParam<DiskCacheBackend>::Option
+    kDiskCacheBackendOptions[] = {
+        {DiskCacheBackend::kSimple, "simple"},
+        {DiskCacheBackend::kBlockfile, "blockfile"},
+};
+const base::FeatureParam<DiskCacheBackend> kDiskCacheBackendParam{
+    &kDiskCacheBackendExperiment, "backend", DiskCacheBackend::kBlockfile,
+    &kDiskCacheBackendOptions};
+
+BASE_FEATURE(kIgnoreHSTSForLocalhost,
+             "IgnoreHSTSForLocalhost",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSimpleCachePrioritizedCaching,
+             "SimpleCachePrioritizedCaching",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+const base::FeatureParam<int>
+    kSimpleCachePrioritizedCachingPrioritizationFactor{
+        &kSimpleCachePrioritizedCaching,
+        /*name=*/"SimpleCachePrioritizedCachingPrioritizationFactor",
+        /*default_value=*/10};
+
+const base::FeatureParam<base::TimeDelta>
+    kSimpleCachePrioritizedCachingPrioritizationPeriod{
+        &kSimpleCachePrioritizedCaching,
+        /*name=*/"SimpleCachePrioritizedCachingPrioritizationPeriod",
+        /*default_value=*/base::Days(1)};
+
+#if BUILDFLAG(USE_NSS_CERTS)
+// TODO(crbug.com/40928765): Remove this flag after a few milestones.
+BASE_FEATURE(kNewClientCertPathBuilding,
+             "NewClientCertPathBuilding",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(USE_NSS_CERTS)
+
+BASE_FEATURE(kHstsTopLevelNavigationsOnly,
+             "HstsTopLevelNavigationsOnly",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kHttpCacheNoVarySearch,
+             "HttpCacheNoVarySearch",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE_PARAM(size_t,
+                   kHttpCacheNoVarySearchCacheMaxEntries,
+                   &kHttpCacheNoVarySearch,
+                   "max_entries",
+                   1000);
+
+BASE_FEATURE(kReportingApiCorsOriginHeader,
+             "ReportingApiCorsOriginHeader",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kUseCertTransparencyAwareApiForOsCertVerify,
+             "UseCertTransparencyAwareApiForOsCertVerify",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace net::features

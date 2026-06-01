@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSCROLLBAR_H
 #define QSCROLLBAR_H
@@ -26,6 +27,10 @@ public:
 
     QSize sizeHint() const override;
     bool event(QEvent *event) override;
+
+#ifndef QT_NO_CONTEXTMENU
+    QMenu *createStandardContextMenu(QPoint position);
+#endif
 
 protected:
 #if QT_CONFIG(wheelevent)

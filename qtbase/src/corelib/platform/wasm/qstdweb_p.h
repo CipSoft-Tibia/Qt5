@@ -19,6 +19,7 @@
 #include <QtCore/qglobal.h>
 #include "QtCore/qhash.h"
 #include "QtCore/qiodevice.h"
+#include "QtCore/private/qwasmsuspendresumecontrol_p.h"
 
 #include <emscripten/val.h>
 
@@ -170,7 +171,6 @@ namespace qstdweb {
 
     class Q_CORE_EXPORT Uint8Array {
     public:
-        static Uint8Array heap();
         explicit Uint8Array(const emscripten::val &uint8Array);
         explicit Uint8Array(const ArrayBuffer &buffer);
         explicit Uint8Array(uint32_t size);
@@ -191,26 +191,19 @@ namespace qstdweb {
         emscripten::val val() const;
 
     private:
-        static emscripten::val heap_();
         static emscripten::val constructor_();
         emscripten::val m_uint8Array = emscripten::val::undefined();
     };
 
-    class Q_CORE_EXPORT EventCallback
+    // EventCallback here for source compatibility; prefer using QWasmEventHandler directly
+    class Q_CORE_EXPORT EventCallback : public QWasmEventHandler
     {
     public:
         EventCallback() = default;
-        ~EventCallback();
         EventCallback(EventCallback const&) = delete;
         EventCallback& operator=(EventCallback const&) = delete;
         EventCallback(emscripten::val element, const std::string &name,
                       const std::function<void(emscripten::val)> &fn);
-
-    private:
-        emscripten::val m_element = emscripten::val::undefined();
-        std::string m_eventName;
-        std::unique_ptr<std::function<void(emscripten::val)>> m_handler;
-        emscripten::val m_eventListener = emscripten::val::undefined();
     };
 
     struct PromiseCallbacks
@@ -290,48 +283,6 @@ namespace qstdweb {
     bool Q_CORE_EXPORT haveAsyncify();
     bool Q_CORE_EXPORT haveJspi();
     bool canBlockCallingThread();
-
-    struct CancellationFlag
-    {
-    };
-
-#if QT_CONFIG(thread)
-    template<class T>
-    T proxyCall(std::function<T()> task, emscripten::ProxyingQueue *queue)
-    {
-        T result;
-        queue->proxySync(emscripten_main_runtime_thread_id(),
-                         [task, result = &result]() { *result = task(); });
-        return result;
-    }
-
-    template<>
-    inline void proxyCall<void>(std::function<void()> task, emscripten::ProxyingQueue *queue)
-    {
-        queue->proxySync(emscripten_main_runtime_thread_id(), task);
-    }
-
-    template<class T>
-    T runTaskOnMainThread(std::function<T()> task, emscripten::ProxyingQueue *queue)
-    {
-        return emscripten_is_main_runtime_thread() ? task() : proxyCall<T>(std::move(task), queue);
-    }
-
-    template<class T>
-    T runTaskOnMainThread(std::function<T()> task)
-    {
-        emscripten::ProxyingQueue singleUseQueue;
-        return runTaskOnMainThread<T>(task, &singleUseQueue);
-    }
-
-#else
-    template<class T>
-    T runTaskOnMainThread(std::function<T()> task)
-    {
-        return task();
-    }
-#endif // QT_CONFIG(thread)
-
 }
 
 QT_END_NAMESPACE

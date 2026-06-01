@@ -133,6 +133,7 @@ disable=abstract-method,
         too-many-instance-attributes,
         too-many-locals,
         too-many-nested-blocks,
+        too-many-positional-arguments,
         too-many-public-methods,
         too-many-return-statements,
         too-many-statements,
@@ -216,7 +217,7 @@ inlinevar-rgx=^[a-z][a-z0-9_]*$
 class-rgx=^_?[A-Z][a-zA-Z0-9]*$
 
 # Regular expression matching correct module names
-module-rgx=^(_?[a-z][a-z0-9_]*|__init__)$
+module-rgx=^(_?[a-z][a-z0-9_]*|__init__|PRESUBMIT)$
 
 # Regular expression matching correct method names
 method-rgx=(?x)^(?:(?P<exempt>_[a-z0-9_]+__|runTest|setUp|tearDown|setUpTestCase|tearDownTestCase|setupSelf|tearDownClass|setUpClass|(test|assert)_*[A-Z0-9][a-zA-Z0-9_]*|next)|(?P<camel_case>_{0,2}[A-Z][a-zA-Z0-9_]*)|(?P<snake_case>_{0,2}[a-z][a-z0-9_]*))$
@@ -268,8 +269,10 @@ max-line-length=80
 
 # Regexp for a line that is allowed to be longer than the limit.
 ignore-long-lines=(?x)(
-  ^\s*(\#\ )?<?https?://\S+>?$|
-  ^\s*(from\s+\S+\s+)?import\s+.+$)
+  .*https?://\S+>?$|
+  ^\s*(from\s+\S+\s+)?import\s+.+$|
+  .*\spylint:\sdisable=\S+$|
+  .*\spytype:\sdisable=\S+$)
 
 # Allow the body of an if to be on the same line as the test if there is no
 # else.

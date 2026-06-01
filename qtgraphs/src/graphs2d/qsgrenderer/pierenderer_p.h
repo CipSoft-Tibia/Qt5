@@ -30,7 +30,7 @@ class PieRenderer : public QQuickItem
 {
     Q_OBJECT
 public:
-    PieRenderer(QGraphsView *graph);
+    PieRenderer(QGraphsView *graph, bool clipPlotArea);
     ~PieRenderer() override;
 
     void handlePolish(QPieSeries *series);

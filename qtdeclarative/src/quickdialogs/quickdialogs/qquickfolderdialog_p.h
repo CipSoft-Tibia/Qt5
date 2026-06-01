@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKFOLDERDIALOG_P_H
 #define QQUICKFOLDERDIALOG_P_H
@@ -32,7 +33,7 @@ class Q_QUICKDIALOGS2_EXPORT QQuickFolderDialog : public QQuickAbstractDialog
     Q_PROPERTY(QFileDialogOptions::FileDialogOptions options READ options WRITE setOptions RESET resetOptions NOTIFY optionsChanged FINAL)
     Q_PROPERTY(QString acceptLabel READ acceptLabel WRITE setAcceptLabel RESET resetAcceptLabel NOTIFY acceptLabelChanged FINAL)
     Q_PROPERTY(QString rejectLabel READ rejectLabel WRITE setRejectLabel RESET resetRejectLabel NOTIFY rejectLabelChanged FINAL)
-    Q_FLAGS(QFileDialogOptions::FileDialogOptions)
+    QML_EXTENDED_NAMESPACE(QFileDialogOptions)
     QML_NAMED_ELEMENT(FolderDialog)
     QML_ADDED_IN_VERSION(6, 3)
 

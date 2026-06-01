@@ -11,7 +11,9 @@ qt_internal_add_module(Multimedia
     PLUGIN_TYPES multimedia
     SOURCES
         audio/qautoresetevent_p.h
-
+        audio/q_pmr_emulation_p.h
+        audio/qmemory_resource_tlsf_p.h
+        audio/qmemory_resource_tlsf.cpp
         audio/qtaudio.cpp audio/qtaudio.h audio/qaudio.h
         audio/qaudiobuffer.cpp audio/qaudiobuffer.h
         audio/qaudiobuffer_support_p.h
@@ -35,6 +37,10 @@ qt_internal_add_module(Multimedia
         audio/qaudio_rtsan_support_p.h
         audio/qsamplecache_p.cpp audio/qsamplecache_p.h
         audio/qsoundeffect.cpp audio/qsoundeffect.h
+        audio/qsoundeffectwithplayer.cpp audio/qsoundeffectwithplayer_p.h
+        audio/qsoundeffectsynchronous.cpp audio/qsoundeffectsynchronous_p.h
+        audio/qsoundeffect_p.h
+        audio/qrtaudioengine.cpp audio/qrtaudioengine_p.h
         audio/qwavedecoder.cpp audio/qwavedecoder.h
         camera/qcamera.cpp camera/qcamera.h camera/qcamera_p.h
         camera/qcameradevice.cpp camera/qcameradevice.h camera/qcameradevice_p.h
@@ -62,6 +68,7 @@ qt_internal_add_module(Multimedia
         platform/qplatformvideoframeinput.cpp platform/qplatformvideoframeinput_p.h
         platform/qplatformaudiobufferinput.cpp platform/qplatformaudiobufferinput_p.h
         playback/qmediaplayer.cpp playback/qmediaplayer.h playback/qmediaplayer_p.h
+        playback/qplaybackoptions.cpp playback/qplaybackoptions.h
         qmultimedia_enum_to_string_converter_p.h
         qmediadevices.cpp qmediadevices.h
         qmediaformat.cpp  qmediaformat.h
@@ -73,7 +80,6 @@ qt_internal_add_module(Multimedia
         qvideotransformation.cpp qvideotransformation_p.h
         qmediaframeinput.cpp qmediaframeinput_p.h
         qmultimedia_assume_p.h
-        qmaybe_p.h
         qtmultimediaglobal.h qtmultimediaglobal_p.h
         qerrorinfo_p.h
         qcachedvalue_p.h
@@ -112,12 +118,16 @@ qt_internal_add_module(Multimedia
         playback
         recording
         video
+    PRECOMPILED_HEADER
+        qtmultimedia_pch_p.h
     DEFINES
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
     LIBRARIES
         Qt::CorePrivate
         Qt::GuiPrivate
+        Qt::BundledTLSF
+        Qt::Concurrent
     PUBLIC_LIBRARIES
         Qt::Core
         Qt::Gui
@@ -128,13 +138,27 @@ qt_internal_add_module(Multimedia
         compat/removed_api.cpp
 )
 
+
+# dr_wav preparation
+qt_internal_extend_target(Multimedia
+    SOURCES
+        audio/qaudio_dr_wav.cpp
+        ../3rdparty/dr_libs/dr_wav.h
+    SYSTEM_INCLUDE_DIRECTORIES
+        ../3rdparty/dr_libs
+    DEFINES
+        DR_WAV_NO_STDIO
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/dr_libs
+)
+
 qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_network
     PUBLIC_LIBRARIES
         Qt::Network
 )
 
 qt_internal_extend_target(Multimedia
-    CONDITION LINUX OR ANDROID
+    CONDITION (LINUX OR ANDROID) AND QT_FEATURE_library
     SOURCES qsymbolsresolveutils.cpp qsymbolsresolveutils_p.h)
 
 qt_internal_add_simd_part(Multimedia SIMD sse2
@@ -173,8 +197,21 @@ if (QT_FEATURE_pipewire)
         SYSTEM_INCLUDE_DIRECTORIES
             "${PipeWire_INCLUDE_DIRS};${Spa_INCLUDE_DIRS}"
         SOURCES
+            pipewire/qpipewire_async_support.cpp       pipewire/qpipewire_async_support_p.h
+            pipewire/qpipewire_audiocontextmanager.cpp pipewire/qpipewire_audiocontextmanager_p.h
+            pipewire/qpipewire_audiodevice.cpp         pipewire/qpipewire_audiodevice_p.h
+            pipewire/qpipewire_audiodevicemonitor.cpp  pipewire/qpipewire_audiodevicemonitor_p.h
+            pipewire/qpipewire_audiodevices.cpp        pipewire/qpipewire_audiodevices_p.h
+            pipewire/qpipewire_audiosink.cpp           pipewire/qpipewire_audiosink_p.h
+            pipewire/qpipewire_audiosource.cpp         pipewire/qpipewire_audiosource_p.h
+            pipewire/qpipewire_audiostream.cpp         pipewire/qpipewire_audiostream_p.h
             pipewire/qpipewire_instance.cpp            pipewire/qpipewire_instance_p.h
-                                                       pipewire/qpipewire_support_p.h
+            pipewire/qpipewire_propertydict.cpp        pipewire/qpipewire_propertydict_p.h
+            pipewire/qpipewire_registry_support.cpp    pipewire/qpipewire_registry_support_p.h
+            pipewire/qpipewire_spa_compat_p.h
+            pipewire/qpipewire_spa_pod_support.cpp     pipewire/qpipewire_spa_pod_support_p.h
+            pipewire/qpipewire_spa_pod_parser_support_p.h
+            pipewire/qpipewire_support.cpp             pipewire/qpipewire_support_p.h
             pipewire/qpipewire_symbolloader.cpp        pipewire/qpipewire_symbolloader_p.h
     )
 
@@ -193,10 +230,24 @@ if (QT_FEATURE_pipewire)
     check_cxx_compiler_flag(QT_MM_HAS_WSIGN_COMPARE -Wsign-compare)
     if (QT_MM_HAS_WSIGN_COMPARE)
         set_source_files_properties(
+            pipewire/qpipewire_async_support.cpp
+            pipewire/qpipewire_audiocontextmanager.cpp
+            pipewire/qpipewire_audiodevicemonitor.cpp
+            pipewire/qpipewire_audiodevices.cpp
+            pipewire/qpipewire_audiosink.cpp
             pipewire/qpipewire_instance.cpp
             pipewire/qpipewire_screencapture.cpp
             pipewire/qpipewire_screencapturehelper.cpp
             PROPERTIES COMPILE_FLAGS -Wno-sign-compare
+        )
+    endif()
+
+    # pipewire macros emit -Wunused-value warning
+    check_cxx_compiler_flag(QT_MM_HAS_UNUSED_VALUE -Wunused-value)
+    if (QT_MM_HAS_UNUSED_VALUE)
+        set_source_files_properties(
+            pipewire/qpipewire_async_support.cpp
+            PROPERTIES COMPILE_FLAGS -Wno-unused-value
         )
     endif()
 endif()
@@ -219,10 +270,12 @@ qt_internal_extend_target(Multimedia CONDITION ANDROID
         android/qandroidaudiosource.cpp android/qandroidaudiosource_p.h
         android/qandroidaudiosink.cpp android/qandroidaudiosink_p.h
         android/qandroidaudiodevice.cpp android/qandroidaudiodevice_p.h
-        android/qopenslesengine.cpp android/qopenslesengine_p.h
         android/qandroidaudiodevices.cpp android/qandroidaudiodevices_p.h
+        android/qandroidaudiojnitypes_p.h
+        android/qandroidaudioutil.cpp android/qandroidaudioutil_p.h
+        android/qaaudiostream.cpp android/qaaudiostream_p.h
     LIBRARIES
-        OpenSLES
+        aaudio
 )
 
 if(ANDROID)
@@ -269,6 +322,7 @@ qt_internal_extend_target(Multimedia CONDITION APPLE
 
 qt_internal_extend_target(Multimedia CONDITION MACOS OR IOS
     SOURCES
+        darwin/qdarwinintegrationfactory_p.h darwin/qdarwinintegrationfactory.mm
         darwin/qavfcameradebug_p.h
         darwin/qavfcamerautility_p.h darwin/qavfcamerautility.mm
         darwin/qavfvideodevices.mm darwin/qavfvideodevices_p.h
@@ -345,7 +399,10 @@ if(MINGW)
     list(APPEND source_with_init_guid windows/qwindowsaudiodevices.cpp)
 endif()
 
-set_source_files_properties(${source_with_init_guid} PROPERTIES COMPILE_DEFINITIONS INITGUID)
+set_source_files_properties(${source_with_init_guid} PROPERTIES
+    COMPILE_DEFINITIONS     INITGUID
+    SKIP_PRECOMPILE_HEADERS TRUE
+)
 
 
 qt_internal_extend_target(Multimedia CONDITION WASM
@@ -475,3 +532,6 @@ qt_copy_or_install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/../../mkspecs/features/ios/add_ios_ffmpeg_libraries.prf"
     DESTINATION ${ios_prf_install_dir}
 )
+
+
+

@@ -343,6 +343,7 @@ Item {
         function test_2_initialized_change() {
             graphsView.theme = theme2
             waitForRendering(top)
+            waitForPolish(top)
             compare(pieInitialized.legendData.length, 2)
 
             compare(pieInitialized.legendData[0].color, "#0000ff")

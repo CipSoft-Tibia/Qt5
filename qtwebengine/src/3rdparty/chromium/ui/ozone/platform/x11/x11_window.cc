@@ -9,14 +9,14 @@
 
 #include "ui/ozone/platform/x11/x11_window.h"
 
+#include <algorithm>
+
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
-#include "build/chromeos_buildflags.h"
 #include "net/base/network_interfaces.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkRegion.h"
@@ -147,8 +147,7 @@ x11::NotifyMode XI2ModeToXMode(x11::Input::NotifyMode xi2_mode) {
     case x11::Input::NotifyMode::WhileGrabbed:
       return x11::NotifyMode::WhileGrabbed;
     default:
-      NOTREACHED_IN_MIGRATION();
-      return x11::NotifyMode::Normal;
+      NOTREACHED();
   }
 }
 
@@ -1296,8 +1295,7 @@ bool X11Window::HandleAsAtkEvent(const x11::KeyEvent& key_event,
                                  bool transient) {
 #if !BUILDFLAG(USE_ATK)
   // TODO(crbug.com/40653448): Support ATK in Ozone/X11.
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 #else
   if (!x11_extension_delegate_) {
     return false;
@@ -1641,7 +1639,9 @@ int X11Window::UpdateDrag(const gfx::Point& connection_point) {
 
   DCHECK(drag_drop_client_);
   auto* target_current_context = drag_drop_client_->target_current_context();
-  DCHECK(target_current_context);
+  if (!target_current_context) {
+    return DragDropTypes::DRAG_NONE;
+  }
 
   auto data = std::make_unique<OSExchangeData>(
       std::make_unique<XOSExchangeDataProvider>(
@@ -1707,10 +1707,11 @@ DragOperation X11Window::PerformDrop() {
     return DragOperation::kNone;
   }
 
-  // The drop data has been supplied on entering the window.  The drop handler
-  // should have it since then.
   auto* target_current_context = drag_drop_client_->target_current_context();
-  DCHECK(target_current_context);
+  if (!target_current_context) {
+    return DragOperation::kNone;
+  }
+
   drop_handler->OnDragDrop(GetKeyModifiers(
       XDragDropClient::GetForWindow(target_current_context->source_window())));
   notified_enter_ = false;
@@ -1758,7 +1759,7 @@ void X11Window::QuitDragLoop() {
 
 gfx::Size X11Window::AdjustSizeForDisplay(
     const gfx::Size& requested_size_in_pixels) {
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
   // We do not need to apply the workaround for the ChromeOS.
   return requested_size_in_pixels;
 #else
@@ -1790,7 +1791,7 @@ void X11Window::CreateXWindow(const PlatformWindowInitProperties& properties) {
   bounds.set_size(adjusted_size_in_pixels);
   const auto override_redirect =
       properties.x11_extension_delegate &&
-      properties.x11_extension_delegate->IsOverrideRedirect();
+      properties.x11_extension_delegate->IsOverrideRedirect(*this);
 
   workspace_extension_delegate_ = properties.workspace_extension_delegate;
   x11_extension_delegate_ = properties.x11_extension_delegate;
@@ -1824,7 +1825,7 @@ void X11Window::CreateXWindow(const PlatformWindowInitProperties& properties) {
     req.override_redirect = x11::Bool32(true);
   }
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
   req.override_redirect = x11::Bool32(UseTestConfigForPlatformWindows());
 #endif
 
@@ -1900,7 +1901,7 @@ void X11Window::CloseXWindow() {
   // Unregister from the global security surface list if necessary.
   if (is_security_surface_) {
     auto& security_surfaces = GetSecuritySurfaces();
-    security_surfaces.erase(base::ranges::find(security_surfaces, xwindow_),
+    security_surfaces.erase(std::ranges::find(security_surfaces, xwindow_),
                             security_surfaces.end());
   }
 
@@ -2410,10 +2411,9 @@ void X11Window::UpdateWMUserTime(Event* event) {
   EventType type = event->type();
   if (type == EventType::kMousePressed || type == EventType::kKeyPressed ||
       type == EventType::kTouchPressed) {
-    uint32_t wm_user_time_ms =
-        (event->time_stamp() - base::TimeTicks()).InMilliseconds();
     connection_->SetProperty(xwindow_, x11::GetAtom("_NET_WM_USER_TIME"),
-                             x11::Atom::CARDINAL, wm_user_time_ms);
+                             x11::Atom::CARDINAL,
+                             X11EventSource::GetInstance()->GetTimestamp());
   }
 }
 

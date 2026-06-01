@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -22,7 +23,13 @@ T.ScrollBar {
         implicitHeight: control.interactive ? 6 : 2
 
         radius: width / 2
-        color: control.pressed ? control.palette.dark : control.palette.mid
+        color: {
+            if (Qt.styleHints.accessibility.contrastPreference !== Qt.HighContrast)
+                return pressed ? control.palette.dark : control.palette.mid
+            else
+                return Color.blend(control.palette.text, control.palette.mid, pressed ? 0.0 : 0.3)
+        }
+
         opacity: 0.0
 
         states: State {
@@ -38,5 +45,11 @@ T.ScrollBar {
                 NumberAnimation { target: control.contentItem; duration: 200; property: "opacity"; to: 0.0 }
             }
         }
+    }
+
+    background: Rectangle {
+        visible: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast
+        opacity: control.contentItem.opacity
+        color: control.palette.mid
     }
 }

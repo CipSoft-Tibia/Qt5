@@ -11,20 +11,18 @@
 #include <QLabel>
 #include <QMainWindow>
 #include <QMediaDevices>
+#include <QMessageBox>
 #include <QObject>
 #include <QPushButton>
-#include <QScopedPointer>
 #include <QSlider>
 #include <QTimer>
-
-#include <math.h>
 
 class Generator : public QIODevice
 {
     Q_OBJECT
 
 public:
-    Generator(const QAudioFormat &format, qint64 durationUs, int sampleRate);
+    Generator(const QAudioFormat &format, qint64 durationUs, int frequency);
 
     void start();
     void stop();
@@ -35,11 +33,16 @@ public:
     qint64 size() const override { return m_buffer.size(); }
 
 private:
-    void generateData(const QAudioFormat &format, qint64 durationUs, int sampleRate);
+    void generateData(const QAudioFormat &format, qint64 durationUs, int frequency);
 
 private:
     qint64 m_pos = 0;
     QByteArray m_buffer;
+};
+
+enum class AudioTestMode {
+    Pull,
+    Push,
 };
 
 class AudioTest : public QMainWindow
@@ -52,26 +55,32 @@ public:
 
 private:
     void initializeWindow();
-    void initializeAudio(const QAudioDevice &deviceInfo);
+    void startAudioSink(const QAudioDevice &, const QAudioFormat &);
+    void cleanupAudioSink();
 
 private:
     QMediaDevices *m_devices = nullptr;
     QTimer *m_pushTimer = nullptr;
 
     // Owned by layout
-    QPushButton *m_modeButton = nullptr;
+    QComboBox *m_channelsBox = nullptr;
+    QComboBox *m_rateBox = nullptr;
+    QComboBox *m_formatBox = nullptr;
+    QComboBox *m_modeBox = nullptr;
     QPushButton *m_suspendResumeButton = nullptr;
     QComboBox *m_deviceBox = nullptr;
     QLabel *m_volumeLabel = nullptr;
     QSlider *m_volumeSlider = nullptr;
 
-    QScopedPointer<Generator> m_generator;
-    QScopedPointer<QAudioSink> m_audioOutput;
+    std::unique_ptr<Generator> m_generator;
+    std::unique_ptr<QAudioSink> m_audioSink;
 
-    bool m_pullMode = true;
+    AudioTestMode m_mode = AudioTestMode::Pull;
+    QAudioDevice m_currentDevice;
+    void restartAudioStream();
 
 private slots:
-    void toggleMode();
+    void formatChanged(QComboBox *box);
     void toggleSuspendResume();
     void deviceChanged(int index);
     void volumeChanged(int);

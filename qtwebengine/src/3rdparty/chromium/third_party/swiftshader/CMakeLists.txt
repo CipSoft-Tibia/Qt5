@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.22.1)
 
 project(SwiftShader C CXX ASM)
 
@@ -116,7 +116,7 @@ endif()
 # Install Gerrit commit hook
 ###########################################################
 
-if(NOT EXISTS ${CMAKE_SOURCE_DIR}/.git/hooks/commit-msg)
+if(IS_DIRECTORY ${CMAKE_SOURCE_DIR}/.git AND NOT EXISTS ${CMAKE_SOURCE_DIR}/.git/hooks/commit-msg)
     message(WARNING "
         .git/hooks/commit-msg was not found.
         Downloading from https://gerrit-review.googlesource.com/tools/hooks/commit-msg...

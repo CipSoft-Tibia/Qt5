@@ -88,6 +88,21 @@ class VIZ_COMMON_EXPORT SurfaceId {
            std::tie(other.frame_sink_id_, other.local_surface_id_);
   }
 
+  bool operator<=(const SurfaceId& other) const {
+    return std::tie(frame_sink_id_, local_surface_id_) <=
+           std::tie(other.frame_sink_id_, other.local_surface_id_);
+  }
+
+  bool operator>(const SurfaceId& other) const {
+    return std::tie(frame_sink_id_, local_surface_id_) >
+           std::tie(other.frame_sink_id_, other.local_surface_id_);
+  }
+
+  bool operator>=(const SurfaceId& other) const {
+    return std::tie(frame_sink_id_, local_surface_id_) >=
+           std::tie(other.frame_sink_id_, other.local_surface_id_);
+  }
+
  private:
   friend struct mojo::StructTraits<mojom::SurfaceIdDataView, SurfaceId>;
 

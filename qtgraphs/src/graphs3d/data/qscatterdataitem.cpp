@@ -37,6 +37,18 @@
  */
 
 /*!
+ * \fn QScatterDataItem::QScatterDataItem(QVector3D position, const QVector3D &scale)
+ * Constructs scatter data item with position \a position
+ * and scale \a scale.
+ */
+
+/*!
+ * \fn QScatterDataItem::QScatterDataItem(QVector3D position, const QQuaternion &rotation, const QVector3D &scale)
+ * Constructs scatter data item with position \a position,
+ * rotation \a rotation, and scale \a scale.
+ */
+
+/*!
  * \fn void QScatterDataItem::setPosition(QVector3D pos)
  * Sets the position \a pos for this data item.
  */

@@ -1,10 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsvistastyle_p.h"
 #include "qwindowsvistastyle_p_p.h"
 #include "qwindowsvistaanimation_p.h"
 #include <qoperatingsystemversion.h>
+#include <qpainterstateguard.h>
 #include <qscreen.h>
 #include <qstylehints.h>
 #include <qwindow.h>
@@ -14,6 +16,9 @@
 #include <private/qapplication_p.h>
 #include <private/qsystemlibrary_p.h>
 #include <private/qwindowsthemecache_p.h>
+#if QT_CONFIG(tooltip)
+#include "private/qtooltip_p.h"
+#endif
 
 #include "qdrawutil.h" // for now
 #include <qbackingstore.h>
@@ -204,11 +209,15 @@ void QWindowsVistaStylePrivate::cleanup(bool force)
 
 bool QWindowsVistaStylePrivate::transitionsEnabled() const
 {
-    BOOL animEnabled = false;
-    if (SystemParametersInfo(SPI_GETCLIENTAREAANIMATION, 0, &animEnabled, 0))
-    {
-        if (animEnabled)
-            return true;
+    Q_Q(const QWindowsVistaStyle);
+    if (q->property("_q_no_animation").toBool())
+        return false;
+    if (QApplication::desktopSettingsAware()) {
+        BOOL animEnabled = false;
+        if (SystemParametersInfo(SPI_GETCLIENTAREAANIMATION, 0, &animEnabled, 0)) {
+            if (animEnabled)
+                return true;
+        }
     }
     return false;
 }
@@ -1617,6 +1626,12 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
         break;
 
     case PE_Frame:
+        if (widget && widget->inherits("QComboBoxPrivateContainer")){
+            QStyleOption copy = *option;
+            copy.state |= State_Raised;
+            proxy()->drawPrimitive(PE_PanelMenu, &copy, painter, widget);
+            break;
+        }
 #if QT_CONFIG(accessibility)
         if (QStyleHelper::isInstanceOf(option->styleObject, QAccessible::EditableText)
              || QStyleHelper::isInstanceOf(option->styleObject, QAccessible::StaticText) ||
@@ -1694,6 +1709,16 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
         d->drawBackground(theme);
         return;
     }
+
+    case PE_PanelMenu:
+        if (widget && widget->inherits("QComboBoxPrivateContainer")){
+            //fill combobox popup background
+            QWindowsThemeData popupbackgroundTheme(widget, painter, QWindowsVistaStylePrivate::MenuTheme,
+                             MENU_POPUPBACKGROUND, stateId, option->rect);
+            d->drawBackground(popupbackgroundTheme);
+            return;
+        }
+        break;
 
     case PE_PanelMenuBar:
         break;
@@ -2103,10 +2128,9 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
             QPixmap pixmap;
 
             if (vopt->backgroundBrush.style() != Qt::NoBrush) {
-                const QPointF oldBrushOrigin = painter->brushOrigin();
+                QPainterStateGuard psg(painter);
                 painter->setBrushOrigin(vopt->rect.topLeft());
                 painter->fillRect(vopt->rect, vopt->backgroundBrush);
-                painter->setBrushOrigin(oldBrushOrigin);
             }
 
             if (hover || selected) {
@@ -2434,48 +2458,8 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                 stateId = PBS_NORMAL;
 
             if (!justFlat) {
-
-                if (d->transitionsEnabled() && (btn->features & QStyleOptionButton::DefaultButton) &&
-                        !(state & (State_Sunken | State_On)) && !(state & State_MouseOver) &&
-                        (state & State_Enabled) && (state & State_Active))
-                {
-                    QWindowsVistaAnimation *anim = qobject_cast<QWindowsVistaAnimation *>(d->animation(styleObject(option)));
-
-                    if (!anim) {
-                        QImage startImage = createAnimationBuffer(option, widget);
-                        QImage alternateImage = createAnimationBuffer(option, widget);
-
-                        QWindowsVistaPulse *pulse = new QWindowsVistaPulse(styleObject(option));
-
-                        QPainter startPainter(&startImage);
-                        stateId = PBS_DEFAULTED;
-                        QWindowsThemeData theme(widget, &startPainter, themeNumber, partId, stateId, rect);
-                        d->drawBackground(theme);
-
-                        QPainter alternatePainter(&alternateImage);
-                        theme.stateId = PBS_DEFAULTED_ANIMATING;
-                        theme.painter = &alternatePainter;
-                        d->drawBackground(theme);
-
-                        pulse->setStartImage(startImage);
-                        pulse->setEndImage(alternateImage);
-                        pulse->setStartTime(d->animationTime());
-                        pulse->setDuration(2000);
-                        d->startAnimation(pulse);
-                        anim = pulse;
-                    }
-
-                    if (anim)
-                        anim->paint(painter, option);
-                    else {
-                        QWindowsThemeData theme(widget, painter, themeNumber, partId, stateId, rect);
-                        d->drawBackground(theme);
-                    }
-                }
-                else {
-                    QWindowsThemeData theme(widget, painter, themeNumber, partId, stateId, rect);
-                    d->drawBackground(theme);
-                }
+                QWindowsThemeData theme(widget, painter, themeNumber, partId, stateId, rect);
+                d->drawBackground(theme);
             }
 
             if (btn->features & QStyleOptionButton::HasMenu) {
@@ -3967,7 +3951,7 @@ void QWindowsVistaStyle::drawComplexControl(ComplexControl control, const QStyle
                 d->drawBackground(ftheme);
             }
             if (sub & SC_SpinBoxUp) {
-                theme.rect = proxy()->subControlRect(CC_SpinBox, option, SC_SpinBoxUp, widget).adjusted(0, 0, 0, 1);
+                theme.rect = proxy()->subControlRect(CC_SpinBox, option, SC_SpinBoxUp, widget);
                 partId = SPNP_UP;
                 if (!(sb->stepEnabled & QAbstractSpinBox::StepUpEnabled) || !(flags & State_Enabled))
                     stateId = UPS_DISABLED;
@@ -4644,7 +4628,7 @@ void QWindowsVistaStyle::polish(QWidget *widget)
                 widget->setPalette(pal);
         } else
 #endif // QT_CONFIG(commandlinkbutton)
-        if (widget->inherits("QTipLabel")) {
+        if (qobject_cast<const QTipLabel *>(widget)) {
             //note that since tooltips are not reused
             //we do not have to care about unpolishing
             widget->setContentsMargins(3, 0, 4, 0);

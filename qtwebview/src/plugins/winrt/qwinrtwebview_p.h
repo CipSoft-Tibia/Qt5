@@ -51,11 +51,7 @@ public:
     int loadProgress() const override;
     bool isLoading() const override;
 
-    void setParentView(QObject *view) override;
-    QObject *parentView() const override;
-    void setGeometry(const QRect &geometry) override;
-    void setVisibility(QWindow::Visibility visibility) override;
-    void setVisible(bool visible) override;
+    QWindow *nativeWindow() override;
 
 public Q_SLOTS:
     void goBack() override;

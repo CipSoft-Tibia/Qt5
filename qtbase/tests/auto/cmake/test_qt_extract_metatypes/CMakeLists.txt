@@ -13,11 +13,7 @@ get_filename_component(test_project_source_dir "${test_project_source_dir}" REAL
 get_filename_component(test_project_build_dir "${test_project_build_dir}" REALPATH)
 
 get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
-if (CMAKE_BUILD_TYPE AND NOT is_multi_config)
-    string(TOLOWER "qt6metatypetest_${CMAKE_BUILD_TYPE}" metatypes_file_basename)
-else()
-    string(TOLOWER "qt6metatypetest" metatypes_file_basename)
-endif()
+string(TOLOWER "qt6metatypetest" metatypes_file_basename)
 set(meta_types_file
     "${test_project_build_dir}/meta_types/${metatypes_file_basename}_metatypes.json")
 

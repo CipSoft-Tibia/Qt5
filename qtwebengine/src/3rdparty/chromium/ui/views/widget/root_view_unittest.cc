@@ -18,10 +18,12 @@
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/base/mojom/menu_source_type.mojom.h"
 #include "ui/events/event_utils.h"
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/context_menu_controller.h"
+#include "ui/views/test/ax_event_counter.h"
 #include "ui/views/test/test_views.h"
 #include "ui/views/test/views_test_base.h"
 #include "ui/views/test/views_test_utils.h"
@@ -31,6 +33,8 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
+#include "base/test/scoped_feature_list.h"
+#include "ui/accessibility/accessibility_features.h"
 #endif
 
 namespace views::test {
@@ -47,8 +51,9 @@ class RootViewTestState {
                              RootViewTestStateInit init = {}) {
     Widget::InitParams init_params = delegate->CreateParams(
         Widget::InitParams::CLIENT_OWNS_WIDGET, init.type);
-    if (init.bounds != gfx::Rect())
+    if (init.bounds != gfx::Rect()) {
       init_params.bounds = init.bounds;
+    }
     widget_.Init(std::move(init_params));
     widget_.Show();
     widget_.SetContentsView(std::make_unique<View>());
@@ -136,18 +141,21 @@ class TestContextMenuController : public ContextMenuController {
 
   int show_context_menu_calls() const { return show_context_menu_calls_; }
   View* menu_source_view() const { return menu_source_view_; }
-  ui::MenuSourceType menu_source_type() const { return menu_source_type_; }
+  ui::mojom::MenuSourceType menu_source_type() const {
+    return menu_source_type_;
+  }
 
   void Reset() {
     show_context_menu_calls_ = 0;
     menu_source_view_ = nullptr;
-    menu_source_type_ = ui::MENU_SOURCE_NONE;
+    menu_source_type_ = ui::mojom::MenuSourceType::kNone;
   }
 
   // ContextMenuController:
-  void ShowContextMenuForViewImpl(View* source,
-                                  const gfx::Point& point,
-                                  ui::MenuSourceType source_type) override {
+  void ShowContextMenuForViewImpl(
+      View* source,
+      const gfx::Point& point,
+      ui::mojom::MenuSourceType source_type) override {
     show_context_menu_calls_++;
     menu_source_view_ = source;
     menu_source_type_ = source_type;
@@ -156,7 +164,8 @@ class TestContextMenuController : public ContextMenuController {
  private:
   int show_context_menu_calls_ = 0;
   raw_ptr<View> menu_source_view_ = nullptr;
-  ui::MenuSourceType menu_source_type_ = ui::MENU_SOURCE_NONE;
+  ui::mojom::MenuSourceType menu_source_type_ =
+      ui::mojom::MenuSourceType::kNone;
 };
 
 // Tests that context menus are shown for certain key events (Shift+F10
@@ -182,7 +191,7 @@ TEST_F(RootViewTest, ContextMenuFromKeyEvent) {
   EXPECT_FALSE(details.dispatcher_destroyed);
   EXPECT_EQ(0, controller.show_context_menu_calls());
   EXPECT_EQ(nullptr, controller.menu_source_view());
-  EXPECT_EQ(ui::MENU_SOURCE_NONE, controller.menu_source_type());
+  EXPECT_EQ(ui::mojom::MenuSourceType::kNone, controller.menu_source_type());
   controller.Reset();
 
   // A context menu should be shown for a keypress of Shift+F10.
@@ -193,7 +202,8 @@ TEST_F(RootViewTest, ContextMenuFromKeyEvent) {
   EXPECT_FALSE(details.dispatcher_destroyed);
   EXPECT_EQ(1, controller.show_context_menu_calls());
   EXPECT_EQ(focused_view, controller.menu_source_view());
-  EXPECT_EQ(ui::MENU_SOURCE_KEYBOARD, controller.menu_source_type());
+  EXPECT_EQ(ui::mojom::MenuSourceType::kKeyboard,
+            controller.menu_source_type());
   controller.Reset();
 
   // A context menu should be shown for a keypress of VKEY_APPS.
@@ -204,7 +214,8 @@ TEST_F(RootViewTest, ContextMenuFromKeyEvent) {
   EXPECT_FALSE(details.dispatcher_destroyed);
   EXPECT_EQ(1, controller.show_context_menu_calls());
   EXPECT_EQ(focused_view, controller.menu_source_view());
-  EXPECT_EQ(ui::MENU_SOURCE_KEYBOARD, controller.menu_source_type());
+  EXPECT_EQ(ui::mojom::MenuSourceType::kKeyboard,
+            controller.menu_source_type());
   controller.Reset();
 #endif
 }
@@ -488,8 +499,9 @@ class DeleteViewOnEvent : public View {
   ~DeleteViewOnEvent() override { *was_destroyed_ = true; }
 
   void OnEvent(ui::Event* event) override {
-    if (event->type() == delete_event_type_)
+    if (event->type() == delete_event_type_) {
       delete this;
+    }
   }
 
  private:
@@ -516,8 +528,9 @@ class RemoveViewOnEvent : public View {
   RemoveViewOnEvent& operator=(const RemoveViewOnEvent&) = delete;
 
   void OnEvent(ui::Event* event) override {
-    if (event->type() == remove_event_type_)
+    if (event->type() == remove_event_type_) {
       parent()->RemoveChildView(this);
+    }
   }
 
  private:
@@ -908,6 +921,18 @@ TEST_F(RootViewDesktopNativeWidgetTest, SingleLayoutDuringInit) {
   widget->CloseNow();
 }
 
+TEST_F(RootViewTest, UpdateAccessibleURL) {
+  RootViewTestState state(this, {.bounds = {100, 100, 100, 100}});
+  internal::RootView* root_view = state.GetRootView();
+  const GURL test_url("https://example.com");
+  root_view->UpdateAccessibleURL(test_url);
+
+  ui::AXNodeData node_data;
+  root_view->GetViewAccessibility().GetAccessibleNodeData(&node_data);
+  EXPECT_EQ(node_data.GetStringAttribute(ax::mojom::StringAttribute::kUrl),
+            test_url);
+}
+
 #if !BUILDFLAG(IS_MAC)
 
 // Tests that AnnounceAlert sets up the correct text value on the hidden
@@ -936,6 +961,7 @@ TEST_F(RootViewTest, AnnounceTextAsTest) {
 #else
   EXPECT_EQ(node_data.role, ax::mojom::Role::kAlert);
 #endif
+  EXPECT_TRUE(node_data.HasState(ax::mojom::State::kInvisible));
 
   const std::u16string kPoliteText = u"Something polite";
   root_view->AnnounceTextAs(kPoliteText,
@@ -945,10 +971,11 @@ TEST_F(RootViewTest, AnnounceTextAsTest) {
   EXPECT_EQ(kPoliteText,
             node_data.GetString16Attribute(ax::mojom::StringAttribute::kName));
   hidden_polite_view->GetViewAccessibility().GetAccessibleNodeData(&node_data);
-  std::string val;
-  ASSERT_TRUE(node_data.GetStringAttribute(
-      ax::mojom::StringAttribute::kContainerLiveStatus, &val));
-  ASSERT_EQ("polite", val);
+  EXPECT_TRUE(node_data.HasStringAttribute(
+      ax::mojom::StringAttribute::kContainerLiveStatus));
+  const std::string& val = node_data.GetStringAttribute(
+      ax::mojom::StringAttribute::kContainerLiveStatus);
+  EXPECT_EQ("polite", val);
 
 #if BUILDFLAG(IS_CHROMEOS)
   EXPECT_EQ(node_data.role, ax::mojom::Role::kStaticText);
@@ -957,6 +984,16 @@ TEST_F(RootViewTest, AnnounceTextAsTest) {
 #else
   EXPECT_EQ(node_data.role, ax::mojom::Role::kStatus);
 #endif
+
+  EXPECT_TRUE(
+      node_data.GetBoolAttribute(ax::mojom::BoolAttribute::kLiveAtomic));
+  EXPECT_EQ("polite", node_data.GetStringAttribute(
+                          ax::mojom::StringAttribute::kLiveStatus));
+  EXPECT_EQ("additions text", node_data.GetStringAttribute(
+                                  ax::mojom::StringAttribute::kLiveRelevant));
+  EXPECT_EQ("additions text",
+            node_data.GetStringAttribute(
+                ax::mojom::StringAttribute::kContainerLiveRelevant));
 }
 
 #endif  // !BUILDFLAG(IS_MAC)
@@ -1059,6 +1096,72 @@ TEST_F(RootViewTest, AccessibleProperties) {
   ui::AXNodeData data;
   root_view->GetViewAccessibility().GetAccessibleNodeData(&data);
   EXPECT_EQ(data.role, ax::mojom::Role::kWindow);
+}
+
+TEST_F(RootViewTest, AccessibleName) {
+  RootViewTestState state(this);
+  internal::RootView* root_view = state.GetRootView();
+
+  ui::AXNodeData data;
+  root_view->GetViewAccessibility().GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            state.widget()->widget_delegate()->GetAccessibleWindowTitle());
+
+  state.widget()->widget_delegate()->SetTitle(u"Sample Title");
+
+  data = ui::AXNodeData();
+  root_view->GetViewAccessibility().GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            state.widget()->widget_delegate()->GetAccessibleWindowTitle());
+
+  state.widget()->widget_delegate()->SetAccessibleTitle(
+      u"Sample Accessible Title");
+
+  data = ui::AXNodeData();
+  root_view->GetViewAccessibility().GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            state.widget()->widget_delegate()->GetAccessibleWindowTitle());
+}
+
+TEST_F(RootViewTest, AccessibleNameChangeEvent) {
+  RootViewTestState state(this);
+  internal::RootView* root_view = state.GetRootView();
+
+  // TODO (crbug.com/380927771). Once VoiceOver has incorporated the name
+  // change event, remove all Mac specific code.
+
+#if BUILDFLAG(IS_MAC)
+  base::test::ScopedFeatureList feature_list{
+      ::features::kBlockRootWindowAccessibleNameChangeEvent};
+#endif
+
+  views::test::AXEventCounter counter(views::AXEventManager::Get());
+
+  state.widget()->widget_delegate()->SetTitle(u"Sample Title");
+#if BUILDFLAG(IS_MAC)
+  EXPECT_TRUE(::features::IsBlockRootWindowAccessibleNameChangeEventEnabled());
+  EXPECT_EQ(0, counter.GetCount(ax::mojom::Event::kTextChanged, root_view));
+#endif
+#if !BUILDFLAG(IS_MAC)
+  EXPECT_EQ(1, counter.GetCount(ax::mojom::Event::kTextChanged, root_view));
+#endif
+
+#if BUILDFLAG(IS_MAC)
+  base::test::ScopedFeatureList disable_feature_list;
+  disable_feature_list.InitWithFeatures(
+      {}, {::features::kBlockRootWindowAccessibleNameChangeEvent});
+#endif
+
+  state.widget()->widget_delegate()->SetAccessibleTitle(
+      u"Sample Accessible Title");
+
+#if BUILDFLAG(IS_MAC)
+  EXPECT_FALSE(::features::IsBlockRootWindowAccessibleNameChangeEventEnabled());
+  EXPECT_EQ(1, counter.GetCount(ax::mojom::Event::kTextChanged, root_view));
+#endif
+#if !BUILDFLAG(IS_MAC)
+  EXPECT_EQ(2, counter.GetCount(ax::mojom::Event::kTextChanged, root_view));
+#endif
 }
 
 }  // namespace views::test

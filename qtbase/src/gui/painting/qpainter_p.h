@@ -166,7 +166,7 @@ public:
     // redirections within the same paintEvent(), which should be enough
     // in 99% of all cases). E.g: A renders B which renders C which renders D.
     static constexpr qsizetype NDPtrs = 4;
-    QVarLengthArray<QPainterPrivate*, NDPtrs> d_ptrs;
+    QVarLengthArray<std::unique_ptr<QPainterPrivate>, NDPtrs> d_ptrs;
 
     std::unique_ptr<QPainterState> state;
     template <typename T, std::size_t N = 8>

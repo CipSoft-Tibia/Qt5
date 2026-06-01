@@ -1205,6 +1205,25 @@ void GraphModifier::addRemoveSeries()
     counter++;
 }
 
+void GraphModifier::testNanSeries(bool checked)
+{
+    Q_UNUSED(checked)
+    static bool initalized = false;
+    const int rowCount = 12;
+    const int colCount = 10;
+    static QBar3DSeries *series = 0;
+
+    if (!initalized) {
+        series = new QBar3DSeries;
+        populateNanSeries(series, rowCount, colCount, 10.0f);
+        m_graph->addSeries(series);
+        initalized = true;
+    }
+
+    populateNanSeries(series, rowCount, colCount, 10.0f);
+    m_graph->addSeries(series);
+}
+
 void GraphModifier::testItemAndRowChanges(bool checked)
 {
     Q_UNUSED(checked)
@@ -1599,6 +1618,28 @@ void GraphModifier::populateFlatSeries(QBar3DSeries *series, int rows, int colum
         axisLabels << QString::number(i);
 
     series->dataProxy()->resetArray(dataArray, axisLabels, axisLabels);
+}
+
+void GraphModifier::populateNanSeries(QBar3DSeries *series, int rows, int columns, float value)
+{
+    QBarDataArray dataArray;
+    dataArray.reserve(rows);
+    for (int i = 0; i < rows; i++) {
+        QBarDataRow dataRow(columns);
+        for (int j = 0; j < columns; j++) {
+            if (j % 2 == 0)
+                value = std::numeric_limits<float>::quiet_NaN();
+            dataRow[j].setValue(value);
+        }
+        dataArray.append(dataRow);
+    }
+    QStringList axisLabels;
+    int count = qMax(rows, columns);
+    for (int i = 0; i < count; i++)
+        axisLabels << QString::number(i);
+
+    series->dataProxy()->resetArray(dataArray, axisLabels, axisLabels);
+
 }
 
 QBarDataRow GraphModifier::createFlatRow(int columns, float value)

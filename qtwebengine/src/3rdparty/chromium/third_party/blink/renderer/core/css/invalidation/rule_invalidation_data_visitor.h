@@ -5,6 +5,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_INVALIDATION_RULE_INVALIDATION_DATA_VISITOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_INVALIDATION_RULE_INVALIDATION_DATA_VISITOR_H_
 
+#include "base/memory/stack_allocated.h"
 #include "third_party/blink/renderer/core/css/invalidation/rule_invalidation_data.h"
 #include "third_party/blink/renderer/core/css/invalidation/selector_pre_match.h"
 
@@ -35,6 +36,8 @@ enum class RuleInvalidationDataVisitorType { kBuilder, kTracer };
 // steps taken by the Builder that the Tracer is following in.
 template <RuleInvalidationDataVisitorType VisitorType>
 class RuleInvalidationDataVisitor {
+  STACK_ALLOCATED();
+
  public:
   // Creates invalidation sets for the given CSS selector. This is done as part
   // of creating the RuleSet for the style sheet, i.e., before matching or
@@ -80,6 +83,9 @@ class RuleInvalidationDataVisitor {
       const CSSSelector&,
       unsigned max_direct_adjacent_selectors,
       FeatureMetadata&);
+  void CollectMetadataFromSelectorList(const CSSSelector* selector_list,
+                                       unsigned max_direct_adjacent_selectors,
+                                       FeatureMetadata&);
 
   void UpdateInvalidationSets(const CSSSelector&, const StyleScope*);
 
@@ -590,7 +596,7 @@ class RuleInvalidationDataVisitor {
         return nullptr;
       }
       return EnsureIdInvalidationSet(selector.Value(), type, position,
-                                     in_nth_child);
+                                    in_nth_child);
     }
     if (selector.Match() == CSSSelector::kPseudoClass) {
       switch (selector.GetPseudoType()) {
@@ -622,19 +628,21 @@ class RuleInvalidationDataVisitor {
         case CSSSelector::kPseudoReadOnly:
         case CSSSelector::kPseudoReadWrite:
         case CSSSelector::kPseudoState:
-        case CSSSelector::kPseudoStateDeprecatedSyntax:
         case CSSSelector::kPseudoUserInvalid:
         case CSSSelector::kPseudoUserValid:
         case CSSSelector::kPseudoValid:
         case CSSSelector::kPseudoInvalid:
         case CSSSelector::kPseudoIndeterminate:
         case CSSSelector::kPseudoTarget:
+        case CSSSelector::kPseudoTargetCurrent:
         case CSSSelector::kPseudoLang:
         case CSSSelector::kPseudoDir:
         case CSSSelector::kPseudoFullScreen:
         case CSSSelector::kPseudoFullScreenAncestor:
         case CSSSelector::kPseudoFullscreen:
         case CSSSelector::kPseudoPaused:
+        case CSSSelector::kPseudoPermissionElementInvalidStyle:
+        case CSSSelector::kPseudoPermissionElementOccluded:
         case CSSSelector::kPseudoPermissionGranted:
         case CSSSelector::kPseudoPictureInPicture:
         case CSSSelector::kPseudoPlaying:
@@ -642,7 +650,6 @@ class RuleInvalidationDataVisitor {
         case CSSSelector::kPseudoOutOfRange:
         case CSSSelector::kPseudoDefined:
         case CSSSelector::kPseudoOpen:
-        case CSSSelector::kPseudoClosed:
         case CSSSelector::kPseudoPopoverOpen:
         case CSSSelector::kPseudoVideoPersistent:
         case CSSSelector::kPseudoVideoPersistentAncestor:
@@ -653,6 +660,7 @@ class RuleInvalidationDataVisitor {
         case CSSSelector::kPseudoSelectorFragmentAnchor:
         case CSSSelector::kPseudoActiveViewTransition:
         case CSSSelector::kPseudoActiveViewTransitionType:
+        case CSSSelector::kPseudoHasSlotted:
           return EnsurePseudoInvalidationSet(selector.GetPseudoType(), type,
                                             position, in_nth_child);
         case CSSSelector::kPseudoFirstOfType:
@@ -673,7 +681,6 @@ class RuleInvalidationDataVisitor {
           break;
       }
     }
-
     return nullptr;
   }
   InvalidationSetType* EnsureClassInvalidationSet(
@@ -725,23 +732,22 @@ class RuleInvalidationDataVisitor {
       scoped_refptr<InvalidationSet>& invalidation_set =
           map.insert(key, nullptr).stored_value->value;
       return &EnsureMutableInvalidationSet(type, position, in_nth_child,
-                                           invalidation_set);
+                                          invalidation_set);
     } else {
       auto it = map.find(key);
       if (it != map.end()) {
         const InvalidationSet* invalidation_set = it->value.get();
         if (invalidation_set->GetType() == type) {
           return invalidation_set;
-        } else {
+        } else if (type == InvalidationType::kInvalidateDescendants) {
           // The caller wanted descendant and we found sibling+descendant.
-          CHECK(type == InvalidationType::kInvalidateDescendants);
           return To<SiblingInvalidationSet>(invalidation_set)->Descendants();
         }
       }
-      // It is possible for the Tracer not to find an InvalidationSet we expect
-      // to be there. One case where this can happen is when, at the time we run
-      // the Tracer, a rule has been added to a stylesheet but not yet indexed.
-      // In such a case, we'll pick up information about the new rule as it gets
+      // It is possible for the Tracer not to find an InvalidationSet we expect to
+      // be there. One case where this can happen is when, at the time we run the
+      // Tracer, a rule has been added to a stylesheet but not yet indexed. In
+      // such a case, we'll pick up information about the new rule as it gets
       // indexed on the next document lifecycle update.
       return nullptr;
     }
@@ -757,29 +763,29 @@ class RuleInvalidationDataVisitor {
       scoped_refptr<InvalidationSet>& invalidation_set =
           map.insert(key, nullptr).stored_value->value;
       return &EnsureMutableInvalidationSet(type, position, in_nth_child,
-                                           invalidation_set);
+                                          invalidation_set);
     } else {
       auto it = map.find(key);
       if (it != map.end()) {
         const InvalidationSet* invalidation_set = it->value.get();
         if (invalidation_set->GetType() == type) {
           return invalidation_set;
-        } else {
+        } else if (type == InvalidationType::kInvalidateDescendants) {
           // The caller wanted descendant and we found sibling+descendant.
-          CHECK(type == InvalidationType::kInvalidateDescendants);
           return To<SiblingInvalidationSet>(invalidation_set)->Descendants();
         }
       }
-      // It is possible for the Tracer not to find an InvalidationSet we expect
-      // to be there. One case where this can happen is when, at the time we run
-      // the Tracer, a rule has been added to a stylesheet but not yet indexed.
-      // In such a case, we'll pick up information about the new rule as it gets
+      // It is possible for the Tracer not to find an InvalidationSet we expect to
+      // be there. One case where this can happen is when, at the time we run the
+      // Tracer, a rule has been added to a stylesheet but not yet indexed. In
+      // such a case, we'll pick up information about the new rule as it gets
       // indexed on the next document lifecycle update.
       return nullptr;
     }
   }
 
   SiblingInvalidationSetType*
+
   EnsureUniversalSiblingInvalidationSet() {
     if constexpr (is_builder()) {
       if (!rule_invalidation_data_.universal_sibling_invalidation_set) {

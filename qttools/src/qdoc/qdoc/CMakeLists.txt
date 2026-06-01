@@ -47,6 +47,7 @@ qt_internal_add_tool(${target_name}
         src/qdoc/filesystem/fileresolver.cpp
         src/qdoc/functionnode.cpp
         src/qdoc/generator.cpp
+        src/qdoc/genustypes.h
         src/qdoc/headernode.cpp
         src/qdoc/helpprojectwriter.cpp
         src/qdoc/htmlgenerator.cpp
@@ -54,6 +55,7 @@ qt_internal_add_tool(${target_name}
         src/qdoc/main.cpp
         src/qdoc/manifestwriter.cpp
         src/qdoc/namespacenode.cpp
+        src/qdoc/nativeenum.cpp
         src/qdoc/node.cpp
         src/qdoc/openedlist.cpp
         src/qdoc/pagenode.cpp
@@ -92,6 +94,8 @@ qt_internal_add_tool(${target_name}
     LIBRARIES
         Qt::QmlPrivate
         WrapLibClang::WrapLibClang
+    ATTRIBUTION_FILE_DIR_PATHS
+        src/qdoc/clang/AST
     DEFINES
         # To provide the ability to workaround version-specific Clang issues.
         # A re-export of (LLVM|CLANG)_VERSION_MAJOR done in WrapLibClang.cmake

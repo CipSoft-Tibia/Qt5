@@ -1,6 +1,8 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "delegatemodelkinds.h"
+
 #include <QtTest/QTest>
 #include <QtQmlModels/private/qqmlobjectmodel_p.h>
 #include <QtQuick/qquickview.h>
@@ -77,8 +79,12 @@ private slots:
 
     void setDelegateAfterModel();
 
+    void delegateModelAccess_data();
+    void delegateModelAccess();
     void removeAndDestroyObjectModelItem_data();
     void removeAndDestroyObjectModelItem();
+
+    void fastMouseWheel();
 
 private:
     void flickWithTouch(QQuickWindow *window, const QPoint &from, const QPoint &to);
@@ -1044,6 +1050,7 @@ void tst_QQuickListView2::isCurrentItem_NoRegressionWithDelegateModelGroups()
     // Press left arrow key -> Item 1 should become current, Item 3 should not
     // be current anymore. After a previous fix of QTBUG-86744 it was working
     // incorrectly - see QTBUG-98315
+    QVERIFY(QTest::qWaitForWindowActive(window.get()));
     QTest::keyPress(window.get(), Qt::Key_Left);
 
     QTRY_COMPARE(item0->property("isCurrent").toBool(), true);
@@ -1391,6 +1398,110 @@ void tst_QQuickListView2::setDelegateAfterModel()
     QCOMPARE(object->property("count").toInt(), 4);
 }
 
+template<typename Enum>
+const char *enumKey(Enum value) {
+    const QMetaObject *mo = qt_getEnumMetaObject(value);
+    const QMetaEnum metaEnum = mo->enumerator(mo->indexOfEnumerator(qt_getEnumName(value)));
+    return metaEnum.valueToKey(value);
+}
+
+void tst_QQuickListView2::delegateModelAccess_data()
+{
+    QTest::addColumn<QQmlDelegateModel::DelegateModelAccess>("access");
+    QTest::addColumn<Model::Kind>("modelKind");
+    QTest::addColumn<Delegate::Kind>("delegateKind");
+
+    using Access = QQmlDelegateModel::DelegateModelAccess;
+    for (auto access : { Access::Qt5ReadWrite, Access::ReadOnly, Access::ReadWrite }) {
+        for (auto model : { Model::Singular, Model::List, Model::Array, Model::Object }) {
+            for (auto delegate : { Delegate::Untyped, Delegate::Typed }) {
+                QTest::addRow("%s-%s-%s", enumKey(access), enumKey(model), enumKey(delegate))
+                    << access << model << delegate;
+            }
+        }
+    }
+}
+
+void tst_QQuickListView2::delegateModelAccess()
+{
+    QFETCH(QQmlDelegateModel::DelegateModelAccess, access);
+    QFETCH(Model::Kind, modelKind);
+    QFETCH(Delegate::Kind, delegateKind);
+
+    QQmlEngine engine;
+    const QUrl url = testFileUrl("delegateModelAccess.qml");
+    QQmlComponent c(&engine, url);
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> object(c.create());
+
+    QQuickListView *listView = qobject_cast<QQuickListView *>(object.data());
+    QVERIFY(listView);
+
+    QSignalSpy modelChangedSpy(listView, &QQuickItemView::modelChanged);
+
+    if (delegateKind == Delegate::Untyped && modelKind == Model::Array)
+        QSKIP("Properties of objects in arrays are not exposed as context properties");
+
+    if (access == QQmlDelegateModel::ReadOnly) {
+        const QRegularExpression message(
+                url.toString() + ":[0-9]+: TypeError: Cannot assign to read-only property \"a\"");
+
+        QTest::ignoreMessage(QtWarningMsg, message);
+        if (delegateKind == Delegate::Untyped)
+            QTest::ignoreMessage(QtWarningMsg, message);
+    }
+    object->setProperty("delegateModelAccess", access);
+    object->setProperty("modelIndex", modelKind);
+    object->setProperty("delegateIndex", delegateKind);
+
+    listView->setCurrentIndex(0);
+    QObject *delegate = listView->itemAtIndex(0);
+    QVERIFY(delegate);
+
+    const bool modelWritable = access != QQmlDelegateModel::ReadOnly;
+    const bool immediateWritable = (delegateKind == Delegate::Untyped)
+            ? access != QQmlDelegateModel::ReadOnly
+            : access == QQmlDelegateModel::ReadWrite;
+
+    // Only the array is actually updated itself. The other models are pointers
+    const bool writeShouldSignal = modelKind == Model::Kind::Array;
+
+    double expected = 11;
+
+    // Initial setting of the model, signals one update
+    int expectedModelUpdates = 1;
+    QCOMPARE(modelChangedSpy.count(), expectedModelUpdates);
+
+    QCOMPARE(delegate->property("immediateX").toDouble(), expected);
+    QCOMPARE(delegate->property("modelX").toDouble(), expected);
+
+    if (modelWritable) {
+        expected = 3;
+        if (writeShouldSignal)
+            ++expectedModelUpdates;
+    }
+
+    QMetaObject::invokeMethod(delegate, "writeThroughModel");
+    QCOMPARE(delegate->property("immediateX").toDouble(), expected);
+    QCOMPARE(delegate->property("modelX").toDouble(), expected);
+    QCOMPARE(modelChangedSpy.count(), expectedModelUpdates);
+
+    if (immediateWritable) {
+        expected = 1;
+        if (writeShouldSignal)
+            ++expectedModelUpdates;
+    }
+
+    QMetaObject::invokeMethod(delegate, "writeImmediate");
+
+    // Writes to required properties always succeed, but might not be propagated to the model
+    QCOMPARE(delegate->property("immediateX").toDouble(),
+             delegateKind == Delegate::Untyped ? expected : 1);
+
+    QCOMPARE(delegate->property("modelX").toDouble(), expected);
+    QCOMPARE(modelChangedSpy.count(), expectedModelUpdates);
+}
+
 enum RemovalPolicy {
     RemoveAndDestroy,
     OnlyDestroy
@@ -1439,6 +1550,36 @@ void tst_QQuickListView2::removeAndDestroyObjectModelItem()
             QVERIFY(QQuickTest::qWaitForPolish(listView));
     }
     listView->positionViewAtEnd();
+}
+
+void tst_QQuickListView2::fastMouseWheel()
+{
+    QScopedPointer<QQuickView> window(createView());
+    QTRY_VERIFY(window);
+    window->setSource(testFileUrl("qtbug134502.qml"));
+    window->resize(640, 480);
+    window->show();
+    QQuickViewTestUtils::moveMouseAway(window.data());
+    QVERIFY(QTest::qWaitForWindowExposed(window.data()));
+    auto sendWheelEvent = [](QQuickView *window, const QPoint &angleDelta, quint64 timestamp) {
+        QPoint pos(100, 100);
+        QWheelEvent event(pos, window->mapToGlobal(pos), QPoint(), angleDelta, Qt::NoButton,
+                          Qt::NoModifier, Qt::NoScrollPhase, false);
+        event.setAccepted(false);
+        event.setTimestamp(timestamp);
+        QGuiApplication::sendEvent(window, &event);
+    };
+
+    QQuickListView *listview = findItem<QQuickListView>(window->rootObject(), "objects");
+    QTRY_VERIFY(listview != nullptr);
+
+    QGuiApplication::styleHints()->setWheelScrollLines(60);
+    sendWheelEvent(window.data(), QPoint(0, -120), 100);
+    QTRY_VERIFY(listview->isMoving() == false);
+    sendWheelEvent(window.data(), QPoint(0, -120), 132);
+    QTRY_VERIFY(listview->isMoving() == false);
+    sendWheelEvent(window.data(), QPoint(0, -240), 194);
+    QTRY_VERIFY(listview->isMoving() == false);
 }
 
 QTEST_MAIN(tst_QQuickListView2)

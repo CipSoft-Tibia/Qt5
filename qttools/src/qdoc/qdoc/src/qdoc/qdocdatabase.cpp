@@ -7,6 +7,7 @@
 #include "collectionnode.h"
 #include "functionnode.h"
 #include "generator.h"
+#include "genustypes.h"
 #include "qdocindexfiles.h"
 #include "tree.h"
 
@@ -268,7 +269,7 @@ void QDocForest::newPrimaryTree(const QString &module)
   title as a fallback if no higher-priority targets are found.
  */
 const Node *QDocForest::findNodeForTarget(QStringList &targetPath, const Node *relative,
-                                          Node::Genus genus, QString &ref)
+                                          Genus genus, QString &ref)
 {
     int flags = SearchBaseClasses | SearchEnumValues;
 
@@ -307,7 +308,7 @@ const Node *QDocForest::findNodeForTarget(QStringList &targetPath, const Node *r
  */
 const FunctionNode *QDocForest::findFunctionNode(const QStringList &path,
                                                  const Parameters &parameters, const Node *relative,
-                                                 Node::Genus genus)
+                                                 Genus genus)
 {
     for (const auto *tree : searchOrder()) {
         const FunctionNode *fn = tree->findFunctionNode(path, parameters, relative, genus);
@@ -681,7 +682,7 @@ QmlTypeNode *QDocDatabase::findQmlTypeInPrimaryTree(const QString &qmid, const Q
 {
     if (!qmid.isEmpty())
         return primaryTree()->lookupQmlType(qmid + u"::"_s + name);
-    return static_cast<QmlTypeNode *>(primaryTreeRoot()->findChildNode(name, Node::QML, TypesOnly));
+    return static_cast<QmlTypeNode *>(primaryTreeRoot()->findChildNode(name, Genus::QML, TypesOnly));
 }
 
 /*!
@@ -1090,7 +1091,7 @@ void QDocDatabase::resolveProxies()
   The entire forest is searched, but the first match is accepted.
  */
 const FunctionNode *QDocDatabase::findFunctionNode(const QString &target, const Node *relative,
-                                                   Node::Genus genus)
+                                                   Genus genus)
 {
     QString signature;
     QString function = target;
@@ -1116,7 +1117,7 @@ const FunctionNode *QDocDatabase::findFunctionNode(const QString &target, const 
   When searching the index trees, the search begins at the
   root.
  */
-const Node *QDocDatabase::findTypeNode(const QString &type, const Node *relative, Node::Genus genus)
+const Node *QDocDatabase::findTypeNode(const QString &type, const Node *relative, Genus genus)
 {
     QStringList path = type.split("::");
     if ((path.size() == 1) && (path.at(0)[0].isLower() || path.at(0) == QString("T"))) {
@@ -1144,7 +1145,7 @@ const Node *QDocDatabase::findNodeForTarget(const QString &target, const Node *r
         QStringList path = target.split("::");
         int flags = SearchBaseClasses | SearchEnumValues;
         for (const auto *tree : searchOrder()) {
-            const Node *n = tree->findNode(path, relative, flags, Node::DontCare);
+            const Node *n = tree->findNode(path, relative, flags, Genus::DontCare);
             if (n)
                 return n;
             relative = nullptr;
@@ -1157,7 +1158,7 @@ const Node *QDocDatabase::findNodeForTarget(const QString &target, const Node *r
 QStringList QDocDatabase::groupNamesForNode(Node *node)
 {
     QStringList result;
-    CNMap *m = primaryTree()->getCollectionMap(Node::Group);
+    CNMap *m = primaryTree()->getCollectionMap(NodeType::Group);
 
     if (!m)
         return result;
@@ -1190,12 +1191,11 @@ void QDocDatabase::readIndexes(const QStringList &indexFiles)
   index file is generated with the parameters \a url and \a title,
   using the generator \a g.
  */
-void QDocDatabase::generateIndex(const QString &fileName, const QString &url, const QString &title,
-                                 Generator *g)
+void QDocDatabase::generateIndex(const QString &fileName, const QString &url, const QString &title)
 {
     QString t = fileName.mid(fileName.lastIndexOf(QChar('/')) + 1);
     primaryTree()->setIndexFileName(t);
-    QDocIndexFiles::qdocIndexFiles()->generateIndex(fileName, url, title, g);
+    QDocIndexFiles::qdocIndexFiles()->generateIndex(fileName, url, title);
     QDocIndexFiles::destroyQDocIndexFiles();
 }
 
@@ -1206,16 +1206,16 @@ void QDocDatabase::generateIndex(const QString &fileName, const QString &url, co
 */
 const CollectionNode *QDocDatabase::getModuleNode(const Node *relative)
 {
-    Node::NodeType moduleType{Node::Module};
+    NodeType moduleType{NodeType::Module};
     QString moduleName;
     switch (relative->genus())
     {
-    case Node::CPP:
-        moduleType = Node::Module;
+    case Genus::CPP:
+        moduleType = NodeType::Module;
         moduleName = relative->physicalModuleName();
         break;
-    case Node::QML:
-        moduleType = Node::QmlModule;
+    case Genus::QML:
+        moduleType = NodeType::QmlModule;
         moduleName = relative->logicalModuleName();
         break;
     default:
@@ -1232,7 +1232,7 @@ const CollectionNode *QDocDatabase::getModuleNode(const Node *relative)
   and merges them into the collection node map \a cnm. Nodes
   that match the \a relative node are not included.
  */
-void QDocDatabase::mergeCollections(Node::NodeType type, CNMap &cnm, const Node *relative)
+void QDocDatabase::mergeCollections(NodeType type, CNMap &cnm, const Node *relative)
 {
     cnm.clear();
     CNMultiMap cnmm;
@@ -1424,7 +1424,7 @@ void QDocDatabase::mergeCollections(CollectionNode *c)
   \a ref is also not valid.
  */
 const Node *QDocDatabase::findNodeForAtom(const Atom *a, const Node *relative, QString &ref,
-                                          Node::Genus genus)
+                                          Genus genus)
 {
     const Node *node = nullptr;
 
@@ -1536,7 +1536,7 @@ void QDocDatabase::updateNavigation()
 
             auto *atom = body.firstAtom();
 
-            std::pair<PageNode *, Atom *> prev { nullptr, nullptr };
+            std::pair<PageNode *, QString> prev { nullptr, QString() };
 
             std::stack<const PageNode *> tocStack;
             tocStack.push(inclusive ? tocPage : nullptr);
@@ -1645,8 +1645,7 @@ void QDocDatabase::updateNavigation()
                             page->setLink(
                                 Node::PreviousLink,
                                 prev.first->title(),
-                                // TODO: [possible-assertion-failure][imprecise-types][atoms-link]
-                                prev.second->linkText()
+                                prev.second
                             );
                         }
 
@@ -1667,9 +1666,43 @@ void QDocDatabase::updateNavigation()
                             tocStack.push(nullptr);
 
                         tocStack.push(page);
-                        prev = { page, atom };
+                        // TODO: [possible-assertion-failure][imprecise-types][atoms-link]
+                        prev = { page, atom->linkText() };
                     }
-                        break;
+                    break;
+
+                    case Atom::AnnotatedList:
+                    case Atom::GeneratedList: {
+                        if (const auto *cn = getCollectionNode(atom->string(), NodeType::Group)) {
+                            const auto sortOrder{Generator::sortOrder(atom->strings().last())};
+                            NodeList members{cn->members()};
+                            // Drop non-page nodes and index nodes so that we do not generate navigational
+                            // links pointing outside of this documentation set.
+                            members.erase(std::remove_if(members.begin(), members.end(),
+                                    [](const Node *n) {
+                                        return n->isIndexNode() || !n->isPageNode() || n->isExternalPage();
+                                    }), members.end());
+                            if (members.isEmpty())
+                                break;
+
+                            if (sortOrder == Qt::DescendingOrder)
+                                std::sort(members.rbegin(), members.rend(), Node::nodeSortKeyOrNameLessThan);
+                            else
+                                std::sort(members.begin(), members.end(), Node::nodeSortKeyOrNameLessThan);
+
+                            // `members` now has local PageNode pointers, adjust prev/next links for each.
+                            // Do not set a navigation parent node as group members use the group node as
+                            // their nav. parent.
+                            for (auto *m : members) {
+                                auto *page = static_cast<PageNode *>(m);
+                                prev.first->setLink(Node::NextLink, page->title(), page->fullName());
+                                page->setLink(Node::PreviousLink, prev.first->title(), prev.second);
+                                prev = { page, page->fullName() };
+                            }
+                        }
+                    }
+                    break;
+
                     default:
                         break;
                 }

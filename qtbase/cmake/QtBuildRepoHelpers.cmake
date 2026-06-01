@@ -353,6 +353,7 @@ macro(qt_build_repo_begin)
     endif()
 
     _qt_internal_sbom_auto_begin_qt_repo_project()
+    qt_internal_set_unity_build()
 endmacro()
 
 # Runs delayed actions on some of the Qt targets.
@@ -375,7 +376,8 @@ macro(qt_build_repo_end)
         qt_path_join(__qt_repo_build_dir ${QT_CONFIG_BUILD_DIR} ${INSTALL_CMAKE_NAMESPACE})
 
         if(NOT PROJECT_NAME STREQUAL "QtBase")
-            if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+            if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
+                    AND NOT QT_NO_INSTALL_CMAKE_DIR_FIND_SCRIPTS)
                 qt_copy_or_install(DIRECTORY cmake/
                     DESTINATION "${__qt_repo_install_dir}"
                     FILES_MATCHING PATTERN "Find*.cmake"
@@ -720,6 +722,41 @@ macro(qt_internal_find_standalone_test_config_file)
     endif()
 endmacro()
 
+# Used inside the standalone parts config file to find all requested Qt module packages.
+# standalone_parts_args_var_name should be the var name in the outer scope that contains
+# all the arguments for this function.
+macro(qt_internal_find_standalone_parts_qt_packages standalone_parts_args_var_name)
+    set(__standalone_parts_opt_args "")
+    set(__standalone_parts_single_args "")
+    set(__standalone_parts_multi_args
+        QT_MODULE_PACKAGES
+    )
+    cmake_parse_arguments(__standalone_parts
+        "${__standalone_parts_opt_args}"
+        "${__standalone_parts_single_args}"
+        "${__standalone_parts_multi_args}"
+        ${${standalone_parts_args_var_name}})
+
+    # Packages looked up in standalone tests Config files should use the same version as
+    # the one recorded on the Platform target.
+    qt_internal_get_package_version_of_target(Platform __standalone_parts_main_qt_package_version)
+
+    if(__standalone_parts_QT_MODULE_PACKAGES)
+        foreach(__standalone_parts_package_name IN LISTS __standalone_parts_QT_MODULE_PACKAGES)
+            find_package(${QT_CMAKE_EXPORT_NAMESPACE}
+                "${__standalone_parts_main_qt_package_version}"
+                COMPONENTS "${__standalone_parts_package_name}")
+        endforeach()
+    endif()
+
+    unset(__standalone_parts_opt_args)
+    unset(__standalone_parts_single_args)
+    unset(__standalone_parts_multi_args)
+    unset(__standalone_parts_QT_MODULE_PACKAGES)
+    unset(__standalone_parts_main_qt_package_version)
+    unset(__standalone_parts_package_name)
+endmacro()
+
 # Used by standalone tests and standalone non-ExternalProject examples to find all installed qt
 # packages.
 macro(qt_internal_find_standalone_parts_config_files)
@@ -765,6 +802,8 @@ macro(qt_build_tests)
 
     # Tests are not unity-ready.
     set(CMAKE_UNITY_BUILD OFF)
+
+    qt_internal_sbom_disable_sbom_for_tests_subdir()
 
     # Prepending to QT_BUILD_CMAKE_PREFIX_PATH helps find components of Qt6, because those
     # find_package calls use NO_DEFAULT_PATH, and thus CMAKE_PREFIX_PATH is ignored.

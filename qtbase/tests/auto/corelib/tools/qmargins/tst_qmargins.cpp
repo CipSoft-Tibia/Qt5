@@ -476,5 +476,19 @@ void tst_QMargins::toMarginsF()
     QCOMPARE(input.toMarginsF(), result);
 }
 
+namespace ConstexprTests {
+constexpr QMargins m = (QMargins(1, 2, 3, 4) + QMargins(5, 6, 7, 8)) * 2;
+static_assert(m.left() == 12);
+static_assert(m.top() == 16);
+static_assert(m.right() == 20);
+static_assert(m.bottom() == 24);
+
+constexpr QMarginsF mf = (QMarginsF(1.0, 2.0, 3.0, 4.0) + QMargins(5.0, 6.0, 7.0, 8.0)) * 2.5;
+static_assert(mf.left() == 15.0);
+static_assert(mf.top() == 20.0);
+static_assert(mf.right() == 25.0);
+static_assert(mf.bottom() == 30.0);
+} // namespace ConstexprTests
+
 QTEST_APPLESS_MAIN(tst_QMargins)
 #include "tst_qmargins.moc"

@@ -15,7 +15,8 @@ import {createTarget} from '../../testing/EnvironmentHelpers.js';
 import {
   describeWithMockConnection,
 } from '../../testing/MockConnection.js';
-import * as Coordinator from '../../ui/components/render_coordinator/render_coordinator.js';
+import {getCellElementFromNodeAndColumnId, selectNodeByKey} from '../../testing/StorageItemsViewHelpers.js';
+import * as RenderCoordinator from '../../ui/components/render_coordinator/render_coordinator.js';
 import type * as DataGrid from '../../ui/legacy/components/data_grid/data_grid.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
@@ -23,8 +24,6 @@ import * as Resources from './application.js';
 import type * as ApplicationComponents from './components/components.js';
 
 import View = Resources.SharedStorageItemsView;
-
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
 
 class SharedStorageItemsListener {
   #dispatcher: Common.ObjectWrapper.ObjectWrapper<View.SharedStorageItemsDispatcher.EventTypes>;
@@ -121,26 +120,6 @@ class SharedStorageItemsListener {
       await this.#dispatcher.once(View.SharedStorageItemsDispatcher.Events.ITEM_EDITED);
     }
   }
-}
-
-function selectNodeByKey(
-    dataGrid: DataGrid.DataGrid.DataGridImpl<Protocol.Storage.SharedStorageEntry>,
-    key: string|null): DataGrid.DataGrid.DataGridNode<Protocol.Storage.SharedStorageEntry>|null {
-  for (const node of dataGrid.rootNode().children) {
-    if (node?.data?.key === key) {
-      node.select();
-      return node;
-    }
-  }
-  return null;
-}
-
-function getCellElementFromNodeAndColumnId(
-    dataGrid: DataGrid.DataGrid.DataGridImpl<Protocol.Storage.SharedStorageEntry>,
-    node: DataGrid.DataGrid.DataGridNode<Protocol.Storage.SharedStorageEntry>, columnId: string): Element|null {
-  const column = dataGrid.columns[columnId];
-  const cellIndex = dataGrid.visibleColumnsArray.indexOf(column);
-  return node.element()?.children[cellIndex] || null;
 }
 
 describeWithMockConnection('SharedStorageItemsView', function() {
@@ -310,7 +289,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
     assert.exists(metadataView);
 
     assert.isNotNull(metadataView.shadowRoot);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const keys = getCleanTextContentFromElements(metadataView.shadowRoot, 'devtools-report-key');
     assert.deepEqual(keys, [
@@ -352,14 +331,14 @@ describeWithMockConnection('SharedStorageItemsView', function() {
     view.show(document.body);
     await refreshedPromise;
 
-    assert.strictEqual(view.getEntriesForTesting().length, 0);
+    assert.lengthOf(view.getEntriesForTesting(), 0);
 
     const metadataView = view.innerSplitWidget.sidebarWidget()?.contentElement.firstChild as
         ApplicationComponents.SharedStorageMetadataView.SharedStorageMetadataView;
     assert.exists(metadataView);
 
     assert.isNotNull(metadataView.shadowRoot);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const keys = getCleanTextContentFromElements(metadataView.shadowRoot, 'devtools-report-key');
     assert.deepEqual(keys, [
@@ -458,7 +437,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -522,7 +501,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -602,7 +581,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -696,7 +675,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -768,7 +747,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -852,7 +831,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -939,7 +918,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -1026,7 +1005,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);
@@ -1054,14 +1033,14 @@ describeWithMockConnection('SharedStorageItemsView', function() {
     const cellElement = getCellElementFromNodeAndColumnId(view.dataGrid, selectedNode, 'key');
     assert.exists(cellElement);
 
-    // Editing a key will cause `deleteEntry()`, `setEntry()`, `getMetadata()`, and `getEntries()` to be called.
+    // Editing a key will cause `setEntry()`, `getMetadata()`, and `getEntries()` to be called.
     const editedPromise = itemsListener.waitForItemsEditedTotal(1);
     cellElement.textContent = 'key4';
     dispatchKeyDownEvent(cellElement, {key: 'Enter'});
     await raf();
     await editedPromise;
 
-    assert.isTrue(deleteEntrySpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN, key: ''}));
+    assert.isTrue(deleteEntrySpy.notCalled);
     assert.isTrue(
         setEntrySpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN, key: 'key4', value: '', ignoreIfPresent: false}));
     assert.isTrue(getMetadataSpy.calledThrice);
@@ -1071,7 +1050,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     assert.deepEqual(view.getEntriesForTesting(), ENTRIES_NEW_KEY);
     assert.deepEqual(itemsListener.editedEvents, [
-      {columnIdentifier: 'key', oldText: '', newText: 'key4'} as View.SharedStorageItemsDispatcher.ItemEditedEvent,
+      {columnIdentifier: 'key', oldText: null, newText: 'key4'},
     ]);
 
     // Verify that the preview loads.
@@ -1099,7 +1078,7 @@ describeWithMockConnection('SharedStorageItemsView', function() {
 
     // Creating will cause `getMetadata()` to be called.
     const view = await View.SharedStorageItemsView.createView(sharedStorage);
-    await coordinator.done({waitForWork: true});
+    await RenderCoordinator.done({waitForWork: true});
     assert.isTrue(getMetadataSpy.calledOnceWithExactly({ownerOrigin: TEST_ORIGIN}));
 
     const itemsListener = new SharedStorageItemsListener(view.sharedStorageItemsDispatcher);

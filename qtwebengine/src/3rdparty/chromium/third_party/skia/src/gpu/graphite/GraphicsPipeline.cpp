@@ -7,8 +7,10 @@
 
 #include "src/gpu/graphite/GraphicsPipeline.h"
 
+#include "src/core/SkTraceEvent.h"
 #include "src/gpu/graphite/ContextUtils.h"
 #include "src/gpu/graphite/Renderer.h"
+#include "src/gpu/graphite/ShaderInfo.h"
 #include "src/utils/SkShaderUtils.h"
 
 namespace skgpu::graphite {
@@ -17,23 +19,37 @@ GraphicsPipeline::GraphicsPipeline(const SharedContext* sharedContext,
                                    const PipelineInfo& pipelineInfo)
         : Resource(sharedContext,
                    Ownership::kOwned,
-                   skgpu::Budgeted::kYes,
                    /*gpuMemorySize=*/0)
         , fPipelineInfo(pipelineInfo) {}
 
-GraphicsPipeline::~GraphicsPipeline() = default;
+GraphicsPipeline::~GraphicsPipeline() {
+#if defined(SK_PIPELINE_LIFETIME_LOGGING)
+    static const char* kNames[2] = { "DeletionN", "DeletionP" };
+    TRACE_EVENT_INSTANT2("skia.gpu",
+                         TRACE_STR_STATIC(kNames[this->fromPrecompile()]),
+                         TRACE_EVENT_SCOPE_THREAD,
+                         "key", this->getPipelineInfo().fUniqueKeyHash,
+                         "compilationID", this->getPipelineInfo().fCompilationID);
+#endif
+}
 
-GraphicsPipeline::PipelineInfo::PipelineInfo(const VertSkSLInfo& vsInfo,
-                                             const FragSkSLInfo& fsInfo)
-        : fDstReadReq(fsInfo.fDstReadReq)
-        , fNumFragTexturesAndSamplers(fsInfo.fNumTexturesAndSamplers)
-        , fHasPaintUniforms(fsInfo.fHasPaintUniforms)
-        , fHasStepUniforms(vsInfo.fHasStepUniforms)
-        , fHasGradientBuffer(fsInfo.fHasGradientBuffer) {
+GraphicsPipeline::PipelineInfo::PipelineInfo(
+            const ShaderInfo& shaderInfo,
+            SkEnumBitMask<PipelineCreationFlags> pipelineCreationFlags,
+            uint32_t uniqueKeyHash,
+            uint32_t compilationID)
+        : fDstReadStrategy(shaderInfo.dstReadStrategy())
+        , fNumFragTexturesAndSamplers(shaderInfo.numFragmentTexturesAndSamplers())
+        , fHasPaintUniforms(shaderInfo.hasPaintUniforms())
+        , fHasStepUniforms(shaderInfo.hasStepUniforms())
+        , fHasGradientBuffer(shaderInfo.hasGradientBuffer())
+        , fUniqueKeyHash(uniqueKeyHash)
+        , fCompilationID(compilationID)
+        , fFromPrecompile(pipelineCreationFlags & PipelineCreationFlags::kForPrecompilation) {
 #if defined(GPU_TEST_UTILS)
-    fSkSLVertexShader = SkShaderUtils::PrettyPrint(vsInfo.fSkSL);
-    fSkSLFragmentShader = SkShaderUtils::PrettyPrint(fsInfo.fSkSL);
-    fLabel = fsInfo.fLabel;
+    fSkSLVertexShader = SkShaderUtils::PrettyPrint(shaderInfo.vertexSkSL());
+    fSkSLFragmentShader = SkShaderUtils::PrettyPrint(shaderInfo.fragmentSkSL());
+    fLabel = shaderInfo.fsLabel();
 #endif
 }
 

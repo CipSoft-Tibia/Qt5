@@ -20,6 +20,7 @@
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "quiche/http2/core/spdy_framer.h"
 #include "quiche/quic/core/http/http_decoder.h"
 #include "quiche/quic/core/http/http_encoder.h"
 #include "quiche/quic/core/http/metadata_decoder.h"
@@ -41,7 +42,6 @@
 #include "quiche/common/capsule.h"
 #include "quiche/common/http/http_header_block.h"
 #include "quiche/common/platform/api/quiche_mem_slice.h"
-#include "quiche/spdy/core/spdy_framer.h"
 
 namespace quic {
 
@@ -405,6 +405,12 @@ class QUICHE_EXPORT QuicSpdyStream
                                 QuicByteCount payload_length);
 
   void CloseReadSide() override;
+
+  // Called when any new data is acked.
+  void OnNewDataAcked(QuicStreamOffset offset, QuicByteCount data_length,
+                      QuicByteCount newly_acked_length,
+                      QuicTime receive_timestamp,
+                      QuicTime::Delta ack_delay_time) override;
 
  private:
   friend class test::QuicSpdyStreamPeer;

@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2023-2024 The Khronos Group Inc.
-# Copyright (c) 2023-2024 Valve Corporation
+# Copyright (c) 2023-2025 The Khronos Group Inc.
+# Copyright (c) 2023-2025 Valve Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,8 +31,8 @@ class ErrorLocationHelperOutputGenerator(BaseGenerator):
 
             /***************************************************************************
             *
-            * Copyright (c) 2023-2024 The Khronos Group Inc.
-            * Copyright (c) 2023-2024 Valve Corporation
+            * Copyright (c) 2023-2025 The Khronos Group Inc.
+            * Copyright (c) 2023-2025 Valve Corporation
             *
             * Licensed under the Apache License, Version 2.0 (the "License");
             * you may not use this file except in compliance with the License.
@@ -86,8 +86,6 @@ class ErrorLocationHelperOutputGenerator(BaseGenerator):
         out = []
         out.append('''
             #pragma once
-            #include <string_view>
-            #include <sstream>
             #include <vulkan/vulkan.h>
             #include "containers/custom_containers.h"
             #include "generated/vk_api_version.h"
@@ -165,6 +163,9 @@ class ErrorLocationHelperOutputGenerator(BaseGenerator):
             std::string String(const Requirements& requirements);
 
             bool IsFieldPointer(Field field);
+
+            // Used for VUID maps were we only want the new function name
+            Func FindAlias(Func func);
             }  // namespace vvl
             ''')
         self.write("".join(out))
@@ -173,9 +174,9 @@ class ErrorLocationHelperOutputGenerator(BaseGenerator):
         out = []
         out.append('''
             #include "error_location_helper.h"
-            #include "containers/custom_containers.h"
             #include "generated/vk_api_version.h"
             #include <assert.h>
+            #include <string_view>
             ''')
 
         out.append('''
@@ -256,6 +257,19 @@ bool IsFieldPointer(Field field) {
     default:
         return false;
     }
+}
+
+Func FindAlias(Func func) {
+    switch (func) {
+''')
+        for command in [x for x in self.vk.commands.values() if x.alias]:
+            out.append(f'    case Func::{command.name}:\n')
+            out.append(f'       return Func::{command.alias};\n')
+        out.append('''
+    default:
+        break;
+    }
+    return func;
 }
 // clang-format on
 ''')

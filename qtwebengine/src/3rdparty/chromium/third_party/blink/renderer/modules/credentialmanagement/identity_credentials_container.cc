@@ -8,6 +8,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_credential_request_options.h"
+#include "third_party/blink/renderer/core/dom/abort_signal.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/navigator.h"
@@ -45,9 +46,15 @@ ScriptPromise<IDLNullable<Credential>> IdentityCredentialsContainer::get(
       MakeGarbageCollected<ScriptPromiseResolver<IDLNullable<Credential>>>(
           script_state, exception_state.GetContext());
 
+  if (options->hasSignal() && options->signal()->aborted()) {
+    resolver->Reject(MakeGarbageCollected<DOMException>(
+        DOMExceptionCode::kAbortError, "Request has been aborted."));
+    return resolver->Promise();
+  }
+
   if (IsDigitalIdentityCredentialType(*options)) {
-    DiscoverDigitalIdentityCredentialFromExternalSource(
-        resolver, exception_state, *options);
+    DiscoverDigitalIdentityCredentialFromExternalSource(resolver, *options,
+                                                        exception_state);
   } else {
     resolver->Resolve(nullptr);
   }

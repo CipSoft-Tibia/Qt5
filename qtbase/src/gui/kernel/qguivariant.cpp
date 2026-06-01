@@ -27,26 +27,23 @@
 #include "qicon.h"
 
 // Core types
-#include "qvariant.h"
 #include "qbitarray.h"
 #include "qbytearray.h"
 #include "qdatastream.h"
-#include "qdebug.h"
-#include "qmap.h"
 #include "qdatetime.h"
+#include "qdebug.h"
+#include "qline.h"
 #include "qlist.h"
+#include "qlocale.h"
+#include "qmap.h"
+#include "qpoint.h"
+#include "qrect.h"
+#include "qsize.h"
 #include "qstring.h"
 #include "qstringlist.h"
 #include "qurl.h"
-#include "qlocale.h"
 #include "quuid.h"
-
-#ifndef QT_NO_GEOM_VARIANT
-#include "qsize.h"
-#include "qpoint.h"
-#include "qrect.h"
-#include "qline.h"
-#endif
+#include "qvariant.h"
 
 #include <float.h>
 

@@ -35,6 +35,7 @@
 
 #include "dawn/dawn_proc.h"  // nogncheck
 #include "dawn/native/DawnNative.h"
+#include "dawn/webgpu_cpp_print.h"
 
 namespace {
 
@@ -222,25 +223,29 @@ std::string LimitsToString(const wgpu::Limits& limits, const std::string& indent
 }
 
 void DumpAdapterInfo(const wgpu::Adapter& adapter) {
+    wgpu::AdapterPropertiesSubgroups subgroup_props{};
+
     wgpu::DawnAdapterPropertiesPowerPreference power_props{};
+    power_props.nextInChain = &subgroup_props;
 
     wgpu::AdapterInfo info{};
     info.nextInChain = &power_props;
 
     adapter.GetInfo(&info);
     std::cout << AdapterInfoToString(info);
+    std::cout << "Subgroup min size: " << subgroup_props.subgroupMinSize << "\n";
+    std::cout << "Subgroup max size: " << subgroup_props.subgroupMaxSize << "\n";
     std::cout << "Power: " << PowerPreferenceToString(power_props) << "\n";
     std::cout << "\n";
 }
 
 void DumpAdapterFeatures(const wgpu::Adapter& adapter) {
-    auto feature_count = adapter.EnumerateFeatures(nullptr);
-    std::vector<wgpu::FeatureName> features(feature_count);
-    adapter.EnumerateFeatures(features.data());
-
+    wgpu::SupportedFeatures supportedFeatures;
+    adapter.GetFeatures(&supportedFeatures);
     std::cout << "  Features\n";
     std::cout << "  ========\n";
-    for (const auto& f : features) {
+    for (uint32_t i = 0; i < supportedFeatures.featureCount; ++i) {
+        wgpu::FeatureName f = supportedFeatures.features[i];
         auto info = dawn::native::GetFeatureInfo(f);
         std::cout << "   * " << info->name << "\n";
         std::cout << WrapString(info->description, "      ") << "\n";

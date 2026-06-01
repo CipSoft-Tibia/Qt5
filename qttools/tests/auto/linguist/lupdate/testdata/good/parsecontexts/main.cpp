@@ -263,4 +263,113 @@ int main(int /*argc*/, char ** /*argv*/) {
     return 0;
 }
 
+
+// QTBUG-140636: Return type vs method qualification disambiguation
+// Types from <external_types.h> use angle brackets, so lupdate looks for them in the
+// configured paths (and not the relative locations), and if not found, they are not qualified.
+// Without the fix, these produce: "Qualifying with unknown namespace/class ::Namespace"
+#include <external_types.h>
+
+// Basic namespaced return type
+class TestClass1_Widget : public QObject {
+    Q_OBJECT
+};
+
+Tasking::GroupItem testFunction1()
+{
+    TestClass1_Widget::tr("test1: basic return type");
+}
+
+// Deeply nested return type
+namespace MyNS {
+class TestClass2 : public QObject {
+    Q_OBJECT
+public:
+    External::Deeply::Nested::Type method();
+};
+}
+
+External::Deeply::Nested::Type MyNS::TestClass2::method()
+{
+    tr("test2: nested return type");
+    return {};
+}
+
+// Trailing return type syntax
+class TestClass3 : public QObject {
+    Q_OBJECT
+public:
+    auto method() -> UndefinedNS::RetType;
+};
+
+auto TestClass3::method() -> UndefinedNS::RetType
+{
+    tr("test3: trailing return type");
+    return {};
+}
+
+// Template return type
+#include <vector>
+class TestClass4 : public QObject {
+    Q_OBJECT
+public:
+    std::vector<ThirdParty::Item> getItems();
+};
+
+std::vector<ThirdParty::Item> TestClass4::getItems()
+{
+    tr("test4: template return type");
+    return {};
+}
+
+// Const reference return
+class TestClass5 : public QObject {
+    Q_OBJECT
+public:
+    const LibraryNS::Data& getData() const noexcept;
+};
+
+const LibraryNS::Data& TestClass5::getData() const noexcept
+{
+    tr("test5: const reference return");
+    static LibraryNS::Data d;
+    return d;
+}
+
+// Operator overload return type
+class TestClass6 : public QObject {
+    Q_OBJECT
+public:
+    OperatorNS::Type operator<<(const OperatorNS::Type& t);
+};
+
+OperatorNS::Type TestClass6::operator<<(const OperatorNS::Type& t)
+{
+    tr("test6: operator overload");
+    return t;
+}
+
+// - If the user code contains a function named "tr" (same name as our tr
+//   function), lupdate wrongly clears the parsed prospectiveContext.
+//   When lupdate parses the arguments of that function, upon
+//   encountering two Tok_Idents in the arguments
+//   lupdate wrongly assumes it is parsing an instance of
+//   Tok_Ident::Tok_ident... in the return type of a method signature.
+//   In that case, since such instance doesn't define context, lupdate
+//   clears the prospectiveContext.
+// - Test that two ident tokens (int num) as parameters of a function
+//   named "tr" don't result in clearing prospectiveContext in the cpp parser
+namespace MyNamespace {
+class MyClass : public QObject
+{
+    Q_OBJECT
+    void tr(int num);
+};
+void MyClass::tr(int num)
+{
+    if (num)
+        tr("translation");
+}
+} // namespace MyNamespace
+
 //#include "main.moc"

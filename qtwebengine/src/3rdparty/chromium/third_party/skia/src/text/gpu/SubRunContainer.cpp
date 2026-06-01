@@ -36,6 +36,7 @@
 #include "src/core/SkMask.h"
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkMatrixPriv.h"
+#include "src/core/SkPathEffectBase.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkScalerContext.h"
 #include "src/core/SkStrike.h"
@@ -55,7 +56,6 @@
 #include <algorithm>
 #include <climits>
 #include <cstdint>
-#include <initializer_list>
 #include <new>
 #include <optional>
 #include <vector>
@@ -755,8 +755,9 @@ public:
         return (unsigned short)fVertexFiller.grMaskType();
     }
 
-    void testingOnly_packedGlyphIDToGlyph(StrikeCache* cache) const override {
-        fGlyphs.packedGlyphIDToGlyph(cache);
+    void testingOnly_packedGlyphIDToGlyph(StrikeCache* cache,
+                                          skgpu::MaskFormat maskFormat) const override {
+        fGlyphs.packedGlyphIDToGlyph(cache, maskFormat);
     }
 
 #if defined(SK_GANESH) || defined(SK_USE_LEGACY_GANESH_TEXT_APIS)
@@ -946,9 +947,11 @@ public:
 
     const AtlasSubRun* testingOnly_atlasSubRun() const override { return this; }
 
-    void testingOnly_packedGlyphIDToGlyph(StrikeCache *cache) const override {
-        fGlyphs.packedGlyphIDToGlyph(cache);
+    void testingOnly_packedGlyphIDToGlyph(StrikeCache *cache,
+                                          skgpu::MaskFormat maskFormat) const override {
+        fGlyphs.packedGlyphIDToGlyph(cache, maskFormat);
     }
+
 
     int glyphCount() const override { return SkCount(fGlyphs.glyphs()); }
 
@@ -1176,8 +1179,9 @@ public:
 
     const AtlasSubRun* testingOnly_atlasSubRun() const override { return this; }
 
-    void testingOnly_packedGlyphIDToGlyph(StrikeCache *cache) const override {
-        fGlyphs.packedGlyphIDToGlyph(cache);
+    void testingOnly_packedGlyphIDToGlyph(StrikeCache *cache,
+                                          skgpu::MaskFormat maskFormat) const override {
+        fGlyphs.packedGlyphIDToGlyph(cache, maskFormat);
     }
 
     int glyphCount() const override { return fVertexFiller.count(); }
@@ -1651,14 +1655,14 @@ make_sdft_strike_spec(const SkFont& font, const SkPaint& paint,
 
     // Check for dashing and adjust the intervals.
     if (SkPathEffect* pathEffect = paint.getPathEffect(); pathEffect != nullptr) {
-        SkPathEffect::DashInfo dashInfo;
-        if (pathEffect->asADash(&dashInfo) == SkPathEffect::kDash_DashType) {
+        SkPathEffectBase::DashInfo dashInfo;
+        if (as_PEB(pathEffect)->asADash(&dashInfo) == SkPathEffectBase::DashType::kDash) {
             if (dashInfo.fCount > 0) {
                 // Allocate the intervals.
                 std::vector<SkScalar> scaledIntervals(dashInfo.fCount);
                 dashInfo.fIntervals = scaledIntervals.data();
                 // Call again to get the interval data.
-                (void)pathEffect->asADash(&dashInfo);
+                (void)as_PEB(pathEffect)->asADash(&dashInfo);
                 for (SkScalar& interval : scaledIntervals) {
                     interval /= strikeToSourceScale;
                 }

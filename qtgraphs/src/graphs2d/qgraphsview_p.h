@@ -19,8 +19,14 @@
 #include <QtQml/QQmlListProperty>
 #include <QtGraphs/qabstractseries.h>
 #include <QtGraphs/qgraphstheme.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcGraphs2D)
+Q_DECLARE_LOGGING_CATEGORY(lcViewProperties2D)
+Q_DECLARE_LOGGING_CATEGORY(lcEvents2D)
+Q_DECLARE_LOGGING_CATEGORY(lcCritical2D)
 
 class QQuickRectangle;
 class QAbstractAxis;
@@ -40,6 +46,7 @@ class Q_GRAPHS_EXPORT QGraphsView : public QQuickItem
     Q_PROPERTY(qreal marginBottom READ marginBottom WRITE setMarginBottom NOTIFY marginBottomChanged FINAL)
     Q_PROPERTY(qreal marginLeft READ marginLeft WRITE setMarginLeft NOTIFY marginLeftChanged FINAL)
     Q_PROPERTY(qreal marginRight READ marginRight WRITE setMarginRight NOTIFY marginRightChanged FINAL)
+    Q_PROPERTY(bool clipPlotArea READ clipPlotArea WRITE setClipPlotArea NOTIFY clipPlotAreaChanged REVISION(6, 10))
     Q_PROPERTY(QRectF plotArea READ plotArea NOTIFY plotAreaChanged REVISION(6, 9))
 
     Q_PROPERTY(qreal axisXSmoothing READ axisXSmoothing WRITE setAxisXSmoothing NOTIFY axisXSmoothingChanged FINAL)
@@ -86,6 +93,8 @@ public:
         return m_seriesList;
     }
 
+    QPointF getDataPointCoordinates(QAbstractSeries *series, qreal x, qreal y);
+
     QQmlListProperty<QObject> seriesList();
     static void appendSeriesFunc(QQmlListProperty<QObject> *list, QObject *series);
     static qsizetype countSeriesFunc(QQmlListProperty<QObject> *list);
@@ -106,6 +115,9 @@ public:
 
     qreal marginRight() const;
     void setMarginRight(qreal newMarginRight);
+
+    bool clipPlotArea() const;
+    void setClipPlotArea(bool enabled);
 
     QRectF plotArea() const;
     void updatePlotArea();
@@ -181,6 +193,8 @@ public:
     qreal zoomSensitivity() const;
     void setZoomSensitivity(qreal newZoomSensitivity);
 
+    void calculateAxisCounts(int *xCount, int *yCount, int *leftCount, int *topCount);
+
 protected:
     void handleHoverEnter(const QString &seriesName, QPointF position, QPointF value);
     void handleHoverExit(const QString &seriesName, QPointF position);
@@ -199,6 +213,7 @@ Q_SIGNALS:
     void marginBottomChanged();
     void marginLeftChanged();
     void marginRightChanged();
+    Q_REVISION(6, 10) void clipPlotAreaChanged();
     Q_REVISION(6, 9) void plotAreaChanged();
     void hoverEnter(const QString &seriesName, QPointF position, QPointF value);
     void hoverExit(const QString &seriesName, QPointF position);
@@ -265,20 +280,27 @@ private:
 
     qsizetype m_graphSeriesCount = 0;
 
+    bool m_clipPlotArea = true;
     qreal m_marginTop = 20;
     qreal m_marginBottom = 20;
     qreal m_marginLeft = 20;
     qreal m_marginRight = 20;
     QRectF m_plotArea;
     // Areas of axis
-    QRectF m_xAxisArea;
-    QRectF m_yAxisArea;
+    QRectF m_x1AxisArea;
+    QRectF m_x2AxisArea;
+    QRectF m_y1AxisArea;
+    QRectF m_y2AxisArea;
     // Areas of axis tickers
-    QRectF m_xAxisTickersArea;
-    QRectF m_yAxisTickersArea;
+    QRectF m_x1AxisTickersArea;
+    QRectF m_x2AxisTickersArea;
+    QRectF m_y1AxisTickersArea;
+    QRectF m_y2AxisTickersArea;
     // Areas of axis labels
-    QRectF m_xAxisLabelsArea;
-    QRectF m_yAxisLabelsArea;
+    QRectF m_x1AxisLabelsArea;
+    QRectF m_x2AxisLabelsArea;
+    QRectF m_y1AxisLabelsArea;
+    QRectF m_y2AxisLabelsArea;
     // Note: Add properties for these
     qreal m_axisTickersWidth = m_defaultAxisTickersWidth;
     qreal m_axisTickersHeight = m_defaultAxisTickersHeight;

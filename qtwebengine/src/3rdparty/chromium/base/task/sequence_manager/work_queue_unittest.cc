@@ -20,9 +20,7 @@
 #include "base/time/time.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
-namespace base {
-namespace sequence_manager {
-namespace internal {
+namespace base::sequence_manager::internal {
 
 namespace {
 
@@ -34,7 +32,7 @@ class MockObserver : public WorkQueueSets::Observer {
 void NopTask() {}
 
 struct Cancelable {
-  Cancelable() {}
+  Cancelable() = default;
 
   void NopTask() {}
 
@@ -645,6 +643,4 @@ TEST_F(DelayedWorkQueueTest, DelayedFenceInDelayedTaskGroup) {
   EXPECT_FALSE(work_queue_->Empty());
 }
 
-}  // namespace internal
-}  // namespace sequence_manager
-}  // namespace base
+}  // namespace base::sequence_manager::internal

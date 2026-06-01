@@ -23,8 +23,9 @@
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
-#include "absl/time/time.h"
 #include "internal/platform/clock.h"
 #include "internal/platform/task_runner.h"
 #include "sharing/analytics/analytics_recorder.h"
@@ -34,7 +35,9 @@
 #include "sharing/internal/public/logging.h"
 #include "sharing/nearby_connection.h"
 #include "sharing/nearby_connections_manager.h"
+#include "sharing/nearby_connections_types.h"
 #include "sharing/paired_key_verification_runner.h"
+#include "sharing/payload_tracker.h"
 #include "sharing/proto/wire_format.pb.h"
 #include "sharing/share_target.h"
 #include "sharing/transfer_metadata.h"
@@ -43,6 +46,7 @@
 namespace nearby::sharing {
 namespace {
 
+using ::location::nearby::proto::sharing::AttachmentTransmissionStatus;
 using ::location::nearby::proto::sharing::OSType;
 using ::nearby::sharing::service::proto::ConnectionResponseFrame;
 using ::nearby::sharing::service::proto::Frame;
@@ -67,11 +71,46 @@ std::string TokenToFourDigitString(const std::vector<uint8_t>& bytes) {
 
 }  // namespace
 
-ShareSession::ShareSession(TaskRunner& service_thread,
+/* static */
+AttachmentTransmissionStatus ShareSession::ConvertToTransmissionStatus(
+    TransferMetadata::Status status) {
+  switch (status) {
+    case TransferMetadata::Status::kComplete:
+      return AttachmentTransmissionStatus::
+          COMPLETE_ATTACHMENT_TRANSMISSION_STATUS;
+    case TransferMetadata::Status::kCancelled:
+      return AttachmentTransmissionStatus::
+          CANCELED_ATTACHMENT_TRANSMISSION_STATUS;
+    case TransferMetadata::Status::kFailed:
+      return AttachmentTransmissionStatus::
+          FAILED_ATTACHMENT_TRANSMISSION_STATUS;
+    case TransferMetadata::Status::kIncompletePayloads:
+      return AttachmentTransmissionStatus::FAILED_NO_PAYLOAD;
+    case TransferMetadata::Status::kMediaUnavailable:
+      return AttachmentTransmissionStatus::MEDIA_UNAVAILABLE_ATTACHMENT;
+    case TransferMetadata::Status::kDeviceAuthenticationFailed:
+      return AttachmentTransmissionStatus::FAILED_PAIRED_KEYHANDSHAKE;
+    case TransferMetadata::Status::kRejected:
+      return AttachmentTransmissionStatus::REJECTED_ATTACHMENT;
+    case TransferMetadata::Status::kTimedOut:
+      return AttachmentTransmissionStatus::TIMED_OUT_ATTACHMENT;
+    case TransferMetadata::Status::kUnsupportedAttachmentType:
+      return AttachmentTransmissionStatus::
+          UNSUPPORTED_ATTACHMENT_TYPE_ATTACHMENT;
+    default:
+      return AttachmentTransmissionStatus::
+          UNKNOWN_ATTACHMENT_TRANSMISSION_STATUS;
+  }
+}
+
+ShareSession::ShareSession(Clock* clock, TaskRunner& service_thread,
+                           NearbyConnectionsManager* connections_manager,
                            analytics::AnalyticsRecorder& analytics_recorder,
                            std::string endpoint_id,
                            const ShareTarget& share_target)
-    : service_thread_(service_thread),
+    : clock_(*clock),
+      service_thread_(service_thread),
+      connections_manager_(*connections_manager),
       analytics_recorder_(analytics_recorder),
       endpoint_id_(std::move(endpoint_id)),
       self_share_(share_target.for_self_share),
@@ -86,10 +125,10 @@ void ShareSession::UpdateTransferMetadata(
   if (got_final_status_) {
     // If we already got a final status, we can ignore any subsequent final
     // statuses caused by race conditions.
-    NL_VLOG(1) << __func__ << ": Transfer update decorator swallowed "
-               << "status update because a final status was already received: "
-               << share_target_.id << ": "
-               << TransferMetadata::StatusToString(transfer_metadata.status());
+    VLOG(1) << __func__ << ": Transfer update decorator swallowed "
+            << "status update because a final status was already received: "
+            << share_target_.id << ": "
+            << TransferMetadata::StatusToString(transfer_metadata.status());
     return;
   }
   got_final_status_ = transfer_metadata.is_final_status();
@@ -109,69 +148,57 @@ void ShareSession::set_disconnect_status(
   disconnect_status_ = disconnect_status;
   if (disconnect_status_ != TransferMetadata::Status::kUnknown &&
       !TransferMetadata::IsFinalStatus(disconnect_status_)) {
-    NL_LOG(DFATAL) << "Disconnect status is not final: "
-                   << static_cast<int>(disconnect_status_);
+    LOG(DFATAL) << "Disconnect status is not final: "
+                << static_cast<int>(disconnect_status_);
   }
 }
 
-bool ShareSession::OnConnected(absl::Time connect_start_time,
-                               NearbyConnectionsManager* connections_manager,
-                               NearbyConnection* connection) {
-  NL_DCHECK(connections_manager) << "Connections manager must not be null";
-  connections_manager_ = connections_manager;
-  if (!OnNewConnection(connection)) {
-    return false;
-  }
-  connection_start_time_ = connect_start_time;
+void ShareSession::SetConnection(NearbyConnection* connection) {
   connection_ = connection;
   frames_reader_ =
       std::make_shared<IncomingFramesReader>(service_thread_, connection_);
-  return true;
 }
 
 void ShareSession::Disconnect() {
-  if (connection_ == nullptr) {
-    return;
-  }
   // Do not clear connection_ here.  It will be cleared in OnDisconnect().
-  connection_->Close();
+  connections_manager_.Disconnect(endpoint_id_);
 }
 
 void ShareSession::Abort(TransferMetadata::Status status) {
-  NL_DCHECK(TransferMetadata::IsFinalStatus(status))
+  DCHECK(TransferMetadata::IsFinalStatus(status))
       << "Abort should only be called with a final status";
 
   // First invoke the appropriate transfer callback with the final
   // |status|.
   UpdateTransferMetadata(TransferMetadataBuilder().set_status(status).build());
-
-  // Close connection if necessary.
-  if (connection_ == nullptr) {
-    return;
-  }
-  // Final status already sent above.  No need to send it again.
-  set_disconnect_status(TransferMetadata::Status::kUnknown);
-  connection_->Close();
+  Disconnect();
 }
 
 void ShareSession::RunPairedKeyVerification(
-    Clock* clock, OSType os_type,
+    OSType os_type,
     const PairedKeyVerificationRunner::VisibilityHistory& visibility_history,
     NearbyShareCertificateManager* certificate_manager,
-    const std::vector<uint8_t>& token,
     std::function<void(PairedKeyVerificationRunner::PairedKeyVerificationResult,
                        OSType)>
         callback) {
-  token_ = TokenToFourDigitString(token);
+  std::optional<std::vector<uint8_t>> token =
+      connections_manager_.GetRawAuthenticationToken(endpoint_id());
+  if (!token.has_value()) {
+    Abort(TransferMetadata::Status::kDeviceAuthenticationFailed);
+    return;
+  }
+  token_ = TokenToFourDigitString(*token);
 
   key_verification_runner_ = std::make_shared<PairedKeyVerificationRunner>(
-      clock, os_type, IsIncoming(), visibility_history, token,
-      connection_, certificate_, certificate_manager, frames_reader_.get(),
+      &clock_, os_type, IsIncoming(), visibility_history, *token,
+      absl::bind_front(&ShareSession::WriteFrame, this),
+      certificate_, certificate_manager, frames_reader_.get(),
       kReadFramesTimeout);
   key_verification_runner_->Run(std::move(callback));
 }
 
 void ShareSession::OnDisconnect() {
+  OnConnectionDisconnected();
   if (disconnect_status_ != TransferMetadata::Status::kUnknown) {
     UpdateTransferMetadata(
         TransferMetadataBuilder().set_status(disconnect_status_).build());
@@ -185,25 +212,25 @@ void ShareSession::SetAttachmentPayloadId(int64_t attachment_id,
 }
 
 void ShareSession::CancelPayloads() {
-  if (connections_manager_ == nullptr) {
-    return;
-  }
   for (const auto& [attachment_id, payload_id] : attachment_payload_map_) {
-    connections_manager_->Cancel(payload_id);
+    connections_manager_.Cancel(payload_id);
   }
 }
 
 void ShareSession::WriteFrame(const Frame& frame) {
   if (connection_ == nullptr) {
-    NL_LOG(WARNING) << __func__
-                    << ": Failed to write response frame, due to "
-                       "no connection established.";
+    LOG(WARNING) << __func__
+                 << ": Failed to write response frame, due to "
+                    "no connection established.";
     return;
   }
   std::vector<uint8_t> data(frame.ByteSizeLong());
   frame.SerializeToArray(data.data(), frame.ByteSizeLong());
 
-  connection_->Write(std::move(data));
+  connections_manager_.Send(
+      endpoint_id_, std::make_unique<Payload>(std::move(data)),
+      /*listener=*/
+      std::weak_ptr<NearbyConnectionsManager::PayloadStatusListener>());
 }
 
 void ShareSession::WriteResponseFrame(
@@ -218,7 +245,7 @@ void ShareSession::WriteResponseFrame(
 }
 
 void ShareSession::WriteCancelFrame() {
-  NL_LOG(INFO) << __func__ << ": Writing cancel frame.";
+  LOG(INFO) << __func__ << ": Writing cancel frame.";
 
   Frame frame;
   frame.set_version(Frame::V1);
@@ -235,13 +262,13 @@ bool ShareSession::HandleKeyVerificationResult(
 
   switch (result) {
     case PairedKeyVerificationRunner::PairedKeyVerificationResult::kFail:
-      NL_LOG(WARNING) << __func__ << ": Paired key handshake failed for target "
-                      << share_target().id << ". Disconnecting.";
+      LOG(WARNING) << __func__ << ": Paired key handshake failed for target "
+                   << share_target().id << ". Disconnecting.";
       return false;
 
     case PairedKeyVerificationRunner::PairedKeyVerificationResult::kSuccess:
-      NL_VLOG(1) << __func__ << ": Paired key handshake succeeded for target - "
-                 << share_target().id;
+      VLOG(1) << __func__ << ": Paired key handshake succeeded for target - "
+              << share_target().id;
       // If verification succeeds, this either means that the target is a
       // self-share or a mutual contact. In either case, we should clear the
       // token.
@@ -249,22 +276,33 @@ bool ShareSession::HandleKeyVerificationResult(
       break;
 
     case PairedKeyVerificationRunner::PairedKeyVerificationResult::kUnable:
-      NL_VLOG(1) << __func__
-                 << ": Unable to verify paired key encryption when "
-                    "receiving connection from target - "
-                 << share_target().id;
+      VLOG(1) << __func__
+              << ": Unable to verify paired key encryption when "
+                 "receiving connection from target - "
+              << share_target().id;
       // If we are unable to verify the paired key, we should clear the self
       // share flag.
       self_share_ = false;
       break;
 
     case PairedKeyVerificationRunner::PairedKeyVerificationResult::kUnknown:
-      NL_LOG(WARNING) << __func__
-                      << ": Unknown PairedKeyVerificationResult for target "
-                      << share_target().id << ". Disconnecting.";
+      LOG(WARNING) << __func__
+                   << ": Unknown PairedKeyVerificationResult for target "
+                   << share_target().id << ". Disconnecting.";
       return false;
   }
   return true;
+}
+
+void ShareSession::InitializePayloadTracker(
+    absl::AnyInvocable<void()> payload_transfer_updates_callback) {
+  auto payload_updates_queue =
+      std::make_unique<PayloadTracker::PayloadUpdateQueue>(&service_thread());
+  payload_updates_queue_ = payload_updates_queue.get();
+  payload_tracker_ = std::make_shared<PayloadTracker>(
+      &clock_, share_target_.id, attachment_container_, attachment_payload_map_,
+      std::move(payload_updates_queue));
+  payload_updates_queue_->Start(std::move(payload_transfer_updates_callback));
 }
 
 }  // namespace nearby::sharing

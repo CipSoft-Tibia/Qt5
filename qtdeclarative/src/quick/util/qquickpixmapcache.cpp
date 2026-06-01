@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtQuick/private/qquickpixmapcache_p.h>
 #include <QtQuick/private/qquickimageprovider_p.h>
@@ -116,8 +117,14 @@ static inline QString imageId(const QUrl &url)
 
 QQuickDefaultTextureFactory::QQuickDefaultTextureFactory(const QImage &image)
 {
-    if (image.format() == QImage::Format_ARGB32_Premultiplied
-            || image.format() == QImage::Format_RGB32) {
+    if (image.format() == QImage::Format_ARGB32_Premultiplied ||
+        image.format() == QImage::Format_RGB32 ||
+        image.format() == QImage::Format_RGBA16FPx4_Premultiplied ||
+        image.format() == QImage::Format_RGBA16FPx4 ||
+        image.format() == QImage::Format_RGBX16FPx4 ||
+        image.format() == QImage::Format_RGBA32FPx4_Premultiplied ||
+        image.format() == QImage::Format_RGBA32FPx4 ||
+        image.format() == QImage::Format_RGBX32FPx4) {
         im = image;
     } else {
         im = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
@@ -437,7 +444,7 @@ QNetworkAccessManager *QQuickPixmapReader::networkAccessManager()
 {
     if (!accessManager) {
         Q_ASSERT(readerThreadExecutionEnforcer());
-        accessManager = QQmlEnginePrivate::get(engine)->createNetworkAccessManager(
+        accessManager = QQmlEnginePrivate::get(engine)->typeLoader.createNetworkAccessManager(
                 readerThreadExecutionEnforcer());
     }
     return accessManager;
@@ -468,6 +475,18 @@ static void maybeRemoveAlpha(QImage *image)
                 break;
 
             *image = image->convertToFormat(QImage::Format_RGB30);
+            break;
+        case QImage::Format_RGBA16FPx4:
+            if (image->data_ptr()->convertInPlace(QImage::Format_RGBX16FPx4, Qt::AutoColor))
+                break;
+
+            *image = image->convertToFormat(QImage::Format_RGBX16FPx4);
+            break;
+        case QImage::Format_RGBA32FPx4:
+            if (image->data_ptr()->convertInPlace(QImage::Format_RGBX32FPx4, Qt::AutoColor))
+                break;
+
+            *image = image->convertToFormat(QImage::Format_RGBX32FPx4);
             break;
         default:
             if (image->data_ptr()->convertInPlace(QImage::Format_RGB32, Qt::AutoColor))

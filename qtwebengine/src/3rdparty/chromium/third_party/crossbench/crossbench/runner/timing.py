@@ -13,6 +13,10 @@ from typing import Dict, Union
 SAFE_MAX_TIMEOUT_TIMEDELTA = dt.timedelta(milliseconds=2**30)
 
 
+AnyTime = Union[float, int, dt.timedelta]
+AnyTimeUnit = Union[float, int, dt.timedelta]
+
+
 @dataclasses.dataclass(frozen=True)
 class Timing:
   cool_down_time: dt.timedelta = dt.timedelta(seconds=1)
@@ -21,6 +25,10 @@ class Timing:
   # Used for upper bound / timeout limits independently.
   timeout_unit: dt.timedelta = dt.timedelta()
   run_timeout: dt.timedelta = dt.timedelta()
+  # Wait time after starting the browser and before running a workload.
+  start_delay: dt.timedelta = dt.timedelta()
+  # Wait time after running a workload and before stopping a browser.
+  stop_delay: dt.timedelta = dt.timedelta()
 
   def __post_init__(self) -> None:
     if self.cool_down_time.total_seconds() < 0:
@@ -39,17 +47,48 @@ class Timing:
       raise ValueError(
           f"Timing.run_timeout, must be >= 0, but got {self.run_timeout}")
 
-  def units(self, time: Union[float, int, dt.timedelta]) -> float:
+  def units(self,
+            time: AnyTime,
+            absolute_time: bool = False) -> Union[int, float]:
+    """Convert absolute time (seconds, timedelta) to relative time units."""
     if isinstance(time, dt.timedelta):
       seconds = time.total_seconds()
     else:
       seconds = time
     if seconds < 0:
       raise ValueError(f"Unexpected negative time: {seconds}s")
+    if absolute_time:
+      return seconds
     return seconds / self.unit.total_seconds()
 
-  def _convert_to_seconds(
-      self, time_units: Union[float, int, dt.timedelta]) -> Union[float, int]:
+  def timedelta(self,
+                time_units: AnyTimeUnit,
+                absolute_time: bool = False) -> dt.timedelta:
+    """Converts relative time units to absolute time."""
+    return self._to_timedelta(time_units, self.unit, absolute_time)
+
+  def timeout_timedelta(self,
+                        time_units: AnyTimeUnit,
+                        absolute_time: bool = False) -> dt.timedelta:
+    """Converts relative time units to absolute time for timeouts.
+    Note that timeouts can have a separate time unit."""
+    if self.has_no_timeout:
+      return SAFE_MAX_TIMEOUT_TIMEDELTA
+    timeout_unit = self.timeout_unit or self.unit
+    return self._to_timedelta(time_units, timeout_unit, absolute_time)
+
+  def _to_timedelta(self,
+                    time_units: AnyTimeUnit,
+                    time_unit_duration: dt.timedelta,
+                    absolute_time: bool = False) -> dt.timedelta:
+    time_units_f: Union[float, int] = self._to_units_f(time_units)
+    if absolute_time:
+      absolute_time_f = dt.timedelta(seconds=time_units_f)
+    else:
+      absolute_time_f = time_units_f * time_unit_duration
+    return self._to_safe_range(absolute_time_f)
+
+  def _to_units_f(self, time_units: AnyTimeUnit) -> Union[float, int]:
     if isinstance(time_units, dt.timedelta):
       seconds = time_units.total_seconds()
     else:
@@ -58,18 +97,6 @@ class Timing:
     if seconds < 0:
       raise ValueError(f"Time-units must be >= 0, but got {seconds}")
     return seconds
-
-  def timedelta(self, time_units: Union[float, int,
-                                        dt.timedelta]) -> dt.timedelta:
-    seconds_f = self._convert_to_seconds(time_units)
-    return self._to_safe_range(seconds_f * self.unit)
-
-  def timeout_timedelta(
-      self, time_units: Union[float, int, dt.timedelta]) -> dt.timedelta:
-    if self.has_no_timeout:
-      return SAFE_MAX_TIMEOUT_TIMEDELTA
-    seconds_f = self._convert_to_seconds(time_units)
-    return self._to_safe_range(seconds_f * (self.timeout_unit or self.unit))
 
   def _to_safe_range(self, result: dt.timedelta) -> dt.timedelta:
     if result > SAFE_MAX_TIMEOUT_TIMEDELTA:

@@ -3,6 +3,7 @@
 
 #include "qcategory3daxis_p.h"
 #include "qquickgraphsitem_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -128,10 +129,14 @@ QCategory3DAxisPrivate::~QCategory3DAxisPrivate() {}
 void QCategory3DAxisPrivate::setDataLabels(const QStringList &labels)
 {
     Q_Q(QCategory3DAxis);
-    if (!m_labelsExplicitlySet && m_labels != labels) {
-        m_labels = labels;
-        emit q->QAbstract3DAxis::labelsChanged();
+    if (m_labelsExplicitlySet || m_labels == labels) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "value is already set to:" << labels;
+        return;
     }
+
+    m_labels = labels;
+    emit q->QAbstract3DAxis::labelsChanged();
 }
 
 bool QCategory3DAxisPrivate::allowZero()

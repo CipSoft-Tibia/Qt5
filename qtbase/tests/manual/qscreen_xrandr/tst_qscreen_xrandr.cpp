@@ -6,6 +6,7 @@
 #include <qscreen.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <QProcess>
+#include <QSignalSpy>
 
 #include <QtTest/QTest>
 

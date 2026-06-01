@@ -9,7 +9,7 @@
 #include "base/metrics/user_metrics_action.h"
 #include "base/rand_util.h"
 #include "base/strings/strcat.h"
-#include "components/autofill/core/browser/ui/suggestion_type.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
 #include "components/autofill/core/common/password_generation_util.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
@@ -67,26 +67,16 @@ std::string GetPasswordAccountStorageUserStateHistogramSuffix(
         kSignedOutUser:
       return "SignedOutUser";
     case password_manager::features_util::PasswordAccountStorageUserState::
-        kSignedOutAccountStoreUser:
-      return "SignedOutAccountStoreUser";
-    case password_manager::features_util::PasswordAccountStorageUserState::
         kSignedInUser:
       return "SignedInUser";
-    case password_manager::features_util::PasswordAccountStorageUserState::
-        kSignedInUserSavingLocally:
-      return "SignedInUserSavingLocally";
     case password_manager::features_util::PasswordAccountStorageUserState::
         kSignedInAccountStoreUser:
       return "SignedInAccountStoreUser";
     case password_manager::features_util::PasswordAccountStorageUserState::
-        kSignedInAccountStoreUserSavingLocally:
-      return "SignedInAccountStoreUserSavingLocally";
-    case password_manager::features_util::PasswordAccountStorageUserState::
         kSyncUser:
       return "SyncUser";
   }
-  NOTREACHED_IN_MIGRATION();
-  return std::string();
+  NOTREACHED();
 }
 
 std::string GetPasswordAccountStorageUsageLevelHistogramSuffix(
@@ -103,8 +93,7 @@ std::string GetPasswordAccountStorageUsageLevelHistogramSuffix(
         kSyncing:
       return "Syncing";
   }
-  NOTREACHED_IN_MIGRATION();
-  return std::string();
+  NOTREACHED();
 }
 
 LeakDialogMetricsRecorder::LeakDialogMetricsRecorder(ukm::SourceId source_id,
@@ -268,9 +257,6 @@ void LogPasswordDropdownShown(
   for (const auto& suggestion : suggestions) {
     switch (suggestion.type) {
       case autofill::SuggestionType::kGeneratePasswordEntry:
-        // TODO(crbug.com/40122999): Revisit metrics for the "opt in and
-        // generate" button.
-      case autofill::SuggestionType::kPasswordAccountStorageOptInAndGenerate:
         dropdown_state = PasswordDropdownState::kStandardGenerate;
         break;
       default:
@@ -289,6 +275,27 @@ void LogPasswordDropdownItemSelected(PasswordDropdownSelectedOption type,
                                 type);
   base::UmaHistogramBoolean("PasswordManager.ItemSelected.OffTheRecord",
                             off_the_record);
+
+  switch (type) {
+    case PasswordDropdownSelectedOption::kPassword:
+      base::RecordAction(base::UserMetricsAction(
+          "PasswordManager.PasswordDropdownSelected.Password"));
+      break;
+    case PasswordDropdownSelectedOption::kWebAuthn:
+      base::RecordAction(base::UserMetricsAction(
+          "PasswordManager.PasswordDropdownSelected.Passkey"));
+      break;
+    case PasswordDropdownSelectedOption::kWebAuthnSignInWithAnotherDevice:
+      base::RecordAction(base::UserMetricsAction(
+          "PasswordManager.PasswordDropdownSelected.UseAnotherDevice"));
+      break;
+    case PasswordDropdownSelectedOption::kShowAll:
+    case PasswordDropdownSelectedOption::kGenerate:
+    default:
+      base::RecordAction(base::UserMetricsAction(
+          "PasswordManager.PasswordDropdownSelected.Others"));
+      break;
+  }
 }
 
 void LogPasswordSuccessfulSubmissionIndicatorEvent(
@@ -301,13 +308,6 @@ void LogPasswordAcceptedSaveUpdateSubmissionIndicatorEvent(
     autofill::mojom::SubmissionIndicatorEvent event) {
   base::UmaHistogramEnumeration(
       "PasswordManager.AcceptedSaveUpdateSubmissionIndicatorEvent", event);
-}
-
-void LogPasswordsCountFromAccountStoreAfterUnlock(
-    int account_store_passwords_count) {
-  base::UmaHistogramCounts100(
-      "PasswordManager.CredentialsCountFromAccountStoreAfterUnlock",
-      account_store_passwords_count);
 }
 
 void LogDownloadedPasswordsCountFromAccountStoreAfterUnlock(
@@ -335,23 +335,11 @@ void LogDeleteUndecryptableLoginsReturnValue(
       "PasswordManager.DeleteUndecryptableLoginsReturnValue", result);
 }
 
-void LogNewlySavedPasswordMetrics(
-    bool is_generated_password,
-    bool is_username_empty,
-    password_manager::features_util::PasswordAccountStorageUsageLevel
-        account_storage_usage_level,
-    ukm::SourceId ukm_source_id) {
+void LogNewlySavedPasswordMetrics(bool is_generated_password,
+                                  bool is_username_empty,
+                                  ukm::SourceId ukm_source_id) {
   ukm::builders::PasswordManager_NewlySavedPassword ukm_entry_builder(
       ukm_source_id);
-
-  base::UmaHistogramBoolean("PasswordManager.NewlySavedPasswordIsGenerated",
-                            is_generated_password);
-  ukm_entry_builder.SetIsPasswordGenerated(is_generated_password);
-  std::string suffix = GetPasswordAccountStorageUsageLevelHistogramSuffix(
-      account_storage_usage_level);
-  base::UmaHistogramBoolean(
-      "PasswordManager.NewlySavedPasswordIsGenerated." + suffix,
-      is_generated_password);
 
   base::UmaHistogramBoolean(
       "PasswordManager.NewlySavedPasswordHasEmptyUsername.Overall",
@@ -361,6 +349,25 @@ void LogNewlySavedPasswordMetrics(
       base::StrCat({"PasswordManager.NewlySavedPasswordHasEmptyUsername.",
                     is_generated_password ? "AutoGenerated" : "UserCreated"}),
       is_username_empty);
+
+  ukm_entry_builder.Record(ukm::UkmRecorder::Get());
+}
+
+void LogIfSavedPasswordWasGenerated(
+    bool is_generated_password,
+    password_manager::features_util::PasswordAccountStorageUsageLevel
+        account_storage_usage_level,
+    ukm::SourceId ukm_source_id) {
+  ukm::builders::PasswordManager_SavedPassword ukm_entry_builder(ukm_source_id);
+
+  base::UmaHistogramBoolean("PasswordManager.SavedPasswordIsGenerated",
+                            is_generated_password);
+  ukm_entry_builder.SetIsPasswordGenerated(is_generated_password);
+  std::string suffix = GetPasswordAccountStorageUsageLevelHistogramSuffix(
+      account_storage_usage_level);
+  base::UmaHistogramBoolean(
+      "PasswordManager.SavedPasswordIsGenerated." + suffix,
+      is_generated_password);
 
   ukm_entry_builder.Record(ukm::UkmRecorder::Get());
 }
@@ -477,6 +484,12 @@ void LogLocalPwdMigrationProgressState(
       scheduling_state);
 }
 
+void LogSharedPrefCredentialsAccessOutcome(
+    SharedPrefCredentialsAccessOutcome outcome) {
+  base::UmaHistogramEnumeration(
+      "PasswordProtection.SharedPrefCredentialsAccessOutcome", outcome);
+}
+
 void LogTouchToFillPasswordGenerationTriggerOutcome(
     TouchToFillPasswordGenerationTriggerOutcome outcome) {
   base::UmaHistogramEnumeration(
@@ -535,13 +548,43 @@ void MaybeLogMetricsForPasswordAndWebauthnCounts(
     base::UmaHistogramBoolean(
         base::StrCat({prefix, webauthn_request, "UseAnotherDeviceShown"}),
         counts.has_another_device);
-    // TODO(crbug.com/358277466): Add user actions for webauthn.
+    if (counts.password_count > 0 && counts.passkey_count > 0) {
+      base::RecordAction(
+          base::UserMetricsAction("PasswordManager.PasswordDropdownShown."
+                                  "WebAuthnRequest.PasswordsAndPasskeys"));
+    } else if (counts.password_count > 0) {
+      base::RecordAction(
+          base::UserMetricsAction("PasswordManager.PasswordDropdownShown."
+                                  "WebAuthnRequest.OnlyPasswords"));
+    } else if (counts.passkey_count > 0) {
+      base::RecordAction(
+          base::UserMetricsAction("PasswordManager.PasswordDropdownShown."
+                                  "WebAuthnRequest.OnlyPasskeys"));
+    } else {
+      base::RecordAction(
+          base::UserMetricsAction("PasswordManager.PasswordDropdownShown."
+                                  "WebAuthnRequest.OnlyUseAnotherDevice"));
+    }
   } else {
     std::string_view non_webauthn_request = "NonWebAuthnRequest.";
     base::UmaHistogramCounts100(
         base::StrCat({prefix, non_webauthn_request, "TotalCount"}),
         counts.password_count);
+    base::RecordAction(base::UserMetricsAction(
+        "PasswordManager.PasswordDropdownShown.NonWebAuthnRequest"));
     // Non-WebAuthn requests cannot have passkeys or use another device options.
   }
 }
+
+void LogPasswordDropdownHidden() {
+  base::RecordAction(
+      base::UserMetricsAction("PasswordManager.PasswordDropdownHidden"));
+}
+
+void LogFillSuggestionGroupedMatchAccepted(bool grouped_match_accepted) {
+  base::UmaHistogramBoolean(
+      "PasswordManager.FillSuggestionsGroupedMatchAccepted",
+      grouped_match_accepted);
+}
+
 }  // namespace password_manager::metrics_util

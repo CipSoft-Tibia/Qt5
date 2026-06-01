@@ -8,6 +8,7 @@
 #include "qwebenginecookiestore.h"
 #include "qwebenginedownloadrequest.h"
 #include "qwebenginedownloadrequest_p.h"
+#include "qwebengineextensionmanager.h"
 #include "qwebenginenotification.h"
 #include "qwebenginesettings.h"
 #include "qwebenginescriptcollection.h"
@@ -89,7 +90,7 @@ using QtWebEngineCore::ProfileAdapter;
     \value DiskHttpCache Use a disk cache. This is the default if the profile
     is not \c off-the-record. If set on an \c off-the-record profile will instead
     set \c MemoryHttpCache.
-    \value NoCache Disable both in-memory and disk caching. (Added in Qt 5.7)
+    \value [since 5.7] NoCache Disable both in-memory and disk caching.
 */
 
 /*!
@@ -436,7 +437,7 @@ void QWebEngineProfile::setDownloadPath(const QString &path)
     \since 6.5
 
     Returns \c true if the push messaging service is enabled.
-    \note By default the push messaging service is disabled.
+    \note By default, the push messaging service is disabled.
 
     \sa setPushServiceEnabled()
 */
@@ -913,6 +914,23 @@ QWebEngineClientCertificateStore *QWebEngineProfile::clientCertificateStore()
 }
 
 /*!
+    \since 6.10
+
+    Returns additional trusted certificates in this profile's CA certificate database.
+
+    \sa QWebEngineProfileBuilder::setAdditionalTrustedCertificates()
+*/
+QList<QSslCertificate> QWebEngineProfile::additionalTrustedCertificates() const
+{
+#if QT_CONFIG(ssl)
+    Q_D(const QWebEngineProfile);
+    return d->profileAdapter()->additionalTrustedCertificates();
+#else
+    return {};
+#endif
+}
+
+/*!
  * Requests an icon for a previously loaded page with this profile from the database. Each profile
  * has its own icon database and it is stored in the persistent storage thus the stored icons
  * can be accessed without network connection too. The icon must be previously loaded to be
@@ -1001,7 +1019,7 @@ QWebEnginePermission QWebEngineProfile::queryPermission(const QUrl &securityOrig
         return QWebEnginePermission(new QWebEnginePermissionPrivate());
     }
 
-    auto *pvt = new QWebEnginePermissionPrivate(securityOrigin, permissionType, nullptr, d->profileAdapter());
+    auto *pvt = new QWebEnginePermissionPrivate(securityOrigin, permissionType, d->profileAdapter());
     return QWebEnginePermission(pvt);
 }
 
@@ -1080,6 +1098,22 @@ QWebEngineClientHints *QWebEngineProfile::clientHints() const
 {
     Q_D(const QWebEngineProfile);
     return d->m_clientHints.data();
+}
+
+/*!
+    Returns the extension manager associated with this browsing context.
+
+    \since 6.10
+    \sa QWebEngineExtensionManager
+*/
+QWebEngineExtensionManager *QWebEngineProfile::extensionManager() const
+{
+#if QT_CONFIG(webengine_extensions)
+    Q_D(const QWebEngineProfile);
+    return d->profileAdapter()->extensionManager();
+#else
+    return nullptr;
+#endif
 }
 
 QT_END_NAMESPACE

@@ -19,6 +19,7 @@
     \section1 Desktop User Interface
 
     \image qtquickcontrols-texteditor-desktop.jpg
+           {Text editor with menu bar, toolbar, and formatted document content}
 
     The desktop version is a complete text editor with capabilities for formatting
     text, and opening and saving HTML, Markdown and plain text files.
@@ -153,6 +154,7 @@
     \section1 Touch User Interface
 
     \image qtquickcontrols-texteditor-touch.jpg
+           {Text editor interface for touch devices with formatting toolbar}
 
     The touch user interface is a simplified version of the text editor. It is
     suitable for touch devices with limited screen size. The example uses

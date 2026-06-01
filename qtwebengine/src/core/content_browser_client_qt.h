@@ -1,11 +1,17 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #ifndef CONTENT_BROWSER_CLIENT_QT_H
 #define CONTENT_BROWSER_CLIENT_QT_H
 
 #include "qtwebenginecoreglobal_p.h"
 #include "content/public/browser/content_browser_client.h"
+#include "extensions/buildflags/buildflags.h"
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+#include "content/public/browser/service_worker_version_base_info.h"
+#endif
 
 namespace content {
 class BrowserContext;
@@ -29,8 +35,9 @@ public:
     std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(bool is_integration_test) override;
     void RenderProcessWillLaunch(content::RenderProcessHost *host) override;
     content::MediaObserver* GetMediaObserver() override;
-    void OverrideWebkitPrefs(content::WebContents *web_contents,
-                             blink::web_pref::WebPreferences *prefs) override;
+    void OverrideWebPreferences(content::WebContents *,
+                                content::SiteInstance &,
+                                blink::web_pref::WebPreferences *) override;
     void AllowCertificateError(content::WebContents *web_contents,
                                int cert_error,
                                const net::SSLInfo &ssl_info,
@@ -66,6 +73,11 @@ public:
                                     content::RenderProcessHost *render_process_host) override;
     void RegisterAssociatedInterfaceBindersForRenderFrameHost(content::RenderFrameHost &render_frame_host,
                                                               blink::AssociatedInterfaceRegistry &associated_registry) override;
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+    void RegisterAssociatedInterfaceBindersForServiceWorker(
+            const content::ServiceWorkerVersionBaseInfo &service_worker_version_info,
+            blink::AssociatedInterfaceRegistry &associated_registry) override;
+#endif
 
     bool CanCreateWindow(content::RenderFrameHost *opener,
                          const GURL &opener_url,
@@ -144,9 +156,12 @@ public:
     std::unique_ptr<content::LoginDelegate>
     CreateLoginDelegate(const net::AuthChallengeInfo &auth_info, content::WebContents *web_contents,
                         content::BrowserContext *browser_context,
-                        const content::GlobalRequestID &request_id, bool is_request_for_main_frame,
+                        const content::GlobalRequestID &request_id,
+                        bool is_request_for_main_frame,
+                        bool is_request_for_navigation,
                         const GURL &url, scoped_refptr<net::HttpResponseHeaders> response_headers,
                         bool first_auth_attempt,
+                        content::GuestPageHolder *guest_page_holder,
                         LoginAuthRequiredCallback auth_required_callback) override;
 
     bool HandleExternalProtocol(
@@ -156,6 +171,7 @@ public:
             network::mojom::WebSandboxFlags sandbox_flags, ui::PageTransition page_transition,
             bool has_user_gesture, const std::optional<url::Origin> &initiating_origin,
             content::RenderFrameHost *initiator_document,
+            const net::IsolationInfo &isolation_info,
             mojo::PendingRemote<network::mojom::URLLoaderFactory> *out_factory) override;
 
     std::vector<std::unique_ptr<blink::URLLoaderThrottle>>
@@ -221,6 +237,7 @@ public:
     static std::string getUserAgent();
 
     std::string GetUserAgent() override { return getUserAgent(); }
+    std::string GetUserAgentBasedOnPolicy(content::BrowserContext *context) override;
     blink::UserAgentMetadata GetUserAgentMetadata() override;
     std::string GetProduct() override;
 

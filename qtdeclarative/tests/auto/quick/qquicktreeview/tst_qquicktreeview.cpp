@@ -65,6 +65,7 @@ private slots:
     void expandAndCollapseRoot();
     void toggleExpanded();
     void expandAndCollapseChildren();
+    void expandChildDuringInsert();
     void expandChildPendingToBeVisible();
     void expandRecursivelyRoot_data();
     void expandRecursivelyRoot();
@@ -98,6 +99,7 @@ private slots:
     void editUsingEditTriggers();
     void editOnNonEditableCell_data();
     void editOnNonEditableCell();
+    void nullModel();
 };
 
 tst_qquicktreeview::tst_qquicktreeview()
@@ -245,6 +247,34 @@ void tst_qquicktreeview::expandAndCollapseChildren()
     treeView->collapse(0);
     WAIT_UNTIL_POLISHED;
     QCOMPARE(treeView->rows(), 1);
+}
+
+void tst_qquicktreeview::expandChildDuringInsert()
+{
+    LOAD_TREEVIEW("expandRowInDelegate.qml");
+    // Check that the view only has one row loaded so far (the root of the tree)
+    QCOMPARE(treeViewPrivate->loadedRows.count(), 1);
+
+    // Expand the root
+    treeView->expand(0);
+    WAIT_UNTIL_POLISHED;
+    // We now expect 5 rows, the root pluss it's 4 children
+    QCOMPARE(treeViewPrivate->loadedRows.count(), 5);
+
+    int rowToExpand = view->rootObject()->property("rowToExpand").toInt();
+    QCOMPARE(rowToExpand, -1);
+
+    view->rootObject()->setProperty("rowToExpand", 2);
+    rowToExpand = view->rootObject()->property("rowToExpand").toInt();
+    QCOMPARE(rowToExpand, 2);
+
+    // Add a new item to the child node and verify whether the tree has n+1 nodes (and not
+    // more than 1 as mentioned in the bug report QTBUG-139344)
+    const QModelIndex childNode = model->index(1, 0, model->index(0, 0, QModelIndex()));
+    model->insertRows(0, 1, childNode);
+    WAIT_UNTIL_POLISHED;
+
+    QCOMPARE(treeView->rows(), 6);
 }
 
 void tst_qquicktreeview::requiredPropertiesRoot()
@@ -1641,6 +1671,15 @@ void tst_qquicktreeview::editOnNonEditableCell()
         QVERIFY(!treeView->property(kEditItem).value<QQuickItem *>());
         QVERIFY(!treeView->property(kEditIndex).value<QModelIndex>().isValid());
     }
+}
+
+void tst_qquicktreeview::nullModel()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("nullModel.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> object(component.create());
+    QVERIFY(object);
 }
 
 QTEST_MAIN(tst_qquicktreeview)

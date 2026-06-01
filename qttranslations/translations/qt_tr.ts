@@ -2,7 +2,7 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="tr">
 <dependencies>
-<dependency catalog="qtbase_tr"/>
-<dependency catalog="qtmultimedia_tr"/>
+    <dependency catalog="qtbase_tr"/>
+    <dependency catalog="qtmultimedia_tr"/>
 </dependencies>
 </TS>

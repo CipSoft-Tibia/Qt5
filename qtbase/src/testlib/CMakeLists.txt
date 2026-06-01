@@ -15,6 +15,7 @@ qt_internal_add_module(Test
     EXCEPTIONS
     SOURCES
         3rdparty/cycle/cycle_p.h # Needed by tests, so visible to syncqt.
+        3rdparty/cycle/cycle_include_p.h # Also needed by tests.
         3rdparty/catch2/catch_p.h # Also needed by tests.
         removed_api.cpp     # keep first
         qabstracttestlogger.cpp qabstracttestlogger_p.h
@@ -44,7 +45,7 @@ qt_internal_add_module(Test
         qtestblacklist.cpp qtestblacklist_p.h
         qtestcase.cpp qtestcase.h qtestcase_p.h
         qtestcoreelement_p.h
-        qtestcrashhandler.cpp qtestcrashhandler_p.h
+        qtestcrashhandler_p.h
         qtestdata.cpp qtestdata.h
         qtestelement.cpp qtestelement_p.h
         qtestelementattribute.cpp qtestelementattribute_p.h
@@ -145,6 +146,16 @@ qt_internal_extend_target(Test CONDITION MACOS
         ${FWApplicationServices}
         ${FWFoundation}
         ${FWIOKit}
+)
+
+qt_internal_extend_target(Test CONDITION UNIX
+    SOURCES
+        qtestcrashhandler_unix.cpp
+)
+
+qt_internal_extend_target(Test CONDITION WIN32
+    SOURCES
+        qtestcrashhandler_win.cpp
 )
 
 set(qt_tc_build_dir "$<TARGET_PROPERTY:QT_TESTCASE_BUILDDIR>")

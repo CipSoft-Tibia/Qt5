@@ -11,11 +11,11 @@
 
 #import <Foundation/Foundation.h>
 
-#import "RTCMacros.h"
 #import "RTCNativeVideoEncoder.h"
 #import "RTCNativeVideoEncoderBuilder+Native.h"
 #import "RTCVideoEncoderVP9.h"
 #import "helpers/NSString+StdString.h"
+#import "sdk/objc/base/RTCMacros.h"
 
 #include "api/video_codecs/scalability_mode.h"
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
@@ -26,7 +26,8 @@
 
     @implementation RTC_OBJC_TYPE (RTCVideoEncoderVP9Builder)
 
-    - (std::unique_ptr<webrtc::VideoEncoder>)build:(const webrtc::Environment&)env {
+    - (std::unique_ptr<webrtc::VideoEncoder>)build:
+        (const webrtc::Environment&)env {
       return webrtc::CreateVp9Encoder(env);
     }
 
@@ -47,7 +48,8 @@
       for (webrtc::ScalabilityMode mode : webrtc::kAllScalabilityModes) {
         if (webrtc::VP9Encoder::SupportsScalabilityMode(mode)) {
           [result
-              addObject:[NSString stringForAbslStringView:webrtc::ScalabilityModeToString(mode)]];
+              addObject:[NSString stringForAbslStringView:
+                                      webrtc::ScalabilityModeToString(mode)]];
         }
       }
       return result;

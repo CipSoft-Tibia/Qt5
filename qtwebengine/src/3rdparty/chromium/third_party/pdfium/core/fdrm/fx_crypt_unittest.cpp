@@ -100,7 +100,7 @@ TEST(FXCRYPT, ContextWithLongData) {
   pdfium::span<const uint8_t> data_span = pdfium::make_span(data);
   uint32_t total = 0;
   while (total < length) {
-    constexpr uint32_t kChunkLen = 4097;  // intentionally not 2^k.
+    static constexpr uint32_t kChunkLen = 4097;  // intentionally not 2^k.
     uint32_t len = std::min(kChunkLen, length - total);
     CRYPT_MD5Update(&ctx, data_span.subspan(total, len));
     total += len;
@@ -245,7 +245,7 @@ TEST(FXCRYPT, Sha256TestB2) {
                           0xd4, 0x19, 0xdb, 0x06, 0xc1));
 }
 
-TEST(FXCRYPT, CRYPT_ArcFourSetup) {
+TEST(FXCRYPT, CRYPTArcFourSetup) {
   {
     static const uint8_t
         kNullPermutation[CRYPT_rc4_context::kPermutationLength] = {
@@ -303,7 +303,7 @@ TEST(FXCRYPT, CRYPT_ArcFourSetup) {
   }
 }
 
-TEST(FXCRYPT, CRYPT_ArcFourCrypt) {
+TEST(FXCRYPT, CRYPTArcFourCrypt) {
   static const uint8_t kDataShort[] =
       "The Quick Fox Jumped Over The Lazy Brown Dog.";
   static const uint8_t kDataLong[] =
@@ -524,7 +524,7 @@ TEST(FXCRYPT, Sha384Pad112) {
   static const char kInput[] =
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-  EXPECT_EQ(112u, strlen(kInput));
+  EXPECT_EQ(112u, UNSAFE_TODO(strlen(kInput)));
   DataVector<uint8_t> actual =
       CRYPT_SHA384Generate(ByteStringView(kInput).unsigned_span());
   EXPECT_THAT(
@@ -573,7 +573,7 @@ TEST(FXCRYPT, Sha512Pad112) {
   static const char kInput[] =
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-  EXPECT_EQ(112u, strlen(kInput));
+  EXPECT_EQ(112u, UNSAFE_TODO(strlen(kInput)));
   DataVector<uint8_t> actual =
       CRYPT_SHA512Generate(ByteStringView(kInput).unsigned_span());
   EXPECT_THAT(

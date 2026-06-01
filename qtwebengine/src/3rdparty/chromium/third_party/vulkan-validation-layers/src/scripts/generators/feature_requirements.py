@@ -1,9 +1,9 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2015-2024 The Khronos Group Inc.
-# Copyright (c) 2015-2024 Valve Corporation
-# Copyright (c) 2015-2024 LunarG, Inc.
-# Copyright (c) 2015-2024 Google Inc.
+# Copyright (c) 2015-2025 The Khronos Group Inc.
+# Copyright (c) 2015-2025 Valve Corporation
+# Copyright (c) 2015-2025 LunarG, Inc.
+# Copyright (c) 2015-2025 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ class FeatureRequirementsGenerator(BaseGenerator):
         # semantically different.  They are given a suffix to be distinguished.
         self.identical_but_different_features = {
             'VkPhysicalDeviceBufferDeviceAddressFeaturesEXT',
+            'VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV',
         }
 
     def generate(self):
@@ -41,9 +42,9 @@ class FeatureRequirementsGenerator(BaseGenerator):
 
             /***************************************************************************
             *
-            * Copyright (c) 2023-2024 The Khronos Group Inc.
-            * Copyright (c) 2023-2024 Valve Corporation
-            * Copyright (c) 2023-2024 LunarG, Inc.
+            * Copyright (c) 2023-2025 The Khronos Group Inc.
+            * Copyright (c) 2023-2025 Valve Corporation
+            * Copyright (c) 2023-2025 LunarG, Inc.
             *
             * Licensed under the Apache License, Version 2.0 (the "License");
             * you may not use this file except in compliance with the License.
@@ -132,6 +133,8 @@ class FeatureRequirementsGenerator(BaseGenerator):
             return 'VK_API_VERSION_1_2'
         if structs.find('13') != -1:
             return 'VK_API_VERSION_1_3'
+        if structs.find('14') != -1:
+            return 'VK_API_VERSION_1_4'
         else:
             assert False
 
@@ -158,7 +161,8 @@ class FeatureRequirementsGenerator(BaseGenerator):
             if len(origins) == 1 or vulkan_feature_struct_i == -1:
                     feature_struct_name = origins[0]
                     out.extend(guard_helper.add_guard(self.vk.structs[feature_struct_name].protect))
-                    out.append(f''' case Feature::{feature}: {{
+                    out.append(f'''
+                        case Feature::{feature}: {{
                         auto vk_struct = const_cast<{feature_struct_name} *>(vku::FindStructInPNextChain<{feature_struct_name}>(*inout_pnext_chain));
                         if (!vk_struct) {{
                             vk_struct = new {feature_struct_name};

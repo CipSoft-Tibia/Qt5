@@ -46,6 +46,7 @@ public:
     const std::string &exportMacroFilename() const { return m_exportMacroFilename; }
     bool generateMacroExportFile() const { return m_generateMacroExportFile; }
     HeaderGuardType headerGuard() const { return m_headerGuard; }
+    bool mutableGetterConflicts() const { return m_mutableGetterConflicts; }
 
 private:
     bool m_generateComments;
@@ -56,6 +57,8 @@ private:
     std::string m_exportMacroFilename;
     bool m_generateMacroExportFile;
     bool m_qml;
+    bool m_mutableGetterConflicts;
+
     HeaderGuardType m_headerGuard = Options::HeaderGuardType::ProtoFilename;
 };
 

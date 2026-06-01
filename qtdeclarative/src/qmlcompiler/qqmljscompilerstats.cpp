@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljscompilerstats_p.h"
 
@@ -80,23 +81,33 @@ std::optional<AotStats> AotStats::aggregateAotstatsList(const QString &aotstatsL
     return aggregated;
 }
 
-static constexpr QLatin1StringView S_CODEGEN_SUCCESSFUL{ "codegenSuccessful" };
+static constexpr int S_AOTSTATS_FORMAT_REVISION = 1; // Added support for skipping
+
+static constexpr QLatin1StringView S_CODEGEN_RESULT{ "codegenResult" };
 static constexpr QLatin1StringView S_COLUMN{ "column" };
 static constexpr QLatin1StringView S_DURATION_MICROSECONDS{ "durationMicroseconds" };
 static constexpr QLatin1StringView S_ENTRIES{ "entries" };
-static constexpr QLatin1StringView S_ERROR_MESSAGE{ "errorMessage" };
 static constexpr QLatin1StringView S_FILE_PATH{ "filePath" };
+static constexpr QLatin1StringView S_FORMAT_REVISION{ "formatRevision" };
 static constexpr QLatin1StringView S_FUNCTION_NAME{ "functionName" };
 static constexpr QLatin1StringView S_LINE{ "line" };
+static constexpr QLatin1StringView S_MESSAGE{ "message" };
+static constexpr QLatin1StringView S_MODULES{ "modules" };
 static constexpr QLatin1StringView S_MODULE_FILES{ "moduleFiles" };
 static constexpr QLatin1StringView S_MODULE_ID{ "moduleId" };
 
-AotStats AotStats::fromJsonDocument(const QJsonDocument &document)
+std::optional<AotStats> AotStats::fromJsonDocument(const QJsonDocument &document)
 {
-    QJsonArray modulesArray = document.array();
+    QJsonObject root = document.object();
+    const QJsonValue revision = root[S_FORMAT_REVISION];
+    if (revision.isUndefined() || revision.toInt() != S_AOTSTATS_FORMAT_REVISION) {
+        qDebug() << "AotStats format revision missmatch. Please try again with a clean build.";
+        return std::nullopt;
+    }
 
+    const QJsonArray modulesArray = root[S_MODULES].toArray();
     QQmlJS::AotStats result;
-    for (const auto &modulesArrayEntry : modulesArray) {
+    for (const auto &modulesArrayEntry : std::as_const(modulesArray)) {
         const auto &moduleObject = modulesArrayEntry.toObject();
         QString moduleId = moduleObject[S_MODULE_ID].toString();
         const QJsonArray &filesArray = moduleObject[S_MODULE_FILES].toArray();
@@ -114,10 +125,10 @@ AotStats AotStats::fromJsonDocument(const QJsonDocument &document)
                 auto micros = statsObject[S_DURATION_MICROSECONDS].toInteger();
                 stat.codegenDuration = std::chrono::microseconds(micros);
                 stat.functionName = statsObject[S_FUNCTION_NAME].toString();
-                stat.errorMessage = statsObject[S_ERROR_MESSAGE].toString();
+                stat.message = statsObject[S_MESSAGE].toString();
                 stat.line = statsObject[S_LINE].toInt();
                 stat.column = statsObject[S_COLUMN].toInt();
-                stat.codegenSuccessful = statsObject[S_CODEGEN_SUCCESSFUL].toBool();
+                stat.codegenResult = QQmlJS::CodegenResult(statsObject[S_CODEGEN_RESULT].toInt());
                 stats.append(std::move(stat));
             }
 
@@ -149,10 +160,12 @@ QJsonDocument AotStats::toJsonDocument() const
                 auto micros = static_cast<qint64>(stat.codegenDuration.count());
                 statObject.insert(S_DURATION_MICROSECONDS, micros);
                 statObject.insert(S_FUNCTION_NAME, stat.functionName);
-                statObject.insert(S_ERROR_MESSAGE, stat.errorMessage);
+                statObject.insert(S_MESSAGE, stat.message);
                 statObject.insert(S_LINE, stat.line);
                 statObject.insert(S_COLUMN, stat.column);
-                statObject.insert(S_CODEGEN_SUCCESSFUL, stat.codegenSuccessful);
+                using CodegenResType = std::underlying_type_t<QQmlJS::CodegenResult>;
+                statObject.insert(S_CODEGEN_RESULT,
+                                  static_cast<CodegenResType>(stat.codegenResult));
                 statsArray.append(statObject);
             }
 
@@ -168,7 +181,10 @@ QJsonDocument AotStats::toJsonDocument() const
         modulesArray.append(o);
     }
 
-    return QJsonDocument(modulesArray);
+    QJsonObject root;
+    root.insert(S_FORMAT_REVISION, S_AOTSTATS_FORMAT_REVISION);
+    root.insert(S_MODULES, modulesArray);
+    return QJsonDocument(root);
 }
 
 void AotStats::registerFile(const QString &moduleId, const QString &filepath)

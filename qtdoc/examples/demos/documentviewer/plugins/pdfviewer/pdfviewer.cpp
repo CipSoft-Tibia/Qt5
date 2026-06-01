@@ -14,9 +14,7 @@
 #include <QPdfDocument>
 #include <QPdfPageNavigator>
 #include <QPdfView>
-#if QT_VERSION >= QT_VERSION_CHECK(6,6,0)
 #include <QPdfPageSelector>
-#endif
 
 #include <QtMath>
 #include <QDir>
@@ -31,7 +29,7 @@
 #include <QToolBar>
 #include <QTreeView>
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 #include <QPrinter>
 #include <QPainter>
 #endif
@@ -48,6 +46,7 @@ PdfViewer::PdfViewer()
 void PdfViewer::init(QFile *file, QWidget *parent, QMainWindow *mainWindow)
 {
     AbstractViewer::init(file, new QPdfView(parent), mainWindow);
+    setTranslationBaseName("pdfviewer"_L1);
     m_document = new QPdfDocument(this);
     m_pdfView = qobject_cast<QPdfView *>(widget());
 }
@@ -83,7 +82,6 @@ void PdfViewer::initPdfViewer()
     m_zoomSelector = new ZoomSelector(m_toolBar);
 
     auto *nav = m_pdfView->pageNavigator();
-#if QT_VERSION >= QT_VERSION_CHECK(6,6,0)
     m_pageSelector = new QPdfPageSelector(m_toolBar);
     m_toolBar->insertWidget(m_uiAssets.forward, m_pageSelector);
     m_pageSelector->setDocument(m_document);
@@ -93,7 +91,6 @@ void PdfViewer::initPdfViewer()
             this, &PdfViewer::pageSelected);
     connect(nav, &QPdfPageNavigator::currentPageChanged,
             m_pageSelector, &QPdfPageSelector::setCurrentPage);
-#endif
 
     connect(m_pdfView->pageNavigator(), &QPdfPageNavigator::backAvailableChanged,
             m_uiAssets.back, &QAction::setEnabled);
@@ -108,14 +105,13 @@ void PdfViewer::initPdfViewer()
     m_toolBar->addWidget(m_zoomSelector);
 
     QIcon icon = QIcon::fromTheme(QIcon::ThemeIcon::ZoomIn, QIcon(":/demos/documentviewer/images/zoom-in.png"_L1));
-    auto *actionZoomIn = m_toolBar->addAction(icon, tr("Zoom in"), QKeySequence::ZoomIn);
-    connect(actionZoomIn, &QAction::triggered, this, &PdfViewer::onActionZoomInTriggered);
+    m_actionZoomIn = m_toolBar->addAction(icon, tr("Zoom in"), QKeySequence::ZoomIn);
+    connect(m_actionZoomIn, &QAction::triggered, this, &PdfViewer::onActionZoomInTriggered);
 
     icon = QIcon::fromTheme(QIcon::ThemeIcon::ZoomOut,
                             QIcon(":/demos/documentviewer/images/zoom-out.png"_L1));
-    auto *actionZoomOut = m_toolBar->addAction(icon, tr("Zoom out"), QKeySequence::ZoomOut);
-    actionZoomOut->setToolTip(tr("Decrease zoom level"));
-    connect(actionZoomOut, &QAction::triggered, this, &PdfViewer::onActionZoomOutTriggered);
+    m_actionZoomOut = m_toolBar->addAction(icon, tr("Zoom out"), QKeySequence::ZoomOut);
+    connect(m_actionZoomOut, &QAction::triggered, this, &PdfViewer::onActionZoomOutTriggered);
 
     connect(nav, &QPdfPageNavigator::backAvailableChanged, m_actionBack, &QAction::setEnabled);
     connect(nav, &QPdfPageNavigator::forwardAvailableChanged, m_actionForward, &QAction::setEnabled);
@@ -188,7 +184,7 @@ bool PdfViewer::hasContent() const
     return m_document ? m_document->pageCount() > 0 : false;
 }
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 void PdfViewer::printDocument(QPrinter *printer) const
 {
     if (!hasContent())
@@ -206,7 +202,7 @@ void PdfViewer::printDocument(QPrinter *printer) const
     }
     painter.end();
 }
-#endif // QT_DOCUMENTVIEWER_PRINTSUPPORT
+#endif // DOCUMENTVIEWER_PRINTSUPPORT
 
 void PdfViewer::bookmarkSelected(const QModelIndex &index)
 {
@@ -254,4 +250,23 @@ void PdfViewer::onActionBackTriggered()
 void PdfViewer::onActionForwardTriggered()
 {
     m_pdfView->pageNavigator()->forward();
+}
+
+void PdfViewer::retranslate()
+{
+    if (m_toolBar)
+        m_toolBar->setWindowTitle(tr("PDF"));
+    if (m_actionZoomIn)
+        m_actionZoomIn->setText(tr("Zoom in"));
+    if (m_actionZoomOut) {
+        m_actionZoomOut->setText(tr("Zoom out"));
+    }
+    if (m_pages && m_bookmarks && m_uiAssets.tabs) {
+        int pagesIndex = m_uiAssets.tabs->indexOf(m_pages);
+        if (pagesIndex >= 0)
+            m_uiAssets.tabs->setTabText(pagesIndex, tr("Pages"));
+        int bookmarksIndex = m_uiAssets.tabs->indexOf(m_bookmarks);
+        if (bookmarksIndex >= 0)
+            m_uiAssets.tabs->setTabText(bookmarksIndex, tr("Bookmarks"));
+    }
 }

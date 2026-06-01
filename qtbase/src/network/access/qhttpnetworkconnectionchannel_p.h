@@ -46,9 +46,9 @@
 
 
 #include <QtCore/qpointer.h>
-#include <QtCore/qscopedpointer.h>
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 QT_REQUIRE_CONFIG(http);
@@ -103,7 +103,7 @@ public:
 #ifndef QT_NO_SSL
     bool ignoreAllSslErrors;
     QList<QSslError> ignoreSslErrorsList;
-    QScopedPointer<QSslConfiguration> sslConfiguration;
+    std::optional<QSslConfiguration> sslConfiguration;
     void ignoreSslErrors();
     void ignoreSslErrors(const QList<QSslError> &errors);
     void setSslConfiguration(const QSslConfiguration &config);

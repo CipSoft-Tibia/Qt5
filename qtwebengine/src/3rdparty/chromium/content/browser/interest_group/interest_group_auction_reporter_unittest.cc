@@ -117,8 +117,7 @@ class EventReportingAttestationBrowserClient : public TestContentBrowserClient {
   bool IsPrivacySandboxReportingDestinationAttested(
       content::BrowserContext* browser_context,
       const url::Origin& destination_origin,
-      content::PrivacySandboxInvokingAPI invoking_api,
-      bool post_impression_reporting) override {
+      content::PrivacySandboxInvokingAPI invoking_api) override {
     return true;
   }
 };
@@ -138,10 +137,7 @@ class InterestGroupAuctionReporterTest
         winning_bid_info_(GetWinningBidInfo()) {
     feature_list_.InitWithFeaturesAndParameters(
         /*enabled_features=*/{{blink::features::kPrivateAggregationApi,
-                               {{"fledge_extensions_enabled", "true"}}},
-                              {blink::features::
-                                   kPrivateAggregationApiFilteringIds,
-                               {}}},
+                               {{"fledge_extensions_enabled", "true"}}}},
         /*disabled_features=*/{});
 
     mojo::SetDefaultProcessErrorHandler(
@@ -184,6 +180,7 @@ class InterestGroupAuctionReporterTest
 
     winning_bid_info_.render_url = GURL((*interest_group.ads)[0].render_url());
     winning_bid_info_.ad_metadata = kWinningAdMetadata;
+    winning_bid_info_.bid_ad = &(*interest_group.ads)[0];
 
     // The actual value doesn't matter for tests, but need to set some value as
     // it doesn't have a default one.
@@ -385,7 +382,7 @@ class InterestGroupAuctionReporterTest
         interest_group_manager_impl_->BlockingGetInterestGroup(
             kWinningBidderOrigin, kWinningBidderName);
     ASSERT_TRUE(interest_group);
-    const std::vector<auction_worklet::mojom::PreviousWinPtr>* prev_wins =
+    const std::vector<blink::mojom::PreviousWinPtr>* prev_wins =
         &interest_group.value()->bidding_browser_signals->prev_wins;
     ASSERT_EQ(1u, prev_wins->size());
     EXPECT_EQ((*prev_wins)[0]->ad_json, kWinningAdMetadata);
@@ -418,17 +415,15 @@ class InterestGroupAuctionReporterTest
   // classes don't make network requests, but a real AuctionWorkletManager is
   // used, which expects most of these methods to return non-null objects.
   network::mojom::URLLoaderFactory* GetFrameURLLoaderFactory() override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
   network::mojom::URLLoaderFactory* GetTrustedURLLoaderFactory() override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
   void PreconnectSocket(
       const GURL& url,
       const net::NetworkAnonymizationKey& network_anonymization_key) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
   RenderFrameHostImpl* GetFrame() override {
     return static_cast<RenderFrameHostImpl*>(main_rfh());
@@ -441,6 +436,13 @@ class InterestGroupAuctionReporterTest
   }
   std::optional<std::string> GetCookieDeprecationLabel() override {
     return std::nullopt;
+  }
+  void GetBiddingAndAuctionServerKey(
+      const std::optional<url::Origin>& coordinator,
+      base::OnceCallback<void(base::expected<BiddingAndAuctionServerKey,
+                                             std::string>)> callback) override {
+    // Not implemented because this method is not called in this test.
+    NOTREACHED();
   }
 
   void WaitForCompletion() { WaitForCompletionExpectingErrors({}); }
@@ -2441,20 +2443,7 @@ TEST(InterestGroupAuctionReporterStochasticRounding, ApproximatesTrueSum) {
   EXPECT_LT(total, 1.1 * kInput * kIterations);
 }
 
-class InterestGroupAuctionReporterAdMacroReportingEnabledTest
-    : public InterestGroupAuctionReporterTest {
- public:
-  InterestGroupAuctionReporterAdMacroReportingEnabledTest() {
-    feature_list_.InitAndEnableFeature(
-        blink::features::kAdAuctionReportingWithMacroApi);
-  }
-
- protected:
-  base::test::ScopedFeatureList feature_list_;
-};
-
-TEST_F(InterestGroupAuctionReporterAdMacroReportingEnabledTest,
-       SingleSellerReportMacros) {
+TEST_F(InterestGroupAuctionReporterTest, SingleSellerReportMacros) {
   SetUpAndStartSingleSellerAuction();
   // The macros should be empty from the start.
   EXPECT_THAT(interest_group_auction_reporter_->fenced_frame_reporter()
@@ -2487,8 +2476,7 @@ TEST_F(InterestGroupAuctionReporterAdMacroReportingEnabledTest,
                   testing::UnorderedElementsAreArray(kAdMacros))));
 }
 
-TEST_F(InterestGroupAuctionReporterAdMacroReportingEnabledTest,
-       ComponentAuctionReportMacros) {
+TEST_F(InterestGroupAuctionReporterTest, ComponentAuctionReportMacros) {
   SetUpAndStartComponentAuction();
   EXPECT_THAT(interest_group_auction_reporter_->fenced_frame_reporter()
                   ->GetAdMacrosForTesting(),

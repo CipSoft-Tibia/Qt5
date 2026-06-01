@@ -247,11 +247,7 @@ bool QPainterPrivate::attachPainterPrivate(QPainter *q, QPaintDevice *pdev)
     // the current d_ptr to the shared painter's d_ptr.
     sp->save();
     ++sp->d_ptr->refcount;
-    {
-        // ensure realloc happens before the unique_ptr::release():
-        auto &p = sp->d_ptr->d_ptrs.emplace_back();
-        p = q->d_ptr.release();
-    }
+    sp->d_ptr->d_ptrs.push_back(std::move(q->d_ptr));
     q->d_ptr.reset(sp->d_ptr.get());
 
     Q_ASSERT(q->d_ptr->state);
@@ -296,19 +292,19 @@ void QPainterPrivate::detachPainterPrivate(QPainter *q)
     Q_ASSERT(q);
 
     --refcount;
-    QPainterPrivate *original = d_ptrs.back();
+    auto original = std::move(d_ptrs.back());
     d_ptrs.pop_back();
     if (inDestructor) {
         inDestructor = false;
         if (original)
             original->inDestructor = true;
     } else if (!original) {
-        original = new QPainterPrivate(q);
+        original = std::make_unique<QPainterPrivate>(q);
     }
 
     q->restore();
     Q_UNUSED(q->d_ptr.release());
-    q->d_ptr.reset(original);
+    q->d_ptr = std::move(original);
 
     if (emulationEngine) {
         extended = emulationEngine->real_engine;
@@ -1488,6 +1484,7 @@ QPainter::~QPainter()
         Q_ASSERT(d_ptr->inDestructor);
         d_ptr->inDestructor = false;
         Q_ASSERT(d_ptr->refcount == 1);
+        Q_ASSERT(d_ptr->d_ptrs.empty());
     }
 }
 
@@ -2149,8 +2146,12 @@ void QPainter::setBrushOrigin(const QPointF &p)
     hint will effectively disable the RasterOp modes.
 
 
-     \image qpainter-compositionmode1.png
-     \image qpainter-compositionmode2.png
+     \image qpainter-compositionmode1.png {Illustration showing Source,
+            Destination, SourceOver, DestinationOver, SourceIn,
+            DestinationIn composition modes}
+     \image qpainter-compositionmode2.png {Illustration showing SourceOut,
+            DestinationOut, SourceAtop, DestinationAtop, Clear and Xor
+            composition modes}
 
     The most common type is SourceOver (often referred to as just
     alpha blending) where the source pixel is blended on top of the
@@ -2572,7 +2573,7 @@ QRegion QPainter::clipRegion() const
     return region;
 }
 
-extern QPainterPath qt_regionToPath(const QRegion &region);
+Q_GUI_EXPORT extern QPainterPath qt_regionToPath(const QRegion &region);
 
 /*!
     Returns the current clip path in logical coordinates.
@@ -6449,8 +6450,8 @@ void QPainter::drawTiledPixmap(const QRectF &r, const QPixmap &pixmap, const QPo
     qt_painter_thread_test(d->device->devType(), d->engine->type(), "drawTiledPixmap()");
 #endif
 
-    qreal sw = pixmap.width();
-    qreal sh = pixmap.height();
+    const qreal sw = pixmap.width() / pixmap.devicePixelRatio();
+    const qreal sh = pixmap.height() / pixmap.devicePixelRatio();
     qreal sx = sp.x();
     qreal sy = sp.y();
     if (sx < 0)

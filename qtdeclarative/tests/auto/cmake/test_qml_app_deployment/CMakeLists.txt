@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 project(deployment_api)
 enable_testing()
 
-find_package(Qt6 COMPONENTS REQUIRED Quick Test QuickTestUtilsPrivate)
+find_package(Qt6 COMPONENTS REQUIRED QuickPrivate Test QuickTestUtilsPrivate)
 
 qt6_standard_project_setup()
 

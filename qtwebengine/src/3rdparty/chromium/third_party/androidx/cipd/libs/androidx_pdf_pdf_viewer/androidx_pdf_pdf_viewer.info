@@ -13,7 +13,7 @@ aidl = [
 assets = []
 has_classes_jar = true
 has_native_libraries = false
-has_proguard_flags = false
+has_proguard_flags = true
 has_r_text_file = true
 is_manifest_empty = false
 manifest_package = "androidx.pdf"
@@ -72,7 +72,6 @@ resources = [
   "res/values-sv/values-sv.xml",
   "res/values-de/values-de.xml",
   "res/values-ta/values-ta.xml",
-  "res/values-night-v8/values-night-v8.xml",
   "res/values-et/values-et.xml",
   "res/values-in/values-in.xml",
   "res/values-bg/values-bg.xml",
@@ -89,8 +88,8 @@ resources = [
   "res/drawable/shape_find_in_file.xml",
   "res/drawable/selection_drag_handle_right.xml",
   "res/drawable/custom_edit_text_cursor.xml",
-  "res/drawable/text_alert.xml",
   "res/drawable/drag_indicator.xml",
+  "res/drawable/drag_indicator_shadow.xml",
   "res/drawable/close_button.xml",
   "res/drawable/shape_oval.xml",
   "res/drawable/keyboard_down.xml",
@@ -103,7 +102,9 @@ resources = [
   "res/layout/pdf_viewer_container.xml",
   "res/layout/file_viewer_pdf.xml",
   "res/layout/find_in_file.xml",
+  "res/layout/pdf_search_view.xml",
   "res/layout/search.xml",
+  "res/layout/tool_box_view.xml",
   "res/layout/dialog_password.xml",
   "res/layout/page_indicator.xml",
   "res/layout/pdf_view_container.xml",
@@ -127,6 +128,7 @@ resources = [
   "res/values-ka/values-ka.xml",
   "res/values-fr/values-fr.xml",
   "res/values-km/values-km.xml",
+  "res/values-w840dp-v13/values-w840dp-v13.xml",
   "res/values-it/values-it.xml",
   "res/values-ca/values-ca.xml",
   "res/values-hy/values-hy.xml"

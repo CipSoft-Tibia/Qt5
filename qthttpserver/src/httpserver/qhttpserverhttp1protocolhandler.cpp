@@ -261,15 +261,14 @@ struct QHttpServerHttp1IOChunkedTransfer
 QHttpServerHttp1ProtocolHandler::QHttpServerHttp1ProtocolHandler(QAbstractHttpServer *server,
                                                                  QIODevice *socket,
                                                                  QHttpServerRequestFilter *filter)
-    : QHttpServerStream(server),
+    : QHttpServerStream(socket, server),
       server(server),
       socket(socket),
       tcpSocket(qobject_cast<QTcpSocket *>(socket)),
 #if QT_CONFIG(localserver)
       localSocket(qobject_cast<QLocalSocket*>(socket)),
 #endif
-      m_filter(filter),
-      request(initRequestFromSocket(tcpSocket))
+      m_filter(filter)
 {
     socket->setParent(this);
 
@@ -288,6 +287,8 @@ QHttpServerHttp1ProtocolHandler::QHttpServerHttp1ProtocolHandler(QAbstractHttpSe
                 this, &QHttpServerHttp1ProtocolHandler::socketDisconnected);
 #endif
     }
+
+    lastActiveTimer.start();
 }
 
 void QHttpServerHttp1ProtocolHandler::responderDestroyed()
@@ -342,10 +343,13 @@ void QHttpServerHttp1ProtocolHandler::handleReadyRead()
     if (handlingRequest || state != TransferState::Ready)
         return;
 
+    lastActiveTimer.restart();
+
     if (!socket->isTransactionStarted())
         socket->startTransaction();
 
-    if (!request.d->parse(socket)) {
+    auto requestReceived = parser.parse(socket);
+    if (!requestReceived) {
         if (tcpSocket)
             tcpSocket->disconnectFromHost();
 #if QT_CONFIG(localserver)
@@ -355,7 +359,13 @@ void QHttpServerHttp1ProtocolHandler::handleReadyRead()
         return;
     }
 
-    if (request.d->state != QHttpServerRequestPrivate::State::AllDone)
+#if QT_CONFIG(ssl)
+    auto request = QHttpServerRequest::create(parser, sslConfiguration);
+#else
+    auto request = QHttpServerRequest::create(parser);
+#endif
+
+    if (parser.state != QHttpServerParser::State::AllDone)
         return; // Partial read
 
     qCDebug(lcHttpServerHttp1Handler) << "Request:" << request;
@@ -365,7 +375,7 @@ void QHttpServerHttp1ProtocolHandler::handleReadyRead()
 
 #if defined(QT_WEBSOCKETS_LIB)
     if (auto *tcpSocket = qobject_cast<QTcpSocket*>(socket)) {
-        if (request.d->upgrade) { // Upgrade
+        if (parser.upgrade) { // Upgrade
             const auto &upgradeValue = request.value(QByteArrayLiteral("upgrade"));
             if (upgradeValue.compare(QByteArrayLiteral("websocket"), Qt::CaseInsensitive) == 0) {
                 const auto upgradeResponse = server->verifyWebSocketUpgrade(request);
@@ -413,6 +423,10 @@ void QHttpServerHttp1ProtocolHandler::handleReadyRead()
 
     QHostAddress peerAddress = tcpSocket ? tcpSocket->peerAddress()
                                          : QHostAddress::LocalHost;
+    if (!m_filter->isRequestAllowed(peerAddress)) {
+        responder.sendResponse(
+                QHttpServerResponse(QHttpServerResponder::StatusCode::Forbidden));
+    }
     if (!m_filter->isRequestWithinRate(peerAddress)) {
         responder.sendResponse(
                 QHttpServerResponse(QHttpServerResponder::StatusCode::TooManyRequests));
@@ -539,7 +553,7 @@ void QHttpServerHttp1ProtocolHandler::writeStatusAndHeaders(QHttpServerResponder
 {
     Q_ASSERT(state == TransferState::Ready);
     QByteArray payload;
-    payload.append("HTTP/1.1 ");
+    payload.append(useHttp1_1 ? "HTTP/1.1 " : "HTTP/1.0 ");
     payload.append(QByteArray::number(quint32(status)));
     const auto it = statusString.find(status);
     if (it != statusString.end()) {
@@ -581,6 +595,21 @@ void QHttpServerHttp1ProtocolHandler::completeWriting()
     state = TransferState::Ready;
     if (!handlingRequest)
         resumeListening();
+}
+
+void QHttpServerHttp1ProtocolHandler::checkKeepAliveTimeout()
+{
+    if (handlingRequest || state != TransferState::Ready)
+        return;
+
+    if (lastActiveTimer.durationElapsed() > server->configuration().keepAliveTimeout()) {
+        if (tcpSocket)
+            tcpSocket->abort();
+#if QT_CONFIG(localserver)
+        else if (localSocket)
+            localSocket->abort();
+#endif
+    }
 }
 
 QT_END_NAMESPACE

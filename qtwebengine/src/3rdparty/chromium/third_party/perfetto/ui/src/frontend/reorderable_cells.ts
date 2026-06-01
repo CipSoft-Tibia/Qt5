@@ -1,22 +1,19 @@
-/*
- * Copyright (C) 2022 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright (C) 2022 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 import m from 'mithril';
-import {DropDirection} from '../common/dragndrop_logic';
-import {raf} from '../core/raf_scheduler';
+import {DropDirection} from '../core/pivot_table_manager';
 
 export interface ReorderableCell {
   content: m.Children;
@@ -76,8 +73,6 @@ export class ReorderableCellGroup
             if (e.dataTransfer !== null) {
               e.dataTransfer.setDragImage(placeholderElement, 0, 0);
             }
-
-            raf.scheduleFullRedraw();
           },
           ondragover: (e: DragEvent) => {
             let target = e.target as HTMLElement;
@@ -102,15 +97,8 @@ export class ReorderableCellGroup
             const offset = e.clientX - target.getBoundingClientRect().x;
             const newDropDirection =
               offset > target.clientWidth / 2 ? 'right' : 'left';
-            const redraw =
-              newDropDirection !== this.dropDirection ||
-              index !== this.draggingTo;
             this.dropDirection = newDropDirection;
             this.draggingTo = index;
-
-            if (redraw) {
-              raf.scheduleFullRedraw();
-            }
           },
           ondragenter: (e: DragEvent) => {
             this.enterCounters[index]++;
@@ -130,7 +118,6 @@ export class ReorderableCellGroup
             }
 
             this.draggingTo = -1;
-            raf.scheduleFullRedraw();
           },
           ondragend: () => {
             if (
@@ -146,7 +133,6 @@ export class ReorderableCellGroup
 
             this.draggingFrom = -1;
             this.draggingTo = -1;
-            raf.scheduleFullRedraw();
           },
         },
         cell.content,

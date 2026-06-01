@@ -11,5 +11,5 @@ qt_internal_add_test(tst_client_iviapplication
     SOURCES
         tst_iviapplication.cpp
     LIBRARIES
-        SharedClientTest
+        SharedWaylandClientTest
 )

@@ -799,6 +799,7 @@ private slots:
     void dontStripNamespaces();
     void hasIncludeSupport();
     void oldStyleCasts();
+    void faultyQmlRegistration_data();
     void faultyQmlRegistration();
     void warnOnExtraSignalSlotQualifiaction();
     void uLongLong();
@@ -949,8 +950,8 @@ private:
 
 #define VERIFY_NO_ERRORS(proc) do { \
         auto &&p = proc; \
-        const QByteArray stderr = p.readAllStandardError(); \
-        QVERIFY2(stderr.isEmpty(), stderr.data()); \
+        const QByteArray standardError = p.readAllStandardError(); \
+        QVERIFY2(standardError.isEmpty(), standardError.data()); \
         QCOMPARE(p.exitCode(), 0); \
     } while (false)
 
@@ -1057,16 +1058,30 @@ void tst_Moc::oldStyleCasts()
 #endif
 }
 
+void tst_Moc::faultyQmlRegistration_data()
+{
+    QTest::addColumn<bool>("qmlWarningIsFatal");
+    QTest::addColumn<int>("exitCode");
+
+    QTest::newRow("normal") << false << EXIT_SUCCESS;
+    QTest::newRow("fatalWarning") << true << EXIT_FAILURE;
+}
+
 void tst_Moc::faultyQmlRegistration()
 {
 #ifdef MOC_CROSS_COMPILED
     QSKIP("Not tested when cross-compiled");
 #endif
 #if QT_CONFIG(process)
+    QFETCH(bool, qmlWarningIsFatal);
+    QFETCH(int, exitCode);
     QProcess proc;
-    proc.start(m_moc, QStringList(m_sourceDirectory + QStringLiteral("/faulty_qml_registration/faulty_registration.h")));
+    auto cmd = QStringList(m_sourceDirectory + QStringLiteral("/faulty_qml_registration/faulty_registration.h"));
+    if (qmlWarningIsFatal)
+        cmd += QStringLiteral("--fatal-qml-macro-warning");
+    proc.start(m_moc, cmd);
     QVERIFY(proc.waitForFinished());
-    QCOMPARE(proc.exitCode(), 0);
+    QCOMPARE(proc.exitCode(), exitCode);
     QByteArray errorMsg = proc.readAllStandardError();
     QVERIFY2(errorMsg.contains("QML registration macro"), errorMsg.constData());
 #else
@@ -2148,6 +2163,7 @@ void tst_Moc::notifyError()
     QByteArray mocOut = proc.readAllStandardOutput();
     QVERIFY(!mocOut.isEmpty());
 
+    proc.setEnvironment({"LC_ALL=C.UTF-8"});
     QStringList args;
     args << "-c" << "-x" << "c++" << "-I" << "."
          << "-I" << qtIncludePath << "-o" << "/dev/null" << "-fPIC" << "-std=c++1z" << "-";
@@ -4266,7 +4282,7 @@ void tst_Moc::optionsFileError()
 }
 
 static void checkEnum(const QMetaEnum &enumerator, const QByteArray &name,
-                      const QList<QPair<QByteArray, quint64>> &keys,
+                      const QList<std::pair<QByteArray, quint64>> &keys,
                       const QMetaType enumType)
 {
     QCOMPARE(enumerator.name(), QByteArrayView{name});
@@ -4285,7 +4301,7 @@ static void checkEnum(const QMetaEnum &enumerator, const QByteArray &name,
 
 void tst_Moc::enumAndFlags64()
 {
-    const QList<QPair<QByteArray, quint64>> values = {
+    const QList<std::pair<QByteArray, quint64>> values = {
         { "Value0", 0 },
         { "ValueMixed", Q_UINT64_C(0x1122'3344'5566'7788) },
         { "ValueMinus1", quint64(-1) },

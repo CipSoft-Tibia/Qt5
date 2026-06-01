@@ -163,6 +163,19 @@ TEST_F(AccountCapabilitiesTest, CanUseMantaService) {
   EXPECT_EQ(capabilities.can_use_manta_service(), signin::Tribool::kFalse);
 }
 
+TEST_F(AccountCapabilitiesTest, CanUseCopyEditorFeature) {
+  AccountCapabilities capabilities;
+  EXPECT_EQ(capabilities.can_use_copyeditor_feature(),
+            signin::Tribool::kUnknown);
+
+  AccountCapabilitiesTestMutator mutator(&capabilities);
+  mutator.set_can_use_copyeditor_feature(true);
+  EXPECT_EQ(capabilities.can_use_copyeditor_feature(), signin::Tribool::kTrue);
+
+  mutator.set_can_use_copyeditor_feature(false);
+  EXPECT_EQ(capabilities.can_use_copyeditor_feature(), signin::Tribool::kFalse);
+}
+
 TEST_F(AccountCapabilitiesTest, CanUseModelExecutionFeatures) {
   AccountCapabilities capabilities;
   EXPECT_EQ(capabilities.can_use_model_execution_features(),
@@ -250,6 +263,21 @@ TEST_F(AccountCapabilitiesTest, CanUseGenerativeAiInRecorderApp) {
 
   mutator.set_can_use_generative_ai_in_recorder_app(false);
   EXPECT_EQ(capabilities.can_use_generative_ai_in_recorder_app(),
+            signin::Tribool::kFalse);
+}
+
+TEST_F(AccountCapabilitiesTest, CanUseGenerativeAiPhotoEditing) {
+  AccountCapabilities capabilities;
+  EXPECT_EQ(capabilities.can_use_generative_ai_photo_editing(),
+            signin::Tribool::kUnknown);
+
+  AccountCapabilitiesTestMutator mutator(&capabilities);
+  mutator.set_can_use_generative_ai_photo_editing(true);
+  EXPECT_EQ(capabilities.can_use_generative_ai_photo_editing(),
+            signin::Tribool::kTrue);
+
+  mutator.set_can_use_generative_ai_photo_editing(false);
+  EXPECT_EQ(capabilities.can_use_generative_ai_photo_editing(),
             signin::Tribool::kFalse);
 }
 

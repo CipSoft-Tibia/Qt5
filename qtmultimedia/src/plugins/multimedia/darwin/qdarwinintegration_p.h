@@ -17,8 +17,6 @@
 
 #include <private/qplatformmediaintegration_p.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(NSObject);
-
 QT_BEGIN_NAMESPACE
 
 class QDarwinIntegration : public QPlatformMediaIntegration
@@ -26,14 +24,14 @@ class QDarwinIntegration : public QPlatformMediaIntegration
 public:
     QDarwinIntegration();
 
-    QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *) override;
-    QMaybe<QPlatformMediaCaptureSession *> createCaptureSession() override;
-    QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *player) override;
-    QMaybe<QPlatformCamera *> createCamera(QCamera *camera) override;
-    QMaybe<QPlatformMediaRecorder *> createRecorder(QMediaRecorder *) override;
-    QMaybe<QPlatformImageCapture *> createImageCapture(QImageCapture *) override;
+    q23::expected<QPlatformAudioDecoder *, QString> createAudioDecoder(QAudioDecoder *) override;
+    q23::expected<QPlatformMediaCaptureSession *, QString> createCaptureSession() override;
+    q23::expected<QPlatformMediaPlayer *, QString> createPlayer(QMediaPlayer *player) override;
+    q23::expected<QPlatformCamera *, QString> createCamera(QCamera *camera) override;
+    q23::expected<QPlatformMediaRecorder *, QString> createRecorder(QMediaRecorder *) override;
+    q23::expected<QPlatformImageCapture *, QString> createImageCapture(QImageCapture *) override;
 
-    QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *) override;
+    q23::expected<QPlatformVideoSink *, QString> createVideoSink(QVideoSink *) override;
 
 protected:
     QPlatformMediaFormatInfo *createFormatInfo() override;

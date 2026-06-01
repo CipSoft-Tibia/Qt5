@@ -34,6 +34,8 @@ public:
 
     Q_HTTPSERVER_EXPORT void setConfiguration(const QHttpServerConfiguration &config);
 
+    Q_HTTPSERVER_EXPORT bool isRequestAllowed(const QHostAddress &peerAddress) const;
+
     Q_HTTPSERVER_EXPORT bool isRequestWithinRate(const QHostAddress &peerAddress);
     Q_HTTPSERVER_EXPORT bool isRequestWithinRate(const QHostAddress &peerAddress, qint64 currTimeMSec);
 

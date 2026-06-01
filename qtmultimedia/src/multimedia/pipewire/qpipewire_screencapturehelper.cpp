@@ -4,8 +4,6 @@
 #include "qpipewire_screencapturehelper_p.h"
 
 #include "qpipewire_instance_p.h"
-#include "qpipewire_symbolloader_p.h"
-#include "qpipewire_symbolloader_p.h"
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qfileinfo.h>
@@ -104,7 +102,7 @@ void QPipeWireCaptureHelper::updateError(QPlatformSurfaceCapture::Error error,
 
 bool QPipeWireCapture::isSupported()
 {
-    if (!qPipewireIsLoaded())
+    if (!QPipeWireInstance::isLoaded())
         return false;
 
     return QPipeWireCaptureHelper::isSupported();

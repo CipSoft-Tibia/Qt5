@@ -176,6 +176,50 @@ message AndroidBlockingCallsCujMetric {
 
 // End of protos/perfetto/metrics/android/android_blocking_calls_cuj_metric.proto
 
+// Begin of protos/perfetto/metrics/android/android_blocking_call_per_frame.proto
+
+// Blocking call per frame on the main thread.
+message AndroidBlockingCallPerFrame {
+    // Name of the blocking call
+    optional string name = 1;
+    // Maximal duration within a frame.
+    optional int64 max_dur_per_frame_ms = 2;
+    // Maximal duration within a frame in nanoseconds
+    optional int64 max_dur_per_frame_ns = 3;
+    // Mean duration within the CUJ
+    optional int64 mean_dur_per_frame_ms = 4;
+    // Mean duration within the CUJ in nanoseconds
+    optional int64 mean_dur_per_frame_ns = 5;
+    // Max count in a frame
+    optional int64 max_cnt_per_frame = 6;
+    // Mean count in a frame
+    optional double mean_cnt_per_frame = 7;
+}
+
+// End of protos/perfetto/metrics/android/android_blocking_call_per_frame.proto
+
+// Begin of protos/perfetto/metrics/android/android_blocking_calls_cuj_per_frame_metric.proto
+
+// Blocking calls per frame inside Android jank CUJs. Shows count and duration for each.
+message AndroidCujBlockingCallsPerFrameMetric {
+  repeated Cuj cuj = 1;
+
+  message Cuj {
+
+    // Name of the CUJ, extracted from the CUJ jank trace marker.
+    // For example SHADE_EXPAND_COLLAPSE from J<SHADE_EXPAND_COLLAPSE>.
+    optional string name = 1;
+
+    optional AndroidProcessMetadata process = 2;
+
+    // List of blocking calls on the process UI thread.
+    // Aggregation is done by CUJ name.
+    repeated AndroidBlockingCallPerFrame blocking_calls = 3;
+  }
+}
+
+// End of protos/perfetto/metrics/android/android_blocking_calls_cuj_per_frame_metric.proto
+
 // Begin of protos/perfetto/metrics/android/android_blocking_calls_unagg.proto
 
 // All blocking calls for a trace. Shows count and total duration for each.
@@ -337,9 +381,12 @@ message AndroidGarbageCollectionUnaggMetric {
     optional int64 tid = 18;
     // monotonic duration of event.
     optional int64 gc_monotonic_dur = 19;
+    // Details about the process (uid, version, etc)
+    optional AndroidProcessMetadata process = 20;
   }
   repeated GarbageCollectionEvent gc_events = 1;
 }
+
 // End of protos/perfetto/metrics/android/android_garbage_collection_unagg_metric.proto
 
 // Begin of protos/perfetto/metrics/android/app_process_starts_metric.proto
@@ -474,6 +521,57 @@ message AndroidFrameTimelineMetric {
 
 // End of protos/perfetto/metrics/android/android_frame_timeline_metric.proto
 
+// Begin of protos/perfetto/metrics/android/android_garbage_collection_stats.proto
+
+message AndroidGarbageCollectionStats {
+  // The start of the window of time that the stats cover in the trace.
+  optional int64 ts = 1;
+  // The duration of the window of time that the stats cover in the trace.
+  optional int64 dur = 2;
+  // Megabyte-seconds of heap size across the device, used in the calculation
+  // of heap_size_mb.
+  optional double heap_size_mbs = 3;
+  // Total size of heap allocations across the device on average, in MB.
+  optional double heap_size_mb = 4;
+  // Total number of bytes allocated over the course of the trace.
+  optional double heap_allocated_mb = 5;
+  // Overall rate of heap allocations in MB per second. This gives a sense of
+  // how much allocation activity is going on during the trace.
+  optional double heap_allocation_rate = 6;
+  // Megabyte-seconds of live heap for processes that had GC events.
+  optional double heap_live_mbs = 7;
+  // Megabyte-seconds of total heap for processes that had GC events.
+  optional double heap_total_mbs = 8;
+  // Overall heap utilization. This gives a sense of how aggressive GC is
+  // during this trace.
+  optional double heap_utilization = 9;
+  // CPU time spent running GC. Used in the calculation of gc_running_rate.
+  optional int64 gc_running_dur = 10;
+  // CPU time spent running GC, as a fraction of the duration of the trace.
+  // This gives a sense of the battery cost of GC.
+  optional double gc_running_rate = 11;
+  // A measure of how efficient GC is with respect to cpu, independent of how
+  // aggressively GC is tuned. Larger values indicate more efficient GC, so
+  // larger is better.
+  optional double gc_running_efficiency = 12;
+  // Time GC is running during app startup. Used in the calculation of
+  // gc_during_android_startup_rate.
+  optional int64 gc_during_android_startup_dur = 13;
+  // Total startup time in the trace, used to normalize the
+  // gc_during_android_startup_rate.
+  optional int64 total_android_startup_dur = 14;
+  // Time GC is running during app startup, as a fraction of startup time in
+  // the trace. This gives a sense of how much potential interference there
+  // is between GC and application startup.
+  optional double gc_during_android_startup_rate = 15;
+  // A measure of how efficient GC is with regards to gc during application
+  // startup, independent of how aggressively GC is tuned. Larger values
+  // indicate more efficient GC, so larger is better.
+  optional double gc_during_android_startup_efficiency = 16;
+}
+
+// End of protos/perfetto/metrics/android/android_garbage_collection_stats.proto
+
 // Begin of protos/perfetto/metrics/android/android_oom_adjuster_metric.proto
 
 message AndroidOomAdjusterMetric {
@@ -526,13 +624,6 @@ message AndroidSysUINotificationsBlockingCallsMetric {
 }
 
 // End of protos/perfetto/metrics/android/android_sysui_notifications_blocking_calls_metric.proto
-
-// Begin of protos/perfetto/metrics/android/android_trusty_workqueues.proto
-
-// Metric used to generate a simplified view of the Trusty kworker events.
-message AndroidTrustyWorkqueues {}
-
-// End of protos/perfetto/metrics/android/android_trusty_workqueues.proto
 
 // Begin of protos/perfetto/metrics/android/anr_metric.proto
 
@@ -606,6 +697,7 @@ message AndroidBatteryMetric {
     optional float capacity_percent = 3;
     optional double current_ua = 4;
     optional double current_avg_ua = 5;
+    optional double voltage_uv = 6;
   }
 
   message BatteryAggregates {
@@ -621,6 +713,10 @@ message AndroidBatteryMetric {
     optional int64 sleep_screen_off_ns = 6;
     optional int64 sleep_screen_on_ns = 7;
     optional int64 sleep_screen_doze_ns = 8;
+    // Average power over the duration of the trace.
+    optional double avg_power_mw = 9;
+    // Average power from charge difference at the start and end of the trace.
+    optional double avg_power_from_charge_diff_mw = 10;
   }
 
   // Period of time during the trace that the device went to sleep completely.
@@ -855,12 +951,29 @@ message AndroidCodecMetrics {
 
   // profile details in messages
   message Detail {
-    // function thread
-    optional string thread_name = 1;
+    // was thread_name
+    reserved 1;
     // total time
     optional int64 total_cpu_ns = 2;
     // CPU time ( time 'Running' on cpu)
     optional int64 running_cpu_ns = 3;
+    // avg running time for the trace duration
+    optional int64 avg_running_cpu_ns = 9;
+    // Total CPU cycles
+    optional int64 total_cpu_cycles = 4;
+    // avg CPU cycles per call
+    optional int64 avg_cpu_cycles = 8;
+    // avg time for this slice type
+    optional int64 avg_time_ns = 5;
+    optional int32 count = 6;
+    message Latency {
+      optional int64 max_us = 1;
+      optional int64 min_us = 2;
+      optional int64 avg_us = 3;
+      optional int64 agg_us = 4;
+      optional uint32 count = 5;
+    }
+    optional Latency self = 7;
   }
 
   // These are traces and could indicate framework queue latency
@@ -871,10 +984,15 @@ message AndroidCodecMetrics {
   message CodecFunction {
     // codec string
     optional string codec_string = 1;
-    // process_name
-    optional string process_name = 2;
-    // details
-    optional Detail detail = 3;
+    message Process {
+      optional string name = 1;
+      message Thread {
+        optional string name = 1;
+        optional Detail detail = 2;
+      }
+      optional Thread thread = 2;
+    }
+    optional Process process = 2;
   }
 
   // This message can indicate overall cpu
@@ -882,21 +1000,53 @@ message AndroidCodecMetrics {
   message CpuUsage {
     // name of process using codec framework
     optional string process_name = 1;
-    // name of the codec thread
-    optional string thread_name = 2;
+    message ThreadInfo {
+      // name of the codec thread
+      optional string name = 1;
+      message Details {
+        // total cpu usage of the codec thread
+        optional int64 thread_cpu_ns = 1;
+        // can be number of codec framework thread
+        optional uint32 num_threads = 2;
+        // core type data info used by codec thread
+        repeated AndroidCpuMetric.CoreTypeData core_data = 3;
+      }
+      optional Details info = 2;
+    }
+    optional ThreadInfo thread = 2;
     // was thread_cpu_us
     reserved 3;
-    // total cpu usage of the codec thread
-    optional int64 thread_cpu_ns = 6;
-    // can be number of codec framework thread
-    optional uint32 num_threads = 4;
-    // core type data info used by codec thread
-    repeated AndroidCpuMetric.CoreTypeData core_data = 5;
+  }
+
+  // Rail details
+  message Rail {
+    // name of rail
+    optional string name = 1;
+    // energy and power details of this rail
+    message Info {
+      // energy from this rail for codec use
+      optional double energy = 1;
+      // power consumption in this rail for codec use
+      optional double power_mw = 2;
+    }
+    optional Info info = 2;
+  }
+
+  // have the energy usage for the codec running time
+  message Energy {
+    // total energy taken by the system during this time
+    optional double total_energy = 1;
+    // total time for this energy is calculated
+    optional int64 duration = 2;
+    //  for this session
+    optional double power_mw = 3;
+    // enery breakdown by subsystem
+    repeated Rail rail = 4;
   }
 
   repeated CpuUsage cpu_usage = 1;
   repeated CodecFunction codec_function = 2;
-
+  optional Energy energy = 3;
 }
 
 // End of protos/perfetto/metrics/android/codec_metrics.proto
@@ -2097,16 +2247,6 @@ message AndroidNetworkMetric {
 
 // End of protos/perfetto/metrics/android/network_metric.proto
 
-// Begin of protos/perfetto/metrics/android/other_traces.proto
-
-message AndroidOtherTracesMetric {
-  // Uuids of other traces being finalized while the current trace was being
-  // recorded.
-  repeated string finalized_traces_uuid = 1;
-}
-
-// End of protos/perfetto/metrics/android/other_traces.proto
-
 // Begin of protos/perfetto/metrics/android/package_list.proto
 
 message AndroidPackageList {
@@ -2269,7 +2409,7 @@ message AndroidStartupMetric {
 
   // Timing information spanning the intent received by the
   // activity manager to the first frame drawn.
-  // Next id: 36.
+  // Next id: 38
   message ToFirstFrame {
     // The duration between the intent received and first frame.
     optional int64 dur_ns = 1;
@@ -2318,6 +2458,8 @@ message AndroidStartupMetric {
 
     optional Slice time_post_fork = 16;
 
+    // Total time on class initialization during app startup.
+    optional Slice time_class_initialization = 36;
     // The total time spent on opening dex files.
     optional Slice time_dex_open = 24;
     // Total time spent verifying classes during app startup.
@@ -2325,6 +2467,9 @@ message AndroidStartupMetric {
 
     // Number of methods that were compiled by JIT during app startup.
     optional uint32 jit_compiled_methods = 27;
+
+    // Number of class initializations during app startup.
+    optional uint32 class_initialization_count = 37;
 
     // Time spent running CPU on jit thread pool.
     optional Slice time_jit_thread_pool_on_cpu = 28;
@@ -2520,8 +2665,8 @@ message AndroidStartupMetric {
     // sorted by the duration in descending order.
     // By checking out the top slices/threads, developers can identify specific
     // slices or threads for further investigation.
-    repeated TraceSliceSection trace_slice_sections = 7;
-    repeated TraceThreadSection trace_thread_sections = 8;
+    optional TraceSliceSectionInfo trace_slice_sections = 7;
+    optional TraceThreadSectionInfo trace_thread_sections = 8;
 
     // Details specific for a reason.
     optional string additional_info = 9;
@@ -2566,6 +2711,17 @@ message AndroidStartupMetric {
     optional uint32 slice_id = 3;
 
     optional string slice_name = 4;
+
+    optional uint32 process_pid = 5;
+
+    optional uint32 thread_tid = 6;
+  }
+
+  // Information for the SliceSections
+  message TraceSliceSectionInfo {
+    repeated TraceSliceSection slice_section = 1;
+    optional int64 start_timestamp = 2;
+    optional int64 end_timestamp = 3;
   }
 
   // Contains information for a section of a thread.
@@ -2578,15 +2734,29 @@ message AndroidStartupMetric {
     optional uint32 thread_utid = 3;
 
     optional string thread_name = 4;
+
+    optional uint32 process_pid = 5;
+
+    optional uint32 thread_tid = 6;
   }
 
-  // Next id: 25
+  // Information for the ThreadSections
+  message TraceThreadSectionInfo {
+    repeated TraceThreadSection thread_section = 1;
+    optional int64 start_timestamp  = 2;
+    optional int64 end_timestamp = 3;
+  }
+
+  // Next id: 26
   message Startup {
     // Random id uniquely identifying an app startup in this trace.
     optional uint32 startup_id = 1;
 
     // Startup type (cold / warm / hot)
     optional string startup_type = 16;
+
+    // Number of CPUs the device has
+    optional uint32 cpu_count = 25;
 
     // Name of the package launched
     optional string package_name = 2;
@@ -2884,48 +3054,58 @@ message UnsymbolizedFrames {
 // Begin of protos/perfetto/metrics/android/wattson_in_time_period.proto
 
 message AndroidWattsonTimePeriodMetric {
+  // Each version increment means updated structure format or field
   optional int32 metric_version = 1;
-  repeated AndroidWattsonEstimateInfo period_info = 2;
+  // Each version increment means power model has been updated and estimates
+  // might change for the exact same input. Don't compare estimates across
+  // different power model versions.
+  optional int32 power_model_version = 2;
+  repeated AndroidWattsonEstimateInfo period_info = 3;
 }
 
 message AndroidWattsonEstimateInfo {
   optional int32 period_id = 1;
-  optional int64 period_dur = 2;
-  optional AndroidWattsonCpuSubsystemEstimate cpu_subsystem = 3;
+  optional string period_name = 2;
+  optional int64 period_dur = 3;
+  optional AndroidWattsonCpuSubsystemEstimate cpu_subsystem = 4;
 }
 
 message AndroidWattsonCpuSubsystemEstimate {
   // estimates and estimates of subrails
   optional float estimated_mw = 1;
-  optional AndroidWattsonPolicyEstimate policy0 = 2;
-  optional AndroidWattsonPolicyEstimate policy1 = 3;
-  optional AndroidWattsonPolicyEstimate policy2 = 4;
-  optional AndroidWattsonPolicyEstimate policy3 = 5;
-  optional AndroidWattsonPolicyEstimate policy4 = 6;
-  optional AndroidWattsonPolicyEstimate policy5 = 7;
-  optional AndroidWattsonPolicyEstimate policy6 = 8;
-  optional AndroidWattsonPolicyEstimate policy7 = 9;
-  optional AndroidWattsonDsuScuEstimate dsu_scu = 10;
+  optional float estimated_mws = 2;
+  optional AndroidWattsonPolicyEstimate policy0 = 3;
+  optional AndroidWattsonPolicyEstimate policy1 = 4;
+  optional AndroidWattsonPolicyEstimate policy2 = 5;
+  optional AndroidWattsonPolicyEstimate policy3 = 6;
+  optional AndroidWattsonPolicyEstimate policy4 = 7;
+  optional AndroidWattsonPolicyEstimate policy5 = 8;
+  optional AndroidWattsonPolicyEstimate policy6 = 9;
+  optional AndroidWattsonPolicyEstimate policy7 = 10;
+  optional AndroidWattsonDsuScuEstimate dsu_scu = 11;
 }
 
 message AndroidWattsonPolicyEstimate {
   optional float estimated_mw = 1;
-  optional AndroidWattsonCpuEstimate cpu0 = 2;
-  optional AndroidWattsonCpuEstimate cpu1 = 3;
-  optional AndroidWattsonCpuEstimate cpu2 = 4;
-  optional AndroidWattsonCpuEstimate cpu3 = 5;
-  optional AndroidWattsonCpuEstimate cpu4 = 6;
-  optional AndroidWattsonCpuEstimate cpu5 = 7;
-  optional AndroidWattsonCpuEstimate cpu6 = 8;
-  optional AndroidWattsonCpuEstimate cpu7 = 9;
+  optional float estimated_mws = 2;
+  optional AndroidWattsonCpuEstimate cpu0 = 3;
+  optional AndroidWattsonCpuEstimate cpu1 = 4;
+  optional AndroidWattsonCpuEstimate cpu2 = 5;
+  optional AndroidWattsonCpuEstimate cpu3 = 6;
+  optional AndroidWattsonCpuEstimate cpu4 = 7;
+  optional AndroidWattsonCpuEstimate cpu5 = 8;
+  optional AndroidWattsonCpuEstimate cpu6 = 9;
+  optional AndroidWattsonCpuEstimate cpu7 = 10;
 }
 
 message AndroidWattsonCpuEstimate {
   optional float estimated_mw = 1;
+  optional float estimated_mws = 2;
 }
 
 message AndroidWattsonDsuScuEstimate {
   optional float estimated_mw = 1;
+  optional float estimated_mws = 2;
 }
 
 // End of protos/perfetto/metrics/android/wattson_in_time_period.proto
@@ -2933,8 +3113,19 @@ message AndroidWattsonDsuScuEstimate {
 // Begin of protos/perfetto/metrics/android/wattson_tasks_attribution.proto
 
 message AndroidWattsonTasksAttributionMetric {
+  // Each version increment means updated structure format or field
   optional int32 metric_version = 1;
+  // Each version increment means power model has been updated and estimates
+  // might change for the exact same input. Don't compare estimates across
+  // different power model versions.
+  optional int32 power_model_version = 2;
   // Lists tasks (e.g. threads, process, package) and associated estimates
+  repeated AndroidWattsonTaskPeriodInfo period_info = 3;
+}
+
+// Groups of power per task for each period
+message AndroidWattsonTaskPeriodInfo {
+  optional int32 period_id = 1;
   repeated AndroidWattsonTaskInfo task_info = 2;
 }
 
@@ -2943,26 +3134,43 @@ message AndroidWattsonTaskInfo {
   optional float estimated_mw = 1;
   // Total energy over wall duration across CPUs in mWs
   optional float estimated_mws = 2;
-  optional string thread_name = 3;
-  optional string process_name = 4;
-  optional string package_name = 5;
-  optional int32 thread_id = 6;
-  optional int32 process_id = 7;
+  // Energy attributed to a thread for causing CPU idle exit
+  optional float idle_transitions_mws = 3;
+  optional string thread_name = 4;
+  optional string process_name = 5;
+  optional string package_name = 6;
+  optional int32 thread_id = 7;
+  optional int32 process_id = 8;
 }
 
 // End of protos/perfetto/metrics/android/wattson_tasks_attribution.proto
 
+// Begin of protos/perfetto/metrics/common/clone_duration.proto
+
+message CloneDuration {
+  message ByBuffer {
+    optional int32 buffer = 1;
+    optional int64 duration_ns = 2;
+  }
+  repeated ByBuffer by_buffer = 1;
+}
+
+// End of protos/perfetto/metrics/common/clone_duration.proto
+
 // Begin of protos/perfetto/metrics/metrics.proto
 
 // Trace processor metadata
+// Next id: 18
 message TraceMetadata {
   reserved 1;
   optional int64 trace_duration_ns = 2;
   optional string trace_uuid = 3;
   optional string android_build_fingerprint = 4;
+  optional string android_device_manufacturer = 16;
   optional int64 statsd_triggering_subscription_id = 5;
   optional int64 trace_size_bytes = 6;
   repeated string trace_trigger = 7;
+  optional string trace_causal_trigger = 17;
   optional string unique_session_name = 8;
   optional string trace_config_pbtxt = 9;
   optional int64 sched_duration_ns = 10;
@@ -3001,10 +3209,15 @@ message TraceAnalysisStats {
   repeated Stat stat = 1;
 }
 
-// Root message for all Perfetto-based metrics.
+// Root message for all Perfetto-based metrics (v1 metrics only).
 //
-// Next id: 75
+// NOTE: the v1 system is "soft" deprecated: no new metrics are allowed but
+// we still fully support any existing metrics written using this system.
+//
+// DO NOT ADD ANY OTHER FIELDS HERE. ADDITION OF NEW v1 METRICS WITH
+// IS NO LONGER ALLOWED. PLEASE USE METRICS v2 INSTEAD.
 message TraceMetrics {
+  // Metrics which were later removed.
   reserved 4, 10, 13, 14, 16, 19;
 
   // Battery counters metric on Android.
@@ -3126,11 +3339,13 @@ message TraceMetrics {
   // Metrics for IRQ runtime.
   optional AndroidIrqRuntimeMetric android_irq_runtime = 43;
 
-  // Metrics for the Trusty team.
-  optional AndroidTrustyWorkqueues android_trusty_workqueues = 44;
+  // Was metrics for the Trusty team.
+  reserved 44;
+  reserved 'android_trusty_workqueues';
 
-  // Summary of other concurrent trace recording.
-  optional AndroidOtherTracesMetric android_other_traces = 45;
+  // Was summary of concurrent trace recording.
+  reserved 45;
+  reserved 'android_other_traces';
 
   // Per-process Binder transaction metrics.
   optional AndroidBinderMetric android_binder = 46;
@@ -3216,6 +3431,23 @@ message TraceMetrics {
   // Android Wattson estimate during markers time window.
   optional AndroidWattsonTimePeriodMetric wattson_markers_rails = 74;
 
+  // Android Wattson estimate during time windows defined by atrace apps.
+  optional AndroidWattsonTimePeriodMetric wattson_atrace_apps_rails = 75;
+
+  // Android GC stats.
+  optional AndroidGarbageCollectionStats android_garbage_collection_stats = 76;
+
+  optional CloneDuration clone_duration = 77;
+
+  // Per-frame blocking calls (e.g. binder calls) during CUJs (important UI
+  // transitions).
+  optional AndroidCujBlockingCallsPerFrameMetric
+      android_blocking_calls_cuj_per_frame_metric = 78;
+
+  // Android Wattson thread attribution during app startups.
+  optional AndroidWattsonTasksAttributionMetric wattson_app_startup_threads =
+      79;
+
   // Android
   // Demo extensions.
   extensions 450 to 499;
@@ -3228,6 +3460,9 @@ message TraceMetrics {
 
   // WebView metrics.
   extensions 2001 to 2500;
+
+  // DO NOT ADD ANY OTHER FIELDS HERE. ADDITION OF NEW v1 METRICS IS NO LONGER
+  // ALLOWED. PLEASE USE METRICS v2 INSTEAD.
 }
 
 // End of protos/perfetto/metrics/metrics.proto

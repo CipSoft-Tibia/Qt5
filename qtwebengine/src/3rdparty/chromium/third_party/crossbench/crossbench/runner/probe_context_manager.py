@@ -8,16 +8,16 @@ import abc
 import contextlib
 import datetime as dt
 import logging
-from typing import (TYPE_CHECKING, Generic, Iterable, List, Optional, Tuple,
-                    TypeVar)
+from typing import (TYPE_CHECKING, Dict, Generic, Iterable, List, Optional,
+                    Tuple, Type, TypeVar)
 
 from crossbench.helper.state import State, StateMachine
-from crossbench.probes.probe import Probe
-from crossbench.probes.probe_context import BaseProbeContext
+from crossbench.probes.probe_context import BaseProbeContext, ProbeContext
 from crossbench.probes.results import EmptyProbeResult, ProbeResult
 from crossbench.runner.result_origin import ResultOrigin
 
 if TYPE_CHECKING:
+  from crossbench.probes.probe import Probe, ProbeT
   from crossbench.probes.results import ProbeResultDict
 
 ResultOriginT = TypeVar("ResultOriginT", bound=ResultOrigin)
@@ -31,7 +31,10 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
     self._state = StateMachine(State.INITIAL)
     self._origin = result_origin
     self._probe_results = probe_results
-    self._probe_contexts: List[ProbeContextT] = []
+    self._probe_contexts: Dict[Type[Probe], ProbeContextT] = {}
+    # Contains all probe context where the setup succeeded.
+    self._setup_probe_contexts: List[ProbeContextT] = []
+    self._failed_probe_contexts: List[ProbeContextT] = []
     # TODO: either prefix timers or use custom duration
     self._durations = result_origin.durations
     self._exceptions = result_origin.exceptions
@@ -44,11 +47,15 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
   def is_running(self) -> bool:
     return self._state == State.RUN
 
-  def measure(self, name):
+  @property
+  def is_success(self) -> bool:
+    return self._exceptions.is_success
+
+  def _measure(self, name):
     return self._origin.measure(name)
 
   @contextlib.contextmanager
-  def capture(self, label: str, measure: bool = False):
+  def _capture(self, label: str, measure: bool = False):
     with self._exceptions.capture(label):
       if not measure:
         yield
@@ -56,24 +63,19 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
         with self._origin.durations.measure(label):
           yield
 
-  @property
-  def is_success(self) -> bool:
-    return self._exceptions.is_success
-
   def setup(self, probes: Iterable[Probe], is_dry_run: bool):
     self._state.transition(State.INITIAL, to=State.SETUP)
     if not is_dry_run:
-      if not self._setup_probes(tuple(probes), is_dry_run):
-        return
+      self._setup_probes(tuple(probes))
     self._state.transition(State.SETUP, to=State.READY)
 
-  def _setup_probes(self, probes: Tuple[Probe, ...], is_dry_run: bool) -> bool:
-    with self.capture("probes-setup", measure=True):
+  def _setup_probes(self, probes: Tuple[Probe, ...]) -> bool:
+    # We always have internal probes
+    assert probes, "No probes provided"
+    with self._capture("probes-setup", measure=True):
       self._validate_probes(probes)
       self._create_contexts(probes)
       self._setup_contexts()
-    if not self.is_success:
-      self._handle_setup_error(is_dry_run)
     return self.is_success
 
   def _validate_probes(self, probes: Tuple[Probe, ...]):
@@ -86,27 +88,27 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
           f"Probe {probe.name} is not properly attached to a browser")
 
   def _create_contexts(self, probes: Tuple[Probe, ...]):
+    unique_contexts = set()
     for probe in probes:
       if probe.PRODUCES_DATA:
         self._probe_results[probe] = EmptyProbeResult()
-      with self.capture(f"{probe.name} get_context"):
+      with self._capture(f"{probe.name} get_context"):
         if probe_context := self.get_probe_context(probe):
-          self._probe_contexts.append(probe_context)
+          assert probe_context not in unique_contexts
+          unique_contexts.add(probe_context)
+          probe_cls = type(probe)
+          assert probe_cls not in self._probe_contexts
+          self._probe_contexts[probe_cls] = probe_context
 
   def _setup_contexts(self):
-    for probe_context in self._probe_contexts:
-      with self.capture(f"probes-setup {probe_context.name}"):
-        probe_context.setup()  # pytype: disable=wrong-arg-types
-
-  def _handle_setup_error(self, is_dry_run: bool) -> None:
-    self._state.transition(State.SETUP, to=State.DONE)
-    logging.debug("Handling setup error")
-    assert not self.is_success
-    # Special handling for crucial runner probes
-    internal_probe_contexts = [
-        context for context in self._probe_contexts if context.probe.is_internal
-    ]
-    self._teardown(internal_probe_contexts, is_dry_run, setup_error=True)
+    for probe_context in self._probe_contexts.values():
+      with self._capture(f"probes-setup {probe_context.name}"):
+        try:
+          probe_context.setup()
+          self._setup_probe_contexts.append(probe_context)
+        except:
+          self._failed_probe_contexts.append(probe_context)
+          raise
 
   @contextlib.contextmanager
   def open(self, is_dry_run: bool):
@@ -114,7 +116,7 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
     probe_start_time = dt.datetime.now()
     combined_contexts = contextlib.ExitStack()
 
-    for probe_context in self._probe_contexts:
+    for probe_context in self._setup_probe_contexts:
       probe_context.set_start_time(probe_start_time)
       if not is_dry_run:
         combined_contexts.enter_context(probe_context.open())
@@ -123,11 +125,13 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
       self._durations["probes-start"] = dt.datetime.now() - probe_start_time
       yield self
 
-  def teardown(self, is_dry_run: bool, setup_error: bool = False) -> None:
+  def teardown(self, is_dry_run: bool) -> None:
     self._state.transition(State.READY, State.RUN, to=State.DONE)
-    with self.measure("probes-teardown"):
-      self._teardown(self._probe_contexts, is_dry_run, setup_error)
-      self._probe_contexts = []
+    with self._measure("probes-teardown"):
+      self._teardown(self._setup_probe_contexts, is_dry_run)
+      self._probe_contexts = {}
+      self._setup_probe_contexts = []
+      self._failed_probe_contexts = []
 
   def _teardown(self,
                 probe_contexts: List[ProbeContextT],
@@ -140,7 +144,7 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
     if is_dry_run:
       return
     for probe_context in reversed(probe_contexts):
-      with self.capture(f"Probe {probe_context.name} teardown", measure=True):
+      with self._capture(f"Probe {probe_context.name} teardown", measure=True):
         assert probe_context.result_origin == self._origin
         probe_results: ProbeResult = probe_context.teardown()
         probe = probe_context.probe
@@ -152,3 +156,12 @@ class ProbeContextManager(Generic[ResultOriginT, ProbeContextT], abc.ABC):
   @abc.abstractmethod
   def get_probe_context(self, probe: Probe) -> Optional[ProbeContextT]:
     pass
+
+  def find_probe_context(self,
+                         cls: Type[ProbeT]) -> Optional[ProbeContext[ProbeT]]:
+    if probe_context := self._probe_contexts.get(cls):
+      assert isinstance(
+          probe_context.probe,
+          cls), (f"Expected instance of {cls}: got {probe_context.probe}")
+      return probe_context  # type: ignore
+    return None

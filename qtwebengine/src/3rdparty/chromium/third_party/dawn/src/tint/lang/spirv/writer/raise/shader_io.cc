@@ -98,8 +98,8 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
                 name << "_" << io.attributes.builtin.value();
 
                 // Vulkan requires that fragment integer builtin inputs be Flat decorated.
-                if (func->Stage() == core::ir::Function::PipelineStage::kFragment &&
-                    addrspace == core::AddressSpace::kIn && io.type->IsIntegerScalarOrVector()) {
+                if (func->IsFragment() && addrspace == core::AddressSpace::kIn &&
+                    io.type->IsIntegerScalarOrVector()) {
                     io.attributes.interpolation = {core::InterpolationType::kFlat};
                 }
             }
@@ -115,7 +115,7 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
             auto* store_type = io.type;
             if (config.polyfill_f16_io) {
                 if (store_type->DeepestElement()->Is<core::type::F16>()) {
-                    store_type = ty.match_width(ty.f32(), io.type);
+                    store_type = ty.MatchWidth(ty.f32(), io.type);
                 }
             }
 
@@ -190,8 +190,22 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
     /// @param frag_depth the incoming frag_depth value
     /// @returns the clamped value
     core::ir::Value* ClampFragDepth(core::ir::Builder& builder, core::ir::Value* frag_depth) {
-        if (!config.clamp_frag_depth) {
+        if (!config.clamp_frag_depth && !config.depth_range_offsets) {
             return frag_depth;
+        }
+
+        // Use pre-created push constant block for clamping frag depth if possible.
+        if (config.depth_range_offsets) {
+            auto* push_constants = config.push_constant_layout.var;
+            auto min_idx =
+                u32(config.push_constant_layout.IndexOf(config.depth_range_offsets->min));
+            auto max_idx =
+                u32(config.push_constant_layout.IndexOf(config.depth_range_offsets->max));
+            auto* min =
+                builder.Load(builder.Access<ptr<push_constant, f32>>(push_constants, min_idx));
+            auto* max =
+                builder.Load(builder.Access<ptr<push_constant, f32>>(push_constants, max_idx));
+            return builder.Call<f32>(core::BuiltinFn::kClamp, frag_depth, min, max)->Result(0);
         }
 
         // Create the clamp args struct and variable.
@@ -235,7 +249,7 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
 }  // namespace
 
 Result<SuccessType> ShaderIO(core::ir::Module& ir, const ShaderIOConfig& config) {
-    auto result = ValidateAndDumpIfNeeded(ir, "ShaderIO transform");
+    auto result = ValidateAndDumpIfNeeded(ir, "spirv.ShaderIO");
     if (result != Success) {
         return result;
     }

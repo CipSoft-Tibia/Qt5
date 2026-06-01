@@ -13,6 +13,7 @@
     TreeView control.
 
     \image qtquickcontrols-tableofcontents.png
+           {Tree view showing hierarchical table of contents structure}
 
     \include examples-run.qdocinc
 */

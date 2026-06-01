@@ -11,8 +11,8 @@ import * as Protocol from '../../generated/protocol.js';
 import * as EmulationModel from '../../models/emulation/emulation.js';
 import * as Emulation from '../emulation/emulation.js';
 
-import {type LighthouseRun, type ProtocolService} from './LighthouseProtocolService.js';
-import {type RunnerResult} from './LighthouseReporterTypes.js';
+import type {LighthouseRun, ProtocolService} from './LighthouseProtocolService.js';
+import type {RunnerResult} from './LighthouseReporterTypes.js';
 
 const UIStrings = {
   /**
@@ -281,7 +281,7 @@ export class LighthouseController extends Common.ObjectWrapper.ObjectWrapper<Eve
   }
 
   private unauditablePageMessage(): string|null {
-    if (!this.manager) {
+    if (!this.manager || this.getFlags().mode !== 'navigation') {
       return null;
     }
 
@@ -315,7 +315,7 @@ export class LighthouseController extends Common.ObjectWrapper.ObjectWrapper<Eve
       if (isPdf) {
         return i18nString(UIStrings.canOnlyAuditHttphttpsPages);
       }
-    } catch (e) {
+    } catch {
       return i18nString(UIStrings.canOnlyAuditHttphttpsPages);
     }
 
@@ -659,9 +659,9 @@ export const Presets: Preset[] = [
   },
 ];
 
-export type Flags = {
-  [flag: string]: string|boolean,
-};
+export interface Flags {
+  [flag: string]: string|boolean;
+}
 
 export const RuntimeSettings: RuntimeSetting[] = [
   {
@@ -777,11 +777,11 @@ export interface AuditProgressChangedEvent {
   message: string;
 }
 
-export type EventTypes = {
-  [Events.PageAuditabilityChanged]: PageAuditabilityChangedEvent,
-  [Events.PageWarningsChanged]: PageWarningsChangedEvent,
-  [Events.AuditProgressChanged]: AuditProgressChangedEvent,
-};
+export interface EventTypes {
+  [Events.PageAuditabilityChanged]: PageAuditabilityChangedEvent;
+  [Events.PageWarningsChanged]: PageWarningsChangedEvent;
+  [Events.AuditProgressChanged]: AuditProgressChangedEvent;
+}
 
 export interface Preset {
   setting: Common.Settings.Setting<boolean>;

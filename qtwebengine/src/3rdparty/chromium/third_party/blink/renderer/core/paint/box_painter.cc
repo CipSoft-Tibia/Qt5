@@ -11,6 +11,7 @@
 #include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
 #include "third_party/blink/renderer/core/paint/scrollable_area_painter.h"
+#include "ui/gfx/geometry/rect_conversions.h"
 
 namespace blink {
 
@@ -43,7 +44,7 @@ void BoxPainter::RecordScrollHitTestData(
 
   // If an object is not visible, it does not scroll.
   const ComputedStyle& style = layout_box_.StyleRef();
-  if (style.UsedVisibility() != EVisibility::kVisible) {
+  if (style.Visibility() != EVisibility::kVisible) {
     return;
   }
 
@@ -57,7 +58,7 @@ void BoxPainter::RecordScrollHitTestData(
   // (which marks a region where composited scroll is not allowed) so
   // that we fall back to main thread hit testing for the entire box.
   //
-  // Note that if it is visibility: hidden, then the style.UsedVisibility()
+  // Note that if it is visibility: hidden, then the style.Visibility()
   // check above will fail and we will already have returned.
   if (!RuntimeEnabledFeatures::HitTestOpaquenessEnabled() &&
       !style.VisibleToHitTesting()) {
@@ -96,6 +97,16 @@ void BoxPainter::RecordScrollHitTestData(
     gfx::Rect cull_rect = fragment->GetContentsCullRect().Rect();
     if (cull_rect.Contains(properties->Scroll()->ContentsRect())) {
       cull_rect = CullRect::Infinite().Rect();
+    } else {
+      // Don't pass the cull rect if it doesn't cover the container rect
+      // because cc can't distinguish the case from paint checkerboarding.
+      gfx::Rect cull_rect_in_container_space = gfx::ToEnclosingRect(
+          gfx::RectF(cull_rect) +
+          properties->ScrollTranslation()->Get2dTranslation());
+      if (!cull_rect_in_container_space.Contains(
+              properties->Scroll()->ContainerRect())) {
+        cull_rect = CullRect::Infinite().Rect();
+      }
     }
     paint_controller.RecordScrollHitTestData(
         background_client, DisplayItem::kScrollHitTest,
@@ -112,7 +123,7 @@ void BoxPainter::RecordScrollHitTestData(
 
 gfx::Rect BoxPainter::VisualRect(const PhysicalOffset& paint_offset) {
   DCHECK(!layout_box_.VisualRectRespectsVisibility() ||
-         layout_box_.StyleRef().UsedVisibility() == EVisibility::kVisible);
+         layout_box_.StyleRef().Visibility() == EVisibility::kVisible);
   PhysicalRect rect = layout_box_.SelfVisualOverflowRect();
   rect.Move(paint_offset);
   return ToEnclosingRect(rect);

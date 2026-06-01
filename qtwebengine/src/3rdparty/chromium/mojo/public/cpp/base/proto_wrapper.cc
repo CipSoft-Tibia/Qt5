@@ -42,7 +42,7 @@ ProtoWrapper::ProtoWrapper(base::span<const uint8_t> data,
 }
 
 bool ProtoWrapper::DeserializeToMessage(
-    google::protobuf::MessageLite& message) {
+    google::protobuf::MessageLite& message) const {
   if (!bytes_.has_value()) {
     return false;
   }
@@ -61,7 +61,7 @@ bool ProtoWrapper::DeserializeToMessage(
   } else {
     // Make an in-process copy here as protobuf is not designed to
     // safely parse data that might be changing underneath it.
-    auto as_span = base::make_span(bytes_->data(), bytes_->size());
+    auto as_span = base::span(bytes_->data(), bytes_->size());
     const std::vector<uint8_t> copy(as_span.begin(), as_span.end());
     return message.ParseFromArray(copy.data(), copy.size());
   }

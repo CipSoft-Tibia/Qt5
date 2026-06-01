@@ -79,7 +79,7 @@ class GaiaOAuthClient::Core
                    Delegate* delegate);
   void GetAccountCapabilities(
       const std::string& oauth_access_token,
-      const std::vector<std::string>& capabilities_names,
+      base::span<const std::string_view> capabilities_names,
       int max_retries,
       Delegate* delegate);
   void GetTokenInfo(const std::string& qualifier,
@@ -361,7 +361,7 @@ void GaiaOAuthClient::Core::GetTokenInfo(const std::string& qualifier,
 
 void GaiaOAuthClient::Core::GetAccountCapabilities(
     const std::string& oauth_access_token,
-    const std::vector<std::string>& capabilities_names,
+    base::span<const std::string_view> capabilities_names,
     int max_retries,
     Delegate* delegate) {
   DCHECK(!capabilities_names.empty());
@@ -614,7 +614,7 @@ void GaiaOAuthClient::Core::HandleResponse(std::unique_ptr<std::string> body,
     }
 
     case NO_PENDING_REQUEST:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 }
 
@@ -677,7 +677,7 @@ void GaiaOAuthClient::GetTokenHandleInfo(const std::string& token_handle,
 
 void GaiaOAuthClient::GetAccountCapabilities(
     const std::string& oauth_access_token,
-    const std::vector<std::string>& capabilities_names,
+    base::span<const std::string_view> capabilities_names,
     int max_retries,
     Delegate* delegate) {
   return core_->GetAccountCapabilities(oauth_access_token, capabilities_names,

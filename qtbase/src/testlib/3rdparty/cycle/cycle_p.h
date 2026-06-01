@@ -80,6 +80,10 @@
 #define QBENCHLIB_CYCLE_H
 #define ticks CycleCounterTicks
 
+#ifndef QBENCHLIB_INCLUDING_CYCLE_P
+#error Include cycle_include_p.h instead of this file
+#endif
+
 /***************************************************************************/
 
 #if TIME_WITH_SYS_TIME

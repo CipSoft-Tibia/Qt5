@@ -7,6 +7,9 @@ version                 = $QT_VERSION
 
 examplesinstallpath     = network
 
+# Path to the root of qtbase (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 qhp.projects            = QtNetwork
 
 qhp.QtNetwork.file         = qtnetwork.qhp

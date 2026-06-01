@@ -18,9 +18,9 @@
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
-       <layout class="QFormLayout" name="formLayout">
+       <layout class="QGridLayout" name="gridLayout">
         <item row="0" column="0">
-         <widget class="QLabel" name="label">
+         <widget class="QLabel" name="labelHost">
           <property name="text">
            <string>Host:</string>
           </property>
@@ -33,8 +33,15 @@
           </property>
          </widget>
         </item>
+        <item row="0" column="2" rowspan="3">
+         <widget class="QPushButton" name="buttonConnect">
+          <property name="text">
+           <string>Connect</string>
+          </property>
+         </widget>
+        </item>
         <item row="2" column="0">
-         <widget class="QLabel" name="label_2">
+         <widget class="QLabel" name="labelPort">
           <property name="text">
            <string>Port:</string>
           </property>
@@ -43,51 +50,69 @@
         <item row="2" column="1">
          <widget class="QSpinBox" name="spinBoxPort">
           <property name="maximum">
-           <number>99999</number>
+           <number>65535</number>
           </property>
           <property name="value">
            <number>1883</number>
           </property>
          </widget>
         </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="labelWebSockets">
+          <property name="text">
+           <string>WebSockets:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QCheckBox" name="checkBoxWebSockets" />
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="labelSecure">
+          <property name="text">
+           <string>Secure:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QCheckBox" name="checkBoxSecure" />
+        </item>
+        <item row="5" column="0">
+         <widget class="QLabel" name="labelProtocol">
+          <property name="text">
+           <string>Protocol:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QComboBox" name="comboBoxProtocol">
+            <item>
+                <property name="text">
+                    <string>mqtt 3.1</string>
+                </property>
+            </item>
+            <item>
+                <property name="text">
+                    <string>mqtt 3.1.1</string>
+                </property>
+            </item>
+            <item>
+                <property name="text">
+                    <string>mqtt 5.0</string>
+                </property>
+            </item>
+         </widget>
+        </item>
        </layout>
-      </item>
-      <item>
-       <widget class="QPushButton" name="buttonConnect">
-        <property name="text">
-         <string>Connect</string>
-        </property>
-       </widget>
       </item>
      </layout>
     </item>
     <item>
-     <layout class="QGridLayout" name="gridLayout">
-      <item row="1" column="1">
-       <widget class="QLineEdit" name="lineEditMessage">
+     <layout class="QGridLayout" name="gridLayout2">
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelTopic">
         <property name="text">
-         <string>This is a test message</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_4">
-        <property name="text">
-         <string>Message:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="2">
-       <widget class="QPushButton" name="buttonSubscribe">
-        <property name="text">
-         <string>Subscribe</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="2">
-       <widget class="QPushButton" name="buttonPublish">
-        <property name="text">
-         <string>Publish</string>
+         <string>Topic:</string>
         </property>
        </widget>
       </item>
@@ -98,10 +123,31 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_3">
+      <item row="0" column="2">
+       <widget class="QPushButton" name="buttonSubscribe">
         <property name="text">
-         <string>Topic:</string>
+         <string>Subscribe</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelMessage">
+        <property name="text">
+         <string>Message:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="lineEditMessage">
+        <property name="text">
+         <string>This is a test message</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="buttonPublish">
+        <property name="text">
+         <string>Publish</string>
         </property>
        </widget>
       </item>
@@ -114,7 +160,11 @@
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout_2">
        <item>
-        <widget class="QPlainTextEdit" name="editLog"/>
+        <widget class="QPlainTextEdit" name="editLog">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -145,37 +195,6 @@
     </item>
    </layout>
   </widget>
-  <widget class="QMenuBar" name="menuBar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>1024</width>
-     <height>20</height>
-    </rect>
-   </property>
-   <widget class="QMenu" name="menuFile">
-    <property name="title">
-     <string>File</string>
-    </property>
-    <addaction name="actionQuit"/>
-   </widget>
-   <addaction name="menuFile"/>
-  </widget>
-  <widget class="QToolBar" name="mainToolBar">
-   <attribute name="toolBarArea">
-    <enum>TopToolBarArea</enum>
-   </attribute>
-   <attribute name="toolBarBreak">
-    <bool>false</bool>
-   </attribute>
-  </widget>
-  <widget class="QStatusBar" name="statusBar"/>
-  <action name="actionQuit">
-   <property name="text">
-    <string>Quit</string>
-   </property>
-  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <resources/>

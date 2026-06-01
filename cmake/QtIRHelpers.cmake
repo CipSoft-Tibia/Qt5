@@ -89,6 +89,26 @@ function(qt_ir_handle_called_from_configure top_level_src_path out_var_exit_reas
 
     qt_ir_validate_options_for_configure()
 
+    # Convert -skip values to module-subset exclusions so init-repository respects them.
+    qt_ir_get_option_value(skip skip_modules)
+    if(skip_modules)
+        string(REPLACE "," ";" skip_modules "${skip_modules}")
+        list(TRANSFORM skip_modules STRIP)
+        list(TRANSFORM skip_modules PREPEND "-")
+
+        qt_ir_get_option_value(module-subset existing_subset)
+        if(NOT existing_subset)
+            set(existing_subset "default")
+        endif()
+
+        list(APPEND skip_modules "${existing_subset}")
+        list(REMOVE_DUPLICATES skip_modules)
+        list(JOIN skip_modules "," merged_subset)
+
+        qt_ir_set_option_value(module-subset "${merged_subset}")
+        message(DEBUG "Preprocessed -skip option: module-subset is now: ${merged_subset}")
+    endif()
+
     # -init_submodules implies --force
     qt_ir_set_option_value(force TRUE)
 
@@ -109,6 +129,11 @@ function(qt_ir_get_args_from_optfile_configure_filtered optfile_path out_var)
     set(filtered_args ${unknown_args})
     set(extra_configure_args "")
     set(extra_cmake_args "")
+
+    # Collect modules to skip. These may come from:
+    # 1. The -skip option (consumed by init-repository's option parser)
+    # 2. Exclusion entries in -submodules/--module-subset (e.g. -qtfoo)
+    qt_ir_get_option_value(skip skip_modules)
 
     # If the -submodules or --module-subset options were specified, transform
     # the values into something configure understands and pass them to configure.
@@ -133,25 +158,10 @@ function(qt_ir_get_args_from_optfile_configure_filtered optfile_path out_var)
         endif()
 
         list(JOIN include_submodules "," include_submodules)
-        list(JOIN exclude_submodules "," exclude_submodules)
 
-        # Handle case when the -skip argument is already passed.
-        # In that case read the passed values, merge with new ones,
-        # remove both the -skip and its values, and re-add it later.
-        list(FIND filtered_args "-skip" skip_index)
-        if(exclude_submodules AND skip_index GREATER -1)
-            list(LENGTH filtered_args filtered_args_length)
-            math(EXPR skip_args_index "${skip_index} + 1")
-
-            if(skip_args_index LESS filtered_args_length)
-                list(GET filtered_args "${skip_args_index}" skip_args)
-                string(REPLACE "," ";" skip_args "${skip_args}")
-                list(APPEND skip_args ${exclude_submodules})
-                list(REMOVE_DUPLICATES skip_args)
-                list(JOIN skip_args "," exclude_submodules)
-                list(REMOVE_AT filtered_args "${skip_args_index}")
-                list(REMOVE_AT filtered_args "${skip_index}")
-            endif()
+        # Merge exclusions from module-subset into the skip list.
+        if(exclude_submodules)
+            list(APPEND skip_modules ${exclude_submodules})
         endif()
 
         # Handle case when only '-submodules existing' is passed and the
@@ -159,9 +169,13 @@ function(qt_ir_get_args_from_optfile_configure_filtered optfile_path out_var)
         if(include_submodules)
             list(APPEND extra_configure_args "-submodules" "${include_submodules}")
         endif()
-        if(exclude_submodules)
-            list(APPEND extra_configure_args "-skip" "${exclude_submodules}")
-        endif()
+    endif()
+
+    # Forward all collected skip modules to configure.
+    if(skip_modules)
+        list(REMOVE_DUPLICATES skip_modules)
+        list(JOIN skip_modules "," skip_csv)
+        list(APPEND extra_configure_args "-skip" "${skip_csv}")
     endif()
 
     # Insert the extra arguments into the proper positions before and after '--'.
@@ -295,7 +309,7 @@ function(qt_ir_run_after_args_parsed top_level_src_path out_var_exit_reason)
         "${working_directory}")
 
     # Get some additional options to pass down.
-    qt_ir_get_option_value(alternates alternates)
+    qt_ir_get_option_as_existing_absolute_path(alternates alternates)
     qt_ir_get_option_as_cmake_flag_option(branch "CHECKOUT_BRANCH" checkout_branch_option)
 
     # The prefix for the cmake-style 'dictionary' that will be used by various functions.

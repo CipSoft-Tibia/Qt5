@@ -118,6 +118,7 @@ public:
     void allocate(int vertexCount, int indexCount = 0);
 
     int vertexCount() const { return m_vertex_count; }
+    void setVertexCount(int count);
 
     void *vertexData() { return m_data; }
     inline Point2D *vertexDataAsPoint2D();
@@ -132,6 +133,7 @@ public:
     inline int indexType() const { return m_index_type; }
 
     int indexCount() const { return m_index_count; }
+    void setIndexCount(int count);
 
     void *indexData();
     inline uint *indexDataAsUInt();

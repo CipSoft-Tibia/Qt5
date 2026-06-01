@@ -101,6 +101,13 @@ qt6_add_shaders(exampleapp "exampleapp_shaders"
     the resulting application will now require OpenGL ES 3.0 or higher and will
     not be compatible with OpenGL ES 2.0 based systems.
 
+    On WebAssembly \c qt6_add_shaders invokes \l{QSB Manual}{qsb} as follows:
+    \badcode
+    qsb --glsl "100 es, 300 es" <output>.qsb <input>
+    \endcode
+
+    This generates shaders compatible with WebGL 1 and WebGL 2.
+
     \section2 Shader type
 
     The type of shader is deduced from the file extension. Thus, the extension

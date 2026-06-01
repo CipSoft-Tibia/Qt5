@@ -31,9 +31,6 @@ class TestPasswordsPrivateDelegate : public PasswordsPrivateDelegate {
   // not empty.
   std::optional<api::passwords_private::UrlCollection> GetUrlCollection(
       const std::string& url) override;
-  // Fake implementation. This returns the value set by
-  // `SetIsAccountStoreDefault`.
-  bool IsAccountStoreDefault(content::WebContents* web_contents) override;
   // Fake implementation of AddPassword. This returns true if `url` and
   // `password` aren't empty.
   bool AddPassword(const std::string& url,
@@ -72,9 +69,9 @@ class TestPasswordsPrivateDelegate : public PasswordsPrivateDelegate {
                        content::WebContents* web_contents) override;
   api::passwords_private::ExportProgressStatus GetExportProgressStatus()
       override;
-  bool IsOptedInForAccountStorage() override;
-  void SetAccountStorageOptIn(bool opt_in,
-                              content::WebContents* web_contents) override;
+  bool IsAccountStorageEnabled() override;
+  void SetAccountStorageEnabled(bool enabled,
+                                content::WebContents* web_contents) override;
   std::vector<api::passwords_private::PasswordUiEntry> GetInsecureCredentials()
       override;
   std::vector<api::passwords_private::PasswordUiEntryList>
@@ -116,8 +113,7 @@ class TestPasswordsPrivateDelegate : public PasswordsPrivateDelegate {
   base::WeakPtr<PasswordsPrivateDelegate> AsWeakPtr() override;
 
   void SetProfile(Profile* profile);
-  void SetOptedInForAccountStorage(bool opted_in);
-  void SetIsAccountStoreDefault(bool is_default);
+  void SetAccountStorageEnabled(bool enabled);
   void AddCompromisedCredential(int id);
 
   void ClearSavedPasswordsList() { current_entries_.clear(); }
@@ -196,8 +192,7 @@ class TestPasswordsPrivateDelegate : public PasswordsPrivateDelegate {
   std::vector<api::passwords_private::PasswordUiEntry> insecure_credentials_;
   raw_ptr<Profile, DanglingUntriaged> profile_ = nullptr;
 
-  bool is_opted_in_for_account_storage_ = false;
-  bool is_account_store_default_ = false;
+  bool is_account_storage_enabled_ = false;
 
   // Flags for detecting whether password sharing operations have been invoked.
   bool fetch_family_members_triggered_ = false;

@@ -45,8 +45,6 @@ inline FXCRT_BYTESWAPS_CONSTEXPR uint32_t ByteSwap(uint32_t x) {
 #endif
 }
 
-#undef FXCRT_BYTESWAPS_CONSTEXPR
-
 }  // namespace internal
 
 // NOTE: Prefer From*() methods when data is known to be aligned.

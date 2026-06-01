@@ -7,4 +7,5 @@ qt_internal_add_manual_test(colormanagement
     LIBRARIES
         Qt::Gui
         Qt::GuiPrivate
+    GUI
 )

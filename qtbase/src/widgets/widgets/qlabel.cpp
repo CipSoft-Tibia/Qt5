@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpainter.h"
 #include "qevent.h"
@@ -51,7 +52,9 @@ QLabelPrivate::~QLabelPrivate()
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-label.png
+    \image fusion-label.png {Label}
+
+
 
     QLabel is used for displaying text or an image. No user
     interaction functionality is provided. The visual appearance of

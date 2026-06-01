@@ -107,6 +107,7 @@ jumbo_source_set("capture_device_specific") {
     "//gpu/command_buffer/client",
     "//gpu/ipc/common:common",
     "//media",
+    "//media/capture:capture_gpu_channel",
     "//media/capture:capture_switches",
     "//media/capture/mojom:image_capture",
     "//media/capture/mojom:image_capture_types",
@@ -393,7 +394,7 @@ source_set("capture_gpu_channel") {
   deps = []
 
   # Establish GPU Channel
-  if (is_linux || is_win || is_chromeos_ash || is_mac) {
+  if (enable_gpu_channel_media_capture) {
     sources += [
       "video/video_capture_gpu_channel_host.cc",
       "video/video_capture_gpu_channel_host.h",
@@ -490,6 +491,7 @@ test("capture_unittests") {
     ":test_support",
     "//base/test:test_support",
     "//build:chromeos_buildflags",
+    "//components/viz/test:test_support",
     "//gpu:test_support",
     "//gpu/command_buffer/client",
     "//media:test_support",
@@ -497,6 +499,7 @@ test("capture_unittests") {
     "//media/capture/mojom:image_capture_types",
     "//mojo/core/embedder",
     "//services/video_capture/public/mojom",
+    "//services/video_effects/buildflags",
     "//services/video_effects/test:test_support",
     "//testing/gmock",
     "//testing/gtest",

@@ -7,9 +7,6 @@
 # in X11.h, and Xlib.h
 set(CMAKE_UNITY_BUILD OFF)
 
-if(TARGET Qt::WaylandClient)
-    add_subdirectory(client)
-endif()
 if(TARGET Qt::WaylandCompositor)
     add_subdirectory(compositor)
 endif()

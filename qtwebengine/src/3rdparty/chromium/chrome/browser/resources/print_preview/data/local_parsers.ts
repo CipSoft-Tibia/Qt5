@@ -3,16 +3,10 @@
 // found in the LICENSE file.
 
 import {assertNotReached} from 'chrome://resources/js/assert.js';
-import {isChromeOS, isLacros} from 'chrome://resources/js/platform.js';
+import {isChromeOS} from 'chrome://resources/js/platform.js';
 
 import type {DestinationOptionalParams} from './destination.js';
 import {Destination, DestinationOrigin, PrinterType} from './destination.js';
-
-// <if expr="is_chromeos">
-import {DestinationProvisionalType} from './destination.js';
-import type {PrinterStatus} from './printer_status_cros.js';
-
-// </if>
 
 interface ObjectMap {
   [k: string]: any;
@@ -26,6 +20,7 @@ export interface LocalDestinationInfo {
   printerOptions?: ObjectMap;
   // <if expr="is_chromeos">
   printerStatus?: PrinterStatus;
+  managedPrintOptions?: ManagedPrintOptions;
   // </if>
 }
 
@@ -78,10 +73,15 @@ function parseLocalDestination(destinationInfo: LocalDestinationInfo):
       }
     }
   }
+  // <if expr="is_chromeos">
+  if (destinationInfo.managedPrintOptions) {
+    options.managedPrintOptions = destinationInfo.managedPrintOptions;
+  }
+  // </if>
+
   return new Destination(
       destinationInfo.deviceName,
-      (isChromeOS || isLacros) ? DestinationOrigin.CROS :
-                                 DestinationOrigin.LOCAL,
+      isChromeOS ? DestinationOrigin.CROS : DestinationOrigin.LOCAL,
       destinationInfo.printerName, options);
 }
 

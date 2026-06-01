@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbwindow.h"
 
@@ -2591,7 +2592,7 @@ void QXcbWindow::setOpacity(qreal level)
     if (!m_window)
         return;
 
-    quint32 value = qRound64(qBound(qreal(0), level, qreal(1)) * 0xffffffff);
+    quint32 value = qRound64(qBound(qreal(0), level, qreal(1)) * qreal(0xffffffff));
 
     xcb_change_property(xcb_connection(),
                         XCB_PROP_MODE_REPLACE,

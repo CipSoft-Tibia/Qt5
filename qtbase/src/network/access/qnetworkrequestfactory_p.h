@@ -34,7 +34,6 @@ class QNetworkRequestFactoryPrivate : public QSharedData
 public:
     QNetworkRequestFactoryPrivate();
     explicit QNetworkRequestFactoryPrivate(const QUrl &baseUrl);
-    ~QNetworkRequestFactoryPrivate();
     QNetworkRequest newRequest(const QUrl &url) const;
     QUrl requestUrl(const QString *path = nullptr, const QUrlQuery *query = nullptr) const;
 

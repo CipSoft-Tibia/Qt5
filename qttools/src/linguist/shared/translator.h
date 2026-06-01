@@ -25,15 +25,6 @@ class QIODevice;
 class ConversionData
 {
 public:
-    ConversionData() :
-        m_verbose(false),
-        m_ignoreUnfinished(false),
-        m_sortContexts(false),
-        m_noUiLines(false),
-        m_idBased(false),
-        m_saveMode(SaveEverything)
-    {}
-
     // tag manipulation
     const QStringList &dropTags() const { return m_dropTags; }
     QStringList &dropTags() { return m_dropTags; }
@@ -41,9 +32,10 @@ public:
     bool isVerbose() const { return m_verbose; }
     bool ignoreUnfinished() const { return m_ignoreUnfinished; }
     bool sortContexts() const { return m_sortContexts; }
+    bool sortMessages() const { return m_sortMessages; }
 
     void appendError(const QString &error) { m_errors.append(error); }
-    QString error() const { return m_errors.isEmpty() ? QString() : m_errors.join(QLatin1Char('\n')) + QLatin1Char('\n'); }
+    QString error() const { return m_errors.isEmpty() ? QString() : m_errors.join(u'\n') + u'\n'; }
     QStringList errors() const { return  m_errors; }
     void clearErrors() { m_errors.clear(); }
 
@@ -62,12 +54,12 @@ public:
     QStringList m_includePath;
     QStringList m_dropTags;  // tags to be dropped
     QStringList m_errors;
-    bool m_verbose;
-    bool m_ignoreUnfinished;
-    bool m_sortContexts;
-    bool m_noUiLines;
-    bool m_idBased;
-    TranslatorSaveMode m_saveMode;
+    bool m_verbose = false;
+    bool m_ignoreUnfinished = false;
+    bool m_sortContexts = false;
+    bool m_sortMessages = false;
+    bool m_noUiLines = false;
+    TranslatorSaveMode m_saveMode = SaveEverything;
     QStringList m_rootDirs;
 };
 
@@ -114,6 +106,7 @@ public:
     void dropUiLines();
     void makeFileNamesAbsolute(const QDir &originalPath);
     bool translationsExist() const;
+    bool unfinishedTranslationsExist() const;
 
     using DuplicateEntries = QHash<int, QVector<int>>;
     struct Duplicates

@@ -8,6 +8,8 @@ source_set("indexed_db") {
   public = [ "indexed_db_control_wrapper.h" ]
 
   sources = [
+    "blob_reader.cc",
+    "blob_reader.h",
     "file_path_util.cc",
     "file_path_util.h",
     "file_stream_reader_to_data_pipe.cc",
@@ -72,6 +74,8 @@ source_set("indexed_db") {
     "list_set.h",
     "mock_browsertest_indexed_db_class_factory.cc",
     "mock_browsertest_indexed_db_class_factory.h",
+    "status.cc",
+    "status.h",
   ]
 
   deps = [
@@ -106,6 +110,7 @@ source_set("unit_tests") {
   }
 
   sources = [
+    "file_stream_reader_to_data_pipe_unittest.cc",
     "indexed_db_context_unittest.cc",
     "indexed_db_leveldb_coding_unittest.cc",
     "indexed_db_quota_client_unittest.cc",

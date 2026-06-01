@@ -6,6 +6,19 @@
 
 #include <QtGraphs/private/qgraphsglobal_p.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
+QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+                   "QT_BEGIN_NAMESPACE" \
+                   "class QQuickGraphsTextureData;" \
+                   "QT_END_NAMESPACE"
+               )
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DCreateGradient_entry, QSize textureSize);
+Q_TRACE_POINT(qtgraphs, QGraphs3DCreateGradient_exit);
+
 QQuickGraphsTextureData::QQuickGraphsTextureData() {}
 
 QQuickGraphsTextureData::~QQuickGraphsTextureData() {}
@@ -13,6 +26,7 @@ QQuickGraphsTextureData::~QQuickGraphsTextureData() {}
 void QQuickGraphsTextureData::createGradient(QLinearGradient gradient)
 {
     const qreal textureWidth = CommonUtils::maxTextureSize();
+    Q_TRACE_SCOPE(QGraphs3DCreateGradient, QSize(textureWidth, gradientTextureHeight));
     setSize(QSize(textureWidth, gradientTextureHeight));
     setFormat(QQuick3DTextureData::RGBA8);
     setHasTransparency(false);
@@ -31,14 +45,14 @@ void QQuickGraphsTextureData::createGradient(QLinearGradient gradient)
     for (int i = 1; i < stops.size(); i++) {
         QColor startColor = stops.at(i - 1).second;
         QColor endColor = stops.at(i).second;
-        int w = 0;
+        float w = 0.0f;
         w = (stops.at(i).first - stops.at(i - 1).first) * textureWidth;
 
         if (startColor.alphaF() < 1.0 || endColor.alphaF() < 1.0)
             setHasTransparency(true);
 
-        for (int t = 0; t <= w; t++) {
-            QColor color = linearInterpolate(startColor, endColor, t / float(w));
+        for (int t = 0; t <= static_cast<int>(w); t++) {
+            QColor color = linearInterpolate(startColor, endColor, t / w);
             int offset = x * 4;
             gradientScanline.data()[offset + 0] = char(color.red());
             gradientScanline.data()[offset + 1] = char(color.green());
@@ -63,3 +77,5 @@ QColor QQuickGraphsTextureData::linearInterpolate(QColor startColor, QColor endC
 
     return output;
 }
+
+QT_END_NAMESPACE

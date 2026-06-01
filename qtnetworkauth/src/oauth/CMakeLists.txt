@@ -33,6 +33,7 @@ qt_internal_add_module(NetworkAuth
 qt_internal_extend_target(NetworkAuth CONDITION QT_FEATURE_urischeme_replyhandler
     SOURCES
         qoauthurischemereplyhandler.cpp qoauthurischemereplyhandler.h
+        qoauthurischemereplyhandler_p.h
     LIBRARIES
         Qt::Gui
 )

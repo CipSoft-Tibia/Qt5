@@ -60,6 +60,9 @@ imagedirs  += images
 
 examplesinstallpath = wayland
 
+# Path to the root of qtwayland (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 # Add generic thumbnail for all examples
 manifestmeta.thumbnail.names = *
 

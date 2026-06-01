@@ -15,7 +15,7 @@ qt_internal_add_qml_module(LabsFolderListModel
         qquickfolderlistmodelglobal_p.h
     DEFINES
         QT_BUILD_LABSFOLDERMODEL_LIB
-    PUBLIC_LIBRARIES
+    LIBRARIES
         Qt::CorePrivate
         Qt::QmlPrivate
         Qt::QmlModelsPrivate

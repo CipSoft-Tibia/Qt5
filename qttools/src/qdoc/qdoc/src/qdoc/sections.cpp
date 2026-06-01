@@ -9,6 +9,7 @@
 #include "enumnode.h"
 #include "functionnode.h"
 #include "generator.h"
+#include "genustypes.h"
 #include "utilities.h"
 #include "namespacenode.h"
 #include "qmlpropertynode.h"
@@ -18,6 +19,7 @@
 #include "variablenode.h"
 
 #include <QtCore/qobjectdefs.h>
+#include <QtCore/qset.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,6 +74,7 @@ QList<Section> Sections::s_stdCppClassDetailsSections {
 };
 
 QList<Section> Sections::s_stdQmlTypeSummarySections {
+    { "Enumerations",        "enumeration",       "enumerations",        "", Section::Summary },
     { "Properties",          "property",          "properties",          "", Section::Summary },
     { "Attached Properties", "attached property", "attached properties", "", Section::Summary },
     { "Signals",             "signal",            "signals",             "", Section::Summary },
@@ -82,6 +85,7 @@ QList<Section> Sections::s_stdQmlTypeSummarySections {
 };
 
 QList<Section> Sections::s_stdQmlTypeDetailsSections {
+    { "Enumeration Documentation",       "member",         "members",         "qmlenum",    Section::Details },
     { "Property Documentation",          "member",         "members",         "qmlprop",    Section::Details },
     { "Attached Property Documentation", "member",         "members",         "qmlattprop", Section::Details },
     { "Signal Documentation",            "signal",         "signals",         "qmlsig",     Section::Details },
@@ -104,6 +108,7 @@ QList<Section> Sections::s_sinceSections {
     { "New Properties",              "", "", "", Section::Details },
     { "New Variables",               "", "", "", Section::Details },
     { "New QML Types",               "", "", "", Section::Details },
+    { "New QML Enumeration Types",   "", "", "", Section::Details },
     { "New QML Properties",          "", "", "", Section::Details },
     { "New QML Signals",             "", "", "", Section::Details },
     { "New QML Signal Handlers",     "", "", "", Section::Details },
@@ -167,7 +172,7 @@ QString sortName(const Node *node)
     if (node->isClassNode())
         return QLatin1Char('A') + nodeName;
 
-    if (node->isFunction(Node::CPP)) {
+    if (node->isFunction(Genus::CPP)) {
         const auto *fn = static_cast<const FunctionNode *>(node);
 
         QString sortNo;
@@ -188,7 +193,7 @@ QString sortName(const Node *node)
         return sortNo + nodeName + QLatin1Char(' ') + QString::number(fn->overloadNumber(), 36);
     }
 
-    if (node->isFunction(Node::QML))
+    if (node->isFunction(Genus::QML))
         return QLatin1Char('E') + nodeName + QLatin1Char(' ') +
             QString::number(static_cast<const FunctionNode*>(node)->overloadNumber(), 36);
 
@@ -345,22 +350,22 @@ Sections::Sections(Aggregate *aggregate) : m_aggregate(aggregate)
 {
     initAggregate(s_allMembers, m_aggregate);
     switch (m_aggregate->nodeType()) {
-    case Node::Class:
-    case Node::Struct:
-    case Node::Union:
+    case NodeType::Class:
+    case NodeType::Struct:
+    case NodeType::Union:
         initAggregate(s_stdCppClassSummarySections, m_aggregate);
         initAggregate(s_stdCppClassDetailsSections, m_aggregate);
         buildStdCppClassRefPageSections();
         break;
-    case Node::QmlType:
-    case Node::QmlValueType:
+    case NodeType::QmlType:
+    case NodeType::QmlValueType:
         initAggregate(s_stdQmlTypeSummarySections, m_aggregate);
         initAggregate(s_stdQmlTypeDetailsSections, m_aggregate);
         buildStdQmlTypeRefPageSections();
         break;
-    case Node::Namespace:
-    case Node::HeaderFile:
-    case Node::Proxy:
+    case NodeType::Namespace:
+    case NodeType::HeaderFile:
+    case NodeType::Proxy:
     default:
         initAggregate(s_stdSummarySections, m_aggregate);
         initAggregate(s_stdDetailsSections, m_aggregate);
@@ -381,18 +386,18 @@ Sections::Sections(const NodeMultiMap &nsmap) : m_aggregate(nullptr)
     for (auto it = nsmap.constBegin(); it != nsmap.constEnd(); ++it) {
         Node *node = it.value();
         switch (node->nodeType()) {
-        case Node::QmlType:
+        case NodeType::QmlType:
             sections[SinceQmlTypes].appendMember(node);
             break;
-        case Node::Namespace:
+        case NodeType::Namespace:
             sections[SinceNamespaces].appendMember(node);
             break;
-        case Node::Class:
-        case Node::Struct:
-        case Node::Union:
+        case NodeType::Class:
+        case NodeType::Struct:
+        case NodeType::Union:
             sections[SinceClasses].appendMember(node);
             break;
-        case Node::Enum: {
+        case NodeType::Enum: {
             // The map can contain an enum node with \since, or an enum node
             // with \value containing a since-clause. In the latter case,
             // key() is an empty string.
@@ -402,11 +407,11 @@ Sections::Sections(const NodeMultiMap &nsmap) : m_aggregate(nullptr)
                 sections[SinceEnumValues].appendMember(node);
             break;
         }
-        case Node::Typedef:
-        case Node::TypeAlias:
+        case NodeType::Typedef:
+        case NodeType::TypeAlias:
             sections[SinceTypeAliases].appendMember(node);
             break;
-        case Node::Function: {
+        case NodeType::Function: {
             const auto *fn = static_cast<const FunctionNode *>(node);
             switch (fn->metaness()) {
             case FunctionNode::QmlSignal:
@@ -440,14 +445,17 @@ Sections::Sections(const NodeMultiMap &nsmap) : m_aggregate(nullptr)
             }
             break;
         }
-        case Node::Property:
+        case NodeType::Property:
             sections[SinceProperties].appendMember(node);
             break;
-        case Node::Variable:
+        case NodeType::Variable:
             sections[SinceVariables].appendMember(node);
             break;
-        case Node::QmlProperty:
+        case NodeType::QmlProperty:
             sections[SinceQmlProperties].appendMember(node);
+            break;
+        case NodeType::QmlEnum:
+            sections[SinceQmlEnumTypes].appendMember(node);
             break;
         default:
             break;
@@ -465,15 +473,15 @@ Sections::~Sections()
 {
     if (m_aggregate) {
         switch (m_aggregate->nodeType()) {
-        case Node::Class:
-        case Node::Struct:
-        case Node::Union:
+        case NodeType::Class:
+        case NodeType::Struct:
+        case NodeType::Union:
             clear(stdCppClassSummarySections());
             clear(stdCppClassDetailsSections());
             allMembersSection().clear();
             break;
-        case Node::QmlType:
-        case Node::QmlValueType:
+        case NodeType::QmlType:
+        case NodeType::QmlValueType:
             clear(stdQmlTypeSummarySections());
             clear(stdQmlTypeDetailsSections());
             allMembersSection().clear();
@@ -542,20 +550,20 @@ void Sections::stdRefPageSwitch(SectionVector &v, Node *n)
 {
     auto *t = nodeToTestForDistribution(n);
     switch (t->nodeType()) {
-    case Node::Namespace:
+    case NodeType::Namespace:
         v[StdNamespaces].insert(n);
         return;
-    case Node::Class:
-    case Node::Struct:
-    case Node::Union:
+    case NodeType::Class:
+    case NodeType::Struct:
+    case NodeType::Union:
         v[StdClasses].insert(n);
         return;
-    case Node::Enum:
-    case Node::Typedef:
-    case Node::TypeAlias:
+    case NodeType::Enum:
+    case NodeType::Typedef:
+    case NodeType::TypeAlias:
         v[StdTypes].insert(n);
         return;
-    case Node::Function: {
+    case NodeType::Function: {
         auto *func = static_cast<FunctionNode *>(t);
         if (func->isMacro())
             v[StdMacros].insert(n);
@@ -563,7 +571,7 @@ void Sections::stdRefPageSwitch(SectionVector &v, Node *n)
             v[StdFunctions].insert(n);
     }
         return;
-    case Node::Variable: {
+    case NodeType::Variable: {
         const auto *var = static_cast<const VariableNode *>(t);
         if (!var->doc().isEmpty()) {
             if (var->isStatic())
@@ -709,11 +717,11 @@ void Sections::distributeNodeInSummaryVector(SectionVector &sv, Node *n)
         return;
     if (n->isProperty())
         sv[Properties].insert(n);
-    else if (n->isPublic())
+    else if (n->isPublic() && n->isInAPI())
         sv[PublicTypes].insert(n);
     else if (n->isPrivate())
         sv[PrivateTypes].insert(n);
-    else
+    else if (n->isProtected())
         sv[ProtectedTypes].insert(n);
 }
 
@@ -747,7 +755,7 @@ void Sections::distributeNodeInDetailsVector(SectionVector &dv, Node *n)
         dv[DetailsRelatedNonmembers].insert(n);
         return;
     }
-    if (t->isEnumType() || t->isTypedef()) {
+    if (t->isEnumType(Genus::CPP) || t->isTypedef()) {
         if (t->name() != QLatin1String("QtGadgetHelper"))
             dv[DetailsMemberTypes].insert(n);
         return;
@@ -775,6 +783,8 @@ void Sections::distributeQmlNodeInDetailsVector(SectionVector &dv, Node *n)
             dv[QmlAttachedProperties].insert(n);
         else
             dv[QmlProperties].insert(n);
+    } else if (t->isEnumType(Genus::QML)) {
+        dv[QmlEnumTypes].insert(n);
     } else if (t->isFunction()) {
         auto *fn = static_cast<FunctionNode *>(t);
         if (fn->isQmlSignal()) {
@@ -808,6 +818,8 @@ void Sections::distributeQmlNodeInSummaryVector(SectionVector &sv, Node *n, bool
             sv[QmlAttachedProperties].insert(pn);
         else
             sv[QmlProperties].insert(pn);
+    } else if (n->isEnumType(Genus::QML)) {
+        sv[QmlEnumTypes].insert(n);
     } else if (n->isFunction()) {
         auto *fn = static_cast<FunctionNode *>(n);
         if (fn->isQmlSignal()) {
@@ -869,17 +881,21 @@ void Sections::buildStdCppClassRefPageSections()
     }
 
     QStack<ClassNode *> stack;
+    QSet<ClassNode *> visited;
     auto *cn = static_cast<ClassNode *>(m_aggregate);
+
     pushBaseClasses(stack, cn);
     while (!stack.isEmpty()) {
-        ClassNode *cn = stack.pop();
-        for (auto it = cn->constBegin(); it != cn->constEnd(); ++it) {
-            Node *n = *it;
+        ClassNode *cur = stack.pop();
+        if (visited.contains(cur))
+            continue;
+        visited.insert(cur);
+        for (Node *n : cur->childNodes()) {
             if (!n->isPrivate() && !n->isProperty() && !n->isRelatedNonmember()
                 && !n->isSharedCommentNode())
                 allMembers.insert(n);
         }
-        pushBaseClasses(stack, cn);
+        pushBaseClasses(stack, cur);
     }
     reduce(summarySections);
     reduce(detailsSections);

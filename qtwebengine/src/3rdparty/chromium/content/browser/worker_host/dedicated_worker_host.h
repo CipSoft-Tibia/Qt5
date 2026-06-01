@@ -15,6 +15,7 @@
 #include "content/browser/browser_interface_broker_impl.h"
 #include "content/browser/buckets/bucket_context.h"
 #include "content/browser/renderer_host/code_cache_host_impl.h"
+#include "content/browser/security/dip/document_isolation_policy_reporter.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/dedicated_worker_creator.h"
 #include "content/public/browser/global_routing_id.h"
@@ -51,11 +52,12 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "third_party/blink/public/mojom/direct_sockets/direct_sockets.mojom-forward.h"
+#include "third_party/blink/public/mojom/hid/hid.mojom-forward.h"
 #include "third_party/blink/public/mojom/serial/serial.mojom-forward.h"
 #endif
 
 #if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
-#include "content/browser/compute_pressure/pressure_service_for_worker.h"
+#include "content/browser/compute_pressure/pressure_service_for_dedicated_worker.h"
 #include "third_party/blink/public/mojom/compute_pressure/web_pressure_manager.mojom.h"
 #endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
 
@@ -174,6 +176,7 @@ class CONTENT_EXPORT DedicatedWorkerHost final
 #if !BUILDFLAG(IS_ANDROID)
   void BindSerialService(
       mojo::PendingReceiver<blink::mojom::SerialService> receiver);
+  void BindHidService(mojo::PendingReceiver<blink::mojom::HidService> receiver);
 #endif
 
   // PlzDedicatedWorker:
@@ -229,7 +232,7 @@ class CONTENT_EXPORT DedicatedWorkerHost final
   }
 
 #if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
-  PressureServiceForWorker<DedicatedWorkerHost>* pressure_service() {
+  PressureServiceForDedicatedWorker* pressure_service() {
     return pressure_service_.get();
   }
 #endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
@@ -310,8 +313,9 @@ class CONTENT_EXPORT DedicatedWorkerHost final
 
   void OnMojoDisconnect();
 
-  // Returns whether creator and worker's COEP values are compatible.
-  bool CheckCrossOriginEmbedderPolicy();
+  // Returns whether creator and worker's COEP and Document-Isolation-Policy
+  // values are compatible.
+  bool CheckWebSecurityPolicies();
 
   base::WeakPtr<CrossOriginEmbedderPolicyReporter> GetWorkerCoepReporter();
 
@@ -390,8 +394,7 @@ class CONTENT_EXPORT DedicatedWorkerHost final
   std::unique_ptr<ServiceWorkerMainResourceHandle> service_worker_handle_;
 
 #if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
-  std::unique_ptr<PressureServiceForWorker<DedicatedWorkerHost>>
-      pressure_service_;
+  std::unique_ptr<PressureServiceForDedicatedWorker> pressure_service_;
 #endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
 
   // Script request URL used, only for DevTools and tracing. Only set after
@@ -435,6 +438,10 @@ class CONTENT_EXPORT DedicatedWorkerHost final
   // TODO(crbug.com/40093136): Remove `ancestor_coep_reporter_` once
   // PlzDedicatedWorker is enabled by default.
   base::WeakPtr<CrossOriginEmbedderPolicyReporter> ancestor_coep_reporter_;
+
+  // This is valid after DidStartScriptLoad() and remains non-null for the
+  // lifetime of `this`.
+  std::unique_ptr<DocumentIsolationPolicyReporter> dip_reporter_;
 
   // Will be set once the worker script started loading.
   std::optional<GURL> final_response_url_;

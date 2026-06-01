@@ -5,11 +5,14 @@ aidl = []
 assets = []
 has_classes_jar = true
 has_native_libraries = false
-has_proguard_flags = false
-has_r_text_file = false
+has_proguard_flags = true
+has_r_text_file = true
 is_manifest_empty = true
 manifest_package = "androidx.pdf.viewer.fragment"
 resources = [
+  "res/drawable/drag_indicator.xml",
+  "res/drawable/fast_scroll_vertical_thumb_drawable.xml",
+  "res/layout/pdf_viewer_fragment.xml",
   "res/values/values.xml"
 ]
 subjar_tuples = []

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "profile_io_data_qt.h"
 
@@ -191,6 +192,7 @@ std::unique_ptr<net::ClientCertStore> ProfileIODataQt::CreateClientCertStore()
 #endif
 }
 
+// Adapted from ProfileNetworkContextService::ConfigureNetworkContextParamsInternal()
 void ProfileIODataQt::ConfigureNetworkContextParams(bool in_memory,
                                                     const base::FilePath &relative_partition_path,
                                                     network::mojom::NetworkContextParams *network_context_params,
@@ -206,8 +208,7 @@ void ProfileIODataQt::ConfigureNetworkContextParams(bool in_memory,
     network_context_params->enable_referrers = true;
     // Encrypted cookies requires os_crypt, which currently has issues for us on Linux.
     network_context_params->enable_encrypted_cookies = false;
-    network_context_params->enable_zstd =
-            base::FeatureList::IsEnabled(net::features::kZstdContentEncoding);
+    network_context_params->enable_zstd = true;
 
     network_context_params->http_cache_enabled = m_httpCacheType != ProfileAdapter::NoCache;
     network_context_params->http_cache_max_size = m_httpCacheMaxSize;
@@ -231,11 +232,23 @@ void ProfileIODataQt::ConfigureNetworkContextParams(bool in_memory,
 
     network_context_params->enforce_chrome_ct_policy = false;
 
-    // Should be initialized with existing per-profile CORS access lists.
-    network_context_params->cors_origin_access_list =
-        m_profile->GetSharedCorsOriginAccessList()->GetOriginAccessList().CreateCorsOriginAccessPatternsList();
-
     m_proxyConfigMonitor->AddToNetworkContextParams(network_context_params);
+
+#if QT_CONFIG(ssl)
+    const auto additionalCertificates = m_profileAdapter->additionalTrustedCertificates();
+    if (!additionalCertificates.isEmpty()) {
+        auto additionalVerifiedCertificates = cert_verifier::mojom::AdditionalCertificates::New();
+
+        for (const QSslCertificate &certificate : additionalCertificates) {
+            const QByteArray certificateBytes = certificate.toDer();
+            additionalVerifiedCertificates->trust_anchors.push_back(
+                    std::vector<uint8_t>(certificateBytes.begin(), certificateBytes.end()));
+        }
+
+        cert_verifier_creation_params->initial_additional_certificates =
+                std::move(additionalVerifiedCertificates);
+    }
+#endif
 }
 
 // static

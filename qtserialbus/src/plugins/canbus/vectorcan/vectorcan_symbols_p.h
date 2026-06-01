@@ -1,5 +1,6 @@
 // Copyright (C) 2017 Denis Shienkov <denis.shienkov@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef VECTORCAN_SYMBOLS_P_H
 #define VECTORCAN_SYMBOLS_P_H
@@ -391,7 +392,9 @@ typedef qint16  XLstatus;
 
 // flags for channelCapabilities
 #define XL_CHANNEL_FLAG_TIME_SYNC_RUNNING   0x00000001
-#define XL_CHANNEL_FLAG_CANFD_SUPPORT       0x20000000
+#define XL_CHANNEL_FLAG_CANFD_BOSCH_SUPPORT 0x20000000
+#define XL_CHANNEL_FLAG_CANFD_ISO_SUPPORT   0x80000000
+#define XL_CHANNEL_FLAG_CANFD_SUPPORT       (XL_CHANNEL_FLAG_CANFD_BOSCH_SUPPORT | XL_CHANNEL_FLAG_CANFD_ISO_SUPPORT)
 
 // activate - channel flags
 #define XL_ACTIVATE_NONE        0

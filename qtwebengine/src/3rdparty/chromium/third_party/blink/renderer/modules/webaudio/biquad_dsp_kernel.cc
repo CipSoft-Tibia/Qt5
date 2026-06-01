@@ -125,13 +125,14 @@ void BiquadDSPKernel::UpdateCoefficientsIfNecessary(int frames_to_process) {
     if (GetBiquadProcessor()->HasSampleAccurateValues() &&
         GetBiquadProcessor()->IsAudioRate()) {
       GetBiquadProcessor()->Parameter1().CalculateSampleAccurateValues(
-          cutoff_frequency.data(), frames_to_process);
+          base::span(cutoff_frequency)
+              .first(static_cast<size_t>(frames_to_process)));
       GetBiquadProcessor()->Parameter2().CalculateSampleAccurateValues(
-          q.data(), frames_to_process);
+          base::span(q).first(static_cast<size_t>(frames_to_process)));
       GetBiquadProcessor()->Parameter3().CalculateSampleAccurateValues(
-          gain.data(), frames_to_process);
+          base::span(gain).first(static_cast<size_t>(frames_to_process)));
       GetBiquadProcessor()->Parameter4().CalculateSampleAccurateValues(
-          detune.data(), frames_to_process);
+          base::span(detune).first(static_cast<size_t>(frames_to_process)));
 
       // If all the values are actually constant for this render (or the
       // automation rate is "k-rate" for all of the AudioParams), we don't need

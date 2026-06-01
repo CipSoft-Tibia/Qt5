@@ -51,15 +51,15 @@ private:
             actualKeys.insert(it.key());
         const QSet<QString> missingKeys = requiredKeys - actualKeys;
         if (!missingKeys.isEmpty()) {
-            *m_errorString = FMT::tr("Missing keys in project description: %1.").arg(
-                    missingKeys.values().join(QLatin1String(", ")));
+            *m_errorString = FMT::tr("Missing keys in project description: %1.")
+                                     .arg(missingKeys.values().join(", "_L1));
             return false;
         }
         const QSet<QString> unexpected = actualKeys - allowedKeys;
         if (!unexpected.isEmpty()) {
-            *m_errorString = FMT::tr("Unexpected keys in project %1: %2").arg(
-                    project.value(QStringLiteral("projectFile")).toString(),
-                    unexpected.values().join(QLatin1String(", ")));
+            *m_errorString = FMT::tr("Unexpected keys in project %1: %2")
+                                     .arg(project.value(QStringLiteral("projectFile")).toString(),
+                                          unexpected.values().join(", "_L1));
             return false;
         }
         return isValidProjectDescription(project.value(QStringLiteral("subProjects")).toArray());
@@ -129,15 +129,15 @@ private:
             return {};
         Project result;
         QJsonObject obj = v.toObject();
-        result.filePath = stringValue(obj, QLatin1String("projectFile"));
-        result.compileCommands = stringValue(obj, QLatin1String("compileCommands"));
-        result.codec = stringValue(obj, QLatin1String("codec"));
-        result.excluded = wildcardsToRegExes(stringListValue(obj, QLatin1String("excluded")));
-        result.includePaths = stringListValue(obj, QLatin1String("includePaths"));
-        result.sources = stringListValue(obj, QLatin1String("sources"));
-        if (obj.contains(QLatin1String("translations")))
-            result.translations = stringListValue(obj, QLatin1String("translations"));
-        result.subProjects = convertProjects(obj.value(QLatin1String("subProjects")).toArray());
+        result.filePath = stringValue(obj, "projectFile"_L1);
+        result.compileCommands = stringValue(obj, "compileCommands"_L1);
+        result.codec = stringValue(obj, "codec"_L1);
+        result.excluded = wildcardsToRegExes(stringListValue(obj, "excluded"_L1));
+        result.includePaths = stringListValue(obj, "includePaths"_L1);
+        result.sources = stringListValue(obj, "sources"_L1);
+        if (obj.contains("translations"_L1))
+            result.translations = stringListValue(obj, "translations"_L1);
+        result.subProjects = convertProjects(obj.value("subProjects"_L1).toArray());
         return result;
     }
 

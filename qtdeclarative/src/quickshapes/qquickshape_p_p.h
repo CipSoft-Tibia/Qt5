@@ -47,7 +47,7 @@ public:
     virtual void endSync(bool async) = 0;
     virtual void setAsyncCallback(void (*)(void *), void *) { }
     virtual Flags flags() const { return {}; }
-    virtual void setPath(int index, const QQuickPath *path) = 0;
+    virtual void setPath(int index, const QQuickPath *path);
     virtual void setPath(int index, const QPainterPath &path, QQuickShapePath::PathHints pathHints = {}) = 0;
     virtual void setStrokeColor(int index, const QColor &color) = 0;
     virtual void setStrokeWidth(int index, qreal w) = 0;
@@ -69,6 +69,20 @@ public:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QQuickAbstractPathRenderer::Flags)
 
+inline void QQuickAbstractPathRenderer::setPath(int index, const QQuickPath *path)
+{
+    QQuickShapePath::PathHints hints;
+    QPainterPath newPath = path ? path->path() : QPainterPath();
+    if (const auto *shapePath = qobject_cast<const QQuickShapePath *>(path)) {
+        hints = shapePath->pathHints();
+        if (shapePath->hasTrim()) {
+            const QQuickShapeTrim *trim = const_cast<QQuickShapePath *>(shapePath)->trim();
+            newPath = path->path().trimmed(trim->start(), trim->end(), trim->offset());
+        }
+    }
+    setPath(index, newPath, hints);
+}
+
 struct QQuickShapeStrokeFillParams
 {
     QQuickShapeStrokeFillParams();
@@ -86,6 +100,7 @@ struct QQuickShapeStrokeFillParams
     QQuickShapeGradient *fillGradient;
     QSGTransform fillTransform;
     QQuickItem *fillItem;
+    QQuickShapeTrim *trim;
 };
 
 class Q_QUICKSHAPES_EXPORT QQuickShapePathPrivate : public QQuickPathPrivate
@@ -104,8 +119,9 @@ public:
         DirtyFillGradient = 0x80,
         DirtyFillTransform = 0x100,
         DirtyFillItem = 0x200,
+        DirtyTrim = 0x400,
 
-        DirtyAll = 0x3FF
+        DirtyAll = 0x7FF
     };
 
     QQuickShapePathPrivate();
@@ -116,6 +132,8 @@ public:
 
     void handleSceneChange();
 
+    void writeToDebugStream(QDebug &debug) const override;
+
     static QQuickShapePathPrivate *get(QQuickShapePath *p) { return p->d_func(); }
 
     int dirty;
@@ -123,13 +141,15 @@ public:
     QQuickShapePath::PathHints pathHints;
 };
 
-class QQuickShapePrivate : public QQuickItemPrivate
+class Q_QUICKSHAPES_EXPORT QQuickShapePrivate : public QQuickItemPrivate
 {
     Q_DECLARE_PUBLIC(QQuickShape)
 
 public:
     QQuickShapePrivate();
     ~QQuickShapePrivate();
+
+    void init();
 
     QQuickShape::RendererType selectRendererType();
     void createRenderer();

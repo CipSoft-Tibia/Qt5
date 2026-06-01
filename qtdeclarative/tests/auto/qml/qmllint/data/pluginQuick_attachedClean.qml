@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 
 Item {
+    id: root
     // QtQuick
     Accessible.name: "Foo"
     LayoutMirroring.enabled: true
@@ -28,4 +29,10 @@ Item {
         }
     }
     property bool swipeDelegate: SwipeDelegate.pressed // Read only
+
+    PropertyChanges {
+      // inside custom parser, can't be sensibly handled
+      target: root
+      Layout.leftMargin: 10 // qmllint disable Quick.property-changes-parsed
+    }
 }

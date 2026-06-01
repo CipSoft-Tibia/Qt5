@@ -34,7 +34,7 @@ private:
 
 private:
     using CellData = QHash<int, QVariant>;
-    using Position = QPair<int, int>;
+    using Position = std::pair<int, int>;
     QHash<Position, CellData> m_data;
     int m_columnCount = 0;
     int m_rowCount = 0;

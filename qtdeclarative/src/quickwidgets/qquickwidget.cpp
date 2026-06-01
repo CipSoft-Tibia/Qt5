@@ -276,6 +276,9 @@ void QQuickWidgetPrivate::handleWindowChange()
     renderControl = new QQuickWidgetRenderControl(q);
     initOffscreenWindow();
 
+    if (oldOffScreenWindow)
+        offscreenWindow->setColor(oldOffScreenWindow->color());
+
     QObject::connect(renderControl, SIGNAL(renderRequested()), q, SLOT(triggerUpdate()));
     QObject::connect(renderControl, SIGNAL(sceneChanged()), q, SLOT(triggerUpdate()));
 
@@ -1341,11 +1344,11 @@ void QQuickWidget::continueExecute()
     if (d->source.isEmpty())
         d->source = d->component->url();
 
-    if (d->setRootObject(obj.get()))
+    d->setRootObject(obj.get());
+    if (d->root)
         Q_UNUSED(obj.release());
     emit statusChanged(status());
 }
-
 
 /*!
   \internal

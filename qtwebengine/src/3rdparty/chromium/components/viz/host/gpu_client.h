@@ -12,7 +12,6 @@
 #include "base/memory/weak_ptr.h"
 #include "base/process/process_handle.h"
 #include "base/task/single_thread_task_runner.h"
-#include "build/chromeos_buildflags.h"
 #include "components/ml/buildflags.h"
 #include "components/viz/host/gpu_client_delegate.h"
 #include "components/viz/host/gpu_host_impl.h"
@@ -23,9 +22,9 @@
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "services/viz/public/mojom/gpu.mojom.h"
 
-#if !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
+#if BUILDFLAG(USE_ML)
 #include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
-#endif  // !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
+#endif  // BUILDFLAG(USE_ML)
 
 namespace viz {
 
@@ -59,10 +58,10 @@ class VIZ_HOST_EXPORT GpuClient : public mojom::Gpu {
   void RemoveDiskCacheHandles();
 
   base::WeakPtr<GpuClient> GetWeakPtr();
-#if !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
+#if BUILDFLAG(USE_ML)
   void BindWebNNContextProvider(
       mojo::PendingReceiver<webnn::mojom::WebNNContextProvider> receiver);
-#endif  // !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
+#endif  // BUILDFLAG(USE_ML)
 
   // mojom::ClientGmbInterface is direct interface between renderer and GPU
   // process to create GpuMemoryBuffers.
@@ -71,11 +70,11 @@ class VIZ_HOST_EXPORT GpuClient : public mojom::Gpu {
 
   void EstablishGpuChannel(EstablishGpuChannelCallback callback) override;
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
   void CreateJpegDecodeAccelerator(
       mojo::PendingReceiver<chromeos_camera::mojom::MjpegDecodeAccelerator>
           jda_receiver) override;
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
   void CreateVideoEncodeAcceleratorProvider(
       mojo::PendingReceiver<media::mojom::VideoEncodeAcceleratorProvider>
           vea_provider_receiver) override;

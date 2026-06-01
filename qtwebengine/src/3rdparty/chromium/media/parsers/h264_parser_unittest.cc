@@ -9,6 +9,7 @@
 
 #include "media/parsers/h264_parser.h"
 
+#include <array>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -25,6 +26,9 @@
 #include "ui/gfx/geometry/size.h"
 
 namespace media {
+
+constexpr char kTestFile[] = "test-25fps.h264";
+constexpr size_t kTestFileNALUnits = 1009;
 
 class H264SPSTest : public ::testing::Test {
  public:
@@ -105,9 +109,7 @@ TEST_F(H264SPSTest, GetVisibleRect) {
 }
 
 TEST(H264ParserTest, StreamFileParsing) {
-  base::FilePath file_path = GetTestDataFilePath("test-25fps.h264");
-  // Number of NALUs in the test stream to be parsed.
-  int num_nalus = 759;
+  base::FilePath file_path = GetTestDataFilePath(kTestFile);
 
   base::MemoryMappedFile stream;
   ASSERT_TRUE(stream.Initialize(file_path))
@@ -117,7 +119,7 @@ TEST(H264ParserTest, StreamFileParsing) {
   parser.SetStream(stream.data(), stream.length());
 
   // Parse until the end of stream/unsupported stream/error in stream is found.
-  int num_parsed_nalus = 0;
+  size_t num_parsed_nalus = 0;
   while (true) {
     media::H264SliceHeader shdr;
     media::H264SEI sei;
@@ -126,7 +128,7 @@ TEST(H264ParserTest, StreamFileParsing) {
     if (res == H264Parser::kEOStream) {
       DVLOG(1) << "Number of successfully parsed NALUs before EOS: "
                << num_parsed_nalus;
-      ASSERT_EQ(num_nalus, num_parsed_nalus);
+      ASSERT_EQ(kTestFileNALUnits, num_parsed_nalus);
       return;
     }
     ASSERT_EQ(res, H264Parser::kOk);
@@ -161,9 +163,7 @@ TEST(H264ParserTest, StreamFileParsing) {
 }
 
 TEST(H264ParserTest, ParseNALUsFromStreamFile) {
-  base::FilePath file_path = GetTestDataFilePath("test-25fps.h264");
-  // Number of NALUs in the test stream to be parsed.
-  const size_t num_nalus = 759;
+  base::FilePath file_path = GetTestDataFilePath(kTestFile);
 
   base::MemoryMappedFile stream;
   ASSERT_TRUE(stream.Initialize(file_path))
@@ -171,7 +171,7 @@ TEST(H264ParserTest, ParseNALUsFromStreamFile) {
 
   std::vector<H264NALU> nalus;
   ASSERT_TRUE(H264Parser::ParseNALUs(stream.data(), stream.length(), &nalus));
-  ASSERT_EQ(num_nalus, nalus.size());
+  ASSERT_EQ(kTestFileNALUnits, nalus.size());
 }
 
 // Verify that GetCurrentSubsamples works.
@@ -445,4 +445,61 @@ TEST(H264ParserTest, RecursiveSEIParsing) {
     }
   }
 }
+
+TEST(H264ParserTest, RangeChecks) {
+  H264Parser parser;
+  H264NALU nalu;
+  int id;
+
+  // PPS: pic_parameter_set_id = 0, seq_parameter_set_id = 0.
+  // second_chroma_qp_index_offset = 13 (invalid, range is -12 to 12).
+  // Encoded as se(v) -> ue(25) -> 0000 11010.
+  {
+    // SPS: High Profile (100), Level 1.0 (10), seq_parameter_set_id = 0.
+    // This is required because second_chroma_qp_index_offset is only parsed
+    // for High profile or above.
+    constexpr auto kSPS = std::to_array<uint8_t>({
+        0x00, 0x00, 0x01, 0x67,  // Header
+        0x64, 0x00, 0x0A,        // Profile/Level
+        0xF3, 0xDC, 0x40         // Payload
+    });
+    constexpr auto kPPS = std::to_array<uint8_t>({
+        0x00, 0x00, 0x01, 0x68,  // Header
+        0xCE, 0x38, 0x03, 0x50   // Payload
+    });
+
+    // Parse SPS.
+    parser.SetStream(kSPS);
+    ASSERT_EQ(H264Parser::kOk, parser.AdvanceToNextNALU(&nalu));
+    ASSERT_EQ(H264NALU::kSPS, nalu.nal_unit_type);
+    ASSERT_EQ(H264Parser::kOk, parser.ParseSPS(&id));
+
+    // Parse PPS.
+    parser.SetStream(kPPS);
+    ASSERT_EQ(H264Parser::kOk, parser.AdvanceToNextNALU(&nalu));
+    ASSERT_EQ(H264NALU::kPPS, nalu.nal_unit_type);
+
+    // This should fail because second_chroma_qp_index_offset is out of range.
+    EXPECT_EQ(H264Parser::kInvalidStream, parser.ParsePPS(&id));
+  }
+
+  // SEI: Recovery Point, changing_slice_group_idc = 3 (invalid, range 0-2).
+  {
+    media::H264SEI sei;
+    constexpr auto kSEI = std::to_array<uint8_t>({
+        0x00, 0x00, 0x01, 0x06,  // Header
+        0x06,                    // Payload type 6 (Recovery Point)
+        0x01,                    // Payload size 1
+        0x98,                    // Payload: changing_slice_group_idc = 3
+        0x80                     // RBSP stop bit
+    });
+
+    parser.SetStream(kSEI);
+    ASSERT_EQ(H264Parser::kOk, parser.AdvanceToNextNALU(&nalu));
+    ASSERT_EQ(H264NALU::kSEIMessage, nalu.nal_unit_type);
+
+    EXPECT_EQ(H264Parser::kInvalidStream, parser.ParseSEI(&sei));
+  }
+}
+
 }  // namespace media

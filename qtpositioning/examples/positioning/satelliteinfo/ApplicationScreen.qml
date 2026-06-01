@@ -135,6 +135,9 @@ Rectangle {
             sortFilterModel: root.sortFilterModel
             inViewColor: root.inViewColor
             inUseColor: root.inUseColor
+            onCleanupFocus: {
+                modeButton.forceActiveFocus()
+            }
         }
         RssiView {
             satellitesModel: root.satellitesModel

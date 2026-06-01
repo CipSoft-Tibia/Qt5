@@ -9,6 +9,8 @@
     \meta {tag} {demo,widgets,mainwindow}
     \brief A Widgets application to display and print JSON, text, and PDF files.
 
+    \image documentviewer_open.png
+           {Document viewer UI showing a 'Select Open Mode' pop-up}
 
     \e{Document Viewer} demonstrates how to use a QMainWindow with static
     and dynamic toolbars, menus, and actions. Additionally, it demonstrates
@@ -19,10 +21,10 @@
             and managing previously opened file history.
         \li Controlling cursor behavior when hovering over widgets.
         \li Creating dynamically loaded plugins.
+        \li Localizing the UI to different languages.
     \endlist
 
-    \image documentviewer_open.png
-
+    \include examples-run.qdocinc
 
     \section1 Creating an application and the main window
 
@@ -37,7 +39,6 @@
     \printuntil exec
     \printline }
 
-
     \section1 MainWindow class
 
     The \c MainWindow class provides an application screen with menus,
@@ -51,7 +52,6 @@
     Designer. The \c mainwindow.ui file provides a QTabWidget on the left,
     showing bookmarks and thumbnails. On the right, there is a QScrollArea for
     viewing file content.
-
 
     \section1 ViewerFactory class
 
@@ -94,7 +94,6 @@
     \skipto m_viewer->initViewer
     \printuntil }
 
-
     \section1 AbstractViewer class
 
     \c AbstractViewer provides a generalized API to view, save, and print a
@@ -125,22 +124,106 @@
     disabled. This happens after a new document was successfully loaded,
     or, for example, all content was removed.
 
-    \c {void printStatusChanged(AbstractViewer::PrintStatus status);}
+    \c {void showMessage(const QString &message, int timeout = 8000);}
 
-    After starting the printing process, this signal notifies about changes in
-    its progress.
+    This signal is emitted to display a status message to the user.
 
     \c {void documentLoaded(const QString &fileName);}
 
     This signal notifies the application that a document was successfully
     loaded.
 
-
     \section1 TxtViewer class
 
     \c TxtViewer is a simple text viewer, inheriting from AbstractViewer.
     It supports editing text files, copy/cut and paste, printing, and
     saving changes.
+
+    \section2 Class Definition
+
+    \snippet demos/documentviewer/plugins/txtviewer/txtviewer.h interfacing
+
+    The class definition starts with the \c Q_OBJECT macro, which handles
+    signals and slots. It is followed by the \c Q_PLUGIN_METADATA and
+    \c Q_INTERFACES macros which are necessary to register the plugin.
+
+    The class inherits from \c ViewerInterface, which inherits from
+    \c AbstractViewer. The \c ViewerInterface class is used to provide an
+    interface between the main window application and the plugin.
+
+    \c QPluginLoader also requires the file txtviewer.json, which has to contain
+    the plugin's key:
+    \code
+    { "Keys": [ "txtviewer" ] }
+    \endcode
+
+    The class defines no constructor, which means that only a standard
+    constructor without arguments is available. All other functions, including
+    the destructor, re-implement virtual functions of \c ViewerInterface. They
+    are used to exchange data, information, and instructions with the main
+    application.
+
+    \snippet demos/documentviewer/plugins/txtviewer/txtviewer.h classDefinition
+
+    \section2 TxtViewer Class Implementation
+
+    \snippet demos/documentviewer/plugins/txtviewer/txtviewer.cpp init
+
+    We start by including the header files necessary to access all classes used
+    by \c TxtViewer. We also include \c txtviewer.h.
+
+    \c QPrinter and \c QPrintDialog are only included if print support is
+    enabled on the compilation system.
+
+    Note that these headers are not included directly in \c mainwindow.h.
+    Including large headers in other header files can impact build performance.
+    In this case, it would not cause issues, but it is best practice to include
+    only the necessary headers to keep dependencies minimal.
+
+    The implementation starts with an empty destructor. It could be completely
+    omitted. It's good practice to implement it empty in order to point out to
+    code readers that nothing needs to be done in the destructor.
+
+    The destructor is followed by an initialization function, taking three
+    arguments:
+
+    \list
+    \li \c file, the pointer to the file to be opened and displayed.
+    \li \c parent, pointing to the \c QWidget inside which the editor shall be placed.
+    \li \c mainWindow, pointing to the application's main window, where menus and menu bars
+    are handled.
+    \endlist
+
+    The function calls the base init function of \c AbstractViewer. A new
+    QPlainTextEdit widget is created, which will display the file's contents.
+    Then, \c TxtViewer's setup function is connected to the base class'
+    \c uiInitialized signal.
+
+    The next function returns the list of mime types, which the text viewer
+    supports. Only plain text is supported.
+
+    The last initialization function adds viewer specific UI components like
+    menus, icons, buttons, and tooltips. It uses functionality provided by
+    \c AbstractViewer to make sure that these components are removed from the
+    application's main window, once another file is displayed with another
+    viewer plugin.
+
+    \snippet demos/documentviewer/plugins/txtviewer/txtviewer.cpp open
+
+    \c openFile opens a file, transfers its contents into the QPlainTextEdit,
+    and prints a status message for the user, depending on whether or not the
+    opening was successful.
+
+    \snippet demos/documentviewer/plugins/txtviewer/txtviewer.cpp infoPrintAndSave
+
+    The next re-implemented function tells the main application whether or not
+    the viewer plugin is actually displaying content.
+
+    If printing is supported on the compiling system, the next section
+    implements it.
+
+    The last two re-implementations provide functionality to save the current
+    file or to save it under a new name.
 
     \section1 ImageViewer class
 
@@ -173,16 +256,13 @@
 
     JsonViewer uses the top-level objects of the document as bookmarks for
     navigation. Other nodes (keys and values) can be added as additional
-    bookmarks, or removed from the bookmark list. A QLineEdit is used as a
-    search field to navigate through the JSON tree.
-
+    bookmarks, or removed from the bookmark list.
 
     \section1 PdfViewer class
 
     The \c PdfViewer class (and plugin) is a fork of the \l {PDF Viewer
     Widget Example}. It demonstrates the use of QScroller to smoothly
     flick through a document.
-
 
     \section1 Other relevant classes
 
@@ -302,4 +382,134 @@
     \dots
     \skipuntil RecentFiles
     \printline }
+
+    \section1 Translations
+
+    The application's user interface is available in English and German.
+    The default language is auto-selected by Qt: German if the system
+    language is German; otherwise, English. Also, the user can switch
+    the language in the \uicontrol Help > \uicontrol Language menu.
+    Each plugin, as well as the main application, is independently
+    responsible for loading its own translations during runtime.
+
+    \section2 CMake integration
+
+    The top-level CMakeLists.txt declares the shipped languages.
+
+    \quotefromfile demos/documentviewer/CMakeLists.txt
+    \skipto qt_standard_project_setup
+    \printuntil )
+
+    The \c documentviewer target defines the main application. It
+    stores and loads the localized strings for the target in
+    docviewer_de.ts and docviewer_en.ts files. Furthermore,
+    it merges the respective \c{qtbase translations} provided by
+    Qt into the generated translation files, so that
+    also Qt dialogs like the print dialog are properly translated:
+
+    \quotefromfile demos/documentviewer/app/CMakeLists.txt
+    \skipto qt_add_translations(documentviewer
+    \printuntil )
+
+    Each plugin level \c CMakeLists.txt invokes \c qt_add_translations only
+    on that plugin's source files (\c SOURCE_TARGETS).
+    Scoping the translation files to the plugin target prevents re-scanning
+    and retranslating the sources of the main application and other plugins:
+
+    \quotefromfile demos/documentviewer/plugins/txtviewer/CMakeLists.txt
+    \skipto qt_add_translations(txtviewer
+    \printuntil )
+
+    \section2 Translator class
+
+    The \c Translator class is a wrapper around Qt's \l QTranslator that manages
+    internationalization for both the main application and each plugin. Each
+    component (main application and plugins) has its own Translator instance,
+    enabling coordinated language switching across the entire application.
+    At startup or when the user selects a new language, \c Translator::install()
+    is called. This method uses \l QTranslator::load() to load translation files
+    based on the QLocale::uiLanguages() and the basename in the Qt resource system.
+    If no matching translation is found, it falls back to English.
+
+    \quotefromfile demos/documentviewer/app/translator.cpp
+    \skipto void Translator::install
+    \printuntil /^\}/
+
+    \section2 Plugin support
+
+    The \c AbstractViewer base class provides three methods so each plugin can
+    manage its own translation:
+
+    \list
+    \li \c AbstractViewer::setTranslationBaseName(): initializes a \c Translator
+    object, sets its basename, and installs it to load the default translations.
+
+    \quotefromfile demos/documentviewer/app/abstractviewer.cpp
+    \skipto setTranslationBaseName
+    \printuntil }
+
+    \li \c AbstractViewer::updateTranslation(): calls \c install() on the existing
+    Translator to install the new translations, and then calls \c retranslate() to
+    refresh all text.
+
+    \quotefromfile demos/documentviewer/app/abstractviewer.cpp
+    \skipto updateTranslation
+    \printuntil /^\}/
+
+    \li \c AbstractViewer::retranslate(): a virtual method that each plugin implements
+    to retranslate its own UI texts. For instance, as reimplemented in ImageViewer:
+
+    \quotefromfile demos/documentviewer/plugins/imageviewer/imageviewer.cpp
+    \skipto retranslate
+    \printuntil }
+
+    \endlist
+
+    \section2 Application startup
+
+    \list
+    \li \e{Main application}: in \c main.cpp we load the application's translation
+    before showing the window:
+
+    \quotefromfile demos/documentviewer/app/main.cpp
+    \skipto Translator mainTranslator;
+    \printuntil mainTranslator.install();
+
+    \li \e Plugins: each plugin calls \c AbstractViewer::setTranslationBaseName()
+    in its \c init() function to initialize a \l{Translator class}{Translator} with
+    their translation file name and install the translations of the current language.
+
+    \quotefromfile demos/documentviewer/plugins/imageviewer/imageviewer.cpp
+    \skipto ImageViewer::init(
+    \printuntil init
+    \dots
+    \skipto setTranslation
+    \printline setTranslation
+    \dots
+
+    \endlist
+
+    \section2 Runtime language switching
+
+    Runtime language switching can be done in two ways:
+    \list 1
+    \li Using the menu \uicontrol Help > \uicontrol Language:
+        Clicking on the \c QMenu item triggers \c MainWindow::onActionSwitchLanguage(),
+        which will install the new language and retranslate the main application and
+        the plugins:
+        \quotefromfile demos/documentviewer/app/mainwindow.cpp
+        \skipto void MainWindow::onActionSwitchLanguage
+        \printuntil }
+    \li Switching the language of the whole system at runtime:
+        The application can react to this by listening to the events and
+        calling \c MainWindow::onActionSwitchLanguage()
+        on the \c QEvent::LocaleChange event.
+        \quotefromfile demos/documentviewer/app/mainwindow.cpp
+        \skipto void MainWindow::changeEvent
+        \printuntil }
+    \endlist
+
+    \section1 Source files
+
+    \sa {All Qt examples}
 */

@@ -153,6 +153,7 @@ private slots:
     void http2handshake();
     void http2request();
     void socketDisconnected();
+    void keepAliveTimeout();
 
 private:
 #if QT_CONFIG(ssl)
@@ -880,6 +881,112 @@ void tst_QAbstractHttpServer::socketDisconnected()
 
 #else
     QSKIP("TLS/SSL is not available, skipping test");
+#endif // QT_CONFIG(ssl)
+}
+
+void tst_QAbstractHttpServer::keepAliveTimeout()
+{
+    struct HttpServer : QAbstractHttpServer
+    {
+        bool handleRequest(const QHttpServerRequest &, QHttpServerResponder &responder) override
+        {
+            auto _responder = std::move(responder);
+            return true;
+        }
+
+        void missingHandler(const QHttpServerRequest &, QHttpServerResponder &) override
+        {
+            Q_ASSERT(false);
+        }
+    } server;
+
+    QTcpServer tcpServer;
+    tcpServer.listen();
+    server.bind(&tcpServer);
+
+    QHttpServerConfiguration config;
+    config.setKeepAliveTimeout(2s);
+    server.setConfiguration(config);
+
+    // Test HTTP/1 connection
+
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, tcpServer.serverPort());
+    QVERIFY(client.waitForConnected());
+
+    client.write("GET / HTTP/1.1\r\nConnection: keep-alive\r\n\r\n");
+    client.waitForBytesWritten();
+
+    // sending another request before timeout
+    client.write("GET / HTTP/1.1\r\nConnection: keep-alive\r\n\r\n");
+    client.waitForBytesWritten();
+    QCOMPARE(client.state(), QAbstractSocket::ConnectedState);
+
+    // wait past the timeout
+    QTRY_COMPARE_WITH_TIMEOUT(client.state(), QAbstractSocket::UnconnectedState, 6000);
+
+#if QT_CONFIG(ssl)
+    if (!hasServerAlpn)
+        return;
+
+    // Test HTTP/2 connection
+
+    auto sslserver = std::make_unique<QSslServer>();
+    QSslConfiguration serverConfig = QSslConfiguration::defaultConfiguration();
+    serverConfig.setLocalCertificate(QSslCertificate(g_certificate));
+    serverConfig.setPrivateKey(QSslKey(g_privateKey, QSsl::Rsa));
+    serverConfig.setAllowedNextProtocols({ QSslConfiguration::ALPNProtocolHTTP2 });
+    sslserver->setSslConfiguration(serverConfig);
+    QVERIFY2(sslserver->listen(QHostAddress::LocalHost), "HTTPS server listen failed");
+    QVERIFY2(server.bind(sslserver.get()), "HTTPS server bind failed");
+    sslserver.release();
+
+    const auto serverPtr = server.servers().constLast();
+
+    // create two HTTP/2 connections
+    QSslSocketPtr socket1 = createNewConnection(serverPtr);
+    QVERIFY(socket1->isEncrypted());
+    QCOMPARE(socket1->state(), QAbstractSocket::ConnectedState);
+
+    QSslSocketPtr socket2 = createNewConnection(serverPtr);
+    QVERIFY(socket2->isEncrypted());
+    QCOMPARE(socket2->state(), QAbstractSocket::ConnectedState);
+
+    QHttp2Connection *connection1 = QHttp2Connection::createDirectConnection(socket1.get(), {});
+    QVERIFY(connection1);
+    QHttp2Connection *connection2 = QHttp2Connection::createDirectConnection(socket2.get(), {});
+    QVERIFY(connection2);
+
+    // wait for HTTP/2 handshake
+    QSignalSpy settingsFrameReceivedSpy1{ connection1, &QHttp2Connection::settingsFrameReceived };
+    connect(socket1.get(), &QIODevice::readyRead, connection1, &QHttp2Connection::handleReadyRead);
+    connection1->handleReadyRead();
+
+    QSignalSpy settingsFrameReceivedSpy2{ connection2, &QHttp2Connection::settingsFrameReceived };
+    connect(socket2.get(), &QIODevice::readyRead, connection2, &QHttp2Connection::handleReadyRead);
+    connection2->handleReadyRead();
+
+    auto stream1 = connection1->createStream().unwrap();
+    QVERIFY(stream1);
+    QVERIFY(settingsFrameReceivedSpy1.wait());
+
+    auto stream2 = connection2->createStream().unwrap();
+    QVERIFY(stream2);
+    QVERIFY(settingsFrameReceivedSpy2.wait());
+
+    // send a request on socket1
+    HPack::HttpHeader headers = {
+                                  { ":authority", "example.com" },
+                                  { ":method", "GET" },
+                                  { ":path", "/" },
+                                  { ":scheme", "https" },
+                                };
+    stream1->sendHEADERS(headers, true);
+
+    // the idle socket should be closed after timeout
+    QTRY_VERIFY_WITH_TIMEOUT(socket2->state() == QAbstractSocket::UnconnectedState, 6000);
+    // the active connection should remain open
+    QVERIFY(socket1->state() == QAbstractSocket::ConnectedState);
 #endif // QT_CONFIG(ssl)
 }
 

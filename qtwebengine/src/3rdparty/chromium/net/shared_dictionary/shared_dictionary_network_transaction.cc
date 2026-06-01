@@ -132,8 +132,9 @@ int SharedDictionaryNetworkTransaction::Start(const HttpRequestInfo* request,
 SharedDictionaryNetworkTransaction::SharedDictionaryEncodingType
 SharedDictionaryNetworkTransaction::ParseSharedDictionaryEncodingType(
     const HttpResponseHeaders& headers) {
-  std::string content_encoding;
-  if (!headers.GetNormalizedHeader("Content-Encoding", &content_encoding)) {
+  std::optional<std::string> content_encoding =
+      headers.GetNormalizedHeader("Content-Encoding");
+  if (!content_encoding) {
     return SharedDictionaryEncodingType::kNotUsed;
   } else if (content_encoding ==
              shared_dictionary::kSharedBrotliContentEncodingName) {
@@ -192,14 +193,14 @@ void SharedDictionaryNetworkTransaction::ModifyRequestHeaders(
   if (!IsLocalhost(request_url)) {
     if (!base::FeatureList::IsEnabled(
             features::kCompressionDictionaryTransportOverHttp1) &&
-        negotiated_protocol_ != kProtoHTTP2 &&
-        negotiated_protocol_ != kProtoQUIC) {
+        negotiated_protocol_ != NextProto::kProtoHTTP2 &&
+        negotiated_protocol_ != NextProto::kProtoQUIC) {
       shared_dictionary_.reset();
       return;
     }
     if (!base::FeatureList::IsEnabled(
             features::kCompressionDictionaryTransportOverHttp2) &&
-        negotiated_protocol_ == kProtoHTTP2) {
+        negotiated_protocol_ == NextProto::kProtoHTTP2) {
       shared_dictionary_.reset();
       return;
     }
@@ -483,7 +484,7 @@ int SharedDictionaryNetworkTransaction::ResumeNetworkStart() {
 void SharedDictionaryNetworkTransaction::SetModifyRequestHeadersCallback(
     base::RepeatingCallback<void(HttpRequestHeaders*)> callback) {
   // This method should not be called for this class.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void SharedDictionaryNetworkTransaction::

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
@@ -11,6 +12,8 @@
 #include "web_contents_delegate_qt.h"
 #include "web_contents_view_qt.h"
 #include "web_engine_settings.h"
+#include "permission_manager_qt.h"
+#include "type_conversion.h"
 
 #include "base/strings/strcat.h"
 #include "blink/public/common/page/page_zoom.h"
@@ -21,6 +24,8 @@
 #include "content/public/browser/desktop_streams_registry.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/media_capture_devices.h"
+#include "content/public/browser/permission_controller_delegate.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "media/audio/audio_device_description.h"
 #include "media/audio/audio_manager_base.h"
@@ -187,7 +192,7 @@ std::string DeviceNamePrefix(content::WebContents *web_contents,
     // dialog for DISPLAY_VIDEO_CAPTURE_THIS_TAB could still return something
     // other than the current tab - be it a screen, window, or another tab.
     if (media_id.type == content::DesktopMediaID::TYPE_WEB_CONTENTS &&
-            web_contents->GetPrimaryMainFrame()->GetProcess()->GetID() ==
+            web_contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID() ==
                 media_id.web_contents_id.render_process_id &&
             web_contents->GetPrimaryMainFrame()->GetRoutingID() ==
                 media_id.web_contents_id.main_render_frame_id) {
@@ -493,8 +498,17 @@ void MediaCaptureDevicesDispatcher::processMediaAccessRequest(
     }
 
     enqueueMediaAccessRequest(webContents, request, std::move(callback), id);
-    // We might not require this approval for pepper requests.
-    adapterClient->runMediaAccessPermissionRequest(toQt(request.security_origin), flags);
+
+    PermissionManagerQt *permissionManager = static_cast<PermissionManagerQt *>(
+        webContents->GetBrowserContext()->GetPermissionControllerDelegate());
+    permissionManager->requestMediaPermissions(
+        content::RenderFrameHost::FromID(request.render_process_id, request.render_frame_id),
+        flags,
+        base::BindOnce(
+            &MediaCaptureDevicesDispatcher::handleMediaAccessPermissionResponse,
+            base::Unretained(this),
+            webContents,
+            toQt(request.url_origin)));
 }
 
 void MediaCaptureDevicesDispatcher::processDesktopCaptureAccessRequest(content::WebContents *webContents, const content::MediaStreamRequest &request, content::MediaResponseCallback callback)
@@ -509,7 +523,7 @@ void MediaCaptureDevicesDispatcher::processDesktopCaptureAccessRequest(content::
     if (main_frame) {
         // Resolve DesktopMediaID for the specified device id.
         mediaId = content::DesktopStreamsRegistry::GetInstance()->RequestMediaForStreamId(
-                request.requested_video_device_ids.front(), main_frame->GetProcess()->GetID(),
+                request.requested_video_device_ids.front(), main_frame->GetProcess()->GetDeprecatedID(),
                 main_frame->GetRoutingID(), url::Origin::Create(request.security_origin),
                 content::kRegistryStreamTypeDesktop);
     }
@@ -558,9 +572,18 @@ void MediaCaptureDevicesDispatcher::ProcessQueuedAccessRequest(content::WebConte
 
     RequestsQueue &queue(it->second);
     content::MediaStreamRequest &request = queue.front()->request;
+    WebContentsAdapterClient::MediaRequestFlags flags = mediaRequestFlagsForRequest(request);
 
-    WebContentsAdapterClient *adapterClient = WebContentsViewQt::from(static_cast<content::WebContentsImpl *>(webContents)->GetView())->client();
-    adapterClient->runMediaAccessPermissionRequest(toQt(request.security_origin), mediaRequestFlagsForRequest(request));
+    PermissionManagerQt *permissionManager = static_cast<PermissionManagerQt *>(
+        webContents->GetBrowserContext()->GetPermissionControllerDelegate());
+    permissionManager->requestMediaPermissions(
+        content::RenderFrameHost::FromID(request.render_process_id, request.render_frame_id),
+        flags,
+        base::BindOnce(
+            &MediaCaptureDevicesDispatcher::handleMediaAccessPermissionResponse,
+            base::Unretained(this),
+            webContents,
+            toQt(request.url_origin)));
 }
 
 void MediaCaptureDevicesDispatcher::getDefaultDevices(const std::string &audioDeviceId, const std::string &videoDeviceId,

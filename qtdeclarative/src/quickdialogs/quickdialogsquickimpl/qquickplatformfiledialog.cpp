@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickplatformfiledialog_p.h"
 
@@ -11,6 +12,7 @@
 #include <QtQuick/qquickwindow.h>
 #include <QtQuickDialogs2Utils/private/qquickfilenamefilter_p.h>
 #include <QtQuickTemplates2/private/qquickdialog_p.h>
+#include <QtQuickTemplates2/private/qquickdialog_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopupanchors_p.h>
 
@@ -120,7 +122,7 @@ void QQuickPlatformFileDialog::selectFile(const QUrl &file)
 // TODO: support for multiple selected files
 QList<QUrl> QQuickPlatformFileDialog::selectedFiles() const
 {
-    if (m_dialog->selectedFile().isEmpty())
+    if (!m_dialog || m_dialog->selectedFile().isEmpty())
         return {};
 
     return { m_dialog->selectedFile() };
@@ -177,6 +179,7 @@ bool QQuickPlatformFileDialog::show(Qt::WindowFlags flags, Qt::WindowModality mo
 
     auto popupPrivate = QQuickPopupPrivate::get(m_dialog);
     popupPrivate->getAnchors()->setCenterIn(m_dialog->parentItem());
+    popupPrivate->setPopupWindowFlags(flags);
 
     QSharedPointer<QFileDialogOptions> options = QPlatformFileDialogHelper::options();
     m_dialog->setTitle(options->windowTitle());
@@ -195,7 +198,7 @@ bool QQuickPlatformFileDialog::show(Qt::WindowFlags flags, Qt::WindowModality mo
             m_dialog->setCurrentFolder(QUrl::fromLocalFile(QDir().absolutePath()));
         }
     }
-
+    m_dialog->setWindowModality(modality);
     m_dialog->open();
     return true;
 }

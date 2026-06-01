@@ -1,10 +1,10 @@
 // Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 import QtQuick
-import QtQuick.Shapes
 import qtjenny_consumer
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQml
 
 ApplicationWindow {
     id: mainWindow
@@ -14,14 +14,6 @@ ApplicationWindow {
     property string wakeLockStatus: ""
     property bool isPortrait: Screen.primaryOrientation === Qt.LandscapeOrientation ? false : true
 
-    Connections {
-        target: myBackEnd
-        onShowPopup: {
-            popup.open()
-            popupText.text = volumeDisabledReason
-        }
-    }
-
     Popup {
         id: popup
 
@@ -30,7 +22,6 @@ ApplicationWindow {
         padding: 20
         anchors.centerIn: parent
         width: parent.width / 1.5
-        closePolicy: Popup.CloseOnPressOutside
 
         contentItem: Text {
             id: popupText
@@ -38,10 +29,32 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             font.pointSize: 15
         }
+
+        Timer {
+            id: popupClosingTimer
+
+            interval: 4000
+            repeat: false
+
+            onTriggered: {
+                myBackEnd.manageWriteSystemSettings()
+                popup.close()
+            }
+        }
     }
 
     BackEnd {
         id: myBackEnd
+
+        onShowPopup: function(message) {
+            popupText.text = message
+            popup.open()
+            if (!myBackEnd.canWriteSystemSettings) {
+                popup.closePolicy = Popup.NoAutoClose
+                popupClosingTimer.start()
+            } else
+                popup.closePolicy = Popup.CloseOnPressOutside
+        }
     }
 
     Text {
@@ -51,7 +64,7 @@ ApplicationWindow {
         font.pointSize: 26
         anchors {
             bottom: mainGrid.top
-            bottomMargin: isPortrait ? 50 : 10
+            bottomMargin: mainWindow.isPortrait ? 50 : 10
             horizontalCenter: mainGrid.horizontalCenter
         }
     }
@@ -65,9 +78,9 @@ ApplicationWindow {
         GridLayout {
             id: innerGrid
 
-            columns: isPortrait ? 1 : 2
-            rows: isPortrait ? 4 : 2
-            Layout.columnSpan: isPortrait ? 1 : 2
+            columns: mainWindow.isPortrait ? 1 : 2
+            rows: mainWindow.isPortrait ? 4 : 2
+            Layout.columnSpan: mainWindow.isPortrait ? 1 : 2
             Layout.alignment: Qt.AlignHCenter
 
             Text {
@@ -77,33 +90,17 @@ ApplicationWindow {
                 font.pointSize: 16
             }
 
-            Row {
-                id: volumeControlRow
+            Slider {
+                id: volumeSlider
 
-                spacing: 5
+                from: myBackEnd.minVolume
+                to: myBackEnd.maxVolume
+                stepSize: 1
+                value: myBackEnd.volume
 
-                Button {
-                    id: volumeUpButton
-
-                    text: "+"
-                    highlighted: true
-                    enabled: !myBackEnd.isFixedVolume
-
-                    onClicked: {
-                        myBackEnd.adjustVolume(1)
-                    }
-                }
-
-                Button {
-                    id: volumeDownButton
-
-                    text: "-"
-                    highlighted: true
-                    enabled: !myBackEnd.isFixedVolume
-
-                    onClicked: {
-                        myBackEnd.adjustVolume(0)
-                    }
+                onValueChanged: {
+                    if (myBackEnd.volume != volumeSlider.value)
+                        myBackEnd.volume = volumeSlider.value
                 }
             }
 
@@ -112,34 +109,20 @@ ApplicationWindow {
 
                 text: "Brightness control"
                 font.pointSize: 16
-                Layout.topMargin: isPortrait ? 20 : 0
+                Layout.topMargin: mainWindow.isPortrait ? 20 : 0
             }
 
-            Row {
-                id: brightnessControlRow
+            Slider {
+                id: brightnessSlider
 
-                spacing: 5
+                from: 0
+                to: 255
+                stepSize: 1
+                value: myBackEnd.brightness
 
-                Button {
-                    id: brightnessUpButton
-
-                    text: "+"
-                    highlighted: true
-
-                    onClicked: {
-                        myBackEnd.adjustBrightness(1)
-                    }
-                }
-
-                Button {
-                    id: brightnessDownButton
-
-                    text: "-"
-                    highlighted: true
-
-                    onClicked: {
-                        myBackEnd.adjustBrightness(0)
-                    }
+                onValueChanged: {
+                    if (myBackEnd.brightness != brightnessSlider.value)
+                        myBackEnd.brightness = brightnessSlider.value
                 }
             }
         }
@@ -149,10 +132,10 @@ ApplicationWindow {
 
             columns: 2
             rows: 1
-            Layout.columnSpan: isPortrait ? 1 : 2
-            Layout.topMargin: isPortrait ? 30 : 10
+            Layout.columnSpan: mainWindow.isPortrait ? 1 : 2
+            Layout.topMargin: mainWindow.isPortrait ? 30 : 10
             Layout.alignment: Qt.AlignHCenter
-            columnSpacing: isPortrait ? 20 : 40
+            columnSpacing: mainWindow.isPortrait ? 20 : 40
 
             Button {
                 id: vibrateButton
@@ -182,8 +165,8 @@ ApplicationWindow {
 
             columns: 2
             rows: 2
-            Layout.columnSpan: isPortrait ? 1 : 2
-            Layout.topMargin: isPortrait ? 30 : 10
+            Layout.columnSpan: mainWindow.isPortrait ? 1 : 2
+            Layout.topMargin: mainWindow.isPortrait ? 30 : 10
             Layout.alignment: Qt.AlignLeft
             rowSpacing: 10
 

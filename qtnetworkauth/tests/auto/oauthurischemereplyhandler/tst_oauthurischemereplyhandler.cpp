@@ -6,6 +6,7 @@
 
 #include <QtGui/qdesktopservices.h>
 
+#include <QtNetworkAuth/private/qoauthurischemereplyhandler_p.h>
 #include <QtNetworkAuth/qoauth2authorizationcodeflow.h>
 #include <QtNetworkAuth/qoauthurischemereplyhandler.h>
 
@@ -43,6 +44,23 @@ private:
     const QVariantMap stateCodeMap{{"state"_L1, state}, {"code"_L1, code}};
 };
 
+// This class is used to access reply handler's private class in order
+// to prevent it from forwarding unhandled URLs. Forwarding these URLs
+// may trigger platform dialogues, which may be problematic for CI runs.
+// These autotests themselves don't rely on the forwarded URL triggering
+// anything in particular, so disabling them is fine.
+class UriSchemeReplyHandler : public QOAuthUriSchemeReplyHandler
+{
+public:
+    using QOAuthUriSchemeReplyHandler::QOAuthUriSchemeReplyHandler;
+
+    void setForwardUnhandledUrls(bool enabled)
+    {
+        auto *d = static_cast<QOAuthUriSchemeReplyHandlerPrivate *>(d_ptr.get());
+        d->forwardUnhandledUrls = enabled;
+    }
+};
+
 void tst_QOAuthUriSchemeReplyHandler::construction()
 {
     QOAuthUriSchemeReplyHandler rh1;
@@ -58,7 +76,8 @@ void tst_QOAuthUriSchemeReplyHandler::construction()
 
 void tst_QOAuthUriSchemeReplyHandler::redirectUrl()
 {
-    QOAuthUriSchemeReplyHandler rh;
+    UriSchemeReplyHandler rh;
+    rh.setForwardUnhandledUrls(false);
     QSignalSpy urlChangedSpy(&rh, &QOAuthUriSchemeReplyHandler::redirectUrlChanged);
 
     rh.setRedirectUrl(customUrlWithPath);
@@ -89,7 +108,8 @@ void tst_QOAuthUriSchemeReplyHandler::listenClose()
 {
     const QUrl scheme1 = u"scheme1:/foo"_s;
     const QUrl scheme2 = u"scheme2:/foo"_s;
-    QOAuthUriSchemeReplyHandler rh;
+    UriSchemeReplyHandler rh;
+    rh.setForwardUnhandledUrls(false);
     QSignalSpy callbackSpy(&rh, &QAbstractOAuthReplyHandler::callbackReceived);
 
     rh.setRedirectUrl(scheme1);
@@ -101,12 +121,12 @@ void tst_QOAuthUriSchemeReplyHandler::listenClose()
     QDesktopServices::openUrl(scheme2);
     QCOMPARE(callbackSpy.size(), 2);
 
-    QDesktopServices::openUrl(scheme1); // Previous scheme should be unregistered
+    // Verify old scheme is no longer accepted by the handler
+    QVERIFY(!rh.handleAuthorizationRedirect(scheme1));
     QCOMPARE(callbackSpy.size(), 2);
 
     rh.close();
-    QDesktopServices::openUrl(scheme2);
-    QCOMPARE(callbackSpy.size(), 2);
+    QVERIFY(!rh.isListening());
 }
 
 void tst_QOAuthUriSchemeReplyHandler::authorization_data()
@@ -129,6 +149,29 @@ void tst_QOAuthUriSchemeReplyHandler::authorization_data()
         << QUrl{"com.example://cb.example.org/a_path"_L1}
         << QUrl{"com.example://cb.example.org/a_path"_L1 + stateCodeQuery}
         << true << stateCodeMap;
+
+    QTest::newRow("match_with_empty_path_1")
+        << QUrl{"com.example://cb.example.org/"_L1}
+        << QUrl{"com.example://cb.example.org/"_L1 + stateCodeQuery}
+        << true << stateCodeMap;
+
+    // No path vs empty path
+    QTest::newRow("match_with_empty_path_2")
+        << QUrl{"com.example://cb.example.org"_L1}
+        << QUrl{"com.example://cb.example.org/"_L1 + stateCodeQuery}
+        << true << stateCodeMap;
+
+    // Empty path vs no path
+    QTest::newRow("match_with_empty_path_3")
+        << QUrl{"com.example://cb.example.org/"_L1}
+        << QUrl{"com.example://cb.example.org"_L1 + stateCodeQuery}
+        << true << stateCodeMap;
+
+    // Empty path vs no path, and host mismatch
+    QTest::newRow("match_with_empty_path_4")
+        << QUrl{"com.example://cb.abc.example.org/"_L1}
+        << QUrl{"com.example://cb.def.example.org"_L1 + stateCodeQuery}
+        << false << stateCodeMap;
 
     QVariantMap resultParameters = stateCodeMap;
     resultParameters.insert("lang"_L1, "de");
@@ -159,7 +202,8 @@ void tst_QOAuthUriSchemeReplyHandler::authorization()
     QFETCH(const bool, matches);
     QFETCH(const QVariantMap, result_parameters);
 
-    QOAuthUriSchemeReplyHandler rh;
+    UriSchemeReplyHandler rh;
+    rh.setForwardUnhandledUrls(false);
     rh.setRedirectUrl(registered_redirect_uri);
     rh.listen();
 
@@ -216,7 +260,8 @@ void tst_QOAuthUriSchemeReplyHandler::callbackDataReceived()
 {
     QFETCH(const QUrl, response_redirect_uri);
 
-    QOAuthUriSchemeReplyHandler rh(QUrl{u"io:/path"_s});
+    UriSchemeReplyHandler rh(QUrl{u"io:/path"_s});
+    rh.setForwardUnhandledUrls(false);
     QSignalSpy spy(&rh, &QOAuthUriSchemeReplyHandler::callbackDataReceived);
     QVERIFY(rh.isListening());
 

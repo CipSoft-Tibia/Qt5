@@ -133,7 +133,9 @@ def _get_gpus(spec_value):
         <vendor ID>:<device ID>-<driver>.
     """
     dimensions = _get_dimensions(spec_value)
-    return dimensions.get("gpu", []).split("|")
+    if "gpu" not in dimensions:
+        return []
+    return dimensions["gpu"].split("|")
 
 def _get_android_vulkan_device(settings, spec_value):
     if settings.os_type == common.os_type.ANDROID:
@@ -149,17 +151,17 @@ def _gpu_expected_vendor_id(_, settings, spec_value):
     so multiple found vendors is an error.
     """
     if _is_skylab(settings):
-        return _gpu_expected_vendor_id_skylab(settings)
+        return _gpu_expected_vendor_id_skylab(spec_value)
     gpus = _get_gpus(spec_value)
 
     # We don't specify GPU on things like Android and certain CrOS devices, so
     # default to 0.
     if not gpus:
-        return ["--expected-vendor-id", "0"]
+        vulkan_device = _get_android_vulkan_device(settings, spec_value)
+        if vulkan_device:
+            return ["--expected-vendor-id", vulkan_device.vendor]
 
-    vulkan_device = _get_android_vulkan_device(settings, spec_value)
-    if vulkan_device:
-        return ["--expected-vendor-id", vulkan_device.vendor]
+        return ["--expected-vendor-id", "0"]
 
     vendor_ids = set()
     for gpu_and_driver in gpus:
@@ -193,16 +195,16 @@ def _gpu_expected_device_id(_, settings, spec_value):
 
     # We don't specify GPU on things like Android/CrOS devices, so default to 0.
     if not gpus:
-        return ["--expected-device-id", "0"]
+        vulkan_device = _get_android_vulkan_device(settings, spec_value)
+        if vulkan_device:
+            device_ids = vulkan_device.device.split(",")
+            commands = []
+            for index, device_id in enumerate(device_ids):
+                commands.append("--expected-device-id")
+                commands.append(device_ids[index])
+            return commands
 
-    vulkan_device = _get_android_vulkan_device(settings, spec_value)
-    if vulkan_device:
-        device_ids = vulkan_device.device.split(",")
-        commands = []
-        for index, device_id in enumerate(device_ids):
-            commands.append("--expected-device-id")
-            commands.append(device_ids[index])
-        return commands
+        return ["--expected-device-id", "0"]
 
     device_ids = set()
     for gpu_and_driver in gpus:
@@ -289,6 +291,7 @@ def _gpu_telemetry_no_root_for_unrooted_devices(_, settings, spec_value):
 
     unrooted_devices = (
         "a13",
+        "a13ve",
         "a23",
         "dm1q",  # Samsung S23.
         "devonn",  # Motorola Moto G Power 5G.
@@ -310,7 +313,7 @@ def _gpu_webgl_runtime_file(_, settings, spec_value):
     # Default to using Linux's file if we're on a platform that we don't
     # actively maintain runtime files for.
     chosen_os = settings.os_type
-    if chosen_os in (
+    if chosen_os not in (
         common.os_type.ANDROID,
         common.os_type.LINUX,
         common.os_type.MAC,

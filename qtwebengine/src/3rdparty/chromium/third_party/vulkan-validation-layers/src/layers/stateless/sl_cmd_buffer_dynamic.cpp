@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,14 @@
  */
 
 #include "stateless/stateless_validation.h"
-#include "generated/layer_chassis_dispatch.h"
+#include "generated/dispatch_functions.h"
 
-bool StatelessValidation::manual_PreCallValidateCmdSetViewportWithCount(VkCommandBuffer commandBuffer, uint32_t viewportCount,
-                                                                        const VkViewport *pViewports,
-                                                                        const ErrorObject &error_obj) const {
+namespace stateless {
+
+bool Device::manual_PreCallValidateCmdSetViewportWithCount(VkCommandBuffer commandBuffer, uint32_t viewportCount,
+                                                           const VkViewport *pViewports, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!enabled_features.multiViewport) {
         if (viewportCount != 1) {
@@ -36,7 +38,7 @@ bool StatelessValidation::manual_PreCallValidateCmdSetViewportWithCount(VkComman
                              error_obj.location.dot(Field::viewportCount),
                              "(%" PRIu32
                              ") must "
-                             "not be greater than VkPhysicalDeviceLimits::maxViewports (=%" PRIu32 ").",
+                             "not be greater than VkPhysicalDeviceLimits::maxViewports (%" PRIu32 ").",
                              viewportCount, device_limits.maxViewports);
         }
     }
@@ -51,10 +53,10 @@ bool StatelessValidation::manual_PreCallValidateCmdSetViewportWithCount(VkComman
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetScissorWithCount(VkCommandBuffer commandBuffer, uint32_t scissorCount,
-                                                                       const VkRect2D *pScissors,
-                                                                       const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetScissorWithCount(VkCommandBuffer commandBuffer, uint32_t scissorCount,
+                                                          const VkRect2D *pScissors, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (!enabled_features.multiViewport) {
         if (scissorCount != 1) {
             skip |= LogError("VUID-vkCmdSetScissorWithCount-scissorCount-03398", commandBuffer,
@@ -116,11 +118,13 @@ bool StatelessValidation::manual_PreCallValidateCmdSetScissorWithCount(VkCommand
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetVertexInputEXT(
-    VkCommandBuffer commandBuffer, uint32_t vertexBindingDescriptionCount,
-    const VkVertexInputBindingDescription2EXT *pVertexBindingDescriptions, uint32_t vertexAttributeDescriptionCount,
-    const VkVertexInputAttributeDescription2EXT *pVertexAttributeDescriptions, const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetVertexInputEXT(VkCommandBuffer commandBuffer, uint32_t vertexBindingDescriptionCount,
+                                                        const VkVertexInputBindingDescription2EXT *pVertexBindingDescriptions,
+                                                        uint32_t vertexAttributeDescriptionCount,
+                                                        const VkVertexInputAttributeDescription2EXT *pVertexAttributeDescriptions,
+                                                        const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (vertexBindingDescriptionCount > device_limits.maxVertexInputBindings) {
         skip |= LogError("VUID-vkCmdSetVertexInputEXT-vertexBindingDescriptionCount-04791", commandBuffer,
@@ -267,12 +271,11 @@ bool StatelessValidation::manual_PreCallValidateCmdSetVertexInputEXT(
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleEXT(VkCommandBuffer commandBuffer,
-                                                                          uint32_t firstDiscardRectangle,
-                                                                          uint32_t discardRectangleCount,
-                                                                          const VkRect2D *pDiscardRectangles,
-                                                                          const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetDiscardRectangleEXT(VkCommandBuffer commandBuffer, uint32_t firstDiscardRectangle,
+                                                             uint32_t discardRectangleCount, const VkRect2D *pDiscardRectangles,
+                                                             const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!pDiscardRectangles) {
         return skip;
@@ -283,7 +286,7 @@ bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleEXT(VkComm
             static_cast<int64_t>(pDiscardRectangles[i].offset.x) + static_cast<int64_t>(pDiscardRectangles[i].extent.width);
         if (x_sum > std::numeric_limits<int32_t>::max()) {
             skip |= LogError("VUID-vkCmdSetDiscardRectangleEXT-offset-00588", commandBuffer, loc,
-                             "offset.x (%" PRId32 ") + extent.width (%" PRIu32 ") is %" PRIi64 ") which will overflow int32_t.",
+                             "offset.x (%" PRId32 ") + extent.width (%" PRIu32 ") is %" PRIi64 " which will overflow int32_t.",
                              pDiscardRectangles[i].offset.x, pDiscardRectangles[i].extent.width, x_sum);
         }
 
@@ -291,7 +294,7 @@ bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleEXT(VkComm
             static_cast<int64_t>(pDiscardRectangles[i].offset.y) + static_cast<int64_t>(pDiscardRectangles[i].extent.height);
         if (y_sum > std::numeric_limits<int32_t>::max()) {
             skip |= LogError("VUID-vkCmdSetDiscardRectangleEXT-offset-00589", commandBuffer, loc,
-                             "offset.y (%" PRId32 ") + extent.height (%" PRIu32 ") is %" PRIi64 ") which will overflow int32_t.",
+                             "offset.y (%" PRId32 ") + extent.height (%" PRIu32 ") is %" PRIi64 " which will overflow int32_t.",
                              pDiscardRectangles[i].offset.y, pDiscardRectangles[i].extent.height, y_sum);
         }
     }
@@ -299,10 +302,10 @@ bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleEXT(VkComm
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleEnableEXT(VkCommandBuffer commandBuffer,
-                                                                                VkBool32 discardRectangleEnable,
-                                                                                const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetDiscardRectangleEnableEXT(VkCommandBuffer commandBuffer, VkBool32 discardRectangleEnable,
+                                                                   const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (discard_rectangles_extension_version < 2) {
         skip |= LogError("VUID-vkCmdSetDiscardRectangleEnableEXT-specVersion-07851", commandBuffer, error_obj.location,
                          "Requires support for version 2 of VK_EXT_discard_rectangles.");
@@ -310,10 +313,11 @@ bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleEnableEXT(
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleModeEXT(VkCommandBuffer commandBuffer,
-                                                                              VkDiscardRectangleModeEXT discardRectangleMode,
-                                                                              const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetDiscardRectangleModeEXT(VkCommandBuffer commandBuffer,
+                                                                 VkDiscardRectangleModeEXT discardRectangleMode,
+                                                                 const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (discard_rectangles_extension_version < 2) {
         skip |= LogError("VUID-vkCmdSetDiscardRectangleModeEXT-specVersion-07852", commandBuffer, error_obj.location,
                          "Requires support for version 2 of VK_EXT_discard_rectangles.");
@@ -321,12 +325,12 @@ bool StatelessValidation::manual_PreCallValidateCmdSetDiscardRectangleModeEXT(Vk
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetExclusiveScissorEnableNV(VkCommandBuffer commandBuffer,
-                                                                               uint32_t firstExclusiveScissor,
-                                                                               uint32_t exclusiveScissorCount,
-                                                                               const VkBool32 *pExclusiveScissorEnables,
-                                                                               const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetExclusiveScissorEnableNV(VkCommandBuffer commandBuffer, uint32_t firstExclusiveScissor,
+                                                                  uint32_t exclusiveScissorCount,
+                                                                  const VkBool32 *pExclusiveScissorEnables,
+                                                                  const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (scissor_exclusive_extension_version < 2) {
         skip |= LogError("VUID-vkCmdSetExclusiveScissorEnableNV-exclusiveScissor-07853", commandBuffer, error_obj.location,
                          "Requires support for version 2 of VK_NV_scissor_exclusive.");
@@ -334,12 +338,11 @@ bool StatelessValidation::manual_PreCallValidateCmdSetExclusiveScissorEnableNV(V
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetExclusiveScissorNV(VkCommandBuffer commandBuffer,
-                                                                         uint32_t firstExclusiveScissor,
-                                                                         uint32_t exclusiveScissorCount,
-                                                                         const VkRect2D *pExclusiveScissors,
-                                                                         const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetExclusiveScissorNV(VkCommandBuffer commandBuffer, uint32_t firstExclusiveScissor,
+                                                            uint32_t exclusiveScissorCount, const VkRect2D *pExclusiveScissors,
+                                                            const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!enabled_features.multiViewport) {
         if (firstExclusiveScissor != 0) {
@@ -356,8 +359,8 @@ bool StatelessValidation::manual_PreCallValidateCmdSetExclusiveScissorNV(VkComma
         const uint64_t sum = static_cast<uint64_t>(firstExclusiveScissor) + static_cast<uint64_t>(exclusiveScissorCount);
         if (sum > device_limits.maxViewports) {
             skip |= LogError("VUID-vkCmdSetExclusiveScissorNV-firstExclusiveScissor-02034", commandBuffer, error_obj.location,
-                             "firstExclusiveScissor + exclusiveScissorCount (=%" PRIu32 " + %" PRIu32 " = %" PRIu64
-                             ") is greater than VkPhysicalDeviceLimits::maxViewports (=%" PRIu32 ").",
+                             "firstExclusiveScissor (%" PRIu32 ") + exclusiveScissorCount (%" PRIu32 ") is %" PRIu64
+                             " which is greater than VkPhysicalDeviceLimits::maxViewports (%" PRIu32 ").",
                              firstExclusiveScissor, exclusiveScissorCount, sum, device_limits.maxViewports);
         }
     }
@@ -396,26 +399,28 @@ bool StatelessValidation::manual_PreCallValidateCmdSetExclusiveScissorNV(VkComma
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetViewportWScalingNV(VkCommandBuffer commandBuffer, uint32_t firstViewport,
-                                                                         uint32_t viewportCount,
-                                                                         const VkViewportWScalingNV *pViewportWScalings,
-                                                                         const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetViewportWScalingNV(VkCommandBuffer commandBuffer, uint32_t firstViewport,
+                                                            uint32_t viewportCount, const VkViewportWScalingNV *pViewportWScalings,
+                                                            const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     const uint64_t sum = static_cast<uint64_t>(firstViewport) + static_cast<uint64_t>(viewportCount);
     if ((sum < 1) || (sum > device_limits.maxViewports)) {
         skip |= LogError("VUID-vkCmdSetViewportWScalingNV-firstViewport-01324", commandBuffer, error_obj.location,
-                         "firstViewport + viewportCount (=%" PRIu32 " + %" PRIu32 " = %" PRIu64
-                         ") must be between 1 and VkPhysicalDeviceLimits::maxViewports (=%" PRIu32 "), inculsive.",
+                         "firstViewport (%" PRIu32 ") + viewportCount (%" PRIu32 ") is %" PRIu64
+                         ", which must be between 1 and VkPhysicalDeviceLimits::maxViewports (%" PRIu32 "), inculsive.",
                          firstViewport, viewportCount, sum, device_limits.maxViewports);
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetViewportShadingRatePaletteNV(
-    VkCommandBuffer commandBuffer, uint32_t firstViewport, uint32_t viewportCount,
-    const VkShadingRatePaletteNV *pShadingRatePalettes, const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetViewportShadingRatePaletteNV(VkCommandBuffer commandBuffer, uint32_t firstViewport,
+                                                                      uint32_t viewportCount,
+                                                                      const VkShadingRatePaletteNV *pShadingRatePalettes,
+                                                                      const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!enabled_features.multiViewport) {
         if (firstViewport != 0) {
@@ -433,20 +438,21 @@ bool StatelessValidation::manual_PreCallValidateCmdSetViewportShadingRatePalette
     const uint64_t sum = static_cast<uint64_t>(firstViewport) + static_cast<uint64_t>(viewportCount);
     if (sum > device_limits.maxViewports) {
         skip |= LogError("VUID-vkCmdSetViewportShadingRatePaletteNV-firstViewport-02067", commandBuffer, error_obj.location,
-                         "firstViewport + viewportCount (=%" PRIu32 " + %" PRIu32 " = %" PRIu64
-                         ") is greater than VkPhysicalDeviceLimits::maxViewports (=%" PRIu32 ").",
+                         "firstViewport (%" PRIu32 ") + viewportCount (%" PRIu32 ") is %" PRIu64
+                         ") which is greater than VkPhysicalDeviceLimits::maxViewports (%" PRIu32 ").",
                          firstViewport, viewportCount, sum, device_limits.maxViewports);
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetCoarseSampleOrderNV(VkCommandBuffer commandBuffer,
-                                                                          VkCoarseSampleOrderTypeNV sampleOrderType,
-                                                                          uint32_t customSampleOrderCount,
-                                                                          const VkCoarseSampleOrderCustomNV *pCustomSampleOrders,
-                                                                          const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetCoarseSampleOrderNV(VkCommandBuffer commandBuffer,
+                                                             VkCoarseSampleOrderTypeNV sampleOrderType,
+                                                             uint32_t customSampleOrderCount,
+                                                             const VkCoarseSampleOrderCustomNV *pCustomSampleOrders,
+                                                             const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (sampleOrderType != VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV && customSampleOrderCount != 0) {
         skip |= LogError("VUID-vkCmdSetCoarseSampleOrderNV-sampleOrderType-02081", commandBuffer, error_obj.location,
@@ -462,10 +468,10 @@ bool StatelessValidation::manual_PreCallValidateCmdSetCoarseSampleOrderNV(VkComm
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport,
-                                                               uint32_t viewportCount, const VkViewport *pViewports,
-                                                               const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uint32_t viewportCount,
+                                                  const VkViewport *pViewports, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!enabled_features.multiViewport) {
         if (firstViewport != 0) {
@@ -498,10 +504,26 @@ bool StatelessValidation::manual_PreCallValidateCmdSetViewport(VkCommandBuffer c
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor,
-                                                              uint32_t scissorCount, const VkRect2D *pScissors,
-                                                              const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetDepthClampRangeEXT(VkCommandBuffer commandBuffer, VkDepthClampModeEXT depthClampMode,
+                                                            const VkDepthClampRangeEXT *pDepthClampRange,
+                                                            const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
+    if (depthClampMode == VK_DEPTH_CLAMP_MODE_USER_DEFINED_RANGE_EXT) {
+        if (!pDepthClampRange) {
+            skip |= LogError("VUID-vkCmdSetDepthClampRangeEXT-pDepthClampRange-09647", device,
+                             error_obj.location.dot(Field::pDepthClampRange), "is NULL.");
+        } else {
+            skip |= ValidateDepthClampRange(*pDepthClampRange, error_obj.location.dot(Field::pDepthClampRange));
+        }
+    }
+    return skip;
+}
+
+bool Device::manual_PreCallValidateCmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor, uint32_t scissorCount,
+                                                 const VkRect2D *pScissors, const Context &context) const {
+    bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!enabled_features.multiViewport) {
         if (firstScissor != 0) {
@@ -556,9 +578,9 @@ bool StatelessValidation::manual_PreCallValidateCmdSetScissor(VkCommandBuffer co
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetLineWidth(VkCommandBuffer commandBuffer, float lineWidth,
-                                                                const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetLineWidth(VkCommandBuffer commandBuffer, float lineWidth, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!enabled_features.wideLines && (lineWidth != 1.0f)) {
         skip |= LogError("VUID-vkCmdSetLineWidth-lineWidth-00788", commandBuffer, error_obj.location.dot(Field::lineWidth),
@@ -568,15 +590,16 @@ bool StatelessValidation::manual_PreCallValidateCmdSetLineWidth(VkCommandBuffer 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdSetLineStippleKHR(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor,
-                                                                     uint16_t lineStipplePattern,
-                                                                     const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdSetLineStipple(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor,
+                                                     uint16_t lineStipplePattern, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (lineStippleFactor < 1 || lineStippleFactor > 256) {
-        skip |= LogError("VUID-vkCmdSetLineStippleKHR-lineStippleFactor-02776", commandBuffer,
+        skip |= LogError("VUID-vkCmdSetLineStipple-lineStippleFactor-02776", commandBuffer,
                          error_obj.location.dot(Field::lineStippleFactor), "%" PRIu32 " is not in [1,256].", lineStippleFactor);
     }
 
     return skip;
 }
+}  // namespace stateless

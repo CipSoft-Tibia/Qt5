@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>, Tatyana Borisova <tanusshhka@mail.ru>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:critical reason:data-parser
 
 #include "messagedefinitionprinter.h"
 
@@ -426,6 +427,9 @@ void MessageDefinitionPrinter::printGetters()
                                          CommonTemplates::PrivateGetterMessageDefinitionTemplate());
                         m_printer->Print(propertyMap,
                                          CommonTemplates::GetterMessageDefinitionTemplate());
+                        m_printer->Print(propertyMap,
+                                         CommonTemplates::GetterMessageMutableDefinitionTemplate());
+
                         m_printer->Print(propertyMap,
                                          CommonTemplates::ClearMessageDefinitionTemplate());
                     } else {

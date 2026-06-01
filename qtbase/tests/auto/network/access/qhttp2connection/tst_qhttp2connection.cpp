@@ -8,6 +8,9 @@
 #include <QtNetwork/private/hpack_p.h>
 #include <QtNetwork/private/bitstreams_p.h>
 
+#include <QtCore/qregularexpression.h>
+#include <QtCore/qthread.h>
+
 #include <limits>
 
 using namespace Qt::StringLiterals;
@@ -19,6 +22,8 @@ class tst_QHttp2Connection : public QObject
 private slots:
     void construct();
     void constructStream();
+    void streamConfiguration_data();
+    void streamConfiguration();
     void testSETTINGSFrame();
     void maxHeaderTableSize();
     void testPING();
@@ -35,6 +40,11 @@ private slots:
     void connectToServer();
     void WINDOW_UPDATE();
     void testCONTINUATIONFrame();
+    void goaway_data();
+    void goaway();
+    void serverInitiatedGoaways_data();
+    void serverInitiatedGoaways();
+    void clientInitiatedGoaway();
 
 private:
     enum PeerType { Client, Server };
@@ -198,6 +208,59 @@ void tst_QHttp2Connection::constructStream()
     QCOMPARE(stream->state(), QHttp2Stream::State::Idle);
     QCOMPARE(stream->isUploadBlocked(), false);
     QCOMPARE(stream->isUploadingDATA(), false);
+}
+
+void tst_QHttp2Connection::streamConfiguration_data()
+{
+    QTest::addColumn<bool>("useDownloadBuffer");
+
+    QTest::addRow("useDownloadBuffer=true") << true;
+    QTest::addRow("useDownloadBuffer=false") << false;
+}
+
+void tst_QHttp2Connection::streamConfiguration()
+{
+    QFETCH(const bool, useDownloadBuffer);
+
+    auto [client, server] = makeFakeConnectedSockets();
+    auto *clientConnection = makeHttp2Connection(client.get(), {}, Client);
+    auto *serverConnection = makeHttp2Connection(server.get(), {}, Server);
+
+    QHttp2Stream::Configuration config;
+    config.useDownloadBuffer = useDownloadBuffer;
+
+    QHttp2Stream *clientStream = clientConnection->createStream(config).unwrap();
+    QVERIFY(clientStream);
+    QCOMPARE(clientStream->configuration().useDownloadBuffer, useDownloadBuffer);
+    QVERIFY(waitForSettingsExchange(clientConnection, serverConnection));
+
+    QSignalSpy newIncomingStreamSpy{ serverConnection, &QHttp2Connection::newIncomingStream };
+    QSignalSpy clientDataReceivedSpy{ clientStream, &QHttp2Stream::dataReceived };
+
+    HPack::HttpHeader headers = getRequiredHeaders();
+    clientStream->sendHEADERS(headers, false);
+
+    QVERIFY(newIncomingStreamSpy.wait());
+    auto *serverStream = newIncomingStreamSpy.front().front().value<QHttp2Stream *>();
+    QVERIFY(serverStream);
+
+    const HPack::HttpHeader responseHeaders{ { ":status", "200" } };
+    serverStream->sendHEADERS(responseHeaders, false);
+
+    const QByteArray testData = "Hello World"_ba.repeated(100);
+    serverStream->sendDATA(testData, true);
+
+    QVERIFY(clientDataReceivedSpy.wait());
+    QCOMPARE(clientDataReceivedSpy.count(), 1);
+
+    const QByteArray receivedData = clientDataReceivedSpy.front().front().value<QByteArray>();
+    QCOMPARE(receivedData, testData);
+
+    if (useDownloadBuffer) {
+        QCOMPARE(clientStream->downloadBuffer().byteAmount(), testData.size());
+    } else {
+        QVERIFY(clientStream->downloadBuffer().isEmpty());
+    }
 }
 
 void tst_QHttp2Connection::testSETTINGSFrame()
@@ -572,11 +635,26 @@ void tst_QHttp2Connection::testBadFrameSize_data()
     QTest::addColumn<int>("loadsize");
     QTest::addColumn<bool>("rst_received");
     QTest::addColumn<int>("goaway_received");
+    QTest::addColumn<bool>("use_stream_id");
 
-    QTest::newRow("priority_correct") << uchar(Http2::FrameType::PRIORITY) << 5 << false << 0;
-    QTest::newRow("priority_bad") << uchar(Http2::FrameType::PRIORITY) << 6 << true << 0;
-    QTest::newRow("ping_correct") << uchar(Http2::FrameType::PING) << 8 << false << 0;
-    QTest::newRow("ping_bad") << uchar(Http2::FrameType::PING) << 13 << false << 1;
+    QTest::newRow("priority_correct")
+            << uchar(Http2::FrameType::PRIORITY) << 5 << false << 0 << true;
+    QTest::newRow("priority_too_long")
+            << uchar(Http2::FrameType::PRIORITY) << 6 << true << 0 << true;
+    QTest::newRow("priority_no_payload")
+            << uchar(Http2::FrameType::PRIORITY) << 0 << true << 0 << true;
+    QTest::newRow("priority_bad_on_stream0")
+            << uchar(Http2::FrameType::PRIORITY) << 6 << false << 1 << false;
+    QTest::newRow("ping_correct") << uchar(Http2::FrameType::PING) << 8 << false << 0 << false;
+    QTest::newRow("ping_bad") << uchar(Http2::FrameType::PING) << 13 << false << 1 << false;
+    QHttp2Configuration configuration;
+    const int longerThanMaxFrameSize = (int)configuration.maxFrameSize() + 1;
+    QTest::newRow("data_too_long")
+            << uchar(Http2::FrameType::DATA) << longerThanMaxFrameSize << true << 0 << true;
+    QTest::newRow("headers_too_long")
+            << uchar(Http2::FrameType::HEADERS) << longerThanMaxFrameSize << false << 1 << true;
+    QTest::newRow("continuation_too_long") << uchar(Http2::FrameType::CONTINUATION)
+                                           << longerThanMaxFrameSize << false << 1 << true;
 }
 
 void tst_QHttp2Connection::testBadFrameSize()
@@ -585,6 +663,7 @@ void tst_QHttp2Connection::testBadFrameSize()
     QFETCH(int, loadsize);
     QFETCH(bool, rst_received);
     QFETCH(int, goaway_received);
+    QFETCH(bool, use_stream_id);
 
     auto [client, server] = makeFakeConnectedSockets();
     auto connection = makeHttp2Connection(client.get(), {}, Client);
@@ -612,6 +691,32 @@ void tst_QHttp2Connection::testBadFrameSize()
     QCOMPARE(clientStream->state(), QHttp2Stream::State::Open);
     QCOMPARE(serverStream->state(), QHttp2Stream::State::Open);
 
+    if (Http2::FrameType(frametype) == Http2::FrameType::CONTINUATION) {
+        // Send an empty HEADERS frame to be able to send a CONTINUATION frame later
+        auto type = uchar(Http2::FrameType::HEADERS);
+        auto flags = uchar(Http2::FrameFlag::EMPTY);
+        quint32 streamID = clientStream->streamID();
+        std::vector<uchar> buffer;
+        buffer.resize(Http2::frameHeaderSize);
+        buffer[3] = type;
+        buffer[4] = flags;
+        qToBigEndian(streamID, &buffer[5]);
+        // RFC9113 4.1: The 9 octets of the frame header are not included in this value.
+        quint32 size = quint32(buffer.size() - Http2::frameHeaderSize);
+        buffer[0] = size >> 16;
+        buffer[1] = size >> 8;
+        buffer[2] = size;
+
+        auto writtenN = connection->getSocket()->write(reinterpret_cast<const char *>(&buffer[0]),
+                                                       buffer.size());
+        QCOMPARE(writtenN, qint64(buffer.size()));
+        QCOMPARE(clientStream->state(), QHttp2Stream::State::Open);
+        QCOMPARE(serverStream->state(), QHttp2Stream::State::Open);
+        QCOMPARE(rstClientSpy.wait(), false);
+        QCOMPARE(rstServerSpy.count(), 0);
+        QCOMPARE(goawayClientSpy.count(), 0);
+    }
+
     {
         auto type = frametype;
         auto flags = uchar(Http2::FrameFlag::EMPTY);
@@ -627,7 +732,7 @@ void tst_QHttp2Connection::testBadFrameSize()
         //5   Stream Identifier (31),
         buffer[3] = type;
         buffer[4] = flags;
-        qToBigEndian(type == uchar(Http2::FrameType::PING) ? 0 : streamID, &buffer[5]);
+        qToBigEndian(use_stream_id ? streamID : 0, &buffer[5]);
 
         buffer.resize(buffer.size() + loadsize);
         // RFC9113 4.1: The 9 octets of the frame header are not included in this value.
@@ -643,6 +748,21 @@ void tst_QHttp2Connection::testBadFrameSize()
     QCOMPARE(rstClientSpy.wait(), rst_received);
     QCOMPARE(rstServerSpy.count(), 0);
     QCOMPARE(goawayClientSpy.count(), goaway_received);
+
+    if (goaway_received)
+        return; // Connection is closed
+
+    // Reuse the connection
+    // This caused an assertion in QTBUG-141207
+    QHttp2Stream *clientStream2 = connection->createStream().unwrap();
+    QVERIFY(clientStream2);
+    clientStream2->sendHEADERS(headers, false);
+
+    QVERIFY(newIncomingStreamSpy.wait());
+    auto *serverStream2 = newIncomingStreamSpy.back().front().value<QHttp2Stream *>();
+    QCOMPARE(clientStream2->streamID(), serverStream2->streamID());
+    QCOMPARE(clientStream2->state(), QHttp2Stream::State::Open);
+    QCOMPARE(serverStream2->state(), QHttp2Stream::State::Open);
 }
 
 void tst_QHttp2Connection::testDataFrameAfterRSTIncoming()
@@ -1049,6 +1169,323 @@ void tst_QHttp2Connection::testCONTINUATIONFrame()
         // the client correctly rejected our malformed stream contents by telling us to GO AWAY
         QVERIFY(receivedGOAWAYSpy.wait());
     }
+}
+
+void tst_QHttp2Connection::goaway_data()
+{
+    QTest::addColumn<bool>("endStreamOnHEADERS");
+    QTest::addColumn<bool>("createNewStreamAfterDelay");
+    QTest::addRow("end-on-headers") << true << false;
+    QTest::addRow("end-after-data") << false << false;
+    QTest::addRow("end-after-new-late-stream") << false << true;
+}
+
+void tst_QHttp2Connection::goaway()
+{
+    QFETCH(const bool, endStreamOnHEADERS);
+    QFETCH(const bool, createNewStreamAfterDelay);
+    auto [client, server] = makeFakeConnectedSockets();
+    auto connection = makeHttp2Connection(client.get(), {}, Client);
+    auto serverConnection = makeHttp2Connection(server.get(), {}, Server);
+
+    QHttp2Stream *clientStream = connection->createStream().unwrap();
+    QVERIFY(clientStream);
+    QVERIFY(waitForSettingsExchange(connection, serverConnection));
+
+    QSignalSpy newIncomingStreamSpy{ serverConnection, &QHttp2Connection::newIncomingStream };
+    QSignalSpy clientGoawaySpy{ connection, &QHttp2Connection::receivedGOAWAY };
+    QSignalSpy clientClosedSpy{ connection, &QHttp2Connection::connectionClosed };
+    QSignalSpy serverGoawaySpy{ serverConnection, &QHttp2Connection::receivedGOAWAY };
+    QSignalSpy serverClosedSpy{ serverConnection, &QHttp2Connection::connectionClosed };
+
+    const HPack::HttpHeader headers = getRequiredHeaders();
+    clientStream->sendHEADERS(headers, false);
+
+    QVERIFY(newIncomingStreamSpy.wait());
+    auto *serverStream = newIncomingStreamSpy.front().front().value<QHttp2Stream *>();
+    QVERIFY(serverStream);
+    serverConnection->close(); // NO_ERROR -> graceful shutdown
+
+    // New stream creation is illegal now
+    auto createStreamResult = serverConnection->createLocalStreamInternal();
+    QVERIFY(createStreamResult.has_error());
+    QCOMPARE(createStreamResult.error(), QHttp2Connection::CreateStreamError::ReceivedGOAWAY);
+
+    // Client received initial GOAWAY
+    QVERIFY(clientGoawaySpy.wait());
+    QCOMPARE(clientGoawaySpy.first().first().value<Http2::Http2Error>(), Http2::HTTP2_NO_ERROR);
+    QCOMPARE(clientGoawaySpy.first().last().value<quint32>(), Http2::lastValidStreamID);
+    clientGoawaySpy.clear();
+
+    // New client-stream creation is illegal now
+    auto invalidStream = connection->createStream();
+    QVERIFY(!invalidStream.ok());
+    QVERIFY(invalidStream.has_error());
+    QCOMPARE(invalidStream.error(), QHttp2Connection::CreateStreamError::ReceivedGOAWAY);
+
+    // Client receives final GOAWAY with actual lastStreamID (after PING RTT)
+    QVERIFY(clientGoawaySpy.wait());
+    QCOMPARE(clientGoawaySpy.first().at(0).value<Http2::Http2Error>(), Http2::HTTP2_NO_ERROR);
+    QCOMPARE(clientGoawaySpy.first().at(1).value<quint32>(), clientStream->streamID());
+    clientGoawaySpy.clear();
+
+    // Directly create a stream to avoid the GOAWAY check:
+    quint32 nextStreamId = clientStream->streamID() + 2;
+    QHttp2Stream *ignoredClientStream = connection->createStreamInternal_impl(nextStreamId);
+    QSignalSpy streamResetSpy{ ignoredClientStream, &QHttp2Stream::rstFrameReceived };
+    ignoredClientStream->sendHEADERS(headers, endStreamOnHEADERS);
+    // The stream should be ignored:
+    using namespace std::chrono_literals;
+    QVERIFY(!streamResetSpy.wait(100ms)); // We don't get reset because we are ignored
+    if (endStreamOnHEADERS)
+        return;
+
+    ignoredClientStream->sendDATA("my data", createNewStreamAfterDelay);
+    // We cheat and try to send data after the END_STREAM flag has been sent
+    if (!createNewStreamAfterDelay) {
+        // Manually send a frame with END_STREAM so the QHttp2Stream thinks it's fine to send more
+        // DATA
+        connection->frameWriter.start(Http2::FrameType::DATA, Http2::FrameFlag::END_STREAM,
+                                      ignoredClientStream->streamID());
+        connection->frameWriter.write(*connection->getSocket());
+        QVERIFY(!streamResetSpy.wait(100ms)); // We don't get reset because we are ignored
+
+        const auto tstStream = [](const auto &spy, Http2::Http2Error code,
+                                  QLatin1StringView errMsg) {
+            QCOMPARE(spy.first().at(0).template value<Http2::Http2Error>(), code);
+            QCOMPARE(spy.first().at(1).template value<QString>(), errMsg);
+        };
+        QLatin1StringView serverErrorMsg("DATA on invalid stream");
+        QTest::ignoreMessage(QtCriticalMsg, QRegularExpression(".*" + serverErrorMsg + ".*"));
+        QSignalSpy clientStreamErrorSpy(clientStream, &QHttp2Stream::errorOccurred);
+        QSignalSpy secondclientStreamErrorSpy(ignoredClientStream, &QHttp2Stream::errorOccurred);
+        QSignalSpy serverStreamErrorSpy(serverStream, &QHttp2Stream::errorOccurred);
+
+        // Triggers a connectionError of 'ENHANCE_YOUR_CALM' on the server
+        // (more activity after END_STREAM)
+        ignoredClientStream->sendDATA("my data", true);
+        QTRY_COMPARE(serverClosedSpy.count(), 1);
+        tstStream(serverStreamErrorSpy, Http2::ENHANCE_YOUR_CALM, serverErrorMsg);
+
+        QTRY_COMPARE(clientGoawaySpy.count(), 1);
+        QCOMPARE(clientGoawaySpy.first().at(0).value<Http2::Http2Error>(),
+                 Http2::ENHANCE_YOUR_CALM);
+        QCOMPARE(clientGoawaySpy.first().at(1).value<quint32>(), clientStream->streamID());
+        QTRY_COMPARE(clientClosedSpy.count(), 1);
+        QLatin1StringView clientErrorMsg("Received GOAWAY");
+        tstStream(clientStreamErrorSpy, Http2::ENHANCE_YOUR_CALM, clientErrorMsg);
+        tstStream(secondclientStreamErrorSpy, Http2::ENHANCE_YOUR_CALM, clientErrorMsg);
+        return;
+    }
+
+    // Override the deadline timer so we don't have to wait too long
+    serverConnection->m_goawayGraceTimer.setRemainingTime(50ms);
+
+    // We can create the stream whenever, it is not noticed by the server until we send something.
+    nextStreamId += 2;
+    QHttp2Stream *rejectedStream = connection->createStreamInternal_impl(nextStreamId);
+    // Sleep until the grace period is over:
+    QTRY_VERIFY(serverConnection->m_goawayGraceTimer.hasExpired());
+
+    QVERIFY(rejectedStream->sendHEADERS(headers, true));
+
+    QTest::ignoreMessage(QtCriticalMsg,
+                         QRegularExpression(u".*Connection error: Peer refused to GOAWAY\\..*"_s));
+    QVERIFY(clientGoawaySpy.wait());
+    QCOMPARE(clientGoawaySpy.size(), 1);
+    QCOMPARE(clientGoawaySpy.first().first().value<Http2::Http2Error>(), Http2::PROTOCOL_ERROR);
+    // The first stream is still the last processed one:
+    QCOMPARE(clientGoawaySpy.first().last().value<quint32>(), clientStream->streamID());
+}
+
+void tst_QHttp2Connection::serverInitiatedGoaways_data()
+{
+    QTest::addColumn<QString>("scenario");
+
+    QTest::newRow("graceful-shutdown") << u"graceful-shutdown"_s;
+    QTest::newRow("graceful-then-error") << u"graceful-then-error"_s;
+    QTest::newRow("increasing-lastStreamId") << u"increasing-lastStreamId"_s;
+}
+
+void tst_QHttp2Connection::serverInitiatedGoaways()
+{
+    QFETCH(QString, scenario);
+
+    auto [client, server] = makeFakeConnectedSockets();
+    auto clientConn = makeHttp2Connection(client.get(), {}, Client);
+    auto serverConn = makeHttp2Connection(server.get(), {}, Server);
+
+    // Client creates stream
+    auto *clientStream = clientConn->createStream().unwrap();
+    QVERIFY(clientStream);
+    QVERIFY(waitForSettingsExchange(clientConn, serverConn));
+    QVERIFY(clientStream->sendHEADERS(getRequiredHeaders(), false));
+
+    // Server receives stream
+    QSignalSpy newStreamSpy{ serverConn, &QHttp2Connection::newIncomingStream };
+    QVERIFY(newStreamSpy.wait());
+    auto *serverStream = newStreamSpy.front().front().value<QHttp2Stream *>();
+    QVERIFY(serverStream);
+
+    QSignalSpy clientGoawaySpy{ clientConn, &QHttp2Connection::receivedGOAWAY };
+    QSignalSpy clientClosedSpy{ clientConn, &QHttp2Connection::connectionClosed };
+    QSignalSpy serverGoawaySpy{ serverConn, &QHttp2Connection::receivedGOAWAY };
+    QSignalSpy serverClosedSpy{ serverConn, &QHttp2Connection::connectionClosed };
+    QSignalSpy clientErrorSpy{ clientStream, &QHttp2Stream::errorOccurred };
+
+    serverConn->close(); // Server initiates graceful shutdown
+
+    // Client receives initial GOAWAY with 2^31-1
+    QVERIFY(clientGoawaySpy.wait());
+    QCOMPARE(clientGoawaySpy.count(), 1);
+    QCOMPARE(clientGoawaySpy.at(0).at(0).value<Http2::Http2Error>(), Http2::HTTP2_NO_ERROR);
+    QCOMPARE(clientGoawaySpy.at(0).at(1).value<quint32>(), Http2::lastValidStreamID);
+
+    // After receiving a GOAWAY we should not be able to create new streams
+    auto clientStream2 = clientConn->createStream();
+    QCOMPARE_EQ(clientStream2.error(), QHttp2Connection::CreateStreamError::ReceivedGOAWAY);
+
+    // Client receives final GOAWAY with actual lastStreamID (after PING RTT)
+    QVERIFY(clientGoawaySpy.wait(500));
+    QCOMPARE(clientGoawaySpy.count(), 2);
+    QCOMPARE(clientGoawaySpy.at(1).at(0).value<Http2::Http2Error>(), Http2::HTTP2_NO_ERROR);
+    const quint32 finalLastStreamId = clientGoawaySpy.at(1).at(1).value<quint32>();
+    QCOMPARE(finalLastStreamId, clientStream->streamID());
+
+    // Stream still active - graceful shutdown allows completion
+    QVERIFY(clientStream->isActive());
+    QCOMPARE(clientClosedSpy.count(), 0);
+
+    if (scenario == "increasing-lastStreamId"_L1) {
+        QLatin1StringView errMsg("Repeated GOAWAY with invalid last stream ID");
+        QTest::ignoreMessage(QtCriticalMsg, QRegularExpression(".*" + errMsg + ".*"));
+
+        // Send GOAWAY with higher lastStreamId than the final one (protocol violation)
+        const quint32 invalidHigherId = finalLastStreamId + 2;
+        serverConn->sendGOAWAYFrame(Http2::HTTP2_NO_ERROR, invalidHigherId);
+
+        QTRY_COMPARE(clientErrorSpy.count(), 1);
+        QCOMPARE(clientErrorSpy.count(), 1);
+        QCOMPARE(clientErrorSpy.first().first().value<Http2::Http2Error>(), Http2::PROTOCOL_ERROR);
+        QCOMPARE(clientErrorSpy.first().last().value<QString>(), errMsg);
+
+        // Client detects violation and responds with PROTOCOL_ERROR
+        QVERIFY(serverGoawaySpy.wait());
+        QCOMPARE(serverGoawaySpy.last().at(0).value<Http2::Http2Error>(), Http2::PROTOCOL_ERROR);
+
+        QTRY_COMPARE(clientClosedSpy.count(), 1);
+        QTRY_COMPARE(serverClosedSpy.count(), 1);
+        return;
+    } else if (scenario == "graceful-then-error") {
+        // RFC 9113 6.8: An endpoint MAY send multiple GOAWAY frames if circumstances change
+        serverConn->close(Http2::INTERNAL_ERROR);
+
+        // Client receives error GOAWAY
+        QTRY_COMPARE(clientGoawaySpy.count(), 3);
+        QCOMPARE(clientGoawaySpy.at(2).at(0).value<Http2::Http2Error>(), Http2::INTERNAL_ERROR);
+
+        // Error GOAWAY lastStreamId must not exceed previous
+        QVERIFY(clientGoawaySpy.at(2).at(1).value<quint32>() <= finalLastStreamId);
+
+        // Server closes immediately after error
+        QTRY_COMPARE(serverClosedSpy.count(), 1);
+
+        // Client stream should receive error
+        QVERIFY(!clientStream->isActive());
+        QTRY_COMPARE(clientErrorSpy.count(), 1);
+        QCOMPARE(clientErrorSpy.count(), 1);
+        QCOMPARE(clientErrorSpy.first().first().value<Http2::Http2Error>(), Http2::INTERNAL_ERROR);
+        QTRY_COMPARE(clientClosedSpy.count(), 1);
+
+        // Additional close() calls should be ignored
+        serverConn->close();
+        serverConn->close(Http2::FLOW_CONTROL_ERROR);
+        qApp->processEvents();
+        QCOMPARE(clientGoawaySpy.count(), 3); // No new GOAWAY
+        return;
+    } else if ("graceful-shutdown") {
+        QSignalSpy serverDataSpy{ serverStream, &QHttp2Stream::dataReceived };
+        QVERIFY(clientStream->sendDATA("final-data", true));
+        QVERIFY(serverDataSpy.wait());
+
+        QSignalSpy clientHeadersSpy{ clientStream, &QHttp2Stream::headersReceived };
+        const HPack::HttpHeader responseHeaders{ { ":status", "200" } };
+        QVERIFY(serverStream->sendHEADERS(responseHeaders, true));
+        QVERIFY(clientHeadersSpy.wait());
+
+        QCOMPARE(clientStream->state(), QHttp2Stream::State::Closed);
+
+        // Connection closes after all streams complete
+        QTRY_COMPARE(serverClosedSpy.count(), 1);
+        QTRY_COMPARE(clientClosedSpy.count(), 1);
+
+        // No additional GOAWAYs
+        QCOMPARE(clientGoawaySpy.count(), 2);
+    }
+}
+
+void tst_QHttp2Connection::clientInitiatedGoaway()
+{
+    // Clients don't need two-phase GOAWAY because they control their own
+    // stream creation (no race condition). Client sends single GOAWAY with the
+    // last server-initiated (even) stream ID it processed.
+    auto [client, server] = makeFakeConnectedSockets();
+    auto clientConn = makeHttp2Connection(client.get(), {}, Client);
+    auto serverConn = makeHttp2Connection(server.get(), {}, Server);
+
+    // Client creates stream
+    auto *clientStream = clientConn->createStream().unwrap();
+    QVERIFY(clientStream);
+    QVERIFY(waitForSettingsExchange(clientConn, serverConn));
+    QVERIFY(clientStream->sendHEADERS(getRequiredHeaders(), false));
+
+    // Server receives stream
+    QSignalSpy newStreamSpy{ serverConn, &QHttp2Connection::newIncomingStream };
+    QVERIFY(newStreamSpy.wait());
+    auto *serverStream = newStreamSpy.front().front().value<QHttp2Stream *>();
+    QVERIFY(serverStream);
+
+    QSignalSpy clientGoawaySpy{ clientConn, &QHttp2Connection::receivedGOAWAY };
+    QSignalSpy clientClosedSpy{ clientConn, &QHttp2Connection::connectionClosed };
+    QSignalSpy serverGoawaySpy{ serverConn, &QHttp2Connection::receivedGOAWAY };
+    QSignalSpy serverClosedSpy{ serverConn, &QHttp2Connection::connectionClosed };
+
+    // Client initiates graceful shutdown
+    clientConn->close();
+
+    // Client should not be able to create new streams now
+    auto rejectedClientStream = clientConn->createStream();
+    QCOMPARE_EQ(rejectedClientStream.error(), QHttp2Connection::CreateStreamError::ReceivedGOAWAY);
+
+    // Server receives GOAWAY
+    QVERIFY(serverGoawaySpy.wait());
+    QCOMPARE(serverGoawaySpy.count(), 1);
+    QCOMPARE(serverGoawaySpy.at(0).at(0).value<Http2::Http2Error>(), Http2::HTTP2_NO_ERROR);
+
+    const quint32 lastStreamId = serverGoawaySpy.at(0).at(1).value<quint32>();
+    QCOMPARE(lastStreamId, 0u);
+
+    // Existing streams can still complete
+    QVERIFY(clientStream->isActive());
+    QVERIFY(serverStream->isActive());
+
+    // Complete the stream exchange
+    QSignalSpy serverDataSpy{ serverStream, &QHttp2Stream::dataReceived };
+    QVERIFY(clientStream->sendDATA("final-data", true));
+    QVERIFY(serverDataSpy.wait());
+
+    QSignalSpy clientHeadersSpy{ clientStream, &QHttp2Stream::headersReceived };
+    const HPack::HttpHeader responseHeaders{ { ":status", "200" } };
+    QVERIFY(serverStream->sendHEADERS(responseHeaders, true));
+    QVERIFY(clientHeadersSpy.wait());
+
+    QCOMPARE(clientStream->state(), QHttp2Stream::State::Closed);
+    QCOMPARE(serverStream->state(), QHttp2Stream::State::Closed);
+
+    QTRY_COMPARE(clientClosedSpy.count(), 1);
+
+    QCOMPARE(serverGoawaySpy.count(), 1);
+    QTRY_COMPARE(serverClosedSpy.count(), 1);
 }
 
 QTEST_MAIN(tst_QHttp2Connection)

@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLPROPERTYDATA_P_H
 #define QQMLPROPERTYDATA_P_H
@@ -209,7 +210,6 @@ public:
     bool isFinal() const { return !isFunction() && m_flags.isFinalORisV4Function; }
     bool isOverridden() const { return m_flags.isOverridden; }
     bool isRequired() const { return !isFunction() && m_flags.isRequiredORisCloned; }
-    bool hasStaticMetaCallFunction() const { return staticMetaCallFunction() != nullptr; }
     bool isFunction() const { return m_flags.type == Flags::FunctionType; }
     bool isQObject() const { return m_flags.type == Flags::QObjectDerivedType; }
     bool isEnum() const { return m_flags.type == Flags::EnumType; }
@@ -223,6 +223,11 @@ public:
     bool isV4Function() const { return isFunction() && m_flags.isFinalORisV4Function; }
     bool isSignalHandler() const { return m_flags.isSignalHandler; }
     bool hasMetaObject() const { return m_flags.hasMetaObject; }
+
+    bool hasStaticMetaCallFunction() const
+    {
+        return !isAlias() && staticMetaCallFunction() != nullptr;
+    }
 
     // TODO: Remove this once we can. Signals should not be overridable.
     bool isOverridableSignal() const { return m_flags.isOverridableSignal; }
@@ -267,6 +272,17 @@ public:
         Q_ASSERT(idx >= std::numeric_limits<qint16>::min());
         Q_ASSERT(idx <= std::numeric_limits<qint16>::max());
         m_coreIndex = qint16(idx);
+    }
+
+    int aliasTarget() const
+    {
+        Q_ASSERT(isAlias());
+        return m_encodedAliasTargetIndex;
+    }
+    void setAliasTarget(int target)
+    {
+        Q_ASSERT(isAlias());
+        m_encodedAliasTargetIndex = target;
     }
 
     QTypeRevision revision() const { return m_revision; }
@@ -332,10 +348,15 @@ public:
         m_metaObjectOffset = qint16(off);
     }
 
-    StaticMetaCallFunction staticMetaCallFunction() const { Q_ASSERT(!isFunction()); return m_staticMetaCallFunction; }
+    StaticMetaCallFunction staticMetaCallFunction() const
+    {
+        Q_ASSERT(!isFunction() && !isAlias());
+        return m_staticMetaCallFunction;
+    }
+
     void trySetStaticMetaCallFunction(StaticMetaCallFunction f, unsigned relativePropertyIndex)
     {
-        Q_ASSERT(!isFunction());
+        Q_ASSERT(!isFunction() && !isAlias());
         if (relativePropertyIndex < (1 << Flags::BitsLeftInFlags) - 1) {
             m_flags.otherBits = relativePropertyIndex;
             m_staticMetaCallFunction = f;
@@ -452,9 +473,17 @@ private:
     QMetaType m_propType = {};
 
     union {
+        // only for methods (if stored in property cache)
         QQmlPropertyCacheMethodArguments *m_arguments = nullptr;
+
+        // only for C++-declared properties
         StaticMetaCallFunction m_staticMetaCallFunction;
+
+        // only for methods (if stored in lookups)
         const QMetaObject *m_metaObject;
+
+        // only for aliases
+        int m_encodedAliasTargetIndex;
     };
 };
 

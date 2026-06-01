@@ -17,6 +17,8 @@ qt_internal_add_module(WebEngineCore
         qwebenginecookiestore.cpp qwebenginecookiestore.h qwebenginecookiestore_p.h
         qwebenginedesktopmediarequest.cpp qwebenginedesktopmediarequest.h qwebenginedesktopmediarequest_p.h
         qwebenginedownloadrequest.cpp qwebenginedownloadrequest.h qwebenginedownloadrequest_p.h
+        qwebengineextensioninfo.cpp qwebengineextensioninfo.h qwebengineextensioninfo_p.h
+        qwebengineextensionmanager.cpp qwebengineextensionmanager.h
         qwebenginefilesystemaccessrequest.cpp qwebenginefilesystemaccessrequest.h
         qwebenginefindtextresult.cpp qwebenginefindtextresult.h
         qwebengineframe.cpp qwebengineframe.h
@@ -51,6 +53,7 @@ qt_internal_add_module(WebEngineCore
         ../
         ../../3rdparty/chromium
         ../../3rdparty/chromium/third_party/abseil-cpp
+        ../../3rdparty/chromium/third_party/icu/source/common
         ../../3rdparty/chromium/third_party/perfetto/include
         ../../3rdparty/chromium/third_party/boringssl/src/include
         ../../3rdparty/chromium/base/allocator/partition_allocator/src

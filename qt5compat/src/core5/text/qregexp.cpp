@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qregexp.h"
 
@@ -4009,10 +4010,7 @@ bool QRegExp::operator==(const QRegExp &rx) const
 */
 size_t qHash(const QRegExp &key, size_t seed) noexcept
 {
-    QtPrivate::QHashCombine hash;
-    seed = hash(seed, key.priv->engineKey);
-    seed = hash(seed, key.priv->minimal);
-    return seed;
+    return qHashMulti(seed, key.priv->engineKey, key.priv->minimal);
 }
 
 /*!

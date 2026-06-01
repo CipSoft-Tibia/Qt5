@@ -16,6 +16,7 @@
 #include <QtQuick3DRuntimeRender/private/qssgrenderjoint_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendermorphtarget_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrenderparticles_p.h>
+#include "../graphobjects/qssgrenderroot_p.h"
 #include "../qssgrendercontextcore.h"
 #include <QtQuick3DRuntimeRender/private/qssgrenderbuffermanager_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendershadercache_p.h>
@@ -30,8 +31,6 @@
 #include <QtQuick/private/qsgtexture_p.h>
 #include <QtQuick/private/qsgrenderer_p.h>
 
-#include <QtCore/QCoreApplication>
-#include <QtCore/QBitArray>
 #include <array>
 
 #include "qssgrenderpass_p.h"
@@ -62,6 +61,68 @@ static bool checkParticleSupport(QRhi *rhi)
     }
 
     return ret;
+}
+
+struct LayerNodeStatResult
+{
+    qsizetype modelCount = 0;
+    qsizetype particlesCount = 0;
+    qsizetype item2DCount = 0;
+    qsizetype cameraCount = 0;
+    qsizetype lightCount = 0;
+    qsizetype reflectionProbeCount = 0;
+    qsizetype otherCount = 0;
+
+    friend LayerNodeStatResult &operator+=(LayerNodeStatResult &lhs, const LayerNodeStatResult &rhs)
+    {
+        lhs.modelCount += rhs.modelCount;
+        lhs.particlesCount += rhs.particlesCount;
+        lhs.item2DCount += rhs.item2DCount;
+        lhs.cameraCount += rhs.cameraCount;
+        lhs.lightCount += rhs.lightCount;
+        lhs.reflectionProbeCount += rhs.reflectionProbeCount;
+        lhs.otherCount += rhs.otherCount;
+        return lhs;
+    }
+
+    friend QDebug operator<<(QDebug dbg, const LayerNodeStatResult &stat)
+    {
+        dbg.nospace() << "LayerNodeStatResult(modelCount: " << stat.modelCount
+                      << ", particlesCount: " << stat.particlesCount
+                      << ", item2DCount: " << stat.item2DCount
+                      << ", cameraCount: " << stat.cameraCount
+                      << ", lightCount: " << stat.lightCount
+                      << ", reflectionProbeCount: " << stat.reflectionProbeCount
+                      << ", otherCount: " << stat.otherCount
+                      << ")";
+        return dbg.space();
+    }
+};
+
+static LayerNodeStatResult statLayerNodes(const QSSGLayerRenderData::LayerNodes &layerNodes) {
+
+    LayerNodeStatResult stat;
+
+    for (auto *node : layerNodes) {
+        if (node->getGlobalState(QSSGRenderNode::GlobalState::Active)) {
+            if (node->type == QSSGRenderGraphObject::Type::Model)
+                ++stat.modelCount;
+            else if (node->type == QSSGRenderGraphObject::Type::Particles)
+                ++stat.particlesCount;
+            else if (node->type == QSSGRenderGraphObject::Type::Item2D)
+                ++stat.item2DCount;
+            else if (node->type == QSSGRenderGraphObject::Type::ReflectionProbe)
+                ++stat.reflectionProbeCount;
+            else if (QSSGRenderGraphObject::isCamera(node->type))
+                ++stat.cameraCount;
+            else if (QSSGRenderGraphObject::isLight(node->type))
+                ++stat.lightCount;
+            else
+                ++stat.otherCount;
+        }
+    }
+
+    return stat;
 }
 
 // These are meant to be pixel offsets, so you need to divide them by the width/height
@@ -118,12 +179,12 @@ qsizetype QSSGLayerRenderData::frustumCullingInline(const QSSGClippingFrustum &c
     return lhs.cameraDistanceSq > rhs.cameraDistanceSq;
 }
 
-static void collectBoneTransforms(QSSGRenderNode *node, QSSGRenderSkeleton *skeletonNode, const QVector<QMatrix4x4> &poses)
+static void collectBoneTransforms(const QSSGLayerRenderData &renderData, QSSGRenderNode *node, QSSGRenderSkeleton *skeletonNode, const QVector<QMatrix4x4> &poses)
 {
     if (node->type == QSSGRenderGraphObject::Type::Joint) {
         QSSGRenderJoint *jointNode = static_cast<QSSGRenderJoint *>(node);
-        jointNode->calculateGlobalVariables();
-        QMatrix4x4 globalTrans = jointNode->globalTransform;
+        Q_ASSERT(!jointNode->isDirty(QSSGRenderNode::DirtyFlag::GlobalValuesDirty));
+        QMatrix4x4 globalTrans = renderData.getGlobalTransform(*jointNode);
         // if user doesn't give the inverseBindPose, identity matrices are used.
         if (poses.size() > jointNode->index)
             globalTrans *= poses[jointNode->index];
@@ -138,7 +199,7 @@ static void collectBoneTransforms(QSSGRenderNode *node, QSSGRenderSkeleton *skel
         skeletonNode->containsNonJointNodes = true;
     }
     for (auto &child : node->children)
-        collectBoneTransforms(&child, skeletonNode, poses);
+        collectBoneTransforms(renderData, &child, skeletonNode, poses);
 }
 
 static bool hasDirtyNonJointNodes(QSSGRenderNode *node, bool &hasChildJoints)
@@ -166,111 +227,40 @@ static bool hasDirtyNonJointNodes(QSSGRenderNode *node, bool &hasChildJoints)
     return dirtyNonJoint && nodeHasChildJoints;
 }
 
-template<typename T, typename V>
-inline void collectNode(V node, QVector<T> &dst, int &dstPos)
-{
-    if (dstPos < dst.size())
-        dst[dstPos] = node;
-    else
-        dst.push_back(node);
-
-    ++dstPos;
-}
-template <typename T, typename V>
-static inline void collectNodeFront(V node, QVector<T> &dst, int &dstPos)
-{
-    if (dstPos < dst.size())
-        dst[dst.size() - dstPos - 1] = node;
-    else
-        dst.push_front(node);
-
-    ++dstPos;
-}
-
 #define MAX_MORPH_TARGET 8
 #define MAX_MORPH_TARGET_INDEX_SUPPORTS_NORMALS 3
 #define MAX_MORPH_TARGET_INDEX_SUPPORTS_TANGENTS 1
-
-static bool maybeQueueNodeForRender(QSSGRenderNode &inNode,
-                                    QVector<QSSGRenderableNodeEntry> &outRenderableModels,
-                                    int &ioRenderableModelsCount,
-                                    QVector<QSSGRenderableNodeEntry> &outRenderableParticles,
-                                    int &ioRenderableParticlesCount,
-                                    QVector<QSSGRenderItem2D *> &outRenderableItem2Ds,
-                                    int &ioRenderableItem2DsCount,
-                                    QVector<QSSGRenderCamera *> &outCameras,
-                                    int &ioCameraCount,
-                                    QVector<QSSGRenderLight *> &outLights,
-                                    int &ioLightCount,
-                                    QVector<QSSGRenderReflectionProbe *> &outReflectionProbes,
-                                    int &ioReflectionProbeCount,
-                                    quint32 &ioDFSIndex)
-{
-    bool wasDirty = inNode.isDirty(QSSGRenderNode::DirtyFlag::GlobalValuesDirty) && inNode.calculateGlobalVariables();
-    if (inNode.getGlobalState(QSSGRenderNode::GlobalState::Active)) {
-        ++ioDFSIndex;
-        inNode.dfsIndex = ioDFSIndex;
-        if (QSSGRenderGraphObject::isRenderable(inNode.type)) {
-            if (inNode.type == QSSGRenderNode::Type::Model)
-                collectNode(QSSGRenderableNodeEntry(inNode), outRenderableModels, ioRenderableModelsCount);
-            else if (inNode.type == QSSGRenderNode::Type::Particles)
-                collectNode(QSSGRenderableNodeEntry(inNode), outRenderableParticles, ioRenderableParticlesCount);
-            else if (inNode.type == QSSGRenderNode::Type::Item2D) // Pushing front to keep item order inside QML file
-                collectNodeFront(static_cast<QSSGRenderItem2D *>(&inNode), outRenderableItem2Ds, ioRenderableItem2DsCount);
-        } else if (QSSGRenderGraphObject::isCamera(inNode.type)) {
-            collectNode(static_cast<QSSGRenderCamera *>(&inNode), outCameras, ioCameraCount);
-        } else if (QSSGRenderGraphObject::isLight(inNode.type)) {
-            if (auto &light = static_cast<QSSGRenderLight &>(inNode); light.isEnabled())
-                collectNode(&light, outLights, ioLightCount);
-        } else if (inNode.type == QSSGRenderGraphObject::Type::ReflectionProbe) {
-            collectNode(static_cast<QSSGRenderReflectionProbe *>(&inNode), outReflectionProbes, ioReflectionProbeCount);
-        }
-
-        for (auto &theChild : inNode.children)
-            wasDirty |= maybeQueueNodeForRender(theChild,
-                                                outRenderableModels,
-                                                ioRenderableModelsCount,
-                                                outRenderableParticles,
-                                                ioRenderableParticlesCount,
-                                                outRenderableItem2Ds,
-                                                ioRenderableItem2DsCount,
-                                                outCameras,
-                                                ioCameraCount,
-                                                outLights,
-                                                ioLightCount,
-                                                outReflectionProbes,
-                                                ioReflectionProbeCount,
-                                                ioDFSIndex);
-    }
-    return wasDirty;
-}
 
 QSSGDefaultMaterialPreparationResult::QSSGDefaultMaterialPreparationResult(QSSGShaderDefaultMaterialKey inKey)
     : firstImage(nullptr), opacity(1.0f), materialKey(inKey), dirty(false)
 {
 }
 
-static QSSGRenderCameraData getCameraDataImpl(const QSSGRenderCamera *camera)
+QSSGRenderCameraData QSSGLayerRenderData::getCameraDataImpl(const QSSGRenderCamera *camera) const
 {
     QSSGRenderCameraData ret;
     if (camera) {
         // Calculate viewProjection and clippingFrustum for Render Camera
         QMatrix4x4 viewProjection(Qt::Uninitialized);
-        camera->calculateViewProjectionMatrix(viewProjection);
+        QMatrix4x4 cameraGlobalTransform = getGlobalTransform(*camera);
+        camera->calculateViewProjectionMatrix(cameraGlobalTransform, viewProjection);
         std::optional<QSSGClippingFrustum> clippingFrustum;
+        const QMatrix4x4 camGlobalTransform = getGlobalTransform(*camera);
+        const QVector3D camGlobalPos = QSSGRenderNode::getGlobalPos(camGlobalTransform);
         if (camera->enableFrustumClipping) {
             QSSGClipPlane nearPlane;
-            QMatrix3x3 theUpper33(camera->globalTransform.normalMatrix());
+            QMatrix3x3 theUpper33(camGlobalTransform.normalMatrix());
             QVector3D dir(QSSGUtils::mat33::transform(theUpper33, QVector3D(0, 0, -1)));
             dir.normalize();
             nearPlane.normal = dir;
-            QVector3D theGlobalPos = camera->getGlobalPos() + camera->clipNear * dir;
+            QVector3D theGlobalPos = camGlobalPos + camera->clipPlanes.clipNear() * dir;
             nearPlane.d = -(QVector3D::dotProduct(dir, theGlobalPos));
             // the near plane's bbox edges are calculated in the clipping frustum's
             // constructor.
             clippingFrustum = QSSGClippingFrustum{viewProjection, nearPlane};
         }
-        ret = { viewProjection, clippingFrustum, camera->getScalingCorrectDirection(), camera->getGlobalPos() };
+        QMatrix4x4 globalTransform = getGlobalTransform(*camera);
+        ret = { viewProjection, clippingFrustum, camera->getScalingCorrectDirection(globalTransform), camGlobalPos };
     }
 
     return ret;
@@ -387,7 +377,9 @@ const QSSGLayerRenderData::RenderableItem2DEntries &QSSGLayerRenderData::getRend
     if (!renderedItem2Ds.isEmpty() || renderedCameras.isEmpty())
         return renderedItem2Ds;
 
-    renderedItem2Ds = renderableItem2Ds;
+    // Maintain QML item order
+    renderedItem2Ds = { std::make_reverse_iterator(item2DsView.end()),
+                        std::make_reverse_iterator(item2DsView.begin()) };
 
     if (!renderedItem2Ds.isEmpty()) {
         const QSSGRenderCameraDataList &cameraDatas(getCachedCameraDatas());
@@ -396,13 +388,17 @@ const QSSGLayerRenderData::RenderableItem2DEntries &QSSGLayerRenderData::getRend
         const QVector3D &cameraDirection = cameraDirectionAndPosition.direction;
         const QVector3D &cameraPosition = cameraDirectionAndPosition.position;
 
-        const auto isItemNodeDistanceGreatThan = [cameraDirection, cameraPosition]
+        const auto isItemNodeDistanceGreatThan = [this, cameraDirection, cameraPosition]
                 (const QSSGRenderItem2D *lhs, const QSSGRenderItem2D *rhs) {
             if (!lhs->parent || !rhs->parent)
                 return false;
-            const QVector3D lhsDifference = lhs->parent->getGlobalPos() - cameraPosition;
+
+            auto lhsGlobalTransform = getGlobalTransform(*lhs->parent);
+            auto rhsGlobalTransform = getGlobalTransform(*rhs->parent);
+
+            const QVector3D lhsDifference = QSSGRenderNode::getGlobalPos(lhsGlobalTransform) - cameraPosition;
             const float lhsCameraDistanceSq = QVector3D::dotProduct(lhsDifference, cameraDirection);
-            const QVector3D rhsDifference = rhs->parent->getGlobalPos() - cameraPosition;
+            const QVector3D rhsDifference = QSSGRenderNode::getGlobalPos(rhsGlobalTransform) - cameraPosition;
             const float rhsCameraDistanceSq = QVector3D::dotProduct(rhsDifference, cameraDirection);
             return lhsCameraDistanceSq > rhsCameraDistanceSq;
         };
@@ -577,6 +573,12 @@ QSSGRenderablesId QSSGLayerRenderData::createRenderables(QSSGPrepContextId prepI
         }
     }
 
+    // NOTE: Modifying the renderables list isn't ideal and should be done differently
+    //       but for now this is the easiest way to get the job done.
+    //       We still need to let the layer know it should reset the list once a new
+    //       frame starts.
+    renderablesModifiedByExtension = true;
+
     return (renderables.size() != 0) ? static_cast<QSSGRenderablesId>(prepId) : QSSGRenderablesId{ QSSGRenderablesId::Invalid };
 }
 
@@ -590,7 +592,7 @@ void QSSGLayerRenderData::setGlobalTransform(QSSGRenderablesId renderablesId, co
     auto &renderables = renderableModelStore[index];
     auto it = std::find_if(renderables.cbegin(), renderables.cend(), [&model](const QSSGRenderableNodeEntry &e) { return e.node == &model; });
     if (it != renderables.cend()) {
-        it->globalTransform = globalTransform;
+        it->extOverrides.globalTransform = globalTransform;
         it->overridden |= QSSGRenderableNodeEntry::Overridden::GlobalTransform;
     }
 }
@@ -601,11 +603,11 @@ QMatrix4x4 QSSGLayerRenderData::getGlobalTransform(QSSGPrepContextId prepId, con
     const size_t index = getPrepContextIndex(prepId);
     QSSG_ASSERT_X(index < renderableModelStore.size(), "Missing call to createRenderables()?", return {});
 
-    QMatrix4x4 ret = model.globalTransform;
+    QMatrix4x4 ret = getGlobalTransform(model);
     auto &renderables = renderableModelStore[index];
     auto it = std::find_if(renderables.cbegin(), renderables.cend(), [&model](const QSSGRenderableNodeEntry &e) { return e.node == &model; });
     if (it != renderables.cend() && (it->overridden & QSSGRenderableNodeEntry::Overridden::GlobalTransform))
-        ret = it->globalTransform;
+        ret = it->extOverrides.globalTransform;
 
     return ret;
 }
@@ -620,7 +622,7 @@ void QSSGLayerRenderData::setGlobalOpacity(QSSGRenderablesId renderablesId, cons
     auto &renderables = renderableModelStore[index];
     auto it = std::find_if(renderables.cbegin(), renderables.cend(), [&model](const QSSGRenderableNodeEntry &e) { return e.node == &model; });
     if (it != renderables.cend()) {
-        it->globalOpacity = opacity;
+        it->extOverrides.globalOpacity = opacity;
         it->overridden |= QSSGRenderableNodeEntry::Overridden::GlobalOpacity;
     }
 }
@@ -631,11 +633,11 @@ float QSSGLayerRenderData::getGlobalOpacity(QSSGPrepContextId prepId, const QSSG
     const size_t index = getPrepContextIndex(prepId);
     QSSG_ASSERT_X(index < renderableModelStore.size(), "Missing call to createRenderables()?", return {});
 
-    float ret = model.globalOpacity;
+    float ret = getGlobalOpacity(model);
     auto &renderables = renderableModelStore[index];
     auto it = std::find_if(renderables.cbegin(), renderables.cend(), [&model](const QSSGRenderableNodeEntry &e) { return e.node == &model; });
     if (it != renderables.cend() && (it->overridden & QSSGRenderableNodeEntry::Overridden::GlobalOpacity))
-        ret = it->globalOpacity;
+        ret = it->extOverrides.globalOpacity;
 
     return ret;
 }
@@ -654,8 +656,8 @@ void QSSGLayerRenderData::setModelMaterials(QSSGRenderablesId renderablesId, con
     auto &renderables = renderableModelStore[index];
     auto it = std::find_if(renderables.cbegin(), renderables.cend(), [&model](const QSSGRenderableNodeEntry &e) { return e.node == &model; });
     if (it != renderables.cend()) {
-        it->materials.resize(materials.size());
-        std::memcpy(it->materials.data(), materials.data(), it->materials.size() * sizeof(QSSGRenderGraphObject *));
+        it->extOverrides.materials.resize(materials.size());
+        std::memcpy(it->extOverrides.materials.data(), materials.data(), it->extOverrides.materials.size() * sizeof(QSSGRenderGraphObject *));
         it->overridden |= QSSGRenderableNodeEntry::Overridden::Materials;
     }
 }
@@ -670,7 +672,7 @@ void QSSGLayerRenderData::setModelMaterials(const QSSGRenderablesId renderablesI
 
     auto &renderables = renderableModelStore[index];
     for (auto &renderable : renderables) {
-        auto &renderableMaterials = renderable.materials;
+        auto &renderableMaterials = renderable.extOverrides.materials;
         renderableMaterials.resize(materials.size());
         std::memcpy(renderableMaterials.data(), materials.data(), renderableMaterials.size() * sizeof(QSSGRenderGraphObject *));
         renderable.overridden |= QSSGRenderableNodeEntry::Overridden::Materials;
@@ -692,13 +694,23 @@ QSSGPrepResultId QSSGLayerRenderData::prepareModelsForRender(QSSGRenderContextIn
     QSSG_ASSERT_X(extContext.camera != nullptr, "No camera set!", return {});
 
     const auto vp = contextInterface.renderer()->viewport();
-    extContext.camera->calculateGlobalVariables(vp);
+    const float dpr = contextInterface.renderer()->dpr();
+    const float ssaaMultiplier = layer.isSsaaEnabled() ? layer.ssaaMultiplier : 1.0f;
+
+    QSSGRenderCamera::calculateProjectionInternal(*extContext.camera, vp, { dpr, ssaaMultiplier } );
 
     auto &renderables = renderableModelStore[index];
 
-    prepareModelMaterials(renderables, true /* Cull renderables without materials */);
+    static const auto prepareModelMaterials = [](const RenderableNodeEntries &renderables) {
+        for (auto &renderable : renderables) {
+            if ((renderable.overridden & QSSGRenderableNodeEntry::Overridden::Materials) == 0
+                && (renderable.overridden & QSSGRenderableNodeEntry::Overridden::Disabled) == 0) {
+                renderable.extOverrides.materials = static_cast<QSSGRenderModel *>(renderable.node)->materials;
+            }
+        }
+    };
 
-    prepareModelMeshes(contextInterface, renderables, false /* globalPickingEnabled */);
+    prepareModelMaterials(renderables);
 
     // ### multiview
     QSSGRenderCameraList camera({ extContext.camera });
@@ -1136,7 +1148,7 @@ QSSGDefaultMaterialPreparationResult QSSGLayerRenderData::prepareDefaultMaterial
         // m_Renderer.GetLayerRenderData()->m_Layer.m_ProbeFov < 180.0f );
     }
 
-    if (subsetOpacity >= QSSG_RENDER_MINIMUM_RENDER_OPACITY) {
+    if (subsetOpacity >= QSSGRendererPrivate::minimumRenderOpacity) {
 
         // Set the semi-transparency flag as specified in PrincipledMaterial's
         // blendMode and alphaMode:
@@ -1263,7 +1275,7 @@ QSSGDefaultMaterialPreparationResult QSSGLayerRenderData::prepareDefaultMaterial
     }
 #undef CHECK_IMAGE_AND_PREPARE
 
-    if (subsetOpacity < QSSG_RENDER_MINIMUM_RENDER_OPACITY) {
+    if (subsetOpacity < QSSGRendererPrivate::minimumRenderOpacity) {
         subsetOpacity = 0.0f;
         // You can still pick against completely transparent objects(or rather their bounding
         // box)
@@ -1272,7 +1284,7 @@ QSSGDefaultMaterialPreparationResult QSSGLayerRenderData::prepareDefaultMaterial
         renderableFlags |= QSSGRenderableObjectFlag::CompletelyTransparent;
     }
 
-    if (subsetOpacity > 1.f - QSSG_RENDER_MINIMUM_RENDER_OPACITY)
+    if (subsetOpacity > 1.f - QSSGRendererPrivate::minimumRenderOpacity)
         subsetOpacity = 1.f;
     else
         renderableFlags |= QSSGRenderableObjectFlag::HasTransparency;
@@ -1312,7 +1324,7 @@ QSSGDefaultMaterialPreparationResult QSSGLayerRenderData::prepareCustomMaterialF
     retval.opacity = inOpacity;
     float &subsetOpacity(retval.opacity);
 
-    if (subsetOpacity < QSSG_RENDER_MINIMUM_RENDER_OPACITY) {
+    if (subsetOpacity < QSSGRendererPrivate::minimumRenderOpacity) {
         subsetOpacity = 0.0f;
         // You can still pick against completely transparent objects(or rather their bounding
         // box)
@@ -1321,7 +1333,7 @@ QSSGDefaultMaterialPreparationResult QSSGLayerRenderData::prepareCustomMaterialF
         renderableFlags |= QSSGRenderableObjectFlag::CompletelyTransparent;
     }
 
-    if (subsetOpacity > 1.f - QSSG_RENDER_MINIMUM_RENDER_OPACITY)
+    if (subsetOpacity > 1.f - QSSGRendererPrivate::minimumRenderOpacity)
         subsetOpacity = 1.f;
     else
         renderableFlags |= QSSGRenderableObjectFlag::HasTransparency;
@@ -1410,108 +1422,6 @@ QSSGDefaultMaterialPreparationResult QSSGLayerRenderData::prepareCustomMaterialF
     return retval;
 }
 
-enum class CullUnrenderables { Off, On };
-template <CullUnrenderables cull = CullUnrenderables::On>
-static void prepareModelMaterialsImpl(QSSGLayerRenderData::RenderableNodeEntries &renderableModels)
-{
-    const auto originalModelCount = renderableModels.size();
-    auto end = originalModelCount;
-
-    for (int idx = 0; idx < end; ++idx) {
-        const auto &renderable = renderableModels.at(idx);
-        const QSSGRenderModel &model = *static_cast<QSSGRenderModel *>(renderable.node);
-        // Ensure we have at least 1 material
-        if ((renderable.overridden & QSSGRenderableNodeEntry::Overridden::Materials) == 0)
-            renderable.materials = model.materials;
-
-        if constexpr (cull == CullUnrenderables::On) {
-            const bool isDisabled = ((renderable.overridden & QSSGRenderableNodeEntry::Overridden::Disabled) != 0);
-            if (isDisabled || renderable.materials.isEmpty()) {
-                // Swap current (idx) and last item (--end).
-                // Note, post-decrement idx to ensure we recheck the new current item on next iteration
-                // and pre-decrement the end move the end of the list to not include the culled renderable.
-                renderableModels.swapItemsAt(idx--, --end);
-            }
-        }
-    }
-
-    if constexpr (cull == CullUnrenderables::On) {
-        // Any models without materials get dropped right here
-        if (end != originalModelCount)
-            renderableModels.resize(end);
-    }
-}
-
-void QSSGLayerRenderData::prepareModelMaterials(RenderableNodeEntries &renderableModels, bool cullUnrenderables)
-{
-    if (cullUnrenderables)
-        prepareModelMaterialsImpl<CullUnrenderables::On>(renderableModels);
-    else
-        prepareModelMaterialsImpl<CullUnrenderables::Off>(renderableModels);
-}
-
-void QSSGLayerRenderData::prepareModelMeshes(const QSSGRenderContextInterface &contextInterface,
-                                             RenderableNodeEntries &renderableModels,
-                                             bool globalPickingEnabled)
-{
-    const auto &bufferManager = contextInterface.bufferManager();
-
-    const auto originalModelCount = renderableModels.size();
-    auto end = originalModelCount;
-
-    for (int idx = 0; idx < end; ++idx) {
-        // It's up to the BufferManager to employ the appropriate caching mechanisms, so
-        // loadMesh() is expected to be fast if already loaded. Note that preparing
-        // the same QSSGRenderModel in different QQuickWindows (possible when a
-        // scene is shared between View3Ds where the View3Ds belong to different
-        // windows) leads to a different QSSGRenderMesh since the BufferManager is,
-        // very correctly, per window, and so per scenegraph render thread.
-
-        const auto &renderable = renderableModels.at(idx);
-        const QSSGRenderModel &model = *static_cast<QSSGRenderModel *>(renderable.node);
-        // Ensure we have a mesh
-        if (auto *theMesh = bufferManager->loadMesh(&model)) {
-            renderable.mesh = theMesh;
-            // Completely transparent models cannot be pickable.  But models with completely
-            // transparent materials still are.  This allows the artist to control pickability
-            // in a somewhat fine-grained style.
-            const bool canModelBePickable = (model.globalOpacity > QSSG_RENDER_MINIMUM_RENDER_OPACITY)
-                    && (globalPickingEnabled
-                        || model.getGlobalState(QSSGRenderModel::GlobalState::Pickable));
-            if (canModelBePickable) {
-                // Check if there is BVH data, if not generate it
-                if (!theMesh->bvh) {
-                    if (!model.meshPath.isNull())
-                        theMesh->bvh = bufferManager->loadMeshBVH(model.meshPath);
-                    else if (model.geometry)
-                        theMesh->bvh = bufferManager->loadMeshBVH(model.geometry);
-
-                    if (theMesh->bvh) {
-                        const auto &roots = theMesh->bvh->roots();
-                        for (qsizetype i = 0, end = qsizetype(roots.size()); i < end; ++i)
-                            theMesh->subsets[i].bvhRoot = roots[i];
-                    }
-                }
-            }
-        } else {
-            // Swap current (idx) and last item (--end).
-            // Note, post-decrement idx to ensure we recheck the new current item on next iteration
-            // and pre-decrement the end move the end of the list to not include the culled renderable.
-            renderableModels.swapItemsAt(idx--, --end);
-        }
-    }
-
-    // Any models without a mesh get dropped right here
-    if (end != originalModelCount)
-        renderableModels.resize(end);
-
-    // Now is the time to kick off the vertex/index buffer updates for all the
-    // new meshes (and their submeshes). This here is the last possible place
-    // to kick this off because the rest of the rendering pipeline will only
-    // see the individual sub-objects as "renderable objects".
-    bufferManager->commitBufferResourceUpdates();
-}
-
 void QSSGLayerRenderData::setLightmapTexture(const QSSGModelContext &modelContext, QRhiTexture *lightmapTexture)
 {
     lightmapTextures[&modelContext] = lightmapTexture;
@@ -1591,13 +1501,38 @@ bool QSSGLayerRenderData::prepareModelsForRender(QSSGRenderContextInterface &con
 
         const QSSGRenderModel &model = *static_cast<QSSGRenderModel *>(renderable.node);
         const auto &lights = renderable.lights;
-        QSSGRenderMesh *theMesh = renderable.mesh;
-
-        QSSG_ASSERT_X(theMesh != nullptr, "Only renderables with a mesh will be processed!", continue);
+        QSSGRenderMesh *theMesh = modelData->getMesh(model);
+        if (!theMesh)
+            continue;
 
         const bool altGlobalTransform = ((renderable.overridden & QSSGRenderableNodeEntry::Overridden::GlobalTransform) != 0);
-        const auto &globalTransform = altGlobalTransform ? renderable.globalTransform : model.globalTransform;
-        QSSGModelContext &theModelContext = *RENDER_FRAME_NEW<QSSGModelContext>(contextInterface, model, globalTransform, allCameraData);
+        const auto &globalTransform = altGlobalTransform ? renderable.extOverrides.globalTransform : getGlobalTransform(model);
+        QMatrix3x3 normalMatrix { Qt::Uninitialized };
+        QSSGLayerRenderData::ModelViewProjections mvps;
+        if (altGlobalTransform) {
+            QSSGRenderNode::calculateNormalMatrix(globalTransform, normalMatrix);
+            size_t mvpCount = 0;
+            for (const auto &cameraData : allCameraData) {
+                QSSGRenderNode::calculateMVPAndNormalMatrix(globalTransform, cameraData.viewProjection, mvps[mvpCount++], normalMatrix);
+            }
+        } else {
+            if (model.usesBoneTexture()) {
+                // FIXME:
+                // For skinning, node's global transformation will be ignored and
+                // an identity matrix will be used for the normalMatrix
+                size_t mvpCount = 0;
+                for (const QSSGRenderCameraData &cameraData : allCameraData) {
+                    mvps[mvpCount++] = cameraData.viewProjection;
+                    normalMatrix = QMatrix3x3();
+                }
+            } else {
+                normalMatrix = getNormalMatrix(model);
+                mvps = getModelMvps(model);
+            }
+        }
+        const bool altModelOpacity = ((renderable.overridden & QSSGRenderableNodeEntry::Overridden::GlobalOpacity) != 0);
+        const float modelGlobalOpacity = altModelOpacity ? renderable.extOverrides.globalOpacity : getGlobalOpacity(model);
+        QSSGModelContext &theModelContext = *RENDER_FRAME_NEW<QSSGModelContext>(contextInterface, model, globalTransform, normalMatrix, mvps);
         modelContexts.push_back(&theModelContext);
         // We might over-allocate here, as the material list technically can contain an invalid (nullptr) material.
         // We'll fix that by adjusting the size at the end for now...
@@ -1681,25 +1616,25 @@ bool QSSGLayerRenderData::prepareModelsForRender(QSSGRenderContextInterface &con
 
         // Subset(s)
         auto &renderableSubsets = theModelContext.subsets;
-        const auto &materials = renderable.materials;
+        const bool hasMaterialOverrides = ((renderable.overridden & QSSGRenderableNodeEntry::Overridden::Materials) != 0);
+        const auto &materials = hasMaterialOverrides ? renderable.extOverrides.materials : modelData->getMaterials(model);
         const auto materialCount = materials.size();
-        const bool altModelOpacity = ((renderable.overridden & QSSGRenderableNodeEntry::Overridden::GlobalOpacity) != 0);
-        const float modelOpacity = altModelOpacity ? renderable.globalOpacity : model.globalOpacity;
         QSSGRenderGraphObject *lastMaterial = !materials.isEmpty() ? materials.last() : nullptr;
         int idx = 0, subsetIdx = 0;
         for (; idx < meshSubsetCount; ++idx) {
             // If the materials list < size of subsets, then use the last material for the rest
             QSSGRenderGraphObject *theMaterialObject = (idx >= materialCount) ? lastMaterial : materials[idx];
-            QSSG_ASSERT_X(theMaterialObject != nullptr, "No material found for model!", continue);
+            if (!theMaterialObject)
+                continue;
 
             const QSSGRenderSubset &theSubset = meshSubsets.at(idx);
             QSSGRenderableObjectFlags renderableFlags = renderableFlagsForModel;
-            float subsetOpacity = modelOpacity;
+            float subsetOpacity = modelGlobalOpacity;
 
             renderableFlags.setPointsTopology(theSubset.rhi.ia.topology == QRhiGraphicsPipeline::Points);
             QSSGRenderableObject *theRenderableObject = &renderableSubsets[subsetIdx++];
 
-            bool usesInstancing = theModelContext.model.instancing()
+            const bool usesInstancing = theModelContext.model.instancing()
                     && rhiCtx->rhi()->isFeatureSupported(QRhi::Instancing);
             if (usesInstancing && theModelContext.model.instanceTable->hasTransparency())
                 renderableFlags |= QSSGRenderableObjectFlag::HasTransparency;
@@ -1710,17 +1645,18 @@ bool QSSGLayerRenderData::prepareModelsForRender(QSSGRenderContextInterface &con
             quint32 subsetLevelOfDetail = 0;
             if (!theSubset.lods.isEmpty() && lodThreshold > 0.0f) {
                 // Accounts for FOV
-                float lodDistanceMultiplier = cameras[0]->getLevelOfDetailMultiplier();
+                float lodDistanceMultiplier = camerasView[0]->getLevelOfDetailMultiplier();
                 float distanceThreshold = 0.0f;
-                const auto scale = QSSGUtils::mat44::getScale(model.globalTransform);
+                const auto scale = QSSGUtils::mat44::getScale(globalTransform);
                 float modelScale = qMax(scale.x(), qMax(scale.y(), scale.z()));
                 QSSGBounds3 transformedBounds = theSubset.bounds;
-                if (cameras[0]->type != QSSGRenderGraphObject::Type::OrthographicCamera) {
-                    transformedBounds.transform(model.globalTransform);
+                if (camerasView[0]->type != QSSGRenderGraphObject::Type::OrthographicCamera) {
+                    transformedBounds.transform(globalTransform);
                     if (maybeDebugDraw && debugDrawSystem->isEnabled(QSSGDebugDrawSystem::Mode::MeshLod))
                         debugDrawSystem->drawBounds(transformedBounds, QColor(Qt::red));
-                    const QVector3D cameraNormal = cameras[0]->getScalingCorrectDirection();
-                    const QVector3D cameraPosition = cameras[0]->getGlobalPos();
+                    const QMatrix4x4 cameraGlobalTranform = getGlobalTransform(*camerasView[0]);
+                    const QVector3D cameraNormal = QSSGRenderNode::getScalingCorrectDirection(cameraGlobalTranform);
+                    const QVector3D cameraPosition = QSSGRenderNode::getGlobalPos(cameraGlobalTranform);
                     const QSSGPlane cameraPlane = QSSGPlane(cameraPosition, cameraNormal);
                     const QVector3D lodSupportMin = transformedBounds.getSupport(-cameraNormal);
                     const QVector3D lodSupportMax = transformedBounds.getSupport(cameraNormal);
@@ -1763,9 +1699,11 @@ bool QSSGLayerRenderData::prepareModelsForRender(QSSGRenderContextInterface &con
             }
 
             QVector3D theModelCenter(theSubset.bounds.center());
-            theModelCenter = QSSGUtils::mat44::transform(model.globalTransform, theModelCenter);
-            if (maybeDebugDraw && debugDrawSystem->isEnabled(QSSGDebugDrawSystem::Mode::MeshLodNormal))
-                debugDrawSystem->debugNormals(*bufferManager, theModelContext, theSubset, subsetLevelOfDetail, (theModelCenter - allCameras[0]->getGlobalPos()).length() * 0.01);
+            theModelCenter = QSSGUtils::mat44::transform(globalTransform, theModelCenter);
+            if (maybeDebugDraw && debugDrawSystem->isEnabled(QSSGDebugDrawSystem::Mode::MeshLodNormal)) {
+                const QMatrix4x4 allCamera0GlobalTransform = getGlobalTransform(*allCameras[0]);
+                debugDrawSystem->debugNormals(*bufferManager, theModelContext, theSubset, subsetLevelOfDetail, (theModelCenter - QSSGRenderNode::getGlobalPos(allCamera0GlobalTransform)).length() * 0.01);
+            }
 
             auto checkF32TypeIndex = [&rhiCtx](QRhiVertexInputAttribute::Format f) {
                 if ((f ==  QRhiVertexInputAttribute::Format::Float4)
@@ -1914,7 +1852,7 @@ bool QSSGLayerRenderData::prepareModelsForRender(QSSGRenderContextInterface &con
 
         // If the indices don't match then something's off and we need to adjust the subset renderable list size.
         if (Q_UNLIKELY(idx != subsetIdx))
-            renderableSubsets.mSize = subsetIdx + 1;
+            renderableSubsets.mSize = subsetIdx; // subsetIdx == next_subsetIdx == size
 
         for (auto &ro : renderableSubsets) {
             const auto depthMode = ro.depthWriteMode;
@@ -1975,9 +1913,9 @@ bool QSSGLayerRenderData::prepareParticlesForRender(const RenderableNodeEntries 
         if (particles.m_hasTransparency && particles.m_blendMode != QSSGRenderParticles::BlendMode::SourceOver)
             ioFlags.setHasCustomBlendMode(true);
 
-        float opacity = particles.globalOpacity;
+        float opacity = getGlobalOpacity(particles);
         QVector3D center(particles.m_particleBuffer.bounds().center());
-        center = QSSGUtils::mat44::transform(particles.globalTransform, center);
+        center = QSSGUtils::mat44::transform(getGlobalTransform(particles), center);
 
         QSSGRenderableImage *firstImage = nullptr;
         if (particles.m_sprite) {
@@ -2005,10 +1943,12 @@ bool QSSGLayerRenderData::prepareParticlesForRender(const RenderableNodeEntries 
         }
 
         if (opacity > 0.0f && particles.m_particleBuffer.particleCount()) {
+            const auto globalTransform = getGlobalTransform(particles);
             auto *theRenderableObject = RENDER_FRAME_NEW<QSSGParticlesRenderable>(contextInterface,
                                                                                   renderableFlags,
                                                                                   center,
                                                                                   renderer,
+                                                                                  globalTransform,
                                                                                   particles,
                                                                                   firstImage,
                                                                                   colorTable,
@@ -2028,69 +1968,6 @@ bool QSSGLayerRenderData::prepareParticlesForRender(const RenderableNodeEntries 
     return dirty;
 }
 
-bool QSSGLayerRenderData::prepareItem2DsForRender(const QSSGRenderContextInterface &ctxIfc,
-                                                  const RenderableItem2DEntries &renderableItem2Ds)
-{
-    const bool hasItems = (renderableItem2Ds.size() != 0);
-    if (hasItems) {
-        const auto &rhiCtx = ctxIfc.rhiContext();
-        const auto &clipSpaceCorrMatrix = ctxIfc.rhiContext()->rhi()->clipSpaceCorrMatrix();
-        const QSSGRenderCameraDataList &cameraDatas(getCachedCameraDatas());
-
-        item2DDataMap.clear();
-        item2DDataMap.reserve(size_t(renderableItem2Ds.size()));
-        renderer->populateItem2DDataMapForLayer(layer, item2DDataMap);
-        const auto getItem2DData = [&](const QSSGRenderItem2D *item) {
-            const auto foundIt = item2DDataMap.find(item);
-            return (foundIt != item2DDataMap.cend()) ? foundIt->second : QSSGRenderer::Item2DData{};
-        };
-
-        for (const auto &theItem2D : renderableItem2Ds) {
-            QSSGRenderer::Item2DData i2d = getItem2DData(theItem2D);
-            i2d.layer = &layer;
-            i2d.item = theItem2D;
-            auto &mvps = i2d.mvps;
-
-            // Check that we have a renderer and that it hasn't changed (would indicate a context change)
-            // and we need to update all the data.
-            QSGRenderContext *sgRc = QSSGRendererPrivate::getSgRenderContext(*renderer);
-            QSSG_ASSERT(sgRc != nullptr, continue);
-            const bool contextChanged = (item2DRenderContext && item2DRenderContext != sgRc);
-            item2DRenderContext = sgRc;
-            if (contextChanged) {
-                delete i2d.renderer;
-                i2d.renderer = nullptr;
-            }
-
-            if (!i2d.renderer)
-                i2d.renderer = sgRc->createRenderer(QSGRendererInterface::RenderMode3D);
-
-            if (i2d.renderer->rootNode() != theItem2D->m_rootNode) {
-                i2d.renderer->setRootNode(theItem2D->m_rootNode);
-                theItem2D->m_rootNode->markDirty(QSGNode::DirtyForceUpdate); // Force matrix, clip and opacity update.
-                i2d.renderer->nodeChanged(theItem2D->m_rootNode, QSGNode::DirtyForceUpdate); // Force render list update.
-            }
-
-            if (!i2d.rpd)
-                i2d.rpd = rhiCtx->mainRenderPassDescriptor()->newCompatibleRenderPassDescriptor();
-
-            for (size_t i = 0, end = qMin(cameraDatas.size(), 2); i < end; ++i) {
-                const QSSGRenderCameraData &camData = cameraDatas[i];
-                QMatrix4x4 mvp = camData.viewProjection * theItem2D->globalTransform;
-                static const QMatrix4x4 flipMatrix(1.0f, 0.0f, 0.0f, 0.0f,
-                                                0.0f, -1.0f, 0.0f, 0.0f,
-                                                0.0f, 0.0f, 1.0f, 0.0f,
-                                                0.0f, 0.0f, 0.0f, 1.0f);
-                mvps[i] = clipSpaceCorrMatrix * mvp * flipMatrix;
-            }
-            if (i2d.isValid())
-                renderer->registerItem2DData(i2d);
-        }
-    }
-
-    return hasItems;
-}
-
 void QSSGLayerRenderData::prepareResourceLoaders()
 {
     QSSGRenderContextInterface &contextInterface = *renderer->contextInterface();
@@ -2102,15 +1979,17 @@ void QSSGLayerRenderData::prepareResourceLoaders()
 
 void QSSGLayerRenderData::prepareReflectionProbesForRender()
 {
-    const auto probeCount = reflectionProbes.size();
+    const auto probeCount = reflectionProbesView.size();
     requestReflectionMapManager(); // ensure that we have a reflection map manager
 
     for (int i = 0; i < probeCount; i++) {
-        QSSGRenderReflectionProbe* probe = reflectionProbes.at(i);
+        QSSGRenderReflectionProbe* probe = reflectionProbesView[i];
+
+        QMatrix4x4 probeTransform = getGlobalTransform(*probe);
 
         int reflectionObjectCount = 0;
         QVector3D probeExtent = probe->boxSize / 2;
-        QSSGBounds3 probeBound = QSSGBounds3::centerExtents(probe->getGlobalPos() + probe->boxOffset, probeExtent);
+        QSSGBounds3 probeBound = QSSGBounds3::centerExtents(QSSGRenderNode::getGlobalPos(probeTransform) + probe->boxOffset, probeExtent);
 
         const auto injectProbe = [&](const QSSGRenderableObjectHandle &handle) {
             if (handle.obj->renderableFlags.testFlag(QSSGRenderableObjectFlag::ReceivesReflections)
@@ -2119,8 +1998,9 @@ void QSSGLayerRenderData::prepareReflectionProbesForRender()
                 QSSGBounds3 nodeBound = renderableObj->bounds;
                 QVector4D vmin(nodeBound.minimum, 1.0);
                 QVector4D vmax(nodeBound.maximum, 1.0);
-                vmin = renderableObj->globalTransform * vmin;
-                vmax = renderableObj->globalTransform * vmax;
+                const QMatrix4x4 &renderableTransform = renderableObj->modelContext.globalTransform;
+                vmin = renderableTransform * vmin;
+                vmax = renderableTransform * vmax;
                 nodeBound.minimum = vmin.toVector3D();
                 nodeBound.maximum = vmax.toVector3D();
                 if (probeBound.intersects(nodeBound)) {
@@ -2131,7 +2011,7 @@ void QSSGLayerRenderData::prepareReflectionProbesForRender()
                         renderableObj->reflectionProbeIndex = i;
                         renderableObj->distanceFromReflectionProbe = distance;
                         renderableObj->reflectionProbe.parallaxCorrection = probe->parallaxCorrection;
-                        renderableObj->reflectionProbe.probeCubeMapCenter = probe->getGlobalPos();
+                        renderableObj->reflectionProbe.probeCubeMapCenter = QSSGRenderNode::getGlobalPos(probeTransform);
                         renderableObj->reflectionProbe.probeBoxMax = probeBound.maximum;
                         renderableObj->reflectionProbe.probeBoxMin = probeBound.minimum;
                         renderableObj->reflectionProbe.enabled = true;
@@ -2182,50 +2062,46 @@ static inline int effectiveMaxLightCount(const QSSGShaderFeatures &features)
     return QSSG_MAX_NUM_LIGHTS;
 }
 
-void updateDirtySkeletons(const QVector<QSSGRenderableNodeEntry> &renderableNodes)
+static void updateDirtySkeletons(const QSSGLayerRenderData &renderData, const QSSGLayerRenderData::QSSGModelsView &renderableNodes)
 {
     // First model using skeleton clears the dirty flag so we need another mechanism
     // to tell to the other models the skeleton is dirty.
     QSet<QSSGRenderSkeleton *> dirtySkeletons;
-    for (const auto &node : std::as_const(renderableNodes)) {
-        if (node.node->type == QSSGRenderGraphObject::Type::Model) {
-            auto modelNode = static_cast<QSSGRenderModel *>(node.node);
-            auto skeletonNode = modelNode->skeleton;
-            bool hcj = false;
-            if (skeletonNode) {
-                const bool dirtySkeleton = dirtySkeletons.contains(skeletonNode);
-                const bool hasDirtyNonJoints = (skeletonNode->containsNonJointNodes
-                                                && (hasDirtyNonJointNodes(skeletonNode, hcj) || dirtySkeleton));
-                const bool dirtyTransform = skeletonNode->isDirty(QSSGRenderNode::DirtyFlag::TransformDirty);
-                if (skeletonNode->skinningDirty || hasDirtyNonJoints || dirtyTransform) {
-                    skeletonNode->boneTransformsDirty = false;
-                    if (hasDirtyNonJoints && !dirtySkeleton)
-                        dirtySkeletons.insert(skeletonNode);
-                    skeletonNode->skinningDirty = false;
-                    const qsizetype dataSize = BONEDATASIZE4ID(skeletonNode->maxIndex);
-                    if (skeletonNode->boneData.size() < dataSize)
-                        skeletonNode->boneData.resize(dataSize);
-                    skeletonNode->calculateGlobalVariables();
-                    skeletonNode->containsNonJointNodes = false;
-                    for (auto &child : skeletonNode->children)
-                        collectBoneTransforms(&child, skeletonNode, modelNode->inverseBindPoses);
-                }
-                skeletonNode->boneCount = skeletonNode->boneData.size() / 2 / 4 / 16;
-                const int boneTexWidth = qCeil(qSqrt(skeletonNode->boneCount * 4 * 2));
-                skeletonNode->boneTexData.setSize(QSize(boneTexWidth, boneTexWidth));
-                skeletonNode->boneData.resize(boneTexWidth * boneTexWidth * 16);
-                skeletonNode->boneTexData.setTextureData(skeletonNode->boneData);
+    for (const auto &modelNode : std::as_const(renderableNodes)) {
+        QSSGRenderSkeleton *skeletonNode = modelNode->skeleton;
+        bool hcj = false;
+        if (skeletonNode) {
+            const bool dirtySkeleton = dirtySkeletons.contains(skeletonNode);
+            const bool hasDirtyNonJoints = (skeletonNode->containsNonJointNodes
+                                            && (hasDirtyNonJointNodes(skeletonNode, hcj) || dirtySkeleton));
+            if (skeletonNode->skinningDirty || hasDirtyNonJoints) {
+                Q_ASSERT(!skeletonNode->isDirty(QSSGRenderNode::DirtyFlag::GlobalValuesDirty));
+                skeletonNode->boneTransformsDirty = false;
+                if (hasDirtyNonJoints && !dirtySkeleton)
+                    dirtySkeletons.insert(skeletonNode);
+                skeletonNode->skinningDirty = false;
+                const qsizetype dataSize = BONEDATASIZE4ID(skeletonNode->maxIndex);
+                if (skeletonNode->boneData.size() < dataSize)
+                    skeletonNode->boneData.resize(dataSize);
+                skeletonNode->containsNonJointNodes = false;
+                for (auto &child : skeletonNode->children)
+                    collectBoneTransforms(renderData, &child, skeletonNode, modelNode->inverseBindPoses);
             }
-            const int numMorphTarget = modelNode->morphTargets.size();
-            for (int i = 0; i < numMorphTarget; ++i) {
-                auto morphTarget = static_cast<const QSSGRenderMorphTarget *>(modelNode->morphTargets.at(i));
-                modelNode->morphWeights[i] = morphTarget->weight;
-                modelNode->morphAttributes[i] = morphTarget->attributes;
-                if (i > MAX_MORPH_TARGET_INDEX_SUPPORTS_NORMALS)
-                    modelNode->morphAttributes[i] &= 0x1; // MorphTarget.Position
-                else if (i > MAX_MORPH_TARGET_INDEX_SUPPORTS_TANGENTS)
-                    modelNode->morphAttributes[i] &= 0x3; // MorphTarget.Position | MorphTarget.Normal
-            }
+            skeletonNode->boneCount = skeletonNode->boneData.size() / 2 / 4 / 16;
+            const int boneTexWidth = qCeil(qSqrt(skeletonNode->boneCount * 4 * 2));
+            skeletonNode->boneTexData.setSize(QSize(boneTexWidth, boneTexWidth));
+            skeletonNode->boneData.resize(boneTexWidth * boneTexWidth * 16);
+            skeletonNode->boneTexData.setTextureData(skeletonNode->boneData);
+        }
+        const int numMorphTarget = modelNode->morphTargets.size();
+        for (int i = 0; i < numMorphTarget; ++i) {
+            auto morphTarget = static_cast<const QSSGRenderMorphTarget *>(modelNode->morphTargets.at(i));
+            modelNode->morphWeights[i] = morphTarget->weight;
+            modelNode->morphAttributes[i] = morphTarget->attributes;
+            if (i > MAX_MORPH_TARGET_INDEX_SUPPORTS_NORMALS)
+                modelNode->morphAttributes[i] &= 0x1; // MorphTarget.Position
+            else if (i > MAX_MORPH_TARGET_INDEX_SUPPORTS_TANGENTS)
+                modelNode->morphAttributes[i] &= 0x3; // MorphTarget.Position | MorphTarget.Normal
         }
     }
 
@@ -2356,85 +2232,176 @@ void QSSGLayerRenderData::prepareForRender()
         features.set(QSSGShaderFeatures::Feature::ForceIblExposure, forceIblExposureValues);
     }
 
-    // Gather Spatial Nodes from Render Tree
-    // Do not just clear() renderableNodes and friends. Rather, reuse
-    // the space (even if clear does not actually deallocate, it still
-    // costs time to run dtors and such). In scenes with a static node
-    // count in the range of thousands this may matter.
-    int renderableModelsCount = 0;
-    int renderableParticlesCount = 0;
-    int renderableItem2DsCount = 0;
-    int cameraNodeCount = 0;
-    int lightNodeCount = 0;
-    int reflectionProbeCount = 0;
-    quint32 dfsIndex = 0;
-    for (auto &theChild : layer.children)
-        wasDataDirty |= maybeQueueNodeForRender(theChild,
-                                                renderableModels,
-                                                renderableModelsCount,
-                                                renderableParticles,
-                                                renderableParticlesCount,
-                                                renderableItem2Ds,
-                                                renderableItem2DsCount,
-                                                cameras,
-                                                cameraNodeCount,
-                                                lights,
-                                                lightNodeCount,
-                                                reflectionProbes,
-                                                reflectionProbeCount,
-                                                dfsIndex);
+    frameData.m_ctx->bufferManager()->setLightmapSource(layer.lightmapSource);
 
-    if (renderableModels.size() != renderableModelsCount)
-        renderableModels.resize(renderableModelsCount);
-    if (renderableParticles.size() != renderableParticlesCount)
-        renderableParticles.resize(renderableParticlesCount);
-    if (renderableItem2Ds.size() != renderableItem2DsCount)
-        renderableItem2Ds.resize(renderableItem2DsCount);
+    // Update the node data version for this layer.
+    // This version should only change if the world tree was re-indexed.
+    version = nodeData->version();
 
-    if (cameras.size() != cameraNodeCount)
-        cameras.resize(cameraNodeCount);
-    if (lights.size() != lightNodeCount)
-        lights.resize(lightNodeCount);
-    if (reflectionProbes.size() != reflectionProbeCount)
-        reflectionProbes.resize(reflectionProbeCount);
+    // We're using/updating the node data directly.
+    // NOTE: These are the transforms and opacities for all nodes for all layers/views.
+    //       We'll just use or update the ones the one for this layer.
+    auto &globalTransforms = nodeData->globalTransforms;
+    auto &globalOpacities = nodeData->globalOpacities;
+    auto &instanceTransforms = nodeData->instanceTransforms;
+
+    ///////// 2 - START LAYER
+    QSSGRenderDataHelpers::GlobalStateResultT globalStateResult = QSSGRenderDataHelpers::GlobalStateResult::None;
+
+    const bool layerTreeWasDirty = layer.isDirty(QSSGRenderLayer::DirtyFlag::TreeDirty);
+    layer.clearDirty(QSSGRenderLayer::DirtyFlag::TreeDirty);
+    if (layerTreeWasDirty) {
+        wasDataDirty = true;
+        layerNodes = nodeData->getLayerNodeView(layer);
+    } else {
+        for (auto &node : layerNodes)
+            globalStateResult |= QSSGRenderDataHelpers::updateGlobalNodeState(node, version);
+
+        bool transformAndOpacityDirty = false;
+        for (auto &node : layerNodes)
+            transformAndOpacityDirty |= QSSGRenderDataHelpers::calcGlobalNodeData<QSSGRenderDataHelpers::Strategy::Update>(node, version, globalTransforms, globalOpacities);
+
+        // FIXME: We shouldn't need to re-create all the instance transforms even when instancing isn't used...
+        if (transformAndOpacityDirty) {
+            for (const auto &node : layerNodes)
+                wasDataDirty |= QSSGRenderDataHelpers::calcInstanceTransforms(node, version, globalTransforms, instanceTransforms);
+        }
+
+        wasDataDirty |= transformAndOpacityDirty;
+    }
+
+    const bool restatNodes = (layerTreeWasDirty || (globalStateResult & QSSGRenderDataHelpers::GlobalStateResult::ActiveChanged));
+
+    if (restatNodes) {
+        modelsView.clear();
+        particlesView.clear();
+        item2DsView.clear();
+        camerasView.clear();
+        lightsView.clear();
+        reflectionProbesView.clear();
+
+        enum NodeType : size_t { Model = 0, Particles, Item2D, Camera, ImportedCamera, Light, ReflectionProbe, Other, Inactive };
+        static const auto nodeType = [](QSSGRenderNode *node) -> NodeType {
+            if (!node->getGlobalState(QSSGRenderNode::GlobalState::Active))
+                return NodeType::Inactive;
+            switch (node->type) {
+            case QSSGRenderGraphObject::Type::Model: return NodeType::Model;
+            case QSSGRenderGraphObject::Type::Particles: return NodeType::Particles;
+            case QSSGRenderGraphObject::Type::Item2D: return NodeType::Item2D;
+            case QSSGRenderGraphObject::Type::ReflectionProbe: return NodeType::ReflectionProbe;
+            default: break;
+            }
+
+            if (QSSGRenderGraphObject::isCamera(node->type)) {
+                // NOTE: To keep compatibility with old code, we collect shared and non-shared cameras differently,
+                // so that shared cameras (import scene) are picked after non-shared ones.
+                const bool isImported = node->getGlobalState(QSSGRenderNode::GlobalState::Imported);
+                constexpr NodeType cameraTypes[2] { NodeType::Camera, NodeType::ImportedCamera };
+                return cameraTypes[size_t(isImported)];
+            }
+            if (QSSGRenderGraphObject::isLight(node->type))
+                return NodeType::Light;
+
+            return NodeType::Other;
+        };
+        // sort nodes by type - We could do this on insert, but it's not given that it would be beneficial.
+        // Depending on how we want to handle the nodes later it might just not give us anything
+        // so, keep it simple for now.
+        // We could also speed up this by having the pointer and the type in the same struct and sort without
+        // indirection. However, that' slightly less convenient and the idea here is that we don't process
+        // this list unless things change, which is not something that should happen often if the user is
+        // concerned about performance, as it means we need to reevaluate the whole scene anyway.
+        {
+            // Sort the nodes by type (we copy the pointers to avoid sorting the original list,
+            // which is stored based on the nodes' order in the world tree).
+            layerNodesCategorized = { layerNodes.begin(), layerNodes.end() };
+            // NOTE: Due to the ordering of item2ds, we need to use stable_sort.
+            std::stable_sort(layerNodesCategorized.begin(), layerNodesCategorized.end(), [](QSSGRenderNode *a, QSSGRenderNode *b) {
+                return nodeType(a) < nodeType(b);
+            });
+        }
+
+        // Group nodes by type inline and keep track of the individual parts using QSSGDataViews
+        const LayerNodeStatResult stat = statLayerNodes(layerNodesCategorized);
+
+        // Go through the sorted nodes and create the views
+        size_t next = 0;
+
+        if (stat.modelCount > 0) {
+            modelsView = QSSGModelsView((QSSGRenderModel **)(layerNodesCategorized.data() + next), stat.modelCount);
+            next = modelsView.size();
+        }
+        if (stat.particlesCount > 0) {
+            particlesView = QSSGParticlesView((QSSGRenderParticles **)(layerNodesCategorized.data() + next), stat.particlesCount);
+            next += particlesView.size();
+        }
+        if (stat.item2DCount > 0) {
+            item2DsView = QSSGItem2DsView((QSSGRenderItem2D **)(layerNodesCategorized.data() + next), stat.item2DCount);
+            next += item2DsView.size();
+        }
+        if (stat.cameraCount > 0) {
+            camerasView = QSSGCamerasView((QSSGRenderCamera **)(layerNodesCategorized.data() + next), stat.cameraCount);
+            next += camerasView.size();
+        }
+        if (stat.lightCount > 0) {
+            lightsView = QSSGLightsView((QSSGRenderLight **)(layerNodesCategorized.data() + next), stat.lightCount);
+            next += lightsView.size();
+        }
+        if (stat.reflectionProbeCount > 0) {
+            reflectionProbesView = QSSGReflectionProbesView((QSSGRenderReflectionProbe **)(layerNodesCategorized.data() + next), stat.reflectionProbeCount);
+            next += reflectionProbesView.size();
+        }
+        if (stat.otherCount > 0) {
+            nonCategorizedView = QSSGNonCategorizedView((QSSGRenderNode **)(layerNodesCategorized.data() + next), stat.otherCount);
+            next += nonCategorizedView.size();
+            (void)next;
+        }
+
+        // FIXME: Compatability with old code (Will remove later).
+        // NOTE: see resetForFrame() as well for extensions usage
+        renderableModels.clear();
+        renderableParticles.clear();
+        renderableModels.reserve(modelsView.size());
+        renderableParticles.reserve(particlesView.size());
+
+        renderableModels = {modelsView.begin(), modelsView.end()};
+        renderableParticles = {particlesView.begin(), particlesView.end()};
+    }
 
     // Cameras
     // 1. If there's an explicit camera set and it's active (visible) we'll use that.
     // 2. ... if the explicitly set camera is not visible, no further attempts will be done.
     // 3. If no explicit camera is set, we'll search and pick the first active camera.
+    QSSGRenderCamera::Configuration cameraConfig { renderer->dpr(), layer.isSsaaEnabled() ? layer.ssaaMultiplier : 1.0f };
     renderedCameras.clear();
     if (!layer.explicitCameras.isEmpty()) {
         for (QSSGRenderCamera *cam : std::as_const(layer.explicitCameras)) {
             // 1.
-            wasDataDirty = wasDataDirty || cam->isDirty();
-            QSSGCameraGlobalCalculationResult theResult = layerPrepResult.setupCameraForRender(*cam, renderer->dpr());
-            wasDataDirty = wasDataDirty || theResult.m_wasDirty;
-            if (!theResult.m_computeFrustumSucceeded)
-                qCCritical(INTERNAL_ERROR, "Failed to calculate camera frustum");
-
-            // 2.
-            if (cam->getGlobalState(QSSGRenderCamera::GlobalState::Active))
-                renderedCameras.append(cam);
+            if (cam->getGlobalState(QSSGRenderCamera::GlobalState::Active)) {
+                const bool computeFrustumSucceeded = cam->calculateProjection(theViewport, cameraConfig);
+                if (Q_LIKELY(computeFrustumSucceeded))
+                    renderedCameras.append(cam);
+                else
+                    qCCritical(INTERNAL_ERROR, "Failed to calculate camera frustum");
+            }
         }
+        // 2.
     } else if (QSSG_GUARD_X(layer.viewCount == 1, "Multiview rendering requires explicit cameras to be set!.")) {
         // NOTE: This path can never be hit with multiview, hence the guard.
         // (Multiview will always have explicit cameras set.)
 
         // 3.
-        for (auto iter = cameras.cbegin(); renderedCameras.isEmpty() && iter != cameras.cend(); iter++) {
+        for (auto iter = camerasView.begin(); renderedCameras.isEmpty() && iter != camerasView.end(); iter++) {
             QSSGRenderCamera *theCamera = *iter;
-            wasDataDirty = wasDataDirty || theCamera->isDirty();
-            QSSGCameraGlobalCalculationResult theResult = layerPrepResult.setupCameraForRender(*theCamera, renderer->dpr());
-            wasDataDirty = wasDataDirty || theResult.m_wasDirty;
-            if (!theResult.m_computeFrustumSucceeded)
-                qCCritical(INTERNAL_ERROR, "Failed to calculate camera frustum");
-            if (theCamera->getGlobalState(QSSGRenderCamera::GlobalState::Active))
-                renderedCameras.append(theCamera);
+            if (theCamera->getGlobalState(QSSGRenderCamera::GlobalState::Active)) {
+                const bool computeFrustumSucceeded = theCamera->calculateProjection(theViewport, cameraConfig);
+                if (Q_LIKELY(computeFrustumSucceeded))
+                    renderedCameras.append(theCamera);
+                else
+                    qCCritical(INTERNAL_ERROR, "Failed to calculate camera frustum");
+            }
         }
     }
-
-    for (QSSGRenderCamera *cam : renderedCameras)
-        cam->dpr = renderer->dpr();
 
     float meshLodThreshold = 1.0f;
     if (!renderedCameras.isEmpty())
@@ -2444,11 +2411,18 @@ void QSSGLayerRenderData::prepareForRender()
     layer.renderedCameras = renderedCameras;
     layer.renderedCamerasMutex.unlock();
 
+    // Meshes, materials, MVP, and normal matrices for the models
+    const QSSGRenderCameraDataList &renderCameraData = getCachedCameraDatas();
+    modelData->updateModelData(modelsView, renderer, renderCameraData);
+
+    // Item2Ds
+    item2DData->updateItem2DData(item2DsView, renderer, renderCameraData);
+
     // ResourceLoaders
     prepareResourceLoaders();
 
     // Skeletons
-    updateDirtySkeletons(renderableModels);
+    updateDirtySkeletons(*this, modelsView);
 
     // Lights
     int shadowMapCount = 0;
@@ -2457,7 +2431,7 @@ void QSSGLayerRenderData::prepareForRender()
     // Determine how many lights will need shadow maps
     // NOTE: This culling is specific to our Forward renderer
     const int maxLightCount = effectiveMaxLightCount(features);
-    const bool showLightCountWarning = !tooManyLightsWarningShown && (lights.size() > maxLightCount);
+    const bool showLightCountWarning = !tooManyLightsWarningShown && (lightsView.size() > maxLightCount);
     if (showLightCountWarning) {
         qWarning("Too many lights in scene, maximum is %d", maxLightCount);
         tooManyLightsWarningShown = true;
@@ -2467,16 +2441,16 @@ void QSSGLayerRenderData::prepareForRender()
 
     // List should contain only enabled lights (active && birghtness > 0).
     {
-        auto it = lights.crbegin();
-        const auto end = it + qMin(maxLightCount, lights.size());
-
+        auto it = std::make_reverse_iterator(lightsView.end());
+        const auto end = it + qMin(maxLightCount, lightsView.size());
         for (; it != end; ++it) {
             QSSGRenderLight *renderLight = (*it);
+            QMatrix4x4 renderLightTransform = getGlobalTransform(*renderLight);
             hasScopedLights |= (renderLight->m_scope != nullptr);
             const bool mightCastShadows = renderLight->m_castShadow && !renderLight->m_fullyBaked;
             const bool shadows = mightCastShadows && (shadowMapCount < QSSG_MAX_NUM_SHADOW_MAPS);
             shadowMapCount += int(shadows);
-            const auto &direction = renderLight->getScalingCorrectDirection();
+            const auto &direction = QSSGRenderNode::getScalingCorrectDirection(renderLightTransform);
             renderableLights.push_back(QSSGShaderLight{ renderLight, shadows, direction });
         }
 
@@ -2549,8 +2523,6 @@ void QSSGLayerRenderData::prepareForRender()
         prepareLights(renderableParticles);
     }
 
-    bool hasUserExtensions = false;
-
     {
         // Give user provided passes a chance to modify the renderable data before starting
         // Note: All non-active extensions should be filtered out by now
@@ -2559,7 +2531,6 @@ void QSSGLayerRenderData::prepareForRender()
             const auto &renderExtensions = layer.renderExtensions[i];
             auto &userPass = userPasses[i];
             for (auto rit = renderExtensions.crbegin(), rend = renderExtensions.crend(); rit != rend; ++rit) {
-                hasUserExtensions = true;
                 if ((*rit)->prepareData(frameData)) {
                     wasDirty |= true;
                     userPass.extensions.push_back(*rit);
@@ -2567,11 +2538,6 @@ void QSSGLayerRenderData::prepareForRender()
             }
         }
     }
-
-    // Ensure materials (If there are user extensions we don't cull renderables without materials!)
-    prepareModelMaterials(renderableModels, !hasUserExtensions);
-    // Ensure meshes for models
-    prepareModelMeshes(*renderer->contextInterface(), renderableModels, QSSGRendererPrivate::isGlobalPickingEnabled(*renderer));
 
     auto &opaqueObjects = opaqueObjectStore[0];
     auto &transparentObjects = transparentObjectStore[0];
@@ -2583,7 +2549,8 @@ void QSSGLayerRenderData::prepareForRender()
             const auto &cameraDatas = getCachedCameraDatas();
             wasDirty |= prepareParticlesForRender(renderableParticles, cameraDatas[0], layerPrepResult.flags);
         }
-        wasDirty |= prepareItem2DsForRender(*renderer->contextInterface(), renderableItem2Ds);
+        // If there's item2Ds we set wasDirty.
+        wasDirty |= (item2DsView.size() != 0);
     }
     if (orderIndependentTransparencyEnabled) {
         // OIT blending mode must be SourceOver and have transparent objects
@@ -2653,7 +2620,7 @@ void QSSGLayerRenderData::prepareForRender()
         }
     }
 
-    const bool hasItem2Ds = (renderableItem2DsCount > 0);
+    const bool hasItem2Ds = (item2DsView.size() > 0);
     const bool layerEnableDepthTest = layer.layerFlags.testFlag(QSSGRenderLayer::LayerFlag::EnableDepthTest);
     const bool layerEnabledDepthPrePass = layer.layerFlags.testFlag(QSSGRenderLayer::LayerFlag::EnableDepthPrePass);
     const bool depthTestEnableDefault = layerEnableDepthTest && (!opaqueObjects.isEmpty() || depthPrepassObjectsState || hasDepthWriteObjects);
@@ -2753,11 +2720,9 @@ void QSSGLayerRenderData::resetForFrame()
     activePasses.clear();
     bakedLightingModels.clear();
     layerPrepResult = {};
-    renderedCameras.clear();
     renderedCameraData.reset();
     renderedItem2Ds.clear();
     renderedBakedLightingModels.clear();
-    renderableItem2Ds.clear();
     lightmapTextures.clear();
     bonemapTextures.clear();
     globalLights.clear();
@@ -2774,11 +2739,25 @@ void QSSGLayerRenderData::resetForFrame()
     clearTable(opaqueObjectStore);
     clearTable(transparentObjectStore);
     clearTable(screenTextureObjectStore);
+
     clearTable(sortedOpaqueObjectCache);
     clearTable(sortedTransparentObjectCache);
     clearTable(sortedScreenTextureObjectCache);
     clearTable(sortedOpaqueDepthPrepassCache);
     clearTable(sortedDepthWriteCache);
+
+    // Until we have a better solution for extensions...
+    if (renderablesModifiedByExtension) {
+        renderableModels.clear();
+        renderableParticles.clear();
+        renderableModels.reserve(modelsView.size());
+        renderableParticles.reserve(particlesView.size());
+
+        renderableModels = {modelsView.begin(), modelsView.end()};
+        renderableParticles = {particlesView.begin(), particlesView.end()};
+
+        renderablesModifiedByExtension = false;
+    }
 }
 
 QSSGLayerRenderPreparationResult::QSSGLayerRenderPreparationResult(const QRectF &inViewport, QSSGRenderLayer &inLayer)
@@ -2798,25 +2777,6 @@ QSize QSSGLayerRenderPreparationResult::textureDimensions() const
     return QSize(QSSGRendererUtil::nextMultipleOf4(size.width()), QSSGRendererUtil::nextMultipleOf4(size.height()));
 }
 
-QSSGCameraGlobalCalculationResult QSSGLayerRenderPreparationResult::setupCameraForRender(QSSGRenderCamera &inCamera, float dpr)
-{
-    // When using ssaa we need to zoom with the ssaa multiplier since otherwise the
-    // orthographic camera will be zoomed out due to the bigger viewport. We therefore
-    // scale the magnification before calulating the camera variables and then revert.
-    // Since the same camera can be used in several View3Ds with or without ssaa we
-    // cannot store the magnification permanently.
-    const float horizontalMagnification = inCamera.horizontalMagnification;
-    const float verticalMagnification = inCamera.verticalMagnification;
-    inCamera.dpr = dpr;
-    const float ssaaMultiplier = layer->isSsaaEnabled() ? layer->ssaaMultiplier : 1.0f;
-    inCamera.horizontalMagnification *= ssaaMultiplier;
-    inCamera.verticalMagnification *= ssaaMultiplier;
-    const auto result = inCamera.calculateGlobalVariables(viewport);
-    inCamera.horizontalMagnification = horizontalMagnification;
-    inCamera.verticalMagnification = verticalMagnification;
-    return result;
-}
-
 QSSGLayerRenderData::QSSGLayerRenderData(QSSGRenderLayer &inLayer, QSSGRenderer &inRenderer)
     : layer(inLayer)
     , renderer(&inRenderer)
@@ -2825,17 +2785,26 @@ QSSGLayerRenderData::QSSGLayerRenderData(QSSGRenderLayer &inLayer, QSSGRenderer 
 {
     depthMapPassMS.setMultisamplingEnabled(true);
     Q_ASSERT(extContexts.size() == 1);
+
+    // Set-up the world root node and create the data store for the models.
+    auto *root = layer.rootNode;
+    nodeData = root->globalNodeData();
+    modelData = std::make_unique<QSSGRenderModelData>(nodeData);
+    item2DData = std::make_unique<QSSGRenderItem2DData>(nodeData);
+
+    inRenderer.registerItem2DData(*item2DData);
 }
 
 QSSGLayerRenderData::~QSSGLayerRenderData()
 {
-    delete m_lightmapper;
     for (auto &pass : activePasses)
         pass->resetForFrame();
 
     for (auto &renderResult : renderResults)
         renderResult.reset();
     oitRenderContext.reset();
+
+    renderer->unregisterItem2DData(*item2DData);
 }
 
 static void sortInstances(QByteArray &sortedData, QList<QSSGRhiSortData> &sortData, const void *instances,
@@ -2896,6 +2865,7 @@ bool QSSGLayerRenderData::prepareInstancing(QSSGRhiContext *rhiCtx,
     QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
     auto &modelContext = renderable->modelContext;
     auto &instanceBuffer = renderable->instanceBuffer; // intentional ref2ptr
+    const QMatrix4x4 &renderableGlobalTransform = renderable->modelContext.globalTransform;
     if (!modelContext.model.instancing() || instanceBuffer)
         return instanceBuffer;
     auto *table = modelContext.model.instanceTable;
@@ -2907,7 +2877,8 @@ bool QSSGLayerRenderData::prepareInstancing(QSSGRhiContext *rhiCtx,
     bool cameraDirectionChanged = !qFuzzyCompare(instanceData.sortedCameraDirection, cameraDirection);
     bool cameraPositionChanged = !qFuzzyCompare(instanceData.cameraPosition, cameraPosition);
     bool updateInstanceBuffer = table->serial() != instanceData.serial || sortingChanged || (cameraDirectionChanged && table->isDepthSortingEnabled());
-    bool updateForLod = cameraPositionChanged && usesLod;
+    bool instanceBufferSizeChanged = instanceData.buffer && instanceBufferSize != instanceData.buffer->size();
+    bool updateForLod = (cameraPositionChanged || instanceBufferSizeChanged) && usesLod;
     if (sortingChanged && !table->isDepthSortingEnabled()) {
         instanceData.sortedData.clear();
         instanceData.sortData.clear();
@@ -2930,7 +2901,7 @@ bool QSSGLayerRenderData::prepareInstancing(QSSGRhiContext *rhiCtx,
         const void *data = nullptr;
         if (table->isDepthSortingEnabled()) {
             if (updateInstanceBuffer) {
-                QMatrix4x4 invGlobalTransform = modelContext.model.globalTransform.inverted();
+                QMatrix4x4 invGlobalTransform = renderableGlobalTransform.inverted();
                 instanceData.sortedData.resize(table->dataSize());
                 sortInstances(instanceData.sortedData,
                               instanceData.sortData,
@@ -2970,57 +2941,25 @@ bool QSSGLayerRenderData::prepareInstancing(QSSGRhiContext *rhiCtx,
     return instanceBuffer;
 }
 
-void QSSGLayerRenderData::maybeBakeLightmap()
-{
-    if (!interactiveLightmapBakingRequested) {
-        static bool bakeRequested = false;
-        static bool bakeFlagChecked = false;
-        if (!bakeFlagChecked) {
-            bakeFlagChecked = true;
-            const bool cmdLineReq = QCoreApplication::arguments().contains(QStringLiteral("--bake-lightmaps"));
-            const bool envReq = qEnvironmentVariableIntValue("QT_QUICK3D_BAKE_LIGHTMAPS");
-            bakeRequested = cmdLineReq || envReq;
-        }
-        if (!bakeRequested)
-            return;
-    }
-
-    const auto &sortedBakedLightingModels = getSortedBakedLightingModels(); // front to back
-
-    QSSGRhiContext *rhiCtx = renderer->contextInterface()->rhiContext().get();
-
-    if (!m_lightmapper)
-        m_lightmapper = new QSSGLightmapper(rhiCtx, renderer);
-
-    // sortedBakedLightingModels contains all models with
-    // usedInBakedLighting: true. These, together with lights that
-    // have a bakeMode set to either Indirect or All, form the
-    // lightmapped scene. A lightmap is stored persistently only
-    // for models that have their lightmapKey set.
-
-    m_lightmapper->reset();
-    m_lightmapper->setOptions(layer.lmOptions);
-    m_lightmapper->setOutputCallback(lightmapBakingOutputCallback);
-
-    for (int i = 0, ie = sortedBakedLightingModels.size(); i != ie; ++i)
-        m_lightmapper->add(sortedBakedLightingModels[i]);
-
-    QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
-    cb->debugMarkBegin("Quick3D lightmap baking");
-    m_lightmapper->bake();
-    cb->debugMarkEnd();
-
-    if (!interactiveLightmapBakingRequested) {
-        qDebug("Lightmap baking done, exiting application");
-        QMetaObject::invokeMethod(qApp, "quit");
-    }
-
-    interactiveLightmapBakingRequested = false;
-}
-
 QSSGFrameData &QSSGLayerRenderData::getFrameData()
 {
     return frameData;
+}
+
+void QSSGLayerRenderData::initializeLightmapBaking(QSSGLightmapBaker::Context &ctx)
+{
+    ctx.callbacks.modelsToBake = [this]() { return getSortedBakedLightingModels(); };
+
+    lightmapBaker = std::make_unique<QSSGLightmapBaker>(ctx);
+}
+
+void QSSGLayerRenderData::maybeProcessLightmapBaking()
+{
+    if (lightmapBaker) {
+        const QSSGLightmapBaker::Status status = lightmapBaker->process();
+        if (status == QSSGLightmapBaker::Status::Finished)
+            lightmapBaker.reset();
+    }
 }
 
 QSSGRenderGraphObject *QSSGLayerRenderData::getCamera(QSSGCameraId id) const

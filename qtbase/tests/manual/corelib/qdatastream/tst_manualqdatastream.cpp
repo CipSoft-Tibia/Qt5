@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QDataStream>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QList>
 #include <QMap>

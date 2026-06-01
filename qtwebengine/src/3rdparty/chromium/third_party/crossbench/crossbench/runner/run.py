@@ -7,32 +7,38 @@ from __future__ import annotations
 import datetime as dt
 import enum
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterable, Optional, Set, Type
 
 from crossbench import compat
 from crossbench import path as pth
+from crossbench.browsers.splash_screen import SplashScreenData
+from crossbench.cli.config.secrets import Secrets
+from crossbench.env import ValidationError
 from crossbench.exception import Annotator, TInfoStack
-from crossbench.helper import ChangeCWD, Durations, Spinner
+from crossbench.helper.cwd import ChangeCWD
+from crossbench.helper.durations import Durations
+from crossbench.helper.spinner import Spinner
 from crossbench.helper.state import State, StateMachine
 from crossbench.probes.probe_context import ProbeContext
 from crossbench.probes.results import ProbeResultDict
 from crossbench.runner.actions import Actions
+from crossbench.runner.exception import StopStoryException
 from crossbench.runner.probe_context_manager import ProbeContextManager
 from crossbench.runner.result_origin import ResultOrigin
+from crossbench.runner.run_annotation import RunAnnotation
 from crossbench.runner.timing import Timing
 
 if TYPE_CHECKING:
   from selenium.webdriver.common.options import ArgOptions
 
-  from typing import Iterable
-
   from crossbench.benchmarks.base import Benchmark
   from crossbench.browsers.browser import Browser
-  from crossbench.browsers.secrets import SecretType
   from crossbench.env import HostEnvironment
-  from crossbench.probes.probe import Probe
-  from crossbench.runner.groups import BrowserSessionRunGroup
+  from crossbench.helper.wait import WaitRange
+  from crossbench.probes.probe import Probe, ProbeT
+  from crossbench.runner.groups.session import BrowserSessionRunGroup
   from crossbench.runner.runner import Runner
+  from crossbench.runner.timing import AnyTimeUnit
   from crossbench.stories.story import Story
   from crossbench.types import JsonDict
 
@@ -57,6 +63,7 @@ class Run(ResultOrigin):
                name: Optional[str] = None,
                timeout: dt.timedelta = dt.timedelta(),
                throw: bool = False):
+    super().__init__()
     self._state = StateMachine(State.INITIAL)
     self._runner = runner
     self._browser_session = browser_session
@@ -71,21 +78,22 @@ class Run(ResultOrigin):
     assert index >= 0
     self._index = index
     self._name = name
-    self._out_dir = self._get_out_dir(browser_session.root_dir).absolute()
+    self._out_dir = self._get_out_dir().absolute()
     self._probe_results = ProbeResultDict(self._out_dir)
     self._durations = Durations()
     self._start_datetime = dt.datetime.utcfromtimestamp(0)
     self._timeout = timeout
     self._exceptions = Annotator(throw)
-    self._browser_tmp_dir: Optional[pth.RemotePath] = None
+    self._browser_tmp_dir: Optional[pth.AnyPath] = None
     self._probe_context_manager = ProbeRunContextManager(
         self, self._probe_results)
+    self._annotations: Set[RunAnnotation] = set()
 
   def __str__(self) -> str:
-    return f"Run({self.name}, {self._state}, {self.browser})"
+    return f"Run({self.name}, state={self._state}, {self.browser})"
 
-  def _get_out_dir(self, root_dir: pth.LocalPath) -> pth.LocalPath:
-    return (root_dir / pth.safe_filename(self.browser.unique_name) / "stories" /
+  def _get_out_dir(self) -> pth.LocalPath:
+    return (self._browser_session.browser_dir / "stories" /
             pth.safe_filename(self.story.name) / str(self.repetition_name) /
             str(self._temperature))
 
@@ -98,6 +106,10 @@ class Run(ResultOrigin):
               verbose: bool = False,
               measure: bool = True) -> Actions:
     return Actions(name, self, verbose=verbose, measure=measure)
+
+  def wait_range(self, min_wait: AnyTimeUnit, timeout: AnyTimeUnit,
+                 delay: AnyTimeUnit) -> WaitRange:
+    return self.runner.wait_range(min_wait, timeout, delay)
 
   @property
   def info_stack(self) -> TInfoStack:
@@ -135,6 +147,9 @@ class Run(ResultOrigin):
             "global": self.timing.to_json(),
         },
         "success": self.is_success,
+        "annotations": [
+            annotation.to_json() for annotation in self._annotations
+        ],
         "errors": self.exceptions.error_messages()
     }
 
@@ -210,7 +225,7 @@ class Run(ResultOrigin):
     return self._out_dir
 
   @property
-  def browser_tmp_dir(self) -> pth.RemotePath:
+  def browser_tmp_dir(self) -> pth.AnyPath:
     """Returns a path to a tmp dir on the browser platform."""
     if not self._browser_tmp_dir:
       prefix = "cb_run_results"
@@ -241,6 +256,17 @@ class Run(ResultOrigin):
   def session(self) -> BrowserSessionRunGroup:
     return self._browser_session
 
+  def annotate(self, annotation: RunAnnotation) -> None:
+    self._annotations.add(annotation)
+
+  @property
+  def annotations(self) -> Iterable[RunAnnotation]:
+    return iter(self._annotations)
+
+  @property
+  def secrets(self) -> Secrets:
+    return self.story.secrets.merge(fallback=self.browser.secrets)
+
   def get_browser_details_json(self) -> JsonDict:
     details_json = self.browser.details_json()
     self.session.add_flag_details(details_json)
@@ -258,16 +284,9 @@ class Run(ResultOrigin):
   def setup(self, is_dry_run: bool) -> None:
     self._state.transition(State.INITIAL, to=State.SETUP)
     self._setup_dirs()
-    self._cool_down(is_dry_run)
     with ChangeCWD(self._out_dir), self.exception_info(*self.info_stack):
       self._probe_context_manager.setup(self.probes, is_dry_run)
     self._log_setup()
-
-  def do_logins(self, logins: Iterable[SecretType]) -> None:
-    for secret_type in logins:
-      if secret_type not in self.browser.secrets:
-        raise ValueError(f"Requested {secret_type.name} secret not provided")
-      self.browser.secrets[secret_type].login(self)
 
   def setup_selenium_options(self, options: ArgOptions):
     # TODO: move explicitly to session.
@@ -277,16 +296,28 @@ class Run(ResultOrigin):
     self._start_datetime = dt.datetime.now()
     logging.debug("Creating Run(%s) out dir: %s", self, self._out_dir)
     self._out_dir.mkdir(parents=True, exist_ok=True)
-    self._create_session_dir()
+    if not self.runner.create_symlinks:
+      logging.debug("Symlinks disabled by command line option")
+      return
+    self._setup_runs_dir()
+    self._setup_session_dir()
 
-  def _create_session_dir(self) -> None:
+  def _setup_runs_dir(self) -> None:
+    browser_dir = self.browser_session.browser_dir
+    runs_dir = browser_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    # Source: BROWSER / "runs" / RUN
+    # Target: BROWSER / "stories" / STORY / REPETITION / CACHE_TEMP
+    run_dir = runs_dir / str(self.index)
+    relative_out_dir = (
+        pth.LocalPath("../") / self.out_dir.relative_to(browser_dir))
+    run_dir.symlink_to(relative_out_dir, target_is_directory=True)
+
+  def _setup_session_dir(self) -> None:
     session_run_dir = self._out_dir / "session"
     assert not session_run_dir.exists(), (
         f"Cannot setup session dir twice: {session_run_dir}")
-    if not self.runner.create_symlinks:
-      logging.debug("Symlink disabled by command line option")
-      return
-    if self.runner_platform.is_win:
+    if self.host_platform.is_win:
       logging.debug("Skipping session_dir symlink on windows.")
       return
     # Source: BROWSER / "stories" / STORY / REPETITION / CACHE_TEMP / "session"
@@ -294,7 +325,7 @@ class Run(ResultOrigin):
     relative_session_dir = (
         pth.LocalPath("../../../..") /
         self.browser_session.path.relative_to(self.out_dir.parents[3]))
-    session_run_dir.symlink_to(relative_session_dir)
+    session_run_dir.symlink_to(relative_session_dir, target_is_directory=True)
 
   def _log_setup(self) -> None:
     logging.debug("SETUP")
@@ -306,13 +337,6 @@ class Run(ResultOrigin):
     self.story.log_run_details(self)
     logging.info("RUN DIR: %s", self._out_dir)
     logging.debug("CWD %s", self._out_dir)
-
-  def _cool_down(self, is_dry_run: bool) -> None:
-    if is_dry_run:
-      return
-    with self.measure("runner-cooldown"):
-      self._runner.wait(self._runner.timing.cool_down_time, absolute_time=True)
-      self._runner.cool_down()
 
   def run(self, is_dry_run: bool) -> None:
     self._state.transition(State.SETUP, to=State.READY)
@@ -328,7 +352,7 @@ class Run(ResultOrigin):
 
   def _run(self, is_dry_run: bool) -> None:
     self._state.transition(State.READY, to=State.RUN)
-    self.browser.splash_screen.run(self)
+    self._run_splashscreen()
     with self._probe_context_manager.open(is_dry_run):
       logging.info("RUNNING STORY")
       self._state.expect(State.RUN)
@@ -341,13 +365,30 @@ class Run(ResultOrigin):
         # throttled down non-foreground browser.
         self._exceptions.append(e)
       if self.is_success:
-        with self.exceptions.capture():
-          self.environment.check_browser_focused(self.browser)
+        self._run_success_validation()
+
+  def _run_splashscreen(self):
+    with self.actions("SplashScreen") as actions:
+      display_data = SplashScreenData(self.is_warmup, self.browser,
+                                      self.details_json())
+      self.browser.settings.splash_screen.run(actions, display_data)
 
   def _run_story(self) -> None:
     self._run_story_setup()
-    self._story.run(self)
-    self._run_story_teardown()
+    if delay := self.timing.start_delay:
+      self._run_story_wait(delay, "Start Delay")
+    try:
+      self._story.run(self)
+    except StopStoryException as e:
+      logging.debug("Stop story: %s", e)
+    finally:
+      if delay := self.timing.stop_delay:
+        self._run_story_wait(delay, "Stop Delay")
+      self._run_story_teardown()
+
+  def _run_story_wait(self, delay: dt.timedelta, label: str) -> None:
+    logging.info("%s: %s", label, delay)
+    self.runner.wait(delay, absolute_time=True)
 
   def _run_story_setup(self) -> None:
     with self.measure("story-setup"):
@@ -358,6 +399,12 @@ class Run(ResultOrigin):
     self._probe_context_manager.stop_story()
     with self.measure("story-tear-down"):
       self._story.teardown(self)
+
+  def _run_success_validation(self) -> None:
+    try:
+      self.environment.check_browser_focused(self.browser)
+    except ValidationError as e:
+      self.annotate(RunAnnotation.warning(str(e)))
 
   def teardown(self, is_dry_run: bool) -> None:
     self._state.transition(State.RUN, to=State.DONE)
@@ -378,7 +425,7 @@ class Run(ResultOrigin):
     with self.measure("browser-teardown"), self._exceptions.capture(
         "Quit browser"):
       try:
-        self._browser.quit(self._runner)  # pytype: disable=wrong-arg-types
+        self._browser.quit()
       except Exception as e:  # pylint: disable=broad-except
         logging.warning("Error quitting browser: %s", e)
         return
@@ -392,29 +439,47 @@ class Run(ResultOrigin):
     for probe in self.probes:
       probe.log_run_result(self)
 
+  def log_failure(self):
+    assert not self.is_success
+    self._exceptions.log(f"❗ RUN {self.index+1} GOT ERRORS", separator="-")
+
+  def log_annotations(self):
+    if not self._annotations:
+      return
+    logging.info("- " * 40)
+    RunAnnotation.log_all(self.annotations, limit=10)
+
+  def find_probe_context(self,
+                         cls: Type[ProbeT]) -> Optional[ProbeContext[ProbeT]]:
+    return self._probe_context_manager.find_probe_context(cls)
+
 
 class ProbeRunContextManager(ProbeContextManager[Run, ProbeContext]):
 
   def __init__(self, run: Run, probe_results: ProbeResultDict):
     super().__init__(run, probe_results)
 
+  @property
+  def run(self) -> Run:
+    return self._origin
+
   def get_probe_context(self, probe: Probe) -> Optional[ProbeContext]:
-    return probe.get_context(self._origin)
+    return probe.get_context(self.run)
 
   def setup_selenium_options(self, options: ArgOptions):
-    for probe_context in self._probe_contexts:
+    for probe_context in self._probe_contexts.values():
       probe_context.setup_selenium_options(options)
 
   def start_story(self) -> None:
-    with self.measure("probes-start_story_run"):
-      for probe_context in self._probe_contexts:
-        with self._origin.exception_handler(
+    with self._measure("probes-start_story_run"):
+      for probe_context in self._probe_contexts.values():
+        with self.run.exception_capture(
             f"Probe {probe_context.name} start_story_run"):
           probe_context.start_story_run()
 
   def stop_story(self) -> None:
-    with self.measure("probes-stop_story_run"):
-      for probe_context in self._probe_contexts:
-        with self._origin.exception_handler(
+    with self._measure("probes-stop_story_run"):
+      for probe_context in self._probe_contexts.values():
+        with self.run.exception_capture(
             f"Probe {probe_context.name} stop_story_run"):
           probe_context.stop_story_run()

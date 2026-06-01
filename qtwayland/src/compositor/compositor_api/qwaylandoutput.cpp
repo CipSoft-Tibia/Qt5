@@ -83,10 +83,8 @@ void QWaylandOutputPrivate::output_bind_resource(Resource *resource)
     for (const QWaylandOutputMode &mode : modes)
         sendMode(resource, mode);
 
-    if (resource->version() >= 2) {
-        send_scale(resource->handle, scaleFactor);
-        send_done(resource->handle);
-    }
+    maybeSendScale(resource, scaleFactor);
+    maybeSendDone(resource);
 }
 
 void QWaylandOutputPrivate::_q_handleMaybeWindowPixelSizeChanged()
@@ -123,8 +121,7 @@ void QWaylandOutputPrivate::sendGeometryInfo()
 {
     for (const Resource *resource : resourceMap().values()) {
         sendGeometry(resource);
-        if (resource->version() >= 2)
-            send_done(resource->handle);
+        maybeSendDone(resource);
     }
 }
 
@@ -146,18 +143,21 @@ void QWaylandOutputPrivate::sendModesInfo()
     for (const Resource *resource : resourceMap().values()) {
         for (const QWaylandOutputMode &mode : modes)
             sendMode(resource, mode);
-        if (resource->version() >= 2)
-            send_done(resource->handle);
+        maybeSendDone(resource);
     }
+}
+
+void QWaylandOutputPrivate::maybeSendDone(const Resource *resource)
+{
+    if (resource->version() >= 2)
+        send_done(resource->handle);
 }
 
 void QWaylandOutputPrivate::sendDone()
 {
     const auto values = resourceMap().values();
-    for (auto *resource : values) {
-        if (resource->version() >= 2)
-            send_done(resource->handle);
-    }
+    for (auto *resource : values)
+        maybeSendDone(resource);
 }
 
 void QWaylandOutputPrivate::handleWindowPixelSizeChanged()
@@ -805,6 +805,13 @@ int QWaylandOutput::scaleFactor() const
     return d_func()->scaleFactor;
 }
 
+void QWaylandOutputPrivate::maybeSendScale(const Resource *resource,
+                                           int scale)
+{
+    if (resource->version() >= 2)
+        send_scale(resource->handle, scale);
+}
+
 void QWaylandOutput::setScaleFactor(int scale)
 {
     Q_D(QWaylandOutput);
@@ -815,10 +822,8 @@ void QWaylandOutput::setScaleFactor(int scale)
 
     const auto resMap = d->resourceMap();
     for (QWaylandOutputPrivate::Resource *resource : resMap) {
-        if (resource->version() >= 2) {
-            d->send_scale(resource->handle, scale);
-            d->send_done(resource->handle);
-        }
+        d->maybeSendScale(resource, scale);
+        d->maybeSendDone(resource);
     }
 
     Q_EMIT scaleFactorChanged();

@@ -34,7 +34,9 @@ class CC_EXPORT ImageController {
       base::OnceCallback<void(ImageDecodeRequestId, ImageDecodeResult)>;
   explicit ImageController(
       scoped_refptr<base::SequencedTaskRunner> origin_task_runner,
-      scoped_refptr<base::SequencedTaskRunner> worker_task_runner);
+      scoped_refptr<base::SequencedTaskRunner> worker_task_runner,
+      base::RepeatingCallback<void(scoped_refptr<TileTask>)>
+          notify_external_dependent);
   ImageController(const ImageController&) = delete;
   virtual ~ImageController();
 
@@ -74,6 +76,10 @@ class CC_EXPORT ImageController {
   // Virtual for testing.
   virtual ImageDecodeRequestId QueueImageDecode(const DrawImage& draw_image,
                                                 ImageDecodedCallback callback);
+
+  // Signals that an external dependency of `task` has completed.
+  void ExternalDependencyCompletedForTask(scoped_refptr<TileTask> task);
+
   size_t image_cache_max_limit_bytes() const {
     return image_cache_max_limit_bytes_;
   }
@@ -81,6 +87,10 @@ class CC_EXPORT ImageController {
   void SetMaxImageCacheLimitBytesForTesting(size_t bytes) {
     image_cache_max_limit_bytes_ = bytes;
   }
+
+  bool HasReadyToRunTaskForTesting() const;
+
+  void FlushDecodeTasksForTesting();
 
   ImageDecodeCache* cache() const { return cache_; }
 
@@ -94,7 +104,8 @@ class CC_EXPORT ImageController {
                        const DrawImage& draw_image,
                        ImageDecodedCallback callback,
                        scoped_refptr<TileTask> task,
-                       bool need_unref);
+                       bool need_unref,
+                       bool has_external_dependency);
     ImageDecodeRequest(ImageDecodeRequest&& other);
     ~ImageDecodeRequest();
 
@@ -105,6 +116,7 @@ class CC_EXPORT ImageController {
     ImageDecodedCallback callback;
     scoped_refptr<TileTask> task;
     bool need_unref;
+    bool has_external_dependency;
   };
 
   enum class WorkerTaskState {
@@ -134,9 +146,13 @@ class CC_EXPORT ImageController {
 
   void StopWorkerTasks();
 
+  bool HasReadyToRunTask() const;
+
   static void ProcessNextImageDecodeOnWorkerThread(WorkerState* worker_state);
+  static void ProcessNextImageDecodeWithLock(WorkerState* worker_state);
 
   void ImageDecodeCompleted(ImageDecodeRequestId id);
+  ImageDecodeResult CompleteTaskForRequest(ImageDecodeRequest& request);
   void GenerateTasksForOrphanedRequests();
 
   void ScheduleImageDecodeOnWorkerIfNeeded()
@@ -152,6 +168,10 @@ class CC_EXPORT ImageController {
   size_t image_cache_max_limit_bytes_ = 0u;
 
   std::unique_ptr<WorkerState> worker_state_;
+  base::RepeatingClosure worker_task_;
+
+  const base::RepeatingCallback<void(scoped_refptr<TileTask>)>
+      notify_external_dependent_;
 
   // Orphaned requests are requests that were either in queue or needed a
   // completion callback when we set the decode cache to be nullptr. When a new

@@ -4,24 +4,88 @@
 
 #include "rainfalldata.h"
 #include <QtCore/qfile.h>
+#include <QtCore/qrangemodel.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qtextstream.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qbar3dseries.h>
+#include <QtGraphs/qcategory3daxis.h>
+#include <QtGraphs/qgraphstheme.h>
+#include <QtGraphs/qitemmodelbardataproxy.h>
+#include <QtGraphs/qvalue3daxis.h>
+
+#include <array>
 
 using namespace Qt::StringLiterals;
 
+//! [1]
+using YearlyData = std::array<double, 12>;
+using ModelData = QList<YearlyData>;
+
+static ModelData readData(const QString &fileName, int *firstYear)
+{
+    ModelData result;
+
+    *firstYear = -1;
+
+    // Read data from a data file into the data item list
+    QFile dataFile(fileName);
+    if (!dataFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "Unable to open data file:" << dataFile.fileName() << dataFile.errorString();
+        return result;
+    }
+
+    QTextStream stream(&dataFile);
+    int lastYear = -1;
+    while (!stream.atEnd()) {
+        QString line = stream.readLine();
+        if (line.startsWith(u'#')) // Ignore comments
+            continue;
+        const auto strList = QStringView{line}.split(',', Qt::SkipEmptyParts);
+        // Each line has three data items: Year, month, and rainfall value
+        if (strList.size() < 3) {
+            qWarning() << "Invalid row read from data:" << line;
+            continue;
+        }
+        // Store year and month as int, and rainfall value as double
+        bool yearOk{};
+        bool monthOk{};
+        bool valueOk{};
+        const int year = strList.at(0).trimmed().toInt(&yearOk);
+        const int month = strList.at(1).trimmed().toInt(&monthOk);
+        const double value = strList.at(2).trimmed().toDouble(&valueOk);
+        if (!yearOk || !monthOk || month < 1 || month > 12 || !valueOk) {
+            qWarning() << "Invalid row values:" << line;
+            continue;
+        }
+        if (year != lastYear) {
+            if (lastYear == -1) {
+                *firstYear = year;
+            } else if (year != lastYear + 1) {
+                qWarning() << "Non-consecutive years" << year << lastYear;
+                return {};
+            }
+            lastYear = year;
+            result.emplace_back(YearlyData{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+        }
+        result.back()[month - 1] = value;
+    }
+    return result;
+}
+//! [1]
+
 RainfallData::RainfallData()
 {
-    // In data file the months are in numeric format, so create custom list
-    for (int i = 1; i <= 12; ++i)
-        m_numericMonths << QString::number(i);
-
-    updateYearsList(2010, 2022);
-
     // Create proxy and series
     //! [0]
-    m_proxy = new VariantBarDataProxy;
+    int firstYear{};
+    auto data = readData(":/data/raindata.txt"_L1, &firstYear);
+    Q_ASSERT(!data.isEmpty());
+    updateYearsList(firstYear, firstYear + int(data.size()) - 1);
+    auto *model = new QRangeModel(data, this);
+
+    m_proxy = new QItemModelBarDataProxy(model);
+    m_proxy->setUseModelCategories(true);
     m_series = new QBar3DSeries(m_proxy);
     //! [0]
 
@@ -57,14 +121,9 @@ RainfallData::RainfallData()
     m_rowAxis->setTitleVisible(true);
     m_colAxis->setTitleVisible(true);
     m_valueAxis->setTitleVisible(true);
-
-    addDataSet();
 }
 
-RainfallData::~RainfallData()
-{
-    delete m_mapping;
-}
+RainfallData::~RainfallData() = default;
 
 void RainfallData::updateYearsList(int start, int end)
 {
@@ -72,49 +131,4 @@ void RainfallData::updateYearsList(int start, int end)
 
     for (int i = start; i <= end; ++i)
         m_years << QString::number(i);
-}
-
-//! [1]
-void RainfallData::addDataSet()
-{
-    // Create a new variant data set and data item list
-    m_dataSet = new VariantDataSet;
-    auto *itemList = new VariantDataItemList;
-
-    // Read data from a data file into the data item list
-    QFile dataFile(":/data/raindata.txt");
-    if (dataFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QTextStream stream(&dataFile);
-        while (!stream.atEnd()) {
-            QString line = stream.readLine();
-            if (line.startsWith('#')) // Ignore comments
-                continue;
-            const auto strList = QStringView{line}.split(',', Qt::SkipEmptyParts);
-            // Each line has three data items: Year, month, and rainfall value
-            if (strList.size() < 3) {
-                qWarning() << "Invalid row read from data:" << line;
-                continue;
-            }
-            // Store year and month as strings, and rainfall value as double
-            // into a variant data item and add the item to the item list.
-            auto *newItem = new VariantDataItem;
-            for (int i = 0; i < 2; ++i)
-                newItem->append(strList.at(i).trimmed().toString());
-            newItem->append(strList.at(2).trimmed().toDouble());
-            itemList->append(newItem);
-        }
-    } else {
-        qWarning() << "Unable to open data file:" << dataFile.fileName();
-    }
-    //! [1]
-
-    //! [2]
-    // Add items to the data set and set it to the proxy
-    m_dataSet->addItems(itemList);
-    m_proxy->setDataSet(m_dataSet);
-
-    // Create new mapping for the data and set it to the proxy
-    m_mapping = new VariantBarDataMapping(0, 1, 2, m_years, m_numericMonths);
-    m_proxy->setMapping(m_mapping);
-    //! [2]
 }

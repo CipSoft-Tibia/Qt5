@@ -14,7 +14,7 @@ import * as Components from '../../ui/legacy/components/utils/utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import {Events, HeapTimelineOverview, type IdsRangeChangedEvent, type Samples} from './HeapTimelineOverview.js';
-import {type Formatter, type ProfileDataGridNode} from './ProfileDataGrid.js';
+import type {Formatter, ProfileDataGridNode} from './ProfileDataGrid.js';
 import {ProfileFlameChartDataProvider} from './ProfileFlameChartDataProvider.js';
 import {ProfileEvents, type ProfileHeader, ProfileType} from './ProfileHeader.js';
 import {ProfileView, WritableProfileHeader} from './ProfileView.js';
@@ -28,11 +28,11 @@ const UIStrings = {
   /**
    *@description Name of column header that reports the size (in terms of bytes) used for a particular part of the heap, excluding the size of the children nodes of this part of the heap
    */
-  selfSizeBytes: 'Self size (bytes)',
+  selfSizeBytes: 'Self size',
   /**
    *@description Name of column header that reports the total size (in terms of bytes) used for a particular part of the heap
    */
-  totalSizeBytes: 'Total size (bytes)',
+  totalSizeBytes: 'Total size',
   /**
    *@description Button text to stop profiling the heap
    */
@@ -164,7 +164,7 @@ export class HeapProfileView extends ProfileView implements UI.SearchableView.Se
   onIdsRangeChanged(event: Common.EventTarget.EventTargetEvent<IdsRangeChangedEvent>): void {
     const {minId, maxId} = event.data;
     this.selectedSizeText.setText(
-        i18nString(UIStrings.selectedSizeS, {PH1: Platform.NumberUtilities.bytesToString(event.data.size)}));
+        i18nString(UIStrings.selectedSizeS, {PH1: i18n.ByteUtilities.bytesToString(event.data.size)}));
     this.setSelectionRange(minId, maxId);
   }
 
@@ -431,10 +431,10 @@ export namespace SamplingHeapProfileType {
     STATS_UPDATE = 'StatsUpdate',
   }
 
-  export type EventTypes = {
-    [Events.RECORDING_STOPPED]: void,
-    [Events.STATS_UPDATE]: Protocol.HeapProfiler.SamplingHeapProfile|null,
-  };
+  export interface EventTypes {
+    [Events.RECORDING_STOPPED]: void;
+    [Events.STATS_UPDATE]: Protocol.HeapProfiler.SamplingHeapProfile|null;
+  }
 }
 
 export class SamplingHeapProfileHeader extends WritableProfileHeader {
@@ -588,7 +588,7 @@ export class NodeFormatter implements Formatter {
   }
 
   formatValue(value: number): string {
-    return Platform.NumberUtilities.withThousandsSeparator(value);
+    return i18n.ByteUtilities.bytesToString(value);
   }
 
   formatValueAccessibleText(value: number): string {
@@ -675,28 +675,28 @@ export class HeapFlameChartDataProvider extends ProfileFlameChartDataProvider {
     return this.timelineDataInternal;
   }
 
-  override prepareHighlightedEntryInfo(entryIndex: number): Element|null {
+  override preparePopoverElement(entryIndex: number): Element|null {
     const node = this.entryNodes[entryIndex];
     if (!node) {
       return null;
     }
-    const entryInfo: {
+    const popoverInfo: {
       title: string,
       value: string,
     }[] = [];
-    function pushEntryInfoRow(title: string, value: string): void {
-      entryInfo.push({title, value});
+    function pushRow(title: string, value: string): void {
+      popoverInfo.push({title, value});
     }
-    pushEntryInfoRow(i18nString(UIStrings.name), UI.UIUtils.beautifyFunctionName(node.functionName));
-    pushEntryInfoRow(i18nString(UIStrings.selfSize), Platform.NumberUtilities.bytesToString(node.self));
-    pushEntryInfoRow(i18nString(UIStrings.totalSize), Platform.NumberUtilities.bytesToString(node.total));
+    pushRow(i18nString(UIStrings.name), UI.UIUtils.beautifyFunctionName(node.functionName));
+    pushRow(i18nString(UIStrings.selfSize), i18n.ByteUtilities.bytesToString(node.self));
+    pushRow(i18nString(UIStrings.totalSize), i18n.ByteUtilities.bytesToString(node.total));
     const linkifier = new Components.Linkifier.Linkifier();
     const link = linkifier.maybeLinkifyConsoleCallFrame(
         this.heapProfilerModel ? this.heapProfilerModel.target() : null, node.callFrame);
     if (link) {
-      pushEntryInfoRow(i18nString(UIStrings.url), (link.textContent as string));
+      pushRow(i18nString(UIStrings.url), (link.textContent as string));
     }
     linkifier.dispose();
-    return ProfileView.buildPopoverTable(entryInfo);
+    return ProfileView.buildPopoverTable(popoverInfo);
   }
 }

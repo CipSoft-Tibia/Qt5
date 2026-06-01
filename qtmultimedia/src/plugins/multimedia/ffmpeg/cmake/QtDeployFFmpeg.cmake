@@ -23,11 +23,19 @@ function(qt_internal_multimedia_copy_or_install_ffmpeg)
             get_filename_component(lib_name_we ${lib_path} NAME_WE)
             if (EXISTS "${path}/../framework/${lib_name_we}.xcframework")
                 list(APPEND ffmpeg_frameworks "${path}/../framework/${lib_name_we}.xcframework")
+            elseif (EXISTS "${path}/../lib/${lib_name_we}.xcframework")
+                list(APPEND ffmpeg_frameworks "${path}/../lib/${lib_name_we}.xcframework")
             else()
                 message(WARNING "${path}/../framework/${lib_name_we}.xcframework does not exist")
             endif()
         endforeach()
         list(REMOVE_DUPLICATES ffmpeg_frameworks)
+        # Fail the build if we failed to find any of the FFmpeg frameworks we wanted to deploy.
+        # This can happen if there's an incompatibility between CI ffmpeg-install script and
+        # this deployment script.
+        if (NOT ffmpeg_frameworks)
+            message(FATAL_ERROR "Attempted to install iOS FFmpeg Frameworks but none were found.")
+        endif()
     endif()
 
     if (QT_WILL_INSTALL)

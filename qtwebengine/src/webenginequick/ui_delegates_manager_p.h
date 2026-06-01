@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef UI_DELEGATES_MANAGER_H
 #define UI_DELEGATES_MANAGER_H
@@ -81,7 +82,6 @@ public:
     UIDelegatesManager(QQuickWebEngineView *);
     virtual ~UIDelegatesManager();
 
-    virtual bool initializeImportDirs(QStringList &dirs, QQmlEngine *engine);
     virtual void addMenuItem(QQuickWebEngineAction *action, QObject *menu,
                              bool checkable = false, bool checked = true);
     void addMenuSeparator(QObject *menu);
@@ -106,10 +106,10 @@ private:
     bool ensureComponentLoaded(ComponentType);
 
     QQuickWebEngineView *m_view;
-    QStringList m_importDirs;
     QScopedPointer<QObject> m_toolTip;
     QScopedPointer<QObject> m_touchSelectionMenu;
     QScopedPointer<QObject> m_autofillPopup;
+    QStringList m_moduleList;
 
     FOR_EACH_COMPONENT_TYPE(MEMBER_DECLARATION, SEMICOLON_SEPARATOR)
 

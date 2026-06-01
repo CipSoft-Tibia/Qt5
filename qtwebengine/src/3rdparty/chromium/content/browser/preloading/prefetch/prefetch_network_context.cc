@@ -36,7 +36,7 @@ PrefetchNetworkContext::PrefetchNetworkContext(
     bool use_isolated_network_context,
     const PrefetchType& prefetch_type,
     const GlobalRenderFrameHostId& referring_render_frame_host_id,
-    const url::Origin& referring_origin)
+    const std::optional<url::Origin>& referring_origin)
     : use_isolated_network_context_(use_isolated_network_context),
       prefetch_type_(prefetch_type),
       referring_render_frame_host_id_(referring_render_frame_host_id),
@@ -188,7 +188,7 @@ PrefetchNetworkContext::CreateNewURLLoaderFactory(
         RenderFrameHost::LifecycleState::kPrerendering));
 
     referring_render_process_id =
-        referring_render_frame_host->GetProcess()->GetID();
+        referring_render_frame_host->GetProcess()->GetDeprecatedID();
     ukm_source_id = ukm::SourceIdObj::FromInt64(
         referring_render_frame_host->GetPageUkmSourceId());
   } else {
@@ -209,7 +209,8 @@ PrefetchNetworkContext::CreateNewURLLoaderFactory(
           url_loader_factory::HeaderClientOption::kAllow),
       url_loader_factory::ContentClientParams(
           browser_context, referring_render_frame_host,
-          referring_render_process_id, referring_origin_, net::IsolationInfo(),
+          referring_render_process_id,
+          referring_origin_.value_or(url::Origin()), net::IsolationInfo(),
           ukm_source_id, &bypass_redirect_checks));
 }
 

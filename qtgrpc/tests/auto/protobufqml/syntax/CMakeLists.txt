@@ -23,6 +23,7 @@ qt_add_protobuf(tst_protobuf_syntax_qml_gen
         ../../shared/data/proto/syntax.proto
     QML
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/qt_protobuf_generated"
+    ALLOW_MUTABLE_GETTER_CONFLICTS
 )
 
 qt_add_qml_module(tst_protobuf_syntax_qml
@@ -43,4 +44,3 @@ qt_autogen_tools_initial_setup(tst_protobuf_syntax_qml_genplugin)
 if(QT_BUILD_STANDALONE_TESTS)
     qt_import_qml_plugins(tst_protobuf_syntax_qml)
 endif()
-

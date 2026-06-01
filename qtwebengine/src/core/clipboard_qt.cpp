@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
@@ -97,6 +98,7 @@ extern void CFHtmlExtractMetadata(const std::string &cf_html, std::string *base_
 
 void ClipboardQt::WritePortableAndPlatformRepresentations(ui::ClipboardBuffer type,
                                                           const ObjectMap &objects,
+                                                          const std::vector<RawData> &raw_objects,
                                                           std::vector<ui::Clipboard::PlatformRepresentation> platform_representations,
                                                           std::unique_ptr<ui::DataTransferEndpoint> data_src, uint32_t val)
 {
@@ -120,6 +122,7 @@ void ClipboardQt::WritePortableAndPlatformRepresentations(ui::ClipboardBuffer ty
             // Copy text and SourceTag to the selection clipboard.
             WritePortableAndPlatformRepresentations(ui::ClipboardBuffer::kSelection,
                                                     ObjectMap(text_iter, ++text_iter),
+                                                    raw_objects,
                                                     {},
                                                     nullptr, val);
         }

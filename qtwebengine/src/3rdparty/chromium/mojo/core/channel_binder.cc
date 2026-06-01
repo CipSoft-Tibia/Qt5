@@ -39,6 +39,7 @@
 #include "base/types/expected_macros.h"
 #include "base/unguessable_token.h"
 #include "mojo/core/embedder/features.h"
+#include "mojo/core/ipcz_driver/envelope.h"
 #include "mojo/public/cpp/platform/binder_exchange.h"
 #include "mojo/public/cpp/platform/platform_handle.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
@@ -418,7 +419,7 @@ void ChannelBinder::Receive(base::span<const uint8_t> bytes,
                             std::vector<PlatformHandle> handles) {
   size_t ignored_size_hint;
   const DispatchResult result = TryDispatchMessage(
-      base::as_chars(bytes), std::move(handles), &ignored_size_hint);
+      base::as_chars(bytes), std::move(handles), nullptr, &ignored_size_hint);
   if (result != DispatchResult::kOK) {
     OnError(Error::kReceivedMalformedData);
   }
@@ -434,8 +435,8 @@ base::android::BinderStatusOr<void> ChannelBinder::SendMessageToReceiver(
   ASSIGN_OR_RETURN(auto parcel, receiver.PrepareTransaction());
   const base::android::ParcelWriter writer(parcel);
 
-  const auto bytes = base::make_span(
-      static_cast<const uint8_t*>(message->data()), message->data_num_bytes());
+  const auto bytes = base::span(static_cast<const uint8_t*>(message->data()),
+                                message->data_num_bytes());
   RETURN_IF_ERROR(WriteMessagePayload(writer, bytes));
 
   auto handles = message->TakeHandles();

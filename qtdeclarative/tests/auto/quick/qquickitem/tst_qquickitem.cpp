@@ -5,6 +5,7 @@
 
 #include <QtQml/QQmlComponent>
 #include <QtQuick/qquickitem.h>
+#include <QtQuick/qquickitemgrabresult.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuick/qquickview.h>
 #include "private/qquickfocusscope_p.h"
@@ -18,6 +19,7 @@
 #include <QDebug>
 #include <QTimer>
 #include <QQmlEngine>
+#include <QtQuickTest/quicktest.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/viewtestutils_p.h>
 #include <QSignalSpy>
@@ -231,6 +233,10 @@ private slots:
     void listsAreNotLists();
 
     void transformChanged();
+
+    void grabImage();
+
+    void focusItemDestroyed();
 
 private:
 
@@ -811,13 +817,13 @@ void tst_qquickitem::focusSubItemInNonFocusScope()
 
     QVERIFY(dummyItem->hasFocus());
     QVERIFY(!textInput->hasFocus());
-    QVERIFY(dummyItem->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(dummyItem);
 
     QVERIFY(QMetaObject::invokeMethod(textInput, "forceActiveFocus"));
 
     QVERIFY(!dummyItem->hasFocus());
     QVERIFY(textInput->hasFocus());
-    QVERIFY(textInput->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(textInput);
 }
 
 void tst_qquickitem::parentItemWithFocus()
@@ -969,12 +975,12 @@ void tst_qquickitem::activeFocusChangedOrder()
         QTRY_VERIFY(scope1.hasActiveFocus());
 
         int counter = 0;
-        connect(&scope1, &QQuickItem::activeFocusChanged, [&counter, &scope1](bool focus) {
+        connect(&scope1, &QQuickItem::activeFocusChanged, this, [&counter, &scope1](bool focus) {
             QCOMPARE(scope1.childItems().front()->hasActiveFocus(), focus);
             QCOMPARE(counter, 0);
             counter++;
         });
-        connect(&scope2, &QQuickItem::activeFocusChanged, [&counter, &scope2](bool focus) {
+        connect(&scope2, &QQuickItem::activeFocusChanged, this, [&counter, &scope2](bool focus) {
             QCOMPARE(scope2.childItems().front()->hasActiveFocus(), focus);
             QCOMPARE(counter, 1);
             counter++;
@@ -1008,12 +1014,12 @@ void tst_qquickitem::activeFocusChangedOrder()
         QTRY_VERIFY(item1.hasActiveFocus());
 
         int counter = 0;
-        connect(&item1, &QQuickItem::activeFocusChanged, [&counter](bool focus) {
+        connect(&item1, &QQuickItem::activeFocusChanged, this, [&counter](bool focus) {
             QVERIFY(!focus);
             QCOMPARE(counter, 0);
             counter++;
         });
-        connect(&item2, &QQuickItem::activeFocusChanged, [&counter](bool focus) {
+        connect(&item2, &QQuickItem::activeFocusChanged, this, [&counter](bool focus) {
             QVERIFY(focus);
             QCOMPARE(counter, 1);
             counter++;
@@ -2312,7 +2318,7 @@ void tst_qquickitem::shortcutOverride()
 
     QQuickItem *escapeItem = view.rootObject()->property("escapeItem").value<QQuickItem*>();
     QVERIFY(escapeItem);
-    QVERIFY(escapeItem->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(escapeItem);
 
     // escapeItem's onEscapePressed handler should accept the first escape press event.
     QTest::keyPress(&view, Qt::Key_Escape);
@@ -2445,7 +2451,7 @@ void tst_qquickitem::objectCastInDestructor()
     QQuickItem *item = view.findChild<QQuickItem *>("testRectangle");
     QVERIFY(item);
     bool destroyed = false;
-    connect(item, &QObject::destroyed, [&]{
+    connect(item, &QObject::destroyed, this, [&destroyed, item] {
         destroyed = true;
         QCOMPARE(qobject_cast<QQuickItem *>(item), nullptr);
         QCOMPARE(qobject_cast<QQuickRectangle *>(item), nullptr);
@@ -2675,6 +2681,35 @@ void tst_qquickitem::transformChanged()
     QVERIFY2(transformItem.transformChanged,
         "Changing one of the new ancestors should result in transformChanged");
     QCOMPARE(transformItem.mapToScene(QPoint(0, 0)), parents[1][0]->position());
+}
+
+void tst_qquickitem::grabImage()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("grabImage.qml"));
+
+    QScopedPointer<QQuickWindow> window(qobject_cast<QQuickWindow*>(component.create()));
+    QVERIFY(window);
+
+    gc(engine);
+
+    QTRY_VERIFY(window->property("finishedSuccessfuly").toBool());
+    QQuickItemGrabResult *result = window->property("itemGrabResult").value<QQuickItemGrabResult*>();
+    QVERIFY(result);
+}
+
+void tst_qquickitem::focusItemDestroyed()
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("focusItemDestroyed.qml")));
+
+    QPointer<QObject> focusObject;
+    QTRY_VERIFY(focusObject = qApp->focusObject());
+    QCOMPARE(window.activeFocusItem(), focusObject);
+
+    // dialog will be closed by timer
+    QTRY_VERIFY(!focusObject);
+    QVERIFY(!window.activeFocusItem());
 }
 
 QTEST_MAIN(tst_qquickitem)

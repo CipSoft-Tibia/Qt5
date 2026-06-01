@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKREPEATER_P_P_H
 #define QQUICKREPEATER_P_P_H
@@ -44,14 +45,19 @@ private:
     {
         QQmlDelegateModel::applyDelegateChangeOnView(q_func(), this);
     }
+    void applyDelegateModelAccessChange()
+    {
+        QQmlDelegateModel::applyDelegateModelAccessChangeOnView(q_func(), this);
+    }
+
+    void connectModel(QQuickRepeater *q, QQmlDelegateModelPointer *model);
+    void disconnectModel(QQuickRepeater *q, QQmlDelegateModelPointer *model);
 
     QPointer<QQmlInstanceModel> model;
-    QVariant dataSource;
-    QPointer<QObject> dataSourceAsObject;
     bool ownModel : 1;
-    bool dataSourceIsObject : 1;
     bool delegateValidated : 1;
     bool explicitDelegate : 1;
+    bool explicitDelegateModelAccess : 1;
     int itemCount;
 
     QVector<QPointer<QQuickItem> > deletables;

@@ -17,8 +17,6 @@ installPackages+=(ca-certificates)
 installPackages+=(git)
 installPackages+=(zlib-devel)
 installPackages+=(glib2-devel)
-installPackages+=(openssl3)
-installPackages+=(openssl3-devel)
 installPackages+=(freetype-devel)
 installPackages+=(fontconfig-devel)
 installPackages+=(curl-devel)
@@ -149,8 +147,6 @@ installPackages+=(open-vm-tools)
 # cifs-utils, for mounting smb drive
 installPackages+=(keyutils)
 installPackages+=(cifs-utils)
-# used for reading vcpkg packages version, from vcpkg.json
-installPackages+=(jq)
 # zip, needed for vcpkg caching
 installPackages+=(zip)
 # OpenSSL requirement, built by vcpkg
@@ -159,10 +155,12 @@ installPackages+=(perl-IPC-Cmd)
 installPackages+=(libsecret-devel)
 # For tst_license.pl with all the machines generating SBOM
 installPackages+=(perl-JSON)
+# Keep zoneinfo up-to-date (COIN-1282)
+installPackages+=(tzdata)
 
 sudo yum -y install "${installPackages[@]}"
 
-sudo dnf -y module install nodejs:16
+sudo dnf -y module install nodejs:20
 
 # We shouldn't use yum to install virtualenv. The one found from package repo is not
 # working, but we can use installed pip
@@ -173,7 +171,7 @@ sudo pip config --user set global.extra-index-url https://pypi.org/simple/
 
 sudo pip3 install virtualenv wheel
 sudo python3.11 -m pip install virtualenv wheel html5lib
-sudo python3.11 -m pip install -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
+sudo python3.11 -m pip install -r "${BASH_SOURCE%/*}/../common/shared/requirements.txt"
 # For now we don't set QT_SBOM_PYTHON_APPS_PATH here, and rely on the build system to find the
 # system python3.11.
 
@@ -185,9 +183,6 @@ echo "GCC = $gccVersion" >> versions.txt
 
 glibcVersion="$(ldd --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
 echo "glibc = $glibcVersion" >> versions.txt
-
-OpenSSLVersion="$(openssl3 version |cut -b 9-14)"
-echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt
 
 # List all available updates
 sudo yum -y list updates

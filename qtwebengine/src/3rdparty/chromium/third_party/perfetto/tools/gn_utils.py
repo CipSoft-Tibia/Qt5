@@ -385,13 +385,18 @@ class GnParser(object):
           (type(self).__name__, type(other).__name__))
 
     def __repr__(self):
-      return json.dumps(
-          {
-              k: (list(sorted(v)) if isinstance(v, set) else v)
-              for (k, v) in iteritems(self.__dict__)
-          },
-          indent=4,
-          sort_keys=True)
+      serializable_dict = dict()
+      # 'set' is not serializable type, so we convert sets to the sorted lists
+      # 'deps' and 'transitive_deps' fields are 'Set[Target]', we don't want to
+      # recursively dump all Targets, so we convert them to the list of names.
+      for (k, v) in iteritems(self.__dict__):
+        vv = v
+        if k == "deps" or k == "transitive_deps":
+          vv = sorted([target.name for target in v])
+        if isinstance(vv, set):
+          vv = sorted(vv)
+        serializable_dict[k] = vv
+      return json.dumps(serializable_dict, indent=4, sort_keys=True)
 
     def update(self, other):
       for key in ('cflags', 'data', 'defines', 'deps', 'include_dirs',
@@ -444,7 +449,8 @@ class GnParser(object):
       target.proto_plugin = proto_target_type
       target.proto_paths.update(self.get_proto_paths(proto_desc))
       target.proto_exports.update(self.get_proto_exports(proto_desc))
-      target.sources.update(proto_desc.get('sources', []))
+      target.sources.update(
+          self.get_proto_sources(proto_target_type, proto_desc))
       assert (all(x.endswith('.proto') for x in target.sources))
     elif target.type == 'source_set':
       self.source_sets[gn_target_name] = target
@@ -535,6 +541,12 @@ class GnParser(object):
   def get_proto_paths(self, proto_desc):
     metadata = proto_desc.get('metadata', {})
     return metadata.get('proto_import_dirs', [])
+
+  def get_proto_sources(self, proto_target_type, proto_desc):
+    if proto_target_type == 'source_set':
+      metadata = proto_desc.get('metadata', {})
+      return metadata.get('proto_library_sources', [])
+    return proto_desc.get('sources', [])
 
   def get_proto_target_type(
       self, target: Target) -> Tuple[Optional[str], Optional[Dict]]:

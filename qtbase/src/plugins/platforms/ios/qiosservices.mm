@@ -17,7 +17,7 @@ QT_BEGIN_NAMESPACE
 bool QIOSServices::openUrl(const QUrl &url)
 {
     if (qt_apple_isApplicationExtension()) {
-        qWarning() << "openUrl not implement for application extensions yet";
+        qCWarning(lcQpaServices) << "openUrl not implement for application extensions yet";
         return false;
     }
 

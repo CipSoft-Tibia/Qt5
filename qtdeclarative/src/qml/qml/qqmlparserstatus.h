@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLPARSERSTATUS_H
 #define QQMLPARSERSTATUS_H
@@ -20,11 +21,7 @@ public:
     virtual void componentComplete()=0;
 
 private:
-    friend class QQmlComponent;
-    friend class QQmlComponentPrivate;
-    friend class QQmlEnginePrivate;
-    friend class QQmlObjectCreator;
-    QQmlParserStatus **d;
+    quintptr d;
 };
 
 #define QQmlParserStatus_iid "org.qt-project.Qt.QQmlParserStatus"

@@ -4,7 +4,8 @@
 #ifndef ATOM_H
 #define ATOM_H
 
-#include "node.h"
+#include "genustypes.h"
+#include "location.h"
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qstringlist.h>
@@ -155,7 +156,7 @@ public:
     [[nodiscard]] const QStringList &strings() const { return m_strs; }
 
     [[nodiscard]] virtual bool isLinkAtom() const { return false; }
-    virtual Node::Genus genus() { return Node::DontCare; }
+    virtual Genus genus() { return Genus::DontCare; }
     virtual Tree *domain() { return nullptr; }
     virtual void resolveSquareBracketParams() {}
 
@@ -174,7 +175,7 @@ public:
     ~LinkAtom() override = default;
 
     [[nodiscard]] bool isLinkAtom() const override { return true; }
-    Node::Genus genus() override
+    Genus genus() override
     {
         resolveSquareBracketParams();
         return m_genus;
@@ -191,7 +192,7 @@ public:
 
 protected:
     bool m_resolved {};
-    Node::Genus m_genus {};
+    Genus m_genus {};
     Tree *m_domain {};
     QString m_squareBracketParams {};
 };
@@ -200,6 +201,7 @@ protected:
 #define ATOM_FORMATTING_INDEX "index"
 #define ATOM_FORMATTING_ITALIC "italic"
 #define ATOM_FORMATTING_LINK "link"
+#define ATOM_FORMATTING_NOTRANSLATE "notranslate"
 #define ATOM_FORMATTING_PARAMETER "parameter"
 #define ATOM_FORMATTING_SPAN "span "
 #define ATOM_FORMATTING_SUBSCRIPT "subscript"

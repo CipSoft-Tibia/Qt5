@@ -12,6 +12,7 @@ static_library("gpu") {
     "//chrome/common/profiler",
     "//components/heap_profiling/in_process",
     "//components/metrics:child_call_stack_profile_builder",
+    "//components/sampling_profiler",
     "//content/public/child",
     "//content/public/common",
     "//content/public/gpu",
@@ -33,13 +34,13 @@ static_library("gpu") {
   }
   if (is_chromeos_ash) {
     deps += [
-      "//ash/components/arc/mojom:media",
+      "//chromeos/ash/experiences/arc/mojom:media",
       "//gpu/command_buffer/service",
       "//services/service_manager/public/cpp",
       "//ui/ozone",
     ]
     if (use_v4l2_codec || use_vaapi) {
-      deps += [ "//ash/components/arc/video_accelerator" ]
+      deps += [ "//chromeos/ash/experiences/arc/video_accelerator" ]
     }
   }
 }

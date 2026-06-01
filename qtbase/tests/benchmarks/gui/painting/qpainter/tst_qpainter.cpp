@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <qtest.h>
 #include <QPainter>
 #include <QPainterPath>
@@ -13,6 +11,8 @@
 #include <qmath.h>
 
 #include <private/qpixmap_raster_p.h>
+
+using namespace Qt::StringLiterals;
 
 Q_DECLARE_METATYPE(QPainterPath)
 Q_DECLARE_METATYPE(QPainter::RenderHint)
@@ -293,29 +293,33 @@ void tst_QPainter::drawLine_data()
     QTest::addColumn<QLine>("line");
     QTest::addColumn<QPen>("pen");
 
-    QList<QPen> pens;
-    pens << QPen(Qt::black)
-         << QPen(Qt::black, 0, Qt::DashDotLine)
-         << QPen(Qt::black, 4)
-         << QPen(Qt::black, 4, Qt::DashDotLine)
-         << QPen(QColor(255, 0, 0, 200))
-         << QPen(QColor(255, 0, 0, 200), 0, Qt::DashDotLine)
-         << QPen(QColor(255, 0, 0, 200), 4)
-         << QPen(QColor(255, 0, 0, 200), 4, Qt::DashDotLine);
+    const QPen pens[] = {
+        QPen(Qt::black),
+        QPen(Qt::black, 0, Qt::DashDotLine),
+        QPen(Qt::black, 4),
+        QPen(Qt::black, 4, Qt::DashDotLine),
+        QPen(QColor(255, 0, 0, 200)),
+        QPen(QColor(255, 0, 0, 200), 0, Qt::DashDotLine),
+        QPen(QColor(255, 0, 0, 200), 4),
+        QPen(QColor(255, 0, 0, 200), 4, Qt::DashDotLine)
+    };
 
-    QStringList penNames;
-    penNames << "black-0"
-             << "black-0-dashdot"
-             << "black-4"
-             << "black-4-dashdot"
-             << "alpha-0"
-             << "alpha-0-dashdot"
-             << "alpha-4"
-             << "alpha-4-dashdot";
+    const char *penNames[] = {
+        "black-0",
+        "black-0-dashdot",
+        "black-4",
+        "black-4-dashdot",
+        "alpha-0",
+        "alpha-0-dashdot",
+        "alpha-4",
+        "alpha-4-dashdot",
+    };
 
-    int i = 0;
-    foreach (QPen pen, pens) {
-        const QString s = QString(QLatin1String("%1:%2")).arg(penNames[i]);
+    QCOMPARE(std::size(pens), std::size(penNames));
+
+    for (size_t i = 0; i < std::size(pens); ++i) {
+        const QPen &pen = pens[i];
+        const QString s = QString("%1:%2"_L1).arg(QLatin1StringView(penNames[i]));
         QTest::newRow(qPrintable(s.arg("horizontal")))
             << QLine(0, 20, 100, 20) << pen;
         QTest::newRow(qPrintable(s.arg("vertical:")))
@@ -336,7 +340,6 @@ void tst_QPainter::drawLine_data()
             << QLine(0, 0, 20, 100) << pen;
         QTest::newRow(qPrintable(s.arg("315-360:")))
             << QLine(0, 0, 100, 20) << pen;
-        ++i;
     }
 }
 

@@ -213,7 +213,7 @@ struct State {
             auto* const_idx = idx->As<ir::Constant>();
 
             // Determine the limit of the type being indexed into.
-            auto limit = tint::Switch(
+            auto maxAllowedIndex = tint::Switch(
                 type,  //
                 [&](const type::Vector* vec) -> ir::Value* {
                     return b.Constant(u32(vec->Width() - 1u));
@@ -244,13 +244,14 @@ struct State {
                     }
 
                     // Use the `arrayLength` builtin to get the limit of a runtime-sized array.
+                    // Subtract 1 to get the max allowed index. (Array size is always at least 1.)
                     auto* length = b.Call(ty.u32(), core::BuiltinFn::kArrayLength, object);
                     return b.Subtract(ty.u32(), length, b.Constant(1_u))->Result(0);
                 });
 
             // If there's a dynamic limit that needs enforced, clamp the index operand.
-            if (limit) {
-                ClampOperand(access, ir::Access::kIndicesOperandOffset + i, limit);
+            if (maxAllowedIndex) {
+                ClampOperand(access, ir::Access::kIndicesOperandOffset + i, maxAllowedIndex);
             }
 
             // Get the type that this index produces.
@@ -280,7 +281,7 @@ struct State {
         // Helper for clamping the coordinates.
         auto clamp_coords = [&](uint32_t idx) {
             auto* arg_ty = args[idx]->Type();
-            const type::Type* type = ty.match_width(ty.u32(), arg_ty);
+            const type::Type* type = ty.MatchWidth(ty.u32(), arg_ty);
             auto* one = b.MatchWidth(1_u, arg_ty);
             auto* dims = clamped_level ? b.Call(type, core::BuiltinFn::kTextureDimensions, args[0],
                                                 clamped_level)
@@ -381,7 +382,7 @@ struct State {
 }  // namespace
 
 Result<SuccessType> Robustness(Module& ir, const RobustnessConfig& config) {
-    auto result = ValidateAndDumpIfNeeded(ir, "Robustness transform");
+    auto result = ValidateAndDumpIfNeeded(ir, "core.Robustness");
     if (result != Success) {
         return result;
     }

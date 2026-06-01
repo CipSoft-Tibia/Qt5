@@ -626,6 +626,7 @@ void FormatPartialStatus::handleTokens()
 
         case StateType::TypeAnnotation:
             switch (kind) {
+            case QQmlJSGrammar::T_RESERVED_WORD:
             case QQmlJSGrammar::T_IDENTIFIER:
             case QQmlJSGrammar::T_DOT:
                 break;

@@ -137,7 +137,7 @@ bool QQuickParticleAffector::shouldAffect(QQuickParticleData* d)
         return false;
 
     if (activeGroup(d->groupId)){
-        if ((m_onceOff && m_onceOffed.contains(qMakePair(d->groupId, d->index)))
+        if ((m_onceOff && m_onceOffed.contains(std::make_pair(d->groupId, d->index)))
                 || !d->stillAlive(m_system))
             return false;
         //Need to have previous location for affected anyways
@@ -159,7 +159,7 @@ void QQuickParticleAffector::postAffect(QQuickParticleData* d)
 
     m_system->needsReset << d;
     if (m_onceOff)
-        m_onceOffed << qMakePair(d->groupId, d->index);
+        m_onceOffed << std::make_pair(d->groupId, d->index);
     if (isAffectedConnected())
         emit affected(d->curX(m_system), d->curY(m_system));
 }
@@ -215,7 +215,7 @@ void QQuickParticleAffector::reset(QQuickParticleData* pd)
 {//TODO: This, among other ones, should be restructured so they don't all need to remember to call the superclass
     if (m_onceOff)
         if (activeGroup(pd->groupId))
-            m_onceOffed.remove(qMakePair(pd->groupId, pd->index));
+            m_onceOffed.remove(std::make_pair(pd->groupId, pd->index));
 }
 
 void QQuickParticleAffector::updateOffsets()

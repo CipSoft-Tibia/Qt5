@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSCOMPILEPASS_P_H
 #define QQMLJSCOMPILEPASS_P_H
@@ -180,11 +181,17 @@ public:
 
         void addReadRegister(int registerIndex, QQmlJSRegisterContent reg)
         {
-            const VirtualRegister &source = registers[registerIndex];
             VirtualRegister &target = m_readRegisters[registerIndex];
             target.content = reg;
-            target.canMove = source.canMove;
-            target.affectedBySideEffects = source.affectedBySideEffects;
+
+            const auto source = registers.find(registerIndex);
+            if (source == registers.end()) {
+                target.canMove = false;
+                target.affectedBySideEffects = false;
+            } else {
+                target.canMove = source->second.canMove;
+                target.affectedBySideEffects = source->second.affectedBySideEffects;
+            }
         }
 
         void addReadAccumulator(QQmlJSRegisterContent reg)
@@ -313,13 +320,12 @@ public:
 
     QQmlJSCompilePass(const QV4::Compiler::JSUnitGenerator *jsUnitGenerator,
                       const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                      QList<QQmlJS::DiagnosticMessage> *errors, const BasicBlocks &basicBlocks = {},
+                      const BasicBlocks &basicBlocks = {},
                       const InstructionAnnotations &annotations = {})
         : m_jsUnitGenerator(jsUnitGenerator)
         , m_typeResolver(typeResolver)
         , m_pool(typeResolver->registerContentPool())
         , m_logger(logger)
-        , m_errors(errors)
         , m_basicBlocks(basicBlocks)
         , m_annotations(annotations)
     {}
@@ -331,7 +337,6 @@ protected:
     QQmlJSLogger *m_logger = nullptr;
 
     const Function *m_function = nullptr;
-    QList<QQmlJS::DiagnosticMessage> *m_errors;
     BasicBlocks m_basicBlocks;
     InstructionAnnotations m_annotations;
 
@@ -414,16 +419,34 @@ protected:
         return newState;
     }
 
-    QQmlJS::SourceLocation sourceLocation(int instructionOffset) const
+    QList<SourceLocationTable::Entry>::const_iterator sourceLocationEntry(
+            int instructionOffset) const
     {
         Q_ASSERT(m_function);
         Q_ASSERT(m_function->sourceLocations);
         const auto &entries = m_function->sourceLocations->entries;
-        auto item = std::lower_bound(entries.begin(), entries.end(), instructionOffset,
-                                     [](auto entry, uint offset) { return entry.offset < offset; });
+        const auto entry = std::lower_bound(
+                entries.begin(), entries.end(), instructionOffset,
+                [](auto entry, uint offset) { return entry.offset < offset; });
+        Q_ASSERT(entry != entries.end());
+        return entry;
+    }
 
-        Q_ASSERT(item != entries.end());
-        return item->location;
+    QQmlJS::SourceLocation sourceLocation(int instructionOffset) const
+    {
+        return sourceLocationEntry(instructionOffset)->location;
+    }
+
+    QQmlJS::SourceLocation nonEmptySourceLocation(int instructionOffset) const
+    {
+        auto entry = sourceLocationEntry(instructionOffset);
+
+        // filter out empty locations
+        const auto begin = m_function->sourceLocations->entries.begin();
+        while (entry->location.length == 0 && entry != begin)
+            --entry;
+
+        return entry->location;
     }
 
     QQmlJS::SourceLocation currentSourceLocation() const
@@ -431,17 +454,38 @@ protected:
         return sourceLocation(currentInstructionOffset());
     }
 
+    QQmlJS::SourceLocation currentNonEmptySourceLocation() const
+    {
+        return nonEmptySourceLocation(currentInstructionOffset());
+    }
+
+    QQmlJS::SourceLocation currentFunctionSourceLocation() const
+    {
+        Q_ASSERT(m_function->sourceLocations);
+        const auto &entries = m_function->sourceLocations->entries;
+
+        Q_ASSERT(!entries.isEmpty());
+        return combine(entries.constFirst().location, entries.constLast().location);
+    }
+
     void addError(const QString &message, int instructionOffset)
     {
-        QQmlJS::DiagnosticMessage diagnostic;
-        diagnostic.message = message;
-        diagnostic.loc = sourceLocation(instructionOffset);
-        m_errors->append(diagnostic);
+        m_logger->logCompileError(message, sourceLocation(instructionOffset));
+    }
+
+    void addSkip(const QString &message, int instructionOffset)
+    {
+        m_logger->logCompileSkip(message, sourceLocation(instructionOffset));
     }
 
     void addError(const QString &message)
     {
         addError(message, currentInstructionOffset());
+    }
+
+    void addSkip(const QString &message)
+    {
+        addSkip(message, currentInstructionOffset());
     }
 
     static bool instructionManipulatesContext(QV4::Moth::Instr::Type type)

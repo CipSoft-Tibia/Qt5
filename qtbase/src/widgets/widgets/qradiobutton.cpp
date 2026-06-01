@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qradiobutton.h"
 #include "qapplication.h"
@@ -47,7 +48,7 @@ void QRadioButtonPrivate::init()
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-radiobutton.png
+    \image fusion-radiobutton.png {Two radio buttons representing two options}
 
     A QRadioButton is an option button that can be switched on (checked) or
     off (unchecked). Radio buttons typically present the user with a "one

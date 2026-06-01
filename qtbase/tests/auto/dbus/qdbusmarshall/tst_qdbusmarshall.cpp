@@ -549,6 +549,27 @@ void tst_QDBusMarshall::sendStructs_data()
     list << mvms;
     QTest::newRow("list-of-string-variantmap") << QVariant::fromValue(list) << "a(sa{sv})" << "[Argument: a(sa{sv}) {[Argument: (sa{sv}) \"Hello, World\", [Argument: a{sv} {\"bytearray\" = [Variant(QByteArray): {72, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100}], \"int\" = [Variant(int): 42], \"short\" = [Variant(short): -47], \"uint\" = [Variant(uint): 42]}]]}]";
 
+    QTest::newRow("std::tuple<int>")
+            << QVariant::fromValue(std::tuple<int>{ 1 }) << "(i)" << "[Argument: (i) 1]";
+    QTest::newRow("std::tuple<QString>") << QVariant::fromValue(std::tuple<QString>{ "foo" })
+                                         << "(s)" << "[Argument: (s) \"foo\"]";
+    QTest::newRow("std::tuple<QVariantMap>")
+            << QVariant::fromValue(std::tuple<QVariantMap>{ { { "foo", 1 } } }) << "(a{sv})"
+            << "[Argument: (a{sv}) [Argument: a{sv} {\"foo\" = [Variant(int): 1]}]]";
+    QTest::newRow("std::tuple<QPoint>") << QVariant::fromValue(std::tuple<QPoint>{ { 1, 2 } })
+                                        << "((ii))" << "[Argument: ((ii)) [Argument: (ii) 1, 2]]";
+    QTest::newRow("std::tuple<std::tuple<int>>")
+            << QVariant::fromValue(std::tuple<std::tuple<int>>{ 1 }) << "((i))"
+            << "[Argument: ((i)) [Argument: (i) 1]]";
+    QTest::newRow("std::tuple<QList<int>>")
+            << QVariant::fromValue(std::tuple<QList<int>>{ { 1, 2, 3 } }) << "(ai)"
+            << "[Argument: (ai) [Argument: ai {1, 2, 3}]]";
+    QTest::newRow("std::tuple<int, QString, QVariantMap>")
+            << QVariant::fromValue(
+                       std::tuple<int, QString, QVariantMap>{ 1, "foo", { { "bar", 2 } } })
+            << "(isa{sv})"
+            << "[Argument: (isa{sv}) 1, \"foo\", [Argument: a{sv} {\"bar\" = [Variant(int): 2]}]]";
+
     if (fileDescriptorPassing) {
         MyFileDescriptorStruct fds;
         fds.fd = QDBusUnixFileDescriptor(fileDescriptorForTest());
@@ -1319,7 +1340,7 @@ void tst_QDBusMarshall::demarshallStrings_data()
     QTest::addColumn<QVariant>("expectedValue");
 
     // All primitive types demarshall to null string types
-    typedef QPair<QVariant, char> ValSigPair;
+    using ValSigPair = std::pair<QVariant, char>;
     const QList<ValSigPair> nullStringTypes = {
         ValSigPair(QVariant::fromValue(QString()), 's'),
         ValSigPair(QVariant::fromValue(QDBusObjectPath()), 'o'),

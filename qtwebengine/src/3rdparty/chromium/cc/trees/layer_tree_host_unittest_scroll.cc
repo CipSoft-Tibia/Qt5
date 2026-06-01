@@ -384,7 +384,7 @@ class LayerTreeHostScrollTestScrollAbortedCommit
       impl->SetNeedsCommit();
     } else if (impl->active_tree()->source_frame_number() == 1) {
       // Commit for source frame 1 is aborted.
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
     } else if (impl->active_tree()->source_frame_number() == 2 &&
                impl->SourceAnimationFrameNumberForTesting() == 3) {
       // Third draw after the second full commit.
@@ -406,7 +406,7 @@ class LayerTreeHostScrollTestScrollAbortedCommit
       EndTest();
     } else {
       // Commit for source frame 3 is aborted.
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
     }
   }
 
@@ -689,8 +689,7 @@ class LayerTreeHostScrollTestCaseWithChild : public LayerTreeHostScrollTest {
     EXPECT_EQ(device_scale_factor_, impl->active_tree()->device_scale_factor());
     switch (impl->active_tree()->source_frame_number()) {
       case 0: {
-        // GESTURE scroll on impl thread. Also tests that the last scrolled
-        // layer id is stored even after the scrolling ends.
+        // GESTURE scroll on impl thread.
         gfx::Point scroll_point = gfx::ToCeiledPoint(
             gfx::PointF(-0.5f, -0.5f) +
             GetTransformNode(expected_scroll_layer_impl)->post_translation);
@@ -704,8 +703,6 @@ class LayerTreeHostScrollTestCaseWithChild : public LayerTreeHostScrollTest {
         CHECK(scrolling_node);
         impl->GetInputHandler().ScrollEnd();
         CHECK(!impl->CurrentlyScrollingNode());
-        EXPECT_EQ(scrolling_node->id,
-                  impl->active_tree()->LastScrolledScrollNodeIndex());
 
         // Check the scroll is applied as a delta.
         EXPECT_POINTF_EQ(initial_offset_,
@@ -1191,7 +1188,7 @@ class SmoothScrollAnimationEndNotification : public LayerTreeHostScrollTest {
         host_impl->GetInputHandler().ScrollUpdate(scroll_state);
 
         EXPECT_TRUE(
-            !!host_impl->mutator_host()->ImplOnlyScrollAnimatingElement());
+            host_impl->mutator_host()->HasImplOnlyScrollAnimatingElement());
       }
     } else if (!scroll_end_requested_) {
       host_impl->GetInputHandler().ScrollEnd(false);
@@ -1329,12 +1326,13 @@ class LayerTreeHostScrollTestImplOnlyScrollSnap
       DoGestureScroll(host_impl, scroller_, impl_thread_scroll_,
                       scroller_element_id_);
 
-      EXPECT_TRUE(
-          host_impl->GetInputHandler().animating_for_snap_for_testing());
+      EXPECT_TRUE(host_impl->GetInputHandler().animating_for_snap_for_testing(
+          scroller_element_id_));
       EXPECT_VECTOR2DF_EQ(impl_thread_scroll_, ScrollDelta(scroller_impl));
     } else {
       snap_animation_finished_ =
-          !host_impl->GetInputHandler().animating_for_snap_for_testing();
+          !host_impl->GetInputHandler().animating_for_snap_for_testing(
+              scroller_element_id_);
     }
   }
 
@@ -1716,7 +1714,7 @@ class LayerTreeHostScrollTestImplScrollUnderMainThreadScrollingParent
   void SetupTree() override {
     LayerTreeHostScrollTest::SetupTree();
     GetScrollNode(layer_tree_host()->OuterViewportScrollLayerForTesting())
-        ->main_thread_scrolling_reasons =
+        ->main_thread_repaint_reasons =
         MainThreadScrollingReason::kPreferNonCompositedScrolling;
 
     scroller_ = Layer::Create();
@@ -2214,7 +2212,7 @@ class LayerTreeHostScrollTestScrollAbortedCommitMFBA
             break;
           }
           default:
-            NOTREACHED_IN_MIGRATION();
+            NOTREACHED();
         }
         break;
       }
@@ -2302,7 +2300,8 @@ class MockInputHandlerClient : public InputHandlerClient {
   void DidFinishImplFrame() override {}
   bool HasQueuedInput() const override { return false; }
   void SetScrollEventDispatchMode(
-      InputHandlerClient::ScrollEventDispatchMode mode) override {}
+      InputHandlerClient::ScrollEventDispatchMode mode,
+      double scroll_deadline_ratio) override {}
 };
 
 // This is a regression test, see crbug.com/639046.
@@ -2409,7 +2408,7 @@ class LayerTreeHostScrollTestElasticOverscroll
         EndTest();
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
 
@@ -2555,7 +2554,7 @@ class LayerTreeHostScrollTestImplSideInvalidation
         // Let the commit abort for the second set of deltas.
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
 
@@ -2620,7 +2619,7 @@ class LayerTreeHostScrollTestImplSideInvalidation
         host_impl->RequestImplSideInvalidationForCheckerImagedTiles();
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
 
@@ -2684,7 +2683,7 @@ class LayerTreeHostScrollTestImplSideInvalidation
         EndTest();
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
 
@@ -2714,13 +2713,13 @@ class LayerTreeHostRasterPriorityTest : public LayerTreeHostScrollTest {
  public:
   void SetupTree() override {
     LayerTreeHostScrollTest::SetupTree();
-    GetViewportScrollNode()->main_thread_scrolling_reasons =
+    GetViewportScrollNode()->main_thread_repaint_reasons =
         MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects;
   }
 
   void UpdateLayerTreeHost() override {
     if (layer_tree_host()->SourceFrameNumber() == 1)
-      GetViewportScrollNode()->main_thread_scrolling_reasons =
+      GetViewportScrollNode()->main_thread_repaint_reasons =
           MainThreadScrollingReason::kNotScrollingOnMain;
   }
 

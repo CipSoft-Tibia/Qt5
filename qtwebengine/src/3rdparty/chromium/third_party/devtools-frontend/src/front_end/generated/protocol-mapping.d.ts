@@ -81,6 +81,7 @@ export namespace ProtocolMapping {
      * Fired whenever an active document stylesheet is removed.
      */
     'CSS.styleSheetRemoved': [Protocol.CSS.StyleSheetRemovedEvent];
+    'CSS.computedStyleUpdated': [Protocol.CSS.ComputedStyleUpdatedEvent];
     /**
      * This is fired whenever the list of available sinks changes. A sink is a
      * device or a software surface that you can cast to.
@@ -160,7 +161,6 @@ export namespace ProtocolMapping {
     'DOMStorage.domStorageItemRemoved': [Protocol.DOMStorage.DomStorageItemRemovedEvent];
     'DOMStorage.domStorageItemUpdated': [Protocol.DOMStorage.DomStorageItemUpdatedEvent];
     'DOMStorage.domStorageItemsCleared': [Protocol.DOMStorage.DomStorageItemsClearedEvent];
-    'Database.addDatabase': [Protocol.Database.AddDatabaseEvent];
     /**
      * Notification sent after the virtual time budget for the current VirtualTimePolicy has run out.
      */
@@ -374,6 +374,16 @@ export namespace ProtocolMapping {
     'Page.documentOpened': [Protocol.Page.DocumentOpenedEvent];
     'Page.frameResized': [];
     /**
+     * Fired when a navigation starts. This event is fired for both
+     * renderer-initiated and browser-initiated navigations. For renderer-initiated
+     * navigations, the event is fired after `frameRequestedNavigation`.
+     * Navigation may still be cancelled after the event is issued. Multiple events
+     * can be fired for a single navigation, for example, when a same-document
+     * navigation becomes a cross-document navigation (such as in the case of a
+     * frameset).
+     */
+    'Page.frameStartedNavigating': [Protocol.Page.FrameStartedNavigatingEvent];
+    /**
      * Fired when a renderer-initiated navigation is requested.
      * Navigation may still be cancelled after the event is issued.
      */
@@ -419,7 +429,8 @@ export namespace ProtocolMapping {
      */
     'Page.javascriptDialogOpening': [Protocol.Page.JavascriptDialogOpeningEvent];
     /**
-     * Fired for top level page lifecycle events such as navigation, load, paint, etc.
+     * Fired for lifecycle events (navigation, load, paint, etc) in the current
+     * target (including local frames).
      */
     'Page.lifecycleEvent': [Protocol.Page.LifecycleEventEvent];
     /**
@@ -642,6 +653,16 @@ export namespace ProtocolMapping {
      */
     'WebAuthn.credentialAdded': [Protocol.WebAuthn.CredentialAddedEvent];
     /**
+     * Triggered when a credential is deleted, e.g. through
+     * PublicKeyCredential.signalUnknownCredential().
+     */
+    'WebAuthn.credentialDeleted': [Protocol.WebAuthn.CredentialDeletedEvent];
+    /**
+     * Triggered when a credential is updated, e.g. through
+     * PublicKeyCredential.signalCurrentUserDetails().
+     */
+    'WebAuthn.credentialUpdated': [Protocol.WebAuthn.CredentialUpdatedEvent];
+    /**
      * Triggered when a credential is used in a webauthn assertion.
      */
     'WebAuthn.credentialAsserted': [Protocol.WebAuthn.CredentialAssertedEvent];
@@ -703,6 +724,7 @@ export namespace ProtocolMapping {
     'FedCm.dialogClosed': [Protocol.FedCm.DialogClosedEvent];
     /**
      * Fired when breakpoint is resolved to an actual script and location.
+     * Deprecated in favor of `resolvedBreakpoints` in the `scriptParsed` event.
      */
     'Debugger.breakpointResolved': [Protocol.Debugger.BreakpointResolvedEvent];
     /**
@@ -1227,6 +1249,13 @@ export namespace ProtocolMapping {
       paramsType: [Protocol.CSS.ForcePseudoStateRequest];
       returnType: void;
     };
+    /**
+     * Ensures that the given node is in its starting-style state.
+     */
+    'CSS.forceStartingStyle': {
+      paramsType: [Protocol.CSS.ForceStartingStyleRequest];
+      returnType: void;
+    };
     'CSS.getBackgroundColors': {
       paramsType: [Protocol.CSS.GetBackgroundColorsRequest];
       returnType: Protocol.CSS.GetBackgroundColorsResponse;
@@ -1239,12 +1268,34 @@ export namespace ProtocolMapping {
       returnType: Protocol.CSS.GetComputedStyleForNodeResponse;
     };
     /**
+     * Resolve the specified values in the context of the provided element.
+     * For example, a value of '1em' is evaluated according to the computed
+     * 'font-size' of the element and a value 'calc(1px + 2px)' will be
+     * resolved to '3px'.
+     */
+    'CSS.resolveValues': {
+      paramsType: [Protocol.CSS.ResolveValuesRequest];
+      returnType: Protocol.CSS.ResolveValuesResponse;
+    };
+    'CSS.getLonghandProperties': {
+      paramsType: [Protocol.CSS.GetLonghandPropertiesRequest];
+      returnType: Protocol.CSS.GetLonghandPropertiesResponse;
+    };
+    /**
      * Returns the styles defined inline (explicitly in the "style" attribute and implicitly, using DOM
      * attributes) for a DOM node identified by `nodeId`.
      */
     'CSS.getInlineStylesForNode': {
       paramsType: [Protocol.CSS.GetInlineStylesForNodeRequest];
       returnType: Protocol.CSS.GetInlineStylesForNodeResponse;
+    };
+    /**
+     * Returns the styles coming from animations & transitions
+     * including the animation & transition styles coming from inheritance chain.
+     */
+    'CSS.getAnimatedStylesForNode': {
+      paramsType: [Protocol.CSS.GetAnimatedStylesForNodeRequest];
+      returnType: Protocol.CSS.GetAnimatedStylesForNodeResponse;
     };
     /**
      * Returns requested styles for a DOM node identified by `nodeId`.
@@ -1292,6 +1343,18 @@ export namespace ProtocolMapping {
     'CSS.getLocationForSelector': {
       paramsType: [Protocol.CSS.GetLocationForSelectorRequest];
       returnType: Protocol.CSS.GetLocationForSelectorResponse;
+    };
+    /**
+     * Starts tracking the given node for the computed style updates
+     * and whenever the computed style is updated for node, it queues
+     * a `computedStyleUpdated` event with throttling.
+     * There can only be 1 node tracked for computed style updates
+     * so passing a new node id removes tracking from the previous node.
+     * Pass `undefined` to disable tracking.
+     */
+    'CSS.trackComputedStyleUpdatesForNode': {
+      paramsType: [Protocol.CSS.TrackComputedStyleUpdatesForNodeRequest?];
+      returnType: void;
     };
     /**
      * Starts tracking the given computed styles for updates. The specified array of properties
@@ -1861,9 +1924,10 @@ export namespace ProtocolMapping {
     };
     /**
      * Returns the query container of the given node based on container query
-     * conditions: containerName, physical, and logical axes. If no axes are
-     * provided, the style container is returned, which is the direct parent or the
-     * closest element with a matching container-name.
+     * conditions: containerName, physical and logical axes, and whether it queries
+     * scroll-state. If no axes are provided and queriesScrollState is false, the
+     * style container is returned, which is the direct parent or the closest
+     * element with a matching container-name.
      */
     'DOM.getContainerForNode': {
       paramsType: [Protocol.DOM.GetContainerForNodeRequest];
@@ -2039,28 +2103,6 @@ export namespace ProtocolMapping {
     'DOMStorage.setDOMStorageItem': {
       paramsType: [Protocol.DOMStorage.SetDOMStorageItemRequest];
       returnType: void;
-    };
-    /**
-     * Disables database tracking, prevents database events from being sent to the client.
-     */
-    'Database.disable': {
-      paramsType: [];
-      returnType: void;
-    };
-    /**
-     * Enables database tracking, database events will now be delivered to the client.
-     */
-    'Database.enable': {
-      paramsType: [];
-      returnType: void;
-    };
-    'Database.executeSQL': {
-      paramsType: [Protocol.Database.ExecuteSQLRequest];
-      returnType: Protocol.Database.ExecuteSQLResponse;
-    };
-    'Database.getDatabaseTableNames': {
-      paramsType: [Protocol.Database.GetDatabaseTableNamesRequest];
-      returnType: Protocol.Database.GetDatabaseTableNamesResponse;
     };
     /**
      * Clears the overridden Device Orientation.
@@ -2984,6 +3026,14 @@ export namespace ProtocolMapping {
       returnType: Protocol.Network.LoadNetworkResourceResponse;
     };
     /**
+     * Sets Controls for third-party cookie access
+     * Page reload is required before the new cookie bahavior will be observed
+     */
+    'Network.setCookieControls': {
+      paramsType: [Protocol.Network.SetCookieControlsRequest];
+      returnType: void;
+    };
+    /**
      * Disables domain notifications.
      */
     'Overlay.disable': {
@@ -3146,7 +3196,7 @@ export namespace ProtocolMapping {
       returnType: void;
     };
     /**
-     * Request that backend shows an overlay with web vital metrics.
+     * Deprecated, no longer has any effect.
      */
     'Overlay.setShowWebVitals': {
       paramsType: [Protocol.Overlay.SetShowWebVitalsRequest];
@@ -3998,6 +4048,15 @@ export namespace ProtocolMapping {
       returnType: Protocol.Storage.GetRelatedWebsiteSetsResponse;
     };
     /**
+     * Returns the list of URLs from a page and its embedded resources that match
+     * existing grace period URL pattern rules.
+     * https://developers.google.com/privacy-sandbox/cookies/temporary-exceptions/grace-period
+     */
+    'Storage.getAffectedUrlsForThirdPartyCookieMetadata': {
+      paramsType: [Protocol.Storage.GetAffectedUrlsForThirdPartyCookieMetadataRequest];
+      returnType: Protocol.Storage.GetAffectedUrlsForThirdPartyCookieMetadataResponse;
+    };
+    /**
      * Returns information about the system.
      */
     'SystemInfo.getInfo': {
@@ -4730,6 +4789,15 @@ export namespace ProtocolMapping {
      */
     'Debugger.setAsyncCallStackDepth': {
       paramsType: [Protocol.Debugger.SetAsyncCallStackDepthRequest];
+      returnType: void;
+    };
+    /**
+     * Replace previous blackbox execution contexts with passed ones. Forces backend to skip
+     * stepping/pausing in scripts in these execution contexts. VM will try to leave blackboxed script by
+     * performing 'step in' several times, finally resorting to 'step out' if unsuccessful.
+     */
+    'Debugger.setBlackboxExecutionContexts': {
+      paramsType: [Protocol.Debugger.SetBlackboxExecutionContextsRequest];
       returnType: void;
     };
     /**

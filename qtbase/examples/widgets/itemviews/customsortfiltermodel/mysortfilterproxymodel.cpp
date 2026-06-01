@@ -17,7 +17,7 @@ void MySortFilterProxyModel::setFilterMinimumDate(QDate date)
 {
     beginFilterChange();
     minDate = date;
-    invalidateRowsFilter();
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
 }
 //! [1]
 
@@ -26,7 +26,7 @@ void MySortFilterProxyModel::setFilterMaximumDate(QDate date)
 {
     beginFilterChange();
     maxDate = date;
-    invalidateRowsFilter();
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
 }
 //! [2]
 

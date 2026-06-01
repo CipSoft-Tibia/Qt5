@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qplatformdefs.h>
 #include "qitemeditorfactory.h"
@@ -236,7 +237,7 @@ QWidget *QDefaultItemEditorFactory::createEditor(int userType, QWidget *parent) 
         ed->setFrame(false);
         return ed; }
     case QMetaType::QDateTime: {
-        QDateTimeEdit *ed = new QDateTimeEdit(parent);
+        QDateTimeEdit *ed = new QItemEditorDateTimeEdit(parent);
         ed->setFrame(false);
         return ed; }
 #endif
@@ -560,6 +561,14 @@ void QExpandingLineEdit::resizeToContents()
     }
 }
 
+#endif // QT_CONFIG(lineedit)
+
+#if QT_CONFIG(datetimeedit)
+void QItemEditorDateTimeEdit::setDateTimeItemEditor(const QDateTime &datetime)
+{
+    setTimeZone(datetime.timeRepresentation());
+    setDateTime(datetime);
+}
 #endif // QT_CONFIG(lineedit)
 
 #if QT_CONFIG(combobox)

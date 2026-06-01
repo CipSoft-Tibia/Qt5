@@ -1,6 +1,7 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qandroidplatformopenglcontext.h"
 #include "qandroidplatformopenglwindow.h"
@@ -34,7 +35,7 @@ void QAndroidPlatformOpenGLContext::swapBuffers(QPlatformSurface *surface)
     // by Android
     window->lockSurface();
 
-    if (window->checkNativeSurface(eglConfig())) {
+    if (window->ensureEglSurfaceCreated(eglConfig())) {
         // Call base class implementation directly since we are already locked
         QEGLPlatformContext::makeCurrent(surface);
     }

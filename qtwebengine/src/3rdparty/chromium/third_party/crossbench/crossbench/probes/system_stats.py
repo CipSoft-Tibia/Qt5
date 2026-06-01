@@ -8,7 +8,7 @@ import datetime as dt
 from typing import TYPE_CHECKING
 
 from crossbench.probes.polling import PollingProbe
-from crossbench.probes.probe import ProbeValidationError
+from crossbench.probes.probe_error import ProbeValidationError
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser

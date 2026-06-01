@@ -36,7 +36,7 @@
 
 namespace {
 bool CanUseRgbReadback(media::VideoFrame& frame) {
-  return media::IsRGB(frame.format()) && (frame.NumTextures() == 1);
+  return media::IsRGB(frame.format()) && frame.HasSharedImage();
 }
 
 SkImageInfo GetImageInfoForFrame(const media::VideoFrame& frame,
@@ -49,8 +49,8 @@ SkImageInfo GetImageInfoForFrame(const media::VideoFrame& frame,
 
 gpu::raster::RasterInterface* GetSharedGpuRasterInterface() {
   auto wrapper = blink::SharedGpuContext::ContextProviderWrapper();
-  if (wrapper && wrapper->ContextProvider()) {
-    auto* raster_provider = wrapper->ContextProvider()->RasterContextProvider();
+  if (wrapper) {
+    auto* raster_provider = wrapper->ContextProvider().RasterContextProvider();
     if (raster_provider)
       return raster_provider->RasterInterface();
   }
@@ -186,7 +186,8 @@ void BackgroundReadback::ReadbackRGBTextureBackedFrameToMemory(
     ReadbackToFrameDoneCallback result_cb) {
   DCHECK(CanUseRgbReadback(*txt_frame));
 
-  SkImageInfo info = GetImageInfoForFrame(*txt_frame, txt_frame->coded_size());
+  SkImageInfo info =
+      GetImageInfoForFrame(*txt_frame, txt_frame->visible_rect().size());
   const auto format = media::VideoPixelFormatFromSkColorType(
       info.colorType(), media::IsOpaque(txt_frame->format()));
 
@@ -210,17 +211,14 @@ void BackgroundReadback::ReadbackRGBTextureBackedFrameToMemory(
   int rgba_stide = result->stride(media::VideoFrame::Plane::kARGB);
   DCHECK_GT(rgba_stide, 0);
 
-  auto origin = txt_frame->metadata().texture_origin_is_top_left
-                    ? kTopLeft_GrSurfaceOrigin
-                    : kBottomLeft_GrSurfaceOrigin;
-
-  gfx::Point src_point;
-  gpu::MailboxHolder mailbox_holder = txt_frame->mailbox_holder(0);
-  ri->WaitSyncTokenCHROMIUM(mailbox_holder.sync_token.GetConstData());
+  gfx::Point src_point = txt_frame->visible_rect().origin();
+  auto shared_image = txt_frame->shared_image();
+  auto origin = shared_image->surface_origin();
+  ri->WaitSyncTokenCHROMIUM(txt_frame->acquire_sync_token().GetConstData());
 
   gfx::Size texture_size = txt_frame->coded_size();
   ri->ReadbackARGBPixelsAsync(
-      mailbox_holder.mailbox, mailbox_holder.texture_target, origin,
+      shared_image->mailbox(), shared_image->GetTextureTarget(), origin,
       texture_size, src_point, info, base::saturated_cast<GLuint>(rgba_stide),
       dst_pixels,
       WTF::BindOnce(&BackgroundReadback::OnARGBPixelsFrameReadCompleted,
@@ -260,11 +258,8 @@ void BackgroundReadback::ReadbackRGBTextureBackedFrameToBuffer(
     base::span<uint8_t> dest_buffer,
     ReadbackDoneCallback done_cb) {
   if (dest_layout.NumPlanes() != 1) {
-    NOTREACHED_IN_MIGRATION()
+    NOTREACHED()
         << "This method shouldn't be called on anything but RGB frames";
-    base::BindPostTaskToCurrentDefault(std::move(std::move(done_cb)))
-        .Run(false);
-    return;
   }
 
   auto* ri = GetSharedGpuRasterInterface();
@@ -277,9 +272,9 @@ void BackgroundReadback::ReadbackRGBTextureBackedFrameToBuffer(
   uint32_t offset = dest_layout.Offset(0);
   uint32_t stride = dest_layout.Stride(0);
 
-  uint8_t* dst_pixels = dest_buffer.data() + offset;
+  base::span<uint8_t> dst_pixels = dest_buffer.subspan(offset);
   size_t max_bytes_written = stride * src_rect.height();
-  if (stride <= 0 || max_bytes_written > dest_buffer.size()) {
+  if (stride <= 0 || max_bytes_written > dst_pixels.size()) {
     DLOG(ERROR) << "Buffer is not sufficiently large for readback";
     base::BindPostTaskToCurrentDefault(std::move(std::move(done_cb)))
         .Run(false);
@@ -292,18 +287,15 @@ void BackgroundReadback::ReadbackRGBTextureBackedFrameToBuffer(
 
   SkImageInfo info = GetImageInfoForFrame(*txt_frame, src_rect.size());
   gfx::Point src_point = src_rect.origin();
-  auto origin = txt_frame->metadata().texture_origin_is_top_left
-                    ? kTopLeft_GrSurfaceOrigin
-                    : kBottomLeft_GrSurfaceOrigin;
-
-  gpu::MailboxHolder mailbox_holder = txt_frame->mailbox_holder(0);
-  ri->WaitSyncTokenCHROMIUM(mailbox_holder.sync_token.GetConstData());
+  auto shared_image = txt_frame->shared_image();
+  auto origin = shared_image->surface_origin();
+  ri->WaitSyncTokenCHROMIUM(txt_frame->acquire_sync_token().GetConstData());
 
   gfx::Size texture_size = txt_frame->coded_size();
   ri->ReadbackARGBPixelsAsync(
-      mailbox_holder.mailbox, mailbox_holder.texture_target, origin,
+      shared_image->mailbox(), shared_image->GetTextureTarget(), origin,
       texture_size, src_point, info, base::saturated_cast<GLuint>(stride),
-      dst_pixels,
+      dst_pixels.data(),
       WTF::BindOnce(&BackgroundReadback::OnARGBPixelsBufferReadCompleted,
                     WrapWeakPersistent(this), std::move(txt_frame), src_rect,
                     dest_layout, dest_buffer, std::move(done_cb)));
@@ -373,8 +365,8 @@ scoped_refptr<media::VideoFrame> SyncReadbackThread::ReadbackToFrame(
     return nullptr;
 
   auto* ri = context_provider_->RasterInterface();
-  return media::ReadbackTextureBackedFrameToMemorySync(
-      *frame, ri, context_provider_->GetCapabilities(), &result_frame_pool_);
+  return media::ReadbackTextureBackedFrameToMemorySync(*frame, ri,
+                                                       &result_frame_pool_);
 }
 
 bool SyncReadbackThread::ReadbackToBuffer(
@@ -398,9 +390,9 @@ bool SyncReadbackThread::ReadbackToBuffer(
         media::VideoFrame::SampleSize(dest_layout.Format(), i);
     gfx::Rect plane_src_rect = PlaneRect(src_rect, sample_size);
     uint8_t* dest_pixels = dest_buffer.data() + dest_layout.Offset(i);
-    if (!media::ReadbackTexturePlaneToMemorySync(
-            *frame, i, plane_src_rect, dest_pixels, dest_layout.Stride(i), ri,
-            context_provider_->GetCapabilities())) {
+    if (!media::ReadbackTexturePlaneToMemorySync(*frame, i, plane_src_rect,
+                                                 dest_pixels,
+                                                 dest_layout.Stride(i), ri)) {
       // It's possible to fail after copying some but not all planes, leaving
       // the output buffer in a corrupt state D:
       return false;

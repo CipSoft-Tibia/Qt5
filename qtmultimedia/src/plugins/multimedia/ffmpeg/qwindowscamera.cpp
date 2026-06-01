@@ -5,6 +5,7 @@
 #include "qsemaphore.h"
 #include "qmutex.h"
 
+#include <private/qcameradevice_p.h>
 #include <private/qmemoryvideobuffer_p.h>
 #include <private/qwindowsmultimediautils_p.h>
 #include <private/qvideoframe_p.h>
@@ -23,6 +24,10 @@
 QT_BEGIN_NAMESPACE
 
 using namespace QWindowsMultimediaUtils;
+
+namespace QFFmpeg {
+
+namespace {
 
 class CameraReaderCallback : public QComObject<IMFSourceReaderCallback>
 {
@@ -45,8 +50,8 @@ private:
     QMutex m_mutex;
 };
 
-static ComPtr<IMFSourceReader> createCameraReader(IMFMediaSource *mediaSource,
-                                                             const ComPtr<CameraReaderCallback> &callback)
+ComPtr<IMFSourceReader> createCameraReader(IMFMediaSource *mediaSource,
+                                           const ComPtr<CameraReaderCallback> &callback)
 {
     ComPtr<IMFSourceReader> sourceReader;
     ComPtr<IMFAttributes> readerAttributes;
@@ -65,7 +70,7 @@ static ComPtr<IMFSourceReader> createCameraReader(IMFMediaSource *mediaSource,
     return sourceReader;
 }
 
-static ComPtr<IMFMediaSource> createCameraSource(const QString &deviceId)
+ComPtr<IMFMediaSource> createCameraSource(const QString &deviceId)
 {
     ComPtr<IMFMediaSource> mediaSource;
     ComPtr<IMFAttributes> sourceAttributes;
@@ -87,7 +92,7 @@ static ComPtr<IMFMediaSource> createCameraSource(const QString &deviceId)
     return mediaSource;
 }
 
-static int calculateVideoFrameStride(IMFMediaType *videoType, int width)
+int calculateVideoFrameStride(IMFMediaType *videoType, int width)
 {
     Q_ASSERT(videoType);
 
@@ -104,7 +109,7 @@ static int calculateVideoFrameStride(IMFMediaType *videoType, int width)
     return 0;
 }
 
-static bool setCameraReaderFormat(IMFSourceReader *sourceReader, IMFMediaType *videoType)
+bool setCameraReaderFormat(IMFSourceReader *sourceReader, IMFMediaType *videoType)
 {
     Q_ASSERT(sourceReader);
     Q_ASSERT(videoType);
@@ -117,8 +122,7 @@ static bool setCameraReaderFormat(IMFSourceReader *sourceReader, IMFMediaType *v
     return SUCCEEDED(hr);
 }
 
-static ComPtr<IMFMediaType> findVideoType(IMFSourceReader *reader,
-                                                     const QCameraFormat &format)
+ComPtr<IMFMediaType> findVideoType(IMFSourceReader *reader, const QCameraFormat &format)
 {
     for (DWORD i = 0;; ++i) {
         ComPtr<IMFMediaType> candidate;
@@ -147,7 +151,10 @@ static ComPtr<IMFMediaType> findVideoType(IMFSourceReader *reader,
     return {};
 }
 
-class ActiveCamera {
+} // namespace
+
+class ActiveCamera
+{
 public:
     static std::unique_ptr<ActiveCamera> create(QWindowsCamera &wc, const QCameraDevice &device, const QCameraFormat &format)
     {
@@ -176,6 +183,8 @@ public:
         if (videoType) {
             if (setCameraReaderFormat(m_reader.Get(), videoType.Get())) {
                 m_frameFormat = { format.resolution(), format.pixelFormat() };
+                m_frameFormat.setColorRange(QCameraFormatPrivate::getColorRange(format));
+                m_frameFormat.setColorSpace(QCameraFormatPrivate::getColorSpace(format));
                 m_videoFrameStride =
                         calculateVideoFrameStride(videoType.Get(), format.resolution().width());
             }
@@ -331,5 +340,7 @@ bool QWindowsCamera::setCameraFormat(const QCameraFormat &format)
 
     return ok;
 }
+
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE

@@ -9,47 +9,6 @@ QT_BEGIN_NAMESPACE
 namespace QQmlJS {
 namespace Dom {
 
-quint32 PendingSourceLocation::utf16Start() const
-{
-    return value.offset;
-}
-
-quint32 PendingSourceLocation::utf16End() const
-{
-    return value.offset + value.length;
-}
-
-void PendingSourceLocation::changeAtOffset(quint32 offset, qint32 change, qint32 colChange,
-                                           qint32 lineChange)
-{
-    if (offset < utf16Start()) {
-        if (change < 0 && offset - change >= utf16Start()) {
-            int c1 = offset - utf16Start();
-            int c2 = offset - change - utf16Start();
-            change = c1;
-            if (value.length < quint32(c2))
-                value.length = 0;
-            else
-                value.length -= c2;
-        }
-        value.offset += change;
-        value.startColumn += colChange;
-        value.startLine += lineChange;
-    } else if (offset < utf16End()) {
-        if (change < 0 && offset - change > utf16End())
-            change = offset - utf16End();
-        value.length += change;
-    }
-}
-
-void PendingSourceLocation::commit()
-{
-    if (toUpdate)
-        *toUpdate = value;
-    if (updater)
-        updater(value);
-}
-
 LineWriter::LineWriter(
         const SinkF &innerSink, const QString &fileName, const LineWriterOptions &options,
         int lineNr, int columnNr, int utf16Offset, const QString &currentLine)
@@ -87,6 +46,13 @@ LineWriter &LineWriter::ensureSpace(TextAddType t)
     return *this;
 }
 
+LineWriter &LineWriter::ensureSemicolon(TextAddType t)
+{
+    if (!m_currentLine.isEmpty() && m_currentLine.back() != u';')
+        write(u";", t);
+    return *this;
+}
+
 LineWriter &LineWriter::ensureSpace(QStringView space, TextAddType t)
 {
     int tabSize = m_options.formatOptions.tabSize;
@@ -110,11 +76,9 @@ LineWriter &LineWriter::ensureSpace(QStringView space, TextAddType t)
             ind = IndentInfo(space, tabSize, trailingSpaceStartColumn);
         if (i == 0) {
             if (indExisting.column < ind.column) {
-                qint32 utf16Change = ind.trailingString.size() - trailingSpace.size();
                 m_currentColumnNr += ind.trailingString.size() - trailingSpace.size();
                 m_currentLine.replace(
                         i, len - i, ind.trailingString.toString()); // invalidates most QStringViews
-                changeAtOffset(i, utf16Change, utf16Change, 0);
                 lineChanged();
             }
         } else if (indExisting.column < ind.column) { // use just spaces if not at start of a line
@@ -212,40 +176,6 @@ SourceLocation LineWriter::committedLocation() const
     return SourceLocation(m_utf16Offset, 0, m_lineNr, m_lineUtf16Offset);
 }
 
-PendingSourceLocationId LineWriter::startSourceLocation(SourceLocation *toUpdate)
-{
-    PendingSourceLocation res;
-    res.id = ++m_lastSourceLocationId;
-    res.value = currentSourceLocation();
-    res.toUpdate = toUpdate;
-    m_pendingSourceLocations.insert(res.id, res);
-    return res.id;
-}
-
-PendingSourceLocationId LineWriter::startSourceLocation(std::function<void(SourceLocation)> updater)
-{
-    PendingSourceLocation res;
-    res.id = ++m_lastSourceLocationId;
-    res.value = currentSourceLocation();
-    res.updater = updater;
-    m_pendingSourceLocations.insert(res.id, res);
-    return res.id;
-}
-
-void LineWriter::endSourceLocation(PendingSourceLocationId slId)
-{
-    if (m_pendingSourceLocations.contains(slId)) {
-        auto &pLoc = m_pendingSourceLocations[slId];
-        if (!pLoc.open) {
-            qWarning() << "Trying to close already closed PendingSourceLocation" << int(slId);
-        }
-        pLoc.open = false;
-        pLoc.value.length = m_utf16Offset + m_currentLine.size() - pLoc.value.offset;
-    } else {
-        qWarning() << "Trying to close non existing PendingSourceLocation" << int(slId);
-    }
-}
-
 int LineWriter::addTextAddCallback(std::function<bool(LineWriter &, TextAddType)> callback)
 {
     int nextId = ++m_lastCallbackId;
@@ -291,11 +221,9 @@ void LineWriter::setLineIndent(int indentAmount)
         if (indent != m_currentLine.mid(0, startNonSpace)) {
             quint32 colChange = indentAmount - oldColumn;
             m_currentColumnNr += colChange;
-            qint32 oChange = indent.size() - startNonSpace;
             m_currentLine = indent + m_currentLine.mid(startNonSpace);
             m_currentColumnNr = column(m_currentLine.size());
             lineChanged();
-            changeAtOffset(m_utf16Offset, oChange, oChange, 0);
         }
     }
 }
@@ -310,9 +238,7 @@ void LineWriter::handleTrailingSpace(LineWriterOptions::TrailingSpace trailingSp
         while (lastNonSpace > 0 && m_currentLine.at(lastNonSpace - 1).isSpace())
             --lastNonSpace;
         if (lastNonSpace != m_currentLine.size()) {
-            qint32 oChange = lastNonSpace - m_currentLine.size();
             m_currentLine = m_currentLine.mid(0, lastNonSpace);
-            changeAtOffset(m_utf16Offset + lastNonSpace, oChange, oChange, 0);
             m_currentColumnNr =
                     column(m_currentLine.size()); // to be extra accurate in the potential split
             lineChanged();
@@ -334,16 +260,6 @@ SourceLocation LineWriter::currentSourceLocation() const
 {
     return SourceLocation(m_utf16Offset + m_currentLine.size(), 0, m_lineNr,
                           m_lineUtf16Offset + m_currentLine.size());
-}
-
-void LineWriter::changeAtOffset(quint32 offset, qint32 change, qint32 colChange, qint32 lineChange)
-{
-    auto iEnd = m_pendingSourceLocations.end();
-    auto i = m_pendingSourceLocations.begin();
-    while (i != iEnd) {
-        i.value().changeAtOffset(offset, change, colChange, lineChange);
-        ++i;
-    }
 }
 
 int LineWriter::column(int index)
@@ -377,9 +293,8 @@ void LineWriter::commitLine(const QString &eol, TextAddType tType, int untilChar
         untilChar = m_currentLine.size();
     bool isSpaceOnly = QStringView(m_currentLine).mid(0, untilChar).trimmed().isEmpty();
     bool isEmptyNewline = !eol.isEmpty() && isSpaceOnly;
-    quint32 endCommit = m_utf16Offset + untilChar;
-    // update position, lineNr,...
-    // write out
+    //  update position, lineNr,...
+    //  write out
     for (SinkF &sink : m_innerSinks)
         sink(m_currentLine.mid(0, untilChar));
     m_utf16Offset += untilChar;
@@ -388,10 +303,8 @@ void LineWriter::commitLine(const QString &eol, TextAddType tType, int untilChar
         for (SinkF &sink : m_innerSinks)
             sink(eol);
         ++m_lineNr;
-        int oldCol = column(untilChar);
         m_columnNr = 0;
         m_lineUtf16Offset = 0;
-        changeAtOffset(m_utf16Offset, 0, -oldCol, 1);
     } else {
         m_columnNr = column(untilChar);
         m_lineUtf16Offset += untilChar;
@@ -433,18 +346,6 @@ void LineWriter::commitLine(const QString &eol, TextAddType tType, int untilChar
         ++m_committedEmptyLines;
     else if (!isSpaceOnly)
         m_committedEmptyLines = 0;
-    // commit finished pending
-    auto iEnd = m_pendingSourceLocations.end();
-    auto i = m_pendingSourceLocations.begin();
-    while (i != iEnd) {
-        auto &pLoc = i.value();
-        if (!pLoc.open && pLoc.utf16End() <= endCommit) {
-            pLoc.commit();
-            i = m_pendingSourceLocations.erase(i);
-        } else {
-            ++i;
-        }
-    }
     // notify
     textAddCallback(notifyType);
 }

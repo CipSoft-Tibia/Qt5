@@ -42,6 +42,7 @@
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap_source.h"
 #include "third_party/blink/renderer/core/page/page_visibility_observer.h"
+#include "third_party/blink/renderer/platform/bindings/v8_external_memory_accounter.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_host.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types_3d.h"
@@ -58,6 +59,7 @@
 
 namespace blink {
 
+class CanvasHibernationHandler;
 class Canvas2DLayerBridge;
 class CanvasContextCreationAttributesCore;
 class CanvasDrawListener;
@@ -65,6 +67,7 @@ class CanvasHighDynamicRangeOptions;
 class CanvasRenderingContext;
 class CanvasRenderingContextFactory;
 class CanvasResourceProvider;
+class Element;
 class GraphicsContext;
 class HTMLCanvasElement;
 class ImageBitmapOptions;
@@ -86,7 +89,6 @@ class CORE_EXPORT HTMLCanvasElement final
       public PageVisibilityObserver,
       public CanvasRenderingContextHost,
       public WebSurfaceLayerBridgeObserver,
-      public ImageBitmapSource,
       public OffscreenCanvasPlaceholder {
   DEFINE_WRAPPERTYPEINFO();
   USING_PRE_FINALIZER(HTMLCanvasElement, Dispose);
@@ -132,9 +134,10 @@ class CORE_EXPORT HTMLCanvasElement final
                                  ExceptionState&);
 
   bool IsPresentationAttribute(const QualifiedName&) const final;
-  void CollectStyleForPresentationAttribute(const QualifiedName&,
-                                            const AtomicString&,
-                                            MutableCSSPropertyValueSet*) final;
+  void CollectStyleForPresentationAttribute(
+      const QualifiedName&,
+      const AtomicString&,
+      HeapVector<CSSPropertyValue, 8>&) final;
 
   // Used for canvas capture.
   void AddListener(CanvasDrawListener*);
@@ -160,9 +163,14 @@ class CORE_EXPORT HTMLCanvasElement final
   Canvas2DLayerBridge* GetCanvas2DLayerBridge() {
     return canvas2d_bridge_.get();
   }
+
+  CanvasHibernationHandler* GetHibernationHandler() const;
+
   Canvas2DLayerBridge* GetOrCreateCanvas2DLayerBridge();
 
   void DiscardResourceProvider() override;
+
+  TextDirection GetTextDirection(const ComputedStyle*) override;
 
   FontSelector* GetFontSelector() override;
 
@@ -176,6 +184,7 @@ class CORE_EXPORT HTMLCanvasElement final
 
   void DoDeferredPaintInvalidation();
 
+  void InitializeLayerWithCSSProperties(cc::Layer* layer) override;
   void PreFinalizeFrame() override;
   void PostFinalizeFrame(FlushReason) override;
 
@@ -209,7 +218,7 @@ class CORE_EXPORT HTMLCanvasElement final
   void UnregisterContentsLayer(cc::Layer*) override;
 
   // CanvasResourceHost implementation
-  bool IsPageVisible() override;
+  bool IsPageVisible() const override;
   void NotifyGpuContextLost() override;
   void SetNeedsCompositingUpdate() override;
   void UpdateMemoryUsage() override;
@@ -219,8 +228,9 @@ class CORE_EXPORT HTMLCanvasElement final
   CanvasResourceProvider* GetOrCreateCanvasResourceProvider(
       RasterModeHint hint) override;
   bool IsPrinting() const override;
-  void SetFilterQuality(cc::PaintFlags::FilterQuality filter_quality) override;
   bool IsHibernating() const override;
+  void SetTransferToGPUTextureWasInvoked() override;
+  bool TransferToGPUTextureWasInvoked() override;
 
   // CanvasRenderingContextHost implementation.
   UkmParameters GetUkmParameters() override;
@@ -230,7 +240,6 @@ class CORE_EXPORT HTMLCanvasElement final
   bool EnableAcceleration() final;
 
   // ImageBitmapSource implementation
-  gfx::Size BitmapSourceSize() const override;
   ScriptPromise<ImageBitmap> CreateImageBitmap(
       ScriptState*,
       std::optional<gfx::Rect> crop_rect,
@@ -244,7 +253,6 @@ class CORE_EXPORT HTMLCanvasElement final
 
   void SetResourceProviderForTesting(
       std::unique_ptr<CanvasResourceProvider> provider,
-      std::unique_ptr<Canvas2DLayerBridge> bridge,
       const gfx::Size& size);
 
   static void RegisterRenderingContextFactory(
@@ -282,9 +290,9 @@ class CORE_EXPORT HTMLCanvasElement final
 
   void UpdateSuspendOffscreenCanvasAnimation();
 
-  void SetHasPlacedElements();
-
-  bool HasPlacedElements() const { return has_placed_elements_; }
+  bool HasPlacedElements() const final;
+  void PaintPlacedElements() const;
+  void MarkPlacedElementDirty(Element* placedElement);
 
   // Gets the settings of this Html Canvas Element. If there is a frame, it will
   // return the settings from the frame. If it is a frameless element it will
@@ -318,6 +326,8 @@ class CORE_EXPORT HTMLCanvasElement final
 
   bool IsPlaceholder() const override { return IsOffscreenCanvasRegistered(); }
 
+  bool CanStartSelection() const override;
+
   bool ShouldDisableAccelerationBecauseOfReadback() const;
 
  protected:
@@ -327,6 +337,11 @@ class CORE_EXPORT HTMLCanvasElement final
 
  private:
   void Dispose();
+
+  // TODO(crbug.com/40280152): Remove parameter once the hibernation handler is
+  // an instance variable of this class.
+  CanvasResourceProvider* GetOrCreateCanvasResourceProviderFor2DContext(
+      CanvasHibernationHandler& hibernation_handler);
 
   void ColorSchemeMayHaveChanged();
 
@@ -353,9 +368,6 @@ class CORE_EXPORT HTMLCanvasElement final
   bool AreAuthorShadowsAllowed() const override { return false; }
 
   void Reset();
-
-  std::unique_ptr<Canvas2DLayerBridge> Create2DLayerBridge();
-  void SetCanvas2DLayerBridgeInternal(std::unique_ptr<Canvas2DLayerBridge>);
 
   void SetSurfaceSize(gfx::Size);
 
@@ -404,8 +416,11 @@ class CORE_EXPORT HTMLCanvasElement final
 
   // Canvas2DLayerBridge is used when canvas has 2d rendering context
   std::unique_ptr<Canvas2DLayerBridge> canvas2d_bridge_;
-  void ReplaceExisting2dLayerBridge(
-      std::unique_ptr<Canvas2DLayerBridge> new_layer_bridge,
+
+  // If the ResourceProvider currently exists, replaces it with a
+  // CanvasResourceProvider that was newly created for usage with a 2D context
+  // (or with `new_provider_for_testing` if non-null).
+  void ReplaceExistingResourceProviderFor2DContext(
       std::unique_ptr<CanvasResourceProvider> new_provider_for_testing =
           nullptr);
 
@@ -426,9 +441,13 @@ class CORE_EXPORT HTMLCanvasElement final
 
   scoped_refptr<StaticBitmapImage> transparent_image_;
 
-  // When the underlying context uses placeElement() layout needs to be run on
-  // the fallback content.
-  bool has_placed_elements_ = false;
+  // Paint flags set based on CSS properties, which must be propagated to the
+  // cc::Layer.
+  cc::PaintFlags::FilterQuality filter_quality_ =
+      cc::PaintFlags::FilterQuality::kLow;
+  cc::PaintFlags::DynamicRangeLimitMixture dynamic_range_limit_;
+
+  NO_UNIQUE_ADDRESS V8ExternalMemoryAccounterBase external_memory_accounter_;
 };
 
 }  // namespace blink

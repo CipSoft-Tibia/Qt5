@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
  *
@@ -24,8 +24,7 @@ bool BestPractices::PreCallValidateAllocateDescriptorSets(VkDevice device, const
                                                           VkDescriptorSet* pDescriptorSets, const ErrorObject& error_obj,
                                                           vvl::AllocateDescriptorSetsData& ads_state_data) const {
     bool skip = false;
-    skip |= ValidationStateTracker::PreCallValidateAllocateDescriptorSets(device, pAllocateInfo, pDescriptorSets, error_obj,
-                                                                          ads_state_data);
+    skip |= BaseClass::PreCallValidateAllocateDescriptorSets(device, pAllocateInfo, pDescriptorSets, error_obj, ads_state_data);
     if (skip) return skip;
 
     const auto pool_state = Get<bp_state::DescriptorPool>(pAllocateInfo->descriptorPool);
@@ -41,7 +40,7 @@ bool BestPractices::PreCallValidateAllocateDescriptorSets(VkDevice device, const
             VendorSpecificTag(kBPVendorArm));
     }
 
-    if (IsExtEnabled(device_extensions.vk_khr_maintenance1)) {
+    if (IsExtEnabled(extensions.vk_khr_maintenance1)) {
         // Track number of descriptorSets allowable in this pool
         if (pool_state->GetAvailableSets() < pAllocateInfo->descriptorSetCount) {
             skip |=
@@ -50,6 +49,21 @@ bool BestPractices::PreCallValidateAllocateDescriptorSets(VkDevice device, const
                            " descriptorSets from %s"
                            ". This pool only has %" PRIu32 " descriptorSets remaining.",
                            pAllocateInfo->descriptorSetCount, FormatHandle(*pool_state).c_str(), pool_state->GetAvailableSets());
+        }
+        auto ads_pool_state = Get<vvl::DescriptorPool>(pAllocateInfo->descriptorPool);
+        for (auto it = ads_state_data.required_descriptors_by_type.begin(); it != ads_state_data.required_descriptors_by_type.end();
+             ++it) {
+            auto available_count = ads_pool_state->GetAvailableCount(it->first);
+
+            if (ads_state_data.required_descriptors_by_type.at(it->first) > available_count) {
+                skip |= LogWarning(
+                    "BestPractices-vkAllocateDescriptorSets-EmptyDescriptorPoolType", ads_pool_state->Handle(), error_obj.location,
+                    "Unable to allocate %" PRIu32
+                    " descriptors of type %s from %s"
+                    ". This pool only has %" PRIu32 " descriptors of this type remaining.",
+                    ads_state_data.required_descriptors_by_type.at(it->first), string_VkDescriptorType(VkDescriptorType(it->first)),
+                    FormatHandle(*ads_pool_state).c_str(), available_count);
+            }
         }
     }
 
@@ -75,8 +89,7 @@ void BestPractices::ManualPostCallRecordAllocateDescriptorSets(VkDevice device, 
 
 void BestPractices::PostCallRecordFreeDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, uint32_t descriptorSetCount,
                                                      const VkDescriptorSet* pDescriptorSets, const RecordObject& record_obj) {
-    ValidationStateTracker::PostCallRecordFreeDescriptorSets(device, descriptorPool, descriptorSetCount, pDescriptorSets,
-                                                             record_obj);
+    BaseClass::PostCallRecordFreeDescriptorSets(device, descriptorPool, descriptorSetCount, pDescriptorSets, record_obj);
     if (record_obj.result == VK_SUCCESS) {
         // we want to track frees because we're interested in suggesting re-use
         if (auto pool_state = Get<bp_state::DescriptorPool>(descriptorPool)) {

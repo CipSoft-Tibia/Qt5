@@ -74,6 +74,29 @@ void LogicalLineBuilder::CreateLine(LineInfo* line_info,
 
   box_states_->OnEndPlaceItems(constraint_space_, line_box, baseline_type_);
 
+  if (main_line_helper) {
+    if (auto& ellipsis_data = main_line_helper->GetLineClampEllipsis()) {
+      DCHECK(RuntimeEnabledFeatures::CSSLineClampLineBreakingEllipsisEnabled());
+      const ShapeResultView* shape_result_view =
+          ShapeResultView::Create(ellipsis_data->shape_result);
+      FontHeight text_metrics = ellipsis_data->text_metrics;
+
+      line_box->AddChild(*node_.GetLayoutBlockFlow(),
+                         StyleVariant::kStandardEllipsis, shape_result_view,
+                         ellipsis_data->text,
+                         LogicalRect(LayoutUnit(), -text_metrics.ascent,
+                                     shape_result_view->SnappedWidth(),
+                                     text_metrics.LineHeight()),
+                         // TODO(abotella): The ellipsis' bidi level is pending
+                         // discussion at
+                         // https://github.com/w3c/csswg-drafts/issues/10844.
+                         // Meanwhile we use the paragraph's embedding level for
+                         // compatibility with the previous behavior of
+                         // -webkit-line-clamp.
+                         static_cast<UBiDiLevel>(line_info->BaseDirection()));
+    }
+  }
+
   if (node_.IsBidiEnabled()) [[unlikely]] {
     box_states_->PrepareForReorder(line_box);
     BidiReorder(line_info->BaseDirection(), line_box,
@@ -170,17 +193,14 @@ InlineBoxState* LogicalLineBuilder::HandleItemResults(
       DCHECK(main_line_helper);
       main_line_helper->PlaceBlockInInline(item, &item_result, line_box);
     } else if (item.Type() == InlineItem::kOpenRubyColumn) {
-      DCHECK(RuntimeEnabledFeatures::RubyLineBreakableEnabled());
       if (item_result.ruby_column) {
         box = PlaceRubyColumn(line_info, item_result, *line_box, box);
       } else {
         line_box->AddChild(item.BidiLevel());
       }
     } else if (item.Type() == InlineItem::kCloseRubyColumn) {
-      DCHECK(RuntimeEnabledFeatures::RubyLineBreakableEnabled());
       line_box->AddChild(item.BidiLevel());
     } else if (item.Type() == InlineItem::kRubyLinePlaceholder) {
-      DCHECK(RuntimeEnabledFeatures::RubyLineBreakableEnabled());
       // Overhang values are zero or negative.
       LayoutUnit start_overhang = item_result.margins.inline_start;
       LayoutUnit end_overhang = item_result.margins.inline_end;
@@ -451,10 +471,6 @@ InlineBoxState* LogicalLineBuilder::PlaceRubyColumn(
         line_available_size = line_info.AvailableWidth();
       }
     }
-    if (!RuntimeEnabledFeatures::RubyLineEdgeAlignmentEnabled()) {
-      on_start_edge = false;
-      on_end_edge = false;
-    }
   }
   std::pair<LayoutUnit, LayoutUnit> base_insets =
       ApplyRubyAlign(line_available_size.value_or(item_result.inline_size),
@@ -635,7 +651,7 @@ void LogicalLineBuilder::BidiReorder(
       //
       // min_element() below doesn't return the end iterator because we
       // ensure there is at least one item in the range.
-      column->start_index = *base::ranges::min_element(
+      column->start_index = *std::ranges::min_element(
           base::span(logical_to_visual)
               .subspan(column->start_index, column->size));
     }

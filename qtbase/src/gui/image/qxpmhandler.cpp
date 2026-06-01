@@ -1138,7 +1138,7 @@ static bool write_xpm_image(const QImage &sourceImage, QIODevice *device, const 
         s << '\"';
     }
     s << "};" << Qt::endl;
-    return (s.status() == QTextStream::Ok);
+    return static_cast<bool>(s);
 }
 
 QXpmHandler::QXpmHandler()

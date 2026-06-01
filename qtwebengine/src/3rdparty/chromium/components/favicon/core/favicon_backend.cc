@@ -7,6 +7,7 @@
 #include "base/containers/contains.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/rand_util.h"
 #include "base/time/time.h"
@@ -155,7 +156,7 @@ favicon_base::FaviconRawBitmapResult FaviconBackend::GetLargestFaviconForUrl(
   base::Time last_updated;
   base::Time last_requested;
   favicon_base::FaviconRawBitmapResult bitmap_result;
-  bitmap_result.icon_url = icon_url;
+  bitmap_result.icon_url = std::move(icon_url);
   bitmap_result.icon_type = icon_type;
   if (!db_->GetFaviconBitmap(largest_icon.bitmap_id, &last_updated,
                              &last_requested, &bitmap_result.bitmap_data,
@@ -187,6 +188,25 @@ FaviconBackend::GetFaviconsForUrl(const GURL& page_url,
   if (desired_sizes.size() == 1 && !bitmap_results.empty()) {
     bitmap_results.assign(1, favicon_base::ResizeFaviconBitmapResult(
                                  desired_sizes[0], bitmap_results));
+  }
+
+  for (auto size : desired_sizes) {
+    // Only record histograms for sizes that are on the |icon_sizes| allowlist.
+    if (std::find(icon_sizes.begin(), icon_sizes.end(), size) ==
+        icon_sizes.end()) {
+      continue;
+    }
+    bool size_found = false;
+    for (auto result : bitmap_results) {
+      if (result.pixel_size.width() == size &&
+          result.pixel_size.height() == size) {
+        size_found = true;
+        break;
+      }
+    }
+    base::UmaHistogramBoolean(
+        "Favicons.IconSuccess." + base::NumberToString(size) + "px",
+        size_found);
   }
   return bitmap_results;
 }
@@ -568,14 +588,16 @@ bool FaviconBackend::SetFaviconBitmaps(favicon_base::FaviconID icon_id,
   using PNGEncodedBitmap =
       std::pair<scoped_refptr<base::RefCountedBytes>, gfx::Size>;
   std::vector<PNGEncodedBitmap> to_add;
-  for (size_t i = 0; i < bitmaps.size(); ++i) {
-    scoped_refptr<base::RefCountedBytes> bitmap_data(new base::RefCountedBytes);
-    if (!gfx::PNGCodec::EncodeBGRASkBitmap(bitmaps[i], false,
-                                           &bitmap_data->as_vector())) {
+  for (const auto& bitmap : bitmaps) {
+    std::optional<std::vector<uint8_t>> encoded =
+        gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, false);
+    if (!encoded) {
       continue;
     }
-    to_add.push_back(std::make_pair(
-        bitmap_data, gfx::Size(bitmaps[i].width(), bitmaps[i].height())));
+    auto bitmap_data =
+        base::MakeRefCounted<base::RefCountedBytes>(std::move(encoded.value()));
+    to_add.emplace_back(bitmap_data,
+                        gfx::Size(bitmap.width(), bitmap.height()));
   }
 
   bool favicon_bitmaps_changed = false;

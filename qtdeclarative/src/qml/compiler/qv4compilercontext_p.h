@@ -1,5 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
+
 #ifndef QV4COMPILERCONTEXT_P_H
 #define QV4COMPILERCONTEXT_P_H
 
@@ -212,13 +214,13 @@ struct Context {
     QString caughtVariable;
     QQmlJS::SourceLocation lastBlockInitializerLocation;
 
-    enum UsesArgumentsObject {
-        ArgumentsObjectUnknown,
-        ArgumentsObjectNotUsed,
-        ArgumentsObjectUsed
+    enum class UsesArgumentsObject: quint8 {
+        Unknown,
+        NotUsed,
+        Used
     };
 
-    UsesArgumentsObject usesArgumentsObject = ArgumentsObjectUnknown;
+    UsesArgumentsObject usesArgumentsObject = UsesArgumentsObject::Unknown;
 
     ContextType contextType;
 
@@ -337,6 +339,7 @@ struct Context {
             Import
         };
         Type type = Unresolved;
+        Context::MemberType memberType = UndefinedMember;
         bool isArgOrEval = false;
         bool isConst = false;
         bool requiresTDZCheck = false;

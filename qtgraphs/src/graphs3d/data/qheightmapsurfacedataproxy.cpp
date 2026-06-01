@@ -5,8 +5,20 @@
 #include <QtCore/qfileinfo.h>
 #include "qheightmapsurfacedataproxy_p.h"
 #include "qsurface3dseries_p.h"
+#include "qgraphs3dlogging_p.h"
+
+#include <qtgraphs_tracepoints_p.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+                   "QT_BEGIN_NAMESPACE" \
+                   "class QHeightMapSurfaceDataProxy;" \
+                   "QT_END_NAMESPACE"
+               )
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DHeightMapSurfaceDataProxHandlePendingResolve_entry, bool is16Bit);
+Q_TRACE_POINT(qtgraphs, QGraphs3DHeightMapSurfaceDataProxHandlePendingResolve_exit);
 
 // Default ranges correspond value axis defaults
 const float defaultMinValue = 0.0f;
@@ -301,14 +313,18 @@ void QHeightMapSurfaceDataProxy::setHeightMapFile(const QString &filename)
     // Check if the filename is empty, in which case we should clear the height map,
     // or if not, it's an actual file that can be found
     if (!filename.isEmpty() && (!validfile.exists() || !validfile.isFile())) {
-        qWarning("Height map file %ls does not exist.", qUtf16Printable(filename));
+        qCWarning(lcProperties3D, "%s height map file %s does not exist.",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(filename));
         return;
     }
-    if (d->m_heightMapFile != filename) {
-        d->m_heightMapFile = filename;
-        setHeightMap(QImage(filename));
-        emit heightMapFileChanged(filename);
+    if (d->m_heightMapFile == filename) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(filename));
+        return;
     }
+    d->m_heightMapFile = filename;
+    setHeightMap(QImage(filename));
+    emit heightMapFileChanged(filename);
 }
 
 QString QHeightMapSurfaceDataProxy::heightMapFile() const
@@ -537,8 +553,9 @@ void QHeightMapSurfaceDataProxyPrivate::setValueRanges(float minX,
     if (m_maxXValue != maxX || minX >= maxX) {
         if (minX >= maxX) {
             m_maxXValue = minX + 1.0f;
-            qWarning("Warning: Tried to set invalid range for X value range. Range automatically "
-                     "adjusted to a valid one: %f - %f --> %f - %f",
+            qCWarning(lcProperties3D, "%s tried to set invalid range for X value range."
+                     " Range automatically adjusted to a valid one: %f - %f --> %f - %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      minX,
                      maxX,
                      m_minXValue,
@@ -551,8 +568,9 @@ void QHeightMapSurfaceDataProxyPrivate::setValueRanges(float minX,
     if (m_maxZValue != maxZ || minZ >= maxZ) {
         if (minZ >= maxZ) {
             m_maxZValue = minZ + 1.0f;
-            qWarning("Warning: Tried to set invalid range for Z value range."
+            qCWarning(lcProperties3D, "%s tried to set invalid range for Z value range."
                      " Range automatically adjusted to a valid one: %f - %f --> %f - %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      minZ,
                      maxZ,
                      m_minZValue,
@@ -584,8 +602,10 @@ void QHeightMapSurfaceDataProxyPrivate::setMinXValue(float min)
         if (min >= m_maxXValue) {
             float oldMax = m_maxXValue;
             m_maxXValue = min + 1.0f;
-            qWarning("Warning: Tried to set minimum X to equal or larger than maximum X for value "
+            qCWarning(lcProperties3D, "%s tried to set minimum X to equal or larger"
+                     " than maximum X for value "
                      "range. Maximum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMax,
                      m_maxXValue);
             maxChanged = true;
@@ -608,8 +628,9 @@ void QHeightMapSurfaceDataProxyPrivate::setMaxXValue(float max)
         if (max <= m_minXValue) {
             float oldMin = m_minXValue;
             m_minXValue = max - 1.0f;
-            qWarning("Warning: Tried to set maximum X to equal or smaller than minimum X for value "
-                     "range. Minimum automatically adjusted to a valid one: %f --> %f",
+            qCWarning(lcProperties3D, "%s tried to set maximum X to equal or smaller than minimum X"
+                     " for value range. Minimum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMin,
                      m_minXValue);
             minChanged = true;
@@ -632,8 +653,9 @@ void QHeightMapSurfaceDataProxyPrivate::setMinZValue(float min)
         if (min >= m_maxZValue) {
             float oldMax = m_maxZValue;
             m_maxZValue = min + 1.0f;
-            qWarning("Warning: Tried to set minimum Z to equal or larger than maximum Z for value "
-                     "range. Maximum automatically adjusted to a valid one: %f --> %f",
+            qCWarning(lcProperties3D, "%s tried to set minimum Z to equal or larger than maximum Z"
+                     " for value range. Maximum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMax,
                      m_maxZValue);
             maxChanged = true;
@@ -656,8 +678,9 @@ void QHeightMapSurfaceDataProxyPrivate::setMaxZValue(float max)
         if (max <= m_minZValue) {
             float oldMin = m_minZValue;
             m_minZValue = max - 1.0f;
-            qWarning("Warning: Tried to set maximum Z to equal or smaller than minimum Z for value "
-                     "range. Minimum automatically adjusted to a valid one: %f --> %f",
+            qCWarning(lcProperties3D, "%s tried to set maximum Z to equal or smaller than minimum Z"
+                     " for value range. Minimum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMin,
                      m_minZValue);
             minChanged = true;
@@ -680,8 +703,9 @@ void QHeightMapSurfaceDataProxyPrivate::setMinYValue(float min)
         if (min >= m_maxYValue) {
             float oldMax = m_maxYValue;
             m_maxYValue = min + 1.0f;
-            qWarning("Warning: Tried to set minimum Y to equal or larger than maximum Y for value "
-                     "range. Maximum automatically adjusted to a valid one: %f --> %f",
+            qCWarning(lcProperties3D, "%s tried to set minimum Y to equal or larger than maximum Y"
+                     " for value range. Maximum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMax,
                      m_maxYValue);
             maxChanged = true;
@@ -704,8 +728,9 @@ void QHeightMapSurfaceDataProxyPrivate::setMaxYValue(float max)
         if (max <= m_minYValue) {
             float oldMin = m_minYValue;
             m_minYValue = max - 1.0f;
-            qWarning("Warning: Tried to set maximum Y to equal or smaller than minimum Y for value "
-                     "range. Minimum automatically adjusted to a valid one: %f --> %f",
+            qCWarning(lcProperties3D, "%s tried to set maximum Y to equal or smaller than minimum Y"
+                     " for value range. Minimum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMin,
                      m_minYValue);
             minChanged = true;
@@ -723,13 +748,17 @@ void QHeightMapSurfaceDataProxyPrivate::setMaxYValue(float max)
 void QHeightMapSurfaceDataProxyPrivate::setAutoScaleY(bool enabled)
 {
     Q_Q(QHeightMapSurfaceDataProxy);
-    if (enabled != m_autoScaleY) {
-        m_autoScaleY = enabled;
-        emit q->autoScaleYChanged(m_autoScaleY);
-
-        if (!m_resolveTimer.isActive())
-            m_resolveTimer.start(0);
+    if (enabled == m_autoScaleY) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enabled;
+        return;
     }
+
+    m_autoScaleY = enabled;
+    emit q->autoScaleYChanged(m_autoScaleY);
+
+    if (!m_resolveTimer.isActive())
+        m_resolveTimer.start(0);
 }
 
 void QHeightMapSurfaceDataProxyPrivate::handlePendingResolve()
@@ -744,6 +773,7 @@ void QHeightMapSurfaceDataProxyPrivate::handlePendingResolve()
                     || heightImage.format() == QImage::Format_RGBA64_Premultiplied
                     || heightImage.format() == QImage::Format_Grayscale16);
 
+    Q_TRACE(QGraphs3DHeightMapSurfaceDataProxHandlePendingResolve_entry, is16bit);
     // Convert to RGB32 to be sure we're reading the right bytes
     if (is16bit) {
         if (heightImage.format() != QImage::Format_RGBX64)
@@ -836,6 +866,7 @@ void QHeightMapSurfaceDataProxyPrivate::handlePendingResolve()
         }
     }
 
+    Q_TRACE(QGraphs3DHeightMapSurfaceDataProxHandlePendingResolve_exit);
     q->resetArray(dataArray);
     emit q->heightMapChanged(m_heightMap);
 }

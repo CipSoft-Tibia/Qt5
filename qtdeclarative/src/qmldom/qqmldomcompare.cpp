@@ -58,16 +58,16 @@ bool domCompare(const DomItem &i1, const DomItem &i2, function_ref<bool(Path, co
                     continue;
                 }
                 if (filt1 && filt2 && k1 == k2) {
-                    if (!domCompare(el1, el2, change, filter, basePath.field(k1)))
+                    if (!domCompare(el1, el2, change, filter, basePath.withField(k1)))
                         return false;
                     ++it1;
                     ++it2;
                 } else if (!hasK1 || (hasK2 && k1 > k2)) {
-                    if (!change(basePath.field(k1), DomItem::empty, el2))
+                    if (!change(basePath.withField(k1), DomItem::empty, el2))
                         return false;
                     ++it2;
                 } else {
-                    if (!change(basePath.field(k1), el1, DomItem::empty))
+                    if (!change(basePath.withField(k1), el1, DomItem::empty))
                         return false;
                     ++it1;
                 }
@@ -106,16 +106,16 @@ bool domCompare(const DomItem &i1, const DomItem &i2, function_ref<bool(Path, co
                     continue;
                 }
                 if (filt1 && filt2 && k1 == k2) {
-                    if (!domCompare(el1, el2, change, filter, basePath.key(k1)))
+                    if (!domCompare(el1, el2, change, filter, basePath.withKey(k1)))
                         return false;
                     ++it1;
                     ++it2;
                 } else if (!hasK1 || (hasK2 && k1 > k2)) {
-                    if (!change(basePath.key(k1), DomItem::empty, el2))
+                    if (!change(basePath.withKey(k1), DomItem::empty, el2))
                         return false;
                     ++it2;
                 } else {
-                    if (!change(basePath.key(k1), el1, DomItem::empty))
+                    if (!change(basePath.withKey(k1), el1, DomItem::empty))
                         return false;
                     ++it1;
                 }
@@ -135,7 +135,7 @@ bool domCompare(const DomItem &i1, const DomItem &i2, function_ref<bool(Path, co
                     DomItem el1 = i1.index(i);
                     DomItem el2 = i2.index(i);
                     if (i1.isCanonicalChild(el1) && i2.isCanonicalChild(el2)
-                        && !domCompare(el1, el2, change, filter, basePath.index(i)))
+                        && !domCompare(el1, el2, change, filter, basePath.withIndex(i)))
                         return false;
                 }
             }

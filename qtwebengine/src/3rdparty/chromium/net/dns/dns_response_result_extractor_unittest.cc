@@ -4,12 +4,13 @@
 
 #include "net/dns/dns_response_result_extractor.h"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/ranges/algorithm.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/simple_test_clock.h"
 #include "base/test/simple_test_tick_clock.h"
 #include "base/time/time.h"
@@ -57,6 +58,8 @@ class DnsResponseResultExtractorTest : public ::testing::Test {
  protected:
   base::SimpleTestClock clock_;
   base::SimpleTestTickClock tick_clock_;
+
+  base::HistogramTester histogram_tester_;
 };
 
 TEST_F(DnsResponseResultExtractorTest, ExtractsSingleARecord) {
@@ -78,6 +81,8 @@ TEST_F(DnsResponseResultExtractorTest, ExtractsSingleARecord) {
                   /*expiration_matcher=*/Ne(std::nullopt),
                   /*timed_expiration_matcher=*/Ne(std::nullopt),
                   ElementsAre(IPEndPoint(kExpected, /*port=*/0))))));
+  histogram_tester_.ExpectUniqueSample(
+      DnsResponseResultExtractor::kHasValidCnameRecordsHistogram, false, 1);
 }
 
 TEST_F(DnsResponseResultExtractorTest, ExtractsSingleAAAARecord) {
@@ -101,6 +106,8 @@ TEST_F(DnsResponseResultExtractorTest, ExtractsSingleAAAARecord) {
                   /*expiration_matcher=*/Ne(std::nullopt),
                   /*timed_expiration_matcher=*/Ne(std::nullopt),
                   ElementsAre(IPEndPoint(expected, /*port=*/0))))));
+  histogram_tester_.ExpectUniqueSample(
+      DnsResponseResultExtractor::kHasValidCnameRecordsHistogram, false, 1);
 }
 
 TEST_F(DnsResponseResultExtractorTest, ExtractsSingleARecordWithCname) {
@@ -130,6 +137,8 @@ TEST_F(DnsResponseResultExtractorTest, ExtractsSingleARecordWithCname) {
               kName, DnsQueryType::A, kDnsSource,
               /*expiration_matcher=*/Ne(std::nullopt),
               /*timed_expiration_matcher=*/Ne(std::nullopt), kCanonicalName))));
+  histogram_tester_.ExpectUniqueSample(
+      DnsResponseResultExtractor::kHasValidCnameRecordsHistogram, true, 1);
 }
 
 TEST_F(DnsResponseResultExtractorTest, ExtractsARecordsWithCname) {
@@ -170,6 +179,8 @@ TEST_F(DnsResponseResultExtractorTest, ExtractsARecordsWithCname) {
               kName, DnsQueryType::A, kDnsSource,
               /*expiration_matcher=*/Ne(std::nullopt),
               /*timed_expiration_matcher=*/Ne(std::nullopt), "alias.test"))));
+  histogram_tester_.ExpectUniqueSample(
+      DnsResponseResultExtractor::kHasValidCnameRecordsHistogram, true, 1);
 }
 
 TEST_F(DnsResponseResultExtractorTest, ExtractsNxdomainAResponses) {
@@ -219,6 +230,24 @@ TEST_F(DnsResponseResultExtractorTest, ExtractsNodataAResponses) {
                   /*expiration_matcher=*/Eq(tick_clock_.NowTicks() + kTtl),
                   /*timed_expiration_matcher=*/Eq(clock_.Now() + kTtl),
                   ERR_NAME_NOT_RESOLVED))));
+}
+
+TEST_F(DnsResponseResultExtractorTest, ExtractsNodataAResponsesWithoutTtl) {
+  constexpr char kName[] = "address.test";
+
+  // Response without a TTL-containing SOA record.
+  DnsResponse response =
+      BuildTestDnsResponse(kName, dns_protocol::kTypeA, /*answers=*/{});
+  DnsResponseResultExtractor extractor(response, clock_, tick_clock_);
+
+  ResultsOrError results =
+      extractor.ExtractDnsResults(DnsQueryType::A,
+                                  /*original_domain_name=*/kName,
+                                  /*request_port=*/0);
+
+  // Expect empty result because not cacheable.
+  ASSERT_TRUE(results.has_value());
+  EXPECT_THAT(results.value(), IsEmpty());
 }
 
 TEST_F(DnsResponseResultExtractorTest, RejectsMalformedARecord) {
@@ -324,7 +353,7 @@ TEST_F(DnsResponseResultExtractorTest, ExtractsMinATtl) {
 }
 
 MATCHER_P(ContainsContiguousElements, elements, "") {
-  return base::ranges::search(arg, elements) != arg.end();
+  return std::ranges::search(arg, elements).begin() != arg.end();
 }
 
 TEST_F(DnsResponseResultExtractorTest, ExtractsTxtResponses) {
@@ -1491,6 +1520,24 @@ TEST_F(DnsResponseResultExtractorTest, ExtractsNodataHttpsResponses) {
                   ERR_NAME_NOT_RESOLVED))));
 }
 
+TEST_F(DnsResponseResultExtractorTest, ExtractsNodataHttpsResponsesWithoutTtl) {
+  constexpr char kName[] = "https.test";
+
+  // Response without a TTL-containing SOA record.
+  DnsResponse response =
+      BuildTestDnsResponse(kName, dns_protocol::kTypeHttps, /*answers=*/{});
+  DnsResponseResultExtractor extractor(response, clock_, tick_clock_);
+
+  ResultsOrError results =
+      extractor.ExtractDnsResults(DnsQueryType::HTTPS,
+                                  /*original_domain_name=*/kName,
+                                  /*request_port=*/0);
+
+  // Expect empty result because not cacheable.
+  ASSERT_TRUE(results.has_value());
+  EXPECT_THAT(results.value(), IsEmpty());
+}
+
 TEST_F(DnsResponseResultExtractorTest, RejectsMalformedHttpsRecord) {
   constexpr char kName[] = "https.test";
 
@@ -1705,6 +1752,8 @@ TEST_F(DnsResponseResultExtractorTest, HandlesInOrderCnameChainTypeA) {
               /*expiration_matcher=*/Ne(std::nullopt),
               /*timed_expiration_matcher=*/Ne(std::nullopt),
               ElementsAre(expected_endpoint)))));
+  histogram_tester_.ExpectUniqueSample(
+      DnsResponseResultExtractor::kHasValidCnameRecordsHistogram, true, 1);
 }
 
 TEST_F(DnsResponseResultExtractorTest, HandlesReverseOrderCnameChain) {

@@ -359,6 +359,11 @@ class HttpStreamFactory::Job
 
   bool disable_cert_verification_network_fetches() const;
 
+  void RecordPreconnectHistograms(int result);
+
+  // Records histograms required at the end of the execution.
+  void RecordCompletionHistograms(int result);
+
   const StreamRequestInfo request_info_;
   RequestPriority priority_;
   const ProxyInfo proxy_info_;
@@ -447,7 +452,7 @@ class HttpStreamFactory::Job
   std::unique_ptr<BidirectionalStreamImpl> bidirectional_stream_impl_;
 
   // Protocol negotiated with the server.
-  NextProto negotiated_protocol_ = kProtoUnknown;
+  NextProto negotiated_protocol_ = NextProto::kProtoUnknown;
 
   // 0 if we're not preconnecting. Otherwise, the number of streams to
   // preconnect.
@@ -499,9 +504,8 @@ class HttpStreamFactory::JobFactory {
       bool is_websocket,
       bool enable_ip_based_pooling,
       NetLog* net_log,
-      NextProto alternative_protocol = kProtoUnknown,
-      quic::ParsedQuicVersion quic_version =
-          quic::ParsedQuicVersion::Unsupported());
+      NextProto alternative_protocol,
+      quic::ParsedQuicVersion quic_version);
 };
 
 }  // namespace net

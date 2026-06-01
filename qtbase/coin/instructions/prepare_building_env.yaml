@@ -151,8 +151,8 @@ instructions:
               property: target.arch
               in_values: ["AARCH64", "ARM64"]
             - condition: property
-              property: host
-              equals_property: target
+              property: host.arch
+              in_values: ["AARCH64", "ARM64"]
       - type: EnvironmentVariable
         # HACK. Overwrite TARGET_ARCHITECTURE as we do not use standard MSVC cross
         # compilation targets here. The target architecture will be detected by Qt.
@@ -347,11 +347,11 @@ instructions:
       condition: and
       conditions:
         - condition: property
-          property: target.os
+          property: host.os
           equals_value: Windows
         - condition: property
-          property: target.arch
-          not_equals_property: host.arch
+          property: host.compiler
+          contains_value: MSVC
     instructions:
       - type: EnvironmentVariable
         variableName: TARGET_ENV_PREFIX
@@ -498,18 +498,25 @@ instructions:
       property: features
       contains_value: GenerateSBOM
     instructions:
+    - type: EnvironmentVariable
+      variableName: SBOM_COMMON_ARGS
+      variableValue: >-
+        -DQT_GENERATE_SBOM=ON
+        -DQT_GENERATE_SOURCE_SBOM=ON
+        -DQT_SBOM_REQUIRE_GENERATE_CYDX_V1_6=ON
+        -DQT_SBOM_VERIFY_CYDX_V1_6=ON
     - type: AppendToEnvironmentVariable
       variableName: COMMON_CMAKE_ARGS
-      variableValue: " -DQT_GENERATE_SBOM=ON -DQT_GENERATE_SOURCE_SBOM=ON"
+      variableValue: " {{.Env.SBOM_COMMON_ARGS}} "
     - type: AppendToEnvironmentVariable
       variableName: COMMON_NON_QTBASE_CMAKE_ARGS
-      variableValue: " -DQT_GENERATE_SBOM=ON -DQT_GENERATE_SOURCE_SBOM=ON"
+      variableValue: " {{.Env.SBOM_COMMON_ARGS}} "
     - type: AppendToEnvironmentVariable
       variableName: COMMON_TARGET_CMAKE_ARGS
-      variableValue: " -DQT_GENERATE_SBOM=ON -DQT_GENERATE_SOURCE_SBOM=ON"
+      variableValue: " {{.Env.SBOM_COMMON_ARGS}} "
     - type: AppendToEnvironmentVariable
       variableName: COMMON_NON_QTBASE_TARGET_CMAKE_ARGS
-      variableValue: " -DQT_GENERATE_SBOM=ON -DQT_GENERATE_SOURCE_SBOM=ON"
+      variableValue: " {{.Env.SBOM_COMMON_ARGS}} "
 
   # SBOM Python apps path. On Windows python-installed apps are
   # in the same directory where pip is, aka Scripts sub-directory.
@@ -647,6 +654,47 @@ instructions:
       condition: property
       property: features
       contains_value: Sccache
+
+  # Disable PCH for sccache on Windows MSVC build, sccache does not support it
+  - type: Group
+    instructions:
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_NON_QTBASE_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_TEST_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_EXAMPLES_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_TARGET_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_NON_QTBASE_TARGET_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_TARGET_TEST_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+      - type: AppendToEnvironmentVariable
+        variableName: COMMON_TARGET_EXAMPLES_CMAKE_ARGS
+        variableValue: " -DBUILD_WITH_PCH=OFF"
+    enable_if:
+      condition: and
+      conditions:
+        - condition: property
+          property: features
+          contains_value: Sccache
+        - condition: property
+          property: host.os
+          equals_value: Windows
+        - condition: property
+          property: host.compiler
+          contains_value: MSVC
 
   # Specify a custom examples installation directory, so that the built example binaries are not
   # packaged into the artifact archive together with the Qt libraries.

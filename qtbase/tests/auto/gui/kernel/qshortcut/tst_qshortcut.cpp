@@ -53,6 +53,7 @@ void tst_QShortcut::windowShortcut()
         QEXPECT_FAIL("", "It failed on Wayland, QTBUG-120334", Abort);
 
     QTRY_VERIFY(QGuiApplication::applicationState() == Qt::ApplicationActive);
+    QTRY_VERIFY(w.isActive());
     QTest::sendKeyEvent(QTest::Click, &w, Qt::Key_Q, 'q', Qt::ControlModifier);
     QTRY_VERIFY(!w.isVisible());
 }

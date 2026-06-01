@@ -19,6 +19,7 @@ Rectangle {
             strokeColor: "black"
             strokeWidth: 1
             fillColor: "black"
+            fillRule: ShapePath.WindingFill
 
             PathText {
                 x: 0

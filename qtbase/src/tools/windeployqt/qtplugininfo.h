@@ -24,7 +24,6 @@ struct PluginSelections
     QStringList enabledPluginTypes;
     QStringList excludedPlugins;
     QStringList includedPlugins;
-    bool includeSoftPlugins = false;
 };
 
 class PluginInformation

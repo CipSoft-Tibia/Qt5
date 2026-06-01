@@ -45,13 +45,13 @@ int main(int argc, char **argv)
         qDebug() << "plugins are always copied, unless \"-no-plugins\" is specified.";
         qDebug() << "";
         qDebug() << "Qt plugins may use private API and will cause the app to be";
-        qDebug() << "rejected from the Mac App store. MacDeployQt will print a warning";
+        qDebug() << "rejected from the Mac App store. macdeployqt will print a warning";
         qDebug() << "when known incompatible plugins are deployed. Use -appstore-compliant ";
         qDebug() << "to skip these plugins. Currently two SQL plugins are known to";
         qDebug() << "be incompatible: qsqlodbc and qsqlpsql.";
         qDebug() << "";
-        qDebug() << "See the \"Deploying Applications on OS X\" topic in the";
-        qDebug() << "documentation for more information about deployment on OS X.";
+        qDebug() << "See the \"Qt for macOS - Deployment\" topic in the";
+        qDebug() << "documentation for more information about deployment on macOS.";
 
         return 1;
     }

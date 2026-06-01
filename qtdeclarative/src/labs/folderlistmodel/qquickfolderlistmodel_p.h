@@ -39,21 +39,21 @@ class Q_LABSFOLDERLISTMODEL_EXPORT QQuickFolderListModel : public QAbstractListM
 
 //![class props]
     Q_PROPERTY(QUrl folder READ folder WRITE setFolder NOTIFY folderChanged FINAL)
-    Q_PROPERTY(QUrl rootFolder READ rootFolder WRITE setRootFolder FINAL)
+    Q_PROPERTY(QUrl rootFolder READ rootFolder WRITE setRootFolder NOTIFY rootFolderChanged FINAL)
     Q_PROPERTY(QUrl parentFolder READ parentFolder NOTIFY folderChanged FINAL)
-    Q_PROPERTY(QStringList nameFilters READ nameFilters WRITE setNameFilters FINAL)
-    Q_PROPERTY(SortField sortField READ sortField WRITE setSortField FINAL)
-    Q_PROPERTY(bool sortReversed READ sortReversed WRITE setSortReversed FINAL)
-    Q_PROPERTY(bool showFiles READ showFiles WRITE setShowFiles REVISION(2, 1) FINAL)
-    Q_PROPERTY(bool showDirs READ showDirs WRITE setShowDirs FINAL)
-    Q_PROPERTY(bool showDirsFirst READ showDirsFirst WRITE setShowDirsFirst FINAL)
-    Q_PROPERTY(bool showDotAndDotDot READ showDotAndDotDot WRITE setShowDotAndDotDot FINAL)
-    Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden REVISION(2, 1) FINAL)
-    Q_PROPERTY(bool showOnlyReadable READ showOnlyReadable WRITE setShowOnlyReadable FINAL)
-    Q_PROPERTY(bool caseSensitive READ caseSensitive WRITE setCaseSensitive REVISION(2, 2) FINAL)
+    Q_PROPERTY(QStringList nameFilters READ nameFilters WRITE setNameFilters NOTIFY nameFilterChanged FINAL)
+    Q_PROPERTY(SortField sortField READ sortField WRITE setSortField NOTIFY sortFieldChanged FINAL)
+    Q_PROPERTY(bool sortReversed READ sortReversed WRITE setSortReversed NOTIFY sortReversedChanged FINAL)
+    Q_PROPERTY(bool showFiles READ showFiles WRITE setShowFiles NOTIFY showFilesChanged REVISION(2, 1) FINAL)
+    Q_PROPERTY(bool showDirs READ showDirs WRITE setShowDirs NOTIFY showDirsChanged FINAL)
+    Q_PROPERTY(bool showDirsFirst READ showDirsFirst WRITE setShowDirsFirst NOTIFY showDirsFirstChanged FINAL)
+    Q_PROPERTY(bool showDotAndDotDot READ showDotAndDotDot WRITE setShowDotAndDotDot NOTIFY showDotAndDotDotChanged FINAL)
+    Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden NOTIFY showHiddenChanged REVISION(2, 1) FINAL)
+    Q_PROPERTY(bool showOnlyReadable READ showOnlyReadable WRITE setShowOnlyReadable NOTIFY  showOnlyReadableChanged FINAL)
+    Q_PROPERTY(bool caseSensitive READ caseSensitive WRITE setCaseSensitive NOTIFY  caseSensitiveChanged REVISION(2, 2) FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(Status status READ status NOTIFY statusChanged REVISION(2, 11) FINAL)
-    Q_PROPERTY(bool sortCaseSensitive READ sortCaseSensitive WRITE setSortCaseSensitive REVISION(2, 12) FINAL)
+    Q_PROPERTY(bool sortCaseSensitive READ sortCaseSensitive WRITE setSortCaseSensitive NOTIFY sortCaseSensitiveChanged REVISION(2, 12) FINAL)
 //![class props]
 
     QML_NAMED_ELEMENT(FolderListModel)
@@ -73,11 +73,10 @@ public:
         FileLastReadRole = Qt::UserRole +7,
         FileIsDirRole = Qt::UserRole + 8,
         FileUrlRole = Qt::UserRole + 9,
-        FileURLRole = Qt::UserRole + 10
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const override;
+    QModelIndex index(int row, int column = 0, const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 //![abslistmodel]
@@ -142,8 +141,22 @@ public:
 Q_SIGNALS:
     void folderChanged();
     void rowCountChanged() const;
+    void rootFolderChanged();
+    void nameFilterChanged();
+    void sortFieldChanged();
+    void sortReversedChanged();
+    void showFilesChanged();
+    void showDirsChanged();
+    void showDirsFirstChanged();
+    void showDotAndDotDotChanged();
+    void showHiddenChanged();
+    void showOnlyReadableChanged();
+    void caseSensitiveChanged();
+    void sortCaseSensitiveChanged();
+
     Q_REVISION(2, 1) void countChanged() const;
     Q_REVISION(2, 11) void statusChanged();
+
 //![notifier]
 
 //![class end]

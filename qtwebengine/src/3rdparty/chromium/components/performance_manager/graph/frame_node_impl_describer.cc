@@ -18,17 +18,18 @@ namespace performance_manager {
 
 namespace {
 
-std::string ViewportIntersectionStateToString(
-    std::optional<ViewportIntersectionState> viewport_intersection_state) {
-  if (!viewport_intersection_state.has_value()) {
+std::string ViewportIntersectionToString(
+    std::optional<ViewportIntersection> viewport_intersection) {
+  if (!viewport_intersection.has_value()) {
     return "Nullopt";
   }
 
-  switch (*viewport_intersection_state) {
-    case ViewportIntersectionState::kNotIntersecting:
-      return "Not intersecting";
-    case ViewportIntersectionState::kIntersecting:
-      return "Intersecting";
+  if (viewport_intersection->is_intersecting_large_area()) {
+    return "Intersecting (Large area)";
+  } else if (viewport_intersection->is_intersecting()) {
+    return "Intersecting (Not large area)";
+  } else {
+    return "Not intersecting";
   }
 }
 
@@ -76,6 +77,8 @@ base::Value::Dict FrameNodeImplDescriber::DescribeFrameNodeData(
   doc.Set("had_form_interaction", impl->document_.had_form_interaction.value());
   doc.Set("had_user_edits", impl->document_.had_user_edits.value());
   doc.Set("uses_webrtc", impl->document_.uses_web_rtc.value());
+  ret.Set("has_freezing_origin_trial_opt_out",
+          impl->document_.has_freezing_origin_trial_opt_out.value());
   ret.Set("document", std::move(doc));
 
   // Frame node properties.
@@ -86,16 +89,15 @@ base::Value::Dict FrameNodeImplDescriber::DescribeFrameNodeData(
   ret.Set("lifecycle_state", MojoEnumToString(impl->lifecycle_state_.value()));
   ret.Set("is_ad_frame", impl->is_ad_frame_.value());
   ret.Set("is_holding_weblock", impl->is_holding_weblock_.value());
-  ret.Set("is_holding_indexeddb_lock",
-          impl->is_holding_indexeddb_lock_.value());
+  ret.Set("is_holding_blocking_indexeddb_lock",
+          impl->is_holding_blocking_indexeddb_lock_.value());
   ret.Set("is_current", impl->IsCurrent());
   ret.Set("priority", PriorityAndReasonToValue(impl->GetPriorityAndReason()));
   ret.Set("is_audible", impl->is_audible_.value());
   ret.Set("is_capturing_media_stream",
           impl->is_capturing_media_stream_.value());
-  ret.Set("viewport_intersection_state",
-          ViewportIntersectionStateToString(
-              impl->viewport_intersection_state_.value()));
+  ret.Set("viewport_intersection",
+          ViewportIntersectionToString(impl->viewport_intersection_.value()));
   ret.Set("visibility", FrameNodeVisibilityToString(impl->visibility_.value()));
   ret.Set("resource_context", impl->GetResourceContext().ToString());
 

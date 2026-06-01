@@ -6,10 +6,12 @@
 #define QUICHE_QUIC_MOQT_TOOLS_MOQT_MOCK_VISITOR_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/quic_time.h"
@@ -27,19 +29,26 @@ struct MockSessionCallbacks {
   testing::MockFunction<void(absl::string_view)> session_terminated_callback;
   testing::MockFunction<void()> session_deleted_callback;
   testing::MockFunction<std::optional<MoqtAnnounceErrorReason>(
-      absl::string_view)>
+      const FullTrackName&, AnnounceEvent)>
       incoming_announce_callback;
+  testing::MockFunction<std::optional<MoqtSubscribeErrorReason>(FullTrackName,
+                                                                SubscribeEvent)>
+      incoming_subscribe_announces_callback;
 
   MockSessionCallbacks() {
-    ON_CALL(incoming_announce_callback, Call(testing::_))
+    ON_CALL(incoming_announce_callback, Call(testing::_, testing::_))
         .WillByDefault(DefaultIncomingAnnounceCallback);
+    ON_CALL(incoming_subscribe_announces_callback, Call(testing::_, testing::_))
+        .WillByDefault(DefaultIncomingSubscribeAnnouncesCallback);
   }
 
   MoqtSessionCallbacks AsSessionCallbacks() {
-    return MoqtSessionCallbacks{session_established_callback.AsStdFunction(),
-                                session_terminated_callback.AsStdFunction(),
-                                session_deleted_callback.AsStdFunction(),
-                                incoming_announce_callback.AsStdFunction()};
+    return MoqtSessionCallbacks{
+        session_established_callback.AsStdFunction(),
+        session_terminated_callback.AsStdFunction(),
+        session_deleted_callback.AsStdFunction(),
+        incoming_announce_callback.AsStdFunction(),
+        incoming_subscribe_announces_callback.AsStdFunction()};
   }
 };
 
@@ -67,24 +76,27 @@ class MockTrackPublisher : public MoqtTrackPublisher {
               (const, override));
   MOCK_METHOD(MoqtPriority, GetPublisherPriority, (), (const, override));
   MOCK_METHOD(MoqtDeliveryOrder, GetDeliveryOrder, (), (const, override));
+  MOCK_METHOD(std::unique_ptr<MoqtFetchTask>, Fetch,
+              (FullSequence, uint64_t, std::optional<uint64_t>,
+               MoqtDeliveryOrder),
+              (override));
 
  private:
   FullTrackName track_name_;
 };
 
-class MockRemoteTrackVisitor : public RemoteTrack::Visitor {
+class MockSubscribeRemoteTrackVisitor : public SubscribeRemoteTrack::Visitor {
  public:
   MOCK_METHOD(void, OnReply,
               (const FullTrackName& full_track_name,
+               std::optional<FullSequence> largest_id,
                std::optional<absl::string_view> error_reason_phrase),
               (override));
   MOCK_METHOD(void, OnCanAckObjects, (MoqtObjectAckFunction ack_function),
               (override));
   MOCK_METHOD(void, OnObjectFragment,
-              (const FullTrackName& full_track_name, uint64_t group_sequence,
-               uint64_t object_sequence, MoqtPriority publisher_priority,
-               MoqtObjectStatus status,
-               MoqtForwardingPreference forwarding_preference,
+              (const FullTrackName& full_track_name, FullSequence sequence,
+               MoqtPriority publisher_priority, MoqtObjectStatus status,
                absl::string_view object, bool end_of_message),
               (override));
 };
@@ -96,6 +108,24 @@ class MockPublishingMonitorInterface : public MoqtPublishingMonitorInterface {
               (uint64_t group_id, uint64_t object_id,
                quic::QuicTimeDelta delta_from_deadline),
               (override));
+};
+
+class MockFetchTask : public MoqtFetchTask {
+ public:
+  MOCK_METHOD(MoqtFetchTask::GetNextObjectResult, GetNextObject,
+              (PublishedObject & output), (override));
+  MOCK_METHOD(absl::Status, GetStatus, (), (override));
+  MOCK_METHOD(FullSequence, GetLargestId, (), (const, override));
+
+  void SetObjectAvailableCallback(ObjectsAvailableCallback callback) override {
+    objects_available_callback_ = std::move(callback);
+  }
+  ObjectsAvailableCallback& objects_available_callback() {
+    return objects_available_callback_;
+  };
+
+ private:
+  ObjectsAvailableCallback objects_available_callback_;
 };
 
 }  // namespace moqt::test

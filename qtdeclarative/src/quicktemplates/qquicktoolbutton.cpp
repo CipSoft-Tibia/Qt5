@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktoolbutton_p.h"
 #include "qquickcontrol_p_p.h"
@@ -22,6 +23,7 @@ QT_BEGIN_NAMESPACE
     is more suitable within a \l ToolBar.
 
     \image qtquickcontrols-toolbar.png
+           {Toolbar containing tool buttons}
 
     \snippet qtquickcontrols-toolbar.qml 1
 

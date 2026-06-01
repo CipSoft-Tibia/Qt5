@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsshadowcheck_p.h"
 
@@ -40,11 +41,11 @@ QQmlJSCompilePass::BlocksAndAnnotations QQmlJSShadowCheck::run(const Function *f
     m_state = initialState(function);
     decode(m_function->code.constData(), static_cast<uint>(m_function->code.size()));
 
-    for (const auto &store : m_resettableStores)
+    for (const auto &store : std::as_const(m_resettableStores))
         checkResettable(store.accumulatorIn, store.instructionOffset);
 
     // Re-check all base types. We may have made them var after detecting them.
-    for (const auto &base : m_baseTypes) {
+    for (const auto &base : std::as_const(m_baseTypes)) {
         if (checkBaseType(base) == Shadowable)
             break;
     }
@@ -160,6 +161,22 @@ QQmlJSShadowCheck::Shadowability QQmlJSShadowCheck::checkShadowing(
         return NotShadowable;
 
     switch (baseType.variant()) {
+    case QQmlJSRegisterContent::Singleton:
+        // composite singletons can't have a create() function. The create() function
+        // is what allows a derived class to be returned.
+        if (baseType.containedType()->isComposite())
+            return NotShadowable;
+
+        // Extended singletons aren't shadowable. There is no space for the extra members
+        // in between the type's metaobject and the extension's metaobject. The derived type
+        // can't be known in advance since you can only produce it through a factory function
+        // that covertly returns a derived type rather than the declared one.
+        if (baseType.containedType()->extensionType().extensionSpecifier
+                != QQmlJSScope::NotExtension) {
+            return NotShadowable;
+        }
+
+        Q_FALLTHROUGH();
     case QQmlJSRegisterContent::MethodCall:
     case QQmlJSRegisterContent::Property:
     case QQmlJSRegisterContent::TypeByName:
@@ -207,9 +224,7 @@ QQmlJSShadowCheck::Shadowability QQmlJSShadowCheck::checkShadowing(
         return Shadowable;
     }
     default:
-        // In particular ObjectById is fine as that cannot change into something else
-        // Singleton should also be fine, unless the factory function creates an object
-        // with different property types than the declared class.
+        // In particular ObjectById is fine as that cannot change into something else.
         return NotShadowable;
     }
 }

@@ -22,11 +22,13 @@ PieModelMapperModel::~PieModelMapperModel() {}
 
 int PieModelMapperModel::rowCount(const QModelIndex &parent) const
 {
+    Q_UNUSED(parent)
     return m_rowCount;
 }
 
 int PieModelMapperModel::columnCount(const QModelIndex &parent) const
 {
+    Q_UNUSED(parent)
     return m_columnCount;
 }
 

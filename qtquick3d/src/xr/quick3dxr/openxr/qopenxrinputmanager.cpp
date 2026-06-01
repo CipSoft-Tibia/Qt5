@@ -520,7 +520,7 @@ void QQuick3DXrInputManagerPrivate::pollActions()
     //    XrAction aimPoseAction{XR_NULL_HANDLE};
     //    XrAction hapticAction{XR_NULL_HANDLE};
 
-        const QList<QPointer<QQuick3DXrHapticFeedback>> hapticOutputData = QQuick3DXrActionMapper::getHapticEffects(static_cast<QQuick3DXrInputAction::Hand>(hand));
+        const QList<QPointer<QQuick3DXrHapticFeedback>> hapticOutputData = QQuick3DXrActionMapper::getHapticEffects(static_cast<QQuick3DXrInputAction::Controller>(hand));
 
         for (auto &hapticFeedback : hapticOutputData) {
             const bool triggered = hapticFeedback->testAndClear();
@@ -671,16 +671,20 @@ void QQuick3DXrInputManagerPrivate::updateHandtracking(XrTime predictedDisplayTi
 
 void QQuick3DXrInputManagerPrivate::setupHandTracking()
 {
-    resolveXrFunction(
+    OpenXRHelpers::resolveXrFunction(
+        m_instance,
         "xrCreateHandTrackerEXT",
         (PFN_xrVoidFunction*)(&xrCreateHandTrackerEXT_));
-    resolveXrFunction(
+    OpenXRHelpers::resolveXrFunction(
+        m_instance,
         "xrDestroyHandTrackerEXT",
         (PFN_xrVoidFunction*)(&xrDestroyHandTrackerEXT_));
-    resolveXrFunction(
+    OpenXRHelpers::resolveXrFunction(
+        m_instance,
         "xrLocateHandJointsEXT",
         (PFN_xrVoidFunction*)(&xrLocateHandJointsEXT_));
-    resolveXrFunction(
+    OpenXRHelpers::resolveXrFunction(
+        m_instance,
         "xrGetHandMeshFB",
         (PFN_xrVoidFunction*)(&xrGetHandMeshFB_));
 
@@ -833,17 +837,6 @@ bool QQuick3DXrInputManagerPrivate::checkXrResult(const XrResult &result)
     return OpenXRHelpers::checkXrResult(result, m_instance);
 }
 
-bool QQuick3DXrInputManagerPrivate::resolveXrFunction(const char *name, PFN_xrVoidFunction *function)
-{
-    XrResult result = xrGetInstanceProcAddr(m_instance, name, function);
-    if (!OpenXRHelpers::checkXrResult(result, m_instance)) {
-        qWarning("Failed to resolve OpenXR function %s", name);
-        *function = nullptr;
-        return false;
-    }
-    return true;
-}
-
 void QQuick3DXrInputManagerPrivate::setPath(XrPath &path, const QByteArray &pathString)
 {
     if (!checkXrResult(xrStringToPath(m_instance, pathString.constData(), &path)))
@@ -925,7 +918,7 @@ void QQuick3DXrInputManagerPrivate::setPosePositionAndRotation(Hand hand, HandPo
 void QQuick3DXrInputManagerPrivate::setInputValue(Hand hand, int id, const char *shortName, float value)
 {
     QSSG_ASSERT(hand < 2, hand = Hand::LeftHand);
-    QQuick3DXrActionMapper::handleInput(QQuick3DXrInputAction::Action(id), static_cast<QQuick3DXrInputAction::Hand>(hand), shortName, value);
+    QQuick3DXrActionMapper::handleInput(QQuick3DXrInputAction::Action(id), static_cast<QQuick3DXrInputAction::Controller>(hand), shortName, value);
 }
 
 QQuick3DXrHandInput *QQuick3DXrInputManagerPrivate::leftHandInput() const

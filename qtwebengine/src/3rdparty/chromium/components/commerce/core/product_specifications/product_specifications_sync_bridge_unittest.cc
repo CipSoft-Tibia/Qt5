@@ -352,16 +352,6 @@ class ProductSpecificationsSyncBridgeTest : public testing::Test {
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
-class ProductSpecificationsSyncMultiSpecsBridgeTest
-    : public ProductSpecificationsSyncBridgeTest {
- public:
-  void SetUp() override {
-    ProductSpecificationsSyncBridgeTest::SetUp();
-    scoped_feature_list_.InitAndEnableFeature(
-        commerce::kProductSpecificationsMultiSpecifics);
-  }
-};
-
 TEST_F(ProductSpecificationsSyncBridgeTest, TestGetStorageKey) {
   syncer::EntityData entity;
   entity.specifics.mutable_product_comparison()->set_uuid("my_uuid");
@@ -501,8 +491,8 @@ TEST_F(ProductSpecificationsSyncBridgeTest, TestDelete) {
   sync_pb::ProductComparisonSpecifics deleted_specifics =
       entries().begin()->second;
 
-  update_changes.push_back(
-      syncer::EntityChange::CreateDelete(deleted_specifics.uuid()));
+  update_changes.push_back(syncer::EntityChange::CreateDelete(
+      deleted_specifics.uuid(), syncer::EntityData()));
   auto metadata_change_list =
       std::make_unique<syncer::InMemoryMetadataChangeList>();
 
@@ -698,7 +688,7 @@ TEST_F(ProductSpecificationsSyncBridgeTest, TestCreateEntityDataFallback) {
             entity_data->specifics.product_comparison().data()[1].url());
 }
 
-TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
+TEST_F(ProductSpecificationsSyncBridgeTest,
        TestCreateEntityDataTopLevelSpecifics) {
   sync_pb::ProductComparisonSpecifics specifics;
   specifics.set_uuid("70000000-0000-0000-0000-000000000000");
@@ -721,7 +711,7 @@ TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
       entity_data->specifics.product_comparison().product_comparison().name());
 }
 
-TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
+TEST_F(ProductSpecificationsSyncBridgeTest,
        TestCreateEntityDataItemLevelSpecifics) {
   sync_pb::ProductComparisonSpecifics specifics;
   specifics.set_uuid("50000000-0000-0000-0000-000000000000");
@@ -765,7 +755,7 @@ TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
 // TODO(crbug.com/354231134) expand TestTrimSpecificsForCachingTopLevelSpecific
 // and TestTrimSpecificsForCachingProductComparisonItem to include unsupported
 // fields.
-TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
+TEST_F(ProductSpecificationsSyncBridgeTest,
        TestTrimSpecificsForCachingTopLevelSpecific) {
   sync_pb::ProductComparisonSpecifics specifics;
   specifics.set_uuid("50000000-0000-0000-0000-000000000000");
@@ -784,7 +774,7 @@ TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
   EXPECT_FALSE(trimmed_specifics.has_product_comparison_item());
 }
 
-TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
+TEST_F(ProductSpecificationsSyncBridgeTest,
        TestTrimSpecificsForCachingProductComparisonItem) {
   sync_pb::ProductComparisonSpecifics specifics;
   specifics.set_uuid("50000000-0000-0000-0000-000000000000");
@@ -808,6 +798,46 @@ TEST_F(ProductSpecificationsSyncMultiSpecsBridgeTest,
   EXPECT_TRUE(trimmed_specifics.data().empty());
   EXPECT_FALSE(trimmed_specifics.has_product_comparison());
   EXPECT_FALSE(trimmed_specifics.has_product_comparison_item());
+}
+
+TEST_F(ProductSpecificationsSyncBridgeTest, TestSyncEntriesOnFirstDownload) {
+  entries().clear();
+  sync_pb::ProductComparisonSpecifics client_specifics;
+  client_specifics.set_uuid("70000000-0000-0000-0000-000000000000");
+  client_specifics.set_creation_time_unix_epoch_millis(3000000000000);
+  client_specifics.set_update_time_unix_epoch_millis(4000000000000);
+  client_specifics.mutable_product_comparison()->set_name("local_name");
+
+  entries().emplace(client_specifics.uuid(), client_specifics);
+
+  syncer::EntityChangeList server_entities;
+  sync_pb::ProductComparisonSpecifics server_specifics;
+  server_specifics.set_uuid("80000000-0000-0000-0000-000000000000");
+  server_specifics.set_creation_time_unix_epoch_millis(1000000000000);
+  server_specifics.set_update_time_unix_epoch_millis(2000000000000);
+  server_specifics.mutable_product_comparison()->set_name("server_name");
+  server_entities.push_back(syncer::EntityChange::CreateUpdate(
+      server_specifics.uuid(), MakeEntityData(server_specifics)));
+  std::string storage_key;
+  EXPECT_CALL(processor(), Put).WillOnce(testing::SaveArg<0>(&storage_key));
+  bridge().MergeFullSyncData(
+      syncer::DataTypeStore::WriteBatch::CreateMetadataChangeList(),
+      std::move(server_entities));
+  // Check change processor is called with client side specifics.
+  EXPECT_EQ(client_specifics.uuid(), storage_key);
+}
+
+TEST_F(ProductSpecificationsSyncBridgeTest,
+       TestSyncEntriesOnFirstDownloadNotTrackingMetadata) {
+  ProcessorNotTrackingMetadata();
+  sync_pb::ProductComparisonSpecifics client_specifics;
+  client_specifics.set_uuid("70000000-0000-0000-0000-000000000000");
+  client_specifics.set_creation_time_unix_epoch_millis(3000000000000);
+  client_specifics.set_update_time_unix_epoch_millis(4000000000000);
+  client_specifics.mutable_product_comparison()->set_name("local_name");
+  EXPECT_CALL(processor(), Put).Times(0);
+  AddSpecifics({client_specifics});
+  VerifySpecificsExists(client_specifics);
 }
 
 // TODO(crbug.com/354165274) write a test that ensures no single specifics

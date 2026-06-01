@@ -19,10 +19,10 @@
     - Edit sudoers file: sudo visudo
     - Add a line for qt user: qt ALL=(ALL) NOPASSWD: ALL
   - Download and run coin setup binaries from http://coin/coin/setup
-    - Check /Users/qt folder for bootstrap agent
-  - Add COIN bootstrap agent, terminal and ssh keygen wrapper to full disk access
-  - Add access for COIN bootstrap agent to bluetooth
-  - Enable VNC renmote access
+    - DO NOT use sudo when running coin-setup
+    - Check /Users/qt folder for the bootstrap agent binary file
+  - Add terminal and ssh keygen wrapper to full disk access
+  - Enable VNC remote access
   - Shutdown the virtual machine
 
 * Enable backtraces (https://bugreports.qt.io/browse/QTQAINFRA-5933)
@@ -32,9 +32,9 @@
   - Shutdown the virtual machine
 
 * Push virtual machine to Tart registry with tags latest and CI
-  - /Users/oneadmin/tart.app/Contents/MacOS/tart push "<macos-version>" "tart-registry.ci.qt.io/<macos-version>:latest" "tart-registry.ci.qt.io/<macos-version>:CI"
+  - /Users/oneadmin/tart.app/Contents/MacOS/tart push --insecure "<macos-version>" "tart-registry.ci.qt.io:5000/<macos-version>:latest" "tart-registry.ci.qt.io:5000/<macos-version>:CI"
 
-* Add Tier1 image to Opennebula by logging getting into Opennebula container
+* Add Tier1 image to Opennebula by logging into Opennebula container
   - Create a dummy file to correct datastore in NFS
   - Register virtual machine to Opennebula by running register_images.sh
 

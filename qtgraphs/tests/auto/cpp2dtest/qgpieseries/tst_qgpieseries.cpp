@@ -26,6 +26,7 @@ private slots:
     void calculatedValues();
     void sliceSeries();
     void destruction();
+    void adjust_limits_and_mode();
 
 private:
     void verifyCalculatedData(const QPieSeries &series, bool *ok);
@@ -62,6 +63,10 @@ void tst_qgpieseries::properties()
     QSignalSpy sumSpy(m_series, SIGNAL(sumChanged()));
     QSignalSpy opacitySpy(m_series, SIGNAL(opacityChanged()));
     QSignalSpy valuesMultiplierSpy(m_series, SIGNAL(valuesMultiplierChanged()));
+    QSignalSpy angleSpanVisibleLimitSpy(m_series,
+        SIGNAL(angleSpanVisibleLimitChanged(qreal)));
+    QSignalSpy angleSpanLabelVisibilitySpy(m_series,
+        SIGNAL(angleSpanLabelVisibilityChanged(QPieSeries::LabelVisibility)));
 
     QVERIFY(m_series->type() == QAbstractSeries::SeriesType::Pie);
     QVERIFY(m_series->count() == 0);
@@ -74,6 +79,8 @@ void tst_qgpieseries::properties()
     QCOMPARE(m_series->endAngle(), 360.0);
     QCOMPARE(m_series->opacity(), 1.0);
     QCOMPARE(m_series->valuesMultiplier(), 1.0);
+    QCOMPARE(m_series->angleSpanVisibleLimit(), 0.0);
+    QCOMPARE(m_series->angleSpanLabelVisibility(), QPieSeries::LabelVisibility::First);
 
     m_series->append("s1", 1);
     m_series->append("s2", 1);
@@ -151,6 +158,28 @@ void tst_qgpieseries::properties()
     m_series->setValuesMultiplier(0);
     QCOMPARE(m_series->valuesMultiplier(), 0);
     QCOMPARE(valuesMultiplierSpy.size(), 2);
+
+    m_series->setAngleSpanVisibleLimit(0.5);
+    QCOMPARE(m_series->angleSpanVisibleLimit(), 0.5);
+    QCOMPARE(angleSpanVisibleLimitSpy.size(), 1);
+    m_series->setAngleSpanVisibleLimit(10.0);
+    QCOMPARE(m_series->angleSpanVisibleLimit(), 10.0);
+    QCOMPARE(angleSpanVisibleLimitSpy.size(), 2);
+    QList<QVariant> arguments = angleSpanVisibleLimitSpy.takeFirst();
+    QCOMPARE(arguments.at(0).toReal(), 0.5);
+    arguments = angleSpanVisibleLimitSpy.takeFirst();
+    QCOMPARE(arguments.at(0).toReal(), 10.0);
+
+    m_series->setAngleSpanLabelVisibility(QPieSeries::LabelVisibility::None);
+    QCOMPARE(m_series->angleSpanLabelVisibility(), QPieSeries::LabelVisibility::None);
+    QCOMPARE(angleSpanLabelVisibilitySpy.size(), 1);
+    m_series->setAngleSpanLabelVisibility(QPieSeries::LabelVisibility::Even);
+    QCOMPARE(m_series->angleSpanLabelVisibility(), QPieSeries::LabelVisibility::Even);
+    QCOMPARE(angleSpanLabelVisibilitySpy.size(), 2);
+    arguments = angleSpanLabelVisibilitySpy.takeFirst();
+    QCOMPARE(arguments.at(0).value<QPieSeries::LabelVisibility>(), QPieSeries::LabelVisibility::None);
+    arguments = angleSpanLabelVisibilitySpy.takeFirst();
+    QCOMPARE(arguments.at(0).value<QPieSeries::LabelVisibility>(), QPieSeries::LabelVisibility::Even);
 }
 
 void tst_qgpieseries::append()
@@ -590,6 +619,68 @@ void tst_qgpieseries::destruction()
     QCOMPARE(spy1.size(), 1);
     QCOMPARE(spy2.size(), 1);
     QCOMPARE(spy3.size(), 1);
+}
+
+void tst_qgpieseries::adjust_limits_and_mode()
+{
+    int visiblecount = 0;
+
+    QPieSeries series;
+    for (int i = 0; i < 10; ++i) {
+        auto slice = new QPieSlice("slice", i + 0.1); // Angle span between 0.8 and 72
+        series.append(slice);
+    }
+
+    // Every slice label under the limit should be hidden
+    series.setAngleSpanLabelVisibility(QPieSeries::LabelVisibility::None);
+    series.setAngleSpanVisibleLimit(35);
+    for (const QPieSlice *slice : series.slices()) {
+        if (slice->angleSpan() < series.angleSpanVisibleLimit())
+            QCOMPARE(slice->isLabelVisible(), false);
+        else
+            QCOMPARE(slice->isLabelVisible(), true);
+        visiblecount += slice->isLabelVisible();
+    }
+    QCOMPARE(visiblecount, 5);
+
+    series.setAngleSpanVisibleLimit(20);
+    visiblecount = 0;
+    for (const QPieSlice *slice : series.slices()) {
+        if (slice->angleSpan() < series.angleSpanVisibleLimit())
+            QCOMPARE(slice->isLabelVisible(), false);
+        else
+            QCOMPARE(slice->isLabelVisible(), true);
+        visiblecount += slice->isLabelVisible();
+    }
+    QCOMPARE(visiblecount, 7);
+
+    // Only the first label of slices under the limit should be visible
+    series.setAngleSpanLabelVisibility(QPieSeries::LabelVisibility::First);
+    series.setAngleSpanVisibleLimit(36); // mid-point; half of the labels plus one should be visible
+    visiblecount = 0;
+    for (const QPieSlice *slice : series.slices())
+        visiblecount += slice->isLabelVisible();
+    QCOMPARE(visiblecount, 6);
+
+    series.setAngleSpanVisibleLimit(75); // over max; only one label should be visible
+    visiblecount = 0;
+    for (const QPieSlice *slice : series.slices())
+        visiblecount += slice->isLabelVisible();
+    QCOMPARE(visiblecount, 1);
+
+    // Every other label of slices under the limit should be visible
+    series.setAngleSpanLabelVisibility(QPieSeries::LabelVisibility::Odd);
+    series.setAngleSpanVisibleLimit(36);
+    visiblecount = 0;
+    for (const QPieSlice *slice : series.slices())
+        visiblecount += slice->isLabelVisible();
+    QCOMPARE(visiblecount, 8);
+
+    series.setAngleSpanVisibleLimit(75);
+    visiblecount = 0;
+    for (const QPieSlice *slice : series.slices())
+        visiblecount += slice->isLabelVisible();
+    QCOMPARE(visiblecount, 5);
 }
 
 QList<QPoint> tst_qgpieseries::slicePoints(QRectF rect)

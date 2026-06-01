@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqmllscompletion_p.h"
 
@@ -760,10 +761,12 @@ void QQmlLSCompletion::insideQmlObjectCompletion(const DomItem &parentForContext
     }
 
     if (betweenLocations(leftBrace, positionInfo, rightBrace)) {
-        // default/required property completion
-        for (QUtf8StringView view :
-             std::array<QUtf8StringView, 6>{ "", "readonly ", "default ", "default required ",
-                                             "required default ", "required " }) {
+        // default/final/required/readonly property completion
+        constexpr static std::array completions {
+            ""_L1, "default "_L1, "final "_L1, "required "_L1, "readonly "_L1, "default final "_L1,
+            "default required "_L1, "final required "_L1, "final readonly "_L1,
+            "default final required "_L1 };
+        for (QLatin1StringView view : completions) {
             // readonly properties require an initializer
             if (view != QUtf8StringView("readonly ")) {
                 result = makeSnippet(
@@ -819,10 +822,12 @@ void QQmlLSCompletion::insidePropertyDefinitionCompletion(
         const QQmlJS::SourceLocation readonlyKeyword = info.regions[ReadonlyKeywordRegion];
         const QQmlJS::SourceLocation defaultKeyword = info.regions[DefaultKeywordRegion];
         const QQmlJS::SourceLocation requiredKeyword = info.regions[RequiredKeywordRegion];
+        const QQmlJS::SourceLocation finalKeyword = info.regions[FinalKeywordRegion];
 
         bool completeReadonly = true;
         bool completeRequired = true;
         bool completeDefault = true;
+        bool completeFinal = true;
 
         // if there is already a readonly keyword before the cursor: do not auto complete it again
         if (readonlyKeyword.isValid() && readonlyKeyword.begin() < positionInfo.offset()) {
@@ -842,6 +847,11 @@ void QQmlLSCompletion::insidePropertyDefinitionCompletion(
         if (defaultKeyword.isValid() && defaultKeyword.begin() < positionInfo.offset()) {
             completeDefault = false;
         }
+
+        // same for final
+        if (finalKeyword.isValid() && finalKeyword.begin() < positionInfo.offset())
+            completeFinal = false;
+
         auto addCompletionKeyword = [&result](QUtf8StringView view, bool complete) {
             if (!complete)
                 return;
@@ -853,6 +863,7 @@ void QQmlLSCompletion::insidePropertyDefinitionCompletion(
         addCompletionKeyword(u8"readonly", completeReadonly);
         addCompletionKeyword(u8"required", completeRequired);
         addCompletionKeyword(u8"default", completeDefault);
+        addCompletionKeyword(u8"final", completeFinal);
         addCompletionKeyword(u8"property", true);
 
         return;

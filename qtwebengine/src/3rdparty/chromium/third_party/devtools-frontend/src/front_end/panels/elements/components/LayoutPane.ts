@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import '../../../ui/components/node_text/node_text.js';
+
 import * as Common from '../../../core/common/common.js';
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as Platform from '../../../core/platform/platform.js';
@@ -9,16 +11,23 @@ import * as SDK from '../../../core/sdk/sdk.js';
 import * as Buttons from '../../../ui/components/buttons/buttons.js';
 import * as Input from '../../../ui/components/input/input.js';
 import * as LegacyWrapper from '../../../ui/components/legacy_wrapper/legacy_wrapper.js';
-import * as NodeText from '../../../ui/components/node_text/node_text.js';
-import * as Coordinator from '../../../ui/components/render_coordinator/render_coordinator.js';
-// eslint-disable-next-line rulesdir/es_modules_import
-import inspectorCommonStyles from '../../../ui/legacy/inspectorCommon.css.js';
+import * as RenderCoordinator from '../../../ui/components/render_coordinator/render_coordinator.js';
+// eslint-disable-next-line rulesdir/es-modules-import
+import inspectorCommonStylesRaw from '../../../ui/legacy/inspectorCommon.css.js';
 import * as UI from '../../../ui/legacy/legacy.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as Lit from '../../../ui/lit/lit.js';
 import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 
-import layoutPaneStyles from './layoutPane.css.js';
-import {type BooleanSetting, type EnumSetting, type LayoutElement, type Setting} from './LayoutPaneUtils.js';
+import layoutPaneStylesRaw from './layoutPane.css.js';
+import type {BooleanSetting, EnumSetting, LayoutElement, Setting} from './LayoutPaneUtils.js';
+
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const inspectorCommonStyles = new CSSStyleSheet();
+inspectorCommonStyles.replaceSync(inspectorCommonStylesRaw.cssContent);
+
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const layoutPaneStyles = new CSSStyleSheet();
+layoutPaneStyles.replaceSync(layoutPaneStylesRaw.cssContent);
 
 const UIStrings = {
   /**
@@ -66,7 +75,7 @@ const str_ = i18n.i18n.registerUIStrings('panels/elements/components/LayoutPane.
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 export {LayoutElement};
 
-const {render, html} = LitHtml;
+const {render, html} = Lit;
 
 const nodeToLayoutElement = (node: SDK.DOMModel.DOMNode): LayoutElement => {
   const className = node.getAttribute('class');
@@ -163,11 +172,9 @@ export interface LayoutPaneData {
   flexContainerElements?: LayoutElement[];
 }
 
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
 let layoutPaneWrapperInstance: LegacyWrapper.LegacyWrapper.LegacyWrapper<UI.Widget.Widget, LayoutPane>;
 
 export class LayoutPane extends LegacyWrapper.LegacyWrapper.WrappableComponent {
-  static readonly litTagName = LitHtml.literal`devtools-layout-pane`;
   readonly #shadow = this.attachShadow({mode: 'open'});
   #settings: Readonly<Setting[]> = [];
   readonly #uaShadowDOMSetting: Common.Settings.Setting<boolean>;
@@ -335,7 +342,7 @@ export class LayoutPane extends LegacyWrapper.LegacyWrapper.WrappableComponent {
   override async render(): Promise<void> {
     const gridElements = gridNodesToElements(await this.#fetchGridNodes());
     const flexContainerElements = flexContainerNodesToElements(await this.#fetchFlexContainerNodes());
-    await coordinator.write('LayoutPane render', () => {
+    await RenderCoordinator.write('LayoutPane render', () => {
       // Disabled until https://crbug.com/1079231 is fixed.
       // clang-format off
       render(html`
@@ -433,7 +440,7 @@ export class LayoutPane extends LegacyWrapper.LegacyWrapper.WrappableComponent {
     element.hideHighlight();
   }
 
-  #renderElement(element: LayoutElement): LitHtml.TemplateResult {
+  #renderElement(element: LayoutElement): Lit.TemplateResult {
     const onElementToggle = this.#onElementToggle.bind(this, element);
     const onElementClick = this.#onElementClick.bind(this, element);
     const onColorChange = this.#onColorChange.bind(this, element);
@@ -462,29 +469,29 @@ export class LayoutPane extends LegacyWrapper.LegacyWrapper.WrappableComponent {
       <label data-element="true" class="checkbox-label">
         <input data-input="true" type="checkbox" .checked=${element.enabled} @change=${onElementToggle} jslog=${VisualLogging.toggle().track({click:true})} />
         <span class="node-text-container" data-label="true" @mouseenter=${onMouseEnter} @mouseleave=${onMouseLeave}>
-          <${NodeText.NodeText.NodeText.litTagName} .data=${{
+          <devtools-node-text .data=${{
             nodeId: element.domId,
             nodeTitle: element.name,
             nodeClasses: element.domClasses,
-          } as NodeText.NodeText.NodeTextData}></${NodeText.NodeText.NodeText.litTagName}>
+          }}></devtools-node-text>
         </span>
       </label>
       <label @keyup=${onColorLabelKeyUp} @keydown=${onColorLabelKeyDown} class="color-picker-label" style="background: ${element.color};" jslog=${VisualLogging.showStyleEditor('color').track({click: true})}>
         <input @change=${onColorChange} @input=${onColorChange} title=${i18nString(UIStrings.chooseElementOverlayColor)} tabindex="0" class="color-picker" type="color" value=${element.color} />
       </label>
-      <${Buttons.Button.Button.litTagName} class="show-element"
+      <devtools-button class="show-element"
                                            .title=${i18nString(UIStrings.showElementInTheElementsPanel)}
                                            aria-label=${i18nString(UIStrings.showElementInTheElementsPanel)}
                                            .iconName=${'select-element'}
                                            .jslogContext=${'elements.select-element'}
                                            .size=${Buttons.Button.Size.SMALL}
                                            .variant=${Buttons.Button.Variant.ICON}
-                                           @click=${onElementClick}></${Buttons.Button.Button.litTagName}>
+                                           @click=${onElementClick}></devtools-button>
     </div>`;
-    // clang-format on
+            // clang-format on
   }
 
-  #renderBooleanSetting(setting: BooleanSetting): LitHtml.TemplateResult {
+  #renderBooleanSetting(setting: BooleanSetting): Lit.TemplateResult {
     const onBooleanSettingChange = this.#onBooleanSettingChange.bind(this, setting);
     return html`<label data-boolean-setting="true" class="checkbox-label" title=${setting.title} jslog=${
         VisualLogging.toggle().track({click: true}).context(setting.name)}>
@@ -493,11 +500,10 @@ export class LayoutPane extends LegacyWrapper.LegacyWrapper.WrappableComponent {
     </label>`;
   }
 
-  #renderEnumSetting(setting: EnumSetting): LitHtml.TemplateResult {
+  #renderEnumSetting(setting: EnumSetting): Lit.TemplateResult {
     const onEnumSettingChange = this.#onEnumSettingChange.bind(this, setting);
     return html`<label data-enum-setting="true" class="select-label" title=${setting.title}>
       <select
-        class="chrome-select"
         data-input="true"
         jslog=${VisualLogging.dropDown().track({change: true}).context(setting.name)}
         @change=${onEnumSettingChange}>

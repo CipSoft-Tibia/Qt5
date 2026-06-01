@@ -71,16 +71,18 @@ Aggregate::~Aggregate()
   find all this node's children that have the given \a name,
   and return the one that satisfies the \a genus requirement.
  */
-Node *Aggregate::findChildNode(const QString &name, Node::Genus genus, int findFlags) const
+Node *Aggregate::findChildNode(const QString &name, Genus genus, int findFlags) const
 {
-    if (genus == Node::DontCare) {
+    if (genus == Genus::DontCare) {
         Node *node = m_nonfunctionMap.value(name);
         if (node)
             return node;
     } else {
         const NodeList &nodes = m_nonfunctionMap.values(name);
         for (auto *node : nodes) {
-            if (genus & node->genus()) {
+            if (node->isInternal())
+                continue;
+            if (hasCommonGenusType(genus, node->genus())) {
                 if (findFlags & TypesOnly) {
                     if (!node->isTypedef() && !node->isClassNode()
                         && !node->isQmlType() && !node->isEnumType())
@@ -91,7 +93,10 @@ Node *Aggregate::findChildNode(const QString &name, Node::Genus genus, int findF
             }
         }
     }
-    if (genus != Node::DontCare && !(genus & this->genus()))
+    if (genus != Genus::DontCare && !(hasCommonGenusType(genus, this->genus())))
+        return nullptr;
+
+    if (findFlags & TypesOnly)
         return nullptr;
 
     auto it = m_functionMap.find(name);
@@ -163,10 +168,29 @@ FunctionNode *Aggregate::findFunctionChild(const QString &name, const Parameters
     if (match_it != (*map_it).end())
         return *match_it;
 
-    // Assumes that overloads are already normalized; i.e, if there's
-    // an active function, it'll be found at the start of the list.
-    auto *fn = (*(*map_it).begin());
-    return (parameters.isEmpty() && !fn->isInternal()) ? fn : nullptr;
+    // If no exact match was found and parameters are empty (e.g., from \overload command),
+    // try to find the best available function to link to.
+    if (parameters.isEmpty()) {
+        // First, try to find a non-deprecated, non-internal function
+        auto best_it = std::find_if((*map_it).begin(), (*map_it).end(),
+            [](const FunctionNode *fn) {
+                return !fn->isInternal() && !fn->isDeprecated();
+            });
+
+        if (best_it != (*map_it).end())
+            return *best_it;
+
+        // If no non-deprecated function found, fall back to any non-internal function
+        auto fallback_it = std::find_if((*map_it).begin(), (*map_it).end(),
+            [](const FunctionNode *fn) {
+                return !fn->isInternal();
+            });
+
+        if (fallback_it != (*map_it).end())
+            return *fallback_it;
+    }
+
+    return nullptr;
 }
 
 /*!
@@ -232,7 +256,7 @@ void Aggregate::resolveRelates()
     for (auto *node : m_children) {
         if (node->isRelatedNonmember())
             continue;
-        if (node->genus() != Node::CPP)
+        if (node->genus() != Genus::CPP)
             continue;
 
         if (!node->isAggregate()) {
@@ -282,10 +306,13 @@ void Aggregate::normalizeOverloads()
                         return f1->hasDoc();
                     return (compare(f1, f2) < 0);
             });
-            // Set overload numbers
+            // Set overload numbers only if the functions are documented.
+            // They are not visible if undocumented.
             signed short n{0};
-            for (auto *fn : map_it)
-                fn->setOverloadNumber(n++);
+            for (auto *fn : map_it) {
+                if (fn->hasDoc())
+                    fn->setOverloadNumber(n++);
+            }
         }
     }
 
@@ -297,17 +324,27 @@ void Aggregate::normalizeOverloads()
 
 /*!
   Returns a const reference to the list of child nodes of this
-  aggregate that are not function nodes. Duplicate nodes are
-  removed from the list and the list is sorted.
+  aggregate that are not function nodes. The list is sorted using
+  \l Node::nodeLessThan().
+
+  \warning Only call this function after the node tree is fully
+  constructed (all parsing is done).
  */
 const NodeList &Aggregate::nonfunctionList()
 {
-    m_nonfunctionList = m_nonfunctionMap.values();
-    // Sort based on node name
-    std::sort(m_nonfunctionList.begin(), m_nonfunctionList.end(), Node::nodeNameLessThan);
-    // Erase duplicates
-    m_nonfunctionList.erase(std::unique(m_nonfunctionList.begin(), m_nonfunctionList.end()),
-                            m_nonfunctionList.end());
+    if (!m_nonfunctionList.isEmpty())
+        return m_nonfunctionList;
+
+    m_nonfunctionList = m_children;
+    // Erase functions
+    m_nonfunctionList.erase(
+        std::remove_if(m_nonfunctionList.begin(), m_nonfunctionList.end(),
+            [](const Node* node) {
+                return node->isFunction();
+            }),
+        m_nonfunctionList.end());
+    // Sort based on node properties
+    std::sort(m_nonfunctionList.begin(), m_nonfunctionList.end(), Node::nodeLessThan);
     return m_nonfunctionList;
 }
 
@@ -411,7 +448,7 @@ void Aggregate::adoptChild(Node *child)
  */
 QmlPropertyNode *Aggregate::hasQmlProperty(const QString &n) const
 {
-    NodeType goal = Node::QmlProperty;
+    NodeType goal = NodeType::QmlProperty;
     for (auto *child : std::as_const(m_children)) {
         if (child->nodeType() == goal) {
             if (child->name() == n)
@@ -427,7 +464,7 @@ QmlPropertyNode *Aggregate::hasQmlProperty(const QString &n) const
  */
 QmlPropertyNode *Aggregate::hasQmlProperty(const QString &n, bool attached) const
 {
-    NodeType goal = Node::QmlProperty;
+    NodeType goal = NodeType::QmlProperty;
     for (auto *child : std::as_const(m_children)) {
         if (child->nodeType() == goal) {
             if (child->name() == n && child->isAttached() == attached)
@@ -686,6 +723,12 @@ void Aggregate::resolveQmlInheritance()
             continue;
         static_cast<QmlTypeNode *>(child)->resolveInheritance(previousSearches);
     }
+
+    // At this point we check for cycles in the inheritance of QML types.
+    for (auto *child : std::as_const(m_children)) {
+        if (child->isQmlType())
+            static_cast<QmlTypeNode *>(child)->checkInheritance();
+    }
 }
 
 /*!
@@ -697,26 +740,26 @@ QString Aggregate::typeWord(bool cap) const
 {
     if (cap) {
         switch (nodeType()) {
-        case Node::Class:
+        case NodeType::Class:
             return "Class"_L1;
-        case Node::Struct:
+        case NodeType::Struct:
             return "Struct"_L1;
-        case Node::Union:
+        case NodeType::Union:
             return "Union"_L1;
-        case Node::Namespace:
+        case NodeType::Namespace:
             return "Namespace"_L1;
         default:
             break;
         }
     } else {
         switch (nodeType()) {
-        case Node::Class:
+        case NodeType::Class:
             return "class"_L1;
-        case Node::Struct:
+        case NodeType::Struct:
             return "struct"_L1;
-        case Node::Union:
+        case NodeType::Union:
             return "union"_L1;
-        case Node::Namespace:
+        case NodeType::Namespace:
             return "namespace"_L1;
         default:
             break;

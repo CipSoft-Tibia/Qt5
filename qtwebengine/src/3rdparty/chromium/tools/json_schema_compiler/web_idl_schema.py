@@ -6,7 +6,9 @@
 import json
 import os.path
 import sys
-from typing import List, Optional
+import linecache
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional, Union
 from json_parse import OrderedDict
 
 # This file is a peer to json_schema.py and idl_schema.py. Each of these files
@@ -40,6 +42,10 @@ class SchemaCompilerError(Exception):
   def __init__(self, message: str, node: IDLNode):
     super().__init__(
         node.GetLogLine(f'Error processing node {node}: {message}'))
+
+
+class UndefinedType:
+  """Represents a type with no value, similar to void or undefined in IDL."""
 
 
 def GetChildWithName(node: IDLNode, name: str) -> Optional[IDLNode]:
@@ -92,52 +98,236 @@ def GetExtendedAttributes(node: IDLNode) -> Optional[List[IDLNode]]:
   return ext_attribute_node.GetListOf('ExtAttribute')
 
 
-class Type:
-  """Represents an IDL type and maps it to the corresponding python type.
+def GetNodeDescription(node: IDLNode) -> str:
+  """Extract file comments above a node and convert them to description strings
 
-  Given a Type node representing the type of a dictionary member, function
-  parameter or return, converts it into a Python dictionary the JSON schema
-  compiler expects to see.
+  For comments to be converted to description properties they must be on the
+  lines directly preceding the node they apply to and must use the '//' form.
+  All contiguous preceding commented lines will be grouped together for the
+  description, until a non-commented line is reached. New lines and leading/
+  trailing whitespace are removed, but if an empty commented line is used for
+  formatting, each "paragraph" of the comment  will be wrapped with a <p> tag.
 
-  Attributes:
-    node: The IDLNode that represents this type.
-    additional_properties: A dictionary of additional key value pairs to be
-      included on the resulting dictionary after processing.
+  TODO(crbug.com/340297705): Add support for parameter comments and call this
+  for functions, events and properties.
+
+  Args:
+    node: The IDL node to look for a descriptive comment above.
+
+  Returns:
+    The formatted string expected for the description of the node.
+
+  Raises:
+    SchemaCompilerError: If top of file is reached while trying to extract a
+    comment for a description.
   """
 
-  def __init__(self, node: IDLNode, additional_properties: dict) -> None:
-    assert node.GetClass() == 'Type', node.GetLogLine(
-        'Attempted to process a "Type" node, but was passed a "%s" node.' %
-        (node.GetClass()))
-    self.node = node
-    self.additional_properties = additional_properties
+  # Extended attributes for a node can actually be formatted onto a preceding
+  # line, so if this node has an extended attribute we instead look for the
+  # description relative to the extended attribute node.
+  ext_attribute_node = node.GetOneOf('ExtAttributes')
+  if ext_attribute_node is not None:
+    return GetNodeDescription(ext_attribute_node)
 
-  def process(self) -> dict:
-    properties = self.additional_properties
-    basic_type = self.node.GetOneOf('PrimitiveType', 'StringType')
-    if basic_type:
-      name = basic_type.GetName()
-      if name == 'void':
-        # If it's a void return, we bail early.
-        return None
-
-      if name == 'boolean':
-        properties['type'] = 'boolean'
-      elif name == 'double':
-        properties['type'] = 'number'
-      elif name == 'long':
-        properties['type'] = 'integer'
-      elif name == 'DOMString':
-        properties['type'] = 'string'
-      else:
-        raise SchemaCompilerError(
-            'Unsupported basic type found when processing type.', basic_type)
+  # Look through the lines above the current node and extract every consecutive
+  # line that is a comment until a blank or non-comment line is found.
+  filename, line_number = node.GetFileAndLine()
+  lines = []
+  while line_number > 0:
+    line = linecache.getline(filename, line_number - 1)
+    # If the line starts with a double slash we treat it as a comment and add it
+    # to the lines for the description.
+    if line.lstrip()[:2] == '//':
+      lines.insert(0, line.lstrip()[2:])
     else:
-      unknown_child = self.node.GetChildren()[0]
-      raise SchemaCompilerError('Unsupported type class when processing type.',
-                                unknown_child)
+      # If we've got to a line without comment characters we've collected them
+      # all and are done.
+      break
 
+    line_number -= 1
+    if line_number == 1:
+      # We should never reach the top of the file when trying to get a node
+      # description from a file comment. If this happens, it likely means there
+      # should be a blank newline.
+      raise SchemaCompilerError(
+          'Reached top of file when trying to parse description from file'
+          ' comment. Make sure there is a blank line before the comment.',
+          node,
+      )
+  description = ''.join(lines)
+
+  # Remove new line characters and add HTML paragraphing to comments formatted
+  # with intentional blank commented lines in them.
+  def add_paragraphs(content):
+    paragraphs = content.split('\n\n')
+    if len(paragraphs) < 2:
+      return content
+    return '<p>' + '</p><p>'.join(p.strip() for p in paragraphs) + '</p>'
+
+  return add_paragraphs(description.strip()).replace('\n', '')
+
+
+class Type():
+  """Given an IDL node of class Type, extracts core type information.
+
+  This class is used to extract core type information from an IDL Type node,
+  creating a base dictionary object that other classes then add more properties
+  to for their specific case (as things like 'name' and 'optional' differ in how
+  they are determined for different kinds of typed properties).
+
+  Attributes:
+    type_node: The IDLNode for the Type to be processed.
+  """
+
+  def __init__(self, type_node: IDLNode) -> None:
+    assert type_node.GetClass() == 'Type'
+    self.type_node = type_node
+
+  def Process(self) -> dict:
+    """Returns a dict with the core information for the type.
+
+    For custom types this will have '$ref' key set to the name of the custom
+    type. Other basic types instead use the 'type' key set to the name of the
+    corresponding type the schema compiler expects to see. Promise types will
+    also have a 'parameters' key for the underlying type they will resolve with.
+    """
+
+    properties = OrderedDict()
+    # The Type node will have a single child, where the class and name
+    # determines the underlying type it represents. This may be a fundamental
+    # type or a custom type.
+    # TODO(crbug.com/340297705): Add support for more types.
+    type_details = self.type_node.GetChildren()[0]
+
+    if type_details.IsA('PrimitiveType', 'StringType'):
+      properties['type'] = self._TranslatePrimitiveType(type_details)
+    elif type_details.IsA('Typeref'):
+      # For custom types the name indicates the underlying referenced type.
+      # TODO(crbug.com/340297705): We should verify this ref name is actually a
+      # custom type we have parsed from the IDL.
+      properties['$ref'] = type_details.GetName()
+    elif type_details.IsA('Undefined'):
+      properties['type'] = UndefinedType
+    elif type_details.IsA('Promise'):
+      properties['type'] = 'promise'
+      # Promise types also have an associated type they resolve with. We
+      # represent this similar to how we represent arguments for Operations,
+      # with 'parameters' list that has a single element for the type.
+      properties['parameters'] = self._ExtractParametersFromPromiseType(
+          type_details)
+    else:
+      raise SchemaCompilerError('Unsupported type class when processing type.',
+                                type_details)
     return properties
+
+  def _TranslatePrimitiveType(
+      self, type_details: IDLNode) -> Union[str, UndefinedType]:
+    """Translates an IDL primitive type into the corresponding python type"""
+    type_name = type_details.GetName()
+    # For fundamental types we translate the name of the node into the
+    # corresponding python type.
+    if type_name == 'void':
+      # TODO(crbug.com/340297705): Change this to throw a SchemaCompilerError
+      # and change all uses of void to Undefined, as per the webIDL spec
+      # recommendations.
+      return UndefinedType
+    if type_name == 'boolean':
+      return 'boolean'
+    if type_name == 'double':
+      return 'number'
+    if type_name == 'long':
+      return 'integer'
+    if type_name == 'DOMString':
+      return 'string'
+
+    raise SchemaCompilerError(
+        'Unsupported basic type found when processing type.', type_details)
+
+  def _ExtractParametersFromPromiseType(self,
+                                        type_details: IDLNode) -> List[dict]:
+    """Extracts details for the type a promise will resolve to."""
+    promise_type = PromiseType(type_details).Process()
+    if 'type' in promise_type and promise_type['type'] is UndefinedType:
+      # If the promise type was 'Undefined' we represent it as an empty list.
+      return []
+    return [promise_type]
+
+
+class TypedProperty(ABC):
+  """Abstract base class for properties that have type information.
+
+  This base class is responsible for extracting the base type information that
+  is common to several different kinds of properties. Subclasses then override
+  the Process method to add other properties such as the name and description.
+
+  Attributes:
+    node: The IDLNode that represents this property.
+    type_node: The specific IDLNode of class Type which contains type details.
+    properties: The dictionary for the final processed representation of this
+      typed property which will be returned when calling Process.
+  """
+
+  def __init__(self, node: IDLNode) -> None:
+    self.node = node
+    self.type_node = node.GetOneOf('Type')
+    assert self.type_node is not None, self.type_node.GetLogLine(
+        'Could not find Type node on IDLNode named: %s.' % (node.GetName()))
+    self.properties = Type(self.type_node).Process()
+
+  @abstractmethod
+  def Process(self) -> dict:
+    """Processes the property and returns a dict representing it."""
+
+
+class FunctionArgument(TypedProperty):
+  """Handles processing for function arguments."""
+
+  def Process(self) -> dict:
+    # TODO(crbug.com/340297705): Add processing of comments to descriptions on
+    # function argument types.
+    self.properties['name'] = self.node.GetName()
+    if self.node.GetProperty('OPTIONAL'):
+      self.properties['optional'] = True
+    return self.properties
+
+
+class FunctionReturn(TypedProperty):
+  """Handles processing for function return values."""
+
+  def Process(self) -> dict:
+    if 'type' in self.properties and self.properties['type'] == 'promise':
+      # For legacy reasons, promise returns always get named "callback".
+      self.properties['name'] = 'callback'
+    else:
+      self.properties['name'] = self.node.GetName()
+    return self.properties
+
+
+class PromiseType(TypedProperty):
+  """Handles processing for the type a promise will resolve with."""
+
+  def Process(self) -> dict:
+    if self.type_node.GetProperty('NULLABLE'):
+      self.properties['optional'] = True
+    return self.properties
+
+
+class DictionaryMember(TypedProperty):
+  """Handles processing for members of custom types (dictionaries)."""
+
+  def Process(self) -> dict:
+    # TODO(crbug.com/340297705): Add support for extended attributes on custom
+    # type members.
+    self.properties['name'] = self.node.GetName()
+    # We consider nullable properties on custom types as being "optional" in the
+    # schema compiler's logic.
+    if self.type_node.GetProperty('NULLABLE'):
+      self.properties['optional'] = True
+
+    description = GetNodeDescription(self.node)
+    if description:
+      self.properties['description'] = description
+    return self.properties
 
 
 class Operation:
@@ -158,13 +348,54 @@ class Operation:
     properties = OrderedDict()
     properties['name'] = self.node.GetName()
 
+    parameters = []
+    arguments_node = self.node.GetOneOf('Arguments')
+    for argument in arguments_node.GetListOf('Argument'):
+      parameters.append(FunctionArgument(argument).Process())
+    properties['parameters'] = parameters
+
     # Return type processing.
-    type_node = self.node.GetOneOf('Type')
-    return_type = Type(type_node, {'name': self.node.GetName()}).process()
-    if return_type is not None:
+    return_type = FunctionReturn(self.node).Process()
+    if 'type' in return_type and return_type['type'] is UndefinedType:
+      # This is an Undefined return, so we don't add anything.
+      pass
+    elif 'type' in return_type and return_type['type'] == 'promise':
+      # For legacy reasons Promise based returns are represented on a
+      # "returns_async" property.
+      properties['returns_async'] = return_type
+    else:
+      # Otherwise this is a typed return using either the 'type' key or '$ref'
+      # key to reference the underlying type.
       properties['returns'] = return_type
 
     return properties
+
+
+class Dictionary:
+  """Represents an API type and processes the details of it.
+
+  Given an IDLNode of class Dictionary, converts it into a Python dictionary
+  representing a custom "type" for the API.
+
+  Attributes:
+    node: The IDLNode for the Dictionary definition that represents this type.
+  """
+
+  def __init__(self, node: IDLNode) -> None:
+    self.node = node
+
+  def process(self) -> dict:
+    properties = OrderedDict()
+    for property_node in self.node.GetListOf('Key'):
+      properties[property_node.GetName()] = DictionaryMember(
+          property_node).Process()
+
+    result = {
+        'id': self.node.GetName(),
+        'properties': properties,
+        'type': 'object'
+    }
+    return result
 
 
 class Namespace:
@@ -193,9 +424,17 @@ class Namespace:
 
   def process(self) -> dict:
     functions = []
+    types = []
+    description = GetNodeDescription(self.namespace)
 
     for node in self.namespace.GetListOf('Operation'):
       functions.append(Operation(node).process())
+
+    # Types are defined as dictionaries at the top level of the IDL file, which
+    # are found on the parent node of the Interface being processed for this
+    # namespace.
+    for node in self.namespace.GetParent().GetListOf('Dictionary'):
+      types.append(Dictionary(node).process())
 
     nodoc = 'nodoc' in [
         attribute.GetName()
@@ -205,7 +444,9 @@ class Namespace:
     return {
         'namespace': self.name,
         'functions': functions,
+        'types': types,
         'nodoc': nodoc,
+        'description': description,
     }
 
 
@@ -249,7 +490,10 @@ class IDLSchema:
     idl_type = GetTypeName(attributes[0])
 
     namespace_node = GetChildWithName(self.idl, idl_type)
-    namespace = Namespace(api_name, namespace_node)
+    namespace = Namespace(
+        api_name,
+        namespace_node,
+    )
     namespaces.append(namespace.process())
 
     return namespaces

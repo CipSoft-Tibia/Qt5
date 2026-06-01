@@ -28,7 +28,7 @@ Window {
                 fill: parent
                 margins: 8
             }
-            columns: Math.min(Math.round(width / 130), 6)
+            columns: Math.max(1, Math.min(Math.round(width / 130), 6))
             Repeater {
                 model: 60
                 delegate: Rectangle {

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKANIMATEDSPRITE_P_H
 #define QQUICKANIMATEDSPRITE_P_H
@@ -108,7 +109,7 @@ Q_SIGNALS:
     void frameDurationChanged(int arg);
     void loopsChanged(int arg);
     void currentFrameChanged(int arg);
-    Q_REVISION(2, 15) void finishBehaviorChanged(FinishBehavior arg);
+    Q_REVISION(2, 15) void finishBehaviorChanged(QQuickAnimatedSprite::FinishBehavior arg);
 
     Q_REVISION(2, 12) void finished();
 

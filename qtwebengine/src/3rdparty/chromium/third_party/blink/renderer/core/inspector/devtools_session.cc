@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/notreached.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
@@ -107,8 +108,9 @@ class DevToolsSession::IOSession : public mojom::blink::DevToolsSession {
                            TRACE_EVENT_FLAG_FLOW_OUT | TRACE_EVENT_FLAG_FLOW_IN,
                            "call_id", call_id);
     // Crash renderer.
-    if (method == "Page.crash")
-      CHECK(false);
+    if (method == "Page.crash") {
+      NOTREACHED();
+    }
     // Post a task to the worker or main renderer thread that will interrupt V8
     // and be run immediately. Only methods that do not run JS code are safe.
     Vector<uint8_t> message_copy;
@@ -182,7 +184,7 @@ DevToolsSession::~DevToolsSession() {
 void DevToolsSession::ConnectToV8(v8_inspector::V8Inspector* inspector,
                                   int context_group_id) {
   const auto& cbor = v8_session_state_cbor_.Get();
-  v8_session_ = inspector->connect(
+  v8_session_ = inspector->connectShared(
       context_group_id, this,
       v8_inspector::StringView(cbor.data(), cbor.size()),
       client_is_trusted_ ? v8_inspector::V8Inspector::kFullyTrusted
@@ -216,6 +218,7 @@ void DevToolsSession::Detach() {
   for (wtf_size_t i = agents_.size(); i > 0; i--)
     agents_[i - 1]->Dispose();
   agents_.clear();
+  v8_session_->stop();
   v8_session_.reset();
   agent_->client_->DebuggerTaskFinished();
 }
@@ -320,7 +323,7 @@ void DevToolsSession::FallThrough(int call_id,
                                   crdtp::span<uint8_t> method,
                                   crdtp::span<uint8_t> message) {
   // There's no other layer to handle the command.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void DevToolsSession::sendResponse(
@@ -344,8 +347,9 @@ void DevToolsSession::SendProtocolResponse(int call_id,
   if (WebTestSupport::IsRunningWebTest())
     agent_->FlushProtocolNotifications();
 
-  host_remote_->DispatchProtocolResponse(FinalizeMessage(std::move(message)),
-                                         call_id, session_state_.TakeUpdates());
+  host_remote_->DispatchProtocolResponse(
+      FinalizeMessage(std::move(message), call_id), call_id,
+      session_state_.TakeUpdates());
 }
 
 void DevToolsSession::SendProtocolNotification(
@@ -385,13 +389,14 @@ void DevToolsSession::FlushProtocolNotifications() {
     v8_session_state_cbor_.Set(v8_session_->state());
   for (wtf_size_t i = 0; i < notification_queue_.size(); ++i) {
     host_remote_->DispatchProtocolNotification(
-        FinalizeMessage(std::move(notification_queue_[i]).Run()),
+        FinalizeMessage(std::move(notification_queue_[i]).Run(), std::nullopt),
         session_state_.TakeUpdates());
   }
   notification_queue_.clear();
 }
 
 void DevToolsSession::Trace(Visitor* visitor) const {
+  v8_inspector::V8Inspector::ManagedChannel::Trace(visitor);
   visitor->Trace(receiver_);
   visitor->Trace(host_remote_);
   visitor->Trace(agent_);
@@ -399,7 +404,8 @@ void DevToolsSession::Trace(Visitor* visitor) const {
 }
 
 blink::mojom::blink::DevToolsMessagePtr DevToolsSession::FinalizeMessage(
-    std::vector<uint8_t> message) const {
+    std::vector<uint8_t> message,
+    std::optional<int> call_id) const {
   std::vector<uint8_t> message_to_send = std::move(message);
   if (!session_id_.empty()) {
     crdtp::Status status = crdtp::cbor::AppendString8EntryToCBORMap(
@@ -411,11 +417,21 @@ blink::mojom::blink::DevToolsMessagePtr DevToolsSession::FinalizeMessage(
     std::vector<uint8_t> json;
     crdtp::Status status =
         crdtp::json::ConvertCBORToJSON(crdtp::SpanFrom(message_to_send), &json);
+    if (status.error == crdtp::Error::CBOR_STACK_LIMIT_EXCEEDED &&
+        call_id.has_value()) {
+      return FinalizeMessage(
+          crdtp::CreateErrorResponse(
+              call_id.value(), crdtp::DispatchResponse::ServerError(
+                                   "Failed to convert response to JSON: " +
+                                   status.ToASCIIString()))
+              ->Serialize(),
+          std::nullopt);
+    }
     CHECK(status.ok()) << status.ToASCIIString();
     message_to_send = std::move(json);
   }
   auto mojo_msg = mojom::blink::DevToolsMessage::New();
-  mojo_msg->data = std::move(message_to_send);
+  mojo_msg->data = {message_to_send};
   return mojo_msg;
 }
 

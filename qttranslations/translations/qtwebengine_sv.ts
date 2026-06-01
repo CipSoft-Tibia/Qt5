@@ -2,6 +2,13 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="sv_SE">
 <context>
+    <name>PdfLinkDelegate</name>
+    <message>
+        <source>Page %1 location %2, %3 zoom %4</source>
+        <translation>Sida %1 plats %2, %3 zoom %4</translation>
+    </message>
+</context>
+<context>
     <name>AlertDialog</name>
     <message>
         <source>Alert Dialog</source>
@@ -27,14 +34,6 @@
         <translation>Lösenord:</translation>
     </message>
     <message>
-        <source>&amp;Cancel</source>
-        <translation>&amp;Avbryt</translation>
-    </message>
-    <message>
-        <source>&amp;Log In</source>
-        <translation>&amp;Logga in</translation>
-    </message>
-    <message>
         <source>Cancel</source>
         <translation>Avbryt</translation>
     </message>
@@ -46,8 +45,8 @@
 <context>
     <name>ConfirmDialog</name>
     <message>
-        <source>Alert Dialog</source>
-        <translation>Larmdialog</translation>
+        <source>Confirm Dialog</source>
+        <translation>Bekräftelsedialog</translation>
     </message>
     <message>
         <source>OK</source>
@@ -56,6 +55,146 @@
     <message>
         <source>Cancel</source>
         <translation>Avbryt</translation>
+    </message>
+</context>
+<context>
+    <name>PromptDialog</name>
+    <message>
+        <source>Prompt Dialog</source>
+        <translation>Promptdialog</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>Ok</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Avbryt</translation>
+    </message>
+</context>
+<context>
+    <name>ColorDialog</name>
+    <message>
+        <source>Color Picker Dialog</source>
+        <translation>Färgväljaredialog</translation>
+    </message>
+    <message>
+        <source>Copy color</source>
+        <translation>Kopiera färg</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Klistra in</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Verkställ</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Avbryt</translation>
+    </message>
+</context>
+<context>
+    <name>QWebEnginePage</name>
+    <message>
+        <source>Stop</source>
+        <translation>Stoppa</translation>
+    </message>
+    <message>
+        <source>Reload and Bypass Cache</source>
+        <translation>Uppdatera och kringgå cache</translation>
+    </message>
+    <message>
+        <source>Open link in this window</source>
+        <translation>Öppna länk i detta fönster</translation>
+    </message>
+    <message>
+        <source>Open link in new background tab</source>
+        <translation>Öppna länk i ny bakgrundsflik</translation>
+    </message>
+    <message>
+        <source>Toggle Play/Pause</source>
+        <translation>Växla Spela upp/Paus</translation>
+    </message>
+    <message>
+        <source>Toggle Mute</source>
+        <translation>Växla volym</translation>
+    </message>
+    <message>
+        <source>Close Page</source>
+        <translation>Stäng sida</translation>
+    </message>
+    <message>
+        <source>Unselect</source>
+        <translation>Avmarkera</translation>
+    </message>
+    <message>
+        <source>&amp;Bold</source>
+        <translation>&amp;Fet stil</translation>
+    </message>
+    <message>
+        <source>&amp;Italic</source>
+        <translation>&amp;Kursiv</translation>
+    </message>
+    <message>
+        <source>&amp;Underline</source>
+        <translation>&amp;Understruken</translation>
+    </message>
+    <message>
+        <source>&amp;Strikethrough</source>
+        <translation>&amp;Genomstruken</translation>
+    </message>
+    <message>
+        <source>Align &amp;Left</source>
+        <translation>Justera &amp;vänster</translation>
+    </message>
+    <message>
+        <source>Align &amp;Center</source>
+        <translation>Justera &amp;mitten</translation>
+    </message>
+    <message>
+        <source>Align &amp;Right</source>
+        <translation>Justera &amp;höger</translation>
+    </message>
+    <message>
+        <source>Align &amp;Justified</source>
+        <translation>Justera &amp;marginal</translation>
+    </message>
+    <message>
+        <source>&amp;Indent</source>
+        <translation>&amp;Dra in</translation>
+    </message>
+    <message>
+        <source>&amp;Outdent</source>
+        <translation>Dra &amp;ut</translation>
+    </message>
+    <message>
+        <source>Insert &amp;Ordered List</source>
+        <translation>Infoga &amp;ordnad lista</translation>
+    </message>
+    <message>
+        <source>Insert &amp;Unordered List</source>
+        <translation>Infoga oo&amp;rdnad lista</translation>
+    </message>
+    <message>
+        <source>Change text direction left to right</source>
+        <translation>Byt textriktning vänster till höger</translation>
+    </message>
+    <message>
+        <source>Change text direction right to left</source>
+        <translation>Byt textriktning höger till vänster</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to leave this page? Changes that you made may not be saved.</source>
+        <translation>Är du säker på att du vill lämna denna sida? Ändringar som du har gjort kanske inte kommer att sparas.</translation>
+    </message>
+</context>
+<context>
+    <name>FilePickerController</name>
+    <message>
+        <source>Accepted types (%1)</source>
+        <translation>Accepterade typer (%1)</translation>
     </message>
 </context>
 <context>
@@ -155,244 +294,6 @@
     <message>
         <source>Download canceled by the user</source>
         <translation>Hämtningen avbröts av användaren</translation>
-    </message>
-</context>
-<context>
-    <name>PromptDialog</name>
-    <message>
-        <source>Prompt Dialog</source>
-        <translation>Promptdialog</translation>
-    </message>
-    <message>
-        <source>OK</source>
-        <translation>Ok</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Avbryt</translation>
-    </message>
-</context>
-<context>
-    <name>QQuickPdfDocument</name>
-    <message>
-        <source>no error</source>
-        <translation>inget fel</translation>
-    </message>
-    <message>
-        <source>data not yet available</source>
-        <translation>data ännu inte tillgängligt</translation>
-    </message>
-    <message>
-        <source>file not found</source>
-        <translation>filen hittades inte</translation>
-    </message>
-    <message>
-        <source>invalid file format</source>
-        <translation>ogiltig filformat</translation>
-    </message>
-    <message>
-        <source>incorrect password</source>
-        <translation>felaktigt lösenord</translation>
-    </message>
-    <message>
-        <source>unsupported security scheme</source>
-        <translation>säkerhetsschemat stöds inte</translation>
-    </message>
-    <message>
-        <source>unknown error</source>
-        <translation>okänt fel</translation>
-    </message>
-</context>
-<context>
-    <name>QQuickWebEngineView</name>
-    <message>
-        <source>Stop</source>
-        <translation>Stoppa</translation>
-    </message>
-    <message>
-        <source>Reload and Bypass Cache</source>
-        <translation>Uppdatera och kringgå cache</translation>
-    </message>
-    <message>
-        <source>Open link in this window</source>
-        <translation>Öppna länk i detta fönster</translation>
-    </message>
-    <message>
-        <source>Toggle Play/Pause</source>
-        <translation>Växla Spela upp/Paus</translation>
-    </message>
-    <message>
-        <source>Toggle Mute</source>
-        <translation>Växla volym</translation>
-    </message>
-    <message>
-        <source>Close Page</source>
-        <translation>Stäng sida</translation>
-    </message>
-    <message>
-        <source>Unselect</source>
-        <translation>Avmarkera</translation>
-    </message>
-    <message>
-        <source>&amp;Bold</source>
-        <translation>&amp;Fet stil</translation>
-    </message>
-    <message>
-        <source>&amp;Italic</source>
-        <translation>&amp;Kursiv</translation>
-    </message>
-    <message>
-        <source>&amp;Underline</source>
-        <translation>&amp;Understruken</translation>
-    </message>
-    <message>
-        <source>&amp;Strikethrough</source>
-        <translation>&amp;Genomstruken</translation>
-    </message>
-    <message>
-        <source>Align &amp;Left</source>
-        <translation>Justera &amp;vänster</translation>
-    </message>
-    <message>
-        <source>Align &amp;Center</source>
-        <translation>Justera &amp;mitten</translation>
-    </message>
-    <message>
-        <source>Align &amp;Right</source>
-        <translation>Justera &amp;höger</translation>
-    </message>
-    <message>
-        <source>Align &amp;Justified</source>
-        <translation>Justera &amp;marginal</translation>
-    </message>
-    <message>
-        <source>&amp;Indent</source>
-        <translation>&amp;Dra in</translation>
-    </message>
-    <message>
-        <source>&amp;Outdent</source>
-        <translation>Dra &amp;ut</translation>
-    </message>
-    <message>
-        <source>Insert &amp;Ordered List</source>
-        <translation>Infoga &amp;ordnad lista</translation>
-    </message>
-    <message>
-        <source>Insert &amp;Unordered List</source>
-        <translation>Infoga oo&amp;rdnat lista</translation>
-    </message>
-</context>
-<context>
-    <name>QWebEnginePage</name>
-    <message>
-        <source>Stop</source>
-        <translation>Stoppa</translation>
-    </message>
-    <message>
-        <source>Reload and Bypass Cache</source>
-        <translation>Uppdatera och kringgå cache</translation>
-    </message>
-    <message>
-        <source>Open link in this window</source>
-        <translation>Öppna länk i detta fönster</translation>
-    </message>
-    <message>
-        <source>Open link in new background tab</source>
-        <translation>Öppna länk i ny bakgrundsflik</translation>
-    </message>
-    <message>
-        <source>Toggle Play/Pause</source>
-        <translation>Växla Spela upp/Paus</translation>
-    </message>
-    <message>
-        <source>Toggle Mute</source>
-        <translation>Växla volym</translation>
-    </message>
-    <message>
-        <source>Close Page</source>
-        <translation>Stäng sida</translation>
-    </message>
-    <message>
-        <source>Unselect</source>
-        <translation>Avmarkera</translation>
-    </message>
-    <message>
-        <source>&amp;Bold</source>
-        <translation>&amp;Fet stil</translation>
-    </message>
-    <message>
-        <source>&amp;Italic</source>
-        <translation>&amp;Kursiv</translation>
-    </message>
-    <message>
-        <source>&amp;Underline</source>
-        <translation>&amp;Understruken</translation>
-    </message>
-    <message>
-        <source>&amp;Strikethrough</source>
-        <translation>&amp;Genomstruken</translation>
-    </message>
-    <message>
-        <source>Align &amp;Left</source>
-        <translation>Justera &amp;vänster</translation>
-    </message>
-    <message>
-        <source>Align &amp;Center</source>
-        <translation>Justera &amp;mitten</translation>
-    </message>
-    <message>
-        <source>Align &amp;Right</source>
-        <translation>Justera &amp;höger</translation>
-    </message>
-    <message>
-        <source>Align &amp;Justified</source>
-        <translation>Justera &amp;marginal</translation>
-    </message>
-    <message>
-        <source>&amp;Indent</source>
-        <translation>&amp;Dra in</translation>
-    </message>
-    <message>
-        <source>&amp;Outdent</source>
-        <translation>Dra &amp;ut</translation>
-    </message>
-    <message>
-        <source>Insert &amp;Ordered List</source>
-        <translation>Infoga &amp;ordnad lista</translation>
-    </message>
-    <message>
-        <source>Insert &amp;Unordered List</source>
-        <translation>Infoga oo&amp;rdnad lista</translation>
-    </message>
-    <message>
-        <source>Select folder to upload</source>
-        <translation>Välj mapp att skicka upp</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to leave this page? Changes that you made may not be saved.</source>
-        <translation>Är du säker på att du vill lämna denna sida? Ändringar som du har gjort kanske inte kommer att sparas.</translation>
-    </message>
-</context>
-<context>
-    <name>QtWebEnginePlugin</name>
-    <message>
-        <source>Cannot create separate instance of WebEngineNewViewRequest</source>
-        <translation>Kan inte skapa separat instans av WebEngineNewViewRequest</translation>
-    </message>
-    <message>
-        <source>Cannot create separate instance of %1</source>
-        <translation>Kan inte skapa separat instans av %1</translation>
-    </message>
-</context>
-<context>
-    <name>QtWebEngineTestSupportPlugin</name>
-    <message>
-        <source>Cannot create a separate instance of WebEngineErrorPage</source>
-        <translation>Kan inte skapa en separat instans av WebEngineErrorPage</translation>
-    </message>
-    <message>
-        <source>Cannot create a separate instance of WebEngineTestEvent</source>
-        <translation>Kan inte skapa en separat instans av WebEngineTestEvent</translation>
     </message>
 </context>
 <context>
@@ -499,6 +400,51 @@
     </message>
 </context>
 <context>
+    <name>WebContentsAdapter</name>
+    <message>
+        <source>HTTP-POST data can only be sent over HTTP(S) protocol</source>
+        <translation>HTTP-POST-data kan endast skickas över HTTP(S)-protokollet</translation>
+    </message>
+</context>
+<context>
+    <name>QPdfLinkModel</name>
+    <message>
+        <source>Page %1 location %2, %3 zoom %4</source>
+        <translation>Sida %1 plats %2, %3 zoom %4</translation>
+    </message>
+</context>
+<context>
+    <name>QQuickPdfDocument</name>
+    <message>
+        <source>no error</source>
+        <translation>inget fel</translation>
+    </message>
+    <message>
+        <source>data not yet available</source>
+        <translation>data ännu inte tillgängligt</translation>
+    </message>
+    <message>
+        <source>file not found</source>
+        <translation>filen hittades inte</translation>
+    </message>
+    <message>
+        <source>invalid file format</source>
+        <translation>ogiltig filformat</translation>
+    </message>
+    <message>
+        <source>incorrect password</source>
+        <translation>felaktigt lösenord</translation>
+    </message>
+    <message>
+        <source>unsupported security scheme</source>
+        <translation>säkerhetsschemat stöds inte</translation>
+    </message>
+    <message>
+        <source>unknown error</source>
+        <translation>okänt fel</translation>
+    </message>
+</context>
+<context>
     <name>UIDelegatesManager</name>
     <message>
         <source>Javascript Alert - %1</source>
@@ -530,10 +476,29 @@
     </message>
 </context>
 <context>
-    <name>WebContentsAdapter</name>
+    <name>QWebEngineView</name>
     <message>
-        <source>HTTP-POST data can only be sent over HTTP(S) protocol</source>
-        <translation>HTTP-POST-data kan endast skickas över HTTP(S)-protokollet</translation>
+        <source>Select folder to upload</source>
+        <translation>Välj mapp att skicka upp</translation>
+    </message>
+</context>
+<context>
+    <name>QtWebEngineWidgetUI::TouchSelectionMenuWidget</name>
+    <message>
+        <source>Cut</source>
+        <translation>Klipp ut</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Kopiera</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Klistra in</translation>
+    </message>
+    <message>
+        <source>...</source>
+        <translation>...</translation>
     </message>
 </context>
 </TS>

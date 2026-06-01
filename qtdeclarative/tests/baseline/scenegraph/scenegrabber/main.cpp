@@ -5,6 +5,7 @@
 #include <QtCore/QDebug>
 #include <QtCore/QFileInfo>
 #include <QtCore/QHashFunctions>
+#include <QtGui/QCursor>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
 #include <QtCore/QLoggingCategory>
@@ -75,7 +76,7 @@ private slots:
             initDone = true;
             qCDebug(lcGrabber) << "Starting grabbing";
         }
-        grabTimer->start();
+        grab();
     }
 
     void grab()
@@ -84,8 +85,10 @@ private slots:
             qCDebug(lcGrabber) << "Already grabbing, skipping";
             return;
         }
-
         QScopedValueRollback grabGuard(isGrabbing, true);
+
+        if (grabNo > 0 && grabTimer->remainingTime() > grabTimer->interval() / 10)
+            return;
 
         grabNo++;
         qCDebug(lcGrabber) << "Starting grab no." << grabNo;
@@ -215,6 +218,20 @@ int main(int argc, char *argv[])
 
     GrabbingView v(ofile, useAppWindow);
 
+    // prefer a screen with a 1.0 DPR
+    QScreen *preferredScreen = QGuiApplication::primaryScreen();
+    if (!qFuzzyCompare(QGuiApplication::primaryScreen()->devicePixelRatio(), 1.0)) {
+        for (const auto screen : QGuiApplication::screens()) {
+            if (qFuzzyCompare(screen->devicePixelRatio(), 1.0)) {
+                preferredScreen = screen;
+                break;
+            }
+        }
+    }
+
+    Q_ASSERT(preferredScreen);
+    const QRect preferredScreenRect = preferredScreen->availableGeometry();
+
     if (useAppWindow) {
         QQmlEngine *engine = new QQmlEngine;
         {
@@ -255,6 +272,8 @@ int main(int argc, char *argv[])
             itemObject->setParentItem(v.appWindow()->contentItem());
             itemObject->setParent(v.appWindow());
         }
+        v.appWindow()->setScreen(preferredScreen);
+        v.appWindow()->setPosition(preferredScreenRect.topLeft());
         v.appWindow()->show();
     } else {
         v.setSource(QUrl::fromLocalFile(ifile));
@@ -270,8 +289,12 @@ int main(int argc, char *argv[])
         if (v.initialSize().isEmpty())
             v.resize(DefaultGrabSize);
 
+        v.setScreen(preferredScreen);
+        v.setPosition(preferredScreenRect.topLeft());
         v.show();
     }
+
+    QCursor::setPos(preferredScreenRect.topLeft());
 
     int retVal = a.exec();
     qCDebug(lcGrabber) << "...retVal=" << retVal;

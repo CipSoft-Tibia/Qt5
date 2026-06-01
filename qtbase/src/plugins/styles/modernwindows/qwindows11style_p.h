@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWS11STYLE_P_H
 #define QWINDOWS11STYLE_P_H
@@ -21,7 +22,43 @@
 QT_BEGIN_NAMESPACE
 
 class QWindows11StylePrivate;
-class QWindows11Style;
+
+enum WINUI3Color {
+    subtleHighlightColor,             //Subtle highlight based on alpha used for hovered elements
+    subtlePressedColor,               //Subtle highlight based on alpha used for pressed elements
+    frameColorLight,                  //Color of frame around flyouts and controls except for Checkbox and Radiobutton
+    frameColorStrong,                 //Color of frame around Checkbox and Radiobuttons (normal and hover)
+    frameColorStrongDisabled,         //Color of frame around Checkbox and Radiobuttons (pressed and disabled)
+    controlStrongFill,                //Color of controls with strong filling such as the right side of a slider
+    controlStrokeSecondary,
+    controlStrokePrimary,
+    menuPanelFill,                    //Color of menu panel
+    controlStrokeOnAccentSecondary,   //Color of frame around Buttons in accent color
+    controlFillSolid,                 //Color for solid fill
+    surfaceStroke,                    //Color of MDI window frames
+    focusFrameInnerStroke,
+    focusFrameOuterStroke,
+    fillControlDefault,               // button default color (alpha)
+    fillControlSecondary,             // button hover color (alpha)
+    fillControlTertiary,              // button pressed color (alpha)
+    fillControlDisabled,              // button disabled color (alpha)
+    fillControlInputActive,           // input active
+    fillControlAltSecondary,          // checkbox/RadioButton default color (alpha)
+    fillControlAltTertiary,           // checkbox/RadioButton hover color (alpha)
+    fillControlAltQuarternary,        // checkbox/RadioButton pressed color (alpha)
+    fillControlAltDisabled,           // checkbox/RadioButton disabled color (alpha)
+    fillAccentDefault,                // button default color (alpha)
+    fillAccentSecondary,              // button hover color (alpha)
+    fillAccentTertiary,               // button pressed color (alpha)
+    fillAccentDisabled,               // button disabled color (alpha)
+    textPrimary,                      // text of default/hovered control
+    textSecondary,                    // text of pressed control
+    textDisabled,                     // text of disabled control
+    textOnAccentPrimary,              // text of default/hovered control on accent color
+    textOnAccentSecondary,            // text of pressed control on accent color
+    textOnAccentDisabled,             // text of disabled control on accent color
+    dividerStrokeDefault,             // divider color (alpha)
+};
 
 class QWindows11Style : public QWindowsVistaStyle
 {
@@ -53,9 +90,19 @@ protected:
     QWindows11Style(QWindows11StylePrivate &dd);
 
 private:
-    static inline QBrush buttonFillBrush(const QStyleOption *option);
-    static inline QColor buttonLabelColor(const QStyleOption *option, int colorSchemeIndex);
-    static inline QColor editSublineColor(const QStyleOption *option, int colorSchemeIndex);
+    QColor calculateAccentColor(const QStyleOption *option) const;
+    QPen borderPenControlAlt(const QStyleOption *option) const;
+    enum class ControlType
+    {
+        Control,
+        ControlAlt
+    };
+    QBrush controlFillBrush(const QStyleOption *option, ControlType controlType) const;
+    QBrush inputFillBrush(const QStyleOption *option, const QWidget *widget) const;
+    // ControlType::ControlAlt can be mapped to QPalette directly
+    QColor controlTextColor(const QStyleOption *option, bool ignoreIsChecked = false) const;
+    void drawLineEditFrame(QPainter *p, const QRectF &rect, const QStyleOption *o, bool isEditable = true) const;
+    inline QColor winUI3Color(enum WINUI3Color col) const;
 
 private:
     Q_DISABLE_COPY_MOVE(QWindows11Style)
@@ -64,11 +111,12 @@ private:
 
     bool highContrastTheme = false;
     int colorSchemeIndex = 0;
-    const QFont assetFont = QFont("Segoe Fluent Icons"); //Font to load icons from
 };
 
 class QWindows11StylePrivate : public QWindowsVistaStylePrivate {
     Q_DECLARE_PUBLIC(QWindows11Style)
+protected:
+    QFont assetFont;
 };
 
 QT_END_NAMESPACE

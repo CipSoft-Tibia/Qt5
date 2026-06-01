@@ -54,6 +54,10 @@ void loader_init_global_debug_level(void);
 // Sets the global debug level - used by global settings files
 void loader_set_global_debug_level(uint32_t new_loader_debug);
 
+// Writes a stringified version of enum vulkan_loader_debug_flags into cmd_line_msg, and writes the number of characters written in
+// num_used
+void generate_debug_flag_str(VkFlags msg_type, size_t cmd_line_size, char *cmd_line_msg, size_t *num_used);
+
 // The asm declaration prevents name mangling which is necessary for macOS
 #if defined(MODIFY_UNKNOWN_FUNCTION_DECLS)
 #define ASM_NAME(name) __asm(name)
@@ -61,10 +65,18 @@ void loader_set_global_debug_level(uint32_t new_loader_debug);
 #define ASM_NAME(name)
 #endif
 
+#if defined(__clang__)
+#define DECORATE_PRINTF(_fmt_argnum, _first_param_num) __attribute__((format(printf, _fmt_argnum, _first_param_num)))
+#elif defined(__GNUC__)
+#define DECORATE_PRINTF(_fmt_argnum, _first_param_num) __attribute__((format(gnu_printf, _fmt_argnum, _first_param_num)))
+#else
+#define DECORATE_PRINTF(_fmt_num, _first_param_num)
+#endif
+
 // Logs a message to stderr
 // May output to DebugUtils if the instance isn't null and the extension is enabled.
-void loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t msg_code, const char *format, ...)
-    ASM_NAME("loader_log");
+void DECORATE_PRINTF(4, 5) loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t msg_code, const char *format,
+                                      ...) ASM_NAME("loader_log");
 
 // Used for the assembly code to emit an specific error message
 // This is a work around for linux 32 bit error handling not passing relocatable strings correctly

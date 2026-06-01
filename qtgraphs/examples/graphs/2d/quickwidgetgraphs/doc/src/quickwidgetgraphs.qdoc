@@ -34,13 +34,6 @@
         \snippet 2d/quickwidgetgraphs/piewidget.cpp 1
         \dots 0
 
-    \li For \l QQuickWidget, set \l{QQuickWidget::}{source} and
-        \l{QQuickWidget::}{resizeMode}, and set the
-        \c context property. The \c Context property allows data to be exposed
-        to QML components instantiated by the QML engine.
-
-        \snippet 2d/quickwidgetgraphs/piewidget.cpp 2
-
     \li Initialize buttons and add them to layout.
 
         \snippet 2d/quickwidgetgraphs/piewidget.cpp 3
@@ -96,12 +89,16 @@
         delete a pie series itself.
     \endlist
 
-    \section1 Declare a GraphView in Qml
+    \section1 Initializing the GraphsView
 
-    Declare a \l GraphsView element and set the \l {GraphsView::}{seriesList}
-    property to a pie series created in C++ code.
+    To customize the GraphsView theme, create a custom \l QGraphsTheme.
 
-    To customize the GraphsView theme, set a custom \l GraphsTheme.
+    \snippet 2d/quickwidgetgraphs/piewidget.cpp 5
 
-    \snippet 2d/quickwidgetgraphs/qml/quickwidgetgraphs/main.qml 0
+    Use \l QQuickWidget::loadFromModule() to load the GraphsView. Initialize its
+    \l {GraphsView::}{theme} and \l {GraphsView::}{seriesList} properties by
+    passing the QGraphsTheme and QPieSeries to
+    \l QQuickWidget::setInitialProperties().
+
+    \snippet 2d/quickwidgetgraphs/piewidget.cpp 2
 */

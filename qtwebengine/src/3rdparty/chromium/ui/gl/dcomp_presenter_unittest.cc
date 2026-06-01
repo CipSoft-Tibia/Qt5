@@ -121,6 +121,33 @@ Microsoft::WRL::ComPtr<ID3D11Texture2D> CreateNV12Texture(
   return texture;
 }
 
+Microsoft::WRL::ComPtr<ID3D11Texture2D> CreateP010Texture(
+    const Microsoft::WRL::ComPtr<ID3D11Device>& d3d11_device,
+    const gfx::Size& size) {
+  D3D11_TEXTURE2D_DESC desc = {};
+  desc.Width = size.width();
+  desc.Height = size.height();
+  desc.MipLevels = 1;
+  desc.ArraySize = 1;
+  desc.Format = DXGI_FORMAT_P010;
+  desc.Usage = D3D11_USAGE_DEFAULT;
+  desc.SampleDesc.Count = 1;
+  desc.BindFlags = 0;
+  desc.MiscFlags = 0;
+
+  // Y, U, and V should all be 160. Output color should be pink.
+  std::vector<uint16_t> image_data(size.width() * size.height() * 3 / 2,
+                                   0xA000);
+  D3D11_SUBRESOURCE_DATA data = {};
+  data.pSysMem = (const void*)&image_data[0];
+  data.SysMemPitch = size.width() * 2;
+
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+  HRESULT hr = d3d11_device->CreateTexture2D(&desc, &data, &texture);
+  EXPECT_HRESULT_SUCCEEDED(hr);
+  return texture;
+}
+
 // The precise colors may differ depending on the video processor, so allow a
 // margin for error.
 const int kMaxColorChannelDeviation = 10;
@@ -221,8 +248,8 @@ class DCompPresenterTestBase : public testing::Test {
 
     presenter_ = CreateDCompPresenter();
 
-    SetDirectCompositionScaledOverlaysSupportedForTesting(false);
     SetDirectCompositionOverlayFormatUsedForTesting(DXGI_FORMAT_NV12);
+    SetDirectCompositionScaledOverlaysSupportedForTesting(false);
   }
 
   void TearDown() override {
@@ -704,7 +731,7 @@ TEST_P(DCompPresenterTest, DelegatedInkVisualAddedWithRootSurfaceVisualNull) {
   }
   layer_tree->SetDelegatedInkTrailStartPoint(std::move(metadata));
 
-  EXPECT_TRUE(layer_tree->CommitAndClearPendingOverlays({}));
+  EXPECT_TRUE(layer_tree->CommitAndClearPendingOverlays({}).has_value());
 
   // Despite no overlays, there should be one visual subtree for the delegated
   // ink trail.
@@ -935,6 +962,80 @@ TEST_P(DCompPresenterTest, MatchedAndUnmatchedVisualsReused) {
 #endif  // DCHECK_IS_ON()
 }
 
+// `SwapChainPresenter` internally tries to allocates a swap chain that is the
+// size of the onscreen size. This is because some Intel devices do not support
+// scaling overlays in HW. We do not account for the clip rect in the onscreen
+// size calculation, so a clipped video can end up with a very large "onscreen"
+// size even though most of it is not visible.
+TEST_P(DCompPresenterTest, VeryLargeOnscreenSize) {
+  Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device =
+      GetDirectCompositionD3D11Device();
+
+  gfx::Size texture_size(50, 50);
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> texture =
+      CreateNV12Texture(d3d11_device, texture_size);
+  ASSERT_NE(texture, nullptr);
+
+  {
+    auto params =
+        CreateParamsFromImage(DCLayerOverlayImage(texture_size, texture));
+    params->quad_rect = gfx::Rect(1, 1);
+
+    // This transform will make us have an onscreen size with a dimension larger
+    // than the D3D11 max texture size.
+    params->transform =
+        gfx::Transform::MakeScale(D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION + 1, 10);
+
+    params->video_params.color_space = gfx::ColorSpace::CreateREC709();
+    presenter_->ScheduleDCLayer(std::move(params));
+  }
+
+  {
+    auto params =
+        CreateParamsFromImage(DCLayerOverlayImage(texture_size, texture));
+    params->quad_rect = gfx::Rect(1, 1);
+
+    // This transform will make us have an onscreen size with a dimension larger
+    // than the D3D11 max texture size.
+    params->transform =
+        gfx::Transform::MakeScale(10, D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION + 1);
+
+    params->video_params.color_space = gfx::ColorSpace::CreateREC709();
+    presenter_->ScheduleDCLayer(std::move(params));
+  }
+
+  EXPECT_FALSE(presenter_->GetLayerSwapChainForTesting(0));
+  EXPECT_FALSE(presenter_->GetLayerSwapChainForTesting(1));
+
+  PresentAndCheckSwapResult(gfx::SwapResult::SWAP_ACK);
+
+  auto ExpectSwapChainAndMaintainsAspectRatio = [&](size_t index,
+                                                    gfx::SizeF expected_size) {
+    Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain =
+        presenter_->GetLayerSwapChainForTesting(index);
+    EXPECT_TRUE(swap_chain);
+
+    DXGI_SWAP_CHAIN_DESC1 desc;
+    EXPECT_HRESULT_SUCCEEDED(swap_chain->GetDesc1(&desc));
+
+    const gfx::SizeF swap_chain_size = gfx::SizeF(desc.Width, desc.Height);
+
+    // Calculate the closeness based on the magnitude of the aspect ratios.
+    // `SwapChainPresenter` can slightly adjust the swap chain size, so the
+    // aspect ratios will never be exact. In this test, it can also be very
+    // large or very small.
+    EXPECT_NEAR(std::log10(expected_size.AspectRatio()),
+                std::log10(swap_chain_size.AspectRatio()), 0.00003);
+  };
+
+  // Maintaining the aspect ratio is not a requirement for the video to appear,
+  // but doing so will improve the quality of the resulting image.
+  ExpectSwapChainAndMaintainsAspectRatio(
+      0, gfx::SizeF(D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION + 1, 10));
+  ExpectSwapChainAndMaintainsAspectRatio(
+      1, gfx::SizeF(10, D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION + 1));
+}
+
 INSTANTIATE_TEST_SUITE_P(DCompPresenterTest,
                          DCompPresenterTest,
                          testing::Bool());
@@ -963,7 +1064,8 @@ class DCompPresenterPixelTestBase : public DCompPresenterTestBase {
   void InitializeForPixelTest(const gfx::Size& window_size,
                               const gfx::Size& texture_size,
                               const gfx::Rect& content_rect,
-                              const gfx::Rect& quad_rect) {
+                              const gfx::Rect& quad_rect,
+                              const bool is_p010) {
     EXPECT_TRUE(presenter_->Resize(window_size, 1.0, gfx::ColorSpace(), true));
 
     InitializeRootAndScheduleRootSurface(window_size, SkColors::kBlack);
@@ -972,7 +1074,8 @@ class DCompPresenterPixelTestBase : public DCompPresenterTestBase {
         GetDirectCompositionD3D11Device();
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture =
-        CreateNV12Texture(d3d11_device, texture_size);
+        is_p010 ? CreateP010Texture(d3d11_device, texture_size)
+                : CreateNV12Texture(d3d11_device, texture_size);
     ASSERT_NE(texture, nullptr);
 
     auto params = CreateParamsFromImage(
@@ -980,6 +1083,7 @@ class DCompPresenterPixelTestBase : public DCompPresenterTestBase {
         /*content_rect_override=*/gfx::RectF(content_rect));
     params->quad_rect = quad_rect;
     params->video_params.color_space = gfx::ColorSpace::CreateREC709();
+    params->video_params.is_p010_content = is_p010;
     presenter_->ScheduleDCLayer(std::move(params));
 
     PresentAndCheckSwapResult(gfx::SwapResult::SWAP_ACK);
@@ -1319,7 +1423,8 @@ TEST_P(DCompPresenterPixelTest, VideoHandleSwapchain) {
   gfx::Size texture_size(50, 50);
   gfx::Rect content_rect(texture_size);
   gfx::Rect quad_rect(window_size);
-  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect);
+  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect,
+                         false);
 
   SkColor expected_color = SkColorSetRGB(0xe1, 0x90, 0xeb);
   EXPECT_SKCOLOR_CLOSE(
@@ -1333,7 +1438,8 @@ TEST_P(DCompPresenterPixelTest, SkipVideoLayerEmptyBoundsRect) {
   gfx::Size texture_size(50, 50);
   gfx::Rect content_rect(texture_size);
   gfx::Rect quad_rect;  // Layer with empty bounds rect.
-  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect);
+  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect,
+                         false);
 
   // No color is written since the visual committed to DirectComposition has no
   // content.
@@ -1383,6 +1489,40 @@ TEST_P(DCompPresenterPixelTest, SkipVideoLayerEmptyContentsRect) {
       kMaxColorChannelDeviation);
 }
 
+TEST_P(DCompPresenterPixelTest, BGRASwapChain) {
+  // By default NV12 is used, so set it to BGRA explicitly.
+  SetDirectCompositionOverlayFormatUsedForTesting(DXGI_FORMAT_B8G8R8A8_UNORM);
+  // Swap chain size is overridden to onscreen rect size only if scaled overlays
+  // are supported.
+  SetDirectCompositionScaledOverlaysSupportedForTesting(true);
+
+  gfx::Size window_size(100, 100);
+  gfx::Size texture_size(50, 50);
+  // Pass content rect with odd with and height.  Surface should round up
+  // width and height when creating swap chain.
+  gfx::Rect content_rect(0, 0, 49, 49);
+  gfx::Rect quad_rect(window_size);
+  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect,
+                         false);
+
+  Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain =
+      presenter_->GetLayerSwapChainForTesting(0);
+  ASSERT_TRUE(swap_chain);
+
+  DXGI_SWAP_CHAIN_DESC1 desc;
+  EXPECT_HRESULT_SUCCEEDED(swap_chain->GetDesc1(&desc));
+  // Onscreen window_size is (100, 100).
+  EXPECT_EQ(DXGI_FORMAT_B8G8R8A8_UNORM, desc.Format);
+  EXPECT_EQ(100u, desc.Width);
+  EXPECT_EQ(100u, desc.Height);
+
+  SkColor expected_color = SkColorSetRGB(0xe1, 0x90, 0xeb);
+  EXPECT_SKCOLOR_CLOSE(
+      expected_color,
+      GLTestHelper::ReadBackWindowPixel(window_.hwnd(), gfx::Point(75, 75)),
+      kMaxColorChannelDeviation);
+}
+
 TEST_P(DCompPresenterPixelTest, NV12SwapChain) {
   // Swap chain size is overridden to onscreen rect size only if scaled overlays
   // are supported.
@@ -1394,7 +1534,8 @@ TEST_P(DCompPresenterPixelTest, NV12SwapChain) {
   // width and height when creating swap chain.
   gfx::Rect content_rect(0, 0, 49, 49);
   gfx::Rect quad_rect(window_size);
-  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect);
+  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect,
+                         false);
 
   Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain =
       presenter_->GetLayerSwapChainForTesting(0);
@@ -1423,11 +1564,11 @@ TEST_P(DCompPresenterPixelTest, YUY2SwapChain) {
            "on Win10/AMD bot (Radeon RX550). See https://crbug.com/967860.";
   }
 
+  // By default NV12 is used, so set it to YUY2 explicitly.
+  SetDirectCompositionOverlayFormatUsedForTesting(DXGI_FORMAT_YUY2);
   // Swap chain size is overridden to onscreen rect size only if scaled overlays
   // are supported.
   SetDirectCompositionScaledOverlaysSupportedForTesting(true);
-  // By default NV12 is used, so set it to YUY2 explicitly.
-  SetDirectCompositionOverlayFormatUsedForTesting(DXGI_FORMAT_YUY2);
 
   gfx::Size window_size(100, 100);
   gfx::Size texture_size(50, 50);
@@ -1435,7 +1576,8 @@ TEST_P(DCompPresenterPixelTest, YUY2SwapChain) {
   // width and height when creating swap chain.
   gfx::Rect content_rect(0, 0, 49, 49);
   gfx::Rect quad_rect(window_size);
-  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect);
+  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect,
+                         false);
 
   Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain =
       presenter_->GetLayerSwapChainForTesting(0);
@@ -1455,6 +1597,44 @@ TEST_P(DCompPresenterPixelTest, YUY2SwapChain) {
       kMaxColorChannelDeviation);
 }
 
+TEST_P(DCompPresenterPixelTest, P010SwapChain) {
+  if (!CheckDisplayableSupportForP010()) {
+    GTEST_SKIP() << "P010 pixel format is not displayable on this test system.";
+  }
+
+  // Swap chain size is overridden to onscreen rect size only if scaled overlays
+  // are supported.
+  SetDirectCompositionScaledOverlaysSupportedForTesting(true);
+  // By default NV12 is used, so set it to P010 explicitly.
+  SetDirectCompositionOverlayFormatUsedForTesting(DXGI_FORMAT_P010);
+
+  gfx::Size window_size(100, 100);
+  gfx::Size texture_size(50, 50);
+  // Pass content rect with odd with and height. Surface should round up
+  // width and height when creating swap chain.
+  gfx::Rect content_rect(0, 0, 49, 49);
+  gfx::Rect quad_rect(window_size);
+  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect,
+                         true);
+
+  Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain =
+      presenter_->GetLayerSwapChainForTesting(0);
+  ASSERT_TRUE(swap_chain);
+
+  DXGI_SWAP_CHAIN_DESC1 desc;
+  EXPECT_HRESULT_SUCCEEDED(swap_chain->GetDesc1(&desc));
+  // Onscreen window_size is (100, 100).
+  EXPECT_EQ(DXGI_FORMAT_P010, desc.Format);
+  EXPECT_EQ(100u, desc.Width);
+  EXPECT_EQ(100u, desc.Height);
+
+  SkColor expected_color = SkColorSetRGB(0xe1, 0x90, 0xeb);
+  EXPECT_SKCOLOR_CLOSE(
+      expected_color,
+      GLTestHelper::ReadBackWindowPixel(window_.hwnd(), gfx::Point(75, 75)),
+      kMaxColorChannelDeviation);
+}
+
 TEST_P(DCompPresenterPixelTest, NonZeroBoundsOffset) {
   // Swap chain size is overridden to onscreen rect size only if scaled overlays
   // are supported.
@@ -1464,7 +1644,8 @@ TEST_P(DCompPresenterPixelTest, NonZeroBoundsOffset) {
   gfx::Size texture_size(50, 50);
   gfx::Rect content_rect(texture_size);
   gfx::Rect quad_rect(gfx::Point(25, 25), texture_size);
-  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect);
+  InitializeForPixelTest(window_size, texture_size, content_rect, quad_rect,
+                         false);
 
   SkColor video_color = SkColorSetRGB(0xe1, 0x90, 0xeb);
   struct {
@@ -2597,8 +2778,8 @@ class DCompPresenterDelegatedInkSkiaGoldTest
   }
   void ScheduleInkTrail(const gfx::RectF& presentation_area,
                         const SkColor& color,
-                        const float diameter,
-                        base::span<gfx::DelegatedInkPoint const> const points) {
+                        float diameter,
+                        base::span<const gfx::DelegatedInkPoint> points) {
     DCLayerTree* layer_tree = presenter_->GetLayerTreeForTesting();
     // Metadata timestamp and point should match the first DelegatedInkPoint.
     gfx::DelegatedInkMetadata metadata(points[0].point(), diameter, color,

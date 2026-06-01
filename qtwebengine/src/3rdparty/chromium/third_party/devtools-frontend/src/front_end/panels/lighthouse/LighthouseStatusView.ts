@@ -9,7 +9,7 @@ import * as UI from '../../ui/legacy/legacy.js';
 
 import {RuntimeSettings} from './LighthouseController.js';
 import lighthouseDialogStyles from './lighthouseDialog.css.js';
-import {type LighthousePanel} from './LighthousePanel.js';
+import type {LighthousePanel} from './LighthousePanel.js';
 
 const UIStrings = {
   /**
@@ -188,8 +188,8 @@ export class StatusView {
   }
 
   private render(): void {
-    const dialogRoot = UI.UIUtils.createShadowRootWithCoreStyles(
-        this.dialog.contentElement, {cssFile: [lighthouseDialogStyles], delegatesFocus: undefined});
+    const dialogRoot =
+        UI.UIUtils.createShadowRootWithCoreStyles(this.dialog.contentElement, {cssFile: lighthouseDialogStyles});
     const lighthouseViewElement = dialogRoot.createChild('div', 'lighthouse-view vbox');
 
     const cancelButton = UI.UIUtils.createTextButton(i18nString(UIStrings.cancel), this.cancel.bind(this), {

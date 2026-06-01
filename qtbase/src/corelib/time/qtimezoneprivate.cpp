@@ -1,7 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2013 John Layt <jlayt@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
+// Qt-Security score:critical reason:data-parser
 
 #include "qtimezone.h"
 #include "qtimezoneprivate_p.h"
@@ -838,7 +838,7 @@ findUtcOffsetPrefix(QStringView text, const QLocale &locale)
     QStringIterator iter(offset);
     qsizetype hourEnd = 0, hmMid = 0, minEnd = 0;
     int digits = 0;
-    char32_t ch;
+    char32_t ch = 0;
     while (iter.hasNext()) {
         ch = iter.next();
         if (!QChar::isDigit(ch))
@@ -1046,12 +1046,6 @@ QList<QByteArray> QTimeZonePrivate::windowsIdToIanaIds(const QByteArray &windows
     }
 
     return list;
-}
-
-// Define template for derived classes to reimplement so QSharedDataPointer clone() works correctly
-template<> QTimeZonePrivate *QSharedDataPointer<QTimeZonePrivate>::clone()
-{
-    return d->clone();
 }
 
 static bool isEntryInIanaList(QByteArrayView id, QByteArrayView ianaIds)

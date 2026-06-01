@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlistwidget.h"
 
@@ -69,7 +70,7 @@ void QListModel::insert(int row, QListWidgetItem *item)
     if (!item)
         return;
 
-    item->view = qobject_cast<QListWidget*>(QObject::parent());
+    item->view = this->view();
     if (item->view && item->view->isSortingEnabled()) {
         // sorted insertion
         QList<QListWidgetItem*>::iterator it;
@@ -93,7 +94,7 @@ void QListModel::insert(int row, const QStringList &labels)
     const int count = labels.size();
     if (count <= 0)
         return;
-    QListWidget *view = qobject_cast<QListWidget*>(QObject::parent());
+    QListWidget *view = this->view();
     if (view && view->isSortingEnabled()) {
         // sorted insertion
         for (int i = 0; i < count; ++i) {
@@ -109,7 +110,7 @@ void QListModel::insert(int row, const QStringList &labels)
         for (int i = 0; i < count; ++i) {
             QListWidgetItem *item = new QListWidgetItem(labels.at(i));
             item->d->theid = row;
-            item->view = qobject_cast<QListWidget*>(QObject::parent());
+            item->view = this->view();
             items.insert(row++, item);
         }
         endInsertRows();
@@ -223,7 +224,7 @@ bool QListModel::insertRows(int row, int count, const QModelIndex &parent)
         return false;
 
     beginInsertRows(QModelIndex(), row, row + count - 1);
-    QListWidget *view = qobject_cast<QListWidget*>(QObject::parent());
+    QListWidget *view = this->view();
     QListWidgetItem *itm = nullptr;
 
     for (int r = row; r < row + count; ++r) {
@@ -387,7 +388,7 @@ void QListModel::itemChanged(QListWidgetItem *item, const QList<int> &roles)
 
 QStringList QListModel::mimeTypes() const
 {
-    const QListWidget *view = qobject_cast<const QListWidget*>(QObject::parent());
+    const QListWidget *view = this->view();
     if (view)
         return view->mimeTypes();
     return {};
@@ -405,10 +406,9 @@ QMimeData *QListModel::mimeData(const QModelIndexList &indexes) const
     itemlist.reserve(indexesCount);
     for (int i = 0; i < indexesCount; ++i)
         itemlist << at(indexes.at(i).row());
-    const QListWidget *view = qobject_cast<const QListWidget*>(QObject::parent());
 
     cachedIndexes = indexes;
-    QMimeData *mimeData = view->mimeData(itemlist);
+    QMimeData *mimeData = view()->mimeData(itemlist);
     cachedIndexes.clear();
     return mimeData;
 }
@@ -418,20 +418,24 @@ bool QListModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
                               int row, int column, const QModelIndex &index)
 {
     Q_UNUSED(column);
-    QListWidget *view = qobject_cast<QListWidget*>(QObject::parent());
     if (index.isValid())
         row = index.row();
     else if (row == -1)
         row = items.size();
 
-    return view->dropMimeData(row, data, action);
+    return view()->dropMimeData(row, data, action);
 }
 
 Qt::DropActions QListModel::supportedDropActions() const
 {
-    const QListWidget *view = qobject_cast<const QListWidget*>(QObject::parent());
-    return view->supportedDropActions();
+    return view()->supportedDropActions();
 }
+
+Qt::DropActions QListModel::supportedDragActions() const
+{
+    return view()->supportedDragActions();
+}
+
 #endif // QT_CONFIG(draganddrop)
 
 /*!
@@ -1174,7 +1178,7 @@ void QListWidgetPrivate::dataChanged(const QModelIndex &topLeft,
     \ingroup model-view
     \inmodule QtWidgets
 
-    \image fusion-listview.png
+    \image fusion-listview.png {List of weather icons}
 
     QListWidget is a convenience class that provides a list view similar to the
     one supplied by QListView, but with a classic item-based interface for
@@ -1802,12 +1806,13 @@ QMimeData *QListWidget::mimeData(const QList<QListWidgetItem *> &items) const
 }
 
 #if QT_CONFIG(draganddrop)
+
 /*!
     Handles \a data supplied by an external drag and drop operation that ended
     with the given \a action in the given \a index. Returns \c true if \a data and
     \a action can be handled by the model; otherwise returns \c false.
 
-    \sa supportedDropActions()
+    \sa supportedDropActions(), supportedDragActions
 */
 bool QListWidget::dropMimeData(int index, const QMimeData *data, Qt::DropAction action)
 {
@@ -1832,13 +1837,33 @@ void QListWidget::dropEvent(QDropEvent *event)
 /*!
     Returns the drop actions supported by this view.
 
-    \sa Qt::DropActions
+    \sa Qt::DropActions, supportedDragActions, dropMimeData()
 */
 Qt::DropActions QListWidget::supportedDropActions() const
 {
     Q_D(const QListWidget);
     return d->listModel()->QAbstractListModel::supportedDropActions() | Qt::MoveAction;
 }
+
+/*!
+    \property QListWidget::supportedDragActions
+    \brief the drag actions supported by this view
+
+    \since 6.10
+    \sa Qt::DropActions, supportedDropActions()
+*/
+Qt::DropActions QListWidget::supportedDragActions() const
+{
+    Q_D(const QListWidget);
+    return d->supportedDragActions.value_or(supportedDropActions());
+}
+
+void QListWidget::setSupportedDragActions(Qt::DropActions actions)
+{
+    Q_D(QListWidget);
+    d->supportedDragActions = actions;
+}
+
 #endif // QT_CONFIG(draganddrop)
 
 /*!

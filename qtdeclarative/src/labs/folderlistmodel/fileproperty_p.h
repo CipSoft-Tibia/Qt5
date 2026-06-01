@@ -40,8 +40,6 @@ public:
         mLastRead(info.lastRead())
     {
     }
-    ~FileProperty()
-    {}
 
     inline QString fileName() const { return mFileName; }
     inline QString filePath() const { return mFilePath; }

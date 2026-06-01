@@ -11,6 +11,7 @@
 
 #include <stddef.h>
 
+#include <array>
 #include <list>
 #include <string>
 #include <string_view>
@@ -69,14 +70,15 @@ std::string EffectsToString(int effects) {
   if (effects == media::AudioParameters::NO_EFFECTS)
     return "NO_EFFECTS";
 
-  struct {
+  struct Flags {
     int flag;
     const char* name;
-  } flags[] = {
+  };
+  auto flags = std::to_array<Flags>({
       {media::AudioParameters::ECHO_CANCELLER, "ECHO_CANCELLER"},
       {media::AudioParameters::DUCKING, "DUCKING"},
       {media::AudioParameters::HOTWORD, "HOTWORD"},
-  };
+  });
 
   std::string ret;
   for (size_t i = 0; i < std::size(flags); ++i) {
@@ -508,29 +510,9 @@ void MediaInternals::SendGeneralAudioInformation() {
       GetContentClient()->browser()->ShouldSandboxAudioService());
 #if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
   std::string chrome_wide_echo_cancellation_value_string =
-      media::IsChromeWideEchoCancellationEnabled()
-          ? base::StrCat(
-                {"Enabled, minimize_resampling = ",
-                 media::kChromeWideEchoCancellationMinimizeResampling.Get()
-                     ? "true"
-                     : "false",
-                 ", allow_all_sample_rates = ",
-                 media::kChromeWideEchoCancellationAllowAllSampleRates.Get()
-                     ? "true"
-                     : "false"})
-          : "Disabled";
+      media::IsChromeWideEchoCancellationEnabled() ? "Enabled" : "Disabled";
   audio_info_data.Set(media::kChromeWideEchoCancellation.name,
                       base::Value(chrome_wide_echo_cancellation_value_string));
-
-  std::string decrease_processing_audio_fifo_size_value_string =
-      base::FeatureList::IsEnabled(media::kDecreaseProcessingAudioFifoSize)
-          ? base::StrCat(
-                {"Enabled, fifo_size = ",
-                 base::NumberToString(media::GetProcessingAudioFifoSize())})
-          : "Disabled";
-  audio_info_data.Set(
-      media::kDecreaseProcessingAudioFifoSize.name,
-      base::Value(decrease_processing_audio_fifo_size_value_string));
 #endif
   std::u16string audio_info_update =
       SerializeUpdate("media.updateGeneralAudioInformation", audio_info_data);
@@ -687,7 +669,7 @@ void MediaInternals::SaveEvent(int process_id,
 void MediaInternals::EraseSavedEvents(RenderProcessHost* host) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   // TODO(sandersd): Send a termination event before clearing the log.
-  saved_events_by_process_.erase(host->GetID());
+  saved_events_by_process_.erase(host->GetDeprecatedID());
 }
 
 void MediaInternals::UpdateAudioLog(AudioLogUpdateType type,

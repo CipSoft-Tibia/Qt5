@@ -5,6 +5,7 @@
 #define QGRPCHANNELOPTIONS_H
 
 #include <QtGrpc/qtgrpcglobal.h>
+#include <QtGrpc/qtgrpcnamespace.h>
 
 #if QT_CONFIG(ssl)
 #  include <QtNetwork/qsslconfiguration.h>
@@ -14,7 +15,7 @@
 #include <QtCore/qshareddata.h>
 #include <QtCore/qstringfwd.h>
 #include <QtCore/qtclasshelpermacros.h>
-#include <QtCore/qurl.h>
+#include <QtCore/qtdeprecationdefinitions.h>
 
 #include <chrono>
 #include <optional>
@@ -48,10 +49,29 @@ public:
     deadlineTimeout() const noexcept;
     Q_GRPC_EXPORT QGrpcChannelOptions &setDeadlineTimeout(std::chrono::milliseconds timeout);
 
+#if QT_DEPRECATED_SINCE(6, 13)
+    QT_DEPRECATED_VERSION_X_6_13("Use metadata(QtGrpc::MultiValue) for QMultiHash")
     [[nodiscard]] Q_GRPC_EXPORT const QHash<QByteArray, QByteArray> &metadata() const & noexcept;
+    QT_DEPRECATED_VERSION_X_6_13("Use metadata(QtGrpc::MultiValue) for QMultiHash")
     [[nodiscard]] Q_GRPC_EXPORT QHash<QByteArray, QByteArray> metadata() &&;
+    QT_DEPRECATED_VERSION_X_6_13("Use the QMultiHash overload")
     Q_GRPC_EXPORT QGrpcChannelOptions &setMetadata(const QHash<QByteArray, QByteArray> &metadata);
+    QT_DEPRECATED_VERSION_X_6_13("Use the QMultiHash overload")
     Q_GRPC_EXPORT QGrpcChannelOptions &setMetadata(QHash<QByteArray, QByteArray> &&metadata);
+#endif
+    [[nodiscard]] Q_GRPC_EXPORT const QMultiHash<QByteArray, QByteArray> &
+        metadata(QtGrpc::MultiValue_t) const & noexcept;
+    [[nodiscard]] Q_GRPC_EXPORT QMultiHash<QByteArray, QByteArray>
+    metadata(QtGrpc::MultiValue_t) &&;
+    Q_GRPC_EXPORT QGrpcChannelOptions &
+    setMetadata(const QMultiHash<QByteArray, QByteArray> &metadata);
+    Q_GRPC_EXPORT QGrpcChannelOptions &setMetadata(QMultiHash<QByteArray, QByteArray> &&metadata);
+    Q_GRPC_EXPORT QGrpcChannelOptions &
+    setMetadata(std::initializer_list<std::pair<QByteArray, QByteArray>> list);
+    Q_GRPC_EXPORT QGrpcChannelOptions &addMetadata(QByteArrayView key, QByteArrayView value);
+
+    [[nodiscard]] Q_GRPC_EXPORT std::optional<bool> filterServerMetadata() const noexcept;
+    Q_GRPC_EXPORT QGrpcChannelOptions &setFilterServerMetadata(bool value);
 
     [[nodiscard]] Q_GRPC_EXPORT QGrpcSerializationFormat serializationFormat() const;
     Q_GRPC_EXPORT QGrpcChannelOptions &

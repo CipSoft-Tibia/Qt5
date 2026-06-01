@@ -61,8 +61,6 @@ class FakeContentAutofillDriver : public mojom::AutofillDriver {
 
   const FormData* form_submitted() const { return form_submitted_.get(); }
 
-  bool known_success() const { return known_success_; }
-
   SubmissionSource submission_source() const { return submission_source_; }
 
   const FormData* select_control_changed() const {
@@ -75,10 +73,8 @@ class FakeContentAutofillDriver : public mojom::AutofillDriver {
                  const std::vector<FormRendererId>& removed_forms) override {}
 
   void FormSubmitted(const FormData& form,
-                     bool known_success,
                      SubmissionSource source) override {
     form_submitted_ = std::make_unique<FormData>(form);
-    known_success_ = known_success;
     submission_source_ = source;
   }
 
@@ -86,15 +82,15 @@ class FakeContentAutofillDriver : public mojom::AutofillDriver {
                              FieldRendererId field_id,
                              const gfx::Rect& caret_bounds) override {}
 
-  void TextFieldDidChange(const FormData& form,
-                          FieldRendererId field_id,
-                          base::TimeTicks timestamp) override {}
+  void TextFieldValueChanged(const FormData& form,
+                             FieldRendererId field_id,
+                             base::TimeTicks timestamp) override {}
 
   void TextFieldDidScroll(const FormData& form,
                           FieldRendererId field_id) override {}
 
-  void SelectControlDidChange(const FormData& form,
-                              FieldRendererId field_id) override {
+  void SelectControlSelectionChanged(const FormData& form,
+                                     FieldRendererId field_id) override {
     select_control_changed_ = std::make_unique<FormData>(form);
   }
 
@@ -121,13 +117,10 @@ class FakeContentAutofillDriver : public mojom::AutofillDriver {
 
   void DidEndTextFieldEditing() override {}
 
-  void SelectOrSelectListFieldOptionsDidChange(
-      const autofill::FormData& form) override {}
+  void SelectFieldOptionsDidChange(const autofill::FormData& form) override {}
 
   // Records the form data received via FormSubmitted() call.
   std::unique_ptr<FormData> form_submitted_;
-
-  bool known_success_;
 
   SubmissionSource submission_source_;
 
@@ -143,7 +136,6 @@ void VerifyReceivedRendererMessages(
     const FakeContentAutofillDriver& fake_driver,
     const std::string& fname,
     const std::string& lname,
-    bool expect_known_success,
     SubmissionSource expect_submission_source) {
   ASSERT_TRUE(fake_driver.form_submitted());
 
@@ -153,7 +145,6 @@ void VerifyReceivedRendererMessages(
   EXPECT_EQ(u"fname", submitted_form.fields()[0].name());
   EXPECT_EQ(base::UTF8ToUTF16(fname), submitted_form.fields()[0].value());
   EXPECT_EQ(u"lname", submitted_form.fields()[1].name());
-  EXPECT_EQ(expect_known_success, fake_driver.known_success());
   EXPECT_EQ(expect_submission_source,
             mojo::ConvertTo<SubmissionSource>(fake_driver.submission_source()));
 }
@@ -161,7 +152,6 @@ void VerifyReceivedRendererMessages(
 void VerifyReceivedAddressRendererMessages(
     const FakeContentAutofillDriver& fake_driver,
     const std::string& address,
-    bool expect_known_success,
     SubmissionSource expect_submission_source) {
   ASSERT_TRUE(fake_driver.form_submitted());
 
@@ -170,7 +160,6 @@ void VerifyReceivedAddressRendererMessages(
   ASSERT_LE(1U, submitted_form.fields().size());
   EXPECT_EQ(u"address", submitted_form.fields()[0].name());
   EXPECT_EQ(base::UTF8ToUTF16(address), submitted_form.fields()[0].value());
-  EXPECT_EQ(expect_known_success, fake_driver.known_success());
   EXPECT_EQ(expect_submission_source,
             mojo::ConvertTo<SubmissionSource>(fake_driver.submission_source()));
 }
@@ -502,12 +491,12 @@ TEST_F(FormAutocompleteTest, SelectControlChanged) {
       "var color = document.getElementById('color');"
       "color.selectedIndex = 1;";
 
+  // The click simulation is necessary to give the frame transient user
+  // activation, otherwise the select value-change event will be ignored by the
+  // agent.
+  SimulateElementClick(
+      GetMainFrame()->GetDocument().GetElementById(blink::WebString("color")));
   ExecuteJavaScriptForTests(change_value.c_str());
-  WebElement element =
-      GetMainFrame()->GetDocument().GetElementById(blink::WebString("color"));
-  static_cast<blink::WebAutofillClient*>(autofill_agent_)
-      ->SelectControlDidChange(
-          *reinterpret_cast<blink::WebFormControlElement*>(&element));
   base::RunLoop().RunUntilIdle();
 
   const FormData* form = fake_driver_.select_control_changed();
@@ -523,9 +512,11 @@ class FormAutocompleteSubmissionTest : public FormAutocompleteTest,
                                        public testing::WithParamInterface<int> {
  public:
   FormAutocompleteSubmissionTest() {
-    EXPECT_LE(GetParam(), 3);
+    EXPECT_LE(GetParam(), 5);
     std::vector<base::test::FeatureRef> features = {
-        features::kAutofillUnifyAndFixFormTracking,
+        features::kAutofillUseSubmittedFormInHtmlSubmission,
+        features::kAutofillPreferSavedFormAsSubmittedForm,
+        features::kAutofillFixFormTracking,
         features::kAutofillReplaceCachedWebElementsByRendererIds,
         features::kAutofillReplaceFormElementObserver};
 
@@ -542,7 +533,7 @@ class FormAutocompleteSubmissionTest : public FormAutocompleteTest,
 
 INSTANTIATE_TEST_SUITE_P(AutofillSubmissionTest,
                          FormAutocompleteSubmissionTest,
-                         ::testing::Values(0, 1, 2, 3));
+                         ::testing::Values(0, 1, 2, 3, 4, 5));
 
 // Tests that submitting a form generates FormSubmitted message with the form
 // fields.
@@ -559,7 +550,6 @@ TEST_P(FormAutocompleteSubmissionTest, NormalFormSubmit) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 false /* expect_known_success */,
                                  SubmissionSource::FORM_SUBMISSION);
 }
 
@@ -581,19 +571,14 @@ TEST_P(FormAutocompleteSubmissionTest, SubmitEventPrevented) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 false /* expect_known_success */,
                                  SubmissionSource::FORM_SUBMISSION);
 }
 
 // Tests that having the form disappear after autofilling triggers submission
 // from Autofill's point of view.
 TEST_P(FormAutocompleteSubmissionTest, DomMutationAfterAutofill) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      /*enabled_features=*/
-      {features::kAutofillUnifyAndFixFormTracking,
-       features::kAutofillAcceptDomMutationAfterAutofillSubmission},
-      /*disabled_features=*/{});
+  base::test::ScopedFeatureList scoped_feature_list{
+      features::kAutofillAcceptDomMutationAfterAutofillSubmission};
   LoadHTML(
       "<html><form id='myForm' action='http://example.com/blade.php'>"
       "<input name='fname' id='fname'/>"
@@ -607,7 +592,6 @@ TEST_P(FormAutocompleteSubmissionTest, DomMutationAfterAutofill) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "John", "Smith",
-                                 /*expect_known_success=*/true,
                                  SubmissionSource::DOM_MUTATION_AFTER_AUTOFILL);
 }
 
@@ -631,7 +615,6 @@ TEST_P(FormAutocompleteSubmissionTest, AjaxSucceeded_NoLongerVisible) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 true /* expect_known_success */,
                                  SubmissionSource::XHR_SUCCEEDED);
 }
 
@@ -660,7 +643,6 @@ TEST_P(FormAutocompleteSubmissionTest,
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 true /* expect_known_success */,
                                  SubmissionSource::XHR_SUCCEEDED);
 }
 
@@ -696,7 +678,6 @@ TEST_P(FormAutocompleteSubmissionTest, MAYBE_NoLongerVisibleBothNoActions) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 true /* expect_known_success */,
                                  SubmissionSource::XHR_SUCCEEDED);
 }
 
@@ -720,7 +701,6 @@ TEST_P(FormAutocompleteSubmissionTest, AjaxSucceeded_NoLongerVisible_NoAction) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 true /* expect_known_success */,
                                  SubmissionSource::XHR_SUCCEEDED);
 }
 
@@ -794,7 +774,6 @@ TEST_P(FormAutocompleteSubmissionTest, AjaxSucceeded_FilledFormIsInvisible) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Smith",
-                                 true /* expect_known_success */,
                                  SubmissionSource::XHR_SUCCEEDED);
 }
 
@@ -842,7 +821,6 @@ TEST_P(FormAutocompleteSubmissionTest, AjaxSucceeded_FormlessElements) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Kirby", "Puckett",
-                                 true /* expect_known_success */,
                                  SubmissionSource::XHR_SUCCEEDED);
 }
 
@@ -862,7 +840,6 @@ TEST_P(FormAutocompleteSubmissionTest, AutoCompleteOffFormSubmit) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 false /* expect_known_success */,
                                  SubmissionSource::FORM_SUBMISSION);
 }
 
@@ -881,7 +858,6 @@ TEST_P(FormAutocompleteSubmissionTest, AutoCompleteOffInputSubmit) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 false /* expect_known_success */,
                                  SubmissionSource::FORM_SUBMISSION);
 }
 
@@ -913,7 +889,6 @@ TEST_P(FormAutocompleteSubmissionTest, DynamicAutoCompleteOffFormSubmit) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedRendererMessages(fake_driver_, "Rick", "Deckard",
-                                 false /* expect_known_success */,
                                  SubmissionSource::FORM_SUBMISSION);
 }
 
@@ -934,7 +909,6 @@ TEST_P(FormAutocompleteSubmissionTest, FormSubmittedByDOMMutationAfterXHR) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedAddressRendererMessages(fake_driver_, "City",
-                                        true /* expect_known_success */,
                                         SubmissionSource::XHR_SUCCEEDED);
 }
 
@@ -958,8 +932,7 @@ TEST_P(FormAutocompleteSubmissionTest, FormSubmittedBySameDocumentNavigation) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedAddressRendererMessages(
-      fake_driver_, "City", true /* expect_known_success */,
-      SubmissionSource::SAME_DOCUMENT_NAVIGATION);
+      fake_driver_, "City", SubmissionSource::SAME_DOCUMENT_NAVIGATION);
 }
 
 TEST_P(FormAutocompleteSubmissionTest, FormSubmittedByProbablyFormSubmitted) {
@@ -983,8 +956,7 @@ TEST_P(FormAutocompleteSubmissionTest, FormSubmittedByProbablyFormSubmitted) {
   base::RunLoop().RunUntilIdle();
 
   VerifyReceivedAddressRendererMessages(
-      fake_driver_, "City", false /* expect_known_success */,
-      SubmissionSource::PROBABLY_FORM_SUBMITTED);
+      fake_driver_, "City", SubmissionSource::PROBABLY_FORM_SUBMITTED);
 }
 
 }  // namespace

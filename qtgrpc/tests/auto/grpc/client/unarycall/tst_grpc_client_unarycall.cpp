@@ -44,6 +44,10 @@ private Q_SLOTS:
     void deferredCancel();
     void asyncClientStatusMessage();
     void asyncStatusMessage();
+#if QT_DEPRECATED_SINCE(6, 13)
+    void deprecatedMetadata();
+#endif
+    void metadata_data();
     void metadata();
 };
 
@@ -139,7 +143,9 @@ void QtGrpcClientUnaryCallTest::asyncStatusMessage()
     QCOMPARE(args.first().value<QGrpcStatus>().message(), request.testFieldString());
 }
 
-void QtGrpcClientUnaryCallTest::metadata()
+#if QT_DEPRECATED_SINCE(6, 13)
+
+void QtGrpcClientUnaryCallTest::deprecatedMetadata()
 {
     QGrpcCallOptions opt;
     QHash<QByteArray, QByteArray> clientMd{
@@ -158,19 +164,70 @@ void QtGrpcClientUnaryCallTest::metadata()
     QCOMPARE_EQ(args.count(), 1);
     QVERIFY(args.first().value<QGrpcStatus>().isOk());
 
-    const auto &md = reply->metadata();
+    QT_IGNORE_DEPRECATIONS(const auto &md = reply->metadata();)
     auto initialIt = md.equal_range("response_initial");
     QCOMPARE_EQ(std::distance(initialIt.first, initialIt.second), 1);
     QCOMPARE_EQ(initialIt.first.value(), "2");
+}
 
-    auto trailingIt = md.equal_range("response_trailing");
-    QCOMPARE_EQ(std::distance(trailingIt.first, trailingIt.second), 1);
+#endif // QT_DEPRECATED_SINCE(6, 13)
+
+void QtGrpcClientUnaryCallTest::metadata_data()
+{
+    QTest::addColumn<bool>("filterServerMetadata");
+    QTest::addRow("filterServerMetadata(true)") << true;
+    QTest::addRow("filterServerMetadata(false)") << false;
+}
+
+void QtGrpcClientUnaryCallTest::metadata()
+{
+    // TODO: QTBUG-138407
+    QFETCH(const bool, filterServerMetadata);
+    QGrpcCallOptions opt;
+    QMultiHash<QByteArray, QByteArray> clientMd{
+        { "request_initial",  "3"  },
+        { "request_trailing", "2"  },
+        { "request_sum",      "20" },
+        { "request_sum",      "10" }
+    };
+    opt.setFilterServerMetadata(filterServerMetadata);
+    opt.setMetadata(clientMd);
+    auto reply = client()->testMetadata({}, opt);
+    QSignalSpy replyFinishedSpy(reply.get(), &QGrpcCallReply::finished);
+    QVERIFY(replyFinishedSpy.isValid());
+
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(replyFinishedSpy.count(), 1, FailTimeout);
+    const auto &args = replyFinishedSpy.first();
+    QCOMPARE_EQ(args.count(), 1);
+    QVERIFY(args.first().value<QGrpcStatus>().isOk());
+
+    const auto &initialMd = reply->serverInitialMetadata();
+    if (filterServerMetadata)
+        QCOMPARE_EQ(initialMd.size(), 3);
+    else
+        QCOMPARE_GT(initialMd.size(), 3);
+    auto initialIt = initialMd.equal_range("response_initial");
+    QCOMPARE_EQ(std::distance(initialIt.first, initialIt.second), 3);
+    QCOMPARE_EQ(initialIt.first.value(), "2");
+    std::advance(initialIt.first, 1);
+    QCOMPARE_EQ(initialIt.first.value(), "1");
+    std::advance(initialIt.first, 1);
+    QCOMPARE_EQ(initialIt.first.value(), "0");
+
+    const auto &trailingMd = reply->serverTrailingMetadata();
+    if (filterServerMetadata)
+        QCOMPARE_EQ(trailingMd.size(), 3);
+    else
+        QCOMPARE_GT(trailingMd.size(), 3);
+    auto trailingIt = trailingMd.equal_range("response_trailing");
+    QCOMPARE_EQ(std::distance(trailingIt.first, trailingIt.second), 2);
     QCOMPARE_EQ(trailingIt.first.value(), "1");
+    std::advance(trailingIt.first, 1);
+    QCOMPARE_EQ(trailingIt.first.value(), "0");
 
-    auto sumIt = md.equal_range("response_sum");
+    auto sumIt = trailingMd.equal_range("response_sum");
     QCOMPARE_EQ(std::distance(sumIt.first, sumIt.second), 1);
-    auto sum = sumIt.first.value();
-    QVERIFY(sum == "20"_ba || sum == "10"_ba);
+    QCOMPARE_EQ(sumIt.first.value(), "30"_ba);
 }
 
 QTEST_MAIN(QtGrpcClientUnaryCallTest)

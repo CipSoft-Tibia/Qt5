@@ -22,7 +22,6 @@
 
 #ifdef Q_OS_IOS
 #import <UIKit/UIKit.h>
-#import <UIKit/UIGestureRecognizerSubclass.h>
 #endif
 
 #ifdef Q_OS_MACOS
@@ -30,60 +29,6 @@
 
 typedef NSView UIView;
 #endif
-
-QT_BEGIN_NAMESPACE
-
-static inline CGRect toCGRect(const QRectF &rect)
-{
-    return CGRectMake(rect.x(), rect.y(), rect.width(), rect.height());
-}
-
-QT_END_NAMESPACE
-// -------------------------------------------------------------------------
-
-#ifdef Q_OS_IOS
-@implementation QIOSNativeViewSelectedRecognizer
-
-- (id)initWithQWindowControllerItem:(QNativeViewController *)item
-{
-    self = [super initWithTarget:self action:@selector(nativeViewSelected:)];
-    if (self) {
-        self.cancelsTouchesInView = NO;
-        self.delaysTouchesEnded = NO;
-        m_item = item;
-    }
-    return self;
-}
-
-- (BOOL)canPreventGestureRecognizer:(UIGestureRecognizer *)other
-{
-    Q_UNUSED(other);
-    return NO;
-}
-
-- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)other
-{
-    Q_UNUSED(other);
-    return NO;
-}
-
-- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
-{
-    Q_UNUSED(touches);
-    Q_UNUSED(event);
-    self.state = UIGestureRecognizerStateRecognized;
-}
-
-- (void)nativeViewSelected:(UIGestureRecognizer *)gestureRecognizer
-{
-    Q_UNUSED(gestureRecognizer);
-    m_item->setFocus(true);
-}
-
-@end
-#endif
-
-// -------------------------------------------------------------------------
 
 @interface QtWKWebViewDelegate : NSObject<WKNavigationDelegate> {
     QDarwinWebViewPrivate *qDarwinWebViewPrivate;
@@ -256,7 +201,7 @@ bool QDarwinWebViewSettingsPrivate::localStorageEnabled() const
     return m_conf.websiteDataStore.persistent;
 }
 
-bool QDarwinWebViewSettingsPrivate::javascriptEnabled() const
+bool QDarwinWebViewSettingsPrivate::javaScriptEnabled() const
 {
     // Deprecated
     bool isJsEnabled = false;
@@ -285,7 +230,7 @@ void QDarwinWebViewSettingsPrivate::setLocalContentCanAccessFileUrls(bool enable
     m_localContentCanAccessFileUrls = enabled;
 }
 
-void QDarwinWebViewSettingsPrivate::setJavascriptEnabled(bool enabled)
+void QDarwinWebViewSettingsPrivate::setJavaScriptEnabled(bool enabled)
 {
 #if QT_MACOS_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(110000, 140000)
     if (__builtin_available(macOS 11.0, iOS 14.0, *))
@@ -315,9 +260,6 @@ void QDarwinWebViewSettingsPrivate::setAllowFileAccess(bool enabled)
 QDarwinWebViewPrivate::QDarwinWebViewPrivate(QObject *p)
     : QAbstractWebView(p)
     , wkWebView(nil)
-#ifdef Q_OS_IOS
-    , m_recognizer(0)
-#endif
 {
     CGRect frame = CGRectMake(0.0, 0.0, 400, 400);
     wkWebView = [[WKWebView alloc] initWithFrame:frame];
@@ -329,12 +271,8 @@ QDarwinWebViewPrivate::QDarwinWebViewPrivate(QObject *p)
                    options:NSKeyValueObservingOptions(NSKeyValueObservingOptionNew)
                    context:nil];
 
-
+    m_window = QWindow::fromWinId(reinterpret_cast<WId>(wkWebView));
     m_settings = new QDarwinWebViewSettingsPrivate(wkWebView.configuration, this);
-#ifdef Q_OS_IOS
-    m_recognizer = [[QIOSNativeViewSelectedRecognizer alloc] initWithQWindowControllerItem:this];
-    [wkWebView addGestureRecognizer:m_recognizer];
-#endif
 }
 
 QDarwinWebViewPrivate::~QDarwinWebViewPrivate()
@@ -347,9 +285,6 @@ QDarwinWebViewPrivate::~QDarwinWebViewPrivate()
     [wkWebView.navigationDelegate release];
     wkWebView.navigationDelegate = nil;
     [wkWebView release];
-#ifdef Q_OS_IOS
-    [m_recognizer release];
-#endif
 }
 
 QUrl QDarwinWebViewPrivate::url() const
@@ -412,73 +347,6 @@ int QDarwinWebViewPrivate::loadProgress() const
 bool QDarwinWebViewPrivate::isLoading() const
 {
     return wkWebView.loading;
-}
-
-void QDarwinWebViewPrivate::setParentView(QObject *view)
-{
-    m_parentView = view;
-
-    if (!wkWebView)
-        return;
-
-    // NOTE: We delay adding the uiView to the scene
-    // if the window is not backed by a platform window
-    // see: updateParent().
-    QWindow *w = qobject_cast<QWindow *>(view);
-    if (w && w->handle()) {
-        UIView *parentView = reinterpret_cast<UIView *>(w->winId());
-        [parentView addSubview:wkWebView];
-    } else {
-        [wkWebView removeFromSuperview];
-    }
-}
-
-QObject *QDarwinWebViewPrivate::parentView() const
-{
-    return m_parentView;
-}
-
-void QDarwinWebViewPrivate::setGeometry(const QRect &geometry)
-{
-    if (!wkWebView)
-        return;
-
-    [wkWebView setFrame:toCGRect(geometry)];
-}
-
-void QDarwinWebViewPrivate::setVisibility(QWindow::Visibility visibility)
-{
-    Q_UNUSED(visibility);
-}
-
-void QDarwinWebViewPrivate::setVisible(bool visible)
-{
-    [wkWebView setHidden:!visible];
-}
-
-void QDarwinWebViewPrivate::setFocus(bool focus)
-{
-    Q_EMIT requestFocus(focus);
-}
-
-void QDarwinWebViewPrivate::updatePolish()
-{
-    // This is a special case for when the WebView is inside a QQuickWidget...
-    // We delay adding the view until we can verify that we have a non-hidden platform window.
-    if (m_parentView && wkWebView.superview == nullptr) {
-        if (auto window = qobject_cast<QWindow *>(m_parentView)) {
-            if (window->visibility() != QWindow::Hidden) {
-                UIView *parentView = nullptr;
-                if (window->handle())
-                    parentView = reinterpret_cast<UIView *>(window->winId());
-                else if (auto rw = QQuickRenderControl::renderWindowFor(qobject_cast<QQuickWindow *>(window)))
-                    parentView = reinterpret_cast<UIView *>(rw->winId());
-
-                if (parentView)
-                    [parentView addSubview:wkWebView];
-            }
-        }
-    }
 }
 
 void QDarwinWebViewPrivate::goBack()

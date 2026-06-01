@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qstylehelper_p.h"
@@ -1069,6 +1070,7 @@ QStyleOptionToolBar::QStyleOptionToolBar(int version)
     \enum QStyleOptionToolBar::ToolBarPosition
 
     \image qstyleoptiontoolbar-position.png
+    {Diagram of thee toolbar line and the positions relative to the line}
 
     This enum is used to describe the position of a toolbar line, as
     well as the toolbar's position within the line.

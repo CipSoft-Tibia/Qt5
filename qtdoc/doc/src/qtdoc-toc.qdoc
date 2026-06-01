@@ -35,21 +35,18 @@
             \li \l {Introduction to Qt}{Introduction}
             \li \l {Get and Install Qt}{Get, install, and build Qt}
                 \list
-                    \li \l {Get and Install Qt with Command Line Interface}
                     \li \l {Get and Install Qt with \QOI}
+                    \li \l {Get and Install Qt with Command Line Interface}
                     \li \l {Building Qt Sources}
                         \list
                             \li \l {Getting Qt Sources from the Git repository}
                             \li \l {Qt Configure Options}
                             \li \l {Building Optimized Qt}
                         \endlist
-                    \li \l {Install Qt Design Studio}
                 \endlist
             \li \l {Solutions for Application Development}
-            \li \l {Solutions for UI Design}
             \li \l {Mobile Development}
             \li \l {Tools for Qt Quick UIs}
-            \li \l {Tools for Qt Widget-Based UIs}
             \li \l {Create Your First Applications}
             \li \l {Qt Examples And Tutorials}{Examples And Tutorials}
             \li \l {Explore Qt}
@@ -69,6 +66,7 @@
                     \li \l {Qt for Linux/X11}
                         \list
                             \li \l {Qt for X11 Requirements}{Requirements}
+                            \li \l {Qt for Linux - Alternative ways of installing Qt}{Alternative ways of installing Qt}
                             \li \l {Qt for Linux/X11 - Building from Source}{Building from source}
                             \li \l {Qt for Linux/X11 - Deployment}{Deployment}
                             \li \l {Qt for Linux/X11 - Specific Issues}{Specific issues}
@@ -79,6 +77,7 @@
                     \li \l {Qt for \macos}
                         \list
                             \li \l {Qt for \macos - Building from Source}{Building from source}
+                            \li \l {Qt for \macos - Alternative ways of installing Qt}{Alternative ways of installing Qt}
                             \li \l {Qt for \macos - Deployment}{Deployment}
                             \li \l {Qt for \macos - Specific Issues}{Specific issues}
                         \endlist
@@ -103,7 +102,6 @@
                     \li \l {Qt for iOS}
                         \list
                             \li \l {Qt for iOS - Building from Source}{Building from Source}
-                            \li \l {Porting to iOS}
                             \li \l {Platform Notes - iOS}{Platform Notes}
                         \endlist
                     \li \l {Qt for Embedded Linux}
@@ -169,9 +167,8 @@
                 \endlist
             \li \l {How to Report a Bug}
         \endlist
-    \li \l {Qt Overviews}{Overviews}
+    \li \l {All Overviews} {Overviews}
         \list
-            \li \l {All Overviews}
             \li \l {Development Tools}
                 \list
                     \li \l {Resource Compiler (rcc)}
@@ -201,6 +198,8 @@
             \li \l {Graphics}{Graphics and Printing}
                 \list
                     \li \l {High DPI}
+                    \li \l {2D Graphics in Qt}{2D Graphics}
+                    \li \l {Vector Image Formats in Qt}{Vector Image Formats}
                 \endlist
             \li \l {Internationalization with Qt}{Internationalization}
                 \list
@@ -247,5 +246,7 @@
             \li \l {Why Does Qt Use Moc for Signals and Slots?}
             \li \l {Differences between String-Based and Functor-Based Connections}
         \endlist
+    \li \l {Qt Overviews}{List of Overviews}
+
     \endlist
 */

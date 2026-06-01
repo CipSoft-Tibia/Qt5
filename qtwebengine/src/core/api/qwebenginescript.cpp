@@ -59,7 +59,7 @@ QT_BEGIN_NAMESPACE
 
     \value MainWorld The world used by the page's web contents. It can be useful in order to expose custom functionality
     to web contents in certain scenarios.
-    \value ApplicationWorld The default isolated world used for application level functionality implemented in JavaScript.
+    \value ApplicationWorld The default isolated world used for application-level functionality implemented in JavaScript.
     \value UserWorld The first isolated world to be used by scripts set by users if the application is not making use
     of more worlds. As a rule of thumb, if that functionality is exposed to the application users, each individual script
     should probably get its own isolated world.

@@ -4,6 +4,7 @@
 
 #include "services/device/geolocation/geolocation_provider_impl.h"
 
+#include <algorithm>
 #include <iterator>
 #include <memory>
 #include <utility>
@@ -17,7 +18,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/singleton.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/default_tick_clock.h"
 #include "build/build_config.h"
@@ -82,8 +82,7 @@ void GeolocationProviderImpl::SetGeolocationConfiguration(
     JNIEnv* env = base::android::AttachCurrentThread();
     Java_LocationProviderFactory_useGmsCoreLocationProvider(env);
 #else
-    NOTREACHED_IN_MIGRATION()
-        << "GMS core location provider is only available for Android";
+    NOTREACHED() << "GMS core location provider is only available for Android";
 #endif
   }
 }
@@ -416,11 +415,6 @@ void GeolocationProviderImpl::AddInternalsObserver(
     AddInternalsObserverCallback callback) {
   CHECK(main_task_runner_->BelongsToCurrentThread());
 
-  if (!base::FeatureList::IsEnabled(
-          features::kGeolocationDiagnosticsObserver)) {
-    std::move(callback).Run(nullptr);
-    return;
-  }
   internals_observers_.Add(std::move(observer));
   if (!location_provider_manager_) {
     std::move(callback).Run(nullptr);
@@ -500,7 +494,8 @@ void GeolocationProviderImpl::NotifyClientsSystemPermissionDenied() {
   auto error_result =
       mojom::GeopositionResult::NewError(mojom::GeopositionError::New(
           mojom::GeopositionErrorCode::kPermissionDenied,
-          kSystemPermissionDeniedErrorMessage, ""));
+          kSystemPermissionDeniedErrorMessage,
+          kSystemPermissionDeniedErrorTechnical));
   NotifyClients(std::move(error_result));
 }
 

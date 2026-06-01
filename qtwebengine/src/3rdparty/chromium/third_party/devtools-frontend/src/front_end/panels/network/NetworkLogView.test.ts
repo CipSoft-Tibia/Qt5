@@ -3,7 +3,8 @@
 // found in the LICENSE file.
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
-import type * as Platform from '../../core/platform/platform.js';
+import * as i18n from '../../core/i18n/i18n.js';
+import * as Platform from '../../core/platform/platform.js';
 import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
@@ -23,12 +24,12 @@ import {expectCalled} from '../../testing/ExpectStubCall.js';
 import {stubFileManager} from '../../testing/FileManagerHelpers.js';
 import {describeWithMockConnection, dispatchEvent} from '../../testing/MockConnection.js';
 import {activate} from '../../testing/ResourceTreeHelpers.js';
-import * as Coordinator from '../../ui/components/render_coordinator/render_coordinator.js';
+import * as RenderCoordinator from '../../ui/components/render_coordinator/render_coordinator.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import * as Network from './network.js';
 
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
+const {urlString} = Platform.DevToolsPath;
 
 describeWithMockConnection('NetworkLogView', () => {
   let target: SDK.Target.Target;
@@ -59,6 +60,12 @@ describeWithMockConnection('NetworkLogView', () => {
     const tabTarget = createTarget({type: SDK.Target.Type.TAB});
     createTarget({parentTarget: tabTarget, subtype: 'prerender'});
     target = createTarget({parentTarget: tabTarget});
+  });
+
+  afterEach(() => {
+    if (networkLogView) {
+      networkLogView.detach();
+    }
   });
 
   let nextId = 0;
@@ -101,7 +108,7 @@ describeWithMockConnection('NetworkLogView', () => {
   }
 
   it('generates a valid curl command when some headers don\'t have values', async () => {
-    const request = createNetworkRequest('http://localhost' as Platform.DevToolsPath.UrlString, {
+    const request = createNetworkRequest(urlString`http://localhost`, {
       requestHeaders: [
         {name: 'header-with-value', value: 'some value'},
         {name: 'no-value-header', value: ''},
@@ -117,7 +124,7 @@ describeWithMockConnection('NetworkLogView', () => {
   // are only added on HTTP/2 and HTTP/3, have a preceeding colon like `:authority` but it still tests
   // the stripping function.
   it('generates a valid curl command while stripping internal headers', async () => {
-    const request = createNetworkRequest('http://localhost' as Platform.DevToolsPath.UrlString, {
+    const request = createNetworkRequest(urlString`http://localhost`, {
       requestHeaders: [
         {name: 'authority', value: 'www.example.com'},
       ],
@@ -128,44 +135,44 @@ describeWithMockConnection('NetworkLogView', () => {
   });
 
   it('generates a valid curl command when header values contain double quotes', async () => {
-    const request = createNetworkRequest('http://localhost' as Platform.DevToolsPath.UrlString, {
+    const request = createNetworkRequest(urlString`http://localhost`, {
       requestHeaders: [{name: 'cookie', value: 'eva="Sg4="'}],
     });
     assert.strictEqual(
         await Network.NetworkLogView.NetworkLogView.generateCurlCommand(request, 'unix'),
-        'curl \'http://localhost\' -H \'cookie: eva=\"Sg4=\"\'',
+        'curl \'http://localhost\' -b \'eva=\"Sg4=\"\'',
     );
     assert.strictEqual(
         await Network.NetworkLogView.NetworkLogView.generateCurlCommand(request, 'win'),
-        'curl ^"http://localhost^" -H ^"cookie: eva=^\\^"Sg4=^\\^"^"',
+        'curl ^"http://localhost^" -b ^"eva=^\\^"Sg4=^\\^"^"',
     );
   });
 
   it('generates a valid curl command when header values contain percentages', async () => {
-    const request = createNetworkRequest('http://localhost' as Platform.DevToolsPath.UrlString, {
+    const request = createNetworkRequest(urlString`http://localhost`, {
       requestHeaders: [{name: 'cookie', value: 'eva=%22Sg4%3D%22'}],
     });
     assert.strictEqual(
         await Network.NetworkLogView.NetworkLogView.generateCurlCommand(request, 'unix'),
-        'curl \'http://localhost\' -H \'cookie: eva=%22Sg4%3D%22\'',
+        'curl \'http://localhost\' -b \'eva=%22Sg4%3D%22\'',
     );
     assert.strictEqual(
         await Network.NetworkLogView.NetworkLogView.generateCurlCommand(request, 'win'),
-        'curl ^"http://localhost^" -H ^"cookie: eva=^%^22Sg4^%^3D^%^22^"',
+        'curl ^"http://localhost^" -b ^"eva=^%^22Sg4^%^3D^%^22^"',
     );
   });
 
   it('generates a valid curl command when header values contain newline and ampersand', async () => {
-    const request = createNetworkRequest('http://localhost' as Platform.DevToolsPath.UrlString, {
+    const request = createNetworkRequest(urlString`http://localhost`, {
       requestHeaders: [{name: 'cookie', value: 'query=evil\n\n & cmd /c calc.exe \n\n'}],
     });
     assert.strictEqual(
         await Network.NetworkLogView.NetworkLogView.generateCurlCommand(request, 'unix'),
-        'curl \'http://localhost\' -H $\'cookie: query=evil\\n\\n & cmd /c calc.exe \\n\\n\'',
+        'curl \'http://localhost\' -b $\'query=evil\\n\\n & cmd /c calc.exe \\n\\n\'',
     );
     assert.strictEqual(
         await Network.NetworkLogView.NetworkLogView.generateCurlCommand(request, 'win'),
-        'curl ^\"http://localhost^\" -H ^\"cookie: query=evil^\n\n^\n\n ^& cmd /c calc.exe ^\n\n^\n\n^\"',
+        'curl ^\"http://localhost^\" -b ^\"query=evil^\n\n^\n\n ^& cmd /c calc.exe ^\n\n^\n\n^\"',
     );
   });
 
@@ -207,7 +214,7 @@ describeWithMockConnection('NetworkLogView', () => {
       SDK.TargetManager.TargetManager.instance().setScopeTarget(inScope ? target : null);
       const harWriterWrite = sinon.stub(HAR.Writer.Writer, 'write').resolves();
       const URL_HOST = 'example.com';
-      target.setInspectedURL(`http://${URL_HOST}/foo` as Platform.DevToolsPath.UrlString);
+      target.setInspectedURL(urlString`${`http://${URL_HOST}/foo`}`);
       const fileManager = stubFileManager();
 
       const FINISHED_REQUEST_1 = createNetworkRequest('http://example.com/', {finished: true});
@@ -233,8 +240,8 @@ describeWithMockConnection('NetworkLogView', () => {
     });
 
     it('can import and filter from HAR', async () => {
-      const URL_1 = 'http://example.com/' as Platform.DevToolsPath.UrlString;
-      const URL_2 = 'http://example.com/favicon.ico' as Platform.DevToolsPath.UrlString;
+      const URL_1 = urlString`http://example.com/`;
+      const URL_2 = urlString`http://example.com/favicon.ico`;
       function makeHarEntry(url: Platform.DevToolsPath.UrlString) {
         return {
           request: {method: 'GET', url, headersSize: -1, bodySize: 0},
@@ -256,7 +263,7 @@ describeWithMockConnection('NetworkLogView', () => {
       const blob = new Blob([JSON.stringify(har)], {type: 'text/plain'});
       const file = new File([blob], 'log.har');
       await networkLogView.onLoadFromFile(file);
-      await coordinator.done({waitForWork: true});
+      await RenderCoordinator.done({waitForWork: true});
 
       const rootNode = networkLogView.columns().dataGrid().rootNode();
       assert.deepEqual(
@@ -265,12 +272,10 @@ describeWithMockConnection('NetworkLogView', () => {
       networkLogView.setTextFilterValue('favicon');
       assert.deepEqual(
           rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()), [URL_2]);
-
-      networkLogView.detach();
     });
 
     it('shows summary toolbar with content', () => {
-      target.setInspectedURL('http://example.com/' as Platform.DevToolsPath.UrlString);
+      target.setInspectedURL(urlString`http://example.com/`);
       const request = createNetworkRequest('http://example.com/', {finished: true});
       request.endTime = 0.669414;
       request.setIssueTime(0.435136, 0.435136);
@@ -286,7 +291,7 @@ describeWithMockConnection('NetworkLogView', () => {
       networkLogView.show(document.body);
 
       const toolbar = networkLogView.summaryToolbar();
-      const textElements = toolbar.element.shadowRoot?.querySelectorAll('.toolbar-text');
+      const textElements = toolbar.querySelectorAll('.toolbar-text');
       assert.exists(textElements);
       const textContents = [...textElements].map(item => item.textContent);
       if (inScope) {
@@ -299,9 +304,8 @@ describeWithMockConnection('NetworkLogView', () => {
           'Load: 251\u00a0ms',
         ]);
       } else {
-        assert.strictEqual(textElements.length, 0);
+        assert.lengthOf(textElements, 0);
       }
-      networkLogView.detach();
     });
   };
   describe('in scope', tests(true));
@@ -319,19 +323,17 @@ describeWithMockConnection('NetworkLogView', () => {
     networkLogView = createNetworkLogView();
     networkLogView.markAsRoot();
     networkLogView.show(document.body);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const rootNode = networkLogView.columns().dataGrid().rootNode();
     assert.deepEqual(
         rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()), [request1, request2]);
 
     SDK.TargetManager.TargetManager.instance().setScopeTarget(anotherTarget);
-    await coordinator.done();
+    await RenderCoordinator.done();
     assert.deepEqual(
         rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()),
         preserveLog ? [request1, request2, request3] : [request3]);
-
-    networkLogView.detach();
   };
 
   it('replaces requests when switching scope with preserve log off', handlesSwitchingScope(false));
@@ -349,18 +351,17 @@ describeWithMockConnection('NetworkLogView', () => {
     networkLogView = createNetworkLogView();
     networkLogView.markAsRoot();
     networkLogView.show(document.body);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const rootNode = networkLogView.columns().dataGrid().rootNode();
     assert.deepEqual(
         rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()), [request1, request2]);
 
     activate(target);
-    await coordinator.done();
+    await RenderCoordinator.done();
     assert.deepEqual(
         rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()),
         [request1, request2, request3]);
-    networkLogView.detach();
   });
 
   it('hide Chrome extension requests from checkbox', async () => {
@@ -373,14 +374,11 @@ describeWithMockConnection('NetworkLogView', () => {
 
     assert.deepEqual(
         rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()),
-        ['chrome-extension://url1' as Platform.DevToolsPath.UrlString, 'url2' as Platform.DevToolsPath.UrlString]);
+        [urlString`chrome-extension://url1`, urlString`url2`]);
 
     clickCheckbox(hideExtCheckbox);
     assert.deepEqual(
-        rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()),
-        ['url2' as Platform.DevToolsPath.UrlString]);
-
-    networkLogView.detach();
+        rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()), [urlString`url2`]);
   });
 
   it('can hide Chrome extension requests from dropdown', async () => {
@@ -393,7 +391,7 @@ describeWithMockConnection('NetworkLogView', () => {
 
     assert.deepEqual(
         rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()),
-        ['chrome-extension://url1' as Platform.DevToolsPath.UrlString, 'url2' as Platform.DevToolsPath.UrlString]);
+        [urlString`chrome-extension://url1`, urlString`url2`]);
 
     const dropdown = await openMoreTypesDropdown(filterBar, networkLogView);
     if (!dropdown) {
@@ -407,11 +405,9 @@ describeWithMockConnection('NetworkLogView', () => {
     assert.isTrue(hideExtensionURL.hasAttribute('checked'));
 
     assert.deepEqual(
-        rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()),
-        ['url2' as Platform.DevToolsPath.UrlString]);
+        rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()), [urlString`url2`]);
 
     dropdown.discard();
-    networkLogView.detach();
   });
 
   it('displays correct count for more filters', async () => {
@@ -433,7 +429,6 @@ describeWithMockConnection('NetworkLogView', () => {
     assert.isFalse(getCountAdorner(filterBar)?.classList.contains('hidden'));
 
     dropdown.discard();
-    networkLogView.detach();
   });
 
   it('can filter requests with blocked response cookies from checkbox', async () => {
@@ -450,16 +445,12 @@ describeWithMockConnection('NetworkLogView', () => {
     const blockedCookiesCheckbox = getCheckbox(filterBar, 'Show only requests with blocked response cookies');
     clickCheckbox(blockedCookiesCheckbox);
     assert.deepEqual(rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()), [
-      'url1' as Platform.DevToolsPath.UrlString,
+      urlString`url1`,
     ]);
-
-    networkLogView.detach();
   });
 
   it('can filter requests with blocked response cookies from dropdown', async () => {
     Root.Runtime.experiments.enableForTest(Root.Runtime.ExperimentName.NETWORK_PANEL_FILTER_BAR_REDESIGN);
-    const umaCountSpy = sinon.spy(Host.userMetrics, 'networkPanelMoreFiltersNumberOfSelectedChanged');
-    const umaItemSpy = sinon.spy(Host.userMetrics, 'networkPanelMoreFiltersItemSelected');
 
     const request1 = createNetworkRequest('url1', {target});
     request1.blockedResponseCookies = () => [{
@@ -474,7 +465,7 @@ describeWithMockConnection('NetworkLogView', () => {
 
     assert.deepEqual(
         rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()),
-        ['url1' as Platform.DevToolsPath.UrlString, 'url2' as Platform.DevToolsPath.UrlString]);
+        [urlString`url1`, urlString`url2`]);
 
     const dropdown = await openMoreTypesDropdown(filterBar, networkLogView);
     if (!dropdown) {
@@ -488,19 +479,14 @@ describeWithMockConnection('NetworkLogView', () => {
     assert.isTrue(blockedResponseCookies.hasAttribute('checked'));
 
     assert.deepEqual(rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()), [
-      'url1' as Platform.DevToolsPath.UrlString,
+      urlString`url1`,
     ]);
 
     dropdown.discard();
-    assert.isTrue(umaCountSpy.calledOnceWith(1));
-    assert.isTrue(umaItemSpy.calledOnceWith('Blocked response cookies'));
-    networkLogView.detach();
   });
 
   it('lists selected options in more filters tooltip', async () => {
     Root.Runtime.experiments.enableForTest(Root.Runtime.ExperimentName.NETWORK_PANEL_FILTER_BAR_REDESIGN);
-    const umaCountSpy = sinon.spy(Host.userMetrics, 'networkPanelMoreFiltersNumberOfSelectedChanged');
-    const umaItemSpy = sinon.spy(Host.userMetrics, 'networkPanelMoreFiltersItemSelected');
     let filterBar;
     ({filterBar, networkLogView} = createEnvironment());
 
@@ -518,11 +504,6 @@ describeWithMockConnection('NetworkLogView', () => {
     assert.strictEqual(button.title, 'Hide extension URLs, Blocked response cookies');
 
     dropdown.discard();
-    assert.isTrue(umaCountSpy.calledOnceWith(2));
-    assert.isTrue(umaItemSpy.calledTwice);
-    assert.isTrue(umaItemSpy.calledWith('Hide extension URLs'));
-    assert.isTrue(umaItemSpy.calledWith('Blocked response cookies'));
-    networkLogView.detach();
   });
 
   it('updates tooltip to default when more filters option deselected', async () => {
@@ -547,7 +528,6 @@ describeWithMockConnection('NetworkLogView', () => {
     assert.strictEqual(button.title, 'Show only/hide requests');
 
     dropdown.discard();
-    networkLogView.detach();
   });
 
   it('can remove requests', async () => {
@@ -557,12 +537,10 @@ describeWithMockConnection('NetworkLogView', () => {
     networkLogView.show(document.body);
 
     const rootNode = networkLogView.columns().dataGrid().rootNode();
-    assert.strictEqual(rootNode.children.length, 1);
+    assert.lengthOf(rootNode.children, 1);
 
     networkLog.dispatchEventToListeners(Logs.NetworkLog.Events.RequestRemoved, {request});
-    assert.strictEqual(rootNode.children.length, 0);
-
-    networkLogView.detach();
+    assert.lengthOf(rootNode.children, 0);
   });
 
   it('correctly shows/hides "Copy all as HAR (with sensitive data)" menu item', async () => {
@@ -618,10 +596,10 @@ describeWithMockConnection('NetworkLogView', () => {
   });
 
   function createOverrideRequests() {
-    const urlNotOverridden = 'url-not-overridden' as Platform.DevToolsPath.UrlString;
-    const urlHeaderOverridden = 'url-header-overridden' as Platform.DevToolsPath.UrlString;
-    const urlContentOverridden = 'url-content-overridden' as Platform.DevToolsPath.UrlString;
-    const urlHeaderAndContentOverridden = 'url-header-und-content-overridden' as Platform.DevToolsPath.UrlString;
+    const urlNotOverridden = urlString`url-not-overridden`;
+    const urlHeaderOverridden = urlString`url-header-overridden`;
+    const urlContentOverridden = urlString`url-content-overridden`;
+    const urlHeaderAndContentOverridden = urlString`url-header-und-content-overridden`;
 
     createNetworkRequest(urlNotOverridden, {target});
     const r2 = createNetworkRequest(urlHeaderOverridden, {target});
@@ -655,8 +633,6 @@ describeWithMockConnection('NetworkLogView', () => {
       urlContentOverridden,
       urlHeaderAndContentOverridden,
     ]);
-
-    networkLogView.detach();
   });
 
   it('can apply filter - has-overrides:no', async () => {
@@ -673,8 +649,6 @@ describeWithMockConnection('NetworkLogView', () => {
     assert.deepEqual(rootNode.children.map(n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url()), [
       urlNotOverridden,
     ]);
-
-    networkLogView.detach();
   });
 
   it('can apply filter - has-overrides:headers', async () => {
@@ -692,8 +666,6 @@ describeWithMockConnection('NetworkLogView', () => {
       urlHeaderOverridden,
       urlHeaderAndContentOverridden,
     ]);
-
-    networkLogView.detach();
   });
 
   it('can apply filter - has-overrides:content', async () => {
@@ -711,8 +683,6 @@ describeWithMockConnection('NetworkLogView', () => {
       urlContentOverridden,
       urlHeaderAndContentOverridden,
     ]);
-
-    networkLogView.detach();
   });
 
   it('can apply filter - has-overrides:tent', async () => {
@@ -730,8 +700,37 @@ describeWithMockConnection('NetworkLogView', () => {
       urlContentOverridden,
       urlHeaderAndContentOverridden,
     ]);
+  });
 
-    networkLogView.detach();
+  it('filters localized resource categories', async () => {
+    // "simulate" other locale by stubbing out resource categories with a different text
+    sinon.stub(Common.ResourceType.resourceCategories.Document, 'title')
+        .returns(i18n.i18n.lockedString('<localized document>'));
+    sinon.stub(Common.ResourceType.resourceCategories.XHR, 'title').returns(i18n.i18n.lockedString('<localized xhr>'));
+
+    const documentRequest = createNetworkRequest('urlDocument', {finished: true});
+    documentRequest.setResourceType(Common.ResourceType.resourceTypes.Document);
+    const fetchRequest = createNetworkRequest('urlFetch', {finished: true});
+    fetchRequest.setResourceType(Common.ResourceType.resourceTypes.Fetch);
+
+    const filterBar = new UI.FilterBar.FilterBar('network-panel', true);
+    networkLogView = createNetworkLogView(filterBar);
+
+    networkLogView.markAsRoot();
+    networkLogView.show(document.body);
+    const rootNode = networkLogView.columns().dataGrid().rootNode();
+    const shownRequestUrls = () => rootNode.children.map(
+        n => (n as Network.NetworkDataGridNode.NetworkNode).request()?.url() as string | undefined);
+
+    const setting = Common.Settings.Settings.instance().createSetting('network-resource-type-filters', {});
+    setting.set({all: true});
+    assert.deepEqual(shownRequestUrls(), ['urlDocument', 'urlFetch']);
+
+    setting.set({[Common.ResourceType.resourceCategories.Document.name]: true});
+    assert.deepEqual(shownRequestUrls(), ['urlDocument']);
+
+    setting.set({[Common.ResourceType.resourceCategories.XHR.name]: true});
+    assert.deepEqual(shownRequestUrls(), ['urlFetch']);
   });
 
   it('"Copy all" commands respects filters', async () => {
@@ -864,8 +863,6 @@ Invoke-WebRequest -UseBasicParsing -Uri "url-header-overridden";\r
 Invoke-WebRequest -UseBasicParsing -Uri "url-content-overridden";\r
 Invoke-WebRequest -UseBasicParsing -Uri "url-header-und-content-overridden"`]);
     copyText.resetHistory();
-
-    networkLogView.detach();
   });
 
   it('skips unknown columns without title in persistence setting', async () => {
@@ -913,7 +910,7 @@ function clickCheckbox(checkbox: HTMLInputElement) {
 
 function getCheckbox(filterBar: UI.FilterBar.FilterBar, title: string) {
   const checkbox =
-      filterBar.element.querySelector(`[title="${title}"] span`)?.shadowRoot?.querySelector('input') || null;
+      filterBar.element.querySelector(`[title="${title}"] dt-checkbox`)?.shadowRoot?.querySelector('input') || null;
   assert.instanceOf(checkbox, HTMLInputElement);
   return checkbox;
 }

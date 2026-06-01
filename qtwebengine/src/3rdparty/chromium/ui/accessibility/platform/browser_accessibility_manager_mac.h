@@ -21,9 +21,11 @@ namespace ui {
 class AXPlatformTreeManagerDelegate;
 }
 
-namespace ui {
-
+namespace content {
 class BrowserAccessibilityCocoaBrowserTest;
+}
+
+namespace ui {
 
 class COMPONENT_EXPORT(AX_PLATFORM) BrowserAccessibilityManagerMac
     : public BrowserAccessibilityManager {
@@ -73,6 +75,9 @@ class COMPONENT_EXPORT(AX_PLATFORM) BrowserAccessibilityManagerMac
   void OnAtomicUpdateFinished(AXTree* tree,
                               bool root_changed,
                               const std::vector<Change>& changes) override;
+  void OnNodeDataChanged(AXTree* tree,
+                         const AXNodeData& old_node_data,
+                         const AXNodeData& new_node_data) override;
 
   NSDictionary* GetUserInfoForSelectedTextChangedNotification();
 
@@ -95,7 +100,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) BrowserAccessibilityManagerMac
   // constructor.
   friend class BrowserAccessibilityManager;
 
-  friend class BrowserAccessibilityCocoaBrowserTest;
+  friend class content::BrowserAccessibilityCocoaBrowserTest;
 };
 
 }  // namespace ui

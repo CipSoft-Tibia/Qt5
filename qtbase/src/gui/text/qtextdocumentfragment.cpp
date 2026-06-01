@@ -16,6 +16,7 @@
 #include <qbytearray.h>
 #include <qdatastream.h>
 #include <qdatetime.h>
+#include <QtCore/private/qstringiterator_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -582,8 +583,11 @@ bool QTextHtmlImporter::appendNodeText()
     QString textToInsert;
     textToInsert.reserve(text.size());
 
-    for (QChar ch : text) {
-        if (ch.isSpace()
+    QStringIterator it(text);
+    while (it.hasNext()) {
+        char32_t ch = it.next();
+
+        if (QChar::isSpace(ch)
             && ch != QChar::Nbsp
             && ch != QChar::ParagraphSeparator) {
 
@@ -646,12 +650,12 @@ bool QTextHtmlImporter::appendNodeText()
 
                 format.setAnchor(true);
                 format.setAnchorNames(namedAnchors);
-                cursor.insertText(ch, format);
+                cursor.insertText(QString::fromUcs4(&ch, 1), format);
                 namedAnchors.clear();
                 format.clearProperty(QTextFormat::IsAnchor);
                 format.clearProperty(QTextFormat::AnchorName);
             } else {
-                textToInsert += ch;
+                textToInsert += QChar::fromUcs4(ch);
             }
         }
     }
@@ -702,11 +706,13 @@ QTextHtmlImporter::ProcessNodeResult QTextHtmlImporter::processSpecialNodes()
             if (currentNode->listStart != 1)
                 listFmt.setStart(currentNode->listStart);
 
-            ++indent;
-            if (currentNode->hasCssListIndent)
+            if (currentNode->hasCssListIndent) {
+                indent += currentNode->cssListIndent;
                 listFmt.setIndent(currentNode->cssListIndent);
-            else
+            } else {
+                ++indent;
                 listFmt.setIndent(indent);
+            }
 
             List l;
             l.format = listFmt;
@@ -861,7 +867,10 @@ bool QTextHtmlImporter::closeTag()
                 if (lists.isEmpty())
                     break;
                 lists.resize(lists.size() - 1);
-                --indent;
+                if (currentNode->hasCssListIndent)
+                    indent -= currentNode->cssListIndent;
+                else
+                    --indent;
                 blockTagClosed = true;
                 break;
 

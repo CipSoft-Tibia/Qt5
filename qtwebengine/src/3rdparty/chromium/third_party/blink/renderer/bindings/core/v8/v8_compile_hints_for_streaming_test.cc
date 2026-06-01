@@ -44,8 +44,7 @@ TEST_F(CompileHintsForStreamingTest, NoCrowdsourcedNoLocalNoMagicComment1) {
   auto builder = CompileHintsForStreaming::Builder(
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
-      KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/false);
+      KURL("https://example.com/"), v8_compile_hints::MagicCommentMode::kNever);
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming = std::move(builder).Build(
       /*cached_metadata=*/nullptr, /*has_hot_timestamp=*/true);
@@ -63,7 +62,7 @@ TEST_F(CompileHintsForStreamingTest, NoCrowdsourcedNoLocalNoMagicComment2) {
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming = std::move(builder).Build(
       /*cached_metadata=*/nullptr, /*has_hot_timestamp=*/false);
@@ -74,6 +73,25 @@ TEST_F(CompileHintsForStreamingTest, NoCrowdsourcedNoLocalNoMagicComment2) {
             compile_hints_for_streaming->compile_options());
 }
 
+TEST_F(CompileHintsForStreamingTest,
+       NoCrowdsourcedNoLocalButMagicCommentAlways) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(features::kLocalCompileHints);
+  auto builder = CompileHintsForStreaming::Builder(
+      /*crowdsourced_compile_hints_producer=*/nullptr,
+      /*crowdsourced_compile_hints_consumer=*/nullptr,
+      KURL("https://example.com/"),
+      v8_compile_hints::MagicCommentMode::kAlways);
+  base::HistogramTester histogram_tester;
+  auto compile_hints_for_streaming = std::move(builder).Build(
+      /*cached_metadata=*/nullptr, /*has_hot_timestamp=*/false);
+  histogram_tester.ExpectUniqueSample(kStatusHistogram,
+                                      Status::kNoCompileHintsStreaming, 1);
+  ASSERT_TRUE(compile_hints_for_streaming);
+  EXPECT_EQ(v8::ScriptCompiler::kFollowCompileHintsMagicComment,
+            compile_hints_for_streaming->compile_options());
+}
+
 TEST_F(CompileHintsForStreamingTest, NoCrowdsourcedNoLocalButMagicComment) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndDisableFeature(features::kLocalCompileHints);
@@ -81,7 +99,7 @@ TEST_F(CompileHintsForStreamingTest, NoCrowdsourcedNoLocalButMagicComment) {
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming = std::move(builder).Build(
       /*cached_metadata=*/nullptr, /*has_hot_timestamp=*/true);
@@ -98,8 +116,7 @@ TEST_F(CompileHintsForStreamingTest, ProduceLocalNoMagicComment) {
   auto builder = CompileHintsForStreaming::Builder(
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
-      KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      KURL("https://example.com/"), v8_compile_hints::MagicCommentMode::kNever);
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming = std::move(builder).Build(
       /*cached_metadata=*/nullptr, /*has_hot_timestamp=*/false);
@@ -118,13 +135,12 @@ TEST_F(CompileHintsForStreamingTest, ConsumeLocalNoMagicComment) {
   auto builder = CompileHintsForStreaming::Builder(
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
-      KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/false);
+      KURL("https://example.com/"), v8_compile_hints::MagicCommentMode::kNever);
   const uint32_t kCacheTagCompileHints = 2;
   const uint64_t kDummyTag = 1;
   Vector<uint8_t> dummy_data(100);
-  scoped_refptr<CachedMetadata> metadata = CachedMetadata::Create(
-      kCacheTagCompileHints, dummy_data.data(), dummy_data.size(), kDummyTag);
+  scoped_refptr<CachedMetadata> metadata =
+      CachedMetadata::Create(kCacheTagCompileHints, dummy_data, kDummyTag);
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming =
       std::move(builder).Build(std::move(metadata), /*has_hot_timestamp=*/true);
@@ -139,6 +155,35 @@ TEST_F(CompileHintsForStreamingTest, ConsumeLocalNoMagicComment) {
   EXPECT_TRUE(compile_hints_for_streaming->GetCompileHintCallbackData());
 }
 
+TEST_F(CompileHintsForStreamingTest, ConsumeLocalMagicCommentAlways) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(features::kLocalCompileHints);
+  auto builder = CompileHintsForStreaming::Builder(
+      /*crowdsourced_compile_hints_producer=*/nullptr,
+      /*crowdsourced_compile_hints_consumer=*/nullptr,
+      KURL("https://example.com/"),
+      v8_compile_hints::MagicCommentMode::kAlways);
+  const uint32_t kCacheTagCompileHints = 2;
+  const uint64_t kDummyTag = 1;
+  Vector<uint8_t> dummy_data(100);
+  scoped_refptr<CachedMetadata> metadata =
+      CachedMetadata::Create(kCacheTagCompileHints, dummy_data, kDummyTag);
+  base::HistogramTester histogram_tester;
+  auto compile_hints_for_streaming =
+      std::move(builder).Build(std::move(metadata), /*has_hot_timestamp=*/true);
+  histogram_tester.ExpectUniqueSample(
+      kStatusHistogram, Status::kConsumeLocalCompileHintsStreaming, 1);
+  ASSERT_TRUE(compile_hints_for_streaming);
+  EXPECT_EQ(compile_hints_for_streaming->compile_options(),
+            v8::ScriptCompiler::CompileOptions(
+                v8::ScriptCompiler::kConsumeCompileHints |
+                v8::ScriptCompiler::kFollowCompileHintsMagicComment));
+  EXPECT_EQ(
+      compile_hints_for_streaming->GetCompileHintCallback(),
+      v8::CompileHintCallback(V8LocalCompileHintsConsumer::GetCompileHint));
+  EXPECT_TRUE(compile_hints_for_streaming->GetCompileHintCallbackData());
+}
+
 TEST_F(CompileHintsForStreamingTest, ConsumeLocalMagicComment) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(features::kLocalCompileHints);
@@ -146,12 +191,13 @@ TEST_F(CompileHintsForStreamingTest, ConsumeLocalMagicComment) {
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
+
   const uint32_t kCacheTagCompileHints = 2;
   const uint64_t kDummyTag = 1;
   Vector<uint8_t> dummy_data(100);
-  scoped_refptr<CachedMetadata> metadata = CachedMetadata::Create(
-      kCacheTagCompileHints, dummy_data.data(), dummy_data.size(), kDummyTag);
+  scoped_refptr<CachedMetadata> metadata =
+      CachedMetadata::Create(kCacheTagCompileHints, dummy_data, kDummyTag);
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming =
       std::move(builder).Build(std::move(metadata), /*has_hot_timestamp=*/true);
@@ -175,17 +221,38 @@ TEST_F(CompileHintsForStreamingTest,
   auto builder = CompileHintsForStreaming::Builder(
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
-      KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/false);
+      KURL("https://example.com/"), v8_compile_hints::MagicCommentMode::kNever);
   const uint32_t kCacheTagCompileHints = 2;
   const uint64_t kDummyTag = 1;
   Vector<uint8_t> dummy_data(1);  // Too small.
-  scoped_refptr<CachedMetadata> metadata = CachedMetadata::Create(
-      kCacheTagCompileHints, dummy_data.data(), dummy_data.size(), kDummyTag);
+  scoped_refptr<CachedMetadata> metadata =
+      CachedMetadata::Create(kCacheTagCompileHints, dummy_data, kDummyTag);
   auto compile_hints_for_streaming =
       std::move(builder).Build(std::move(metadata), /*has_hot_timestamp=*/true);
   EXPECT_TRUE(compile_hints_for_streaming);
   EXPECT_EQ(v8::ScriptCompiler::kNoCompileOptions,
+            compile_hints_for_streaming->compile_options());
+}
+
+TEST_F(CompileHintsForStreamingTest,
+       FailedToConsumeLocalWrongSizeMagicCommentAlways) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(features::kLocalCompileHints);
+  base::HistogramTester histogram_tester;
+  auto builder = CompileHintsForStreaming::Builder(
+      /*crowdsourced_compile_hints_producer=*/nullptr,
+      /*crowdsourced_compile_hints_consumer=*/nullptr,
+      KURL("https://example.com/"),
+      v8_compile_hints::MagicCommentMode::kAlways);
+  const uint32_t kCacheTagCompileHints = 2;
+  const uint64_t kDummyTag = 1;
+  Vector<uint8_t> dummy_data(1);  // Too small.
+  scoped_refptr<CachedMetadata> metadata =
+      CachedMetadata::Create(kCacheTagCompileHints, dummy_data, kDummyTag);
+  auto compile_hints_for_streaming =
+      std::move(builder).Build(std::move(metadata), /*has_hot_timestamp=*/true);
+  EXPECT_TRUE(compile_hints_for_streaming);
+  EXPECT_EQ(v8::ScriptCompiler::kFollowCompileHintsMagicComment,
             compile_hints_for_streaming->compile_options());
 }
 
@@ -198,12 +265,12 @@ TEST_F(CompileHintsForStreamingTest,
       /*crowdsourced_compile_hints_producer=*/nullptr,
       /*crowdsourced_compile_hints_consumer=*/nullptr,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
   const uint32_t kCacheTagCompileHints = 2;
   const uint64_t kDummyTag = 1;
   Vector<uint8_t> dummy_data(1);  // Too small.
-  scoped_refptr<CachedMetadata> metadata = CachedMetadata::Create(
-      kCacheTagCompileHints, dummy_data.data(), dummy_data.size(), kDummyTag);
+  scoped_refptr<CachedMetadata> metadata =
+      CachedMetadata::Create(kCacheTagCompileHints, dummy_data, kDummyTag);
   auto compile_hints_for_streaming =
       std::move(builder).Build(std::move(metadata), /*has_hot_timestamp=*/true);
   EXPECT_TRUE(compile_hints_for_streaming);
@@ -222,13 +289,12 @@ TEST_F(CompileHintsForStreamingTest, ConsumeCrowdsourcedHintNoMagicComment) {
   auto* crowdsourced_compile_hints_consumer =
       &page->GetV8CrowdsourcedCompileHintsConsumer();
   Vector<int64_t> dummy_data(kBloomFilterInt32Count / 2);
-  crowdsourced_compile_hints_consumer->SetData(dummy_data.data(),
-                                               dummy_data.size());
+  crowdsourced_compile_hints_consumer->SetData(dummy_data);
 
   auto builder = CompileHintsForStreaming::Builder(
       crowdsourced_compile_hints_producer, crowdsourced_compile_hints_consumer,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
 
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming = std::move(builder).Build(
@@ -254,21 +320,19 @@ TEST_F(CompileHintsForStreamingTest, PreferCrowdsourcedHints) {
   auto* crowdsourced_compile_hints_consumer =
       &page->GetV8CrowdsourcedCompileHintsConsumer();
   Vector<int64_t> dummy_data(kBloomFilterInt32Count / 2);
-  crowdsourced_compile_hints_consumer->SetData(dummy_data.data(),
-                                               dummy_data.size());
+  crowdsourced_compile_hints_consumer->SetData(dummy_data);
 
   const uint32_t kCacheTagCompileHints = 2;
   const uint64_t kDummyTag = 1;
   Vector<uint8_t> local_dummy_data(100);
-  scoped_refptr<CachedMetadata> metadata =
-      CachedMetadata::Create(kCacheTagCompileHints, local_dummy_data.data(),
-                             local_dummy_data.size(), kDummyTag);
+  scoped_refptr<CachedMetadata> metadata = CachedMetadata::Create(
+      kCacheTagCompileHints, local_dummy_data, kDummyTag);
 
   base::HistogramTester histogram_tester;
   auto builder = CompileHintsForStreaming::Builder(
       crowdsourced_compile_hints_producer, crowdsourced_compile_hints_consumer,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
 
   auto compile_hints_for_streaming =
       std::move(builder).Build(metadata, /*has_hot_timestamp=*/true);
@@ -306,7 +370,7 @@ TEST_F(CompileHintsForStreamingTest, ProduceCrowdsourcedHintNoMagicComment) {
   auto builder = CompileHintsForStreaming::Builder(
       crowdsourced_compile_hints_producer, crowdsourced_compile_hints_consumer,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
 
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming = std::move(builder).Build(
@@ -348,7 +412,7 @@ TEST_F(CompileHintsForStreamingTest, ProduceCrowdsourcedHintMagicComment) {
   auto builder = CompileHintsForStreaming::Builder(
       crowdsourced_compile_hints_producer, crowdsourced_compile_hints_consumer,
       KURL("https://example.com/"),
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/true);
+      v8_compile_hints::MagicCommentMode::kWhenProducingCodeCache);
 
   base::HistogramTester histogram_tester;
   auto compile_hints_for_streaming = std::move(builder).Build(

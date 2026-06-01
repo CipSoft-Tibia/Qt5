@@ -23,7 +23,7 @@ public:
     // random values
     static constexpr quint64 ZeroSeed = 0;
     static constexpr quint64 RandomSeed32 = 1045982819;
-    static constexpr quint64 RandomSeed64 = QtPrivate::QHashCombine{}(RandomSeed32, RandomSeed32);
+    static constexpr quint64 RandomSeed64 = qHashMulti(0, RandomSeed32, RandomSeed32);
     size_t seed;
 
     template <typename T1, typename T2> void stdPair_template(const T1 &t1, const T2 &t2);
@@ -401,15 +401,15 @@ void tst_QHashFunctions::qhash()
     }
 
     {
-        QPair<int, int> p12(1, 2);
-        QPair<int, int> p21(2, 1);
+        std::pair<int, int> p12(1, 2);
+        std::pair<int, int> p21(2, 1);
 
         QVERIFY(qHash(p12, seed) == qHash(p12, seed));
         QVERIFY(qHash(p21, seed) == qHash(p21, seed));
         QVERIFY(qHash(p12, seed) != qHash(p21, seed));  // not guaranteed
 
-        QPair<int, int> pA(0x12345678, 0x12345678);
-        QPair<int, int> pB(0x12345675, 0x12345675);
+        std::pair<int, int> pA(0x12345678, 0x12345678);
+        std::pair<int, int> pB(0x12345675, 0x12345675);
 
         QVERIFY(qHash(pA, seed) != qHash(pB, seed));    // not guaranteed
     }

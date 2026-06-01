@@ -18,13 +18,13 @@
 #include "components/attribution_reporting/aggregatable_debug_reporting_config.h"
 #include "components/attribution_reporting/aggregatable_dedup_key.h"
 #include "components/attribution_reporting/aggregatable_filtering_id_max_bytes.h"
+#include "components/attribution_reporting/aggregatable_named_budget_candidate.h"
 #include "components/attribution_reporting/aggregatable_trigger_config.h"
 #include "components/attribution_reporting/aggregatable_trigger_data.h"
 #include "components/attribution_reporting/aggregatable_values.h"
 #include "components/attribution_reporting/attribution_scopes_set.h"
 #include "components/attribution_reporting/constants.h"
 #include "components/attribution_reporting/event_trigger_data.h"
-#include "components/attribution_reporting/features.h"
 #include "components/attribution_reporting/filters.h"
 #include "components/attribution_reporting/parsing_utils.h"
 #include "components/attribution_reporting/suitable_origin.h"
@@ -99,6 +99,14 @@ void RecordTriggerRegistrationError(TriggerRegistrationError error) {
                                 error);
 }
 
+void RecordFeatureUsage(const TriggerRegistration& registration) {
+  base::UmaHistogramCounts100("Conversions.ScopesPerTriggerRegistration",
+                              registration.attribution_scopes.scopes().size());
+  base::UmaHistogramCounts100(
+      "Conversions.NamedBudgetsPerTriggerRegistration",
+      registration.aggregatable_named_budget_candidates.size());
+}
+
 namespace {
 
 base::expected<TriggerRegistration, TriggerRegistrationError> ParseDict(
@@ -136,13 +144,18 @@ base::expected<TriggerRegistration, TriggerRegistrationError> ParseDict(
           &AggregatableTriggerData::FromJSON));
 
   ASSIGN_OR_RETURN(
+      registration.aggregatable_named_budget_candidates,
+      ParseList<AggregatableNamedBudgetCandidate>(
+          dict.Find(kAggregatableNamedBudgets),
+          TriggerRegistrationError::kAggregatableNamedBudgetWrongType,
+          &AggregatableNamedBudgetCandidate::FromJSON));
+
+  ASSIGN_OR_RETURN(
       registration.aggregatable_values,
       AggregatableValues::FromJSON(dict.Find(kAggregatableValues)));
 
-  if (base::FeatureList::IsEnabled(features::kAttributionScopes)) {
-    ASSIGN_OR_RETURN(registration.attribution_scopes,
-                     AttributionScopesSet::FromJSON(dict));
-  }
+  ASSIGN_OR_RETURN(registration.attribution_scopes,
+                   AttributionScopesSet::FromJSON(dict));
 
   registration.debug_key = ParseDebugKey(dict);
   registration.debug_reporting = ParseDebugReporting(dict);
@@ -166,8 +179,7 @@ base::expected<TriggerRegistration, TriggerRegistrationError> ParseDict(
             : TriggerRegistrationError::kAggregatableValuesValueInvalid);
   }
 
-  base::UmaHistogramCounts100("Conversions.ScopesPerTriggerRegistration",
-                              registration.attribution_scopes.scopes().size());
+  RecordFeatureUsage(registration);
 
   return registration;
 }
@@ -242,9 +254,11 @@ base::Value::Dict TriggerRegistration::ToJson() const {
 
   aggregatable_debug_reporting_config.Serialize(dict);
 
-  if (base::FeatureList::IsEnabled(features::kAttributionScopes)) {
-    attribution_scopes.SerializeForTrigger(dict);
-  }
+  attribution_scopes.SerializeForTrigger(dict);
+
+  SerializeListIfNotEmpty(dict, kAggregatableNamedBudgets,
+                          aggregatable_named_budget_candidates);
+
   return dict;
 }
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef WEB_CONTENTS_VIEW_QT_H
 #define WEB_CONTENTS_VIEW_QT_H
@@ -96,6 +97,7 @@ public:
     void GotFocus(content::RenderWidgetHostImpl *render_widget_host) override;
     void LostFocus(content::RenderWidgetHostImpl *render_widget_host) override;
     void TakeFocus(bool reverse) override;
+    void DestroyBackForwardTransitionAnimationManager() override {}
 
 private:
     static void update(QWebEngineContextMenuRequest *request,

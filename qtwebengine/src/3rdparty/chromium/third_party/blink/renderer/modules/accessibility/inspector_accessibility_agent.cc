@@ -7,7 +7,6 @@
 #include <memory>
 
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
-#include "third_party/blink/renderer/core/aom/accessible_node.h"
 #include "third_party/blink/renderer/core/dom/dom_node_ids.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
@@ -29,7 +28,6 @@
 
 namespace blink {
 
-using protocol::Maybe;
 using protocol::Accessibility::AXNode;
 using protocol::Accessibility::AXNodeId;
 using protocol::Accessibility::AXProperty;
@@ -295,9 +293,9 @@ void FillWidgetProperties(AXObject& ax_object,
     properties.emplace_back(CreateProperty(
         AXPropertyNameEnum::Valuetext,
         CreateValue(
-            ax_object
-                .GetAOMPropertyOrARIAAttribute(AOMStringProperty::kValueText)
-                .GetString())));
+            node_data
+                .GetStringAttribute(ax::mojom::blink::StringAttribute::kValue)
+                .c_str())));
   }
 }
 
@@ -354,6 +352,48 @@ void FillWidgetStates(AXObject& ax_object,
   }
 }
 
+// TODO(crbug/41469336): also show related elements from ElementInternals
+void AccessibilityChildrenFromAttribute(const AXObject& ax_object,
+                                        const QualifiedName& attribute,
+                                        AXObject::AXObjectVector& children) {
+  if (!ax_object.GetElement()) {
+    return;
+  }
+  HeapVector<Member<Element>>* elements =
+      ax_object.GetElement()->GetAttrAssociatedElements(
+          attribute,
+          /*resolve_reference_target=*/true);
+  if (!elements) {
+    return;
+  }
+  AXObjectCacheImpl& cache = ax_object.AXObjectCache();
+  for (const auto& element : *elements) {
+    if (AXObject* child = cache.Get(element)) {
+      // Only aria-labelledby and aria-describedby can target hidden elements.
+      if (!child) {
+        continue;
+      }
+      if (child->IsIgnored() && attribute != html_names::kAriaLabelledbyAttr &&
+          attribute != html_names::kAriaLabeledbyAttr &&
+          attribute != html_names::kAriaDescribedbyAttr) {
+        continue;
+      }
+      children.push_back(child);
+    }
+  }
+}
+
+void AriaDescribedbyElements(AXObject& ax_object,
+                             AXObject::AXObjectVector& describedby) {
+  AccessibilityChildrenFromAttribute(
+      ax_object, html_names::kAriaDescribedbyAttr, describedby);
+}
+
+void AriaOwnsElements(AXObject& ax_object, AXObject::AXObjectVector& owns) {
+  AccessibilityChildrenFromAttribute(ax_object, html_names::kAriaOwnsAttr,
+                                     owns);
+}
+
 std::unique_ptr<AXProperty> CreateRelatedNodeListProperty(
     const String& key,
     AXRelatedObjectVector& nodes) {
@@ -368,7 +408,7 @@ std::unique_ptr<AXProperty> CreateRelatedNodeListProperty(
     const QualifiedName& attr,
     AXObject& ax_object) {
   std::unique_ptr<AXValue> node_list_value = CreateRelatedNodeListValue(nodes);
-  const AtomicString& attr_value = ax_object.GetAttribute(attr);
+  const AtomicString& attr_value = ax_object.AriaAttribute(attr);
   node_list_value->setValue(protocol::StringValue::create(attr_value));
   return CreateProperty(key, std::move(node_list_value));
 }
@@ -376,7 +416,7 @@ std::unique_ptr<AXProperty> CreateRelatedNodeListProperty(
 void FillRelationships(AXObject& ax_object,
                        protocol::Array<AXProperty>& properties) {
   AXObject::AXObjectVector results;
-  ax_object.AriaDescribedbyElements(results);
+  AriaDescribedbyElements(ax_object, results);
   if (!results.empty()) {
     properties.emplace_back(CreateRelatedNodeListProperty(
         AXPropertyNameEnum::Describedby, results,
@@ -384,7 +424,7 @@ void FillRelationships(AXObject& ax_object,
   }
   results.clear();
 
-  ax_object.AriaOwnsElements(results);
+  AriaOwnsElements(ax_object, results);
   if (!results.empty()) {
     properties.emplace_back(
         CreateRelatedNodeListProperty(AXPropertyNameEnum::Owns, results,
@@ -441,6 +481,17 @@ void FillSparseAttributes(AXObject& ax_object,
         CreateProperty(AXPropertyNameEnum::Roledescription,
                        CreateValue(WTF::String(role_description.c_str()),
                                    AXValueTypeEnum::String)));
+  }
+
+  if (node_data.HasIntListAttribute(
+          ax::mojom::blink::IntListAttribute::kActionsIds)) {
+    const auto ax_ids = node_data.GetIntListAttribute(
+        ax::mojom::blink::IntListAttribute::kActionsIds);
+    AXObject::AXObjectVector ax_objects;
+    GetObjectsFromAXIDs(ax_object.AXObjectCache(), ax_ids, &ax_objects);
+    properties.emplace_back(
+        CreateRelatedNodeListProperty(AXPropertyNameEnum::Actions, ax_objects,
+                                      html_names::kAriaActionsAttr, ax_object));
   }
 
   if (node_data.HasIntAttribute(
@@ -535,10 +586,10 @@ InspectorAccessibilityAgent::InspectorAccessibilityAgent(
       enabled_(&agent_state_, /*default_value=*/false) {}
 
 protocol::Response InspectorAccessibilityAgent::getPartialAXTree(
-    Maybe<int> dom_node_id,
-    Maybe<int> backend_node_id,
-    Maybe<String> object_id,
-    Maybe<bool> fetch_relatives,
+    std::optional<int> dom_node_id,
+    std::optional<int> backend_node_id,
+    std::optional<String> object_id,
+    std::optional<bool> fetch_relatives,
     std::unique_ptr<protocol::Array<AXNode>>* nodes) {
   Node* dom_node = nullptr;
   protocol::Response response =
@@ -774,7 +825,7 @@ InspectorAccessibilityAgent::BuildProtocolAXNodeForUnignoredAXObject(
 }
 
 LocalFrame* InspectorAccessibilityAgent::FrameFromIdOrRoot(
-    const protocol::Maybe<String>& frame_id) {
+    const std::optional<String>& frame_id) {
   if (frame_id.has_value()) {
     return IdentifiersFactory::FrameById(inspected_frames_.Get(),
                                          frame_id.value());
@@ -783,8 +834,8 @@ LocalFrame* InspectorAccessibilityAgent::FrameFromIdOrRoot(
 }
 
 protocol::Response InspectorAccessibilityAgent::getFullAXTree(
-    protocol::Maybe<int> depth,
-    Maybe<String> frame_id,
+    std::optional<int> depth,
+    std::optional<String> frame_id,
     std::unique_ptr<protocol::Array<AXNode>>* nodes) {
   LocalFrame* frame = FrameFromIdOrRoot(frame_id);
   if (!frame) {
@@ -838,7 +889,7 @@ InspectorAccessibilityAgent::WalkAXNodesToDepth(Document* document,
 }
 
 protocol::Response InspectorAccessibilityAgent::getRootAXNode(
-    Maybe<String> frame_id,
+    std::optional<String> frame_id,
     std::unique_ptr<AXNode>* node) {
   LocalFrame* frame = FrameFromIdOrRoot(frame_id);
   if (!frame) {
@@ -867,9 +918,9 @@ protocol::Response InspectorAccessibilityAgent::getRootAXNode(
 }
 
 protocol::Response InspectorAccessibilityAgent::getAXNodeAndAncestors(
-    Maybe<int> dom_node_id,
-    Maybe<int> backend_node_id,
-    Maybe<String> object_id,
+    std::optional<int> dom_node_id,
+    std::optional<int> backend_node_id,
+    std::optional<String> object_id,
     std::unique_ptr<protocol::Array<protocol::Accessibility::AXNode>>*
         out_nodes) {
   if (!enabled_.Get()) {
@@ -920,7 +971,7 @@ protocol::Response InspectorAccessibilityAgent::getAXNodeAndAncestors(
 
 protocol::Response InspectorAccessibilityAgent::getChildAXNodes(
     const String& in_id,
-    Maybe<String> frame_id,
+    std::optional<String> frame_id,
     std::unique_ptr<protocol::Array<protocol::Accessibility::AXNode>>*
         out_nodes) {
   if (!enabled_.Get()) {
@@ -1016,11 +1067,11 @@ void InspectorAccessibilityAgent::AddChildren(
 }
 
 void InspectorAccessibilityAgent::queryAXTree(
-    Maybe<int> dom_node_id,
-    Maybe<int> backend_node_id,
-    Maybe<String> object_id,
-    Maybe<String> accessible_name,
-    Maybe<String> role,
+    std::optional<int> dom_node_id,
+    std::optional<int> backend_node_id,
+    std::optional<String> object_id,
+    std::optional<String> accessible_name,
+    std::optional<String> role,
     std::unique_ptr<QueryAXTreeCallback> callback) {
   Node* root_dom_node = nullptr;
   protocol::Response response = dom_agent_->AssertNode(

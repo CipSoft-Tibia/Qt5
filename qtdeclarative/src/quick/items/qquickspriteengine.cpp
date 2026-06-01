@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickspriteengine_p.h"
 #include "qquicksprite_p.h"
@@ -739,13 +740,13 @@ void QQuickStochasticEngine::addToUpdateList(uint t, int idx)
         } else if (m_stateUpdates.at(i).first > t) {
             QVector<int> tmpList;
             tmpList << idx;
-            m_stateUpdates.insert(i, qMakePair(t, tmpList));
+            m_stateUpdates.insert(i, std::make_pair(t, tmpList));
             return;
         }
     }
     QVector<int> tmpList;
     tmpList << idx;
-    m_stateUpdates << qMakePair(t, tmpList);
+    m_stateUpdates << std::make_pair(t, tmpList);
 }
 
 QT_END_NAMESPACE

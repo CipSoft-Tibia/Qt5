@@ -1,13 +1,14 @@
 # Copyright 2022 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Type
 
 from crossbench.probes import metric
-from crossbench.probes.json import JsonResultProbe
+from crossbench.probes.json import JsonResultProbe, JsonResultProbeContext
 from crossbench.probes.probe import ProbeIncompatibleBrowser
 
 if TYPE_CHECKING:
@@ -15,7 +16,8 @@ if TYPE_CHECKING:
   from crossbench.env import HostEnvironment
   from crossbench.probes.results import ProbeResult
   from crossbench.runner.actions import Actions
-  from crossbench.runner.groups import BrowsersRunGroup, StoriesRunGroup
+  from crossbench.runner.groups.browsers import BrowsersRunGroup
+  from crossbench.runner.groups.stories import StoriesRunGroup
   from crossbench.types import Json
 
 
@@ -33,6 +35,32 @@ class PerformanceEntriesProbe(JsonResultProbe):
     if not hasattr(browser, "js"):
       raise ProbeIncompatibleBrowser(self, browser,
                                      "Needs browser with JS-execution support")
+
+  def get_context_cls(self) -> Type[PerformanceEntriesProbeContext]:
+    return PerformanceEntriesProbeContext
+
+  def merge_stories(self, group: StoriesRunGroup) -> ProbeResult:
+    stories = list(group.stories)
+    if len(stories) > 1:
+      logging.warning(
+          "%s: Merging performance.entries from %d possibly unrelated pages %s",
+          group.browser.unique_name, len(stories),
+          ", ".join(story.name for story in stories))
+    merged = metric.MetricsMerger.merge_json_list(
+        (story_group.results[self].json
+         for story_group in group.repetitions_groups),
+        merge_duplicate_paths=True)
+    return self.write_group_result(group, merged)
+
+  def merge_browsers(self, group: BrowsersRunGroup) -> ProbeResult:
+    # TODO: recreate the CSV from the merged JSON files since we might not
+    # get the same values in all browsers.
+    # TODO: Add merged browser data with separate stories.
+    return self.merge_browsers_json_list(group).merge(
+        self.merge_browsers_csv_list(group))
+
+
+class PerformanceEntriesProbeContext(JsonResultProbeContext):
 
   def to_json(self, actions: Actions) -> Json:
     return actions.js("""
@@ -58,23 +86,3 @@ class PerformanceEntriesProbe(JsonResultProbe):
       }
       return data;
       """)
-
-  def merge_stories(self, group: StoriesRunGroup) -> ProbeResult:
-    stories = list(group.stories)
-    if len(stories) > 1:
-      logging.warning(
-          "%s: Merging performance.entries from %d possibly unrelated pages %s",
-          group.browser.unique_name, len(stories),
-          ", ".join(story.name for story in stories))
-    merged = metric.MetricsMerger.merge_json_list(
-        (story_group.results[self].json
-         for story_group in group.repetitions_groups),
-        merge_duplicate_paths=True)
-    return self.write_group_result(group, merged, write_csv=True)
-
-  def merge_browsers(self, group: BrowsersRunGroup) -> ProbeResult:
-    # TODO: recreate the CSV from the merged JSON files since we might not
-    # get the same values in all browsers.
-    # TODO: Add merged browser data with separate stories.
-    return self.merge_browsers_json_list(group).merge(
-        self.merge_browsers_csv_list(group))

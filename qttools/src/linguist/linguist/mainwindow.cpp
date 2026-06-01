@@ -11,12 +11,12 @@
 #include "batchtranslationdialog.h"
 #include "errorsview.h"
 #include "finddialog.h"
-#include "formpreviewview.h"
+#include "uiformpreviewview.h"
+#include "qmlformpreviewview.h"
 #include "globals.h"
 #include "messageeditor.h"
 #include "messagemodel.h"
 #include "phrasebookbox.h"
-#include "phrasemodel.h"
 #include "phraseview.h"
 #include "printout.h"
 #include "sourcecodeview.h"
@@ -63,9 +63,8 @@
 
 #include <ctype.h>
 
-QT_BEGIN_NAMESPACE
-
-static const int MessageMS = 2500;
+using namespace Qt::Literals::StringLiterals;
+namespace {
 
 enum Ending {
     End_None,
@@ -75,10 +74,14 @@ enum Ending {
     End_Ellipsis
 };
 
-static bool hasFormPreview(const QString &fileName)
+static bool hasUiFormPreview(const QString &fileName)
 {
-    return fileName.endsWith(QLatin1String(".ui"))
-      || fileName.endsWith(QLatin1String(".jui"));
+    return fileName.endsWith(".ui"_L1) || fileName.endsWith(".jui"_L1);
+}
+
+static bool hasQmlFormPreview(const QString &fileName, bool qmlPreviewChecked)
+{
+    return fileName.endsWith(QLatin1String(".qml")) && qmlPreviewChecked;
 }
 
 static QString leadingWhitespace(const QString &str)
@@ -111,7 +114,7 @@ static Ending ending(QString str, QLocale::Language lang)
 
     switch (str.at(str.size() - 1).unicode()) {
     case 0x002e: // full stop
-        if (str.endsWith(QLatin1String("...")))
+        if (str.endsWith("..."_L1))
             return End_Ellipsis;
         else
             return End_FullStop;
@@ -146,36 +149,174 @@ static Ending ending(QString str, QLocale::Language lang)
     }
 }
 
-
-class ContextItemDelegate : public QItemDelegate
+static bool haveMnemonic(const QString &str)
 {
-public:
-    ContextItemDelegate(QObject *parent, MultiDataModel *model) : QItemDelegate(parent), m_dataModel(model) {}
-
-    void paint(QPainter *painter, const QStyleOptionViewItem &option,
-        const QModelIndex &index) const override
-    {
-        const QAbstractItemModel *model = index.model();
-        Q_ASSERT(model);
-
-        if (!model->parent(index).isValid()) {
-            if (index.column() - 1 == m_dataModel->modelCount()) {
-                QStyleOptionViewItem opt = option;
-                opt.font.setBold(true);
-                QItemDelegate::paint(painter, opt, index);
-                return;
+    for (const ushort *p = (ushort *)str.constData();;) { // Assume null-termination
+        ushort c = *p++;
+        if (!c)
+            break;
+        if (c == '&') {
+            c = *p++;
+            if (!c)
+                return false;
+            // Matches QKeySequence::mnemonic(), except for
+            // '&#' - most likely the start of an NCR
+            // '& ' - too many false positives
+            if (c != '&' && c != ' ' && c != '#' && QChar(c).isPrint()) {
+                const ushort *pp = p;
+                for (; *p < 256 && isalpha(*p); p++)
+                    ;
+                if (pp == p || *p != ';')
+                    return true;
+                // This looks like a HTML &entity;, so ignore it. As a HTML string
+                // won't contain accels anyway, we can stop scanning here.
+                break;
             }
         }
-        QItemDelegate::paint(painter, option, index);
+    }
+    return false;
+}
+
+static QHash<int, int> countPlaceMarkers(const QString &str)
+{
+    QHash<int, int> counts;
+    const QChar *c = str.unicode();
+    const QChar *cend = c + str.size();
+    while (c < cend) {
+        if (c->unicode() == '%') {
+            const QChar *escape_start = ++c;
+            while (c->isDigit())
+                ++c;
+            const QChar *escape_end = c;
+            bool ok = true;
+            int markerIndex =
+                    QString::fromRawData(escape_start, escape_end - escape_start).toInt(&ok);
+            if (ok)
+                counts[markerIndex]++;
+        } else {
+            ++c;
+        }
+    }
+    return counts;
+}
+
+struct Validator
+{
+
+    static Validator fromSource(const QString &source, const Ui::MainWindow &ui,
+                                const QLocale::Language &locale,
+                                const QHash<QString, QList<Phrase *>> &phrases)
+    {
+        Validator v;
+        if (ui.actionAccelerators->isChecked())
+            v.m_haveMnemonic.emplace(haveMnemonic(source));
+        if (ui.actionEndingPunctuation->isChecked())
+            v.m_ending.emplace(ending(source, locale));
+        if (ui.actionPlaceMarkerMatches->isChecked())
+            v.m_placeMarkerCounts.emplace(countPlaceMarkers(source));
+        if (ui.actionSurroundingWhitespace->isChecked()) {
+            v.m_leadingWhiteSpace.emplace(leadingWhitespace(source));
+            v.m_trailingWhiteSpace.emplace(trailingWhitespace(source));
+        }
+        if (ui.actionPhraseMatches->isChecked()) {
+            v.m_matchingPhraseTargets.emplace();
+            QString fsource = MainWindow::friendlyString(source);
+            QStringList lookupWords = fsource.split(QLatin1Char(' '));
+
+            for (const QString &s : std::as_const(lookupWords))
+                if (auto wordPhrases = phrases.find(s); wordPhrases != phrases.constEnd())
+                    for (const Phrase *p : *wordPhrases)
+                        if (fsource == MainWindow::friendlyString(p->source()))
+                            v.m_matchingPhraseTargets.value()[s].append(
+                                    MainWindow::friendlyString(p->target()));
+        }
+
+        return v;
+    }
+
+    bool validate(const QString &translation, const QLocale::Language &locale, int modelId,
+                  bool needsRef, bool verbose, ErrorsView *errorsView)
+    {
+        bool danger = false;
+        if (m_haveMnemonic) {
+            if (*m_haveMnemonic != haveMnemonic(translation)) {
+                danger = true;
+                if (verbose)
+                    errorsView->addError(modelId,
+                                         *m_haveMnemonic ? ErrorsView::MissingAccelerator
+                                                         : ErrorsView::SuperfluousAccelerator);
+            }
+        }
+        if (m_placeMarkerCounts) {
+            if (*m_placeMarkerCounts != countPlaceMarkers(translation)) {
+                danger = true;
+                if (verbose)
+                    errorsView->addError(modelId, ErrorsView::PlaceMarkersDiffer);
+            }
+            if (needsRef && !translation.contains(QLatin1String("%n"))
+                && !translation.contains(QLatin1String("%Ln"))) {
+                danger = true;
+                if (verbose)
+                    errorsView->addError(modelId, ErrorsView::NumerusMarkerMissing);
+            }
+        }
+        if (m_ending) {
+            if (*m_ending != ending(translation, locale)) {
+                danger = true;
+                if (verbose)
+                    errorsView->addError(modelId, ErrorsView::PunctuationDiffers);
+            }
+        }
+        if (m_leadingWhiteSpace) {
+            Q_ASSERT(m_trailingWhiteSpace);
+            if (*m_leadingWhiteSpace != leadingWhitespace(translation)
+                || *m_trailingWhiteSpace != trailingWhitespace(translation)) {
+                danger = true;
+                if (verbose)
+                    errorsView->addError(modelId, ErrorsView::SurroundingWhitespaceDiffers);
+            }
+        }
+        if (m_matchingPhraseTargets) {
+            const QString ftranslation = MainWindow::friendlyString(translation);
+            for (auto itr = m_matchingPhraseTargets->cbegin();
+                 itr != m_matchingPhraseTargets->cend(); itr++) {
+                bool found = false;
+                for (const QString &target : itr.value()) {
+                    if (ftranslation.indexOf(target) >= 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    danger = true;
+                    if (verbose)
+                        errorsView->addError(modelId, ErrorsView::IgnoredPhrasebook, itr.key());
+                }
+            }
+        }
+
+        return danger;
     }
 
 private:
-    MultiDataModel *m_dataModel;
+    Validator() = default;
+    std::optional<bool> m_haveMnemonic;
+    std::optional<QString> m_leadingWhiteSpace;
+    std::optional<QString> m_trailingWhiteSpace;
+    std::optional<Ending> m_ending;
+    std::optional<QHash<QString, QStringList>> m_matchingPhraseTargets;
+    std::optional<QHash<int, int>> m_placeMarkerCounts;
 };
+
+static const int MessageMS = 2500;
+
+} // namespace
+
+QT_BEGIN_NAMESPACE
 
 static const QVariant &pxObsolete()
 {
-    static const QVariant v = MarkIcon::create(MarkIcon::obsoleteMark);
+    static const QVariant v = createMarkIcon(TranslationMarks::ObsoleteMark);
     return v;
 }
 
@@ -263,7 +404,7 @@ MainWindow::MainWindow()
     m_ui.setupUi(this);
 
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
-    setWindowIcon(QPixmap(QLatin1String(":/images/appicon.png") ));
+    setWindowIcon(QPixmap(":/images/appicon.png"_L1));
 #endif
 
     m_dataModel = new MultiDataModel(this);
@@ -271,7 +412,7 @@ MainWindow::MainWindow()
 
     // Set up the context dock widget
     m_contextDock = new QDockWidget(this);
-    m_contextDock->setObjectName(QLatin1String("ContextDockWidget"));
+    m_contextDock->setObjectName("ContextDockWidget");
     m_contextDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_contextDock->setWindowTitle(tr("Context"));
     m_contextDock->setAcceptDrops(true);
@@ -288,7 +429,6 @@ MainWindow::MainWindow()
     m_contextView->setUniformRowHeights(true);
     m_contextView->setAlternatingRowColors(true);
     m_contextView->setAllColumnsShowFocus(true);
-    m_contextView->setItemDelegate(new ContextItemDelegate(this, m_dataModel));
     m_contextView->setSortingEnabled(true);
     m_contextView->setWhatsThis(tr("This panel lists the source contexts."));
     m_contextView->setModel(m_sortedContextsModel);
@@ -300,7 +440,7 @@ MainWindow::MainWindow()
 
     // Set up the messages dock widget
     m_messagesDock = new QDockWidget(this);
-    m_messagesDock->setObjectName(QLatin1String("StringsDockWidget"));
+    m_messagesDock->setObjectName("StringsDockWidget");
     m_messagesDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_messagesDock->setWindowTitle(tr("Strings"));
     m_messagesDock->setAcceptDrops(true);
@@ -336,7 +476,7 @@ MainWindow::MainWindow()
 
     // Set up the phrases & guesses dock widget
     m_phrasesDock = new QDockWidget(this);
-    m_phrasesDock->setObjectName(QLatin1String("PhrasesDockwidget"));
+    m_phrasesDock->setObjectName("PhrasesDockwidget");
     m_phrasesDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_phrasesDock->setWindowTitle(tr("Phrases and guesses"));
 
@@ -345,19 +485,21 @@ MainWindow::MainWindow()
 
     // Set up source code and form preview dock widget
     m_sourceAndFormDock = new QDockWidget(this);
-    m_sourceAndFormDock->setObjectName(QLatin1String("SourceAndFormDock"));
+    m_sourceAndFormDock->setObjectName("SourceAndFormDock");
     m_sourceAndFormDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_sourceAndFormDock->setWindowTitle(tr("Sources and Forms"));
     m_sourceAndFormView = new QStackedWidget(this);
     m_sourceAndFormDock->setWidget(m_sourceAndFormView);
-    m_formPreviewView = new FormPreviewView(0, m_dataModel);
+    m_uiFormPreviewView = new UiFormPreviewView(0, m_dataModel);
+    m_qmlFormPreviewView = new QmlFormPreviewView(m_dataModel);
     m_sourceCodeView = new SourceCodeView(0);
     m_sourceAndFormView->addWidget(m_sourceCodeView);
-    m_sourceAndFormView->addWidget(m_formPreviewView);
+    m_sourceAndFormView->addWidget(m_uiFormPreviewView);
+    m_sourceAndFormView->addWidget(m_qmlFormPreviewView);
 
     // Set up errors dock widget
     m_errorsDock = new QDockWidget(this);
-    m_errorsDock->setObjectName(QLatin1String("ErrorsDockWidget"));
+    m_errorsDock->setObjectName("ErrorsDockWidget");
     m_errorsDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_errorsDock->setWindowTitle(tr("Warnings"));
     m_errorsView = new ErrorsView(m_dataModel, this);
@@ -550,7 +692,8 @@ void MainWindow::modelCountChanged()
     m_ui.actionFindNext->setEnabled(false);
     m_ui.actionFindPrev->setEnabled(false);
 
-    m_formPreviewView->setSourceContext(-1, 0);
+    m_uiFormPreviewView->setSourceContext(-1, 0);
+    m_qmlFormPreviewView->setSourceContext(-1, 0);
 }
 
 struct OpenedFile {
@@ -579,7 +722,7 @@ bool MainWindow::openFiles(const QStringList &names, bool globalReadWrite)
         }
 
         bool readWrite = globalReadWrite;
-        if (name.startsWith(QLatin1Char('='))) {
+        if (name.startsWith(u'=')) {
             name.remove(0, 1);
             readWrite = false;
         }
@@ -587,7 +730,7 @@ bool MainWindow::openFiles(const QStringList &names, bool globalReadWrite)
         if (fi.exists()) // Make the loader error out instead of reading stdin
             name = fi.canonicalFilePath();
         if (m_dataModel->isFileLoaded(name) >= 0)
-            continue;
+            closeOld = true;
 
         bool langGuessed;
         DataModel *dm = new DataModel(m_dataModel);
@@ -727,16 +870,16 @@ bool MainWindow::closeAll()
 
 static QString fileFilters(bool allFirst)
 {
-    static const QString pattern(QLatin1String("%1 (*.%2);;"));
+    static const QString pattern("%1 (*.%2);;"_L1);
     QStringList allExtensions;
     QString filter;
     for (const Translator::FileFormat &format : std::as_const(Translator::registeredFileFormats())) {
         if (format.fileType == Translator::FileFormat::TranslationSource && format.priority >= 0) {
             filter.append(pattern.arg(format.description(), format.extension));
-            allExtensions.append(QLatin1String("*.") + format.extension);
+            allExtensions.append("*."_L1 + format.extension);
         }
     }
-    QString allFilter = QObject::tr("Translation files (%1);;").arg(allExtensions.join(QLatin1Char(' ')));
+    QString allFilter = QObject::tr("Translation files (%1);;").arg(allExtensions.join(u' '));
     if (allFirst)
         filter.prepend(allFilter);
     else
@@ -755,10 +898,10 @@ QStringList MainWindow::pickTranslationFiles()
     if (m_dataModel->modelCount()) {
         QFileInfo mainFile(m_dataModel->srcFileName(0));
         QString mainFileBase = mainFile.baseName();
-        int pos = mainFileBase.indexOf(QLatin1Char('_'));
+        int pos = mainFileBase.indexOf(u'_');
         if (pos > 0)
             varFilt = tr("Related files (%1);;")
-                .arg(mainFileBase.left(pos) + QLatin1String("_*.") + mainFile.completeSuffix());
+                              .arg(mainFileBase.left(pos) + "_*."_L1 + mainFile.completeSuffix());
     }
 
     return QFileDialog::getOpenFileNames(this, tr("Open Translation Files"), dir,
@@ -814,8 +957,7 @@ void MainWindow::releaseAs()
         return;
 
     QFileInfo oldFile(m_dataModel->srcFileName(m_currentIndex.model()));
-    QString newFilename = oldFile.path() + QLatin1String("/")
-                + oldFile.completeBaseName() + QLatin1String(".qm");
+    QString newFilename = oldFile.path() + "/"_L1 + oldFile.completeBaseName() + ".qm"_L1;
 
     newFilename = QFileDialog::getSaveFileName(this, tr("Release"), newFilename,
         tr("Qt message files for released applications (*.qm)\nAll files (*)"));
@@ -828,8 +970,7 @@ void MainWindow::releaseAs()
 void MainWindow::releaseInternal(int model)
 {
     QFileInfo oldFile(m_dataModel->srcFileName(model));
-    QString newFilename = oldFile.path() + QLatin1Char('/')
-                + oldFile.completeBaseName() + QLatin1String(".qm");
+    QString newFilename = oldFile.path() + u'/' + oldFile.completeBaseName() + ".qm"_L1;
 
     if (!newFilename.isEmpty()) {
         if (m_dataModel->release(model, newFilename, false, false, SaveEverything, this))
@@ -900,7 +1041,7 @@ void MainWindow::print()
                         }
                         if (m->message().isPlural() && m_dataModel->language(k) != QLocale::C) {
                             QStringList transls = m->translations();
-                            pout.addBox(40, transls.join(QLatin1Char('\n')));
+                            pout.addBox(40, transls.join(u'\n'));
                         } else {
                             pout.addBox(40, m->translation());
                         }
@@ -911,7 +1052,7 @@ void MainWindow::print()
                             type = tr("finished");
                             break;
                         case TranslatorMessage::Unfinished:
-                            type = m->danger() ? tr("unresolved") : QLatin1String("unfinished");
+                            type = m->danger() ? tr("unresolved") : "unfinished"_L1;
                             break;
                         case TranslatorMessage::Obsolete:
                         case TranslatorMessage::Vanished:
@@ -954,7 +1095,7 @@ bool MainWindow::searchItem(DataModel::FindLocation where, const QString &search
 
     if (m_findOptions.testFlag(FindDialog::IgnoreAccelerators))
         // FIXME: This removes too much. The proper solution might be too slow, though.
-        text.remove(QLatin1Char('&'));
+        text.remove(u'&');
 
     if (m_findOptions.testFlag(FindDialog::UseRegExp))
         return m_findDialog->getRegExp().match(text).hasMatch();
@@ -1100,37 +1241,35 @@ void MainWindow::translate(int mode)
             m_dataModel->setFinished(m_currentIndex, markFinished);
         }
 
+        const QModelIndex firstIndex = firstMessage();
         if (findText != m_latestFindText || caseSensitivity != m_latestCaseSensitivity) {
             m_latestFindText = findText;
             m_latestCaseSensitivity = caseSensitivity;
-            m_remainingCount = m_dataModel->messageCount();
+            m_searchIndex = firstIndex;
             m_hitCount = 0;
         }
 
-        QModelIndex index = m_messageView->currentIndex();
-        int prevRemained = m_remainingCount;
         forever {
-            if (--m_remainingCount <= 0) {
-                if (!m_hitCount)
-                    break;
-                m_remainingCount = m_dataModel->messageCount() - 1;
-                if (QMessageBox::question(m_translateDialog, tr("Translate - Qt Linguist"),
-                        tr("No more occurrences of '%1'. Start over?").arg(findText),
-                        QMessageBox::Yes|QMessageBox::No) != QMessageBox::Yes)
-                    return;
-                m_remainingCount -= prevRemained;
-            }
-
-            index = nextMessage(index);
-
-            QModelIndex realIndex = m_sortedMessagesModel->mapToSource(index);
+            QModelIndex realIndex = m_sortedMessagesModel->mapToSource(m_searchIndex);
             MultiDataIndex dataIndex = m_messageModel->dataIndex(realIndex, m_currentIndex.model());
+            m_searchIndex = nextMessage(m_searchIndex);
             if (MessageItem *m = m_dataModel->messageItem(dataIndex)) {
                 if (!m->isObsolete() && m->compare(findText, false, caseSensitivity)) {
                     setCurrentMessage(realIndex, m_currentIndex.model());
                     ++translatedCount;
                     ++m_hitCount;
                     break;
+                }
+            }
+
+            if (m_searchIndex == firstIndex && m_hitCount) {
+                if (QMessageBox::question(
+                            m_translateDialog, tr("Translate - Qt Linguist"),
+                            tr("No more occurrences of '%1'. Start over?").arg(findText),
+                            QMessageBox::Yes | QMessageBox::No)
+                    != QMessageBox::Yes) {
+                    m_searchIndex = prevMessage(m_searchIndex);
+                    return;
                 }
             }
         }
@@ -1322,12 +1461,12 @@ void MainWindow::manual()
     if (m_assistantProcess->state() != QProcess::Running) {
         QString app = QLibraryInfo::path(QLibraryInfo::BinariesPath) + QDir::separator();
 #if !defined(Q_OS_MAC)
-        app += QLatin1String("assistant");
+        app += "assistant"_L1;
 #else
-        app += QLatin1String("Assistant.app/Contents/MacOS/Assistant");
+        app += "Assistant.app/Contents/MacOS/Assistant"_L1;
 #endif
 
-        m_assistantProcess->start(app, QStringList() << QLatin1String("-enableRemoteControl"));
+        m_assistantProcess->start(app, { "-enableRemoteControl"_L1 });
         if (!m_assistantProcess->waitForStarted()) {
             QMessageBox::critical(this, tr("Qt Linguist"),
                 tr("Unable to launch Qt Assistant (%1)").arg(app));
@@ -1335,11 +1474,8 @@ void MainWindow::manual()
         }
     }
     QTextStream str(m_assistantProcess);
-    str << QLatin1String("SetSource qthelp://org.qt-project.linguist.")
-        << (QT_VERSION >> 16) << ((QT_VERSION >> 8) & 0xFF)
-        << (QT_VERSION & 0xFF)
-        << QLatin1String("/qtlinguist/qtlinguist-index.html")
-        << QLatin1Char('\n') << Qt::endl;
+    str << "SetSource qthelp://org.qt-project.linguist."_L1 << QT_VERSION_MAJOR << QT_VERSION_MINOR
+        << QT_VERSION_PATCH << "/qtlinguist/qtlinguist-index.html"_L1 << u'\n' << Qt::endl;
 }
 
 void MainWindow::about()
@@ -1535,8 +1671,11 @@ void MainWindow::translationChanged(const MultiDataIndex &index)
     updateDanger(index, true);
 
     MessageItem *m = m_dataModel->messageItem(index);
-    if (hasFormPreview(m->fileName()))
-        m_formPreviewView->setSourceContext(index.model(), m);
+    if (hasUiFormPreview(m->fileName()))
+        m_uiFormPreviewView->setSourceContext(index.model(), m);
+    else if (hasQmlFormPreview(m->fileName(), m_ui.actionQmlPreview->isChecked()))
+        if (!m_qmlFormPreviewView->setSourceContext(index.model(), m))
+            m_ui.actionQmlPreview->setChecked(false);
 }
 
 // This and the following function operate directly on the messageitem,
@@ -1550,8 +1689,12 @@ void MainWindow::updateTranslation(const QStringList &translations)
         return;
 
     m->setTranslations(translations);
-    if (!m->fileName().isEmpty() && hasFormPreview(m->fileName()))
-        m_formPreviewView->setSourceContext(m_currentIndex.model(), m);
+    if (!m->fileName().isEmpty() && hasUiFormPreview(m->fileName()))
+        m_uiFormPreviewView->setSourceContext(m_currentIndex.model(), m);
+    else if (!m->fileName().isEmpty()
+             && hasQmlFormPreview(m->fileName(), m_ui.actionQmlPreview->isChecked()))
+        if (!m_qmlFormPreviewView->setSourceContext(m_currentIndex.model(), m))
+            m_ui.actionQmlPreview->setChecked(false);
     updateDanger(m_currentIndex, true);
 
     if (m->isFinished())
@@ -1647,6 +1790,17 @@ QModelIndex MainWindow::prevContext(const QModelIndex &index) const
 
     return m_sortedMessagesModel->mapFromSource(
             m_sortedContextsModel->mapToSource(sortedContextIndex));
+}
+
+QModelIndex MainWindow::firstMessage() const
+{
+    QModelIndex id = m_sortedMessagesModel->index(0, 0);
+    QModelIndex firstId;
+    if (id.isValid() && m_sortedMessagesModel->hasChildren(id))
+        firstId = m_sortedMessagesModel->index(0, 0, id);
+    else if (id.isValid())
+        firstId = id;
+    return firstId;
 }
 
 QModelIndex MainWindow::nextMessage(const QModelIndex &currentIndex, bool checkUnfinished) const
@@ -1795,49 +1949,58 @@ void MainWindow::revalidate()
 QString MainWindow::friendlyString(const QString& str)
 {
     QString f = str.toLower();
-    f.replace(QRegularExpression(QString(QLatin1String("[.,:;!?()-]"))), QString(QLatin1String(" ")));
-    f.remove(QLatin1Char('&'));
+    static QRegularExpression re("[.,:;!?()-]"_L1);
+    f.replace(re, " "_L1);
+    f.remove(u'&');
     return f.simplified();
+}
+
+void MainWindow::updateIcons()
+{
+    const QString prefix = isDarkMode() ? ":/images/darkicons/"_L1: ":/images/lighticons/"_L1;
+    auto getIcon = [&prefix](const QString &name) {
+        QIcon icon;
+        icon.addPixmap(QPixmap(prefix + name + QStringLiteral(".png")), QIcon::Normal);
+        icon.addPixmap(QPixmap(prefix + name + QStringLiteral("-disabled.png")), QIcon::Disabled);
+        return icon;
+    };
+
+    QIcon openIcon = getIcon("open-new"_L1);
+    m_ui.actionOpen->setIcon(openIcon);
+    m_ui.actionOpenAux->setIcon(openIcon);
+    QIcon saveIcon = getIcon("save-fl-disk"_L1);
+    m_ui.actionSave->setIcon(saveIcon);
+    m_ui.actionSaveAll->setIcon(saveIcon);
+    m_ui.actionPrint->setIcon(getIcon("print"_L1));
+    m_ui.actionRedo->setIcon(getIcon("redo-arrow-right"_L1));
+    m_ui.actionUndo->setIcon(getIcon("undo-arrow-left"_L1));
+    m_ui.actionCut->setIcon(getIcon("cut"_L1));
+    m_ui.actionCopy->setIcon(getIcon("copy-general"_L1));
+    m_ui.actionPaste->setIcon(getIcon("paste-general"_L1));
+    m_ui.actionFind->setIcon(getIcon("search-magnifier"_L1));
+
+    m_ui.actionAccelerators->setIcon(getIcon("/check-ampersands"_L1));
+    m_ui.actionOpenPhraseBook->setIcon(getIcon("library"_L1));
+    m_ui.actionDone->setIcon(getIcon("mark-current-translation-done"_L1));
+    m_ui.actionDoneAndNext->setIcon(getIcon("mark-current-translation-done-move-to-next"_L1));
+    m_ui.actionNext->setIcon(getIcon("next-translation-item"_L1));
+    m_ui.actionNextUnfinished->setIcon(getIcon("next-unfinished-translation-item"_L1));
+    m_ui.actionPhraseMatches->setIcon(getIcon("check-phrase-suggestions"_L1));
+    m_ui.actionSurroundingWhitespace->setIcon(getIcon("check-white-spaces"_L1));
+    m_ui.actionEndingPunctuation->setIcon(getIcon("check-ending-pontuation"_L1));
+    m_ui.actionPrev->setIcon(getIcon("previous-translation-item"_L1));
+    m_ui.actionPrevUnfinished->setIcon(getIcon("previous-unfinished-translation-item"_L1));
+    m_ui.actionPlaceMarkerMatches->setIcon(getIcon("check-place-markers"_L1));
+    m_ui.actionWhatsThis->setIcon(getIcon("hit-help-chosen-option"_L1));
 }
 
 void MainWindow::setupMenuBar()
 {
-
     m_ui.menuRecentlyOpenedFiles->setIcon(QIcon::fromTheme(QIcon::ThemeIcon::DocumentOpenRecent));
     m_ui.actionCloseAll->setIcon(QIcon::fromTheme(QIcon::ThemeIcon::WindowClose));
     m_ui.actionExit->setIcon(QIcon::fromTheme(QIcon::ThemeIcon::ApplicationExit));
     m_ui.actionSelectAll->setIcon(QIcon::fromTheme(QIcon::ThemeIcon::EditSelectAll));
-
-    // Prefer theme icons when available for these actions
-    const QString prefix = QApplication::platformName().compare(QStringLiteral("cocoa"), Qt::CaseInsensitive) ?
-                           QStringLiteral(":/images/win") : QStringLiteral(":/images/mac");
-
-    m_ui.actionOpen->setIcon(QIcon(prefix + QStringLiteral("/fileopen.png")));
-    m_ui.actionOpenAux->setIcon(QIcon(prefix + QStringLiteral("/fileopen.png")));
-    m_ui.actionSave->setIcon(QIcon(prefix + QStringLiteral("/filesave.png")));
-    m_ui.actionSaveAll->setIcon(QIcon(prefix + QStringLiteral("/filesave.png")));
-    m_ui.actionPrint->setIcon(QIcon(prefix + QStringLiteral("/print.png")));
-    m_ui.actionRedo->setIcon(QIcon(prefix + QStringLiteral("/redo.png")));
-    m_ui.actionUndo->setIcon(QIcon(prefix + QStringLiteral("/undo.png")));
-    m_ui.actionCut->setIcon(QIcon(prefix + QStringLiteral("/editcut.png")));
-    m_ui.actionCopy->setIcon(QIcon(prefix + QStringLiteral("/editcopy.png")));
-    m_ui.actionPaste->setIcon(QIcon(prefix + QStringLiteral("/editpaste.png")));
-    m_ui.actionFind->setIcon(QIcon(prefix + QStringLiteral("/searchfind.png")));
-
-    // No well defined theme icons for these actions
-    m_ui.actionAccelerators->setIcon(QIcon(prefix + QStringLiteral("/accelerator.png")));
-    m_ui.actionOpenPhraseBook->setIcon(QIcon(prefix + QStringLiteral("/book.png")));
-    m_ui.actionDone->setIcon(QIcon(prefix + QStringLiteral("/done.png")));
-    m_ui.actionDoneAndNext->setIcon(QIcon(prefix + QStringLiteral("/doneandnext.png")));
-    m_ui.actionNext->setIcon(QIcon(prefix + QStringLiteral("/next.png")));
-    m_ui.actionNextUnfinished->setIcon(QIcon(prefix + QStringLiteral("/nextunfinished.png")));
-    m_ui.actionPhraseMatches->setIcon(QIcon(prefix + QStringLiteral("/phrase.png")));
-    m_ui.actionSurroundingWhitespace->setIcon(QIcon(prefix + QStringLiteral("/surroundingwhitespace.png")));
-    m_ui.actionEndingPunctuation->setIcon(QIcon(prefix + QStringLiteral("/punctuation.png")));
-    m_ui.actionPrev->setIcon(QIcon(prefix + QStringLiteral("/prev.png")));
-    m_ui.actionPrevUnfinished->setIcon(QIcon(prefix + QStringLiteral("/prevunfinished.png")));
-    m_ui.actionPlaceMarkerMatches->setIcon(QIcon(prefix + QStringLiteral("/validateplacemarkers.png")));
-    m_ui.actionWhatsThis->setIcon(QIcon(prefix + QStringLiteral("/whatsthis.png")));
+    updateIcons();
 
     // File menu
     connect(m_ui.menuFile, &QMenu::aboutToShow, this, &MainWindow::fileAboutToShow);
@@ -1904,9 +2067,8 @@ void MainWindow::setupMenuBar()
     connect(m_ui.actionPrev, &QAction::triggered, this, &MainWindow::prev);
     connect(m_ui.actionDone, &QAction::triggered, this, &MainWindow::done);
     connect(m_ui.actionDoneAndNext, &QAction::triggered, this, &MainWindow::doneAndNext);
-    connect(m_ui.actionBeginFromSource, &QAction::triggered, m_messageEditor, &MessageEditor::beginFromSource);
-    connect(m_messageEditor, &MessageEditor::beginFromSourceAvailable,
-            m_ui.actionBeginFromSource, &QAction::setEnabled);
+    connect(m_ui.actionBeginFromSource, &QAction::triggered, m_messageEditor,
+            &MessageEditor::beginFromSource);
 
     // Phrasebook menu
     connect(m_ui.actionNewPhraseBook, &QAction::triggered, this, &MainWindow::newPhraseBook);
@@ -1936,12 +2098,10 @@ void MainWindow::setupMenuBar()
             this, &MainWindow::resetSorting);
     connect(m_ui.actionDisplayGuesses, &QAction::triggered,
             m_phraseView, &PhraseView::toggleGuessing);
-    connect(m_ui.actionStatistics, &QAction::triggered,
-            this, &MainWindow::toggleStatistics);
+    connect(m_ui.actionStatistics, &QAction::triggered, this, &MainWindow::showStatistics);
+    connect(m_ui.actionQmlPreview, &QAction::triggered, this, &MainWindow::toggleQmlPreview);
     connect(m_ui.actionVisualizeWhitespace, &QAction::triggered,
             this, &MainWindow::toggleVisualizeWhitespace);
-    connect(m_ui.menuView, &QMenu::aboutToShow,
-            this, &MainWindow::updateViewMenu);
     connect(m_ui.actionIncreaseZoom, &QAction::triggered,
             m_messageEditor, &MessageEditor::increaseFontSize);
     connect(m_ui.actionDecreaseZoom, &QAction::triggered,
@@ -1979,14 +2139,14 @@ void MainWindow::setupMenuBar()
     connect(m_ui.menuRecentlyOpenedFiles, &QMenu::triggered,
             this, &MainWindow::recentFileActivated);
 
-    m_ui.actionManual->setWhatsThis(tr("Display the manual for %1.").arg(tr("Qt Linguist")));
-    m_ui.actionAbout->setWhatsThis(tr("Display information about %1.").arg(tr("Qt Linguist")));
-    m_ui.actionDone->setShortcuts(QList<QKeySequence>()
-                                     << QKeySequence(QLatin1String("Alt+Return"))
-                                     << QKeySequence(QLatin1String("Alt+Enter")));
-    m_ui.actionDoneAndNext->setShortcuts(QList<QKeySequence>()
-                                            << QKeySequence(QLatin1String("Ctrl+Return"))
-                                            << QKeySequence(QLatin1String("Ctrl+Enter")));
+    m_ui.actionManual->setToolTip(tr("Displays the manual for %1.").arg(tr("Qt Linguist")));
+    m_ui.actionAbout->setToolTip(tr("Displays information about %1.").arg(tr("Qt Linguist")));
+    m_ui.actionDone->setShortcuts(
+            { Qt::AltModifier | Qt::Key_Return, Qt::AltModifier | Qt::Key_Enter });
+    m_ui.actionDoneAndNext->setShortcuts({
+            Qt::ControlModifier | Qt::Key_Return,
+            Qt::ControlModifier | Qt::Key_Enter,
+    });
 
     // Disable the Close/Edit/Print phrasebook menuitems if they are not loaded
     connect(m_ui.menuPhrases, &QMenu::aboutToShow, this, &MainWindow::setupPhrase);
@@ -2046,10 +2206,14 @@ void MainWindow::doUpdateLatestModel(int model)
 void MainWindow::updateSourceView(int model, MessageItem *item)
 {
     if (item && !item->fileName().isEmpty()) {
-        if (hasFormPreview(item->fileName())) {
-            m_sourceAndFormView->setCurrentWidget(m_formPreviewView);
-            m_formPreviewView->setSourceContext(model, item);
+        if (hasUiFormPreview(item->fileName())) {
+            m_sourceAndFormView->setCurrentWidget(m_uiFormPreviewView);
+            m_uiFormPreviewView->setSourceContext(model, item);
+        } else if (hasQmlFormPreview(item->fileName(), m_ui.actionQmlPreview->isChecked())
+                   && m_qmlFormPreviewView->setSourceContext(model, item)) {
+            m_sourceAndFormView->setCurrentWidget(m_qmlFormPreviewView);
         } else {
+            m_ui.actionQmlPreview->setChecked(false);
             m_sourceAndFormView->setCurrentWidget(m_sourceCodeView);
             QDir dir = QFileInfo(m_dataModel->srcFileName(model)).dir();
             QString fileName = QDir::cleanPath(dir.absoluteFilePath(item->fileName()));
@@ -2122,12 +2286,6 @@ void MainWindow::editAboutToShow()
     }
 }
 
-void MainWindow::updateViewMenu()
-{
-    bool check = m_statistics ? m_statistics->isVisible() : false;
-    m_ui.actionStatistics->setChecked(check);
-}
-
 void MainWindow::showContextDock()
 {
     m_contextDock->show();
@@ -2166,33 +2324,33 @@ void MainWindow::onWhatsThis()
 void MainWindow::setupToolBars()
 {
     QToolBar *filet = new QToolBar(this);
-    filet->setObjectName(QLatin1String("FileToolbar"));
+    filet->setObjectName("FileToolbar");
     filet->setWindowTitle(tr("File"));
     this->addToolBar(filet);
     m_ui.menuToolbars->addAction(filet->toggleViewAction());
 
     QToolBar *editt = new QToolBar(this);
     editt->setVisible(false);
-    editt->setObjectName(QLatin1String("EditToolbar"));
+    editt->setObjectName("EditToolbar");
     editt->setWindowTitle(tr("Edit"));
     this->addToolBar(editt);
     m_ui.menuToolbars->addAction(editt->toggleViewAction());
 
     QToolBar *translationst = new QToolBar(this);
-    translationst->setObjectName(QLatin1String("TranslationToolbar"));
+    translationst->setObjectName("TranslationToolbar");
     translationst->setWindowTitle(tr("Translation"));
     this->addToolBar(translationst);
     m_ui.menuToolbars->addAction(translationst->toggleViewAction());
 
     QToolBar *validationt = new QToolBar(this);
-    validationt->setObjectName(QLatin1String("ValidationToolbar"));
+    validationt->setObjectName("ValidationToolbar");
     validationt->setWindowTitle(tr("Validation"));
     this->addToolBar(validationt);
     m_ui.menuToolbars->addAction(validationt->toggleViewAction());
 
     QToolBar *helpt = new QToolBar(this);
     helpt->setVisible(false);
-    helpt->setObjectName(QLatin1String("HelpToolbar"));
+    helpt->setObjectName("HelpToolbar");
     helpt->setWindowTitle(tr("Help"));
     this->addToolBar(helpt);
     m_ui.menuToolbars->addAction(helpt->toggleViewAction());
@@ -2303,16 +2461,16 @@ PhraseBook *MainWindow::doOpenPhraseBook(const QString& name)
 
     QAction *a = m_ui.menuClosePhraseBook->addAction(pb->friendlyPhraseBookName());
     m_phraseBookMenu[PhraseCloseMenu].insert(a, pb);
-    a->setWhatsThis(tr("Close this phrase book."));
+    a->setToolTip(tr("Close this phrase book."));
 
     a = m_ui.menuEditPhraseBook->addAction(pb->friendlyPhraseBookName());
     m_phraseBookMenu[PhraseEditMenu].insert(a, pb);
-    a->setWhatsThis(tr("Enables you to add, modify, or delete"
-        " entries in this phrase book."));
+    a->setToolTip(tr("Enables you to add, modify, or delete"
+                     " entries in this phrase book."));
 
     a = m_ui.menuPrintPhraseBook->addAction(pb->friendlyPhraseBookName());
     m_phraseBookMenu[PhrasePrintMenu].insert(a, pb);
-    a->setWhatsThis(tr("Print the entries in this phrase book."));
+    a->setToolTip(tr("Print the entries in this phrase book."));
 
     connect(pb, &PhraseBook::listChanged, this, &MainWindow::updatePhraseDicts);
     updatePhraseDicts();
@@ -2323,8 +2481,8 @@ PhraseBook *MainWindow::doOpenPhraseBook(const QString& name)
 
 bool MainWindow::savePhraseBook(QString *name, PhraseBook &pb)
 {
-    if (!name->contains(QLatin1Char('.')))
-        *name += QLatin1String(".qph");
+    if (!name->contains(u'.'))
+        *name += ".qph"_L1;
 
     if (!pb.save(*name)) {
         QMessageBox::warning(this, tr("Qt Linguist"),
@@ -2366,7 +2524,7 @@ void MainWindow::updateProgress()
     int numEditable = m_dataModel->getNumEditable();
     int numFinished = m_dataModel->getNumFinished();
     if (!m_dataModel->modelCount()) {
-        m_progressLabel->setText(QString(QLatin1String("    ")));
+        m_progressLabel->setText(QString("    "_L1));
         m_progressLabel->setToolTip(QString());
     } else {
         m_progressLabel->setText(QStringLiteral(" %1/%2 ").arg(numFinished).arg(numEditable));
@@ -2409,7 +2567,7 @@ void MainWindow::updatePhraseDictInternal(int model)
         for (Phrase *p : phrases) {
             QString f = friendlyString(p->source());
             if (f.size() > 0) {
-                f = f.split(QLatin1Char(' ')).first();
+                f = f.split(u' ').first();
                 if (!pd.contains(f)) {
                     pd.insert(f, QList<Phrase *>());
                 }
@@ -2439,33 +2597,6 @@ void MainWindow::updatePhraseDicts()
     m_phraseView->update();
 }
 
-static bool haveMnemonic(const QString &str)
-{
-    for (const ushort *p = (ushort *)str.constData();; ) { // Assume null-termination
-        ushort c = *p++;
-        if (!c)
-            break;
-        if (c == '&') {
-            c = *p++;
-            if (!c)
-                return false;
-            // Matches QKeySequence::mnemonic(), except for
-            // '&#' - most likely the start of an NCR
-            // '& ' - too many false positives
-            if (c != '&' && c != ' ' && c != '#' && QChar(c).isPrint()) {
-                const ushort *pp = p;
-                for (; *p < 256 && isalpha(*p); p++) ;
-                if (pp == p || *p != ';')
-                    return true;
-                // This looks like a HTML &entity;, so ignore it. As a HTML string
-                // won't contain accels anyway, we can stop scanning here.
-                break;
-            }
-        }
-    }
-    return false;
-}
-
 void MainWindow::updateDanger(const MultiDataIndex &index, bool verbose)
 {
     MultiDataIndex curIdx = index;
@@ -2487,145 +2618,25 @@ void MainWindow::updateDanger(const MultiDataIndex &index, bool verbose)
                 if (source.isEmpty())
                     source = m->text();
             }
+
+            Validator validator = Validator::fromSource(
+                    source, m_ui, m_dataModel->sourceLanguage(mi), m_phraseDict[mi]);
             QStringList translations = m->translations();
 
-            // Truncated variants are permitted to be "denormalized"
-            for (int i = 0; i < translations.size(); ++i) {
-                int sep = translations.at(i).indexOf(Translator::BinaryVariantSeparator);
-                if (sep >= 0)
-                    translations[i].truncate(sep);
-            }
+            int i = 0;
+            for (QStringView translation : std::as_const(translations)) {
+                while (!translation.isEmpty()) {
+                    auto sep = translation.indexOf(Translator::BinaryVariantSeparator);
+                    if (sep < 0)
+                        sep = translation.size();
+                    const QString trans = translation.first(sep).toString();
 
-            if (m_ui.actionAccelerators->isChecked()) {
-                bool sk = haveMnemonic(source);
-                bool tk = true;
-                for (int i = 0; i < translations.size() && tk; ++i) {
-                    tk &= haveMnemonic(translations[i]);
-                }
+                    const bool needsRef = m->message().isPlural()
+                            && m_dataModel->model(mi)->countRefNeeds().at(i++);
+                    danger |= validator.validate(trans, m_dataModel->language(mi), mi, needsRef,
+                                                 verbose, m_errorsView);
 
-                if (!sk && tk) {
-                    if (verbose)
-                        m_errorsView->addError(mi, ErrorsView::SuperfluousAccelerator);
-                    danger = true;
-                } else if (sk && !tk) {
-                    if (verbose)
-                        m_errorsView->addError(mi, ErrorsView::MissingAccelerator);
-                    danger = true;
-                }
-            }
-            if (m_ui.actionSurroundingWhitespace->isChecked()) {
-                bool whitespaceok = true;
-                for (int i = 0; i < translations.size() && whitespaceok; ++i) {
-                    whitespaceok &= (leadingWhitespace(source) == leadingWhitespace(translations[i]));
-                    whitespaceok &= (trailingWhitespace(source) == trailingWhitespace(translations[i]));
-                }
-
-                if (!whitespaceok) {
-                    if (verbose)
-                        m_errorsView->addError(mi, ErrorsView::SurroundingWhitespaceDiffers);
-                    danger = true;
-                }
-            }
-            if (m_ui.actionEndingPunctuation->isChecked()) {
-                bool endingok = true;
-                for (int i = 0; i < translations.size() && endingok; ++i) {
-                    endingok &= (ending(source, m_dataModel->sourceLanguage(mi)) ==
-                                ending(translations[i], m_dataModel->language(mi)));
-                }
-
-                if (!endingok) {
-                    if (verbose)
-                        m_errorsView->addError(mi, ErrorsView::PunctuationDiffers);
-                    danger = true;
-                }
-            }
-            if (m_ui.actionPhraseMatches->isChecked()) {
-                QString fsource = friendlyString(source);
-                QString ftranslation = friendlyString(translations.first());
-                QStringList lookupWords = fsource.split(QLatin1Char(' '));
-
-                bool phraseFound;
-                for (const QString &s : std::as_const(lookupWords)) {
-                    if (m_phraseDict[mi].contains(s)) {
-                        phraseFound = true;
-                        const auto phrases = m_phraseDict[mi].value(s);
-                        for (const Phrase *p : phrases) {
-                            if (fsource == friendlyString(p->source())) {
-                                if (ftranslation.indexOf(friendlyString(p->target())) >= 0) {
-                                    phraseFound = true;
-                                    break;
-                                } else {
-                                    phraseFound = false;
-                                }
-                            }
-                        }
-                        if (!phraseFound) {
-                            if (verbose)
-                                m_errorsView->addError(mi, ErrorsView::IgnoredPhrasebook, s);
-                            danger = true;
-                        }
-                    }
-                }
-            }
-
-            if (m_ui.actionPlaceMarkerMatches->isChecked()) {
-                // Stores the occurrence count of the place markers in the map placeMarkerIndexes.
-                // i.e. the occurrence count of %1 is stored at placeMarkerIndexes[1],
-                // count of %2 is stored at placeMarkerIndexes[2] etc.
-                // In the first pass, it counts all place markers in the sourcetext.
-                // In the second pass it (de)counts all place markers in the translation.
-                // When finished, all elements should have returned to a count of 0,
-                // if not there is a mismatch
-                // between place markers in the source text and the translation text.
-                QHash<int, int> placeMarkerIndexes;
-                QString translation;
-                int numTranslations = translations.size();
-                for (int pass = 0; pass < numTranslations + 1; ++pass) {
-                    const QChar *uc_begin = source.unicode();
-                    const QChar *uc_end = uc_begin + source.size();
-                    if (pass >= 1) {
-                        translation = translations[pass - 1];
-                        uc_begin = translation.unicode();
-                        uc_end = uc_begin + translation.size();
-                    }
-                    const QChar *c = uc_begin;
-                    while (c < uc_end) {
-                        if (c->unicode() == '%') {
-                            const QChar *escape_start = ++c;
-                            while (c->isDigit())
-                                ++c;
-                            const QChar *escape_end = c;
-                            bool ok = true;
-                            int markerIndex = QString::fromRawData(
-                                    escape_start, escape_end - escape_start).toInt(&ok);
-                            if (ok)
-                                placeMarkerIndexes[markerIndex] += (pass == 0 ? numTranslations : -1);
-                        } else {
-                            ++c;
-                        }
-                    }
-                }
-
-                for (int i : std::as_const(placeMarkerIndexes)) {
-                    if (i != 0) {
-                        if (verbose)
-                            m_errorsView->addError(mi, ErrorsView::PlaceMarkersDiffer);
-                        danger = true;
-                        break;
-                    }
-                }
-
-                // Piggy-backed on the general place markers, we check the plural count marker.
-                if (m->message().isPlural()) {
-                    for (int i = 0; i < numTranslations; ++i)
-                        if (m_dataModel->model(mi)->countRefNeeds().at(i)
-                            && !(translations[i].contains(QLatin1String("%n"))
-                            || translations[i].contains(QLatin1String("%Ln")))) {
-                            if (verbose)
-                                m_errorsView->addError(mi, ErrorsView::NumerusMarkerMissing);
-                            danger = true;
-                            break;
-                        }
+                    translation.slice(std::min(sep + 1, translation.size()));
                 }
             }
         }
@@ -2670,7 +2681,7 @@ void MainWindow::readConfig()
     int size = config.beginReadArray(settingPath("OpenedPhraseBooks"));
     for (int i = 0; i < size; ++i) {
         config.setArrayIndex(i);
-        doOpenPhraseBook(config.value(QLatin1String("FileName")).toString());
+        doOpenPhraseBook(config.value("FileName"_L1).toString());
     }
     config.endArray();
 }
@@ -2705,7 +2716,7 @@ void MainWindow::writeConfig()
         m_phraseBooks.size());
     for (int i = 0; i < m_phraseBooks.size(); ++i) {
         config.setArrayIndex(i);
-        config.setValue(QLatin1String("FileName"), m_phraseBooks.at(i)->fileName());
+        config.setValue("FileName"_L1, m_phraseBooks.at(i)->fileName());
     }
     config.endArray();
 }
@@ -2733,20 +2744,22 @@ void MainWindow::recentFileActivated(QAction *action)
     openFiles(action->data().toStringList());
 }
 
-void MainWindow::toggleStatistics()
+void MainWindow::showStatistics()
 {
-    if (m_ui.actionStatistics->isChecked()) {
-        if (!m_statistics) {
-            m_statistics = new Statistics(this);
-            connect(m_dataModel, &MultiDataModel::statsChanged,
-                    m_statistics, &Statistics::updateStats);
-        }
-        m_statistics->show();
-        updateStatistics();
+    if (!m_statistics) {
+        m_statistics = new Statistics(this);
+        connect(m_dataModel, &MultiDataModel::statsChanged, m_statistics, &Statistics::updateStats);
     }
-    else if (m_statistics) {
-        m_statistics->close();
-    }
+    m_statistics->show();
+    updateStatistics();
+}
+
+void MainWindow::toggleQmlPreview()
+{
+    if (m_ui.actionQmlPreview->isChecked())
+        m_sourceAndFormView->setCurrentWidget(m_qmlFormPreviewView);
+    else
+        m_sourceAndFormView->setCurrentWidget(m_sourceCodeView);
 }
 
 void MainWindow::toggleVisualizeWhitespace()
@@ -2787,13 +2800,13 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 {
     if (event->type() == QEvent::DragEnter) {
         QDragEnterEvent *e = static_cast<QDragEnterEvent*>(event);
-        if (e->mimeData()->hasFormat(QLatin1String("text/uri-list"))) {
+        if (e->mimeData()->hasFormat("text/uri-list"_L1)) {
             e->acceptProposedAction();
             return true;
         }
     } else if (event->type() == QEvent::Drop) {
         QDropEvent *e = static_cast<QDropEvent*>(event);
-        if (!e->mimeData()->hasFormat(QLatin1String("text/uri-list")))
+        if (!e->mimeData()->hasFormat("text/uri-list"_L1))
             return false;
         QStringList urls;
         for (const QUrl &url : e->mimeData()->urls())
@@ -2827,6 +2840,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
         }
     } else if (event->type() == QEvent::ApplicationPaletteChange) {
         m_dataModel->updateColors();
+        updateIcons();
     }
     return QMainWindow::eventFilter(object, event);
 }

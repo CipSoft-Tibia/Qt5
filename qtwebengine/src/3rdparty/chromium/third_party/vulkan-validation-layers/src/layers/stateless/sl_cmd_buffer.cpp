@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,56 +19,56 @@
 #include "stateless/stateless_validation.h"
 #include "generated/enum_flag_bits.h"
 
-ReadLockGuard StatelessValidation::ReadLock() const { return ReadLockGuard(validation_object_mutex, std::defer_lock); }
-WriteLockGuard StatelessValidation::WriteLock() { return WriteLockGuard(validation_object_mutex, std::defer_lock); }
+namespace stateless {
+ReadLockGuard Device::ReadLock() const { return ReadLockGuard(validation_object_mutex, std::defer_lock); }
+WriteLockGuard Device::WriteLock() { return WriteLockGuard(validation_object_mutex, std::defer_lock); }
 
-bool StatelessValidation::ValidateCmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset,
-                                                     VkIndexType indexType, const Location &loc) const {
+bool Device::ValidateCmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkIndexType indexType,
+                                        const Location &loc) const {
     bool skip = false;
     const bool is_2 = loc.function != Func::vkCmdBindIndexBuffer;
     const char *vuid;
 
     if (buffer == VK_NULL_HANDLE) {
         if (!enabled_features.maintenance6) {
-            vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2KHR-None-09493" : "VUID-vkCmdBindIndexBuffer-None-09493";
+            vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2-None-09493" : "VUID-vkCmdBindIndexBuffer-None-09493";
             skip |= LogError(vuid, commandBuffer, loc.dot(Field::buffer), "is VK_NULL_HANDLE.");
         } else if (offset != 0) {
-            vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2KHR-buffer-09494" : "VUID-vkCmdBindIndexBuffer-buffer-09494";
+            vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2-buffer-09494" : "VUID-vkCmdBindIndexBuffer-buffer-09494";
             skip |= LogError(vuid, commandBuffer, loc.dot(Field::buffer), "is VK_NULL_HANDLE but offset is (%" PRIu64 ").", offset);
         }
     }
 
     if (indexType == VK_INDEX_TYPE_NONE_KHR) {
-        vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2KHR-indexType-08786" : "VUID-vkCmdBindIndexBuffer-indexType-08786";
+        vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2-indexType-08786" : "VUID-vkCmdBindIndexBuffer-indexType-08786";
         skip |= LogError(vuid, commandBuffer, loc.dot(Field::indexType), "is VK_INDEX_TYPE_NONE_KHR.");
     }
 
-    if (indexType == VK_INDEX_TYPE_UINT8_KHR && !enabled_features.indexTypeUint8) {
-        vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2KHR-indexType-08787" : "VUID-vkCmdBindIndexBuffer-indexType-08787";
+    if (indexType == VK_INDEX_TYPE_UINT8 && !enabled_features.indexTypeUint8) {
+        vuid = is_2 ? "VUID-vkCmdBindIndexBuffer2-indexType-08787" : "VUID-vkCmdBindIndexBuffer-indexType-08787";
         skip |= LogError(vuid, commandBuffer, loc.dot(Field::indexType),
-                         "is VK_INDEX_TYPE_UINT8_KHR but indexTypeUint8 feature was not enabled.");
+                         "is VK_INDEX_TYPE_UINT8 but indexTypeUint8 feature was not enabled.");
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer,
-                                                                   VkDeviceSize offset, VkIndexType indexType,
-                                                                   const ErrorObject &error_obj) const {
-    return ValidateCmdBindIndexBuffer(commandBuffer, buffer, offset, indexType, error_obj.location);
+bool Device::manual_PreCallValidateCmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset,
+                                                      VkIndexType indexType, const Context &context) const {
+    return ValidateCmdBindIndexBuffer(commandBuffer, buffer, offset, indexType, context.error_obj.location);
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer, VkBuffer buffer,
-                                                                       VkDeviceSize offset, VkDeviceSize size,
-                                                                       VkIndexType indexType, const ErrorObject &error_obj) const {
-    return ValidateCmdBindIndexBuffer(commandBuffer, buffer, offset, indexType, error_obj.location);
+bool Device::manual_PreCallValidateCmdBindIndexBuffer2(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset,
+                                                       VkDeviceSize size, VkIndexType indexType, const Context &context) const {
+    return ValidateCmdBindIndexBuffer(commandBuffer, buffer, offset, indexType, context.error_obj.location);
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding,
-                                                                     uint32_t bindingCount, const VkBuffer *pBuffers,
-                                                                     const VkDeviceSize *pOffsets,
-                                                                     const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount,
+                                                        const VkBuffer *pBuffers, const VkDeviceSize *pOffsets,
+                                                        const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
+
     if (firstBinding > device_limits.maxVertexInputBindings) {
         skip |= LogError("VUID-vkCmdBindVertexBuffers-firstBinding-00624", commandBuffer, error_obj.location,
                          "firstBinding (%" PRIu32 ") must be less than maxVertexInputBindings (%" PRIu32 ").", firstBinding,
@@ -103,10 +103,12 @@ bool StatelessValidation::manual_PreCallValidateCmdBindVertexBuffers(VkCommandBu
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBindTransformFeedbackBuffersEXT(
-    VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer *pBuffers,
-    const VkDeviceSize *pOffsets, const VkDeviceSize *pSizes, const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdBindTransformFeedbackBuffersEXT(VkCommandBuffer commandBuffer, uint32_t firstBinding,
+                                                                      uint32_t bindingCount, const VkBuffer *pBuffers,
+                                                                      const VkDeviceSize *pOffsets, const VkDeviceSize *pSizes,
+                                                                      const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (!enabled_features.transformFeedback) {
         skip |= LogError("VUID-vkCmdBindTransformFeedbackBuffersEXT-transformFeedback-02355", commandBuffer, error_obj.location,
@@ -121,17 +123,18 @@ bool StatelessValidation::manual_PreCallValidateCmdBindTransformFeedbackBuffersE
     }
 
     if (firstBinding >= phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers) {
-        skip |= LogError("VUID-vkCmdBindTransformFeedbackBuffersEXT-firstBinding-02356", commandBuffer, error_obj.location,
-                         "The firstBinding(%" PRIu32
-                         ") index is greater than or equal to "
-                         "maxTransformFeedbackBuffers(%" PRIu32 ").",
+        skip |= LogError("VUID-vkCmdBindTransformFeedbackBuffersEXT-firstBinding-02356", commandBuffer,
+                         error_obj.location.dot(Field::firstBinding),
+                         "(%" PRIu32
+                         ") is greater than or equal to "
+                         "maxTransformFeedbackBuffers (%" PRIu32 ").",
                          firstBinding, phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
     }
 
     if (firstBinding + bindingCount > phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers) {
-        skip |= LogError("VUID-vkCmdBindTransformFeedbackBuffersEXT-firstBinding-02357", commandBuffer, error_obj.location,
-                         "The sum of firstBinding(%" PRIu32 ") and bindCount(%" PRIu32
-                         ") is greater than maxTransformFeedbackBuffers(%" PRIu32 ").",
+        skip |= LogError("VUID-vkCmdBindTransformFeedbackBuffersEXT-firstBinding-02357", commandBuffer,
+                         error_obj.location.dot(Field::firstBinding),
+                         "(%" PRIu32 ") plus bindCount (%" PRIu32 ") is greater than maxTransformFeedbackBuffers (%" PRIu32 ").",
                          firstBinding, bindingCount, phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
     }
 
@@ -144,8 +147,8 @@ bool StatelessValidation::manual_PreCallValidateCmdBindTransformFeedbackBuffersE
                                  error_obj.location.dot(Field::pSizes, i),
                                  "(%" PRIu64
                                  ") is not VK_WHOLE_SIZE and is greater than "
-                                 "maxTransformFeedbackBufferSize.",
-                                 pSizes[i]);
+                                 "maxTransformFeedbackBufferSize (%" PRIu64 ").",
+                                 pSizes[i], phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBufferSize);
             }
         }
     }
@@ -153,40 +156,41 @@ bool StatelessValidation::manual_PreCallValidateCmdBindTransformFeedbackBuffersE
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBeginTransformFeedbackEXT(
-    VkCommandBuffer commandBuffer, uint32_t firstCounterBuffer, uint32_t counterBufferCount, const VkBuffer *pCounterBuffers,
-    const VkDeviceSize *pCounterBufferOffsets, const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdBeginTransformFeedbackEXT(VkCommandBuffer commandBuffer, uint32_t firstCounterBuffer,
+                                                                uint32_t counterBufferCount, const VkBuffer *pCounterBuffers,
+                                                                const VkDeviceSize *pCounterBufferOffsets,
+                                                                const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (!enabled_features.transformFeedback) {
         skip |= LogError("VUID-vkCmdBeginTransformFeedbackEXT-transformFeedback-02366", commandBuffer, error_obj.location,
                          "transformFeedback feature was not enabled.");
     }
 
     if (firstCounterBuffer >= phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers) {
-        skip |= LogError("VUID-vkCmdBeginTransformFeedbackEXT-firstCounterBuffer-02368", commandBuffer, error_obj.location,
-                         "The firstCounterBuffer(%" PRIu32
-                         ") index is greater than or equal to "
-                         "maxTransformFeedbackBuffers(%" PRIu32 ").",
-                         firstCounterBuffer, phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
+        skip |= LogError("VUID-vkCmdBeginTransformFeedbackEXT-firstCounterBuffer-02368", commandBuffer,
+                         error_obj.location.dot(Field::firstCounterBuffer),
+                         "(%" PRIu32 ") is not less than maxTransformFeedbackBuffers (%" PRIu32 ").", firstCounterBuffer,
+                         phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
     }
 
     if (firstCounterBuffer + counterBufferCount > phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers) {
-        skip |= LogError("VUID-vkCmdBeginTransformFeedbackEXT-firstCounterBuffer-02369", commandBuffer, error_obj.location,
-                         "The sum of firstCounterBuffer(%" PRIu32 ") and counterBufferCount(%" PRIu32
-                         ") is greater than maxTransformFeedbackBuffers(%" PRIu32 ").",
-                         firstCounterBuffer, counterBufferCount,
-                         phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
+        skip |= LogError(
+            "VUID-vkCmdBeginTransformFeedbackEXT-firstCounterBuffer-02369", commandBuffer,
+            error_obj.location.dot(Field::firstCounterBuffer),
+            "(%" PRIu32 ") plus counterBufferCount (%" PRIu32 ") is greater than maxTransformFeedbackBuffers (%" PRIu32 ").",
+            firstCounterBuffer, counterBufferCount, phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdEndTransformFeedbackEXT(VkCommandBuffer commandBuffer,
-                                                                           uint32_t firstCounterBuffer, uint32_t counterBufferCount,
-                                                                           const VkBuffer *pCounterBuffers,
-                                                                           const VkDeviceSize *pCounterBufferOffsets,
-                                                                           const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdEndTransformFeedbackEXT(VkCommandBuffer commandBuffer, uint32_t firstCounterBuffer,
+                                                              uint32_t counterBufferCount, const VkBuffer *pCounterBuffers,
+                                                              const VkDeviceSize *pCounterBufferOffsets,
+                                                              const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (!enabled_features.transformFeedback) {
         skip |= LogError("VUID-vkCmdEndTransformFeedbackEXT-transformFeedback-02374", commandBuffer, error_obj.location,
                          "transformFeedback feature was not enabled.");
@@ -195,35 +199,34 @@ bool StatelessValidation::manual_PreCallValidateCmdEndTransformFeedbackEXT(VkCom
     // pCounterBuffers and pCounterBufferOffsets are optional and may be nullptr.
     //  Additionaly, pCounterBufferOffsets must be nullptr if pCounterBuffers is nullptr.
     if (pCounterBuffers == nullptr && pCounterBufferOffsets != nullptr) {
-        skip |= LogError("VUID-vkCmdEndTransformFeedbackEXT-pCounterBuffer-02379", commandBuffer, error_obj.location,
-                         "pCounterBuffers is NULL and pCounterBufferOffsets is not NULL.");
+        skip |= LogError("VUID-vkCmdEndTransformFeedbackEXT-pCounterBuffer-02379", commandBuffer,
+                         error_obj.location.dot(Field::pCounterBuffers), "is NULL but pCounterBufferOffsets is not NULL.");
     }
 
     if (firstCounterBuffer >= phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers) {
-        skip |= LogError("VUID-vkCmdEndTransformFeedbackEXT-firstCounterBuffer-02376", commandBuffer, error_obj.location,
-                         "The firstCounterBuffer(%" PRIu32
-                         ") index is greater than or equal to "
-                         "maxTransformFeedbackBuffers(%" PRIu32 ").",
-                         firstCounterBuffer, phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
+        skip |= LogError("VUID-vkCmdEndTransformFeedbackEXT-firstCounterBuffer-02376", commandBuffer,
+                         error_obj.location.dot(Field::firstCounterBuffer),
+                         "(%" PRIu32 ") is not less than maxTransformFeedbackBuffers (%" PRIu32 ").", firstCounterBuffer,
+                         phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
     }
 
     if (firstCounterBuffer + counterBufferCount > phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers) {
-        skip |= LogError("VUID-vkCmdEndTransformFeedbackEXT-firstCounterBuffer-02377", commandBuffer, error_obj.location,
-                         "The sum of firstCounterBuffer(%" PRIu32 ") and counterBufferCount(%" PRIu32
-                         ") is greater than maxTransformFeedbackBuffers(%" PRIu32 ").",
-                         firstCounterBuffer, counterBufferCount,
-                         phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
+        skip |= LogError(
+            "VUID-vkCmdEndTransformFeedbackEXT-firstCounterBuffer-02377", commandBuffer,
+            error_obj.location.dot(Field::firstCounterBuffer),
+            "(%" PRIu32 ") plus counterBufferCount (%" PRIu32 ") is greater than maxTransformFeedbackBuffers (%" PRIu32 ").",
+            firstCounterBuffer, counterBufferCount, phys_dev_ext_props.transform_feedback_props.maxTransformFeedbackBuffers);
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBindVertexBuffers2(VkCommandBuffer commandBuffer, uint32_t firstBinding,
-                                                                      uint32_t bindingCount, const VkBuffer *pBuffers,
-                                                                      const VkDeviceSize *pOffsets, const VkDeviceSize *pSizes,
-                                                                      const VkDeviceSize *pStrides,
-                                                                      const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdBindVertexBuffers2(VkCommandBuffer commandBuffer, uint32_t firstBinding,
+                                                         uint32_t bindingCount, const VkBuffer *pBuffers,
+                                                         const VkDeviceSize *pOffsets, const VkDeviceSize *pSizes,
+                                                         const VkDeviceSize *pStrides, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     // Check VUID-vkCmdBindVertexBuffers2-bindingCount-arraylength
     // This is a special case and generator currently skips it
@@ -293,56 +296,54 @@ bool StatelessValidation::manual_PreCallValidateCmdBindVertexBuffers2(VkCommandB
     return skip;
 }
 
-bool StatelessValidation::ValidateCmdPushConstants(VkCommandBuffer commandBuffer, uint32_t offset, uint32_t size,
-                                                   const Location &loc) const {
+bool Device::ValidateCmdPushConstants(VkCommandBuffer commandBuffer, uint32_t offset, uint32_t size, const Location &loc) const {
     bool skip = false;
     const bool is_2 = loc.function != Func::vkCmdPushConstants;
     const uint32_t max_push_constants_size = device_limits.maxPushConstantsSize;
     // Check that offset + size don't exceed the max.
     // Prevent arithetic overflow here by avoiding addition and testing in this order.
     if (offset >= max_push_constants_size) {
-        const char *vuid = is_2 ? "VUID-VkPushConstantsInfoKHR-offset-00370" : "VUID-vkCmdPushConstants-offset-00370";
+        const char *vuid = is_2 ? "VUID-VkPushConstantsInfo-offset-00370" : "VUID-vkCmdPushConstants-offset-00370";
         skip |= LogError(vuid, commandBuffer, loc.dot(Field::offset),
-                         "(%" PRIu32 ") that exceeds this device's maxPushConstantSize of %" PRIu32 ".", offset,
-                         max_push_constants_size);
+                         "(%" PRIu32 ") is greater than maxPushConstantSize (%" PRIu32 ").", offset, max_push_constants_size);
     }
     if (size > max_push_constants_size - offset) {
-        const char *vuid = is_2 ? "VUID-VkPushConstantsInfoKHR-size-00371" : "VUID-vkCmdPushConstants-size-00371";
+        const char *vuid = is_2 ? "VUID-VkPushConstantsInfo-size-00371" : "VUID-vkCmdPushConstants-size-00371";
         skip |= LogError(vuid, commandBuffer, loc.dot(Field::offset),
-                         "(%" PRIu32 ") and size (%" PRIu32 ") that exceeds this device's maxPushConstantSize of %" PRIu32 ".",
-                         offset, size, max_push_constants_size);
+                         "(%" PRIu32 ") plus size (%" PRIu32 ") is greater than maxPushConstantSize (%" PRIu32 ").", offset, size,
+                         max_push_constants_size);
     }
 
     if (SafeModulo(size, 4) != 0) {
-        const char *vuid = is_2 ? "VUID-VkPushConstantsInfoKHR-size-00369" : "VUID-vkCmdPushConstants-size-00369";
+        const char *vuid = is_2 ? "VUID-VkPushConstantsInfo-size-00369" : "VUID-vkCmdPushConstants-size-00369";
         skip |= LogError(vuid, commandBuffer, loc.dot(Field::size), "(%" PRIu32 ") must be a multiple of 4.", size);
     }
 
     if (SafeModulo(offset, 4) != 0) {
-        const char *vuid = is_2 ? "VUID-VkPushConstantsInfoKHR-offset-00368" : "VUID-vkCmdPushConstants-offset-00368";
+        const char *vuid = is_2 ? "VUID-VkPushConstantsInfo-offset-00368" : "VUID-vkCmdPushConstants-offset-00368";
         skip |= LogError(vuid, commandBuffer, loc.dot(Field::offset), "(%" PRIu32 ") must be a multiple of 4.", offset);
     }
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout,
-                                                                 VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size,
-                                                                 const void *pValues, const ErrorObject &error_obj) const {
-    return ValidateCmdPushConstants(commandBuffer, offset, size, error_obj.location);
+bool Device::manual_PreCallValidateCmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout,
+                                                    VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size,
+                                                    const void *pValues, const Context &context) const {
+    return ValidateCmdPushConstants(commandBuffer, offset, size, context.error_obj.location);
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdPushConstants2KHR(VkCommandBuffer commandBuffer,
-                                                                     const VkPushConstantsInfoKHR *pPushConstantsInfo,
-                                                                     const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdPushConstants2(VkCommandBuffer commandBuffer, const VkPushConstantsInfo *pPushConstantsInfo,
+                                                     const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     skip |= ValidateCmdPushConstants(commandBuffer, pPushConstantsInfo->offset, pPushConstantsInfo->size,
                                      error_obj.location.dot(Field::pPushConstantsInfo));
     if (pPushConstantsInfo->layout == VK_NULL_HANDLE) {
         if (!enabled_features.dynamicPipelineLayout) {
-            skip |= LogError("VUID-VkPushConstantsInfoKHR-None-09495", commandBuffer,
+            skip |= LogError("VUID-VkPushConstantsInfo-None-09495", commandBuffer,
                              error_obj.location.dot(Field::pPushConstantsInfo).dot(Field::layout), "is VK_NULL_HANDLE.");
         } else if (!vku::FindStructInPNextChain<VkPipelineLayoutCreateInfo>(pPushConstantsInfo->pNext)) {
-            skip |= LogError("VUID-VkPushConstantsInfoKHR-layout-09496", commandBuffer,
+            skip |= LogError("VUID-VkPushConstantsInfo-layout-09496", commandBuffer,
                              error_obj.location.dot(Field::pPushConstantsInfo).dot(Field::layout),
                              "is VK_NULL_HANDLE and pNext is missing VkPipelineLayoutCreateInfo.");
         }
@@ -350,22 +351,22 @@ bool StatelessValidation::manual_PreCallValidateCmdPushConstants2KHR(VkCommandBu
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdClearColorImage(VkCommandBuffer commandBuffer, VkImage image,
-                                                                   VkImageLayout imageLayout, const VkClearColorValue *pColor,
-                                                                   uint32_t rangeCount, const VkImageSubresourceRange *pRanges,
-                                                                   const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdClearColorImage(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout,
+                                                      const VkClearColorValue *pColor, uint32_t rangeCount,
+                                                      const VkImageSubresourceRange *pRanges, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (!pColor) {
         skip |= LogError("VUID-vkCmdClearColorImage-pColor-04961", commandBuffer, error_obj.location, "pColor must not be null");
     }
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateGetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery,
-                                                                    uint32_t queryCount, size_t dataSize, void *pData,
-                                                                    VkDeviceSize stride, VkQueryResultFlags flags,
-                                                                    const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateGetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery,
+                                                       uint32_t queryCount, size_t dataSize, void *pData, VkDeviceSize stride,
+                                                       VkQueryResultFlags flags, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if ((flags & VK_QUERY_RESULT_WITH_STATUS_BIT_KHR) && (flags & VK_QUERY_RESULT_WITH_AVAILABILITY_BIT)) {
         skip |= LogError("VUID-vkGetQueryPoolResults-flags-09443", device, error_obj.location.dot(Field::flags),
@@ -375,24 +376,26 @@ bool StatelessValidation::manual_PreCallValidateGetQueryPoolResults(VkDevice dev
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBeginConditionalRenderingEXT(
+bool Device::manual_PreCallValidateCmdBeginConditionalRenderingEXT(
     VkCommandBuffer commandBuffer, const VkConditionalRenderingBeginInfoEXT *pConditionalRenderingBegin,
-    const ErrorObject &error_obj) const {
+    const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if ((pConditionalRenderingBegin->offset & 3) != 0) {
-        skip |= LogError("VUID-VkConditionalRenderingBeginInfoEXT-offset-01984", commandBuffer, error_obj.location,
-                         " pConditionalRenderingBegin->offset (%" PRIu64 ") is not a multiple of 4.",
-                         pConditionalRenderingBegin->offset);
+        skip |= LogError("VUID-VkConditionalRenderingBeginInfoEXT-offset-01984", commandBuffer,
+                         error_obj.location.dot(Field::pConditionalRenderingBegin).dot(Field::offset),
+                         "(%" PRIu64 ") is not a multiple of 4.", pConditionalRenderingBegin->offset);
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdClearAttachments(VkCommandBuffer commandBuffer, uint32_t attachmentCount,
-                                                                    const VkClearAttachment *pAttachments, uint32_t rectCount,
-                                                                    const VkClearRect *pRects, const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdClearAttachments(VkCommandBuffer commandBuffer, uint32_t attachmentCount,
+                                                       const VkClearAttachment *pAttachments, uint32_t rectCount,
+                                                       const VkClearRect *pRects, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     for (uint32_t rect = 0; rect < rectCount; rect++) {
         const Location rect_loc = error_obj.location.dot(Field::pRects, rect);
         if (pRects[rect].layerCount == 0) {
@@ -411,10 +414,10 @@ bool StatelessValidation::manual_PreCallValidateCmdClearAttachments(VkCommandBuf
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdCopyBuffer(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, VkBuffer dstBuffer,
-                                                              uint32_t regionCount, const VkBufferCopy *pRegions,
-                                                              const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdCopyBuffer(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, VkBuffer dstBuffer,
+                                                 uint32_t regionCount, const VkBufferCopy *pRegions, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (pRegions != nullptr) {
         for (uint32_t i = 0; i < regionCount; i++) {
@@ -427,10 +430,10 @@ bool StatelessValidation::manual_PreCallValidateCmdCopyBuffer(VkCommandBuffer co
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdCopyBuffer2(VkCommandBuffer commandBuffer,
-                                                               const VkCopyBufferInfo2 *pCopyBufferInfo,
-                                                               const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdCopyBuffer2(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2 *pCopyBufferInfo,
+                                                  const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (pCopyBufferInfo->pRegions != nullptr) {
         for (uint32_t i = 0; i < pCopyBufferInfo->regionCount; i++) {
@@ -444,10 +447,10 @@ bool StatelessValidation::manual_PreCallValidateCmdCopyBuffer2(VkCommandBuffer c
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
-                                                                VkDeviceSize dstOffset, VkDeviceSize dataSize, const void *pData,
-                                                                const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize dstOffset,
+                                                   VkDeviceSize dataSize, const void *pData, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (dstOffset & 3) {
         const LogObjectList objlist(commandBuffer, dstBuffer);
@@ -467,10 +470,10 @@ bool StatelessValidation::manual_PreCallValidateCmdUpdateBuffer(VkCommandBuffer 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdFillBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
-                                                              VkDeviceSize dstOffset, VkDeviceSize size, uint32_t data,
-                                                              const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdFillBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize dstOffset,
+                                                 VkDeviceSize size, uint32_t data, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     if (dstOffset & 3) {
         const LogObjectList objlist(commandBuffer, dstBuffer);
@@ -492,60 +495,64 @@ bool StatelessValidation::manual_PreCallValidateCmdFillBuffer(VkCommandBuffer co
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdBindDescriptorBuffersEXT(VkCommandBuffer commandBuffer, uint32_t bufferCount,
-                                                                            const VkDescriptorBufferBindingInfoEXT *pBindingInfos,
-                                                                            const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdBindDescriptorBuffersEXT(VkCommandBuffer commandBuffer, uint32_t bufferCount,
+                                                               const VkDescriptorBufferBindingInfoEXT *pBindingInfos,
+                                                               const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
     if (!enabled_features.descriptorBuffer) {
         skip |= LogError("VUID-vkCmdBindDescriptorBuffersEXT-None-08047", commandBuffer, error_obj.location,
                          "descriptorBuffer feature was not enabled.");
     }
 
     for (uint32_t i = 0; i < bufferCount; i++) {
-        if (!vku::FindStructInPNextChain<VkBufferUsageFlags2CreateInfoKHR>(pBindingInfos[i].pNext)) {
-            skip |= ValidateFlags(error_obj.location.dot(Field::pBindingInfos, i).dot(Field::usage),
-                                  vvl::FlagBitmask::VkBufferUsageFlagBits, AllVkBufferUsageFlagBits, pBindingInfos[i].usage,
-                                  kRequiredFlags, VK_NULL_HANDLE, "VUID-VkDescriptorBufferBindingInfoEXT-None-09499",
-                                  "VUID-VkDescriptorBufferBindingInfoEXT-None-09500");
+        if (!vku::FindStructInPNextChain<VkBufferUsageFlags2CreateInfo>(pBindingInfos[i].pNext)) {
+            skip |= context.ValidateFlags(error_obj.location.dot(Field::pBindingInfos, i).dot(Field::usage),
+                                          vvl::FlagBitmask::VkBufferUsageFlagBits, AllVkBufferUsageFlagBits, pBindingInfos[i].usage,
+                                          kRequiredFlags, "VUID-VkDescriptorBufferBindingInfoEXT-None-09499",
+                                          "VUID-VkDescriptorBufferBindingInfoEXT-None-09500");
         }
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateGetPhysicalDeviceExternalBufferProperties(
+bool Instance::manual_PreCallValidateGetPhysicalDeviceExternalBufferProperties(
     VkPhysicalDevice physicalDevice, const VkPhysicalDeviceExternalBufferInfo *pExternalBufferInfo,
-    VkExternalBufferProperties *pExternalBufferProperties, const ErrorObject &error_obj) const {
+    VkExternalBufferProperties *pExternalBufferProperties, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
-    if (!vku::FindStructInPNextChain<VkBufferUsageFlags2CreateInfoKHR>(pExternalBufferInfo->pNext)) {
-        skip |= ValidateFlags(error_obj.location.dot(Field::pExternalBufferInfo).dot(Field::usage),
-                              vvl::FlagBitmask::VkBufferUsageFlagBits, AllVkBufferUsageFlagBits, pExternalBufferInfo->usage,
-                              kRequiredFlags, VK_NULL_HANDLE, "VUID-VkPhysicalDeviceExternalBufferInfo-None-09499",
-                              "VUID-VkPhysicalDeviceExternalBufferInfo-None-09500");
+    if (!vku::FindStructInPNextChain<VkBufferUsageFlags2CreateInfo>(pExternalBufferInfo->pNext)) {
+        skip |= context.ValidateFlags(error_obj.location.dot(Field::pExternalBufferInfo).dot(Field::usage),
+                                      vvl::FlagBitmask::VkBufferUsageFlagBits, AllVkBufferUsageFlagBits, pExternalBufferInfo->usage,
+                                      kRequiredFlags, "VUID-VkPhysicalDeviceExternalBufferInfo-None-09499",
+                                      "VUID-VkPhysicalDeviceExternalBufferInfo-None-09500");
     }
 
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdPushDescriptorSetKHR(
-    VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipelineLayout layout, uint32_t set,
-    uint32_t descriptorWriteCount, const VkWriteDescriptorSet *pDescriptorWrites, const ErrorObject &error_obj) const {
-    return ValidateWriteDescriptorSet(error_obj.location, descriptorWriteCount, pDescriptorWrites);
+bool Device::manual_PreCallValidateCmdPushDescriptorSet(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint,
+                                                        VkPipelineLayout layout, uint32_t set, uint32_t descriptorWriteCount,
+                                                        const VkWriteDescriptorSet *pDescriptorWrites,
+                                                        const Context &context) const {
+    return ValidateWriteDescriptorSet(context, context.error_obj.location, descriptorWriteCount, pDescriptorWrites);
 }
 
-bool StatelessValidation::manual_PreCallValidateCmdPushDescriptorSet2KHR(VkCommandBuffer commandBuffer,
-                                                                         const VkPushDescriptorSetInfoKHR *pPushDescriptorSetInfo,
-                                                                         const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateCmdPushDescriptorSet2(VkCommandBuffer commandBuffer,
+                                                         const VkPushDescriptorSetInfo *pPushDescriptorSetInfo,
+                                                         const Context &context) const {
     bool skip = false;
-    skip |= ValidateWriteDescriptorSet(error_obj.location, pPushDescriptorSetInfo->descriptorWriteCount,
+    const auto &error_obj = context.error_obj;
+    skip |= ValidateWriteDescriptorSet(context, error_obj.location, pPushDescriptorSetInfo->descriptorWriteCount,
                                        pPushDescriptorSetInfo->pDescriptorWrites);
     if (pPushDescriptorSetInfo->layout == VK_NULL_HANDLE) {
         if (!enabled_features.dynamicPipelineLayout) {
-            skip |= LogError("VUID-VkPushDescriptorSetInfoKHR-None-09495", commandBuffer,
+            skip |= LogError("VUID-VkPushDescriptorSetInfo-None-09495", commandBuffer,
                              error_obj.location.dot(Field::pPushDescriptorSetInfo).dot(Field::layout), "is VK_NULL_HANDLE.");
         } else if (vku::FindStructInPNextChain<VkPipelineLayoutCreateInfo>(pPushDescriptorSetInfo->pNext)) {
-            skip |= LogError("VUID-VkPushDescriptorSetInfoKHR-layout-09496", commandBuffer,
+            skip |= LogError("VUID-VkPushDescriptorSetInfo-layout-09496", commandBuffer,
                              error_obj.location.dot(Field::pPushDescriptorSetInfo).dot(Field::layout),
                              "is VK_NULL_HANDLE and pNext is missing VkPipelineLayoutCreateInfo.");
         }
@@ -553,7 +560,7 @@ bool StatelessValidation::manual_PreCallValidateCmdPushDescriptorSet2KHR(VkComma
     return skip;
 }
 
-bool StatelessValidation::ValidateViewport(const VkViewport &viewport, VkCommandBuffer object, const Location &loc) const {
+bool Device::ValidateViewport(const VkViewport &viewport, VkCommandBuffer object, const Location &loc) const {
     bool skip = false;
 
     // Note: for numerical correctness
@@ -592,8 +599,8 @@ bool StatelessValidation::ValidateViewport(const VkViewport &viewport, VkCommand
 
     if (!(viewport.width > 0.0f)) {
         width_healthy = false;
-        skip |=
-            LogError("VUID-VkViewport-width-01770", object, loc.dot(Field::width), "(%f) is not greater than 0.0.", viewport.width);
+        skip |= LogError("VUID-VkViewport-width-01770", object, loc.dot(Field::width), "(%f) is not greater than zero.",
+                         viewport.width);
     } else if (!(f_lte_u32_exact(viewport.width, max_w) || f_lte_u32_direct(viewport.width, max_w))) {
         width_healthy = false;
         skip |= LogError("VUID-VkViewport-width-01771", object, loc.dot(Field::width),
@@ -603,12 +610,12 @@ bool StatelessValidation::ValidateViewport(const VkViewport &viewport, VkCommand
     // height
     bool height_healthy = true;
     const bool negative_height_enabled =
-        IsExtEnabled(device_extensions.vk_khr_maintenance1) || IsExtEnabled(device_extensions.vk_amd_negative_viewport_height);
+        IsExtEnabled(extensions.vk_khr_maintenance1) || IsExtEnabled(extensions.vk_amd_negative_viewport_height);
     const auto max_h = device_limits.maxViewportDimensions[1];
 
     if (!negative_height_enabled && !(viewport.height > 0.0f)) {
         height_healthy = false;
-        skip |= LogError("VUID-VkViewport-apiVersion-07917", object, loc.dot(Field::height), "(%f) is not greater 0.0.",
+        skip |= LogError("VUID-VkViewport-apiVersion-07917", object, loc.dot(Field::height), "(%f) is not greater zero.",
                          viewport.height);
     } else if (!(f_lte_u32_exact(fabsf(viewport.height), max_h) || f_lte_u32_direct(fabsf(viewport.height), max_h))) {
         height_healthy = false;
@@ -656,17 +663,17 @@ bool StatelessValidation::ValidateViewport(const VkViewport &viewport, VkCommand
         const float boundary = viewport.y + viewport.height;
 
         if (boundary > device_limits.viewportBoundsRange[1]) {
-            skip |= LogError("VUID-VkViewport-y-01233", object, loc,
-                             "y (%f) + height (%f) is %f which exceeds VkPhysicalDeviceLimits::viewportBoundsRange[1] (%f).",
+            skip |= LogError("VUID-VkViewport-y-01233", object, loc.dot(Field::y),
+                             "(%f) + height (%f) is %f which exceeds VkPhysicalDeviceLimits::viewportBoundsRange[1] (%f).",
                              viewport.y, viewport.height, boundary, device_limits.viewportBoundsRange[1]);
         } else if (negative_height_enabled && boundary < device_limits.viewportBoundsRange[0]) {
-            skip |= LogError("VUID-VkViewport-y-01777", object, loc,
-                             "y (%f) + height (%f) is %f which is less than VkPhysicalDeviceLimits::viewportBoundsRange[0] (%f).",
+            skip |= LogError("VUID-VkViewport-y-01777", object, loc.dot(Field::y),
+                             "(%f) + height (%f) is %f which is less than VkPhysicalDeviceLimits::viewportBoundsRange[0] (%f).",
                              viewport.y, viewport.height, boundary, device_limits.viewportBoundsRange[0]);
         }
     }
 
-    if (!IsExtEnabled(device_extensions.vk_ext_depth_range_unrestricted)) {
+    if (!IsExtEnabled(extensions.vk_ext_depth_range_unrestricted)) {
         // minDepth
         if (!(viewport.minDepth >= 0.0) || !(viewport.minDepth <= 1.0)) {
             skip |= LogError("VUID-VkViewport-minDepth-01234", object, loc.dot(Field::minDepth), "is %f.", viewport.minDepth);
@@ -681,80 +688,65 @@ bool StatelessValidation::ValidateViewport(const VkViewport &viewport, VkCommand
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateFreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
-                                                                   uint32_t commandBufferCount,
-                                                                   const VkCommandBuffer *pCommandBuffers,
-                                                                   const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateFreeCommandBuffers(VkDevice device, VkCommandPool commandPool, uint32_t commandBufferCount,
+                                                      const VkCommandBuffer *pCommandBuffers, const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
     // Validation for parameters excluded from the generated validation code due to a 'noautovalidity' tag in vk.xml
     // This is an array of handles, where the elements are allowed to be VK_NULL_HANDLE, and does not require any validation beyond
     // ValidateArray()
-    skip |= ValidateArray(error_obj.location.dot(Field::commandBufferCount), error_obj.location.dot(Field::pCommandBuffers),
-                          commandBufferCount, &pCommandBuffers, true, true, kVUIDUndefined,
-                          "VUID-vkFreeCommandBuffers-pCommandBuffers-00048");
+    skip |= context.ValidateArray(error_obj.location.dot(Field::commandBufferCount), error_obj.location.dot(Field::pCommandBuffers),
+                                  commandBufferCount, &pCommandBuffers, true, true, kVUIDUndefined,
+                                  "VUID-vkFreeCommandBuffers-pCommandBuffers-00048");
     return skip;
 }
 
-bool StatelessValidation::manual_PreCallValidateBeginCommandBuffer(VkCommandBuffer commandBuffer,
-                                                                   const VkCommandBufferBeginInfo *pBeginInfo,
-                                                                   const ErrorObject &error_obj) const {
+bool Device::manual_PreCallValidateBeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo *pBeginInfo,
+                                                      const Context &context) const {
     bool skip = false;
+    const auto &error_obj = context.error_obj;
 
-    // VkCommandBufferInheritanceInfo validation, due to a 'noautovalidity' of pBeginInfo->pInheritanceInfo in vkBeginCommandBuffer
+    // pBeginInfo->pInheritanceInfo can be a non-null invalid pointer. If not secondary command buffer we need to ignore
     if (!error_obj.handle_data->command_buffer.is_secondary) {
         return skip;
     }
-    // Implicit VUs
-    // validate only sType here; pointer has to be validated in core_validation
-    const bool k_not_required = false;
-    const char *k_no_vuid = nullptr;
-    const VkCommandBufferInheritanceInfo *info = pBeginInfo->pInheritanceInfo;
-    const Location begin_info_loc = error_obj.location.dot(Field::pBeginInfo);
-    const Location inheritance_loc = begin_info_loc.dot(Field::pInheritanceInfo);
-    skip |= ValidateStructType(inheritance_loc, info, VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO, k_not_required, k_no_vuid,
-                               "VUID-VkCommandBufferInheritanceInfo-sType-sType");
 
-    if (info) {
-        constexpr std::array allowed_structs = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_CONDITIONAL_RENDERING_INFO_EXT,
-                                                VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO_KHR,
-                                                VK_STRUCTURE_TYPE_ATTACHMENT_SAMPLE_COUNT_INFO_AMD,
-                                                VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_VIEWPORT_SCISSOR_INFO_NV,
-                                                VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR,
-                                                VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_LOCATION_INFO_KHR};
-        skip |= ValidateStructPnext(inheritance_loc, info->pNext, allowed_structs.size(), allowed_structs.data(),
-                                    GeneratedVulkanHeaderVersion, "VUID-VkCommandBufferInheritanceInfo-pNext-pNext",
-                                    "VUID-VkCommandBufferInheritanceInfo-sType-unique");
+    if (pBeginInfo->pInheritanceInfo) {
+        const VkCommandBufferInheritanceInfo &info = *pBeginInfo->pInheritanceInfo;
+        const Location begin_info_loc = error_obj.location.dot(Field::pBeginInfo);
+        const Location inheritance_loc = begin_info_loc.dot(Field::pInheritanceInfo);
 
-        skip |= ValidateBool32(inheritance_loc.dot(Field::occlusionQueryEnable), info->occlusionQueryEnable);
+        skip |= ValidateCommandBufferInheritanceInfo(context, info, inheritance_loc);
 
         // Explicit VUs
-        if (!enabled_features.inheritedQueries && info->occlusionQueryEnable == VK_TRUE) {
+        if (!enabled_features.inheritedQueries && info.occlusionQueryEnable == VK_TRUE) {
             skip |= LogError(
                 "VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056", commandBuffer, error_obj.location,
-                "Inherited queries feature is disabled, but pBeginInfo->pInheritanceInfo->occlusionQueryEnable is VK_TRUE.");
+                "inheritedQueries feature is disabled, but pBeginInfo->pInheritanceInfo->occlusionQueryEnable is VK_TRUE.");
         }
 
         if (enabled_features.inheritedQueries) {
-            skip |= ValidateFlags(inheritance_loc.dot(Field::queryFlags), vvl::FlagBitmask::VkQueryControlFlagBits,
-                                  AllVkQueryControlFlagBits, info->queryFlags, kOptionalFlags, VK_NULL_HANDLE,
-                                  "VUID-VkCommandBufferInheritanceInfo-queryFlags-00057");
+            skip |= context.ValidateFlags(inheritance_loc.dot(Field::queryFlags), vvl::FlagBitmask::VkQueryControlFlagBits,
+                                          AllVkQueryControlFlagBits, info.queryFlags, kOptionalFlags,
+                                          "VUID-VkCommandBufferInheritanceInfo-queryFlags-00057");
         } else {  // !inheritedQueries
-            skip |= ValidateReservedFlags(inheritance_loc.dot(Field::queryFlags), info->queryFlags,
-                                          "VUID-VkCommandBufferInheritanceInfo-queryFlags-02788");
+            skip |= context.ValidateReservedFlags(inheritance_loc.dot(Field::queryFlags), info.queryFlags,
+                                                  "VUID-VkCommandBufferInheritanceInfo-queryFlags-02788");
         }
 
         if (enabled_features.pipelineStatisticsQuery) {
-            skip |=
-                ValidateFlags(inheritance_loc.dot(Field::pipelineStatistics), vvl::FlagBitmask::VkQueryPipelineStatisticFlagBits,
-                              AllVkQueryPipelineStatisticFlagBits, info->pipelineStatistics, kOptionalFlags, VK_NULL_HANDLE,
-                              "VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789");
+            skip |= context.ValidateFlags(inheritance_loc.dot(Field::pipelineStatistics),
+                                          vvl::FlagBitmask::VkQueryPipelineStatisticFlagBits, AllVkQueryPipelineStatisticFlagBits,
+                                          info.pipelineStatistics, kOptionalFlags,
+                                          "VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789");
         } else {  // !pipelineStatisticsQuery
-            skip |= ValidateReservedFlags(inheritance_loc.dot(Field::pipelineStatistics), info->pipelineStatistics,
-                                          "VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058");
+            skip |= context.ValidateReservedFlags(inheritance_loc.dot(Field::pipelineStatistics), info.pipelineStatistics,
+                                                  "VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058");
         }
 
-        const auto *conditional_rendering = vku::FindStructInPNextChain<VkCommandBufferInheritanceConditionalRenderingInfoEXT>(info->pNext);
+        const auto *conditional_rendering =
+            vku::FindStructInPNextChain<VkCommandBufferInheritanceConditionalRenderingInfoEXT>(info.pNext);
         if (conditional_rendering) {
             if (!enabled_features.inheritedConditionalRendering && conditional_rendering->conditionalRenderingEnable == VK_TRUE) {
                 skip |= LogError(
@@ -765,7 +757,8 @@ bool StatelessValidation::manual_PreCallValidateBeginCommandBuffer(VkCommandBuff
             }
         }
 
-        auto p_inherited_viewport_scissor_info = vku::FindStructInPNextChain<VkCommandBufferInheritanceViewportScissorInfoNV>(info->pNext);
+        auto p_inherited_viewport_scissor_info =
+            vku::FindStructInPNextChain<VkCommandBufferInheritanceViewportScissorInfoNV>(info.pNext);
         if (p_inherited_viewport_scissor_info != nullptr && !enabled_features.multiViewport &&
             p_inherited_viewport_scissor_info->viewportScissor2D == VK_TRUE &&
             p_inherited_viewport_scissor_info->viewportDepthCount != 1) {
@@ -778,3 +771,4 @@ bool StatelessValidation::manual_PreCallValidateBeginCommandBuffer(VkCommandBuff
     }
     return skip;
 }
+}  // namespace stateless

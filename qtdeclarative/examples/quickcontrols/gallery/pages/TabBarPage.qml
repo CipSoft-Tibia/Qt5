@@ -6,6 +6,7 @@ import QtQuick.Controls
 
 Page {
     id: page
+    enabled: !GalleryConfig.disabled
 
     SwipeView {
         id: swipeView

@@ -65,6 +65,7 @@ private slots:
     void createComponent();
     void createComponent_pragmaLibrary();
     void createQmlObject();
+    void createQmlObjectNoCULeak();
     void dateTimeConversion();
     void dateTimeFormatting();
     void dateTimeFormatting_data();
@@ -178,6 +179,7 @@ void tst_qqmlqt::rgba()
     QCOMPARE(qvariant_cast<QColor>(object->property("test4")), QColor());
     QCOMPARE(qvariant_cast<QColor>(object->property("test5")), QColor::fromRgbF(1, 1, 1, 1));
     QCOMPARE(qvariant_cast<QColor>(object->property("test6")), QColor::fromRgbF(0, 0, 0, 0));
+    QCOMPARE(qvariant_cast<QColor>(object->property("test7")), QColor::fromRgbF(0, 0, 0, 0));
 }
 
 void tst_qqmlqt::hsla()
@@ -201,6 +203,7 @@ void tst_qqmlqt::hsla()
     QColor test7 = qvariant_cast<QColor>(object->property("test7"));
     QCOMPARE(test7, QColor::fromHslF(-1, 0, 0.5, 1));
     QCOMPARE(test7.hslHue(), -1.0f);
+    QCOMPARE(qvariant_cast<QColor>(object->property("test8")), QColor::fromHslF(0, 0, 0, 0));
 }
 
 void tst_qqmlqt::hsva()
@@ -224,6 +227,7 @@ void tst_qqmlqt::hsva()
     QColor test7 = qvariant_cast<QColor>(object->property("test7"));
     QCOMPARE(test7, QColor::fromHsvF(-1, 0, 0.5, 1));
     QCOMPARE(test7.hsvHue(), -1.0f);
+    QCOMPARE(qvariant_cast<QColor>(object->property("test8")), QColor::fromHsvF(0, 0, 0, 0));
 }
 
 void tst_qqmlqt::colorEqual()
@@ -712,6 +716,23 @@ void tst_qqmlqt::createComponent()
         QVERIFY(object != nullptr);
         QTRY_VERIFY(object->property("success").toBool());
     }
+}
+
+void tst_qqmlqt::createQmlObjectNoCULeak()
+{
+    QQmlComponent component(&engine, testFileUrl("createQmlObjectNoCULeak.qml"));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(object);
+    object->setProperty("createCount", -1);
+    auto oldCompilationUnitCount = engine.handle()->compilationUnits().size();
+    for (int i = 0; i < 10; ++i) {
+        object->setProperty("createCount", i);
+        // spin the event loop, so that the object is destroyed in time
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
+    }
+    // only the last compilation unit is still referenced
+    QCOMPARE_EQ(engine.handle()->compilationUnits().size(), oldCompilationUnitCount);
 }
 
 void tst_qqmlqt::createComponent_pragmaLibrary()

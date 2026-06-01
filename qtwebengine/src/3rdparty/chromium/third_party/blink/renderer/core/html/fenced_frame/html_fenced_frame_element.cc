@@ -63,8 +63,7 @@ String DeprecatedFencedFrameModeToString(
       return "opaque-ads";
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return "";
+  NOTREACHED();
 }
 
 // Helper function that returns whether the mode of the parent tree is different
@@ -373,7 +372,7 @@ bool HTMLFencedFrameElement::IsPresentationAttribute(
 void HTMLFencedFrameElement::CollectStyleForPresentationAttribute(
     const QualifiedName& name,
     const AtomicString& value,
-    MutableCSSPropertyValueSet* style) {
+    HeapVector<CSSPropertyValue, 8>& style) {
   if (name == html_names::kWidthAttr) {
     AddHTMLLengthToStyle(style, CSSPropertyID::kWidth, value);
   } else if (name == html_names::kHeightAttr) {
@@ -750,10 +749,10 @@ void HTMLFencedFrameElement::FreezeCurrentFrameSize() {
 }
 
 void HTMLFencedFrameElement::SetContainerSize(const gfx::Size& size) {
-  setAttribute(html_names::kWidthAttr, String::Format("%dpx", size.width()),
-               ASSERT_NO_EXCEPTION);
-  setAttribute(html_names::kHeightAttr, String::Format("%dpx", size.height()),
-               ASSERT_NO_EXCEPTION);
+  setAttribute(html_names::kWidthAttr,
+               AtomicString(String::Format("%dpx", size.width())));
+  setAttribute(html_names::kHeightAttr,
+               AtomicString(String::Format("%dpx", size.height())));
 
   frame_delegate_->MarkContainerSizeStale();
 }

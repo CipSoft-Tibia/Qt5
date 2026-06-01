@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickabstractbutton_p.h"
 #include "qquickabstractbutton_p_p.h"
@@ -371,6 +372,11 @@ void QQuickAbstractButtonPrivate::click()
     Q_Q(QQuickAbstractButton);
     if (effectiveEnable)
         emit q->clicked();
+}
+
+void QQuickAbstractButtonPrivate::accessiblePressAction()
+{
+    trigger();
 }
 
 void QQuickAbstractButtonPrivate::trigger(bool doubleClick)
@@ -824,10 +830,18 @@ void QQuickAbstractButton::setIcon(const QQuickIcon &icon)
 
     \table
     \header \li Display \li Result
-    \row \li \c AbstractButton.IconOnly \li \image qtquickcontrols-button-icononly.png
-    \row \li \c AbstractButton.TextOnly \li \image qtquickcontrols-button-textonly.png
-    \row \li \c AbstractButton.TextBesideIcon (default) \li \image qtquickcontrols-button-textbesideicon.png
-    \row \li \c AbstractButton.TextUnderIcon \li \image qtquickcontrols-button-textundericon.png
+    \row \li \c AbstractButton.IconOnly
+         \li \image qtquickcontrols-button-icononly.png
+                    {Button displaying only icon}
+    \row \li \c AbstractButton.TextOnly
+         \li \image qtquickcontrols-button-textonly.png
+                    {Button displaying only text}
+    \row \li \c AbstractButton.TextBesideIcon (default)
+         \li \image qtquickcontrols-button-textbesideicon.png
+                    {Button with text beside icon}
+    \row \li \c AbstractButton.TextUnderIcon
+         \li \image qtquickcontrols-button-textundericon.png
+                    {Button with text under icon}
     \endtable
 
     \sa {Control::}{spacing}, {Control::}{padding}
@@ -1349,7 +1363,7 @@ QAccessible::Role QQuickAbstractButton::accessibleRole() const
 void QQuickAbstractButton::accessiblePressAction()
 {
     Q_D(QQuickAbstractButton);
-    d->trigger();
+    d->accessiblePressAction();
 }
 #endif
 

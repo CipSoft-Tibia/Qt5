@@ -8,41 +8,46 @@ import QtQuick.Layouts
 
 Item {
     id: controller
-    implicitWidth: isPortraitMode ? portraitModeWidth : landscapeModeWidth
-    implicitHeight: mainGrid.height
+
+    required property bool isPortraitMode
+    required property ApplicationState state
 
     readonly property color qtGreenColor: "#2CDE85"
     readonly property color backspaceRedColor: "#DE2C2C"
     readonly property int spacing: 5
 
-    property bool isPortraitMode: root.isPortraitMode
     property int portraitModeWidth: mainGrid.width
     property int landscapeModeWidth: scientificGrid.width + mainGrid.width
 
-    function updateDimmed(){
-        for (let i = 0; i < mainGrid.children.length; i++){
-            mainGrid.children[i].dimmed = root.isButtonDisabled(mainGrid.children[i].text)
+    implicitWidth: isPortraitMode ? portraitModeWidth : landscapeModeWidth
+    implicitHeight: mainGrid.height
+
+    function updateDimmed() {
+        for (let i = 0; i < mainGrid.children.length; i++) {
+            mainGrid.children[i].dimmed = state.isButtonDisabled(mainGrid.children[i].text);
         }
-        for (let j = 0; j < scientificGrid.children.length; j++){
-            scientificGrid.children[j].dimmed = root.isButtonDisabled(scientificGrid.children[j].text)
+        for (let j = 0; j < scientificGrid.children.length; j++) {
+            scientificGrid.children[j].dimmed = state.isButtonDisabled(
+                        scientificGrid.children[j].text);
         }
     }
 
     component DigitButton: CalculatorButton {
-        onReleased: {
-            root.digitPressed(text)
-            updateDimmed()
+        onClicked: {
+            controller.state.digitPressed(text);
+            controller.updateDimmed();
         }
     }
 
     component OperatorButton: CalculatorButton {
-        onReleased: {
-            root.operatorPressed(text)
-            updateDimmed()
-        }
-        textColor: controller.qtGreenColor
-        implicitWidth: 48
         dimmable: true
+        implicitWidth: 48
+        textColor: controller.qtGreenColor
+
+        onClicked: {
+            controller.state.operatorPressed(text);
+            controller.updateDimmed();
+        }
     }
 
     Component.onCompleted: updateDimmed()
@@ -61,16 +66,34 @@ Item {
                 columns: 3
                 columnSpacing: controller.spacing
                 rowSpacing: controller.spacing
-                visible: !isPortraitMode
+                visible: !controller.isPortraitMode
 
-                OperatorButton { text: "x²" }
-                OperatorButton { text: "⅟x" }
+                OperatorButton {
+                    text: "x²"
+                    Accessible.name: "x squared"
+                }
+                OperatorButton {
+                    text: "⅟x"
+                    Accessible.name: "one over x"
+                }
                 OperatorButton { text: "√" }
-                OperatorButton { text: "x³" }
-                OperatorButton { text: "sin" }
-                OperatorButton { text: "|x|" }
+                OperatorButton {
+                    text: "x³"
+                    Accessible.name: "x cubed"
+                }
+                OperatorButton {
+                    text: "sin"
+                    Accessible.name: "sine"
+                }
+                OperatorButton {
+                    text: "|x|"
+                    Accessible.name: "absolute value"
+                }
                 OperatorButton { text: "log" }
-                OperatorButton { text: "cos" }
+                OperatorButton {
+                    text: "cos"
+                    Accessible.name: "cosine"
+                }
                 DigitButton {
                     text: "e"
                     dimmable: true
@@ -91,7 +114,13 @@ Item {
                 columnSpacing: controller.spacing
                 rowSpacing: controller.spacing
 
-                BackspaceButton {}
+                BackspaceButton {
+                    onClicked: {
+                        controller.state.operatorPressed(this.text);
+                        controller.updateDimmed();
+                    }
+                }
+
                 DigitButton { text: "7" }
                 DigitButton { text: "8" }
                 DigitButton { text: "9" }

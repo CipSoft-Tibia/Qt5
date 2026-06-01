@@ -58,9 +58,9 @@ QT_BEGIN_NAMESPACE
 
     If an error occurs, you can fetch the \l{QtAudio::Error}{error
     type} with the error() function. Please see the QtAudio::Error enum
-    for a description of the possible errors that are reported. When
-    QtAudio::UnderrunError is encountered, the state changes to QtAudio::IdleState,
-    when another error is encountered, the state changes to QtAudio::StoppedState.
+    for a description of the possible errors that are reported. The QAudioSink
+    will enter the \l{QtAudio::}{StoppedState} when an error is encountered.
+
     You can check for errors by connecting to the stateChanged()
     signal:
 
@@ -72,7 +72,8 @@ QT_BEGIN_NAMESPACE
 /*!
     Construct a new audio output and attach it to \a parent.
     The default audio output device is used with the output
-    \a format parameters.
+    \a format parameters. If \a format is default-initialized,
+    the format will be set to the preferred format of the audio device.
 */
 QAudioSink::QAudioSink(const QAudioFormat &format, QObject *parent)
     : QAudioSink({}, format, parent)
@@ -82,7 +83,8 @@ QAudioSink::QAudioSink(const QAudioFormat &format, QObject *parent)
 /*!
     Construct a new audio output and attach it to \a parent.
     The device referenced by \a audioDevice is used with the output
-    \a format parameters.
+    \a format parameters. If \a format is default-initialized,
+    the format will be set to the preferred format of \a audioDevice.
 */
 QAudioSink::QAudioSink(const QAudioDevice &audioDevice, const QAudioFormat &format, QObject *parent):
     QObject(parent)
@@ -235,8 +237,7 @@ void QAudioSink::reset()
 /*!
     Stops processing audio data, preserving buffered audio data.
 
-    Sets error() to QtAudio::NoError, state() to QtAudio::SuspendedState and
-    emits stateChanged() signal.
+    Sets state() to QtAudio::SuspendedState and emits stateChanged() signal.
 */
 void QAudioSink::suspend()
 {
@@ -247,9 +248,8 @@ void QAudioSink::suspend()
 /*!
     Resumes processing audio data after a suspend().
 
-    Sets state() to the state the sink had when suspend() was called, and sets
-    error() to QAudioError::NoError. This function does nothing if the audio sink's
-    state is not QtAudio::SuspendedState.
+    Sets state() to the state the sink had when suspend() was called. This function does nothing if
+    the audio sink's state is not QtAudio::SuspendedState.
 */
 void QAudioSink::resume()
 {
@@ -262,10 +262,27 @@ void QAudioSink::resume()
 
     \note The returned value is only valid while in QtAudio::ActiveState or QtAudio::IdleState
     state, otherwise returns zero.
+
+    \sa framesFree
 */
 qsizetype QAudioSink::bytesFree() const
 {
     return d ? d->bytesFree() : 0;
+}
+
+/*!
+    Returns the number of free frames available in the audio buffer.
+
+    \note The returned value is only valid while in QtAudio::ActiveState or QtAudio::IdleState
+    state, otherwise returns zero.
+
+    \sa bytesFree
+    \since 6.10
+*/
+
+qsizetype QAudioSink::framesFree() const
+{
+    return d ? d->format().framesForBytes(bytesFree()) : 0;
 }
 
 /*!
@@ -275,6 +292,8 @@ qsizetype QAudioSink::bytesFree() const
     are ignored after start(). It should not be assumed that the buffer size
     set is the actual buffer size used - call bufferSize() anytime after start()
     to return the actual buffer size being used.
+
+    \sa setBufferFrameCount
 */
 void QAudioSink::setBufferSize(qsizetype value)
 {
@@ -285,15 +304,53 @@ void QAudioSink::setBufferSize(qsizetype value)
 /*!
     Returns the audio buffer size in bytes.
 
-    If called before start(), returns platform default value.
-    If called before start() but setBufferSize() was called prior, returns value set by setBufferSize().
-    If called after start(), returns the actual buffer size being used. This may not be what was set previously
-    by setBufferSize().
+    If called before \l start(), returns platform default value.
+    If called before \c start() but \l setBufferSize() or \l setBufferFrameCount() was called prior, returns
+    value set by \c setBufferSize() or \c setBufferFrameCount(). If called after \c start(), returns the actual
+    buffer size being used. This may not be what was set previously by
+    \c setBufferSize() or \c setBufferFrameCount().
 
+    \sa bufferFrameCount
 */
 qsizetype QAudioSink::bufferSize() const
 {
     return d ? d->bufferSize() : 0;
+}
+
+/*!
+    Sets the audio buffer size to \a value in frame count.
+
+    \note This function can be called anytime before start().  Calls to this
+    are ignored after start(). It should not be assumed that the buffer size
+    set is the actual buffer size used - call bufferFrameCount() anytime after
+    start() to return the actual buffer size being used.
+
+    \sa setBufferSize
+    \since 6.10
+*/
+
+void QAudioSink::setBufferFrameCount(qsizetype value)
+{
+    if (d)
+        setBufferSize(d->format().bytesForFrames(value));
+}
+
+/*!
+    Returns the audio buffer size in frames.
+
+    If called before \l start(), returns platform default value.
+    If called before \c start() but \l setBufferSize() or \l setBufferFrameCount() was called prior, returns
+    value set by \c setBufferSize() or \c setBufferFrameCount(). If called after \c start(), returns the actual
+    buffer size being used. This may not be what was set previously by
+    \c setBufferSize() or \c setBufferFrameCount().
+
+    \sa bufferSize
+    \since 6.10
+*/
+
+qsizetype QAudioSink::bufferFrameCount() const
+{
+    return d ? d->format().framesForBytes(bufferSize()) : 0;
 }
 
 /*!

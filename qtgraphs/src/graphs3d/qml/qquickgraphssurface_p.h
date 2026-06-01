@@ -142,7 +142,18 @@ public:
                                                        bool autoAdjust) override;
     void handleAxisRangeChangedBySender(QObject *sender) override;
     void handleSeriesVisibilityChangedBySender(QObject *sender) override;
+    void handleItemLabelVisibleChangedBySender(bool visible, QObject *sender) override;
     void adjustAxisRanges() override;
+
+    void handleLightingModeChanged() override;
+
+    void renderSliceToImage(int index,
+                            int requestedIndex,
+                            QtGraphs3D::SliceCaptureType sliceType);
+    Q_REVISION(6, 10)
+    Q_INVOKABLE void renderSliceToImage(int index, int requestedIndex,
+                                        QtGraphs3D::SliceCaptureType sliceType,
+                                        const QUrl &filePath);
 
 protected:
     void componentComplete() override;
@@ -159,6 +170,9 @@ protected:
     void createSliceView() override;
     void updateSliceItemLabel(const QString &label, QVector3D position) override;
     void updateSelectionMode(QtGraphs3D::SelectionFlags mode) override;
+
+    QQuick3DViewport *createOffscreenSliceView(int index, int requestedIndex,
+                                               QtGraphs3D::SliceCaptureType sliceType);
 
 public Q_SLOTS:
     void handleAxisXChanged(QAbstract3DAxis *axis) override;
@@ -184,6 +198,8 @@ Q_SIGNALS:
     void axisZChanged(QValue3DAxis *axis);
     void selectedSeriesChanged(QSurface3DSeries *series);
     void flipHorizontalGridChanged(bool flip);
+    Q_REVISION(6, 10)
+    void sliceImageChanged(const QImage &image);
 
 private:
     struct SurfaceVertex
@@ -199,11 +215,13 @@ private:
         QQuick3DModel *gridModel;
         QQuick3DModel *sliceModel;
         QQuick3DModel *sliceGridModel;
-        QQuick3DModel *proxyModel;
+        QQuick3DModel *fillModel;
         QVector<SurfaceVertex> vertices;
+        QVector<QVector4D> heights;
         QVector<quint32> indices;
         QVector<quint32> gridIndices;
         QSurface3DSeries *series;
+        QQuick3DTexture *gradientTexture;
         QQuick3DTexture *texture;
         QQuick3DTexture *heightTexture;
         QQuick3DCustomMaterial *customMaterial;
@@ -223,14 +241,16 @@ private:
     QPointF mapCoordsToWorldSpace(SurfaceModel *model, QPointF coords);
     QPoint mapCoordsToSampleSpace(SurfaceModel *model, QPointF coords);
     void createIndices(SurfaceModel *model, qsizetype columnCount, qsizetype rowCount);
+    void createLineIndices(SurfaceModel *model, qsizetype pointCount);
     void createGridlineIndices(SurfaceModel *model, qsizetype x, qsizetype y, qsizetype endX, qsizetype endY);
     void handleChangedSeries();
     void updateModel(SurfaceModel *model);
-    void createProxyModel(SurfaceModel *parentModel);
-    void updateProxyModel(SurfaceModel *model);
+    void updateFill(SurfaceModel *model);
+    void updateLineFill(SurfaceModel *model);
     void updateMaterial(SurfaceModel *model);
     void updateSelectedPoint();
     void addModel(QSurface3DSeries *series);
+    void addFillModel(SurfaceModel *model);
     void addSliceModel(SurfaceModel *model);
 
     void handleMeshTypeChanged(QAbstract3DSeries::Mesh mesh);
@@ -241,16 +261,19 @@ private:
     void changeSlicePointerForSeries(const QString &filename, QSurface3DSeries *series);
     QString getMeshFileName(QAbstract3DSeries::Mesh mesh, QSurface3DSeries *series) const;
 
+    QVector3D pickSurfaces(QVector3D rayOrigin, QVector3D rayDir, SurfaceModel *&pickedModel);
+    QVector3D triangleIntersection(QVector3D origin,
+                                   QVector3D dir,
+                                   const std::array<QVector3D, 3> &triangle);
+    bool intersectWithAABB(QVector3D boundMin, QVector3D boundsMax, QVector3D origin, QVector3D dir);
+
     QVector<SurfaceModel *> m_model;
     QMap<QSurface3DSeries *, QQuick3DModel *> m_selectionPointers = {};
     QMap<QSurface3DSeries *, QQuick3DModel *> m_sliceSelectionPointers = {};
 
     bool m_isIndexDirty = true;
     bool m_selectionDirty = false;
-
-    bool m_pickThisFrame = false;
-    bool m_proxyDirty = false;
-    QPointF m_lastPick;
+    QHash<SurfaceModel *, bool> m_fillDirty;
 
     Surface3DChangeBitField m_changeTracker;
     QPoint m_selectedPoint;
@@ -270,7 +293,10 @@ private:
 
     DataDimensions m_dataDimensions;
 
+    QImage *m_grabresult = nullptr;
+
     friend class Q3DSurfaceWidgetItem;
+    friend class QQuickGraphsSurfaceNode;
 };
 
 QT_END_NAMESPACE

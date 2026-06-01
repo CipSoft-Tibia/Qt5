@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "base/base_export.h"
+#include "base/compiler_specific.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_base.h"
 #include "base/metrics/persistent_memory_allocator.h"
@@ -64,7 +65,7 @@ class BASE_EXPORT PersistentSparseHistogramDataManager {
 
   struct ReferenceAndSample {
     PersistentMemoryAllocator::Reference reference;
-    HistogramBase::Sample value;
+    HistogramBase::Sample32 value;
   };
 
   // Gets the vector holding records for a given sample-map id.
@@ -86,7 +87,7 @@ class BASE_EXPORT PersistentSparseHistogramDataManager {
   // `sample_map_records` has seen all its records.
   std::vector<PersistentMemoryAllocator::Reference> LoadRecords(
       PersistentSampleMapRecords* sample_map_records,
-      std::optional<HistogramBase::Sample> until_value);
+      std::optional<HistogramBase::Sample32> until_value);
 
   // Weak-pointer to the allocator used by the sparse histograms.
   raw_ptr<PersistentMemoryAllocator> allocator_;
@@ -100,7 +101,6 @@ class BASE_EXPORT PersistentSparseHistogramDataManager {
 
   base::Lock lock_;
 };
-
 
 // This class manages sample-records used by a PersistentSampleMap container
 // that underlies a persistent SparseHistogram object. It is broken out into a
@@ -134,11 +134,11 @@ class BASE_EXPORT PersistentSampleMapRecords {
   // vector is returned, which definitely means that `this` has seen all its
   // records.
   std::vector<PersistentMemoryAllocator::Reference> GetNextRecords(
-      std::optional<HistogramBase::Sample> until_value);
+      std::optional<HistogramBase::Sample32> until_value);
 
   // Creates a new persistent sample-map record for sample `value` and returns
   // a reference to it.
-  PersistentMemoryAllocator::Reference CreateNew(HistogramBase::Sample value);
+  PersistentMemoryAllocator::Reference CreateNew(HistogramBase::Sample32 value);
 
   // Convenience method that gets the object for a given reference so callers
   // don't have to also keep their own pointer to the appropriate allocator.
@@ -170,7 +170,6 @@ class BASE_EXPORT PersistentSampleMapRecords {
   raw_ptr<std::vector<PersistentSparseHistogramDataManager::ReferenceAndSample>>
       records_;
 };
-
 
 // This class manages histograms created within a PersistentMemoryAllocator.
 class BASE_EXPORT PersistentHistogramAllocator {
@@ -231,11 +230,17 @@ class BASE_EXPORT PersistentHistogramAllocator {
   // Implement the "metadata" API of a PersistentMemoryAllocator, forwarding
   // those requests to the real one.
   uint64_t Id() const { return memory_allocator_->Id(); }
-  const char* Name() const { return memory_allocator_->Name(); }
   const void* data() const { return memory_allocator_->data(); }
   size_t length() const { return memory_allocator_->length(); }
   size_t size() const { return memory_allocator_->size(); }
   size_t used() const { return memory_allocator_->used(); }
+
+  // Returns the internal name of this allocator (possibly an empty string).
+  // The returned string_view references a bounded span within the shared
+  // memory region. As such, it should be treated as a volatile but bounded
+  // block of memory. In particular, clients should respect the 'length()' of
+  // the returned view instead of relying on a terminating NUL char.
+  std::string_view Name() const { return memory_allocator_->Name(); }
 
   // Recreate a Histogram from data held in persistent memory. Though this
   // object will be local to the current process, the sample data will be
@@ -264,13 +269,18 @@ class BASE_EXPORT PersistentHistogramAllocator {
   // StatisticsRecorder, updating the "logged" samples within the passed
   // object so that repeated merges are allowed. Don't call this on a "global"
   // allocator because histograms created there will already be in the SR.
-  void MergeHistogramDeltaToStatisticsRecorder(HistogramBase* histogram);
+  // Returns whether the merge was successful; if false, the histogram did not
+  // have the same shape (different types or buckets), or we couldn't get a
+  // target histogram from the statistic recorder.
+  bool MergeHistogramDeltaToStatisticsRecorder(HistogramBase* histogram);
 
   // As above but merge the "final" delta. No update of "logged" samples is
   // done which means it can operate on read-only objects. It's essential,
   // however, not to call this more than once or those final samples will
-  // get recorded again.
-  void MergeHistogramFinalDeltaToStatisticsRecorder(
+  // get recorded again. Returns whether the merge was successful; if false, the
+  // histogram did not have the same shape (different types or buckets), or we
+  // couldn't get a target histogram from the statistic recorder.
+  bool MergeHistogramFinalDeltaToStatisticsRecorder(
       const HistogramBase* histogram);
 
   // Returns an object that manages persistent-sample-map records for a given
@@ -351,7 +361,6 @@ class BASE_EXPORT PersistentHistogramAllocator {
   // trying to import what was just created.
   std::atomic<Reference> last_created_ = 0;
 };
-
 
 // A special case of the PersistentHistogramAllocator that operates on a
 // global scale, collecting histograms created through standard macros and
@@ -473,7 +482,7 @@ class BASE_EXPORT GlobalHistogramAllocator
 
   // Retrieves a previously set pathname to which the contents of this allocator
   // are to be saved.
-  const FilePath& GetPersistentLocation() const;
+  const FilePath& GetPersistentLocation() const LIFETIME_BOUND;
 
   // Returns whether the contents of this allocator are being saved to a
   // persistent file on disk.

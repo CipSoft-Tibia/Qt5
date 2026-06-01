@@ -44,6 +44,9 @@ static constexpr auto kTypeNameToFieldType =
          {"NAME_MIDDLE_INITIAL", NAME_MIDDLE_INITIAL},
          {"NAME_FULL", NAME_FULL},
          {"NAME_SUFFIX", NAME_SUFFIX},
+         {"ALTERNATIVE_FULL_NAME", ALTERNATIVE_FULL_NAME},
+         {"ALTERNATIVE_GIVEN_NAME", ALTERNATIVE_GIVEN_NAME},
+         {"ALTERNATIVE_FAMILY_NAME", ALTERNATIVE_FAMILY_NAME},
          {"EMAIL_ADDRESS", EMAIL_ADDRESS},
          {"PHONE_HOME_NUMBER", PHONE_HOME_NUMBER},
          {"PHONE_HOME_CITY_CODE", PHONE_HOME_CITY_CODE},
@@ -102,6 +105,8 @@ static constexpr auto kTypeNameToFieldType =
          {"ADDRESS_HOME_HOUSE_NUMBER", ADDRESS_HOME_HOUSE_NUMBER},
          {"ADDRESS_HOME_SUBPREMISE", ADDRESS_HOME_SUBPREMISE},
          {"ADDRESS_HOME_OTHER_SUBUNIT", ADDRESS_HOME_OTHER_SUBUNIT},
+         {"NAME_LAST_PREFIX", NAME_LAST_PREFIX},
+         {"NAME_LAST_CORE", NAME_LAST_CORE},
          {"NAME_LAST_FIRST", NAME_LAST_FIRST},
          {"NAME_LAST_CONJUNCTION", NAME_LAST_CONJUNCTION},
          {"NAME_LAST_SECOND", NAME_LAST_SECOND},
@@ -141,7 +146,15 @@ static constexpr auto kTypeNameToFieldType =
           ADDRESS_HOME_STREET_LOCATION_AND_LANDMARK},
          {"ADDRESS_HOME_DEPENDENT_LOCALITY_AND_LANDMARK",
           ADDRESS_HOME_DEPENDENT_LOCALITY_AND_LANDMARK},
-         {"IMPROVED_PREDICTION", IMPROVED_PREDICTION}});
+         {"IMPROVED_PREDICTION", IMPROVED_PREDICTION},
+         {"PASSPORT_NAME_TAG", PASSPORT_NAME_TAG},
+         {"PASSPORT_NUMBER", PASSPORT_NUMBER},
+         {"PASSPORT_ISSUING_COUNTRY_TAG", PASSPORT_ISSUING_COUNTRY_TAG},
+         {"PASSPORT_EXPIRATION_DATE_TAG", PASSPORT_EXPIRATION_DATE_TAG},
+         {"PASSPORT_ISSUE_DATE_TAG", PASSPORT_ISSUE_DATE_TAG},
+         {"LOYALTY_MEMBERSHIP_PROGRAM", LOYALTY_MEMBERSHIP_PROGRAM},
+         {"LOYALTY_MEMBERSHIP_PROVIDER", LOYALTY_MEMBERSHIP_PROVIDER},
+         {"LOYALTY_MEMBERSHIP_ID", LOYALTY_MEMBERSHIP_ID}});
 
 bool IsFillableFieldType(FieldType field_type) {
   switch (field_type) {
@@ -149,12 +162,17 @@ bool IsFillableFieldType(FieldType field_type) {
     case NAME_FIRST:
     case NAME_MIDDLE:
     case NAME_LAST:
+    case NAME_LAST_CORE:
+    case NAME_LAST_PREFIX:
     case NAME_LAST_FIRST:
     case NAME_LAST_CONJUNCTION:
     case NAME_LAST_SECOND:
     case NAME_MIDDLE_INITIAL:
     case NAME_FULL:
     case NAME_SUFFIX:
+    case ALTERNATIVE_FULL_NAME:
+    case ALTERNATIVE_FAMILY_NAME:
+    case ALTERNATIVE_GIVEN_NAME:
     case EMAIL_ADDRESS:
     case USERNAME_AND_EMAIL_ADDRESS:
     case PHONE_HOME_NUMBER:
@@ -201,6 +219,11 @@ bool IsFillableFieldType(FieldType field_type) {
     case ADDRESS_HOME_STREET_LOCATION_AND_LANDMARK:
     case ADDRESS_HOME_DEPENDENT_LOCALITY_AND_LANDMARK:
     case DELIVERY_INSTRUCTIONS:
+    case PASSPORT_NAME_TAG:
+    case PASSPORT_NUMBER:
+    case LOYALTY_MEMBERSHIP_PROGRAM:
+    case LOYALTY_MEMBERSHIP_PROVIDER:
+    case LOYALTY_MEMBERSHIP_ID:
       return true;
 
     case CREDIT_CARD_NAME_FULL:
@@ -261,6 +284,9 @@ bool IsFillableFieldType(FieldType field_type) {
     case PRICE:
     case NUMERIC_QUANTITY:
     case SEARCH_TERM:
+    case PASSPORT_ISSUING_COUNTRY_TAG:
+    case PASSPORT_EXPIRATION_DATE_TAG:
+    case PASSPORT_ISSUE_DATE_TAG:
     case UNKNOWN_TYPE:
     case MAX_VALID_FIELD_TYPE:
       return false;
@@ -305,6 +331,14 @@ std::string_view FieldTypeToDeveloperRepresentationString(FieldType type) {
     case NAME_SUFFIX:
     case ADDRESS_HOME_ADDRESS:
     case ADDRESS_HOME_ADDRESS_WITH_NAME:
+    case PASSPORT_NAME_TAG:
+    case PASSPORT_NUMBER:
+    case PASSPORT_ISSUING_COUNTRY_TAG:
+    case PASSPORT_EXPIRATION_DATE_TAG:
+    case PASSPORT_ISSUE_DATE_TAG:
+    case LOYALTY_MEMBERSHIP_PROGRAM:
+    case LOYALTY_MEMBERSHIP_PROVIDER:
+    case LOYALTY_MEMBERSHIP_ID:
       return "";
     case NUMERIC_QUANTITY:
       return "Numeric quantity";
@@ -340,6 +374,10 @@ std::string_view FieldTypeToDeveloperRepresentationString(FieldType type) {
       return "Middle name";
     case NAME_LAST:
       return "Last name";
+    case NAME_LAST_PREFIX:
+      return "Last name prefix";
+    case NAME_LAST_CORE:
+      return "Last name core";
     case NAME_LAST_FIRST:
       return "First last name";
     case NAME_LAST_CONJUNCTION:
@@ -350,6 +388,12 @@ std::string_view FieldTypeToDeveloperRepresentationString(FieldType type) {
       return "Middle name initial";
     case NAME_FULL:
       return "Full name";
+    case ALTERNATIVE_FULL_NAME:
+      return "Alternative full name";
+    case ALTERNATIVE_FAMILY_NAME:
+      return "Alternative family name";
+    case ALTERNATIVE_GIVEN_NAME:
+      return "Alternative given name";
     case EMAIL_ADDRESS:
       return "Email address";
     case PHONE_HOME_NUMBER:
@@ -482,12 +526,17 @@ FieldTypeGroup GroupTypeOfFieldType(FieldType field_type) {
     case NAME_FIRST:
     case NAME_MIDDLE:
     case NAME_LAST:
+    case NAME_LAST_PREFIX:
+    case NAME_LAST_CORE:
     case NAME_LAST_FIRST:
     case NAME_LAST_SECOND:
     case NAME_LAST_CONJUNCTION:
     case NAME_MIDDLE_INITIAL:
     case NAME_FULL:
     case NAME_SUFFIX:
+    case ALTERNATIVE_FAMILY_NAME:
+    case ALTERNATIVE_GIVEN_NAME:
+    case ALTERNATIVE_FULL_NAME:
       return FieldTypeGroup::kName;
 
     case EMAIL_ADDRESS:
@@ -565,7 +614,15 @@ FieldTypeGroup GroupTypeOfFieldType(FieldType field_type) {
       return FieldTypeGroup::kCompany;
 
     case IMPROVED_PREDICTION:
-      return FieldTypeGroup::kPredictionImprovements;
+    case PASSPORT_NAME_TAG:
+    case PASSPORT_NUMBER:
+    case PASSPORT_ISSUING_COUNTRY_TAG:
+    case PASSPORT_EXPIRATION_DATE_TAG:
+    case PASSPORT_ISSUE_DATE_TAG:
+    case LOYALTY_MEMBERSHIP_PROGRAM:
+    case LOYALTY_MEMBERSHIP_PROVIDER:
+    case LOYALTY_MEMBERSHIP_ID:
+      return FieldTypeGroup::kAutofillAi;
 
     case PASSWORD:
     case ACCOUNT_CREATION_PASSWORD:

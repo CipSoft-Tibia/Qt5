@@ -26,7 +26,6 @@
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "base/threading/thread_restrictions.h"
-#include "build/chromeos_buildflags.h"
 #include "services/device/generic_sensor/generic_sensor_consts.h"
 #include "services/device/generic_sensor/linux/sensor_data_linux.h"
 #include "services/device/generic_sensor/linux/sensor_device_manager.h"
@@ -354,7 +353,7 @@ TEST_F(PlatformSensorAndProviderLinuxTest, SensorIsNotImplemented) {
   InitializeSupportedSensor(SensorType::AMBIENT_LIGHT, kZero, kZero, kZero,
                             sensor_value);
   SetServiceStart();
-  EXPECT_FALSE(CreateSensor(SensorType::PROXIMITY));
+  EXPECT_FALSE(CreateSensor(SensorType::ACCELEROMETER));
 }
 
 // Tests sensor is not returned if not supported by hardware.

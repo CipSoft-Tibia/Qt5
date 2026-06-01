@@ -2,6 +2,7 @@
     .docTitle="${this.title_}" .docLength="${this.docLength_}"
     .embeddedViewer="${this.embedded_}" .pageNo="${this.pageNo_}"
     .loadProgress="${this.loadProgress_}" .hasEdits="${this.hasEdits_}"
+    .strings="${this.strings}"
     .hasEnteredAnnotationMode="${this.hasEnteredAnnotationMode_}"
 <if expr="enable_pdf_ink2">
     .hasInk2Edits="${this.hasInk2Edits_}"
@@ -52,6 +53,7 @@
         .clockwiseRotations="${this.clockwiseRotations_}"
         .docLength="${this.docLength_}"
         .pdfCr23Enabled="${this.pdfCr23Enabled}"
+        .strings="${this.strings}"
         @change-page="${this.onChangePage_}"
         @change-page-and-xy="${this.onChangePageAndXy_}"
         @navigate="${this.onNavigate_}"
@@ -65,10 +67,35 @@
     </div>
     <div id="content-focus-rectangle" ?hidden="${!this.documentHasFocus_}">
     </div>
+    <if expr="enable_pdf_ink2">
+      ${this.shouldShowInkBottomToolbar_() ? html`
+        <div id="bottom">
+          <viewer-bottom-toolbar .currentColor="${this.currentBrushColor_}"
+              .currentSize="${this.currentBrushSize_}"
+              .currentType="${this.currentBrushType_}"
+              .strings="${this.strings}"
+              @current-color-changed="${this.onBrushColorChanged_}"
+              @current-size-changed="${this.onBrushSizeChanged_}"
+              @current-type-changed="${this.onBrushTypeChanged_}">
+          </viewer-bottom-toolbar>
+        </div>` : ''}
+    </if>
   </div>
   <if expr="enable_pdf_ink2">
-    ${this.inInk2AnnotationMode_() ? html`
-      <viewer-side-panel></viewer-side-panel>` : ''}
+    ${this.shouldShowInkSidePanel_() ? html`
+      <viewer-side-panel .currentColor="${this.currentBrushColor_}"
+            .currentSize="${this.currentBrushSize_}"
+            .currentType="${this.currentBrushType_}"
+            @current-color-changed="${this.onBrushColorChanged_}"
+            @current-size-changed="${this.onBrushSizeChanged_}"
+            @current-type-changed="${this.onBrushTypeChanged_}">
+      </viewer-side-panel>` : ''}
+  </if>
+  <if expr="enable_screen_ai_service">
+  <cr-toast id="searchifyProgress">
+    <div class="spinner"></div>
+    <span>$i18n{searchifyInProgress}</span>
+  </cr-toast>
   </if>
 </div>
 
@@ -85,5 +112,6 @@ ${this.showPropertiesDialog_ ? html`<viewer-properties-dialog
     .documentMetadata="${this.documentMetadata_}"
     .fileName="${this.fileName_}"
     .pageCount="${this.docLength_}"
+    .strings="${this.strings}"
     @close="${this.onPropertiesDialogClose_}">
 </viewer-properties-dialog>` : ''}

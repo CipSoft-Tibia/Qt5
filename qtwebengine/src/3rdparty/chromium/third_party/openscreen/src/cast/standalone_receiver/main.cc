@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <getopt.h>
-
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -21,6 +19,7 @@
 #include "platform/impl/platform_client_posix.h"
 #include "platform/impl/task_runner.h"
 #include "platform/impl/text_trace_logging_platform.h"
+#include "third_party/getopt/getopt.h"
 #include "util/chrono_helpers.h"
 #include "util/string_util.h"
 #include "util/stringprintf.h"
@@ -123,7 +122,7 @@ int RunStandaloneReceiver(int argc, char* argv[]) {
   // between all Open Screen executables. If it is a platform feature
   // being exposed, consider if it applies to the standalone receiver,
   // standalone sender, osp demo, and test_main argument options.
-  const struct option kArgumentOptions[] = {
+  const get_opt::option kArgumentOptions[] = {
       {"private-key", required_argument, nullptr, 'p'},
       {"developer-certificate", required_argument, nullptr, 'd'},
       {"generate-credentials", no_argument, nullptr, 'g'},
@@ -151,16 +150,16 @@ int RunStandaloneReceiver(int argc, char* argv[]) {
                            nullptr)) != -1) {
     switch (ch) {
       case 'p':
-        private_key_path = optarg;
+        private_key_path = get_opt::optarg;
         break;
       case 'd':
-        developer_certificate_path = optarg;
+        developer_certificate_path = get_opt::optarg;
         break;
       case 'f':
-        friendly_name = optarg;
+        friendly_name = get_opt::optarg;
         break;
       case 'm':
-        model_name = optarg;
+        model_name = get_opt::optarg;
         break;
       case 'g':
         should_generate_credentials = true;
@@ -194,7 +193,7 @@ int RunStandaloneReceiver(int argc, char* argv[]) {
     return 1;
   }
 
-  const char* interface_name = argv[optind];
+  const char* interface_name = argv[get_opt::optind];
   OSP_CHECK(interface_name && strlen(interface_name) > 0)
       << "No interface name provided.";
 

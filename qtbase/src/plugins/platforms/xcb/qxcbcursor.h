@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #pragma once
 
@@ -22,11 +23,21 @@ struct QXcbCursorCacheKey
     Qt::CursorShape shape;
     qint64 bitmapCacheKey;
     qint64 maskCacheKey;
+    union {
+        qint64 hashKey;
+        struct {
+            qint32 x;
+            qint32 y;
+        };
+    } hotspotCacheKey;
 };
 
 inline bool operator==(const QXcbCursorCacheKey &k1, const QXcbCursorCacheKey &k2)
 {
-    return k1.shape == k2.shape && k1.bitmapCacheKey == k2.bitmapCacheKey && k1.maskCacheKey == k2.maskCacheKey;
+    return k1.shape == k2.shape &&
+           k1.bitmapCacheKey == k2.bitmapCacheKey &&
+           k1.maskCacheKey == k2.maskCacheKey &&
+           k1.hotspotCacheKey.hashKey == k2.hotspotCacheKey.hashKey;
 }
 
 inline size_t qHash(const QXcbCursorCacheKey &k, size_t seed) noexcept

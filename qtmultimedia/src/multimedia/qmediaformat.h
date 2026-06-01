@@ -118,7 +118,9 @@ public:
 
     Q_INVOKABLE bool isSupported(ConversionMode mode) const;
 
+#if QT_CONFIG(mimetype)
     QMimeType mimeType() const;
+#endif
 
     Q_INVOKABLE QList<FileFormat> supportedFileFormats(ConversionMode m);
     Q_INVOKABLE QList<VideoCodec> supportedVideoCodecs(ConversionMode m);

@@ -144,7 +144,10 @@ void DecoderBufferTranscryptor::DecryptPendingBuffer() {
     current_transcrypt_task_->buffer->set_duration(superframe->duration());
     current_transcrypt_task_->buffer->set_is_key_frame(
         superframe->is_key_frame());
-    current_transcrypt_task_->buffer->set_side_data(superframe->side_data());
+    if (superframe->side_data()) {
+      current_transcrypt_task_->buffer->set_side_data(
+          superframe->side_data()->Clone());
+    }
     if (frames.front().decrypt_config) {
       current_transcrypt_task_->buffer->set_decrypt_config(
           std::move(frames.front().decrypt_config));
@@ -167,7 +170,7 @@ void DecoderBufferTranscryptor::DecryptPendingBuffer() {
       buffer->set_timestamp(superframe->timestamp());
       buffer->set_duration(superframe->duration());
       buffer->set_is_key_frame(superframe->is_key_frame());
-      buffer->set_side_data(superframe->side_data());
+      buffer->set_side_data(superframe->side_data()->Clone());
       if (frames.back().decrypt_config) {
         buffer->set_decrypt_config(std::move(frames.back().decrypt_config));
       }
@@ -179,8 +182,7 @@ void DecoderBufferTranscryptor::DecryptPendingBuffer() {
   }
 
   // If we've already attached a secure buffer, don't do it again.
-  if (!curr_buffer->has_side_data() ||
-      !curr_buffer->side_data()->secure_handle) {
+  if (!curr_buffer->side_data() || !curr_buffer->side_data()->secure_handle) {
     auto status =
         decoder_->AttachSecureBuffer(current_transcrypt_task_->buffer);
     if (status == CroStatus::Codes::kSecureBufferPoolEmpty) {
@@ -193,8 +195,7 @@ void DecoderBufferTranscryptor::DecryptPendingBuffer() {
       return;
     }
 
-    if (curr_buffer->has_side_data() &&
-        curr_buffer->side_data()->secure_handle) {
+    if (curr_buffer->side_data() && curr_buffer->side_data()->secure_handle) {
       // Wrap the callback so we can release the secure buffer when decoding is
       // done.
       current_transcrypt_task_->decode_done_cb =

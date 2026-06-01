@@ -8,6 +8,7 @@ import("//build/compiled_action.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
+import("//build/config/ml.gni")
 import("//build/config/ui.gni")
 import("//build/nocompile.gni")
 import("//media/media_options.gni")
@@ -239,9 +240,6 @@ declare_args() {
   # Enable TRACE_EVENT instrumentation for Blink bindings.
   # Disabled by default as it increases binary size.
   enable_blink_bindings_tracing = extended_tracing_enabled
-
-  # Enable cooperating scheduling hooks in auto-generated Blink bindings code.
-  enable_blink_bindings_cooperating_scheduling = false
 }
 
 # ZSTD compression support has a binary size cost, don't include it on
@@ -260,7 +258,6 @@ buildflag_header("bindings_buildflags") {
   flags = [
     "RCS_COUNT_EVERYTHING=$runtime_call_stats_count_everything",
     "BLINK_BINDINGS_TRACE_ENABLED=$enable_blink_bindings_tracing",
-    "BLINK_BINDINGS_COOPERATIVE_SCHEDULING_ENABLED=$enable_blink_bindings_cooperating_scheduling",
     "HAS_ZSTD_COMPRESSION=$has_zstd_compression",
   ]
 }
@@ -361,6 +358,8 @@ jumbo_component("platform") {
     "audio/audio_channel.h",
     "audio/audio_destination.cc",
     "audio/audio_destination.h",
+    "audio/audio_destination_uma_reporter.cc",
+    "audio/audio_destination_uma_reporter.h",
     "audio/audio_dsp_kernel.cc",
     "audio/audio_dsp_kernel.h",
     "audio/audio_dsp_kernel_processor.cc",
@@ -452,8 +451,6 @@ jumbo_component("platform") {
     "bindings/active_script_wrappable_base.h",
     "bindings/active_script_wrappable_manager.cc",
     "bindings/active_script_wrappable_manager.h",
-    "bindings/async_iterator_base.cc",
-    "bindings/async_iterator_base.h",
     "bindings/bigint.cc",
     "bindings/bigint.h",
     "bindings/binding_security_for_platform.cc",
@@ -464,7 +461,6 @@ jumbo_component("platform") {
     "bindings/callback_interface_base.h",
     "bindings/callback_method_retriever.cc",
     "bindings/callback_method_retriever.h",
-    "bindings/cooperative_scheduling_helpers.h",
     "bindings/cross_thread_copier.h",
     "bindings/dictionary_base.cc",
     "bindings/dictionary_base.h",
@@ -485,8 +481,6 @@ jumbo_component("platform") {
     "bindings/frozen_array_base.h",
     "bindings/idl_member_installer.cc",
     "bindings/idl_member_installer.h",
-    "bindings/multi_worlds_v8_reference.cc",
-    "bindings/multi_worlds_v8_reference.h",
     "bindings/name_client.h",
     "bindings/observable_array.cc",
     "bindings/observable_array.h",
@@ -538,8 +532,6 @@ jumbo_component("platform") {
     "bindings/v8_interface_bridge_base.h",
     "bindings/v8_object_constructor.cc",
     "bindings/v8_object_constructor.h",
-    "bindings/v8_object_data_store.cc",
-    "bindings/v8_object_data_store.h",
     "bindings/v8_per_context_data.cc",
     "bindings/v8_per_context_data.h",
     "bindings/v8_per_isolate_data.cc",
@@ -711,6 +703,8 @@ jumbo_component("platform") {
     "fonts/generic_font_family_settings.cc",
     "fonts/generic_font_family_settings.h",
     "fonts/glyph_metrics_map.h",
+    "fonts/opentype/color_table_lookup.cc",
+    "fonts/opentype/color_table_lookup.h",
     "fonts/opentype/font_format_check.cc",
     "fonts/opentype/font_format_check.h",
     "fonts/opentype/font_settings.cc",
@@ -869,8 +863,8 @@ jumbo_component("platform") {
     "graphics/box_reflection.h",
     "graphics/canvas_2d_layer_bridge.cc",
     "graphics/canvas_2d_layer_bridge.h",
-    "graphics/canvas_color_params.cc",
-    "graphics/canvas_color_params.h",
+    "graphics/canvas_deferred_paint_record.cc",
+    "graphics/canvas_deferred_paint_record.h",
     "graphics/canvas_hibernation_handler.cc",
     "graphics/canvas_hibernation_handler.h",
     "graphics/canvas_resource.cc",
@@ -1203,6 +1197,8 @@ jumbo_component("platform") {
     "graphics/static_bitmap_image.h",
     "graphics/static_bitmap_image_to_video_frame_copier.cc",
     "graphics/static_bitmap_image_to_video_frame_copier.h",
+    "graphics/static_bitmap_image_transform.cc",
+    "graphics/static_bitmap_image_transform.h",
     "graphics/stroke_data.cc",
     "graphics/stroke_data.h",
     "graphics/styled_stroke_data.cc",
@@ -1245,10 +1241,16 @@ jumbo_component("platform") {
     "keyboard_codes.h",
     "language.cc",
     "language.h",
-#    "language_detection/detect.cc",
-#    "language_detection/detect.h",
+    "language_detection/language_detection_model.cc",
+    "language_detection/language_detection_model.h",
     "link_hash.cc",
     "link_hash.h",
+    "media/media_player_client.h",
+    "media/media_player_util.cc",
+    "media/media_player_util.h",
+    "media/player_id_generator.cc",
+    "media/player_id_generator.h",
+    "media/remote_playback_client.h",
     "media/web_audio_source_provider_client.h",
     "media/web_audio_source_provider_impl.cc",
     "media_capabilities/web_audio_configuration.h",
@@ -1259,8 +1261,6 @@ jumbo_component("platform") {
     "mediastream/aec_dump_agent_impl.h",
     "mediastream/audio_service_audio_processor_proxy.cc",
     "mediastream/audio_service_audio_processor_proxy.h",
-    "mediastream/media_constraints_consts.cc",
-    "mediastream/media_constraints_consts.h",
     "mediastream/media_stream_audio_deliverer.h",
     "mediastream/media_stream_audio_level_calculator.cc",
     "mediastream/media_stream_audio_level_calculator.h",
@@ -1392,8 +1392,6 @@ jumbo_component("platform") {
     "peerconnection/rtc_video_decoder_factory.h",
     "peerconnection/rtc_video_decoder_fallback_recorder.cc",
     "peerconnection/rtc_video_decoder_fallback_recorder.h",
-    "peerconnection/rtc_video_decoder_stream_adapter.cc",
-    "peerconnection/rtc_video_decoder_stream_adapter.h",
     "peerconnection/rtc_video_encoder.cc",
     "peerconnection/rtc_video_encoder.h",
     "peerconnection/rtc_video_encoder_factory.cc",
@@ -1531,6 +1529,7 @@ jumbo_component("platform") {
     "transforms/transform_operations.h",
     "transforms/translate_transform_operation.cc",
     "transforms/translate_transform_operation.h",
+    "use_counter_and_console_logger.h",
     "video_capture/video_capture_impl.cc",
     "video_capture/video_capture_impl.h",
     "video_capture/video_capturer_source.cc",
@@ -1629,6 +1628,13 @@ jumbo_component("platform") {
   ]
 
   sources -= blink_platform_avx_files
+
+  if (!use_ml) {
+    sources -= [
+      "language_detection/language_detection_model.cc",
+      "language_detection/language_detection_model.h",
+    ]
+  }
 
   # Add in the generated files.
   sources += get_target_outputs(":character_data") +
@@ -1751,6 +1757,8 @@ jumbo_component("platform") {
     "//third_party/dawn/include/dawn:cpp_headers",
     "//third_party/fdlibm",
     "//third_party/pffft:pffft",
+    "//ui/base:base",
+    "//ui/base:ui_data_pack",
     "//ui/base/cursor",
     "//ui/base/mojom:ui_base_types_blink",
     "//ui/gfx",
@@ -1764,10 +1772,13 @@ jumbo_component("platform") {
     "//cc",
     "//cc/ipc",
     "//cc/mojo_embedder",
-#    "//components/language_detection/core:language_detection",
+    "//components/language_detection/content/common",
+    "//components/language_detection/content/common:common_blink",
+    "//components/language_detection/content/renderer",
+    "//components/language_detection/core",
     "//components/paint_preview/common",
     "//components/search_engines:search_engine_utils",
-#    "//components/translate/core/language_detection:language_detection",
+    "//components/translate/core/language_detection:language_detection",
     "//components/viz/client",
     "//components/viz/common",
     "//components/webrtc:net_address_utils",
@@ -1798,6 +1809,7 @@ jumbo_component("platform") {
     "//third_party/blink/renderer/platform/wtf",
     "//third_party/ced",
     "//third_party/emoji-segmenter",
+    "//third_party/highway:libhwy",
     "//third_party/icu",
     "//third_party/libgav1:libgav1_parser",
     "//third_party/libyuv",
@@ -1815,6 +1827,16 @@ jumbo_component("platform") {
     "//ui/gl:buildflags",
     "//ui/native_theme",
   ]
+
+  if (!use_ml) {
+    deps -= [
+      "//components/language_detection/content/common",
+      "//components/language_detection/content/common:common_blink",
+      "//components/language_detection/content/renderer",
+      "//components/language_detection/core",
+      "//components/translate/core/language_detection:language_detection",
+    ]
+  }
 
   if (has_zstd_compression) {
     deps += [
@@ -1874,6 +1896,11 @@ jumbo_component("platform") {
       "/wd4334",  # Result of 32-bit shift implicitly converted to 64 bits.
       "/wd4724",  # Modulo by 0.
     ]
+
+    # TODO(crbug.com/40915226): Remove the need to ignore this warning.
+    if (is_component_build) {
+      ldflags = [ "/IGNORE:4217" ]
+    }
   }
 
   if (is_android) {
@@ -1913,8 +1940,6 @@ jumbo_component("platform") {
       "peerconnection/rtc_video_decoder_factory.h",
       "peerconnection/rtc_video_decoder_fallback_recorder.cc",
       "peerconnection/rtc_video_decoder_fallback_recorder.h",
-      "peerconnection/rtc_video_decoder_stream_adapter.cc",
-      "peerconnection/rtc_video_decoder_stream_adapter.h",
       "peerconnection/rtc_video_encoder.cc",
       "peerconnection/rtc_video_encoder.h",
       "peerconnection/rtc_video_encoder_factory.cc",
@@ -2056,6 +2081,7 @@ jumbo_static_library("test_support") {
     "testing/video_frame_utils.cc",
     "testing/video_frame_utils.h",
     "webrtc/testing/mock_webrtc_video_frame_adapter_shared_resources.h",
+    "widget/compositing/test/stub_widget_base_client.h",
   ]
 
   # fuzzed_data_provider may not work with a custom toolchain.
@@ -2101,7 +2127,7 @@ jumbo_static_library("test_support") {
     "//services/service_manager/public/cpp",
     "//skia",
     "//skia:skcms",
-    "//testing/libfuzzer:renderer_fuzzing",
+    "//testing/libfuzzer/renderer_fuzzing",
     "//third_party/blink/public/common:common",
     "//third_party/blink/renderer/modules:modules",
     "//third_party/blink/renderer/platform/network:test_support",
@@ -2150,6 +2176,7 @@ test("blink_platform_unittests") {
 if (enable_nocompile_tests) {
   nocompile_source_set("blink_platform_nocompile_tests") {
     sources = [
+      "heap/test/heap_bind_nocompile.nc",
       "wtf/functional_nocompile.nc",
       "wtf/text/string_view_nocompile.nc",
     ]
@@ -2171,7 +2198,9 @@ jumbo_source_set("blink_platform_unittests_sources") {
     "animation/compositor_animation_test.cc",
     "animation/timing_function_test.cc",
     "audio/audio_destination_test.cc",
+    "audio/audio_destination_uma_reporter_test.cc",
     "audio/audio_frame_stats_accumulator_test.cc",
+    "audio/denormal_disabler_test.cc",
     "audio/push_pull_fifo_multithread_test.cc",
     "audio/push_pull_fifo_test.cc",
     "audio/vector_math_test.cc",
@@ -2186,7 +2215,7 @@ jumbo_source_set("blink_platform_unittests_sources") {
     "exported/web_icon_sizes_parser_test.cc",
     "exported/web_screen_info_test.cc",
     "exported/web_string_test.cc",
-    "exported/web_vector_test.cc",
+    "exported/web_thread_safe_data_test.cc",
     "fonts/bitmap_glyphs_block_list_test.cc",
     "fonts/cursor_position_test.cc",
     "fonts/fallback_list_composite_key_test.cc",
@@ -2202,6 +2231,7 @@ jumbo_source_set("blink_platform_unittests_sources") {
     "fonts/font_test.cc",
     "fonts/font_test_utilities.cc",
     "fonts/generic_font_family_settings_test.cc",
+    "fonts/opentype/color_table_lookup_test.cc",
     "fonts/opentype/font_format_check_test.cc",
     "fonts/opentype/font_settings_test.cc",
     "fonts/opentype/open_type_baseline_metrics_test.cc",
@@ -2329,7 +2359,6 @@ jumbo_source_set("blink_platform_unittests_sources") {
     "peerconnection/rtc_rtp_source_test.cc",
     "peerconnection/rtc_video_decoder_adapter_test.cc",
     "peerconnection/rtc_video_decoder_factory_test.cc",
-    "peerconnection/rtc_video_decoder_stream_adapter_test.cc",
     "peerconnection/rtc_video_encoder_factory_test.cc",
     "peerconnection/rtc_video_encoder_test.cc",
     "peerconnection/stats_collecting_decoder_test.cc",
@@ -2392,8 +2421,11 @@ jumbo_source_set("blink_platform_unittests_sources") {
     "widget/input/input_event_prediction_unittest.cc",
     "widget/input/input_handler_proxy_unittest.cc",
     "widget/input/main_thread_event_queue_unittest.cc",
+    "widget/input/mock_input_handler_proxy.h",
+    "widget/input/mock_input_handler_proxy_client.h",
     "widget/input/prediction/filter_factory_unittests.cc",
     "widget/input/scroll_predictor_unittest.cc",
+    "widget/input/widget_input_handler_manager_unittest.cc",
   ]
 
   if (rtc_use_h265) {
@@ -2690,6 +2722,7 @@ fuzzer_test("math_transform_fuzzer") {
   ]
   libfuzzer_options = [ "max_len=10" ]
   dict = "//testing/libfuzzer/fuzzers/dicts/math_transform.dict"
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("layout_locale_fuzzer") {
@@ -2698,6 +2731,7 @@ fuzzer_test("layout_locale_fuzzer") {
     ":blink_fuzzer_test_support",
     ":platform",
   ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("segmented_string_fuzzer") {
@@ -2706,6 +2740,7 @@ fuzzer_test("segmented_string_fuzzer") {
     ":blink_fuzzer_test_support",
     ":platform",
   ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::FindCategory.
@@ -2717,6 +2752,7 @@ fuzzer_test("mathml_operator_dictionary_fuzzer") {
   ]
   libfuzzer_options = [ "max_len=10" ]
   dict = "//testing/libfuzzer/fuzzers/dicts/mathml_operator_dictionary.dict"
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 if (rtc_use_h265) {
@@ -2728,6 +2764,7 @@ if (rtc_use_h265) {
       ":platform",
     ]
     libfuzzer_options = [ "rss_limit_mb=8192" ]
+    additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
   }
 }
 
@@ -2742,6 +2779,7 @@ fuzzer_test("open_type_math_support_fuzzer") {
     "//third_party/blink/web_tests/external/wpt/fonts/math",
     "//testing/libfuzzer/fuzzers/woff2_corpus",
   ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::StretchyOperatorShaper
@@ -2755,6 +2793,7 @@ fuzzer_test("stretchy_operator_shaper_fuzzer") {
     "//third_party/blink/web_tests/external/wpt/fonts/math",
     "//testing/libfuzzer/fuzzers/woff2_corpus",
   ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::MHTMLParser.
@@ -2769,6 +2808,7 @@ fuzzer_test("mhtml_parser_fuzzer") {
   additional_configs = [
     "//third_party/blink/renderer/platform/wtf:wtf_config",
     "//third_party/blink/renderer:config",
+    "//third_party/blink/renderer:inside_blink",
   ]
 }
 
@@ -2780,17 +2820,7 @@ fuzzer_test("web_icon_sizes_fuzzer") {
     ":platform",
   ]
   dict = "//testing/libfuzzer/fuzzers/dicts/web_icon_sizes.dict"
-}
-
-# Fuzzer for blink::AVIFImageDecoder
-fuzzer_test("blink_avif_decoder_fuzzer") {
-  sources = [ "image-decoders/avif/avif_image_decoder_fuzzer.cc" ]
-  deps = [
-    ":blink_fuzzer_test_support",
-    ":platform",
-  ]
-  seed_corpuses = [ "//third_party/blink/web_tests/images/resources/avif" ]
-  libfuzzer_options = [ "rss_limit_mb=8192" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::CrabbyAVIFImageDecoder
@@ -2798,10 +2828,12 @@ fuzzer_test("blink_crabbyavif_decoder_fuzzer") {
   sources = [ "image-decoders/avif/crabbyavif_image_decoder_fuzzer.cc" ]
   deps = [
     ":blink_fuzzer_test_support",
+    ":blink_image_decoder_fuzzer_test_support",
     ":platform",
   ]
   seed_corpuses = [ "//third_party/blink/web_tests/images/resources/avif" ]
   libfuzzer_options = [ "rss_limit_mb=8192" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::ICOImageDecoder.
@@ -2813,6 +2845,7 @@ fuzzer_test("blink_ico_decoder_fuzzer") {
   ]
   seed_corpuses = [ "//third_party/blink/web_tests/images/resources/icofuzz" ]
   libfuzzer_options = [ "rss_limit_mb=8192" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::GIFImageDecoder
@@ -2824,6 +2857,7 @@ fuzzer_test("blink_gif_decoder_fuzzer") {
   ]
   seed_corpuses = [ "//third_party/blink/web_tests/images/resources/giffuzz" ]
   libfuzzer_options = [ "rss_limit_mb=8192" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("blink_png_decoder_fuzzer") {
@@ -2841,6 +2875,7 @@ fuzzer_test("blink_png_decoder_fuzzer") {
     "//third_party/blink/web_tests/images/resources/pngfuzz",
   ]
   libfuzzer_options = [ "rss_limit_mb=8192" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("blink_jpeg_decoder_fuzzer") {
@@ -2852,6 +2887,7 @@ fuzzer_test("blink_jpeg_decoder_fuzzer") {
   ]
   seed_corpuses = [ "//third_party/blink/web_tests/images/resources/jpegfuzz" ]
   libfuzzer_options = [ "rss_limit_mb=8192" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("blink_bmp_decoder_fuzzer") {
@@ -2866,6 +2902,7 @@ fuzzer_test("blink_bmp_decoder_fuzzer") {
   # TODO: crbug.com/324586211 - raise the memory limit to avoid OOMs in the
   # fuzzer harness. This can be removed once the global memory limit is raised.
   libfuzzer_options = [ "rss_limit_mb=4096" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::WEBPImageDecoder.
@@ -2877,6 +2914,7 @@ fuzzer_test("blink_webp_decoder_fuzzer") {
   ]
   seed_corpuses = [ "//third_party/blink/web_tests/images/resources/webpfuzz" ]
   libfuzzer_options = [ "rss_limit_mb=8192" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::DateTimeFormat.
@@ -2888,6 +2926,7 @@ fuzzer_test("blink_date_time_format_fuzzer") {
   ]
   dict = "//testing/libfuzzer/fuzzers/dicts/date.dict"
   seed_corpus = "text/date_time_format_fuzzer_seed_corpus"
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::JSONParser.
@@ -2898,6 +2937,7 @@ fuzzer_test("blink_json_parser_fuzzer") {
     ":platform",
   ]
   dict = "//testing/libfuzzer/fuzzers/dicts/json.dict"
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer for blink::SecurityOrigin.
@@ -2908,7 +2948,7 @@ fuzzer_test("blink_security_origin_fuzzer") {
     ":platform",
   ]
   dict = "//url/gurl_fuzzer.dict"
-  defines = [ "INSIDE_BLINK" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("blink_harfbuzz_shaper_fuzzer") {
@@ -2919,6 +2959,7 @@ fuzzer_test("blink_harfbuzz_shaper_fuzzer") {
     "//third_party/icu",
   ]
   libfuzzer_options = [ "max_len=256" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("blink_http_parsers_fuzzer") {
@@ -2928,6 +2969,7 @@ fuzzer_test("blink_http_parsers_fuzzer") {
     ":platform",
   ]
   dict = "network/HTTPParsersFuzzer.dict"
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 fuzzer_test("blink_storage_key_fuzzer") {
@@ -2937,6 +2979,7 @@ fuzzer_test("blink_storage_key_fuzzer") {
     "//third_party/blink/public/common",
   ]
   seed_corpus = "//third_party/blink/common/storage_key/storage_key_corpus"
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
 
 # Fuzzer template for WTF::TextCodec.
@@ -2952,7 +2995,10 @@ template("blink_text_codec_fuzzer") {
       ":blink_fuzzer_test_support",
       ":platform",
     ]
-    additional_configs = [ ":" + name + "_config" ]
+    additional_configs = [
+      ":" + name + "_config",
+      "//third_party/blink/renderer:inside_blink",
+    ]
     seed_corpus = "text_codec_fuzzer_seed_corpus"
   }
 }
@@ -2972,8 +3018,6 @@ jumbo_source_set("unit_tests") {
   visibility = [ "//third_party/blink/renderer/*" ]
   sources = [
     "graphics/animation_worklet_mutator_dispatcher_impl_test.cc",
-    "graphics/canvas_2d_layer_bridge_test.cc",
-    "graphics/canvas_color_params_test.cc",
     "graphics/canvas_hibernation_handler_test.cc",
     "graphics/canvas_resource_dispatcher_test.cc",
     "graphics/canvas_resource_host_test.cc",

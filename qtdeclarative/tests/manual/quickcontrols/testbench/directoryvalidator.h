@@ -5,6 +5,7 @@
 #define DIRECTORYVALIDATOR_H
 
 #include <QObject>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 class DirectoryValidator : public QObject
 {
@@ -12,6 +13,7 @@ class DirectoryValidator : public QObject
     Q_PROPERTY(QString path READ path WRITE setPath NOTIFY pathChanged FINAL)
     Q_PROPERTY(bool valid READ isValid NOTIFY validChanged FINAL)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged FINAL)
+    QML_ELEMENT
 
 public:
     explicit DirectoryValidator(QObject *parent = nullptr);

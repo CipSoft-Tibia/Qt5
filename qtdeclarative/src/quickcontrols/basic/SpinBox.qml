@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -57,6 +58,8 @@ T.SpinBox {
         implicitWidth: 40
         implicitHeight: 40
         color: control.up.pressed ? control.palette.mid : control.palette.button
+        border.color: enabled ? control.palette.text : control.palette.mid
+        border.width: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast ? 1 : 0
 
         Rectangle {
             x: (parent.width - width) / 2
@@ -80,6 +83,8 @@ T.SpinBox {
         implicitWidth: 40
         implicitHeight: 40
         color: control.down.pressed ? control.palette.mid : control.palette.button
+        border.color: enabled ? control.palette.text : control.palette.mid
+        border.width: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast ? 1 : 0
 
         Rectangle {
             x: (parent.width - width) / 2
@@ -93,6 +98,10 @@ T.SpinBox {
     background: Rectangle {
         implicitWidth: 140
         color: enabled ? control.palette.base : control.palette.button
-        border.color: control.palette.button
+        border.color: {
+            if (Qt.styleHints.accessibility.contrastPreference !== Qt.HighContrast)
+                return control.palette.button
+            return enabled ? control.palette.text : control.palette.mid
+        }
     }
 }

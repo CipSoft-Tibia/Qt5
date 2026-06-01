@@ -1,5 +1,8 @@
 include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
 url.examples = "https://code.qt.io/cgit/qt/qt5compat.git/tree/examples/\1?h=$QT_VER"
+url.sources  = "https://code.qt.io/cgit/qt/qt5compat.git/tree/\1?h=$QT_VER#n\2"
+# Path to the root of qt5compat (for automatic linking to source code)
+url.sources.rootdir     = ../../..
 
 project                 = QtCore5Compat
 description             = Qt 5 Core Compatibility APIs Documentation

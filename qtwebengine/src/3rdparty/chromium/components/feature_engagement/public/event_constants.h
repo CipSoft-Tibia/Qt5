@@ -20,10 +20,6 @@ namespace events {
 extern const char kNewTabOpened[];
 // A new tab was opened when 5 (or more) tabs were already open.
 extern const char kSixthTabOpened[];
-// The user made a new tab group.
-extern const char kTabGroupCreated[];
-// A tab was closed when there are eight or more tabs in the browser.
-extern const char kClosedTabWithEightOrMore[];
 // A tab was added to reading list.
 extern const char kReadingListItemAdded[];
 // Reading list was opened.
@@ -41,8 +37,6 @@ extern const char kGlobalMediaControlsOpened[];
 
 // A side panel has been pinned.
 extern const char kSidePanelPinned[];
-// A side panel has been opened from the app menu.
-extern const char kSidePanelFromMenuShown[];
 
 // The side search panel was automatically triggered.
 extern const char kSideSearchAutoTriggered[];
@@ -53,11 +47,6 @@ extern const char kSideSearchPageActionLabelShown[];
 
 // Tab Search tab strip was opened by the user.
 extern const char kTabSearchOpened[];
-
-// The WebUI tab strip was closed by the user.
-extern const char kWebUITabStripClosed[];
-// The WebUI tab strip was opened by the user.
-extern const char kWebUITabStripOpened[];
 
 // The PWA was installed by the user.
 extern const char kDesktopPwaInstalled[];
@@ -71,15 +60,6 @@ extern const char kFocusHelpBubbleAcceleratorPressed[];
 // The screen reader promo for the "focus help bubble" accelerator was read to
 // the user.
 extern const char kFocusHelpBubbleAcceleratorPromoRead[];
-
-// The user has opened the battery saver bubble dialog
-extern const char kBatterySaverDialogShown[];
-
-// The user has opened the high efficiency page action chip
-extern const char kMemorySaverDialogShown[];
-
-// Extensions menu is opened when any extension has access to the current site.
-extern const char kExtensionsMenuOpenedWhileExtensionHasAccess[];
 
 // Th user clicked the extensions request access button in the toolbar.
 extern const char kExtensionsRequestAccessButtonClicked[];
@@ -134,6 +114,9 @@ extern const char kDefaultBrowserPromoShown[];
 // The user tapped Remind Me Later on a default browser promo.
 extern const char kDefaultBrowserPromoRemindMeLater[];
 
+// The non-modal default browser promo from omnibox paste was triggered.
+extern const char kNonModalDefaultBrowserPromoUrlPasteTrigger[];
+
 // The Password Manager widget promo was triggered.
 extern const char kPasswordManagerWidgetPromoTriggered[];
 
@@ -175,17 +158,8 @@ extern const char kDockingPromoRemindMeLater[];
 // The user opened an url from omnibox.
 extern const char kOpenUrlFromOmnibox[];
 
-// The new tab toolbar item is used.
-extern const char kNewTabToolbarItemUsed[];
-
-// The tab grid toolbar item is used.
-extern const char kTabGridToolbarItemUsed[];
-
 // The history item on overflow menu is used.
 extern const char kHistoryOnOverflowMenuUsed[];
-
-// The share item on the toolbar is used.
-extern const char kShareToolbarItemUsed[];
 
 // The user has triggered the Lens button in the Omnibox keyboard.
 extern const char kLensButtonKeyboardUsed[];
@@ -306,6 +280,12 @@ extern const char kHomeCustomizationMenuUsed[];
 
 // The user has tapped on the lens overlay entrypoint.
 extern const char kLensOverlayEntrypointUsed[];
+
+// The user has scheduled a tab reminder.
+extern const char kIOSTabReminderScheduled[];
+
+// The Reminder Notifications Overflow Menu Bubble IPH was triggered.
+extern const char kIOSReminderNotificationsOverflowMenuBubbleIPHTrigger[];
 
 #endif  // BUILDFLAG(IS_IOS)
 

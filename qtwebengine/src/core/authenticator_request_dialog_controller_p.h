@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef AUTHENTICATOR_REQUEST_DIALOG_CONTROLLER_P_H
 #define AUTHENTICATOR_REQUEST_DIALOG_CONTROLLER_P_H
@@ -34,6 +35,9 @@ public:
     void setCurrentState(QWebEngineWebAuthUxRequest::WebAuthUxState uxState);
     void setRelyingPartyId(const QString &rpId);
 
+    content::AuthenticatorRequestClientDelegate::UIPresentation uiPresentation() const;
+    void setUiPresentation(content::AuthenticatorRequestClientDelegate::UIPresentation modality);
+
     // Support pin functionality
     void collectPin(QWebEngineWebAuthPinRequest pinRequestInfo);
     void finishCollectToken();
@@ -46,7 +50,7 @@ public:
     // cancel request
     void cancelRequest();
     void retryRequest();
-    void startRequest(bool isConditionalRequest);
+    void startRequest();
 
     AuthenticatorRequestDialogController *q_ptr;
 
@@ -57,7 +61,8 @@ private:
     QString m_relyingPartyId;
 
     bool m_isStarted = false;
-    bool m_isConditionalRequest = false;
+    content::AuthenticatorRequestClientDelegate::UIPresentation m_uiPresentation =
+            content::AuthenticatorRequestClientDelegate::UIPresentation::kModal;
     QWebEngineWebAuthUxRequest::WebAuthUxState m_currentState =
             QWebEngineWebAuthUxRequest::WebAuthUxState::NotStarted;
     base::WeakPtr<AuthenticatorRequestClientDelegateQt> m_authenticatorRequestDelegate;

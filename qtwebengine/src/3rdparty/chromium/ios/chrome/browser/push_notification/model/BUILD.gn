@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-source_set("browser_state_service") {
+source_set("profile_service") {
   sources = [
     "push_notification_profile_service.h",
     "push_notification_profile_service.mm",
@@ -13,7 +13,6 @@ source_set("browser_state_service") {
     ":push_notification_service_header",
     ":push_notification_util",
     "//base",
-    "//components/keyed_service/core",
     "//components/prefs",
     "//components/signin/public/identity_manager",
     "//ios/chrome/browser/commerce/model",
@@ -23,14 +22,14 @@ source_set("browser_state_service") {
   ]
 }
 
-source_set("browser_state_service_factory") {
+source_set("profile_service_factory") {
   sources = [
     "push_notification_profile_service_factory.h",
     "push_notification_profile_service_factory.mm",
   ]
 
   deps = [
-    ":browser_state_service",
+    ":profile_service",
     ":push_notification_service",
     ":push_notification_service_header",
     "//base",
@@ -52,6 +51,7 @@ source_set("push_notification_util") {
     "push_notification_util.mm",
   ]
   deps = [
+    ":push_notification_client_id",
     "//base",
     "//components/prefs",
     "//ios/chrome/browser/shared/model/application_context",
@@ -94,7 +94,8 @@ source_set("push_notification_service") {
     "//components/search_engines",
     "//components/send_tab_to_self",
     "//components/sync_device_info",
-    "//ios/chrome/app/application_delegate:app_state_header",
+    "//ios/chrome/app/application_delegate:app_state",
+    "//ios/chrome/app/profile",
     "//ios/chrome/app/startup:startup_basic",
     "//ios/chrome/browser/commerce/model/push_notification",
     "//ios/chrome/browser/content_notification/model:content_notification_client",
@@ -102,6 +103,7 @@ source_set("push_notification_service") {
     "//ios/chrome/browser/content_notification/model:content_notification_service",
     "//ios/chrome/browser/content_notification/model:content_notification_service_factory",
     "//ios/chrome/browser/content_notification/model:util",
+    "//ios/chrome/browser/reminder_notifications/model:client",
     "//ios/chrome/browser/safety_check_notifications/model:notification_client",
     "//ios/chrome/browser/search_engines/model:template_url_service_factory",
     "//ios/chrome/browser/send_tab_to_self/model",
@@ -110,8 +112,10 @@ source_set("push_notification_service") {
     "//ios/chrome/browser/shared/model/browser",
     "//ios/chrome/browser/shared/model/prefs:pref_names",
     "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/model/utils",
     "//ios/chrome/browser/shared/public/features:features",
-    "//ios/chrome/browser/signin/model",
+    "//ios/chrome/browser/signin/model:authentication_service",
+    "//ios/chrome/browser/signin/model:authentication_service_factory",
     "//ios/chrome/browser/sync/model:device_info_sync_service_factory",
     "//ios/chrome/browser/tips_notifications/model:client",
     "//ios/chrome/common/app_group",
@@ -180,6 +184,7 @@ source_set("unit_tests") {
     "//components/prefs",
     "//components/prefs:test_support",
     "//components/sync_preferences:test_support",
+    "//google_apis",
     "//ios/chrome/browser/push_notification/model:constants",
     "//ios/chrome/browser/shared/model/application_context",
     "//ios/chrome/browser/shared/model/prefs:pref_names",

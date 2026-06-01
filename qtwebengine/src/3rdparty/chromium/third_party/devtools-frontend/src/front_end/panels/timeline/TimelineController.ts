@@ -6,10 +6,11 @@ import * as i18n from '../../core/i18n/i18n.js';
 import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import type * as Protocol from '../../generated/protocol.js';
+import * as CrUXManager from '../../models/crux-manager/crux-manager.js';
+import * as EmulationModel from '../../models/emulation/emulation.js';
 import * as Extensions from '../../models/extensions/extensions.js';
 import * as LiveMetrics from '../../models/live-metrics/live-metrics.js';
-import type * as TimelineModel from '../../models/timeline_model/timeline_model.js';
-import * as TraceEngine from '../../models/trace/trace.js';
+import * as Trace from '../../models/trace/trace.js';
 
 const UIStrings = {
   /**
@@ -21,11 +22,13 @@ const UIStrings = {
 };
 const str_ = i18n.i18n.registerUIStrings('panels/timeline/TimelineController.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
-export class TimelineController implements TraceEngine.TracingManager.TracingManagerClient {
+export class TimelineController implements Trace.TracingManager.TracingManagerClient {
   readonly primaryPageTarget: SDK.Target.Target;
   readonly rootTarget: SDK.Target.Target;
-  private tracingManager: TraceEngine.TracingManager.TracingManager|null;
-  #collectedEvents: TraceEngine.Types.TraceEvents.TraceEventData[] = [];
+  private tracingManager: Trace.TracingManager.TracingManager|null;
+  #collectedEvents: Trace.Types.Events.Event[] = [];
+  #navigationUrls: string[] = [];
+  #fieldData: CrUXManager.PageResult[]|null = null;
   #recordingStartTime: number|null = null;
   private readonly client: Client;
   private tracingCompletePromise: PromiseWithResolvers<void>|null = null;
@@ -61,7 +64,7 @@ export class TimelineController implements TraceEngine.TracingManager.TracingMan
     this.rootTarget = rootTarget;
     // Ensure the tracing manager is the one for the Root Target, NOT the
     // primaryPageTarget, as that is the one we have to invoke tracing against.
-    this.tracingManager = rootTarget.model(TraceEngine.TracingManager.TracingManager);
+    this.tracingManager = rootTarget.model(Trace.TracingManager.TracingManager);
     this.client = client;
   }
 
@@ -86,14 +89,15 @@ export class TimelineController implements TraceEngine.TracingManager.TracingMan
     //   └ default: on, option: enableJSSampling
     const categoriesArray = [
       Root.Runtime.experiments.isEnabled('timeline-show-all-events') ? '*' : '-*',
-      TraceEngine.Types.TraceEvents.Categories.Console,
-      TraceEngine.Types.TraceEvents.Categories.Loading,
-      TraceEngine.Types.TraceEvents.Categories.UserTiming,
+      Trace.Types.Events.Categories.Console,
+      Trace.Types.Events.Categories.Loading,
+      Trace.Types.Events.Categories.UserTiming,
       'devtools.timeline',
       disabledByDefault('devtools.timeline'),
       disabledByDefault('devtools.timeline.frame'),
       disabledByDefault('devtools.timeline.stack'),
       disabledByDefault('v8.compile'),
+      disabledByDefault('v8.inspector'),
       disabledByDefault('v8.cpu_profiler.hires'),
       disabledByDefault('lighthouse'),
       'v8.execute',
@@ -132,6 +136,12 @@ export class TimelineController implements TraceEngine.TracingManager.TracingMan
 
     await LiveMetrics.LiveMetrics.instance().disable();
 
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+        SDK.ResourceTreeModel.ResourceTreeModel, SDK.ResourceTreeModel.Events.FrameNavigated, this.#onFrameNavigated,
+        this);
+
+    this.#navigationUrls = [];
+    this.#fieldData = null;
     this.#recordingStartTime = Date.now();
     const response = await this.startRecordingWithCategories(categoriesArray.join(','));
     if (response.getError()) {
@@ -140,16 +150,63 @@ export class TimelineController implements TraceEngine.TracingManager.TracingMan
     return response;
   }
 
+  async #onFrameNavigated(event: {data: SDK.ResourceTreeModel.ResourceTreeFrame}): Promise<void> {
+    if (!event.data.isPrimaryFrame()) {
+      return;
+    }
+
+    this.#navigationUrls.push(event.data.url);
+  }
+
   async stopRecording(): Promise<void> {
     if (this.tracingManager) {
       this.tracingManager.stop();
     }
 
+    SDK.TargetManager.TargetManager.instance().removeModelListener(
+        SDK.ResourceTreeModel.ResourceTreeModel, SDK.ResourceTreeModel.Events.FrameNavigated, this.#onFrameNavigated,
+        this);
+
+    // When throttling is applied to the main renderer, it can slow down the
+    // collection of trace events once tracing has completed. Therefore we
+    // temporarily disable throttling whilst the final trace event collection
+    // takes place. Once it is done, we re-enable it (this is the existing
+    // behaviour within DevTools; the throttling settling is sticky + global).
+    const throttlingManager = SDK.CPUThrottlingManager.CPUThrottlingManager.instance();
+    const optionDuringRecording = throttlingManager.cpuThrottlingOption();
+    throttlingManager.setCPUThrottlingOption(SDK.CPUThrottlingManager.NoThrottlingOption);
+
     this.client.loadingStarted();
+    this.#fieldData = await this.fetchFieldData();
     await this.waitForTracingToStop();
+
+    // Now we re-enable throttling again to maintain the setting being persistent.
+    throttlingManager.setCPUThrottlingOption(optionDuringRecording);
     await this.allSourcesFinished();
 
     await LiveMetrics.LiveMetrics.instance().enable();
+  }
+
+  private async fetchFieldData(): Promise<CrUXManager.PageResult[]|null> {
+    const cruxManager = CrUXManager.CrUXManager.instance();
+    if (!cruxManager.isEnabled() || !navigator.onLine) {
+      return null;
+    }
+
+    const urls = [...new Set(this.#navigationUrls)];
+    return Promise.all(urls.map(url => cruxManager.getFieldDataForPage(url)));
+  }
+
+  private async createMetadata(): Promise<Trace.Types.File.MetaData> {
+    const deviceModeModel = EmulationModel.DeviceModeModel.DeviceModeModel.tryInstance();
+    let emulatedDeviceTitle;
+    if (deviceModeModel?.type() === EmulationModel.DeviceModeModel.Type.Device) {
+      emulatedDeviceTitle = deviceModeModel.device()?.title ?? undefined;
+    } else if (deviceModeModel?.type() === EmulationModel.DeviceModeModel.Type.Responsive) {
+      emulatedDeviceTitle = 'Responsive';
+    }
+    return Trace.Extras.Metadata.forNewRecording(
+        false, this.#recordingStartTime ?? undefined, emulatedDeviceTitle, this.#fieldData ?? undefined);
   }
 
   private async waitForTracingToStop(): Promise<void> {
@@ -189,7 +246,7 @@ export class TimelineController implements TraceEngine.TracingManager.TracingMan
     });
   }
 
-  traceEventsCollected(events: TraceEngine.Types.TraceEvents.TraceEventData[]): void {
+  traceEventsCollected(events: Trace.Types.Events.Event[]): void {
     this.#collectedEvents.push(...events);
   }
 
@@ -207,9 +264,8 @@ export class TimelineController implements TraceEngine.TracingManager.TracingMan
     Extensions.ExtensionServer.ExtensionServer.instance().profilingStopped();
 
     this.client.processingStarted();
-    await this.client.loadingComplete(
-        this.#collectedEvents, /* exclusiveFilter= */ null, /* isCpuProfile= */ false, this.#recordingStartTime,
-        /* metadata= */ null);
+    const metadata = await this.createMetadata();
+    await this.client.loadingComplete(this.#collectedEvents, /* exclusiveFilter= */ null, metadata);
     this.client.loadingCompleteForTest();
   }
 
@@ -228,9 +284,8 @@ export interface Client {
   processingStarted(): void;
   loadingProgress(progress?: number): void;
   loadingComplete(
-      collectedEvents: TraceEngine.Types.TraceEvents.TraceEventData[],
-      exclusiveFilter: TimelineModel.TimelineModelFilter.TimelineModelFilter|null, isCpuProfile: boolean,
-      recordingStartTime: number|null, metadata: TraceEngine.Types.File.MetaData|null): Promise<void>;
+      collectedEvents: Trace.Types.Events.Event[], exclusiveFilter: Trace.Extras.TraceFilter.TraceFilter|null,
+      metadata: Trace.Types.File.MetaData|null): Promise<void>;
   loadingCompleteForTest(): void;
 }
 export interface RecordingOptions {

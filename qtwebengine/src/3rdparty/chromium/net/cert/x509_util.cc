@@ -249,8 +249,7 @@ bool GetTLSServerEndPointChannelBinding(const X509Certificate& certificate,
       // Legacy digests are not supported, and
       // `GetTlsServerEndpointDigestAlgorithm` internally maps MD5 and SHA-1 to
       // SHA-256.
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
 
     case bssl::DigestAlgorithm::Sha256:
       digest_evp_md = EVP_sha256();
@@ -461,14 +460,13 @@ base::span<const uint8_t> CryptoBufferAsSpan(const CRYPTO_BUFFER* buffer) {
   // SAFETY: CRYPTO_BUFFER_data(buffer) returns a pointer to data that is
   // CRYPTO_BUFFER_len(buffer) bytes in length.
   return UNSAFE_BUFFERS(
-      base::make_span(CRYPTO_BUFFER_data(buffer), CRYPTO_BUFFER_len(buffer)));
+      base::span(CRYPTO_BUFFER_data(buffer), CRYPTO_BUFFER_len(buffer)));
 }
 
 scoped_refptr<X509Certificate> CreateX509CertificateFromBuffers(
     const STACK_OF(CRYPTO_BUFFER) * buffers) {
   if (sk_CRYPTO_BUFFER_num(buffers) == 0) {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
 
   std::vector<bssl::UniquePtr<CRYPTO_BUFFER>> intermediate_chain;

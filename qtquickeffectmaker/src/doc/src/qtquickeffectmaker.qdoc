@@ -63,23 +63,13 @@
 
 /*!
     \page qqem-toc.html
-    \title All topics
+    \title Qt Quick Effect Maker topics
 
     \list
-        \li \l{\QQEM}
-        \li Getting started
-          \list
-            \li \l {Installing \QQEM}
-          \endlist
-        \li How-tos
-          \list
-            \li \l{Creating a blur effect}
-            \li \l{Porting Shadertoy effects to \QQEM}
-          \endlist
-        \li Examples
-          \list
-            \li \l{Wiggly}
-          \endlist
+        \li \l{Installing \QQEM}
+        \li \l{Creating a blur effect}
+        \li \l{Porting Shadertoy effects to \QQEM}
+        \li \l{Wiggly}{Example: Wiggly}
     \endlist
 
 */

@@ -31,6 +31,7 @@ public:
     ~QScatterDataProxyPrivate() override;
 
     void resetArray(QScatterDataArray &&newArray);
+    void resetScaleArray(QList<QVector3D> &&newArray);
     void setItem(qsizetype index, QScatterDataItem &&item);
     void setItems(qsizetype index, QScatterDataArray &&items);
     qsizetype addItem(QScatterDataItem &&item);

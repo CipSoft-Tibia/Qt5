@@ -653,6 +653,14 @@ bool readConfiguration(const QFile &file)
     qgetenv(varName).toInt(ok, 0)
 //! [to-int]
 
+//! [int-value_or]
+    qEnvironmentVariableIntegerValue(varName).value_or(0)
+//! [int-value_or]
+
+//! [int-eq0]
+    qEnvironmentVariableIntegerValue(varName) == 0
+//! [int-eq0]
+
 //! [is-null]
     !qgetenv(varName).isNull()
 //! [is-null]

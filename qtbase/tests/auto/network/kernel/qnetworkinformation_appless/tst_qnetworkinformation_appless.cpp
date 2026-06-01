@@ -4,6 +4,7 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtNetwork/qnetworkinformation.h>
 #include <QtTest/qtest.h>
+#include <QOperatingSystemVersion>
 
 class tst_QNetworkInformation_appless : public QObject
 {
@@ -14,6 +15,15 @@ private slots:
 
 void tst_QNetworkInformation_appless::reinit()
 {
+    #if QT_CONFIG(cpp_winrt)
+        if (QOperatingSystemVersion::current() >=
+            QOperatingSystemVersion(QOperatingSystemVersion::Windows11_24H2) &&
+            QOperatingSystemVersion::current() <
+            QOperatingSystemVersion(QOperatingSystemVersion::Windows, 10, 0, 26300)) {
+                QSKIP("This test crashes on Windows 11 24H2. QTBUG-135599");
+        }
+    #endif
+
     int argc = 1;
     char name[] = "./test";
     char *argv[] = { name, nullptr };

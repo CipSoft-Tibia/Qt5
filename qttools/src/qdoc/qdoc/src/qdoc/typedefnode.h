@@ -5,6 +5,7 @@
 #define TYPEDEFNODE_H
 
 #include "enumnode.h"
+#include "genustypes.h"
 #include "node.h"
 
 #include <QtCore/qglobal.h>
@@ -17,7 +18,7 @@ class Aggregate;
 class TypedefNode : public Node
 {
 public:
-    TypedefNode(Aggregate *parent, const QString &name, NodeType type = Typedef)
+    TypedefNode(Aggregate *parent, const QString &name, NodeType type = NodeType::Typedef)
         : Node(type, parent, name)
     {
     }
@@ -25,6 +26,7 @@ public:
     bool hasAssociatedEnum() const { return m_associatedEnum != nullptr; }
     const EnumNode *associatedEnum() const { return m_associatedEnum; }
     Node *clone(Aggregate *parent) override;
+    bool isInAPI() const override;
 
 private:
     void setAssociatedEnum(const EnumNode *t);

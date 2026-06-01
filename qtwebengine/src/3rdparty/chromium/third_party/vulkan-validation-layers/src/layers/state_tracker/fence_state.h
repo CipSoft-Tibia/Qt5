@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  *
@@ -23,10 +23,9 @@
 #include "state_tracker/submission_reference.h"
 #include <future>
 
-class ValidationStateTracker;
-
 namespace vvl {
 
+class Device;
 class Queue;
 class Swapchain;
 
@@ -49,9 +48,6 @@ class Swapchain;
 struct AcquireFenceSync {
     // The queue submissions that will be notified when WaitForFences is called.
     small_vector<SubmissionReference, 2, uint32_t> submission_refs;
-
-    // The swapchain associated with this synchronization instance.
-    std::shared_ptr<vvl::Swapchain> swapchain;
 };
 
 class Fence : public RefcountedStateObject {
@@ -63,8 +59,9 @@ class Fence : public RefcountedStateObject {
         kExternalPermanent,
     };
 
-    Fence(ValidationStateTracker &dev, VkFence handle, const VkFenceCreateInfo *pCreateInfo);
+    Fence(Device &dev, VkFence handle, const VkFenceCreateInfo *pCreateInfo);
 
+    const VulkanTypedHandle *InUse() const override;
     VkFence VkHandle() const { return handle_.Cast<VkFence>(); }
     // TODO: apply ReadLock as Semaphore does, or consider reading enums without lock.
     // Consider if more high-level operation should be exposed, because
@@ -90,7 +87,6 @@ class Fence : public RefcountedStateObject {
     std::optional<VkExternalFenceHandleTypeFlagBits> ImportedHandleType() const;
 
     void SetAcquireFenceSync(const AcquireFenceSync &acquire_fence_sync);
-    bool IsAcquireFenceSyncSwapchainChanged(const std::shared_ptr<vvl::Swapchain> &current_swapchain) const;
 
     const VkFenceCreateFlags flags;
     const VkExternalFenceHandleTypeFlags export_handle_types;
@@ -107,8 +103,11 @@ class Fence : public RefcountedStateObject {
     mutable std::shared_mutex lock_;
     std::promise<void> completed_;
     std::shared_future<void> waiter_;
+
+    // Special frame synchronization based on acquire fence (check AcquireFenceSync documentation)
     AcquireFenceSync acquire_fence_sync_;
-    ValidationStateTracker &dev_data_;
+
+    Device &dev_data_;
 };
 
 }  // namespace vvl

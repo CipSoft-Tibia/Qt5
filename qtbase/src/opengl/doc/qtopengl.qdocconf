@@ -31,6 +31,9 @@ depends += qtcore qtgui qtwidgets qtdoc qmake qtcmake qtquick
 
 examplesinstallpath     = opengl
 
+# Path to the root of qtbase (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 tagfile = qtopengl.tags
 
 # The following parameters are for creating a qhp file, the qhelpgenerator

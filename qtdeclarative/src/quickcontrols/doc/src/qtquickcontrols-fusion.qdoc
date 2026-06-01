@@ -32,6 +32,7 @@
     to provide colors that match the desktop environment.
 
     \image qtquickcontrols-fusion-palettes.png
+           {Fusion style controls in three color palettes}
 
     You can specify custom palettes for any control, \l{Popup::palette}{popup},
     or \l{Window::palette}{application window}. Explicit palette attributes are
@@ -43,8 +44,8 @@
         \row
             \li
                 \qml
-                import QtQuick 2.12
-                import QtQuick.Controls 2.12
+                import QtQuick
+                import QtQuick.Controls
 
                 ApplicationWindow {
                     visible: true
@@ -62,6 +63,7 @@
                 \endqml
             \li
                 \image qtquickcontrols-fusion-violet.png
+                       {Fusion style controls with custom violet palette}
     \endtable
 
     \b {See also} \l {Basic Style}, \l {Material Style}, \l {Universal Style}

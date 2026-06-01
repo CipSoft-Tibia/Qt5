@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "third_party/blink/renderer/modules/peerconnection/rtc_stats_report.h"
 
 #include "base/feature_list.h"
@@ -29,9 +34,11 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_rtc_video_source_stats.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/modules/mediastream/user_media_client.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/peerconnection/rtc_stats.h"
+#include "third_party/blink/renderer/platform/peerconnection/webrtc_util.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/webrtc/api/stats/rtc_stats.h"
 #include "third_party/webrtc/api/stats/rtc_stats_report.h"
@@ -50,10 +57,9 @@ v8::Local<v8::Value> HashMapToValue(ScriptState* script_state,
   for (auto& it : map) {
     builder.Add(it.key, it.value);
   }
-  v8::Local<v8::Object> v8_object = builder.V8Value();
+  v8::Local<v8::Object> v8_object = builder.V8Object();
   if (v8_object.IsEmpty()) {
-    NOTREACHED_IN_MIGRATION();
-    return v8::Undefined(script_state->GetIsolate());
+    NOTREACHED();
   }
   return v8_object;
 }
@@ -158,6 +164,17 @@ RTCInboundRtpStreamStats* ToV8Stat(
   }
   if (webrtc_stat.qp_sum.has_value()) {
     v8_stat->setQpSum(*webrtc_stat.qp_sum);
+  }
+  if (webrtc_stat.total_corruption_probability.has_value()) {
+    v8_stat->setTotalCorruptionProbability(
+        *webrtc_stat.total_corruption_probability);
+  }
+  if (webrtc_stat.total_squared_corruption_probability.has_value()) {
+    v8_stat->setTotalSquaredCorruptionProbability(
+        *webrtc_stat.total_squared_corruption_probability);
+  }
+  if (webrtc_stat.corruption_measurements.has_value()) {
+    v8_stat->setCorruptionMeasurements(*webrtc_stat.corruption_measurements);
   }
   if (webrtc_stat.total_decode_time.has_value()) {
     v8_stat->setTotalDecodeTime(*webrtc_stat.total_decode_time);
@@ -1000,7 +1017,13 @@ RTCStats* RTCStatsToIDL(ScriptState* script_state,
   }
 
   v8_stats->setId(String::FromUTF8(stat.id()));
-  v8_stats->setTimestamp(stat.timestamp().ms<double>());
+  LocalDOMWindow* window = LocalDOMWindow::From(script_state);
+  DocumentLoadTiming& time_converter =
+      window->GetFrame()->Loader().GetDocumentLoader()->GetTiming();
+  v8_stats->setTimestamp(time_converter
+                             .MonotonicTimeToPseudoWallTime(
+                                 ConvertToBaseTimeTicks(stat.timestamp()))
+                             .InMillisecondsF());
   v8_stats->setType(String::FromUTF8(stat.type()));
   return v8_stats;
 }
@@ -1014,14 +1037,14 @@ class RTCStatsReportIterationSource final
 
   bool FetchNextItem(ScriptState* script_state,
                      String& key,
-                     ScriptValue& value,
+                     ScriptObject& object,
                      ExceptionState& exception_state) override {
-    return FetchNextItemIdl(script_state, key, value, exception_state);
+    return FetchNextItemIdl(script_state, key, object, exception_state);
   }
 
   bool FetchNextItemIdl(ScriptState* script_state,
                         String& key,
-                        ScriptValue& value,
+                        ScriptObject& object,
                         ExceptionState& exception_state) {
     const bool expose_hardware_caps =
         ExposeHardwareCapabilityStats(script_state);
@@ -1039,7 +1062,7 @@ class RTCStatsReportIterationSource final
       return false;
     }
     key = String::FromUTF8(rtc_stats->id());
-    value = ScriptValue::From(script_state, v8_stat);
+    object = ScriptObject::From(script_state, v8_stat);
     return true;
   }
 
@@ -1064,7 +1087,7 @@ RTCStatsReport::CreateIterationSource(ScriptState*, ExceptionState&) {
 
 bool RTCStatsReport::GetMapEntryIdl(ScriptState* script_state,
                                     const String& key,
-                                    ScriptValue& value,
+                                    ScriptObject& object,
                                     ExceptionState&) {
   const webrtc::RTCStats* stats = report_->stats_report().Get(key.Utf8());
   if (!stats) {
@@ -1076,15 +1099,15 @@ bool RTCStatsReport::GetMapEntryIdl(ScriptState* script_state,
   if (!v8_stats) {
     return false;
   }
-  value = ScriptValue::From(script_state, v8_stats);
+  object = ScriptObject::From(script_state, v8_stats);
   return true;
 }
 
 bool RTCStatsReport::GetMapEntry(ScriptState* script_state,
                                  const String& key,
-                                 ScriptValue& value,
+                                 ScriptObject& object,
                                  ExceptionState& exception_state) {
-  return GetMapEntryIdl(script_state, key, value, exception_state);
+  return GetMapEntryIdl(script_state, key, object, exception_state);
 }
 
 }  // namespace blink

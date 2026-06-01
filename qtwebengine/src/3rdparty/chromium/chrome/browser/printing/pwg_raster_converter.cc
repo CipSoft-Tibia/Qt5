@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "chrome/browser/printing/pwg_raster_converter.h"
 
 #include <algorithm>
@@ -243,9 +248,7 @@ PwgRasterSettings PwgRasterConverter::GetBitmapSettings(
       break;
 
     default:
-      NOTREACHED_IN_MIGRATION();
-      use_color = true;  // Still need to initialize `color` or MSVC will warn.
-      break;
+      NOTREACHED();
   }
 
   cloud_devices::printer::PwgRasterConfigCapability raster_capability;

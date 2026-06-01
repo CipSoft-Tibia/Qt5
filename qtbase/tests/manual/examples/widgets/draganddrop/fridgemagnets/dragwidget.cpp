@@ -21,9 +21,8 @@ DragWidget::DragWidget(QWidget *parent)
     int x = 5;
     int y = 5;
 
-    while (!inputStream.atEnd()) {
-        QString word;
-        inputStream >> word;
+    QString word;
+    while (inputStream >> word) {
         if (!word.isEmpty()) {
             DragLabel *wordLabel = new DragLabel(word, this);
             wordLabel->move(x, y);

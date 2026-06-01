@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 #ifndef QBYTEARRAYVIEW_H
 #define QBYTEARRAYVIEW_H
 
@@ -366,13 +367,6 @@ private:
     }
     Q_DECLARE_STRONGLY_ORDERED(QByteArrayView)
 
-    friend bool comparesEqual(const QByteArrayView &lhs, const char *rhs) noexcept
-    { return comparesEqual(lhs, QByteArrayView(rhs)); }
-    friend Qt::strong_ordering
-    compareThreeWay(const QByteArrayView &lhs, const char *rhs) noexcept
-    { return compareThreeWay(lhs, QByteArrayView(rhs)); }
-    Q_DECLARE_STRONGLY_ORDERED(QByteArrayView, const char *)
-
     // defined in qstring.cpp
     friend Q_CORE_EXPORT bool
     comparesEqual(const QByteArrayView &lhs, const QChar &rhs) noexcept;
@@ -412,8 +406,10 @@ inline quint16 qChecksum(const char *s, qsizetype len,
 
 qsizetype QtPrivate::findByteArray(QByteArrayView haystack, qsizetype from, char needle) noexcept
 {
+    if (from < -haystack.size()) // from < 0 && abs(from) > haystack.size(), avoiding overflow
+        return -1;
     if (from < 0)
-        from = qMax(from + haystack.size(), qsizetype(0));
+        from = from + haystack.size();
     if (from < haystack.size()) {
         const char *const b = haystack.data();
         if (const auto n = static_cast<const char *>(

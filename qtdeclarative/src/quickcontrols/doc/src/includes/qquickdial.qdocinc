@@ -10,4 +10,5 @@ The following image illustrates the directions in which the various input modes
 track movement:
 
 \image qtquickcontrols-dial-inputmode.png
+       {Three dials showing circular, horizontal, and vertical input modes}
 //! [inputMode]

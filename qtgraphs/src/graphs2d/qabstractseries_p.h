@@ -17,8 +17,12 @@
 #include "graphs2d/qabstractseries.h"
 #include <QtGraphs/qabstractseries.h>
 #include <private/qobject_p.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcSeries2D)
+Q_DECLARE_LOGGING_CATEGORY(lcProperties2D)
 
 class QAbstractAxis;
 class QGraphsView;
@@ -48,6 +52,7 @@ private:
     bool m_loaded = false;
     bool m_selectable = false;
     bool m_hoverable = false;
+    bool m_hovered = false;
     qreal m_opacity = 1.0;
     qreal m_valuesMultiplier = 1.0;
     QList<QLegendData> m_legendData;

@@ -157,9 +157,7 @@ int ServiceWorkerCacheWriter::DoLoop(int status) {
         status = DoDone(status);
         break;
       default:
-        NOTREACHED_IN_MIGRATION() << "Unknown state in DoLoop";
-        state_ = STATE_DONE;
-        break;
+        NOTREACHED() << "Unknown state in DoLoop";
     }
   } while (status != net::ERR_IO_PENDING && state_ != STATE_DONE);
   io_pending_ = (status == net::ERR_IO_PENDING);
@@ -871,7 +869,7 @@ int ServiceWorkerCacheWriter::WriteDataToResponseWriter(
   }
 
   mojo_base::BigBuffer big_buffer(
-      base::as_bytes(base::make_span(data->data(), length)));
+      base::as_bytes(base::span(data->data(), length)));
   writer_->WriteData(
       std::move(big_buffer),
       base::BindOnce(&AsyncOnlyCompletionCallbackAdaptor::WrappedCallback,

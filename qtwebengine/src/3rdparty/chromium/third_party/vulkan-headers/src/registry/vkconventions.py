@@ -1,6 +1,6 @@
 #!/usr/bin/env python3 -i
 #
-# Copyright 2013-2024 The Khronos Group Inc.
+# Copyright 2013-2025 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -185,7 +185,7 @@ class VulkanConventions(ConventionsBase):
         For Vulkan, these are names with a case-insensitive 'vk' prefix, or
         a 'PFN_vk' function pointer type prefix.
         """
-        return name[0:2].lower() == 'vk' or name[0:6] == 'PFN_vk'
+        return name[0:2].lower() == 'vk' or name.startswith('PFN_vk')
 
     def specURL(self, spectype='api'):
         """Return public registry URL which ref pages should link to for the
@@ -194,7 +194,7 @@ class VulkanConventions(ConventionsBase):
            instead. N.b. this may need to change on a per-refpage basis if
            there are multiple documents involved.
         """
-        return 'https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html'
+        return 'https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html'
 
     @property
     def xml_api_name(self):

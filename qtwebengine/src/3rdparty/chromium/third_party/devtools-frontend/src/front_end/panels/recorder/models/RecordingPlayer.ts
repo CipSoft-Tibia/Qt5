@@ -10,7 +10,7 @@ import * as PuppeteerService from '../../../services/puppeteer/puppeteer.js';
 import * as PuppeteerReplay from '../../../third_party/puppeteer-replay/puppeteer-replay.js';
 import type * as puppeteer from '../../../third_party/puppeteer/puppeteer.js';
 
-import {type Step, type UserFlow} from './Schema.js';
+import type {Step, UserFlow} from './Schema.js';
 
 export const enum PlayRecordingSpeed {
   NORMAL = 'normal',
@@ -243,13 +243,10 @@ export class RecordingPlayer extends Common.ObjectWrapper.ObjectWrapper<EventTyp
       }
 
       override async beforeEachStep?(step: Step, flow: UserFlow): Promise<void> {
-        let resolver: () => void = () => {};
-        const promise = new Promise<void>(r => {
-          resolver = r;
-        });
+        const {resolve, promise} = Promise.withResolvers<void>();
         player.dispatchEventToListeners(Events.STEP, {
           step,
-          resolve: resolver,
+          resolve,
         });
         await promise;
         const currentStepIndex = flow.steps.indexOf(step);
@@ -278,10 +275,6 @@ export class RecordingPlayer extends Common.ObjectWrapper.ObjectWrapper<EventTyp
         if (Common.ParsedURL.schemeIs(page?.url() as Platform.DevToolsPath.UrlString, 'devtools:') &&
             (step.type === 'setViewport' || step.type === 'navigate')) {
           return;
-        }
-        if (step.type === 'navigate' &&
-            Common.ParsedURL.schemeIs(step.url as Platform.DevToolsPath.UrlString, 'chrome:')) {
-          throw new Error('Not allowed to replay on chrome:// URLs');
         }
         // Focus the target in case it's not focused.
         await this.page.bringToFront();
@@ -324,11 +317,11 @@ export const enum Events {
   CONTINUE = 'Continue',
 }
 
-type EventTypes = {
-  [Events.ABORT]: void,
-  [Events.DONE]: void,
-  [Events.STEP]: {step: Step, resolve: () => void},
-  [Events.STOP]: void,
-  [Events.CONTINUE]: void,
-  [Events.ERROR]: Error,
-};
+interface EventTypes {
+  [Events.ABORT]: void;
+  [Events.DONE]: void;
+  [Events.STEP]: {step: Step, resolve: () => void};
+  [Events.STOP]: void;
+  [Events.CONTINUE]: void;
+  [Events.ERROR]: Error;
+}

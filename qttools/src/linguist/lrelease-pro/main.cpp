@@ -54,8 +54,8 @@ int main(int argc, char **argv)
     QTranslator qtTranslator;
     QString sysLocale = QLocale::system().name();
     QString resourceDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
-    if (translator.load(QLatin1String("linguist_") + sysLocale, resourceDir)
-        && qtTranslator.load(QLatin1String("qt_") + sysLocale, resourceDir)) {
+    if (translator.load("linguist_"_L1 + sysLocale, resourceDir)
+        && qtTranslator.load("qt_"_L1 + sysLocale, resourceDir)) {
         app.installTranslator(&translator);
         app.installTranslator(&qtTranslator);
     }
@@ -104,7 +104,7 @@ int main(int argc, char **argv)
     if (!inputFiles.isEmpty()) {
         printErr(QStringLiteral("lrelease-pro: Only .pro/.pri files are supported. "
                                 "Offending files:\n    %1\n")
-                 .arg(inputFiles.join(QLatin1String("\n    "))));
+                         .arg(inputFiles.join("\n    "_L1)));
         return 1;
     }
 

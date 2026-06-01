@@ -26,15 +26,14 @@
 #include "internal/test/fake_clock.h"
 #include "internal/test/fake_device_info.h"
 #include "internal/test/fake_task_runner.h"
-#include "sharing/fake_nearby_connections_manager.h"
 #include "sharing/internal/public/logging.h"
 #include "sharing/nearby_connection_impl.h"
 #include "sharing/proto/wire_format.pb.h"
 
-namespace nearby {
-namespace sharing {
+namespace nearby::sharing {
 namespace {
 
+using ::nearby::sharing::service::proto::ConnectionResponseFrame;
 using ::nearby::sharing::service::proto::V1Frame;
 
 constexpr absl::Duration kTimeout = absl::Seconds(1);
@@ -48,7 +47,7 @@ std::optional<std::vector<uint8_t>> GetIntroductionFrame() {
   v1frame->mutable_introduction();
 
   std::vector<uint8_t> data;
-  data.resize(frame.ByteSize());
+  data.resize(frame.ByteSizeLong());
   if (frame.SerializeToArray(data.data(), data.size())) {
     return data;
   }
@@ -64,7 +63,25 @@ std::optional<std::vector<uint8_t>> GetCancelFrame() {
   v1frame->set_type(service::proto::V1Frame::CANCEL);
 
   std::vector<uint8_t> data;
-  data.resize(frame.ByteSize());
+  data.resize(frame.ByteSizeLong());
+  if (frame.SerializeToArray(data.data(), data.size())) {
+    return data;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<std::vector<uint8_t>> GetResponseFrame() {
+  nearby::sharing::service::proto::Frame frame =
+      nearby::sharing::service::proto::Frame();
+  frame.set_version(nearby::sharing::service::proto::Frame::V1);
+  V1Frame* v1frame = frame.mutable_v1();
+  v1frame->set_type(service::proto::V1Frame::RESPONSE);
+  v1frame->mutable_connection_response()->set_status(
+      ConnectionResponseFrame::ACCEPT);
+
+  std::vector<uint8_t> data;
+  data.resize(frame.ByteSizeLong());
   if (frame.SerializeToArray(data.data(), data.size())) {
     return data;
   }
@@ -83,19 +100,18 @@ std::optional<std::vector<uint8_t>> GetInvalidFrame() {
 class IncomingFramesReaderTest : public testing::Test {
  public:
   IncomingFramesReaderTest() {
-    nearby_connection_ = std::make_unique<NearbyConnectionImpl>(
-        fake_device_info_, &fake_nearby_connections_manager_, "endpoint_id");
+    nearby_connection_ =
+        std::make_unique<NearbyConnectionImpl>(fake_device_info_);
   }
   ~IncomingFramesReaderTest() override = default;
 
   void SetUp() override {
-    FakeTaskRunner::ResetPendingTasksCount();
     frames_reader_ = std::make_shared<IncomingFramesReader>(
         fake_task_runner_, nearby_connection_.get());
   }
 
   NearbyConnectionImpl& connection() {
-    NL_CHECK(nearby_connection_);
+    CHECK(nearby_connection_);
     return *nearby_connection_;
   }
 
@@ -118,7 +134,6 @@ class IncomingFramesReaderTest : public testing::Test {
   FakeClock fake_clock_;
   FakeTaskRunner fake_task_runner_ {&fake_clock_, 1};
   FakeDeviceInfo fake_device_info_;
-  FakeNearbyConnectionsManager fake_nearby_connections_manager_;
   std::unique_ptr<NearbyConnectionImpl> nearby_connection_;
   std::shared_ptr<IncomingFramesReader> frames_reader_ = nullptr;
 };
@@ -134,6 +149,29 @@ TEST_F(IncomingFramesReaderTest, ReadTimedOut) {
       kTimeout);
   Sync();
   FastForward(kTimeout);
+  EXPECT_TRUE(notification.WaitForNotificationWithTimeout(kTimeout));
+}
+
+TEST_F(IncomingFramesReaderTest, ReadNonV1FrameSkipped) {
+  nearby::sharing::service::proto::Frame frame =
+      nearby::sharing::service::proto::Frame();
+  V1Frame* v1frame = frame.mutable_v1();
+  v1frame->set_type(service::proto::V1Frame::CANCEL);
+  std::vector<uint8_t> data;
+  data.resize(frame.ByteSizeLong());
+  ASSERT_GT(data.size(), 0);
+  ASSERT_TRUE(frame.SerializeToArray(data.data(), data.size()));
+  connection().WriteMessage(data);
+  std::optional<std::vector<uint8_t>> introduction_frame =
+      GetIntroductionFrame();
+  ASSERT_TRUE(introduction_frame.has_value());
+  connection().WriteMessage(*introduction_frame);
+
+  absl::Notification notification;
+  frames_reader()->ReadFrame([&](std::optional<V1Frame> frame) {
+    EXPECT_EQ(frame->type(), service::proto::V1Frame::INTRODUCTION);
+    notification.Notify();
+  });
   EXPECT_TRUE(notification.WaitForNotificationWithTimeout(kTimeout));
 }
 
@@ -193,6 +231,9 @@ TEST_F(IncomingFramesReaderTest, JumbledFramesOrdering_ReadFromCache) {
   std::optional<std::vector<uint8_t>> cancel_frame = GetCancelFrame();
   ASSERT_TRUE(cancel_frame.has_value());
   connection().WriteMessage(*cancel_frame);
+  std::optional<std::vector<uint8_t>> response_frame = GetResponseFrame();
+  ASSERT_TRUE(response_frame.has_value());
+  connection().WriteMessage(*response_frame);
 
   std::optional<std::vector<uint8_t>> introduction_frame =
       GetIntroductionFrame();
@@ -209,7 +250,7 @@ TEST_F(IncomingFramesReaderTest, JumbledFramesOrdering_ReadFromCache) {
       kTimeout);
 
   EXPECT_TRUE(notification.WaitForNotificationWithTimeout(kTimeout));
-  // Reading any frame should return CancelFrame.
+  // Reading any frame should return cancel frame, then response frame.
   absl::Notification cancel_notification;
   frames_reader()->ReadFrame([&](std::optional<V1Frame> frame) {
     ASSERT_NE(frame, std::nullopt);
@@ -217,6 +258,13 @@ TEST_F(IncomingFramesReaderTest, JumbledFramesOrdering_ReadFromCache) {
     cancel_notification.Notify();
   });
   EXPECT_TRUE(cancel_notification.WaitForNotificationWithTimeout(kTimeout));
+  absl::Notification response_notification;
+  frames_reader()->ReadFrame([&](std::optional<V1Frame> frame) {
+    ASSERT_NE(frame, std::nullopt);
+    EXPECT_EQ(frame->type(), service::proto::V1Frame::RESPONSE);
+    response_notification.Notify();
+  });
+  EXPECT_TRUE(response_notification.WaitForNotificationWithTimeout(kTimeout));
 }
 
 TEST_F(IncomingFramesReaderTest, ReadAfterConnectionClosed) {
@@ -298,21 +346,24 @@ TEST_F(IncomingFramesReaderTest, ReleaseFrameReaderDuringRead) {
   EXPECT_EQ(frames_reader(), nullptr);
 }
 
-TEST_F(IncomingFramesReaderTest, ReadInvalidFrame) {
+TEST_F(IncomingFramesReaderTest, SkipInvalidFrame) {
   absl::Notification notification;
   frames_reader()->ReadFrame([&](std::optional<V1Frame> frame) {
-    EXPECT_EQ(frame, std::nullopt);
+    EXPECT_EQ(frame->type(), service::proto::V1Frame::CANCEL);
     notification.Notify();
   });
 
   std::optional<std::vector<uint8_t>> invalid_frame = GetInvalidFrame();
   ASSERT_TRUE(invalid_frame.has_value());
   connection().WriteMessage(*invalid_frame);
+  std::optional<std::vector<uint8_t>> cancel_frame = GetCancelFrame();
+  ASSERT_TRUE(cancel_frame.has_value());
+  connection().WriteMessage(*cancel_frame);
 
   Sync();
   EXPECT_TRUE(notification.WaitForNotificationWithTimeout(kTimeout));
+  ReleaseFrameReader();
 }
 
 }  // namespace
-}  // namespace sharing
-}  // namespace nearby
+}  // namespace nearby::sharing

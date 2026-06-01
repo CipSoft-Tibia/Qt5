@@ -6,6 +6,7 @@
 #ifndef QDIRLISTING_H
 #define QDIRLISTING_H
 
+#include <QtCore/qtdeprecationmarkers.h>
 #include <QtCore/qfiledevice.h>
 #include <QtCore/qflags.h>
 #include <QtCore/qtclasshelpermacros.h>
@@ -29,10 +30,13 @@ public:
         Default =               0x000000,
         ExcludeFiles =          0x000004,
         ExcludeDirs =           0x000008,
-        ExcludeSpecial =        0x000010,
+#if QT_DEPRECATED_SINCE(6, 14)
+        ExcludeSpecial QT_DEPRECATED_VERSION_X_6_14("Use ExcludeOther instead.") = 0x000010,
+#endif
+        ExcludeOther =          0x000010,
         ResolveSymlinks =       0x000020,
-        FilesOnly =             ExcludeDirs  | ExcludeSpecial,
-        DirsOnly =              ExcludeFiles | ExcludeSpecial,
+        FilesOnly =             ExcludeDirs  | ExcludeOther,
+        DirsOnly =              ExcludeFiles | ExcludeOther,
         IncludeHidden =         0x000040,
         IncludeDotAndDotDot =   0x000080,
         CaseSensitive =         0x000100,

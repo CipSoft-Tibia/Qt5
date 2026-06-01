@@ -72,7 +72,6 @@ namespace main_thread_scheduler_impl_unittest {
 class MainThreadSchedulerImplForTest;
 class MainThreadSchedulerImplTest;
 class MockPageSchedulerImpl;
-FORWARD_DECLARE_TEST(MainThreadSchedulerImplTest, ShouldIgnoreTaskForUkm);
 FORWARD_DECLARE_TEST(MainThreadSchedulerImplTest, Tracing);
 FORWARD_DECLARE_TEST(MainThreadSchedulerImplTest,
                      LogIpcsPostedToDocumentsInBackForwardCache);
@@ -93,6 +92,12 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
       public RenderWidgetSignals::Observer,
       public base::trace_event::TraceLog::AsyncEnabledStateObserver {
  public:
+  // Duration before rendering is considered starved by render-blocking tasks,
+  // which is a safeguard against pathological cases for render-blocking image
+  // prioritization.
+  static constexpr base::TimeDelta kRenderBlockingStarvationThreshold =
+      base::Milliseconds(500);
+
   // Tracks prioritization of the next frame. This is used in conjunction with
   // `UseCase` and other signals to compute the priority of the compositor task
   // queue.
@@ -131,11 +136,9 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
     // per-ASG task runner instead of the per-thread task runner.
     bool mbi_override_task_runner_handle;
 
-    // If ThreadedScrollPreventRenderingStarvation is enabled, this is set to
-    // the policy set in the associated feature param, otherwise this is
-    // equivalent to the existing behavior.
-    CompositorTQPolicyDuringThreadedScroll
-        compositor_tq_policy_during_threaded_scroll;
+    // If ThreadedScrollPreventRenderingStarvation is enabled, this controls the
+    // rendering anti-starvation threshold during UseCase::kCompositorGesture.
+    base::TimeDelta compositor_gesture_rendering_starvation_threshold;
 
     // The policy to use for discrete input-based task deferral. If
     // `features::kDeferRendererTasksAfterInput` is enabled, this is set to the
@@ -208,6 +211,7 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   void PostDelayedIdleTask(const base::Location&,
                            base::TimeDelta delay,
                            Thread::IdleTask) override;
+  void RemoveCancelledIdleTasks() override;
   scoped_refptr<base::SingleThreadTaskRunner> V8TaskRunner() override;
   scoped_refptr<base::SingleThreadTaskRunner> V8UserVisibleTaskRunner()
       override;
@@ -261,13 +265,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   // Returns a new task queue created with given params.
   scoped_refptr<MainThreadTaskQueue> NewTaskQueue(
       const MainThreadTaskQueue::QueueCreationParams& params);
-
-  // Returns a new loading task queue. This queue is intended for tasks related
-  // to resource dispatch, foreground HTML parsing, etc...
-  // Note: Tasks posted to kFrameLoadingControl queues must execute quickly.
-  scoped_refptr<MainThreadTaskQueue> NewLoadingTaskQueue(
-      MainThreadTaskQueue::QueueType queue_type,
-      FrameSchedulerImpl* frame_scheduler);
 
   // Returns a new throttleable task queue to be used for tests.
   scoped_refptr<MainThreadTaskQueue> NewThrottleableTaskQueueForTest(
@@ -371,6 +368,10 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
     return main_thread_only().current_policy.find_in_page_priority;
   }
 
+  base::TimeTicks CurrentTaskStartTime() const {
+    return main_thread_only().current_task_start_time;
+  }
+
  protected:
   // ThreadSchedulerBase implementation:
   WTF::Vector<base::OnceClosure>& GetOnTaskCompletionCallbacks() override;
@@ -385,8 +386,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   void SetCurrentUseCaseForTest(UseCase use_case) {
     main_thread_only().current_use_case = use_case;
   }
-
-  void SetHaveSeenABlockingGestureForTesting(bool status);
 
   virtual void PerformMicrotaskCheckpoint();
 
@@ -403,9 +402,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
 
   friend class FindInPageBudgetPoolController;
 
-  FRIEND_TEST_ALL_PREFIXES(
-      main_thread_scheduler_impl_unittest::MainThreadSchedulerImplTest,
-      ShouldIgnoreTaskForUkm);
   FRIEND_TEST_ALL_PREFIXES(
       main_thread_scheduler_impl_unittest::MainThreadSchedulerImplTest,
       Tracing);
@@ -458,7 +454,7 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
     DISALLOW_NEW();
 
    public:
-    RAILMode rail_mode = RAILMode::kAnimation;
+    RAILMode rail_mode = RAILMode::kDefault;
     bool should_freeze_compositor_task_queue = false;
     bool should_pause_task_queues = false;
     bool should_pause_task_queues_for_android_webview = false;
@@ -617,23 +613,6 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
   // on the current `RenderingPrioritizationState`.
   std::optional<TaskPriority> ComputeCompositorPriorityForMainFrame() const;
 
-  static void RunIdleTask(Thread::IdleTask, base::TimeTicks deadline);
-
-  // Probabilistically record all task metadata for the current task.
-  // If task belongs to a per-frame queue, this task is attributed to
-  // a particular Page, otherwise it's attributed to all Pages in the process.
-  void RecordTaskUkm(
-      MainThreadTaskQueue* queue,
-      const base::sequence_manager::Task& task,
-      const base::sequence_manager::TaskQueue::TaskTiming& task_timing);
-
-  UkmRecordingStatus RecordTaskUkmImpl(
-      MainThreadTaskQueue* queue,
-      const base::sequence_manager::Task& task,
-      const base::sequence_manager::TaskQueue::TaskTiming& task_timing,
-      FrameSchedulerImpl* frame_scheduler,
-      bool precise_attribution);
-
   void ShutdownAllQueues();
 
   bool AllPagesFrozen() const;
@@ -719,18 +698,15 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
     base::TimeTicks current_policy_expiration_time;
     base::TimeTicks estimated_next_frame_begin;
     base::TimeTicks current_task_start_time;
+    base::TimeTicks discrete_input_response_start_time;
     base::TimeDelta compositor_frame_interval;
     TraceableCounter<int, TracingCategory::kInfo>
         renderer_pause_count;  // Renderer is paused if non-zero.
 
-    TraceableObjectState<RAILMode,
-                         TracingCategory::kTopLevel>
-        rail_mode_for_tracing;  // Don't use except for tracing.
-
-    TraceableObjectState<bool, TracingCategory::kTopLevel> renderer_hidden;
+    bool renderer_hidden = false;
     std::optional<base::ScopedSampleMetadata> renderer_hidden_metadata;
-    TraceableObjectState<bool, TracingCategory::kTopLevel>
-        renderer_backgrounded;
+    std::optional<base::ScopedSampleMetadata> renderer_frozen_metadata;
+    bool renderer_backgrounded = kLaunchingProcessIsBackgrounded;
     TraceableState<bool, TracingCategory::kDefault>
         blocking_input_expected_soon;
     TraceableState<bool, TracingCategory::kDebug> in_idle_period_for_testing;

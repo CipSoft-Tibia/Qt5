@@ -10,8 +10,8 @@
  * here. Please add any paths you need that are missing.
  */
 
-const path = require('path');
 const os = require('os');
+const path = require('path');
 
 /**
  * You would think we can use __filename here but we cannot because __filename
@@ -27,16 +27,14 @@ const os = require('os');
  * the scripts directory, at which point we've found this file and can use it
  * for all subsequent logic.
  *
- * e.g. the user executes a script: scripts/test/run_lint_check.js
+ * e.g. the user executes a script: scripts/test/run_lint_check.mjs
  *
  * process.argv[1] =
- * /full/path/devtools-frontend/src/scripts/test/run_lint_check.js
+ * /full/path/devtools-frontend/src/scripts/test/run_lint_check.mjs
  */
 const PATH_TO_EXECUTED_FILE = process.argv[1];
 
-const _lookUpCaches = new Map(
-    [['chromium', null]],
-);
+const _lookUpCaches = new Map([['chromium', null]]);
 /**
  * This function figures out if we're within a chromium directory, and therefore
  * we are in the integrated workflow mode, rather than working in a standalone
@@ -51,7 +49,10 @@ function isInChromiumDirectory() {
   const normalizedPath = PATH_TO_EXECUTED_FILE.split(path.sep).join('/');
   const devtoolsPath = 'src/third_party/devtools-frontend';
   const isInChromium = normalizedPath.includes(devtoolsPath);
-  const potentialChromiumDir = PATH_TO_EXECUTED_FILE.substring(0, normalizedPath.indexOf(devtoolsPath));
+  const potentialChromiumDir = PATH_TO_EXECUTED_FILE.substring(
+      0,
+      normalizedPath.indexOf(devtoolsPath),
+  );
   const result = {isInChromium, chromiumDirectory: potentialChromiumDir};
   _lookUpCaches.set('chromium', result);
   return result;
@@ -94,14 +95,25 @@ function thirdPartyPath() {
 function devToolsThirdPartyPath() {
   const {isInChromium} = isInChromiumDirectory();
   if (isInChromium) {
-    return path.join(rootPath(), 'third_party', 'devtools-frontend', 'src', 'third_party');
+    return path.join(
+        rootPath(),
+        'third_party',
+        'devtools-frontend',
+        'src',
+        'third_party',
+    );
   }
   return thirdPartyPath();
 }
 
 function nodePath() {
   const paths = {
-    darwin: path.join('mac', process.arch === 'arm64' ? 'node-darwin-arm64' : 'node-darwin-x64', 'bin', 'node'),
+    darwin: path.join(
+        process.arch === 'arm64' ? 'mac_arm64' : 'mac',
+        process.arch === 'arm64' ? 'node-darwin-arm64' : 'node-darwin-x64',
+        'bin',
+        'node',
+        ),
     linux: path.join('linux', 'node-linux-x64', 'bin', 'node'),
     win32: path.join('win', 'node.exe'),
   };
@@ -123,21 +135,42 @@ function mochaExecutablePath() {
   return path.join(nodeModulesPath(), 'mocha', 'bin', 'mocha');
 }
 
+function litAnalyzerExecutablePath() {
+  return path.join(nodeModulesPath(), 'lit-analyzer', 'cli.js');
+}
+
+/**
+ * Computes the path to the toplevel `tsconfig.json`.
+ *
+ * @returns the path to the toplevel `tsconfig.json`.
+ */
+function tsconfigJsonPath() {
+  return path.join(devtoolsRootPath(), 'tsconfig.json');
+}
+
 function downloadedChromeBinaryPath() {
   const paths = {
     linux: path.join('chrome-linux', 'chrome'),
-    darwin: path.join('chrome-mac', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
+    darwin: path.join(
+        'chrome-mac',
+        'Google Chrome for Testing.app',
+        'Contents',
+        'MacOS',
+        'Google Chrome for Testing',
+        ),
     win32: path.join('chrome-win', 'chrome.exe'),
   };
   return path.join(devToolsThirdPartyPath(), 'chrome', paths[os.platform()]);
 }
 
 module.exports = {
-  thirdPartyPath,
-  nodePath,
   devtoolsRootPath,
-  nodeModulesPath,
+  downloadedChromeBinaryPath,
+  litAnalyzerExecutablePath,
   mochaExecutablePath,
+  nodeModulesPath,
+  nodePath,
   stylelintExecutablePath,
-  downloadedChromeBinaryPath
+  thirdPartyPath,
+  tsconfigJsonPath,
 };

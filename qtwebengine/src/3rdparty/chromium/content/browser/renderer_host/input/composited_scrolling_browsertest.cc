@@ -225,7 +225,9 @@ class CompositedScrollingMetricTest
     kScrollingOnCompositor = 0,
     kScrollingOnCompositorBlockedOnMain = 1,
     kScrollingOnMain = 2,
-    kMaxValue = kScrollingOnMain,
+    kRasterInducingScroll = 3,
+    kRasterInducingScrollBlockedOnMain = 4,
+    kMaxValue = kRasterInducingScrollBlockedOnMain,
   };
 
   base::test::ScopedFeatureList scoped_feature_list_;
@@ -280,11 +282,9 @@ IN_PROC_BROWSER_TEST_P(CompositedScrollingMetricTest,
 
   content::FetchHistogramsFromChildProcesses();
 
-  base::HistogramBase::Sample expected_bucket =
-      CompositedScrollEnabled() ? kScrollingOnCompositor
-      // TODO(crbug.com/329115115): For now we still need main-thread
-      // hit-testing in RasterInducingScroll for non-composited scroller.
-      : RasterInducingScrollEnabled() ? kScrollingOnCompositorBlockedOnMain
+  base::HistogramBase::Sample32 expected_bucket =
+      CompositedScrollEnabled()       ? kScrollingOnCompositor
+      : RasterInducingScrollEnabled() ? kRasterInducingScroll
                                       : kScrollingOnMain;
 
   histograms.ExpectUniqueSample(kTouchHistogramName, expected_bucket, 2);
@@ -330,7 +330,7 @@ IN_PROC_BROWSER_TEST_P(CompositedScrollingMetricTest, BlockingEventHandlers) {
 
   content::FetchHistogramsFromChildProcesses();
 
-  base::HistogramBase::Sample expected_bucket =
+  base::HistogramBase::Sample32 expected_bucket =
       CompositedScrollEnabled() ? kScrollingOnCompositorBlockedOnMain
                                 : kScrollingOnMain;
 
@@ -386,11 +386,9 @@ IN_PROC_BROWSER_TEST_P(CompositedScrollingMetricTest,
 
   content::FetchHistogramsFromChildProcesses();
 
-  base::HistogramBase::Sample expected_bucket =
-      CompositedScrollEnabled() ? kScrollingOnCompositor
-      // TODO(crbug.com/329115115): For now we still need main-thread
-      // hit-testing in RasterInducingScroll for non-composited scroller.
-      : RasterInducingScrollEnabled() ? kScrollingOnCompositorBlockedOnMain
+  base::HistogramBase::Sample32 expected_bucket =
+      CompositedScrollEnabled()       ? kScrollingOnCompositor
+      : RasterInducingScrollEnabled() ? kRasterInducingScroll
                                       : kScrollingOnMain;
 
   histograms.ExpectUniqueSample(kTouchHistogramName, expected_bucket, 2);

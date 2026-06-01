@@ -1,10 +1,10 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2015-2024 The Khronos Group Inc.
-# Copyright (c) 2015-2024 Valve Corporation
-# Copyright (c) 2015-2024 LunarG, Inc.
-# Copyright (c) 2015-2024 Google Inc.
-# Copyright (c) 2023-2024 RasterGrid Kft.
+# Copyright (c) 2015-2025 The Khronos Group Inc.
+# Copyright (c) 2015-2025 Valve Corporation
+# Copyright (c) 2015-2025 LunarG, Inc.
+# Copyright (c) 2015-2025 Google Inc.
+# Copyright (c) 2023-2025 RasterGrid Kft.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import re
 from generators.base_generator import BaseGenerator
 from generators.generator_utils import PlatformGuardHelper
 
+# Need pyparsing because the Vulkan-Headers use it in dependencyBNF
 from pyparsing import ParseResults
 # From the Vulkan-Headers
 from parse_dependency import dependencyBNF
@@ -96,10 +97,10 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
 
             /***************************************************************************
             *
-            * Copyright (c) 2015-2024 The Khronos Group Inc.
-            * Copyright (c) 2015-2024 Valve Corporation
-            * Copyright (c) 2015-2024 LunarG, Inc.
-            * Copyright (c) 2015-2024 Google Inc.
+            * Copyright (c) 2015-2025 The Khronos Group Inc.
+            * Copyright (c) 2015-2025 Valve Corporation
+            * Copyright (c) 2015-2025 LunarG, Inc.
+            * Copyright (c) 2015-2025 Google Inc.
             *
             * Licensed under the Apache License, Version 2.0 (the "License");
             * you may not use this file except in compliance with the License.
@@ -132,7 +133,6 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
 
             #include <string>
             #include <utility>
-            #include <array>
             #include <vector>
             #include <cassert>
 
@@ -170,9 +170,9 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
             - Checking not enabled
                 - if (!IsExtEnabled(...)) { }
             - Special extensions that being EXPOSED alters the VUs
-                - IsExtEnabled(device_extensions.vk_khr_portability_subset)
+                - IsExtEnabled(extensions.vk_khr_portability_subset)
             - Special extensions that alter behaviour of enabled
-                - IsExtEnabled(device_extensions.vk_khr_maintenance*)
+                - IsExtEnabled(extensions.vk_khr_maintenance*)
 
             Times to NOT use it
                 - If checking if a struct or enum is being used. There are a stateless checks
@@ -187,6 +187,7 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
             ''')
 
         out.append('\nstruct InstanceExtensions {\n')
+        out.append('    APIVersion api_version{};\n')
         for version in self.vk.versions.keys():
             out.append(f'    ExtEnabled {self.fieldName[version]}{{kNotEnabled}};\n')
 
@@ -232,7 +233,8 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
                 return (info != ext_map.cend()) ? info->second : empty_info;
             }
 
-            APIVersion InitFromInstanceCreateInfo(APIVersion requested_api_version, const VkInstanceCreateInfo *pCreateInfo);
+            InstanceExtensions() = default;
+            InstanceExtensions(APIVersion requested_api_version, const VkInstanceCreateInfo *pCreateInfo);
 
             };
             ''')
@@ -288,8 +290,9 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
             DeviceExtensions() = default;
             DeviceExtensions(const InstanceExtensions &instance_ext) : InstanceExtensions(instance_ext) {}
 
-            APIVersion InitFromDeviceCreateInfo(const InstanceExtensions *instance_extensions, APIVersion requested_api_version,
+            DeviceExtensions(const InstanceExtensions &instance_extensions, APIVersion requested_api_version,
                                                 const VkDeviceCreateInfo *pCreateInfo = nullptr);
+            DeviceExtensions(const InstanceExtensions &instance_ext, APIVersion requested_api_version, const std::vector<VkExtensionProperties> &props);
             };
 
             const InstanceExtensions::Info &GetInstanceVersionMap(const char* version);
@@ -388,10 +391,10 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
                 return (info != version_map.cend()) ? info->second : empty_info;
             }
 
-            APIVersion InstanceExtensions::InitFromInstanceCreateInfo(APIVersion requested_api_version, const VkInstanceCreateInfo* pCreateInfo) {
+            InstanceExtensions::InstanceExtensions(APIVersion requested_api_version, const VkInstanceCreateInfo* pCreateInfo) {
                 // Initialize struct data, robust to invalid pCreateInfo
-                auto api_version = NormalizeApiVersion(requested_api_version);
-                if (!api_version.Valid()) return api_version;
+                api_version = NormalizeApiVersion(requested_api_version);
+                if (!api_version.Valid()) return;
 
                 const auto promotion_info_map = GetInstancePromotionInfoMap();
                 for (const auto& version_it : promotion_info_map) {
@@ -415,18 +418,15 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
                         if (info.state) this->*(info.state) = kEnabledByCreateinfo;
                     }
                 }
-                return api_version;
             }
 
-            APIVersion DeviceExtensions::InitFromDeviceCreateInfo(const InstanceExtensions* instance_extensions, APIVersion requested_api_version,
-                                                const VkDeviceCreateInfo* pCreateInfo) {
-                // Initialize: this to defaults,  base class fields to input.
-                assert(instance_extensions);
-                *this = DeviceExtensions(*instance_extensions);
+            DeviceExtensions::DeviceExtensions(const InstanceExtensions& instance_ext,
+                                               APIVersion requested_api_version,
+                                               const VkDeviceCreateInfo* pCreateInfo)
+                : InstanceExtensions(instance_ext) {
 
-                // Initialize struct data, robust to invalid pCreateInfo
                 auto api_version = NormalizeApiVersion(requested_api_version);
-                if (!api_version.Valid()) return api_version;
+                if (!api_version.Valid()) return;
 
                 const auto promotion_info_map = GetDevicePromotionInfoMap();
                 for (const auto& version_it : promotion_info_map) {
@@ -474,8 +474,58 @@ class ExtensionHelperOutputGenerator(BaseGenerator):
                         }
                     }
                 }
-                return api_version;
             }
-            ''')
+
+            DeviceExtensions::DeviceExtensions(const InstanceExtensions& instance_ext,
+                                               APIVersion requested_api_version,
+                                               const std::vector<VkExtensionProperties> &props)
+                : InstanceExtensions(instance_ext) {
+
+                auto api_version = NormalizeApiVersion(requested_api_version);
+                if (!api_version.Valid()) return;
+
+                const auto promotion_info_map = GetDevicePromotionInfoMap();
+                for (const auto& version_it : promotion_info_map) {
+                    auto info = GetDeviceVersionMap(version_it.second.first);
+                    if (api_version >= version_it.first) {
+                        if (info.state) this->*(info.state) = kEnabledByCreateinfo;
+                        for (const auto& extension : version_it.second.second) {
+                            info = GetInfo(extension);
+                            assert(info.state);
+                            if (info.state) this->*(info.state) = kEnabledByApiLevel;
+                        }
+                    }
+                }
+                for (const auto &prop : props) {
+                    vvl::Extension extension = GetExtension(prop.extensionName);
+                    auto info = GetInfo(extension);
+                    if (info.state) this->*(info.state) = kEnabledByCreateinfo;
+                }
+
+                // Workaround for functions being introduced by multiple extensions, until the layer is fixed to handle this correctly
+                // See https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5579 and
+                // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5600
+                {
+                    constexpr std::array shader_object_interactions = {
+                        vvl::Extension::_VK_EXT_extended_dynamic_state,
+                        vvl::Extension::_VK_EXT_extended_dynamic_state2,
+                        vvl::Extension::_VK_EXT_extended_dynamic_state3,
+                        vvl::Extension::_VK_EXT_vertex_input_dynamic_state,
+                    };
+                    auto info = GetInfo(vvl::Extension::_VK_EXT_shader_object);
+                    if (info.state) {
+                        if (this->*(info.state) != kNotEnabled) {
+                            for (auto interaction_ext : shader_object_interactions) {
+                                info = GetInfo(interaction_ext);
+                                assert(info.state);
+                                if (this->*(info.state) != kEnabledByCreateinfo) {
+                                    this->*(info.state) = kEnabledByInteraction;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    ''')
 
         self.write(''.join(out))

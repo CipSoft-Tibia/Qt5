@@ -47,14 +47,11 @@ class TestFrameSinkImpl::TestMojoCompositorFrameSink
   void DidNotProduceFrame(const viz::BeginFrameAck& ack) override {
     did_not_produce_frame_ = true;
   }
-  void DidAllocateSharedBitmap(base::ReadOnlySharedMemoryRegion region,
-                               const viz::SharedBitmapId& id) override {}
-  void DidDeleteSharedBitmap(const viz::SharedBitmapId& id) override {}
   void InitializeCompositorFrameSinkType(
       viz::mojom::CompositorFrameSinkType type) override {}
   void BindLayerContext(viz::mojom::PendingLayerContextPtr context) override {}
 #if BUILDFLAG(IS_ANDROID)
-  void SetThreadIds(const std::vector<int32_t>& thread_ids) override {}
+  void SetThreads(const std::vector<viz::Thread>& threads) override {}
 #endif
 
   viz::CompositorFrame TakeLastFrame() { return std::move(last_frame_); }

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "content/browser/web_package/mock_signed_exchange_handler.h"
 
 #include <memory>
@@ -253,8 +258,7 @@ std::unique_ptr<SignedExchangeHandler> MockSignedExchangeHandlerFactory::Create(
           params, std::move(body), std::move(headers_callback));
     }
   }
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 }  // namespace content

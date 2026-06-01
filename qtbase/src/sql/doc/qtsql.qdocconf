@@ -7,6 +7,9 @@ version                 = $QT_VERSION
 
 examplesinstallpath     = sql
 
+# Path to the root of qtbase (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 qhp.projects            = QtSql
 
 qhp.QtSql.file            = qtsql.qhp
@@ -55,3 +58,6 @@ manifestmeta.highlighted.names = \
 
 # Enforce zero documentation warnings
 warninglimit = 0
+
+# Report warnings for images without alt text
+reportmissingalttextforimages = true

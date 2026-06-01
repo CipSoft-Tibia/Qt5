@@ -90,6 +90,8 @@ private Q_SLOTS:
     void initTestCase() override;
 
     void orderedBindings();
+    void scriptBindingValueType_data();
+    void scriptBindingValueType();
     void signalCreationDifferences();
     void allTypesAvailable();
     void shadowing();
@@ -121,6 +123,7 @@ private Q_SLOTS:
     void modulePrefixes();
     void javaScriptBuiltinFlag();
     void isRoot();
+    void idLocation();
 
 public:
     tst_qqmljsscope()
@@ -132,7 +135,7 @@ public:
                           // Note: to be able to import the QQmlJSScopeTests
                           // correctly, we need an additional import path. Use
                           // this application's binary directory as done by
-                          // QQmlImportDatabase
+                          // QQmlTypeLoader
                           QCoreApplication::applicationDirPath(),
                   },
                   nullptr)
@@ -183,6 +186,32 @@ void tst_qqmljsscope::orderedBindings()
 
     QCOMPARE(itemsBindingsBegin->objectType()->baseTypeName(), u"Item"_s);
     QCOMPARE(std::next(itemsBindingsBegin)->objectType()->baseTypeName(), u"Text"_s);
+}
+
+void tst_qqmljsscope::scriptBindingValueType_data()
+{
+    QTest::addColumn<ScriptBindingValueType>("expectedType");
+
+    QTest::addRow("myInt") << ScriptBindingValueType::ScriptValue_Unknown;
+    QTest::addRow("block") << ScriptBindingValueType::ScriptValue_Function;
+    QTest::addRow("alsoABlock") << ScriptBindingValueType::ScriptValue_Function;
+    QTest::addRow("lambda") << ScriptBindingValueType::ScriptValue_Function;
+    QTest::addRow("namedFunction") << ScriptBindingValueType::ScriptValue_Function;
+    QTest::addRow("arrow") << ScriptBindingValueType::ScriptValue_Function;
+    QTest::addRow("myUndefined") << ScriptBindingValueType::ScriptValue_Undefined;
+    QTest::addRow("emptyBlock") << ScriptBindingValueType::ScriptValue_Function;
+    QTest::addRow("emptyObject") << ScriptBindingValueType::ScriptValue_Unknown;
+}
+void tst_qqmljsscope::scriptBindingValueType()
+{
+    QFETCH(ScriptBindingValueType, expectedType);
+
+    QQmlJSScope::ConstPtr root = run(u"scriptBindingValueType.qml"_s);
+    QVERIFY(root);
+
+    auto [start, end] = root->ownPropertyBindings(QTest::currentDataTag());
+    QCOMPARE(std::distance(start, end), 1);
+    QCOMPARE(start->scriptValueType(), expectedType);
 }
 
 void tst_qqmljsscope::signalCreationDifferences()
@@ -268,7 +297,15 @@ void tst_qqmljsscope::componentWrappedObjects()
 
     const auto isGoodType = [](const QQmlJSScope::ConstPtr &type, const QString &propertyName,
                                bool isWrapped) {
-        return type->hasOwnProperty(propertyName)
+        const auto objectNameBindings = type->ownPropertyBindings(u"objectName"_s);
+        if (std::distance(objectNameBindings.first, objectNameBindings.second) != 1)
+            return false;
+
+        const QQmlJSMetaPropertyBinding objectNameBinding = *objectNameBindings.first;
+        if (objectNameBinding.bindingType() != QQmlSA::BindingType::StringLiteral)
+            return false;
+
+        return objectNameBinding.stringValue() == propertyName
                 && type->isWrappedInImplicitComponent() == isWrapped;
     };
 
@@ -460,13 +497,13 @@ void tst_qqmljsscope::attachedSignalHandler()
     QQmlJSScope::ConstPtr root = run(u"attachedSignalHandler.qml"_s);
     QVERIFY(root);
 
-    auto binding = std::find_if(root->childScopesBegin(), root->childScopesEnd(),
-                                [](const QQmlJSScope::ConstPtr &child) {
-                                    return child->baseTypeName() == "binding"_L1;
-                                });
+    const auto binding = std::find_if(root->childScopesBegin(), root->childScopesEnd(),
+                                      [](const QQmlJSScope::ConstPtr &child) {
+                                          return child->baseTypeName() == "changeHandler"_L1;
+                                      });
     QCOMPARE_NE(binding, root->childScopesEnd());
 
-    auto block = std::find_if(
+    const auto block = std::find_if(
             (**binding).childScopesBegin(), (**binding).childScopesEnd(),
             [](const QQmlJSScope::ConstPtr &child) { return child->baseTypeName() == "block"_L1; });
     QCOMPARE_NE(block, (**binding).childScopesEnd());
@@ -833,7 +870,7 @@ void tst_qqmljsscope::compilationUnitsAreCompatible()
     QVERIFY2(root, qPrintable(component.errorString()));
     QQmlComponentPrivate *cPriv = QQmlComponentPrivate::get(&component);
     QVERIFY(cPriv);
-    auto unit = cPriv->compilationUnit;
+    auto unit = cPriv->compilationUnit();
     QVERIFY(unit);
     QVERIFY(unit->unitData());
     getRuntimeInfoFromCompilationUnit(unit->unitData(), componentFunctions);
@@ -1082,6 +1119,16 @@ void tst_qqmljsscope::isRoot()
         QVERIFY(!child->isFileRootComponent());
         QVERIFY(child->property(u"isNotRoot"_s).isValid());
     }
+}
+
+void tst_qqmljsscope::idLocation()
+{
+    auto jsscope = run(u"idSourceLocation.qml"_s, false);
+    const QQmlJS::SourceLocation actual = jsscope->idSourceLocation();
+    QVERIFY(actual.isValid());
+    QCOMPARE(actual.startLine, 7);
+    QCOMPARE(actual.startColumn, 25);
+    QCOMPARE(actual.length, 10);
 }
 
 QTEST_MAIN(tst_qqmljsscope)

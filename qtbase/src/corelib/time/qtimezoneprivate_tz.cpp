@@ -2,6 +2,7 @@
 // Copyright (C) 2019 Crimson AS <info@crimson.no>
 // Copyright (C) 2013 John Layt <jlayt@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qtimezone.h"
 #include "qtimezoneprivate_p.h"

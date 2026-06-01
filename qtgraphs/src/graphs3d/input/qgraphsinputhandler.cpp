@@ -9,6 +9,7 @@
 #include <QtQuick/private/qquickwheelhandler_p.h>
 
 #include "qquickgraphsitem_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QGraphsInputHandler::QGraphsInputHandler(QQuickItem *parent)
     : QQuickItem(parent)
@@ -57,11 +58,14 @@ QGraphsInputHandler::~QGraphsInputHandler() {}
 
 void QGraphsInputHandler::setZoomEnabled(bool enable)
 {
-    if (m_zoomEnabled != enable) {
-        m_zoomEnabled = enable;
-        if (m_graphsItem)
-            emit m_graphsItem->zoomEnabledChanged(enable);
+    if (m_zoomEnabled == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    m_zoomEnabled = enable;
+    if (m_graphsItem)
+        emit m_graphsItem->zoomEnabledChanged(enable);
 }
 
 bool QGraphsInputHandler::isZoomEnabled()
@@ -71,11 +75,14 @@ bool QGraphsInputHandler::isZoomEnabled()
 
 void QGraphsInputHandler::setZoomAtTargetEnabled(bool enable)
 {
-    if (m_zoomAtTarget != enable) {
-        m_zoomAtTarget = enable;
-        if (m_graphsItem)
-            emit m_graphsItem->zoomAtTargetEnabledChanged(enable);
+    if (m_zoomAtTarget == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    m_zoomAtTarget = enable;
+    if (m_graphsItem)
+        emit m_graphsItem->zoomAtTargetEnabledChanged(enable);
 }
 
 bool QGraphsInputHandler::isZoomAtTargetEnabled()
@@ -85,11 +92,13 @@ bool QGraphsInputHandler::isZoomAtTargetEnabled()
 
 void QGraphsInputHandler::setRotationEnabled(bool enable)
 {
-    if (m_rotationEnabled != enable) {
-        m_rotationEnabled = enable;
-        if (m_graphsItem)
-            emit m_graphsItem->rotationEnabledChanged(enable);
+    if (m_rotationEnabled == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
     }
+    m_rotationEnabled = enable;
+    if (m_graphsItem)
+        emit m_graphsItem->rotationEnabledChanged(enable);
 }
 
 bool QGraphsInputHandler::isRotationEnabled()
@@ -99,11 +108,14 @@ bool QGraphsInputHandler::isRotationEnabled()
 
 void QGraphsInputHandler::setSelectionEnabled(bool enable)
 {
-    if (m_selectionEnabled != enable) {
-        m_selectionEnabled = enable;
-        if (m_graphsItem)
-            emit m_graphsItem->selectionEnabledChanged(enable);
+    if (m_selectionEnabled == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    m_selectionEnabled = enable;
+    if (m_graphsItem)
+        emit m_graphsItem->selectionEnabledChanged(enable);
 }
 
 bool QGraphsInputHandler::isSelectionEnabled()
@@ -155,7 +167,7 @@ void QGraphsInputHandler::unsetDefaultPinchHandler()
 
 void QGraphsInputHandler::setDragButton(Qt::MouseButtons button)
 {
-    m_dragHandler->setAcceptedButtons(button | Qt::MouseButton::RightButton);
+    m_dragHandler->setAcceptedButtons(button);
 }
 
 void QGraphsInputHandler::setGraphsItem(QQuickGraphsItem *item)
@@ -200,7 +212,7 @@ void QGraphsInputHandler::onTranslationChanged(QVector2D delta)
     if (!m_rotationEnabled)
         return;
 
-    if (m_dragHandler->centroid().pressedButtons().testFlag(Qt::LeftButton))
+    if (!m_dragHandler->centroid().pressedButtons().testFlags(m_dragHandler->acceptedButtons()))
         return;
 
     float rotationSpeed = 1.0f;
@@ -240,8 +252,11 @@ void QGraphsInputHandler::onGrabChanged(QPointingDevice::GrabTransition transiti
 
 void QGraphsInputHandler::onWheel(QQuickWheelEvent *event)
 {
-    if (!m_zoomEnabled)
+    if (!m_zoomEnabled) {
+        qCWarning(lcEvents3D, "%s zooming needs to be enabled",
+                qUtf8Printable(QLatin1String(__FUNCTION__)));
         return;
+    }
 
     int halfSizeZoomLevel = 50;
     int oneToOneZoomLevel = 100;
@@ -308,8 +323,11 @@ void QGraphsInputHandler::onWheel(QQuickWheelEvent *event)
 
 void QGraphsInputHandler::onPinchScaleChanged(qreal delta)
 {
-    if (!m_zoomEnabled)
+    if (!m_zoomEnabled) {
+        qCWarning(lcEvents3D, "%s zooming needs to be enabled",
+                qUtf8Printable(QLatin1String(__FUNCTION__)));
         return;
+    }
 
     m_pinchDiff += (delta - 1.0f);
     int driftTowardCenterLevel = 175;

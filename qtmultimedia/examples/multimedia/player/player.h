@@ -33,7 +33,7 @@ class Player : public QWidget
 
 public:
     explicit Player(QWidget *parent = nullptr);
-    ~Player() = default;
+    ~Player() override = default;
 
     bool isPlayerAvailable() const;
 
@@ -86,6 +86,7 @@ private:
     QSlider *m_slider = nullptr;
     QLabel *m_labelDuration = nullptr;
     QPushButton *m_fullScreenButton = nullptr;
+    QPushButton *m_pitchCompensationButton = nullptr;
     QComboBox *m_audioOutputCombo = nullptr;
     QLabel *m_statusLabel = nullptr;
     QStatusBar *m_statusBar = nullptr;

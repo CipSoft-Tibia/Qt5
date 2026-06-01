@@ -64,7 +64,7 @@ def split_ukernel_name(name):
     mr_packed = mr
 
   requantization = common_parts[-3]
-  if requantization not in ["fp32", "rndnu"]:
+  if requantization not in ["fp32", "rndnu", "rndnu16"]:
     requantization = None
   return mr, nr, kr, sr, mr_packed, vector_tile, requantization, arch, isa, assembly
 
@@ -103,6 +103,7 @@ std::vector<GemmTestParams> CreateTests(
     $if DATATYPE in ('qp8'):
       size_t mr_packed,
     bool is_igemm,
+    bool unsigned_inputs,
     std::function<void(GemmMicrokernelTester& tester)> test_func,
     std::function<void()> isa_check = nullptr) {
   std::string kbs = std::to_string(k_block);
@@ -114,10 +115,10 @@ std::vector<GemmTestParams> CreateTests(
 
   $if DATATYPE in ('qp8',):
     const GemmMicrokernelTester tester = GemmMicrokernelTester()
-        .mr(mr).nr(nr).kr(kr).sr(sr).mr_packed(mr_packed);
+        .mr(mr).nr(nr).kr(kr).sr(sr).mr_packed(mr_packed).unsigned_inputs(unsigned_inputs);
   $else:
     const GemmMicrokernelTester tester = GemmMicrokernelTester()
-        .mr(mr).nr(nr).kr(kr).sr(sr);
+        .mr(mr).nr(nr).kr(kr).sr(sr).unsigned_inputs(unsigned_inputs);
 
   std::vector<GemmTestParams> gemm_tests;
   gemm_tests.reserve(42);
@@ -132,28 +133,18 @@ std::vector<GemmTestParams> CreateTests(
             .bl(32)
       , test_func, isa_check));
   $if DATATYPE != "qp8":
-    gemm_tests.push_back(GemmTestParams(
-        "strided_cn",
-        tester.clone()
-            .m(mr).n(nr).k(k_block)
-            .cn_stride(xnnpack::NextPrime(nr + 1))
-            $if KERNELTYPE in ['qb4w', 'qc4w']:
-              .b_zero_point(8)
-            $if KERNELTYPE in ['qb4w']:
-              .bl(32)
-      , test_func, isa_check));
-  if (!is_igemm) {
-    gemm_tests.push_back(GemmTestParams(
-        "k_eq_" + kbs + "_strided_a",
-        tester.clone()
-            .m(mr).n(nr).k(k_block)
-            .a_stride(xnnpack::NextPrime(k_block + 1))
-            $if KERNELTYPE in ['qb4w', 'qc4w']:
-              .b_zero_point(8)
-            $if KERNELTYPE in ['qb4w']:
-              .bl(32)
-        , test_func, isa_check));
-  }
+    if (!is_igemm) {
+      gemm_tests.push_back(GemmTestParams(
+          "k_eq_" + kbs + "_strided_a",
+          tester.clone()
+              .m(mr).n(nr).k(k_block)
+              .a_stride(xnnpack::NextPrime(k_block + 1))
+              $if KERNELTYPE in ['qb4w', 'qc4w']:
+                .b_zero_point(8)
+              $if KERNELTYPE in ['qb4w']:
+                .bl(32)
+          , test_func, isa_check));
+    }
   gemm_tests.push_back(GemmTestParams(
       "k_eq_" + kbs + "_subtile",
       tester.clone()
@@ -195,18 +186,19 @@ std::vector<GemmTestParams> CreateTests(
           $if KERNELTYPE in ['qb4w']:
             .bl(32)
       , test_func, isa_check));
-    if (!is_igemm) {
-      gemm_tests.push_back(GemmTestParams(
-          "k_eq_" + kb2s + "_strided_a",
-          tester.clone()
-              .m(mr).n(nr).k(k_block * 2)
-              .a_stride(xnnpack::NextPrime(k_block * 2 + 1))
-              $if KERNELTYPE in ['qb4w', 'qc4w']:
-                .b_zero_point(8)
-            $if KERNELTYPE in ['qb4w']:
-              .bl(32)
-          , test_func, isa_check));
-    }
+    $if DATATYPE != "qp8":
+      if (!is_igemm) {
+        gemm_tests.push_back(GemmTestParams(
+            "k_eq_" + kb2s + "_strided_a",
+            tester.clone()
+                .m(mr).n(nr).k(k_block * 2)
+                .a_stride(xnnpack::NextPrime(k_block * 2 + 1))
+                $if KERNELTYPE in ['qb4w', 'qc4w']:
+                  .b_zero_point(8)
+              $if KERNELTYPE in ['qb4w']:
+                .bl(32)
+            , test_func, isa_check));
+      }
     gemm_tests.push_back(GemmTestParams(
         "k_eq_" + kb2s + "_subtile",
         tester.clone()
@@ -230,19 +222,20 @@ std::vector<GemmTestParams> CreateTests(
                   .bl(32)
             , test_func, isa_check)
             .loop_k(1, adj_k_block - 1));
-        if (!is_igemm) {
-          gemm_tests.push_back(GemmTestParams(
-              "k_lt_" + akbs + "_strided_a",
-              tester.clone()
-                  .m(mr).n(nr)
-                  .a_stride(xnnpack::NextPrime(adj_k_block + 1))
-                  $if KERNELTYPE in ['qb4w', 'qc4w']:
-                    .b_zero_point(8)
-                  $if KERNELTYPE in ['qb4w']:
-                    .bl(32)
-              , test_func, isa_check)
-              .loop_k(1, adj_k_block - 1));
-        }
+        $if DATATYPE != "qp8":
+          if (!is_igemm) {
+            gemm_tests.push_back(GemmTestParams(
+                "k_lt_" + akbs + "_strided_a",
+                tester.clone()
+                    .m(mr).n(nr)
+                    .a_stride(xnnpack::NextPrime(adj_k_block + 1))
+                    $if KERNELTYPE in ['qb4w', 'qc4w']:
+                      .b_zero_point(8)
+                    $if KERNELTYPE in ['qb4w']:
+                      .bl(32)
+                , test_func, isa_check)
+                .loop_k(1, adj_k_block - 1));
+          }
         gemm_tests.push_back(GemmTestParams(
             "k_lt_" + akbs + "_subtile",
             tester.clone()
@@ -266,19 +259,20 @@ std::vector<GemmTestParams> CreateTests(
                 .bl(32)
           , test_func, isa_check)
           .loop_k(adj_k_block + 1, adj_k_block * 2 - 1, k_block));
-      if (is_igemm) {
-        gemm_tests.push_back(GemmTestParams(
-            "k_gt_" + akbs + "_strided_a",
-            tester.clone()
-                .m(mr).n(nr)
-                .a_stride(xnnpack::NextPrime(adj_k_block * 2 + 1))
-                $if KERNELTYPE in ['qb4w', 'qc4w']:
-                  .b_zero_point(8)
-              $if KERNELTYPE in ['qb4w']:
-                .bl(32)
-          , test_func, isa_check)
-          .loop_k(adj_k_block + 1, adj_k_block * 2 - 1, k_block));
-      }
+      $if DATATYPE != "qp8":
+        if (is_igemm) {
+          gemm_tests.push_back(GemmTestParams(
+              "k_gt_" + akbs + "_strided_a",
+              tester.clone()
+                  .m(mr).n(nr)
+                  .a_stride(xnnpack::NextPrime(adj_k_block * 2 + 1))
+                  $if KERNELTYPE in ['qb4w', 'qc4w']:
+                    .b_zero_point(8)
+                $if KERNELTYPE in ['qb4w']:
+                  .bl(32)
+            , test_func, isa_check)
+            .loop_k(adj_k_block + 1, adj_k_block * 2 - 1, k_block));
+        }
       gemm_tests.push_back(GemmTestParams(
           "k_gt_" + akbs + "_subtile",
           tester.clone()
@@ -302,19 +296,20 @@ std::vector<GemmTestParams> CreateTests(
                   .bl(32)
             , test_func, isa_check)
             .loop_k(adj_k_block + k_block, k_block * 5, k_block));
-        if (is_igemm) {
-          gemm_tests.push_back(GemmTestParams(
-              "k_div_" + kbs + "_strided_a",
-              tester.clone()
-                  .m(mr).n(nr)
-                  .a_stride(xnnpack::NextPrime(k_block * 3 + 1))
-                  $if KERNELTYPE in ['qb4w', 'qc4w']:
-                    .b_zero_point(8)
-                  $if KERNELTYPE in ['qb4w']:
-                    .bl(32)
-              , test_func, isa_check)
-              .loop_k(adj_k_block + k_block, k_block * 3, k_block));
-        }
+        $if DATATYPE != "qp8":
+          if (is_igemm) {
+            gemm_tests.push_back(GemmTestParams(
+                "k_div_" + kbs + "_strided_a",
+                tester.clone()
+                    .m(mr).n(nr)
+                    .a_stride(xnnpack::NextPrime(k_block * 3 + 1))
+                    $if KERNELTYPE in ['qb4w', 'qc4w']:
+                      .b_zero_point(8)
+                    $if KERNELTYPE in ['qb4w']:
+                      .bl(32)
+                , test_func, isa_check)
+                .loop_k(adj_k_block + k_block, k_block * 3, k_block));
+          }
         gemm_tests.push_back(GemmTestParams(
             "k_div_" + kbs + "_subtile",
             tester.clone()
@@ -342,65 +337,24 @@ std::vector<GemmTestParams> CreateTests(
           $else:
             .loop_n(nr + 1, nr * 2 - 1)
           .loop_k(1, k_block * 3, k_block + 1));
-      $if JIT:
-        gemm_tests.push_back(GemmTestParams(
-            "unknown_nc_mod_nr",
-            tester.clone()
-                .m(mr).known_nc_mod_nr(false)
-                $if KERNELTYPE in ['qb4w', 'qc4w']:
-                  .b_zero_point(8)
-                $if KERNELTYPE in ['qb4w']:
-                  .bl(32)
-            , test_func, isa_check)
-            $if NR_SCALE != "":
-              .loop_n(1, nr * 2 - 1, 4)
-            $else:
-              .loop_n(1, nr * 2 - 1)
-            .loop_k(1, k_block * 3, k_block + 1));
-        gemm_tests.push_back(GemmTestParams(
-            "relu",
-            tester.clone()
-                .m(mr).n(nr).k(k_block).relu(true)
-                $if KERNELTYPE in ['qb4w', 'qc4w']:
-                  .b_zero_point(8)
-                $if KERNELTYPE in ['qb4w']:
-                  .bl(32)
-            , test_func, isa_check));
       $if DATATYPE != "qp8":
-        gemm_tests.push_back(GemmTestParams(
-            "n_gt_" + nrs + "_strided_cn",
-            tester.clone()
-                .m(mr)
-                .cn_stride(xnnpack::NextPrime(nr + 1))
-                $if KERNELTYPE in ['qb4w', 'qc4w']:
-                  .b_zero_point(8)
-                $if KERNELTYPE in ['qb4w']:
-                  .bl(32)
-                $if KERNELTYPE in ['qb4w']:
-                  .bl(32)
-            , test_func, isa_check)
-            $if NR_SCALE != "":
-              .loop_n(nr + 1, nr * 2 - 1, 4)
-            $else:
-              .loop_n(nr + 1, nr * 2 - 1)
-            .loop_k(1, k_block * 3, k_block + 1));
-      if (!is_igemm) {
-        gemm_tests.push_back(GemmTestParams(
-            "n_gt_" + nrs + "_strided_a",
-            tester.clone()
-                .m(mr)
-                .a_stride(xnnpack::NextPrime(k_block * 3 + 1))
-                $if KERNELTYPE in ['qb4w', 'qc4w']:
-                  .b_zero_point(8)
-                $if KERNELTYPE in ['qb4w']:
-                  .bl(32)
-            , test_func, isa_check)
-            $if NR_SCALE != "":
-              .loop_n(nr + 1, nr * 2 - 1, 4)
-            $else:
-              .loop_n(nr + 1, nr * 2 - 1)
-            .loop_k(1, k_block * 3, k_block));
-      }
+        if (!is_igemm) {
+          gemm_tests.push_back(GemmTestParams(
+              "n_gt_" + nrs + "_strided_a",
+              tester.clone()
+                  .m(mr)
+                  .a_stride(xnnpack::NextPrime(k_block * 3 + 1))
+                  $if KERNELTYPE in ['qb4w', 'qc4w']:
+                    .b_zero_point(8)
+                  $if KERNELTYPE in ['qb4w']:
+                    .bl(32)
+              , test_func, isa_check)
+              $if NR_SCALE != "":
+                .loop_n(nr + 1, nr * 2 - 1, 4)
+              $else:
+                .loop_n(nr + 1, nr * 2 - 1)
+              .loop_k(1, k_block * 3, k_block));
+        }
       gemm_tests.push_back(GemmTestParams(
           "n_gt_" + nrs + "_subtile",
           tester.clone()
@@ -428,32 +382,20 @@ std::vector<GemmTestParams> CreateTests(
           .loop_n(nr * 2, nr * 3, nr)
           .loop_k(1, k_block * 3, k_block + 1));
       $if DATATYPE != "qp8":
-        gemm_tests.push_back(GemmTestParams(
-            "n_div_" + nrs + "_strided_cn",
-            tester.clone()
-                .m(mr)
-                .cn_stride(xnnpack::NextPrime(nr + 1))
-                $if KERNELTYPE in ['qb4w', 'qc4w']:
-                  .b_zero_point(8)
-                $if KERNELTYPE in ['qb4w']:
-                  .bl(32)
-            , test_func, isa_check)
-            .loop_n(nr * 2, nr * 3, nr)
-            .loop_k(1, k_block * 3, k_block + 1));
-      if (!is_igemm) {
-        gemm_tests.push_back(GemmTestParams(
-            "n_div_" + nrs + "_strided_a",
-            tester.clone()
-                .m(mr)
-                .a_stride(xnnpack::NextPrime(k_block * 3 + 1))
-                $if KERNELTYPE in ['qb4w', 'qc4w']:
-                  .b_zero_point(8)
-                $if KERNELTYPE in ['qb4w']:
-                  .bl(32)
-            , test_func, isa_check)
-            .loop_n(nr * 2, nr * 3, nr)
-            .loop_k(1, k_block * 3, k_block));
-      }
+        if (!is_igemm) {
+          gemm_tests.push_back(GemmTestParams(
+              "n_div_" + nrs + "_strided_a",
+              tester.clone()
+                  .m(mr)
+                  .a_stride(xnnpack::NextPrime(k_block * 3 + 1))
+                  $if KERNELTYPE in ['qb4w', 'qc4w']:
+                    .b_zero_point(8)
+                  $if KERNELTYPE in ['qb4w']:
+                    .bl(32)
+              , test_func, isa_check)
+              .loop_n(nr * 2, nr * 3, nr)
+              .loop_k(1, k_block * 3, k_block));
+        }
       gemm_tests.push_back(GemmTestParams(
           "n_div_" + nrs + "_subtile",
           tester.clone()
@@ -637,8 +579,9 @@ INSTANTIATE_TEST_SUITE_P(
         $if DATATYPE in ('qp8',):
           /*mr_packed=*/${MR_PACKED},
         /*is_igemm=*/${"true" if UKERNEL_TYPE.startswith("IGEMM") else "false"},
+        /*unsigned_inputs=*/${"true" if UNSIGNED_INPUTS else "false"},
         [](GemmMicrokernelTester& tester) {
-          tester.Test(${",\\n                      ".join(TEST_ARGS)});
+          tester.${TEST_FUN}(${",\\n                      ".join(TEST_ARGS)});
         $if ISA_CHECK:
           },
           []() {
@@ -672,59 +615,11 @@ $if TEST_NAME.startswith('GENERATE') and DATATYPE in ['f32', 'f16']:
             .iterations(1)
             $if KERNELTYPE in ['qb4w', 'qc4w']:
               .b_zero_point(8)
-            .Test(${", ".join(TEST_ARGS)});
+            .${TEST_FUN}(${", ".join(TEST_ARGS)});
         }
       }
     }
   }
-
-$if TEST_NAME.startswith('GENERATE') and DATATYPE == 'f32' and POST_OP:
-  TEST(${TEST_NAME}, hardswish) {
-    $if ISA_CHECK:
-      ${ISA_CHECK};
-    const std::vector<xnn_post_operation> fused_operators = { {xnn_post_operation_type_hardswish} };
-    GemmMicrokernelTester()
-      $if MR > 1:
-        .mr(${MR})
-      $if NR > 1:
-        .nr(${NR})
-      $if KR > 1:
-        .kr(${KR})
-      $if SR > 1:
-        .sr(${SR})
-      $if MR > 1:
-        .m(${MR})
-      $if NR > 1:
-        .n(${NR})
-      .k(${KBLOCK})
-      .Test(
-          ${", ".join(TEST_ARGS)},
-          fused_operators);
-  }
-
-  $if MR > 1:
-    TEST(${TEST_NAME}, hardswish_max_mr_lt_${MR}) {
-      $if ISA_CHECK:
-        ${ISA_CHECK};
-      const std::vector<xnn_post_operation> fused_operators = { {xnn_post_operation_type_hardswish} };
-      for (uint32_t max_mr = 1; max_mr < ${MR}; max_mr++) {
-        GemmMicrokernelTester()
-          .mr(max_mr)
-          $if NR > 1:
-            .nr(${NR})
-          $if KR > 1:
-            .kr(${KR})
-          $if SR > 1:
-            .sr(${SR})
-          .m(max_mr)
-          $if NR > 1:
-            .n(${NR})
-          .k(${KBLOCK})
-          .Test(
-              ${", ".join(TEST_ARGS)},
-              fused_operators);
-      }
-    }
 
 $if TEST_NAME.startswith('GENERATE') and DATATYPE in ['f32', 'f16'] and PROTOTYPE is not None:
   #if XNN_ENABLE_ASSEMBLY
@@ -745,7 +640,7 @@ $if TEST_NAME.startswith('GENERATE') and DATATYPE in ['f32', 'f16'] and PROTOTYP
         $if NR > 1:
           .n(${NR})
         .k(${KBLOCK})
-        .Test(
+        .${TEST_FUN}(
             ${", ".join(TEST_ARGS)},
             &${PROTOTYPE});
     }
@@ -763,6 +658,7 @@ def generate_test_cases(
     sr,
     mr_packed,
     k_block,
+    unsigned_inputs,
     vector_tile,
     init_fn,
     pack_fn,
@@ -771,9 +667,7 @@ def generate_test_cases(
     is_pipelined,
     cpp_check,
     isa,
-    jit,
     prototype,
-    post_op,
 ):
   """Generates all tests cases for a GEMM micro-kernel.
 
@@ -786,6 +680,8 @@ def generate_test_cases(
     mr_packed: Optional MR parameter for the left-hand packing function.
     k_block: Number of K values processed per one iteration of the main loop of
       the micro-kernel.
+    unsigned_inputs: whether the inputs should be converted to unsigned
+      integers. Some microkernels are more efficient with unsigned inputs.
     vector_tile: Indicates if vector tile for NR is specified in vectors rather
       than elements.
     init_fn: C name of the function to initialize microkernel parameters.
@@ -801,34 +697,27 @@ def generate_test_cases(
       micro-kernel.
     isa: instruction set required to run the micro-kernel. Generated unit test
       will skip execution if the host processor doesn't support this ISA.
-    jit: if we are generating test code for JIT codegen.
-    post_op: if post operation is supported (only for JIT).
 
   Returns:
     Code for the test case.
   """
   _, ukernel_name = ukernel.split("_", 1)
 
-  if jit:
-    _, _, datatype, ukernel_type, _ = ukernel.split("_", 4)
-    kerneltype = datatype
-    activation = None
-  else:
-    _, datatype, ukernel_type, activation, _ = ukernel.split("_", 4)
-    kerneltype = datatype
-    if datatype in ["f16", "f32"] and ukernel_type in ["qc8w", "qc4w"]:
-      _, datatype, kerneltype, ukernel_type, activation, _ = ukernel.split(
-          "_", 5
-      )
-      datatype = datatype + "_" + kerneltype
-    if (
-        datatype in ("qd8", "qp8")
-        and ukernel_type in ["f16", "f32"]
-        and activation in ["qc8w", "qc4w", "qb4w"]
-    ):
-      _, datatype, _, kerneltype, ukernel_type, activation, _ = ukernel.split(
-          "_", 6
-      )
+  _, datatype, ukernel_type, activation, _ = ukernel.split("_", 4)
+  kerneltype = datatype
+  if datatype in ["f16", "f32"] and ukernel_type in ["qc8w", "qc4w"]:
+    _, datatype, kerneltype, ukernel_type, activation, _ = ukernel.split(
+        "_", 5
+    )
+    datatype = datatype + "_" + kerneltype
+  if (
+      datatype in ("qd8", "qp8")
+      and ukernel_type in ["f16", "f32"]
+      and activation in ["qc8w", "qc4w", "qb4w"]
+  ):
+    _, datatype, _, kerneltype, ukernel_type, activation, _ = ukernel.split(
+        "_", 6
+    )
 
   if activation == "ukernel":
     activation = "linear"
@@ -849,24 +738,26 @@ def generate_test_cases(
         "xnn_%s_requantize_%s" % (requantization_datatype, requantization)
     )
 
-  if jit:
-    if "minmax" in init_fn:
-      activation = "minmax"
-
   nr_scale = ""
   if vector_tile:
     ctype = {
         "qs8": "int8_t",
-        "qd8": " int8_t",
-        "qp8": " int8_t",
-        "qu8": " uint8_t",
+        "qd8": "int32_t",
+        "qp8": "int8_t",
+        "qu8": "uint8_t",
         "f16": "uint16_t",
         "f32": "float",
     }[datatype]
     nr_scale = {"rvv": " * xnn_init_hardware_config()->vlenb / sizeof(%s)" % ctype}[isa]
+  test_fun_name = "".join(ukernel.split("_")[1:4]).upper()
+  if test_fun_name in {"QP8F32QC8W"}:
+    test_fun_name = "_".join(["Test", test_fun_name])
+  else:
+    test_fun_name = "Test"
   test_args = {
       "TEST_NAME": ukernel_name.upper().replace("UKERNEL_", ""),
       "TEST_ARGS": test_args,
+      "TEST_FUN": test_fun_name,
       "UKERNEL_TYPE": ukernel_type.upper(),
       "DATATYPE": datatype,
       "KERNELTYPE": kerneltype,
@@ -877,14 +768,13 @@ def generate_test_cases(
       "SR": sr,
       "MR_PACKED": mr_packed,
       "KBLOCK": k_block,
+      "UNSIGNED_INPUTS": unsigned_inputs,
       "NR_SCALE": nr_scale,
       "ADJKBLOCK": 2 * k_block if is_pipelined else k_block,
       "IS_PIPELINED": is_pipelined,
       "ISA_CHECK": xnncommon.generate_isa_check_macro(isa),
       "next_prime": next_prime,
-      "POST_OP": post_op,
       "PROTOTYPE": prototype,
-      "JIT": jit,
       "CPP_CHECK": cpp_check,
   }
 
@@ -968,8 +858,8 @@ def main(args):
 //   Generator: {generator}
 
 #include <benchmark/benchmark.h>
-#include "bench/gemm-benchmark.h"
-#include "bench/utils.h"
+#include "gemm-benchmark.h"
+#include "utils.h"
 #include "xnnpack/common.h"
 #include "xnnpack/gemm.h"
 #include "xnnpack/isa-checks.h"
@@ -982,7 +872,7 @@ def main(args):
     test_outputs = collections.defaultdict(str)
     bench_outputs = benches
 
-    isa_hierarchy = xnncommon._ISA_HIERARCHY_MAP
+    isa_hierarchy = xnncommon.isa_hierarchy_map()
 
     # Cached `CreateTests` functions.
     idx_from_create_tests_hash = collections.defaultdict(
@@ -994,14 +884,16 @@ def main(args):
     for ukernel_spec in spec_yaml:
       name = ukernel_spec["name"]
       k_block = int(ukernel_spec["k-block"])
+      if "unsigned-inputs" in ukernel_spec:
+        unsigned_inputs = int(ukernel_spec["unsigned-inputs"])
+      else:
+        unsigned_inputs = False
       init_fn = ukernel_spec.get("init")
       pack_fn = ukernel_spec.get("pack")
       packed_stride_fn = ukernel_spec.get("packed-stride")
       pipelined = bool(ukernel_spec.get("pipelined", False))
       cpp_check = ukernel_spec.get("cpp-check", False)
-      jit = name.startswith("xnn_generate")
       prototype = ukernel_spec.get("prototype")
-      post_op = ukernel_spec.get("post-op", True)
       (
           mr,
           nr,
@@ -1023,6 +915,7 @@ def main(args):
           sr,
           mr_packed,
           k_block,
+          unsigned_inputs,
           vector_tile,
           init_fn,
           pack_fn,
@@ -1031,9 +924,7 @@ def main(args):
           pipelined,
           cpp_check,
           isa,
-          jit,
           prototype,
-          post_op,
       )
 
       # Store or reuse the `CreateTests` function?
@@ -1045,7 +936,7 @@ def main(args):
         )
         if isa == 'rvv':
           create_tests_from_idx[create_tests_idx] = xnncommon.postprocess_test_case(
-            create_tests_from_idx[create_tests_idx], arch, isa, assembly, jit)
+            create_tests_from_idx[create_tests_idx], arch, isa, assembly)
       test_case = test_case.replace(
           "CreateTests(", f"CreateTests{create_tests_idx}("
       )
@@ -1056,12 +947,12 @@ def main(args):
       test_outputs[
           options.output_test[output_index]
       ] += "\n\n" + xnncommon.postprocess_test_case(
-          test_case, arch, isa, assembly, jit
+          test_case, arch, isa, assembly
       )
       benches[
           isa_hierarchy.get(isa, 0)
       ] += "\n\n" + xnncommon.postprocess_test_case(
-          bench_case, arch, isa, assembly, jit
+          bench_case, arch, isa, assembly
       )
 
     for arch_idx in reversed(range(len(isa_hierarchy))):
@@ -1069,7 +960,7 @@ def main(args):
 
     bench_outputs += """\n
 #ifndef XNNPACK_BENCHMARK_NO_MAIN
-BENCHMARK_MAIN();
+XNN_BENCHMARK_MAIN();
 #endif
 """
 

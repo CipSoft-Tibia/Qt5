@@ -72,9 +72,6 @@ sudo zypper -nq install zip
 # OpenSSL 3
 sudo zypper -nq install openssl-3
 
-# used for reading vcpkg packages version, from vcpkg.json
-sudo zypper -nq install jq
-
 # Valgrind (Needed for testlib selftests)
 sudo zypper -nq install valgrind-devel
 
@@ -89,6 +86,9 @@ sudo zypper -nq install java-17-openjdk
 
 # For tst_license.pl with all the machines generating SBOM
 sudo zypper -nq install perl-JSON
+
+# Keep zoneinfo up-to-date (COIN-1282)
+sudo zypper -nq install timezone
 
 gccVersion="$(gcc --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
 echo "GCC = $gccVersion" >> versions.txt

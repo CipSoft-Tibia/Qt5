@@ -5,7 +5,7 @@
 float grid;
 vec3 gridDiff;
 
-float CalculateGrid(vec3 dist, vec3 normal, vec3 pos)
+float CalculateGrid(vec3 dist, vec3 normal, vec3 pos, vec3 worldPos)
 {
     //only show grid on intended normal plane
     dist = clamp(dist + abs(normal), 0,1);
@@ -14,16 +14,16 @@ float CalculateGrid(vec3 dist, vec3 normal, vec3 pos)
                  vec3(float(xCategory), 0, float(zCategory)),
                  0,1);
     //dont show grid on bottom if gridOnTop
-    dist = clamp(dist + abs(normal.y) * step(VAR_WORLD_POSITION.y, 0.5) * float(gridOnTop), 0, 1);
+    dist = clamp(dist + abs(normal.y) * step(worldPos.y, 0.5) * float(gridOnTop), 0, 1);
 
-    vec3 diffX = dFdx(VAR_WORLD_POSITION);
-    vec3 diffY = dFdy(VAR_WORLD_POSITION);
+    vec3 diffX = dFdx(worldPos);
+    vec3 diffY = dFdy(worldPos);
     vec3 posDeriv = vec3(
                 length(vec2(diffX.x, diffY.x)),
                 length(vec2(diffX.y, diffY.y)),
                 length(vec2(diffX.z, diffY.z)));
 
-    vec3 lineWidth = vec3(gridWidth);
+    vec3 lineWidth = vec3(gridWidth / 10.0f);
     if (polar) {
         //keep angle line width more constant
         float angleWidth = lineWidth.x  * min(scale.x, scale.z)/ PI;
@@ -45,9 +45,10 @@ float CalculateGrid(vec3 dist, vec3 normal, vec3 pos)
 
 void MAIN()
 {
-    vec3 pos = VAR_WORLD_POSITION / (2 * scale) + 0.5;
+    vec3 worldPos = VAR_WORLD_POSITION / rootScale;
+    vec3 pos = worldPos / (2 * scale) + 0.5;
     if (polar) {
-        pos.xz = VAR_WORLD_POSITION.xz / min(scale.x, scale.z);
+        pos.xz = worldPos.xz / min(scale.x, scale.z);
         float radius = sqrt((pos.x * pos.x) + (pos.z * pos.z));
         float theta = fract((atan(pos.z, pos.x) / PI) / 2.0 + 0.5) + 0.75;
         pos = vec3(theta , pos.y, radius);
@@ -58,7 +59,7 @@ void MAIN()
                 1 - texture(gridTex, vec2(pos.y, 0.1)).y,
                 1 - texture(gridTex, vec2(pos.z, 0.1)).z
     );
-    float gridLines = CalculateGrid(dist, NORMAL, pos);
+    float gridLines = CalculateGrid(dist, NORMAL, pos, worldPos);
 
 
     vec3 subDist = vec3(
@@ -67,7 +68,7 @@ void MAIN()
                 1 - texture(gridTex, vec2(pos.z, 0.9)).z
     );
 
-    float subgridLines = CalculateGrid(subDist, NORMAL, pos);
+    float subgridLines = CalculateGrid(subDist, NORMAL, pos, worldPos);
 
     // combine grid and subgrid
     float totalGrid = min(gridLines + subgridLines, 1);
@@ -83,7 +84,7 @@ void MAIN()
     vec3 color = mix(baseColor.rgb, gridColor.rgb, grid);
 
     //remove backround from top grid
-    if ((1 - totalGrid) * step(0.5, VAR_WORLD_POSITION.y * abs(NORMAL.y) * float(gridOnTop)) > 0.3)
+    if ((1 - totalGrid) * step(0.5, worldPos.y * abs(NORMAL.y) * float(gridOnTop)) > 0.3)
         discard;
 
     if (alpha < 0.8)

@@ -15,6 +15,8 @@
 // We mean it.
 //
 
+#include <QtCore/private/qexpected_p.h>
+
 #include <private/qplatformmediacapture_p.h>
 #include <private/qplatformmediaintegration_p.h>
 
@@ -30,13 +32,13 @@ class QGstreamerMediaRecorder;
 class QGstreamerAudioInput;
 class QGstreamerAudioOutput;
 class QGstreamerVideoOutput;
-class QGstreamerVideoSink;
+class QGstreamerRelayVideoSink;
 
 class QGstreamerMediaCaptureSession final : public QPlatformMediaCaptureSession,
                                             QGstreamerBusMessageFilter
 {
 public:
-    static QMaybe<QPlatformMediaCaptureSession *> create();
+    static q23::expected<QPlatformMediaCaptureSession *, QString> create();
     ~QGstreamerMediaCaptureSession() override;
 
     QPlatformCamera *camera() override;
@@ -56,7 +58,7 @@ public:
 
     const QGstPipeline &pipeline() const;
 
-    QGstreamerVideoSink *gstreamerVideoSink() const;
+    QGstreamerRelayVideoSink *gstreamerVideoSink() const;
 
     struct RecorderElements
     {
@@ -110,6 +112,8 @@ private:
 
     QGstreamerMediaRecorder *m_mediaRecorder = nullptr;
     QGstreamerImageCapture *m_imageCapture = nullptr;
+
+    QGstreamerRelayVideoSink *m_gstVideoSink = nullptr;
 };
 
 QT_END_NAMESPACE

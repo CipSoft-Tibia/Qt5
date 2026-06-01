@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKITEMVIEW_P_H
 #define QQUICKITEMVIEW_P_H
@@ -20,6 +21,9 @@
 QT_REQUIRE_CONFIG(quick_itemview);
 
 #include "qquickflickable_p.h"
+
+#include <private/qqmldelegatemodel_p.h>
+
 #include <qpointer.h>
 #include <QtCore/QLoggingCategory>
 
@@ -78,6 +82,8 @@ class Q_QUICK_EXPORT QQuickItemView : public QQuickFlickable
     Q_PROPERTY(int highlightMoveDuration READ highlightMoveDuration WRITE setHighlightMoveDuration NOTIFY highlightMoveDurationChanged)
 
     Q_PROPERTY(bool reuseItems READ reuseItems WRITE setReuseItems NOTIFY reuseItemsChanged REVISION(2, 15))
+    Q_PROPERTY(QQmlDelegateModel::DelegateModelAccess delegateModelAccess READ delegateModelAccess
+            WRITE setDelegateModelAccess NOTIFY delegateModelAccessChanged REVISION(6, 10) FINAL)
 
     QML_NAMED_ELEMENT(ItemView)
     QML_UNCREATABLE("ItemView is an abstract base class.")
@@ -216,6 +222,9 @@ public:
     qreal originX() const override;
     qreal originY() const override;
 
+    QQmlDelegateModel::DelegateModelAccess delegateModelAccess() const;
+    void setDelegateModelAccess(QQmlDelegateModel::DelegateModelAccess delegateModelAccess);
+
 Q_SIGNALS:
     void modelChanged();
     void delegateChanged();
@@ -258,6 +267,7 @@ Q_SIGNALS:
     void highlightMoveDurationChanged();
 
     Q_REVISION(2, 15) void reuseItemsChanged();
+    Q_REVISION(6, 10) void delegateModelAccessChanged();
 
 protected:
     void updatePolish() override;

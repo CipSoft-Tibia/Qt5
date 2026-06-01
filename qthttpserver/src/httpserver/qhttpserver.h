@@ -198,10 +198,10 @@ private:
     void responseImpl(T &boundViewHandler, const QHttpServerRequest &request,
                       QHttpServerResponder &&responder)
     {
-        if constexpr (ViewTraits::Arguments::PlaceholdersCount == 0) {
+        if constexpr (ViewTraits::Arguments::SpecialsCount == 0) {
             ResponseType<typename ViewTraits::ReturnType> response(boundViewHandler());
             sendResponse(std::move(response), request, std::move(responder));
-        } else if constexpr (ViewTraits::Arguments::PlaceholdersCount == 1) {
+        } else if constexpr (ViewTraits::Arguments::SpecialsCount == 1) {
             if constexpr (ViewTraits::Arguments::Last::IsRequest::Value) {
                 ResponseType<typename ViewTraits::ReturnType> response(boundViewHandler(request));
                 sendResponse(std::move(response), request, std::move(responder));
@@ -210,7 +210,7 @@ private:
                     "Handlers with responder argument must have void return type.");
                 boundViewHandler(responder);
             }
-        } else if constexpr (ViewTraits::Arguments::PlaceholdersCount == 2) {
+        } else if constexpr (ViewTraits::Arguments::SpecialsCount == 2) {
             static_assert(std::is_same_v<typename ViewTraits::ReturnType, void>,
                 "Handlers with responder argument must have void return type.");
             if constexpr (ViewTraits::Arguments::Last::IsRequest::Value) {

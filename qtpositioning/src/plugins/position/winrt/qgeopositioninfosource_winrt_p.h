@@ -23,6 +23,8 @@
 #include <EventToken.h>
 #include <wrl.h>
 
+#include <memory>
+
 namespace ABI {
     namespace Windows {
         namespace Devices {
@@ -82,7 +84,7 @@ private:
     Q_DISABLE_COPY(QGeoPositionInfoSourceWinRT)
     void setError(QGeoPositionInfoSource::Error positionError);
 
-    QScopedPointer<QGeoPositionInfoSourceWinRTPrivate> d_ptr;
+    std::unique_ptr<QGeoPositionInfoSourceWinRTPrivate> d_ptr;
     Q_DECLARE_PRIVATE(QGeoPositionInfoSourceWinRT)
 };
 

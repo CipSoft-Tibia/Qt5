@@ -1,5 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #include "qquickwebengineprofileprototype_p.h"
 #include "qquickwebengineprofileprototype_p_p.h"
 #include "profile_adapter.h"
@@ -241,6 +243,30 @@ void QQuickWebEngineProfilePrototype::setPersistentPermissionsPolicy(
 }
 
 /*!
+    \qmlproperty list<string> WebEngineProfilePrototype::additionalTrustedCertificateFiles
+
+    A list of paths of additional trusted certificates in this profile's CA certificate database.
+
+    The certificates are read when the profile is created; any invalid paths or certificate files
+    are discarded. The property only holds the paths which were successfully loaded by this profile.
+    This property expects the certificate files to be PEM-encoded.
+*/
+QStringList QQuickWebEngineProfilePrototype::additionalTrustedCertificateFiles() const
+{
+    return d_ptr->m_additionalTrustedCertificateFiles;
+}
+
+void QQuickWebEngineProfilePrototype::setAdditionalTrustedCertificateFiles(const QStringList &paths)
+{
+    if (d_ptr->m_isComponentComplete) {
+        qmlWarning(this) << QStringLiteral("additionalTrustedCertificateFiles is a write-once "
+                                           "property, and should not be set again.");
+        return;
+    }
+    d_ptr->m_additionalTrustedCertificateFiles = paths;
+}
+
+/*!
    \internal
 */
 void QQuickWebEngineProfilePrototype::componentComplete()
@@ -276,6 +302,27 @@ void QQuickWebEngineProfilePrototype::componentComplete()
             d_ptr->m_persistentCookiesPolicy = QQuickWebEngineProfile::NoPersistentCookies;
     }
 
+    QList<QSslCertificate> additionalCertificates;
+    for (const auto &certFileName : std::as_const(d_ptr->m_additionalTrustedCertificateFiles)) {
+        QFile certFile(certFileName);
+        if (certFile.open(QIODevice::ReadOnly)) {
+            auto &&certs = QSslCertificate::fromDevice(&certFile, QSsl::Pem);
+            if (certs.empty()) {
+                qmlWarning(this) << certFileName
+                                 << QStringLiteral(" does not contain any valid PEM SSL "
+                                                   "certs. It will be skipped.");
+            }
+            for (auto &&cert : certs) {
+                if (!cert.isNull()) {
+                    additionalCertificates.emplace_back(std::move(cert));
+                }
+            }
+        } else {
+            qmlWarning(this) << certFileName
+                             << QStringLiteral(" is not found. It will be skipped.");
+        }
+    }
+
     auto profileAdapter = new QtWebEngineCore::ProfileAdapter(
             d_ptr->m_storageName, d_ptr->m_persistentStoragePath, d_ptr->m_cachePath,
             QtWebEngineCore::ProfileAdapter::HttpCacheType(d_ptr->m_httpCacheType),
@@ -283,7 +330,12 @@ void QQuickWebEngineProfilePrototype::componentComplete()
                     d_ptr->m_persistentCookiesPolicy),
             d_ptr->m_httpCacheMaxSize,
             QtWebEngineCore::ProfileAdapter::PersistentPermissionsPolicy(
-                    d_ptr->m_persistentPermissionsPolicy));
+                    d_ptr->m_persistentPermissionsPolicy)
+#if QT_CONFIG(ssl)
+                    ,
+            additionalCertificates
+#endif
+    );
 
     d_ptr->profile.reset(new QQuickWebEngineProfile(
             new QQuickWebEngineProfilePrivate(profileAdapter), this->parent()));

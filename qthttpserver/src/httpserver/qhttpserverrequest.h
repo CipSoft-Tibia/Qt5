@@ -22,11 +22,15 @@ QT_BEGIN_NAMESPACE
 class QRegularExpression;
 class QString;
 class QHttpHeaders;
+class QHttpServerParser;
 
 class QHttpServerRequestPrivate;
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR(QHttpServerRequestPrivate)
+
 class QHttpServerRequest final
 {
     friend class QHttpServerResponse;
+    friend class QHttpServerParser;
     friend class QHttpServerStream;
     friend class QHttpServerHttp1ProtocolHandler;
     friend class QHttpServerHttp2ProtocolHandler;
@@ -34,7 +38,13 @@ class QHttpServerRequest final
     Q_GADGET_EXPORT(Q_HTTPSERVER_EXPORT)
 
 public:
+    Q_HTTPSERVER_EXPORT QHttpServerRequest();
+    Q_HTTPSERVER_EXPORT QHttpServerRequest(const QHttpServerRequest &other);
+    Q_HTTPSERVER_EXPORT QHttpServerRequest &operator=(const QHttpServerRequest &other);
+    QHttpServerRequest(QHttpServerRequest &&other) noexcept = default;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QHttpServerRequest)
     Q_HTTPSERVER_EXPORT ~QHttpServerRequest();
+    void swap(QHttpServerRequest &other) noexcept { d.swap(other.d); }
 
     enum class Method
     {
@@ -71,10 +81,14 @@ public:
 #endif
 
 private:
-    Q_DISABLE_COPY(QHttpServerRequest)
-
 #if !defined(QT_NO_DEBUG_STREAM)
     friend Q_HTTPSERVER_EXPORT QDebug operator<<(QDebug debug, const QHttpServerRequest &request);
+#endif
+
+    Q_HTTPSERVER_EXPORT static QHttpServerRequest create(const QHttpServerParser &parser);
+#if QT_CONFIG(ssl)
+    Q_HTTPSERVER_EXPORT static QHttpServerRequest create(const QHttpServerParser &parser,
+                                                         const QSslConfiguration &configuration);
 #endif
 
     Q_HTTPSERVER_EXPORT explicit QHttpServerRequest(const QHostAddress &remoteAddress,
@@ -89,8 +103,10 @@ private:
                                                     const QSslConfiguration &sslConfiguration);
 #endif
 
-    std::unique_ptr<QHttpServerRequestPrivate> d;
+    QExplicitlySharedDataPointer<QHttpServerRequestPrivate> d;
 };
+
+Q_DECLARE_SHARED(QHttpServerRequest)
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QHttpServerRequest::Methods)
 

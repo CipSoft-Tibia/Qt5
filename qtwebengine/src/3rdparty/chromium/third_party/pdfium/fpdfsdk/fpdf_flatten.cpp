@@ -40,14 +40,14 @@ enum FPDF_VALUE { TOP, LEFT, RIGHT, BOTTOM };
 namespace {
 
 bool IsValidRect(const CFX_FloatRect& rect, const CFX_FloatRect& rcPage) {
-  constexpr float kMinSize = 0.000001f;
+  static constexpr float kMinSize = 0.000001f;
   if (rect.IsEmpty() || rect.Width() < kMinSize || rect.Height() < kMinSize)
     return false;
 
   if (rcPage.IsEmpty())
     return true;
 
-  constexpr float kMinBorderSize = 10.000001f;
+  static constexpr float kMinBorderSize = 10.000001f;
   return rect.left - rcPage.left >= -kMinBorderSize &&
          rect.right - rcPage.right <= kMinBorderSize &&
          rect.top - rcPage.top <= kMinBorderSize &&
@@ -61,6 +61,10 @@ void GetContentsRect(CPDF_Document* pDoc,
   pPDFPage->ParseContent();
 
   for (const auto& pPageObject : *pPDFPage) {
+    if (!pPageObject->IsActive()) {
+      continue;
+    }
+
     const CFX_FloatRect& rc = pPageObject->GetRect();
     if (IsValidRect(rc, pDict->GetRectFor(pdfium::page_object::kMediaBox)))
       pRectArray->push_back(rc);

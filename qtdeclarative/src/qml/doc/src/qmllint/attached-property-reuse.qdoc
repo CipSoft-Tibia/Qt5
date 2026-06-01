@@ -4,6 +4,7 @@
 /*!
 \page qmllint-warnings-and-errors-attached-property-reuse.html
 \ingroup qmllint-warnings-and-errors
+
 \title Attached property reuse
 \brief [attached-property-reuse] Attached type was initialized multiple times.
 

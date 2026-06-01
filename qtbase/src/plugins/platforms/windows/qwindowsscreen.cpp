@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsscreen.h"
 #include "qwindowscontext.h"
@@ -553,12 +554,14 @@ void QWindowsScreen::handleChanges(const QWindowsScreenData &newData)
     const bool orientationChanged = m_data.orientation != newData.orientation;
     const bool primaryChanged = (newData.flags & QWindowsScreenData::PrimaryScreen)
             && !(m_data.flags & QWindowsScreenData::PrimaryScreen);
+    const bool refreshRateChanged = m_data.refreshRateHz != newData.refreshRateHz;
     m_data.dpi = newData.dpi;
     m_data.orientation = newData.orientation;
     m_data.geometry = newData.geometry;
     m_data.availableGeometry = newData.availableGeometry;
     m_data.flags = (m_data.flags & ~QWindowsScreenData::PrimaryScreen)
             | (newData.flags & QWindowsScreenData::PrimaryScreen);
+    m_data.refreshRateHz = newData.refreshRateHz;
 
     if (dpiChanged) {
         QWindowSystemInterface::handleScreenLogicalDotsPerInchChange(screen(),
@@ -573,6 +576,9 @@ void QWindowsScreen::handleChanges(const QWindowsScreenData &newData)
     }
     if (primaryChanged)
         QWindowSystemInterface::handlePrimaryScreenChanged(this);
+
+    if (refreshRateChanged)
+        QWindowSystemInterface::handleScreenRefreshRateChange(screen(), newData.refreshRateHz);
 }
 
 HMONITOR QWindowsScreen::handle() const
@@ -677,7 +683,7 @@ QPlatformScreen::SubpixelAntialiasingType QWindowsScreen::subpixelAntialiasingTy
     \internal
 */
 
-extern "C" LRESULT QT_WIN_CALLBACK qDisplayChangeObserverWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT QT_WIN_CALLBACK qDisplayChangeObserverWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if (message == WM_DISPLAYCHANGE) {
         qCDebug(lcQpaScreen) << "Handling WM_DISPLAYCHANGE";
@@ -869,9 +875,8 @@ const QWindowsScreen *QWindowsScreenManager::screenAtDp(const QPoint &p) const
     return nullptr;
 }
 
-const QWindowsScreen *QWindowsScreenManager::screenForHwnd(HWND hwnd) const
+const QWindowsScreen *QWindowsScreenManager::screenForMonitor(HMONITOR hMonitor) const
 {
-    HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
     if (hMonitor == nullptr)
         return nullptr;
     const auto it =
@@ -882,6 +887,20 @@ const QWindowsScreen *QWindowsScreenManager::screenForHwnd(HWND hwnd) const
                              && (s->data().flags & QWindowsScreenData::VirtualDesktop) != 0;
                      });
     return it != m_screens.cend() ? *it : nullptr;
+}
+
+const QWindowsScreen *QWindowsScreenManager::screenForHwnd(HWND hwnd) const
+{
+    HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
+    return screenForMonitor(hMonitor);
+}
+
+const QWindowsScreen *QWindowsScreenManager::screenForRect(const RECT *rect) const
+{
+    if (rect == nullptr)
+        return nullptr;
+    HMONITOR hMonitor = MonitorFromRect(rect, MONITOR_DEFAULTTONULL);
+    return screenForMonitor(hMonitor);
 }
 
 QT_END_NAMESPACE

@@ -11,6 +11,7 @@
 
 #include "xnnpack.h"
 #include "xnnpack/common.h"
+#include "xnnpack/datatype.h"
 #include "xnnpack/log.h"
 #include "xnnpack/node-type.h"
 #include "xnnpack/operator-type.h"
@@ -31,15 +32,19 @@ static enum xnn_status create_transpose_operator(
   assert(node->num_outputs == 1);
 
   enum xnn_status status;
-  switch (node->compute_type) {
-    case xnn_compute_type_fp32:
+  const uint32_t input_id = node->inputs[0];
+  assert(input_id != XNN_INVALID_VALUE_ID);
+  assert(input_id < num_values);
+  const struct xnn_value *input_value = &values[input_id];
+  switch (input_value->datatype) {
+    case xnn_datatype_fp32:
       status = xnn_create_transpose_nd_x32(node->flags, &opdata->operator_objects[0]);
       break;
-    case xnn_compute_type_fp16:
+    case xnn_datatype_fp16:
       status = xnn_create_transpose_nd_x16(node->flags, &opdata->operator_objects[0]);
       break;
-    case xnn_compute_type_qs8:
-    case xnn_compute_type_qu8:
+    case xnn_datatype_qint8:
+    case xnn_datatype_quint8:
       status = xnn_create_transpose_nd_x8(node->flags, &opdata->operator_objects[0]);
       break;
     default:
@@ -245,43 +250,22 @@ enum xnn_status xnn_define_static_transpose(
     return status;
   }
 
-  enum xnn_compute_type compute_type = xnn_compute_type_invalid;
-  switch (output_value->datatype) {
-    case xnn_datatype_fp16:
-      compute_type = xnn_compute_type_fp16;
-      break;
-    case xnn_datatype_fp32:
-      compute_type = xnn_compute_type_fp32;
-      break;
-    case xnn_datatype_qint8:
-      compute_type = xnn_compute_type_qs8;
-      break;
-    case xnn_datatype_quint8:
-      compute_type = xnn_compute_type_qu8;
-      break;
-    default:
-      xnn_log_error(
-        "failed to define %s operator with output ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
-        xnn_node_type_to_string(xnn_node_type_static_transpose), output_id,
-        xnn_datatype_to_string(output_value->datatype), output_value->datatype);
-      return xnn_status_invalid_parameter;
-  }
 
-  switch (input_value->datatype) {
-    case xnn_datatype_fp16:
-    case xnn_datatype_fp32:
-    case xnn_datatype_qint8:
-    case xnn_datatype_quint8:
-      break;
-    default:
-      xnn_log_error(
-        "failed to define %s operator with input ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
-        xnn_node_type_to_string(xnn_node_type_static_transpose), input_id,
-        xnn_datatype_to_string(input_value->datatype), input_value->datatype);
-      return xnn_status_invalid_parameter;
+  if (!xnn_datatype_is_byte_addressable(output_value->datatype)) {
+    xnn_log_error(
+      "failed to define %s operator with output ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
+      xnn_node_type_to_string(xnn_node_type_static_transpose), output_id,
+      xnn_datatype_to_string(output_value->datatype), output_value->datatype);
+    return xnn_status_invalid_parameter;
   }
 
   status = xnn_subgraph_check_datatype_matches(
+    xnn_node_type_static_transpose, input_id, input_value, output_id, output_value);
+  if (status != xnn_status_success) {
+    return status;
+  }
+
+  status = xnn_subgraph_check_quantization_parameter_matches(
     xnn_node_type_static_transpose, input_id, input_value, output_id, output_value);
   if (status != xnn_status_success) {
     return status;
@@ -292,7 +276,6 @@ enum xnn_status xnn_define_static_transpose(
     return xnn_status_out_of_memory;
   }
 
-  node->compute_type = compute_type;
   node->inputs[0] = input_id;
   node->flags = flags;
   node->num_inputs = 1;

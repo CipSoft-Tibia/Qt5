@@ -4,7 +4,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import Thermostat
 
 Pane {
@@ -136,7 +136,7 @@ Pane {
     states: [
         State {
             name: "desktopLayout"
-            when: Constants.isBigDesktopLayout || Constants.isSmallDesktopLayout
+            when: Constants.isSmallDesktopLayout || Constants.isBigDesktopLayout
             PropertyChanges {
                 target: root
                 width: 520

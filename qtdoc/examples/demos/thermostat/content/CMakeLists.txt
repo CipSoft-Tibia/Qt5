@@ -4,7 +4,6 @@
 qt_add_library(ThermostatContent STATIC)
 qt_add_qml_module(ThermostatContent
     URI "content"
-    VERSION 1.0
     QML_FILES
         App.qml
         BottomBar.qml
@@ -27,6 +26,8 @@ qt_add_qml_module(ThermostatContent
         RoomsViewForm.ui.qml
         ScheduleScrollView.qml
         ScheduleScrollViewForm.ui.qml
+        ScheduleStackView.qml
+        ScheduleStackViewForm.ui.qml
         ScheduleSwipeView.qml
         ScheduleSwipeViewForm.ui.qml
         ScheduleView.qml
@@ -65,6 +66,7 @@ qt_add_qml_module(ThermostatContent
         ThermostatViewForm.ui.qml
         TimeSchedule.qml
         TimeScheduleForm.ui.qml
+        TimeSelector.qml
     RESOURCES
         images/arrow.svg
         images/Auto.svg
@@ -95,4 +97,7 @@ qt_add_qml_module(ThermostatContent
         images/theme.svg
         images/thermostat.svg
         images/up.svg
+    DEPENDENCIES
+        TARGET Thermostat
+        TARGET ThermostatCustomControls
 )

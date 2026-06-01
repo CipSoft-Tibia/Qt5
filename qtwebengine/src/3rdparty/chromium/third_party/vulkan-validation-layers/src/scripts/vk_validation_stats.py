@@ -479,6 +479,7 @@ def main(argv):
     layer_source_files = [repo_relative(path) for path in [
         'layers/error_message/unimplementable_validation.h',
         'layers/state_tracker/video_session_state.cpp',
+        'layers/layer_options.cpp',
         f'layers/{args.api}/generated/stateless_validation_helper.cpp',
         f'layers/{args.api}/generated/object_tracker.cpp',
         f'layers/{args.api}/generated/spirv_validation_helper.cpp',
@@ -490,9 +491,12 @@ def main(argv):
     layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/sync/'), '*.cpp')))
     layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/object_tracker/'), '*.cpp')))
     layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/drawdispatch/'), '*.cpp')))
-    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpu/'), '*.cpp')))
-    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpu/error_message'), '*.cpp')))
-    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpu/instrumentation'), '*.cpp')))
+    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpuav/'), '*.cpp')))
+    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpuav/validation_cmd/'), '*.cpp')))
+    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpuav/core/'), '*.cpp')))
+    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpuav/descriptor_validation/'), '*.cpp')))
+    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpuav/error_message/'), '*.cpp')))
+    layer_source_files.extend(glob.glob(os.path.join(repo_relative('layers/gpuav/instrumentation/'), '*.cpp')))
 
     test_source_files = glob.glob(os.path.join(repo_relative('tests/unit'), '*.cpp'))
 

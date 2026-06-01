@@ -59,8 +59,14 @@ void H265DPB::DeleteUnused() {
     auto& pic = *it;
     if ((!pic->pic_output_flag_ || pic->outputted_) &&
         (pic->ref_ == H265Picture::kUnused)) {
-      std::swap(pic, *(pics_.end() - 1));
-      pics_.pop_back();
+      auto last = pics_.end() - 1;
+      if (it == last) {
+        pics_.pop_back();
+        it = pics_.end();
+      } else {
+        std::swap(pic, *last);
+        pics_.pop_back();
+      }
     } else {
       it++;
     }

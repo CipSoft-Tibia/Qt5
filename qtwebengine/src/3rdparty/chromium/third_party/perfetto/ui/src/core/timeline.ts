@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {assertTrue} from '../base/logging';
-import {time, TimeSpan} from '../base/time';
+import {assertUnreachable} from '../base/logging';
+import {Time, time, TimeSpan} from '../base/time';
 import {HighPrecisionTimeSpan} from '../base/high_precision_time_span';
-import {Area} from '../public/selection';
 import {raf} from './raf_scheduler';
 import {HighPrecisionTime} from '../base/high_precision_time';
-import {Timeline} from '../public/timeline';
-
-interface Range {
-  start?: number;
-  end?: number;
-}
+import {DurationPrecision, Timeline, TimestampFormat} from '../public/timeline';
+import {
+  durationPrecision,
+  setDurationPrecision,
+  setTimestampFormat,
+  timestampFormat,
+} from './timestamp_format';
+import {TraceInfo} from '../public/trace_info';
 
 const MIN_DURATION = 10;
 
@@ -33,26 +34,64 @@ const MIN_DURATION = 10;
  */
 export class TimelineImpl implements Timeline {
   private _visibleWindow: HighPrecisionTimeSpan;
-  private readonly traceSpan: TimeSpan;
+  private _hoverCursorTimestamp?: time;
+  private _highlightedSliceId?: number;
+  private _hoveredNoteTimestamp?: time;
 
-  // This is a giant hack. Basically, removing visible window from the state
-  // means that we no longer update the state periodically while navigating
-  // the timeline, which means that controllers are not running. This keeps
-  // making null edits to the store which triggers the controller to run.
-  // This function is injected from Globals.initialize() to avoid a dependency
-  // on the State.
-  // TODO(stevegolton): When we remove controllers, we can remove this!
-  retriggerControllersOnChange: () => void = () => {};
+  // TODO(stevegolton): These are currently only referenced by the cpu slice
+  // tracks and the process summary tracks. We should just make this a local
+  // property of the cpu slice tracks and ignore them in the process tracks.
+  private _hoveredUtid?: number;
+  private _hoveredPid?: number;
 
-  // This is used to calculate the tracks within a Y range for area selection.
-  areaY: Range = {};
-  private _selectedArea?: Area;
+  // This is used to mark the timeline of the area that is currently being
+  // selected.
+  //
+  // TODO(stevegolton): This shouldn't really be in the global timeline state,
+  // it's really only a concept of the viewer page and should be moved there
+  // instead.
+  selectedSpan?: {start: time; end: time};
 
-  constructor(traceSpan: TimeSpan) {
-    this.traceSpan = traceSpan;
+  get highlightedSliceId() {
+    return this._highlightedSliceId;
+  }
+
+  set highlightedSliceId(x) {
+    this._highlightedSliceId = x;
+    raf.scheduleCanvasRedraw();
+  }
+
+  get hoveredNoteTimestamp() {
+    return this._hoveredNoteTimestamp;
+  }
+
+  set hoveredNoteTimestamp(x) {
+    this._hoveredNoteTimestamp = x;
+    raf.scheduleCanvasRedraw();
+  }
+
+  get hoveredUtid() {
+    return this._hoveredUtid;
+  }
+
+  set hoveredUtid(x) {
+    this._hoveredUtid = x;
+    raf.scheduleCanvasRedraw();
+  }
+
+  get hoveredPid() {
+    return this._hoveredPid;
+  }
+
+  set hoveredPid(x) {
+    this._hoveredPid = x;
+    raf.scheduleCanvasRedraw();
+  }
+
+  constructor(private readonly traceInfo: TraceInfo) {
     this._visibleWindow = HighPrecisionTimeSpan.fromTime(
-      traceSpan.start,
-      traceSpan.end,
+      traceInfo.start,
+      traceInfo.end,
     );
   }
 
@@ -63,19 +102,17 @@ export class TimelineImpl implements Timeline {
   zoomVisibleWindow(ratio: number, centerPoint: number) {
     this._visibleWindow = this._visibleWindow
       .scale(ratio, centerPoint, MIN_DURATION)
-      .fitWithin(this.traceSpan.start, this.traceSpan.end);
+      .fitWithin(this.traceInfo.start, this.traceInfo.end);
 
-    raf.scheduleRedraw();
-    this.retriggerControllersOnChange();
+    raf.scheduleCanvasRedraw();
   }
 
   panVisibleWindow(delta: number) {
     this._visibleWindow = this._visibleWindow
       .translate(delta)
-      .fitWithin(this.traceSpan.start, this.traceSpan.end);
+      .fitWithin(this.traceInfo.start, this.traceInfo.end);
 
-    raf.scheduleRedraw();
-    this.retriggerControllersOnChange();
+    raf.scheduleCanvasRedraw();
   }
 
   // Given a timestamp, if |ts| is not currently in view move the view to
@@ -92,29 +129,6 @@ export class TimelineImpl implements Timeline {
     this.updateVisibleTimeHP(newWindow);
   }
 
-  // Set the highlight box to draw
-  selectArea(
-    start: time,
-    end: time,
-    tracks = this._selectedArea ? this._selectedArea.trackUris : [],
-  ) {
-    assertTrue(
-      end >= start,
-      `Impossible select area: start [${start}] >= end [${end}]`,
-    );
-    this._selectedArea = {start, end, trackUris: tracks};
-    raf.scheduleFullRedraw();
-  }
-
-  deselectArea() {
-    this._selectedArea = undefined;
-    raf.scheduleRedraw();
-  }
-
-  get selectedArea(): Area | undefined {
-    return this._selectedArea;
-  }
-
   // Set visible window using an integer time span
   updateVisibleTime(ts: TimeSpan) {
     this.updateVisibleTimeHP(HighPrecisionTimeSpan.fromTime(ts.start, ts.end));
@@ -126,18 +140,86 @@ export class TimelineImpl implements Timeline {
     this.updateVisibleTime(new TimeSpan(start, end));
   }
 
+  moveStart(delta: number) {
+    this.updateVisibleTimeHP(
+      new HighPrecisionTimeSpan(
+        this._visibleWindow.start.addNumber(delta),
+        this.visibleWindow.duration - delta,
+      ),
+    );
+  }
+
+  moveEnd(delta: number) {
+    this.updateVisibleTimeHP(
+      new HighPrecisionTimeSpan(
+        this._visibleWindow.start,
+        this.visibleWindow.duration + delta,
+      ),
+    );
+  }
+
   // Set visible window using a high precision time span
   updateVisibleTimeHP(ts: HighPrecisionTimeSpan) {
     this._visibleWindow = ts
       .clampDuration(MIN_DURATION)
-      .fitWithin(this.traceSpan.start, this.traceSpan.end);
+      .fitWithin(this.traceInfo.start, this.traceInfo.end);
 
-    raf.scheduleRedraw();
-    this.retriggerControllersOnChange();
+    raf.scheduleCanvasRedraw();
   }
 
   // Get the bounds of the visible window as a high-precision time span
   get visibleWindow(): HighPrecisionTimeSpan {
     return this._visibleWindow;
+  }
+
+  get hoverCursorTimestamp(): time | undefined {
+    return this._hoverCursorTimestamp;
+  }
+
+  set hoverCursorTimestamp(t: time | undefined) {
+    this._hoverCursorTimestamp = t;
+    raf.scheduleCanvasRedraw();
+  }
+
+  // Offset between t=0 and the configured time domain.
+  timestampOffset(): time {
+    const fmt = timestampFormat();
+    switch (fmt) {
+      case TimestampFormat.Timecode:
+      case TimestampFormat.Seconds:
+      case TimestampFormat.Milliseconds:
+      case TimestampFormat.Microseconds:
+        return this.traceInfo.start;
+      case TimestampFormat.TraceNs:
+      case TimestampFormat.TraceNsLocale:
+        return Time.ZERO;
+      case TimestampFormat.UTC:
+        return this.traceInfo.utcOffset;
+      case TimestampFormat.TraceTz:
+        return this.traceInfo.traceTzOffset;
+      default:
+        assertUnreachable(fmt);
+    }
+  }
+
+  // Convert absolute time to domain time.
+  toDomainTime(ts: time): time {
+    return Time.sub(ts, this.timestampOffset());
+  }
+
+  get timestampFormat() {
+    return timestampFormat();
+  }
+
+  set timestampFormat(format: TimestampFormat) {
+    setTimestampFormat(format);
+  }
+
+  get durationPrecision() {
+    return durationPrecision();
+  }
+
+  set durationPrecision(precision: DurationPrecision) {
+    setDurationPrecision(precision);
   }
 }

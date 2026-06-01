@@ -8,6 +8,9 @@ version                 = $QT_VERSION
 
 examplesinstallpath     = qtestlib
 
+# Path to the root of qtbase (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 qhp.projects            = QtTestLib
 
 qhp.QtTestLib.file                = qttestlib.qhp

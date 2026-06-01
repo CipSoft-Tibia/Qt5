@@ -4,23 +4,37 @@
 include(CheckCXXCompilerFlag)
 
 function(qt_feature_module_begin)
-    cmake_parse_arguments(PARSE_ARGV 0 arg
-        "NO_MODULE;ONLY_EVALUATE_FEATURES"
-        "LIBRARY;PRIVATE_FILE;PUBLIC_FILE"
-        "PUBLIC_DEPENDENCIES;PRIVATE_DEPENDENCIES")
+    set(opt_args
+        NO_MODULE
+        NO_HEADERS
+        ONLY_EVALUATE_FEATURES
+    )
+    set(single_args
+        LIBRARY
+        PRIVATE_FILE
+        PUBLIC_FILE
+    )
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
     _qt_internal_validate_all_args_are_parsed(arg)
 
     if(NOT arg_ONLY_EVALUATE_FEATURES)
-        if ("${arg_LIBRARY}" STREQUAL "" AND (NOT ${arg_NO_MODULE}))
+        if("${arg_LIBRARY}" STREQUAL "" AND (NOT ${arg_NO_MODULE}))
             message(FATAL_ERROR
                     "qt_feature_begin_module needs a LIBRARY name! (or specify NO_MODULE)")
         endif()
-        if ("${arg_PUBLIC_FILE}" STREQUAL "")
-            message(FATAL_ERROR "qt_feature_begin_module needs a PUBLIC_FILE name!")
+        if(NOT arg_NO_HEADERS)
+            if("${arg_PUBLIC_FILE}" STREQUAL "")
+                message(FATAL_ERROR
+                    "qt_feature_begin_module needs a PUBLIC_FILE value "
+                    "(or specify NO_HEADERS)")
+            endif()
+            if("${arg_PRIVATE_FILE}" STREQUAL "")
+                message(FATAL_ERROR "qt_feature_begin_module needs a value "
+                    "(or specify NO_HEADERS)")
+            endif()
         endif()
-        if ("${arg_PRIVATE_FILE}" STREQUAL "")
-            message(FATAL_ERROR "qt_feature_begin_module needs a PRIVATE_FILE name!")
-        endif()
+
         set(__QtFeature_only_evaluate_features OFF PARENT_SCOPE)
     else()
         set(__QtFeature_only_evaluate_features ON PARENT_SCOPE)
@@ -33,6 +47,9 @@ function(qt_feature_module_begin)
 
     set(__QtFeature_private_file "${arg_PRIVATE_FILE}" PARENT_SCOPE)
     set(__QtFeature_public_file "${arg_PUBLIC_FILE}" PARENT_SCOPE)
+    if(arg_NO_HEADERS)
+        set(__QtFeature_no_headers "TRUE" PARENT_SCOPE)
+    endif()
 
     set(__QtFeature_private_extra "" PARENT_SCOPE)
     set(__QtFeature_public_extra "" PARENT_SCOPE)
@@ -566,7 +583,11 @@ function(_qt_feature_evaluate_alias out_var alias)
         set(not_kw "NOT")
     endif()
     # Evaluate the value and return it
-    qt_set01(${out_var} ${not_kw} FEATURE_${alias})
+    if(${not_kw} FEATURE_${alias})
+        set(${out_var} 1)
+    else()
+        set(${out_var} 0)
+    endif()
     set(${out_var} "${${out_var}}" PARENT_SCOPE)
     # Also set `not_kw` since it would be reused by the caller
     set(not_kw "${not_kw}" PARENT_SCOPE)
@@ -578,7 +599,11 @@ function(_qt_feature_check_feature_alias feature)
     if(DEFINED "FEATURE_${feature}")
         # The main feature was already defined, use the current value.
         # Just check if the other aliases have agreeing values.
-        qt_set01(expected_value FEATURE_${feature})
+        if(FEATURE_${feature})
+            set(expected_value 1)
+        else()
+            set(expected_value 0)
+        endif()
         unset(alias_value)
         foreach(alias IN LISTS _QT_FEATURE_ALIASES_${feature})
             _qt_feature_evaluate_alias(alias_value ${alias})
@@ -614,7 +639,7 @@ function(_qt_feature_check_feature_alias feature)
         return()
     endif()
     # Check if all values are consistent
-    list(TRANSFORM REMOVE_DUPLICATES expected_value)
+    list(REMOVE_DUPLICATES expected_value)
     list(LENGTH expected_value expected_value_length)
     if(expected_value_length GREATER 1)
         string(CONCAT msg
@@ -647,7 +672,11 @@ function(_qt_feature_check_cache_alias feature)
         # Check if the feature is set by another alias
         unset(expected_value)
         _qt_feature_evaluate_alias(expected_value "${feature}")
-        qt_set01(cache_sanitized ${arg_ALIAS_OF_CACHE})
+        if(${arg_ALIAS_OF_CACHE})
+            set(cache_sanitized 1)
+        else()
+            set(cache_sanitized 0)
+        endif()
         if(NOT DEFINED expected_value)
             # If nothing else set the alias value, use the primary cache value
             set("FEATURE_${feature}" "${${arg_ALIAS_OF_CACHE}}" PARENT_SCOPE)
@@ -678,7 +707,11 @@ function(_qt_feature_save_alias feature)
             if(arg_ALIAS_NEGATE)
                 set(not_kw "NOT")
             endif()
-            qt_set01(value ${not_kw} FEATURE_${feature})
+            if(${not_kw} FEATURE_${feature})
+                set(value 1)
+            else()
+                set(value 0)
+            endif()
             qt_evaluate_to_boolean(value)
             # Set the values based on the main feature's value
             set(FEATURE_${alias} ${value} CACHE BOOL
@@ -1137,13 +1170,20 @@ function(qt_internal_generate_feature_line line feature)
     endif()
 endfunction()
 
-function(qt_internal_feature_write_file file features extra)
+function(qt_internal_feature_write_file target file features extra)
+    file(RELATIVE_PATH relative_path "${CMAKE_BINARY_DIR}" "${file}")
+
+    string(MAKE_C_IDENTIFIER "${target}_${relative_path}" inclusion_guard_suffix)
+
     set(contents "")
+    string(APPEND contents "#ifndef QT_FEATURES_${inclusion_guard_suffix}_H\n")
+    string(APPEND contents "#define QT_FEATURES_${inclusion_guard_suffix}_H\n\n")
     foreach(it ${features})
         qt_internal_generate_feature_line(line "${it}")
         string(APPEND contents "${line}")
     endforeach()
-    string(APPEND contents "${extra}")
+    string(APPEND contents "${extra}\n")
+    string(APPEND contents "#endif // QT_FEATURES_${inclusion_guard_suffix}_H\n")
 
     file(GENERATE OUTPUT "${file}" CONTENT "${contents}")
 endfunction()
@@ -1173,10 +1213,15 @@ function(qt_feature_record_summary_entries list_of_paths)
 endfunction()
 
 function(qt_feature_module_end)
-    set(flags ONLY_EVALUATE_FEATURES)
-    set(options OUT_VAR_PREFIX)
-    set(multiopts)
-    cmake_parse_arguments(arg "${flags}" "${options}" "${multiopts}" ${ARGN})
+    set(opt_args
+        ONLY_EVALUATE_FEATURES
+    )
+    set(single_args
+        OUT_VAR_PREFIX
+    )
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
+
     set(target ${arg_UNPARSED_ARGUMENTS})
 
     # The value of OUT_VAR_PREFIX is used as a prefix for output variables that should be
@@ -1236,12 +1281,14 @@ function(qt_feature_module_end)
         unset(_QT_FEATURE_ALIASES_${feature} PARENT_SCOPE)
     endforeach()
 
-    if(NOT arg_ONLY_EVALUATE_FEATURES)
-        qt_internal_feature_write_file("${CMAKE_CURRENT_BINARY_DIR}/${__QtFeature_private_file}"
+    if(NOT arg_ONLY_EVALUATE_FEATURES AND NOT __QtFeature_no_headers)
+        qt_internal_feature_write_file(${target}
+            "${CMAKE_CURRENT_BINARY_DIR}/${__QtFeature_private_file}"
             "${__QtFeature_private_features}" "${__QtFeature_private_extra}"
         )
 
-        qt_internal_feature_write_file("${CMAKE_CURRENT_BINARY_DIR}/${__QtFeature_public_file}"
+        qt_internal_feature_write_file(${target}
+            "${CMAKE_CURRENT_BINARY_DIR}/${__QtFeature_public_file}"
             "${__QtFeature_public_features}" "${__QtFeature_public_extra}"
         )
     endif()
@@ -1271,7 +1318,10 @@ function(qt_feature_module_end)
             # Before, we didn't use to export the properties at all for INTERFACE_ libraries,
             # but we need to, because certain GlobalPrivate modules have features which are used
             # in configure-time conditions for tests.
-            qt_internal_add_genex_properties_export("${target}" ${properties_to_export})
+            qt_internal_add_custom_properties_to_export("${target}"
+                PROPERTIES_WITHOUT_GENEXES
+                    ${properties_to_export}
+            )
         else()
             set(propertyPrefix "")
             set_property(TARGET "${target}"
@@ -1330,6 +1380,7 @@ macro(qt_feature_unset_state_vars)
 
     unset(__QtFeature_private_file PARENT_SCOPE)
     unset(__QtFeature_public_file PARENT_SCOPE)
+    unset(__QtFeature_no_headers PARENT_SCOPE)
 
     unset(__QtFeature_private_extra PARENT_SCOPE)
     unset(__QtFeature_public_extra PARENT_SCOPE)
@@ -1726,6 +1777,14 @@ function(qt_get_platform_try_compile_vars out_var)
     endif()
     if(QT_NO_USE_FIND_PACKAGE_SYSTEM_ENVIRONMENT_PATH)
         list(APPEND flags_cmd_line "-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH:BOOL=OFF")
+    endif()
+
+    if(ANDROID)
+        qt_internal_get_android_cmake_policy_version_minimum_assignment(
+            android_cmake_policy_version_minimum TYPE COMMAND_LINE)
+        if(android_cmake_policy_version_minimum)
+            list(APPEND flags_cmd_line "${android_cmake_policy_version_minimum}")
+        endif()
     endif()
 
     set("${out_var}" "${flags_cmd_line}" PARENT_SCOPE)

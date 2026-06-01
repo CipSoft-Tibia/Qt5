@@ -1,0 +1,6 @@
+{
+  type: "wpr",
+  url: "gs://chrome-partner-telemetry/loading_benchmark/archive_tablet.wprgo",
+  persist_server: true,
+  run_on_device: true,
+}

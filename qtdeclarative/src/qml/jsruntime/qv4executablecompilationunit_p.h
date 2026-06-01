@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QV4EXECUTABLECOMPILATIONUNIT_P_H
 #define QV4EXECUTABLECOMPILATIONUNIT_P_H
@@ -99,10 +100,6 @@ public:
     QHash<int, IdentifierHash> namedObjectsPerComponentCache;
     inline IdentifierHash namedObjectsPerComponent(int componentObjectIndex);
 
-    int totalBindingsCount(const QString &inlineComponentRoot) const { return m_compilationUnit->totalBindingsCount(inlineComponentRoot); }
-    int totalParserStatusCount(const QString &inlineComponentRoot) const { return m_compilationUnit->totalParserStatusCount(inlineComponentRoot); }
-    int totalObjectCount(const QString &inlineComponentRoot) const { return m_compilationUnit->totalObjectCount(inlineComponentRoot); }
-
     ResolvedTypeReference *resolvedType(int id) const
     {
         return m_compilationUnit->resolvedType(id);
@@ -192,6 +189,10 @@ public:
     void setModule(Heap::Module *module);
 
     ReturnedValue value() const { return m_valueOrModule.asReturnedValue(); }
+
+    // Non-ES script values are held in the context's importedScripts array.
+    // That one uses the generic write barrier we have for JavaScript arrays.
+    // We don't need to markCustom() here.
     void setValue(const QV4::Value &value) { m_valueOrModule = value; }
 
     const CompiledData::Unit *unitData() const { return m_compilationUnit->data; }

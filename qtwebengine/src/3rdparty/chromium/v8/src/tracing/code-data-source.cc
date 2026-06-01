@@ -105,8 +105,10 @@ InternedV8JsFunction::Kind GetJsFunctionKind(FunctionKind kind) {
     case FunctionKind::kStaticConciseMethod:
       return InternedV8JsFunction::KIND_STATIC_CONCISE_METHOD;
     case FunctionKind::kClassMembersInitializerFunction:
+    case FunctionKind::kClassMembersInitializerFunctionPrecededByStatic:
       return InternedV8JsFunction::KIND_CLASS_MEMBERS_INITIALIZER_FUNCTION;
     case FunctionKind::kClassStaticInitializerFunction:
+    case FunctionKind::kClassStaticInitializerFunctionPrecededByMember:
       return InternedV8JsFunction::KIND_CLASS_STATIC_INITIALIZER_FUNCTION;
     case FunctionKind::kInvalid:
       return InternedV8JsFunction::KIND_INVALID;
@@ -217,6 +219,10 @@ uint64_t CodeDataSourceIncrementalState::InternJsFunction(
   int32_t start_position = info->StartPosition();
   if (start_position >= 0) {
     function_proto->set_byte_offset(static_cast<uint32_t>(start_position));
+  }
+  if (line_num > 0 && column_num > 0) {
+    function_proto->set_line(static_cast<uint32_t>(line_num));
+    function_proto->set_column(static_cast<uint32_t>(column_num));
   }
 
   return iid;

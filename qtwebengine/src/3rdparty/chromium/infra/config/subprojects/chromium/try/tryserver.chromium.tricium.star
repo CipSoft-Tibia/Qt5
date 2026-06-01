@@ -46,6 +46,14 @@ try_.builder(
     os = os.LINUX_DEFAULT,
     # src checkouts are only required by bots spawned by this builder.
     caches = [SOURCELESS_BUILDER_CACHE],
+    tryjob = try_.job(
+        custom_cq_run_modes = [cq.MODE_NEW_PATCHSET_RUN],
+        disable_reuse = True,
+        experiment_percentage = 100,
+        location_filters = [
+            cq.location_filter(path_regexp = r".*\.(c|cc|cpp|h)"),
+        ],
+    ),
 )
 
 # Clang-tidy builders potentially spawned by the `tricium-clang-tidy`
@@ -107,22 +115,6 @@ try_.builder(
         ],
     ),
     builderless = False,
-    os = os.LINUX_DEFAULT,
-    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
-)
-
-try_.builder(
-    name = "linux-lacros-clang-tidy-rel",
-    executable = "recipe:tricium_clang_tidy_wrapper",
-    gn_args = gn_args.config(
-        configs = [
-            "lacros_on_linux",
-            "release_try_builder",
-            "remoteexec",
-            "also_build_ash_chrome",
-            "x64",
-        ],
-    ),
     os = os.LINUX_DEFAULT,
     siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
 )

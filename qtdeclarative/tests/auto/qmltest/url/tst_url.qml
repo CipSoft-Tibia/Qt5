@@ -21,5 +21,15 @@ Item {
         function test_url_verify() {
             verify(path1 != path2)
         }
+        function test_url_no_query() {
+            let urlWithoutQuery = new URL("file:///hello?where=world");
+            urlWithoutQuery.search = "";
+            compare(urlWithoutQuery.toString(), "file:///hello");
+        }
+        function test_url_only_questionmark_query() {
+            let urlWithEmptyQuery = new URL("file:///hello?where=world");
+            urlWithEmptyQuery.search = "?";
+            compare(urlWithEmptyQuery.toString(), "file:///hello?");
+        }
     }
 }

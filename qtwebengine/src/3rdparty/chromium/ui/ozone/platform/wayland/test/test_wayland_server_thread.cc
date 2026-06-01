@@ -56,7 +56,6 @@ TestWaylandServerThread::TestWaylandServerThread(const ServerConfig& config)
       client_destroy_listener_(this),
       config_(config),
       compositor_(config.compositor_version),
-      output_(this),
       zcr_text_input_extension_v1_(config.text_input_extension_version),
       controller_(FROM_HERE) {
   DETACH_FROM_THREAD(thread_checker_);
@@ -113,15 +112,8 @@ bool TestWaylandServerThread::Start() {
   if (!alpha_compositing_.Initialize(display_.get()))
     return false;
 
-  if (config_.enable_aura_shell == EnableAuraShellProtocol::kEnabled) {
-    // The aura output managers should be initialized before any wl_output
-    // globals.
-    if (!zaura_output_manager_v2_.Initialize(display_.get())) {
-      return false;
-    }
-
-    output_.set_aura_shell_enabled();
-    if (!zaura_shell_.Initialize(display_.get())) {
+  if (config_.supports_viewporter_surface_scaling) {
+    if (!fractional_scale_manager_.Initialize(display_.get())) {
       return false;
     }
   }
@@ -141,8 +133,6 @@ bool TestWaylandServerThread::Start() {
   if (!xdg_shell_.Initialize(display_.get()))
     return false;
 
-  if (!zcr_stylus_.Initialize(display_.get()))
-    return false;
   if (config_.text_input_wrapper_type == ZWPTextInputWrapperType::kV3) {
     if (!zwp_text_input_manager_v3_.Initialize(display_.get())) {
       return false;
@@ -157,6 +147,9 @@ bool TestWaylandServerThread::Start() {
   }
   if (!SetupExplicitSynchronizationProtocol(
           config_.use_explicit_synchronization)) {
+    return false;
+  }
+  if (!SetupLinuxDrmSyncobjProtocol(config_.use_linux_drm_syncobj)) {
     return false;
   }
   if (!zwp_linux_dmabuf_v1_.Initialize(display_.get()))
@@ -246,28 +239,6 @@ MockWpPresentation* TestWaylandServerThread::EnsureAndGetWpPresentation() {
   return nullptr;
 }
 
-TestSurfaceAugmenter* TestWaylandServerThread::EnsureSurfaceAugmenter() {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  if (surface_augmenter_.Initialize(display_.get()))
-    return &surface_augmenter_;
-  return nullptr;
-}
-
-void TestWaylandServerThread::OnTestOutputFlush(
-    TestOutput* test_output,
-    const TestOutputMetrics& metrics) {
-  if (zaura_output_manager_v2_.resource()) {
-    zaura_output_manager_v2_.SendOutputMetrics(test_output, metrics);
-  }
-}
-
-void TestWaylandServerThread::OnTestOutputGlobalDestroy(
-    TestOutput* test_output) {
-  if (zaura_output_manager_v2_.resource()) {
-    zaura_output_manager_v2_.OnTestOutputGlobalDestroy(test_output);
-  }
-}
-
 void TestWaylandServerThread::OnClientDestroyed(wl_client* client) {
   if (!client_)
     return;
@@ -310,8 +281,18 @@ bool TestWaylandServerThread::SetupExplicitSynchronizationProtocol(
     case ShouldUseExplicitSynchronizationProtocol::kUse:
       return zwp_linux_explicit_synchronization_v1_.Initialize(display_.get());
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
+}
+
+bool TestWaylandServerThread::SetupLinuxDrmSyncobjProtocol(
+    ShouldUseLinuxDrmSyncobjProtocol usage) {
+  switch (usage) {
+    case wl::ShouldUseLinuxDrmSyncobjProtocol::kNone:
+      return true;
+    case wl::ShouldUseLinuxDrmSyncobjProtocol::kUse:
+      return wp_linux_drm_syncobj_manager_v1_.Initialize(display_.get());
+  }
+  NOTREACHED();
 }
 
 std::unique_ptr<base::MessagePump> TestWaylandServerThread::CreateMessagePump(

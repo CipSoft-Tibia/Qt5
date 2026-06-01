@@ -8,6 +8,8 @@
 \title prefixed-import-type
 \brief BRIEF
 
+\qmllintwarningcategory prefixed-import-type
+
 \section1 prefixed-import-type
 
 \section2 What happened?

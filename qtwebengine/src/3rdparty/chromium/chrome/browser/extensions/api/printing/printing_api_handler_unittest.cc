@@ -232,8 +232,7 @@ std::unique_ptr<content::BlobHandle> CreateMemoryBackedBlob(
     const std::string& content_type) {
   base::test::TestFuture<std::unique_ptr<content::BlobHandle>> blob_future;
   browser_context->CreateMemoryBackedBlob(
-      base::as_bytes(base::make_span(content)), content_type,
-      blob_future.GetCallback());
+      base::as_byte_span(content), content_type, blob_future.GetCallback());
   return blob_future.Take();
 }
 
@@ -367,12 +366,8 @@ class PrintingAPIHandlerUnittest : public testing::Test {
     EXPECT_TRUE(job_id);
     EXPECT_TRUE(submit_job_status);
     EXPECT_EQ(api::printing::SubmitJobStatus::kOk, submit_job_status);
-    // Only lacros needs to report the print job to ash chrome.
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-    EXPECT_EQ(1u, TakePrintJobs().size());
-#else
     EXPECT_EQ(0u, TakePrintJobs().size());
-#endif
+
     return *job_id;
   }
 

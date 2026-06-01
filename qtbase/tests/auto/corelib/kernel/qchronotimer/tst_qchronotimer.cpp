@@ -252,10 +252,14 @@ void tst_QChronoTimer::remainingTimeInitial_data()
     QTest::addRow("precisetiemr-0ns") << 0ns << Qt::PreciseTimer;
     QTest::addRow("precisetimer-1ms") << nanoseconds{1ms} << Qt::PreciseTimer;
     QTest::addRow("precisetimer-10ms") <<nanoseconds{10ms} << Qt::PreciseTimer;
+    QTest::addRow("precisetimer-25days") << nanoseconds{25 * 24h} << Qt::PreciseTimer;
+    QTest::addRow("precisetimer-50days") << nanoseconds{50 * 24h} << Qt::PreciseTimer;
 
     QTest::addRow("coarsetimer-0ns") << 0ns << Qt::CoarseTimer;
     QTest::addRow("coarsetimer-1ms") << nanoseconds{1ms} << Qt::CoarseTimer;
     QTest::addRow("coarsetimer-10ms") << nanoseconds{10ms} << Qt::CoarseTimer;
+    QTest::addRow("coarsetimer-25days") << nanoseconds{25 * 24h} << Qt::CoarseTimer;
+    QTest::addRow("coarsetimer-50days") << nanoseconds{50 * 24h} << Qt::CoarseTimer;
 }
 
 void tst_QChronoTimer::remainingTimeInitial()
@@ -272,7 +276,22 @@ void tst_QChronoTimer::remainingTimeInitial()
 
     const std::chrono::nanoseconds rt = timer.remainingTime();
     QCOMPARE_GE(rt, 0ns);
-    QCOMPARE_LE(rt, startTimeNs);
+    if (timerType != Qt::PreciseTimer) {
+        // For coarse timers the calculated interval might be up to 5% larger
+        // then specified
+        auto largerStartTime = std::chrono::nanoseconds{startTimeNs + startTimeNs / 20};
+        QCOMPARE_LE(rt, largerStartTime);
+    } else {
+        QCOMPARE_LE(rt, startTimeNs);
+    }
+
+    if (startTimeNs > 1min) {
+        // The test will surely take less than 1 minute
+        auto startMinusOneMinute = std::chrono::nanoseconds{startTimeNs - 1min};
+        // If the remaining time is less than startMinusOneMinute, then
+        // something is terribly wrong with the internal interval calculations
+        QCOMPARE_GE(rt, startMinusOneMinute);
+    }
 }
 
 void tst_QChronoTimer::remainingTimeDuringActivation_data()
@@ -307,7 +326,7 @@ void tst_QChronoTimer::remainingTimeDuringActivation()
 
     if (!singleShot) {
         // do it again - see QTBUG-46940
-        remainingTime = std::chrono::milliseconds::min();
+        remainingTime = std::chrono::nanoseconds::min();
         QVERIFY(timeoutSpy.wait());
         QCOMPARE_LE(remainingTime, timeout);
         QCOMPARE_GT(remainingTime, 0ns);
@@ -1071,14 +1090,15 @@ void tst_QChronoTimer::bindToTimer()
 
     auto ignoreMsg = [] {
         QTest::ignoreMessage(QtWarningMsg,
-                             "QObject::startTimer: Timers cannot have negative intervals");
+                             "QChronoTimer::setInterval: negative intervals aren't allowed; the "
+                             "interval will be set to 1ms.");
     };
 
     ignoreMsg();
     timer.setInterval(-100ms);
-    ignoreMsg();
     timer.start();
-    QVERIFY(!active);
+    QVERIFY(active);
+    QCOMPARE(timer.interval(), 1ms);
 
     timer.setInterval(100ms);
     timer.start();
@@ -1086,9 +1106,9 @@ void tst_QChronoTimer::bindToTimer()
 
     ignoreMsg();
     timer.setInterval(-100ms);
-    ignoreMsg();
     timer.start();
-    QVERIFY(!active);
+    QVERIFY(active);
+    QCOMPARE(timer.interval(), 1ms);
 }
 
 void tst_QChronoTimer::bindTimer()
@@ -1177,30 +1197,24 @@ void tst_QChronoTimer::negativeInterval()
 
     auto ignoreMsg = [] {
         QTest::ignoreMessage(QtWarningMsg,
-                             "QObject::startTimer: Timers cannot have negative intervals");
+                             "QChronoTimer::setInterval: negative intervals aren't allowed; the "
+                             "interval will be set to 1ms.");
     };
 
     ignoreMsg();
-    // Setting a negative interval does not change the active state.
     timer.setInterval(-100ms);
-    ignoreMsg();
     timer.start();
-    QVERIFY(!timer.isActive());
+    QVERIFY(timer.isActive());
+    QCOMPARE(timer.interval(), 1ms);
 
-    // Starting a timer that has a positive interval, the active state is changed
     timer.setInterval(100ms);
     timer.start();
     QVERIFY(timer.isActive());
 
     ignoreMsg();
-    // Setting a negative interval on an already running timer...
     timer.setInterval(-100ms);
-    // ... the timer is stopped and the active state is changed
-    QVERIFY(!timer.isActive());
-
-    // Calling start on a timer that has a negative interval, does not change the active state
-    timer.start();
-    QVERIFY(!timer.isActive());
+    QVERIFY(timer.isActive());
+    QCOMPARE(timer.interval(), 1ms);
 }
 
 class OrderHelper : public QObject

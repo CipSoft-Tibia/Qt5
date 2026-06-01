@@ -1468,10 +1468,8 @@ bool ExtensionDownloader::IterateFetchCredentialsAfterFailure(
       }
       return false;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
 }
 
 void ExtensionDownloader::OnAccessTokenFetchComplete(

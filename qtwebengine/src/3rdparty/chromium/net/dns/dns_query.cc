@@ -73,8 +73,8 @@ std::unique_ptr<OptRecordRdata> AddPaddingIfNecessary(
 
   std::unique_ptr<OptRecordRdata> merged_opt_rdata;
   if (opt_rdata) {
-    merged_opt_rdata = OptRecordRdata::Create(
-        std::string_view(opt_rdata->buf().data(), opt_rdata->buf().size()));
+    merged_opt_rdata =
+        OptRecordRdata::Create(base::as_byte_span(opt_rdata->buf()));
   } else {
     merged_opt_rdata = std::make_unique<OptRecordRdata>();
   }
@@ -168,6 +168,10 @@ DnsQuery& DnsQuery::operator=(const DnsQuery& query) {
   CopyFrom(query);
   return *this;
 }
+
+DnsQuery::DnsQuery(DnsQuery&& query) = default;
+
+DnsQuery& DnsQuery::operator=(DnsQuery&& query) = default;
 
 DnsQuery::~DnsQuery() = default;
 

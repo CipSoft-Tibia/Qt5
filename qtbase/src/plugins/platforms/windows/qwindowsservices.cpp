@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #include "qwindowsservices.h"
 #include <QtCore/qt_windows.h>
@@ -20,8 +21,6 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
-
-enum { debug = 0 };
 
 class QWindowsShellExecuteThread : public QThread
 {
@@ -83,11 +82,10 @@ static bool openWebBrowser(const QUrl &url)
     thread.wait();
 
     const auto result = reinterpret_cast<quintptr>(thread.result());
-    if (debug)
-        qDebug() << __FUNCTION__ << urlS << QString::fromWCharArray(browserExecutable) << result;
+    qCDebug(lcQpaServices) << urlS << QString::fromWCharArray(browserExecutable) << result;
     // ShellExecute returns a value greater than 32 if successful
     if (result <= 32) {
-        qWarning("%s", qPrintable(msgShellExecuteFailed(url, result)));
+        qCWarning(lcQpaServices, "%s", qPrintable(msgShellExecuteFailed(url, result)));
         return false;
     }
     return true;
@@ -112,7 +110,7 @@ static inline bool shellExecute(const QUrl &url)
 
     // ShellExecute returns a value greater than 32 if successful
     if (result <= 32) {
-        qWarning("%s", qPrintable(msgShellExecuteFailed(url, result)));
+        qCWarning(lcQpaServices, "%s", qPrintable(msgShellExecuteFailed(url, result)));
         return false;
     }
     return true;
@@ -132,8 +130,7 @@ static inline QString mailCommand()
                       .stringValue( L"Progid");
     const auto mailto = keyName.isEmpty() ? "mailto"_L1 : QLatin1StringView();
     keyName += mailto + "\\Shell\\Open\\Command"_L1;
-    if (debug)
-        qDebug() << __FUNCTION__ << "keyName=" << keyName;
+    qCDebug(lcQpaServices) << "keyName=" << keyName;
     const QString command = QWinRegistryKey(HKEY_CLASSES_ROOT, keyName).stringValue(L"");
     // QTBUG-57816: As of Windows 10, if there is no mail client installed, an entry like
     // "rundll32.exe .. url.dll,MailToProtocolHandler %l" is returned. Launching it
@@ -151,12 +148,12 @@ static inline bool launchMail(const QUrl &url)
 {
     QString command = mailCommand();
     if (command.isEmpty()) {
-        qWarning("Cannot launch '%ls': There is no mail program installed.", qUtf16Printable(url.toString()));
+        qCWarning(lcQpaServices, "Cannot launch '%ls': There is no mail program installed.", qUtf16Printable(url.toString()));
         return false;
     }
     // Fix mail launch if no param is expected in this command.
     if (command.indexOf("%1"_L1) < 0) {
-        qWarning() << "The mail command lacks the '%1' parameter.";
+        qWarning(lcQpaServices) << "The mail command lacks the '%1' parameter.";
         return false;
     }
     //Make sure the path for the process is in quotes
@@ -171,8 +168,7 @@ static inline bool launchMail(const QUrl &url)
     // Pass the url as the parameter. Should use QProcess::startDetached(),
     // but that cannot handle a Windows command line [yet].
     command.replace("%1"_L1, url.toString(QUrl::FullyEncoded));
-    if (debug)
-        qDebug() << __FUNCTION__ << "Launching" << command;
+    qCDebug(lcQpaServices) << "Launching" << command;
     //start the process
     PROCESS_INFORMATION pi;
     ZeroMemory(&pi, sizeof(pi));

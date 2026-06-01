@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant reason:default
 
 #ifndef QUICKLINTPLUGIN_H
 #define QUICKLINTPLUGIN_H
@@ -178,6 +179,22 @@ private:
 
     QMultiHash<QQmlSA::Element, ElementAndLocation> usedAttachedTypes;
     QQmlSA::LoggerWarningId category;
+};
+
+class StateNoItemChildrenValidator : public QQmlSA::ElementPass
+{
+public:
+    StateNoItemChildrenValidator(QQmlSA::PassManager *manager);
+
+    bool shouldRun(const QQmlSA::Element &element) override;
+    void run(const QQmlSA::Element &element) override;
+
+private:
+    QQmlSA::Element m_state;
+    QQmlSA::Element m_anchorChanges;
+    QQmlSA::Element m_parentChanges;
+    QQmlSA::Element m_propertyChanges;
+    QQmlSA::Element m_stateChangeScript;
 };
 
 QT_END_NAMESPACE

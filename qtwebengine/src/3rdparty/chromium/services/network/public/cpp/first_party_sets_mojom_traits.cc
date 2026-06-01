@@ -4,9 +4,10 @@
 
 #include "services/network/public/cpp/first_party_sets_mojom_traits.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "base/containers/flat_map.h"
-#include "base/ranges/algorithm.h"
-#include "base/types/optional_util.h"
 #include "base/version.h"
 #include "mojo/public/cpp/base/version_mojom_traits.h"
 #include "mojo/public/cpp/bindings/enum_traits.h"
@@ -59,8 +60,7 @@ EnumTraits<network::mojom::SiteType, net::SiteType>::ToMojom(
     case net::SiteType::kService:
       return network::mojom::SiteType::kService;
   }
-  NOTREACHED_IN_MIGRATION();
-  return network::mojom::SiteType::kPrimary;
+  NOTREACHED();
 }
 
 bool StructTraits<network::mojom::FirstPartySetEntryDataView,
@@ -95,8 +95,8 @@ bool StructTraits<network::mojom::FirstPartySetMetadataDataView,
   if (!metadata.ReadTopFrameEntry(&top_frame_entry))
     return false;
 
-  *out_metadata = net::FirstPartySetMetadata(
-      base::OptionalToPtr(frame_entry), base::OptionalToPtr(top_frame_entry));
+  *out_metadata = net::FirstPartySetMetadata(std::move(frame_entry),
+                                             std::move(top_frame_entry));
 
   return true;
 }
@@ -117,7 +117,7 @@ bool StructTraits<network::mojom::GlobalFirstPartySetsDataView,
   if (public_sets_version.IsValid() && !sets.ReadAliases(&aliases))
     return false;
 
-  if (!base::ranges::all_of(aliases, [&](const auto& pair) {
+  if (!std::ranges::all_of(aliases, [&](const auto& pair) {
         return entries.contains(pair.second);
       })) {
     return false;
@@ -134,7 +134,7 @@ bool StructTraits<network::mojom::GlobalFirstPartySetsDataView,
 
   // The manual_config must contain both the alias overrides and their
   // corresponding canonical overrides, none of which may be deletions.
-  if (!base::ranges::all_of(manual_aliases, [&](const auto& pair) {
+  if (!std::ranges::all_of(manual_aliases, [&](const auto& pair) {
         std::optional<net::FirstPartySetEntryOverride> aliased_override =
             manual_config.FindOverride(pair.first);
         std::optional<net::FirstPartySetEntryOverride> canonical_override =

@@ -6,13 +6,13 @@
 
 #include <stddef.h>
 
+#include <algorithm>
 #include <vector>
 
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/ranges/algorithm.h"
 #include "base/values.h"
 #include "chrome/browser/browsing_data/browsing_data_important_sites_util.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
@@ -24,8 +24,14 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/sync/sync_ui_util.h"
+#include "chrome/browser/ui/browser_finder.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/hats/trust_safety_sentiment_service.h"
 #include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
+#include "chrome/browser/ui/toasts/api/toast_id.h"
+#include "chrome/browser/ui/toasts/toast_controller.h"
+#include "chrome/browser/ui/toasts/toast_features.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/url_constants.h"
@@ -33,6 +39,7 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
 #include "components/browsing_data/core/browsing_data_utils.h"
+#include "components/browsing_data/core/cookie_or_cache_deletion_choice.h"
 #include "components/browsing_data/core/history_notice_utils.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/history/core/common/pref_names.h"
@@ -71,7 +78,7 @@ const char* kCounterPrefsBasic[] = {
     browsing_data::prefs::kDeleteCacheBasic,
 };
 
-} // namespace
+}  // namespace
 
 namespace settings {
 
@@ -106,8 +113,9 @@ void ClearBrowsingDataHandler::RegisterMessages() {
 }
 
 void ClearBrowsingDataHandler::OnJavascriptAllowed() {
-  if (sync_service_)
+  if (sync_service_) {
     sync_service_observation_.Observe(sync_service_.get());
+  }
 
   dse_service_observation_.Observe(
       TemplateURLServiceFactory::GetForProfile(profile_));
@@ -171,12 +179,14 @@ void ClearBrowsingDataHandler::HandleClearBrowsingData(
 
     switch (*data_type) {
       case BrowsingDataType::HISTORY:
-        if (prefs->GetBoolean(prefs::kAllowDeletingBrowserHistory))
+        if (prefs->GetBoolean(prefs::kAllowDeletingBrowserHistory)) {
           remove_mask |= chrome_browsing_data_remover::DATA_TYPE_HISTORY;
+        }
         break;
       case BrowsingDataType::DOWNLOADS:
-        if (prefs->GetBoolean(prefs::kAllowDeletingBrowserHistory))
+        if (prefs->GetBoolean(prefs::kAllowDeletingBrowserHistory)) {
           remove_mask |= content::BrowsingDataRemover::DATA_TYPE_DOWNLOADS;
+        }
         break;
       case BrowsingDataType::CACHE:
         remove_mask |= content::BrowsingDataRemover::DATA_TYPE_CACHE;
@@ -216,19 +226,19 @@ void ClearBrowsingDataHandler::HandleClearBrowsingData(
   base::flat_set<BrowsingDataType> data_types(std::move(data_type_vector));
 
   // Record the deletion of cookies and cache.
-  content::BrowsingDataRemover::CookieOrCacheDeletionChoice choice =
-      content::BrowsingDataRemover::NEITHER_COOKIES_NOR_CACHE;
+  browsing_data::CookieOrCacheDeletionChoice choice =
+      browsing_data::CookieOrCacheDeletionChoice::kNeitherCookiesNorCache;
   if (data_types.find(BrowsingDataType::SITE_DATA) != data_types.end()) {
-    choice = data_types.find(BrowsingDataType::CACHE) != data_types.end()
-                 ? content::BrowsingDataRemover::BOTH_COOKIES_AND_CACHE
-                 : content::BrowsingDataRemover::ONLY_COOKIES;
+    choice =
+        data_types.find(BrowsingDataType::CACHE) != data_types.end()
+            ? browsing_data::CookieOrCacheDeletionChoice::kBothCookiesAndCache
+            : browsing_data::CookieOrCacheDeletionChoice::kOnlyCookies;
   } else if (data_types.find(BrowsingDataType::CACHE) != data_types.end()) {
-    choice = content::BrowsingDataRemover::ONLY_CACHE;
+    choice = browsing_data::CookieOrCacheDeletionChoice::kOnlyCache;
   }
 
   UMA_HISTOGRAM_ENUMERATION(
-      "History.ClearBrowsingData.UserDeletedCookieOrCacheFromDialog", choice,
-      content::BrowsingDataRemover::MAX_CHOICE_VALUE);
+      "History.ClearBrowsingData.UserDeletedCookieOrCacheFromDialog", choice);
 
   browsing_data::RecordDeleteBrowsingDataAction(
       browsing_data::DeleteBrowsingDataAction::kClearBrowsingDataDialog);
@@ -290,16 +300,26 @@ void ClearBrowsingDataHandler::OnClearingTaskFinished(
         history_notice_shown_times + 1);
   }
 
-  UMA_HISTOGRAM_BOOLEAN(
-      "History.ClearBrowsingData.ShownHistoryNoticeAfterClearing",
-      show_history_notice);
-
   bool show_passwords_notice =
       (failed_data_types & chrome_browsing_data_remover::DATA_TYPE_PASSWORDS);
 
   base::Value::Dict result;
   result.Set("showHistoryNotice", show_history_notice);
   result.Set("showPasswordsNotice", show_passwords_notice);
+
+  if (toast_features::IsEnabled(toast_features::kClearBrowsingDataToast)) {
+    tabs::TabInterface* tab =
+        tabs::TabInterface::MaybeGetFromContents(web_ui()->GetWebContents());
+    if (tab && tab->IsActivated()) {
+      CHECK(tab->GetBrowserWindowInterface());
+      ToastController* const toast_controller =
+          tab->GetBrowserWindowInterface()->GetFeatures().toast_controller();
+      if (toast_controller) {
+        toast_controller->MaybeShowToast(
+            ToastParams(ToastId::kClearBrowsingData));
+      }
+    }
+  }
 
   ResolveJavascriptCallback(base::Value(webui_callback_id), result);
 }

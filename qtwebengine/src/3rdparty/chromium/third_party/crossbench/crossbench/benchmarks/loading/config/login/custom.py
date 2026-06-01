@@ -5,20 +5,16 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Final
 
-from crossbench.benchmarks.loading.config.blocks import ActionBlock
+from crossbench.benchmarks.loading.config.login.base import BaseLoginBlock
+from crossbench.benchmarks.loading.config.login.login_type import (LOGIN_LOOKUP,
+                                                                   LoginType)
 
 
 @dataclasses.dataclass(frozen=True)
-class LoginBlock(ActionBlock):
-  LABEL: Final[str] = "login"
+class LoginBlock(BaseLoginBlock):
 
-  def validate(self):
-    super().validate()
-    assert self.index == 0, (
-        f"Login block has to be the first, but got {self.index}")
-
-  @property
-  def is_login(self) -> bool:
-    return True
+  @classmethod
+  def parse_str(cls, value: str) -> BaseLoginBlock:  # type: ignore
+    login_type = LoginType.parse(value)
+    return LOGIN_LOOKUP[login_type]()

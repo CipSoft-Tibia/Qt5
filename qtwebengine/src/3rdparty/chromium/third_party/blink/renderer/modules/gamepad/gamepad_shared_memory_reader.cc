@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "third_party/blink/renderer/modules/gamepad/gamepad_shared_memory_reader.h"
 
 #include "base/metrics/histogram_macros.h"
@@ -149,11 +154,6 @@ void GamepadSharedMemoryReader::GamepadDisconnected(
     const device::Gamepad& gamepad) {
   if (listener_)
     listener_->DidDisconnectGamepad(index, gamepad);
-}
-
-void GamepadSharedMemoryReader::GamepadChanged(
-    device::mojom::blink::GamepadChangesPtr change) {
-  // TODO(crbug.com/856290): use these calls to Generate Button Event.
 }
 
 }  // namespace blink

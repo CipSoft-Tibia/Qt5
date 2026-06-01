@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickwindow.h"
 #include "qquickwindow_p.h"
@@ -541,6 +542,7 @@ void QQuickWindowPrivate::syncSceneGraph()
     if (pendingFontUpdate) {
         QFont::cleanup();
         invalidateFontData(contentItem);
+        context->invalidateGlyphCaches();
     }
 
     if (Q_UNLIKELY(!renderer)) {
@@ -568,7 +570,7 @@ void QQuickWindowPrivate::syncSceneGraph()
     renderer->setVisualizationMode(visualizationMode);
 
     if (pendingFontUpdate) {
-        context->invalidateGlyphCaches();
+        context->flushGlyphCaches();
         pendingFontUpdate = false;
     }
 
@@ -816,14 +818,16 @@ void QQuickWindowPrivate::init(QQuickWindow *c, QQuickRenderControl *control)
 
     animationController.reset(new QQuickAnimatorController(q));
 
-    QObject::connect(context, &QSGRenderContext::initialized, q, &QQuickWindow::sceneGraphInitialized, Qt::DirectConnection);
-    QObject::connect(context, &QSGRenderContext::invalidated, q, &QQuickWindow::sceneGraphInvalidated, Qt::DirectConnection);
-    QObject::connect(context, &QSGRenderContext::invalidated, q, &QQuickWindow::cleanupSceneGraph, Qt::DirectConnection);
+    connections = {
+        QObject::connect(context, &QSGRenderContext::initialized, q, &QQuickWindow::sceneGraphInitialized, Qt::DirectConnection),
+        QObject::connect(context, &QSGRenderContext::invalidated, q, &QQuickWindow::sceneGraphInvalidated, Qt::DirectConnection),
+        QObject::connect(context, &QSGRenderContext::invalidated, q, &QQuickWindow::cleanupSceneGraph, Qt::DirectConnection),
 
-    QObject::connect(q, &QQuickWindow::focusObjectChanged, q, &QQuickWindow::activeFocusItemChanged);
-    QObject::connect(q, &QQuickWindow::screenChanged, q, &QQuickWindow::handleScreenChanged);
-    QObject::connect(qApp, &QGuiApplication::applicationStateChanged, q, &QQuickWindow::handleApplicationStateChanged);
-    QObject::connect(q, &QQuickWindow::frameSwapped, q, &QQuickWindow::runJobsAfterSwap, Qt::DirectConnection);
+        QObject::connect(q, &QQuickWindow::focusObjectChanged, q, &QQuickWindow::activeFocusItemChanged),
+        QObject::connect(q, &QQuickWindow::screenChanged, q, &QQuickWindow::handleScreenChanged),
+        QObject::connect(qApp, &QGuiApplication::applicationStateChanged, q, &QQuickWindow::handleApplicationStateChanged),
+        QObject::connect(q, &QQuickWindow::frameSwapped, q, &QQuickWindow::runJobsAfterSwap, Qt::DirectConnection),
+    };
 
     if (QQmlInspectorService *service = QQmlDebugConnector::service<QQmlInspectorService>())
         service->addWindow(q);
@@ -1127,6 +1131,37 @@ void QQuickWindowPrivate::cleanup(QSGNode *n)
 */
 
 /*!
+    \qmlmethod void Window::startSystemMove()
+    \since 6.8
+
+    \brief Starts a system-specific move operation.
+
+    Starts an interactive move operation on the window using platform support.
+    The window follows the mouse cursor until the mouse button is released.
+
+    Use this method instead of \c setPosition, because it allows the window manager
+    to handle snapping, tiling, and related animations. On Wayland, \c setPosition
+    is not supported, so this is the only way the application can influence the
+    window’s position.
+*/
+
+/*!
+    \qmlmethod void Window::startSystemResize(Qt::Edges edges)
+    \since 6.8
+
+    \brief Starts a system-specific resize operation.
+
+    Starts an interactive resize operation on the window using platform support.
+    The specified edge follows the mouse cursor while dragging.
+
+    Use this method instead of \c setGeometry, because it allows the window manager
+    to handle snapping and resize animations when resizing to screen edges.
+
+    \a edges must be a single edge or a combination of two adjacent edges (a corner).
+    Other values are not allowed.
+*/
+
+/*!
     Constructs a window for displaying a QML scene with parent window \a parent.
 */
 QQuickWindow::QQuickWindow(QWindow *parent)
@@ -1184,6 +1219,11 @@ QQuickWindow::~QQuickWindow()
         d->windowManager->windowDestroyed(this);
     }
 
+    disconnect(this, &QQuickWindow::focusObjectChanged, this, &QQuickWindow::activeFocusItemChanged);
+    disconnect(this, &QQuickWindow::screenChanged, this, &QQuickWindow::handleScreenChanged);
+    disconnect(qApp, &QGuiApplication::applicationStateChanged, this, &QQuickWindow::handleApplicationStateChanged);
+    disconnect(this, &QQuickWindow::frameSwapped, this, &QQuickWindow::runJobsAfterSwap);
+
     delete d->incubationController; d->incubationController = nullptr;
     QQuickRootItem *root = d->contentItem;
     d->contentItem = nullptr;
@@ -1207,6 +1247,9 @@ QQuickWindow::~QQuickWindow()
     // have their destructors loaded while they the library is still
     // loaded into memory.
     QQuickPixmap::purgeCache();
+
+    for (const QMetaObject::Connection &connection : d->connections)
+        disconnect(connection);
 }
 
 #if QT_CONFIG(quick_shadereffect)
@@ -1425,7 +1468,7 @@ bool QQuickWindow::event(QEvent *event)
             return false;
         {
             const bool wasAccepted = event->isAccepted();
-            QBoolBlocker windowEventDispatchGuard(d->windowEventDispatch, true);
+            QScopedValueRollback windowEventDispatchGuard(d->windowEventDispatch, true);
             qCDebug(lcPtr) << "dispatching to window functions in case of override" << event;
             QWindow::event(event);
             if (event->isAccepted() && !wasAccepted)
@@ -1798,16 +1841,16 @@ void QQuickWindowPrivate::updateCursor(const QPointF &scenePos, QQuickItem *root
             QQuickPointerHandlerPrivate::get(cursorItemAndHandler.second)->cursorDirty = false;
         if (cursorItem) {
             const auto cursor = QQuickItemPrivate::get(cursorItem)->effectiveCursor(cursorHandler);
-            qCDebug(lcHoverTrace) << "setting cursor" << cursor << "from" << cursorHandler << "or" << cursorItem;
+            qCDebug(lcHoverCursor) << "setting cursor" << cursor << "from" << cursorHandler << "or" << cursorItem;
             window->setCursor(cursor);
         } else {
-            qCDebug(lcHoverTrace) << "unsetting cursor";
+            qCDebug(lcHoverCursor) << "unsetting cursor";
             window->unsetCursor();
         }
     }
 }
 
-QPair<QQuickItem*, QQuickPointerHandler*> QQuickWindowPrivate::findCursorItemAndHandler(QQuickItem *item, const QPointF &scenePos) const
+std::pair<QQuickItem*, QQuickPointerHandler*> QQuickWindowPrivate::findCursorItemAndHandler(QQuickItem *item, const QPointF &scenePos) const
 {
     QQuickItemPrivate *itemPrivate = QQuickItemPrivate::get(item);
     if (itemPrivate->flags & QQuickItem::ItemClipsChildrenToShape) {
@@ -1965,7 +2008,8 @@ void QQuickWindowPrivate::rhiCreationFailureMessage(const QString &backendName,
 
 void QQuickWindowPrivate::cleanupNodes()
 {
-    qDeleteAll(std::exchange(cleanupNodeList, {}));
+    qDeleteAll(cleanupNodeList);
+    cleanupNodeList.clear();
 }
 
 void QQuickWindowPrivate::cleanupNodesOnShutdown(QQuickItem *item)

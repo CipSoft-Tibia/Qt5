@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="sv_SE">
+<TS version="2.1" language="sv">
 <context>
     <name>QSerialPort</name>
     <message>
@@ -34,10 +34,6 @@
     <message>
         <source>Unsupported open mode</source>
         <translation>Öppningsläget stöds inte</translation>
-    </message>
-    <message>
-        <source>The device supports only the ignoring policy</source>
-        <translation>Enheten har endast stöd för ignoreringspolicyn</translation>
     </message>
     <message>
         <source>Permission error while creating lock file</source>

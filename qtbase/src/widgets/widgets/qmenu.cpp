@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qmenu.h"
 
@@ -1400,7 +1401,7 @@ void QMenuPrivate::activateCausedStack(const QList<QPointer<QWidget>> &causedSta
                                        QAction::ActionEvent action_e, bool self)
 {
     Q_Q(QMenu);
-    // can't use QBoolBlocker here
+    // can't use QScopedValueRollback here
     const bool activationRecursionGuardReset = activationRecursionGuard;
     activationRecursionGuard = true;
     QPointer<QMenu> guard(q);
@@ -1532,8 +1533,12 @@ void QMenuPrivate::_q_actionTriggered()
             }
             activateCausedStack(list, action, QAction::Trigger, false);
             // if a widget action fires, we need to hide the menu explicitly
-            if (qobject_cast<QWidgetAction*>(action))
+            if (qobject_cast<QWidgetAction*>(action)) {
+                // make sure QMenu::exec returns the triggered widget action
+                currentAction = action;
+                setSyncAction();
                 hideUpToMenuBar();
+            }
         }
     }
 }
@@ -1652,7 +1657,7 @@ void QMenu::initStyleOption(QStyleOptionMenuItem *option, const QAction *action)
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-menu.png
+    \image fusion-menu.png {Menu containing several action items}
 
     A menu widget is a selection menu. It can be either a pull-down
     menu in a menu bar or a standalone context menu. Pull-down menus
@@ -2920,15 +2925,19 @@ void QMenu::mouseReleaseEvent(QMouseEvent *e)
     Q_D(QMenu);
     if (d->aboutToHide || d->mouseEventTaken(e))
         return;
-    if (QMenuPrivate::mouseDown != this) {
+
+    if (QMenuPrivate::mouseDown && QMenuPrivate::mouseDown != this) {
         QMenuPrivate::mouseDown = nullptr;
         return;
     }
 
+    // If no mouse press was seen before this is the release event that caused the menu to open
+    const bool sawMousePress = QMenuPrivate::mouseDown;
     QMenuPrivate::mouseDown = nullptr;
+
     d->setSyncAction();
 
-    if (!d->hasMouseMoved(e->globalPosition().toPoint())) {
+    if (sawMousePress && !d->hasMouseMoved(e->globalPosition().toPoint())) {
         // We don't want to trigger a menu item if the mouse hasn't moved
         // since the popup was opened. Instead we want to close the menu.
         d->hideUpToMenuBar();
@@ -2944,7 +2953,7 @@ void QMenu::mouseReleaseEvent(QMouseEvent *e)
 #endif
                 d->activateAction(action, QAction::Trigger);
         }
-    } else if (!action || action->isEnabled()) {
+    } else if (sawMousePress && (!action || (action->isEnabled() && !action->isSeparator()))) {
         d->hideUpToMenuBar();
     }
 }

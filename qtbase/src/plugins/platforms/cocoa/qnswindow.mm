@@ -15,7 +15,7 @@
 
 #include <QtGui/private/qhighdpiscaling_p.h>
 
-Q_LOGGING_CATEGORY(lcQpaEvents, "qt.qpa.events");
+Q_STATIC_LOGGING_CATEGORY(lcQpaEvents, "qt.qpa.events");
 
 static bool isMouseEvent(NSEvent *ev)
 {
@@ -60,6 +60,7 @@ static bool isMouseEvent(NSEvent *ev)
 @end
 
 
+QT_BEGIN_NAMESPACE
 NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
 {
     if ([window conformsToProtocol:@protocol(QNSWindowProtocol)])
@@ -67,6 +68,7 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
     else
         return nil;
 }
+QT_END_NAMESPACE
 
 @implementation QNSWindow
 #define QNSWINDOW_PROTOCOL_IMPLMENTATION 1
@@ -375,7 +377,7 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
 
 - (void)miniaturize:(id)sender
 {
-    QBoolBlocker miniaturizeTracker(m_isMinimizing, true);
+    QScopedValueRollback miniaturizeTracker(m_isMinimizing, true);
     [super miniaturize:sender];
 }
 

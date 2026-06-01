@@ -20,6 +20,7 @@ ScrollablePage {
         }
 
         ComboBox {
+            enabled: !GalleryConfig.disabled
             model: [qsTr("First"), qsTr("Second"), qsTr("Third")]
             anchors.horizontalCenter: parent.horizontalCenter
         }
@@ -35,6 +36,7 @@ ScrollablePage {
         ComboBox {
             id: comboBox
 
+            enabled: !GalleryConfig.disabled
             editable: true
             model: ListModel {
                 ListElement { text: qsTr("Banana") }

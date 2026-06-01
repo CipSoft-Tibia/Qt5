@@ -12,22 +12,51 @@
 #include <private/qgraphsview_p.h>
 #include <private/qvalueaxis_p.h>
 #include <QtQuick/private/qquickdraghandler_p.h>
+#include <qtgraphs_tracepoints_p.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+              "#include <qnamespace.h>" \
+              "class AxisRenderer;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_METADATA(qtgraphs, "ENUM { } Qt::Orientation;")
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateDateTimeXAxisLabels_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateDateTimeXAxisLabels_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateAxisLabelItems_entry, int labelItemCount, int neededCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateAxisLabelItems_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateDateTimeYAxisLabels_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateDateTimeYAxisLabels_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateValueXAxisLabels_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateValueXAxisLabels_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateValueYAxisLabels_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateValueYAxisLabels_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateBarYAxisLabels_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateBarYAxisLabels_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateBarXAxisLabels_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateBarXAxisLabels_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateAxis_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererUpdateAxis_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererHandlePolish_entry, Qt::Orientation orientation);
+Q_TRACE_POINT(qtgraphs, QGraphs2DAxisRendererHandlePolish_exit);
 
 AxisRenderer::AxisRenderer(QQuickItem *parent)
     : QQuickItem(parent)
 {
     m_graph = qobject_cast<QGraphsView *>(parent);
     setFlag(QQuickItem::ItemHasContents);
-
-    m_dragHandler = new QQuickDragHandler(this);
-    m_dragHandler->setDragThreshold(10);
-    m_dragHandler->setTarget(nullptr);
-    connect(m_dragHandler, &QQuickDragHandler::translationChanged,
-            this, &AxisRenderer::onTranslationChanged);
-    connect(m_dragHandler, &QQuickDragHandler::grabChanged,
-            this, &AxisRenderer::onGrabChanged);
 }
 
 AxisRenderer::~AxisRenderer() {}
@@ -37,31 +66,41 @@ QGraphsTheme *AxisRenderer::theme() {
 }
 
 void AxisRenderer::initialize() {
-    if (m_initialized)
+    if (m_initialized) {
         return;
-    if (!window())
+    }
+    if (!window()) {
+        qCCritical(lcCritical2D, "window doesn't exist.");
         return;
+    }
 
     if (m_axisGrid)
         m_axisGrid->componentComplete();
-    if (m_axisLineVertical)
-        m_axisLineVertical->componentComplete();
-    if (m_axisTickerVertical)
-        m_axisTickerVertical->componentComplete();
-    if (m_axisLineHorizontal)
-        m_axisLineHorizontal->componentComplete();
-    if (m_axisTickerHorizontal)
-        m_axisTickerHorizontal->componentComplete();
     if (m_axisGridShadow)
         m_axisGridShadow->componentComplete();
-    if (m_axisLineVerticalShadow)
-        m_axisLineVerticalShadow->componentComplete();
-    if (m_axisTickerVerticalShadow)
-        m_axisTickerVerticalShadow->componentComplete();
-    if (m_axisLineHorizontalShadow)
-        m_axisLineHorizontalShadow->componentComplete();
-    if (m_axisTickerHorizontalShadow)
-        m_axisTickerHorizontalShadow->componentComplete();
+
+    for (auto&& ax : *m_horzAxes) {
+        if (ax.line)
+            ax.line->componentComplete();
+        if (ax.ticker)
+            ax.ticker->componentComplete();
+        if (ax.lineShadow)
+            ax.lineShadow->componentComplete();
+        if (ax.tickerShadow)
+            ax.tickerShadow->componentComplete();
+    }
+
+    for (auto&& ax : *m_vertAxes) {
+        if (ax.line)
+            ax.line->componentComplete();
+        if (ax.ticker)
+            ax.ticker->componentComplete();
+        if (ax.lineShadow)
+            ax.lineShadow->componentComplete();
+        if (ax.tickerShadow)
+            ax.tickerShadow->componentComplete();
+    }
+
     m_initialized = true;
 }
 
@@ -71,8 +110,8 @@ QVector2D AxisRenderer::windowToAxisCoords(QVector2D coords)
     float y = coords.y();
     x /= width() - m_graph->m_marginLeft - m_graph->m_marginRight - m_graph->m_axisWidth;
     y /= height() - m_graph->m_marginTop - m_graph->m_marginBottom - m_graph->m_axisHeight;
-    x *= m_axisHorizontalValueRange;
-    y *= m_axisVerticalValueRange;
+    x *= (*m_horzAxes)[0].valueRange;
+    y *= (*m_vertAxes)[0].valueRange;
     return QVector2D(x, y);
 }
 
@@ -81,8 +120,8 @@ bool AxisRenderer::zoom(qreal delta)
     if (m_graph->zoomStyle() != QGraphsView::ZoomStyle::Center)
         return false;
 
-    auto haxis = qobject_cast<QValueAxis *>(m_axisHorizontal);
-    auto vaxis = qobject_cast<QValueAxis *>(m_axisVertical);
+    auto haxis = qobject_cast<QValueAxis *>((*m_horzAxes)[0].axis);
+    auto vaxis = qobject_cast<QValueAxis *>((*m_vertAxes)[0].axis);
 
     if (!haxis && !vaxis)
         return false;
@@ -114,6 +153,24 @@ bool AxisRenderer::zoom(qreal delta)
         vaxis->setZoom(zoom.y());
 
     return true;
+}
+
+const AxisRenderer::AxisProperties &AxisRenderer::getAxisX(QAbstractSeries *series) const
+{
+    for (auto &&ax : *m_horzAxes) {
+        if (ax.axis && (ax.axis == series->axisX() || ax.axis == series->axisY()))
+            return ax;
+    }
+    return (*m_horzAxes)[0];
+}
+
+const AxisRenderer::AxisProperties &AxisRenderer::getAxisY(QAbstractSeries *series) const
+{
+    for (auto &&ax : *m_vertAxes) {
+        if (ax.axis && (ax.axis == series->axisX() || ax.axis == series->axisY()))
+            return ax;
+    }
+    return (*m_vertAxes)[0];
 }
 
 bool AxisRenderer::handleWheel(QWheelEvent *event)
@@ -162,8 +219,8 @@ void AxisRenderer::onTranslationChanged(QVector2D delta)
     if (m_graph->panStyle() != QGraphsView::PanStyle::Drag)
         return;
 
-    auto haxis = qobject_cast<QValueAxis *>(m_axisHorizontal);
-    auto vaxis = qobject_cast<QValueAxis *>(m_axisVertical);
+    auto haxis = qobject_cast<QValueAxis *>((*m_horzAxes)[0].axis);
+    auto vaxis = qobject_cast<QValueAxis *>((*m_vertAxes)[0].axis);
 
     if (!haxis && !vaxis)
         return;
@@ -183,10 +240,13 @@ void AxisRenderer::onGrabChanged(QPointingDevice::GrabTransition transition, QEv
 {
     const QPointF position = point.position();
 
+    auto &hax = (*m_horzAxes)[0];
+    auto &vax = (*m_vertAxes)[0];
+
     if (transition == QPointingDevice::GrabPassive
         && point.pressPosition() == point.position()) {
-        auto haxis = qobject_cast<QValueAxis *>(m_axisHorizontal);
-        auto vaxis = qobject_cast<QValueAxis *>(m_axisVertical);
+        auto haxis = qobject_cast<QValueAxis *>(hax.axis);
+        auto vaxis = qobject_cast<QValueAxis *>(vax.axis);
 
         if (!haxis && !vaxis)
             return;
@@ -209,8 +269,8 @@ void AxisRenderer::onGrabChanged(QPointingDevice::GrabTransition transition, QEv
         if (m_graph->m_zoomAreaItem)
             m_graph->m_zoomAreaItem->setVisible(false);
 
-        auto haxis = qobject_cast<QValueAxis *>(m_axisHorizontal);
-        auto vaxis = qobject_cast<QValueAxis *>(m_axisVertical);
+        auto haxis = qobject_cast<QValueAxis *>(hax.axis);
+        auto vaxis = qobject_cast<QValueAxis *>(vax.axis);
 
         if (!haxis && !vaxis)
             return;
@@ -227,16 +287,16 @@ void AxisRenderer::onGrabChanged(QPointingDevice::GrabTransition transition, QEv
         size = windowToAxisCoords(size);
 
         if (haxis)
-            haxis->setZoom(m_axisHorizontalValueRangeZoomless / size.x());
+            haxis->setZoom(hax.valueRangeZoomless / size.x());
 
         if (vaxis)
-            vaxis->setZoom(m_axisVerticalValueRangeZoomless / size.y());
+            vaxis->setZoom(vax.valueRangeZoomless / size.y());
 
         center -= QVector2D(m_graph->m_marginLeft + m_graph->m_axisWidth, m_graph->m_marginTop);
 
         center = windowToAxisCoords(center);
 
-        center -= QVector2D(m_axisHorizontalValueRange / 2.0f, m_axisVerticalValueRange / 2.0f);
+        center -= QVector2D(hax.valueRange / 2.0f, vax.valueRange / 2.0f);
 
         if (haxis)
             haxis->setPan(haxis->pan() + center.x());
@@ -248,75 +308,253 @@ void AxisRenderer::onGrabChanged(QPointingDevice::GrabTransition transition, QEv
 
 void AxisRenderer::handlePolish()
 {
+    if (m_graph->panStyle() != QGraphsView::PanStyle::None
+        || m_graph->zoomStyle() != QGraphsView::ZoomStyle::None || m_graph->zoomAreaEnabled()) {
+        if (!m_dragHandler)
+            createDragHandler();
+    } else if (m_dragHandler) {
+        deleteDragHandler();
+    }
+
+    // See if series is horizontal, so axis should also switch places.
+    bool vertical = true;
+    if (m_graph->orientation() == Qt::Orientation::Horizontal)
+        vertical = false;
+
+    Q_TRACE(QGraphs2DAxisRendererHandlePolish_entry, m_graph->orientation());
+    if (vertical) {
+        m_horzAxes = &m_axes1;
+        m_vertAxes = &m_axes2;
+    } else {
+        m_horzAxes = &m_axes2;
+        m_vertAxes = &m_axes1;
+    }
+
+    if (vertical != m_wasVertical) {
+        // Orientation has changed, so clear possible custom elements
+        for (auto&& ax : m_axes1) {
+            if (ax.title)
+                ax.title->deleteLater();
+            if (ax.line)
+                ax.line->deleteLater();
+            if (ax.ticker)
+                ax.ticker->deleteLater();
+            if (ax.lineShadow)
+                ax.lineShadow->deleteLater();
+            if (ax.tickerShadow)
+                ax.tickerShadow->deleteLater();
+            for (auto&& item : ax.textItems)
+                item->deleteLater();
+        }
+
+        for (auto&& ax : m_axes2) {
+            if (ax.title)
+                ax.title->deleteLater();
+            if (ax.line)
+                ax.line->deleteLater();
+            if (ax.ticker)
+                ax.ticker->deleteLater();
+            if (ax.lineShadow)
+                ax.lineShadow->deleteLater();
+            if (ax.tickerShadow)
+                ax.tickerShadow->deleteLater();
+            for (auto&& item : ax.textItems)
+                item->deleteLater();
+        }
+
+        m_axes1.clear();
+        m_axes2.clear();
+
+        m_wasVertical = vertical;
+    }
+
+    if (m_axes1.empty())
+        m_axes1.emplace_back();
+
+    if (m_axes2.empty())
+        m_axes2.emplace_back();
+
+    m_axes1[0].axis = m_graph->axisX();
+    m_axes2[0].axis = m_graph->axisY();
+
+    for (auto&& s : m_graph->m_seriesList) {
+        if (auto series = qobject_cast<QAbstractSeries *>(s)) {
+            if (series->axisX() && series->axisX() != m_graph->axisX()) {
+                bool contains = false;
+                for (auto&& ax : m_axes1) {
+                    if (ax.axis == series->axisX()) {
+                        contains = true;
+                        break;
+                    }
+                }
+
+                if (!contains) {
+                    auto &ax = m_axes1.emplace_back();
+                    ax.axis = series->axisX();
+                }
+            }
+
+            if (series->axisY() && series->axisY() != m_graph->axisY()) {
+                bool contains = false;
+                for (auto&& ax : m_axes2) {
+                    if (ax.axis == series->axisY()) {
+                        contains = true;
+                        break;
+                    }
+                }
+
+                if (!contains) {
+                    auto &ax = m_axes2.emplace_back();
+                    ax.axis = series->axisY();
+                }
+            }
+        }
+    }
+
     if (!m_axisGrid) {
         m_axisGrid = new AxisGrid(this);
         m_axisGrid->setZ(-1);
         m_axisGrid->setupShaders();
         m_axisGrid->setOrigo(0);
     }
-    if (!m_axisLineVertical) {
-        m_axisLineVertical = new AxisLine(this);
-        m_axisLineVertical->setZ(-1);
-        m_axisLineVertical->setupShaders();
-    }
-    if (!m_axisTickerVertical) {
-        m_axisTickerVertical = new AxisTicker(this);
-        m_axisTickerVertical->setZ(-2);
-        m_axisTickerVertical->setOrigo(0);
-        // TODO: Configurable in theme or axis?
-        m_axisTickerVertical->setSubTickLength(0.5);
-        m_axisTickerVertical->setupShaders();
-    }
-    if (!m_axisLineHorizontal) {
-        m_axisLineHorizontal = new AxisLine(this);
-        m_axisLineHorizontal->setZ(-1);
-        m_axisLineHorizontal->setIsHorizontal(true);
-        m_axisLineHorizontal->setupShaders();
-    }
-    if (!m_axisTickerHorizontal) {
-        m_axisTickerHorizontal = new AxisTicker(this);
-        m_axisTickerHorizontal->setZ(-2);
-        m_axisTickerHorizontal->setIsHorizontal(true);
-        m_axisTickerHorizontal->setOrigo(0);
-        // TODO: Configurable in theme or axis?
-        m_axisTickerHorizontal->setSubTickLength(0.2);
-        m_axisTickerHorizontal->setupShaders();
-    }
-
-    // TODO: Create shadows only when needed
     if (!m_axisGridShadow) {
         m_axisGridShadow = new AxisGrid(this);
         m_axisGridShadow->setZ(-3);
         m_axisGridShadow->setupShaders();
         m_axisGridShadow->setOrigo(0);
     }
-    if (!m_axisLineVerticalShadow) {
-        m_axisLineVerticalShadow = new AxisLine(this);
-        m_axisLineVerticalShadow->setZ(-3);
-        m_axisLineVerticalShadow->setupShaders();
+
+    for (int i = 1; i < m_axes1.size(); i++) {
+        auto& ax = m_axes1[i];
+
+        bool used = false;
+
+        for (auto&& s : m_graph->m_seriesList) {
+            if (auto series = qobject_cast<QAbstractSeries *>(s)) {
+                if (series->axisX() && series->axisX() == ax.axis) {
+                    used = true;
+                    break;
+                }
+            }
+        }
+
+        if (!used) {
+            if (ax.title)
+                ax.title->deleteLater();
+            if (ax.line)
+                ax.line->deleteLater();
+            if (ax.ticker)
+                ax.ticker->deleteLater();
+            if (ax.lineShadow)
+                ax.lineShadow->deleteLater();
+            if (ax.tickerShadow)
+                ax.tickerShadow->deleteLater();
+            for (auto&& item : ax.textItems)
+                item->deleteLater();
+            m_axes1.removeAt(i);
+            i--;
+            continue;
+        }
     }
-    if (!m_axisTickerVerticalShadow) {
-        m_axisTickerVerticalShadow = new AxisTicker(this);
-        m_axisTickerVerticalShadow->setZ(-3);
-        m_axisTickerVerticalShadow->setOrigo(0);
-        // TODO: Configurable in theme or axis?
-        m_axisTickerVerticalShadow->setSubTickLength(m_axisTickerVertical->subTickLength());
-        m_axisTickerVerticalShadow->setupShaders();
+
+    for (int i = 1; i < m_axes2.size(); i++) {
+        auto& ax = m_axes2[i];
+
+        bool used = false;
+
+        for (auto&& s : m_graph->m_seriesList) {
+            if (auto series = qobject_cast<QAbstractSeries *>(s)) {
+                if (series->axisY() && series->axisY() == ax.axis) {
+                    used = true;
+                    break;
+                }
+            }
+        }
+
+        if (!used) {
+            if (ax.title)
+                ax.title->deleteLater();
+            if (ax.line)
+                ax.line->deleteLater();
+            if (ax.ticker)
+                ax.ticker->deleteLater();
+            if (ax.lineShadow)
+                ax.lineShadow->deleteLater();
+            if (ax.tickerShadow)
+                ax.tickerShadow->deleteLater();
+            for (auto&& item : ax.textItems)
+                item->deleteLater();
+            m_axes2.removeAt(i);
+            i--;
+            continue;
+        }
     }
-    if (!m_axisLineHorizontalShadow) {
-        m_axisLineHorizontalShadow = new AxisLine(this);
-        m_axisLineHorizontalShadow->setZ(-3);
-        m_axisLineHorizontalShadow->setupShaders();
+
+    for (int i = 0; i < m_vertAxes->size(); i++) {
+        auto& ax = (*m_vertAxes)[i];
+
+        if (!ax.line) {
+            ax.line = new AxisLine(this);
+            ax.line->setZ(-1);
+            ax.line->setupShaders();
+        }
+        if (!ax.ticker) {
+            ax.ticker = new AxisTicker(this);
+            ax.ticker->setZ(-2);
+            ax.ticker->setOrigo(0);
+            // TODO: Configurable in theme or axis?
+            ax.ticker->setSubTickLength(0.5);
+            ax.ticker->setupShaders();
+        }
+        if (!ax.lineShadow) {
+            ax.lineShadow = new AxisLine(this);
+            ax.lineShadow->setZ(-3);
+            ax.lineShadow->setupShaders();
+        }
+        if (!ax.tickerShadow) {
+            ax.tickerShadow = new AxisTicker(this);
+            ax.tickerShadow->setZ(-3);
+            ax.tickerShadow->setOrigo(0);
+            // TODO: Configurable in theme or axis?
+            ax.tickerShadow->setSubTickLength(ax.ticker->subTickLength());
+            ax.tickerShadow->setupShaders();
+        }
     }
-    if (!m_axisTickerHorizontalShadow) {
-        m_axisTickerHorizontalShadow = new AxisTicker(this);
-        m_axisTickerHorizontalShadow->setZ(-3);
-        m_axisTickerHorizontalShadow->setIsHorizontal(true);
-        m_axisTickerHorizontalShadow->setOrigo(0);
-        // TODO: Configurable in theme or axis?
-        m_axisTickerHorizontalShadow->setSubTickLength(m_axisTickerHorizontal->subTickLength());
-        m_axisTickerHorizontalShadow->setupShaders();
+
+    for (int i = 0; i < m_horzAxes->size(); i++) {
+        auto& ax = (*m_horzAxes)[i];
+
+        if (!ax.line) {
+            ax.line = new AxisLine(this);
+            ax.line->setZ(-1);
+            ax.line->setIsHorizontal(true);
+            ax.line->setupShaders();
+        }
+        if (!ax.ticker) {
+            ax.ticker = new AxisTicker(this);
+            ax.ticker->setZ(-2);
+            ax.ticker->setIsHorizontal(true);
+            ax.ticker->setOrigo(0);
+            // TODO: Configurable in theme or axis?
+            ax.ticker->setSubTickLength(0.2);
+            ax.ticker->setupShaders();
+        }
+        if (!ax.lineShadow) {
+            ax.lineShadow = new AxisLine(this);
+            ax.lineShadow->setZ(-3);
+            ax.lineShadow->setupShaders();
+        }
+        if (!ax.tickerShadow) {
+            ax.tickerShadow = new AxisTicker(this);
+            ax.tickerShadow->setZ(-3);
+            ax.tickerShadow->setIsHorizontal(true);
+            ax.tickerShadow->setOrigo(0);
+            // TODO: Configurable in theme or axis?
+            ax.tickerShadow->setSubTickLength(ax.ticker->subTickLength());
+            ax.tickerShadow->setupShaders();
+        }
     }
+    Q_TRACE(QGraphs2DAxisRendererHandlePolish_exit);
 
     updateAxis();
 }
@@ -326,380 +564,472 @@ void AxisRenderer::updateAxis()
     if (!theme())
         return;
 
-    // Update active axis
-    QAbstractAxis *axisVertical = m_graph->m_axisY;
-    QAbstractAxis *axisHorizontal = m_graph->m_axisX;
-
-    // See if series is horizontal, so axis should also switch places.
-    bool vertical = true;
-    if (m_graph->orientation() == Qt::Orientation::Horizontal)
-        vertical = false;
-    if (vertical) {
-        m_axisVertical = axisVertical;
-        m_axisHorizontal = axisHorizontal;
-    } else {
-        m_axisVertical = axisHorizontal;
-        m_axisHorizontal = axisVertical;
-    }
-
-    if (vertical != m_wasVertical) {
-        // Orientation has changed, so clear possible custom elements
-        for (auto &item : m_xAxisTextItems)
-            item->deleteLater();
-        m_xAxisTextItems.clear();
-
-        for (auto &item : m_yAxisTextItems)
-            item->deleteLater();
-        m_yAxisTextItems.clear();
-
-        m_wasVertical = vertical;
-    }
-
     float axisWidth = m_graph->m_axisWidth;
     float axisHeight = m_graph->m_axisHeight;
 
     const bool gridVisible = theme()->isGridVisible();
-    if (m_axisVertical) {
-        m_gridVerticalLinesVisible = gridVisible && m_axisVertical->isGridVisible();
-        m_gridVerticalSubLinesVisible = gridVisible && m_axisVertical->isSubGridVisible();
-        m_verticalAxisOnRight = m_axisVertical->alignment() == Qt::AlignRight;
+    if ((*m_vertAxes)[0].axis) {
+        m_gridVerticalLinesVisible = gridVisible && (*m_vertAxes)[0].axis->isGridVisible();
+        m_gridVerticalSubLinesVisible = gridVisible && (*m_vertAxes)[0].axis->isSubGridVisible();
     }
-    if (m_axisHorizontal) {
-        m_gridHorizontalLinesVisible = gridVisible && m_axisHorizontal->isGridVisible();
-        m_gridHorizontalSubLinesVisible = gridVisible && m_axisHorizontal->isSubGridVisible();
-        m_horizontalAxisOnTop = m_axisHorizontal->alignment() == Qt::AlignTop;
+    if ((*m_horzAxes)[0].axis) {
+        m_gridHorizontalLinesVisible = gridVisible && (*m_horzAxes)[0].axis->isGridVisible();
+        m_gridHorizontalSubLinesVisible = gridVisible && (*m_horzAxes)[0].axis->isSubGridVisible();
     }
 
-    if (auto vaxis = qobject_cast<QValueAxis *>(m_axisVertical)) {
-        double step = vaxis->tickInterval();
+    int topCount = 0;
+    int leftCount = 0;
+    int xCount = 0;
+    int yCount = 0;
 
-        qreal diff = vaxis->max() - vaxis->min();
-        qreal center = diff / 2.0f + vaxis->min() + vaxis->pan();
-
-        diff /= vaxis->zoom();
-
-        m_axisVerticalMaxValue = center + diff / 2.0f;
-        m_axisVerticalMinValue = center - diff / 2.0f;
-
-        m_axisVerticalValueRange = m_axisVerticalMaxValue - m_axisVerticalMinValue;
-        m_axisVerticalValueRangeZoomless = vaxis->max() - vaxis->min();
-
-        // If step is not manually defined (or it is invalid), calculate autostep
-        if (step <= 0)
-            step = getValueStepsFromRange(vaxis->max() - vaxis->min());
-
-        // Get smallest tick label value
-        double minLabel = vaxis->tickAnchor();
-        while (minLabel < m_axisVerticalMinValue)
-            minLabel += step;
-        while (minLabel >= (m_axisVerticalMinValue + step))
-            minLabel -= step;
-        m_axisVerticalMinLabel = minLabel;
-
-        m_axisVerticalValueStep = step;
-        int axisVerticalSubTickCount = vaxis->subTickCount();
-        m_axisVerticalSubGridScale = axisVerticalSubTickCount > 0 ? 1.0 / (axisVerticalSubTickCount + 1) : 1.0;
-        m_axisVerticalStepPx = (height() - m_graph->m_marginTop - m_graph->m_marginBottom - axisHeight) / (m_axisVerticalValueRange / m_axisVerticalValueStep);
-        double axisVerticalValueDiff = m_axisVerticalMinLabel - m_axisVerticalMinValue;
-        m_axisYDisplacement = -(axisVerticalValueDiff / m_axisVerticalValueStep) * m_axisVerticalStepPx;
-
-        // Update value labels
-        updateValueYAxisLabels(vaxis, m_graph->m_yAxisLabelsArea);
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateAxis);
+    for (auto &&ax : *m_horzAxes) {
+        if (ax.axis && (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft))
+            topCount++;
+        if (ax.axis)
+            xCount++;
     }
 
-    if (auto haxis = qobject_cast<QValueAxis *>(m_axisHorizontal)) {
-        double step = haxis->tickInterval();
+    for (auto&& ax : *m_vertAxes) {
+        if (ax.axis && (ax.axis->alignment() == Qt::AlignLeft || ax.axis->alignment() == Qt::AlignTop))
+            leftCount++;
+        if (ax.axis)
+            yCount++;
+    }
 
-        qreal diff = haxis->max() - haxis->min();
-        qreal center = diff / 2.0f + haxis->min() + haxis->pan();
+    int top = 0;
+    int bottom = 0;
+    for (auto&& ax : *m_horzAxes) {
+        if (!ax.axis)
+            continue;
 
-        diff /= haxis->zoom();
+        ax.x = leftCount * m_graph->m_axisWidth;
 
-        m_axisHorizontalMaxValue = center + diff / 2.0f;
-        m_axisHorizontalMinValue = center - diff / 2.0f;
+        if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft) {
+            ax.y = (topCount - top - 1) * m_graph->m_axisHeight;
+            top++;
+        } else if (ax.axis->alignment() == Qt::AlignBottom || ax.axis->alignment() == Qt::AlignRight) {
+            ax.y = bottom * m_graph->m_axisHeight;
+            bottom++;
+        }
+    }
 
-        m_axisHorizontalValueRange = m_axisHorizontalMaxValue - m_axisHorizontalMinValue;
-        m_axisHorizontalValueRangeZoomless = haxis->max() - haxis->min();
+    int left = 0;
+    int right = 0;
+    for (auto&& ax : *m_vertAxes) {
+        if (!ax.axis)
+            continue;
 
-        // If step is not manually defined (or it is invalid), calculate autostep
-        if (step <= 0)
-            step = getValueStepsFromRange(haxis->max() - haxis->min());
+        ax.y = topCount * m_graph->m_axisHeight;
 
-        // Get smallest tick label value
-        double minLabel = haxis->tickAnchor();
-        while (minLabel < m_axisHorizontalMinValue)
-            minLabel += step;
-        while (minLabel >= (m_axisHorizontalMinValue + step))
-            minLabel -= step;
-        m_axisHorizontalMinLabel = minLabel;
+        if (ax.axis->alignment() == Qt::AlignLeft || ax.axis->alignment() == Qt::AlignTop) {
+            ax.x = (leftCount - left - 1) * m_graph->m_axisWidth;
+            left++;
+        } else if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom) {
+            ax.x = right * m_graph->m_axisWidth;
+            right++;
+        }
+    }
 
-        m_axisHorizontalValueStep = step;
-        int axisHorizontalSubTickCount = haxis->subTickCount();
-        m_axisHorizontalSubGridScale = axisHorizontalSubTickCount > 0 ?
-                1.0 / (axisHorizontalSubTickCount + 1) : 1.0;
-        m_axisHorizontalStepPx = (width() - m_graph->m_marginLeft - m_graph->m_marginRight - axisWidth)
-                / (m_axisHorizontalValueRange / m_axisHorizontalValueStep);
-        double axisHorizontalValueDiff = m_axisHorizontalMinLabel - m_axisHorizontalMinValue;
-        m_axisXDisplacement = -(axisHorizontalValueDiff / m_axisHorizontalValueStep) * m_axisHorizontalStepPx;
+    for (auto&& ax : *m_vertAxes) {
+        if (auto vaxis = qobject_cast<QValueAxis *>(ax.axis)) {
+            double step = vaxis->tickInterval();
 
-        // Update value labels
-        updateValueXAxisLabels(haxis, m_graph->m_xAxisLabelsArea);
+            qreal diff = vaxis->max() - vaxis->min();
+            qreal center = diff / 2.0f + vaxis->min() + vaxis->pan();
+
+            diff /= vaxis->zoom();
+
+            ax.maxValue = center + diff / 2.0f;
+            ax.minValue = center - diff / 2.0f;
+
+            ax.valueRange = ax.maxValue - ax.minValue;
+            ax.valueRangeZoomless = vaxis->max() - vaxis->min();
+
+            // If step is not manually defined (or it is invalid), calculate autostep
+            if (step <= 0)
+                step = getValueStepsFromRange(vaxis->max() - vaxis->min());
+
+            // Get smallest tick label value
+            double minLabel = vaxis->tickAnchor();
+            while (minLabel < ax.minValue)
+                minLabel += step;
+            while (minLabel >= (ax.minValue + step))
+                minLabel -= step;
+            ax.minLabel = minLabel;
+
+            ax.valueStep = step;
+            int axisVerticalSubTickCount = vaxis->subTickCount();
+            ax.subGridScale = axisVerticalSubTickCount > 0 ? 1.0 / (axisVerticalSubTickCount + 1)
+                                                            : 1.0;
+            ax.stepPx = (height() - m_graph->m_marginTop - m_graph->m_marginBottom
+                          - axisHeight * xCount)
+                         / (ax.valueRange / ax.valueStep);
+            double axisVerticalValueDiff = ax.minLabel - ax.minValue;
+            ax.displacement = -(axisVerticalValueDiff / ax.valueStep) * ax.stepPx;
+
+            // Update value labels
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom)
+                updateValueYAxisLabels(ax, m_graph->m_y2AxisLabelsArea);
+            else
+                updateValueYAxisLabels(ax, m_graph->m_y1AxisLabelsArea);
+        }
+    }
+    for (auto&& ax : *m_horzAxes) {
+        if (auto haxis = qobject_cast<QValueAxis *>(ax.axis)) {
+            double step = haxis->tickInterval();
+
+            qreal diff = haxis->max() - haxis->min();
+            qreal center = diff / 2.0f + haxis->min() + haxis->pan();
+
+            diff /= haxis->zoom();
+
+            ax.maxValue = center + diff / 2.0f;
+            ax.minValue = center - diff / 2.0f;
+
+            ax.valueRange = ax.maxValue - ax.minValue;
+            ax.valueRangeZoomless = haxis->max() - haxis->min();
+
+            // If step is not manually defined (or it is invalid), calculate autostep
+            if (step <= 0)
+                step = getValueStepsFromRange(haxis->max() - haxis->min());
+
+            // Get smallest tick label value
+            double minLabel = haxis->tickAnchor();
+            while (minLabel < ax.minValue)
+                minLabel += step;
+            while (minLabel >= (ax.minValue + step))
+                minLabel -= step;
+            ax.minLabel = minLabel;
+
+            ax.valueStep = step;
+            int axisHorizontalSubTickCount = haxis->subTickCount();
+            ax.subGridScale = axisHorizontalSubTickCount > 0 ?
+                    1.0 / (axisHorizontalSubTickCount + 1) : 1.0;
+            ax.stepPx = (width() - m_graph->m_marginLeft - m_graph->m_marginRight
+                          - axisWidth * yCount)
+                         / (ax.valueRange / ax.valueStep);
+            double axisHorizontalValueDiff = ax.minLabel - ax.minValue;
+            ax.displacement = -(axisHorizontalValueDiff / ax.valueStep) * ax.stepPx;
+
+            // Update value labels
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft)
+                updateValueXAxisLabels(ax, m_graph->m_x2AxisLabelsArea);
+            else
+                updateValueXAxisLabels(ax, m_graph->m_x1AxisLabelsArea);
+        }
     }
 
 #ifdef USE_BARGRAPH
-    if (auto haxis = qobject_cast<QBarCategoryAxis *>(m_axisHorizontal)) {
-        m_axisHorizontalMaxValue = haxis->categories().size();
-        m_axisHorizontalMinValue = 0;
-        m_axisHorizontalValueRange = m_axisHorizontalMaxValue - m_axisHorizontalMinValue;
-        updateBarXAxisLabels(haxis, m_graph->m_xAxisLabelsArea);
+    for (auto&& ax : *m_vertAxes) {
+        if (auto vaxis = qobject_cast<QBarCategoryAxis *>(ax.axis)) {
+            ax.maxValue = vaxis->categories().size();
+            ax.minValue = 0;
+            ax.valueRange = ax.maxValue - ax.minValue;
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom)
+                updateBarYAxisLabels(ax, m_graph->m_y2AxisLabelsArea);
+            else
+                updateBarYAxisLabels(ax, m_graph->m_y1AxisLabelsArea);
+        }
     }
-    if (auto vaxis = qobject_cast<QBarCategoryAxis *>(m_axisVertical)) {
-        m_axisVerticalMaxValue = vaxis->categories().size();
-        m_axisVerticalMinValue = 0;
-        m_axisVerticalValueRange = m_axisVerticalMaxValue - m_axisVerticalMinValue;
-        updateBarYAxisLabels(vaxis, m_graph->m_yAxisLabelsArea);
+
+    for (auto&& ax : *m_horzAxes) {
+        if (auto haxis = qobject_cast<QBarCategoryAxis *>(ax.axis)) {
+            ax.maxValue = haxis->categories().size();
+            ax.minValue = 0;
+            ax.valueRange = ax.maxValue - ax.minValue;
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft)
+                updateBarXAxisLabels(ax, m_graph->m_x2AxisLabelsArea);
+            else
+                updateBarXAxisLabels(ax, m_graph->m_x1AxisLabelsArea);
+        }
     }
 #endif
 
-    if (auto vaxis = qobject_cast<QDateTimeAxis *>(m_axisVertical)) {
-        // Todo: make constant for all axis, or clamp in class? (QTBUG-124736)
-        const double MAX_DIVS = 100.0;
+    for (auto&& ax : *m_vertAxes) {
+        if (auto vaxis = qobject_cast<QDateTimeAxis *>(ax.axis)) {
+            // Todo: make constant for all axis, or clamp in class? (QTBUG-124736)
+            const double MAX_DIVS = 100.0;
 
-        double interval = std::clamp<double>(vaxis->tickInterval(), 0.0, MAX_DIVS);
-        m_axisVerticalMaxValue = vaxis->max().toMSecsSinceEpoch();
-        m_axisVerticalMinValue = vaxis->min().toMSecsSinceEpoch();
-        m_axisVerticalValueRange = std::abs(m_axisVerticalMaxValue - m_axisVerticalMinValue);
+            double interval = std::clamp<double>(vaxis->tickInterval(), 0.0, MAX_DIVS);
+            ax.maxValue = vaxis->max().toMSecsSinceEpoch();
+            ax.minValue = vaxis->min().toMSecsSinceEpoch();
+            ax.valueRange = std::abs(ax.maxValue - ax.minValue);
 
-        // in ms
-        double segment;
-        if (interval <= 0) {
-            segment = getValueStepsFromRange(m_axisVerticalValueRange);
-            interval = m_axisVerticalValueRange / segment;
-        } else {
-            segment = m_axisVerticalValueRange / interval;
+            // in ms
+            double segment;
+            if (interval <= 0) {
+                segment = getValueStepsFromRange(ax.valueRange);
+                interval = ax.valueRange / segment;
+            } else {
+                segment = ax.valueRange / interval;
+            }
+
+            ax.minLabel = std::clamp(interval, 1.0, MAX_DIVS);
+
+            ax.valueStep = segment;
+            int axisVerticalSubTickCount = vaxis->subTickCount();
+            ax.subGridScale = axisVerticalSubTickCount > 0
+                                               ? 1.0 / (axisVerticalSubTickCount + 1)
+                                               : 1.0;
+            ax.stepPx = (height() - m_graph->m_marginTop - m_graph->m_marginBottom
+                                    - axisHeight)
+                                   / (qFuzzyIsNull(segment)
+                                          ? interval
+                                          : (ax.valueRange / ax.valueStep));
+
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom)
+                updateDateTimeYAxisLabels(ax, m_graph->m_y2AxisLabelsArea);
+            else
+                updateDateTimeYAxisLabels(ax, m_graph->m_y1AxisLabelsArea);
         }
-
-        m_axisVerticalMinLabel = std::clamp(interval, 1.0, MAX_DIVS);
-
-        m_axisVerticalValueStep = segment;
-        int axisVerticalSubTickCount = vaxis->subTickCount();
-        m_axisVerticalSubGridScale = axisVerticalSubTickCount > 0
-                                           ? 1.0 / (axisVerticalSubTickCount + 1)
-                                           : 1.0;
-        m_axisVerticalStepPx = (height() - m_graph->m_marginTop - m_graph->m_marginBottom
-                                - axisHeight)
-                               / (qFuzzyCompare(segment, 0)
-                                      ? interval
-                                      : (m_axisVerticalValueRange / m_axisVerticalValueStep));
-
-        updateDateTimeYAxisLabels(vaxis, m_graph->m_yAxisLabelsArea);
     }
 
-    if (auto haxis = qobject_cast<QDateTimeAxis *>(m_axisHorizontal)) {
-        const double MAX_DIVS = 100.0;
+    for (auto&& ax : *m_horzAxes) {
+        if (auto haxis = qobject_cast<QDateTimeAxis *>(ax.axis)) {
+            const double MAX_DIVS = 100.0;
 
-        double interval = std::clamp<double>(haxis->tickInterval(), 0.0, MAX_DIVS);
-        m_axisHorizontalMaxValue = haxis->max().toMSecsSinceEpoch();
-        m_axisHorizontalMinValue = haxis->min().toMSecsSinceEpoch();
-        m_axisHorizontalValueRange = std::abs(m_axisHorizontalMaxValue - m_axisHorizontalMinValue);
+            double interval = std::clamp<double>(haxis->tickInterval(), 0.0, MAX_DIVS);
+            ax.maxValue = haxis->max().toMSecsSinceEpoch();
+            ax.minValue = haxis->min().toMSecsSinceEpoch();
+            ax.valueRange = std::abs(ax.maxValue - ax.minValue);
 
-        // in ms
-        double segment;
-        if (interval <= 0) {
-            segment = getValueStepsFromRange(m_axisHorizontalValueRange);
-            interval = m_axisHorizontalValueRange / segment;
-        } else {
-            segment = m_axisHorizontalValueRange / interval;
+            // in ms
+            double segment;
+            if (interval <= 0) {
+                segment = getValueStepsFromRange(ax.valueRange);
+                interval = ax.valueRange / segment;
+            } else {
+                segment = ax.valueRange / interval;
+            }
+
+            ax.minLabel = std::clamp(interval, 1.0, MAX_DIVS);
+
+            ax.valueStep = segment;
+            int axisHorizontalSubTickCount = haxis->subTickCount();
+            ax.subGridScale = axisHorizontalSubTickCount > 0
+                                                 ? 1.0 / (axisHorizontalSubTickCount + 1)
+                                                 : 1.0;
+            ax.stepPx = (width() - m_graph->m_marginLeft - m_graph->m_marginRight
+                                      - axisWidth)
+                                     / (qFuzzyIsNull(segment)
+                                            ? interval
+                                            : (ax.valueRange / ax.valueStep));
+
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft)
+                updateDateTimeXAxisLabels(ax, m_graph->m_x2AxisLabelsArea);
+            else
+                updateDateTimeXAxisLabels(ax, m_graph->m_x1AxisLabelsArea);
         }
-
-        m_axisHorizontalMinLabel = std::clamp(interval, 1.0, MAX_DIVS);
-
-        m_axisHorizontalValueStep = segment;
-        int axisHorizontalSubTickCount = haxis->subTickCount();
-        m_axisHorizontalSubGridScale = axisHorizontalSubTickCount > 0
-                                             ? 1.0 / (axisHorizontalSubTickCount + 1)
-                                             : 1.0;
-        m_axisHorizontalStepPx = (width() - m_graph->m_marginLeft - m_graph->m_marginRight
-                                  - axisWidth)
-                                 / (qFuzzyCompare(segment, 0)
-                                        ? interval
-                                        : (m_axisHorizontalValueRange / m_axisHorizontalValueStep));
-        updateDateTimeXAxisLabels(haxis, m_graph->m_xAxisLabelsArea);
     }
 
     updateAxisTickers();
     updateAxisTickersShadow();
     updateAxisGrid();
     updateAxisGridShadow();
-    updateAxisTitles(m_graph->m_xAxisLabelsArea, m_graph->m_yAxisLabelsArea);
+    updateAxisTitles();
 }
 
 void AxisRenderer::updateAxisTickers()
 {
-    if (m_axisVertical) {
-        // Note: Fix before enabling, see QTBUG-121207 and QTBUG-121211
-        //if (theme()->themeDirty()) {
-            m_axisTickerVertical->setSubTickColor(theme()->axisY().subColor());
-            m_axisTickerVertical->setTickColor(theme()->axisY().mainColor());
-            m_axisTickerVertical->setTickLineWidth(theme()->axisY().mainWidth());
-            m_axisTickerVertical->setSubTickLineWidth(theme()->axisY().subWidth());
-            m_axisTickerVertical->setSmoothing(m_graph->axisYSmoothing());
-        //}
-        float topPadding = m_axisGrid->gridLineWidth() * 0.5;
-        float bottomPadding = topPadding;
-        // TODO Only when changed
-        m_axisTickerVertical->setDisplacement(m_axisYDisplacement);
-        QRectF rect = m_graph->m_yAxisTickersArea;
-        m_axisTickerVertical->setX(rect.x());
-        m_axisTickerVertical->setY(rect.y());
-        m_axisTickerVertical->setWidth(rect.width());
-        m_axisTickerVertical->setHeight(rect.height());
-        m_axisTickerVertical->setFlipped(m_verticalAxisOnRight);
+    for (auto&& ax : *m_vertAxes) {
+        if (ax.axis) {
+            QRectF yAxisRect;
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom)
+                yAxisRect = m_graph->m_y2AxisTickersArea;
+            else
+                yAxisRect = m_graph->m_y1AxisTickersArea;
 
-        m_axisTickerVertical->setSpacing((m_axisTickerVertical->height() - topPadding - bottomPadding)
-                                         / (m_axisVerticalValueRange / m_axisVerticalValueStep));
-        m_axisTickerVertical->setSubTicksVisible(!qFuzzyCompare(m_axisVerticalSubGridScale, 1.0));
-        m_axisTickerVertical->setSubTickScale(m_axisVerticalSubGridScale);
-        m_axisTickerVertical->setVisible(m_axisVertical->isVisible());
-        // Axis line
-        m_axisLineVertical->setColor(theme()->axisY().mainColor());
-        m_axisLineVertical->setLineWidth(theme()->axisY().mainWidth());
-        m_axisLineVertical->setSmoothing(m_graph->axisYSmoothing());
+            // Note: Fix before enabling, see QTBUG-121207 and QTBUG-121211
+            //if (theme()->themeDirty()) {
+            ax.ticker->setSubTickColor(theme()->axisY().subColor());
+            ax.ticker->setTickColor(theme()->axisY().mainColor());
+            ax.ticker->setTickLineWidth(theme()->axisY().mainWidth());
+            ax.ticker->setSubTickLineWidth(theme()->axisY().subWidth());
+            ax.ticker->setSmoothing(m_graph->axisYSmoothing());
+            //}
 
-        float xMovement = 0.5 * (m_axisLineVertical->lineWidth() + m_axisLineVertical->smoothing());
-        if (m_verticalAxisOnRight)
-            m_axisLineVertical->setX(m_axisTickerVertical->x() - xMovement);
-        else
-            m_axisLineVertical->setX(m_axisTickerVertical->x() + m_axisTickerVertical->width() - xMovement);
-        m_axisLineVertical->setY(m_axisTickerVertical->y());
-        m_axisLineVertical->setWidth(m_axisLineVertical->lineWidth() + m_axisLineVertical->smoothing());
-        m_axisLineVertical->setHeight(m_axisTickerVertical->height());
-        m_axisLineVertical->setVisible(m_axisVertical->isLineVisible());
-    } else {
-        // Hide all parts of vertical axis
-        m_axisTickerVertical->setVisible(false);
-        m_axisLineVertical->setVisible(false);
-        for (auto &textItem : m_yAxisTextItems)
-            textItem->setVisible(false);
+                float topPadding = m_axisGrid->gridLineWidth() * 0.5;
+                float bottomPadding = topPadding;
+                // TODO Only when changed
+                ax.ticker->setDisplacement(ax.displacement);
+                QRectF &rect = yAxisRect;
+                ax.ticker->setX(rect.x() + ax.x);
+                ax.ticker->setY(rect.y() + ax.y);
+                ax.ticker->setWidth(rect.width());
+                ax.ticker->setHeight(rect.height());
+                ax.ticker->setFlipped(ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom);
+
+                ax.ticker->setSpacing((ax.ticker->height() - topPadding - bottomPadding)
+                                       / (ax.valueRange / ax.valueStep));
+                ax.ticker->setSubTicksVisible(!qFuzzyCompare(ax.subGridScale, 1.0));
+                ax.ticker->setSubTickScale(ax.subGridScale);
+                ax.ticker->setVisible(ax.axis->isVisible());
+                // Axis line
+                ax.line->setColor(theme()->axisY().mainColor());
+                ax.line->setLineWidth(theme()->axisY().mainWidth());
+                ax.line->setSmoothing(m_graph->axisYSmoothing());
+
+                float xMovement = 0.5 * (ax.line->lineWidth() + ax.line->smoothing());
+                if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom)
+                    ax.line->setX(ax.ticker->x() - xMovement);
+                else
+                    ax.line->setX(ax.ticker->x() + ax.ticker->width() - xMovement);
+                ax.line->setY(ax.ticker->y());
+                ax.line->setWidth(ax.line->lineWidth() + ax.line->smoothing());
+                ax.line->setHeight(ax.ticker->height());
+                ax.line->setVisible(ax.axis->isLineVisible());
+        } else {
+            // Hide all parts of vertical axis
+            ax.ticker->setVisible(false);
+            ax.line->setVisible(false);
+            for (auto &textItem : ax.textItems)
+                textItem->setVisible(false);
+        }
     }
 
-    if (m_axisHorizontal) {
-        //if (theme()->themeDirty()) {
-            m_axisTickerHorizontal->setSubTickColor(theme()->axisX().subColor());
-            m_axisTickerHorizontal->setTickColor(theme()->axisX().mainColor());
-            m_axisTickerHorizontal->setTickLineWidth(theme()->axisX().mainWidth());
-            m_axisTickerHorizontal->setSubTickLineWidth(theme()->axisX().subWidth());
-            m_axisTickerHorizontal->setSmoothing(m_graph->axisXSmoothing());
-        //}
-        float leftPadding = m_axisGrid->gridLineWidth() * 0.5;
-        float rightPadding = leftPadding;
-        // TODO Only when changed
-        m_axisTickerHorizontal->setDisplacement(m_axisXDisplacement);
-        QRectF rect = m_graph->m_xAxisTickersArea;
-        m_axisTickerHorizontal->setX(rect.x());
-        m_axisTickerHorizontal->setY(rect.y());
-        m_axisTickerHorizontal->setWidth(rect.width());
-        m_axisTickerHorizontal->setHeight(rect.height());
-        m_axisTickerHorizontal->setFlipped(m_horizontalAxisOnTop);
+    for (auto&& ax : *m_horzAxes) {
+        if (ax.axis) {
+            QRectF xAxisRect;
 
-        m_axisTickerHorizontal->setSpacing((m_axisTickerHorizontal->width() - leftPadding - rightPadding)
-                                         / (m_axisHorizontalValueRange / m_axisHorizontalValueStep));
-        m_axisTickerHorizontal->setSubTicksVisible(!qFuzzyCompare(m_axisHorizontalSubGridScale, 1.0));
-        m_axisTickerHorizontal->setSubTickScale(m_axisHorizontalSubGridScale);
-        m_axisTickerHorizontal->setVisible(m_axisHorizontal->isVisible());
-        // Axis line
-        m_axisLineHorizontal->setColor(theme()->axisX().mainColor());
-        m_axisLineHorizontal->setLineWidth(theme()->axisX().mainWidth());
-        m_axisLineHorizontal->setSmoothing(m_graph->axisXSmoothing());
-        m_axisLineHorizontal->setX(m_axisTickerHorizontal->x());
-        float yMovement = 0.5 * (m_axisLineHorizontal->lineWidth() + m_axisLineHorizontal->smoothing());
-        if (m_horizontalAxisOnTop)
-            m_axisLineHorizontal->setY(m_axisTickerHorizontal->y() + m_axisTickerHorizontal->height() - yMovement);
-        else
-            m_axisLineHorizontal->setY(m_axisTickerHorizontal->y() - yMovement);
-        m_axisLineHorizontal->setWidth(m_axisTickerHorizontal->width());
-        m_axisLineHorizontal->setHeight(m_axisLineHorizontal->lineWidth() + m_axisLineHorizontal->smoothing());
-        m_axisLineHorizontal->setVisible(m_axisHorizontal->isLineVisible());
-    } else {
-        // Hide all parts of horizontal axis
-        m_axisTickerHorizontal->setVisible(false);
-        m_axisLineHorizontal->setVisible(false);
-        for (auto &textItem : m_xAxisTextItems)
-            textItem->setVisible(false);
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft)
+                xAxisRect = m_graph->m_x2AxisTickersArea;
+            else
+                xAxisRect = m_graph->m_x1AxisTickersArea;
+
+            //if (theme()->themeDirty()) {
+            ax.ticker->setSubTickColor(theme()->axisX().subColor());
+            ax.ticker->setTickColor(theme()->axisX().mainColor());
+            ax.ticker->setTickLineWidth(theme()->axisX().mainWidth());
+            ax.ticker->setSubTickLineWidth(theme()->axisX().subWidth());
+            ax.ticker->setSmoothing(m_graph->axisXSmoothing());
+            //}
+
+            float leftPadding = m_axisGrid->gridLineWidth() * 0.5;
+            float rightPadding = leftPadding;
+            // TODO Only when changed
+            ax.ticker->setDisplacement(ax.displacement);
+            QRectF &rect = xAxisRect;
+            ax.ticker->setX(rect.x() + ax.x);
+            ax.ticker->setY(rect.y() + ax.y);
+            ax.ticker->setWidth(rect.width());
+            ax.ticker->setHeight(rect.height());
+            ax.ticker->setFlipped(ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft);
+
+            ax.ticker->setSpacing((ax.ticker->width() - leftPadding - rightPadding)
+                                             / (ax.valueRange / ax.valueStep));
+            ax.ticker->setSubTicksVisible(!qFuzzyCompare(ax.subGridScale, 1.0));
+            ax.ticker->setSubTickScale(ax.subGridScale);
+            ax.ticker->setVisible(ax.axis->isVisible());
+            // Axis line
+            ax.line->setColor(theme()->axisX().mainColor());
+            ax.line->setLineWidth(theme()->axisX().mainWidth());
+            ax.line->setSmoothing(m_graph->axisXSmoothing());
+            ax.line->setX(ax.ticker->x());
+            float yMovement = 0.5 * (ax.line->lineWidth() + ax.line->smoothing());
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft)
+                ax.line->setY(ax.ticker->y() + ax.ticker->height() - yMovement);
+            else
+                ax.line->setY(ax.ticker->y() - yMovement);
+            ax.line->setWidth(ax.ticker->width());
+            ax.line->setHeight(ax.line->lineWidth() + ax.line->smoothing());
+            ax.line->setVisible(ax.axis->isLineVisible());
+        } else {
+            // Hide all parts of horizontal axis
+            ax.ticker->setVisible(false);
+            ax.line->setVisible(false);
+            for (auto &textItem : ax.textItems)
+                textItem->setVisible(false);
+        }
     }
 }
 
 void AxisRenderer::updateAxisTickersShadow()
 {
-    if (m_axisVertical && m_graph->isShadowVisible()) {
-        m_axisTickerVerticalShadow->setSubTickColor(m_graph->shadowColor());
-        m_axisTickerVerticalShadow->setTickColor(m_graph->shadowColor());
-        m_axisTickerVerticalShadow->setSubTickLineWidth(m_axisTickerVertical->subTickLineWidth() + m_graph->shadowBarWidth());
-        m_axisTickerVerticalShadow->setTickLineWidth(m_axisTickerVertical->tickLineWidth() + m_graph->shadowBarWidth());
-        m_axisTickerVerticalShadow->setSmoothing(m_axisTickerVertical->smoothing() + m_graph->shadowSmoothing());
+    for (auto&& ax : *m_vertAxes) {
+        if (ax.axis && m_graph->isShadowVisible()) {
+            ax.tickerShadow->setSubTickColor(m_graph->shadowColor());
+            ax.tickerShadow->setTickColor(m_graph->shadowColor());
+            ax.tickerShadow->setSubTickLineWidth(ax.ticker->subTickLineWidth()
+                                                  + m_graph->shadowBarWidth());
+            ax.tickerShadow->setTickLineWidth(ax.ticker->tickLineWidth()
+                                               + m_graph->shadowBarWidth());
+            ax.tickerShadow->setSmoothing(ax.ticker->smoothing() + m_graph->shadowSmoothing());
 
-        // TODO Only when changed
-        m_axisTickerVerticalShadow->setDisplacement(m_axisTickerVertical->displacement());
-        m_axisTickerVerticalShadow->setX(m_axisTickerVertical->x() + m_graph->shadowXOffset());
-        m_axisTickerVerticalShadow->setY(m_axisTickerVertical->y() + m_graph->shadowYOffset() + m_graph->shadowBarWidth() * 0.5);
-        m_axisTickerVerticalShadow->setWidth(m_axisTickerVertical->width());
-        m_axisTickerVerticalShadow->setHeight(m_axisTickerVertical->height());
-        m_axisTickerVerticalShadow->setFlipped(m_axisTickerVertical->isFlipped());
-        m_axisTickerVerticalShadow->setSpacing(m_axisTickerVertical->spacing());
-        m_axisTickerVerticalShadow->setSubTicksVisible(m_axisTickerVertical->subTicksVisible());
-        m_axisTickerVerticalShadow->setSubTickScale(m_axisTickerVertical->subTickScale());
-        m_axisTickerVerticalShadow->setVisible(m_axisTickerVertical->isVisible());
-        // Axis line
-        m_axisLineVerticalShadow->setColor(m_graph->shadowColor());
-        m_axisLineVerticalShadow->setLineWidth(m_axisLineVertical->lineWidth() + m_graph->shadowBarWidth());
-        m_axisLineVerticalShadow->setSmoothing(m_axisLineVertical->smoothing() + m_graph->shadowSmoothing());
-        m_axisLineVerticalShadow->setX(m_axisLineVertical->x() + m_graph->shadowXOffset());
-        m_axisLineVerticalShadow->setY(m_axisLineVertical->y() + m_graph->shadowYOffset() + m_graph->shadowBarWidth() * 0.5);
-        m_axisLineVerticalShadow->setWidth(m_axisLineVertical->width());
-        m_axisLineVerticalShadow->setHeight(m_axisLineVertical->height());
-        m_axisLineVerticalShadow->setVisible(m_axisLineVertical->isVisible());
-    } else {
-        // Hide all parts of vertical axis
-        m_axisTickerVerticalShadow->setVisible(false);
-        m_axisLineVerticalShadow->setVisible(false);
+            // TODO Only when changed
+            ax.tickerShadow->setDisplacement(ax.ticker->displacement());
+            ax.tickerShadow->setX(ax.ticker->x() + m_graph->shadowXOffset());
+            ax.tickerShadow->setY(ax.ticker->y() + m_graph->shadowYOffset()
+                                   + m_graph->shadowBarWidth() * 0.5);
+            ax.tickerShadow->setWidth(ax.ticker->width());
+            ax.tickerShadow->setHeight(ax.ticker->height());
+            ax.tickerShadow->setFlipped(ax.ticker->isFlipped());
+            ax.tickerShadow->setSpacing(ax.ticker->spacing());
+            ax.tickerShadow->setSubTicksVisible(ax.ticker->subTicksVisible());
+            ax.tickerShadow->setSubTickScale(ax.ticker->subTickScale());
+            ax.tickerShadow->setVisible(ax.ticker->isVisible());
+            // Axis line
+            ax.lineShadow->setColor(m_graph->shadowColor());
+            ax.lineShadow->setLineWidth(ax.line->lineWidth() + m_graph->shadowBarWidth());
+            ax.lineShadow->setSmoothing(ax.line->smoothing() + m_graph->shadowSmoothing());
+            ax.lineShadow->setX(ax.line->x() + m_graph->shadowXOffset());
+            ax.lineShadow->setY(ax.line->y() + m_graph->shadowYOffset()
+                                 + m_graph->shadowBarWidth() * 0.5);
+            ax.lineShadow->setWidth(ax.line->width());
+            ax.lineShadow->setHeight(ax.line->height());
+            ax.lineShadow->setVisible(ax.line->isVisible());
+        } else {
+            // Hide all parts of vertical axis
+            ax.tickerShadow->setVisible(false);
+            ax.lineShadow->setVisible(false);
+        }
     }
 
-    if (m_axisHorizontal && m_graph->isShadowVisible()) {
-        m_axisTickerHorizontalShadow->setSubTickColor(m_graph->shadowColor());
-        m_axisTickerHorizontalShadow->setTickColor(m_graph->shadowColor());
-        m_axisTickerHorizontalShadow->setSubTickLineWidth(m_axisTickerHorizontal->subTickLineWidth() + m_graph->shadowBarWidth());
-        m_axisTickerHorizontalShadow->setTickLineWidth(m_axisTickerHorizontal->tickLineWidth() + m_graph->shadowBarWidth());
-        m_axisTickerHorizontalShadow->setSmoothing(m_axisTickerHorizontal->smoothing() + m_graph->shadowSmoothing());
+    for (auto&& ax : *m_horzAxes) {
+        if (ax.axis && m_graph->isShadowVisible()) {
+            ax.tickerShadow->setSubTickColor(m_graph->shadowColor());
+            ax.tickerShadow->setTickColor(m_graph->shadowColor());
+            ax.tickerShadow->setSubTickLineWidth(ax.ticker->subTickLineWidth()
+                                                  + m_graph->shadowBarWidth());
+            ax.tickerShadow->setTickLineWidth(ax.ticker->tickLineWidth()
+                                               + m_graph->shadowBarWidth());
+            ax.tickerShadow->setSmoothing(ax.ticker->smoothing() + m_graph->shadowSmoothing());
 
-        // TODO Only when changed
-        m_axisTickerHorizontalShadow->setDisplacement(m_axisTickerHorizontal->displacement());
-        m_axisTickerHorizontalShadow->setX(m_axisTickerHorizontal->x() + m_graph->shadowXOffset() - m_graph->shadowBarWidth() * 0.5);
-        m_axisTickerHorizontalShadow->setY(m_axisTickerHorizontal->y() + m_graph->shadowYOffset());
-        m_axisTickerHorizontalShadow->setWidth(m_axisTickerHorizontal->width());
-        m_axisTickerHorizontalShadow->setHeight(m_axisTickerHorizontal->height());
-        m_axisTickerHorizontalShadow->setFlipped(m_axisTickerHorizontal->isFlipped());
-        m_axisTickerHorizontalShadow->setSpacing(m_axisTickerHorizontal->spacing());
-        m_axisTickerHorizontalShadow->setSubTicksVisible(m_axisTickerHorizontal->subTicksVisible());
-        m_axisTickerHorizontalShadow->setSubTickScale(m_axisTickerHorizontal->subTickScale());
-        m_axisTickerHorizontalShadow->setVisible(m_axisTickerHorizontal->isVisible());
-        // Axis line
-        m_axisLineHorizontalShadow->setColor(m_graph->shadowColor());
-        m_axisLineHorizontalShadow->setLineWidth(m_axisLineHorizontal->width() + m_graph->shadowBarWidth());
-        m_axisLineHorizontalShadow->setSmoothing(m_axisLineHorizontal->smoothing() + m_graph->shadowSmoothing());
-        m_axisLineHorizontalShadow->setX(m_axisLineHorizontal->x() + m_graph->shadowXOffset() - m_graph->shadowBarWidth() * 0.5);
-        m_axisLineHorizontalShadow->setY(m_axisLineHorizontal->y() + m_graph->shadowYOffset());
-        m_axisLineHorizontalShadow->setWidth(m_axisLineHorizontal->width());
-        m_axisLineHorizontalShadow->setHeight(m_axisLineHorizontal->height());
-        m_axisLineHorizontalShadow->setVisible(m_axisLineHorizontal->isVisible());
-    } else {
-        // Hide all parts of horizontal axis
-        m_axisTickerHorizontalShadow->setVisible(false);
-        m_axisLineHorizontalShadow->setVisible(false);
+            // TODO Only when changed
+            ax.tickerShadow->setDisplacement(ax.ticker->displacement());
+            ax.tickerShadow->setX(ax.ticker->x() + m_graph->shadowXOffset()
+                                   - m_graph->shadowBarWidth() * 0.5);
+            ax.tickerShadow->setY(ax.ticker->y() + m_graph->shadowYOffset());
+            ax.tickerShadow->setWidth(ax.ticker->width());
+            ax.tickerShadow->setHeight(ax.ticker->height());
+            ax.tickerShadow->setFlipped(ax.ticker->isFlipped());
+            ax.tickerShadow->setSpacing(ax.ticker->spacing());
+            ax.tickerShadow->setSubTicksVisible(ax.ticker->subTicksVisible());
+            ax.tickerShadow->setSubTickScale(ax.ticker->subTickScale());
+            ax.tickerShadow->setVisible(ax.ticker->isVisible());
+            // Axis line
+            ax.lineShadow->setColor(m_graph->shadowColor());
+            ax.lineShadow->setLineWidth(ax.line->width() + m_graph->shadowBarWidth());
+            ax.lineShadow->setSmoothing(ax.line->smoothing() + m_graph->shadowSmoothing());
+            ax.lineShadow->setX(ax.line->x() + m_graph->shadowXOffset()
+                                 - m_graph->shadowBarWidth() * 0.5);
+            ax.lineShadow->setY(ax.line->y() + m_graph->shadowYOffset());
+            ax.lineShadow->setWidth(ax.line->width());
+            ax.lineShadow->setHeight(ax.line->height());
+            ax.lineShadow->setVisible(ax.line->isVisible());
+        } else {
+            // Hide all parts of horizontal axis
+            ax.tickerShadow->setVisible(false);
+            ax.lineShadow->setVisible(false);
+        }
     }
 }
 
 void AxisRenderer::updateAxisGrid()
 {
+    auto &hax = (*m_horzAxes)[0];
+    auto &vax = (*m_vertAxes)[0];
+
     m_axisGrid->setGridColor(theme()->grid().mainColor());
     m_axisGrid->setSubGridColor(theme()->grid().subColor());
     m_axisGrid->setSubGridLineWidth(theme()->grid().subWidth());
@@ -716,7 +1046,7 @@ void AxisRenderer::updateAxisGrid()
     float leftPadding = topPadding;
     float rightPadding = topPadding;
     // TODO Only when changed
-    m_axisGrid->setGridMovement(QPointF(m_axisXDisplacement, m_axisYDisplacement));
+    m_axisGrid->setGridMovement(QPointF(hax.displacement, vax.displacement));
     QRectF rect = m_graph->m_plotArea;
     m_axisGrid->setX(rect.x());
     m_axisGrid->setY(rect.y());
@@ -724,15 +1054,15 @@ void AxisRenderer::updateAxisGrid()
     m_axisGrid->setHeight(rect.height());
 
     m_axisGrid->setGridWidth((m_axisGrid->width() - leftPadding - rightPadding)
-                             / (m_axisHorizontalValueRange / m_axisHorizontalValueStep));
+                             / (hax.valueRange / hax.valueStep));
     m_axisGrid->setGridHeight((m_axisGrid->height() - topPadding - bottomPadding)
-                              / (m_axisVerticalValueRange / m_axisVerticalValueStep));
+                              / (vax.valueRange / vax.valueStep));
     m_axisGrid->setGridVisibility(QVector4D(m_gridHorizontalLinesVisible,
                                             m_gridVerticalLinesVisible,
                                             m_gridHorizontalSubLinesVisible,
                                             m_gridVerticalSubLinesVisible));
-    m_axisGrid->setVerticalSubGridScale(m_axisVerticalSubGridScale);
-    m_axisGrid->setHorizontalSubGridScale(m_axisHorizontalSubGridScale);
+    m_axisGrid->setVerticalSubGridScale(vax.subGridScale);
+    m_axisGrid->setHorizontalSubGridScale(hax.subGridScale);
 }
 
 void AxisRenderer::updateAxisGridShadow()
@@ -761,61 +1091,78 @@ void AxisRenderer::updateAxisGridShadow()
     }
 }
 
-void AxisRenderer::updateAxisTitles(const QRectF xAxisRect, const QRectF yAxisRect)
+void AxisRenderer::updateAxisTitles()
 {
-    if (!m_xAxisTitle) {
-        m_xAxisTitle = new QQuickText(this);
-        m_xAxisTitle->setVAlign(QQuickText::AlignBottom);
-        m_xAxisTitle->setHAlign(QQuickText::AlignHCenter);
+    QRectF xAxisRect;
+    QRectF yAxisRect;
+
+    for (auto &&ax : *m_horzAxes) {
+        if (!ax.title) {
+            ax.title = new QQuickText(this);
+            ax.title->setVAlign(QQuickText::AlignBottom);
+            ax.title->setHAlign(QQuickText::AlignHCenter);
+        }
+
+        if (ax.axis && ax.axis->isTitleVisible()) {
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft) {
+                xAxisRect = m_graph->m_x2AxisLabelsArea;
+                ax.title->setY(xAxisRect.y() - ax.title->contentHeight() * 0.5 + ax.y);
+            } else {
+                xAxisRect = m_graph->m_x1AxisLabelsArea;
+                ax.title->setY(xAxisRect.y() + xAxisRect.height() + ax.y);
+            }
+
+            ax.title->setText(ax.axis->titleText());
+            ax.title->setX(
+                (2 * xAxisRect.x() - ax.title->contentWidth() + xAxisRect.width()) * 0.5 + ax.x);
+            if (ax.axis->titleColor().isValid())
+                ax.title->setColor(ax.axis->titleColor());
+            else
+                ax.title->setColor(theme()->labelTextColor());
+            ax.title->setFont(ax.axis->titleFont());
+            ax.title->setVisible(true);
+        } else {
+            ax.title->setVisible(false);
+        }
     }
 
-    if (!m_yAxisTitle) {
-        m_yAxisTitle = new QQuickText(this);
-        m_yAxisTitle->setVAlign(QQuickText::AlignVCenter);
-        m_yAxisTitle->setHAlign(QQuickText::AlignHCenter);
-    }
+    for (auto &&ax : *m_vertAxes) {
+        if (!ax.title) {
+            ax.title = new QQuickText(this);
+            ax.title->setVAlign(QQuickText::AlignVCenter);
+            ax.title->setHAlign(QQuickText::AlignHCenter);
+        }
 
-    if (m_axisHorizontal && m_axisHorizontal->isTitleVisible()) {
-        m_xAxisTitle->setText(m_axisHorizontal->titleText());
-        m_xAxisTitle->setX((2 * xAxisRect.x() - m_xAxisTitle->contentWidth() + xAxisRect.width())
-                           * 0.5);
-        if (m_horizontalAxisOnTop)
-            m_xAxisTitle->setY(xAxisRect.y() - m_xAxisTitle->contentHeight() * 0.5);
-        else
-            m_xAxisTitle->setY(xAxisRect.y() + xAxisRect.height());
-        if (m_axisHorizontal->titleColor().isValid())
-            m_xAxisTitle->setColor(m_axisHorizontal->titleColor());
-        else
-            m_xAxisTitle->setColor(theme()->labelTextColor());
-        m_xAxisTitle->setFont(m_axisHorizontal->titleFont());
-        m_xAxisTitle->setVisible(true);
-    } else {
-        m_xAxisTitle->setVisible(false);
-    }
+        if (ax.axis && ax.axis->isTitleVisible()) {
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom) {
+                yAxisRect = m_graph->m_y2AxisLabelsArea;
+                ax.title->setX(yAxisRect.x() + ax.title->height() + ax.x);
+            } else {
+                yAxisRect = m_graph->m_y1AxisLabelsArea;
+                ax.title->setX(yAxisRect.x() + ax.title->height() - ax.title->contentWidth() * 0.5 + ax.x);
+            }
 
-    if (m_axisVertical && m_axisVertical->isTitleVisible()) {
-        m_yAxisTitle->setText(m_axisVertical->titleText());
-        if (m_verticalAxisOnRight)
-            m_yAxisTitle->setX(yAxisRect.x() + m_yAxisTitle->height());
-        else
-            m_yAxisTitle->setX(yAxisRect.x() + m_yAxisTitle->height() - m_yAxisTitle->contentWidth() * 0.5);
-        m_yAxisTitle->setY((2 * yAxisRect.y() - m_yAxisTitle->contentHeight() + yAxisRect.height())
-                           * 0.5);
-        m_yAxisTitle->setRotation(-90);
-        if (m_axisVertical->titleColor().isValid())
-            m_yAxisTitle->setColor(m_axisVertical->titleColor());
-        else
-            m_yAxisTitle->setColor(theme()->labelTextColor());
-        m_yAxisTitle->setFont(m_axisVertical->titleFont());
-        m_yAxisTitle->setVisible(true);
-    } else {
-        m_yAxisTitle->setVisible(false);
+            ax.title->setText(ax.axis->titleText());
+            ax.title->setY(
+                (2 * yAxisRect.y() - ax.title->contentHeight() + yAxisRect.height()) * 0.5 + ax.y);
+            ax.title->setRotation(-90);
+            if (ax.axis->titleColor().isValid())
+                ax.title->setColor(ax.axis->titleColor());
+            else
+                ax.title->setColor(theme()->labelTextColor());
+            ax.title->setFont(ax.axis->titleFont());
+            ax.title->setVisible(true);
+        } else {
+            ax.title->setVisible(false);
+        }
     }
 }
 
 void AxisRenderer::updateAxisLabelItems(QList<QQuickItem *> &textItems,
                                         qsizetype neededSize, QQmlComponent *component)
 {
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateAxisLabelItems, textItems.count(),
+                  static_cast<int>(neededSize));
     qsizetype currentTextItemsSize = textItems.size();
     if (currentTextItemsSize < neededSize) {
         for (qsizetype i = currentTextItemsSize; i <= neededSize; i++) {
@@ -840,7 +1187,8 @@ void AxisRenderer::updateAxisLabelItems(QList<QQuickItem *> &textItems,
 }
 
 void AxisRenderer::setLabelTextProperties(QQuickItem *item, const QString &text, bool xAxis,
-                                          QQuickText::HAlignment hAlign, QQuickText::VAlignment vAlign)
+                                          QQuickText::HAlignment hAlign, QQuickText::VAlignment vAlign,
+                                          Qt::TextElideMode elide)
 {
     if (auto textItem = qobject_cast<QQuickText *>(item)) {
         // If the component is a Text item (default), then text
@@ -856,6 +1204,23 @@ void AxisRenderer::setLabelTextProperties(QQuickItem *item, const QString &text,
             textItem->setFont(theme()->axisYLabelFont());
             textItem->setColor(theme()->axisY().labelTextColor());
         }
+
+        QQuickText::TextElideMode e;
+        switch (elide) {
+        case Qt::ElideLeft:
+            e = QQuickText::ElideLeft;
+            break;
+        case Qt::ElideRight:
+            e = QQuickText::ElideRight;
+            break;
+        case Qt::ElideMiddle:
+            e = QQuickText::ElideMiddle;
+            break;
+        default:
+            e = QQuickText::ElideNone;
+        }
+        textItem->setElideMode(e);
+
     } else {
         // Check for specific dynamic properties
         if (item->property("text").isValid())
@@ -864,31 +1229,38 @@ void AxisRenderer::setLabelTextProperties(QQuickItem *item, const QString &text,
 }
 
 #ifdef USE_BARGRAPH
-void AxisRenderer::updateBarXAxisLabels(QBarCategoryAxis *axis, const QRectF rect)
+void AxisRenderer::updateBarXAxisLabels(AxisProperties &ax, const QRectF rect)
 {
+    auto axis = qobject_cast<QBarCategoryAxis *>(ax.axis);
+    if (!axis)
+        return;
+
     qsizetype categoriesCount = axis->categories().size();
     // See if we need more text items
-    updateAxisLabelItems(m_xAxisTextItems, categoriesCount, axis->labelDelegate());
+    updateAxisLabelItems(ax.textItems, categoriesCount, axis->labelDelegate());
 
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateBarXAxisLabels);
     int textIndex = 0;
     auto categories = axis->categories();
     for (const auto &category : std::as_const(categories)) {
-        auto &textItem = m_xAxisTextItems[textIndex];
+        auto &textItem = ax.textItems[textIndex];
         if (axis->isVisible() && axis->labelsVisible()) {
-            float posX = rect.x() + ((float)textIndex / categoriesCount) *  rect.width();
+            float posX = rect.x() + ((float)textIndex / categoriesCount) *  rect.width() + ax.x;
             textItem->setX(posX);
-            float posY = rect.y();
+            float posY = rect.y() + ax.y;
             textItem->setY(posY);
             textItem->setWidth(rect.width() / categoriesCount);
             textItem->setRotation(axis->labelsAngle());
-            if (m_horizontalAxisOnTop) {
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft) {
                 setLabelTextProperties(textItem, category, true,
                                        QQuickText::HAlignment::AlignHCenter,
-                                       QQuickText::VAlignment::AlignBottom);
+                                       QQuickText::VAlignment::AlignBottom,
+                                       axis->textElideMode());
             } else {
                 setLabelTextProperties(textItem, category, true,
                                        QQuickText::HAlignment::AlignHCenter,
-                                       QQuickText::VAlignment::AlignTop);
+                                       QQuickText::VAlignment::AlignTop,
+                                       axis->textElideMode());
             }
             textItem->setHeight(rect.height());
             textItem->setVisible(true);
@@ -900,31 +1272,38 @@ void AxisRenderer::updateBarXAxisLabels(QBarCategoryAxis *axis, const QRectF rec
     }
 }
 
-void AxisRenderer::updateBarYAxisLabels(QBarCategoryAxis *axis, const QRectF rect)
+void AxisRenderer::updateBarYAxisLabels(AxisProperties &ax, const QRectF rect)
 {
+    auto axis = qobject_cast<QBarCategoryAxis *>(ax.axis);
+    if (!axis)
+        return;
+
     qsizetype categoriesCount = axis->categories().size();
     // See if we need more text items
-    updateAxisLabelItems(m_yAxisTextItems, categoriesCount, axis->labelDelegate());
+    updateAxisLabelItems(ax.textItems, categoriesCount, axis->labelDelegate());
 
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateBarYAxisLabels);
     int textIndex = 0;
     auto categories = axis->categories();
     for (const auto &category : std::as_const(categories)) {
-        auto &textItem = m_yAxisTextItems[textIndex];
+        auto &textItem = ax.textItems[textIndex];
         if (axis->isVisible() && axis->labelsVisible()) {
-            float posX = rect.x();
+            float posX = rect.x() + ax.x;
             textItem->setX(posX);
-            float posY = rect.y() + ((float)textIndex / categoriesCount) *  rect.height();
+            float posY = rect.y() + ((float)textIndex / categoriesCount) *  rect.height() + ax.y;
             textItem->setY(posY);
             textItem->setWidth(rect.width());
             textItem->setRotation(axis->labelsAngle());
-            if (m_verticalAxisOnRight) {
-                setLabelTextProperties(textItem, category, false,
-                                       QQuickText::HAlignment::AlignRight,
-                                       QQuickText::VAlignment::AlignVCenter);
-            } else {
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom) {
                 setLabelTextProperties(textItem, category, false,
                                        QQuickText::HAlignment::AlignLeft,
-                                       QQuickText::VAlignment::AlignVCenter);
+                                       QQuickText::VAlignment::AlignVCenter,
+                                       axis->textElideMode());
+            } else {
+                setLabelTextProperties(textItem, category, false,
+                                       QQuickText::HAlignment::AlignRight,
+                                       QQuickText::VAlignment::AlignVCenter,
+                                       axis->textElideMode());
             }
             textItem->setHeight(rect.height() / categoriesCount);
             textItem->setVisible(true);
@@ -937,33 +1316,47 @@ void AxisRenderer::updateBarYAxisLabels(QBarCategoryAxis *axis, const QRectF rec
 }
 #endif
 
-void AxisRenderer::updateValueYAxisLabels(QValueAxis *axis, const QRectF rect)
+void AxisRenderer::updateValueYAxisLabels(AxisProperties &ax, const QRectF rect)
 {
+    auto axis = qobject_cast<QValueAxis *>(ax.axis);
+    if (!axis)
+        return;
+
     // Create label values in the range
     QList<double> yAxisLabelValues;
     const int MAX_LABELS_COUNT = 100;
-    for (double i = m_axisVerticalMinLabel; i <= m_axisVerticalMaxValue; i += m_axisVerticalValueStep) {
-        yAxisLabelValues << i;
-        if (yAxisLabelValues.size() >= MAX_LABELS_COUNT)
-            break;
+    if (m_graph->orientation() == Qt::Vertical) {
+        for (double i = ax.minLabel; i <= ax.maxValue; i += ax.valueStep) {
+            yAxisLabelValues << i;
+            if (yAxisLabelValues.size() >= MAX_LABELS_COUNT)
+                break;
+        }
+    } else {
+        for (double i = ax.maxValue; i >= ax.minLabel; i -= ax.valueStep) {
+            yAxisLabelValues << i;
+            if (yAxisLabelValues.size() >= MAX_LABELS_COUNT)
+                break;
+        }
     }
     qsizetype categoriesCount = yAxisLabelValues.size();
 
     // See if we need more text items
-    updateAxisLabelItems(m_yAxisTextItems, categoriesCount, axis->labelDelegate());
+    updateAxisLabelItems(ax.textItems, categoriesCount, axis->labelDelegate());
 
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateValueYAxisLabels);
     for (int i = 0;  i < categoriesCount; i++) {
-        auto &textItem = m_yAxisTextItems[i];
+        auto &textItem = ax.textItems[i];
         if (axis->isVisible() && axis->labelsVisible()) {
-            float posX = rect.x();
+            float posX = rect.x() + ax.x;
             textItem->setX(posX);
-            float posY = rect.y() + rect.height() - (((float)i) * m_axisVerticalStepPx) + m_axisYDisplacement;
+            float posY = rect.y() + rect.height() - (((float)i) * ax.stepPx) + ax.displacement;
             const double titleMargin = 0.01;
             if ((posY - titleMargin) > (rect.height() + rect.y()) || (posY + titleMargin) < rect.y()) {
                 // Hide text item which are outside the axis area
                 textItem->setVisible(false);
                 continue;
             }
+            posY += ax.y;
             textItem->setY(posY);
             textItem->setWidth(rect.width());
             textItem->setRotation(axis->labelsAngle());
@@ -971,7 +1364,7 @@ void AxisRenderer::updateValueYAxisLabels(QValueAxis *axis, const QRectF rect)
             // Format the number
             int decimals = axis->labelDecimals();
             if (decimals < 0)
-                decimals = getValueDecimalsFromRange(m_axisVerticalValueRange);
+                decimals = getValueDecimalsFromRange(ax.valueRange);
             const QString f = axis->labelFormat();
             QString label;
             if (f.length() <= 1) {
@@ -981,14 +1374,16 @@ void AxisRenderer::updateValueYAxisLabels(QValueAxis *axis, const QRectF rect)
               QByteArray array = f.toLatin1();
               label = QString::asprintf(array.constData(), number);
             }
-            if (m_verticalAxisOnRight) {
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom) {
                 setLabelTextProperties(textItem, label, false,
                                        QQuickText::HAlignment::AlignLeft,
-                                       QQuickText::VAlignment::AlignVCenter);
+                                       QQuickText::VAlignment::AlignVCenter,
+                                       axis->textElideMode());
             } else {
                 setLabelTextProperties(textItem, label, false,
                                        QQuickText::HAlignment::AlignRight,
-                                       QQuickText::VAlignment::AlignVCenter);
+                                       QQuickText::VAlignment::AlignVCenter,
+                                       axis->textElideMode());
             }
             textItem->setHeight(0);
             textItem->setVisible(true);
@@ -999,12 +1394,16 @@ void AxisRenderer::updateValueYAxisLabels(QValueAxis *axis, const QRectF rect)
     }
 }
 
-void AxisRenderer::updateValueXAxisLabels(QValueAxis *axis, const QRectF rect)
+void AxisRenderer::updateValueXAxisLabels(AxisProperties &ax, const QRectF rect)
 {
+    auto axis = qobject_cast<QValueAxis *>(ax.axis);
+    if (!axis)
+        return;
+
     // Create label values in the range
     QList<double> axisLabelValues;
     const int MAX_LABELS_COUNT = 100;
-    for (double i = m_axisHorizontalMinLabel; i <= m_axisHorizontalMaxValue; i += m_axisHorizontalValueStep) {
+    for (double i = ax.minLabel; i <= ax.maxValue; i += ax.valueStep) {
         axisLabelValues << i;
         if (axisLabelValues.size() >= MAX_LABELS_COUNT)
             break;
@@ -1012,15 +1411,16 @@ void AxisRenderer::updateValueXAxisLabels(QValueAxis *axis, const QRectF rect)
     qsizetype categoriesCount = axisLabelValues.size();
 
     // See if we need more text items
-    updateAxisLabelItems(m_xAxisTextItems, categoriesCount, axis->labelDelegate());
+    updateAxisLabelItems(ax.textItems, categoriesCount, axis->labelDelegate());
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateValueXAxisLabels);
 
     for (int i = 0;  i < categoriesCount; i++) {
-        auto &textItem = m_xAxisTextItems[i];
+        auto &textItem = ax.textItems[i];
         if (axis->isVisible() && axis->labelsVisible()) {
-            float posY = rect.y();
+            float posY = rect.y() + ax.y;
             textItem->setY(posY);
             float textItemWidth = 20;
-            float posX = rect.x() + (((float)i) * m_axisHorizontalStepPx) - m_axisXDisplacement;
+            float posX = rect.x() + (((float)i) * ax.stepPx) - ax.displacement;
             const double titleMargin = 0.01;
             if ((posX - titleMargin) > (rect.width() + rect.x()) || (posX + titleMargin) < rect.x()) {
                 // Hide text item which are outside the axis area
@@ -1029,6 +1429,7 @@ void AxisRenderer::updateValueXAxisLabels(QValueAxis *axis, const QRectF rect)
             }
             // Take text size into account only after hiding
             posX -= 0.5 * textItemWidth;
+            posX += ax.x;
             textItem->setX(posX);
             textItem->setWidth(textItemWidth);
             textItem->setRotation(axis->labelsAngle());
@@ -1036,7 +1437,7 @@ void AxisRenderer::updateValueXAxisLabels(QValueAxis *axis, const QRectF rect)
             // Format the number
             int decimals = axis->labelDecimals();
             if (decimals < 0)
-                decimals = getValueDecimalsFromRange(m_axisHorizontalValueRange);
+                decimals = getValueDecimalsFromRange(ax.valueRange);
             const QString f = axis->labelFormat();
             QString label;
             if (f.length() <= 1) {
@@ -1046,14 +1447,16 @@ void AxisRenderer::updateValueXAxisLabels(QValueAxis *axis, const QRectF rect)
               QByteArray array = f.toLatin1();
               label = QString::asprintf(array.constData(), number);
             }
-            if (m_horizontalAxisOnTop) {
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft) {
                 setLabelTextProperties(textItem, label, true,
                                        QQuickText::HAlignment::AlignHCenter,
-                                       QQuickText::VAlignment::AlignBottom);
+                                       QQuickText::VAlignment::AlignBottom,
+                                       axis->textElideMode());
             } else {
                 setLabelTextProperties(textItem, label, true,
                                        QQuickText::HAlignment::AlignHCenter,
-                                       QQuickText::VAlignment::AlignTop);
+                                       QQuickText::VAlignment::AlignTop,
+                                       axis->textElideMode());
             }
             textItem->setHeight(rect.height());
             textItem->setVisible(true);
@@ -1064,23 +1467,28 @@ void AxisRenderer::updateValueXAxisLabels(QValueAxis *axis, const QRectF rect)
     }
 }
 
-void AxisRenderer::updateDateTimeYAxisLabels(QDateTimeAxis *axis, const QRectF rect)
+void AxisRenderer::updateDateTimeYAxisLabels(AxisProperties &ax, const QRectF rect)
 {
+    auto axis = qobject_cast<QDateTimeAxis *>(ax.axis);
+    if (!axis)
+        return;
+
     auto maxDate = axis->max();
     auto minDate = axis->min();
-    int dateTimeSize = m_axisVerticalMinLabel + 1;
+    int dateTimeSize = ax.minLabel + 1;
     auto segment = (maxDate.toMSecsSinceEpoch() - minDate.toMSecsSinceEpoch())
-                   / m_axisVerticalMinLabel;
+                   / ax.minLabel;
 
     // See if we need more text items
-    updateAxisLabelItems(m_yAxisTextItems, dateTimeSize, axis->labelDelegate());
+    updateAxisLabelItems(ax.textItems, dateTimeSize, axis->labelDelegate());
 
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateDateTimeYAxisLabels);
     for (auto i = 0; i < dateTimeSize; ++i) {
-        auto &textItem = m_yAxisTextItems[i];
+        auto &textItem = ax.textItems[i];
         if (axis->isVisible() && axis->labelsVisible()) {
-            float posX = rect.x();
+            float posX = rect.x() + ax.x;
             textItem->setX(posX);
-            float posY = rect.y() + rect.height() - (((float) i) * m_axisVerticalStepPx);
+            float posY = rect.y() + rect.height() - (((float) i) * ax.stepPx);
             const double titleMargin = 0.01;
             if ((posY - titleMargin) > (rect.height() + rect.y())
                 || (posY + titleMargin) < rect.y()) {
@@ -1088,18 +1496,21 @@ void AxisRenderer::updateDateTimeYAxisLabels(QDateTimeAxis *axis, const QRectF r
                 textItem->setVisible(false);
                 continue;
             }
+            posY += ax.y;
             textItem->setY(posY);
             textItem->setWidth(rect.width());
             textItem->setRotation(axis->labelsAngle());
             QString label = minDate.addMSecs(segment * i).toString(axis->labelFormat());
-            if (m_verticalAxisOnRight) {
+            if (ax.axis->alignment() == Qt::AlignRight || ax.axis->alignment() == Qt::AlignBottom) {
                 setLabelTextProperties(textItem, label, false,
                                        QQuickText::HAlignment::AlignLeft,
-                                       QQuickText::VAlignment::AlignVCenter);
+                                       QQuickText::VAlignment::AlignVCenter,
+                                       axis->textElideMode());
             } else {
                 setLabelTextProperties(textItem, label, false,
                                        QQuickText::HAlignment::AlignRight,
-                                       QQuickText::VAlignment::AlignVCenter);
+                                       QQuickText::VAlignment::AlignVCenter,
+                                       axis->textElideMode());
             }
             textItem->setHeight(0);
             textItem->setVisible(true);
@@ -1109,24 +1520,29 @@ void AxisRenderer::updateDateTimeYAxisLabels(QDateTimeAxis *axis, const QRectF r
     }
 }
 
-void AxisRenderer::updateDateTimeXAxisLabels(QDateTimeAxis *axis, const QRectF rect)
+void AxisRenderer::updateDateTimeXAxisLabels(AxisProperties &ax, const QRectF rect)
 {
+    auto axis = qobject_cast<QDateTimeAxis *>(ax.axis);
+    if (!axis)
+        return;
+
     auto maxDate = axis->max();
     auto minDate = axis->min();
-    int dateTimeSize = m_axisHorizontalMinLabel + 1;
+    int dateTimeSize = ax.minLabel + 1;
     auto segment = (maxDate.toMSecsSinceEpoch() - minDate.toMSecsSinceEpoch())
-                   / m_axisHorizontalMinLabel;
+                   / ax.minLabel;
 
     // See if we need more text items
-    updateAxisLabelItems(m_xAxisTextItems, dateTimeSize, axis->labelDelegate());
+    updateAxisLabelItems(ax.textItems, dateTimeSize, axis->labelDelegate());
+    Q_TRACE_SCOPE(QGraphs2DAxisRendererUpdateDateTimeXAxisLabels);
 
     for (auto i = 0; i < dateTimeSize; ++i) {
-        auto &textItem = m_xAxisTextItems[i];
+        auto &textItem = ax.textItems[i];
         if (axis->isVisible() && axis->labelsVisible()) {
-            float posY = rect.y();
+            float posY = rect.y() + ax.y;
             textItem->setY(posY);
             float textItemWidth = 20;
-            float posX = rect.x() + (((float) i) * m_axisHorizontalStepPx);
+            float posX = rect.x() + (((float) i) * ax.stepPx);
             const double titleMargin = 0.01;
             if ((posX - titleMargin) > (rect.width() + rect.x())
                 || (posX + titleMargin) < rect.x()) {
@@ -1135,19 +1551,21 @@ void AxisRenderer::updateDateTimeXAxisLabels(QDateTimeAxis *axis, const QRectF r
                 continue;
             }
             // Take text size into account only after hiding
-            posX -= 0.5 * textItemWidth;
+            posX += ax.x - 0.5 * textItemWidth;
             textItem->setX(posX);
             textItem->setWidth(textItemWidth);
             textItem->setRotation(axis->labelsAngle());
             QString label = minDate.addMSecs(segment * i).toString(axis->labelFormat());
-            if (m_horizontalAxisOnTop) {
+            if (ax.axis->alignment() == Qt::AlignTop || ax.axis->alignment() == Qt::AlignLeft) {
                 setLabelTextProperties(textItem, label, true,
                                        QQuickText::HAlignment::AlignHCenter,
-                                       QQuickText::VAlignment::AlignBottom);
+                                       QQuickText::VAlignment::AlignBottom,
+                                       axis->textElideMode());
             } else {
                 setLabelTextProperties(textItem, label, true,
                                        QQuickText::HAlignment::AlignHCenter,
-                                       QQuickText::VAlignment::AlignTop);
+                                       QQuickText::VAlignment::AlignTop,
+                                       axis->textElideMode());
             }
             textItem->setHeight(rect.height());
             textItem->setVisible(true);
@@ -1155,6 +1573,28 @@ void AxisRenderer::updateDateTimeXAxisLabels(QDateTimeAxis *axis, const QRectF r
             textItem->setVisible(false);
         }
     }
+}
+
+void AxisRenderer::createDragHandler()
+{
+    m_dragHandler = new QQuickDragHandler(this);
+    m_dragHandler->setDragThreshold(10);
+    m_dragHandler->setTarget(nullptr);
+    connect(m_dragHandler,
+            &QQuickDragHandler::translationChanged,
+            this,
+            &AxisRenderer::onTranslationChanged);
+    connect(m_dragHandler, &QQuickDragHandler::grabChanged, this, &AxisRenderer::onGrabChanged);
+}
+
+void AxisRenderer::deleteDragHandler()
+{
+    disconnect(m_dragHandler,
+               &QQuickDragHandler::translationChanged,
+               this,
+               &AxisRenderer::onTranslationChanged);
+    disconnect(m_dragHandler, &QQuickDragHandler::grabChanged, this, &AxisRenderer::onGrabChanged);
+    m_dragHandler->deleteLater();
 }
 
 // Calculate suitable major step based on range

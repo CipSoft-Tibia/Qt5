@@ -8,6 +8,7 @@
     \examplecategory {User Interface Components}
 
     \image spreadsheets-example.png
+           {Spreadsheet application with table view showing cells and headers}
 
     The example demonstrates how to combine TableView and HeaderView to
     create a spreadsheet application.

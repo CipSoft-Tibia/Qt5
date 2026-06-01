@@ -7,7 +7,7 @@
 #include <QtSensors/QSensorBackend>
 #include <QtCore/QScopedPointer>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtAccelerometerPrivate;
 class WinRtAccelerometer : public QSensorBackend
@@ -24,5 +24,7 @@ private:
     QScopedPointer<WinRtAccelerometerPrivate> d_ptr;
     Q_DECLARE_PRIVATE(WinRtAccelerometer)
 };
+
+QT_END_NAMESPACE
 
 #endif // WINRTACCELEROMETER_H

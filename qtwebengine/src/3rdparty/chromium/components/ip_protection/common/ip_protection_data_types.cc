@@ -7,11 +7,14 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
+
+#include "base/containers/contains.h"
+#include "components/privacy_sandbox/masked_domain_list/masked_domain_list.pb.h"
 
 namespace ip_protection {
 
-std::string GetGeoIdFromGeoHint(
-    const std::optional<ip_protection::GeoHint> geo_hint) {
+std::string GetGeoIdFromGeoHint(const std::optional<GeoHint> geo_hint) {
   if (!geo_hint.has_value()) {
     return "";  // If nullopt, return empty string.
   }
@@ -28,12 +31,12 @@ std::string GetGeoIdFromGeoHint(
 }
 
 // TODO(crbug.com/40176497): IN-TEST does not work for multi-line declarations.
-std::optional<ip_protection::GeoHint> GetGeoHintFromGeoIdForTesting(  // IN-TEST
+std::optional<GeoHint> GetGeoHintFromGeoIdForTesting(  // IN-TEST
     const std::string& geo_id) {
   if (geo_id.empty()) {
     return std::nullopt;  // Return nullopt if the geo_id is empty.
   }
-  ip_protection::GeoHint geo_hint;
+  GeoHint geo_hint;
   std::stringstream geo_id_stream(geo_id);
   std::string segment;
 
@@ -53,6 +56,24 @@ std::optional<ip_protection::GeoHint> GetGeoHintFromGeoIdForTesting(  // IN-TEST
   }
 
   return geo_hint;
+}
+
+std::vector<MdlType> FromMdlResourceProto(
+    masked_domain_list::Resource resource) {
+  std::vector<MdlType> mdl_types;
+
+  if (!resource.exclude_default_group()) {
+    mdl_types.emplace_back(MdlType::kDefault);
+  }
+
+  if (resource.experiments_size() != 0 &&
+      base::Contains(resource.experiments(),
+                     masked_domain_list::Resource::Experiment::
+                         Resource_Experiment_EXPERIMENT_EXTERNAL_REGULAR)) {
+    mdl_types.emplace_back(MdlType::kRegularBrowsing);
+  }
+
+  return mdl_types;
 }
 
 }  // namespace ip_protection

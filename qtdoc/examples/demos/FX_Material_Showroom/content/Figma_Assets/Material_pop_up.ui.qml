@@ -3,14 +3,18 @@
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick3D.Helpers
 
 Item {
     id: material_pop_up
-    x: (1 - menutransition_open.phase) * -636
+
+    required property real openmenuTransitionPhase
+    required property NumberAnimation closemenuTransition
+    required property QtObject screen
+
+    x: (1 - openmenuTransitionPhase) * -636
     width: 636
     height: 1080
-    opacity: menutransition_open.phase
+    opacity: openmenuTransitionPhase
     property alias setting_panelText: setting_panel.text
     property alias effectsL: listEffects
     property alias modelsL: listModels
@@ -52,8 +56,13 @@ Item {
         Connections {
             target: mouseAreaList
             property real speed: 0.3
-            onWheel: (wheel) => mouseScroll.curValue = (mouseScroll.curValue + wheel.angleDelta.y * speed
-                        < mouseScroll.minValue) ? mouseScroll.minValue : ((mouseScroll.curValue + wheel.angleDelta.y * speed > mouseScroll.maxValue) ? mouseScroll.maxValue : mouseScroll.curValue + wheel.angleDelta.y * speed)
+            function onWheel(wheel) {
+                mouseScroll.curValue = (mouseScroll.curValue + wheel.angleDelta.y * speed < mouseScroll.minValue)
+                        ? mouseScroll.minValue
+                        : ((mouseScroll.curValue + wheel.angleDelta.y * speed > mouseScroll.maxValue)
+                           ? mouseScroll.maxValue
+                           : mouseScroll.curValue + wheel.angleDelta.y * speed)
+            }
         }
     }
 
@@ -64,7 +73,6 @@ Item {
         width: 580
         height: 636
         visible: false
-        property alias list: listMaterial
     }
 
     ListEffects {
@@ -74,7 +82,6 @@ Item {
         width: 580
         height: 1050
         visible: false
-        property alias list: listEffects
     }
 
     ListModels {
@@ -84,7 +91,6 @@ Item {
         width: 580
         height: 376
         visible: false
-        property alias list: listModels
     }
 
     Rectangle {
@@ -119,12 +125,16 @@ Item {
 
             Connections {
                 target: button
-                onClicked: rectangle1.settingsopen = false
+                function onClicked() {
+                    material_pop_up.screen.settingsopen = false
+                }
             }
 
             Connections {
                 target: button
-                onClicked: menutransition_close.start()
+                function onClicked() {
+                    material_pop_up.closemenuTransition.start()
+                }
             }
         }
     }
@@ -147,6 +157,7 @@ Item {
 
     CardMaterial {
         id: card3DModels
+        popUp: material_pop_up
         x: 420
         y: 100
         width: 188
@@ -158,6 +169,7 @@ Item {
 
     CardMaterial {
         id: cardMaterial
+        popUp: material_pop_up
         x: 28
         y: 100
         width: 188
@@ -169,6 +181,7 @@ Item {
 
     CardMaterial {
         id: cardEffects
+        popUp: material_pop_up
         x: 224
         y: 100
         width: 188

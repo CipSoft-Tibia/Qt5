@@ -70,6 +70,11 @@ void BluetoothAdapterFactory::GetAdapter(AdapterCallback callback) {
     adapter_callbacks_.push_back(std::move(callback));
 
     adapter_under_initialization_ = BluetoothAdapter::CreateAdapter();
+    if (!adapter_under_initialization_) {
+      std::vector<AdapterCallback> callbacks = std::move(adapter_callbacks_);
+      // discard the callbacks
+      return;
+    }
     adapter_ = adapter_under_initialization_->GetWeakPtr();
     adapter_->Initialize(base::BindOnce(
         &BluetoothAdapterFactory::AdapterInitialized, base::Unretained(this)));

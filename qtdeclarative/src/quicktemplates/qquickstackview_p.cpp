@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickstackview_p_p.h"
 #include "qquickstackelement_p_p.h"
@@ -109,7 +110,8 @@ QList<QQuickStackElement *> QQuickStackViewPrivate::parseElements(int from, QQml
     return elements;
 }
 
-QList<QQuickStackElement *> QQuickStackViewPrivate::parseElements(const QList<QQuickStackViewArg> &args)
+QList<QQuickStackElement *> QQuickStackViewPrivate::parseElements(
+        QQmlEngine *engine, const QList<QQuickStackViewArg> &args)
 {
     Q_Q(QQuickStackView);
     QList<QQuickStackElement *> stackElements;
@@ -141,8 +143,8 @@ QList<QQuickStackElement *> QQuickStackViewPrivate::parseElements(const QList<QQ
             return {};
         }
 
-        QQuickStackElement *element = QQuickStackElement::fromStackViewArg(q, arg);
-        QV4::ExecutionEngine *v4Engine = qmlEngine(q)->handle();
+        QQuickStackElement *element = QQuickStackElement::fromStackViewArg(engine, q, arg);
+        QV4::ExecutionEngine *v4Engine = engine->handle();
         element->properties.set(v4Engine, v4Engine->fromVariant(properties));
         element->qmlCallingContext.set(v4Engine, v4Engine->qmlContext());
         stackElements.append(element);
@@ -171,7 +173,7 @@ QQuickStackElement *QQuickStackViewPrivate::findElement(const QV4::Value &value)
 static QUrl resolvedUrl(const QUrl &url, const QQmlRefPointer<QQmlContextData> &context)
 {
     if (url.isRelative())
-        return context->resolvedUrl(url).toString();
+        return context->resolvedUrl(url);
     return url;
 }
 
@@ -183,28 +185,33 @@ static QString resolvedUrl(const QString &str, const QQmlRefPointer<QQmlContextD
     return str;
 }
 
-QQuickStackElement *QQuickStackViewPrivate::createElement(const QV4::Value &value, const QQmlRefPointer<QQmlContextData> &context, QString *error)
+QQuickStackElement *QQuickStackViewPrivate::createElement(
+        const QV4::Value &value, const QQmlRefPointer<QQmlContextData> &context, QString *error)
 {
     Q_Q(QQuickStackView);
     if (const QV4::String *s = value.as<QV4::String>())
-        return QQuickStackElement::fromString(resolvedUrl(s->toQString(), context), q, error);
+        return QQuickStackElement::fromString(
+                s->engine()->qmlEngine(), resolvedUrl(s->toQString(), context), q, error);
     if (const QV4::QObjectWrapper *o = value.as<QV4::QObjectWrapper>())
         return QQuickStackElement::fromObject(o->object(), q, error);
     if (const QV4::UrlObject *u = value.as<QV4::UrlObject>())
-        return QQuickStackElement::fromString(resolvedUrl(u->href(), context), q, error);
+        return QQuickStackElement::fromString(
+                u->engine()->qmlEngine(), resolvedUrl(u->href(), context), q, error);
 
-    if (value.as<QV4::Object>()) {
+    if (const QV4::Object *o = value.as<QV4::Object>()) {
         const QVariant data = QV4::ExecutionEngine::toVariant(value, QMetaType::fromType<QUrl>());
         if (data.typeId() == QMetaType::QUrl) {
-            return QQuickStackElement::fromString(resolvedUrl(data.toUrl(), context).toString(), q,
-                                                  error);
+            return QQuickStackElement::fromString(
+                    o->engine()->qmlEngine(), resolvedUrl(data.toUrl(), context).toString(), q,
+                    error);
         }
     }
 
     return nullptr;
 }
 
-bool QQuickStackViewPrivate::pushElements(const QList<QQuickStackElement *> &elems)
+bool QQuickStackViewPrivate::pushElements(
+        QV4::ExecutionEngine *v4, const QList<QQuickStackElement *> &elems)
 {
     Q_Q(QQuickStackView);
     if (!elems.isEmpty()) {
@@ -212,19 +219,19 @@ bool QQuickStackViewPrivate::pushElements(const QList<QQuickStackElement *> &ele
             e->setIndex(elements.size());
             elements += e;
         }
-        return elements.top()->load(q);
+        return elements.top()->load(v4, q);
     }
     return false;
 }
 
-bool QQuickStackViewPrivate::pushElement(QQuickStackElement *element)
+bool QQuickStackViewPrivate::pushElement(QV4::ExecutionEngine *v4, QQuickStackElement *element)
 {
     if (element)
-        return pushElements(QList<QQuickStackElement *>() << element);
+        return pushElements(v4, QList<QQuickStackElement *>() << element);
     return false;
 }
 
-bool QQuickStackViewPrivate::popElements(QQuickStackElement *element)
+bool QQuickStackViewPrivate::popElements(QV4::ExecutionEngine *v4, QQuickStackElement *element)
 {
     Q_Q(QQuickStackView);
     while (elements.size() > 1 && elements.top() != element) {
@@ -232,10 +239,12 @@ bool QQuickStackViewPrivate::popElements(QQuickStackElement *element)
         if (!element)
             break;
     }
-    return elements.top()->load(q);
+    return elements.top()->load(v4, q);
 }
 
-bool QQuickStackViewPrivate::replaceElements(QQuickStackElement *target, const QList<QQuickStackElement *> &elems)
+bool QQuickStackViewPrivate::replaceElements(
+        QV4::ExecutionEngine *v4, QQuickStackElement *target,
+        const QList<QQuickStackElement *> &elems)
 {
     if (target) {
         while (!elements.isEmpty()) {
@@ -245,10 +254,12 @@ bool QQuickStackViewPrivate::replaceElements(QQuickStackElement *target, const Q
                 break;
         }
     }
-    return pushElements(elems);
+    return pushElements(v4, elems);
 }
 
-QQuickItem *QQuickStackViewPrivate::popToItem(QQuickItem *item, QQuickStackView::Operation operation, CurrentItemPolicy currentItemPolicy)
+QQuickItem *QQuickStackViewPrivate::popToItem(
+        QV4::ExecutionEngine *v4, QQuickItem *item, QQuickStackView::Operation operation,
+        CurrentItemPolicy currentItemPolicy)
 {
     const QString operationName = QStringLiteral("pop");
     if (modifyingElements) {
@@ -301,7 +312,7 @@ QQuickItem *QQuickStackViewPrivate::popToItem(QQuickItem *item, QQuickStackView:
     }
 
     QQuickItem *previousItem = nullptr;
-    if (popElements(enter)) {
+    if (popElements(v4, enter)) {
         if (exit) {
             exit->removal = true;
             removing.insert(exit);

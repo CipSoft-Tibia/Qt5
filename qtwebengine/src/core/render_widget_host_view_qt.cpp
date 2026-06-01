@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "render_widget_host_view_qt.h"
 
@@ -13,7 +14,9 @@
 #include "web_event_factory.h"
 
 #include "components/input/cursor_manager.h"
+#include "components/input/events_helper.h"
 #include "components/input/render_widget_host_input_event_router.h"
+#include "components/input/switches.h"
 #include "components/viz/common/features.h"
 #include "components/viz/common/frame_sinks/begin_frame_source.h"
 #include "components/viz/common/surfaces/frame_sink_id_allocator.h"
@@ -27,7 +30,6 @@
 #include "content/browser/renderer_host/render_view_host_impl.h"
 #include "content/common/content_switches_internal.h"
 #include "content/common/cursors/webcursor.h"
-#include "content/common/input/events_helper.h"
 #include "content/common/input/synthetic_gesture_target.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -52,6 +54,7 @@
 
 #if defined(Q_OS_MACOS)
 #include "ui/resources/grit/ui_resources.h"
+#include "cursor_utils_qt_mac.h"
 #endif
 
 #include <QGuiApplication>
@@ -227,7 +230,8 @@ void RenderWidgetHostViewQt::setAdapterClient(WebContentsAdapterClient *adapterC
                                                             m_adapterClient = nullptr; });
 }
 
-void RenderWidgetHostViewQt::OnInputEventAck(blink::mojom::InputEventResultSource,
+void RenderWidgetHostViewQt::OnInputEventAck(const content::RenderWidgetHost &,
+                                             blink::mojom::InputEventResultSource,
                                              blink::mojom::InputEventResultState state,
                                              const blink::WebInputEvent &event)
 {
@@ -385,8 +389,6 @@ void RenderWidgetHostViewQt::UpdateBackgroundColor()
 
     m_delegate->setClearColor(toQt(color));
 
-    bool opaque = SkColorGetA(color) == SK_AlphaOPAQUE;
-    m_rootLayer->SetFillsBoundsOpaquely(opaque);
     m_rootLayer->SetColor(color);
     m_uiCompositor->SetBackgroundColor(color);
 
@@ -422,7 +424,7 @@ void RenderWidgetHostViewQt::UnlockPointer()
     host()->LostPointerLock();
 }
 
-bool RenderWidgetHostViewQt::updateCursorFromResource(ui::mojom::CursorType type)
+bool RenderWidgetHostViewQt::updateCursorFromResource(const ui::Cursor &cursorInfo)
 {
     int resourceId;
     // GetCursorDataFor only knows hotspots for 1x and 2x cursor images, in physical pixels.
@@ -433,46 +435,31 @@ bool RenderWidgetHostViewQt::updateCursorFromResource(ui::mojom::CursorType type
 #if defined(USE_AURA)
     gfx::Point hotspot;
     bool isAnimated;
-    if (!wm::GetCursorDataFor(ui::CursorSize::kNormal, type, hotspotDpr, &resourceId, &hotspot, &isAnimated))
+    if (!wm::GetCursorDataFor(ui::CursorSize::kNormal, cursorInfo.type(), hotspotDpr, &resourceId,
+                              &hotspot, &isAnimated))
         return false;
     hotX = hotspot.x();
     hotY = hotspot.y();
 #elif defined(Q_OS_MACOS)
-    // See chromium/content/common/cursors/webcursor_mac.mm
-    switch (type) {
-    case ui::mojom::CursorType::kVerticalText:
-        // TODO: [NSCursor IBeamCursorForVerticalLayout]
-        return false;
-    case ui::mojom::CursorType::kCell:
-        resourceId = IDR_CELL_CURSOR;
-        hotX = 7;
-        hotY = 7;
-        break;
-    case ui::mojom::CursorType::kContextMenu:
-        // TODO: [NSCursor contextualMenuCursor]
-        return false;
-    case ui::mojom::CursorType::kZoomIn:
-        resourceId = IDR_ZOOMIN_CURSOR;
-        hotX = 7;
-        hotY = 7;
-        break;
-    case ui::mojom::CursorType::kZoomOut:
-        resourceId = IDR_ZOOMOUT_CURSOR;
-        hotX = 7;
-        hotY = 7;
-        break;
-    default:
-        Q_UNREACHABLE_RETURN(false);
-    }
+    // FIXME: find a way to reimplement
+    // get QImage from native cursor
+    ImageInfo imageInfo = QImageFromNSCursor(cursorInfo);
+    hotX = imageInfo.hotSpotData.x();
+    hotY = imageInfo.hotSpotData.y();
 #else
     Q_UNREACHABLE_RETURN(false);
 #endif
 
+    QImage imageQt;
+#if defined(Q_OS_MACOS)
+    imageQt = imageInfo.image;
+#else
     const gfx::ImageSkia *imageSkia = ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(resourceId);
     if (!imageSkia)
         return false;
 
-    QImage imageQt = toQImage(imageSkia->GetRepresentation(GetScreenInfo().device_scale_factor));
+    imageQt = toQImage(imageSkia->GetRepresentation(GetScreenInfo().device_scale_factor));
+#endif
 
     // Convert hotspot coordinates into device-independent pixels.
     hotX /= hotspotDpr;
@@ -577,7 +564,7 @@ void RenderWidgetHostViewQt::DisplayCursor(const ui::Cursor &cursorInfo)
     case ui::mojom::CursorType::kContextMenu:
     case ui::mojom::CursorType::kZoomIn:
     case ui::mojom::CursorType::kZoomOut:
-        if (updateCursorFromResource(cursorInfo.type()))
+        if (updateCursorFromResource(cursorInfo))
             return;
         break;
     case ui::mojom::CursorType::kEastWestNoResize:
@@ -646,7 +633,7 @@ bool RenderWidgetHostViewQt::TransformPointToCoordSpaceForView(const gfx::PointF
         return true;
     }
 
-    return target_view->TransformPointToLocalCoordSpace(point, GetCurrentSurfaceId(), transformed_point);
+    return target_view->TransformPointToLocalCoordSpace(point, GetFrameSinkId(), transformed_point);
 }
 
 void RenderWidgetHostViewQt::Destroy()
@@ -766,7 +753,7 @@ void RenderWidgetHostViewQt::OnGestureEvent(const ui::GestureEventData& gesture)
     if ((gesture.type() == ui::EventType::kGesturePinchBegin
          || gesture.type() == ui::EventType::kGesturePinchUpdate
          || gesture.type() == ui::EventType::kGesturePinchEnd)
-        && !content::IsPinchToZoomEnabled()) {
+        && !input::switches::IsPinchToZoomEnabled()) {
         return;
     }
 
@@ -848,7 +835,7 @@ void RenderWidgetHostViewQt::notifyHidden()
 void RenderWidgetHostViewQt::ProcessAckedTouchEvent(const input::TouchEventWithLatencyInfo &touch, blink::mojom::InputEventResultState ack_result)
 {
     const bool eventConsumed = (ack_result == blink::mojom::InputEventResultState::kConsumed);
-    const bool isSetBlocking = content::InputEventResultStateIsSetBlocking(ack_result);
+    const bool isSetBlocking = input::InputEventResultStateIsSetBlocking(ack_result);
     m_gestureProvider.OnTouchEventAck(touch.event.unique_touch_event_id, eventConsumed, isSetBlocking);
 }
 

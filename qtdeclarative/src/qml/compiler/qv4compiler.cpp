@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include <qv4compiler_p.h>
 #include <qv4codegen_p.h>
@@ -9,7 +10,6 @@
 #include <private/qv4alloca_p.h>
 #include <private/qqmljslexer_p.h>
 #include <private/qqmljsast_p.h>
-#include <private/qml_compile_hash_p.h>
 #include <private/qqmlirbuilder_p.h>
 #include <QCryptographicHash>
 #include <QtEndian>
@@ -442,6 +442,7 @@ void QV4::Compiler::JSUnitGenerator::writeFunction(char *f, QV4::Compiler::Conte
         function->flags |= CompiledData::Function::IsClosureWrapper;
 
     if (!irFunction->returnsClosure
+            || (irFunction->usesArgumentsObject == Context::UsesArgumentsObject::Used)
             || irFunction->innerFunctionAccessesThis
             || irFunction->innerFunctionAccessesNewTarget) {
         // If the inner function does things with this and new.target we need to do some work in
@@ -632,8 +633,6 @@ QV4::CompiledData::Unit QV4::Compiler::JSUnitGenerator::generateHeader(QV4::Comp
     unit.flags = QV4::CompiledData::Unit::IsJavascript;
     unit.flags |= module->unitFlags;
     unit.version = QV4_DATA_STRUCTURE_VERSION;
-    unit.qtVersion = QT_VERSION;
-    qstrcpy(unit.libraryVersionHash, QML_COMPILE_HASH);
     memset(unit.md5Checksum, 0, sizeof(unit.md5Checksum));
     memset(unit.dependencyMD5Checksum, 0, sizeof(unit.dependencyMD5Checksum));
 

@@ -44,26 +44,46 @@ template <typename T> struct QSimpleParsedNumber
     bool ok() const { return used > 0; }
 };
 
-template <typename MaskType, uchar Lowest> struct QCharacterSetMatch
+template <int Extent, uchar Lowest> struct QCharacterSetMatch
 {
-    static constexpr int MaxRange = std::numeric_limits<MaskType>::digits;
-    MaskType mask;
+    using Word = qregisteruint;
+    static constexpr int WordBits = std::numeric_limits<Word>::digits;
+    static constexpr int MaxRange = WordBits * Extent;
+    qregisteruint mask[Extent];
 
     constexpr QCharacterSetMatch(std::string_view set) noexcept
-        : mask(0)
+        : mask{}
     {
         for (char c : set) {
-            int idx = uchar(c) - Lowest;
-            mask |= MaskType(1) << idx;
+            auto [offset, shift] = maskLocation(c);
+            mask[offset] |= Word(1) << shift;
         }
     }
 
     constexpr bool matches(uchar c) const noexcept
     {
-        unsigned idx = c - Lowest;
-        if (idx >= MaxRange)
+        auto [offset, shift] = maskLocation(c);
+        if (offset < 0)
             return false;
-        return (mask >> idx) & 1;
+        Word m = 0;
+        if constexpr (Extent == 2) {
+            // special case for faster code (with GCC, at least)
+            m = (c - Lowest < WordBits) ? mask[0] : mask[1];
+        } else {
+            m = mask[offset];
+        }
+        return (m >> shift) & 1;
+    }
+
+    constexpr auto maskLocation(uchar c) const noexcept
+    {
+        struct { int offset; int shift; } r = { -1, -1 };
+        unsigned idx = c - Lowest;
+        if (idx < MaxRange) {
+            r.offset = idx / WordBits;
+            r.shift = idx % WordBits;
+        }
+        return r;
     }
 };
 
@@ -79,30 +99,29 @@ inline constexpr char ascii_space_chars[] =
 template <const char *Set, int ForcedLowest = -1>
 inline constexpr auto makeCharacterSetMatch() noexcept
 {
+    constexpr int BitsPerWord = std::numeric_limits<qregisteruint>::digits;
     constexpr auto view = std::string_view(Set);
     constexpr uchar MinElement = *std::min_element(view.begin(), view.end());
     constexpr uchar MaxElement = *std::max_element(view.begin(), view.end());
     constexpr int Range = MaxElement - MinElement;
-    static_assert(Range < 64, "Characters in the set are 64 or more values apart");
+    constexpr int Extent = (Range + BitsPerWord - 1) / BitsPerWord;
+    constexpr int TotalBits = BitsPerWord * Extent;
 
     if constexpr (ForcedLowest >= 0) {
         // use the force
         static_assert(ForcedLowest <= int(MinElement), "The force is not with you");
-        using MaskType = std::conditional_t<MaxElement - ForcedLowest < 32, quint32, quint64>;
-        return QCharacterSetMatch<MaskType, ForcedLowest>(view);
-    } else if constexpr (MaxElement < std::numeric_limits<qregisteruint>::digits) {
+        static_assert(ForcedLowest + TotalBits >= MaxElement, "The force is not with you");
+        return QCharacterSetMatch<Extent, ForcedLowest>(view);
+    } else if constexpr (MaxElement < TotalBits) {
         // if we can use a Lowest of zero, we can remove a subtraction
         // from the matches() code at runtime
-        using MaskType = std::conditional_t<(MaxElement < 32), quint32, qregisteruint>;
-        return QCharacterSetMatch<MaskType, 0>(view);
+        return QCharacterSetMatch<Extent, 0>(view);
     } else {
-        using MaskType = std::conditional_t<(Range < 32), quint32, quint64>;
-        return QCharacterSetMatch<MaskType, MinElement>(view);
+        return QCharacterSetMatch<Extent, MinElement>(view);
     }
 }
 } // QtPrivate
 
-struct QLocaleData;
 // Subclassed by Android platform plugin:
 class Q_CORE_EXPORT QSystemLocale
 {

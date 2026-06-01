@@ -529,14 +529,11 @@ void QDoubleMatrix4x4::rotate(double angle, double x, double y, double z)
         return;
     }
 
-    double len = double(x) * double(x) +
-                 double(y) * double(y) +
-                 double(z) * double(z);
-    if (!qFuzzyCompare(len, 1.0) && !qFuzzyIsNull(len)) {
-        len = std::sqrt(len);
-        x = double(double(x) / len);
-        y = double(double(y) / len);
-        z = double(double(z) / len);
+    if (double len = qHypot(x, y, z);
+        !qFuzzyIsNull(len) && !qFuzzyCompare(len, 1.0)) {
+        x /= len;
+        y /= len;
+        z /= len;
     }
     double ic = 1.0 - c;
     QDoubleMatrix4x4 rot(1); // The "1" says to not load the identity.
@@ -629,14 +626,12 @@ void QDoubleMatrix4x4::projectedRotate(double angle, double x, double y, double 
         flagBits = General;
         return;
     }
-    double len = double(x) * double(x) +
-                 double(y) * double(y) +
-                 double(z) * double(z);
-    if (!qFuzzyCompare(len, 1.0) && !qFuzzyIsNull(len)) {
-        len = std::sqrt(len);
-        x = double(double(x) / len);
-        y = double(double(y) / len);
-        z = double(double(z) / len);
+
+    if (const double len = qHypot(x, y, z);
+        !qFuzzyIsNull(len) && !qFuzzyCompare(len, 1.0)) {
+        x /= len;
+        y /= len;
+        z /= len;
     }
     double ic = 1.0 - c;
     QDoubleMatrix4x4 rot(1); // The "1" says to not load the identity.

@@ -18,6 +18,7 @@
 #include <QtSvg/private/qtsvgglobal_p.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qvariant.h>
+#include <QtCore/qvarlengtharray.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qpoint.h>
 #include <QtGui/qcolor.h>
@@ -45,12 +46,12 @@ public:
     QStringView propertyName() const;
     Type type() const;
     QVariant interpolatedValue() const;
-    virtual void interpolate(uint index, qreal t) = 0;
+    virtual void interpolate(uint index, qreal t) const = 0;
 
     static QSvgAbstractAnimatedProperty *createAnimatedProperty(const QString &name);
 protected:
     QList<qreal> m_keyFrames;
-    QVariant m_interpolatedValue;
+    mutable QVariant m_interpolatedValue;
 
 private:
     QString m_propertyName;
@@ -66,51 +67,55 @@ public:
     void appendColor(const QColor &color);
     QList<QColor> colors() const;
 
-    void interpolate(uint index, qreal t) override;
+    void interpolate(uint index, qreal t) const override;
 
 private:
     QList<QColor> m_colors;
 };
 
+class Q_SVG_EXPORT QSvgAnimatedPropertyFloat : public QSvgAbstractAnimatedProperty
+{
+public:
+    QSvgAnimatedPropertyFloat(const QString &name);
+
+    void setValues(const QList<qreal> &values);
+    void appendValue(const qreal value);
+    QList<qreal> values() const;
+
+    void interpolate(uint index, qreal t) const override;
+
+private:
+    QList<qreal> m_values;
+};
+
 class Q_SVG_EXPORT QSvgAnimatedPropertyTransform : public QSvgAbstractAnimatedProperty
 {
 public:
+    struct TransformComponent {
+        enum Type {
+            Translate,
+            Scale,
+            Rotate,
+            Skew,
+            Matrix
+        };
+        Type type;
+        QVarLengthArray<qreal, 16> values;
+    };
+
+public:
     QSvgAnimatedPropertyTransform(const QString &name);
 
-    void setTranslations(const QList<QPointF> &translations);
-    void appendTranslation(const QPointF &translation);
-    QList<QPointF> translations() const;
+    void setTransformCount(quint32 count);
+    quint32 transformCount() const;
+    void appendComponents(const QList<TransformComponent> &components);
+    QList<TransformComponent> components() const;
 
-    void setScales(const QList<QPointF> &scales);
-    void appendScale(const QPointF &scale);
-    QList<QPointF> scales() const;
-
-    void setRotations(const QList<qreal> &rotations);
-    void appendRotation(qreal rotation);
-    QList<qreal> rotations() const;
-
-    void setCentersOfRotation(const QList<QPointF> &centersOfRotations);
-    void appendCenterOfRotation(const QPointF &centerOfRotation);
-    QList<QPointF> centersOfRotations() const;
-
-    void setSkews(const QList<QPointF> &skews);
-    void appendSkew(const QPointF &skew);
-    QList<QPointF> skews() const;
-
-    void interpolate(uint index, qreal t) override;
-
-    qreal interpolatedRotation(uint index, qreal t) const;
-    QPointF interpolatedCenterOfRotation(uint index, qreal t) const;
-    QPointF interpolatedScale(uint index, qreal t) const;
-    QPointF interpolatedTranslation(uint index, qreal t) const;
-    QPointF interpolatedSkew(uint index, qreal t) const;
+    void interpolate(uint index, qreal t) const override;
 
 private:
-    QList<QPointF> m_translations;
-    QList<QPointF> m_scales;
-    QList<qreal> m_rotations;
-    QList<QPointF> m_centersOfRotation;
-    QList<QPointF> m_skews;
+    QList<TransformComponent> m_components;
+    quint32 m_transformCount = 0;
 };
 
 QT_END_NAMESPACE

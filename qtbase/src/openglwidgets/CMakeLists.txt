@@ -6,6 +6,7 @@
 #####################################################################
 
 qt_internal_add_module(OpenGLWidgets
+    NO_PRIVATE_MODULE
     SOURCES
         qopenglwidget.cpp qopenglwidget.h
         qtopenglwidgetsglobal.h

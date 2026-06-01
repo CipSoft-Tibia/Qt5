@@ -6,13 +6,14 @@
 
 #include <string.h>
 
+#include <algorithm>
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
 
 #include "base/command_line.h"
 #include "base/functional/bind.h"
-#include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -63,8 +64,8 @@ namespace {
 // Utility method that tries to find a field in `form` whose `id_attribute`
 // matches `id`. Returns nullptr if no such field exists.
 const FormFieldData* FindFieldById(const FormData& form, std::string_view id) {
-  auto it = base::ranges::find(form.fields(), base::UTF8ToUTF16(id),
-                               &FormFieldData::id_attribute);
+  auto it = std::ranges::find(form.fields(), base::UTF8ToUTF16(id),
+                              &FormFieldData::id_attribute);
   return it != form.fields().end() ? &*it : nullptr;
 }
 
@@ -91,22 +92,21 @@ class FakeContentAutofillDriver : public mojom::AutofillDriver {
   }
 
   void FormSubmitted(const FormData& form,
-                     bool known_success,
                      mojom::SubmissionSource source) override {}
 
   void CaretMovedInFormField(const FormData& form,
                              FieldRendererId field_id,
                              const gfx::Rect& caret_bounds) override {}
 
-  void TextFieldDidChange(const FormData& form,
-                          FieldRendererId field_id,
-                          base::TimeTicks timestamp) override {}
+  void TextFieldValueChanged(const FormData& form,
+                             FieldRendererId field_id,
+                             base::TimeTicks timestamp) override {}
 
   void TextFieldDidScroll(const FormData& form,
                           FieldRendererId field_id) override {}
 
-  void SelectControlDidChange(const FormData& form,
-                              FieldRendererId field_id) override {}
+  void SelectControlSelectionChanged(const FormData& form,
+                                     FieldRendererId field_id) override {}
 
   void JavaScriptChangedAutofilledValue(const FormData& form,
                                         FieldRendererId field_id,
@@ -131,8 +131,7 @@ class FakeContentAutofillDriver : public mojom::AutofillDriver {
 
   void DidEndTextFieldEditing() override {}
 
-  void SelectOrSelectListFieldOptionsDidChange(
-      const autofill::FormData& form) override {}
+  void SelectFieldOptionsDidChange(const autofill::FormData& form) override {}
 
   std::unique_ptr<base::RunLoop> forms_seen_run_loop_ =
       std::make_unique<base::RunLoop>();
@@ -756,27 +755,14 @@ TEST_F(PasswordGenerationAgentTest, MaximumCharsForGenerationOffer) {
   // There should now be a message to show the UI.
   ExpectAutomaticGenerationAvailable("first_password", kAvailable);
 
+  // Simulate the user typing a character. The popup should disappear.
+  EXPECT_CALL(fake_pw_client_, PasswordGenerationRejectedByTyping);
   WebInputElement first_password_element =
       GetInputElementById("first_password");
-
-  // Make a password just under maximum offer size.
-  // Due to implementation details it's OK to get one more trigger for the
-  // automatic generation.
-  EXPECT_CALL(fake_pw_client_, AutomaticGenerationAvailable(_))
-      .Times(AtMost(1));
-  SimulateUserInputChangeForElement(
-      first_password_element,
-      std::string(PasswordGenerationAgent::kMaximumCharsForGenerationOffer,
-                  'a'));
+  SimulateUserInputChangeForElement(first_password_element, "a");
   testing::Mock::VerifyAndClearExpectations(&fake_pw_client_);
 
-  // Simulate a user typing a password just over maximum offer size.
-  EXPECT_CALL(fake_pw_client_, PasswordGenerationRejectedByTyping());
-  SimulateUserTypingASCIICharacter('a', true);
-  // There should now be a message that generation was rejected.
-  fake_pw_client_.Flush();
-
-  // Simulate the user deleting characters. The generation popup should be
+  // Simulate the user deleting a character. The generation popup should be
   // shown again.
   EXPECT_CALL(fake_pw_client_, AutomaticGenerationAvailable(_));
   SimulateUserTypingASCIICharacter(ui::VKEY_BACK, true);
@@ -1379,8 +1365,11 @@ TEST_F(PasswordGenerationAgentTest, ShortPasswordMaskedAfterChangingFocus) {
 TEST_F(PasswordGenerationAgentTest, GenerationAvailableByRendererIds) {
   LoadHTMLWithUserGesture(kMultipleAccountCreationFormHTML);
 
-  constexpr const char* kPasswordElementsIds[] = {"password", "first_password",
-                                                  "second_password"};
+  constexpr auto kPasswordElementsIds = std::to_array<const char*>({
+      "password",
+      "first_password",
+      "second_password",
+  });
 
   WebDocument document = GetMainFrame()->GetDocument();
   std::vector<WebInputElement> password_elements;
@@ -1520,12 +1509,38 @@ TEST_F(PasswordGenerationAgentTest,
   first_password_element.SetSelectionRange(0, password.length());
   fake_pw_client_.Flush();
   testing::Mock::VerifyAndClearExpectations(&fake_pw_client_);
+  EXPECT_CALL(fake_pw_client_, PasswordGenerationRejectedByTyping);
   EXPECT_CALL(fake_pw_client_, PasswordNoLongerGenerated);
-  EXPECT_CALL(fake_pw_client_, AutomaticGenerationAvailable).Times(AtLeast(1));
   SimulateUserTypingASCIICharacter('X', /*flush_message_loop=*/true);
 
   // First field should contain the typed letter, second field should be empty
   // since the password is no longer generated. Both fields should be masked.
+  EXPECT_EQ(first_password_element.Value().Utf16(), u"X");
+  EXPECT_TRUE(second_password_element.Value().Utf16().empty());
+  EXPECT_FALSE(first_password_element.ShouldRevealPassword());
+  EXPECT_FALSE(second_password_element.ShouldRevealPassword());
+}
+
+TEST_F(PasswordGenerationAgentTest,
+       MasksPasswordAfterTypingWithGenerationPopupVisible) {
+  LoadHTMLWithUserGesture(kAccountCreationFormHTML);
+  SetFoundFormEligibleForGeneration(password_generation_,
+                                    GetMainFrame()->GetDocument(),
+                                    /*new_password_id=*/"first_password",
+                                    /*confirm_password_id=*/"second_password");
+  ExpectAutomaticGenerationAvailable("first_password", kAvailable);
+
+  // Type a character. This should result in popup being hidden and the password
+  // field masked.
+  EXPECT_CALL(fake_pw_client_, PasswordGenerationRejectedByTyping);
+  SimulateUserTypingASCIICharacter('X', /*flush_message_loop=*/true);
+
+  // First field should contain the typed letter, second field should be empty.
+  // Both fields should be masked.
+  WebInputElement first_password_element =
+      GetInputElementById("first_password");
+  WebInputElement second_password_element =
+      GetInputElementById("second_password");
   EXPECT_EQ(first_password_element.Value().Utf16(), u"X");
   EXPECT_TRUE(second_password_element.Value().Utf16().empty());
   EXPECT_FALSE(first_password_element.ShouldRevealPassword());

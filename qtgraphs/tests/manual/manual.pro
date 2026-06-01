@@ -11,7 +11,8 @@ qtHaveModule(quick) {
                qmlcustominput \
                qmllegend \
                qmlsurfacelayers \
-               qmltestbed
+               qmltestbed \
+               qmlrenderslicetoimage
 }
 
 !android:!ios:!winrt {
@@ -24,7 +25,8 @@ qtHaveModule(quick) {
                volumetrictest \
                rotations \
                custominput \
-               itemmodel
+               itemmodel \
+               renderslicetoimage
 
     # For testing code snippets of minimal applications
     SUBDIRS += minimalbars \

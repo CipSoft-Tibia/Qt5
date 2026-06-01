@@ -201,97 +201,29 @@
 
     \snippet 3d/widgetgraphgallery/graphmodifier.cpp center camera
 
-    \section2 Custom Proxy for Data
+    \section2 Model Proxy for Data
 
-    When you toggle \uicontrol {Custom Proxy Data} data mode on, the graph in
-    the example uses a custom dataset and the corresponding proxy.
-
-    Define a simple flexible data set, \c{VariantDataSet}, where each data item
-    is a variant list. Each item can have multiple values, identified by their
-    index in the list. In this case, the data set is designed to store monthly
-    rainfall data. The value in index zero represents the year, the value in
-    index one represents the month, and the value in index two represents the
-    amount of rainfall in that month.
-
-    The custom proxy is similar to itemmodel-based proxies,
-    QItemModelBarDataProxy, provided by QtGraphs, and it requires mapping to
-    interpret the data.
-
-    \section3 Implement a data set
-
-    Define the data items as QVariantList objects. Add functionality for
-    clearing the data set and querying a reference to the data contained in the
-    set. Also, add signals to be emitted when data is added or the set is cleared:
-
-    \snippet 3d/widgetgraphgallery/variantdataset.h 0
-    \dots 0
-    \codeline
-    \snippet 3d/widgetgraphgallery/variantdataset.h 1
-
-    \section3 Implement a data proxy
-
-    Derive the \c VariantBarDataProxy class from QBarDataProxy and implement a
-    simple API of getters and setters for the data set and the mapping:
-
-    \snippet 3d/widgetgraphgallery/variantbardataproxy.h 0
-    \dots 0
-    \codeline
-    \snippet 3d/widgetgraphgallery/variantbardataproxy.h 1
-
-    The proxy listens for changes in the data set and the mapping, resolving the
-    data set if any changes are detected. While this implementation may not be
-    particularly efficient, as any change triggers the re-resolving of the
-    entire data set, it is not a concern for this example.
-
-    In the \c resolveDataSet() method, sort the variant data values into rows
-    and columns based on the mapping. This is very similar to how the
-    QItemModelBarDataProxy handles mapping, except you use list indexes instead
-    of item model roles here. Once the values are sorted, generate a
-    \c QBarDataArray out of them, and call the \c resetArray() method in the
-    parent class:
-
-    \snippet 3d/widgetgraphgallery/variantbardataproxy.cpp 0
-
-    \section3 Implement a data mapper
-
-    Store the mapping information between \c VariantDataSet data item indexes
-    and rows, columns, and values of \c QBarDataArray in
-    \c VariantBarDataMapping. It contains the lists of rows and columns to be
-    included in the resolved data:
-
-    \snippet 3d/widgetgraphgallery/variantbardatamapping.h 0
-    \dots 0
-    \codeline
-    \snippet 3d/widgetgraphgallery/variantbardatamapping.h 1
-    \dots 0
-    \codeline
-    \snippet 3d/widgetgraphgallery/variantbardatamapping.h 2
-    \dots 0
-    \codeline
-    \snippet 3d/widgetgraphgallery/variantbardatamapping.h 3
-
-    The primary way to use a \c VariantBarDataMapping object is to give the
-    mappings in the constructor, though you can also use the \c remap() method
-    to set them later, either individually or all together. Emit a signal if
-    mapping changes. The outcome is a simplified version of the mapping
-    functionality of QItemModelBarDataProxy, adapted to work with variant lists
-    instead of item models.
+    When you toggle \uicontrol {Model Proxy Data} data mode on, the graph in
+    the example uses an item model based dataset and the corresponding proxy.
 
     \section3 RainfallData
 
+    Class \c RainfallData sets up a QItemModelBarDataProxy along with the series
+    and axes.
+
     \list 1
-    \li Handle the setup of QBar3DSeries with the custom proxy in the \c RainfallData class:
+    \li We use a \c{std::array<double, 12>} to store the values of a year
+        indexed by month. The static \c readData() helper function reads
+        the data, returning a QList of them indexed by year:
+
+     \snippet 3d/widgetgraphgallery/rainfalldata.cpp 1
+     \dots
+
+    \li The QList represents a two dimensional array indexed by year and month,
+        respectively. From this, we populate a QRangeModel and pass it to
+        a QItemModelBarDataProxy() in the \c RainfallData class:
 
         \snippet 3d/widgetgraphgallery/rainfalldata.cpp 0
-
-    \li Populate the variant data set in the \c addDataSet() method:
-
-        \snippet 3d/widgetgraphgallery/rainfalldata.cpp 1
-        \dots
-
-    \li Use the custom proxy functions to add the data set to the series and set the mapping:
-
-        \snippet 3d/widgetgraphgallery/rainfalldata.cpp 2
 
     \li Finally, add a function for getting the created series for displaying:
 

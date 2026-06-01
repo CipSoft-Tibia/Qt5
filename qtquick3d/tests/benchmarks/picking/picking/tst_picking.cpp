@@ -79,19 +79,19 @@ void picking::benchImpl(int count, bool hit)
     QVector2D viewportDim(400.0f, 400.0f);
     QSSGRenderLayer dummyLayer;
     QMatrix4x4 globalTransform;
+    QMatrix4x4 viewProjection;
 
     QSSGRenderCamera dummyCamera(QSSGRenderCamera::Type::OrthographicCamera);
     dummyCamera.localTransform.translate(QVector3D(0.0f, 0.0f, 600.0f));
     static_cast<QSSGRenderNode &>(dummyCamera).markDirty(QSSGRenderNode::DirtyFlag::TransformDirty);
-    dummyCamera.calculateGlobalVariables(QRectF(QPointF(), QSizeF(viewportDim.x(), viewportDim.y())));
-    dummyCamera.calculateViewProjectionMatrix(globalTransform);
+    QSSGRenderCamera::calculateProjectionInternal(dummyCamera, QRectF(QPointF(), QSizeF(viewportDim.x(), viewportDim.y())));
+    dummyCamera.calculateViewProjectionMatrix(globalTransform, viewProjection);
 
     dummyLayer.renderedCameras = { &dummyCamera };
 
     static const auto setModelPosition = [](QSSGRenderModel &model, const QVector3D &pos) {
         model.localTransform.translate(pos);
         model.markDirty(QSSGRenderNode::DirtyFlag::TransformDirty);
-        model.calculateGlobalVariables();
     };
 
     QSSGRenderModel models[1000];
@@ -107,7 +107,7 @@ void picking::benchImpl(int count, bool hit)
     }
 
     // Since we're using the same mesh for each model, we only need to call loadMesh() once.
-    bufferManager->loadMesh(models);
+    bufferManager->loadMesh(models[0]);
 
     QVarLengthArray<QSSGRenderPickResult, 20> res;
     QSSGRenderRay ray = hit ? QSSGRenderRay{ { 0.0f, 0.0f, -100.0f }, { 0.0f, 0.0f, 1.0f } } : QSSGRenderRay{ { 0.0f, 0.0f, -100.0f }, { 1.0f, 0.0f, 0.0f } };

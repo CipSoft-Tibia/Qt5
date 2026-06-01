@@ -229,6 +229,19 @@ static int isChildReady(pid_t pid, siginfo_t *info)
     info->si_pid = 0;
     return waitid(P_PID, pid, info, WEXITED | WNOHANG | WNOWAIT) == 0 && info->si_pid == pid;
 }
+
+#ifdef __GNUC__
+__attribute__((unused))
+#endif
+static int convertForkfdWaitFlagsToWaitFlags(int ffdoptions)
+{
+    int woptions = WEXITED;
+    if (ffdoptions & FFDW_NOWAIT)
+        woptions |= WNOWAIT;
+    if (ffdoptions & FFDW_NOHANG)
+        woptions |= WNOHANG;
+    return woptions;
+}
 #endif
 
 static void convertStatusToForkfdInfo(int status, struct forkfd_info *info)
@@ -244,19 +257,6 @@ static void convertStatusToForkfdInfo(int status, struct forkfd_info *info)
 #  endif
         info->status = WTERMSIG(status);
     }
-}
-
-#ifdef __GNUC__
-__attribute__((unused))
-#endif
-static int convertForkfdWaitFlagsToWaitFlags(int ffdoptions)
-{
-    int woptions = WEXITED;
-    if (ffdoptions & FFDW_NOWAIT)
-        woptions |= WNOWAIT;
-    if (ffdoptions & FFDW_NOHANG)
-        woptions |= WNOHANG;
-    return woptions;
 }
 
 static int tryReaping(pid_t pid, struct pipe_payload *payload)
@@ -535,6 +535,10 @@ static void forkfd_initialize()
     memset(&action, 0, sizeof action);
     sigemptyset(&action.sa_mask);
     action.sa_flags = SA_NOCLDSTOP | SA_SIGINFO;
+#ifdef SA_RESTART
+    /* ask the OS to restart syscalls we may have interrupted */
+    action.sa_flags |= SA_RESTART;
+#endif
     action.sa_sigaction = sigchld_handler;
 
     /* ### RACE CONDITION

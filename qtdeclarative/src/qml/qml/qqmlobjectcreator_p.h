@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
+
 #ifndef QQMLOBJECTCREATOR_P_H
 #define QQMLOBJECTCREATOR_P_H
 
@@ -17,7 +19,6 @@
 #include <private/qqmlimport_p.h>
 #include <private/qqmltypenamecache_p.h>
 #include <private/qv4compileddata_p.h>
-#include <private/qfinitestack_p.h>
 #include <private/qrecursionwatcher_p.h>
 #include <private/qqmlprofiler_p.h>
 #include <private/qv4qmlcontext_p.h>
@@ -100,28 +101,29 @@ class Q_AUTOTEST_EXPORT ObjectInCreationGCAnchorList {
 public:
     // this is a non owning view, rule of zero applies
     ObjectInCreationGCAnchorList() = default;
-    ObjectInCreationGCAnchorList(const QV4::Scope &scope, int totalObjectCount)
+    ObjectInCreationGCAnchorList(const QV4::Scope &scope)
     {
-        allJavaScriptObjects = scope.alloc(totalObjectCount);
+        allocationScope = &scope;
     }
     void trackObject(QV4::ExecutionEngine *engine, QObject *instance);
-    bool canTrack() const { return allJavaScriptObjects; }
+    bool canTrack() const { return allocationScope; }
 private:
-    QV4::Value *allJavaScriptObjects = nullptr; // pointer to vector on JS stack to reference JS wrappers during creation phase.
+    // pointer to scope to reference JS wrappers during creation phase.
+    const QV4::Scope *allocationScope = nullptr;
+};
+
+struct ParserStatus {
+    size_t objectIndex = 0;
+    int parserStatusCast = 0;
 };
 
 struct QQmlObjectCreatorSharedState final : QQmlRefCounted<QQmlObjectCreatorSharedState>
 {
     QQmlRefPointer<QQmlContextData> rootContext;
     QQmlRefPointer<QQmlContextData> creationContext;
-    QFiniteStack<QQmlAbstractBinding::Ptr> allCreatedBindings;
-    QFiniteStack<QQmlParserStatus*> allParserStatusCallbacks;
-    /* This needs to be a deque, not a vector, as we need reference stability:
-       The parser status holds a back-pointer to its place in the container, so that it can null itself
-       in its dtor.
-    */
-    std::unique_ptr<std::deque<QQmlParserStatus *>> attachedObjectParserStatusCallbacks;
-    QFiniteStack<QQmlGuard<QObject> > allCreatedObjects;
+    std::vector<QQmlAbstractBinding::Ptr> allCreatedBindings;
+    std::vector<ParserStatus> allParserStatusCallbacks;
+    std::vector<QQmlGuard<QObject>> allCreatedObjects;
     ObjectInCreationGCAnchorList allJavaScriptObjects; // pointer to vector on JS stack to reference JS wrappers during creation phase.
     QQmlComponentAttached *componentAttached;
     QList<QQmlFinalizerHook *> finalizeHooks;
@@ -170,17 +172,16 @@ public:
     {
         return parentContext.contextData();
     }
-    QFiniteStack<QQmlGuard<QObject> > &allCreatedObjects() { return sharedState->allCreatedObjects; }
+    std::vector<QQmlGuard<QObject> > &allCreatedObjects() { return sharedState->allCreatedObjects; }
 
     RequiredProperties *requiredProperties() {return &sharedState->requiredProperties;}
     bool componentHadTopLevelRequiredProperties() const {return sharedState->hadTopLevelRequiredProperties;}
 
-    static QQmlComponent *createComponent(QQmlEngine *engine,
-                                          QV4::ExecutableCompilationUnit *compilationUnit,
-                                          int index, QObject *parent,
-                                          const QQmlRefPointer<QQmlContextData> &context);
+    static QQmlComponent *createComponent(
+            QQmlEngine *engine, QV4::ExecutableCompilationUnit *compilationUnit, int index,
+            QObject *parent, const QQmlRefPointer<QQmlContextData> &context);
 
-    void removePendingBinding(QObject *target, int propertyIndex)
+    void removePendingBinding(QObject *target, int propertyIndex) const
     {
         QList<DeferredQPropertyBinding> &pendingBindings = sharedState.data()->allQPropertyBindings;
         pendingBindings.removeIf([&](const DeferredQPropertyBinding &deferred) {
@@ -291,8 +292,7 @@ private:
 
         QV4::Scope valueScope(v4);
         QScopedValueRollback<ObjectInCreationGCAnchorList> jsObjectGuard(
-                sharedState->allJavaScriptObjects,
-                ObjectInCreationGCAnchorList(valueScope, compilationUnit->totalObjectCount(m_inlineComponentName)));
+                sharedState->allJavaScriptObjects, ObjectInCreationGCAnchorList(valueScope));
 
         Q_ASSERT(topLevelCreator);
         QV4::QmlContext *qmlContext = static_cast<QV4::QmlContext *>(valueScope.alloc());

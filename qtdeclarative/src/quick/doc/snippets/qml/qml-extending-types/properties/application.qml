@@ -6,7 +6,7 @@ import QtQuick
 ImageViewer {
     id: viewer
 
-    currentImage: "http://qt.nokia.com/logo.png"
+    currentImage: "https://code.qt.io/cgit/qt/qtbase.git/plain/src/widgets/dialogs/images/qtlogo-64.png"
 
     Text { text: viewer.currentImage }
 }

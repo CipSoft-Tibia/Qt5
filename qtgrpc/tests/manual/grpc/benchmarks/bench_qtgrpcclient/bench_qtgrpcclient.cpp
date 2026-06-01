@@ -207,9 +207,7 @@ void QtGrpcClientBenchmark::bidiStreaming()
     BenchmarkData benchData(mCalls);
 
     QGrpcCallOptions copts;
-    copts.setMetadata({
-        { "write-queries"_ba, QString::number(mCalls).toUtf8() }
-    });
+    copts.addMetadata("write-queries"_ba, QString::number(mCalls).toUtf8());
 
     qt::bench::BiDiStreamingRequest request;
     qt::bench::BiDiStreamingResponse response;
@@ -217,9 +215,7 @@ void QtGrpcClientBenchmark::bidiStreaming()
     if (!sData.isEmpty()) {
         request.setPayload(sData);
         benchData.sendBytes += request.payload().size();
-        auto md = copts.metadata();
-        md.insert("write-size", QString::number(sData.size()).toUtf8());
-        copts.setMetadata(std::move(md));
+        copts.addMetadata("write-size", QString::number(sData.size()).toUtf8());
     }
 
     auto stream = mClient.BiDiStreaming(request, copts);

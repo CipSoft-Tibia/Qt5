@@ -318,11 +318,14 @@ function(qt_internal_create_module_depends_file target)
             @ONLY
         )
 
-        qt_install(FILES
-            "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Dependencies.cmake"
-            DESTINATION "${config_install_dir}"
-            COMPONENT Devel
-        )
+        get_target_property(will_install "${target}" _qt_will_install)
+        if(will_install)
+            qt_install(FILES
+                "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Dependencies.cmake"
+                DESTINATION "${config_install_dir}"
+                COMPONENT Devel
+            )
+        endif()
 
         message(TRACE "Recorded dependencies for module: ${target}\n"
             "    Qt dependencies: ${target_deps}\n"
@@ -814,7 +817,7 @@ function(qt_internal_create_config_file_for_standalone_tests)
     # standalone tests, and it can happen that Core or Gui features are not
     # imported early enough, which means FindWrapPNG will try to find a system PNG library instead
     # of the bundled one.
-    set(modules)
+    set(modules "")
     foreach(m ${QT_REPO_KNOWN_MODULES})
         get_target_property(target_type "${m}" TYPE)
 
@@ -830,12 +833,9 @@ function(qt_internal_create_config_file_for_standalone_tests)
         endif()
     endforeach()
 
-    list(JOIN modules " " QT_REPO_KNOWN_MODULES_STRING)
-    string(STRIP "${QT_REPO_KNOWN_MODULES_STRING}" QT_REPO_KNOWN_MODULES_STRING)
-
     # Skip generating and installing file if no modules were built. This make sure not to install
     # anything when build qtx11extras on macOS for example.
-    if(NOT QT_REPO_KNOWN_MODULES_STRING)
+    if(NOT modules)
         return()
     endif()
 
@@ -843,8 +843,8 @@ function(qt_internal_create_config_file_for_standalone_tests)
     # of the current repo. This is used for standalone tests.
     qt_internal_get_standalone_parts_config_file_name(tests_config_file_name)
 
-    # Standalone tests Config files should follow the main versioning scheme.
-    qt_internal_get_package_version_of_target(Platform main_qt_package_version)
+    # Substitution variables.
+    list(JOIN modules "\n        " QT_MODULE_PACKAGES)
 
     configure_file(
         "${QT_CMAKE_DIR}/QtStandaloneTestsConfig.cmake.in"
@@ -856,22 +856,6 @@ function(qt_internal_create_config_file_for_standalone_tests)
         DESTINATION "${config_install_dir}"
         COMPONENT Devel
     )
-endfunction()
-
-function(qt_internal_install_prl_files)
-    # Get locations relative to QT_BUILD_DIR from which prl files should be installed.
-    get_property(prl_install_dirs GLOBAL PROPERTY QT_PRL_INSTALL_DIRS)
-
-    # Clear the list of install dirs so the previous values don't pollute the list of install dirs
-    # for the next repository in a top-level build.
-    set_property(GLOBAL PROPERTY QT_PRL_INSTALL_DIRS "")
-
-    foreach(prl_install_dir ${prl_install_dirs})
-        qt_install(DIRECTORY "${QT_BUILD_DIR}/${prl_install_dir}/"
-            DESTINATION ${prl_install_dir}
-            FILES_MATCHING PATTERN "*.prl"
-        )
-    endforeach()
 endfunction()
 
 function(qt_internal_generate_user_facing_tools_info)

@@ -111,7 +111,7 @@ public:
 #if QT_CONFIG(signaling_nan)
     static constexpr qfloat16 _limit_signaling_NaN() noexcept { return qfloat16(Wrap(0x7d00)); }
 #endif
-#endif
+#endif // __STDCPP_FLOAT16_T__
     inline constexpr bool isNormal() const noexcept
     { return (b16 & 0x7c00) && (b16 & 0x7c00) != 0x7c00; }
 private:
@@ -315,10 +315,10 @@ Q_CORE_EXPORT void qFloatFromFloat16(float *, const qfloat16 *, qsizetype length
 }
 
 // The remainder of these utility functions complement qglobal.h
-[[nodiscard]] inline int qRound(qfloat16 d) noexcept
+[[nodiscard]] inline int qRound(qfloat16 d)
 { return qRound(static_cast<float>(d)); }
 
-[[nodiscard]] inline qint64 qRound64(qfloat16 d) noexcept
+[[nodiscard]] inline qint64 qRound64(qfloat16 d)
 { return qRound64(static_cast<float>(d)); }
 
 [[nodiscard]] inline bool qFuzzyCompare(qfloat16 p1, qfloat16 p2) noexcept
@@ -359,7 +359,7 @@ inline qfloat16::qfloat16(float f) noexcept
 #if defined(QT_COMPILER_SUPPORTS_F16C) && defined(__F16C__)
     __m128 packsingle = _mm_set_ss(f);
     __m128i packhalf = _mm_cvtps_ph(packsingle, 0);
-    b16 = _mm_extract_epi16(packhalf, 0);
+    b16 = quint16(_mm_extract_epi16(packhalf, 0));
 #elif defined (__ARM_FP16_FORMAT_IEEE)
     __fp16 f16 = __fp16(f);
     memcpy(&b16, &f16, sizeof(quint16));

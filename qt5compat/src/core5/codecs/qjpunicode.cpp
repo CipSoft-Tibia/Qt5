@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 /*! \class QJpUnicodeConv
     \inmodule QtCore5Compat
@@ -45,6 +46,9 @@ static uint unicode11ToJisx0212(uint h, uint l);
 /*
  * Unicode 1.1 conversion.
  */
+
+QJpUnicodeConv::~QJpUnicodeConv()
+    = default;
 
 /*!
   \fn QJpUnicodeConv::QJpUnicodeConv (int r)

@@ -13,6 +13,8 @@
 #include <accctrl.h>
 #include <sddl.h>
 
+#include <memory>
+
 // The buffer size need to be 0 otherwise data could be
 // lost if the socket that has written data closes the connection
 // before it is read.  Pipewriter is used for write buffering.
@@ -34,7 +36,7 @@ bool QLocalServerPrivate::addListener()
     sa.bInheritHandle = FALSE;      //non inheritable handle, same as default
     sa.lpSecurityDescriptor = 0;    //default security descriptor
 
-    QScopedPointer<SECURITY_DESCRIPTOR> pSD;
+    std::unique_ptr<SECURITY_DESCRIPTOR> pSD;
     PSID worldSID = 0;
     QByteArray aclBuffer;
     QByteArray tokenUserBuffer;
@@ -43,7 +45,7 @@ bool QLocalServerPrivate::addListener()
     // create security descriptor if access options were specified
     if ((socketOptions.value() & QLocalServer::WorldAccessOption)) {
         pSD.reset(new SECURITY_DESCRIPTOR);
-        if (!InitializeSecurityDescriptor(pSD.data(), SECURITY_DESCRIPTOR_REVISION)) {
+        if (!InitializeSecurityDescriptor(pSD.get(), SECURITY_DESCRIPTOR_REVISION)) {
             setError("QLocalServerPrivate::addListener"_L1);
             return false;
         }
@@ -77,10 +79,14 @@ bool QLocalServerPrivate::addListener()
         SID_NAME_USE groupNameUse;
         LPWSTR groupNameSid;
         LookupAccountSid(0, pTokenGroup->PrimaryGroup, 0, &groupNameSize, 0, &domainNameSize, &groupNameUse);
-        QScopedPointer<wchar_t, QScopedPointerArrayDeleter<wchar_t>> groupName(new wchar_t[groupNameSize]);
-        QScopedPointer<wchar_t, QScopedPointerArrayDeleter<wchar_t>> domainName(new wchar_t[domainNameSize]);
-        if (LookupAccountSid(0, pTokenGroup->PrimaryGroup, groupName.data(), &groupNameSize, domainName.data(), &domainNameSize, &groupNameUse)) {
-            qDebug() << "primary group" << QString::fromWCharArray(domainName.data()) << "\\" << QString::fromWCharArray(groupName.data()) << "type=" << groupNameUse;
+        auto groupName = std::unique_ptr<wchar_t[]>(new wchar_t[groupNameSize]);
+        auto domainName = std::unique_ptr<wchar_t[]>(new wchar_t[domainNameSize]);
+        const bool lookup = LookupAccountSid(0, pTokenGroup->PrimaryGroup, groupName.get(),
+                                             &groupNameSize, domainName.get(), &domainNameSize,
+                                             &groupNameUse);
+        if (lookup) {
+            qDebug() << "primary group" << QString::fromWCharArray(domainName.get()) << "\\"
+                     << QString::fromWCharArray(groupName.get()) << "type=" << groupNameUse;
         }
         if (ConvertSidToStringSid(pTokenGroup->PrimaryGroup, &groupNameSid)) {
             qDebug() << "primary group SID" << QString::fromWCharArray(groupNameSid) << "valid" << IsValidSid(pTokenGroup->PrimaryGroup);
@@ -128,15 +134,15 @@ bool QLocalServerPrivate::addListener()
                 return false;
             }
         }
-        SetSecurityDescriptorOwner(pSD.data(), pTokenUser->User.Sid, FALSE);
-        SetSecurityDescriptorGroup(pSD.data(), pTokenGroup->PrimaryGroup, FALSE);
-        if (!SetSecurityDescriptorDacl(pSD.data(), TRUE, acl, FALSE)) {
+        SetSecurityDescriptorOwner(pSD.get(), pTokenUser->User.Sid, FALSE);
+        SetSecurityDescriptorGroup(pSD.get(), pTokenGroup->PrimaryGroup, FALSE);
+        if (!SetSecurityDescriptorDacl(pSD.get(), TRUE, acl, FALSE)) {
             setError("QLocalServerPrivate::addListener"_L1);
             FreeSid(worldSID);
             return false;
         }
 
-        sa.lpSecurityDescriptor = pSD.data();
+        sa.lpSecurityDescriptor = pSD.get();
     }
 
     listener->handle = CreateNamedPipe(
@@ -216,7 +222,7 @@ bool QLocalServerPrivate::listen(const QString &name)
     // Use only one event for all listeners of one socket.
     // The idea is that listener events are rare, so polling all listeners once in a while is
     // cheap compared to waiting for N additional events in each iteration of the main loop.
-    eventHandle = CreateEvent(NULL, TRUE, FALSE, NULL);
+    eventHandle = CreateEvent(NULL, TRUE, FALSE, NULL); // If the function fails, the return value is NULL
     connectionEventNotifier = new QWinEventNotifier(eventHandle , q);
     q->connect(connectionEventNotifier, SIGNAL(activated(HANDLE)), q, SLOT(_q_onNewConnection()));
 
@@ -283,6 +289,7 @@ void QLocalServerPrivate::closeServer()
     connectionEventNotifier->deleteLater();
     connectionEventNotifier = 0;
     CloseHandle(eventHandle);
+    eventHandle = nullptr;
     for (size_t i = 0; i < listeners.size(); ++i)
         CloseHandle(listeners[i]->handle);
     listeners.clear();

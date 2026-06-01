@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
@@ -371,6 +372,24 @@ HRESULT QWindowsUiaMainProvider::GetPatternProvider(PATTERNID idPattern, IUnknow
     return S_OK;
 }
 
+void QWindowsUiaMainProvider::setLabelledBy(QAccessibleInterface *accessible, VARIANT *pRetVal)
+{
+    Q_ASSERT(accessible);
+
+    typedef std::pair<QAccessibleInterface*, QAccessible::Relation> RelationPair;
+    const QList<RelationPair> relationInterfaces = accessible->relations(QAccessible::Label);
+    if (relationInterfaces.empty())
+        return;
+
+    // UIA_LabeledByPropertyId only supports one relation
+    ComPtr<IRawElementProviderSimple> provider = providerForAccessible(relationInterfaces.first().first);
+    if (!provider)
+        return;
+
+    pRetVal->vt = VT_UNKNOWN;
+    pRetVal->punkVal = provider.Detach();
+}
+
 void QWindowsUiaMainProvider::fillVariantArrayForRelation(QAccessibleInterface* accessible,
                                                           QAccessible::Relation relation, VARIANT *pRetVal)
 {
@@ -521,6 +540,20 @@ HRESULT QWindowsUiaMainProvider::GetPropertyValue(PROPERTYID idProp, VARIANT *pR
             *pRetVal = QComVariant{ className }.release();
         }
         break;
+    case UIA_CulturePropertyId:
+    {
+        QLocale locale;
+        if (QAccessibleAttributesInterface *attributesIface = accessible->attributesInterface()) {
+            const QVariant localeVariant = attributesIface->attributeValue(QAccessible::Attribute::Locale);
+            if (localeVariant.isValid()) {
+                Q_ASSERT(localeVariant.canConvert<QLocale>());
+                locale = localeVariant.toLocale();
+            }
+        }
+        LCID lcid = LocaleNameToLCID(qUtf16Printable(locale.bcp47Name()), 0);
+        *pRetVal = QComVariant{ long(lcid) }.release();
+        break;
+    }
     case UIA_DescribedByPropertyId:
         fillVariantArrayForRelation(accessible, QAccessible::DescriptionFor, pRetVal);
         break;
@@ -529,6 +562,9 @@ HRESULT QWindowsUiaMainProvider::GetPropertyValue(PROPERTYID idProp, VARIANT *pR
         break;
     case UIA_FlowsToPropertyId:
         fillVariantArrayForRelation(accessible, QAccessible::FlowsFrom, pRetVal);
+        break;
+    case UIA_LabeledByPropertyId:
+        setLabelledBy(accessible, pRetVal);
         break;
     case UIA_FrameworkIdPropertyId:
         *pRetVal = QComVariant{ QStringLiteral("Qt") }.release();
@@ -558,12 +594,17 @@ HRESULT QWindowsUiaMainProvider::GetPropertyValue(PROPERTYID idProp, VARIANT *pR
         *pRetVal = QComVariant{ accessible->text(QAccessible::Help) }.release();
         break;
     case UIA_HasKeyboardFocusPropertyId:
+        // If the top-level window has no focused child, report the top-level
+        // widget (window). If it already has a focused widget, it will be
+        // reported automatically.
         if (topLevelWindow) {
-            // Windows set the active state to true when they are focused
-            *pRetVal = QComVariant{ accessible->state().active ? true : false }.release();
-        } else {
-            *pRetVal = QComVariant{ accessible->state().focused ? true : false }.release();
+            QAccessibleInterface *focusacc = accessible->focusChild();
+            if (!focusacc) {
+                *pRetVal = QComVariant{ accessible->state().active ? true : false }.release();
+                break;
+            }
         }
+        *pRetVal = QComVariant{ accessible->state().focused ? true : false }.release();
         break;
     case UIA_IsKeyboardFocusablePropertyId:
         if (topLevelWindow) {

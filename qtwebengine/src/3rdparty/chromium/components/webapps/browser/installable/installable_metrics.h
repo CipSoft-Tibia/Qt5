@@ -151,6 +151,13 @@ enum class WebappInstallSource {
   // Recommended apps screen in the ChromeOS Out Of Box Experience.
   OOBE_APP_RECOMMENDATIONS = 35,
 
+  // Installed from web content via Web Install API.
+  WEB_INSTALL = 36,
+
+  // Installed via the ChromeOS help app directing the user to a page and
+  // displaying the install dialog for that page.
+  CHROMEOS_HELP_APP = 37,
+
   // Add any new values above this one.
   COUNT,
 };

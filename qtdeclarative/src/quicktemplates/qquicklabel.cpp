@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicklabel_p.h"
 #include "qquicklabel_p_p.h"
@@ -30,6 +31,7 @@ QT_BEGIN_NAMESPACE
     can also have a visual \l background item.
 
     \image qtquickcontrols-label.png
+           {Label displaying text with styling}
 
     \snippet qtquickcontrols-label.qml 1
 
@@ -288,14 +290,16 @@ QFont QQuickLabel::font() const
     Q_D(const QQuickLabel);
     QFont font = QQuickText::font();
     // The resolve mask should inherit from the requestedFont
-    font.setResolveMask(d->extra.value().requestedFont.resolveMask());
+    font.setResolveMask(d->extra.isAllocated() ? d->extra->requestedFont.resolveMask() : 0);
     return font;
 }
 
 void QQuickLabel::setFont(const QFont &font)
 {
     Q_D(QQuickLabel);
-    if (d->extra.value().requestedFont.resolveMask() == font.resolveMask() && d->extra.value().requestedFont == font)
+    if (d->extra.isAllocated()
+            && d->extra.value().requestedFont.resolveMask() == font.resolveMask()
+            && d->extra.value().requestedFont == font)
         return;
 
     d->extra.value().requestedFont = font;

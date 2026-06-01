@@ -8,7 +8,11 @@
 #include <QtCore/QPointer>
 #include <manager_interface.h>
 
+namespace QtPositioningPrivate {
+
 class OrgFreedesktopGeoClue2ClientInterface;
+
+} // namespace QtPositioningPrivate
 
 QT_BEGIN_NAMESPACE
 class QDBusObjectPath;
@@ -50,8 +54,8 @@ private:
     void parseParameters(const QVariantMap &parameters);
 
     QTimer *m_requestTimer = nullptr;
-    OrgFreedesktopGeoClue2ManagerInterface m_manager;
-    QPointer<OrgFreedesktopGeoClue2ClientInterface> m_client;
+    QtPositioningPrivate::OrgFreedesktopGeoClue2ManagerInterface m_manager;
+    QPointer<QtPositioningPrivate::OrgFreedesktopGeoClue2ClientInterface> m_client;
     bool m_running = false;
     bool m_lastPositionFromSatellite = false;
     QGeoPositionInfoSource::Error m_error = NoError;

@@ -42,6 +42,7 @@ private slots:
     void lowerUpperBound();
     void mergeCompare();
     void take();
+    void takeAlwaysDetaches();
 
     void iterators();
     void multimapIterators();
@@ -1010,9 +1011,9 @@ void tst_QMap::lowerUpperBound()
         QCOMPARE(emptyConstMap.upperBound(1), emptyConstMap.constEnd());
         QVERIFY(!emptyConstMap.isDetached());
 
-        const QMap<int, QString> constMap { qMakePair(1, "one"),
-                                            qMakePair(5, "five"),
-                                            qMakePair(10, "ten") };
+        const QMap<int, QString> constMap { {1, "one"},
+                                            {5, "five"},
+                                            {10, "ten"} };
 
         QCOMPARE(constMap.lowerBound(-1).key(), 1);
         QCOMPARE(constMap.lowerBound(1).key(), 1);
@@ -1057,9 +1058,9 @@ void tst_QMap::lowerUpperBound()
     QCOMPARE(emptyConstMap.upperBound(1), emptyConstMap.constEnd());
     QVERIFY(!emptyConstMap.isDetached());
 
-    const QMultiMap<int, QString> constMap { qMakePair(1, "one"),
-                                             qMakePair(5, "five"),
-                                             qMakePair(10, "ten") };
+    const QMultiMap<int, QString> constMap { {1, "one"},
+                                             {5, "five"},
+                                             {10, "ten"} };
 
     QCOMPARE(constMap.lowerBound(-1).key(), 1);
     QCOMPARE(constMap.lowerBound(1).key(), 1);
@@ -1173,6 +1174,7 @@ void tst_QMap::take()
 
         QCOMPARE(map.take(3), QLatin1String("drei"));
         QVERIFY(!map.contains(3));
+        QVERIFY(map.take(3).isNull());
     }
 
     {
@@ -1191,6 +1193,71 @@ void tst_QMap::take()
         QCOMPARE(multiMap.take(0), u"value0");
         QCOMPARE(multiMap.take(0), QString());
         QVERIFY(!multiMap.contains(0));
+    }
+}
+
+void tst_QMap::takeAlwaysDetaches()
+{
+    {
+        const QMap<int, int> ref = {{0, 1}, {2, 3}};
+        QMap<int, int> map = {{0, 1}, {2, 3}};
+        const auto copy = map;
+        QVERIFY(copy.isSharedWith(map));
+        [[maybe_unused]] const auto r = map.take(42); // doesn't exist
+        QVERIFY(map.isDetached()); // but detached
+        QVERIFY(!copy.isSharedWith(map));
+        QCOMPARE_EQ(map, ref);
+        QCOMPARE_EQ(copy, ref);
+    }
+    {
+        const QMultiMap<int, int> ref = {{0, 1}, {0, 2}};
+        QMultiMap<int, int> map = {{0, 1}, {0, 2}};
+        const auto copy = map;
+        QVERIFY(copy.isSharedWith(map));
+        [[maybe_unused]] const auto r = map.take(42); // doesn't exist
+        QVERIFY(map.isDetached()); // but detached
+        QVERIFY(!copy.isSharedWith(map));
+        QCOMPARE_EQ(map, ref);
+        QCOMPARE_EQ(copy, ref);
+    }
+
+    // except on null:
+
+    {
+        QMap<int, int> ref;
+        QMap<int, int> null;
+        QVERIFY(ref.isSharedWith(null));
+        [[maybe_unused]] const auto r = null.take(42);
+        QVERIFY(ref.isSharedWith(null));
+    }
+    {
+        QMultiMap<int, int> ref;
+        QMultiMap<int, int> null;
+        QVERIFY(ref.isSharedWith(null));
+        [[maybe_unused]] const auto r = null.take(42);
+        QVERIFY(ref.isSharedWith(null));
+    }
+
+    // but also on empty:
+
+    {
+        QMap<int, int> empty = {{0, 0}};
+        // this makes it empty:
+        [[maybe_unused]] const auto r = empty.take(0);
+        const auto copy = empty;
+        QVERIFY(copy.isSharedWith(empty));
+        [[maybe_unused]] const auto r2 = empty.take(42);
+        QVERIFY(!copy.isSharedWith(empty));
+    }
+
+    {
+        QMultiMap<int, int> empty = {{0, 0}};
+        // this makes it empty:
+        [[maybe_unused]] const auto r = empty.take(0);
+        const auto copy = empty;
+        QVERIFY(copy.isSharedWith(empty));
+        [[maybe_unused]] const auto r2 = empty.take(42);
+        QVERIFY(!copy.isSharedWith(empty));
     }
 }
 
@@ -1804,11 +1871,11 @@ void tst_QMap::equal_range()
 {
     {
         const QMap<int, QString> constMap;
-        QCOMPARE(constMap.equal_range(1), qMakePair(constMap.constEnd(), constMap.constEnd()));
+        QCOMPARE(constMap.equal_range(1), std::pair(constMap.constEnd(), constMap.constEnd()));
         QVERIFY(!constMap.isDetached());
 
         QMap<int, QString> map;
-        QCOMPARE(map.equal_range(1), qMakePair(map.end(), map.end()));
+        QCOMPARE(map.equal_range(1), std::pair(map.end(), map.end()));
 
         map.insert(1, "value1");
         map.insert(5, "value5");
@@ -1819,28 +1886,30 @@ void tst_QMap::equal_range()
         QCOMPARE(pair.second.value(), "value5");
         auto b = map.find(1);
         auto e = map.find(5);
-        QCOMPARE(pair, qMakePair(b, e));
+        QCOMPARE(pair, std::pair(b, e));
 
         pair = map.equal_range(3);
         QCOMPARE(pair.first.value(), "value5");
         QCOMPARE(pair.second.value(), "value5");
-        QCOMPARE(pair, qMakePair(e, e));
+        QCOMPARE(pair, std::pair(e, e));
 
-        QCOMPARE(map.equal_range(10), qMakePair(map.end(), map.end()));
+        QCOMPARE(map.equal_range(10), std::pair(map.end(), map.end()));
     }
 
     const QMultiMap<int, QString> constMap;
-    QCOMPARE(constMap.equal_range(1), qMakePair(constMap.constEnd(), constMap.constEnd()));
+    QCOMPARE(constMap.equal_range(1), std::pair(constMap.constEnd(), constMap.constEnd()));
     QVERIFY(!constMap.isDetached());
 
     QMultiMap<int, QString> map;
     const QMultiMap<int, QString> &cmap = map;
 
-    QPair<QMultiMap<int, QString>::iterator, QMultiMap<int, QString>::iterator> result = map.equal_range(0);
+    using It = QMultiMap<int, QString>::iterator;
+    std::pair<It, It> result = map.equal_range(0);
     QCOMPARE(result.first, map.end());
     QCOMPARE(result.second, map.end());
 
-    QPair<QMultiMap<int, QString>::const_iterator, QMultiMap<int, QString>::const_iterator> cresult = cmap.equal_range(0);
+    using CIt = QMultiMap<int, QString>::const_iterator;
+    std::pair<CIt, CIt> cresult = cmap.equal_range(0);
     QCOMPARE(cresult.first, cmap.cend());
     QCOMPARE(cresult.second, cmap.cend());
 

@@ -25,15 +25,12 @@ namespace video_effects {
 // subsequently be used for post-processing the incoming video frames.
 class VideoEffectsProcessorWebGpu {
  public:
-  // `on_unrecoverable_error` will be called when this instance encounters an
-  // error it's unable to recover from. It is guaranteed that the callback will
-  // not be called synchronously from the ctor and from `Initialize()` method.
   explicit VideoEffectsProcessorWebGpu(
+      wgpu::Device device,
       scoped_refptr<viz::ContextProviderCommandBuffer> context_provider,
       scoped_refptr<viz::RasterContextProvider>
           raster_interface_context_provider,
-      scoped_refptr<gpu::ClientSharedImageInterface> shared_image_interface,
-      base::OnceClosure on_unrecoverable_error);
+      scoped_refptr<gpu::ClientSharedImageInterface> shared_image_interface);
   ~VideoEffectsProcessorWebGpu();
 
   VideoEffectsProcessorWebGpu(const VideoEffectsProcessorWebGpu& other) =
@@ -53,30 +50,11 @@ class VideoEffectsProcessorWebGpu {
       media::VideoPixelFormat result_pixel_format,
       mojom::VideoEffectsProcessor::PostProcessCallback post_process_cb);
 
+  void SetBackgroundSegmentationModel(base::span<const uint8_t> model_blob);
+
  private:
   // Ensures that awaiting WebGPUInterface commands are flushed.
   void EnsureFlush();
-
-  // Calls `on_unrecoverable_error_` if it's set.
-  void MaybeCallOnUnrecoverableError();
-
-  void OnRequestAdapter(wgpu::RequestAdapterStatus status,
-                        wgpu::Adapter adapter,
-                        char const* message);
-
-  void OnRequestDevice(wgpu::RequestDeviceStatus status,
-                       wgpu::Device device,
-                       char const* message);
-
-  void OnDeviceLost(WGPUDeviceLostReason reason, char const* message);
-
-  static void ErrorCallback(WGPUErrorType type,
-                            char const* message,
-                            void* userdata);
-
-  static void LoggingCallback(WGPULoggingType type,
-                              char const* message,
-                              void* userdata);
 
   void QueryDone(
       GLuint query_id,
@@ -89,18 +67,16 @@ class VideoEffectsProcessorWebGpu {
 
   wgpu::ComputePipeline CreateComputePipeline();
 
+  wgpu::Device device_;
   scoped_refptr<viz::ContextProviderCommandBuffer> context_provider_;
   scoped_refptr<viz::RasterContextProvider> raster_interface_context_provider_;
   scoped_refptr<gpu::ClientSharedImageInterface> shared_image_interface_;
 
-  base::OnceClosure on_unrecoverable_error_;
+  // Model to be used for background segmentation. It will be empty if the model
+  // is unavailable. This can happen either when we have not received the model
+  // yet, or if we have been told to stop using an existing model.
+  std::vector<uint8_t> background_segmentation_model_;
 
-  wgpu::Instance instance_;
-  wgpu::Adapter adapter_;
-  wgpu::Device device_;
-
-  // `device_`'s default queue. Initialized after `device_` was obtained.
-  wgpu::Queue default_queue_;
   // Compute pipeline executing basic compute shader on a video frame.
   wgpu::ComputePipeline compute_pipeline_;
 

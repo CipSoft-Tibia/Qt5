@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtGrpc/private/qgrpccommonoptions_p.h>
 #include <QtGrpc/private/qgrpcoperationcontext_p.h>
 #include <QtGrpc/qgrpcoperationcontext.h>
 #include <QtGrpc/qgrpcstatus.h>
@@ -214,33 +215,112 @@ QGrpcOperationContext::serializer() const
     return d->serializer;
 }
 
-/*!
-    Returns the metadata received from the server.
+#if QT_DEPRECATED_SINCE(6, 13)
 
-    \note This method is used implicitly by the QGrpcOperation counterpart.
+/*!
+    \deprecated [6.13] Use serverInitialMetadata() and serverTrailingMetadata() instead.
+
+    \include qgrpcoperation.cpp serverInitialMetadata
+    \note This method is used implicitly by QGrpcOperation.
+
+    \sa serverInitialMetadata() QGrpcOperation::serverInitialMetadata()
 */
 const QHash<QByteArray, QByteArray> &QGrpcOperationContext::serverMetadata() const & noexcept
 {
     Q_D(const QGrpcOperationContext);
-    return d->serverMetadata;
+    return d->deprServerInitialMetadata;
 }
 
 /*!
     \fn void QGrpcOperationContext::setServerMetadata(const QHash<QByteArray, QByteArray> &metadata)
     \fn void QGrpcOperationContext::setServerMetadata(QHash<QByteArray, QByteArray> &&metadata)
+    \deprecated [6.13] Use setServerInitialMetadata() instead.
 
-    Sets the server \a metadata received from the service.
+    Sets the metadata received from the server at the start of the RPC.
+
+    \sa setServerInitialMetadata()
 */
 void QGrpcOperationContext::setServerMetadata(const QHash<QByteArray, QByteArray> &metadata)
 {
     Q_D(QGrpcOperationContext);
-    d->serverMetadata = metadata;
+    if (d->deprServerInitialMetadata == metadata)
+        return;
+    d->deprServerInitialMetadata = metadata;
+    d->serverInitialMetadata = QMultiHash<QByteArray, QByteArray>(metadata);
 }
-
 void QGrpcOperationContext::setServerMetadata(QHash<QByteArray, QByteArray> &&metadata)
 {
     Q_D(QGrpcOperationContext);
-    d->serverMetadata = std::move(metadata);
+    if (d->deprServerInitialMetadata == metadata)
+        return;
+    d->deprServerInitialMetadata = std::move(metadata);
+    d->serverInitialMetadata = QMultiHash<QByteArray, QByteArray>(d->deprServerInitialMetadata);
+}
+
+#endif // QT_DEPRECATED_SINCE(6, 13)
+
+/*!
+    \since 6.10
+
+    \include qgrpcoperation.cpp serverInitialMetadata
+    \note This method is used implicitly by QGrpcOperation.
+
+    \sa QGrpcOperation::serverInitialMetadata() serverTrailingMetadata()
+*/
+const QMultiHash<QByteArray, QByteArray> &
+QGrpcOperationContext::serverInitialMetadata() const & noexcept
+{
+    Q_D(const QGrpcOperationContext);
+    return d->serverInitialMetadata;
+}
+
+/*!
+    \since 6.10
+
+    Sets the \a metadata received from the server at the start of the RPC.
+
+    \sa serverInitialMetadata()
+*/
+void QGrpcOperationContext::setServerInitialMetadata(QMultiHash<QByteArray, QByteArray> &&metadata)
+{
+    Q_D(QGrpcOperationContext);
+    if (d->serverInitialMetadata == metadata)
+        return;
+    d->serverInitialMetadata = std::move(metadata);
+#if QT_DEPRECATED_SINCE(6, 13)
+    d->deprServerInitialMetadata = QtGrpcPrivate::toHash(d->serverInitialMetadata);
+#endif
+}
+
+/*!
+    \since 6.10
+
+    \include qgrpcoperation.cpp serverTrailingMetadata
+    \note This method is used implicitly by QGrpcOperation.
+
+    \sa QGrpcOperation::serverTrailingMetadata() setServerTrailingMetadata()
+*/
+const QMultiHash<QByteArray, QByteArray> &
+QGrpcOperationContext::serverTrailingMetadata() const & noexcept
+{
+    Q_D(const QGrpcOperationContext);
+    return d->serverTrailingMetadata;
+}
+
+/*!
+    \since 6.10
+
+    Sets the trailing \a metadata received from the server after all response
+    messages.
+
+    \sa serverTrailingMetadata()
+*/
+void QGrpcOperationContext::setServerTrailingMetadata(QMultiHash<QByteArray, QByteArray> &&metadata)
+{
+    Q_D(QGrpcOperationContext);
+    if (d->serverTrailingMetadata == metadata)
+        return;
+    d->serverTrailingMetadata = std::move(metadata);
 }
 
 /*!

@@ -31,6 +31,7 @@ private Q_SLOTS:
     void modules();
     void qmldirPreference();
     void resolveDirectoryImportPath();
+    void importVersions();
 
 private:
     void runQmlimportscanner(const QString &mode, const QString &fileToScan,
@@ -133,6 +134,22 @@ void TestQmlimportscanner::qmldirPreference()
         QVERIFY(output.contains("With/Module"));
         QVERIFY(!output.contains("WithOut/Module"));
     }
+}
+
+// version numbers are used by external tooling
+// compare QTBUG-115170
+void TestQmlimportscanner::importVersions()
+{
+    QStringList args {"-add-version", "-qmlFiles",  testFile("listVersions.qml")};
+    QProcess process;
+    process.start(m_qmlimportscannerPath, args);
+    QVERIFY(process.waitForFinished());
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 0);
+    auto output = process.readAllStandardOutput();
+    QVERIFY(output.contains("\"version\": \"2.5\""));
+    QVERIFY(output.contains("\"version\": \"2.1\""));
+    QVERIFY(output.contains("\"version\": \"1.2\""));
 }
 
 void TestQmlimportscanner::resolveDirectoryImportPath()

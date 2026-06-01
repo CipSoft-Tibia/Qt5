@@ -15,6 +15,7 @@
 #endif
 
 #include <algorithm>
+#include <functional>
 
 #ifdef Q_OS_WIN
 #  include <QtCore/QVarLengthArray>
@@ -403,8 +404,6 @@ QFileSystemModelPrivate::QFileSystemNode *QFileSystemModelPrivate::node(const QS
             QString rootPath = QDir(longPath).rootPath();
             pathElements.prepend(rootPath);
         }
-        if (pathElements.at(0).endsWith(u'/'))
-            pathElements[0].chop(1);
     }
 #else
     // add the "/" item, since it is a valid path element on Unix
@@ -1132,8 +1131,10 @@ void QFileSystemModelPrivate::sortChildren(int column, const QModelIndex &parent
             iterator.value()->isVisible = false;
         }
     }
-    QFileSystemModelSorter ms(column);
-    std::sort(values.begin(), values.end(), ms);
+    {
+        const QFileSystemModelSorter ms(column);
+        std::sort(values.begin(), values.end(), std::cref(ms));
+    }
     // First update the new visible list
     indexNode->visibleChildren.clear();
     //No more dirty item we reset our internal dirty index
@@ -1789,14 +1790,17 @@ bool QFileSystemModel::event(QEvent *event)
 
 bool QFileSystemModel::rmdir(const QModelIndex &aindex)
 {
+    Q_D(QFileSystemModel);
+
     QString path = filePath(aindex);
     const bool success = QDir().rmdir(path);
-#if QT_CONFIG(filesystemwatcher)
     if (success) {
-        QFileSystemModelPrivate * d = const_cast<QFileSystemModelPrivate*>(d_func());
+#if QT_CONFIG(filesystemwatcher)
         d->fileInfoGatherer->removePath(path);
-    }
 #endif
+        QFileSystemModelPrivate::QFileSystemNode *parentNode = d->node(aindex.parent());
+        d->removeNode(parentNode, fileName(aindex));
+    }
     return success;
 }
 

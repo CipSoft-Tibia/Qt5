@@ -1,9 +1,11 @@
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlloggingcategory_p.h"
 
 #include <QtQml/qqmlinfo.h>
+#include <QtQml/private/qqmldata_p.h>
 
 #include <memory>
 
@@ -106,13 +108,21 @@ void QQmlLoggingCategory::classBegin()
 {
 }
 
-void QQmlLoggingCategory::componentComplete()
+void QQmlLoggingCategory::forceCompletion()
 {
+    if (m_initialized)
+        return;
+
     m_initialized = true;
     if (m_name.isNull())
         qmlWarning(this) << QLatin1String("Declaring the name of a LoggingCategory is mandatory and cannot be changed later");
     else
         setCategory(m_name.constData(), QtMsgType(m_defaultLogLevel));
+}
+
+void QQmlLoggingCategory::componentComplete()
+{
+    forceCompletion();
 }
 
 void QQmlLoggingCategory::setDefaultLogLevel(DefaultLogLevel defaultLogLevel)

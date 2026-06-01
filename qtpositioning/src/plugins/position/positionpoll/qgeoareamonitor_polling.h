@@ -13,6 +13,8 @@
  *
  */
 
+QT_BEGIN_NAMESPACE
+
 class QGeoAreaMonitorPollingPrivate;
 class QGeoAreaMonitorPolling : public QGeoAreaMonitorSource
 {
@@ -60,5 +62,7 @@ private:
 
     bool hasConnections() const;
 };
+
+QT_END_NAMESPACE
 
 #endif // QGEOAREAMONITORPOLLING_H

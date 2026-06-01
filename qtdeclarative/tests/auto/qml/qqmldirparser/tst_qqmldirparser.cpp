@@ -335,6 +335,76 @@ void tst_qqmldirparser::parse_data()
         << QStringList()
         << false;
 
+    QTest::newRow("quoted")
+        << "quoted/qmldir"
+        << QString()
+        << QStringList()
+        << (QStringList() << "PluginA|plugina.so")
+        << QStringList()
+        << (QStringList() << "ComponentA|componenta\"1_0.qml|1|0|false"
+                          << "ComponentA|componenta\\1_5.qml|1|5|false"
+                          << "ComponentB|componentb 1_5.qml|1|5|false")
+        << (QStringList() << "ScriptA|scripta 1_0.js|1|0")
+        << QStringList()
+        << false;
+
+    QTest::newRow("ends-in-quoted")
+            << "ends-in-quoted/qmldir"
+            << QString()
+            << (QStringList() << "qmldir:11:33: file ends inside a quoted string")
+            << (QStringList() << "PluginA|plugina.so")
+            << QStringList()
+            << (QStringList() << "ComponentA|componenta\"1_0.qml|1|0|false"
+                              << "ComponentA|componenta\\1_5.qml|1|5|false"
+                              << "ComponentB|componentb 1_5.qml|1|5|false")
+            << (QStringList() << "ScriptA|scripta 1_0.js|1|0")
+            << QStringList()
+            << false;
+
+    QTest::newRow("invalid-escaped")
+            << "invalid-escaped/qmldir"
+            << QString()
+            << (QStringList()
+                << "qmldir:4:22: only '\"' and '\\' can be escaped"
+                << "qmldir:4: plugin directive requires one or two arguments, but 3 were provided")
+            << QStringList()
+            << QStringList()
+            << (QStringList() << "ComponentA|componenta\"1_0.qml|1|0|false"
+                              << "ComponentA|componenta\\1_5.qml|1|5|false"
+                              << "ComponentB|componentb 1_5.qml|1|5|false")
+            << (QStringList() << "ScriptA|scripta 1_0.js|1|0")
+            << QStringList()
+            << false;
+
+    QTest::newRow("escaped-end-of-file")
+            << "escaped-end-of-file/qmldir"
+            << QString()
+            << (QStringList()  << "qmldir:11:34: only '\"' and '\\' can be escaped")
+            << (QStringList() << "PluginA|plugina.so")
+            << QStringList()
+            << (QStringList() << "ComponentA|componenta\"1_0.qml|1|0|false"
+                              << "ComponentA|componenta\\1_5.qml|1|5|false"
+                              << "ComponentB|componentb 1_5.qml|1|5|false")
+            << (QStringList() << "ScriptA|scripta 1_0.js|1|0")
+            << QStringList()
+            << false;
+
+    QTest::newRow("line-break-in-quoted")
+            << "line-break-in-quoted/qmldir"
+            << QString()
+            << (QStringList()
+                << "qmldir:4:21: line breaks in quoted strings are not supported as they are not "
+                   "portable between different operating systems"
+                << "qmldir:5: a component declaration requires two or three arguments, but 1 were provided")
+            << (QStringList() << "PluginA|plugin")
+            << QStringList()
+            << (QStringList() << "ComponentA|componenta\"1_0.qml|1|0|false"
+                              << "ComponentA|componenta\\1_5.qml|1|5|false"
+                              << "ComponentB|componentb 1_5.qml|1|5|false")
+            << (QStringList() << "ScriptA|scripta 1_0.js|1|0")
+            << QStringList()
+            << false;
+
     QTest::newRow("designersupported-yes")
         << "designersupported-yes/qmldir"
         << QString()

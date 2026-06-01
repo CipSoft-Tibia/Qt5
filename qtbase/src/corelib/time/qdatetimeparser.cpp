@@ -1040,6 +1040,18 @@ static QDate actualDate(QDateTimeParser::Sections known, QCalendar calendar, int
         month = 12;
         known &= ~QDateTimeParser::MonthSection;
     }
+    if (!actual.isValid() && !known.testAnyFlag(QDateTimeParser::YearSectionMask)
+        && known.testFlags(QDateTimeParser::DaySection | QDateTimeParser::MonthSection)
+        && !calendar.isLeapYear(year) && day > calendar.daysInMonth(month, year)) {
+        // See if a leap year works better:
+        int leap = year + 1, stop = year + 47;
+        // (Sweden's 1700 plan (abandoned part way through) for Julian-Gregorian
+        // transition implied no leap year after 1697 until 1744.)
+        while (!calendar.isLeapYear(leap) && leap < stop)
+            ++leap;
+        if (day <= calendar.daysInMonth(month, leap))
+            year = leap;
+    }
 
     QDate first(year, month, 1, calendar);
     int last = known & QDateTimeParser::MonthSection

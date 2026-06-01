@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWASMSCREEN_H
 #define QWASMSCREEN_H
@@ -25,7 +26,7 @@ class QWasmCompositor;
 class QWasmDeadKeySupport;
 class QOpenGLContext;
 
-class QWasmScreen : public QObject, public QPlatformScreen, public QWasmWindowTreeNode
+class QWasmScreen : public QObject, public QPlatformScreen, public QWasmWindowTreeNode<>
 {
     Q_OBJECT
 public:

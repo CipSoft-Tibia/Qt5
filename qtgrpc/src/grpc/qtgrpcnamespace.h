@@ -47,6 +47,9 @@ enum class StatusCode : quint8 {
 };
 Q_ENUM_NS(StatusCode)
 
+// ### Qt7: remove QHash metadata interfaces.
+inline QT_DEFINE_TAG(MultiValue);
+
 Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
 } // namespace QtGrpc
 

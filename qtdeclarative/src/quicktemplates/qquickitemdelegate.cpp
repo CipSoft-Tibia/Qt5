@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickitemdelegate_p.h"
 #include "qquickitemdelegate_p_p.h"
@@ -19,6 +20,7 @@ QT_BEGIN_NAMESPACE
     \brief Basic item delegate that can be used in various views and controls.
 
     \image qtquickcontrols-itemdelegate.gif
+           {Item delegate in list showing interaction states}
 
     ItemDelegate presents a standard view item. It can be used as a delegate
     in various views and controls, such as \l ListView and \l ComboBox.

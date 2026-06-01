@@ -3,6 +3,7 @@
 
 #include "piewidget.h"
 #include "piegraph.h"
+#include <QGraphsTheme>
 
 PieWidget::PieWidget(QWidget *parent)
 {
@@ -63,11 +64,23 @@ void PieWidget::initializeQuickWidget()
 #endif
     m_quickWidget->engine()->addImportPath(
         extraImportPath.arg(QGuiApplication::applicationDirPath(), QString::fromLatin1("qml")));
+
+    //! [5]
+    auto theme = new QGraphsTheme(m_quickWidget);
+    theme->setTheme(QGraphsTheme::Theme::BlueSeries);
+    theme->setLabelBorderVisible(true);
+    theme->setLabelBackgroundVisible(true);
+    theme->setBackgroundColor(Qt::black);
+    //! [5]
+
     //! [2]
-    QQmlContext *context = m_quickWidget->engine()->rootContext();
-    context->setContextProperty("pieGraph", m_pieGraph);
-    m_quickWidget->setSource(QUrl("qrc:/qml/quickwidgetgraphs/main.qml"));
     m_quickWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    m_quickWidget->resize(1280, 720);
+    m_quickWidget->setInitialProperties({
+        {"theme", QVariant::fromValue(theme) },
+        {"seriesList", QVariant::fromValue(m_pieGraph->pieSeries()) }
+    });
+    m_quickWidget->loadFromModule("QtGraphs", "GraphsView");
     //! [2]
 }
 

@@ -57,7 +57,12 @@ qt6_add_qml_module(${application_name}
 )
 #! [qmltc-add-qml-module]
 
+# Work around not being able to call find_package() with Qt components
+# when building qtdeclarative with in-tree tests.
+set(QT_NO_CREATE_TARGETS ON)
+
 #! [qmltc-compile-to-cpp]
 # (qmltc-specific) Link *private* libraries that correspond to QML modules:
+find_package(Qt6 COMPONENTS QmlPrivate QuickPrivate)
 target_link_libraries(${application_name} PRIVATE Qt::QmlPrivate Qt::QuickPrivate)
 #! [qmltc-compile-to-cpp]

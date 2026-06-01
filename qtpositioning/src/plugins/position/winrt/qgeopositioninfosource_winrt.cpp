@@ -29,8 +29,6 @@ typedef IAsyncOperationCompletedHandler<GeolocationAccessStatus> AccessHandler;
 
 Q_DECLARE_LOGGING_CATEGORY(lcPositioningWinRT)
 
-Q_DECLARE_METATYPE(QGeoPositionInfoSource::Error)
-
 QT_BEGIN_NAMESPACE
 
 static inline HRESULT await(const ComPtr<IAsyncOperation<GeolocationAccessStatus>> &asyncOp,

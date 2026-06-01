@@ -17,6 +17,19 @@ class QDataStream;
 
 namespace QJsonPrivate { class Variant; }
 
+namespace QtPrivate {
+
+template <typename T, typename Iterator>
+struct QCborMapKeyValues
+{
+    static QCborValueConstRef key(const Iterator &it) { return it.keyRef(); }
+    static QCborValueConstRef key(Iterator &it) { return it.keyRef(); }
+    static T value(const Iterator &it) { return it.value(); }
+    static T value(Iterator &it) { return it.value(); }
+};
+
+} // namespace QtPrivate
+
 class QCborContainerPrivate;
 class Q_CORE_EXPORT QCborMap
 {
@@ -60,6 +73,7 @@ public:
         QCborValue
 #endif
         key() const { return QCborValueRef(item.d, item.i - 1); }
+        QCborValueConstRef keyRef() const { return QCborValueRef(item.d, item.i - 1); }
         QCborValueRef value() const { return item; }
 
 #if QT_CORE_REMOVED_SINCE(6, 8)
@@ -170,6 +184,7 @@ public:
         QCborValue
 #endif
         key() const { return QCborValueRef(item.d, item.i - 1); }
+        QCborValueConstRef keyRef() const { return QCborValueRef(item.d, item.i - 1); }
         QCborValueConstRef value() const { return item; }
 
 #if QT_CORE_REMOVED_SINCE(6, 8)
@@ -224,7 +239,9 @@ public:
 
     QCborMap()  noexcept;
     QCborMap(const QCborMap &other) noexcept;
+    QCborMap(QCborMap &&other) noexcept = default;
     QCborMap &operator=(const QCborMap &other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QCborMap)
     QCborMap(std::initializer_list<value_type> args)
         : QCborMap()
     {
@@ -325,6 +342,31 @@ public:
     QCborValue extract(iterator it);
     QCborValue extract(const_iterator it) { return extract(iterator{ it.item.d, it.item.i }); }
     bool empty() const { return isEmpty(); }
+
+    typedef QKeyValueIterator<QCborValueConstRef, QCborValueConstRef, const_iterator,
+                              QtPrivate::QCborMapKeyValues<QCborValueConstRef, ConstIterator>>
+            const_key_value_iterator;
+    typedef QKeyValueIterator<QCborValueConstRef, QCborValueRef, iterator,
+                              QtPrivate::QCborMapKeyValues<QCborValueRef, Iterator>>
+            key_value_iterator;
+
+    key_value_iterator keyValueBegin() { return key_value_iterator(begin()); }
+    key_value_iterator keyValueEnd() { return key_value_iterator(end()); }
+    const_key_value_iterator keyValueBegin() const { return const_key_value_iterator(begin()); }
+    const_key_value_iterator constKeyValueBegin() const
+    {
+        return const_key_value_iterator(begin());
+    }
+    const_key_value_iterator keyValueEnd() const { return const_key_value_iterator(end()); }
+    const_key_value_iterator constKeyValueEnd() const { return const_key_value_iterator(end()); }
+
+    auto asKeyValueRange() & { return QtPrivate::QKeyValueRange<QCborMap &>(*this); }
+    auto asKeyValueRange() const & { return QtPrivate::QKeyValueRange<const QCborMap &>(*this); }
+    auto asKeyValueRange() && { return QtPrivate::QKeyValueRange<QCborMap>(std::move(*this)); }
+    auto asKeyValueRange() const &&
+    {
+        return QtPrivate::QKeyValueRange<QCborMap>(std::move(*this));
+    }
 
     iterator find(qint64 key);
     iterator find(QLatin1StringView key);

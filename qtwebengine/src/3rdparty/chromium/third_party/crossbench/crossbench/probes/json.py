@@ -10,23 +10,25 @@ import json
 import logging
 from collections import defaultdict
 from typing import (TYPE_CHECKING, Any, Callable, Dict, Generic, List, Optional,
-                    TypeVar, Union)
+                    Tuple, Type, TypeVar, Union)
 
 from tabulate import tabulate
 
-from crossbench.probes import helper, metric
-from crossbench.probes.probe import Probe, ProbeContext, ProbeMissingDataError
-from crossbench.probes.results import (EmptyProbeResult, LocalProbeResult,
-                                       ProbeResult)
+from crossbench.probes import helper
+from crossbench.probes.metric import (CSVFormatter, MetricsMerger,
+                                      metric_geomean)
+from crossbench.probes.probe import Probe, ProbeContext
+from crossbench.probes.probe_error import ProbeMissingDataError
+from crossbench.probes.results import LocalProbeResult, ProbeResult
 
 if TYPE_CHECKING:
   from crossbench.path import LocalPath
   from crossbench.runner.actions import Actions
-  from crossbench.runner.groups import (BrowsersRunGroup, RepetitionsRunGroup,
-                                        RunGroup)
+  from crossbench.runner.groups.base import RunGroup
+  from crossbench.runner.groups.browsers import BrowsersRunGroup
+  from crossbench.runner.groups.repetitions import RepetitionsRunGroup
   from crossbench.runner.run import Run
   from crossbench.types import Json
-
 
 class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
   """
@@ -39,35 +41,17 @@ class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
   subclass.
   """
 
-  FLATTEN = True
   SORT_KEYS = True
 
   @property
   def result_path_name(self) -> str:
     return f"{self.name}.json"
 
-  @abc.abstractmethod
-  def to_json(self, actions: Actions) -> Json:
-    """
-    Override in subclasses.
-    Returns json-serializable data.
-    """
-    return None
-
-  def flatten_json_data(self, json_data: Any) -> Json:
-    return helper.Flatten(json_data).data
-
-  def process_json_data(self, json_data) -> Any:
-    return json_data
-
-  def get_context(self, run: Run) -> JsonResultProbeContext:
-    return JsonResultProbeContext(self, run)
-
   def merge_repetitions(
       self,
       group: RepetitionsRunGroup,
   ) -> ProbeResult:
-    merger = metric.MetricsMerger()
+    merger = MetricsMerger()
     for run in group.runs:
       if self not in run.results:
         raise ProbeMissingDataError(
@@ -77,7 +61,7 @@ class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
           f"{source_file} from {run} is not a file or doesn't exist.")
       with source_file.open(encoding="utf-8") as f:
         merger.add(json.load(f))
-    return self.write_group_result(group, merger, write_csv=True)
+    return self.write_group_result(group, merger, csv_formatter=CSVFormatter)
 
   def merge_browsers_json_list(self, group: BrowsersRunGroup) -> ProbeResult:
     merged_json: Dict[str, Dict[str, Any]] = {}
@@ -96,15 +80,16 @@ class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
         f"Cannot override existing Json result: {merged_json_path}")
     with merged_json_path.open("w", encoding="utf-8") as f:
       json.dump(merged_json, f, indent=2)
+      # TODO(375390958): figure out why files aren't fully written to
+      # pyfakefs here.
+      f.write("\n")
     return LocalProbeResult(json=(merged_json_path,))
 
   def merge_browsers_csv_list(self, group: BrowsersRunGroup) -> ProbeResult:
     csv_file_list: List[LocalPath] = []
-    headers: List[str] = []
     for story_group in group.story_groups:
       csv_file_list.append(story_group.results[self].csv)
-      headers.append(story_group.browser.unique_name)
-    merged_table = helper.merge_csv(csv_file_list, row_header_len=2)
+    merged_table = helper.merge_csv(csv_file_list, row_header_len=-1)
     merged_json_path = group.get_local_probe_result_path(self, exists_ok=True)
     merged_csv_path = merged_json_path.with_suffix(".csv")
     assert not merged_csv_path.exists(), (
@@ -116,44 +101,45 @@ class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
   def write_group_result(
       self,
       group: RunGroup,
-      merged_data: Union[Dict, List, metric.MetricsMerger],
-      write_csv: bool = False,
-      value_fn: Optional[Callable[[Any], Any]] = None) -> ProbeResult:
+      merged_data: Union[Dict, List, MetricsMerger],
+      csv_formatter: Optional[Type[CSVFormatter]] = CSVFormatter,
+      value_fn: Callable[[Any], Any] = metric_geomean) -> ProbeResult:
     merged_json_path = group.get_local_probe_result_path(self)
     with merged_json_path.open("w", encoding="utf-8") as f:
       if isinstance(merged_data, (dict, list)):
         json.dump(merged_data, f, indent=2)
       else:
         json.dump(merged_data.to_json(sort=self.SORT_KEYS), f, indent=2)
-    if not write_csv:
+      # TODO(375390958): figure out why files aren't fully written to
+      # pyfakefs here.
+      f.write("\n")
+    if not csv_formatter:
       return LocalProbeResult(json=(merged_json_path,))
-    if not isinstance(merged_data, metric.MetricsMerger):
+    if not isinstance(merged_data, MetricsMerger):
       raise ValueError("write_csv is only supported for MetricsMerger, "
                        f"but found {type(merged_data)}'.")
-    if not value_fn:
-      value_fn = value_geomean
     return self.write_group_csv_result(group, merged_data, merged_json_path,
-                                       value_fn)
+                                       csv_formatter, value_fn)
 
-  def write_group_csv_result(self, group: RunGroup,
-                             merged_data: metric.MetricsMerger,
+  def write_group_csv_result(self, group: RunGroup, merged_data: MetricsMerger,
                              merged_json_path: LocalPath,
+                             csv_formatter: Type[CSVFormatter],
                              value_fn: Callable[[Any], Any]) -> ProbeResult:
     merged_csv_path = merged_json_path.with_suffix(".csv")
     assert not merged_csv_path.exists(), (
         f"Cannot override existing CSV result: {merged_csv_path}")
     # Create a CSV table:
-    # header 0: label 0,            label 0,             info_value 0
-    # ...                                                ...
-    # header N: label 0,            label N,             info_value N
-    # data 0:   metric 0 full path, metric 0 short name, metric 0 value
-    # ...
-    # data N:   ...
-    headers = []
+    # 0 | info label 0,                                          info_value 0
+    #     ...                                                    ...
+    # N | info label N,                                          info_value N
+    # 0 | metric 0 full path, metric path[0] ... metric path[N], metric 0 value
+    #     ...                                                    ...
+    # M | metric M full path, ...                                metric M value
+    headers: List[Tuple[str, Any]] = []
     for label, info_value in group.info.items():
-      headers.append((label, label, info_value))
-    csv_data = merged_data.to_csv(
-        value_fn, headers=headers, sort=self.SORT_KEYS)
+      headers.append((label, info_value))
+    csv_data = csv_formatter(
+        merged_data, value_fn, headers=headers, sort=self.SORT_KEYS).table
     with merged_csv_path.open("w", newline="", encoding="utf-8") as f:
       writer = csv.writer(f, delimiter="\t")
       writer.writerows(csv_data)
@@ -185,8 +171,12 @@ class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
 JsonResultProbeT = TypeVar("JsonResultProbeT", bound="JsonResultProbe")
 
 
-class JsonResultProbeContext(ProbeContext[JsonResultProbeT],
-                             Generic[JsonResultProbeT]):
+class JsonResultProbeContext(
+    ProbeContext[JsonResultProbeT],
+    Generic[JsonResultProbeT],
+    metaclass=abc.ABCMeta):
+
+  FLATTEN: bool = True
 
   def __init__(self, probe: JsonResultProbeT, run: Run) -> None:
     super().__init__(probe, run)
@@ -196,8 +186,13 @@ class JsonResultProbeContext(ProbeContext[JsonResultProbeT],
   def probe(self) -> JsonResultProbeT:
     return super().probe
 
+  @abc.abstractmethod
   def to_json(self, actions: Actions) -> Json:
-    return self.probe.to_json(actions)
+    """
+    Override in subclasses.
+    Returns json-serializable data.
+    """
+    return None
 
   def start(self) -> None:
     pass
@@ -207,7 +202,7 @@ class JsonResultProbeContext(ProbeContext[JsonResultProbeT],
 
   def teardown(self) -> ProbeResult:
     if self._json_data is None:
-      return EmptyProbeResult()
+      return self.empty_result()
     self._json_data = self.process_json_data(self._json_data)
     return self.write_json(self.run, self._json_data)
 
@@ -224,24 +219,26 @@ class JsonResultProbeContext(ProbeContext[JsonResultProbeT],
       assert json_data is not None, (
           f"Probe({self.probe.name}) produced no Json data.")
       raw_file = self.local_result_path
-      if self.probe.FLATTEN:
+      if self.FLATTEN:
         raw_file = raw_file.with_suffix(".json.nested")
         flattened_file = self.local_result_path
         flat_json_data = self.flatten_json_data(json_data)
         with flattened_file.open("w", encoding="utf-8") as f:
           json.dump(flat_json_data, f, indent=2)
+          # TODO(375390958): figure out why files aren't fully written to
+          # pyfakefs here.
+          f.write("\n")
       with raw_file.open("w", encoding="utf-8") as f:
         json.dump(json_data, f, indent=2)
+        # TODO(375390958): figure out why files aren't fully written to
+        # pyfakefs here.
+        f.write("\n")
     if flattened_file:
       return LocalProbeResult(json=(flattened_file,), file=(raw_file,))
     return LocalProbeResult(json=(raw_file,))
 
   def process_json_data(self, json_data: Json) -> Json:
-    return self.probe.process_json_data(json_data)
+    return json_data
 
   def flatten_json_data(self, json_data: Any) -> Json:
-    return self.probe.flatten_json_data(json_data)
-
-
-def value_geomean(value):
-  return value.geomean
+    return helper.Flatten(json_data).data

@@ -33,8 +33,8 @@ plugin.
 \row
     \li desktopId
     \li The \l {GeoClue DesktopId property}{Desktop Id} property used by the
-        D-Bus service. If the parameter is not specified, the application name
-        provided by \l QCoreApplication::applicationName() is used.
+        D-Bus service. If the parameter is not specified, the desktop file name
+        provided by \l QGuiApplication::desktopFileName() will be used.
 \endtable
 
 \section1 Examples

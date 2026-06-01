@@ -19,20 +19,20 @@ BASE_FEATURE(kComputePressureBreakCalibrationMitigation,
 BASE_FEATURE(kGenericSensorExtraClasses,
              "GenericSensorExtraClasses",
              base::FEATURE_DISABLED_BY_DEFAULT);
-// Enable serial communication for SPP devices.
-BASE_FEATURE(kEnableBluetoothSerialPortProfileInSerialApi,
-             "EnableBluetoothSerialPortProfileInSerialApi",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-// Enable real-time diagnostic updates in chrome://location-internals.
-BASE_FEATURE(kGeolocationDiagnosticsObserver,
-             "GeolocationDiagnosticsObserver",
-             base::FEATURE_ENABLED_BY_DEFAULT);
 // Expose serial port logical connection state and dispatch connection events
 // for Bluetooth serial ports when the Bluetooth device connection state
 // changes.
 BASE_FEATURE(kSerialPortConnected,
              "SerialPortConnected",
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+// This feature allows to dynamically introduce an additional list of devices
+// blocked by WebUSB via a Finch parameter. This parameter should be specified
+// in the Finch configuration to manage the list of blocked devices.
+BASE_FEATURE(kWebUsbBlocklist,
+             "WebUSBBlocklist",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 #if BUILDFLAG(IS_WIN)
 // Enable integration with the Windows system-level location permission.
 BASE_FEATURE(kWinSystemLocationPermission,
@@ -67,6 +67,23 @@ BASE_FEATURE(kUsbDeviceLinuxOpenCrashKey,
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+#if BUILDFLAG(IS_ANDROID)
+// Enables registering & unregistering of the Battery Status Manager broadcast
+// receiver to the background thread.
+BASE_FEATURE(kBatteryStatusManagerBroadcastReceiverInBackground,
+             "BatteryStatusManagerBroadcastReceiverInBackground",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID)
+
+#if !BUILDFLAG(IS_ANDROID)
+// Modifies the internal allowlist behavior that enables privileged extensions
+// to bypass the HID blocklist when accessing FIDO devices. When enabled,
+// privileged extensions can access non-FIDO interfaces on known security keys.
+BASE_FEATURE(kSecurityKeyHidInterfacesAreFido,
+             "SecurityKeyHidInterfacesAreFido",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // !BUILDFLAG(IS_ANDROID)
+
 const base::FeatureParam<device::mojom::LocationProviderManagerMode>::Option
     location_provider_manager_mode_options[] = {
         {device::mojom::LocationProviderManagerMode::kNetworkOnly,
@@ -75,6 +92,8 @@ const base::FeatureParam<device::mojom::LocationProviderManagerMode>::Option
          "PlatformOnly"},
         {device::mojom::LocationProviderManagerMode::kHybridPlatform,
          "HybridPlatform"},
+        {device::mojom::LocationProviderManagerMode::kHybridPlatform2,
+         "HybridPlatform2"},
 };
 
 const base::FeatureParam<device::mojom::LocationProviderManagerMode>
@@ -92,5 +111,13 @@ bool IsOsLevelGeolocationPermissionSupportEnabled() {
   return false;
 #endif  // BUILDFLAG(IS_WIN)
 }
+
+// Controls whether Chrome will try to automatically detach kernel drivers when
+// a USB interface is busy.
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
+BASE_FEATURE(kAutomaticUsbDetach,
+             "AutomaticUsbDetach",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
 
 }  // namespace features

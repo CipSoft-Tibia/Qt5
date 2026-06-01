@@ -1,7 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-//#define QT_EXPERIMENTAL_CLIENT_DECORATIONS
+// Qt-Security score:significant reason:default
 
 #include "qmainwindow.h"
 #include "qmainwindowlayout_p.h"
@@ -69,57 +68,11 @@ QMainWindowLayout *qt_mainwindow_layout(const QMainWindow *mainWindow)
     return QMainWindowPrivate::mainWindowLayout(mainWindow);
 }
 
-#ifdef QT_EXPERIMENTAL_CLIENT_DECORATIONS
-Q_WIDGETS_EXPORT void qt_setMainWindowTitleWidget(QMainWindow *mainWindow, Qt::DockWidgetArea area, QWidget *widget)
-{
-    QGridLayout *topLayout = qobject_cast<QGridLayout *>(mainWindow->layout());
-    Q_ASSERT(topLayout);
-
-    int row = 0;
-    int column = 0;
-
-    switch (area) {
-    case Qt::LeftDockWidgetArea:
-        row = 1;
-        column = 0;
-        break;
-    case Qt::TopDockWidgetArea:
-        row = 0;
-        column = 1;
-        break;
-    case Qt::BottomDockWidgetArea:
-        row = 2;
-        column = 1;
-        break;
-    case Qt::RightDockWidgetArea:
-        row = 1;
-        column = 2;
-        break;
-    default:
-        Q_ASSERT_X(false, "qt_setMainWindowTitleWidget", "Unknown area");
-        return;
-    }
-
-    if (QLayoutItem *oldItem = topLayout->itemAtPosition(row, column))
-        delete oldItem->widget();
-    topLayout->addWidget(widget, row, column);
-}
-#endif
-
 void QMainWindowPrivate::init()
 {
     Q_Q(QMainWindow);
 
-#ifdef QT_EXPERIMENTAL_CLIENT_DECORATIONS
-    QGridLayout *topLayout = new QGridLayout(q);
-    topLayout->setContentsMargins(0, 0, 0, 0);
-
-    layout = new QMainWindowLayout(q, topLayout);
-
-    topLayout->addItem(layout, 1, 1);
-#else
     layout = new QMainWindowLayout(q, nullptr);
-#endif
 
     const int metric = q->style()->pixelMetric(QStyle::PM_ToolBarIconSize, nullptr, q);
     iconSize = QSize(metric, metric);
@@ -178,6 +131,7 @@ void QMainWindowPrivate::init()
     layout below.
 
     \image mainwindowlayout.png
+           {Diagram of main window and the position of its components}
 
     \section1 Creating Main Window Components
 

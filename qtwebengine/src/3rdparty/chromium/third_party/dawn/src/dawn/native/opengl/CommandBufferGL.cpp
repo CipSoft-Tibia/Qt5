@@ -72,26 +72,36 @@ GLenum IndexFormatType(wgpu::IndexFormat format) {
 
 GLenum VertexFormatType(wgpu::VertexFormat format) {
     switch (format) {
+        case wgpu::VertexFormat::Uint8:
         case wgpu::VertexFormat::Uint8x2:
         case wgpu::VertexFormat::Uint8x4:
+        case wgpu::VertexFormat::Unorm8:
         case wgpu::VertexFormat::Unorm8x2:
         case wgpu::VertexFormat::Unorm8x4:
+        case wgpu::VertexFormat::Unorm8x4BGRA:
             return GL_UNSIGNED_BYTE;
+        case wgpu::VertexFormat::Sint8:
         case wgpu::VertexFormat::Sint8x2:
         case wgpu::VertexFormat::Sint8x4:
+        case wgpu::VertexFormat::Snorm8:
         case wgpu::VertexFormat::Snorm8x2:
         case wgpu::VertexFormat::Snorm8x4:
             return GL_BYTE;
+        case wgpu::VertexFormat::Uint16:
         case wgpu::VertexFormat::Uint16x2:
         case wgpu::VertexFormat::Uint16x4:
+        case wgpu::VertexFormat::Unorm16:
         case wgpu::VertexFormat::Unorm16x2:
         case wgpu::VertexFormat::Unorm16x4:
             return GL_UNSIGNED_SHORT;
+        case wgpu::VertexFormat::Sint16:
         case wgpu::VertexFormat::Sint16x2:
         case wgpu::VertexFormat::Sint16x4:
+        case wgpu::VertexFormat::Snorm16:
         case wgpu::VertexFormat::Snorm16x2:
         case wgpu::VertexFormat::Snorm16x4:
             return GL_SHORT;
+        case wgpu::VertexFormat::Float16:
         case wgpu::VertexFormat::Float16x2:
         case wgpu::VertexFormat::Float16x4:
             return GL_HALF_FLOAT;
@@ -119,12 +129,17 @@ GLenum VertexFormatType(wgpu::VertexFormat format) {
 
 GLboolean VertexFormatIsNormalized(wgpu::VertexFormat format) {
     switch (format) {
+        case wgpu::VertexFormat::Unorm8:
         case wgpu::VertexFormat::Unorm8x2:
         case wgpu::VertexFormat::Unorm8x4:
+        case wgpu::VertexFormat::Unorm8x4BGRA:
+        case wgpu::VertexFormat::Snorm8:
         case wgpu::VertexFormat::Snorm8x2:
         case wgpu::VertexFormat::Snorm8x4:
+        case wgpu::VertexFormat::Unorm16:
         case wgpu::VertexFormat::Unorm16x2:
         case wgpu::VertexFormat::Unorm16x4:
+        case wgpu::VertexFormat::Snorm16:
         case wgpu::VertexFormat::Snorm16x2:
         case wgpu::VertexFormat::Snorm16x4:
         case wgpu::VertexFormat::Unorm10_10_10_2:
@@ -136,12 +151,16 @@ GLboolean VertexFormatIsNormalized(wgpu::VertexFormat format) {
 
 bool VertexFormatIsInt(wgpu::VertexFormat format) {
     switch (format) {
+        case wgpu::VertexFormat::Uint8:
         case wgpu::VertexFormat::Uint8x2:
         case wgpu::VertexFormat::Uint8x4:
+        case wgpu::VertexFormat::Sint8:
         case wgpu::VertexFormat::Sint8x2:
         case wgpu::VertexFormat::Sint8x4:
+        case wgpu::VertexFormat::Uint16:
         case wgpu::VertexFormat::Uint16x2:
         case wgpu::VertexFormat::Uint16x4:
+        case wgpu::VertexFormat::Sint16:
         case wgpu::VertexFormat::Sint16x2:
         case wgpu::VertexFormat::Sint16x4:
         case wgpu::VertexFormat::Uint32:
@@ -320,6 +339,7 @@ class BindGroupTracker : public BindGroupTrackerBase<false, uint64_t> {
                         case wgpu::BufferBindingType::ReadOnlyStorage:
                             target = GL_SHADER_STORAGE_BUFFER;
                             break;
+                        case wgpu::BufferBindingType::BindingNotUsed:
                         case wgpu::BufferBindingType::Undefined:
                             DAWN_UNREACHABLE();
                     }
@@ -390,6 +410,7 @@ class BindGroupTracker : public BindGroupTrackerBase<false, uint64_t> {
                         case wgpu::StorageTextureAccess::ReadOnly:
                             access = GL_READ_ONLY;
                             break;
+                        case wgpu::StorageTextureAccess::BindingNotUsed:
                         case wgpu::StorageTextureAccess::Undefined:
                             DAWN_UNREACHABLE();
                     }
@@ -492,6 +513,9 @@ void ResolveMultisampledRenderTargets(const OpenGLFunctions& gl,
                                       const BeginRenderPassCmd* renderPass) {
     DAWN_ASSERT(renderPass != nullptr);
 
+    // Reset state that may affect glBlitFramebuffer().
+    gl.Disable(GL_SCISSOR_TEST);
+
     GLuint readFbo = 0;
     GLuint writeFbo = 0;
 
@@ -517,6 +541,7 @@ void ResolveMultisampledRenderTargets(const OpenGLFunctions& gl,
         }
     }
 
+    gl.Enable(GL_SCISSOR_TEST);
     gl.DeleteFramebuffers(1, &readFbo);
     gl.DeleteFramebuffers(1, &writeFbo);
 }
@@ -582,6 +607,10 @@ MaybeError CommandBuffer::Execute() {
         switch (type) {
             case Command::BeginComputePass: {
                 mCommands.NextCommand<BeginComputePassCmd>();
+                for (TextureBase* texture :
+                     GetResourceUsages().computePasses[nextComputePassNumber].referencedTextures) {
+                    DAWN_TRY(ToBackend(texture)->SynchronizeTextureBeforeUse());
+                }
                 for (const SyncScopeResourceUsage& scope :
                      GetResourceUsages().computePasses[nextComputePassNumber].dispatchUsages) {
                     DAWN_TRY(LazyClearSyncScope(scope));
@@ -594,6 +623,10 @@ MaybeError CommandBuffer::Execute() {
 
             case Command::BeginRenderPass: {
                 auto* cmd = mCommands.NextCommand<BeginRenderPassCmd>();
+                for (TextureBase* texture :
+                     this->GetResourceUsages().renderPasses[nextRenderPassNumber].textures) {
+                    DAWN_TRY(ToBackend(texture)->SynchronizeTextureBeforeUse());
+                }
                 DAWN_TRY(
                     LazyClearSyncScope(GetResourceUsages().renderPasses[nextRenderPassNumber]));
                 LazyClearRenderPassAttachments(cmd);
@@ -637,14 +670,17 @@ MaybeError CommandBuffer::Execute() {
                 auto& src = copy->source;
                 auto& dst = copy->destination;
                 Buffer* buffer = ToBackend(src.buffer.Get());
+                Texture* texture = ToBackend(dst.texture.Get());
+
+                DAWN_TRY(texture->SynchronizeTextureBeforeUse());
 
                 buffer->EnsureDataInitialized();
                 SubresourceRange range = GetSubresourcesAffectedByCopy(dst, copy->copySize);
-                if (IsCompleteSubresourceCopiedTo(dst.texture.Get(), copy->copySize, dst.mipLevel,
+                if (IsCompleteSubresourceCopiedTo(texture, copy->copySize, dst.mipLevel,
                                                   dst.aspect)) {
-                    dst.texture->SetIsSubresourceContentInitialized(true, range);
+                    texture->SetIsSubresourceContentInitialized(true, range);
                 } else {
-                    DAWN_TRY(ToBackend(dst.texture)->EnsureSubresourceContentInitialized(range));
+                    DAWN_TRY(texture->EnsureSubresourceContentInitialized(range));
                 }
 
                 gl.BindBuffer(GL_PIXEL_UNPACK_BUFFER, buffer->GetHandle());
@@ -683,6 +719,7 @@ MaybeError CommandBuffer::Execute() {
                 }
 
                 buffer->EnsureDataInitializedAsDestination(copy);
+                DAWN_TRY(texture->SynchronizeTextureBeforeUse());
 
                 SubresourceRange subresources = GetSubresourcesAffectedByCopy(src, copy->copySize);
                 DAWN_TRY(texture->EnsureSubresourceContentInitialized(subresources));
@@ -801,6 +838,9 @@ MaybeError CommandBuffer::Execute() {
                 Extent3D copySize = ComputeTextureCopyExtent(dst, copy->copySize);
                 Texture* srcTexture = ToBackend(src.texture.Get());
                 Texture* dstTexture = ToBackend(dst.texture.Get());
+
+                DAWN_TRY(srcTexture->SynchronizeTextureBeforeUse());
+                DAWN_TRY(dstTexture->SynchronizeTextureBeforeUse());
 
                 SubresourceRange srcRange = GetSubresourcesAffectedByCopy(src, copy->copySize);
                 SubresourceRange dstRange = GetSubresourcesAffectedByCopy(dst, copy->copySize);

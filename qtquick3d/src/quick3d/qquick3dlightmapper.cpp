@@ -12,9 +12,20 @@ QT_BEGIN_NAMESPACE
     \brief Specifies lightmap baking settings for a scene.
     \since 6.4
 
-    Used when baking direct and indirect lighting. These settings are not
+    Used when baking direct and indirect lighting. Most of these settings are not
     relevant at other times, such as when using already generated lightmaps to
-    render a scene.
+    render a scene. The exception is \l source, though this has a sensible default
+    for development.
+
+    On a successfull bake a single file will be generated at the value specified by
+    \l source. This binary file contains the results of the bake, including the
+    per-model lightmaps and the mesh files with lightmap-compatible UVs.
+    The individual model data is accessed via \l BakedLightmap::key.
+
+    The data contained in the resulting lightmap file is all tightly coupled
+    to each other and to the current scene state. This means that any modifications
+    to the original mesh files, Lightmapper settings or other scene changes will
+    require a new bake to be executed to see the updated result.
 
     \note As of Qt 6.4, lightmap baking is in an early technical preview state.
     Changes to features, quality, and API are likely to happen in future releases.
@@ -23,7 +34,7 @@ QT_BEGIN_NAMESPACE
 
     \list
     \li \l Model::bakedLightmap and the associated \l BakedLightmap,
-    \li \l Model::usedInBakedLighting and \l Model::lightmapBaseResolution,
+    \li \l Model::usedInBakedLighting and \l Model::texelsPerUnit,
     \li \l Light::bakeMode,
     \li the engine's built-in lightmap baker.
     \endlist
@@ -123,6 +134,65 @@ QT_BEGIN_NAMESPACE
     The default value is 1.
  */
 
+/*!
+    \qmlproperty url Lightmapper::source
+    \since 6.10
+    \default file:lightmaps.bin
+
+    The url for loading the lightmap file at runtime and the output file path
+    on a successful bake.
+
+    When baking, the output path will be deduced from the url and it needs to
+    resolve to a regular file location that is writable. By default the value
+    is \c{file:lightmaps.bin}, which means the file will be put in the current
+    working directory and the final result will instantly appear on a successful
+    bake.
+
+    In the same directory as the output file, a \c{.raw} file is created that
+    contains extra lightmap data used before creating the final lightmap file.
+    This makes it possible to do just denoising without having to bake the whole
+    scene between runs, assuming the \c{.raw} file is present.
+
+    If you want to read the lightmap as a QRC resource you need to embed
+    it in the usual way and add a \c{:/} or \c{qrc:/} prefix to the url.
+    The following example always tries to load the lightmap file embedded via
+    resources. First set the value to a writable location and bake. Then copy the
+    generated file into the source directoy. Then by listing the file in the
+    application's CMake project as a resource under the \c{/lightmaps} PREFIX,
+    lets the build process pick up the file and include it in the executable.
+
+    \qml
+    Lightmapper {
+        source: "qrc:/lightmaps/lightmaps.bin"
+        // will attempt to load from :/lightmaps/lightmaps.bin at runtime
+        // and write a file to lightmaps/lightmaps.bin when baking.
+    }
+    \endqml
+ */
+
+/*!
+    \qmlproperty real Lightmapper::denoiseSigma
+    \since 6.10
+    \default 8
+
+    This property defines the sigma value of the Non-local means based denoiser.
+    This means that the higher this value is the stronger the blurring will be.
+    Try to keep this value as low as possible to avoid losing visual features
+    while still removing the noise.
+*/
+
+/*!
+    \qmlproperty real Lightmapper::texelsPerUnit
+    \since 6.10
+    \default 1
+
+    This property defines the unit to texel scale, meaning a \c{1x1} quad with
+    texelsPerUnit of \c{32} will take up approximately \c{32x32} texels in the
+    lightmap.
+
+    \sa Model::texelsPerUnit
+*/
+
 float QQuick3DLightmapper::opacityThreshold() const
 {
     return m_opacityThreshold;
@@ -161,6 +231,11 @@ int QQuick3DLightmapper::bounces() const
 float QQuick3DLightmapper::indirectLightFactor() const
 {
     return m_indirectFactor;
+}
+
+QUrl QQuick3DLightmapper::source() const
+{
+    return m_source;
 }
 
 void QQuick3DLightmapper::setOpacityThreshold(float opacity)
@@ -240,6 +315,44 @@ void QQuick3DLightmapper::setIndirectLightFactor(float factor)
 
     m_indirectFactor = factor;
     emit indirectLightFactorChanged();
+    emit changed();
+}
+
+void QQuick3DLightmapper::setSource(const QUrl &source)
+{
+    if (m_source == source)
+        return;
+
+    m_source = source;
+    emit sourceChanged();
+    emit changed();
+}
+
+float QQuick3DLightmapper::denoiseSigma() const
+{
+    return m_denoiseSigma;
+}
+
+void QQuick3DLightmapper::setDenoiseSigma(float newDenoiseSigma)
+{
+    if (qFuzzyCompare(m_denoiseSigma, newDenoiseSigma))
+        return;
+    m_denoiseSigma = newDenoiseSigma;
+    emit denoiseSigmaChanged();
+    emit changed();
+}
+
+float QQuick3DLightmapper::texelsPerUnit() const
+{
+    return m_texelsPerUnit;
+}
+
+void QQuick3DLightmapper::setTexelsPerUnit(float newTexelsPerUnit)
+{
+    if (qFuzzyCompare(m_texelsPerUnit, newTexelsPerUnit))
+        return;
+    m_texelsPerUnit = newTexelsPerUnit;
+    emit texelsPerUnitChanged();
     emit changed();
 }
 

@@ -170,6 +170,10 @@ int main(int argc, char **argv)
     testItemAndRowChangesButton->setText(QStringLiteral("Test Item/Row changing"));
     testItemAndRowChangesButton->setEnabled(true);
 
+    QPushButton *testNanSeriesButton = new QPushButton(widget);
+    testNanSeriesButton->setText(QStringLiteral("Test NaN Series"));
+    testNanSeriesButton->setEnabled(true);
+
     QColorDialog *colorDialog = new QColorDialog(widget);
 
     QLinearGradient grBtoY(0, 0, 100, 0);
@@ -397,6 +401,7 @@ int main(int argc, char **argv)
     vLayout2->addWidget(gradientBtoYPB, 0, Qt::AlignTop);
     vLayout2->addWidget(logAxisButton, 0, Qt::AlignTop);
     vLayout2->addWidget(testItemAndRowChangesButton, 0, Qt::AlignTop);
+    vLayout2->addWidget(testNanSeriesButton, 0, Qt::AlignTop);
     vLayout2->addWidget(staticCheckBox, 0, Qt::AlignTop);
     vLayout2->addWidget(rotationCheckBox, 0, Qt::AlignTop);
     vLayout2->addWidget(rotationSliderX, 0, Qt::AlignTop);
@@ -545,6 +550,8 @@ int main(int argc, char **argv)
                      &GraphModifier::useLogAxis);
     QObject::connect(testItemAndRowChangesButton, &QPushButton::clicked, modifier,
                      &GraphModifier::testItemAndRowChanges);
+    QObject::connect(testNanSeriesButton, &QPushButton::clicked, modifier,
+                     &GraphModifier::testNanSeries);
     QObject::connect(colorDialog, &QColorDialog::currentColorChanged, modifier,
                      &GraphModifier::changeBaseColor);
     QObject::connect(gradientBtoYPB, &QPushButton::clicked, modifier,

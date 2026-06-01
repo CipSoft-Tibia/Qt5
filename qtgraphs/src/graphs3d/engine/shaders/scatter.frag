@@ -41,3 +41,11 @@ void DIRECTIONAL_LIGHT()
     DIFFUSE += diffuse.rgb * directionalBrightness * LIGHT_COLOR * SHADOW_CONTRIB
             * vec3(max(0.0, dot(normalize(NORMAL), TO_LIGHT_DIR)));
 }
+
+void POST_PROCESS()
+{
+    if (shaded)
+        COLOR_SUM = vec4(DIFFUSE.rgb + SPECULAR + EMISSIVE, DIFFUSE.a);
+    else
+        COLOR_SUM = diffuse;
+}

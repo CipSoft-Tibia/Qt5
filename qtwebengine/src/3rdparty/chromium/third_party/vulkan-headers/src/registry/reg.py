@@ -1,6 +1,6 @@
 #!/usr/bin/env python3 -i
 #
-# Copyright 2013-2024 The Khronos Group Inc.
+# Copyright 2013-2025 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -134,8 +134,10 @@ def mergeAPIs(tree, fromApiNames, toApiName):
                     definitionName = child.get('name')
                     definitionVariants = parent.findall(f"{child.tag}[@name='{definitionName}']")
                 elif child.tag in ['require']:
-                    definitionName = child.get('feature')
-                    definitionVariants = parent.findall(f"{child.tag}[@feature='{definitionName}']")
+                    # No way to correlate require tags because they do not have a definite identifier in the way they
+                    # are used in the latest forms of the XML so the best we can do is simply enable all of them
+                    if child.get('api') in fromApiNames:
+                        child.set('api', toApiName)
                 elif child.tag in ['command']:
                     definitionName = child.find('proto/name').text
                     definitionVariants = parent.findall(f"{child.tag}/proto/name[.='{definitionName}']/../..")

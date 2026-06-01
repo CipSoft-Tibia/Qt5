@@ -7,7 +7,8 @@
 
 #### Libraries
 
-qt_find_package(WrapSystemZLIB 1.0.8 PROVIDED_TARGETS WrapSystemZLIB::WrapSystemZLIB MODULE_NAME global QMAKE_LIB zlib)
+qt_find_package(WrapSystemZLIB 1.0.8 MODULE
+    PROVIDED_TARGETS WrapSystemZLIB::WrapSystemZLIB MODULE_NAME global QMAKE_LIB zlib)
 # Work around global target promotion failure when WrapZLIB is used on APPLE platforms.
 # What ends up happening is that the ZLIB::ZLIB target is not promoted to global by qt_find_package,
 # then qt_find_package(WrapSystemPNG) tries to find its dependency ZLIB::ZLIB, sees it's not global
@@ -21,8 +22,9 @@ endif()
 # Look for Threads in the same scope as OpenSSL package, because OpenSSL sometimes depends on
 # Threads (for static OpenSSL builds) and we want to promote the target to global in the same
 # directory scope.
-qt_find_package(Threads PROVIDED_TARGETS Threads::Threads)
-qt_find_package(WrapOpenSSLHeaders PROVIDED_TARGETS WrapOpenSSLHeaders::WrapOpenSSLHeaders MODULE_NAME core)
+qt_find_package(Threads MODULE PROVIDED_TARGETS Threads::Threads)
+qt_find_package(WrapOpenSSLHeaders MODULE
+    PROVIDED_TARGETS WrapOpenSSLHeaders::WrapOpenSSLHeaders MODULE_NAME core)
 # openssl_headers
 # OPENSSL_VERSION_MAJOR is not defined for OpenSSL 1.1.1
 qt_config_compile_test(opensslv11_headers
@@ -47,7 +49,8 @@ int main(void)
 }
 ")
 
-qt_find_package(WrapOpenSSL PROVIDED_TARGETS WrapOpenSSL::WrapOpenSSL MODULE_NAME core QMAKE_LIB openssl)
+qt_find_package(WrapOpenSSL MODULE
+    PROVIDED_TARGETS WrapOpenSSL::WrapOpenSSL MODULE_NAME core QMAKE_LIB openssl)
 # openssl
 # OPENSSL_VERSION_MAJOR is not defined for OpenSSL 1.1.1
 qt_config_compile_test(opensslv11
@@ -113,7 +116,7 @@ SSL_free(SSL_new(0));
 }
 ")
 
-qt_find_package(WrapZSTD 1.3
+qt_find_package(WrapZSTD 1.3 MODULE
     PROVIDED_TARGETS
         WrapZSTD::WrapZSTD
         zstd::libzstd
@@ -122,9 +125,10 @@ qt_find_package(WrapZSTD 1.3
     MODULE_NAME global
     QMAKE_LIB zstd
 )
-qt_find_package(WrapDBus1 1.2 PROVIDED_TARGETS dbus-1 MODULE_NAME global QMAKE_LIB dbus)
-qt_find_package(Libudev PROVIDED_TARGETS PkgConfig::Libudev MODULE_NAME global QMAKE_LIB libudev)
-qt_find_package(LTTngUST PROVIDED_TARGETS LTTng::UST MODULE_NAME core QMAKE_LIB lttng-ust)
+qt_find_package(WrapDBus1 1.2 MODULE PROVIDED_TARGETS dbus-1 MODULE_NAME global QMAKE_LIB dbus)
+qt_find_package(Libudev MODULE
+    PROVIDED_TARGETS PkgConfig::Libudev MODULE_NAME global QMAKE_LIB libudev)
+qt_find_package(LTTngUST MODULE PROVIDED_TARGETS LTTng::UST MODULE_NAME core QMAKE_LIB lttng-ust)
 qt_add_qmake_lib_dependency(lttng-ust libdl)
 
 
@@ -307,10 +311,28 @@ int main(void)
     CXX_STANDARD 26
 )
 
-# precompile_header
-qt_config_compile_test(precompile_header
-    LABEL "precompiled header support"
-    PROJECT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/config.tests/precompile_header"
+qt_config_compile_test(elf
+    LABEL "ELF system"
+    CODE
+"#ifdef __ELF__
+#include <elf.h>
+#else
+#error __ELF__ not defined
+#endif
+int main() { return 0; }
+"
+)
+
+qt_config_linker_supports_flag_test(linker_dynamic_list
+    LABEL "--dynamic-list support"
+    # doesn't matter that it's an .in, it just has to be the right syntax
+    FLAG "--dynamic-list=${CMAKE_CURRENT_SOURCE_DIR}/src/corelib/QtCore.dynlist.in"
+)
+
+qt_config_linker_supports_flag_test(linker_symbolic_functions
+    # Note: we infer the linker also supports -Bsymbolic if it supports this
+    LABEL "-Bsymbolic-functions support"
+    FLAG "-Bsymbolic-functions"
 )
 
 qt_config_compiler_supports_flag_test(optimize_debug
@@ -333,22 +355,6 @@ qt_config_linker_supports_flag_test(gdb_index
     FLAG "--gdb-index"
 )
 
-# reduce_relocations
-qt_config_compile_test(reduce_relocations
-    LABEL "-Bsymbolic-functions support"
-    CODE
-"#if !(defined(__i386) || defined(__i386__) || defined(__x86_64) || defined(__x86_64__) || defined(__amd64)) || defined(__sun)
-#  error Symbolic function binding on this architecture may be broken, disabling it (see QTBUG-36129).
-#endif
-
-int main(void)
-{
-    /* BEGIN TEST: */
-    /* END TEST: */
-    return 0;
-}
-"# FIXME: qmake: ['TEMPLATE = lib', 'CONFIG += dll bsymbolic_functions', 'isEmpty(QMAKE_LFLAGS_BSYMBOLIC_FUNC): error("Nope")']
-)
 
 if(MSVC OR APPLE)
     # These platforms / toolchains support separate debug information. Skip the compile test.
@@ -579,7 +585,7 @@ qt_feature("optimize_full"
 qt_feature_config("optimize_full" QMAKE_PRIVATE_CONFIG)
 qt_feature("msvc_obj_debug_info"
     LABEL "Embed debug info in object files (MSVC)"
-    ENABLE QT_USE_CCACHE
+    ENABLE QT_USE_CCACHE OR CMAKE_CXX_COMPILER_LAUNCHER
     AUTODETECT OFF
     EMIT_IF MSVC
 )
@@ -658,10 +664,15 @@ qt_feature("rpath" PUBLIC
     CONDITION BUILD_SHARED_LIBS AND UNIX AND NOT WIN32 AND NOT ANDROID
 )
 qt_feature_config("rpath" QMAKE_PUBLIC_QT_CONFIG)
+qt_feature("elf"
+    LABEL "ELF system"
+    AUTODETECT UNIX AND NOT APPLE
+    CONDITION TEST_elf
+)
 qt_feature("elf_private_full_version" PRIVATE
     LABEL "Use Qt's full version number in ELF version symbols"
     AUTODETECT OFF
-    CONDITION BUILD_SHARED_LIBS AND UNIX AND NOT APPLE
+    CONDITION BUILD_SHARED_LIBS AND QT_FEATURE_elf
 )
 qt_feature_config("elf_private_full_version" QMAKE_PRIVATE_QT_CONFIG)
 qt_feature("force_asserts" PUBLIC
@@ -757,12 +768,6 @@ qt_feature("c++2c" PUBLIC
     CONDITION QT_FEATURE_cxx2b AND (CMAKE_VERSION VERSION_GREATER_EQUAL "3.25") AND TEST_cxx2c
 )
 qt_feature_config("c++2c" QMAKE_PUBLIC_QT_CONFIG)
-qt_feature("precompile_header"
-    LABEL "Using precompiled headers"
-    CONDITION BUILD_WITH_PCH AND TEST_precompile_header
-    AUTODETECT NOT WASM
-)
-qt_feature_config("precompile_header" QMAKE_PRIVATE_CONFIG)
 set(__qt_ltcg_detected FALSE)
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
     set(__qt_ltcg_detected TRUE)
@@ -790,7 +795,7 @@ endif()
 
 qt_feature("enable_new_dtags"
     LABEL "Using new DTAGS"
-    CONDITION LINUX AND TEST_enable_new_dtags
+    CONDITION QT_FEATURE_elf AND TEST_enable_new_dtags
 )
 qt_feature_config("enable_new_dtags" QMAKE_PRIVATE_CONFIG)
 qt_feature("enable_gdb_index"
@@ -814,7 +819,9 @@ qt_feature_definition("no_direct_extern_access" "QT_USE_PROTECTED_VISIBILITY")
 qt_feature_config("no_direct_extern_access" QMAKE_PUBLIC_QT_CONFIG)
 qt_feature("reduce_relocations" PUBLIC
     LABEL "Reduce amount of relocations"
-    CONDITION NOT WIN32 AND TEST_reduce_relocations
+    AUTODETECT NOT WIN32 AND
+        (TEST_architecture_arch STREQUAL i386) OR (TEST_architecture_arch STREQUAL x86_64) # See QTBUG-36129
+    CONDITION TEST_linker_symbolic_functions AND TEST_linker_dynamic_list
 )
 qt_feature_definition("reduce_relocations" "QT_REDUCE_RELOCATIONS")
 qt_feature_config("reduce_relocations" QMAKE_PUBLIC_QT_CONFIG)
@@ -1018,6 +1025,7 @@ qt_feature("wasm-jspi" PUBLIC
     LABEL "WebAssembly JSPI"
     PURPOSE "Enables WebAssembly JavaScript Promise Integration (JSPI)"
     AUTODETECT OFF
+    CONDITION QT_FEATURE_wasm_exceptions # JSPI requires wasm-exceptions
 )
 qt_feature_definition("wasm-jspi" "QT_WASM_JSPI" VALUE "1")
 qt_feature_config("wasm-jspi" QMAKE_PRIVATE_CONFIG)
@@ -1081,7 +1089,6 @@ qt_feature("future" PUBLIC
     SECTION "Kernel"
     LABEL "QFuture"
     PURPOSE "Provides QFuture and related classes."
-    CONDITION QT_FEATURE_thread
 )
 qt_feature("concurrent" PUBLIC
     SECTION "Kernel"
@@ -1308,6 +1315,7 @@ qt_configure_add_summary_entry(
 qt_configure_add_summary_entry(
     ARGS "optimize_full"
 )
+qt_configure_add_summary_entry(ARGS "force_asserts" CONDITION QT_FEATURE_force_asserts)
 qt_configure_add_summary_entry(ARGS "shared")
 qt_configure_add_summary_entry(
     ARGS "ccache"
@@ -1334,14 +1342,13 @@ qt_configure_add_summary_entry(
 )
 qt_configure_add_summary_entry(
     ARGS "enable_new_dtags"
-    CONDITION LINUX
+    CONDITION QT_FEATURE_elf
 )
 qt_configure_add_summary_entry(
     ARGS "enable_gdb_index"
     CONDITION GCC AND NOT CLANG AND ( QT_FEATURE_debug OR QT_FEATURE_force_debug_info OR QT_FEATURE_debug_and_release )
 )
 qt_configure_add_summary_entry(ARGS "relocatable")
-qt_configure_add_summary_entry(ARGS "precompile_header")
 qt_configure_add_summary_entry(ARGS "ltcg")
 qt_configure_add_summary_entry(ARGS "intelcet")
 qt_configure_add_summary_entry(ARGS "glibc_fortify_source")
@@ -1516,8 +1523,8 @@ qt_configure_add_report_entry(
 )
 qt_configure_add_report_entry(
     TYPE WARNING
-    MESSAGE "Using Emscripten version ${QT_EMCC_RECOMMENDED_VERSION} with this Qt
-    may have issues. You have ${EMCC_VERSION}."
+    MESSAGE "Using Emscripten version ${EMCC_VERSION} with this Qt
+    may have issues. The recommended version is ${QT_EMCC_RECOMMENDED_VERSION}."
     CONDITION WASM AND ${EMCC_VERSION} VERSION_GREATER ${QT_EMCC_RECOMMENDED_VERSION}
 )
 qt_configure_add_report_entry(
@@ -1562,4 +1569,12 @@ See https://bugreports.qt.io/browse/QTBUG-59769."
 qt_feature_definition("test_gui" "QT_GUI_TEST" VALUE "1")
 qt_feature("test_gui" PUBLIC
     LABEL "Build QtGuiTest namespace"
+)
+
+qt_configure_add_report_entry(
+    TYPE WARNING
+    MESSAGE "Starting with Qt 6.10, a -no-prefix or -developer-build
+Qt build might not find all necessary Qt packages when using CMake < 3.26.
+Please use a newer CMake version."
+    CONDITION QT_FEATURE_no_prefix AND CMAKE_VERSION VERSION_LESS "3.26"
 )

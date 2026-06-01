@@ -65,7 +65,7 @@ bool X509CertificateSchannel::importPkcs12(QIODevice *device, QSslKey *key, QSsl
 
     const auto password = QString::fromUtf8(passPhrase);
 
-    const DWORD flags = (CRYPT_EXPORTABLE | PKCS12_NO_PERSIST_KEY | PKCS12_PREFER_CNG_KSP);
+    const DWORD flags = (CRYPT_EXPORTABLE | PKCS12_NO_PERSIST_KEY | PKCS12_ALWAYS_CNG_KSP);
 
     auto certStore = QHCertStorePointer(PFXImportCertStore(&dataBlob,
                                                            reinterpret_cast<LPCWSTR>(password.utf16()),

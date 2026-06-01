@@ -15,7 +15,10 @@ QT_WARNING_DISABLE_DEPRECATED
 #include "qjsondocument.h"
 #include "qregularexpression.h"
 #include "private/qnumeric_p.h"
+#include "private/qjson_p.h"
 #include <limits>
+
+using namespace Qt::StringLiterals;
 
 #define INVALID_UNICODE "\xCE\xBA\xE1"
 #define UNICODE_NON_CHARACTER "\xEF\xBF\xBF"
@@ -168,6 +171,8 @@ private Q_SLOTS:
 
     void noLeakOnNameClash_data();
     void noLeakOnNameClash();
+
+    void objectItemsRange();
 
 private:
     QString testDataDir;
@@ -740,13 +745,13 @@ void tst_QtJson::testObjectInsertNonAscii()
         QJsonObject myObject;
         myObject.insert("k♭", "First key");
         myObject.insert("a", "Second key");
-        QCOMPARE(myObject.begin().key(), "a");
+        QCOMPARE(myObject.begin().keyView(), "a");
     }
     {
         QJsonObject myObject;
         myObject.insert("a", "Second key");
         myObject.insert("k♭", "First key");
-        QCOMPARE(myObject.begin().key(), "a");
+        QCOMPARE(myObject.begin().keyView(), "a");
     }
 }
 
@@ -1152,6 +1157,7 @@ void tst_QtJson::testObjectIteration()
 
     for (QJsonObject::iterator it = object.begin(); it != object.end(); ++it) {
         QJsonValue value = it.value();
+        QCOMPARE(it.keyView(), QString::number(it.value().toInteger()));
         QCOMPARE((double)it.key().toInt(), value.toDouble());
         QT_TEST_EQUALITY_OPS(it, QJsonObject::iterator(), false);
     }
@@ -1617,8 +1623,10 @@ void tst_QtJson::keySorting()
     QCOMPARE(o.keys(), sortedKeys);
     QJsonObject::const_iterator it = o.constBegin();
     QStringList::const_iterator it2 = sortedKeys.constBegin();
-    for ( ; it != o.constEnd(); ++it, ++it2)
+    for ( ; it != o.constEnd(); ++it, ++it2) {
         QCOMPARE(it.key(), *it2);
+        QCOMPARE(it.keyView(), *it2);
+    }
 }
 
 void tst_QtJson::undefinedValues()
@@ -3587,7 +3595,7 @@ void tst_QtJson::bom()
     QCOMPARE(error.error, QJsonParseError::NoError);
 }
 
-void tst_QtJson::nesting()
+static void nesting_test()
 {
     // check that we abort parsing too deeply nested json documents.
     // this is to make sure we don't crash because the parser exhausts the
@@ -3644,6 +3652,26 @@ void tst_QtJson::nesting()
     QVERIFY(val.isUndefined());
     QCOMPARE(error.error, QJsonParseError::DeepNesting);
 
+}
+
+void tst_QtJson::nesting()
+{
+#if defined(Q_OS_QNX) || defined(Q_OS_VXWORKS) || defined(Q_OS_WASM)
+    // This test misbehaving probably indicates a stack overflow due to the
+    // recursive parser in qjsonparser.cpp. The recursion prevention limit may
+    // be too high for this platform. Someone should investigate.
+    QSKIP("Test freezes or crashes - probably a stack overflow");
+#endif
+
+    QThread *thr = QThread::create(nesting_test);
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer) || \
+    defined(__SANITIZE_THREAD__) || __has_feature(thread_sanitizer)
+    // force a larger stack size - 8 MB seems sufficient
+    thr->setStackSize(8192 * 1024);
+#endif
+    thr->start();
+    thr->wait();
+    delete thr;
 }
 
 void tst_QtJson::longStrings()
@@ -4276,7 +4304,7 @@ void tst_QtJson::fromToVariantConversions()
     QVariant variantFromJsonArray(QJsonArray { json });
     QVariant variantFromJsonObject(QVariantMap { { "foo", variant } });
 
-    QJsonObject object { QPair<QString, QJsonValue>("foo", json) };
+    QJsonObject object = { {"foo", json} };
 
     // QJsonValue <> QVariant
     {
@@ -4320,8 +4348,8 @@ void tst_QtJson::fromToVariantConversions()
         // test the same for QVariantMap from QJsonValue/QJsonArray/QJsonObject
         QCOMPARE(QJsonObject::fromVariantMap(QVariantMap { { "foo", variantFromJson } }), object);
 
-        QJsonObject nestedArray { QPair<QString, QJsonArray>("bar", QJsonArray { json }) };
-        QJsonObject nestedObject { QPair<QString, QJsonObject>("bar", object) };
+        QJsonObject nestedArray = { {u"bar"_s, QJsonArray{json}} };
+        QJsonObject nestedObject = { {u"bar"_s, object } };
         QCOMPARE(QJsonObject::fromVariantMap(QVariantMap { { "bar", variantFromJsonArray } }),
                  nestedArray);
         QCOMPARE(QJsonObject::fromVariantMap(QVariantMap { { "bar", variantFromJsonObject } }),
@@ -4406,6 +4434,113 @@ void tst_QtJson::noLeakOnNameClash()
 
     // It should not leak.
     // In particular it should not forget to deref the container for the inner objects.
+}
+
+template <typename T>
+using ItemsRangeType = decltype(std::declval<T>().asKeyValueRange());
+
+void tst_QtJson::objectItemsRange()
+{
+    auto makeObj = [] {
+        return QJsonObject{
+            { "a", 1 },
+            { "b", true },
+            { "c", QJsonValue::Null },
+            { "d", QJsonValue::Undefined },
+            { "e", "ee" },
+            { QLatin1String("f"), QLatin1String("g") },
+            { "h", QJsonObject{ { "h1", false } } },
+            { "i", QJsonArray{ 1, 2, false } },
+        };
+    };
+    QJsonObject obj = makeObj();
+    QJsonObject dummy;
+
+    for (auto &&[key, value] : obj.asKeyValueRange()) {
+        static_assert(std::is_same_v<std::remove_reference_t<decltype(value)>, QJsonValueRef>);
+        QVERIFY(key.size() == 1);
+
+        auto resolved = key.visit([&](auto &&key) {
+            if constexpr (std::is_same_v<std::remove_reference_t<decltype(key)>, QUtf8StringView>) {
+                return dummy["?"];
+            } else {
+                return obj[key];
+            }
+        });
+        QVERIFY(QJsonPrivate::Value::container(resolved) == QJsonPrivate::Value::container(value));
+        QVERIFY(QJsonPrivate::Value::indexHelper(resolved)
+                == QJsonPrivate::Value::indexHelper(value));
+    }
+    for (auto &&[key, value] : std::as_const(obj).asKeyValueRange()) {
+        static_assert(std::is_same_v<std::remove_reference_t<decltype(value)>, QJsonValueConstRef>);
+        QVERIFY(key.size() == 1);
+    }
+    for (auto &&[key, value] : makeObj().asKeyValueRange()) {
+        static_assert(std::is_same_v<std::remove_reference_t<decltype(value)>, QJsonValueRef>);
+        QVERIFY(key.size() == 1);
+    }
+
+    for (auto &&[key, value] :
+         QJsonObject{ { "a", "a" }, { "b", "b" }, { "c", "c" } }.asKeyValueRange()) {
+        QVERIFY(key == value.toStringView());
+    }
+
+    QJsonObject modify = makeObj();
+    for (auto &&[key, value] : modify.asKeyValueRange()) {
+        if (key == "a") {
+            value = "modified";
+        }
+    }
+    QVERIFY(modify["a"] == "modified");
+
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges > 202110L // P2415R2
+    static_assert(std::ranges::viewable_range<ItemsRangeType<QJsonObject>>);
+    static_assert(std::ranges::viewable_range<ItemsRangeType<QJsonObject &>>);
+    static_assert(std::ranges::viewable_range<ItemsRangeType<const QJsonObject>>);
+    static_assert(std::ranges::viewable_range<ItemsRangeType<const QJsonObject &>>);
+
+    static_assert(!std::ranges::view<ItemsRangeType<QJsonObject>>);
+    static_assert(std::ranges::view<ItemsRangeType<QJsonObject &>>);
+    static_assert(!std::ranges::view<ItemsRangeType<const QJsonObject>>);
+    static_assert(std::ranges::view<ItemsRangeType<const QJsonObject &>>);
+
+    const auto keyValueTest = [](auto &&pair) { return pair.first == pair.second.toStringView(); };
+    {
+        auto range = obj.asKeyValueRange();
+        static_assert(std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = std::as_const(obj).asKeyValueRange();
+        static_assert(std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = makeObj().asKeyValueRange();
+        static_assert(!std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = const_cast<const QJsonObject &&>(makeObj()).asKeyValueRange();
+        static_assert(!std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), obj.size());
+        const bool ok =
+                std::ranges::none_of(range | std::views::transform(keyValueTest), std::identity{});
+        QVERIFY(ok);
+    }
+#endif
 }
 
 QTEST_MAIN(tst_QtJson)

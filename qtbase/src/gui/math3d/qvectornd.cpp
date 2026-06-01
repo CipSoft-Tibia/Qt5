@@ -375,7 +375,8 @@ QT_BEGIN_NAMESPACE
 */
 bool qFuzzyCompare(QVector2D v1, QVector2D v2) noexcept
 {
-    return qFuzzyCompare(v1.v[0], v2.v[0]) && qFuzzyCompare(v1.v[1], v2.v[1]);
+    return QtPrivate::fuzzyCompare(v1.v[0], v2.v[0])
+        && QtPrivate::fuzzyCompare(v1.v[1], v2.v[1]);
 }
 
 #ifndef QT_NO_VECTOR3D
@@ -467,7 +468,6 @@ QDataStream &operator>>(QDataStream &stream, QVector2D &vector)
     float x, y;
     stream >> x;
     stream >> y;
-    Q_ASSERT(qIsFinite(x) && qIsFinite(y));
     vector.setX(x);
     vector.setY(y);
     return stream;
@@ -980,9 +980,9 @@ QVector3D QVector3D::unproject(const QMatrix4x4 &modelView, const QMatrix4x4 &pr
 */
 bool qFuzzyCompare(QVector3D v1, QVector3D v2) noexcept
 {
-    return qFuzzyCompare(v1.v[0], v2.v[0]) &&
-            qFuzzyCompare(v1.v[1], v2.v[1]) &&
-            qFuzzyCompare(v1.v[2], v2.v[2]);
+    return QtPrivate::fuzzyCompare(v1.v[0], v2.v[0])
+        && QtPrivate::fuzzyCompare(v1.v[1], v2.v[1])
+        && QtPrivate::fuzzyCompare(v1.v[2], v2.v[2]);
 }
 
 #ifndef QT_NO_VECTOR2D
@@ -1098,7 +1098,6 @@ QDataStream &operator>>(QDataStream &stream, QVector3D &vector)
     stream >> x;
     stream >> y;
     stream >> z;
-    Q_ASSERT(qIsFinite(x) && qIsFinite(y) && qIsFinite(z));
     vector.setX(x);
     vector.setY(y);
     vector.setZ(z);
@@ -1503,10 +1502,10 @@ QDataStream &operator>>(QDataStream &stream, QVector3D &vector)
 */
 bool qFuzzyCompare(QVector4D v1, QVector4D v2) noexcept
 {
-    return qFuzzyCompare(v1.v[0], v2.v[0]) &&
-            qFuzzyCompare(v1.v[1], v2.v[1]) &&
-            qFuzzyCompare(v1.v[2], v2.v[2]) &&
-            qFuzzyCompare(v1.v[3], v2.v[3]);
+    return QtPrivate::fuzzyCompare(v1.v[0], v2.v[0])
+        && QtPrivate::fuzzyCompare(v1.v[1], v2.v[1])
+        && QtPrivate::fuzzyCompare(v1.v[2], v2.v[2])
+        && QtPrivate::fuzzyCompare(v1.v[3], v2.v[3]);
 }
 
 #ifndef QT_NO_VECTOR2D
@@ -1627,7 +1626,6 @@ QDataStream &operator>>(QDataStream &stream, QVector4D &vector)
     stream >> y;
     stream >> z;
     stream >> w;
-    Q_ASSERT(qIsFinite(x) && qIsFinite(y) && qIsFinite(z) && qIsFinite(w));
     vector.setX(x);
     vector.setY(y);
     vector.setZ(z);

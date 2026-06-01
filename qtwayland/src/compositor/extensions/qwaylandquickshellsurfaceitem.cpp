@@ -9,6 +9,40 @@
 
 QT_BEGIN_NAMESPACE
 
+void QWaylandQuickShellSurfaceItemPrivate::setShellSurface(QWaylandShellSurface *shellSurface)
+{
+    Q_Q(QWaylandQuickShellSurfaceItem);
+
+    if (m_shellSurface) {
+        QObject::disconnect(m_shellSurface, &QObject::destroyed, q, nullptr);
+        QObject::disconnect(m_shellSurface, &QWaylandShellSurface::modalChanged, q, nullptr);
+    }
+
+    if (m_shellIntegration) {
+        q->removeEventFilter(m_shellIntegration);
+        delete m_shellIntegration;
+        m_shellIntegration = nullptr;
+    }
+
+    m_shellSurface = shellSurface;
+
+    if (m_shellSurface) {
+        m_shellIntegration = m_shellSurface->createIntegration(q);
+        q->installEventFilter(m_shellIntegration);
+
+        QObject::connect(m_shellSurface, &QObject::destroyed,
+                         q, [this]() {
+            setShellSurface(nullptr);
+            emit q_func()->shellSurfaceChanged();
+        });
+        QObject::connect(m_shellSurface, &QWaylandShellSurface::modalChanged,
+                         q, [this]() {
+            if (m_shellSurface && m_shellSurface->isModal())
+                raise();
+        });
+    }
+}
+
 QWaylandQuickShellSurfaceItem *QWaylandQuickShellSurfaceItemPrivate::maybeCreateAutoPopup(QWaylandShellSurface* shellSurface)
 {
     if (!m_autoCreatePopupItems)
@@ -61,10 +95,7 @@ QWaylandQuickShellSurfaceItem::~QWaylandQuickShellSurfaceItem()
 {
     Q_D(QWaylandQuickShellSurfaceItem);
 
-    if (d->m_shellIntegration) {
-        removeEventFilter(d->m_shellIntegration);
-        delete d->m_shellIntegration;
-    }
+    d->setShellSurface(nullptr);
 }
 
 /*!
@@ -102,24 +133,7 @@ void QWaylandQuickShellSurfaceItem::setShellSurface(QWaylandShellSurface *shellS
     if (d->m_shellSurface == shellSurface)
         return;
 
-    if (Q_UNLIKELY(d->m_shellSurface))
-        disconnect(d->m_shellSurface, &QWaylandShellSurface::modalChanged, this, nullptr);
-
-    d->m_shellSurface = shellSurface;
-
-    if (d->m_shellIntegration) {
-        removeEventFilter(d->m_shellIntegration);
-        delete d->m_shellIntegration;
-        d->m_shellIntegration = nullptr;
-    }
-
-    if (shellSurface) {
-        d->m_shellIntegration = shellSurface->createIntegration(this);
-        installEventFilter(d->m_shellIntegration);
-    }
-
-    connect(shellSurface, &QWaylandShellSurface::modalChanged, this,
-            [d](){ if (d->m_shellSurface->isModal()) d->raise(); });
+    d->setShellSurface(shellSurface);
 
     emit shellSurfaceChanged();
 }
@@ -327,7 +341,7 @@ void QWaylandQuickShellSurfaceItemPrivate::raise()
     Q_Q(QWaylandQuickShellSurfaceItem);
     auto *moveItem = q->moveItem();
     QQuickItem *parent = moveItem->parentItem();
-    if (!parent)
+    if (!parent || !m_shellSurface)
         return;
     const bool putOnTop = staysOnTop || m_shellSurface->isModal();
     const bool putOnBottom = staysOnBottom && !m_shellSurface->isModal();
@@ -360,7 +374,7 @@ void QWaylandQuickShellSurfaceItemPrivate::lower()
     Q_Q(QWaylandQuickShellSurfaceItem);
     auto *moveItem = q->moveItem();
     QQuickItem *parent = moveItem->parentItem();
-    if (!parent)
+    if (!parent || !m_shellSurface)
         return;
     const bool putOnTop = staysOnTop || m_shellSurface->isModal();
     const bool putOnBottom = staysOnBottom && !m_shellSurface->isModal();

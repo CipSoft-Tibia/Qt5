@@ -108,7 +108,10 @@ class CORE_EXPORT HTMLPlugInElement
   void CollectStyleForPresentationAttribute(
       const QualifiedName&,
       const AtomicString&,
-      MutableCSSPropertyValueSet*) override;
+      HeapVector<CSSPropertyValue, 8>&) override;
+  // HTMLFrameOwnerElement overrides:
+  void DisconnectContentFrame() override;
+  void IntrinsicSizingInfoChanged() final;
 
   virtual bool HasFallbackContent() const;
   // Create or update the LayoutEmbeddedContent and return it, triggering layout
@@ -162,8 +165,8 @@ class CORE_EXPORT HTMLPlugInElement
   }
   bool IsFocusableStyle(UpdateBehavior update_behavior =
                             UpdateBehavior::kStyleAndLayout) const final;
-  bool IsKeyboardFocusable(UpdateBehavior update_behavior =
-                               UpdateBehavior::kStyleAndLayout) const final;
+  bool IsKeyboardFocusableSlow(UpdateBehavior update_behavior =
+                                   UpdateBehavior::kStyleAndLayout) const final;
   void DidAddUserAgentShadowRoot(ShadowRoot&) final;
   const ComputedStyle* CustomStyleForLayoutObject(
       const StyleRecalcContext&) final;
@@ -171,10 +174,6 @@ class CORE_EXPORT HTMLPlugInElement
   // HTMLElement overrides:
   bool HasCustomFocusLogic() const override;
   bool IsPluginElement() const final;
-
-  // HTMLFrameOwnerElement overrides:
-  void DisconnectContentFrame() override;
-  void IntrinsicSizingInfoChanged() final;
 
   // TODO(dcheng): Consider removing this, since HTMLEmbedElementLegacyCall
   // and HTMLObjectElementLegacyCall usage is extremely low.

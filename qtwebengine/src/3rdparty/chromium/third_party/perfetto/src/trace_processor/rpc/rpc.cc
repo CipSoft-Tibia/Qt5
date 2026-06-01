@@ -212,7 +212,11 @@ void Rpc::ParseRpcRequest(const uint8_t* data, size_t len) {
     }
     case RpcProto::TPM_FINALIZE_TRACE_DATA: {
       Response resp(tx_seq_id_++, req_type);
-      NotifyEndOfFile();
+      auto* result = resp->set_finalize_data_result();
+      base::Status res = NotifyEndOfFile();
+      if (!res.ok()) {
+        result->set_error(res.message());
+      }
       resp.Send(rpc_response_fn_);
       break;
     }
@@ -324,12 +328,47 @@ void Rpc::ParseRpcRequest(const uint8_t* data, size_t len) {
       resp.Send(rpc_response_fn_);
       break;
     }
-    case RpcProto::TPM_REGISTER_SQL_MODULE: {
+    case RpcProto::TPM_REGISTER_SQL_PACKAGE: {
       Response resp(tx_seq_id_++, req_type);
-      base::Status status = RegisterSqlModule(req.register_sql_module_args());
-      auto* res = resp->set_register_sql_module_result();
+      base::Status status = RegisterSqlPackage(req.register_sql_package_args());
+      auto* res = resp->set_register_sql_package_result();
       if (!status.ok()) {
         res->set_error(status.message());
+      }
+      resp.Send(rpc_response_fn_);
+      break;
+    }
+    case RpcProto::TPM_ANALYZE_STRUCTURED_QUERY: {
+      Response resp(tx_seq_id_++, req_type);
+      protozero::ConstBytes args = req.analyze_structured_query_args();
+      protos::pbzero::AnalyzeStructuredQueryArgs::Decoder decoder(args.data,
+                                                                  args.size);
+      std::vector<StructuredQueryBytes> queries;
+      for (auto it = decoder.queries(); it; ++it) {
+        StructuredQueryBytes n;
+        n.format = StructuredQueryBytes::Format::kBinaryProto;
+        n.ptr = it->data();
+        n.size = it->size();
+        queries.push_back(n);
+      }
+
+      std::vector<AnalyzedStructuredQuery> analyzed_queries;
+      base::Status status = trace_processor_->AnalyzeStructuredQueries(
+          queries, &analyzed_queries);
+      auto* analyze_result = resp->set_analyze_structured_query_result();
+      if (!status.ok()) {
+        analyze_result->set_error(status.message());
+      }
+
+      for (const auto& r : analyzed_queries) {
+        auto* query_res = analyze_result->add_results();
+        query_res->set_sql(r.sql);
+        for (const std::string& m : r.modules) {
+          query_res->add_modules(m);
+        }
+        for (const std::string& p : r.preambles) {
+          query_res->add_preambles(p);
+        }
       }
       resp.Send(rpc_response_fn_);
       break;
@@ -407,19 +446,31 @@ void Rpc::ResetTraceProcessor(const uint8_t* args, size_t len) {
             ? SoftDropFtraceDataBefore::kAllPerCpuBuffersValid
             : SoftDropFtraceDataBefore::kNoDrop;
   }
+  using Args = protos::pbzero::ResetTraceProcessorArgs;
+  switch (reset_trace_processor_args.parsing_mode()) {
+    case Args::ParsingMode::DEFAULT:
+      config.parsing_mode = ParsingMode::kDefault;
+      break;
+    case Args::ParsingMode::TOKENIZE_ONLY:
+      config.parsing_mode = ParsingMode::kTokenizeOnly;
+      break;
+    case Args::ParsingMode::TOKENIZE_AND_SORT:
+      config.parsing_mode = ParsingMode::kTokenizeAndSort;
+      break;
+  }
   ResetTraceProcessorInternal(config);
 }
 
-base::Status Rpc::RegisterSqlModule(protozero::ConstBytes bytes) {
-  protos::pbzero::RegisterSqlModuleArgs::Decoder args(bytes);
-  SqlModule module;
-  module.name = args.top_level_package_name().ToStdString();
-  module.allow_module_override = args.allow_module_override();
+base::Status Rpc::RegisterSqlPackage(protozero::ConstBytes bytes) {
+  protos::pbzero::RegisterSqlPackageArgs::Decoder args(bytes);
+  SqlPackage package;
+  package.name = args.package_name().ToStdString();
+  package.allow_override = args.allow_override();
   for (auto it = args.modules(); it; ++it) {
-    protos::pbzero::RegisterSqlModuleArgs::Module::Decoder m(*it);
-    module.files.emplace_back(m.name().ToStdString(), m.sql().ToStdString());
+    protos::pbzero::RegisterSqlPackageArgs::Module::Decoder m(*it);
+    package.modules.emplace_back(m.name().ToStdString(), m.sql().ToStdString());
   }
-  return trace_processor_->RegisterSqlModule(module);
+  return trace_processor_->RegisterSqlPackage(package);
 }
 
 void Rpc::MaybePrintProgress() {

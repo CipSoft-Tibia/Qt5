@@ -98,7 +98,7 @@ class FakeProviderClient : public WebGPUSwapBufferProvider::Client {
     DCHECK(texture);
     texture = nullptr;
   }
-
+  void InitializeLayer(cc::Layer* layer) override {}
   void SetNeedsCompositingUpdate() override {}
 
   scoped_refptr<WebGPUMailboxTexture> texture;
@@ -230,26 +230,19 @@ class WebGPUSwapBufferProviderTest : public testing::Test {
         .backendType = wgpu::BackendType::Null,
     };
     instance_.RequestAdapter(
-        &options,
-        [](WGPURequestAdapterStatus status, WGPUAdapter cAdapter, const char*,
-           void* userdata) {
-          *static_cast<wgpu::Adapter*>(userdata) =
-              wgpu::Adapter::Acquire(cAdapter);
-        },
-        &adapter_);
+        &options, wgpu::CallbackMode::AllowSpontaneous,
+        [&](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter,
+            wgpu::StringView) { adapter_ = std::move(adapter); });
     ASSERT_TRUE(c2s_serializer_.Flush());
     ASSERT_TRUE(s2c_serializer_.Flush());
     ASSERT_NE(adapter_, nullptr);
 
     wgpu::DeviceDescriptor deviceDesc = {};
     adapter_.RequestDevice(
-        &deviceDesc,
-        [](WGPURequestDeviceStatus, WGPUDevice cDevice, const char*,
-           void* userdata) {
-          *static_cast<wgpu::Device*>(userdata) =
-              wgpu::Device::Acquire(cDevice);
-        },
-        &device_);
+        &deviceDesc, wgpu::CallbackMode::AllowSpontaneous,
+        [&](wgpu::RequestDeviceStatus, wgpu::Device device, wgpu::StringView) {
+          device_ = std::move(device);
+        });
     ASSERT_TRUE(c2s_serializer_.Flush());
     ASSERT_TRUE(s2c_serializer_.Flush());
     ASSERT_NE(device_, nullptr);
@@ -317,8 +310,8 @@ TEST_F(WebGPUSwapBufferProviderTest,
             return ReserveTextureImpl(device, desc);
           }));
   provider_->GetNewTexture(kSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource1,
-                                                     &release_callback1));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource1, &release_callback1));
 
   EXPECT_CALL(*webgpu_, ReserveTexture(device_.Get(), _))
       .WillOnce(
@@ -326,8 +319,8 @@ TEST_F(WebGPUSwapBufferProviderTest,
             return ReserveTextureImpl(device, desc);
           }));
   provider_->GetNewTexture(kSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource2,
-                                                     &release_callback2));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource2, &release_callback2));
 
   EXPECT_CALL(*webgpu_, ReserveTexture(device_.Get(), _))
       .WillOnce(
@@ -335,8 +328,8 @@ TEST_F(WebGPUSwapBufferProviderTest,
             return ReserveTextureImpl(device, desc);
           }));
   provider_->GetNewTexture(kSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource3,
-                                                     &release_callback3));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource3, &release_callback3));
 
   // Release resources one by one, the provider should only be freed when the
   // last one is called.
@@ -365,8 +358,8 @@ TEST_F(WebGPUSwapBufferProviderTest, VerifyResizingProperlyAffectsResources) {
             return ReserveTextureImpl(device, desc);
           }));
   provider_->GetNewTexture(kSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback));
   EXPECT_EQ(kSize, resource.size);
   std::move(release_callback).Run(gpu::SyncToken(), false /* lostResource */);
 
@@ -377,8 +370,8 @@ TEST_F(WebGPUSwapBufferProviderTest, VerifyResizingProperlyAffectsResources) {
             return ReserveTextureImpl(device, desc);
           }));
   provider_->GetNewTexture(kOtherSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback));
   EXPECT_EQ(kOtherSize, resource.size);
   std::move(release_callback).Run(gpu::SyncToken(), false /* lostResource */);
 
@@ -389,8 +382,8 @@ TEST_F(WebGPUSwapBufferProviderTest, VerifyResizingProperlyAffectsResources) {
             return ReserveTextureImpl(device, desc);
           }));
   provider_->GetNewTexture(kSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback));
   EXPECT_EQ(kSize, resource.size);
   std::move(release_callback).Run(gpu::SyncToken(), false /* lostResource */);
 }
@@ -414,8 +407,8 @@ TEST_F(WebGPUSwapBufferProviderTest, VerifyInsertAndWaitSyncTokenCorrectly) {
 
   // WebGPU should produce a token so that the next of user of the resource can
   // synchronize properly
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback));
   EXPECT_EQ(webgpu_->most_recent_generated_token, resource.sync_token());
 
   // Check that the release token is used to synchronize the shared image
@@ -451,8 +444,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBuffers) {
   EXPECT_TRUE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_0));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_0));
 
   viz::ReleaseCallback release_callback_1;
   EXPECT_CALL(*webgpu_, ReserveTexture(device_.Get(), _))
@@ -465,8 +458,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBuffers) {
   EXPECT_TRUE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_1));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_1));
 
   viz::ReleaseCallback release_callback_2;
   EXPECT_CALL(*webgpu_, ReserveTexture(device_.Get(), _))
@@ -479,8 +472,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBuffers) {
   EXPECT_TRUE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_2));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_2));
 
   // Destroy the swap buffers.
   std::move(release_callback_0).Run(gpu::SyncToken(), false /* lostResource */);
@@ -498,8 +491,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBuffers) {
   EXPECT_FALSE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_1));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_1));
 
   EXPECT_CALL(*webgpu_, ReserveTexture(device_.Get(), _))
       .WillOnce(
@@ -511,8 +504,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBuffers) {
   EXPECT_FALSE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_2));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_2));
 }
 
 // Ensures swap buffers will NOT be recycled if resized.
@@ -537,8 +530,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBufferResize) {
   EXPECT_TRUE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_1));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_1));
 
   viz::ReleaseCallback release_callback_2;
   EXPECT_CALL(*webgpu_, ReserveTexture(device_.Get(), _))
@@ -551,8 +544,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBufferResize) {
   EXPECT_TRUE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_2));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_2));
 
   // Destroy swap buffers
   std::move(release_callback_1).Run(gpu::SyncToken(), false /* lostResource */);
@@ -572,8 +565,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBufferResize) {
   EXPECT_TRUE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_3));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_3));
 
   viz::ReleaseCallback release_callback_4;
   EXPECT_CALL(*webgpu_, ReserveTexture(device_.Get(), _))
@@ -586,8 +579,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReuseSwapBufferResize) {
   EXPECT_TRUE(
       shared_images.insert(provider_->GetCurrentMailboxForTesting()).second);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback_4));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_4));
 }
 
 // Regression test for crbug.com/1236418 where calling
@@ -606,12 +599,12 @@ TEST_F(WebGPUSwapBufferProviderTest,
 
   viz::TransferableResource resource;
   viz::ReleaseCallback release_callback_1;
-  EXPECT_FALSE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                      &release_callback_1));
+  EXPECT_FALSE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_1));
 
   viz::ReleaseCallback release_callback_2;
-  EXPECT_FALSE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                      &release_callback_2));
+  EXPECT_FALSE(
+      provider_->PrepareTransferableResource(&resource, &release_callback_2));
 }
 
 // Test that checks mailbox is dissociated when Neuter() is called.
@@ -633,8 +626,8 @@ TEST_F(WebGPUSwapBufferProviderTest, VerifyMailboxDissociationOnNeuter) {
   provider_->GetNewTexture(kSize);
   EXPECT_EQ(webgpu_->num_associated_mailboxes, 1);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource1,
-                                                     &release_callback1));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource1, &release_callback1));
   EXPECT_EQ(webgpu_->num_associated_mailboxes, 0);
 
   // Produce 2nd resource but this time neuters the provider. Mailbox must also
@@ -668,8 +661,8 @@ TEST_F(WebGPUSwapBufferProviderTest, VerifyNoDoubleMailboxDissociation) {
   provider_->GetNewTexture(kSize);
   EXPECT_EQ(webgpu_->num_associated_mailboxes, 1);
 
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource1,
-                                                     &release_callback1));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource1, &release_callback1));
   EXPECT_EQ(webgpu_->num_associated_mailboxes, 0);
 
   // Calling Neuter() won't dissociate mailbox again.
@@ -701,8 +694,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReserveTextureDescriptorForReflection) {
             return ReserveTextureImpl(device, desc);
           }));
   provider_->GetNewTexture(kSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback));
   EXPECT_EQ(kSize, resource.size);
   std::move(release_callback).Run(gpu::SyncToken(), false /* lostResource */);
 
@@ -717,8 +710,8 @@ TEST_F(WebGPUSwapBufferProviderTest, ReserveTextureDescriptorForReflection) {
         return ReserveTextureImpl(device, desc);
       }));
   provider_->GetNewTexture(kOtherSize);
-  EXPECT_TRUE(provider_->PrepareTransferableResource(nullptr, &resource,
-                                                     &release_callback));
+  EXPECT_TRUE(
+      provider_->PrepareTransferableResource(&resource, &release_callback));
   EXPECT_EQ(kOtherSize, resource.size);
   std::move(release_callback).Run(gpu::SyncToken(), false /* lostResource */);
 }

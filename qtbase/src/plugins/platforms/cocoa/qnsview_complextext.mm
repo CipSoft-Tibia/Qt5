@@ -652,60 +652,149 @@
 
 @implementation QNSView (ServicesMenu)
 
-// Support for reading and writing from service menu pasteboards, which is also
-// how the writing tools interact with custom NSView. Note that we only support
-// plain text, which means that a rich text selection will lose all its styling
-// when fed through a service that changes the text. To support rich text we
-// need IM plumbing that operates on QMimeData.
+// Support for reading and writing from service menu pasteboards. If the text
+// input client supports returning the selection as a QMimeData we can convert
+// that to rich text. Otherwise we fall back to plain text, which means that we
+// lose any styling the selection might have when fed through a service that
+// changes the text.
 
 - (id)validRequestorForSendType:(NSPasteboardType)sendType returnType:(NSPasteboardType)returnType
 {
-    bool canWriteToPasteboard = [&]{
-        if (![sendType isEqualToString:NSPasteboardTypeString])
-            return false;
-        if (auto queryResult = queryInputMethod(self.focusObject, Qt::ImCurrentSelection)) {
-            auto selectedText = queryResult.value(Qt::ImCurrentSelection).toString();
-            if (!selectedText.isEmpty())
-                return true;
+    if (auto queryResult = queryInputMethod(self.focusObject, Qt::ImReadOnly | Qt::ImCurrentSelection)) {
+        bool canWriteToPasteboard = false;
+        bool canReadFromPastboard = false;
+
+        auto currentSelection = queryResult.value(Qt::ImCurrentSelection);
+        if (auto *mimeData = currentSelection.value<QMimeData*>()) {
+            // If the client reports the selection as mime-data we assume
+            // it can also insert mime-data via QInputMethodEvent::MimeData
+            auto scope = QUtiMimeConverter::HandlerScopeFlag::Clipboard;
+            auto availableConverters = QMacMimeRegistry::all(scope);
+            auto sendUti = [self utiForPasteboardType:sendType];
+            auto returnUti = [self utiForPasteboardType:returnType];
+            const auto mimeFormats = mimeData->formats();
+            for (const auto *c : availableConverters) {
+                if (mimeFormats.contains(c->mimeForUti(sendUti)))
+                    canWriteToPasteboard = true;
+                if (mimeFormats.contains(c->mimeForUti(returnUti)))
+                    canReadFromPastboard = true;
+                if (canWriteToPasteboard && canReadFromPastboard)
+                    break; // No need to continue looking
+            }
+        } else {
+            canWriteToPasteboard = [sendType isEqualToString:NSPasteboardTypeString]
+                && !currentSelection.toString().isEmpty();
+            canReadFromPastboard = [returnType isEqualToString:NSPasteboardTypeString]
+                && !queryResult.value(Qt::ImReadOnly).toBool();
         }
-        return false;
-    }();
 
-    bool canReadFromPastboard = [returnType isEqualToString:NSPasteboardTypeString];
-
-    if ((sendType && !canWriteToPasteboard) || (returnType && !canReadFromPastboard)) {
-        return [super validRequestorForSendType:sendType returnType:returnType];
-    } else {
-        qCDebug(lcQpaServices) << "Accepting service interaction for send" << sendType << "and receive" << returnType;
-        return self;
+        if (!((sendType && !canWriteToPasteboard) || (returnType && !canReadFromPastboard))) {
+            qCDebug(lcQpaServices) << "Accepting service interaction for send" << sendType << "and receive" << returnType;
+            return self;
+        }
     }
+
+    return [super validRequestorForSendType:sendType returnType:returnType];
 }
 
 - (BOOL)writeSelectionToPasteboard:(NSPasteboard *)pasteboard types:(NSArray<NSPasteboardType> *)types
 {
-    if ([types containsObject:NSPasteboardTypeString]
-        // Check for the deprecated NSStringPboardType as well, as even if we
-        // claim to only support NSPasteboardTypeString, we get callbacks for
-        // the deprecated type.
-        || QT_IGNORE_DEPRECATIONS([types containsObject:NSStringPboardType])) {
-        if (auto queryResult = queryInputMethod(self.focusObject, Qt::ImCurrentSelection)) {
-            auto selectedText = queryResult.value(Qt::ImCurrentSelection).toString();
-            qCDebug(lcQpaServices) << "Writing" << selectedText << "to service pasteboard" << pasteboard.name;
-            return [pasteboard writeObjects:@[ selectedText.toNSString() ]];
+    bool didWrite = false;
+
+    if (auto queryResult = queryInputMethod(self.focusObject, Qt::ImCurrentSelection)) {
+        auto currentSelection = queryResult.value(Qt::ImCurrentSelection);
+        if (auto *mimeData = currentSelection.value<QMimeData*>()) {
+            auto mimeFormats = mimeData->formats();
+            auto scope = QUtiMimeConverter::HandlerScopeFlag::Clipboard;
+            auto availableConverters = QMacMimeRegistry::all(scope);
+            for (NSPasteboardType type in types) {
+                auto uti = [self utiForPasteboardType:type];
+                if (uti.isEmpty()) {
+                    qCWarning(lcQpaServices) << "Did not find UTI for type" << type;
+                    continue;
+                }
+                for (const auto *converter : availableConverters) {
+                    auto mime = converter->mimeForUti(uti);
+                    if (mimeFormats.contains(mime)) {
+                        auto utiDataList = converter->convertFromMime(mime,
+                            mimeData->data(mime), uti);
+                        if (utiDataList.isEmpty())
+                            continue;
+                        auto utiData = utiDataList.first();
+                        qCDebug(lcQpaServices) << "Writing" << utiData << "to service pasteboard"
+                            << "with UTI" << uti << "for type" << type << "based on mime" << mime;
+                        didWrite |= [pasteboard setData:utiData.toNSData() forType:type];
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Try plain text fallback if we didn't have QMimeData, or didn't write anything
+        if (!didWrite && ([types containsObject:NSPasteboardTypeString]
+            || QT_IGNORE_DEPRECATIONS([types containsObject:NSStringPboardType]))) {
+            auto selectedText = currentSelection.toString();
+            qCDebug(lcQpaServices) << "Writing" << selectedText << "to service pasteboard"
+                << "as pain text" << "for type" << NSPasteboardTypeString;
+            didWrite |= [pasteboard writeObjects:@[ selectedText.toNSString() ]];
         }
     }
-    return NO;
+
+    return didWrite;
 }
 
 - (BOOL)readSelectionFromPasteboard:(NSPasteboard *)pasteboard
 {
-    NSString *insertedString = [pasteboard stringForType:NSPasteboardTypeString];
-    if (!insertedString)
-        return NO;
+    if (queryInputMethod(self.focusObject)) {
+        auto scope = QUtiMimeConverter::HandlerScopeFlag::Clipboard;
+        QMacPasteboard macPasteboard(CFStringRef(pasteboard.name), scope);
+        auto *mimeData = macPasteboard.mimeData();
+        if (mimeData->formats().isEmpty()) {
+            qCWarning(lcQpaServices) << "Failed to resolve mime data from" << pasteboard.types;
+            return NO;
+        }
 
-    qCDebug(lcQpaServices) << "Reading" << insertedString << "from service pasteboard" << pasteboard.name;
-    [self insertText:insertedString replacementRange:{NSNotFound, 0}];
-    return YES;
+        qCDebug(lcQpaServices) << "Replacing selected range" << [self selectedRange]
+            << "with mime data" << [&]() {
+                QMap<QString, QByteArray> formatMap;
+                for (const auto &format : mimeData->formats())
+                    formatMap.insert(format, mimeData->data(format));
+                return formatMap;
+            }() << "from service pasteboard" << pasteboard.name;
+
+        QList<QInputMethodEvent::Attribute> attributes;
+        attributes << QInputMethodEvent::Attribute(
+            QInputMethodEvent::MimeData,
+            0, 0, QVariant::fromValue(mimeData));
+
+        QInputMethodEvent inputMethodEvent(QString(), attributes);
+        // Pass the plain text data as the commit string, for clients
+        // that don't know how to handle the new MimeData attribute.
+        // This also ensures that we clear the existing selected text.
+        inputMethodEvent.setCommitString(mimeData->text());
+        QCoreApplication::sendEvent(self.focusObject, &inputMethodEvent);
+        return YES;
+    } else {
+        return NO;
+    }
+}
+
+- (QString)utiForPasteboardType:(NSPasteboardType)pasteboardType
+{
+    if (!pasteboardType)
+        return QString();
+
+    UTType *uttype = [UTType typeWithIdentifier:pasteboardType];
+    if (!uttype) {
+        // Although NSPasteboard types are declared as obsolete
+        // we still get callbacks for these types. As these types
+        // are not UTIs, we need to resolve the underlying UTI
+        // ourselves.
+        uttype = [UTType typeWithTag:pasteboardType
+            tagClass:QT_IGNORE_DEPRECATIONS((NSString*)kUTTagClassNSPboardType)
+            conformingToType:nil];
+    }
+    return QString::fromNSString(uttype.identifier);
 }
 
 @end

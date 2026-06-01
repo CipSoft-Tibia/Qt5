@@ -31,7 +31,19 @@ WITH data(device, cpu, offset_ns) AS (
   ("monaco", 0, 450000),
   ("monaco", 1, 450000),
   ("monaco", 2, 450000),
-  ("monaco", 3, 450000)
+  ("monaco", 3, 450000),
+  ("Tensor G4", 0, 0),
+  ("Tensor G4", 1, 0),
+  ("Tensor G4", 2, 0),
+  ("Tensor G4", 3, 0),
+  ("Tensor G4", 4, 110000),
+  ("Tensor G4", 5, 110000),
+  ("Tensor G4", 6, 110000),
+  ("Tensor G4", 7, 400000),
+  ("neo", 0, 100000),
+  ("neo", 1, 100000),
+  ("neo", 2, 100000),
+  ("neo", 3, 100000)
 )
 select * from data;
 
@@ -50,6 +62,8 @@ select * from data;
 CREATE PERFETTO TABLE _wattson_device AS
 WITH soc_model AS (
   SELECT COALESCE(
+    -- Get guest model from metadata, which takes precedence if set
+    (SELECT str_value FROM metadata WHERE name = 'android_guest_soc_model'),
     -- Get model from metadata
     (SELECT str_value FROM metadata WHERE name = 'android_soc_model'),
     -- Get device name from metadata and map it to model
@@ -82,7 +96,21 @@ WITH data(device, cpu, policy) AS (
   ("Tensor", 4, 4),
   ("Tensor", 5, 4),
   ("Tensor", 6, 6),
-  ("Tensor", 7, 6)
+  ("Tensor", 7, 6),
+  ("Tensor G4", 0, 0),
+  ("Tensor G4", 1, 0),
+  ("Tensor G4", 2, 0),
+  ("Tensor G4", 3, 0),
+  ("Tensor G4", 4, 4),
+  ("Tensor G4", 5, 4),
+  ("Tensor G4", 6, 4),
+  ("Tensor G4", 7, 7),
+  -- need 255 policy to match devfreq
+  ("Tensor G4", 255, 255),
+  ("neo", 0, 0),
+  ("neo", 1, 0),
+  ("neo", 2, 0),
+  ("neo", 3, 0)
 )
 select * from data;
 
@@ -102,13 +130,15 @@ AS
 WITH data(device, policy, freq) AS (
   VALUES
   ("monaco", 0, 614400),
-  ("Tensor", 4, 400000)
+  ("Tensor", 4, 400000),
+  ("Tensor G4", 0, 700000),
+  ("neo", 0, 691200)
 )
 select * from data;
 
 -- Get policy corresponding to minimum volt vote
 CREATE PERFETTO FUNCTION _get_min_policy_vote()
-RETURNS INT AS
+RETURNS LONG AS
 SELECT
   vote_tbl.policy
 FROM _device_min_volt_vote as vote_tbl
@@ -117,9 +147,57 @@ WHERE vote_tbl.device = device.name;
 
 -- Get frequency corresponding to minimum volt vote
 CREATE PERFETTO FUNCTION _get_min_freq_vote()
-RETURNS INT AS
+RETURNS LONG AS
 SELECT
  vote_tbl.freq
 FROM _device_min_volt_vote as vote_tbl
 JOIN _wattson_device as device
 WHERE vote_tbl.device = device.name;
+
+-- Devices that require using devfreq
+CREATE PERFETTO TABLE _use_devfreq
+AS
+WITH data(device) AS (
+  VALUES
+  ("Tensor G4")
+)
+select * from data;
+
+-- Creates non-empty table if device needs devfreq
+CREATE PERFETTO TABLE _use_devfreq_for_calc AS
+SELECT TRUE AS devfreq_necessary
+FROM _use_devfreq as d
+JOIN _wattson_device as device
+ON d.device = device.name;
+
+-- Creates empty table if device needs devfreq; inverse of _use_devfreq_for_calc
+CREATE PERFETTO TABLE _skip_devfreq_for_calc AS
+SELECT FALSE AS devfreq_necessary
+FROM _use_devfreq as d
+JOIN _wattson_device as device
+ON d.device != device.name;
+
+-- Devices that require idle state mapping
+CREATE PERFETTO TABLE _idle_state_map
+AS
+WITH data(device, nominal_idle, override_idle) AS (
+  VALUES
+  ("neo", 4294967295, -1),
+  ("neo", 0, 0),
+  ("neo", 1, 1),
+  ("neo", 2, 1)
+)
+select * from data;
+
+-- idle_mapping override filtered for device
+CREATE PERFETTO TABLE _idle_state_map_override AS
+SELECT nominal_idle, override_idle
+FROM _idle_state_map as idle_map
+JOIN _wattson_device as device
+ON idle_map.device = device.name;
+
+-- Get the device specific deepest idle state if defined, otherwise use 1 as the
+-- deepest idle state
+CREATE PERFETTO TABLE _deepest_idle AS
+SELECT
+  IFNULL((SELECT MAX(override_idle) FROM _idle_state_map_override), 1) as idle;

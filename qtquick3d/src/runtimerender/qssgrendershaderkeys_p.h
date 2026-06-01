@@ -338,7 +338,6 @@ struct QSSGShaderKeySpecularModel : QSSGShaderKeyUnsigned<2>
             ioStr.append(QByteArrayView("Default"));
             break;
         }
-        ioStr.append(';');
     }
     void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
     {
@@ -393,7 +392,6 @@ struct QSSGShaderKeyAlphaMode : QSSGShaderKeyUnsigned<2>
             ioStr.append(QByteArrayView("Opaque"));
             break;
         }
-        ioStr.append(';');
     }
     void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
     {
@@ -466,7 +464,7 @@ struct QSSGShaderKeyVertexAttribute : public QSSGShaderKeyUnsigned<9>
         internalToString(ioStr, QByteArrayView("color"), getBitValue(Color, inKeySet));
         ioStr.append(';');
         internalToString(ioStr, QByteArrayView("texcoordlightmap"), getBitValue(TexCoordLightmap, inKeySet));
-        ioStr.append('}');
+        ioStr.append(';');
         internalToString(ioStr, QByteArrayView("joint&weight"), getBitValue(JointAndWeight, inKeySet));
         ioStr.append('}');
     }
@@ -611,6 +609,8 @@ struct QSSGShaderDefaultMaterialKeyProperties
         , m_hasIbl("hasIbl")
         , m_lightCount("lightCount")
         , m_specularEnabled("specularEnabled")
+        , m_fresnelScaleBiasEnabled("fresnelScaleBiasEnabled")
+        , m_clearcoatFresnelScaleBiasEnabled("clearcoatFresnelScaleBiasEnabled")
         , m_fresnelEnabled("fresnelEnabled")
         , m_baseColorSingleChannelEnabled("baseColorSingleChannelEnabled")
         , m_specularSingleChannelEnabled("specularSingleChannelEnabled")
@@ -781,6 +781,7 @@ struct QSSGShaderDefaultMaterialKeyProperties
         m_textureChannels[9].name = "thicknessMap_channel";
         m_textureChannels[10].name = "baseColorMap_channel";
         m_textureChannels[11].name = "specularAmountMap_channel";
+        m_textureChannels[12].name = "emissiveMap_channel";
 
         init();
     }

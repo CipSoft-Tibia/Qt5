@@ -22,8 +22,11 @@
 #include <QtWidgets/qscrollbar.h>
 #include <QtWidgets/qspinbox.h>
 #include <QtWidgets/qstylefactory.h>
+#include <QtWidgets/qtablewidget.h>
 
 #include <QtGui/qevent.h>
+#include <QtGui/qstylehints.h>
+#include <QtGui/private/qhighdpiscaling_p.h>
 
 #include <QtCore/qmimedata.h>
 #include <QtCore/qtimer.h>
@@ -172,6 +175,7 @@ private slots:
 #endif
     void forwardTouchEvent();
     void touchEventPropagation();
+    void itemViewScroll();
 };
 
 // Subclass that exposes the protected functions.
@@ -3330,7 +3334,7 @@ void tst_QGraphicsProxyWidget::clickFocus()
         EventSpy proxySpy(proxy);
         EventSpy widgetSpy(proxy->widget());
 
-        view.setFrameStyle(0);
+        view.setFrameStyle(QFrame::NoFrame);
         view.resize(300, 300);
         view.show();
         QVERIFY(QTest::qWaitForWindowFocused(&view));
@@ -3466,10 +3470,12 @@ void tst_QGraphicsProxyWidget::QTBUG_6986_sendMouseEventToAlienWidget()
     auto *hoverButton = new HoverButton(background);
     hoverButton->setText("Second button"_L1);
     hoverButton->setGeometry(10, 10, 200, 50);
+    hoverButton->setAttribute(Qt::WA_Hover, true);
     scene.addWidget(background);
 
     auto *hideButton = new QPushButton("I'm a button with a very very long text"_L1);
     hideButton->setGeometry(10, 10, 400, 50);
+    hideButton->setAttribute(Qt::WA_Hover, true);
     QGraphicsProxyWidget *topButton = scene.addWidget(hideButton);
     connect(hideButton, &QPushButton::clicked, &scene, [&]() { topButton->hide(); });
     topButton->setFocus();
@@ -3656,6 +3662,11 @@ public:
 
         return QWidget::event(event);
     }
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.fillRect(rect(), Qt::green);
+    }
 };
 
 #if QT_CONFIG(wheelevent)
@@ -3673,6 +3684,11 @@ public:
 */
 void tst_QGraphicsProxyWidget::wheelEventPropagation()
 {
+    qApp->styleHints()->setWheelScrollLines(3);
+    const auto guard = qScopeGuard([&]() {
+        qApp->styleHints()->setWheelScrollLines(-1);
+    });
+
     QGraphicsScene scene(0, 0, 600, 600);
 
     auto *label = new QLabel("Direct"_L1);
@@ -3694,6 +3710,11 @@ void tst_QGraphicsProxyWidget::wheelEventPropagation()
 
         int wheelEventCount = 0;
     protected:
+        void paintEvent(QPaintEvent *) override
+        {
+            QPainter p(this);
+            p.fillRect(rect(), Qt::green);
+        }
         void wheelEvent(QWheelEvent *) override
         {
             ++wheelEventCount;
@@ -3707,24 +3728,30 @@ void tst_QGraphicsProxyWidget::wheelEventPropagation()
 
     QGraphicsView view(&scene);
     view.setFixedHeight(200);
+    view.setFixedWidth(700);
+    view.setFrameStyle(QFrame::NoFrame);
     view.show();
 
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QVERIFY(view.verticalScrollBar()->isVisible());
+    QVERIFY(!view.horizontalScrollBar()->isVisible());
 
     view.verticalScrollBar()->setValue(0);
     QSignalSpy scrollSpy(view.verticalScrollBar(), &QScrollBar::valueChanged);
 
     const QPoint wheelPosition(50, 25);
     auto wheelUp = [&view, wheelPosition](Qt::ScrollPhase phase) {
-        const QPoint global = view.mapToGlobal(wheelPosition);
-        const QPoint pixelDelta(0, -25);
+        auto *window = view.windowHandle();
+        const QPoint global = QHighDpi::toNativePixels(view.mapToGlobal(wheelPosition), window);
+        const QPoint pixelDelta = QHighDpi::toNativeLocalPosition(QPoint(0, -25), window);
         const QPoint angleDelta(0, -120);
-        QWindowSystemInterface::handleWheelEvent(view.windowHandle(), wheelPosition, global,
+        QWindowSystemInterface::handleWheelEvent(window, wheelPosition, global,
                                                 pixelDelta, angleDelta, Qt::NoModifier,
                                                 phase);
         QCoreApplication::processEvents();
     };
+    auto vs = view.verticalScrollBar();
+    vs->setSingleStep(9);   // each wheel event: wheelScrollLines() * 9 = 27px
 
     qsizetype scrollCount = 0;
     // test non-kinetic events; they are not grabbed, and should scroll the view unless
@@ -3812,6 +3839,7 @@ void tst_QGraphicsProxyWidget::forwardTouchEvent()
 
     QGraphicsView view(&scene);
     view.show();
+    view.setFrameStyle(QFrame::NoFrame);
     QVERIFY(QTest::qWaitForWindowActive(&view));
 
     EventSpy eventSpy(widget);
@@ -3828,16 +3856,14 @@ void tst_QGraphicsProxyWidget::forwardTouchEvent()
     QTest::touchEvent(&view, device.get()).move(0, QPoint(16, 16), &view);
     QTest::touchEvent(&view, device.get()).release(0, QPoint(15, 15), &view);
 
-    QApplication::processEvents();
-
-    QCOMPARE(eventSpy.counts[QEvent::TouchBegin], 1);
-    QCOMPARE(eventSpy.counts[QEvent::TouchUpdate], 2);
-    QCOMPARE(eventSpy.counts[QEvent::TouchEnd], 1);
+    QTRY_COMPARE(eventSpy.counts[QEvent::TouchBegin], 1);
+    QTRY_COMPARE(eventSpy.counts[QEvent::TouchUpdate], 2);
+    QTRY_COMPARE(eventSpy.counts[QEvent::TouchEnd], 1);
 }
 
 void tst_QGraphicsProxyWidget::touchEventPropagation()
 {
-    QGraphicsScene scene(0, 0, 300, 200);
+    QGraphicsScene scene;
     auto *simpleWidget = new QWidget;
     simpleWidget->setObjectName("simpleWidget");
     simpleWidget->setAttribute(Qt::WA_AcceptTouchEvents, true);
@@ -3869,15 +3895,26 @@ void tst_QGraphicsProxyWidget::touchEventPropagation()
     vbox->addWidget(touchWidget2);
     QGraphicsProxyWidget *formProxy = scene.addWidget(formWidget);
     formProxy->setAcceptTouchEvents(true);
-    formProxy->setGeometry(QRectF(50, 50, 200, 160));
+    const auto minSize = formWidget->minimumSize();
+    formProxy->setGeometry(QRectF(50, 50, minSize.width(), minSize.height()));
+
+    // topLeft must be 0/0
+    const auto sceneRect = scene.sceneRect();
+    scene.setSceneRect(QRectF(0, 0, sceneRect.width(), sceneRect.height()));
 
     QGraphicsView view(&scene);
+    // by setting NoFrame, view and view.viewport() have the same
+    // coordinate system
+    view.setFrameStyle(QFrame::NoFrame);
+    // make sure to not have scrollbars
     view.setFixedSize(scene.width(), scene.height());
     view.verticalScrollBar()->setValue(0);
     view.horizontalScrollBar()->setValue(0);
     view.viewport()->setObjectName("GraphicsView's Viewport");
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QVERIFY(!view.horizontalScrollBar()->isVisible());
+    QVERIFY(!view.verticalScrollBar()->isVisible());
 
     class TouchEventSpy : public QObject
     {
@@ -3909,8 +3946,12 @@ void tst_QGraphicsProxyWidget::touchEventPropagation()
             case QEvent::TouchEnd: {
                 auto *touchEvent = static_cast<QTouchEvent *>(event);
                 // instead of detaching each QEventPoint, just store the relative positions
-                for (const auto &touchPoint : touchEvent->points())
-                    records[touchPoint.id()] << TouchRecord{receiver, event->type(), touchPoint.position()};
+                for (const auto& touchPoint : touchEvent->points()) {
+                    records[touchPoint.id()]
+                            << TouchRecord{ receiver, event->type(), touchPoint.position() };
+                    qCDebug(lcTests) << touchPoint.id() << "recv:" << receiver << "type"
+                                     << event->type() << "pos" << touchPoint.position();
+                }
                 qCDebug(lcTests) << "Recording" << event << receiver;
                 break;
             }
@@ -3940,9 +3981,9 @@ void tst_QGraphicsProxyWidget::touchEventPropagation()
     };
 
     // verify that the embedded widget gets the correctly translated event
-    QTest::touchEvent(&view, touchDevice.get()).press(0, simpleCenter.toPoint());
+    QTest::touchEvent(&view, touchDevice.get()).press(0, view.mapFromScene(simpleCenter));
     // window, viewport, scene, simpleProxy, simpleWidget
-    QCOMPARE(eventSpy.count(), 5);
+    QTRY_COMPARE(eventSpy.count(), 5);
     QCOMPARE(eventSpy.at(0).receiver, view.windowHandle());
     QCOMPARE(eventSpy.at(1).receiver, view.viewport());
     QCOMPARE(eventSpy.at(2).receiver, &scene);
@@ -3965,7 +4006,7 @@ void tst_QGraphicsProxyWidget::touchEventPropagation()
     QCOMPARE(formWidget->childAt(touchWidget2->pos() + tw2Center), touchWidget2);
 
     // touch events are sent to the view, in view coordinates
-    const QPoint formProxyPox = view.mapFromScene(formProxy->pos().toPoint());
+    const QPoint formProxyPox = view.mapFromScene(formProxy->pos());
     const QPoint pb1TouchPos = pushButton1->pos() + pb1Center + formProxyPox;
     const QPoint pb2TouchPos = pushButton2->pos() + pb2Center + formProxyPox;
     const QPoint tw1TouchPos = touchWidget1->pos() + tw1Center + formProxyPox;
@@ -4066,6 +4107,31 @@ void tst_QGraphicsProxyWidget::touchEventPropagation()
     QCOMPARE(eventSpy.at(1, 3).receiver, touchWidget2);
     QCOMPARE(eventSpy.at(2, 3).receiver, touchWidget2);
     QCOMPARE(clickedSpy.size(), 0); // multi-touch event does not synthesize a mouse event
+}
+
+void tst_QGraphicsProxyWidget::itemViewScroll()
+{
+    // QTBUG-138381: When scrolling an embedded item view, the cell widgets should move as well.
+    QGraphicsScene scene;
+    QGraphicsView view(&scene);
+
+    QLabel *label{};
+    auto *table = new QTableWidget(1, 10);
+    for (int i = 0; i < 10; ++i) {
+        label = new QLabel(QString::number(1 + i));
+        table->setCellWidget(0, i, label);
+    }
+    scene.addWidget(table);
+    table->resize(300, 200);
+    table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    table->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    view.resize(600, 600);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
+    const int oldPos = label->x();
+    auto *horizontalScrollBar = table->horizontalScrollBar();
+    horizontalScrollBar->setValue(horizontalScrollBar->maximum() * 3 / 2);
+    QTRY_VERIFY(label->x() < oldPos);
 }
 
 QTEST_MAIN(tst_QGraphicsProxyWidget)

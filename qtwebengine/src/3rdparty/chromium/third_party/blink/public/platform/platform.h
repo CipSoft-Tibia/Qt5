@@ -51,6 +51,7 @@
 #include "media/base/audio_renderer_sink.h"
 #include "third_party/blink/public/common/security/protocol_handler_security_level.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+#include "third_party/blink/public/mojom/peerconnection/webrtc_ip_handling_policy.mojom-forward.h"
 #include "third_party/blink/public/platform/audio/web_audio_device_source_type.h"
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/url_loader_throttle_provider.h"
@@ -380,6 +381,10 @@ class BLINK_PLATFORM_EXPORT Platform {
 
   // Resources -----------------------------------------------------------
 
+  // Returns true if GetDataResource would return non-null data for the
+  // specified |resource_id|.
+  virtual bool HasDataResource(int resource_id) const { return false; }
+
   // Returns a blob of data corresponding to |resource_id|. This should not be
   // used for resources which have compress="gzip" in *.grd.
   virtual WebData GetDataResource(
@@ -626,17 +631,16 @@ class BLINK_PLATFORM_EXPORT Platform {
 
   virtual bool IsWebRtcEncryptionEnabled() { return true; }
 
-  virtual bool IsWebRtcSrtpEncryptedHeadersEnabled() { return false; }
-
   // TODO(qingsi): Consolidate the legacy |ip_handling_policy| with
   // |allow_mdns_obfuscation| following the latest spec on IP handling modes
   // with mDNS introduced
   // (https://tools.ietf.org/html/draft-ietf-rtcweb-ip-handling-12);
-  virtual void GetWebRTCRendererPreferences(WebLocalFrame* web_frame,
-                                            WebString* ip_handling_policy,
-                                            uint16_t* udp_min_port,
-                                            uint16_t* udp_max_port,
-                                            bool* allow_mdns_obfuscation) {}
+  virtual void GetWebRTCRendererPreferences(
+      WebLocalFrame* web_frame,
+      mojom::WebRtcIpHandlingPolicy* ip_handling_policy,
+      uint16_t* udp_min_port,
+      uint16_t* udp_max_port,
+      bool* allow_mdns_obfuscation) {}
 
   virtual bool IsWebRtcHWEncodingEnabled() { return true; }
 
@@ -786,13 +790,31 @@ class BLINK_PLATFORM_EXPORT Platform {
     return nullptr;
   }
 
+  // V8 Configuration ---------------------------------------------
+
+  // Returns whether V8 feature flag overrides were disallowed by the embedder.
+  virtual bool DisallowV8FeatureFlagOverrides() const { return false; }
+
   // Content Security Policy --------------------------------------
 
   // Appends to `csp`, the default CSP which should be applied to the given
   // `url`. This allows the embedder to customize the applied CSP.
   virtual void AppendContentSecurityPolicy(
       const WebURL& url,
-      blink::WebVector<blink::WebContentSecurityPolicyHeader>* csp) {}
+      std::vector<WebContentSecurityPolicyHeader>* csp) {}
+
+  // Cross-origin subframes are generally not allowed to display a file picker
+  // for security reasons. This method allows content embedders to specify
+  // whether a cross-origin subframe of a particular origin should be allowed to
+  // display the file picker.
+  //
+  // For example, Chrome's built-in PDF viewer may be hosted in a cross-origin
+  // subframe. To allow this viewer to function correctly, Chrome uses this
+  // method to grant it access to the file picker.
+  virtual bool IsFilePickerAllowedForCrossOriginSubframe(
+      const WebSecurityOrigin& origin) {
+    return false;
+  }
 
 #if BUILDFLAG(IS_ANDROID)
   // User Level Memory Pressure Signal Generator ------------------
@@ -808,7 +830,6 @@ class BLINK_PLATFORM_EXPORT Platform {
 
  private:
   static void InitializeMainThreadCommon(
-      Platform* platform,
       std::unique_ptr<MainThread> main_thread);
 };
 

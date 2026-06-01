@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
-import QtQuick.Controls
 import QtQuick3D
-import QtQuick3D.Helpers
-import QtQuick3D.Particles3D
-import "Figma_Assets"
-import "Pocket_Demo_SkylightUI"
 
 Model {
     id: floor
@@ -90,7 +85,7 @@ Model {
     states: [
         State {
             name: "Dragon"
-            when: floor.aoState == 1
+            when: floor.aoState === 1
 
             PropertyChanges {
                 target: floorMat_local
@@ -101,7 +96,7 @@ Model {
         },
         State {
             name: "Bunny"
-            when: floor.aoState == 2
+            when: floor.aoState === 2
 
             PropertyChanges {
                 target: floorMat_local
@@ -112,7 +107,7 @@ Model {
         },
         State {
             name: "matball"
-            when: floor.aoState == 0
+            when: floor.aoState === 0
 
             PropertyChanges {
                 target: floorMat_local
@@ -123,7 +118,7 @@ Model {
         },
         State {
             name: "none"
-            when: floor.aoState == 3
+            when: floor.aoState === 3
 
             PropertyChanges {
                 target: floorMat_local

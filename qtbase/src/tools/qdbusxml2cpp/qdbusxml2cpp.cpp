@@ -80,6 +80,7 @@ private:
 
     QString globalClassName;
     QString parentClassName;
+    QString customNamespace;
     QString inputFile;
     bool skipNamespaces = false;
     bool includeMocs = false;
@@ -608,6 +609,13 @@ void QDBusXmlToCpp::writeProxy(const QString &filename,
             cs << "#include \"" << headerName << "\"\n\n";
     }
 
+    if (!customNamespace.isEmpty()) {
+        hs << "namespace " << customNamespace << " {\n"
+              "\n";
+        cs << "namespace " << customNamespace << " {\n"
+              "\n";
+    }
+
     for (const QDBusIntrospection::Interface *interface : interfaces) {
         QString className = classNameForInterface(interface->name, Proxy);
 
@@ -799,6 +807,12 @@ void QDBusXmlToCpp::writeProxy(const QString &filename,
         hs << "};\n\n";
     }
 
+    if (!customNamespace.isEmpty()) {
+        hs << "} // end of namespace " << customNamespace << "\n"
+           << "\n";
+        cs << "} // end of namespace " << customNamespace << "\n";
+    }
+
     if (!skipNamespaces) {
         QStringList last;
         QDBusIntrospection::Interfaces::ConstIterator it = interfaces.constBegin();
@@ -827,7 +841,8 @@ void QDBusXmlToCpp::writeProxy(const QString &filename,
             // add this class:
             if (!name.isEmpty()) {
                 hs << QString(current.size() * 2, u' ')
-                   << "using " << name << " = ::" << classNameForInterface(it->constData()->name, Proxy)
+                   << "using " << name << " = " << (customNamespace.isEmpty() ? "" : "::")
+                   << customNamespace << "::" << classNameForInterface(it->constData()->name, Proxy)
                    << ";\n";
             }
 
@@ -836,6 +851,8 @@ void QDBusXmlToCpp::writeProxy(const QString &filename,
             ++it;
             last = current;
         } while (true);
+
+        hs << "\n";
     }
 
     // close the include guard
@@ -936,6 +953,13 @@ void QDBusXmlToCpp::writeAdaptor(const QString &filename,
     QString parent = parentClassName;
     if (parentClassName.isEmpty())
         parent = u"QObject"_s;
+
+    if (!customNamespace.isEmpty()) {
+        hs << "namespace " << customNamespace << " {\n"
+              "\n";
+        cs << "namespace " << customNamespace << " {\n"
+              "\n";
+    }
 
     for (const QDBusIntrospection::Interface *interface : interfaces) {
         QString className = classNameForInterface(interface->name, Adaptor);
@@ -1135,6 +1159,12 @@ void QDBusXmlToCpp::writeAdaptor(const QString &filename,
         hs << "};\n\n";
     }
 
+    if (!customNamespace.isEmpty()) {
+        hs << "} // end of namespace " << customNamespace << "\n"
+           << "\n";
+        cs << "} // end of namespace " << customNamespace << "\n";
+    }
+
     // close the include guard
     hs << "#endif\n";
 
@@ -1189,6 +1219,10 @@ int QDBusXmlToCpp::run(const QCoreApplication &app)
                 u"classname"_s);
     parser.addOption(classNameOption);
 
+    QCommandLineOption namespaceOption(QStringList{u"namespace"_s},
+                u"Put all generated classes into the namespace <namespace>. "_s, u"namespace"_s);
+    parser.addOption(namespaceOption);
+
     QCommandLineOption addIncludeOption(QStringList{u"i"_s, u"include"_s},
                 u"Add #include \"filename\" to the output"_s, u"filename"_s);
     parser.addOption(addIncludeOption);
@@ -1206,7 +1240,7 @@ int QDBusXmlToCpp::run(const QCoreApplication &app)
     parser.addOption(mocIncludeOption);
 
     QCommandLineOption noNamespaceOption(QStringList{u"N"_s, u"no-namespaces"_s},
-                u"Don't use namespaces"_s);
+                u"Do not export the generated class into the D-Bus specific namespace"_s);
     parser.addOption(noNamespaceOption);
 
     QCommandLineOption proxyCodeOption(QStringList{u"p"_s, u"proxy"_s},
@@ -1224,6 +1258,7 @@ int QDBusXmlToCpp::run(const QCoreApplication &app)
     includes = parser.values(addIncludeOption);
     globalIncludes = parser.values(addGlobalIncludeOption);
     parentClassName = parser.value(adapterParentOption);
+    customNamespace = parser.value(namespaceOption);
     includeMocs = parser.isSet(mocIncludeOption);
     skipNamespaces = parser.isSet(noNamespaceOption);
     QString proxyFile = parser.value(proxyCodeOption);

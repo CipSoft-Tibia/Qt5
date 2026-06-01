@@ -4,16 +4,20 @@
 #ifndef VARIANTLIST_QJSON_CONVERSION_HPP
 #define VARIANTLIST_QJSON_CONVERSION_HPP
 
-#include "qqmlintegration.h"
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QObject>
-#include <QJsonDocument>
-#include <QDebug>
 #include <private/qjsvalue_p.h>
 #include <private/qqmllistwrapper_p.h>
 #include <private/qv4engine_p.h>
 #include <private/qv4jsonobject_p.h>
+
+#include <QtQmlIntegration/qqmlintegration.h>
+
+#include <QtQml/qqmlengine.h>
+
+#include <QtCore/qdebug.h>
+#include <QtCore/qjsonarray.h>
+#include <QtCore/qjsondocument.h>
+#include <QtCore/qjsonobject.h>
+#include <QtCore/qobject.h>
 
 class MiscUtils : public QObject
 {

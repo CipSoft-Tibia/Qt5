@@ -4,26 +4,26 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Iterable, Optional, Tuple, Type, cast
 
-from crossbench.plt.android_adb import AndroidAdbPlatform
 from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeContext,
-                                     ProbeIncompatibleBrowser, ResultLocation)
+                                     ProbeIncompatibleBrowser)
+from crossbench.probes.result_location import ResultLocation
 from crossbench.probes.results import LocalProbeResult, ProbeResult
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
   from crossbench.env import HostEnvironment
+  from crossbench.plt.android_adb import AndroidAdbPlatform
   from crossbench.runner.run import Run
 
 
-class AndroidLogcatProbe(Probe):
+class LogcatAndroidProbe(Probe):
   """
   Android-only probe to collect logcat traces.
   """
   NAME = "logcat"
   RESULT_LOCATION = ResultLocation.LOCAL
-
   IS_GENERAL_PURPOSE = True
 
   @classmethod
@@ -50,15 +50,15 @@ class AndroidLogcatProbe(Probe):
     if not browser.platform.is_android:
       raise ProbeIncompatibleBrowser(self, browser, "Only supported on android")
 
-  def get_context(self, run: Run) -> AndroidLogcatProbeContext:
-    return AndroidLogcatProbeContext(self, run)
+  def get_context_cls(self) -> Type[AndroidLogcatProbeContext]:
+    return AndroidLogcatProbeContext
 
 
-class AndroidLogcatProbeContext(ProbeContext[AndroidLogcatProbe]):
+class AndroidLogcatProbeContext(ProbeContext[LogcatAndroidProbe]):
 
-  def __init__(self, probe: AndroidLogcatProbe, run: Run) -> None:
+  def __init__(self, probe: LogcatAndroidProbe, run: Run) -> None:
     super().__init__(probe, run)
-    self._start_time: Optional[str] = None
+    self._logcat_start_time: Optional[str] = None
 
   def _get_browser_platform_time(self) -> str:
     return self.browser_platform.sh_stdout("date",
@@ -70,25 +70,25 @@ class AndroidLogcatProbeContext(ProbeContext[AndroidLogcatProbe]):
   @property
   def browser_platform(self) -> AndroidAdbPlatform:
     browser_platform = super().browser_platform
-    assert isinstance(browser_platform, AndroidAdbPlatform)
-    return cast(AndroidAdbPlatform, browser_platform)
+    assert browser_platform.is_android, (
+        f"Expected android platform, but got {browser_platform}")
+    return cast("AndroidAdbPlatform", browser_platform)
 
   def start(self) -> None:
-    self._start_time = self._get_browser_platform_time()
+    self._logcat_start_time = self._get_browser_platform_time()
     self._log_to_logcat("logcat probe start")
 
   def stop(self) -> None:
     self._log_to_logcat("logcat probe end")
 
   def teardown(self) -> ProbeResult:
-    assert self._start_time
+    assert self._logcat_start_time
     file = self.local_result_path.with_suffix(".txt")
     with file.open("w", encoding="utf-8") as f:
-      self.runner_platform.sh(
-          "adb",
+      self.browser_platform.sh(
           "logcat",
           "-t",
-          self._start_time + ".000",
+          self._logcat_start_time + ".000",
           *self.probe.filterspec,
           stdout=f)
 

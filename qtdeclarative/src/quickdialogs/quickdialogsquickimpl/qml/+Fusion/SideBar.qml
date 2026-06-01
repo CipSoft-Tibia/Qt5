@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.Fusion
@@ -14,11 +15,25 @@ DialogsQuickImpl.SideBar {
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
                              implicitContentHeight + topPadding + bottomPadding)
 
+    contentWidth: (contentItem as ListView)?.contentWidth
+
+    background: Rectangle {
+        color: control.palette.window
+        x: 1
+        y: 1
+        width: parent.width - 2
+        height: parent.height - 2
+        radius: 2
+    }
+
     contentItem: ListView {
         id: listView
         currentIndex: control.currentIndex
         model: control.contentModel
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        ScrollBar.vertical: ScrollBar {}
 
         Rectangle {
             anchors.fill: parent
@@ -50,8 +65,8 @@ DialogsQuickImpl.SideBar {
     }
 
     separatorDelegate: Item {
-        width: control.width
-        height: 9
+        implicitWidth: control.width
+        implicitHeight: 9
         Rectangle {
             id: separatorDelegate
             color: Qt.lighter(Fusion.darkShade, 1.06)

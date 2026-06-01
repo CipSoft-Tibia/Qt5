@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "media/mojo/mojom/stable/stable_video_decoder_types_mojom_traits.h"
 
 #include "base/time/time.h"
@@ -12,6 +17,8 @@
 #include "media/gpu/v4l2/v4l2_status.h"
 #elif BUILDFLAG(USE_VAAPI)
 #include "media/gpu/vaapi/vaapi_status.h"
+#else
+#include "base/notreached.h"
 #endif
 
 // This file contains a variety of conservative compile-time assertions that
@@ -331,7 +338,7 @@ std::vector<uint8_t> StructTraits<media::stable::mojom::DecoderBufferDataView,
   // need to convert the side data to a raw format. We only care about spatial
   // layers since alpha data isn't used by HW decoders and the secure handle is
   // only going to used in new code going forward.
-  if (!input->has_side_data() || input->side_data()->spatial_layers.empty()) {
+  if (!input->side_data() || input->side_data()->spatial_layers.empty()) {
     return {};
   }
   std::vector<uint8_t> raw_data;
@@ -407,19 +414,20 @@ base::TimeDelta StructTraits<media::stable::mojom::DecoderBufferDataView,
 }
 
 // static
-std::optional<media::DecoderBufferSideData>
+std::unique_ptr<media::DecoderBufferSideData>
 StructTraits<media::stable::mojom::DecoderBufferDataView,
              scoped_refptr<media::DecoderBuffer>>::
     side_data(const scoped_refptr<media::DecoderBuffer>& input) {
   static_assert(
       std::is_same<decltype(input->side_data()),
-                   std::optional<media::DecoderBufferSideData>>::value,
+                   const media::DecoderBufferSideData*>::value,
       "Unexpected type for input->side_data(). If you need to change this "
       "assertion, please contact chromeos-gfx-video@google.com.");
-  if (input->end_of_stream()) {
-    return std::nullopt;
+
+  if (input->end_of_stream() || !input->side_data()) {
+    return nullptr;
   }
-  return input->side_data();
+  return input->side_data()->Clone();
 }
 
 // static
@@ -462,11 +470,13 @@ bool StructTraits<media::stable::mojom::DecoderBufferDataView,
   if (decrypt_config)
     decoder_buffer->set_decrypt_config(std::move(decrypt_config));
 
-  std::optional<media::DecoderBufferSideData> side_data;
+  std::unique_ptr<media::DecoderBufferSideData> side_data;
   if (!input.ReadSideData(&side_data)) {
     return false;
   }
-  decoder_buffer->set_side_data(side_data);
+  if (side_data) {
+    decoder_buffer->set_side_data(std::move(side_data));
+  }
 
   // Note: DiscardPadding must be set after side data since the non-stable
   // interface has moved the discard padding into side data.
@@ -491,7 +501,7 @@ bool StructTraits<media::stable::mojom::DecoderBufferDataView,
   // TODO(b/269383891): Remove this in M120.
   // If the input is an older version than us, then it may have |raw_side_data|
   // set and we need to copy that into the potential values in |side_data|.
-  if (!raw_side_data.empty() && !side_data.has_value()) {
+  if (!raw_side_data.empty() && !decoder_buffer->side_data()) {
     // Spatial layers is always a multiple of 4 with a max size of 12.
     // HW decoders don't use alpha data, so we can ignore that case.
     if (raw_side_data.size() % sizeof(uint32_t) != 0 ||
@@ -510,54 +520,64 @@ bool StructTraits<media::stable::mojom::DecoderBufferDataView,
 
 // static
 uint64_t StructTraits<media::stable::mojom::DecoderBufferSideDataDataView,
-                      media::DecoderBufferSideData>::
-    secure_handle(media::DecoderBufferSideData input) {
+                      std::unique_ptr<media::DecoderBufferSideData>>::
+    secure_handle(const std::unique_ptr<media::DecoderBufferSideData>& input) {
   static_assert(
-      std::is_same<decltype(input.secure_handle), uint64_t>::value,
-      "Unexpected type for input.secure_handle. If you need to change this "
+      std::is_same<decltype(input->secure_handle), uint64_t>::value,
+      "Unexpected type for input->secure_handle. If you need to change this "
       "assertion, please contact chromeos-gfx-video@google.com.");
-  return input.secure_handle;
+  return input->secure_handle;
 }
 
 // static
-std::vector<uint32_t> StructTraits<
-    media::stable::mojom::DecoderBufferSideDataDataView,
-    media::DecoderBufferSideData>::spatial_layers(media::DecoderBufferSideData
-                                                      input) {
+std::vector<uint32_t>
+StructTraits<media::stable::mojom::DecoderBufferSideDataDataView,
+             std::unique_ptr<media::DecoderBufferSideData>>::
+    spatial_layers(const std::unique_ptr<media::DecoderBufferSideData>& input) {
   static_assert(
-      std::is_same<decltype(input.spatial_layers),
+      std::is_same<decltype(input->spatial_layers),
                    std::vector<uint32_t>>::value,
-      "Unexpected type for input.spatial_layers. If you need to change this "
+      "Unexpected type for input->spatial_layers. If you need to change this"
       "assertion, please contact chromeos-gfx-video@google.com.");
-  return input.spatial_layers;
+  return input->spatial_layers;
 }
 
 // static
-std::vector<uint8_t> StructTraits<
-    media::stable::mojom::DecoderBufferSideDataDataView,
-    media::DecoderBufferSideData>::alpha_data(media::DecoderBufferSideData
-                                                  input) {
+std::vector<uint8_t>
+StructTraits<media::stable::mojom::DecoderBufferSideDataDataView,
+             std::unique_ptr<media::DecoderBufferSideData>>::
+    alpha_data(const std::unique_ptr<media::DecoderBufferSideData>& input) {
   static_assert(
-      std::is_same<decltype(input.alpha_data), std::vector<uint8_t>>::value,
-      "Unexpected type for input.alpha_data. If you need to change this "
+      std::is_same<decltype(input->alpha_data),
+                   base::HeapArray<uint8_t>>::value,
+      "Unexpected type for input->alpha_data. If you need to change this "
       "assertion, please contact chromeos-gfx-video@google.com.");
-  return input.alpha_data;
+  return std::vector<uint8_t>(input->alpha_data.begin(),
+                              input->alpha_data.end());
 }
 
 // static
 bool StructTraits<media::stable::mojom::DecoderBufferSideDataDataView,
-                  media::DecoderBufferSideData>::
+                  std::unique_ptr<media::DecoderBufferSideData>>::
     Read(media::stable::mojom::DecoderBufferSideDataDataView input,
-         media::DecoderBufferSideData* output) {
+         std::unique_ptr<media::DecoderBufferSideData>* output) {
+  auto result = std::make_unique<media::DecoderBufferSideData>();
   constexpr size_t kMaxSpatialLayers = 3;
-  if (!input.ReadSpatialLayers(&output->spatial_layers) ||
-      output->spatial_layers.size() > kMaxSpatialLayers) {
+  if (!input.ReadSpatialLayers(&result->spatial_layers) ||
+      result->spatial_layers.size() > kMaxSpatialLayers) {
     return false;
   }
-  if (!input.ReadAlphaData(&output->alpha_data)) {
-    return false;
+  {
+    mojo::ArrayDataView<uint8_t> alpha_data_view;
+    input.GetAlphaDataDataView(&alpha_data_view);
+    if (alpha_data_view.is_null()) {
+      return false;
+    }
+    result->alpha_data =
+        base::HeapArray<uint8_t>::CopiedFrom(std::move(alpha_data_view));
   }
-  output->secure_handle = input.secure_handle();
+  result->secure_handle = input.secure_handle();
+  *output = std::move(result);
   return true;
 }
 
@@ -1031,8 +1051,11 @@ std::optional<media::internal::StatusData> StructTraits<
     // TODO(b/217970098): allow building the VaapiStatusTraits and
     // V4L2StatusTraits without USE_VAAPI/USE_V4L2_CODEC so these guards could
     // be removed.
-    CHECK(false);
+    NOTREACHED();
 #endif
+
+    // Only include this for non-NOTREACHED() cases to avoid dead-code warnings.
+#if BUILDFLAG(USE_VAAPI) || BUILDFLAG(USE_V4L2_CODEC)
     // Let's translate anything other than a VA-API or V4L2 "ok" cause (i.e.,
     // all of them per the CHECK()s above) to
     // DecoderStatusTraits::Codes::kFailed.
@@ -1040,6 +1063,7 @@ std::optional<media::internal::StatusData> StructTraits<
         media::DecoderStatusTraits::Codes::kFailed);
     output_cause.group = std::string(media::DecoderStatusTraits::Group());
     return output_cause;
+#endif
   }
   return std::nullopt;
 }

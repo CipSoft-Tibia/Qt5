@@ -440,3 +440,49 @@ auto continuation = future.then(context, [context](Result result) {
                            });
 
 //! [37]
+
+//! [38]
+auto f = QtConcurrent::run(...)
+                 .then([]{
+                     // Then 1
+                 })
+                 .then([]{
+                     // Then 2
+                 })
+                 .onCanceled([]{
+                     // OnCanceled 1
+                 })
+                 .then([]{
+                     // Then 3
+                 })
+                 .then([]{
+                     // Then 4
+                 })
+                 .onCanceled([]{
+                     // OnCanceled 2
+                 });
+...
+f.cancelChain();
+//! [38]
+
+auto createFuture = [] { return QtFuture::makeReadyVoidFuture(); };
+auto runNestedComputation = [] { return QtFuture::makeReadyVoidFuture(); };
+//! [39]
+QFuture<void> nested;
+auto f = createFuture()
+            .then([&]{
+                nested = runNestedComputation();
+                // do some other work
+                return nested;
+            })
+            .unwrap()
+            .then([]{
+                // other continuation
+            })
+            .onCanceled([]{
+                // handle cancellation
+            });
+//...
+f.cancelChain();
+nested.cancel();
+//! [39]

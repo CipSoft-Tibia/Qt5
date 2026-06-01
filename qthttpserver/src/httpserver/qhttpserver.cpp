@@ -85,45 +85,44 @@ QHttpServer::QHttpServer(QObject *parent)
 
 /*! \fn template <typename Rule = QHttpServerRouterRule, typename Functor> Rule *QHttpServer::route(const QString &pathPattern, QHttpServerRequest::Methods method, const QObject *context, Functor &&slot)
 
-    This method is used to add a new \c Rule to the server's
+    This method adds a new routing \c Rule to the server's
     \l{QHttpServerRouter} member. The \c Rule template parameter can be any
-    custom class derived from \l{QHttpServerRouterRule}. The parameters are
-    passed to \c Rule. When handling the incoming HTTP requests, the
-    \l{QHttpServerRouter} matches the \c Rule to the incoming HTTP request
-    using the URL and HTTP method, and the first match of both is executed.
+    class derived from \l{QHttpServerRouterRule}. The parameters are passed
+    to \c Rule. The server matches incoming HTTP requests against registered
+    rules based on the URL path and HTTP method, and the first match of both
+    is executed.
+
     The \a pathPattern parameter is compared with the \l{QUrl::}{path()} of
     the URL of the incoming request. The \a method parameter is compared with
-    the HTTP method of the incoming request.
+    the HTTP method of the incoming request. The \a slot parameter is the
+    request handler. It can be a member function pointer of \a context, a
+    function pointer, non-mutable lambda, or any copyable callable with a
+    const call operator. If \a context is provided, the rule remains valid
+    as long as context exists. The \a context must share the same thread
+    affinity as QHttpServer.
 
-    The \a slot parameter can be a member function pointer of \a context.
-    It can also be a function pointer, a non-mutable lambda, or any other
-    copyable callable with const call operator. The rule will be valid for
-    the lifetime duration of \a context. The \a context must share the same
-    thread affinity as the QHttpServer for the registration to be successful
-    and for the rule to be executed.
+    The \a slot takes as arguments any number of parsed arguments, that are
+    extracted from the \a pathPattern by matching the \c "<arg>" placeholders,
+    followed by an optional QHttpServerRequest and optional
+    QHttpServerResponder. These two classes are called specials.
 
-    The slot can express its response with a return statement. In that case
-    the function has to return QHttpServerResponse or any type that can be
-    converted to QHttpServerResponse. A large range of conversion
-    constructors are available, see \l{QHttpServerResponse}.
+    The \a slot can return a QHttpServerResponse or a convertible type:
 
     \code
     QHttpServer server;
     server.route("/test/", this, [] () { return ""; });
     \endcode
 
-    Alternatively, an optional \l{QHttpServerResponder}& argument can be
-    provided, in which case the response has to be written using it and
-    the function must return \c void.
+    Alternatively, if an optional \l{QHttpServerResponder}& argument is
+    provided, the response has to be written using it and the function
+    must return \c void.
 
     \code
     server.route("/test2", this, [] (QHttpServerResponder &responder) {
                                     responder.write(QHttpServerResponder::StatusCode::Forbidden); });
     \endcode
 
-    The \a slot can also have \c const \l{QHttpServerRequest}& as the last
-    parameter, or as the second to last if the \l{QHttpServerResponder}&
-    is the last parameter. It contains detailed information on the request.
+    The QHttpServerRequest object can be used to access the body of the request:
 
     \code
     server.route("/test3", QHttpServerRequest::Method::Post, this,
@@ -132,23 +131,22 @@ QHttpServer::QHttpServer(QObject *parent)
                  });
     \endcode
 
-    The \a slot can also take any amount of copyable parameters that can have
-    the types available from \l{QHttpServerRouter::converters()}. By default,
-    these are most integer types, float, double, QString, QByteArray, and
-    QUrl. Converters for additional types can be added by calling
+    Any placeholder ( \c{"<arg>"} ) in \a pathPattern is automatically
+    converted to match the handler's argument types. Supported types
+    include integers, floating point numbers, QString, QByteArray, and
+    QUrl. The QUrl class can be used as the last parameter to handle the end
+    of the \a pathPattern, and by splitting it an arbitrary number of
+    arguments can be supported. Custom converters can be added using
     \l{QHttpServerRouter::addConverter()}.
 
-    The \a pathPattern can contain a number of \c "<arg>" substrings that are
-    matched with the parameters of \a slot from left to right. The converters
-    are chosen based on the types of these parameters.
-
     Each registered type has an associated regex that is used to match and
-    convert occurrences of \c "<arg>" in the \a pathPattern. These regex
-    patterns are combined to construct a parser for the entire path. The
-    resulting parser is then used to verify if the path matches the pattern.
+    convert placeholders in the \a pathPattern. These regex patterns
+    are combined to construct a parser for the entire path. The resulting
+    parser is then used to verify if the path matches the pattern.
     If parsing succeeds, the corresponding function is called with the
     converted parameters. If parsing fails, the next registered callback is
-    attempted.
+    attempted. If parsing fails for all callbacks, the missingHandler is
+    called.
 
     In the example below, the value in the request path replacing \c "<arg>"
     is converted to an \c int because the lambda expects an \c int parameter.
@@ -156,7 +154,7 @@ QHttpServer::QHttpServer(QObject *parent)
     the lambda's \c page argument:
     \code
     QHttpServer server;
-    server.route("/showpage/<arg>", this, [] (const int page) { return getPage(page); });
+    server.route("/showpage/<arg>", this, [] (int page) { return getPage(page); });
     \endcode
 
     This function returns, if successful, a pointer to the newly created Rule,
@@ -168,7 +166,7 @@ QHttpServer::QHttpServer(QObject *parent)
     rule->setParameter("test");
     \endcode
 
-    \note This function, \l route, must not be called from \a slot, so no
+    \note This function, \l route(), must not be called from \a slot, so no
     route handlers can register other route handlers.
 
     \note If a request was processed by a \a slot accepting \l
@@ -364,7 +362,7 @@ void QHttpServer::sendResponse(QFuture<QHttpServerResponse> &&response,
                                const QHttpServerRequest &request, QHttpServerResponder &&responder)
 {
     response.then(this,
-                  [this, &request,
+                  [this, request,
                    responder = std::move(responder)](QHttpServerResponse &&response) mutable {
                       sendResponse(std::move(response), request, std::move(responder));
                   });

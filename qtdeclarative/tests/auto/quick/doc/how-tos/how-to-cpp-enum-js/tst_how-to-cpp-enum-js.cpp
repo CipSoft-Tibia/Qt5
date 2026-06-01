@@ -26,13 +26,16 @@ tst_HowToCppEnumJs::tst_HowToCppEnumJs()
 
 void tst_HowToCppEnumJs::example()
 {
-    QTest::failOnWarning(QRegularExpression(QStringLiteral(".?")));
+    QTest::failOnWarning();
 
     QJSEngine engine;
     engine.installExtensions(QJSEngine::AllExtensions);
 
-    QJSValue backendJsMetaObject = engine.newQMetaObject(&Backend::staticMetaObject);
-    engine.globalObject().setProperty("Backend", backendJsMetaObject);
+    QJSValue metaObjects = engine.newObject();
+    const QJSValue backendJsMetaObject = engine.newQMetaObject(&Backend::staticMetaObject);
+    metaObjects.setProperty("Backend", backendJsMetaObject);
+    // Repeat the two lines above for other types as needed.
+    engine.registerModule("MyApp", metaObjects);
 
     QTest::ignoreMessage(QtDebugMsg, "Backend loaded successfully");
     Backend backend(&engine);

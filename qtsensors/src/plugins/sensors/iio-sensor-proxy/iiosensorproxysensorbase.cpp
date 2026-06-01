@@ -12,6 +12,8 @@
 
 #include <time.h>
 
+using namespace QtSensorsPrivate;
+
 quint64 IIOSensorProxySensorBase::produceTimestamp()
 {
     struct timespec tv;

@@ -11,7 +11,7 @@ import '../cr_button/cr_button.js';
 import '../cr_grid/cr_grid.js';
 import '../cr_icon/cr_icon.js';
 import '../cr_tooltip/cr_tooltip.js';
-import '../icons_lit.html.js';
+import '../icons.html.js';
 
 import {assert} from '//resources/js/assert.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
@@ -125,7 +125,7 @@ export class CrProfileAvatarSelectorElement extends CrLitElement {
 
     // Autoscroll to selected avatar if it is not completely visible.
     const avatarList =
-        this.shadowRoot!.querySelectorAll<HTMLElement>('.avatar-container');
+        this.shadowRoot.querySelectorAll<HTMLElement>('.avatar-container');
     assert(avatarList.length > 0);
     const selectedAvatarElement = avatarList[index];
     selectedAvatarElement!.scrollIntoViewIfNeeded();

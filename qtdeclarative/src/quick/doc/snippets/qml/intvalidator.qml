@@ -10,7 +10,6 @@ TextInput {
         bottom: 0
         top: 100
     }
-    onAcceptableInputChanged:
-        color = acceptableInput ? "black" : "red";
+    color: acceptableInput ? "black" : "red";
 }
 //![0]

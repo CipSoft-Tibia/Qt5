@@ -4,16 +4,23 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, Type
 
 from crossbench.benchmarks.speedometer.speedometer import (ProbeClsTupleT,
                                                            SpeedometerBenchmark)
-from crossbench.benchmarks.speedometer.speedometer_2 import (Speedometer2Probe,
-                                                             Speedometer2Story)
+from crossbench.benchmarks.speedometer.speedometer_2 import (
+    Speedometer2Probe, Speedometer2ProbeContext, Speedometer2Story)
 
 
 class Speedometer20Probe(Speedometer2Probe):
   NAME: str = "speedometer_2.0"
+
+  def get_context_cls(self) -> Type[Speedometer20ProbeContext]:
+    return Speedometer20ProbeContext
+
+
+class Speedometer20ProbeContext(Speedometer2ProbeContext):
+  pass
 
 
 class Speedometer20Story(Speedometer2Story):

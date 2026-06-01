@@ -7,13 +7,14 @@ import QtQuick.Layouts
 
 FocusScope {
     id : captureControls
-    property CaptureSession captureSession
-    property bool previewAvailable : false
+    required property CaptureSession captureSession
+    readonly property Camera camera: captureSession.camera
+    required property bool previewAvailable
 
     property int buttonsmargin: 8
-    property int buttonsPanelWidth
-    property int buttonsPanelPortraitHeight
-    property int buttonsWidth
+    required property int buttonsPanelWidth
+    required property int buttonsPanelPortraitHeight
+    required property int buttonsWidth
 
     signal previewSelected
     signal videoModeSelected
@@ -27,12 +28,14 @@ FocusScope {
             anchors.margins: captureControls.buttonsmargin
             flow: captureControls.state === "MobilePortrait"
                   ? GridLayout.LeftToRight : GridLayout.TopToBottom
+            //! [0]
             CameraButton {
                 text: "Capture"
                 implicitWidth: captureControls.buttonsWidth
                 visible: captureControls.captureSession.imageCapture.readyForCapture
                 onClicked: captureControls.captureSession.imageCapture.captureToFile("")
             }
+            //! [0]
 
             CameraPropertyButton {
                 id : wbModesButton
@@ -66,7 +69,7 @@ FocusScope {
                         text: "Fluorescent"
                     }
                 }
-                onValueChanged: captureControls.captureSession.camera.whiteBalanceMode = wbModesButton.value
+                onValueChanged: captureControls.camera.whiteBalanceMode = wbModesButton.value
             }
 
             Item {
@@ -90,7 +93,7 @@ FocusScope {
             CameraListButton {
                 implicitWidth: captureControls.buttonsWidth
                 state: captureControls.state
-                onValueChanged: captureControls.captureSession.camera.cameraDevice = value
+                onValueChanged: captureControls.camera.cameraDevice = value
             }
 
             CameraButton {
@@ -116,10 +119,10 @@ FocusScope {
         height: parent.height - (flashControl.visible * flashControl.height) -
                 (captureControls.state === "MobilePortrait" ? buttonPaneShadow.height : 0)
 
-        currentZoom: captureControls.captureSession.camera.zoomFactor
-        maximumZoom: captureControls.captureSession.camera.maximumZoomFactor
-        minimumZoom: captureControls.captureSession.camera.minimumZoomFactor
-        onZoomTo: (target) => captureControls.captureSession.camera.zoomFactor = target
+        currentZoom: captureControls.camera.zoomFactor
+        maximumZoom: captureControls.camera.maximumZoomFactor
+        minimumZoom: captureControls.camera.minimumZoomFactor
+        onZoomTo: (target) => captureControls.camera.zoomFactor = target
     }
 
     FlashControl {
@@ -128,7 +131,7 @@ FocusScope {
         y : captureControls.state === "MobilePortrait" ?
                 parent.height - (buttonPaneShadow.height + height) : parent.height - height
 
-        cameraDevice: captureControls.captureSession.camera
+        camera: captureControls.camera
     }
 
     states: [

@@ -37,10 +37,14 @@ public:
     void setDataArray(const QScatterDataArray &newDataArray);
     void clearArray();
 
+    void setScaleArray(const QList<QVector3D> &newScaleArray);
+    void clearScaleArray();
+
 private:
     qsizetype m_selectedItem;
     float m_itemSize;
     QScatterDataArray m_dataArray;
+    QList<QVector3D> m_scaleArray;
 
     friend class QQuickGraphsScatter;
 };

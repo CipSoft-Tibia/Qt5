@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickwebengineprofile.h"
 #include "qquickwebenginesettings_p.h"
@@ -538,6 +539,20 @@ bool QQuickWebEngineSettings::touchEventsApiEnabled() const
 }
 
 /*!
+    \qmlproperty bool WebEngineSettings::backForwardCacheEnabled
+    \since QtWebEngine 6.10
+
+    Enables support for back/forward cache (or bfcache) to speed up back and
+    forward navigation.
+
+    Disabled by default.
+*/
+bool QQuickWebEngineSettings::backForwardCacheEnabled() const
+{
+    return d_ptr->testAttribute(QWebEngineSettings::BackForwardCacheEnabled);
+}
+
+/*!
     \qmlproperty string WebEngineSettings::defaultTextEncoding
     \since QtWebEngine 1.2
 
@@ -927,6 +942,14 @@ void QQuickWebEngineSettings::setTouchEventsApiEnabled(bool on)
     d_ptr->setAttribute(QWebEngineSettings::TouchEventsApiEnabled, on);
     if (wasOn != on)
         Q_EMIT touchEventsApiEnabledChanged();
+}
+
+void QQuickWebEngineSettings::setBackForwardCacheEnabled(bool on)
+{
+    bool wasOn = d_ptr->testAttribute(QWebEngineSettings::BackForwardCacheEnabled);
+    d_ptr->setAttribute(QWebEngineSettings::BackForwardCacheEnabled, on);
+    if (wasOn != on)
+        Q_EMIT backForwardCacheEnabledChanged();
 }
 
 QT_END_NAMESPACE

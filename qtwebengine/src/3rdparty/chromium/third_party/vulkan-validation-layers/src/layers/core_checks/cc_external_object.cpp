@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  * Modifications Copyright (C) 2020-2022 Advanced Micro Devices, Inc. All rights reserved.
  *
@@ -18,7 +18,6 @@
  */
 
 #include <vulkan/vk_enum_string_helper.h>
-#include "generated/chassis.h"
 #include "core_validation.h"
 #include "state_tracker/image_state.h"
 #include "state_tracker/buffer_state.h"
@@ -30,7 +29,8 @@ bool CoreChecks::CanSemaphoreExportFromImported(VkExternalSemaphoreHandleTypeFla
     VkPhysicalDeviceExternalSemaphoreInfo semaphore_info = vku::InitStructHelper();
     semaphore_info.handleType = export_type;
     VkExternalSemaphoreProperties semaphore_properties = vku::InitStructHelper();
-    DispatchGetPhysicalDeviceExternalSemaphorePropertiesHelper(physical_device, &semaphore_info, &semaphore_properties);
+    instance_state->DispatchGetPhysicalDeviceExternalSemaphorePropertiesHelper(physical_device, &semaphore_info,
+                                                                               &semaphore_properties);
     return (imported_type & semaphore_properties.exportFromImportedHandleTypes) != 0;
 }
 
@@ -39,7 +39,7 @@ bool CoreChecks::CanFenceExportFromImported(VkExternalFenceHandleTypeFlagBits ex
     VkPhysicalDeviceExternalFenceInfo fence_info = vku::InitStructHelper();
     fence_info.handleType = export_type;
     VkExternalFenceProperties fence_properties = vku::InitStructHelper();
-    DispatchGetPhysicalDeviceExternalFencePropertiesHelper(physical_device, &fence_info, &fence_properties);
+    instance_state->DispatchGetPhysicalDeviceExternalFencePropertiesHelper(physical_device, &fence_info, &fence_properties);
     return (imported_type & fence_properties.exportFromImportedHandleTypes) != 0;
 }
 
@@ -51,7 +51,7 @@ bool CoreChecks::PreCallValidateGetMemoryFdKHR(VkDevice device, const VkMemoryGe
         if (!export_info) {
             skip |= LogError("VUID-VkMemoryGetFdInfoKHR-handleType-00671", pGetFdInfo->memory,
                              error_obj.location.dot(Field::pGetFdInfo).dot(Field::memory),
-                             "pNext chain does not include a VkExportMemoryAllocateInfo structure.");
+                             "pNext chain does not contain an instance of VkExportMemoryAllocateInfo.");
         } else if ((export_info->handleTypes & pGetFdInfo->handleType) == 0) {
             skip |= LogError("VUID-VkMemoryGetFdInfoKHR-handleType-00671", pGetFdInfo->memory,
                              error_obj.location.dot(Field::pGetFdInfo).dot(Field::memory),
@@ -136,6 +136,13 @@ bool CoreChecks::PreCallValidateGetSemaphoreFdKHR(VkDevice device, const VkSemap
         } else if (!sem_state->CanBinaryBeWaited()) {
             skip |= LogError("VUID-VkSemaphoreGetFdInfoKHR-handleType-03254", sem_state->Handle(), info_loc.dot(Field::semaphore),
                              "must be signaled or have a pending signal operation.");
+        } else if (auto timeline_wait_info = sem_state->GetPendingBinarySignalTimelineDependency()) {
+            const LogObjectList objlist(sem_state->Handle(), timeline_wait_info->semaphore->Handle());
+            skip |= LogError("VUID-VkSemaphoreGetFdInfoKHR-handleType-03254", objlist, info_loc.dot(Field::semaphore),
+                             "(%s) has an associated signal but it depends on timeline semaphore wait (%s, wait value = %" PRIu64
+                             ") that does not have resolving signal submitted yet.",
+                             FormatHandle(sem_state->Handle()).c_str(),
+                             FormatHandle(timeline_wait_info->semaphore->Handle()).c_str(), timeline_wait_info->payload);
         }
     }
     return skip;
@@ -195,7 +202,7 @@ bool CoreChecks::PreCallValidateGetMemoryWin32HandleKHR(VkDevice device, const V
         if (!export_info) {
             skip |= LogError("VUID-VkMemoryGetWin32HandleInfoKHR-handleType-00662", pGetWin32HandleInfo->memory,
                              error_obj.location.dot(Field::pGetWin32HandleInfo).dot(Field::memory),
-                             "pNext chain does not include a VkExportMemoryAllocateInfo structure.");
+                             "pNext chain does not contain an instance of VkExportMemoryAllocateInfo.");
         } else if ((export_info->handleTypes & pGetWin32HandleInfo->handleType) == 0) {
             skip |= LogError("VUID-VkMemoryGetWin32HandleInfoKHR-handleType-00662", pGetWin32HandleInfo->memory,
                              error_obj.location.dot(Field::pGetWin32HandleInfo).dot(Field::memory),
@@ -546,6 +553,153 @@ bool CoreChecks::PreCallValidateExportMetalObjectsEXT(VkDevice device, VkExportM
         }
         metal_objects_info_ptr = metal_objects_info_ptr->pNext;
     }
+    return skip;
+}
+#endif  // VK_USE_PLATFORM_METAL_EXT
+
+bool CoreChecks::ValidateAllocateMemoryMetal(const VkMemoryAllocateInfo &allocate_info,
+                                             const VkMemoryDedicatedAllocateInfo *dedicated_allocation_info,
+                                             const Location &allocate_info_loc) const {
+    bool skip = false;
+
+#if VK_USE_PLATFORM_METAL_EXT
+    // When dealing with Metal external memory, we can have the following 3 scenarios:
+    // 1. Allocation will be exported. Contains VkExportMemoryAllocateInfo
+    // 2. Allocation is being imported. Contains VkImportMemoryMetalHandleInfoEXT
+    // 3. Previous 2 combined
+    // Whenever the memory will be used for an image, VK_EXT_external_memory_metal requires that the allocation
+    // is dedicated to that single resource.
+
+    // Case 1 and partially 3
+    // Since we know Metal textures required to be imported as a dedicated allocation, we can do the check directly here instead
+    // of deferring to the binding call.
+    const auto export_memory_info = vku::FindStructInPNextChain<VkExportMemoryAllocateInfo>(allocate_info.pNext);
+    const auto export_memory_info_nv = vku::FindStructInPNextChain<VkExportMemoryAllocateInfoNV>(allocate_info.pNext);
+    if (export_memory_info || export_memory_info_nv) {
+        VkExternalMemoryHandleTypeFlags handles =
+            export_memory_info ? export_memory_info->handleTypes : export_memory_info_nv->handleTypes;
+        if ((handles == VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT) && dedicated_allocation_info == nullptr) {
+            skip |= LogError("VUID-VkMemoryAllocateInfo-pNext-00639", device, allocate_info_loc.dot(Field::pNext),
+                             "VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT requires textures to be imported as a dedicated "
+                             "allocation.");
+        }
+    }
+
+    // Case 2 and remaining 3
+    const auto import_memory_metal_info = vku::FindStructInPNextChain<VkImportMemoryMetalHandleInfoEXT>(allocate_info.pNext);
+    if (import_memory_metal_info == nullptr) {
+        return skip;
+    }
+
+    // Ensure user is importing correct type before checking any other VUID since we will assume correct type
+    if ((import_memory_metal_info->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLBUFFER_BIT_EXT) &&
+        (import_memory_metal_info->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT) &&
+        (import_memory_metal_info->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLHEAP_BIT_EXT)) {
+        skip |= LogError("VUID-VkImportMemoryMetalHandleInfoEXT-handleType-10410", device,
+                         allocate_info_loc.pNext(Struct::VkImportMemoryMetalHandleInfoEXT, Field::handleType), "current value is %s",
+                         string_VkExternalMemoryHandleTypeFlagBits(import_memory_metal_info->handleType));
+        return skip;
+    }
+
+    // Only images require to be created as a dedicated allocation. This allows us to check if the format
+    // used by the image allows for importing such images from external memory. We cannot do that with
+    // buffers since we lack the usage, so it's not possible to know if the device allows import
+    // operations on buffers.
+    if (import_memory_metal_info->handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT) {
+        if (allocate_info.allocationSize != 0) {
+            skip |= LogError("VUID-VkMemoryAllocateInfo-pNext-10397", device,
+                             allocate_info_loc.dot(Field::allocationSize), "is %" PRId64,
+                             allocate_info.allocationSize);
+        }
+
+        if (dedicated_allocation_info == nullptr) {
+            skip |= LogError("VUID-VkMemoryAllocateInfo-pNext-10395", device,
+                             allocate_info_loc.dot(Field::pNext),
+                             "VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT requires textures to be imported as a dedicated"
+                             "allocation.");
+            // Early out since the image comes from VkMemoryDedicatedAllocateInfoKHR and there's none.
+            return skip;
+        }
+
+        // Unsure if there should be a VUID that enforces image to not be NULL when importing a MTLTEXTURE type
+        if (dedicated_allocation_info->image == VK_NULL_HANDLE) {
+            skip |= LogError("VUID-VkMemoryAllocateInfo-pNext-10395", device,
+                             allocate_info_loc.dot(Struct::VkMemoryDedicatedAllocateInfo, Field::image),
+                             "must be a valid image handle.");
+            // Early out since there's no image in VkMemoryDedicatedAllocateInfoKHR.
+            return skip;
+        }
+
+        // We can only validate images since we lack information to do the buffer call for the properties
+        auto image_state_ptr = Get<vvl::Image>(dedicated_allocation_info->image);
+        VkFormat image_format = image_state_ptr->create_info.format;
+        VkPhysicalDeviceExternalImageFormatInfo external_info = vku::InitStructHelper();
+        external_info.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT;
+        VkPhysicalDeviceImageFormatInfo2 format_info = vku::InitStructHelper(&external_info);
+        format_info.format = image_state_ptr->safe_create_info.format;
+        format_info.tiling = image_state_ptr->safe_create_info.tiling;
+        format_info.type = image_state_ptr->safe_create_info.imageType;
+        format_info.usage = image_state_ptr->safe_create_info.usage;
+        VkExternalImageFormatProperties external_image_format_properties = vku::InitStructHelper();
+        VkImageFormatProperties2 format_properties = vku::InitStructHelper(&external_image_format_properties);
+        instance_state->DispatchGetPhysicalDeviceImageFormatProperties2Helper(physical_device, &format_info, &format_properties);
+
+        if ((external_image_format_properties.externalMemoryProperties.externalMemoryFeatures &
+             VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) == 0u) {
+            skip |= LogError("VUID-VkImportMemoryMetalHandleInfoEXT-handleType-10408", device,
+                             allocate_info_loc.dot(Struct::VkImportMemoryMetalHandleInfoEXT, Field::handleType),
+                             "does not support importing image with format %s", string_VkFormat(image_format));
+        }
+    }
+#endif  // VK_USE_PLATFORM_METAL_EXT
+
+    return skip;
+}
+
+#ifdef VK_USE_PLATFORM_METAL_EXT
+bool CoreChecks::PreCallValidateGetMemoryMetalHandleEXT(VkDevice device, const VkMemoryGetMetalHandleInfoEXT *pGetMetalHandleInfo,
+                                                        void **pHandle, const ErrorObject &error_obj) const {
+    bool skip = false;
+    const Location get_metal_handle_info = error_obj.location.dot(Field::pGetMetalHandleInfo);
+    auto memory = Get<vvl::DeviceMemory>(pGetMetalHandleInfo->memory);
+    ASSERT_AND_RETURN_SKIP(memory);
+    auto export_memory_allocate_info = vku::FindStructInPNextChain<VkExportMemoryAllocateInfo>(memory->safe_allocate_info.pNext);
+    if (export_memory_allocate_info == nullptr) {
+        skip |= LogError("VUID-VkMemoryGetMetalHandleInfoEXT-memory-10413", device,
+                         get_metal_handle_info.dot(Field::memory).dot(Field::pNext),
+                         "device memory missing VkExportMemoryAllocateInfo at creation");
+    } else if ((export_memory_allocate_info->handleTypes & pGetMetalHandleInfo->handleType) == 0u) {
+        skip |= LogError("VUID-VkMemoryGetMetalHandleInfoEXT-handleType-10414", device,
+                         get_metal_handle_info.dot(Field::handleType),
+                         "device memory was created with (%s) handle types. Missing %s type",
+                         string_VkExternalMemoryHandleTypeFlags(export_memory_allocate_info->handleTypes).c_str(),
+                         string_VkExternalMemoryHandleTypeFlagBits(pGetMetalHandleInfo->handleType));
+    }
+
+    if ((pGetMetalHandleInfo->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLBUFFER_BIT_EXT) &&
+        (pGetMetalHandleInfo->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT) &&
+        (pGetMetalHandleInfo->handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLHEAP_BIT_EXT)) {
+        skip |= LogError("VUID-VkMemoryGetMetalHandleInfoEXT-handleType-10415", device,
+                         get_metal_handle_info.dot(Field::handleType), "current value is %s",
+                         string_VkExternalMemoryHandleTypeFlagBits(pGetMetalHandleInfo->handleType));
+    }
+    return skip;
+}
+
+bool CoreChecks::PreCallValidateGetMemoryMetalHandlePropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType,
+                                                                  const void *handle,
+                                                                  VkMemoryMetalHandlePropertiesEXT *pMemoryMetalHandleProperties,
+                                                                  const ErrorObject &error_obj) const {
+    bool skip = false;
+
+    if ((handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLBUFFER_BIT_EXT) &&
+        (handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT) &&
+        (handleType != VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLHEAP_BIT_EXT)) {
+        skip |= LogError("VUID-vkGetMemoryMetalHandlePropertiesEXT-handleType-10417", device,
+                         error_obj.location.dot(Field::handleType), "current value is %s",
+                         string_VkExternalMemoryHandleTypeFlagBits(handleType));
+    }
+
     return skip;
 }
 #endif  // VK_USE_PLATFORM_METAL_EXT

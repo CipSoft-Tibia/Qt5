@@ -15,6 +15,8 @@
 
 QT_BEGIN_NAMESPACE
 
+class QJniObject;
+
 namespace QtJniTypes
 {
 
@@ -164,7 +166,7 @@ template<size_t N> struct IsStringType<const char[N]> : std::true_type {};
 template<size_t N> struct IsStringType<const char(&)[N]> : std::true_type {};
 template<size_t N> struct IsStringType<char[N]> : std::true_type {};
 
-template <typename T>
+template <typename T, typename = void>
 struct Traits {
     // The return type of className/signature becomes void for any type
     // not handled here. This indicates that the Traits type is not specialized
@@ -189,11 +191,6 @@ struct Traits {
         if constexpr (!std::is_same_v<decltype(className()), void>) {
             // the type signature of any object class is L<className>;
             return CTString("L") + className() + CTString(";");
-        } else if constexpr (std::is_array_v<T>) {
-            using UnderlyingType = typename std::remove_extent_t<T>;
-            static_assert(!std::is_array_v<UnderlyingType>,
-                        "Traits::signature() does not handle multi-dimensional arrays");
-            return CTString("[") + Traits<UnderlyingType>::signature();
         } else if constexpr (std::is_same_v<T, jobjectArray>) {
             return CTString("[Ljava/lang/Object;");
         } else if constexpr (std::is_same_v<T, jbooleanArray>) {
@@ -248,10 +245,18 @@ struct Traits {
             return CTString("V");
         } else if constexpr (std::is_enum_v<T>) {
             return Traits<std::underlying_type_t<T>>::signature();
-        } else if constexpr (std::is_same_v<T, QString>) {
-            return CTString("Ljava/lang/String;");
         }
         // else: return void -> not implemented
+    }
+
+    template <typename U = T>
+    static auto convertToJni(JNIEnv *, U &&value)
+    {
+        return std::forward<U>(value);
+    }
+    static auto convertFromJni(QJniObject &&object)
+    {
+        return std::move(object);
     }
 };
 

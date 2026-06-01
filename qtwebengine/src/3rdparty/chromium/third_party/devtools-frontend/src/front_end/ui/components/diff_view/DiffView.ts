@@ -5,10 +5,18 @@
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as Diff from '../../../third_party/diff/diff.js';
 import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
-import * as LitHtml from '../../lit-html/lit-html.js';
+import * as Lit from '../../lit/lit.js';
 import * as CodeHighlighter from '../code_highlighter/code_highlighter.js';
 
-import diffViewStyles from './diffView.css.js';
+import diffViewStylesRaw from './diffView.css.js';
+
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const diffViewStyles = new CSSStyleSheet();
+diffViewStyles.replaceSync(diffViewStylesRaw.cssContent);
+const CodeHighlighterStyles = new CSSStyleSheet();
+CodeHighlighterStyles.replaceSync(CodeHighlighter.codeHighlighterStyles.cssContent);
+
+const {html} = Lit;
 
 const UIStrings = {
   /**
@@ -189,14 +197,14 @@ class DiffRenderer {
   ) {
   }
 
-  #render(rows: readonly Row[]): LitHtml.TemplateResult {
-    return LitHtml.html`
+  #render(rows: readonly Row[]): Lit.TemplateResult {
+    return html`
       <div class="diff-listing" aria-label=${i18nString(UIStrings.changesDiffViewer)}>
         ${rows.map(row => this.#renderRow(row))}
       </div>`;
   }
 
-  #renderRow(row: Row): LitHtml.TemplateResult {
+  #renderRow(row: Row): Lit.TemplateResult {
     const baseNumber =
         row.type === RowType.EQUAL || row.type === RowType.DELETION ? String(row.originalLineNumber) : '';
     const curNumber = row.type === RowType.EQUAL || row.type === RowType.ADDITION ? String(row.currentLineNumber) : '';
@@ -204,13 +212,13 @@ class DiffRenderer {
     if (row.type === RowType.ADDITION) {
       marker = '+';
       markerClass += ' diff-line-addition';
-      screenReaderText = LitHtml.html`<span class="diff-hidden-text">${i18nString(UIStrings.additions)}</span>`;
+      screenReaderText = html`<span class="diff-hidden-text">${i18nString(UIStrings.additions)}</span>`;
     } else if (row.type === RowType.DELETION) {
       marker = '-';
       markerClass += ' diff-line-deletion';
-      screenReaderText = LitHtml.html`<span class="diff-hidden-text">${i18nString(UIStrings.deletions)}</span>`;
+      screenReaderText = html`<span class="diff-hidden-text">${i18nString(UIStrings.deletions)}</span>`;
     }
-    return LitHtml.html`
+    return html`
       <div class="diff-line-number" aria-hidden="true">${baseNumber}</div>
       <div class="diff-line-number" aria-hidden="true">${curNumber}</div>
       <div class=${markerClass} aria-hidden="true">${marker}</div>
@@ -219,23 +227,22 @@ class DiffRenderer {
         this.#renderRowContent(row)}</div>`;
   }
 
-  #renderRowContent(row: Row): LitHtml.TemplateResult[] {
+  #renderRowContent(row: Row): Lit.TemplateResult[] {
     if (row.type === RowType.SPACER) {
-      return row.tokens.map(tok => LitHtml.html`${tok.text}`);
+      return row.tokens.map(tok => html`${tok.text}`);
     }
     const [doc, startPos] = row.type === RowType.DELETION ?
         [this.originalHighlighter, this.originalMap.get(row.originalLineNumber) as number] :
         [this.currentHighlighter, this.currentMap.get(row.currentLineNumber) as number];
-    const content: LitHtml.TemplateResult[] = [];
+    const content: Lit.TemplateResult[] = [];
     let pos = startPos;
     for (const token of row.tokens) {
-      const tokenContent: (LitHtml.TemplateResult|string)[] = [];
+      const tokenContent: (Lit.TemplateResult|string)[] = [];
       doc.highlightRange(pos, pos + token.text.length, (text, style) => {
-        tokenContent.push(style ? LitHtml.html`<span class=${style}>${text}</span>` : text);
+        tokenContent.push(style ? html`<span class=${style}>${text}</span>` : text);
       });
       content.push(
-          token.className ? LitHtml.html`<span class=${token.className}>${tokenContent}</span>` :
-                            LitHtml.html`${tokenContent}`);
+          token.className ? html`<span class=${token.className}>${tokenContent}</span>` : html`${tokenContent}`);
       pos += token.text.length;
     }
     return content;
@@ -250,7 +257,7 @@ class DiffRenderer {
         await CodeHighlighter.CodeHighlighter.create(currentLines.join('\n'), mimeType),
         documentMap(currentLines),
     );
-    LitHtml.render(renderer.#render(rows), parent, {host: this});
+    Lit.render(renderer.#render(rows), parent, {host: this});
   }
 }
 
@@ -260,20 +267,19 @@ declare global {
   }
 }
 
-export type DiffViewData = {
-  diff: Diff.Diff.DiffArray,
-  mimeType: string,
-};
+export interface DiffViewData {
+  diff: Diff.Diff.DiffArray;
+  mimeType: string;
+}
 
 export class DiffView extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-diff-view`;
 
   readonly #shadow = this.attachShadow({mode: 'open'});
   loaded: Promise<void>;
 
   constructor(data?: DiffViewData) {
     super();
-    this.#shadow.adoptedStyleSheets = [diffViewStyles, CodeHighlighter.Style.default];
+    this.#shadow.adoptedStyleSheets = [diffViewStyles, CodeHighlighterStyles];
     if (data) {
       this.loaded = DiffRenderer.render(data.diff, data.mimeType, this.#shadow);
     } else {

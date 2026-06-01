@@ -1759,7 +1759,7 @@ vk::Format SpirvShader::getInputAttachmentFormat(const vk::Attachments &attachme
 		// attachment.
 		if(index < 0 || index == depthInputIndex || index == stencilInputIndex)
 		{
-			return attachments.depthFormat();
+			return attachments.depthStencilFormat();
 		}
 
 		// See if the input index is mapped to an attachment.  If it isn't, the
@@ -1862,7 +1862,7 @@ SpirvShader::SpirvShader(VkShaderStageFlagBits stage,
 	{
 		for(auto i = 0u; i < inputAttachmentMapping->colorAttachmentCount; i++)
 		{
-			auto inputIndex = inputAttachmentMapping->pColorAttachmentInputIndices[i];
+			auto inputIndex = inputAttachmentMapping->pColorAttachmentInputIndices != nullptr ? inputAttachmentMapping->pColorAttachmentInputIndices[i] : i;
 			if(inputIndex != VK_ATTACHMENT_UNUSED)
 			{
 				inputIndexToColorIndex[inputIndex] = i;

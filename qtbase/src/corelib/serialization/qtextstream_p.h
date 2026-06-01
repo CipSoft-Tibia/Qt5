@@ -25,36 +25,6 @@
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_QOBJECT
-class QDeviceClosedNotifier : public QObject
-{
-    Q_OBJECT
-public:
-    inline QDeviceClosedNotifier()
-    { }
-    ~QDeviceClosedNotifier() override;
-
-    inline void setupDevice(QTextStream *stream, QIODevice *device)
-    {
-        disconnect();
-        if (device) {
-            // Force direct connection here so that QTextStream can be used
-            // from multiple threads when the application code is handling
-            // synchronization (see also QTBUG-12055).
-            connect(device, SIGNAL(aboutToClose()), this, SLOT(flushStream()),
-                    Qt::DirectConnection);
-        }
-        m_stream = stream;
-    }
-
-public Q_SLOTS:
-    void flushStream() { m_stream->flush(); }
-
-private:
-    QTextStream *m_stream;
-};
-#endif
-
 class QTextStreamPrivate
 {
     Q_DECLARE_PUBLIC(QTextStream)
@@ -65,6 +35,9 @@ public:
     public:
         void reset();
 
+        // As for QString, QLocale functions taking these: the values of
+        // precision, base and width can't sensibly need even eight bits, so
+        // there's no sense expanding beyond int.
         int realNumberPrecision;
         int integerBase;
         int fieldWidth;
@@ -78,15 +51,18 @@ public:
     ~QTextStreamPrivate();
     void reset();
 
+    inline void setupDevice(QIODevice *device);
+    inline void disconnectFromDevice();
+
     // device
     QIODevice *device;
 #ifndef QT_NO_QOBJECT
-    QDeviceClosedNotifier deviceClosedNotifier;
+    QMetaObject::Connection aboutToCloseConnection;
 #endif
 
     // string
     QString *string;
-    int stringOffset;
+    qsizetype stringOffset;
     QIODevice::OpenMode stringOpenMode;
 
     QStringConverter::Encoding encoding = QStringConverter::Utf8;
@@ -96,8 +72,8 @@ public:
 
     QString writeBuffer;
     QString readBuffer;
-    int readBufferOffset;
-    int readConverterSavedStateOffset; //the offset between readBufferStartDevicePos and that start of the buffer
+    qsizetype readBufferOffset;
+    qsizetype readConverterSavedStateOffset; //the offset between readBufferStartDevicePos and that start of the buffer
     qint64 readBufferStartDevicePos;
 
     Params params;
@@ -107,7 +83,7 @@ public:
     QLocale locale;
     QTextStream *q_ptr;
 
-    int lastTokenSize;
+    qsizetype lastTokenSize;
     bool deleteDevice;
     bool autoDetectUnicode;
     bool hasWrittenData = false;
@@ -120,12 +96,12 @@ public:
         EndOfLine
     };
 
-    QString read(int maxlen);
-    bool scan(const QChar **ptr, int *tokenLength,
-              int maxlen, TokenDelimiter delimiter);
+    QString read(qsizetype maxlen);
+    bool scan(const QChar **ptr, qsizetype *tokenLength,
+              qsizetype maxlen, TokenDelimiter delimiter);
     inline const QChar *readPtr() const;
     inline void consumeLastToken();
-    inline void consume(int nchars);
+    inline void consume(qsizetype nchars);
     void saveConverterState(qint64 newPos);
     void restoreToSavedConverterState();
 
@@ -155,7 +131,7 @@ public:
     void putNumber(qulonglong number, bool negative);
 
     struct PaddingResult {
-        int left, right;
+        qsizetype left, right;
     };
     PaddingResult padding(qsizetype len) const;
 

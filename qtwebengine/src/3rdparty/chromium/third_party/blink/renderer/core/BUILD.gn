@@ -21,7 +21,6 @@ import("//third_party/blink/renderer/core/accessibility/build.gni")
 import("//third_party/blink/renderer/core/animation/build.gni")
 import("//third_party/blink/renderer/core/animation_frame/build.gni")
 import("//third_party/blink/renderer/core/annotation/build.gni")
-import("//third_party/blink/renderer/core/aom/build.gni")
 import("//third_party/blink/renderer/core/clipboard/build.gni")
 import("//third_party/blink/renderer/core/content_capture/build.gni")
 import("//third_party/blink/renderer/core/context_features/build.gni")
@@ -61,6 +60,7 @@ import("//third_party/blink/renderer/core/paint/build.gni")
 import("//third_party/blink/renderer/core/permissions_policy/build.gni")
 import("//third_party/blink/renderer/core/preferences/build.gni")
 import("//third_party/blink/renderer/core/resize_observer/build.gni")
+import("//third_party/blink/renderer/core/sanitizer/build.gni")
 import("//third_party/blink/renderer/core/scheduler/build.gni")
 import(
     "//third_party/blink/renderer/core/scheduler_integration_tests/build.gni")
@@ -255,7 +255,6 @@ jumbo_component("core") {
   sources +=
       rebase_path(blink_core_sources_animation_frame, "", "animation_frame")
   sources += rebase_path(blink_core_sources_annotation, "", "annotation")
-  sources += rebase_path(blink_core_sources_aom, "", "aom")
   sources += rebase_path(blink_core_sources_clipboard, "", "clipboard")
   sources +=
       rebase_path(blink_core_sources_content_capture, "", "content_capture")
@@ -309,6 +308,7 @@ jumbo_component("core") {
   sources += rebase_path(blink_core_sources_paint, "", "paint")
   sources +=
       rebase_path(blink_core_sources_resize_observer, "", "resize_observer")
+  sources += rebase_path(blink_core_sources_sanitizer, "", "sanitizer")
   sources +=
       rebase_path(blink_core_sources_speculation_rules, "", "speculation_rules")
   sources += rebase_path(blink_core_sources_scheduler, "", "scheduler")
@@ -346,12 +346,15 @@ jumbo_component("core") {
     "//third_party/blink/renderer/core/animation",
     "//third_party/blink/renderer/core/exported",
     "//third_party/blink/renderer/core/probe",
+    "//third_party/blink/renderer/core/sanitizer:generated",
     "//third_party/blink/renderer/core/url_pattern",
     "//third_party/blink/renderer/core/xml:xpath_generated",
     "//third_party/blink/renderer/platform",
     "//third_party/blink/renderer/platform/wtf",
     "//third_party/re2",
     "//ui/accessibility:ax_base",
+    "//ui/base:base",
+    "//ui/base:ui_data_pack",
     "//ui/base/cursor",
     "//ui/base/dragdrop/mojom:mojom_blink_headers",
     "//ui/base/dragdrop/mojom:mojom_shared",
@@ -398,6 +401,9 @@ jumbo_component("core") {
     "//third_party/blink/public/common",
     "//third_party/blink/public/mojom:web_feature_mojo_bindings",
     "//third_party/blink/public/strings",
+    "//third_party/blink/public/strings:generate_permission_element_strings_mono_grd",
+    "//third_party/blink/public/strings:permission_element_generated_strings",
+    "//third_party/blink/public/strings:permission_element_strings_grit",
     "//tools/v8_context_snapshot:buildflags",
     "//ui/base/cursor/mojom:cursor_type_blink",
     "//ui/base/dragdrop/mojom:mojom_blink",
@@ -408,6 +414,10 @@ jumbo_component("core") {
 
   if (is_mac) {
     deps += [ "//ui/base/mojom" ]
+  }
+
+  if (is_win) {
+    deps += [ "//components/stylus_handwriting/win:win" ]
   }
 
   if (enable_printing || enable_printing_tests) {
@@ -425,14 +435,16 @@ jumbo_component("core") {
   ]
   jumbo_excluded_sources = [ ]
   jumbo_excluded_sources += rebase_path([ "attribution_reporting_to_mojom.cc" ], "", "fetch")
+  jumbo_excluded_sources += rebase_path([ "attribution_src_loader.cc" ], "", "frame")
+  jumbo_excluded_sources += rebase_path([ "cached_permission_status.cc" ], "", "frame")
+  jumbo_excluded_sources += rebase_path([ "html_permission_element.cc" ], "", "html")
   jumbo_excluded_sources += rebase_path([ "frame_fetch_context.cc" ], "", "loader")
   jumbo_excluded_sources += rebase_path([ "image_loader.cc" ], "", "loader")
   jumbo_excluded_sources += rebase_path([ "create_window.cc" ], "", "page")
   jumbo_excluded_sources += rebase_path([ "link_highlight_impl.cc" ], "", "paint")
   jumbo_excluded_sources += rebase_path([ "scroll_animator.cc" ], "", "scroll")
-  jumbo_excluded_sources += rebase_path([ "html_permission_element.cc" ], "", "html")
-  jumbo_excluded_sources += [ "//third_party/blink/renderer/bindings/core/v8/script_decoder.cc" ]
   jumbo_excluded_sources += rebase_path([ "soft_navigation_heuristics.cc" ], "", "timing")
+  jumbo_excluded_sources += [ "//third_party/blink/renderer/bindings/core/v8/script_decoder.cc" ]
 
   public_configs = [ ":core_include_dirs" ]
 
@@ -527,14 +539,14 @@ jumbo_source_set("testing") {
     "fetch/testing/internals_fetch.h",
     "fetch/testing/worker_internals_fetch.cc",
     "fetch/testing/worker_internals_fetch.h",
+    "frame/csp/test_util.cc",
+    "frame/csp/test_util.h",
     "html/forms/mock_file_chooser.h",
     "streams/test_underlying_source.h",
     "testing/callback_function_test.cc",
     "testing/callback_function_test.h",
     "testing/color_scheme_helper.cc",
     "testing/color_scheme_helper.h",
-    "testing/death_aware_script_wrappable.cc",
-    "testing/death_aware_script_wrappable.h",
     "testing/dictionary_test.cc",
     "testing/dictionary_test.h",
     "testing/dummy_modulator.cc",
@@ -580,6 +592,7 @@ jumbo_source_set("testing") {
     "testing/mock_hyphenation.h",
     "testing/mock_policy_container_host.cc",
     "testing/mock_policy_container_host.h",
+    "testing/nadc_attribute_test.h",
     "testing/null_execution_context.cc",
     "testing/null_execution_context.h",
     "testing/origin_trials_test.cc",
@@ -1453,6 +1466,7 @@ jumbo_source_set("unit_tests") {
       rebase_path(blink_core_tests_permissions_policy, "", "permissions_policy")
   sources +=
       rebase_path(blink_core_tests_resize_observer, "", "resize_observer")
+  sources += rebase_path(blink_core_tests_sanitizer, "", "sanitizer")
   sources += rebase_path(blink_core_tests_scheduler, "", "scheduler")
   sources += rebase_path(blink_core_tests_scheduler_integration_tests,
                          "",
@@ -1508,11 +1522,15 @@ jumbo_source_set("unit_tests") {
     "//third_party/blink/public:buildflags",
     "//third_party/blink/public:test_headers",
     "//third_party/blink/public/common/privacy_budget:test_support",
+    "//third_party/blink/public/strings:permission_element_generated_strings_grit",
+    "//third_party/blink/public/strings:permission_element_strings_grit",
     "//third_party/blink/renderer/controller:blink_bindings_test_sources",
     "//third_party/blink/renderer/core",
     "//third_party/blink/renderer/core:testing",
     "//third_party/blink/renderer/core:unit_test_support",
+    "//third_party/blink/renderer/core/sanitizer:unit_test_support",
     "//third_party/blink/renderer/platform:test_support",
+    "//third_party/fuzztest",
     "//ui/accessibility:ax_base",
     "//ui/base/cursor",
     "//ui/base/cursor/mojom:cursor_type_blink",
@@ -1520,6 +1538,10 @@ jumbo_source_set("unit_tests") {
     "//ui/base/mojom:ui_base_types_blink",
     "//ui/gfx:test_support",
   ]
+
+  if (is_win) {
+    deps += [ "//components/stylus_handwriting/win:win" ]
+  }
 
   if (enable_nocompile_tests) {
     deps += [ "//third_party/blink/renderer/core/probe:probe_nocompile_tests" ]
@@ -1661,7 +1683,11 @@ jumbo_source_set("unit_test_support") {
     "//third_party/blink/renderer/platform:test_support",
   ]
 
-  data = [ "//third_party/blink/renderer/platform/testing/data/third_party/Noto/NotoNaskhArabic-regular.woff2" ]
+  data = [
+    "//third_party/blink/renderer/platform/testing/data/third_party/Roboto/roboto-regular.woff2",
+    "//third_party/blink/renderer/platform/testing/data/third_party/Noto/NotoNaskhArabic-regular.woff2",
+    "//third_party/blink/web_tests/external/wpt/fonts/mplus-1p-regular.woff",
+  ]
 }
 
 # Fuzzer for blink::StyleSheetContents
@@ -1740,10 +1766,32 @@ fuzzer_test("css_parser_proto_fuzzer") {
   dict = "//third_party/blink/renderer/core/css/css.dict"
 }
 
+test("css_parser_fuzzer") {
+  sources = [ "css/parser/css_parser_fuzzer.cc" ]
+  deps = [
+    ":core",
+    "//third_party/blink/renderer/platform:blink_fuzzer_test_support",
+    "//third_party/fuzztest:fuzztest_gtest_main",
+  ]
+  fuzztests = [ "CssParser.ParseSheetFuzzer" ]
+}
+
+test("inspector_ghost_rules_fuzzer") {
+  sources = [ "inspector/inspector_ghost_rules_fuzzer.cc" ]
+  deps = [
+    ":core",
+    ":testing",
+    ":unit_test_support",
+    "//third_party/blink/renderer/platform:blink_fuzzer_test_support",
+    "//third_party/fuzztest:fuzztest_gtest_main",
+  ]
+  fuzztests = [ "InspectorGhostRules.PopulateFuzzer" ]
+}
+
 proto_library("css_proto") {
   sources = [ "$blink_core_output_dir/css/parser/css.proto" ]
   proto_out_dir = "third_party/blink/renderer/core/css/parser"
-  deps = [ ":make_css_proto" ]
+  proto_deps = [ ":make_css_proto" ]
 }
 
 proto_library("element_locator_proto") {

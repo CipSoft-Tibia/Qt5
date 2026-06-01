@@ -579,7 +579,7 @@ void QRecursiveMutex::unlock() noexcept
 */
 
 /*
- * QBasicMutex implementation with futexes (Linux, Windows 10)
+ * QBasicMutex implementation with futexes (Linux, Windows 10, FreeBSD)
  *
  * QBasicMutex contains one pointer value, which can contain one of four
  * different values:
@@ -612,13 +612,15 @@ void QRecursiveMutex::unlock() noexcept
  *
  * UNLOCKING:
  *
- * To unlock, we need to set a value of 0x0 to indicate it's unlocked. The
- * first attempt is a testAndSetRelease operation from 0x1 to 0x0. If that
- * succeeds, we're done.
+ * To unlock, we need to set a value of 0x0 to indicate it's unlocked.
  *
- * If it fails, unlockInternal() is called. The only possibility is that the
- * mutex value was 0x3, which indicates some other thread is waiting or was
- * waiting in the past. We then set the mutex to 0x0 and perform a FUTEX_WAKE.
+ * For systems that always use futexes, we immediately unlock the mutex in
+ * inline code. If the mutex was contended before the unlock (had value 0x3),
+ * we call unlockInternalFutex() to FUTEX_WAKE a waiting thread.
+ *
+ * For systems that may or may not use futexes, we can only unlock the mutex in
+ * inline code if it is not contended. If it was, then we call unlockInternal()
+ * to complete the unlocking, in case that futexes were not available.
  */
 
 /*!
@@ -795,22 +797,65 @@ bool QBasicMutex::lockInternal(QDeadlineTimer deadlineTimer) noexcept(FutexAlway
 #endif
 }
 
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+// not in removed_api.cpp because we need futexAvailable()
 /*!
     \internal
-*/
-Q_NEVER_INLINE
+ */
 void QBasicMutex::unlockInternal() noexcept
 {
     QMutexPrivate *copy = d_ptr.loadAcquire();
+    if (futexAvailable()) {
+        d_ptr.storeRelease(nullptr);
+        unlockInternalFutex(copy);
+    } else {
+        unlockInternal(copy);
+    }
+}
+#endif
+
+/*!
+    \internal
+    \since 6.10
+    Complete unlocking when user code knows we use a futex and has thus already
+    unlocked the mutex. The difference from unlockInternal() in futex mode is
+    we only have one atomic operation (the fetchAndStore in inline code) instead
+    of two (a testAndSet followed by the storeRelease).
+*/
+Q_NEVER_INLINE
+void QBasicMutex::unlockInternalFutex(void *copy) noexcept
+{
+    Q_ASSERT(copy == dummyFutexValue());    // was contended
+    if (!futexAvailable())
+        Q_UNREACHABLE();
+    futexWakeOne(d_ptr);
+    Q_UNUSED(copy);
+}
+
+
+/*!
+    \internal
+    Common unlock code for when user code isn't sure that futexes are available.
+*/
+Q_NEVER_INLINE
+void QBasicMutex::unlockInternal(void *copy) noexcept
+{
     Q_ASSERT(copy); //we must be locked
     Q_ASSERT(copy != dummyLocked()); // testAndSetRelease(dummyLocked(), 0) failed
 
+#  if defined(Q_OS_FREEBSD) || defined(Q_OS_LINUX) || defined(Q_OS_WIN)
+    // these platforms always have futex and have never called this function
+    // from inline code
+    Q_UNREACHABLE();
+#  endif
+
     if (futexAvailable()) {
         d_ptr.storeRelease(nullptr);
-        return futexWakeOne(d_ptr);
+        return unlockInternalFutex(copy);
     }
 
 #if !defined(QT_ALWAYS_USE_FUTEX)
+    static_assert(!FutexAlwaysAvailable, "mismatch with QT_ALWAYS_USE_FUTEX");
     QMutexPrivate *d = reinterpret_cast<QMutexPrivate *>(copy);
 
     // If no one is waiting for the lock anymore, we should reset d to 0x0.
@@ -833,6 +878,7 @@ void QBasicMutex::unlockInternal() noexcept
     }
     d->deref();
 #else
+    static_assert(FutexAlwaysAvailable, "mismatch with QT_ALWAYS_USE_FUTEX");
     Q_UNUSED(copy);
 #endif
 }

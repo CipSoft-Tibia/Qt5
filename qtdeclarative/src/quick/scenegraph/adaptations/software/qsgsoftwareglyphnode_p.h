@@ -35,6 +35,7 @@ public:
     void paint(QPainter *painter);
 
 private:
+    void recalculateBoundingRect();
     QPointF m_position;
     QGlyphRun m_glyphRun;
     QColor m_color;

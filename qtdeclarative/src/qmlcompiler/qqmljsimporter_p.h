@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSIMPORTER_P_H
 #define QQMLJSIMPORTER_P_H
@@ -21,8 +22,6 @@
 #include "qqmljsresourcefilemapper_p.h"
 #include <QtQml/private/qqmldirparser_p.h>
 #include <QtQml/private/qqmljsast_p.h>
-
-#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -64,7 +63,8 @@ private:
 
 enum QQmlJSImporterFlag {
     UseOptionalImports = 0x1,
-    PreferQmlFilesFromSourceFolder = 0x2
+    PreferQmlFilesFromSourceFolder = 0x2,
+    TolerateFileSelectors = 0x4, // if we find a type "twice", check if one looks like it's from a file selector and use the other
 };
 Q_DECLARE_FLAGS(QQmlJSImporterFlags, QQmlJSImporterFlag)
 
@@ -259,7 +259,7 @@ private:
 
     QStringList m_importPaths;
 
-    QHash<QPair<QString, QTypeRevision>, QString> m_seenImports;
+    QHash<std::pair<QString, QTypeRevision>, QString> m_seenImports;
     QHash<QQmlJS::Import, QSharedPointer<AvailableTypes>> m_cachedImportTypes;
     QHash<QString, Import> m_seenQmldirFiles;
 

@@ -48,7 +48,7 @@ public:
                               addStrokeTriangleCallback addTriangle,
                               int subdivisions = 3);
     static bool solveOverlaps(QQuadPath &path);
-    static QList<QPair<int, int>> findOverlappingCandidates(const QQuadPath &path);
+    static QList<std::pair<int, int>> findOverlappingCandidates(const QQuadPath &path);
     static bool removeNestedSubpaths(QQuadPath &path);
     static bool solveIntersections(QQuadPath &path, bool removeNestedPaths = true);
 };

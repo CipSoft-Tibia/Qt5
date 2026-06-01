@@ -21,51 +21,6 @@
 #include "url/gurl.h"
 
 namespace commerce {
-bool UrlContainsDiscountUtmTag(const GURL& url) {
-  std::string utm_source;
-  std::string utm_medium;
-  std::string utm_campaign;
-  if (!net::GetValueForKeyInQuery(url, commerce::kUTMSourceLabel,
-                                  &utm_source)) {
-    return false;
-  }
-  if (!net::GetValueForKeyInQuery(url, commerce::kUTMMediumLabel,
-                                  &utm_medium)) {
-    return false;
-  }
-  if (!net::GetValueForKeyInQuery(url, commerce::kUTMCampaignLabel,
-                                  &utm_campaign)) {
-    return false;
-  }
-  return utm_source == commerce::kUTMSourceValue &&
-         utm_medium == commerce::kUTMMediumValue &&
-         utm_campaign == commerce::kUTMCampaignValueForDiscounts;
-}
-
-ParcelTrackingStatus GetParcelTrackingStatusTestData() {
-  CHECK(base::FeatureList::IsEnabled(kParcelTrackingTestData));
-
-  const std::string param = base::GetFieldTrialParamValueByFeature(
-      kParcelTrackingTestData, kParcelTrackingTestDataParam);
-
-  ParcelTrackingStatus status;
-  status.carrier = commerce::ParcelIdentifier::USPS;
-  status.tracking_url = GURL("http://example.com");
-
-  if (param == kParcelTrackingTestDataParamDelivered) {
-    status.state = commerce::ParcelStatus::FINISHED;
-    status.estimated_delivery_time = base::Time::Now() - base::Hours(1);
-  } else if (param == kParcelTrackingTestDataParamInProgress) {
-    status.state = commerce::ParcelStatus::WITH_CARRIER;
-    status.estimated_delivery_time = base::Time::Now() + base::Hours(48);
-  } else if (param == kParcelTrackingTestDataParamOutForDelivery) {
-    status.state = commerce::ParcelStatus::OUT_FOR_DELIVERY;
-    status.estimated_delivery_time = base::Time::Now() + base::Hours(1);
-  }
-
-  return status;
-}
-
 GURL GetProductSpecsTabUrl(const std::vector<GURL>& urls) {
   auto urls_list = base::Value::List();
 

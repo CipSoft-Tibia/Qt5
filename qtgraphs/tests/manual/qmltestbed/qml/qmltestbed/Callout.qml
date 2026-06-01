@@ -25,7 +25,10 @@ Rectangle {
             max: 8
         }
 
-        onHoverEnter: {
+        property int highestOrder: 1
+
+        onHoverEnter: (seriesName) => {
+            changeOrder(seriesName);
             tooltip.visible = true;
         }
 
@@ -37,6 +40,28 @@ Rectangle {
             tooltip.x = position.x + 1;
             tooltip.y = position.y + 1;
             tooltip.text = "Series: " + seriesName + ", X: " + value.x.toFixed(1) + ", Y: " + value.y.toFixed(1);
+        }
+
+        function changeOrder(seriesName) {
+            switch (seriesName) {
+            case "Bars":
+                barSeries.zValue = highestOrder;
+                break;
+            case "Lines":
+                lineSeries.zValue = highestOrder;
+                break;
+            case "Spline":
+                splineSeries.zValue = highestOrder;
+                break;
+            case "Points":
+                scatterSeries.zValue = highestOrder;
+                break;
+            case "Batman":
+                areaSeries.zValue = highestOrder;
+                break;
+            }
+
+            highestOrder++;
         }
 
         BarSeries {

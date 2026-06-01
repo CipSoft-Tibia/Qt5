@@ -24,7 +24,7 @@ public:
     int port() { return portnum; }
 
 protected:
-    void run();
+    void run() override;
 
 private slots:
     void handleConnection();

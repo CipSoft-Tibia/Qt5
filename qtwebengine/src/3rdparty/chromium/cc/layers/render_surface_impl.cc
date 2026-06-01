@@ -37,7 +37,8 @@ RenderSurfaceImpl::RenderSurfaceImpl(LayerTreeImpl* layer_tree_impl,
                                      ElementId id)
     : layer_tree_impl_(layer_tree_impl),
       id_(id),
-      effect_tree_index_(kInvalidPropertyNodeId) {
+      effect_tree_index_(kInvalidPropertyNodeId),
+      layer_id_(Layer::GetNextLayerId()) {
   DCHECK(id);
   damage_tracker_ = DamageTracker::Create();
 }
@@ -270,6 +271,13 @@ void RenderSurfaceImpl::CalculateContentRectFromAccumulatedContentRect(
   // Root render surface use viewport, and does not calculate content rect.
   DCHECK_NE(render_target(), this);
 
+  for (LayerImpl* layer : deferred_contributing_layers_) {
+    DCHECK(layer->draws_content());
+    accumulated_content_rect_.Union(layer->visible_drawable_content_rect());
+  }
+
+  deferred_contributing_layers_.clear();
+
   // Surface's content rect is the clipped accumulated content rect. By default
   // use accumulated content rect, and then try to clip it.
   gfx::Rect surface_content_rect = CalculateClippedAccumulatedContentRect();
@@ -296,6 +304,7 @@ void RenderSurfaceImpl::CalculateContentRectFromAccumulatedContentRect(
 void RenderSurfaceImpl::SetContentRectToViewport() {
   // Only root render surface use viewport as content rect.
   DCHECK_EQ(render_target(), this);
+  DCHECK(deferred_contributing_layers_.empty());
   gfx::Rect viewport = gfx::ToEnclosingRect(
       layer_tree_impl_->property_trees()->clip_tree().ViewportClip());
   SetContentRect(viewport);
@@ -315,7 +324,13 @@ void RenderSurfaceImpl::AccumulateContentRectFromContributingLayer(
   if (render_target() == this)
     return;
 
-  accumulated_content_rect_.Union(layer->visible_drawable_content_rect());
+  // Contributions from view-transition capture layers are deferred until
+  // their surface content rect is computed.
+  if (layer->ViewTransitionResourceId().IsValid()) {
+    deferred_contributing_layers_.push_back(layer);
+  } else {
+    accumulated_content_rect_.Union(layer->visible_drawable_content_rect());
+  }
 }
 
 void RenderSurfaceImpl::AccumulateContentRectFromContributingRenderSurface(
@@ -445,7 +460,7 @@ void RenderSurfaceImpl::AppendQuads(DrawMode draw_mode,
   shared_quad_state->SetAll(
       draw_transform(), content_rect(), content_rect(), mask_filter_info(),
       clip_rect, contents_opaque, draw_properties_.draw_opacity, BlendMode(),
-      sorting_context_id, /*layer_id=*/0u, is_fast_rounded_corner());
+      sorting_context_id, layer_id_, is_fast_rounded_corner());
 
   if (layer_tree_impl_->debug_state().show_debug_borders.test(
           DebugBorderType::RENDERPASS)) {

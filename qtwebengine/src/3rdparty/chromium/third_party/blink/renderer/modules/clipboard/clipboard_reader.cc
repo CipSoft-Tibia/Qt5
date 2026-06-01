@@ -55,9 +55,7 @@ class ClipboardPngReader final : public ClipboardReader {
   }
 
  private:
-  void NextRead(Vector<uint8_t> utf8_bytes) override {
-    NOTREACHED_IN_MIGRATION();
-  }
+  void NextRead(Vector<uint8_t> utf8_bytes) override { NOTREACHED(); }
 };
 
 // Reads an image from the System Clipboard as a Blob with text/plain content.
@@ -221,6 +219,8 @@ class ClipboardSvgReader final : public ClipboardReader {
   // only be used on the main thread.
   void Read() override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+    promise_->GetExecutionContext()->CountUse(WebFeature::kClipboardSvgRead);
     system_clipboard()->ReadSvg(
         WTF::BindOnce(&ClipboardSvgReader::OnRead, WrapPersistent(this)));
   }
@@ -296,6 +296,8 @@ class ClipboardCustomFormatReader final : public ClipboardReader {
   void Read() override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
+    promise_->GetExecutionContext()->CountUse(
+        WebFeature::kClipboardCustomFormatRead);
     system_clipboard()->ReadUnsanitizedCustomFormat(
         mime_type_,
         WTF::BindOnce(&ClipboardCustomFormatReader::OnCustomFormatRead,
@@ -349,9 +351,8 @@ ClipboardReader* ClipboardReader::Create(SystemClipboard* system_clipboard,
     return MakeGarbageCollected<ClipboardSvgReader>(system_clipboard, promise);
   }
 
-  NOTREACHED_IN_MIGRATION()
+  NOTREACHED()
       << "IsValidType() and Create() have inconsistent implementations.";
-  return nullptr;
 }
 
 ClipboardReader::ClipboardReader(SystemClipboard* system_clipboard,

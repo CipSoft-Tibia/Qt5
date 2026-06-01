@@ -80,9 +80,15 @@
 #include "components/account_manager_core/account_manager_util.h"
 #endif
 
+#if BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/android/tab_model/tab_model.h"
+#include "chrome/browser/ui/android/tab_model/tab_model_list.h"
+#endif
+
 #if !BUILDFLAG(IS_QTWEBENGINE)
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/profiles/profile_window.h"
+#include "chrome/browser/ui/browser.h"
 #endif
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS_ASH)
@@ -151,18 +157,16 @@ signin_metrics::ProfileSignout kAlwaysAllowedSignoutSources[] = {
 std::string_view NameOfGroupedAccessPointHistogram(
     signin_metrics::AccessPoint access_point) {
   switch (access_point) {
-    case signin_metrics::AccessPoint::ACCESS_POINT_WEB_SIGNIN:
+    case signin_metrics::AccessPoint::kWebSignin:
       return ".PreUnoWebSignin";
-    case signin_metrics::AccessPoint::
-        ACCESS_POINT_CHROME_SIGNIN_INTERCEPT_BUBBLE:
+    case signin_metrics::AccessPoint::kChromeSigninInterceptBubble:
       return ".UnoSigninBubble";
-    case signin_metrics::AccessPoint::ACCESS_POINT_USER_MANAGER:
-    case signin_metrics::AccessPoint::ACCESS_POINT_FOR_YOU_FRE:
-    case signin_metrics::AccessPoint::
-        ACCESS_POINT_SIGNIN_INTERCEPT_FIRST_RUN_EXPERIENCE:
-    case signin_metrics::AccessPoint::ACCESS_POINT_START_PAGE:
+    case signin_metrics::AccessPoint::kUserManager:
+    case signin_metrics::AccessPoint::kForYouFre:
+    case signin_metrics::AccessPoint::kSigninInterceptFirstRunExperience:
+    case signin_metrics::AccessPoint::kStartPage:
       return ".ProfileCreation";
-    case signin_metrics::AccessPoint::ACCESS_POINT_AVATAR_BUBBLE_SIGN_IN:
+    case signin_metrics::AccessPoint::kAvatarBubbleSignIn:
       return ".ProfileMenu";
     default:
       return ".Other";
@@ -410,6 +414,7 @@ void ChromeSigninClient::OnPrimaryAccountChanged(
     signin::PrimaryAccountChangeEvent event_details) {
   for (signin::ConsentLevel consent_level :
        {signin::ConsentLevel::kSignin, signin::ConsentLevel::kSync}) {
+    // Only record metrics when setting the primary account.
     switch (event_details.GetEventTypeFor(consent_level)) {
       case signin::PrimaryAccountChangeEvent::Type::kNone:
       case signin::PrimaryAccountChangeEvent::Type::kCleared:
@@ -419,7 +424,6 @@ void ChromeSigninClient::OnPrimaryAccountChanged(
         signin_metrics::AccessPoint access_point =
             event_details.GetSetPrimaryAccountAccessPoint().value();
 
-        // Only record metrics when setting the primary account.
         std::optional<size_t> all_bookmarks_count = GetAllBookmarksCount();
         std::optional<size_t> bar_bookmarks_count =
             GetBookmarkBarBookmarksCount();
@@ -429,12 +433,17 @@ void ChromeSigninClient::OnPrimaryAccountChanged(
                                 all_bookmarks_count.value(),
                                 bar_bookmarks_count.value());
         }
+
 #if BUILDFLAG(ENABLE_EXTENSIONS)
         std::optional<size_t> extensions_count = GetExtensionsCount();
         if (extensions_count.has_value()) {
           RecordExtensionsCounts(access_point, consent_level,
                                  extensions_count.value());
         }
+#endif
+
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
+        RecordOpenTabCount(access_point, consent_level);
 #endif
     }
   }
@@ -491,16 +500,9 @@ SigninClient::SignoutDecision ChromeSigninClient::GetSignoutDecision(
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_QTWEBENGINE)
   // Check if managed user.
   if (enterprise_util::UserAcceptedAccountManagement(profile_)) {
-    if (base::FeatureList::IsEnabled(kDisallowManagedProfileSignout)) {
-      // Allow revoke sync but disallow signout regardless of consent level of
-      // the primary account.
-      return SigninClient::SignoutDecision::CLEAR_PRIMARY_ACCOUNT_DISALLOWED;
-    }
-    // Syncing users are not allowed to revoke sync or signout. Signed in non-
-    // syncing users don't have any signout restrictions related to management.
-    if (has_sync_account) {
-      return SigninClient::SignoutDecision::REVOKE_SYNC_DISALLOWED;
-    }
+    // Allow revoke sync but disallow signout regardless of consent level of
+    // the primary account.
+    return SigninClient::SignoutDecision::CLEAR_PRIMARY_ACCOUNT_DISALLOWED;
   }
 #endif
   return SigninClient::SignoutDecision::ALLOW;
@@ -610,6 +612,37 @@ std::optional<size_t> ChromeSigninClient::GetExtensionsCount() {
   return user_installed_extension_count;
 }
 #endif
+
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
+void ChromeSigninClient::RecordOpenTabCount(
+    signin_metrics::AccessPoint access_point,
+    signin::ConsentLevel consent_level) {
+  size_t tabs_count = 0;
+
+#if BUILDFLAG(IS_ANDROID)
+  for (const TabModel* model : TabModelList::models()) {
+    // Note: Even though on Android only a single regular profile is supported,
+    // there can also be an incognito profile which should be excluded here.
+    if (model->GetProfile() != profile_) {
+      continue;
+    }
+
+    tabs_count += model->GetTabCount();
+  }
+#elif !BUILDFLAG(IS_QTWEBENGINE)
+  for (Browser* browser : *BrowserList::GetInstance()) {
+    if (browser->profile() != profile_) {
+      continue;
+    }
+    if (TabStripModel* tab_strip_model = browser->tab_strip_model()) {
+      tabs_count += tab_strip_model->count();
+    }
+  }
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+  signin_metrics::RecordOpenTabCountOnSignin(consent_level, tabs_count);
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
 // Returns the account that must be auto-signed-in to the Main Profile in

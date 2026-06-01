@@ -1020,6 +1020,8 @@ void tst_qqmlxmlhttprequest::responseText_data()
     QTest::newRow("Not Found") << testFileUrl("status.404.reply") << testFileUrl("testdocument.html") << "QML Rocks!\n";
     QTest::newRow("Bad Request") << testFileUrl("status.400.reply") << testFileUrl("testdocument.html") << "QML Rocks!\n";
     QTest::newRow("Internal server error") << testFileUrl("status.500.reply") << testFileUrl("testdocument.html") << "QML Rocks!\n";
+    QTest::newRow("Content Conflict") << testFileUrl("status.409.reply") << testFileUrl("testdocument.html") << "QML Rocks!\n";
+    QTest::newRow("Content Gone") << testFileUrl("status.410.reply") << testFileUrl("testdocument.html") << "QML Rocks!\n";
 }
 
 

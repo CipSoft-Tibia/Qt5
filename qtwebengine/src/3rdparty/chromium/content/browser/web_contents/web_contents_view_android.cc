@@ -93,7 +93,8 @@ bool IsDragEnabledForDropData(const DropData& drop_data) {
     return drop_data.text.has_value();
   }
   return !drop_data.url.is_empty() || !drop_data.file_contents.empty() ||
-         drop_data.text.has_value();
+         drop_data.text.has_value() ||
+         base::FeatureList::IsEnabled(features::kDragDropEmpty);
 }
 }
 
@@ -128,7 +129,7 @@ WebContentsViewAndroid::WebContentsViewAndroid(
     std::unique_ptr<WebContentsViewDelegate> delegate)
     : web_contents_(web_contents),
       delegate_(std::move(delegate)),
-      view_(ui::ViewAndroid::LayoutType::NORMAL),
+      view_(ui::ViewAndroid::LayoutType::kNormal),
       synchronous_compositor_client_(nullptr) {
   view_.SetLayer(cc::slim::Layer::Create());
   view_.set_event_handler(this);
@@ -148,6 +149,13 @@ WebContentsViewAndroid::WebContentsViewAndroid(
 }
 
 WebContentsViewAndroid::~WebContentsViewAndroid() {
+  // The animation manager holds a reference to `parent_for_web_page_widgets_`.
+  // Explicitly destroy the animation manager before resetting
+  // `parent_for_web_page_widgets_`.
+  if (back_forward_animation_manager_) {
+    back_forward_animation_manager_.reset();
+  }
+
   // Opposite to the construction order - disconnect the child first.
   parent_for_web_page_widgets_->RemoveFromParent();
   parent_for_web_page_widgets_.reset();
@@ -240,7 +248,7 @@ DropData* WebContentsViewAndroid::GetDropData() const {
 }
 
 gfx::Rect WebContentsViewAndroid::GetViewBounds() const {
-  return gfx::Rect(view_.GetSize());
+  return gfx::Rect(view_.GetSizeDIPs());
 }
 
 void WebContentsViewAndroid::CreateView(gfx::NativeView context) {}
@@ -331,6 +339,10 @@ WebContentsViewAndroid::GetBackForwardTransitionAnimationManager() {
   return back_forward_animation_manager_.get();
 }
 
+void WebContentsViewAndroid::DestroyBackForwardTransitionAnimationManager() {
+  back_forward_animation_manager_.reset();
+}
+
 void WebContentsViewAndroid::ShowContextMenu(RenderFrameHost& render_frame_host,
                                              const ContextMenuParams& params) {
   if (is_active_drag_ && drag_exceeded_movement_threshold_)
@@ -367,7 +379,6 @@ void WebContentsViewAndroid::ShowPopupMenu(
     RenderFrameHost* render_frame_host,
     mojo::PendingRemote<blink::mojom::PopupMenuClient> popup_client,
     const gfx::Rect& bounds,
-    int item_height,
     double item_font_size,
     int selected_item,
     std::vector<blink::mojom::MenuItemPtr> menu_items,
@@ -463,15 +474,6 @@ bool WebContentsViewAndroid::OnDragEvent(const ui::DragEventAndroid& event) {
   switch (event.action()) {
     case JNI_DragEvent::ACTION_DRAG_ENTERED: {
       drag_metadata_.clear();
-      if (!base::FeatureList::IsEnabled(features::kDragDropFiles)) {
-        for (const std::u16string& mime_type : event.mime_types()) {
-          drag_metadata_.push_back(DropData::Metadata::CreateForMimeType(
-              DropData::Kind::STRING, mime_type));
-        }
-        OnDragEntered(event.location(), event.screen_location());
-        break;
-      }
-
       for (const std::u16string& mime_type : event.mime_types()) {
         if (mime_type == base::ASCIIToUTF16(ui::kMimeTypeText) ||
             mime_type == base::ASCIIToUTF16(ui::kMimeTypeHTML) ||
@@ -500,24 +502,6 @@ bool WebContentsViewAndroid::OnDragEvent(const ui::DragEventAndroid& event) {
       drop_data->did_originate_from_renderer = false;
       drop_data->document_is_handling_drag = document_is_handling_drag_;
       JNIEnv* env = AttachCurrentThread();
-      if (!base::FeatureList::IsEnabled(features::kDragDropFiles)) {
-        std::u16string drop_content =
-            ConvertJavaStringToUTF16(env, event.GetJavaContent());
-        for (const std::u16string& mime_type : event.mime_types()) {
-          if (base::EqualsASCII(mime_type, ui::kMimeTypeURIList)) {
-            drop_data->url = GURL(drop_content);
-          } else if (base::EqualsASCII(mime_type, ui::kMimeTypeText)) {
-            drop_data->text = drop_content;
-          } else {
-            drop_data->html = drop_content;
-          }
-        }
-
-        OnPerformDrop(std::move(drop_data), event.location(),
-                      event.screen_location());
-        break;
-      }
-
       std::vector<std::vector<std::string>> filenames;
       base::android::Java2dStringArrayTo2dStringVector(
           env, event.GetJavaFilenames(), &filenames);
@@ -906,6 +890,9 @@ void WebContentsViewAndroid::OnSizeChanged() {
 
 void WebContentsViewAndroid::OnPhysicalBackingSizeChanged(
     std::optional<base::TimeDelta> deadline_override) {
+  if (back_forward_animation_manager_) {
+    back_forward_animation_manager_->OnPhysicalBackingSizeChanged();
+  }
   if (web_contents_->GetRenderWidgetHostView())
     web_contents_->SendScreenRects();
 }

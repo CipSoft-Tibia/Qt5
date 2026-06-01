@@ -91,6 +91,7 @@ Item {
             msaaSamples: 4
             aspectRatio: 3.0
             visible: !graphMod.barsVisible
+            transparencyTechnique: graphMod.transparencyTechnique
 
             Surface3DSeries {
                 id: surfaceSeries
@@ -103,6 +104,7 @@ Item {
                 }
                 shading: Surface3DSeries.Shading.Smooth
                 drawMode: Surface3DSeries.DrawSurface
+                lightingMode: graphMod.shaded? Abstract3DSeries.LightingMode.Shaded : Abstract3DSeries.LightingMode.Unshaded
             }
         }
 
@@ -117,6 +119,7 @@ Item {
             msaaSamples: 4
             aspectRatio: 3.0
             visible: graphMod.barsVisible
+            transparencyTechnique: graphMod.transparencyTechnique
 
             Bar3DSeries {
                 id: barsSeries
@@ -124,6 +127,7 @@ Item {
                 // If you want to check with series colors, uncomment these
                 // baseGradient: customGradient
                 // baseColor: barColor.color
+                lightingMode: graphMod.shaded? Abstract3DSeries.LightingMode.Shaded : Abstract3DSeries.LightingMode.Unshaded
                 columnLabels: [
                     "col 1",
                     "col 2",

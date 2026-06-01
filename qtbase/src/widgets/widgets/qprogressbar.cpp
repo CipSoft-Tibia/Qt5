@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qprogressbar.h"
 
@@ -54,7 +55,14 @@ QProgressBarPrivate::QProgressBarPrivate()
 
 void QProgressBarPrivate::initDefaultFormat()
 {
-    if (defaultFormat)
+    if (defaultFormat) {
+        //: %p is the percent value, % is the percent sign. When translated
+        //: to the identical %p%, then the second % symbol will be replaced
+        //: by the percentage-symbol from the user's locale.
+        format = QProgressBar::tr("%p%");
+    }
+
+    if (format == "%p%"_L1)
         format = "%p"_L1 + locale.percent();
 }
 
@@ -148,7 +156,7 @@ bool QProgressBarPrivate::repaintRequired() const
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-progressbar.png
+    \image fusion-progressbar.png {Progress bar showing 42%}
 
     A progress bar is used to give the user an indication of the
     progress of an operation and to reassure them that the application

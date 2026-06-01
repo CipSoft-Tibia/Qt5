@@ -47,7 +47,8 @@ bool RenderWidgetHostDelegate::PreHandleGestureEvent(
   return false;
 }
 
-double RenderWidgetHostDelegate::GetPendingPageZoomLevel() {
+double RenderWidgetHostDelegate::GetPendingZoomLevel(
+    RenderWidgetHostImpl* rwh) {
   return 0.0;
 }
 
@@ -59,6 +60,11 @@ RenderWidgetHostDelegate::GetRootBrowserAccessibilityManager() {
 ui::BrowserAccessibilityManager*
 RenderWidgetHostDelegate::GetOrCreateRootBrowserAccessibilityManager() {
   return nullptr;
+}
+
+base::UnguessableToken
+RenderWidgetHostDelegate::GetCompositorFrameSinkGroupingId() const {
+  NOTREACHED();  // Not implemented.
 }
 
 // If a delegate does not override this, the RenderWidgetHostView will
@@ -92,7 +98,7 @@ blink::mojom::DisplayMode RenderWidgetHostDelegate::GetDisplayMode() const {
   return blink::mojom::DisplayMode::kBrowser;
 }
 
-ui::WindowShowState RenderWidgetHostDelegate::GetWindowShowState() {
+ui::mojom::WindowShowState RenderWidgetHostDelegate::GetWindowShowState() {
   return ui::mojom::WindowShowState::kDefault;
 }
 
@@ -120,6 +126,11 @@ bool RenderWidgetHostDelegate::HasPointerLock(
 
 RenderWidgetHostImpl* RenderWidgetHostDelegate::GetPointerLockWidget() {
   return nullptr;
+}
+
+bool RenderWidgetHostDelegate::IsWaitingForPointerLockPrompt(
+    RenderWidgetHostImpl* render_widget_host) {
+  return false;
 }
 
 bool RenderWidgetHostDelegate::RequestKeyboardLock(RenderWidgetHostImpl* host,
@@ -169,6 +180,11 @@ int RenderWidgetHostDelegate::GetVirtualKeyboardResizeHeight() {
 
 bool RenderWidgetHostDelegate::ShouldDoLearning() {
   return true;
+}
+
+input::mojom::RenderInputRouterDelegate*
+RenderWidgetHostDelegate::GetRenderInputRouterDelegateRemote() {
+  return nullptr;
 }
 
 }  // namespace content

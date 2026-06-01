@@ -14,6 +14,10 @@ For those who don't want to build from source, there are few ways to get working
 - For Android, each SDK tag will have binaries to download (example: [vulkan-sdk-1.3.280.0 tag](https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/tag/vulkan-sdk-1.3.280.0))
 - Every change applied to the main branch runs through GitHub action and will [produce artifacts](https://github.com/KhronosGroup/Vulkan-ValidationLayers/actions?query=branch%3Amain) of the latest commit.
 
+## Adjusting settings
+
+See [settings documentation](./docs/settings.md).
+
 ## Community Assistance
 
 Before submitting an issue to the validation layers or reaching out to the developers it may be prudent to reach out to the community first.
@@ -39,7 +43,7 @@ These resources can be helpful to refine your issue, work out an application/dri
 ### Internals
 
 The Validation Layers are broken up as many smaller internal "Validation Objects" each tasked with their own job.
-[Core Checks](./docs/core_checks.md) is what is enabled by default, but there are other validation objects that can be additionally enabled, such as [Synchronization Validation](./docs/synchronization.md), [GPU Assisted Validation](./docs/gpu_validation.md), and [more](./docs/README.md).
+[Core Checks](./docs/core_checks.md) is what is enabled by default, but there are other validation objects that can be additionally enabled, such as [Synchronization Validation](./docs/syncval_design.md), [GPU Assisted Validation](./docs/gpu_validation.md), and [more](./docs/README.md).
 There are also a few [limitations](./docs/limitations.md) stemming from the Validation layers being a Vulkan layer.
 
 ## Version Tagging Scheme

@@ -24,6 +24,14 @@ qt_internal_add_test(tst_qtprotobufgen
         CMAKE_GENERATED_DIR="${cmake_generated_dir}"
         BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
+
+qt_internal_extend_target(tst_qtprotobufgen
+    CONDITION
+        CMAKE_CROSSCOMPILING
+    DEFINES
+        CROSSCOMPILING
+)
+
 qt_autogen_tools_initial_setup(tst_qtprotobufgen)
 
 set(cmake_generator_tests "")

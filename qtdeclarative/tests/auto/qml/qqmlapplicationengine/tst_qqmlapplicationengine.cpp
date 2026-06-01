@@ -11,6 +11,8 @@
 #include <QDebug>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 
+using namespace Qt::Literals::StringLiterals;
+
 class tst_qqmlapplicationengine : public QQmlDataTest
 {
     Q_OBJECT
@@ -33,6 +35,7 @@ private slots:
     void translationChange();
     void setInitialProperties();
     void failureToLoadTriggersWarningSignal();
+    void relativeQrcPathTriggersWarningSignal();
     void errorWhileCreating();
     void createWithQrcPath();
 
@@ -366,6 +369,24 @@ void tst_qqmlapplicationengine::failureToLoadTriggersWarningSignal()
                          QRegularExpression(QRegularExpression::escape(url.toString()) + QLatin1Char('*')));
     QQmlApplicationEngine test;
     QSignalSpy warningObserver(&test, &QQmlApplicationEngine::warnings);
+    test.load(url);
+    QTRY_COMPARE(warningObserver.size(), 1);
+}
+
+void tst_qqmlapplicationengine::relativeQrcPathTriggersWarningSignal()
+{
+    const auto url = QUrl("qrc:main.qml");
+    qRegisterMetaType<QList<QQmlError>>();
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg, "QQmlApplicationEngine failed to load component");
+    QTest::ignoreMessage(
+            QtMsgType::QtWarningMsg,
+            "QQmlComponent: attempted to load via a relative URL '%1' in resource file system. "
+            "This is not fully supported and may not work"_L1.arg(url.toString())
+                    .toLocal8Bit()
+                    .data());
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg, "qrc:main.qml: No such file or directory");
+    QQmlApplicationEngine test;
+    const QSignalSpy warningObserver(&test, &QQmlApplicationEngine::warnings);
     test.load(url);
     QTRY_COMPARE(warningObserver.size(), 1);
 }

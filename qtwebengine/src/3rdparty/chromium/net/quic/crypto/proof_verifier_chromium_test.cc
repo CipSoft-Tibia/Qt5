@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "net/quic/crypto/proof_verifier_chromium.h"
 
 #include <memory>
@@ -71,7 +76,7 @@ class FailsTestCertVerifier : public CertVerifier {
 class MockRequireCTDelegate : public TransportSecurityState::RequireCTDelegate {
  public:
   MOCK_METHOD3(IsCTRequiredForHost,
-               CTRequirementLevel(const std::string& host,
+               CTRequirementLevel(std::string_view host,
                                   const X509Certificate* chain,
                                   const HashValueVector& hashes));
 };

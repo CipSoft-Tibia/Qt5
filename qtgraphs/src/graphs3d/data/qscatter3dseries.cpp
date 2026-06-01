@@ -5,6 +5,7 @@
 #include "qquickgraphsscatter_p.h"
 #include "qscatter3dseries_p.h"
 #include "qvalue3daxis.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -281,11 +282,16 @@ void QScatter3DSeries::setItemSize(float size)
 {
     Q_D(QScatter3DSeries);
     if (size < 0.0f || size > 1.0f) {
-        qWarning("Invalid size. Valid range for itemSize is 0.0f...1.0f");
-    } else if (size != d->m_itemSize) {
-        d->setItemSize(size);
-        emit itemSizeChanged(size);
+        qCWarning(lcProperties3D, "%s invalid size. Valid range for itemSize is 0.0f...1.0f",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
+        return;
+    } else if (size == d->m_itemSize) {
+        qCDebug(lcProperties3D, "%s value is already set to: %.1f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), size);
+        return;
     }
+    d->setItemSize(size);
+    emit itemSizeChanged(size);
 }
 
 float QScatter3DSeries::itemSize() const
@@ -312,10 +318,13 @@ float QScatter3DSeries::itemSize() const
 void QScatter3DSeries::setDataArray(const QScatterDataArray &newDataArray)
 {
     Q_D(QScatter3DSeries);
-    if (!d->m_dataArray.isSharedWith(newDataArray)) {
-        d->setDataArray(newDataArray);
-        emit dataArrayChanged(newDataArray);
+    if (d->m_dataArray.isSharedWith(newDataArray)) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "newDataArray is the same than the old one";
+        return;
     }
+    d->setDataArray(newDataArray);
+    emit dataArrayChanged(newDataArray);
 }
 
 /*!
@@ -337,6 +346,57 @@ QScatterDataArray QScatter3DSeries::dataArray() &&
 {
     Q_D(QScatter3DSeries);
     return std::move(d->m_dataArray);
+}
+
+/*!
+ * \property QScatter3DSeries::scaleArray
+ *
+ * \brief Scale array for the series.
+ *
+ * Holds the reference to the scale array.
+ *
+ * scaleArrayChanged signal is emitted when scale array is set, unless \a newScaleArray
+ * is identical to the previous one.
+ *
+ * \note Before doing anything regarding the scale array, a series must be created for
+ * the relevant proxy.
+ *
+ * \note If a scale is not specified for the data, a default value of (1.0,1.0,1.0)
+ * will be used.
+ *
+ * \sa clearScaleArray()
+ */
+void QScatter3DSeries::setScaleArray(const QList<QVector3D> &newScaleArray)
+{
+    Q_D(QScatter3DSeries);
+    if (d->m_scaleArray.isSharedWith(newScaleArray)) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "newScaleArray is the same than the old one";
+        return;
+    }
+    d->setScaleArray(newScaleArray);
+    emit scaleArrayChanged(newScaleArray);
+}
+
+/*!
+ * Clears the scale array.
+ */
+void QScatter3DSeries::clearScaleArray()
+{
+    Q_D(QScatter3DSeries);
+    d->clearScaleArray();
+}
+
+const QList<QVector3D> &QScatter3DSeries::scaleArray() const &
+{
+    Q_D(const QScatter3DSeries);
+    return d->m_scaleArray;
+}
+
+QList<QVector3D> QScatter3DSeries::scaleArray() &&
+{
+    Q_D(QScatter3DSeries);
+    return std::move(d->m_scaleArray);
 }
 
 /*!
@@ -464,11 +524,14 @@ void QScatter3DSeriesPrivate::createItemLabel()
 void QScatter3DSeriesPrivate::setSelectedItem(qsizetype index)
 {
     Q_Q(QScatter3DSeries);
-    if (index != m_selectedItem) {
-        markItemLabelDirty();
-        m_selectedItem = index;
-        emit q->selectedItemChanged(m_selectedItem);
+    if (index == m_selectedItem) {
+        qCDebug(lcProperties3D, "%s Value is already set to: %" PRIdQSIZETYPE,
+                qUtf8Printable(QLatin1String(__FUNCTION__)), index);
+        return;
     }
+    markItemLabelDirty();
+    m_selectedItem = index;
+    emit q->selectedItemChanged(m_selectedItem);
 }
 
 void QScatter3DSeriesPrivate::setItemSize(float size)
@@ -486,6 +549,16 @@ void QScatter3DSeriesPrivate::setDataArray(const QScatterDataArray &newDataArray
 void QScatter3DSeriesPrivate::clearArray()
 {
     m_dataArray.clear();
+}
+
+void QScatter3DSeriesPrivate::setScaleArray(const QList<QVector3D> &newScaleArray)
+{
+    m_scaleArray = newScaleArray;
+}
+
+void QScatter3DSeriesPrivate::clearScaleArray()
+{
+    m_scaleArray.clear();
 }
 
 QT_END_NAMESPACE

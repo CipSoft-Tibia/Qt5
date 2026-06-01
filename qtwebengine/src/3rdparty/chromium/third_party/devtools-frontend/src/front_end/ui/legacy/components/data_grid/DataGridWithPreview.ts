@@ -35,6 +35,10 @@ import {type ColumnDescriptor, DataGridImpl, DataGridNode, Events} from './DataG
 
 const UIStrings = {
   /**
+   *@description Text that shows in the Applicaiton Panel if no value is selected for preview
+   */
+  noPreviewSelected: 'No value selected',
+  /**
    *@description Preview text when viewing storage in Application panel
    */
   selectAValueToPreview: 'Select a value to preview',
@@ -50,10 +54,13 @@ const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 interface Callbacks {
   // Called to refresh items, e.g when the sorting order is changed.
   refreshItems: () => void;
-  // Called when a key is deleted in the UI.
-  removeItem: (key: string) => void;
-  // Called when an item is created or updated in the UI.
-  setItem: (key: string, value: string) => void;
+  // Edit callbacks. If undefined, the data grid is not editable.
+  edit?: {
+    // Called when a key is deleted in the UI.
+    removeItem: (key: string) => void,
+    // Called when an item is created or updated in the UI.
+    setItem: (key: string, value: string) => void,
+  };
   // Called when the selection state changes.
   setCanDeleteSelected: (canSelect: boolean) => void;
   // Called to create the preview widget when a new item is selected.
@@ -86,9 +93,12 @@ export class DataGridWithPreview {
     this.#dataGrid = new DataGridImpl({
       displayName: this.#messages.title,
       columns,
-      editCallback: this.#editingCallback.bind(this),
-      deleteCallback: this.#deleteCallback.bind(this),
       refreshCallback: this.#callbacks.refreshItems,
+      ...(this.#callbacks.edit ? {
+        editCallback: this.#editingCallback.bind(this),
+        deleteCallback: this.#deleteCallback.bind(this),
+      } :
+                                 {}),
     });
     this.#dataGrid.addEventListener(Events.SELECTED_NODE, event => {
       void this.#previewEntry(event.data);
@@ -122,6 +132,10 @@ export class DataGridWithPreview {
 
   get dataGridForTesting(): DataGridImpl<unknown> {
     return this.#dataGrid;
+  }
+
+  get previewPanelForTesting(): Widget.VBox {
+    return this.#previewPanel;
   }
 
   clearItems(): void {
@@ -193,7 +207,8 @@ export class DataGridWithPreview {
     rootNode.removeChildren();
     let selectedNode: DataGridNode<unknown>|null = null;
     const sortDirection = this.#dataGrid.isSortOrderAscending() ? 1 : -1;
-    const filteredList = items.sort(function(item1: string[], item2: string[]): number {
+    // Make a copy to avoid sorting the original array.
+    const filteredList = [...items].sort(function(item1: string[], item2: string[]): number {
       return sortDirection * (item1[0] > item2[0] ? 1 : -1);
     });
     for (const item of filteredList) {
@@ -226,12 +241,12 @@ export class DataGridWithPreview {
       void {
     if (columnIdentifier === 'key') {
       if (typeof oldText === 'string') {
-        this.#callbacks.removeItem(oldText);
+        this.#callbacks.edit?.removeItem(oldText);
       }
-      this.#callbacks.setItem(newText, editingNode.data.value || '');
+      this.#callbacks.edit?.setItem(newText, editingNode.data.value || '');
       this.#removeDupes(editingNode);
     } else {
-      this.#callbacks.setItem(editingNode.data.key || '', newText);
+      this.#callbacks.edit?.setItem(editingNode.data.key || '', newText);
     }
   }
 
@@ -251,7 +266,7 @@ export class DataGridWithPreview {
       return;
     }
 
-    this.#callbacks.removeItem(node.data.key);
+    this.#callbacks.edit?.removeItem(node.data.key);
 
     ARIAUtils.alert(this.#messages.itemDeleted);
   }
@@ -264,7 +279,8 @@ export class DataGridWithPreview {
       this.#preview.detach();
     }
     if (!preview) {
-      preview = new EmptyWidget.EmptyWidget(i18nString(UIStrings.selectAValueToPreview));
+      preview = new EmptyWidget.EmptyWidget(
+          i18nString(UIStrings.noPreviewSelected), i18nString(UIStrings.selectAValueToPreview));
     }
     this.#previewValue = value;
     this.#preview = preview;
@@ -274,7 +290,7 @@ export class DataGridWithPreview {
   async #previewEntry(entry: DataGridNode<unknown>|null): Promise<void> {
     const value = entry && entry.data && entry.data.value;
     if (entry && entry.data && entry.data.value) {
-      const preview = await this.#callbacks.createPreview(entry.key, value as string);
+      const preview = await this.#callbacks.createPreview(entry.data.key, value as string);
       // Selection could've changed while the preview was loaded
       if (entry.selected) {
         this.showPreview(preview, value);
@@ -282,5 +298,9 @@ export class DataGridWithPreview {
     } else {
       this.showPreview(null, value);
     }
+  }
+
+  detach(): void {
+    this.#splitWidget.detach();
   }
 }

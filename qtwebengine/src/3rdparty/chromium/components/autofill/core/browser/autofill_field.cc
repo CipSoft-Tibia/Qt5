@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <iterator>
+#include <ranges>
 
 #include "base/containers/contains.h"
 #include "base/containers/fixed_flat_set.h"
@@ -18,6 +19,7 @@
 #include "components/autofill/core/browser/field_type_utils.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/proto/server.pb.h"
+#include "components/autofill/core/common/autofill_constants.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/dense_set.h"
 #include "components/autofill/core/common/html_field_types.h"
@@ -29,13 +31,10 @@ using FieldPrediction =
     AutofillQueryResponse::FormSuggestion::FieldSuggestion::FieldPrediction;
 
 template <>
-struct DenseSetTraits<FieldPrediction::Source> {
-  static constexpr FieldPrediction::Source kMinValue =
-      FieldPrediction::Source(0);
-  static constexpr FieldPrediction::Source kMaxValue =
-      FieldPrediction::Source_MAX;
-  static constexpr bool kPacked = false;
-};
+struct DenseSetTraits<FieldPrediction::Source>
+    : EnumDenseSetTraits<FieldPrediction::Source,
+                         FieldPrediction::Source_MIN,
+                         FieldPrediction::Source_MAX> {};
 
 #if !BUILDFLAG(IS_QTWEBENGINE)
 namespace {
@@ -68,13 +67,18 @@ static constexpr auto kAutofillHeuristicsVsHtmlOverrides =
          {ADDRESS_HOME_OVERFLOW, HtmlFieldType::kAddressLine2},
          {ADDRESS_HOME_OVERFLOW, HtmlFieldType::kAddressLine3},
          {ADDRESS_HOME_HOUSE_NUMBER, HtmlFieldType::kStreetAddress},
-         {ADDRESS_HOME_STREET_NAME, HtmlFieldType::kStreetAddress}});
+         {ADDRESS_HOME_STREET_NAME, HtmlFieldType::kStreetAddress},
+         {NAME_LAST_PREFIX, HtmlFieldType::kAdditionalName},
+         {NAME_LAST_PREFIX, HtmlFieldType::kAdditionalNameInitial},
+         {NAME_LAST_CORE, HtmlFieldType::kFamilyName}});
 
 // This list includes pairs (heuristic_type, server_type) that express which
 // heuristics predictions should be prioritized over server predictions. The
 // list is used for new field types that the server may have learned
 // incorrectly. In these cases, the local heuristics predictions will be used to
 // determine the field type.
+// TODO(crbug.com/359768803): Remove overrides for alternative names once the
+// feature is rolled out.
 static constexpr auto kAutofillHeuristicsVsServerOverrides =
     base::MakeFixedFlatSet<std::pair<FieldType, FieldType>>(
         {{ADDRESS_HOME_ADMIN_LEVEL2, ADDRESS_HOME_CITY},
@@ -95,7 +99,14 @@ static constexpr auto kAutofillHeuristicsVsServerOverrides =
          {ADDRESS_HOME_BETWEEN_STREETS_OR_LANDMARK, ADDRESS_HOME_LINE2},
          {ADDRESS_HOME_OVERFLOW_AND_LANDMARK, ADDRESS_HOME_LINE2},
          {ADDRESS_HOME_OVERFLOW, ADDRESS_HOME_LINE2},
-         {ADDRESS_HOME_OVERFLOW, ADDRESS_HOME_LINE3}});
+         {ADDRESS_HOME_OVERFLOW, ADDRESS_HOME_LINE3},
+         {ALTERNATIVE_FULL_NAME, NAME_FULL},
+         {ALTERNATIVE_GIVEN_NAME, NAME_FIRST},
+         {ALTERNATIVE_FAMILY_NAME, NAME_LAST},
+         {ALTERNATIVE_FAMILY_NAME, NAME_LAST_SECOND},
+         {ALTERNATIVE_FAMILY_NAME, NAME_LAST_CORE},
+         {NAME_LAST_PREFIX, NAME_MIDDLE},
+         {NAME_LAST_CORE, NAME_LAST}});
 
 // Returns true, if the prediction is non-experimental and should be used by
 // autofill or password manager.
@@ -109,6 +120,10 @@ bool IsDefaultPrediction(const FieldPrediction& prediction) {
       FieldPrediction::SOURCE_OVERRIDE,
       FieldPrediction::SOURCE_MANUAL_OVERRIDE};
   return default_sources.contains(prediction.source());
+}
+
+bool IsAutofillAiPrediction(const FieldPrediction& prediction) {
+  return prediction.source() == FieldPrediction::SOURCE_AUTOFILL_AI;
 }
 
 // Returns true if for two consecutive events, the second event may be ignored.
@@ -249,20 +264,37 @@ bool AutofillField::server_type_prediction_is_override() const {
 #endif
 }
 
+bool AutofillField::HasServerPredictionsWithAutofillAiType() const {
+  return std::ranges::any_of(
+      server_predictions_, [](const FieldPrediction& prediction) {
+        return GroupTypeOfFieldType(
+                   ToSafeFieldType(prediction.type(), NO_SERVER_DATA)) ==
+               FieldTypeGroup::kAutofillAi;
+      });
+}
+
 void AutofillField::set_heuristic_type(HeuristicSource s, FieldType type) {
 #if !BUILDFLAG(IS_QTWEBENGINE)
   if (type < 0 || type > MAX_VALID_FIELD_TYPE ||
       type == FIELD_WITH_DEFAULT_VALUE) {
-    NOTREACHED_IN_MIGRATION();
-    // This case should not be reachable; but since this has potential
-    // implications on data uploaded to the server, better safe than sorry.
-    type = UNKNOWN_TYPE;
+    NOTREACHED();
   }
   local_type_predictions_[static_cast<size_t>(s)] = type;
   if (s == GetActiveHeuristicSource()) {
     overall_type_ = AutofillType(NO_SERVER_DATA);
   }
 #endif
+}
+
+FieldType AutofillField::GetAutofillAiServerTypePredictions() const {
+  for (const FieldPrediction& prediction : server_predictions_) {
+    FieldType predicted_type =
+        ToSafeFieldType(prediction.type(), NO_SERVER_DATA);
+    if (GroupTypeOfFieldType(predicted_type) == FieldTypeGroup::kAutofillAi) {
+      return predicted_type;
+    }
+  }
+  return FieldType::NO_SERVER_DATA;
 }
 
 void AutofillField::set_server_predictions(
@@ -278,26 +310,33 @@ void AutofillField::set_server_predictions(
 
 #if !BUILDFLAG(IS_QTWEBENGINE)
   for (auto& prediction : predictions) {
-    if (prediction.has_source()) {
-      if (prediction.source() == FieldPrediction::SOURCE_UNSPECIFIED)
-        // A prediction with `SOURCE_UNSPECIFIED` is one of two things:
-        //   1. No prediction for default, a.k.a. `NO_SERVER_DATA`. The absence
-        //      of a prediction may not be creditable to a particular prediction
-        //      source.
-        //   2. An experiment that is missing from the `PredictionSource` enum.
-        //      Protobuf corrects unknown values to 0 when parsing.
-        // Neither case is actionable.
-        continue;
-      if (IsDefaultPrediction(prediction)) {
-        server_predictions_.push_back(std::move(prediction));
-      } else {
-        experimental_server_predictions_.push_back(std::move(prediction));
-      }
-    } else {
+    if (!prediction.has_source()) {
       // TODO(crbug.com/40243028): captured tests store old autofill api
       // response recordings without `source` field. We need to maintain the old
       // behavior until these recordings will be migrated.
       server_predictions_.push_back(std::move(prediction));
+      continue;
+    }
+
+    if (prediction.source() == FieldPrediction::SOURCE_UNSPECIFIED) {
+      // A prediction with `SOURCE_UNSPECIFIED` is one of two things:
+      //   1. No prediction for default, a.k.a. `NO_SERVER_DATA`. The absence
+      //      of a prediction may not be creditable to a particular prediction
+      //      source.
+      //   2. An experiment that is missing from the `PredictionSource` enum.
+      //      Protobuf corrects unknown values to 0 when parsing.
+      // Neither case is actionable.
+      continue;
+    }
+
+    if (IsDefaultPrediction(prediction)) {
+      server_predictions_.push_back(std::move(prediction));
+    } else if (IsAutofillAiPrediction(prediction)) {
+      if (base::FeatureList::IsEnabled(features::kAutofillAiWithDataSchema)) {
+        server_predictions_.push_back(std::move(prediction));
+      }
+    } else {
+      experimental_server_predictions_.push_back(std::move(prediction));
     }
   }
 
@@ -325,11 +364,17 @@ void AutofillField::SetTypeTo(const AutofillType& type) {
 
 AutofillType AutofillField::ComputedType() const {
 #if !BUILDFLAG(IS_QTWEBENGINE)
+  // Some of these (in particular, heuristic_type()) are slow to compute, so
+  // cache them in local variables.
+  const HtmlFieldType html_type_local = html_type();
+  const FieldType server_type_local = server_type();
+  const FieldType heuristic_type_local = heuristic_type();
+
   // If autocomplete=tel/tel-* and server confirms it really is a phone field,
   // we always use the server prediction as html types are not very reliable.
-  if (GroupTypeOfHtmlFieldType(html_type_) == FieldTypeGroup::kPhone &&
-      GroupTypeOfFieldType(server_type()) == FieldTypeGroup::kPhone) {
-    return AutofillType(server_type());
+  if (GroupTypeOfHtmlFieldType(html_type_local) == FieldTypeGroup::kPhone &&
+      GroupTypeOfFieldType(server_type_local) == FieldTypeGroup::kPhone) {
+    return AutofillType(server_type_local);
   }
 
   // TODO(crbug.com/40266396) Delete this if-statement when
@@ -339,83 +384,74 @@ AutofillType AutofillField::ComputedType() const {
   //
   // If the explicit type is cc-exp and either the server or heuristics agree on
   // a 2 vs 4 digit specialization of cc-exp, use that specialization.
-  if (html_type_ == HtmlFieldType::kCreditCardExp &&
+  if (html_type_local == HtmlFieldType::kCreditCardExp &&
       !base::FeatureList::IsEnabled(
           features::kAutofillEnableExpirationDateImprovements)) {
-    if (server_type() == CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR ||
-        server_type() == CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR) {
-      return AutofillType(server_type());
+    if (server_type_local == CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR ||
+        server_type_local == CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR) {
+      return AutofillType(server_type_local);
     }
-    if (heuristic_type() == CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR ||
-        heuristic_type() == CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR) {
-      return AutofillType(heuristic_type());
+    if (heuristic_type_local == CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR ||
+        heuristic_type_local == CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR) {
+      return AutofillType(heuristic_type_local);
     }
   }
 
   // In general, the autocomplete attribute has precedence over the other types
   // of field detection. Except for specific cases in PreferHeuristicOverHtml
   // and also those detailed in `BelievedHtmlTypes()`.
-  if (PreferHeuristicOverHtml(heuristic_type(), html_type())) {
-    return AutofillType(heuristic_type());
+  if (PreferHeuristicOverHtml(heuristic_type_local, html_type_local)) {
+    return AutofillType(heuristic_type_local);
   }
 
-  if (BelievedHtmlTypes(heuristic_type(), server_type())
-          .contains(html_type())) {
-    return AutofillType(html_type_);
+  if (BelievedHtmlTypes(heuristic_type_local, server_type_local)
+          .contains(html_type_local)) {
+    return AutofillType(html_type_local);
   }
 
-  if (server_type() != NO_SERVER_DATA &&
-      !PreferHeuristicOverServer(heuristic_type(), server_type())) {
+  if (server_type_local != NO_SERVER_DATA &&
+      !PreferHeuristicOverServer(heuristic_type_local, server_type_local)) {
     // Sometimes the server and heuristics disagree on whether a name field
     // should be associated with an address or a credit card. There was a
     // decision to prefer the heuristics in these cases, but it looks like
     // it might be better to fix this server-side.
     // See http://crbug.com/429236 for background.
-    bool believe_server = !(server_type() == NAME_FULL &&
-                            heuristic_type() == CREDIT_CARD_NAME_FULL) &&
-                          !(server_type() == CREDIT_CARD_NAME_FULL &&
-                            heuristic_type() == NAME_FULL) &&
-                          !(server_type() == NAME_FIRST &&
-                            heuristic_type() == CREDIT_CARD_NAME_FIRST) &&
-                          !(server_type() == NAME_LAST &&
-                            heuristic_type() == CREDIT_CARD_NAME_LAST);
+    bool believe_server = !(server_type_local == NAME_FULL &&
+                            heuristic_type_local == CREDIT_CARD_NAME_FULL) &&
+                          !(server_type_local == CREDIT_CARD_NAME_FULL &&
+                            heuristic_type_local == NAME_FULL) &&
+                          !(server_type_local == NAME_FIRST &&
+                            heuristic_type_local == CREDIT_CARD_NAME_FIRST) &&
+                          !(server_type_local == NAME_LAST &&
+                            heuristic_type_local == CREDIT_CARD_NAME_LAST);
 
     // Either way, retain a preference for the CVC heuristic over the
     // server's password predictions (http://crbug.com/469007)
-    believe_server =
-        believe_server && !(GroupTypeOfFieldType(server_type()) ==
-                                FieldTypeGroup::kPasswordField &&
-                            heuristic_type() == CREDIT_CARD_VERIFICATION_CODE);
+    believe_server = believe_server &&
+                     !(GroupTypeOfFieldType(server_type_local) ==
+                           FieldTypeGroup::kPasswordField &&
+                       heuristic_type_local == CREDIT_CARD_VERIFICATION_CODE);
 
     // For structured last name tokens the heuristic predictions get precedence
     // over the server predictions.
-    believe_server = believe_server && heuristic_type() != NAME_LAST_SECOND &&
-                     heuristic_type() != NAME_LAST_FIRST;
+    believe_server = believe_server &&
+                     heuristic_type_local != NAME_LAST_SECOND &&
+                     heuristic_type_local != NAME_LAST_FIRST;
 
     // For structured address tokens the heuristic predictions get precedence
     // over the server predictions.
     believe_server = believe_server &&
-                     heuristic_type() != ADDRESS_HOME_STREET_NAME &&
-                     heuristic_type() != ADDRESS_HOME_HOUSE_NUMBER;
+                     heuristic_type_local != ADDRESS_HOME_STREET_NAME &&
+                     heuristic_type_local != ADDRESS_HOME_HOUSE_NUMBER;
 
     // For merchant promo code fields the heuristic predictions get precedence
     // over the server predictions.
     believe_server =
-        believe_server && (heuristic_type() != MERCHANT_PROMO_CODE);
+        believe_server && (heuristic_type_local != MERCHANT_PROMO_CODE);
 
     // For international bank account number (IBAN) fields the heuristic
     // predictions get precedence over the server predictions.
-    believe_server = believe_server && (heuristic_type() != IBAN_VALUE);
-
-    // The numeric quantity heuristic should get granted precedence over the
-    // server prediction since it tries to catch false-positive server
-    // predictions.
-    believe_server =
-        believe_server &&
-        !(heuristic_type() == NUMERIC_QUANTITY &&
-          server_type() != UNKNOWN_TYPE &&
-          base::FeatureList::IsEnabled(
-              features::kAutofillGivePrecedenceToNumericQuantities));
+    believe_server = believe_server && (heuristic_type_local != IBAN_VALUE);
 
     // Password Manager ignores the computed type - it looks at server
     // predictions directly. Since many username fields also admit emails, we
@@ -426,18 +462,19 @@ AutofillType AutofillField::ComputedType() const {
     // TODO: crbug.com/360791229 - Move into
     // `kAutofillHeuristicsVsServerOverrides` once the feature is cleaned up.
     const bool server_type_is_username_type =
-        server_type() == USERNAME || server_type() == SINGLE_USERNAME;
+        server_type_local == USERNAME || server_type_local == SINGLE_USERNAME;
     believe_server =
         believe_server &&
-        !(heuristic_type() == EMAIL_ADDRESS && server_type_is_username_type &&
+        !(heuristic_type_local == EMAIL_ADDRESS &&
+          server_type_is_username_type &&
           base::FeatureList::IsEnabled(
               features::kAutofillGivePrecedenceToEmailOverUsername));
 
     if (believe_server)
-      return AutofillType(server_type());
+      return AutofillType(server_type_local);
   }
 
-  return AutofillType(heuristic_type());
+  return AutofillType(heuristic_type_local);
 #else
   return AutofillType(html_type_);
 #endif  // !BUILDFLAG(IS_QTWEBENGINE)
@@ -445,17 +482,18 @@ AutofillType AutofillField::ComputedType() const {
 
 AutofillType AutofillField::Type() const {
   // Server Overrides are granted precedence unconditionally.
-  if (server_type_prediction_is_override() && server_type() != NO_SERVER_DATA)
+  if (server_type_prediction_is_override() && server_type() != NO_SERVER_DATA) {
     return AutofillType(server_type());
-
-  if (overall_type_.GetStorableType() != NO_SERVER_DATA)
-    return overall_type_;
-  return ComputedType();
+  }
+  if (overall_type_.GetStorableType() == NO_SERVER_DATA) {
+    overall_type_ = ComputedType();
+  }
+  return overall_type_;
 }
 
 const std::u16string& AutofillField::value_for_import() const {
   bool should_consider_value_for_import =
-      IsSelectOrSelectListElement() ||
+      IsSelectElement() ||
       value(ValueSemantics::kInitial) != value(ValueSemantics::kCurrent);
   if (!base::FeatureList::IsEnabled(
           features::kAutofillFixCurrentValueInImport)) {
@@ -536,14 +574,19 @@ bool AutofillField::IsCreditCardPrediction() const {
 void AutofillField::AppendLogEventIfNotRepeated(
     const FieldLogEventType& log_event) {
 #if !BUILDFLAG(IS_QTWEBENGINE)
-  // TODO(crbug.com/40225658): Consider to use an Overflow event to stop
-  // recording log events into |field_log_events_| to save memory when
-  // |field_log_events_| reaches certain threshold, e.g. 1000.
-
-  if (field_log_events_.empty() ||
-      field_log_events_.back().index() != log_event.index() ||
-      !AreCollapsibleLogEvents(field_log_events_.back(), log_event)) {
-    field_log_events_.push_back(log_event);
+  if (!field_log_events_) {
+    return;
+  }
+  if (field_log_events_->empty() ||
+      field_log_events_->back().index() != log_event.index() ||
+      !AreCollapsibleLogEvents(field_log_events_->back(), log_event)) {
+    if (field_log_events_->size() < kMaxLogEventsPerField) {
+      field_log_events_->push_back(log_event);
+    } else {
+      // For fields that exceed the number of allowed events, we do not keep
+      // track of any events to avoid memory regressions.
+      field_log_events_ = std::nullopt;
+    }
   }
 #endif
 }

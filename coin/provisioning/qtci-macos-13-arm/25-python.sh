@@ -11,7 +11,7 @@ source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 pyenv install 3.9.7
 
 /Users/qt/.pyenv/versions/3.9.7/bin/pip3 install --user virtualenv wheel html5lib
-/Users/qt/.pyenv/versions/3.9.7/bin/pip3 install --user -r ${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt
+/Users/qt/.pyenv/versions/3.9.7/bin/pip3 install --user -r ${BASH_SOURCE%/*}/../common/shared/requirements.txt
 
 SetEnvVar "PYTHON3_PATH" "/Users/qt/.pyenv/versions/3.9.7/bin/"
 SetEnvVar "PIP3_PATH" "/Users/qt/.pyenv/versions/3.9.7/bin/"
@@ -23,9 +23,4 @@ SetEnvVar "PATH" "\$PYTHON3_PATH:\$PATH"
 # hence the explicit assignment to SBOM_PYTHON_APPS_PATH.
 SetEnvVar "SBOM_PYTHON_APPS_PATH" "/Users/qt/.local/bin"
 
-# QtWebengine still requires python2
-pyenv install 2.7.18
-SetEnvVar "PYTHON2_PATH" "/Users/qt/.pyenv/versions/2.7.18/bin/"
-
 echo "python3 = 3.9.7" >> ~/versions.txt
-echo "python2 = 2.7.18" >> ~/versions.txt

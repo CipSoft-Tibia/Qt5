@@ -37,8 +37,8 @@ public:
     explicit QQmlGrpcMetadata(QObject *parent = nullptr);
     ~QQmlGrpcMetadata() override;
 
-    const QHash<QByteArray, QByteArray> &metadata() const & noexcept { return m_metadata; }
-    void metadata() && = delete;
+    const QMultiHash<QByteArray, QByteArray> &metadata() const & noexcept { return m_metadata; }
+    void metadata() const && = delete;
 
     const QVariantMap &data() const { return m_variantdata; }
     void setData(const QVariantMap &data);
@@ -48,7 +48,7 @@ Q_SIGNALS:
 
 private:
     QVariantMap m_variantdata;
-    QHash<QByteArray, QByteArray> m_metadata;
+    QMultiHash<QByteArray, QByteArray> m_metadata;
 
     Q_DISABLE_COPY_MOVE(QQmlGrpcMetadata)
 };

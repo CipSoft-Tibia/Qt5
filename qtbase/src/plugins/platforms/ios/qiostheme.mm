@@ -148,6 +148,8 @@ QVariant QIOSTheme::themeHint(ThemeHint hint) const
         return QStringList(QStringLiteral("Fusion"));
     case KeyboardScheme:
         return QVariant(int(MacKeyboardScheme));
+    case PreferFileIconFromTheme:
+        return true;
     default:
         return QPlatformTheme::themeHint(hint);
     }
@@ -197,6 +199,12 @@ void QIOSTheme::requestColorScheme(Qt::ColorScheme scheme)
     }
 #endif
 }
+
+Qt::ContrastPreference QIOSTheme::contrastPreference() const
+{
+    return UIAccessibilityDarkerSystemColorsEnabled() ? Qt::ContrastPreference::HighContrast : Qt::ContrastPreference::NoPreference;
+}
+
 
 void QIOSTheme::applyTheme(UIWindow *window)
 {

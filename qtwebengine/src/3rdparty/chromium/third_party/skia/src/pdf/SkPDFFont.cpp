@@ -7,6 +7,8 @@
 
 #include "src/pdf/SkPDFFont.h"
 
+#include "include/codec/SkCodec.h"
+#include "include/codec/SkJpegDecoder.h"
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
@@ -23,8 +25,8 @@
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPath.h"
-#include "include/core/SkPathEffect.h"
 #include "include/core/SkPathTypes.h"
+#include "include/core/SkPixmap.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkRefCnt.h"
@@ -66,6 +68,8 @@
 #include <initializer_list>
 #include <memory>
 #include <utility>
+
+using namespace skia_private;
 
 void SkPDFFont::GetType1GlyphNames(const SkTypeface& face, SkString* dst) {
     face.getPostScriptGlyphNames(dst);
@@ -118,9 +122,9 @@ static bool scale_paint(SkPaint& paint, SkScalar fontToEMScale) {
         }
     }
     if (SkPathEffectBase* peb = as_PEB(paint.getPathEffect())) {
-        skia_private::AutoSTMalloc<4, SkScalar> intervals;
+        AutoSTMalloc<4, SkScalar> intervals;
         SkPathEffectBase::DashInfo dashInfo(intervals, 4, 0);
-        if (peb->asADash(&dashInfo) == SkPathEffect::kDash_DashType) {
+        if (peb->asADash(&dashInfo) == SkPathEffectBase::DashType::kDash) {
             if (dashInfo.fCount > 4) {
                 intervals.realloc(dashInfo.fCount);
                 peb->asADash(&dashInfo);
@@ -137,7 +141,6 @@ static bool scale_paint(SkPaint& paint, SkScalar fontToEMScale) {
     }
 
     if (paint.getStyle() != SkPaint::kFill_Style && paint.getStrokeWidth() > 0) {
-        paint.setStrokeMiter(paint.getStrokeMiter() * fontToEMScale);
         paint.setStrokeWidth(paint.getStrokeWidth() * fontToEMScale);
     }
 
@@ -313,6 +316,16 @@ const std::vector<SkUnichar>& SkPDFFont::GetUnicodeMap(const SkTypeface& typefac
     std::vector<SkUnichar> buffer(typeface.countGlyphs());
     typeface.getGlyphToUnicodeMap(buffer.data());
     return *canon->fToUnicodeMap.set(id, std::move(buffer));
+}
+
+THashMap<SkGlyphID, SkString>& SkPDFFont::GetUnicodeMapEx(const SkTypeface& typeface,
+                                                          SkPDFDocument* canon) {
+    SkASSERT(canon);
+    SkTypefaceID id = typeface.uniqueID();
+    if (THashMap<SkGlyphID, SkString>* ptr = canon->fToUnicodeMapEx.find(id)) {
+        return *ptr;
+    }
+    return *canon->fToUnicodeMapEx.set(id, THashMap<SkGlyphID, SkString>());
 }
 
 SkAdvancedTypefaceMetrics::FontType SkPDFFont::FontType(const SkPDFStrike& pdfStrike,
@@ -528,6 +541,7 @@ static void emit_subset_type0(const SkPDFFont& font, SkPDFDocument* doc) {
     SkASSERT(SkToSizeT(typeface.countGlyphs()) == glyphToUnicode.size());
     std::unique_ptr<SkStreamAsset> toUnicode =
             SkPDFMakeToUnicodeCmap(glyphToUnicode.data(),
+                                   SkPDFFont::GetUnicodeMapEx(typeface, doc),
                                    &font.glyphUsage(),
                                    font.multiByteGlyphs(),
                                    font.firstGlyphID(),
@@ -811,14 +825,20 @@ static void emit_subset_type3(const SkPDFFont& pdfFont, SkPDFDocument* doc) {
                 AppendScalar(pimg.fOffset.y() * bitmapScale, &content);
                 content.writeText(" cm\n");
 
-                // Convert Gray image to jpeg if needed
+                // Convert Grey image to deferred jpeg image to emit as jpeg
                 if (pdfStrike.fHasMaskFilter) {
                     SkJpegEncoder::Options jpegOptions;
-                    jpegOptions.fQuality = 50; // SK_PDF_MASK_QUALITY
+                    jpegOptions.fQuality = SK_PDF_MASK_QUALITY;
                     SkImage* image = pimg.fImage.get();
-                    sk_sp<SkData> jpegData = SkJpegEncoder::Encode(nullptr, image, jpegOptions);
-                    if (jpegData) {
-                        sk_sp<SkImage> jpegImage = SkImages::DeferredFromEncodedData(jpegData);
+                    SkPixmap pm;
+                    SkAssertResult(image->peekPixels(&pm));
+                    SkDynamicMemoryWStream buffer;
+                    // By encoding this into jpeg, it be embedded efficiently during drawImage.
+                    if (SkJpegEncoder::Encode(&buffer, pm, jpegOptions)) {
+                        std::unique_ptr<SkCodec> codec =
+                                SkJpegDecoder::Decode(buffer.detachAsData(), nullptr);
+                        SkASSERT(codec);
+                        sk_sp<SkImage> jpegImage = SkCodecs::DeferredImage(std::move(codec));
                         SkASSERT(jpegImage);
                         if (jpegImage) {
                             pimg.fImage = jpegImage;
@@ -890,6 +910,7 @@ static void emit_subset_type3(const SkPDFFont& pdfFont, SkPDFDocument* doc) {
     const std::vector<SkUnichar>& glyphToUnicode = SkPDFFont::GetUnicodeMap(pathTypeface, doc);
     SkASSERT(glyphToUnicode.size() == SkToSizeT(pathTypeface.countGlyphs()));
     auto toUnicodeCmap = SkPDFMakeToUnicodeCmap(glyphToUnicode.data(),
+                                                SkPDFFont::GetUnicodeMapEx(pathTypeface, doc),
                                                 &subset,
                                                 false,
                                                 firstGlyphID,

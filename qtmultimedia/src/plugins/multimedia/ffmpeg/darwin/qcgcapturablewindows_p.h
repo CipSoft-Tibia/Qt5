@@ -19,13 +19,19 @@
 
 QT_BEGIN_NAMESPACE
 
+namespace QFFmpeg {
+
 class QCGCapturableWindows : public QPlatformCapturableWindows
 {
 public:
     QList<QCapturableWindow> windows() const override;
 
     bool isWindowValid(const QCapturableWindowPrivate &window) const override;
+
+    q23::expected<QCapturableWindow, QString> fromQWindow(QWindow *) const override;
 };
+
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

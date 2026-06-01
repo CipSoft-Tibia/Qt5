@@ -9,8 +9,6 @@
 #include <QtCore/QSet>
 #include <QtCore/QStack>
 
-#include <iostream>
-
 QT_BEGIN_NAMESPACE
 
 struct HashString {
@@ -41,15 +39,13 @@ typedef QList<HashString> NamespaceList;
 
 struct Namespace {
 
-    Namespace() :
-            classDef(this),
-            hasTrFunctions(false), complained(false)
-    {}
+    Namespace() : parent(nullptr), classDef(this), hasTrFunctions(false), complained(false) { }
     ~Namespace()
     {
         qDeleteAll(children);
     }
 
+    Namespace *parent;
     QHash<HashString, Namespace *> children;
     QHash<HashString, NamespaceList> aliases;
     QList<HashStringList> usings;

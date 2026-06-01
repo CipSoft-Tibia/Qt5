@@ -12,11 +12,14 @@
 #include <utility>
 
 #include "base/auto_reset.h"
+#include "base/check_deref.h"
 #include "base/containers/adapters.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
 #include "base/no_destructor.h"
+#include "base/notreached.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "ui/accessibility/ax_common.h"
@@ -28,7 +31,6 @@
 #include "ui/accessibility/platform/ax_node_id_delegate.h"
 #include "ui/accessibility/platform/ax_platform.h"
 #include "ui/base/buildflags.h"
-
 
 namespace ui {
 
@@ -296,9 +298,6 @@ BrowserAccessibility* BrowserAccessibilityManager::GetFromID(int32_t id) const {
     DCHECK(iter->second);
     return iter->second.get();
   }
-  // DCHECK(!ax_tree()->GetFromId(id))
-  //     << "BAM's map was missing id " << id
-  //     << ", but AXTree's map had it: " << *ax_tree()->GetFromId(id);
 
   return nullptr;
 }
@@ -434,8 +433,7 @@ bool BrowserAccessibilityManager::OnAccessibilityEvents(
       CHECK(!ax_tree()->error().empty())
           << "A failed serialization didn't supply the error via "
              "AXTree::RecordError().";
-      if (!delegate_)
-        CHECK(false) << ax_tree()->error();
+      CHECK(delegate_) << ax_tree()->error();
       return false;
     }
 
@@ -469,7 +467,7 @@ bool BrowserAccessibilityManager::OnAccessibilityEvents(
   DCHECK(root_manager) << "Cannot have detached document here, as "
                           "CanFireEvents() must return false in that case.";
 
-#if defined(AX_FAIL_FAST_BUILD)
+#if AX_FAIL_FAST_BUILD()
   AXTreeID parent_id = GetParentTreeID();
   bool has_parent_id = parent_id != AXTreeIDUnknown();
   BrowserAccessibilityManager* parent_manager =
@@ -649,7 +647,7 @@ void BrowserAccessibilityManager::BeforeAccessibilityEvents() {}
 void BrowserAccessibilityManager::FinalizeAccessibilityEvents() {}
 
 void BrowserAccessibilityManager::OnLocationChanges(
-    const std::vector<AXLocationChanges>& changes) {
+    const AXLocationAndScrollUpdates& changes) {
   TRACE_EVENT0("accessibility",
                is_post_load_
                    ? "BrowserAccessibilityManager::OnLocationChanges"
@@ -657,26 +655,72 @@ void BrowserAccessibilityManager::OnLocationChanges(
   SCOPED_UMA_HISTOGRAM_TIMER_MICROS(
       "Accessibility.Performance.BrowserAccessibilityManager::"
       "OnLocationChanges");
-  for (auto& change : changes) {
+
+  // Track as both a location change and a deserialization, so that we 'get
+  // credit' for the performance moving location-only changes to this
+  // lightweight code path (average time of OnAccessibilityEvents will go down).
+  TRACE_EVENT0(
+      "accessibility",
+      is_post_load_
+          ? "BrowserAccessibilityManager::OnAccessibilityEvents"
+          : "BrowserAccessibilityManager::OnAccessibilityEventsLoading");
+  SCOPED_UMA_HISTOGRAM_TIMER_MICROS(
+      "Accessibility.Performance.BrowserAccessibilityManager::"
+      "OnAccessibilityEvents2");
+
+  bool can_fire_events = CanFireEvents();
+  for (auto& change : changes.scroll_changes) {
     BrowserAccessibility* obj = GetFromID(change.id);
-    if (!obj)
+    if (!obj) {
       continue;
+    }
+
+    AXNode* node = obj->node();
+    int old_scrollx, old_scrolly;
+    node->GetScrollInfo(&old_scrollx, &old_scrolly);
+    node->SetScrollInfo(change.scroll_x, change.scroll_y);
+
+    if (can_fire_events) {
+      if (change.scroll_x != old_scrollx) {
+        FireGeneratedEvent(
+            ui::AXEventGenerator::Event::SCROLL_HORIZONTAL_POSITION_CHANGED,
+            node);
+      }
+      if (change.scroll_y != old_scrolly) {
+        FireGeneratedEvent(
+            ui::AXEventGenerator::Event::SCROLL_VERTICAL_POSITION_CHANGED,
+            node);
+      }
+    }
+  }
+
+  for (auto& change : changes.location_changes) {
+    BrowserAccessibility* obj = GetFromID(change.id);
+    if (!obj) {
+      continue;
+    }
     AXNode* node = obj->node();
     node->SetLocation(change.new_location.offset_container_id,
                       change.new_location.bounds,
                       change.new_location.transform.get());
   }
+
   // Only send location change events when the page is not in back/forward
   // cache.
-  if (CanFireEvents()) {
-    SendLocationChangeEvents(changes);
+  if (can_fire_events && !changes.location_changes.empty()) {
+    SendLocationChangeEvents(changes.location_changes);
   }
-  if (!location_change_callback_for_testing_.is_null())
+
+  // Only send location change callback when there's actually changed locations.
+  // Required for tests to detect location change that's not scrolling.
+  if (!location_change_callback_for_testing_.is_null() &&
+      !changes.location_changes.empty()) {
     location_change_callback_for_testing_.Run();
+  }
 }
 
 void BrowserAccessibilityManager::SendLocationChangeEvents(
-    const std::vector<AXLocationChanges>& changes) {
+    const std::vector<AXLocationChange>& changes) {
   for (auto& change : changes) {
     BrowserAccessibility* obj = GetFromID(change.id);
     if (obj)
@@ -897,11 +941,16 @@ void BrowserAccessibilityManager::Decrement(const BrowserAccessibility& node) {
 
 void BrowserAccessibilityManager::DoDefaultAction(
     const BrowserAccessibility& node) {
-  DCHECK(node.node()->data().GetDefaultActionVerb() !=
-         ax::mojom::DefaultActionVerb::kNone);
-
-  if (!delegate_)
+  // AXPlatformNodeDelegate::GetSupportedActions adds kDoDefault unconditionally, but
+  // perhaps it should not. Return silently if the node doesn't have a default action.
+  // See crbug.com/348328060 for more details.
+  if (!node.HasDefaultAction()) {
     return;
+  }
+
+  if (!delegate_) {
+    return;
+  }
 
   base::RecordAction(
       base::UserMetricsAction("Accessibility.NativeApi.DoDefault"));
@@ -996,8 +1045,7 @@ void BrowserAccessibilityManager::Scroll(const BrowserAccessibility& node,
     case ax::mojom::Action::kScrollRight:
       break;
     default:
-      NOTREACHED_IN_MIGRATION()
-          << "Cannot call Scroll with action=" << scroll_action;
+      NOTREACHED() << "Cannot call Scroll with action=" << scroll_action;
   }
   AXActionData action_data;
   action_data.action = scroll_action;
@@ -1396,7 +1444,7 @@ std::u16string BrowserAccessibilityManager::GetTextForRange(
     const BrowserAccessibility& start_object,
     const BrowserAccessibility& end_object) {
   return GetTextForRange(start_object, 0, end_object,
-                         end_object.GetTextContentUTF16().length());
+                         end_object.GetTextContentLengthUTF16());
 }
 
 // static
@@ -1413,9 +1461,9 @@ std::u16string BrowserAccessibilityManager::GetTextForRange(
       std::swap(start_offset, end_offset);
 
     if (start_offset >=
-            static_cast<int>(start_object.GetTextContentUTF16().length()) ||
+            static_cast<int>(start_object.GetTextContentLengthUTF16()) ||
         end_offset >
-            static_cast<int>(start_object.GetTextContentUTF16().length())) {
+            static_cast<int>(start_object.GetTextContentLengthUTF16())) {
       return std::u16string();
     }
 
@@ -1435,9 +1483,9 @@ std::u16string BrowserAccessibilityManager::GetTextForRange(
 
     const BrowserAccessibility* text_object = text_only_objects[0];
     if (start_offset <
-            static_cast<int>(text_object->GetTextContentUTF16().length()) &&
+            static_cast<int>(text_object->GetTextContentLengthUTF16()) &&
         end_offset <=
-            static_cast<int>(text_object->GetTextContentUTF16().length())) {
+            static_cast<int>(text_object->GetTextContentLengthUTF16())) {
       return text_object->GetTextContentUTF16().substr(
           start_offset, end_offset - start_offset);
     }
@@ -1466,7 +1514,7 @@ std::u16string BrowserAccessibilityManager::GetTextForRange(
 
   const BrowserAccessibility* end_text_object = text_only_objects.back();
   if (end_offset <=
-      static_cast<int>(end_text_object->GetTextContentUTF16().length())) {
+      static_cast<int>(end_text_object->GetTextContentLengthUTF16())) {
     text += end_text_object->GetTextContentUTF16().substr(0, end_offset);
   } else {
     text += end_text_object->GetTextContentUTF16();
@@ -1489,9 +1537,9 @@ gfx::Rect BrowserAccessibilityManager::GetRootFrameInnerTextRangeBoundsRect(
       std::swap(start_offset, end_offset);
 
     if (start_offset >=
-            static_cast<int>(start_object.GetTextContentUTF16().length()) ||
+            static_cast<int>(start_object.GetTextContentLengthUTF16()) ||
         end_offset >
-            static_cast<int>(start_object.GetTextContentUTF16().length())) {
+            static_cast<int>(start_object.GetTextContentLengthUTF16())) {
       return gfx::Rect();
     }
 
@@ -1518,7 +1566,7 @@ gfx::Rect BrowserAccessibilityManager::GetRootFrameInnerTextRangeBoundsRect(
   const BrowserAccessibility* current = first;
   do {
     if (current->IsText()) {
-      int len = static_cast<int>(current->GetTextContentUTF16().size());
+      int len = static_cast<int>(current->GetTextContentLengthUTF16());
       int start_char_index = 0;
       int end_char_index = len;
       if (current == first)
@@ -1553,17 +1601,8 @@ void BrowserAccessibilityManager::OnNodeCreated(AXTree* tree, AXNode* node) {
   }
 }
 
-void BrowserAccessibilityManager::OnNodeDeleted(AXTree* tree, int32_t node_id) {
-  DCHECK_NE(node_id, kInvalidAXNodeID);
-  id_wrapper_map_.erase(node_id);
-  popup_root_ids_.erase(node_id);
-
-  node_id_delegate_->OnAXNodeDeleted(node_id);
-}
-
 void BrowserAccessibilityManager::OnNodeReparented(AXTree* tree, AXNode* node) {
-  DCHECK(node);
-  auto iter = id_wrapper_map_.find(node->id());
+  auto iter = id_wrapper_map_.find(CHECK_DEREF(node).id());
   // TODO(crbug.com/40833630): This condition should never occur.
   // Identify why we are entering this code path and fix the root cause, then
   // remove the early return. Will need to update
@@ -1572,11 +1611,27 @@ void BrowserAccessibilityManager::OnNodeReparented(AXTree* tree, AXNode* node) {
   SANITIZER_CHECK(iter != id_wrapper_map_.end())
       << "Missing BrowserAccessibility* for node: " << *node
       << "\nTree: " << tree->ToString(/*verbose*/ false);
-  if (iter == id_wrapper_map_.end())
+  if (iter == id_wrapper_map_.end()) {
     return;
-  BrowserAccessibility* wrapper = iter->second.get();
-  DCHECK(wrapper);
-  wrapper->SetNode(*node);
+  }
+  CHECK_DEREF(iter->second.get()).SetNode(*node);
+}
+
+void BrowserAccessibilityManager::OnAtomicUpdateStarting(
+    AXTree* tree,
+    const std::set<AXNodeID>& deleted_node_ids,
+    const std::set<AXNodeID>& reparented_node_ids) {
+  for (const auto& id : deleted_node_ids) {
+    id_wrapper_map_.erase(id);
+    popup_root_ids_.erase(id);
+    node_id_delegate_->OnAXNodeDeleted(id);
+  }
+
+  for (const auto& id : reparented_node_ids) {
+    if (auto iter = id_wrapper_map_.find(id); iter != id_wrapper_map_.end()) {
+      CHECK_DEREF(iter->second.get()).reset_node();
+    }
+  }
 }
 
 void BrowserAccessibilityManager::OnAtomicUpdateFinished(
@@ -1593,7 +1648,7 @@ void BrowserAccessibilityManager::OnAtomicUpdateFinished(
   }
 }
 
-AXNode* BrowserAccessibilityManager::GetNode(const AXNodeID node_id) const {
+AXNode* BrowserAccessibilityManager::GetNode(AXNodeID node_id) const {
   // This does not use ax_tree()->FromID(), because that uses a different map
   // that does not contain extra mac nodes from AXTableInfo.
   BrowserAccessibility* browser_accessibility = GetFromID(node_id);
@@ -1601,7 +1656,7 @@ AXNode* BrowserAccessibilityManager::GetNode(const AXNodeID node_id) const {
 }
 
 AXPlatformNode* BrowserAccessibilityManager::GetPlatformNodeFromTree(
-    const AXNodeID node_id) const {
+    AXNodeID node_id) const {
   BrowserAccessibility* wrapper = GetFromID(node_id);
   if (wrapper)
     return wrapper->GetAXPlatformNode();
@@ -1929,8 +1984,7 @@ BrowserAccessibilityManager::RetargetBrowserAccessibilityForEvents(
     // ClusterFuzz was able to come up with a reliably-reproducible test case
     // which can be seen in https://crbug.com/1362230. This needs to be
     // investigated further.
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
   return GetFromAXNode(RetargetForEvents(node->node(), event_type));
 }

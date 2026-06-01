@@ -11,13 +11,14 @@
 
 #include <stddef.h>
 
+#include <algorithm>
+
 #include "base/check.h"
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/notreached.h"
 #include "base/numerics/byte_conversions.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "net/base/io_buffer.h"
@@ -38,8 +39,8 @@ FakeP2PSocketDelegate::~FakeP2PSocketDelegate() {
 }
 
 void FakeP2PSocketDelegate::DestroySocket(P2PSocket* socket) {
-  auto it = base::ranges::find(sockets_to_be_destroyed_, socket,
-                               &std::unique_ptr<P2PSocket>::get);
+  auto it = std::ranges::find(sockets_to_be_destroyed_, socket,
+                              &std::unique_ptr<P2PSocket>::get);
   CHECK(it != sockets_to_be_destroyed_.end());
   sockets_to_be_destroyed_.erase(it);
 }
@@ -168,7 +169,7 @@ int FakeSocket::Connect(net::CompletionOnceCallback callback) {
 }
 
 void FakeSocket::Disconnect() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 bool FakeSocket::IsConnected() const {
@@ -190,8 +191,7 @@ int FakeSocket::GetLocalAddress(net::IPEndPoint* address) const {
 }
 
 const net::NetLogWithSource& FakeSocket::NetLog() const {
-  NOTREACHED_IN_MIGRATION();
-  return net_log_;
+  NOTREACHED();
 }
 
 bool FakeSocket::WasEverUsed() const {
@@ -199,7 +199,7 @@ bool FakeSocket::WasEverUsed() const {
 }
 
 net::NextProto FakeSocket::GetNegotiatedProtocol() const {
-  return net::kProtoUnknown;
+  return net::NextProto::kProtoUnknown;
 }
 
 bool FakeSocket::GetSSLInfo(net::SSLInfo* ssl_info) {

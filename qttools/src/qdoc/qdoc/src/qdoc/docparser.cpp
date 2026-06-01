@@ -81,6 +81,7 @@ enum {
     CMD_LIST,
     CMD_META,
     CMD_NOTE,
+    CMD_NOTRANSLATE,
     CMD_O,
     CMD_OMIT,
     CMD_OMITVALUE,
@@ -187,6 +188,7 @@ static struct
              { "list", CMD_LIST },
              { "meta", CMD_META },
              { "note", CMD_NOTE },
+             { "notranslate", CMD_NOTRANSLATE },
              { "o", CMD_O },
              { "omit", CMD_OMIT },
              { "omitvalue", CMD_OMITVALUE },
@@ -699,6 +701,9 @@ void DocParser::parse(const QString &source, DocPrivate *docPrivate,
                     leavePara();
                     enterPara(Atom::NoteLeft, Atom::NoteRight);
                     break;
+                case CMD_NOTRANSLATE:
+                    startFormat(ATOM_FORMATTING_NOTRANSLATE, cmd);
+                    break;
                 case CMD_O:
                     location().warning(QStringLiteral("'\\o' is deprecated. Use '\\li'"));
                     Q_FALLTHROUGH();
@@ -1054,7 +1059,7 @@ void DocParser::parse(const QString &source, DocPrivate *docPrivate,
                         m_private->m_metaCommandMap[cmdStr].append(ArgPair(arg, bracketedArg));
                         if (possibleTopics.contains(cmdStr)) {
                             if (!cmdStr.endsWith(QLatin1String("propertygroup")))
-                                m_private->m_topics.append(Topic(cmdStr, arg));
+                                m_private->m_topics.append(Topic(cmdStr, std::move(arg)));
                         }
                     } else if (s_utilities.macroHash.contains(cmdStr)) {
                         const Macro &macro = s_utilities.macroHash.value(cmdStr);
@@ -1738,10 +1743,13 @@ void DocParser::cmd_image(int cmd) {
 
     const QString imageFileName = getArgument();
     QString imageText;
-    if (isLeftBraceAhead())
+    bool hasAltTextArgument{false};
+    if (isLeftBraceAhead()) {
+        hasAltTextArgument = true;
         imageText = getArgument();
-    else if (cmd == CMD_IMAGE)
+    } else if (cmd == CMD_IMAGE) {
         imageText = getRestOfLine();
+    }
 
     if (imageText.length() > 1) {
         if (imageText.front() == '"' && imageText.back() == '"') {
@@ -1750,7 +1758,7 @@ void DocParser::cmd_image(int cmd) {
         }
     }
 
-    if (imageText.isEmpty() && Config::instance().reportMissingAltTextForImages())
+    if (!hasAltTextArgument && imageText.isEmpty() && Config::instance().reportMissingAltTextForImages())
         location().report(QStringLiteral("\\%1 %2 is without a textual description, "
                                          "QDoc will not generate an alt text for the image.")
                                   .arg(cmdName(cmd))
@@ -1826,8 +1834,7 @@ void DocParser::parseAlso()
 
         if (m_input[m_position] == '{') {
             target = getArgument();
-            skipSpacesOnLine();
-            if (m_position < m_inputLength && m_input[m_position] == '{') {
+            if (isLeftBraceAhead()) {
                 str = getArgument();
 
                 // hack for C++ to support links like \l{QString::}{count()}
@@ -2381,6 +2388,11 @@ QStringList DocParser::getMacroArguments(const QString &name, const Macro &macro
     return args;
 }
 
+/*!
+    Returns the next token as an optional argument unless the token is
+    another command. The next token can be preceded by spaces and an optional
+    newline.
+*/
 QString DocParser::getOptionalArgument()
 {
     skipSpacesOrOneEndl();

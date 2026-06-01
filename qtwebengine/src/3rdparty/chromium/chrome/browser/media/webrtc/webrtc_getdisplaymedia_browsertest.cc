@@ -13,8 +13,10 @@
 #include "base/memory/raw_ptr.h"
 #include "base/path_service.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
+#include "base/strings/to_string.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
@@ -128,13 +130,7 @@ struct TestConfigForFakeUI {
   const char* display_surface;
 };
 
-struct TestConfigForSelectAllScreens {
-  const char* display_surface;
-  bool enable_select_all_screens;
-};
-
-struct TestConfigForHiDpi {
-  bool enable_hidpi;
+struct TestConfigForMediaResolution {
   int constraint_width;
   int constraint_height;
 };
@@ -257,29 +253,16 @@ class WebRtcScreenCaptureBrowserTest : public WebRtcTestBase {
  public:
   ~WebRtcScreenCaptureBrowserTest() override = default;
 
-  enum class SelectAllScreens { kUndefined = 0, kTrue = 1, kFalse = 2 };
-
   void SetUpInProcessBrowserTestFixture() override {
     DetectErrorsInJavaScript();
   }
 
   virtual bool PreferCurrentTab() const = 0;
 
-  std::string GetConstraints(bool video,
-                             bool audio,
-                             SelectAllScreens select_all_screens) const {
-    std::string select_all_screens_property =
-        (select_all_screens == SelectAllScreens::kUndefined)
-            ? ""
-            : base::StringPrintf(
-                  "autoSelectAllScreens: %s",
-                  (select_all_screens == SelectAllScreens::kFalse) ? "false"
-                                                                   : "true");
-    return base::StringPrintf(
-        "{video: %s, audio: %s, preferCurrentTab: %s, %s}",
-        video ? "true" : "false", audio ? "true" : "false",
-        PreferCurrentTab() ? "true" : "false",
-        select_all_screens_property.c_str());
+  std::string GetConstraints(bool video, bool audio) const {
+    return base::StringPrintf("{video: %s, audio: %s, preferCurrentTab: %s}",
+                              base::ToString(video), base::ToString(audio),
+                              base::ToString(PreferCurrentTab()));
   }
 };
 
@@ -351,9 +334,7 @@ IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureBrowserTestWithPicker,
   content::WebContents* tab = OpenTestPageInNewTab(kMainHtmlPage);
   RunGetDisplayMedia(tab,
                      GetConstraints(
-                         /*video=*/true, /*audio=*/false,
-                         /*select_all_screens=*/
-                         SelectAllScreens::kUndefined),
+                         /*video=*/true, /*audio=*/false),
                      /*is_fake_ui=*/false,
                      /*expect_success=*/test_config_.accept_this_tab_capture,
                      /*is_tab_capture=*/PreferCurrentTab());
@@ -373,9 +354,7 @@ IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureBrowserTestWithPicker,
   content::WebContents* tab = OpenTestPageInNewTab(kMainHtmlPage);
   RunGetDisplayMedia(tab,
                      GetConstraints(
-                         /*video=*/true, /*audio=*/false,
-                         /*select_all_screens=*/
-                         SelectAllScreens::kUndefined),
+                         /*video=*/true, /*audio=*/false),
                      /*is_fake_ui=*/false,
                      /*expect_success=*/test_config_.accept_this_tab_capture,
                      /*is_tab_capture=*/PreferCurrentTab());
@@ -434,9 +413,7 @@ IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureBrowserTestWithPicker,
   content::WebContents* tab = OpenTestPageInNewTab(kMainHtmlPage);
   RunGetDisplayMedia(tab,
                      GetConstraints(
-                         /*video=*/true, /*audio=*/true,
-                         /*select_all_screens=*/
-                         SelectAllScreens::kUndefined),
+                         /*video=*/true, /*audio=*/true),
                      /*is_fake_ui=*/false,
                      /*expect_success=*/test_config_.accept_this_tab_capture,
                      /*is_tab_capture=*/PreferCurrentTab());
@@ -478,9 +455,7 @@ IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureBrowserTestWithFakeUI,
   content::WebContents* tab = OpenTestPageInNewTab(kMainHtmlPage);
   RunGetDisplayMedia(tab,
                      GetConstraints(
-                         /*video=*/true, /*audio=*/false,
-                         /*select_all_screens=*/
-                         SelectAllScreens::kUndefined),
+                         /*video=*/true, /*audio=*/false),
                      /*is_fake_ui=*/true, /*expect_success=*/true,
                      /*is_tab_capture=*/PreferCurrentTab());
 
@@ -503,9 +478,7 @@ IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureBrowserTestWithFakeUI,
   content::WebContents* tab = OpenTestPageInNewTab(kMainHtmlPage);
   RunGetDisplayMedia(tab,
                      GetConstraints(
-                         /*video=*/true, /*audio=*/true,
-                         /*select_all_screens=*/
-                         SelectAllScreens::kUndefined),
+                         /*video=*/true, /*audio=*/true),
                      /*is_fake_ui=*/true, /*expect_success=*/true,
                      /*is_tab_capture=*/PreferCurrentTab());
 
@@ -525,13 +498,16 @@ IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureBrowserTestWithFakeUI,
       "should_prefer_current_tab: "
       "%s}",
       kMaxWidth, kMaxFrameRate,
-      test_config_.should_prefer_current_tab ? "true" : "false");
+      base::ToString(test_config_.should_prefer_current_tab));
   RunGetDisplayMedia(tab, constraints,
                      /*is_fake_ui=*/true, /*expect_success=*/true,
                      /*is_tab_capture=*/PreferCurrentTab());
-
-  EXPECT_EQ(content::EvalJs(tab->GetPrimaryMainFrame(), "getWidthSetting();"),
-            base::StringPrintf("%d", kMaxWidth));
+  auto result =
+      content::EvalJs(tab->GetPrimaryMainFrame(), "getWidthSetting();")
+          .ExtractString();
+  int value;
+  EXPECT_TRUE(base::StringToInt(result, &value));
+  EXPECT_LE(value, kMaxWidth);
 
   EXPECT_EQ(
       content::EvalJs(tab->GetPrimaryMainFrame(), "getFrameRateSetting();"),
@@ -598,7 +574,7 @@ IN_PROC_BROWSER_TEST_P(WebRtcScreenCapturePermissionPolicyBrowserTest,
   // using just one tab. It is orthogonal to the test's purpose.
   const std::string constraints = base::StringPrintf(
       "{video: true, selfBrowserSurface: 'include', preferCurrentTab: %s}",
-      PreferCurrentTab() ? "true" : "false");
+      base::ToString(PreferCurrentTab()));
 
   EXPECT_EQ(
       content::EvalJs(
@@ -730,9 +706,7 @@ IN_PROC_BROWSER_TEST_F(WebRtcSameOriginPolicyBrowserTest,
       target_tab, base::UTF8ToUTF16(std::string(kSameOriginRenamedTitle)));
   RunGetDisplayMedia(capturing_tab,
                      GetConstraints(
-                         /*video=*/true, /*audio=*/true,
-                         /*select_all_screens=*/
-                         SelectAllScreens::kUndefined),
+                         /*video=*/true, /*audio=*/true),
                      /*is_fake_ui=*/false, /*expect_success=*/true,
                      /*is_tab_capture=*/true);
 
@@ -772,9 +746,7 @@ IN_PROC_BROWSER_TEST_F(WebRtcSameOriginPolicyBrowserTest,
       target_tab, base::UTF8ToUTF16(std::string(kSameOriginRenamedTitle)));
   RunGetDisplayMedia(capturing_tab,
                      GetConstraints(
-                         /*video=*/true, /*audio=*/true,
-                         /*select_all_screens=*/
-                         SelectAllScreens::kUndefined),
+                         /*video=*/true, /*audio=*/true),
                      /*is_fake_ui=*/false, /*expect_success=*/true,
                      /*is_tab_capture=*/true);
 
@@ -954,29 +926,21 @@ IN_PROC_BROWSER_TEST_P(GetDisplayMediaVideoTrackBrowserTest, RunCombinedTest) {
     !(defined(MEMORY_SANITIZER) || defined(ADDRESS_SANITIZER))
 class GetDisplayMediaHiDpiBrowserTest
     : public WebRtcTestBase,
-      public testing::WithParamInterface<TestConfigForHiDpi> {
+      public testing::WithParamInterface<TestConfigForMediaResolution> {
  public:
   GetDisplayMediaHiDpiBrowserTest() : test_config_(GetParam()) {}
 
   // The browser window size must be consistent with the
-  // INSTANTIATE_TEST_SUITE_P TestConfigForHiDpi configurations below. See the
-  // comments there for more details.
+  // INSTANTIATE_TEST_SUITE_P TestConfigForMediaResolution configurations below.
+  // See the comments there for more details.
   static constexpr int kBrowserWindowWidth = 800;
   static constexpr int kBrowserWindowHeight = 600;
 
-  bool enable_hidpi() const { return test_config_.enable_hidpi; }
   int constraint_width() const { return test_config_.constraint_width; }
   int constraint_height() const { return test_config_.constraint_height; }
 
   void SetUpInProcessBrowserTestFixture() override {
-    if (enable_hidpi()) {
-      feature_list_.InitAndEnableFeature(media::kWebContentsCaptureHiDpi);
-    } else {
-      feature_list_.InitAndDisableFeature(media::kWebContentsCaptureHiDpi);
-    }
-
     WebRtcTestBase::SetUpInProcessBrowserTestFixture();
-
     DetectErrorsInJavaScript();
   }
 
@@ -1043,8 +1007,7 @@ class GetDisplayMediaHiDpiBrowserTest
         .ExtractString();
   }
 
-  base::test::ScopedFeatureList feature_list_;
-  const TestConfigForHiDpi test_config_;
+  const TestConfigForMediaResolution test_config_;
   raw_ptr<content::WebContents, AcrossTasksDanglingUntriaged> tab_ = nullptr;
 };
 
@@ -1079,10 +1042,8 @@ IN_PROC_BROWSER_TEST_P(GetDisplayMediaHiDpiBrowserTest, Capture) {
   WaitForVideoToPlay(Tab());
 
   // If the video size is higher resolution than the browser window
-  // size, expect that HiDPI mode should be active. This requires
-  // the feature to be enabled.
-  bool expect_hidpi = enable_hidpi() &&
-                      constraint_width() > kBrowserWindowWidth &&
+  // size, expect that HiDPI mode should be active.
+  bool expect_hidpi = constraint_width() > kBrowserWindowWidth &&
                       constraint_height() > kBrowserWindowHeight;
 
   double device_pixel_ratio = GetDevicePixelRatio();
@@ -1102,15 +1063,10 @@ INSTANTIATE_TEST_SUITE_P(
     // (cf. kBrowserWindowWidth and kBrowserWindowHeight in
     // GetDisplayMediaHiDpiBrowserTest above), and the large sizes must be
     // significantly larger than the browser window size.
-    Values(TestConfigForHiDpi{/*enable_hidpi=*/false,
-                              /*constraint_width=*/3840,
-                              /*constraint_height=*/2160},
-           TestConfigForHiDpi{/*enable_hidpi=*/true,
-                              /*constraint_width=*/640,
-                              /*constraint_height=*/480},
-           TestConfigForHiDpi{/*enable_hidpi=*/true,
-                              /*constraint_width=*/3840,
-                              /*constraint_height=*/2160}));
+    Values(TestConfigForMediaResolution{/*constraint_width=*/640,
+                                        /*constraint_height=*/480},
+           TestConfigForMediaResolution{/*constraint_width=*/3840,
+                                        /*constraint_height=*/2160}));
 #endif
 
 class GetDisplayMediaChangeSourceBrowserTest
@@ -1458,82 +1414,6 @@ IN_PROC_BROWSER_TEST_P(GetDisplayMediaSelfBrowserSurfaceBrowserTest,
   EXPECT_FALSE(other_tab->IsBeingCaptured());
 }
 
-#if BUILDFLAG(IS_CHROMEOS_LACROS) || BUILDFLAG(IS_CHROMEOS_ASH)
-
-class WebRtcScreenCaptureSelectAllScreensTest
-    : public WebRtcScreenCaptureBrowserTest,
-      public testing::WithParamInterface<TestConfigForSelectAllScreens> {
- public:
-  WebRtcScreenCaptureSelectAllScreensTest() : test_config_(GetParam()) {}
-  ~WebRtcScreenCaptureSelectAllScreensTest() override = default;
-
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    // Enables GetAllScreensMedia features for multi surface capture.
-    // TODO(simonha): remove when feature becomes stable.
-    if (test_config_.enable_select_all_screens) {
-      command_line->AppendSwitch(switches::kEnableBlinkTestFeatures);
-    }
-    command_line->AppendSwitch(
-        switches::kEnableExperimentalWebPlatformFeatures);
-    command_line->AppendSwitch(switches::kUseFakeUIForMediaStream);
-    command_line->RemoveSwitch(switches::kUseFakeDeviceForMediaStream);
-    command_line->AppendSwitchASCII(
-        switches::kUseFakeDeviceForMediaStream,
-        base::StringPrintf("display-media-type=%s",
-                           test_config_.display_surface));
-  }
-
-  bool PreferCurrentTab() const override { return false; }
-
- protected:
-  TestConfigForSelectAllScreens test_config_;
-};
-
-IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureSelectAllScreensTest,
-                       GetDisplayMediaAutoSelectAllScreensTrueDisallowed) {
-  ASSERT_TRUE(embedded_test_server()->Start());
-
-  content::WebContents* tab = OpenTestPageInNewTab(kMainHtmlPage);
-  RunGetDisplayMedia(tab,
-                     GetConstraints(/*video=*/true, /*audio=*/false,
-                                    /*select_all_screens=*/
-                                    SelectAllScreens::kTrue),
-                     /*is_fake_ui=*/true,
-                     /*expect_success=*/!test_config_.enable_select_all_screens,
-                     /*is_tab_capture=*/false);
-}
-
-IN_PROC_BROWSER_TEST_P(WebRtcScreenCaptureSelectAllScreensTest,
-                       GetDisplayMediaAutoSelectAllScreensFalseAlwaysAllowed) {
-  ASSERT_TRUE(embedded_test_server()->Start());
-
-  content::WebContents* tab = OpenTestPageInNewTab(kMainHtmlPage);
-  RunGetDisplayMedia(tab,
-                     GetConstraints(/*video=*/true, /*audio=*/false,
-                                    /*select_all_screens=*/
-                                    SelectAllScreens::kFalse),
-                     /*is_fake_ui=*/true, /*expect_success=*/true,
-                     /*is_tab_capture=*/false);
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    All,
-    WebRtcScreenCaptureSelectAllScreensTest,
-    Values(TestConfigForSelectAllScreens{/*display_surface=*/"browser",
-                                         /*enable_select_all_screens=*/true},
-           TestConfigForSelectAllScreens{/*display_surface=*/"browser",
-                                         /*enable_select_all_screens=*/false},
-           TestConfigForSelectAllScreens{/*display_surface=*/"window",
-                                         /*enable_select_all_screens=*/true},
-           TestConfigForSelectAllScreens{/*display_surface=*/"window",
-                                         /*enable_select_all_screens=*/false},
-           TestConfigForSelectAllScreens{/*display_surface=*/"monitor",
-                                         /*enable_select_all_screens=*/true},
-           TestConfigForSelectAllScreens{/*display_surface=*/"monitor",
-                                         /*enable_select_all_screens=*/false}));
-
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS) || BUILDFLAG(IS_CHROMEOS_ASH)
-
 class GetDisplayMediaTransientActivationRequiredTest
     : public WebRtcScreenCaptureBrowserTest,
       public testing::WithParamInterface<
@@ -1625,9 +1505,7 @@ IN_PROC_BROWSER_TEST_P(GetDisplayMediaTransientActivationRequiredTest, Check) {
             "'MediaDevices': getDisplayMedia() requires transient activation "
             "(user gesture).";
 
-  RunGetDisplayMedia(tab,
-                     GetConstraints(/*video=*/true, /*audio=*/true,
-                                    SelectAllScreens::kUndefined),
+  RunGetDisplayMedia(tab, GetConstraints(/*video=*/true, /*audio=*/true),
                      /*is_fake_ui=*/true, expect_success,
                      /*is_tab_capture=*/false, expected_error,
                      with_user_gesture_);

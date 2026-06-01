@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktextarea_p.h"
 #include "qquicktextarea_p_p.h"
@@ -34,6 +35,7 @@ using namespace Qt::StringLiterals;
     a \l {placeholderText}{placeholder text} functionality, and adds decoration.
 
     \image qtquickcontrols-textarea.png
+           {Text area for multiline text input}
 
     \code
     TextArea {
@@ -54,6 +56,7 @@ using namespace Qt::StringLiterals;
     an entire application page, it can be placed inside a \l ScrollView.
 
     \image qtquickcontrols-textarea-scrollable.png
+           {Scrollable text area with scroll bars}
 
     \snippet qtquickcontrols-textarea-scrollable.qml 1
 
@@ -515,14 +518,16 @@ QFont QQuickTextArea::font() const
     Q_D(const QQuickTextArea);
     QFont font = QQuickTextEdit::font();
     // The resolve mask should inherit from the requestedFont
-    font.setResolveMask(d->extra.value().requestedFont.resolveMask());
+    font.setResolveMask(d->extra.isAllocated() ? d->extra->requestedFont.resolveMask() : 0);
     return font;
 }
 
 void QQuickTextArea::setFont(const QFont &font)
 {
     Q_D(QQuickTextArea);
-    if (d->extra.value().requestedFont.resolveMask() == font.resolveMask() && d->extra.value().requestedFont == font)
+    if (d->extra.isAllocated()
+            && d->extra.value().requestedFont.resolveMask() == font.resolveMask()
+            && d->extra.value().requestedFont == font)
         return;
 
     d->extra.value().requestedFont = font;

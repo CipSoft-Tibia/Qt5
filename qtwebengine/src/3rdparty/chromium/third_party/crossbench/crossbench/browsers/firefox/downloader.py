@@ -5,16 +5,18 @@
 from __future__ import annotations
 
 import abc
+import os
+import shutil
 import urllib.parse
 from typing import (TYPE_CHECKING, Dict, Final, Iterable, Optional, Tuple, Type,
                     Union)
 
 from crossbench.browsers.downloader import DMGArchiveHelper, Downloader
 from crossbench.browsers.firefox.version import FirefoxVersion
-from crossbench.browsers.version import BrowserVersion
 
 if TYPE_CHECKING:
-  from crossbench.path import LocalPath, RemotePathLike
+  from crossbench.browsers.version import BrowserVersion
+  from crossbench.path import AnyPathLike, LocalPath
   from crossbench.plt.base import Platform
 
 
@@ -50,7 +52,7 @@ class FirefoxDownloader(Downloader):
     return FirefoxVersion.is_valid_unique(path_or_identifier)
 
   @classmethod
-  def _is_valid(cls, path_or_identifier: RemotePathLike,
+  def _is_valid(cls, path_or_identifier: AnyPathLike,
                 browser_platform: Platform) -> bool:
     if cls.is_valid_version(str(path_or_identifier)):
       return True
@@ -58,12 +60,9 @@ class FirefoxDownloader(Downloader):
     return (browser_platform.exists(path) and
             path.name.endswith(cls.ARCHIVE_SUFFIX))
 
-  def __init__(self,
-               version_identifier: Union[str, LocalPath],
-               browser_type: str,
-               platform_name: str,
-               browser_platform: Platform,
-               cache_dir: Optional[LocalPath] = None):
+  def __init__(self, version_identifier: Union[str,
+                                               LocalPath], browser_type: str,
+               platform_name: str, browser_platform: Platform):
     assert not browser_type
     assert not platform_name
     firefox_platform_name = _PLATFORM_NAME_LOOKUP.get(browser_platform.key)
@@ -72,7 +71,7 @@ class FirefoxDownloader(Downloader):
           "Unsupported macOS architecture for downloading Firefox: "
           f"got={browser_platform.machine}")
     super().__init__(version_identifier, "firefox", firefox_platform_name,
-                     browser_platform, cache_dir)
+                     browser_platform)
 
   def _parse_version(self, version_identifier: str) -> BrowserVersion:
     return FirefoxVersion.parse(version_identifier)
@@ -101,7 +100,7 @@ class FirefoxDownloader(Downloader):
     candidate = archive_candidates[0]
     assert not self._archive_path.exists(), (
         f"Archive was already downloaded: {self._archive_path}")
-    candidate.replace(self._archive_path)
+    shutil.move(os.fspath(candidate), os.fspath(self._archive_path))
 
   @abc.abstractmethod
   def _install_archive(self, archive_path: LocalPath) -> None:
@@ -112,7 +111,7 @@ class FirefoxDownloaderLinux(FirefoxDownloader):
   ARCHIVE_SUFFIX: str = ".tar.bz2"
 
   @classmethod
-  def is_valid(cls, path_or_identifier: RemotePathLike,
+  def is_valid(cls, path_or_identifier: AnyPathLike,
                browser_platform: Platform) -> bool:
     return cls._is_valid(path_or_identifier, browser_platform)
 
@@ -134,7 +133,7 @@ class FirefoxDownloaderMacOS(FirefoxDownloader):
   MIN_MAC_ARM64_MILESTONE: Final[int] = 84
 
   @classmethod
-  def is_valid(cls, path_or_identifier: RemotePathLike,
+  def is_valid(cls, path_or_identifier: AnyPathLike,
                browser_platform: Platform) -> bool:
     return cls._is_valid(path_or_identifier, browser_platform)
 
@@ -178,7 +177,7 @@ class FirefoxDownloaderMacOS(FirefoxDownloader):
 class FirefoxDownloaderWin(FirefoxDownloader):
 
   @classmethod
-  def is_valid(cls, path_or_identifier: RemotePathLike,
+  def is_valid(cls, path_or_identifier: AnyPathLike,
                browser_platform: Platform) -> bool:
     return False
 

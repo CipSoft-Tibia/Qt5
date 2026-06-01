@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickpage_p.h"
 #include "qquickpage_p_p.h"
@@ -25,6 +26,7 @@ QT_BEGIN_NAMESPACE
     a \l header and \l footer item to a page.
 
     \image qtquickcontrols-page-wireframe.webp
+           {Page layout showing header, content area, and footer}
 
     Items declared as children of a Page are:
     \list
@@ -136,13 +138,12 @@ void QQuickPagePrivate::itemVisibilityChanged(QQuickItem *item)
 {
     Q_Q(QQuickPage);
     QQuickPanePrivate::itemVisibilityChanged(item);
+    QScopedValueRollback signalGuard(emittingImplicitSizeChangedSignals, true);
     if (item == header) {
-        QBoolBlocker signalGuard(emittingImplicitSizeChangedSignals);
         emit q->implicitHeaderWidthChanged();
         emit q->implicitHeaderHeightChanged();
         relayout();
     } else if (item == footer) {
-        QBoolBlocker signalGuard(emittingImplicitSizeChangedSignals);
         emit q->implicitFooterWidthChanged();
         emit q->implicitFooterHeightChanged();
         relayout();

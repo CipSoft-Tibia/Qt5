@@ -9,6 +9,8 @@
 
 #include "third_party/blink/renderer/core/css/properties/css_direction_aware_resolver.h"
 
+#include <array>
+
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/css/properties/shorthands.h"
 #include "third_party/blink/renderer/core/style_property_shorthand.h"
@@ -35,18 +37,22 @@ constexpr size_t kWritingModeSize =
     static_cast<size_t>(WritingMode::kMaxWritingMode) + 1;
 // Following four arrays contain values for horizontal-tb, vertical-rl,
 // vertical-lr, sideways-rl, and sideways-lr in this order.
-constexpr uint8_t kStartStartMap[kWritingModeSize] = {
-    kTopLeftCorner, kTopRightCorner, kTopLeftCorner, kTopRightCorner,
-    kBottomLeftCorner};
-constexpr uint8_t kStartEndMap[kWritingModeSize] = {
-    kTopRightCorner, kBottomRightCorner, kBottomLeftCorner, kBottomRightCorner,
-    kTopLeftCorner};
-constexpr uint8_t kEndStartMap[kWritingModeSize] = {
-    kBottomLeftCorner, kTopLeftCorner, kTopRightCorner, kTopLeftCorner,
-    kBottomRightCorner};
-constexpr uint8_t kEndEndMap[kWritingModeSize] = {
+constexpr std::array<uint8_t, kWritingModeSize> kStartStartMap = {
+    kTopLeftCorner,  kTopRightCorner,   kTopLeftCorner,
+    kTopRightCorner, kBottomLeftCorner,
+};
+constexpr std::array<uint8_t, kWritingModeSize> kStartEndMap = {
+    kTopRightCorner,    kBottomRightCorner, kBottomLeftCorner,
+    kBottomRightCorner, kTopLeftCorner,
+};
+constexpr std::array<uint8_t, kWritingModeSize> kEndStartMap = {
+    kBottomLeftCorner, kTopLeftCorner,     kTopRightCorner,
+    kTopLeftCorner,    kBottomRightCorner,
+};
+constexpr std::array<uint8_t, kWritingModeSize> kEndEndMap = {
     kBottomRightCorner, kBottomLeftCorner, kBottomRightCorner,
-    kBottomLeftCorner, kTopRightCorner};
+    kBottomLeftCorner,  kTopRightCorner,
+};
 
 // Prerequisites for Physical*Mapping().
 STATIC_ASSERT_ENUM(PhysicalDirection::kUp, 0);
@@ -277,20 +283,6 @@ LogicalMapping<2> CSSDirectionAwareResolver::LogicalScrollStartMapping() {
 PhysicalMapping<2> CSSDirectionAwareResolver::PhysicalScrollStartMapping() {
   static const CSSProperty* kProperties[] = {&GetCSSPropertyScrollStartX(),
                                              &GetCSSPropertyScrollStartY()};
-  return PhysicalMapping<2>(kProperties);
-}
-
-LogicalMapping<2> CSSDirectionAwareResolver::LogicalScrollStartTargetMapping() {
-  static const CSSProperty* kProperties[] = {
-      &GetCSSPropertyScrollStartTargetBlock(),
-      &GetCSSPropertyScrollStartTargetInline()};
-  return LogicalMapping<2>(kProperties);
-}
-
-PhysicalMapping<2>
-CSSDirectionAwareResolver::PhysicalScrollStartTargetMapping() {
-  static const CSSProperty* kProperties[] = {
-      &GetCSSPropertyScrollStartTargetX(), &GetCSSPropertyScrollStartTargetY()};
   return PhysicalMapping<2>(kProperties);
 }
 

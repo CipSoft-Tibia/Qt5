@@ -14,14 +14,14 @@ namespace {
 
 // The following two methods are copied from metrics_state_manager.cc, but are
 // simple enough it's not really needed to reuse.
-int64_t ReadInstallDate(PrefService* local_state) {
+int64_t ReadInstallDateIDP(PrefService* local_state) {
   return local_state->GetInt64(prefs::kInstallDate);
 }
 
 // Round a timestamp measured in seconds since epoch to one with a granularity
 // of an hour. This can be used before uploaded potentially sensitive
 // timestamps.
-int64_t RoundSecondsToHour(int64_t time_in_seconds) {
+int64_t RoundSecondsToHourIDP(int64_t time_in_seconds) {
   return 3600 * (time_in_seconds / 3600);
 }
 
@@ -30,7 +30,7 @@ int64_t RoundSecondsToHour(int64_t time_in_seconds) {
 void InstallDateProvider::ProvideSystemProfileMetrics(
     SystemProfileProto* system_profile_proto) {
   system_profile_proto->set_install_date(
-      RoundSecondsToHour(ReadInstallDate(local_state_)));
+      RoundSecondsToHourIDP(ReadInstallDateIDP(local_state_)));
 }
 
 }  // namespace metrics

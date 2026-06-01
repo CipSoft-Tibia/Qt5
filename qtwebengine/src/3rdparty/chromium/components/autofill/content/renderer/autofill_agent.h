@@ -82,7 +82,6 @@ class PasswordGenerationAgent;
 // - password form fill, referred to as Password Autofill, and
 // - entire form fill based on one field entry, referred to as Form Autofill.
 class AutofillAgent : public content::RenderFrameObserver,
-                      public FormTracker::Observer,
                       public blink::WebAutofillClient,
                       public mojom::AutofillAgent {
  public:
@@ -137,7 +136,6 @@ class AutofillAgent : public content::RenderFrameObserver,
   // are not, then they are also guaranteed to outlive AutofillAgent.
   AutofillAgent(
       content::RenderFrame* render_frame,
-      Config config,
       std::unique_ptr<PasswordAutofillAgent> password_autofill_agent,
       std::unique_ptr<PasswordGenerationAgent> password_generation_agent,
       blink::AssociatedInterfaceRegistry* registry);
@@ -156,7 +154,6 @@ class AutofillAgent : public content::RenderFrameObserver,
   // unsafe_autofill_driver() is nullptr if unsafe_render_frame() is nullptr and
   // the `autofill_driver_` has not been bound yet.
   mojom::AutofillDriver* unsafe_autofill_driver();
-  mojom::PasswordManagerDriver& GetPasswordManagerDriver();
 
   CallTimerState GetCallTimerState(CallTimerState::CallSite call_site) const;
 
@@ -175,6 +172,12 @@ class AutofillAgent : public content::RenderFrameObserver,
   void ExtractForm(FormRendererId form,
                    base::OnceCallback<void(const std::optional<FormData>&)>
                        callback) override;
+  void ExtractLabeledTextNodeValue(
+      const std::u16string& value_regex,
+      const std::u16string& label_regex,
+      uint32_t number_of_ancestor_levels_to_search,
+      base::OnceCallback<void(const std::string&)> callback) override;
+
   void FieldTypePredictionsAvailable(
       const std::vector<FormDataPredictions>& forms) override;
   // Besides cases that "actually" clear the form, this function needs to be
@@ -202,26 +205,29 @@ class AutofillAgent : public content::RenderFrameObserver,
     return weak_ptr_factory_.GetWeakPtr();
   }
 
-  // FormTracker::Observer
+  // Called after updating the last interacted element in FormTracker because of
+  // `reason`. It is always the case that `form` or `element` are non-null. If
+  // `form_element` is non-null, then `element` (if non-null) is owned by
+  // `form_element`, otherwise `element` is unowned and is surely non-null.
+  // TODO(crbug.com/40281981): Remove.
   void OnProvisionallySaveForm(const blink::WebFormElement& form,
                                const blink::WebFormControlElement& element,
-                               SaveFormReason source) override;
-  void OnProbablyFormSubmitted() override;
-  void OnFormSubmitted(const blink::WebFormElement& form) override;
-  void OnInferredFormSubmission(mojom::SubmissionSource source) override;
-
-  void AddFormObserver(Observer* observer);
-  void RemoveFormObserver(Observer* observer);
+                               FormTracker::SaveFormReason reason);
+  void OnFormSubmission(
+      mojom::SubmissionSource source,
+      std::optional<blink::WebFormElement> submitted_form_element);
 
   // Instructs `form_tracker_` to track the autofilled `element`.
   void TrackAutofilledElement(const blink::WebFormControlElement& element);
 
   // Function that should be called whenever the value of `element` changes due
-  // to user input. This is separate from OnTextFieldDidChange() as that
+  // to user input. This is separate from OnTextFieldValueChanged() as that
   // function may trigger UI and should only be called when other UI won't be
-  // shown.
+  // shown. `form_cache` can be used to optimize form extractions occurring
+  // synchronously after this function call.
   void UpdateStateForTextChange(const blink::WebFormControlElement& element,
-                                FieldPropertiesFlags flag);
+                                FieldPropertiesFlags flag,
+                                const SynchronousFormCache& form_cache);
 
   bool IsPrerendering() const;
 
@@ -266,36 +272,6 @@ class AutofillAgent : public content::RenderFrameObserver,
   class DeferringAutofillDriver;
   friend class AutofillAgentTestApi;
 
-  // This class ensures that the driver will only receive notifications only
-  // when a focused field or its type (FocusedFieldType) change.
-  class FocusStateNotifier {
-   public:
-    // Creates a new notifier that uses the agent which owns it to access the
-    // real driver implementation.
-    explicit FocusStateNotifier(AutofillAgent* agent);
-
-    FocusStateNotifier(const FocusStateNotifier&) = delete;
-    FocusStateNotifier& operator=(const FocusStateNotifier&) = delete;
-
-    ~FocusStateNotifier();
-
-    // Notifies the driver about focusing the node.
-    void FocusedInputChanged(const blink::WebNode& node);
-    // Notifies the password manager driver about removing the focus from the
-    // currently focused node (with no setting it to a new one).
-    void ResetFocus();
-
-    mojom::FocusedFieldType GetFieldType(
-        const blink::WebFormControlElement& node);
-    void NotifyIfChanged(mojom::FocusedFieldType new_focused_field_type,
-                         FieldRendererId new_focused_field_id);
-
-    FieldRendererId focused_field_id_;
-    mojom::FocusedFieldType focused_field_type_ =
-        mojom::FocusedFieldType::kUnknown;
-    const raw_ref<AutofillAgent> agent_;
-  };
-
   // The RenderFrame* is nullptr while the AutofillAgent is pending deletion,
   // between OnDestruct() and ~AutofillAgent().
   content::RenderFrame* unsafe_render_frame() const {
@@ -318,13 +294,13 @@ class AutofillAgent : public content::RenderFrameObserver,
 
   // Fires Mojo messages for a given form submission.
   void FireHostSubmitEvents(const FormData& form_data,
-                            bool known_success,
                             mojom::SubmissionSource source);
 
   // blink::WebAutofillClient:
   void TextFieldCleared(const blink::WebFormControlElement&) override;
   void TextFieldDidEndEditing(const blink::WebInputElement& element) override;
-  void TextFieldDidChange(const blink::WebFormControlElement& element) override;
+  void TextFieldValueChanged(
+      const blink::WebFormControlElement& element) override;
   void ContentEditableDidChange(const blink::WebElement& element) override;
   void TextFieldDidReceiveKeyDown(
       const blink::WebInputElement& element,
@@ -339,9 +315,9 @@ class AutofillAgent : public content::RenderFrameObserver,
   void DidCompleteFocusChangeInFrame() override;
   void DidReceiveLeftMouseDownOrGestureTapInNode(
       const blink::WebNode& node) override;
-  void SelectOrSelectListFieldOptionsChanged(
+  void SelectFieldOptionsChanged(
       const blink::WebFormControlElement& element) override;
-  void SelectControlDidChange(
+  void SelectControlSelectionChanged(
       const blink::WebFormControlElement& element) override;
   bool ShouldSuppressKeyboard(
       const blink::WebFormControlElement& element) override;
@@ -364,19 +340,26 @@ class AutofillAgent : public content::RenderFrameObserver,
   void HandleCaretMovedInFormField(blink::WebElement element,
                                    blink::WebDOMEvent event);
 
-  void HandleFocusChangeComplete(bool focused_node_was_last_clicked);
-  void SendFocusedInputChangedNotificationToBrowser(
-      const blink::WebElement& node);
+  void HandleFocusChangeComplete(bool focused_node_was_last_clicked,
+                                 const SynchronousFormCache& form_cache);
 
-  void OnTextFieldDidChange(const blink::WebFormControlElement& element);
+  // TODO(crbug.com/376628389): Remove.
+  void OnTextFieldValueChanged(const blink::WebFormControlElement& element,
+                               const SynchronousFormCache& form_cache);
+  void OnSelectControlSelectionChanged(
+      const blink::WebFormControlElement& element,
+      const SynchronousFormCache& form_cache);
+
   void DidChangeScrollOffsetImpl(FieldRendererId element_id);
 
   // Shows Password Manager, password generation, or Autofill suggestions for
   // `element`. This call is asynchronous and may or may not lead to the showing
   // of a suggestion popup (no popup is shown if there are no available
-  // suggestions).
+  // suggestions). `form_cache` can be used to optimize form extractions
+  // occurring synchronously after this function call.
   void ShowSuggestions(const blink::WebFormControlElement& element,
-                       AutofillSuggestionTriggerSource trigger_source);
+                       AutofillSuggestionTriggerSource trigger_source,
+                       const SynchronousFormCache& form_cache);
 
   // Shows Autofill suggestions for `element` if `element` is a contenteditable.
   void ShowSuggestionsForContentEditable(
@@ -384,9 +367,11 @@ class AutofillAgent : public content::RenderFrameObserver,
       AutofillSuggestionTriggerSource trigger_source);
 
   // Queries the browser for Autocomplete and Autofill suggestions for the given
-  // `element`.
+  // `element`. `form_cache` can be used to optimize form extractions occurring
+  // synchronously after this function call.
   void QueryAutofillSuggestions(const blink::WebFormControlElement& element,
-                                AutofillSuggestionTriggerSource trigger_source);
+                                AutofillSuggestionTriggerSource trigger_source,
+                                const SynchronousFormCache& form_cache);
 
   // Sets the selected value of the the field identified by `field_id` to
   // `suggested_value`.
@@ -414,17 +399,32 @@ class AutofillAgent : public content::RenderFrameObserver,
   // avoid memory allocation for the OnceCallback state. Allocation and
   // destruction of this callback in the hot path (when timer is already
   // running) is expensive.
-  void ExtractFormsAndNotifyPasswordAutofillAgent(base::OneShotTimer& timer);
+  // Called when `element` is added/reassociated dynamically in the DOM.
+  void ExtractFormsAndNotifyPasswordAutofillAgent(
+      base::OneShotTimer& timer,
+      const blink::WebElement& element);
 
-  void ExtractFormsUnthrottled(base::OnceCallback<void(bool)> callback);
+  void ExtractFormsUnthrottled(base::OnceCallback<void(bool)> callback,
+                               const CallTimerState& timer_state);
 
   // Hides any currently showing Autofill popup.
   void HidePopup();
 
-  // Attempt to get submitted FormData from last_interacted_form_ or
-  // provisionally_saved_form_, return the form in question if found, and
-  // std::nullopt otherwise.
-  std::optional<FormData> GetSubmittedForm() const;
+  // Returns an approximation of the submitted form. The candidates are:
+  // - `provisionally_saved_form_` , because it may be the last-known complete
+  //   state of the form (i.e., the form or some fields in the form may have
+  //   been removed afterwards).
+  // - `last_interacted_form_`'s current `FormData`, because this corresponds to
+  //   the last form element the user interacted with.
+  // - `submitted_form_element`'s current `FormData`, because the caller
+  //    specified that this is the form element that was submitted, regardless
+  //    of autofill's tracking.
+  // When `submitted_form_element` is provided the function makes sure
+  // that the returned form corresponds to that DOM element.
+  // `source` is the type of submission requesting the submitted form.
+  std::optional<FormData> GetSubmittedForm(
+      mojom::SubmissionSource source,
+      std::optional<blink::WebFormElement> submitted_form_element) const;
 
   void ResetLastInteractedElements();
   // A form_id means that the user last interacted with a FormElement.
@@ -440,17 +440,14 @@ class AutofillAgent : public content::RenderFrameObserver,
   DenseSet<form_util::ExtractOption> MaybeExtractDatalist(
       DenseSet<form_util::ExtractOption> extract_options);
 
-  // Helpers for SelectOrSelectListFieldOptionsChanged() and
+  // Helpers for SelectFieldOptionsChanged() and
   // DataListOptionsChanged(), which get called after a timer that is restarted
   // when another event of the same type started.
-  void BatchSelectOrSelectListOptionChange(FieldRendererId element_id);
+  void BatchSelectOptionChange(FieldRendererId element_id);
   void BatchDataListOptionChange(FieldRendererId element_id);
 
   FormRef last_interacted_form() const {
-    return base::FeatureList::IsEnabled(
-               features::kAutofillUnifyAndFixFormTracking)
-               ? form_tracker_->last_interacted_form()
-               : last_interacted_form_;
+    return form_tracker_->last_interacted_form();
   }
 
   // TODO(crbug.com/40281981): Remove.
@@ -462,7 +459,7 @@ class AutofillAgent : public content::RenderFrameObserver,
   }
 
   // Stores immutable configuration this agent was created with. It contains
-  // features and settings that are available for the lifetime of this class.
+  // features and settings that are specific to the client using this agent.
   const Config config_;
 
   // Return the next web node of `current_node` in the DOM. `next` determines
@@ -481,11 +478,6 @@ class AutofillAgent : public content::RenderFrameObserver,
   // List of elements that are currently being previewed, along with their
   // autofill state before the preview.
   std::vector<std::pair<FieldRef, blink::WebAutofillState>> previewed_elements_;
-
-  // Last form which was interacted with by the user.
-  // TODO(crbug.com/40281981): Remove when tracking becomes only FormTracker's
-  // responsibility.
-  FormRef last_interacted_form_;
 
   // When dealing with an unowned form, we keep track of the unowned fields
   // the user has modified so we can determine when submission occurs.
@@ -510,9 +502,7 @@ class AutofillAgent : public content::RenderFrameObserver,
   // This is never null, it is created at construction time and is not changed
   // until destruction time.
   std::unique_ptr<FormTracker> form_tracker_ =
-      std::make_unique<FormTracker>(unsafe_render_frame(),
-                                    config_.user_gesture_required,
-                                    *this);
+      std::make_unique<FormTracker>(unsafe_render_frame(), *this);
 
   mojo::AssociatedReceiver<mojom::AutofillAgent> receiver_{this};
 
@@ -524,7 +514,7 @@ class AutofillAgent : public content::RenderFrameObserver,
   bool was_last_action_fill_ = false;
 
   // Timers for throttling handling of frequent events.
-  base::OneShotTimer select_or_selectlist_option_change_batch_timer_;
+  base::OneShotTimer select_option_change_batch_timer_;
   base::OneShotTimer datalist_option_change_batch_timer_;
   // TODO(crbug.com/40267764): Merge some or all of these timers?
   base::OneShotTimer process_forms_after_dynamic_change_timer_;
@@ -547,10 +537,6 @@ class AutofillAgent : public content::RenderFrameObserver,
   // by user, etc. (see FieldPropertiesMask).
   scoped_refptr<FieldDataManager> field_data_manager_ =
       base::MakeRefCounted<FieldDataManager>();
-
-  // This notifier is used to avoid sending redundant messages to the password
-  // manager driver mojo interface.
-  FocusStateNotifier focus_state_notifier_{this};
 
   // State for, and only for, HandleFocusChangeComplete().
   struct Caret {

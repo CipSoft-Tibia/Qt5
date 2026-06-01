@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "sql/sandboxed_vfs.h"
 
 #include <algorithm>
@@ -141,10 +146,9 @@ SandboxedVfsFileType VfsFileTypeFromPath(const char* full_path_cstr) {
     return SandboxedVfsFileType::kWal;
   }
 
-  NOTREACHED_IN_MIGRATION()
+  NOTREACHED()
       << "Argument is not a file name buffer passed from SQLite to a VFS: "
       << full_path;
-  return SandboxedVfsFileType::kDatabase;
 }
 #endif  // DCHECK_IS_ON()
 
@@ -217,8 +221,7 @@ int SandboxedVfs::Access(const char* full_path, int flags, int& result) {
       result = (access->can_read && access->can_write) ? 1 : 0;
       break;
     default:
-      NOTREACHED_IN_MIGRATION() << "Unsupported xAccess flags: " << flags;
-      return SQLITE_ERROR;
+      NOTREACHED() << "Unsupported xAccess flags: " << flags;
   }
   return SQLITE_OK;
 }

@@ -297,10 +297,10 @@ std::string GetConsoleErrorMessageFromResult(
              "#fedcm-without-third-party-cookies flag.";
     }
     case FederatedAuthRequestResult::kMissingTransientUserActivation: {
-      return "FedCM button mode requires transient user activation.";
+      return "FedCM active mode requires transient user activation.";
     }
-    case FederatedAuthRequestResult::kReplacedByButtonMode: {
-      return "The request is replaced by a new one with button mode.";
+    case FederatedAuthRequestResult::kReplacedByActiveMode: {
+      return "The request is replaced by a new one with active mode.";
     }
     case FederatedAuthRequestResult::kNotSignedInWithIdp: {
       return "Not signed in with the identity provider.";
@@ -313,6 +313,10 @@ std::string GetConsoleErrorMessageFromResult(
     }
     case FederatedAuthRequestResult::kTypeNotMatching: {
       return "The requested IdP type did not match the registered IdP.";
+    }
+    case FederatedAuthRequestResult::kUiDismissedNoEmbargo: {
+      return "Prompt dismissed. API exponential cool down not "
+             "triggered.";
     }
     case FederatedAuthRequestResult::kError: {
       return "Error retrieving a token.";
@@ -329,8 +333,7 @@ std::string GetDisconnectConsoleErrorMessage(
     FedCmDisconnectStatus disconnect_status_for_metrics) {
   switch (disconnect_status_for_metrics) {
     case FedCmDisconnectStatus::kSuccess: {
-      NOTREACHED_IN_MIGRATION();
-      return "";
+      NOTREACHED();
     }
     case FedCmDisconnectStatus::kTooManyRequests: {
       return "There is a pending disconnect() call.";
@@ -392,13 +395,6 @@ std::string GetDisconnectConsoleErrorMessage(
       return "The provider's config file URL is not potentially trustworthy.";
     }
   }
-}
-
-FedCmIdpSigninStatusMode GetIdpSigninStatusMode(RenderFrameHost& host,
-                                                const url::Origin& idp_origin) {
-  // TODO(crbug.com/40283354): Remove this function in favor of
-  // GetFedCmIdpSigninStatusFlag.
-  return GetFedCmIdpSigninStatusFlag();
 }
 
 std::string FormatUrlForDisplay(const GURL& url) {
@@ -469,6 +465,19 @@ FederatedAuthRequestPageData* GetPageData(Page& page) {
 
 int GetNewSessionID() {
   return base::RandInt(1, 1 << 30);
+}
+
+FedCmRequesterFrameType ComputeRequesterFrameType(const RenderFrameHost& rfh,
+                                                  const url::Origin& requester,
+                                                  const url::Origin& embedder) {
+  // Since FedCM methods are not supported in FencedFrames, we can know whether
+  // this is a main frame by calling GetParent().
+  if (!rfh.GetParent()) {
+    return FedCmRequesterFrameType::kMainFrame;
+  }
+  return IsSameSite(requester, embedder)
+             ? FedCmRequesterFrameType::kSameSiteIframe
+             : FedCmRequesterFrameType::kCrossSiteIframe;
 }
 
 }  // namespace content::webid

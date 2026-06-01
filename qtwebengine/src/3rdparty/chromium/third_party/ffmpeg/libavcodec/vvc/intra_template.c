@@ -99,7 +99,7 @@ static av_always_inline void FUNC(cclm_select_luma)(const VVCFrameContext *fc,
 {
     const VVCSPS *sps = fc->ps.sps;
 
-    const int b_ctu_boundary = !av_mod_uintp2(y0, sps->ctb_log2_size_y);
+    const int b_ctu_boundary = !av_zero_extend(y0, sps->ctb_log2_size_y);
     const int hs = sps->hshift[1];
     const int vs = sps->vshift[1];
     const ptrdiff_t stride = fc->frame->linesize[0] / sizeof(pixel);
@@ -627,8 +627,9 @@ static void FUNC(intra_pred)(const VVCLocalContext *lc, int x0, int y0,
     FUNC(prepare_intra_edge_params)(lc, &edge, src, stride, x, y, w, h, c_idx, is_intra_mip, mode, ref_idx, need_pdpc);
 
     if (is_intra_mip) {
-        int intra_mip_transposed_flag = SAMPLE_CTB(fc->tab.imtf, x_cb, y_cb);
-        int intra_mip_mode = SAMPLE_CTB(fc->tab.imm, x_cb, y_cb);
+        int intra_mip_transposed_flag;
+        int intra_mip_mode;
+        unpack_mip_info(&intra_mip_transposed_flag, &intra_mip_mode, intra_mip_flag);
 
         fc->vvcdsp.intra.pred_mip((uint8_t *)src, edge.top, edge.left,
                         w, h, stride, intra_mip_mode, intra_mip_transposed_flag);

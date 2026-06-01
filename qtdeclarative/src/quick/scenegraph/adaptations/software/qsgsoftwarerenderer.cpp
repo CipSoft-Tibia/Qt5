@@ -21,6 +21,15 @@ QSGSoftwareRenderer::QSGSoftwareRenderer(QSGRenderContext *context)
     , m_paintDevice(nullptr)
     , m_backingStore(nullptr)
 {
+    // Check if the environment variable is set to force/disable partial updates
+    static bool partialUpdateOverrideSet = false;
+    static const int forcePartialUpdates = qEnvironmentVariableIntValue("QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES", &partialUpdateOverrideSet);
+    if (partialUpdateOverrideSet) {
+        if (forcePartialUpdates == 0)
+            m_partialUpdateMode = DisablePartialUpdate;
+        else
+            m_partialUpdateMode = ForcePartialUpdate;
+    }
 }
 
 QSGSoftwareRenderer::~QSGSoftwareRenderer()
@@ -86,6 +95,15 @@ void QSGSoftwareRenderer::render()
                             paintSize.width() / paintDevicePixelRatio,
                             paintSize.height() / paintDevicePixelRatio),
                       paintDevicePixelRatio);
+    // If paintDevicePixelRatio is not a whole number, opt to disable the partial update mechanism
+    const bool nonIntegerRatio = !qFuzzyIsNull(paintDevicePixelRatio - qFloor(paintDevicePixelRatio));
+    bool disablePartialUpdates = m_partialUpdateMode == DisablePartialUpdate || nonIntegerRatio;
+    if (m_partialUpdateMode == ForcePartialUpdate)
+        disablePartialUpdates = false;
+
+    // Force the whole render area to be marked as dirty, avoiding any partial update
+    if (disablePartialUpdates)
+        markDirty();
 
     // Build Renderlist
     // The renderlist is created by visiting each node in the tree and when a

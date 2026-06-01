@@ -8,8 +8,8 @@ import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
-import {type MainView, type TriggerDispatcher} from './MainView.js';
-import {type PlayerEvent} from './MediaModel.js';
+import type {MainView, TriggerDispatcher} from './MainView.js';
+import type {PlayerEvent} from './MediaModel.js';
 import playerListViewStyles from './playerListView.css.js';
 import {PlayerPropertyKeys} from './PlayerPropertiesView.js';
 
@@ -53,6 +53,7 @@ export class PlayerListView extends UI.Widget.VBox implements TriggerDispatcher 
 
   constructor(mainContainer: MainView) {
     super(true);
+    this.registerRequiredCSS(playerListViewStyles);
 
     this.playerEntryFragments = new Map();
     this.playerEntriesWithHostnameFrameTitle = new Set();
@@ -249,10 +250,5 @@ export class PlayerListView extends UI.Widget.VBox implements TriggerDispatcher 
 
   onMessage(_playerID: string, _message: Protocol.Media.PlayerMessage): void {
     // TODO(tmathmeyer) show a message count number next to the player name.
-  }
-
-  override wasShown(): void {
-    super.wasShown();
-    this.registerCSSFiles([playerListViewStyles]);
   }
 }

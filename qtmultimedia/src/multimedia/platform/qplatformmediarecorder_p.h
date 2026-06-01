@@ -17,7 +17,9 @@
 
 #include <QtCore/qurl.h>
 #include <QtCore/qsize.h>
+#if QT_CONFIG(mimetype)
 #include <QtCore/qmimetype.h>
+#endif
 #include <QtCore/qpointer.h>
 #include <QtCore/qiodevice.h>
 
@@ -57,8 +59,17 @@ public:
     QMediaFormat::FileFormat fileFormat() const { return mediaFormat().fileFormat(); }
     QMediaFormat::VideoCodec videoCodec() const { return mediaFormat().videoCodec(); }
     QMediaFormat::AudioCodec audioCodec() const { return mediaFormat().audioCodec(); }
+#if QT_CONFIG(mimetype)
     QMimeType mimeType() const { return mediaFormat().mimeType(); }
-    QString preferredSuffix() const { return mimeType().preferredSuffix(); }
+#endif
+    QString preferredSuffix() const
+    {
+#if QT_CONFIG(mimetype)
+        return mimeType().preferredSuffix();
+#else
+        return QStringLiteral("");
+#endif
+    }
 
     QMediaRecorder::EncodingMode encodingMode() const { return m_encodingMode; }
     void setEncodingMode(QMediaRecorder::EncodingMode mode) { m_encodingMode = mode; }

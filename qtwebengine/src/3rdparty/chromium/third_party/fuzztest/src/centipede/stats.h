@@ -19,10 +19,12 @@
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
+#include <memory>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -46,7 +48,9 @@ struct StatsMeta {
 
   // NOTE: Ordering in general won't be applicable to metadata, so define
   // equality only.
-  friend bool operator==(const StatsMeta &, const StatsMeta &) = default;
+  friend bool operator==(const StatsMeta &lhs, const StatsMeta &rhs) {
+    return lhs.timestamp_unix_micros == rhs.timestamp_unix_micros;
+  }
 };
 
 struct ExecStats {
@@ -54,7 +58,11 @@ struct ExecStats {
   uint64_t num_executions = 0;
   uint64_t num_target_crashes = 0;
 
-  friend bool operator==(const ExecStats &, const ExecStats &) = default;
+  friend bool operator==(const ExecStats &lhs, const ExecStats &rhs) {
+    return lhs.fuzz_time_sec == rhs.fuzz_time_sec &&
+           lhs.num_executions == rhs.num_executions &&
+           lhs.num_target_crashes == rhs.num_target_crashes;
+  }
 };
 
 struct CovStats {
@@ -85,7 +93,34 @@ struct CovStats {
   uint64_t num_unknown_features = 0;
   uint64_t num_funcs_in_frontier = 0;
 
-  friend bool operator==(const CovStats &, const CovStats &) = default;
+  friend bool operator==(const CovStats &lhs, const CovStats &rhs) {
+    return lhs.num_covered_pcs == rhs.num_covered_pcs &&
+           lhs.num_8bit_counter_features == rhs.num_8bit_counter_features &&
+           lhs.num_data_flow_features == rhs.num_data_flow_features &&
+           lhs.num_cmp_features == rhs.num_cmp_features &&
+           lhs.num_call_stack_features == rhs.num_call_stack_features &&
+           lhs.num_bounded_path_features == rhs.num_bounded_path_features &&
+           lhs.num_pc_pair_features == rhs.num_pc_pair_features &&
+           lhs.num_user_features == rhs.num_user_features &&
+           lhs.num_user0_features == rhs.num_user0_features &&
+           lhs.num_user1_features == rhs.num_user1_features &&
+           lhs.num_user2_features == rhs.num_user2_features &&
+           lhs.num_user3_features == rhs.num_user3_features &&
+           lhs.num_user4_features == rhs.num_user4_features &&
+           lhs.num_user5_features == rhs.num_user5_features &&
+           lhs.num_user6_features == rhs.num_user6_features &&
+           lhs.num_user7_features == rhs.num_user7_features &&
+           lhs.num_user8_features == rhs.num_user8_features &&
+           lhs.num_user9_features == rhs.num_user9_features &&
+           lhs.num_user10_features == rhs.num_user10_features &&
+           lhs.num_user11_features == rhs.num_user11_features &&
+           lhs.num_user12_features == rhs.num_user12_features &&
+           lhs.num_user13_features == rhs.num_user13_features &&
+           lhs.num_user14_features == rhs.num_user14_features &&
+           lhs.num_user15_features == rhs.num_user15_features &&
+           lhs.num_unknown_features == rhs.num_unknown_features &&
+           lhs.num_funcs_in_frontier == rhs.num_funcs_in_frontier;
+  }
 };
 
 struct CorpusStats {
@@ -94,7 +129,12 @@ struct CorpusStats {
   uint64_t max_corpus_element_size = 0;
   uint64_t avg_corpus_element_size = 0;
 
-  friend bool operator==(const CorpusStats &, const CorpusStats &) = default;
+  friend bool operator==(const CorpusStats &lhs, const CorpusStats &rhs) {
+    return lhs.active_corpus_size == rhs.active_corpus_size &&
+           lhs.total_corpus_size == rhs.total_corpus_size &&
+           lhs.max_corpus_element_size == rhs.max_corpus_element_size &&
+           lhs.avg_corpus_element_size == rhs.avg_corpus_element_size;
+  }
 };
 
 struct RusageStats {
@@ -103,7 +143,13 @@ struct RusageStats {
   uint64_t engine_rusage_rss_mb = 0;
   uint64_t engine_rusage_vsize_mb = 0;
 
-  friend bool operator==(const RusageStats &, const RusageStats &) = default;
+  friend bool operator==(const RusageStats &lhs, const RusageStats &rhs) {
+    return lhs.engine_rusage_avg_millicores ==
+               rhs.engine_rusage_avg_millicores &&
+           lhs.engine_rusage_cpu_percent == rhs.engine_rusage_cpu_percent &&
+           lhs.engine_rusage_rss_mb == rhs.engine_rusage_rss_mb &&
+           lhs.engine_rusage_vsize_mb == rhs.engine_rusage_vsize_mb;
+  }
 };
 
 struct Stats : StatsMeta, ExecStats, CovStats, CorpusStats, RusageStats {
@@ -404,6 +450,9 @@ class StatsReporter {
   StatsReporter(const std::vector<std::atomic<Stats>> &stats_vec,
                 const std::vector<Environment> &env_vec);
 
+  StatsReporter(const StatsReporter &) = default;
+  StatsReporter(StatsReporter &&) noexcept;
+
   virtual ~StatsReporter() = default;
 
   // Reports the current sample of stats values as updated in the `stats_vec_`
@@ -462,6 +511,8 @@ class StatsReporter {
   GroupToFlags group_to_flags_;
 };
 
+inline StatsReporter::StatsReporter(StatsReporter &&) noexcept = default;
+
 // Takes a set of `Stats` objects and a corresponding set of `Environment`
 // objects and logs the current `Stats` values to LOG(INFO) on each invocation
 // of `ReportCurrStats()`. If the environments indicate the use of the
@@ -509,13 +560,44 @@ class StatsCsvFileAppender : public StatsReporter {
   using StatsReporter::StatsReporter;
   ~StatsCsvFileAppender() override;
 
-  StatsCsvFileAppender(StatsCsvFileAppender &&) = default;
+  // Move-only.
+  StatsCsvFileAppender(StatsCsvFileAppender &&) noexcept = default;
 
  private:
   struct BufferedRemoteFile {
     RemoteFile *file = nullptr;
     std::string buffer;
   };
+
+  // Auxiliary struct that holds a pointer to a `BufferedRemoteFile` and sets
+  // itself to `nullptr` when moved. This is to avoid having to define an
+  // explicit move constructor for `StatsCsvFileAppender` solely to set the
+  // pointer to `nullptr`.
+  class BufferedRemoteFilePtr {
+   public:
+    BufferedRemoteFilePtr(absl::Nullable<BufferedRemoteFile *> file)
+        : file_(file) {}
+    BufferedRemoteFilePtr(BufferedRemoteFilePtr &&other) noexcept
+        : file_(std::exchange(other.file_, nullptr)) {}
+    BufferedRemoteFilePtr &operator=(
+        absl::Nullable<BufferedRemoteFile *> file) {
+      file_ = file;
+      return *this;
+    }
+    bool operator==(absl::Nullable<BufferedRemoteFile *> file) const {
+      return file_ == file;
+    }
+    bool operator!=(absl::Nullable<BufferedRemoteFile *> file) const {
+      return file_ != file;
+    }
+    absl::Nullable<BufferedRemoteFile *> operator->() const { return file_; }
+
+   private:
+    absl::Nullable<BufferedRemoteFile *> file_ = nullptr;
+  };
+
+  using BufferedRemoteFilesMap =
+      absl::flat_hash_map<std::string /*group_name*/, BufferedRemoteFile>;
 
   void PreAnnounceFields(
       std::initializer_list<Stats::FieldInfo> fields) override;
@@ -530,8 +612,9 @@ class StatsCsvFileAppender : public StatsReporter {
   virtual std::string GetBackupFilename(const std::string &filename) const;
 
   std::string csv_header_;
-  absl::flat_hash_map<std::string /*group_name*/, BufferedRemoteFile> files_;
-  absl::Nullable<BufferedRemoteFile *> curr_file_ = nullptr;
+  std::unique_ptr<BufferedRemoteFilesMap> files_ =
+      std::make_unique<BufferedRemoteFilesMap>();
+  BufferedRemoteFilePtr curr_file_ = nullptr;
   Stats::FieldInfo curr_field_info_;
 };
 

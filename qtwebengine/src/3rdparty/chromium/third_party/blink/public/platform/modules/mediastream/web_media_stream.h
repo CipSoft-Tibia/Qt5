@@ -28,7 +28,6 @@
 #include "base/memory/weak_ptr.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_private_ptr.h"
-#include "third_party/blink/public/platform/web_vector.h"
 
 namespace blink {
 

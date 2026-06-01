@@ -4,6 +4,8 @@
 import QtQuick
 import QtTest
 import QtQuick.Controls
+import QtQuick.Templates as T
+import Qt.test.controls
 
 TestCase {
     id: testCase
@@ -584,6 +586,54 @@ TestCase {
         verify(!oldHorizontalScrollBar.visible)
     }
 
+    component CustomScrollView: ScrollView {
+        ScrollBar.vertical: ScrollBar {
+            objectName: "customVertical"
+            contentItem: Rectangle {
+                implicitWidth: 8
+                implicitHeight: 100
+            }
+        }
+        ScrollBar.horizontal: ScrollBar {
+            objectName: "customHorizontal"
+            contentItem: Rectangle {
+                implicitWidth: 100
+                implicitHeight: 8
+            }
+        }
+    }
+
+    Component {
+        id: customScrollViewComponent
+
+        CustomScrollView {
+            anchors.fill: parent
+            anchors.margins: 20
+
+            contentWidth: rect.width
+            contentHeight: rect.height
+
+            Rectangle {
+                id: rect
+                width: 1000
+                height: 1000
+                opacity: 0.2
+                color: "orange"
+                border.width: 3
+                border.color: "magenta"
+            }
+        }
+    }
+
+    function test_customScrollBarsDeclarative() {
+        let control = createTemporaryObject(customScrollViewComponent, testCase)
+        verify(control)
+
+        let scrollBars = control.children.filter((child) => child instanceof T.ScrollBar)
+        compare(scrollBars.length, 2, "Expected 2 ScrollBar as children of ScrollView, "
+            + `got ${scrollBars.length}: ${scrollBars.toString()}`)
+    }
+
     Component {
         id: mouseAreaWheelComponent
 
@@ -761,5 +811,27 @@ TestCase {
         compare(contentItem.contentHeight, 1200)
         compare(scrollview.contentWidth, 400)
         compare(scrollview.contentHeight, 1200)
+    }
+
+
+    Component {
+        id: scrollViewPaddingComp
+
+        ScrollView {
+            id: scrollView
+            anchors.fill: parent
+            padding: 100
+        }
+    }
+
+    function test_scrollViewPadding() {
+        if (StyleInfo.styleName !== "macOS" && StyleInfo.styleName !== "Windows")
+            skip("rightPadding and bottomPadding properties are only explicitly " +
+                  "set in macos and windows style implementation of ScrollView. " +
+                  "more details in QTBUG-123631")
+        let scrollview = createTemporaryObject(scrollViewPaddingComp, testCase)
+        verify(scrollview)
+        verify(scrollview.rightPadding >= scrollview.padding)
+        verify(scrollview.bottomPadding >= scrollview.padding)
     }
 }

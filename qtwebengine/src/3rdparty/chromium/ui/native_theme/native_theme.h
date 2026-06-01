@@ -14,7 +14,6 @@
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/models/menu_separator_types.h"
@@ -36,7 +35,7 @@ namespace gfx {
 class Insets;
 class Rect;
 class Size;
-}
+}  // namespace gfx
 
 namespace ui {
 
@@ -62,9 +61,7 @@ class NATIVE_THEME_EXPORT NativeTheme {
   // The part to be painted / sized.
   enum Part {
     kCheckbox,
-// TODO(crbug.com/40118868): Revisit the macro expression once build flag switch
-// of lacros-chrome is complete.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#if BUILDFLAG(IS_LINUX)
     kFrameTopArea,
 #endif
     kInnerSpinButton,
@@ -112,9 +109,9 @@ class NATIVE_THEME_EXPORT NativeTheme {
   enum State {
     // IDs defined as specific values for use in arrays.
     kDisabled = 0,
-    kHovered  = 1,
-    kNormal   = 2,
-    kPressed  = 3,
+    kHovered = 1,
+    kNormal = 2,
+    kPressed = 3,
     kNumStates = kPressed + 1,
   };
 
@@ -125,10 +122,11 @@ class NATIVE_THEME_EXPORT NativeTheme {
     kOff = 0,
     kDusk = 1,
     kDesert = 2,
-    kBlack = 3,
+    kNightSky = 3,
     kWhite = 4,
     kHighContrast = 5,
-    kMaxValue = kHighContrast,
+    kAquatic = 6,
+    kMaxValue = kAquatic,
   };
 
   // OS-level preferred color scheme. (Ex. high contrast or dark mode color
@@ -299,6 +297,7 @@ class NATIVE_THEME_EXPORT NativeTheme {
     // This allows clients to directly override the color values to support
     // element-specific web platform CSS.
     std::optional<SkColor> thumb_color;
+    std::optional<SkColor> track_color;
     bool is_thumb_minimal_mode = false;
     bool is_web_test = false;
   };
@@ -402,16 +401,26 @@ class NATIVE_THEME_EXPORT NativeTheme {
                                        float height) const;
 
   // Paint the part to the canvas.
-  virtual void Paint(
-      cc::PaintCanvas* canvas,
-      const ui::ColorProvider* color_provider,
-      Part part,
-      State state,
-      const gfx::Rect& rect,
-      const ExtraParams& extra,
-      ColorScheme color_scheme = ColorScheme::kDefault,
-      bool in_forced_colors = false,
-      const std::optional<SkColor>& accent_color = std::nullopt) const = 0;
+  virtual void Paint(cc::PaintCanvas* canvas,
+                     const ui::ColorProvider* color_provider,
+                     Part part,
+                     State state,
+                     const gfx::Rect& rect,
+                     const ExtraParams& extra,
+                     ColorScheme color_scheme,
+                     bool in_forced_colors,
+                     const std::optional<SkColor>& accent_color) const = 0;
+  void Paint(cc::PaintCanvas* canvas,
+             const ui::ColorProvider* color_provider,
+             Part part,
+             State state,
+             const gfx::Rect& rect,
+             const ExtraParams& extra,
+             ColorScheme color_scheme = ColorScheme::kDefault,
+             bool in_forced_colors = false) const {
+    Paint(canvas, color_provider, part, state, rect, extra, color_scheme,
+          in_forced_colors, std::nullopt);
+  }
 
   // Returns whether the theme uses a nine-patch resource for the given part.
   // If true, calling code should always paint into a canvas the size of which
@@ -497,6 +506,12 @@ class NATIVE_THEME_EXPORT NativeTheme {
   // colors, you probably shouldn't. Instead, use ColorProvider::GetColor().
   virtual bool ShouldUseDarkColors() const;
 
+  // Returns true when the system uses a light-on-dark color scheme. This method
+  // should only be used when building UI that is rendered on top of system UI.
+  // It should not be used for UI rendered inside the Chromium browser
+  // application.
+  virtual bool ShouldUseDarkColorsForSystemIntegratedUI() const;
+
   // Returns the user's current page colors.
   virtual PageColors GetPageColors() const;
 
@@ -542,6 +557,11 @@ class NATIVE_THEME_EXPORT NativeTheme {
   void set_use_dark_colors(bool should_use_dark_colors) {
     should_use_dark_colors_ = should_use_dark_colors;
   }
+  void set_use_dark_colors_for_system_integrated_ui(
+      bool should_use_dark_colors_for_system_integrated_ui) {
+    should_use_dark_colors_for_system_integrated_ui_ = std::make_optional<bool>(
+        should_use_dark_colors_for_system_integrated_ui);
+  }
   void set_forced_colors(bool forced_colors) { forced_colors_ = forced_colors; }
   void set_page_colors(PageColors page_colors) { page_colors_ = page_colors; }
   void set_preferred_color_scheme(PreferredColorScheme preferred_color_scheme) {
@@ -578,6 +598,11 @@ class NATIVE_THEME_EXPORT NativeTheme {
     return should_use_system_accent_color_;
   }
 
+  bool use_overlay_scrollbar() const { return use_overlay_scrollbars_; }
+  void set_use_overlay_scrollbar(bool use_overlay_scrollbar) {
+    use_overlay_scrollbars_ = use_overlay_scrollbar;
+  }
+
   // On certain platforms, currently only Mac, there is a unique visual for
   // pressed states.
   virtual SkColor GetSystemButtonPressedColor(SkColor base_color) const;
@@ -607,6 +632,9 @@ class NATIVE_THEME_EXPORT NativeTheme {
 
   // Whether dark mode is forced via command-line flag.
   static bool IsForcedDarkMode();
+
+  // Calculates and returns the use overlay scrollbar setting.
+  static bool CalculateUseOverlayScrollbar();
 
  protected:
   explicit NativeTheme(
@@ -669,6 +697,13 @@ class NATIVE_THEME_EXPORT NativeTheme {
   bool should_use_system_accent_color_ = true;
 
   bool should_use_dark_colors_ = false;
+
+  // On some OSes, there are different settings for dark mode between
+  // applications and the system. This tracks the state of the system dark mode
+  // setting.
+  std::optional<bool> should_use_dark_colors_for_system_integrated_ui_ =
+      std::nullopt;
+
   const ui::SystemTheme system_theme_;
   bool forced_colors_ = false;
   PageColors page_colors_ = PageColors::kOff;
@@ -677,6 +712,7 @@ class NATIVE_THEME_EXPORT NativeTheme {
   PreferredColorScheme preferred_color_scheme_ = PreferredColorScheme::kLight;
   PreferredContrast preferred_contrast_ = PreferredContrast::kNoPreference;
   std::optional<base::TimeDelta> caret_blink_interval_;
+  bool use_overlay_scrollbars_ = false;
 
   SEQUENCE_CHECKER(sequence_checker_);
 };

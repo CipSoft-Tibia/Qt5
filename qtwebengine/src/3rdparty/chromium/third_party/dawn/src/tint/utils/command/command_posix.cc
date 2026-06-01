@@ -37,8 +37,12 @@
 #include <sstream>
 #include <vector>
 
-namespace tint {
+#include "src/tint/utils/macros/compiler.h"
+#include "src/tint/utils/system/executable_path.h"
 
+TINT_BEGIN_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
+
+namespace tint {
 namespace {
 
 /// File is a simple wrapper around a POSIX file descriptor
@@ -131,6 +135,10 @@ std::string FindExecutable(const std::string& name) {
         auto in_cwd = GetCWD() + "/" + name;
         if (ExecutableExists(in_cwd)) {
             return in_cwd;
+        }
+        auto in_exe_path = tint::ExecutableDirectory() + "/" + name;
+        if (ExecutableExists(in_exe_path)) {
+            return in_exe_path;
         }
     }
     if (ExecutableExists(name)) {
@@ -290,3 +298,5 @@ Command::Output Command::Exec(std::initializer_list<std::string> arguments) cons
 }
 
 }  // namespace tint
+
+TINT_BEGIN_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);

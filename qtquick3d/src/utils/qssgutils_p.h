@@ -36,6 +36,49 @@ class tst_RotationDataClass;
 
 QT_BEGIN_NAMESPACE
 
+enum class HandleType
+{
+    Layer,
+    Node,
+    Model,
+    Item2D
+};
+
+template <HandleType>
+class QSSGRenderStorageHandle
+{
+public:
+    QSSGRenderStorageHandle() = default;
+    explicit QSSGRenderStorageHandle(quint32 ctx, quint32 version, quint32 index)
+        : m_ctx(ctx), m_version(version), m_index(index)
+    {
+    }
+
+    // NOTE: Version and index should always be > 0 when used.
+    bool hasId() const { return m_id != 0; }
+
+    quint32 context() const { return quint32(m_ctx); }
+    quint32 version() const { return quint32(m_version); }
+    quint32 index() const { return quint32(m_index); }
+
+    quint64 id() const { return m_id; }
+
+private:
+    union {
+        struct {
+            quint64 m_ctx : 16;
+            quint64 m_version : 16;
+            quint64 m_index : 32;
+        };
+        quint64 m_id = 0;
+    };
+};
+
+using QSSGRenderLayerHandle = QSSGRenderStorageHandle<HandleType::Layer>;
+using QSSGRenderNodeHandle = QSSGRenderStorageHandle<HandleType::Node>;
+using QSSGRenderModelHandle = QSSGRenderStorageHandle<HandleType::Model>;
+using QSSGRenderItem2DHandle = QSSGRenderStorageHandle<HandleType::Item2D>;
+
 namespace QSSGUtils {
 
 namespace aux {
@@ -105,6 +148,7 @@ QVector3D Q_QUICK3DUTILS_EXPORT inverseRotated(const QQuaternion &q, const QVect
 }
 
 namespace color {
+QColor Q_QUICK3DUTILS_EXPORT linearTosRGB(const QVector4D &linearColorFactor);
 QVector4D Q_QUICK3DUTILS_EXPORT sRGBToLinear(const QColor &color);
 QColor Q_QUICK3DUTILS_EXPORT sRGBToLinearColor(const QColor &color);
 }

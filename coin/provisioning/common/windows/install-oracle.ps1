@@ -40,7 +40,7 @@ Extract-7Zip $package $installFolder
 Write-Host "Remove downloaded $package ..."
 Remove $package
 
-Set-EnvironmentVariable "Oracle_ROOT" "$installFolder\${distdir}\sdk\"
+Set-EnvironmentVariable "Oracle_ROOT" "$installFolder\${distdir}\"
 
 # Store version information to ~/versions.txt, which is used to print version information to provision log.
 Write-Output "Oracle Instant Client = $version" >> ~/versions.txt

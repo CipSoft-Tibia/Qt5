@@ -27,7 +27,7 @@ private Q_SLOTS:
 private:
     QProcess m_brokerProcess;
     QString m_testBroker;
-    quint16 m_port{1883};
+    quint16 m_port{0};
 };
 
 tst_QMqttLastWillProperties::tst_QMqttLastWillProperties()
@@ -87,8 +87,7 @@ void tst_QMqttLastWillProperties::getSet()
 
 void tst_QMqttLastWillProperties::payloadFormat()
 {
-    QMqttClient client;
-    client.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, client);
     client.setHostname(m_testBroker);
     client.setPort(m_port);
 
@@ -119,8 +118,7 @@ void tst_QMqttLastWillProperties::willDelay()
     QFETCH(int, delay);
     QFETCH(int, expiry);
 
-    QMqttClient client;
-    client.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, client);
     client.setHostname(m_testBroker);
     client.setPort(m_port);
 
@@ -145,8 +143,7 @@ void tst_QMqttLastWillProperties::willDelay()
     client.connectToHost();
     QTRY_VERIFY2(client.state() == QMqttClient::Connected, "Could not connect to broker");
 
-    QMqttClient recipient;
-    recipient.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, recipient);
     recipient.setHostname(m_testBroker);
     recipient.setPort(m_port);
     recipient.connectToHost();

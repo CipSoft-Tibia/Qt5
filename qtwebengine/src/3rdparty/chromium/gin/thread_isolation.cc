@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "gin/thread_isolation.h"
 
 #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
@@ -13,14 +18,14 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/compiler_specific.h"
 #include "base/memory/page_size.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "partition_alloc/thread_isolation/alignment.h"
-#include "third_party/abseil-cpp/absl/base/attributes.h"
 
-extern int pkey_alloc(unsigned int flags,
-                      unsigned int access_rights) ABSL_ATTRIBUTE_WEAK;
+WEAK_SYMBOL extern int pkey_alloc(unsigned int flags,
+                                  unsigned int access_rights);
 
 namespace {
 

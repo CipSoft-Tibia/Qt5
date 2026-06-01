@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <QTest>
 #include <QBuffer>
 #include <QtEndian>
@@ -577,7 +575,7 @@ QString getPlatformGenericFont(const char* genericName)
 static inline QByteArray msgNotAcceptableFont(const QString &defaultFamily, const QStringList &acceptableFamilies)
 {
     QString res = QString::fromLatin1("Font family '%1' is not one of the following acceptable results: ").arg(defaultFamily);
-    Q_FOREACH (const QString &family, acceptableFamilies)
+    for (const QString &family : acceptableFamilies)
         res += QLatin1String("\n ") + family;
     return res.toLocal8Bit();
 }
@@ -598,7 +596,7 @@ void tst_QFont::defaultFamily_data()
 void tst_QFont::defaultFamily()
 {
     QFETCH(QFont::StyleHint, styleHint);
-    QFETCH(QStringList, acceptableFamilies);
+    QFETCH(const QStringList, acceptableFamilies);
 
     QFont f;
     f.setStyleHint(styleHint);
@@ -608,7 +606,7 @@ void tst_QFont::defaultFamily()
     QVERIFY(QFontDatabase::hasFamily(familyForHint));
 
     bool isAcceptable = false;
-    Q_FOREACH (const QString& family, acceptableFamilies) {
+    for (const QString &family : acceptableFamilies) {
         if (!familyForHint.compare(family, Qt::CaseInsensitive)) {
             isAcceptable = true;
             break;

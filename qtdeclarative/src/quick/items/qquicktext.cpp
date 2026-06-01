@@ -707,7 +707,7 @@ void QQuickTextPrivate::setupCustomLineGeometry(QTextLine &line, qreal &height, 
                             q->effectiveHAlign() != QQuickText::AlignLeft))
         textLine->setWidth(availableWidth());
     else
-        textLine->setWidth(INT_MAX);
+        textLine->setWidth(qreal(INT_MAX));
     if (lineHeight() != 1.0)
         textLine->setHeight((lineHeightMode() == QQuickText::FixedHeight) ? lineHeight() : line.height() * lineHeight());
 
@@ -1306,7 +1306,7 @@ void QQuickTextPrivate::setLineGeometry(QTextLine &line, qreal lineWidth, qreal 
                 if (!image->pix) {
                     const QQmlContext *context = qmlContext(q);
                     const QUrl url = context->resolvedUrl(q->baseUrl()).resolved(image->url);
-                    image->pix.reset(new QQuickPixmap(context->engine(), url, QRect(), image->size * devicePixelRatio()));
+                    image->pix.reset(new QQuickPixmap(context->engine(), url, QRect(), image->size * effectiveDevicePixelRatio()));
 
                     if (image->pix->isLoading()) {
                         image->pix->connectFinished(q, SLOT(imageDownloadFinished()));
@@ -1394,11 +1394,6 @@ void QQuickTextPrivate::updateDocumentText()
     rightToLeftText = extra->doc->toPlainText().isRightToLeft();
 }
 
-qreal QQuickTextPrivate::devicePixelRatio() const
-{
-    return (window ? window->effectiveDevicePixelRatio() : qApp->devicePixelRatio());
-}
-
 /*!
     \qmltype Text
     \nativetype QQuickText
@@ -1458,10 +1453,18 @@ qreal QQuickTextPrivate::devicePixelRatio() const
     To fit a single line of plain text to a set width, you can use the \l elide
     property.
 
-    Note that the \l{Supported HTML Subset} is limited. Also, if the text
-    contains HTML img tags that load remote images, the text is reloaded.
+    \note The \l{Supported HTML Subset} is limited. It is not intended to be compliant with the
+    HTML standard but is provided as a convenience for applying styles to text labels. Also, if the
+    text contains HTML \c img tags that load remote images, the text will be reloaded.
 
     Text provides read-only text. For editable text, see \l TextEdit.
+
+    \warning By default, Text will detect the \l textFormat based on the contents in \l{text}.
+    If it determined to be either \c Text.StyledText or \c Text.MarkdownText, the Text component
+    will support rich text features such as changing colors, font styles and inline images. This
+    functionality includes loading images remotely over the network. Thus, when displaying
+    user-controlled, untrusted content, the \l textFormat should either be explicitly set to
+    \c Text.PlainText, or the contents should be stripped of unwanted tags.
 
     \sa {Qt Quick Examples - Text#Fonts}{Fonts example}
 */
@@ -2496,6 +2499,12 @@ void QQuickText::resetMaximumLineCount()
     \li code blocks use the \l {QFontDatabase::FixedFont}{default monospace font} but without a surrounding highlight box
     \li block quotes are indented, but there is no vertical line alongside the quote
     \endlist
+
+    \warning When the text format is any other format than \c{Text.PlainText}, it will support
+    rich text features such as changing colors, font styles and inline images. This includes
+    loading images remotely over the network. Thus, when displaying user-controlled, untrusted
+    content, the \l textFormat should either be explicitly set to \c Text.PlainText, or the contents
+    should be stripped of unwanted tags.
 */
 QQuickText::TextFormat QQuickText::textFormat() const
 {
@@ -2724,7 +2733,7 @@ void QQuickText::geometryChange(const QRectF &newGeometry, const QRectF &oldGeom
         goto geomChangeDone;
     }
 
-    if (widthMaximum && heightMaximum && !d->isLineLaidOutConnected() && !verticalPositionChanged)  // Size is sufficient and growing.
+    if (widthMaximum && heightMaximum && !d->isLineLaidOutConnected() && !verticalPositionChanged && !elide)  // Size is sufficient and growing.
         goto geomChangeDone;
 
     if (!(widthChanged || widthMaximum) && !d->isLineLaidOutConnected()) { // only height has changed
@@ -2747,7 +2756,7 @@ void QQuickText::geometryChange(const QRectF &newGeometry, const QRectF &oldGeom
                 }
             }
         }
-    } else if (!heightChanged && widthMaximum) {
+    } else if (!heightChanged && widthMaximum && !elide) {
         if (oldGeometry.width() > 0) {
             // no change to height, width is adequate and wasn't 0 before
             // (old width could also be negative if it was 0 and the margins
@@ -2815,7 +2824,7 @@ QSGNode *QQuickText::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data
     node->setStyleColor(QColor::fromRgba(d->styleColor));
     node->setLinkColor(QColor::fromRgba(d->linkColor));
 
-    node->setDevicePixelRatio(d->devicePixelRatio());
+    node->setDevicePixelRatio(d->effectiveDevicePixelRatio());
 
     if (d->richText) {
         node->setViewport(clipRect());

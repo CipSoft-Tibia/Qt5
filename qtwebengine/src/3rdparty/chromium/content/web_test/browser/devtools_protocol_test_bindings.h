@@ -40,12 +40,12 @@ class DevToolsProtocolTestBindings : public WebContentsObserver,
   void ReadyToCommitNavigation(NavigationHandle* navigation_handle) override;
   void WebContentsDestroyed() override;
 
-  void ParseLog(const std::string_view log);
-  void HandleMessagesFromLog(const std::string_view protocol_message_string);
+  void ParseLog(std::string_view log);
+  void HandleMessagesFromLog(std::string_view protocol_message_string);
   void HandleMessageFromTest(base::Value::Dict message);
 
   scoped_refptr<DevToolsAgentHost> agent_host_;
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_FUCHSIA)
   // DevToolsFrontendHost does not exist on Android and iOS, but we also don't
   // run web tests natively on Android.
   std::unique_ptr<DevToolsFrontendHost> frontend_host_;

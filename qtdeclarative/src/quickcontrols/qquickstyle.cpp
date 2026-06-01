@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickstyle.h"
 #include "qquickstyle_p.h"
@@ -388,8 +389,11 @@ const QPalette *QQuickStylePrivate::readPalette(const QSharedPointer<QSettings> 
 bool QQuickStylePrivate::isDarkSystemTheme()
 {
     const bool dark = [](){
-        if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme())
+        if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme()) {
+            if (theme->colorScheme() == Qt::ColorScheme::Unknown)
+                return theme->palette()->windowText().color().lightnessF() > theme->palette()->window().color().lightnessF();
             return theme->colorScheme() == Qt::ColorScheme::Dark;
+        }
         return false;
     }();
     return dark;

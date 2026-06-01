@@ -13,6 +13,8 @@ import json
 import re
 import sys
 
+# TODO(b/365662411): Upgrade to PRESUBMIT_VERSION 2.0.0.
+
 from collections import OrderedDict
 
 VALID_EXPERIMENT_KEYS = [
@@ -366,6 +368,7 @@ def CheckUndeclaredFeatures(input_api, output_api, json_data, changed_lines):
   # know how.
   old_sys_path = sys.path[:]
   try:
+    # //testing/variations/presubmit imports.
     sys.path.append(
         input_api.os_path.join(input_api.PresubmitLocalPath(), 'presubmit'))
     # pylint: disable=import-outside-toplevel
@@ -456,10 +459,11 @@ def CommonChecks(input_api, output_api):
           output_api.PresubmitError)
       if result:
         return result
-      result = CheckUndeclaredFeatures(input_api, output_api, json_data,
-                                       f.ChangedContents())
-      if result:
-        return result
+      if input_api.is_committing:
+        result = CheckUndeclaredFeatures(input_api, output_api, json_data,
+                                         f.ChangedContents())
+        if result:
+          return result
     except ValueError:
       return [
           output_api.PresubmitError('Malformed JSON file: %s' % f.LocalPath())

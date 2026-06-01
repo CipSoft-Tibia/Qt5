@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QJSENGINE_H
 #define QJSENGINE_H
@@ -179,7 +180,7 @@ public:
                         *reinterpret_cast<const QJSPrimitiveValue *>(value.constData()));
         }
 
-        {
+        return [&] {
             T t{};
             if (value.metaType() == QMetaType::fromType<QString>()) {
                 if (convertString(value.toString(), targetType, &t))
@@ -190,7 +191,7 @@ public:
 
             QMetaType::convert(value.metaType(), value.constData(), targetType, &t);
             return t;
-        }
+        }();
     }
 
     template<typename From, typename To>
@@ -282,7 +283,7 @@ public:
                 return QJSNumberCoercion::toInteger(from);
         }
 
-        {
+        return [&] {
             const QMetaType sourceType = QMetaType::fromType<From>();
             const QMetaType targetType = QMetaType::fromType<To>();
             To to{};
@@ -295,7 +296,7 @@ public:
 
             QMetaType::convert(sourceType, &from, targetType, &to);
             return to;
-        }
+        }();
     }
 
     void collectGarbage();

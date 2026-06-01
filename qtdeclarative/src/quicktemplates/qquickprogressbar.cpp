@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickprogressbar_p.h"
 #include "qquickcontrol_p_p.h"
@@ -16,6 +17,7 @@ QT_BEGIN_NAMESPACE
     \brief Indicates the progress of an operation.
 
     \image qtquickcontrols-progressbar.gif
+           {Progress bar filling from left to right}
 
     ProgressBar indicates the progress of an operation. The value should be updated
     regularly. The range is defined by \l from and \l to, which both can contain any value.
@@ -31,6 +33,7 @@ QT_BEGIN_NAMESPACE
     or if the download progress gets interrupted due to a network disconnection.
 
     \image qtquickcontrols-progressbar-indeterminate.gif
+           {Progress bar in indeterminate animation mode}
 
     \code
     ProgressBar {
@@ -199,6 +202,7 @@ qreal QQuickProgressBar::visualPosition() const
     doesn't show how much progress has been made.
 
     \image qtquickcontrols-progressbar-indeterminate.gif
+           {Progress bar in indeterminate animation mode}
 */
 bool QQuickProgressBar::isIndeterminate() const
 {

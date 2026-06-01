@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.Universal
@@ -14,6 +15,8 @@ DialogsQuickImpl.SideBar {
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
                              implicitContentHeight + topPadding + bottomPadding)
 
+    contentWidth: (contentItem as ListView)?.contentWidth
+
     background: Rectangle {
         color: control.Universal.background
     }
@@ -23,6 +26,7 @@ DialogsQuickImpl.SideBar {
         currentIndex: control.currentIndex
         model: control.contentModel
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
     }
 
     buttonDelegate: Button {
@@ -47,8 +51,8 @@ DialogsQuickImpl.SideBar {
     }
 
     separatorDelegate: Item {
-        width: control.width
-        height: 9
+        implicitWidth: control.width
+        implicitHeight: 9
         Rectangle {
             id: separatorDelegate
             color: Qt.lighter(Universal.darkShade, 1.06)

@@ -155,8 +155,7 @@ inline char* CheckOpValueStr(const T& v) {
 // use with CheckOpValueStr() which allocates these strings using strdup().
 // Returns allocated string (with strdup) for passing into
 // ::logging::CheckError::(D)CheckOp methods.
-// TODO(pbos): Annotate this ABSL_ATTRIBUTE_RETURNS_NONNULL after solving
-// compile failure.
+// TODO(pbos): Annotate this RETURNS_NONNULL after solving compile failure.
 BASE_EXPORT char* CreateCheckOpLogMessageString(const char* expr_str,
                                                 char* v1_str,
                                                 char* v2_str);
@@ -181,18 +180,21 @@ BASE_EXPORT char* CreateCheckOpLogMessageString(const char* expr_str,
 #if !CHECK_WILL_STREAM()
 
 // Discard log strings to reduce code bloat.
-#define CHECK_OP(name, op, val1, val2, ...)                                \
-  BASE_IF(BASE_IS_EMPTY(__VA_ARGS__), CHECK((val1)op(val2)),               \
-          CHECK_OP_FUNCTION_IMPL(::logging::CheckError::CheckOp, name, op, \
-                                 val1, val2, __VA_ARGS__))
+#define CHECK_OP_INTERNAL_IMPL(name, op, val1, val2) CHECK((val1)op(val2))
 
 #else
 
-#define CHECK_OP(name, op, val1, val2, ...)                              \
-  CHECK_OP_FUNCTION_IMPL(::logging::CheckError::CheckOp, name, op, val1, \
-                         val2 __VA_OPT__(, ) __VA_ARGS__)
+#define CHECK_OP_INTERNAL_IMPL(name, op, val1, val2)                       \
+  CHECK_OP_FUNCTION_IMPL(::logging::CheckNoreturnError::CheckOp, name, op, \
+                         val1, val2)
 
 #endif
+
+#define CHECK_OP(name, op, val1, val2, ...)                                \
+  BASE_IF(BASE_IS_EMPTY(__VA_ARGS__),                                      \
+          CHECK_OP_INTERNAL_IMPL(name, op, val1, val2),                    \
+          CHECK_OP_FUNCTION_IMPL(::logging::CheckError::CheckOp, name, op, \
+                                 val1, val2, __VA_ARGS__))
 
 // The second overload avoids address-taking of static members for
 // fundamental types.

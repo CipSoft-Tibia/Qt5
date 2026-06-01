@@ -4,7 +4,6 @@
 #include "qwindowsaudiodevices_p.h"
 
 #include <QtCore/qdebug.h>
-#include <QtCore/qmap.h>
 #include <QtCore/private/qcomobject_p.h>
 #include <QtCore/private/qsystemerror_p.h>
 
@@ -19,101 +18,218 @@
 #include <functiondiscoverykeys_devpkey.h>
 #include <mmdeviceapi.h>
 
+#include <map>
+
 QT_BEGIN_NAMESPACE
 
-class CMMNotificationClient : public QComObject<IMMNotificationClient>
+namespace QtWASAPI {
+
+namespace {
+
+enum class DeviceState : uint8_t {
+    active,
+    disabled,
+    notPresent,
+    unplugged,
+};
+
+constexpr DeviceState asDeviceState(DWORD state)
 {
+    switch (state) {
+    case DEVICE_STATE_ACTIVE:
+        return DeviceState::active;
+    case DEVICE_STATE_DISABLED:
+        return DeviceState::disabled;
+    case DEVICE_STATE_NOTPRESENT:
+        return DeviceState::notPresent;
+    case DEVICE_STATE_UNPLUGGED:
+        return DeviceState::unplugged;
+    default:
+        Q_UNREACHABLE_RETURN(DeviceState::notPresent);
+    }
+}
+
+} // namespace
+
+class CMMNotificationClient : public QObject, public QComObject<IMMNotificationClient>
+{
+    Q_OBJECT
+
     ComPtr<IMMDeviceEnumerator> m_enumerator;
-    QWindowsAudioDevices *m_windowsMediaDevices;
-    QMap<QString, DWORD> m_deviceState;
+
+    struct DeviceRecord
+    {
+        ComPtr<IMMDevice> device;
+        DeviceState state;
+    };
+
+    std::map<QString, DeviceRecord> m_deviceMap;
 
 public:
-    CMMNotificationClient(QWindowsAudioDevices *windowsMediaDevices,
-                          ComPtr<IMMDeviceEnumerator> enumerator,
-                          QMap<QString, DWORD> &&deviceState)
-        : m_enumerator(enumerator),
-          m_windowsMediaDevices(windowsMediaDevices),
-          m_deviceState(deviceState)
-    {}
-
-    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR) override
+    explicit CMMNotificationClient(ComPtr<IMMDeviceEnumerator> enumerator)
+        : m_enumerator(enumerator)
     {
-        if (role == ERole::eMultimedia)
-            emitAudioDevicesChanged(flow);
+        ComPtr<IMMDeviceCollection> devColl;
+        UINT count = 0;
+
+        if (SUCCEEDED(m_enumerator->EnumAudioEndpoints(EDataFlow::eAll, DEVICE_STATEMASK_ALL,
+                                                       devColl.GetAddressOf()))
+            && SUCCEEDED(devColl->GetCount(&count))) {
+            for (UINT i = 0; i < count; i++) {
+                ComPtr<IMMDevice> device;
+                if (FAILED(devColl->Item(i, device.GetAddressOf())))
+                    continue;
+
+                auto enumerateResult = enumerateDevice(device);
+                if (!enumerateResult)
+                    continue;
+
+                auto idResult = deviceId(enumerateResult->device);
+                if (!idResult)
+                    continue;
+
+                m_deviceMap.emplace(std::move(*idResult), std::move(*enumerateResult));
+            }
+        }
+
+        // Does not seem to be necessary, but also won't do any harm
+        qRegisterMetaType<ComPtr<IMMDevice>>();
+    }
+
+signals:
+    void audioDeviceAdded(ComPtr<IMMDevice>);
+    void audioDeviceRemoved(ComPtr<IMMDevice>);
+    void audioDevicePropertyChanged(ComPtr<IMMDevice>);
+    void audioDeviceDefaultChanged(QAudioDevice::Mode, ComPtr<IMMDevice>);
+
+private:
+    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role,
+                                                     LPCWSTR deviceID) override
+    {
+        ComPtr device = [&] {
+            auto it = m_deviceMap.find(QString::fromWCharArray(deviceID));
+            if (it != std::end(m_deviceMap))
+                return it->second.device;
+
+            return ComPtr<IMMDevice>{};
+        }();
+
+        if (role == ERole::eMultimedia) {
+            switch (flow) {
+            case EDataFlow::eCapture:
+                emit audioDeviceDefaultChanged(QAudioDevice::Input, device);
+                break;
+            case EDataFlow::eRender:
+                emit audioDeviceDefaultChanged(QAudioDevice::Output, device);
+                break;
+            case EDataFlow::eAll:
+                // Not expected, but handle it anyway
+                emit audioDeviceDefaultChanged(QAudioDevice::Input, device);
+                emit audioDeviceDefaultChanged(QAudioDevice::Output, device);
+                break;
+            default:
+                Q_UNREACHABLE_RETURN(S_OK);
+            }
+        }
 
         return S_OK;
     }
 
     HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR deviceID) override
     {
-        auto it = m_deviceState.find(QString::fromWCharArray(deviceID));
-        if (it == std::end(m_deviceState)) {
-            m_deviceState.insert(QString::fromWCharArray(deviceID), DEVICE_STATE_ACTIVE);
-            emitAudioDevicesChanged(deviceID);
+        auto it = m_deviceMap.find(QString::fromWCharArray(deviceID));
+        if (it == std::end(m_deviceMap)) {
+            auto enumerateResult = enumerateDevice(deviceID);
+            if (!enumerateResult)
+                return S_OK;
+
+            m_deviceMap.emplace(QString::fromWCharArray(deviceID), *enumerateResult);
+
+            if (enumerateResult->state == DeviceState::active)
+                emit audioDeviceAdded(enumerateResult->device);
         }
 
         return S_OK;
-    };
+    }
 
     HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR deviceID) override
     {
         auto key = QString::fromWCharArray(deviceID);
-        auto it = m_deviceState.find(key);
-        if (it != std::end(m_deviceState)) {
-            if (it.value() == DEVICE_STATE_ACTIVE)
-                emitAudioDevicesChanged(deviceID);
-            m_deviceState.remove(key);
+        auto it = m_deviceMap.find(key);
+        if (it != std::end(m_deviceMap)) {
+            if (it->second.state == DeviceState::active)
+                emit audioDeviceRemoved(it->second.device);
+            m_deviceMap.erase(key);
         }
 
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR deviceID, DWORD newState) override
+    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR deviceID, DWORD state) override
     {
-        if (auto it = m_deviceState.find(QString::fromWCharArray(deviceID)); it != std::end(m_deviceState)) {
-            // If either the old state or the new state is active emit device change
-            if ((it.value() == DEVICE_STATE_ACTIVE) != (newState == DEVICE_STATE_ACTIVE)) {
-                emitAudioDevicesChanged(deviceID);
-            }
-            it.value() = newState;
+        const DeviceState newState = asDeviceState(state);
+
+        if (auto it = m_deviceMap.find(QString::fromWCharArray(deviceID));
+            it != std::end(m_deviceMap)) {
+            if (it->second.state == newState)
+                return S_OK;
+
+            if (newState == DeviceState::active)
+                emit audioDeviceAdded(it->second.device);
+            else if (newState == DeviceState::active && it->second.state != DeviceState::active)
+                emit audioDeviceRemoved(it->second.device);
+
+            it->second.state = newState;
         }
 
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR, const PROPERTYKEY) override
+    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR deviceID, const PROPERTYKEY) override
     {
+        if (auto it = m_deviceMap.find(QString::fromWCharArray(deviceID));
+            it != std::end(m_deviceMap)) {
+            emit audioDevicePropertyChanged(it->second.device);
+        }
+
         return S_OK;
     }
 
-    void emitAudioDevicesChanged(EDataFlow flow)
-    {
-        // windowsMediaDevice may be deleted as we are executing the callback
-        if (flow == EDataFlow::eCapture) {
-            m_windowsMediaDevices->onAudioInputsChanged();
-        } else if (flow == EDataFlow::eRender) {
-            m_windowsMediaDevices->onAudioOutputsChanged();
-        }
-    }
-
-    void emitAudioDevicesChanged(LPCWSTR deviceID)
+    q23::expected<DeviceRecord, HRESULT> enumerateDevice(LPCWSTR deviceID)
     {
         ComPtr<IMMDevice> device;
-        ComPtr<IMMEndpoint> endpoint;
-        EDataFlow flow;
-
-        if (SUCCEEDED(m_enumerator->GetDevice(deviceID, device.GetAddressOf()))
-            && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&endpoint)))
-            && SUCCEEDED(endpoint->GetDataFlow(&flow)))
-        {
-            emitAudioDevicesChanged(flow);
-        }
+        auto deviceStatus = m_enumerator->GetDevice(deviceID, device.GetAddressOf());
+        if (FAILED(deviceStatus))
+            return q23::unexpected{ deviceStatus };
+        return enumerateDevice(device);
     }
 
-private:
+    q23::expected<DeviceRecord, HRESULT> enumerateDevice(const ComPtr<IMMDevice> &device)
+    {
+        DWORD state = 0;
+
+        auto stateStatus = device->GetState(&state);
+        if (FAILED(stateStatus))
+            return q23::unexpected{ stateStatus };
+        return DeviceRecord{
+            device,
+            asDeviceState(state),
+        };
+    }
+    q23::expected<QString, HRESULT> deviceId(const ComPtr<IMMDevice> &device)
+    {
+        QComTaskResource<WCHAR> id;
+        auto idStatus = device->GetId(id.address());
+        if (FAILED(idStatus))
+            return q23::unexpected{ idStatus };
+        return QString::fromWCharArray(id.get());
+    }
+
     // Destructor is not public. Caller should call Release.
     ~CMMNotificationClient() override = default;
 };
+
+} // namespace QtWASAPI
 
 QWindowsAudioDevices::QWindowsAudioDevices()
     : QPlatformAudioDevices()
@@ -128,29 +244,37 @@ QWindowsAudioDevices::QWindowsAudioDevices()
         return;
     }
 
-    QMap<QString, DWORD> devState;
-    ComPtr<IMMDeviceCollection> devColl;
-    UINT count = 0;
-
-    if (SUCCEEDED(m_deviceEnumerator->EnumAudioEndpoints(EDataFlow::eAll, DEVICE_STATEMASK_ALL, devColl.GetAddressOf()))
-        && SUCCEEDED(devColl->GetCount(&count)))
-    {
-        for (UINT i = 0; i < count; i++) {
-            ComPtr<IMMDevice> device;
-            DWORD state = 0;
-            QComTaskResource<WCHAR> id;
-
-            if (SUCCEEDED(devColl->Item(i, device.GetAddressOf()))
-                && SUCCEEDED(device->GetState(&state))
-                && SUCCEEDED(device->GetId(id.address()))) {
-                devState.insert(QString::fromWCharArray(id.get()), state);
-            }
-        }
-    }
-
-
-    m_notificationClient = makeComObject<CMMNotificationClient>(this, m_deviceEnumerator, std::move(devState));
+    m_notificationClient = makeComObject<QtWASAPI::CMMNotificationClient>(m_deviceEnumerator);
     m_deviceEnumerator->RegisterEndpointNotificationCallback(m_notificationClient.Get());
+
+    connect(m_notificationClient.Get(), &QtWASAPI::CMMNotificationClient::audioDeviceAdded, this,
+            [this] {
+        onAudioInputsChanged();
+        onAudioOutputsChanged();
+    });
+    connect(m_notificationClient.Get(), &QtWASAPI::CMMNotificationClient::audioDeviceRemoved, this,
+            [this] {
+        onAudioInputsChanged();
+        onAudioOutputsChanged();
+    });
+    connect(m_notificationClient.Get(), &QtWASAPI::CMMNotificationClient::audioDeviceDefaultChanged,
+            this, [this](QAudioDevice::Mode mode, ComPtr<IMMDevice>) {
+        switch (mode) {
+        case QAudioDevice::Input:
+            onAudioInputsChanged();
+            break;
+        case QAudioDevice::Output:
+            onAudioOutputsChanged();
+            break;
+        default:
+            break;
+        }
+    });
+    connect(m_notificationClient.Get(),
+            &QtWASAPI::CMMNotificationClient::audioDevicePropertyChanged, this, [this] {
+        onAudioInputsChanged();
+        onAudioOutputsChanged();
+    });
 }
 
 QWindowsAudioDevices::~QWindowsAudioDevices()
@@ -228,7 +352,7 @@ QList<QAudioDevice> QWindowsAudioDevices::availableDevices(QAudioDevice::Mode mo
         if (!deviceId)
             continue;
 
-        QMaybe<PropertyStoreHelper> props = PropertyStoreHelper::open(device);
+        q23::expected<PropertyStoreHelper, QString> props = PropertyStoreHelper::open(device);
         if (!props) {
             qWarning() << "OpenPropertyStore failed" << props.error();
             continue;
@@ -273,3 +397,5 @@ QPlatformAudioSink *QWindowsAudioDevices::createAudioSink(const QAudioDevice &de
 }
 
 QT_END_NAMESPACE
+
+#include "qwindowsaudiodevices.moc"

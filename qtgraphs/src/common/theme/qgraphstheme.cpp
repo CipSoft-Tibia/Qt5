@@ -16,6 +16,8 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_LOGGING_CATEGORY(lcGraphsCommonTheme, "qt.graphs.common.theme")
+
 /*!
  * \class QGraphsTheme
  * \inmodule QtGraphs
@@ -1071,8 +1073,22 @@ void QGraphsTheme::setLabelTextColor(QColor newLabelTextColor)
     d->m_customBits.labelTextColorCustom = true;
     d->m_dirtyBits.labelTextColorDirty = true;
     d->m_labelTextThemeColor = newLabelTextColor;
-    axisX().d->m_labelTextThemeColor = newLabelTextColor;
-    axisY().d->m_labelTextThemeColor = newLabelTextColor;
+    // Do not override explicitly set axis colors
+    if (!d->m_axisX.d->m_bits.labelTextColorCustom) {
+        axisX().d->m_labelTextThemeColor = newLabelTextColor;
+        d->m_dirtyBits.axisXDirty = true;
+        Q_EMIT axisXChanged();
+    }
+    if (!d->m_axisY.d->m_bits.labelTextColorCustom) {
+        axisY().d->m_labelTextThemeColor = newLabelTextColor;
+        d->m_dirtyBits.axisYDirty = true;
+        Q_EMIT axisYChanged();
+    }
+    if (!d->m_axisZ.d->m_bits.labelTextColorCustom) {
+        axisZ().d->m_labelTextThemeColor = newLabelTextColor;
+        d->m_dirtyBits.axisZDirty = true;
+        Q_EMIT axisZChanged();
+    }
     Q_EMIT labelTextColorChanged();
     Q_EMIT update();
 }
@@ -1396,7 +1412,7 @@ qreal QGraphsTheme::borderWidth() const
 void QGraphsTheme::setBorderWidth(qreal newBorderWidth)
 {
     Q_D(QGraphsTheme);
-    if (qFuzzyCompare(d->m_borderWidth, newBorderWidth))
+    if (QtPrivate::fuzzyCompare(d->m_borderWidth, newBorderWidth))
         return;
     d->m_borderWidth = newBorderWidth;
     Q_EMIT borderWidthChanged();
@@ -1523,17 +1539,19 @@ void QGraphsTheme::setColorSchemePalette()
         // If a label text color has been overridden already, do not change it back
         if (!d->m_labelTextThemeColor.isValid() || !d->m_customBits.labelTextColorCustom)
             d->m_labelTextThemeColor = QColor(QRgb(0xAEAEAE));
-        if (!d->m_axisX.d->m_labelTextThemeColor.isValid()
-            || !d->m_axisX.d->m_bits.labelTextColorCustom) {
-            d->m_axisX.d->m_labelTextThemeColor = QColor(QRgb(0xAEAEAE));
-        }
-        if (!d->m_axisY.d->m_labelTextThemeColor.isValid()
-            || !d->m_axisY.d->m_bits.labelTextColorCustom) {
-            d->m_axisY.d->m_labelTextThemeColor = QColor(QRgb(0xAEAEAE));
-        }
-        if (!d->m_axisZ.d->m_labelTextThemeColor.isValid()
-            || !d->m_axisZ.d->m_bits.labelTextColorCustom) {
-            d->m_axisZ.d->m_labelTextThemeColor = QColor(QRgb(0xAEAEAE));
+        if (!d->m_customBits.labelTextColorCustom) {
+            if (!d->m_axisX.d->m_labelTextThemeColor.isValid()
+                || !d->m_axisX.d->m_bits.labelTextColorCustom) {
+                d->m_axisX.d->m_labelTextThemeColor = QColor(QRgb(0xAEAEAE));
+            }
+            if (!d->m_axisY.d->m_labelTextThemeColor.isValid()
+                || !d->m_axisY.d->m_bits.labelTextColorCustom) {
+                d->m_axisY.d->m_labelTextThemeColor = QColor(QRgb(0xAEAEAE));
+            }
+            if (!d->m_axisZ.d->m_labelTextThemeColor.isValid()
+                || !d->m_axisZ.d->m_bits.labelTextColorCustom) {
+                d->m_axisZ.d->m_labelTextThemeColor = QColor(QRgb(0xAEAEAE));
+            }
         }
     } else {
         d->m_backgroundThemeColor = QColor(QRgb(0xF2F2F2));
@@ -1558,17 +1576,19 @@ void QGraphsTheme::setColorSchemePalette()
         // If a label text color has been overridden already, do not change it back
         if (!d->m_labelTextThemeColor.isValid() || !d->m_customBits.labelTextColorCustom)
             d->m_labelTextThemeColor = QColor(QRgb(0x6A6A6A));
-        if (!d->m_axisX.d->m_labelTextThemeColor.isValid()
-            || !d->m_axisX.d->m_bits.labelTextColorCustom) {
-            d->m_axisX.d->m_labelTextThemeColor = QColor(QRgb(0x6A6A6A));
-        }
-        if (!d->m_axisY.d->m_labelTextThemeColor.isValid()
-            || !d->m_axisY.d->m_bits.labelTextColorCustom) {
-            d->m_axisY.d->m_labelTextThemeColor = QColor(QRgb(0x6A6A6A));
-        }
-        if (!d->m_axisZ.d->m_labelTextThemeColor.isValid()
-            || !d->m_axisZ.d->m_bits.labelTextColorCustom) {
-            d->m_axisZ.d->m_labelTextThemeColor = QColor(QRgb(0x6A6A6A));
+        if (!d->m_customBits.labelTextColorCustom) {
+            if (!d->m_axisX.d->m_labelTextThemeColor.isValid()
+                || !d->m_axisX.d->m_bits.labelTextColorCustom) {
+                d->m_axisX.d->m_labelTextThemeColor = QColor(QRgb(0x6A6A6A));
+            }
+            if (!d->m_axisY.d->m_labelTextThemeColor.isValid()
+                || !d->m_axisY.d->m_bits.labelTextColorCustom) {
+                d->m_axisY.d->m_labelTextThemeColor = QColor(QRgb(0x6A6A6A));
+            }
+            if (!d->m_axisZ.d->m_labelTextThemeColor.isValid()
+                || !d->m_axisZ.d->m_bits.labelTextColorCustom) {
+                d->m_axisZ.d->m_labelTextThemeColor = QColor(QRgb(0x6A6A6A));
+            }
         }
     }
 
@@ -1694,7 +1714,7 @@ void QGraphsTheme::setThemeGradient(QQuickGradient *gradient, GradientQMLStyle t
         setMultiHighlightGradient(linearGradient);
         break;
     default:
-        qWarning("Incorrect usage. Type may be GradientQMLStyle::SingleHL or "
+        qCWarning(lcGraphsCommonTheme, "Incorrect usage. Type may be GradientQMLStyle::SingleHL or "
                  "GradientQMLStyle::MultiHL.");
         break;
     }
@@ -1786,7 +1806,7 @@ void QGraphsTheme::appendThemeChildren(QQmlListProperty<QObject> *list, QObject 
 void QGraphsTheme::addColor(QQuickGraphsColor *color)
 {
     if (!color) {
-        qWarning("Color is invalid, use Color");
+        qCWarning(lcGraphsCommonTheme, "Color is invalid, use Color");
         return;
     }
     clearDummyColors();
@@ -2063,7 +2083,7 @@ qreal QGraphsLine::mainWidth() const
 
 void QGraphsLine::setMainWidth(qreal newWidth)
 {
-    if (qFuzzyCompare(d->m_mainWidth, newWidth))
+    if (QtPrivate::fuzzyCompare(d->m_mainWidth, newWidth))
         return;
     detach();
     d->m_mainWidth = newWidth;
@@ -2076,7 +2096,7 @@ qreal QGraphsLine::subWidth() const
 
 void QGraphsLine::setSubWidth(qreal newWidth)
 {
-    if (qFuzzyCompare(d->m_subWidth, newWidth))
+    if (QtPrivate::fuzzyCompare(d->m_subWidth, newWidth))
         return;
     detach();
     d->m_subWidth = newWidth;
@@ -2174,10 +2194,10 @@ bool comparesEqual(const QGraphsLinePrivate &lhs, const QGraphsLinePrivate &rhs)
     ret = ret && (lhs.m_subColor == rhs.m_subColor);
     if (!ret)
         return ret;
-    ret = ret && qFuzzyCompare(lhs.m_mainWidth, rhs.m_mainWidth);
+    ret = ret && QtPrivate::fuzzyCompare(lhs.m_mainWidth, rhs.m_mainWidth);
     if (!ret)
         return ret;
-    ret = ret && qFuzzyCompare(lhs.m_subWidth, rhs.m_subWidth);
+    ret = ret && QtPrivate::fuzzyCompare(lhs.m_subWidth, rhs.m_subWidth);
     if (!ret)
         return ret;
     ret = ret && (lhs.m_labelTextColor == rhs.m_labelTextColor);

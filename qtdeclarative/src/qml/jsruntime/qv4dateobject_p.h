@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 #ifndef QV4DATEOBJECT_P_H
 #define QV4DATEOBJECT_P_H
 
@@ -217,20 +218,30 @@ DECLARE_HEAP_OBJECT(DateObject, ReferenceObject) {
         if (!object())
             return false;
 
+        if (!isDirty())
+            return true;
+
         QV4::Scope scope(internalClass->engine);
         QV4::ScopedObject o(scope, object());
 
+        if (!isConnected() && QV4::ReferenceObject::shouldConnect(this))
+            QV4::ReferenceObject::connect(this);
+
+        bool wasRead = false;
         if (isVariant()) {
             QVariant variant;
             void *a[] = { &variant };
-            return o->metacall(QMetaObject::ReadProperty, property(), a)
-                    && setVariant(variant);
+            wasRead = o->metacall(QMetaObject::ReadProperty, property(), a)
+                        && setVariant(variant);
+        } else {
+            wasRead = m_date.withWriteonlyStoragePointer([&](void *storagePointer) {
+                void *a[] = { storagePointer };
+                return o->metacall(QMetaObject::ReadProperty, property(), a);
+            }, scope.engine);
         }
 
-        return m_date.withWriteonlyStoragePointer([&](void *storagePointer) {
-            void *a[] = { storagePointer };
-            return o->metacall(QMetaObject::ReadProperty, property(), a);
-        }, scope.engine);
+        setDirty(!isConnected() || !wasRead);
+        return wasRead;
     }
 
     bool writeBack(int internalIndex = QV4::ReferenceObject::AllProperties)

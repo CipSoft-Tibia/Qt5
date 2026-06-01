@@ -471,7 +471,7 @@ QSimpleParsedNumber<qlonglong> qstrntoll(const char *begin, qsizetype size, int 
 }
 
 template <typename Char>
-static Q_ALWAYS_INLINE void qulltoString_helper(qulonglong number, int base, Char *&p)
+Q_ALWAYS_INLINE static void qulltoString_helper(qulonglong number, int base, Char *&p)
 {
     // Performance-optimized code. Compiler can generate faster code when base is known.
     switch (base) {

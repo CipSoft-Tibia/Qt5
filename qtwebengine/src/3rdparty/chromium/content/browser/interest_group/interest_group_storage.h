@@ -39,9 +39,13 @@ struct BiddingAndAuctionServerKey;
 // within the same sequence.
 class CONTENT_EXPORT InterestGroupStorage {
  public:
-  static constexpr base::TimeDelta kHistoryLength = base::Days(30);
   static constexpr base::TimeDelta kMaintenanceInterval = base::Hours(1);
-  static constexpr base::TimeDelta kIdlePeriod = base::Seconds(30);
+  // Gets the default time the database waits idle before maintenance is
+  // triggered.
+  //
+  // NOTE: This is the default value, which can be overridden by
+  // CreateWithIdlePeriodForTesting().
+  static constexpr base::TimeDelta kDefaultIdlePeriod = base::Seconds(30);
   // How long to store a k-anon key's last join time.
   static constexpr base::TimeDelta kAdditionalKAnonStoragePeriod =
       base::Days(1);
@@ -101,7 +105,7 @@ class CONTENT_EXPORT InterestGroupStorage {
 
   // Allows the interest group specified by `group_key` to be updated if it was
   // last updated before `update_if_older_than`.
-  void AllowUpdateIfOlderThan(const blink::InterestGroupKey& group_key,
+  void AllowUpdateIfOlderThan(blink::InterestGroupKey group_key,
                               base::TimeDelta update_if_older_than);
   // Report that updating of the interest group with owner `owner` and name
   // `name` failed. With the exception of parse failures, the rate limit
@@ -205,11 +209,40 @@ class CONTENT_EXPORT InterestGroupStorage {
   std::pair<base::Time, std::vector<BiddingAndAuctionServerKey>>
   GetBiddingAndAuctionServerKeys(const url::Origin& coordinator);
 
+  // Returns various resource limits, as configured by feature params.
+  static size_t MaxOwnerRegularInterestGroups();
+  static size_t MaxOwnerNegativeInterestGroups();
+  static size_t MaxOwnerStorageSize();
+
   base::Time GetLastMaintenanceTimeForTesting() const;
 
   static int GetCurrentVersionNumberForTesting();
 
+  // Creates an instance where the idle period is set to `idle_period` instead
+  // of kDefaultIdlePeriod.
+  static std::unique_ptr<InterestGroupStorage> CreateWithIdlePeriodForTesting(
+      const base::FilePath& path,
+      base::TimeDelta idle_period);
+
+  // Resets the internal idle timer without performing any database operation.
+  //
+  // Technically, this test hook isn't necessary, since tests could just call
+  // GetAllInterestGroupOwners() and throw away the result, but this method is
+  // *much* more performant (due to not doing any I/O), especially when calling
+  // in a loop.
+  //
+  // NOTE: This just calls EnsureDBInitialized() internally.
+  void ResetIdleTimerForTesting();
+
  private:
+  // Private constructor that allows changing the idle period, used by
+  // CreateWithIdlePeriodForTesting().
+  //
+  // `idle_period` may be optionally specified to override in tests the default
+  // time the database waits idle before maintenance is triggered
+  // (kDefaultIdlePeriod).
+  InterestGroupStorage(const base::FilePath& path, base::TimeDelta idle_period);
+
   bool EnsureDBInitialized();
   bool InitializeDB();
   bool InitializeSchema();

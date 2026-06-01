@@ -81,6 +81,10 @@ public:
     Q_ENUM(TrailingSpace)
     enum class AttributesSequence { Normalize, Preserve };
     Q_ENUM(AttributesSequence)
+    // Always: always add a semicolon at the end of statement
+    // Essential: adds semicolon only when ASI would not insert for us
+    enum class SemicolonRule { Always, Essential };
+    Q_ENUM(SemicolonRule)
 
     int maxLineLength = -1; // -1 means no limit
     int minContentLength = 10;
@@ -96,26 +100,11 @@ public:
     AttributesSequence attributesSequence = AttributesSequence::Normalize;
     bool objectsSpacing = false;
     bool functionsSpacing = false;
+    bool sortImports = false;
+    SemicolonRule semicolonRule = SemicolonRule::Always;
 };
 
-using PendingSourceLocationId = int;
-using PendingSourceLocationIdAtomic = QAtomicInt;
 class LineWriter;
-
-class QMLDOM_EXPORT PendingSourceLocation
-{
-    Q_GADGET
-public:
-    quint32 utf16Start() const;
-    quint32 utf16End() const;
-    void changeAtOffset(quint32 offset, qint32 change, qint32 colChange, qint32 lineChange);
-    void commit();
-    PendingSourceLocationId id;
-    SourceLocation value;
-    SourceLocation *toUpdate = nullptr;
-    std::function<void(SourceLocation)> updater = nullptr;
-    bool open = true;
-};
 
 class QMLDOM_EXPORT LineWriter
 {
@@ -146,6 +135,7 @@ public:
     LineWriter &ensureNewline(int nNewlines = 1, TextAddType t = TextAddType::Extra);
     LineWriter &ensureSpace(TextAddType t = TextAddType::Extra);
     LineWriter &ensureSpace(QStringView space, TextAddType t = TextAddType::Extra);
+    LineWriter &ensureSemicolon(TextAddType t = TextAddType::Extra);
 
     LineWriter &newline()
     {
@@ -158,20 +148,10 @@ public:
         return *this;
     }
     LineWriter &write(QStringView v, TextAddType tType = TextAddType::Normal);
-    LineWriter &write(QStringView v, SourceLocation *toUpdate)
-    {
-        auto pLoc = startSourceLocation(toUpdate);
-        write(v);
-        endSourceLocation(pLoc);
-        return *this;
-    }
     void commitLine(const QString &eol, TextAddType t = TextAddType::Normal, int untilChar = -1);
     void flush();
     void eof(bool ensureNewline = true);
     SourceLocation committedLocation() const;
-    PendingSourceLocationId startSourceLocation(SourceLocation *);
-    PendingSourceLocationId startSourceLocation(std::function<void(SourceLocation)>);
-    void endSourceLocation(PendingSourceLocationId);
     quint32 counter() const { return m_counter; }
     int addTextAddCallback(std::function<bool(LineWriter &, TextAddType)> callback);
     bool removeTextAddCallback(int i) { return m_textAddCallbacks.remove(i); }
@@ -188,7 +168,6 @@ public:
 private:
     Q_DISABLE_COPY_MOVE(LineWriter)
 protected:
-    void changeAtOffset(quint32 offset, qint32 change, qint32 colChange, qint32 lineChange);
     QString eolToWrite() const;
     SourceLocation currentSourceLocation() const;
     int column(int localIndex);
@@ -204,8 +183,6 @@ protected:
     int m_utf16Offset = 0; // utf16 offset since start for committed data
     QString m_currentLine;
     LineWriterOptions m_options;
-    PendingSourceLocationIdAtomic m_lastSourceLocationId;
-    QMap<PendingSourceLocationId, PendingSourceLocation> m_pendingSourceLocations;
     QAtomicInt m_lastCallbackId;
     QMap<int, std::function<bool(LineWriter &, TextAddType)>> m_textAddCallbacks;
     quint32 m_counter = 0;

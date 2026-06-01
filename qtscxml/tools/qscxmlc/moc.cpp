@@ -243,7 +243,7 @@ enum class IncludeState {
     NoInclude,
 };
 
-bool Moc::parseEnum(EnumDef *def)
+bool Moc::parseEnum(EnumDef *def, ClassDef *containingClass)
 {
     bool isTypdefEnum = false; // typedef enum { ... } Foo;
 
@@ -252,6 +252,8 @@ bool Moc::parseEnum(EnumDef *def)
 
     if (test(IDENTIFIER)) {
         def->name = lexem();
+        if (containingClass)
+            containingClass->allEnumNames.insert(def->name);
     } else {
         if (lookup(-1) != TYPEDEF)
             return false; // anonymous enum
@@ -294,6 +296,8 @@ bool Moc::parseEnum(EnumDef *def)
         if (!test(IDENTIFIER))
             return false;
         def->name = lexem();
+        // used as the name for our enum, but we don't track it,
+        // because we only care about types that might conflict with members
     }
     return true;
 }
@@ -316,7 +320,6 @@ void Moc::parseFunctionArguments(FunctionDef *def)
             arg.rightType += lexem();
         }
         arg.normalizedType = normalizeType(QByteArray(arg.type.name + ' ' + arg.rightType));
-        arg.typeNameForCast = QByteArray("std::add_pointer_t<"+arg.normalizedType+">");
         if (test(EQ))
             arg.isDefault = true;
         def->arguments += arg;
@@ -772,7 +775,7 @@ void Moc::parse()
                                 break;
                             case ENUM: {
                                 EnumDef enumDef;
-                                if (parseEnum(&enumDef))
+                                if (parseEnum(&enumDef, nullptr))
                                     def.enumList += enumDef;
                             } break;
                             case CLASS:
@@ -869,6 +872,7 @@ void Moc::parse()
             continue;
         ClassDef def;
         if (parseClassHead(&def)) {
+            Symbol qmlRegistrationMacroSymbol = {};
             prependNamespaces(def, namespaceList);
 
             FunctionDef::Access access = FunctionDef::Private;
@@ -978,12 +982,23 @@ void Moc::parse()
                     break;
                 case ENUM: {
                     EnumDef enumDef;
-                    if (parseEnum(&enumDef))
+                    if (parseEnum(&enumDef, &def))
                         def.enumList += enumDef;
                 } break;
                 case SEMIC:
                 case COLON:
                     break;
+                case IDENTIFIER:
+                {
+                    const QByteArray lex = lexem();
+                    if (lex.startsWith("QML_")) {
+                        if (   lex == "QML_ELEMENT" || lex == "QML_NAMED_ELEMENT"
+                            || lex == "QML_ANONYMOUS" || lex == "QML_VALUE_TYPE") {
+                            qmlRegistrationMacroSymbol = symbol();
+                        }
+                    }
+                }
+                Q_FALLTHROUGH();
                 default:
                     FunctionDef funcDef;
                     funcDef.access = access;
@@ -1023,6 +1038,20 @@ void Moc::parse()
             }
 
             next(RBRACE);
+
+            /* if the header is available, moc will see a Q_CLASSINFO entry; the
+               token is only visible if the header is missing
+               To avoid false positives, we only warn when encountering the token in a QObject or gadget
+            */
+            if ((def.hasQObject || def.hasQGadget) && qmlRegistrationMacroSymbol.token != NOTOKEN) {
+                QByteArray msg("Potential QML registration macro was found, but no header containing it was included.\n"
+                               "This might cause runtime errors in QML applications\n"
+                               "Include <QtQmlIntegration/qqmlintegration.h> or <QtQml/qqmlregistration.h> to fix this.");
+                if (qmlMacroWarningIsFatal)
+                    error(qmlRegistrationMacroSymbol, msg.constData());
+                else
+                    warning(qmlRegistrationMacroSymbol, msg.constData());
+            }
 
             if (!def.hasQObject && !def.hasQGadget && def.signalList.isEmpty() && def.slotList.isEmpty()
                 && def.propertyList.isEmpty() && def.enumDeclarations.isEmpty())
@@ -1074,6 +1103,18 @@ void Moc::parse()
                 classList += def;
         }
     }
+}
+
+QByteArrayView Moc::strippedFileName() const
+{
+    QByteArrayView fn = QByteArrayView(filename);
+
+    auto isSlash = [](char ch) { return ch == '/' || ch == '\\'; };
+    auto rit = std::find_if(fn.crbegin(), fn.crend(), isSlash);
+    if (rit != fn.crend())
+        fn = fn.last(rit - fn.crbegin());
+
+    return fn;
 }
 
 static bool any_type_contains(const QList<PropertyDef> &properties, const QByteArray &pattern)
@@ -1143,12 +1184,7 @@ static QByteArrayList requiredQtContainers(const QList<ClassDef> &classes)
 
 void Moc::generate(FILE *out, FILE *jsonOutput)
 {
-    QByteArrayView fn = QByteArrayView(filename);
-
-    auto isSlash = [](char ch) { return ch == '/' || ch == '\\'; };
-    auto rit = std::find_if(fn.crbegin(), fn.crend(), isSlash);
-    if (rit != fn.crend())
-        fn = fn.last(rit - fn.crbegin());
+    QByteArrayView fn = strippedFileName();
 
     fprintf(out, "/****************************************************************************\n"
             "** Meta object code from reading C++ file '%s'\n**\n" , fn.constData());

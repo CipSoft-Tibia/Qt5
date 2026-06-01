@@ -5,9 +5,9 @@
 import * as Protocol from '../../generated/protocol.js';
 import * as i18n from '../i18n/i18n.js';
 
-import {type CallFrame, type LocationRange, type ScopeChainEntry} from './DebuggerModel.js';
+import type {CallFrame, LocationRange, ScopeChainEntry} from './DebuggerModel.js';
 import {type GetPropertiesResult, type RemoteObject, RemoteObjectImpl, RemoteObjectProperty} from './RemoteObject.js';
-import {type GeneratedRange, type OriginalScope} from './SourceMapScopes.js';
+import type {GeneratedRange, OriginalScope} from './SourceMapScopes.js';
 import {contains} from './SourceMapScopesInfo.js';
 
 const UIStrings = {
@@ -78,7 +78,7 @@ export class SourceMapScopeChainEntry implements ScopeChainEntry {
       case 'block':
         return Protocol.Debugger.ScopeType.Block;
     }
-    return this.#scope.kind;
+    return this.#scope.kind ?? '';
   }
 
   typeName(): string {
@@ -90,7 +90,7 @@ export class SourceMapScopeChainEntry implements ScopeChainEntry {
       case 'block':
         return i18nString(UIStrings.block);
     }
-    return this.#scope.kind;
+    return this.#scope.kind ?? '';
   }
 
   name(): string|undefined {

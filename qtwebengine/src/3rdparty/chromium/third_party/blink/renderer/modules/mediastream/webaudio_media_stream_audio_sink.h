@@ -9,13 +9,13 @@
 
 #include <memory>
 
+#include "base/containers/span.h"
 #include "base/synchronization/lock.h"
 #include "base/time/time.h"
 #include "media/base/audio_converter.h"
 #include "media/base/reentrancy_checker.h"
 #include "third_party/blink/public/platform/modules/mediastream/web_media_stream_audio_sink.h"
 #include "third_party/blink/public/platform/web_audio_source_provider.h"
-#include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_component.h"
 
@@ -65,7 +65,7 @@ class MODULES_EXPORT WebAudioMediaStreamAudioSink
 
   // WebAudioSourceProvider implementation.
   void SetClient(WebAudioSourceProviderClient* client) override;
-  void ProvideInput(const WebVector<float*>& audio_data,
+  void ProvideInput(base::span<const base::span<float>> audio_data,
                     int number_of_frames) override;
 
  private:
@@ -94,7 +94,7 @@ class MODULES_EXPORT WebAudioMediaStreamAudioSink
   // Protects the above variables.
   base::Lock lock_;
 
-  // No lock protection needed since only accessed in WebVector version of
+  // No lock protection needed since only accessed in span version of
   // ProvideInput().
   std::unique_ptr<media::AudioBus> output_wrapper_;
 

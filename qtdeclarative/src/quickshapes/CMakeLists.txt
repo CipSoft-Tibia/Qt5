@@ -57,3 +57,7 @@ qt_internal_add_shaders(QuickShapesPrivate "qtquickshapes_shaders"
         "shaders_ng/wireframe.vert"
 )
 
+if(QT_FEATURE_quickshapes_designhelpers)
+    add_subdirectory(designhelpers)
+endif()
+

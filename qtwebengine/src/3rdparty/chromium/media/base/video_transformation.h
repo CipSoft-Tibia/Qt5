@@ -5,6 +5,8 @@
 #ifndef MEDIA_BASE_VIDEO_TRANSFORMATION_H_
 #define MEDIA_BASE_VIDEO_TRANSFORMATION_H_
 
+#include <stdint.h>
+
 #include <string>
 
 #include "media/base/media_export.h"
@@ -40,6 +42,13 @@ struct MEDIA_EXPORT VideoTransformation {
   // A vertical flip is represented by the cosine's having opposite signs
   // and a horizontal flip is represented by the sine's having the same sign.
   VideoTransformation(const int32_t matrix[4]);
+
+  // Rotation is snapped to the nearest multiple of 90 degrees, rounding ties
+  // toward positive infinity.
+  VideoTransformation(double rotation, bool mirrored);
+
+  // The result of rotating and then mirroring `this` according to `delta`.
+  VideoTransformation add(VideoTransformation delta) const;
 
   // The video rotation value, in 90 degree steps.
   VideoRotation rotation;

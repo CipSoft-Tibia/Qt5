@@ -3,4 +3,4 @@
 
 #include <QtQuickTest/private/quickforandroidtest_p.h>
 
-QUICK_FOR_ANDROID_TEST_MAIN("tst_qtquickview_signallistener")
+QUICK_FOR_ANDROID_TEST_MAIN(tst_qtquickview_signallistener)

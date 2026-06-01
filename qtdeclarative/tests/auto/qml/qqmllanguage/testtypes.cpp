@@ -25,6 +25,14 @@ static QJSValue myQJSValueQObjectSingleton(QQmlEngine *engine, QJSEngine *script
     return value;
 }
 
+static QObject *readCounterSingleton(QQmlEngine *engine, QJSEngine *scriptEngine)
+{
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
+
+    return new ReadCounter();
+}
+
 void registerTypes()
 {
     qmlRegisterInterface<MyInterface>("MyInterface", 1);
@@ -190,6 +198,8 @@ void registerTypes()
     >("Test", 1);
     qmlRegisterTypesAndRevisions<NestedVectors>("Test", 1);
     qmlRegisterTypesAndRevisions<VariantAssociationProvider>("Test", 1);
+    qmlRegisterTypesAndRevisions<ReadCounter>("Test", 1);
+    qmlRegisterSingletonType<ReadCounter>("Test", 1, 0, "ReadCounterSingleton", readCounterSingleton);
 
     qmlRegisterTypesAndRevisions<BindablePoint>("Test", 1);
 
@@ -305,9 +315,7 @@ const QMetaObject *QtPrivate::MetaObjectForType<FakeDynamicObject *, void>::meta
         QMetaObjectBuilder builder(&FakeDynamicObject::staticMetaObject);
         builder.setFlags(DynamicMetaObject);
         auto mo = builder.toMetaObject();
-        QObject::connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, [mo]() {
-            delete mo;
-        });
+        QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [mo] { delete mo; });
         return mo;
     }();
     return ptr;

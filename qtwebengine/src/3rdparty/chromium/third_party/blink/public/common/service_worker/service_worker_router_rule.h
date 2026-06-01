@@ -5,8 +5,11 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_SERVICE_WORKER_SERVICE_WORKER_ROUTER_RULE_H_
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_SERVICE_WORKER_SERVICE_WORKER_ROUTER_RULE_H_
 
+#include <stdint.h>
+
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <vector>
 
 #include "third_party/blink/public/common/common_export.h"
@@ -200,11 +203,15 @@ struct BLINK_COMMON_EXPORT ServiceWorkerRouterNetworkSource {
   }
 };
 
-// Race network and fetch handler source.
+// Race two sources.
 struct BLINK_COMMON_EXPORT ServiceWorkerRouterRaceSource {
-  bool operator==(const ServiceWorkerRouterRaceSource& other) const {
-    return true;
-  }
+  // Enum to explain which sources race.
+  enum class TargetEnum {
+    kNetworkAndFetchHandler = 0,
+  };
+
+  TargetEnum target = TargetEnum::kNetworkAndFetchHandler;
+  bool operator==(const ServiceWorkerRouterRaceSource& other) const;
 };
 
 // Fetch handler source structure.

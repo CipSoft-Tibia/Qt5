@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qundoview.h"
 
@@ -229,7 +230,7 @@ QIcon QUndoModel::cleanIcon() const
     be set with setGroup(). The view will then update itself automatically whenever the
     active stack of the group changes.
 
-    \image qundoview.png
+    \image qundoview.png {Undo stack showing list of commands}
 */
 
 class QUndoViewPrivate : public QListViewPrivate

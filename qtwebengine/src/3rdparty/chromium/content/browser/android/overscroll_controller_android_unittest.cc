@@ -3,10 +3,13 @@
 // found in the LICENSE file.
 
 #include "content/browser/android/overscroll_controller_android.h"
+
 #include <memory>
+
 #include "base/memory/raw_ptr.h"
 #include "cc/input/overscroll_behavior.h"
 #include "cc/layers/layer.h"
+#include "gpu/ipc/common/surface_handle.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/input/web_gesture_event.h"
@@ -34,14 +37,18 @@ namespace {
 class MockCompositor : public WindowAndroidCompositor {
  public:
   ~MockCompositor() override = default;
-  std::unique_ptr<ReadbackRef> TakeReadbackRef(const viz::SurfaceId&) override {
-    return nullptr;
+  ui::WindowAndroidCompositor::ScopedKeepSurfaceAliveCallback
+  TakeScopedKeepSurfaceAliveCallback(const viz::SurfaceId&) override {
+    return base::OnceClosure();
   }
   void RequestCopyOfOutputOnRootLayer(
       std::unique_ptr<viz::CopyOutputRequest>) override {}
   void SetNeedsAnimate() override {}
   MOCK_METHOD0(GetResourceManager, ResourceManager&());
   MOCK_METHOD0(GetFrameSinkId, viz::FrameSinkId());
+  gpu::SurfaceHandle GetSurfaceHandle() override {
+    return gpu::kNullSurfaceHandle;
+  }
   void AddChildFrameSink(const viz::FrameSinkId& frame_sink_id) override {}
   void RemoveChildFrameSink(const viz::FrameSinkId& frame_sink_id) override {}
   bool IsDrawingFirstVisibleFrame() const override { return false; }

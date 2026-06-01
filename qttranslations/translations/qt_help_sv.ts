@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="sv_SE">
+<TS version="2.1" language="sv">
 <context>
     <name>FilterNameDialogClass</name>
     <message>
@@ -10,6 +10,81 @@
     <message>
         <source>Filter Name:</source>
         <translation>Filternamn:</translation>
+    </message>
+</context>
+<context>
+    <name>QHelpFilterSettingsWidget</name>
+    <message>
+        <source>Form</source>
+        <translation>Formulär</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Filter</translation>
+    </message>
+    <message>
+        <source>Components</source>
+        <translation>Komponenter</translation>
+    </message>
+    <message>
+        <source>Versions</source>
+        <translation>Versioner</translation>
+    </message>
+    <message>
+        <source>Add...</source>
+        <translation>Lägg till...</translation>
+    </message>
+    <message>
+        <source>Rename...</source>
+        <translation>Byt namn...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Ta bort</translation>
+    </message>
+    <message>
+        <source>Add Filter</source>
+        <translation>Lägg till filter</translation>
+    </message>
+    <message>
+        <source>New Filter</source>
+        <translation>Nytt filter</translation>
+    </message>
+    <message>
+        <source>Rename Filter</source>
+        <translation>Byt namn på filter</translation>
+    </message>
+    <message>
+        <source>Remove Filter</source>
+        <translation>Ta bort filter</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove the &quot;%1&quot; filter?</source>
+        <translation>Är du säker på att du vill ta bort filtret &quot;%1&quot;?</translation>
+    </message>
+    <message>
+        <source>Filter Exists</source>
+        <translation>Filtret finns redan</translation>
+    </message>
+    <message>
+        <source>The filter &quot;%1&quot; already exists.</source>
+        <translation>Filtret &quot;%1&quot; finns redan.</translation>
+    </message>
+    <message>
+        <source>No Component</source>
+        <translation>Ingen komponent</translation>
+    </message>
+    <message>
+        <source>Invalid Component</source>
+        <translation>Ogiltig komponent</translation>
+    </message>
+    <message>
+        <source>No Version</source>
+        <translation>Ingen version</translation>
+    </message>
+    <message>
+        <source>Invalid Version</source>
+        <translation>Ogiltig version</translation>
     </message>
 </context>
 <context>
@@ -107,78 +182,10 @@
     </message>
 </context>
 <context>
-    <name>QHelpFilterSettingsWidget</name>
+    <name>fulltextsearch::QHelpSearchIndexWriter</name>
     <message>
-        <source>Form</source>
-        <translation>Formulär</translation>
-    </message>
-    <message>
-        <source>Filter</source>
-        <translation>Filter</translation>
-    </message>
-    <message>
-        <source>Components</source>
-        <translation>Komponenter</translation>
-    </message>
-    <message>
-        <source>Versions</source>
-        <translation>Versioner</translation>
-    </message>
-    <message>
-        <source>Add...</source>
-        <translation>Lägg till...</translation>
-    </message>
-    <message>
-        <source>Rename...</source>
-        <translation>Byt namn...</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Ta bort</translation>
-    </message>
-    <message>
-        <source>Add Filter</source>
-        <translation>Lägg till filter</translation>
-    </message>
-    <message>
-        <source>New Filter</source>
-        <translation>Nytt filter</translation>
-    </message>
-    <message>
-        <source>Rename Filter</source>
-        <translation>Byt namn på filter</translation>
-    </message>
-    <message>
-        <source>Remove Filter</source>
-        <translation>Ta bort filter</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to remove the &quot;%1&quot; filter?</source>
-        <translation>Är du säker på att du vill ta bort filtret &quot;%1&quot;?</translation>
-    </message>
-    <message>
-        <source>Filter Exists</source>
-        <translation>Filtret finns redan</translation>
-    </message>
-    <message>
-        <source>The filter &quot;%1&quot; already exists.</source>
-        <translation>Filtret &quot;%1&quot; finns redan.</translation>
-    </message>
-    <message>
-        <source>No Component</source>
-        <translation>Ingen komponent</translation>
-    </message>
-    <message>
-        <source>Invalid Component</source>
-        <translation>Ogiltig komponent</translation>
-    </message>
-    <message>
-        <source>No Version</source>
-        <translation>Ingen version</translation>
-    </message>
-    <message>
-        <source>Invalid Version</source>
-        <translation>Ogiltig version</translation>
+        <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
+        <translation>Kan inte öppna databasen &quot;%1&quot; med anslutningen &quot;%2&quot;: %3</translation>
     </message>
 </context>
 <context>
@@ -198,31 +205,6 @@
     <message>
         <source>Next search</source>
         <translation>Nästa sökning</translation>
-    </message>
-</context>
-<context>
-    <name>QHelpSearchResultWidget</name>
-    <message numerus="yes">
-        <source>%1 - %2 of %n Hits</source>
-        <translation>
-            <numerusform>%1 - %2 av %n träff</numerusform>
-            <numerusform>%1 - %2 av %n träffar</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>0 - 0 of 0 Hits</source>
-        <translation>0 - 0 av 0 träffar</translation>
-    </message>
-</context>
-<context>
-    <name>QOptionsWidget</name>
-    <message>
-        <source>No Option</source>
-        <translation>Inget alternativ</translation>
-    </message>
-    <message>
-        <source>Invalid Option</source>
-        <translation>Ogiltigt alternativ</translation>
     </message>
 </context>
 <context>
@@ -249,10 +231,28 @@
     </message>
 </context>
 <context>
-    <name>fulltextsearch::qt::QHelpSearchIndexWriter</name>
+    <name>QHelpSearchResultWidget</name>
+    <message numerus="yes">
+        <source>%1 - %2 of %n Hits</source>
+        <translation>
+            <numerusform>%1 - %2 av %n träff</numerusform>
+            <numerusform>%1 - %2 av %n träffar</numerusform>
+        </translation>
+    </message>
     <message>
-        <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
-        <translation>Kan inte öppna databasen &quot;%1&quot; med anslutningen &quot;%2&quot;: %3</translation>
+        <source>0 - 0 of 0 Hits</source>
+        <translation>0 - 0 av 0 träffar</translation>
+    </message>
+</context>
+<context>
+    <name>QOptionsWidget</name>
+    <message>
+        <source>No Option</source>
+        <translation>Inget alternativ</translation>
+    </message>
+    <message>
+        <source>Invalid Option</source>
+        <translation>Ogiltigt alternativ</translation>
     </message>
 </context>
 </TS>

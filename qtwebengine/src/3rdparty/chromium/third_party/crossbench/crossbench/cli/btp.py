@@ -5,29 +5,30 @@
 
 import argparse
 import logging
-from perfetto.batch_trace_processor.api import (
-    BatchTraceProcessor, BatchTraceProcessorConfig, FailureHandling)
+from typing import Dict, Optional, Sequence
+
+from perfetto.batch_trace_processor.api import (BatchTraceProcessor,
+                                                BatchTraceProcessorConfig,
+                                                FailureHandling)
 from perfetto.trace_processor.api import TraceProcessorConfig
 from perfetto.trace_uri_resolver.resolver import TraceUriResolver
-from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
-                    Type, Union)
 
-from crossbench import cli_helper
 from crossbench import path as pth
-from crossbench.cli.config.probe import ProbeListConfig
+from crossbench.cli.config.probe_list import ProbeListConfig
 from crossbench.cli.parser import CrossBenchArgumentParser
-from crossbench.probes.trace_processor.trace_processor import (
-    _QUERIES_DIR, _MODULES_DIR, TraceProcessorProbe)
-
+from crossbench.parse import PathParser
+from crossbench.probes.perfetto.trace_processor.trace_processor import (
+    _MODULES_DIR, _QUERIES_DIR, TraceProcessorProbe)
 
 ROOT_DIR = pth.LocalPath(__file__).parents[2]
 DEFAULT_RESULT_DIR = ROOT_DIR / "results" / "latest"
-DEFAULT_CONFIG_PATH = ROOT_DIR / "config" / "benchmark" / "loading" / "probe_config.hjson"
+DEFAULT_CONFIG_PATH = (
+    ROOT_DIR / "config" / "benchmark" / "loadline" / "probe_config.hjson")
 
 class MergedTraceUriResolver(TraceUriResolver):
   def __init__(self, result_path: pth.LocalPath):
 
-    def metadata(path):
+    def metadata(path) -> Dict[str, str]:
       parts = str(path).split("/")
       return {
           "cb_browser": parts[-7],
@@ -54,19 +55,19 @@ class BTPUtil:
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     self.parser.add_argument(
         "--result-dir",
-        type=cli_helper.parse_existing_path,
+        type=PathParser.existing_path,
         default=DEFAULT_RESULT_DIR,
-        help=("Path to the benchmark result directory."))
+        help="Path to the benchmark result directory.")
     self.parser.add_argument(
         "--probe-config",
-        type=cli_helper.parse_existing_file_path,
+        type=PathParser.existing_file_path,
         default=DEFAULT_CONFIG_PATH,
-        help=("Path to the trace_processor probe config."))
+        help="Path to the trace_processor probe config.")
     self.parser.add_argument(
         "--output-dir",
         type=pth.LocalPath,
         default=ROOT_DIR,
-        help=("Path to the directory where output files will be placed."))
+        help="Path to the directory where output files will be placed.")
     self.parser.add_argument(
         "--extra-query",
         type=str,
@@ -79,14 +80,14 @@ class BTPUtil:
     args = self.parser.parse_args(argv)
 
     probe_config = ProbeListConfig.parse_path(args.probe_config)
-    tp = None
+    tp: Optional[TraceProcessorProbe] = None
     for probe in probe_config.probes:
       if isinstance(probe, TraceProcessorProbe):
         tp = probe
     assert tp is not None
 
     tp_config = TraceProcessorConfig(
-        bin_path=tp._trace_processor_bin,
+        bin_path=str(tp.trace_processor_bin),
         extra_flags=["--add-sql-module", _MODULES_DIR])
     btp_conf = BatchTraceProcessorConfig(
       tp_config=tp_config,

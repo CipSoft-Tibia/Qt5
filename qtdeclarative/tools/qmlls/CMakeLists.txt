@@ -13,7 +13,5 @@ qt_internal_add_app(qmlls
         QT_USE_QSTRINGBUILDER
     LIBRARIES
         Qt::QmlLSPrivate
-        Qt::QmlCompiler
-        Qt::QmlToolingSettingsPrivate
 )
 set_target_properties(qmlls PROPERTIES WIN32_EXECUTABLE FALSE)

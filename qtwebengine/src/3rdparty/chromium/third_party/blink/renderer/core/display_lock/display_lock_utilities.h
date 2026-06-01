@@ -42,7 +42,6 @@ class CORE_EXPORT DisplayLockUtilities {
         impl_->Destroy();
     }
 
-   private:
     // It is important not to create multiple ScopedChainForcedUpdate scopes.
     // The following functions update some combination of Style, Layout, Paint
     // information after forcing the display locks. It should be enough to use
@@ -149,7 +148,6 @@ class CORE_EXPORT DisplayLockUtilities {
       }
     }
 
-   private:
     friend class DisplayLockUtilities;
     LockCheckMemoizationScope() {
       if (!DisplayLockUtilities::memoizer_)
@@ -205,6 +203,8 @@ class CORE_EXPORT DisplayLockUtilities {
   static LockCheckMemoizationScope CreateLockCheckMemoizationScope() {
     return LockCheckMemoizationScope();
   }
+
+  public:
 
   // Activates all the nodes within a find-in-page match |range|.
   // Returns true if at least one node gets activated.
@@ -326,7 +326,6 @@ class CORE_EXPORT DisplayLockUtilities {
   // See StyleEngine::style_recalc_root_.
   static bool IsPotentialStyleRecalcRoot(const Node& node);
 
- private:
   static bool IsDisplayLockedPreventingPaintUnmemoized(const Node& node,
                                                        bool inclusive_check);
 
@@ -337,6 +336,14 @@ class CORE_EXPORT DisplayLockUtilities {
   static bool IsLockedForAccessibility(const Node& node);
 
   static LockCheckMemoizationScope* memoizer_;
+};
+
+template <typename T>
+struct ThreadingTrait<
+    T,
+    std::enable_if_t<
+        std::is_base_of_v<DisplayLockUtilities::ScopedForcedUpdate::Impl, T>>> {
+  static constexpr ThreadAffinity kAffinity = kMainThreadOnly;
 };
 
 }  // namespace blink

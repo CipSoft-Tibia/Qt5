@@ -54,6 +54,7 @@ private slots:
     void unhandledFiles();
     void updateFile();
     void qqcStyleSelection();
+    void singleton();
 };
 
 tst_QQmlPreview::tst_QQmlPreview()
@@ -437,6 +438,30 @@ void tst_QQmlPreview::qqcStyleSelection()
     QTRY_VERIFY(m_files.contains(testFile(file)));
     QTRY_VERIFY(m_files.contains(testFile("qqc2.conf")));
     verifyProcessOutputContains("loaded");
+
+    m_process->stop();
+    QTRY_COMPARE(m_client->state(), QQmlDebugClient::NotConnected);
+    QVERIFY(m_serviceErrors.isEmpty());
+}
+
+void tst_QQmlPreview::singleton()
+{
+    const QString file("singletonUser.qml");
+    QCOMPARE(startQmlProcess(file, {"QML_IMPORT_PATH=" + dataDirectory()}), ConnectSuccess);
+    QVERIFY(m_client);
+    QTRY_COMPARE(m_client->state(), QQmlDebugClient::Enabled);
+    m_client->triggerLoad(testFileUrl(file));
+    QTRY_VERIFY(m_files.contains(testFile(file)));
+    verifyProcessOutputContains("col 0");
+
+    QFile input(testFile("M/S.qml"));
+    QVERIFY(input.open(QIODevice::ReadOnly));
+    QByteArray contents = input.readAll();
+    contents.replace("0", "5");
+
+    serveFile(testFile("M/S.qml"), contents);
+    m_client->triggerLoad(testFileUrl(file));
+    verifyProcessOutputContains("col 5");
 
     m_process->stop();
     QTRY_COMPARE(m_client->state(), QQmlDebugClient::NotConnected);

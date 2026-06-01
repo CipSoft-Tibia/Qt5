@@ -6,9 +6,10 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_SERVICE_WORKER_SERVICE_WORKER_REGISTRATION_H_
 
 #include <memory>
+#include <vector>
+
 #include "third_party/blink/public/mojom/service_worker/service_worker_registration.mojom-blink.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_registration_object_info.h"
-#include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
@@ -26,6 +27,7 @@ namespace blink {
 
 class ExceptionState;
 class ScriptState;
+class V8ServiceWorkerUpdateViaCache;
 
 // The implementation of a service worker registration object in Blink.
 class ServiceWorkerRegistration final
@@ -75,7 +77,7 @@ class ServiceWorkerRegistration final
   NavigationPreloadManager* navigationPreload();
 
   String scope() const;
-  String updateViaCache() const;
+  V8ServiceWorkerUpdateViaCache updateViaCache() const;
 
   int64_t RegistrationId() const { return registration_id_; }
 
@@ -154,7 +156,7 @@ class ServiceWorkerRegistrationArray {
  public:
   // Called from CallbackPromiseAdapter.
   using IDLType = IDLSequence<ServiceWorkerRegistration>;
-  using WebType = WebVector<WebServiceWorkerRegistrationObjectInfo>;
+  using WebType = std::vector<WebServiceWorkerRegistrationObjectInfo>;
   static HeapVector<Member<ServiceWorkerRegistration>> Take(
       ScriptPromiseResolverBase* resolver,
       WebType web_service_worker_registrations) {

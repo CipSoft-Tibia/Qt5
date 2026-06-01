@@ -155,10 +155,11 @@ def CheckoutGitRepo(name, git_url, commit, dir):
   # Try updating the current repo if it exists and has no local diff.
   if os.path.isdir(dir):
     os.chdir(dir)
-    # git diff-index --exit-code returns 0 when there is no diff.
+    # Undo local changes with `git restore .`.
+    # `git diff-index --exit-code` returns 0 when there is no diff.
     # Also check that the first commit is reachable.
-    if (RunCommand(['git', 'diff-index', '--exit-code', 'HEAD'],
-                   fail_hard=False)
+    if (RunCommand(['git', 'restore', '.'], fail_hard=False) and RunCommand(
+        ['git', 'diff-index', '--exit-code', 'HEAD'], fail_hard=False)
         and RunCommand(['git', 'fetch'], fail_hard=False)
         and RunCommand(['git', 'checkout', commit], fail_hard=False)
         and RunCommand(['git', 'clean', '-f'], fail_hard=False)):
@@ -180,11 +181,13 @@ def CheckoutGitRepo(name, git_url, commit, dir):
   sys.exit(1)
 
 
-def GitCherryPick(git_repository, git_remote, commit):
+def GitCherryPick(git_repository, git_remote, commit, git_remote_name='github'):
   print(f'Cherry-picking {commit} in {git_repository} from {git_remote}')
   git_cmd = ['git', '-C', git_repository]
-  RunCommand(git_cmd + ['remote', 'add', 'github', git_remote], fail_hard=False)
-  RunCommand(git_cmd + ['fetch', '--recurse-submodules=no', 'github', commit])
+  RunCommand(git_cmd + ['remote', 'add', git_remote_name, git_remote],
+             fail_hard=False)
+  RunCommand(git_cmd +
+             ['fetch', '--recurse-submodules=no', git_remote_name, commit])
   is_ancestor = RunCommand(git_cmd +
                            ['merge-base', '--is-ancestor', commit, 'HEAD'],
                            fail_hard=False)
@@ -236,37 +239,32 @@ def AddCMakeToPath():
   os.environ['PATH'] = cmake_dir + os.pathsep + os.environ.get('PATH', '')
 
 
-def AddGnuWinToPath():
-  """Download some GNU win tools and add them to PATH."""
+def AddGitForWindowsToPath():
+  """Download Git for Windows and add it to PATH.
+
+  Git for Windows provides command line utilities (not Git) for tests."""
   assert sys.platform == 'win32'
 
-  gnuwin_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, 'gnuwin')
-  GNUWIN_VERSION = '14'
-  GNUWIN_STAMP = os.path.join(gnuwin_dir, 'stamp')
-  if ReadStampFile(GNUWIN_STAMP) == GNUWIN_VERSION:
-    print('GNU Win tools already up to date.')
+  git_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, 'git-for-windows')
+  version = '2.47.0'
+  stamp_file = os.path.join(git_dir, 'stamp')
+  if ReadStampFile(stamp_file) == version:
+    print('Git for Windows already up to date.')
   else:
-    zip_name = 'gnuwin-%s.zip' % GNUWIN_VERSION
-    DownloadAndUnpack(CDS_URL + '/tools/' + zip_name, LLVM_BUILD_TOOLS_DIR)
-    WriteStampFile(GNUWIN_VERSION, GNUWIN_STAMP)
+    archive_name = 'PortableGit-%s-64-bit.zip' % version
+    DownloadAndUnpack(CDS_URL + '/tools/' + archive_name, git_dir)
+    WriteStampFile(version, stamp_file)
 
-  os.environ['PATH'] = gnuwin_dir + os.pathsep + os.environ.get('PATH', '')
-
-  # find.exe, mv.exe and rm.exe are from MSYS (see crrev.com/389632). MSYS uses
-  # Cygwin under the hood, and initializing Cygwin has a race-condition when
-  # getting group and user data from the Active Directory is slow. To work
-  # around this, use a horrible hack telling it not to do that.
-  # See https://crbug.com/905289
-  etc = os.path.join(gnuwin_dir, '..', '..', 'etc')
-  EnsureDirExists(etc)
-  with open(os.path.join(etc, 'nsswitch.conf'), 'w') as f:
-    f.write('passwd: files\n')
-    f.write('group: files\n')
+  os.environ['PATH'] = os.path.join(
+      git_dir, 'usr', 'bin') + os.pathsep + os.environ.get('PATH', '')
 
 
-def AddZlibToPath():
+def AddZlibToPath(dry_run = False):
   """Download and build zlib, and add to PATH."""
   zlib_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, 'zlib-1.2.11')
+  if dry_run:
+    return zlib_dir
+
   if os.path.exists(zlib_dir):
     RmTree(zlib_dir)
   zip_name = 'zlib-1.2.11.tar.gz'
@@ -346,6 +344,7 @@ def BuildLibXml2():
           '-GNinja',
           '-DCMAKE_BUILD_TYPE=Release',
           '-DCMAKE_INSTALL_PREFIX=install',
+          '-DCMAKE_INSTALL_LIBDIR=lib',
           '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',  # /MT to match LLVM.
           '-DBUILD_SHARED_LIBS=OFF',
           '-DLIBXML2_WITH_C14N=OFF',
@@ -453,6 +452,7 @@ def BuildZStd():
           '-GNinja',
           '-DCMAKE_BUILD_TYPE=Release',
           '-DCMAKE_INSTALL_PREFIX=install',
+          '-DCMAKE_INSTALL_LIBDIR=lib',
           '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',  # /MT to match LLVM.
           '-DZSTD_BUILD_SHARED=OFF',
           '../build/cmake',
@@ -648,7 +648,13 @@ def main():
                       'clang-extra-tools. Overrides --extra-tools.')
   parser.add_argument('--extra-tools', nargs='*', default=[],
                       help='select additional chrome tools to build')
-  parser.add_argument('--use-system-cmake', action='store_true',
+  parser.add_argument('--no-runtimes',
+                      action='store_true',
+                      help='don\'t build compiler-rt, sanitizer and profile '
+                      'runtimes. This is incompatible with --pgo. On Mac, '
+                      'compiler-rt is always built regardless.')
+  parser.add_argument('--use-system-cmake',
+                      action='store_true',
                       help='use the cmake from PATH instead of downloading '
                       'and using prebuilt cmake binaries')
   parser.add_argument('--tf-path',
@@ -691,6 +697,11 @@ def main():
 
   global CLANG_REVISION, PACKAGE_VERSION, LLVM_BUILD_DIR
 
+  # TODO(crbug.com/392929930): Remove in next Clang roll.
+  if args.llvm_force_head_revision:
+    global RELEASE_VERSION
+    RELEASE_VERSION = '21'
+
   if (args.pgo or args.thinlto) and not args.bootstrap:
     print('--pgo/--thinlto requires --bootstrap')
     return 1
@@ -700,6 +711,9 @@ def main():
     print('works on Android. See ')
     print('https://www.chromium.org/developers/how-tos/android-build-instructions')
     print('for how to install the NDK, or pass --without-android.')
+    return 1
+  if args.no_runtimes and args.pgo:
+    print('--pgo requires runtimes, can\'t use --no-runtimes')
     return 1
 
   if args.with_fuchsia and not os.path.exists(FUCHSIA_SDK_DIR):
@@ -758,6 +772,12 @@ def main():
     ninja_dir = os.path.join(THIRD_PARTY_DIR, 'ninja')
     os.environ['PATH'] = ninja_dir + os.pathsep + os.environ.get('PATH', '')
 
+  if sys.platform.startswith('linux'):
+    sysroot_amd64 = DownloadDebianSysroot('amd64', args.skip_checkout)
+    sysroot_i386 = DownloadDebianSysroot('i386', args.skip_checkout)
+    sysroot_arm = DownloadDebianSysroot('arm', args.skip_checkout)
+    sysroot_arm64 = DownloadDebianSysroot('arm64', args.skip_checkout)
+
   if args.skip_build:
     return 0
 
@@ -773,9 +793,17 @@ def main():
   ldflags = []
 
   targets = 'AArch64;ARM;LoongArch;Mips;PowerPC;RISCV;SystemZ;WebAssembly;X86'
-  projects = 'clang;lld;clang-tools-extra'
+  projects = 'clang;lld'
+  if not args.no_tools:
+    projects += ';clang-tools-extra'
   if args.bolt:
     projects += ';bolt'
+
+  runtimes = ''
+  # On macOS, we always need to build compiler-rt because dsymutil's link needs
+  # libclang_rt.osx.a.
+  if not args.no_runtimes or sys.platform == 'darwin':
+    runtimes = 'compiler-rt'
 
   pic_default = sys.platform == 'win32'
   pic_mode = 'ON' if args.pic or pic_default else 'OFF'
@@ -784,9 +812,9 @@ def main():
       '-GNinja',
       '-DCMAKE_BUILD_TYPE=Release',
       '-DLLVM_ENABLE_ASSERTIONS=%s' % ('OFF' if args.disable_asserts else 'ON'),
-      '-DLLVM_ENABLE_PROJECTS=' + projects,
-      '-DLLVM_ENABLE_RUNTIMES=compiler-rt',
-      '-DLLVM_TARGETS_TO_BUILD=' + targets,
+      f'-DLLVM_ENABLE_PROJECTS={projects}',
+      f'-DLLVM_ENABLE_RUNTIMES={runtimes}',
+      f'-DLLVM_TARGETS_TO_BUILD={targets}',
       f'-DLLVM_ENABLE_PIC={pic_mode}',
       '-DLLVM_ENABLE_TERMINFO=OFF',
       '-DLLVM_ENABLE_Z3_SOLVER=OFF',
@@ -831,8 +859,7 @@ def main():
     cc = args.host_cc
     cxx = args.host_cxx
   else:
-    if not args.skip_checkout:
-      DownloadPinnedClang()
+    DownloadPinnedClang()
     if sys.platform == 'win32':
       cc = os.path.join(PINNED_CLANG_DIR, 'bin', 'clang-cl.exe')
       cxx = os.path.join(PINNED_CLANG_DIR, 'bin', 'clang-cl.exe')
@@ -850,11 +877,6 @@ def main():
       base_cmake_args += [ '-DLLVM_STATIC_LINK_CXX_STDLIB=ON' ]
 
   if sys.platform.startswith('linux'):
-    sysroot_amd64 = DownloadDebianSysroot('amd64', args.skip_checkout)
-    sysroot_i386 = DownloadDebianSysroot('i386', args.skip_checkout)
-    sysroot_arm = DownloadDebianSysroot('arm', args.skip_checkout)
-    sysroot_arm64 = DownloadDebianSysroot('arm64', args.skip_checkout)
-
     # Add the sysroot to base_cmake_args.
     if platform.machine() == 'aarch64':
       base_cmake_args.append('-DCMAKE_SYSROOT=' + sysroot_arm64)
@@ -863,7 +885,7 @@ def main():
       base_cmake_args.append('-DCMAKE_SYSROOT=' + sysroot_amd64)
 
   if sys.platform == 'win32':
-    AddGnuWinToPath()
+    AddGitForWindowsToPath()
 
     base_cmake_args.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
 
@@ -1170,7 +1192,8 @@ def main():
     runtimes_triples_args['i386-unknown-linux-gnu'] = {
         "args": [
             'CMAKE_SYSROOT=%s' % sysroot_i386,
-            # TODO(crbug.com/40242553): pass proper flags to i386 tests so they compile correctly
+            # TODO(crbug.com/40242553): pass proper flags to i386 tests so they
+            # compile correctly
             'LLVM_INCLUDE_TESTS=OFF',
         ],
         "profile":
@@ -1258,11 +1281,15 @@ def main():
             'COMPILER_RT_ENABLE_MACCATALYST=ON',
             'COMPILER_RT_ENABLE_IOS=ON',
             'COMPILER_RT_ENABLE_WATCHOS=ON',
-            'COMPILER_RT_ENABLE_TVOS=OFF',
+            'COMPILER_RT_ENABLE_TVOS=ON',
             'COMPILER_RT_ENABLE_XROS=ON',
             'DARWIN_ios_ARCHS=arm64',
             'DARWIN_iossim_ARCHS=arm64;x86_64',
             'DARWIN_osx_ARCHS=arm64;x86_64',
+            'DARWIN_tvos_BUILTIN_ARCHS=arm64',
+            'DARWIN_tvossim_BUILTIN_ARCHS=arm64;x86_64',
+            'DARWIN_watchos_BUILTIN_ARCHS=arm64',
+            'DARWIN_watchossim_BUILTIN_ARCHS=arm64;x86_64',
         ],
         "sanitizers":
         True,
@@ -1388,9 +1415,13 @@ def main():
       else:
         cmake_args.append('-DRUNTIMES_' + triple + '_' + arg)
         cmake_args.append('-DBUILTINS_' + triple + '_' + arg)
-    for arg in compiler_rt_cmake_flags(
-        profile=runtimes_triples_args[triple]["profile"],
-        sanitizers=runtimes_triples_args[triple]["sanitizers"]):
+    if not args.no_runtimes:
+      profile = runtimes_triples_args[triple]["profile"],
+      sanitizers = runtimes_triples_args[triple]["sanitizers"]
+    else:
+      profile = False
+      sanitizers = False
+    for arg in compiler_rt_cmake_flags(profile=profile, sanitizers=sanitizers):
       # 'default' is specially handled to pass through relevant CMake flags.
       if triple == 'default':
         cmake_args.append('-D' + arg)

@@ -4,6 +4,7 @@
 #include <QtCore/QMetaMethod>
 #include "qquickgraphsbarsseries_p.h"
 #include "utils_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -53,11 +54,14 @@ QPointF QQuickGraphsBar3DSeries::invalidSelectionPosition() const
 
 void QQuickGraphsBar3DSeries::setBaseGradient(QQuickGradient *gradient)
 {
-    if (m_gradients.m_baseGradient != gradient) {
-        setGradientHelper(gradient, m_gradients.m_baseGradient, GradientType::Base);
-        m_gradients.m_baseGradient = gradient;
-        Q_EMIT baseGradientChanged(m_gradients.m_baseGradient);
+    if (m_gradients.m_baseGradient == gradient) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << gradient;
+        return;
     }
+    setGradientHelper(gradient, m_gradients.m_baseGradient, GradientType::Base);
+    m_gradients.m_baseGradient = gradient;
+    Q_EMIT baseGradientChanged(m_gradients.m_baseGradient);
 }
 
 QQuickGradient *QQuickGraphsBar3DSeries::baseGradient() const
@@ -67,11 +71,14 @@ QQuickGradient *QQuickGraphsBar3DSeries::baseGradient() const
 
 void QQuickGraphsBar3DSeries::setSingleHighlightGradient(QQuickGradient *gradient)
 {
-    if (m_gradients.m_singleHighlightGradient != gradient) {
-        setGradientHelper(gradient, m_gradients.m_singleHighlightGradient, GradientType::Single);
-        m_gradients.m_singleHighlightGradient = gradient;
-        Q_EMIT singleHighlightGradientChanged(m_gradients.m_singleHighlightGradient);
+    if (m_gradients.m_singleHighlightGradient == gradient) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << gradient;
+        return;
     }
+    setGradientHelper(gradient, m_gradients.m_singleHighlightGradient, GradientType::Single);
+    m_gradients.m_singleHighlightGradient = gradient;
+    Q_EMIT singleHighlightGradientChanged(m_gradients.m_singleHighlightGradient);
 }
 
 QQuickGradient *QQuickGraphsBar3DSeries::singleHighlightGradient() const
@@ -81,11 +88,13 @@ QQuickGradient *QQuickGraphsBar3DSeries::singleHighlightGradient() const
 
 void QQuickGraphsBar3DSeries::setMultiHighlightGradient(QQuickGradient *gradient)
 {
-    if (m_gradients.m_multiHighlightGradient != gradient) {
-        setGradientHelper(gradient, m_gradients.m_multiHighlightGradient, GradientType::Multi);
-        m_gradients.m_multiHighlightGradient = gradient;
-        Q_EMIT multiHighlightGradientChanged(m_gradients.m_multiHighlightGradient);
+    if (m_gradients.m_multiHighlightGradient == gradient) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << gradient;
     }
+    setGradientHelper(gradient, m_gradients.m_multiHighlightGradient, GradientType::Multi);
+    m_gradients.m_multiHighlightGradient = gradient;
+    Q_EMIT multiHighlightGradientChanged(m_gradients.m_multiHighlightGradient);
 }
 
 QQuickGradient *QQuickGraphsBar3DSeries::multiHighlightGradient() const
@@ -163,7 +172,8 @@ void QQuickGraphsBar3DSeries::handleRowColorUpdate()
 void QQuickGraphsBar3DSeries::addColor(QQuickGraphsColor *color)
 {
     if (!color) {
-        qWarning("Color is invalid, use Color");
+        qCWarning(lcProperties3D, "%s invalid color used",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
         return;
     }
     clearDummyColors();

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4vme_moth_p.h"
 
@@ -122,6 +123,7 @@ static int qt_v4BreakpointCount = 0;
 static bool qt_v4IsDebugging = false;
 static bool qt_v4IsStepping = false;
 
+namespace {
 class Breakpoint
 {
 public:
@@ -139,10 +141,10 @@ public:
     QString condition;     // optional
 };
 
-static QVector<Breakpoint> qt_v4Breakpoints;
-static Breakpoint qt_v4LastStop;
+QVector<Breakpoint> qt_v4Breakpoints;
+Breakpoint qt_v4LastStop;
 
-static void qt_v4TriggerBreakpoint(const Breakpoint &bp, QV4::Function *function)
+void qt_v4TriggerBreakpoint(const Breakpoint &bp, QV4::Function *function)
 {
     qt_v4LastStop = bp;
 
@@ -154,6 +156,8 @@ static void qt_v4TriggerBreakpoint(const Breakpoint &bp, QV4::Function *function
         functionNameUtf8 = functionName->toQString().toUtf8();
 
     qt_v4TriggeredBreakpointHook(); // Trigger Breakpoint.
+}
+
 }
 
 int qt_v4DebuggerHook(const char *json)
@@ -395,6 +399,7 @@ static bool compareEqualInt(QV4::Value &accumulator, QV4::Value lhs, int rhs)
         } \
     } while (false)
 
+namespace {
 struct AOTCompiledMetaMethod
 {
 public:
@@ -409,6 +414,7 @@ public:
 private:
     const Function::AOTCompiledFunction *aotCompiledFunction = nullptr;
 };
+}
 
 void VME::exec(MetaTypesStackFrame *frame, ExecutionEngine *engine)
 {

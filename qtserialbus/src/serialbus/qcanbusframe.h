@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCANBUSFRAME_H
 #define QCANBUSFRAME_H
@@ -14,6 +15,8 @@ class QDataStream;
 
 class Q_SERIALBUS_EXPORT QCanBusFrame
 {
+    Q_GADGET
+
 public:
     using FrameId = quint32;
 
@@ -40,6 +43,7 @@ public:
         RemoteRequestFrame  = 0x3,
         InvalidFrame        = 0x4
     };
+    Q_ENUM(FrameType)
 
     explicit QCanBusFrame(FrameType type = DataFrame) noexcept :
         isExtendedFrame(0x0),
@@ -72,7 +76,8 @@ public:
         //only 29 bits usable
     };
     Q_DECLARE_FLAGS(FrameErrors, FrameError)
-    Q_FLAGS(FrameErrors)
+    Q_ENUM(FrameError)
+    Q_FLAG(FrameErrors)
 
     explicit QCanBusFrame(QCanBusFrame::FrameId identifier, const QByteArray &data) :
         format(DataFrame),

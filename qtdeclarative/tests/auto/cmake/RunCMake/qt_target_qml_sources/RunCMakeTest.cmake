@@ -20,4 +20,6 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19"
     AND RunCMake_GENERATOR MATCHES "^Ninja"
 )
     run_cmake_and_build(subdirectory_with_top)
+    run_cmake_and_build(subdirectory_only)
+    run_cmake_and_build(subdirectory_without_qt_in_root)
 endif()

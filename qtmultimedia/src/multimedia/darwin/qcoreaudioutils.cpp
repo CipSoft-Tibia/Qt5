@@ -15,34 +15,24 @@ QT_BEGIN_NAMESPACE
 
 namespace QCoreAudioUtils {
 
-QAudioFormat toQAudioFormat(AudioStreamBasicDescription const& sf)
+QAudioFormat toPreferredQAudioFormat(AudioStreamBasicDescription const &sf)
 {
-    QAudioFormat    audioFormat;
-    // all Darwin HW is little endian, we ignore those formats
-    if ((sf.mFormatFlags & kAudioFormatFlagIsBigEndian) != 0 && QSysInfo::ByteOrder != QSysInfo::LittleEndian)
-        return audioFormat;
+    // coreaudio will do the format conversions for us, we only need to give the best match
+    const QAudioFormat::SampleFormat format = [&] {
+        const bool isFloat = sf.mFormatFlags & kAudioFormatFlagIsFloat;
+        switch (sf.mBitsPerChannel) {
+        case 8:
+            return QAudioFormat::UInt8;
+        case 16:
+            return QAudioFormat::Int16;
+        case 32:
+            return isFloat ? QAudioFormat::Float : QAudioFormat::Int32;
+        default:
+            return QAudioFormat::Float;
+        }
+    }();
 
-    // filter out the formats we're interested in
-    QAudioFormat::SampleFormat format = QAudioFormat::Unknown;
-    switch (sf.mBitsPerChannel) {
-    case 8:
-        if ((sf.mFormatFlags & kAudioFormatFlagIsSignedInteger) == 0)
-            format = QAudioFormat::UInt8;
-        break;
-    case 16:
-        if ((sf.mFormatFlags & kAudioFormatFlagIsSignedInteger) != 0)
-            format = QAudioFormat::Int16;
-        break;
-    case 32:
-        if ((sf.mFormatFlags & kAudioFormatFlagIsSignedInteger) != 0)
-            format = QAudioFormat::Int32;
-        else if ((sf.mFormatFlags & kAudioFormatFlagIsFloat) != 0)
-            format = QAudioFormat::Float;
-        break;
-    default:
-        break;
-    }
-
+    QAudioFormat audioFormat;
     audioFormat.setSampleFormat(format);
     audioFormat.setSampleRate(sf.mSampleRate);
     audioFormat.setChannelCount(sf.mChannelsPerFrame);
@@ -241,77 +231,6 @@ QAudioFormat::ChannelConfig fromAudioChannelLayout(const AudioChannelLayout *lay
     }
     return QAudioFormat::ChannelConfig(channels);
 }
-
-#ifdef Q_OS_MACOS
-
-OSStatus DeviceDisconnectMonitor::disconnectCallback(AudioObjectID id, UInt32 numberOfAddresses,
-                                                     const AudioObjectPropertyAddress *inAddresses,
-                                                     void *self)
-{
-    return reinterpret_cast<DeviceDisconnectMonitor *>(self)->streamDisconnectListener(
-            id, QSpan{ inAddresses, numberOfAddresses });
-}
-
-static constexpr AudioObjectPropertyAddress propertyAddressDeviceIsAlive = {
-    kAudioDevicePropertyDeviceIsAlive,
-    kAudioObjectPropertyScopeGlobal,
-    kAudioObjectPropertyElementMain,
-};
-
-bool DeviceDisconnectMonitor::addDisconnectListener(AudioObjectID id)
-{
-    m_currentId = id;
-    m_disconnectedPromise = QPromise<void>{};
-    m_disconnectedFuture = m_disconnectedPromise.future();
-
-    OSStatus status = AudioObjectAddPropertyListener(
-            id, &propertyAddressDeviceIsAlive, &DeviceDisconnectMonitor::disconnectCallback, this);
-
-    if (status != noErr) {
-        qWarning() << "QAudioOutput: Failed to add property listener";
-        return false;
-    }
-    return true;
-}
-
-void DeviceDisconnectMonitor::removeDisconnectListener()
-{
-    OSStatus status =
-            AudioObjectRemovePropertyListener(m_currentId, &propertyAddressDeviceIsAlive,
-                                              &DeviceDisconnectMonitor::disconnectCallback, this);
-
-    switch (status) {
-    case noErr:
-    case kAudioHardwareBadObjectError: // when the listener fires, we may get
-                                       // kAudioHardwareBadObjectError
-        return;
-
-    default:
-        qWarning() << "QAudioOutput: Failed to remove property listener" << status;
-    }
-}
-
-OSStatus DeviceDisconnectMonitor::streamDisconnectListener(
-        AudioObjectID id, QSpan<const AudioObjectPropertyAddress> properties)
-{
-    // Called on HAL thread
-    // we use futures/continuations to notify the application thread, as we can cancel in-flight
-    // continuations
-    Q_ASSERT(id == m_currentId);
-
-    for (const AudioObjectPropertyAddress &address : properties) {
-        if (address.mSelector == kAudioDevicePropertyDeviceIsAlive) {
-            m_disconnectedPromise.start();
-            m_disconnectedPromise.finish();
-
-            return kAudioHardwareNoError;
-        }
-    }
-
-    return kAudioHardwareNoError;
-}
-
-#endif
 
 std::optional<AudioUnitHandle> makeAudioUnitForIO()
 {

@@ -5,10 +5,10 @@
     <extra-po-header-language_team>Norwegian Nynorsk &lt;l10n-no@lister.huftis.org&gt;</extra-po-header-language_team>
     <extra-po-header-last_translator>Karl Ove Hufthammer &lt;karl@huftis.org&gt;</extra-po-header-last_translator>
     <extra-po-header-plural_forms>nplurals=2; plural=(n != 1);</extra-po-header-plural_forms>
-    <extra-po-header-po_revision_date>2020-05-24 16:26+0200</extra-po-header-po_revision_date>
+    <extra-po-header-po_revision_date>2023-02-11 13:36+0100</extra-po-header-po_revision_date>
     <extra-po-header-project_id_version></extra-po-header-project_id_version>
-    <extra-po-header-x_generator>Lokalize 20.04.0</extra-po-header-x_generator>
-    <extra-po-header_comment># Karl Ove Hufthammer &lt;karl@huftis.org&gt;, 2016, 2020.</extra-po-header_comment>
+    <extra-po-header-x_generator>Lokalize 22.12.2</extra-po-header-x_generator>
+    <extra-po-header_comment># Karl Ove Hufthammer &lt;karl@huftis.org&gt;, 2016, 2020, 2023.</extra-po-header_comment>
     <extra-po-headers>Project-Id-Version,PO-Revision-Date,Last-Translator,Language-Team,Language,MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Generator,X-Qt-Contexts</extra-po-headers>
 <context>
     <name>CloseButton</name>
@@ -340,7 +340,8 @@
     <message>
         <source>Cursor at %1, %2
 Press ESC to cancel</source>
-        <translation>Skrivemerke ved %1, %2
+        <translatorcomment>Er snakk om musepeikar her, ikkje skrivemerke. Sjå eksempel på bruk i KDE-programmet KColorChooser (trykk «Hent skjermfarge»).</translatorcomment>
+        <translation>Musepeikar ved %1, %2
 Trykk «Escape» for å avbryta</translation>
     </message>
     <message>
@@ -2406,6 +2407,10 @@ Vil du likevel sletta ho?</translation>
         <source>%1: Access denied</source>
         <translation>%1: nekta tilgang</translation>
     </message>
+    <message>
+        <source>Socket is not connected</source>
+        <translation>Socket-en er ikkje kopla til</translation>
+    </message>
 </context>
 <context>
     <name>QMYSQLDriver</name>
@@ -2580,7 +2585,7 @@ Vil du likevel sletta ho?</translation>
     <message>
         <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
         <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
-        <translation>&lt;p&gt;Qt er eit C++-verktøysett for kryssplatt­formutvikling.&lt;/p&gt;&lt;p&gt;Qt gjev portabilitet, der same kjeldekode kan brukast på alle større sluttbrukar­operativsystem. Det er òg tilgjengeleg for innebygd Linux og andre innebygde og mobile operativsystem.&lt;/p&gt;&lt;p&gt;Qt er tilgjengeleg under fleire lisens­vilkår, tilpassa dei ulike behova til brukarane.&lt;/p&gt;&lt;p&gt;Qt lisensiert under den kommersielle lisens­avtala vår passar for utvikling av proprietær/kommersiell programvare der du ikkje vil dela kjeldekoden med tredjepart eller av andre grunnar ikkje kan følgja vilkåra i GNU&#xa0;(L)GPL.&lt;/p&gt;&lt;p&gt;Qt lisensiert under GNU (L)GPL passar for utvikling av Qt-program der du kan følgja vilkåra i lisensen.&lt;/p&gt;&lt;p&gt;Sjå &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for meir informasjon om Qt-lisensiering.&lt;/p&gt;&lt;p&gt;Copyright © %1 The Qt Company Ltd og andre bidragsytarar.&lt;/p&gt;&lt;p&gt;Qt og Qt-logoen er varemerke til The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt er eit The Qt Company Ltd-produkt utvikla som ei friprog-prosjekt. Sjå &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for meir informasjon.&lt;/p&gt;</translation>
+        <translation>&lt;p&gt;Qt er eit C++-verktøysett for kryssplattform­utvikling.&lt;/p&gt;&lt;p&gt;Qt gjev portabilitet, der same kjeldekode kan brukast på alle større sluttbrukar­operativsystem. Det er òg tilgjengeleg for innebygd Linux og andre innebygde og mobile operativsystem.&lt;/p&gt;&lt;p&gt;Qt er tilgjengeleg under fleire lisens­vilkår, tilpassa dei ulike behova til brukarane.&lt;/p&gt;&lt;p&gt;Qt lisensiert under den kommersielle lisens­avtala vår passar for utvikling av proprietær/kommersiell programvare der du ikkje vil dela kjeldekoden med tredjepart eller av andre grunnar ikkje kan følgja vilkåra i GNU&#xa0;(L)GPL.&lt;/p&gt;&lt;p&gt;Qt lisensiert under GNU (L)GPL passar for utvikling av Qt-program der du kan følgja vilkåra i lisensen.&lt;/p&gt;&lt;p&gt;Sjå &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for meir informasjon om Qt-lisensiering.&lt;/p&gt;&lt;p&gt;Copyright © %1 The Qt Company Ltd og andre bidragsytarar.&lt;/p&gt;&lt;p&gt;Qt og Qt-logoen er varemerke til The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt er eit The Qt Company Ltd-produkt utvikla som ei friprog-prosjekt. Sjå &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for meir informasjon.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -2779,13 +2784,6 @@ Vil du likevel sletta ho?</translation>
     <message>
         <source>Error while uploading %1: %2</source>
         <translation>Feil ved opplasting av %1: %2</translation>
-    </message>
-</context>
-<context>
-    <name>QNetworkAccessManager</name>
-    <message>
-        <source>Network access is disabled.</source>
-        <translation>Nettverkstilgang er slått av.</translation>
     </message>
 </context>
 <context>
@@ -6792,7 +6790,7 @@ Du må slå av eitt av vala.</translation>
     </message>
     <message>
         <source>The current candidate issuer certificate was rejected because its issuer name and serial number was present and did not match the authority key identifier of the current certificate</source>
-        <translation>Gjeldande kandidat for utferdar­sertifikat vart avvist fordi utferdar­namnet og serie­nummeret var til stade men var ikkje i samsvar med nøkkel­identifikatoren til sertifiserings­instansen til det gjeldande sertifikatet</translation>
+        <translation>Gjeldande kandidat for utferdar­sertifikat vart avvist fordi utferdar­namnet og serie­nummeret var til stade, men var ikkje i samsvar med nøkkel­identifikatoren til sertifiserings­instansen til det gjeldande sertifikatet</translation>
     </message>
     <message>
         <source>The peer did not present any certificate</source>
@@ -6828,7 +6826,7 @@ Du må slå av eitt av vala.</translation>
     </message>
     <message>
         <source>The server requires the client to sign the OCSP request in order to construct a response</source>
-        <translation>Tenaren krev at klien signerer OCSP-førespurnaden for å kunna laga eit svar</translation>
+        <translation>Tenaren krev at klient signerer OCSP-førespurnaden for å kunna laga eit svar</translation>
     </message>
     <message>
         <source>The client is not authorized to request OCSP status from this server</source>

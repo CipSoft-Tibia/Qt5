@@ -39,5 +39,7 @@ qtHaveModule(widgets) {
     qtHaveModule(quickwidgets):qtConfig(opengl(es1|es2)?): SUBDIRS += quickwidgets
 }
 
+!vxworks:!integrity: SUBDIRS += flexboxlayout
+
 EXAMPLE_FILES = \
     shared

@@ -53,6 +53,10 @@ static inline void formatQRect(QDebug &debug, const Rect &rect)
         const qint64 w = qint64(rect.right()) - rect.left() + 1;
         const qint64 h = qint64(rect.bottom()) - rect.top() + 1;
         debug << w << 'x' << h;
+
+        constexpr qint64 M = (std::numeric_limits<int>::max)();
+        if (w > M || h > M)
+            debug << " (oversized)";
     } else {
         debug << rect.width() << 'x' << rect.height();
     }

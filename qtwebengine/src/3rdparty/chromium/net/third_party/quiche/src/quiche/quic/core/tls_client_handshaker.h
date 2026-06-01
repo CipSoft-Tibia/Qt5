@@ -84,7 +84,6 @@ class QUICHE_EXPORT TlsClientHandshaker
       std::unique_ptr<ApplicationState> application_state) override;
 
   void AllowEmptyAlpnForTests() { allow_empty_alpn_for_tests_ = true; }
-  void AllowInvalidSNIForTests() { allow_invalid_sni_for_tests_ = true; }
 
   // Make the SSL object from BoringSSL publicly accessible.
   using TlsHandshaker::ssl;
@@ -153,8 +152,8 @@ class QUICHE_EXPORT TlsClientHandshaker
   quiche::QuicheReferenceCountedPointer<QuicCryptoNegotiatedParameters>
       crypto_negotiated_params_;
 
+  bool session_cache_lookup_done_ = false;
   bool allow_empty_alpn_for_tests_ = false;
-  bool allow_invalid_sni_for_tests_ = false;
 
   const bool has_application_state_;
   // Contains the state for performing a resumption, if one is attempted. This

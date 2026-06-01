@@ -223,9 +223,8 @@ Database* DatabaseContext::OpenDatabaseInternal(
       return nullptr;
 
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
-  return nullptr;
 }
 
 Database* DatabaseContext::OpenDatabase(const String& name,
@@ -245,9 +244,6 @@ Database* DatabaseContext::OpenDatabase(const String& name,
   }
 
   SetHasOpenDatabases();
-  ExecutionContext* context = GetExecutionContext();
-  DatabaseClient::From(context)->DidOpenDatabase(
-      database, context->GetSecurityOrigin()->Host(), name, expected_version);
   DCHECK(database);
   return database;
 }
@@ -267,7 +263,7 @@ void DatabaseContext::ThrowExceptionForDatabaseError(
                                         error_message);
       return;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 }
 

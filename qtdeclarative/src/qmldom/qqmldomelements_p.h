@@ -28,13 +28,13 @@
 #include <QtCore/QCborValue>
 #include <QtCore/QCborMap>
 #include <QtCore/QMutexLocker>
-#include <QtCore/QPair>
 
 #include <memory>
 #include <private/qqmljsscope_p.h>
 
 #include <functional>
 #include <limits>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -57,88 +57,88 @@ inline Path moduleScopePath(
 }
 inline Path qmlDirInfoPath(const QString &path)
 {
-    return Path::Root(PathRoot::Top).field(Fields::qmldirWithPath).key(path);
+    return Path::fromRoot(PathRoot::Top).withField(Fields::qmldirWithPath).withKey(path);
 }
 inline Path qmlDirPath(const QString &path)
 {
-    return qmlDirInfoPath(path).field(Fields::currentItem);
+    return qmlDirInfoPath(path).withField(Fields::currentItem);
 }
 inline Path qmldirFileInfoPath(const QString &path)
 {
-    return Path::Root(PathRoot::Top).field(Fields::qmldirFileWithPath).key(path);
+    return Path::fromRoot(PathRoot::Top).withField(Fields::qmldirFileWithPath).withKey(path);
 }
 inline Path qmldirFilePath(const QString &path)
 {
-    return qmldirFileInfoPath(path).field(Fields::currentItem);
+    return qmldirFileInfoPath(path).withField(Fields::currentItem);
 }
 inline Path qmlFileInfoPath(const QString &canonicalFilePath)
 {
-    return Path::Root(PathRoot::Top).field(Fields::qmlFileWithPath).key(canonicalFilePath);
+    return Path::fromRoot(PathRoot::Top).withField(Fields::qmlFileWithPath).withKey(canonicalFilePath);
 }
 inline Path qmlFilePath(const QString &canonicalFilePath)
 {
-    return qmlFileInfoPath(canonicalFilePath).field(Fields::currentItem);
+    return qmlFileInfoPath(canonicalFilePath).withField(Fields::currentItem);
 }
 inline Path qmlFileObjectPath(const QString &canonicalFilePath)
 {
     return qmlFilePath(canonicalFilePath)
-            .field(Fields::components)
-            .key(QString())
-            .index(0)
-            .field(Fields::objects)
-            .index(0);
+            .withField(Fields::components)
+            .withKey(QString())
+            .withIndex(0)
+            .withField(Fields::objects)
+            .withIndex(0);
 }
 inline Path qmltypesFileInfoPath(const QString &path)
 {
-    return Path::Root(PathRoot::Top).field(Fields::qmltypesFileWithPath).key(path);
+    return Path::fromRoot(PathRoot::Top).withField(Fields::qmltypesFileWithPath).withKey(path);
 }
 inline Path qmltypesFilePath(const QString &path)
 {
-    return qmltypesFileInfoPath(path).field(Fields::currentItem);
+    return qmltypesFileInfoPath(path).withField(Fields::currentItem);
 }
 inline Path jsFileInfoPath(const QString &path)
 {
-    return Path::Root(PathRoot::Top).field(Fields::jsFileWithPath).key(path);
+    return Path::fromRoot(PathRoot::Top).withField(Fields::jsFileWithPath).withKey(path);
 }
 inline Path jsFilePath(const QString &path)
 {
-    return jsFileInfoPath(path).field(Fields::currentItem);
+    return jsFileInfoPath(path).withField(Fields::currentItem);
 }
 inline Path qmlDirectoryInfoPath(const QString &path)
 {
-    return Path::Root(PathRoot::Top).field(Fields::qmlDirectoryWithPath).key(path);
+    return Path::fromRoot(PathRoot::Top).withField(Fields::qmlDirectoryWithPath).withKey(path);
 }
 inline Path qmlDirectoryPath(const QString &path)
 {
-    return qmlDirectoryInfoPath(path).field(Fields::currentItem);
+    return qmlDirectoryInfoPath(path).withField(Fields::currentItem);
 }
 inline Path globalScopeInfoPath(const QString &name)
 {
-    return Path::Root(PathRoot::Top).field(Fields::globalScopeWithName).key(name);
+    return Path::fromRoot(PathRoot::Top).withField(Fields::globalScopeWithName).withKey(name);
 }
 inline Path globalScopePath(const QString &name)
 {
-    return globalScopeInfoPath(name).field(Fields::currentItem);
+    return globalScopeInfoPath(name).withField(Fields::currentItem);
 }
 inline Path lookupCppTypePath(const QString &name)
 {
-    return Path::Current(PathCurrent::Lookup).field(Fields::cppType).key(name);
+    return Path::fromCurrent(PathCurrent::Lookup).withField(Fields::cppType).withKey(name);
 }
 inline Path lookupPropertyPath(const QString &name)
 {
-    return Path::Current(PathCurrent::Lookup).field(Fields::propertyDef).key(name);
+    return Path::fromCurrent(PathCurrent::Lookup).withField(Fields::propertyDef).withKey(name);
 }
 inline Path lookupSymbolPath(const QString &name)
 {
-    return Path::Current(PathCurrent::Lookup).field(Fields::symbol).key(name);
+    return Path::fromCurrent(PathCurrent::Lookup).withField(Fields::symbol).withKey(name);
 }
 inline Path lookupTypePath(const QString &name)
 {
-    return Path::Current(PathCurrent::Lookup).field(Fields::type).key(name);
+    return Path::fromCurrent(PathCurrent::Lookup).withField(Fields::type).withKey(name);
 }
 inline Path loadInfoPath(const Path &el)
 {
-    return Path::Root(PathRoot::Env).field(Fields::loadInfo).key(el.toString());
+    return Path::fromRoot(PathRoot::Env).withField(Fields::loadInfo).withKey(el.toString());
 }
 } // end namespace Paths
 
@@ -468,6 +468,7 @@ public:
         QMutexLocker l(mutex());
         return m_engine;
     }
+    QStringView loc2Str(SourceLocation) const;
     std::shared_ptr<AstComments> astComments() const { return m_astComments; }
     void writeOut(const DomItem &self, OutWriter &lw) const override;
     SourceLocation globalLocation(const DomItem &self) const;
@@ -845,7 +846,7 @@ public:
     Path addValue(EnumItem value)
     {
         m_values.append(value);
-        return Path::Field(Fields::values).index(index_type(m_values.size() - 1));
+        return Path::fromField(Fields::values).withIndex(index_type(m_values.size() - 1));
     }
     void updatePathFromOwner(const Path &newP) override;
 
@@ -878,7 +879,8 @@ public:
     void updatePathFromOwner(const Path &newPath) override;
     QString localDefaultPropertyName() const;
     QString defaultPropertyName(const DomItem &self) const;
-    virtual bool iterateSubOwners(const DomItem &self, function_ref<bool(const DomItem &owner)> visitor) const;
+    bool iterateSubOwners(const DomItem &self,
+                          function_ref<bool(const DomItem &owner)> visitor) const;
 
     QString idStr() const { return m_idStr; }
     QString name() const { return m_name; }
@@ -901,7 +903,7 @@ public:
             idx = index_type(m_prototypePaths.size());
             m_prototypePaths.append(prototypePath);
         }
-        return Path::Field(Fields::prototypes).index(idx);
+        return Path::fromField(Fields::prototypes).withIndex(idx);
     }
     void setNextScopePath(const Path &nextScopePath) { m_nextScopePath = nextScopePath; }
     void setPropertyDefs(QMultiMap<QString, PropertyDefinition> propertyDefs)
@@ -925,7 +927,7 @@ public:
     Path addPropertyDef(const PropertyDefinition &propertyDef, AddOption option,
                         PropertyDefinition **pDef = nullptr)
     {
-        return insertUpdatableElementInMultiMap(pathFromOwner().field(Fields::propertyDefs),
+        return insertUpdatableElementInMultiMap(pathFromOwner().withField(Fields::propertyDefs),
                                                 m_propertyDefs, propertyDef.name, propertyDef,
                                                 option, pDef);
     }
@@ -934,19 +936,19 @@ public:
 
     Path addBinding(Binding binding, AddOption option, Binding **bPtr = nullptr)
     {
-        return insertUpdatableElementInMultiMap(pathFromOwner().field(Fields::bindings), m_bindings,
+        return insertUpdatableElementInMultiMap(pathFromOwner().withField(Fields::bindings), m_bindings,
                                                 binding.name(), binding, option, bPtr);
     }
     MutableDomItem addBinding(MutableDomItem &self, Binding binding, AddOption option);
     Path addMethod(const MethodInfo &functionDef, AddOption option, MethodInfo **mPtr = nullptr)
     {
-        return insertUpdatableElementInMultiMap(pathFromOwner().field(Fields::methods), m_methods,
+        return insertUpdatableElementInMultiMap(pathFromOwner().withField(Fields::methods), m_methods,
                                                 functionDef.name, functionDef, option, mPtr);
     }
     MutableDomItem addMethod(MutableDomItem &self, const MethodInfo &functionDef, AddOption option);
     Path addChild(QmlObject child, QmlObject **cPtr = nullptr)
     {
-        return appendUpdatableElementInQList(pathFromOwner().field(Fields::children), m_children,
+        return appendUpdatableElementInQList(pathFromOwner().withField(Fields::children), m_children,
                                              child, cPtr);
     }
     MutableDomItem addChild(MutableDomItem &self, QmlObject child)
@@ -956,18 +958,17 @@ public:
     }
     Path addAnnotation(const QmlObject &annotation, QmlObject **aPtr = nullptr)
     {
-        return appendUpdatableElementInQList(pathFromOwner().field(Fields::annotations),
+        return appendUpdatableElementInQList(pathFromOwner().withField(Fields::annotations),
                                              m_annotations, annotation, aPtr);
     }
 
-    QList<QPair<SourceLocation, DomItem>> orderOfAttributes(const DomItem &self,
+    QList<std::pair<SourceLocation, DomItem>> orderOfAttributes(const DomItem &self,
                                                             const DomItem &component) const;
-    void writeOutAttributes(const DomItem &self, OutWriter &ow, const DomItem &component,
-                            const QString &code) const;
+    using Attributes = QList<std::pair<SourceLocation, DomItem>>;
+    void writeOutAttributes(OutWriter &ow, const Attributes &attribs, const QString &code) const;
 
     void writeOutSortedEnumerations(const DomItem &component, OutWriter &ow) const;
-    void writeOutSortedAttributes(const DomItem &self, OutWriter &ow,
-                                  const DomItem &component) const;
+    void writeOutSortedAttributes(const DomItem &self, OutWriter &ow, const DomItem &component) const;
     void writeOutSortedPropertyDefinition(const DomItem &self, OutWriter &ow,
                                           QSet<QString> &mergedDefBinding) const;
 
@@ -1063,7 +1064,7 @@ public:
     Path addEnumeration(const EnumDecl &enumeration, AddOption option = AddOption::Overwrite,
                         EnumDecl **ePtr = nullptr)
     {
-        return insertUpdatableElementInMultiMap(pathFromOwner().field(Fields::enumerations),
+        return insertUpdatableElementInMultiMap(pathFromOwner().withField(Fields::enumerations),
                                                 m_enumerations, enumeration.name(), enumeration,
                                                 option, ePtr);
     }
@@ -1170,7 +1171,7 @@ public:
     Path addId(const Id &id, AddOption option = AddOption::Overwrite, Id **idPtr = nullptr)
     {
         // warning does nor remove old idStr when overwriting...
-        return insertUpdatableElementInMultiMap(pathFromOwner().field(Fields::ids), m_ids, id.name,
+        return insertUpdatableElementInMultiMap(pathFromOwner().withField(Fields::ids), m_ids, id.name,
                                                 id, option, idPtr);
     }
     void writeOut(const DomItem &self, OutWriter &) const override;
@@ -1210,7 +1211,6 @@ public:
     constexpr static DomType kindValue = DomType::ImportScope;
 
     ImportScope() = default;
-    ~ImportScope() = default;
 
     const QList<Path> &importSourcePaths() const & { return m_importSourcePaths; }
 
@@ -1223,7 +1223,7 @@ public:
         QSet<QString> res;
         const auto sources = allSources(self);
         for (const Path &p : sources) {
-            QSet<QString> ks = self.path(p.field(Fields::exports), self.errorHandler()).keys();
+            QSet<QString> ks = self.path(p.withField(Fields::exports), self.errorHandler()).keys();
             res += ks;
         }
         return res;
@@ -1234,7 +1234,7 @@ public:
         QList<DomItem> res;
         const auto sources = allSources(self);
         for (const Path &p : sources) {
-            DomItem source = self.path(p.field(Fields::exports), self.errorHandler());
+            DomItem source = self.path(p.withField(Fields::exports), self.errorHandler());
             DomItem els = source.key(name);
             int nEls = els.indexes();
             for (int i = 0; i < nEls; ++i)

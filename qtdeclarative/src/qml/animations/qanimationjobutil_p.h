@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QANIMATIONJOBUTIL_P_H
 #define QANIMATIONJOBUTIL_P_H
@@ -21,6 +22,8 @@
 #include <type_traits>
 
 QT_REQUIRE_CONFIG(qml_animation);
+
+QT_BEGIN_NAMESPACE
 
 #if defined(Q_CC_GNU_ONLY) && Q_CC_GNU_ONLY >= 1300
 #  define ACTION_IF_DISABLE_DANGLING_POINTER_WARNING    QT_WARNING_DISABLE_GCC("-Wdangling-pointer")
@@ -62,5 +65,7 @@ do { \
 
 #define RETURN_IF_DELETED(func) \
 ACTION_IF_DELETED(this, func, return)
+
+QT_END_NAMESPACE
 
 #endif // QANIMATIONJOBUTIL_P_H

@@ -9,7 +9,8 @@ import * as Types from '../types/types.js';
 
 import {data as metaHandlerData} from './MetaHandler.js';
 import {ScoreClassification} from './PageLoadMetricsHandler.js';
-import {HandlerState, type TraceEventHandlerName} from './types.js';
+import {data as screenshotsHandlerData} from './ScreenshotsHandler.js';
+import type {HandlerName} from './types.js';
 
 // We start with a score of zero and step through all Layout Shift records from
 // all renderers. Each record not only tells us which renderer it is, but also
@@ -37,19 +38,22 @@ import {HandlerState, type TraceEventHandlerName} from './types.js';
 // navigation-to-unload CLS score.
 
 interface LayoutShifts {
-  clusters: readonly Types.TraceEvents.SyntheticLayoutShiftCluster[];
-  clustersByNavigationId: Map<string, Types.TraceEvents.SyntheticLayoutShiftCluster[]>;
+  clusters: readonly Types.Events.SyntheticLayoutShiftCluster[];
+  clustersByNavigationId: Map<Types.Events.NavigationId, Types.Events.SyntheticLayoutShiftCluster[]>;
   sessionMaxScore: number;
   // The session window which contains the SessionMaxScore
   clsWindowID: number;
   // We use these to calculate root causes for a given LayoutShift
   // TODO(crbug/41484172): should be readonly
-  prePaintEvents: Types.TraceEvents.TraceEventPrePaint[];
-  layoutInvalidationEvents: readonly Types.TraceEvents.TraceEventLayoutInvalidationTracking[];
-  scheduleStyleInvalidationEvents: readonly Types.TraceEvents.TraceEventScheduleStyleInvalidationTracking[];
-  styleRecalcInvalidationEvents: readonly Types.TraceEvents.TraceEventStyleRecalcInvalidationTracking[];
-  renderFrameImplCreateChildFrameEvents: readonly Types.TraceEvents.TraceEventRenderFrameImplCreateChildFrame[];
-  domLoadingEvents: readonly Types.TraceEvents.TraceEventDomLoading[];
+  prePaintEvents: Types.Events.PrePaint[];
+  paintImageEvents: Types.Events.PaintImage[];
+  layoutInvalidationEvents: readonly Types.Events.LayoutInvalidationTracking[];
+  scheduleStyleInvalidationEvents: readonly Types.Events.ScheduleStyleInvalidationTracking[];
+  styleRecalcInvalidationEvents: readonly Types.Events.StyleRecalcInvalidationTracking[];
+  renderFrameImplCreateChildFrameEvents: readonly Types.Events.RenderFrameImplCreateChildFrame[];
+  domLoadingEvents: readonly Types.Events.DomLoading[];
+  layoutImageUnsizedEvents: readonly Types.Events.LayoutImageUnsized[];
+  beginRemoteFontLoadEvents: readonly Types.Events.BeginRemoteFontLoad[];
   scoreRecords: readonly ScoreRecord[];
   // TODO(crbug/41484172): should be readonly
   backendNodeIds: Protocol.DOM.BackendNodeId[];
@@ -57,11 +61,11 @@ interface LayoutShifts {
 
 // This represents the maximum #time we will allow a cluster to go before we
 // reset it.
-export const MAX_CLUSTER_DURATION = Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(5000));
+export const MAX_CLUSTER_DURATION = Helpers.Timing.milliToMicro(Types.Timing.Milli(5000));
 
 // This represents the maximum #time we will allow between layout shift events
 // before considering it to be the start of a new cluster.
-export const MAX_SHIFT_TIME_DELTA = Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(1000));
+export const MAX_SHIFT_TIME_DELTA = Helpers.Timing.milliToMicro(Types.Timing.Milli(1000));
 
 // Layout shifts are reported globally to the developer, irrespective of which
 // frame they originated in. However, each process does have its own individual
@@ -70,15 +74,17 @@ export const MAX_SHIFT_TIME_DELTA = Helpers.Timing.millisecondsToMicroseconds(Ty
 // will be reported together. In the case of multiple renderers (frames across
 // different origins), we offer the developer the ability to switch renderer in
 // the UI.
-const layoutShiftEvents: Types.TraceEvents.TraceEventLayoutShift[] = [];
+const layoutShiftEvents: Types.Events.LayoutShift[] = [];
 
 // These events denote potential node resizings. We store them to link captured
 // layout shifts to the resizing of unsized elements.
-const layoutInvalidationEvents: Types.TraceEvents.TraceEventLayoutInvalidationTracking[] = [];
-const scheduleStyleInvalidationEvents: Types.TraceEvents.TraceEventScheduleStyleInvalidationTracking[] = [];
-const styleRecalcInvalidationEvents: Types.TraceEvents.TraceEventStyleRecalcInvalidationTracking[] = [];
-const renderFrameImplCreateChildFrameEvents: Types.TraceEvents.TraceEventRenderFrameImplCreateChildFrame[] = [];
-const domLoadingEvents: Types.TraceEvents.TraceEventDomLoading[] = [];
+const layoutInvalidationEvents: Types.Events.LayoutInvalidationTracking[] = [];
+const scheduleStyleInvalidationEvents: Types.Events.ScheduleStyleInvalidationTracking[] = [];
+const styleRecalcInvalidationEvents: Types.Events.StyleRecalcInvalidationTracking[] = [];
+const renderFrameImplCreateChildFrameEvents: Types.Events.RenderFrameImplCreateChildFrame[] = [];
+const domLoadingEvents: Types.Events.DomLoading[] = [];
+const layoutImageUnsizedEvents: Types.Events.LayoutImageUnsized[] = [];
+const beginRemoteFontLoadEvents: Types.Events.BeginRemoteFontLoad[] = [];
 
 const backendNodeIds = new Set<Protocol.DOM.BackendNodeId>();
 
@@ -86,44 +92,39 @@ const backendNodeIds = new Set<Protocol.DOM.BackendNodeId>();
 // We determine if a LayoutInvalidation event is a potential root cause of a layout
 // shift if the next PrePaint after the LayoutInvalidation is the parent
 // node of such shift.
-const prePaintEvents: Types.TraceEvents.TraceEventPrePaint[] = [];
+const prePaintEvents: Types.Events.PrePaint[] = [];
+
+const paintImageEvents: Types.Events.PaintImage[] = [];
 
 let sessionMaxScore = 0;
 
 let clsWindowID = -1;
 
-const clusters: Types.TraceEvents.SyntheticLayoutShiftCluster[] = [];
-const clustersByNavigationId = new Map<string, Types.TraceEvents.SyntheticLayoutShiftCluster[]>();
+const clusters: Types.Events.SyntheticLayoutShiftCluster[] = [];
+const clustersByNavigationId = new Map<Types.Events.NavigationId, Types.Events.SyntheticLayoutShiftCluster[]>();
 
 // Represents a point in time in which a  LS score change
 // was recorded.
-type ScoreRecord = {
-  ts: number,
-  score: number,
-};
+interface ScoreRecord {
+  ts: number;
+  score: number;
+}
 
 // The complete timeline of LS score changes in a trace.
 // Includes drops to 0 when session windows end.
 const scoreRecords: ScoreRecord[] = [];
 
-let handlerState = HandlerState.UNINITIALIZED;
-
-export function initialize(): void {
-  if (handlerState !== HandlerState.UNINITIALIZED) {
-    throw new Error('LayoutShifts Handler was not reset');
-  }
-  handlerState = HandlerState.INITIALIZED;
-}
-
 export function reset(): void {
-  handlerState = HandlerState.UNINITIALIZED;
   layoutShiftEvents.length = 0;
   layoutInvalidationEvents.length = 0;
   scheduleStyleInvalidationEvents.length = 0;
   styleRecalcInvalidationEvents.length = 0;
   prePaintEvents.length = 0;
+  paintImageEvents.length = 0;
   renderFrameImplCreateChildFrameEvents.length = 0;
+  layoutImageUnsizedEvents.length = 0;
   domLoadingEvents.length = 0;
+  beginRemoteFontLoadEvents.length = 0;
   backendNodeIds.clear();
   clusters.length = 0;
   sessionMaxScore = 0;
@@ -132,49 +133,69 @@ export function reset(): void {
   clustersByNavigationId.clear();
 }
 
-export function handleEvent(event: Types.TraceEvents.TraceEventData): void {
-  if (handlerState !== HandlerState.INITIALIZED) {
-    throw new Error('Handler is not initialized');
-  }
-
-  if (Types.TraceEvents.isTraceEventLayoutShift(event) && !event.args.data?.had_recent_input) {
+export function handleEvent(event: Types.Events.Event): void {
+  if (Types.Events.isLayoutShift(event) && !event.args.data?.had_recent_input) {
     layoutShiftEvents.push(event);
     return;
   }
-  if (Types.TraceEvents.isTraceEventLayoutInvalidationTracking(event)) {
+  if (Types.Events.isLayoutInvalidationTracking(event)) {
     layoutInvalidationEvents.push(event);
     return;
   }
-  if (Types.TraceEvents.isTraceEventScheduleStyleInvalidationTracking(event)) {
+  if (Types.Events.isScheduleStyleInvalidationTracking(event)) {
     scheduleStyleInvalidationEvents.push(event);
   }
-  if (Types.TraceEvents.isTraceEventStyleRecalcInvalidationTracking(event)) {
+  if (Types.Events.isStyleRecalcInvalidationTracking(event)) {
     styleRecalcInvalidationEvents.push(event);
   }
-  if (Types.TraceEvents.isTraceEventPrePaint(event)) {
+  if (Types.Events.isPrePaint(event)) {
     prePaintEvents.push(event);
     return;
   }
-  if (Types.TraceEvents.isTraceEventRenderFrameImplCreateChildFrame(event)) {
+  if (Types.Events.isRenderFrameImplCreateChildFrame(event)) {
     renderFrameImplCreateChildFrameEvents.push(event);
   }
-  if (Types.TraceEvents.isTraceEventDomLoading(event)) {
+  if (Types.Events.isDomLoading(event)) {
     domLoadingEvents.push(event);
+  }
+  if (Types.Events.isLayoutImageUnsized(event)) {
+    layoutImageUnsizedEvents.push(event);
+  }
+  if (Types.Events.isBeginRemoteFontLoad(event)) {
+    beginRemoteFontLoadEvents.push(event);
+  }
+  if (Types.Events.isPaintImage(event)) {
+    paintImageEvents.push(event);
   }
 }
 
-function traceWindowFromTime(time: Types.Timing.MicroSeconds): Types.Timing.TraceWindowMicroSeconds {
+function traceWindowFromTime(time: Types.Timing.Micro): Types.Timing.TraceWindowMicro {
   return {
     min: time,
     max: time,
-    range: Types.Timing.MicroSeconds(0),
+    range: Types.Timing.Micro(0),
   };
 }
 
-function updateTraceWindowMax(
-    traceWindow: Types.Timing.TraceWindowMicroSeconds, newMax: Types.Timing.MicroSeconds): void {
+function updateTraceWindowMax(traceWindow: Types.Timing.TraceWindowMicro, newMax: Types.Timing.Micro): void {
   traceWindow.max = newMax;
-  traceWindow.range = Types.Timing.MicroSeconds(traceWindow.max - traceWindow.min);
+  traceWindow.range = Types.Timing.Micro(traceWindow.max - traceWindow.min);
+}
+
+function findScreenshots(timestamp: Types.Timing.Micro): Types.Events.LayoutShiftParsedData['screenshots'] {
+  const data = screenshotsHandlerData();
+  if (data.screenshots) {
+    const before = Helpers.Trace.findPreviousEventBeforeTimestamp(data.screenshots, timestamp);
+    const after = before ? data.screenshots[data.screenshots.indexOf(before) + 1] : null;
+    return {before, after};
+  }
+  if (data.legacySyntheticScreenshots) {
+    const before = Helpers.Trace.findPreviousEventBeforeTimestamp(data.legacySyntheticScreenshots, timestamp);
+    const after = before ? data.legacySyntheticScreenshots[data.legacySyntheticScreenshots.indexOf(before) + 1] : null;
+    return {before, after};
+  }
+  // No screenshots
+  return {before: null, after: null};
 }
 
 function buildScoreRecords(): void {
@@ -237,13 +258,15 @@ export async function finalize(): Promise<void> {
   layoutInvalidationEvents.sort((a, b) => a.ts - b.ts);
   renderFrameImplCreateChildFrameEvents.sort((a, b) => a.ts - b.ts);
   domLoadingEvents.sort((a, b) => a.ts - b.ts);
+  layoutImageUnsizedEvents.sort((a, b) => a.ts - b.ts);
+  beginRemoteFontLoadEvents.sort((a, b) => a.ts - b.ts);
+  paintImageEvents.sort((a, b) => a.ts - b.ts);
 
   // Each function transforms the data used by the next, as such the invoke order
   // is important.
   await buildLayoutShiftsClusters();
   buildScoreRecords();
   collectNodes();
-  handlerState = HandlerState.FINALIZED;
 }
 
 async function buildLayoutShiftsClusters(): Promise<void> {
@@ -297,14 +320,19 @@ async function buildLayoutShiftsClusters(): Promise<void> {
       // If there is an existing cluster update its closing time.
       if (clusters.length > 0) {
         const currentCluster = clusters[clusters.length - 1];
-        updateTraceWindowMax(currentCluster.clusterWindow, Types.Timing.MicroSeconds(previousClusterEndTime));
+        updateTraceWindowMax(currentCluster.clusterWindow, Types.Timing.Micro(previousClusterEndTime));
       }
 
       // If this cluster happened after a navigation, set the navigationId to
       // the current navigation. This lets us easily group clusters by
       // navigation.
-      const navigationId =
-          currentShiftNavigation === null ? undefined : navigations[currentShiftNavigation].args.data?.navigationId;
+      const navigationId = currentShiftNavigation === null ?
+          Types.Events.NO_NAVIGATION :
+          navigations[currentShiftNavigation].args.data?.navigationId;
+      // TODO: `navigationId` is `string | undefined`, but the undefined portion
+      // comes from `data.navigationId`. I don't think that is possible for this
+      // event type. Can we make this typing stronger? In the meantime, we allow
+      // `navigationId` to include undefined values.
 
       clusters.push({
         name: 'SyntheticLayoutShiftCluster',
@@ -315,12 +343,13 @@ async function buildLayoutShiftsClusters(): Promise<void> {
           good: traceWindowFromTime(clusterStartTime),
         },
         navigationId,
-        // Set default TraceEventData so that this event is treated accordingly for the track appender.
+        // Set default Event so that this event is treated accordingly for the track appender.
         ts: event.ts,
         pid: event.pid,
         tid: event.tid,
-        ph: Types.TraceEvents.Phase.COMPLETE,
+        ph: Types.Events.Phase.COMPLETE,
         cat: '',
+        dur: Types.Timing.Micro(-1),  // This `cluster.dur` is updated below.
       });
 
       firstShiftTime = clusterStartTime;
@@ -330,35 +359,37 @@ async function buildLayoutShiftsClusters(): Promise<void> {
     // recent one and append the shift, bump its score and window values accordingly.
     const currentCluster = clusters[clusters.length - 1];
     const timeFromNavigation = currentShiftNavigation !== null ?
-        Types.Timing.MicroSeconds(event.ts - navigations[currentShiftNavigation].ts) :
+        Types.Timing.Micro(event.ts - navigations[currentShiftNavigation].ts) :
         undefined;
 
     currentCluster.clusterCumulativeScore += event.args.data ? event.args.data.weighted_score_delta : 0;
     if (!event.args.data) {
       continue;
     }
-    const shift = Helpers.SyntheticEvents.SyntheticEventsManager
-                      .registerSyntheticBasedEvent<Types.TraceEvents.SyntheticLayoutShift>({
-                        rawSourceEvent: event,
-                        ...event,
-                        args: {
-                          frame: event.args.frame,
-                          data: {
-                            ...event.args.data,
-                            rawEvent: event,
-                            navigationId: currentCluster.navigationId ?? undefined,
-                          },
-                        },
-                        parsedData: {
-                          timeFromNavigation,
-                          cumulativeWeightedScoreInWindow: currentCluster.clusterCumulativeScore,
-                          // The score of the session window is temporarily set to 0 just
-                          // to initialize it. Since we need to get the score of all shifts
-                          // in the session window to determine its value, its definite
-                          // value is set when stepping through the built clusters.
-                          sessionWindowData: {cumulativeWindowScore: 0, id: clusters.length},
-                        },
-                      });
+    const shift =
+        Helpers.SyntheticEvents.SyntheticEventsManager.registerSyntheticEvent<Types.Events.SyntheticLayoutShift>({
+          rawSourceEvent: event,
+          ...event,
+          name: Types.Events.Name.SYNTHETIC_LAYOUT_SHIFT,
+          args: {
+            frame: event.args.frame,
+            data: {
+              ...event.args.data,
+              rawEvent: event,
+              navigationId: currentCluster.navigationId ?? undefined,
+            },
+          },
+          parsedData: {
+            timeFromNavigation,
+            screenshots: findScreenshots(event.ts),
+            cumulativeWeightedScoreInWindow: currentCluster.clusterCumulativeScore,
+            // The score of the session window is temporarily set to 0 just
+            // to initialize it. Since we need to get the score of all shifts
+            // in the session window to determine its value, its definite
+            // value is set when stepping through the built clusters.
+            sessionWindowData: {cumulativeWindowScore: 0, id: clusters.length},
+          },
+        });
     currentCluster.events.push(shift);
     updateTraceWindowMax(currentCluster.clusterWindow, event.ts);
 
@@ -383,11 +414,11 @@ async function buildLayoutShiftsClusters(): Promise<void> {
           Platform.ArrayUtilities.nearestIndexFromBeginning(navigations, nav => nav.ts > cluster.clusterWindow.max);
       const nextNavigationTime = nextNavigationIndex ? navigations[nextNavigationIndex].ts : Infinity;
       const clusterEnd = Math.min(clusterEndByMaxDuration, clusterEndByMaxGap, traceBounds.max, nextNavigationTime);
-      updateTraceWindowMax(cluster.clusterWindow, Types.Timing.MicroSeconds(clusterEnd));
+      updateTraceWindowMax(cluster.clusterWindow, Types.Timing.Micro(clusterEnd));
     }
 
     let largestScore: number = 0;
-    let worstShiftEvent: Types.TraceEvents.TraceEventData|null = null;
+    let worstShiftEvent: Types.Events.Event|null = null;
 
     for (const shift of cluster.events) {
       weightedScore += shift.args.data ? shift.args.data.weighted_score_delta : 0;
@@ -403,7 +434,7 @@ async function buildLayoutShiftsClusters(): Promise<void> {
           weightedScore >= LayoutShiftsThreshold.NEEDS_IMPROVEMENT && weightedScore < LayoutShiftsThreshold.BAD) {
         if (!cluster.scoreWindows.needsImprovement) {
           // Close the Good window, and open the needs improvement window.
-          updateTraceWindowMax(cluster.scoreWindows.good, Types.Timing.MicroSeconds(ts - 1));
+          updateTraceWindowMax(cluster.scoreWindows.good, Types.Timing.Micro(ts - 1));
           cluster.scoreWindows.needsImprovement = traceWindowFromTime(ts);
         }
 
@@ -413,9 +444,9 @@ async function buildLayoutShiftsClusters(): Promise<void> {
         if (!cluster.scoreWindows.bad) {
           // We may jump from Good to Bad here, so update whichever window is open.
           if (cluster.scoreWindows.needsImprovement) {
-            updateTraceWindowMax(cluster.scoreWindows.needsImprovement, Types.Timing.MicroSeconds(ts - 1));
+            updateTraceWindowMax(cluster.scoreWindows.needsImprovement, Types.Timing.Micro(ts - 1));
           } else {
-            updateTraceWindowMax(cluster.scoreWindows.good, Types.Timing.MicroSeconds(ts - 1));
+            updateTraceWindowMax(cluster.scoreWindows.good, Types.Timing.Micro(ts - 1));
           }
 
           cluster.scoreWindows.bad = traceWindowFromTime(shift.ts);
@@ -439,7 +470,7 @@ async function buildLayoutShiftsClusters(): Promise<void> {
       }
 
       // Find the worst layout shift of the cluster.
-      const score = shift.args.data?.score;
+      const score = shift.args.data?.weighted_score_delta;
       if (score !== undefined && score > largestScore) {
         largestScore = score;
         worstShiftEvent = shift;
@@ -454,7 +485,8 @@ async function buildLayoutShiftsClusters(): Promise<void> {
     // Capture the time range of the cluster.
     cluster.ts = cluster.events[0].ts;
     const lastShiftTimings = Helpers.Timing.eventTimingsMicroSeconds(cluster.events[cluster.events.length - 1]);
-    cluster.dur = Types.Timing.MicroSeconds(lastShiftTimings.endTime - cluster.events[0].ts);
+    // Add MAX_SHIFT_TIME_DELTA, the section gap after the last layout shift. This marks the end of the cluster.
+    cluster.dur = Types.Timing.Micro((lastShiftTimings.endTime - cluster.events[0].ts) + MAX_SHIFT_TIME_DELTA);
 
     if (weightedScore > sessionMaxScore) {
       clsWindowID = windowID;
@@ -471,10 +503,6 @@ async function buildLayoutShiftsClusters(): Promise<void> {
 }
 
 export function data(): LayoutShifts {
-  if (handlerState !== HandlerState.FINALIZED) {
-    throw new Error('Layout Shifts Handler is not finalized');
-  }
-
   return {
     clusters,
     sessionMaxScore,
@@ -485,14 +513,17 @@ export function data(): LayoutShifts {
     styleRecalcInvalidationEvents: [],
     renderFrameImplCreateChildFrameEvents,
     domLoadingEvents,
+    layoutImageUnsizedEvents,
+    beginRemoteFontLoadEvents,
     scoreRecords,
     // TODO(crbug/41484172): change the type so no need to clone
     backendNodeIds: [...backendNodeIds],
     clustersByNavigationId: new Map(clustersByNavigationId),
+    paintImageEvents,
   };
 }
 
-export function deps(): TraceEventHandlerName[] {
+export function deps(): HandlerName[] {
   return ['Screenshots', 'Meta'];
 }
 

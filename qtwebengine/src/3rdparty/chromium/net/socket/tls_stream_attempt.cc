@@ -5,8 +5,11 @@
 #include "net/socket/tls_stream_attempt.h"
 
 #include <memory>
+#include <optional>
+#include <string_view>
 
 #include "base/memory/scoped_refptr.h"
+#include "base/values.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/host_port_pair.h"
 #include "net/base/net_errors.h"
@@ -15,6 +18,22 @@
 #include "net/ssl/ssl_cert_request_info.h"
 
 namespace net {
+
+// static
+std::string_view TlsStreamAttempt::StateToString(State state) {
+  switch (state) {
+    case State::kNone:
+      return "None";
+    case State::kTcpAttempt:
+      return "TcpAttempt";
+    case State::kTcpAttemptComplete:
+      return "TcpAttemptComplete";
+    case State::kTlsAttempt:
+      return "TlsAttempt";
+    case State::kTlsAttemptComplete:
+      return "TlsAttemptComplete";
+  }
+}
 
 TlsStreamAttempt::TlsStreamAttempt(const StreamAttemptParams* params,
                                    IPEndPoint ip_endpoint,
@@ -41,6 +60,18 @@ LoadState TlsStreamAttempt::GetLoadState() const {
     case State::kTlsAttemptComplete:
       return LOAD_STATE_SSL_HANDSHAKE;
   }
+}
+
+base::Value::Dict TlsStreamAttempt::GetInfoAsValue() const {
+  base::Value::Dict dict;
+  dict.Set("next_state", StateToString(next_state_));
+  dict.Set("tcp_handshake_completed", tcp_handshake_completed_);
+  dict.Set("tls_handshake_started", tls_handshake_started_);
+  dict.Set("has_ssl_config", ssl_config_.has_value());
+  if (nested_attempt_) {
+    dict.Set("nested_attempt", nested_attempt_->GetInfoAsValue());
+  }
+  return dict;
 }
 
 scoped_refptr<SSLCertRequestInfo> TlsStreamAttempt::GetCertRequestInfo() {
@@ -128,13 +159,19 @@ int TlsStreamAttempt::DoTcpAttemptComplete(int rv) {
   net_log().BeginEvent(NetLogEventType::TLS_STREAM_ATTEMPT_WAIT_FOR_SSL_CONFIG);
 
   next_state_ = State::kTlsAttempt;
+
+  if (ssl_config_.has_value()) {
+    // We restarted for ECH retry and already have a SSLConfig with retry
+    // configs.
+    return OK;
+  }
+
   return ssl_config_provider_->WaitForSSLConfigReady(
       base::BindOnce(&TlsStreamAttempt::OnIOComplete, base::Unretained(this)));
 }
 
 int TlsStreamAttempt::DoTlsAttempt(int rv) {
   CHECK_EQ(rv, OK);
-  CHECK(ssl_config_provider_);
 
   net_log().EndEvent(NetLogEventType::TLS_STREAM_ATTEMPT_WAIT_FOR_SSL_CONFIG);
 
@@ -142,9 +179,21 @@ int TlsStreamAttempt::DoTlsAttempt(int rv) {
 
   std::unique_ptr<StreamSocket> nested_socket =
       nested_attempt_->ReleaseStreamSocket();
-  SSLConfig ssl_config = ssl_config_provider_->GetSSLConfig();
-  // Clear `ssl_config_provider_` to avoid dangling pointer.
-  ssl_config_provider_ = nullptr;
+  if (!ssl_config_) {
+    CHECK(ssl_config_provider_);
+    auto get_config_result = ssl_config_provider_->GetSSLConfig();
+    // Clear `ssl_config_provider_` to avoid dangling pointer.
+    // TODO(bashi): Try not to clear the pointer. It seems that
+    // `ssl_config_provider_` should always outlive `this`.
+    ssl_config_provider_ = nullptr;
+
+    if (get_config_result.has_value()) {
+      ssl_config_ = *get_config_result;
+    } else {
+      CHECK_EQ(get_config_result.error(), GetSSLConfigError::kAbort);
+      return ERR_ABORTED;
+    }
+  }
 
   nested_attempt_.reset();
 
@@ -157,7 +206,7 @@ int TlsStreamAttempt::DoTlsAttempt(int rv) {
 
   ssl_socket_ = params().client_socket_factory->CreateSSLClientSocket(
       params().ssl_client_context, std::move(nested_socket), host_port_pair_,
-      ssl_config);
+      *ssl_config_);
 
   net_log().BeginEvent(NetLogEventType::TLS_STREAM_ATTEMPT_CONNECT);
 
@@ -166,23 +215,50 @@ int TlsStreamAttempt::DoTlsAttempt(int rv) {
 }
 
 int TlsStreamAttempt::DoTlsAttemptComplete(int rv) {
-  CHECK(ssl_socket_);
-
   net_log().EndEventWithNetErrorCode(
       NetLogEventType::TLS_STREAM_ATTEMPT_CONNECT, rv);
 
   mutable_connect_timing().ssl_end = base::TimeTicks::Now();
   tls_handshake_timeout_timer_.Stop();
 
-  // TODO(crbug.com/346835898): Record some histograms as SSLConnectJob does.
+  const bool ech_enabled = params().ssl_client_context->config().ech_enabled;
 
-  // TODO(crbug.com/346835898): Handle the following error as SSLConnectJob
-  // does.
-  CHECK_NE(rv, ERR_ECH_NOT_NEGOTIATED) << "Not implemented yet";
+  if (!ech_retry_configs_ && rv == ERR_ECH_NOT_NEGOTIATED && ech_enabled) {
+    CHECK(ssl_socket_);
+    // We used ECH, and the server could not decrypt the ClientHello. However,
+    // it was able to handshake with the public name and send authenticated
+    // retry configs. If this is not the first time around, retry the connection
+    // with the new ECHConfigList, or with ECH disabled (empty retry configs),
+    // as directed.
+    //
+    // See
+    // https://www.ietf.org/archive/id/draft-ietf-tls-esni-22.html#section-6.1.6
+    ech_retry_configs_ = ssl_socket_->GetECHRetryConfigs();
+    ssl_config_->ech_config_list = *ech_retry_configs_;
+
+    // TODO(crbug.com/346835898): Add a NetLog to record ECH retry configs.
+
+    // Reset states.
+    tcp_handshake_completed_ = false;
+    tls_handshake_started_ = false;
+    ssl_socket_.reset();
+    ssl_cert_request_info_.reset();
+
+    next_state_ = State::kTcpAttempt;
+    return OK;
+  }
+
+  const bool is_ech_capable =
+      ssl_config_ && !ssl_config_->ech_config_list.empty();
+  SSLClientSocket::RecordSSLConnectResult(ssl_socket_.get(), rv, is_ech_capable,
+                                          ech_enabled, ech_retry_configs_,
+                                          connect_timing());
 
   if (rv == OK || IsCertificateError(rv)) {
+    CHECK(ssl_socket_);
     SetStreamSocket(std::move(ssl_socket_));
   } else if (rv == ERR_SSL_CLIENT_AUTH_CERT_NEEDED) {
+    CHECK(ssl_socket_);
     ssl_cert_request_info_ = base::MakeRefCounted<SSLCertRequestInfo>();
     ssl_socket_->GetSSLCertRequestInfo(ssl_cert_request_info_.get());
   }

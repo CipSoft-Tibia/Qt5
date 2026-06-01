@@ -27,6 +27,7 @@
 
 #include "dawn/native/opengl/RenderPipelineGL.h"
 
+#include "dawn/common/BitSetIterator.h"
 #include "dawn/native/opengl/DeviceGL.h"
 #include "dawn/native/opengl/Forward.h"
 #include "dawn/native/opengl/PersistentPipelineStateGL.h"
@@ -216,8 +217,14 @@ RenderPipeline::RenderPipeline(Device* device,
       mGlPrimitiveTopology(GLPrimitiveTopology(GetPrimitiveTopology())) {}
 
 MaybeError RenderPipeline::InitializeImpl() {
+    VertexAttributeMask bgraSwizzleAttributes = {};
+    for (VertexAttributeLocation i : IterateBitSet(GetAttributeLocationsUsed())) {
+        bgraSwizzleAttributes.set(i, GetAttribute(i).format == wgpu::VertexFormat::Unorm8x4BGRA);
+    }
+
     DAWN_TRY(InitializeBase(ToBackend(GetDevice())->GetGL(), ToBackend(GetLayout()), GetAllStages(),
-                            UsesVertexIndex(), UsesInstanceIndex(), UsesFragDepth()));
+                            UsesVertexIndex(), UsesInstanceIndex(), UsesFragDepth(),
+                            bgraSwizzleAttributes));
     CreateVAOForVertexState();
     return {};
 }
@@ -266,7 +273,6 @@ void RenderPipeline::CreateVAOForVertexState() {
                 case wgpu::VertexStepMode::Instance:
                     gl.VertexAttribDivisor(glAttrib, 1);
                     break;
-                case wgpu::VertexStepMode::VertexBufferNotUsed:
                 case wgpu::VertexStepMode::Undefined:
                     DAWN_UNREACHABLE();
             }
@@ -294,14 +300,17 @@ void RenderPipeline::ApplyNow(PersistentPipelineState& persistentPipelineState) 
 
     if (IsDepthBiasEnabled()) {
         gl.Enable(GL_POLYGON_OFFSET_FILL);
-        // There is an ambiguity in the GL and Vulkan specs with respect to
-        // depthBias: If a depth value lies between 2^n and 2^(n+1), is the
-        // "exponent of the depth value" n or n+1? Empirically, GL drivers use
-        // n+1, while the WebGPU CTS is expecting n. Scaling the depth
-        // bias value by 0.5 gives results in line with other backends.
-        // See: https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/4169
-        // See also the GL ES 3.1 spec, section "13.5.2 Depth Offset".
-        float depthBias = GetDepthBias() * 0.5f;
+        float depthBias = GetDepthBias();
+        if (GetDevice()->IsToggleEnabled(Toggle::GLDepthBiasModifier)) {
+            // There is an ambiguity in the GL and Vulkan specs with respect to
+            // depthBias: If a depth value lies between 2^n and 2^(n+1), is the
+            // "exponent of the depth value" n or n+1? Empirically, desktop GL drivers use
+            // n+1, while the WebGPU CTS is expecting n. Scaling the depth
+            // bias value by 0.5 gives results in line with other backends.
+            // See: https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/4169
+            // See also the GL ES 3.1 spec, section "13.5.2 Depth Offset".
+            depthBias *= 0.5f;
+        }
         float slopeScale = GetDepthBiasSlopeScale();
         if (gl.PolygonOffsetClamp != nullptr) {
             gl.PolygonOffsetClamp(slopeScale, depthBias, GetDepthBiasClamp());

@@ -128,8 +128,8 @@ void PushMessagingNotificationManager::EnforceUserVisibleOnlyRequirements(
     bool requested_user_visible_only) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  if (ShouldSkipUserVisibleOnlyRequirements(origin,
-                                            requested_user_visible_only)) {
+  if (ShouldBypassUserVisibleOnlyRequirement(origin,
+                                             requested_user_visible_only)) {
     std::move(message_handled_callback)
         .Run(/* did_show_generic_notification= */ false);
     LogSilentPushEvent(SilentPushEvent::kNotificationEnforcementSkipped);
@@ -302,12 +302,12 @@ void PushMessagingNotificationManager::DidWriteNotificationData(
   LogSilentPushEvent(SilentPushEvent::kAllowedWithGenericNotification);
 }
 
-bool PushMessagingNotificationManager::ShouldSkipUserVisibleOnlyRequirements(
+bool PushMessagingNotificationManager::ShouldBypassUserVisibleOnlyRequirement(
     const GURL& origin,
     bool requested_user_visible_only) {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   if (origin.SchemeIs(extensions::kExtensionScheme)) {
-    return ShouldSkipExtensionUserVisibleOnlyRequirements(
+    return ShouldExtensionsBypassUserVisibleOnlyRequirement(
         origin, requested_user_visible_only);
   }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
@@ -324,7 +324,7 @@ void PushMessagingNotificationManager::LogSilentPushEvent(
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 bool PushMessagingNotificationManager::
-    ShouldSkipExtensionUserVisibleOnlyRequirements(
+    ShouldExtensionsBypassUserVisibleOnlyRequirement(
         const GURL& origin,
         bool requested_user_visible_only) {
   // Worker based extensions are exempt from the user visible requirement only

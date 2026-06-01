@@ -44,7 +44,6 @@ class MockAutofillDriver : public mojom::AutofillDriver {
   MOCK_METHOD(void,
               FormSubmitted,
               (const FormData& form,
-               bool known_success,
                mojom::SubmissionSource source),
               (override));
   MOCK_METHOD(void,
@@ -54,7 +53,7 @@ class MockAutofillDriver : public mojom::AutofillDriver {
                const gfx::Rect& caret_bounds),
               (override));
   MOCK_METHOD(void,
-              TextFieldDidChange,
+              TextFieldValueChanged,
               (const FormData& form,
                FieldRendererId field_id,
                base::TimeTicks timestamp),
@@ -64,11 +63,11 @@ class MockAutofillDriver : public mojom::AutofillDriver {
               (const FormData& form, FieldRendererId field_id),
               (override));
   MOCK_METHOD(void,
-              SelectControlDidChange,
+              SelectControlSelectionChanged,
               (const FormData& form, FieldRendererId field_id),
               (override));
   MOCK_METHOD(void,
-              SelectOrSelectListFieldOptionsDidChange,
+              SelectFieldOptionsDidChange,
               (const FormData& form),
               (override));
   MOCK_METHOD(void,
@@ -112,7 +111,6 @@ class AutofillRendererTest : public content::RenderViewTest {
 
   virtual std::unique_ptr<AutofillAgent> CreateAutofillAgent(
       content::RenderFrame* render_frame,
-      const AutofillAgent::Config& config,
       std::unique_ptr<PasswordAutofillAgent> password_autofill_agent,
       std::unique_ptr<PasswordGenerationAgent> password_generation_agent,
       blink::AssociatedInterfaceRegistry* associated_interfaces);

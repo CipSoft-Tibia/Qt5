@@ -4,10 +4,11 @@
 
 #include "third_party/blink/renderer/modules/mediastream/capture_controller.h"
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 
-#include "base/ranges/algorithm.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/types/expected.h"
 #include "base/unguessable_token.h"
 #include "build/build_config.h"
@@ -15,6 +16,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_captured_wheel_action.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_media_stream_track_state.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/dom/events/native_event_listener.h"
@@ -56,7 +58,7 @@ bool IsCaptureType(const MediaStreamTrack* track,
   MediaStreamTrackPlatform::Settings settings;
   video_track->GetSettings(settings);
   const std::optional<SurfaceType> display_surface = settings.display_surface;
-  return base::ranges::any_of(
+  return std::ranges::any_of(
       types, [display_surface](SurfaceType t) { return t == display_surface; });
 }
 
@@ -187,7 +189,7 @@ DOMException* CscResultToDOMException(CapturedSurfaceControlResult result) {
           DOMExceptionCode::kInvalidStateError,
           "Capturing application not focused.");
   }
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 void OnCapturedSurfaceControlResult(
@@ -293,7 +295,7 @@ void CaptureController::setFocusBehavior(
     return;
   }
 
-  if (video_track_->readyState() != "live") {
+  if (video_track_->readyState() != V8MediaStreamTrackState::Enum::kLive) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                       "The video track must be live.");
     return;
@@ -425,10 +427,9 @@ Vector<int> CaptureController::getSupportedZoomLevels() {
     return result;
   }
 
-  result[0] = static_cast<int>(std::ceil(100 * kPresetBrowserZoomFactors[0]));
+  result[0] = base::ClampCeil(100 * kPresetBrowserZoomFactors[0]);
   for (wtf_size_t i = 1; i < kSize; ++i) {
-    result[i] =
-        static_cast<int>(std::floor(100 * kPresetBrowserZoomFactors[i]));
+    result[i] = base::ClampFloor(100 * kPresetBrowserZoomFactors[i]);
     CHECK_LT(result[i - 1], result[i]) << "Must be monotonically increasing.";
   }
 
@@ -657,7 +658,7 @@ CaptureController::ValidateCapturedSurfaceControlCall() const {
                             "Capture-session not started.");
   }
 
-  if (video_track_->readyState() == "ended") {
+  if (video_track_->readyState() == V8MediaStreamTrackState::Enum::kEnded) {
     return ValidationResult(DOMExceptionCode::kInvalidStateError,
                             "Video track ended.");
   }

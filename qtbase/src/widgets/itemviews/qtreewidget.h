@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTREEWIDGET_H
 #define QTREEWIDGET_H
@@ -227,6 +228,9 @@ class Q_WIDGETS_EXPORT QTreeWidget : public QTreeView
     Q_OBJECT
     Q_PROPERTY(int columnCount READ columnCount WRITE setColumnCount)
     Q_PROPERTY(int topLevelItemCount READ topLevelItemCount)
+#if QT_CONFIG(draganddrop)
+    Q_PROPERTY(Qt::DropActions supportedDragActions READ supportedDragActions WRITE setSupportedDragActions)
+#endif
 
     friend class QTreeModel;
     friend class QTreeWidgetItem;
@@ -287,6 +291,11 @@ public:
     QTreeWidgetItem *itemFromIndex(const QModelIndex &index) const;
 
     void setSelectionModel(QItemSelectionModel *selectionModel) override;
+
+#if QT_CONFIG(draganddrop)
+    Qt::DropActions supportedDragActions() const;
+    void setSupportedDragActions(Qt::DropActions actions);
+#endif
 
 public Q_SLOTS:
     void scrollToItem(const QTreeWidgetItem *item,

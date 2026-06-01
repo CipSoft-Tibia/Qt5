@@ -26,10 +26,10 @@
 #include <QtCore/QCborValue>
 #include <QtCore/QCborMap>
 #include <QtCore/QMutexLocker>
-#include <QtCore/QPair>
 
 #include <functional>
 #include <limits>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 

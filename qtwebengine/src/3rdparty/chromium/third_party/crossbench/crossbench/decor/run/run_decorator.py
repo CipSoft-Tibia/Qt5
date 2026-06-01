@@ -7,9 +7,8 @@ from __future__ import annotations
 import abc
 from typing import Set, TypeVar
 
-from crossbench.runner.run import Run
-
 from crossbench.decor import base
+from crossbench.runner.run import Run
 
 RunDecoratorT = TypeVar("RunDecoratorT", bound="RunDecorator")
 

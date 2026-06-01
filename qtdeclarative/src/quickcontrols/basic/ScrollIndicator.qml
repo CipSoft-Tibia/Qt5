@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -19,7 +20,8 @@ T.ScrollIndicator {
         implicitWidth: 2
         implicitHeight: 2
 
-        color: control.palette.mid
+        color: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast ?
+               control.palette.text : control.palette.mid
         visible: control.size < 1.0
         opacity: 0.0
 
@@ -38,5 +40,11 @@ T.ScrollIndicator {
                 }
             }
         ]
+    }
+
+    background: Rectangle {
+        visible: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast
+        opacity: control.contentItem.opacity
+        color: control.palette.mid
     }
 }

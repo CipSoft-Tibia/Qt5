@@ -3,25 +3,25 @@
 // found in the LICENSE file.
 
 // Dummy implementation of data_sharing_sdk.js for non-branded build.
-import type {AddAccessTokenParams, AddAccessTokenResult, AddMemberParams, CreateGroupParams, CreateGroupResult, DataSharingSdk, DataSharingSdkGetLink, DataSharingSdkGroupId, DataSharingSdkResponse, DataSharingSdkSitePreview, DeleteGroupParams, LearnMoreUrlType, ReadGroupsParams, ReadGroupsResult, RemoveMemberParams} from './data_sharing_sdk_types.js';
+import type {AddAccessTokenParams, AddAccessTokenResult, AddMemberParams, CreateGroupParams, CreateGroupResult, DataSharingSdk, DataSharingSdkResponse, DeleteGroupParams, LeaveGroupParams, ReadGroupsParams, ReadGroupsResult, RunJoinFlowParams, RunManageFlowParams, RunInviteFlowParams} from './data_sharing_sdk_types.js';
 import {Code} from './data_sharing_sdk_types.js';
 
 // Add something to the dialog to tell which flow it is.
 function appendTextForTesting(text: string) {
-  const newDiv: HTMLDivElement = document.createElement('div');
+  const newDiv: HTMLElement = document.createElement('div');
   newDiv.textContent = text;
   document.body.appendChild(newDiv);
 }
 
 export function buildDataSharingSdk() {
-  return new DataSharingSdkImpl();
+  return DataSharingSdkImpl.getInstance();
 }
 
 window.data_sharing_sdk = {
   buildDataSharingSdk,
 };
 
-class DataSharingSdkImpl implements DataSharingSdk {
+export class DataSharingSdkImpl implements DataSharingSdk {
   createGroup(
       _params: CreateGroupParams,
       ): Promise<{result?: CreateGroupResult, status: Code}> {
@@ -35,20 +35,20 @@ class DataSharingSdkImpl implements DataSharingSdk {
       resolve({
         status: Code.OK,
         result: {
-          groupData:
-              _params.groupIds!.map(groupId => ({
-                                      groupId,
-                                      displayName: 'GROUP_NAME',
-                                      members: [
-                                        {
-                                          focusObfuscatedGaiaId: 'GAIA_ID',
-                                          displayName: 'MEMBER_NAME',
-                                          email: 'test@gmail.com',
-                                          role: 'member',
-                                          avatarUrl: 'http://example.com',
-                                        },
-                                      ],
-                                    })),
+          groupData: _params.params!.map(param => ({
+                                           groupId: param.groupId,
+                                           displayName: 'GROUP_NAME',
+                                           members: [
+                                             {
+                                               focusObfuscatedGaiaId: 'GAIA_ID',
+                                               displayName: 'MEMBER_NAME',
+                                               email: 'test@gmail.com',
+                                               role: 'member',
+                                               avatarUrl: 'http://example.com',
+                                               givenName: 'MEMBER_NAME',
+                                             },
+                                           ],
+                                         })),
         },
       });
     });
@@ -56,10 +56,10 @@ class DataSharingSdkImpl implements DataSharingSdk {
   addMember(_params: AddMemberParams): Promise<{status: Code}> {
     return Promise.resolve({status: Code.UNIMPLEMENTED});
   }
-  removeMember(_params: RemoveMemberParams): Promise<{status: Code}> {
+  deleteGroup(_params: DeleteGroupParams): Promise<{status: Code}> {
     return Promise.resolve({status: Code.UNIMPLEMENTED});
   }
-  deleteGroup(_params: DeleteGroupParams): Promise<{status: Code}> {
+  leaveGroup(_params: LeaveGroupParams): Promise<{status: Code}> {
     return Promise.resolve({status: Code.UNIMPLEMENTED});
   }
   addAccessToken(
@@ -68,38 +68,31 @@ class DataSharingSdkImpl implements DataSharingSdk {
     return Promise.resolve({status: Code.UNIMPLEMENTED});
   }
 
-  runJoinFlow(
-      _params: DataSharingSdkGroupId&{
-        tokenSecret: string,
-        parent?: HTMLElement,
-        previewSites?: DataSharingSdkSitePreview[],
-        learnMoreUrlMap?: {[type in LearnMoreUrlType]?: () => string},
-      },
-      ): Promise<DataSharingSdkResponse> {
+  runJoinFlow(_params: RunJoinFlowParams): Promise<DataSharingSdkResponse> {
     appendTextForTesting('A fake join dialog');
-    return Promise.resolve({});
+    return new Promise(() => {});
   }
-  runInviteFlow(_params: {
-    parent?: HTMLElement,
-    getShareLink?: DataSharingSdkGetLink,
-    title?: string,
-    learnMoreUrlMap?: {[type in LearnMoreUrlType]?: () => string},
-  }): Promise<DataSharingSdkResponse> {
+  runInviteFlow(_params: RunInviteFlowParams): Promise<DataSharingSdkResponse> {
     appendTextForTesting('A fake invite dialog');
-    return Promise.resolve({});
+    return new Promise(() => {});
   }
-  runManageFlow(
-      _params: DataSharingSdkGroupId&{
-        parent?: HTMLElement,
-        getShareLink?: DataSharingSdkGetLink,
-        learnMoreUrlMap?: {[type in LearnMoreUrlType]?: () => string},
-      },
-      ): Promise<DataSharingSdkResponse> {
+  runManageFlow(_params: RunManageFlowParams): Promise<DataSharingSdkResponse> {
     appendTextForTesting('A fake manage dialog');
-    return Promise.resolve({});
+    return new Promise(() => {});
   }
 
   // Setup Helpers
   setOauthAccessToken(_params: {accessToken: string}): void {}
   updateClearcut(_params: {enabled: boolean}): void {}
+
+  static getInstance(): DataSharingSdk {
+    return dataSharingSdkInstance ||
+        (dataSharingSdkInstance = new DataSharingSdkImpl());
+  }
+
+  static setInstance(obj: DataSharingSdk) {
+    dataSharingSdkInstance = obj;
+  }
 }
+
+let dataSharingSdkInstance: DataSharingSdk|null = null;

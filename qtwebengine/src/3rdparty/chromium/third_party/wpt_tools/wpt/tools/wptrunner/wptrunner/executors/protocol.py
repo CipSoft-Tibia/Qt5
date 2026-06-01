@@ -158,6 +158,14 @@ class BaseProtocolPart(ProtocolPart):
         :returns: True to re-run the test, or False to continue with the next test"""
         pass
 
+    @abstractmethod
+    def create_window(self, type="tab", **kwargs):
+        """Return a handle identifying a freshly created top level browsing context
+
+        :param type: - Type hint, either "tab" or "window"
+        :returns: A protocol-specific handle"""
+        pass
+
     @property
     def current_window(self):
         """Return a handle identifying the current top level browsing context
@@ -207,18 +215,7 @@ class TestharnessProtocolPart(ProtocolPart):
         contains the initial runner page.
 
         :param str url_protocol: "https" or "http" depending on the test metadata.
-        """
-        pass
-
-    @abstractmethod
-    def get_test_window(self, window_id: str, parent: str) -> str:
-        """Get the window handle dorresponding to the window containing the
-        currently active test.
-
-        :param window_id: A string containing the DOM name of the Window that
-        contains the test, or None.
-        :param parent: The handle of the runner window.
-        :returns: A protocol-specific window handle.
+        :returns: A browser-specific handle to the runner page.
         """
         pass
 
@@ -334,6 +331,23 @@ class AccessibilityProtocolPart(ProtocolPart):
         pass
 
 
+class BidiBluetoothProtocolPart(ProtocolPart):
+    """Protocol part for managing BiDi events"""
+    __metaclass__ = ABCMeta
+    name = "bidi_bluetooth"
+
+    @abstractmethod
+    async def simulate_adapter(self,
+                               context: str,
+                               state: str) -> None:
+        """
+        Creates a simulated bluetooth adapter.
+        :param context: Browsing context to set the simulated adapter to.
+        :param state: The state of the simulated bluetooth adapter.
+        """
+        pass
+
+
 class BidiBrowsingContextProtocolPart(ProtocolPart):
     """Protocol part for managing BiDi events"""
     __metaclass__ = ABCMeta
@@ -385,6 +399,16 @@ class BidiEventsProtocolPart(ProtocolPart):
         :param name: The name of the event to listen for. If None, the function will be called for all events.
         :param fn: The function to call when the event is received.
         :return: Function to remove the added listener."""
+        pass
+
+
+class BidiPermissionsProtocolPart(ProtocolPart):
+    """Protocol part for managing BiDi events"""
+    __metaclass__ = ABCMeta
+    name = "bidi_permissions"
+
+    @abstractmethod
+    async def set_permission(self, descriptor, state, origin):
         pass
 
 
@@ -939,4 +963,22 @@ class DevicePostureProtocolPart(ProtocolPart):
 
     @abstractmethod
     def clear_device_posture(self):
+        pass
+
+class VirtualPressureSourceProtocolPart(ProtocolPart):
+    """Protocol part for Virtual Pressure Source"""
+    __metaclass__ = ABCMeta
+
+    name = "pressure"
+
+    @abstractmethod
+    def create_virtual_pressure_source(self, source_type, metadata):
+        pass
+
+    @abstractmethod
+    def update_virtual_pressure_source(self, source_type, sample):
+        pass
+
+    @abstractmethod
+    def remove_virtual_pressure_source(self, source_type):
         pass

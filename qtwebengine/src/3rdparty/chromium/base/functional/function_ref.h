@@ -10,8 +10,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "base/compiler_specific.h"
 #include "base/functional/bind_internal.h"
-#include "third_party/abseil-cpp/absl/base/attributes.h"
 #include "third_party/abseil-cpp/absl/functional/function_ref.h"
 
 namespace base {
@@ -70,12 +70,12 @@ class FunctionRef<R(Args...)> {
       std::same_as<internal::ExtractArgs<RunType>, internal::TypeList<Args...>>;
 
  public:
-  // `ABSL_ATTRIBUTE_LIFETIME_BOUND` is important; since `FunctionRef` retains
+  // `LIFETIME_BOUND` is important; since `FunctionRef` retains
   // only a reference to `functor`, `functor` must outlive `this`.
   template <typename Functor>
     requires kCompatibleFunctor<Functor>
   // NOLINTNEXTLINE(google-explicit-constructor)
-  FunctionRef(const Functor& functor ABSL_ATTRIBUTE_LIFETIME_BOUND)
+  FunctionRef(const Functor& functor LIFETIME_BOUND)
       : wrapped_func_ref_(functor) {}
 
   // Constructs a reference to the given function pointer. This constructor

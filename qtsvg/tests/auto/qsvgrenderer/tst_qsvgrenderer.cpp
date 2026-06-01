@@ -58,12 +58,16 @@ private slots:
     void opacity();
     void paths();
     void paths2();
+    void emptyPath_data();
+    void emptyPath();
     void displayMode();
     void strokeInherit();
     void testFillInheritance();
     void testStopOffsetOpacity();
     void testUseElement();
     void smallFont();
+    void glyphWarnings_data();
+    void glyphWarnings();
     void styleSheet();
     void duplicateStyleId();
     void ossFuzzRender_data();
@@ -82,6 +86,7 @@ private slots:
     void testMarker();
     void testPatternElement();
     void testMisplacedElement();
+    void testCycles_data();
     void testCycles();
     void testFeFlood();
     void testFeOffset();
@@ -90,7 +95,6 @@ private slots:
     void testFeComposite();
     void testFeGaussian();
     void testFeBlend();
-    void testUseCycles();
 
     void testOption_data();
     void testOption();
@@ -126,6 +130,8 @@ void tst_QSvgRenderer::getSetCheck()
     QCOMPARE(20, obj1.framesPerSecond());
     obj1.setFramesPerSecond(0);
     QCOMPARE(0, obj1.framesPerSecond());
+    QTest::ignoreMessage(QtWarningMsg,
+                         "QSvgRenderer::setFramesPerSecond: Cannot set negative value -2147483648");
     obj1.setFramesPerSecond(INT_MIN);
     QCOMPARE(0, obj1.framesPerSecond()); // Can't have a negative framerate
     obj1.setFramesPerSecond(INT_MAX);
@@ -165,7 +171,8 @@ void tst_QSvgRenderer::emptyRect()
 
 void tst_QSvgRenderer::inexistentUrl()
 {
-    const char *src = "<svg><g><path d=\"\" style=\"stroke:url(#inexistent)\"/></g></svg>";
+    const char *src = "<svg><g><path d=\"M0 0\" style=\"stroke:url(#inexistent)\"/></g></svg>";
+    QTest::ignoreMessage(QtWarningMsg, "<input>:1:66: Could not resolve property: #inexistent");
 
     QByteArray data(src);
     QSvgRenderer renderer(data);
@@ -176,6 +183,7 @@ void tst_QSvgRenderer::inexistentUrl()
 void tst_QSvgRenderer::emptyUrl()
 {
     const char *src = "<svg><text fill=\"url()\" /></svg>";
+    QTest::ignoreMessage(QtWarningMsg, "<input>:1:32: Could not resolve property: ");
 
     QByteArray data(src);
     QSvgRenderer renderer(data);
@@ -876,6 +884,12 @@ void tst_QSvgRenderer::recursiveRefs_data()
                                               <rect width="2" height="2" fill=" "/></pattern>
                                               <rect width="2" height="2" fill="url(#pattern) "/>
                                               </svg>)");
+
+    // lead to division by zero in QSvgPattern::patternImage while loading document
+    QTest::newRow("pattern-no-elements") << QByteArray(R"(<svg>
+                                                          <pattern id="pattern" width="4" height="4"
+                                                           fill="url(#pattern) "/>
+                                                          </svg>)");
 }
 
 void tst_QSvgRenderer::recursiveRefs()
@@ -1204,6 +1218,26 @@ void tst_QSvgRenderer::paths2()
     QSvgRenderer renderer(data);
     QVERIFY(renderer.isValid());
     QCOMPARE(renderer.boundsOnElement("path1"_L1).toRect(), QRect(3, 8, 10, 5));
+}
+
+void tst_QSvgRenderer::emptyPath_data()
+{
+    QTest::addColumn<QByteArray>("svg");
+
+    // This caused a division by zero in in QPainterPath::angleAtPercent, reported by UBSAN.
+    QTest::newRow("empty")
+            << (R"(<svg><path marker-end="url(#w) "/></svg>)"_ba);
+    QTest::newRow("zero-movements")
+            << (R"(<svg><path d="M1 2L1 2l0 0H1h0V2v0Z" marker-end="url(#w) "/></svg>)"_ba);
+}
+
+void tst_QSvgRenderer::emptyPath()
+{
+    QFETCH(QByteArray, svg);
+    QImage image(377, 233, QImage::Format_RGB32);
+    QPainter painter(&image);
+    QSvgRenderer renderer(svg);
+    renderer.render(&painter);
 }
 
 void tst_QSvgRenderer::displayMode()
@@ -1725,6 +1759,7 @@ void tst_QSvgRenderer::smallFont()
         QByteArray data(svgs[i]);
         if (i == 0)
             QTest::ignoreMessage(QtWarningMsg, "QFont::setPointSizeF: Point size <= 0 (0.000000), must be greater than 0");
+        QTest::ignoreMessage(QtWarningMsg, "QFont::setPixelSize: Pixel size <= 0 (0)");
         QSvgRenderer renderer(data);
         images[i] = QImage(50, 50, QImage::Format_ARGB32_Premultiplied);
         images[i].fill(-1);
@@ -1733,6 +1768,52 @@ void tst_QSvgRenderer::smallFont()
         p.end();
     }
     QVERIFY(images[0] != images[1]);
+}
+
+void tst_QSvgRenderer::glyphWarnings_data()
+{
+    QTest::addColumn<QString>("missingGlyphAttributes");
+    QTest::addColumn<QString>("secondElement");
+    QTest::addColumn<QByteArrayList>("warnings");
+
+    const QString glyph = R"(<glyph %1 d="M0 0L9 9z"/>)";
+    QTest::newRow("glyph-without-unicode")
+        << "" << glyph.arg("")
+        << QByteArrayList{"glyph does not define a non-empty 'unicode' attribute and will be ignored",
+                          "<input>:1:120: Problem parsing glyph"};
+    QTest::newRow("glyph-empty-unicode")
+        << "" << glyph.arg(R"(unicode="")")
+        << QByteArrayList{"glyph does not define a non-empty 'unicode' attribute and will be ignored",
+                          "<input>:1:130: Problem parsing glyph"};
+    QTest::newRow("missing-glyph-with-unicode")
+        << R"(unicode="a")" << glyph.arg(R"(unicode="a")")
+        << QByteArrayList{"Ignoring missing-glyph's 'unicode' attribute"};
+    QTest::newRow("double-missing-glyph")
+        << "" << R"(<missing-glyph d="M0 0L9 9z"/>)"
+        << QByteArrayList{"The font already has a 'missing-glyph' element.",
+                          "<input>:1:127: Problem parsing missing-glyph"};
+}
+
+void tst_QSvgRenderer::glyphWarnings()
+{
+    // This test validates that questionable attributes in a font's glyph and missing-glyph elements
+    // will trigger suitable warnings while parsing of the entire document finishes sucessfully.
+
+    const QString svgTemplate = R"(<svg><defs>)"
+                                R"(<font xml:id="tstFnt"><font-face font-family="tstFnt"/>)"
+                                R"(<missing-glyph %1 d="M0 0L9 9z"/>)"
+                                R"(%2)"
+                                R"(</font></defs>)"
+                                R"(<text font-family="tstFnt">a</text></svg>)";
+
+    QFETCH(QString, missingGlyphAttributes);
+    QFETCH(QString, secondElement);
+    QFETCH(QByteArrayList, warnings);
+
+    for (const auto &w: warnings)
+        QTest::ignoreMessage(QtWarningMsg, w);
+    QSvgRenderer renderer(svgTemplate.arg(missingGlyphAttributes).arg(secondElement).toUtf8());
+    QVERIFY(renderer.isValid());
 }
 
 void tst_QSvgRenderer::styleSheet()
@@ -1819,6 +1900,9 @@ void tst_QSvgRenderer::ossFuzzLoad_data()
     // resulted in stack overflow
     QTest::newRow("cyclic-reference-from-parent") // id=390467765
             << R"-(<svg stroke="url(#c)"><pattern height="2" width="4" id="c"/><path stroke="#F00" d="v2"/></svg>)-"_ba;
+    // resulted in memory leak, reported when configured with "-sanitize address"
+    QTest::newRow("animation-without-target") // id=456050169
+            << R"-(<svg><animateTransform type="rotate" from=" " to=" " href="#X">)-"_ba;
 }
 
 void tst_QSvgRenderer::ossFuzzLoad()
@@ -2159,29 +2243,28 @@ void tst_QSvgRenderer::testMisplacedElement()
     QCOMPARE(image, refImage);
 }
 
-void tst_QSvgRenderer::testCycles()
+void tst_QSvgRenderer::testCycles_data()
 {
-    QByteArray svgDoc(R"(<svg viewBox="0 0 200 200">
-                      <pattern id="pattern" patternUnits="userSpaceOnUse" width="20" height="20">
-                      <rect x="0" y="0" width="10" height="10" fill="url(#pattern) "/>
-                      </pattern>
-                      </svg>)");
+    QTest::addColumn<QByteArray>("svgDoc");
 
-    QSvgRenderer renderer(svgDoc);
-    QVERIFY(!renderer.isValid());
+    QTest::newRow("fill-pattern") << R"(<svg viewBox="0 0 200 200">
+                         <pattern id="pattern" patternUnits="userSpaceOnUse" width="20" height="20">
+                           <rect x="0" y="0" width="10" height="10" fill="url(#pattern) "/>
+                         </pattern>
+                       </svg>)"_ba;
+
+    QTest::newRow("use") << R"(<svg viewBox="0 0 200 200">
+                                 <g xml:id="group-1"><use xml:id="use-1" xlink:href="#group-2"/></g>
+                                 <g xml:id="group-2"><use xml:id="use-2" xlink:href="#group-1"/></g>
+                               </svg>)"_ba;
 }
 
-void tst_QSvgRenderer::testUseCycles()
+void tst_QSvgRenderer::testCycles()
 {
-    QByteArray svgDoc(R"(<svg viewBox="0 0 200 200">
-        <g xml:id="group-1">
-          <use xml:id="use-1" xlink:href="#group-2" />
-        </g>
-        <g xml:id="group-2">
-          <use xml:id="use-2" xlink:href="#group-1" />
-        </g>
-    </svg>)");
-
+    QFETCH(QByteArray, svgDoc);
+#if QT_CONFIG(regularexpression)
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("Cycles detected in SVG"));
+#endif
     QSvgRenderer renderer(svgDoc);
     QVERIFY(!renderer.isValid());
 }

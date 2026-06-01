@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QQUICKWEBENGINEVIEW_P_P_H
 #define QQUICKWEBENGINEVIEW_P_P_H
@@ -105,8 +106,6 @@ public:
     bool passOnFocus(bool reverse) override;
     void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level, const QString& message, int lineNumber, const QString& sourceID) override;
     void authenticationRequired(QSharedPointer<QtWebEngineCore::AuthenticationDialogController>) override;
-    void runMediaAccessPermissionRequest(const QUrl &securityOrigin, MediaRequestFlags requestFlags) override;
-    void runMouseLockPermissionRequest(const QUrl &securityOrigin) override;
     void runRegisterProtocolHandlerRequest(QWebEngineRegisterProtocolHandlerRequest) override;
     void runFileSystemAccessRequest(QWebEngineFileSystemAccessRequest) override;
     QObject *accessibilityParentObject() override;
@@ -114,7 +113,8 @@ public:
     void allowCertificateError(const QWebEngineCertificateError &error) override;
     void selectClientCert(const QSharedPointer<QtWebEngineCore::ClientCertSelectController>
                                   &selectController) override;
-    void runFeaturePermissionRequest(QWebEnginePermission::PermissionType permissionType, const QUrl &securityOrigin) override;
+    void runFeaturePermissionRequest(QWebEnginePermission::PermissionType permissionType, const QUrl &securityOrigin,
+        int childId, const std::string &serializedToken) override;
     void renderProcessTerminated(RenderProcessTerminationStatus terminationStatus, int exitCode) override;
     void requestGeometryChange(const QRect &geometry, const QRect &frameGeometry) override;
     void updateScrollPosition(const QPointF &position) override;
@@ -139,7 +139,6 @@ public:
                            const QRect &bounds, bool autoselectFirstSuggestion) override;
     void hideAutofillPopup() override;
     void showWebAuthDialog(QWebEngineWebAuthUxRequest *request) override;
-    QWebEnginePermission createFeaturePermissionObject(const QUrl &securityOrigin, QWebEnginePermission::PermissionType permissionType) override;
 
     void updateAction(QQuickWebEngineView::WebAction) const;
     bool adoptWebContents(QtWebEngineCore::WebContentsAdapter *webContents);

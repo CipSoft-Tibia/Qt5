@@ -455,11 +455,11 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>Print Immediately</source>
-        <translation>Hemen Yazdır</translation>
+        <translation>Hemen yazdır</translation>
     </message>
     <message>
         <source>Hold Indefinitely</source>
-        <translation>Süresiz Tut</translation>
+        <translation>Süresiz tut</translation>
     </message>
     <message>
         <source>Day (06:00 to 17:59)</source>
@@ -471,24 +471,24 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>Second Shift (16:00 to 23:59)</source>
-        <translation>İkinci Vardiya (16:00–23:59)</translation>
+        <translation>İkinci vardiya (16:00–23:59)</translation>
     </message>
     <message>
         <source>Third Shift (00:00 to 07:59)</source>
-        <translation>Üçüncü Vardiya (00:00–07:59)</translation>
+        <translation>Üçüncü vardiya (00:00–07:59)</translation>
     </message>
     <message>
         <source>Weekend (Saturday to Sunday)</source>
-        <translation>Hafta Sonu (Cumartesi–Pazar)</translation>
+        <translation>Hafta sonu (Cumartesi–Pazar)</translation>
     </message>
     <message>
         <source>Specific Time</source>
-        <translation>Belirli Bir Zaman</translation>
+        <translation>Belirli bir zaman</translation>
     </message>
     <message>
         <source>None</source>
         <comment>CUPS Banner page</comment>
-        <translation>Hiçbiri</translation>
+        <translation>Yok</translation>
     </message>
     <message>
         <source>Standard</source>
@@ -518,7 +518,7 @@ Press ESC to cancel</source>
     <message>
         <source>Top Secret</source>
         <comment>CUPS Banner page</comment>
-        <translation>Çok Gizli</translation>
+        <translation>Çok gizli</translation>
     </message>
 </context>
 <context>
@@ -999,19 +999,19 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>Cannot open %1 for input</source>
-        <translation>Girdi için %1 açılamıyor</translation>
+        <translation type="vanished">Girdi için %1 açılamıyor</translation>
     </message>
     <message>
         <source>Cannot open for output: %1</source>
-        <translation>Çıktı için açılamıyor: %1</translation>
+        <translation type="vanished">Çıktı için açılamıyor: %1</translation>
     </message>
     <message>
         <source>Could not copy to %1: %2</source>
-        <translation>%1 konumuna kopyalanamadı: %2</translation>
+        <translation type="vanished">%1 konumuna kopyalanamadı: %2</translation>
     </message>
     <message>
         <source>Failure to write block: %1</source>
-        <translation>Blok yazılamadı: %1</translation>
+        <translation type="vanished">Blok yazılamadı: %1</translation>
     </message>
     <message>
         <source>Cannot create %1 for output: %2</source>
@@ -1527,71 +1527,71 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>QPA plugin. See QGuiApplication documentation for available options for each plugin.</source>
-        <translation>QPA eklentisi. Her eklenti için kullanılabilir seçenekler için QGuiApplication belgelerine bakın.</translation>
+        <translation type="vanished">QPA eklentisi. Her eklenti için kullanılabilir seçenekler için QGuiApplication belgelerine bakın.</translation>
     </message>
     <message>
         <source>Path to the platform plugins.</source>
-        <translation>Platform eklentilerinin yolu.</translation>
+        <translation type="vanished">Platform eklentilerinin yolu.</translation>
     </message>
     <message>
         <source>Platform theme.</source>
-        <translation>Platform teması.</translation>
+        <translation type="vanished">Platform teması.</translation>
     </message>
     <message>
         <source>Additional plugins to load, can be specified multiple times.</source>
-        <translation>Yüklenecek ilave eklentiler, birden çok kez belirtilebilir.</translation>
+        <translation type="vanished">Yüklenecek ilave eklentiler, birden çok kez belirtilebilir.</translation>
     </message>
     <message>
         <source>Window geometry for the main window, using the X11-syntax, like 100x100+50+50.</source>
-        <translation>100x100+50+50 gibi X11 sözdizimini kullanarak ana pencere için pencere geometrisi.</translation>
+        <translation type="vanished">100x100+50+50 gibi X11 sözdizimini kullanarak ana pencere için pencere geometrisi.</translation>
     </message>
     <message>
         <source>Default window icon.</source>
-        <translation>Öntanımlı pencere simgesi.</translation>
+        <translation type="vanished">Öntanımlı pencere simgesi.</translation>
     </message>
     <message>
         <source>Title of the first window.</source>
-        <translation>İlk pencerenin başlığı.</translation>
+        <translation type="vanished">İlk pencerenin başlığı.</translation>
     </message>
     <message>
         <source>Sets the application&apos;s layout direction to Qt::RightToLeft (debugging helper).</source>
-        <translation>Uygulamanın düzen yönünü Qt::RightToLeft (hata ayıklama yardımcısı) olarak ayarlar.</translation>
+        <translation type="vanished">Uygulamanın düzen yönünü Qt::RightToLeft (hata ayıklama yardımcısı) olarak ayarlar.</translation>
     </message>
     <message>
         <source>Restores the application from an earlier session.</source>
-        <translation>Uygulamayı önceki bir oturumdan geri yükler.</translation>
+        <translation type="vanished">Uygulamayı önceki bir oturumdan geri yükler.</translation>
     </message>
     <message>
         <source>Display name, overrides $DISPLAY.</source>
-        <translation>Görünen ad, $DISPLAY değerini geçersiz kılar.</translation>
+        <translation type="vanished">Görünen ad, $DISPLAY değerini geçersiz kılar.</translation>
     </message>
     <message>
         <source>Instance name according to ICCCM 4.1.2.5.</source>
-        <translation>ICCCM 4.1.2.5’e göre örnek adı.</translation>
+        <translation type="vanished">ICCCM 4.1.2.5’e göre örnek adı.</translation>
     </message>
     <message>
         <source>Disable mouse grabbing (useful in debuggers).</source>
-        <translation>Fare yakalamayı devre dışı bırak (hata ayıklayıcılarda yararlıdır).</translation>
+        <translation type="vanished">Fare yakalamayı devre dışı bırak (hata ayıklayıcılarda yararlıdır).</translation>
     </message>
     <message>
         <source>Force mouse grabbing (even when running in a debugger).</source>
-        <translation>Fare yakalamayı zorla (hata ayıklayıcıda çalışırken bile).</translation>
+        <translation type="vanished">Fare yakalamayı zorla (hata ayıklayıcıda çalışırken bile).</translation>
     </message>
     <message>
         <source>ID of the X11 Visual to use.</source>
-        <translation>Kullanılacak X11 Visual’ın kimliği.</translation>
+        <translation type="vanished">Kullanılacak X11 Visual’ın kimliği.</translation>
     </message>
     <message>
         <source>Alias for --qwindowgeometry.</source>
-        <translation>--qwindowgeometry için arma.</translation>
+        <translation type="vanished">--qwindowgeometry için arma.</translation>
     </message>
     <message>
         <source>Alias for --qwindowicon.</source>
-        <translation>--qwindowicon için arma.</translation>
+        <translation type="vanished">--qwindowicon için arma.</translation>
     </message>
     <message>
         <source>Alias for --qwindowtitle.</source>
-        <translation>--qwindowtitle için arma.</translation>
+        <translation type="vanished">--qwindowtitle için arma.</translation>
     </message>
 </context>
 <context>
@@ -1802,7 +1802,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Array dimensions mismatch. Field name: %1</source>
-        <translation>Diziliş boyutu uyumsuzluğu. Alan adı: %3</translation>
+        <translation>Diziliş boyutu uyumsuzluğu. Alan adı: %1</translation>
     </message>
     <message>
         <source>Array size mismatch: size of %1 is %2, size of provided list is %3</source>
@@ -2695,6 +2695,10 @@ Yine de silmek istiyor musunuz?</translation>
         <translation>%1 aktarılırken hata oluştu — sunucu yanıtı: %2</translation>
     </message>
     <message>
+        <source>Error transferring %1 - server replied with status code %2</source>
+        <translation>%1 aktarılırken hata — sunucu, %2 durum koduyla yanıtladı</translation>
+    </message>
+    <message>
         <source>backend start error.</source>
         <translation>arka uç başlatma hatası.</translation>
     </message>
@@ -2708,6 +2712,10 @@ Yine de silmek istiyor musunuz?</translation>
     <message>
         <source>Operation canceled</source>
         <translation>İşlem iptal edildi</translation>
+    </message>
+    <message>
+        <source>Operation timed out</source>
+        <translation>İşlem zaman aşımına uğradı</translation>
     </message>
     <message>
         <source>No suitable proxy found</source>
@@ -2952,7 +2960,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Margins</source>
-        <translation>Kenar boşlukları</translation>
+        <translation>Kenar Boşlukları</translation>
     </message>
     <message>
         <source>top margin</source>
@@ -3697,7 +3705,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>%1 does not follow the correct syntax. Please use &apos;,&apos; to separate ranges and pages, &apos;-&apos; to define ranges and make sure ranges do not intersect with each other.</source>
-        <translation>%1 doğru sözdizimi izlemiyor. Aralıkları ve sayfaları ayırmak için lütfen “,” aralıkları tanımlamak ve aralıkların birbiriyle kesişmediğinden emin olmak için “-” kullanın.</translation>
+        <translation>%1 doğru sözdizimi izlemiyor. Erimleri ve sayfaları ayırmak için lütfen “,”; erimleri tanımlamak ve birbirleriyle kesişmediğinden emin olmak için “-” kullanın.</translation>
     </message>
     <message>
         <source>Duplex Settings Conflicts</source>
@@ -3717,7 +3725,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Write PDF file</source>
-        <translation>PDF dosyası yaz</translation>
+        <translation>PDF dosyası</translation>
     </message>
     <message>
         <source>Print To File ...</source>
@@ -3744,7 +3752,7 @@ Do you want to overwrite it?</source>
     <message>
         <source>Options &apos;Pages Per Sheet&apos; and &apos;Page Set&apos; cannot be used together.
 Please turn one of those options off.</source>
-        <translation>“Yaprak Başına Sayfa” ve “Sayfa Kümesi” seçenekleri birlikte kullanılamaz.
+        <translation>“Yaprak başına sayfa” ve “Sayfa kümesi” seçenekleri birlikte kullanılamaz.
 Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
@@ -3760,6 +3768,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>%1%</source>
+        <extracomment>Zoom factor percentage value, % is the percent sign</extracomment>
         <translation>%​%1</translation>
     </message>
     <message>
@@ -3889,7 +3898,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Print range</source>
-        <translation>Erimi yazdır</translation>
+        <translation>Erimi Yazdır</translation>
     </message>
     <message>
         <source>Print all</source>
@@ -3897,11 +3906,11 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Pages from</source>
-        <translation>Şuradan sayfalar</translation>
+        <translation>Şu sayfa ile</translation>
     </message>
     <message>
         <source>to</source>
-        <translation>şuraya</translation>
+        <translation>bu sayfaya</translation>
     </message>
     <message>
         <source>Pages</source>
@@ -3909,7 +3918,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Specify pages or ranges separated by commas. Ranges are specified by two numbers separated by a hyphen. E.g: 3,5-7,9 prints pages 3, 5, 6, 7 and 9.</source>
-        <translation>Virgüllerle ayrılmış sayfaları veya aralıkları belirtin. Aralıklar, tire işareti ile ayrılmış iki sayı ile belirtilir. Örneğin: 3,5-7,9; sayfa 3, 5, 6, 7 ve 9’u yazdırır.</translation>
+        <translation>Virgüllerle ayrılmış sayfaları veya erimleri belirtin. Erimler, tire işareti ile ayrılmış iki sayı ile belirtilir. Örneğin: 3,5–7,9; sayfa 3, 5, 6, 7 ve 9’u yazdırır.</translation>
     </message>
     <message>
         <source>Current Page</source>
@@ -3937,7 +3946,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Reverse</source>
-        <translation>Tersine Çevir</translation>
+        <translation>Tersine çevir</translation>
     </message>
     <message>
         <source>Options</source>
@@ -3953,7 +3962,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Grayscale</source>
-        <translation>Gri Tonlu</translation>
+        <translation>Gri tonlu</translation>
     </message>
     <message>
         <source>Double Sided Printing</source>
@@ -4285,7 +4294,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>invalid range in character class</source>
-        <translation>karakter sınıfında geçersiz aralık</translation>
+        <translation>karakter sınıfında geçersiz erim</translation>
     </message>
     <message>
         <source>octal value is greater than \377 in 8-bit non-UTF-8 mode</source>
@@ -6816,11 +6825,11 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>The certificate provided cannot be used for a client.</source>
-        <translation>Sağlanan sertifika bir istemci için kullanılamaz.</translation>
+        <translation type="vanished">Sağlanan sertifika bir istemci için kullanılamaz.</translation>
     </message>
     <message>
         <source>The certificate provided cannot be used for a server.</source>
-        <translation>Sağlanan sertifika bir sunucu için kullanılamaz.</translation>
+        <translation type="vanished">Sağlanan sertifika bir sunucu için kullanılamaz.</translation>
     </message>
     <message>
         <source>Server did not accept any certificate we could present.</source>
@@ -6931,7 +6940,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Download</source>
-        <translation>İndirmeler</translation>
+        <translation type="vanished">İndirmeler</translation>
     </message>
     <message>
         <source>Public</source>
@@ -6944,6 +6953,10 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     <message>
         <source>Application Data</source>
         <translation>Uygulama Verisi</translation>
+    </message>
+    <message>
+        <source>Downloads</source>
+        <translation>İndirmeler</translation>
     </message>
     <message>
         <source>Application Configuration</source>
@@ -7261,6 +7274,10 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
         <translation>Belgenin sonunda fazladan içerik.</translation>
     </message>
     <message>
+        <source>Unexpected token while reading raw inner data.</source>
+        <translation type="vanished">Ham içsel veri okunurken beklenmedik jeton.</translation>
+    </message>
+    <message>
         <source>Invalid entity value.</source>
         <translation>Geçersiz varlık değeri.</translation>
     </message>
@@ -7321,6 +7338,22 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
         <translation>XML beyanında geçersiz öznitelik: %1 = %2</translation>
     </message>
     <message>
+        <source>An I/O error occurred while writing</source>
+        <translation>Yazma sırasında bir girdi–çıktı hatasıyla karşılaşıldı</translation>
+    </message>
+    <message>
+        <source>An encoding error occurred while writing</source>
+        <translation>Yazma sırasında bir kodlama hatası oluştu</translation>
+    </message>
+    <message>
+        <source>Encountered an invalid XML 1.0 character while writing</source>
+        <translation>Yazma sırasında geçersiz bir XML 1.0 karakteriyle karşılaşıldı</translation>
+    </message>
+    <message>
+        <source>An error occurred while writing</source>
+        <translation>Yazma sırasında bir hata oluştu</translation>
+    </message>
+    <message>
         <source>Unexpected token type %1 in %2.</source>
         <translation>%2 içinde beklenmedik jeton türü %1.</translation>
     </message>
@@ -7374,7 +7407,7 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>Expected character data.</source>
-        <translation>Karakter verisi bekleniyordu.</translation>
+        <translation type="vanished">Karakter verisi bekleniyordu.</translation>
     </message>
     <message>
         <source>Self-referencing entity detected.</source>
@@ -7437,15 +7470,15 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     <name>QFactoryLoader</name>
     <message>
         <source>Invalid metadata version</source>
-        <translation>Geçersiz üst veri sürümü</translation>
+        <translation type="vanished">Geçersiz üst veri sürümü</translation>
     </message>
     <message>
         <source>Metadata parsing error: %1</source>
-        <translation>Üst veri ayrıştırma hatası: %1</translation>
+        <translation type="vanished">Üst veri ayrıştırma hatası: %1</translation>
     </message>
     <message>
         <source>Unexpected metadata contents</source>
-        <translation>Beklenmedik üst veri içeriği</translation>
+        <translation type="vanished">Beklenmedik üst veri içeriği</translation>
     </message>
 </context>
 <context>
@@ -7800,7 +7833,9 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>Java hprof text file</source>
-        <extracomment>application/vnd.java.hprof----------application/vnd.java.hprof.text</extracomment>
+        <extracomment>application/vnd.java.hprof 
+----------
+application/vnd.java.hprof.text</extracomment>
         <translation>Java hprof metin dosyası</translation>
     </message>
     <message>
@@ -8185,7 +8220,9 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>OpenDocument v1.0: Flat Text document</source>
-        <extracomment>application/vnd.oasis.opendocument.tika.flat.document----------application/vnd.oasis.opendocument.flat.text</extracomment>
+        <extracomment>application/vnd.oasis.opendocument.tika.flat.document
+----------
+application/vnd.oasis.opendocument.flat.text</extracomment>
         <translation>OpenDocument v1.0: Düz metin belgesi</translation>
     </message>
     <message>
@@ -8330,7 +8367,9 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>WARC</source>
-        <extracomment>application/warc----------application/warc+gz</extracomment>
+        <extracomment>application/warc
+----------
+application/warc+gz</extracomment>
         <translation>WARC</translation>
     </message>
     <message>
@@ -8705,7 +8744,11 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>RAR archive</source>
-        <extracomment>application/x-rar-compressed----------application/x-rar-compressed;version=4----------application/x-rar-compressed;version=5</extracomment>
+        <extracomment>application/x-rar-compressed
+----------
+application/x-rar-compressed;version=4
+----------
+application/x-rar-compressed;version=5</extracomment>
         <translation>RAR arşivi</translation>
     </message>
     <message>
@@ -9422,12 +9465,16 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>AutoCAD Design Web Format</source>
-        <extracomment>model/vnd.dwf----------model/vnd.dwfx+xps</extracomment>
+        <extracomment>model/vnd.dwf
+----------
+model/vnd.dwfx+xps</extracomment>
         <translation>AutoCAD tasarımı web biçimi</translation>
     </message>
     <message>
         <source>ONline Information eXchange (ONIX) for books</source>
-        <extracomment>application/onix-message+xml----------application/onix-message-short+xml</extracomment>
+        <extracomment>application/onix-message+xml
+----------
+application/onix-message-short+xml</extracomment>
         <translation>Kitaplar için ONline Information eXchange (ONIX)</translation>
     </message>
     <message>
@@ -9920,6 +9967,66 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
         <extracomment>text/x-rsrc</extracomment>
         <translation>R kaynak kodu</translation>
     </message>
+    <message>
+        <source>Mach-O Universal</source>
+        <extracomment>application/x-mach-o-universal</extracomment>
+        <translation>Mach-0 evrensel</translation>
+    </message>
+    <message>
+        <source>Mach-O relocatable object file</source>
+        <extracomment>application/x-mach-o-object</extracomment>
+        <translation>Mach-0 yeniden konumlandırılabilir nesne dosyası</translation>
+    </message>
+    <message>
+        <source>Mach-O executable</source>
+        <extracomment>application/x-mach-o-executable</extracomment>
+        <translation>Mach-0 yürütülebiliri</translation>
+    </message>
+    <message>
+        <source>Mach-O fixed VM shared library</source>
+        <extracomment>application/x-mach-o-fvmlib</extracomment>
+        <translation>Mach-0 sabit sanal makine paylaşılan kitaplığı</translation>
+    </message>
+    <message>
+        <source>Mach-O core file</source>
+        <extracomment>application/x-mach-o-core</extracomment>
+        <translation>Mach-0 çekirdeği dosyası</translation>
+    </message>
+    <message>
+        <source>Mach-O preloaded executable</source>
+        <extracomment>application/x-mach-o-preload</extracomment>
+        <translation>Mach-0 önden yüklenmiş yürütülebiliri</translation>
+    </message>
+    <message>
+        <source>Mach-O dynamic shared library</source>
+        <extracomment>application/x-mach-o-dylib</extracomment>
+        <translation>Mach-0 devingen paylaşılan kitaplığı</translation>
+    </message>
+    <message>
+        <source>Mach-O dynamic link editor</source>
+        <extracomment>application/x-mach-o-dylinker</extracomment>
+        <translation>Mach-0 devingen bağlantı düzenleyicisi</translation>
+    </message>
+    <message>
+        <source>Mach-O dynamic bundle</source>
+        <extracomment>application/x-mach-o-bundle</extracomment>
+        <translation>Mach-0 devingen demeti</translation>
+    </message>
+    <message>
+        <source>Mach-O shared library for static linking</source>
+        <extracomment>application/x-mach-o-dylib-stub</extracomment>
+        <translation>Mach-0 statik bağlantılama için paylaşılan kitaplığı</translation>
+    </message>
+    <message>
+        <source>Mach-O debug symbols file</source>
+        <extracomment>application/x-mach-o-dsym</extracomment>
+        <translation>Mach-0 hata ayıklama sembolleri dosyası</translation>
+    </message>
+    <message>
+        <source>Mach-O kext bundle</source>
+        <extracomment>application/x-mach-o-kext-bundle</extracomment>
+        <translation>Mach-0 kext demeti</translation>
+    </message>
 </context>
 <context>
     <name>Assets::Downloader::AssetDownloader</name>
@@ -10015,6 +10122,117 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     <message>
         <source>Invalid color map depth (%1)</source>
         <translation>Geçersiz renk eşlemi derinliği (%1)</translation>
+    </message>
+</context>
+<context>
+    <name></name>
+    <message>
+        <source>Cannot open %1 for input</source>
+        <translation>Giriş için %1 açılamıyor</translation>
+    </message>
+    <message>
+        <source>Cannot open for output: %1</source>
+        <translation>Çıkış için açılamıyor: %1</translation>
+    </message>
+    <message>
+        <source>Could not copy to %1: %2</source>
+        <translation>%1 konumuna kopyalanamadı: %2</translation>
+    </message>
+    <message>
+        <source>Failure to write block: %1</source>
+        <translation>Blok yazılamadı: %1</translation>
+    </message>
+    <message>
+        <source>Metadata parsing error: %1</source>
+        <translation>Üst veri ayrıştırma hatası: %1</translation>
+    </message>
+    <message>
+        <source>Invalid metadata version</source>
+        <translation>Geçersiz üst veri sürümü</translation>
+    </message>
+    <message>
+        <source>Unexpected metadata contents</source>
+        <translation>Beklenmedik üst veri içeriği</translation>
+    </message>
+    <message>
+        <source>Extra content at end of document.</source>
+        <translation>Belgenin sonunda fazladan içerik.</translation>
+    </message>
+    <message>
+        <source>Unexpected token while reading raw inner data.</source>
+        <translation>Ham içsel veri okunurken beklenmedik jeton.</translation>
+    </message>
+    <message>
+        <source>Expected character data.</source>
+        <translation>Karakter verisi bekleniyordu.</translation>
+    </message>
+    <message>
+        <source>QPA plugin. See QGuiApplication documentation for available options for each plugin.</source>
+        <translation>QPA eklentisi. Her eklenti için kullanılabilir seçenekler için QGuiApplication belgelerine bakın.</translation>
+    </message>
+    <message>
+        <source>Path to the platform plugins.</source>
+        <translation>Platform eklentilerinin yolu.</translation>
+    </message>
+    <message>
+        <source>Platform theme.</source>
+        <translation>Platform teması.</translation>
+    </message>
+    <message>
+        <source>Additional plugins to load, can be specified multiple times.</source>
+        <translation>Yüklenecek ilave eklentiler, birden çok kez belirtilebilir.</translation>
+    </message>
+    <message>
+        <source>Window geometry for the main window, using the X11-syntax, like 100x100+50+50.</source>
+        <translation>100x100+50+50 gibi X11 sözdizimini kullanarak ana pencere için pencere geometrisi.</translation>
+    </message>
+    <message>
+        <source>Default window icon.</source>
+        <translation>Öntanımlı pencere simgesi.</translation>
+    </message>
+    <message>
+        <source>Title of the first window.</source>
+        <translation>İlk pencerenin başlığı.</translation>
+    </message>
+    <message>
+        <source>Sets the application&apos;s layout direction to Qt::RightToLeft (debugging helper).</source>
+        <translation>Uygulamanın düzen yönünü Qt::RightToLeft (hata ayıklama yardımcısı) olarak ayarlar.</translation>
+    </message>
+    <message>
+        <source>Restores the application from an earlier session.</source>
+        <translation>Uygulamayı önceki bir oturumdan geri yükler.</translation>
+    </message>
+    <message>
+        <source>Display name, overrides $DISPLAY.</source>
+        <translation>Görünen ad; $DISPLAY değerini geçersiz kılar.</translation>
+    </message>
+    <message>
+        <source>Instance name according to ICCCM 4.1.2.5.</source>
+        <translation>ICCCM 4.1.2.5’e göre örnek adı.</translation>
+    </message>
+    <message>
+        <source>Disable mouse grabbing (useful in debuggers).</source>
+        <translation>Fare yakalamayı devre dışı bırak (hata ayıklayıcılarda yararlıdır).</translation>
+    </message>
+    <message>
+        <source>Force mouse grabbing (even when running in a debugger).</source>
+        <translation>Fare yakalamayı zorla (hata ayıklayıcıda çalışırken bile).</translation>
+    </message>
+    <message>
+        <source>ID of the X11 Visual to use.</source>
+        <translation>Kullanılacak X11 Visual’ın kimliği.</translation>
+    </message>
+    <message>
+        <source>Alias for --qwindowgeometry.</source>
+        <translation>--qwindowgeometry için arma.</translation>
+    </message>
+    <message>
+        <source>Alias for --qwindowicon.</source>
+        <translation>--qwindowicon için arma.</translation>
+    </message>
+    <message>
+        <source>Alias for --qwindowtitle.</source>
+        <translation>--qwindowtitle için arma.</translation>
     </message>
 </context>
 </TS>

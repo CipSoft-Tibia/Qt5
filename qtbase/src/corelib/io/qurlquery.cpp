@@ -429,11 +429,8 @@ bool comparesEqual(const QUrlQuery &lhs, const QUrlQuery &rhs)
 size_t qHash(const QUrlQuery &key, size_t seed) noexcept
 {
     if (const QUrlQueryPrivate *d = key.d) {
-        QtPrivate::QHashCombine hash;
         // keep in sync with operator==:
-        seed = hash(seed, d->valueDelimiter);
-        seed = hash(seed, d->pairDelimiter);
-        seed = hash(seed, d->itemList);
+        return qHashMulti(seed, d->valueDelimiter, d->pairDelimiter, d->itemList);
     }
     return seed;
 }

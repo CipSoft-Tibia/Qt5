@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "content/browser/back_forward_cache_browsertest.h"
-
 #include "base/containers/contains.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
+#include "content/browser/back_forward_cache_browsertest.h"
+#include "content/browser/browser_interface_binders.h"
+#include "content/browser/generic_sensor/frame_sensor_provider_proxy.h"
 #include "content/browser/generic_sensor/web_contents_sensor_provider_proxy.h"
 #include "content/browser/presentation/presentation_test_utils.h"
 #include "content/browser/renderer_host/back_forward_cache_disable.h"
@@ -42,6 +42,7 @@
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/scheduler/web_scheduler_tracked_feature.h"
 #include "third_party/blink/public/mojom/app_banner/app_banner.mojom.h"
+#include "third_party/blink/public/mojom/webauthn/authenticator.mojom.h"
 #include "ui/base/idle/idle_time_provider.h"
 #include "ui/base/test/idle_test_utils.h"
 
@@ -1512,11 +1513,11 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest, DoesNotCacheIdleManager) {
   ui::test::ScopedIdleProviderForTest scoped_idle_provider(
       std::make_unique<FakeIdleTimeProvider>());
 
-  EXPECT_TRUE(ExecJs(rfh_a, R"(
+  EXPECT_EQ(42, EvalJs(rfh_a, R"(
     new Promise(async resolve => {
       let idleDetector = new IdleDetector();
-      idleDetector.start();
-      resolve();
+      await idleDetector.start();
+      resolve(42);
     });
   )"));
 
@@ -1610,12 +1611,12 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   RenderFrameDeletedObserver rfh_a_deleted(rfh_a);
 
   // Execute functionality that calls PaymentManager.
-  EXPECT_TRUE(ExecJs(rfh_a, R"(
+  EXPECT_EQ(42, EvalJs(rfh_a, R"(
     new Promise(async resolve => {
       const registration = await navigator.serviceWorker.getRegistration(
           '/payments/payment_app.js');
       await registration.paymentManager.enableDelegations(['shippingAddress']);
-      resolve();
+      resolve(42);
     });
   )"));
 
@@ -1637,7 +1638,7 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   // requests (kOutstandingNetworkRequestOthers). This causes flakiness if we
   // check against all blocklisted features. As a result, we only check for the
   // blocklist we care about.
-  base::HistogramBase::Sample sample = base::HistogramBase::Sample(
+  base::HistogramBase::Sample32 sample = base::HistogramBase::Sample32(
       blink::scheduler::WebSchedulerTrackedFeature::kPaymentManager);
   std::vector<base::Bucket> blocklist_values = histogram_tester().GetAllSamples(
       "BackForwardCache.HistoryNavigationOutcome."
@@ -1767,35 +1768,77 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   ExpectRestored(FROM_HERE);
 }
 
+class BackForwardCacheNonStickyDoubleFixBrowserTest
+    : public BackForwardCacheBrowserTest,
+      public testing::WithParamInterface<bool> {
+ protected:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    if (IsBackForwardCacheNonStickyDoubleFixEnabled()) {
+      EnableFeatureAndSetParams(kBackForwardCacheNonStickyDoubleFix, "", "");
+    } else {
+      DisableFeature(kBackForwardCacheNonStickyDoubleFix);
+    }
+    BackForwardCacheBrowserTest::SetUpCommandLine(command_line);
+  }
+
+  bool IsBackForwardCacheNonStickyDoubleFixEnabled() { return GetParam(); }
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         BackForwardCacheNonStickyDoubleFixBrowserTest,
+                         testing::Bool());
+
 // If pages released keyboard lock during pagehide, they can enter
-// BackForwardCache.
-IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
+// BackForwardCache. This also covers the case of entering BFCache for a
+// second time. KeyboardLock is a good feature to use as it will always
+// block BFCache. See https://crbug.com/360183659
+IN_PROC_BROWSER_TEST_P(BackForwardCacheNonStickyDoubleFixBrowserTest,
                        CacheIfKeyboardLockReleasedInPagehide) {
   ASSERT_TRUE(embedded_test_server()->Start());
 
-  // 1) Navigate to a page and start using the Keyboard lock.
+  // Navigate to a page and start using the Keyboard lock.
   GURL url(embedded_test_server()->GetURL("/title1.html"));
   EXPECT_TRUE(NavigateToURL(shell(), url));
   RenderFrameHostImplWrapper rfh_a(current_frame_host());
 
   AcquireKeyboardLock(rfh_a.get());
   // Register a pagehide handler to release keyboard lock.
-  EXPECT_TRUE(ExecJs(rfh_a.get(), R"(
+  ASSERT_TRUE(ExecJs(rfh_a.get(), R"(
     window.onpagehide = function(e) {
       new Promise(resolve => {
-      navigator.keyboard.unlock();
-      resolve();
+        navigator.keyboard.unlock();
+        resolve();
       });
     };
   )"));
 
-  // 2) Navigate away.
-  EXPECT_TRUE(NavigateToURL(
+  // Navigate away.
+  ASSERT_TRUE(NavigateToURL(
       shell(), embedded_test_server()->GetURL("b.com", "/title1.html")));
 
-  // 3) Go back and page should be restored from BackForwardCache.
+  // Go back and page should be restored from BackForwardCache.
   ASSERT_TRUE(HistoryGoBack(web_contents()));
   ExpectRestored(FROM_HERE);
+
+  // Acquire the lock again.
+  AcquireKeyboardLock(rfh_a.get());
+
+  // Navigate away again.
+  ASSERT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("b.com", "/title1.html")));
+
+  // Go back again.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  if (IsBackForwardCacheNonStickyDoubleFixEnabled()) {
+    // The page should be restored from BackForwardCache.
+    ExpectRestored(FROM_HERE);
+  } else {
+    // The page should not be restored from BackForwardCache.
+    ExpectNotRestored(
+        {NotRestoredReason::kBlocklistedFeatures},
+        {blink::scheduler::WebSchedulerTrackedFeature::kKeyboardLock}, {}, {},
+        {}, FROM_HERE);
+  }
 }
 
 IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
@@ -2086,8 +2129,6 @@ class BackForwardCacheBrowserTestWithJavaScriptDetails
     : public BackForwardCacheBrowserTest {
  protected:
   void SetUpCommandLine(base::CommandLine* command_line) override {
-    EnableFeatureAndSetParams(
-        blink::features::kRegisterJSSourceLocationBlockingBFCache, "", "");
     BackForwardCacheBrowserTest::SetUpCommandLine(command_line);
   }
 };
@@ -2382,11 +2423,11 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTestWithJavaScriptDetails,
   const char script[] = R"(
       new Promise(resolve => {
         const socket = new WebSocket($1);
-        socket.addEventListener('open', () => resolve());
+        socket.addEventListener('open', () => resolve(42));
       });)";
-  ASSERT_TRUE(
-      ExecJs(rfh_a.get(),
-             JsReplace(script, ws_server.GetURL("echo-with-no-extension"))));
+  ASSERT_EQ(42, EvalJs(rfh_a.get(),
+                       JsReplace(script,
+                                 ws_server.GetURL("echo-with-no-extension"))));
 
   // 3) Navigate away to `url_b`.
   ASSERT_TRUE(NavigateToURL(shell(), url_b));
@@ -3162,11 +3203,11 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
       }
       new Promise(resolve => {
         socket = new WebSocket($1);
-        socket.addEventListener('open', () => resolve());
+        socket.addEventListener('open', () => resolve(42));
       });)";
-  ASSERT_TRUE(
-      ExecJs(rfh_a.get(),
-             JsReplace(script, ws_server.GetURL("echo-with-no-extension"))));
+  ASSERT_EQ(42, EvalJs(rfh_a.get(),
+                       JsReplace(script,
+                                 ws_server.GetURL("echo-with-no-extension"))));
 
   // 2) Navigate to B.
   ASSERT_TRUE(NavigateToURL(shell(), url_b));
@@ -3285,10 +3326,11 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest, MAYBE_WebSocketNotCached) {
   const char script[] = R"(
       new Promise(resolve => {
         const socket = new WebSocket($1);
-        socket.addEventListener('open', () => resolve());
+        socket.addEventListener('open', () => resolve(42));
       });)";
-  ASSERT_TRUE(ExecJs(
-      rfh_a, JsReplace(script, ws_server.GetURL("echo-with-no-extension"))));
+  ASSERT_EQ(
+      42, EvalJs(rfh_a, JsReplace(script,
+                                  ws_server.GetURL("echo-with-no-extension"))));
 
   // 2) Navigate to B.
   ASSERT_TRUE(NavigateToURL(shell(), url_b));
@@ -3327,8 +3369,9 @@ void RegisterServiceWorker(RenderFrameHostImpl* rfh) {
 // Returns a unique script for each request, to test service worker update.
 std::unique_ptr<net::test_server::HttpResponse> RequestHandlerForUpdateWorker(
     const net::test_server::HttpRequest& request) {
-  if (request.relative_url != "/back_forward_cache/service-worker.js")
+  if (request.relative_url != "/back_forward_cache/service-worker.js") {
     return nullptr;
+  }
   static int counter = 0;
   auto http_response = std::make_unique<net::test_server::BasicHttpResponse>();
   http_response->set_code(net::HTTP_OK);
@@ -3879,7 +3922,7 @@ class BluetoothForwardCacheBrowserTest : public BackForwardCacheBrowserTest {
     adapter_ =
         base::MakeRefCounted<testing::NiceMock<device::MockBluetoothAdapter>>();
     device::BluetoothAdapterFactory::SetAdapterForTesting(adapter_);
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
     // In CHROMEOS build, even when |adapter_| object is released at TearDown()
     // it causes the test to fail on exit with an error indicating |adapter_| is
     // leaked.
@@ -3925,7 +3968,7 @@ IN_PROC_BROWSER_TEST_F(BluetoothForwardCacheBrowserTest, WebBluetooth) {
   auto reason = BackForwardCacheDisable::DisabledReason(
       BackForwardCacheDisable::DisabledReasonId::kWebBluetooth);
   EXPECT_TRUE(tester.IsDisabledForFrameWithReason(
-      current_frame_host()->GetProcess()->GetID(),
+      current_frame_host()->GetProcess()->GetDeprecatedID(),
       current_frame_host()->GetRoutingID(), reason));
 
   ASSERT_TRUE(NavigateToURL(web_contents(),
@@ -4050,7 +4093,7 @@ IN_PROC_BROWSER_TEST_P(BackForwardCacheBrowserWebUsbTest, Serials) {
           ? BackForwardCacheDisable::DisabledReasonId::kSerial
           : BackForwardCacheDisable::DisabledReasonId::kWebUSB;
   EXPECT_TRUE(tester.IsDisabledForFrameWithReason(
-      main_rfh->GetProcess()->GetID(), main_rfh->GetRoutingID(),
+      main_rfh->GetProcess()->GetDeprecatedID(), main_rfh->GetRoutingID(),
       BackForwardCacheDisable::DisabledReason(expected_reason)));
 }
 
@@ -4111,12 +4154,13 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest, AudioSuspendAndResume) {
     EXPECT_EQ(u"canplaythrough", title_watcher.WaitAndGetTitle());
   }
 
-  EXPECT_TRUE(ExecJs(rfh_a, R"(
+  EXPECT_EQ(42, EvalJs(rfh_a, R"(
     new Promise(async resolve => {
       audio.play();
-      while (audio.currentTime === 0)
+      while (audio.currentTime === 0) {
         await new Promise(r => setTimeout(r, 1));
-      resolve();
+      }
+      resolve(42);
     });
   )"));
 
@@ -4200,12 +4244,12 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest, VideoSuspendAndResume) {
     EXPECT_EQ(u"canplaythrough", title_watcher.WaitAndGetTitle());
   }
 
-  EXPECT_TRUE(ExecJs(rfh_a, R"(
+  EXPECT_EQ(42, EvalJs(rfh_a, R"(
     new Promise(async resolve => {
       video.play();
       while (video.currentTime == 0)
         await new Promise(r => setTimeout(r, 1));
-      resolve();
+      resolve(42);
     });
   )"));
 
@@ -4250,7 +4294,9 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest, VideoSuspendAndResume) {
             EvalJs(rfh_a, "video.testObserverEvents"));
 }
 
-class SensorBackForwardCacheBrowserTest : public BackForwardCacheBrowserTest {
+class SensorBackForwardCacheBrowserTest
+    : public BackForwardCacheBrowserTest,
+      public testing::WithParamInterface<bool> {
  protected:
   SensorBackForwardCacheBrowserTest() {
     WebContentsSensorProviderProxy::OverrideSensorProviderBinderForTesting(
@@ -4271,6 +4317,11 @@ class SensorBackForwardCacheBrowserTest : public BackForwardCacheBrowserTest {
     BackForwardCacheBrowserTest::SetUpOnMainThread();
   }
 
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    EnableFeatureAndSetParams(features::kAllowSensorsToEnterBfcache, "", "");
+    BackForwardCacheBrowserTest::SetUpCommandLine(command_line);
+  }
+
   std::unique_ptr<device::FakeSensorProvider> provider_;
 
  private:
@@ -4278,39 +4329,304 @@ class SensorBackForwardCacheBrowserTest : public BackForwardCacheBrowserTest {
       mojo::PendingReceiver<device::mojom::SensorProvider> receiver) {
     provider_->Bind(std::move(receiver));
   }
+
+  base::OnceClosure quit_closure_;
 };
 
+// Tests that Accelerometer sensor is suspended while in bfcache. Note that
+// we are only testing FakeSensor::Suspend() and FakeSensor::Resume() are
+// called, and they have no implementation.
+//
+// TODO(crbug.com/364143617): Focus not retrieved on Android bots and thus
+// sensors are not automatically resumed.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_AccelerometerPausedWhileCached \
+  DISABLED_AccelerometerPausedWhileCached
+#else
+#define MAYBE_AccelerometerPausedWhileCached AccelerometerPausedWhileCached
+#endif
 IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest,
-                       AccelerometerNotCached) {
-  ASSERT_TRUE(embedded_test_server()->Start());
-  GURL url_a(embedded_test_server()->GetURL("/title1.html"));
-  GURL url_b(embedded_test_server()->GetURL("b.com", "/title1.html"));
+                       MAYBE_AccelerometerPausedWhileCached) {
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(
+      https_server()->GetURL("a.test", "/back_forward_cache/sensor.html"));
+  GURL url_b(https_server()->GetURL("b.test", "/title1.html"));
 
   // 1) Navigate to A.
   ASSERT_TRUE(NavigateToURL(shell(), url_a));
-  RenderFrameHostImpl* rfh_a = current_frame_host();
-  RenderFrameDeletedObserver delete_observer_rfh_a(rfh_a);
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+  // JS to cause a page to listen to, capture and validate accelerometer events.
+  const std::string accelerometer_js = R"(
+    sensor = new Accelerometer({ frequency: 60 });
+    sensor.addEventListener('reading', handleEvent);
+    sensor.start();
+  )";
+  provider_->SetAccelerometerData(1.0, 2.0, 3.0);
+  ASSERT_TRUE(ExecJs(rfh_a.get(), accelerometer_js));
+  ASSERT_EQ(1, EvalJs(rfh_a.get(), "waitForEventsPromise(1)"));
+  provider_->UpdateAccelerometerData(1.0, 2.0, 3.1);
+  ASSERT_EQ(2, EvalJs(rfh_a.get(), "waitForEventsPromise(2)"));
+  provider_->UpdateAccelerometerData(1.0, 2.0, 3.2);
+  ASSERT_EQ(3, EvalJs(rfh_a.get(), "waitForEventsPromise(3)"));
 
-  EXPECT_TRUE(ExecJs(rfh_a, R"(
-    new Promise(resolve => {
-      const sensor = new Accelerometer();
-      sensor.addEventListener('reading', () => { resolve(); });
-      sensor.start();
-    })
-  )"));
+  // We should have 3 events with x=1.0.
+  ASSERT_EQ("pass", EvalJs(rfh_a.get(), "validateEvents(1.0)"));
 
   // 2) Navigate to B.
   ASSERT_TRUE(NavigateToURL(shell(), url_b));
+  RenderFrameHostImplWrapper rfh_b(current_frame_host());
+  ASSERT_NE(rfh_a.get(), rfh_b.get());
+  ASSERT_TRUE(rfh_a->IsInBackForwardCache());
 
-  // - Page A should not be in the cache.
-  delete_observer_rfh_a.WaitUntilDeleted();
+  ASSERT_TRUE(provider_->WaitForAccelerometerSuspend(/*suspend=*/true));
 
-  // 3) Go back.
+  // 3) Go back to A.
   ASSERT_TRUE(HistoryGoBack(web_contents()));
-  ExpectNotRestored({NotRestoredReason::kBlocklistedFeatures},
-                    {blink::scheduler::WebSchedulerTrackedFeature::
-                         kRequestedBackForwardCacheBlockedSensors},
-                    {}, {}, {}, FROM_HERE);
+  ExpectRestored(FROM_HERE);
+  ASSERT_EQ(rfh_a.get(), current_frame_host());
+
+  // Sensor must be activated once coming back to the page.
+  ASSERT_TRUE(provider_->WaitForAccelerometerSuspend(/*suspend=*/false));
+  ASSERT_EQ(true, EvalJs(rfh_a.get(), "sensor.activated"));
+  // New update should arrive.
+  provider_->UpdateAccelerometerData(1.0, 2.0, 3.4);
+  // 4 to 5 events should arrive.
+  ASSERT_TRUE(ExecJs(rfh_a.get(), "waitForEventsPromise(4)"));
+}
+
+// Tests that Ambient Light sensor is suspended while in bfcache. Note that
+// we are only testing FakeSensor::Suspend() and FakeSensor::Resume() are
+// called, and they have no implementation.
+//
+// TODO(crbug.com/364143617): Focus not retrieved on Android bots and thus
+// sensors are not automatically resumed.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_AmbientLightPausedWhileCached \
+  DISABLED_AmbientLightPausedWhileCached
+#else
+#define MAYBE_AmbientLightPausedWhileCached AmbientLightPausedWhileCached
+#endif
+IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest,
+                       MAYBE_AmbientLightPausedWhileCached) {
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(
+      https_server()->GetURL("a.test", "/back_forward_cache/sensor.html"));
+  GURL url_b(https_server()->GetURL("b.test", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+  const std::string ambient_light_js = R"(
+    sensor = new AmbientLightSensor();
+    sensor.addEventListener('reading', handleEvent);
+    sensor.start();
+  )";
+  provider_->SetAmbientLightSensorData(1.0);
+  ASSERT_TRUE(ExecJs(rfh_a.get(), ambient_light_js));
+  ASSERT_EQ(1, EvalJs(rfh_a.get(), "waitForEventsPromise(1)"));
+  provider_->UpdateAmbientLightSensorData(1.0);
+  ASSERT_EQ(2, EvalJs(rfh_a.get(), "waitForEventsPromise(2)"));
+  provider_->UpdateAmbientLightSensorData(1.0);
+  ASSERT_EQ(3, EvalJs(rfh_a.get(), "waitForEventsPromise(3)"));
+
+  // We should have 3 events with value=1.0.
+  ASSERT_EQ("pass", EvalJs(rfh_a.get(), "validateEvents(1.0)"));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+  RenderFrameHostImplWrapper rfh_b(current_frame_host());
+  ASSERT_NE(rfh_a.get(), rfh_b.get());
+  ASSERT_TRUE(rfh_a->IsInBackForwardCache());
+  ASSERT_TRUE(provider_->WaitForAmbientLightSensorSuspend(/*suspend=*/true));
+
+  // 3) Go back to A.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectRestored(FROM_HERE);
+  ASSERT_EQ(rfh_a.get(), current_frame_host());
+  ASSERT_TRUE(provider_->WaitForAmbientLightSensorSuspend(/*suspend=*/false));
+
+  // Sensor must be activated once coming back to the page.
+  ASSERT_EQ(true, EvalJs(rfh_a.get(), "sensor.activated"));
+  // New update should arrive.
+  provider_->UpdateAmbientLightSensorData(1.0);
+  // 4 to 5 events should arrive.
+  ASSERT_TRUE(ExecJs(rfh_a.get(), "waitForEventsPromise(4)"));
+}
+
+// Tests that Linear Acceleration sensor is suspended while in bfcache.
+// Note that we are only testing FakeSensor::Suspend() and
+// FakeSensor::Resume() are called, and they have no implementation.
+//
+// TODO(crbug.com/364143617): Focus not retrieved on Android bots and thus
+// sensors are not automatically resumed.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_LinearAccelerationPausedWhileCached \
+  DISABLED_LinearAccelerationPausedWhileCached
+#else
+#define MAYBE_LinearAccelerationPausedWhileCached \
+  LinearAccelerationPausedWhileCached
+#endif
+IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest,
+                       MAYBE_LinearAccelerationPausedWhileCached) {
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(
+      https_server()->GetURL("a.test", "/back_forward_cache/sensor.html"));
+  GURL url_b(https_server()->GetURL("b.test", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+  const std::string la_js = R"(
+    sensor = new LinearAccelerationSensor({ frequency: 60 });
+    sensor.addEventListener('reading', handleEvent);
+    sensor.start();
+  )";
+  provider_->SetLinearAccelerationSensorData(1.0, 2.0, 3.0);
+  ASSERT_TRUE(ExecJs(rfh_a.get(), la_js));
+  ASSERT_EQ(1, EvalJs(rfh_a.get(), "waitForEventsPromise(1)"));
+  provider_->UpdateLinearAccelerationSensorData(1.0, 2.0, 3.1);
+  ASSERT_EQ(2, EvalJs(rfh_a.get(), "waitForEventsPromise(2)"));
+  provider_->UpdateLinearAccelerationSensorData(1.0, 2.0, 3.2);
+  ASSERT_EQ(3, EvalJs(rfh_a.get(), "waitForEventsPromise(3)"));
+
+  // We should have 3 events with value=1.0.
+  ASSERT_EQ("pass", EvalJs(rfh_a.get(), "validateEvents(1.0)"));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+  RenderFrameHostImplWrapper rfh_b(current_frame_host());
+  ASSERT_NE(rfh_a.get(), rfh_b.get());
+  ASSERT_TRUE(rfh_a->IsInBackForwardCache());
+  ASSERT_TRUE(
+      provider_->WaitForLinearAccelerationSensorSuspend(/*suspend=*/true));
+
+  // 3) Go back to A.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectRestored(FROM_HERE);
+  ASSERT_EQ(rfh_a.get(), current_frame_host());
+  ASSERT_TRUE(
+      provider_->WaitForLinearAccelerationSensorSuspend(/*suspend=*/false));
+
+  // Sensor must be activated once coming back to the page.
+  ASSERT_EQ(true, EvalJs(rfh_a.get(), "sensor.activated"));
+  // New update should arrive.
+  provider_->UpdateLinearAccelerationSensorData(1.0, 2.0, 3.4);
+  // 4 to 5 events should arrive.
+  ASSERT_TRUE(ExecJs(rfh_a.get(), "waitForEventsPromise(4)"));
+}
+
+// Tests that Gravity sensor is suspended while in bfcache.
+//
+// TODO(crbug.com/364143617): Focus not retrieved on Android bots and thus
+// sensors are not automatically resumed.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_GravityPausedWhileCached DISABLED_GravityPausedWhileCached
+#else
+#define MAYBE_GravityPausedWhileCached GravityPausedWhileCached
+#endif
+IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest,
+                       MAYBE_GravityPausedWhileCached) {
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(
+      https_server()->GetURL("a.test", "/back_forward_cache/sensor.html"));
+  GURL url_b(https_server()->GetURL("b.test", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+  const std::string gravity_js = R"(
+    sensor = new GravitySensor({ frequency: 60 });
+    sensor.addEventListener('reading', handleEvent);
+    sensor.start();
+  )";
+  provider_->SetGravitySensorData(1.0, 2.0, 3.0);
+  ASSERT_TRUE(ExecJs(rfh_a.get(), gravity_js));
+  ASSERT_EQ(1, EvalJs(rfh_a.get(), "waitForEventsPromise(1)"));
+  provider_->UpdateGravitySensorData(1.0, 2.0, 3.1);
+  ASSERT_EQ(2, EvalJs(rfh_a.get(), "waitForEventsPromise(2)"));
+  provider_->UpdateGravitySensorData(1.0, 2.0, 3.2);
+  ASSERT_EQ(3, EvalJs(rfh_a.get(), "waitForEventsPromise(3)"));
+
+  // We should have 3 events with value=1.0.
+  ASSERT_EQ("pass", EvalJs(rfh_a.get(), "validateEvents(1.0)"));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+  RenderFrameHostImplWrapper rfh_b(current_frame_host());
+  ASSERT_NE(rfh_a.get(), rfh_b.get());
+  ASSERT_TRUE(rfh_a->IsInBackForwardCache());
+  ASSERT_TRUE(provider_->WaitForGravitySensorSuspend(/*suspend=*/true));
+
+  // 3) Go back to A.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectRestored(FROM_HERE);
+  ASSERT_EQ(rfh_a.get(), current_frame_host());
+  ASSERT_TRUE(provider_->WaitForGravitySensorSuspend(/*suspend=*/false));
+
+  // Sensor must be activated once coming back to the page.
+  ASSERT_EQ(true, EvalJs(rfh_a.get(), "sensor.activated"));
+  // New update should arrive.
+  provider_->UpdateGravitySensorData(1.0, 2.0, 3.4);
+  // 4 to 5 events should arrive.
+  ASSERT_TRUE(ExecJs(rfh_a.get(), "waitForEventsPromise(4)"));
+}
+
+// Tests that Gyroscope sensor is suspended while in bfcache. Note that
+// we are only testing FakeSensor::Suspend() and FakeSensor::Resume() are
+// called, and they have no implementation.
+//
+// TODO(crbug.com/364143617): Focus not retrieved on Android bots and thus
+// sensors are not automatically resumed.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_GyroscopePausedWhileCached DISABLED_GyroscopePausedWhileCached
+#else
+#define MAYBE_GyroscopePausedWhileCached GyroscopePausedWhileCached
+#endif
+IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest,
+                       MAYBE_GyroscopePausedWhileCached) {
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(
+      https_server()->GetURL("a.test", "/back_forward_cache/sensor.html"));
+  GURL url_b(https_server()->GetURL("b.test", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+  const std::string gyro_js = R"(
+    sensor = new Gyroscope({ frequency: 60 });
+    sensor.addEventListener('reading', handleEvent);
+    sensor.start();
+  )";
+  provider_->SetGyroscopeData(1.0, 2.0, 3.0);
+  ASSERT_TRUE(ExecJs(rfh_a.get(), gyro_js));
+  ASSERT_EQ(1, EvalJs(rfh_a.get(), "waitForEventsPromise(1)"));
+  provider_->UpdateGyroscopeData(1.0, 2.0, 3.1);
+  ASSERT_EQ(2, EvalJs(rfh_a.get(), "waitForEventsPromise(2)"));
+  provider_->UpdateGyroscopeData(1.0, 2.0, 3.2);
+  ASSERT_EQ(3, EvalJs(rfh_a.get(), "waitForEventsPromise(3)"));
+
+  // We should have 3 events with value=1.0.
+  ASSERT_EQ("pass", EvalJs(rfh_a.get(), "validateEvents(1.0)"));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+  RenderFrameHostImplWrapper rfh_b(current_frame_host());
+  ASSERT_NE(rfh_a.get(), rfh_b.get());
+  ASSERT_TRUE(rfh_a->IsInBackForwardCache());
+  ASSERT_TRUE(provider_->WaitForGyroscopeSuspend(/*suspend=*/true));
+
+  // 3) Go back to A.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectRestored(FROM_HERE);
+  ASSERT_EQ(rfh_a.get(), current_frame_host());
+  ASSERT_TRUE(provider_->WaitForGyroscopeSuspend(/*suspend=*/false));
+
+  // Sensor must be activated once coming back to the page.
+  ASSERT_EQ(true, EvalJs(rfh_a.get(), "sensor.activated"));
+  // New update should arrive.
+  provider_->UpdateGyroscopeData(1.0, 2.0, 3.4);
+  // 4 to 5 events should arrive.
+  ASSERT_TRUE(ExecJs(rfh_a.get(), "waitForEventsPromise(4)"));
 }
 
 IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest, OrientationCached) {
@@ -4334,8 +4650,7 @@ IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest, OrientationCached) {
   EXPECT_THAT(rfh_a, InBackForwardCache());
 }
 
-// Tests that the orientation sensor's events are not delivered to a page in the
-// back-forward cache.
+// Tests that the orientation sensor is suspended while in bfcache.
 //
 // This sets some JS functions in the pages to enable the sensors, capture and
 // validate the events. The a-page should only receive events with alpha=0, the
@@ -4355,126 +4670,88 @@ IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest, OrientationCached) {
 IN_PROC_BROWSER_TEST_F(SensorBackForwardCacheBrowserTest,
                        MAYBE_SensorPausedWhileCached) {
   ASSERT_TRUE(CreateHttpsServer()->Start());
-  GURL url_a(https_server()->GetURL("a.test", "/title1.html"));
-  GURL url_b(https_server()->GetURL("b.test", "/title1.html"));
+  GURL url_a(
+      https_server()->GetURL("a.test", "/back_forward_cache/sensor.html"));
+  GURL url_b(
+      https_server()->GetURL("b.test", "/back_forward_cache/sensor.html"));
 
   provider_->SetRelativeOrientationSensorData(0, 0, 0);
 
-  // JS to cause a page to listen to, capture and validate orientation events.
-  const std::string sensor_js = R"(
-    // Collects events that have happened so far.
-    var events = [];
-    // If set, will be called by handleEvent.
-    var pendingResolve = null;
-
-    // Handles one event, pushing it to |events| and calling |pendingResolve| if
-    // set.
+  const std::string orientation_js = R"(
+    // Override the function.
     function handleEvent(event) {
-      events.push(event);
-      if (pendingResolve !== null) {
-        pendingResolve('event');
-        pendingResolve = null;
-      }
-    }
-
-    // Returns a promise that will resolve when the events array has at least
-    // |eventCountMin| elements. Returns the number of elements.
-    function waitForEventsPromise(eventCountMin) {
-      if (events.length >= eventCountMin) {
-        return Promise.resolve(events.length);
-      }
-      return new Promise(resolve => {
-        pendingResolve = resolve;
-      }).then(() => waitForEventsPromise(eventCountMin));
-    }
-
-    // Pretty print an orientation event.
-    function eventToString(event) {
-      return `${event.alpha} ${event.beta} ${event.gamma}`;
-    }
-
-    // Ensure that that |expectedAlpha| matches the alpha of all events.
-    function validateEvents(expectedAlpha) {
-      if (expectedAlpha === null) {
-        return "fail expectedAlpha === null";
-      }
-      let count = 0;
-      for (event of events) {
-        count++;
-        if (Math.abs(event.alpha - expectedAlpha) > 0.01) {
-          return `fail - ${count}/${events.length}: ` +
-              `${expectedAlpha} != ${event.alpha} (${eventToString(event)})`;
+        values.push(event.alpha);
+        if (pendingResolve !== null) {
+          pendingResolve('event');
+          pendingResolve = null;
         }
-      }
-      return 'pass';
     }
-
     window.addEventListener('deviceorientation', handleEvent);
   )";
 
   // 1) Navigate to A.
   ASSERT_TRUE(NavigateToURL(shell(), url_a));
   ASSERT_TRUE(WaitForLoadStop(shell()->web_contents()));
-  RenderFrameHostImpl* rfh_a = current_frame_host();
-  RenderFrameDeletedObserver delete_observer_rfh_a(rfh_a);
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+  RenderFrameDeletedObserver delete_observer_rfh_a(rfh_a.get());
 
-  ASSERT_TRUE(ExecJs(rfh_a, sensor_js));
+  ASSERT_TRUE(ExecJs(rfh_a.get(), orientation_js));
 
   // Collect 3 orientation events.
-  ASSERT_EQ(1, EvalJs(rfh_a, "waitForEventsPromise(1)"));
+  ASSERT_EQ(1, EvalJs(rfh_a.get(), "waitForEventsPromise(1)"));
   provider_->UpdateRelativeOrientationSensorData(0, 0, 0.2);
-  ASSERT_EQ(2, EvalJs(rfh_a, "waitForEventsPromise(2)"));
+  ASSERT_EQ(2, EvalJs(rfh_a.get(), "waitForEventsPromise(2)"));
   provider_->UpdateRelativeOrientationSensorData(0, 0, 0.4);
-  ASSERT_EQ(3, EvalJs(rfh_a, "waitForEventsPromise(3)"));
+  ASSERT_EQ(3, EvalJs(rfh_a.get(), "waitForEventsPromise(3)"));
   // We should have 3 events with alpha=0.
-  ASSERT_EQ("pass", EvalJs(rfh_a, "validateEvents(0)"));
+  ASSERT_EQ("pass", EvalJs(rfh_a.get(), "validateEvents(0)"));
 
   // 2) Navigate to B.
   ASSERT_TRUE(NavigateToURL(shell(), url_b));
   ASSERT_TRUE(WaitForLoadStop(shell()->web_contents()));
-  RenderFrameHostImpl* rfh_b = current_frame_host();
+  RenderFrameHostImplWrapper rfh_b(current_frame_host());
 
   ASSERT_FALSE(delete_observer_rfh_a.deleted());
-  ASSERT_THAT(rfh_a, InBackForwardCache());
-  ASSERT_NE(rfh_a, rfh_b);
+  ASSERT_THAT(rfh_a.get(), InBackForwardCache());
+  ASSERT_NE(rfh_a.get(), rfh_b.get());
 
-  // Change the orientation data before executing |sensor_js|, otherwise a
+  // Change the orientation data before executing |orientation_js|, otherwise a
   // deviceorientation event might be fired before the call below and the first
   // registered event will have the previous data (0 0 0.4).
   provider_->SetRelativeOrientationSensorData(1, 0, 0);
-  ASSERT_TRUE(ExecJs(rfh_b, sensor_js));
+  ASSERT_TRUE(ExecJs(rfh_b.get(), orientation_js));
 
   // Collect 3 orientation events.
-  ASSERT_EQ(1, EvalJs(rfh_b, "waitForEventsPromise(1)"));
+  ASSERT_EQ(1, EvalJs(rfh_b.get(), "waitForEventsPromise(1)"));
   provider_->UpdateRelativeOrientationSensorData(1, 0, 0.2);
-  ASSERT_EQ(2, EvalJs(rfh_b, "waitForEventsPromise(2)"));
+  ASSERT_EQ(2, EvalJs(rfh_b.get(), "waitForEventsPromise(2)"));
   provider_->UpdateRelativeOrientationSensorData(1, 0, 0.4);
-  ASSERT_EQ(3, EvalJs(rfh_b, "waitForEventsPromise(3)"));
+  ASSERT_EQ(3, EvalJs(rfh_b.get(), "waitForEventsPromise(3)"));
   // We should have 3 events with alpha=1.
-  ASSERT_EQ("pass", EvalJs(rfh_b, "validateEvents(1)"));
+  ASSERT_EQ("pass", EvalJs(rfh_b.get(), "validateEvents(1)"));
 
   // 3) Go back to A.
   provider_->UpdateRelativeOrientationSensorData(0, 0, 0);
   ASSERT_TRUE(HistoryGoBack(web_contents()));
-  ASSERT_EQ(rfh_a, current_frame_host());
+  ASSERT_EQ(rfh_a.get(), current_frame_host());
 
   // Collect 3 orientation events.
   provider_->UpdateRelativeOrientationSensorData(0, 0, 0);
   // There are 2 processes so, it's possible that more events crept in. So we
   // capture how many there are at this point and uses to wait for at least 3
   // more.
-  int count = EvalJs(rfh_a, "waitForEventsPromise(4)").ExtractInt();
+  int count = EvalJs(rfh_a.get(), "waitForEventsPromise(4)").ExtractInt();
   provider_->UpdateRelativeOrientationSensorData(0, 0, 0.2);
   count++;
-  ASSERT_EQ(count, EvalJs(rfh_a, base::StringPrintf("waitForEventsPromise(%d)",
-                                                    count)));
+  ASSERT_EQ(count, EvalJs(rfh_a.get(), base::StringPrintf(
+                                           "waitForEventsPromise(%d)", count)));
   provider_->UpdateRelativeOrientationSensorData(0, 0, 0.4);
   count++;
-  ASSERT_EQ(count, EvalJs(rfh_a, base::StringPrintf("waitForEventsPromise(%d)",
-                                                    count)));
+  ASSERT_EQ(count, EvalJs(rfh_a.get(), base::StringPrintf(
+                                           "waitForEventsPromise(%d)", count)));
 
   // We should have the earlier 3 plus another 3 events with alpha=0.
-  ASSERT_EQ("pass", EvalJs(rfh_a, "validateEvents(0)"));
+  ASSERT_EQ("pass", EvalJs(rfh_a.get(), "validateEvents(0)"));
 }
 
 // This tests that even if a page initializes WebRTC, tha page can be cached as
@@ -4685,6 +4962,210 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest, WebLocksNotCached) {
                     {}, {}, {}, FROM_HERE);
 }
 
+enum TestAuthenticatorBehavior {
+  kErrorOut,
+  kStallRequest,
+};
+
+// An implementation of blink::mojom::Authenticator that stalls all requests.
+class TestAuthenticator : public blink::mojom::Authenticator {
+ public:
+  explicit TestAuthenticator(TestAuthenticatorBehavior behavior)
+      : behavior_(behavior) {
+    OverrideAuthenticatorBinderForTesting(base::BindRepeating(
+        &TestAuthenticator::BindAuthenticator, base::Unretained(this)));
+  }
+
+  ~TestAuthenticator() override {
+    OverrideVibrationManagerBinderForTesting(base::NullCallback());
+  }
+
+  void BindAuthenticator(
+      mojo::PendingReceiver<blink::mojom::Authenticator> receiver) {
+    receiver_.Bind(std::move(receiver));
+  }
+
+ private:
+  // blink::mojom::Authenticator:
+  void MakeCredential(
+      blink::mojom::PublicKeyCredentialCreationOptionsPtr options,
+      MakeCredentialCallback callback) override {
+    if (behavior_ == kStallRequest) {
+      pending_make_credential_callback_ = std::move(callback);
+    } else {
+      std::move(callback).Run(blink::mojom::AuthenticatorStatus::ABORT_ERROR,
+                              nullptr, nullptr);
+    }
+  }
+  void GetAssertion(blink::mojom::PublicKeyCredentialRequestOptionsPtr options,
+                    GetAssertionCallback callback) override {
+    if (behavior_ == kStallRequest) {
+      pending_get_assertion_callback_ = std::move(callback);
+    } else {
+      std::move(callback).Run(blink::mojom::AuthenticatorStatus::ABORT_ERROR,
+                              nullptr, nullptr);
+    }
+  }
+  void GetClientCapabilities(GetClientCapabilitiesCallback callback) override {}
+  void Report(blink::mojom::PublicKeyCredentialReportOptionsPtr options,
+              ReportCallback callback) override {}
+  void IsUserVerifyingPlatformAuthenticatorAvailable(
+      IsUserVerifyingPlatformAuthenticatorAvailableCallback callback) override {
+  }
+  void IsConditionalMediationAvailable(
+      IsConditionalMediationAvailableCallback callback) override {}
+  void Cancel() override {}
+
+  MakeCredentialCallback pending_make_credential_callback_;
+  GetAssertionCallback pending_get_assertion_callback_;
+  TestAuthenticatorBehavior behavior_;
+  mojo::Receiver<blink::mojom::Authenticator> receiver_{this};
+};
+
+// Tests that an ongoing WebAuthn get assertion request disables BFcache.
+IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
+                       WebAuthnGetAssertion_NoCachingDuringRequest) {
+  TestAuthenticator test_authenticator(kStallRequest);
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(https_server()->GetURL("a.com", "/title1.html"));
+  GURL url_b(https_server()->GetURL("b.com", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+
+  // Leave a WebAuthn get assertion request pending.
+  EXPECT_TRUE(ExecJs(rfh_a.get(), R"(
+    navigator.credentials.get({ publicKey: {
+      challenge: new TextEncoder().encode("speedrun a game"),
+      userVerification: "discouraged",
+      allowCredentials: [{type: "public-key", id: Uint8Array.from([1, 2, 3])}],
+    }});
+  )",
+                     EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+
+  // - Page A should not be in the cache.
+  ASSERT_TRUE(rfh_a.WaitUntilRenderFrameDeleted());
+
+  // 3) Go back.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectNotRestored(
+      {NotRestoredReason::kBlocklistedFeatures},
+      {blink::scheduler::WebSchedulerTrackedFeature::kWebAuthentication}, {},
+      {}, {}, FROM_HERE);
+}
+
+// Tests that after a WebAuthn get assertion request completes, BFcache is not
+// disabled.
+IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
+                       WebAuthnGetAssertion_CacheAfterRequest) {
+  TestAuthenticator test_authenticator(kErrorOut);
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(https_server()->GetURL("a.com", "/title1.html"));
+  GURL url_b(https_server()->GetURL("b.com", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+
+  // Complete a WebAuthn get assertion request.
+  EXPECT_TRUE(ExecJs(rfh_a.get(), R"(
+    navigator.credentials.get({ publicKey: {
+      challenge: new TextEncoder().encode("speedrun a game"),
+      userVerification: "discouraged",
+      allowCredentials: [{type: "public-key", id: Uint8Array.from([1, 2, 3])}],
+    }}).catch(() => {});
+  )"));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+
+  // 3) Go back.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectRestored(FROM_HERE);
+}
+
+// Tests that an ongoing WebAuthn make credential request disables BFcache.
+IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
+                       WebAuthnMakeCredential_NoCachingDuringRequest) {
+  TestAuthenticator test_authenticator(kStallRequest);
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(https_server()->GetURL("a.com", "/title1.html"));
+  GURL url_b(https_server()->GetURL("b.com", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+
+  // Leave a WebAuthn make credential request pending.
+  EXPECT_TRUE(ExecJs(rfh_a.get(), R"(
+    navigator.credentials.create({ publicKey: {
+      challenge: new TextEncoder().encode("speedrun a game"),
+      userVerification: "discouraged",
+      rp: { name: "Acme"},
+      user: {
+        id: new TextEncoder().encode("1234"),
+        name: "fox",
+        displayName: "Fox McCloud"
+      },
+      pubKeyCredParams: [{ type: "public-key", alg: -7}],
+    }});
+  )",
+                     EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+
+  // - Page A should not be in the cache.
+  ASSERT_TRUE(rfh_a.WaitUntilRenderFrameDeleted());
+
+  // 3) Go back.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectNotRestored(
+      {NotRestoredReason::kBlocklistedFeatures},
+      {blink::scheduler::WebSchedulerTrackedFeature::kWebAuthentication}, {},
+      {}, {}, FROM_HERE);
+}
+
+// Tests that after a WebAuthn make credential request completes, BFcache is not
+// disabled.
+IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
+                       WebAuthnMakeCredential_CacheAfterRequest) {
+  TestAuthenticator test_authenticator(kErrorOut);
+  ASSERT_TRUE(CreateHttpsServer()->Start());
+  GURL url_a(https_server()->GetURL("a.com", "/title1.html"));
+  GURL url_b(https_server()->GetURL("b.com", "/title1.html"));
+
+  // 1) Navigate to A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+
+  // Leave a WebAuthn make credential request pending.
+  EXPECT_TRUE(ExecJs(rfh_a.get(), R"(
+    navigator.credentials.create({ publicKey: {
+      challenge: new TextEncoder().encode("speedrun a game"),
+      userVerification: "discouraged",
+      rp: { name: "Acme"},
+      user: {
+        id: new TextEncoder().encode("1234"),
+        name: "fox",
+        displayName: "Fox McCloud"
+      },
+      pubKeyCredParams: [{ type: "public-key", alg: -7}],
+    }}).catch(() => {});
+  )"));
+
+  // 2) Navigate to B.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+
+  // 3) Go back.
+  ASSERT_TRUE(HistoryGoBack(web_contents()));
+  ExpectRestored(FROM_HERE);
+}
+
 // TODO(crbug.com/40937711): Reenable. This is flaky because we block on
 // the permission request, not on API usage.
 IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest, DISABLED_WebMidiNotCached) {
@@ -4794,11 +5275,11 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   RenderFrameDeletedObserver delete_observer_rfh_a(rfh_a);
 
   // 2) Start SpeechRecognition.
-  EXPECT_TRUE(ExecJs(rfh_a, R"(
+  EXPECT_EQ(42, EvalJs(rfh_a, R"(
     new Promise(async resolve => {
-    var r = new webkitSpeechRecognition();
-    r.start();
-    resolve();
+      var r = new webkitSpeechRecognition();
+      r.start();
+      resolve(42);
     });
   )"));
 
@@ -4828,10 +5309,10 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   RenderFrameDeletedObserver delete_observer_rfh_a(rfh_a);
 
   // 2) Initialise SpeechRecognition but don't start it yet.
-  EXPECT_TRUE(ExecJs(rfh_a, R"(
+  EXPECT_EQ(42, EvalJs(rfh_a, R"(
     new Promise(async resolve => {
-    var r = new webkitSpeechRecognition();
-    resolve();
+      var r = new webkitSpeechRecognition();
+      resolve(42);
     });
   )"));
 
@@ -4867,11 +5348,11 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   EXPECT_TRUE(NavigateToURL(shell(), url_a));
   RenderFrameHostImplWrapper rfh_a(current_frame_host());
 
-  EXPECT_TRUE(ExecJs(rfh_a.get(), R"(
+  EXPECT_EQ(42, EvalJs(rfh_a.get(), R"(
     new Promise(async resolve => {
-    var u = new SpeechSynthesisUtterance(" ");
-    speechSynthesis.speak(u);
-    resolve();
+      var u = new SpeechSynthesisUtterance(" ");
+      speechSynthesis.speak(u);
+      resolve(42);
     });
   )"));
 
@@ -4919,7 +5400,7 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   auto reason = BackForwardCacheDisable::DisabledReason(
       BackForwardCacheDisable::DisabledReasonId::kFileChooser);
   EXPECT_TRUE(tester.IsDisabledForFrameWithReason(
-      rfh_a->GetProcess()->GetID(), rfh_a->GetRoutingID(), reason));
+      rfh_a->GetProcess()->GetDeprecatedID(), rfh_a->GetRoutingID(), reason));
 
   // 5) Navigate to B having the file chooser open.
   EXPECT_TRUE(NavigateToURL(shell(), url_b));

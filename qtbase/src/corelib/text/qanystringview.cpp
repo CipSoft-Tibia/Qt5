@@ -1,5 +1,6 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 #include "qanystringview.h"
 #include "qdebug.h"
@@ -138,6 +139,7 @@ QT_BEGIN_NAMESPACE
     \list
     \li \c QLatin1Char
     \li \c QChar::SpecialCharacter
+    \li \c wchar_t (where it's a 32-bit type, i.e. Unix) (since 6.10)
     \li \c char32_t
     \endlist
 
@@ -152,7 +154,7 @@ QT_BEGIN_NAMESPACE
     and UTF-8 multibyte sequences count as two, three or four,
     depending on their length).
 
-    \sa QUtf8StringView, QStringView
+    \sa {Which string class to use?}, QUtf8StringView, QStringView
 */
 
 /*!

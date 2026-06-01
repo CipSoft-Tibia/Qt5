@@ -25,6 +25,8 @@ class MLGruCellOptions;
 class MLLstmOptions;
 class MLLstmCellOptions;
 class MLPadOptions;
+class MLReverseOptions;
+class MLSliceOptions;
 class MLSplitOptions;
 
 class MODULES_EXPORT MLOperator : public GarbageCollected<MLOperator> {
@@ -74,8 +76,8 @@ class MODULES_EXPORT MLOperator : public GarbageCollected<MLOperator> {
   }
 
   const MLOperatorOptions* Options() const;
-  const HeapVector<Member<const MLOperand>>& Inputs() const;
-  const HeapVector<Member<const MLOperand>>& Outputs() const;
+  const HeapVector<Member<MLOperand>>& Inputs() const;
+  const HeapVector<Member<MLOperand>>& Outputs() const;
   MLGraphBuilder const* Builder() const { return builder_.Get(); }
 
   // According to WebNN programming model
@@ -84,8 +86,8 @@ class MODULES_EXPORT MLOperator : public GarbageCollected<MLOperator> {
   // connected by operands (edges). This method connects the operator with its
   // input and output operands during a computational graph building session. An
   // operator is only allowed to be connected once.
-  void Connect(HeapVector<Member<const MLOperand>> inputs,
-               HeapVector<Member<const MLOperand>> outputs);
+  void Connect(HeapVector<Member<MLOperand>> inputs,
+               HeapVector<Member<MLOperand>> outputs);
 
  private:
   Member<MLGraphBuilder> builder_;
@@ -96,8 +98,8 @@ class MODULES_EXPORT MLOperator : public GarbageCollected<MLOperator> {
   Member<const MLOperatorOptions> options_;
   OperationSubKind sub_kind_;
 
-  HeapVector<Member<const MLOperand>> inputs_;
-  HeapVector<Member<const MLOperand>> outputs_;
+  HeapVector<Member<MLOperand>> inputs_;
+  HeapVector<Member<MLOperand>> outputs_;
 };
 
 // TODO: crbug.com/325612086 - Remove all these subclasses. This information
@@ -249,12 +251,30 @@ class MODULES_EXPORT MLPadOperator : public MLOperator {
   Vector<uint32_t> ending_padding_;
 };
 
+class MODULES_EXPORT MLReverseOperator : public MLOperator {
+ public:
+  MLReverseOperator(MLGraphBuilder* builder,
+                    Vector<uint32_t> axes,
+                    const MLReverseOptions* options);
+
+  MLReverseOperator(const MLReverseOperator&) = delete;
+  MLReverseOperator& operator=(const MLReverseOperator&) = delete;
+
+  ~MLReverseOperator() override;
+
+  const Vector<uint32_t>& Axes() const;
+
+ private:
+  Vector<uint32_t> axes_;
+};
+
 class MODULES_EXPORT MLSliceOperator : public MLOperator {
  public:
   MLSliceOperator(MLGraphBuilder* builder,
-                  const Vector<uint32_t>& beginning_padding,
-                  const Vector<uint32_t>& ending_padding,
-                  const MLOperatorOptions* options);
+                  const Vector<uint32_t>& starts,
+                  const Vector<uint32_t>& sizes,
+                  const Vector<uint32_t>& strides,
+                  const MLSliceOptions* options);
 
   MLSliceOperator(const MLSliceOperator&) = delete;
   MLSliceOperator& operator=(const MLSliceOperator&) = delete;
@@ -263,10 +283,12 @@ class MODULES_EXPORT MLSliceOperator : public MLOperator {
 
   const Vector<uint32_t>& Starts() const;
   const Vector<uint32_t>& Sizes() const;
+  const Vector<uint32_t>& Strides() const;
 
  private:
   Vector<uint32_t> starts_;
   Vector<uint32_t> sizes_;
+  Vector<uint32_t> strides_;
 };
 
 class MODULES_EXPORT MLSoftmaxOperator : public MLOperator {

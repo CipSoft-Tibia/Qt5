@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "quicktest_p.h"
 #include "quicktestresult_p.h"
@@ -304,7 +305,7 @@ public:
 
         if (component.isReady()) {
             QQmlRefPointer<QV4::ExecutableCompilationUnit> rootCompilationUnit
-                    = QQmlComponentPrivate::get(&component)->compilationUnit;
+                    = QQmlComponentPrivate::get(&component)->compilationUnit();
             TestCaseEnumerationResult result = enumerateTestCases(
                     rootCompilationUnit->baseCompilationUnit().data());
             m_testCases = result.testCases + result.finalizedPartialTestCases();
@@ -711,6 +712,47 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
 
     // Return the number of failures as the exit code.
     return exitCode;
+}
+
+/*!
+    \macro QVERIFY_ACTIVE_FOCUS(item)
+    \relates QQuickTest
+    \since 6.10
+
+    Checks whether the \a item (which must be derived from \l QQuickItem) has
+    \l {QQuickItem::activeFocus}{active focus}. If it does, execution
+    continues. If not, a failure is recorded in the test log and the test won't
+    be executed further. The failure message contains focus-specific
+    information that is relevant for diagnosing the cause of the failure.
+
+    \include macro-usage-limitation.qdocinc
+*/
+
+/*!
+    \macro QTRY_VERIFY_ACTIVE_FOCUS(item)
+    \relates QQuickTest
+    \since 6.10
+
+    This macro does the same check as \l QVERIFY_ACTIVE_FOCUS with \a item, but
+    repeatedly, until either the condition becomes true or the timeout (in
+    milliseconds) is reached. Between each evaluation, events will be
+    processed. If the timeout is reached, a failure is recorded in the test log
+    and the test won't be executed further.
+
+    \include macro-usage-limitation.qdocinc
+*/
+
+QByteArray QQuickTest::Private::qActiveFocusFailureMessage(const QQuickItem *item)
+{
+    QByteArray message;
+    QDebug debug(&message);
+    const QQuickWindow *window = item->window();
+    const QString activeFocusItemStr = window
+        ? QDebug::toString(window->activeFocusItem()) : QStringLiteral("(unknown; item has no window)");
+    debug.nospace() << "item: " << item
+        << " focusPolicy: " << static_cast<Qt::FocusPolicy>(item->focusPolicy());
+    debug.noquote() << " window's activeFocusItem: " << activeFocusItemStr;
+    return message;
 }
 
 QT_END_NAMESPACE

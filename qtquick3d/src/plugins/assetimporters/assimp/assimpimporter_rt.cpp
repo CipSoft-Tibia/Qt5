@@ -15,6 +15,8 @@
 #include <QtQuick3DAssetUtils/private/qssgscenedesc_p.h>
 #include <QtQuick3DAssetUtils/private/qssgsceneedit_p.h>
 
+#include <QtQuick3DUtils/private/qssgutils_p.h>
+
 // ASSIMP INC
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -127,10 +129,8 @@ struct SceneInfo
         bool binaryKeyframes = false;
         bool forceMipMapGeneration = false;
         bool useFloatJointIndices = false;
-        bool generateLightmapUV = false;
         bool designStudioWorkarounds = false;
 
-        int lightmapBaseResolution = 1024;
         float globalScaleValue = 1.0;
 
         bool generateMeshLODs = false;
@@ -189,7 +189,10 @@ ResourceIOStream::ResourceIOStream(const char *pFile, const char *pMode) : file(
         openMode |= QFile::WriteOnly;
     if (mode.endsWith("t"))
         openMode |= QFile::Text;
-    file.open(openMode);
+    if (!file.open(openMode)) {
+        qWarning("Failed to open file %s: %s",
+                 qPrintable(file.fileName()), qPrintable(file.errorString()));
+    }
 }
 
 size_t ResourceIOStream::Read(void *pvBuffer, size_t pSize, size_t pCount)
@@ -526,8 +529,9 @@ static void setMaterialProperties(QSSGSceneDesc::Material &target, const aiMater
             aiColor4D baseColorFactor;
             result = source.Get(AI_MATKEY_BASE_COLOR, baseColorFactor);
             if (result == aiReturn_SUCCESS) {
-                QSSGSceneDesc::setProperty(target, "baseColor", &QQuick3DPrincipledMaterial::setBaseColor, aiColorToQColor(baseColorFactor));
-
+                // Some special handling required since baseColorFactor's are stored as linear factors and need to be converted for Qt Quick
+                const QColor sRGBBaseColorFactor = QSSGUtils::color::linearTosRGB(QVector4D(baseColorFactor.r, baseColorFactor.g, baseColorFactor.b, baseColorFactor.a));
+                QSSGSceneDesc::setProperty(target, "baseColor", &QQuick3DPrincipledMaterial::setBaseColor, sRGBBaseColorFactor);
             } else {
                 // Also try diffuse color as a fallback
                 aiColor3D diffuseColor;
@@ -1200,7 +1204,7 @@ using MorphProperty = QPair<MorphAttributes, float>;
 static QVector<MorphProperty> getMorphTargetProperties(const aiMesh &mesh)
 {
     QVector<MorphProperty> targets;
-    const quint32 numMorphTargets = qMin(8U, mesh.mNumAnimMeshes);
+    const quint32 numMorphTargets = mesh.mNumAnimMeshes;
 
     for (uint i = 0; i < numMorphTargets; ++i) {
         const auto &animMesh = mesh.mAnimMeshes[i];
@@ -1294,8 +1298,6 @@ static void setModelProperties(QSSGSceneDesc::Model &target, const aiNode &sourc
                                                       sceneInfo.opt.generateMeshLODs,
                                                       sceneInfo.opt.lodNormalMergeAngle,
                                                       sceneInfo.opt.lodNormalSplitAngle,
-                                                      sceneInfo.opt.generateLightmapUV,
-                                                      sceneInfo.opt.lightmapBaseResolution,
                                                       errorString);
         meshStorage.push_back(std::move(meshData));
 
@@ -1651,13 +1653,6 @@ static SceneInfo::Options processSceneOptions(const QJsonObject &optionsObject) 
     sceneOptions.useFloatJointIndices = checkBooleanOption(QStringLiteral("useFloatJointIndices"), options);
     sceneOptions.forceMipMapGeneration = checkBooleanOption(QStringLiteral("generateMipMaps"), options);
     sceneOptions.binaryKeyframes = checkBooleanOption(QStringLiteral("useBinaryKeyframes"), options);
-
-    sceneOptions.generateLightmapUV = checkBooleanOption(QStringLiteral("generateLightmapUV"), options);
-    if (sceneOptions.generateLightmapUV) {
-        qreal v = getRealOption(QStringLiteral("lightmapBaseResolution"), options);
-        sceneOptions.lightmapBaseResolution = v == 0.0 ? 1024 : int(v);
-    }
-
     sceneOptions.generateMeshLODs = checkBooleanOption(QStringLiteral("generateMeshLevelsOfDetail"), options);
     if (sceneOptions.generateMeshLODs) {
         bool recalculateLODNormals = checkBooleanOption(QStringLiteral("recalculateLodNormals"), options);
@@ -1761,7 +1756,7 @@ static QString importImp(const QUrl &url, const QJsonObject &options, QSSGSceneD
                     const auto &nodeName = srcChannel->mName;
                     if (nodeName.length > 0) {
                         const auto morphKeys = srcChannel->mKeys;
-                        const auto numMorphTargets = qMin(morphKeys[0].mNumValuesAndWeights, 8U);
+                        const auto numMorphTargets = morphKeys[0].mNumValuesAndWeights;
                         // MorphTarget is renamed with <nodeName> + '_morph' + <targetNumber>
                         for (It j = 0; j < numMorphTargets; ++j) {
                             QString morphTargetName(nodeName.C_Str());

@@ -57,10 +57,10 @@ Item {
                 ListElement{ rowcol: "4th,DD"; data: "3/4/5"; }
             }
             columnRole: "rowcol"
-            columnRolePattern: /(\d),(\d)/
+            columnRolePattern: /(\d)\w+,(\w+)/
             columnRoleReplace: "\\2"
             rowRole: "rowcol"
-            rowRolePattern: /(\d),(\d)/
+            rowRolePattern: /(\d\w+),(\w+)/
             rowRoleReplace: "\\1"
             xPosRole: "data"
             xPosRolePattern: /^([^\/]*)\/([^\/]*)\/(.*)$/
@@ -157,17 +157,16 @@ Item {
         function test_initialized() {
             verify(rowcolumnreplace.series)
             compare(rowcolumnreplace.columnCategories.length, 4)
-            // TODO: These fail, see QTBUG-132351
-            // compare(rowcolumnreplace.columnCategories[0], "AA")
-            // compare(rowcolumnreplace.columnCategories[1], "BB")
-            // compare(rowcolumnreplace.columnCategories[2], "CC")
-            // compare(rowcolumnreplace.columnCategories[3], "DD")
+            compare(rowcolumnreplace.columnCategories[0], "AA")
+            compare(rowcolumnreplace.columnCategories[1], "BB")
+            compare(rowcolumnreplace.columnCategories[2], "CC")
+            compare(rowcolumnreplace.columnCategories[3], "DD")
             compare(rowcolumnreplace.rowCategories.length, 4)
-            // TODO: These fail, see QTBUG-132351
-            // compare(rowcolumnreplace.rowCategories[0], "1st")
-            // compare(rowcolumnreplace.rowCategories[1], "2nd")
-            // compare(rowcolumnreplace.rowCategories[2], "3rd")
-            // compare(rowcolumnreplace.rowCategories[3], "4th")
+            compare(rowcolumnreplace.rowCategories[0], "1st")
+            compare(rowcolumnreplace.rowCategories[1], "2nd")
+            compare(rowcolumnreplace.rowCategories[2], "3rd")
+            compare(rowcolumnreplace.rowCategories[3], "4th")
+
             // TODO: Do we have a way to check what the x, y, and z values are after the replace (in QML)?
             compare(rowcolumnreplace.xPosRole, "data")
             compare(rowcolumnreplace.xPosRoleReplace, "\\1")

@@ -46,6 +46,7 @@
 #include "third_party/blink/renderer/platform/graphics/graphics_context.h"
 #include "third_party/blink/renderer/platform/graphics/paint/drawing_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
+#include "third_party/blink/renderer/platform/text/bidi_paragraph.h"
 #include "third_party/blink/renderer/platform/text/text_run.h"
 #include "third_party/blink/renderer/platform/transforms/affine_transform.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
@@ -171,9 +172,7 @@ std::unique_ptr<DragImage> DragImage::Create(const KURL& url,
   }
 
   // First step is drawing the link drag image width.
-  TextRun label_run(label.Impl());
-  TextRun url_run(url_string.Impl());
-  gfx::Size label_size(label_font->Width(label_run),
+  gfx::Size label_size(label_font->Width(TextRun(label)),
                        label_font_data->GetFontMetrics().Ascent() +
                            label_font_data->GetFontMetrics().Descent());
 
@@ -187,7 +186,7 @@ std::unique_ptr<DragImage> DragImage::Create(const KURL& url,
                        label_size.height() + kDragLabelBorderY * 2);
 
   if (draw_url_string) {
-    url_string_size.set_width(url_font->Width(url_run));
+    url_string_size.set_width(url_font->Width(TextRun(url_string)));
     url_string_size.set_height(url_font_data->GetFontMetrics().Ascent() +
                                url_font_data->GetFontMetrics().Descent());
     image_size.set_height(image_size.height() + url_string_size.height());
@@ -208,9 +207,8 @@ std::unique_ptr<DragImage> DragImage::Create(const KURL& url,
   // TODO(fserb): are we sure this should be software?
   std::unique_ptr<CanvasResourceProvider> resource_provider(
       CanvasResourceProvider::CreateBitmapProvider(
-          SkImageInfo::MakeN32Premul(scaled_image_size.width(),
-                                     scaled_image_size.height()),
-          cc::PaintFlags::FilterQuality::kLow,
+          scaled_image_size, GetN32FormatForCanvas(), kPremul_SkAlphaType,
+          gfx::ColorSpace::CreateSRGB(),
           CanvasResourceProvider::ShouldInitialize::kNo));
   if (!resource_provider)
     return nullptr;
@@ -241,8 +239,13 @@ std::unique_ptr<DragImage> DragImage::Create(const KURL& url,
         image_size.height() -
             (kLabelBorderYOffset + url_font_data->GetFontMetrics().Descent()));
     TextRun text_run(url_string);
-    url_font->DrawText(&resource_provider->Canvas(), TextRunPaintInfo(text_run),
-                      text_pos, device_scale_factor, text_paint);
+    if (RuntimeEnabledFeatures::DragImageNoNodeIdEnabled()) {
+      url_font->DrawText(&resource_provider->Canvas(), text_run, text_pos,
+                         text_paint);
+    } else {
+      url_font->DrawText(&resource_provider->Canvas(), text_run, text_pos,
+                         device_scale_factor, text_paint);
+    }
   }
 
   if (clip_label_string) {
@@ -250,8 +253,7 @@ std::unique_ptr<DragImage> DragImage::Create(const KURL& url,
         label, image_size.width() - (kDragLabelBorderX * 2.0f), *label_font);
   }
 
-  TextRun text_run(label);
-  text_run.SetDirectionFromText();
+  TextRun text_run(label, BidiParagraph::BaseDirectionForStringOrLtr(label));
   gfx::Point text_pos(
       kDragLabelBorderX,
       kDragLabelBorderY + label_font->GetFontDescription().ComputedPixelSize());
@@ -261,8 +263,8 @@ std::unique_ptr<DragImage> DragImage::Create(const KURL& url,
     text_pos.set_x(available_width - ceilf(text_width));
   }
   label_font->DrawBidiText(&resource_provider->Canvas(),
-                          TextRunPaintInfo(text_run), gfx::PointF(text_pos),
-                          Font::kDoNotPaintIfFontNotReady, text_paint);
+                           TextRunPaintInfo(text_run), gfx::PointF(text_pos),
+                           Font::kDoNotPaintIfFontNotReady, text_paint);
 
   scoped_refptr<StaticBitmapImage> image =
       resource_provider->Snapshot(FlushReason::kNon2DCanvas);

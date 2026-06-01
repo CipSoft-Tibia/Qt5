@@ -18,7 +18,7 @@ public:
 //! [MyReading-Declaration]
 
 qreal MyReading::myprop() const { return 0.0; }
-void setMyprop(qreal myprop) { }
+void setMyprop(qreal) { }
 
 class MyReadingPrivate
 {

@@ -266,7 +266,7 @@ void tst_qquicktreeviewdelegate::checkCurrentIndex()
     QVERIFY(item->current());
     QVERIFY(!item->selected());
     QVERIFY(!item->editing());
-    QVERIFY(treeView->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(treeView);
 
     // Select the cell
     treeView->selectionModel()->setCurrentIndex(treeView->modelIndex(cell), QItemSelectionModel::Select);

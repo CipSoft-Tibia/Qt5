@@ -24,6 +24,9 @@ Item {
             rotationRole: "rot"
             rotationRolePattern: /-/
             rotationRoleReplace: "\\1"
+            scaleRole: "scale"
+            scaleRolePattern: /-/
+            scaleRoleReplace: "\\1"
             xPosRole: "x"
             xPosRolePattern: /^.*-(\d\d)$/
             xPosRoleReplace: "\\1"
@@ -50,6 +53,9 @@ Item {
             compare(initial.rotationRole, "")
             verify(initial.rotationRolePattern)
             compare(initial.rotationRoleReplace, "")
+            compare(initial.scaleRole, "")
+            verify(initial.scaleRolePattern)
+            compare(initial.scaleRoleReplace, "")
             compare(initial.xPosRole, "")
             verify(initial.xPosRolePattern)
             compare(initial.xPosRoleReplace, "")
@@ -75,6 +81,9 @@ Item {
             compare(initialized.rotationRole, "rot")
             compare(initialized.rotationRolePattern, /-/)
             compare(initialized.rotationRoleReplace, "\\1")
+            compare(initialized.scaleRole, "scale")
+            compare(initialized.scaleRolePattern, /-/)
+            compare(initialized.scaleRoleReplace, "\\1")
             compare(initialized.xPosRole, "x")
             compare(initialized.xPosRolePattern, /^.*-(\d\d)$/)
             compare(initialized.xPosRoleReplace, "\\1")
@@ -97,6 +106,9 @@ Item {
             change.rotationRole = "rot"
             change.rotationRolePattern = /-/
             change.rotationRoleReplace = "\\1"
+            change.scaleRole = "scale"
+            change.scaleRolePattern = /-/
+            change.scaleRoleReplace = "\\1"
             change.xPosRole = "x"
             change.xPosRolePattern = /^.*-(\d\d)$/
             change.xPosRoleReplace = "\\1"
@@ -111,6 +123,9 @@ Item {
             compare(change.rotationRole, "rot")
             compare(change.rotationRolePattern, /-/)
             compare(change.rotationRoleReplace, "\\1")
+            compare(change.scaleRole, "scale")
+            compare(change.scaleRolePattern, /-/)
+            compare(change.scaleRoleReplace, "\\1")
             compare(change.xPosRole, "x")
             compare(change.xPosRolePattern, /^.*-(\d\d)$/)
             compare(change.xPosRoleReplace, "\\1")
@@ -126,6 +141,9 @@ Item {
             compare(rotationRoleSpy.count, 1)
             compare(rotationPatternSpy.count, 1)
             compare(rotationReplaceSpy.count, 1)
+            compare(scaleRoleSpy.count, 1)
+            compare(scalePatternSpy.count, 1)
+            compare(scaleReplaceSpy.count, 1)
             compare(xPosRoleSpy.count, 1)
             compare(xPosPatternSpy.count, 1)
             compare(xPosReplaceSpy.count, 1)
@@ -160,6 +178,24 @@ Item {
         id: rotationReplaceSpy
         target: change
         signalName: "rotationRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: scaleRoleSpy
+        target: change
+        signalName: "scaleRoleChanged"
+    }
+
+    SignalSpy {
+        id: scalePatternSpy
+        target: change
+        signalName: "scaleRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: scaleReplaceSpy
+        target: change
+        signalName: "scaleRoleReplaceChanged"
     }
 
     SignalSpy {

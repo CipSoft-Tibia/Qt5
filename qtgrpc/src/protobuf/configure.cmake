@@ -96,11 +96,20 @@ qt_feature("protobufquick" PUBLIC
     AUTODETECT TRUE
     CONDITION TARGET Qt6::Quick
 )
+
+qt_feature("protobuf-unsafe-registry" PRIVATE
+    SECTION "Qt Protobuf"
+    LABEL "Unsafe registry"
+    PURPOSE "Allows lock-free registry access for custom serializers"
+    AUTODETECT FALSE
+)
+
 qt_configure_add_summary_section(NAME "Qt Protobuf")
 qt_configure_add_summary_entry(ARGS "protobuf-qtcoretypes")
 qt_configure_add_summary_entry(ARGS "protobuf-qtguitypes")
 qt_configure_add_summary_entry(ARGS "protobuf-wellknowntypes")
 qt_configure_add_summary_entry(ARGS "protobufquick")
+qt_configure_add_summary_entry(ARGS "protobuf-unsafe-registry")
 qt_configure_end_summary_section()
 qt_configure_add_summary_section(NAME "Qt Protobuf tools")
 qt_configure_add_summary_entry(ARGS "qtprotobufgen")

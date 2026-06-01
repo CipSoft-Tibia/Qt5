@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "third_party/blink/renderer/core/messaging/blink_transferable_message.h"
 
 #include <utility>
@@ -68,9 +73,10 @@ BlinkTransferableMessage BlinkTransferableMessage::FromTransferableMessage(
       if (item->is_resizable_by_user_javascript) {
         max_byte_length = base::checked_cast<size_t>(item->max_byte_length);
       }
-      ArrayBufferContents contents(big_buffer.size(), max_byte_length, 1,
-                                   ArrayBufferContents::kNotShared,
-                                   ArrayBufferContents::kDontInitialize);
+      ArrayBufferContents contents(
+          big_buffer.size(), max_byte_length, 1,
+          ArrayBufferContents::kNotShared, ArrayBufferContents::kDontInitialize,
+          ArrayBufferContents::AllocationFailureBehavior::kCrash);
       // Check if we allocated the backing store of the ArrayBufferContents
       // correctly.
       CHECK_EQ(contents.DataLength(), big_buffer.size());
@@ -137,9 +143,8 @@ scoped_refptr<StaticBitmapImage> ToStaticBitmapImage(
 
 scoped_refptr<StaticBitmapImage> WrapAcceleratedBitmapImage(
     AcceleratedImageInfo image) {
-  return AcceleratedStaticBitmapImage::CreateFromExternalMailbox(
-      image.mailbox_holder, image.usage, image.image_info,
-      image.is_origin_top_left, image.supports_display_compositing,
-      image.is_overlay_candidate, std::move(image.release_callback));
+  return AcceleratedStaticBitmapImage::CreateFromExternalSharedImage(
+      image.shared_image, image.sync_token, image.image_info,
+      std::move(image.release_callback));
 }
 }  // namespace blink

@@ -278,13 +278,11 @@ EncryptionData readPbes2(const QList<QAsn1Element> &element, const QByteArray &p
 
 // Maps OIDs to the hash function it specifies
 const QMap<QByteArray, QCryptographicHash::Algorithm> pbes1OidHashFunctionMap {
-#ifndef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
     // PKCS5
     //{PKCS5_MD2_DES_CBC_OID, QCryptographicHash::Md2}, No MD2
     //{PKCS5_MD2_RC2_CBC_OID, QCryptographicHash::Md2},
     {PKCS5_MD5_DES_CBC_OID, QCryptographicHash::Md5},
     {PKCS5_MD5_RC2_CBC_OID, QCryptographicHash::Md5},
-#endif
     {PKCS5_SHA1_DES_CBC_OID, QCryptographicHash::Sha1},
     {PKCS5_SHA1_RC2_CBC_OID, QCryptographicHash::Sha1},
     // PKCS12 (unimplemented)

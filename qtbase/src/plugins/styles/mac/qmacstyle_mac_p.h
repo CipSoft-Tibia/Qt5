@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMACSTYLE_MAC_P_H
 #define QMACSTYLE_MAC_P_H
@@ -28,9 +29,12 @@ class QMacStylePrivate;
 class QMacStyle : public QCommonStyle
 {
     Q_OBJECT
-public:
+protected:
     QMacStyle();
+public:
     virtual ~QMacStyle();
+
+    static QMacStyle *create();
 
     void polish(QWidget *w);
     void unpolish(QWidget *w);
@@ -72,8 +76,6 @@ public:
 
     bool event(QEvent *e);
 
-    QIcon standardIcon(StandardPixmap standardIcon, const QStyleOption *opt = nullptr,
-                       const QWidget *widget = nullptr) const;
     int layoutSpacing(QSizePolicy::ControlType control1, QSizePolicy::ControlType control2,
                       Qt::Orientation orientation, const QStyleOption *option = nullptr,
                       const QWidget *widget = nullptr) const;

@@ -1,6 +1,9 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_extensions_dir(extensions_dir)
+
 # Generated from shm-emulation-server.pro.
 
 #####################################################################
@@ -26,8 +29,8 @@ qt_internal_add_plugin(ShmServerBufferIntegrationPlugin
 qt6_generate_wayland_protocol_server_sources(ShmServerBufferIntegrationPlugin
     PRIVATE_CODE
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/shm-emulation-server-buffer.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/server-buffer-extension.xml
+        ${extensions_dir}/shm-emulation-server-buffer.xml
+        ${extensions_dir}/server-buffer-extension.xml
 )
 
 #### Keys ignored in scope 1:.:.:shm-emulation-server.pro:<TRUE>:

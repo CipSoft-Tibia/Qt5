@@ -9,15 +9,13 @@
 #include <random>
 #include <vector>
 
-#include <benchmark/benchmark.h>
-#include "bench/utils.h"
-
+#include "utils.h"
 #include "xnnpack.h"
-#include "xnnpack/aligned-allocator.h"
 #include "xnnpack/common.h"
 #include "xnnpack/microfnptr.h"
 #include "xnnpack/raddextexp.h"
-
+#include "xnnpack/buffer.h"
+#include <benchmark/benchmark.h>
 
 static void f32_raddextexp(
   benchmark::State& state,
@@ -38,7 +36,7 @@ static void f32_raddextexp(
 
   const size_t num_buffers = 1 +
     benchmark::utils::DivideRoundUp<size_t>(benchmark::utils::GetMaxCacheSize(), packed_elements * sizeof(float));
-  std::vector<float, AlignedAllocator<float, 64>> x(elements);
+  xnnpack::Buffer<float, XNN_ALLOCATION_ALIGNMENT> x(elements);
 
   std::generate(x.begin(), x.end(), std::ref(f32rng));
 
@@ -50,7 +48,7 @@ static void f32_raddextexp(
       buffer_index = 0;
     }
 
-    float y_sum[2] = { nanf(""), nanf("") };
+    float y_sum[2];
     raddextexp(elements * sizeof(float), x.data(), y_sum);
   }
 
@@ -75,7 +73,7 @@ static void CharacteristicArguments(benchmark::internal::Benchmark* b) {
   }
 }
 
-#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+#if XNN_ENABLE_AVX512F && (XNN_ARCH_X86 || XNN_ARCH_X86_64)
   BENCHMARK_CAPTURE(f32_raddextexp, avx512f_p5_scalef_u128,
     xnn_f32_raddextexp_ukernel__avx512f_p5_scalef_u128,
     benchmark::utils::CheckAVX512F)->Apply(CharacteristicArguments)->UseRealTime();
@@ -115,7 +113,9 @@ static void CharacteristicArguments(benchmark::internal::Benchmark* b) {
   BENCHMARK_CAPTURE(f32_raddextexp, avx512f_p5_scalef_u192_acc6,
     xnn_f32_raddextexp_ukernel__avx512f_p5_scalef_u192_acc6,
     benchmark::utils::CheckAVX512F)->Apply(CharacteristicArguments)->UseRealTime();
+#endif  // XNN_ENABLE_AVX512F && (XNN_ARCH_X86 || XNN_ARCH_X86_64)
 
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
   BENCHMARK_CAPTURE(f32_raddextexp, avx2_p5_u64,
     xnn_f32_raddextexp_ukernel__avx2_p5_u64,
     benchmark::utils::CheckAVX2)->Apply(CharacteristicArguments)->UseRealTime();
@@ -158,5 +158,5 @@ static void CharacteristicArguments(benchmark::internal::Benchmark* b) {
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
 #ifndef XNNPACK_BENCHMARK_NO_MAIN
-BENCHMARK_MAIN();
+XNN_BENCHMARK_MAIN();
 #endif

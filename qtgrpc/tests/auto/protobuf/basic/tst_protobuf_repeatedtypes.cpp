@@ -299,7 +299,223 @@ void QtProtobufRepeatedTypesGenerationTest::repeatedComplexMessageCompareTest()
 
 void QtProtobufRepeatedTypesGenerationTest::rvalueSettersTest()
 {
-    RepeatedIntMessage test;
+    {
+        QStringList stringList = QStringList({"Text", "tryam"});
+        QStringList stringListCopy = stringList;
+        RepeatedStringMessage test;
+        test.setTestRepeatedString(std::move(stringListCopy));
+        RepeatedStringMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedString(), stringList);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedString(QStringList({"Text", "tryam1"}));
+        QCOMPARE_NE(test.testRepeatedString(), stringList);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::doubleList dList = QtProtobuf::doubleList({1.0, 2.3, 3, 4.7, 5.9});
+        QtProtobuf::doubleList dListCopy = dList;
+        RepeatedDoubleMessage test;
+        test.setTestRepeatedDouble(std::move(dListCopy));
+        RepeatedDoubleMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedDouble(), dList);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedDouble(QtProtobuf::doubleList({1.0, 2, 3, 4.7, 5.9}));
+        QCOMPARE_NE(test.testRepeatedDouble(), dList);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QByteArrayList bList = QByteArrayList({"\x01\x02\x03\x04\x05", "\x01\x05\x03\x04\x03"});
+        QByteArrayList bListCopy = bList;
+        RepeatedBytesMessage test;
+        test.setTestRepeatedBytes(std::move(bListCopy));
+        RepeatedBytesMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedBytes(), bList);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedBytes(QByteArrayList({"\x01\x02\x03\x04\x05"}));
+        QCOMPARE_NE(test.testRepeatedBytes(), bList);
+    }
+    {
+        QtProtobuf::floatList fList = QtProtobuf::floatList({1.0f, 2.3f, 3, 4.7f, 5.9f});
+        QtProtobuf::floatList fListCopy = fList;
+        RepeatedFloatMessage test;
+        test.setTestRepeatedFloat(std::move(fListCopy));
+        RepeatedFloatMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedFloat(), fList);
+
+        test.setTestRepeatedFloat(QtProtobuf::floatList({1.0f, 2.3f, 3, 4.7f}));
+        QCOMPARE_NE(test.testRepeatedFloat(), fList);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::sint32List si32List = QtProtobuf::sint32List({1, 2, 3, 4, 5});
+        QtProtobuf::sint32List si32ListCopy = si32List;
+        RepeatedSIntMessage test;
+        test.setTestRepeatedInt(std::move(si32ListCopy));
+        RepeatedSIntMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), si32List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::sint32List({1, 5}));
+        QCOMPARE_NE(test.testRepeatedInt(), si32List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::int32List i32List = QtProtobuf::int32List({ 55, 44, 11, 35 });
+        QtProtobuf::int32List i32ListCopy = i32List;
+        RepeatedIntMessage test;
+        test.setTestRepeatedInt(std::move(i32ListCopy));
+        RepeatedIntMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), i32List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::int32List({ -55, 44, 11, 35 }));
+        QCOMPARE_NE(test.testRepeatedInt(), i32List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::uint32List ui32List = QtProtobuf::uint32List({1, 2, 3, 4, 5});
+        QtProtobuf::uint32List ui32ListCopy = ui32List;
+        RepeatedUIntMessage test;
+        test.setTestRepeatedInt(std::move(ui32ListCopy));
+        RepeatedUIntMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), ui32List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::uint32List({1, 3, 4, 5}));
+        QCOMPARE_NE(test.testRepeatedInt(), ui32List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::sint64List si64List = QtProtobuf::sint64List({1, 2, 3, 4, 5});
+        QtProtobuf::sint64List si64ListCopy = si64List;
+        RepeatedSInt64Message test;
+        test.setTestRepeatedInt(std::move(si64ListCopy));
+        RepeatedSInt64Message testCopy = test;
+        QCOMPARE(test.testRepeatedInt(), si64List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::sint64List());
+        QCOMPARE_NE(test.testRepeatedInt(), si64List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::int64List i64List = QtProtobuf::int64List({ 55, 44, 11, 35 });
+        QtProtobuf::int64List i64ListCopy = i64List;
+        RepeatedInt64Message test;
+        test.setTestRepeatedInt(std::move(i64ListCopy));
+        RepeatedInt64Message testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), i64List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::int64List({ 44, 11, 35 }));
+        QCOMPARE_NE(test.testRepeatedInt(), i64List);
+    }
+    {
+        QtProtobuf::uint64List ui64List = QtProtobuf::uint64List({81, 2, 3, 44, 5});
+        QtProtobuf::uint64List ui64ListCopy = ui64List;
+        RepeatedUInt64Message test;
+        test.setTestRepeatedInt(std::move(ui64ListCopy));
+        RepeatedUInt64Message testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), ui64List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::uint64List());
+        QCOMPARE_NE(test.testRepeatedInt(), ui64List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::fixed32List f32List = QtProtobuf::fixed32List({1, 2, 3, 4, 5});
+        QtProtobuf::fixed32List fixed32ListCopy = f32List;
+        RepeatedFixedIntMessage test;
+        test.setTestRepeatedInt(std::move(fixed32ListCopy));
+        RepeatedFixedIntMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), f32List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::fixed32List({1, 2, 4, 5}));
+        QCOMPARE_NE(test.testRepeatedInt(), f32List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::sfixed32List sf32List = QtProtobuf::sfixed32List({1, 2, 3, 4, 5});
+        QtProtobuf::sfixed32List sf32ListCopy = sf32List;
+        RepeatedSFixedIntMessage test;
+        test.setTestRepeatedInt(std::move(sf32ListCopy));
+        RepeatedSFixedIntMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), sf32List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::sfixed32List({15, 3}));
+        QCOMPARE_NE(test.testRepeatedInt(), sf32List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::fixed64List f64List = QtProtobuf::fixed64List({1, 2, 3, 4, 5});
+        QtProtobuf::fixed64List fixed64ListCopy = f64List;
+        RepeatedFixedInt64Message test;
+        test.setTestRepeatedInt(std::move(fixed64ListCopy));
+        RepeatedFixedInt64Message testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), f64List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::fixed64List({1, 2, 3, 4, 5, 6, 7}));
+        QCOMPARE_NE(test.testRepeatedInt(), f64List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        QtProtobuf::sfixed64List sf64List = QtProtobuf::sfixed64List({1, 2, 3, 4, 5});
+        QtProtobuf::sfixed64List sf64ListCopy = sf64List;
+        RepeatedSFixedInt64Message test;
+        test.setTestRepeatedInt(std::move(sf64ListCopy));
+        RepeatedSFixedInt64Message testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedInt(), sf64List);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedInt(QtProtobuf::sfixed64List({0, 1, 2, 3, 4, 5}));
+        QCOMPARE_NE(test.testRepeatedInt(), sf64List);
+        QCOMPARE_NE(test, testCopy);
+    }
+    {
+        SimpleStringMessage stringMsg;
+
+        ComplexMessage msg1;
+        stringMsg.setTestFieldString("qwerty");
+        msg1.setTestFieldInt(10);
+        msg1.setTestComplexField(stringMsg);
+
+        ComplexMessage msg2;
+        stringMsg.setTestFieldString("ytrewq");
+        msg2.setTestFieldInt(20);
+        msg2.setTestComplexField(stringMsg);
+
+        RepeatedComplexMessage repeatedMsg;
+        auto copyObj = { msg1, msg2 };
+        repeatedMsg.setTestRepeatedComplex(std::move(copyObj));
+        RepeatedComplexMessage testCopy = repeatedMsg;
+        QList<ComplexMessage> list = { msg1, msg2 };
+        QCOMPARE_EQ(repeatedMsg.testRepeatedComplex(), list);
+        QCOMPARE_EQ(repeatedMsg, testCopy);
+
+        repeatedMsg.setTestRepeatedComplex({ msg2, msg1 });
+        QCOMPARE_NE(repeatedMsg.testRepeatedComplex(), list);
+        QCOMPARE_NE(repeatedMsg, testCopy);
+    }
+    {
+        QtProtobuf::boolList blnList = QtProtobuf::boolList({false, false, false, true, false});
+        QtProtobuf::boolList bListCopy = blnList;
+        RepeatedBoolMessage test;
+        test.setTestRepeatedBool(std::move(bListCopy));
+        RepeatedBoolMessage testCopy = test;
+        QCOMPARE_EQ(test.testRepeatedBool(), blnList);
+        QCOMPARE_EQ(test, testCopy);
+
+        test.setTestRepeatedBool(QtProtobuf::boolList({false}));
+        QCOMPARE_NE(test.testRepeatedBool(), blnList);
+        QCOMPARE_NE(test, testCopy);
+    }
 }
 
 QTEST_MAIN(QtProtobufRepeatedTypesGenerationTest)

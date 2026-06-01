@@ -4,6 +4,9 @@
 # Order by dependency [*], then alphabetic. [*] If bugs in part A of
 # our source would break tests of part B, then test A before B.
 
+
+add_subdirectory(util/testrunner)
+
 set(run_dbus_tests OFF)
 if (QT_FEATURE_dbus)
     set(run_dbus_tests ON)
@@ -65,9 +68,7 @@ if(QT_BUILD_WASM_BATCHED_TESTS)
     add_subdirectory(corelib/io/qdataurl)
     add_subdirectory(corelib/io/qbuffer)
     add_subdirectory(corelib/io/qabstractfileengine)
-    if(NOT WASM) # QTBUG-121822
     add_subdirectory(corelib/io/qsettings)
-    endif()
     add_subdirectory(corelib/io/qstorageinfo)
     add_subdirectory(corelib/io/qstandardpaths)
     add_subdirectory(corelib/io/qfileselector)
@@ -103,19 +104,22 @@ if(QT_BUILD_MINIMAL_STATIC_TESTS)
     return()
 endif()
 
-if (TARGET Qt::Concurrent)
-     add_subdirectory(concurrent)
-endif()
 
+# Run tests with high flakiness/failure potential first, so we fail faster
 if(run_dbus_tests)
     add_subdirectory(dbus)
 endif()
-
+if (TARGET Qt::Network)
+     add_subdirectory(network)
+endif()
+if(QT_FEATURE_wayland)
+    add_subdirectory(wayland)
+endif()
 if (TARGET Qt::Gui)
     add_subdirectory(gui)
 endif()
-if (TARGET Qt::Network)
-     add_subdirectory(network)
+if (TARGET Qt::Widgets)
+     add_subdirectory(widgets)
 endif()
 if (TARGET Qt::OpenGL)
      add_subdirectory(opengl)
@@ -126,11 +130,11 @@ endif()
 if (TARGET Qt::Sql)
      add_subdirectory(sql)
 endif()
-if (TARGET Qt::Widgets)
-     add_subdirectory(widgets)
-endif()
 if (TARGET Qt::Xml)
      add_subdirectory(xml)
 endif()
-# add_subdirectory(installed_cmake) ## FIXME: Does this still make sense in this form?
+if (TARGET Qt::Concurrent)
+     add_subdirectory(concurrent)
+endif()
 add_subdirectory(other)
+

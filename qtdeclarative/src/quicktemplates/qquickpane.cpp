@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickpane_p.h"
 #include "qquickpane_p_p.h"
@@ -41,6 +42,7 @@ Q_STATIC_LOGGING_CATEGORY(lcPane, "qt.quick.controls.pane")
     for use together with layouts.
 
     \image qtquickcontrols-pane.png
+           {Pane with styled background containing checkboxes}
 
     \snippet qtquickcontrols-pane.qml 1
 
@@ -265,6 +267,12 @@ QQuickPane::QQuickPane(QQuickItem *parent)
 QQuickPane::~QQuickPane()
 {
     Q_D(QQuickPane);
+    if (d->contentItem) {
+        // It's possible for the focus frame to be removed as a child of our contentItem
+        // upon our destruction, so disconnect to avoid getting our slot getting called during this.
+        QObjectPrivate::disconnect(d->contentItem, &QQuickItem::childrenChanged,
+            d, &QQuickPanePrivate::contentChildrenChange);
+    }
     d->removeImplicitSizeListener(d->contentItem);
     d->removeImplicitSizeListener(d->firstChild);
 }

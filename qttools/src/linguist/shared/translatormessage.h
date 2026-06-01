@@ -43,6 +43,9 @@ public:
     QString id() const { return m_id; }
     void setId(const QString &id) { m_id = id; }
 
+    QString label() const { return m_label; }
+    void setLabel(const QString &label) { m_label = label; }
+
     QString context() const { return m_context; }
     void setContext(const QString &context) { m_context = context; }
 
@@ -117,6 +120,7 @@ private:
     QString     m_id;
     QString     m_context;
     QString     m_sourcetext;
+    QString m_label;
     QString     m_oldsourcetext;
     QString     m_comment;
     QString     m_oldcomment;

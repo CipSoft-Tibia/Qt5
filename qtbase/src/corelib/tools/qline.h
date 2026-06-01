@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLINE_H
 #define QLINE_H
@@ -36,8 +37,8 @@ public:
     constexpr inline int dx() const;
     constexpr inline int dy() const;
 
-    inline void translate(const QPoint &p);
-    inline void translate(int dx, int dy);
+    constexpr inline void translate(const QPoint &p);
+    constexpr inline void translate(int dx, int dy);
 
     [[nodiscard]] constexpr inline QLine translated(const QPoint &p) const;
     [[nodiscard]] constexpr inline QLine translated(int dx, int dy) const;
@@ -114,21 +115,21 @@ constexpr inline QPoint QLine::p2() const
 
 constexpr inline int QLine::dx() const
 {
-    return pt2.x() - pt1.x();
+    return (pt2.xp - pt1.xp).value();
 }
 
 constexpr inline int QLine::dy() const
 {
-    return pt2.y() - pt1.y();
+    return (pt2.yp - pt1.yp).value();
 }
 
-inline void QLine::translate(const QPoint &point)
+constexpr inline void QLine::translate(const QPoint &point)
 {
     pt1 += point;
     pt2 += point;
 }
 
-inline void QLine::translate(int adx, int ady)
+constexpr inline void QLine::translate(int adx, int ady)
 {
     this->translate(QPoint(adx, ady));
 }
@@ -231,8 +232,8 @@ public:
     IntersectionType intersects(const QLineF &l, QPointF *intersectionPoint = nullptr) const;
 
     constexpr inline QPointF pointAt(qreal t) const;
-    inline void translate(const QPointF &p);
-    inline void translate(qreal dx, qreal dy);
+    constexpr inline void translate(const QPointF &p);
+    constexpr inline void translate(qreal dx, qreal dy);
 
     [[nodiscard]] constexpr inline QLineF translated(const QPointF &p) const;
     [[nodiscard]] constexpr inline QLineF translated(qreal dx, qreal dy) const;
@@ -340,13 +341,13 @@ constexpr inline QLineF QLineF::normalVector() const
     return QLineF(p1(), p1() + QPointF(dy(), -dx()));
 }
 
-inline void QLineF::translate(const QPointF &point)
+constexpr inline void QLineF::translate(const QPointF &point)
 {
     pt1 += point;
     pt2 += point;
 }
 
-inline void QLineF::translate(qreal adx, qreal ady)
+constexpr inline void QLineF::translate(qreal adx, qreal ady)
 {
     this->translate(QPointF(adx, ady));
 }

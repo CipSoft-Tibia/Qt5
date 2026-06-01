@@ -9,6 +9,9 @@ if (is_linux && !is_qtwebengine) {
   import("//build/linux/strip_binary.gni")
 }
 import("//build/util/lastchange.gni")
+if (is_win) {
+  import("//build/util/process_version.gni")
+}
 import("//testing/test.gni")
 import("//third_party/ffmpeg/ffmpeg_options.gni")
 import("//ui/webui/resources/tools/minify_js.gni")
@@ -203,6 +206,8 @@ source_set("automation_client_lib") {
     "chrome/scoped_temp_dir_with_retry.h",
     "chrome/status.cc",
     "chrome/status.h",
+    "chrome/tab_tracker.cc",
+    "chrome/tab_tracker.h",
     "chrome/target_utils.cc",
     "chrome/target_utils.h",
     "chrome/ui_events.cc",
@@ -469,6 +474,10 @@ if (is_linux && !is_qtwebengine) {
       ldflags = [ "-Wl,-rpath,@executable_path/." ]
     }
 
+    if (is_win) {
+      deps += [ ":chromedriver_server_version" ]
+    }
+
     if (is_qtwebengine) {
       output_name = "webenginedriver"
       deps -= [ "//net/traffic_annotation:test_support" ]
@@ -495,6 +504,19 @@ if (is_mac) {
   buildflag_header("buildflags") {
     header = "buildflags.h"
     flags = [ "CHROMEDRIVER_DISCLAIM_RESPONSIBILITY=$chromedriver_disclaim_responsibility" ]
+  }
+}
+
+if (is_win) {
+  process_version("chromedriver_server_version") {
+    output = "$target_gen_dir/chromedriver_server_version.rc"
+    sources = [
+      "//chrome/VERSION",
+      "chromedriver_server_exe.ver",
+      "constants/BRANDING",
+      lastchange_file,
+    ]
+    template_file = "//chrome/app/chrome_version.rc.version"
   }
 }
 
@@ -661,10 +683,18 @@ test("chromedriver_unittests") {
 if (is_win || is_posix) {
   test("chromedriver_integrationtests") {
     sources = [
-      "devtools_client_impl_integrationtest.cc",
-      "navigation_tracker_integrationtest.cc",
       "net/test_http_server.cc",
       "net/test_http_server.h",
+      "test/command_injecting_socket.cc",
+      "test/command_injecting_socket.h",
+      "test/commands_integrationtest.cc",
+      "test/devtools_client_impl_integrationtest.cc",
+      "test/integration_test.cc",
+      "test/integration_test.h",
+      "test/navigation_tracker_integrationtest.cc",
+      "test/sync_websocket_wrapper.cc",
+      "test/sync_websocket_wrapper.h",
+      "test/web_view_impl_integrationtest.cc",
     ]
 
     data_deps = [ "//chrome:chrome" ]

@@ -169,6 +169,8 @@ private slots:
 
     void editingFinished();
 
+    void returnPressed();
+
     void valueFromTextAndValidate_data();
     void valueFromTextAndValidate();
 
@@ -989,6 +991,15 @@ void tst_QSpinBox::editingFinished()
     QTRY_VERIFY(qApp->focusWidget() != box);
     QCOMPARE(box->text(), QLatin1String("20"));
     QCOMPARE(editingFinishedSpy1.size(), 1);
+}
+
+void tst_QSpinBox::returnPressed()
+{
+    QSpinBox spinBox;
+    QSignalSpy spyCurrentChanged(&spinBox, &QSpinBox::returnPressed);
+    spinBox.show();
+    QTest::keyClick(&spinBox, Qt::Key_Return);
+    QCOMPARE(spyCurrentChanged.size(), 1);
 }
 
 void tst_QSpinBox::removeAll()

@@ -16,8 +16,7 @@
 // We mean it.
 //
 
-#include <QtCore/private/qglobal_p.h>
-#include <QtCore/qloggingcategory.h>
+#include <QtCore/private/qloggingcategory_p.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qmutex.h>
@@ -83,8 +82,8 @@ class Q_AUTOTEST_EXPORT QLoggingSettingsParser
 public:
     void setImplicitRulesSection(bool inRulesSection) { m_inRulesSection = inRulesSection; }
 
-    void setContent(QStringView content);
-    void setContent(QTextStream &stream);
+    void setContent(QStringView content, char16_t separator = u'\n');
+    void setContent(FILE *stream);
 
     QList<QLoggingRule> rules() const { return _rules; }
 
@@ -100,7 +99,7 @@ class QLoggingRegistry
 {
     Q_DISABLE_COPY_MOVE(QLoggingRegistry)
 public:
-    Q_AUTOTEST_EXPORT QLoggingRegistry();
+    QLoggingRegistry();
 
     Q_AUTOTEST_EXPORT void initializeRules();
 
@@ -117,8 +116,12 @@ public:
 
     Q_CORE_EXPORT static QLoggingRegistry *instance();
 
+    static constexpr const char defaultCategoryName[] = "default";
+    static QLoggingCategory *defaultCategory();
+
 private:
     Q_AUTOTEST_EXPORT void updateRules();
+    static inline QLoggingRegistry *self = nullptr;
 
     static void defaultCategoryFilter(QLoggingCategory *category);
 

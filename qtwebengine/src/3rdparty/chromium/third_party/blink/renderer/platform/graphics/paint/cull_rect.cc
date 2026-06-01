@@ -44,8 +44,10 @@ int LocalPixelDistanceToExpand(
     const TransformPaintPropertyNode& root_transform,
     const TransformPaintPropertyNode& local_transform,
     float expansion_ratio) {
-  const int pixel_distance_to_expand = features::kCullRectPixelDistanceToExpand.Get();
-  const bool small_scrollers_use_min_cull_rect = features::kSmallScrollersUseMinCullRect.Get();
+  const int pixel_distance_to_expand =
+      features::kCullRectPixelDistanceToExpand.Get();
+  const bool small_scrollers_use_min_cull_rect =
+      features::kSmallScrollersUseMinCullRect.Get();
 
   const int min_expansion = MinimumLocalPixelDistanceToExpand(expansion_ratio);
   if (small_scrollers_use_min_cull_rect &&
@@ -58,6 +60,10 @@ int LocalPixelDistanceToExpand(
 
   int local_pixel_distance_to_expand =
       pixel_distance_to_expand * expansion_ratio;
+  if (local_pixel_distance_to_expand == 0) {
+    // This can happen when the expansion_ratio is very small.
+    return min_expansion;
+  }
   float scale = GeometryMapper::SourceToDestinationApproximateMinimumScale(
       root_transform, local_transform);
   // A very big scale may be caused by non-invertable near non-invertable
@@ -68,15 +74,16 @@ int LocalPixelDistanceToExpand(
   return std::max<int>(scale * local_pixel_distance_to_expand, min_expansion);
 }
 
-bool CanExpandForScroll(const ScrollPaintPropertyNode& scroll) {
+}  // anonymous namespace
+
+bool CullRect::CanExpandForScroll(const ScrollPaintPropertyNode& scroll) {
   // kNotPreferred is used for selects/inputs which don't benefit from
   // composited scrolling.
   if (scroll.GetCompositedScrollingPreference() ==
       CompositedScrollingPreference::kNotPreferred) {
     return false;
   }
-  if (RuntimeEnabledFeatures::ScrollNodeForOverflowHiddenEnabled() &&
-      !scroll.UserScrollable()) {
+  if (!scroll.UserScrollable()) {
     return false;
   }
   if (scroll.ContentsRect().width() <= scroll.ContainerRect().width() &&
@@ -85,8 +92,6 @@ bool CanExpandForScroll(const ScrollPaintPropertyNode& scroll) {
   }
   return true;
 }
-
-}  // anonymous namespace
 
 bool CullRect::Intersects(const gfx::Rect& rect) const {
   if (rect.IsEmpty())
@@ -147,57 +152,50 @@ std::pair<bool, bool> CullRect::ApplyScrollTranslation(
 
   gfx::Rect contents_rect = scroll->ContentsRect();
   // Expand the cull rect for scrolling contents for composited scrolling.
-  std::pair<bool, bool> expanded{true, true};
-  int outset = LocalPixelDistanceToExpand(root_transform, scroll_translation,
-                                          expansion_ratio);
-  if (RuntimeEnabledFeatures::DynamicScrollCullRectExpansionEnabled()) {
-    int scroll_range_x = contents_rect.width() - container_rect.width();
-    int scroll_range_y = contents_rect.height() - container_rect.height();
-    int outset_x = outset;
-    int outset_y = outset;
-    if (scroll_range_x <= 0) {
-      outset_x = 0;
-    }
-    if (scroll_range_y <= 0) {
-      outset_y = 0;
-    }
-    if (outset_x > 0 && outset_y > 0) {
-      // If scroller is scrollable in both axes, expand by half to prevent the
-      // area of the cull rect from being too big (thus probably too slow to
-      // paint and composite).
-      outset_x /= 2;
-      outset_y /= 2;
-      // Give the extra outset beyond scroll range in one axis to the other.
-      if (outset_x > scroll_range_x) {
-        outset_y += outset_x - scroll_range_x;
-      }
-      if (outset_y > scroll_range_y) {
-        outset_x += outset_y - scroll_range_y;
-      }
-    }
-    // The operations above may have caused the outsets to exceed the scroll
-    // range. Trim them back here. Note that we clamp the outset in a single
-    // direction to the entire scroll range. Eg, if we have a `scroll_range_x`
-    // of 100, we will clamp offset_x to 100, but this will result in both the
-    // left and right outset of 100 which means that we will expand the cull
-    // rect by 200 in the x dimension. If `rect_` is touching the edge of the
-    // contents rect, this will be required on one side (since you can paint a
-    // full 100 units into the scroller), but there can be some extra. Commonly,
-    // the extra outset will be removed by the intersection with contents_rect
-    // below, but it can happen that the original rect is sized and positioned
-    // such that the expanded rect won't be adequately clipped by this
-    // intersection. This can happen if we are clipped by an ancestor.
-    int min_expansion = MinimumLocalPixelDistanceToExpand(expansion_ratio);
-    outset_x = std::min(std::max(outset_x, min_expansion), scroll_range_x);
-    outset_y = std::min(std::max(outset_y, min_expansion), scroll_range_y);
-    expanded.first = outset_x > 0;
-    expanded.second = outset_y > 0;
-    rect_.Outset(gfx::Outsets::VH(outset_y, outset_x));
-  } else {
-    rect_.Outset(outset);
+  int outset_x = LocalPixelDistanceToExpand(root_transform, scroll_translation,
+                                            expansion_ratio);
+  int outset_y = outset_x;
+  int scroll_range_x = contents_rect.width() - container_rect.width();
+  int scroll_range_y = contents_rect.height() - container_rect.height();
+  if (scroll_range_x <= 0) {
+    outset_x = 0;
   }
+  if (scroll_range_y <= 0) {
+    outset_y = 0;
+  }
+  if (outset_x > 0 && outset_y > 0) {
+    // If scroller is scrollable in both axes, expand by half to prevent the
+    // area of the cull rect from being too big (thus probably too slow to
+    // paint and composite).
+    outset_x /= 2;
+    outset_y /= 2;
+    // Give the extra outset beyond scroll range in one axis to the other.
+    if (outset_x > scroll_range_x) {
+      outset_y += outset_x - scroll_range_x;
+    }
+    if (outset_y > scroll_range_y) {
+      outset_x += outset_y - scroll_range_y;
+    }
+  }
+  // The operations above may have caused the outsets to exceed the scroll
+  // range. Trim them back here. Note that we clamp the outset in a single
+  // direction to the entire scroll range. Eg, if we have a `scroll_range_x`
+  // of 100, we will clamp offset_x to 100, but this will result in both the
+  // left and right outset of 100 which means that we will expand the cull
+  // rect by 200 in the x dimension. If `rect_` is touching the edge of the
+  // contents rect, this will be required on one side (since you can paint a
+  // full 100 units into the scroller), but there can be some extra. Commonly,
+  // the extra outset will be removed by the intersection with contents_rect
+  // below, but it can happen that the original rect is sized and positioned
+  // such that the expanded rect won't be adequately clipped by this
+  // intersection. This can happen if we are clipped by an ancestor.
+  int min_expansion = MinimumLocalPixelDistanceToExpand(expansion_ratio);
+  outset_x = std::min(std::max(outset_x, min_expansion), scroll_range_x);
+  outset_y = std::min(std::max(outset_y, min_expansion), scroll_range_y);
+  rect_.Outset(gfx::Outsets::VH(outset_y, outset_x));
+
   rect_.Intersect(contents_rect);
-  return expanded;
+  return {outset_x > 0, outset_y > 0};
 }
 
 bool CullRect::ApplyPaintPropertiesWithoutExpansion(
@@ -236,35 +234,28 @@ bool CullRect::ApplyPaintProperties(
   if (IsInfinite() && &destination.Clip() == &source.Clip())
     return false;
 
+  bool abnormal_hierarchy = !source.Clip().IsAncestorOf(destination.Clip());
   HeapVector<Member<const TransformPaintPropertyNode>, 4> scroll_translations;
-  HeapVector<Member<const ClipPaintPropertyNode>, 4> clips;
-  bool abnormal_hierarchy = false;
-
-  for (const auto* t = &destination.Transform(); t != &source.Transform();
-       t = t->UnaliasedParent()) {
-    if (t == &root.Transform()) {
-      abnormal_hierarchy = true;
-      break;
-    }
-    // TODO(wangxianzhu): This should be DCHECK, but for now we need to work
-    // around crbug.com/1262837 etc. Also see the TODO in
-    // FragmentData::LocalBorderBoxProperties().
-    if (t->IsRoot()) {
-      return false;
-    }
-    if (t->ScrollNode())
-      scroll_translations.push_back(t);
-  }
+  bool has_transform_requiring_expansion = false;
 
   if (!abnormal_hierarchy) {
-    for (const auto* c = &destination.Clip(); c != &source.Clip();
-         c = c->UnaliasedParent()) {
-      DCHECK(c);
-      if (c == &root.Clip()) {
+    for (const auto* t = &destination.Transform(); t != &source.Transform();
+         t = t->UnaliasedParent()) {
+      if (t == &root.Transform()) {
         abnormal_hierarchy = true;
         break;
       }
-      clips.push_back(c);
+      // TODO(wangxianzhu): This should be DCHECK, but for now we need to work
+      // around crbug.com/1262837 etc. Also see the TODO in
+      // FragmentData::LocalBorderBoxProperties().
+      if (t->IsRoot()) {
+        return false;
+      }
+      if (t->ScrollNode()) {
+        scroll_translations.push_back(t);
+      } else if (t->RequiresCullRectExpansion()) {
+        has_transform_requiring_expansion = true;
+      }
     }
   }
 
@@ -282,42 +273,33 @@ bool CullRect::ApplyPaintProperties(
   const auto* last_transform = &source.Transform();
   const auto* last_clip = &source.Clip();
   std::pair<bool, bool> expanded(false, false);
+  bool scroll_cull_rect_affected_by_ancestor_clips = false;
 
   // For now effects (especially pixel-moving filters) are not considered in
   // this class. The client has to use infinite cull rect in the case.
   // TODO(wangxianzhu): support clip rect expansion for pixel-moving filters.
   const auto& effect_root = EffectPaintPropertyNode::Root();
-  auto clip_it = clips.rbegin();
   for (const auto& scroll_translation : base::Reversed(scroll_translations)) {
-    if (clip_it == clips.rend())
+    const auto* overflow_clip =
+        scroll_translation->ScrollNode()->OverflowClipNode();
+    if (!overflow_clip) {
+      // This happens on the layout viewport scroll node when the viewport
+      // doesn't clip contents (e.g. when printing).
       break;
-
-    // Skip clips until we find one in the same space as |scroll_translation|.
-    while (clip_it != clips.rend() &&
-           &(*clip_it)->LocalTransformSpace() != scroll_translation->Parent()) {
-      clip_it++;
     }
-
-    // Find the last clip in the same space as |scroll_translation|.
-    const ClipPaintPropertyNode* updated_last_clip = nullptr;
-    while (clip_it != clips.rend() &&
-           &(*clip_it)->LocalTransformSpace() == scroll_translation->Parent()) {
-      updated_last_clip = *clip_it;
-      clip_it++;
+    if (!ApplyPaintPropertiesWithoutExpansion(
+            PropertyTreeState(*last_transform, *last_clip, effect_root),
+            PropertyTreeState(*scroll_translation->UnaliasedParent(),
+                              *overflow_clip, effect_root))) {
+      return false;
     }
+    last_clip = overflow_clip;
 
-    // Process all clips in the same space as |scroll_translation|.
-    if (updated_last_clip) {
-      if (!ApplyPaintPropertiesWithoutExpansion(
-              PropertyTreeState(*last_transform, *last_clip, effect_root),
-              PropertyTreeState(*scroll_translation->UnaliasedParent(),
-                                *updated_last_clip, effect_root))) {
-        return false;
-      }
-      last_clip = updated_last_clip;
-    }
-
-    // We only keep the expanded status of the last scroll translation.
+    // We only keep scroll_cull_rect_affected_by_ancestor_clips and expanded of
+    // the last scroll translation. We will skip the ChangedEnough logic if the
+    // current cull rect doesn't fully cover the scroll container rect.
+    scroll_cull_rect_affected_by_ancestor_clips =
+        !rect_.Contains(scroll_translation->ScrollNode()->ContainerRect());
     expanded = ApplyScrollTranslation(root.Transform(), *scroll_translation,
                                       expansion_ratio);
     last_transform = scroll_translation;
@@ -348,7 +330,8 @@ bool CullRect::ApplyPaintProperties(
     rect_.set_height(kReasonablePixelLimit - rect_.y());
 
   std::optional<gfx::Rect> expansion_bounds;
-  if (expanded.first || expanded.second) {
+  if (!scroll_cull_rect_affected_by_ancestor_clips &&
+      (expanded.first || expanded.second)) {
     DCHECK(last_transform->ScrollNode());
     expansion_bounds = last_transform->ScrollNode()->ContentsRect();
     if (last_transform != &destination.Transform() ||
@@ -365,8 +348,7 @@ bool CullRect::ApplyPaintProperties(
     }
   }
 
-  if (expansion_ratio > 0 && last_transform != &destination.Transform() &&
-      destination.Transform().RequiresCullRectExpansion()) {
+  if (expansion_ratio > 0 && has_transform_requiring_expansion) {
     // Direct compositing reasons such as will-change transform can cause the
     // content to move arbitrarily, so there is no exact cull rect. Instead of
     // using an infinite rect, we use a heuristic of expanding by
@@ -389,8 +371,11 @@ bool CullRect::ApplyPaintProperties(
     }
   }
 
-  if (old_cull_rect && !ChangedEnough(expanded, *old_cull_rect,
-                                      expansion_bounds, expansion_ratio)) {
+  // The edge-touching logic of ChangedEnough is not reliable if the scroll
+  // cull rect is affected by ancestor clips.
+  if (!scroll_cull_rect_affected_by_ancestor_clips && old_cull_rect &&
+      !ChangedEnough(expanded, *old_cull_rect, expansion_bounds,
+                     expansion_ratio)) {
     rect_ = old_cull_rect->Rect();
   }
 

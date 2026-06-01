@@ -57,7 +57,6 @@ void SVGScriptElement::ParseAttribute(
 void SVGScriptElement::SvgAttributeChanged(
     const SvgAttributeChangedParams& params) {
   if (SVGURIReference::IsKnownAttribute(params.name)) {
-    SVGElement::InvalidationGuard invalidation_guard(this);
     loader_->HandleSourceAttribute(LegacyHrefString(*this));
     return;
   }
@@ -109,6 +108,14 @@ void SVGScriptElement::FinishParsingChildren() {
 
 bool SVGScriptElement::HaveLoadedRequiredResources() {
   return have_fired_load_;
+}
+
+String SVGScriptElement::IntegrityAttributeValue() const {
+  return FastGetAttribute(html_names::kIntegrityAttr);
+}
+
+String SVGScriptElement::SignatureAttributeValue() const {
+  return FastGetAttribute(html_names::kSignatureAttr);
 }
 
 String SVGScriptElement::SourceAttributeValue() const {

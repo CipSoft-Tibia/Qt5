@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 
@@ -1070,8 +1071,8 @@ QRectF QGridLayoutEngine::cellRect(const QRectF &contentsGeometry, int row, int 
 
     ensureGeometries(contentsGeometry.size(), styleInfo);
 
-    int lastColumn = qMax(column + columnSpan, columnCount()) - 1;
-    int lastRow = qMax(row + rowSpan, rowCount()) - 1;
+    int lastColumn = qMin(column + columnSpan, columnCount()) - 1;
+    int lastRow = qMin(row + rowSpan, rowCount()) - 1;
 
     qreal x = q_xx[column];
     qreal y = q_yy[row];

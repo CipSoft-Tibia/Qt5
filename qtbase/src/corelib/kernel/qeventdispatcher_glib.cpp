@@ -45,15 +45,15 @@ static gboolean socketNotifierSourceCheck(GSource *source)
     GSocketNotifierSource *src = reinterpret_cast<GSocketNotifierSource *>(source);
 
     bool pending = false;
-    for (int i = 0; !pending && i < src->pollfds.size(); ++i) {
+    for (qsizetype i = 0; !pending && i < src->pollfds.size(); ++i) {
         GPollFDWithQSocketNotifier *p = src->pollfds.at(i);
 
         if (p->pollfd.revents & G_IO_NVAL) {
             // disable the invalid socket notifier
             const char * const t[] = { "Read", "Write", "Exception" };
             qWarning("QSocketNotifier: Invalid socket %d and type '%s', disabling...",
-                     p->pollfd.fd, t[int(p->socketNotifier->type())]);
-            // ### note, modifies src->pollfds!
+                     p->pollfd.fd, t[p->socketNotifier->type()]);
+            // ### note, modifies src->pollfds, turning this loop quadratic (QTBUG-143853)!
             p->socketNotifier->setEnabled(false);
             i--;
         } else {
@@ -354,8 +354,8 @@ QEventDispatcherGlib::~QEventDispatcherGlib()
     d->idleTimerSource = nullptr;
 
     // destroy socket notifier source
-    for (int i = 0; i < d->socketNotifierSource->pollfds.size(); ++i) {
-        GPollFDWithQSocketNotifier *p = d->socketNotifierSource->pollfds[i];
+    for (qsizetype i = 0; i < d->socketNotifierSource->pollfds.size(); ++i) {
+        GPollFDWithQSocketNotifier *p = d->socketNotifierSource->pollfds.at(i);
         g_source_remove_poll(&d->socketNotifierSource->source, &p->pollfd);
         delete p;
     }
@@ -412,7 +412,7 @@ void QEventDispatcherGlib::registerSocketNotifier(QSocketNotifier *notifier)
 {
     Q_ASSERT(notifier);
     int sockfd = int(notifier->socket());
-    int type = notifier->type();
+    const auto type = notifier->type();
 #ifndef QT_NO_DEBUG
     if (sockfd < 0) {
         qWarning("QSocketNotifier: Internal error");

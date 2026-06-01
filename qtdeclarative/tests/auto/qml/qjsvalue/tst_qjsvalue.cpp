@@ -2791,6 +2791,45 @@ void tst_QJSValue::jsvalueArrayToSequenceType()
     // tests need to be done after engine has been destroyed, else it will hold a reference until
     // the gc decides to collect it
     QCOMPARE(instanceCount, 0);
+
+    QJSValue five(5);
+    QSequentialIterable iterable;
+
+    QVERIFY(QMetaType::convert(
+            QMetaType::fromType<QJSValue>(), &five,
+            QMetaType::fromType<QSequentialIterable>(), &iterable));
+
+    QCOMPARE_LE(iterable.size(), 0);
+
+    for (auto it = iterable.begin(), end = iterable.end(); it != end; ++it)
+        QFAIL("Iterating empty iterable");
+
+    for (auto it = iterable.constBegin(), end = iterable.constEnd(); it != end; ++it)
+        QFAIL("Iterating empty iterable");
+
+    QJSEngine other;
+    QJSValue fiveFive = other.newArray(5);
+    for (int i = 0; i < 5; ++i)
+        fiveFive.setProperty(i, 5);
+    QVERIFY(QMetaType::convert(
+            QMetaType::fromType<QJSValue>(), &fiveFive,
+            QMetaType::fromType<QSequentialIterable>(), &iterable));
+
+    QCOMPARE(iterable.size(), 5);
+
+    qsizetype i = 0;
+    for (auto it = iterable.begin(), end = iterable.end(); it != end; ++it) {
+        QCOMPARE(*it, QVariant::fromValue<int>(5));
+        ++i;
+    }
+    QCOMPARE(i, 5);
+
+    i = 0;
+    for (auto it = iterable.constBegin(), end = iterable.constEnd(); it != end; ++it) {
+        QCOMPARE(*it, QVariant::fromValue<int>(5));
+        ++i;
+    }
+    QCOMPARE(i, 5);
 }
 
 void tst_QJSValue::deleteFromDifferentThread()

@@ -2,15 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as Common from '../common/common.js';
 import type * as Protocol from '../../generated/protocol.js';
+import * as Common from '../common/common.js';
 
-import {type Resource} from './Resource.js';
-
-import {Events as ResourceTreeModelEvents, ResourceTreeModel, type ResourceTreeFrame} from './ResourceTreeModel.js';
-import {type Target} from './Target.js';
-
-import {TargetManager, type SDKModelObserver} from './TargetManager.js';
+import type {Resource} from './Resource.js';
+import {Events as ResourceTreeModelEvents, type ResourceTreeFrame, ResourceTreeModel} from './ResourceTreeModel.js';
+import type {Target} from './Target.js';
+import {type SDKModelObserver, TargetManager} from './TargetManager.js';
 
 let frameManagerInstance: FrameManager|null = null;
 
@@ -51,6 +49,10 @@ export class FrameManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes>
       frameManagerInstance = new FrameManager();
     }
     return frameManagerInstance;
+  }
+
+  static removeInstance(): void {
+    frameManagerInstance = null;
   }
 
   modelAdded(resourceTreeModel: ResourceTreeModel): void {
@@ -248,10 +250,10 @@ export const enum Events {
   OUTERMOST_FRAME_NAVIGATED = 'OutermostFrameNavigated',
 }
 
-export type EventTypes = {
-  [Events.FRAME_ADDED_TO_TARGET]: {frame: ResourceTreeFrame},
-  [Events.FRAME_NAVIGATED]: {frame: ResourceTreeFrame},
-  [Events.FRAME_REMOVED]: {frameId: Protocol.Page.FrameId},
-  [Events.RESOURCE_ADDED]: {resource: Resource},
-  [Events.OUTERMOST_FRAME_NAVIGATED]: {frame: ResourceTreeFrame},
-};
+export interface EventTypes {
+  [Events.FRAME_ADDED_TO_TARGET]: {frame: ResourceTreeFrame};
+  [Events.FRAME_NAVIGATED]: {frame: ResourceTreeFrame};
+  [Events.FRAME_REMOVED]: {frameId: Protocol.Page.FrameId};
+  [Events.RESOURCE_ADDED]: {resource: Resource};
+  [Events.OUTERMOST_FRAME_NAVIGATED]: {frame: ResourceTreeFrame};
+}

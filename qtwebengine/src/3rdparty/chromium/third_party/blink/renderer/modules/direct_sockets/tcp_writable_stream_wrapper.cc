@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/metrics/histogram_functions.h"
 #ifdef UNSAFE_BUFFERS_BUILD
 // TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
 #pragma allow_unsafe_buffers
@@ -91,7 +92,7 @@ void TCPWritableStreamWrapper::OnHandleReady(MojoResult result,
       break;
 
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 }
 
@@ -153,9 +154,8 @@ void TCPWritableStreamWrapper::WriteDataAsynchronously() {
     FinalizeWrite();
     return;
   }
-  auto data = base::make_span(array_piece.Bytes(), array_piece.ByteLength())
-                  .subspan(offset_);
-  size_t written = WriteDataSynchronously(data);
+  size_t written =
+      WriteDataSynchronously(array_piece.ByteSpan().subspan(offset_));
 
   DCHECK_LE(offset_ + written, array_piece.ByteLength());
   if (offset_ + written == array_piece.ByteLength()) {
@@ -185,8 +185,7 @@ size_t TCPWritableStreamWrapper::WriteDataSynchronously(
       return 0;
 
     default:
-      NOTREACHED_IN_MIGRATION();
-      return 0;
+      NOTREACHED();
   }
 }
 
@@ -226,6 +225,9 @@ void TCPWritableStreamWrapper::ErrorStream(int32_t error_code) {
     return;
   }
   SetState(State::kAborted);
+
+  // Error codes are negative.
+  base::UmaHistogramSparse("DirectSockets.TCPWritableStreamError", -error_code);
 
   auto message =
       String{"Stream aborted by the remote: " + net::ErrorToString(error_code)};

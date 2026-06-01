@@ -11,8 +11,9 @@ qt_internal_add_qml_module(QmlLocalStorage
         qqmllocalstorageglobal_p.h
     DEFINES
         QT_BUILD_QMLLOCALSTORAGE_LIB
-    PUBLIC_LIBRARIES
+    LIBRARIES
         Qt::CorePrivate
         Qt::QmlPrivate
+    PUBLIC_LIBRARIES
         Qt::Sql
     )

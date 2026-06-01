@@ -9,7 +9,10 @@
 #include <qfile.h>
 #include <qfileinfo.h>
 #include <qtextstream.h>
-#include <quuid.h>
+
+// This is a bootstrapped tool, so we can't rely on QCryptographicHash for the
+// faster SHA1 implementations from OpenSSL.
+#include "../../3rdparty/sha1/sha1.cpp"
 
 using namespace Qt::StringLiterals;
 
@@ -77,26 +80,44 @@ static void writeEtwMacro(QTextStream &stream, const Tracepoint::Field &field)
     stream << "TraceLoggingValue(" << name << ", \"" << name << "\")";
 }
 
-static QString createGuid(const QUuid &uuid)
+static QString createGuid(QByteArrayView name)
 {
+    quint8 uuid[20] = {};   // SHA1 produces 160 bits of data
+
+    Sha1State state;
+    sha1InitState(&state);
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    // namespace {00000000-0000-0000-0000-000000000000} for compatibility
+    sha1Update(&state, uuid, 16);
+#endif
+    sha1Update(&state, reinterpret_cast<const uchar *>(name.data()), name.size());
+    sha1FinalizeState(&state);
+
+    sha1ToHash(&state, uuid);
+
+    // set UUID OSF DCE version 5 (SHA1)
+    uuid[6] = (uuid[6] & 0xF) | 0x50;   // version 5
+    uuid[8] = (uuid[8] & 0x3F) | 0x80;  // OSF DCE variant
+
     QString guid;
 
     QTextStream stream(&guid);
 
     Qt::hex(stream);
+    Qt::showbase(stream);
 
     stream << "("
-           << "0x" << uuid.data1    << ", "
-           << "0x" << uuid.data2    << ", "
-           << "0x" << uuid.data3    << ", "
-           << "0x" << uuid.data4[0] << ", "
-           << "0x" << uuid.data4[1] << ", "
-           << "0x" << uuid.data4[2] << ", "
-           << "0x" << uuid.data4[3] << ", "
-           << "0x" << uuid.data4[4] << ", "
-           << "0x" << uuid.data4[5] << ", "
-           << "0x" << uuid.data4[6] << ", "
-           << "0x" << uuid.data4[7]
+           << qFromBigEndian<quint32>(uuid + 0) << ", "
+           << qFromBigEndian<quint16>(uuid + 4) << ", "
+           << qFromBigEndian<quint16>(uuid + 6) << ", "
+           << uuid[8] << ", "
+           << uuid[9] << ", "
+           << uuid[10] << ", "
+           << uuid[11] << ", "
+           << uuid[12] << ", "
+           << uuid[13] << ", "
+           << uuid[14] << ", "
+           << uuid[15]
            << ")";
 
     return guid;
@@ -105,12 +126,10 @@ static QString createGuid(const QUuid &uuid)
 static void writePrologue(QTextStream &stream, const QString &fileName, const Provider &provider)
 {
     writeCommonPrologue(stream);
-    QUuid uuid = QUuid::createUuidV5(QUuid(), provider.name.toLocal8Bit());
 
     const QString providerV = providerVar(provider.name);
     const QString guard = includeGuard(fileName);
-    const QString guid = createGuid(uuid);
-    const QString guidString = uuid.toString();
+    const QString guid = createGuid(provider.name.toLocal8Bit());
 
     stream << "#ifndef " << guard << "\n"
            << "#define " << guard << "\n"
@@ -135,7 +154,6 @@ static void writePrologue(QTextStream &stream, const QString &fileName, const Pr
         stream << provider.prefixText.join(u'\n') << "\n\n";
 
     stream << "#ifdef TRACEPOINT_DEFINE\n"
-           << "/* " << guidString << " */\n"
            << "TRACELOGGING_DEFINE_PROVIDER(" << providerV << ", \""
            << provider.name <<"\", " << guid << ");\n\n";
 

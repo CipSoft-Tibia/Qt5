@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <QTest>
 #include <QDirIterator>
 
@@ -42,8 +40,8 @@ private slots:
     {
         QBENCHMARK {
             QDir testdir(QDir::tempPath() + QLatin1String("/test_speed"));
-            QFileInfoList fileInfoList = testdir.entryInfoList(QDir::Files, QDir::Unsorted);
-            foreach (const QFileInfo &fileInfo, fileInfoList) {
+            const QFileInfoList fileInfoList = testdir.entryInfoList(QDir::Files, QDir::Unsorted);
+            for (const QFileInfo &fileInfo : fileInfoList) {
                 fileInfo.isDir();
                 fileInfo.size();
             }
@@ -66,10 +64,9 @@ private slots:
     {
         QBENCHMARK {
             QDir testdir(QDir::tempPath() + QLatin1String("/test_speed"));
-            QFileInfoList fileInfoList = testdir.entryInfoList(QDir::NoFilter, QDir::Unsorted);
-            foreach (const QFileInfo &fileInfo, fileInfoList) {
+            const QFileInfoList fileInfoList = testdir.entryInfoList(QDir::NoFilter, QDir::Unsorted);
+            for (const QFileInfo &fileInfo : fileInfoList)
                 fileInfo.size();
-            }
         }
     }
     void sizeSpeedWithoutFilterIterator()
@@ -90,8 +87,8 @@ private slots:
         QBENCHMARK {
             QDir testdir(QDir::tempPath() + QLatin1String("/test_speed"));
             testdir.setSorting(QDir::Unsorted);
-            QStringList fileList = testdir.entryList(QDir::NoFilter, QDir::Unsorted);
-            foreach (const QString &filename, fileList) {
+            const QStringList fileList = testdir.entryList(QDir::NoFilter, QDir::Unsorted);
+            for (const QString &filename : fileList) {
                 QFileInfo fileInfo(filename);
                 fileInfo.size();
             }
@@ -104,10 +101,9 @@ private slots:
             QDir testdir(QDir::tempPath() + QLatin1String("/test_speed"));
             testdir.setSorting(QDir::Unsorted);
             testdir.setFilter(QDir::AllEntries | QDir::System | QDir::Hidden);
-            QStringList fileList = testdir.entryList(QDir::NoFilter, QDir::Unsorted);
-            foreach (const QString &filename, fileList) {
+            const QStringList fileList = testdir.entryList(QDir::NoFilter, QDir::Unsorted);
+            for (const QString &filename : fileList)
                 Q_UNUSED(filename);
-            }
         }
     }
     void iDontWantAnyStatIterator()
@@ -126,10 +122,9 @@ private slots:
             QDir testdir(QDir::tempPath() + QLatin1String("/test_speed"));
             testdir.setSorting(QDir::Time);
             testdir.setFilter(QDir::AllEntries | QDir::System | QDir::Hidden);
-            QStringList fileList = testdir.entryList(QDir::NoFilter, QDir::Time);
-            foreach (const QString &filename, fileList) {
+            const QStringList fileList = testdir.entryList(QDir::NoFilter, QDir::Time);
+            for (const QString &filename : fileList)
                 Q_UNUSED(filename);
-            }
         }
     }
 

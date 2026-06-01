@@ -38,6 +38,7 @@ class WebContentsAdapter;
 
 QT_BEGIN_NAMESPACE
 class QPrinter;
+class QThread;
 class QWebEngineFindTextResult;
 class QWebEngineHistory;
 class QWebEnginePage;
@@ -72,7 +73,7 @@ public:
     virtual void unhandledKeyEvent(QKeyEvent *event) = 0;
     virtual bool passOnFocus(bool reverse) = 0;
     virtual QObject *accessibilityParentObject() = 0;
-    virtual void didPrintPage(QPrinter *&printer, QSharedPointer<QByteArray> result) = 0;
+    virtual QThread *didPrintPage(QPrinter *&printer, QSharedPointer<QByteArray> result) = 0;
     virtual void didPrintPageToPdf(const QString &filePath, bool success) = 0;
     virtual void printRequested() = 0;
     virtual void printRequestedByFrame(QWebEngineFrame frame) = 0;
@@ -148,9 +149,8 @@ public:
     void authenticationRequired(
             QSharedPointer<QtWebEngineCore::AuthenticationDialogController>) override;
     void releaseProfile() override;
-    void runMediaAccessPermissionRequest(const QUrl &securityOrigin, MediaRequestFlags requestFlags) override;
-    void runFeaturePermissionRequest(QWebEnginePermission::PermissionType permissionType, const QUrl &securityOrigin) override;
-    void runMouseLockPermissionRequest(const QUrl &securityOrigin) override;
+    void runFeaturePermissionRequest(QWebEnginePermission::PermissionType permissionType, const QUrl &securityOrigin,
+        int childId, const std::string &serializedToken) override;
     void runRegisterProtocolHandlerRequest(QWebEngineRegisterProtocolHandlerRequest) override;
     void runFileSystemAccessRequest(QWebEngineFileSystemAccessRequest) override;
     QObject *accessibilityParentObject() override;
@@ -181,7 +181,6 @@ public:
                            const QRect &bounds, bool autoselectFirstSuggestion) override;
     void hideAutofillPopup() override;
     void showWebAuthDialog(QWebEngineWebAuthUxRequest *controller) override;
-    QWebEnginePermission createFeaturePermissionObject(const QUrl &securityOrigin, QWebEnginePermission::PermissionType permissionType) override;
 
     QtWebEngineCore::ProfileAdapter *profileAdapter() override;
     QtWebEngineCore::WebContentsAdapter *webContentsAdapter() override;
@@ -222,6 +221,7 @@ public:
     QtWebEngineCore::RenderWidgetHostViewQtDelegateItem *delegateItem = nullptr;
 #if QT_CONFIG(webengine_printing_and_pdf)
     QPrinter *currentPrinter = nullptr;
+    QThread *printerThread = nullptr;
 #endif
 
     mutable QMap<quint64, std::function<void(const QString &)>> m_stringCallbacks;

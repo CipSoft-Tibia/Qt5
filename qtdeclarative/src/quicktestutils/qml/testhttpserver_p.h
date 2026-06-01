@@ -17,7 +17,6 @@
 
 #include <QTcpServer>
 #include <QUrl>
-#include <QPair>
 #include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
@@ -26,6 +25,7 @@
 #include <QSet>
 #include <QList>
 #include <QString>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -56,11 +56,15 @@ public:
     // In Delay mode, each item needs one call to this function to be sent
     void sendDelayedItem();
 
+    qsizetype chunkSize() const { return m_chunkSize; }
+    void setChunkSize(qsizetype chunkSize) { m_chunkSize = chunkSize; }
+
 private Q_SLOTS:
     void newConnection();
     void disconnected();
     void readyRead();
     void sendOne();
+    void sendChunk();
 
 private:
     enum State {
@@ -72,9 +76,9 @@ private:
     void serveGET(QTcpSocket *, const QByteArray &);
     bool reply(QTcpSocket *, const QByteArray &);
 
-    QList<QPair<QString, Mode> > m_directories;
+    QList<std::pair<QString, Mode> > m_directories;
     QHash<QTcpSocket *, QByteArray> m_dataCache;
-    QList<QPair<QTcpSocket *, QByteArray> > m_toSend;
+    QList<std::pair<QTcpSocket *, QByteArray> > m_toSend;
     QSet<QString> m_contentSubstitutedFileNames;
 
     struct WaitData {
@@ -91,6 +95,8 @@ private:
     QHash<QString, QString> m_redirects;
 
     QTcpServer m_server;
+
+    qsizetype m_chunkSize = std::numeric_limits<qsizetype>::max();
 };
 
 class ThreadedTestHTTPServer : public QThread

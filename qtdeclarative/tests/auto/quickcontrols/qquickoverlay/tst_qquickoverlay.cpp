@@ -3,6 +3,7 @@
 
 #include <QtTest/qtest.h>
 #include <QtTest/qsignalspy.h>
+#include <QtTest/private/qtesthelpers_p.h>
 
 #include <QtQuick/qquickwindow.h>
 #include <QtQuick/qquickitem.h>
@@ -238,6 +239,9 @@ void tst_QQuickOverlay::pressedAndReleased()
     QQuickApplicationWindow *window = helper.appWindow;
     window->show();
     QVERIFY(QTest::qWaitForWindowExposed(window));
+    // Verify that the position and framePosition are correct
+    // to avoid flakiness on openSuSe KDE.
+    QVERIFY(QTestPrivate::ensurePositionTopLeft(window));
 
     auto *overlay = QQuickOverlay::overlay(window);
     QVERIFY(overlay);

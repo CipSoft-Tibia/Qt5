@@ -108,7 +108,6 @@ WorkerInspectorController::WorkerInspectorController(
 
 WorkerInspectorController::~WorkerInspectorController() {
   DCHECK(!thread_);
-  trace_event::RemoveEnabledStateObserver(this);
 }
 
 void WorkerInspectorController::AttachSession(DevToolsSession* session,
@@ -154,7 +153,7 @@ void WorkerInspectorController::DetachSession(DevToolsSession*) {
 }
 
 void WorkerInspectorController::InspectElement(const gfx::Point&) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void WorkerInspectorController::DebuggerTaskStarted() {
@@ -169,6 +168,7 @@ void WorkerInspectorController::Dispose() {
   if (agent_)
     agent_->Dispose();
   thread_ = nullptr;
+  trace_event::RemoveEnabledStateObserver(this);
 }
 
 void WorkerInspectorController::FlushProtocolNotifications() {

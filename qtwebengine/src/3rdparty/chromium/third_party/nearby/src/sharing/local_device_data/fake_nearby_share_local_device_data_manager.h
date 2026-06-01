@@ -57,21 +57,16 @@ class FakeNearbyShareLocalDeviceDataManager
       return latest_rpc_client_factory_;
     }
 
-    NearbyShareProfileInfoProvider* latest_profile_info_provider() const {
-      return latest_profile_info_provider_;
-    }
-
    protected:
     std::unique_ptr<NearbyShareLocalDeviceDataManager> CreateInstance(
         nearby::Context* context,
-        nearby::sharing::api::SharingRpcClientFactory* rpc_client_factory,
-        NearbyShareProfileInfoProvider* profile_info_provider) override;
+        nearby::sharing::api::SharingRpcClientFactory* rpc_client_factory)
+        override;
 
    private:
     std::vector<FakeNearbyShareLocalDeviceDataManager*> instances_;
     nearby::sharing::api::SharingRpcClientFactory* latest_rpc_client_factory_ =
         nullptr;
-    NearbyShareProfileInfoProvider* latest_profile_info_provider_ = nullptr;
   };
 
   struct UploadContactsCall {
@@ -95,6 +90,19 @@ class FakeNearbyShareLocalDeviceDataManager
     UploadCompleteCallback callback;
   };
 
+  struct PublishDeviceCall {
+    PublishDeviceCall(
+        std::vector<nearby::sharing::proto::PublicCertificate> certificates,
+        bool is_second_call, PublishDeviceCallback callback)
+        : certificates(std::move(certificates)),
+          callback(std::move(callback)) {}
+    PublishDeviceCall(PublishDeviceCall&&) = default;
+    ~PublishDeviceCall() = default;
+
+    std::vector<nearby::sharing::proto::PublicCertificate> certificates;
+    PublishDeviceCallback callback;
+  };
+
   explicit FakeNearbyShareLocalDeviceDataManager(
       absl::string_view default_device_name);
   ~FakeNearbyShareLocalDeviceDataManager() override;
@@ -102,29 +110,24 @@ class FakeNearbyShareLocalDeviceDataManager
   // NearbyShareLocalDeviceDataManager:
   std::string GetId() override;
   std::string GetDeviceName() const override;
-  std::optional<std::string> GetFullName() const override;
-  std::optional<std::string> GetIconUrl() const override;
   DeviceNameValidationResult ValidateDeviceName(
       absl::string_view name) override;
   DeviceNameValidationResult SetDeviceName(absl::string_view name) override;
-  void DownloadDeviceData() override;
   void UploadContacts(std::vector<nearby::sharing::proto::Contact> contacts,
                       UploadCompleteCallback callback) override;
   void UploadCertificates(
       std::vector<nearby::sharing::proto::PublicCertificate> certificates,
       UploadCompleteCallback callback) override;
 
+  void PublishDevice(
+      std::vector<nearby::sharing::proto::PublicCertificate> certificates,
+      bool is_second_call, PublishDeviceCallback callback) override;
+
   // Make protected observer-notification methods from the base class public in
   // this fake class.
   using NearbyShareLocalDeviceDataManager::NotifyLocalDeviceDataChanged;
 
   void SetId(absl::string_view id) { id_ = std::string(id); }
-  void SetFullName(const std::optional<std::string>& full_name);
-  void SetIconUrl(const std::optional<std::string>& icon_url);
-
-  size_t num_download_device_data_calls() const {
-    return num_download_device_data_calls_;
-  }
 
   std::vector<UploadContactsCall>& upload_contacts_calls() {
     return upload_contacts_calls_;
@@ -132,6 +135,10 @@ class FakeNearbyShareLocalDeviceDataManager
 
   std::vector<UploadCertificatesCall>& upload_certificates_calls() {
     return upload_certificates_calls_;
+  }
+
+  std::vector<PublishDeviceCall>& publish_device_calls() {
+    return publish_device_calls_;
   }
 
   void set_next_validation_result(DeviceNameValidationResult result) {
@@ -149,18 +156,18 @@ class FakeNearbyShareLocalDeviceDataManager
     upload_certificate_result_ = upload_certificate_result;
   }
 
+  void SetPublishDeviceResult(bool publish_device_result) {
+    publish_device_result_ = publish_device_result;
+  }
+
  private:
   // NearbyShareLocalDeviceDataManager:
-  void OnStart() override;
-  void OnStop() override;
 
   std::string id_;
   std::string device_name_;
-  std::optional<std::string> full_name_;
-  std::optional<std::string> icon_url_;
-  size_t num_download_device_data_calls_ = 0;
   std::vector<UploadContactsCall> upload_contacts_calls_;
   std::vector<UploadCertificatesCall> upload_certificates_calls_;
+  std::vector<PublishDeviceCall> publish_device_calls_;
   DeviceNameValidationResult next_validation_result_ =
       DeviceNameValidationResult::kValid;
 
@@ -168,6 +175,7 @@ class FakeNearbyShareLocalDeviceDataManager
   bool is_sync_mode_ = false;
   bool upload_contact_result_ = false;
   bool upload_certificate_result_ = false;
+  bool publish_device_result_ = false;
 };
 
 }  // namespace sharing

@@ -8,6 +8,7 @@
 qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
     OUTPUT_NAME qdirect2d
     PLUGIN_TYPE platforms
+    EXCEPTIONS
     SOURCES
         ../windows/qtwindowsglobal.h
         ../windows/qwin10helpers.cpp ../windows/qwin10helpers.h

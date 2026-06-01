@@ -223,6 +223,12 @@ inline decltype(auto) QmltcCodeGenerator::generate_initCode(QmltcType &current,
         current.init.body
                 << QStringLiteral("%1%2::%3(&subCreator, engine, context, /* finalize */ false);")
                            .arg(lhs, base->internalName(), current.init.name);
+        // if not document root, set outer context
+        if (!isDocumentRoot && !isInlineComponent) {
+            current.init.body
+                    << u"QQmlEnginePrivate::setInternalContext("
+                       "this, parentContext, QQmlContextData::OrdinaryObject);"_s;
+        }
         current.init.body << u"}"_s;
     }
 
@@ -259,15 +265,19 @@ inline decltype(auto) QmltcCodeGenerator::generate_initCode(QmltcType &current,
     // context is this document's context. we must remember it in each type
     current.variables.emplaceBack(u"QQmlRefPointer<QQmlContextData>"_s, u"q_qmltc_thisContext"_s,
                                   u"nullptr"_s);
-    current.init.body << u"%1::q_qmltc_thisContext = context;"_s.arg(type->internalName());
+
+    const QString relevantContext
+            = (isDocumentRoot || isInlineComponent) ? u"context"_s : u"parentContext"_s;
+    current.init.body
+            << u"%1::q_qmltc_thisContext = %2;"_s.arg(type->internalName(), relevantContext);
 
     if (int id = visitor->runtimeId(type); id >= 0) {
         current.init.body << u"// 3. set id since it is provided"_s;
         QString idString = visitor->addressableScopes().id(type, type);
         if (idString.isEmpty())
             idString = u"<unknown>"_s;
-        QmltcCodeGenerator::generate_setIdValue(&current.init.body, u"context"_s, id, u"this"_s,
-                                                idString);
+        QmltcCodeGenerator::generate_setIdValue(
+                &current.init.body, relevantContext, id, u"this"_s, idString);
     }
 
     // if type has an extension, create a dynamic meta object for it
@@ -448,7 +458,7 @@ inline void QmltcCodeGenerator::generate_endInitCode(QmltcType &current,
             icName = u"{}"_s;
         current.endInit.body << u"{ // defer bindings"_s;
         current.endInit.body << u"auto ddata = QQmlData::get(this);"_s;
-        current.endInit.body << u"auto thisContext = ddata->outerContext;"_s;
+        current.endInit.body << u"auto thisContext = ddata->context;"_s;
         current.endInit.body << u"Q_ASSERT(thisContext);"_s;
         current.endInit.body << QStringLiteral("ddata->deferData(%1, "
                                                "QQmlEnginePrivate::get(engine)->"

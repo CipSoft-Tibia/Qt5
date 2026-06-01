@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickmaterialstyle_p.h"
 #include "qquickmaterialtheme_p.h"
@@ -709,11 +710,11 @@ void QQuickMaterialStyle::setForeground(const QVariant &var)
         }
     }
 
-    m_hasForeground = true;
     m_explicitForeground = true;
-    if (m_foreground == foreground)
+    if (m_hasForeground && m_foreground == foreground)
         return;
 
+    m_hasForeground = true;
     m_customForeground = custom;
     m_foreground = foreground;
     propagateForeground();
@@ -722,7 +723,7 @@ void QQuickMaterialStyle::setForeground(const QVariant &var)
 
 void QQuickMaterialStyle::inheritForeground(uint foreground, bool custom, bool has)
 {
-    if (m_explicitForeground || m_foreground == foreground)
+    if (m_explicitForeground || (m_hasForeground == has && m_foreground == foreground))
         return;
 
     m_hasForeground = has;
@@ -747,11 +748,11 @@ void QQuickMaterialStyle::resetForeground()
     if (!m_explicitForeground)
         return;
 
-    m_hasForeground = false;
-    m_customForeground = false;
     m_explicitForeground = false;
     QQuickMaterialStyle *material = qobject_cast<QQuickMaterialStyle *>(attachedParent());
-    inheritForeground(material ? material->m_foreground : globalForeground, true, material ? material->m_hasForeground : false);
+    inheritForeground(material ? material->m_foreground : globalForeground,
+                      material ? material->m_customForeground : globalForegroundCustom,
+                      material ? material->m_hasForeground : false);
 }
 
 void QQuickMaterialStyle::foregroundChange()
@@ -790,11 +791,10 @@ void QQuickMaterialStyle::setBackground(const QVariant &var)
         custom = false;
     }
 
-    m_hasBackground = true;
     m_explicitBackground = true;
-    if (m_background == background)
+    if (m_hasBackground && m_background == background)
         return;
-
+    m_hasBackground = true;
     m_customBackground = custom;
     m_background = background;
     propagateBackground();
@@ -807,7 +807,7 @@ void QQuickMaterialStyle::setBackground(const QVariant &var)
 
 void QQuickMaterialStyle::inheritBackground(uint background, bool custom, bool has)
 {
-    if (m_explicitBackground || m_background == background)
+    if (m_explicitBackground || (m_hasBackground == has && m_background == background))
         return;
 
     m_hasBackground = has;
@@ -834,11 +834,11 @@ void QQuickMaterialStyle::resetBackground()
     if (!m_explicitBackground)
         return;
 
-    m_hasBackground = false;
-    m_customBackground = false;
     m_explicitBackground = false;
     QQuickMaterialStyle *material = qobject_cast<QQuickMaterialStyle *>(attachedParent());
-    inheritBackground(material ? material->m_background : globalBackground, true, material ? material->m_hasBackground : false);
+    inheritBackground(material ? material->m_background : globalBackground,
+                      material ? material->m_customBackground : globalBackgroundCustom,
+                      material ? material->m_hasBackground : false);
 }
 
 void QQuickMaterialStyle::backgroundChange()

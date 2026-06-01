@@ -453,6 +453,12 @@ class MockHostResolverBase::ServiceEndpointRequestImpl
     return resolve_error_info_;
   }
 
+  const HostCache::EntryStaleness* GetStaleInfo() const override {
+    return nullptr;
+  }
+
+  bool IsStaleWhileRefresing() const override { return false; }
+
   void ChangeRequestPriority(RequestPriority priority) override {
     priority_ = priority;
   }
@@ -683,10 +689,8 @@ MockHostResolverBase::RuleResolver::Resolve(
   if (default_result_)
     return default_result_.value();
 
-  NOTREACHED_IN_MIGRATION() << "Request " << request_endpoint.GetHostname()
-                            << " did not match any MockHostResolver rules.";
-  static const RuleResultOrError kUnexpected = ERR_UNEXPECTED;
-  return kUnexpected;
+  NOTREACHED() << "Request " << request_endpoint.GetHostname()
+               << " did not match any MockHostResolver rules.";
 }
 
 void MockHostResolverBase::RuleResolver::ClearRules() {
@@ -781,7 +785,7 @@ void MockHostResolverBase::RuleResolver::AddIPLiteralRuleWithDnsAliases(
     std::string_view ip_literal,
     std::set<std::string> dns_aliases) {
   std::vector<std::string> aliases_vector;
-  base::ranges::move(dns_aliases, std::back_inserter(aliases_vector));
+  std::ranges::move(dns_aliases, std::back_inserter(aliases_vector));
 
   AddIPLiteralRuleWithDnsAliases(hostname_pattern, ip_literal,
                                  std::move(aliases_vector));
@@ -1500,8 +1504,7 @@ int RuleBasedHostResolverProc::Resolve(const std::string& host,
           return result;
         }
         default:
-          NOTREACHED_IN_MIGRATION();
-          return ERR_UNEXPECTED;
+          NOTREACHED();
       }
     }
   }

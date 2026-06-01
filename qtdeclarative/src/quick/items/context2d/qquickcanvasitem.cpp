@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <private/qsgadaptationlayer_p.h>
 #include "qquickcanvasitem_p.h"
@@ -954,7 +955,9 @@ void QQuickCanvasItem::checkAnimationCallbacks()
 bool QQuickCanvasItem::save(const QString &filename, const QSizeF &imageSize) const
 {
     Q_D(const QQuickCanvasItem);
-    QUrl url = d->baseUrl.resolved(QUrl::fromLocalFile(filename));
+    QUrl url;
+    url.setPath(filename); // `filename` may contain # or % characters
+    url = d->baseUrl.resolved(url);
     return toImage(QRectF(QPointF(0, 0), imageSize)).save(url.toLocalFile());
 }
 

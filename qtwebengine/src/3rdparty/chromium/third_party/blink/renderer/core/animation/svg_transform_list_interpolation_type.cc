@@ -71,7 +71,7 @@ SVGTransform* TranslateFromInterpolableValue(const InterpolableValue& value) {
   // Note: using default CSSToLengthConversionData here as it's
   // guaranteed to be a double.
   // TODO(crbug.com/325821290): Avoid InterpolableNumber in this file.
-  CSSToLengthConversionData length_resolver;
+  CSSToLengthConversionData length_resolver(/*element=*/nullptr);
   auto* transform =
       MakeGarbageCollected<SVGTransform>(SVGTransformType::kTranslate);
   transform->SetTranslate(
@@ -91,7 +91,7 @@ InterpolableValue* ScaleToInterpolableValue(SVGTransform* transform) {
 SVGTransform* ScaleFromInterpolableValue(const InterpolableValue& value) {
   const auto& list = To<InterpolableList>(value);
 
-  CSSToLengthConversionData length_resolver;
+  CSSToLengthConversionData length_resolver(/*element=*/nullptr);
   auto* transform =
       MakeGarbageCollected<SVGTransform>(SVGTransformType::kScale);
   transform->SetScale(
@@ -112,7 +112,7 @@ InterpolableValue* RotateToInterpolableValue(SVGTransform* transform) {
 SVGTransform* RotateFromInterpolableValue(const InterpolableValue& value) {
   const auto& list = To<InterpolableList>(value);
 
-  CSSToLengthConversionData length_resolver;
+  CSSToLengthConversionData length_resolver(/*element=*/nullptr);
   auto* transform =
       MakeGarbageCollected<SVGTransform>(SVGTransformType::kRotate);
   transform->SetRotate(
@@ -129,8 +129,8 @@ InterpolableValue* SkewXToInterpolableValue(SVGTransform* transform) {
 SVGTransform* SkewXFromInterpolableValue(const InterpolableValue& value) {
   auto* transform =
       MakeGarbageCollected<SVGTransform>(SVGTransformType::kSkewx);
-  transform->SetSkewX(
-      To<InterpolableNumber>(value).Value(CSSToLengthConversionData()));
+  transform->SetSkewX(To<InterpolableNumber>(value).Value(
+      CSSToLengthConversionData(/*element=*/nullptr)));
   return transform;
 }
 
@@ -141,8 +141,8 @@ InterpolableValue* SkewYToInterpolableValue(SVGTransform* transform) {
 SVGTransform* SkewYFromInterpolableValue(const InterpolableValue& value) {
   auto* transform =
       MakeGarbageCollected<SVGTransform>(SVGTransformType::kSkewy);
-  transform->SetSkewY(
-      To<InterpolableNumber>(value).Value(CSSToLengthConversionData()));
+  transform->SetSkewY(To<InterpolableNumber>(value).Value(
+      CSSToLengthConversionData(/*element=*/nullptr)));
   return transform;
 }
 
@@ -161,10 +161,9 @@ InterpolableValue* ToInterpolableValue(SVGTransform* transform,
       return SkewYToInterpolableValue(transform);
     case SVGTransformType::kMatrix:
     case SVGTransformType::kUnknown:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 SVGTransform* FromInterpolableValue(const InterpolableValue& value,
@@ -182,10 +181,9 @@ SVGTransform* FromInterpolableValue(const InterpolableValue& value,
       return SkewYFromInterpolableValue(value);
     case SVGTransformType::kMatrix:
     case SVGTransformType::kUnknown:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 const Vector<SVGTransformType>& GetTransformTypes(
@@ -229,10 +227,9 @@ class SVGTransformListChecker : public InterpolationType::ConversionChecker {
 InterpolationValue SVGTransformListInterpolationType::MaybeConvertNeutral(
     const InterpolationValue&,
     ConversionCheckers&) const {
-  NOTREACHED_IN_MIGRATION();
   // This function is no longer called, because maybeConvertSingle has been
   // overridden.
-  return nullptr;
+  NOTREACHED();
 }
 
 InterpolationValue SVGTransformListInterpolationType::MaybeConvertSVGValue(

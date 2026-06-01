@@ -4,6 +4,7 @@
 
 #include "components/subresource_filter/content/browser/safe_browsing_page_activation_throttle.h"
 
+#include <algorithm>
 #include <optional>
 #include <sstream>
 #include <utility>
@@ -14,7 +15,6 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/not_fatal_until.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/timer/timer.h"
 #include "base/trace_event/trace_event.h"
@@ -25,7 +25,7 @@
 #include "components/subresource_filter/content/browser/navigation_console_logger.h"
 #include "components/subresource_filter/content/browser/subresource_filter_observer_manager.h"
 #include "components/subresource_filter/content/browser/subresource_filter_safe_browsing_client.h"
-#include "components/subresource_filter/content/shared/common/subresource_filter_utils.h"
+#include "components/subresource_filter/content/shared/browser/utils.h"
 #include "components/subresource_filter/core/browser/subresource_filter_constants.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_handle.h"
@@ -277,7 +277,7 @@ SafeBrowsingPageActivationThrottle::
   if (navigation_handle()->GetURL().SchemeIsHTTPOrHTTPS()) {
     const auto& decreasing_configs =
         GetEnabledConfigurations()->configs_by_decreasing_priority();
-    const auto selected_config_itr = base::ranges::find_if(
+    const auto selected_config_itr = std::ranges::find_if(
         decreasing_configs, [matched_list, this](const Configuration& config) {
           return DoesRootFrameURLSatisfyActivationConditions(
               config.activation_conditions, matched_list);
@@ -350,8 +350,7 @@ bool SafeBrowsingPageActivationThrottle::
     case ActivationScope::NO_SITES:
       return false;
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 }  //  namespace subresource_filter

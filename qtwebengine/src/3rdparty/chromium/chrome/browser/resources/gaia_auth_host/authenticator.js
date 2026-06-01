@@ -52,7 +52,6 @@ export let SyncTrustedRecoveryMethod;
  * Sync trusted vault encryption keys optionally passed with 'authCompleted'
  * message.
  * @typedef {{
- *   obfuscatedGaiaId: string,
  *   encryptionKeys: Array<SyncTrustedVaultKey>,
  *   trustedRecoveryMethods: Array<SyncTrustedRecoveryMethod>
  * }}
@@ -177,8 +176,6 @@ export const SUPPORTED_PARAMS = [
                    // window.
   'clientId',      // Chrome client id.
   'needPassword',  // Whether the host is interested in getting a password.
-                   // If this set to |false|, |confirmPasswordCallback| is
-                   // not called before dispatching |authCopleted|.
                    // Default is |true|.
   'flow',          // One of 'default', 'enterprise', or
                    // 'cfm' or 'enterpriseLicense'.
@@ -196,8 +193,7 @@ export const SUPPORTED_PARAMS = [
   'menuEnterpriseEnrollment',    // Enables "Enterprise enrollment" menu item.
   'lsbReleaseBoard',             // Chrome OS Release board name
   'isFirstUser',                 // True if this is non-enterprise device,
-                                 // and there are no users yet.
-  'obfuscatedOwnerId',           // Obfuscated device owner ID, if needed.
+  // and there are no users yet.
   'extractSamlPasswordAttributes',  // If enabled attempts to extract password
                                     // attributes from the SAML response.
   'ignoreCrOSIdpSetting',           // If set to true, causes Gaia to ignore 3P
@@ -443,7 +439,6 @@ export class Authenticator extends EventTarget {
 
     this.clientId_ = null;
 
-    this.confirmPasswordCallback = null;
     this.noPasswordCallback = null;
     this.onePasswordCallback = null;
     this.insecureContentBlockedCallback = null;
@@ -853,9 +848,6 @@ export class Authenticator extends EventTarget {
     if (data.isFirstUser) {
       url = appendParam(url, 'is_first_user', 'true');
     }
-    if (data.obfuscatedOwnerId) {
-      url = appendParam(url, 'obfuscated_owner_id', data.obfuscatedOwnerId);
-    }
     if (data.hl) {
       url = appendParam(url, 'hl', data.hl);
     }
@@ -1100,20 +1092,6 @@ export class Authenticator extends EventTarget {
   }
 
   /**
-   * Invoked by the hosting page to verify the Saml password.
-   */
-  verifyConfirmedPassword(password) {
-    if (!this.samlHandler_.verifyConfirmedPassword(password)) {
-      this.confirmPasswordCallback(
-          this.email_, this.samlHandler_.scrapedPasswordCount);
-      return;
-    }
-
-    this.password_ = password;
-    this.onAuthCompleted_();
-  }
-
-  /**
    * Check Saml flow and start password confirmation flow if needed.
    * Otherwise, continue with auto completion.
    * @private
@@ -1180,7 +1158,10 @@ export class Authenticator extends EventTarget {
       // Fall through to finish the auth flow even if this.needPassword
       // is true. This is because the flag is used as an intention to get
       // password when it is available but not a mandatory requirement.
-      console.warn('Authenticator: No password scraped for SAML.');
+      const flowString = this.authFlow === AuthFlow.SAML ? 'SAML' : 'DEFAULT';
+      console.warn(
+        'Authenticator: No password when completing online auth. Auth flow is: '
+        + flowString);
     } else if (this.needPassword) {
       if (this.samlHandler_.scrapedPasswordCount === 1) {
         // If we scraped exactly one password, we complete the
@@ -1190,14 +1171,6 @@ export class Authenticator extends EventTarget {
           this.onePasswordCallback();
         }
         this.onAuthCompleted_();
-        return;
-      }
-
-      if (this.confirmPasswordCallback) {
-        // Confirm scraped password. The flow follows in
-        // verifyConfirmedPassword.
-        this.confirmPasswordCallback(
-            this.email_, this.samlHandler_.scrapedPasswordCount);
         return;
       }
     }

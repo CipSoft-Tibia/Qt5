@@ -26,7 +26,7 @@ qhp.QtQuickEffectMaker.customFilters.Qt.filterAttributes = qtquickeffectmaker $Q
 
 qhp.QtQuickEffectMaker.subprojects                   = manual
 qhp.QtQuickEffectMaker.subprojects.manual.title      = Qt Quick Effect Maker
-qhp.QtQuickEffectMaker.subprojects.manual.indexTitle = All Topics
+qhp.QtQuickEffectMaker.subprojects.manual.indexTitle = Qt Quick Effect Maker topics
 qhp.QtQuickEffectMaker.subprojects.manual.type       = manual
 
 tagfile                       = qtquickeffectmaker.tags
@@ -42,6 +42,7 @@ depends += \
 buildversion = "Qt Quick Effect Maker $QT_VERSION"
 
 navigation.landingpage = "Qt Quick Effect Maker"
-navigation.toctitles = "All Topics"
+navigation.toctitles = "Qt Quick Effect Maker topics"
+navigation.toctitles.inclusive = false
 
 macro.QQEM = "Qt Quick Effect Maker"

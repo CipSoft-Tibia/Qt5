@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qx11capturablewindows_p.h"
-#include "private/qcapturablewindow_p.h"
-#include <qdebug.h>
+
+#include <QtCore/qdebug.h>
+#include <QtGui/qwindow.h>
+#include <QtMultimedia/private/qcapturablewindow_p.h>
 
 #include <X11/Xlib.h>
 
@@ -90,6 +92,14 @@ Display *QX11CapturableWindows::display() const
 {
     std::call_once(m_displayOnceFlag, [this]() { m_display = XOpenDisplay(nullptr); });
     return m_display;
+}
+
+q23::expected<QCapturableWindow, QString> QX11CapturableWindows::fromQWindow(QWindow *window) const
+{
+    const auto xId = static_cast<XID>(window->winId());
+    return QCapturableWindowPrivate::create(
+        static_cast<QCapturableWindowPrivate::Id>(xId),
+        window->title());
 }
 
 QT_END_NAMESPACE

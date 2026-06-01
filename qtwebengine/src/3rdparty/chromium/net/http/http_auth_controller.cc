@@ -22,6 +22,7 @@
 #include "net/http/http_request_headers.h"
 #include "net/http/http_request_info.h"
 #include "net/http/http_response_headers.h"
+#include "net/log/net_log_capture_mode.h"
 #include "net/log/net_log_event_type.h"
 #include "net/log/net_log_source.h"
 #include "net/log/net_log_source_type.h"
@@ -131,10 +132,11 @@ void HistogramAuthEvent(HttpAuthHandler* handler, AuthEvent auth_event) {
 }
 
 base::Value::Dict ControllerParamsToValue(HttpAuth::Target target,
-                                          const GURL& url) {
+                                          const GURL& url,
+                                          NetLogCaptureMode capture_mode) {
   base::Value::Dict params;
   params.Set("target", HttpAuth::GetAuthTargetString(target));
-  params.Set("url", url.spec());
+  params.Set("url", SanitizeUrlForNetLog(url, capture_mode));
   return params;
 }
 
@@ -170,9 +172,10 @@ void HttpAuthController::BindToCallingNetLog(
   if (!net_log_.source().IsValid()) {
     net_log_ = NetLogWithSource::Make(caller_net_log.net_log(),
                                       NetLogSourceType::HTTP_AUTH_CONTROLLER);
-    net_log_.BeginEvent(NetLogEventType::AUTH_CONTROLLER, [&] {
-      return ControllerParamsToValue(target_, auth_url_);
-    });
+    net_log_.BeginEvent(
+        NetLogEventType::AUTH_CONTROLLER, [&](NetLogCaptureMode capture_mode) {
+          return ControllerParamsToValue(target_, auth_url_, capture_mode);
+        });
   }
   caller_net_log.AddEventReferencingSource(
       NetLogEventType::AUTH_BOUND_TO_CONTROLLER, net_log_.source());
@@ -319,8 +322,7 @@ int HttpAuthController::HandleAuthChallenge(
             INVALIDATE_HANDLER_AND_CACHED_CREDENTIALS);
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
   }
 

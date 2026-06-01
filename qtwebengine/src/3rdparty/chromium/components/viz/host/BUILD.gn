@@ -40,11 +40,9 @@ viz_component("host") {
 
   deps = [
     "//base",
-    "//build:chromeos_buildflags",
     "//gpu/ipc/client",
     "//gpu/ipc/common",
     "//services/viz/privileged/mojom",
-    "//services/webnn/public/mojom",
     "//ui/base",
     "//ui/base:ozone_buildflags",
     "//ui/gfx",
@@ -62,6 +60,7 @@ viz_component("host") {
 
   if (use_ml) {
     deps += [
+      "//services/webnn/public/mojom",
       "//components/ml/webnn:features",
     ]
   }
@@ -87,7 +86,6 @@ viz_source_set("unit_tests") {
     ":host",
     "//base",
     "//base/test:test_support",
-    "//build:chromeos_buildflags",
     "//components/viz/test:test_support",
     "//gpu",
     "//gpu/ipc/host",

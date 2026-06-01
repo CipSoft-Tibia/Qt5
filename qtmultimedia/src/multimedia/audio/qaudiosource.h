@@ -42,7 +42,11 @@ public:
     void setBufferSize(qsizetype bytes);
     qsizetype bufferSize() const;
 
+    void setBufferFrameCount(qsizetype frames);
+    qsizetype bufferFrameCount() const;
+
     qsizetype bytesAvailable() const;
+    qsizetype framesAvailable() const;
 
     void setVolume(qreal volume);
     qreal volume() const;

@@ -45,6 +45,9 @@ exampledirs += ../../../examples/sensors \
 # Specify the install path under QT_INSTALL_EXAMPLES
 examplesinstallpath = sensors
 
+# Path to the root of qtsensors (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 imagedirs   += images
 
 depends += qtcore qtdoc qtgui qtquick qtcmake

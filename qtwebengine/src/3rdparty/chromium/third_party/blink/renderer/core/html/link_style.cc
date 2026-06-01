@@ -19,7 +19,6 @@
 #include "third_party/blink/renderer/core/loader/fetch_priority_attribute.h"
 #include "third_party/blink/renderer/core/loader/link_load_parameters.h"
 #include "third_party/blink/renderer/core/loader/resource/css_style_sheet_resource.h"
-#include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_parameters.h"
 #include "third_party/blink/renderer/platform/loader/subresource_integrity.h"
@@ -70,19 +69,13 @@ void LinkStyle::NotifyFinished(Resource* resource) {
   }
 
   auto* cached_style_sheet = To<CSSStyleSheetResource>(resource);
-  // See the comment in pending_script.cc about why this check is necessary
-  // here, instead of in the resource fetcher. https://crbug.com/500701.
   if ((!cached_style_sheet->ErrorOccurred() &&
        !owner_->FastGetAttribute(html_names::kIntegrityAttr).empty() &&
        !cached_style_sheet->IntegrityMetadata().empty()) ||
-      resource->IsLinkPreload()) {
-    ResourceIntegrityDisposition disposition =
-        cached_style_sheet->IntegrityDisposition();
+      resource->ForceIntegrityChecks()) {
+    cached_style_sheet->GetIntegrityReport().SendReports(GetExecutionContext());
 
-    SubresourceIntegrityHelper::DoReport(
-        *GetExecutionContext(), cached_style_sheet->IntegrityReportInfo());
-
-    if (disposition == ResourceIntegrityDisposition::kFailed) {
+    if (!cached_style_sheet->PassedIntegrityChecks()) {
       loading_ = false;
       RemovePendingSheet();
       NotifyLoadedSheetAndAllCriticalSubresources(
@@ -262,6 +255,10 @@ void LinkStyle::SetDisabledState(bool disabled) {
 LinkStyle::LoadReturnValue LinkStyle::LoadStylesheetIfNeeded(
     const LinkLoadParameters& params,
     const WTF::TextEncoding& charset) {
+  if (GetDocument().StatePreservingAtomicMoveInProgress()) {
+    return kNotNeeded;
+  }
+
   if (disabled_state_ == kDisabled || !owner_->RelAttribute().IsStyleSheet() ||
       !StyleSheetTypeIsSupported(params.type) || !ShouldLoadResource() ||
       !params.href.IsValid())

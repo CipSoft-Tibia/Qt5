@@ -31,7 +31,7 @@
 #include <string>
 
 #include "src/tint/lang/glsl/writer/common/options.h"
-#include "src/tint/lang/glsl/writer/output.h"
+#include "src/tint/lang/glsl/writer/common/output.h"
 #include "src/tint/utils/diagnostic/diagnostic.h"
 #include "src/tint/utils/result/result.h"
 
@@ -45,6 +45,12 @@ class Module;
 
 namespace tint::glsl::writer {
 
+/// Check if the module @p ir is supported by the GLSL backend with @p options.
+/// @param ir the module
+/// @param options the writer options
+/// @returns Success or a failure message indicating why GLSL generation would fail
+Result<SuccessType> CanGenerate(const core::ir::Module& ir, const Options& options);
+
 /// Generate GLSL for a program, according to a set of configuration options.
 /// The result will contain the GLSL and supplementary information, or failure.
 /// information.
@@ -53,17 +59,6 @@ namespace tint::glsl::writer {
 /// @param entry_point the entry point to generate GLSL for
 /// @returns the resulting GLSL and supplementary information, or failure
 Result<Output> Generate(core::ir::Module& ir,
-                        const Options& options,
-                        const std::string& entry_point);
-
-/// Generate GLSL for a program, according to a set of configuration options.
-/// The result will contain the GLSL and supplementary information, or failure.
-/// information.
-/// @param program the program to translate to GLSL
-/// @param options the configuration options to use when generating GLSL
-/// @param entry_point the entry point to generate GLSL for
-/// @returns the resulting GLSL and supplementary information, or failure
-Result<Output> Generate(const Program& program,
                         const Options& options,
                         const std::string& entry_point);
 

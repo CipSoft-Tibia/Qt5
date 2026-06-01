@@ -70,8 +70,10 @@ void QSplineControlAnimation::animate()
     // Hierarchy should look like GraphAnimation -> ParallelAnimationGroup -> GraphTransition -> SplineSeries
     auto series = qobject_cast<QSplineSeries *>(parent()->parent()->parent());
 
-    if (!series || series->points().size() < 1)
+    if (!series || series->points().size() < 1) {
+        qCDebug(lcAnimation, "Series is nullptr or series point list is empty");
         return;
+    }
 
     auto pointList = series->points();
     auto &cPoints = series->d_func()->m_controlPoints;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlpropertyvalidator_p.h"
 
@@ -645,26 +646,25 @@ QQmlError QQmlPropertyValidator::validateLiteralBinding(
 */
 bool QQmlPropertyValidator::canCoerce(QMetaType to, QQmlPropertyCache::ConstPtr fromMo) const
 {
-    QQmlPropertyCache::ConstPtr toMo = QQmlMetaType::rawPropertyCacheForType(to);
+    if (QQmlMetaType::canConvert(fromMo, to))
+        return true;
 
-    if (toMo.isNull()) {
-        // if we have an inline component from the current file,
-        // it is not properly registered at this point, as registration
-        // only occurs after the whole file has been validated
-        // Therefore we need to check the ICs here
-        for (const auto& icDatum : compilationUnit->inlineComponentData) {
-            if (icDatum.qmlType.typeId() == to) {
-                toMo = compilationUnit->propertyCaches.at(icDatum.objectIndex);
-                break;
-            }
+    // if we have an inline component from the current file,
+    // it is not properly registered at this point, as registration
+    // only occurs after the whole file has been validated
+    // Therefore we need to check the ICs here
+    for (const auto &icDatum : std::as_const(compilationUnit->inlineComponentData)) {
+        if (icDatum.qmlType.typeId() != to)
+            continue;
+
+        const auto toMo = compilationUnit->propertyCaches.at(icDatum.objectIndex);
+        for (QQmlPropertyCache::ConstPtr parent = fromMo; parent; parent = parent->parent()) {
+            if (parent == toMo)
+                return true;
         }
+        return false;
     }
 
-    while (fromMo) {
-        if (fromMo == toMo)
-            return true;
-        fromMo = fromMo->parent();
-    }
     return false;
 }
 

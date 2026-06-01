@@ -102,7 +102,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     application, please \l{Information Property List Files}
     {point the build system to your custom \c Info.plist}.
 
-    \sa {Information Property List Files}.
+    \sa {Information Property List Files}
 
     \section3 Android
     \target android-uses-permission
@@ -124,6 +124,10 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     The relevant permission names are described in the documentation
     for each permission type.
 
+    \note When using this API, the \c{<!-- %%INSERT_PERMISSIONS -->} tag must be present in
+    the AndroidManifest.xml. For further information on the use of this tag,
+    see \l {Qt Permissions and Features}
+
     \sa {Qt Creator: Editing Manifest Files}.
 
     \section1 Available Permissions
@@ -131,6 +135,10 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     The following permissions types are available:
 
     \annotatedlist permissions
+
+    \note The available permission types cover core functionality of Qt modules
+    like Qt Multimedia and Qt Positioning, but do not encompass all platform-specific
+    permissions. Custom permission types are not currently supported.
 
     \section1 Best Practices
 

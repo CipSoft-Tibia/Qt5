@@ -4,7 +4,7 @@
 
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
-import * as Root from '../../core/root/root.js';
+import type * as Root from '../../core/root/root.js';
 import * as Console from '../../panels/console/console.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
@@ -30,21 +30,17 @@ const UIStrings = {
    * @description Message shown to the user if the DevTools locale is not
    * supported.
    */
-  wrongLocale: 'To use this feature, update your Language preference in DevTools Settings to English',
-  /**
-   * @description Message shown to the user if the age check is not successful.
-   */
-  ageRestricted: 'This feature is only available to users who are 18 years of age or older',
+  wrongLocale: 'To use this feature, set your language preference to English in DevTools settings.',
   /**
    * @description Message shown to the user if the user's region is not
    * supported.
    */
-  geoRestricted: 'This feature is unavailable in your region',
+  geoRestricted: 'This feature is unavailable in your region.',
   /**
    * @description Message shown to the user if the enterprise policy does
    * not allow this feature.
    */
-  policyRestricted: 'Your organization turned off this feature. Contact your administrators for more information.',
+  policyRestricted: 'This setting is managed by your administrator.',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/explain/explain-meta.ts', UIStrings);
 const i18nLazyString = i18n.i18n.getLazilyComputedLocalizedString.bind(undefined, str_);
@@ -88,10 +84,6 @@ function isLocaleRestricted(): boolean {
   return !devtoolsLocale.locale.startsWith('en-');
 }
 
-function isAgeRestricted(config?: Root.Runtime.HostConfig): boolean {
-  return config?.aidaAvailability?.blockedByAge === true;
-}
-
 function isGeoRestricted(config?: Root.Runtime.HostConfig): boolean {
   return config?.aidaAvailability?.blockedByGeo === true;
 }
@@ -105,39 +97,30 @@ function isFeatureEnabled(config?: Root.Runtime.HostConfig): boolean {
 }
 
 Common.Settings.registerSettingExtension({
-  // TODO(crbug.com/350668580) SettingCategory.NONE once experiment GEN_AI_SETTINGS_PANEL is enabled
-  category: Common.Settings.SettingCategory.CONSOLE,
+  category: Common.Settings.SettingCategory.NONE,
   settingName: setting,
   settingType: Common.Settings.SettingType.BOOLEAN,
   title: i18nLazyString(UIStrings.enableConsoleInsights),
-  defaultValue: true,
-  // TODO(crbug.com/350668580) set to false once experiment GEN_AI_SETTINGS_PANEL is enabled
-  reloadRequired: true,
+  defaultValue: false,
+  reloadRequired: false,
   condition: config => isFeatureEnabled(config),
   disabledCondition: config => {
-    if (isLocaleRestricted()) {
-      return {disabled: true, reason: i18nString(UIStrings.wrongLocale)};
-    }
-    if (isAgeRestricted(config)) {
-      return {disabled: true, reason: i18nString(UIStrings.ageRestricted)};
-    }
+    const reasons = [];
     if (isGeoRestricted(config)) {
-      return {disabled: true, reason: i18nString(UIStrings.geoRestricted)};
+      reasons.push(i18nString(UIStrings.geoRestricted));
     }
     if (isPolicyRestricted(config)) {
-      return {disabled: true, reason: i18nString(UIStrings.policyRestricted)};
+      reasons.push(i18nString(UIStrings.policyRestricted));
+    }
+    if (isLocaleRestricted()) {
+      reasons.push(i18nString(UIStrings.wrongLocale));
+    }
+    if (reasons.length > 0) {
+      return {disabled: true, reasons};
     }
     return {disabled: false};
   },
 });
-
-function getConsoleInsightsEnabledSetting(): Common.Settings.Setting<unknown>|undefined {
-  try {
-    return Common.Settings.moduleSetting('console-insights-enabled');
-  } catch {
-    return;
-  }
-}
 
 for (const action of actions) {
   UI.ActionRegistration.registerActionExtension({
@@ -148,12 +131,7 @@ for (const action of actions) {
       return new Explain.ActionDelegate();
     },
     condition: config => {
-      if (Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.GEN_AI_SETTINGS_PANEL)) {
         return isFeatureEnabled(config) && !isPolicyRestricted(config);
-      }
-      const consoleInsightsSetting = getConsoleInsightsEnabledSetting();
-      return (consoleInsightsSetting?.getIfNotDisabled() === true) && isFeatureEnabled(config) &&
-          !isAgeRestricted(config) && !isGeoRestricted(config) && !isLocaleRestricted() && !isPolicyRestricted(config);
     },
   });
 }

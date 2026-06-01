@@ -33,6 +33,10 @@ exampledirs += ../../../examples/webview
 imagedirs  += images
 
 examplesinstallpath = webview
+
+# Path to the root of qtwebview (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 depends = qtcore qtdoc qtgui qtquick qtqml qtwebengine qmake qtcmake
 
 manifestmeta.highlighted.names = "QtWebView/Qt WebView Examples - Minibrowser"

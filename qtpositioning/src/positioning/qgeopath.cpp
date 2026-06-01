@@ -398,17 +398,21 @@ const QList<QGeoCoordinate> &QGeoPathPrivate::path() const
 bool QGeoPathPrivate::lineContains(const QGeoCoordinate &coordinate) const
 {
     // Unoptimized approach:
-    // - consider each segment of the path
-    // - project it into mercator space (rhumb lines are straight in mercator space)
-    // - find closest point to coordinate
+    // - consider each segment of the path (a rhumb line)
+    // - project it into Mercator space (in which it is straight)
+    // - find Mercator-closest point to coordinate
     // - unproject the closest point
     // - calculate coordinate to closest point distance with distanceTo()
-    // - if not within lineRadius, advance
+    // - if not within lineRadius, advance to next segment.
     //
-    // To keep wrapping into the equation:
-    //   If the mercator x value of a coordinate of the line, or the coordinate parameter, is less
-    // than mercator(m_bbox).x, add that to the conversion.
+    // When considering each segment, wrap its start-point to x-within 0.5 of
+    // its end-point and (initially) the target point to x-within the mid-point
+    // of the thus-narrowed segment. That position will usually find the actual
+    // Mercator-closest point and makes it easy to test for the obscure case
+    // where a different wrap-position for it might work better; when that is
+    // possible, try that other wrap-position for it in a second pass.
 
+    // Should be redundant now, unless other functions rely on this one's side-effect:
     if (m_bboxDirty)
         const_cast<QGeoPathPrivate &>(*this).computeBoundingBox();
 
@@ -419,50 +423,69 @@ bool QGeoPathPrivate::lineContains(const QGeoCoordinate &coordinate) const
     else if (m_path.size() == 1)
         return (m_path[0].distanceTo(coordinate) <= lineRadius);
 
-    QDoubleVector2D p = QWebMercator::coordToMercator(coordinate);
-    if (p.x() < m_leftBoundWrapped)
-        p.setX(p.x() + m_leftBoundWrapped);  // unwrap X
-
-    QDoubleVector2D a;
-    QDoubleVector2D b;
-    if (!m_path.isEmpty()) {
-        a = QWebMercator::coordToMercator(m_path[0]);
-        if (a.x() < m_leftBoundWrapped)
-            a.setX(a.x() + m_leftBoundWrapped);  // unwrap X
-    }
+    Q_ASSERT(m_path.size() > 1);
+    const QDoubleVector2D pt = QWebMercator::coordToMercator(coordinate);
+    QDoubleVector2D last = QWebMercator::coordToMercator(m_path[0]);
     for (qsizetype i = 1; i < m_path.size(); i++) {
-        b = QWebMercator::coordToMercator(m_path[i]);
-        if (b.x() < m_leftBoundWrapped)
-            b.setX(b.x() + m_leftBoundWrapped);  // unwrap X
-        if (b == a)
+        const QDoubleVector2D here = QWebMercator::coordToMercator(m_path[i]);
+        // Wrap last to gets its x() within ±0.5 of that of here:
+        if (here.x() > last.x() + 0.5)
+            last.setX(last.x() + 1.0);
+        else if (here.x() < last.x() - 0.5)
+            last.setX(last.x() - 1.0);
+
+        if (here == last) {
+            // The whole line segment is one point, so easy to test.
+            if (m_path[i].distanceTo(coordinate) <= lineRadius)
+                return true;
             continue;
+        }
 
-        double u = ((p.x() - a.x()) * (b.x() - a.x()) + (p.y() - a.y()) * (b.y() - a.y()) ) / (b - a).lengthSquared();
-        QDoubleVector2D intersection(a.x() + u * (b.x() - a.x()) , a.y() + u * (b.y() - a.y()) );
+        QDoubleVector2D p = pt;
+        {
+            QDoubleVector2D mid = (last + here) / 2.0;
+            // Wrap p to gets its x() within ±0.5 of that of mid:
+            if (p.x() > mid.x() + 0.5)
+                p.setX(p.x() - 1.0);
+            else if (p.x() < mid.x() - 0.5)
+                p.setX(p.x() + 1.0);
+        }
+        // See comment on updating p after j == 0; loop to catch the corner case.
+        for (int j = 0; j < 2; ++j) {
+            const QDoubleVector2D pml = p - last, hml = here - last;
+            const double u = (pml.x() * hml.x() + pml.y() * hml.y()) / hml.lengthSquared();
+            // Interpolate between 0 < u < 1, use nearer end otherwise:
+            const QDoubleVector2D candidate = u > 0 ? u < 1 ? last + u * hml : here : last;
+            const double distance = coordinate.distanceTo(QWebMercator::mercatorToCoord(candidate));
+            if (distance <= lineRadius)
+                return true;
 
-        QDoubleVector2D candidate = ( (p-a).length() < (p-b).length() ) ? a : b;
-
-        if (u > 0 && u < 1
-            && (p-intersection).length() < (p-candidate).length()  ) // And it falls in the segment
-                candidate = intersection;
-
-
-        if (candidate.x() > 1.0)
-            candidate.setX(candidate.x() - m_leftBoundWrapped); // wrap X
-
-        QGeoCoordinate closest = QWebMercator::mercatorToCoord(candidate);
-
-        double distanceMeters = coordinate.distanceTo(closest);
-        if (distanceMeters <= lineRadius)
-            return true;
-
+            if (j == 0) {
+                /* Our initial p's .x() is within 0.5 of mid.x(), hence of at
+                   least one of last.x() and here.x(). If it's within 0.5 of
+                   both of these, the candidate we just tried is definitely our
+                   best bet. Otherwise - though it's very obscure and can't
+                   matter unless lineRadius is comparable with the rhumb line's
+                   distance from the planet's spin axis - there are technically
+                   two parabolic segments p could be in (y-closer to one end but
+                   x-closer to the other), that would put p further from
+                   last:here than from its more x()-distant end's wrapped
+                   version the other side of p. So wrap p to its version that
+                   would be closer to that distant end, were this to arise.
+                */
+                if (p.x() > qMin(last.x(), here.x()) + 0.5)
+                    p.setX(p.x() - 1.0);
+                else if (p.x() < qMax(last.x(), here.x()) - 0.5)
+                    p.setX(p.x() + 1.0);
+                else
+                    break;
+            }
+        }
         // swap
-        a = b;
+        last = here;
     }
 
-    // Last check if the coordinate is on the left of leftBoundMercator, but close enough to
-    // m_path[0]
-    return (m_path[0].distanceTo(coordinate) <= lineRadius);
+    return false;
 }
 
 bool QGeoPathPrivate::contains(const QGeoCoordinate &coordinate) const

@@ -38,12 +38,38 @@ modules, or to merge sets of QML modules under a common base point.
 */
 
 /*!
+\page cmake-variable-qt-qml-generate-qmlls-ini-no-cmake-calls.html
+\ingroup cmake-variables-qtqml
+
+\title QT_QML_GENERATE_QMLLS_INI_NO_CMAKE_CALLS
+
+\brief Customizes the value of no-cmake-calls in .qmlls.ini files for \QMLLS.
+\cmakevariablesince 6.10
+
+\c QT_QML_GENERATE_QMLLS_INI_NO_CMAKE_CALLS is a boolean that controls the \c no-cmake-calls value in
+\c{.qmlls.ini} files generated with the \l{QT_QML_GENERATE_QMLLS_INI} option. Set it to \c ON to disable
+CMake calls by \QMLLS.
+
+As this variable is used for IDE integration, it should normally not be set in a project itself, but
+passed to CMake via an IDE or manually by passing
+\badcode
+-DQT_QML_GENERATE_QMLLS_INI=ON -DQT_QML_GENERATE_QMLLS_INI_NO_CMAKE_CALLS=ON
+\endcode
+to the cmake executable.
+
+This variable has no effect if \l{QT_QML_GENERATE_QMLLS_INI} is disabled.
+
+\sa QT_QML_GENERATE_QMLLS_INI, {Disabling automatic CMake builds}
+*/
+
+/*!
 \page cmake-variable-qt-qml-generate-qmlls-ini.html
 \ingroup cmake-variables-qtqml
 
 \title QT_QML_GENERATE_QMLLS_INI
 
 \brief Enables autogeneration of .qmlls.ini files for \QMLLS.
+\warning This variable is deprecated since Qt 6.10. No replacement needed.
 \cmakevariablesince 6.7
 
 \c QT_QML_GENERATE_QMLLS_INI is a boolean that describes whether
@@ -71,6 +97,7 @@ to your top-level project \c{.gitignore}, for example.
 The globbing is required because .qmlls.ini files are generated in \e{all source
 subdirectories} that define QML Modules.
 
+\sa QT_QML_GENERATE_QMLLS_INI_NO_CMAKE_CALLS, {Disabling automatic CMake builds}
 */
 
 /*!

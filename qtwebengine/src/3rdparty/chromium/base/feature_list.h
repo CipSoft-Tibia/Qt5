@@ -26,17 +26,13 @@
 #include "base/memory/raw_ptr.h"
 #include "base/synchronization/lock.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 
 namespace base {
 
 class FieldTrial;
 class FieldTrialList;
 class PersistentMemoryAllocator;
-
-#if BUILDFLAG(IS_CHROMEOS_ASH)
 class FeatureVisitor;
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 // Specifies whether a given feature is enabled or disabled by default.
 // NOTE: The actual runtime state may be different, due to a field trial or a
@@ -109,18 +105,22 @@ enum FeatureState {
 //
 // It should *not* be defined in header files; do not use this macro in header
 // files.
-#define BASE_FEATURE_PARAM(T, feature_object_name, feature, name, \
-                           default_value)                         \
-  namespace field_trial_params_internal {                         \
-  T GetFeatureParamWithCacheFor##feature_object_name(             \
-      const base::FeatureParam<T>* feature_param) {               \
-    static const T param = feature_param->GetWithoutCache();      \
-    return param;                                                 \
-  }                                                               \
-  } /* field_trial_params_internal */                             \
-  constinit const base::FeatureParam<T> feature_object_name(      \
-      feature, name, default_value,                               \
-      &field_trial_params_internal::                              \
+#define BASE_FEATURE_PARAM(T, feature_object_name, feature, name,       \
+                           default_value)                               \
+  namespace field_trial_params_internal {                               \
+  T GetFeatureParamWithCacheFor##feature_object_name(                   \
+      const base::FeatureParam<T>* feature_param) {                     \
+    static const typename base::internal::FeatureParamTraits<           \
+        T>::CacheStorageType storage =                                  \
+        base::internal::FeatureParamTraits<T>::ToCacheStorageType(      \
+            feature_param->GetWithoutCache());                          \
+    return base::internal::FeatureParamTraits<T>::FromCacheStorageType( \
+        storage);                                                       \
+  }                                                                     \
+  } /* field_trial_params_internal */                                   \
+  constinit const base::FeatureParam<T> feature_object_name(            \
+      feature, name, default_value,                                     \
+      &field_trial_params_internal::                                    \
           GetFeatureParamWithCacheFor##feature_object_name)
 
 // Same as BASE_FEATURE_PARAM() but used for enum type parameters with on extra
@@ -388,7 +388,7 @@ class BASE_EXPORT FeatureList {
                                     FieldTrial* field_trial);
 
   // Registers a field trial to override the enabled state of the specified
-  // feature to |override_state|. Command-line overrides still take precedence
+  // feature to `override_state`. Command-line overrides still take precedence
   // over field trials, so this will have no effect if the feature is being
   // overridden from the command-line. The associated field trial will be
   // activated when the feature state for this feature is queried. This should
@@ -402,10 +402,14 @@ class BASE_EXPORT FeatureList {
   // before SetInstance().
   // The ordering of calls with respect to InitFromCommandLine(),
   // RegisterFieldTrialOverride(), etc. matters. The first call wins out,
-  // because the |overrides_| map uses insert(), which retains the first
-  // inserted entry and does not overwrite it on subsequent calls to insert().
+  // because the `overrides_` map uses emplace(), which retains the first
+  // inserted entry and does not overwrite it on subsequent calls to emplace().
+  //
+  // If `replace_use_default_overrides` is true, if there is an existing entry
+  // with type OVERRIDE_USE_DEFAULT, that entry will be replaced.
   void RegisterExtraFeatureOverrides(
-      const std::vector<FeatureOverrideInfo>& extra_overrides);
+      const std::vector<FeatureOverrideInfo>& extra_overrides,
+      bool replace_use_default_overrides = false);
 
   // Loops through feature overrides and serializes them all into |allocator|.
   void AddFeaturesToAllocator(PersistentMemoryAllocator* allocator);
@@ -580,15 +584,15 @@ class BASE_EXPORT FeatureList {
   // only be called on a FeatureList that was set with SetEarlyAccessInstance().
   void AddEarlyAllowedFeatureForTesting(std::string feature_name);
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
   // Allows a visitor to record override state, parameters, and field trial
-  // associated with each feature.
+  // associated with each feature. Optionally, provide a prefix which filters
+  // the visited features.
   //
   // NOTE: This is intended only for the special case of needing to get all
-  // overrides. This use case is specific to CrOS-Ash. Most users should call
-  // IsEnabled() to query a feature's state.
-  static void VisitFeaturesAndParams(FeatureVisitor& visitor);
-#endif  // BULDFLAG(IS_CHROMEOS_ASH)
+  // overrides. This use case is specific to CrOS-Ash and V8. Most users should
+  // call IsEnabled() to query a feature's state.
+  static void VisitFeaturesAndParams(FeatureVisitor& visitor,
+                                     std::string_view filter_prefix = "");
 
  private:
   FRIEND_TEST_ALL_PREFIXES(FeatureListTest, CheckFeatureIdentity);
@@ -670,11 +674,15 @@ class BASE_EXPORT FeatureList {
   // will take precedence over the feature's default state. If |field_trial| is
   // not null, registers the specified field trial object to be associated with
   // the feature, which will activate the field trial when the feature state is
-  // queried. If an override is already registered for the given feature, it
-  // will not be changed.
+  // queried.
+  //
+  // If an override is already registered for the given feature, it will not be
+  // changed, unless `replace_use_default_overrides` is true and the existing
+  // entry has type OVERRIDE_USE_DEFAULT.
   void RegisterOverride(std::string_view feature_name,
                         OverrideState overridden_state,
-                        FieldTrial* field_trial);
+                        FieldTrial* field_trial,
+                        bool replace_use_default_overrides = false);
 
   // Implementation of GetFeatureOverrides() with a parameter that specifies
   // whether only command-line enabled overrides should be emitted. See that

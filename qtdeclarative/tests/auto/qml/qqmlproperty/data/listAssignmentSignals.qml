@@ -10,4 +10,8 @@ Item {
     function assignList() {
         targetList1 = sourceList
     }
+
+    function assignList2() {
+        targetList1 = [sourceList[2], sourceList[1], sourceList[0]]
+    }
 }

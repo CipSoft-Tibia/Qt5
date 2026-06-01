@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QJSMANAGEDVALUE_H
 #define QJSMANAGEDVALUE_H
@@ -120,6 +121,7 @@ public:
 private:
     friend class QJSValue;
     friend class QJSEngine;
+    friend class QJSManagedValuePrivate;
 
     QJSManagedValue(QV4::ExecutionEngine *engine);
     QV4::Value *d = nullptr;

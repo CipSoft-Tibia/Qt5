@@ -4,6 +4,8 @@
 include(../../httpserver/httpserver.cmake)
 include(../../util/util.cmake)
 
+add_subdirectory(mock-delegates)
+
 qt_internal_add_test(tst_qmltests
     SOURCES
         tst_qmltests.cpp
@@ -13,6 +15,7 @@ qt_internal_add_test(tst_qmltests
         Qt::TestPrivate
         Qt::WebEngineQuick
         Qt::WebEngineCorePrivate
+        Qt::WebEngineQuickTestMockDelegatesQml
         Test::HttpServer
         Test::Util
 )
@@ -63,6 +66,7 @@ set(testList
     tst_viewSource.qml
     tst_save.qml
     tst_profilePrototype.qml
+    tst_frames.qml
 )
 
 # QTBUG-128652

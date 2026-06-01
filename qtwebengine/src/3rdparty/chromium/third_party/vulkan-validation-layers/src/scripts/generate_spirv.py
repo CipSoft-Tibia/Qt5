@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2016-2024 Valve Corporation
-# Copyright (c) 2016-2024 LunarG, Inc.
-# Copyright (c) 2016-2024 Google Inc.
+# Copyright (c) 2016-2025 Valve Corporation
+# Copyright (c) 2016-2025 LunarG, Inc.
+# Copyright (c) 2016-2025 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ def compile(gpu_shaders_dir, filename, glslang_validator, spirv_opt, target_env)
     try:
         args = [spirv_opt, tmpfile, '-o', tmpfile]
 
-        # gpu_shaders_constants.h adds many constants not needed and it slows down linking time
+        # gpuav_shaders_constants.h adds many constants not needed and it slows down linking time
         args += ['--eliminate-dead-const']
         # Runs some basic optimizations that don't touch CFG for goal of making linking functions smaller (and faster)
         args += ['--eliminate-local-single-block']
@@ -117,9 +117,9 @@ def write(words, filename, apiname, outdir = None):
 
 /***************************************************************************
  *
- * Copyright (c) 2021-2024 The Khronos Group Inc.
- * Copyright (c) 2021-2024 Valve Corporation
- * Copyright (c) 2021-2024 LunarG, Inc.
+ * Copyright (c) 2021-2025 The Khronos Group Inc.
+ * Copyright (c) 2021-2025 Valve Corporation
+ * Copyright (c) 2021-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -149,9 +149,9 @@ extern const uint32_t {name}[];
 
 /***************************************************************************
  *
- * Copyright (c) 2021-2024 The Khronos Group Inc.
- * Copyright (c) 2021-2024 Valve Corporation
- * Copyright (c) 2021-2024 LunarG, Inc.
+ * Copyright (c) 2021-2025 The Khronos Group Inc.
+ * Copyright (c) 2021-2025 Valve Corporation
+ * Copyright (c) 2021-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -189,66 +189,8 @@ extern const uint32_t {name}[];
     with open(out_file_source, "w") as f:
         print(source, end="", file=f)
 
-
-def write_inst_hash(shaders_to_compile, outdir=None):
-    # Build a hash of the git hash for all instrumentation shaders
-    hash_string = ''
-    for shader in shaders_to_compile:
-        if os.path.basename(shader).find('instrumentation') == -1:
-            continue
-        result = subprocess.run(["git", "hash-object", shader], capture_output=True, text=True)
-        git_hash = result.stdout.rstrip('\n')
-
-        try:
-            int(git_hash, 16)
-        except ValueError:
-            raise ValueError(f'value for GPU_AV_SHADER_GIT_HASH ({git_hash}) must be a SHA1 hash.')
-        if len(git_hash) != 40:
-            raise ValueError(f'value for GPU_AV_SHADER_GIT_HASH ({git_hash}) must be a SHA1 hash.')
-        hash_string += git_hash
-
-    out = []
-    out.append(f'''
-// *** THIS FILE IS GENERATED - DO NOT EDIT ***
-// See {os.path.basename(__file__)} for modifications
-
-/***************************************************************************
- *
- * Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
- * Copyright (c) 2015-2024 Google Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ****************************************************************************/
-
-#pragma once
-
-''')
-
-    out.append(f'#define GPU_AV_SHADER_GIT_HASH "{hashlib.sha1(hash_string.encode("utf-8")).hexdigest()}"\n')
-
-    if outdir:
-      out_file = os.path.join(outdir, 'layers/vulkan/generated')
-    else:
-      out_file = common_ci.RepoRelative('layers/vulkan/generated')
-    os.makedirs(out_file, exist_ok=True)
-    out_file = os.path.join(out_file, "gpu_av_shader_hash.h")
-    with open(out_file, 'w') as outfile:
-        outfile.write("".join(out))
-
 def main():
-    parser = argparse.ArgumentParser(description='Generate spirv code for this repository, see layers/gpu/shaders/README.md for more deatils')
+    parser = argparse.ArgumentParser(description='Generate spirv code for this repository, see layers/gpuav/shaders/README.md for more deatils')
     parser.add_argument('--api',
                         default='vulkan',
                         choices=['vulkan'],
@@ -261,15 +203,15 @@ def main():
     args = parser.parse_args()
 
     shaders_to_compile = []
-    # Get all shaders in gpu/shaders folder
+    # Get all shaders in gpuav/shaders folder
     shader_type = ['vert', 'tesc', 'tese', 'geom', 'frag', 'comp', 'mesh', 'task', 'rgen', 'rint', 'rahit', 'rchit', 'rmiss', 'rcall']
-    gpu_shaders_dir = common_ci.RepoRelative('layers/gpu/shaders')
-    diagnostic_shaders = common_ci.RepoRelative('layers/gpu/shaders/cmd_validation')
+    gpu_shaders_dir = common_ci.RepoRelative('layers/gpuav/shaders')
+    diagnostic_shaders = common_ci.RepoRelative('layers/gpuav/shaders/validation_cmd')
     for filename in os.listdir(diagnostic_shaders):
         if (filename.split(".")[-1] in shader_type):
             shaders_to_compile.append(os.path.join(diagnostic_shaders, filename))
 
-    instrumentation_shaders = common_ci.RepoRelative('layers/gpu/shaders/instrumentation')
+    instrumentation_shaders = common_ci.RepoRelative('layers/gpuav/shaders/instrumentation')
     for filename in os.listdir(instrumentation_shaders):
         if (filename.split(".")[-1] in shader_type):
             shaders_to_compile.append(os.path.join(instrumentation_shaders, filename))
@@ -303,10 +245,6 @@ def main():
     for shader in shaders_to_compile:
         words = compile(gpu_shaders_dir, shader, glslang, spirv_opt, args.targetenv)
         write(words, shader, args.api, args.outdir)
-
-    # Don't want to hash if just generating a single shader for testings
-    if (len(shaders_to_compile) > 1):
-        write_inst_hash(shaders_to_compile, args.outdir)
 
 if __name__ == '__main__':
   main()

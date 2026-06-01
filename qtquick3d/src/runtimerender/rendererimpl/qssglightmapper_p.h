@@ -16,6 +16,7 @@
 //
 
 #include <QtQuick3DRuntimeRender/private/qtquick3druntimerenderglobal_p.h>
+#include <rhi/qrhi.h>
 #include <ssg/qssglightmapper.h>
 
 #include <QString>
@@ -27,16 +28,18 @@ struct QSSGBakedLightingModel;
 class QSSGRhiContext;
 class QSSGRenderer;
 struct QSSGRenderModel;
+class QOffscreenSurface;
 
 class QSSGLightmapper
 {
 public:
     enum class BakingStatus {
         None,
-        Progress,
+        Info,
         Warning,
         Error,
         Cancelled,
+        Failed,
         Complete
     };
 
@@ -44,29 +47,44 @@ public:
         bool cancelled = false;
     };
 
-    typedef std::function<void(BakingStatus, std::optional<QString>, BakingControl*)> Callback;
+    /*
+     * Payload:
+     *  int    status               (BakingStatus)
+     *  string stage
+     *  string message
+     *  qint64 totalTimeRemaining   (in ms)
+     *  double totalProgress        (Range 0 - 1)
+     */
+    typedef std::function<void(const QVariantMap &payload, BakingControl*)> Callback;
 
-    QSSGLightmapper(QSSGRhiContext *rhiCtx, QSSGRenderer *renderer);
+    QSSGLightmapper();
     ~QSSGLightmapper();
     void reset();
+
+    bool setupLights(const QSSGRenderer &renderer);
     void setOptions(const QSSGLightmapperOptions &options);
     void setOutputCallback(Callback callback);
     qsizetype add(const QSSGBakedLightingModel &model);
-    bool bake();
+    void setRhiBackend(QRhi::Implementation backend);
+    void setDenoiseOnly(bool value);
 
-    enum class LightmapAsset {
-        LightmapImage,
-        MeshWithLightmapUV,
-        LightmapImageList
-    };
-    static QString lightmapAssetPathForLoad(const QSSGRenderModel &model, LightmapAsset asset);
-    static QString lightmapAssetPathForSave(const QSSGRenderModel &model, LightmapAsset asset, const QString& outputFolder = {});
-    static QString lightmapAssetPathForSave(LightmapAsset asset, const QString& outputFolder = {});
+    // NOTE: since add() contains references to objects in the
+    // running scene we need to call the functions in the following order:
+    // add(), run(), waitForInit().
+    // OpenGL requires a fallback surface created on the main thread to create the
+    // RHI object, so it is provided as a pointer.
+    void run(QOffscreenSurface *fallbackSurface);
+    // waitForInit() waits until all models have been processed and are therefore
+    // not referenced anymore and it is safe to go back to rendering the scene.
+    // This should be called after run(), otherwise it will be stuck in a deadlock.
+    void waitForInit();
 
 private:
 #ifdef QT_QUICK3D_HAS_LIGHTMAPPER
     QSSGLightmapperPrivate *d = nullptr;
 #endif
+    bool bake();
+    bool denoise();
 };
 
 QT_END_NAMESPACE

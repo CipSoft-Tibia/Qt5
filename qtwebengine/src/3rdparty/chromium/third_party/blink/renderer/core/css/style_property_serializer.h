@@ -77,6 +77,8 @@ class CORE_EXPORT StylePropertySerializer {
   String ScrollTimelineValue() const;
   String ViewTimelineValue() const;
   String AnimationRangeShorthandValue() const;
+  String AnimationTriggerRangeShorthandValue() const;
+  String AnimationTriggerExitRangeShorthandValue() const;
   String FontValue() const;
   String FontSynthesisValue() const;
   String FontVariantValue() const;
@@ -90,7 +92,6 @@ class CORE_EXPORT StylePropertySerializer {
   String ContainIntrinsicSizeValue() const;
   String WhiteSpaceValue() const;
   String ScrollStartValue() const;
-  String ScrollStartTargetValue() const;
   String PositionTryValue(const StylePropertyShorthand&) const;
   String GetPropertyText(const CSSPropertyName&,
                          const String& value,
@@ -115,8 +116,7 @@ class CORE_EXPORT StylePropertySerializer {
     STACK_ALLOCATED();
 
    public:
-    explicit PropertyValueForSerializer(
-        CSSPropertyValueSet::PropertyReference property)
+    explicit PropertyValueForSerializer(const CSSPropertyValue& property)
         : value_(&property.Value()),
           name_(property.Name()),
           is_important_(property.IsImportant()) {}

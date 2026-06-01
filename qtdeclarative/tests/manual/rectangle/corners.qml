@@ -21,7 +21,7 @@ Item {
         }
         Slider {
             id: slider
-            from: 0
+            from: -100
             value: 25
             to: 200
             enabled: checkBox.checked
@@ -42,7 +42,7 @@ Item {
             }
             Slider {
                 id: radiusSlider
-                from: 0
+                from: -100
                 value: 25
                 to: 200
             }

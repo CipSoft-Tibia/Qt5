@@ -85,7 +85,7 @@ inline BaselineGroupType DetermineBaselineGroup(
       return is_ltr ? end_group : start_group;
   }
 
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
   return BaselineGroupType::kMinor;
 }
 

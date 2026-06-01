@@ -56,13 +56,17 @@ bool SDLVideoPlayer::RenderWhileIdle(
 
   if (state() == kError) {
     // Paint "red splash" to indicate an error state.
-    constexpr struct { int r = 128, g = 0, b = 0, a = 255; } kRedSplashColor;
+    constexpr struct {
+      int r = 128, g = 0, b = 0, a = 255;
+    } kRedSplashColor;
     SDL_SetRenderDrawColor(&renderer_, kRedSplashColor.r, kRedSplashColor.g,
                            kRedSplashColor.b, kRedSplashColor.a);
     SDL_RenderClear(&renderer_);
   } else if (state() == kWaitingForFirstFrame || !frame) {
     // Paint "blue splash" to indicate the "waiting for first frame" state.
-    constexpr struct { int r = 0, g = 0, b = 128, a = 255; } kBlueSplashColor;
+    constexpr struct {
+      int r = 0, g = 0, b = 128, a = 255;
+    } kBlueSplashColor;
     SDL_SetRenderDrawColor(&renderer_, kBlueSplashColor.r, kBlueSplashColor.g,
                            kBlueSplashColor.b, kBlueSplashColor.a);
     SDL_RenderClear(&renderer_);
@@ -77,7 +81,7 @@ ErrorOr<Clock::time_point> SDLVideoPlayer::RenderNextFrame(
   OSP_CHECK(frame.decoded_frame);
   const AVFrame& picture = *frame.decoded_frame;
 
-  // Punt if the |picture| format is not compatible with those supported by SDL.
+  // Punt if the `picture` format is not compatible with those supported by SDL.
   const uint32_t sdl_format = GetSDLPixelFormat(picture);
   if (sdl_format == SDL_PIXELFORMAT_UNKNOWN) {
     std::ostringstream error;
@@ -86,7 +90,7 @@ ErrorOr<Clock::time_point> SDLVideoPlayer::RenderNextFrame(
   }
 
   // If there is already a SDL texture, check that its format and size matches
-  // that of |picture|. If not, release the existing texture.
+  // that of `picture`. If not, release the existing texture.
   if (texture_) {
     uint32_t texture_format = SDL_PIXELFORMAT_UNKNOWN;
     int texture_width = -1;
@@ -100,7 +104,7 @@ ErrorOr<Clock::time_point> SDLVideoPlayer::RenderNextFrame(
   }
 
   // If necessary, recreate a SDL texture having the same format and size as
-  // that of |picture|.
+  // that of `picture`.
   if (!texture_) {
     const auto EvalDescriptionString = [&] {
       std::ostringstream error;
@@ -120,7 +124,7 @@ ErrorOr<Clock::time_point> SDLVideoPlayer::RenderNextFrame(
     }
   }
 
-  // Upload the |picture_| to the SDL texture.
+  // Upload the `picture_` to the SDL texture.
   void* pixels = nullptr;
   int stride = 0;
   SDL_LockTexture(texture_.get(), nullptr, &pixels, &stride);

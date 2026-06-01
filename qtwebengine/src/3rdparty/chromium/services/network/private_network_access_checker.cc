@@ -189,9 +189,7 @@ Result PrivateNetworkAccessChecker::CheckInternal(
     return Result::kBlockedByLoadOption;
   }
 
-  if (is_potentially_trustworthy_same_origin_ &&
-      base::FeatureList::IsEnabled(
-          features::kLocalNetworkAccessAllowPotentiallyTrustworthySameOrigin)) {
+  if (is_potentially_trustworthy_same_origin_) {
     return Result::kAllowedPotentiallyTrustworthySameOrigin;
   }
 
@@ -265,9 +263,7 @@ Result PrivateNetworkAccessChecker::CheckInternal(
   // added to the `PrivateNetworkRequestPolicy` enum.
   switch (policy) {
     case Policy::kAllow:
-      NOTREACHED_IN_MIGRATION();  // Should have been handled by the if
-                                  // statement above.
-      return Result::kAllowedByPolicyAllow;
+      NOTREACHED();  // Should have been handled by the if statement above.
     case Policy::kWarn:
       return Result::kAllowedByPolicyWarn;
     case Policy::kBlock:

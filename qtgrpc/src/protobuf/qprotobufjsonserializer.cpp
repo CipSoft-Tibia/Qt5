@@ -1,8 +1,10 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <QtProtobuf/qprotobufjsonserializer.h>
 
+#include <QtProtobuf/private/qtprotobuf-config_p.h>
 #include <QtProtobuf/private/protobuffieldpresencechecker_p.h>
 #include <QtProtobuf/private/protobufscalarjsonserializers_p.h>
 #include <QtProtobuf/private/qprotobufdeserializerbase_p.h>
@@ -18,7 +20,9 @@
 #include <QtCore/qjsonarray.h>
 #include <QtCore/qjsondocument.h>
 #include <QtCore/qjsonobject.h>
-#include <QtCore/qreadwritelock.h>
+#if !QT_CONFIG(protobuf_unsafe_registry)
+#    include <QtCore/qreadwritelock.h>
+#endif
 #include <QtCore/qtimezone.h>
 #include <QtCore/qvariant.h>
 
@@ -52,13 +56,17 @@ struct JsonHandlerRegistry
     void registerHandler(QMetaType metaType, QtProtobufPrivate::CustomJsonSerializer serializer,
                          QtProtobufPrivate::CustomJsonDeserializer deserializer)
     {
+#if !QT_CONFIG(protobuf_unsafe_registry)
         QWriteLocker locker(&m_lock);
+#endif
         m_registry[metaType] = { serializer, deserializer };
     }
 
     QtProtobufPrivate::CustomJsonSerializer findSerializer(QMetaType metaType)
     {
+#if !QT_CONFIG(protobuf_unsafe_registry)
         QReadLocker locker(&m_lock);
+#endif
         const auto it = m_registry.constFind(metaType);
         if (it != m_registry.constEnd())
             return it.value().first;
@@ -67,7 +75,9 @@ struct JsonHandlerRegistry
 
     QtProtobufPrivate::CustomJsonDeserializer findDeserializer(QMetaType metaType)
     {
+#if !QT_CONFIG(protobuf_unsafe_registry)
         QReadLocker locker(&m_lock);
+#endif
         const auto it = m_registry.constFind(metaType);
         if (it != m_registry.constEnd())
             return it.value().second;
@@ -77,7 +87,9 @@ struct JsonHandlerRegistry
 private:
     using Handler = std::pair<QtProtobufPrivate::CustomJsonSerializer,
                               QtProtobufPrivate::CustomJsonDeserializer>;
+#if !QT_CONFIG(protobuf_unsafe_registry)
     QReadWriteLock m_lock;
+#endif
     QHash<QMetaType, Handler> m_registry;
 };
 Q_GLOBAL_STATIC(JsonHandlerRegistry, jsonHandlersRegistry)

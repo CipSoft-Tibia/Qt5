@@ -22,7 +22,6 @@
 #include "base/thread_annotations.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
-#include "third_party/abseil-cpp/absl/base/attributes.h"
 #include "third_party/webrtc/rtc_base/physical_socket_server.h"
 #include "third_party/webrtc_overrides/api/location.h"
 #include "third_party/webrtc_overrides/metronome_source.h"
@@ -33,7 +32,7 @@ namespace {
 
 constexpr base::TimeDelta kTaskLatencySampleDuration = base::Seconds(3);
 
-ABSL_CONST_INIT thread_local ThreadWrapper* jingle_thread_wrapper = nullptr;
+constinit thread_local ThreadWrapper* jingle_thread_wrapper = nullptr;
 
 }  // namespace
 
@@ -302,31 +301,29 @@ void ThreadWrapper::FinalizeRunTask(
 }
 
 bool ThreadWrapper::IsQuitting() {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 // All methods below are marked as not reached. See comments in the
 // header for more details.
 void ThreadWrapper::Quit() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void ThreadWrapper::Restart() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 int ThreadWrapper::GetDelay() {
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 void ThreadWrapper::Stop() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void ThreadWrapper::Run() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 }  // namespace webrtc

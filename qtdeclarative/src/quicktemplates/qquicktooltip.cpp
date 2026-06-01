@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktooltip_p.h"
 #include "qquickpopup_p_p.h"
@@ -29,6 +30,7 @@ QT_BEGIN_NAMESPACE
     tip text can be any \l{Rich Text Processing}{rich text} formatted string.
 
     \image qtquickcontrols-tooltip.png
+           {Tooltip displaying helpful text}
 
     \section2 Attached Tool Tips
 
@@ -82,6 +84,7 @@ QT_BEGIN_NAMESPACE
     the value of a slider when the handle is dragged.
 
     \image qtquickcontrols-tooltip-slider.png
+           {Tooltip attached to slider showing current value}
 
     \snippet qtquickcontrols-tooltip-slider.qml 1
 
@@ -94,6 +97,7 @@ class QQuickToolTipPrivate : public QQuickPopupPrivate
     Q_DECLARE_PUBLIC(QQuickToolTip)
 
 public:
+    QQuickToolTipPrivate();
     void startDelay();
     void stopDelay();
 
@@ -101,8 +105,6 @@ public:
     void stopTimeout();
 
     void opened() override;
-
-    Qt::WindowFlags popupWindowType() const override;
 
     QPalette defaultPalette() const override { return QQuickTheme::palette(QQuickTheme::ToolTip); }
 
@@ -112,6 +114,11 @@ public:
     QBasicTimer delayTimer;
     QBasicTimer timeoutTimer;
 };
+
+QQuickToolTipPrivate::QQuickToolTipPrivate()
+{
+    windowFlags = Qt::ToolTip;
+}
 
 void QQuickToolTipPrivate::startDelay()
 {
@@ -141,11 +148,6 @@ void QQuickToolTipPrivate::opened()
 {
     QQuickPopupPrivate::opened();
     startTimeout();
-}
-
-Qt::WindowFlags QQuickToolTipPrivate::popupWindowType() const
-{
-    return Qt::ToolTip;
 }
 
 QQuickToolTip::QQuickToolTip(QQuickItem *parent)

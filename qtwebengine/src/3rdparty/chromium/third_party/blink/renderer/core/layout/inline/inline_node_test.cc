@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/core/layout/inline/inline_node.h"
 
 #include "testing/gmock/include/gmock/gmock.h"
@@ -504,7 +499,7 @@ TEST_F(InlineNodeTest, SegmentBidiIsolate) {
 
 struct MinMaxData {
   const char* content;
-  int min_max[2];
+  std::array<int, 2> min_max;
   const char* target_style = "";
   const char* style = "";
   const char* lang = nullptr;
@@ -1705,14 +1700,31 @@ TEST_F(InlineNodeTest, FindSvgTextChunksCrash3) {
   auto* tspan = GetElementById("target");
   // A trail surrogate, then a lead surrogate.
   constexpr UChar kText[2] = {0xDE48, 0xD864};
-  tspan->appendChild(GetDocument().createTextNode(String(kText, 2u)));
-  tspan->appendChild(GetDocument().createTextNode(String(kText, 2u)));
-  tspan->appendChild(GetDocument().createTextNode(String(kText, 2u)));
-  tspan->appendChild(GetDocument().createTextNode(String(kText, 2u)));
-  tspan->appendChild(GetDocument().createTextNode(String(kText, 2u)));
-  tspan->appendChild(GetDocument().createTextNode(String(kText, 2u)));
+  const String text{base::span(kText)};
+  tspan->appendChild(GetDocument().createTextNode(text));
+  tspan->appendChild(GetDocument().createTextNode(text));
+  tspan->appendChild(GetDocument().createTextNode(text));
+  tspan->appendChild(GetDocument().createTextNode(text));
+  tspan->appendChild(GetDocument().createTextNode(text));
+  tspan->appendChild(GetDocument().createTextNode(text));
   UpdateAllLifecyclePhasesForTest();
   // Pass if no CHECK() failures in FindSvgTextChunks().
+}
+
+TEST_F(InlineNodeTest, FontFeaturesInitial) {
+  SetBodyInnerHTML(R"HTML(
+    <div id="initial"></div>
+    <div id="no-kern" style="font-kerning: none"></div>
+  )HTML");
+  const auto is_initial = [this](const char* id) {
+    const auto* layout_object = GetLayoutObjectByElementId(id);
+    FontFeatures features;
+    features.Initialize(
+        layout_object->StyleRef().GetFont().GetFontDescription());
+    return features.IsInitial();
+  };
+  EXPECT_TRUE(is_initial("initial"));
+  EXPECT_FALSE(is_initial("no-kern"));
 }
 
 TEST_F(InlineNodeTest, ShapeCacheDisabled) {
@@ -1736,16 +1748,28 @@ TEST_F(InlineNodeTest, ShapeCacheDisabled) {
 TEST_F(InlineNodeTest, ShapeCacheLongString) {
   ScopedLayoutNGShapeCacheForTest scoped_feature(true);
 
-  SetupHtml("t", "<div id=t>abcdefghijklmnopqrstuvwxyz</div>");
-  InlineNodeForTest node = CreateInlineNode();
-  node.CollectInlines();
+  for (const unsigned text_length :
+       {NGShapeCache::kMaxTextLengthOfEntries - 1,
+        NGShapeCache::kMaxTextLengthOfEntries,
+        NGShapeCache::kMaxTextLengthOfEntries + 1}) {
+    StringBuilder builder;
+    builder.Append("<div id=t>");
+    for (unsigned i = 0; i < text_length; ++i) {
+      builder.Append(static_cast<LChar>((i % 10) + '0'));
+    }
+    builder.Append("</div>");
 
-  const String& text_content(node.Text().c_str());
-  HeapVector<InlineItem>& items = node.Items();
-  ShapeResultSpacing<String> spacing(text_content, node.IsSvgText());
+    SetupHtml("t", builder.ToString());
+    InlineNodeForTest node = CreateInlineNode();
+    node.CollectInlines();
 
-  EXPECT_FALSE(
-      node.IsNGShapeCacheAllowed(text_content, nullptr, items, spacing));
+    const String& text_content(node.Text().c_str());
+    HeapVector<InlineItem>& items = node.Items();
+    ShapeResultSpacing<String> spacing(text_content, node.IsSvgText());
+
+    EXPECT_EQ(node.IsNGShapeCacheAllowed(text_content, nullptr, items, spacing),
+              text_length <= NGShapeCache::kMaxTextLengthOfEntries);
+  }
 }
 
 TEST_F(InlineNodeTest, ShapeCacheMultiItems) {

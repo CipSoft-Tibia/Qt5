@@ -1,2 +1,2 @@
-add_subdirectory(bodymovin)
-add_subdirectory(imports)
+add_subdirectory(lottie)
+add_subdirectory(qml)

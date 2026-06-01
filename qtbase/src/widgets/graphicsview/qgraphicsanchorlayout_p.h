@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGRAPHICSANCHORLAYOUT_P_H
 #define QGRAPHICSANCHORLAYOUT_P_H
@@ -315,7 +316,7 @@ class QGraphicsAnchorPrivate : public QObjectPrivate
     Q_DECLARE_PUBLIC(QGraphicsAnchor)
 
 public:
-    explicit QGraphicsAnchorPrivate(int version = QObjectPrivateVersion);
+    explicit QGraphicsAnchorPrivate(decltype(QObjectPrivateVersion) = QObjectPrivateVersion);
     ~QGraphicsAnchorPrivate();
 
     void setSpacing(qreal value);

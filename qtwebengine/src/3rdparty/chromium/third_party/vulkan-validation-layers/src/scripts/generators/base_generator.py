@@ -1,8 +1,8 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2023-2024 Valve Corporation
-# Copyright (c) 2023-2024 LunarG, Inc.
-# Copyright (c) 2023-2024 RasterGrid Kft.
+# Copyright (c) 2023-2025 Valve Corporation
+# Copyright (c) 2023-2025 LunarG, Inc.
+# Copyright (c) 2023-2025 RasterGrid Kft.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -96,14 +96,14 @@ def EnableCaching() -> None:
 class APISpecific:
     # Version object factory method
     @staticmethod
-    def createApiVersion(targetApiName: str, name: str, number: str) -> Version:
+    def createApiVersion(targetApiName: str, name: str) -> Version:
         match targetApiName:
 
             # Vulkan specific API version creation
             case 'vulkan':
                 nameApi = name.replace('VK_', 'VK_API_')
                 nameString = f'"{name}"'
-                return Version(name, nameString, nameApi, number)
+                return Version(name, nameString, nameApi)
 
 
 # This Generator Option is used across all generators.
@@ -307,9 +307,22 @@ class BaseGenerator(OutputGenerator):
                     for structName in dict[required][group]:
                         isAlias = structName in self.structAliasMap
                         structName = self.structAliasMap[structName] if isAlias else structName
+                        # An EXT struct can alias a KHR struct,
+                        # that in turns aliaes a core struct
+                        # => Try to propagate aliasing, it can safely result in a no-op
+                        isAlias = structName in self.structAliasMap
+                        structName = self.structAliasMap[structName] if isAlias else structName
                         if structName in self.vk.structs:
                             struct = self.vk.structs[structName]
                             struct.extensions.extend([extension] if extension not in struct.extensions else [])
+
+        # While we update struct alias inside other structs, the command itself might have the struct as a first level param.
+        # We use this time to update params to have the promoted name
+        # Example - https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9322
+        for command in self.vk.commands.values():
+            for member in command.params:
+                if member.type in self.structAliasMap:
+                    member.type = self.structAliasMap[member.type]
 
     def endFile(self):
         # This is the point were reg.py has ran, everything is collected
@@ -402,7 +415,7 @@ class BaseGenerator(OutputGenerator):
         else: # version
             number = interface.get('number')
             if number != '1.0':
-                self.currentVersion = APISpecific.createApiVersion(self.targetApiName, name, number)
+                self.currentVersion = APISpecific.createApiVersion(self.targetApiName, name)
                 self.vk.versions[name] = self.currentVersion
 
     def endFeature(self):

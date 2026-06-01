@@ -8,8 +8,8 @@
 #include <utility>
 
 #include "base/memory/raw_ptr.h"
+#include "base/test/icu_test_util.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -145,7 +145,7 @@ TEST_F(AccessiblePaneViewTest, SetPaneFocusAndRestore) {
   // predictable. On Mac, Deactivate() is not implemented. Note that
   // TestBarView calls set_allow_deactivate_on_esc(true), which is only
   // otherwise used in Ash.
-#if !BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS_ASH)
+#if !BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
   // Esc should deactivate the widget.
   test_view_bar->AcceleratorPressed(test_view_bar->escape_key());
   EXPECT_TRUE(widget_main->IsActive());
@@ -233,6 +233,45 @@ TEST_F(AccessiblePaneViewTest, PaneFocusTraversal) {
             test_view->GetWidget()->GetFocusManager()->GetFocusedView());
   widget->CloseNow();
   widget.reset();
+}
+
+TEST_F(AccessiblePaneViewTest, PaneFocusTraversalRespectsRTL) {
+  base::test::ScopedRestoreICUDefaultLocale scoped_locale("he");
+  auto widget = std::make_unique<Widget>();
+  Widget::InitParams params =
+      CreateParams(Widget::InitParams::CLIENT_OWNS_WIDGET,
+                   Widget::InitParams::TYPE_WINDOW_FRAMELESS);
+  params.bounds = gfx::Rect(50, 50, 650, 650);
+  widget->Init(std::move(params));
+  View* root = widget->GetRootView();
+  auto* test_view = root->AddChildView(std::make_unique<TestBarView>());
+  widget->Show();
+  widget->Activate();
+
+  // Set pane focus on middle button of view.
+  EXPECT_TRUE(test_view->SetPaneFocus(test_view->second_child_button()));
+
+  // Home should go to the logical first item regardless of direction.
+  test_view->AcceleratorPressed(test_view->home_key());
+  EXPECT_EQ(test_view->child_button(),
+            test_view->GetWidget()->GetFocusManager()->GetFocusedView());
+  // End should go to the logical last item regardless of direction.
+  test_view->AcceleratorPressed(test_view->end_key());
+  EXPECT_EQ(test_view->third_child_button(),
+            test_view->GetWidget()->GetFocusManager()->GetFocusedView());
+
+  // Set pane focus back on middle button of view.
+  EXPECT_TRUE(test_view->SetPaneFocus(test_view->second_child_button()));
+
+  // Left should go to the logical next item in RTL locales.
+  test_view->AcceleratorPressed(test_view->left_key());
+  EXPECT_EQ(test_view->third_child_button(),
+            test_view->GetWidget()->GetFocusManager()->GetFocusedView());
+  // Right should go to the logical previous item in RTL locales.
+  test_view->AcceleratorPressed(test_view->right_key());
+  test_view->AcceleratorPressed(test_view->right_key());
+  EXPECT_EQ(test_view->child_button(),
+            test_view->GetWidget()->GetFocusManager()->GetFocusedView());
 }
 
 // TODO(crbug.com/40832756): Re-enable this test

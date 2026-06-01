@@ -145,6 +145,7 @@ private Q_SLOTS:
     void tst_invalidOrigin();
     void tst_sendTextMessage();
     void tst_sendBinaryMessage();
+    void tst_ping();
     void tst_errorString();
     void tst_openRequest_data();
     void tst_openRequest();
@@ -162,6 +163,7 @@ private Q_SLOTS:
     void incomingMessageTooLong();
     void incomingFrameTooLong();
     void testingFrameAndMessageSizeApi();
+    void hostHeaderFromNetworkRequest();
     void customHeader();
     void splitUtf8Sequence();
 };
@@ -617,6 +619,88 @@ void tst_QWebSocket::tst_sendBinaryMessage()
     isLastFrame = arguments.at(1).toBool();
     QCOMPARE(frameReceived, QByteArrayLiteral("Hello world!"));
     QVERIFY(isLastFrame);
+}
+
+void tst_QWebSocket::tst_ping()
+{
+    EchoServer echoServer;
+
+    QWebSocket socket;
+
+    QSignalSpy socketConnectedSpy(&socket, &QWebSocket::connected);
+    QSignalSpy serverConnectedSpy(&echoServer, QOverload<QUrl>::of(&EchoServer::newConnection));
+    QSignalSpy pongReceived(&socket, &QWebSocket::pong);
+    QSignalSpy textMessageReceived(&socket, &QWebSocket::textMessageReceived);
+    QSignalSpy textFrameReceived(&socket, &QWebSocket::textFrameReceived);
+    QSignalSpy binaryMessageReceived(&socket, &QWebSocket::binaryMessageReceived);
+    QSignalSpy binaryFrameReceived(&socket, &QWebSocket::binaryFrameReceived);
+    QSignalSpy socketError(&socket, &QWebSocket::errorOccurred);
+
+    socket.ping(QByteArrayLiteral("Hello ping!")); // ping as no return value
+    QVERIFY(!pongReceived.wait(500));
+    QCOMPARE(pongReceived.size(), 0); // But we should have no pong result
+
+    QUrl url = QUrl(QStringLiteral("ws://") + echoServer.hostAddress().toString() +
+                    QStringLiteral(":") + QString::number(echoServer.port()));
+    url.setPath("/segment/with spaces");
+    QUrlQuery query;
+    query.addQueryItem("queryitem", "with encoded characters");
+    url.setQuery(query);
+
+    socket.open(url);
+
+    QTRY_COMPARE(socketConnectedSpy.size(), 1);
+    QCOMPARE(socketError.size(), 0);
+    QCOMPARE(socket.state(), QAbstractSocket::ConnectedState);
+    QList<QVariant> arguments = serverConnectedSpy.takeFirst();
+    QUrl urlConnected = arguments.at(0).toUrl();
+    QCOMPARE(urlConnected, url);
+
+    QCOMPARE(socket.bytesToWrite(), 0);
+    socket.ping(QByteArrayLiteral("Hello ping!"));
+    QVERIFY(socket.bytesToWrite() > 11); // 11 + a few extra bytes for header
+
+    QVERIFY(pongReceived.wait(500));
+    QCOMPARE(socket.bytesToWrite(), 0);
+
+    QCOMPARE(pongReceived.size(), 1);
+    QCOMPARE(textMessageReceived.size(), 0);
+    QCOMPARE(textFrameReceived.size(), 0);
+    QCOMPARE(binaryMessageReceived.size(), 0);
+    QCOMPARE(binaryFrameReceived.size(), 0);
+    arguments = pongReceived.takeFirst();
+    QString messageReceived = arguments.at(1).toString();
+    bool elapsedIsInt;
+    quint64 elapsed = arguments.at(0).toUInt(&elapsedIsInt);
+    QCOMPARE(elapsedIsInt, true);
+    QCOMPARE_LT(elapsed, 1000);
+    QCOMPARE(messageReceived, QByteArrayLiteral("Hello ping!"));
+    QByteArray longByteArray(125, 'a');
+    longByteArray.append(125, 'b');
+    socket.ping(longByteArray); // ping method should send only 125 first bytes
+    QVERIFY(socket.bytesToWrite() > 125); // 125 + a few extra bytes for header
+
+    QVERIFY(pongReceived.wait(500));
+    QCOMPARE(socket.bytesToWrite(), 0);
+
+    QCOMPARE(pongReceived.size(), 1);
+    QCOMPARE(textMessageReceived.size(), 0);
+    QCOMPARE(textFrameReceived.size(), 0);
+    QCOMPARE(binaryMessageReceived.size(), 0);
+    QCOMPARE(binaryFrameReceived.size(), 0);
+    arguments = pongReceived.takeFirst();
+    messageReceived = arguments.at(1).toString();
+    elapsed = arguments.at(0).toUInt(&elapsedIsInt);
+    QCOMPARE(elapsedIsInt, true);
+    QCOMPARE_LT(elapsed, 1000);
+    QCOMPARE(messageReceived, longByteArray.left(125)); // max length is of 125 for ping
+    QCOMPARE(messageReceived[124], 'a'); // and we should still be in 'a' part
+
+    socket.close();
+    socketConnectedSpy.clear();
+    textMessageReceived.clear();
+    textFrameReceived.clear();
+    pongReceived.clear();
 }
 
 void tst_QWebSocket::tst_errorString()
@@ -1344,6 +1428,54 @@ void tst_QWebSocket::testingFrameAndMessageSizeApi()
     const quint64 maxAllowedIncomingMessageSize = 889;
     socket.setMaxAllowedIncomingMessageSize(maxAllowedIncomingMessageSize);
     QTRY_COMPARE(maxAllowedIncomingMessageSize, socket.maxAllowedIncomingMessageSize());
+}
+
+void tst_QWebSocket::hostHeaderFromNetworkRequest()
+{
+    QTcpServer server;
+    QSignalSpy serverSpy(&server, &QTcpServer::newConnection);
+
+    QVERIFY(server.listen(QHostAddress(u"127.0.0.1"_s)));
+
+    QUrl url = QUrl(u"ws://127.0.0.1"_s);
+    url.setPort(server.serverPort());
+    QNetworkRequest request(url);
+    request.setRawHeader("Host", "localhost");
+
+    QWebSocket socket;
+    socket.open(request);
+
+    QVERIFY(serverSpy.wait());
+    std::unique_ptr<QTcpSocket> serverSocket;
+    serverSocket.reset(server.nextPendingConnection());
+    QSignalSpy serverSocketSpy(serverSocket.get(), &QIODevice::readyRead);
+    QByteArray data;
+    while (!data.contains("\r\n\r\n")) {
+        QVERIFY(serverSocketSpy.wait());
+        data.append(serverSocket->readAll());
+    }
+
+    const auto headerEndIndex = data.indexOf("\r\n\r\n");
+    QCOMPARE_NE(headerEndIndex, -1);
+    const auto headerView = QLatin1StringView(QByteArrayView(data).first(headerEndIndex + 2));
+    QCOMPARE(headerView.count("Host: "_L1, Qt::CaseInsensitive), 1);
+    QVERIFY(headerView.contains("\r\nHost: localhost\r\n"_L1, Qt::CaseInsensitive));
+
+    const QLatin1StringView keyView =
+            AuthServer::getHeaderValue("Sec-WebSocket-Key"_L1, QByteArrayView(data));
+    QVERIFY(!keyView.isEmpty());
+    const QByteArray accept =
+            QByteArrayView(keyView) % "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"_ba;
+    serverSocket->write(
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: "
+            % QCryptographicHash::hash(accept, QCryptographicHash::Sha1).toBase64()
+            % "\r\n\r\n");
+
+    QSignalSpy connectedSpy(&socket, &QWebSocket::connected);
+    QVERIFY(connectedSpy.wait());
 }
 
 void tst_QWebSocket::customHeader()

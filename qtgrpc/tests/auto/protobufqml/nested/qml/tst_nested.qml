@@ -11,32 +11,19 @@ TestCase {
     name: "qtprotobufNestedTest"
 
     // Messages from "qtprotobufnamespace.tests.nested"
-    property nestedFieldMessage fieldMsg;
-    property nestedMessage simpleMsg;
-    property nestedFieldMessage2 fieldMessage2;
+    property nestedFieldMessage fieldMsg: ({nested: simpleMsg})
+    property nestedMessage simpleMsg: ({testFieldInt :100})
+    property nestedFieldMessage2 fieldMessage2: ({nested2: messageLevel2})
     property nestedMessageLevel1 messageLevel1;
-    property nestedMessageLevel2 messageLevel2;
-    property nestedExternal nestedExternalField;
-    property nested nestedField;
-    property nestedCyclingB bField;
-    property nestedCyclingBB bbField;
+    property nestedMessageLevel2 messageLevel2: ({testFieldInt: 200})
+    property nestedExternal nestedExternalField: ({externalNested: simpleMsg1})
+    property nested nestedField: ({testFieldInt: 500})
+    property nestedCyclingB bField: ({testField: bbField})
+    property nestedCyclingBB bbField: ({testField: bField})
 
     // Messages from "qtprotobufnamespace1.tests.nested"
-    property NestedFieldMessages1.nestedFieldMessage fieldMsg1;
-    property NestedFieldMessages1.nestedMessage simpleMsg1;
-
-    function initTestCase() {
-        simpleMsg.testFieldInt = 100
-        fieldMsg.nested = simpleMsg
-        messageLevel2.testFieldInt = 200
-        fieldMessage2.nested2 = messageLevel2
-        simpleMsg1.field = 500
-        fieldMsg1.nested = simpleMsg1
-        nestedExternalField.externalNested = simpleMsg1
-        bField.testField = bbField
-        bbField.testField = bField
-        nestedField.testFieldInt = 500
-    }
+    property NestedFieldMessages1.nestedFieldMessage fieldMsg1: ({nested: simpleMsg1})
+    property NestedFieldMessages1.nestedMessage simpleMsg1: ({field: 500})
 
     function test_nestedMessage_data() {
         return [

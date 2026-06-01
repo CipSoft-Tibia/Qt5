@@ -13,37 +13,26 @@ from typing import (TYPE_CHECKING, Any, Dict, Generic, List, Optional, Sequence,
 
 from ordered_set import OrderedSet
 
-from crossbench import cli_helper, helper
 from crossbench.cli.parser import CrossBenchArgumentParser
 from crossbench.flags.base import Flags
+from crossbench.helper import txt_helper
+from crossbench.parse import ObjectParser
 from crossbench.stories.press_benchmark import PressBenchmarkStory
 from crossbench.stories.story import Story
 
 if TYPE_CHECKING:
   from crossbench import path as pth
-  from crossbench.browsers.browser import Browser
+  from crossbench.benchmarks.benchmark_probe import BenchmarkProbeMixin
+  from crossbench.browsers.attributes import BrowserAttributes
   from crossbench.runner.runner import Runner
-
-
-class BenchmarkProbeMixin:
-  NAME: str = ""
-  IS_GENERAL_PURPOSE: bool = False
-
-  def __init__(self, *args, **kwargs):
-    self._benchmark = kwargs.pop("benchmark")
-    assert isinstance(self._benchmark, Benchmark)
-    super().__init__(*args, **kwargs)
-
-  @property
-  def benchmark(self) -> Benchmark:
-    return self._benchmark
 
 
 
 class Benchmark(abc.ABC):
   NAME: str = ""
-  DEFAULT_STORY_CLS: Type[Story] = Story
+  DEFAULT_STORY_CLS: Type[Story] = Story  # type: ignore
   PROBES: Tuple[Type[BenchmarkProbeMixin], ...] = ()
+  DEFAULT_REPETITIONS: int = 1
 
   @classmethod
   def cli_help(cls) -> str:
@@ -80,15 +69,17 @@ class Benchmark(abc.ABC):
   @classmethod
   def describe(cls) -> Dict[str, Any]:
     return {
-        "name": cls.NAME,
-        "description": "\n".join(helper.wrap_lines(cls.cli_description(), 70)),
+        "name":
+            cls.NAME,
+        "description":
+            "\n".join(txt_helper.wrap_lines(cls.cli_description(), 70)),
         "stories": [],
         "probes-default": {
             probe_cls.NAME:
                 "\n".join(
                     list(
-                        helper.wrap_lines((probe_cls.__doc__ or "").strip(),
-                                          70))) for probe_cls in cls.PROBES
+                        txt_helper.wrap_lines((probe_cls.__doc__ or "").strip(),
+                                              70))) for probe_cls in cls.PROBES
         }
     }
 
@@ -101,8 +92,8 @@ class Benchmark(abc.ABC):
     return None
 
   @classmethod
-  def extra_flags(cls, browser: Browser) -> Flags:
-    del browser
+  def extra_flags(cls, browser_attributes: BrowserAttributes) -> Flags:
+    del browser_attributes
     return Flags()
 
   @classmethod
@@ -179,7 +170,7 @@ class StoryFilter(Generic[StoryT], metaclass=abc.ABCMeta):
                story_cls: Type[StoryT],
                patterns: Sequence[str],
                separate: bool = False) -> None:
-    self.story_cls : Type[StoryT] = story_cls
+    self.story_cls: Type[StoryT] = story_cls
     assert issubclass(
         story_cls, Story), (f"Subclass of {Story} expected, found {story_cls}")
     # Using order-preserving dict instead of set
@@ -200,7 +191,7 @@ class StoryFilter(Generic[StoryT], metaclass=abc.ABCMeta):
 
 
 class SubStoryBenchmark(Benchmark, metaclass=abc.ABCMeta):
-  STORY_FILTER_CLS: Type[StoryFilter] = StoryFilter
+  STORY_FILTER_CLS: Type[StoryFilter] = StoryFilter  # type: ignore
 
   @classmethod
   def add_cli_parser(
@@ -379,7 +370,8 @@ class PressBenchmarkStoryFilter(StoryFilter[PressBenchmarkStoryT],
 
 class PressBenchmark(SubStoryBenchmark):
   STORY_FILTER_CLS = PressBenchmarkStoryFilter
-  DEFAULT_STORY_CLS: Type[PressBenchmarkStory] = PressBenchmarkStory
+  DEFAULT_STORY_CLS: Type[
+      PressBenchmarkStory] = PressBenchmarkStory  # type: ignore
 
   @classmethod
   @abc.abstractmethod
@@ -439,7 +431,7 @@ class PressBenchmark(SubStoryBenchmark):
         "--local-url",
         "--url",
         "--custom-benchmark-url",
-        type=cli_helper.parse_httpx_url_str,
+        type=ObjectParser.httpx_url_str,
         nargs="?",
         dest="custom_benchmark_url",
         const=local_url,
@@ -484,6 +476,9 @@ class PressBenchmark(SubStoryBenchmark):
       return
     first_story = cast(PressBenchmarkStory, self.stories[0])
     url = first_story.url
+    if not runner.has_all_live_network() and not url:
+      # For non-live networks we create a matching URL
+      return
     if not url:
       raise ValueError("Invalid empty url")
     if all(runner.env.validate_url(url, p) for p in runner.platforms):

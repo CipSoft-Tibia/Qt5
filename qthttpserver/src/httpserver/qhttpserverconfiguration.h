@@ -8,6 +8,10 @@
 #include <QtHttpServer/qthttpserverglobal.h>
 
 #include <QtCore/qshareddata.h>
+#include <QtCore/qlist.h>
+#include <QtNetwork/qhostaddress.h>
+
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
@@ -29,6 +33,15 @@ public:
 
     Q_HTTPSERVER_EXPORT void setRateLimitPerSecond(quint32 maxRequests);
     Q_HTTPSERVER_EXPORT quint32 rateLimitPerSecond() const;
+
+    Q_HTTPSERVER_EXPORT void setKeepAliveTimeout(std::chrono::seconds timeout);
+    Q_HTTPSERVER_EXPORT std::chrono::seconds keepAliveTimeout() const;
+
+    Q_HTTPSERVER_EXPORT void setWhitelist(QSpan<const std::pair<QHostAddress, int>> subnetList);
+    Q_HTTPSERVER_EXPORT QSpan<const std::pair<QHostAddress, int>> whitelist() const;
+
+    Q_HTTPSERVER_EXPORT void setBlacklist(QSpan<const std::pair<QHostAddress, int>> subnetList);
+    Q_HTTPSERVER_EXPORT QSpan<const std::pair<QHostAddress, int>> blacklist() const;
 
 private:
     QExplicitlySharedDataPointer<QHttpServerConfigurationPrivate> d;

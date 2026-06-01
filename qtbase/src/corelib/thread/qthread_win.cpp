@@ -150,6 +150,9 @@ unsigned int __stdcall QT_ENSURE_STACK_ALIGNED_FOR_SSE QThreadPrivate::start(voi
     set_thread_data(data);
     data->threadId.storeRelaxed(QThread::currentThreadId());
 
+    // If a QThread is restarted, reuse the QBindingStatus, too
+    data->reuseBindingStatusForNewNativeThread();
+
     QThread::setTerminationEnabled(false);
 
     {
@@ -243,12 +246,11 @@ void QThreadPrivate::finish(bool lockAnyway) noexcept
     QMutexLocker locker(lockAnyway ? &d->mutex : nullptr);
     d->threadState = QThreadPrivate::Finishing;
     d->priority = QThread::InheritPriority;
-    void **tls_data = reinterpret_cast<void **>(&d->data->tls);
     if (lockAnyway)
         locker.unlock();
     emit thr->finished(QThread::QPrivateSignal());
     QCoreApplicationPrivate::sendPostedEvents(nullptr, QEvent::DeferredDelete, d->data);
-    QThreadStorageData::finish(tls_data);
+    QThreadStoragePrivate::finish(&d->data->tls);
     if (lockAnyway)
         locker.relock();
 

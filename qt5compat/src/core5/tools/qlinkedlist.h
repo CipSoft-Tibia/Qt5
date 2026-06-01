@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QT5LINKEDLIST_H
 #define QT5LINKEDLIST_H
@@ -610,9 +611,33 @@ template<typename T>
 typename QLinkedList<T>::iterator QLinkedList<T>::erase(typename QLinkedList<T>::iterator afirst,
                                                         typename QLinkedList<T>::iterator alast)
 {
-    while (afirst != alast)
-        erase(afirst++);
-    return alast;
+    if (afirst == alast)
+        return alast; // no-op
+    if (!d->ref.isShared()) {
+        do {
+            erase(afirst++);
+        } while (afirst != alast);
+        return alast;
+    }
+    // When shared, don't detach; create a completely new QLinkedList and then swap()
+    const const_iterator cafirst = afirst;
+    const const_iterator calast = alast;
+    QLinkedList l{cbegin(), cafirst};
+    // QLinkedList has no range-insert :(
+    iterator r;
+    if (calast == cend()) {
+        r = l.end();
+    } else {
+        // end() appears to be a sentinel, so need to get an actual iterator:
+        auto it = calast;
+        l.append(*it);
+        ++it;
+        r = std::prev(l.end());
+        for (/* empty */; it != cend(); ++it)
+            l.append(*it);
+    }
+    swap(l);
+    return r;
 }
 
 template<typename T>

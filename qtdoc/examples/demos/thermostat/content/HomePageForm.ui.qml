@@ -9,12 +9,13 @@ this file manually, you might introduce QML code that is not supported by Qt Des
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Thermostat
 
 Page {
     id: root
+    property list<Room> roomsList: RoomsModel.data
 
     header: ToolBar {
         id: toolBar
@@ -49,7 +50,11 @@ Page {
                 visible: Constants.isSmallLayout || Constants.isMobileLayout
 
                 TapHandler {
-                    onTapped: AppSettings.isDarkTheme = !AppSettings.isDarkTheme
+                    property Connections _: Connections {
+                        function onTapped() {
+                            AppSettings.isDarkTheme = !AppSettings.isDarkTheme
+                        }
+                    }
                 }
             }
         }
@@ -68,7 +73,7 @@ Page {
         anchors.bottom: parent.bottom
 
         initialItem: RoomsView {
-            roomsList: roomsList
+            roomsList: root.roomsList
         }
     }
 
@@ -77,12 +82,34 @@ Page {
 
         anchors.left: parent.left
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
+        anchors.bottom: exitButton.bottom
         anchors.topMargin: 63
         height: parent.height
 
         menuOptions: menuItems
-        roomsList: roomsList
+        roomsList: root.roomsList
+        stackView: stackView
+    }
+
+    Button {
+        id: exitButton
+
+        height: Constants.isSmallLayout ? 35 : 72
+        anchors.left: parent.left
+        anchors.right: sideMenu.right
+        anchors.rightMargin: -5
+        anchors.bottom: parent.bottom
+
+        palette.button: AppSettings.isDarkTheme ? "#032F2C" : "#EFFCF6"
+        palette.buttonText: Constants.accentTextColor
+        icon.source: "images/power.svg"
+        display: AbstractButton.IconOnly
+
+        Connections {
+            function onClicked() {
+                Qt.quit()
+            }
+        }
     }
 
     BottomBar {
@@ -96,11 +123,8 @@ Page {
         visible: false
         position: TabBar.Footer
         menuOptions: menuItems
-        roomsList: roomsList
-    }
-
-    RoomsModel {
-        id: roomsList
+        roomsList: root.roomsList
+        stackView: stackView
     }
 
     ListModel {
@@ -115,6 +139,11 @@ Page {
             name: qsTr("Thermostat Control")
             view: "ThermostatView"
             iconSource: "thermostat.svg"
+        }
+        ListElement {
+            name: qsTr("Schedule")
+            view: "ScheduleView"
+            iconSource: "schedule.svg"
         }
         ListElement {
             name: qsTr("Stats")
@@ -161,6 +190,10 @@ Page {
                 anchors.left: parent.left
                 anchors.bottom: bottomMenu.top
             }
+            PropertyChanges {
+                target: exitButton
+                visible: false
+            }
         },
         State {
             name: "desktopLayout"
@@ -195,6 +228,10 @@ Page {
                 anchors.left: sideMenu.right
                 anchors.bottom: parent.bottom
             }
+            PropertyChanges {
+                target: exitButton
+                visible: true
+            }
         },
         State {
             name: "smallLayout"
@@ -228,6 +265,10 @@ Page {
                 target: stackView
                 anchors.left: sideMenu.right
                 anchors.bottom: parent.bottom
+            }
+            PropertyChanges {
+                target: exitButton
+                visible: true
             }
         }
     ]

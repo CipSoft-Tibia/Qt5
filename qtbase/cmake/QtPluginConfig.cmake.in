@@ -22,9 +22,6 @@ cmake_minimum_required(VERSION @min_new_policy_version@...@max_new_policy_versio
 
 include(CMakeFindDependencyMacro)
 
-get_filename_component(_import_prefix "${CMAKE_CURRENT_LIST_FILE}" PATH)
-get_filename_component(_import_prefix "${_import_prefix}" REALPATH)
-
 if (NOT QT_NO_CREATE_TARGETS)
     # Find required dependencies, if any.
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@Dependencies.cmake")

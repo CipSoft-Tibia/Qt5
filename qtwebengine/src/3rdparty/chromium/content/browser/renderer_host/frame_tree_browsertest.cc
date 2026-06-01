@@ -8,6 +8,7 @@
 #include "base/strings/strcat.h"
 #include "base/strings/stringprintf.h"
 #include "base/synchronization/lock.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
@@ -350,6 +351,7 @@ class FrameTreeBrowserWithDiscardTest
 };
 
 IN_PROC_BROWSER_TEST_P(FrameTreeBrowserWithDiscardTest, DiscardFrameTree) {
+  base::HistogramTester uma_recorder;
   WebContentsImpl* wc = static_cast<WebContentsImpl*>(shell()->web_contents());
   FrameTree& frame_tree = wc->GetPrimaryFrameTree();
   FrameTreeNode* root = frame_tree.root();
@@ -381,6 +383,7 @@ IN_PROC_BROWSER_TEST_P(FrameTreeBrowserWithDiscardTest, DiscardFrameTree) {
 
   // Discard the frame tree, wait until all child frames have been cleared away.
   EXPECT_FALSE(root->was_discarded());
+  uma_recorder.ExpectUniqueSample("Discarding.DiscardFrameTree", true, 0);
   DiscardFrameTree(frame_tree);
   ASSERT_TRUE(
       base::test::RunUntil([&]() { return 0u == root->child_count(); }));
@@ -397,6 +400,7 @@ IN_PROC_BROWSER_TEST_P(FrameTreeBrowserWithDiscardTest, DiscardFrameTree) {
   EXPECT_EQ(initial_rfh.get(), wc->GetPrimaryMainFrame());
   EXPECT_EQ(initial_rvh, wc->GetPrimaryMainFrame()->render_view_host());
   EXPECT_EQ(0u, root->child_count());
+  uma_recorder.ExpectUniqueSample("Discarding.DiscardFrameTree", true, 1);
 
   if (KeepAliveDiscardedProcess()) {
     EXPECT_TRUE(initial_rvh->IsRenderViewLive());
@@ -543,6 +547,7 @@ IN_PROC_BROWSER_TEST_P(FrameTreeDiscardPendingNavigationTest,
     base::RunLoop run_loop_;
   };
 
+  base::HistogramTester uma_recorder;
   WebContentsImpl* wc = static_cast<WebContentsImpl*>(shell()->web_contents());
   FrameTree& frame_tree = wc->GetPrimaryFrameTree();
   FrameTreeNode* root = frame_tree.root();
@@ -564,6 +569,7 @@ IN_PROC_BROWSER_TEST_P(FrameTreeDiscardPendingNavigationTest,
   ready_to_commit_waiter.Wait();
 
   // Discard while ready to commit the previous navigation.
+  uma_recorder.ExpectUniqueSample("Discarding.DiscardFrameTree", false, 0);
   frame_tree.Discard();
   EXPECT_TRUE(WaitForLoadStop(wc));
 
@@ -571,10 +577,52 @@ IN_PROC_BROWSER_TEST_P(FrameTreeDiscardPendingNavigationTest,
   // an undiscarded state.
   EXPECT_FALSE(root->was_discarded());
   EXPECT_FALSE(wc->GetController().NeedsReload());
+  uma_recorder.ExpectUniqueSample("Discarding.DiscardFrameTree", false, 1);
 
   RenderFrameHostImplWrapper final_rfh(wc->GetPrimaryMainFrame());
   EXPECT_NE(initial_rfh.get(), final_rfh.get());
   EXPECT_EQ(new_url, root->current_url());
+}
+
+// Asserts that a process pinned with a keep-alive ref hosting only discarded
+// frames is successfully shutdown after the keep-alive timeout.
+IN_PROC_BROWSER_TEST_F(FrameTreeBrowserTest,
+                       DiscardedFrameRendererShutdownAfterKeepAliveTimeout) {
+  WebContentsImpl* wc = static_cast<WebContentsImpl*>(shell()->web_contents());
+  FrameTree& frame_tree = wc->GetPrimaryFrameTree();
+
+  EXPECT_TRUE(
+      NavigateToURL(shell(), embedded_test_server()->GetURL("/title1.html")));
+
+  // Ensure the view, frame and process are reported alive.
+  RenderFrameHostImpl* rfh =
+      static_cast<RenderFrameHostImpl*>(wc->GetPrimaryMainFrame());
+  RenderViewHostImpl* rvh = rfh->render_view_host();
+  RenderProcessHostImpl* rph =
+      static_cast<RenderProcessHostImpl*>(rfh->GetProcess());
+  EXPECT_TRUE(rvh->IsRenderViewLive());
+  EXPECT_TRUE(rfh->IsRenderFrameLive());
+  EXPECT_TRUE(rph->IsInitializedAndNotDead());
+
+  // Set a keep-alive on the renderer process.
+  rph->IncrementKeepAliveRefCount(0);
+
+  // Discard the frame tree. The process should remain alive.
+  frame_tree.Discard();
+  EXPECT_TRUE(rvh->IsRenderViewLive());
+  EXPECT_TRUE(rfh->IsRenderFrameLive());
+  EXPECT_TRUE(rph->IsInitializedAndNotDead());
+
+  // Simulate a keep-alive timeout, the process should be promptly shutdown.
+  rfh->SimulateDiscardShutdownKeepAliveTimeoutForTesting();
+  RenderProcessHostWatcher process_exit_observer(
+      wc, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT);
+  process_exit_observer.Wait();
+
+  // Ensure the process has been successfully shutdown.
+  EXPECT_FALSE(rvh->IsRenderViewLive());
+  EXPECT_FALSE(rfh->IsRenderFrameLive());
+  EXPECT_FALSE(rph->IsInitializedAndNotDead());
 }
 
 class DedicatedWorkerObserver : public DedicatedWorkerService::Observer {
@@ -2000,9 +2048,9 @@ IN_PROC_BROWSER_TEST_F(IsolateIcelandFrameTreeBrowserTest,
 
   // Make sure we did a process transfer back to "b.is".
   const std::string kExpectedSiteURL =
-      AreDefaultSiteInstancesEnabled()
-          ? SiteInstanceImpl::GetDefaultSiteURL().spec()
-          : "http://a.com/";
+      AreAllSitesIsolatedForTesting()
+          ? "http://a.com/"
+          : SiteInstanceImpl::GetDefaultSiteURL().spec();
   const std::string kExpectedSubframeSiteURL =
       SiteIsolationPolicy::IsErrorPageIsolationEnabled(/*in_main_frame*/ false)
           ? "chrome-error://chromewebdata/"

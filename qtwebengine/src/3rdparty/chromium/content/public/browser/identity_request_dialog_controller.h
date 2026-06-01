@@ -13,7 +13,6 @@
 #include "base/functional/callback_forward.h"
 #include "base/memory/ref_counted.h"
 #include "content/common/content_export.h"
-#include "content/public/browser/federated_identity_modal_dialog_view_delegate.h"
 #include "content/public/browser/identity_request_account.h"
 #include "third_party/blink/public/mojom/webid/federated_auth_request.mojom-forward.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -58,12 +57,17 @@ struct CONTENT_EXPORT IdentityProviderMetadata {
   // For registered IdPs, the type is used to only show the accounts when the
   // RP is compatible.
   std::vector<std::string> types;
+  // The token formats that are supported.
+  std::vector<std::string> formats;
   // The URL of the configuration endpoint. This is stored in
   // IdentityProviderMetadata so that the UI code can pass it along when an
   // Account is selected by the user.
   GURL config_url;
   // Whether this IdP supports signing in to additional accounts.
   bool supports_add_account{false};
+  // Whether this IdP has any filtered out account. This is reset to false each
+  // time the accounts dialog is shown and recomputed then.
+  bool has_filtered_out_account{false};
 };
 
 class CONTENT_EXPORT IdentityProviderData

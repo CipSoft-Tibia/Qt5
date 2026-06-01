@@ -30,6 +30,7 @@ static QByteArray qmlSource()
 {
     return QByteArrayLiteral("import QtWebEngine 1.1\n"
                              "    WebEngineView {\n"
+                             "         anchors.fill: parent"
                              "}\n");
 }
 
@@ -99,16 +100,6 @@ QString QWebEngineWebViewPrivate::title() const
     return m_webEngineView->title();
 }
 
-void QWebEngineWebViewPrivate::setGeometry(const QRect &geometry)
-{
-    m_webEngineView->setSize(geometry.size());
-}
-
-void QWebEngineWebViewPrivate::setVisibility(QWindow::Visibility visibility)
-{
-    setVisible(visibility != QWindow::Hidden ? true : false);
-}
-
 void QWebEngineWebViewPrivate::runJavaScriptPrivate(const QString &script,
                                                     int callbackId)
 {
@@ -141,17 +132,6 @@ void QWebEngineWebViewPrivate::deleteAllCookies()
     m_cookieStore->deleteAllCookies();
 }
 
-void QWebEngineWebViewPrivate::setVisible(bool visible)
-{
-    m_webEngineView->setVisible(visible);
-}
-
-void QWebEngineWebViewPrivate::setFocus(bool focus)
-{
-    if (focus)
-        m_webEngineView->forceActiveFocus();
-}
-
 QAbstractWebViewSettings *QWebEngineWebViewPrivate::getSettings() const
 {
     return m_settings;
@@ -165,16 +145,6 @@ int QWebEngineWebViewPrivate::loadProgress() const
 bool QWebEngineWebViewPrivate::isLoading() const
 {
     return m_webEngineView->isLoading();
-}
-
-void QWebEngineWebViewPrivate::setParentView(QObject *parentView)
-{
-    Q_UNUSED(parentView);
-}
-
-QObject *QWebEngineWebViewPrivate::parentView() const
-{
-    return m_webEngineView->window();
 }
 
 void QWebEngineWebViewPrivate::stop()
@@ -274,6 +244,7 @@ void QWebEngineWebViewPrivate::QQuickWebEngineViewPtr::init() const
         m_parent->m_settings = new QWebEngineWebViewSettingsPrivate(m_parent);
     m_parent->m_settings->init(settings);
     webEngineView->settings()->setErrorPageEnabled(false);
+    webEngineView->settings()->setPluginsEnabled(true);
     // When the httpUserAgent is set as a property then it will be set before
     // init() is called
     if (m_parent->m_httpUserAgent.isEmpty())
@@ -318,7 +289,7 @@ bool QWebEngineWebViewSettingsPrivate::localStorageEnabled() const
 {
     return m_settings ? m_settings->localStorageEnabled() : m_localStorageEnabled;
 }
-bool QWebEngineWebViewSettingsPrivate::javascriptEnabled() const
+bool QWebEngineWebViewSettingsPrivate::javaScriptEnabled() const
 {
     return m_settings ? m_settings->javascriptEnabled() : m_javaScriptEnabled;
 }
@@ -337,7 +308,7 @@ void QWebEngineWebViewSettingsPrivate::setLocalContentCanAccessFileUrls(bool ena
 
     m_localContentCanAccessFileUrlsEnabled  = enabled;
 }
-void QWebEngineWebViewSettingsPrivate::setJavascriptEnabled(bool enabled)
+void QWebEngineWebViewSettingsPrivate::setJavaScriptEnabled(bool enabled)
 {
     if (m_settings)
         m_settings->setJavascriptEnabled(enabled);
@@ -370,7 +341,7 @@ void QWebEngineWebViewSettingsPrivate::init(QQuickWebEngineSettings *settings)
     if (m_settings) {
         // Sync any values already set.
         setLocalContentCanAccessFileUrls(m_localContentCanAccessFileUrlsEnabled);
-        setJavascriptEnabled(m_javaScriptEnabled);
+        setJavaScriptEnabled(m_javaScriptEnabled);
         setLocalStorageEnabled(m_localStorageEnabled);
     }
 }

@@ -63,8 +63,8 @@ struct UsernameFieldData {
 // "Non-latin" translations are the translations of the words that have custom,
 // country specific characters.
 struct CategoryOfWords {
-  const base::span<const std::u16string_view> latin_dictionary;
-  const base::span<const std::u16string_view> non_latin_dictionary;
+  const base::raw_span<const std::u16string_view> latin_dictionary;
+  const base::raw_span<const std::u16string_view> non_latin_dictionary;
 };
 
 // 1. Removes delimiters from |raw_value| and appends the remainder to

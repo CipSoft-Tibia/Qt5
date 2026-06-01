@@ -20,14 +20,11 @@
  */
 #pragma once
 
+#include <cstddef>
 #include <vector>
 #include "range_vector.h"
 #include "custom_containers.h"
-#ifndef SPARSE_CONTAINER_UNIT_TEST
 #include "vulkan/vulkan.h"
-#else
-#include "vk_snippets.h"
-#endif
 
 namespace vvl {
 class Image;
@@ -765,13 +762,13 @@ class BothRangeMap {
     }
     BigMap* MakeBigMap() {
         if (BigMode()) {
-            return new (&backing_store) BigMap();
+            return new (backing_store) BigMap();
         }
         return nullptr;
     }
     SmallMap* MakeSmallMap(index_type limit) {
         if (SmallMode()) {
-            return new (&backing_store) SmallMap(limit);
+            return new (backing_store) SmallMap(limit);
         }
         return nullptr;
     }
@@ -781,8 +778,7 @@ class BothRangeMap {
     BigMap* big_map_ = nullptr;
     SmallMap* small_map_ = nullptr;
 
-    using Storage = typename std::aligned_union<0, SmallMap, BigMap>::type;
-    Storage backing_store;
+    alignas(std::max(alignof(SmallMap), alignof(BigMap))) std::byte backing_store[std::max(sizeof(SmallMap), sizeof(BigMap))];
 };
 
 }  // namespace subresource_adapter

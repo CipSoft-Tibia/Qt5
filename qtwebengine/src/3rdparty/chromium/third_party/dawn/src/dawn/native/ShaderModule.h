@@ -38,6 +38,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "dawn/common/Constants.h"
 #include "dawn/common/ContentLessObjectCacheable.h"
 #include "dawn/common/MutexProtected.h"
@@ -142,14 +143,21 @@ MaybeError ValidateCompatibilityWithPipelineLayout(DeviceBase* device,
                                                    const EntryPointMetadata& entryPoint,
                                                    const PipelineLayoutBase* layout);
 
-// Return extent3D with workgroup size dimension info if it is valid. Also validate workgroup_size.x
-// is a multiple of maxSubgroupSizeForFullSubgroups if it holds a value.
+// Return extent3D with workgroup size dimension info if it is valid.
 // width = x, height = y, depthOrArrayLength = z.
-ResultOrError<Extent3D> ValidateComputeStageWorkgroupSize(
-    const tint::Program& program,
-    const char* entryPointName,
-    const LimitsForCompilationRequest& limits,
-    std::optional<uint32_t> maxSubgroupSizeForFullSubgroups);
+ResultOrError<Extent3D> ValidateComputeStageWorkgroupSize(const tint::Program& program,
+                                                          const char* entryPointName,
+                                                          const LimitsForCompilationRequest& limits,
+                                                          const AdapterBase* adapter);
+
+// Return extent3D with workgroup size dimension info if it is valid.
+// width = x, height = y, depthOrArrayLength = z.
+ResultOrError<Extent3D> ValidateComputeStageWorkgroupSize(uint32_t x,
+                                                          uint32_t y,
+                                                          uint32_t z,
+                                                          size_t workgroupStorageSize,
+                                                          const LimitsForCompilationRequest& limits,
+                                                          const AdapterBase* adapter);
 
 RequiredBufferSizes ComputeRequiredBufferSizesForLayout(const EntryPointMetadata& entryPoint,
                                                         const PipelineLayoutBase* layout);
@@ -280,6 +288,16 @@ struct EntryPointMetadata {
     bool usesSampleIndex = false;
     bool usesVertexIndex = false;
     bool usesTextureLoadWithDepthTexture = false;
+    bool usesDepthTextureWithNonComparisonSampler = false;
+
+    // Immediate Data block byte size
+    uint32_t immediateDataRangeByteSize = 0;
+
+    // Number of texture+sampler combinations, computed as
+    // 1 for every texture+sampler combination + 1 for every texture used
+    // without a sampler that wasn't previously counted.
+    // Note: this is only set in compatibility mode.
+    uint32_t numTextureSamplerCombinations = 0;
 };
 
 class ShaderModuleBase : public RefCountedWithExternalCount<ApiObjectBase>,
@@ -296,23 +314,23 @@ class ShaderModuleBase : public RefCountedWithExternalCount<ApiObjectBase>,
                      std::vector<tint::wgsl::Extension> internalExtensions);
     ~ShaderModuleBase() override;
 
-    static Ref<ShaderModuleBase> MakeError(DeviceBase* device, const char* label);
+    static Ref<ShaderModuleBase> MakeError(DeviceBase* device, StringView label);
 
     ObjectType GetType() const override;
 
     // Return true iff the program has an entrypoint called `entryPoint`.
-    bool HasEntryPoint(const std::string& entryPoint) const;
+    bool HasEntryPoint(absl::string_view entryPoint) const;
 
     // Return the number of entry points for a stage.
     size_t GetEntryPointCount(SingleShaderStage stage) const { return mEntryPointCounts[stage]; }
 
     // Return the entry point for a stage. If no entry point name, returns the default one.
-    ShaderModuleEntryPoint ReifyEntryPointName(const char* entryPointName,
+    ShaderModuleEntryPoint ReifyEntryPointName(StringView entryPointName,
                                                SingleShaderStage stage) const;
 
     // Return the metadata for the given `entryPoint`. HasEntryPoint with the same argument
     // must be true.
-    const EntryPointMetadata& GetEntryPoint(const std::string& entryPoint) const;
+    const EntryPointMetadata& GetEntryPoint(absl::string_view entryPoint) const;
 
     // Functions necessary for the unordered_set<ShaderModuleBase*>-based cache.
     size_t ComputeContentHash() override;
@@ -330,9 +348,7 @@ class ShaderModuleBase : public RefCountedWithExternalCount<ApiObjectBase>,
     Ref<TintProgram> GetTintProgramForTesting() const;
     int GetTintProgramRecreateCountForTesting() const;
 
-    void APIGetCompilationInfo(wgpu::CompilationInfoCallback callback, void* userdata);
-    Future APIGetCompilationInfoF(const CompilationInfoCallbackInfo& callbackInfo);
-    Future APIGetCompilationInfo2(const WGPUCompilationInfoCallbackInfo2& callbackInfo);
+    Future APIGetCompilationInfo(const WGPUCompilationInfoCallbackInfo& callbackInfo);
 
     void InjectCompilationMessages(std::unique_ptr<OwnedCompilationMessages> compilationMessages);
     OwnedCompilationMessages* GetCompilationMessages() const;
@@ -344,7 +360,7 @@ class ShaderModuleBase : public RefCountedWithExternalCount<ApiObjectBase>,
                               OwnedCompilationMessages* compilationMessages);
 
   private:
-    ShaderModuleBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
+    ShaderModuleBase(DeviceBase* device, ObjectBase::ErrorTag tag, StringView label);
 
     void WillDropLastExternalRef() override;
 

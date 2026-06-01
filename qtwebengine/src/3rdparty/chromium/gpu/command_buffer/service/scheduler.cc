@@ -72,7 +72,7 @@ Scheduler::ScopedSetSequencePriority::ScopedSetSequencePriority(
     Scheduler* scheduler,
     SequenceId sequence_id,
     SchedulingPriority priority)
-    : scheduler_(scheduler), sequence_id_(sequence_id), priority_(priority) {
+    : scheduler_(scheduler), sequence_id_(sequence_id) {
   scheduler_->SetSequencePriority(sequence_id, priority);
 }
 Scheduler::ScopedSetSequencePriority::~ScopedSetSequencePriority() {
@@ -108,11 +108,15 @@ Scheduler::PerThreadState& Scheduler::PerThreadState::operator=(
 Scheduler::Sequence::Sequence(
     Scheduler* scheduler,
     scoped_refptr<base::SingleThreadTaskRunner> task_runner,
-    SchedulingPriority priority)
+    SchedulingPriority priority,
+    CommandBufferNamespace namespace_id,
+    CommandBufferId command_buffer_id)
     : TaskGraph::Sequence(&scheduler->task_graph_,
                           base::BindRepeating(&Sequence::OnFrontTaskUnblocked,
                                               base::Unretained(this)),
-                          task_runner),
+                          task_runner,
+                          namespace_id,
+                          command_buffer_id),
       scheduler_(scheduler),
       task_runner_(std::move(task_runner)),
       default_priority_(priority),
@@ -177,11 +181,10 @@ void Scheduler::Sequence::ContinueTask(base::OnceClosure task_closure) {
   TaskGraph::Sequence::ContinueTask(std::move(task_closure));
 }
 
-uint32_t Scheduler::Sequence::AddTask(
-    base::OnceClosure task_closure,
-    std::vector<SyncToken> wait_fences,
-    const SyncToken& release,
-    TaskGraph::ReportingCallback report_callback) {
+uint32_t Scheduler::Sequence::AddTask(base::OnceClosure task_closure,
+                                      std::vector<SyncToken> wait_fences,
+                                      const SyncToken& release,
+                                      ReportingCallback report_callback) {
   uint32_t order_num = TaskGraph::Sequence::AddTask(
       std::move(task_closure), std::move(wait_fences), release,
       std::move(report_callback));
@@ -228,8 +231,18 @@ Scheduler::~Scheduler() {
 SequenceId Scheduler::CreateSequence(
     SchedulingPriority priority,
     scoped_refptr<base::SingleThreadTaskRunner> task_runner) {
-  auto sequence =
-      std::make_unique<Sequence>(this, std::move(task_runner), priority);
+  return CreateSequence(priority, std::move(task_runner),
+                        CommandBufferNamespace::INVALID,
+                        /*command_buffer_id=*/{});
+}
+
+SequenceId Scheduler::CreateSequence(
+    SchedulingPriority priority,
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+    CommandBufferNamespace namespace_id,
+    CommandBufferId command_buffer_id) {
+  auto sequence = std::make_unique<Sequence>(
+      this, std::move(task_runner), priority, namespace_id, command_buffer_id);
   SequenceId id = sequence->sequence_id();
   Sequence* sequence_ptr = sequence.get();
   task_graph_.AddSequence(std::move(sequence));
@@ -242,12 +255,6 @@ SequenceId Scheduler::CreateSequence(
   return id;
 }
 
-SequenceId Scheduler::CreateSequenceForTesting(SchedulingPriority priority) {
-  // This will create the sequence on the thread on which this method is called.
-  return CreateSequence(priority,
-                        base::SingleThreadTaskRunner::GetCurrentDefault());
-}
-
 void Scheduler::DestroySequence(SequenceId sequence_id) {
   {
     base::AutoLock auto_lock(lock());
@@ -257,11 +264,12 @@ void Scheduler::DestroySequence(SequenceId sequence_id) {
   task_graph_.DestroySequence(sequence_id);
 }
 
-void Scheduler::CreateSyncPointClientState(SequenceId sequence_id,
-                                           CommandBufferNamespace namespace_id,
-                                           CommandBufferId command_buffer_id) {
-  task_graph_.CreateSyncPointClientState(sequence_id, namespace_id,
-                                         command_buffer_id);
+ScopedSyncPointClientState Scheduler::CreateSyncPointClientState(
+    SequenceId sequence_id,
+    CommandBufferNamespace namespace_id,
+    CommandBufferId command_buffer_id) {
+  return task_graph_.CreateSyncPointClientState(sequence_id, namespace_id,
+                                                command_buffer_id);
 }
 
 Scheduler::Sequence* Scheduler::GetSequence(SequenceId sequence_id) {

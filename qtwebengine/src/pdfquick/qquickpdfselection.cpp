@@ -232,6 +232,9 @@ void QQuickPdfSelection::inputMethodEvent(QInputMethodEvent *event)
         case QInputMethodEvent::Language:
         case QInputMethodEvent::Ruby:
         case QInputMethodEvent::TextFormat:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+        case QInputMethodEvent::MimeData:
+#endif
             break;
         }
     }
@@ -528,12 +531,12 @@ void QQuickPdfSelection::update(const QPdfSelection &sel, bool textAndGeometryOn
         Qt::InputMethodQueries toUpdate = {};
         QRectF firstLineBounds = sel.bounds().first().boundingRect();
         m_from = firstLineBounds.topLeft() * m_renderScale;
-        if (!qFuzzyCompare(m_heightAtAnchor, firstLineBounds.height())) {
+        if (!qFuzzyCompare(m_heightAtAnchor + 1, firstLineBounds.height() + 1)) {
             m_heightAtAnchor = firstLineBounds.height() * m_renderScale;
             toUpdate.setFlag(Qt::ImAnchorRectangle);
         }
         QRectF lastLineBounds = sel.bounds().last().boundingRect();
-        if (!qFuzzyCompare(m_heightAtCursor, lastLineBounds.height())) {
+        if (!qFuzzyCompare(m_heightAtCursor + 1, lastLineBounds.height() + 1)) {
             m_heightAtCursor = lastLineBounds.height() * m_renderScale;
             toUpdate.setFlag(Qt::ImCursorRectangle);
         }

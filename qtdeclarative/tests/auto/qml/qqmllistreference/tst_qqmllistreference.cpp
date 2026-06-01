@@ -14,6 +14,7 @@
 #include <QtCore/qrandom.h>
 #include <private/qquickstate_p.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQml/private/qqmllistwrapper_p.h>
 
 class tst_qqmllistreference : public QQmlDataTest
 {
@@ -61,6 +62,8 @@ private slots:
     void listIgnoresNull_data() { modeData(); }
     void listIgnoresNull();
     void consoleLogSyntheticList();
+
+    void listWrapperCreateOwnedIsIndependent();
 };
 
 class TestType : public QObject
@@ -1113,6 +1116,29 @@ void tst_qqmllistreference::consoleLogSyntheticList()
             QtDebugMsg, QRegularExpression("\\[QObject_QML_[0-9]+\\(0x[0-9a-f]+\\)\\]"));
     QScopedPointer<QObject> object(component.create());
     QVERIFY(!object.isNull());
+}
+
+void tst_qqmllistreference::listWrapperCreateOwnedIsIndependent()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("changingList.qml"));
+    std::unique_ptr<QObject> root{ component.create() };
+    QQmlProperty prop(root.get(), "data");
+    Q_ASSERT(prop.isValid());
+    auto v4 = engine.handle();
+    QV4::Scope scope(v4);
+    QV4::Scoped<QV4::QmlListWrapper> scopedListWrapper { scope, QV4::QmlListWrapper::createOwned(v4, prop) };
+    QCOMPARE(scopedListWrapper->arrayData()->length(), 2);
+    // modifying the wrapper shouldn't modify the original property
+    scopedListWrapper->arrayData()->vtable()->truncate(scopedListWrapper->objectValue(), 0);
+    bool ok = false;
+    QCOMPARE(root->property("length").toInt(&ok), 2);
+    QVERIFY(ok);
+    // modifying the original property should not modify the list wrapper
+    root->setProperty("toggle", false);
+    QCOMPARE(scopedListWrapper->arrayData()->length(), 0); // 0 because we cleared the list
+    // sanity check that the original property has changed
+    QCOMPARE(root->property("length").toInt(&ok), 1);
 }
 
 QTEST_MAIN(tst_qqmllistreference)

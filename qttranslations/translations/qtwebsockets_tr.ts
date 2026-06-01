@@ -23,7 +23,7 @@
     <name>QWebSocket</name>
     <message>
         <source>Connection closed</source>
-        <translation>Bağlantı kapatıldı.</translation>
+        <translation>Bağlantı kapatıldı</translation>
     </message>
     <message>
         <source>Invalid URL.</source>
@@ -54,16 +54,49 @@
         <translation>Yazılan bayt %1 != %2.</translation>
     </message>
     <message>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenge encountered.</source>
+        <extracomment>&apos;WWW-Authenticate&apos; is the HTTP header.</extracomment>
+        <translation>QWebSocketPrivate::processHandshake: Desteklenmeyen WWW-Authenticate sorunuyla karşılaşıldı.</translation>
+    </message>
+    <message>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenges encountered.</source>
+        <translation>QWebSocketPrivate::processHandshake: Desteklenmeyen WWW-Authenticate sorunlarıyla karşılaşıldı.</translation>
+    </message>
+    <message>
+        <source>Header is too large</source>
+        <translation>Üstbilgi pek büyük</translation>
+    </message>
+    <message>
+        <source>Read handshake request header failed</source>
+        <translation>El sıkışma okuma isteği üstbilgisi başarısız</translation>
+    </message>
+    <message>
+        <source>Read handshake request status failed</source>
+        <translation>El sıkışma okuma isteği durumu başarısız</translation>
+    </message>
+    <message>
+        <source>Parsing handshake request header failed</source>
+        <translation>El sıkışma isteği üstbilgisini ayrıştırma başarısız</translation>
+    </message>
+    <message>
+        <source>WebSocket server has chosen protocol %1 which has not been requested</source>
+        <translation>WebSocket sunucusu, istenmemiş olan %1 protokolünü seçti</translation>
+    </message>
+    <message>
+        <source>Invalid parameter encountered during protocol upgrade: %1</source>
+        <translation>Protokol yükseltmesi sırasında geçersiz parametreyle karşılaşıldı: %1</translation>
+    </message>
+    <message>
         <source>Invalid statusline in response: %1.</source>
-        <translation>Yanıt olarak geçersiz durum satırı: %1.</translation>
+        <translation type="vanished">Yanıt olarak geçersiz durum satırı: %1.</translation>
     </message>
     <message>
         <source>Malformed header in response: %1.</source>
-        <translation>Yanıt olarak hatalı oluşturulmuş üstbilgi: %1.</translation>
+        <translation type="vanished">Yanıt olarak hatalı oluşturulmuş üstbilgi: %1.</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Connection closed while reading header.</source>
-        <translation>QWebSocketPrivate::processHandshake: Üstbilgi okunurken bağlantı kapandı.</translation>
+        <translation type="vanished">QWebSocketPrivate::processHandshake: Üstbilgi okunurken bağlantı kapandı.</translation>
     </message>
     <message>
         <source>Accept-Key received from server %1 does not match the client key %2.</source>
@@ -71,7 +104,7 @@
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Invalid statusline in response: %1.</source>
-        <translation>QWebSocketPrivate::processHandshake: Yanıt olarak geçersiz durum satırı: %1.</translation>
+        <translation type="vanished">QWebSocketPrivate::processHandshake: Yanıt olarak geçersiz durum satırı: %1.</translation>
     </message>
     <message>
         <source>Handshake: Server requests a version that we don&apos;t support: %1.</source>
@@ -80,6 +113,10 @@
     <message>
         <source>QWebSocketPrivate::processHandshake: Unknown error condition encountered. Aborting connection.</source>
         <translation>QWebSocketPrivate::processHandshake: Bilinmeyen hata koşuluna denk gelindi. Bağlantı iptal ediliyor.</translation>
+    </message>
+    <message>
+        <source>QWebSocket::processHandshake: Host requires authentication</source>
+        <translation>QWebSocket::processHandshake: Makine, kimlik doğrulama gerektiriyor</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unhandled http status code: %1 (%2).</source>
@@ -103,7 +140,11 @@
     </message>
     <message>
         <source>The protocols attribute contains newlines. Possible attack detected.</source>
-        <translation>Protokoller özniteliğinde yenisatırlar var. Olası atak algılandı.</translation>
+        <translation type="vanished">Protokoller özniteliğinde yenisatırlar var. Olası atak algılandı.</translation>
+    </message>
+    <message>
+        <source>Connection refused</source>
+        <translation>Bağlantı reddedildi</translation>
     </message>
 </context>
 <context>
@@ -173,7 +214,7 @@
     </message>
     <message>
         <source>Error while reading from the network: %1.</source>
-        <translation>Ağdan okunurken hata: %1</translation>
+        <translation>Ağdan okunurken hata: %1.</translation>
     </message>
     <message>
         <source>Maximum framesize exceeded.</source>
@@ -185,19 +226,19 @@
     </message>
     <message>
         <source>Rsv field is non-zero</source>
-        <translation>RSV alanı sıfır değil.</translation>
+        <translation>RSV alanı sıfır değil</translation>
     </message>
     <message>
         <source>Used reserved opcode</source>
-        <translation>Ayrılmış işlem kodu kullanıldı.</translation>
+        <translation>Ayrılmış işlem kodu kullanıldı</translation>
     </message>
     <message>
         <source>Control frame is larger than 125 bytes</source>
-        <translation>Denetim çerçevesi 125 bayttan daha büyük.</translation>
+        <translation>Denetim çerçevesi 125 bayttan daha büyük</translation>
     </message>
     <message>
         <source>Control frames cannot be fragmented</source>
-        <translation>Denetim çerçeveleri parçalanamaz.</translation>
+        <translation>Denetim çerçeveleri parçalanamaz</translation>
     </message>
 </context>
 <context>

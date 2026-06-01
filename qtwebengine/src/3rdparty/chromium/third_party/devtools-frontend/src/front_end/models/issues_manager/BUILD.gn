@@ -53,6 +53,7 @@ devtools_module("issues_manager") {
     "../../models/text_utils:bundle",
     "../../models/workspace:bundle",
     "../../third_party/marked:bundle",
+    "../../third_party/third-party-web:bundle",
   ]
 
   public_deps = [ ":descriptions" ]
@@ -60,11 +61,18 @@ devtools_module("issues_manager") {
 
 devtools_issue_description_files = [
   "arInsecureContext.md",
+  "arInvalidInfoHeader.md",
   "arInvalidRegisterOsSourceHeader.md",
   "arInvalidRegisterOsTriggerHeader.md",
   "arInvalidRegisterSourceHeader.md",
   "arInvalidRegisterTriggerHeader.md",
   "arNavigationRegistrationWithoutTransientUserActivation.md",
+  "arNavigationRegistrationUniqueScopeAlreadySet.md",
+  "arNoRegisterOsSourceHeader.md",
+  "arNoRegisterOsTriggerHeader.md",
+  "arNoRegisterSourceHeader.md",
+  "arNoRegisterTriggerHeader.md",
+  "arNoWebOrOsSupport.md",
   "arOsSourceIgnored.md",
   "arOsTriggerIgnored.md",
   "arPermissionPolicyDisabled.md",
@@ -165,6 +173,8 @@ devtools_issue_description_files = [
   "cookieWarnThirdPartyPhaseoutRead.md",
   "cookieExcludeThirdPartyPhaseoutSet.md",
   "cookieExcludeThirdPartyPhaseoutRead.md",
+  "cookieExcludePortMismatch.md",
+  "cookieExcludeSchemeMismatch.md",
   "cookieWarnMetadataGrantRead.md",
   "cookieWarnMetadataGrantSet.md",
   "propertyRuleIssue.md",
@@ -196,6 +206,7 @@ devtools_issue_description_files = [
   "sharedDictionaryWriteErrorShuttingDown.md",
   "sharedDictionaryWriteErrorTooLongIdField.md",
   "sharedDictionaryWriteErrorUnsupportedType.md",
+  "placeholderDescriptionForInvisibleIssues.md",
 ]
 
 devtools_pre_built("descriptions") {
@@ -221,6 +232,7 @@ devtools_entrypoint("bundle") {
     "../../panels/elements/*",
     "../../panels/issues/*",
     "../../panels/network/*",
+    "../../panels/security/*",
     "../../panels/sources/*",
     "../../testing/*",
     "../../ui/components/docs/issue_counter/*",

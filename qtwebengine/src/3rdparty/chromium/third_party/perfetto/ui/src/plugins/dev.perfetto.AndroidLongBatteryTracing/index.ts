@@ -13,19 +13,12 @@
 // limitations under the License.
 
 import {Trace} from '../../public/trace';
-import {PerfettoPlugin, PluginDescriptor} from '../../public/plugin';
+import {PerfettoPlugin} from '../../public/plugin';
 import {Engine} from '../../trace_processor/engine';
-import {
-  SimpleSliceTrack,
-  SimpleSliceTrackConfig,
-} from '../../frontend/simple_slice_track';
-import {CounterOptions} from '../../frontend/base_counter_track';
-import {
-  SimpleCounterTrack,
-  SimpleCounterTrackConfig,
-} from '../../frontend/simple_counter_track';
-import {globals} from '../../frontend/globals';
-import {GroupNode, TrackNode} from '../../public/workspace';
+import {createQuerySliceTrack} from '../../components/tracks/query_slice_track';
+import {CounterOptions} from '../../components/tracks/base_counter_track';
+import {createQueryCounterTrack} from '../../components/tracks/query_counter_track';
+import {TrackNode} from '../../public/workspace';
 
 interface ContainedTrace {
   uuid: string;
@@ -136,14 +129,14 @@ const NETWORK_SUMMARY = `
       select
           cast(ts / 5000000000 as int64) * 5000000000 AS ts,
           case
-              when track_name glob '*wlan*' then 'wifi'
-              when track_name glob '*rmnet*' then 'modem'
+              when iface glob '*wlan*' then 'wifi'
+              when iface glob '*rmnet*' then 'modem'
               else 'unknown'
           end as dev_type,
           package_name as pkg,
           sum(packet_length) AS value
       from android_network_packets
-      where (track_name glob '*wlan*' or track_name glob '*rmnet*')
+      where (iface glob '*wlan*' or iface glob '*rmnet*')
       group by 1,2,3
   ),
   zeroes as (
@@ -171,54 +164,6 @@ const NETWORK_SUMMARY = `
       group by 1, 2, 3
   )
   select * from final where ts is not null`;
-
-const MODEM_ACTIVITY_INFO = `
-  drop table if exists modem_activity_info;
-  create table modem_activity_info as
-  with modem_raw as (
-    select
-      ts,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.timestamp_millis') as timestamp_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.sleep_time_millis') as sleep_time_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.controller_idle_time_millis') as controller_idle_time_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.controller_tx_time_pl0_millis') as controller_tx_time_pl0_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.controller_tx_time_pl1_millis') as controller_tx_time_pl1_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.controller_tx_time_pl2_millis') as controller_tx_time_pl2_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.controller_tx_time_pl3_millis') as controller_tx_time_pl3_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.controller_tx_time_pl4_millis') as controller_tx_time_pl4_millis,
-      EXTRACT_ARG(arg_set_id, 'modem_activity_info.controller_rx_time_millis') as controller_rx_time_millis
-    from track t join slice s on t.id = s.track_id
-    where t.name = 'Statsd Atoms'
-      and s.name = 'modem_activity_info'
-  ),
-  deltas as (
-      select
-          timestamp_millis * 1000000 as ts,
-          lead(timestamp_millis) over (order by ts) - timestamp_millis as dur_millis,
-          lead(sleep_time_millis) over (order by ts) - sleep_time_millis as sleep_time_millis,
-          lead(controller_idle_time_millis) over (order by ts) - controller_idle_time_millis as controller_idle_time_millis,
-          lead(controller_tx_time_pl0_millis) over (order by ts) - controller_tx_time_pl0_millis as controller_tx_time_pl0_millis,
-          lead(controller_tx_time_pl1_millis) over (order by ts) - controller_tx_time_pl1_millis as controller_tx_time_pl1_millis,
-          lead(controller_tx_time_pl2_millis) over (order by ts) - controller_tx_time_pl2_millis as controller_tx_time_pl2_millis,
-          lead(controller_tx_time_pl3_millis) over (order by ts) - controller_tx_time_pl3_millis as controller_tx_time_pl3_millis,
-          lead(controller_tx_time_pl4_millis) over (order by ts) - controller_tx_time_pl4_millis as controller_tx_time_pl4_millis,
-          lead(controller_rx_time_millis) over (order by ts) - controller_rx_time_millis as controller_rx_time_millis
-      from modem_raw
-  ),
-  ratios as (
-      select
-          ts,
-          100.0 * sleep_time_millis / dur_millis as sleep_time_ratio,
-          100.0 * controller_idle_time_millis / dur_millis as controller_idle_time_ratio,
-          100.0 * controller_tx_time_pl0_millis / dur_millis as controller_tx_time_pl0_ratio,
-          100.0 * controller_tx_time_pl1_millis / dur_millis as controller_tx_time_pl1_ratio,
-          100.0 * controller_tx_time_pl2_millis / dur_millis as controller_tx_time_pl2_ratio,
-          100.0 * controller_tx_time_pl3_millis / dur_millis as controller_tx_time_pl3_ratio,
-          100.0 * controller_tx_time_pl4_millis / dur_millis as controller_tx_time_pl4_ratio,
-          100.0 * controller_rx_time_millis / dur_millis as controller_rx_time_ratio
-      from deltas
-  )
-  select * from ratios where sleep_time_ratio is not null and sleep_time_ratio >= 0`;
 
 const MODEM_RIL_STRENGTH = `
   DROP VIEW IF EXISTS ScreenOn;
@@ -356,91 +301,6 @@ const SUSPEND_RESUME = `
   FROM android_suspend_state
   WHERE power_state = 'suspended'`;
 
-const SCREEN_STATE = `
-  WITH _counter AS (
-    SELECT counter.id, ts, 0 AS track_id, value
-    FROM counter
-    JOIN counter_track ON counter_track.id = counter.track_id
-    WHERE name = 'ScreenState'
-  )
-  SELECT
-    ts,
-    dur,
-    CASE value
-      WHEN 1 THEN 'Screen off'
-      WHEN 2 THEN 'Screen on'
-      WHEN 3 THEN 'Always-on display (doze)'
-      ELSE 'unknown'
-    END AS name
-  FROM counter_leading_intervals!(_counter)`;
-
-// See DeviceIdleController.java for where these states come from and how
-// they transition.
-const DOZE_LIGHT = `
-  WITH _counter AS (
-    SELECT counter.id, ts, 0 AS track_id, value
-    FROM counter
-    JOIN counter_track ON counter_track.id = counter.track_id
-    WHERE name = 'DozeLightState'
-  )
-  SELECT
-    ts,
-    dur,
-    CASE value
-      WHEN 0 THEN 'active'
-      WHEN 1 THEN 'inactive'
-      WHEN 4 THEN 'idle'
-      WHEN 5 THEN 'waiting_for_network'
-      WHEN 6 THEN 'idle_maintenance'
-      WHEN 7 THEN 'override'
-      ELSE 'unknown'
-    END AS name
-  FROM counter_leading_intervals!(_counter)`;
-
-const DOZE_DEEP = `
-  WITH _counter AS (
-    SELECT counter.id, ts, 0 AS track_id, value
-    FROM counter
-    JOIN counter_track ON counter_track.id = counter.track_id
-    WHERE name = 'DozeDeepState'
-  )
-  SELECT
-    ts,
-    dur,
-    CASE value
-      WHEN 0 THEN 'active'
-      WHEN 1 THEN 'inactive'
-      WHEN 2 THEN 'idle_pending'
-      WHEN 3 THEN 'sensing'
-      WHEN 4 THEN 'locating'
-      WHEN 5 THEN 'idle'
-      WHEN 6 THEN 'idle_maintenance'
-      WHEN 7 THEN 'quick_doze_delay'
-      ELSE 'unknown'
-    END AS name
-  FROM counter_leading_intervals!(_counter)`;
-
-const CHARGING = `
-  WITH _counter AS (
-    SELECT counter.id, ts, 0 AS track_id, value
-    FROM counter
-    JOIN counter_track ON counter_track.id = counter.track_id
-    WHERE name = 'BatteryStatus'
-  )
-  SELECT
-    ts,
-    dur,
-    CASE value
-      -- 0 and 1 are both unknown
-      WHEN 2 THEN 'Charging'
-      WHEN 3 THEN 'Discharging'
-      -- special case when charger is present but battery isn't charging
-      WHEN 4 THEN 'Not charging'
-      WHEN 5 THEN 'Full'
-      ELSE 'unknown'
-    END AS name
-  FROM counter_leading_intervals!(_counter)`;
-
 const THERMAL_THROTTLING = `
   with step1 as (
       select
@@ -474,8 +334,8 @@ const THERMAL_THROTTLING = `
   from step2
   where severity != 'NONE'`;
 
-const KERNEL_WAKELOCKS = `
-  create or replace perfetto table kernel_wakelocks as
+const KERNEL_WAKELOCKS_STATSD = `
+  create or replace perfetto table kernel_wakelocks_statsd as
   with kernel_wakelock_args as (
     select
       arg_set_id,
@@ -537,9 +397,9 @@ const KERNEL_WAKELOCKS = `
     min(100.0 * wakelock_dur / (ts_end - ts - suspended_dur), 100) as value
   from step3`;
 
-const KERNEL_WAKELOCKS_SUMMARY = `
+const KERNEL_WAKELOCKS_STATSD_SUMMARY = `
   select wakelock_name, max(value) as max_value
-  from kernel_wakelocks
+  from kernel_wakelocks_statsd
   where wakelock_name not in ('PowerManager.SuspendLockout', 'PowerManagerService.Display')
   group by 1
   having max_value > 1
@@ -599,189 +459,11 @@ const HIGH_CPU = `
   from with_ratio
   group by 1, 3, 4`;
 
-const WAKEUPS = `
-  drop table if exists wakeups;
-  create table wakeups as
-  with wakeup_reason as (
-      select
-      ts,
-      substr(i.name, 0, instr(i.name, ' ')) as id_timestamp,
-      substr(i.name, instr(i.name, ' ') + 1) as raw_wakeup
-      from track t join instant i on t.id = i.track_id
-      where t.name = 'wakeup_reason'
-  ),
-  wakeup_attribution as (
-      select
-      substr(i.name, 0, instr(i.name, ' ')) as id_timestamp,
-      substr(i.name, instr(i.name, ' ') + 1) as attribution
-      from track t join instant i on t.id = i.track_id
-      where t.name = 'wakeup_attribution'
-  ),
-  step1 as(
-    select
-      ts,
-      raw_wakeup,
-      attribution,
-      null as raw_backoff
-    from wakeup_reason r
-      left outer join wakeup_attribution using(id_timestamp)
-    union all
-    select
-      ts,
-      null as raw_wakeup,
-      null as attribution,
-      i.name as raw_backoff
-    from track t join instant i on t.id = i.track_id
-    where t.name = 'suspend_backoff'
-  ),
-  step2 as (
-    select
-      ts,
-      raw_wakeup,
-      attribution,
-      lag(raw_backoff) over (order by ts) as raw_backoff
-    from step1
-  ),
-  step3 as (
-    select
-      ts,
-      raw_wakeup,
-      attribution,
-      str_split(raw_backoff, ' ', 0) as suspend_quality,
-      str_split(raw_backoff, ' ', 1) as backoff_state,
-      str_split(raw_backoff, ' ', 2) as backoff_reason,
-      cast(str_split(raw_backoff, ' ', 3) as int) as backoff_count,
-      cast(str_split(raw_backoff, ' ', 4) as int) as backoff_millis,
-      false as suspend_end
-    from step2
-    where raw_wakeup is not null
-    union all
-    select
-      ts,
-      null as raw_wakeup,
-      null as attribution,
-      null as suspend_quality,
-      null as backoff_state,
-      null as backoff_reason,
-      null as backoff_count,
-      null as backoff_millis,
-      true as suspend_end
-    from android_suspend_state
-    where power_state = 'suspended'
-  ),
-  step4 as (
-    select
-      ts,
-      case suspend_quality
-        when 'good' then
-          min(
-            lead(ts, 1, ts + 5e9) over (order by ts) - ts,
-            5e9
-          )
-        when 'bad' then backoff_millis * 1000000
-        else 0
-      end as dur,
-      raw_wakeup,
-      attribution,
-      suspend_quality,
-      backoff_state,
-      backoff_reason,
-      backoff_count,
-      backoff_millis,
-      suspend_end
-    from step3
-  ),
-  step5 as (
-    select
-      ts,
-      dur,
-      raw_wakeup,
-      attribution,
-      suspend_quality,
-      backoff_state,
-      backoff_reason,
-      backoff_count,
-      backoff_millis
-    from step4
-    where not suspend_end
-  ),
-  step6 as (
-    select
-      ts,
-      dur,
-      raw_wakeup,
-      attribution,
-      suspend_quality,
-      backoff_state,
-      backoff_reason,
-      backoff_count,
-      backoff_millis,
-      case
-        when raw_wakeup like 'Abort: Pending Wakeup Sources: %' then 'abort_pending'
-        when raw_wakeup like 'Abort: Last active Wakeup Source: %' then 'abort_last_active'
-        when raw_wakeup like 'Abort: %' then 'abort_other'
-        else 'normal'
-      end as type,
-      case
-        when raw_wakeup like 'Abort: Pending Wakeup Sources: %' then substr(raw_wakeup, 32)
-        when raw_wakeup like 'Abort: Last active Wakeup Source: %' then substr(raw_wakeup, 35)
-        when raw_wakeup like 'Abort: %' then substr(raw_wakeup, 8)
-        else raw_wakeup
-      end as main,
-      case
-        when raw_wakeup like 'Abort: Pending Wakeup Sources: %' then ' '
-        when raw_wakeup like 'Abort: %' then 'no delimiter needed'
-        else ':'
-      end as delimiter
-    from step5
-  ),
-  step7 as (
-    select
-      ts,
-      dur,
-      raw_wakeup,
-      attribution,
-      suspend_quality,
-      backoff_state,
-      backoff_reason,
-      backoff_count,
-      backoff_millis,
-      type,
-      str_split(main, delimiter, 0) as item_0,
-      str_split(main, delimiter, 1) as item_1,
-      str_split(main, delimiter, 2) as item_2,
-      str_split(main, delimiter, 3) as item_3
-    from step6
-  ),
-  step8 as (
-    select ts, dur, raw_wakeup, attribution, suspend_quality, backoff_state, backoff_reason, backoff_count, backoff_millis, type, item_0 as item from step7
-    union all
-    select ts, dur, raw_wakeup, attribution, suspend_quality, backoff_state, backoff_reason, backoff_count, backoff_millis, type, item_1 as item from step7 where item_1 is not null
-    union all
-    select ts, dur, raw_wakeup, attribution, suspend_quality, backoff_state, backoff_reason, backoff_count, backoff_millis, type, item_2 as item from step7 where item_2 is not null
-    union all
-    select ts, dur, raw_wakeup, attribution, suspend_quality, backoff_state, backoff_reason, backoff_count, backoff_millis, type, item_3 as item from step7 where item_3 is not null
-  )
-  select
-    ts,
-    dur,
-    ts + dur as ts_end,
-    raw_wakeup,
-    attribution,
-    suspend_quality,
-    backoff_state,
-    ifnull(backoff_reason, 'none') as backoff_reason,
-    backoff_count,
-    backoff_millis,
-    type,
-    case when type = 'normal' then ifnull(str_split(item, ' ', 1), item) else item end as item
-  from step8`;
-
 const WAKEUPS_COLUMNS = [
   'item',
   'type',
   'raw_wakeup',
-  'attribution',
+  'on_device_attribution',
   'suspend_quality',
   'backoff_state',
   'backoff_reason',
@@ -1149,88 +831,89 @@ const BT_ACTIVITY = `
   from step2
 `;
 
-class AndroidLongBatteryTracing implements PerfettoPlugin {
-  private readonly groups = new Map<string, GroupNode>();
+export default class implements PerfettoPlugin {
+  static readonly id = 'dev.perfetto.AndroidLongBatteryTracing';
+  private readonly groups = new Map<string, TrackNode>();
 
   private addTrack(ctx: Trace, track: TrackNode, groupName?: string): void {
     if (groupName) {
       const existingGroup = this.groups.get(groupName);
       if (existingGroup) {
-        existingGroup.insertChildInOrder(track);
+        existingGroup.addChildInOrder(track);
       } else {
-        const group = new GroupNode(groupName);
-        group.insertChildInOrder(track);
+        const group = new TrackNode({title: groupName, isSummary: true});
+        group.addChildInOrder(track);
         this.groups.set(groupName, group);
-        ctx.workspace.insertChildInOrder(group);
+        ctx.workspace.addChildInOrder(group);
       }
     } else {
-      ctx.workspace.insertChildInOrder(track);
+      ctx.workspace.addChildInOrder(track);
     }
   }
 
-  addSliceTrack(
+  async addSliceTrack(
     ctx: Trace,
     name: string,
     query: string,
     groupName?: string,
     columns: string[] = [],
-  ): void {
-    const config: SimpleSliceTrackConfig = {
+  ) {
+    const uri = `/long_battery_tracing_${name}`;
+    const track = await createQuerySliceTrack({
+      trace: ctx,
+      uri,
       data: {
         sqlSource: query,
         columns: ['ts', 'dur', 'name', ...columns],
       },
-      columns: {ts: 'ts', dur: 'dur', name: 'name'},
       argColumns: columns,
-    };
-
-    const uri = `/long_battery_tracing_${name}`;
+    });
     ctx.tracks.registerTrack({
       uri,
       title: name,
-      track: new SimpleSliceTrack(ctx.engine, {trackUri: uri}, config),
+      track,
     });
-    const track = new TrackNode(uri, name);
-    this.addTrack(ctx, track, groupName);
+    const trackNode = new TrackNode({uri, title: name});
+    this.addTrack(ctx, trackNode, groupName);
   }
 
-  addCounterTrack(
+  async addCounterTrack(
     ctx: Trace,
     name: string,
     query: string,
     groupName: string,
     options?: Partial<CounterOptions>,
-  ): void {
-    const config: SimpleCounterTrackConfig = {
+  ) {
+    const uri = `/long_battery_tracing_${name}`;
+    const track = await createQueryCounterTrack({
+      trace: ctx,
+      uri,
       data: {
         sqlSource: query,
         columns: ['ts', 'value'],
       },
-      columns: {ts: 'ts', value: 'value'},
       options,
-    };
-
-    const uri = `/long_battery_tracing_${name}`;
+    });
     ctx.tracks.registerTrack({
       uri,
       title: name,
-      track: new SimpleCounterTrack(ctx.engine, {trackUri: uri}, config),
+      track,
     });
-    const track = new TrackNode(uri, name);
-    this.addTrack(ctx, track, groupName);
+    const trackNode = new TrackNode({uri, title: name});
+    this.addTrack(ctx, trackNode, groupName);
   }
 
-  addBatteryStatsState(
+  async addBatteryStatsState(
     ctx: Trace,
     name: string,
     track: string,
     groupName: string,
     features: Set<string>,
-  ): void {
+  ) {
     if (!features.has(`track.${track}`)) {
       return;
     }
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       name,
       `SELECT ts, safe_dur AS dur, value_name AS name
@@ -1240,18 +923,18 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
     );
   }
 
-  addBatteryStatsEvent(
+  async addBatteryStatsEvent(
     ctx: Trace,
     name: string,
     track: string,
     groupName: string | undefined,
     features: Set<string>,
-  ): void {
+  ) {
     if (!features.has(`track.${track}`)) {
       return;
     }
 
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       name,
       `SELECT ts, safe_dur AS dur, str_value AS name
@@ -1272,17 +955,39 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
     const e = ctx.engine;
     await e.query(`INCLUDE PERFETTO MODULE android.battery_stats;`);
     await e.query(`INCLUDE PERFETTO MODULE android.suspend;`);
-    await e.query(`INCLUDE PERFETTO MODULE counters.intervals;`);
+    await e.query(`INCLUDE PERFETTO MODULE android.battery.charging_states;`);
+    await e.query(`INCLUDE PERFETTO MODULE android.battery.doze;`);
+    await e.query(`INCLUDE PERFETTO MODULE android.screen_state;`);
 
-    this.addSliceTrack(ctx, 'Device State: Screen state', SCREEN_STATE);
-    this.addSliceTrack(ctx, 'Device State: Charging', CHARGING);
-    this.addSliceTrack(ctx, 'Device State: Suspend / resume', SUSPEND_RESUME);
-    this.addSliceTrack(ctx, 'Device State: Doze light state', DOZE_LIGHT);
-    this.addSliceTrack(ctx, 'Device State: Doze deep state', DOZE_DEEP);
+    await this.addSliceTrack(
+      ctx,
+      'Device State: Screen state',
+      `SELECT ts, dur, screen_state AS name FROM android_screen_state`,
+    );
+    await this.addSliceTrack(
+      ctx,
+      'Device State: Charging',
+      `SELECT ts, dur, charging_state AS name FROM android_charging_states`,
+    );
+    await this.addSliceTrack(
+      ctx,
+      'Device State: Suspend / resume',
+      SUSPEND_RESUME,
+    );
+    await this.addSliceTrack(
+      ctx,
+      'Device State: Doze light state',
+      `SELECT ts, dur, light_idle_state AS name FROM android_light_idle_state`,
+    );
+    await this.addSliceTrack(
+      ctx,
+      'Device State: Doze deep state',
+      `SELECT ts, dur, deep_idle_state AS name FROM android_deep_idle_state`,
+    );
 
     query('Device State: Top app', 'battery_stats.top');
 
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'Device State: Long wakelocks',
       `SELECT
@@ -1303,10 +1008,126 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
     query('Device State: Jobs', 'battery_stats.job');
 
     if (features.has('atom.thermal_throttling_severity_state_changed')) {
-      this.addSliceTrack(
+      await this.addSliceTrack(
         ctx,
         'Device State: Thermal throttling',
         THERMAL_THROTTLING,
+      );
+    }
+  }
+
+  async addAtomCounters(ctx: Trace): Promise<void> {
+    const e = ctx.engine;
+
+    try {
+      await e.query(
+        `INCLUDE PERFETTO MODULE
+            google3.wireless.android.telemetry.trace_extractor.modules.atom_counters_slices`,
+      );
+    } catch (e) {
+      return;
+    }
+
+    const counters = await e.query(
+      `select distinct ui_group, ui_name, ui_unit, counter_name
+       from atom_counters
+       where ui_name is not null`,
+    );
+    const countersIt = counters.iter({
+      ui_group: 'str',
+      ui_name: 'str',
+      ui_unit: 'str',
+      counter_name: 'str',
+    });
+    for (; countersIt.valid(); countersIt.next()) {
+      const unit = countersIt.ui_unit;
+      const opts =
+        unit === '%'
+          ? {yOverrideMaximum: 100, unit: '%'}
+          : unit !== undefined
+            ? {unit}
+            : undefined;
+
+      await this.addCounterTrack(
+        ctx,
+        countersIt.ui_name,
+        `select ts, ${unit === '%' ? 100.0 : 1.0} * counter_value as value
+         from atom_counters
+         where counter_name = '${countersIt.counter_name}'`,
+        countersIt.ui_group,
+        opts,
+      );
+    }
+  }
+
+  async addAtomSlices(ctx: Trace): Promise<void> {
+    const e = ctx.engine;
+
+    try {
+      await e.query(
+        `INCLUDE PERFETTO MODULE
+            google3.wireless.android.telemetry.trace_extractor.modules.atom_counters_slices`,
+      );
+    } catch (e) {
+      return;
+    }
+
+    const sliceTracks = await e.query(
+      `select distinct ui_group, ui_name, atom, field
+       from atom_slices
+       where ui_name is not null
+       order by 1, 2, 3, 4`,
+    );
+    const slicesIt = sliceTracks.iter({
+      atom: 'str',
+      ui_group: 'str',
+      ui_name: 'str',
+      field: 'str',
+    });
+
+    const tracks = new Map<
+      string,
+      {
+        ui_group: string;
+        ui_name: string;
+      }
+    >();
+    const fields = new Map<string, string[]>();
+    for (; slicesIt.valid(); slicesIt.next()) {
+      const atom = slicesIt.atom;
+      let args = fields.get(atom);
+      if (args === undefined) {
+        args = [];
+        fields.set(atom, args);
+      }
+      args.push(slicesIt.field);
+      tracks.set(atom, {
+        ui_group: slicesIt.ui_group,
+        ui_name: slicesIt.ui_name,
+      });
+    }
+
+    for (const [atom, args] of fields) {
+      function safeArg(arg: string) {
+        return arg.replaceAll(/[[\]]/g, '').replaceAll(/\./g, '_');
+      }
+
+      // We need to make arg names compatible with SQL here because they pass through several
+      // layers of SQL without being quoted in "".
+      function argSql(arg: string) {
+        return `max(case when field = '${arg}' then ifnull(string_value, int_value) end)
+                as ${safeArg(arg)}`;
+      }
+
+      await this.addSliceTrack(
+        ctx,
+        tracks.get(atom)!.ui_name,
+        `select ts, dur, slice_name as name, ${args.map((a) => argSql(a)).join(', ')}
+         from atom_slices
+         where atom = '${atom}'
+         group by ts, dur, name`,
+        tracks.get(atom)!.ui_group,
+        args.map((a) => safeArg(a)),
       );
     }
   }
@@ -1324,13 +1145,18 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
     await e.query(NETWORK_SUMMARY);
     await e.query(RADIO_TRANSPORT_TYPE);
 
-    this.addSliceTrack(ctx, 'Default network', DEFAULT_NETWORK, groupName);
+    await this.addSliceTrack(
+      ctx,
+      'Default network',
+      DEFAULT_NETWORK,
+      groupName,
+    );
 
     if (features.has('atom.network_tethering_reported')) {
-      this.addSliceTrack(ctx, 'Tethering', TETHERING, groupName);
+      await this.addSliceTrack(ctx, 'Tethering', TETHERING, groupName);
     }
     if (features.has('net.wifi')) {
-      this.addCounterTrack(
+      await this.addCounterTrack(
         ctx,
         'Wifi total bytes',
         `select ts, sum(value) as value from network_summary where dev_type = 'wifi' group by 1`,
@@ -1342,7 +1168,7 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
       );
       const it = result.iter({pkg: 'str'});
       for (; it.valid(); it.next()) {
-        this.addCounterTrack(
+        await this.addCounterTrack(
           ctx,
           `Top wifi: ${it.pkg}`,
           `select ts, value from network_summary where dev_type = 'wifi' and pkg = '${it.pkg}'`,
@@ -1373,7 +1199,7 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
       features,
     );
     if (features.has('net.modem')) {
-      this.addCounterTrack(
+      await this.addCounterTrack(
         ctx,
         'Modem total bytes',
         `select ts, sum(value) as value from network_summary where dev_type = 'modem' group by 1`,
@@ -1385,7 +1211,7 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
       );
       const it = result.iter({pkg: 'str'});
       for (; it.valid(); it.next()) {
-        this.addCounterTrack(
+        await this.addCounterTrack(
           ctx,
           `Top modem: ${it.pkg}`,
           `select ts, value from network_summary where dev_type = 'modem' and pkg = '${it.pkg}'`,
@@ -1401,7 +1227,7 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
       groupName,
       features,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'Cellular connection',
       `select ts, dur, name from radio_transport`,
@@ -1417,40 +1243,16 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
   }
 
   async addModemDetail(ctx: Trace, features: Set<string>): Promise<void> {
-    if (!features.has('atom.modem_activity_info')) {
-      return;
-    }
     const groupName = 'Modem Detail';
-    await this.addModemActivityInfo(ctx, groupName);
     if (features.has('track.ril')) {
       await this.addModemRil(ctx, groupName);
     }
-  }
-
-  async addModemActivityInfo(ctx: Trace, groupName: string): Promise<void> {
-    const query = (name: string, col: string): void =>
-      this.addCounterTrack(
-        ctx,
-        name,
-        `select ts, ${col}_ratio as value from modem_activity_info`,
-        groupName,
-        {yOverrideMaximum: 100, unit: '%'},
-      );
-
-    await ctx.engine.query(MODEM_ACTIVITY_INFO);
-    query('Modem sleep', 'sleep_time');
-    query('Modem controller idle', 'controller_idle_time');
-    query('Modem RX time', 'controller_rx_time');
-    query('Modem TX time power 0', 'controller_tx_time_pl0');
-    query('Modem TX time power 1', 'controller_tx_time_pl1');
-    query('Modem TX time power 2', 'controller_tx_time_pl2');
-    query('Modem TX time power 3', 'controller_tx_time_pl3');
-    query('Modem TX time power 4', 'controller_tx_time_pl4');
+    await this.addModemTeaData(ctx, groupName);
   }
 
   async addModemRil(ctx: Trace, groupName: string): Promise<void> {
-    const rilStrength = (band: string, value: string): void =>
-      this.addSliceTrack(
+    const rilStrength = async (band: string, value: string) =>
+      await this.addSliceTrack(
         ctx,
         `Modem signal strength ${band} ${value}`,
         `SELECT ts, dur, name FROM RilScreenOn WHERE band_name = '${band}' AND value_name = '${value}'`,
@@ -1459,56 +1261,22 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
 
     const e = ctx.engine;
 
-    if (
-      globals.extraSqlPackages.find((x) => x.name === 'google3') !== undefined
-    ) {
-      await e.query(
-        `INCLUDE PERFETTO MODULE
-            google3.wireless.android.telemetry.trace_extractor.modules.modem_tea_metrics`,
-      );
-      const counters = await e.query(
-        `select distinct name from pixel_modem_counters`,
-      );
-      const countersIt = counters.iter({name: 'str'});
-      for (; countersIt.valid(); countersIt.next()) {
-        this.addCounterTrack(
-          ctx,
-          countersIt.name,
-          `select ts, value from pixel_modem_counters where name = '${countersIt.name}'`,
-          groupName,
-        );
-      }
-      const slices = await e.query(
-        `select distinct track_name from pixel_modem_slices`,
-      );
-      const slicesIt = slices.iter({track_name: 'str'});
-      for (; slicesIt.valid(); slicesIt.next()) {
-        this.addSliceTrack(
-          ctx,
-          it.name,
-          `select ts dur, slice_name as name from pixel_modem_counters
-              where track_name = '${slicesIt.track_name}'`,
-          groupName,
-        );
-      }
-    }
-
     await e.query(MODEM_RIL_STRENGTH);
     await e.query(MODEM_RIL_CHANNELS_PREAMBLE);
 
-    rilStrength('LTE', 'rsrp');
-    rilStrength('LTE', 'rssi');
-    rilStrength('NR', 'rsrp');
-    rilStrength('NR', 'rssi');
+    await rilStrength('LTE', 'rsrp');
+    await rilStrength('LTE', 'rssi');
+    await rilStrength('NR', 'rsrp');
+    await rilStrength('NR', 'rssi');
 
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'Modem channel config',
       MODEM_RIL_CHANNELS,
       groupName,
     );
 
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'Modem cell reselection',
       MODEM_CELL_RESELECTION,
@@ -1517,24 +1285,88 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
     );
   }
 
-  async addKernelWakelocks(ctx: Trace, features: Set<string>): Promise<void> {
+  async addModemTeaData(ctx: Trace, groupName: string): Promise<void> {
+    const e = ctx.engine;
+
+    try {
+      await e.query(
+        `INCLUDE PERFETTO MODULE
+            google3.wireless.android.telemetry.trace_extractor.modules.modem_tea_metrics`,
+      );
+    } catch {
+      return;
+    }
+
+    const counters = await e.query(
+      `select distinct name from pixel_modem_counters`,
+    );
+    const countersIt = counters.iter({name: 'str'});
+    for (; countersIt.valid(); countersIt.next()) {
+      await this.addCounterTrack(
+        ctx,
+        countersIt.name,
+        `select ts, value from pixel_modem_counters where name = '${countersIt.name}'`,
+        groupName,
+      );
+    }
+    const slices = await e.query(
+      `select distinct track_name from pixel_modem_slices`,
+    );
+    const slicesIt = slices.iter({track_name: 'str'});
+    for (; slicesIt.valid(); slicesIt.next()) {
+      await this.addSliceTrack(
+        ctx,
+        slicesIt.track_name,
+        `select ts, dur, slice_name as name from pixel_modem_slices
+            where track_name = '${slicesIt.track_name}'`,
+        groupName,
+      );
+    }
+  }
+
+  async addKernelWakelocks(ctx: Trace): Promise<void> {
+    const e = ctx.engine;
+    await e.query(`INCLUDE PERFETTO MODULE android.kernel_wakelocks;`);
+    const result = await e.query(
+      `SELECT DISTINCT name, type FROM android_kernel_wakelocks`,
+    );
+    const it = result.iter({name: 'str', type: 'str'});
+    for (; it.valid(); it.next()) {
+      await this.addCounterTrack(
+        ctx,
+        it.name,
+        `SELECT ts, dur, held_ratio * 100 AS value
+         FROM android_kernel_wakelocks
+         WHERE name = "${it.name}"`,
+        'Kernel Wakelock Summary',
+        {yRangeSharingKey: 'kernel_wakelock', unit: '%'},
+      );
+    }
+  }
+
+  async addKernelWakelocksStatsd(
+    ctx: Trace,
+    features: Set<string>,
+  ): Promise<void> {
     if (!features.has('atom.kernel_wakelock')) {
       return;
     }
-    const groupName = 'Kernel Wakelock Summary';
+    const groupName = 'Kernel Wakelock Summary (statsd)';
 
     const e = ctx.engine;
     await e.query(`INCLUDE PERFETTO MODULE android.suspend;`);
-    await e.query(KERNEL_WAKELOCKS);
-    const result = await e.query(KERNEL_WAKELOCKS_SUMMARY);
+    await e.query(KERNEL_WAKELOCKS_STATSD);
+    const result = await e.query(KERNEL_WAKELOCKS_STATSD_SUMMARY);
     const it = result.iter({wakelock_name: 'str'});
     for (; it.valid(); it.next()) {
-      this.addCounterTrack(
+      await this.addCounterTrack(
         ctx,
-        it.wakelock_name,
-        `select ts, dur, value from kernel_wakelocks where wakelock_name = "${it.wakelock_name}"`,
+        `${it.wakelock_name} (statsd)`,
+        `select ts, dur, value
+         from kernel_wakelocks_statsd
+         where wakelock_name = "${it.wakelock_name}"`,
         groupName,
-        {yRangeSharingKey: 'kernel_wakelock', unit: '%'},
+        {yRangeSharingKey: 'kernel_wakelock_statsd', unit: '%'},
       );
     }
   }
@@ -1546,12 +1378,11 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
 
     const e = ctx.engine;
     const groupName = 'Wakeups';
-    await e.query(`INCLUDE PERFETTO MODULE android.suspend;`);
-    await e.query(WAKEUPS);
+    await e.query(`INCLUDE PERFETTO MODULE android.wakeups;`);
     const result = await e.query(`select
           item,
           sum(dur) as sum_dur
-      from wakeups
+      from android_wakeups
       group by 1
       having sum_dur > 600e9`);
     const it = result.iter({item: 'str'});
@@ -1566,18 +1397,18 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
                 item,
                 type,
                 raw_wakeup,
-                attribution,
+                on_device_attribution,
                 suspend_quality,
                 backoff_state,
                 backoff_reason,
                 backoff_count,
                 backoff_millis
-            from wakeups`;
+            from android_wakeups`;
     const items = [];
     let labelOther = false;
     for (; it.valid(); it.next()) {
       labelOther = true;
-      this.addSliceTrack(
+      await this.addSliceTrack(
         ctx,
         `Wakeup ${it.item}`,
         `${sqlPrefix} where item="${it.item}"`,
@@ -1586,7 +1417,7 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
       );
       items.push(it.item);
     }
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       labelOther ? 'Other wakeups' : 'Wakeups',
       `${sqlPrefix} where item not in ('${items.join("','")}')`,
@@ -1609,7 +1440,7 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
     );
     const it = result.iter({pkg: 'str', cluster: 'str'});
     for (; it.valid(); it.next()) {
-      this.addCounterTrack(
+      await this.addCounterTrack(
         ctx,
         `CPU (${it.cluster}): ${it.pkg}`,
         `select ts, value from high_cpu where pkg = "${it.pkg}" and cluster="${it.cluster}"`,
@@ -1628,140 +1459,140 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
       return;
     }
     const groupName = 'Bluetooth';
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'BLE Scans (opportunistic)',
       bleScanQuery('opportunistic'),
       groupName,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'BLE Scans (filtered)',
       bleScanQuery('filtered'),
       groupName,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'BLE Scans (unfiltered)',
       bleScanQuery('not filtered'),
       groupName,
     );
-    this.addSliceTrack(ctx, 'BLE Scan Results', BLE_RESULTS, groupName);
-    this.addSliceTrack(ctx, 'Connections (ACL)', BT_CONNS_ACL, groupName);
-    this.addSliceTrack(ctx, 'Connections (SCO)', BT_CONNS_SCO, groupName);
-    this.addSliceTrack(
+    await this.addSliceTrack(ctx, 'BLE Scan Results', BLE_RESULTS, groupName);
+    await this.addSliceTrack(ctx, 'Connections (ACL)', BT_CONNS_ACL, groupName);
+    await this.addSliceTrack(ctx, 'Connections (SCO)', BT_CONNS_SCO, groupName);
+    await this.addSliceTrack(
       ctx,
       'Link-level Events',
       BT_LINK_LEVEL_EVENTS,
       groupName,
       BT_LINK_LEVEL_EVENTS_COLUMNS,
     );
-    this.addSliceTrack(ctx, 'A2DP Audio', BT_A2DP_AUDIO, groupName);
-    this.addSliceTrack(
+    await this.addSliceTrack(ctx, 'A2DP Audio', BT_A2DP_AUDIO, groupName);
+    await this.addSliceTrack(
       ctx,
       'Bytes Transferred (L2CAP/RFCOMM)',
       BT_BYTES,
       groupName,
     );
     await ctx.engine.query(BT_ACTIVITY);
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'ACL Classic Active Count',
       'select ts, dur, acl_active_count as value from bt_activity',
       groupName,
     );
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'ACL Classic Sniff Count',
       'select ts, dur, acl_sniff_count as value from bt_activity',
       groupName,
     );
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'ACL BLE Count',
       'select ts, dur, acl_ble_count as value from bt_activity',
       groupName,
     );
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'Advertising Instance Count',
       'select ts, dur, advertising_count as value from bt_activity',
       groupName,
     );
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'LE Scan Duty Cycle Maximum',
       'select ts, dur, le_scan_duty_cycle as value from bt_activity',
       groupName,
       {unit: '%'},
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'Inquiry Active',
       "select ts, dur, 'Active' as name from bt_activity where inquiry_active",
       groupName,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'SCO Active',
       "select ts, dur, 'Active' as name from bt_activity where sco_active",
       groupName,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'A2DP Active',
       "select ts, dur, 'Active' as name from bt_activity where a2dp_active",
       groupName,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'LE Audio Active',
       "select ts, dur, 'Active' as name from bt_activity where le_audio_active",
       groupName,
     );
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'Controller Idle Time',
       'select ts, dur, controller_idle_pct as value from bt_activity',
       groupName,
       {yRangeSharingKey: 'bt_controller_time', unit: '%'},
     );
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'Controller TX Time',
       'select ts, dur, controller_tx_pct as value from bt_activity',
       groupName,
       {yRangeSharingKey: 'bt_controller_time', unit: '%'},
     );
-    this.addCounterTrack(
+    await this.addCounterTrack(
       ctx,
       'Controller RX Time',
       'select ts, dur, controller_rx_pct as value from bt_activity',
       groupName,
       {yRangeSharingKey: 'bt_controller_time', unit: '%'},
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'Quality reports',
       BT_QUALITY_REPORTS,
       groupName,
       BT_QUALITY_REPORTS_COLUMNS,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'RSSI Reports',
       BT_RSSI_REPORTS,
       groupName,
       BT_RSSI_REPORTS_COLUMNS,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'HAL Crashes',
       BT_HAL_CRASHES,
       groupName,
       BT_HAL_CRASHES_COLUMNS,
     );
-    this.addSliceTrack(
+    await this.addSliceTrack(
       ctx,
       'Code Path Counter',
       BT_CODE_PATH_COUNTER,
@@ -1782,8 +1613,8 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
       bySubscription.get(trace.subscription)!.push(trace);
     }
 
-    bySubscription.forEach((traces, subscription) =>
-      this.addSliceTrack(
+    for (const [subscription, traces] of bySubscription) {
+      await this.addSliceTrack(
         ctx,
         subscription,
         traces
@@ -1798,8 +1629,8 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
           .join(' UNION ALL '),
         'Other traces',
         ['link'],
-      ),
-    );
+      );
+    }
   }
 
   async findFeatures(e: Engine): Promise<Set<string>> {
@@ -1846,12 +1677,15 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
 
     await ctx.engine.query(PACKAGE_LOOKUP);
     await this.addNetworkSummary(ctx, features);
+    await this.addBluetooth(ctx, features);
+    await this.addAtomCounters(ctx);
+    await this.addAtomSlices(ctx);
     await this.addModemDetail(ctx, features);
-    await this.addKernelWakelocks(ctx, features);
+    await this.addKernelWakelocks(ctx);
+    await this.addKernelWakelocksStatsd(ctx, features);
     await this.addWakeups(ctx, features);
     await this.addDeviceState(ctx, features);
     await this.addHighCpu(ctx, features);
-    await this.addBluetooth(ctx, features);
     await this.addContainedTraces(ctx, containedTraces);
   }
 
@@ -1859,8 +1693,3 @@ class AndroidLongBatteryTracing implements PerfettoPlugin {
     await this.addTracks(ctx);
   }
 }
-
-export const plugin: PluginDescriptor = {
-  pluginId: 'dev.perfetto.AndroidLongBatteryTracing',
-  plugin: AndroidLongBatteryTracing,
-};

@@ -364,6 +364,7 @@ enum FileLocationRegion : int {
     EnumValueRegion,
     EqualTokenRegion,
     ForKeywordRegion,
+    FinalKeywordRegion,
     FinallyKeywordRegion,
     FirstSemicolonTokenRegion,
     FunctionKeywordRegion,

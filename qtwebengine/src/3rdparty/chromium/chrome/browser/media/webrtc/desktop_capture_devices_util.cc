@@ -4,11 +4,11 @@
 
 #include "chrome/browser/media/webrtc/desktop_capture_devices_util.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
 #include "base/check_op.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
 #include "base/unguessable_token.h"
@@ -73,7 +73,7 @@ media::mojom::CaptureHandlePtr CreateCaptureHandle(
 
   const auto& captured_config = captured->GetCaptureHandleConfig();
   if (!captured_config.all_origins_permitted &&
-      base::ranges::none_of(
+      std::ranges::none_of(
           captured_config.permitted_origins,
           [capturer_origin](const url::Origin& permitted_origin) {
             return capturer_origin.IsSameOriginWith(permitted_origin);
@@ -172,6 +172,8 @@ DesktopMediaIDToDisplayMediaInformation(
       zoom_level);
 }
 
+// Showing notifications about capture is handled at the OS level in Android.
+#if !BUILDFLAG(IS_ANDROID)
 std::u16string GetNotificationText(const std::u16string& application_title,
                                    bool capture_audio,
                                    content::DesktopMediaID::Type capture_type) {
@@ -187,7 +189,7 @@ std::u16string GetNotificationText(const std::u16string& application_title,
             application_title);
       case content::DesktopMediaID::TYPE_NONE:
       case content::DesktopMediaID::TYPE_WINDOW:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   } else {
     switch (capture_type) {
@@ -201,11 +203,12 @@ std::u16string GetNotificationText(const std::u16string& application_title,
         return l10n_util::GetStringFUTF16(
             IDS_MEDIA_TAB_CAPTURE_NOTIFICATION_TEXT, application_title);
       case content::DesktopMediaID::TYPE_NONE:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
   return std::u16string();
 }
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 std::string DeviceNamePrefix(
     content::WebContents* web_contents,
@@ -221,7 +224,7 @@ std::string DeviceNamePrefix(
   // dialog for DISPLAY_VIDEO_CAPTURE_THIS_TAB could still return something
   // other than the current tab - be it a screen, window, or another tab.
   if (media_id.type == content::DesktopMediaID::TYPE_WEB_CONTENTS &&
-      web_contents->GetPrimaryMainFrame()->GetProcess()->GetID() ==
+      web_contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID() ==
           media_id.web_contents_id.render_process_id &&
       web_contents->GetPrimaryMainFrame()->GetRoutingID() ==
           media_id.web_contents_id.main_render_frame_id) {
@@ -312,6 +315,11 @@ std::unique_ptr<content::MediaStreamUI> GetDevicesForDesktopCapture(
             media_id);
   }
 
+#if BUILDFLAG(IS_ANDROID)
+  return MediaCaptureDevicesDispatcher::GetInstance()
+      ->GetMediaStreamCaptureIndicator()
+      ->RegisterMediaStream(web_contents, out_devices);
+#else  // !BUILDFLAG(IS_ANDROID)
   // If required, register to display the notification for stream capture.
   std::unique_ptr<MediaStreamUI> notification_ui;
   if (display_notification) {
@@ -340,4 +348,5 @@ std::unique_ptr<content::MediaStreamUI> GetDevicesForDesktopCapture(
       ->GetMediaStreamCaptureIndicator()
       ->RegisterMediaStream(web_contents, out_devices,
                             std::move(notification_ui), application_title);
+#endif
 }

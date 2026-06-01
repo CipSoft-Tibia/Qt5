@@ -78,7 +78,7 @@ public:
     {}
 
     inline int grabTransition(bool accept, QEventPoint::State state) {
-        return (accept && (state != QEventPoint::State::Released)) ? (int)QPointingDevice::GrabExclusive : (int)NoGrab;
+        return (accept && (state != QEventPoint::State::Released)) ? int(QPointingDevice::GrabExclusive) : int(NoGrab);
     }
 
     void touchEvent(QTouchEvent *event) override
@@ -177,7 +177,7 @@ public:
         QCOMPARE(event.destination, d);\
         QCOMPARE(event.type, t);\
         QCOMPARE(event.state, s);\
-        QCOMPARE(event.grabTransition, g);\
+        QCOMPARE(int(event.grabTransition), int(g));\
     }\
 
 class EventHandler : public QQuickPointerHandler
@@ -220,7 +220,7 @@ public:
             // target item holds the eventList, which records all events to the item and handler in order
             item->eventList.append(Event(Event::HandlerDestination, QEvent::Pointer,
                 static_cast<QEventPoint::State>(point.state()),
-                grabPoint ? (int)QPointingDevice::GrabExclusive : (int)NoGrab,
+                grabPoint ? int(QPointingDevice::GrabExclusive) : int(NoGrab),
                 eventPos(point), point.scenePosition()));
         }
     }
@@ -545,8 +545,8 @@ void tst_PointerHandlers::mouseEventDelivery()
     QCOMPARE(eventItem1->eventList.at(eventCheckIndex).posWrtItem, localPos);
     QCOMPARE(eventItem1->eventList.at(eventCheckIndex).posWrtScene, scenePos);
     QCOMPARE_EVENT(eventCheckIndex++, Event::ItemMouseDestination, QEvent::MouseButtonPress,
-                   QEventPoint::State::Pressed, itemIgnoreMouse ? NoGrab : QPointingDevice::GrabExclusive);
-    QCOMPARE(window->mouseGrabberItem(), itemIgnoreMouse ? nullptr: eventItem1);
+                   QEventPoint::State::Pressed, (itemIgnoreMouse ? int(NoGrab) : int(QPointingDevice::GrabExclusive)));
+    QCOMPARE(window->mouseGrabberItem(), (itemIgnoreMouse ? nullptr : eventItem1));
 
     p1 += QPoint(10, 0);
     QTest::mouseMove(window, p1);
@@ -586,14 +586,14 @@ void tst_PointerHandlers::touchReleaseOutside_data()
     QTest::addColumn<int>("endState");          // QEventPoint::State
     QTest::addColumn<int>("endGrabState");      // QEventPoint::State
 
-    QTest::newRow("reject and ignore") << false << false << 6 << 5 << (int)Event::ItemTouchDestination
-        << (int)QEvent::TouchEnd << (int)QEventPoint::State::Released << (int)NoGrab;
-    QTest::newRow("reject and grab") << false << true << 5 << 4 << (int)Event::HandlerDestination
-        << (int)QEvent::None << (int)QEventPoint::State::Released << (int)QPointingDevice::UngrabExclusive;
-    QTest::newRow("accept and ignore") << true << false << 1 << 0 << (int)Event::HandlerDestination
-        << (int)QEvent::Pointer << (int)QEventPoint::State::Pressed << (int)NoGrab;
-    QTest::newRow("accept and grab") << true << true << 5 << 4 << (int)Event::HandlerDestination
-        << (int)QEvent::None << (int)QEventPoint::State::Released << (int)QPointingDevice::UngrabExclusive;
+    QTest::newRow("reject and ignore") << false << false << 6 << 5 << int(Event::ItemTouchDestination)
+        << int(QEvent::TouchEnd) << int(QEventPoint::State::Released) << int(NoGrab);
+    QTest::newRow("reject and grab") << false << true << 5 << 4 << int(Event::HandlerDestination)
+        << int(QEvent::None) << int(QEventPoint::State::Released) << int(QPointingDevice::UngrabExclusive);
+    QTest::newRow("accept and ignore") << true << false << 1 << 0 << int(Event::HandlerDestination)
+        << int(QEvent::Pointer) << int(QEventPoint::State::Pressed) << int(NoGrab);
+    QTest::newRow("accept and grab") << true << true << 5 << 4 << int(Event::HandlerDestination)
+        << int(QEvent::None) << int(QEventPoint::State::Released) << int(QPointingDevice::UngrabExclusive);
 }
 
 void tst_PointerHandlers::touchReleaseOutside()

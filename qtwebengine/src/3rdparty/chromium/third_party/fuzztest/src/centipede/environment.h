@@ -26,6 +26,7 @@
 #include "absl/time/time.h"
 #include "./centipede/feature.h"
 #include "./centipede/knobs.h"
+#include "./fuzztest/internal/configuration.h"
 
 namespace centipede {
 
@@ -46,6 +47,7 @@ struct Environment {
   size_t total_shards = 1;
   size_t my_shard_index = 0;
   size_t num_threads = 1;
+  size_t j = 0;
   size_t max_len = 4000;
   size_t batch_size = 1000;
   size_t mutate_batch_size = 2;
@@ -54,8 +56,15 @@ struct Environment {
   bool serialize_shard_loads = false;
   size_t seed = 0;
   size_t prune_frequency = 100;
+#ifdef __APPLE__
+  // Address space limit is ignored on MacOS.
+  // Reference: https://bugs.chromium.org/p/chromium/issues/detail?id=853873#c2
+  size_t address_space_limit_mb = 0;
+#else   // __APPLE__
   size_t address_space_limit_mb = 8192;
+#endif  // __APPLE__
   size_t rss_limit_mb = 4096;
+  size_t stack_limit_kb = 0;
   size_t timeout_per_input = 60;
   size_t timeout_per_batch = 0;
   absl::Time stop_at = absl::InfiniteFuture();
@@ -98,7 +107,11 @@ struct Environment {
   std::string minimize_crash_file_path;
   bool batch_triage_suspect_only = false;
   size_t shmem_size_mb = 1024;
+#ifdef __APPLE__
+  bool use_posix_shmem = true;
+#else
   bool use_posix_shmem = false;
+#endif
   bool dry_run = false;
   bool save_binary_info = false;
   bool populate_binary_info = true;
@@ -112,6 +125,11 @@ struct Environment {
 
   // If set, treat the first entry of `corpus_dir` as output-only.
   bool first_corpus_dir_output_only = false;
+  // If set, load/merge shards without fuzzing new inputs.
+  bool load_shards_only = false;
+  // If set, operate on the corpus database for a single test specified by
+  // FuzzTest instead of all the tests.
+  bool fuzztest_single_test_mode = false;
 
   // Command line-related fields -----------------------------------------------
 
@@ -139,6 +157,9 @@ struct Environment {
   std::string pcs_file_path;
 
   // APIs ----------------------------------------------------------------------
+
+  // Returns an instance of the environment with default values.
+  static const Environment& Default();
 
   // Should certain actions be performed ---------------------------------------
 
@@ -193,6 +214,14 @@ struct Environment {
 
   // Reads `knobs` from `knobs_file`. Does nothing if the `knobs_file` is empty.
   void ReadKnobsFileIfSpecified();
+  // Updates `this` with `config` obtained from the target binary. CHECK-fails
+  // if the fields are non-default and inconsistent with the corresponding
+  // values in `config`.
+  void UpdateWithTargetConfig(const fuzztest::internal::Configuration& config);
+  // If `timeout_per_batch` is `val`, computes it as a function of
+  // `timeout_per_input` and `batch_size` and updates it. Otherwise, leaves it
+  // unchanged.
+  void UpdateTimeoutPerBatchIfEqualTo(size_t val);
 };
 
 }  // namespace centipede

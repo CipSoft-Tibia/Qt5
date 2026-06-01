@@ -13,7 +13,7 @@
 #include <QtGui/private/qwindow_p.h>
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixthemes_p.h>
+#include <QtGui/private/qgenericunixtheme_p.h>
 #include <qpa/qplatformservices.h>
 
 #include <QtFbSupport/private/qfbvthandler_p.h>

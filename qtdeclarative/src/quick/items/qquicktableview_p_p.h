@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKTABLEVIEW_P_P_H
 #define QQUICKTABLEVIEW_P_P_H
@@ -334,7 +335,6 @@ public:
     // we need a pointer for that case as well.
     QQmlInstanceModel* model = nullptr;
     QPointer<QQmlTableInstanceModel> tableModel = nullptr;
-    QVariant modelVariant;
 
     // When the applications assignes a new model or delegate to the view, we keep them
     // around until we're ready to take them into use (syncWithPendingChanges).
@@ -393,6 +393,9 @@ public:
 
     bool warnNoSelectionModel = true;
 
+    QQmlDelegateModel::DelegateModelAccess assignedDelegateModelAccess
+            = QQmlDelegateModel::Qt5ReadWrite;
+
     QJSValue rowHeightProvider;
     QJSValue columnWidthProvider;
 
@@ -425,6 +428,7 @@ public:
     QItemSelectionModel::SelectionFlag selectionFlag = QItemSelectionModel::NoUpdate;
     std::function<void(CallBackFlag)> selectableCallbackFunction;
     bool inSelectionModelUpdate = false;
+    bool needsModelSynchronization = false;
 
     int assignedPositionViewAtRowAfterRebuild = 0;
     int assignedPositionViewAtColumnAfterRebuild = 0;
@@ -594,6 +598,7 @@ public:
 
     virtual void syncWithPendingChanges();
     virtual void syncDelegate();
+    virtual void syncDelegateModelAccess();
     virtual QVariant modelImpl() const;
     virtual void setModelImpl(const QVariant &newModel);
     virtual void syncModel();

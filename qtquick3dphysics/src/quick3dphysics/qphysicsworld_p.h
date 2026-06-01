@@ -51,9 +51,9 @@ class QAbstractRigidBody;
 class QAbstractPhysXNode;
 class QQuick3DModel;
 class QQuick3DGeometry;
-class QQuick3DDefaultMaterial;
+class QQuick3DPrincipledMaterial;
 class QPhysXWorld;
-class SimulationWorker;
+class FrameAnimator;
 
 class Q_QUICK3DPHYSICS_EXPORT QPhysicsWorld : public QObject, public QQmlParserStatus
 {
@@ -154,7 +154,6 @@ signals:
     Q_REVISION(6, 5) void viewportChanged(QQuick3DNode *viewport);
     Q_REVISION(6, 5) void minimumTimestepChanged(float minimumTimestep);
     Q_REVISION(6, 5) void maximumTimestepChanged(float maxTimestep);
-    void simulateFrame(float minTimestep, float maxTimestep);
     Q_REVISION(6, 5) void frameDone(float timestep);
     Q_REVISION(6, 5) void sceneChanged();
     Q_REVISION(6, 7) void numThreadsChanged();
@@ -162,6 +161,7 @@ signals:
     Q_REVISION(6, 7) void reportStaticKinematicCollisionsChanged();
 
 private:
+    void simulateFrame();
     void frameFinished(float deltaTime);
     void frameFinishedDesignStudio();
     void initPhysics();
@@ -234,7 +234,7 @@ private:
     float m_typicalLength = 100.f; // 100 cm
     float m_typicalSpeed = 1000.f; // 1000 cm/s
     float m_defaultDensity = 0.001f; // 1 g/cm^3
-    float m_minTimestep = 16.667f; // 60 fps
+    float m_minTimestep = 1.0f; // 1000 fps
     float m_maxTimestep = 33.333f; // 30 fps
 
     bool m_running = true;
@@ -247,7 +247,7 @@ private:
 
     QPhysXWorld *m_physx = nullptr;
     QQuick3DNode *m_viewport = nullptr;
-    QVector<QQuick3DDefaultMaterial *> m_debugMaterials;
+    QVector<QQuick3DPrincipledMaterial *> m_debugMaterials;
 
     friend class QQuick3DPhysicsMesh; // TODO: better internal API
     friend class QTriangleMeshShape; //####
@@ -257,13 +257,16 @@ private:
     friend class ControllerCallback;
     static physx::PxPhysics *getPhysics();
     static physx::PxCooking *getCooking();
-    QThread m_workerThread;
-    SimulationWorker *m_simulationWorker = nullptr;
+    FrameAnimator *m_frameAnimator = nullptr;
     QQuick3DNode *m_scene = nullptr;
     bool m_inDesignStudio = false;
     int m_numThreads = -1;
     bool m_reportKinematicKinematicCollisions = false;
     bool m_reportStaticKinematicCollisions = false;
+    QElapsedTimer m_timer;
+    float m_currTimeStep = 0.f;
+    QList<float> m_frameTimings;
+    bool m_frameFetched = false;
 };
 
 QT_END_NAMESPACE

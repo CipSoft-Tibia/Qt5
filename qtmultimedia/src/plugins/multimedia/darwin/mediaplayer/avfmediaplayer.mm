@@ -778,7 +778,7 @@ void AVFMediaPlayer::setPlaybackRate(qreal rate)
     qDebug() << Q_FUNC_INFO << rate;
 #endif
 
-    if (qFuzzyCompare(m_rate, rate))
+    if (QtPrivate::fuzzyCompare(m_rate, rate))
         return;
 
     m_rate = rate;
@@ -998,6 +998,8 @@ void AVFMediaPlayer::processLoadStateChange(QMediaPlayer::PlaybackState newState
     if (currentStatus == AVPlayerStatusReadyToPlay) {
 
         AVPlayerItem *playerItem = [m_observer playerItem];
+
+        applyPitchCompensation(m_pitchCompensationEnabled);
 
         // get the meta data
         m_metaData = AVFMetaData::fromAsset(playerItem.asset);
@@ -1235,6 +1237,17 @@ void AVFMediaPlayer::resetStream(QIODevice *stream)
     }
 }
 
+void AVFMediaPlayer::applyPitchCompensation(bool enabled)
+{
+    AVPlayerItem *playerItem = [m_observer playerItem];
+    if (playerItem) {
+        if (enabled)
+            playerItem.audioTimePitchAlgorithm = AVAudioTimePitchAlgorithmSpectral;
+        else
+            playerItem.audioTimePitchAlgorithm = AVAudioTimePitchAlgorithmVarispeed;
+    }
+}
+
 void AVFMediaPlayer::nativeSizeChanged(QSize size)
 {
     if (!m_videoSink)
@@ -1277,14 +1290,39 @@ void AVFMediaPlayer::videoOrientationForAssetTrack(AVAssetTrack *videoTrack,
             mirrored = true;
         }
 
-        if (qFuzzyCompare(degrees, qreal(90)) || qFuzzyCompare(degrees, qreal(-270))) {
+        if (QtPrivate::fuzzyCompare(degrees, qreal(90))
+            || QtPrivate::fuzzyCompare(degrees, qreal(-270))) {
             angle = QtVideo::Rotation::Clockwise90;
-        } else if (qFuzzyCompare(degrees, qreal(-90)) || qFuzzyCompare(degrees, qreal(270))) {
+        } else if (QtPrivate::fuzzyCompare(degrees, qreal(-90))
+                   || QtPrivate::fuzzyCompare(degrees, qreal(270))) {
             angle = QtVideo::Rotation::Clockwise270;
-        } else if (qFuzzyCompare(degrees, qreal(180)) || qFuzzyCompare(degrees, qreal(-180))) {
+        } else if (QtPrivate::fuzzyCompare(degrees, qreal(180))
+                   || QtPrivate::fuzzyCompare(degrees, qreal(-180))) {
             angle = QtVideo::Rotation::Clockwise180;
         }
     }
+}
+
+void AVFMediaPlayer::setPitchCompensation(bool enabled)
+{
+    if (m_pitchCompensationEnabled == enabled)
+        return;
+
+    applyPitchCompensation(enabled);
+
+    m_pitchCompensationEnabled = enabled;
+    pitchCompensationChanged(enabled);
+}
+
+bool AVFMediaPlayer::pitchCompensation() const
+{
+    return m_pitchCompensationEnabled;
+}
+
+QPlatformMediaPlayer::PitchCompensationAvailability
+AVFMediaPlayer::pitchCompensationAvailability() const
+{
+    return QPlatformMediaPlayer::PitchCompensationAvailability::Available;
 }
 
 #include "moc_avfmediaplayer_p.cpp"

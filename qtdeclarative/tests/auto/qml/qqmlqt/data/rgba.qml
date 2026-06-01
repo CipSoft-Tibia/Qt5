@@ -7,4 +7,5 @@ QtObject {
     property color test4: Qt.rgba(1, 1, 1, 1, 1);
     property color test5: Qt.rgba(1.2, 1.3, 1.4, 1.5);
     property color test6: Qt.rgba(-0.1, -0.2, -0.3, -0.4);
+    property color test7: Qt.rgba(undefined, undefined, undefined, undefined); // should not crash
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2024 The Khronos Group Inc.
-# Copyright (c) 2024 Valve Corporation
-# Copyright (c) 2024 LunarG, Inc.
+# Copyright (c) 2025 The Khronos Group Inc.
+# Copyright (c) 2025 Valve Corporation
+# Copyright (c) 2025 LunarG, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,9 +37,9 @@ class ValidFlagValuesOutputGenerator(BaseGenerator):
 
             /***************************************************************************
             *
-            * Copyright (c) 2024 The Khronos Group Inc.
-            * Copyright (c) 2024 Valve Corporation
-            * Copyright (c) 2024 LunarG, Inc.
+            * Copyright (c) 2025 The Khronos Group Inc.
+            * Copyright (c) 2025 Valve Corporation
+            * Copyright (c) 2025 LunarG, Inc.
             *
             * Licensed under the Apache License, Version 2.0 (the "License");
             * you may not use this file except in compliance with the License.
@@ -67,6 +67,7 @@ class ValidFlagValuesOutputGenerator(BaseGenerator):
         out = []
         out.append('''
             #include "stateless/stateless_validation.h"
+            #include <vulkan/vk_enum_string_helper.h>
 
             // For flags, we can't use the VkFlag as it can't be templated (since it all resolves to a int).
             // It is simpler for the caller to already check for both
@@ -76,7 +77,7 @@ class ValidFlagValuesOutputGenerator(BaseGenerator):
             ''')
 
         out.append('''
-            vvl::Extensions StatelessValidation::IsValidFlagValue(vvl::FlagBitmask flag_bitmask, VkFlags value, const DeviceExtensions& device_extensions) const {
+            vvl::Extensions stateless::Context::IsValidFlagValue(vvl::FlagBitmask flag_bitmask, VkFlags value) const {
                 switch(flag_bitmask) {
             ''')
         for bitmask in [x for x in self.vk.bitmasks.values() if x.name not in self.ignoreList and not x.returnedOnly and x.bitWidth == 32]:
@@ -102,7 +103,7 @@ class ValidFlagValuesOutputGenerator(BaseGenerator):
                 extensions = expression.split(',')
                 checkExpression = []
                 for extension in extensions:
-                    checkExpression.append(f'!IsExtEnabled(device_extensions.{extension.lower()})')
+                    checkExpression.append(f'!IsExtEnabled(extensions.{extension.lower()})')
                 checkExpression = " && ".join(checkExpression)
                 resultExpression = []
                 for extension in extensions:
@@ -124,7 +125,7 @@ class ValidFlagValuesOutputGenerator(BaseGenerator):
             ''')
 
         out.append('''
-            vvl::Extensions StatelessValidation::IsValidFlag64Value(vvl::FlagBitmask flag_bitmask, VkFlags64 value, const DeviceExtensions& device_extensions) const {
+            vvl::Extensions stateless::Context::IsValidFlag64Value(vvl::FlagBitmask flag_bitmask, VkFlags64 value) const {
                 switch(flag_bitmask) {
             ''')
         for bitmask in [x for x in self.vk.bitmasks.values() if x.name not in self.ignoreList and not x.returnedOnly and x.bitWidth == 64]:
@@ -150,7 +151,7 @@ class ValidFlagValuesOutputGenerator(BaseGenerator):
                 extensions = expression.split(',')
                 checkExpression = []
                 for extension in extensions:
-                    checkExpression.append(f'!IsExtEnabled(device_extensions.{extension.lower()})')
+                    checkExpression.append(f'!IsExtEnabled(extensions.{extension.lower()})')
                 checkExpression = " && ".join(checkExpression)
                 resultExpression = []
                 for extension in extensions:
@@ -164,10 +165,41 @@ class ValidFlagValuesOutputGenerator(BaseGenerator):
                 out.append('}')
 
             out.append('   return {};\n')
-            # out.append('\n')
         out.extend(guard_helper.add_guard(None))
         out.append('''default: return {};
                 }
             }
+
+            std::string stateless::Context::DescribeFlagBitmaskValue(vvl::FlagBitmask flag_bitmask, VkFlags value) const {
+                switch(flag_bitmask) {
             ''')
+        for bitmask in [x for x in self.vk.bitmasks.values() if x.name not in self.ignoreList and not x.returnedOnly and len(x.flags) > 0 and x.bitWidth == 32]:
+            out.extend(guard_helper.add_guard(bitmask.protect))
+            out.append(f'case vvl::FlagBitmask::{bitmask.name}:\n')
+            out.append(f'return string_{bitmask.flagName}(value);\n')
+        out.extend(guard_helper.add_guard(None))
+        out.append('''
+                    default:
+                        std::stringstream ss;
+                        ss << "0x" << std::hex << value;
+                        return ss.str();
+                }
+            }
+
+            std::string stateless::Context::DescribeFlagBitmaskValue64(vvl::FlagBitmask flag_bitmask, VkFlags64 value) const {
+                switch(flag_bitmask) {
+            ''')
+        for bitmask in [x for x in self.vk.bitmasks.values() if x.name not in self.ignoreList and not x.returnedOnly and len(x.flags) > 0 and x.bitWidth == 64]:
+            out.extend(guard_helper.add_guard(bitmask.protect))
+            out.append(f'case vvl::FlagBitmask::{bitmask.name}:\n')
+            out.append(f'return string_{bitmask.flagName}(value);\n')
+        out.extend(guard_helper.add_guard(None))
+        out.append('''
+                    default:
+                        std::stringstream ss;
+                        ss << "0x" << std::hex << value;
+                        return ss.str();
+                }
+            }
+        ''')
         self.write(''.join(out))

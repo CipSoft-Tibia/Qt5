@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKTABLEVIEWDELEGATE_P_H
 #define QQUICKTABLEVIEWDELEGATE_P_H
@@ -59,6 +60,8 @@ Q_SIGNALS:
     void editingChanged();
 
 protected:
+    QQuickTableViewDelegate(QQuickTableViewDelegatePrivate &dd, QQuickItem *parent);
+
     QFont defaultFont() const override;
     void mousePressEvent(QMouseEvent *event) override;
 

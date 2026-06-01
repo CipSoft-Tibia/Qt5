@@ -116,9 +116,17 @@ bool Parameters::match(int target)
 }
 
 /*!
-  Match a template clause in angle brackets, append it to the
-  \a type, and return \c true. If there is no template clause,
-  or if an error is detected, return \c false.
+  Reads input inside angled brackets, appending tokens to the code chunk held
+  by \a type, taking nested brackets, parentheses and square brackets into
+  account. Square brackets and regular parentheses are not handled separately.
+
+  Processing begins if the first token is a left angle bracket and continues
+  until a corresponding right angle bracket is found, the end of input occurs,
+  or an excess of right parentheses or square brackets are found.
+
+  After processing, the current token is the first token after the closing
+  right angle bracket, the end of file token, or the mismatched right bracket
+  or parenthesis.
  */
 void Parameters::matchTemplateAngles(CodeChunk &type)
 {
@@ -276,14 +284,7 @@ bool Parameters::matchTypeAndName(CodeChunk &type, QString &name)
         if (match(Tok_Ident)) {
             name = previousLexeme();
         } else if (match(Tok_Comment)) {
-            /*
-              A neat hack: Commented-out parameter names are
-              recognized by qdoc. It's impossible to illustrate
-              here inside a C-style comment, because it requires
-              an asterslash. It's also impossible to illustrate
-              inside a C++-style comment, because the explanation
-              does not fit on one line.
-            */
+            // Use a regular expression to extract any commented out parameter name.
             auto match = s_varComment.match(previousLexeme());
             if (match.hasMatch())
                 name = match.captured(1);
@@ -363,7 +364,7 @@ bool Parameters::parse(const QString &signature)
     Tokenizer *outerTokenizer = m_tokenizer;
     int outerTok = m_tok;
 
-    QByteArray latin1 = signature.toLatin1();
+    const QByteArray &latin1 = signature.toLatin1();
     Tokenizer stringTokenizer(Location(), latin1);
     stringTokenizer.setParsingFnOrMacro(true);
     m_tokenizer = &stringTokenizer;
@@ -518,6 +519,32 @@ QString Parameters::generateTypeAndNameList() const
                 out += QLatin1Char(' ');
             out += p.name();
         }
+    }
+    return out;
+}
+
+/*!
+  Construct a list of just the parameter names (without types)
+  and return it. Used for generating code snippets where only
+  argument names are needed. If a parameter has no name, a
+  synthetic name (arg1, arg2, etc.) is generated.
+*/
+QString Parameters::generateNameList() const
+{
+    const int n = count();
+    if (n == 0)
+        return {};
+
+    QString out;
+
+    for (int i = 0; i < n; ++i) {
+        if (i != 0)
+            out += ", ";
+        const QString &name = m_parameters.at(i).name();
+        if (name.isEmpty())
+            out += QString("arg%1").arg(i + 1);
+        else
+            out += name;
     }
     return out;
 }

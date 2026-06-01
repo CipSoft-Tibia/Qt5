@@ -4,7 +4,6 @@
 #ifndef QDEADLINETIMER_H
 #define QDEADLINETIMER_H
 
-#include <QtCore/qelapsedtimer.h>
 #include <QtCore/qmetatype.h>
 #include <QtCore/qnamespace.h>
 

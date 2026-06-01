@@ -5,6 +5,7 @@
 #include <QtCore/QEvent>
 #include <QtCore/QMutex>
 #include <QtCore/QObject>
+#include <QtCore/QDebug>
 #include <QtCore/private/qstdweb_p.h>
 
 #include <qtwasmtestlib.h>
@@ -202,7 +203,7 @@ void WasmPromiseTest::throwInThen()
         .catchFunc = [](val error) {
             QWASMCOMPARE("Expected error", error.as<std::string>());
             QWASMSUCCESS();
-        }
+         }
     }, std::string("throwInThen"));
 
     EM_ASM({
@@ -229,7 +230,7 @@ void WasmPromiseTest::finallyWithThen()
 {
     init();
 
-    auto thenCalled = std::make_shared<bool>();
+    bool *thenCalled = new bool(false);
     qstdweb::Promise::make(m_testSupport, "makeTestPromise", {
         .thenFunc = [thenCalled] (val result) {
             Q_UNUSED(result);
@@ -237,6 +238,7 @@ void WasmPromiseTest::finallyWithThen()
         },
         .finallyFunc = [thenCalled]() {
             QWASMVERIFY(*thenCalled);
+            delete thenCalled;
             QWASMSUCCESS();
         }
     }, std::string("finallyWithThen"));

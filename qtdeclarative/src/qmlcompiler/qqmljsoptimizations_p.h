@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSOPTIMIZATIONS_P_H
 #define QQMLJSOPTIMIZATIONS_P_H
@@ -25,10 +26,9 @@ public:
 
     QQmlJSOptimizations(const QV4::Compiler::JSUnitGenerator *unitGenerator,
                         const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                        QList<QQmlJS::DiagnosticMessage> *errors, const BasicBlocks &basicBlocks,
-                        const InstructionAnnotations &annotations,
+                        const BasicBlocks &basicBlocks, const InstructionAnnotations &annotations,
                         QList<ObjectOrArrayDefinition> objectAndArrayDefinitions)
-        : QQmlJSCompilePass(unitGenerator, typeResolver, logger, errors, basicBlocks, annotations),
+        : QQmlJSCompilePass(unitGenerator, typeResolver, logger, basicBlocks, annotations),
           m_objectAndArrayDefinitions{ std::move(objectAndArrayDefinitions) }
     {
     }

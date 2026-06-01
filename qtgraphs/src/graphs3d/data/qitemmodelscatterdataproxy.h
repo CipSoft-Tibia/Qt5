@@ -24,6 +24,8 @@ class Q_GRAPHS_EXPORT QItemModelScatterDataProxy : public QScatterDataProxy
     Q_PROPERTY(QString zPosRole READ zPosRole WRITE setZPosRole NOTIFY zPosRoleChanged FINAL)
     Q_PROPERTY(QString rotationRole READ rotationRole WRITE setRotationRole NOTIFY
                    rotationRoleChanged FINAL)
+    Q_PROPERTY(QString scaleRole READ scaleRole WRITE setScaleRole NOTIFY
+                   scaleRoleChanged FINAL REVISION(6, 10))
     Q_PROPERTY(QRegularExpression xPosRolePattern READ xPosRolePattern WRITE setXPosRolePattern
                    NOTIFY xPosRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression yPosRolePattern READ yPosRolePattern WRITE setYPosRolePattern
@@ -32,6 +34,8 @@ class Q_GRAPHS_EXPORT QItemModelScatterDataProxy : public QScatterDataProxy
                    NOTIFY zPosRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression rotationRolePattern READ rotationRolePattern WRITE
                    setRotationRolePattern NOTIFY rotationRolePatternChanged FINAL)
+    Q_PROPERTY(QRegularExpression scaleRolePattern READ scaleRolePattern WRITE
+                   setScaleRolePattern NOTIFY scaleRolePatternChanged FINAL REVISION (6, 10))
     Q_PROPERTY(QString xPosRoleReplace READ xPosRoleReplace WRITE setXPosRoleReplace NOTIFY
                    xPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString yPosRoleReplace READ yPosRoleReplace WRITE setYPosRoleReplace NOTIFY
@@ -40,6 +44,8 @@ class Q_GRAPHS_EXPORT QItemModelScatterDataProxy : public QScatterDataProxy
                    zPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString rotationRoleReplace READ rotationRoleReplace WRITE setRotationRoleReplace
                    NOTIFY rotationRoleReplaceChanged FINAL)
+    Q_PROPERTY(QString scaleRoleReplace READ scaleRoleReplace WRITE setScaleRoleReplace
+                   NOTIFY scaleRoleReplaceChanged FINAL REVISION (6, 10))
     QML_NAMED_ELEMENT(ItemModelScatterDataProxy)
 
 public:
@@ -56,6 +62,7 @@ public:
                                         const QString &zPosRole,
                                         const QString &rotationRole,
                                         QObject *parent = nullptr);
+
     ~QItemModelScatterDataProxy() override;
 
     void setItemModel(QAbstractItemModel *itemModel);
@@ -69,11 +76,19 @@ public:
     QString zPosRole() const;
     void setRotationRole(const QString &role);
     QString rotationRole() const;
+    void setScaleRole(const QString &role);
+    QString scaleRole() const;
 
     void remap(const QString &xPosRole,
                const QString &yPosRole,
                const QString &zPosRole,
                const QString &rotationRole);
+
+    void remap(const QString &xPosRole,
+               const QString &yPosRole,
+               const QString &zPosRole,
+               const QString &rotationRole,
+               const QString &scaleRole);
 
     void setXPosRolePattern(const QRegularExpression &pattern);
     QRegularExpression xPosRolePattern() const;
@@ -83,6 +98,8 @@ public:
     QRegularExpression zPosRolePattern() const;
     void setRotationRolePattern(const QRegularExpression &pattern);
     QRegularExpression rotationRolePattern() const;
+    void setScaleRolePattern(const QRegularExpression &pattern);
+    QRegularExpression scaleRolePattern() const;
 
     void setXPosRoleReplace(const QString &replace);
     QString xPosRoleReplace() const;
@@ -92,6 +109,8 @@ public:
     QString zPosRoleReplace() const;
     void setRotationRoleReplace(const QString &replace);
     QString rotationRoleReplace() const;
+    void setScaleRoleReplace(const QString &replace);
+    QString scaleRoleReplace() const;
 
 Q_SIGNALS:
     void itemModelChanged(const QAbstractItemModel *itemModel);
@@ -99,14 +118,17 @@ Q_SIGNALS:
     void yPosRoleChanged(const QString &role);
     void zPosRoleChanged(const QString &role);
     void rotationRoleChanged(const QString &role);
+    void scaleRoleChanged(const QString &role);
     void xPosRolePatternChanged(const QRegularExpression &pattern);
     void yPosRolePatternChanged(const QRegularExpression &pattern);
     void zPosRolePatternChanged(const QRegularExpression &pattern);
     void rotationRolePatternChanged(const QRegularExpression &pattern);
+    void scaleRolePatternChanged(const QRegularExpression &pattern);
     void rotationRoleReplaceChanged(const QString &replace);
     void xPosRoleReplaceChanged(const QString &replace);
     void yPosRoleReplaceChanged(const QString &replace);
     void zPosRoleReplaceChanged(const QString &replace);
+    void scaleRoleReplaceChanged(const QString &replace);
 
 private:
     Q_DISABLE_COPY(QItemModelScatterDataProxy)

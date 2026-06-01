@@ -29,7 +29,11 @@ QWidgetPlatformFileDialog::QWidgetPlatformFileDialog(QObject *parent)
     connect(m_dialog.data(), &QFileDialog::currentChanged, this, [this](const QString &path) {
         emit currentChanged(QUrl::fromLocalFile(path));
     });
-    connect(m_dialog.data(), &QFileDialog::directoryEntered, this, &QWidgetPlatformFileDialog::directoryEntered);
+    // Not connecting to QFileDialog::directoryUrlEntered() because it's emitted
+    // in fewer places than directoryEntered().
+    connect(m_dialog.data(), &QFileDialog::directoryEntered, this, [this](const QString &path) {
+        directoryEntered(QUrl{path});
+    });
     connect(m_dialog.data(), &QFileDialog::filterSelected, this, &QWidgetPlatformFileDialog::filterSelected);
 }
 

@@ -47,7 +47,7 @@ constexpr auto kWifiHotspotScanMaxRetries =
 
 // The maximum IP check times during Wi-Fi hotspot connection.
 constexpr auto kWifiHotspotCheckIpMaxRetries =
-    flags::Flag<int64_t>(kConfigPackage, "45415884", 10);
+    flags::Flag<int64_t>(kConfigPackage, "45415884", 20);
 
 // The interval between 2 IP check attempts.
 constexpr auto kWifiHotspotCheckIpIntervalMillis =
@@ -76,6 +76,22 @@ constexpr auto kEnableNewBluetoothRefactor =
 // Enable/Disable task scheduler for ScheduledExecutor and timer
 constexpr auto kEnableTaskScheduler =
     flags::Flag<bool>(kConfigPackage, "45643835", false);
+
+// Enable/Disable Wi-Fi hotspot native
+constexpr auto kEnableWifiHotspotNative =
+    flags::Flag<bool>(kConfigPackage, "45667396", false);
+
+// Enable/Disable Wi-Fi hotspot scan in native
+constexpr auto kEnableWifiHotspotNativeScan =
+    flags::Flag<bool>(kConfigPackage, "45670001", false);
+
+// Enable/Disable blocking socket
+constexpr auto kEnableBlockingSocket =
+    flags::Flag<bool>(kConfigPackage, "45672381", false);
+
+// The send buffer size of blocking socket
+constexpr auto kSocketSendBufferSize =
+    flags::Flag<int64_t>(kConfigPackage, "45673785", 524288);
 
 }  // namespace nearby_platform_feature
 }  // namespace config_package_nearby

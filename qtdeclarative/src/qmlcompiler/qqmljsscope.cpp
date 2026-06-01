@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljscontextualtypes_p.h"
 #include "qqmljsscope_p.h"
@@ -7,7 +8,6 @@
 #include "qqmljsimporter_p.h"
 #include "qqmljsutils_p.h"
 #include "qqmlsa.h"
-#include "qqmlsa_p.h"
 
 #include <QtCore/qqueue.h>
 #include <QtCore/qsharedpointer.h>
@@ -15,7 +15,6 @@
 #include <private/qduplicatetracker_p.h>
 
 #include <algorithm>
-#include <type_traits>
 
 QT_BEGIN_NAMESPACE
 
@@ -272,20 +271,26 @@ QString QQmlJSScope::prettyName(QAnyStringView name)
 
 /*!
     \internal
-    Returns \c Yes if the scope is the outermost element of a separate Component
-    Either because it has been implicitly wrapped, e.g. due to an assignment to
-    a Component property, or because it is the first (and only) child of a
-    Component.
+
+    Returns \c Yes if the scope is the outermost element of a separate Component. Either:
+    a, It is the root element of a QML document
+    b, It is an inline component
+    c, It has been implicitly wrapped, e.g. due to an assignment to a Component property
+    d, It is the first (and only) child of a Component
+
     Returns \c No if we can clearly determine that this is not the case.
     Returns \c Maybe if the scope is assigned to an unknown property. This may
     or may not be a Component.
+
     For visitors: This method should only be called after implicit components
     are detected, that is, after QQmlJSImportVisitor::endVisit(UiProgram *)
     was called.
  */
 QQmlJSScope::IsComponentRoot QQmlJSScope::componentRootStatus() const {
-    if (m_flags.testFlag(WrappedInImplicitComponent))
+    if (m_flags.testAnyFlags(
+                Flags(WrappedInImplicitComponent | FileRootComponent | InlineComponent))) {
         return IsComponentRoot::Yes;
+    }
 
     // If the object is assigned to an unknown property, assume it's Component.
     if (m_flags.testFlag(AssignedToUnknownProperty))
@@ -854,7 +859,7 @@ void QQmlJSScope::addOwnPropertyBinding(const QQmlJSMetaPropertyBinding &binding
     // NB: insert() prepends \a binding to the list of bindings, but we need
     // append, so rotate
     using iter = typename QMultiHash<QString, QQmlJSMetaPropertyBinding>::iterator;
-    QPair<iter, iter> r = m_propertyBindings.equal_range(binding.propertyName());
+    std::pair<iter, iter> r = m_propertyBindings.equal_range(binding.propertyName());
     std::rotate(r.first, std::next(r.first), r.second);
 
     // additionally store bindings in the QmlIR compatible order
@@ -1294,9 +1299,9 @@ QQmlJSScope::InlineComponentOrDocumentRootName QQmlJSScope::enclosingInlineCompo
     return RootDocumentNameType();
 }
 
-QVector<QQmlJSScope::ConstPtr> QQmlJSScope::childScopes() const
+QList<QQmlJSScope::ConstPtr> QQmlJSScope::childScopes() const
 {
-    QVector<QQmlJSScope::ConstPtr> result;
+    QList<QQmlJSScope::ConstPtr> result;
     result.reserve(m_childScopes.size());
     for (const auto &child : m_childScopes)
         result.append(child);

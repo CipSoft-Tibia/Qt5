@@ -12,6 +12,7 @@
 #include <stddef.h>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <utility>
 
@@ -73,7 +74,7 @@ OverlaySurfaceCandidate MakeOverlayCandidate(int z_order,
 
 }  // namespace
 
-SurfacelessGlRenderer::BufferWrapper::BufferWrapper() {}
+SurfacelessGlRenderer::BufferWrapper::BufferWrapper() = default;
 
 SurfacelessGlRenderer::BufferWrapper::~BufferWrapper() {
   if (gl_fb_)
@@ -228,7 +229,7 @@ void SurfacelessGlRenderer::RenderFrame() {
 
   float fraction = NextFraction();
 
-  gfx::Rect overlay_rect[kMaxLayers];
+  std::array<gfx::Rect, kMaxLayers> overlay_rect;
   const gfx::RectF unity_rect = gfx::RectF(0, 0, 1, 1);
 
   OverlayCandidatesOzone::OverlaySurfaceCandidateList overlay_list;

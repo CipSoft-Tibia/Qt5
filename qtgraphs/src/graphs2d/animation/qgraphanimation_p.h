@@ -14,8 +14,11 @@
 #define QGRAPHANIMATION_H
 
 #include <QtCore/QVariantAnimation>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcAnimation)
 
 class QGraphAnimation : public QVariantAnimation
 {

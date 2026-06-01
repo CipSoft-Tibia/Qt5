@@ -1496,8 +1496,13 @@ QFileInfoList QDir::entryInfoList(const QStringList &nameFilters, Filters filter
 /*!
     Creates a sub-directory called \a dirName with the given \a permissions.
 
+    If \a permissions is \c std::nullopt (the default) this function will
+    set the default permissions.
+
     Returns \c true on success; returns \c false if the operation failed or
-    the directory already existed.
+    \a dirName already existed.
+
+    If \a dirName already existed, this method won't change its permissions.
 
 //! [dir-creation-mode-bits-unix]
     On POSIX systems \a permissions are modified by the
@@ -1506,18 +1511,24 @@ QFileInfoList QDir::entryInfoList(const QStringList &nameFilters, Filters filter
     bits might be disabled.
 //! [dir-creation-mode-bits-unix]
 
+//! [windows-permissions-acls]
     On Windows, by default, a new directory inherits its permissions from its
     parent directory. \a permissions are emulated using ACLs. These ACLs may
     be in non-canonical order when the group is granted less permissions than
     others. Files and directories with such permissions will generate warnings
     when the Security tab of the Properties dialog is opened. Granting the
     group all permissions granted to others avoids such warnings.
+//! [windows-permissions-acls]
+
+    \note Qt 6.10 added the \a permissions parameter. To get the old behavior
+    (using the default platform-specific permissions) of \c{mkdir(const QString &)}
+    set \a permissions to \c std::nullopt (the default). This new method also
+    transparently replaces the \c {mkdir(const QString &, QFile::Permissions)}
+    overload.
 
     \sa rmdir(), mkpath(), rmpath()
-
-    \since 6.3
 */
-bool QDir::mkdir(const QString &dirName, QFile::Permissions permissions) const
+bool QDir::mkdir(const QString &dirName, std::optional<QFile::Permissions> permissions) const
 {
     Q_D(const QDir);
 
@@ -1530,40 +1541,6 @@ bool QDir::mkdir(const QString &dirName, QFile::Permissions permissions) const
     if (!d->fileEngine)
         return QFileSystemEngine::mkdir(QFileSystemEntry(fn), permissions);
     return d->fileEngine->mkdir(fn, false, permissions);
-}
-
-/*!
-    \overload
-    Creates a sub-directory called \a dirName with the platform-specific
-    default permissions.
-
-    Returns \c true on success; returns \c false if the operation failed or
-    the directory already existed.
-
-//! [windows-permissions-acls]
-    On Windows, by default, a new directory inherits its permissions from its
-    parent directory. Permissions are emulated using ACLs. These ACLs may be
-    in non-canonical order when the group is granted less permissions than
-    others. Files and directories with such permissions will generate warnings
-    when the Security tab of the Properties dialog is opened. Granting the
-    group all permissions granted to others avoids such warnings.
-//! [windows-permissions-acls]
-
-    \sa rmdir(), mkpath(), rmpath()
-*/
-bool QDir::mkdir(const QString &dirName) const
-{
-    Q_D(const QDir);
-
-    if (dirName.isEmpty()) {
-        qWarning("QDir::mkdir: Empty or null file name");
-        return false;
-    }
-
-    QString fn = filePath(dirName);
-    if (!d->fileEngine)
-        return QFileSystemEngine::mkdir(QFileSystemEntry(fn));
-    return d->fileEngine->mkdir(fn, false);
 }
 
 /*!
@@ -1595,16 +1572,28 @@ bool QDir::rmdir(const QString &dirName) const
     Creates a directory named \a dirPath.
 
     If \a dirPath doesn't already exist, this method will create it - along with
-    any nonexistent parent directories - with the default permissions.
+    any nonexistent parent directories - with \a permissions.
+
+    If \a dirPath already existed, this method won't change its permissions;
+    the same goes for any already existing parent directories.
+
+    If \a permissions is \c std::nullopt (the default value) this function will
+    set the default permissions.
 
     Returns \c true on success or if \a dirPath already existed; otherwise
     returns \c false.
 
+    \include qdir.cpp dir-creation-mode-bits-unix
+
     \include qdir.cpp windows-permissions-acls
+
+    \note Qt 6.10 added the \a permissions parameter. To get the old behavior
+    (using the default platform-specific permissions) of \c{mkpath(const QString &)}
+    set \a permissions to \c std::nullopt (the default).
 
     \sa rmpath(), mkdir(), rmdir()
 */
-bool QDir::mkpath(const QString &dirPath) const
+bool QDir::mkpath(const QString &dirPath, std::optional<QFile::Permissions> permissions) const
 {
     Q_D(const QDir);
 
@@ -1615,8 +1604,8 @@ bool QDir::mkpath(const QString &dirPath) const
 
     QString fn = filePath(dirPath);
     if (!d->fileEngine)
-        return QFileSystemEngine::mkpath(QFileSystemEntry(fn));
-    return d->fileEngine->mkdir(fn, true);
+        return QFileSystemEngine::mkpath(QFileSystemEntry(fn), permissions);
+    return d->fileEngine->mkdir(fn, true, permissions);
 }
 
 /*!
@@ -2227,6 +2216,38 @@ bool QDir::match(const QString &filter, const QString &fileName)
 }
 #endif // QT_CONFIG(regularexpression)
 
+static qsizetype findStartOfNonNormalizedPath(const QChar *in, qsizetype i, qsizetype n,
+                                              QDirPrivate::PathNormalizations flags) noexcept
+{
+    // Scan the input for a "." or ".." segment. If there isn't any, we may not
+    // need to modify this path at all. Also scan for "//" segments, which
+    // will be normalized if the path is local.
+    const bool isRemote = flags.testAnyFlag(QDirPrivate::RemotePath);
+    for (bool lastWasSlash = true; i < n; ++i) {
+        if (lastWasSlash && in[i] == u'.') {
+            if (i + 1 == n || in[i + 1] == u'/')
+                break;
+            if (in[i + 1] == u'.' && (i + 2 == n || in[i + 2] == u'/'))
+                break;
+        }
+        if (!isRemote && lastWasSlash && in[i] == u'/' && i > 0) {
+            // backtrack one, so the algorithm below gobbles up the remaining
+            // slashes
+            --i;
+            break;
+        }
+        lastWasSlash = in[i] == u'/';
+    }
+    return i;
+}
+
+bool qt_isPathNormalized(const QString &path, QDirPrivate::PathNormalizations flags) noexcept
+{
+    const qsizetype prefixLength = rootLength(path, flags);
+    qsizetype where = findStartOfNonNormalizedPath(path.constBegin(), prefixLength, path.size(), flags);
+    return where == path.size();
+}
+
 /*!
     \internal
 
@@ -2259,26 +2280,8 @@ bool qt_normalizePathSegments(QString *path, QDirPrivate::PathNormalizations fla
     // string."
     const QChar *in = path->constBegin();
 
-    // Scan the input for a "." or ".." segment. If there isn't any, we may not
-    // need to modify this path at all. Also scan for "//" segments, which
-    // will be normalized if the path is local.
-    qsizetype i = prefixLength;
     qsizetype n = path->size();
-    for (bool lastWasSlash = true; i < n; ++i) {
-        if (lastWasSlash && in[i] == u'.') {
-            if (i + 1 == n || in[i + 1] == u'/')
-                break;
-            if (in[i + 1] == u'.' && (i + 2 == n || in[i + 2] == u'/'))
-                break;
-        }
-        if (!isRemote && lastWasSlash && in[i] == u'/' && i > 0) {
-            // backtrack one, so the algorithm below gobbles up the remaining
-            // slashes
-            --i;
-            break;
-        }
-        lastWasSlash = in[i] == u'/';
-    }
+    qsizetype i = findStartOfNonNormalizedPath(in, prefixLength, n, flags);
     if (i == n)
         return true;
 

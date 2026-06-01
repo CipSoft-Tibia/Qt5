@@ -32,12 +32,11 @@ import * as Common from '../../core/common/common.js';
 import * as VisualLogging from '../visual_logging/visual_logging.js';
 
 import * as ARIAUtils from './ARIAUtils.js';
-import dialogStyles from './dialog.css.legacy.js';
+import dialogStyles from './dialog.css.js';
 import {GlassPane, PointerEventsBehavior} from './GlassPane.js';
 import {InspectorView} from './InspectorView.js';
 import {KeyboardShortcut, Keys} from './KeyboardShortcut.js';
-import {type SplitWidget} from './SplitWidget.js';
-import {type DevToolsCloseButton} from './UIUtils.js';
+import type {SplitWidget} from './SplitWidget.js';
 import {WidgetFocusRestorer} from './Widget.js';
 
 export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof GlassPane>(GlassPane) {
@@ -110,6 +109,10 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
     Dialog.instance = null;
   }
 
+  setAriaLabel(label: string): void {
+    ARIAUtils.setLabel(this.contentElement, label);
+  }
+
   setCloseOnEscape(close: boolean): void {
     this.closeOnEscape = close;
   }
@@ -119,9 +122,8 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
   }
 
   addCloseButton(): void {
-    const closeButton =
-        (this.contentElement.createChild('div', 'dialog-close-button', 'dt-close-button') as DevToolsCloseButton);
-    closeButton.addEventListener('click', () => this.hide(), false);
+    const closeButton = this.contentElement.createChild('dt-close-button', 'dialog-close-button');
+    closeButton.addEventListener('click', this.hide.bind(this), false);
   }
 
   setOutsideTabIndexBehavior(tabIndexBehavior: OutsideTabIndexBehavior): void {
@@ -218,9 +220,9 @@ export const enum Events {
   HIDDEN = 'hidden',
 }
 
-export type EventTypes = {
-  [Events.HIDDEN]: void,
-};
+export interface EventTypes {
+  [Events.HIDDEN]: void;
+}
 
 export const enum OutsideTabIndexBehavior {
   DISABLE_ALL_OUTSIDE_TAB_INDEX = 'DisableAllTabIndex',

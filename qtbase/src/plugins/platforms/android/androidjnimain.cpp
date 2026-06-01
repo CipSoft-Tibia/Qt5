@@ -1,6 +1,7 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <dlfcn.h>
 #include <pthread.h>
@@ -9,7 +10,6 @@
 
 #include "androidcontentfileengine.h"
 #include "qandroidapkfileengine.h"
-#include "androiddeadlockprotector.h"
 #include "androidjniinput.h"
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
@@ -24,6 +24,7 @@
 #if QT_CONFIG(accessibility)
 #include "androidjniaccessibility.h"
 #endif
+#include "qandroidplatformscreen.h"
 #include "qandroidplatformwindow.h"
 
 #include <android/api-level.h>
@@ -75,12 +76,8 @@ static void *m_mainLibraryHnd = nullptr;
 static QList<QByteArray> m_applicationParams;
 static sem_t m_exitSemaphore, m_terminateSemaphore;
 
-
 static QAndroidPlatformIntegration *m_androidPlatformIntegration = nullptr;
 
-static int m_availableWidthPixels  = 0;
-static int m_availableHeightPixels = 0;
-static double m_scaledDensity = 0;
 static double m_density = 1.0;
 
 static AndroidAssetsFileEngineHandler *m_androidAssetsFileEngineHandler = nullptr;
@@ -92,6 +89,7 @@ static AndroidBackendRegister *m_backendRegister = nullptr;
 static const char m_qtTag[] = "Qt";
 static const char m_classErrorMsg[] = "Can't find class \"%s\"";
 static const char m_methodErrorMsg[] = "Can't find method \"%s%s\"";
+static const char m_staticFieldErrorMsg[] = "Can't find static field \"%s\"";
 
 Q_CONSTINIT static QBasicAtomicInt startQtAndroidPluginCalled = Q_BASIC_ATOMIC_INITIALIZER(0);
 
@@ -150,21 +148,6 @@ namespace QtAndroid
         return nullptr;
     }
 
-    int availableWidthPixels()
-    {
-        return m_availableWidthPixels;
-    }
-
-    int availableHeightPixels()
-    {
-        return m_availableHeightPixels;
-    }
-
-    double scaledDensity()
-    {
-        return m_scaledDensity;
-    }
-
     double pixelDensity()
     {
         return m_density;
@@ -199,12 +182,6 @@ namespace QtAndroid
     }
 
 #if QT_CONFIG(accessibility)
-    void initializeAccessibility()
-    {
-        m_backendRegister->callInterface<QtJniTypes::QtAccessibilityInterface, void>(
-                "initializeAccessibility");
-    }
-
     void notifyAccessibilityLocationChange(uint accessibilityObjectId)
     {
         m_backendRegister->callInterface<QtJniTypes::QtAccessibilityInterface, void>(
@@ -342,6 +319,11 @@ namespace QtAndroid
         return m_methodErrorMsg;
     }
 
+    const char *staticFieldErrorMsgFmt()
+    {
+        return m_staticFieldErrorMsg;
+    }
+
     const char *qtTagText()
     {
         return m_qtTag;
@@ -402,6 +384,7 @@ static jboolean startQtAndroidPlugin(JNIEnv *env, jobject /*object*/, jstring pa
         return false;
 
     m_androidPlatformIntegration = nullptr;
+    // File engine handler instantiation registers the handler
     m_androidAssetsFileEngineHandler = new AndroidAssetsFileEngineHandler();
     m_androidContentFileEngineHandler = new AndroidContentFileEngineHandler();
     m_androidApkFileEngineHandler = new QAndroidApkFileEngineHandler();
@@ -591,39 +574,18 @@ static void terminateQt(JNIEnv *env, jclass /*clazz*/)
     sem_post(&m_exitSemaphore);
 }
 
-static void setDisplayMetrics(JNIEnv * /*env*/, jclass /*clazz*/, jint screenWidthPixels,
-                              jint screenHeightPixels, jint availableLeftPixels,
-                              jint availableTopPixels, jint availableWidthPixels,
-                              jint availableHeightPixels, jdouble xdpi, jdouble ydpi,
-                              jdouble scaledDensity, jdouble density, jfloat refreshRate)
+static void handleLayoutSizeChanged(JNIEnv * /*env*/, jclass /*clazz*/,
+                                    jint availableWidth, jint availableHeight)
 {
-    Q_UNUSED(availableLeftPixels)
-    Q_UNUSED(availableTopPixels)
-
-    m_availableWidthPixels = availableWidthPixels;
-    m_availableHeightPixels = availableHeightPixels;
-    m_scaledDensity = scaledDensity;
-    m_density = density;
-
-    const QSize screenSize(screenWidthPixels, screenHeightPixels);
-    // available geometry always starts from top left
-    const QRect availableGeometry(0, 0, availableWidthPixels, availableHeightPixels);
-    const QSize physicalSize(qRound(double(screenWidthPixels) / xdpi * 25.4),
-                             qRound(double(screenHeightPixels) / ydpi * 25.4));
-
     QMutexLocker lock(&m_platformMutex);
-    if (!m_androidPlatformIntegration) {
-        QAndroidPlatformIntegration::setDefaultDisplayMetrics(
-                availableGeometry.left(), availableGeometry.top(), availableGeometry.width(),
-                availableGeometry.height(), physicalSize.width(), physicalSize.height(),
-                screenSize.width(), screenSize.height());
-    } else {
-        m_androidPlatformIntegration->setScreenSizeParameters(physicalSize, screenSize,
-                                                              availableGeometry);
-        m_androidPlatformIntegration->setRefreshRate(refreshRate);
-    }
+    // available geometry always starts from top left
+    const QRect availableGeometry(0, 0, availableWidth, availableHeight);
+    if (m_androidPlatformIntegration)
+        m_androidPlatformIntegration->setAvailableGeometry(availableGeometry);
+    else if (QAndroidPlatformScreen::defaultAvailableGeometry().isNull())
+        QAndroidPlatformScreen::defaultAvailableGeometry() = availableGeometry;
 }
-Q_DECLARE_JNI_NATIVE_METHOD(setDisplayMetrics)
+Q_DECLARE_JNI_NATIVE_METHOD(handleLayoutSizeChanged)
 
 static void updateApplicationState(JNIEnv */*env*/, jobject /*thiz*/, jint state)
 {
@@ -744,6 +706,12 @@ static void handleUiDarkModeChanged(JNIEnv */*env*/, jobject /*thiz*/, jint newU
 }
 Q_DECLARE_JNI_NATIVE_METHOD(handleUiDarkModeChanged)
 
+static void handleScreenDensityChanged(JNIEnv */*env*/, jclass /*cls*/, jdouble density)
+{
+    m_density = density;
+}
+Q_DECLARE_JNI_NATIVE_METHOD(handleScreenDensityChanged)
+
 static void onActivityResult(JNIEnv */*env*/, jclass /*cls*/,
                              jint requestCode,
                              jint resultCode,
@@ -820,13 +788,14 @@ static bool registerNatives(QJniEnvironment &env)
     success &= env.registerNativeMethods(
             QtJniTypes::Traits<QtJniTypes::QtDisplayManager>::className(),
             {
-                    Q_JNI_NATIVE_METHOD(setDisplayMetrics),
+                    Q_JNI_NATIVE_METHOD(handleLayoutSizeChanged),
                     Q_JNI_NATIVE_METHOD(handleOrientationChanged),
                     Q_JNI_NATIVE_METHOD(handleRefreshRateChanged),
                     Q_JNI_NATIVE_METHOD(handleScreenAdded),
                     Q_JNI_NATIVE_METHOD(handleScreenChanged),
                     Q_JNI_NATIVE_METHOD(handleScreenRemoved),
-                    Q_JNI_NATIVE_METHOD(handleUiDarkModeChanged)
+                    Q_JNI_NATIVE_METHOD(handleUiDarkModeChanged),
+                    Q_JNI_NATIVE_METHOD(handleScreenDensityChanged)
             });
 
     success = success
@@ -938,6 +907,6 @@ Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM */*vm*/, void */*reserved*/)
         return JNI_ERR;
     }
 
-    __android_log_print(ANDROID_LOG_INFO, "Qt", "qt started");
+    __android_log_print(ANDROID_LOG_INFO, "Qt", "Qt platform plugin started");
     return JNI_VERSION_1_6;
 }

@@ -9,7 +9,11 @@
 
 #include <qorientationsensor.h>
 
+namespace QtSensorsPrivate {
+
 class NetHadessSensorProxyInterface;
+
+} // namespace QtSensorsPrivate
 
 class IIOSensorProxyOrientationSensor : public IIOSensorProxySensorBase
 {
@@ -30,7 +34,7 @@ private:
     void updateOrientation(const QString &orientation);
 
     QOrientationReading m_reading;
-    NetHadessSensorProxyInterface *m_sensorProxyInterface;
+    QtSensorsPrivate::NetHadessSensorProxyInterface *m_sensorProxyInterface;
 };
 
 #endif // IIOSENSORPROXY_ORIENTATIONSENSOR_H

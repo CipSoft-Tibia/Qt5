@@ -17,14 +17,10 @@ qt_internal_add_sync_header_dependencies(Bootstrap Core)
 
 qt_internal_extend_target(Bootstrap
     SOURCES
+        ../../corelib/global/qalloc.cpp
         ../../corelib/global/qassert.cpp
-        ../../corelib/global/qfloat16.cpp
-        ../../corelib/global/qlogging.cpp
-        ../../corelib/global/qmalloc.cpp
         ../../corelib/global/qtenvironmentvariables.cpp
         ../../corelib/io/qabstractfileengine.cpp
-        ../../corelib/io/qbuffer.cpp
-        ../../corelib/io/qdebug.cpp
         ../../corelib/io/qdir.cpp
         ../../corelib/io/qfile.cpp
         ../../corelib/io/qfiledevice.cpp
@@ -34,11 +30,9 @@ qt_internal_extend_target(Bootstrap
         ../../corelib/io/qfsfileengine.cpp
         ../../corelib/io/qfsfileengine_iterator.cpp
         ../../corelib/io/qiodevice.cpp
-        ../../corelib/io/qstandardpaths.cpp
         ../../corelib/kernel/qcoreapplication.cpp
         ../../corelib/kernel/qmetatype.cpp
         ../../corelib/kernel/qsystemerror.cpp
-        ../../corelib/plugin/quuid.cpp
         ../../corelib/serialization/qcborcommon.cpp
         ../../corelib/serialization/qcborstreamwriter.cpp
         ../../corelib/serialization/qcborvalue.cpp
@@ -70,7 +64,6 @@ qt_internal_extend_target(Bootstrap
         ../../corelib/tools/qarraydata.cpp
         ../../corelib/tools/qcommandlineoption.cpp
         ../../corelib/tools/qcommandlineparser.cpp
-        ../../corelib/tools/qcryptographichash.cpp
         ../../corelib/tools/qhash.cpp
         ../../corelib/tools/qringbuffer.cpp
     DEFINES
@@ -119,8 +112,6 @@ qt_internal_extend_target(Bootstrap CONDITION WIN32
         ../../corelib/io/qfilesystemengine_win.cpp
         ../../corelib/io/qfilesystemiterator_win.cpp
         ../../corelib/io/qfsfileengine_win.cpp
-        ../../corelib/io/qstandardpaths_win.cpp
-        ../../corelib/kernel/qcoreapplication_win.cpp
         ../../corelib/kernel/qfunctions_win.cpp
     PUBLIC_LIBRARIES
         advapi32
@@ -137,12 +128,8 @@ qt_internal_extend_target(Bootstrap CONDITION MSVC AND CLANG
 
 qt_internal_extend_target(Bootstrap CONDITION APPLE
     SOURCES
-        ../../corelib/global/qoperatingsystemversion.cpp
-        ../../corelib/global/qoperatingsystemversion_darwin.mm
         ../../corelib/kernel/qcore_foundation.mm
         ../../corelib/kernel/qcore_mac.mm
-        ../../corelib/kernel/qcoreapplication_mac.cpp
-        ../../corelib/tools/qversionnumber.cpp
     NO_UNITY_BUILD_SOURCES
         kernel/qcore_mac.mm # See below
     NO_PCH_SOURCES
@@ -158,7 +145,6 @@ endif()
 
 qt_internal_extend_target(Bootstrap CONDITION MACOS
     SOURCES
-        ../../corelib/io/qstandardpaths_mac.mm
     LIBRARIES
         ${FWCoreServices}
 )
@@ -166,11 +152,6 @@ qt_internal_extend_target(Bootstrap CONDITION MACOS
 qt_internal_extend_target(Bootstrap CONDITION UIKIT
     LIBRARIES
         ${FWUIKit}
-)
-
-qt_internal_extend_target(Bootstrap CONDITION UNIX AND NOT MACOS
-    SOURCES
-        ../../corelib/io/qstandardpaths_unix.cpp
 )
 
 qt_internal_extend_target(Bootstrap CONDITION CMAKE_CROSSCOMPILING OR NOT QT_FEATURE_system_pcre2
@@ -181,6 +162,7 @@ qt_internal_extend_target(Bootstrap CONDITION CMAKE_CROSSCOMPILING OR NOT QT_FEA
         ../../3rdparty/pcre2/src/pcre2_chartables.c
         ../../3rdparty/pcre2/src/pcre2_chkdint.c
         ../../3rdparty/pcre2/src/pcre2_compile.c
+        ../../3rdparty/pcre2/src/pcre2_compile_cgroup.c
         ../../3rdparty/pcre2/src/pcre2_compile_class.c
         ../../3rdparty/pcre2/src/pcre2_config.c
         ../../3rdparty/pcre2/src/pcre2_context.c

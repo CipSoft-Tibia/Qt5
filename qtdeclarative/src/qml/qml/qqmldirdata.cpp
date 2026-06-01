@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include <private/qqmldirdata_p.h>
 
@@ -27,13 +28,13 @@ void QQmlQmldirData::setPriority(
         QQmlTypeLoader::Blob *blob, const QQmlTypeLoader::Blob::PendingImportPtr &import,
         int priority)
 {
-    Q_ASSERT(isTypeLoaderThread());
+    assertTypeLoaderThread();
     m_imports.insert(blob, { import, priority });
 }
 
 void QQmlQmldirData::dataReceived(const SourceCodeData &data)
 {
-    Q_ASSERT(isTypeLoaderThread());
+    assertTypeLoaderThread();
     QString error;
     m_content = data.readAll(&error);
     if (!error.isEmpty()) {
@@ -44,7 +45,7 @@ void QQmlQmldirData::dataReceived(const SourceCodeData &data)
 
 void QQmlQmldirData::initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *)
 {
-    Q_ASSERT(isTypeLoaderThread());
+    assertTypeLoaderThread();
     Q_UNIMPLEMENTED();
 }
 

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "gpu/command_buffer/service/shared_image/dawn_image_representation_unittest_common.h"
 
 #include "base/threading/platform_thread.h"
@@ -232,7 +237,7 @@ struct VertexOut {
   wgpu::FutureWaitInfo wait_info{readback_buffer.MapAsync(
       wgpu::MapMode::Read, 0, wgpu::kWholeMapSize,
       wgpu::CallbackMode::WaitAnyOnly,
-      [](wgpu::MapAsyncStatus status, const char*) {
+      [](wgpu::MapAsyncStatus status, wgpu::StringView) {
         ASSERT_EQ(status, wgpu::MapAsyncStatus::Success);
       })};
 

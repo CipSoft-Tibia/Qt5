@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -32,16 +33,18 @@ T.DialogButtonBox {
     }
 
     background: Item {
+        readonly property bool __isHighContrast: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast
         implicitHeight: 81
         Rectangle {
-            implicitHeight: 1
-            color: Application.styleHints.colorScheme === Qt.Light ? "#0F000000" : "#15FFFFFF"
+            implicitHeight: parent.__isHighContrast ? 2 : 1
+            width: parent.width
+            color: parent.__isHighContrast ? control.palette.text : Application.styleHints.colorScheme === Qt.Light ? "#0F000000" : "#15FFFFFF"
         }
         Rectangle {
-            implicitHeight: 80
-            x: 1; y: 1
+            implicitHeight: parent.__isHighContrast ? 79 : 80
+            x: 1; y: parent.__isHighContrast ? 2 : 1
             width: parent.width - 2
-            height: parent.height - 2
+            height: parent.height - (parent.__isHighContrast ? 3 : 2)
             color: control.palette.window
             topLeftRadius: 0
             bottomLeftRadius: 7

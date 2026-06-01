@@ -107,6 +107,23 @@ export function make_sequence(orig, expressions) {
     });
 }
 
+export function make_empty_function(self) {
+    return make_node(AST_Function, self, {
+        uses_arguments: false,
+        argnames: [],
+        body: [],
+        is_generator: false,
+        async: false,
+        variables: new Map(),
+        uses_with: false,
+        uses_eval: false,
+        parent_scope: null,
+        enclosed: [],
+        cname: 0,
+        block_scope: undefined,
+    });
+}
+
 export function make_node_from_constant(val, orig) {
     switch (typeof val) {
       case "string":
@@ -333,9 +350,9 @@ export function is_reachable(scope_node, defs) {
 }
 
 /** Check if a ref refers to the name of a function/class it's defined within */
-export function is_recursive_ref(compressor, def) {
+export function is_recursive_ref(tw, def) {
     var node;
-    for (var i = 0; node = compressor.parent(i); i++) {
+    for (var i = 0; node = tw.parent(i); i++) {
         if (node instanceof AST_Lambda || node instanceof AST_Class) {
             var name = node.name;
             if (name && name.definition() === def) {

@@ -20,6 +20,7 @@
 #include "quiche/quic/core/crypto/transport_parameters.h"
 #include "quiche/quic/core/quic_session.h"
 #include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_hostname_utils.h"
 #include "quiche/common/quiche_text_utils.h"
@@ -99,14 +100,19 @@ bool TlsClientHandshaker::CryptoConnect() {
 
   // Set the SNI to send, if any.
   SSL_set_connect_state(ssl());
+  const bool allow_invalid_sni_for_test =
+      GetQuicFlag(quic_client_allow_invalid_sni_for_test);
   if (QUIC_DLOG_INFO_IS_ON() &&
       !QuicHostnameUtils::IsValidSNI(server_id_.host())) {
     QUIC_DLOG(INFO) << "Client configured with invalid hostname \""
-                    << server_id_.host() << "\", not sending as SNI";
+                    << server_id_.host() << "\", "
+                    << (allow_invalid_sni_for_test
+                            ? "sending it anyway for test."
+                            : "not sending as SNI.");
   }
   if (!server_id_.host().empty() &&
       (QuicHostnameUtils::IsValidSNI(server_id_.host()) ||
-       allow_invalid_sni_for_tests_) &&
+       allow_invalid_sni_for_test) &&
       SSL_set_tlsext_host_name(ssl(), server_id_.host().c_str()) != 1) {
     return false;
   }
@@ -128,6 +134,7 @@ bool TlsClientHandshaker::CryptoConnect() {
     cached_state_ = session_cache_->Lookup(
         server_id_, session()->GetClock()->WallNow(), SSL_get_SSL_CTX(ssl()));
   }
+  session_cache_lookup_done_ = true;
   if (cached_state_) {
     SSL_set_session(ssl(), cached_state_->tls_session.get());
     if (!cached_state_->token.empty()) {
@@ -342,7 +349,9 @@ bool TlsClientHandshaker::ProcessTransportParameters(
 int TlsClientHandshaker::num_sent_client_hellos() const { return 0; }
 
 bool TlsClientHandshaker::ResumptionAttempted() const {
-  QUIC_BUG_IF(quic_tls_client_resumption_attempted, !encryption_established_);
+  // Don't call this method if the session cache lookup hasn't completed yet.
+  QUIC_BUG_IF(quic_tls_client_resumption_attempted,
+              !session_cache_lookup_done_);
   return cached_state_ != nullptr;
 }
 

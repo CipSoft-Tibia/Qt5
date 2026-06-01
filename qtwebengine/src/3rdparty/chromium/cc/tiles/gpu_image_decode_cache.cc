@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "cc/tiles/gpu_image_decode_cache.h"
 
 #include <inttypes.h>
@@ -31,7 +26,6 @@
 #include "base/not_fatal_until.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_math.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/stringprintf.h"
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
@@ -76,6 +70,7 @@
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/geometry/skia_conversions.h"
+#include "ui/gfx/skia_span_util.h"
 #include "ui/gl/trace_util.h"
 
 namespace cc {
@@ -217,8 +212,7 @@ size_t EstimateHardwareDecodedDataSize(
     case YUVSubsampling::k444:
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      return 0u;
+      NOTREACHED();
   }
   base::CheckedNumeric<size_t> uv_data_size(uv_width * uv_height);
   return (y_data_size + 2 * uv_data_size).ValueOrDie();
@@ -586,13 +580,15 @@ class GpuImageDecodeTaskImpl : public TileTask {
   GpuImageDecodeTaskImpl(GpuImageDecodeCache* cache,
                          const DrawImage& draw_image,
                          const ImageDecodeCache::TracingInfo& tracing_info,
-                         ImageDecodeCache::TaskType task_type)
+                         ImageDecodeCache::TaskType task_type,
+                         ImageDecodeCache::ClientId client_id)
       : TileTask(TileTask::SupportsConcurrentExecution::kYes,
                  TileTask::SupportsBackgroundThreadPriority::kNo),
         cache_(cache),
         image_(draw_image),
         tracing_info_(tracing_info),
-        task_type_(task_type) {
+        task_type_(task_type),
+        client_id_(client_id) {
     DCHECK(!SkipImage(draw_image));
   }
   GpuImageDecodeTaskImpl(const GpuImageDecodeTaskImpl&) = delete;
@@ -617,8 +613,11 @@ class GpuImageDecodeTaskImpl : public TileTask {
   }
 
   // Overridden from TileTask:
+  bool IsRasterTask() const override {
+    return task_type_ == ImageDecodeCache::TaskType::kInRaster;
+  }
   void OnTaskCompleted() override {
-    cache_->OnImageDecodeTaskCompleted(image_, task_type_);
+    cache_->OnImageDecodeTaskCompleted(image_, task_type_, client_id_);
   }
 
   // Overridden from TileTask:
@@ -636,6 +635,7 @@ class GpuImageDecodeTaskImpl : public TileTask {
   DrawImage image_;
   const ImageDecodeCache::TracingInfo tracing_info_;
   const ImageDecodeCache::TaskType task_type_;
+  const ImageDecodeCache::ClientId client_id_;
 };
 
 // Task which creates an image from decoded data. Typically this involves
@@ -646,12 +646,14 @@ class ImageUploadTaskImpl : public TileTask {
   ImageUploadTaskImpl(GpuImageDecodeCache* cache,
                       const DrawImage& draw_image,
                       scoped_refptr<TileTask> decode_dependency,
-                      const ImageDecodeCache::TracingInfo& tracing_info)
+                      const ImageDecodeCache::TracingInfo& tracing_info,
+                      ImageDecodeCache::ClientId client_id)
       : TileTask(TileTask::SupportsConcurrentExecution::kNo,
                  TileTask::SupportsBackgroundThreadPriority::kYes),
         cache_(cache),
         image_(draw_image),
-        tracing_info_(tracing_info) {
+        tracing_info_(tracing_info),
+        client_id_(client_id) {
     DCHECK(!SkipImage(draw_image));
     // If an image is already decoded and locked, we will not generate a
     // decode task.
@@ -676,7 +678,7 @@ class ImageUploadTaskImpl : public TileTask {
 
   // Overridden from TileTask:
   void OnTaskCompleted() override {
-    cache_->OnImageUploadTaskCompleted(image_);
+    cache_->OnImageUploadTaskCompleted(image_, client_id_);
   }
 
  protected:
@@ -686,6 +688,7 @@ class ImageUploadTaskImpl : public TileTask {
   raw_ptr<GpuImageDecodeCache, DanglingUntriaged> cache_;
   DrawImage image_;
   const ImageDecodeCache::TracingInfo tracing_info_;
+  const ImageDecodeCache::ClientId client_id_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -853,7 +856,7 @@ bool GpuImageDecodeCache::DecodedImageData::Lock() {
   }
 
   bool did_lock = true;
-  bool did_lock_image[kAuxImageCount] = {false, false};
+  std::array<bool, kAuxImageCount> did_lock_image = {false, false};
   for (size_t i = 0; i < kAuxImageCount; ++i) {
     if (!aux_image_data_[i].data) {
       continue;
@@ -889,7 +892,7 @@ void GpuImageDecodeCache::DecodedImageData::Unlock() {
 }
 
 void GpuImageDecodeCache::DecodedImageData::SetLockedData(
-    DecodedAuxImageData aux_image_data[kAuxImageCount],
+    base::span<DecodedAuxImageData, kAuxImageCount> aux_image_data,
     bool out_of_raster) {
   for (size_t i = 0; i < kAuxImageCount; ++i) {
     DCHECK(aux_image_data_[i].IsEmpty());
@@ -1088,7 +1091,7 @@ GpuImageDecodeCache::ImageData::ImageData(
     bool is_bitmap_backed,
     bool can_do_hardware_accelerated_decode,
     bool do_hardware_accelerated_decode,
-    ImageInfo image_info[kAuxImageCount])
+    base::span<ImageInfo, kAuxImageCount> image_info)
     : paint_image_id(paint_image_id),
       mode(mode),
       target_color_space(target_color_space),
@@ -1105,6 +1108,9 @@ GpuImageDecodeCache::ImageData::ImageData(
     // This is the only plane config supported by non-OOP raster.
     DCHECK_EQ(info.yuva->yuvaInfo().planeConfig(),
               SkYUVAInfo::PlaneConfig::kY_U_V);
+  }
+  if (base::FeatureList::IsEnabled(features::kInitImageDecodeLastUseTime)) {
+    last_use = base::TimeTicks::Now();
   }
 }
 
@@ -1340,7 +1346,7 @@ ImageDecodeCache::TaskResult GpuImageDecodeCache::GetTaskForImageAndRefInternal(
           this, draw_image,
           GetImageDecodeTaskAndRef(client_id, draw_image, tracing_info,
                                    task_type),
-          tracing_info);
+          tracing_info, client_id);
       image_data->upload.task_map[client_id] = task;
     }
     DCHECK(task);
@@ -1418,7 +1424,7 @@ ImageDecodeCache::TaskResult GpuImageDecodeCache::GetTaskForImageAndRefInternal(
         this, draw_image,
         GetImageDecodeTaskAndRef(client_id, draw_image, tracing_info,
                                  task_type),
-        tracing_info);
+        tracing_info, client_id);
     image_data->upload.task_map[client_id] = task;
   } else {
     task = GetImageDecodeTaskAndRef(client_id, draw_image, tracing_info,
@@ -1918,8 +1924,7 @@ bool GpuImageDecodeCache::OnMemoryDump(
 
         case DecodedDataMode::kCpu:
           // Not uploaded in this case.
-          NOTREACHED_IN_MIGRATION();
-          break;
+          NOTREACHED();
       }
     }
   }
@@ -1966,7 +1971,8 @@ void GpuImageDecodeCache::UploadImageInTask(const DrawImage& draw_image) {
 
 void GpuImageDecodeCache::OnImageDecodeTaskCompleted(
     const DrawImage& draw_image,
-    TaskType task_type) {
+    TaskType task_type,
+    ClientId client_id) {
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cc.debug"),
                "GpuImageDecodeCache::OnImageDecodeTaskCompleted");
   base::AutoLock lock(lock_);
@@ -1977,9 +1983,9 @@ void GpuImageDecodeCache::OnImageDecodeTaskCompleted(
   UMA_HISTOGRAM_BOOLEAN("Compositing.DecodeLCPCandidateImage.Hardware",
                         draw_image.paint_image().may_be_lcp_candidate());
   if (task_type == TaskType::kInRaster) {
-    image_data->decode.task_map.clear();
+    image_data->decode.task_map.erase(client_id);
   } else {
-    image_data->decode.stand_alone_task_map.clear();
+    image_data->decode.stand_alone_task_map.erase(client_id);
   }
 
   // While the decode task is active, we keep a ref on the decoded data.
@@ -1988,7 +1994,8 @@ void GpuImageDecodeCache::OnImageDecodeTaskCompleted(
 }
 
 void GpuImageDecodeCache::OnImageUploadTaskCompleted(
-    const DrawImage& draw_image) {
+    const DrawImage& draw_image,
+    ClientId client_id) {
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cc.debug"),
                "GpuImageDecodeCache::OnImageUploadTaskCompleted");
   base::AutoLock lock(lock_);
@@ -1996,7 +2003,7 @@ void GpuImageDecodeCache::OnImageUploadTaskCompleted(
   InUseCacheKey cache_key = InUseCacheKeyFromDrawImage(draw_image);
   ImageData* image_data = GetImageDataForDrawImage(draw_image, cache_key);
   DCHECK(image_data);
-  image_data->upload.task_map.clear();
+  image_data->upload.task_map.erase(client_id);
 
   // While the upload task is active, we keep a ref on both the image it will be
   // populating, as well as the decode it needs to populate it. Release these
@@ -2046,10 +2053,11 @@ scoped_refptr<TileTask> GpuImageDecodeCache::GetImageDecodeTaskAndRef(
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cc.debug"),
                "GpuImageDecodeCache::GetImageDecodeTaskAndRef");
   auto cache_key = InUseCacheKeyFromDrawImage(draw_image);
+  bool for_raster = (task_type == TaskType::kInRaster);
 
   // This ref is kept alive while an upload task may need this decode. We
   // release this ref in UploadTaskCompleted.
-  if (task_type == TaskType::kInRaster) {
+  if (for_raster) {
     RefImageDecode(draw_image, cache_key);
   }
 
@@ -2068,22 +2076,46 @@ scoped_refptr<TileTask> GpuImageDecodeCache::GetImageDecodeTaskAndRef(
   }
 
   // We didn't have an existing locked image, create a task to lock or decode.
-  ImageTaskMap* task_map = &image_data->decode.stand_alone_task_map;
-  if (task_type == TaskType::kInRaster) {
-    task_map = &image_data->decode.task_map;
-  }
+  scoped_refptr<TileTask> result;
 
-  scoped_refptr<TileTask> existing_task =
-      GetTaskFromMapForClientId(client_id, *task_map);
-  if (!existing_task) {
+  ImageTaskMap& raster_task_map = image_data->decode.task_map;
+  scoped_refptr<TileTask> raster_task =
+      GetTaskFromMapForClientId(client_id, raster_task_map);
+  ImageTaskMap& stand_alone_task_map = image_data->decode.stand_alone_task_map;
+  scoped_refptr<TileTask> stand_alone_task =
+      GetTaskFromMapForClientId(client_id, stand_alone_task_map);
+
+  if (for_raster && raster_task) {
+    result = std::move(raster_task);
+  } else if (!for_raster && stand_alone_task) {
+    result = std::move(stand_alone_task);
+  } else {
     // Ref image decode and create a decode task. This ref will be released in
     // DecodeTaskCompleted.
     RefImageDecode(draw_image, cache_key);
-    existing_task = base::MakeRefCounted<GpuImageDecodeTaskImpl>(
-        this, draw_image, tracing_info, task_type);
-    (*task_map)[client_id] = existing_task;
+    result = base::MakeRefCounted<GpuImageDecodeTaskImpl>(
+        this, draw_image, tracing_info, task_type, client_id);
+    if (for_raster) {
+      raster_task_map[client_id] = result;
+      if (stand_alone_task) {
+        // If the existing stand-alone task hasn't started yet, make the new
+        // raster task primary.
+        if (stand_alone_task->state().IsNew()) {
+          result->SetExternalDependent(stand_alone_task);
+        } else {
+          stand_alone_task->SetExternalDependent(result);
+        }
+      }
+    } else {
+      stand_alone_task_map[client_id] = result;
+      if (raster_task && !raster_task->HasCompleted()) {
+        raster_task->SetExternalDependent(result);
+      }
+    }
   }
-  return existing_task;
+
+  CHECK(result);
+  return result;
 }
 
 void GpuImageDecodeCache::RefImageDecode(const DrawImage& draw_image,
@@ -2301,8 +2333,9 @@ void GpuImageDecodeCache::InsertTransferCacheEntry(
   uint32_t size = image_entry.SerializedSize();
   void* data = context_->ContextSupport()->MapTransferCacheEntry(size);
   if (data) {
+    // TODO(crbug.com/40285824): Have MapTransferCacheEntry() return a span.
     bool succeeded = image_entry.Serialize(
-        base::make_span(static_cast<uint8_t*>(data), size));
+        UNSAFE_TODO(base::span(static_cast<uint8_t*>(data), size)));
     DCHECK(succeeded);
     context_->ContextSupport()->UnmapAndCreateTransferCacheEntry(
         image_entry.UnsafeType(), image_entry.Id());
@@ -2382,8 +2415,7 @@ void GpuImageDecodeCache::DecodeImageIfNecessary(
   if (image_data->is_bitmap_backed) {
     DCHECK(!draw_image.paint_image().IsLazyGenerated());
     if (image_data->info.yuva.has_value()) {
-      DLOG(ERROR) << "YUV + Bitmap is unknown and unimplemented!";
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED() << "YUV + Bitmap is unknown and unimplemented!";
     } else {
       image_data->decode.SetBitmapImage(
           draw_image.paint_image().GetSwSkImage());
@@ -2405,7 +2437,7 @@ void GpuImageDecodeCache::DecodeImageIfNecessary(
   scoped_refptr<ImageData> image_data_holder(image_data);
 
   // Decode the image into `aux_image_data` while the lock is not held.
-  DecodedAuxImageData aux_image_data[kAuxImageCount];
+  std::array<DecodedAuxImageData, kAuxImageCount> aux_image_data;
   {
     base::AutoUnlock unlock(lock_);
     for (auto aux_image : kAllAuxImages) {
@@ -2640,8 +2672,7 @@ void GpuImageDecodeCache::UploadImageIfNecessary_TransferCache_HardwareDecode(
   const uint32_t transfer_cache_id = ClientImageTransferCacheEntry::GetNextId();
   const gpu::SyncToken decode_sync_token =
       context_->RasterInterface()->ScheduleImageDecode(
-          base::make_span(encoded_data->bytes(), encoded_data->size()),
-          output_size, transfer_cache_id,
+          gfx::SkDataToSpan(encoded_data), output_size, transfer_cache_id,
           color_space ? gfx::ColorSpace(*color_space) : gfx::ColorSpace(),
           image_data->needs_mips);
 
@@ -2673,13 +2704,18 @@ void GpuImageDecodeCache::UploadImageIfNecessary_TransferCache_SoftwareDecode(
   DCHECK(use_transfer_cache_);
   DCHECK(!image_data->decode.do_hardware_accelerated_decode());
 
-  ClientImageTransferCacheEntry::Image image[kAuxImageCount];
+  std::array<ClientImageTransferCacheEntry::Image, kAuxImageCount> image;
   bool has_gainmap = false;
 
   for (auto aux_image : kAllAuxImages) {
     auto aux_image_index = AuxImageIndex(aux_image);
     const auto& info = image_data->GetImageInfo(aux_image);
     if (aux_image == AuxImage::kGainmap) {
+      // The gainmap image is allowed to silently fail to decode. If that
+      // happens, there will be no data. Just pretend it didn't exist.
+      if (!image_data->decode.data(aux_image)) {
+        continue;
+      }
       has_gainmap = info.rgba.has_value() || info.yuva.has_value();
     }
     if (info.yuva.has_value()) {
@@ -2691,7 +2727,7 @@ void GpuImageDecodeCache::UploadImageIfNecessary_TransferCache_SoftwareDecode(
     if (info.rgba.has_value()) {
       DCHECK(!info.yuva.has_value());
       image[aux_image_index] = ClientImageTransferCacheEntry::Image(
-          image_data->decode.pixmaps(aux_image));
+          &image_data->decode.pixmaps(aux_image)[0]);
     }
   }
 
@@ -2872,7 +2908,7 @@ GpuImageDecodeCache::CreateImageData(const DrawImage& draw_image,
                                      bool allow_hardware_decode) {
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cc.debug"),
                "GpuImageDecodeCache::CreateImageData");
-  ImageInfo image_info[kAuxImageCount];
+  std::array<ImageInfo, kAuxImageCount> image_info;
 
   // Extract ImageInfo and SkImageInfo for the default image, assuming software
   // decoding to RGBA.
@@ -3332,8 +3368,17 @@ bool GpuImageDecodeCache::IsCompatible(const ImageData* image_data,
   const bool scale_is_compatible =
       CalculateUploadScaleMipLevel(draw_image, AuxImage::kDefault) >=
       image_data->upload_scale_mip_level;
-  const bool quality_is_compatible =
-      CalculateDesiredFilterQuality(draw_image) <= image_data->quality;
+  auto desired_quality = CalculateDesiredFilterQuality(draw_image);
+  bool quality_is_compatible = desired_quality <= image_data->quality;
+  if (base::FeatureList::IsEnabled(
+          features::kPreserveDiscardableImageMapQuality)) {
+    // Nearest neighbor is used for `image-rendering: pixelated` which is not
+    // compatible with higher qualities.
+    if (desired_quality == PaintFlags::FilterQuality::kNone &&
+        image_data->quality != PaintFlags::FilterQuality::kNone) {
+      quality_is_compatible = false;
+    }
+  }
   if (is_scaled && (!scale_is_compatible || !quality_is_compatible)) {
     return false;
   }
@@ -3700,7 +3745,7 @@ void GpuImageDecodeCache::UpdateMipsIfNeeded(const DrawImage& draw_image,
 scoped_refptr<TileTask> GpuImageDecodeCache::GetTaskFromMapForClientId(
     const ClientId client_id,
     const ImageTaskMap& task_map) {
-  auto task_it = base::ranges::find_if(
+  auto task_it = std::ranges::find_if(
       task_map,
       [client_id](
           const std::pair<ClientId, scoped_refptr<TileTask>> task_item) {

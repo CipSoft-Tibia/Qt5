@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include <QtCore/qsequentialiterable.h>
 
@@ -182,7 +183,7 @@ void Heap::Sequence::init(
     QMetaType listType, QMetaSequence metaSequence, const void *container,
     Heap::Object *object, int propertyIndex, Heap::ReferenceObject::Flags flags)
 {
-    ReferenceObject::init(object, propertyIndex, flags);
+    ReferenceObject::init(object, propertyIndex, flags | IsDirty);
     initTypes(listType, metaSequence);
 
     if (isStoredInline()) {

@@ -76,12 +76,24 @@ steps described in \l{Building Qt Sources}.
 
 \section1 Platform Notes
 
+\section2 iOS
+
+\list
+    \li When configuring Qt Multimedia with FFmpeg support, the CMake
+        configuration process looks for \c .xcframework files in the
+        supplied FFmpeg directory. Using \c .dylib binaries directly
+        is not supported. See \l{Building FFmpeg from source for iOS on macOS}
+        and \l{https://developer.apple.com/documentation/xcode/creating-a-multi-platform-binary-framework-bundle}
+        for details on how to package FFmpeg build artifacts into
+        \c .xcframework files.
+\endlist
+
 \section2 Linux
 
 \list
     \li When configuring Qt Multimedia with FFmpeg enabled, the
-        pulseaudio development package is required. Without this
-        package, FFmpeg will not be recognized.
+        pipewire or the pulseaudio development package is required. Without
+        one of these packages, FFmpeg will not be recognized.
     \li When using a version of FFmpeg that is built with VAAPI support,
         we recommend building Qt Multimedia with VAAPI support as well
         to make hardware texture conversion possible. To configure Qt

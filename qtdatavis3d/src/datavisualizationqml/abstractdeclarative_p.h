@@ -26,9 +26,10 @@
 #include <QtCore/QMutex>
 #include <QtCore/QSharedPointer>
 
-class GLStateStore;
 
 QT_BEGIN_NAMESPACE
+
+class GLStateStore;
 
 class AbstractDeclarative : public QQuickItem, public AbstractDeclarativeInterface
 {
@@ -74,7 +75,9 @@ public:
         SelectionSlice             = 8,
         SelectionMultiSeries       = 16
     };
+    Q_ENUM(SelectionFlag)
     Q_DECLARE_FLAGS(SelectionFlags, SelectionFlag)
+    Q_FLAG(SelectionFlags)
 
     enum ShadowQuality {
         ShadowQualityNone = 0,
@@ -105,15 +108,13 @@ public:
         OptimizationDefault = 0,
         OptimizationStatic  = 1
     };
+    Q_ENUM(OptimizationHint)
     Q_DECLARE_FLAGS(OptimizationHints, OptimizationHint)
+    Q_FLAG(OptimizationHints)
 
     Q_ENUM(ShadowQuality)
     Q_ENUM(RenderingMode)
     Q_ENUM(ElementType)
-    Q_ENUM(SelectionFlag)
-    Q_ENUM(OptimizationHint)
-    Q_FLAGS(SelectionFlag SelectionFlags)
-    Q_FLAGS(OptimizationHint OptimizationHints)
 
 public:
     explicit AbstractDeclarative(QQuickItem *parent = 0);

@@ -12,6 +12,7 @@
     \brief Demonstrates an application launcher designed for wearable devices.
 
     \image qtquickcontrols-wearable.png
+           {Wearable device interface showing circular app launcher icons}
 
     The \e {Wearable Demo} consists of an application launcher and a collection
     of small and simple example applications aimed at wearable devices.

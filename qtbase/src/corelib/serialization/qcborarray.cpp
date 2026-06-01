@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcborarray.h"
 #include "qcborvalue_p.h"
@@ -98,6 +99,17 @@ QCborArray::QCborArray(const QCborArray &other) noexcept
 }
 
 /*!
+    \fn QCborArray::QCborArray(QCborArray &&other)
+    \since 6.10
+
+    Move-constructor.
+
+    The moved-from object \a other is placed in the default-constructed state.
+
+    \sa QCborArray::QCborArray()
+*/
+
+/*!
     \fn QCborArray::QCborArray(std::initializer_list<QCborValue> args)
 
     Initializes this QCborArray from the C++ brace-enclosed list found in \a
@@ -124,6 +136,15 @@ QCborArray &QCborArray::operator=(const QCborArray &other) noexcept
     d = other.d;
     return *this;
 }
+
+/*!
+    \fn QCborArray &QCborArray::operator=(QCborArray &&other)
+    \since 6.10
+
+    Move-assignment operator.
+
+    The moved-from object \a other is placed in a valid, but unspecified state.
+*/
 
 /*!
     \fn void QCborArray::swap(QCborArray &other)

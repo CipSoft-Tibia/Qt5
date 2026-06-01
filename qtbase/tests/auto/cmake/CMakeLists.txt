@@ -225,8 +225,17 @@ _qt_internal_test_expect_build_fail(test_add_resource_options)
 _qt_internal_test_expect_build_fail(test_wrap_cpp_options)
 _qt_internal_test_expect_pass(test_wrap_cpp_moc)
 _qt_internal_test_expect_pass(test_wrap_cpp_moc_target)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_moc_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_mixed_files)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_multiple_calls)
+_qt_internal_test_expect_pass(test_wrap_cpp_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_moc_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_mixed_files)
+_qt_internal_test_expect_pass(test_wrap_cpp_multiple_calls)
 _qt_internal_test_expect_pass(test_platform_defs_include)
 _qt_internal_test_expect_pass(test_qtmainwin_library)
+_qt_internal_test_expect_pass(test_read_qt_namespace)
 
 if (CMAKE_GENERATOR STREQUAL Ninja AND UNIX AND NOT WIN32)
     _qt_internal_test_expect_pass(test_QFINDTESTDATA
@@ -404,15 +413,22 @@ endif()
 
 _qt_internal_test_expect_pass(test_qt_extract_metatypes)
 
-set(deploy_args
+set(deployment_tests
+    test_plugin_deployment
     test_widgets_app_deployment
-    BINARY "${CMAKE_CTEST_COMMAND}"
-    BINARY_ARGS "-V"
-    # Need to explicitly specify a writable install prefix.
-    BUILD_OPTIONS
-        -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/test_widgets_app_deployment_installed
-    NO_RUN_ENVIRONMENT_PLUGIN_PATH
 )
+foreach(test_name IN LISTS deployment_tests)
+    set(${test_name}_args
+        ${test_name}
+        BINARY "${CMAKE_CTEST_COMMAND}"
+        BINARY_ARGS "-V"
+        # Need to explicitly specify a writable install prefix.
+        BUILD_OPTIONS
+            -DQT_ENABLE_VERBOSE_DEPLOYMENT=ON
+            -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/${test_name}_installed
+        NO_RUN_ENVIRONMENT_PLUGIN_PATH
+    )
+endforeach()
 
 set(is_desktop_linux FALSE)
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT CMAKE_CROSSCOMPILING)
@@ -423,11 +439,13 @@ endif()
 # and fail on other platforms, because there is no support for runtime dependency deployment on
 # those platforms.
 # With static builds the runtime dependencies are just skipped, but the test should still pass.
-if(WIN32 OR (APPLE AND NOT IOS) OR is_desktop_linux)
-    _qt_internal_test_expect_pass(${deploy_args})
-else()
-    _qt_internal_test_expect_fail(${deploy_args})
-endif()
+foreach(test_name IN LISTS deployment_tests)
+    if(WIN32 OR (APPLE AND NOT IOS) OR is_desktop_linux)
+        _qt_internal_test_expect_pass(${${test_name}_args})
+    else()
+        _qt_internal_test_expect_fail(${${test_name}_args})
+    endif()
+endforeach()
 
 _qt_internal_test_expect_pass(test_config_expressions)
 _qt_internal_test_expect_pass(test_QTP0003)
@@ -472,6 +490,36 @@ if(NOT QNX AND NOT WASM AND NOT (WIN32 AND QT_BUILD_MINIMAL_STATIC_TESTS)
     _qt_internal_test_expect_pass(test_qt_add_ui_10)
     _qt_internal_test_expect_pass(test_qt_add_ui_11)
 endif()
+
+# Valid plugin names
+set(valid_plugin_class_names
+    TestPluginNameUpper
+    Test_Plugin_Name
+    _Test_plugin_name
+    testpluginnamelower
+    Test0PluginName
+)
+foreach(plugin_class_name IN LISTS valid_plugin_class_names)
+    _qt_internal_test_expect_pass(test_plugin_class_name
+        TESTNAME test_plugin_class_name_${plugin_class_name}
+        BUILD_OPTIONS
+            -DPLUGIN_CLASS_NAME=${plugin_class_name}
+    )
+endforeach()
+
+# Invalid plugin names
+set(invalid_plugin_class_names
+    0TestPluginName
+    Test-Plugin-Name
+    Test.plugin.name
+)
+foreach(plugin_class_name IN LISTS invalid_plugin_class_names)
+    _qt_internal_test_expect_fail(test_plugin_class_name
+        TESTNAME test_plugin_class_name_${plugin_class_name}
+        BUILD_OPTIONS
+            -DPLUGIN_CLASS_NAME=${plugin_class_name}
+    )
+endforeach()
 
 # Add all tests using CMake's RunCMake test module
 add_subdirectory(RunCMake)

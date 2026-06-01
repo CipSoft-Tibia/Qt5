@@ -8,7 +8,6 @@
 #include "base/containers/flat_set.h"
 #include "base/no_destructor.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "components/plus_addresses/features.h"
 #include "google_apis/gaia/gaia_constants.h"
 
@@ -124,8 +123,11 @@ bool IsUnconsentedSignedInOAuth2Scopes(const std::string& scope) {
       // Required by the Google Calendar NTP module and ChromeOS.
       GaiaConstants::kCalendarReadOnlyOAuth2Scope,
 
+      // Used by DevTools GenAI features
+      GaiaConstants::kAidaOAuth2Scope,
+
     // Required by ChromeOS only.
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
       GaiaConstants::kAssistantOAuth2Scope,
       GaiaConstants::kAuditRecordingOAuth2Scope,
       GaiaConstants::kCastBackdropOAuth2Scope,
@@ -138,9 +140,10 @@ bool IsUnconsentedSignedInOAuth2Scopes(const std::string& scope) {
       GaiaConstants::kNearbyShareOAuth2Scope,
       GaiaConstants::kNearbyPresenceOAuth2Scope,
       GaiaConstants::kPeopleApiReadOnlyOAuth2Scope,
+      GaiaConstants::kContactsOAuth2Scope,
       GaiaConstants::kPhotosOAuth2Scope,
       GaiaConstants::kTachyonOAuthScope,
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
       // clang-format on
   };
   static const base::NoDestructor<base::flat_set<std::string_view>> scopes(

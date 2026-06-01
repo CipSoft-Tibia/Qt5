@@ -24,6 +24,10 @@
         <translation>Okänt fel</translation>
     </message>
     <message>
+        <source>Missing permission</source>
+        <translation>Saknar behörighet</translation>
+    </message>
+    <message>
         <source>Cannot start device inquiry</source>
         <translation>Kan inte starta enhetsförfrågan</translation>
     </message>
@@ -56,12 +60,12 @@
         <translation>Skickad adress är inte en lokal enhet.</translation>
     </message>
     <message>
-        <source>Missing Location permission. Search is not possible.</source>
-        <translation>Saknar Location-behörighet. Sökning inte möjlig.</translation>
+        <source>Failed to start device discovery due to missing permissions.</source>
+        <translation>Misslyckades med att starta enhetsupptäckt på grund av saknad behörighet.</translation>
     </message>
     <message>
-        <source>Low Energy Discovery not supported</source>
-        <translation>Low Energy Discovery stöds inte</translation>
+        <source>Location permission not granted. Search is not possible.</source>
+        <translation>Platsrättigheter har inte tilldelats. Sökning är inte möjlig.</translation>
     </message>
     <message>
         <source>Location service turned off. Search is not possible.</source>
@@ -74,6 +78,10 @@
     <message>
         <source>Device discovery not supported on this platform</source>
         <translation>Enhetsupptäckt stöds inte på denna plattform</translation>
+    </message>
+    <message>
+        <source>Bluetooth adapter powered off.</source>
+        <translation>Bluetooth-adaptern är nerstängd.</translation>
     </message>
     <message>
         <source>Cannot access adapter during service discovery</source>
@@ -95,12 +103,12 @@
         <translation>Ogiltig adress för Bluetooth-adapter</translation>
     </message>
     <message>
-        <source>Platform does not support Bluetooth</source>
-        <translation>Plattformen har inte stöd för Bluetooth</translation>
+        <source>Failed to start service discovery due to missing permissions.</source>
+        <translation>Misslyckades med att starta tjänsteupptäckt på grund av saknad behörighet.</translation>
     </message>
     <message>
-        <source>Android API below v15 does not support SDP discovery</source>
-        <translation>Android API under v15 har inte stöd för SDP discovery</translation>
+        <source>Platform does not support Bluetooth</source>
+        <translation>Plattformen har inte stöd för Bluetooth</translation>
     </message>
     <message>
         <source>Cannot create Android BluetoothDevice</source>
@@ -119,20 +127,12 @@
         <translation>Enheten är avstängd</translation>
     </message>
     <message>
-        <source>Unable to find appointed local adapter</source>
-        <translation>Kunde inte hitta tilldelad lokal adapter</translation>
-    </message>
-    <message>
         <source>Cannot find local Bluetooth adapter</source>
         <translation>Kan inte hitta lokal Bluetooth-adapter</translation>
     </message>
     <message>
         <source>Unable to find sdpscanner</source>
         <translation>Kunde inte hitta sdpscanner</translation>
-    </message>
-    <message>
-        <source>Unable to access device</source>
-        <translation>Kunde inte komma åt enheten</translation>
     </message>
     <message>
         <source>Unable to perform SDP scan</source>
@@ -1253,6 +1253,10 @@
         <translation>Kan inte ansluta till %1</translation>
     </message>
     <message>
+        <source>Bluetooth socket connect failed due to missing permissions.</source>
+        <translation>Bluetooth-uttagsanslutning misslyckades på grund av saknad behörighet.</translation>
+    </message>
+    <message>
         <source>Device does not support Bluetooth</source>
         <translation>Enheten har inte stöd för Bluetooth</translation>
     </message>
@@ -1350,36 +1354,6 @@
         <source>Host refused connection</source>
         <translation>Värden nekade anslutningen</translation>
     </message>
-    <message>
-        <source>Unsupported protocol. Win32 only supports RFCOMM sockets</source>
-        <translation>Protokollet stöds inte. Endast Win32 har stöd för RFCOMM-uttag</translation>
-    </message>
-    <message>
-        <source>Failed to create socket</source>
-        <translation>Misslyckades med att skapa uttag</translation>
-    </message>
-    <message>
-        <source>Socket type not handled: %1</source>
-        <translation>Uttagstypen inte hanterad: %1</translation>
-    </message>
-    <message>
-        <source>Logic error: more bytes sent than passed to ::send</source>
-        <translation>Logikfel: fler byte skickade än passat till ::send</translation>
-    </message>
-</context>
-<context>
-    <name>QBluetoothSocketPrivateAndroid</name>
-    <message>
-        <source>Connecting to port is not supported</source>
-        <translation>Anslutning till port stöds inte</translation>
-    </message>
-</context>
-<context>
-    <name>QBluetoothSocketPrivateBluezDBus</name>
-    <message>
-        <source>Connecting to port is not supported via Bluez DBus</source>
-        <translation>Anslutning till port stöds inte via Bluez DBus</translation>
-    </message>
 </context>
 <context>
     <name>QBluetoothTransferReply</name>
@@ -1425,25 +1399,6 @@
     </message>
 </context>
 <context>
-    <name>QBluetoothTransferReplyBluez</name>
-    <message>
-        <source>Unknown Error</source>
-        <translation>Okänt fel</translation>
-    </message>
-    <message>
-        <source>Could not open file for sending</source>
-        <translation>Kunde inte öppna fil för sändning</translation>
-    </message>
-    <message>
-        <source>The transfer was canceled</source>
-        <translation>Överföringen avbröts</translation>
-    </message>
-    <message>
-        <source>Operation canceled</source>
-        <translation>Åtgärden avbröts</translation>
-    </message>
-</context>
-<context>
     <name>QLowEnergyController</name>
     <message>
         <source>Remote device cannot be found</source>
@@ -1460,6 +1415,10 @@
     <message>
         <source>Unknown Error</source>
         <translation>Okänt fel</translation>
+    </message>
+    <message>
+        <source>Missing permission</source>
+        <translation>Saknar behörighet</translation>
     </message>
     <message>
         <source>Advertisement data is larger than 31 bytes</source>
@@ -1492,6 +1451,28 @@
     <message>
         <source>Failed to authorize on the remote device</source>
         <translation>Misslyckades med att auktorisera på fjärrenheten</translation>
+    </message>
+    <message>
+        <source>Missing permissions error</source>
+        <translation>Saknar behörighet</translation>
+    </message>
+    <message>
+        <source>Error reading RSSI value</source>
+        <translation>Fel vid läsning av RSSI-värde</translation>
+    </message>
+</context>
+<context>
+    <name>QBluetoothSocketPrivateAndroid</name>
+    <message>
+        <source>Connecting to port is not supported</source>
+        <translation>Anslutning till port stöds inte</translation>
+    </message>
+</context>
+<context>
+    <name>QBluetoothSocketPrivateBluezDBus</name>
+    <message>
+        <source>Connecting to port is not supported via Bluez DBus</source>
+        <translation>Anslutning till port stöds inte via Bluez DBus</translation>
     </message>
 </context>
 </TS>

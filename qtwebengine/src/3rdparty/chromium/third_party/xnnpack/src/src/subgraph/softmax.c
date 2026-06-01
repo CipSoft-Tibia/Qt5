@@ -30,8 +30,12 @@ static enum xnn_status create_softmax_operator(
   assert(node->num_inputs == 1);
   assert(node->num_outputs == 1);
 
+  const uint32_t input_id = node->inputs[0];
+  assert(input_id != XNN_INVALID_VALUE_ID);
+  assert(input_id < num_values);
+  const struct xnn_value *input_value = &values[input_id];
   enum xnn_status status;
-  switch (node->compute_type) {
+  switch (input_value->datatype) {
     case xnn_datatype_fp32:
       status = xnn_create_softmax_nc_f32(
         node->flags,
@@ -175,13 +179,10 @@ enum xnn_status xnn_define_softmax(
     return status;
   }
 
-  enum xnn_compute_type compute_type = xnn_compute_type_invalid;
   switch (output_value->datatype) {
     case xnn_datatype_fp16:
-      compute_type = xnn_compute_type_fp16;
       break;
     case xnn_datatype_fp32:
-      compute_type = xnn_compute_type_fp32;
       break;
     default:
       xnn_log_error(
@@ -197,7 +198,6 @@ enum xnn_status xnn_define_softmax(
   }
 
   node->type = xnn_node_type_softmax;
-  node->compute_type = compute_type;
   node->num_inputs = 1;
   node->inputs[0] = input_id;
   node->num_outputs = 1;

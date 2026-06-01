@@ -21,6 +21,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "mojo/core/ipcz_driver/data_pipe.h"
+#include "mojo/core/ipcz_driver/envelope.h"
 #include "mojo/core/ipcz_driver/invitation.h"
 #include "mojo/core/ipcz_driver/object.h"
 #include "mojo/core/ipcz_driver/shared_buffer.h"
@@ -192,6 +193,12 @@ PlatformHandle DecodeHandle(HandleData data,
       // is connected to a known elevated process.)
       return PlatformHandle();
     }
+    // Verify that this is a handle to a valid object. We do not yet know the
+    // expected type of the handle (region, file, etc.) so cannot validate that.
+    DWORD dummy;
+    if (!::GetHandleInformation(handle, &dummy)) {
+      return PlatformHandle();
+    }
     return PlatformHandle(base::win::ScopedHandle(handle));
   }
 
@@ -213,6 +220,11 @@ scoped_refptr<base::SingleThreadTaskRunner>& GetIOTaskRunnerStorage() {
 }
 
 }  // namespace
+
+// static
+size_t Transport::FirstHandleOffsetForTesting() {
+  return sizeof(ObjectHeader);
+}
 
 Transport::Transport(EndpointTypes endpoint_types,
                      PlatformChannelEndpoint endpoint,
@@ -325,7 +337,7 @@ bool Transport::Activate(IpczHandle transport,
   channel->Start();
   for (auto& transmission : pending_transmissions) {
     channel->Write(Channel::Message::CreateIpczMessage(
-        base::make_span(transmission.bytes), std::move(transmission.handles)));
+        base::span(transmission.bytes), std::move(transmission.handles)));
   }
 
   return true;
@@ -445,23 +457,21 @@ IpczResult Transport::SerializeObject(ObjectBase& object,
           : HandleOwner::kSender;
   header.handle_owner = handle_owner;
 
-  auto handle_data = base::make_span(reinterpret_cast<HandleData*>(&header + 1),
-                                     object_num_handles);
-  auto object_data =
-      base::make_span(reinterpret_cast<uint8_t*>(&header + 1) +
-                          object_num_handles * sizeof(HandleData),
-                      object_num_bytes);
+  auto handle_data = base::span(reinterpret_cast<HandleData*>(&header + 1),
+                                object_num_handles);
+  auto object_data = base::span(reinterpret_cast<uint8_t*>(&header + 1) +
+                                    object_num_handles * sizeof(HandleData),
+                                object_num_bytes);
 #else
-  auto object_data = base::make_span(reinterpret_cast<uint8_t*>(&header + 1),
-                                     object_num_bytes);
+  auto object_data =
+      base::span(reinterpret_cast<uint8_t*>(&header + 1), object_num_bytes);
 #endif
 
   // A small amount of stack storage is reserved to avoid heap allocation in the
   // most common cases.
   absl::InlinedVector<PlatformHandle, 2> platform_handles;
   platform_handles.resize(object_num_handles);
-  if (!object.Serialize(*this, object_data,
-                        base::make_span(platform_handles))) {
+  if (!object.Serialize(*this, object_data, base::span(platform_handles))) {
     return IPCZ_RESULT_INVALID_ARGUMENT;
   }
 
@@ -505,7 +515,7 @@ IpczResult Transport::DeserializeObject(
   }
 
   const size_t handle_data_size = num_handles * sizeof(HandleData);
-  auto handle_data = base::make_span(
+  auto handle_data = base::span(
       reinterpret_cast<const HandleData*>(bytes.data() + header_size),
       num_handles);
   auto object_data = bytes.subspan(header_size + handle_data_size);
@@ -531,7 +541,7 @@ IpczResult Transport::DeserializeObject(
     }
   }
 
-  auto object_handles = base::make_span(platform_handles);
+  auto object_handles = base::span(platform_handles);
   switch (header.type) {
     case ObjectBase::kTransport: {
       object = Deserialize(*this, object_data, object_handles);
@@ -578,11 +588,7 @@ bool Transport::GetSerializedDimensions(Transport& transmitter,
                                         size_t& num_bytes,
                                         size_t& num_handles) {
   num_bytes = sizeof(TransportHeader);
-#if BUILDFLAG(IS_WIN)
   num_handles = ShouldSerializeProcessHandle(transmitter) ? 2 : 1;
-#else
-  num_handles = 1;
-#endif
   return true;
 }
 
@@ -596,19 +602,17 @@ bool Transport::Serialize(Transport& transmitter,
   header.is_peer_trusted = is_peer_trusted();
   header.is_trusted_by_peer = is_trusted_by_peer();
 
-#if BUILDFLAG(IS_WIN)
   if (ShouldSerializeProcessHandle(transmitter)) {
     DCHECK_EQ(handles.size(), 2u);
     DCHECK(remote_process_.IsValid());
     DCHECK(!remote_process_.is_current());
+#if BUILDFLAG(IS_WIN)
     handles[1] = PlatformHandle(
         base::win::ScopedHandle(remote_process_.Duplicate().Release()));
+#endif
   } else {
     DCHECK_EQ(handles.size(), 1u);
   }
-#else
-  DCHECK_EQ(handles.size(), 1u);
-#endif
 
   CHECK(inactive_endpoint_.is_valid());
   handles[0] = inactive_endpoint_.TakePlatformHandle();
@@ -677,9 +681,11 @@ bool Transport::IsIpczTransport() const {
   return true;
 }
 
-void Transport::OnChannelMessage(const void* payload,
-                                 size_t payload_size,
-                                 std::vector<PlatformHandle> handles) {
+void Transport::OnChannelMessage(
+    const void* payload,
+    size_t payload_size,
+    std::vector<PlatformHandle> handles,
+    scoped_refptr<ipcz_driver::Envelope> envelope) {
   std::vector<IpczDriverHandle> driver_handles(handles.size());
   for (size_t i = 0; i < handles.size(); ++i) {
     driver_handles[i] = TransmissiblePlatformHandle::ReleaseAsHandle(
@@ -687,9 +693,13 @@ void Transport::OnChannelMessage(const void* payload,
             std::move(handles[i])));
   }
 
+  IpczTransportActivityOptions options{
+      .size = sizeof(IpczTransportActivityOptions),
+      .envelope = ObjectBase::ReleaseAsHandle(std::move(envelope)),
+  };
   const IpczResult result = activity_handler_(
       ipcz_transport_, static_cast<const uint8_t*>(payload), payload_size,
-      driver_handles.data(), driver_handles.size(), IPCZ_NO_FLAGS, nullptr);
+      driver_handles.data(), driver_handles.size(), IPCZ_NO_FLAGS, &options);
   if (result != IPCZ_RESULT_OK && result != IPCZ_RESULT_UNIMPLEMENTED) {
     OnChannelError(Channel::Error::kReceivedMalformedData);
   }

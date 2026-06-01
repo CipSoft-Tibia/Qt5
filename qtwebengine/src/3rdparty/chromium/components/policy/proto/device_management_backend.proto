@@ -4,13 +4,12 @@
 
 syntax = "proto2";
 
-option optimize_for = LITE_RUNTIME;
-
 package enterprise_management;
 
-option go_package = "chromium/policy/enterprise_management_proto";
-
 import "private_membership_rlwe.proto";
+
+option optimize_for = LITE_RUNTIME;
+option go_package = "chromium/policy/enterprise_management_proto";
 
 // Everything below this comment will be synchronized between client and server
 // repos ( go/cros-proto-sync ).
@@ -273,9 +272,18 @@ message DeviceRegisterRequest {
     // is mandatory and should be token-based.
     FLAVOR_ENROLLMENT_TOKEN_INITIAL_SERVER_FORCED = 18;
     // Device state downloaded from the server indicated that initial
-    // token-based enrollment is mandatory, but it failed and we are doing
-    // fallback to manual enrollment.
+    // token-based enrollment is mandatory, but it failed and we are falling
+    // back to manual enrollment.
     FLAVOR_ENROLLMENT_TOKEN_INITIAL_MANUAL_FALLBACK = 19;
+    // Operating system was remotely installed, and device state downloaded
+    // from the server indicated that initial token-based enrollment is
+    // mandatory.
+    FLAVOR_ENROLLMENT_REMOTE_DEPLOYMENT_SERVER_FORCED = 20;
+    // Operating system was remotely installed, and device state downloaded
+    // from the server indicated that initial token-based enrollment is
+    // mandatory, but enrollment failed and we are falling back to manual
+    // enrollment.
+    FLAVOR_ENROLLMENT_REMOTE_DEPLOYMENT_MANUAL_FALLBACK = 21;
   }
 
   // Indicates the registration flavor. This is passed to the server FYI when
@@ -639,12 +647,12 @@ message PolicyFetchRequest {
 
   // Encoded information from a policy invalidation notification. This is opaque
   // to the client and should be forwarded from the invalidation notification.
-  optional string policy_invalidation_info = 10;
+  optional string policy_invalidation_info = 10 [deprecated = true];
 
   // Whether or not the client only supports the new PolicyData invalidation
   // topics. If true, only the policy_invalidation_topic and
   // command_invalidation_topic fields will be set in the PolicyData response.
-  optional bool invalidation_topics_only = 11;
+  optional bool invalidation_topics_only = 11 [deprecated = true];
 
   // If this is an affiliated user, this is the device's DMToken.
   optional string device_dm_token = 12;
@@ -1055,7 +1063,7 @@ message DevicePolicyRequest {
     SCHEDULED = 16;
     // Policy fetch triggered by sign-in.
     SIGNIN = 17;
-    // A placeholder reason used for tests (should not occur in production).
+    // A placeholder reason used for tests.
     TEST = 18;
     // Policy fetched at browser start, e.g. device policies at Ash start.
     BROWSER_START = 19;
@@ -1065,6 +1073,12 @@ message DevicePolicyRequest {
     USER_REQUEST = 21;
     // Policy fetches triggered by the Chrome Remote Desktop policy watcher.
     CRD_HOST_POLICY_WATCHER = 22;
+    // Fetch policy request when we shouldn't.
+    UNNECESSARY = 100;
+    // Fetch policy request when we disconnect from cloud management.
+    UNNECESSARY_DISCONNECT = 101;
+    // Fetch policy request when schema is updated.
+    UNNECESSARY_SCHEMA_UPDATED = 102;
   }
   optional Reason reason = 4;
 }
@@ -1099,6 +1113,7 @@ message ActiveTimePeriod {
     SESSION_KIOSK = 3;
     SESSION_ARC_KIOSK = 4;
     SESSION_WEB_KIOSK = 5;
+    SESSION_IWA_KIOSK = 6;
   }
 
   optional SessionType session_type = 4;
@@ -1667,17 +1682,6 @@ message NetworkAdapterInfo {
   repeated string driver = 7;
 }
 
-// Information about the list of browsers and profiles that are
-// running and installed on the device in the DeviceStatusReport
-message LaCrOsBrowserReport {
-  // Limited to one user since LaCrosBrowserReport is repeated based on each
-  // user. If multiple lacros user profiles exist, each LaCrOsBrowserReport
-  // message (one per lacros user profile) will contain the same |device_user|.
-  optional DeviceUser device_user = 1;
-  // Group of data regarding the browser and user profile.
-  optional BrowserReport browser_report = 2;
-}
-
 // Information specific to Demo Mode about the device and the demo context.
 message DemoModeDimensions {
   // Two-letter country code.
@@ -1699,7 +1703,7 @@ message DemoModeDimensions {
 
 // Report device level status.
 message DeviceStatusReportRequest {
-  reserved 4, 7, 13, 20;
+  reserved 4, 7, 13, 20, 46, 48;
 
   // The OS version reported by the device is a platform version
   // e.g. 1435.0.2011_12_16_1635.
@@ -1836,14 +1840,8 @@ message DeviceStatusReportRequest {
   // Information about the device's network hardware.
   repeated NetworkAdapterInfo network_adapter_info = 45;
 
-  // Information about LaCrOs
-  repeated LaCrOsBrowserReport lacros_browser_report = 46;
-
   // Root device size as displayed in the device UI.
   optional int64 root_device_total_storage_bytes = 47;
-
-  // Flag whether LaCros is the primary browser.
-  optional bool is_lacros_primary_browser = 48;
 
   // Information specific to Demo Mode about the device and the demo context.
   // Only included for devices in Demo Mode.
@@ -1905,13 +1903,14 @@ message AppInfo {
   enum AppType {
     TYPE_UNKNOWN = 0;
     TYPE_ARC = 1;         // Android app.
-    TYPE_BUILTIN = 2;     // Built-in app.
     TYPE_CROSTINI = 3;    // Linux (via Crostini) app.
     TYPE_EXTENSION = 4;   // Extension-backed app.
     TYPE_WEB = 5;         // Web app.
     TYPE_PLUGINVM = 6;    // Plugin VM app.
     TYPE_BOREALIS = 7;    // Borealis app.
     TYPE_BRUSCHETTA = 8;  // Bruschetta app.
+
+    reserved 2;
   }
 
   enum Status {
@@ -1998,42 +1997,6 @@ message AndroidAppInfo {
   repeated AndroidAppPermission permissions = 7;
 }
 // LINT.ThenChange(//depot/google3/java/com/google/chrome/cros/spanner/devicemanagement/schema/chrome_os.proto)
-
-// Chrome user profile level status.
-// Deprecated : Use ChromeUserProfileInfo instead.
-message ChromeUserProfileReport {
-  // A string to uniquely identify this profile within the browser.
-  optional string id = 1;
-  // A JSON encoded string containing both the “email” and “id” (obfuscated
-  // GaiaID) of the user signed in to the Chrome browser, if any.
-  optional string chrome_signed_in_user = 2;
-  // The list of extensions installed in the browser. This string contains
-  // the json encoded data as returned by the chrome.management.getAll() API.
-  optional string extension_data = 3;
-  // The list of plugins installed in the browser, one plugin name per repeated
-  // string. This string contains the JSON encoded data as returned by
-  // the navigator.plugins .
-  optional string plugins = 4;
-  // The list of browser policies set for this user profile and their sources.
-  // This string contains the json encoded data as generated by the
-  // chrome://policy page “Export to JSON” button.
-  optional string policy_data = 5;
-  // The last time the user level policies where fetched.
-  // [policy_fetched_timestamp] is milliseconds since Epoch in UTC timezone
-  // (Java time). For V1, we may need to rely on the DM server for this info.
-  optional int64 policy_fetched_timestamp = 6;
-  // The number of safe browsing warning pages the user has seen since the last
-  // report was successfully uploaded.
-  optional uint64 safe_browsing_warnings = 7;
-  // The number of safe browsing warning pages the user has clicked through
-  // since the last report was successfully uploaded.
-  optional uint64 safe_browsing_warnings_click_through = 8;
-  // The name of the loaded profile, which was entered by the user when creating
-  // the profile. Empty when in incognito mode.
-  optional string name = 9;
-  // A list of extensions requested for installation.
-  repeated ExtensionRequest extension_requests = 10;
-}
 
 // Sign in information of Profile.
 message ChromeSignedInUser {
@@ -2272,6 +2235,10 @@ message ChromeUserProfileInfo {
   // The state of affiliation.
   optional AffiliationState affiliation = 11;
 
+  // An unique Id generated by the client. More details in
+  // go/chrome-profile-identifier.
+  optional string profile_id = 12;
+
   // A list of extensions installed in the browser.
   repeated Extension extensions = 5;
 
@@ -2293,7 +2260,7 @@ message ChromeUserProfileInfo {
 
 // Report browser level status.
 message BrowserReport {
-  reserved 7;
+  reserved 4, 7;
 
   // The Chrome browser version, as seen from within Chrome code as opposed to
   // user agent.
@@ -2305,10 +2272,6 @@ message BrowserReport {
   // Required. The path to the browser executable so that we can uniquely
   // identify it.
   optional string executable_path = 3;
-
-  // Profile specific reports, one per profile.
-  // Deprecated by ChromeUserProfileInfo and only used by old Chrome browser.
-  repeated ChromeUserProfileReport chrome_user_profile_reports = 4;
 
   // A list of all Profiles that are created in the current browser instance.
   // Only activated Profiles are able to upload full details while the idle ones
@@ -2433,7 +2396,7 @@ message PolicyValueValidationIssue {
     // updated on the device.
     VALUE_VALIDATION_ISSUE_SEVERITY_ERROR = 2;
   }
-  // LINT.ThenChange(//depot/google3/chrome/cros/reporting/api/proto/policy_validation_report.proto)
+  // LINT.ThenChange(//depot/google3/chrome/cros/reporting/api/proto/synced/chromium/events/policy_validation_report.proto)
 
   // Severity of this policy value validation result.
   optional ValueValidationIssueSeverity severity = 2;
@@ -2524,7 +2487,7 @@ message PolicyValidationReportRequest {
     // Client behavior: Policy blob rejected.
     VALIDATION_RESULT_TYPE_VALUE_ERROR = 15;
   }
-  // LINT.ThenChange(//depot/google3/chrome/cros/reporting/api/proto/policy_validation_report.proto)
+  // LINT.ThenChange(//depot/google3/chrome/cros/reporting/api/proto/synced/chromium/events/policy_validation_report.proto)
 
   // The validation result.
   optional ValidationResultType validation_result_type = 3;
@@ -3142,6 +3105,22 @@ message RemoteCommandResult {
 }
 
 message DeviceRemoteCommandRequest {
+  // Reason for the requesting remote commands, to help with monitoring and
+  // alerting (e.g. to detect a decrease in invalidation requests).
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    // A placeholder reason used for tests.
+    REASON_TEST = 1;
+    // Fetch on browser startup.
+    REASON_STARTUP = 2;
+    // Fetch to upload results of executed commands
+    REASON_UPLOAD_EXECUTION_RESULTS = 3;
+    // User triggered fetch.
+    REASON_USER_REQUEST = 4;
+    // Fetch due to an invalidation.
+    REASON_INVALIDATION = 5;
+  }
+
   // The command ID of the last command received from the server until
   // now. Omitted if no commands have been received yet.
   optional int64 last_command_unique_id = 1;
@@ -3161,6 +3140,9 @@ message DeviceRemoteCommandRequest {
   // fetched. This type helps the server redirect the request to different
   // handlers.
   optional string type = 5;
+
+  // Fetch request triggering reason.
+  optional Reason reason = 6;
 }
 
 message DeviceRemoteCommandResponse {
@@ -3302,6 +3284,20 @@ message RegisterBrowserRequest {
   optional string device_model = 5;
   // A string that represents the brand/manufacturer of a device.
   optional string brand_name = 6;
+}
+
+// Registration payload to enroll a Chrome Profile. Currently only used by
+// OIDC profile registration.
+message ProfileRegistrationPayload {
+  // Passing encrypted user information from IdP to DMServer, Chrome itself
+  // does not decrypt or access the information directly.
+  // Format of the un-encrypted data has the format of `ProfileRegistrationData`
+  // proto on DMServer.
+  optional string encrypted_user_information = 1;
+  // Chrome requires the subject and issuer to check whether a profile exists
+  // for this user already.
+  optional string subject = 2;
+  optional string issuer = 3;
 }
 
 // Gets an enrollment token to a managed Google Play account for using it with
@@ -4384,6 +4380,11 @@ enum CertProvSignatureAlgorithm {
   // with PKCS#1 v1.5 padding. If no other key size was specified in the
   // RequiredClientCertificateFor{User,Device} policy, 2048 bits is assumed.
   SIGNATURE_ALGORITHM_RSA_PKCS1_V1_5_NO_HASH = 1;
+
+  // The PKCS#1 digest info is built by the server-side and sent to the
+  // client unhashed. The client is responsible for signing and hashing.
+  // Uses the P-256 curve.
+  SIGNATURE_ALGORITHM_ECDSA_SHA256 = 2;
 }
 
 // The client should import an issued certificate.
@@ -4491,6 +4492,15 @@ message CertProvBackendError {
     // The requested certificate provisioning process cannot be found on
     // Spanner.
     CERTIFICATE_PROVISIONING_PROCESS_NOT_FOUND = 15;
+    // Placeholders for future errors that require the client to immediately
+    // retry provisioning the certificate from the very beginning (same as for
+    // INCONSISTENT_DATA and PROFILE_NOT_FOUND, all other errors make the client
+    // retry after a restart.)
+    IMMEDIATE_RETRY_ERROR_0 = 16;
+    IMMEDIATE_RETRY_ERROR_1 = 17;
+    IMMEDIATE_RETRY_ERROR_2 = 18;
+    IMMEDIATE_RETRY_ERROR_3 = 19;
+    IMMEDIATE_RETRY_ERROR_4 = 20;
   }
 
   // The specific error type.
@@ -4630,10 +4640,44 @@ message FmRegistrationTokenUploadRequest {
   // Token's expiration timestamp in milliseconds since Epoch in UTC timezone
   // (Java time).
   optional int64 expiration_timestamp_ms = 4;
+  // Project number used to regiester with FM and the token is associated with.
+  // go/device-cloud-gcp#fcm-related-projects
+  optional int64 project_number = 5;
 }
 
 // Response to `FmRegistrationTokenUploadRequest`.
 message FmRegistrationTokenUploadResponse {}
+
+// Request body for determining enterprise promotion eligibility.
+message DeterminePromotionEligibilityRequest {}
+
+enum PromotionType {
+  PROMOTION_TYPE_UNSPECIFIED = 0;
+  CHROME_ENTERPRISE_CORE = 1;
+  CHROME_ENTERPRISE_PREMIUM = 2;
+}
+
+// The list of CEC, CEP promotions that the user is eligible for.
+message PromotionEligibilityList {
+  optional PromotionType policy_page_promotion = 1;
+
+  optional PromotionType management_page_promotion = 2;
+
+  optional PromotionType interstitial_block_promotion = 3;
+
+  optional PromotionType interstitial_warn_promotion = 4;
+
+  optional PromotionType ntp_promotion = 5;
+
+  optional PromotionType cws_extension_details_promotion = 6;
+
+  optional PromotionType cws_privacy_details_promotion = 7;
+}
+
+message GetUserEligiblePromotionsResponse {
+  // The list of promotions that the user is eligible for.
+  optional PromotionEligibilityList promotions = 1;
+}
 
 // Additional detail about the error which can be used to clarify user messaging
 // around the error or to influence Chrome's error-handling behavior.
@@ -4886,7 +4930,10 @@ message DeviceManagementRequest {
   optional FmRegistrationTokenUploadRequest
       fm_registration_token_upload_request = 42;
 
-  // Next id: 43.
+  optional DeterminePromotionEligibilityRequest
+      determine_promotion_eligibility_request = 43;
+
+  // Next id: 44.
 }
 
 // Response from server to device.
@@ -4913,6 +4960,8 @@ message DeviceManagementRequest {
 //     indicate that a certificate has not been issued yet.
 // 413 Request payload too large.
 // 417 Consumer (non-dasher) account can not enroll with packaged license.
+// 418 Cannot enroll to kiosk with packaged license.
+// 419 Org unit enrollment limit exceeded.
 // 429 Too many requests.
 // 500 Internal Server Error: most likely a bug in DM server.
 // 503 Service Unavailable: most likely a backend error.
@@ -5049,7 +5098,10 @@ message DeviceManagementResponse {
   optional FmRegistrationTokenUploadResponse
       fm_registration_token_upload_response = 41;
 
-  // Next id: 42.
+  optional GetUserEligiblePromotionsResponse
+      get_user_eligible_promotions_response = 42;
+
+  // Next id: 43.
 }
 
 // Device State Information stored in the server is retrieval at

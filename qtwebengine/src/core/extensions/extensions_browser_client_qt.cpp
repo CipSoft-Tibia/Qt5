@@ -37,6 +37,7 @@
 #include "third_party/zlib/google/compression_utils.h"
 #include "ui/base/resource/resource_bundle.h"
 
+#include "api/runtime_api_delegate_qt.h"
 #include "component_extension_resource_manager_qt.h"
 #include "extension_system_factory_qt.h"
 #include "extension_web_contents_observer_qt.h"
@@ -113,8 +114,6 @@ public:
     // Current implementation reads all resource data at start of resource
     // load, so priority, and pausing is not currently implemented.
     void SetPriority(net::RequestPriority priority, int32_t intra_priority_value) override {}
-    void PauseReadingBodyFromNet() override {}
-    void ResumeReadingBodyFromNet() override {}
 
 private:
     ResourceBundleFileLoader(scoped_refptr<net::HttpResponseHeaders> headers)
@@ -291,19 +290,19 @@ BrowserContext *ExtensionsBrowserClientQt::GetOriginalContext(BrowserContext *co
     return context;
 }
 
-content::BrowserContext* ExtensionsBrowserClientQt::GetContextRedirectedToOriginal(content::BrowserContext *context, bool)
+content::BrowserContext* ExtensionsBrowserClientQt::GetContextRedirectedToOriginal(content::BrowserContext *context)
 {
     // like in ShellExtensionsBrowserClient:
     return context;
 }
 
-content::BrowserContext* ExtensionsBrowserClientQt::GetContextOwnInstance(content::BrowserContext *context, bool)
+content::BrowserContext* ExtensionsBrowserClientQt::GetContextOwnInstance(content::BrowserContext *context)
 {
     // like in ShellExtensionsBrowserClient:
     return context;
 }
 
-content::BrowserContext* ExtensionsBrowserClientQt::GetContextForOriginalOnly(content::BrowserContext *context, bool)
+content::BrowserContext* ExtensionsBrowserClientQt::GetContextForOriginalOnly(content::BrowserContext *context)
 {
     // like in ShellExtensionsBrowserClient:
     return context;
@@ -459,9 +458,7 @@ void ExtensionsBrowserClientQt::RegisterBrowserInterfaceBindersForFrame(
 
 std::unique_ptr<RuntimeAPIDelegate> ExtensionsBrowserClientQt::CreateRuntimeAPIDelegate(content::BrowserContext *context) const
 {
-    // TODO(extensions): Implement to support Apps.
-    NOTREACHED();
-    return std::unique_ptr<RuntimeAPIDelegate>();
+    return std::make_unique<RuntimeAPIDelegateQt>(context);
 }
 
 const ComponentExtensionResourceManager *ExtensionsBrowserClientQt::GetComponentExtensionResourceManager()
@@ -495,11 +492,6 @@ bool ExtensionsBrowserClientQt::IsBackgroundUpdateAllowed()
 bool ExtensionsBrowserClientQt::IsMinBrowserVersionSupported(const std::string &min_version)
 {
     return true;
-}
-
-bool ExtensionsBrowserClientQt::IsLockScreenContext(content::BrowserContext *context)
-{
-    return false;
 }
 
 // Returns the locale used by the application.

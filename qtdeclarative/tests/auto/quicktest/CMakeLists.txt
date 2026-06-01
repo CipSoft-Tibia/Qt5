@@ -11,3 +11,4 @@ if(QT_FEATURE_process AND NOT ANDROID) # QTBUG-100175
     add_subdirectory(testfiltering)
 endif()
 add_subdirectory(testswithcomponents)
+add_subdirectory(activefocus)

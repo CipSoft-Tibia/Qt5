@@ -346,8 +346,8 @@ void TestQGeoPositionInfoSource::lastKnownPosition()
             bool isNaN2 =  qIsNaN(lastPositioninfo.attribute(QGeoPositionInfo::HorizontalAccuracy));
             QCOMPARE(isNaN1, isNaN2);
             if (!isNaN1) {
-                QCOMPARE(qFuzzyCompare(info.attribute(QGeoPositionInfo::HorizontalAccuracy),
-                                       lastPositioninfo.attribute(QGeoPositionInfo::HorizontalAccuracy)), true);
+                QCOMPARE(info.attribute(QGeoPositionInfo::HorizontalAccuracy),
+                         lastPositioninfo.attribute(QGeoPositionInfo::HorizontalAccuracy));
             }
         }
 
@@ -359,8 +359,8 @@ void TestQGeoPositionInfoSource::lastKnownPosition()
             bool isNaN2 =  qIsNaN(lastPositioninfo.attribute(QGeoPositionInfo::VerticalAccuracy));
             QCOMPARE(isNaN1, isNaN2);
             if (!isNaN1) {
-                QCOMPARE(qFuzzyCompare(info.attribute(QGeoPositionInfo::VerticalAccuracy),
-                                       lastPositioninfo.attribute(QGeoPositionInfo::VerticalAccuracy)), true);
+                QCOMPARE(info.attribute(QGeoPositionInfo::VerticalAccuracy),
+                         lastPositioninfo.attribute(QGeoPositionInfo::VerticalAccuracy));
             }
         }
     }

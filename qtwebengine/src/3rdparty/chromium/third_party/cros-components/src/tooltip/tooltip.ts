@@ -73,23 +73,23 @@ export class Tooltip extends LitElement {
       border-radius: 6px;
       color: var(--cros-sys-surface);
       font: var(--cros-annotation-1-font);
-      inset-area: block-end span-all;
       inset-block-start: var(--cros-tooltip-vertical-offset, 4px);
       max-width: 296px;
       padding: 5px 8px;
       position-anchor: ${ANCHOR_NAME};
+      position-area: block-end span-all;
       position: fixed;
       text-align: center;
       text-wrap: wrap;
     }
 
     #label[${ATTR_SHIFT_INLINE_END_CSS}] {
-      inset-area: block-end span-inline-end;
+      position-area: block-end span-inline-end;
       text-align: start;
     }
 
     #label[${ATTR_SHIFT_INLINE_START_CSS}] {
-      inset-area: block-end span-inline-start;
+      position-area: block-end span-inline-start;
       text-align: start;
     }
 
@@ -288,10 +288,15 @@ export class Tooltip extends LitElement {
       const label = this.labelElement;
 
       // Move the label back to its normal position, centered under the anchor
-      // element, and get its width.
+      // element, and get its width + check if it's offscreen.
       label.removeAttribute(ATTR_SHIFT_INLINE_START);
       label.removeAttribute(ATTR_SHIFT_INLINE_END);
-      const widthWhenInCenter = label.getBoundingClientRect().width;
+      const boundingClientRectWhenCentered = label.getBoundingClientRect();
+      const widthWhenInCenter = boundingClientRectWhenCentered.width;
+      const isOffscreenWhenInCenter =
+          boundingClientRectWhenCentered.x + widthWhenInCenter >
+              document.body.clientWidth ||
+          boundingClientRectWhenCentered.x < 0;
 
       // Shift the label to the inline-end (i.e. right for ltr languages), and
       // get its width.
@@ -309,7 +314,8 @@ export class Tooltip extends LitElement {
       label.removeAttribute(ATTR_SHIFT_INLINE_END);
       label.removeAttribute(ATTR_SHIFT_INLINE_START);
 
-      if (widthWhenInCenter >= widthWhenShiftedToStart &&
+      if (!isOffscreenWhenInCenter &&
+          widthWhenInCenter >= widthWhenShiftedToStart &&
           widthWhenInCenter >= widthWhenShiftedToEnd) {
         // Keep the element in the center.
         label.removeAttribute(ATTR_SHIFT_INLINE_START);

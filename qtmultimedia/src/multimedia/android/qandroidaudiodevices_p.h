@@ -16,7 +16,6 @@
 //
 
 #include <private/qplatformaudiodevices_p.h>
-#include <qaudio.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -35,6 +34,8 @@ public:
     using QPlatformAudioDevices::onAudioOutputsChanged;
 
     QLatin1String backendName() const override { return QLatin1String{ "Android" }; }
+
+    [[nodiscard]] static bool registerNativeMethods();
 
 protected:
     QList<QAudioDevice> findAudioInputs() const override;

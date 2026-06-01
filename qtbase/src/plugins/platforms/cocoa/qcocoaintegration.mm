@@ -244,6 +244,7 @@ bool QCocoaIntegration::hasCapability(QPlatformIntegration::Capability cap) cons
     case ApplicationState:
     case ApplicationIcon:
     case BackingStoreStaticContents:
+    case OffscreenSurface:
         return true;
     default:
         return QPlatformIntegration::hasCapability(cap);
@@ -423,9 +424,22 @@ QPlatformKeyMapper *QCocoaIntegration::keyMapper() const
 
 void QCocoaIntegration::setApplicationIcon(const QIcon &icon) const
 {
-    // Fall back to a size that looks good on the highest resolution screen available
-    auto fallbackSize = NSApp.dockTile.size.width * qGuiApp->devicePixelRatio();
-    NSApp.applicationIconImage = [NSImage imageFromQIcon:icon withSize:fallbackSize];
+    if (icon.isNull()) {
+        NSApp.applicationIconImage = nil;
+        return;
+    }
+
+    // Request a size that looks good on the highest resolution screen available
+    // for icon engines that don't have an intrinsic size (like SVG).
+    const auto dockTitleSize = QSizeF::fromCGSize(NSApp.dockTile.size).toSize();
+    auto image = icon.pixmap(dockTitleSize, qGuiApp->devicePixelRatio()).toImage();
+
+    // The assigned image is scaled by the system to fit into the tile,
+    // but without taking aspect ratio into account, so let's pad the
+    // image up front if it's not already square.
+    image = qt_mac_padToSquareImage(image);
+
+    NSApp.applicationIconImage = [NSImage imageFromQImage:image];
 }
 
 void QCocoaIntegration::setApplicationBadge(qint64 number)

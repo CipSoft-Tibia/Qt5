@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #ifndef QMACSTYLE_MAC_P_P_H
@@ -13,7 +14,6 @@
 #include <QtCore/qhash.h>
 #include <QtCore/qmap.h>
 #include <QtCore/qmath.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qtextstream.h>
 #include <QtCore/qvector.h>
@@ -100,6 +100,7 @@ public:
         ProgressIndicator_Indeterminate,
         Scroller_Horizontal,
         Scroller_Vertical,
+        SearchField,
         SegmentedControl_First, // QTabBar buttons focus ring
         SegmentedControl_Middle,
         SegmentedControl_Last,

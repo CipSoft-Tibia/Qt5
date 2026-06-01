@@ -12,7 +12,6 @@
 
 
 // This function is defined inline when logging is disabled
-#if XNN_LOG_LEVEL > 0
 const char* xnn_datatype_to_string(enum xnn_datatype type) {
   switch (type) {
     case xnn_datatype_invalid:
@@ -21,6 +20,12 @@ const char* xnn_datatype_to_string(enum xnn_datatype type) {
       return "FP32";
     case xnn_datatype_fp16:
       return "FP16";
+    case xnn_datatype_bf16:
+      return "BF16";
+    case xnn_datatype_pfp16:
+      return "PFP16";
+    case xnn_datatype_pfp32:
+      return "PFP32";
     case xnn_datatype_qint8:
       return "QINT8";
     case xnn_datatype_quint8:
@@ -35,6 +40,8 @@ const char* xnn_datatype_to_string(enum xnn_datatype type) {
       return "QCINT32";
     case xnn_datatype_qdint8:
       return "QDINT8";
+    case xnn_datatype_qduint8:
+      return "QDUINT8";
     case xnn_datatype_qpint8:
       return "QPINT8";
     case xnn_datatype_int32:
@@ -45,4 +52,3 @@ const char* xnn_datatype_to_string(enum xnn_datatype type) {
   XNN_UNREACHABLE;
   return NULL;
 }
-#endif  // XNN_LOG_LEVEL > 0

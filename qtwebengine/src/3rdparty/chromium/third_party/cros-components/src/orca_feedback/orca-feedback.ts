@@ -142,8 +142,12 @@ export class OrcaFeedback extends LitElement {
           border-radius: 8px;
           display: inline-block;
           float: inline-end;
+          width: 114px;
           height: 58px;
+          object-fit: contain;
+          background-color: var(--cros-sys-app_base_shaded);
           margin-inline-start: 12px;
+          margin-block-end: 12px;
         }
       }
     }

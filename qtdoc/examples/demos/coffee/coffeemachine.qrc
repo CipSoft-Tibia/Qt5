@@ -2,6 +2,8 @@
     <qresource prefix="/qt/qml/demos/coffee">
         <file>Colors.qml</file>
         <file>CoffeeCard.qml</file>
+        <file>CoffeeConfig.qml</file>
+        <file>Config.qml</file>
         <file>Ready.qml</file>
         <file>Progress.qml</file>
         <file>CustomToolBar.qml</file>
@@ -13,7 +15,7 @@
         <file>ApplicationFlowForm.ui.qml</file>
         <file>CustomSlider.qml</file>
         <file>ApplicationFlow.qml</file>
-        <file>main.qml</file>
+        <file>Main.qml</file>
         <file>qtquickcontrols2.conf</file>
         <file>qmldir</file>
         <file>Cup.ui.qml</file>

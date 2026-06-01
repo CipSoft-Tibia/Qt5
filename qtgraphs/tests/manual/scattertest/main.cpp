@@ -118,6 +118,9 @@ int main(int argc, char **argv)
     QPushButton *testReverseButton = new QPushButton(widget);
     testReverseButton->setText(QStringLiteral("Test Axis Reversing"));
 
+    QPushButton *testNanSeriesButton = new QPushButton(widget);
+    testNanSeriesButton->setText(QStringLiteral("Test NaN Series"));
+
     QPushButton *renderToImageButton = new QPushButton(widget);
     renderToImageButton->setText(QStringLiteral("Render the graph to an image"));
 
@@ -158,6 +161,12 @@ int main(int argc, char **argv)
     shadowQuality->addItem(QStringLiteral("Medium Soft"));
     shadowQuality->addItem(QStringLiteral("High Soft"));
     shadowQuality->setCurrentIndex(0);
+
+    QComboBox *lightingMode = new QComboBox(widget);
+    lightingMode->addItem(QStringLiteral("Shaded"));
+    lightingMode->addItem(QStringLiteral("Unshaded"));
+    lightingMode->setCurrentIndex(0);
+
 
     QFontComboBox *fontList = new QFontComboBox(widget);
 
@@ -354,6 +363,7 @@ int main(int argc, char **argv)
     vLayout->addWidget(massiveDataTestButton, 0, Qt::AlignTop);
     vLayout->addWidget(testItemChangesButton, 0, Qt::AlignTop);
     vLayout->addWidget(testReverseButton, 0, Qt::AlignTop);
+    vLayout->addWidget(testNanSeriesButton, 0, Qt::AlignTop);
     vLayout->addWidget(renderToImageButton, 1, Qt::AlignTop);
 
     vLayout2->addWidget(gradientBtoYPB, 0, Qt::AlignTop);
@@ -363,6 +373,8 @@ int main(int argc, char **argv)
     vLayout2->addWidget(gridCheckBox);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust shadow quality")));
     vLayout2->addWidget(shadowQuality, 0, Qt::AlignTop);
+    vLayout2->addWidget(new QLabel(QStringLiteral("Adjust lighting mode")));
+    vLayout2->addWidget(lightingMode, 0, Qt::AlignTop);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust point size")));
     vLayout2->addWidget(pointSizeSlider, 0, Qt::AlignTop);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust data window")));
@@ -471,6 +483,8 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::testItemChanges);
     QObject::connect(testReverseButton, &QPushButton::clicked, modifier,
                      &ScatterDataModifier::testAxisReverse);
+    QObject::connect(testNanSeriesButton, &QPushButton::clicked, modifier,
+                     &ScatterDataModifier::testNanSeries);
     QObject::connect(renderToImageButton, &QPushButton::clicked, modifier,
                      &ScatterDataModifier::renderToImage);
     QObject::connect(gradientBtoYPB, &QPushButton::clicked, modifier,
@@ -486,6 +500,8 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::shadowQualityChanged,
                      shadowQuality,
                      &QComboBox::setCurrentIndex);
+    QObject::connect(lightingMode, &QComboBox::currentIndexChanged, modifier,
+                     &ScatterDataModifier::changeLightingMode);
     QObject::connect(fontList, &QFontComboBox::currentFontChanged, modifier,
                      &ScatterDataModifier::changeFont);
 

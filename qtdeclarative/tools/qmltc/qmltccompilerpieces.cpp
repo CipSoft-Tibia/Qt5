@@ -253,11 +253,52 @@ void QmltcCodeGenerator::generate_createBindingOnProperty(
     }
 }
 
+static QByteArray toLiteral(const QByteArray &utf8)
+{
+    return QQmlJSUtils::toLiteral<QByteArray, char, QByteArrayView>(utf8);
+}
+
+static QString serializeTranslation(const QQmlTranslation::QsTrIdData &data)
+{
+    return QStringLiteral(R"(QQmlTranslation(QQmlTranslation::QsTrIdData(
+    %1,
+    %4)))")
+            .arg(toLiteral(data.id()))
+            .arg(data.number());
+}
+
+static QString serializeTranslation(const QQmlTranslation::QsTrData &data)
+{
+    return QStringLiteral(R"(QQmlTranslation(QQmlTranslation::QsTrData(
+    %1,
+    %2,
+    %3,
+    %4)))")
+            .arg(toLiteral(data.context()),
+                 toLiteral(data.text()),
+                 toLiteral(data.comment()))
+            .arg(data.number());
+}
+
+static QString serializeTranslation(const QQmlTranslation &translation)
+{
+    return translation.visit(
+            [](auto &&arg) -> QString {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr (!std::is_same_v<T, std::nullptr_t>)
+                    return serializeTranslation(arg);
+                else {
+                    Q_ASSERT_X(false, "QQmlTranslation", "Uninitialized Translation");
+                    return {};
+                }
+            });
+}
+
 void QmltcCodeGenerator::generate_createTranslationBindingOnProperty(
         QStringList *block, const TranslationBindingInfo &info)
 {
     const QString propName = QQmlJSUtils::toLiteral(info.property.propertyName());
-    const QString qqmlTranslation = info.data.serializeForQmltc();
+    const QString qqmlTranslation = serializeTranslation(info.data);
 
     if (QString bindable = info.property.bindable(); !bindable.isEmpty()) {
         // TODO: test that private properties are bindable

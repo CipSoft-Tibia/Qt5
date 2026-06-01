@@ -9,6 +9,9 @@ Custom: Install Windows only (advanced)
 
 # NOTE! virtio-win-0.1.204 need to be attached with virt-install
 Load driver - browse - virtio-win-0.1.204 - amd64 - w10 - Select Red Hat VirtIO SCSI controller - next - next
+Navigate to E:\guest-agent (directory on the attached drive)
+and double click qemu-ga-x86_64
+
 
 Region: Finland
 Keyboard layout: United Kingdom

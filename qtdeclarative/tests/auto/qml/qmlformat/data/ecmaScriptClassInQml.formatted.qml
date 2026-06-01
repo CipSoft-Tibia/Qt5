@@ -6,32 +6,32 @@ Item {
         var count = 0;
 
         class Person {
-            constructor(name){
+            constructor(name) {
                 this._name = name;
             }
         }
 
         class Employee extends Person {
-            constructor(name, age){
+            constructor(name, age) {
                 super(name);
                 this._name = name;
                 this._age = age;
                 ++count;
             }
 
-            doWork(){}
+            doWork() {}
 
-            /* do we get the comment? */ get name(){
+            /* do we get the comment? */ get name() {
                 return this._name.toUpperCase();
             }
 
-            set name(newName){
+            set name(newName) {
                 if (newName) {
                     this._name = newName;
                 }
             }
 
-            static get count(){
+            static get count() {
                 return count;
             }
         }

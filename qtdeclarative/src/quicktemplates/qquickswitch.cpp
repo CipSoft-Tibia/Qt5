@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickswitch_p.h"
 #include "qquickabstractbutton_p_p.h"
@@ -23,6 +24,7 @@ QT_BEGIN_NAMESPACE
     \brief Switch button that can be toggled on or off.
 
     \image qtquickcontrols-switch.gif
+           {Switch control in on and off states}
 
     Switch is an option button that can be dragged or toggled on (checked) or
     off (unchecked). Switches are typically used to select between two states.

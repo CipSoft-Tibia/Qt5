@@ -64,7 +64,6 @@ class GPUSupportedLimits final : public interop::GPUSupportedLimits {
     uint64_t getMaxBufferSize(Napi::Env) override;
     uint32_t getMaxVertexAttributes(Napi::Env) override;
     uint32_t getMaxVertexBufferArrayStride(Napi::Env) override;
-    uint32_t getMaxInterStageShaderComponents(Napi::Env) override;
     uint32_t getMaxInterStageShaderVariables(Napi::Env) override;
     uint32_t getMaxColorAttachments(Napi::Env) override;
     uint32_t getMaxColorAttachmentBytesPerSample(Napi::Env) override;
@@ -74,8 +73,14 @@ class GPUSupportedLimits final : public interop::GPUSupportedLimits {
     uint32_t getMaxComputeWorkgroupSizeY(Napi::Env) override;
     uint32_t getMaxComputeWorkgroupSizeZ(Napi::Env) override;
     uint32_t getMaxComputeWorkgroupsPerDimension(Napi::Env) override;
-    std::variant<uint32_t, interop::UndefinedType> getMinSubgroupSize(Napi::Env) override;
-    std::variant<uint32_t, interop::UndefinedType> getMaxSubgroupSize(Napi::Env) override;
+    std::variant<uint32_t, interop::UndefinedType> getMaxStorageBuffersInFragmentStage(
+        Napi::Env) override;
+    std::variant<uint32_t, interop::UndefinedType> getMaxStorageTexturesInFragmentStage(
+        Napi::Env) override;
+    std::variant<uint32_t, interop::UndefinedType> getMaxStorageBuffersInVertexStage(
+        Napi::Env) override;
+    std::variant<uint32_t, interop::UndefinedType> getMaxStorageTexturesInVertexStage(
+        Napi::Env) override;
 
   private:
     wgpu::SupportedLimits limits_;

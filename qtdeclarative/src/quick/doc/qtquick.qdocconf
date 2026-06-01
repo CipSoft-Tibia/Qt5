@@ -51,7 +51,7 @@ depends += \
     qtqmltest \
     qtqmlcore \
     qtgui \
-    qtlinguist \
+    qtlottie \
     qtquickcontrols \
     qtquick3d \
     qtdoc \
@@ -74,7 +74,8 @@ depends += \
     ../../labs \
     ../../quick/platform/android/jar/src/org/qtproject/qt/android \
     ../../../examples/platforms \
-    ../../quickcontrols/doc/src/includes/
+    ../../quickcontrols/doc/src/includes/ \
+    ../../qmlmodels/doc/src/includes/
 
 # both have their own documentation project
 excludedirs += \
@@ -86,6 +87,7 @@ exampledirs += \
     ../../qmlmodels/doc/snippets \
     ../../quickcontrols/doc/snippets \
     snippets \
+    ../../quickshapes/designhelpers/doc/snippets \
     ../../../tests/auto/quick/doc \
     ../../../examples/platforms
 
@@ -113,7 +115,8 @@ manifestmeta.thumbnail.names += "QtQuick/QML Dynamic View Ordering Tutorial*"
 # Highlight examples for the Graphics & Multimedia category
 manifestmeta.highlighted.names = \
     "QtQuick/Qt Quick Layouts - Responsive Layout Example" \
-    "QtQuick/Scene Graph - RHI Under QML"
+    "QtQuick/Scene Graph - RHI Under QML" \
+    "QtQuick/Weather Forecast Example"
 
 navigation.landingpage = "Qt Quick"
 navigation.cppclassespage = "Qt Quick C++ Classes"

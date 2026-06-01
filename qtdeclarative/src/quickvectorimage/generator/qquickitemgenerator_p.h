@@ -15,7 +15,7 @@
 // We mean it.
 //
 
-#include "qquickgenerator_p.h"
+#include "qquickqmlgenerator_p.h"
 #include "qquicknodeinfo_p.h"
 
 #include <QStack>
@@ -23,41 +23,28 @@
 QT_BEGIN_NAMESPACE
 
 class QQuickMatrix4x4;
+class QQuickAnimatedProperty;
+class QQmlContext;
 
-class Q_QUICKVECTORIMAGEGENERATOR_EXPORT QQuickItemGenerator : public QQuickGenerator
+class Q_QUICKVECTORIMAGEGENERATOR_EXPORT QQuickItemGenerator : public QQuickQmlGenerator
 {
 public:
-    QQuickItemGenerator(const QString fileName, QQuickVectorImageGenerator::GeneratorFlags flags, QQuickItem *parentItem);
+    QQuickItemGenerator(const QString fileName,
+                        QQuickVectorImageGenerator::GeneratorFlags flags,
+                        QQuickItem *parentItem,
+                        QQmlContext *ctx);
     ~QQuickItemGenerator();
 
+    QQuickItem *parentItem() const
+    {
+        return m_parentItem;
+    }
+
 protected:
-    void generateNodeBase(const NodeInfo &info) override;
-    bool generateDefsNode(const NodeInfo &info) override;
-    void generateImageNode(const ImageNodeInfo &info) override;
-    void generatePath(const PathNodeInfo &info, const QRectF &overrideBoundingRect) override;
-    void generateNode(const NodeInfo &info) override;
-    void generateTextNode(const TextNodeInfo &info) override;
-    void generateUseNode(const UseNodeInfo &info) override;
-    bool generateStructureNode(const StructureNodeInfo &info) override;
     bool generateRootNode(const StructureNodeInfo &info) override;
-    void outputShapePath(const PathNodeInfo &info, const QPainterPath *path, const QQuadPath *quadPath, QQuickVectorImageGenerator::PathSelector pathSelector, const QRectF &boundingRect) override;
-
-private:
-    void generateGradient(const QGradient *grad, QQuickShapePath *shapePath);
-    void generatePathContainer(const StructureNodeInfo &info);
-    void generateAnimateColor(QObject *target, const QString &propertyName, const NodeInfo::AnimateColor &animateColor, const QColor &resetColor);
-    void generateAnimateTransform(const QList<QQuickTransform *> &transforms,
-                                  QQuickMatrix4x4 *mainTransform,
-                                  const NodeInfo &info);
-    QQuickItem *currentItem();
-    void addCurrentItem(QQuickItem *item, const NodeInfo &info);
-
-    bool m_inShapeItem = false;
-    QQuickShape *m_parentShapeItem = nullptr;
-
-    QStack<QQuickItem *> m_items;
 
     QQuickItem *m_parentItem = nullptr;
+    QQmlContext *m_qmlContext = nullptr;
 };
 
 QT_END_NAMESPACE

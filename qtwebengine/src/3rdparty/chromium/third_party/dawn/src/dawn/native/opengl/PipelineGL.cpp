@@ -55,7 +55,8 @@ MaybeError PipelineGL::InitializeBase(const OpenGLFunctions& gl,
                                       const PerStage<ProgrammableStage>& stages,
                                       bool usesVertexIndex,
                                       bool usesInstanceIndex,
-                                      bool usesFragDepth) {
+                                      bool usesFragDepth,
+                                      VertexAttributeMask bgraSwizzleAttributes) {
     mProgram = gl.CreateProgram();
 
     // Compute the set of active stages.
@@ -74,10 +75,12 @@ MaybeError PipelineGL::InitializeBase(const OpenGLFunctions& gl,
         const ShaderModule* module = ToBackend(stages[stage].module.Get());
         GLuint shader;
         DAWN_TRY_ASSIGN(
-            shader, module->CompileShader(
-                        gl, stages[stage], stage, usesVertexIndex, usesInstanceIndex, usesFragDepth,
-                        &combinedSamplers[stage], layout, &needsPlaceholderSampler,
-                        &mNeedsTextureBuiltinUniformBuffer, &mBindingPointEmulatedBuiltins));
+            shader,
+            module->CompileShader(
+                gl, stages[stage], stage, usesVertexIndex, usesInstanceIndex, usesFragDepth,
+                bgraSwizzleAttributes, &combinedSamplers[stage], layout, &needsPlaceholderSampler,
+                &mNeedsTextureBuiltinUniformBuffer, &mBindingPointEmulatedBuiltins));
+        // XXX transform to flip some attributes from RGBA to BGRA
         gl.AttachShader(mProgram, shader);
         glShaders.push_back(shader);
     }
@@ -152,8 +155,9 @@ MaybeError PipelineGL::InitializeBase(const OpenGLFunctions& gl,
             mUnitsForTextures[textureIndex].push_back(textureUnit);
 
             const auto& bindingLayout = bgl->GetBindingInfo(bindingIndex).bindingLayout;
-            shouldUseFiltering = std::get<TextureBindingInfo>(bindingLayout).sampleType ==
-                                 wgpu::TextureSampleType::Float;
+            auto sampleType = std::get<TextureBindingInfo>(bindingLayout).sampleType;
+            shouldUseFiltering = sampleType == wgpu::TextureSampleType::Float ||
+                                 sampleType == wgpu::TextureSampleType::Depth;
         }
         {
             if (combined.usePlaceholderSampler) {

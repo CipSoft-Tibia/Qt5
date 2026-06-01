@@ -8,7 +8,7 @@
     The Universal Style is based on the Microsoft Universal Design Guidelines.
     \l {detailed-desc-universal}{More...}
 
-    \styleimport {QtQuick.Controls.Universal 2.12} {Qt 5.7}
+    \styleimport {QtQuick.Controls.Universal} {Qt 5.7}
 
     \section1 Attached Properties
 
@@ -52,6 +52,7 @@
     \l {universal-background-attached-prop}{background}.
 
     \image qtquickcontrols-universal-attributes.png
+           {Universal style buttons showing theme and accent attributes}
 
     Both attributes can be specified for any window or item, and they automatically
     propagate to children in the same manner as \l {Control::font}{fonts}. In the
@@ -62,9 +63,9 @@
         \row
             \li
                 \qml
-                import QtQuick 2.12
-                import QtQuick.Controls 2.12
-                import QtQuick.Controls.Universal 2.12
+                import QtQuick
+                import QtQuick.Controls
+                import QtQuick.Controls.Universal
 
                 ApplicationWindow {
                     visible: true
@@ -83,6 +84,7 @@
                 \endqml
             \li
                 \image qtquickcontrols-universal-violet.png
+                       {Universal style controls with custom violet accent}
     \endtable
 
     In addition to specifying the attributes in QML, it is also possible to
@@ -162,6 +164,7 @@
                 \snippet qtquickcontrols-universal-accent.qml 1
             \li
                 \image qtquickcontrols-universal-accent.png
+                       {Universal style controls showing accent color}
     \endtable
 
     \note Even though the accent can be any \l {colorvaluetypedocs}{color}, it is
@@ -186,6 +189,7 @@
                 \snippet qtquickcontrols-universal-background.qml 1
             \li
                 \image qtquickcontrols-universal-background.png
+                       {Universal style controls showing background color}
     \endtable
 
     \endstyleproperty
@@ -206,6 +210,7 @@
                 \snippet qtquickcontrols-universal-foreground.qml 1
             \li
                 \image qtquickcontrols-universal-foreground.png
+                       {Universal style controls showing foreground color}
     \endtable
 
     \endstyleproperty
@@ -233,6 +238,7 @@
                 \snippet qtquickcontrols-universal-theme.qml 1
             \li
                 \image qtquickcontrols-universal-theme.png
+                       {Universal style controls in light and dark themes}
     \endtable
 
     \endstyleproperty

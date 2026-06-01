@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QAPPLICATION_H
 #define QAPPLICATION_H
@@ -140,7 +141,10 @@ public Q_SLOTS:
 
 protected:
     bool event(QEvent *) override;
+#  if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    QT_DEPRECATED_VERSION_X_6_10("This feature will be removed in Qt 7")
     bool compressEvent(QEvent *, QObject *receiver, QPostEventList *) override;
+#  endif
 
 private:
     Q_DISABLE_COPY(QApplication)

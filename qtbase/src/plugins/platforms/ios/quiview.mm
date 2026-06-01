@@ -59,6 +59,9 @@ inline ulong getTimeStamp(UIEvent *event)
     UIPanGestureRecognizer *m_scrollGestureRecognizer;
     CGPoint m_lastScrollCursorPos;
     CGPoint m_lastScrollDelta;
+#if QT_CONFIG(tabletevent)
+    UIHoverGestureRecognizer *m_hoverGestureRecognizer;
+#endif
 }
 
 + (Class)layerClass
@@ -98,6 +101,13 @@ inline ulong getTimeStamp(UIEvent *event)
         m_lastScrollDelta = CGPointZero;
         m_lastScrollCursorPos = CGPointZero;
         [self addGestureRecognizer:m_scrollGestureRecognizer];
+
+#if QT_CONFIG(tabletevent)
+        m_hoverGestureRecognizer = [[UIHoverGestureRecognizer alloc]
+                                     initWithTarget:self
+                                     action:@selector(handleHover:)];
+        [self addGestureRecognizer:m_hoverGestureRecognizer];
+#endif
 
         // Set up layer
         if ([self.layer isKindOfClass:CAMetalLayer.class]) {
@@ -362,6 +372,39 @@ inline ulong getTimeStamp(UIEvent *event)
     return [super pointInside:point withEvent:event];
 }
 
+#if QT_CONFIG(tabletevent)
+- (void)handlePencilEventForLocationInView:(CGPoint)locationInView withState:(QEventPoint::State)state withTimestamp:(ulong)timeStamp
+    withForce:(CGFloat)force withMaximumPossibleForce:(CGFloat)maximumPossibleForce withZOffset:(CGFloat)zOffset
+    withAzimuthUnitVector:(CGVector)azimuth withAltitudeAngleRadian:(CGFloat)altitudeAngleRadian
+{
+    QIOSIntegration *iosIntegration = QIOSIntegration::instance();
+
+    QPointF localViewPosition = QPointF::fromCGPoint(locationInView);
+    QPoint localViewPositionI = localViewPosition.toPoint();
+    QPointF globalScreenPosition = self.platformWindow->mapToGlobal(localViewPositionI) +
+            (localViewPosition - localViewPositionI);
+    qreal pressure = 0;
+    if (force != 0 && maximumPossibleForce != 0)
+        pressure = force / maximumPossibleForce;
+    // azimuth unit vector: +x to the right, +y going downwards
+    // altitudeAngleRadian given in radians, pi / 2 is with the stylus perpendicular to the iPad, smaller values mean more tilted, but never negative.
+    // Convert to degrees with zero being perpendicular.
+    qreal altitudeAngle = 90 - qRadiansToDegrees(altitudeAngleRadian);
+    qreal xTilt = qBound(-60.0, altitudeAngle * azimuth.dx, 60.0);
+    qreal yTilt = qBound(-60.0, altitudeAngle * azimuth.dy, 60.0);
+
+    qCDebug(lcQpaTablet) << ":" << timeStamp << localViewPosition << pressure << state << "azimuth" << azimuth.dx << azimuth.dy
+                << "altitude" << altitudeAngleRadian << "xTilt" << xTilt << "yTilt" << yTilt;
+    QWindowSystemInterface::handleTabletEvent(self.platformWindow->window(), timeStamp,
+            // device, local, global
+            iosIntegration->pencilDevice(), localViewPosition, globalScreenPosition,
+            // buttons
+            state == QEventPoint::State::Released ? Qt::NoButton : Qt::LeftButton,
+            // pressure, xTilt, yTilt, tangentialPressure, rotation, z, modifiers
+            pressure, xTilt, yTilt, 0, 0, zOffset, Qt::NoModifier);
+}
+#endif
+
 - (void)handleTouches:(NSSet *)touches withEvent:(UIEvent *)event withState:(QEventPoint::State)state withTimestamp:(ulong)timeStamp
 {
     QIOSIntegration *iosIntegration = QIOSIntegration::instance();
@@ -370,31 +413,11 @@ inline ulong getTimeStamp(UIEvent *event)
 #if QT_CONFIG(tabletevent)
     if (m_activePencilTouch && [touches containsObject:m_activePencilTouch]) {
         NSArray<UITouch *> *cTouches = [event coalescedTouchesForTouch:m_activePencilTouch];
-        int i = 0;
         for (UITouch *cTouch in cTouches) {
-            QPointF localViewPosition = QPointF::fromCGPoint([cTouch preciseLocationInView:self]);
-            QPoint localViewPositionI = localViewPosition.toPoint();
-            QPointF globalScreenPosition = self.platformWindow->mapToGlobal(localViewPositionI) +
-                    (localViewPosition - localViewPositionI);
-            qreal pressure = cTouch.force / cTouch.maximumPossibleForce;
-            // azimuth unit vector: +x to the right, +y going downwards
-            CGVector azimuth = [cTouch azimuthUnitVectorInView: self];
-            // azimuthAngle given in radians, zero when the stylus points towards +x axis; converted to degrees with 0 pointing straight up
-            qreal azimuthAngle = qRadiansToDegrees([cTouch azimuthAngleInView: self]) + 90;
-            // altitudeAngle given in radians, pi / 2 is with the stylus perpendicular to the iPad, smaller values mean more tilted, but never negative.
-            // Convert to degrees with zero being perpendicular.
-            qreal altitudeAngle = 90 - qRadiansToDegrees(cTouch.altitudeAngle);
-            qCDebug(lcQpaTablet) << i << ":" << timeStamp << localViewPosition << pressure << state << "azimuth" << azimuth.dx << azimuth.dy
-                     << "angle" << azimuthAngle << "altitude" << cTouch.altitudeAngle
-                     << "xTilt" << qBound(-60.0, altitudeAngle * azimuth.dx, 60.0) << "yTilt" << qBound(-60.0, altitudeAngle * azimuth.dy, 60.0);
-            QWindowSystemInterface::handleTabletEvent(self.platformWindow->window(), timeStamp, localViewPosition, globalScreenPosition,
-                    // device, pointerType, buttons
-                    int(QInputDevice::DeviceType::Stylus), int(QPointingDevice::PointerType::Pen), state == QEventPoint::State::Released ? Qt::NoButton : Qt::LeftButton,
-                    // pressure, xTilt, yTilt
-                    pressure, qBound(-60.0, altitudeAngle * azimuth.dx, 60.0), qBound(-60.0, altitudeAngle * azimuth.dy, 60.0),
-                    // tangentialPressure, rotation, z, uid, modifiers
-                    0, azimuthAngle, 0, 0, Qt::NoModifier);
-            ++i;
+            [self handlePencilEventForLocationInView:[cTouch preciseLocationInView:self] withState:state withTimestamp:timeStamp
+                withForce:cTouch.force withMaximumPossibleForce:cTouch.maximumPossibleForce withZOffset:0
+                withAzimuthUnitVector:[cTouch azimuthUnitVectorInView:self]
+                withAltitudeAngleRadian:cTouch.altitudeAngle];
         }
     }
 #endif
@@ -585,12 +608,17 @@ inline ulong getTimeStamp(UIEvent *event)
     case UIPressTypePlayPause: return Qt::Key_MediaTogglePlayPause;
     }
     if (@available(ios 13.4, *)) {
-        NSString *charactersIgnoringModifiers = press.key.charactersIgnoringModifiers;
-        Qt::Key key = QAppleKeyMapper::fromUIKitKey(charactersIgnoringModifiers);
+        Qt::Key key = QAppleKeyMapper::fromUIKitKey(press.key.keyCode);
         if (key != Qt::Key_unknown)
             return key;
-        return QAppleKeyMapper::fromNSString(qtModifiers, press.key.characters,
-                                             charactersIgnoringModifiers, text);
+        NSString *charactersIgnoringModifiers = press.key.charactersIgnoringModifiers;
+        key = QAppleKeyMapper::fromUIKitKey(charactersIgnoringModifiers);
+        if (key != Qt::Key_unknown)
+            return key;
+        key = QAppleKeyMapper::fromNSString(qtModifiers, press.key.characters,
+                                           charactersIgnoringModifiers, text);
+        if (key != Qt::Key_unknown)
+            return key;
     }
     return Qt::Key_unknown;
 }
@@ -759,6 +787,31 @@ inline ulong getTimeStamp(UIEvent *event)
     QWindowSystemInterface::handleWheelEvent(self.platformWindow->window(), qt_timestamp, qt_local, qt_global, pixelDelta, angleDelta, qt_modifierFlags);
 }
 #endif // QT_CONFIG(wheelevent)
+
+#if QT_CONFIG(tabletevent)
+- (void)handleHover:(UIHoverGestureRecognizer *)recognizer
+{
+    if (!self.platformWindow)
+        return;
+
+    ulong timeStamp = [[NSProcessInfo processInfo] systemUptime] * 1000;
+
+    CGFloat zOffset = 0;
+    if (@available(ios 16.1, *))
+        zOffset = [recognizer zOffset];
+
+    CGVector azimuth;
+    CGFloat altitudeAngleRadian = 0;
+    if (@available(ios 16.4, *)) {
+        azimuth = [recognizer azimuthUnitVectorInView:self];
+        altitudeAngleRadian = recognizer.altitudeAngle;
+    }
+
+    [self handlePencilEventForLocationInView:[recognizer locationInView:self] withState:QEventPoint::State::Released
+        withTimestamp:timeStamp withForce:0 withMaximumPossibleForce:0 withZOffset:zOffset
+        withAzimuthUnitVector:azimuth withAltitudeAngleRadian:altitudeAngleRadian];
+}
+#endif
 
 @end
 

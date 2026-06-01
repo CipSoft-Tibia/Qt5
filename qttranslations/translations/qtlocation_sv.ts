@@ -2,30 +2,91 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="sv_SE">
 <context>
-    <name>GeoServiceProviderFactoryEsri</name>
+    <name>QtLocationQML</name>
     <message>
-        <source>Esri plugin requires a &apos;esri.token&apos; parameter.
-Please visit https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</source>
-        <translation>Insticksmodulen Esri kräver en &apos;esri.token&apos;-parameter.
-Besök https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</translation>
+        <source>Plugin property is not set.</source>
+        <translation>Insticksmodulegenskap är inte inställd.</translation>
+    </message>
+    <message>
+        <source>Plugin Error (%1): %2</source>
+        <translation>Insticksmodulfel (%1): %2</translation>
+    </message>
+    <message>
+        <source>Plugin Error (%1): Could not instantiate provider</source>
+        <translation>Insticksmodulfel (%1): Kunde inte instansiera leverantör</translation>
+    </message>
+    <message>
+        <source>Plugin is not valid</source>
+        <translation>Insticksmodulen är inte giltig</translation>
+    </message>
+    <message>
+        <source>Unable to initialize categories</source>
+        <translation>Kunde inte initiera kategorier</translation>
+    </message>
+    <message>
+        <source>Unable to create request</source>
+        <translation>Kunde inte skapa begäran</translation>
+    </message>
+    <message>
+        <source>Index &apos;%1&apos; out of range</source>
+        <translation>Indexet &apos;%1&apos; är utanför intervallet</translation>
+    </message>
+    <message>
+        <source>Qt Location requires apiKey parameter.
+Please register at https://developer.here.com/ to get your personal application credentials.</source>
+        <translation>Qt Location kräver apiKey-parameter.
+Registrera dig på https://developer.here.com/ för att få din personliga programinloggning.</translation>
+    </message>
+    <message>
+        <source>Saving places is not supported.</source>
+        <translation>Sparning av platser stöds inte.</translation>
+    </message>
+    <message>
+        <source>Removing places is not supported.</source>
+        <translation>Borttagning av platser stöds inte.</translation>
+    </message>
+    <message>
+        <source>Saving categories is not supported.</source>
+        <translation>Sparning av kategorier stöds inte.</translation>
+    </message>
+    <message>
+        <source>Removing categories is not supported.</source>
+        <translation>Borttagning av kategorier stöds inte.</translation>
+    </message>
+    <message>
+        <source>Error parsing response.</source>
+        <translation>Fel vid tolkning av svar.</translation>
+    </message>
+    <message>
+        <source>Network error.</source>
+        <translation>Nätverksfel.</translation>
+    </message>
+    <message>
+        <source>Request was canceled.</source>
+        <translation>Begäran avbröts.</translation>
+    </message>
+    <message>
+        <source>The response from the service was not in a recognizable format.</source>
+        <translation>Svaret från tjänsten var inte i ett känt format.</translation>
     </message>
 </context>
 <context>
-    <name>PlaceSearchReplyEsri</name>
+    <name>QDeclarativeGeocodeModel</name>
     <message>
-        <source>Response parse error</source>
-        <translation>Tolkningsfel av svaret</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeGeoMap</name>
-    <message>
-        <source>No Map</source>
-        <translation>Ingen karta</translation>
+        <source>Cannot geocode, plugin not set.</source>
+        <translation>Kan inte geocode, insticksmodul inte inställd.</translation>
     </message>
     <message>
-        <source>Plugin does not support mapping.</source>
-        <translation>Insticksmodulen har inte stöd för mappning.</translation>
+        <source>Cannot geocode, geocode manager not set.</source>
+        <translation>Kan inte geocode, geocode-hanterare inte inställd.</translation>
+    </message>
+    <message>
+        <source>Cannot geocode, valid query not set.</source>
+        <translation>Kan inte geocode, giltig frågesats inte inställd.</translation>
+    </message>
+    <message>
+        <source>Plugin does not support (reverse) geocoding.</source>
+        <translation>Insticksmodulen har inte stöd för (omvänd) geocoding.</translation>
     </message>
 </context>
 <context>
@@ -49,303 +110,6 @@ Besök https://developers.arcgis.com/authentication/accessing-arcgis-online-serv
     <message>
         <source>Not enough waypoints for routing.</source>
         <translation>Inte tillräckliga vägpunkter för rutt.</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeGeocodeModel</name>
-    <message>
-        <source>Cannot geocode, plugin not set.</source>
-        <translation>Kan inte geocode, insticksmodul inte inställd.</translation>
-    </message>
-    <message>
-        <source>Cannot geocode, geocode manager not set.</source>
-        <translation>Kan inte geocode, geocode-hanterare inte inställd.</translation>
-    </message>
-    <message>
-        <source>Cannot geocode, valid query not set.</source>
-        <translation>Kan inte geocode, giltig frågesats inte inställd.</translation>
-    </message>
-    <message>
-        <source>Plugin does not support (reverse) geocoding.</source>
-        <translation>Insticksmodulen har inte stöd för (omvänd) geocoding.</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeNavigator</name>
-    <message>
-        <source>Plugin does not support navigation.</source>
-        <translation>Insticksmodulen har inte stöd för navigering.</translation>
-    </message>
-    <message>
-        <source>Failed to create a navigator object.</source>
-        <translation>Misslyckades med att skapa ett navigatorobjekt.</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoCodeReplyMapbox</name>
-    <message>
-        <source>Response parse error</source>
-        <translation>Tolkningsfel av svaret</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoMapMapboxGL</name>
-    <message>
-        <source>Development access token, do not use in production.</source>
-        <translation>Accesstoken för utveckling, använd inte i produktion.</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoMappingManagerEngineItemsOverlay</name>
-    <message>
-        <source>Empty Map</source>
-        <translation>Tom karta</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoMappingManagerEngineMapboxGL</name>
-    <message>
-        <source>China Streets</source>
-        <translation>Kinagator</translation>
-    </message>
-    <message>
-        <source>China Light</source>
-        <translation>Kina ljus</translation>
-    </message>
-    <message>
-        <source>China Dark</source>
-        <translation>Kina mörk</translation>
-    </message>
-    <message>
-        <source>Streets</source>
-        <translation>Gator</translation>
-    </message>
-    <message>
-        <source>Basic</source>
-        <translation>Grundläggande</translation>
-    </message>
-    <message>
-        <source>Bright</source>
-        <translation>Starkt ljus</translation>
-    </message>
-    <message>
-        <source>Outdoors</source>
-        <translation>Utomhus</translation>
-    </message>
-    <message>
-        <source>Satellite</source>
-        <translation>Satellit</translation>
-    </message>
-    <message>
-        <source>Satellite Streets</source>
-        <translation>Satellitgator</translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation>Ljus</translation>
-    </message>
-    <message>
-        <source>Dark</source>
-        <translation>Mörk</translation>
-    </message>
-    <message>
-        <source>Navigation Preview Day</source>
-        <translation>Navigeringsförhandsvisning dag</translation>
-    </message>
-    <message>
-        <source>Navigation Preview Night</source>
-        <translation>Navigeringsförhandsvisning natt</translation>
-    </message>
-    <message>
-        <source>Navigation Guidance Day</source>
-        <translation>Navigeringsguidning dag</translation>
-    </message>
-    <message>
-        <source>Navigation Guidance Night</source>
-        <translation>Navigeringsguidning natt</translation>
-    </message>
-    <message>
-        <source>User provided style</source>
-        <translation>Användartillhandahållen stil</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoRouteParserOsrmV4</name>
-    <message>
-        <source>Go straight.</source>
-        <translation>Gå rakt fram.</translation>
-    </message>
-    <message>
-        <source>Go straight onto %1.</source>
-        <translation>Gå rakt fram in på %1.</translation>
-    </message>
-    <message>
-        <source>Turn slightly right.</source>
-        <translation>Sväng svagt till höger.</translation>
-    </message>
-    <message>
-        <source>Turn slightly right onto %1.</source>
-        <translation>Sväng svagt till höger in på %1.</translation>
-    </message>
-    <message>
-        <source>Turn right.</source>
-        <translation>Sväng höger.</translation>
-    </message>
-    <message>
-        <source>Turn right onto %1.</source>
-        <translation>Sväng höger in på %1.</translation>
-    </message>
-    <message>
-        <source>Make a sharp right.</source>
-        <translation>Gör en skarp högersväng.</translation>
-    </message>
-    <message>
-        <source>Make a sharp right onto %1.</source>
-        <translation>Gör en skarp högersväng in på %1.</translation>
-    </message>
-    <message>
-        <source>When it is safe to do so, perform a U-turn.</source>
-        <translation>När det är säkert att göra en, gör en u-sväng.</translation>
-    </message>
-    <message>
-        <source>Make a sharp left.</source>
-        <translation>Gör en skarp vänstersväng.</translation>
-    </message>
-    <message>
-        <source>Make a sharp left onto %1.</source>
-        <translation>Gör en skarp vänstersväng in på %1.</translation>
-    </message>
-    <message>
-        <source>Turn left.</source>
-        <translation>Sväng vänster.</translation>
-    </message>
-    <message>
-        <source>Turn left onto %1.</source>
-        <translation>Sväng vänster in på %1.</translation>
-    </message>
-    <message>
-        <source>Turn slightly left.</source>
-        <translation>Sväng svagt till vänster.</translation>
-    </message>
-    <message>
-        <source>Turn slightly left onto %1.</source>
-        <translation>Sväng svagt till vänster in på %1.</translation>
-    </message>
-    <message>
-        <source>Reached waypoint.</source>
-        <translation>Du har nått vägpunkten.</translation>
-    </message>
-    <message>
-        <source>Head on.</source>
-        <translation>Rakt fram.</translation>
-    </message>
-    <message>
-        <source>Head onto %1.</source>
-        <translation>Rakt fram in på %1.</translation>
-    </message>
-    <message>
-        <source>Enter the roundabout.</source>
-        <translation>In i rondellen.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the first exit.</source>
-        <translation>Vid rondellen, ta den första avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the first exit onto %1.</source>
-        <translation>Vid rondellen, ta den första avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the second exit.</source>
-        <translation>Vid rondellen, ta den andra avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the second exit onto %1.</source>
-        <translation>Vid rondellen, ta den andra avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the third exit.</source>
-        <translation>Vid rondellen, ta den tredje avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the third exit onto %1.</source>
-        <translation>Vid rondellen, ta den tredje avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fourth exit.</source>
-        <translation>Vid rondellen, ta den fjärde avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fourth exit onto %1.</source>
-        <translation>Vid rondellen, ta den fjärde avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fifth exit.</source>
-        <translation>Vid rondellen, ta den femte avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fifth exit onto %1.</source>
-        <translation>Vid rondellen, ta den femte avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the sixth exit.</source>
-        <translation>Vid rondellen, ta den sjätte avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the sixth exit onto %1.</source>
-        <translation>Vid rondellen, ta den sjätte avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the seventh exit.</source>
-        <translation>Vid rondellen, ta den sjunde avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the seventh exit onto %1.</source>
-        <translation>Vid rondellen, ta den sjunde avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the eighth exit.</source>
-        <translation>Vid rondellen, ta den åttonde avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the eighth exit onto %1.</source>
-        <translation>Vid rondellen, ta den åttonde avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the ninth exit.</source>
-        <translation>Vid rondellen, ta den nionde avfarten.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the ninth exit onto %1.</source>
-        <translation>Vid rondellen, ta den nionde avfarten in på %1.</translation>
-    </message>
-    <message>
-        <source>Leave the roundabout.</source>
-        <translation>Lämna rondellen.</translation>
-    </message>
-    <message>
-        <source>Leave the roundabout onto %1.</source>
-        <translation>Lämna rondellen in på %1.</translation>
-    </message>
-    <message>
-        <source>Stay on the roundabout.</source>
-        <translation>Håll dig i rondellen.</translation>
-    </message>
-    <message>
-        <source>Start at the end of the street.</source>
-        <translation>Börja i slutet av gatan.</translation>
-    </message>
-    <message>
-        <source>Start at the end of %1.</source>
-        <translation>Börja i slutet av %1.</translation>
-    </message>
-    <message>
-        <source>You have reached your destination.</source>
-        <translation>Du har nått ditt mål.</translation>
-    </message>
-    <message>
-        <source>Don&apos;t know what to say for &apos;%1&apos;</source>
-        <translation>Vet inte vad som ska sägas för &quot;%1&quot;</translation>
     </message>
 </context>
 <context>
@@ -991,19 +755,53 @@ Besök https://developers.arcgis.com/authentication/accessing-arcgis-online-serv
     </message>
 </context>
 <context>
+    <name>QDeclarativeGeoMap</name>
+    <message>
+        <source>No Map</source>
+        <translation>Ingen karta</translation>
+    </message>
+    <message>
+        <source>Plugin does not support mapping.</source>
+        <translation>Insticksmodulen har inte stöd för mappning.</translation>
+    </message>
+</context>
+<context>
+    <name>GeoServiceProviderFactoryEsri</name>
+    <message>
+        <source>Esri plugin requires a &apos;esri.token&apos; parameter.
+Please visit https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</source>
+        <translation>Insticksmodulen Esri kräver en &apos;esri.token&apos;-parameter.
+Besök https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</translation>
+    </message>
+</context>
+<context>
+    <name>PlaceSearchReplyEsri</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Tolkningsfel av svaret</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoMappingManagerEngineItemsOverlay</name>
+    <message>
+        <source>Empty Map</source>
+        <translation>Tom karta</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoCodeReplyMapbox</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Tolkningsfel av svaret</translation>
+    </message>
+</context>
+<context>
     <name>QGeoServiceProviderFactoryMapbox</name>
     <message>
         <source>Mapbox plugin requires a &apos;mapbox.access_token&apos; parameter.
 Please visit https://www.mapbox.com</source>
         <translation>Insticksmodulen Mapbox kräver en &apos;mapbox.access_token&apos;-parameter.
 Besök https://www.mapbox.com</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoTileFetcherNokia</name>
-    <message>
-        <source>Mapping manager no longer exists</source>
-        <translation>Mappningshanterare finns inte längre</translation>
     </message>
 </context>
 <context>
@@ -1077,6 +875,94 @@ Besök https://www.mapbox.com</translation>
         <source>High Contrast</source>
         <extracomment>Noun describing type of a map with high contrast</extracomment>
         <translation>Hög kontrast</translation>
+    </message>
+</context>
+<context>
+    <name>QPlaceSearchReplyMapbox</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Tolkningsfel av svaret</translation>
+    </message>
+</context>
+<context>
+    <name>QPlaceSearchSuggestionReplyMapbox</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Tolkningsfel av svaret</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoMapMapboxGL</name>
+    <message>
+        <source>Development access token, do not use in production.</source>
+        <translation>Accesstoken för utveckling, använd inte i produktion.</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoMappingManagerEngineMapboxGL</name>
+    <message>
+        <source>China Streets</source>
+        <translation>Kinagator</translation>
+    </message>
+    <message>
+        <source>China Light</source>
+        <translation>Kina ljus</translation>
+    </message>
+    <message>
+        <source>China Dark</source>
+        <translation>Kina mörk</translation>
+    </message>
+    <message>
+        <source>Streets</source>
+        <translation>Gator</translation>
+    </message>
+    <message>
+        <source>Basic</source>
+        <translation>Grundläggande</translation>
+    </message>
+    <message>
+        <source>Bright</source>
+        <translation>Starkt ljus</translation>
+    </message>
+    <message>
+        <source>Outdoors</source>
+        <translation>Utomhus</translation>
+    </message>
+    <message>
+        <source>Satellite</source>
+        <translation>Satellit</translation>
+    </message>
+    <message>
+        <source>Satellite Streets</source>
+        <translation>Satellitgator</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>Ljus</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>Mörk</translation>
+    </message>
+    <message>
+        <source>Navigation Preview Day</source>
+        <translation>Navigeringsförhandsvisning dag</translation>
+    </message>
+    <message>
+        <source>Navigation Preview Night</source>
+        <translation>Navigeringsförhandsvisning natt</translation>
+    </message>
+    <message>
+        <source>Navigation Guidance Day</source>
+        <translation>Navigeringsguidning dag</translation>
+    </message>
+    <message>
+        <source>Navigation Guidance Night</source>
+        <translation>Navigeringsguidning natt</translation>
+    </message>
+    <message>
+        <source>User provided style</source>
+        <translation>Användartillhandahållen stil</translation>
     </message>
 </context>
 <context>
@@ -1247,6 +1133,192 @@ Besök https://www.mapbox.com</translation>
     </message>
 </context>
 <context>
+    <name>QGeoTileFetcherNokia</name>
+    <message>
+        <source>Mapping manager no longer exists</source>
+        <translation>Mappningshanterare finns inte längre</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoRouteParserOsrmV4</name>
+    <message>
+        <source>Go straight.</source>
+        <translation>Gå rakt fram.</translation>
+    </message>
+    <message>
+        <source>Go straight onto %1.</source>
+        <translation>Gå rakt fram in på %1.</translation>
+    </message>
+    <message>
+        <source>Turn slightly right.</source>
+        <translation>Sväng svagt till höger.</translation>
+    </message>
+    <message>
+        <source>Turn slightly right onto %1.</source>
+        <translation>Sväng svagt till höger in på %1.</translation>
+    </message>
+    <message>
+        <source>Turn right.</source>
+        <translation>Sväng höger.</translation>
+    </message>
+    <message>
+        <source>Turn right onto %1.</source>
+        <translation>Sväng höger in på %1.</translation>
+    </message>
+    <message>
+        <source>Make a sharp right.</source>
+        <translation>Gör en skarp högersväng.</translation>
+    </message>
+    <message>
+        <source>Make a sharp right onto %1.</source>
+        <translation>Gör en skarp högersväng in på %1.</translation>
+    </message>
+    <message>
+        <source>When it is safe to do so, perform a U-turn.</source>
+        <translation>När det är säkert att göra en, gör en u-sväng.</translation>
+    </message>
+    <message>
+        <source>Make a sharp left.</source>
+        <translation>Gör en skarp vänstersväng.</translation>
+    </message>
+    <message>
+        <source>Make a sharp left onto %1.</source>
+        <translation>Gör en skarp vänstersväng in på %1.</translation>
+    </message>
+    <message>
+        <source>Turn left.</source>
+        <translation>Sväng vänster.</translation>
+    </message>
+    <message>
+        <source>Turn left onto %1.</source>
+        <translation>Sväng vänster in på %1.</translation>
+    </message>
+    <message>
+        <source>Turn slightly left.</source>
+        <translation>Sväng svagt till vänster.</translation>
+    </message>
+    <message>
+        <source>Turn slightly left onto %1.</source>
+        <translation>Sväng svagt till vänster in på %1.</translation>
+    </message>
+    <message>
+        <source>Reached waypoint.</source>
+        <translation>Du har nått vägpunkten.</translation>
+    </message>
+    <message>
+        <source>Head on.</source>
+        <translation>Rakt fram.</translation>
+    </message>
+    <message>
+        <source>Head onto %1.</source>
+        <translation>Rakt fram in på %1.</translation>
+    </message>
+    <message>
+        <source>Enter the roundabout.</source>
+        <translation>In i rondellen.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the first exit.</source>
+        <translation>Vid rondellen, ta den första avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the first exit onto %1.</source>
+        <translation>Vid rondellen, ta den första avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the second exit.</source>
+        <translation>Vid rondellen, ta den andra avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the second exit onto %1.</source>
+        <translation>Vid rondellen, ta den andra avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the third exit.</source>
+        <translation>Vid rondellen, ta den tredje avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the third exit onto %1.</source>
+        <translation>Vid rondellen, ta den tredje avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fourth exit.</source>
+        <translation>Vid rondellen, ta den fjärde avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fourth exit onto %1.</source>
+        <translation>Vid rondellen, ta den fjärde avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fifth exit.</source>
+        <translation>Vid rondellen, ta den femte avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fifth exit onto %1.</source>
+        <translation>Vid rondellen, ta den femte avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the sixth exit.</source>
+        <translation>Vid rondellen, ta den sjätte avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the sixth exit onto %1.</source>
+        <translation>Vid rondellen, ta den sjätte avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the seventh exit.</source>
+        <translation>Vid rondellen, ta den sjunde avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the seventh exit onto %1.</source>
+        <translation>Vid rondellen, ta den sjunde avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the eighth exit.</source>
+        <translation>Vid rondellen, ta den åttonde avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the eighth exit onto %1.</source>
+        <translation>Vid rondellen, ta den åttonde avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the ninth exit.</source>
+        <translation>Vid rondellen, ta den nionde avfarten.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the ninth exit onto %1.</source>
+        <translation>Vid rondellen, ta den nionde avfarten in på %1.</translation>
+    </message>
+    <message>
+        <source>Leave the roundabout.</source>
+        <translation>Lämna rondellen.</translation>
+    </message>
+    <message>
+        <source>Leave the roundabout onto %1.</source>
+        <translation>Lämna rondellen in på %1.</translation>
+    </message>
+    <message>
+        <source>Stay on the roundabout.</source>
+        <translation>Håll dig i rondellen.</translation>
+    </message>
+    <message>
+        <source>Start at the end of the street.</source>
+        <translation>Börja i slutet av gatan.</translation>
+    </message>
+    <message>
+        <source>Start at the end of %1.</source>
+        <translation>Börja i slutet av %1.</translation>
+    </message>
+    <message>
+        <source>You have reached your destination.</source>
+        <translation>Du har nått ditt mål.</translation>
+    </message>
+    <message>
+        <source>Don&apos;t know what to say for &apos;%1&apos;</source>
+        <translation>Vet inte vad som ska sägas för &quot;%1&quot;</translation>
+    </message>
+</context>
+<context>
     <name>QGeoTiledMappingManagerEngineOsm</name>
     <message>
         <source>Street Map</source>
@@ -1377,93 +1449,10 @@ Besök https://www.mapbox.com</translation>
     </message>
 </context>
 <context>
-    <name>QPlaceSearchReplyMapbox</name>
-    <message>
-        <source>Response parse error</source>
-        <translation>Tolkningsfel av svaret</translation>
-    </message>
-</context>
-<context>
     <name>QPlaceSearchReplyOsm</name>
     <message>
         <source>Response parse error</source>
         <translation>Tolkningsfel av svaret</translation>
-    </message>
-</context>
-<context>
-    <name>QPlaceSearchSuggestionReplyMapbox</name>
-    <message>
-        <source>Response parse error</source>
-        <translation>Tolkningsfel av svaret</translation>
-    </message>
-</context>
-<context>
-    <name>QtLocationQML</name>
-    <message>
-        <source>Plugin property is not set.</source>
-        <translation>Insticksmodulegenskap är inte inställd.</translation>
-    </message>
-    <message>
-        <source>Plugin Error (%1): %2</source>
-        <translation>Insticksmodulfel (%1): %2</translation>
-    </message>
-    <message>
-        <source>Plugin Error (%1): Could not instantiate provider</source>
-        <translation>Insticksmodulfel (%1): Kunde inte instansiera leverantör</translation>
-    </message>
-    <message>
-        <source>Plugin is not valid</source>
-        <translation>Insticksmodulen är inte giltig</translation>
-    </message>
-    <message>
-        <source>Unable to initialize categories</source>
-        <translation>Kunde inte initiera kategorier</translation>
-    </message>
-    <message>
-        <source>Unable to create request</source>
-        <translation>Kunde inte skapa begäran</translation>
-    </message>
-    <message>
-        <source>Index &apos;%1&apos; out of range</source>
-        <translation>Indexet &apos;%1&apos; är utanför intervallet</translation>
-    </message>
-    <message>
-        <source>Qt Location requires app_id and token parameters.
-Please register at https://developer.here.com/ to get your personal application credentials.</source>
-        <translation>Qt Location kräver app_id och token parameters.
-Registrera dig på https://developer.here.com/ för att få dina personliga programuppgifter.</translation>
-    </message>
-    <message>
-        <source>Saving places is not supported.</source>
-        <translation>Sparning av platser stöds inte.</translation>
-    </message>
-    <message>
-        <source>Removing places is not supported.</source>
-        <translation>Borttagning av platser stöds inte.</translation>
-    </message>
-    <message>
-        <source>Saving categories is not supported.</source>
-        <translation>Sparning av kategorier stöds inte.</translation>
-    </message>
-    <message>
-        <source>Removing categories is not supported.</source>
-        <translation>Borttagning av kategorier stöds inte.</translation>
-    </message>
-    <message>
-        <source>Error parsing response.</source>
-        <translation>Fel vid tolkning av svar.</translation>
-    </message>
-    <message>
-        <source>Network error.</source>
-        <translation>Nätverksfel.</translation>
-    </message>
-    <message>
-        <source>Request was canceled.</source>
-        <translation>Begäran avbröts.</translation>
-    </message>
-    <message>
-        <source>The response from the service was not in a recognizable format.</source>
-        <translation>Svaret från tjänsten var inte i ett känt format.</translation>
     </message>
 </context>
 </TS>

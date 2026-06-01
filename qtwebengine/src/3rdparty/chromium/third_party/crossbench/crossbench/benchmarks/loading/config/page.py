@@ -6,28 +6,35 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
-from typing import Any, Dict, Iterator, Optional, Sequence, Tuple, Type, cast
+from typing import (TYPE_CHECKING, Any, Dict, Iterator, Optional, Sequence,
+                    Tuple, Type, cast)
 from urllib import parse as urlparse
 
-from crossbench import cli_helper
 from crossbench import path as pth
-from crossbench.benchmarks.loading.action import Action, GetAction
-from crossbench.benchmarks.loading.action_type import ActionType
+from crossbench.action_runner.action.action_type import ActionType
+from crossbench.action_runner.action.get import GetAction
 from crossbench.benchmarks.loading.config.blocks import (ActionBlock,
                                                          ActionBlockListConfig)
 from crossbench.benchmarks.loading.config.login.custom import LoginBlock
-from crossbench.benchmarks.loading.page import PAGES
+from crossbench.benchmarks.loading.page.live import PAGES
 from crossbench.benchmarks.loading.playback_controller import \
     PlaybackController
+from crossbench.cli.config.secrets import Secrets
 from crossbench.config import ConfigObject, ConfigParser
+from crossbench.parse import DurationParser, ObjectParser
+
+if TYPE_CHECKING:
+  from crossbench.action_runner.action.action import Action
 
 
 @dataclasses.dataclass(frozen=True)
 class PageConfig(ConfigObject):
   label: Optional[str] = None
   playback: Optional[PlaybackController] = None
-  blocks: Tuple[ActionBlock, ...] = tuple()
+  secrets: Secrets = Secrets()
   login: Optional[LoginBlock] = None
+  setup: Optional[ActionBlock] = None
+  blocks: Tuple[ActionBlock, ...] = tuple()
 
   @classmethod
   def parse_other(cls: Type[PageConfig], value: Any, **kwargs) -> PageConfig:
@@ -51,41 +58,46 @@ class PageConfig(ConfigObject):
       url = PAGES[raw_url].url
       label = label or raw_url
     else:
-      url = cli_helper.parse_fuzzy_url_str(raw_url)
+      url = ObjectParser.parse_fuzzy_url_str(raw_url)
     if len(parts) == 2:
-      duration = cli_helper.Duration.parse_non_zero(parts[1])
+      duration = DurationParser.positive_duration(parts[1])
     return cls.from_url(label, url, duration)
 
   @classmethod
   def parse_sequence(cls: Type[PageConfig],
                      value: Sequence[Any],
-                     label: Optional[str] = None) -> PageConfig:
-    value = cli_helper.parse_non_empty_sequence(value,
-                                                "story actions or blocks")
+                     label: Optional[str] = None,
+                     secrets: Optional[Secrets] = None) -> PageConfig:
+    value = ObjectParser.non_empty_sequence(value, "story actions or blocks")
     blocks = ActionBlockListConfig.parse_sequence(value)
     if label is not None:
-      label = cli_helper.parse_non_empty_str(label, "label")
-    return cls(label, blocks=blocks.blocks)
+      label = ObjectParser.non_empty_str(label, "label")
+    secrets = secrets or Secrets()
+    return cls(label, secrets=secrets, blocks=blocks.blocks)
 
   @classmethod
   def parse_dict(  # pylint: disable=arguments-differ
       cls: Type[PageConfig],
       config: Dict[str, Any],
-      label: Optional[str] = None) -> PageConfig:
-    config = cli_helper.parse_non_empty_dict(config, "story actions or blocks")
-    page_config = cls.config_parser().parse(config, label=label)
+      label: Optional[str] = None,
+      secrets: Optional[Secrets] = None) -> PageConfig:
+    config = ObjectParser.non_empty_dict(config, "story actions or blocks")
+    page_config = cls.config_parser().parse(
+        config, label=label, secrets=secrets)
     return page_config
 
   @classmethod
   def config_parser(cls: Type[PageConfig]) -> ConfigParser[PageConfig]:
-    parser = ConfigParser(f"{cls.__name__} parser", cls)
-    parser.add_argument("label", type=cli_helper.parse_non_empty_str)
+    parser = ConfigParser(cls)
+    parser.add_argument("label", type=ObjectParser.non_empty_str)
     parser.add_argument("playback", type=PlaybackController.parse)
+    parser.add_argument("secrets", type=Secrets, default=Secrets())
+    parser.add_argument("login", type=LoginBlock)
+    parser.add_argument("setup", type=ActionBlock)
     parser.add_argument(
         "blocks",
         aliases=("actions", "url", "urls"),
         type=ActionBlockListConfig)
-    parser.add_argument("login", type=LoginBlock.parse)
     return parser
 
   @classmethod

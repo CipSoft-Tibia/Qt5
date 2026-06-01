@@ -73,15 +73,16 @@ enum class FedCmRequestIdTokenStatus {
   kIdTokenCrossSiteIdpErrorResponse = 41,
   kOtherIdpChosen = 42,
   kMissingTransientUserActivation = 43,
-  kReplacedByButtonMode = 44,
+  kReplacedByActiveMode = 44,
   kContinuationPopupClosedByUser = 45,
   kSuccessUsingIdentityProviderResolve = 46,
   kContinuationPopupClosedByIdentityProviderClose = 47,
   kInvalidFieldsSpecified = 48,
   kRpOriginIsOpaque = 49,
   kConfigNotMatchingType = 50,
+  kLoginPopupClosedWithoutSignin = 51,
 
-  kMaxValue = kConfigNotMatchingType
+  kMaxValue = kLoginPopupClosedWithoutSignin
 };
 
 // This enum describes whether user sign-in states between IDP and browser
@@ -231,12 +232,12 @@ enum class FedCmLifecycleStateFailureReason {
 // one. These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
 enum class FedCmMultipleRequestsRpMode {
-  kWidgetThenWidget = 0,
-  kWidgetThenButton = 1,
-  kButtonThenWidget = 2,
-  kButtonThenButton = 3,
+  kPassiveThenPassive = 0,
+  kPassiveThenActive = 1,
+  kActiveThenPassive = 2,
+  kActiveThenActive = 3,
 
-  kMaxValue = kButtonThenButton
+  kMaxValue = kActiveThenActive
 };
 
 // This enum tracks whether the RP requested additional scopes and/or
@@ -248,6 +249,41 @@ enum class FedCmRpParameters {
   kHasParametersAndNonDefaultScope = 2,
 
   kMaxValue = kHasParametersAndNonDefaultScope
+};
+
+// This enum tracks the user's result after using a different account. These
+// values are persisted to logs. Entries should not be renumbered and numeric
+// values should never be reused.
+enum class FedCmUseOtherAccountResult {
+  kUserSignsInWithNewAccount = 0,
+  kUserSignsInWithExistingAccount = 1,
+  kUserDoesNotSignIn = 2,
+
+  kMaxValue = kUserDoesNotSignIn
+};
+
+// This enum describes the outcome of the verifying dialog. These values are
+// persisted to logs. Entries should not be renumbered and numeric values should
+// never be reused.
+enum class FedCmVerifyingDialogResult {
+  kSuccessExplicit = 0,
+  kSuccessAutoReauthn = 1,
+  kCancelExplicit = 2,
+  kCancelAutoReauthn = 3,
+  kDestroyExplicit = 4,
+  kDestroyAutoReauthn = 5,
+
+  kMaxValue = kDestroyAutoReauthn
+};
+
+// This enum describes the third party cookies status. These values are
+// persisted to logs. Entries should not be renumbered and numeric values should
+// never be reused.
+enum class FedCmThirdPartyCookiesStatus {
+  kEnabledInSettings = 0,
+  kDisabledInSettings = 1,
+
+  kMaxValue = kDisabledInSettings
 };
 
 class CONTENT_EXPORT FedCmMetrics {
@@ -273,7 +309,7 @@ class CONTENT_EXPORT FedCmMetrics {
 
   // Records the time from when a call to the API was made to when the accounts
   // dialog is shown. This does not include flows that involve LoginToIdP. e.g.
-  // mismatch flow or button flow with users whose login status is "logged-out".
+  // mismatch flow or active flow with users whose login status is "logged-out".
   void RecordShowAccountsDialogTime(
       const std::vector<IdentityProviderDataPtr>& providers,
       base::TimeDelta duration);
@@ -281,7 +317,7 @@ class CONTENT_EXPORT FedCmMetrics {
   // Records the time from when a call to the API was made to when the accounts
   // dialog is shown in breakdown. In case of multi-IdP, this records the max
   // time across IdPs. This does not include flows that involve LoginToIdP. e.g.
-  // mismatch flow or button flow with users whose login status is "logged-out".
+  // mismatch flow or active flow with users whose login status is "logged-out".
   void RecordShowAccountsDialogTimeBreakdown(
       base::TimeDelta well_known_and_config_fetch_duration,
       base::TimeDelta accounts_fetch_duration,
@@ -293,7 +329,7 @@ class CONTENT_EXPORT FedCmMetrics {
   void RecordWellKnownAndConfigFetchTime(base::TimeDelta duration);
 
   // Records the time from when the accounts dialog is shown to when the user
-  // presses the Continue button of an account of the given provider.
+  // presses the Continue active of an account of the given provider.
   void RecordContinueOnPopupTime(const GURL& provider,
                                  base::TimeDelta duration);
 
@@ -322,14 +358,14 @@ class CONTENT_EXPORT FedCmMetrics {
   void RecordCancelReason(
       IdentityRequestDialogController::DismissReason dismiss_reason);
 
-  // Records the time from when the user presses the Continue button to when the
+  // Records the time from when the user presses the Continue active to when the
   // token response is received. Also records the overall time from when the API
   // is called to when the token response is received.
   void RecordTokenResponseAndTurnaroundTime(const GURL& provider,
                                             base::TimeDelta token_response_time,
                                             base::TimeDelta turnaround_time);
 
-  // Records the time from when the user presses the Continue button to when
+  // Records the time from when the user presses the Continue active to when
   // the continue_on response is received. Also records the overall time from
   // when the API is called to when the IdentityProvider.resolve token is
   // received.
@@ -347,7 +383,11 @@ class CONTENT_EXPORT FedCmMetrics {
       const std::vector<GURL>& requested_providers,
       int num_idps_mismatch,
       const std::optional<GURL>& selected_idp_config_url,
-      const RpMode& rp_mode);
+      const RpMode& rp_mode,
+      std::optional<FedCmUseOtherAccountResult> use_other_account_result,
+      std::optional<FedCmVerifyingDialogResult> verifying_dialog_result,
+      FedCmThirdPartyCookiesStatus tpc_status,
+      const FedCmRequesterFrameType& requester_frame_type);
 
   // Records whether user sign-in states between IDP and browser match.
   void RecordSignInStateMatchStatus(const GURL& provider,
@@ -412,13 +452,12 @@ class CONTENT_EXPORT FedCmMetrics {
   // disconnect fetch request was not sent, in which case we do not log the
   // metric. Because this is a separate API from a token request, a different
   // session ID is passed to this metric.
-  void RecordDisconnectMetrics(FedCmDisconnectStatus status,
-                               std::optional<base::TimeDelta> duration,
-                               const RenderFrameHost& rfh,
-                               const url::Origin& requester,
-                               const url::Origin& embedder,
-                               const GURL& provider_url,
-                               int disconnect_session_id);
+  void RecordDisconnectMetrics(
+      FedCmDisconnectStatus status,
+      std::optional<base::TimeDelta> duration,
+      const FedCmRequesterFrameType& requester_frame_type,
+      const GURL& provider_url,
+      int disconnect_session_id);
 
   // Records the status of opening the continue_on dialog.
   void RecordContinueOnPopupStatus(FedCmContinueOnPopupStatus status);
@@ -448,8 +487,18 @@ class CONTENT_EXPORT FedCmMetrics {
       const std::vector<GURL>& requested_providers);
 
   // Records the time from when a User Info API call, if any, most likely upon
-  // page load, to when the first Button Mode API is called afterwards, if any.
-  void RecordTimeBetweenUserInfoAndButtonModeAPI(base::TimeDelta duration);
+  // page load, to when the first Active Mode API is called afterwards, if any.
+  void RecordTimeBetweenUserInfoAndActiveModeAPI(base::TimeDelta duration);
+
+  // Records the number of accounts matching a given filter, when the FedCM call
+  // involved filtering out accounts with that filter. Filter must be one of
+  // "LoginHint", "DomainHint", and "AccountLabel".
+  void RecordNumMatchingAccounts(size_t accounts_remaining,
+                                 const std::string& filter_type);
+
+  // Records whether a FedCM API call gets rejected because other IdPs have
+  // already initiated an API call.
+  void RecordMultipleRequestsFromDifferentIdPs(bool has_collision);
 
   int session_id() { return session_id_; }
 
@@ -472,9 +521,9 @@ class CONTENT_EXPORT FedCmMetrics {
 // The following metric is recorded for UMA and UKM, but does not require an
 // existing FedCM call. Records metrics associated with a preventSilentAccess()
 // call from the given RenderFrameHost.
-void RecordPreventSilentAccess(RenderFrameHost& rfh,
-                               const url::Origin& requester,
-                               const url::Origin& embedder);
+void RecordPreventSilentAccess(
+    const FedCmRequesterFrameType& requester_frame_type,
+    int session_id);
 
 // The following are UMA-only recordings, hence do not need to be in the
 // FedCmMetrics class.
@@ -507,6 +556,9 @@ void RecordRawAccountsSize(int size);
 // Records the number of accounts received after applying login/domain hints
 // filter. If no account left, nothing will be recorded.
 void RecordReadyToShowAccountsSize(int size);
+
+// Records the count of identity providers in the request
+void RecordIdentityProvidersCount(int count);
 
 }  // namespace content
 

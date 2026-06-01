@@ -40,6 +40,8 @@ class QQuick3DViewport;
 class QQuick3DXrAnchorManager;
 class QQuick3DXrManager;
 class QQuick3DXrInputManager;
+class QQuick3DOpenXRThreadWorker;
+class QThread;
 
 class QQuick3DXrManagerPrivate
 {
@@ -97,6 +99,11 @@ private:
     bool initialize();
     void teardown();
 
+    void initWorkerThread();
+    void destroyWorkerThread();
+    void onFrameWaitCompleted(XrResult result, const XrFrameState &frameState);
+    void doRenderFrameAferWait(const XrFrameState &frameState);
+
     void destroySwapchain();
     void setErrorString(XrResult result, const char *callName);
     void checkXrExtensions(const char* layerName, int indent = 0);
@@ -111,7 +118,6 @@ private:
 
     void checkViewConfiguration();
     [[nodiscard]] bool checkXrResult(const XrResult &result);
-    bool resolveXrFunction(const char *name, PFN_xrVoidFunction *function);
     void checkEnvironmentBlendMode(XrViewConfigurationType type);
 
     void pollEvents(bool *exitRenderLoop, bool *requestRestart);
@@ -243,6 +249,10 @@ private:
 
     QAbstractOpenXRGraphics *m_graphics = nullptr;
 
+    bool m_waitingForFrame = false;
+    bool m_wantUpdate = false;
+    QQuick3DOpenXRThreadWorker *m_worker = nullptr;
+    QThread *m_workerThread = nullptr;
 };
 
 QT_END_NAMESPACE

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import './strings.m.js';
+import '/strings.m.js';
 
 import type {ClickInfo} from 'chrome://resources/js/browser_command.mojom-webui.js';
 import {Command} from 'chrome://resources/js/browser_command.mojom-webui.js';
@@ -11,7 +11,7 @@ import {EventTracker} from 'chrome://resources/js/event_tracker.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {isChromeOS} from 'chrome://resources/js/platform.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
-import type {JSTime, TimeDelta} from 'chrome://resources/mojo/mojo/public/mojom/base/time.mojom-webui.js';
+import type {TimeDelta} from 'chrome://resources/mojo/mojo/public/mojom/base/time.mojom-webui.js';
 import type {Url} from 'chrome://resources/mojo/url/mojom/url.mojom-webui.js';
 
 import {ModulePosition, ScrollDepth} from './whats_new.mojom-webui.js';
@@ -29,6 +29,11 @@ enum EventType {
   TIME_ON_PAGE_MS = 'time_on_page_ms',
   GENERAL_LINK_CLICK = 'general_link_click',
   MODULES_RENDERED = 'modules_rendered',
+  VIDEO_STARTED = 'video_started',
+  VIDEO_ENDED = 'video_ended',
+  PLAY_CLICKED = 'play_clicked',
+  PAUSE_CLICKED = 'pause_clicked',
+  RESTART_CLICKED = 'restart_clicked',
 }
 
 enum SectionType {
@@ -121,11 +126,47 @@ interface ModulesRenderedMetric {
   event: EventType.MODULES_RENDERED;
 }
 
+interface VideoStartedMetric {
+  event: EventType.VIDEO_STARTED;
+  module_name?: string;
+  section?: SectionType;
+  order?: '1'|'2'|'3'|'4'|'5'|'6';
+}
+
+interface VideoEndedMetric {
+  event: EventType.VIDEO_ENDED;
+  module_name?: string;
+  section?: SectionType;
+  order?: '1'|'2'|'3'|'4'|'5'|'6';
+}
+
+interface PlayClickedMetric {
+  event: EventType.PLAY_CLICKED;
+  module_name?: string;
+  section?: SectionType;
+  order?: '1'|'2'|'3'|'4'|'5'|'6';
+}
+
+interface PauseClickedMetric {
+  event: EventType.PAUSE_CLICKED;
+  module_name?: string;
+  section?: SectionType;
+  order?: '1'|'2'|'3'|'4'|'5'|'6';
+}
+
+interface RestartClickedMetric {
+  event: EventType.RESTART_CLICKED;
+  module_name?: string;
+  section?: SectionType;
+  order?: '1'|'2'|'3'|'4'|'5'|'6';
+}
+
 type PageLoadedMetric = VersionPageLoadedMetric|EditionPageLoadedMetric;
 type BrowserCommand = LegacyBrowserCommandData|BrowserCommandData;
 type MetricData = PageLoadedMetric|ModuleImpressionMetric|ExploreMoreOpenMetric|
     ExploreMoreCloseMetric|ScrollDepthMetric|TimeOnPageMetric|
-    GeneralLinkClickMetric|ModulesRenderedMetric;
+    GeneralLinkClickMetric|ModulesRenderedMetric|VideoStartedMetric|
+    VideoEndedMetric|PlayClickedMetric|PauseClickedMetric|RestartClickedMetric;
 
 interface EventData {
   data: BrowserCommand|MetricData;
@@ -163,7 +204,7 @@ function handleBrowserCommand(messageData: BrowserCommand) {
 
 function handlePageLoadMetric(data: PageLoadedMetric, isAutoOpen: boolean) {
   const {handler} = WhatsNewProxyImpl.getInstance();
-  const now: JSTime = {msec: Date.now()};
+  const now = new Date();
   handler.recordTimeToLoadContent(now);
 
   // Record initial scroll depth as 0%.
@@ -272,24 +313,46 @@ export function formatModuleName(moduleName: string) {
   return kebabCaseToCamelCase(withoutPrefix);
 }
 
-function handleModuleImpression(data: ModuleImpressionMetric) {
+function handleModuleEvent(data: ModuleImpressionMetric|GeneralLinkClickMetric|
+                           VideoStartedMetric|VideoEndedMetric|
+                           PlayClickedMetric|PauseClickedMetric|
+                           RestartClickedMetric) {
   // Reject falsy `module_name`, including empty strings.
   if (!data.module_name) {
     return;
   }
   const position = parseOrder(data.section, data.order);
   const {handler} = WhatsNewProxyImpl.getInstance();
-  handler.recordModuleImpression(formatModuleName(data.module_name), position);
-}
-
-function handleModuleLinkClicked(data: GeneralLinkClickMetric) {
-  // Reject falsy `module_name`, including empty strings.
-  if (!data.module_name) {
-    return;
+  switch (data.event) {
+    case EventType.MODULE_IMPRESSION:
+      handler.recordModuleImpression(
+          formatModuleName(data.module_name), position);
+      break;
+    case EventType.GENERAL_LINK_CLICK:
+      handler.recordModuleLinkClicked(
+          formatModuleName(data.module_name), position);
+      break;
+    case EventType.VIDEO_STARTED:
+      handler.recordModuleVideoStarted(
+          formatModuleName(data.module_name), position);
+      break;
+    case EventType.VIDEO_ENDED:
+      handler.recordModuleVideoEnded(
+          formatModuleName(data.module_name), position);
+      break;
+    case EventType.PLAY_CLICKED:
+      handler.recordModulePlayClicked(
+          formatModuleName(data.module_name), position);
+      break;
+    case EventType.PAUSE_CLICKED:
+      handler.recordModulePauseClicked(
+          formatModuleName(data.module_name), position);
+      break;
+    case EventType.RESTART_CLICKED:
+      handler.recordModuleRestartClicked(
+          formatModuleName(data.module_name), position);
+      break;
   }
-  const position = parseOrder(data.section, data.order);
-  const {handler} = WhatsNewProxyImpl.getInstance();
-  handler.recordModuleLinkClicked(formatModuleName(data.module_name), position);
 }
 
 function handleTimeOnPageMetric(data: TimeOnPageMetric) {
@@ -366,14 +429,9 @@ export class WhatsNewAppElement extends CrLitElement {
 
     const latest = this.isAutoOpen_ && !isChromeOS ? 'true' : 'false';
     url += url.includes('?') ? '&' : '?';
-    if (loadTimeData.getBoolean('isWhatsNewV2')) {
-      // The browser has auto-opened the page due to an upgrade.
-      // Let the embedded page know to display the "up to date" banner.
-      this.url_ = url.concat(`updated=${latest}`);
-    } else {
-      // The latest version of the page is being shown. Do not redirect.
-      this.url_ = url.concat(`latest=${latest}`);
-    }
+    // The browser has auto-opened the page due to an upgrade.
+    // Let the embedded page know to display the "up to date" banner.
+    this.url_ = url.concat(`updated=${latest}`);
 
     this.eventTracker_.add(
         window, 'message',
@@ -405,9 +463,6 @@ export class WhatsNewAppElement extends CrLitElement {
       case EventType.PAGE_LOADED:
         handlePageLoadMetric(data, this.isAutoOpen_);
         break;
-      case EventType.MODULE_IMPRESSION:
-        handleModuleImpression(data);
-        break;
       case EventType.MODULES_RENDERED:
         // Ignored.
         break;
@@ -423,8 +478,14 @@ export class WhatsNewAppElement extends CrLitElement {
       case EventType.TIME_ON_PAGE_MS:
         handleTimeOnPageMetric(data);
         break;
+      case EventType.MODULE_IMPRESSION:
       case EventType.GENERAL_LINK_CLICK:
-        handleModuleLinkClicked(data);
+      case EventType.VIDEO_STARTED:
+      case EventType.VIDEO_ENDED:
+      case EventType.PLAY_CLICKED:
+      case EventType.PAUSE_CLICKED:
+      case EventType.RESTART_CLICKED:
+        handleModuleEvent(data);
         break;
       default:
         console.warn('Unrecognized message.', data);

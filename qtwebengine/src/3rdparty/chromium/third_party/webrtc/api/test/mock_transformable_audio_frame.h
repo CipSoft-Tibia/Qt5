@@ -36,7 +36,7 @@ class MockTransformableAudioFrame : public TransformableAudioFrameInterface {
   MOCK_METHOD(rtc::ArrayView<const uint32_t>,
               GetContributingSources,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(const std::optional<uint16_t>,
               SequenceNumber,
               (),

@@ -1151,10 +1151,11 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
     if (pipelineCacheSave)
         flags |= QRhi::EnablePipelineCacheDataSave;
 
+    QRhiAdapter *rhiAdapter = customDevD->type == QQuickGraphicsDevicePrivate::Type::RhiAdapter ? customDevD->u.rhiAdapter : nullptr;
     const QRhi::Implementation backend = rhiBackend();
     if (backend == QRhi::Null) {
         QRhiNullInitParams rhiParams;
-        rhi = QRhi::create(backend, &rhiParams, flags);
+        rhi = QRhi::create(backend, &rhiParams, flags, nullptr, rhiAdapter);
     }
 #if QT_CONFIG(opengl)
     if (backend == QRhi::OpenGLES2) {
@@ -1169,7 +1170,7 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
             qCDebug(QSG_LOG_INFO, "Using existing QOpenGLContext %p", importDev.context);
             rhi = QRhi::create(backend, &rhiParams, flags, &importDev);
         } else {
-            rhi = QRhi::create(backend, &rhiParams, flags);
+            rhi = QRhi::create(backend, &rhiParams, flags, nullptr, rhiAdapter);
         }
     }
 #else
@@ -1204,7 +1205,7 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
             qCDebug(QSG_LOG_INFO, "Using existing native Vulkan physical device %p", importDev.physDev);
             rhi = QRhi::create(backend, &rhiParams, flags, &importDev);
         } else {
-            rhi = QRhi::create(backend, &rhiParams, flags);
+            rhi = QRhi::create(backend, &rhiParams, flags, nullptr, rhiAdapter);
         }
     }
 #else
@@ -1231,8 +1232,8 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
                     importDev.adapterLuidLow, importDev.adapterLuidHigh, importDev.featureLevel);
             rhi = QRhi::create(backend, &rhiParams, flags, &importDev);
         } else {
-            rhi = QRhi::create(backend, &rhiParams, flags);
-            if (!rhi && attemptReinitWithSwRastUponFail() && !flags.testFlag(QRhi::PreferSoftwareRenderer)) {
+            rhi = QRhi::create(backend, &rhiParams, flags, nullptr, rhiAdapter);
+            if (!rhi && attemptReinitWithSwRastUponFail() && !flags.testFlag(QRhi::PreferSoftwareRenderer) && !rhiAdapter) {
                 qCDebug(QSG_LOG_INFO, "Failed to create a D3D device with default settings; "
                                       "attempting to get a software rasterizer backed device instead");
                 flags |= QRhi::PreferSoftwareRenderer;
@@ -1256,8 +1257,9 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
                     importDev.adapterLuidLow, importDev.adapterLuidHigh, importDev.minimumFeatureLevel);
             rhi = QRhi::create(backend, &rhiParams, flags, &importDev);
         } else {
-            rhi = QRhi::create(backend, &rhiParams, flags);
-            if (!rhi && attemptReinitWithSwRastUponFail() && !flags.testFlag(QRhi::PreferSoftwareRenderer)) {
+            QRhiAdapter *rhiAdapter = customDevD->type == QQuickGraphicsDevicePrivate::Type::RhiAdapter ? customDevD->u.rhiAdapter : nullptr;
+            rhi = QRhi::create(backend, &rhiParams, flags, nullptr, rhiAdapter);
+            if (!rhi && attemptReinitWithSwRastUponFail() && !flags.testFlag(QRhi::PreferSoftwareRenderer) && !rhiAdapter) {
                 qCDebug(QSG_LOG_INFO, "Failed to create a D3D device with default settings; "
                                       "attempting to get a software rasterizer backed device instead");
                 flags |= QRhi::PreferSoftwareRenderer;
@@ -1277,7 +1279,7 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
                     importDev.dev, importDev.cmdQueue);
             rhi = QRhi::create(backend, &rhiParams, flags, &importDev);
         } else {
-            rhi = QRhi::create(backend, &rhiParams, flags);
+            rhi = QRhi::create(backend, &rhiParams, flags, nullptr, rhiAdapter);
         }
     }
 #endif

@@ -18,6 +18,7 @@ qt_internal_add_qml_module(GrpcQuick
         qtqmlgrpcstreamsender.h qtqmlgrpcstreamsender.cpp
     LIBRARIES
         Qt::Core
+        Qt::CorePrivate
         Qt::Grpc
     PUBLIC_LIBRARIES
         Qt::Quick

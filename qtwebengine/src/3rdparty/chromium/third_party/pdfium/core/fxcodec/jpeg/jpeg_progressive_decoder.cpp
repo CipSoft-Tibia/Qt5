@@ -24,32 +24,8 @@ class CJpegContext final : public ProgressiveDecoderIface::Context {
   CJpegContext();
   ~CJpegContext() override;
 
-  jmp_buf& GetJumpMark() { return m_Common.jmpbuf; }
-
   JpegCommon m_Common = {};
-  unsigned int m_SkipSize = 0;
 };
-
-extern "C" {
-
-static void error_fatal(j_common_ptr cinfo) {
-  auto* pContext = reinterpret_cast<CJpegContext*>(cinfo->client_data);
-  longjmp(pContext->m_Common.jmpbuf, -1);
-}
-
-static void src_skip_data(jpeg_decompress_struct* cinfo, long num) {
-  if (cinfo->src->bytes_in_buffer < static_cast<size_t>(num)) {
-    auto* pContext = reinterpret_cast<CJpegContext*>(cinfo->client_data);
-    pContext->m_SkipSize = (unsigned int)(num - cinfo->src->bytes_in_buffer);
-    cinfo->src->bytes_in_buffer = 0;
-  } else {
-    // SAFETY: required from library during callback.
-    UNSAFE_BUFFERS(cinfo->src->next_input_byte += num);
-    cinfo->src->bytes_in_buffer -= num;
-  }
-}
-
-}  // extern "C"
 
 static void JpegLoadAttribute(const jpeg_decompress_struct& info,
                               CFX_DIBAttribute* pAttribute) {
@@ -60,10 +36,10 @@ static void JpegLoadAttribute(const jpeg_decompress_struct& info,
 }
 
 CJpegContext::CJpegContext() {
-  m_Common.cinfo.client_data = this;
+  m_Common.cinfo.client_data = &m_Common;
   m_Common.cinfo.err = &m_Common.error_mgr;
 
-  m_Common.error_mgr.error_exit = error_fatal;
+  m_Common.error_mgr.error_exit = jpeg_common_error_fatal;
   m_Common.error_mgr.emit_message = jpeg_common_error_do_nothing_int;
   m_Common.error_mgr.output_message = jpeg_common_error_do_nothing;
   m_Common.error_mgr.format_message = jpeg_common_error_do_nothing_char;
@@ -71,7 +47,7 @@ CJpegContext::CJpegContext() {
 
   m_Common.source_mgr.init_source = jpeg_common_src_do_nothing;
   m_Common.source_mgr.term_source = jpeg_common_src_do_nothing;
-  m_Common.source_mgr.skip_input_data = src_skip_data;
+  m_Common.source_mgr.skip_input_data = jpeg_common_src_skip_data_or_record;
   m_Common.source_mgr.fill_input_buffer = jpeg_common_src_fill_buffer;
   m_Common.source_mgr.resync_to_restart = jpeg_common_src_resync;
 }
@@ -113,13 +89,8 @@ JpegProgressiveDecoder::Start() {
     return nullptr;
   }
   pContext->m_Common.cinfo.src = &pContext->m_Common.source_mgr;
-  pContext->m_SkipSize = 0;
+  pContext->m_Common.skip_size = 0;
   return pContext;
-}
-
-// static
-jmp_buf& JpegProgressiveDecoder::GetJumpMark(Context* pContext) {
-  return static_cast<CJpegContext*>(pContext)->GetJumpMark();
 }
 
 // static
@@ -131,32 +102,39 @@ int JpegProgressiveDecoder::ReadHeader(Context* pContext,
   DCHECK(pAttribute);
 
   auto* ctx = static_cast<CJpegContext*>(pContext);
-  int ret = jpeg_read_header(&ctx->m_Common.cinfo, TRUE);
-  if (ret == JPEG_SUSPENDED)
-    return 2;
-  if (ret != JPEG_HEADER_OK)
-    return 1;
-
+  int ret = jpeg_common_read_header(&ctx->m_Common, TRUE);
+  if (ret == -1) {
+    return kFatal;
+  }
+  if (ret == JPEG_SUSPENDED) {
+    return kNeedsMoreInput;
+  }
+  if (ret != JPEG_HEADER_OK) {
+    return kError;
+  }
   *width = ctx->m_Common.cinfo.image_width;
   *height = ctx->m_Common.cinfo.image_height;
   *nComps = ctx->m_Common.cinfo.num_components;
   JpegLoadAttribute(ctx->m_Common.cinfo, pAttribute);
-  return 0;
+  return kOk;
 }
 
 // static
 bool JpegProgressiveDecoder::StartScanline(Context* pContext) {
   auto* ctx = static_cast<CJpegContext*>(pContext);
   ctx->m_Common.cinfo.scale_denom = 1;
-  return !!jpeg_start_decompress(&ctx->m_Common.cinfo);
+  return !!jpeg_common_start_decompress(&ctx->m_Common);
 }
 
 // static
-bool JpegProgressiveDecoder::ReadScanline(Context* pContext,
-                                          unsigned char* dest_buf) {
+int JpegProgressiveDecoder::ReadScanline(Context* pContext,
+                                         unsigned char* dest_buf) {
   auto* ctx = static_cast<CJpegContext*>(pContext);
-  unsigned int nlines = jpeg_read_scanlines(&ctx->m_Common.cinfo, &dest_buf, 1);
-  return nlines == 1;
+  int nlines = jpeg_common_read_scanlines(&ctx->m_Common, &dest_buf, 1);
+  if (nlines == -1) {
+    return kFatal;
+  }
+  return nlines == 1 ? kOk : kError;
 }
 
 FX_FILESIZE JpegProgressiveDecoder::GetAvailInput(Context* pContext) const {
@@ -168,14 +146,14 @@ bool JpegProgressiveDecoder::Input(Context* pContext,
                                    RetainPtr<CFX_CodecMemory> codec_memory) {
   pdfium::span<uint8_t> src_buf = codec_memory->GetUnconsumedSpan();
   auto* ctx = static_cast<CJpegContext*>(pContext);
-  if (ctx->m_SkipSize) {
-    if (ctx->m_SkipSize > src_buf.size()) {
+  if (ctx->m_Common.skip_size) {
+    if (ctx->m_Common.skip_size > src_buf.size()) {
       ctx->m_Common.source_mgr.bytes_in_buffer = 0;
-      ctx->m_SkipSize -= src_buf.size();
+      ctx->m_Common.skip_size -= src_buf.size();
       return true;
     }
-    src_buf = src_buf.subspan(ctx->m_SkipSize);
-    ctx->m_SkipSize = 0;
+    src_buf = src_buf.subspan(ctx->m_Common.skip_size);
+    ctx->m_Common.skip_size = 0;
   }
   ctx->m_Common.source_mgr.next_input_byte = src_buf.data();
   ctx->m_Common.source_mgr.bytes_in_buffer = src_buf.size();

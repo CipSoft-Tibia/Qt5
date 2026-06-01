@@ -13,7 +13,7 @@ qt_internal_add_qml_module(LabsAnimation
         qqmlanimationglobal_p.h
     DEFINES
         QT_BUILD_LABSANIMATION_LIB
-    PUBLIC_LIBRARIES
+    LIBRARIES
         Qt::QmlPrivate
         Qt::QuickPrivate
     )

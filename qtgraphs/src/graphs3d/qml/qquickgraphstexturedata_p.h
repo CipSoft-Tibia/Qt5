@@ -14,7 +14,6 @@
 #ifndef QQUICKGRAPHSTEXTUREDATA_P_H
 #define QQUICKGRAPHSTEXTUREDATA_P_H
 #include <QLinearGradient>
-#include <QList>
 #include <QtQuick3D/qquick3dtexturedata.h>
 
 QT_BEGIN_NAMESPACE

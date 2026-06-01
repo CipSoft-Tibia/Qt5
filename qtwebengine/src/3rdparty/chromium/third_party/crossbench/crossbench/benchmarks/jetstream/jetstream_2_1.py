@@ -4,10 +4,11 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, Type
 
 from crossbench.benchmarks.jetstream.jetstream_2 import (JetStream2Benchmark,
                                                          JetStream2Probe,
+                                                         JetStream2ProbeContext,
                                                          JetStream2Story,
                                                          ProbeClsTupleT)
 
@@ -15,6 +16,13 @@ from crossbench.benchmarks.jetstream.jetstream_2 import (JetStream2Benchmark,
 class JetStream21Probe(JetStream2Probe):
   __doc__ = JetStream2Probe.__doc__
   NAME: str = "jetstream_2.1"
+
+  def get_context_cls(self) -> Type[JetStream21ProbeContext]:
+    return JetStream21ProbeContext
+
+
+class JetStream21ProbeContext(JetStream2ProbeContext):
+  pass
 
 
 class JetStream21Story(JetStream2Story):

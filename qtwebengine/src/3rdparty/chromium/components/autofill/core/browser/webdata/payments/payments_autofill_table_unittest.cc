@@ -18,12 +18,12 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/protobuf_matchers.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
 #include "base/uuid.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/autofill_test_utils.h"
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/data_model/autofill_offer_data.h"
 #include "components/autofill/core/browser/data_model/autofill_wallet_usage_data.h"
@@ -34,6 +34,7 @@
 #include "components/autofill/core/browser/data_model/payments_metadata.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/payments/payments_customer_data.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
 #include "components/autofill/core/browser/webdata/autofill_change.h"
 #include "components/autofill/core/common/autofill_constants.h"
 #include "components/autofill/core/common/autofill_features.h"
@@ -50,6 +51,7 @@
 #include "url/origin.h"
 
 using base::Time;
+using base::test::EqualsProto;
 using testing::ElementsAre;
 using testing::UnorderedElementsAre;
 
@@ -109,7 +111,7 @@ TEST_F(PaymentsAutofillTableTest, Iban) {
   Iban iban;
   std::string guid = base::Uuid::GenerateRandomV4().AsLowercaseString();
   iban.set_identifier(Iban::Guid(guid));
-  iban.SetRawInfo(IBAN_VALUE, std::u16string(test::kIbanValue16));
+  iban.set_value(std::u16string(test::kIbanValue16));
   iban.set_nickname(u"My doctor's IBAN");
 
   EXPECT_TRUE(table_->AddLocalIban(iban));
@@ -130,7 +132,7 @@ TEST_F(PaymentsAutofillTableTest, Iban) {
   Iban another_iban;
   std::string another_guid = base::Uuid::GenerateRandomV4().AsLowercaseString();
   another_iban.set_identifier(Iban::Guid(another_guid));
-  another_iban.SetRawInfo(IBAN_VALUE, u"DE91 1000 0000 0123 4567 89");
+  another_iban.set_value(u"DE91 1000 0000 0123 4567 89");
   another_iban.set_nickname(u"My brother's IBAN");
 
   EXPECT_TRUE(table_->AddLocalIban(another_iban));
@@ -148,7 +150,7 @@ TEST_F(PaymentsAutofillTableTest, Iban) {
   EXPECT_FALSE(s_target.Step());
 
   // Update the another_iban.
-  another_iban.SetRawInfo(IBAN_VALUE, u"GB98 MIDL 0700 9312 3456 78");
+  another_iban.set_value(u"GB98 MIDL 0700 9312 3456 78");
   another_iban.set_nickname(u"My teacher's IBAN");
   EXPECT_TRUE(table_->UpdateLocalIban(another_iban));
   db_iban = table_->GetLocalIban(another_iban.guid());
@@ -186,9 +188,9 @@ TEST_F(PaymentsAutofillTableTest, MaskedServerIban) {
   std::vector<PaymentsMetadata> outputs;
   ASSERT_TRUE(table_->GetServerIbansMetadata(outputs));
   ASSERT_FALSE(outputs.empty());
-  EXPECT_EQ(iban_0.use_date(), outputs[0].use_date);
-  EXPECT_EQ(iban_1.use_date(), outputs[1].use_date);
-  EXPECT_EQ(iban_2.use_date(), outputs[2].use_date);
+  EXPECT_EQ(iban_0.usage_history().use_date(), outputs[0].use_date);
+  EXPECT_EQ(iban_1.usage_history().use_date(), outputs[1].use_date);
+  EXPECT_EQ(iban_2.usage_history().use_date(), outputs[2].use_date);
 }
 
 // Test that masked IBANs can be added and loaded successfully without updating
@@ -506,8 +508,9 @@ TEST_F(PaymentsAutofillTableTest, ServerCvc) {
   const std::u16string kCvc = u"123";
   const ServerCvc kServerCvc{kInstrumentId, kCvc, kArbitraryTime};
   EXPECT_TRUE(table_->AddServerCvc(kServerCvc));
-  // Database does not allow adding same instrument_id twice.
-  EXPECT_FALSE(table_->AddServerCvc(kServerCvc));
+  // The database replaces the already existing entry with the same
+  // instrument_id.
+  EXPECT_TRUE(table_->AddServerCvc(kServerCvc));
   EXPECT_THAT(table_->GetAllServerCvcs(),
               UnorderedElementsAre(testing::Pointee(kServerCvc)));
 
@@ -705,8 +708,10 @@ TEST_F(PaymentsAutofillTableTest, UpdateCreditCardOriginOnly) {
 TEST_F(PaymentsAutofillTableTest, SetGetServerCards) {
   for (bool is_cvc_storage_flag_enabled : {true, false}) {
     base::test::ScopedFeatureList feature;
-    feature.InitWithFeatureState(features::kAutofillEnableCvcStorageAndFilling,
-                                 is_cvc_storage_flag_enabled);
+    feature.InitWithFeatureStates(
+        {{features::kAutofillEnableCvcStorageAndFilling,
+          is_cvc_storage_flag_enabled},
+         {features::kAutofillEnableCardInfoRuntimeRetrieval, true}});
 
     std::vector<CreditCard> inputs;
     inputs.emplace_back(CreditCard::RecordType::kMaskedServerCard, "a123");
@@ -723,6 +728,9 @@ TEST_F(PaymentsAutofillTableTest, SetGetServerCards) {
         CreditCard::VirtualCardEnrollmentType::kIssuer);
     inputs[0].set_product_description(u"Fake description");
     inputs[0].set_cvc(u"000");
+    inputs[0].set_card_info_retrieval_enrollment_state(
+        CreditCard::CardInfoRetrievalEnrollmentState::
+            kRetrievalUnenrolledAndNotEligible);
 
     inputs.emplace_back(CreditCard::RecordType::kMaskedServerCard, "b456");
     inputs[1].SetRawInfo(CREDIT_CARD_NAME_FULL, u"Rick Roman");
@@ -742,6 +750,8 @@ TEST_F(PaymentsAutofillTableTest, SetGetServerCards) {
     inputs[1].set_card_art_url(GURL("https://www.example.com"));
     inputs[1].set_product_terms_url(GURL("https://www.example_term.com"));
     inputs[1].set_cvc(u"111");
+    inputs[1].set_card_info_retrieval_enrollment_state(
+        CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalEnrolled);
 
     // The CVC modification dates are set to `now` during insertion.
     const time_t now = base::Time::Now().ToTimeT();
@@ -818,6 +828,63 @@ TEST_F(PaymentsAutofillTableTest, SetGetServerCards) {
   }
 }
 
+TEST_F(PaymentsAutofillTableTest, SetGetCardInfoEnrollmentState) {
+  base::test::ScopedFeatureList feature;
+  feature.InitAndEnableFeature(
+      features::kAutofillEnableCardInfoRuntimeRetrieval);
+  std::vector<CreditCard> inputs;
+  inputs.emplace_back(CreditCard::RecordType::kMaskedServerCard, "a123");
+  inputs[0].set_instrument_id(321);
+  inputs[0].set_card_info_retrieval_enrollment_state(
+      CreditCard::CardInfoRetrievalEnrollmentState::
+          kRetrievalUnenrolledAndNotEligible);
+
+  inputs.emplace_back(CreditCard::RecordType::kMaskedServerCard, "b456");
+  inputs[1].set_instrument_id(123);
+  inputs[1].set_card_info_retrieval_enrollment_state(
+      CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalEnrolled);
+
+  test::SetServerCreditCards(table_.get(), inputs);
+
+  std::vector<std::unique_ptr<CreditCard>> outputs;
+  ASSERT_TRUE(table_->GetServerCreditCards(outputs));
+  ASSERT_EQ(inputs.size(), outputs.size());
+
+  EXPECT_EQ(CreditCard::CardInfoRetrievalEnrollmentState::
+                kRetrievalUnenrolledAndNotEligible,
+            outputs[0]->card_info_retrieval_enrollment_state());
+  EXPECT_EQ(CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalEnrolled,
+            outputs[1]->card_info_retrieval_enrollment_state());
+}
+
+TEST_F(PaymentsAutofillTableTest, SetGetCardInfoEnrollmentStateWithFlagOff) {
+  base::test::ScopedFeatureList feature;
+  feature.InitAndDisableFeature(
+      features::kAutofillEnableCardInfoRuntimeRetrieval);
+  std::vector<CreditCard> inputs;
+  inputs.emplace_back(CreditCard::RecordType::kMaskedServerCard, "a123");
+  inputs[0].set_instrument_id(321);
+  inputs[0].set_card_info_retrieval_enrollment_state(
+      CreditCard::CardInfoRetrievalEnrollmentState::
+          kRetrievalUnenrolledAndNotEligible);
+
+  inputs.emplace_back(CreditCard::RecordType::kMaskedServerCard, "b456");
+  inputs[1].set_instrument_id(123);
+  inputs[1].set_card_info_retrieval_enrollment_state(
+      CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalEnrolled);
+
+  test::SetServerCreditCards(table_.get(), inputs);
+
+  std::vector<std::unique_ptr<CreditCard>> outputs;
+  ASSERT_TRUE(table_->GetServerCreditCards(outputs));
+  ASSERT_EQ(inputs.size(), outputs.size());
+
+  EXPECT_EQ(CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalUnspecified,
+            outputs[0]->card_info_retrieval_enrollment_state());
+  EXPECT_EQ(CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalUnspecified,
+            outputs[1]->card_info_retrieval_enrollment_state());
+}
+
 TEST_F(PaymentsAutofillTableTest, SetGetRemoveServerCardMetadata) {
   // Create and set the metadata.
   PaymentsMetadata input;
@@ -846,8 +913,8 @@ TEST_F(PaymentsAutofillTableTest, SetGetRemoveServerCardMetadata) {
 TEST_F(PaymentsAutofillTableTest, SetGetRemoveServerIbanMetadata) {
   Iban iban = test::GetServerIban();
   // Set the metadata.
-  iban.set_use_count(50);
-  iban.set_use_date(base::Time::Now());
+  iban.usage_history().set_use_count(50);
+  iban.usage_history().set_use_date(base::Time::Now());
   EXPECT_TRUE(table_->AddOrUpdateServerIbanMetadata(iban.GetMetadata()));
 
   // Make sure it was added correctly.
@@ -911,8 +978,8 @@ TEST_F(PaymentsAutofillTableTest, UpdateServerCardMetadataDoesNotChangeData) {
   EXPECT_EQ(inputs[0].server_id(), outputs[0]->server_id());
 
   // Update metadata in the profile.
-  ASSERT_NE(outputs[0]->use_count(), 51u);
-  outputs[0]->set_use_count(51);
+  ASSERT_NE(outputs[0]->usage_history().use_count(), 51u);
+  outputs[0]->usage_history().set_use_count(51);
 
   PaymentsMetadata input_metadata = outputs[0]->GetMetadata();
   EXPECT_TRUE(table_->UpdateServerCardMetadata(input_metadata));
@@ -941,7 +1008,8 @@ TEST_F(PaymentsAutofillTableTest, UpdateServerIbanMetadata) {
   EXPECT_EQ(inputs[0].instrument_id(), outputs[0]->instrument_id());
 
   // Update metadata in the IBAN.
-  outputs[0]->set_use_count(outputs[0]->use_count() + 1);
+  outputs[0]->usage_history().set_use_count(
+      outputs[0]->usage_history().use_count() + 1);
 
   EXPECT_TRUE(table_->AddOrUpdateServerIbanMetadata(outputs[0]->GetMetadata()));
 
@@ -983,6 +1051,9 @@ TEST_F(PaymentsAutofillTableTest, RemoveWrongServerCardMetadata) {
 
 TEST_F(PaymentsAutofillTableTest, SetServerCardsData) {
   // Set a card data.
+  base::test::ScopedFeatureList feature;
+  feature.InitAndEnableFeature(
+      features::kAutofillEnableCardInfoRuntimeRetrieval);
   std::vector<CreditCard> inputs;
   inputs.emplace_back(CreditCard::RecordType::kMaskedServerCard, "card1");
   inputs[0].SetRawInfo(CREDIT_CARD_NAME_FULL, u"Rick Roman");
@@ -1001,6 +1072,8 @@ TEST_F(PaymentsAutofillTableTest, SetServerCardsData) {
   inputs[0].set_card_art_url(GURL("https://www.example.com"));
   inputs[0].set_product_terms_url(GURL("https://www.example_term.com"));
   inputs[0].set_product_description(u"Fake description");
+  inputs[0].set_card_info_retrieval_enrollment_state(
+      CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalEnrolled);
 
   table_->SetServerCardsData(inputs);
 
@@ -1030,6 +1103,8 @@ TEST_F(PaymentsAutofillTableTest, SetServerCardsData) {
   EXPECT_EQ(GURL("https://www.example_term.com"),
             outputs[0]->product_terms_url());
   EXPECT_EQ(u"Fake description", outputs[0]->product_description());
+  EXPECT_EQ(CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalEnrolled,
+            outputs[0]->card_info_retrieval_enrollment_state());
 
   // Make sure no metadata was added.
   std::vector<PaymentsMetadata> metadata;
@@ -1127,24 +1202,24 @@ TEST_F(PaymentsAutofillTableTest, SetServerCardUpdateUsageStatsAndBillingAddress
   table_->GetServerCreditCards(outputs);
   ASSERT_EQ(1u, outputs.size());
   EXPECT_EQ(masked_card.server_id(), outputs[0]->server_id());
-  EXPECT_EQ(1U, outputs[0]->use_count());
-  EXPECT_NE(base::Time(), outputs[0]->use_date());
+  EXPECT_EQ(1U, outputs[0]->usage_history().use_count());
+  EXPECT_NE(base::Time(), outputs[0]->usage_history().use_date());
   // We don't track modification date for server cards. It should always be
   // base::Time().
-  EXPECT_EQ(base::Time(), outputs[0]->modification_date());
+  EXPECT_EQ(base::Time(), outputs[0]->usage_history().modification_date());
   outputs.clear();
 
   // Update the usage stats; make sure they're reflected in GetServerProfiles.
-  inputs.back().set_use_count(4U);
-  inputs.back().set_use_date(base::Time());
+  inputs.back().usage_history().set_use_count(4U);
+  inputs.back().usage_history().set_use_date(base::Time());
   inputs.back().set_billing_address_id("2");
   table_->UpdateServerCardMetadata(inputs.back());
   table_->GetServerCreditCards(outputs);
   ASSERT_EQ(1u, outputs.size());
   EXPECT_EQ(masked_card.server_id(), outputs[0]->server_id());
-  EXPECT_EQ(4U, outputs[0]->use_count());
-  EXPECT_EQ(base::Time(), outputs[0]->use_date());
-  EXPECT_EQ(base::Time(), outputs[0]->modification_date());
+  EXPECT_EQ(4U, outputs[0]->usage_history().use_count());
+  EXPECT_EQ(base::Time(), outputs[0]->usage_history().use_date());
+  EXPECT_EQ(base::Time(), outputs[0]->usage_history().modification_date());
   EXPECT_EQ("2", outputs[0]->billing_address_id());
   outputs.clear();
 
@@ -1153,9 +1228,9 @@ TEST_F(PaymentsAutofillTableTest, SetServerCardUpdateUsageStatsAndBillingAddress
   table_->GetServerCreditCards(outputs);
   ASSERT_EQ(1u, outputs.size());
   EXPECT_EQ(masked_card.server_id(), outputs[0]->server_id());
-  EXPECT_EQ(4U, outputs[0]->use_count());
-  EXPECT_EQ(base::Time(), outputs[0]->use_date());
-  EXPECT_EQ(base::Time(), outputs[0]->modification_date());
+  EXPECT_EQ(4U, outputs[0]->usage_history().use_count());
+  EXPECT_EQ(base::Time(), outputs[0]->usage_history().use_date());
+  EXPECT_EQ(base::Time(), outputs[0]->usage_history().modification_date());
   EXPECT_EQ("2", outputs[0]->billing_address_id());
   outputs.clear();
 
@@ -1170,9 +1245,9 @@ TEST_F(PaymentsAutofillTableTest, SetServerCardUpdateUsageStatsAndBillingAddress
   table_->GetServerCreditCards(outputs);
   ASSERT_EQ(1u, outputs.size());
   EXPECT_EQ(masked_card.server_id(), outputs[0]->server_id());
-  EXPECT_EQ(1U, outputs[0]->use_count());
-  EXPECT_NE(base::Time(), outputs[0]->use_date());
-  EXPECT_EQ(base::Time(), outputs[0]->modification_date());
+  EXPECT_EQ(1U, outputs[0]->usage_history().use_count());
+  EXPECT_NE(base::Time(), outputs[0]->usage_history().use_date());
+  EXPECT_EQ(base::Time(), outputs[0]->usage_history().modification_date());
   EXPECT_EQ("1", outputs[0]->billing_address_id());
   outputs.clear();
 }
@@ -1397,8 +1472,8 @@ TEST_F(PaymentsAutofillTableTest, SetAndGetVirtualCardUsageData) {
 
   for (const auto& data : virtual_card_usage_data) {
     // Find output data with corresponding data.
-    auto it = base::ranges::find(output_data, data.instrument_id(),
-                                 &VirtualCardUsageData::instrument_id);
+    auto it = std::ranges::find(output_data, data.instrument_id(),
+                                &VirtualCardUsageData::instrument_id);
 
     // Expect to find a usage data match in the vector.
     EXPECT_NE(it, output_data.end());
@@ -1567,7 +1642,7 @@ TEST_F(PaymentsAutofillTableTest, GetAllCreditCardBenefits) {
   EXPECT_EQ(input_benefits.size(), output_benefits.size());
   for (const auto& input_benefit : input_benefits) {
     // Find input benefits in outputs.
-    auto output_benefit_find_result = base::ranges::find(
+    auto output_benefit_find_result = std::ranges::find(
         output_benefits, get_benefit_id(input_benefit), get_benefit_id);
     EXPECT_NE(output_benefit_find_result, output_benefits.end());
     EXPECT_EQ(input_benefit, *output_benefit_find_result);
@@ -1722,6 +1797,45 @@ TEST_F(PaymentsAutofillTableTest,
 }
 
 TEST_F(PaymentsAutofillTableTest,
+       PaymentInstrument_StoresPaymentInstrumentWithEwalletAccount) {
+  // Add an eWallet payment instrument to the table.
+  sync_pb::PaymentInstrument payment_instrument =
+      test::CreatePaymentInstrumentWithEwalletAccount(1234);
+  std::vector<sync_pb::PaymentInstrument> payment_instruments{
+      payment_instrument};
+  table_->SetPaymentInstruments(payment_instruments);
+
+  // Retrieve the payment instruments.
+  std::vector<sync_pb::PaymentInstrument> payment_instruments_from_table;
+  table_->GetPaymentInstruments(payment_instruments_from_table);
+
+  // Check that the payment instruments are equal.
+  ASSERT_EQ(payment_instruments_from_table.size(), 1u);
+  EXPECT_EQ(payment_instrument.instrument_id(),
+            payment_instruments_from_table[0].instrument_id());
+  EXPECT_EQ(
+      payment_instrument.device_details().is_fido_enrolled(),
+      payment_instruments_from_table[0].device_details().is_fido_enrolled());
+  const sync_pb::EwalletDetails& table_ewallet =
+      payment_instruments_from_table[0].ewallet_details();
+  EXPECT_EQ(payment_instrument.ewallet_details().ewallet_name(),
+            table_ewallet.ewallet_name());
+  EXPECT_EQ(payment_instrument.ewallet_details().account_display_name(),
+            table_ewallet.account_display_name());
+  EXPECT_EQ(
+      payment_instrument.ewallet_details().supported_payment_link_uris().size(),
+      table_ewallet.supported_payment_link_uris().size());
+  for (int i = 0; i < payment_instrument.ewallet_details()
+                          .supported_payment_link_uris()
+                          .size();
+       ++i) {
+    EXPECT_EQ(
+        payment_instrument.ewallet_details().supported_payment_link_uris()[i],
+        table_ewallet.supported_payment_link_uris()[i]);
+  }
+}
+
+TEST_F(PaymentsAutofillTableTest,
        PaymentInstrument_StoresMultiplePaymentInstruments) {
   // Add multiple payment instruments with details to the table.
   sync_pb::PaymentInstrument bank_account_payment_instrument =
@@ -1781,6 +1895,80 @@ TEST_F(PaymentsAutofillTableTest,
       [&payment_instrument_2](sync_pb::PaymentInstrument& p) {
         return p.instrument_id() == payment_instrument_2.instrument_id();
       }));
+}
+
+// Test that multiple payment instrument creation options can be stored and
+// gotten. All payment instrument creation option types should be used in this
+// test.
+TEST_F(
+    PaymentsAutofillTableTest,
+    PaymentInstrumentCreationOption_StoresMultiplePaymentInstrumentCreationOptions) {
+  // Add multiple payment instrument creation options to the table.
+  // All payment instrument creation option types should be included at least
+  // once in the vector.
+  sync_pb::PaymentInstrumentCreationOption creation_option_1 =
+      test::CreatePaymentInstrumentCreationOptionWithBnplIssuer("1234");
+  sync_pb::PaymentInstrumentCreationOption creation_option_2 =
+      test::CreatePaymentInstrumentCreationOptionWithBnplIssuer("5678");
+  table_->SetPaymentInstrumentCreationOptions(
+      {creation_option_1, creation_option_2});
+
+  // Retrieve the payment instrument creation options.
+  std::vector<sync_pb::PaymentInstrumentCreationOption>
+      creation_options_from_table;
+  table_->GetPaymentInstrumentCreationOptions(creation_options_from_table);
+
+  // Check that both payment instrument creation options exist in the table.
+  EXPECT_THAT(creation_options_from_table,
+              UnorderedElementsAre(EqualsProto(creation_option_1),
+                                   EqualsProto(creation_option_2)));
+}
+
+// Test that when given a new vector of payment instrument creation options,
+// the previous entries are cleared and replaced with the new entries.
+TEST_F(
+    PaymentsAutofillTableTest,
+    PaymentInstrumentCreationOption_SetPaymentInstrumentCreationOptionsOverwritesExistingValues) {
+  // Add the first payment instrument creation option to the table.
+  std::vector<sync_pb::PaymentInstrumentCreationOption> creation_options{
+      test::CreatePaymentInstrumentCreationOptionWithBnplIssuer("1234")};
+  table_->SetPaymentInstrumentCreationOptions(creation_options);
+  // Overwrite the existing payment instrument with a new instrument.
+  sync_pb::PaymentInstrumentCreationOption new_creation_option =
+      test::CreatePaymentInstrumentCreationOptionWithBnplIssuer("5678");
+  creation_options[0] = new_creation_option;
+  table_->SetPaymentInstrumentCreationOptions(creation_options);
+
+  // Retrieve the payment instrument creation options.
+  std::vector<sync_pb::PaymentInstrumentCreationOption>
+      creation_options_from_table;
+  table_->GetPaymentInstrumentCreationOptions(creation_options_from_table);
+
+  // Check that only the new payment instrument creation option exists.
+  EXPECT_THAT(creation_options_from_table,
+              testing::UnorderedElementsAre(EqualsProto(new_creation_option)));
+}
+
+// Test that when an empty vector of payment instructment creation options is
+// set, the table is cleared instead of ignoring the empty vector.
+TEST_F(
+    PaymentsAutofillTableTest,
+    PaymentInstrumentCreationOption_SetEmptyPaymentInstrumentCreationOptionsOverwritesExistingValues) {
+  // Add an existing payment instrument creation option to the table.
+  sync_pb::PaymentInstrumentCreationOption creation_option =
+      test::CreatePaymentInstrumentCreationOptionWithBnplIssuer("1234");
+  table_->SetPaymentInstrumentCreationOptions({creation_option});
+
+  // Overwrite the existing payment instrument with an empty vector.
+  table_->SetPaymentInstrumentCreationOptions({});
+
+  // Retrieve the payment instrument creation options.
+  std::vector<sync_pb::PaymentInstrumentCreationOption>
+      creation_options_from_table;
+  table_->GetPaymentInstrumentCreationOptions(creation_options_from_table);
+
+  // Check that nothing is returned.
+  EXPECT_EQ(creation_options_from_table.size(), 0u);
 }
 
 }  // namespace

@@ -8,7 +8,6 @@
 #include <qaudiosink.h>
 #include <qurl.h>
 #include <qdebug.h>
-#include <qaudiodecoder.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -70,6 +69,9 @@ QVector3D QSpatialSound::position() const
 {
     Q_D(const QSpatialSound);
     auto *ep = QAudioEnginePrivate::get(d->engine);
+    if (!ep)
+        return {};
+
     return d->pos/ep->distanceScale;
 }
 
@@ -158,6 +160,8 @@ void QSpatialSoundPrivate::updateDistanceModel()
     if (!engine || sourceId < 0)
         return;
     auto *ep = QAudioEnginePrivate::get(engine);
+    if (!ep)
+        return;
 
     vraudio::DistanceRolloffModel dm = vraudio::kLogarithmic;
     switch (distanceModel) {
@@ -297,6 +301,9 @@ void QSpatialSound::setSize(float size)
 {
     Q_D(QSpatialSound);
     auto *ep = QAudioEnginePrivate::get(d->engine);
+    if (!ep)
+        return;
+
     size *= ep->distanceScale;
     if (d->size == size)
         return;
@@ -310,6 +317,9 @@ float QSpatialSound::size() const
 {
     Q_D(const QSpatialSound);
     auto *ep = QAudioEnginePrivate::get(d->engine);
+    if (!ep)
+        return .1f;
+
     return d->size/ep->distanceScale;
 }
 
@@ -324,6 +334,9 @@ void QSpatialSound::setDistanceCutoff(float cutoff)
 {
     Q_D(QSpatialSound);
     auto *ep = QAudioEnginePrivate::get(d->engine);
+    if (!ep)
+        return;
+
     cutoff *= ep->distanceScale;
     if (d->distanceCutoff == cutoff)
         return;
@@ -337,6 +350,9 @@ float QSpatialSound::distanceCutoff() const
 {
     Q_D(const QSpatialSound);
     auto *ep = QAudioEnginePrivate::get(d->engine);
+    if (!ep)
+        return 50.f;
+
     return d->distanceCutoff/ep->distanceScale;
 }
 
@@ -452,7 +468,7 @@ void QSpatialSound::setDirectivityOrder(float order)
     if (ep)
         ep->resonanceAudio->api->SetSoundObjectDirectivity(d->sourceId, d->directivity, d->directivityOrder);
 
-    emit directivityChanged();
+    emit directivityOrderChanged();
 }
 
 float QSpatialSound::directivityOrder() const
@@ -537,14 +553,14 @@ int QSpatialSound::loops() const
 {
     Q_D(const QSpatialSound);
 
-    return d->m_loops.loadRelaxed();
+    return d->m_loops.load(std::memory_order_relaxed);
 }
 
 void QSpatialSound::setLoops(int loops)
 {
     Q_D(QSpatialSound);
 
-    int oldLoops = d->m_loops.fetchAndStoreRelaxed(loops);
+    int oldLoops = d->m_loops.exchange(loops, std::memory_order_relaxed);
     if (oldLoops != loops)
         emit loopsChanged();
 }
@@ -561,13 +577,13 @@ bool QSpatialSound::autoPlay() const
 {
     Q_D(const QSpatialSound);
 
-    return d->m_autoPlay.loadRelaxed();
+    return d->m_autoPlay.load(std::memory_order_relaxed);
 }
 
 void QSpatialSound::setAutoPlay(bool autoPlay)
 {
     Q_D(QSpatialSound);
-    bool old = d->m_autoPlay.fetchAndStoreRelaxed(autoPlay);
+    bool old = d->m_autoPlay.exchange(autoPlay, std::memory_order_relaxed);
     if (old != autoPlay)
         emit autoPlayChanged();
 }

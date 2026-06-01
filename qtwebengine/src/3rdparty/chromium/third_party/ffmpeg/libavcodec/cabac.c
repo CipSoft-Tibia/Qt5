@@ -29,7 +29,17 @@
 
 #include "cabac.h"
 
-DECLARE_ASM_ALIGNED(1, const uint8_t, ff_h264_cabac_tables)[512 + 4*2*64 + 4*64 + 63] = {
+#if !defined(_MSC_VER) || defined(__clang__)
+#define DECLARE_ASM_ALIGNED_AND_USED(alignment, type, name) \
+    type __attribute__((aligned (alignment)))               \
+         __attribute__((used))                              \
+         name
+#else
+#define DECLARE_ASM_ALIGNED_AND_USED(alignment, type, name) \
+    DECLARE_ASM_ALIGNED(alignment, type, name)
+#endif
+
+DECLARE_ASM_ALIGNED_AND_USED(1, const uint8_t, ff_h264_cabac_tables)[512 + 4*2*64 + 4*64 + 63] = {
     9,8,7,7,6,6,6,6,5,5,5,5,5,5,5,5,
     4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
     3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,

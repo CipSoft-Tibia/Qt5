@@ -69,5 +69,5 @@
     Furthermore, Qt Sensors in Qt \QtVersion may contain third-party
     modules under following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtsensors}
+    \annotatedlist attributions-qtsensors
 */

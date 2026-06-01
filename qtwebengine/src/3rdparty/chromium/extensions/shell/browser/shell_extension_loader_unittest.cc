@@ -189,7 +189,7 @@ TEST_F(ShellExtensionLoaderTest, LoadAfterReloadFailure) {
   const ExtensionId extension_id =
       crx_file::id_util::GenerateIdForPath(extension_path);
   ExtensionPrefs::Get(browser_context())
-      ->SetExtensionDisabled(extension_id, disable_reason::DISABLE_RELOAD);
+      ->SetExtensionDisabled(extension_id, {disable_reason::DISABLE_RELOAD});
 
   ShellExtensionLoader loader(browser_context());
   const Extension* extension = loader.LoadExtension(extension_path);
@@ -203,9 +203,9 @@ TEST_F(ShellExtensionLoaderTest, LoadDisabledExtension) {
   const ExtensionId extension_id =
       crx_file::id_util::GenerateIdForPath(extension_path);
   ExtensionPrefs::Get(browser_context())
-      ->SetExtensionDisabled(
-          extension_id,
-          disable_reason::DISABLE_RELOAD | disable_reason::DISABLE_USER_ACTION);
+      ->SetExtensionDisabled(extension_id,
+                             {disable_reason::DISABLE_RELOAD,
+                              disable_reason::DISABLE_USER_ACTION});
 
   ShellExtensionLoader loader(browser_context());
   const Extension* extension = loader.LoadExtension(extension_path);
@@ -315,7 +315,7 @@ TEST_F(ShellExtensionLoaderTestAura, AppLaunchAndReload) {
 }
 
 // Tests failing to reload an app.
-// TODO(crbug.com/40742257): Flaky on Linux, Lacros, ChromeOS, and similar.
+// TODO(crbug.com/40742257): Flaky on Linux, ChromeOS, and similar.
 TEST_F(ShellExtensionLoaderTestAura, DISABLED_ReloadFailure) {
   ShellExtensionLoader loader(browser_context());
   ExtensionId extension_id;

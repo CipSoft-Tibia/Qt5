@@ -13,6 +13,8 @@
 #include <optional>
 
 #include "include/codec/SkCodec.h"
+#include "include/codec/SkEncodedOrigin.h"
+#include "include/core/SkImageInfo.h"
 #include "include/core/SkRefCnt.h"
 #include "include/private/SkEncodedInfo.h"
 #include "include/private/base/SkDebug.h"
@@ -23,7 +25,6 @@ class SkSampler;
 class SkStream;
 class SkSwizzler;
 enum class SkEncodedImageFormat;
-struct SkImageInfo;
 template <typename T> class SkSpan;
 
 // This class implements functionality shared between `SkPngCodec` and
@@ -35,10 +36,14 @@ public:
     static bool isCompatibleColorProfileAndType(const SkEncodedInfo::ICCProfile* profile,
                                                 SkEncodedInfo::Color color);
 protected:
-    SkPngCodecBase(SkEncodedInfo&&, std::unique_ptr<SkStream>);
+    SkPngCodecBase(SkEncodedInfo&&, std::unique_ptr<SkStream>, SkEncodedOrigin origin);
 
     // Initialize most fields needed by `applyXformRow`.
-    Result initializeXforms(const SkImageInfo& dstInfo, const Options& options);
+    //
+    // Each call to `applyXformRow` will transform `frameWidth` pixels
+    // (which may be less than `dstInfo.width()` when decoding frames that
+    // depend on earlier frames).
+    Result initializeXforms(const SkImageInfo& dstInfo, const Options& options, int frameWidth);
 
     // Initialize other fields needed by `applyXformRow`.
     //
@@ -46,14 +51,17 @@ protected:
     void initializeXformParams();
 
     // Transforms a decoded row into the `dstInfo` format that was earlier
-    // passes to `initializeXforms`.
+    // passed to `initializeXforms`.
+    //
+    // The first bytes/pixels of `srcRow` will be transformed into the first
+    // bytes/pixels of `dstRow`.  In other words, the transformation ignores
+    // `fcTL.x_offset` field - the caller should offset `dstRow` if desired
+    // (it may not be desirable when working with interlaced rows which are
+    // first transformed into an intermediate buffer).
     void applyXformRow(SkSpan<uint8_t> dstRow, SkSpan<const uint8_t> srcRow);
     void applyXformRow(void* dstRow, const uint8_t* srcRow);
 
-    // Gets the size of a decoded row in bytes - size of a row described by
-    // `getEncodedInfo` and minimal size of `src` taken by `applyXformRow`.
-    size_t getEncodedInfoRowSize();
-
+    size_t getEncodedRowBytes() const { return fEncodedRowBytes; }
     const SkSwizzler* swizzler() const { return fSwizzler.get(); }
 
     struct PaletteColorEntry {
@@ -70,9 +78,10 @@ private:
     SkSampler* getSampler(bool createIfNecessary) final;
 
     void allocateStorage(const SkImageInfo& dstInfo);
-    void initializeSwizzler(const SkImageInfo& dstInfo,
-                            const Options& options,
-                            bool skipFormatConversion);
+    Result initializeSwizzler(const SkImageInfo& dstInfo,
+                              const Options& options,
+                              bool skipFormatConversion,
+                              int frameWidth);
     bool createColorTable(const SkImageInfo& dstInfo);
 
     enum XformMode {
@@ -90,11 +99,14 @@ private:
     std::unique_ptr<SkSwizzler> fSwizzler;
     skia_private::AutoTMalloc<uint8_t> fStorage;
     int fXformWidth = -1;
-    sk_sp<SkColorPalette> fColorTable;  // May be unpremul.
+    sk_sp<SkColorPalette> fColorTable;
 
+    size_t fEncodedRowBytes = 0;  // Size of encoded/source row in bytes.
 #if defined(SK_DEBUG)
-    size_t fDstMinRowBytes = 0;  // Size of destination row in bytes.
+    size_t fDstRowBytes = 0;      // Size of destination row in bytes.
 #endif
+
+    std::optional<SkImageInfo> fDstInfoOfPreviousColorTableCreation;
 };
 
 #endif  // SkPngCodecBase_DEFINED

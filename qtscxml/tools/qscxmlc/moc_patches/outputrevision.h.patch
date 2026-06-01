@@ -1,5 +1,5 @@
 --- .upstream/outputrevision.h	2024-11-15 07:24:09.762842614 +0100
-+++ outputrevision.h	2024-11-29 14:25:52.887280117 +0100
++++ outputrevision.h	2025-08-05 11:30:27.598092358 +0200
 @@ -4,7 +4,13 @@
  #ifndef OUTPUTREVISION_H
  #define OUTPUTREVISION_H

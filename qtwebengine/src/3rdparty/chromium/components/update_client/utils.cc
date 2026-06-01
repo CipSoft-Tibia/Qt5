@@ -2,10 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "components/update_client/utils.h"
 
 #include <stddef.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -20,7 +26,6 @@
 #include "base/functional/callback.h"
 #include "base/json/json_file_value_serializer.h"
 #include "base/path_service.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/system/sys_info.h"
@@ -29,7 +34,6 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "components/crx_file/id_util.h"
-#include "components/update_client/component.h"
 #include "components/update_client/configurator.h"
 #include "components/update_client/network.h"
 #include "components/update_client/update_client.h"
@@ -92,11 +96,11 @@ bool VerifyFileHash256(const base::FilePath& filepath,
   std::unique_ptr<crypto::SecureHash> hasher(
       crypto::SecureHash::Create(crypto::SecureHash::SHA256));
 
-  int64_t file_size = 0;
-  if (!base::GetFileSize(filepath, &file_size)) {
+  std::optional<int64_t> file_size = base::GetFileSize(filepath);
+  if (!file_size.has_value()) {
     return false;
   }
-  if (file_size > 0) {
+  if (file_size.value() > 0) {
     base::MemoryMappedFile mmfile;
     if (!mmfile.Initialize(filepath)) {
       return false;
@@ -104,7 +108,7 @@ bool VerifyFileHash256(const base::FilePath& filepath,
     hasher->Update(mmfile.data(), mmfile.length());
   }
 
-  uint8_t actual_hash[crypto::kSHA256Length] = {0};
+  uint8_t actual_hash[crypto::kSHA256Length] = {};
   hasher->Finish(actual_hash, sizeof(actual_hash));
 
   return memcmp(actual_hash, &expected_hash[0], sizeof(actual_hash)) == 0;
@@ -114,7 +118,7 @@ bool IsValidBrand(const std::string& brand) {
   const size_t kMaxBrandSize = 4;
   return brand.empty() ||
          (brand.size() == kMaxBrandSize &&
-          base::ranges::all_of(brand, &base::IsAsciiAlpha<char>));
+          std::ranges::all_of(brand, &base::IsAsciiAlpha<char>));
 }
 
 // Helper function.
@@ -125,7 +129,7 @@ bool IsValidInstallerAttributePart(const std::string& part,
                                    size_t min_length,
                                    size_t max_length) {
   return part.size() >= min_length && part.size() <= max_length &&
-         base::ranges::all_of(part, [&special_chars](char ch) {
+         std::ranges::all_of(part, [&special_chars](char ch) {
            return base::IsAsciiAlpha(ch) || base::IsAsciiDigit(ch) ||
                   base::Contains(special_chars, ch);
          });
@@ -192,10 +196,9 @@ bool RetryDeletePathRecursively(const base::FilePath& path) {
       /*seconds_between_tries=*/base::Seconds(1));
 }
 
-bool RetryDeletePathRecursivelyCustom(
-    const base::FilePath& path,
-    size_t tries,
-    const base::TimeDelta& seconds_between_tries) {
+bool RetryDeletePathRecursivelyCustom(const base::FilePath& path,
+                                      size_t tries,
+                                      base::TimeDelta seconds_between_tries) {
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
                                                 base::BlockingType::WILL_BLOCK);
   for (size_t i = 0;;) {

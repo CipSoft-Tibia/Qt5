@@ -34,10 +34,23 @@ set(__qt_chainload_toolchain_file \"\${__qt_initially_configured_toolchain_file}
         set(init_vcpkg "")
     endif()
 
-    if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND CMAKE_SYSTEM_VERSION STREQUAL "10")
-        list(APPEND init_platform "set(CMAKE_SYSTEM_NAME Windows CACHE STRING \"\")")
-        list(APPEND init_platform "set(CMAKE_SYSTEM_VERSION 10 CACHE STRING \"\")")
-        list(APPEND init_platform "set(CMAKE_SYSTEM_PROCESSOR arm64 CACHE STRING \"\")")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_CROSSCOMPILING)
+        list(APPEND init_platform
+            "string(TOUPPER \"${CMAKE_SYSTEM_PROCESSOR}\" _qt_orig_target_system_processor_upper)"
+            "string(TOUPPER \"\${CMAKE_HOST_SYSTEM_PROCESSOR}\" _qt_host_system_processor_upper)"
+            "if(NOT _qt_orig_target_system_processor_upper STREQUAL _qt_host_system_processor_upper"
+            "    OR NOT CMAKE_HOST_SYSTEM_VERSION MATCHES \"^${CMAKE_SYSTEM_VERSION}(\\\\..+|$)\""
+            "    OR QT_FORCE_CROSSCOMPILING)"
+            ""
+            "    set(CMAKE_SYSTEM_NAME \"${CMAKE_SYSTEM_NAME}\" CACHE STRING \"\")"
+            "    set(CMAKE_SYSTEM_VERSION \"${CMAKE_SYSTEM_VERSION}\" CACHE STRING \"\")"
+            "    set(CMAKE_SYSTEM_PROCESSOR \"${CMAKE_SYSTEM_PROCESSOR}\" CACHE STRING \"\")"
+            "else()"
+            "   set(QT_REQUIRE_HOST_PATH_CHECK FALSE)"
+            "endif()"
+            "unset(_qt_host_system_processor_upper)"
+            "unset(_qt_orig_host_system_processor_upper)"
+        )
     endif()
 
     if(QT_QMAKE_TARGET_MKSPEC)
@@ -170,6 +183,7 @@ endif()")
         list(LENGTH CMAKE_OSX_ARCHITECTURES _qt_osx_architectures_count)
         if(cmake_sysroot_name AND (MACOS OR (UIKIT AND NOT _qt_osx_architectures_count GREATER 1)))
             list(APPEND init_platform "
+set(__qt_initial_apple_sdk \"${QT_APPLE_SDK}\")
 if(NOT DEFINED CMAKE_OSX_SYSROOT)
     set(CMAKE_OSX_SYSROOT \"${cmake_sysroot_name}\" CACHE STRING \"\")
 endif()")
@@ -241,7 +255,8 @@ endif()")
             qt_internal_get_first_osx_arch(osx_first_arch)
             list(APPEND init_platform
 "if((NOT CMAKE_GENERATOR STREQUAL \"Xcode\" AND NOT __qt_toolchain_building_qt_repo)
-    OR (CMAKE_GENERATOR STREQUAL \"Xcode\" AND __qt_apple_sdk AND NOT QT_NO_SET_OSX_ARCHITECTURES))")
+    OR (CMAKE_GENERATOR STREQUAL \"Xcode\" AND __qt_initial_apple_sdk
+        AND NOT QT_NO_SET_OSX_ARCHITECTURES))")
             list(APPEND init_platform
                 "    set(CMAKE_OSX_ARCHITECTURES \"${osx_first_arch}\" CACHE STRING \"\")")
             list(APPEND init_platform "endif()")
@@ -296,6 +311,13 @@ endif()")
             "            \"Please specify the toolchain file with -DQT_CHAINLOAD_TOOLCHAIN_FILE=<file>.\")")
         list(APPEND init_platform "    endif()")
         list(APPEND init_platform "endif()")
+
+        qt_internal_get_android_cmake_policy_version_minimum_assignment(
+            android_cmake_policy_version_minimum TYPE TOOLCHAIN_FILE_ASSIGNMENT)
+        if(android_cmake_policy_version_minimum)
+            list(APPEND init_platform "${android_cmake_policy_version_minimum}")
+        endif()
+
     elseif(EMSCRIPTEN)
         list(APPEND init_platform
 "include(\${CMAKE_CURRENT_LIST_DIR}/QtPublicWasmToolchainHelpers.cmake)

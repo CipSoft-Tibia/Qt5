@@ -14,6 +14,9 @@ Window {
             text: qsTr(`templated literal without arguments is allowed`)
         }
         Text {
+            text: `${qsTr("translate command inside templated literal is allowed")}`
+        }
+        Text {
             text: qsTr(`templated literal with arguments is not allowed ${root.width}, ${root.height}`)
         }
     }

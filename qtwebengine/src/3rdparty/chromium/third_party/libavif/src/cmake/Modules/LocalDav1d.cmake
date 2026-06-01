@@ -1,4 +1,4 @@
-set(AVIF_LOCAL_DAV1D_TAG "1.4.3")
+set(AVIF_DAV1D_TAG "1.5.1")
 
 function(avif_build_local_dav1d)
     set(download_step_args)
@@ -8,12 +8,11 @@ function(avif_build_local_dav1d)
     else()
         message(STATUS "libavif(AVIF_CODEC_DAV1D=LOCAL): ext/dav1d not found, fetching")
         set(source_dir "${FETCHCONTENT_BASE_DIR}/dav1d-src")
-        list(APPEND download_step_args GIT_REPOSITORY https://code.videolan.org/videolan/dav1d.git GIT_TAG
-             ${AVIF_LOCAL_DAV1D_TAG} GIT_SHALLOW ON
+        list(APPEND download_step_args GIT_REPOSITORY https://code.videolan.org/videolan/dav1d.git GIT_TAG ${AVIF_DAV1D_TAG}
+             GIT_SHALLOW ON
         )
     endif()
 
-    find_program(NINJA_EXECUTABLE NAMES ninja ninja-build REQUIRED)
     find_program(MESON_EXECUTABLE meson REQUIRED)
 
     set(PATH $ENV{PATH})
@@ -90,8 +89,8 @@ function(avif_build_local_dav1d)
             ${CMAKE_COMMAND} -E env "PATH=${PATH}" ${MESON_EXECUTABLE} setup --buildtype=release --default-library=static
             --prefix=<INSTALL_DIR> --libdir=lib -Denable_asm=true -Denable_tools=false -Denable_examples=false
             -Denable_tests=false ${EXTRA_ARGS} <SOURCE_DIR>
-        BUILD_COMMAND ${CMAKE_COMMAND} -E env "PATH=${PATH}" ${NINJA_EXECUTABLE} -C <BINARY_DIR>
-        INSTALL_COMMAND ${CMAKE_COMMAND} -E env "PATH=${PATH}" ${NINJA_EXECUTABLE} -C <BINARY_DIR> install
+        BUILD_COMMAND ${CMAKE_COMMAND} -E env "PATH=${PATH}" ${MESON_EXECUTABLE} compile -C <BINARY_DIR>
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E env "PATH=${PATH}" ${MESON_EXECUTABLE} install -C <BINARY_DIR>
         BUILD_BYPRODUCTS <INSTALL_DIR>/lib/libdav1d.a
     )
 

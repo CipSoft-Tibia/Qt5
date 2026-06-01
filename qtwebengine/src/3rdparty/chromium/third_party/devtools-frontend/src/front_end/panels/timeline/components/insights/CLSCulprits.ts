@@ -2,128 +2,173 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import type * as TraceEngine from '../../../../models/trace/trace.js';
-import * as LitHtml from '../../../../ui/lit-html/lit-html.js';
+import * as i18n from '../../../../core/i18n/i18n.js';
+import type {CLSCulpritsInsightModel} from '../../../../models/trace/insights/CLSCulprits.js';
+import * as Trace from '../../../../models/trace/trace.js';
+import * as Lit from '../../../../ui/lit/lit.js';
 import type * as Overlays from '../../overlays/overlays.js';
 
-import {BaseInsight, shouldRenderForCategory} from './Helpers.js';
-import * as SidebarInsight from './SidebarInsight.js';
-import {InsightsCategories} from './types.js';
+import {BaseInsightComponent} from './BaseInsightComponent.js';
+import {EventReferenceClick} from './EventRef.js';
 
-export function getCLSInsight(insights: TraceEngine.Insights.Types.TraceInsightData|null, navigationId: string|null):
-    TraceEngine.Insights.Types.InsightResults['CumulativeLayoutShift']|null {
-  if (!insights || !navigationId) {
-    return null;
-  }
+const {html} = Lit;
 
-  const insightsByNavigation = insights.get(navigationId);
-  if (!insightsByNavigation) {
-    return null;
-  }
+const UIStrings = {
+  /**
+   *@description Text indicating the worst layout shift cluster.
+   */
+  worstLayoutShiftCluster: 'Worst layout shift cluster',
+  /**
+   * @description Text indicating the worst layout shift cluster.
+   */
+  worstCluster: 'Worst cluster',
+  /**
+   * @description Text indicating a layout shift cluster and its start time.
+   * @example {32 ms} PH1
+   */
+  layoutShiftCluster: 'Layout shift cluster @ {PH1}',
+  /**
+   *@description Text indicating the biggest reasons for the layout shifts.
+   */
+  topCulprits: 'Top layout shift culprits',
+  /**
+   * @description Text for a culprit type of Injected iframe.
+   */
+  injectedIframe: 'Injected iframe',
+  /**
+   * @description Text for a culprit type of Font request.
+   */
+  fontRequest: 'Font request',
+  /**
+   * @description Text for a culprit type of Animation.
+   */
+  animation: 'Animation',
+  /**
+   * @description Text for a culprit type of Unsized images.
+   */
+  unsizedImages: 'Unsized Images',
+  /**
+   * @description Text status when there were no layout shifts detected.
+   */
+  noLayoutShifts: 'No layout shifts',
+  /**
+   * @description Text status when there no layout shifts culprits/root causes were found.
+   */
+  noCulprits: 'Could not detect any layout shift culprits',
+};
+const str_ = i18n.i18n.registerUIStrings('panels/timeline/components/insights/CLSCulprits.ts', UIStrings);
+const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
-  const clsInsight = insightsByNavigation.CumulativeLayoutShift;
-  if (clsInsight instanceof Error) {
-    return null;
-  }
-  return clsInsight;
-}
-
-export class CLSCulprits extends BaseInsight {
-  static readonly litTagName = LitHtml.literal`devtools-performance-cls-culprits`;
-  override insightCategory: InsightsCategories = InsightsCategories.CLS;
+export class CLSCulprits extends BaseInsightComponent<CLSCulpritsInsightModel> {
+  static override readonly litTagName = Lit.StaticHtml.literal`devtools-performance-cls-culprits`;
   override internalName: string = 'cls-culprits';
-  override userVisibleTitle: string = 'Layout shift culprits';
 
   override createOverlays(): Overlays.Overlays.TimelineOverlay[] {
-    // TODO: create overlays
-    return [];
+    const clustersByScore =
+        this.model?.clusters.toSorted((a, b) => b.clusterCumulativeScore - a.clusterCumulativeScore) ?? [];
+    const worstCluster = clustersByScore[0];
+    if (!worstCluster) {
+      return [];
+    }
+
+    const range = Trace.Types.Timing.Micro(worstCluster.dur ?? 0);
+    const max = Trace.Types.Timing.Micro(worstCluster.ts + range);
+
+    const label = html`<div>${i18nString(UIStrings.worstLayoutShiftCluster)}</div>`;
+    return [{
+      type: 'TIMESPAN_BREAKDOWN',
+      sections: [
+        {bounds: {min: worstCluster.ts, range, max}, label, showDuration: false},
+      ],
+      // This allows for the overlay to sit over the layout shift.
+      entry: worstCluster.events[0],
+      renderLocation: 'ABOVE_EVENT',
+    }];
   }
 
   /**
-   * getTopCulprits gets the top 3 shift root causes based on clusters.
+   * getTopCulprits gets the top 3 shift root causes based on worst cluster.
    */
   getTopCulprits(
-      clusters: TraceEngine.Types.TraceEvents.SyntheticLayoutShiftCluster[],
+      cluster: Trace.Types.Events.SyntheticLayoutShiftCluster,
       culpritsByShift:
-          Map<TraceEngine.Types.TraceEvents.TraceEventLayoutShift,
-              TraceEngine.Insights.InsightRunners.CumulativeLayoutShift.LayoutShiftRootCausesData>|
-      undefined): string[] {
-    if (!culpritsByShift) {
-      return [];
-    }
+          Map<Trace.Types.Events.SyntheticLayoutShift, Trace.Insights.Models.CLSCulprits.LayoutShiftRootCausesData>):
+      string[] {
     const MAX_TOP_CULPRITS = 3;
     const causes: Array<string> = [];
-    for (const cluster of clusters) {
+    if (causes.length === MAX_TOP_CULPRITS) {
+      return causes;
+    }
+    const shifts = cluster.events;
+    for (const shift of shifts) {
       if (causes.length === MAX_TOP_CULPRITS) {
         break;
       }
-      const shifts = cluster.events;
-      for (const shift of shifts) {
-        if (causes.length === MAX_TOP_CULPRITS) {
-          break;
-        }
 
-        const culprits = culpritsByShift.get(shift);
-        if (!culprits) {
-          continue;
-        }
-        const fontReq = culprits.fontRequests;
-        const iframes = culprits.iframeIds;
+      const culprits = culpritsByShift.get(shift);
+      if (!culprits) {
+        continue;
+      }
+      const fontReq = culprits.fontRequests;
+      const iframes = culprits.iframeIds;
+      const animations = culprits.nonCompositedAnimations;
+      const unsizedImages = culprits.unsizedImages;
 
-        for (let i = 0; i < fontReq.length && causes.length < MAX_TOP_CULPRITS; i++) {
-          causes.push('Font request');
-        }
-        for (let i = 0; i < iframes.length && causes.length < MAX_TOP_CULPRITS; i++) {
-          causes.push('Injected iframe');
-        }
+      for (let i = 0; i < fontReq.length && causes.length < MAX_TOP_CULPRITS; i++) {
+        causes.push(i18nString(UIStrings.fontRequest));
+      }
+      for (let i = 0; i < iframes.length && causes.length < MAX_TOP_CULPRITS; i++) {
+        causes.push(i18nString(UIStrings.injectedIframe));
+      }
+      for (let i = 0; i < animations.length && causes.length < MAX_TOP_CULPRITS; i++) {
+        causes.push(i18nString(UIStrings.animation));
+      }
+      for (let i = 0; i < unsizedImages.length && causes.length < MAX_TOP_CULPRITS; i++) {
+        causes.push(i18nString(UIStrings.unsizedImages));
       }
     }
     return causes.slice(0, MAX_TOP_CULPRITS);
   }
 
-  #render(culprits: Array<string>): LitHtml.TemplateResult {
-    // clang-format off
-    return LitHtml.html`
-        <div class="insights">
-            <${SidebarInsight.SidebarInsight.litTagName} .data=${{
-            title: this.userVisibleTitle,
-            expanded: this.isActive(),
-            } as SidebarInsight.InsightDetails}
-            @insighttoggleclick=${this.onSidebarClick}>
-                <div slot="insight-description" class="insight-description">
-                    Layout shifts happen when existing elements unexpectedly move.
-                         Shifts are caused by nodes changing size or newly added. Investigate
-                         and fix these culprits.
-                </div>
-                <div slot="insight-content" style="insight-content">
-                  <p>
-                    Top layout shift culprits:
-                    ${culprits.map(culprit => {
-                      return LitHtml.html `
-                        <li>${culprit}</li>
-                      `;
-                    })}
-                  <p>
-                </div>
-            </${SidebarInsight.SidebarInsight}>
-        </div>`;
-    // clang-format on
+  #clickEvent(event: Trace.Types.Events.Event): void {
+    this.dispatchEvent(new EventReferenceClick(event));
   }
 
-  override render(): void {
-    const clsInsight = getCLSInsight(this.data.insights, this.data.navigationId);
-    const culpritsByShift = clsInsight?.shifts;
-    const clusters = clsInsight?.clusters ?? [];
+  override renderContent(): Lit.LitTemplate {
+    if (!this.model || !this.bounds) {
+      return Lit.nothing;
+    }
 
-    const causes = this.getTopCulprits(clusters, culpritsByShift);
-    const hasCulprits = causes.length > 0;
+    if (!this.model.clusters.length || !this.model.worstCluster) {
+      return html`<div class="insight-section">${i18nString(UIStrings.noLayoutShifts)}</div>`;
+    }
 
-    const matchesCategory = shouldRenderForCategory({
-      activeCategory: this.data.activeCategory,
-      insightCategory: this.insightCategory,
-    });
-    const output = hasCulprits && matchesCategory ? this.#render(causes) : LitHtml.nothing;
-    LitHtml.render(output, this.shadow, {host: this});
+    const worstCluster = this.model.worstCluster;
+    const culpritsByShift = this.model.shifts;
+
+    // TODO: getTopCulprits needs to move to model.
+    const culprits = this.getTopCulprits(worstCluster, culpritsByShift);
+    if (culprits.length === 0) {
+      return html`<div class="insight-section">${i18nString(UIStrings.noCulprits)}</div>`;
+    }
+
+    const ts = Trace.Types.Timing.Micro(worstCluster.ts - this.bounds.min);
+    const clusterTs = i18n.TimeUtilities.formatMicroSecondsTime(ts);
+
+    // clang-format off
+    return html`
+      <div class="insight-section">
+        <span class="worst-cluster">${i18nString(UIStrings.worstCluster)}: <button type="button" class="timeline-link" @click=${() => this.#clickEvent(worstCluster)}>${i18nString(UIStrings.layoutShiftCluster, {PH1: clusterTs})}</button></span>
+          <p class="list-title">${i18nString(UIStrings.topCulprits)}:</p>
+          <ul class="worst-culprits">
+            ${culprits.map(culprit => {
+              return html `
+                <li>${culprit}</li>
+              `;
+            })}
+          </ul>
+      </div>`;
+    // clang-format on
   }
 }
 

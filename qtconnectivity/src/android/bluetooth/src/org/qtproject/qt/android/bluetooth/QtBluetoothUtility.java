@@ -6,7 +6,6 @@ package org.qtproject.qt.android.bluetooth;
 import android.Manifest;
 import android.os.Build;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.util.Log;

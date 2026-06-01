@@ -3,9 +3,9 @@
 
 /***************************************************************************
  *
- * Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+ * Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -254,6 +254,25 @@ extern PFN_vkCmdSetPrimitiveRestartEnable CmdSetPrimitiveRestartEnable;
 extern PFN_vkGetDeviceBufferMemoryRequirements GetDeviceBufferMemoryRequirements;
 extern PFN_vkGetDeviceImageMemoryRequirements GetDeviceImageMemoryRequirements;
 extern PFN_vkGetDeviceImageSparseMemoryRequirements GetDeviceImageSparseMemoryRequirements;
+extern PFN_vkCmdSetLineStipple CmdSetLineStipple;
+extern PFN_vkMapMemory2 MapMemory2;
+extern PFN_vkUnmapMemory2 UnmapMemory2;
+extern PFN_vkCmdBindIndexBuffer2 CmdBindIndexBuffer2;
+extern PFN_vkGetRenderingAreaGranularity GetRenderingAreaGranularity;
+extern PFN_vkGetDeviceImageSubresourceLayout GetDeviceImageSubresourceLayout;
+extern PFN_vkGetImageSubresourceLayout2 GetImageSubresourceLayout2;
+extern PFN_vkCmdPushDescriptorSet CmdPushDescriptorSet;
+extern PFN_vkCmdPushDescriptorSetWithTemplate CmdPushDescriptorSetWithTemplate;
+extern PFN_vkCmdSetRenderingAttachmentLocations CmdSetRenderingAttachmentLocations;
+extern PFN_vkCmdSetRenderingInputAttachmentIndices CmdSetRenderingInputAttachmentIndices;
+extern PFN_vkCmdBindDescriptorSets2 CmdBindDescriptorSets2;
+extern PFN_vkCmdPushConstants2 CmdPushConstants2;
+extern PFN_vkCmdPushDescriptorSet2 CmdPushDescriptorSet2;
+extern PFN_vkCmdPushDescriptorSetWithTemplate2 CmdPushDescriptorSetWithTemplate2;
+extern PFN_vkCopyMemoryToImage CopyMemoryToImage;
+extern PFN_vkCopyImageToMemory CopyImageToMemory;
+extern PFN_vkCopyImageToImage CopyImageToImage;
+extern PFN_vkTransitionImageLayout TransitionImageLayout;
 extern PFN_vkDestroySurfaceKHR DestroySurfaceKHR;
 extern PFN_vkGetPhysicalDeviceSurfaceSupportKHR GetPhysicalDeviceSurfaceSupportKHR;
 extern PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR;
@@ -403,8 +422,6 @@ extern PFN_vkCmdWaitEvents2KHR CmdWaitEvents2KHR;
 extern PFN_vkCmdPipelineBarrier2KHR CmdPipelineBarrier2KHR;
 extern PFN_vkCmdWriteTimestamp2KHR CmdWriteTimestamp2KHR;
 extern PFN_vkQueueSubmit2KHR QueueSubmit2KHR;
-extern PFN_vkCmdWriteBufferMarker2AMD CmdWriteBufferMarker2AMD;
-extern PFN_vkGetQueueCheckpointData2NV GetQueueCheckpointData2NV;
 extern PFN_vkCmdCopyBuffer2KHR CmdCopyBuffer2KHR;
 extern PFN_vkCmdCopyImage2KHR CmdCopyImage2KHR;
 extern PFN_vkCmdCopyBufferToImage2KHR CmdCopyBufferToImage2KHR;
@@ -454,6 +471,7 @@ extern PFN_vkDestroyCuModuleNVX DestroyCuModuleNVX;
 extern PFN_vkDestroyCuFunctionNVX DestroyCuFunctionNVX;
 extern PFN_vkCmdCuLaunchKernelNVX CmdCuLaunchKernelNVX;
 extern PFN_vkGetImageViewHandleNVX GetImageViewHandleNVX;
+extern PFN_vkGetImageViewHandle64NVX GetImageViewHandle64NVX;
 extern PFN_vkGetImageViewAddressNVX GetImageViewAddressNVX;
 extern PFN_vkCmdDrawIndirectCountAMD CmdDrawIndirectCountAMD;
 extern PFN_vkCmdDrawIndexedIndirectCountAMD CmdDrawIndexedIndirectCountAMD;
@@ -542,6 +560,7 @@ extern PFN_vkCmdWriteAccelerationStructuresPropertiesNV CmdWriteAccelerationStru
 extern PFN_vkCompileDeferredNV CompileDeferredNV;
 extern PFN_vkGetMemoryHostPointerPropertiesEXT GetMemoryHostPointerPropertiesEXT;
 extern PFN_vkCmdWriteBufferMarkerAMD CmdWriteBufferMarkerAMD;
+extern PFN_vkCmdWriteBufferMarker2AMD CmdWriteBufferMarker2AMD;
 extern PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT GetPhysicalDeviceCalibrateableTimeDomainsEXT;
 extern PFN_vkGetCalibratedTimestampsEXT GetCalibratedTimestampsEXT;
 extern PFN_vkCmdDrawMeshTasksNV CmdDrawMeshTasksNV;
@@ -551,6 +570,7 @@ extern PFN_vkCmdSetExclusiveScissorEnableNV CmdSetExclusiveScissorEnableNV;
 extern PFN_vkCmdSetExclusiveScissorNV CmdSetExclusiveScissorNV;
 extern PFN_vkCmdSetCheckpointNV CmdSetCheckpointNV;
 extern PFN_vkGetQueueCheckpointDataNV GetQueueCheckpointDataNV;
+extern PFN_vkGetQueueCheckpointData2NV GetQueueCheckpointData2NV;
 extern PFN_vkInitializePerformanceApiINTEL InitializePerformanceApiINTEL;
 extern PFN_vkUninitializePerformanceApiINTEL UninitializePerformanceApiINTEL;
 extern PFN_vkCmdSetPerformanceMarkerINTEL CmdSetPerformanceMarkerINTEL;
@@ -739,8 +759,12 @@ extern PFN_vkCreateShadersEXT CreateShadersEXT;
 extern PFN_vkDestroyShaderEXT DestroyShaderEXT;
 extern PFN_vkGetShaderBinaryDataEXT GetShaderBinaryDataEXT;
 extern PFN_vkCmdBindShadersEXT CmdBindShadersEXT;
+extern PFN_vkCmdSetDepthClampRangeEXT CmdSetDepthClampRangeEXT;
 extern PFN_vkGetFramebufferTilePropertiesQCOM GetFramebufferTilePropertiesQCOM;
 extern PFN_vkGetDynamicRenderingTilePropertiesQCOM GetDynamicRenderingTilePropertiesQCOM;
+extern PFN_vkGetPhysicalDeviceCooperativeVectorPropertiesNV GetPhysicalDeviceCooperativeVectorPropertiesNV;
+extern PFN_vkConvertCooperativeVectorMatrixNV ConvertCooperativeVectorMatrixNV;
+extern PFN_vkCmdConvertCooperativeVectorMatrixNV CmdConvertCooperativeVectorMatrixNV;
 extern PFN_vkSetLatencySleepModeNV SetLatencySleepModeNV;
 extern PFN_vkLatencySleepNV LatencySleepNV;
 extern PFN_vkSetLatencyMarkerNV SetLatencyMarkerNV;
@@ -750,6 +774,24 @@ extern PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT CmdSetAttachmentFeedbackLoopE
 #ifdef VK_USE_PLATFORM_SCREEN_QNX
 extern PFN_vkGetScreenBufferPropertiesQNX GetScreenBufferPropertiesQNX;
 #endif  // VK_USE_PLATFORM_SCREEN_QNX
+extern PFN_vkGetClusterAccelerationStructureBuildSizesNV GetClusterAccelerationStructureBuildSizesNV;
+extern PFN_vkCmdBuildClusterAccelerationStructureIndirectNV CmdBuildClusterAccelerationStructureIndirectNV;
+extern PFN_vkGetPartitionedAccelerationStructuresBuildSizesNV GetPartitionedAccelerationStructuresBuildSizesNV;
+extern PFN_vkCmdBuildPartitionedAccelerationStructuresNV CmdBuildPartitionedAccelerationStructuresNV;
+extern PFN_vkGetGeneratedCommandsMemoryRequirementsEXT GetGeneratedCommandsMemoryRequirementsEXT;
+extern PFN_vkCmdPreprocessGeneratedCommandsEXT CmdPreprocessGeneratedCommandsEXT;
+extern PFN_vkCmdExecuteGeneratedCommandsEXT CmdExecuteGeneratedCommandsEXT;
+extern PFN_vkCreateIndirectCommandsLayoutEXT CreateIndirectCommandsLayoutEXT;
+extern PFN_vkDestroyIndirectCommandsLayoutEXT DestroyIndirectCommandsLayoutEXT;
+extern PFN_vkCreateIndirectExecutionSetEXT CreateIndirectExecutionSetEXT;
+extern PFN_vkDestroyIndirectExecutionSetEXT DestroyIndirectExecutionSetEXT;
+extern PFN_vkUpdateIndirectExecutionSetPipelineEXT UpdateIndirectExecutionSetPipelineEXT;
+extern PFN_vkUpdateIndirectExecutionSetShaderEXT UpdateIndirectExecutionSetShaderEXT;
+extern PFN_vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV GetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV;
+#ifdef VK_USE_PLATFORM_METAL_EXT
+extern PFN_vkGetMemoryMetalHandleEXT GetMemoryMetalHandleEXT;
+extern PFN_vkGetMemoryMetalHandlePropertiesEXT GetMemoryMetalHandlePropertiesEXT;
+#endif  // VK_USE_PLATFORM_METAL_EXT
 extern PFN_vkCreateAccelerationStructureKHR CreateAccelerationStructureKHR;
 extern PFN_vkDestroyAccelerationStructureKHR DestroyAccelerationStructureKHR;
 extern PFN_vkCmdBuildAccelerationStructuresKHR CmdBuildAccelerationStructuresKHR;

@@ -77,15 +77,17 @@
         Don't list directories. When combined with ResolveSymlinks, symbolic
         links to directories will be excluded too.
 
-    \value ExcludeSpecial
+    \omitvalue ExcludeSpecial
+    \value ExcludeOther [since 6.10]
         Don't list file system entries that are \e not directories, regular files,
-        nor symbolic links.
+        or symbolic links.
         \list
-            \li On Unix, an example of a special file system entry is a FIFO, socket,
-                character device, or block device. For more details on Linux, see the
-                \l{https://www.man7.org/linux/man-pages/man2/mknod.2.html}{mknod manual page}.
-            \li On Windows (for historical reasons) \c .lnk files are considered special
-                file system entries.
+            \li On Unix, a special (other) file system entry is a FIFO, socket,
+                character device, or block device. For more details see the
+                \l{https://pubs.opengroup.org/onlinepubs/9699919799/functions/mknod.html}{\c mknod}
+                manual page.
+            \li On Windows (for historical reasons) \c .lnk files are considered
+                special (other) file system entries.
         \endlist
 
     \value ResolveSymlinks
@@ -143,6 +145,7 @@
 #include <QtCore/private/qduplicatetracker_p.h>
 
 #include <memory>
+#include <stack>
 #include <vector>
 
 QT_BEGIN_NAMESPACE
@@ -166,7 +169,19 @@ static QDirListing::IteratorFlags toDirListingFlags(QDirIterator::IteratorFlags 
 
 class QDirListingPrivate
 {
+    Q_DISABLE_COPY_MOVE(QDirListingPrivate)
 public:
+    QDirListingPrivate() = default;
+
+    // the default for std::stack is std::deque, but std::vector is more apt:
+    template <typename T>
+    struct vector_stack : std::stack<T, std::vector<T>>
+    {
+        using Base = std::stack<T, std::vector<T>>;
+        using Base::Base;
+        void clear() { this->c.clear(); } // std::stack is also missing clear()
+    };
+
     void init(bool resolveEngine);
     void advance();
     void beginIterating();
@@ -197,10 +212,10 @@ public:
     QDir::Filters legacyDirFilters;
 
 #if QT_CONFIG(regularexpression)
-    QList<QRegularExpression> nameRegExps;
+    std::vector<QRegularExpression> nameRegExps;
     bool regexMatchesName(const QString &fileName) const
     {
-        if (nameRegExps.isEmpty())
+        if (nameRegExps.empty())
             return true;
         auto hasMatch = [&fileName](const auto &re) { return re.match(fileName).hasMatch(); };
         return std::any_of(nameRegExps.cbegin(), nameRegExps.cend(), hasMatch);
@@ -208,10 +223,10 @@ public:
 #endif
 
     using FEngineIteratorPtr = std::unique_ptr<QAbstractFileEngineIterator>;
-    std::vector<FEngineIteratorPtr> fileEngineIterators;
+    vector_stack<FEngineIteratorPtr> fileEngineIterators;
 #ifndef QT_NO_FILESYSTEMITERATOR
     using FsIteratorPtr = std::unique_ptr<QFileSystemIterator>;
-    std::vector<FsIteratorPtr> nativeIterators;
+    vector_stack<FsIteratorPtr> nativeIterators;
 #endif
 
     // Loop protection
@@ -229,7 +244,7 @@ void QDirListingPrivate::init(bool resolveEngine = true)
     }
 
 #if QT_CONFIG(regularexpression)
-    nameRegExps.reserve(nameFilters.size());
+    nameRegExps.reserve(size_t(nameFilters.size()));
 
     const bool isCase = [this] {
         if (useLegacyFilters)
@@ -238,7 +253,7 @@ void QDirListingPrivate::init(bool resolveEngine = true)
     }();
 
     const auto cs = isCase ? Qt::CaseSensitive : Qt::CaseInsensitive;
-    for (const auto &filter : nameFilters)
+    for (const auto &filter : std::as_const(nameFilters))
         nameRegExps.emplace_back(QRegularExpression::fromWildcard(filter, cs));
 #endif
 
@@ -284,7 +299,7 @@ void QDirListingPrivate::pushDirectory(QDirEntryInfo &entryInfo)
     if (engine) {
         engine->setFileName(path);
         if (auto it = engine->beginEntryList(path, iteratorFlags, nameFilters)) {
-            fileEngineIterators.emplace_back(std::move(it));
+            fileEngineIterators.push(std::move(it));
         } else {
             // No iterator; no entry list.
         }
@@ -295,7 +310,7 @@ void QDirListingPrivate::pushDirectory(QDirEntryInfo &entryInfo)
             fentry = &entryInfo.fileInfoOpt->d_ptr->fileEntry;
         else
             fentry = &entryInfo.entry;
-        nativeIterators.emplace_back(std::make_unique<QFileSystemIterator>(*fentry, iteratorFlags));
+        nativeIterators.push(std::make_unique<QFileSystemIterator>(*fentry, iteratorFlags));
 #else
         qWarning("Qt was built with -no-feature-filesystemiterator: no files/plugins will be found!");
 #endif
@@ -316,34 +331,30 @@ bool QDirListingPrivate::entryMatches(QDirEntryInfo &entryInfo)
     Advances the internal iterator, either a QAbstractFileEngineIterator (e.g.
     QResourceFileEngineIterator) or a QFileSystemIterator (which uses low-level
     system methods, e.g. readdir() on Unix). The iterators are stored in a
-    vector.
+    stack.
 
     A typical example of doing recursive iteration:
     - while iterating directory A we find a sub-dir B
-    - an iterator for B is added to the vector
-    - B's iterator is processed (vector.back()) first; then the loop
+    - an iterator for B is pushed to the stack
+    - B's iterator is processed (stack.top()) first; then the loop
       goes back to processing A's iterator
 */
 void QDirListingPrivate::advance()
 {
-    // Use get() in both code paths below because the iterator returned by back()
-    // may be invalidated due to reallocation when appending new iterators in
-    // pushDirectory().
-
     if (engine) {
         while (!fileEngineIterators.empty()) {
             // Find the next valid iterator that matches the filters.
             QAbstractFileEngineIterator *it;
-            while (it = fileEngineIterators.back().get(), it->advance()) {
+            while (it = fileEngineIterators.top().get(), it->advance()) {
                 QDirEntryInfo entryInfo;
                 entryInfo.fileInfoOpt = it->currentFileInfo();
-                if (entryMatches(entryInfo)) {
+                if (entryMatches(entryInfo)) { // modifies `fileEngineIterators`!
                     currentEntryInfo = std::move(entryInfo);
                     return;
                 }
             }
 
-            fileEngineIterators.pop_back();
+            fileEngineIterators.pop();
         }
     } else {
 #ifndef QT_NO_FILESYSTEMITERATOR
@@ -351,16 +362,16 @@ void QDirListingPrivate::advance()
         while (!nativeIterators.empty()) {
             // Find the next valid iterator that matches the filters.
             QFileSystemIterator *it;
-            while (it = nativeIterators.back().get(),
+            while (it = nativeIterators.top().get(),
                    it->advance(entryInfo.entry, entryInfo.metaData)) {
-                if (entryMatches(entryInfo)) {
+                if (entryMatches(entryInfo)) { // modifies `nativeIterators`!
                     currentEntryInfo = std::move(entryInfo);
                     return;
                 }
                 entryInfo = {};
             }
 
-            nativeIterators.pop_back();
+            nativeIterators.pop();
         }
 #endif
     }
@@ -520,7 +531,7 @@ bool QDirListingPrivate::matchesFilters(QDirEntryInfo &entryInfo) const
         return false; // symlink is not a file or dir
     }
 
-    if (iteratorFlags.testAnyFlag(F::ExcludeSpecial)
+    if (iteratorFlags.testAnyFlag(F::ExcludeOther)
         && !entryInfo.isFile() && !entryInfo.isDir() && !entryInfo.isSymLink()) {
         return false;
     }

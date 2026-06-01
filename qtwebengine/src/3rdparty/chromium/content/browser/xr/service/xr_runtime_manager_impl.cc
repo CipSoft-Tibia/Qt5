@@ -357,7 +357,7 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetInlineRuntime() {
 
 BrowserXRRuntimeImpl*
 XRRuntimeManagerImpl::GetCurrentlyPresentingImmersiveRuntime() {
-  auto it = base::ranges::find_if(
+  auto it = std::ranges::find_if(
       runtimes_, [](const DeviceRuntimeMap::value_type& val) {
         return val.second->GetServiceWithActiveImmersiveSession() != nullptr;
       });
@@ -370,7 +370,7 @@ XRRuntimeManagerImpl::GetCurrentlyPresentingImmersiveRuntime() {
 }
 
 bool XRRuntimeManagerImpl::HasPendingImmersiveRequest() {
-  return base::ranges::any_of(
+  return std::ranges::any_of(
       runtimes_, [](const DeviceRuntimeMap::value_type& val) {
         return val.second->HasPendingImmersiveSessionRequest();
       });
@@ -455,7 +455,7 @@ void XRRuntimeManagerImpl::MakeXrCompatible() {
 #else
     // MakeXrCompatible is not yet supported on other platforms so
     // IsInitializedOnCompatibleAdapter should have returned true.
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
 #endif
   }
 

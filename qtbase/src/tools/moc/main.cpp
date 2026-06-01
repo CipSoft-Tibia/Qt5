@@ -285,6 +285,10 @@ int runMoc(int argc, char **argv)
     activeQtMode.setFlags(QCommandLineOption::HiddenFromHelp);
     parser.addOption(activeQtMode);
 
+    QCommandLineOption qmlMacroWarningIsFatal(QStringLiteral("fatal-qml-macro-warning"));
+    qmlMacroWarningIsFatal.setFlags(QCommandLineOption::HiddenFromHelp);
+    parser.addOption(qmlMacroWarningIsFatal);
+
     QCommandLineOption noNotesOption(QStringLiteral("no-notes"));
     noNotesOption.setDescription(QStringLiteral("Do not display notes."));
     parser.addOption(noNotesOption);
@@ -448,6 +452,8 @@ int runMoc(int argc, char **argv)
         moc.displayNotes = false;
     if (parser.isSet(noWarningsOption) || noNotesCompatValues.contains("w"_L1))
         moc.displayWarnings = moc.displayNotes = false;
+    if (parser.isSet(qmlMacroWarningIsFatal))
+        moc.qmlMacroWarningIsFatal = true;
 
     if (autoInclude) {
         qsizetype spos = filename.lastIndexOf(QDir::separator());
@@ -580,11 +586,17 @@ int runMoc(int argc, char **argv)
 
     if (pp.preprocessOnly) {
         fprintf(out.get(), "%s\n", composePreprocessorOutput(moc.symbols).constData());
+    } else if (moc.classList.isEmpty()) {
+        moc.note("No relevant classes found. No output generated.");
+        if (jsonOutput) {
+            const QJsonDocument jsonDoc(QJsonObject {
+                    { "outputRevision"_L1, mocOutputRevision },
+                    { "inputFile"_L1, QLatin1StringView(moc.strippedFileName()) }
+            });
+            fputs(jsonDoc.toJson().constData(), jsonOutput.get());
+        }
     } else {
-        if (moc.classList.isEmpty())
-            moc.note("No relevant classes found. No output generated.");
-        else
-            moc.generate(out.get(), jsonOutput.get());
+        moc.generate(out.get(), jsonOutput.get());
     }
 
     out.reset();

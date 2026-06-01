@@ -30,11 +30,14 @@ public:
                   std::string *error) const override;
 private:
     bool GenerateMessages(const ::google::protobuf::FileDescriptor *file,
-                          ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
+                          ::google::protobuf::compiler::GeneratorContext *generatorContext,
+                          std::string *error) const;
     void GenerateHeader(const ::google::protobuf::FileDescriptor *file,
-                        ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
+                        ::google::protobuf::compiler::GeneratorContext *generatorContext,
+                        std::string *error) const;
     void GenerateSources(const ::google::protobuf::FileDescriptor *file,
-                         ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
+                         ::google::protobuf::compiler::GeneratorContext *generatorContext,
+                         std::string *error) const;
 };
 } // namespace QtProtobuf
 

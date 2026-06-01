@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qheaderview.h"
 
@@ -10,6 +11,7 @@
 #include <qdebug.h>
 #include <qevent.h>
 #include <qpainter.h>
+#include <qpainterstateguard.h>
 #include <qscrollbar.h>
 #include <qstyle.h>
 #include <qstyleoption.h>
@@ -2709,7 +2711,8 @@ void QHeaderView::mouseMoveEvent(QMouseEvent *e)
         }
         case QHeaderViewPrivate::MoveSection: {
             if (d->shouldAutoScroll(e->position().toPoint())) {
-                d->draggedPosition = e->pos() + d->offset();
+                d->draggedPosition = e->pos();
+                d->draggedPositionOffset = d->offset();
                 d->startAutoScroll();
             }
             if (qAbs(pos - d->firstPos) >= QApplication::startDragDistance()
@@ -3091,8 +3094,6 @@ void QHeaderView::paintSection(QPainter *painter, const QRect &rect, int logical
         return;
 
     QStyleOptionHeaderV2 opt;
-    QPointF oldBO = painter->brushOrigin();
-
     initStyleOption(&opt);
 
     QBrush oBrushButton = opt.palette.brush(QPalette::Button);
@@ -3106,13 +3107,14 @@ void QHeaderView::paintSection(QPainter *painter, const QRect &rect, int logical
     QBrush nBrushWindow = opt.palette.brush(QPalette::Window);
 
     // If relevant brushes are not the same as from the regular widgets we set the brush origin
+    QPainterStateGuard psg(painter, QPainterStateGuard::InitialState::NoSave);
     if (oBrushButton != nBrushButton || oBrushWindow != nBrushWindow) {
+        psg.save();
         painter->setBrushOrigin(opt.rect.topLeft());
     }
 
     // draw the section.
     style()->drawControl(QStyle::CE_Header, &opt, painter, this);
-    painter->setBrushOrigin(oldBO);
 }
 
 /*!
@@ -4354,13 +4356,11 @@ bool QHeaderViewPrivate::read(QDataStream &in)
     recalcSectionStartPos();
 
     int tmpint;
-    in >> tmpint;
-    if (in.status() == QDataStream::Ok)  // we haven't read past end
+    if (in >> tmpint)  // we haven't read past end
         resizeContentsPrecision = tmpint;
 
     bool tmpbool;
-    in >> tmpbool;
-    if (in.status() == QDataStream::Ok) {  // we haven't read past end
+    if (in >> tmpbool) {  // we haven't read past end
         customDefaultSectionSize = tmpbool;
         if (!customDefaultSectionSize)
             updateDefaultSectionSizeFromStyle();
@@ -4368,8 +4368,7 @@ bool QHeaderViewPrivate::read(QDataStream &in)
 
     lastSectionSize = -1;
     int inLastSectionSize;
-    in >> inLastSectionSize;
-    if (in.status() == QDataStream::Ok)
+    if (in >> inLastSectionSize)
         lastSectionSize = inLastSectionSize;
 
     lastSectionLogicalIdx = -1;
@@ -4379,16 +4378,14 @@ bool QHeaderViewPrivate::read(QDataStream &in)
     }
 
     int inSortIndicatorClearable;
-    in >> inSortIndicatorClearable;
-    if (in.status() == QDataStream::Ok)  // we haven't read past end
+    if (in >> inSortIndicatorClearable)  // we haven't read past end
         sortIndicatorClearable = inSortIndicatorClearable;
 
     in >> countInNoSectionItemsMode;
     int iHeaderMode;
 
-    in >> iHeaderMode;
+    if (!(in >> iHeaderMode)) {
     // On any failure (especially reading past end) we consider mode to be normal by default.
-    if (in.status() != QDataStream::Ok) {
         iHeaderMode = static_cast<int>(HeaderMode::FlexibleWithSectionMemoryUsage);
     }
 

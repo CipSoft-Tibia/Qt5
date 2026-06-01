@@ -142,11 +142,15 @@ class EnumType(Type):
             if prefix == 0 and 'native' in tags:
                 prefix = 0x0001_0000
 
+            if 'deprecated' not in tags:
+                if 'emscripten' in tags:
+                    assert value_name.startswith('emscripten')
+                else:
+                    assert not value_name.startswith('emscripten')
+
             value += prefix
 
             if value_name == "undefined":
-                if name != "optional bool":
-                    assert value == 0
                 self.hasUndefined = True
             if value != lastValue + 1:
                 self.contiguousFromZero = False
@@ -154,12 +158,15 @@ class EnumType(Type):
             self.values.append(
                 EnumValue(Name(value_name), value, m.get('valid', True), m))
 
-        # Assert that all values are unique in enums
+        # Assert that all values except those with "enum_value_conflict": true are unique in enums
         all_values = set()
         for value in self.values:
             if value.value in all_values:
-                raise Exception("Duplicate value {} in enum {}".format(
-                    value.value, name))
+                #TODO(42241174) remove this condition once wgpu refactoring is complete.
+                if not value.json_data.get('enum_value_conflict', False):
+                    raise Exception(
+                        "Duplicate value {} for '{}' in enum '{}'".format(
+                            hex(value.value), value.name.get(), name))
             all_values.add(value.value)
         self.is_wire_transparent = True
 
@@ -294,6 +301,14 @@ class Record:
 
 class StructureType(Record, Type):
     def __init__(self, is_enabled, name, json_data):
+        tags = json_data.get('tags', [])
+        if 'deprecated' not in tags:
+            if 'emscripten' in tags:
+                if name != 'INTERNAL_HAVE_EMDAWNWEBGPU_HEADER':
+                    assert name.startswith('emscripten')
+            else:
+                assert not name.startswith('emscripten')
+
         Record.__init__(self, name)
         json_data_override = {}
         if 'members' in json_data:
@@ -301,6 +316,7 @@ class StructureType(Record, Type):
                 m for m in json_data['members'] if is_enabled(m)
             ]
         Type.__init__(self, name, dict(json_data, **json_data_override))
+        self.out = json_data.get('out', False)
         self.chained = json_data.get('chained', None)
         self.extensible = json_data.get('extensible', None)
         if self.chained:
@@ -332,14 +348,18 @@ class StructureType(Record, Type):
 
     @property
     def output(self):
-        return self.chained == "out" or self.extensible == "out"
+        # self.out is a temporary way to express that this is an output structure
+        # without also making it extensible. See
+        # https://dawn-review.googlesource.com/c/dawn/+/212174/comment/2271690b_1fd82ea9/
+        return self.chained == "out" or self.extensible == "out" or self.out
 
     @property
     def has_free_members_function(self):
         if not self.output:
             return False
         for m in self.members:
-            if m.annotation != 'value':
+            if m.annotation != 'value' \
+                or m.type.name.canonical_case() == 'string view':
                 return True
         return False
 
@@ -416,8 +436,6 @@ def linked_record_members(json_data, types):
                     member.constant_length = 1
                 else:
                     assert False
-            elif m['length'] == 'strlen':
-                member.length = 'strlen'
             elif isinstance(m['length'], int):
                 assert m['length'] > 0
                 member.length = "constant"
@@ -711,11 +729,6 @@ def compute_kotlin_params(loaded_json, kotlin_json):
 
     def kotlin_record_members(members):
         for member in members:
-            # Skip over callback infos as we haven't implemented support for them yet.
-            # TODO(352710628) support converting callback info.
-            if member.type.category in ['callback info']:
-                continue
-
             # length parameters are omitted because Kotlin containers have 'length'.
             if member in [m.length for m in members]:
                 continue
@@ -741,7 +754,7 @@ def compute_kotlin_params(loaded_json, kotlin_json):
                     container_type = deepcopy(argument)
                     container_type.length = 'size_t'
                     return container_type
-                if (method.return_type.name.get() == 'status'
+                if (method.return_type.name.get() in ['status', 'void']
                         and argument.type.category == 'structure'):
                     return argument
 
@@ -762,11 +775,7 @@ def compute_kotlin_params(loaded_json, kotlin_json):
         return True
 
     def include_structure(structure):
-        # TODO(352710628) support converting callback info.
-        if structure.name.canonical_case().endswith(" callback info"):
-            return False
-        if (structure.name.canonical_case() == "string view"
-                or structure.name.canonical_case() == "nullable string view"):
+        if structure.name.canonical_case() == "string view":
             return False
         return True
 
@@ -814,9 +823,6 @@ def as_cType(c_prefix, name):
     # Special case for 'bool' because it has a typedef for compatibility.
     if name.native and name.get() != 'bool':
         return name.concatcase()
-    elif name.get() == 'nullable string view':
-        # nullable string view type doesn't exist in C.
-        return c_prefix + 'StringView'
     else:
         return c_prefix + name.CamelCase()
 
@@ -984,7 +990,7 @@ def find_by_name(members, name):
     for member in members:
         if member.name.get() == name:
             return member
-    assert False
+    return None
 
 
 def has_callback_arguments(method):
@@ -1010,6 +1016,11 @@ def is_wire_serializable(type):
             and type.category != 'callback info'
             and type.category != 'callback function'
             and type.name.get() != 'void *')
+
+
+def is_enum_value_proxy(value):
+    return ('deprecated' in value.json_data.get('tags', [])
+            and value.json_data.get('enum_value_conflict', False))
 
 
 def unreachable_code(msg="unreachable_code"):
@@ -1075,6 +1086,7 @@ def make_base_render_params(metadata):
             'find_by_name': find_by_name,
             'print': print,
             'unreachable_code': unreachable_code,
+            'is_enum_value_proxy': is_enum_value_proxy,
         }
 
 
@@ -1240,6 +1252,10 @@ class MultiGeneratorFromDawnJSON(Generator):
                     'api_cpp_chained_struct.h',
                     'src/emdawnwebgpu/include/webgpu/webgpu_cpp_chained_struct.h',
                     [RENDER_PARAMS_BASE, params_emscripten]))
+            renders.append(
+                FileRender('api_cpp_print.h',
+                           'src/emdawnwebgpu/include/dawn/webgpu_cpp_print.h',
+                           [RENDER_PARAMS_BASE, params_emscripten]))
 
         if 'emdawnwebgpu_js' in targets:
             assert api == 'webgpu'
@@ -1430,9 +1446,9 @@ class MultiGeneratorFromDawnJSON(Generator):
             ]
 
             by_category = params_kotlin['by_category']
-            for structure in by_category['structure']:
-                if (structure.name.get() != "string view"
-                        and structure.name.get() != "nullable string view"):
+            for structure in by_category['structure'] + by_category[
+                    'callback info']:
+                if structure.name.get() != "string view":
                     renders.append(
                         FileRender('art/api_kotlin_structure.kt',
                                    'java/' + jni_name(structure) + '.kt', [
@@ -1448,7 +1464,8 @@ class MultiGeneratorFromDawnJSON(Generator):
                         [RENDER_PARAMS_BASE, params_kotlin, {
                             'obj': obj
                         }]))
-            for function_pointer in by_category['function pointer']:
+            for function_pointer in (by_category['function pointer'] +
+                                     by_category['callback function']):
                 renders.append(
                     FileRender('art/api_kotlin_function_pointer.kt',
                                'java/' + jni_name(function_pointer) + '.kt', [
@@ -1484,7 +1501,7 @@ class MultiGeneratorFromDawnJSON(Generator):
             params_kotlin = compute_kotlin_params(loaded_json, kotlin_json)
 
             imported_templates += [
-                "art/api_jni_types.kt",
+                "art/api_jni_types.cpp",
                 "art/kotlin_record_conversion.cpp",
             ]
 

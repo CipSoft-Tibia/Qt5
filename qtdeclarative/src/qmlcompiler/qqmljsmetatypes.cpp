@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsmetatypes_p.h"
 #include "qqmljstyperesolver_p.h"
@@ -9,7 +10,16 @@
 QT_BEGIN_NAMESPACE
 
 /*!
+    \class QQmlJSMetaPropertyBinding
+
     \internal
+
+    Represents a single QML binding of a specific type. Typically, when you
+    create a new binding, you know all the details of it already, so you should
+    just set all the data at once.
+*/
+
+/*!
     A binding is valid when it has both a target (m_propertyName is set)
     and some content set (m_bindingType != Invalid).
 */
@@ -73,7 +83,6 @@ QQmlTranslation QQmlJSMetaPropertyBinding::translationDataValue(QString qmlFileN
 }
 
 /*!
-    \internal
     Uses \a resolver to return the correct type for the stored literal
     and a null scope pointer if the binding does not contain a literal
  */
@@ -84,13 +93,13 @@ QSharedPointer<const QQmlJSScope> QQmlJSMetaPropertyBinding::literalType(const Q
     case BindingType::BoolLiteral:
         return resolver->boolType();
     case BindingType::NumberLiteral:
-        return resolver->typeForName(QLatin1String("double"));
+        return resolver->realType();
     case BindingType::Translation: // translations are strings
     case BindingType::TranslationById:
     case BindingType::StringLiteral:
         return resolver->stringType();
     case BindingType::RegExpLiteral:
-        return resolver->typeForName(QLatin1String("regexp"));
+        return resolver->regexpType();
     case BindingType::Null:
         return resolver->nullType();
     case BindingType::Invalid:

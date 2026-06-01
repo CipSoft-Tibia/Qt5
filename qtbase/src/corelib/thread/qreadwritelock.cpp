@@ -165,6 +165,14 @@ void QReadWriteLock::destroyRecursive(QReadWriteLockPrivate *d)
     \sa unlock(), lockForRead()
 */
 
+static Q_ALWAYS_INLINE bool fastTryLock(QAtomicPointer<QReadWriteLockPrivate> &d_ptr,
+                                        QReadWriteLockPrivate *dummyValue,
+                                        QReadWriteLockPrivate *&d)
+{
+    // Succeed fast if not contended
+    return d == nullptr && d_ptr.testAndSetAcquire(nullptr, dummyValue, d);
+}
+
 /*!
     \overload
     \since 6.6
@@ -184,9 +192,8 @@ void QReadWriteLock::destroyRecursive(QReadWriteLockPrivate *d)
 */
 bool QReadWriteLock::tryLockForRead(QDeadlineTimer timeout)
 {
-    // Fast case: non contended:
     QReadWriteLockPrivate *d = d_ptr.loadRelaxed();
-    if (d == nullptr && d_ptr.testAndSetAcquire(nullptr, dummyLockedForRead, d))
+    if (fastTryLock(d_ptr, dummyLockedForRead, d))
         return true;
     return contendedTryLockForRead(d_ptr, timeout, d);
 }
@@ -195,10 +202,11 @@ Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLock
                                                    QDeadlineTimer timeout, QReadWriteLockPrivate *d)
 {
     while (true) {
+        qYieldCpu();
         if (d == nullptr) {
-            if (!d_ptr.testAndSetAcquire(nullptr, dummyLockedForRead, d))
-                continue;
-            return true;
+            if (fastTryLock(d_ptr, dummyLockedForRead, d))
+                return true;
+            continue;
         }
 
         if ((quintptr(d) & StateMask) == StateLockedForRead) {
@@ -235,14 +243,14 @@ Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLock
             return d->recursiveLockForRead(timeout);
 
         auto lock = qt_unique_lock(d->mutex);
-        if (d != d_ptr.loadRelaxed()) {
+        if (QReadWriteLockPrivate *dd = d_ptr.loadAcquire(); d != dd) {
             // d_ptr has changed: this QReadWriteLock was unlocked before we had
             // time to lock d->mutex.
             // We are holding a lock to a mutex within a QReadWriteLockPrivate
             // that is already released (or even is already re-used). That's ok
             // because the QFreeList never frees them.
             // Just unlock d->mutex (at the end of the scope) and retry.
-            d = d_ptr.loadAcquire();
+            d = dd;
             continue;
         }
         return d->lockForRead(lock, timeout);
@@ -302,9 +310,8 @@ Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLock
 */
 bool QReadWriteLock::tryLockForWrite(QDeadlineTimer timeout)
 {
-    // Fast case: non contended:
     QReadWriteLockPrivate *d = d_ptr.loadRelaxed();
-    if (d == nullptr && d_ptr.testAndSetAcquire(nullptr, dummyLockedForWrite, d))
+    if (fastTryLock(d_ptr, dummyLockedForWrite, d))
         return true;
     return contendedTryLockForWrite(d_ptr, timeout, d);
 }
@@ -313,10 +320,11 @@ Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLoc
                                                     QDeadlineTimer timeout, QReadWriteLockPrivate *d)
 {
     while (true) {
+        qYieldCpu();
         if (d == nullptr) {
-            if (!d_ptr.testAndSetAcquire(d, dummyLockedForWrite, d))
-                continue;
-            return true;
+            if (fastTryLock(d_ptr, dummyLockedForWrite, d))
+                return true;
+            continue;
         }
 
         if (isUncontendedLocked(d)) {
@@ -346,11 +354,11 @@ Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLoc
             return d->recursiveLockForWrite(timeout);
 
         auto lock = qt_unique_lock(d->mutex);
-        if (d != d_ptr.loadRelaxed()) {
+        if (QReadWriteLockPrivate *dd = d_ptr.loadAcquire(); d != dd) {
             // The mutex was unlocked before we had time to lock the mutex.
             // We are holding to a mutex within a QReadWriteLockPrivate that is already released
             // (or even is already re-used) but that's ok because the QFreeList never frees them.
-            d = d_ptr.loadAcquire();
+            d = dd;
             continue;
         }
         return d->lockForWrite(lock, timeout);

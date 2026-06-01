@@ -51,6 +51,7 @@ qt_add_qml_module(
     [NO_CACHEGEN]
     [NO_RESOURCE_TARGET_PATH]
     [NO_IMPORT_SCAN]
+    [DISCARD_QML_CONTENTS]
     [ENABLE_TYPE_COMPILER]
     [TYPE_COMPILER_NAMESPACE namespace]
     [QMLTC_EXPORT_DIRECTIVE export_macro]
@@ -64,9 +65,6 @@ qt_add_qml_module(
 
 See \l {Building a QML application} and \l {Building a reusable QML module}
 for examples that define QML modules.
-
-See \l {QT_QML_GENERATE_QMLLS_INI} for configuring your project such that information about
-QML modules is exposed to the \l{QML Language Server}.
 
 \section1 Description
 
@@ -432,6 +430,13 @@ manage different versions of your QML modules.
 
 \section2 Adding sources and resources to the module
 
+\note A QML module is a logically grouped, self-contained unit of functionality.
+All files that make up the module should reside in the same directory as the CMakeLists.txt
+defining the module or in one of its subdirectories.
+If a specific functionality is required in multiple modules, consider encapsulating it within
+a separate module. This module can then be imported into other modules, promoting code reuse
+and maintainability.
+
 \c SOURCES specifies a list of non-QML sources to be added to the backing
 target. It is provided as a convenience and is equivalent to adding the sources
 to the backing target with the built-in \c{target_sources()} CMake command.
@@ -516,6 +521,7 @@ past major versions.
 
 \section2 Declaring module dependencies
 
+\target IMPORTS
 \c IMPORTS provides a list of other QML modules that this module imports. Each
 module listed here will be added as an \c{import} entry in the generated
 \l{Module Definition qmldir Files}{qmldir} file. If a QML file imports
@@ -530,6 +536,23 @@ propagated to the module to be imported. Given an entry \c{QtQuick/auto} in a
 module \c{YourModule}, if a QML file specifies \c{import YourModule 3.14}, this
 results in importing  version \c{3.14} of \c{QtQuick}. For related modules that
 follow a common versioning scheme, you should use \c{auto}.
+
+Entries in \c IMPORTS may also refer to CMake targets by prefixing the target
+name with the \c TARGET keyword. In this case, the QML module URI is determined
+automatically from the target. This requires opting into the CMake policy
+\l{QTP0005}.
+
+For example, a QML module can import another module by referring to the
+CMake target that provides it:
+
+\badcode
+qt_add_qml_module(my_module
+    URI MyModule
+    VERSION 1.0
+    IMPORTS
+        TARGET OtherQmlModule
+)
+\endcode
 
 \c OPTIONAL_IMPORTS provides a list of other QML modules that this module
 \e may import at run-time. These are not automatically imported by the QML
@@ -550,7 +573,7 @@ for the default import.
 \c DEPENDENCIES provides a list of other QML modules that this module depends
 on, but doesn't necessarily import. It would typically be used for dependencies
 that only exist at the C++ level, such as a module registering a class to QML
-which is a subclass of one defined in another module.
+which uses or inherits C++ defined types defined in another module.
 
 For example, if one would like to subclass \c QQuickItem as following:
 
@@ -559,10 +582,64 @@ class MyItem: public QQuickItem { ... };
 \endcode
 
 then one has to make sure that the module containing \c QQuickItem, called
-\c QtQuick, is declared as a dependency via the \c DEPENDENCIES option. Not
-doing so might result in errors during type compilation with
-\l{QML type compiler}{qmltc} or during binding and function compilation to C++
+\c QtQuick, is declared as a dependency via the \c DEPENDENCIES option:
+
+\badcode
+qt_add_qml_module(myTarget
+    ...
+    DEPENDENCIES QtQuick
+)
+\endcode
+
+Not doing so might result in linting errors, errors during type compilation
+with \l{QML type compiler}{qmltc} or during binding and function compilation to C++
 with \l{qmlcachegen-auto}{qmlcachegen}.
+
+Another example might be:
+\code
+class MyComponent : public QObject {
+    Q_OBJECT
+    QML_ELEMENT
+
+    // ...
+
+signals:
+    void sigZoomAtMousePosition(const QPointF& aMousePos, double aZoomScaleFactor);
+};
+\endcode
+where \c{DEPENDENCIES QtQml} is required for QML tooling to find and use QPointF:
+\badcode
+qt_add_qml_module(myTarget
+    ...
+    DEPENDENCIES QtQml
+)
+\endcode
+
+Entries in \c DEPENDENCIES may also refer to CMake targets by prefixing the
+target name with the \c TARGET keyword. In this case, the QML module URI and
+import path are determined automatically from the target. This requires
+opting into the CMake policy \l{QTP0005}.
+
+For example, a QML module can declare a dependency on another module by
+referring to the CMake target that provides it:
+
+\badcode
+qt_add_qml_module(my_module
+    URI MyModule
+    VERSION 1.0
+    DEPENDENCIES
+        TARGET OtherQmlModule
+)
+\endcode
+
+\note Using TARGET <cmake-target> in DEPENDENCIES or IMPORTS does not automatically
+link against the given target. It is used only to derive QML metadata, import paths,
+and to establish build-order dependencies. If the QML module or its generated plugin
+requires symbols from that target, the target must still be linked explicitly using
+target_link_libraries().
+
+\note The <cmake-target> used with the \c TARGET keyword must be a target built
+by your project (not an imported target provided by find_package).
 
 \note Adding the module to \c DEPENDENCIES is not necessary if the module
 is already imported via the \c IMPORTS option. The recommended way is to
@@ -585,9 +662,6 @@ store a list of additional targets that will also need to be installed.
 These additional targets are generated internally by \c{qt_add_qml_module()}
 and are referenced by the backing target's linking requirements as part of
 ensuring that resources are set up and loaded correctly.
-
-\note Since Qt 6.8, it is possible to pass a target name to IMPORTS and
-DEPENDENCIES. See \l{QTP0005} for more details.
 
 \target PLUGIN_TARGET
 \section2 Targets and plugin targets
@@ -737,6 +811,17 @@ disabled by providing the \c{NO_IMPORT_SCAN} option. Doing so means the project
 takes on the responsibility of ensuring all required plugins are instantiated
 and linked for static builds. For non-static builds the project must manually
 work out and deploy all QML modules used by an executable target.
+
+\section2 DISCARD_QML_CONTENTS
+
+\target DISCARD_QML_CONTENTS
+By default, QML and JS source file contents are included in the target's resource system.
+Use \c DISCARD_QML_CONTENTS to remove these contents and reduce the binary size.
+
+\note If you omit the source code from the binary, the QML engine has to
+rely on the compilation units created by \l{qmlcachegen} or \l{qmlsc}.
+Those are tied to the specific version of Qt they were built with. If you change
+the version of Qt your application uses, they can't be loaded anymore.
 
 \section2 Arguments for qmltc
 

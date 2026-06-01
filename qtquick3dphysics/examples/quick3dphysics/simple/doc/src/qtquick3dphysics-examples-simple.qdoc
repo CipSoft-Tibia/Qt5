@@ -84,5 +84,5 @@
     \snippet simple/main.qml capsule
 
     We create a capsule by making a DynamicRigidBody node and a single CapsuleShape in \l {PhysicsNode::} {collisionShapes}.
-    We build a capsule model by using the built-in CapsuleGeometry provided by Qt Quick 3D Physics.
+    We build a capsule model by using the built-in CapsuleGeometry provided by Qt Quick 3D.
 */

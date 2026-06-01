@@ -21,6 +21,7 @@ private slots:
     void float16Comparisons_data() const;
     void compareFloatTests() const;
     void compareFloatTests_data() const;
+    void compareQListDouble() const;
 };
 
 template<typename F>
@@ -200,6 +201,13 @@ void tst_float::compareFloatTests_data() const
     QTest::newRow("1e0") << 1e0f;
     QTest::newRow("1e-5") << 1e-5f;
     QTest::newRow("1e+7") << 1e+7f;
+}
+
+void tst_float::compareQListDouble() const
+{
+    QList<double> double1; double1 << 1.5 << 2 << 3;
+    QList<double> double2; double2 << 1 << 2 << 4;
+    QCOMPARE(double1, double2);
 }
 
 QTEST_MAIN(tst_float)

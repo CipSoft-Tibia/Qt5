@@ -630,8 +630,8 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &stream, QTextTableCellFormat &
     \value FontStyleName
     \value FontPointSize
     \value FontPixelSize
-    \value FontSizeAdjustment       Specifies the change in size given to the fontsize already set using
-                                    FontPointSize or FontPixelSize.
+    \value FontSizeAdjustment       Specifies an integer adjustment added to the base font size set using
+                                    \c FontPointSize or \c FontPixelSize.
     \value FontFixedPitch
     \omitvalue FontSizeIncrement
     \value FontWeight
@@ -2810,7 +2810,8 @@ QTextListFormat::QTextListFormat(const QTextFormat &fmt)
     frame's padding(). This scheme is similar to the box model used by Cascading
     Style Sheets for HTML pages.
 
-    \image qtextframe-style.png
+    \image qtextframe-style.png {Diagram showing how padding, border, and margin
+           are laid around the text content rectangle.}
 
     The position() of a frame is set using setPosition() and determines how it
     is located relative to the surrounding text.
@@ -3140,7 +3141,8 @@ qreal QTextFrameFormat::rightMargin() const
     between each cell edge and its contents is set with setCellPadding() and read
     with cellPadding().
 
-    \image qtexttableformat-cell.png
+    \image qtexttableformat-cell.png {Diagram showing how cell spacing and padding
+           are laid around the cell content rectangle.}
 
     The table's background color can be read with the background() function,
     and can be specified with setBackground(). The background color of each

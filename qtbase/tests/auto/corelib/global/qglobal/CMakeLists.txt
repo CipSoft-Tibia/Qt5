@@ -13,6 +13,7 @@ endif()
 
 qt_internal_add_test(tst_qglobal
     SOURCES
+        expansion_to_defined_check.h
         qglobal.c
         tst_qglobal.cpp
     NO_PCH_SOURCES
@@ -22,6 +23,7 @@ qt_internal_add_test(tst_qglobal
 # check stuff (esp. qtypes.h) works in -ansi mode
 qt_internal_add_test(tst_qglobal_strict
     SOURCES
+        expansion_to_defined_check.h
         qglobal.c
         tst_qglobal.cpp
     DEFINES

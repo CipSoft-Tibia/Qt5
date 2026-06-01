@@ -74,6 +74,10 @@ public:
     void setActiveTrack(TrackType, int streamNumber) override;
     void setLoops(int loops) override;
 
+    PitchCompensationAvailability pitchCompensationAvailability() const override;
+    void setPitchCompensation(bool enabled) override;
+    bool pitchCompensation() const override;
+
 private:
     void runPlayback();
     void handleIncorrectMedia(QMediaPlayer::MediaStatus status);
@@ -110,6 +114,8 @@ private:
     QFuture<void> m_loadMedia;
     std::shared_ptr<QFFmpeg::CancelToken> m_cancelToken; // For interrupting ongoing
                                                          // network connection attempt
+
+    bool m_pitchCompensation = true;
 };
 
 QT_END_NAMESPACE

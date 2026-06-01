@@ -8,14 +8,13 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 
-#include "base/types/strong_alias.h"
 #include "components/unexportable_keys/service_error.h"
 #include "components/unexportable_keys/unexportable_key_id.h"
 #include "net/base/net_export.h"
 #include "net/device_bound_sessions/cookie_craving.h"
 #include "net/device_bound_sessions/session_inclusion_rules.h"
+#include "net/device_bound_sessions/session_key.h"
 #include "net/device_bound_sessions/session_params.h"
 #include "url/gurl.h"
 
@@ -32,7 +31,14 @@ class Session;
 // This class represents a DBSC (Device Bound Session Credentials) session.
 class NET_EXPORT Session {
  public:
-  using Id = base::StrongAlias<class IdTag, std::string>;
+  using Id = SessionKey::Id;
+  using KeyIdOrError =
+      unexportable_keys::ServiceErrorOr<unexportable_keys::UnexportableKeyId>;
+
+  Session(const Session& other) = delete;
+  Session& operator=(const Session& other) = delete;
+  Session(Session&& other) noexcept = delete;
+  Session& operator=(Session&& other) noexcept = delete;
 
   ~Session();
 
@@ -40,6 +46,16 @@ class NET_EXPORT Session {
                                                 GURL url);
   static std::unique_ptr<Session> CreateFromProto(const proto::Session& proto);
   proto::Session ToProto() const;
+
+  // Used to set the unexportable session binding key associated with this
+  // session. This method can be called when a session is first bound with
+  // a brand new key. It can also be called when restoring a session after
+  // browser restart.
+  void set_unexportable_key_id(KeyIdOrError key_id_or_error) {
+    key_id_or_error_ = std::move(key_id_or_error);
+  }
+
+  const KeyIdOrError& unexportable_key_id() const { return key_id_or_error_; }
 
   // this bool could also be an enum for UMA, eventually devtools, etc.
   bool ShouldDeferRequest(URLRequest* request) const;
@@ -52,6 +68,10 @@ class NET_EXPORT Session {
     return cached_challenge_;
   }
 
+  const base::Time& creation_date() const { return creation_date_; }
+
+  const base::Time& expiry_date() const { return expiry_date_; }
+
   bool should_defer_when_expired() const { return should_defer_when_expired_; }
 
   bool IsEqualForTesting(const Session& other) const;
@@ -60,6 +80,18 @@ class NET_EXPORT Session {
     cached_challenge_ = std::move(challenge);
   }
 
+  void set_creation_date(base::Time creation_date) {
+    creation_date_ = creation_date;
+  }
+
+  void set_expiry_date(base::Time expiry_date) { expiry_date_ = expiry_date; }
+
+  // On use of a session, extend the TTL.
+  void RecordAccess();
+
+  // Whether the URL is in-scope for the session.
+  bool IncludesUrl(const GURL& url) const;
+
  private:
   Session(Id id, url::Origin origin, GURL refresh);
   Session(Id id,
@@ -67,11 +99,8 @@ class NET_EXPORT Session {
           SessionInclusionRules inclusion_rules,
           std::vector<CookieCraving> cookie_cravings,
           bool should_defer_when_expired,
+          base::Time creation_date,
           base::Time expiry_date);
-  Session(const Session& other) = delete;
-  Session& operator=(const Session& other) = delete;
-  Session(Session&& other) = delete;
-  Session& operator=(Session&& other) = delete;
 
   // The unique server-issued identifier of the session.
   const Id id_;
@@ -93,18 +122,19 @@ class NET_EXPORT Session {
   // and will be signed using the cached challenge if present, if not signed
   // using a default value for challenge.
   bool should_defer_when_expired_ = true;
+  // Date the session was created.
+  base::Time creation_date_;
   // Expiry date for session, 400 days from last refresh similar to cookies.
   base::Time expiry_date_;
-  // Unexportable key for this session. Once provisioned, this will never
-  // change.
+  // Unexportable key for this session.
   // NOTE: The key may not be available for sometime after a browser restart.
   // This is because the key needs to be restored from a corresponding
   // "wrapped" value that is persisted to disk. This restoration takes time
   // and can be done lazily. The "wrapped" key and the restore process are
-  // transparent to this class.
-  unexportable_keys::ServiceErrorOr<unexportable_keys::UnexportableKeyId>
-      key_id_or_error_ =
-          base::unexpected(unexportable_keys::ServiceError::kKeyNotReady);
+  // transparent to this class. Once restored, the key can be set using
+  // `set_unexportable_key_id`
+  KeyIdOrError key_id_or_error_ =
+      base::unexpected(unexportable_keys::ServiceError::kKeyNotReady);
   // Precached challenge, if any. Should not be persisted.
   std::optional<std::string> cached_challenge_;
 };

@@ -7,6 +7,6 @@
 void printStuff()
 {
     qDebug()
-        << QObject::tr("We must not see this in the native language's .tr file.")
+        << QObject::tr("We must not see this in the source language's .ts file.")
         << QObject::tr("%n argument(s) passed", "", 156);
 }

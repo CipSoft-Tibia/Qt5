@@ -5,6 +5,7 @@
 #include "content/browser/renderer_host/frame_tree_node.h"
 
 #include <math.h>
+
 #include <queue>
 #include <unordered_map>
 #include <utility>
@@ -15,6 +16,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/notreached.h"
 #include "base/observer_list.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
@@ -29,7 +31,6 @@
 #include "content/browser/renderer_host/navigator_delegate.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
-#include "content/browser/webauth/authenticator_environment.h"
 #include "content/common/navigation_params_utils.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/site_isolation_policy.h"
@@ -48,8 +49,7 @@ namespace {
 
 // This is a global map between frame_tree_node_ids and pointers to
 // FrameTreeNodes.
-using FrameTreeNodeIdMap = std::
-    unordered_map<FrameTreeNodeId, FrameTreeNode*, FrameTreeNodeId::Hasher>;
+using FrameTreeNodeIdMap = std::unordered_map<FrameTreeNodeId, FrameTreeNode*>;
 
 base::LazyInstance<FrameTreeNodeIdMap>::DestructorAtExit
     g_frame_tree_node_id_map = LAZY_INSTANCE_INITIALIZER;
@@ -180,23 +180,42 @@ FrameTreeNode::FrameTreeNode(
 }
 
 void FrameTreeNode::DestroyInnerFrameTreeIfExists() {
+  if (!current_frame_host() ||
+      !current_frame_host()->inner_tree_main_frame_tree_node_id()) {
+    return;
+  }
+
+  FrameTreeNode* inner_tree_main_frame_tree_node =
+      FrameTreeNode::GloballyFindByID(
+          current_frame_host()->inner_tree_main_frame_tree_node_id());
+  if (!inner_tree_main_frame_tree_node) {
+    return;
+  }
+
   // If `this` is an dummy outer delegate node, then we really are representing
   // an inner FrameTree for one of the following consumers:
   //   - `FencedFrame`
   //   - `GuestView`
-  // If we are representing a `FencedFrame` object, we need to destroy it
-  // alongside ourself. `GuestView` however, *currently* has a more complex
-  // lifetime and is dealt with separately.
-  bool is_outer_dummy_node = false;
-  if (current_frame_host() &&
-      current_frame_host()->inner_tree_main_frame_tree_node_id()) {
-    is_outer_dummy_node = true;
-  }
-
-  if (is_outer_dummy_node) {
-    if (FencedFrame* doomed_fenced_frame = FindFencedFrame(this)) {
-      parent()->DestroyFencedFrame(*doomed_fenced_frame);
-    }
+  switch (inner_tree_main_frame_tree_node->GetFrameType()) {
+    case FrameType::kSubframe:
+    case FrameType::kPrerenderMainFrame:
+      NOTREACHED();
+    case FrameType::kPrimaryMainFrame:
+      // This is possible for inner WebContents based GuestViews. The lifetimes
+      // of inner WebContents are dealt with separately.
+      // TODO(crbug.com/40202416): Once inner WebContents are removed, this can
+      // be NOTREACHED.
+      break;
+    case FrameType::kFencedFrameRoot:
+      // If we are representing a `FencedFrame` object, we need to destroy it
+      // alongside ourself.
+      if (FencedFrame* doomed_fenced_frame = FindFencedFrame(this)) {
+        parent()->DestroyFencedFrame(*doomed_fenced_frame);
+      }
+      break;
+    case FrameType::kGuestMainFrame:
+      parent()->DestroyGuestPage(this);
+      break;
   }
 }
 
@@ -381,6 +400,8 @@ FrameType FrameTreeNode::GetFrameType() const {
       return FrameType::kPrerenderMainFrame;
     case FrameTree::Type::kFencedFrame:
       return FrameType::kFencedFrameRoot;
+    case FrameTree::Type::kGuest:
+      return FrameType::kGuestMainFrame;
   }
 }
 
@@ -477,6 +498,9 @@ void FrameTreeNode::SetPendingFramePolicy(blink::FramePolicy frame_policy) {
     pending_frame_policy_.required_document_policy =
         frame_policy.required_document_policy;
   }
+
+  pending_frame_policy_.deferred_fetch_policy =
+      frame_policy.deferred_fetch_policy;
 
   // Fenced frame roots do not have a parent, so add an extra check here to
   // still allow a fenced frame to properly set its container policy. The
@@ -600,6 +624,12 @@ void FrameTreeNode::TakeNavigationRequest(
     was_discarded_ = false;
   }
   render_manager()->DidCreateNavigationRequest(navigation_request_.get());
+
+  devtools_instrumentation::DidStartNavigating(
+      *this, navigation_request_->common_params().url,
+      navigation_request_->devtools_navigation_token(),
+      navigation_request_->common_params().navigation_type);
+
   DidStartLoading(previous_frame_tree_loading_state);
 }
 
@@ -789,32 +819,29 @@ bool FrameTreeNode::NotifyUserActivation(
 
   // See the "Same-origin Visibility" section in |UserActivationState| class
   // doc.
-  if (base::FeatureList::IsEnabled(
-          features::kUserActivationSameOriginVisibility)) {
-    const url::Origin& current_origin =
-        this->current_frame_host()->GetLastCommittedOrigin();
-    for (FrameTreeNode* node : frame_tree().Nodes()) {
-      if (node->current_frame_host()->GetLastCommittedOrigin().IsSameOriginWith(
-              current_origin)) {
-        node->current_frame_host()->ActivateUserActivation(notification_type,
-                                                           sticky_only);
-      }
+  const url::Origin& current_origin =
+      this->current_frame_host()->GetLastCommittedOrigin();
+  for (FrameTreeNode* node : frame_tree().Nodes()) {
+    if (node->current_frame_host()->GetLastCommittedOrigin().IsSameOriginWith(
+            current_origin)) {
+      node->current_frame_host()->ActivateUserActivation(notification_type,
+                                                         sticky_only);
     }
+  }
 
-    if (base::FeatureList::IsEnabled(
-            blink::features::kDocumentPictureInPictureUserActivation)) {
-      // If we own a picture-in-picture window, then also activate same-origin
-      // frames within the picture-in-picture window.
-      FrameTree* picture_in_picture_frame_tree =
-          frame_tree().delegate()->GetOwnedPictureInPictureFrameTree();
-      if (picture_in_picture_frame_tree) {
-        for (FrameTreeNode* node : picture_in_picture_frame_tree->Nodes()) {
-          if (node->current_frame_host()
-                  ->GetLastCommittedOrigin()
-                  .IsSameOriginWith(current_origin)) {
-            node->current_frame_host()->ActivateUserActivation(
-                notification_type, sticky_only);
-          }
+  if (base::FeatureList::IsEnabled(
+          blink::features::kDocumentPictureInPictureUserActivation)) {
+    // If we own a picture-in-picture window, then also activate same-origin
+    // frames within the picture-in-picture window.
+    FrameTree* picture_in_picture_frame_tree =
+        frame_tree().delegate()->GetOwnedPictureInPictureFrameTree();
+    if (picture_in_picture_frame_tree) {
+      for (FrameTreeNode* node : picture_in_picture_frame_tree->Nodes()) {
+        if (node->current_frame_host()
+                ->GetLastCommittedOrigin()
+                .IsSameOriginWith(current_origin)) {
+          node->current_frame_host()->ActivateUserActivation(notification_type,
+                                                             sticky_only);
         }
       }
     }
@@ -871,17 +898,6 @@ bool FrameTreeNode::ClearUserActivation() {
   return true;
 }
 
-bool FrameTreeNode::VerifyUserActivation() {
-  DCHECK(base::FeatureList::IsEnabled(
-             features::kBrowserVerifiedUserActivationMouse) ||
-         base::FeatureList::IsEnabled(
-             features::kBrowserVerifiedUserActivationKeyboard));
-
-  return render_manager_.current_frame_host()
-      ->GetRenderWidgetHost()
-      ->RemovePendingUserActivationIfAvailable();
-}
-
 bool FrameTreeNode::UpdateUserActivationState(
     blink::mojom::UserActivationUpdateType update_type,
     blink::mojom::UserActivationNotificationType notification_type) {
@@ -893,19 +909,6 @@ bool FrameTreeNode::UpdateUserActivationState(
     case blink::mojom::UserActivationUpdateType::kNotifyActivation:
       update_result = NotifyUserActivation(notification_type);
       break;
-    case blink::mojom::UserActivationUpdateType::
-        kNotifyActivationPendingBrowserVerification: {
-      if (VerifyUserActivation()) {
-        update_result = NotifyUserActivation(
-            blink::mojom::UserActivationNotificationType::kInteraction);
-        update_type = blink::mojom::UserActivationUpdateType::kNotifyActivation;
-      } else {
-        // TODO(crbug.com/40091540): We need to decide what to do when
-        // user activation verification failed. NOTREACHED here will make all
-        // unrelated tests that inject event to renderer fail.
-        return false;
-      }
-    } break;
     case blink::mojom::UserActivationUpdateType::kNotifyActivationStickyOnly:
       update_result = NotifyUserActivationStickyOnly();
       break;
@@ -1232,13 +1235,15 @@ FrameTreeNode::CreateNavigationRequestForSynchronousRendererCommit(
     const std::vector<GURL>& redirects,
     const GURL& original_url,
     std::unique_ptr<CrossOriginEmbedderPolicyReporter> coep_reporter,
+    std::unique_ptr<DocumentIsolationPolicyReporter> dip_reporter,
     int http_response_code) {
   return NavigationRequest::CreateForSynchronousRendererCommit(
       this, render_frame_host, is_same_document, url, origin,
       initiator_base_url, isolation_info_for_subresources, std::move(referrer),
       transition, should_replace_current_entry, method,
       has_transient_activation, is_overriding_user_agent, redirects,
-      original_url, std::move(coep_reporter), http_response_code);
+      original_url, std::move(coep_reporter), std::move(dip_reporter),
+      http_response_code);
 }
 
 void FrameTreeNode::CancelNavigation(NavigationDiscardReason reason) {
@@ -1262,17 +1267,9 @@ bool FrameTreeNode::Credentialless() const {
   return attributes_->credentialless;
 }
 
-#if !BUILDFLAG(IS_ANDROID)
-void FrameTreeNode::GetVirtualAuthenticatorManager(
-    mojo::PendingReceiver<blink::test::mojom::VirtualAuthenticatorManager>
-        receiver) {
-  auto* environment_singleton = AuthenticatorEnvironment::GetInstance();
-  environment_singleton->EnableVirtualAuthenticatorFor(this,
-                                                       /*enable_ui=*/false);
-  environment_singleton->AddVirtualAuthenticatorReceiver(this,
-                                                         std::move(receiver));
+FrameType FrameTreeNode::GetCurrentFrameType() const {
+  return GetFrameType();
 }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 void FrameTreeNode::RestartBackForwardCachedNavigationAsync(int nav_entry_id) {
   TRACE_EVENT0("navigation",

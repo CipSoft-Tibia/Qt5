@@ -214,12 +214,7 @@ bool AuctionConfig::IsValidTrustedScoringSignalsURL(const GURL& url) const {
     return false;
   }
 
-  if (base::FeatureList::IsEnabled(
-          blink::features::kFledgePermitCrossOriginTrustedSignals)) {
-    return url.scheme() == url::kHttpsScheme;
-  } else {
-    return IsHttpsAndMatchesSellerOrigin(url);
-  }
+  return url.scheme() == url::kHttpsScheme;
 }
 
 bool AuctionConfig::IsDirectFromSellerSignalsValid(

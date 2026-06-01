@@ -130,7 +130,6 @@ private slots:
     void compareQListIntToArray();
     void compareQListIntToInitializerList_data();
     void compareQListIntToInitializerList();
-    void compareQListDouble();
     void compareContainerToInitializerList();
 #ifdef QT_GUI_LIB
     void compareQColor_data();
@@ -526,13 +525,6 @@ void tst_Cmptest::compareQListIntToInitializerList()
 #define ARG(...) __VA_ARGS__
     QCOMPARE(actual,  ARG({1, 2, 3}));
 #undef ARG
-}
-
-void tst_Cmptest::compareQListDouble()
-{
-    QList<double> double1; double1 << 1.5 << 2 << 3;
-    QList<double> double2; double2 << 1 << 2 << 4;
-    QCOMPARE(double1, double2);
 }
 
 void tst_Cmptest::compareContainerToInitializerList()

@@ -4,7 +4,6 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: lineparticleEffect
@@ -37,7 +36,7 @@ ParticleSystem3D {
         PointRotator3D {
             id: pointRotator
             magnitude: 100
-            particles: lineParticle
+            particles: [lineParticle]
             system: lineparticleEffect
         }
         lifeSpan: 5000
@@ -103,7 +102,7 @@ ParticleSystem3D {
             PointRotator3D {
                 id: lineparticle_thick_rotator
                 magnitude: 100
-                particles: lineparticle_Thick
+                particles: [lineparticle_Thick]
                 system: lineparticlesystem_thick
             }
             particleRotationVariation.z: 180
@@ -159,7 +158,7 @@ ParticleSystem3D {
                 id: dotrotator
                 magnitude: 50
                 system: lineparticlesystem_thick
-                particles: spriteParticle
+                particles: [spriteParticle]
             }
 
             Wander3D {
@@ -172,7 +171,7 @@ ParticleSystem3D {
                 system: lineparticlesystem_thick
                 uniqueAmount.y: 1
                 uniqueAmount.z: 1
-                particles: spriteParticle
+                particles: [spriteParticle]
             }
 
             SpriteParticle3D {

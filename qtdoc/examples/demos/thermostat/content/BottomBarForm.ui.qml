@@ -8,15 +8,18 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import Thermostat
 
 TabBar {
     id: root
 
-    required property var roomsList
-    property alias menuOptions: repeater.model
+    required property list<Room> roomsList
+    required property ListModel menuOptions
+    required property StackView stackView
 
     contentHeight: 56
 
@@ -29,20 +32,21 @@ TabBar {
     Repeater {
         id: repeater
 
+        model: root.menuOptions
         delegate: TabButton {
             id: menuItem
 
             required property string name
             required property string view
             required property string iconSource
-            readonly property bool active: Constants.currentView == menuItem.view
+            readonly property bool active: Constants.currentView === menuItem.view
 
             background: Rectangle {
                 color: "transparent"
             }
 
-            width: menuItem.view == "SettingsView" ? 0 : undefined;
-            height: menuItem.view == "SettingsView" ? 0 : undefined;
+            width: menuItem.view === "SettingsView" ? 0 : undefined;
+            height: menuItem.view === "SettingsView" ? 0 : undefined;
 
             icon.width: 24
             icon.height: 24
@@ -51,10 +55,10 @@ TabBar {
 
             Connections {
                 function onClicked() {
-                    if (menuItem.view != "SettingsView"
-                            && menuItem.view != Constants.currentView) {
-                        stackView.replace(menuItem.view + ".qml", {
-                                              "roomsList": roomsList
+                    if (menuItem.view !== "SettingsView"
+                            && menuItem.view !== Constants.currentView) {
+                        root.stackView.replace(menuItem.view + ".qml", {
+                                              "roomsList": root.roomsList
                                           }, StackView.Immediate)
                         Constants.currentView = menuItem.view
                     }

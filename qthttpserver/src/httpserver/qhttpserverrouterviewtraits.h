@@ -38,7 +38,8 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
             static constexpr bool Value = !IsSpecial::Value &&
                                            I < FunctionTraits::ArgumentCount &&
                                            FunctionTraits::ArgumentIndexMax != -1;
-            static constexpr bool Valid = FunctionTraits::template Arg<I>::CopyConstructible;
+            static constexpr bool Valid =
+                    !IsSpecial::Valid && FunctionTraits::template Arg<I>::CopyConstructible;
 
             static constexpr bool StaticAssert =
                 DisableStaticAssert || !Value || Valid;
@@ -66,8 +67,9 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
             static constexpr QMetaType metaType() noexcept
             {
                 using Type = typename FunctionTraits::template Arg<Idx>::CleanType;
+                constexpr bool Simple = Arg<Idx>::IsSimple::Valid;
 
-                if constexpr (std::conjunction_v<std::is_copy_constructible<Type>, std::is_copy_assignable<Type>>)
+                if constexpr (Simple && std::is_copy_assignable_v<Type>)
                     return QMetaType::fromType<Type>();
                 else
                     return QMetaType::fromType<void>();
@@ -75,9 +77,9 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
 
             static constexpr std::size_t Count = FunctionTraits::ArgumentCount;
             static constexpr std::size_t CapturableCount =
-                    (0 + ... + static_cast<std::size_t>(FunctionTraits::template Arg<I>::CopyConstructible));
+                    (0 + ... + static_cast<std::size_t>(!Arg<I>::IsSpecial::Value));
 
-            static constexpr std::size_t PlaceholdersCount = Count - CapturableCount;
+            static constexpr std::size_t SpecialsCount = Count - CapturableCount;
 
             static constexpr bool Valid = (Arg<I>::Valid && ...);
             static constexpr bool StaticAssert = (Arg<I>::StaticAssert && ...);
@@ -86,7 +88,7 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
 
             using CapturableIndexes = std::make_index_sequence<CapturableCount>;
 
-            using PlaceholdersIndexes = std::make_index_sequence<PlaceholdersCount>;
+            using SpecialIndexes = std::make_index_sequence<SpecialsCount>;
 
             using Last = Arg<FunctionTraits::ArgumentIndexMax>;
         };
@@ -120,9 +122,8 @@ struct QHttpServerRouterViewTraits
     using Helpers = typename QtPrivate::RouterViewTraitsHelper<ViewHandler, DisableStaticAssert>;
     using ReturnType = typename Helpers::FunctionTraits::ReturnType;
     using Arguments = decltype(Helpers::Arguments::eval(typename Helpers::ArgumentIndexes{}));
-    using BindableType = decltype(
-            Helpers::template BindType<Arguments::CapturableCount>::eval(
-                typename Arguments::PlaceholdersIndexes{}));
+    using BindableType = decltype(Helpers::template BindType<Arguments::CapturableCount>::eval(
+            typename Arguments::SpecialIndexes{}));
 };
 
 

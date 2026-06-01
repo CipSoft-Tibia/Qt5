@@ -28,7 +28,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_TIMING_WINDOW_PERFORMANCE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_TIMING_WINDOW_PERFORMANCE_H_
 
@@ -89,26 +88,38 @@ class CORE_EXPORT WindowPerformance final : public Performance,
 
   void WillShowModalDialog();
 
-  // This method creates a PerformanceEventTiming and if needed creates a
-  // presentation promise to calculate the |duration| attribute when such
-  // promise is resolved.
-  void RegisterEventTiming(const Event& event,
-                           EventTarget* event_target,
-                           base::TimeTicks start_time,
-                           base::TimeTicks processing_start,
-                           base::TimeTicks processing_end);
+  // EventTimingProcessingStart and EventTimingProcessingEnd are together used
+  // to measure the processing duration of a new Event Timing.
+  // There might be nested events being dispatched (e.g. `input` event nested
+  // inside a raw pointer event), but the RAII class `EventTiming` uses the
+  // stack to manage calling these functions (from constructor/destructor).
+  // This means that calls to End will be in LIFO often with Start.
+  //
+  // Will create a `PerformanceEventTiming`, and if needed, requests the next
+  // presentation time to calculate the full |duration| to next paint.
+  void EventTimingProcessingStart(const Event& event,
+                                  base::TimeTicks processing_start,
+                                  EventTarget* hit_test_target);
+  void EventTimingProcessingEnd(const Event& event,
+                                base::TimeTicks processing_end);
 
   // Set commit finish time for all pending events that have finished processing
   // and are watiting for presentation promise to resolve.
   void SetCommitFinishTimeStampForPendingEvents(
       base::TimeTicks commit_finish_time);
 
+  void UpdatePendingEventTimingsWithFallbackTime(base::TimeTicks fallback_time);
+
+  // Set render start time for all pending events that have finished processing.
+  void SetRenderStartTimeForPendingEvents(base::TimeTicks render_start_time);
+
   void OnPaintFinished();
+  void OnBeginMainFrame(viz::BeginFrameId frame_id);
 
   void AddElementTiming(const AtomicString& name,
                         const String& url,
                         const gfx::RectF& rect,
-                        base::TimeTicks start_time,
+                        const DOMPaintTimingInfo&,
                         base::TimeTicks load_time,
                         const AtomicString& identifier,
                         const gfx::Size& intrinsic_size,
@@ -116,7 +127,16 @@ class CORE_EXPORT WindowPerformance final : public Performance,
                         Element*);
 
   void OnBodyLoadFinished(int64_t encoded_body_size, int64_t decoded_body_size);
-  void ReportLongAnimationFrameTiming(AnimationFrameTimingInfo*);
+  void QueueLongAnimationFrameTiming(
+      AnimationFrameTimingInfo*,
+      std::optional<DOMPaintTimingInfo> paint_timing_info = std::nullopt);
+  void AddFirstPaintTiming(const DOMPaintTimingInfo& paint_timing_info,
+                           bool is_triggered_by_soft_navigation);
+
+  void AddFirstContentfulPaintTiming(
+      const DOMPaintTimingInfo& paint_timing_info,
+      bool is_triggered_by_soft_navigation);
+
   // PerformanceMonitor::Client implementation.
   void ReportLongTask(base::TimeTicks start_time,
                       base::TimeTicks end_time,
@@ -134,11 +154,9 @@ class CORE_EXPORT WindowPerformance final : public Performance,
       base::TimeTicks visibility_change_timestamp);
 
   void OnLargestContentfulPaintUpdated(
-      base::TimeTicks start_time,
-      base::TimeTicks render_time,
+      std::optional<DOMPaintTimingInfo> paint_timing_info,
       uint64_t paint_size,
       base::TimeTicks load_time,
-      base::TimeTicks first_animated_frame_time,
       const AtomicString& id,
       const String& url,
       Element*,
@@ -150,15 +168,14 @@ class CORE_EXPORT WindowPerformance final : public Performance,
     return *responsiveness_metrics_;
   }
 
-  void NotifyPotentialDrag(PointerId pointer_id);
-
-  void SetCurrentEventTimingEvent(const Event* event) {
-    current_event_ = event;
-  }
   const Event* GetCurrentEventTimingEvent() { return current_event_.Get(); }
 
   void CreateNavigationTimingInstance(
       mojom::blink::ResourceTimingInfoPtr navigation_resource_timing);
+
+  void OnPageScroll();
+  bool IsAutoscrollActive();
+  void ResetAutoscroll() { autoscroll_active_ = false; }
 
  private:
   static std::pair<AtomicString, DOMWindow*> SanitizedAttribution(
@@ -171,16 +188,17 @@ class CORE_EXPORT WindowPerformance final : public Performance,
   void ReportAllPendingEventTimingsOnPageHidden();
 
   void FlushEventTimingsOnPageHidden();
+  void AddLongAnimationFrameEntry(PerformanceEntry*);
 
   void OnPresentationPromiseResolved(
       uint64_t presentation_index,
+      uint64_t expected_frame_source_id,
       const viz::FrameTimingDetails& presentation_details);
   // Report buffered events with presentation time following their registered
   // order; stop as soon as seeing an event with pending presentation promise.
   void ReportEventTimings();
   void ReportEvent(InteractiveDetector* interactive_detector,
-                   Member<PerformanceEventTiming> event_timing_entry,
-                   base::TimeTicks presentation_timestamp);
+                   Member<PerformanceEventTiming> event_timing_entry);
 
   void DispatchFirstInputTiming(PerformanceEventTiming* entry);
 
@@ -195,9 +213,10 @@ class CORE_EXPORT WindowPerformance final : public Performance,
   // timing buffer if needed.
   void NotifyAndAddEventTimingBuffer(PerformanceEventTiming* entry);
 
-  // If a fallback time should be used in calculating an event duration, set
-  // the fallback value in the PerformanceEventTiming::EventTimingReportingInfo.
-  void SetFallbackTime(PerformanceEventTiming* entry);
+  void ReportFirstInputTiming(PerformanceEventTiming* event_timing_entry);
+
+  void SchedulePendingRenderCoarsenedEntries(base::TimeTicks target_time);
+  void FlushPendingRenderCoarsenedEntries();
 
   // The last time the page visibility was changed.
   base::TimeTicks last_hidden_timestamp_;
@@ -206,15 +225,16 @@ class CORE_EXPORT WindowPerformance final : public Performance,
   // timestamps right before start showing each dialog.
   Deque<base::TimeTicks> show_modal_dialog_timestamps_;
 
+  // Frame source id from BeginMainFrame args. Event Timing compares it with
+  // frame source id from presentation feedback to identify GPU crashes.
+  // crbug.com/324877581
+  uint64_t begin_main_frame_source_id_ = 0;
   // Controls if we register a new presentation promise upon events arrival.
   bool need_new_promise_for_event_presentation_time_ = true;
   // Counts the total number of presentation promises we've registered for
   // events' presentation feedback since the beginning.
   uint64_t event_presentation_promise_count_ = 0;
-  // Map from presentation promise index to pending event presentation
-  // timestamp. It gets emptied consistently once corresponding entries are
-  // reported.
-  HashMap<uint64_t, base::TimeTicks> pending_event_presentation_time_map_;
+
   // Store all event timing and latency related data, including
   // PerformanceEventTiming, presentation_index, keycode and pointerId.
   // We use the data to calculate events latencies.
@@ -224,9 +244,25 @@ class CORE_EXPORT WindowPerformance final : public Performance,
   mutable Member<PerformanceNavigation> navigation_;
   mutable Member<PerformanceTiming> timing_;
   mutable Member<PerformanceTimingForReporting> timing_for_reporting_;
-  DOMHighResTimeStamp pending_pointer_down_start_time_;
+  base::TimeTicks pending_pointer_down_start_time_;
   std::optional<base::TimeDelta> pending_pointer_down_processing_time_;
   std::optional<base::TimeDelta> pending_pointer_down_time_to_next_paint_;
+
+  // Set to true when text selection causes scrolling in the page. Reset when
+  // the mouse button is released and autoscroll stops. Used to ignore
+  // recording interaction metrics for all the events during the text
+  // selection autoscroll.
+  // We do this because the interactions following a scroll can cause a lot of
+  // work to be done (intersection observers, etc.) but this doesn't
+  // necessarily result in a degraded user experience.
+  // When users are actively scrolling a page, it is much harder to visualize
+  // the latency for any one specific animation frame, not in the same way as a
+  // typical discrete interaction, which are measured in INP only.
+  // The interactions causing text selection autoscroll are generally rare and
+  // not typically "designed by the site UI". It's more of user agent or
+  // accessibility use case. We don't want any pages to fail INP because of
+  // these interactions.
+  bool autoscroll_active_ = false;
 
   // Calculate responsiveness metrics and record UKM for them.
   Member<ResponsivenessMetrics> responsiveness_metrics_;

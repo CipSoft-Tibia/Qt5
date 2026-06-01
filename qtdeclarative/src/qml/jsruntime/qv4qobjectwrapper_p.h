@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QV4QOBJECTWRAPPER_P_H
 #define QV4QOBJECTWRAPPER_P_H
@@ -24,8 +25,9 @@
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qmetatype.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qhash.h>
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -120,6 +122,7 @@ private:
 struct Q_QML_EXPORT QObjectWrapper : public Object
 {
     V4_OBJECT2(QObjectWrapper, Object)
+    Q_MANAGED_TYPE(V4QObjectWrapper)
     V4_NEEDS_DESTROY
 
     enum Flag {
@@ -176,10 +179,6 @@ struct Q_QML_EXPORT QObjectWrapper : public Object
     static ReturnedValue getProperty(
             ExecutionEngine *engine, Heap::Object *wrapper, QObject *object,
             const QQmlPropertyData *property, Flags flags);
-
-    static ReturnedValue getMethodFallback(
-            ExecutionEngine *engine, Heap::Object *wrapper, QObject *object,
-            QV4::String *name, Flags flags);
 
     static ReturnedValue virtualResolveLookupGetter(const Object *object, ExecutionEngine *engine, Lookup *lookup);
 
@@ -397,7 +396,7 @@ struct Q_QML_EXPORT QObjectMethod : public QV4::FunctionObject
     void callInternalWithMetaTypes(
             QObject *thisObject, void **argv, const QMetaType *types, int argc) const;
 
-    static QPair<QObject *, int> extractQtMethod(const QV4::FunctionObject *function);
+    static std::pair<QObject *, int> extractQtMethod(const QV4::FunctionObject *function);
 
     static bool isExactMatch(
             const QMetaMethod &method, void **argv, int argc, const QMetaType *types);

@@ -1,6 +1,7 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+add_subdirectory(qbytedatabuffer)
 add_subdirectory(qhttpheaders)
 if(QT_FEATURE_networkdiskcache)
     add_subdirectory(qnetworkdiskcache)
@@ -14,9 +15,7 @@ add_subdirectory(qnetworkcachemetadata)
 add_subdirectory(qabstractnetworkcache)
 if(QT_FEATURE_http)
     add_subdirectory(qnetworkreply_local)
-    if(NOT WASM) # QTBUG-121822
     add_subdirectory(qformdatabuilder)
-    endif()
     add_subdirectory(qnetworkrequestfactory)
     add_subdirectory(qrestaccessmanager)
 endif()

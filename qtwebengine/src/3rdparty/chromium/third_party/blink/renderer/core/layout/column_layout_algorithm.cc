@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "base/not_fatal_until.h"
+#include "third_party/blink/renderer/core/dom/column_pseudo_element.h"
 #include "third_party/blink/renderer/core/layout/block_layout_algorithm.h"
 #include "third_party/blink/renderer/core/layout/block_layout_algorithm_utils.h"
 #include "third_party/blink/renderer/core/layout/column_spanner_path.h"
@@ -903,7 +904,7 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutRow(
       for (wtf_size_t i = 0; i < new_columns.size(); i++) {
         auto& new_column = new_columns[i];
         columns.push_back(
-            LogicalFragmentLink{&new_column.Fragment(), new_column.offset});
+            LogicalFragmentLink(new_column.Fragment(), new_column.offset));
 
         // Because the current set of columns haven't been added to the builder
         // yet, any OOF descendants won't have been propagated up yet. Instead,
@@ -1049,12 +1050,38 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutRow(
     *margin_strut = MarginStrut();
   }
 
+  Element* element = To<Element>(Node().EnclosingDOMNode());
+  StyleEngine::AttachScrollMarkersScope scope(
+      Node().GetDocument().GetStyleEngine());
+
+  wtf_size_t num_columns = 0u;
   // Commit all column fragments to the fragment builder.
   for (auto result_with_offset : new_columns) {
     const PhysicalBoxFragment& column = result_with_offset.Fragment();
     container_builder_.AddChild(column, result_with_offset.offset);
     PropagateBaselineFromChild(column, result_with_offset.offset.block_offset);
+
+    // Create a ::column pseudo element, and, if needed, also a
+    // ::column::scroll-marker pseudo element child of ::column.
+    LogicalRect column_logical_rect(result_with_offset.offset, column_size);
+    const WritingModeConverter converter(
+        GetConstraintSpace().GetWritingDirection(),
+        LogicalSize(ChildAvailableSize().inline_size, column_block_size_));
+    ColumnPseudoElement* column_pseudo =
+        element->GetOrCreateColumnPseudoElementIfNeeded(
+            num_columns, converter.ToPhysical(column_logical_rect));
+    num_columns += column_pseudo != nullptr;
+    if (column_pseudo &&
+        column_pseudo->GetComputedStyle()->GetScrollSnapAlign() !=
+            cc::ScrollSnapAlign()) {
+      container_builder_.AddSnapAreaForColumn(column_pseudo);
+    }
   }
+
+  // If there were superfluous ::column pseudo-elements from the previous pass,
+  // remove the superfluous ones. This happens when the number of columns
+  // decreases.
+  element->ClearColumnPseudoElements(num_columns);
 
   if (min_break_appeal)
     container_builder_.ClampBreakAppeal(*min_break_appeal);

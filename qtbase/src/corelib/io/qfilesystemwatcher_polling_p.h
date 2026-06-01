@@ -47,7 +47,7 @@ class QPollingFileSystemWatcherEngine : public QFileSystemWatcherEngine
 
             QStringList fileNames;
             using F = QDirListing::IteratorFlag;
-            constexpr auto flags = F::ExcludeSpecial | F::IncludeDotAndDotDot;
+            constexpr auto flags = F::ExcludeOther | F::IncludeDotAndDotDot;
             for (const auto &entry : QDirListing(fileInfo.absoluteFilePath(), flags))
                 fileNames.emplace_back(entry.fileName());
             return fileNames;

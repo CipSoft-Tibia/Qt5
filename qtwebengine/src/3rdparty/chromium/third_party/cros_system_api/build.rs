@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-use chromeos_dbus_bindings::{generate_module, BindingsType};
+use chromeos_dbus_bindings::{generate_module, BindingsType, CROSSROADS_SERVER_OPTS};
 
 // The parent path of system_api.
 const SOURCE_DIR: &str = "..";
@@ -81,6 +81,11 @@ const BINDINGS_TO_GENERATE: &[(&str, &str, BindingsType)] = &[
         BindingsType::Client(OPTS),
     ),
     (
+        "org_chromium_vhostuserstarter",
+        "vm_tools/dbus_bindings/org.chromium.VhostUserStarter.xml",
+        BindingsType::Server(CROSSROADS_SERVER_OPTS),
+    ),
+    (
         "org_chromium_vm_concierge",
         "vm_tools/dbus_bindings/org.chromium.VmConcierge.xml",
         BindingsType::Client(OPTS),
@@ -131,10 +136,6 @@ const PROTOS_TO_GENERATE: &[(&str, &str)] = &[
         "system_api/dbus/printscanmgr/printscanmgr_service.proto",
     ),
     (
-        "metrics_event",
-        "system_api/dbus/metrics_event/metrics_event.proto",
-    ),
-    (
         "recoverable_key_store",
         "system_api/dbus/cryptohome/recoverable_key_store.proto",
     ),
@@ -142,7 +143,12 @@ const PROTOS_TO_GENERATE: &[(&str, &str)] = &[
         "resource_manager",
         "system_api/dbus/resource_manager/resource_manager.proto",
     ),
+    ("launch", "system_api/dbus/vm_launch/launch.proto"),
     ("rpc", "system_api/dbus/cryptohome/rpc.proto"),
+    (
+        "seneschal_service",
+        "system_api/dbus/seneschal/seneschal_service.proto",
+    ),
     (
         "shadercached",
         "system_api/dbus/shadercached/shadercached.proto",
@@ -153,8 +159,16 @@ const PROTOS_TO_GENERATE: &[(&str, &str)] = &[
         "system_api/dbus/cryptohome/UserDataAuth.proto",
     ),
     (
+        "vhost_user_starter",
+        "system_api/dbus/vhost_user_starter/vhost_user_starter.proto",
+    ),
+    (
         "vm_memory_management",
         "system_api/non_standard_ipc/vm_memory_management/vm_memory_management.proto",
+    ),
+    (
+        "vm_plugin_dispatcher",
+        "system_api/dbus/vm_plugin_dispatcher/vm_plugin_dispatcher.proto",
     ),
     ("vtpm_interface", "vtpm/vtpm_interface.proto"),
     (

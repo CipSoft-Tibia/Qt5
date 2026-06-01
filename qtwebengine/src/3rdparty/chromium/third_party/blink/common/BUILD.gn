@@ -266,6 +266,8 @@ jumbo_source_set("common") {
     "page_state/page_state.cc",
     "page_state/page_state_serialization.cc",
     "peerconnection/webrtc_ip_handling_policy.cc",
+    "performance/performance_scenario_observer.cc",
+    "performance/performance_scenarios.cc",
     "permissions/permission_utils.cc",
     "permissions_policy/document_policy.cc",
     "permissions_policy/origin_with_possible_wildcards.cc",
@@ -291,7 +293,6 @@ jumbo_source_set("common") {
     "service_worker/service_worker_status_code.cc",
     "service_worker/service_worker_type_converters.cc",
     "shared_storage/module_script_downloader.cc",
-    "shared_storage/shared_storage_mojom_traits.cc",
     "shared_storage/shared_storage_utils.cc",
     "storage_key/storage_key.cc",
     "storage_key/storage_key_mojom_traits.cc",
@@ -305,6 +306,8 @@ jumbo_source_set("common") {
     "web_package/web_package_request_matcher.cc",
     "web_preferences/web_preferences.cc",
     "web_preferences/web_preferences_mojom_traits.cc",
+    "webid/login_status_account.cc",
+    "webid/login_status_options.cc",
     "widget/constants.cc",
     "widget/device_emulation_params_mojom_traits.cc",
     "widget/visual_properties.cc",
@@ -327,6 +330,7 @@ jumbo_source_set("common") {
     "//third_party/blink/common/privacy_budget:privacy_budget",
     "//third_party/blink/public/common:common_export",
     "//third_party/blink/public/common:headers",
+    "//ui/base/mojom:ui_base_types",
   ]
 
   deps = [
@@ -342,6 +346,7 @@ jumbo_source_set("common") {
     "//services/metrics/public/cpp:ukm_builders",
     "//services/metrics/public/mojom:mojom",
     "//services/network/public/cpp:cpp",
+    "//third_party/blink/common/rust_crash",
     "//third_party/blink/public/common:buildflags",
     "//third_party/re2",
     "//ui/base:base",
@@ -353,10 +358,6 @@ jumbo_source_set("common") {
     "//ui/events/mojom:event_latency_metadata_mojom",
     "//ui/latency/mojom:shared_mojom_traits",
   ]
-
-  if (enable_rust_crash) {
-    deps += [ "//third_party/blink/common/rust_crash" ]
-  }
 
   # If use_blink is used then it needs to depend on //media
   if (use_blink) {
@@ -385,6 +386,12 @@ jumbo_source_set("common") {
 
   if (is_chromeos || is_android || is_win || is_castos || is_fuchsia) {
     defines = [ "ENABLE_PROTECTED_MEDIA_IDENTIFIER_PERMISSION" ]
+  }
+
+  if (is_qtwebengine) {
+    deps -= [
+      "//third_party/blink/common/rust_crash",
+    ]
   }
 }
 
@@ -459,6 +466,9 @@ jumbo_source_set("common_unittests_sources") {
     "page/browsing_context_group_info_unittest.cc",
     "page/content_to_visible_time_reporter_unittest.cc",
     "page_state/page_state_serialization_unittest.cc",
+    "peerconnection/webrtc_ip_handling_policy_unittest.cc",
+    "performance/performance_scenario_observer_unittest.cc",
+    "performance/performance_scenarios_unittest.cc",
     "permissions_policy/document_policy_unittest.cc",
     "permissions_policy/origin_with_possible_wildcards_unittest.cc",
     "permissions_policy/permissions_policy_declaration_unittest.cc",
@@ -470,7 +480,6 @@ jumbo_source_set("common_unittests_sources") {
     "service_worker/service_worker_router_rule_mojom_traits_unittest.cc",
     "service_worker/service_worker_scope_match_unittest.cc",
     "shared_storage/module_script_downloader_unittest.cc",
-    "shared_storage/shared_storage_mojom_traits_unittest.cc",
     "storage_key/storage_key_mojom_traits_unittest.cc",
     "storage_key/storage_key_unittest.cc",
     "test/run_all_unittests.cc",
@@ -479,6 +488,7 @@ jumbo_source_set("common_unittests_sources") {
     "unique_name/unique_name_helper_unittest.cc",
     "user_agent/user_agent_metadata_unittest.cc",
     "web_package/web_package_request_matcher_unittest.cc",
+    "webid/federated_auth_request_mojom_traits_unittest.cc",
   ]
 
   deps = [

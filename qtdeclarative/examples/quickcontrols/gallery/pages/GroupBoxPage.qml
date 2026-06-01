@@ -21,6 +21,7 @@ ScrollablePage {
         }
 
         GroupBox {
+            enabled: !GalleryConfig.disabled
             title: qsTr("Title")
             anchors.horizontalCenter: parent.horizontalCenter
 

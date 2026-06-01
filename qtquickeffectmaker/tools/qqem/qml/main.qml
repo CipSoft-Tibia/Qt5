@@ -170,7 +170,7 @@ ApplicationWindow {
                 }
                 Action {
                     text: "Delete"
-                    enabled: mainView.nodeViewItem.effectNodeSelected
+                    enabled: mainView.designMode && mainView.nodeViewItem.effectNodeSelected
                     onTriggered: deleteNodeAction();
                     shortcut: StandardKey.Delete
                 }

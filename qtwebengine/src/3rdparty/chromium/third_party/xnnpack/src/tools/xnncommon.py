@@ -22,12 +22,14 @@ def _remove_duplicate_newlines(text):
     last_newline = is_newline
   return "\n".join(filtered_lines)
 
+_XNNPACK_SRC = ""
 
 _ARCH_TO_MACRO_MAP = {
   "aarch32": "XNN_ARCH_ARM",
   "aarch64": "XNN_ARCH_ARM64",
   "x86-32": "XNN_ARCH_X86",
   "x86-64": "XNN_ARCH_X86_64",
+  "amd64": "XNN_ARCH_X86_64",
   "hexagon": "XNN_ARCH_HEXAGON",
   "riscv": "XNN_ARCH_RISCV",
   "wasm": "XNN_ARCH_WASM",
@@ -50,9 +52,14 @@ _ISA_TO_MACRO_MAP = {
   "rvv": "XNN_ENABLE_RISCV_VECTOR",
   "rvvfp16arith": "XNN_ENABLE_RISCV_FP16_VECTOR",
   "avxvnni": "XNN_ENABLE_AVXVNNI",
+  "avxvnniint8": "XNN_ENABLE_AVXVNNIINT8",
   "avx256skx": "XNN_ENABLE_AVX256SKX",
   "avx256vnni": "XNN_ENABLE_AVX256VNNI",
   "avx256vnnigfni": "XNN_ENABLE_AVX256VNNIGFNI",
+  "avx512f": "XNN_ENABLE_AVX512F",
+  "avx512skx": "XNN_ENABLE_AVX512SKX",
+  "avx512vbmi": "XNN_ENABLE_AVX512VBMI",
+  "avx512vnni": "XNN_ENABLE_AVX512VNNI",
   "avx512vnnigfni": "XNN_ENABLE_AVX512VNNIGFNI",
   "avx512amx": "XNN_ENABLE_AVX512AMX",
   "avx512fp16": "XNN_ENABLE_AVX512FP16",
@@ -70,7 +77,7 @@ _ISA_TO_ARCH_MAP = {
   "neonbf16": ["aarch32", "aarch64"],
   "neondot": ["aarch32", "aarch64"],
   "neondotfp16arith": ["aarch32", "aarch64"],
-  "neoni8mm": ["aarch32", "aarch64"],
+  "neoni8mm": ["aarch64"],
   "sse": ["x86-32", "x86-64"],
   "sse2": ["x86-32", "x86-64"],
   "ssse3": ["x86-32", "x86-64"],
@@ -87,6 +94,7 @@ _ISA_TO_ARCH_MAP = {
   "avx512amx": ["x86-32", "x86-64"],
   "avx512fp16": ["x86-32", "x86-64"],
   "avxvnni": ["x86-32", "x86-64"],
+  "avxvnniint8": ["x86-32", "x86-64"],
   "avx256skx": ["x86-32", "x86-64"],
   "avx256vnni": ["x86-32", "x86-64"],
   "avx256vnnigfni": ["x86-32", "x86-64"],
@@ -130,6 +138,7 @@ _ISA_TO_UTILCHECK_MAP = {
   "avx512amx": "CheckAVX512AMX",
   "avx512fp16": "CheckAVX512FP16",
   "avxvnni": "CheckAVXVNNI",
+  "avxvnniint8": "CheckAVXVNNIINT8",
   "avx256skx": "CheckAVX256SKX",
   "avx256vnni": "CheckAVX256VNNI",
   "avx256vnnigfni": "CheckAVX256VNNIGFNI",
@@ -170,6 +179,7 @@ _ISA_TO_CHECK_MAP = {
   "avx512amx": "TEST_REQUIRES_X86_AVX512AMX",
   "avx512fp16": "TEST_REQUIRES_X86_AVX512FP16",
   "avxvnni": "TEST_REQUIRES_X86_AVXVNNI",
+  "avxvnniint8": "TEST_REQUIRES_X86_AVXVNNIINT8",
   "avx256skx": "TEST_REQUIRES_X86_AVX256SKX",
   "avx256vnni": "TEST_REQUIRES_X86_AVX256VNNI",
   "avx256vnnigfni": "TEST_REQUIRES_X86_AVX256VNNIGFNI",
@@ -181,6 +191,14 @@ _ISA_TO_CHECK_MAP = {
   "wasmusdot": "TEST_REQUIRES_WASM_USDOT",
   "wasmblendvps": "TEST_REQUIRES_WASM_BLENDVPS",
 }
+
+
+def xnnpack_src():
+  return _XNNPACK_SRC
+
+
+def isa_hierarchy_map():
+  return _ISA_HIERARCHY_MAP
 
 
 def parse_target_name(target_name):
@@ -213,7 +231,7 @@ def generate_isa_utilcheck_macro(isa):
 def arch_to_macro(arch, isa):
   return _ARCH_TO_MACRO_MAP[arch]
 
-def postprocess_test_case(test_case, arch, isa, assembly=False, jit=False):
+def postprocess_test_case(test_case, arch, isa, assembly=False):
   test_case = _remove_duplicate_newlines(test_case)
   if arch:
     guard = " || ".join(arch_to_macro(a, isa) for a in arch)
@@ -222,12 +240,10 @@ def postprocess_test_case(test_case, arch, isa, assembly=False, jit=False):
         guard = "%s && (%s)" % (_ISA_TO_MACRO_MAP[isa], guard)
       else:
         guard = "%s && %s" % (_ISA_TO_MACRO_MAP[isa], guard)
-    if (assembly or jit) and "||" in guard:
+    if assembly and "||" in guard:
       guard = '(' + guard + ')'
     if assembly:
       guard += " && XNN_ENABLE_ASSEMBLY"
-    if jit:
-      guard += " && XNN_PLATFORM_JIT"
     return "#if %s\n" % guard + _indent(test_case) + "\n" + \
       "#endif  // %s\n" % guard
   else:
@@ -241,12 +257,13 @@ _ISA_HIERARCHY = [
   "avx",
   "avx2",
   "avx512f",
-  "avx512skx",
   "avx512vbmi",
   "avxvnni",
+  "avxvnniint8",
   "avx256skx",
   "avx256vnni",
   "avx256vnnigfni",
+  "avx512skx",
   "avx512vnni",
   "avx512vnnigfni",
   "avx512fp16",
@@ -277,3 +294,9 @@ def overwrite_if_changed(filepath, content):
   if txt_changed:
     with codecs.open(filepath, "w", encoding="utf-8") as output_file:
       output_file.write(content)
+
+def make_multiline_macro(x):
+  lines = x.strip().split('\n')
+  max_len = max([len(i) for i in lines])
+  lines = [i.ljust(max_len) + "\\" for i in lines]
+  return "\n".join(lines)[:-1].strip() + "\n"

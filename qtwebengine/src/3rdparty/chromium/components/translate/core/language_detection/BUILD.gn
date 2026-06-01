@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/ml.gni")
 import("//components/optimization_guide/features.gni")
 import("//testing/test.gni")
 
@@ -41,6 +42,16 @@ static_library("language_detection") {
   ]
   if (build_with_tflite_lib) {
     deps += [ "//components/language_detection/core" ]
+  }
+
+  if (!use_ml) {
+    deps -= [
+      "//third_party/libphonenumber",
+      "//third_party/libphonenumber:libphonenumber_without_metadata",
+      "//third_party/tflite",
+      "//third_party/tflite_support",
+      "//third_party/tflite_support:tflite_support_proto",
+    ]
   }
 }
 

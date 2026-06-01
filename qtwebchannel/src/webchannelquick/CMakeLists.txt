@@ -14,5 +14,6 @@ qt_internal_add_qml_module(WebChannelQuick
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
     LIBRARIES
+        Qt::CorePrivate
         Qt::WebChannelPrivate
 )

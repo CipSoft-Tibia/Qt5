@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
+// TODO: verifyj critical part should be in YARR
 
 #include "qv4regexp_p.h"
 #include "qv4engine_p.h"
@@ -10,10 +12,11 @@
 using namespace QV4;
 
 #if ENABLE(YARR_JIT)
-static constexpr quint8 RegexpJitThreshold = 5;
+static constexpr qsizetype LongStringJitThreshold = 1024;
+static constexpr int LongStringJitBoost = 3;
 #endif
 
-static JSC::RegExpFlags jscFlags(uint flags)
+static JSC::RegExpFlags jscFlags(quint8 flags)
 {
     JSC::RegExpFlags jscFlags = JSC::NoFlags;
     if (flags & CompiledData::RegExp::RegExp_Global)
@@ -71,22 +74,33 @@ uint RegExp::match(const QString &string, int start, uint *matchOffsets)
         regexp->byteCode = nullptr;
     };
 
-    if (!priv->jitCode && !priv->jitFailed && priv->internalClass->engine->canJIT()
-            && (string.length() > 1024 || priv->matchCount++ == RegexpJitThreshold)) {
-        removeByteCode(priv);
+    if (!priv->jitCode) {
 
-        JSC::Yarr::ErrorCode error = JSC::Yarr::ErrorCode::NoError;
-        JSC::Yarr::YarrPattern yarrPattern(
-                WTF::String(*priv->pattern), jscFlags(priv->flags), error);
-        if (!yarrPattern.m_containsBackreferences) {
-            priv->jitCode = new JSC::Yarr::YarrCodeBlock;
-            JSC::VM *vm = static_cast<JSC::VM *>(priv->internalClass->engine);
-            JSC::Yarr::jitCompile(yarrPattern, JSC::Yarr::Char16, vm, *priv->jitCode);
-        }
+        // Long strings count as more calls. We want the JIT to run earlier.
+        const bool longString = string.length() > LongStringJitThreshold;
+        if (longString)
+            priv->interpreterCallCount += LongStringJitBoost;
 
-        if (!priv->hasValidJITCode()) {
-            removeJitCode(priv);
-            regenerateByteCode(priv);
+        if (priv->internalClass->engine->canJIT(priv)) {
+            removeByteCode(priv);
+
+            JSC::Yarr::ErrorCode error = JSC::Yarr::ErrorCode::NoError;
+            JSC::Yarr::YarrPattern yarrPattern(
+                    WTF::String(*priv->pattern), jscFlags(priv->flags), error);
+            if (!yarrPattern.m_containsBackreferences) {
+                priv->jitCode = new JSC::Yarr::YarrCodeBlock;
+                JSC::VM *vm = static_cast<JSC::VM *>(priv->internalClass->engine);
+                JSC::Yarr::jitCompile(yarrPattern, JSC::Yarr::Char16, vm, *priv->jitCode);
+            }
+
+            if (!priv->hasValidJITCode()) {
+                removeJitCode(priv);
+                regenerateByteCode(priv);
+            }
+        } else if (!longString) {
+            // Short strings do the regular post-increment to honor
+            // QV4_JIT_CALL_THRESHOLD.
+            ++priv->interpreterCallCount;
         }
     }
 #endif
@@ -172,23 +186,8 @@ QString RegExp::getSubstitution(const QString &matched, const QString &str, int 
     return result;
 }
 
-QString Heap::RegExp::flagsAsString() const
-{
-    QString result;
-    if (flags & CompiledData::RegExp::RegExp_Global)
-        result += QLatin1Char('g');
-    if (flags & CompiledData::RegExp::RegExp_IgnoreCase)
-        result += QLatin1Char('i');
-    if (flags & CompiledData::RegExp::RegExp_Multiline)
-        result += QLatin1Char('m');
-    if (flags & CompiledData::RegExp::RegExp_Unicode)
-        result += QLatin1Char('u');
-    if (flags & CompiledData::RegExp::RegExp_Sticky)
-        result += QLatin1Char('y');
-    return result;
-}
-
-Heap::RegExp *RegExp::create(ExecutionEngine* engine, const QString& pattern, uint flags)
+Heap::RegExp *RegExp::create(
+        ExecutionEngine *engine, const QString &pattern, CompiledData::RegExp::Flags flags)
 {
     RegExpCacheKey key(pattern, flags);
 
@@ -214,10 +213,6 @@ void Heap::RegExp::init(ExecutionEngine *engine, const QString &pattern, uint fl
     Base::init();
     this->pattern = new QString(pattern);
     this->flags = flags;
-
-    valid = false;
-    jitFailed = false;
-    matchCount = 0;
 
     JSC::Yarr::ErrorCode error = JSC::Yarr::ErrorCode::NoError;
     JSC::Yarr::YarrPattern yarrPattern(WTF::String(pattern), jscFlags(flags), error);

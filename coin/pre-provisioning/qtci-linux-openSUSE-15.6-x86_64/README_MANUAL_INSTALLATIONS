@@ -36,4 +36,6 @@ Power Management: Screen Energy Saving - unselect
                   Suspend Session - unselect
 YaST - Hardware - Sound - Add Dummy soundcard
 
+sudo zypper -nq install qemu-guest-agent
+
 Reboot

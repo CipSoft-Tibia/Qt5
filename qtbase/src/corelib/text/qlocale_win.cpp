@@ -742,8 +742,7 @@ QVariant QSystemLocalePrivate::uiLanguages()
 {
     QStringList result;
 #if QT_CONFIG(cpp_winrt)
-    using namespace winrt;
-    using namespace Windows::System::UserProfile;
+    using namespace winrt::Windows::System::UserProfile;
     QT_TRY {
         auto languages = GlobalizationPreferences::Languages();
         for (const auto &lang : languages)

@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:critical reason:data-parser
 
 #include "qprotobufgenerator.h"
 #include "enumdeclarationprinter.h"
@@ -13,6 +14,7 @@
 #include "options.h"
 
 #include <cassert>
+#include <sstream>
 #include <unordered_set>
 
 #include <google/protobuf/stubs/common.h>
@@ -33,16 +35,15 @@ QProtobufGenerator::~QProtobufGenerator() = default;
 
 bool QProtobufGenerator::Generate(const FileDescriptor *file,
                                   [[maybe_unused]] const std::string &parameter,
-                                  GeneratorContext *generatorContext,
-                                  [[maybe_unused]] std::string *error) const
+                                  GeneratorContext *generatorContext, std::string *error) const
 {
     assert(file != nullptr);
     assert(generatorContext != nullptr);
-    return GenerateMessages(file, generatorContext);
+    return GenerateMessages(file, generatorContext, error);
 }
 
 void QProtobufGenerator::GenerateSources(const FileDescriptor *file,
-                                         GeneratorContext *generatorContext) const
+                                         GeneratorContext *generatorContext, std::string *) const
 {
     assert(file != nullptr);
     assert(generatorContext != nullptr);
@@ -109,10 +110,12 @@ void QProtobufGenerator::GenerateSources(const FileDescriptor *file,
 }
 
 void QProtobufGenerator::GenerateHeader(const FileDescriptor *file,
-                                        GeneratorContext *generatorContext) const
+                                        GeneratorContext *generatorContext,
+                                        std::string *error) const
 {
     assert(file != nullptr);
     assert(generatorContext != nullptr);
+    assert(error != nullptr);
 
     const std::string basename = utils::extractFileBasename(file->name()) +
         CommonTemplates::ProtoFileSuffix();
@@ -155,7 +158,8 @@ void QProtobufGenerator::GenerateHeader(const FileDescriptor *file,
 
     std::unordered_set<std::string> qtTypesSet;
 
-    const auto collectSpecialIncludes = [&](const Descriptor *message) {
+    std::string mutFieldsClashError;
+    const auto specialMessageHandling = [&](const Descriptor *message) {
         if (message->oneof_decl_count() > 0)
             externalIncludes.insert("QtProtobuf/qprotobufoneof.h");
 
@@ -165,25 +169,70 @@ void QProtobufGenerator::GenerateHeader(const FileDescriptor *file,
         if (message->full_name() == "google.protobuf.Any")
             externalIncludes.insert("QtProtobufWellKnownTypes/qprotobufanysupport.h");
 
-        for (int i = 0; i < message->field_count(); ++i) {
-            const auto *field = message->field(i);
-            if (field->type() == FieldDescriptor::TYPE_MESSAGE && !field->is_map()
-                && !field->is_repeated() && common::isQtType(field)) {
-                const std::string package{ field->message_type()->file()->package() };
-                externalIncludes.insert(package + "/"
-                                        + std::string{ field->message_type()->name() });
-                qtTypesSet.insert(package);
-            }
+        // We collect the 'mut'-prefixed names of either message fields or
+        // the respective mutable getters that will be generated. The name
+        // strings are scoped in lambda and we cannot hold any kind of
+        // references so store the copy.
+        std::unordered_set<std::string> mutPrefixedNames;
+        common::iterateMessageFields(
+            message, [&](const FieldDescriptor *field, const PropertyMap &propertyMap) {
+                if (common::isPureMessage(field)) {
+                    const auto getterNameIt = propertyMap.find("mutable_getter_name");
+                    assert(getterNameIt != propertyMap.end());
 
-            if (common::isOptionalField(field))
-                systemIncludes.insert("optional");
-        }
+                    const auto propertyNameIt = propertyMap.find("property_name");
+                    assert(propertyNameIt != propertyMap.end());
+
+                    // Ensure mut prefix doesn't lead to the name clashing
+                    if (mutPrefixedNames.find(getterNameIt->second) != mutPrefixedNames.end()
+                        || mutPrefixedNames.find(propertyNameIt->second)
+                            != mutPrefixedNames.end()) {
+                        std::ostringstream e;
+                        e << "Message '" << message->full_name() << "': ";
+                        e << "Field '" << field->name() << "' causes a naming conflict";
+                        e << "with a mutable getter. This may lead to unintended behavior.";
+                        e << "Consider reviewing the guidelines for handling mutable getters: ";
+                        e << "https://doc.qt.io/qt-6/qtprotobuf-mutable-getters.html\n";
+                        mutFieldsClashError = e.str();
+                    }
+                    mutPrefixedNames.insert(getterNameIt->second);
+
+                    // We only care about field names that potentially clash.
+                    if (utils::startsWith(propertyNameIt->second,
+                                          CommonTemplates::MutableGetterPrefix()))
+                        mutPrefixedNames.insert(propertyNameIt->second);
+                }
+
+                // Collect the special includes
+                if (field->type() == FieldDescriptor::TYPE_MESSAGE && !field->is_map()
+                    && !field->is_repeated() && common::isQtType(field)) {
+                    const std::string package{ field->message_type()->file()->package() };
+                    externalIncludes.insert(package + "/"
+                                            + std::string{ field->message_type()->name() });
+                    qtTypesSet.insert(package);
+                }
+
+                if (common::isOptionalField(field))
+                    systemIncludes.insert("optional");
+            });
     };
 
-    common::iterateMessages(file, [&collectSpecialIncludes](const Descriptor *message){
-        collectSpecialIncludes(message);
-        common::iterateNestedMessages(message, collectSpecialIncludes);
+    common::iterateMessages(file, [&specialMessageHandling](const Descriptor *message) {
+        specialMessageHandling(message);
+        common::iterateNestedMessages(message,
+                                      [&specialMessageHandling](const Descriptor *message) {
+                                          specialMessageHandling(message);
+                                      });
     });
+
+    if (!mutFieldsClashError.empty()) {
+        if (Options::instance().mutableGetterConflicts()) {
+            std::clog << mutFieldsClashError << std::endl;
+        } else {
+            *error += mutFieldsClashError;
+            return;
+        }
+    }
 
     for (const auto &qtTypeInclude: qtTypesSet) {
         std::string qtTypeLower = qtTypeInclude;
@@ -246,15 +295,20 @@ void QProtobufGenerator::GenerateHeader(const FileDescriptor *file,
 }
 
 bool QProtobufGenerator::GenerateMessages(const FileDescriptor *file,
-                                          GeneratorContext *generatorContext) const
+                                          GeneratorContext *generatorContext,
+                                          std::string *error) const
 {
     assert(file != nullptr);
     assert(generatorContext != nullptr);
+    assert(error != nullptr);
 
     if (file->message_type_count() <= 0 && file->enum_type_count() <= 0)
         return true;
 
-    GenerateHeader(file, generatorContext);
-    GenerateSources(file, generatorContext);
+    GenerateHeader(file, generatorContext, error);
+    if (!error->empty())
+        return false;
+
+    GenerateSources(file, generatorContext, error);
     return true;
 }

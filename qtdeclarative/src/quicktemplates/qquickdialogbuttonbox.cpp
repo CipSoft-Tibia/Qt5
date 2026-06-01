@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickdialogbuttonbox_p.h"
 #include "qquickdialogbuttonbox_p_p.h"
@@ -54,6 +55,7 @@ QT_BEGIN_NAMESPACE
     and let the button box setup the buttons.
 
     \image qtquickcontrols-dialogbuttonbox.png
+           {Dialog button box with OK and Cancel buttons}
 
     \snippet qtquickcontrols-dialogbuttonbox.qml 1
 
@@ -775,7 +777,7 @@ void QQuickDialogButtonBox::itemRemoved(int index, QQuickItem *item)
 #if QT_CONFIG(accessibility)
 QAccessible::Role QQuickDialogButtonBox::accessibleRole() const
 {
-    return QAccessible::PageTabList;
+    return QAccessible::Grouping;
 }
 #endif
 

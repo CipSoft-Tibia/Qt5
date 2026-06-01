@@ -23,6 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
+class QWebSocket;
 class QMqttClientPrivate;
 
 class Q_MQTT_EXPORT QMqttClient : public QObject
@@ -31,13 +32,15 @@ public:
     enum TransportType {
         IODevice = 0,
         AbstractSocket,
-        SecureSocket
+        SecureSocket,
+        WebSocket,
+        SecureWebSocket,
     };
 
     enum ClientState {
         Disconnected = 0,
         Connecting,
-        Connected
+        Connected,
     };
     Q_ENUM(ClientState)
 
@@ -53,14 +56,14 @@ public:
         TransportInvalid       = 256,
         ProtocolViolation,
         UnknownError,
-        Mqtt5SpecificError
+        Mqtt5SpecificError,
     };
     Q_ENUM(ClientError)
 
     enum ProtocolVersion {
         MQTT_3_1 = 3,
         MQTT_3_1_1 = 4,
-        MQTT_5_0 = 5
+        MQTT_5_0 = 5,
     };
     Q_ENUM(ProtocolVersion)
 
@@ -116,6 +119,8 @@ public:
 #ifndef QT_NO_SSL
     void connectToHostEncrypted(const QSslConfiguration &conf);
 #endif
+    Q_INVOKABLE void connectToHostWebSocket(QWebSocket *webSocket = nullptr);
+    Q_INVOKABLE void connectToHostWebSocketEncrypted(QWebSocket *webSocket = nullptr);
     Q_INVOKABLE void disconnectFromHost();
 
     ClientState state() const;

@@ -22,11 +22,9 @@ TableView {
 
         TableModelColumn {
             display: function(modelIndex) { return testModel.rows[modelIndex.row][0].name }
-            setDisplay: function(modelIndex, cellData) { testModel.rows[modelIndex.row][0].name = cellData }
         }
         TableModelColumn {
             display: function(modelIndex) { return testModel.rows[modelIndex.row][1].age }
-            setDisplay: function(modelIndex, cellData) { testModel.rows[modelIndex.row][1].age = cellData }
         }
 
         rows: [

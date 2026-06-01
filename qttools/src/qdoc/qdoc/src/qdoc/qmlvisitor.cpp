@@ -7,6 +7,8 @@
 #include "codechunk.h"
 #include "codeparser.h"
 #include "functionnode.h"
+#include "genustypes.h"
+#include "nativeenum.h"
 #include "node.h"
 #include "qdocdatabase.h"
 #include "qmlpropertyarguments.h"
@@ -118,7 +120,7 @@ Node *QmlDocVisitor::applyDocumentation(QQmlJS::SourceLocation location, Node *n
     // needed.
     if (!loc.isValid()) {
         if (!node)
-            node = new QmlTypeNode(m_current, m_name, Node::QmlType);
+            node = new QmlTypeNode(m_current, m_name, NodeType::QmlType);
         comment_loc.setLineNo(location.startLine);
         node->setLocation(comment_loc);
         return node;
@@ -137,7 +139,7 @@ Node *QmlDocVisitor::applyDocumentation(QQmlJS::SourceLocation location, Node *n
             qmid = args.first().first;
         node = QDocDatabase::qdocDB()->findQmlTypeInPrimaryTree(qmid, m_name);
         if (!node) {
-            node = new QmlTypeNode(m_current, m_name, Node::QmlType);
+            node = new QmlTypeNode(m_current, m_name, NodeType::QmlType);
             node->setLocation(comment_loc);
         }
     }
@@ -240,7 +242,7 @@ QmlSignatureParser::QmlSignatureParser(FunctionNode *func, const QString &signat
     : signature_(signature), func_(func), location_(loc)
 {
     QByteArray latin1 = signature.toLatin1();
-    Tokenizer stringTokenizer(location_, latin1);
+    Tokenizer stringTokenizer(location_, std::move(latin1));
     stringTokenizer.setParsingFnOrMacro(true);
     tokenizer_ = &stringTokenizer;
     readToken();
@@ -274,9 +276,11 @@ bool QmlSignatureParser::matchTypeAndName(CodeChunk *type, QString *var)
     for (;;) {
         bool virgin = true;
 
+        // If not an identifier, try to match a sequence of qualifiers.
         if (tok_ != Tok_Ident) {
             while (match(Tok_signed) || match(Tok_unsigned) || match(Tok_short) || match(Tok_long)
                    || match(Tok_int64)) {
+                // Append the matched qualifier token.
                 type->append(previousLexeme());
                 virgin = false;
             }
@@ -294,12 +298,14 @@ bool QmlSignatureParser::matchTypeAndName(CodeChunk *type, QString *var)
             type->append(previousLexeme());
         }
 
+        // Match and append a namespace separator or break.
         if (match(Tok_Gulbrandsen))
             type->append(previousLexeme());
         else
             break;
     }
 
+    // Matches a sequence of & * const ^ tokens.
     while (match(Tok_Ampersand) || match(Tok_Aster) || match(Tok_const) || match(Tok_Caret))
         type->append(previousLexeme());
 
@@ -309,9 +315,11 @@ bool QmlSignatureParser::matchTypeAndName(CodeChunk *type, QString *var)
      */
     type->appendHotspot();
 
+    // Set the variable name if it is unset and an identifier is matched.
     if ((var != nullptr) && match(Tok_Ident))
         *var = previousLexeme();
 
+    // Skip pairs of braces and their contents.
     if (tok_ == Tok_LeftBracket) {
         int bracketDepth0 = tokenizer_->bracketDepth();
         while ((tokenizer_->bracketDepth() >= bracketDepth0 && tok_ != Tok_Eoi)
@@ -436,7 +444,7 @@ void QmlDocVisitor::applyMetacommands(QQmlJS::SourceLocation, Node *node, Doc &d
                 if (!node->isQmlProperty()) {
                     doc.location().warning("Ignored '\\%1', applies only to '\\%2'"_L1
                             .arg(command, COMMAND_QMLPROPERTY));
-                } else if (!static_cast<QmlPropertyNode*>(node)->setEnumNode(args[0].first, args[0].second)) {
+                } else if (!static_cast<QmlPropertyNode*>(node)->nativeEnum()->resolve(args[0].first, args[0].second)) {
                     doc.location().warning("Failed to find C++ enumeration '%2' passed to \\%1"_L1
                             .arg(command, args[0].first), "Use \\value commands instead"_L1);
                 }
@@ -503,7 +511,8 @@ bool QmlDocVisitor::visit(QQmlJS::AST::UiObjectDefinition *definition)
         auto component = applyDocumentation(definition->firstSourceLocation(), nullptr);
         Q_ASSERT(component);
         auto *qmlTypeNode = static_cast<QmlTypeNode *>(component);
-        if (!component->doc().isEmpty())
+        // Set base type name unless one was already provided with \inherits
+        if (!component->doc().isEmpty() && qmlTypeNode->qmlBaseName().isEmpty())
             qmlTypeNode->setQmlBaseName(type);
         qmlTypeNode->setTitle(m_name);
         qmlTypeNode->setImportList(m_importList);
@@ -540,7 +549,7 @@ bool QmlDocVisitor::visit(QQmlJS::AST::UiImport *import)
         version = m_document.mid(start, end - start);
     }
     QString importUri = getFullyQualifiedId(import->importUri);
-    m_importList.append(ImportRec(name, version, importUri, import->importId));
+    m_importList.append(ImportRec(std::move(name), std::move(version), std::move(importUri), import->importId));
 
     return true;
 }
@@ -619,7 +628,7 @@ bool QmlDocVisitor::visit(QQmlJS::AST::UiPublicMember *member)
                 QString name = member->name.toString();
                 QmlPropertyNode *qmlPropNode = qmlType->hasQmlProperty(name);
                 if (qmlPropNode == nullptr)
-                    qmlPropNode = new QmlPropertyNode(qmlType, name, type, false);
+                    qmlPropNode = new QmlPropertyNode(qmlType, std::move(name), std::move(type), false);
                 qmlPropNode->markReadOnly(member->isReadonly());
                 if (member->isDefaultMember())
                     qmlPropNode->markDefault();

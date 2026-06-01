@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMACSTYLE_MAC_P_H
 #define QMACSTYLE_MAC_P_H
@@ -32,9 +33,12 @@ class QMacStylePrivate;
 class QMacStyle : public QCommonStyle
 {
     Q_OBJECT
-public:
+protected:
     QMacStyle();
+public:
     ~QMacStyle();
+
+    static QMacStyle *create();
 
     void drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p) const override;
     void drawControl(ControlElement element, const QStyleOption *opt, QPainter *p) const override;

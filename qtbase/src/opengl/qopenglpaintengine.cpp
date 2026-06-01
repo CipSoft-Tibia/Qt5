@@ -2680,7 +2680,7 @@ QPainterState *QOpenGL2PaintEngineEx::createState(QPainterState *orig) const
     return s;
 }
 
-QOpenGL2PaintEngineState::QOpenGL2PaintEngineState(QOpenGL2PaintEngineState &other)
+QOpenGL2PaintEngineState::QOpenGL2PaintEngineState(const QOpenGL2PaintEngineState &other)
     : QPainterState(other)
 {
     isNew = true;

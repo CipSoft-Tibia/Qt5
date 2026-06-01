@@ -48,7 +48,7 @@ class MockRtpSender : public RtpSenderInterface {
   MOCK_METHOD(rtc::scoped_refptr<DtlsTransportInterface>,
               dtls_transport,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(uint32_t, ssrc, (), (const, override));
   MOCK_METHOD(cricket::MediaType, media_type, (), (const, override));
   MOCK_METHOD(std::string, id, (), (const, override));
@@ -84,6 +84,7 @@ class MockRtpSender : public RtpSenderInterface {
               SetEncoderSelector,
               (std::unique_ptr<VideoEncoderFactory::EncoderSelectorInterface>),
               (override));
+  MOCK_METHOD(void, SetObserver, (RtpSenderObserverInterface*), (override));
 };
 
 static_assert(!std::is_abstract_v<rtc::RefCountedObject<MockRtpSender>>, "");

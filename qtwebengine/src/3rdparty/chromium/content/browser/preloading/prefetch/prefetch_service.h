@@ -12,12 +12,15 @@
 #include "base/dcheck_is_on.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
+#include "content/browser/preloading/prefetch/no_vary_search_helper.h"
 #include "content/browser/preloading/prefetch/prefetch_container.h"
+#include "content/browser/preloading/prefetch/prefetch_params.h"
 #include "content/browser/preloading/prefetch/prefetch_status.h"
 #include "content/browser/preloading/prefetch/prefetch_streaming_url_loader_common_types.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/frame_tree_node_id.h"
 #include "content/public/browser/global_routing_id.h"
+#include "content/public/browser/prefetch_handle.h"
 #include "content/public/browser/service_worker_context.h"
 #include "net/cookies/canonical_cookie.h"
 #include "net/url_request/redirect_info.h"
@@ -111,10 +114,24 @@ class CONTENT_EXPORT PrefetchService {
   // |prefetch_container| to the default network context.
   virtual void CopyIsolatedCookies(const PrefetchContainer::Reader& reader);
 
+  // Add `PrefetchContainer` under control of `PrefetchService`.
+  //
+  // `AddPrefetchContainer()` synchronously destruct `prefetch_container` if the
+  // key conflicted to the one already added with migration of some attributes.
+  // See also `MigrateNewlyaAdded()`.
+  //
+  // `AddPrefetchContainerWithHandle()` additionally returns PrefetchHandle so
+  // that the caller can control prefetch resources associated with this.
   void AddPrefetchContainer(
       std::unique_ptr<PrefetchContainer> prefetch_container);
+  std::unique_ptr<PrefetchHandle> AddPrefetchContainerWithHandle(
+      std::unique_ptr<PrefetchContainer> prefetch_container);
+  void AddPrefetchContainerWithoutStartingPrefetchForTesting(
+      std::unique_ptr<PrefetchContainer> prefetch_container);
 
-  void ResetPrefetch(base::WeakPtr<PrefetchContainer> prefetch_container);
+  // An interface to notify `PrefetchService` that the given `PrefetchContainer`
+  // is no longer needed from outside of the service.
+  void MayReleasePrefetch(base::WeakPtr<PrefetchContainer> prefetch_container);
 
   // Called by PrefetchDocumentManager when it finishes processing the latest
   // update of speculation candidates.
@@ -139,6 +156,13 @@ class CONTENT_EXPORT PrefetchService {
   static void SetNetworkContextForProxyLookupForTesting(
       network::mojom::NetworkContext* network_context);
 
+  // Set a callback for injecting delay for eligibility check in tests.
+  using DelayEligibilityCheckForTesting =
+      base::RepeatingCallback<void(base::OnceClosure)>;
+  static void SetDelayEligibilityCheckForTesting(
+      DelayEligibilityCheckForTesting callback);
+  // Set an ineligibility to make eligibility check always fail in tests.
+  static void SetForceIneligibilityForTesting(PreloadingEligibility);
   // Set a callback for waiting for prefetch completion in tests.
   using PrefetchResponseCompletedCallbackForTesting =
       base::RepeatingCallback<void(base::WeakPtr<PrefetchContainer>)>;
@@ -151,13 +175,23 @@ class CONTENT_EXPORT PrefetchService {
   GetAllForUrlWithoutRefAndQueryForTesting(
       const PrefetchContainer::Key& key) const;
 
-  // Helper function for |GetPrefetchToServe|, which collects
-  // |PrefetchContainer|s that are potentially matching. Corresponds to 3.4. of
+  // Returns candidate `PrefetchContainer`s and servable states for matching
+  // process. Corresponds to 3.4. of
   // https://wicg.github.io/nav-speculation/prefetch.html#wait-for-a-matching-prefetch-record
-  std::vector<PrefetchContainer*> CollectPotentiallyMatchingPrefetchContainers(
-      const PrefetchContainer::Key& key,
-      base::WeakPtr<PrefetchServingPageMetricsContainer>
-          serving_page_metrics_container);
+  //
+  // Note that `PrefetchContainer::GetServableState()` depends on
+  // `base::TimeTicks::now()` and can expire (can change from `kServable` to
+  // `kNotServable`) in the minute between two calls. Deciding something with
+  // multiple `PrefetchContainer::GetServableState()` calls can lead
+  // inconsistent state. To avoid that, we record `ServableState` in the
+  // `flat_map` at the beginning of matching process and refer to it.
+  std::pair<
+      std::vector<PrefetchContainer*>,
+      base::flat_map<PrefetchContainer::Key, PrefetchContainer::ServableState>>
+  CollectMatchCandidates(const PrefetchContainer::Key& key,
+                         bool is_nav_prerender,
+                         base::WeakPtr<PrefetchServingPageMetricsContainer>
+                             serving_page_metrics_container);
 
   base::WeakPtr<PrefetchService> GetWeakPtr();
 
@@ -364,6 +398,9 @@ class CONTENT_EXPORT PrefetchService {
   // Records the result to a UMA histogram.
   void RecordExistingPrefetchWithMatchingURL(
       base::WeakPtr<PrefetchContainer> prefetch_container) const;
+
+  void ResetPrefetchContainer(
+      base::WeakPtr<PrefetchContainer> prefetch_container);
 
   void DumpPrefetchesForDebug() const;
 

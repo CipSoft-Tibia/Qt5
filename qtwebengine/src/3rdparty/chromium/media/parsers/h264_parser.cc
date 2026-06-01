@@ -283,7 +283,7 @@ void H264Parser::SetEncryptedStream(
     const uint8_t* stream,
     off_t stream_size,
     const std::vector<SubsampleEntry>& subsamples) {
-  DCHECK(stream);
+  CHECK(stream);
   DCHECK_GT(stream_size, 0);
 
   stream_ = stream;
@@ -636,8 +636,7 @@ static void FallbackScalingList4x4(
       break;
 
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 }
 
@@ -677,8 +676,7 @@ static void FallbackScalingList8x8(
       break;
 
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 }
 
@@ -1064,6 +1062,7 @@ H264Parser::Result H264Parser::ParsePPS(int* pps_id) {
   std::unique_ptr<H264PPS> pps(new H264PPS());
 
   READ_UE_OR_RETURN(&pps->pic_parameter_set_id);
+  IN_RANGE_OR_RETURN(pps->pic_parameter_set_id, 0, 255);
   READ_UE_OR_RETURN(&pps->seq_parameter_set_id);
   TRUE_OR_RETURN(pps->seq_parameter_set_id < 32);
 
@@ -1135,6 +1134,7 @@ H264Parser::Result H264Parser::ParsePPS(int* pps_id) {
       }
 
       READ_SE_OR_RETURN(&pps->second_chroma_qp_index_offset);
+      IN_RANGE_OR_RETURN(pps->second_chroma_qp_index_offset, -12, 12);
     }
   }
 
@@ -1388,8 +1388,10 @@ H264Parser::Result H264Parser::ParseSliceHeader(const H264NALU& nalu,
     }
   }
 
-  if (shdr->idr_pic_flag)
+  if (shdr->idr_pic_flag) {
     READ_UE_OR_RETURN(&shdr->idr_pic_id);
+    IN_RANGE_OR_RETURN(shdr->idr_pic_id, 0, 65535);
+  }
 
   size_t bits_left_at_pic_order_cnt_start = br_.NumBitsLeft();
   if (sps->pic_order_cnt_type == 0) {
@@ -1545,6 +1547,7 @@ H264Parser::Result H264Parser::ParseSEI(H264SEI* sei) {
         READ_BITS_AND_MINUS_BITS_READ_OR_RETURN(
             2, &sei_msg.recovery_point.changing_slice_group_idc,
             &num_bits_remain);
+        IN_RANGE_OR_RETURN(sei_msg.recovery_point.changing_slice_group_idc, 0, 2);
         break;
       case H264SEIMessage::kSEIContentLightLevelInfo:
         READ_BITS_AND_MINUS_BITS_READ_OR_RETURN(

@@ -50,7 +50,7 @@ qreal AxisLine::smoothing() const
 
 void AxisLine::setSmoothing(qreal newSmoothing)
 {
-    if (qFuzzyCompare(m_smoothing, newSmoothing))
+    if (QtPrivate::fuzzyCompare(m_smoothing, newSmoothing))
         return;
     m_smoothing = newSmoothing;
     emit smoothingChanged();
@@ -76,7 +76,7 @@ qreal AxisLine::lineWidth() const
 
 void AxisLine::setLineWidth(qreal newLineWidth)
 {
-    if (qFuzzyCompare(m_lineWidth, newLineWidth))
+    if (QtPrivate::fuzzyCompare(m_lineWidth, newLineWidth))
         return;
     m_lineWidth = newLineWidth;
     emit lineWidthChanged();

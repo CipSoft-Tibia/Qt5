@@ -24,8 +24,8 @@ jumbo_static_library("browser") {
     "content_autofill_driver_factory.h",
     "content_autofill_shared_storage_handler.cc",
     "content_autofill_shared_storage_handler.h",
-    "renderer_forms_with_server_predictions.cc",
-    "renderer_forms_with_server_predictions.h",
+    "renderer_forms_from_browser_form.cc",
+    "renderer_forms_from_browser_form.h",
     "risk/fingerprint.cc",
     "risk/fingerprint.h",
     "scoped_autofill_managers_observation.cc",
@@ -48,7 +48,6 @@ jumbo_static_library("browser") {
   deps = [
     ":autofill_shared_storage_proto",
     "//base:i18n",
-    "//components/autofill/content/common:features",
     "//components/os_crypt/sync",
     "//components/prefs",
     "//components/profile_metrics",
@@ -84,8 +83,8 @@ jumbo_static_library("browser") {
       "autofill_log_router_factory.h",
       "content_autofill_shared_storage_handler.cc",
       "content_autofill_shared_storage_handler.h",
-      "renderer_forms_with_server_predictions.cc",
-      "renderer_forms_with_server_predictions.h",
+      "renderer_forms_from_browser_form.cc",
+      "renderer_forms_from_browser_form.h",
     ]
 
     deps -= [ "//components/webauthn/core/browser",]
@@ -167,7 +166,6 @@ source_set("browser_tests") {
   deps = [
     ":test_support",
     "//base",
-    "//components/autofill/content/common:features",
     "//content/public/browser",
     "//content/test:browsertest_support",
     "//content/test:test_support",

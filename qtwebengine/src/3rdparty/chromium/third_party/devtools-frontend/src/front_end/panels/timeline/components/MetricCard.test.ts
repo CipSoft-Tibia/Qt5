@@ -6,11 +6,9 @@ import * as Common from '../../../core/common/common.js';
 import * as CrUXManager from '../../../models/crux-manager/crux-manager.js';
 import {renderElementIntoDOM} from '../../../testing/DOMHelpers.js';
 import {describeWithMockConnection} from '../../../testing/MockConnection.js';
-import * as Coordinator from '../../../ui/components/render_coordinator/render_coordinator.js';
+import * as RenderCoordinator from '../../../ui/components/render_coordinator/render_coordinator.js';
 
 import * as Components from './components.js';
-
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
 
 function getLocalMetricValue(view: Element): HTMLElement {
   return view.shadowRoot!.querySelector('#local-value .metric-value') as HTMLElement;
@@ -40,9 +38,23 @@ function getDetailedCompareText(view: Element): HTMLElement|null {
   return view.shadowRoot!.querySelector('.detailed-compare-text');
 }
 
+function getWarnings(view: Element): string[] {
+  return Array.from(view.shadowRoot!.querySelectorAll('.warning')).map(w => w.textContent!);
+}
+
 function getEnvironmentRecs(view: Element): string[] {
   const recs = Array.from(view.shadowRoot!.querySelectorAll('.environment-recs li'));
   return recs.map(rec => rec.textContent!);
+}
+
+function getPhaseTable(view: Element): string[][]|null {
+  const phaseTable = view.shadowRoot!.querySelector('.phase-table');
+  if (!phaseTable) {
+    return null;
+  }
+
+  const rowEls = Array.from(phaseTable.querySelectorAll('.phase-table-row:not(.phase-table-header-row)'));
+  return rowEls.map(rowEl => Array.from(rowEl.querySelectorAll('[role="cell"]')).map(cellEl => cellEl.textContent!));
 }
 
 function createMockHistogram() {
@@ -79,11 +91,11 @@ describeWithMockConnection('MetricCard', () => {
     };
 
     renderElementIntoDOM(view);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const localValueEl = getLocalMetricValue(view);
     assert.strictEqual(localValueEl.className, 'metric-value good');
-    assert.strictEqual(localValueEl.innerText, '100 ms');
+    assert.strictEqual(localValueEl.innerText, '0.10 s');
 
     const fieldValueEl = getFieldMetricValue(view);
     assert.strictEqual(fieldValueEl!.className, 'metric-value poor');
@@ -105,7 +117,7 @@ describeWithMockConnection('MetricCard', () => {
     };
 
     renderElementIntoDOM(view);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const localValueEl = getLocalMetricValue(view);
     assert.strictEqual(localValueEl.className, 'metric-value needs-improvement');
@@ -131,11 +143,11 @@ describeWithMockConnection('MetricCard', () => {
     };
 
     renderElementIntoDOM(view);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const localValueEl = getLocalMetricValue(view);
     assert.strictEqual(localValueEl.className, 'metric-value poor');
-    assert.strictEqual(localValueEl.innerText, '2.00 s');
+    assert.strictEqual(localValueEl.innerText, '2,000 ms');
 
     const fieldValueEl = getFieldMetricValue(view);
     assert.strictEqual(fieldValueEl!.className, 'metric-value good');
@@ -151,7 +163,7 @@ describeWithMockConnection('MetricCard', () => {
     const view = new Components.MetricCard.MetricCard();
 
     renderElementIntoDOM(view);
-    await coordinator.done();
+    await RenderCoordinator.done();
 
     const metricValueEl = getLocalMetricValue(view);
     assert.strictEqual(metricValueEl.className.trim(), 'metric-value waiting');
@@ -167,6 +179,68 @@ describeWithMockConnection('MetricCard', () => {
     assert.match(histogramLabels[2], /Poor\s+\(>4.00 s\)/);
   });
 
+  it('should show warnings', async () => {
+    const view = new Components.MetricCard.MetricCard();
+    view.data = {
+      metric: 'LCP',
+      localValue: 2000,
+      fieldValue: 1,
+      histogram: createMockHistogram(),
+      warnings: ['LCP warning'],
+    };
+
+    renderElementIntoDOM(view);
+    await RenderCoordinator.done();
+
+    const warnings = getWarnings(view);
+    assert.deepEqual(warnings, [
+      'LCP warning',
+    ]);
+  });
+
+  describe('phase table', () => {
+    it('should not show if there is no phase data', async () => {
+      const view = new Components.MetricCard.MetricCard();
+      view.data = {
+        metric: 'LCP',
+        localValue: 100,
+        fieldValue: 200,
+        histogram: createMockHistogram(),
+      };
+      renderElementIntoDOM(view);
+
+      await RenderCoordinator.done();
+
+      const phaseTable = getPhaseTable(view);
+      assert.isNull(phaseTable);
+    });
+
+    it('should display phases in a table format', async () => {
+      const view = new Components.MetricCard.MetricCard();
+      view.data = {
+        metric: 'LCP',
+        localValue: 100,
+        fieldValue: 200,
+        histogram: createMockHistogram(),
+        phases: [
+          ['TTFB', 500],
+          ['Phase 1', 0],
+          ['Phase 2', 123.783458345],
+        ],
+      };
+      renderElementIntoDOM(view);
+
+      await RenderCoordinator.done();
+
+      const phaseTable = getPhaseTable(view);
+      assert.deepEqual(phaseTable, [
+        ['TTFB', '500'],
+        ['Phase 1', '0'],
+        ['Phase 2', '124'],
+      ]);
+    });
+  });
+
   describe('field data', () => {
     it('should not show when crux is disabled', async () => {
       CrUXManager.CrUXManager.instance().getConfigSetting().set({enabled: false, override: ''});
@@ -180,7 +254,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const histogramLabels = getFieldHistogramLabels(view);
       assert.match(histogramLabels[0], /Good\s+\(≤2.50 s\)/);
@@ -204,7 +278,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const histogramLabels = getFieldHistogramLabels(view);
       assert.match(histogramLabels[0], /Good\s+\(≤2.50 s\)/);
@@ -212,10 +286,10 @@ describeWithMockConnection('MetricCard', () => {
       assert.match(histogramLabels[2], /Poor\s+\(>4.00 s\)/);
 
       const histogramPercents = getFieldHistogramPercents(view);
-      assert.deepStrictEqual(histogramPercents, ['50%', '30%', '20%']);
+      assert.deepEqual(histogramPercents, ['50%', '30%', '20%']);
 
       const fieldValueEl = getFieldMetricValue(view);
-      assert.strictEqual(fieldValueEl!.textContent, '200 ms');
+      assert.strictEqual(fieldValueEl!.textContent, '0.20 s');
     });
 
     it('should show empty values when crux is enabled but there is no field data', async () => {
@@ -226,7 +300,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const histogramLabels = getFieldHistogramLabels(view);
       assert.match(histogramLabels[0], /Good\s+\(≤2.50 s\)/);
@@ -234,7 +308,7 @@ describeWithMockConnection('MetricCard', () => {
       assert.match(histogramLabels[2], /Poor\s+\(>4.00 s\)/);
 
       const histogramPercents = getFieldHistogramPercents(view);
-      assert.deepStrictEqual(histogramPercents, ['-', '-', '-']);
+      assert.deepEqual(histogramPercents, ['-', '-', '-']);
 
       const fieldValueEl = getFieldMetricValue(view);
       assert.strictEqual(fieldValueEl!.textContent, '-');
@@ -252,11 +326,11 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getCompareText(view);
       assert.strictEqual(
-          compareText!.innerText, 'Your local LCP value of 100 ms is good, and is similar to your users’ experience.');
+          compareText!.innerText, 'Your local LCP value of 0.10 s is good, and is similar to your users’ experience.');
     });
 
     it('should show message when local is better', async () => {
@@ -269,12 +343,12 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getCompareText(view);
       assert.strictEqual(
           compareText!.innerText,
-          'Your local LCP value of 100 ms is good, but is significantly better than your users’ experience.');
+          'Your local LCP value of 0.10 s is good, but is significantly better than your users’ experience.');
     });
 
     it('should show message when local is worse', async () => {
@@ -287,7 +361,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getCompareText(view);
       assert.strictEqual(
@@ -305,11 +379,11 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getCompareText(view);
       assert.strictEqual(
-          compareText!.innerText, 'Your local LCP value of 10 ms is good, and is similar to your users’ experience.');
+          compareText!.innerText, 'Your local LCP value of 0.01 s is good, and is similar to your users’ experience.');
     });
 
     it('should show generic summary if field is missing', async () => {
@@ -320,7 +394,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getCompareText(view);
       assert.strictEqual(compareText!.innerText, 'Your local LCP value of 3.00 s needs improvement.');
@@ -333,7 +407,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getCompareText(view);
       assert.strictEqual(compareText!.innerText, 'Interact with the page to measure INP.');
@@ -351,12 +425,12 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getDetailedCompareText(view);
       assert.strictEqual(
           compareText!.textContent,
-          'Your local LCP value of 100 ms is good and is rated the same as 50% of real-user LCP experiences. Additionally, the field data 75th percentile LCP value of 1.00 s is good.',
+          'Your local LCP value of 0.10 s is good and is rated the same as 50% of real-user LCP experiences. Additionally, the field data 75th percentile LCP value of 1.00 s is good.',
       );
     });
 
@@ -370,12 +444,12 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getDetailedCompareText(view);
       assert.strictEqual(
           compareText!.textContent,
-          'Your local LCP value of 100 ms is good and is rated the same as 50% of real-user LCP experiences. However, the field data 75th percentile LCP value of 5.00 s is poor.',
+          'Your local LCP value of 0.10 s is good and is rated the same as 50% of real-user LCP experiences. However, the field data 75th percentile LCP value of 5.00 s is poor.',
       );
     });
 
@@ -387,7 +461,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getDetailedCompareText(view);
       assert.strictEqual(compareText!.textContent, 'Your local LCP value of 3.00 s needs improvement.');
@@ -400,7 +474,7 @@ describeWithMockConnection('MetricCard', () => {
       };
       renderElementIntoDOM(view);
 
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const compareText = getDetailedCompareText(view);
       assert.strictEqual(compareText!.textContent, 'Interact with the page to measure INP.');
@@ -416,7 +490,7 @@ describeWithMockConnection('MetricCard', () => {
       };
 
       renderElementIntoDOM(view);
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const recs = getEnvironmentRecs(view);
       assert.lengthOf(recs, 0);
@@ -432,7 +506,7 @@ describeWithMockConnection('MetricCard', () => {
       };
 
       renderElementIntoDOM(view);
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const recs = getEnvironmentRecs(view);
       assert.lengthOf(recs, 0);
@@ -448,10 +522,10 @@ describeWithMockConnection('MetricCard', () => {
       };
 
       renderElementIntoDOM(view);
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const recs = getEnvironmentRecs(view);
-      assert.deepStrictEqual(recs, [
+      assert.deepEqual(recs, [
         'Real users may experience longer page loads due to slower network conditions. Increasing network throttling will simulate slower network conditions.',
         'Screen size can influence what the LCP element is. Ensure you are testing common viewport sizes.',
         'The LCP element can vary between page loads if content is dynamic.',
@@ -468,10 +542,10 @@ describeWithMockConnection('MetricCard', () => {
       };
 
       renderElementIntoDOM(view);
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const recs = getEnvironmentRecs(view);
-      assert.deepStrictEqual(recs, [
+      assert.deepEqual(recs, [
         'Screen size can influence what the LCP element is. Ensure you are testing common viewport sizes.',
         'The LCP element can vary between page loads if content is dynamic.',
       ]);
@@ -487,10 +561,10 @@ describeWithMockConnection('MetricCard', () => {
       };
 
       renderElementIntoDOM(view);
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const recs = getEnvironmentRecs(view);
-      assert.deepStrictEqual(recs, [
+      assert.deepEqual(recs, [
         'Screen size can influence what layout shifts happen. Ensure you are testing common viewport sizes.',
         'How a user interacts with the page can influence layout shifts. Ensure you are testing common interactions like scrolling the page.',
         'Dynamic content can influence what layout shifts happen.',
@@ -507,10 +581,10 @@ describeWithMockConnection('MetricCard', () => {
       };
 
       renderElementIntoDOM(view);
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const recs = getEnvironmentRecs(view);
-      assert.deepStrictEqual(recs, [
+      assert.deepEqual(recs, [
         'Real users may experience longer interactions due to slower CPU speeds. Increasing CPU throttling will simulate a slower device.',
         'How a user interacts with the page influences interaction delays. Ensure you are testing common interactions.',
       ]);
@@ -526,10 +600,10 @@ describeWithMockConnection('MetricCard', () => {
       };
 
       renderElementIntoDOM(view);
-      await coordinator.done();
+      await RenderCoordinator.done();
 
       const recs = getEnvironmentRecs(view);
-      assert.deepStrictEqual(recs, [
+      assert.deepEqual(recs, [
         'How a user interacts with the page influences interaction delays. Ensure you are testing common interactions.',
       ]);
     });

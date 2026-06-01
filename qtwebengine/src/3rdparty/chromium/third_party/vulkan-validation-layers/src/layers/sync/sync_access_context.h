@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2019-2024 Valve Corporation
- * Copyright (c) 2019-2024 LunarG, Inc.
+ * Copyright (c) 2019-2025 Valve Corporation
+ * Copyright (c) 2019-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -238,7 +238,6 @@ class AttachmentViewGen {
 
   private:
     const syncval_state::ImageViewState *view_ = nullptr;
-    VkImageAspectFlags view_mask_ = 0U;
     std::array<std::optional<ImageRangeGen>, Gen::kGenSize> gen_store_;
 };
 
@@ -257,31 +256,31 @@ class AccessContext {
 
     using TrackBack = SubpassBarrierTrackback<AccessContext>;
 
-    HazardResult DetectHazard(const vvl::Buffer &buffer, SyncStageAccessIndex usage_index, const ResourceAccessRange &range) const;
-    HazardResult DetectHazard(const ImageState &image, SyncStageAccessIndex current_usage,
+    HazardResult DetectHazard(const vvl::Buffer &buffer, SyncAccessIndex access_index, const ResourceAccessRange &range) const;
+    HazardResult DetectHazard(const ImageState &image, SyncAccessIndex current_usage,
                               const VkImageSubresourceRange &subresource_range, bool is_depth_sliced) const;
-    HazardResult DetectHazard(const ImageViewState &image_view, SyncStageAccessIndex current_usage) const;
-    HazardResult DetectHazard(const ImageRangeGen &ref_range_gen, SyncStageAccessIndex current_usage,
+    HazardResult DetectHazard(const ImageViewState &image_view, SyncAccessIndex current_usage) const;
+    HazardResult DetectHazard(const ImageRangeGen &ref_range_gen, SyncAccessIndex current_usage,
                               SyncOrdering ordering_rule = SyncOrdering::kOrderingNone) const;
     HazardResult DetectHazard(const ImageViewState &image_view, const VkOffset3D &offset, const VkExtent3D &extent,
-                              SyncStageAccessIndex current_usage, SyncOrdering ordering_rule) const;
-    HazardResult DetectHazard(const AttachmentViewGen &view_gen, AttachmentViewGen::Gen gen_type,
-                              SyncStageAccessIndex current_usage, SyncOrdering ordering_rule) const;
+                              SyncAccessIndex current_usage, SyncOrdering ordering_rule) const;
+    HazardResult DetectHazard(const AttachmentViewGen &view_gen, AttachmentViewGen::Gen gen_type, SyncAccessIndex current_usage,
+                              SyncOrdering ordering_rule) const;
     HazardResult DetectHazard(const vvl::VideoSession &vs_state, const vvl::VideoPictureResource &resource,
-                              SyncStageAccessIndex current_usage) const;
+                              SyncAccessIndex current_usage) const;
     HazardResult DetectHazard(const ImageState &image, const VkImageSubresourceRange &subresource_range, const VkOffset3D &offset,
-                              const VkExtent3D &extent, bool is_depth_sliced, SyncStageAccessIndex current_usage,
+                              const VkExtent3D &extent, bool is_depth_sliced, SyncAccessIndex current_usage,
                               SyncOrdering ordering_rule = SyncOrdering::kOrderingNone) const;
 
     HazardResult DetectImageBarrierHazard(const ImageState &image, const VkImageSubresourceRange &subresource_range,
-                                          VkPipelineStageFlags2KHR src_exec_scope, const SyncStageAccessFlags &src_access_scope,
+                                          VkPipelineStageFlags2 src_exec_scope, const SyncAccessFlags &src_access_scope,
                                           QueueId queue_id, const ScopeMap &scope_map, ResourceUsageTag scope_tag,
                                           DetectOptions options) const;
     HazardResult DetectImageBarrierHazard(const AttachmentViewGen &attachment_view, const SyncBarrier &barrier,
                                           DetectOptions options) const;
-    HazardResult DetectImageBarrierHazard(const ImageState &image, VkPipelineStageFlags2KHR src_exec_scope,
-                                          const SyncStageAccessFlags &src_access_scope,
-                                          const VkImageSubresourceRange &subresource_range, DetectOptions options) const;
+    HazardResult DetectImageBarrierHazard(const ImageState &image, VkPipelineStageFlags2 src_exec_scope,
+                                          const SyncAccessFlags &src_access_scope, const VkImageSubresourceRange &subresource_range,
+                                          DetectOptions options) const;
     HazardResult DetectSubpassTransitionHazard(const TrackBack &track_back, const AttachmentViewGen &attach_view) const;
 
     HazardResult DetectFirstUseHazard(QueueId queue_id, const ResourceUsageRange &tag_range,
@@ -308,25 +307,25 @@ class AccessContext {
     void ResolveFromContext(ResolveOp &&resolve_op, const AccessContext &from_context, RangeGenerator range_gen,
                             const ResourceAccessState *infill_state = nullptr, bool recur_to_infill = false);
 
-    void UpdateAccessState(const vvl::Buffer &buffer, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
+    void UpdateAccessState(const vvl::Buffer &buffer, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
                            const ResourceAccessRange &range, ResourceUsageTagEx tag_ex);
-    void UpdateAccessState(const ImageState &image, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
+    void UpdateAccessState(const ImageState &image, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
                            const VkImageSubresourceRange &subresource_range, const ResourceUsageTag &tag);
-    void UpdateAccessState(const ImageState &image, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
+    void UpdateAccessState(const ImageState &image, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
                            const VkImageSubresourceRange &subresource_range, const VkOffset3D &offset, const VkExtent3D &extent,
-                           ResourceUsageTag tag);
-    void UpdateAccessState(const AttachmentViewGen &view_gen, AttachmentViewGen::Gen gen_type, SyncStageAccessIndex current_usage,
+                           ResourceUsageTagEx tag_ex);
+    void UpdateAccessState(const AttachmentViewGen &view_gen, AttachmentViewGen::Gen gen_type, SyncAccessIndex current_usage,
                            SyncOrdering ordering_rule, ResourceUsageTag tag);
-    void UpdateAccessState(const ImageViewState &image_view, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
-                           const VkOffset3D &offset, const VkExtent3D &extent, ResourceUsageTag tag);
-    void UpdateAccessState(const ImageViewState &image_view, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
-                           ResourceUsageTag tag);
-    void UpdateAccessState(const ImageRangeGen &range_gen, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
-                           ResourceUsageTag tag);
-    void UpdateAccessState(ImageRangeGen &range_gen, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
-                           ResourceUsageTag tag);
+    void UpdateAccessState(const ImageViewState &image_view, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                           const VkOffset3D &offset, const VkExtent3D &extent, ResourceUsageTagEx tag_ex);
+    void UpdateAccessState(const ImageViewState &image_view, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                           ResourceUsageTagEx tag_ex);
+    void UpdateAccessState(const ImageRangeGen &range_gen, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                           ResourceUsageTagEx tag_ex);
+    void UpdateAccessState(ImageRangeGen &range_gen, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                           ResourceUsageTagEx tag_ex);
     void UpdateAccessState(const vvl::VideoSession &vs_state, const vvl::VideoPictureResource &resource,
-                           SyncStageAccessIndex current_usage, ResourceUsageTag tag);
+                           SyncAccessIndex current_usage, ResourceUsageTag tag);
     void ResolveChildContexts(const std::vector<AccessContext> &contexts);
 
     void ImportAsyncContexts(const AccessContext &from);
@@ -396,11 +395,11 @@ class AccessContext {
         using Iterator = ResourceAccessRangeMap::iterator;
         Iterator Infill(ResourceAccessRangeMap *accesses, const Iterator &pos, const ResourceAccessRange &range) const;
         void operator()(const Iterator &pos) const;
-        UpdateMemoryAccessStateFunctor(const AccessContext &context_, SyncStageAccessIndex usage_, SyncOrdering ordering_rule_,
+        UpdateMemoryAccessStateFunctor(const AccessContext &context_, SyncAccessIndex usage_, SyncOrdering ordering_rule_,
                                        ResourceUsageTagEx tag_ex)
-            : context(context_), usage_info(SyncStageAccess::UsageInfo(usage_)), ordering_rule(ordering_rule_), tag_ex(tag_ex) {}
+            : context(context_), usage_info(SyncStageAccess::AccessInfo(usage_)), ordering_rule(ordering_rule_), tag_ex(tag_ex) {}
         const AccessContext &context;
-        const SyncStageAccessInfoType &usage_info;
+        const SyncAccessInfo &usage_info;
         const SyncOrdering ordering_rule;
         const ResourceUsageTagEx tag_ex;
     };
@@ -686,11 +685,13 @@ HazardResult AccessContext::DetectPreviousHazard(Detector &detector, const Resou
     ResourceAccessRangeMap descent_map;
     ResolvePreviousAccess(range, &descent_map, nullptr);
 
-    HazardResult hazard;
-    for (auto prev = descent_map.begin(); prev != descent_map.end() && !hazard.IsHazard(); ++prev) {
-        hazard = detector.Detect(prev);
+    for (auto prev = descent_map.begin(); prev != descent_map.end(); ++prev) {
+        HazardResult hazard = detector.Detect(prev);
+        if (hazard.IsHazard()) {
+            return hazard;
+        }
     }
-    return hazard;
+    return {};
 }
 
 template <typename Predicate>

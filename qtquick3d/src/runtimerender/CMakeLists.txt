@@ -36,6 +36,7 @@ qt_internal_add_module(Quick3DRuntimeRender
         graphobjects/qssgrendermorphtarget.cpp graphobjects/qssgrendermorphtarget_p.h
         graphobjects/qssgrenderresourceloader.cpp graphobjects/qssgrenderresourceloader_p.h
         graphobjects/qssgrenderreflectionprobe.cpp graphobjects/qssgrenderreflectionprobe_p.h
+        graphobjects/qssgrenderroot_p.h graphobjects/qssgrenderroot.cpp
         qssgperframeallocator_p.h
         qssgrenderableimage_p.h
         qssgrenderclippingfrustum.cpp qssgrenderclippingfrustum_p.h
@@ -63,18 +64,21 @@ qt_internal_add_module(Quick3DRuntimeRender
         qssgshadermapkey_p.h
         qssgshadermaterialadapter.cpp qssgshadermaterialadapter_p.h
         qssgshaderresourcemergecontext_p.h
+        qssglightmapio.cpp qssglightmapio_p.h
         qtquick3druntimerenderglobal_p.h
         qtquick3druntimerenderglobal.h
         rendererimpl/qssgrenderableobjects.cpp rendererimpl/qssgrenderableobjects_p.h
         rendererimpl/qssgrenderer.cpp rendererimpl/qssgrenderer_p.h
         rendererimpl/qssglayerrenderdata_p.h
         rendererimpl/qssglayerrenderdata.cpp
+        rendererimpl/qssglightmapbaker_p.h rendererimpl/qssglightmapbaker.cpp
         rendererimpl/qssglightmapper.cpp rendererimpl/qssglightmapper_p.h rendererimpl/qssglightmapper.h
         rendererimpl/qssgrendererimplshaders_p.h rendererimpl/qssgrendererimplshaders_rhi.cpp
         rendererimpl/qssgvertexpipelineimpl.cpp rendererimpl/qssgvertexpipelineimpl_p.h
         rendererimpl/qssgrenderpass_p.h rendererimpl/qssgrenderpass.cpp
         rendererimpl/qssgrenderhelpers_p.h rendererimpl/qssgrenderhelpers.cpp
         rendererimpl/qssgshadowmaphelpers_p.h rendererimpl/qssgshadowmaphelpers.cpp
+        rendererimpl/qssgrenderdata_p.h rendererimpl/qssgrenderdata.cpp
         resourcemanager/qssgrenderbuffermanager.cpp resourcemanager/qssgrenderbuffermanager_p.h
         resourcemanager/qssgrenderloadedtexture.cpp resourcemanager/qssgrenderloadedtexture_p.h
         resourcemanager/qssgrendershaderlibrarymanager.cpp resourcemanager/qssgrendershaderlibrarymanager_p.h
@@ -177,22 +181,10 @@ qt_internal_add_resource(Quick3DRuntimeRender "res"
 qt_internal_extend_target(Quick3DRuntimeRender
     INCLUDE_DIRECTORIES
         ../3rdparty/tinyexr
-        ../3rdparty/embree/include
     NO_UNITY_BUILD_SOURCES
         ../3rdparty/tinyexr/tinyexr.h
-        ../3rdparty/embree/include/embree3/rtcore.h
-        ../3rdparty/embree/include/embree3/rtcore_buffer.h
-        ../3rdparty/embree/include/embree3/rtcore_builder.h
-        ../3rdparty/embree/include/embree3/rtcore_common.h
-        ../3rdparty/embree/include/embree3/rtcore_config.h
-        ../3rdparty/embree/include/embree3/rtcore_device.h
-        ../3rdparty/embree/include/embree3/rtcore_geometry.h
-        ../3rdparty/embree/include/embree3/rtcore_quaternion.h
-        ../3rdparty/embree/include/embree3/rtcore_ray.h
-        ../3rdparty/embree/include/embree3/rtcore_scene.h
     ATTRIBUTION_FILE_DIR_PATHS
         ../3rdparty/tinyexr
-        ../3rdparty/embree
 )
 
 qt_internal_extend_target(Quick3DRuntimeRender CONDITION QT_FEATURE_system_zlib
@@ -292,6 +284,19 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_es3_gl3"
         res/rhishaders/skyboxcube.frag
         res/rhishaders/grid.frag
         res/rhishaders/grid.vert
+)
+qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_compute"
+    SILENT
+    PRECOMPILE
+    OPTIMIZED
+    GLSL "310es,430"
+    PREFIX
+        "/"
+    FILES
+        res/rhishaders/nlm_denoise.comp
+    OUTPUTS
+        res/rhishaders/nlm_denoise.comp.qsb
+
 )
 qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_lightprobe_rgbe"
     SILENT
@@ -516,6 +521,23 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_filmic"
     DEFINES
         QSSG_ENABLE_FILMIC_TONEMAPPING=1
         QSSG_ENABLE_RGBE_LIGHT_PROBE=1
+)
+qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skyboxcube_runtime_tonemapping"
+    SILENT
+    PRECOMPILE
+    OPTIMIZED
+    MULTIVIEW
+    GLSL "300es,150"
+    PREFIX
+        "/"
+    FILES
+        res/rhishaders/skyboxcube.vert
+        res/rhishaders/skyboxcube.frag
+    OUTPUTS
+        res/rhishaders/skyboxcube_runtime_tonemapping.vert.qsb
+        res/rhishaders/skyboxcube_runtime_tonemapping.frag.qsb
+    DEFINES
+        QSSG_RUNTIME_TONEMAPPING=1
 )
 
 function(_add_particle_shader target)

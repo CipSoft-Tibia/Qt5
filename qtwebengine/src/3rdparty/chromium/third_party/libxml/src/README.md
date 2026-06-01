@@ -45,9 +45,9 @@ The following options disable or enable code modules and relevant symbols:
 
     --with-c14n             Canonical XML 1.0 support (on)
     --with-catalog          XML Catalogs support (on)
-    --with-debug            debugging module and shell (on)
-    --with-history          history support for shell (off)
-    --with-readline[=DIR]   use readline in DIR (for shell history)
+    --with-debug            debugging module (on)
+    --with-history          history support for xmllint shell (off)
+    --with-readline[=DIR]   use readline in DIR for shell (off)
     --with-html             HTML parser (on)
     --with-http             HTTP support (off)
     --with-iconv[=DIR]      iconv support (on)
@@ -66,7 +66,6 @@ The following options disable or enable code modules and relevant symbols:
     --with-schematron       Schematron support (on)
     --with-threads          multithreading support (on)
     --with-thread-alloc     per-thread malloc hooks (off)
-    --with-tree             DOM like tree manipulation APIs (on)
     --with-valid            DTD validation support (on)
     --with-writer           xmlWriter serialization interface (on)
     --with-xinclude         XInclude 1.0 support (on)
@@ -121,43 +120,52 @@ directly in various IDEs such as CLion, QtCreator, or Visual Studio.
 
 ### Meson
 
+Still somewhat experimental, see
+[issue 743](https://gitlab.gnome.org/GNOME/libxml2/-/issues/743).
+
 Libxml can also be built with meson. Without option, simply call
 
-meson setup builddir
-ninja -C builddir
+    meson setup builddir
+    ninja -C builddir
 
 To add options, see the meson_options.txt file. For example:
 
-meson setup -Dprefix=$prefix -Dftp=true -Dhistory=true -Dicu=true -Dhttp=true builddir
+    meson setup \
+        -Dprefix=$prefix \
+        -Dhistory=enabled \
+        -Dhttp=enabled \
+        -Dschematron=disabled \
+        -Dzlib=enabled \
+        builddir
 
 To install libxml:
 
-ninja -C builddir install
+    ninja -C builddir install
 
 To launch tests:
 
-meson test -C builddir
+    meson test -C builddir
 
 ## Dependencies
 
-Libxml does not require any other libraries. A platform with somewhat
-recent POSIX support should be sufficient (please report any violation
-to this rule you may find).
+libxml2 supports POSIX and Windows operating systems.
 
 The iconv function is required for conversion of character encodings.
 This function is part of POSIX.1-2001. If your platform doesn't provide
 iconv, you need an external libiconv library, for example
-[GNU libiconv](https://www.gnu.org/software/libiconv/). Alternatively,
-you can use [ICU](https://icu.unicode.org/).
+[GNU libiconv](https://www.gnu.org/software/libiconv/). Using
+[ICU](https://icu.unicode.org/) is also supported but discouraged.
 
 If enabled, libxml uses [libz](https://zlib.net/) or
 [liblzma](https://tukaani.org/xz/) to support reading compressed files.
 Use of this feature is discouraged.
 
+The xmllint executable uses libreadline and libhistory if enabled.
+
 ## Contributing
 
-The current version of the code can be found in GNOME's GitLab at 
-at <https://gitlab.gnome.org/GNOME/libxml2>. The best way to get involved
+The current version of the code can be found in GNOME's GitLab at
+<https://gitlab.gnome.org/GNOME/libxml2>. The best way to get involved
 is by creating issues and merge requests on GitLab.
 
 All code must conform to C89 and pass the GitLab CI tests. Add regression

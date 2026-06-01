@@ -273,7 +273,7 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterFloss final
   // Complete adapter present/enabled changes after adapter clients are ready.
   // Invoke PresentChanged to the observers only when |is_newly_present| is
   // true.
-  void OnAdapterClientsReady(bool enabled, bool is_newly_present);
+  void OnAdapterClientsReady(bool is_newly_present);
 
   // Initialize observers for adapter dependent clients. We need to add + remove
   // these observers whenever we get a powered notification.
@@ -308,6 +308,8 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterFloss final
       FlossAdapterClient::BondState bond_state) override;
   void AdapterDeviceConnected(const FlossDeviceId& device_id) override;
   void AdapterDeviceDisconnected(const FlossDeviceId& device_id) override;
+  void AdapterDeviceConnectionFailed(const FlossDeviceId& device_id,
+                                     uint32_t status) override;
 
   // floss::FlossBatteryManagerClient::FlossBatteryManagerClientObserver
   // override.

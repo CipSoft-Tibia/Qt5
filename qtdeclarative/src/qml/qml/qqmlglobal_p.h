@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLGLOBAL_H
 #define QQMLGLOBAL_H
@@ -222,7 +223,7 @@ public:
     static QVariant createValueType(const QJSValue &, QMetaType);
     static QVariant createValueType(const QString &, QMetaType);
     static QVariant createValueType(const QV4::Value &, QMetaType, QV4::ExecutionEngine *);
-    static QVariant createValueType(const QVariant &, QMetaType, QV4::ExecutionEngine *);
+    static QVariant Q_AUTOTEST_EXPORT createValueType(const QVariant &, QMetaType, QV4::ExecutionEngine *);
 };
 
 class Q_QML_EXPORT QQmlColorProvider

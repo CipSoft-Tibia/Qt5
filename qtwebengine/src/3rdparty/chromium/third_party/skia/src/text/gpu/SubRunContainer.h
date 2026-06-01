@@ -114,7 +114,8 @@ public:
 
     virtual const VertexFiller& vertexFiller() const = 0;
 
-    virtual void testingOnly_packedGlyphIDToGlyph(StrikeCache* cache) const = 0;
+    virtual void testingOnly_packedGlyphIDToGlyph(StrikeCache* cache, skgpu::MaskFormat) const = 0;
+
 };
 
 using AtlasDrawDelegate = std::function<void(const sktext::gpu::AtlasSubRun* subRun,

@@ -7,11 +7,18 @@
 #include <lib/inspect/component/cpp/component.h>
 
 #include "base/fuchsia/fuchsia_logging.h"
+#include "ui/accessibility/ax_event_generator.h"
+#include "ui/accessibility/ax_node.h"
 #include "ui/accessibility/platform/ax_platform_tree_manager_delegate.h"
+#include "ui/accessibility/platform/browser_accessibility_manager.h"
 #include "ui/accessibility/platform/fuchsia/accessibility_bridge_fuchsia_registry.h"
 #include "ui/accessibility/platform/fuchsia/browser_accessibility_fuchsia.h"
 
 namespace ui {
+namespace {
+// Accessibility bridge instance to use for tests, if set.
+AccessibilityBridgeFuchsia* g_accessibility_bridge_for_test = nullptr;
+}  // namespace
 
 // static
 BrowserAccessibilityManager* BrowserAccessibilityManager::Create(
@@ -67,8 +74,16 @@ BrowserAccessibilityManagerFuchsia::~BrowserAccessibilityManagerFuchsia() =
 
 AccessibilityBridgeFuchsia*
 BrowserAccessibilityManagerFuchsia::GetAccessibilityBridge() const {
-  if (accessibility_bridge_for_test_)
-    return accessibility_bridge_for_test_;
+  // !!! Safety warning !!! This function is directly called during the
+  // parent class destructor. As such, it shouldn't depend on any member
+  // variables from this class, as they have already been destroyed.
+  //
+  // Failing to follow this rule would be undefined behavior, and can lead to
+  // unsafe/unexpected behaviors. See ASAN options
+  // `-fsanitize-memory-use-after-dtor`
+  if (g_accessibility_bridge_for_test) {
+    return g_accessibility_bridge_for_test;
+  }
 
   gfx::NativeWindow top_level_native_window =
       delegate_ ? delegate_->GetTopLevelNativeWindow() : gfx::NativeWindow();
@@ -132,6 +147,30 @@ void BrowserAccessibilityManagerFuchsia::FireBlinkEvent(
     OnHitTestResult(action_request_id, node);
 }
 
+void BrowserAccessibilityManagerFuchsia::FireGeneratedEvent(
+    AXEventGenerator::Event event_type,
+    const AXNode* node) {
+  BrowserAccessibilityManager::FireGeneratedEvent(event_type, node);
+
+  if (!GetAccessibilityBridge()) {
+    return;
+  }
+
+  switch (event_type) {
+    case AXEventGenerator::Event::SCROLL_VERTICAL_POSITION_CHANGED:
+    case AXEventGenerator::Event::SCROLL_HORIZONTAL_POSITION_CHANGED: {
+      BrowserAccessibilityFuchsia* browser_accessibility_fuchsia =
+          ToBrowserAccessibilityFuchsia(GetFromAXNode(node));
+
+      browser_accessibility_fuchsia->OnScrollChanged();
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
 void BrowserAccessibilityManagerFuchsia::OnHitTestResult(
     int action_request_id,
     BrowserAccessibility* node) {
@@ -159,9 +198,14 @@ void BrowserAccessibilityManagerFuchsia::UpdateDeviceScaleFactor() {
     BrowserAccessibilityManager::UpdateDeviceScaleFactor();
 }
 
+// static
 void BrowserAccessibilityManagerFuchsia::SetAccessibilityBridgeForTest(
     AccessibilityBridgeFuchsia* accessibility_bridge_for_test) {
-  accessibility_bridge_for_test_ = accessibility_bridge_for_test;
+  // Only allow transition from nullptr to non-nullptr, or vice versa.
+  CHECK(!g_accessibility_bridge_for_test || !accessibility_bridge_for_test)
+      << "Setting the accessibility bridge to two different values is not "
+         "allowed.";
+  g_accessibility_bridge_for_test = accessibility_bridge_for_test;
 }
 
 }  // namespace ui

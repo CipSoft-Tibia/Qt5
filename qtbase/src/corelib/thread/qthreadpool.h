@@ -14,8 +14,6 @@
 #include <functional>
 #endif
 
-QT_REQUIRE_CONFIG(thread);
-
 QT_BEGIN_NAMESPACE
 
 class QThreadPoolPrivate;

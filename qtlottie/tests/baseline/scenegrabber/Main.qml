@@ -3,27 +3,50 @@
 
 import QtQuick
 import Qt.labs.lottieqt
+import QtQuick.VectorImage
 
 Image {
     id: chequered_background
     source: "qrc:///checkered.png"
     fillMode: Image.Tile
-    width: qtlottie.width
-    height: qtlottie.height
+    width: qtlottie.width + 5
+    height: qtlottie.height * row.scale
 
-    LottieAnimation {
-        id: qtlottie
-        objectName: "qtlottie_animation_item"
-        quality: LottieAnimation.HighQuality
-        autoPlay: false
+    Row {
+        id: row
+        anchors.top: parent.top
+        anchors.left: parent.left
+        scale: 0.5
+        transformOrigin: Item.TopLeft
 
-        property int freezeFrame: -1
-        onStatusChanged: {
-            if (status === LottieAnimation.Ready) {
-                if (freezeFrame < 0)
-                    freezeFrame = Math.floor((endFrame - startFrame) / 2);
-                gotoAndStop(freezeFrame);
+        LottieAnimation {
+            id: qtlottie
+            objectName: "qtlottie_animation_item"
+            quality: LottieAnimation.HighQuality
+            autoPlay: false
+            property int freezeFrame: -1
+            onStatusChanged: {
+                if (status === LottieAnimation.Ready) {
+                    if (freezeFrame < 0)
+                        freezeFrame = Math.floor(startFrame + ((endFrame - startFrame) / 2));
+                    gotoAndStop(freezeFrame);
+                }
             }
+            clip: true
+        }
+
+        Rectangle {
+            width: 5
+            height: qtlottie.height
+            color: "black"
+        }
+
+        VectorImage {
+            assumeTrustedSource: true
+            animations.paused: true
+            source: qtlottie.source
+            preferredRendererType: VectorImage.CurveRenderer
+            clip: true
         }
     }
 }

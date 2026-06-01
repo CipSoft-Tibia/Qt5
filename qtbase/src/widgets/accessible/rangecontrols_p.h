@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef RANGECONTROLS_H
 #define RANGECONTROLS_H
@@ -33,7 +34,7 @@ class QAccessibleLineEdit;
 
 #if QT_CONFIG(spinbox)
 class QAccessibleAbstractSpinBox:
-        public QAccessibleWidget,
+        public QAccessibleWidgetV2,
         public QAccessibleValueInterface,
         public QAccessibleTextInterface,
         public QAccessibleEditableTextInterface
@@ -42,6 +43,7 @@ public:
     explicit QAccessibleAbstractSpinBox(QWidget *w);
     virtual ~QAccessibleAbstractSpinBox();
 
+    QAccessible::State state() const override;
     QString text(QAccessible::Text t) const override;
     void *interface_cast(QAccessible::InterfaceType t) override;
 
@@ -108,7 +110,7 @@ protected:
 #endif // QT_CONFIG(spinbox)
 
 #if QT_CONFIG(slider)
-class QAccessibleAbstractSlider: public QAccessibleWidget, public QAccessibleValueInterface
+class QAccessibleAbstractSlider: public QAccessibleWidgetV2, public QAccessibleValueInterface
 {
 public:
     explicit QAccessibleAbstractSlider(QWidget *w, QAccessible::Role r = QAccessible::Slider);

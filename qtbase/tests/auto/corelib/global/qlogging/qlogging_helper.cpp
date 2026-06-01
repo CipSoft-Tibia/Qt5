@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QLoggingCategory>
+#include <QThread>
 
 #ifdef Q_CC_GNU
 #define NEVER_INLINE __attribute__((__noinline__))
@@ -35,6 +36,18 @@ void MyClass::myFunction(int a)
     qDebug() << "from_a_function" << a;
 }
 
+class Thread : public QThread
+{
+public:
+    Thread() {
+        setObjectName("1234567890ABCDE"); // 16 bytes incl. NUL
+    }
+protected:
+    void run() final {
+        qDebug("qDebug from another thread");
+    }
+};
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -56,6 +69,10 @@ int main(int argc, char **argv)
 
     MyClass cl;
     QMetaObject::invokeMethod(&cl, "mySlot1");
+
+    Thread thread;
+    thread.start();
+    thread.wait();
 
     return 0;
 }

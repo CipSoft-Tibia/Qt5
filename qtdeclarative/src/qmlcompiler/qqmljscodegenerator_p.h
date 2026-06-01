@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:critical reason:code-generation
 
 #ifndef QQMLJSCODEGENERATOR_P_H
 #define QQMLJSCODEGENERATOR_P_H
@@ -23,18 +24,16 @@
 
 #include <QtCore/qstring.h>
 
-#include <memory>
-
 QT_BEGIN_NAMESPACE
 
 class Q_QMLCOMPILER_EXPORT QQmlJSCodeGenerator : public QQmlJSCompilePass
 {
 public:
-    QQmlJSCodeGenerator(const QV4::Compiler::Context *compilerContext,
-                        const QV4::Compiler::JSUnitGenerator *unitGenerator,
-                        const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                        QList<QQmlJS::DiagnosticMessage> *errors, const BasicBlocks &basicBlocks,
-                        const InstructionAnnotations &annotations);
+    QQmlJSCodeGenerator(
+            const QV4::Compiler::Context *compilerContext,
+            const QV4::Compiler::JSUnitGenerator *unitGenerator,
+            const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
+            const BasicBlocks &basicBlocks, const InstructionAnnotations &annotations);
     ~QQmlJSCodeGenerator() = default;
 
     QQmlJSAotFunction run(const Function *function, bool basicBlocksValidationFailed);
@@ -262,6 +261,14 @@ protected:
 
     void generateReturnError();
     void reject(const QString &thing);
+    void skip(const QString &thing);
+
+    template<typename T>
+    T reject(const QString &thing)
+    {
+        reject(thing);
+        return T();
+    }
 
     QString metaTypeFromType(const QQmlJSScope::ConstPtr &type) const;
     QString metaTypeFromName(const QQmlJSScope::ConstPtr &type) const;
@@ -328,6 +335,16 @@ private:
     void rejectIfNonQObjectOut(const QString &error);
     void rejectIfBadArray();
 
+    struct GeneratePragmaWarningBlock {
+        Q_DISABLE_COPY_MOVE(GeneratePragmaWarningBlock)
+        GeneratePragmaWarningBlock(QQmlJSCodeGenerator *generator);
+        ~GeneratePragmaWarningBlock();
+
+        void silenceDivideByZero();
+
+        QQmlJSCodeGenerator *m_generator;
+    };
+
 
     QString eqIntExpression(int lhsConst);
 
@@ -359,7 +376,10 @@ private:
             const QQmlJSMetaMethod &ctor, const QList<QQmlJSRegisterContent> &argumentTypes,
             const QStringList &arguments, const QString &metaType, const QString &metaObject);
 
-    QString generateVariantMapLookup(const QString &map, const int nameIndex);
+    QString generateVariantMapGetLookup(const QString &map, const int nameIndex);
+    QString generateVariantMapSetLookup(
+            const QString &map, const int nameIndex, const QQmlJSScope::ConstPtr &property,
+            const QString &variableIn);
 
     QQmlJSRegisterContent originalType(QQmlJSRegisterContent tracked)
     {

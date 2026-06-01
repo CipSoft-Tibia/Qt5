@@ -66,16 +66,21 @@ QThreadData::~QThreadData()
     thread.storeRelease(nullptr);
     delete t;
 
-    for (qsizetype i = 0; i < postEventList.size(); ++i) {
-        const QPostEvent &pe = postEventList.at(i);
+    clearEvents();
+
+    // fprintf(stderr, "QThreadData %p destroyed\n", this);
+}
+
+void QThreadData::clearEvents()
+{
+    for (const auto &pe : std::as_const(postEventList)) {
         if (pe.event) {
             pe.receiver->d_func()->postedEvents.fetchAndSubRelaxed(1);
             pe.event->m_posted = false;
             delete pe.event;
         }
     }
-
-    // fprintf(stderr, "QThreadData %p destroyed\n", this);
+    postEventList.clear();
 }
 
 QAbstractEventDispatcher *QThreadData::createEventDispatcher()
@@ -113,8 +118,11 @@ QAdoptedThread::QAdoptedThread(QThreadData *data)
 #if QT_CONFIG(thread)
     d_func()->threadState = QThreadPrivate::Running;
     init();
-    d_func()->m_statusOrPendingObjects.setStatusAndClearList(
+    {
+        QMutexLocker lock(&d_func()->mutex);
+        d_func()->data->m_statusOrPendingObjects.setStatusAndClearList(
                 QtPrivate::getBindingStatus({}));
+    }
 #endif
     // fprintf(stderr, "new QAdoptedThread = %p\n", this);
 }
@@ -168,7 +176,8 @@ QThreadPrivate::~QThreadPrivate()
     // access to m_statusOrPendingObjects cannot race with anything
     // unless there is already a potential use-after-free bug, as the
     // thread is in the process of being destroyed
-    delete m_statusOrPendingObjects.list();
+    delete data->m_statusOrPendingObjects.list();
+    data->clearEvents();
     data->deref();
 }
 
@@ -621,7 +630,6 @@ QThread::QualityOfService QThread::serviceLevel() const
  */
 void QtPrivate::BindingStatusOrList::setStatusAndClearList(QBindingStatus *status) noexcept
 {
-
     if (auto pendingObjects = list()) {
         for (auto obj: *pendingObjects)
             QObjectPrivate::get(obj)->reinitBindingStorageAfterThreadMove();
@@ -652,7 +660,7 @@ int QThread::exec()
     const auto status = QtPrivate::getBindingStatus(QtPrivate::QBindingStatusAccessToken{});
 
     QMutexLocker locker(&d->mutex);
-    d->m_statusOrPendingObjects.setStatusAndClearList(status);
+    d->data->m_statusOrPendingObjects.setStatusAndClearList(status);
     d->data->quitNow = false;
     if (d->exited) {
         d->exited = false;
@@ -706,18 +714,18 @@ void QtPrivate::BindingStatusOrList::removeObject(QObject *object)
 
 QBindingStatus *QThreadPrivate::addObjectWithPendingBindingStatusChange(QObject *obj)
 {
-    if (auto status = m_statusOrPendingObjects.bindingStatus())
+    if (auto status = data->m_statusOrPendingObjects.bindingStatus())
         return status;
     QMutexLocker lock(&mutex);
-    return m_statusOrPendingObjects.addObjectUnlessAlreadyStatus(obj);
+    return data->m_statusOrPendingObjects.addObjectUnlessAlreadyStatus(obj);
 }
 
 void QThreadPrivate::removeObjectWithPendingBindingStatusChange(QObject *obj)
 {
-    if (m_statusOrPendingObjects.bindingStatus())
+    if (data->m_statusOrPendingObjects.bindingStatus())
         return;
     QMutexLocker lock(&mutex);
-    m_statusOrPendingObjects.removeObject(obj);
+    data->m_statusOrPendingObjects.removeObject(obj);
 }
 
 
@@ -1045,6 +1053,11 @@ QThread::~QThread()
 
 }
 
+QThread *QThread::createThreadImpl(std::future<void>&&)
+{
+    return nullptr;
+}
+
 void QThread::run()
 {
 
@@ -1145,6 +1158,10 @@ bool QThread::isInterruptionRequested() const
 }
 
 void QThread::setTerminationEnabled(bool)
+{
+}
+
+void QThread::setServiceLevel(QualityOfService)
 {
 }
 
@@ -1273,6 +1290,9 @@ bool QThread::event(QEvent *event)
     if and how it should act upon such request.
     This function does not stop any event loop running on the thread and
     does not terminate it in any way.
+
+    This function has no effect on the main thread, and does nothing if the thread
+    is not currently running.
 
     \sa isInterruptionRequested()
 */

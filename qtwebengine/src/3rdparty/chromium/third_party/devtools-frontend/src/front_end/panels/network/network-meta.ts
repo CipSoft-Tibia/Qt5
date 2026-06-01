@@ -5,11 +5,11 @@
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import type * as Platform from '../../core/platform/platform.js';
+import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Extensions from '../../models/extensions/extensions.js';
 import * as Workspace from '../../models/workspace/workspace.js';
 import * as UI from '../../ui/legacy/legacy.js';
-import * as TimelineUtils from '../timeline/utils/utils.js';
 
 import * as NetworkForward from './forward/forward.js';
 import type * as Network from './network.js';
@@ -127,15 +127,15 @@ const UIStrings = {
    * @description Title of an action in the Network panel (and title of a setting in the Network category)
    *              that enables options in the UI to copy or export HAR (not translatable) with sensitive data.
    */
-  allowToGenerateHarWithSensitiveData: 'Allow to generate `HAR` (with sensitive data)',
+  allowToGenerateHarWithSensitiveData: 'Allow to generate `HAR` with sensitive data',
   /**
    * @description Title of an action in the Network panel that disables options in the UI to copy or export
    *              HAR (not translatable) with sensitive data.
    */
-  dontAllowToGenerateHarWithSensitiveData: 'Don\'t allow to generate `HAR` (with sensitive data)',
+  dontAllowToGenerateHarWithSensitiveData: 'Don\'t allow to generate `HAR` with sensitive data',
   /**
    * @description Tooltip shown as documentation when hovering the (?) icon next to the "Allow to generate
-   *              HAR (with sensitive data)" option in the Settings panel.
+   *              HAR with sensitive data" option in the Settings panel.
    */
   allowToGenerateHarWithSensitiveDataDocumentation:
       'By default generated HAR logs are sanitized and don\'t include `Cookie`, `Set-Cookie`, or `Authorization` HTTP headers. When this setting is enabled, options to export/copy HAR with sensitive data are provided.',
@@ -143,6 +143,8 @@ const UIStrings = {
 const str_ = i18n.i18n.registerUIStrings('panels/network/network-meta.ts', UIStrings);
 const i18nLazyString = i18n.i18n.getLazilyComputedLocalizedString.bind(undefined, str_);
 let loadedNetworkModule: (typeof Network|undefined);
+
+const isNode = Root.Runtime.Runtime.isNode();
 
 async function loadNetworkModule(): Promise<typeof Network> {
   if (!loadedNetworkModule) {
@@ -164,6 +166,7 @@ UI.ViewManager.registerViewExtension({
   commandPrompt: i18nLazyString(UIStrings.showNetwork),
   title: i18nLazyString(UIStrings.network),
   order: 40,
+  isPreviewFeature: isNode,
   async loadView() {
     const Network = await loadNetworkModule();
     return Network.NetworkPanel.NetworkPanel.instance();
@@ -439,7 +442,7 @@ UI.ContextMenu.registerProvider({
       SDK.NetworkRequest.NetworkRequest,
       SDK.Resource.Resource,
       Workspace.UISourceCode.UISourceCode,
-      TimelineUtils.NetworkRequest.TimelineNetworkRequest,
+      SDK.TraceObject.RevealableNetworkRequest,
     ];
   },
   async loadProvider() {

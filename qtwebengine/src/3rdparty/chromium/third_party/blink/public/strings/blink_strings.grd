@@ -35,7 +35,7 @@ below:
 -->
 
 <grit base_dir="." latest_public_release="0" current_release="1"
-      output_all_resource_defines="false" source_lang_id="en" enc_check="möl">
+      source_lang_id="en" enc_check="möl">
   <outputs>
     <!-- TODO add each of your output files.  Modify the three below, and add
     your own for your various languages.  See the user's guide
@@ -236,7 +236,6 @@ below:
       change nontranslateable parts of the messages into placeholders (using the
       <ph> element).  You can also use the 'grit add' tool to help you identify
       nontranslateable parts and create placeholders for them. -->
-
       <message name="IDS_DETAILS_WITHOUT_SUMMARY_LABEL" desc="Clickable label to show detailed information or to hide the detailed information.">
         Details
       </message>
@@ -379,31 +378,6 @@ below:
         Pretty-print
       </message>
 
-      <message name="IDS_PERMISSION_REQUEST_CAMERA" desc="Label for a permission element that will trigger a camera request">
-        Use camera
-      </message>
-      <message name="IDS_PERMISSION_REQUEST_MICROPHONE" desc="Label for a permission element that will trigger a microphone request">
-        Use microphone
-      </message>
-      <message name="IDS_PERMISSION_REQUEST_CAMERA_MICROPHONE" desc="Label for a permission element that will trigger a camera and microphone request">
-        Use microphone and camera
-      </message>
-      <message name="IDS_PERMISSION_REQUEST_GEOLOCATION" desc="Label for a permission element that will trigger a geolocation request">
-        Share location
-      </message>
-      <message name="IDS_PERMISSION_REQUEST_CAMERA_ALLOWED" desc="Label for a permission element when camera access is allowed">
-        Camera allowed
-      </message>
-      <message name="IDS_PERMISSION_REQUEST_MICROPHONE_ALLOWED" desc="Label for a permission element when microphone access is allowed">
-        Microphone allowed
-      </message>
-      <message name="IDS_PERMISSION_REQUEST_CAMERA_MICROPHONE_ALLOWED" desc="Label for a permission element when camera access and microphone access are allowed">
-        Camera and microphone allowed
-      </message>
-      <message name="IDS_PERMISSION_REQUEST_GEOLOCATION_ALLOWED" desc="Label for a permission element when geolocation access is allowed">
-        Sharing location allowed
-      </message>
-
 <!-- The following IDS_FORM_VALIDATION_* messages were taken from Mozilla's dom.properties file.
 
 # ***** BEGIN LICENSE BLOCK *****
@@ -484,6 +458,9 @@ below:
         Please lengthen this text to <ph name="MIN_CHARACTERS">$2<ex>101</ex></ph> characters or more (you are currently using <ph name="CURRENT_LENGTH">$1<ex>100</ex></ph> characters).
       </message>
 
+      <message name="IDS_MEDIA_SESSION_DATA_SOURCE" desc="The name of the media session source if the media is from a data URL.">
+        Data URL
+      </message>
       <message name="IDS_MEDIA_SESSION_FILE_SOURCE" desc="The name of the media session source if the media is a local file.">
         File on your device
       </message>

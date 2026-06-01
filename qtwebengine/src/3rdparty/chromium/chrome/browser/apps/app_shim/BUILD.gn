@@ -28,7 +28,6 @@ source_set("app_shim") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 
   deps = [
-    "//chrome/browser/profiles:profile_attributes",
     "//chrome/browser/profiles:profile_util",
     "//chrome/browser/ui:browser_list",
     "//chrome/browser/ui:ui_features",

@@ -6,6 +6,8 @@
 
 #include <QtCore/qdatetime.h>
 
+#include <algorithm>
+
 QT_BEGIN_NAMESPACE
 
 const int QHttpServerRequestFilterPrivate::cPeriodDurationMSec = 1000;
@@ -21,6 +23,21 @@ unsigned int QHttpServerRequestFilter::maxRequestPerPeriod() const
 void QHttpServerRequestFilter::setConfiguration(const QHttpServerConfiguration &config)
 {
     m_config = config;
+}
+
+bool QHttpServerRequestFilter::isRequestAllowed(const QHostAddress &peerAddress) const
+{
+    const auto matches = [](const QHostAddress &addr) {
+        return [&addr] (const auto &subnet) {
+            return addr.isInSubnet(subnet);
+        };
+    };
+
+    if (const auto whitelist = m_config.whitelist(); !whitelist.empty())
+        return std::any_of(whitelist.cbegin(), whitelist.cend(), matches(peerAddress));
+
+    const auto blacklist = m_config.blacklist();
+    return std::none_of(blacklist.cbegin(), blacklist.cend(), matches(peerAddress));
 }
 
 bool QHttpServerRequestFilter::isRequestWithinRate(const QHostAddress &peerAddress)

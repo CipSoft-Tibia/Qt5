@@ -8,18 +8,6 @@
 #include <QtMultimedia/private/qaudio_qiodevice_support_p.h>
 #include <QtMultimedia/private/qmultimedia_assume_p.h>
 
-#include <stdlib.h>
-#if __has_include(<alloca.h>)
-#  include <alloca.h>
-#endif
-#if __has_include(<malloc.h>)
-#  include <malloc.h>
-#endif
-
-#ifdef Q_CC_MSVC
-#  define alloca _alloca
-#endif
-
 QT_BEGIN_NAMESPACE
 
 namespace QtMultimediaPrivate {
@@ -168,14 +156,20 @@ QPlatformAudioSinkStream::process(QSpan<std::byte> hostBuffer, qsizetype totalNu
 
     int samplesConsumedFromRingbuffer = visitRingbuffer([&](auto &ringbuffer) {
         return ringbuffer.consume(totalNumberOfSamples, [&](auto ringbufferRange) {
-            QSpan byteRange = as_bytes(ringbufferRange);
-            QSpan outputByteRange = take(hostBuffer, byteRange.size());
-            hostBuffer = drop(hostBuffer, byteRange.size());
+            if (nativeFormat) {
+                // Amount of bytes in output range differ from ringbuffer range
+                const qsizetype samplesInChunk = ringbufferRange.size();
+                const qsizetype bytesInChunk = samplesInChunk * bytesPerSample(*nativeFormat);
 
-            if (nativeFormat)
-                convertToNative(byteRange, outputByteRange, vol, *nativeFormat);
-            else
-                QAudioHelperInternal::applyVolume(vol, m_format, byteRange, outputByteRange);
+                QSpan<std::byte> outputByteRange = take(hostBuffer, bytesInChunk);
+                hostBuffer = drop(hostBuffer, bytesInChunk);
+                convertToNative(as_bytes(ringbufferRange), outputByteRange, vol, *nativeFormat);
+            } else {
+                QSpan<std::byte> outputByteRange = take(hostBuffer, ringbufferRange.size_bytes());
+                hostBuffer = drop(hostBuffer, ringbufferRange.size_bytes());
+                QAudioHelperInternal::applyVolume(vol, m_format, as_bytes(ringbufferRange),
+                                                  outputByteRange);
+            }
         });
     });
 
@@ -316,13 +310,12 @@ void QPlatformAudioSinkStream::convertToNative(QSpan<const std::byte> internal,
         return;
     }
 
-    Q_ASSERT(internal.size() <= scratchpadBufferSizeLimit);
-    std::byte *scratchpadMemory = reinterpret_cast<std::byte *>(alloca(internal.size()));
-    QSpan scratchpadBuffer{ scratchpadMemory, internal.size() };
-
-    applyVolume(volume, m_format, internal, scratchpadBuffer);
-    convertSampleFormat(scratchpadBuffer, toNativeSampleFormat(m_format.sampleFormat()), native,
-                        nativeFormat);
+    withTemporaryBuffer<scratchpadBufferSizeLimit>(internal.size(),
+                                                   [&](QSpan<std::byte> scratchpadBuffer) {
+        applyVolume(volume, m_format, internal, scratchpadBuffer);
+        convertSampleFormat(scratchpadBuffer, toNativeSampleFormat(m_format.sampleFormat()), native,
+                            nativeFormat);
+    });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -352,19 +345,27 @@ uint64_t QPlatformAudioSourceStream::process(
     uint64_t totalSamplesWritten = visitRingbuffer([&](auto &rb) {
         using SampleType = typename std::decay_t<decltype(rb)>::ValueType;
 
-        return rb.produceSome([&](QSpan<SampleType> writeRegion) {
-            QSpan<const std::byte> inputChunk = take(hostBuffer, writeRegion.size_bytes());
-            hostBuffer = drop(hostBuffer, writeRegion.size_bytes());
+        // clang-format off
+        return rb.produceSome([&](QSpan<SampleType> ringbufferRange) {
+            if (nativeFormat) {
+                // Amount of bytes in input range differ from ringbuffer range
+                const qsizetype samplesInChunk = ringbufferRange.size();
+                const qsizetype bytesInChunk = samplesInChunk * bytesPerSample(*nativeFormat);
 
-            writeRegion = take(writeRegion, inputChunk.size() / sizeof(SampleType));
-
-            if (nativeFormat)
-                convertFromNative(inputChunk, as_writable_bytes(writeRegion), vol, *nativeFormat);
-            else
-                QAudioHelperInternal::applyVolume(vol, m_format, inputChunk,
-                                                  as_writable_bytes(writeRegion));
-            return writeRegion;
+                QSpan<const std::byte> inputByteRange = take(hostBuffer, bytesInChunk);
+                hostBuffer = drop(hostBuffer, bytesInChunk);
+                convertFromNative(inputByteRange, as_writable_bytes(ringbufferRange), vol,
+                                  *nativeFormat);
+            } else {
+                QSpan<const std::byte> inputByteRange =
+                        take(hostBuffer, ringbufferRange.size_bytes());
+                hostBuffer = drop(hostBuffer, ringbufferRange.size_bytes());
+                QAudioHelperInternal::applyVolume(vol, m_format, inputByteRange,
+                                                  as_writable_bytes(ringbufferRange));
+            }
+            return ringbufferRange;
         }, remainingNumberOfSamples);
+        // clang-format on
     });
 
     if (totalSamplesWritten)
@@ -497,14 +498,12 @@ void QPlatformAudioSourceStream::convertFromNative(
         return;
     }
 
-    Q_ASSERT(internal.size() <= scratchpadBufferSizeLimit);
-    std::byte *scratchpadMemory = reinterpret_cast<std::byte *>(alloca(internal.size()));
-    QSpan scratchpadBuffer{ scratchpadMemory, internal.size() };
-
-    convertSampleFormat(native, nativeFormat, scratchpadBuffer,
-                        QAudioHelperInternal::toNativeSampleFormat(m_format.sampleFormat()));
-
-    applyVolume(volume, m_format, scratchpadBuffer, internal);
+    withTemporaryBuffer<scratchpadBufferSizeLimit>(internal.size(),
+                                                   [&](QSpan<std::byte> scratchpadBuffer) {
+        convertSampleFormat(native, nativeFormat, scratchpadBuffer,
+                            QAudioHelperInternal::toNativeSampleFormat(m_format.sampleFormat()));
+        applyVolume(volume, m_format, scratchpadBuffer, internal);
+    });
 }
 
 } // namespace QtMultimediaPrivate

@@ -39,7 +39,7 @@ import * as Workspace from '../../../../models/workspace/workspace.js';
 import * as VisualLogging from '../../../visual_logging/visual_logging.js';
 import * as UI from '../../legacy.js';
 
-import imageViewStyles from './imageView.css.legacy.js';
+import imageViewStyles from './imageView.css.js';
 
 const UIStrings = {
   /**
@@ -122,7 +122,7 @@ export class ImageView extends UI.View.SimpleView {
     this.aspectRatioLabel = new UI.Toolbar.ToolbarText();
     this.mimeTypeLabel = new UI.Toolbar.ToolbarText(mimeType);
     this.container = this.element.createChild('div', 'image');
-    this.imagePreviewElement = (this.container.createChild('img', 'resource-image-view') as HTMLImageElement);
+    this.imagePreviewElement = this.container.createChild('img', 'resource-image-view');
     this.imagePreviewElement.addEventListener('contextmenu', this.contextMenu.bind(this), true);
   }
 
@@ -168,7 +168,7 @@ export class ImageView extends UI.View.SimpleView {
     this.imagePreviewElement.src = imageSrc;
     this.imagePreviewElement.alt = i18nString(UIStrings.imageFromS, {PH1: this.url});
     const size = content.isTextContent ? content.text.length : Platform.StringUtilities.base64ToSize(content.base64);
-    this.sizeLabel.setText(Platform.NumberUtilities.bytesToString(size));
+    this.sizeLabel.setText(i18n.ByteUtilities.bytesToString(size));
     await loadPromise;
     this.dimensionsLabel.setText(i18nString(
         UIStrings.dD, {PH1: this.imagePreviewElement.naturalWidth, PH2: this.imagePreviewElement.naturalHeight}));

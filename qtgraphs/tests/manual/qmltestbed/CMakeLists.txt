@@ -57,6 +57,7 @@ set(qmltestbed_resource_files
     "qml/qmltestbed/QmlUsageSeries.qml"
     "qml/qmltestbed/PieModelMapping.qml"
     "qml/qmltestbed/CustomInput.qml"
+    "qml/qmltestbed/MultiAxis.qml"
     "qml/qmltestbed/images/arrow_icon.png"
     "qml/qmltestbed/images/icon_settings.png"
     "qml/qmltestbed/images/happy_box.png"

@@ -3,7 +3,6 @@
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick3D
 
 Item {
     id: state_Idle
@@ -11,6 +10,8 @@ Item {
     height: 88
     property string checkboxImagesState: "state_type_Materials_Number_1"
     property alias item_nameText: item_name.text
+
+    required property ListSelection selection
 
     Rectangle {
         id: bg
@@ -62,8 +63,8 @@ Item {
         y: 30
         width: 28
         height: 28
-        state: list.selection
-               == state_Idle.item_nameText ? "state_name_CheckFilled" : "state_name_CheckEmpty"
+        state: state_Idle.selection.selection === state_Idle.item_nameText ? "state_name_CheckFilled"
+                                                           : "state_name_CheckEmpty"
     }
 
     Button {
@@ -72,10 +73,12 @@ Item {
         text: qsTr("")
         anchors.fill: parent
         checkable: true
-        checked: list.selection == state_Idle.item_nameText
+        checked: state_Idle.selection.selection === state_Idle.item_nameText
         Connections {
             target: button
-            onClicked: list.selection = state_Idle.item_nameText
+            function onClicked() {
+                state_Idle.selection.selection = state_Idle.item_nameText
+            }
         }
     }
 

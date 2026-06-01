@@ -5,7 +5,7 @@ QtObject {
     property Component shadowable: QtObject {}
     property B b: B { id: theB }
     property rect r: theB.r
-    property var v: { "1": null, "25": undefined, "19": "19" }
+    property var v: ({ a1: null, a25: undefined, a19: "19" })
 
     property Component c: Component {
         id: unshadowable

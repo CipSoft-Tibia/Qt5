@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4regexpobject_p.h"
 #include "qv4regexp_p.h"
@@ -91,7 +92,7 @@ void Heap::RegExpObject::init(const QRegularExpression &re)
     Scoped<QV4::RegExpObject> o(scope, this);
 
     QRegularExpression::PatternOptions options = re.patternOptions();
-    uint flags = (options & QRegularExpression::CaseInsensitiveOption)
+    CompiledData::RegExp::Flags flags = (options & QRegularExpression::CaseInsensitiveOption)
                 ? CompiledData::RegExp::RegExp_IgnoreCase
                 : CompiledData::RegExp::RegExp_NoFlags;
     if (options & QRegularExpression::MultilineOption)
@@ -222,9 +223,9 @@ static bool isRegExp(ExecutionEngine *e, const QV4::Value *arg)
     return re ? true : false;
 }
 
-uint parseFlags(Scope &scope, const QV4::Value *f)
+static CompiledData::RegExp::Flags parseFlags(Scope &scope, const QV4::Value *f)
 {
-    uint flags = CompiledData::RegExp::RegExp_NoFlags;
+    CompiledData::RegExp::Flags flags = CompiledData::RegExp::RegExp_NoFlags;
     if (!f->isUndefined()) {
         ScopedString s(scope, f->toString(scope.engine));
         if (scope.hasException())
@@ -269,7 +270,7 @@ ReturnedValue RegExpCtor::virtualCallAsConstructor(const FunctionObject *fo, con
     ScopedValue f(scope, argc > 1 ? argv[1] : Value::undefinedValue());
     Scoped<RegExpObject> re(scope, p);
     QString pattern;
-    uint flags = CompiledData::RegExp::RegExp_NoFlags;
+    CompiledData::RegExp::Flags flags = CompiledData::RegExp::RegExp_NoFlags;
 
     if (re) {
         if (f->isUndefined()) {

@@ -30,8 +30,10 @@ class AreaRenderer : public QQuickItem
 {
     Q_OBJECT
 public:
-    AreaRenderer(QGraphsView *graph);
+    AreaRenderer(QGraphsView *graph, bool clipPlotArea);
     ~AreaRenderer() override;
+
+    void resetShapePathCount();
 
     void handlePolish(QAreaSeries *series);
     void afterPolish(QList<QAbstractSeries *> &cleanupSeries);
@@ -59,6 +61,7 @@ private:
     QGraphsView *m_graph = nullptr;
     QQuickShape m_shape;
     QMap<QAreaSeries *, PointGroup *> m_groups;
+    qsizetype m_currentShapePathIndex = 0;
 
     // Render area variables
     qreal m_maxVertical = 0;
@@ -70,8 +73,10 @@ private:
 
     QQuickTapHandler *m_tapHandler = nullptr;
 
-    void calculateRenderCoordinates(qreal origX, qreal origY, qreal *renderX, qreal *renderY) const;
-    void calculateAxisCoordinates(qreal origX, qreal origY, qreal *axisX, qreal *axisY) const;
+    void calculateRenderCoordinates(
+        QAreaSeries *series, qreal origX, qreal origY, qreal *renderX, qreal *renderY) const;
+    void calculateAxisCoordinates(
+        QAreaSeries *series, qreal origX, qreal origY, qreal *axisX, qreal *axisY) const;
     bool pointInArea(QPoint pt, QAreaSeries *series) const;
 };
 

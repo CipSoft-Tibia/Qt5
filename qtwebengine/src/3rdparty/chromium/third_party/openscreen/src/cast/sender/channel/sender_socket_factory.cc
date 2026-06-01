@@ -12,7 +12,6 @@
 #include "util/crypto/certificate_utils.h"
 #include "util/osp_logging.h"
 
-
 namespace openscreen::cast {
 
 using proto::CastMessage;
@@ -101,8 +100,8 @@ void SenderSocketFactory::OnConnected(
     return;
   }
 
-  auto socket =
-      MakeSerialDelete<CastSocket>(&task_runner_, std::move(connection), this);
+  auto socket = TaskRunnerDeleter::MakeUnique<CastSocket>(
+      task_runner_, std::move(connection), this);
   pending_auth_.emplace_back(
       new PendingAuth{endpoint, media_policy, std::move(socket), client,
                       std::make_unique<AuthContext>(AuthContext::Create()),

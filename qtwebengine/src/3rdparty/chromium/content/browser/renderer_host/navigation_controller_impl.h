@@ -583,7 +583,8 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
     // Preprocessed maps used in PopulateKeySet(), mapping frame names
     // to their respective FrameTreeNodes, and FrameTreeNode ids to their
     // current document sequences numbers.
-    std::map<std::string, FrameTreeNode*> names_to_nodes_;
+    std::map<std::string, raw_ptr<FrameTreeNode, CtnExperimental>>
+        names_to_nodes_;
     std::map<FrameTreeNodeId, int64_t> frame_tree_node_id_to_doc_seq_nos_;
 
     // The output of PopulateKeySet(), which maps FrameTreeNode ids to the keys
@@ -868,10 +869,10 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
       bool is_new_entry,
       LoadCommittedDetails* commit_details);
 
-  // Broadcasts this controller's session history offset and length to all
-  // renderers involved in rendering the current page. The offset is
+  // Broadcasts this controller's session history index and length to all
+  // renderers involved in rendering the current page. The index is
   // GetLastCommittedEntryIndex() and length is GetEntryCount().
-  void BroadcastHistoryOffsetAndLength();
+  void BroadcastHistoryIndexAndLength();
 
   // Used by PopulateNavigationApiHistoryEntryVectors to initialize a single
   // vector. `last_index_checked` is an out parameter that indicates the last

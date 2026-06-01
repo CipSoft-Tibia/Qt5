@@ -82,3 +82,22 @@
     \sa{https://github.com/grpc/grpc/blob/master/doc/statuscodes.md}{gRPC status codes}
 */
 
+/*!
+    \since 6.10
+    \struct QtGrpc::MultiValue_t
+    \inmodule QtGrpc
+    \inheaderfile QtGrpcNamespace
+    \brief Tag type used to access QMultiHash metadata.
+    \note This type is an implementation detail. Use QtGrpc::MultiValue for public API access.
+
+    \sa QtGrpc::MultiValue, QGrpcChannelOptions::metadata(QtGrpc::MultiValue_t),
+        QGrpcCallOptions::metadata(QtGrpc::MultiValue_t)
+*/
+
+/*!
+    \since 6.10
+    \variable QtGrpc::MultiValue
+    \brief Tag used to access QMultiHash metadata.
+    \sa QGrpcChannelOptions::metadata(QtGrpc::MultiValue_t),
+        QGrpcCallOptions::metadata(QtGrpc::MultiValue_t)
+*/

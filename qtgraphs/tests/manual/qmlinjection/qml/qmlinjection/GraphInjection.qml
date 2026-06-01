@@ -85,7 +85,7 @@ Item {
                           3,
                           zPos
                           )
-            lookAtNode: bars.rootNode
+            lookAtNode: cube
             eulerRotation.x: -30
             clipNear: 0.001
         }

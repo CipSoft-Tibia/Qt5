@@ -9,10 +9,12 @@
 
 #include <algorithm>
 
+using namespace Qt::Literals::StringLiterals;
+
 inline bool isProOrPriFile(const QString &filePath)
 {
-    return filePath.endsWith(QLatin1String(".pro"), Qt::CaseInsensitive)
-            || filePath.endsWith(QLatin1String(".pri"), Qt::CaseInsensitive);
+    return filePath.endsWith(".pro"_L1, Qt::CaseInsensitive)
+            || filePath.endsWith(".pri"_L1, Qt::CaseInsensitive);
 }
 
 inline QStringList extractProFiles(QStringList *files)

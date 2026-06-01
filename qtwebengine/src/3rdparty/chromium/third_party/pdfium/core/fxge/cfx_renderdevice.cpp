@@ -18,6 +18,7 @@
 #include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/span.h"
+#include "core/fxcrt/zip.h"
 #include "core/fxge/cfx_color.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "core/fxge/cfx_fillrenderoptions.h"
@@ -220,9 +221,12 @@ void DrawNormalTextHelper(const RetainPtr<CFX_DIBitmap>& bitmap,
   const bool has_alpha = bitmap->IsAlphaFormat();
   const int bytes_per_pixel = has_alpha ? 4 : bitmap->GetBPP() / 8;
   for (int row = 0; row < nrows; ++row) {
-    int dest_row = row + top;
-    if (dest_row < 0 || dest_row >= bitmap->GetHeight())
+    FX_SAFE_INT32 safe_dest_row = row;
+    safe_dest_row += top;
+    const int dest_row = safe_dest_row.ValueOrDefault(-1);
+    if (dest_row < 0 || dest_row >= bitmap->GetHeight()) {
       continue;
+    }
 
     const uint8_t* src_scan =
         pGlyph->GetScanline(row).subspan((start_col - left) * 3).data();
@@ -753,8 +757,8 @@ bool CFX_RenderDevice::DrawFillStrokePath(
     return false;
   CFX_FloatRect bbox;
   if (pGraphState) {
-    bbox = path.GetBoundingBoxForStrokePath(pGraphState->m_LineWidth,
-                                            pGraphState->m_MiterLimit);
+    bbox = path.GetBoundingBoxForStrokePath(pGraphState->line_width(),
+                                            pGraphState->miter_limit());
   } else {
     bbox = path.GetBoundingBox();
   }
@@ -857,7 +861,7 @@ void CFX_RenderDevice::DrawZeroAreaPath(
     return;
 
   CFX_GraphStateData graph_state;
-  graph_state.m_LineWidth = 0.0f;
+  graph_state.set_line_width(0.0f);
 
   uint32_t stroke_color = fill_color;
   if (thin)
@@ -1099,8 +1103,8 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
   const bool is_printer = GetDeviceType() == DeviceType::kPrinter;
   bool try_native_text = true;
 #else
-  constexpr bool is_printer = false;
-  constexpr bool try_native_text = true;
+  static constexpr bool is_printer = false;
+  static constexpr bool try_native_text = true;
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -1138,15 +1142,12 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
     }
   }
   std::vector<TextGlyphPos> glyphs(pCharPos.size());
-  for (size_t i = 0; i < glyphs.size(); ++i) {
-    TextGlyphPos& glyph = glyphs[i];
-    const TextCharPos& charpos = pCharPos[i];
-
+  for (auto [charpos, glyph] :
+       fxcrt::Zip(pCharPos, pdfium::make_span(glyphs))) {
     glyph.m_fDeviceOrigin = text2Device.Transform(charpos.m_Origin);
-    if (anti_alias < FT_RENDER_MODE_LCD)
-      glyph.m_Origin.x = FXSYS_roundf(glyph.m_fDeviceOrigin.x);
-    else
-      glyph.m_Origin.x = static_cast<int>(floor(glyph.m_fDeviceOrigin.x));
+    glyph.m_Origin.x = anti_alias < FT_RENDER_MODE_LCD
+                           ? FXSYS_roundf(glyph.m_fDeviceOrigin.x)
+                           : static_cast<int>(floor(glyph.m_fDeviceOrigin.x));
     glyph.m_Origin.y = FXSYS_roundf(glyph.m_fDeviceOrigin.y);
 
     CFX_Matrix matrix = charpos.GetEffectiveMatrix(char2device);
@@ -1321,7 +1322,7 @@ void CFX_RenderDevice::DrawStrokeRect(const CFX_Matrix& mtUser2Device,
                                       const FX_COLORREF& color,
                                       float fWidth) {
   CFX_GraphStateData gsd;
-  gsd.m_LineWidth = fWidth;
+  gsd.set_line_width(fWidth);
 
   CFX_Path path;
   path.AppendFloatRect(rect);
@@ -1339,7 +1340,7 @@ void CFX_RenderDevice::DrawStrokeLine(const CFX_Matrix* pUser2Device,
   path.AppendPoint(ptLineTo, CFX_Path::Point::Type::kLine);
 
   CFX_GraphStateData gsd;
-  gsd.m_LineWidth = fWidth;
+  gsd.set_line_width(fWidth);
 
   DrawPath(path, pUser2Device, &gsd, 0, color,
            CFX_FillRenderOptions::EvenOddOptions());
@@ -1357,9 +1358,9 @@ void CFX_RenderDevice::DrawShadow(const CFX_Matrix& mtUser2Device,
                                   int32_t nTransparency,
                                   int32_t nStartGray,
                                   int32_t nEndGray) {
-  constexpr float kBorder = 0.5f;
-  constexpr float kSegmentWidth = 1.0f;
-  constexpr float kLineWidth = 1.5f;
+  static constexpr float kBorder = 0.5f;
+  static constexpr float kSegmentWidth = 1.0f;
+  static constexpr float kLineWidth = 1.5f;
 
   float fStepGray = (nEndGray - nStartGray) / rect.Height();
   CFX_PointF start(rect.left, 0);
@@ -1404,9 +1405,8 @@ void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
     }
     case BorderStyle::kDash: {
       CFX_GraphStateData gsd;
-      gsd.m_DashArray = {3.0f, 3.0f};
-      gsd.m_DashPhase = 0;
-      gsd.m_LineWidth = fWidth;
+      gsd.set_dash_array({3.0f, 3.0f});
+      gsd.set_line_width(fWidth);
 
       CFX_Path path;
       path.AppendPoint(CFX_PointF(fLeft + fHalfWidth, fBottom + fHalfWidth),
@@ -1426,7 +1426,7 @@ void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
     case BorderStyle::kBeveled:
     case BorderStyle::kInset: {
       CFX_GraphStateData gsd;
-      gsd.m_LineWidth = fHalfWidth;
+      gsd.set_line_width(fHalfWidth);
 
       CFX_Path path_left_top;
       path_left_top.AppendPoint(
@@ -1486,7 +1486,7 @@ void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
     }
     case BorderStyle::kUnderline: {
       CFX_GraphStateData gsd;
-      gsd.m_LineWidth = fWidth;
+      gsd.set_line_width(fWidth);
 
       CFX_Path path;
       path.AppendPoint(CFX_PointF(fLeft, fBottom + fHalfWidth),

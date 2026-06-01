@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstandardgestures_p.h"
 #include "qgesture.h"
@@ -286,9 +287,9 @@ QGestureRecognizer::Result QSwipeGestureRecognizer::recognize(QGesture *state,
             const QEventPoint &p3 = ev->points().at(2);
 
             if (d->lastPositions[0].isNull()) {
-                d->lastPositions[0] = p1.globalPressPosition().toPoint();
-                d->lastPositions[1] = p2.globalPressPosition().toPoint();
-                d->lastPositions[2] = p3.globalPressPosition().toPoint();
+                d->lastPositions[0] = p1.globalPressPosition();
+                d->lastPositions[1] = p2.globalPressPosition();
+                d->lastPositions[2] = p3.globalPressPosition();
             }
             d->hotSpot = p1.globalPosition();
             d->isHotSpotSet = true;
@@ -311,9 +312,9 @@ QGestureRecognizer::Result QSwipeGestureRecognizer::recognize(QGesture *state,
             static const int directionChangeThreshold = MoveThreshold / 8;
             if (qAbs(xDistance) > MoveThreshold || qAbs(yDistance) > MoveThreshold) {
                 // measure the distance to check if the direction changed
-                d->lastPositions[0] = p1.globalPosition().toPoint();
-                d->lastPositions[1] = p2.globalPosition().toPoint();
-                d->lastPositions[2] = p3.globalPosition().toPoint();
+                d->lastPositions[0] = p1.globalPosition();
+                d->lastPositions[1] = p2.globalPosition();
+                d->lastPositions[2] = p3.globalPosition();
                 result = QGestureRecognizer::TriggerGesture;
                 // QTBUG-46195, small changes in direction should not cause the gesture to be canceled.
                 if (d->verticalDirection == QSwipeGesture::NoDirection || qAbs(yDistance) > directionChangeThreshold) {
@@ -347,8 +348,14 @@ QGestureRecognizer::Result QSwipeGestureRecognizer::recognize(QGesture *state,
                 result = QGestureRecognizer::Ignore;
                 break;
             case QSwipeGesturePrivate::ThreePointsReached:
-                result = (ev->touchPointStates() & QEventPoint::State::Pressed)
-                    ? QGestureRecognizer::CancelGesture : QGestureRecognizer::Ignore;
+                if (ev->touchPointStates() & QEventPoint::State::Pressed) {
+                    result = QGestureRecognizer::CancelGesture;
+                } else if (d->verticalDirection != QSwipeGesture::NoDirection ||
+                           d->horizontalDirection != QSwipeGesture::NoDirection) {
+                    result = QGestureRecognizer::TriggerGesture;
+                } else {
+                    result = QGestureRecognizer::Ignore;
+                }
                 break;
             }
         }
@@ -368,7 +375,7 @@ void QSwipeGestureRecognizer::reset(QGesture *state)
     d->verticalDirection = d->horizontalDirection = QSwipeGesture::NoDirection;
     d->swipeAngle = 0;
 
-    d->lastPositions[0] = d->lastPositions[1] = d->lastPositions[2] = QPoint();
+    d->lastPositions[0] = d->lastPositions[1] = d->lastPositions[2] = QPointF();
     d->state = QSwipeGesturePrivate::NoGesture;
     d->velocityValue = 0;
     d->time.invalidate();

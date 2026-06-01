@@ -237,8 +237,25 @@ public:
     ~QXmlStreamReaderPrivate();
     void init();
 
+    struct BufferAndEncoding
+    {
+        QByteArray buffer;
+        // System means that we didn't specify the encoding
+        QStringDecoder::Encoding encoding;
+
+        BufferAndEncoding()
+            : buffer(), encoding(QStringDecoder::System)
+        {}
+        BufferAndEncoding(const QByteArray &b, QStringDecoder::Encoding e)
+            : buffer(b), encoding(e)
+        {}
+    };
+    QList<BufferAndEncoding> dataInfo;
+    QStringDecoder chunkDecoder;
+    void appendDataWithEncoding(const QByteArray &data, QStringDecoder::Encoding enc);
+    void addData(const QByteArray &data, QStringDecoder::Encoding enc);
+
     QByteArray rawReadBuffer;
-    QByteArray dataBuffer;
     uchar firstByte;
     qint64 nbytesread;
     QString readBuffer;

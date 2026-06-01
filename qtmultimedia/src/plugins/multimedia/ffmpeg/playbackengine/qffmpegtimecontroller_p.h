@@ -27,7 +27,7 @@ namespace QFFmpeg {
 class TimeController
 {
 public:
-    using TimePoint = RealClock::time_point;
+    using TimePoint = SteadyClock::time_point;
     using PlaybackRate = float;
 
     TimeController();
@@ -41,15 +41,20 @@ public:
     void sync(TimePoint tp, TrackPosition pos);
 
     void syncSoft(TimePoint tp, TrackPosition pos,
-                  RealClock::duration fixingTime = std::chrono::seconds(4));
+                  SteadyClock::duration fixingTime = std::chrono::seconds(4));
 
-    TrackPosition currentPosition(RealClock::duration offset = RealClock::duration{ 0 }) const;
+    TrackPosition currentPosition(SteadyClock::duration offset = SteadyClock::duration{ 0 }) const;
 
+    void start();
     void setPaused(bool paused);
+    void deactivate();
 
-    TrackPosition positionFromTime(TimePoint tp, bool ignorePause = false) const;
+    TrackPosition positionFromTime(TimePoint tp, bool ignoreInactive = false) const;
 
-    TimePoint timeFromPosition(TrackPosition pos, bool ignorePause = false) const;
+    TimePoint timeFromPosition(TrackPosition pos, bool ignoreInactive = false) const;
+
+    bool isStarted() const { return m_started; }
+    bool isActive() const { return m_active; }
 
 private:
     struct SoftSyncData
@@ -62,6 +67,8 @@ private:
         PlaybackRate internalRate = 1;
     };
 
+    void updateActive();
+
     SoftSyncData makeSoftSyncData(const TimePoint &srcTp, const TrackPosition &srcPos,
                                   const TimePoint &dstTp) const;
 
@@ -71,13 +78,15 @@ private:
 
     void scrollTimeTillNow();
 
-    static RealClock::duration toClockDuration(TrackDuration trackDuration,
+    static SteadyClock::duration toClockDuration(TrackDuration trackDuration,
                                                PlaybackRate rate = 1.f);
 
-    static TrackDuration toTrackDuration(RealClock::duration clockDuration, PlaybackRate rate);
+    static TrackDuration toTrackDuration(SteadyClock::duration clockDuration, PlaybackRate rate);
 
 private:
     bool m_paused = true;
+    bool m_started = false;
+    bool m_active = false; // derived from m_paused and m_started
     PlaybackRate m_playbackRate = 1;
     TrackPosition m_position = 0;
     TimePoint m_timePoint;

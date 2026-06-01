@@ -40,7 +40,6 @@ import (
 	"dawn.googlesource.com/dawn/tools/src/cov"
 	"dawn.googlesource.com/dawn/tools/src/dawn/node"
 	"dawn.googlesource.com/dawn/tools/src/fileutils"
-	"dawn.googlesource.com/dawn/tools/src/subcmd"
 )
 
 type flags struct {
@@ -59,7 +58,9 @@ type flags struct {
 	unrollConstEvalLoops bool
 	genCoverage          bool
 	compatibilityMode    bool
+	debugCTS             bool
 	skipVSCodeInfo       bool
+	enforceDefaultLimits bool
 	dawn                 node.Flags
 }
 
@@ -109,7 +110,9 @@ func (c *cmd) RegisterFlags(ctx context.Context, cfg common.Config) ([]string, e
 	flag.BoolVar(&c.flags.genCoverage, "coverage", false, "displays coverage data")
 	flag.StringVar(&c.flags.coverageFile, "export-coverage", "", "write coverage data to the given path")
 	flag.BoolVar(&c.flags.compatibilityMode, "compat", false, "run tests in compatibility mode")
+	flag.BoolVar(&c.flags.debugCTS, "debug-cts", false, "enable CTS debugging option")
 	flag.BoolVar(&c.flags.skipVSCodeInfo, "skip-vs-code-info", false, "skips emitting VS Code information")
+	flag.BoolVar(&c.flags.enforceDefaultLimits, "enforce-default-limits", false, "enforce the default limits (note: powerPreference tests may fail)")
 
 	return []string{"[query]"}, nil
 }
@@ -171,7 +174,7 @@ func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
 func (c *cmd) processFlags() error {
 	// Check mandatory arguments
 	if c.flags.bin == "" {
-		return subcmd.InvalidCLA()
+		return fmt.Errorf("-bin is not set. It defaults to <dawn>/out/active (%v) which does not exist", filepath.Join(fileutils.DawnRoot(), "out/active"))
 	}
 	if !fileutils.IsDir(c.flags.bin) {
 		return fmt.Errorf("'%v' is not a directory", c.flags.bin)

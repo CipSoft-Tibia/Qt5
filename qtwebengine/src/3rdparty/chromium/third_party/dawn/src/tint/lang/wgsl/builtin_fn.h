@@ -40,7 +40,7 @@
 #include <cstdint>
 #include <string>
 
-#include "src/tint/utils/traits/traits.h"
+#include "src/tint/utils/rtti/traits.h"
 
 // \cond DO_NOT_DOCUMENT
 namespace tint::wgsl {
@@ -178,8 +178,10 @@ enum class BuiltinFn : uint8_t {
     kSubgroupShuffleUp,
     kSubgroupShuffleDown,
     kSubgroupAdd,
+    kSubgroupInclusiveAdd,
     kSubgroupExclusiveAdd,
     kSubgroupMul,
+    kSubgroupInclusiveMul,
     kSubgroupExclusiveMul,
     kSubgroupAnd,
     kSubgroupOr,
@@ -346,8 +348,10 @@ constexpr BuiltinFn kBuiltinFns[] = {
     BuiltinFn::kSubgroupShuffleUp,
     BuiltinFn::kSubgroupShuffleDown,
     BuiltinFn::kSubgroupAdd,
+    BuiltinFn::kSubgroupInclusiveAdd,
     BuiltinFn::kSubgroupExclusiveAdd,
     BuiltinFn::kSubgroupMul,
+    BuiltinFn::kSubgroupInclusiveMul,
     BuiltinFn::kSubgroupExclusiveMul,
     BuiltinFn::kSubgroupAnd,
     BuiltinFn::kSubgroupOr,
@@ -496,8 +500,10 @@ constexpr const char* kBuiltinFnStrings[] = {
     "subgroupShuffleUp",
     "subgroupShuffleDown",
     "subgroupAdd",
+    "subgroupInclusiveAdd",
     "subgroupExclusiveAdd",
     "subgroupMul",
+    "subgroupInclusiveMul",
     "subgroupExclusiveMul",
     "subgroupAnd",
     "subgroupOr",

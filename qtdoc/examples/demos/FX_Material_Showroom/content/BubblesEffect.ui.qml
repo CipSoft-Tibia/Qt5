@@ -4,10 +4,12 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: bubbles
+
+    required property Camera sceneCamera
+
     ParticleEmitter3D {
         id: modelShapeEmitter6
         x: -0
@@ -28,7 +30,7 @@ ParticleSystem3D {
             colorVariation.y: 0.25
             colorVariation.x: 0.25
             maxAmount: 5000
-            alignTargetPosition: sceneCamera.position
+            alignTargetPosition: bubbles.sceneCamera.position
             fadeInDuration: 0
             hasTransparency: true
             unifiedColorVariation: false
@@ -76,7 +78,7 @@ ParticleSystem3D {
         source: "#Sphere"
         castsReflections: true
         receivesReflections: true
-        materials: bubbleMat
+        materials: [bubbleMat]
         receivesShadows: true
         scale.y: 1
         castsShadows: true

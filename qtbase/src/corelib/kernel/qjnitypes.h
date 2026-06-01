@@ -10,6 +10,7 @@
 
 #include <QtCore/qjnitypes_impl.h>
 #include <QtCore/qjniobject.h>
+#include <QtCore/qjniarray.h>
 
 #if 0
 // This is needed for generating the QtJniTypes forward header
@@ -134,64 +135,30 @@ QT_OVERLOADED_MACRO(Q_DECLARE_JNI_CLASS_SPECIALIZATION, __VA_ARGS__)
 
 namespace QtJniMethods {
 namespace Detail {
-// Various helpers to forward the call to the registered function (with JNI types
-// as arguments) to the real function with proper type conversion. This is needed
-// because we want to write functions that take QJniObjects (subclasses), while
-// Java can only call functions that take jobjects.
-
-// Map any QJniObject type to jobject
+// A helper to forward the call to the registered function (with JNI types
+// as arguments) to the real function, using the type conversion implemented in
+// QJniObject::LocalFrame::convertTo/FromJni. This is needed because we want to
+// write functions that take Qt-style arguments (QJniObject, declared types,
+// QList etc), while Java can only call functions that take jobjects.
 template <typename Arg>
 struct JNITypeForArgImpl
 {
-    using Type = std::conditional_t<std::disjunction_v<std::is_base_of<QJniObject, Arg>,
-                                                       std::is_base_of<QtJniTypes::JObjectBase, Arg>>,
-                                    jobject, Arg>;
-    static Arg fromVarArg(Type t)
+    using JNIType = decltype(QtJniTypes::Traits<Arg>::convertToJni(nullptr, {}));
+    static Arg fromVarArg(JNIType t) // JNIType is always POD
     {
-        return static_cast<Arg>(t);
-    }
-};
-
-template <>
-struct JNITypeForArgImpl<QString>
-{
-    using Type = jstring;
-
-    static QString fromVarArg(Type t)
-    {
-        return t ? QtJniTypes::Detail::toQString(t, QJniEnvironment::getJniEnv()) : QString();
-    }
-};
-
-template <typename T>
-struct JNITypeForArgImpl<QJniArray<T>>
-{
-    using Type = jobject;
-
-    static QJniArray<T> fromVarArg(Type t)
-    {
-        return QJniArray<T>(t);
-    }
-};
-
-template <typename T>
-struct JNITypeForArgImpl<QList<T>>
-{
-private:
-    using ArrayType = decltype(QJniArrayBase::fromContainer(std::declval<QList<T>>()));
-    using ArrayObjectType = decltype(std::declval<ArrayType>().arrayObject());
-    using ElementType = typename ArrayType::value_type;
-public:
-    using Type = ArrayObjectType;
-
-    static QList<T> fromVarArg(Type t)
-    {
-        return t ? QJniArray<ElementType>(t).toContainer() : QList<T>{};
+        // Special case: if convertToJni doesn't do anything, don't do anything
+        // here either. convertFromJni would always give us a QJniObject (so
+        // that QJniObject::callMethod etc returns an owning QJniObject).
+        if constexpr (std::is_same_v<JNIType, Arg>) {
+            return t;
+        } else {
+            return QtJniTypes::Traits<Arg>::convertFromJni(t);
+        }
     }
 };
 
 template <typename Arg>
-using JNITypeForArg = typename JNITypeForArgImpl<std::decay_t<Arg>>::Type;
+using JNITypeForArg = typename JNITypeForArgImpl<std::decay_t<Arg>>::JNIType;
 } // namespace Detail
 } // namespace QtJniMethods
 

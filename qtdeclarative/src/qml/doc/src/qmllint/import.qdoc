@@ -20,7 +20,6 @@ This can be caused, for example, by
     \li a typo in the import statement, or
     \li a user-defined module that was not built, or
     \li a wrong \l{Import Statements#qml-import-path}{import path}, or
-    \li (qmlls only) \l{QT_QML_GENERATE_QMLLS_INI} not being set, or
     \li a missing module
 \endlist
 
@@ -61,11 +60,6 @@ and make sure that you communicate the correct build folder to \QMLLS.
 Please refer to \l{Import Statements#qml-import-path}{the QML import path documentation} and to
 \l{Debugging QML Applications#debugging-module-imports}{the debugging module import documentation}
 for more information about import paths.
-
-\section3 QT_QML_GENERATE_QMLLS_INI not being sert
-
-Please refer to \l{QT_QML_GENERATE_QMLLS_INI}{the QT_QML_GENERATE_QMLLS_INI documentation}
-for more information on how to set that CMake variable.
 
 \section3 Missing module
 
@@ -171,4 +165,3 @@ Item {
 \sa{Import Statements}
 
 */
-

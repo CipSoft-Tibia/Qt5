@@ -8,16 +8,22 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Effects
 import Thermostat
 import ThermostatCustomControls
 
 Pane {
+    id: root
+    required property var scheduleViewRoot
+    property alias saveButton: saveButton
+    property alias cancelButton: cancelButton
+
     width: 400
-    height: 370
 
     topPadding: 16
     bottomPadding: 19
@@ -29,19 +35,19 @@ Pane {
 
     Frame {
         id: frame
-        height: 260
-        width: 332
+        height: 200
+        width: 380
         anchors.horizontalCenter: parent.horizontalCenter
 
         ColumnLayout {
             anchors.fill: parent
 
             RowLayout {
-                width: parent.width
+                Layout.preferredWidth: parent.width
 
                 Row {
                     id: row
-                    Layout.alignment: Qt.AlignLeft | Qt.AlignBottom
+                    Layout.alignment: Qt.AlignLeft
                     Layout.fillWidth: true
                     spacing: 10
 
@@ -76,11 +82,16 @@ Pane {
                 }
 
                 CustomTextField {
-                    width: 102
-                    height: 40
+                    id: customTextField
+                    Layout.preferredWidth: 102
+                    Layout.preferredHeight: 40
                     font.pixelSize: 14
                     text: slider.value
-                    onAccepted: slider.value = +text
+                    Connections {
+                        function onAccepted() {
+                            slider.value = +customTextField.text
+                        }
+                    }
                 }
             }
 
@@ -91,7 +102,13 @@ Pane {
                 CustomSlider {
                     id: slider
                     width: parent.width
+                    value: root.scheduleViewRoot.currentTemp
                     anchors.bottom: parent.bottom
+                    Connections {
+                        function onValueChanged() {
+                            root.scheduleViewRoot.currentTemp = slider.value
+                        }
+                    }
                 }
             }
 
@@ -114,11 +131,20 @@ Pane {
                     Repeater {
                         model: [qsTr("Heating"), qsTr("Cooling"), qsTr("Auto")]
                         CustomRadioButton {
+                            id: radioButton
+                            required property string modelData
+                            required property int index
                             text: modelData
                             font.pixelSize: 14
                             indicatorSize: 14
                             topPadding: 0
                             bottomPadding: 0
+                            checked: root.scheduleViewRoot.currentMode === index
+                            Connections {
+                                function onClicked() {
+                                    root.scheduleViewRoot.currentMode = radioButton.index
+                                }
+                            }
                         }
                     }
                 }
@@ -147,7 +173,10 @@ Pane {
                                 "TH"), qsTr("FR"), qsTr("SA"), qsTr("SU")]
 
                         Label {
-                            property bool checked: false
+                            id: weekdayLabel
+                            required property int index
+                            required property string modelData
+                            property bool checked: root.scheduleViewRoot.selectedDays[index]
 
                             text: modelData
                             Layout.fillWidth: true
@@ -156,7 +185,12 @@ Pane {
                             horizontalAlignment: Text.AlignHCenter
                             color: checked ? "#2CDE85" : Constants.primaryTextColor
                             TapHandler {
-                                onTapped: parent.checked = !parent.checked
+                                property Connections _: Connections {
+                                    function onTapped() {
+                                        root.scheduleViewRoot.selectedDays[weekdayLabel.index]
+                                                = !root.scheduleViewRoot.selectedDays[weekdayLabel.index]
+                                    }
+                                }
                             }
                         }
                     }
@@ -171,19 +205,30 @@ Pane {
         anchors.topMargin: 16
         spacing: 17
 
-        Repeater {
-            model: [qsTr("Cancel"), qsTr("Save")]
+        CustomRoundButton {
+            id: cancelButton
 
-            CustomRoundButton {
-                width: 78
-                height: 38
-                text: modelData
-                radius: 8
-                contentColor: "#2CDE85"
-                checkable: false
-                font.pixelSize: 14
-                display: AbstractButton.TextOnly
-            }
+            width: 78
+            height: 38
+            text: qsTr("Cancel")
+            radius: 8
+            contentColor: "#2CDE85"
+            checkable: false
+            font.pixelSize: 14
+            display: AbstractButton.TextOnly
+        }
+
+        CustomRoundButton {
+            id: saveButton
+
+            width: 78
+            height: 38
+            text: qsTr("Save")
+            radius: 8
+            contentColor: "#2CDE85"
+            checkable: false
+            font.pixelSize: 14
+            display: AbstractButton.TextOnly
         }
     }
 }

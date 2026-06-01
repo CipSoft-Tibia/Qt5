@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qitemdelegate.h"
 
@@ -7,6 +8,7 @@
 #include <qapplication.h>
 #include <qbrush.h>
 #include <qpainter.h>
+#include <qpainterstateguard.h>
 #include <qpalette.h>
 #include <qpoint.h>
 #include <qrect.h>
@@ -775,10 +777,9 @@ void QItemDelegate::drawBackground(QPainter *painter,
     } else {
         QVariant value = index.data(Qt::BackgroundRole);
         if (value.canConvert<QBrush>()) {
-            QPointF oldBO = painter->brushOrigin();
+            QPainterStateGuard psg(painter);
             painter->setBrushOrigin(option.rect.topLeft());
             painter->fillRect(option.rect, qvariant_cast<QBrush>(value));
-            painter->setBrushOrigin(oldBO);
         }
     }
 }
@@ -1076,37 +1077,14 @@ QRect QItemDelegate::textRectangle(QPainter * /*painter*/, const QRect &rect,
 }
 
 /*!
-    \fn bool QItemDelegate::eventFilter(QObject *editor, QEvent *event)
+    \reimp
 
-    Returns \c true if the given \a editor is a valid QWidget and the
-    given \a event is handled; otherwise returns \c false. The following
-    key press events are handled by default:
-
-    \list
-        \li \uicontrol Tab
-        \li \uicontrol Backtab
-        \li \uicontrol Enter
-        \li \uicontrol Return
-        \li \uicontrol Esc
-    \endlist
-
-    In the case of \uicontrol Tab, \uicontrol Backtab, \uicontrol Enter and \uicontrol Return
-    key press events, the \a editor's data is committed to the model
-    and the editor is closed. If the \a event is a \uicontrol Tab key press
-    the view will open an editor on the next item in the
-    view. Likewise, if the \a event is a \uicontrol Backtab key press the
-    view will open an editor on the \e previous item in the view.
-
-    If the event is a \uicontrol Esc key press event, the \a editor is
-    closed \e without committing its data.
-
-    \sa commitData(), closeEditor()
+    See details in QAbstractItemDelegate::handleEditorEvent().
 */
 
 bool QItemDelegate::eventFilter(QObject *object, QEvent *event)
 {
-    Q_D(QItemDelegate);
-    return d->editorEventFilter(object, event);
+    return handleEditorEvent(object, event);
 }
 
 /*!

@@ -91,7 +91,6 @@
 #include "third_party/blink/renderer/core/scroll/scrollbar_theme.h"
 #include "third_party/blink/renderer/core/scroll/scrollbar_theme_overlay_mobile.h"
 #include "third_party/blink/renderer/core/scroll/smooth_scroll_sequencer.h"
-#include "third_party/blink/renderer/core/svg/graphics/isolated_svg_document_host.h"
 #include "third_party/blink/renderer/core/svg/graphics/svg_image_chrome_client.h"
 #include "third_party/blink/renderer/core/svg/svg_resource_document_cache.h"
 #include "third_party/blink/renderer/platform/bindings/source_location.h"
@@ -105,6 +104,7 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/color/color_provider.h"
 #include "ui/color/color_provider_utils.h"
+#include "ui/gfx/geometry/insets_conversions.h"
 
 namespace blink {
 
@@ -121,17 +121,22 @@ const int kTenFrames = 10;
 bool g_limit_max_frames_to_ten_for_testing = false;
 
 // static
-void SetSafeAreaEnvVariables(LocalFrame* frame, const gfx::Insets& safe_area) {
+void SetSafeAreaEnvVariables(LocalFrame* frame,
+                             const gfx::InsetsF& safe_area_in_physical_px) {
+  gfx::InsetsF safe_area =
+      ScaleInsets(safe_area_in_physical_px, 1.0f / frame->LayoutZoomFactor());
+
   DocumentStyleEnvironmentVariables& vars =
       frame->GetDocument()->GetStyleEngine().EnsureEnvironmentVariables();
   vars.SetVariable(UADefinedVariable::kSafeAreaInsetTop,
-                   StyleEnvironmentVariables::FormatPx(safe_area.top()));
+                   StyleEnvironmentVariables::FormatFloatPx(safe_area.top()));
   vars.SetVariable(UADefinedVariable::kSafeAreaInsetLeft,
-                   StyleEnvironmentVariables::FormatPx(safe_area.left()));
-  vars.SetVariable(UADefinedVariable::kSafeAreaInsetBottom,
-                   StyleEnvironmentVariables::FormatPx(safe_area.bottom()));
+                   StyleEnvironmentVariables::FormatFloatPx(safe_area.left()));
+  vars.SetVariable(
+      UADefinedVariable::kSafeAreaInsetBottom,
+      StyleEnvironmentVariables::FormatFloatPx(safe_area.bottom()));
   vars.SetVariable(UADefinedVariable::kSafeAreaInsetRight,
-                   StyleEnvironmentVariables::FormatPx(safe_area.right()));
+                   StyleEnvironmentVariables::FormatFloatPx(safe_area.right()));
 }
 
 }  // namespace
@@ -263,11 +268,10 @@ Page::Page(base::PassKey<Page>,
               v8_compile_hints::V8CrowdsourcedCompileHintsConsumer>()),
       browsing_context_group_info_(browsing_context_group_info) {
   if (partitioned_popin_params) {
-    partitioned_popin_opener_top_frame_origin_ =
+    partitioned_popin_opener_properties_ = PartitionedPopinOpenerProperties(
         SecurityOrigin::CreateFromUrlOrigin(
-            partitioned_popin_params->opener_top_frame_origin);
-    partitioned_popin_opener_site_for_cookies_ =
-        partitioned_popin_params->opener_site_for_cookies;
+            partitioned_popin_params->opener_top_frame_origin),
+        partitioned_popin_params->opener_site_for_cookies);
   }
   DCHECK(!AllPages().Contains(this));
   AllPages().insert(this);
@@ -286,12 +290,6 @@ Page::Page(base::PassKey<Page>,
                                !color_provider_colors->IsEmpty()
                            ? *color_provider_colors
                            : ColorProviderColorMaps::CreateDefault());
-  if (is_ordinary_) {
-    // TODO(crbug.com/336382906): We will revisit where we'll be doing this in
-    // production.
-    IsolatedSVGDocumentHostInitializer::Get()
-        ->MaybePrepareIsolatedSVGDocumentHost();
-  }
 }
 
 Page::~Page() {
@@ -497,34 +495,20 @@ void Page::TakePropertiesForLocalMainFrameSwap(Page* old_page) {
   // new page's opener should be the most up-to-date opener.
 }
 
-const SecurityOrigin* Page::GetPartitionedPopinOpenerTopFrameOrigin() const {
-  // We should never be in a state where one of these was set and not the other.
-  DCHECK(!partitioned_popin_opener_top_frame_origin_ ==
-         !partitioned_popin_opener_site_for_cookies_);
-
-  // The feature must be enabled if a popin top-frame origin was set.
-  DCHECK(RuntimeEnabledFeatures::PartitionedPopinsEnabled() ||
-         !partitioned_popin_opener_top_frame_origin_);
-
-  return partitioned_popin_opener_top_frame_origin_.get();
-}
-
-const std::optional<net::SiteForCookies>
-Page::GetPartitionedPopinOpenerSiteForCookies() const {
-  // We should never be in a state where one of these was set and not the other.
-  DCHECK(!partitioned_popin_opener_top_frame_origin_ ==
-         !partitioned_popin_opener_site_for_cookies_);
-
-  // The feature must be enabled if a popin site for cookies was set.
-  DCHECK(RuntimeEnabledFeatures::PartitionedPopinsEnabled() ||
-         !partitioned_popin_opener_site_for_cookies_);
-
-  return partitioned_popin_opener_site_for_cookies_;
-}
-
 bool Page::IsPartitionedPopin() const {
-  return GetPartitionedPopinOpenerTopFrameOrigin() &&
-         GetPartitionedPopinOpenerSiteForCookies();
+  // The feature must be enabled if a popin site for cookies was set.
+  CHECK(RuntimeEnabledFeatures::PartitionedPopinsEnabled() ||
+        !partitioned_popin_opener_properties_);
+
+  return !!partitioned_popin_opener_properties_;
+}
+
+const PartitionedPopinOpenerProperties&
+Page::GetPartitionedPopinOpenerProperties() const {
+  // This function is only usable if we are in a popin.
+  CHECK(IsPartitionedPopin());
+
+  return *partitioned_popin_opener_properties_;
 }
 
 LocalFrame* Page::DeprecatedLocalMainFrame() const {
@@ -949,46 +933,66 @@ int Page::SubframeCount() const {
 void Page::UpdateSafeAreaInsetWithBrowserControls(
     const BrowserControls& browser_controls,
     bool force_update) {
-  DCHECK(RuntimeEnabledFeatures::DynamicSafeAreaInsetsEnabled());
+  DCHECK(GetSettings().GetDynamicSafeAreaInsetsEnabled());
+
+  if (!DeprecatedLocalMainFrame()) {
+    return;
+  }
 
   if (Fullscreen::HasFullscreenElements() && !force_update) {
     LOG(WARNING) << "Attempt to set SAI with browser controls in fullscreen.";
     return;
   }
 
-  // Adjust the top / left / right is not needed, since they are set when
-  // display insets was received at |SetSafeArea()|.
-  int inset_bottom = GetMaxSafeAreaInsets().bottom();
-  int bottom_controls_full_height = browser_controls.BottomHeight();
-  float control_ratio = browser_controls.BottomShownRatio();
-  float dip_scale = GetVisualViewport().ScaleFromDIP();
+  gfx::InsetsF new_scaled_safe_area(scaled_max_safe_area_insets_);
 
-  // As control_ratio decrease, safe_area_inset_bottom will be added to the web
-  // page to keep the bottom element out from the display cutout area.
-  float safe_area_inset_bottom =
-      std::max(0.f, inset_bottom - control_ratio * bottom_controls_full_height /
-                                       dip_scale);
+  // The calculation is done in the unit of physical pixel.
+  if (scaled_max_safe_area_insets_.bottom() > 0) {
+    // Adjust the top / left / right is not needed, since they are set when
+    // display insets was received at |SetSafeArea()|.
+    float inset_bottom = scaled_max_safe_area_insets_.bottom();
+    int bottom_controls_full_height = browser_controls.BottomHeight();
+    float control_ratio = browser_controls.BottomShownRatio();
 
-  gfx::Insets new_safe_area = gfx::Insets().TLBR(
-      max_safe_area_insets_.top(), max_safe_area_insets_.left(),
-      safe_area_inset_bottom, max_safe_area_insets_.right());
-  if (new_safe_area != applied_safe_area_insets_ || force_update) {
-    applied_safe_area_insets_ = new_safe_area;
-    SetSafeAreaEnvVariables(DeprecatedLocalMainFrame(), new_safe_area);
+    // As control_ratio decrease, safe_area_inset_bottom will be added to the
+    // web page to keep the bottom element out from the display cutout area.
+    float safe_area_inset_bottom = std::max(
+        0.f, inset_bottom - control_ratio * bottom_controls_full_height);
+
+    new_scaled_safe_area.set_bottom(safe_area_inset_bottom);
+  }
+
+  if (new_scaled_safe_area != applied_safe_area_insets_ || force_update) {
+    applied_safe_area_insets_ = new_scaled_safe_area;
+    SetSafeAreaEnvVariables(DeprecatedLocalMainFrame(), new_scaled_safe_area);
   }
 }
 
 void Page::SetMaxSafeAreaInsets(LocalFrame* setter, gfx::Insets max_safe_area) {
-  max_safe_area_insets_ = max_safe_area;
+  // Update |scaled_max_safe_area_insets_| first.
+  float dsf = chrome_client_->GetScreenInfo(*setter).device_scale_factor;
+  gfx::InsetsF scaled_max_safe_area_insets =
+      ScaleInsets(gfx::InsetsF(max_safe_area), dsf);
+
+  if (scaled_max_safe_area_insets_ != scaled_max_safe_area_insets) {
+    scaled_max_safe_area_insets_ = scaled_max_safe_area_insets;
+
+    // Update Chrome client CC for MaxSafeAreaInsets change.
+    GetChromeClient().DidUpdateMaxSafeAreaInsets(scaled_max_safe_area_insets);
+  }
 
   // When the SAI is changed when DynamicSafeAreaInsetsEnabled, the SAI for the
   // main frame needs to be set per browser controls state.
-  if (RuntimeEnabledFeatures::DynamicSafeAreaInsetsEnabled() &&
+  if (GetSettings().GetDynamicSafeAreaInsetsEnabled() &&
       setter->IsMainFrame()) {
+    // |scaled_max_safe_area_insets_| should be updated before
+    // UpdateSafeAreaInsetWithBrowserControls() is called.
     UpdateSafeAreaInsetWithBrowserControls(GetBrowserControls(), true);
   } else {
-    SetSafeAreaEnvVariables(setter, max_safe_area);
+    applied_safe_area_insets_ = scaled_max_safe_area_insets_;
+    SetSafeAreaEnvVariables(setter, scaled_max_safe_area_insets_);
   }
+  // TODO(crbug.com/391621941): Set safe-area-max-inset-* variables.
 }
 
 void Page::SettingsChanged(ChangeType change_type) {
@@ -1153,13 +1157,11 @@ void Page::SettingsChanged(ChangeType change_type) {
         // Iterate through all of the scrollable areas and mark their layout
         // objects for layout.
         if (LocalFrameView* view = local_frame->View()) {
-          if (const auto* scrollable_areas = view->UserScrollableAreas()) {
-            for (const auto& scrollable_area : scrollable_areas->Values()) {
-              if (scrollable_area->ScrollsOverflow()) {
-                if (auto* layout_box = scrollable_area->GetLayoutBox()) {
-                  layout_box->SetNeedsLayout(
-                      layout_invalidation_reason::kScrollbarChanged);
-                }
+          for (const auto& scrollable_area : view->ScrollableAreas().Values()) {
+            if (scrollable_area->ScrollsOverflow()) {
+              if (auto* layout_box = scrollable_area->GetLayoutBox()) {
+                layout_box->SetNeedsLayout(
+                    layout_invalidation_reason::kScrollbarChanged);
               }
             }
           }
@@ -1239,12 +1241,10 @@ void Page::UpdateAcceleratedCompositingSettings() {
     // Mark all scrollable areas as needing a paint property update because the
     // compositing reasons may have changed.
     if (LocalFrameView* view = local_frame->View()) {
-      if (const auto* areas = view->UserScrollableAreas()) {
-        for (const auto& scrollable_area : areas->Values()) {
-          if (scrollable_area->ScrollsOverflow()) {
-            if (auto* layout_box = scrollable_area->GetLayoutBox()) {
-              layout_box->SetNeedsPaintPropertyUpdate();
-            }
+      for (const auto& scrollable_area : view->ScrollableAreas().Values()) {
+        if (scrollable_area->ScrollsOverflow()) {
+          if (auto* layout_box = scrollable_area->GetLayoutBox()) {
+            layout_box->SetNeedsPaintPropertyUpdate();
           }
         }
       }
@@ -1402,12 +1402,6 @@ void Page::WillBeDestroyed() {
     close_task_handler_->SetPage(nullptr);
     close_task_handler_ = nullptr;
   }
-
-  // Clear speculatively created resources for SVGImage when there are no
-  // ordinary pages. This is desirable to shutdown renderer gracefully.
-  if (is_ordinary_ && OrdinaryPages().empty()) {
-    IsolatedSVGDocumentHostInitializer::Get()->Clear();
-  }
 }
 
 void Page::RegisterPluginsChangedObserver(PluginsChangedObserver* observer) {
@@ -1543,7 +1537,7 @@ void Page::UpdateLifecycle(LocalFrame& root,
   if (requested_update == WebLifecycleUpdate::kLayout) {
     Animator().UpdateLifecycleToLayoutClean(root, reason);
   } else if (requested_update == WebLifecycleUpdate::kPrePaint) {
-    Animator().UpdateLifecycleToPrePaintClean(root, reason);
+    Animator().UpdateAllLifecyclePhasesExceptPaint(root, reason);
   } else {
     Animator().UpdateAllLifecyclePhases(root, reason);
   }
@@ -1602,9 +1596,6 @@ void Page::PrepareForLeakDetection() {
     // the page becomes interactive. Give it a chance to clean up.
     page->v8_compile_hints_producer_->ClearData();
   }
-
-  // Clear speculatively created resources for SVGImage.
-  IsolatedSVGDocumentHostInitializer::Get()->Clear();
 }
 
 // Ensure the 10 bits reserved for connected frame count in NodeRareData are

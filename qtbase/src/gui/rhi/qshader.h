@@ -105,7 +105,8 @@ public:
         BatchableVertexShader,
         UInt16IndexedVertexAsComputeShader,
         UInt32IndexedVertexAsComputeShader,
-        NonIndexedVertexAsComputeShader
+        NonIndexedVertexAsComputeShader,
+        HdrCapableFragmentShader,
     };
 
     enum class SerializedFormatVersion {

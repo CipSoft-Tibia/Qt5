@@ -123,14 +123,6 @@ int main(int, char **)
 
 #### Features
 
-qt_feature("ffmpeg" PRIVATE
-    LABEL "FFmpeg"
-    ENABLE INPUT_ffmpeg STREQUAL 'yes'
-    DISABLE INPUT_ffmpeg STREQUAL 'no'
-    CONDITION FFmpeg_FOUND
-              AND (APPLE OR WIN32 OR ANDROID OR QNX OR QT_FEATURE_pulseaudio)
-              AND QT_FEATURE_thread
-)
 qt_feature("pipewire" PRIVATE
     LABEL "PipeWire"
     ENABLE INPUT_pipewire STREQUAL 'yes'
@@ -210,13 +202,18 @@ qt_feature("native_android_backend" PUBLIC PRIVATE
     AUTODETECT true # It is still found and built by default
     CONDITION ANDROID
 )
+qt_feature("native_windows_backend" PUBLIC PRIVATE
+    LABEL "Native Windows backend (deprecated)"
+    AUTODETECT true # It is still found and built by default
+    CONDITION WIN32
+)
 qt_feature("pulseaudio" PUBLIC PRIVATE
     LABEL "PulseAudio"
     DISABLE INPUT_pulseaudio STREQUAL 'no'
     CONDITION WrapPulseAudio_FOUND
 )
-qt_feature("opensles" PRIVATE
-    LABEL "Open SLES (Android)"
+qt_feature("aaudio" PRIVATE
+    LABEL "AAudio (Android)"
     CONDITION ANDROID
 )
 qt_feature("wasm" PRIVATE
@@ -227,10 +224,6 @@ qt_feature("wasapi" PRIVATE
     LABEL "WASAPI (Windows Audio Session API)"
     CONDITION WIN32
 )
-qt_feature("wmf" PRIVATE
-    LABEL "Windows Media Foundation"
-    CONDITION WIN32
-)
 
 qt_feature("spatialaudio" PRIVATE
     LABEL "Spatial Audio"
@@ -238,6 +231,14 @@ qt_feature("spatialaudio" PRIVATE
 qt_feature("spatialaudio_quick3d" PRIVATE
     LABEL "Spatial Audio (Quick3D)"
     CONDITION TARGET Qt::Quick3D AND QT_FEATURE_spatialaudio
+)
+qt_feature("ffmpeg" PRIVATE
+    LABEL "FFmpeg"
+    ENABLE INPUT_ffmpeg STREQUAL 'yes'
+    DISABLE INPUT_ffmpeg STREQUAL 'no'
+    CONDITION FFmpeg_FOUND
+              AND (APPLE OR WIN32 OR ANDROID OR QNX OR QT_FEATURE_pulseaudio OR QT_FEATURE_pipewire)
+              AND QT_FEATURE_thread
 )
 
 # Caveat: FEATURE_ffmpeg_stubs cannot really be used to disable stubbing, it is just used to inform
@@ -253,9 +254,10 @@ qt_configure_add_summary_entry(ARGS "spatialaudio_quick3d")
 qt_configure_add_summary_section(NAME "Low level Audio Backend")
 qt_configure_add_summary_entry(ARGS "alsa")
 qt_configure_add_summary_entry(ARGS "pulseaudio")
+qt_configure_add_summary_entry(ARGS "pipewire")
 qt_configure_add_summary_entry(ARGS "mmrenderer")
 qt_configure_add_summary_entry(ARGS "coreaudio")
-qt_configure_add_summary_entry(ARGS "opensles")
+qt_configure_add_summary_entry(ARGS "aaudio")
 qt_configure_add_summary_entry(ARGS "wasm")
 qt_configure_add_summary_entry(ARGS "wasapi")
 qt_configure_end_summary_section()
@@ -267,8 +269,8 @@ qt_configure_add_summary_entry(ARGS "pipewire_screencapture")
 qt_configure_end_summary_section()
 qt_configure_add_summary_entry(ARGS "mmrenderer")
 qt_configure_add_summary_entry(ARGS "avfoundation")
-qt_configure_add_summary_entry(ARGS "wmf")
 qt_configure_add_summary_entry(ARGS "native_android_backend")
+qt_configure_add_summary_entry(ARGS "native_windows_backend")
 qt_configure_end_summary_section()
 qt_configure_add_summary_section(NAME "Hardware acceleration and features")
 qt_configure_add_summary_entry(ARGS "linux_v4l")
@@ -281,7 +283,8 @@ qt_configure_end_summary_section() # end of "Qt Multimedia" section
 qt_configure_add_report_entry(
     TYPE WARNING
     MESSAGE "No backend for low level audio found."
-    CONDITION NOT QT_FEATURE_alsa AND NOT QT_FEATURE_pulseaudio AND NOT QT_FEATURE_mmrenderer AND NOT QT_FEATURE_coreaudio AND NOT WIN32 AND NOT ANDROID AND NOT WASM
+    CONDITION NOT QT_FEATURE_alsa AND NOT QT_FEATURE_pulseaudio AND NOT QT_FEATURE_mmrenderer AND NOT QT_FEATURE_coreaudio
+              AND NOT WIN32 AND NOT ANDROID AND NOT WASM AND NOT QT_FEATURE_pipewire
 )
 
 qt_configure_add_report_entry(
@@ -294,6 +297,12 @@ qt_configure_add_report_entry(
     TYPE WARNING
     MESSAGE "No media backend found"
     CONDITION ANDROID AND NOT (QT_FEATURE_native_android_backend OR QT_FEATURE_ffmpeg)
+)
+
+qt_configure_add_report_entry(
+    TYPE WARNING
+    MESSAGE "No media backend found"
+    CONDITION WIN32 AND NOT (QT_FEATURE_native_windows_backend OR QT_FEATURE_ffmpeg)
 )
 
 qt_configure_add_report_entry(

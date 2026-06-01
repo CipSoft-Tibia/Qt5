@@ -601,9 +601,6 @@ QNetworkRequestFactoryPrivate::QNetworkRequestFactoryPrivate(const QUrl &baseUrl
 {
 }
 
-QNetworkRequestFactoryPrivate::~QNetworkRequestFactoryPrivate()
-    = default;
-
 QNetworkRequest QNetworkRequestFactoryPrivate::newRequest(const QUrl &url) const
 {
     QNetworkRequest request;

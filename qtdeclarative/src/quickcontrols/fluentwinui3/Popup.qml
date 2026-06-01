@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -26,6 +27,7 @@ T.Popup {
 
     readonly property string __currentState: "normal"
     readonly property var __config: Config.controls.popup[__currentState] || {}
+    readonly property bool __isHighContrast: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast
 
     enter: Transition {
         NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; easing.type: Easing.Linear; duration: 83 }
@@ -41,6 +43,16 @@ T.Popup {
         implicitWidth: 320
         implicitHeight: 72
         imageConfig: control.__config.background
+        drawShadowWithinBounds: control.__isHighContrast
+        Rectangle {
+            implicitWidth: parent.width
+            implicitHeight: parent.height
+            visible: control.__isHighContrast
+            radius: 4
+            color: control.palette.window
+            border.color: control.palette.text
+            border.width: 2
+        }
     }
 
     T.Overlay.modal: Rectangle {

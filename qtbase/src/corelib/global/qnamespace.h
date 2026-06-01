@@ -54,6 +54,11 @@ namespace Qt {
         Dark,
     };
 
+    enum class ContrastPreference {
+        NoPreference,
+        HighContrast,
+    };
+
     enum MouseButton {
         NoButton         = 0x00000000,
         LeftButton       = 0x00000001,
@@ -1012,6 +1017,8 @@ namespace Qt {
         Key_MicVolumeUp   = 0x0100011d,
         Key_MicVolumeDown = 0x0100011e,
 
+        Key_Keyboard = 0x0100011f,
+
         Key_New      = 0x01000120,
         Key_Open     = 0x01000121,
         Key_Find     = 0x01000122,
@@ -1185,8 +1192,13 @@ namespace Qt {
         DragMoveCursor,
         DragLinkCursor,
         LastCursor = DragLinkCursor,
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
         BitmapCursor = 24,
-        CustomCursor = 25
+        CustomCursor = 25,
+#else
+        BitmapCursor = 0x100,
+        CustomCursor = 0x101,
+#endif
     };
 
     enum TextFormat {
@@ -1516,8 +1528,16 @@ namespace Qt {
         ToolTipPropertyRole = 29,
         StatusTipPropertyRole = 30,
         WhatsThisPropertyRole = 31,
+        // QRangeModel support for QML's required property var modelData
+        RangeModelDataRole = 40,
+
         // Reserved
-        UserRole = 0x0100
+        UserRole = 0x0100,
+
+        // Used by Qt models
+        StandardItemFlagsRole = UserRole - 1,  // QStandardItemModel
+        FileInfoRole = UserRole - 4,           // QFileSystemModel
+        RemoteObjectsCacheRole = UserRole - 1, // QtRemoteObjects::QAbstractItemModelReplica
     };
 
     enum ItemFlag {
@@ -1779,6 +1799,7 @@ namespace Qt {
     Q_ENUM_NS(CursorShape)
     Q_ENUM_NS(GlobalColor)
     Q_ENUM_NS(ColorScheme)
+    Q_ENUM_NS(ContrastPreference)
     Q_ENUM_NS(AspectRatioMode)
     Q_ENUM_NS(TransformationMode)
     Q_FLAG_NS(ImageConversionFlags)

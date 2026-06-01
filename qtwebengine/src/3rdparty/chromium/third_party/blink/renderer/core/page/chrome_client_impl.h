@@ -268,7 +268,7 @@ class CORE_EXPORT ChromeClientImpl final : public ChromeClient {
   void OpenTextDataListChooser(HTMLInputElement&) override;
   void TextFieldDataListChanged(HTMLInputElement&) override;
   void DidChangeSelectionInSelectControl(HTMLFormControlElement&) override;
-  void SelectOrSelectListFieldOptionsChanged(HTMLFormControlElement&) override;
+  void SelectFieldOptionsChanged(HTMLFormControlElement&) override;
   void AjaxSucceeded(LocalFrame*) override;
   void JavaScriptChangedValue(HTMLFormControlElement&,
                               const String& old_value,
@@ -281,6 +281,9 @@ class CORE_EXPORT ChromeClientImpl final : public ChromeClient {
   void OnMouseDown(Node&) override;
   void DidUpdateBrowserControls() const override;
 
+  void DidUpdateMaxSafeAreaInsets(
+      const gfx::InsetsF& max_safe_area_insets) const override;
+
   gfx::Vector2dF ElasticOverscroll() const override;
 
   void RegisterPopupOpeningObserver(PopupOpeningObserver*) override;
@@ -290,7 +293,7 @@ class CORE_EXPORT ChromeClientImpl final : public ChromeClient {
   viz::FrameSinkId GetFrameSinkId(LocalFrame*) override;
 
   void RequestDecode(LocalFrame*,
-                     const cc::PaintImage&,
+                     const cc::DrawImage&,
                      base::OnceCallback<void(bool)>) override;
 
   void NotifyPresentationTime(LocalFrame& frame,
@@ -313,6 +316,8 @@ class CORE_EXPORT ChromeClientImpl final : public ChromeClient {
   void PasswordFieldReset(HTMLInputElement& element) override;
 
   float ZoomFactorForViewportLayout() override;
+
+  void OnFirstContentfulPaint() override;
 
  private:
   bool IsChromeClientImpl() const override { return true; }

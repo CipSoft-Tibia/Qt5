@@ -25,14 +25,10 @@
 #include "private/qplatformaudiodecoder_p.h"
 #include "qaudiodecoder.h"
 
-#include <dispatch/dispatch.h>
+#import <dispatch/dispatch.h>
+#import <AVFoundation/AVFoundation.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(AVURLAsset);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVAssetReader);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVAssetReaderTrackOutput);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVFResourceReaderDelegate);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVAssetTrack);
-Q_FORWARD_DECLARE_OBJC_CLASS(NSError);
+@class AVFResourceReaderDelegate;
 
 QT_BEGIN_NAMESPACE
 
@@ -62,7 +58,7 @@ public:
 
 private:
     void handleNewAudioBuffer(QAudioBuffer);
-    void startReading();
+    void startReading(QAudioFormat);
 
     void processInvalidMedia(QAudioDecoder::Error errorCode, const QString& errorString);
     void initAssetReader();

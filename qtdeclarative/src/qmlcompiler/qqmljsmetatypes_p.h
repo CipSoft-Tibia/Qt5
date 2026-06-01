@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSMETATYPES_P_H
 #define QQMLJSMETATYPES_P_H
@@ -43,6 +44,7 @@ QT_BEGIN_NAMESPACE
 
 enum ScriptBindingValueType : unsigned int {
     ScriptValue_Unknown,
+    ScriptValue_Function, // binding to a function, arrow, lambda or a {}-block
     ScriptValue_Undefined // property int p: undefined
 };
 
@@ -232,7 +234,7 @@ public:
     void setReturnType(QWeakPointer<const QQmlJSScope> type) { m_returnType.setType(type); }
 
     QList<QQmlJSMetaParameter> parameters() const { return m_parameters; }
-    QPair<QList<QQmlJSMetaParameter>::iterator, QList<QQmlJSMetaParameter>::iterator>
+    std::pair<QList<QQmlJSMetaParameter>::iterator, QList<QQmlJSMetaParameter>::iterator>
     mutableParametersRange()
     {
         return { m_parameters.begin(), m_parameters.end() };
@@ -341,7 +343,7 @@ public:
 
     friend size_t qHash(const QQmlJSMetaMethod &method, size_t seed = 0)
     {
-        QtPrivate::QHashCombine combine;
+        QtPrivate::QHashCombine combine(seed);
 
         seed = combine(seed, method.m_name);
         seed = combine(seed, method.m_sourceLocation);
@@ -510,15 +512,6 @@ public:
     }
 };
 
-/*!
-    \class QQmlJSMetaPropertyBinding
-
-    \internal
-
-    Represents a single QML binding of a specific type. Typically, when you
-    create a new binding, you know all the details of it already, so you should
-    just set all the data at once.
-*/
 class Q_QMLCOMPILER_EXPORT QQmlJSMetaPropertyBinding
 {
     using BindingType = QQmlSA::BindingType;
@@ -798,7 +791,7 @@ public:
 
     QString regExpValue() const;
 
-    QQmlTranslation translationDataValue(QString qmlFileNameForContext = QStringLiteral("")) const;
+    QQmlTranslation translationDataValue(QString qmlFileNameForContext = QString()) const;
 
     QSharedPointer<const QQmlJSScope> literalType(const QQmlJSTypeResolver *resolver) const;
 

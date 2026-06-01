@@ -6,6 +6,7 @@
 #include "access.h"
 #include "enumnode.h"
 #include "functionnode.h"
+#include "genustypes.h"
 #include "namespacenode.h"
 #include "propertynode.h"
 #include "qmlpropertynode.h"
@@ -86,14 +87,14 @@ QString CppCodeMarker::markedUpSynopsis(const Node *node, const Node * /* relati
     }
 
     switch (node->nodeType()) {
-    case Node::Namespace:
-    case Node::Class:
-    case Node::Struct:
-    case Node::Union:
+    case NodeType::Namespace:
+    case NodeType::Class:
+    case NodeType::Struct:
+    case NodeType::Union:
         synopsis = Node::nodeTypeString(node->nodeType());
         synopsis += QLatin1Char(' ') + name;
         break;
-    case Node::Function:
+    case NodeType::Function:
         func = (const FunctionNode *)node;
         if (style == Section::Details) {
             auto templateDecl = node->templateDecl();
@@ -149,12 +150,15 @@ QString CppCodeMarker::markedUpSynopsis(const Node *node, const Node * /* relati
                 synopsis.append(" &&");
         }
         break;
-    case Node::Enum:
+    case NodeType::Enum:
         enume = static_cast<const EnumNode *>(node);
-        synopsis = "enum ";
+        synopsis = "enum";
         if (enume->isScoped())
-            synopsis += "class ";
-        synopsis += name;
+            synopsis += " class";
+        if (!enume->isAnonymous())
+            synopsis += " %1"_L1.arg(name);
+        else if (style != Section::Details)
+            synopsis = linkTag(node, synopsis); // Unnamed enum: Make `enum` a link to details
         if (style == Section::Summary) {
             synopsis += " { ";
 
@@ -182,7 +186,7 @@ QString CppCodeMarker::markedUpSynopsis(const Node *node, const Node * /* relati
             synopsis += QLatin1Char('}');
         }
         break;
-    case Node::TypeAlias:
+    case NodeType::TypeAlias:
         if (style == Section::Details) {
             auto templateDecl = node->templateDecl();
             if (templateDecl)
@@ -190,22 +194,22 @@ QString CppCodeMarker::markedUpSynopsis(const Node *node, const Node * /* relati
         }
         synopsis += name;
         break;
-    case Node::Typedef:
+    case NodeType::Typedef:
         if (static_cast<const TypedefNode *>(node)->associatedEnum())
             synopsis = "flags ";
         synopsis += name;
         break;
-    case Node::Property: {
+    case NodeType::Property: {
         auto property = static_cast<const PropertyNode *>(node);
         synopsis = name + " : " + typified(property->qualifiedDataType());
         break;
     }
-    case Node::QmlProperty: {
+    case NodeType::QmlProperty: {
         auto property = static_cast<const QmlPropertyNode *>(node);
         synopsis = name + " : " + typified(property->dataType());
         break;
     }
-    case Node::Variable:
+    case NodeType::Variable:
         variable = static_cast<const VariableNode *>(node);
         if (style == Section::AllMembers) {
             synopsis = name + " : " + typified(variable->dataType());
@@ -214,7 +218,7 @@ QString CppCodeMarker::markedUpSynopsis(const Node *node, const Node * /* relati
         }
         break;
     default:
-        synopsis = name;
+        synopsis = std::move(name);
     }
 
     QString extra = CodeMarker::extraSynopsis(node, style);
@@ -244,7 +248,7 @@ QString CppCodeMarker::markedUpQmlItem(const Node *node, bool summary)
     if (node->isQmlProperty()) {
         const auto *pn = static_cast<const QmlPropertyNode *>(node);
         synopsis = name + " : " + typified(pn->dataType());
-    } else if (node->isFunction(Node::QML)) {
+    } else if (node->isFunction(Genus::QML)) {
         const auto *func = static_cast<const FunctionNode *>(node);
         if (!func->returnType().isEmpty())
             synopsis = typified(func->returnTypeString(), true) + name;
@@ -261,16 +265,16 @@ QString CppCodeMarker::markedUpQmlItem(const Node *node, bool summary)
                 QString paramName;
                 if (!name.isEmpty()) {
                     synopsis += typified(type, true);
-                    paramName = name;
+                    paramName = std::move(name);
                 } else {
-                    paramName = type;
+                    paramName = std::move(type);
                 }
                 synopsis += "<@param>" + protect(paramName) + "</@param>";
             }
         }
         synopsis += QLatin1Char(')');
     } else {
-        synopsis = name;
+        synopsis = std::move(name);
     }
 
     QString extra = CodeMarker::extraSynopsis(node, summary ? Section::Summary : Section::Details);
@@ -294,15 +298,22 @@ QString CppCodeMarker::markedUpEnumValue(const QString &enumValue, const Node *r
 {
     const auto *node = relative->parent();
 
-    if (relative->isQmlProperty()) {
-        const auto *qpn = static_cast<const QmlPropertyNode*>(relative);
-        if (qpn->enumNode() && !enumValue.startsWith("%1."_L1.arg(qpn->enumPrefix())))
-            return "%1<@op>.</@op>%2"_L1.arg(qpn->enumPrefix(), enumValue);
+    const NativeEnum *nativeEnum{nullptr};
+    if (auto *ne_if = dynamic_cast<const NativeEnumInterface *>(relative))
+        nativeEnum = ne_if->nativeEnum();
+
+    if (nativeEnum && nativeEnum->enumNode()
+            && !enumValue.startsWith("%1."_L1.arg(nativeEnum->prefix())))
+        return "%1<@op>.</@op>%2"_L1.arg(nativeEnum->prefix(), enumValue);
+
+    // Respect existing prefixes in \value arguments of \qmlenum topic
+    if (relative->isEnumType(Genus::QML)
+            && enumValue.section(' ', 0, 0).contains('.'_L1)) {
+        return "<@op>%1</@op>"_L1.arg(enumValue);
     }
 
-    if (!relative->isEnumType()) {
+    if (!relative->isEnumType())
         return enumValue;
-    }
 
     QStringList parts;
     while (!node->isHeader() && node->parent()) {
@@ -315,7 +326,8 @@ QString CppCodeMarker::markedUpEnumValue(const QString &enumValue, const Node *r
         parts.append(relative->name());
 
     parts.append(enumValue);
-    return parts.join(QLatin1String("<@op>::</@op>"));
+    const auto &delim = (relative->genus() == Genus::QML) ? "."_L1 : "::"_L1;
+    return parts.join("<@op>%1</@op>"_L1.arg(delim));
 }
 
 QString CppCodeMarker::addMarkUp(const QString &in, const Node * /* relative */,

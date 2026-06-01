@@ -959,10 +959,6 @@ bool QOpenGLContext::supportsThreadedOpenGL()
     This is useful if you need to upload OpenGL objects (buffers, textures,
     etc.) before creating or showing a QOpenGLWidget or QQuickWidget.
 
-    \note You must set the Qt::AA_ShareOpenGLContexts flag on QGuiApplication
-    before creating the QGuiApplication object, otherwise Qt may not create a
-    global shared context.
-
     \warning Do not attempt to make the context returned by this function
     current on any surface. Instead, you can create a new context which shares
     with the global one, and then make the new context current.
@@ -972,6 +968,19 @@ bool QOpenGLContext::supportsThreadedOpenGL()
 QOpenGLContext *QOpenGLContext::globalShareContext()
 {
     Q_ASSERT(qGuiApp);
+
+    static QMutex mutex;
+    QMutexLocker locker(&mutex);
+
+    // Lazily create a global share context when enabled unless there is already one
+    if (!qt_gl_global_share_context() && qGuiApp->testAttribute(Qt::AA_ShareOpenGLContexts)) {
+        QOpenGLContext *ctx = new QOpenGLContext;
+        ctx->setFormat(QSurfaceFormat::defaultFormat());
+        ctx->create();
+        ctx->moveToThread(qGuiApp->thread());
+        qt_gl_set_global_share_context(ctx);
+        QGuiApplicationPrivate::instance()->ownGlobalShareContext = true;
+    }
     return qt_gl_global_share_context();
 }
 
@@ -1310,7 +1319,7 @@ QDebug operator<<(QDebug debug, const QOpenGLContext *ctx)
             debug << ", invalid";
         }
     } else {
-        debug << '0';
+        debug << "0x0";
     }
     debug << ')';
     return debug;
@@ -1324,7 +1333,7 @@ QDebug operator<<(QDebug debug, const QOpenGLContextGroup *cg)
     if (cg)
         debug << cg->shares();
     else
-        debug << '0';
+        debug << "0x0";
     debug << ')';
     return debug;
 }

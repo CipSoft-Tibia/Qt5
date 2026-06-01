@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 // This file contains benchmarks for QRect/QRectF functions.
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <QDebug>
 #include <qtest.h>
 
@@ -79,8 +77,8 @@ static void addRectRectData(bool includeProperArg = false)
     if (includeProperArg)
         QTest::addColumn<bool>("proper");
     for (int i = 0; i < (includeProperArg ? 2 : 1); ++i) {
-        QList<RectRectCombination> combinations = createRectRectCombinations();
-        foreach (RectRectCombination c, combinations) {
+        const QList<RectRectCombination> combinations = createRectRectCombinations();
+        for (const RectRectCombination &c : combinations) {
             QTestData &testData = QTest::newRow(c.tag.toLatin1().data());
             QRectF r1(c.x1, c.y1, c.w1, c.h1);
             QRectF r2(c.x2, c.y2, c.w2, c.h2);
@@ -124,8 +122,8 @@ static void addRectPointData(bool includeProperArg = false)
     if (includeProperArg)
         QTest::addColumn<bool>("proper");
     for (int i = 0; i < (includeProperArg ? 2 : 1); ++i) {
-        QList<RectPointCombination> combinations = createRectPointCombinations();
-        foreach (RectPointCombination c, combinations) {
+        const QList<RectPointCombination> combinations = createRectPointCombinations();
+        for (const RectPointCombination &c : combinations) {
             QTestData &testData = QTest::newRow(c.tag.toLatin1().data());
             QRectF r(c.x, c.y, c.w, c.h);
             QPointF p(c.px, c.py);

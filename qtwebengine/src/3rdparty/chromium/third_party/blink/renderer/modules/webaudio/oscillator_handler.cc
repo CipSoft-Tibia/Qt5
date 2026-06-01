@@ -186,7 +186,7 @@ OscillatorHandler::OscillatorHandler(AudioNode& node,
     } else if (oscillator_type == "triangle") {
       SetType(TRIANGLE);
     } else {
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
     }
   }
 
@@ -210,40 +210,46 @@ OscillatorHandler::~OscillatorHandler() {
   Uninitialize();
 }
 
-String OscillatorHandler::GetType() const {
+V8OscillatorType::Enum OscillatorHandler::GetType() const {
   switch (type_) {
     case SINE:
-      return "sine";
+      return V8OscillatorType::Enum::kSine;
     case SQUARE:
-      return "square";
+      return V8OscillatorType::Enum::kSquare;
     case SAWTOOTH:
-      return "sawtooth";
+      return V8OscillatorType::Enum::kSawtooth;
     case TRIANGLE:
-      return "triangle";
+      return V8OscillatorType::Enum::kTriangle;
     case CUSTOM:
-      return "custom";
+      return V8OscillatorType::Enum::kCustom;
     default:
-      NOTREACHED_IN_MIGRATION();
-      return "custom";
+      NOTREACHED();
   }
 }
 
-void OscillatorHandler::SetType(const String& type,
+void OscillatorHandler::SetType(V8OscillatorType::Enum type,
                                 ExceptionState& exception_state) {
-  if (type == "sine") {
-    SetType(SINE);
-  } else if (type == "square") {
-    SetType(SQUARE);
-  } else if (type == "sawtooth") {
-    SetType(SAWTOOTH);
-  } else if (type == "triangle") {
-    SetType(TRIANGLE);
-  } else if (type == "custom") {
-    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
-                                      "'type' cannot be set directly to "
-                                      "'custom'.  Use setPeriodicWave() to "
-                                      "create a custom Oscillator type.");
+  switch (type) {
+    case V8OscillatorType::Enum::kSine:
+      SetType(SINE);
+      return;
+    case V8OscillatorType::Enum::kSquare:
+      SetType(SQUARE);
+      return;
+    case V8OscillatorType::Enum::kSawtooth:
+      SetType(SAWTOOTH);
+      return;
+    case V8OscillatorType::Enum::kTriangle:
+      SetType(TRIANGLE);
+      return;
+    case V8OscillatorType::Enum::kCustom:
+      exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
+                                        "'type' cannot be set directly to "
+                                        "'custom'.  Use setPeriodicWave() to "
+                                        "create a custom Oscillator type.");
+      return;
   }
+  NOTREACHED();
 }
 
 bool OscillatorHandler::SetType(uint8_t type) {
@@ -266,8 +272,7 @@ bool OscillatorHandler::SetType(uint8_t type) {
     default:
       // Return false for invalid types, including CUSTOM since
       // setPeriodicWave() method must be called explicitly.
-      NOTREACHED_IN_MIGRATION();
-      return false;
+      NOTREACHED();
   }
 
   SetPeriodicWave(periodic_wave->impl());
@@ -286,7 +291,7 @@ bool OscillatorHandler::CalculateSampleAccuratePhaseIncrements(
 
   bool has_sample_accurate_values = false;
   bool has_frequency_changes = false;
-  float* phase_increments = phase_increments_.Data();
+  base::span<float> phase_increments = phase_increments_.as_span();
 
   float final_scale = periodic_wave_->RateScale();
 
@@ -296,8 +301,8 @@ bool OscillatorHandler::CalculateSampleAccuratePhaseIncrements(
 
     // Get the sample-accurate frequency values and convert to phase increments.
     // They will be converted to phase increments below.
-    frequency_->CalculateSampleAccurateValues(phase_increments,
-                                              frames_to_process);
+    frequency_->CalculateSampleAccurateValues(
+        phase_increments_.as_span().first(frames_to_process));
   } else {
     // Handle ordinary parameter changes if there are no scheduled changes.
     float frequency = frequency_->FinalValue();
@@ -308,13 +313,15 @@ bool OscillatorHandler::CalculateSampleAccuratePhaseIncrements(
     has_sample_accurate_values = true;
 
     // Get the sample-accurate detune values.
-    float* detune_values =
-        has_frequency_changes ? detune_values_.Data() : phase_increments;
-    detune_->CalculateSampleAccurateValues(detune_values, frames_to_process);
+    base::span<float> detune_values =
+        has_frequency_changes
+            ? detune_values_.as_span().first(frames_to_process)
+            : phase_increments;
+    detune_->CalculateSampleAccurateValues(detune_values);
 
     // Convert from cents to rate scalar.
     float k = 1.0 / 1200;
-    vector_math::Vsmul(detune_values, 1, &k, detune_values, 1,
+    vector_math::Vsmul(detune_values.data(), 1, &k, detune_values.data(), 1,
                        frames_to_process);
     for (unsigned i = 0; i < frames_to_process; ++i) {
       detune_values[i] = std::exp2(detune_values[i]);
@@ -322,8 +329,8 @@ bool OscillatorHandler::CalculateSampleAccuratePhaseIncrements(
 
     if (has_frequency_changes) {
       // Multiply frequencies by detune scalings.
-      vector_math::Vmul(detune_values, 1, phase_increments, 1, phase_increments,
-                        1, frames_to_process);
+      vector_math::Vmul(detune_values.data(), 1, phase_increments.data(), 1,
+                        phase_increments.data(), 1, frames_to_process);
     }
   } else {
     // Handle ordinary parameter changes if there are no scheduled
@@ -334,11 +341,11 @@ bool OscillatorHandler::CalculateSampleAccuratePhaseIncrements(
   }
 
   if (has_sample_accurate_values) {
-    ClampFrequency(phase_increments, frames_to_process,
+    ClampFrequency(phase_increments.data(), frames_to_process,
                    Context()->sampleRate() / 2);
     // Convert from frequency to wavetable increment.
-    vector_math::Vsmul(phase_increments, 1, &final_scale, phase_increments, 1,
-                       frames_to_process);
+    vector_math::Vsmul(phase_increments.data(), 1, &final_scale,
+                       phase_increments.data(), 1, frames_to_process);
   }
 
   return has_sample_accurate_values;

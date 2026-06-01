@@ -830,10 +830,10 @@ bool QAbstractFileEngine::unmap(uchar *address)
 
     Returns \c true on success; otherwise, \c false is returned.
  */
-bool QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
+QAbstractFileEngine::TriStateResult QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
 {
     Q_UNUSED(target);
-    return false;
+    return TriStateResult::NotSupported;
 }
 
 /*!

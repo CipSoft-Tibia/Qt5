@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 #ifndef QV4ARRAYDATA_H
 #define QV4ARRAYDATA_H
 
@@ -93,7 +94,8 @@ DECLARE_HEAP_OBJECT(ArrayData, Base) {
 
     uint mappedIndex(uint index) const;
 };
-Q_STATIC_ASSERT(std::is_trivial_v<ArrayData>);
+static_assert(std::is_trivially_copyable_v<ArrayData>);
+static_assert(std::is_trivially_default_constructible_v<ArrayData>);
 
 struct SimpleArrayData : public ArrayData {
     uint mappedIndex(uint index) const { index += offset; if (index >= values.alloc) index -= values.alloc; return index; }
@@ -106,7 +108,8 @@ struct SimpleArrayData : public ArrayData {
         return attrs ? attrs[i] : Attr_Data;
     }
 };
-Q_STATIC_ASSERT(std::is_trivial_v<SimpleArrayData>);
+static_assert(std::is_trivially_copyable_v<SimpleArrayData>);
+static_assert(std::is_trivially_default_constructible_v<SimpleArrayData>);
 
 struct SparseArrayData : public ArrayData {
     void destroy() {

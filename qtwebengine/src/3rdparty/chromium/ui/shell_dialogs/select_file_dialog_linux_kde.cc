@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "base/command_line.h"
+#include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
@@ -290,8 +291,7 @@ void SelectFileDialogLinuxKde::SelectFileImpl(
       CreateSaveAsDialog(title_string, default_path, window);
       return;
     case SELECT_NONE:
-      NOTREACHED_IN_MIGRATION();
-      return;
+      NOTREACHED();
   }
 }
 
@@ -414,27 +414,34 @@ void SelectFileDialogLinuxKde::GetKDialogCommandLine(
   }
   command_line->AppendSwitch(type);
   // The path should never be empty. If it is, set it to PWD.
-  if (path.empty())
-    command_line->AppendArgPath(base::FilePath("."));
-  else
+  auto pwd = base::FilePath(".");
+  if (path.empty()) {
+    command_line->AppendArgPath(pwd);
+  } else if (path.IsAbsolute()) {
     command_line->AppendArgPath(path);
+  } else {
+    // KDialog won't set the default name in the Name field for relative paths.
+    auto abs_path = base::MakeAbsoluteFilePathNoResolveSymbolicLinks(path);
+    command_line->AppendArgPath(abs_path.value_or(pwd));
+  }
   // Depending on the type of the operation we need, get the path to the
   // file/folder and set up mime type filters.
   if (file_operation)
     command_line->AppendArg(GetMimeTypeFilterString());
-  VLOG(1) << "KDialog command line: " << command_line->GetCommandLineString();
+  DVLOG(1) << "KDialog command line: " << command_line->GetCommandLineString();
 }
 
 void SelectFileDialogLinuxKde::FileSelected(const base::FilePath& path) {
-  if (type() == SELECT_SAVEAS_FILE)
+  if (type() == SELECT_SAVEAS_FILE) {
     set_last_saved_path(path.DirName());
-  else if (type() == SELECT_OPEN_FILE)
+  } else if (type() == SELECT_OPEN_FILE) {
     set_last_opened_path(path.DirName());
-  else if (type() == SELECT_FOLDER || type() == SELECT_UPLOAD_FOLDER ||
-           type() == SELECT_EXISTING_FOLDER)
+  } else if (type() == SELECT_FOLDER || type() == SELECT_UPLOAD_FOLDER ||
+             type() == SELECT_EXISTING_FOLDER) {
     set_last_opened_path(path);
-  else
-    NOTREACHED_IN_MIGRATION();
+  } else {
+    NOTREACHED();
+  }
   if (listener_) {  // What does the filter index actually do?
     // TODO(dfilimon): Get a reasonable index value from somewhere.
     listener_->FileSelected(SelectedFileInfo(path), 1);
@@ -527,7 +534,7 @@ void SelectFileDialogLinuxKde::CreateSaveAsDialog(
 void SelectFileDialogLinuxKde::SelectSingleFileHelper(
     bool allow_folder,
     std::unique_ptr<KDialogOutputParams> results) {
-  VLOG(1) << "[kdialog] SingleFileResponse: " << results->output;
+  DVLOG(1) << "[kdialog] SingleFileResponse: " << results->output;
   if (results->exit_code || results->output.empty()) {
     FileNotSelected();
     return;
@@ -565,7 +572,7 @@ void SelectFileDialogLinuxKde::OnSelectMultiFileDialogResponse(
     gfx::AcceleratedWidget parent,
     std::unique_ptr<KDialogOutputParams> results) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  VLOG(1) << "[kdialog] MultiFileResponse: " << results->output;
+  DVLOG(1) << "[kdialog] MultiFileResponse: " << results->output;
 
   parents_.erase(parent);
 

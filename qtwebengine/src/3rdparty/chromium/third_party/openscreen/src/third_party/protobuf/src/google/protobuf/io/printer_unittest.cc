@@ -599,7 +599,7 @@ TEST(Printer, WriteFailureExact) {
 }
 
 TEST(Printer, FormatInternal) {
-  std::vector<std::string> args{"arg1", "arg2"};
+  std::vector<std::string> args = {"arg1", "arg2"};
   std::map<std::string, std::string> vars{
       {"foo", "bar"}, {"baz", "bla"}, {"empty", ""}};
   // Substitution tests
@@ -669,8 +669,8 @@ TEST(Printer, FormatInternal) {
       GeneratedCodeInfo::Annotation annotation;
       annotation.set_source_file("file.proto");
       annotation.add_path(33);
-      std::vector<std::string> args{annotation.SerializeAsString(), "arg1",
-                                    "arg2"};
+      std::vector<std::string> args = {annotation.SerializeAsString(), "arg1",
+                                       "arg2"};
       printer.FormatInternal(args, vars, "$empty $\n\n${1$$2$$}$ $3$\n$baz$");
       printer.Outdent();
     }

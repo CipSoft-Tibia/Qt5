@@ -1,11 +1,14 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef BROWSER_MAIN_PARTS_QT_H
 #define BROWSER_MAIN_PARTS_QT_H
 
 #include "content/public/browser/browser_main_parts.h"
 
+#include "extensions/buildflags/buildflags.h"
+#include "media/media_buildflags.h"
 #include "web_usb_detector_qt.h"
 
 namespace base {
@@ -24,6 +27,12 @@ namespace performance_manager {
 class PerformanceManagerLifetime;
 }
 
+#if BUILDFLAG(ENABLE_EXTENSIONS) && BUILDFLAG(ENABLE_WEBRTC)
+namespace webrtc_event_logging {
+class WebRtcEventLogManager;
+}
+#endif
+
 namespace QtWebEngineCore {
 
 std::unique_ptr<base::MessagePump> messagePumpFactory();
@@ -31,8 +40,8 @@ std::unique_ptr<base::MessagePump> messagePumpFactory();
 class BrowserMainPartsQt : public content::BrowserMainParts
 {
 public:
-    BrowserMainPartsQt() = default;
-    ~BrowserMainPartsQt() override = default;
+    BrowserMainPartsQt();
+    ~BrowserMainPartsQt() override;
 
     int PreEarlyInitialization() override;
     void PreCreateMainMessageLoop() override;
@@ -51,6 +60,10 @@ private:
     std::unique_ptr<WebUsbDetectorQt> m_webUsbDetector;
 #if BUILDFLAG(IS_MAC)
     std::unique_ptr<device::GeolocationSystemPermissionManager> m_geolocationSystemPermissionManager;
+#endif
+
+#if BUILDFLAG(ENABLE_EXTENSIONS) && BUILDFLAG(ENABLE_WEBRTC)
+    std::unique_ptr<webrtc_event_logging::WebRtcEventLogManager> m_webrtcEventLogManager;
 #endif
 };
 

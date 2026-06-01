@@ -21,10 +21,9 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/time/time.h"
+#include "absl/strings/string_view.h"
 #include "internal/platform/clock.h"
 #include "internal/platform/task_runner.h"
 #include "proto/sharing_enums.pb.h"
@@ -47,7 +46,11 @@ namespace nearby::sharing {
 // This class is thread-compatible.
 class ShareSession {
  public:
-  ShareSession(TaskRunner& service_thread,
+  static location::nearby::proto::sharing::AttachmentTransmissionStatus
+  ConvertToTransmissionStatus(TransferMetadata::Status status);
+
+  ShareSession(Clock* clock, TaskRunner& service_thread,
+               NearbyConnectionsManager* connections_manager,
                analytics::AnalyticsRecorder& analytics_recorder,
                std::string endpoint_id, const ShareTarget& share_target);
   ShareSession(ShareSession&&);
@@ -57,7 +60,6 @@ class ShareSession {
 
   virtual bool IsIncoming() const = 0;
   std::string endpoint_id() const { return endpoint_id_; }
-
   const std::optional<NearbyShareDecryptedPublicCertificate>& certificate()
       const {
     return certificate_;
@@ -66,6 +68,7 @@ class ShareSession {
   void set_certificate(NearbyShareDecryptedPublicCertificate certificate) {
     certificate_ = std::move(certificate);
   }
+  void clear_certificate() { certificate_ = std::nullopt; }
 
   NearbyConnection* connection() const { return connection_; }
   bool IsConnected() const { return connection_ != nullptr; }
@@ -83,10 +86,6 @@ class ShareSession {
 
   void set_session_id(int64_t session_id) { session_id_ = session_id; }
 
-  std::optional<absl::Time> connection_start_time() const {
-    return connection_start_time_;
-  }
-
   location::nearby::proto::sharing::OSType os_type() const { return os_type_; }
 
   bool self_share() const { return self_share_; }
@@ -101,30 +100,21 @@ class ShareSession {
   TransferMetadata::Status disconnect_status() const {
     return disconnect_status_;
   }
-  // Notifies the ShareTargetInfo that the connection has been established.
-  // Returns true if the connection was successfully established.
-  bool OnConnected(absl::Time connect_start_time,
-                   NearbyConnectionsManager* connections_manager,
-                   NearbyConnection* connection);
 
   // Send TransferMetadataUpdate with the final status.
   // If connected, also close the connection.
   void Abort(TransferMetadata::Status status);
 
   void RunPairedKeyVerification(
-      Clock* clock, location::nearby::proto::sharing::OSType os_type,
+      location::nearby::proto::sharing::OSType os_type,
       const PairedKeyVerificationRunner::VisibilityHistory& visibility_history,
       NearbyShareCertificateManager* certificate_manager,
-      const std::vector<uint8_t>& token,
       std::function<
           void(PairedKeyVerificationRunner::PairedKeyVerificationResult,
                location::nearby::proto::sharing::OSType)>
           callback);
 
   void OnDisconnect();
-  void SetAttachmentContainer(AttachmentContainer container) {
-    attachment_container_ = std::move(container);
-  }
   const AttachmentContainer& attachment_container() const {
     return attachment_container_;
   }
@@ -147,7 +137,13 @@ class ShareSession {
  protected:
   virtual void InvokeTransferUpdateCallback(
       const TransferMetadata& metadata) = 0;
-  virtual bool OnNewConnection(NearbyConnection* connection) = 0;
+  virtual void OnConnectionDisconnected() {}
+  void SetConnection(NearbyConnection* connection);
+  void SetAttachmentContainer(AttachmentContainer container) {
+    attachment_container_ = std::move(container);
+  }
+
+  Clock& clock() const { return clock_; }
 
   analytics::AnalyticsRecorder& analytics_recorder() {
     return analytics_recorder_;
@@ -160,6 +156,10 @@ class ShareSession {
     payload_tracker_ = std::move(payload_tracker);
   }
 
+  std::shared_ptr<PayloadTracker> get_payload_tracker() {
+    return payload_tracker_;
+  }
+
   AttachmentContainer& mutable_attachment_container() {
     return attachment_container_;
   }
@@ -170,16 +170,31 @@ class ShareSession {
       PairedKeyVerificationRunner::PairedKeyVerificationResult result,
       location::nearby::proto::sharing::OSType share_target_os_type);
 
-  NearbyConnectionsManager* connections_manager() {
+  NearbyConnectionsManager& connections_manager() {
     return connections_manager_;
   }
+  void set_endpoint_id(absl::string_view endpoint_id) {
+    endpoint_id_ = std::string(endpoint_id);
+  }
+  void set_share_target(const ShareTarget& share_target) {
+    share_target_ = share_target;
+    self_share_ = share_target.for_self_share;
+  }
+
+  PayloadTracker::PayloadUpdateQueue* payload_updates_queue() {
+    return payload_updates_queue_;
+  }
+
+  void InitializePayloadTracker(
+      absl::AnyInvocable<void()> payload_transfer_updates_callback);
 
  private:
+  Clock& clock_;
   TaskRunner& service_thread_;
+  NearbyConnectionsManager& connections_manager_;
   analytics::AnalyticsRecorder& analytics_recorder_;
   std::string endpoint_id_;
   std::optional<NearbyShareDecryptedPublicCertificate> certificate_;
-  NearbyConnectionsManager* connections_manager_ = nullptr;
   NearbyConnection* connection_ = nullptr;
   // If not empty, this is the 4 digit token used to verify the connection.
   // If token is empty, it means self-share and verification is not needed.
@@ -187,8 +202,7 @@ class ShareSession {
   std::shared_ptr<IncomingFramesReader> frames_reader_;
   std::shared_ptr<PairedKeyVerificationRunner> key_verification_runner_;
   std::shared_ptr<PayloadTracker> payload_tracker_;
-  int64_t session_id_;
-  std::optional<absl::Time> connection_start_time_;
+  int64_t session_id_ = 0;
   ::location::nearby::proto::sharing::OSType os_type_ =
       ::location::nearby::proto::sharing::OSType::UNKNOWN_OS_TYPE;
   bool self_share_ = false;
@@ -200,6 +214,7 @@ class ShareSession {
       TransferMetadata::Status::kUnknown;
   AttachmentContainer attachment_container_;
   absl::flat_hash_map<int64_t, int64_t> attachment_payload_map_;
+  PayloadTracker::PayloadUpdateQueue* payload_updates_queue_ = nullptr;
 };
 
 }  // namespace nearby::sharing

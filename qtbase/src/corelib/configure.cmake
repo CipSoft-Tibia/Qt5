@@ -20,12 +20,13 @@ set_property(CACHE INPUT_libb2 PROPERTY STRINGS undefined no qt system)
 if((UNIX AND NOT QNX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     # QNX's libbacktrace has an API wholly different from all the other Unix
     # offerings
-    qt_find_package(WrapBacktrace PROVIDED_TARGETS WrapBacktrace::WrapBacktrace MODULE_NAME core QMAKE_LIB backtrace)
+    qt_find_package(WrapBacktrace MODULE
+        PROVIDED_TARGETS WrapBacktrace::WrapBacktrace MODULE_NAME core QMAKE_LIB backtrace)
 endif()
-qt_find_package(WrapSystemDoubleConversion
+qt_find_package(WrapSystemDoubleConversion MODULE
                 PROVIDED_TARGETS WrapSystemDoubleConversion::WrapSystemDoubleConversion
                 MODULE_NAME core QMAKE_LIB doubleconversion)
-qt_find_package(GLIB2 PROVIDED_TARGETS GLIB2::GLIB2 MODULE_NAME core QMAKE_LIB glib)
+qt_find_package(GLIB2 MODULE PROVIDED_TARGETS GLIB2::GLIB2 MODULE_NAME core QMAKE_LIB glib)
 qt_find_package_extend_sbom(TARGETS GLIB2::GLIB2
     LICENSE_EXPRESSION "LGPL-2.1-or-later"
 )
@@ -35,19 +36,25 @@ qt_find_package(ICU 50.1 COMPONENTS i18n uc data PROVIDED_TARGETS ICU::i18n ICU:
 if(QT_FEATURE_dlopen)
     qt_add_qmake_lib_dependency(icu libdl)
 endif()
-qt_find_package(Libsystemd PROVIDED_TARGETS PkgConfig::Libsystemd MODULE_NAME core QMAKE_LIB journald)
-qt_find_package(WrapAtomic PROVIDED_TARGETS WrapAtomic::WrapAtomic MODULE_NAME core QMAKE_LIB libatomic)
-qt_find_package(Libb2 PROVIDED_TARGETS Libb2::Libb2 MODULE_NAME core QMAKE_LIB libb2)
+qt_find_package(JeMalloc MODULE
+    PROVIDED_TARGETS PkgConfig::JeMalloc MODULE_NAME core QMAKE_LIB jemalloc)
+qt_find_package(Libsystemd MODULE
+    PROVIDED_TARGETS PkgConfig::Libsystemd MODULE_NAME core QMAKE_LIB journald)
+qt_find_package(WrapAtomic MODULE
+    PROVIDED_TARGETS WrapAtomic::WrapAtomic MODULE_NAME core QMAKE_LIB libatomic)
+qt_find_package(Libb2 MODULE PROVIDED_TARGETS Libb2::Libb2 MODULE_NAME core QMAKE_LIB libb2)
 qt_find_package_extend_sbom(TARGETS Libb2::Libb2
     LICENSE_EXPRESSION "CC0-1.0"
 )
-qt_find_package(WrapRt PROVIDED_TARGETS WrapRt::WrapRt MODULE_NAME core QMAKE_LIB librt)
-qt_find_package(WrapSystemPCRE2 10.20 PROVIDED_TARGETS WrapSystemPCRE2::WrapSystemPCRE2 MODULE_NAME core QMAKE_LIB pcre2)
+qt_find_package(WrapRt MODULE
+    PROVIDED_TARGETS WrapRt::WrapRt MODULE_NAME core QMAKE_LIB librt)
+qt_find_package(WrapSystemPCRE2 10.20 MODULE
+    PROVIDED_TARGETS WrapSystemPCRE2::WrapSystemPCRE2 MODULE_NAME core QMAKE_LIB pcre2)
 set_package_properties(WrapPCRE2 PROPERTIES TYPE REQUIRED)
 if((QNX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(PPS PROVIDED_TARGETS PPS::PPS MODULE_NAME core QMAKE_LIB pps)
+    qt_find_package(PPS MODULE PROVIDED_TARGETS PPS::PPS MODULE_NAME core QMAKE_LIB pps)
 endif()
-qt_find_package(Slog2 PROVIDED_TARGETS Slog2::Slog2 MODULE_NAME core QMAKE_LIB slog2)
+qt_find_package(Slog2 MODULE PROVIDED_TARGETS Slog2::Slog2 MODULE_NAME core QMAKE_LIB slog2)
 
 
 #### Tests
@@ -562,6 +569,21 @@ renameat2(AT_FDCWD, argv[1], AT_FDCWD, argv[2], RENAME_NOREPLACE | RENAME_WHITEO
 }
 ")
 
+qt_config_compile_test(winsdkicu
+    LABEL "Windows SDK: ICU"
+    LIBRARIES icu
+    CODE
+"#include <icu.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+    /* END TEST: */
+    return 0;
+}
+"
+)
+
 # cpp_winrt
 qt_config_compile_test(cpp_winrt
     LABEL "cpp/winrt"
@@ -569,6 +591,7 @@ qt_config_compile_test(cpp_winrt
         runtimeobject
     CODE
 "// Including winrt/base.h causes an error in some configurations (Windows 10 SDK + c++20)
+#   include <guiddef.h> // required by clang-cl: https://github.com/microsoft/cppwinrt/issues/1179
 #   include <winrt/base.h>
 
 int main(void)
@@ -680,6 +703,11 @@ qt_feature("clock-monotonic" PUBLIC
     CONDITION QT_FEATURE_clock_gettime AND TEST_clock_monotonic
 )
 qt_feature_definition("clock-monotonic" "QT_NO_CLOCK_MONOTONIC" NEGATE VALUE "1")
+qt_feature("copy_file_range" PRIVATE
+    LABEL "copy_file_range()"
+    CONDITION QT_FEATURE_process AND TEST_copy_file_range
+    AUTODETECT UNIX AND NOT DARWIN
+)
 qt_feature("doubleconversion" PRIVATE
     LABEL "DoubleConversion"
 )
@@ -730,6 +758,12 @@ qt_feature("icu" PRIVATE
     AUTODETECT NOT WIN32
     CONDITION ICU_FOUND
 )
+qt_feature("winsdkicu" PRIVATE
+    LABEL "ICU (Windows SDK)"
+    AUTODETECT WIN32
+    CONDITION TEST_winsdkicu
+    DISABLE QT_FEATURE_icu
+)
 qt_feature("inotify" PUBLIC PRIVATE
     LABEL "inotify"
     CONDITION TEST_inotify OR TEST_fsnotify
@@ -747,6 +781,11 @@ qt_feature("ipc_posix"
     )
 )
 qt_feature_definition("ipc_posix" "QT_POSIX_IPC")
+qt_feature("jemalloc" PUBLIC PRIVATE
+    LABEL "JeMalloc"
+    AUTODETECT OFF
+    CONDITION JeMalloc_FOUND
+)
 qt_feature("journald" PRIVATE
     LABEL "journald"
     AUTODETECT OFF
@@ -1110,7 +1149,7 @@ qt_feature("timezone" PUBLIC
     SECTION "Utilities"
     LABEL "QTimeZone"
     PURPOSE "Provides support for time-zone handling."
-    CONDITION NOT WASM AND NOT VXWORKS
+    CONDITION NOT WASM
 )
 qt_feature("timezone_locale" PRIVATE
     SECTION "Utilities"
@@ -1199,6 +1238,7 @@ qt_configure_add_summary_entry(ARGS "system-doubleconversion")
 qt_configure_add_summary_entry(ARGS "forkfd_pidfd" CONDITION LINUX)
 qt_configure_add_summary_entry(ARGS "glib")
 qt_configure_add_summary_entry(ARGS "icu")
+qt_configure_add_summary_entry(ARGS "jemalloc")
 qt_configure_add_summary_entry(ARGS "timezone_tzdb")
 qt_configure_add_summary_entry(ARGS "system-libb2")
 qt_configure_add_summary_entry(ARGS "mimetype-database")

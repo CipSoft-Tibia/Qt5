@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTYLE_H
 #define QSTYLE_H
@@ -266,6 +267,7 @@ public:
         SE_ScrollBarLayoutItem,
         SE_SpinBoxLayoutItem,
         SE_ToolButtonLayoutItem,
+        SE_SearchFieldLayoutItem,
 
         SE_FrameLayoutItem,
         SE_GroupBoxLayoutItem,
@@ -302,6 +304,7 @@ public:
         CC_Dial,
         CC_GroupBox,
         CC_MdiControls,
+        CC_SearchField,
 
         // do not add any values below/greater than this
         CC_CustomBase = 0xf0000000
@@ -329,6 +332,12 @@ public:
         SC_ComboBoxEditField =     0x00000002,
         SC_ComboBoxArrow =         0x00000004,
         SC_ComboBoxListBoxPopup =  0x00000008,
+
+        SC_SearchFieldSearch =     0x00000001,
+        SC_SearchFieldClear =      0x00000002,
+        SC_SearchFieldFrame =      0x00000004,
+        SC_SearchFieldEditField =  0x00000008,
+        SC_SearchFieldPopup =      0x00000010,
 
         SC_SliderGroove =          0x00000001,
         SC_SliderHandle =          0x00000002,
@@ -376,6 +385,7 @@ public:
         PM_DefaultFrameWidth,
         PM_SpinBoxFrameWidth,
         PM_ComboBoxFrameWidth,
+        PM_SearchFieldFrameWidth,
 
         PM_MaximumDragDistance,
 
@@ -496,6 +506,7 @@ public:
         PM_ComboBoxFocusFrameRadius,
         PM_DialFocusFrameRadius,
         PM_RadioButtonFocusFrameRadius,
+        PM_SearchFieldFocusFrameRadius,
         PM_SliderFocusFrameRadius,
         PM_SpinBoxFocusFrameRadius,
         PM_TextAreaFocusFrameRadius,
@@ -525,6 +536,7 @@ public:
         CT_LineEdit,
         CT_SpinBox,
         CT_SizeGrip,
+        CT_SearchField,
         CT_TabWidget,
         CT_DialogButtons,
         CT_HeaderSection,

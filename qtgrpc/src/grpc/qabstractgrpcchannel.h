@@ -34,7 +34,7 @@ public:
     [[nodiscard]] virtual std::shared_ptr<QAbstractProtobufSerializer> serializer() const = 0;
 
     [[nodiscard]] const QGrpcChannelOptions &channelOptions() const & noexcept;
-    void channelOptions() && = delete;
+    void channelOptions() const && = delete;
 
     void setChannelOptions(const QGrpcChannelOptions &options);
     void setChannelOptions(QGrpcChannelOptions &&options);

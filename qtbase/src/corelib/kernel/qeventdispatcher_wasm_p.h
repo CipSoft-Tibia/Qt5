@@ -17,6 +17,7 @@
 
 #include "qabstracteventdispatcher.h"
 #include "private/qtimerinfo_unix_p.h"
+#include "private/qwasmsuspendresumecontrol_p.h"
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qwaitcondition.h>
 
@@ -24,8 +25,7 @@
 #include <mutex>
 #include <optional>
 #include <tuple>
-
-#include <emscripten/proxying.h>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -36,10 +36,11 @@ class Q_CORE_EXPORT QEventDispatcherWasm : public QAbstractEventDispatcherV2
 {
     Q_OBJECT
 public:
-    QEventDispatcherWasm();
+    QEventDispatcherWasm(std::shared_ptr<QWasmSuspendResumeControl> suspendResume = std::shared_ptr<QWasmSuspendResumeControl>());
     ~QEventDispatcherWasm();
 
     bool processEvents(QEventLoop::ProcessEventsFlags flags) override;
+    bool sendAllEvents(QEventLoop::ProcessEventsFlags flag);
 
     void registerTimer(Qt::TimerId timerId, Duration interval, Qt::TimerType timerType,
                        QObject *object) override final;
@@ -56,44 +57,50 @@ public:
     static void socketSelect(int timeout, int socket, bool waitForRead, bool waitForWrite,
                             bool *selectForRead, bool *selectForWrite, bool *socketDisconnect);
 
-    static void runOnMainThread(std::function<void(void)> fn);
-
     static void registerStartupTask();
     static void completeStarupTask();
     static void callOnLoadedIfRequired();
     virtual void onLoaded();
 
+    static void onTimer();
+    static void onWakeup();
+    static void onProcessNativeEventsResume();
 protected:
-    virtual bool processPostedEvents();
+    virtual bool sendPostedEvents();
 
 private:
     bool isMainThreadEventDispatcher();
     bool isSecondaryThreadEventDispatcher();
+    bool isValidEventDispatcher();
     static bool isValidEventDispatcherPointer(QEventDispatcherWasm *eventDispatcher);
 
-    void handleApplicationExec();
-    void handleDialogExec();
-    bool wait(int timeout = -1);
-    bool wakeEventDispatcherThread();
-    static void callProcessPostedEvents(void *eventDispatcher);
+    bool sendTimerEvents();
+    bool sendNativeEvents(QEventLoop::ProcessEventsFlags flags);
 
-    void processTimers();
+    void handleNonAsyncifyErrorCases(QEventLoop::ProcessEventsFlags flags);
+
+    bool wait(int timeout);
+    void processEventsWait();
+    void asyncifyWait(std::optional<std::chrono::milliseconds> timeout);
+    bool secondaryThreadWait(std::optional<std::chrono::milliseconds> timeout);
+
     void updateNativeTimer();
-    static void callProcessTimers(void *eventDispatcher);
-
-    static void run(std::function<void(void)> fn);
-    static void runAsync(std::function<void(void)> fn);
-    static void runOnMainThreadAsync(std::function<void(void)> fn);
 
     static QEventDispatcherWasm *g_mainThreadEventDispatcher;
+    static std::shared_ptr<QWasmSuspendResumeControl> g_mainThreadSuspendResumeControl;
 
     bool m_interrupted = false;
-    bool m_processTimers = false;
-    bool m_pendingProcessEvents = false;
+    bool m_wakeup = false;
 
-    QTimerInfoList *m_timerInfo = new QTimerInfoList();
-    long m_timerId = 0;
-    std::chrono::milliseconds m_timerTargetTime{};
+    std::unique_ptr<QTimerInfoList> m_timerInfo;
+    std::chrono::time_point<std::chrono::steady_clock> m_timerTargetTime;
+
+    std::unique_ptr<QWasmTimer> m_nativeTimer;
+    std::unique_ptr<QWasmTimer> m_wakeupTimer;
+    std::unique_ptr<QWasmTimer> m_suspendTimer;
+
+    bool m_wakeFromSuspendTimer = false;
+    bool m_isSendingNativeEvents = false;
 
 #if QT_CONFIG(thread)
     std::mutex m_mutex;
@@ -102,8 +109,6 @@ private:
 
     static QVector<QEventDispatcherWasm *> g_secondaryThreadEventDispatchers;
     static std::mutex g_staticDataMutex;
-    static emscripten::ProxyingQueue g_proxyingQueue;
-    static pthread_t g_mainThread;
 
     // Note on mutex usage: the global g_staticDataMutex protects the global (g_ prefixed) data,
     // while the per eventdispatcher m_mutex protects the state accociated with blocking and waking

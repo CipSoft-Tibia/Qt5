@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
  *
@@ -17,6 +17,8 @@
  * limitations under the License.
  */
 
+#include <vulkan/vk_enum_string_helper.h>
+#include <vulkan/vulkan_core.h>
 #include "best_practices/best_practices_validation.h"
 #include "best_practices/bp_state.h"
 #include "state_tracker/buffer_state.h"
@@ -60,7 +62,7 @@ bool BestPractices::PreCallValidateAllocateMemory(VkDevice device, const VkMemor
     }
 
     if (VendorCheckEnabled(kBPVendorNVIDIA)) {
-        if (!IsExtEnabled(device_extensions.vk_ext_pageable_device_local_memory) &&
+        if (!IsExtEnabled(extensions.vk_ext_pageable_device_local_memory) &&
             !vku::FindStructInPNextChain<VkMemoryPriorityAllocateInfoEXT>(pAllocateInfo->pNext)) {
             skip |= LogPerformanceWarning(
                 "BestPractices-NVIDIA-AllocateMemory-SetPriority", device, error_obj.location,
@@ -132,7 +134,7 @@ void BestPractices::PreCallRecordFreeMemory(VkDevice device, VkDeviceMemory memo
         }
     }
 
-    ValidationStateTracker::PreCallRecordFreeMemory(device, memory, pAllocator, record_obj);
+    BaseClass::PreCallRecordFreeMemory(device, memory, pAllocator, record_obj);
 }
 
 bool BestPractices::PreCallValidateFreeMemory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* pAllocator,
@@ -146,7 +148,7 @@ bool BestPractices::PreCallValidateFreeMemory(VkDevice device, VkDeviceMemory me
     for (const auto& item : mem_info->ObjectBindings()) {
         const auto& obj = item.first;
         const LogObjectList objlist(device, obj, mem_info->Handle());
-        skip |= LogWarning(layer_name.c_str(), objlist, error_obj.location, "VK Object %s still has a reference to mem obj %s.",
+        skip |= LogWarning("BestPractices", objlist, error_obj.location, "VK Object %s still has a reference to mem obj %s.",
                            FormatHandle(obj).c_str(), FormatHandle(mem_info->Handle()).c_str());
     }
 
@@ -156,17 +158,17 @@ bool BestPractices::PreCallValidateFreeMemory(VkDevice device, VkDeviceMemory me
 bool BestPractices::ValidateBindBufferMemory(VkBuffer buffer, VkDeviceMemory memory, const Location& loc) const {
     bool skip = false;
     auto buffer_state = Get<vvl::Buffer>(buffer);
-    auto mem_state = Get<vvl::DeviceMemory>(memory);
-    ASSERT_AND_RETURN_SKIP(mem_state && buffer_state);
+    auto memory_state = Get<vvl::DeviceMemory>(memory);
+    ASSERT_AND_RETURN_SKIP(memory_state && buffer_state);
 
-    if (mem_state->allocate_info.allocationSize == buffer_state->create_info.size &&
-        mem_state->allocate_info.allocationSize < kMinDedicatedAllocationSize) {
+    if (memory_state->allocate_info.allocationSize == buffer_state->create_info.size &&
+        memory_state->allocate_info.allocationSize < kMinDedicatedAllocationSize) {
         skip |= LogPerformanceWarning("BestPractices-vkBindBufferMemory-small-dedicated-allocation", device, loc,
                                       "Trying to bind %s to a memory block which is fully consumed by the buffer. "
                                       "The required size of the allocation is %" PRIu64
                                       ", but smaller buffers like this should be sub-allocated from "
                                       "larger memory blocks. (Current threshold is %" PRIu64 " bytes.)",
-                                      FormatHandle(buffer).c_str(), mem_state->allocate_info.allocationSize,
+                                      FormatHandle(buffer).c_str(), memory_state->allocate_info.allocationSize,
                                       kMinDedicatedAllocationSize);
     }
 
@@ -204,17 +206,17 @@ bool BestPractices::PreCallValidateBindBufferMemory2KHR(VkDevice device, uint32_
 bool BestPractices::ValidateBindImageMemory(VkImage image, VkDeviceMemory memory, const Location& loc) const {
     bool skip = false;
     auto image_state = Get<vvl::Image>(image);
-    auto mem_state = Get<vvl::DeviceMemory>(memory);
-    ASSERT_AND_RETURN_SKIP(mem_state && image_state);
+    auto memory_state = Get<vvl::DeviceMemory>(memory);
+    ASSERT_AND_RETURN_SKIP(memory_state && image_state);
 
-    if (mem_state->allocate_info.allocationSize == image_state->requirements[0].size &&
-        mem_state->allocate_info.allocationSize < kMinDedicatedAllocationSize) {
+    if (memory_state->allocate_info.allocationSize == image_state->requirements[0].size &&
+        memory_state->allocate_info.allocationSize < kMinDedicatedAllocationSize) {
         skip |= LogPerformanceWarning("BestPractices-vkBindImageMemory-small-dedicated-allocation", device, loc,
                                       "Trying to bind %s to a memory block which is fully consumed by the image. "
                                       "The required size of the allocation is %" PRIu64
                                       ", but smaller images like this should be sub-allocated from "
                                       "larger memory blocks. (Current threshold is %" PRIu64 " bytes.)",
-                                      FormatHandle(image).c_str(), mem_state->allocate_info.allocationSize,
+                                      FormatHandle(image).c_str(), memory_state->allocate_info.allocationSize,
                                       kMinDedicatedAllocationSize);
     }
 
@@ -236,7 +238,7 @@ bool BestPractices::ValidateBindImageMemory(VkImage image, VkDeviceMemory memory
             }
         }
 
-        uint32_t allocated_properties = phys_dev_mem_props.memoryTypes[mem_state->allocate_info.memoryTypeIndex].propertyFlags;
+        uint32_t allocated_properties = phys_dev_mem_props.memoryTypes[memory_state->allocate_info.memoryTypeIndex].propertyFlags;
 
         if (supports_lazy && (allocated_properties & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) == 0) {
             skip |= LogPerformanceWarning(
@@ -244,7 +246,7 @@ bool BestPractices::ValidateBindImageMemory(VkImage image, VkDeviceMemory memory
                 "ttempting to bind memory type %u to VkImage which was created with TRANSIENT_ATTACHMENT_BIT,"
                 "but this memory type is not LAZILY_ALLOCATED_BIT. You should use memory type %u here instead to save "
                 "%" PRIu64 " bytes of physical memory.",
-                mem_state->allocate_info.memoryTypeIndex, suggested_type, image_state->requirements[0].size);
+                memory_state->allocate_info.memoryTypeIndex, suggested_type, image_state->requirements[0].size);
         }
     }
 
@@ -291,7 +293,7 @@ void BestPractices::PostCallRecordSetDeviceMemoryPriorityEXT(VkDevice device, Vk
 bool BestPractices::ValidateBindMemory(VkDevice device, VkDeviceMemory memory, const Location& loc) const {
     bool skip = false;
 
-    if (VendorCheckEnabled(kBPVendorNVIDIA) && IsExtEnabled(device_extensions.vk_ext_pageable_device_local_memory)) {
+    if (VendorCheckEnabled(kBPVendorNVIDIA) && IsExtEnabled(extensions.vk_ext_pageable_device_local_memory)) {
         auto mem_info = std::static_pointer_cast<const bp_state::DeviceMemory>(Get<vvl::DeviceMemory>(memory));
         bool has_static_priority = vku::FindStructInPNextChain<VkMemoryPriorityAllocateInfoEXT>(mem_info->allocate_info.pNext);
         if (!mem_info->dynamic_priority && !has_static_priority) {
@@ -319,21 +321,49 @@ void BestPractices::ManualPostCallRecordBindBufferMemory2(VkDevice device, uint3
                                                           const VkBindBufferMemoryInfo* pBindInfos,
                                                           const RecordObject& record_obj) {
     if (record_obj.result != VK_SUCCESS && bindInfoCount > 1) {
-        // Details of check found in https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5527
-        LogWarning(
-            "BestPractices-Partial-Bound-Buffer", device, record_obj.location,
-            "all buffer are now in an indeterminate state because the call failed to return VK_SUCCESS. The best action to take "
-            "is to destroy the buffers instead of trying to rebind");
+        bool found_status = false;
+        for (uint32_t i = 0; i < bindInfoCount; i++) {
+            if (auto* bind_memory_status = vku::FindStructInPNextChain<VkBindMemoryStatus>(pBindInfos[i].pNext)) {
+                found_status = true;
+                if (bind_memory_status->pResult && *bind_memory_status->pResult != VK_SUCCESS) {
+                    LogWarning("BestPractices-Partial-Bound-Buffer-Status", device,
+                               record_obj.location.dot(Field::pBindInfos, i).pNext(vvl::Struct::VkBindMemoryStatus, Field::pResult),
+                               "was %s", string_VkResult(*bind_memory_status->pResult));
+                }
+            }
+        }
+
+        if (!found_status) {
+            // Details of check found in https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5527
+            LogWarning("BestPractices-Partial-Bound-Buffer", device, record_obj.location,
+                       "all buffer are now in an indeterminate state because the call failed to return VK_SUCCESS. The best action "
+                       "to take "
+                       "is to destroy the buffers instead of trying to rebind");
+        }
     }
 }
 
 void BestPractices::ManualPostCallRecordBindImageMemory2(VkDevice device, uint32_t bindInfoCount,
                                                          const VkBindImageMemoryInfo* pBindInfos, const RecordObject& record_obj) {
     if (record_obj.result != VK_SUCCESS && bindInfoCount > 1) {
-        // Details of check found in https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5527
-        LogWarning(
-            "BestPractices-Partial-Bound-Image", device, record_obj.location,
-            "all image are now in an indeterminate state because the call failed to return VK_SUCCESS. The best action to take is "
-            "to destroy the images instead of trying to rebind");
+        bool found_status = false;
+        for (uint32_t i = 0; i < bindInfoCount; i++) {
+            if (auto* bind_memory_status = vku::FindStructInPNextChain<VkBindMemoryStatus>(pBindInfos[i].pNext)) {
+                found_status = true;
+                if (bind_memory_status->pResult && *bind_memory_status->pResult != VK_SUCCESS) {
+                    LogWarning("BestPractices-Partial-Bound-Image-Status", device,
+                               record_obj.location.dot(Field::pBindInfos, i).pNext(vvl::Struct::VkBindMemoryStatus, Field::pResult),
+                               "was %s", string_VkResult(*bind_memory_status->pResult));
+                }
+            }
+        }
+
+        if (!found_status) {
+            // Details of check found in https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5527
+            LogWarning("BestPractices-Partial-Bound-Image", device, record_obj.location,
+                       "all image are now in an indeterminate state because the call failed to return VK_SUCCESS. The best action "
+                       "to take is "
+                       "to destroy the images instead of trying to rebind");
+        }
     }
 }

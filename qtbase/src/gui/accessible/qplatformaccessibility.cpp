@@ -35,7 +35,6 @@ Q_GLOBAL_STATIC(QList<QAccessibleBridge *>, bridges)
     \sa QAccessible
 */
 QPlatformAccessibility::QPlatformAccessibility()
-    : m_active(false)
 {
 }
 
@@ -99,10 +98,25 @@ void QPlatformAccessibility::cleanup()
     qDeleteAll(*bridges());
 }
 
+void qAccessibleNotifyActivationObservers(bool active); // qaccessible.cpp
+
 void QPlatformAccessibility::setActive(bool active)
 {
     m_active = active;
-    QAccessible::setActive(active);
+
+    // Send activeChanged notifications if the new active status differs from
+    // the notifed one.
+    if ((active && m_activeNotificationState != std::optional<bool>{true}) ||
+        (!active && m_activeNotificationState != std::optional<bool>{false})) {
+        qAccessibleNotifyActivationObservers(active);
+    }
+
+    m_activeNotificationState = active;
+}
+
+void QPlatformAccessibility::clearActiveNotificationState()
+{
+    m_activeNotificationState = std::nullopt;
 }
 
 #endif // QT_CONFIG(accessibility)

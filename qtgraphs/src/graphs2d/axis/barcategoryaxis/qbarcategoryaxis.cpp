@@ -491,8 +491,10 @@ void QBarCategoryAxisPrivate::setRange(qreal min, qreal max)
     bool categoryChanged = false;
     bool changed = false;
 
-    if (min > max)
+    if (min > max) {
+        qCWarning(lcAxis2D, "QBarCategoryAxis::setRange. Tried to use invalid values, min > max");
         return;
+    }
 
     if (!qFuzzyIsNull(m_min - min)) {
         m_min = min;

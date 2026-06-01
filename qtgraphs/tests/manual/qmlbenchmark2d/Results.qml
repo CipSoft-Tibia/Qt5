@@ -29,7 +29,8 @@ Rectangle {
         theme: GraphsTheme {
             id: myTheme
             colorScheme: GraphsTheme.ColorScheme.Dark
-            seriesColors: ["#ffaaaa", "#aaffaa", "#aaaaff", "#ff0000", "#ffffaa", "#aaffff", "#ffaaff"]
+            // seriesColors: ["#ffaaaa", "#aaffaa", "#aaaaff", "#ff0000", "#ffffaa", "#aaffff", "#ffaaff"]
+            seriesColors: ["#ff0000", "#00ff00", "#0000ff", "#ffffff", "#550000", "#ffff00", "#00ffff", "#ff00ff", "#555500"]
         }
 
         axisX: BarCategoryAxis {

@@ -16,16 +16,17 @@
 #include "base/containers/flat_map.h"
 #include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
 #include "base/time/time.h"
 #include "content/browser/interest_group/auction_process_manager.h"
 #include "content/public/browser/site_instance.h"
-#include "content/services/auction_worklet/public/mojom/auction_worklet_service.mojom-forward.h"
 #include "content/services/auction_worklet/public/mojom/auction_worklet_service.mojom.h"
 #include "content/services/auction_worklet/public/mojom/bidder_worklet.mojom.h"
 #include "content/services/auction_worklet/public/mojom/private_aggregation_request.mojom.h"
 #include "content/services/auction_worklet/public/mojom/real_time_reporting.mojom.h"
 #include "content/services/auction_worklet/public/mojom/seller_worklet.mojom.h"
+#include "content/services/auction_worklet/public/mojom/trusted_signals_cache.mojom.h"
 #include "mojo/public/cpp/bindings/associated_receiver_set.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
@@ -74,6 +75,7 @@ MockBidderWorklet::~MockBidderWorklet() {
 void MockBidderWorklet::BeginGenerateBid(
     auction_worklet::mojom::BidderWorkletNonSharedParamsPtr
         bidder_worklet_non_shared_params,
+    auction_worklet::mojom::TrustedSignalsCacheKeyPtr trusted_signals_cache_key,
     auction_worklet::mojom::KAnonymityBidMode kanon_mode,
     const url::Origin& interest_group_join_origin,
     const std::optional<GURL>& direct_from_seller_per_buyer_signals,
@@ -81,7 +83,7 @@ void MockBidderWorklet::BeginGenerateBid(
     const url::Origin& browser_signal_seller_origin,
     const std::optional<url::Origin>& browser_signal_top_level_seller_origin,
     const base::TimeDelta browser_signal_recency,
-    auction_worklet::mojom::BiddingBrowserSignalsPtr bidding_browser_signals,
+    blink::mojom::BiddingBrowserSignalsPtr bidding_browser_signals,
     base::Time auction_start_time,
     const std::optional<blink::AdSize>& requested_ad_size,
     uint16_t multi_bid_limit,
@@ -157,6 +159,7 @@ void MockBidderWorklet::ReportWin(
     const std::optional<url::Origin>& browser_signal_top_level_seller_origin,
     const std::optional<base::TimeDelta> browser_signal_reporting_timeout,
     std::optional<uint32_t> bidding_signals_data_version,
+    const std::optional<std::string>& aggregate_win_signals,
     uint64_t trace_id,
     ReportWinCallback report_win_callback) {
   // While the real BidderWorklet implementation supports multiple pending
@@ -275,6 +278,12 @@ void MockBidderWorklet::InvokeGenerateBidCallback(
     non_kanon_pa_requests.push_back(request->Clone());
   }
 
+  auto bid_metrics = auction_worklet::mojom::BidderTimingMetrics::New(
+      /*js_fetch_latency=*/js_fetch_latency_,
+      /*wasm_fetch_latency=*/wasm_fetch_latency_,
+      /*script_latency=*/bidding_latency_,
+      /*script_timed_out=*/script_timed_out_);
+
   std::vector<auction_worklet::mojom::BidderWorkletBidPtr> bids;
   if (!bid.has_value()) {
     DCHECK(further_bids.empty());
@@ -289,11 +298,7 @@ void MockBidderWorklet::InvokeGenerateBidCallback(
         /*pa_requests=*/std::move(pa_requests),
         /*non_kanon_pa_requests=*/std::move(non_kanon_pa_requests),
         /*real_time_contributions=*/{},
-        /*generate_bid_metrics=*/
-        auction_worklet::mojom::BidderTimingMetrics::New(
-            /*js_fetch_latency=*/js_fetch_latency_,
-            /*wasm_fetch_latency=*/wasm_fetch_latency_,
-            /*script_latency=*/bidding_latency_),
+        /*generate_bid_metrics=*/std::move(bid_metrics),
         /*generate_bid_dependency_latencies=*/std::move(dependency_latencies),
         reject_reason,
         /*errors=*/std::vector<std::string>());
@@ -302,9 +307,10 @@ void MockBidderWorklet::InvokeGenerateBidCallback(
 
   bids.push_back(auction_worklet::mojom::BidderWorkletBid::New(
       bid_role, "ad", *bid, bid_currency, /*ad_cost=*/std::nullopt,
-      std::move(ad_descriptor),
-      selected_buyer_and_seller_reporting_id_, ad_component_descriptors,
-      /*modeling_signals=*/std::nullopt, duration));
+      std::move(ad_descriptor), selected_buyer_and_seller_reporting_id_,
+      ad_component_descriptors,
+      /*modeling_signals=*/std::nullopt, /*aggregate_win_signals=*/std::nullopt,
+      duration));
   bids.insert(bids.end(), std::make_move_iterator(further_bids.begin()),
               std::make_move_iterator(further_bids.end()));
 
@@ -318,11 +324,7 @@ void MockBidderWorklet::InvokeGenerateBidCallback(
       /*pa_requests=*/std::move(pa_requests),
       /*non_kanon_pa_requests=*/std::move(non_kanon_pa_requests),
       /*real_time_contributions=*/std::move(real_time_contributions),
-      /*generated_bid_metrics=*/
-      auction_worklet::mojom::BidderTimingMetrics::New(
-          /*js_fetch_latency=*/js_fetch_latency_,
-          /*wasm_fetch_latency=*/wasm_fetch_latency_,
-          /*script_latency=*/bidding_latency_),
+      /*generated_bid_metrics=*/std::move(bid_metrics),
       /*generate_bid_dependency_latencies=*/std::move(dependency_latencies),
       reject_reason,
       /*errors=*/std::vector<std::string>());
@@ -353,7 +355,8 @@ void MockBidderWorklet::InvokeReportWinCallback(
            auction_worklet::mojom::BidderTimingMetrics::New(
                /*js_fetch_latency=*/js_fetch_latency_,
                /*wasm_fetch_latency=*/wasm_fetch_latency_,
-               /*script_latency=*/reporting_latency_),
+               /*script_latency=*/reporting_latency_,
+               /*script_timed_out=*/script_timed_out_),
            std::move(errors));
 }
 
@@ -405,6 +408,10 @@ void MockSellerWorklet::ScoreAd(
     const std::optional<blink::AdCurrency>& bid_currency,
     const blink::AuctionConfig::NonSharedParams&
         auction_ad_config_non_shared_params,
+    auction_worklet::mojom::TrustedSignalsCacheKeyPtr trusted_signals_cache_key,
+    auction_worklet::mojom::CreativeInfoWithoutOwnerPtr ad,
+    std::vector<auction_worklet::mojom::CreativeInfoWithoutOwnerPtr>
+        ad_components,
     const std::optional<GURL>& direct_from_seller_seller_signals,
     const std::optional<std::string>&
         direct_from_seller_seller_signals_header_ad_slot,
@@ -415,17 +422,15 @@ void MockSellerWorklet::ScoreAd(
         browser_signals_other_seller,
     const std::optional<blink::AdCurrency>& component_expect_bid_currency,
     const url::Origin& browser_signal_interest_group_owner,
-    const GURL& browser_signal_render_url,
     const std::optional<std::string>&
         browser_signal_selected_buyer_and_seller_reporting_id,
     const std::optional<std::string>&
         browser_signal_buyer_and_seller_reporting_id,
-    const std::vector<GURL>& browser_signal_ad_components,
     uint32_t browser_signal_bidding_duration_msecs,
-    const std::optional<blink::AdSize>& browser_signal_render_size,
     bool browser_signal_for_debugging_only_in_cooldown_or_lockout,
     const std::optional<base::TimeDelta> seller_timeout,
     uint64_t trace_id,
+    const url::Origin& bidder_joining_origin,
     mojo::PendingRemote<auction_worklet::mojom::ScoreAdClient>
         score_ad_client) {
   // SendPendingSignalsRequests() should only be called once all ads are
@@ -539,7 +544,8 @@ void MockSellerWorklet::InvokeReportResultCallback(
            ad_beacon_map, std::move(pa_requests),
            auction_worklet::mojom::SellerTimingMetrics::New(
                /*js_fetch_latency=*/js_fetch_latency_,
-               /*script_latency=*/reporting_latency_),
+               /*script_latency=*/reporting_latency_,
+               /*script_timed_out=*/script_timed_out_),
            errors);
 }
 
@@ -547,43 +553,23 @@ void MockSellerWorklet::Flush() {
   receiver_.FlushForTesting();
 }
 
-MockAuctionProcessManager::MockAuctionProcessManager() = default;
+MockAuctionProcessManager::MockAuctionProcessManager()
+    : DedicatedAuctionProcessManager(/*trusted_signals_cache=*/nullptr) {}
+
 MockAuctionProcessManager::~MockAuctionProcessManager() = default;
 
-RenderProcessHost* MockAuctionProcessManager::LaunchProcess(
-    mojo::PendingReceiver<auction_worklet::mojom::AuctionWorkletService>
-        auction_worklet_service_receiver,
-    const ProcessHandle* handle,
-    const std::string& display_name) {
-  mojo::ReceiverId receiver_id =
-      receiver_set_.Add(this, std::move(auction_worklet_service_receiver));
-
-  // Each receiver should get a unique display name. This check serves to help
-  // ensure that processes are correctly reused.
-  EXPECT_EQ(0u, receiver_display_name_map_.count(receiver_id));
-  for (auto receiver : receiver_display_name_map_) {
-    // Ignore closed receivers. ReportWin() will result in re-loading a
-    // worklet, after closing the original worklet, which may require
-    // re-creating the AuctionWorkletService.
-    if (receiver_set_.HasReceiver(receiver.first)) {
-      EXPECT_NE(receiver.second, display_name);
-    }
-  }
-
-  receiver_display_name_map_[receiver_id] = display_name;
-  return nullptr;
+AuctionProcessManager::WorkletProcess::ProcessContext
+MockAuctionProcessManager::CreateProcessInternal(
+    WorkletProcess& worklet_process) {
+  mojo::PendingRemote<auction_worklet::mojom::AuctionWorkletService> service;
+  receiver_set_.Add(this, service.InitWithNewPipeAndPassReceiver(),
+                    worklet_process.GetWeakPtrForTesting());
+  return WorkletProcess::ProcessContext(std::move(service));
 }
 
-scoped_refptr<SiteInstance> MockAuctionProcessManager::MaybeComputeSiteInstance(
-    SiteInstance* frame_site_instance,
-    const url::Origin& worklet_origin) {
-  return nullptr;
-}
-
-bool MockAuctionProcessManager::TryUseSharedProcess(
-    ProcessHandle* process_handle) {
-  return false;
-}
+void MockAuctionProcessManager::SetTrustedSignalsCache(
+    mojo::PendingRemote<auction_worklet::mojom::TrustedSignalsCache>
+        trusted_signals_cache) {}
 
 void MockAuctionProcessManager::LoadBidderWorklet(
     mojo::PendingReceiver<auction_worklet::mojom::BidderWorklet>
@@ -608,11 +594,17 @@ void MockAuctionProcessManager::LoadBidderWorklet(
   load_bidder_worklet_count_++;
   last_load_bidder_worklet_threads_count_ = shared_storage_hosts.size();
 
-  // Make sure this request came over the right pipe.
-  url::Origin owner = url::Origin::Create(script_source_url);
-  EXPECT_EQ(receiver_display_name_map_[receiver_set_.current_receiver()],
-            ComputeDisplayName(AuctionProcessManager::WorkletType::kBidder,
-                               url::Origin::Create(script_source_url)));
+  // Make sure this request came over the right pipe, if the WorkletProcess
+  // hasn't been destroyed yet. Can't grab the origin on creation, as the origin
+  // may change in the case of processes that have not yet been bound to an
+  // origin.
+  WorkletProcess* worklet_process = receiver_set_.current_context().get();
+  if (worklet_process) {
+    EXPECT_EQ(worklet_process->origin(),
+              url::Origin::Create(script_source_url));
+    EXPECT_EQ(worklet_process->worklet_type(),
+              AuctionProcessManager::WorkletType::kBidder);
+  }
 
   EXPECT_EQ(0u, bidder_worklets_.count(script_source_url));
   bidder_worklets_.emplace(
@@ -638,13 +630,30 @@ void MockAuctionProcessManager::LoadSellerWorklet(
     const url::Origin& top_window_origin,
     auction_worklet::mojom::AuctionWorkletPermissionsPolicyStatePtr
         permissions_policy_state,
-    std::optional<uint16_t> experiment_group_id) {
+    std::optional<uint16_t> experiment_group_id,
+    std::optional<bool> send_creative_scanning_metadata,
+    auction_worklet::mojom::TrustedSignalsPublicKeyPtr public_key,
+    mojo::PendingRemote<auction_worklet::mojom::LoadSellerWorkletClient>
+        load_seller_worklet_client) {
   EXPECT_EQ(0u, seller_worklets_.count(script_source_url));
 
-  // Make sure this request came over the right pipe.
-  EXPECT_EQ(receiver_display_name_map_[receiver_set_.current_receiver()],
-            ComputeDisplayName(AuctionProcessManager::WorkletType::kSeller,
-                               url::Origin::Create(script_source_url)));
+  if (load_seller_worklet_client) {
+    mojo::Remote<auction_worklet::mojom::LoadSellerWorkletClient>(
+        std::move(load_seller_worklet_client))
+        ->SellerWorkletLoaded(/*trusted_signals_url_allowed=*/true);
+  }
+
+  // Make sure this request came over the right pipe, if the WorkletProcess
+  // hasn't been destroyed yet. Can't grab the origin on creation, as the origin
+  // may change in the case of processes that have not yet been bound to an
+  // origin.
+  WorkletProcess* worklet_process = receiver_set_.current_context().get();
+  if (worklet_process) {
+    EXPECT_EQ(worklet_process->origin(),
+              url::Origin::Create(script_source_url));
+    EXPECT_EQ(worklet_process->worklet_type(),
+              AuctionProcessManager::WorkletType::kSeller);
+  }
 
   seller_worklets_.emplace(
       script_source_url,

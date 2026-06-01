@@ -28,11 +28,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/core/animation/keyframe_effect.h"
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_keyframe_effect_options.h"
@@ -52,8 +47,8 @@
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/dom/element.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/pseudo_element.h"
+#include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
@@ -69,26 +64,69 @@ namespace blink {
 
 namespace {
 
-// Verifies that a pseudo-element selector lexes and canonicalizes legacy forms
-bool ValidateAndCanonicalizePseudo(String& selector) {
-  if (selector.IsNull()) {
-    return true;
-  } else if (selector.StartsWith("::")) {
-    return true;
-  } else if (selector == ":before") {
-    selector = "::before";
-    return true;
-  } else if (selector == ":after") {
-    selector = "::after";
-    return true;
-  } else if (selector == ":first-letter") {
-    selector = "::first-letter";
-    return true;
-  } else if (selector == ":first-line") {
-    selector = "::first-line";
+bool ValidatePseudoElement(String& pseudo, ExceptionState& exception_state) {
+  // https://www.w3.org/TR/web-animations-1/#dom-keyframeeffect-pseudoelement
+  if (pseudo.IsNull()) {
     return true;
   }
-  return false;
+
+  AtomicString pseudo_argument = g_null_atom;
+  PseudoId pseudo_id = pseudo.StartsWith(":")
+                           ? CSSSelectorParser::ParsePseudoElement(
+                                 pseudo, /*parent=*/nullptr, pseudo_argument)
+                           : kPseudoIdInvalid;
+
+  switch (pseudo_id) {
+    case kPseudoIdInvalid:
+    case kPseudoIdNone: {
+      StringBuilder sb;
+      sb.Append(pseudo);
+      sb.Append(" is a syntactically invalid pseudo-element");
+      exception_state.ThrowDOMException(DOMExceptionCode::kSyntaxError,
+                                        sb.ToString());
+      return false;
+    }
+
+      // From the spec:
+      // Syntactically invalid pseudo-elements as well as pseudo-elements for
+      // which the user agent has no usable level of support are both deemed
+      // invalid.
+      // TODO(kevers): Are there any pseudos that belong in this second bucket?
+      // Currently input::placeholder is not animated on any of the major web
+      // platforms, though handled inconsistently. Failure to animate
+      // ::placeholder seems like a bug rather than a technical limitation.
+
+    default:
+      // Convert to canonical form.
+      if (!pseudo.StartsWith("::")) {
+        StringBuilder sb;
+        sb.Append(":");
+        sb.Append(pseudo);
+        pseudo = sb.ToString();
+      }
+      pseudo = pseudo.LowerASCII();
+      return true;
+  }
+}
+
+Element* ResolveTargetFromEffectTarget(Element* effect_target) {
+  if (!effect_target) {
+    return nullptr;
+  }
+
+  if (PseudoElement* pseudo = DynamicTo<PseudoElement>(effect_target)) {
+    return pseudo->UltimateOriginatingElement();
+  }
+
+  // A pseudo-element for a part-like piece (e.g. input placeholder) might have
+  // previously resolved to an element inside UA-shadow DOM. In this case, the
+  // host is effect target.
+  if (effect_target->IsInUserAgentShadowRoot()) {
+    ShadowRoot* shadow_root = effect_target->ContainingShadowRoot();
+    return &shadow_root->host();
+  }
+
+  return effect_target;
 }
 
 enum class KeyframeOrderStrategy { kSpecifiedOrdering, kCssKeyframeOrdering };
@@ -150,17 +188,12 @@ KeyframeEffect* KeyframeEffect::Create(
   String pseudo = String();
   if (options->IsKeyframeEffectOptions()) {
     auto* effect_options = options->GetAsKeyframeEffectOptions();
-    composite =
-        EffectModel::StringToCompositeOperation(effect_options->composite())
-            .value();
-    if (!effect_options->pseudoElement().empty()) {
+    composite = EffectModel::EnumToCompositeOperation(
+        effect_options->composite().AsEnum());
+    if (!effect_options->pseudoElement().IsNull()) {
       pseudo = effect_options->pseudoElement();
-      if (!ValidateAndCanonicalizePseudo(pseudo)) {
-        // TODO(gtsteel): update when
-        // https://github.com/w3c/csswg-drafts/issues/4586 resolves
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kSyntaxError,
-            "A valid pseudo-selector must be null or start with ::.");
+      if (!ValidatePseudoElement(pseudo, exception_state)) {
+        return nullptr;
       }
     }
   }
@@ -184,6 +217,14 @@ KeyframeEffect* KeyframeEffect::Create(
           pseudo, element, pseudo_argument);
       effect->effect_target_ =
           element->GetStyledPseudoElement(pseudo_id, pseudo_argument);
+      if (effect->effect_target_) {
+        DCHECK_EQ(ResolveTargetFromEffectTarget(effect->effect_target_),
+                  element);
+      }
+      // TODO(crbug.com/468323247): GetStyledPseudoElement can return null even
+      // though the pseudo name is valid. Resolve how to handle this case. An
+      // example is setting up a KeyframeEffect on element::after before setting
+      // the content property on the pseudo.
     }
   }
   return effect;
@@ -206,9 +247,18 @@ KeyframeEffect* KeyframeEffect::Create(ScriptState* script_state,
                                        ExceptionState& exception_state) {
   Timing new_timing = source->SpecifiedTiming();
   KeyframeEffectModelBase* model = source->Model()->Clone();
-  return MakeGarbageCollected<KeyframeEffect>(source->EffectTarget(), model,
-                                              new_timing, source->GetPriority(),
-                                              source->GetEventDelegate());
+  // As we already have both target and EffectTarget, we can short-circuit
+  // the conversion.
+  KeyframeEffect* clone = MakeGarbageCollected<KeyframeEffect>(
+      source->target(), model, new_timing, source->GetPriority(),
+      source->GetEventDelegate());
+  clone->effect_target_ = source->EffectTarget();
+  clone->setPseudoElement(source->pseudoElement(), exception_state);
+  if (source->EffectTarget()) {
+    DCHECK_EQ(ResolveTargetFromEffectTarget(source->EffectTarget()),
+              source->target());
+  }
+  return clone;
 }
 
 KeyframeEffect::KeyframeEffect(Element* target,
@@ -231,7 +281,8 @@ KeyframeEffect::KeyframeEffect(Element* target,
     // The |target_element_| is used to target events in script when
     // animating pseudo elements. This requires using the DOM element that the
     // pseudo element originates from.
-    target_element_ = DynamicTo<PseudoElement>(target)->OriginatingElement();
+    target_element_ =
+        DynamicTo<PseudoElement>(target)->UltimateOriginatingElement();
     DCHECK(!target_element_->IsPseudoElement());
     target_pseudo_ = PseudoElement::PseudoElementNameForEvents(target);
   }
@@ -253,16 +304,10 @@ const String& KeyframeEffect::pseudoElement() const {
 
 void KeyframeEffect::setPseudoElement(String pseudo,
                                       ExceptionState& exception_state) {
-  if (ValidateAndCanonicalizePseudo(pseudo)) {
+  if (ValidatePseudoElement(pseudo, exception_state)) {
     target_pseudo_ = pseudo;
-  } else {
-    exception_state.ThrowDOMException(
-        DOMExceptionCode::kSyntaxError,
-        "A valid pseudo-selector must be null or start with ::.");
-    return;
+    RefreshTarget();
   }
-
-  RefreshTarget();
 }
 
 void KeyframeEffect::RefreshTarget() {
@@ -288,13 +333,14 @@ void KeyframeEffect::RefreshTarget() {
   }
 }
 
-String KeyframeEffect::composite() const {
-  return EffectModel::CompositeOperationToString(CompositeInternal());
+V8CompositeOperation KeyframeEffect::composite() const {
+  return V8CompositeOperation(
+      EffectModel::CompositeOperationToEnum(CompositeInternal()));
 }
 
-void KeyframeEffect::setComposite(String composite_string) {
+void KeyframeEffect::setComposite(const V8CompositeOperation& composite) {
   Model()->SetComposite(
-      EffectModel::StringToCompositeOperation(composite_string).value());
+      EffectModel::EnumToCompositeOperation(composite.AsEnum()));
 
   ClearEffects();
   InvalidateAndNotifyOwner();
@@ -304,7 +350,7 @@ void KeyframeEffect::setComposite(String composite_string) {
 // normal keyframe data combined with the computed offset for the given
 // keyframe.
 // https://w3.org/TR/web-animations-1/#dom-keyframeeffect-getkeyframes
-HeapVector<ScriptValue> KeyframeEffect::getKeyframes(
+HeapVector<ScriptObject> KeyframeEffect::getKeyframes(
     ScriptState* script_state) {
   if (Animation* animation = GetAnimation()) {
     animation->FlushPendingUpdates();
@@ -313,7 +359,7 @@ HeapVector<ScriptValue> KeyframeEffect::getKeyframes(
     }
   }
 
-  HeapVector<ScriptValue> computed_keyframes;
+  HeapVector<ScriptObject> computed_keyframes;
   if (!model_->HasFrames() || !script_state->ContextIsValid())
     return computed_keyframes;
 
@@ -336,7 +382,7 @@ HeapVector<ScriptValue> KeyframeEffect::getKeyframes(
     keyframes[indices[i]]->AddKeyframePropertiesToV8Object(object_builder,
                                                            target());
     object_builder.AddNumber("computedOffset", computed_offsets[indices[i]]);
-    computed_keyframes.push_back(object_builder.GetScriptValue());
+    computed_keyframes.push_back(object_builder.ToScriptObject());
   }
 
   return computed_keyframes;
@@ -454,7 +500,8 @@ bool KeyframeEffect::HasActiveAnimationsOnCompositor() const {
 
 bool KeyframeEffect::HasActiveAnimationsOnCompositor(
     const PropertyHandle& property) const {
-  return HasActiveAnimationsOnCompositor() && Affects(property);
+  return HasActiveAnimationsOnCompositor() &&
+         model_->EnsureDynamicProperties().Contains(property);
 }
 
 bool KeyframeEffect::CancelAnimationOnCompositor(
@@ -530,10 +577,10 @@ void KeyframeEffect::Trace(Visitor* visitor) const {
 
 namespace {
 
-static const size_t num_transform_properties = 4;
+using TransformPropertiesArray = std::array<const CSSProperty*, 4>;
 
-const CSSProperty** TransformProperties() {
-  static const CSSProperty* kTransformProperties[num_transform_properties] = {
+const TransformPropertiesArray& TransformProperties() {
+  static const TransformPropertiesArray kTransformProperties{
       &GetCSSPropertyTransform(), &GetCSSPropertyScale(),
       &GetCSSPropertyRotate(), &GetCSSPropertyTranslate()};
   return kTransformProperties;
@@ -543,14 +590,13 @@ const CSSProperty** TransformProperties() {
 
 bool KeyframeEffect::UpdateBoxSizeAndCheckTransformAxisAlignment(
     const gfx::SizeF& box_size) {
-  static const auto** properties = TransformProperties();
   bool preserves_axis_alignment = true;
   bool has_transform = false;
   TransformOperation::BoxSizeDependency size_dependencies =
       TransformOperation::kDependsNone;
-  for (size_t i = 0; i < num_transform_properties; i++) {
+  for (const auto* property : TransformProperties()) {
     const auto* keyframes =
-        Model()->GetPropertySpecificKeyframes(PropertyHandle(*properties[i]));
+        Model()->GetPropertySpecificKeyframes(PropertyHandle(*property));
     if (!keyframes)
       continue;
 
@@ -601,10 +647,9 @@ void KeyframeEffect::RestartRunningAnimationOnCompositor() {
 }
 
 bool KeyframeEffect::IsIdentityOrTranslation() const {
-  static const auto** properties = TransformProperties();
-  for (size_t i = 0; i < num_transform_properties; i++) {
+  for (const auto* property : TransformProperties()) {
     const auto* keyframes =
-        Model()->GetPropertySpecificKeyframes(PropertyHandle(*properties[i]));
+        Model()->GetPropertySpecificKeyframes(PropertyHandle(*property));
     if (!keyframes)
       continue;
 
@@ -780,8 +825,17 @@ AnimationTimeDelta KeyframeEffect::CalculateTimeToEffectChange(
           return std::min(time_to_end, time_to_next_iteration);
         }
         return time_to_end;
+      } else {
+        const AnimationTimeDelta time_to_start =
+            std::max(local_time.value() - start_time, AnimationTimeDelta());
+        if (RequiresIterationEvents()) {
+          const AnimationTimeDelta reverse_time_to_next_iteration = std::max(
+              NormalizedTiming().iteration_duration - time_to_next_iteration,
+              AnimationTimeDelta());
+          return std::min(time_to_start, reverse_time_to_next_iteration);
+        }
+        return time_to_start;
       }
-      return {};
     case Timing::kPhaseAfter:
       DCHECK(TimingCalculations::GreaterThanOrEqualToWithinTimeTolerance(
           local_time.value(), after_time));
@@ -792,10 +846,9 @@ AnimationTimeDelta KeyframeEffect::CalculateTimeToEffectChange(
         return end_time > local_time ? end_time - local_time.value()
                                      : AnimationTimeDelta::Max();
       }
-      return local_time.value() - after_time;
+      return std::max(local_time.value() - after_time, AnimationTimeDelta());
     default:
-      NOTREACHED_IN_MIGRATION();
-      return AnimationTimeDelta::Max();
+      NOTREACHED();
   }
 }
 
@@ -815,10 +868,10 @@ bool KeyframeEffect::HasIncompatibleStyle() const {
 
   if (HasActiveAnimationsOnCompositor()) {
     if (effect_target_->GetComputedStyle()->HasOffset()) {
-      static const auto** properties = TransformProperties();
-      for (size_t i = 0; i < num_transform_properties; i++) {
-        if (Affects(PropertyHandle(*properties[i])))
+      for (const auto* property : TransformProperties()) {
+        if (Affects(PropertyHandle(*property))) {
           return true;
+        }
       }
     }
   }

@@ -11,7 +11,6 @@ Rectangle {
     color: Colors.currentTheme.background
     property string previousState: ""
     property string coffeeName: ""
-    property alias home: home
     property alias choosingCoffee: choosingCoffee
     property alias settings: settings
     property alias insert: insert
@@ -53,11 +52,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.topMargin: parent.height / 20
-        initialItem: Home {
-            id: home
-            visible: true
-            state: applicationFlow.mode
-        }
+
         pushEnter: Transition {
             PropertyAnimation {
                 property: "x"
@@ -92,49 +87,27 @@ Rectangle {
             }
         }
     }
+
     Component {
         id: choosingCoffee
         ChoosingCoffee {
             visible: true
-            state: applicationFlow.mode
         }
     }
     Component {
         id: settings
-        Settings {
-            foamAmount: applicationFlow.foamAmount
-            milkAmount: applicationFlow.milkAmount
-            coffeeAmount: applicationFlow.coffeeAmount
-            state: applicationFlow.mode
-        }
+        Settings {}
     }
     Component {
         id: insert
-        Insert {
-            state: applicationFlow.mode
-        }
+        Insert {}
     }
     Component {
         id: progress
-        Progress {
-            brewTime: applicationFlow.brewTime
-            coffeeAmount: applicationFlow.coffeeAmount
-            milkAmount: applicationFlow.milkAmount
-            foamAmount: applicationFlow.foamAmount
-            sugarAmount: applicationFlow.sugarAmount
-            state: applicationFlow.mode
-            progressBarValue: root.progressBarValue
-            cup.state: root.progressCupState
-        }
+        Progress {}
     }
     Component {
         id: ready
-        Ready {
-            foamAmount: applicationFlow.foamAmount
-            milkAmount: applicationFlow.milkAmount
-            coffeeAmount: applicationFlow.coffeeAmount
-            sugarAmount: applicationFlow.sugarAmount
-            state: applicationFlow.mode
-        }
+        Ready {}
     }
 }

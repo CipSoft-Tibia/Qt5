@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "messagemodel.h"
+
 #include "globals.h"
 #include "statistics.h"
 
@@ -17,11 +18,13 @@
 
 #include <limits.h>
 
+using namespace Qt::Literals::StringLiterals;
+
 static QString resolveNcr(QStringView str)
 {
     constexpr QStringView notation = u"&#";
-    constexpr QChar cx = QLatin1Char('x');
-    constexpr QChar ce = QLatin1Char(';');
+    constexpr QChar cx = u'x';
+    constexpr QChar ce = u';';
 
     QString result;
     result.reserve(str.size());
@@ -68,7 +71,7 @@ static QString showNcr(const QString &str)
     result.reserve(str.size());
     for (const QChar ch : str) {
         if (uint c = ch.unicode(); Q_UNLIKELY(!ch.isPrint() && c > 0x20))
-            result += QString(QLatin1String("&#x%1;")).arg(c, 0, 16);
+            result += QString("&#x%1;"_L1).arg(c, 0, 16);
         else
             result += ch;
     }
@@ -116,7 +119,7 @@ QString MessageItem::text() const
 
 QString MessageItem::pluralText() const
 {
-    return adjustNcrVisibility(m_message.extra(QLatin1String("po-msgid_plural")), m_ncrMode);
+    return adjustNcrVisibility(m_message.extra("po-msgid_plural"_L1), m_ncrMode);
 }
 
 QString MessageItem::translation() const
@@ -160,7 +163,7 @@ ContextItem::ContextItem(const QString &context)
 void ContextItem::appendToComment(const QString &str)
 {
     if (!m_comment.isEmpty())
-        m_comment += QLatin1String("\n\n");
+        m_comment += "\n\n"_L1;
     m_comment += str;
 }
 
@@ -273,7 +276,7 @@ bool DataModel::load(const QString &fileName, bool *langGuessed, QWidget *parent
 {
     Translator tor;
     ConversionData cd;
-    bool ok = tor.load(fileName, cd, QLatin1String("auto"));
+    bool ok = tor.load(fileName, cd, "auto"_L1);
     if (!ok) {
         QMessageBox::warning(parent, QObject::tr("Qt Linguist"), cd.error());
         return false;
@@ -358,7 +361,7 @@ bool DataModel::load(const QString &fileName, bool *langGuessed, QWidget *parent
     QString lang = tor.languageCode();
     if (lang.isEmpty()) {
         lang = QFileInfo(fileName).baseName();
-        int pos = lang.indexOf(QLatin1Char('_'));
+        int pos = lang.indexOf(u'_');
         if (pos != -1)
             lang.remove(0, pos + 1);
         else
@@ -410,7 +413,7 @@ bool DataModel::save(const QString &fileName, QWidget *parent)
     tor.setExtras(m_extra);
     ConversionData cd;
     tor.normalizeTranslations(cd);
-    bool ok = tor.save(fileName, cd, QLatin1String("auto"));
+    bool ok = tor.save(fileName, cd, "auto"_L1);
     if (ok)
         setModified(false);
     if (!cd.error().isEmpty())
@@ -444,9 +447,6 @@ bool DataModel::release(const QString &fileName, bool verbose, bool ignoreUnfini
     cd.m_verbose = verbose;
     cd.m_ignoreUnfinished = ignoreUnfinished;
     cd.m_saveMode = mode;
-    cd.m_idBased =
-            std::all_of(tor.messages().begin(), tor.messages().end(),
-                        [](const TranslatorMessage &message) { return !message.id().isEmpty(); });
     bool ok = saveQM(tor, file, cd);
     if (!ok)
         QMessageBox::warning(parent, QObject::tr("Qt Linguist"), cd.error());
@@ -458,7 +458,7 @@ void DataModel::doCharCounting(const QString &text, int &trW, int &trC, int &trC
     trCS += text.size();
     bool inWord = false;
     for (int i = 0; i < text.size(); ++i) {
-        if (text[i].isLetterOrNumber() || text[i] == QLatin1Char('_')) {
+        if (text[i].isLetterOrNumber() || text[i] == u'_') {
             if (!inWord) {
                 ++trW;
                 inWord = true;
@@ -565,15 +565,15 @@ void DataModel::setModified(bool isModified)
 
 QString DataModel::prettifyPlainFileName(const QString &fn)
 {
-    static QString workdir = QDir::currentPath() + QLatin1Char('/');
+    static QString workdir = QDir::currentPath() + u'/';
 
     return QDir::toNativeSeparators(fn.startsWith(workdir) ? fn.mid(workdir.size()) : fn);
 }
 
 QString DataModel::prettifyFileName(const QString &fn)
 {
-    if (fn.startsWith(QLatin1Char('=')))
-        return QLatin1Char('=') + prettifyPlainFileName(fn.mid(1));
+    if (fn.startsWith(u'='))
+        return u'=' + prettifyPlainFileName(fn.mid(1));
     else
         return prettifyPlainFileName(fn);
 }
@@ -983,12 +983,12 @@ QString MultiDataModel::condenseFileNames(const QStringList &names)
         return names.first();
 
     QString prefix = names.first();
-    if (prefix.startsWith(QLatin1Char('=')))
+    if (prefix.startsWith(u'='))
         prefix.remove(0, 1);
     QString suffix = prefix;
     for (int i = 1; i < names.size(); ++i) {
         QString fn = names[i];
-        if (fn.startsWith(QLatin1Char('=')))
+        if (fn.startsWith(u'='))
             fn.remove(0, 1);
         for (int j = 0; j < prefix.size(); ++j)
             if (fn[j] != prefix[j]) {
@@ -1013,21 +1013,21 @@ QString MultiDataModel::condenseFileNames(const QStringList &names)
                 break;
             }
     }
-    QString ret = prefix + QLatin1Char('{');
+    QString ret = prefix + u'{';
     int pxl = prefix.size();
     int sxl = suffix.size();
     for (int j = 0; j < names.size(); ++j) {
         if (j)
-            ret += QLatin1Char(',');
+            ret += u',';
         int off = pxl;
         QString fn = names[j];
-        if (fn.startsWith(QLatin1Char('='))) {
-            ret += QLatin1Char('=');
+        if (fn.startsWith(u'=')) {
+            ret += u'=';
             ++off;
         }
         ret += fn.mid(off, fn.size() - sxl - off);
     }
-    ret += QLatin1Char('}') + suffix;
+    ret += u'}' + suffix;
     return ret;
 }
 
@@ -1392,12 +1392,12 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const
 
     if (bool dark = isDarkMode();
         (dark && mode != Qt::ColorScheme::Dark) || (!dark && mode != Qt::ColorScheme::Light)) {
-        pxOn = MarkIcon::create(MarkIcon::onMark, dark);
-        pxOff = MarkIcon::create(MarkIcon::offMark, dark);
-        pxObsolete = MarkIcon::create(MarkIcon::obsoleteMark, dark);
-        pxDanger = MarkIcon::create(MarkIcon::dangerMark, dark);
-        pxWarning = MarkIcon::create(MarkIcon::warningMark, dark);
-        pxEmpty = MarkIcon::create(MarkIcon::emptyMark, dark);
+        pxOn = createMarkIcon(TranslationMarks::OnMark, dark);
+        pxOff = createMarkIcon(TranslationMarks::OffMark, dark);
+        pxObsolete = createMarkIcon(TranslationMarks::ObsoleteMark, dark);
+        pxDanger = createMarkIcon(TranslationMarks::DangerMark, dark);
+        pxWarning = createMarkIcon(TranslationMarks::WarningMark, dark);
+        pxEmpty = createMarkIcon(TranslationMarks::EmptyMark, dark);
         mode = dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
     }
 
@@ -1461,7 +1461,7 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const
         else if (role == SortRole) {
             switch (column - numLangs) {
             case 0: // Source text
-                return mci->multiMessageItem(row)->text().simplified().remove(QLatin1Char('&'));
+                return mci->multiMessageItem(row)->text().simplified().remove(u'&');
             case 1: // Dummy column
                 return QVariant();
             default:
@@ -1516,6 +1516,11 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const
             default:
                 return QVariant(); // Status => no text
             }
+        }
+        else if (role == Qt::FontRole && column == m_data->modelCount()) {
+            QFont boldFont;
+            boldFont.setBold(true);
+            return boldFont;
         }
         else if (role == Qt::DecorationRole && column < numLangs) {
             if (ContextItem *contextItem = mci->contextItem(column)) {

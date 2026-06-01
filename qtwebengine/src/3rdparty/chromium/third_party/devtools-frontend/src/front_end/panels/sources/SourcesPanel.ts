@@ -28,6 +28,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import '../../ui/legacy/legacy.js';
+
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
@@ -206,8 +208,12 @@ export class SourcesPanel extends UI.Panel.Panel implements
   private tabbedLocationHeader?: Element|null;
   private extensionSidebarPanesContainer?: UI.View.ViewLocation;
   sidebarPaneView?: UI.Widget.VBox|UI.SplitWidget.SplitWidget;
+
+  #lastPausedTarget: WeakRef<SDK.Target.Target>|null = null;
+
   constructor() {
     super('sources');
+    this.registerRequiredCSS(sourcesPanelStyles);
 
     new UI.DropTarget.DropTarget(
         this.element, [UI.DropTarget.Type.Folder], i18nString(UIStrings.dropWorkspaceFolderHere),
@@ -393,7 +399,6 @@ export class SourcesPanel extends UI.Panel.Panel implements
 
   override wasShown(): void {
     UI.Context.Context.instance().setFlavor(SourcesPanel, this);
-    this.registerCSSFiles([sourcesPanelStyles]);
     super.wasShown();
     if (UI.Context.Context.instance().flavor(QuickSourceView)) {
       UI.InspectorView.InspectorView.instance().setDrawerMinimized(true);
@@ -483,6 +488,16 @@ export class SourcesPanel extends UI.Panel.Panel implements
     UI.Context.Context.instance().setFlavor(SDK.DebuggerModel.DebuggerPausedDetails, details);
     this.toggleDebuggerSidebarButton.setEnabled(false);
     this.revealDebuggerSidebar();
+    const pausedTarget = details.debuggerModel.target();
+    if (this.threadsSidebarPane && this.#lastPausedTarget?.deref() !== pausedTarget &&
+        pausedTarget !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
+      // If we pause in something other than the main frame (e.g. worker), we should expand the
+      // "Threads" list to make it more clear which target is paused. We do this only if the target of
+      // the previous pause is different from the new pause to prevent annoying the user by re-opening
+      // the "Threads" list while stepping or hitting the same breakpoint multiple points.
+      void this.sidebarPaneStack?.showView(this.threadsSidebarPane);
+    }
+
     window.focus();
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.bringToFront();
     const withOverlay = UI.Context.Context.instance().flavor(SDK.Target.Target)?.model(SDK.OverlayModel.OverlayModel) &&
@@ -498,6 +513,7 @@ export class SourcesPanel extends UI.Panel.Panel implements
           this.overlayLoggables.stepOverButton, `${VisualLogging.action('debugger.step-over')}`,
           this.overlayLoggables.debuggerPausedMessage);
     }
+    this.#lastPausedTarget = new WeakRef(details.debuggerModel.target());
   }
 
   private maybeLogOverlayAction(): void {
@@ -744,6 +760,7 @@ export class SourcesPanel extends UI.Panel.Panel implements
 
   private editorSelected(event: Common.EventTarget.EventTargetEvent<Workspace.UISourceCode.UISourceCode>): void {
     const uiSourceCode = event.data;
+    UI.Context.Context.instance().setFlavor(Workspace.UISourceCode.UISourceCode, uiSourceCode);
     if (this.editorView.mainWidget() &&
         Common.Settings.Settings.instance().moduleSetting('auto-reveal-in-navigator').get()) {
       void this.revealInNavigator(uiSourceCode, true);
@@ -860,8 +877,9 @@ export class SourcesPanel extends UI.Panel.Panel implements
   }
 
   private createDebugToolbar(): UI.Toolbar.Toolbar {
-    const debugToolbar = new UI.Toolbar.Toolbar('scripts-debug-toolbar');
-    debugToolbar.element.setAttribute(
+    const debugToolbar = document.createElement('devtools-toolbar');
+    debugToolbar.classList.add('scripts-debug-toolbar');
+    debugToolbar.setAttribute(
         'jslog',
         `${VisualLogging.toolbar('debug').track({keydown: 'ArrowUp|ArrowLeft|ArrowDown|ArrowRight|Enter|Space'})}`);
 
@@ -893,7 +911,7 @@ export class SourcesPanel extends UI.Panel.Panel implements
 
     const label = i18nString(UIStrings.pauseOnCaughtExceptions);
     const setting = Common.Settings.Settings.instance().moduleSetting('pause-on-caught-exception');
-    debugToolbarDrawer.appendChild(UI.SettingsUI.createSettingCheckbox(label, setting, true));
+    debugToolbarDrawer.appendChild(UI.SettingsUI.createSettingCheckbox(label, setting));
 
     return debugToolbarDrawer;
   }
@@ -938,6 +956,17 @@ export class SourcesPanel extends UI.Panel.Panel implements
             jslogContext: 'sources.reveal-in-navigator-sidebar',
           });
     }
+
+    if (UI.ActionRegistry.ActionRegistry.instance().hasAction('drjones.sources-panel-context')) {
+      const editorElement = this.element.querySelector('devtools-text-editor');
+      if (!eventTarget.isSelfOrDescendant(editorElement) && uiSourceCode.contentType().isTextType()) {
+        UI.Context.Context.instance().setFlavor(Workspace.UISourceCode.UISourceCode, uiSourceCode);
+        contextMenu.headerSection().appendAction(
+            'drjones.sources-panel-context',
+        );
+      }
+    }
+
     // Ignore list only works for JavaScript debugging.
     if (uiSourceCode.contentType().hasScripts() &&
         Bindings.DebuggerWorkspaceBinding.DebuggerWorkspaceBinding.instance()
@@ -1071,7 +1100,7 @@ export class SourcesPanel extends UI.Panel.Panel implements
       }
       try {
         return JSON.stringify(this, null, indent);
-      } catch (error) {
+      } catch {
         return String(this);
       }
     }
@@ -1155,13 +1184,13 @@ export class SourcesPanel extends UI.Panel.Panel implements
 
     // Create vertical box with stack.
     const vbox = new UI.Widget.VBox();
-    vbox.element.appendChild(this.debugToolbar.element);
+    vbox.element.appendChild(this.debugToolbar);
     vbox.element.appendChild(this.debugToolbarDrawer);
 
     vbox.setMinimumAndPreferredSizes(minToolbarWidth, 25, minToolbarWidth, 100);
     this.sidebarPaneStack = UI.ViewManager.ViewManager.instance().createStackLocation(
         this.revealDebuggerSidebar.bind(this), undefined, 'debug');
-    this.sidebarPaneStack.widget().element.classList.add('overflow-auto');
+    this.sidebarPaneStack.widget().element.classList.add('y-overflow-only');
     this.sidebarPaneStack.widget().show(vbox.element);
     this.sidebarPaneStack.widget().element.appendChild(this.debuggerPausedMessage.element());
     this.sidebarPaneStack.appendApplicableItems('sources.sidebar-top');
@@ -1186,7 +1215,7 @@ export class SourcesPanel extends UI.Panel.Panel implements
       void this.sidebarPaneStack.showView(this.callstackPane);
       this.extensionSidebarPanesContainer = this.sidebarPaneStack;
       this.sidebarPaneView = vbox;
-      this.splitWidget.uninstallResizer(this.debugToolbar.gripElementForResize());
+      this.splitWidget.uninstallResizer(this.debugToolbar);
     } else {
       const splitWidget =
           new UI.SplitWidget.SplitWidget(true, true, 'sources-panel-debugger-sidebar-split-view-state', 0.5);
@@ -1201,7 +1230,7 @@ export class SourcesPanel extends UI.Panel.Panel implements
       splitWidget.setSidebarWidget(tabbedLocation.tabbedPane());
       this.tabbedLocationHeader = tabbedLocation.tabbedPane().headerElement();
       this.splitWidget.installResizer(this.tabbedLocationHeader);
-      this.splitWidget.installResizer(this.debugToolbar.gripElementForResize());
+      this.splitWidget.installResizer(this.debugToolbar);
       tabbedLocation.appendView(scopeChainView);
       tabbedLocation.appendView(this.watchSidebarPane);
       tabbedLocation.appendApplicableItems('sources.sidebar-tabs');

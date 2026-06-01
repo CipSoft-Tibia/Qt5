@@ -768,8 +768,8 @@ bool QAbstractOAuth2Private::handleRfcErrorResponseIfPresent(const QVariantMap &
         // RFC 6749, Section 5.2 Error Response
         const QString uri = data.value(QtOAuth2RfcKeywords::errorUri).toString();
         const QString description = data.value(QtOAuth2RfcKeywords::errorDescription).toString();
-        qCWarning(loggingCategory, "Authorization stage: AuthenticationError: %s(%s): %s",
-                  qPrintable(error), qPrintable(uri), qPrintable(description));
+        qCWarning(loggingCategory, "Authorization stage: AuthenticationError: %ls(%ls): %ls",
+                  qUtf16Printable(error), qUtf16Printable(uri), qUtf16Printable(description));
 
 #if QT_DEPRECATED_SINCE(6, 13)
         QT_IGNORE_DEPRECATIONS(Q_EMIT q->error(error, description, uri);)

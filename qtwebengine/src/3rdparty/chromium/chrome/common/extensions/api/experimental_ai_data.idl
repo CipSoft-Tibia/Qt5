@@ -12,6 +12,10 @@ namespace experimentalAiData {
     static void getAiData(long domNodeId,
                           DOMString frameId,
                           DOMString userInput,
+                          long tabId,
                           DataCallback callback);
+    static void getAiDataWithSpecifier(long tabId,
+                                       ArrayBuffer aiDataSpecifier,
+                                       DataCallback callback);
   };
 };

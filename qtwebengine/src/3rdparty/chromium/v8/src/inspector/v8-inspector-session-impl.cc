@@ -90,19 +90,19 @@ int V8ContextInfo::executionContextId(v8::Local<v8::Context> context) {
   return InspectedContext::contextId(context);
 }
 
-std::unique_ptr<V8InspectorSessionImpl> V8InspectorSessionImpl::create(
+V8InspectorSessionImpl* V8InspectorSessionImpl::create(
     V8InspectorImpl* inspector, int contextGroupId, int sessionId,
-    V8Inspector::Channel* channel, StringView state,
+    V8Inspector::ManagedChannel* channel, StringView state,
     V8Inspector::ClientTrustLevel clientTrustLevel,
     std::shared_ptr<V8DebuggerBarrier> debuggerBarrier) {
-  return std::unique_ptr<V8InspectorSessionImpl>(new V8InspectorSessionImpl(
-      inspector, contextGroupId, sessionId, channel, state, clientTrustLevel,
-      std::move(debuggerBarrier)));
+  return new V8InspectorSessionImpl(inspector, contextGroupId, sessionId,
+                                    channel, state, clientTrustLevel,
+                                    std::move(debuggerBarrier));
 }
 
 V8InspectorSessionImpl::V8InspectorSessionImpl(
     V8InspectorImpl* inspector, int contextGroupId, int sessionId,
-    V8Inspector::Channel* channel, StringView savedState,
+    V8Inspector::ManagedChannel* channel, StringView savedState,
     V8Inspector::ClientTrustLevel clientTrustLevel,
     std::shared_ptr<V8DebuggerBarrier> debuggerBarrier)
     : m_contextGroupId(contextGroupId),
@@ -359,6 +359,8 @@ void V8InspectorSessionImpl::reportAllContexts(V8RuntimeAgentImpl* agent) {
 }
 
 void V8InspectorSessionImpl::dispatchProtocolMessage(StringView message) {
+  KeepSessionAliveScope keepAlive(*this);
+
   using v8_crdtp::span;
   using v8_crdtp::SpanFrom;
   span<uint8_t> cbor;
@@ -487,7 +489,7 @@ V8InspectorSessionImpl::searchInTextByLines(StringView text, StringView query,
                                             bool caseSensitive, bool isRegex) {
   // TODO(dgozman): search may operate on StringView and avoid copying |text|.
   std::vector<std::unique_ptr<protocol::Debugger::SearchMatch>> matches =
-      searchInTextByLinesImpl(this, toString16(text), toString16(query),
+      searchInTextByLinesImpl(m_inspector, toString16(text), toString16(query),
                               caseSensitive, isRegex);
   std::vector<std::unique_ptr<protocol::Debugger::API::SearchMatch>> result;
   for (size_t i = 0; i < matches.size(); ++i)

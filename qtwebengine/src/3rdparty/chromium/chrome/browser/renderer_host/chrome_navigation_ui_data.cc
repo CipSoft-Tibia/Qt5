@@ -42,7 +42,7 @@ ChromeNavigationUIData::ChromeNavigationUIData(
   }
 }
 
-ChromeNavigationUIData::~ChromeNavigationUIData() {}
+ChromeNavigationUIData::~ChromeNavigationUIData() = default;
 
 // static
 std::unique_ptr<ChromeNavigationUIData>
@@ -93,6 +93,7 @@ std::unique_ptr<content::NavigationUIData> ChromeNavigationUIData::Clone() {
 
   copy->is_no_state_prefetching_ = is_no_state_prefetching_;
   copy->bookmark_id_ = bookmark_id_;
+  copy->navigation_initiated_from_sync_ = navigation_initiated_from_sync_;
 
   return std::move(copy);
 }

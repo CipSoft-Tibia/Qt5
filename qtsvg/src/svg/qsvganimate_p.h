@@ -36,22 +36,22 @@ public:
 
 public:
     QSvgAnimateNode(QSvgNode *parent = nullptr);
-    virtual ~QSvgAnimateNode();
+    virtual ~QSvgAnimateNode() {}
 
-    void setLinkId(const QString &link);
-    const QString &linkId() const;
+    void setLinkId(const QString &link) { m_linkId = link; }
+    const QString &linkId() const { return m_linkId; }
 
-    virtual AnimationType animationType() const override;
-    virtual bool isActive() const override;
+    virtual AnimationType animationType() const override { return AnimationType::SMIL; }
+    virtual bool isActive() const override { return !finished() || m_fill == Fill::Freeze; }
 
     void setRunningTime(int startMs, int durMs, int endMs, int by);
-    void setRepeatCount(qreal repeatCount);
+    void setRepeatCount(qreal repeatCount) { setIterationCount(repeatCount); }
 
-    void setFill(Fill fill);
-    Fill fill() const;
+    void setFill(Fill fill) { m_fill = fill; }
+    Fill fill() const { return m_fill; }
 
-    void setAdditiveType(Additive additive = Additive::Replace);
-    Additive additiveType() const;
+    void setAdditiveType(Additive additive = Additive::Replace) { m_additive = additive; }
+    Additive additiveType() const { return m_additive; }
 
     virtual void drawCommand(QPainter *p, QSvgExtraStates &states) override;
     virtual bool shouldDrawNode(QPainter *p, QSvgExtraStates &states) const override;
@@ -66,15 +66,15 @@ protected:
 class Q_SVG_EXPORT QSvgAnimateColor : public QSvgAnimateNode
 {
 public:
-    QSvgAnimateColor(QSvgNode *parent = nullptr);
-    virtual Type type() const override;
+    QSvgAnimateColor(QSvgNode *parent = nullptr) : QSvgAnimateNode(parent) {}
+    virtual Type type() const override { return QSvgNode::AnimateColor; }
 };
 
 class Q_SVG_EXPORT QSvgAnimateTransform : public QSvgAnimateNode
 {
 public:
-    QSvgAnimateTransform(QSvgNode *parent = nullptr);
-    virtual Type type() const override;
+    QSvgAnimateTransform(QSvgNode *parent = nullptr) : QSvgAnimateNode(parent) {}
+    virtual Type type() const override { return Type::AnimateTransform; }
 };
 
 QT_END_NAMESPACE

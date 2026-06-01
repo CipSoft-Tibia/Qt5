@@ -22,11 +22,11 @@ import {
   kTextureFormatInfo,
   RegularTextureFormat,
 } from '../../../format_info.js';
-import { GPUTest, TextureTestMixin } from '../../../gpu_test.js';
+import { GPUTest, MaxLimitsTestMixin, TextureTestMixin } from '../../../gpu_test.js';
 import { kFullscreenQuadVertexShaderCode } from '../../../util/shader.js';
 import { TexelView } from '../../../util/texture/texel_view.js';
 
-export const g = makeTestGroup(TextureTestMixin(GPUTest));
+export const g = makeTestGroup(TextureTestMixin(MaxLimitsTestMixin(GPUTest)));
 
 const kTextureViewWriteMethods = [
   'storage-write-fragment',
@@ -35,6 +35,9 @@ const kTextureViewWriteMethods = [
   'render-pass-resolve',
 ] as const;
 type TextureViewWriteMethod = (typeof kTextureViewWriteMethods)[number];
+
+const kTextureViewUsageMethods = ['inherit', 'minimal'] as const;
+type TextureViewUsageMethod = (typeof kTextureViewUsageMethods)[number];
 
 // Src color values to read from a shader array.
 const kColorsFloat = [
@@ -271,6 +274,22 @@ function writeTextureAndGetExpectedTexelView(
   return expectedTexelView;
 }
 
+function getTextureViewUsage(
+  viewUsageMethod: TextureViewUsageMethod,
+  minimalUsageForTest: GPUTextureUsageFlags
+) {
+  switch (viewUsageMethod) {
+    case 'inherit':
+      return 0;
+
+    case 'minimal':
+      return minimalUsageForTest;
+
+    default:
+      unreachable();
+  }
+}
+
 g.test('format')
   .desc(
     `Views of every allowed format.
@@ -280,6 +299,7 @@ Read values from color array in the shader, and write it to the texture view via
 - x= every texture format
 - x= sampleCount {1, 4} if valid
 - x= every possible view write method (see above)
+- x= inherited or minimal texture view usage
 
 TODO: Test sampleCount > 1 for 'render-pass-store' after extending copySinglePixelTextureToBufferUsingComputePass
       to read multiple pixels from multisampled textures. [1]
@@ -318,9 +338,10 @@ TODO: Test rgb10a2uint when TexelRepresentation.numericRange is made per-compone
         }
         return true;
       })
+      .combine('viewUsageMethod', kTextureViewUsageMethods)
   )
   .beforeAllSubcases(t => {
-    const { format, method } = t.params;
+    const { format, method, sampleCount } = t.params;
     t.skipIfTextureFormatNotSupported(format);
 
     switch (method) {
@@ -328,17 +349,31 @@ TODO: Test rgb10a2uint when TexelRepresentation.numericRange is made per-compone
       case 'storage-write-fragment':
         // Still need to filter again for compat mode.
         t.skipIfTextureFormatNotUsableAsStorageTexture(format);
+        if (sampleCount > 1) {
+          t.skipIfMultisampleNotSupportedForFormat(format);
+        }
+        break;
+      case 'render-pass-resolve':
+      case 'render-pass-store':
+        // Requires multisample in `writeTextureAndGetExpectedTexelView`
+        t.skipIfMultisampleNotSupportedForFormat(format);
         break;
     }
   })
   .fn(t => {
-    const { format, method, sampleCount } = t.params;
+    const { format, method, sampleCount, viewUsageMethod } = t.params;
 
-    const usage =
-      GPUTextureUsage.COPY_SRC |
-      (method.includes('storage')
-        ? GPUTextureUsage.STORAGE_BINDING
-        : GPUTextureUsage.RENDER_ATTACHMENT);
+    t.skipIf(
+      t.isCompatibility &&
+        method === 'storage-write-fragment' &&
+        !(t.device.limits.maxStorageBuffersInFragmentStage! > 0),
+      `maxStorageBuffersInFragmentStage(${t.device.limits.maxStorageBuffersInFragmentStage}) < 1`
+    );
+
+    const textureUsageForMethod = method.includes('storage')
+      ? GPUTextureUsage.STORAGE_BINDING
+      : GPUTextureUsage.RENDER_ATTACHMENT;
+    const usage = GPUTextureUsage.COPY_SRC | textureUsageForMethod;
 
     const texture = t.createTextureTracked({
       format,
@@ -347,7 +382,9 @@ TODO: Test rgb10a2uint when TexelRepresentation.numericRange is made per-compone
       sampleCount,
     });
 
-    const view = texture.createView();
+    const view = texture.createView({
+      usage: getTextureViewUsage(viewUsageMethod, textureUsageForMethod),
+    });
     const expectedTexelView = writeTextureAndGetExpectedTexelView(
       t,
       method,

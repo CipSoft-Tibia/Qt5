@@ -21,6 +21,7 @@ ScrollablePage {
         }
 
         Frame {
+            enabled: !GalleryConfig.disabled
             anchors.horizontalCenter: parent.horizontalCenter
 
             Column {

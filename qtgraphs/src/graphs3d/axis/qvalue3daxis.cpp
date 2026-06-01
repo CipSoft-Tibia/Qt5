@@ -3,6 +3,7 @@
 
 #include "qvalue3daxis_p.h"
 #include "qvalue3daxisformatter_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -138,17 +139,22 @@ void QValue3DAxis::setSegmentCount(qsizetype count)
 {
     Q_D(QValue3DAxis);
     if (count <= 0) {
-        qWarning(
-            "Warning: Illegal segment count automatically adjusted to a legal one: %" PRIdQSIZETYPE
+        qCWarning(lcAProperties3D,
+            "%s illegal segment count automatically adjusted to a legal one: %" PRIdQSIZETYPE
             " --> 1",
+            qUtf8Printable(QLatin1String(__FUNCTION__)),
             count);
         count = 1;
     }
-    if (d->m_segmentCount != count) {
-        d->m_segmentCount = count;
-        d->emitLabelsChanged();
-        emit segmentCountChanged(count);
+    if (d->m_segmentCount == count) {
+        qCDebug(lcAProperties3D, "%s Segment value is already set to: %" PRIdQSIZETYPE,
+                qUtf8Printable(QLatin1String(__FUNCTION__)), count);
+        return;
     }
+
+    d->m_segmentCount = count;
+    d->emitLabelsChanged();
+    emit segmentCountChanged(count);
 }
 
 qsizetype QValue3DAxis::segmentCount() const
@@ -172,15 +178,21 @@ void QValue3DAxis::setSubSegmentCount(qsizetype count)
 {
     Q_D(QValue3DAxis);
     if (count <= 0) {
-        qWarning("Warning: Illegal subsegment count automatically adjusted to a legal one: "
-                 "%" PRIdQSIZETYPE " -> 1",
-                 count);
+        qCWarning(lcAProperties3D,
+                  "%s illegal subsegment count automatically adjusted to a legal one: "
+                  "%" PRIdQSIZETYPE " -> 1",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)),
+                  count);
         count = 1;
     }
-    if (d->m_subSegmentCount != count) {
-        d->m_subSegmentCount = count;
-        emit subSegmentCountChanged(count);
+    if (d->m_subSegmentCount == count) {
+        qCDebug(lcAProperties3D, "%s subsegment value is already set to: %" PRIdQSIZETYPE,
+                qUtf8Printable(QLatin1String(__FUNCTION__)), count);
+        return;
     }
+
+    d->m_subSegmentCount = count;
+    emit subSegmentCountChanged(count);
 }
 
 qsizetype QValue3DAxis::subSegmentCount() const
@@ -212,11 +224,15 @@ qsizetype QValue3DAxis::subSegmentCount() const
 void QValue3DAxis::setLabelFormat(const QString &format)
 {
     Q_D(QValue3DAxis);
-    if (d->m_labelFormat != format) {
-        d->m_labelFormat = format;
-        d->emitLabelsChanged();
-        emit labelFormatChanged(format);
+    if (d->m_labelFormat == format) {
+        qCDebug(lcAProperties3D, "%s format is already: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(format));
+        return;
     }
+
+    d->m_labelFormat = format;
+    d->emitLabelsChanged();
+    emit labelFormatChanged(format);
 }
 
 QString QValue3DAxis::labelFormat() const
@@ -238,14 +254,17 @@ void QValue3DAxis::setFormatter(QValue3DAxisFormatter *formatter)
     Q_ASSERT(formatter);
     Q_D(QValue3DAxis);
 
-    if (formatter != d->m_formatter) {
-        delete d->m_formatter;
-        d->m_formatter = formatter;
-        formatter->setParent(this);
-        formatter->setAxis(this);
-        emit formatterChanged(formatter);
-        emit formatterDirty();
+    if (formatter == d->m_formatter) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "formatter is already set to:" << formatter;
+        return;
     }
+    delete d->m_formatter;
+    d->m_formatter = formatter;
+    formatter->setParent(this);
+    formatter->setAxis(this);
+    emit formatterChanged(formatter);
+    emit formatterDirty();
 }
 
 QValue3DAxisFormatter *QValue3DAxis::formatter() const
@@ -266,10 +285,14 @@ QValue3DAxisFormatter *QValue3DAxis::formatter() const
 void QValue3DAxis::setReversed(bool enable)
 {
     Q_D(QValue3DAxis);
-    if (d->m_reversed != enable) {
-        d->m_reversed = enable;
-        emit reversedChanged(enable);
+    if (d->m_reversed == enable) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "axis Reverse value is already set to:" << enable;
+        return;
     }
+
+    d->m_reversed = enable;
+    emit reversedChanged(enable);
 }
 
 bool QValue3DAxis::reversed() const

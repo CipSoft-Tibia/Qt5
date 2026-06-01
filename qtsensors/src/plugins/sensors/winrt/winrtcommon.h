@@ -14,11 +14,13 @@ namespace ABI {
     }
 }
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcWinRtSensors)
 
 quint64 dateTimeToMsSinceEpoch(const ABI::Windows::Foundation::DateTime &dateTime);
+
+QT_END_NAMESPACE
 
 #endif // WINRTCOMMON_H
 

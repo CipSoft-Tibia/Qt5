@@ -7,22 +7,29 @@
 #include <memory>
 
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/certificate_manager/certificate_manager_utils.h"
 #include "chrome/browser/ui/webui/certificate_manager_localized_strings_provider.h"
 #include "chrome/browser/ui/webui/plural_string_handler.h"
-#include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/chrome_features.h"
+#include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/browser_resources.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "ui/webui/webui_util.h"
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
+#include "chrome/browser/ui/webui/certificate_manager/client_cert_sources.h"
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ui/webui/certificate_provisioning_ui_handler.h"
 #include "chrome/browser/ui/webui/certificates_handler.h"
 #include "components/user_manager/user_manager.h"
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace {
 
@@ -30,7 +37,7 @@ const char kCRSLearnMoreLink[] =
     "https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/"
     "chrome_root_store/faq.md";
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 void AddCertificateManagerStrings(content::WebUIDataSource* html_source) {
   struct {
     const char* name;
@@ -47,7 +54,7 @@ void AddCertificateManagerStrings(content::WebUIDataSource* html_source) {
   }
   certificate_manager::AddLocalizedStrings(html_source);
 }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
 void AddCertificateManagerV2Strings(content::WebUIDataSource* html_source) {
@@ -96,6 +103,20 @@ void AddCertificateManagerV2Strings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_CERTIFICATE_MANAGER_V2_EXPORT_BUTTON_LABEL},
       {"certificateManagerV2ExportButtonAriaLabel",
        IDS_SETTINGS_CERTIFICATE_MANAGER_V2_EXPORT_BUTTON_ARIA_LABEL},
+      {"certificateManagerV2DeleteErrorTitle",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_DELETE_ERROR_TITLE},
+      {"certificateManagerV2ImportErrorTitle",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_IMPORT_ERROR_TITLE},
+      {"certificateManagerV2ImportButtonLabel",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_IMPORT_BUTTON_LABEL},
+      {"certificateManagerV2ImportButtonAriaLabel",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_IMPORT_BUTTON_ARIA_LABEL},
+      {"certificateManagerV2ImportAndBindButtonLabel",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_IMPORT_AND_BIND_BUTTON_LABEL},
+      {"certificateManagerV2ImportAndBindButtonAriaLabel",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_IMPORT_AND_BIND_BUTTON_ARIA_LABEL},
+      {"certificateManagerV2EnterPasswordTitle",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_ENTER_PASSWORD_TITLE},
       {"certificateManagerV2PlatformCertsTitle",
        IDS_SETTINGS_CERTIFICATE_MANAGER_V2_PLATFORM_CERTS_TITLE},
       {"certificateManagerV2PlatformCertsToggleLabel",
@@ -106,6 +127,35 @@ void AddCertificateManagerV2Strings(content::WebUIDataSource* html_source) {
       {"certificateManagerV2PlatformCertsManageLinkAriaDescription",
        IDS_SETTINGS_CERTIFICATE_MANAGER_V2_PLATFORM_CERTS_MANAGE_LINK_ARIA_DESCRIPTION},
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS)
+      {"certificateProvisioningListHeader",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_LIST_HEADER},
+      {"certificateProvisioningRefresh",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_REFRESH},
+      {"certificateProvisioningReset",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_RESET},
+      {"certificateProvisioningDetails",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_DETAILS},
+      {"certificateProvisioningAdvancedSectionTitle",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_ADVANCED},
+      {"certificateProvisioningProfileName",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_CERTIFICATE_PROFILE_NAME},
+      {"certificateProvisioningProfileId",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_CERTIFICATE_PROFILE_ID},
+      {"certificateProvisioningStatus",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_STATUS},
+      {"certificateProvisioningStatusId",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_STATUS_ID},
+      {"certificateProvisioningLastUpdate",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_LAST_UPDATE},
+      {"certificateProvisioningLastUnsuccessfulStatus",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_PROVISIONING_LAST_UNSUCCESSFUL_STATUS},
+      {"certificateProvisioningPublicKey", IDS_CERT_DETAILS_SUBJECT_KEY},
+      // For ChromeOS provisioning UI
+      {"moreActions", IDS_SETTINGS_MORE_ACTIONS},
+      {"menu", IDS_MENU},
+      {"close", IDS_CLOSE},
+#endif  // BUILDFLAG(IS_CHROMEOS)
       {"certificateManagerV2PlatformCertsViewLink",
        IDS_SETTINGS_CERTIFICATE_MANAGER_V2_PLATFORM_CERTS_VIEW_LINK},
       {"certificateManagerV2Platform",
@@ -116,8 +166,14 @@ void AddCertificateManagerV2Strings(content::WebUIDataSource* html_source) {
        IDS_CERTIFICATE_MANAGER_V2_SUBPAGE_BACK_BUTTON_ARIA_ROLE_DESCRIPTION},
       {"certificateManagerV2CertEntryViewAriaLabel",
        IDS_CERTIFICATE_MANAGER_V2_CERT_ENTRY_VIEW_ARIA_LABEL},
+      {"certificateManagerV2CertEntryDeleteAriaLabel",
+       IDS_CERTIFICATE_MANAGER_V2_CERT_ENTRY_DELETE_ARIA_LABEL},
       {"certificateManagerV2CertHashCopyAriaLabel",
        IDS_CERTIFICATE_MANAGER_V2_CERT_HASH_COPY_ARIA_LABEL},
+      {"certificateManagerV2UserCertsTitle",
+       IDS_SETTINGS_CERTIFICATE_MANAGER_V2_USER_CERTS_TITLE},
+      {"certificateManagerV2ListExpandAriaLabel",
+       IDS_CERTIFICATE_MANAGER_V2_LIST_EXPAND_ARIA_LABEL},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 }
@@ -137,7 +193,7 @@ CertificateManagerUI::CertificateManagerUI(content::WebUI* web_ui)
   webui::EnableTrustedTypesCSP(source);
   webui::SetJSModuleDefaults(source);
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
   if (!base::FeatureList::IsEnabled(features::kEnableCertManagementUIV2)) {
     // Serve the old certificate manager
     AddCertificateManagerStrings(source);
@@ -158,19 +214,36 @@ CertificateManagerUI::CertificateManagerUI(content::WebUI* web_ui)
         chromeos::cert_provisioning::CertificateProvisioningUiHandler::
             CreateForProfile(profile));
   }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
   if (base::FeatureList::IsEnabled(features::kEnableCertManagementUIV2)) {
     source->AddResourcePath("", IDR_CERT_MANAGER_DIALOG_V2_HTML);
     AddCertificateManagerV2Strings(source);
     source->AddString("crsLearnMoreUrl", kCRSLearnMoreLink);
+#if BUILDFLAG(IS_CHROMEOS)
+    ClientCertManagementAccessControls client_cert_policy(profile);
+    source->AddBoolean(
+        "clientCertImportAllowed",
+        client_cert_policy.IsManagementAllowed(
+            ClientCertManagementAccessControls::kSoftwareBacked));
+    source->AddBoolean(
+        "clientCertImportAndBindAllowed",
+        client_cert_policy.IsManagementAllowed(
+            ClientCertManagementAccessControls::kHardwareBacked));
+    web_ui->AddMessageHandler(
+        chromeos::cert_provisioning::CertificateProvisioningUiHandler::
+            CreateForProfile(profile));
+#endif
 
     auto plural_string_handler = std::make_unique<PluralStringHandler>();
     plural_string_handler->AddLocalizedString(
         "certificateManagerV2NumCerts",
         IDS_SETTINGS_CERTIFICATE_MANAGER_V2_NUM_CERTS);
     web_ui->AddMessageHandler(std::move(plural_string_handler));
+    PrefService* prefs = profile->GetPrefs();
+    source->AddBoolean("userCertsImportAllowed",
+                       IsCACertificateManagementAllowed(*prefs));
   }
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)

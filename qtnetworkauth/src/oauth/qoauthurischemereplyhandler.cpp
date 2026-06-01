@@ -3,8 +3,8 @@
 // Qt-Security score:critical reason:authorization-protocol
 
 #include "qabstractoauthreplyhandler_p.h" // for lcReplyHandler()
-#include "qoauthoobreplyhandler_p.h"
 #include "qoauthurischemereplyhandler.h"
+#include "qoauthurischemereplyhandler_p.h"
 
 #include <QtGui/qdesktopservices.h>
 
@@ -14,6 +14,8 @@
 #include <QtCore/qurlquery.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QOAuthUriSchemeReplyHandler
@@ -148,70 +150,67 @@ QT_BEGIN_NAMESPACE
     handler - see \l {Qt OAuth2 Browser Support} for details.
 */
 
-class QOAuthUriSchemeReplyHandlerPrivate : public QOAuthOobReplyHandlerPrivate
+bool QOAuthUriSchemeReplyHandlerPrivate::hasValidRedirectUrl() const
 {
-    Q_DECLARE_PUBLIC(QOAuthUriSchemeReplyHandler)
+    // RFC 6749 Section 3.1.2
+    return redirectUrl.isValid()
+           && !redirectUrl.scheme().isEmpty()
+           && redirectUrl.fragment().isEmpty();
+}
 
-public:
-    bool hasValidRedirectUrl() const
-    {
-        // RFC 6749 Section 3.1.2
-        return redirectUrl.isValid()
-               && !redirectUrl.scheme().isEmpty()
-               && redirectUrl.fragment().isEmpty();
-    }
+bool QOAuthUriSchemeReplyHandlerPrivate::_q_handleRedirectUrl(const QUrl &url)
+{
+    Q_Q(QOAuthUriSchemeReplyHandler);
+    // Remove the query parameters from comparison, and compare them manually (the parameters
+    // of interest like 'code' and 'state' are received as query parameters and comparison
+    // would always fail). Fragments are removed as some servers (eg. Reddit) seem to add some,
+    // possibly for some implementation consistency with other OAuth flows where fragments
+    // are actually used. Some servers (eg. Microsoft) also add an extra '/' path, so treat
+    // '/' and empty paths as equal
+    auto normalized = [](const QUrl &url) {
+        auto normalized = url.adjusted(QUrl::RemoveQuery | QUrl::RemoveFragment);
+        if (normalized.path().isEmpty())
+            normalized.setPath("/"_L1);
+        return normalized;
+    };
 
-    bool _q_handleRedirectUrl(const QUrl &url)
-    {
-        Q_Q(QOAuthUriSchemeReplyHandler);
-        // Remove the query parameters from comparison, and compare them manually (the parameters
-        // of interest like 'code' and 'state' are received as query parameters and comparison
-        // would always fail). Fragments are removed as some servers (eg. Reddit) seem to add some,
-        // possibly for some implementation consistency with other OAuth flows where fragments
-        // are actually used.
-        bool urlMatch = url.matches(redirectUrl, QUrl::RemoveQuery | QUrl::RemoveFragment);
+    bool urlMatch = normalized(url).matches(normalized(redirectUrl), QUrl::None);
 
-        const QUrlQuery responseQuery{url};
-        if (urlMatch) {
-            // Verify that query parameters that are part of redirect URL are present in redirection
-            const auto registeredItems = QUrlQuery{redirectUrl}.queryItems();
-            for (const auto &item: registeredItems) {
-                if (!responseQuery.hasQueryItem(item.first)
-                    || responseQuery.queryItemValue(item.first) != item.second) {
-                    urlMatch = false;
-                    break;
-                }
+    const QUrlQuery responseQuery{url};
+    if (urlMatch) {
+        // Verify that query parameters that are part of redirect URL are present in redirection
+        const auto registeredItems = QUrlQuery{redirectUrl}.queryItems();
+        for (const auto &item: registeredItems) {
+            if (!responseQuery.hasQueryItem(item.first)
+                || responseQuery.queryItemValue(item.first) != item.second) {
+                urlMatch = false;
+                break;
             }
         }
-
-        if (!urlMatch) {
-            qCDebug(lcReplyHandler(), "Url ignored");
-            if (forwardUnhandledUrls) {
-                // The URLs received here might be unrelated. Further, in case of "https" scheme,
-                // the first request issued to the authorization server comes through here
-                // (if this handler is listening)
-                QDesktopServices::openUrl(url);
-            }
-            return false;
-        }
-
-        qCDebug(lcReplyHandler(), "Url handled");
-        emit q->callbackDataReceived(url.toEncoded());
-
-        QVariantMap resultParameters;
-        const auto responseItems = responseQuery.queryItems(QUrl::FullyDecoded);
-        for (const auto &item : responseItems)
-            resultParameters.insert(item.first, item.second);
-
-        emit q->callbackReceived(resultParameters);
-        return true;
     }
 
-public:
-    QUrl redirectUrl;
-    bool forwardUnhandledUrls = true;
-    bool listening = false;
-};
+    if (!urlMatch) {
+        qCDebug(lcReplyHandler(), "Url ignored");
+        if (forwardUnhandledUrls) {
+            // The URLs received here might be unrelated. Further, in case of "https" scheme,
+            // the first request issued to the authorization server comes through here
+            // (if this handler is listening)
+            QDesktopServices::openUrl(url);
+        }
+        return false;
+    }
+
+    qCDebug(lcReplyHandler(), "Url handled");
+    emit q->callbackDataReceived(url.toEncoded());
+
+    QVariantMap resultParameters;
+    const auto responseItems = responseQuery.queryItems(QUrl::FullyDecoded);
+    for (const auto &item : responseItems)
+        resultParameters.insert(item.first, item.second);
+
+    emit q->callbackReceived(resultParameters);
+    return true;
+}
 
 /*!
     \fn QOAuthUriSchemeReplyHandler::QOAuthUriSchemeReplyHandler()

@@ -7,12 +7,12 @@
 
 syntax = "proto2";
 
-option optimize_for = LITE_RUNTIME;
-
 package safe_browsing;
 
 import "components/enterprise/common/proto/connectors.proto";
 import "components/safe_browsing/core/common/proto/csd.proto";
+
+option optimize_for = LITE_RUNTIME;
 
 message RTLookupRequest {
   // If applicable, URL submitted from Chrome.
@@ -108,6 +108,13 @@ message RTLookupRequest {
   }
   // Whether the URL sent to Safe Browsing is mainframe URL or subframe URL.
   optional FrameType frame_type = 10;
+
+  // The Android app that launched Chrome.
+  optional ReferringAppInfo referring_app_info = 15;
+
+  // Local IP addresses of the device. This is only used for enterprise
+  // requests.
+  repeated string local_ips = 16;
 }
 
 message RTLookupResponse {
@@ -197,6 +204,10 @@ message RTLookupResponse {
   // The URL categories associated with the URL in the request. Only populated
   // for Enterprise Protego and only if categories were found for the URL.
   repeated string url_categories = 3;
+
+  // The information of Llama trigger rules that triggered a CSD ping. Set only
+  // if client_side_detection_type = FORCE_REQUEST.
+  optional LlamaForcedTriggerInfo llama_forced_trigger_info = 4;
 }
 
 // mirrors google.protobuf.Timestamp

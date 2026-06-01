@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-    \page qtjenny.html
     \title Qt Jenny: Java Code Generator
+    \group qtjenny
+    \ingroup android
     \brief Overview of Qt Jenny
 
     Qt Jenny translates Java APIs to Qt C++ wrappers, allowing Qt C++ programs
@@ -24,6 +25,8 @@
     code, therefore utilizing all the convenience QJniObject brings.
     \endlist
 
+    \section1 Examples
+    See \l {QtJenny Demo} for an example how to use Qt Jenny.
     \section1 How Qt Jenny works
 
     Qt Jenny translates Java APIs to Qt C++ wrappers by the use of the following
@@ -39,7 +42,17 @@
     that there's a separate Gradle project for generating the
     code that the Qt CMake project uses. The CMake project triggers the
     code generation at project configuration time
-    (in other words, when you run CMake).
+    (in other words, when you run CMake). For an application that
+    invokes methods but does not need to implement any callbacks,
+    a single code-generation project is enough. For an application
+    that uses both method invocations and interface callbacks, two generation
+    projects are needed: one for the method proxies and one for the
+    callback hierarchy. For an application that needs to extend
+    classes, three generation projects are needed: one for the method proxies,
+    one for the Java glue code, and one for the callback hierarchy.
+
+    The example code in \l {QtJenny Demo} uses three generation projects,
+    since it uses class extension.
 
     \image {../images/qtjenny-sequence.drawio.svg} {How it works}
 
@@ -52,6 +65,6 @@
     Qt Jenny potentially contains third-party modules under the following
     permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtjenny}
+    \annotatedlist attributions-qtjenny
 
 */

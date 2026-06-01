@@ -38,6 +38,8 @@
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_property.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_animation_play_state.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_replace_state.h"
 #include "third_party/blink/renderer/core/animation/animation_effect.h"
 #include "third_party/blink/renderer/core/animation/animation_effect_owner.h"
 #include "third_party/blink/renderer/core/animation/compositor_animations.h"
@@ -71,18 +73,6 @@ class CORE_EXPORT Animation : public EventTarget,
   USING_PRE_FINALIZER(Animation, Dispose);
 
  public:
-  enum AnimationPlayState {
-    kUnset,
-    kIdle,
-    kPending,  // TODO(crbug.com/958433) remove non-spec compliant state.
-    kRunning,
-    kPaused,
-    kFinished
-  };
-
-  // https://w3.org/TR/web-animations-1/#animation-replace-state
-  enum ReplaceState { kActive, kRemoved, kPersisted };
-
   // Priority for sorting getAnimation by Animation class, arranged from lowest
   // priority to highest priority as per spec:
   // https://w3.org/TR/web-animations-1/#dom-document-getanimations
@@ -152,18 +142,16 @@ class CORE_EXPORT Animation : public EventTarget,
 
   std::optional<AnimationTimeDelta> UnlimitedCurrentTime() const;
 
-  // https://drafts.csswg.org/web-animations-2/#the-progress-of-an-animation
-  std::optional<double> progress() const;
+  // https://drafts.csswg.org/web-animations-2/#the-overall-progress-of-an-animation
+  std::optional<double> overallProgress() const;
 
   // https://w3.org/TR/web-animations-1/#play-states
-  String PlayStateString() const;
-  static const char* PlayStateString(AnimationPlayState);
-  AnimationPlayState CalculateAnimationPlayState() const;
+  V8AnimationPlayState::Enum CalculateAnimationPlayState() const;
 
   // As a web exposed API, playState must update style and layout if the play
   // state may be affected by it (see CSSAnimation::playState), whereas
   // PlayStateString can be used to query the current play state.
-  virtual String playState() const;
+  virtual V8AnimationPlayState playState() const;
 
   bool PendingInternal() const;
 
@@ -183,13 +171,28 @@ class CORE_EXPORT Animation : public EventTarget,
   ScriptPromise<Animation> ready(ScriptState*);
 
   bool Paused() const {
-    return CalculateAnimationPlayState() == kPaused && !is_paused_for_testing_;
+    return CalculateAnimationPlayState() ==
+               V8AnimationPlayState::Enum::kPaused &&
+           !is_paused_for_testing_;
   }
 
   bool Playing() const override {
-    return CalculateAnimationPlayState() == kRunning && !Limited() &&
-           !is_paused_for_testing_;
+    return CalculateAnimationPlayState() ==
+               V8AnimationPlayState::Enum::kRunning &&
+           !Limited() && !is_paused_for_testing_;
   }
+
+  // Differs from Playing() in the case of a non-monotonic timeline outside the
+  // active range. A finished animation is not Playing since no update is
+  // required due to passage of time. This behavior also works for scroll-linked
+  // animations since until the animation exits the finished state, no updates
+  // are required.  When in the before phase, the normal passage of time will
+  // trigger an effect change; however, the same is not true for scroll-linked
+  // animations.
+  bool EffectivelyPlaying() const;
+
+  // Notification that the animation is entering or exiting the active phase.
+  void OnActivePhaseStateChange(bool in_active_phase);
 
   bool Limited() const { return Limited(CurrentTimeInternal()); }
   bool FinishedInternal() const { return finished_; }
@@ -312,7 +315,12 @@ class CORE_EXPORT Animation : public EventTarget,
                            // including keyframes or active interval.
     kPendingCancel,        // Animation has been canceled, but could restart
                            // conditions permitting.
-    kPendingRestart        // Animation is to be restarted.
+    kPendingRestart,       // Animation is to be restarted.
+    kPaintWorkletImageCreated,  // A compositable animation was held in limbo
+                                // awaiting paint of the paint worklet image. It
+                                // can now be started on the compositor.
+    kPendingDowngrade  // Paint is forcing the animation to downgrade to
+                       // run on the main thread.
   };
   void SetCompositorPending(CompositorPendingReason reason);
 
@@ -363,12 +371,14 @@ class CORE_EXPORT Animation : public EventTarget,
   bool IsReplaceable();
   void RemoveReplacedAnimation();
   void persist();
-  String replaceState();
+  V8ReplaceState replaceState();
   void commitStyles(ExceptionState& = ASSERT_NO_EXCEPTION);
   bool ReplaceStateRemoved() const override {
-    return replace_state_ == kRemoved;
+    return replace_state_ == V8ReplaceState::Enum::kRemoved;
   }
-  bool ReplaceStateActive() const { return replace_state_ == kActive; }
+  bool ReplaceStateActive() const {
+    return replace_state_ == V8ReplaceState::Enum::kActive;
+  }
 
   // Overridden for CSS animations to force pending animation properties to be
   // applied. This step is required before any web animation API calls that
@@ -388,6 +398,11 @@ class CORE_EXPORT Animation : public EventTarget,
   }
   bool AnimationHasNoEffect() const { return animation_has_no_effect_; }
 
+  // A native paint worklet animation has no visible effect until the deferred
+  // paint image has been generated. If the animation is not currently
+  // composited we need to restart it on the compositor.
+  void OnPaintWorkletImageCreated();
+
   bool WaitingOnDeferredStartTime() {
     return !start_time_ && (pending_play_ || pending_pause_);
   }
@@ -399,6 +414,15 @@ class CORE_EXPORT Animation : public EventTarget,
       AnimationTimeDelta start_time = AnimationTimeDelta()) {
     start_time_ = start_time;
   }
+
+  enum NativePaintWorkletProperties {
+    kNoPaintWorklet = 0,
+    kBackgroundColorPaintWorklet = 1,
+    kClipPathPaintWorklet = 2
+  };
+
+  using NativePaintWorkletReasons = uint32_t;
+  NativePaintWorkletReasons GetNativePaintWorkletReasons() const;
 
  protected:
   DispatchEventResult DispatchEventInternal(Event&) override;
@@ -518,7 +542,8 @@ class CORE_EXPORT Animation : public EventTarget,
   // Extended play state reported to dev tools. This play state has an
   // additional pending state that is not part of the spec by expected by dev
   // tools.
-  AnimationPlayState reported_play_state_;
+  V8AnimationPlayState::Enum reported_play_state_ =
+      V8AnimationPlayState::Enum::kIdle;
   double playback_rate_;
   // The pending playback rate is not currently in effect. It typically takes
   // effect when running a scheduled task in response to the animation being
@@ -556,7 +581,7 @@ class CORE_EXPORT Animation : public EventTarget,
   Member<CSSValue> style_dependent_range_start_;
   Member<CSSValue> style_dependent_range_end_;
 
-  ReplaceState replace_state_;
+  V8ReplaceState::Enum replace_state_ = V8ReplaceState::Enum::kActive;
 
   // Testing flags.
   bool is_paused_for_testing_;
@@ -588,6 +613,16 @@ class CORE_EXPORT Animation : public EventTarget,
   Member<Event> pending_cancelled_event_;
 
   Member<Event> pending_remove_event_;
+
+  // Cache whether animation can potentially have native paint worklets.
+  // In the event of the keyframes changing, we need a new evaluation, of
+  // the composited status for native paint worklet eligible properties.
+  // A change in the playState can also necessitate a composited style update.
+  mutable std::optional<NativePaintWorkletReasons>
+      native_paint_worklet_reasons_;
+  mutable std::optional<NativePaintWorkletReasons>
+      prior_native_paint_worklet_reasons_;
+  Member<Element> prior_native_paint_worklet_target_;
 
   // TODO(crbug.com/960944): Consider reintroducing kPause and cleanup use of
   // mutually exclusive pending_play_ and pending_pause_ flags.

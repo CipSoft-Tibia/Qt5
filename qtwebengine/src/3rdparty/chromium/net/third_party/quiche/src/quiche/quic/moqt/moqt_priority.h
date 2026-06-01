@@ -27,10 +27,16 @@ enum class MoqtDeliveryOrder : uint8_t {
 // parameters.
 QUICHE_EXPORT webtransport::SendOrder SendOrderForStream(
     MoqtPriority subscriber_priority, MoqtPriority publisher_priority,
-    uint64_t group_id, MoqtDeliveryOrder delivery_order);
-QUICHE_EXPORT webtransport::SendOrder SendOrderForStream(
+    uint64_t group_id, uint64_t subgroup_id, MoqtDeliveryOrder delivery_order);
+// This is just a wrapper for SendOrderForStream, that uses the object ID where
+// the subgroup ID would normally go.
+QUICHE_EXPORT webtransport::SendOrder SendOrderForDatagram(
     MoqtPriority subscriber_priority, MoqtPriority publisher_priority,
     uint64_t group_id, uint64_t object_id, MoqtDeliveryOrder delivery_order);
+// Determine the send order for FETCH. As all objects are on one stream, only
+// subscriber priority matters.
+QUICHE_EXPORT webtransport::SendOrder SendOrderForFetch(
+    MoqtPriority subscriber_priority);
 
 // Returns |send_order| updated with the new |subscriber_priority|.
 QUICHE_EXPORT webtransport::SendOrder UpdateSendOrderForSubscriberPriority(
@@ -38,6 +44,9 @@ QUICHE_EXPORT webtransport::SendOrder UpdateSendOrderForSubscriberPriority(
 
 // WebTransport send order set on the MoQT control stream.
 QUICHE_EXPORT extern const webtransport::SendOrder kMoqtControlStreamSendOrder;
+
+// WebTransport send order set on MoQT bandwidth probe streams.
+QUICHE_EXPORT extern const webtransport::SendOrder kMoqtProbeStreamSendOrder;
 
 }  // namespace moqt
 

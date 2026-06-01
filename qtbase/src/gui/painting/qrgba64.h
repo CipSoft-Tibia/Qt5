@@ -28,7 +28,7 @@ class QRgba64 {
 #endif
     };
 
-    explicit Q_ALWAYS_INLINE constexpr QRgba64(quint64 c) : rgba(c) { }
+    Q_ALWAYS_INLINE explicit constexpr QRgba64(quint64 c) : rgba(c) { }
 public:
     QRgba64() = default;
 
@@ -148,11 +148,11 @@ public:
     }
 
 private:
-    static constexpr Q_ALWAYS_INLINE quint64 alphaMask() { return Q_UINT64_C(0xffff) << AlphaShift; }
+    Q_ALWAYS_INLINE static constexpr quint64 alphaMask() { return Q_UINT64_C(0xffff) << AlphaShift; }
 
-    static constexpr Q_ALWAYS_INLINE quint8 div_257_floor(uint x) { return quint8((x - (x >> 8)) >> 8); }
-    static constexpr Q_ALWAYS_INLINE quint8 div_257(quint16 x) { return div_257_floor(x + 128U); }
-    constexpr Q_ALWAYS_INLINE QRgba64 unpremultiplied_32bit() const
+    Q_ALWAYS_INLINE static constexpr quint8 div_257_floor(uint x) { return quint8((x - (x >> 8)) >> 8); }
+    Q_ALWAYS_INLINE static constexpr quint8 div_257(quint16 x) { return div_257_floor(x + 128U); }
+    Q_ALWAYS_INLINE constexpr QRgba64 unpremultiplied_32bit() const
     {
         if (isOpaque() || isTransparent())
             return *this;
@@ -162,7 +162,7 @@ private:
         const quint16 b = quint16((blue()  * 0xffff + a/2) / a);
         return fromRgba64(r, g, b, quint16(a));
     }
-    constexpr Q_ALWAYS_INLINE QRgba64 unpremultiplied_64bit() const
+    Q_ALWAYS_INLINE constexpr QRgba64 unpremultiplied_64bit() const
     {
         if (isOpaque() || isTransparent())
             return *this;

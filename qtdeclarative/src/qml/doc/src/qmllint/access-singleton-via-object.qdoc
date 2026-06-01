@@ -8,6 +8,8 @@
 \title Cannot access singleton as a property of an object
 \brief [access-singleton-via-object] A singleton was incorrectly accessed.
 
+\qmllintwarningcategory access-singleton-via-object
+
 \section1 Access singleton via object
 
 \section2 What happened?

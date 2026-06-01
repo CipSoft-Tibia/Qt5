@@ -53,6 +53,7 @@
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_status.h"
 #include "third_party/blink/renderer/platform/loader/fetch/text_resource_decoder_options.h"
+#include "third_party/blink/renderer/platform/loader/integrity_report.h"
 #include "third_party/blink/renderer/platform/loader/subresource_integrity.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cancellable_task.h"
@@ -201,14 +202,18 @@ class PLATFORM_EXPORT Resource : public GarbageCollected<Resource>,
 
   void UpdateResourceWidth(const AtomicString& resource_width);
 
+  virtual void UpdateResourceInfoFromObservers() {}
+
   // Returns two priorities:
   // - `first` is the priority with the fix of https://crbug.com/1369823.
   // - `second` is the priority without the fix, ignoring the priority from
   //   ImageLoader.
-  virtual std::pair<ResourcePriority, ResourcePriority>
-  PriorityFromObservers() {
+  virtual std::pair<ResourcePriority, ResourcePriority> PriorityFromObservers()
+      const {
     return std::make_pair(ResourcePriority(), ResourcePriority());
   }
+
+  virtual bool HasNonDegenerateSizeForDecode() const { return false; }
 
   // If this Resource is already finished when AddClient is called, the
   // ResourceClient will be notified asynchronously by a task scheduled
@@ -229,6 +234,7 @@ class PLATFORM_EXPORT Resource : public GarbageCollected<Resource>,
 
   ResourceStatus GetStatus() const { return status_; }
   void SetStatus(ResourceStatus status) { status_ = status; }
+  virtual ResourceStatus GetContentStatus() const { return status_; }
 
   size_t size() const { return EncodedSize() + DecodedSize() + OverheadSize(); }
 
@@ -280,6 +286,7 @@ class PLATFORM_EXPORT Resource : public GarbageCollected<Resource>,
       std::unique_ptr<ParkableStringImpl::SecureDigest> digest) {}
   void SetResponse(const ResourceResponse&);
   const ResourceResponse& GetResponse() const { return response_; }
+  ResourceResponse& GetMutableResponseForTesting() { return response_; }
 
   // Sets the serialized metadata retrieved from the platform's cache.
   // The default implementation does nothing. Subclasses interested in the data
@@ -304,11 +311,12 @@ class PLATFORM_EXPORT Resource : public GarbageCollected<Resource>,
   // Returns true if |this| resource is matched with the given parameters.
   virtual void MatchPreload(const FetchParameters&);
 
-  bool CanReuseRedirectChain() const;
-  bool MustRevalidateDueToCacheHeaders(bool allow_stale) const;
-  bool ShouldRevalidateStaleResponse() const;
+  bool CanReuseRedirectChain(UseCounter& use_counter) const;
+  bool MustRevalidateDueToCacheHeaders(bool allow_stale,
+                                       UseCounter& use_counter) const;
+  bool ShouldRevalidateStaleResponse(UseCounter& use_counter) const;
   virtual bool CanUseCacheValidator() const;
-  base::TimeDelta FreshnessLifetime() const;
+  base::TimeDelta FreshnessLifetime(UseCounter& use_counter) const;
   bool IsCacheValidator() const {
     return revalidation_status_ == RevalidationStatus::kRevalidating;
   }
@@ -337,12 +345,25 @@ class PLATFORM_EXPORT Resource : public GarbageCollected<Resource>,
   const IntegrityMetadataSet& IntegrityMetadata() const {
     return options_.integrity_metadata;
   }
-  ResourceIntegrityDisposition IntegrityDisposition() const {
-    return integrity_disposition_;
+  bool PassedIntegrityChecks() const {
+    return integrity_disposition_ == ResourceIntegrityDisposition::kPassed;
   }
-  const SubresourceIntegrity::ReportInfo& IntegrityReportInfo() const {
-    return integrity_report_info_;
-  }
+
+  // Caching makes it possible for a resource that was requested with integrity
+  // metadata to be reused for a request that didn't itself require integrity
+  // checks. In that case, the integrity check can be skipped, as the integrity
+  // may not have been "meant" for this specific request. If the resource is
+  // being served from the preload cache however, we know any associated
+  // integrity metadata and checks were destined for this request, so we cannot
+  // skip the integrity check.
+  //
+  // We also force integrity checks for resources that declare their own
+  // integrity information via an `Unencoded-Digest` header. Those should be
+  // checked regardless of any given page's assertion through `integrity`
+  // attributes.
+  bool ForceIntegrityChecks() const;
+
+  const IntegrityReport& GetIntegrityReport() const { return integrity_report_; }
   bool MustRefetchDueToIntegrityMetadata(const FetchParameters&) const;
 
   bool IsAlive() const { return is_alive_; }
@@ -541,21 +562,21 @@ class PLATFORM_EXPORT Resource : public GarbageCollected<Resource>,
   void AppendDataImpl(base::span<const char>);
 
   ResourceType type_;
-  ResourceStatus status_;
+  ResourceStatus status_ = ResourceStatus::kNotStarted;
 
   std::optional<ResourceError> error_;
 
   base::TimeTicks load_response_end_;
   base::TimeTicks memory_cache_last_accessed_;
 
-  size_t encoded_size_;
-  size_t decoded_size_;
+  size_t encoded_size_ = 0u;
+  size_t decoded_size_ = 0u;
 
   String cache_identifier_;
 
-  bool link_preload_;
-  bool is_alive_;
-  bool is_add_remove_client_prohibited_;
+  bool link_preload_ = false;
+  bool is_alive_ = false;
+  bool is_add_remove_client_prohibited_ = false;
   bool is_revalidation_start_forbidden_ = false;
   bool is_unused_preload_ = false;
   bool stale_revalidation_started_ = false;
@@ -568,10 +589,12 @@ class PLATFORM_EXPORT Resource : public GarbageCollected<Resource>,
                               // network response
     kRevalidated,             // revalidate success by 304 Not Modified
   };
-  RevalidationStatus revalidation_status_;
+  RevalidationStatus revalidation_status_ =
+      RevalidationStatus::kNoRevalidatingOrFailed;
 
-  ResourceIntegrityDisposition integrity_disposition_;
-  SubresourceIntegrity::ReportInfo integrity_report_info_;
+  ResourceIntegrityDisposition integrity_disposition_ =
+      ResourceIntegrityDisposition::kNotChecked;
+  class IntegrityReport integrity_report_;
 
   // Ordered list of all redirects followed while fetching this resource.
   Vector<RedirectPair> redirect_chain_;

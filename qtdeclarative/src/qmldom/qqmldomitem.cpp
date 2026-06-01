@@ -34,13 +34,13 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonValue>
 #include <QtCore/QMutexLocker>
-#include <QtCore/QPair>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QScopeGuard>
 #include <QtCore/QtGlobal>
 #include <QtCore/QTimeZone>
 #include <optional>
 #include <type_traits>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -826,7 +826,7 @@ bool DomItem::resolve(const Path &path, DomItem::Visitor visitor, const ErrorHan
             if (idNow == quintptr() && toDo.item == *this)
                 idNow = quintptr(this);
             if (idNow != quintptr(0)) {
-                auto vPair = qMakePair(idNow, iPath);
+                auto vPair = std::make_pair(idNow, iPath);
                 if (visited[vPair.second].contains(vPair.first))
                     break;
                 visited[vPair.second].insert(vPair.first);
@@ -989,7 +989,7 @@ bool DomItem::resolve(const Path &path, DomItem::Visitor visitor, const ErrorHan
                     if (idNow == quintptr(0) && toDo.item == *this)
                         idNow = quintptr(this);
                     if (idNow != quintptr(0)) {
-                        auto vPair = qMakePair(idNow, iPath);
+                        auto vPair = std::make_pair(idNow, iPath);
                         if (visited[vPair.second].contains(vPair.first))
                             break;
                         visited[vPair.second].insert(vPair.first);
@@ -1231,7 +1231,7 @@ void DomItem::writeOut(OutWriter &ow) const
 
 void DomItem::writeOutPost(OutWriter &ow) const
 {
-    ow.itemEnd(*this);
+    ow.itemEnd();
 }
 
 DomItem::WriteOutCheckResult DomItem::performWriteOutChecks(const DomItem &reformatted,
@@ -1259,7 +1259,7 @@ DomItem::WriteOutCheckResult DomItem::performWriteOutChecks(const DomItem &refor
         if (ow2.writtenStr != expected) {
             qCWarning(writeOutLog).noquote().nospace()
                     << objName << " non stable writeOut of " << this->canonicalFilePath() << ":"
-                    << lineDiff(ow2.writtenStr, expected, 2);
+                    << lineDiff(expected, ow2.writtenStr, 2);
             return false;
         }
         return true;
@@ -1449,7 +1449,7 @@ bool DomItem::visitTree(const Path &basePath, DomItem::ChildrenVisitor visitor,
                     Path pNow;
                     if (!(options & VisitOption::NoPath)) {
                         pNow = basePath;
-                        pNow = pNow.appendComponent(c);
+                        pNow = pNow.withComponent(c);
                     }
                     if (!filter(*this, c, DomItem{}))
                         return true;
@@ -1885,7 +1885,7 @@ static bool visitQualifiedNameLookup(
     QList<QSet<quintptr>> lookupVisited(subpath.size() + 1);
     while (!lookupToDos.isEmpty()) {
         ResolveToDo tNow = lookupToDos.takeFirst();
-        auto vNow = qMakePair(tNow.item.id(), tNow.pathIndex);
+        auto vNow = std::make_pair(tNow.item.id(), tNow.pathIndex);
         DomItem subNow = tNow.item;
         int iSubPath = tNow.pathIndex;
         Q_ASSERT(iSubPath < subpath.size());
@@ -2438,7 +2438,7 @@ bool DomItem::iterateDirectSubpaths(DirectVisitor v) const
 DomItem DomItem::subReferencesItem(const PathEls::PathComponent &c, const QList<Path> &paths) const
 {
     return subListItem(
-                List::fromQList<Path>(pathFromOwner().appendComponent(c), paths,
+                List::fromQList<Path>(pathFromOwner().withComponent(c), paths,
                                       [](const DomItem &list, const PathEls::PathComponent &p, const Path &el) {
                     return list.subReferenceItem(p, el);
                 }));
@@ -2450,7 +2450,7 @@ DomItem DomItem::subReferenceItem(const PathEls::PathComponent &c, const Path &r
         return DomItem(m_top, m_owner, m_ownerPath, Reference(referencedObject, Path(c)));
     } else {
         return DomItem(m_top, m_owner, m_ownerPath,
-                       Reference(referencedObject, pathFromOwner().appendComponent(c)));
+                       Reference(referencedObject, pathFromOwner().withComponent(c)));
     }
 }
 
@@ -2505,18 +2505,13 @@ DomItem DomItem::fromCode(const QString &code, DomType fileType)
 {
     if (code.isEmpty())
         return DomItem();
-    auto env =
-            DomEnvironment::create(QStringList(),
-                                   QQmlJS::Dom::DomEnvironment::Option::SingleThreaded
-                                           | QQmlJS::Dom::DomEnvironment::Option::NoDependencies);
 
+    auto env = DomEnvironment::create({}, DomEnvironment::Option::NoDependencies);
     DomItem tFile;
-
     env->loadFile(
             FileToLoad::fromMemory(env, QString(), code),
             [&tFile](Path, const DomItem &, const DomItem &newIt) { tFile = newIt; },
             std::make_optional(fileType));
-    env->loadPendingDependencies();
     return tFile.fileObject();
 }
 
@@ -2798,7 +2793,7 @@ Path DomElement::pathFromOwner(const DomItem &) const
 Path DomElement::canonicalPath(const DomItem &self) const
 {
     Q_ASSERT(m_pathFromOwner && "uninitialized DomElement");
-    return self.owner().canonicalPath().path(m_pathFromOwner);
+    return self.owner().canonicalPath().withPath(m_pathFromOwner);
 }
 
 DomItem DomElement::containingObject(const DomItem &self) const
@@ -2872,7 +2867,7 @@ DomItem Reference::field(const DomItem &self, QStringView name) const
 
 QList<QString> Reference::fields(const DomItem &) const
 {
-    return QList<QString>({QString::fromUtf16(Fields::referredObjectPath), QString::fromUtf16(Fields::get)});
+    return QList<QString>({Fields::referredObjectPath.toString(), Fields::get.toString()});
 }
 
 DomItem Reference::index(const DomItem &, index_type) const
@@ -3064,7 +3059,7 @@ bool OwningItem::iterateDirectSubpaths(const DomItem &self, DirectVisitor visito
     cont = cont && self.dvItemField(visitor, Fields::errors, [&self, this]() {
         QMultiMap<Path, ErrorMessage> myErrors = localErrors();
         return self.subMapItem(Map(
-                self.pathFromOwner().field(Fields::errors),
+                self.pathFromOwner().withField(Fields::errors),
                 [myErrors](const DomItem &map, const QString &key) {
                     auto it = myErrors.find(Path::fromString(key));
                     if (it != myErrors.end())
@@ -3474,11 +3469,11 @@ MutableDomItem MutableDomItem::addPreComment(const Comment &comment, FileLocatio
         auto commentedElement = rcPtr->regionComments()[region];
         idx = commentedElement.preComments().size();
         commentedElement.addComment(comment);
-        MutableDomItem res = path(Path::Field(Fields::comments)
-                                          .field(Fields::regionComments)
-                                          .key(fileLocationRegionName(region))
-                                          .field(Fields::preComments)
-                                          .index(idx));
+        MutableDomItem res = path(Path::fromField(Fields::comments)
+                                          .withField(Fields::regionComments)
+                                          .withKey(fileLocationRegionName(region))
+                                          .withField(Fields::preComments)
+                                          .withIndex(idx));
         Q_ASSERT(res);
         return res;
     }
@@ -3493,11 +3488,11 @@ MutableDomItem MutableDomItem::addPostComment(const Comment &comment, FileLocati
         auto commentedElement = rcPtr->regionComments()[region];
         idx = commentedElement.postComments().size();
         commentedElement.addComment(comment);
-        MutableDomItem res = path(Path::Field(Fields::comments)
-                                          .field(Fields::regionComments)
-                                          .key(fileLocationRegionName(region))
-                                          .field(Fields::postComments)
-                                          .index(idx));
+        MutableDomItem res = path(Path::fromField(Fields::comments)
+                                          .withField(Fields::regionComments)
+                                          .withKey(fileLocationRegionName(region))
+                                          .withField(Fields::postComments)
+                                          .withIndex(idx));
         Q_ASSERT(res);
         return res;
     }

@@ -15,11 +15,11 @@
 #include "quiche/quic/core/crypto/quic_decrypter.h"
 #include "quiche/quic/core/crypto/quic_encrypter.h"
 #include "quiche/quic/core/crypto/quic_random.h"
+#include "quiche/quic/core/frames/quic_immediate_ack_frame.h"
 #include "quiche/quic/core/frames/quic_reset_stream_at_frame.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/core/quic_types.h"
-#include "quiche/quic/platform/api/quic_export.h"
 
 namespace quic {
 
@@ -223,6 +223,9 @@ class QUICHE_EXPORT QuicFramerVisitorInterface {
   // Called when an AckFrequencyFrame has been parsed.
   virtual bool OnAckFrequencyFrame(const QuicAckFrequencyFrame& frame) = 0;
 
+  // Called when an ImmediateAckFrame has been parsed.
+  virtual bool OnImmediateAckFrame(const QuicImmediateAckFrame& frame) = 0;
+
   // Called when an ResetStreamAtFrame has been parsed.
   virtual bool OnResetStreamAtFrame(const QuicResetStreamAtFrame& frame) = 0;
 
@@ -327,6 +330,8 @@ class QUICHE_EXPORT QuicFramer {
   void set_receive_timestamps_exponent(uint32_t exponent) const {
     receive_timestamps_exponent_ = exponent;
   }
+
+  bool process_reset_stream_at() const { return process_reset_stream_at_; }
 
   // Allows enabling RESET_STREAM_AT frame processing.
   void set_process_reset_stream_at(bool process_reset_stream_at) {

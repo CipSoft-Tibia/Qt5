@@ -470,6 +470,7 @@ Rectangle {
                 { initLocale: "fr_FR", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "bonjour", outputText: "Bonjour" },
                 { initLocale: "id_ID", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "halo", outputText: "Halo" },
                 { initLocale: "it_IT", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "ciao", outputText: "Ciao" },
+                { initLocale: "lv_LV", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "sveiki", outputText: "Sveiki" },
                 { initLocale: "ja_JP", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "watashi", outputText: "\u308F\u305F\u3057" },
                 { initLocale: "ms_MY", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "hello", outputText: "Hello" },
                 { initLocale: "nb_NO", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "hallo", outputText: "Hallo" },
@@ -547,8 +548,8 @@ Rectangle {
             return [
                 { initInputMethodHints: Qt.ImhNoPredictiveText, toggleShiftCount: 0, inputSequence: "aaa bbb", outputText: "Aaa bbb", autoCapitalizationEnabled: true, toggleShiftEnabled: true },
                 { initInputMethodHints: Qt.ImhNoPredictiveText, toggleShiftCount: 1, inputSequence: "aaa bbb", outputText: "aaa bbb", autoCapitalizationEnabled: true, toggleShiftEnabled: true },
-                { initInputMethodHints: Qt.ImhNoPredictiveText, toggleShiftCount: 2, inputSequence: "aaa. bbb", outputText: "Aaa. Bbb", autoCapitalizationEnabled: true, toggleShiftEnabled: true },
-                { initInputMethodHints: Qt.ImhNoPredictiveText, toggleShiftCount: 2, inputSequence: "aaa.bbb", outputText: "Aaa.bbb", autoCapitalizationEnabled: true, toggleShiftEnabled: true },
+                { initInputMethodHints: Qt.ImhNoPredictiveText, toggleShiftCount: 2, inputSequence: "aaa. bbb", outputText: "AAA. BBB", autoCapitalizationEnabled: true, toggleShiftEnabled: true },
+                { initInputMethodHints: Qt.ImhNoPredictiveText, toggleShiftCount: 2, inputSequence: "aaa.bbb", outputText: "AAA.BBB", autoCapitalizationEnabled: true, toggleShiftEnabled: true },
                 { initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, toggleShiftCount: 0, inputSequence: "aaa bbb", outputText: "aaa bbb", autoCapitalizationEnabled: false, toggleShiftEnabled: true },
                 { initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, toggleShiftCount: 0, inputSequence: "aaa. bbb", outputText: "aaa. bbb", autoCapitalizationEnabled: false, toggleShiftEnabled: true },
                 { initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, toggleShiftCount: 1, inputSequence: "aaa bbb", outputText: "Aaa bbb", autoCapitalizationEnabled: false, toggleShiftEnabled: true },
@@ -767,7 +768,7 @@ Rectangle {
             if (!inputPanel.activateNavigationKeyMode())
                 skip("Arrow key navigation not enabled")
 
-            verify(inputPanel.naviationHighlight.visible)
+            verify(inputPanel.navigationHighlight.visible)
             verify(inputPanel.navigateToKey(data.initialKey))
 
             for (var inputIndex in data.inputSequence) {
@@ -799,7 +800,7 @@ Rectangle {
 
             if (!inputPanel.activateNavigationKeyMode())
                 skip("Arrow key navigation not enabled")
-            verify(inputPanel.naviationHighlight.visible)
+            verify(inputPanel.navigationHighlight.visible)
 
             verify(inputPanel.navigateToKey(data.initialKey))
             var initialKeyObj = inputPanel.keyboardInputArea.initialKey
@@ -822,7 +823,7 @@ Rectangle {
 
             if (!inputPanel.activateNavigationKeyMode())
                 skip("Arrow key navigation not enabled")
-            verify(inputPanel.naviationHighlight.visible)
+            verify(inputPanel.navigationHighlight.visible)
 
             verify(inputPanel.navigationKeyClick("q"))
             verify(inputPanel.navigationKeyClick("q"))
@@ -929,7 +930,7 @@ Rectangle {
 
             if (!inputPanel.activateNavigationKeyMode())
                 skip("Arrow key navigation not enabled")
-            verify(inputPanel.naviationHighlight.visible)
+            verify(inputPanel.navigationHighlight.visible)
 
             verify(inputPanel.navigateToKey("q"))
             var initialKey = inputPanel.keyboardInputArea.initialKey

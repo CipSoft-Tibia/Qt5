@@ -4,14 +4,16 @@
 
 #include "third_party/blink/renderer/platform/peerconnection/webrtc_audio_sink.h"
 
+#include <algorithm>
 #include <limits>
 
 #include "base/check_op.h"
 #include "base/containers/contains.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/ranges/algorithm.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/strings/stringprintf.h"
+#include "base/strings/to_string.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "media/base/audio_timestamp_helper.h"
@@ -91,7 +93,7 @@ void WebRtcAudioSink::OnEnabledChanged(bool enabled) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   SendLogMessage(base::StringPrintf("OnEnabledChanged([label=%s] {enabled=%s})",
                                     adapter_->label().c_str(),
-                                    (enabled ? "true" : "false")));
+                                    base::ToString(enabled).c_str()));
   PostCrossThreadTask(
       *adapter_->signaling_task_runner(), FROM_HERE,
       CrossThreadBindOnce(
@@ -162,7 +164,12 @@ void WebRtcAudioSink::DeliverRebufferedAudio(const media::AudioBus& audio_bus,
 
 namespace {
 void DereferenceOnMainThread(
-    scoped_refptr<webrtc::AudioProcessorInterface> processor) {}
+    scoped_refptr<webrtc::AudioProcessorInterface> processor) {
+  // The ref count was artificially increased before posting the task. Decrease
+  // it again to ensure that the processor is destroyed when the scoped_refptr
+  // goes out of scope.
+  processor->Release();
+}
 }  // namespace
 
 WebRtcAudioSink::Adapter::Adapter(
@@ -185,9 +192,22 @@ WebRtcAudioSink::Adapter::~Adapter() {
   SendLogMessage(
       base::StringPrintf("Adapter::~Adapter([label=%s])", label_.c_str()));
   if (audio_processor_) {
-    PostCrossThreadTask(*main_task_runner_.get(), FROM_HERE,
-                        CrossThreadBindOnce(&DereferenceOnMainThread,
-                                            std::move(audio_processor_)));
+    // Artificially increase the ref count of audio_processor_ before posting it
+    // to the main thread to be destroyed. If the post succeeds, it will be
+    // destroyed on the main thread as intended. If the post fails, the ref
+    // count will remain at 1, leaking the processor. This is preferred to
+    // destroying it on the wrong thread, which causes a crash.
+    audio_processor_->AddRef();
+    auto* possible_leak = audio_processor_.get();
+    if (!PostCrossThreadTask(
+            *main_task_runner_.get(), FROM_HERE,
+            CrossThreadBindOnce(&DereferenceOnMainThread,
+                                std::move(audio_processor_)))) {
+      DVLOG(1) << __func__
+               << " Intentionally leaking audio_processor_ due to failed "
+                  "PostCrossThreadTask: "
+               << possible_leak;
+    }
   }
 }
 
@@ -232,7 +252,7 @@ bool WebRtcAudioSink::Adapter::set_enabled(bool enable) {
          signaling_task_runner_->RunsTasksInCurrentSequence());
   SendLogMessage(
       base::StringPrintf("Adapter::set_enabled([label=%s] {enable=%s})",
-                         label_.c_str(), (enable ? "true" : "false")));
+                         label_.c_str(), base::ToString(enable).c_str()));
   return webrtc::MediaStreamTrack<webrtc::AudioTrackInterface>::set_enabled(
       enable);
 }
@@ -255,7 +275,7 @@ void WebRtcAudioSink::Adapter::RemoveSink(
   SendLogMessage(
       base::StringPrintf("Adapter::RemoveSink([label=%s])", label_.c_str()));
   base::AutoLock auto_lock(lock_);
-  auto it = base::ranges::find(sinks_, sink);
+  auto it = std::ranges::find(sinks_, sink);
   if (it != sinks_.end())
     sinks_.erase(it);
 }

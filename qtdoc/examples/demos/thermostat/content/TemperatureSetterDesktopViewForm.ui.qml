@@ -7,21 +7,25 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
+import QtQuick.Controls.Basic
 import QtQuick.Effects
 import Thermostat
 import ThermostatCustomControls
 
 Pane {
-    width: 1087
-    height: 427
+    id: root
 
-    topPadding: 30
-    bottomPadding: 24
-    leftPadding: 16
-    rightPadding: 36
+    required property var scheduleViewRoot
+    property alias saveButton: saveButton
+    property alias cancelButton: cancelButton
+    property int currentMode: 2
+
+    width: 1010
+    height: 330
+    padding: 0
 
     background: Rectangle {
         color: Constants.accentColor
@@ -30,9 +34,11 @@ Pane {
 
     Row {
         id: row1
-        width: parent.width
+        width: root.width
         height: 70
         spacing: 80
+        anchors.topMargin: 20
+        anchors.leftMargin: 20
 
         Row {
             anchors.verticalCenter: parent.verticalCenter
@@ -67,23 +73,38 @@ Pane {
         }
 
         CustomTextField {
+            id: customTextField
             anchors.verticalCenter: parent.verticalCenter
             text: slider.value
-            onAccepted: slider.value = +text
+            Connections {
+                function onAccepted() {
+                    slider.value = +customTextField.text
+                }
+            }
         }
 
         CustomSlider {
             id: slider
+            value: root.scheduleViewRoot.currentTemp
             anchors.bottom: parent.bottom
+            anchors.bottomMargin: 8
+            Connections {
+                function onValueChanged() {
+                    root.scheduleViewRoot.currentTemp = slider.value
+                }
+            }
         }
     }
 
     Column {
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.top: row1.bottom
+        anchors.left: parent.left
+        anchors.topMargin: 20
+        anchors.leftMargin: 20
         spacing: 50
         Row {
             id: row
-            spacing: 70
+            spacing: 60
             Label {
                 font.pixelSize: 24
                 font.weight: 600
@@ -96,14 +117,25 @@ Pane {
             Repeater {
                 model: [qsTr("Heating"), qsTr("Cooling"), qsTr("Auto")]
                 CustomRadioButton {
+                    id: radioButton
+                    required property string modelData
+                    required property int index
+
                     text: modelData
                     indicatorSize: 20
+                    checked: root.scheduleViewRoot.currentMode === index
+                    Connections {
+                        function onClicked() {
+                            root.scheduleViewRoot.currentMode = radioButton.index
+                        }
+                    }
                 }
             }
         }
 
         Row {
             spacing: 24
+
             Label {
                 font.pixelSize: 24
                 font.weight: 600
@@ -118,27 +150,48 @@ Pane {
                         "Thu"), qsTr("Fri"), qsTr("Sat"), qsTr("Sun")]
 
                 CustomRoundButton {
+                    id: roundButton
+                    required property int index
+                    required property string modelData
+
                     text: modelData
-                    width: 90
+                    width: Constants.isSmallDesktopLayout ? 80 : 90
                     height: 50
                     radius: 12
                     font.pixelSize: 24
+                    checked: root.scheduleViewRoot.selectedDays[index]
+                    Connections {
+                        function onClicked() {
+                            root.scheduleViewRoot.selectedDays[roundButton.index]
+                                    = !root.scheduleViewRoot.selectedDays[roundButton.index]
+                        }
+                    }
                 }
             }
         }
-    }
 
-    Row {
-        anchors.bottom: parent.bottom
-        anchors.right: parent.right
-        spacing: 24
+        Row {
+            anchors.right: parent.right
+            anchors.rightMargin: 20
+            spacing: 24
 
-        Repeater {
-            model: [qsTr("Cancel"), qsTr("Save")]
             CustomRoundButton {
+                id: cancelButton
+
                 width: 120
                 height: 48
-                text: modelData
+                text: qsTr("Cancel")
+                radius: 12
+                contentColor: "#2CDE85"
+                checkable: false
+                font.pixelSize: 14
+            }
+
+            CustomRoundButton {
+                id: saveButton
+                width: 120
+                height: 48
+                text: qsTr("Save")
                 radius: 12
                 contentColor: "#2CDE85"
                 checkable: false
@@ -150,7 +203,6 @@ Pane {
     QtObject {
         id: internal
         property int fontSize: 24
-        property int topMargin: 67
         property int iconSize: 34
     }
 }

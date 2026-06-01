@@ -140,14 +140,22 @@ void tst_qml::itemAndWindowGeometry()
     QProcess qml;
     qml.start(qmlPath, args);
     QVERIFY(qml.waitForFinished());
+    const QByteArray output = qml.readAllStandardOutput();
+    const QByteArray error = qml.readAllStandardError();
+    const auto guard = qScopeGuard([&]() {
+        if (!QTest::currentTestFailed())
+            return;
+        qWarning() << "stdout:" << output;
+        qWarning() << "stderr:" << error;
+    });
+
     QCOMPARE(qml.exitStatus(), QProcess::NormalExit);
-    const QByteArray output = qml.readAllStandardError();
-    const auto sizeLineIndex = output.lastIndexOf("window");
+    const auto sizeLineIndex = error.lastIndexOf("window");
     QCOMPARE_GE(sizeLineIndex, 0);
-    const auto newlineIndex = output.indexOf('\n', sizeLineIndex);
+    const auto newlineIndex = error.indexOf('\n', sizeLineIndex);
     QCOMPARE_GT(newlineIndex, sizeLineIndex);
     // expect a line like "window 120 120 content 120 120"
-    const auto sizes = output.sliced(sizeLineIndex, newlineIndex - sizeLineIndex).split(' ');
+    const auto sizes = error.sliced(sizeLineIndex, newlineIndex - sizeLineIndex).split(' ');
     QCOMPARE_GE(sizes.size(), 6);
     QCOMPARE(sizes[0], "window");
     QCOMPARE(sizes[3], "content");

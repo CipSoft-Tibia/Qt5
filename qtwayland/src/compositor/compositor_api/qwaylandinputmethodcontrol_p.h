@@ -16,6 +16,7 @@
 //
 
 #include <QtWaylandCompositor/qtwaylandcompositorglobal.h>
+#if QT_CONFIG(im)
 #include <QtWaylandCompositor/qwaylandinputmethodcontrol.h>
 
 #include <QtCore/private/qobject_p.h>
@@ -48,4 +49,5 @@ public:
 
 QT_END_NAMESPACE
 
+#endif
 #endif // QWAYLANDINPUTMETHODCONTROL_P_H

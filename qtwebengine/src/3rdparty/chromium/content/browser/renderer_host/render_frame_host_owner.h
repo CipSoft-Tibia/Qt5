@@ -9,15 +9,11 @@
 #include <vector>
 
 #include "build/build_config.h"
-#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "content/public/browser/frame_type.h"
 #include "services/network/public/mojom/referrer_policy.mojom-forward.h"
 #include "third_party/blink/public/mojom/frame/user_activation_update_types.mojom-forward.h"
 #include "third_party/blink/public/mojom/loader/referrer.mojom-forward.h"
 #include "ui/base/page_transition_types.h"
-
-#if !BUILDFLAG(IS_ANDROID)
-#include "third_party/blink/public/mojom/webauthn/virtual_authenticator.mojom-forward.h"
-#endif
 
 class GURL;
 
@@ -32,6 +28,7 @@ class Origin;
 namespace content {
 
 class CrossOriginEmbedderPolicyReporter;
+class DocumentIsolationPolicyReporter;
 class NavigationRequest;
 class Navigator;
 class RenderFrameHostManager;
@@ -113,6 +110,7 @@ class RenderFrameHostOwner {
       const std::vector<GURL>& redirects,
       const GURL& original_url,
       std::unique_ptr<CrossOriginEmbedderPolicyReporter> coep_reporter,
+      std::unique_ptr<DocumentIsolationPolicyReporter> dip_reporter,
       int http_response_code) = 0;
 
   // Cancels the navigation owned by the FrameTreeNode.
@@ -131,11 +129,7 @@ class RenderFrameHostOwner {
   // Return the iframe.credentialless attribute value.
   virtual bool Credentialless() const = 0;
 
-#if !BUILDFLAG(IS_ANDROID)
-  virtual void GetVirtualAuthenticatorManager(
-      mojo::PendingReceiver<blink::test::mojom::VirtualAuthenticatorManager>
-          receiver) = 0;
-#endif
+  virtual FrameType GetCurrentFrameType() const = 0;
 };
 
 }  // namespace content

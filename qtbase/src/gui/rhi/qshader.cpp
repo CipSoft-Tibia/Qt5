@@ -215,6 +215,9 @@ QT_BEGIN_NAMESPACE
     translated to a compute shader that may be dependent on the index buffer
     usage in the draw calls (e.g. if the shader is using gl_VertexIndex), hence
     the need for three dedicated variants.
+
+    \value [since 6.10] HdrCapableFragmentShader A fragment shader rewritten to support high
+    dynamic range rendering in a Qt Quick scenegraph.
  */
 
 /*!
@@ -809,7 +812,7 @@ bool operator==(const QShader &lhs, const QShader &rhs) noexcept
 size_t qHash(const QShader &s, size_t seed) noexcept
 {
     if (s.d) {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombineWithSeed hash(seed);
         seed = hash(seed, s.stage());
         if (!s.d->shaders.isEmpty()) {
             seed = hash(seed, s.d->shaders.firstKey());

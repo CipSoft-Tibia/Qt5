@@ -8,24 +8,31 @@ import argparse
 import dataclasses
 import datetime as dt
 import logging
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
+from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
+                    Type)
 
-from crossbench import cli_helper, exception
+from crossbench import exception
 from crossbench import path as pth
-from crossbench.benchmarks.loading.action import (Action, ClickAction,
-                                                  GetAction, ReadyState,
-                                                  WaitAction)
+from crossbench.action_runner.action.click import ClickAction
+from crossbench.action_runner.action.enums import ReadyState
+from crossbench.action_runner.action.get import GetAction
+from crossbench.action_runner.action.position import PositionConfig
+from crossbench.action_runner.action.wait import WaitAction
 from crossbench.benchmarks.loading.config.blocks import ActionBlock
 from crossbench.benchmarks.loading.config.page import PageConfig
 from crossbench.benchmarks.loading.input_source import InputSource
-from crossbench.browsers.secrets import SecretType
+from crossbench.cli.config.secrets import Secrets
 from crossbench.config import ConfigObject
+from crossbench.parse import DurationParseError, DurationParser, ObjectParser
+
+if TYPE_CHECKING:
+  from crossbench.action_runner.action.action import Action
 
 
 @dataclasses.dataclass(frozen=True)
 class PagesConfig(ConfigObject):
   pages: Tuple[PageConfig, ...] = ()
-  logins: Tuple[SecretType, ...] = ()
+  secrets: Optional[Secrets] = None
 
   def validate(self) -> None:
     super().validate()
@@ -42,16 +49,16 @@ class PagesConfig(ConfigObject):
     values: List[str] = []
     previous_part: Optional[str] = None
     for part in value.strip().split(","):
-      part = cli_helper.parse_non_empty_str(part, "url or duration")
+      part = ObjectParser.non_empty_str(part, "url or duration")
       try:
-        cli_helper.Duration.parse_non_zero(part)
+        DurationParser.positive_duration(part)
         if not previous_part:
           raise argparse.ArgumentTypeError(
               "Duration can only follow after url. "
               f"Current value: {repr(part)}")
         values[-1] = f"{previous_part},{part}"
         previous_part = None
-      except cli_helper.DurationParseError:
+      except DurationParseError:
         previous_part = part
         values.append(part)
     return cls.parse_sequence(values)
@@ -87,25 +94,30 @@ class PagesConfig(ConfigObject):
   def parse_dict(cls, config: Dict) -> PagesConfig:
     """
     Variant a):
-    { "pages": { "LABEL": PAGE_CONFIG }}
+      { "pages": { "LABEL": PAGE_CONFIG }, "secrets": { ... } }
     """
     with exception.annotate_argparsing("Parsing stories"):
       if "pages" not in config:
         raise argparse.ArgumentTypeError(
             "Config does not provide a 'pages' dict.")
-      pages = cli_helper.parse_non_empty_dict(config["pages"], "pages")
+      secrets: Optional[Secrets] = None
+      if secrets_data := config.get("secrets"):
+        secrets = Secrets.parse(secrets_data)
+      pages_config = ObjectParser.non_empty_dict(config["pages"], "pages")
       with exception.annotate_argparsing("Parsing config 'pages'"):
-        logins = [SecretType.parse(login) for login in config.get("logins", [])]
-        pages = cls._parse_pages(pages)
-        return PagesConfig(pages, tuple(logins))
+        pages = cls._parse_pages(pages_config, secrets)
+        return PagesConfig(pages, secrets)
     raise exception.UnreachableError()
 
   @classmethod
-  def _parse_pages(cls, data: Dict[str, Any]) -> Tuple[PageConfig, ...]:
+  def _parse_pages(cls,
+                   data: Dict[str, Any],
+                   secrets: Optional[Secrets] = None) -> Tuple[PageConfig, ...]:
     pages = []
     for name, page_config in data.items():
       with exception.annotate_argparsing(f"Parsing story ...['{name}']"):
-        page = PageConfig.parse(page_config, label=name)
+        # TODO: fix secrets on the inner page and on the outer pages config
+        page = PageConfig.parse(page_config, label=name, secrets=secrets)
         pages.append(page)
     return tuple(pages)
 
@@ -113,14 +125,15 @@ class PagesConfig(ConfigObject):
 class DevToolsRecorderPagesConfig(PagesConfig):
 
   @classmethod
-  def parse_str(cls: Type[PagesConfig], value: str) -> PagesConfig:
+  def parse_str(cls: Type[DevToolsRecorderPagesConfig],
+                value: str) -> DevToolsRecorderPagesConfig:
     raise NotImplementedError()
 
   @classmethod
   def parse_dict(cls, config: Dict[str, Any]) -> DevToolsRecorderPagesConfig:
-    config = cli_helper.parse_non_empty_dict(config)
+    config = ObjectParser.non_empty_dict(config)
     with exception.annotate_argparsing("Loading DevTools recording file"):
-      title = cli_helper.parse_non_empty_str(config["title"], "title")
+      title = ObjectParser.non_empty_str(config["title"], "title")
       actions = cls._parse_steps(config["steps"])
       # Use default block
       blocks = (ActionBlock(actions=actions),)
@@ -132,38 +145,82 @@ class DevToolsRecorderPagesConfig(PagesConfig):
   def _parse_steps(cls, steps: List[Dict[str, Any]]) -> Tuple[Action, ...]:
     actions: List[Action] = []
     for step in steps:
-      maybe_actions: Optional[Action] = cls._parse_step(step)
-      if maybe_actions:
-        actions.append(maybe_actions)
+      if maybe_actions := cls.parse_step(step):
+        actions.extend(maybe_actions)
         # TODO(cbruni): make this configurable
         actions.append(WaitAction(duration=dt.timedelta(seconds=1)))
     return tuple(actions)
 
   @classmethod
-  def _parse_step(cls, step: Dict[str, Any]) -> Optional[Action]:
+  def parse_step(cls, step: Dict[str, Any]) -> List[Action]:
     step_type: str = step["type"]
     default_timeout = dt.timedelta(seconds=10)
     if step_type == "navigate":
-      return GetAction(  # type: ignore
-          step["url"], ready_state=ReadyState.COMPLETE)
+      return [cls._parse_navigate_step(step, default_timeout)]
     if step_type == "click":
-      selectors: List[List[str]] = step["selectors"]
-      xpath: Optional[str] = None
-      for selector_list in selectors:
-        for selector in selector_list:
-          if selector.startswith("xpath//"):
-            xpath = selector
-            break
-      assert xpath, "Need xpath selector for click action"
-      return ClickAction(
-          InputSource.JS,
-          selector=xpath,
-          scroll_into_view=True,
-          timeout=default_timeout)
+      return [cls._parse_click_step(step, default_timeout)]
     if step_type == "setViewport":
       # Resizing is ignored for now.
-      return None
+      return []
     raise ValueError(f"Unsupported step: {step_type}")
+
+  @classmethod
+  def _parse_navigate_step(cls, step: Dict[str, Any],
+                           default_timeout: dt.timedelta) -> Action:
+    del default_timeout
+    return GetAction(  # type: ignore
+        step["url"], ready_state=ReadyState.COMPLETE)
+
+  @classmethod
+  def _parse_click_step(cls, step: Dict[str, Any],
+                        default_timeout: dt.timedelta) -> Action:
+    selector = cls._parse_selectors(step["selectors"])
+    return ClickAction(
+        InputSource.JS,
+        position=PositionConfig.from_selector(
+            selector=selector, scroll_into_view=True),
+        timeout=default_timeout)
+
+  @classmethod
+  def _parse_selectors(cls, selectors: List[List[str]]) -> str:
+    xpath: Optional[str] = None
+    aria: Optional[str] = None
+    text: Optional[str] = None
+    css: Optional[str] = None
+    # Detect all single-element selectors first.
+    for selector_list in selectors:
+      if len(selector_list) != 1:
+        continue
+      selector_candidate = selector_list[0]
+      if not aria and selector_candidate.startswith("aria/"):
+        aria = selector_candidate
+      elif not xpath and selector_candidate.startswith("xpath//"):
+        xpath = selector_candidate
+      elif not text and selector_candidate.startswith("css/"):
+        css = selector_candidate
+      elif not text and selector_candidate.startswith("text/"):
+        text = selector_candidate
+      elif not text and selector_candidate.startswith("pierce/"):
+        # not supported yet.
+        pass
+      else:
+        css = f"css/{selector_candidate}"
+
+    if xpath:
+      assert xpath.startswith("xpath/")
+      return xpath
+    if css:
+      _, css = css.split("css/", maxsplit=1)
+      return css
+    if aria:
+      _, aria = aria.split("aria/", maxsplit=1)
+      return f"[aria-label={repr(aria)}]"
+    if text:
+      _, text = text.split("text/", maxsplit=1)
+      return f"xpath///*[text()={repr(text)}]"
+
+    raise ValueError("Need at least one single element xpath or aria "
+                     "selector for click action")
 
 
 class ListPagesConfig(PagesConfig):
@@ -171,12 +228,13 @@ class ListPagesConfig(PagesConfig):
   VALID_EXTENSIONS: Tuple[str, ...] = (".txt", ".list")
 
   @classmethod
-  def parse_str(cls, value: str) -> PagesConfig:
+  def parse_str(cls, value: str) -> ListPagesConfig:
     raise argparse.ArgumentTypeError(
         f"URL list file {repr(value)} does not exist.")
 
   @classmethod
-  def parse_path(cls, path: pth.LocalPath, **kwargs) -> PagesConfig:
+  def parse_path(  # type: ignore
+      cls, path: pth.LocalPath, **kwargs) -> PagesConfig:
     assert not kwargs, f"{cls.__name__} does not support extra kwargs"
     pages: List[PageConfig] = []
     with exception.annotate_argparsing(f"Loading Pages list file: {path.name}"):
@@ -193,8 +251,8 @@ class ListPagesConfig(PagesConfig):
     return PagesConfig(pages=tuple(pages))
 
   @classmethod
-  def parse_dict(cls, config: Dict) -> PagesConfig:
-    config = cli_helper.parse_non_empty_dict(config, "pages")
+  def parse_dict(cls, config: Dict) -> PagesConfig:  # type: ignore
+    config = ObjectParser.non_empty_dict(config, "pages")
     with exception.annotate_argparsing("Parsing scenarios / pages"):
       if "pages" not in config:
         raise argparse.ArgumentTypeError(

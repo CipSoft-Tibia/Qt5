@@ -16,7 +16,7 @@ using GamepadHardwareBuffer = SharedMemorySeqLockBuffer<Gamepads>;
 }  // namespace device
 
 #if defined(COMPILER_MSVC)
-SKIP_SAFETY_CHECK_FOR(device::GamepadHardwareBuffer)
+SKIP_SHARED_MEMORY_SAFETY_CHECK_FOR(device::GamepadHardwareBuffer)
 #else
 // GamepadHardwareBuffer is used in shared memory, so it must be trivially
 // copyable.

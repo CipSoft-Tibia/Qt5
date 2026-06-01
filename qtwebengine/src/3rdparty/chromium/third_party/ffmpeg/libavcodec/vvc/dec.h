@@ -42,10 +42,18 @@
 #define L0                      0
 #define L1                      1
 
+typedef struct VVCRefPic {
+    struct VVCFrame *ref;
+    int poc;
+    int is_lt;                  // is long term reference
+
+    // for RPR
+    int is_scaled;              ///< RprConstraintsActiveFlag
+    int scale[2];               ///< RefPicScale[]
+} VVCRefPic;
+
 typedef struct RefPicList {
-    struct VVCFrame *ref[VVC_MAX_REF_ENTRIES];
-    int list[VVC_MAX_REF_ENTRIES];
-    int isLongTerm[VVC_MAX_REF_ENTRIES];
+    VVCRefPic refs[VVC_MAX_REF_ENTRIES];
     int nb_refs;
 } RefPicList;
 
@@ -53,9 +61,18 @@ typedef struct RefPicListTab {
     RefPicList refPicList[2];
 } RefPicListTab;
 
+typedef struct VVCWindow {
+    int16_t left_offset;
+    int16_t right_offset;
+    int16_t top_offset;
+    int16_t bottom_offset;
+} VVCWindow;
+
 typedef struct VVCFrame {
     struct AVFrame *frame;
 
+    const VVCSPS *sps;                          ///< RefStruct reference
+    const VVCPPS *pps;                          ///< RefStruct reference
     struct MvField *tab_dmvr_mvf;               ///< RefStruct reference
     RefPicListTab **rpl_tab;                    ///< RefStruct reference
     RefPicListTab  *rpl;                        ///< RefStruct reference
@@ -64,6 +81,12 @@ typedef struct VVCFrame {
     int ctb_count;
 
     int poc;
+
+    //for RPR
+    VVCWindow scaling_win;                      ///< pps_scaling_win_left_offset * SubWithC,  pps_scaling_win_right_offset  * SubWithC,
+                                                ///< pps_scaling_win_top_offset  * SubHeigtC, pps_scaling_win_bottom_offset * SubHiehgtC
+    int ref_width;                              ///< CurrPicScalWinWidthL
+    int ref_height;                             ///< CurrPicScalWinHeightL
 
     struct VVCFrame *collocated_ref;
 
@@ -78,6 +101,8 @@ typedef struct VVCFrame {
      * A combination of VVC_FRAME_FLAG_*
      */
     uint8_t flags;
+
+    void *hwaccel_picture_private; ///< hardware accelerator private data
 } VVCFrame;
 
 typedef struct SliceContext {
@@ -136,9 +161,7 @@ typedef struct VVCFrameContext {
         uint8_t *skip;                                  ///< CuSkipFlag[][]
         uint8_t *ispmf;                                 ///< intra_sub_partitions_mode_flag
         uint8_t *msm[2];                                ///< MttSplitMode[][][] in 32 pixels
-        uint8_t *imf;                                   ///< IntraMipFlag[][]
-        uint8_t *imtf;                                  ///< intra_mip_transposed_flag[][]
-        uint8_t *imm;                                   ///< intra_mip_mode[][]
+        uint8_t *imf;                                   ///< IntraMipFlag[][], intra_mip_transposed_flag[][], intra_mip_mode[][]
         uint8_t *ipm;                                   ///< IntraPredModeY[][]
         uint8_t *cpm[2];                                ///< CuPredMode[][][]
         uint8_t *msf;                                   ///< MergeSubblockFlag[][]
@@ -149,26 +172,22 @@ typedef struct VVCFrameContext {
 
         uint8_t *tu_coded_flag[VVC_MAX_SAMPLE_ARRAYS];  ///< tu_y_coded_flag[][],  tu_cb_coded_flag[][],  tu_cr_coded_flag[][]
         uint8_t *tu_joint_cbcr_residual_flag;           ///< tu_joint_cbcr_residual_flag[][]
-        int     *tb_pos_x0[2];
-        int     *tb_pos_y0[2];
         uint8_t *tb_width[2];
         uint8_t *tb_height[2];
         uint8_t *pcmf[2];
 
-        uint8_t *horizontal_bs[VVC_MAX_SAMPLE_ARRAYS];
-        uint8_t *vertical_bs[VVC_MAX_SAMPLE_ARRAYS];
-        uint8_t *horizontal_p;                          ///< horizontal maxFilterLengthPs for luma
-        uint8_t *horizontal_q;                          ///< horizontal maxFilterLengthQs for luma
-        uint8_t *vertical_p;                            ///< vertical   maxFilterLengthPs for luma
-        uint8_t *vertical_q;                            ///< vertical   maxFilterLengthQs for luma
+        uint8_t *bs[2][VVC_MAX_SAMPLE_ARRAYS];          ///< horizontal, vertical boundary filtering strength
+        uint8_t *max_len_p[2];                          ///< horizontal, vertical maxFilterLengthPs for luma
+        uint8_t *max_len_q[2];                          ///< horizontal, vertical maxFilterLengthQs for luma
 
         uint8_t *sao_pixel_buffer_h[VVC_MAX_SAMPLE_ARRAYS];
         uint8_t *sao_pixel_buffer_v[VVC_MAX_SAMPLE_ARRAYS];
         uint8_t *alf_pixel_buffer_h[VVC_MAX_SAMPLE_ARRAYS][2];
         uint8_t *alf_pixel_buffer_v[VVC_MAX_SAMPLE_ARRAYS][2];
 
-        int         *coeffs;
-        struct CTU  *ctus;
+        int                 *coeffs;
+        struct CTU          *ctus;
+        struct CodingUnit  **cus;
 
         uint8_t *ibc_vir_buf[VVC_MAX_SAMPLE_ARRAYS];    ///< IbcVirBuf[]
 
@@ -185,8 +204,6 @@ typedef struct VVCFrameContext {
             int height;
             int chroma_format_idc;
             int pixel_shift;
-            int bs_width;
-            int bs_height;
             int ibc_buffer_width;       ///< IbcBufWidth
         } sz;
     } tab;
@@ -217,13 +234,15 @@ typedef struct VVCContext {
     uint16_t seq_decode;
     uint16_t seq_output;
 
-    struct AVExecutor *executor;
+    struct FFExecutor *executor;
 
     VVCFrameContext *fcs;
     int nb_fcs;
 
     uint64_t nb_frames;     ///< processed frames
     int nb_delayed;         ///< delayed frames
+
+    enum AVPixelFormat pix_fmt; ///< pix format of current frame
 }  VVCContext ;
 
 #endif /* AVCODEC_VVC_DEC_H */

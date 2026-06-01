@@ -2,21 +2,36 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 // Generated from SVG file heart.svg
 import QtQuick
+import QtQuick.VectorImage
+import QtQuick.VectorImage.Helpers
 import QtQuick.Shapes
 
 Item {
     implicitWidth: 595
     implicitHeight: 841
+    component AnimationsInfo : QtObject
+    {
+        property bool paused: false
+        property int loops: 1
+        signal restart()
+    }
+    property AnimationsInfo animations : AnimationsInfo {}
     transform: [
         Translate { x: -100; y: -200 },
         Scale { xScale: width / 550; yScale: height / 550 }
     ]
-        objectName: "svg1"
+    objectName: "svg1"
+    id: _qt_node0
     Shape {
         preferredRendererType: Shape.CurveRenderer
         objectName: "layer1"
-        transform: Translate { x: 0; y: 30 }
+        id: _qt_node1
+        transform: TransformGroup {
+            id: _qt_node1_transform_base_group
+            Matrix4x4 { id: _qt_node1_transform_base; matrix: PlanarTransform.fromAffineMatrix(1, 0, 0, 1, 0, 30)}
+        }
         ShapePath {
+            id: _qt_shapePath_0
             objectName: "svg_path:path7"
             strokeColor: "#ff000000"
             strokeWidth: 18.7
@@ -29,6 +44,7 @@ Item {
             PathSvg { path: "M 263.416 235.146 Q 213.736 235.146 178.576 270.306 Q 143.416 305.466 143.416 355.146 Q 143.416 410.953 176.932 457.224 Q 197.525 485.653 256.465 537.292 Q 336.471 607.388 371.978 658.454 Q 406.412 606.394 488.235 533.861 Q 546.507 482.205 567.035 454.113 Q 600.541 408.26 600.541 355.146 Q 600.541 305.466 565.381 270.306 Q 530.221 235.146 480.541 235.146 Q 445.065 235.146 415.427 254.433 Q 386.595 273.195 371.978 304.333 Q 357.361 273.195 328.53 254.433 Q 298.891 235.146 263.416 235.146 " }
         }
         ShapePath {
+            id: _qt_shapePath_1
             objectName: "svg_path:path220"
             strokeColor: "transparent"
             fillColor: "#a5e6e6e6"

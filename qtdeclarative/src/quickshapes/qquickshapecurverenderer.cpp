@@ -151,13 +151,6 @@ void QQuickShapeCurveRenderer::beginSync(int totalCount, bool *countChanged)
     m_paths.resize(totalCount);
 }
 
-void QQuickShapeCurveRenderer::setPath(int index, const QQuickPath *path)
-{
-    constexpr QQuickShapePath::PathHints noHints;
-    const auto *shapePath = qobject_cast<const QQuickShapePath *>(path);
-    setPath(index, path->path(), shapePath ? shapePath->pathHints() : noHints);
-}
-
 void QQuickShapeCurveRenderer::setPath(int index, const QPainterPath &path, QQuickShapePath::PathHints pathHints)
 {
     auto &pathData = m_paths[index];
@@ -778,12 +771,13 @@ QQuickShapeCurveRenderer::NodeList QQuickShapeCurveRenderer::addCurveStrokeNodes
 
     static const int subdivisions = qEnvironmentVariable("QT_QUICKSHAPES_STROKE_SUBDIVISIONS", QStringLiteral("3")).toInt();
 
+    const bool wireFrame = debugVisualization() & DebugWireframe;
     QSGCurveProcessor::processStroke(path,
                                      pen.miterLimit(),
                                      penWidth,
                                      pen.joinStyle(),
                                      pen.capStyle(),
-                                     [&wfVertices, &node](const std::array<QVector2D, 3> &s,
+                                     [&wfVertices, &node, &wireFrame](const std::array<QVector2D, 3> &s,
                                                           const std::array<QVector2D, 3> &p,
                                                           const std::array<QVector2D, 3> &n,
                                                           QSGCurveStrokeNode::TriangleFlags flags)
@@ -796,9 +790,11 @@ QQuickShapeCurveRenderer::NodeList QQuickShapeCurveRenderer::addCurveStrokeNodes
                                          else
                                              node->appendTriangle(s, p, n);
 
-                                         wfVertices.append({p0.x(), p0.y(), 1.0f, 0.0f, 0.0f});
-                                         wfVertices.append({p1.x(), p1.y(), 0.0f, 1.0f, 0.0f});
-                                         wfVertices.append({p2.x(), p2.y(), 0.0f, 0.0f, 1.0f});
+                                         if (Q_UNLIKELY(wireFrame)) {
+                                             wfVertices.append({p0.x(), p0.y(), 1.0f, 0.0f, 0.0f});
+                                             wfVertices.append({p1.x(), p1.y(), 0.0f, 1.0f, 0.0f});
+                                             wfVertices.append({p2.x(), p2.y(), 0.0f, 0.0f, 1.0f});
+                                         }
                                     },
                                     subdivisions);
 
@@ -809,8 +805,7 @@ QQuickShapeCurveRenderer::NodeList QQuickShapeCurveRenderer::addCurveStrokeNodes
     node->cookGeometry();
     ret.append(node);
 
-    const bool wireFrame = debugVisualization() & DebugWireframe;
-    if (wireFrame) {
+    if (Q_UNLIKELY(wireFrame)) {
         QQuickShapeWireFrameNode *wfNode = new QQuickShapeWireFrameNode;
 
         QSGGeometry *wfg = new QSGGeometry(QQuickShapeWireFrameNode::attributes(),

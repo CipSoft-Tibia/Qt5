@@ -365,7 +365,7 @@ public:
 
 } // namespace PathEls
 
-#define QMLDOM_USTRING(s) u##s
+#define QMLDOM_USTRING(s) QStringView(u##s)
 #define QMLDOM_FIELD(name) inline constexpr const auto name = QMLDOM_USTRING(#name)
 /*!
    \internal
@@ -601,7 +601,7 @@ public:
     Path() = default;
     explicit Path(const PathEls::PathComponent &c) : m_endOffset(0), m_length(0)
     {
-        *this = appendComponent(c);
+        *this = withComponent(c);
     }
 
     int length() const { return m_length; }
@@ -628,38 +628,37 @@ public:
     Path dropTail(int n = 1) const;
     Path mid(int offset, int length) const;
     Path mid(int offset) const;
-    Path appendComponent(const PathEls::PathComponent &c);
+    Path withComponent(const PathEls::PathComponent &c);
 
     // # Path construction
     static Path fromString(const QString &s, const ErrorHandler &errorHandler = nullptr);
     static Path fromString(QStringView s, const ErrorHandler &errorHandler = nullptr);
-    static Path Root(PathRoot r);
-    static Path Root(QStringView s=u"");
-    static Path Root(const QString &s);
-    static Path Index(index_type i);
-    static Path Field(QStringView s=u"");
-    static Path Field(const QString &s);
-    static Path Key(QStringView s=u"");
-    static Path Key(const QString &s);
-    static Path Current(PathCurrent c);
-    static Path Current(QStringView s=u"");
-    static Path Current(const QString &s);
-    static Path Empty();
+    static Path fromRoot(PathRoot r);
+    static Path fromRoot(QStringView s=u"");
+    static Path fromRoot(const QString &s);
+    static Path fromIndex(index_type i);
+    static Path fromField(QStringView s=u"");
+    static Path fromField(const QString &s);
+    static Path fromKey(QStringView s=u"");
+    static Path fromKey(const QString &s);
+    static Path fromCurrent(PathCurrent c);
+    static Path fromCurrent(QStringView s=u"");
+    static Path fromCurrent(const QString &s);
     // add
-    Path empty() const;
-    Path field(const QString &name) const;
-    Path field(QStringView name) const;
-    Path key(const QString &name) const;
-    Path key(QStringView name) const;
-    Path index(index_type i) const;
-    Path any() const;
-    Path filter(const std::function<bool(const DomItem &)> &, const QString &) const;
-    Path filter(const std::function<bool(const DomItem &)> &,
+    Path withEmpty() const;
+    Path withField(const QString &name) const;
+    Path withField(QStringView name) const;
+    Path withKey(const QString &name) const;
+    Path withKey(QStringView name) const;
+    Path withIndex(index_type i) const;
+    Path withAny() const;
+    Path withFilter(const std::function<bool(const DomItem &)> &, const QString &) const;
+    Path withFilter(const std::function<bool(const DomItem &)> &,
                 QStringView desc=u"<native code filter>") const;
-    Path current(PathCurrent s) const;
-    Path current(const QString &s) const;
-    Path current(QStringView s=u"") const;
-    Path path(const Path &toAdd, bool avoidToAddAsBase = false) const;
+    Path withCurrent(PathCurrent s) const;
+    Path withCurrent(const QString &s) const;
+    Path withCurrent(QStringView s=u"") const;
+    Path withPath(const Path &toAdd, bool avoidToAddAsBase = false) const;
 
     Path expandFront() const;
     Path expandBack() const;

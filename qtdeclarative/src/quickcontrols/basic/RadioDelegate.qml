@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -47,7 +48,15 @@ T.RadioDelegate {
         radius: width / 2
         color: control.down ? control.palette.light : control.palette.base
         border.width: control.visualFocus ? 2 : 1
-        border.color: control.visualFocus ? control.palette.highlight : control.palette.mid
+        border.color: {
+            if (control.visualFocus)
+                return control.palette.highlight
+            else if (Qt.styleHints.accessibility.contrastPreference !== Qt.HighContrast)
+                return control.palette.mid
+            else
+                return Color.blend(control.palette.dark, control.palette.base,
+                                   control.enabled ? 0.0 : 0.5)
+        }
 
         Rectangle {
             x: (parent.width - width) / 2

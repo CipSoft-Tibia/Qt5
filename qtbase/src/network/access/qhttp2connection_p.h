@@ -101,6 +101,11 @@ public:
     Q_ENUM(State)
     constexpr static quint8 DefaultPriority = 127;
 
+    struct Configuration
+    {
+        bool useDownloadBuffer = true;
+    };
+
     ~QHttp2Stream() noexcept;
 
     // HTTP2 things
@@ -123,6 +128,8 @@ public:
     QByteDataBuffer downloadBuffer() const noexcept { return m_downloadBuffer; }
     QByteDataBuffer takeDownloadBuffer() noexcept { return std::exchange(m_downloadBuffer, {}); }
     void clearDownloadBuffer() { m_downloadBuffer.clear(); }
+
+    Configuration configuration() const { return m_configuration; }
 
 Q_SIGNALS:
     void headersReceived(const HPack::HttpHeader &headers, bool endStream);
@@ -154,7 +161,8 @@ private Q_SLOTS:
 
 private:
     friend class QHttp2Connection;
-    QHttp2Stream(QHttp2Connection *connection, quint32 streamID) noexcept;
+    QHttp2Stream(QHttp2Connection *connection, quint32 streamID,
+                 Configuration configuration) noexcept;
 
     [[nodiscard]] QHttp2Connection *getConnection() const
     {
@@ -201,6 +209,8 @@ private:
     bool m_isReserved = false;
     bool m_owningByteDevice = false;
 
+    const Configuration m_configuration;
+
     friend tst_QHttp2Connection;
 };
 
@@ -235,7 +245,12 @@ public:
     createDirectServerConnection(QIODevice *socket, const QHttp2Configuration &config);
     ~QHttp2Connection();
 
-    [[nodiscard]] QH2Expected<QHttp2Stream *, CreateStreamError> createStream();
+    [[nodiscard]] QH2Expected<QHttp2Stream *, CreateStreamError> createStream()
+    {
+        return createStream(QHttp2Stream::Configuration{});
+    }
+    [[nodiscard]] QH2Expected<QHttp2Stream *, CreateStreamError>
+    createStream(QHttp2Stream::Configuration config);
 
     QHttp2Stream *getStream(quint32 streamId) const;
     QHttp2Stream *promisedStream(const QUrl &streamKey) const
@@ -245,7 +260,7 @@ public:
         return nullptr;
     }
 
-    void close(Http2::Http2Error error = Http2::HTTP2_NO_ERROR) { sendGOAWAY(error); }
+    void close(Http2::Http2Error errorCode = Http2::HTTP2_NO_ERROR);
 
     bool isGoingAway() const noexcept { return m_goingAway; }
 
@@ -278,14 +293,16 @@ private:
     friend class QHttp2Stream;
     [[nodiscard]] QIODevice *getSocket() const { return qobject_cast<QIODevice *>(parent()); }
 
-    QH2Expected<QHttp2Stream *, QHttp2Connection::CreateStreamError> createLocalStreamInternal();
-    QHttp2Stream *createStreamInternal_impl(quint32 streamID);
+    QH2Expected<QHttp2Stream *, QHttp2Connection::CreateStreamError>
+    createLocalStreamInternal(QHttp2Stream::Configuration = {});
+    QHttp2Stream *createStreamInternal_impl(quint32 streamID, QHttp2Stream::Configuration = {});
 
     bool isInvalidStream(quint32 streamID) noexcept;
     bool streamWasResetLocally(quint32 streamID) noexcept;
+    Q_ALWAYS_INLINE
+    bool streamIsIgnored(quint32 streamID) const noexcept;
 
-    void connectionError(Http2::Http2Error errorCode,
-                         const char *message); // Connection failed to be established?
+    void connectionError(Http2::Http2Error errorCode, const char *message, bool logAsError = true);
     void setH2Configuration(QHttp2Configuration config);
     void closeSession();
     void registerStreamAsResetLocally(quint32 streamID);
@@ -298,7 +315,11 @@ private:
     bool sendServerPreface();
     bool serverCheckClientPreface();
     bool sendWINDOW_UPDATE(quint32 streamID, quint32 delta);
-    bool sendGOAWAY(Http2::Http2Error errorCode);
+    void sendClientGracefulShutdownGoaway();
+    void sendInitialServerGracefulShutdownGoaway();
+    void sendFinalServerGracefulShutdownGoaway();
+    bool sendGOAWAYFrame(Http2::Http2Error errorCode, quint32 lastSreamID);
+    void maybeCloseOnGoingAway();
     bool sendSETTINGS_ACK();
 
     void handleDATA();
@@ -400,6 +421,21 @@ private:
     bool m_goingAway = false;
     bool pushPromiseEnabled = false;
     quint32 m_lastIncomingStreamID = Http2::connectionStreamID;
+    // Gets lowered when/if we send GOAWAY:
+    quint32 m_lastStreamToProcess = Http2::lastValidStreamID;
+    static constexpr std::chrono::duration GoawayGracePeriod = std::chrono::seconds(60);
+    QDeadlineTimer m_goawayGraceTimer;
+
+    std::optional<quint32> m_lastGoAwayLastStreamID;
+    bool m_connectionAborted = false;
+
+    enum class GracefulShutdownState {
+        None,
+        AwaitingPriorPing,
+        AwaitingShutdownPing,
+        FinalGOAWAYSent,
+    };
+    GracefulShutdownState m_gracefulShutdownState = GracefulShutdownState::None;
 
     bool m_prefaceSent = false;
 

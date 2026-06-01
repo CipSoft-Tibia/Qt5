@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "net/log/file_net_log_observer.h"
 
 #include <algorithm>
@@ -529,8 +534,7 @@ std::string FileNetLogObserver::CaptureModeToString(NetLogCaptureMode mode) {
     case NetLogCaptureMode::kEverything:
       return "Everything";
   }
-  NOTREACHED_IN_MIGRATION();
-  return "UNKNOWN";
+  NOTREACHED();
 }
 
 FileNetLogObserver::WriteQueue::WriteQueue(uint64_t memory_max)

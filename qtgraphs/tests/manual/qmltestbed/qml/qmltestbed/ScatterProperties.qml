@@ -4,7 +4,6 @@
 import QtQuick
 import QtGraphs
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 
 Rectangle {
     id: mainview
@@ -33,6 +32,13 @@ Rectangle {
                 text: "Theme2"
                 onClicked: {
                     seriesTheme.theme = GraphsTheme.Theme.QtGreenNeon;
+                }
+            }
+
+            Button {
+                text: "toggle clipPlotArea"
+                onClicked: {
+                    chartView.clipPlotArea = !chartView.clipPlotArea;
                 }
             }
         }
@@ -118,5 +124,6 @@ Rectangle {
             XYPoint { x: 3.6; y: 5.2 }
             XYPoint { x: 4.0; y: 3.3 }
         }
+        onClipPlotAreaChanged: console.log("clipPlotAreaChanged to ", chartView.clipPlotArea);
     }
 }

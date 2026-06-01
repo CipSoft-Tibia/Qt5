@@ -272,12 +272,12 @@ void QQuickParticleEmitter::pulse(int milliseconds)
 
 void QQuickParticleEmitter::burst(int num)
 {
-    m_burstQueue << qMakePair(num, QPointF(x(), y()));
+    m_burstQueue << std::make_pair(num, QPointF(x(), y()));
 }
 
 void QQuickParticleEmitter::burst(int num, qreal x, qreal y)
 {
-    m_burstQueue << qMakePair(num, QPointF(x, y));
+    m_burstQueue << std::make_pair(num, QPointF(x, y));
 }
 
 void QQuickParticleEmitter::setMaxParticleCount(int arg)

@@ -17,7 +17,7 @@ include_rules = [
   "+components/prefs",
   "+components/reading_list/core",
   "+components/reading_list/features",
-  "+components/saved_tab_groups",
+  "+components/saved_tab_groups/public",
   "+components/search_engines",
   "+components/send_tab_to_self",
   "+components/sharing_message",
@@ -37,6 +37,7 @@ include_rules = [
   "+components/webauthn/core/browser",
   "+components/webdata/common",
   "+components/webdata_services",
+  "+google_apis/gaia",
   "+services/network/test",
   "+ui/base",
 ]

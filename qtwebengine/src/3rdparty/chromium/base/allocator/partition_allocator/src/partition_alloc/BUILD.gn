@@ -31,16 +31,14 @@ record_alloc_info = false
 # GWP-ASan is tied to BRP's enablement.
 enable_gwp_asan_support = enable_backup_ref_ptr_support
 
-# Pools are a logical concept when address space is 32-bit.
-glue_core_pools = glue_core_pools && has_64_bit_pointers
-
 # Pointer compression requires 64-bit pointers.
 enable_pointer_compression =
     enable_pointer_compression_support && has_64_bit_pointers
 
 # Duplicates the setup Chromium uses to define `DCHECK_IS_ON()`, but avails it
 # as a buildflag.
-dchecks_are_on = is_debug || dcheck_always_on
+partition_alloc_dchecks_are_on =
+    partition_alloc_is_debug || partition_alloc_dcheck_always_on
 
 # Building PartitionAlloc for Windows component build.
 # Currently use build_with_chromium not to affect any third_party code,
@@ -140,26 +138,28 @@ pa_buildflag_header("buildflags") {
     "ENABLE_DANGLING_RAW_PTR_CHECKS=$enable_dangling_raw_ptr_checks",
     "ENABLE_DANGLING_RAW_PTR_FEATURE_FLAG=$enable_dangling_raw_ptr_feature_flag",
     "ENABLE_GWP_ASAN_SUPPORT=$enable_gwp_asan_support",
+    "ENABLE_PARTITION_LOCK_REENTRANCY_CHECK=$enable_partition_lock_reentrancy_check",
     "ENABLE_PKEYS=$enable_pkeys",
     "ENABLE_POINTER_ARITHMETIC_TRAIT_CHECK=$enable_pointer_arithmetic_trait_check",
     "ENABLE_POINTER_COMPRESSION=$enable_pointer_compression",
     "ENABLE_POINTER_SUBTRACTION_CHECK=$enable_pointer_subtraction_check",
     "ENABLE_SHADOW_METADATA_FOR_64_BITS_POINTERS=$enable_shadow_metadata",
     "ENABLE_THREAD_ISOLATION=$enable_pkeys",
+    "FORCE_DISABLE_BACKUP_REF_PTR_FEATURE=$force_disable_backup_ref_ptr_feature",
     "FORCE_ENABLE_RAW_PTR_EXCLUSION=$force_enable_raw_ptr_exclusion",
     "FORWARD_THROUGH_MALLOC=$forward_through_malloc",
-    "GLUE_CORE_POOLS=$glue_core_pools",
     "HAS_64_BIT_POINTERS=$has_64_bit_pointers",
     "HAS_MEMORY_TAGGING=$has_memory_tagging",
     "IS_ANDROID=$is_android",
     "IS_CASTOS=$is_castos",
     "IS_CAST_ANDROID=$is_cast_android",
     "IS_CHROMEOS=$is_chromeos",
-    "IS_DEBUG=$is_debug",
+    "IS_DEBUG=$partition_alloc_is_debug",
     "RAW_PTR_ZERO_ON_CONSTRUCT=$raw_ptr_zero_on_construct",
     "RAW_PTR_ZERO_ON_DESTRUCT=$raw_ptr_zero_on_destruct",
     "RAW_PTR_ZERO_ON_MOVE=$raw_ptr_zero_on_move",
     "RECORD_ALLOC_INFO=$record_alloc_info",
+    "SMALLER_PARTITION_COOKIE=$smaller_partition_cookie",
     "STACK_SCAN_SUPPORTED=$stack_scan_supported",
     "USE_ALLOCATOR_SHIM=$use_allocator_shim",
     "USE_ASAN_BACKUP_REF_PTR=$use_asan_backup_ref_ptr",
@@ -169,11 +169,12 @@ pa_buildflag_header("buildflags") {
     "USE_LARGE_EMPTY_SLOT_SPAN_RING=$use_large_empty_slot_span_ring",
     "USE_PARTITION_ALLOC=$use_partition_alloc",
     "USE_PARTITION_ALLOC_AS_MALLOC=$use_partition_alloc_as_malloc",
+    "USE_PARTITION_COOKIE=$use_partition_cookie",
     "USE_RAW_PTR_ASAN_UNOWNED_IMPL=$use_raw_ptr_asan_unowned_impl",
     "USE_RAW_PTR_BACKUP_REF_IMPL=$use_raw_ptr_backup_ref_impl",
     "USE_RAW_PTR_HOOKABLE_IMPL=$use_raw_ptr_hookable_impl",
     "ENABLE_ALLOCATOR_SHIM_PARTITION_ALLOC_DISPATCH_WITH_ADVANCED_CHECKS_SUPPORT=$enable_allocator_shim_partition_alloc_dispatch_with_advanced_checks_support",
-    "DCHECKS_ARE_ON=$dchecks_are_on",
+    "DCHECKS_ARE_ON=$partition_alloc_dchecks_are_on",
     "EXPENSIVE_DCHECKS_ARE_ON=$enable_expensive_dchecks",
     "DCHECK_IS_CONFIGURABLE=$dcheck_is_configurable",
     "CAN_UNWIND_WITH_FRAME_POINTERS=$can_unwind_with_frame_pointers",
@@ -332,7 +333,7 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
     }
   }
 
-  if (enable_pkeys && is_debug) {
+  if (enable_pkeys && partition_alloc_is_debug) {
     config("no_stack_protector") {
       cflags = [ "-fno-stack-protector" ]
     }
@@ -429,6 +430,7 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
       "partition_bucket.cc",
       "partition_bucket.h",
       "partition_bucket_lookup.h",
+      "partition_cookie.cc",
       "partition_cookie.h",
       "partition_dcheck_helper.cc",
       "partition_dcheck_helper.h",
@@ -443,6 +445,7 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
       "partition_page_constants.h",
       "partition_root.cc",
       "partition_root.h",
+      "partition_shared_mutex.h",
       "partition_stats.cc",
       "partition_stats.h",
       "partition_superpage_extent_entry.h",
@@ -567,7 +570,7 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
 
     # We want to be able to test pkey mode without access to the default pkey.
     # This is incompatible with stack protectors since the TLS won't be pkey-tagged.
-    if (enable_pkeys && is_debug) {
+    if (enable_pkeys && partition_alloc_is_debug) {
       configs += [ ":no_stack_protector" ]
     }
   }
@@ -600,6 +603,7 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
       "partition_alloc_base/debug/stack_trace.cc",
       "partition_alloc_base/debug/stack_trace.h",
       "partition_alloc_base/export_template.h",
+      "partition_alloc_base/files/platform_file.h",
       "partition_alloc_base/immediate_crash.h",
       "partition_alloc_base/log_message.cc",
       "partition_alloc_base/log_message.h",
@@ -645,11 +649,13 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
       "partition_alloc_base/time/time.h",
       "partition_alloc_base/time/time_override.cc",
       "partition_alloc_base/time/time_override.h",
+      "partition_alloc_base/types/same_as_any.h",
       "partition_alloc_base/types/strong_alias.h",
       "partition_alloc_base/win/win_handle_types.h",
       "partition_alloc_base/win/win_handle_types_list.inc",
       "partition_alloc_base/win/windows_types.h",
     ]
+    libs = []
 
     if (is_win) {
       sources += [
@@ -661,6 +667,11 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
         "partition_alloc_base/threading/platform_thread_win.cc",
         "partition_alloc_base/time/time_win.cc",
       ]
+      if(!is_mingw) {
+        libs += [
+          "winmm.lib",  # For timeGetTime.
+        ]
+      }
     }
 
     if (is_posix) {
@@ -784,8 +795,6 @@ if (is_clang_or_gcc || is_msvc || is_mingw) {
   }
 
   component("allocator_shim") {
-    visibility = [ ":*" ]
-
     sources = []
     deps = []
     all_dependent_configs = []
@@ -1011,7 +1020,7 @@ if (build_with_chromium) {
       ]
     }
 
-    if (enable_pkeys && is_debug && !is_component_build) {
+    if (enable_pkeys && partition_alloc_is_debug && !is_component_build) {
       # This test requires RELRO, which is not enabled in component builds.
       # Also, require a debug build, since we only disable stack protectors in
       # debug builds in PartitionAlloc (see below why it's needed).

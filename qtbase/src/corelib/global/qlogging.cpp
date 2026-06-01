@@ -3,29 +3,26 @@
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qglobal_p.h"
 #include "qlogging.h"
 #include "qlogging_p.h"
-#include "qlist.h"
+
 #include "qbytearray.h"
+#include "qlist.h"
+#include "qcoreapplication.h"
+#include "private/qcoreapplication_p.h"
+#include "qdatetime.h"
+#include "qdebug.h"
+#include "qgettid_p.h"
+#include "private/qlocking_p.h"
+#include "qloggingcategory.h"
+#include "private/qloggingregistry_p.h"
+#include "qmutex.h"
 #include "qscopeguard.h"
 #include "qstring.h"
-#include "qvarlengtharray.h"
-#include "qdebug.h"
-#include "qmutex.h"
-#include <QtCore/private/qlocking_p.h>
-#include "qloggingcategory.h"
-#ifndef QT_BOOTSTRAPPED
-#include "qdatetime.h"
-#include "qcoreapplication.h"
+#include "qtcore_tracepoints_p.h"
 #include "qthread.h"
-#include "private/qloggingregistry_p.h"
-#include "private/qcoreapplication_p.h"
-#include <qtcore_tracepoints_p.h>
-#endif
-#ifdef Q_OS_WIN
-#include <qt_windows.h>
-#endif
+#include "qvarlengtharray.h"
+
 #ifdef Q_CC_MSVC
 #include <intrin.h>
 #endif
@@ -79,44 +76,6 @@ extern char *__progname;
 #  include <cxxabi.h>
 #endif // QLOGGING_USE_EXECINFO_BACKTRACE
 
-#ifndef QT_BOOTSTRAPPED
-#if defined(Q_OS_LINUX) && (defined(__GLIBC__) || __has_include(<sys/syscall.h>))
-#  include <sys/syscall.h>
-
-# if defined(Q_OS_ANDROID) && !defined(SYS_gettid)
-#  define SYS_gettid __NR_gettid
-# endif
-
-static long qt_gettid()
-{
-    // no error handling
-    // this syscall has existed since Linux 2.4.11 and cannot fail
-    return syscall(SYS_gettid);
-}
-#elif defined(Q_OS_DARWIN)
-#  include <pthread.h>
-static int qt_gettid()
-{
-    // no error handling: this call cannot fail
-    __uint64_t tid;
-    pthread_threadid_np(NULL, &tid);
-    return tid;
-}
-#elif defined(Q_OS_FREEBSD_KERNEL) && defined(__FreeBSD_version) && __FreeBSD_version >= 900031
-#  include <pthread_np.h>
-static int qt_gettid()
-{
-    return pthread_getthreadid_np();
-}
-#else
-static QT_PREPEND_NAMESPACE(qint64) qt_gettid()
-{
-    QT_USE_NAMESPACE
-    return qintptr(QThread::currentThreadId());
-}
-#endif
-#endif // !QT_BOOTSTRAPPED
-
 #include <cstdlib>
 #include <algorithm>
 #include <chrono>
@@ -125,13 +84,17 @@ static QT_PREPEND_NAMESPACE(qint64) qt_gettid()
 
 #include <stdio.h>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <processthreadsapi.h>
+#include "qfunctionpointer.h"
+#endif
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-#ifndef QT_BOOTSTRAPPED
 Q_TRACE_POINT(qtcore, qt_message_print, int type, const char *category, const char *function, const char *file, int line, const QString &message);
-#endif
 
 /*!
     \headerfile <QtLogging>
@@ -166,10 +129,7 @@ Q_TRACE_POINT(qtcore, qt_message_print, int type, const char *category, const ch
 */
 
 template <typename String>
-#if !defined(Q_CC_MSVC_ONLY)
-Q_NORETURN
-#endif
-static void qt_message_fatal(QtMsgType, const QMessageLogContext &context, String &&message);
+static void qt_maybe_message_fatal(QtMsgType, const QMessageLogContext &context, String &&message);
 static void qt_message_print(QtMsgType, const QMessageLogContext &context, const QString &message);
 static void preformattedMessageHandler(QtMsgType type, const QMessageLogContext &context,
                                        const QString &formattedMessage);
@@ -189,34 +149,107 @@ static int checked_var_value(const char *varname)
     return (ok && value >= 0) ? value : 1;
 }
 
-static bool is_fatal_count_down(QAtomicInt &n)
+static bool isFatalCountDown(const char *varname, QBasicAtomicInt &n)
 {
-    // it's fatal if the current value is exactly 1,
-    // otherwise decrement if it's non-zero
+    static const int Uninitialized = 0;
+    static const int NeverFatal = 1;
+    static const int ImmediatelyFatal = 2;
 
     int v = n.loadRelaxed();
-    while (v > 1 && !n.testAndSetRelaxed(v, v - 1, v))
-        qYieldCpu();
-    return v == 1; // we exited the loop, so either v == 0 or CAS succeeded to set n from v to v-1
-}
-
-static bool isFatal(QtMsgType msgType)
-{
-    if (msgType == QtFatalMsg)
-        return true;
-
-    if (msgType == QtCriticalMsg) {
-        static QAtomicInt fatalCriticals = checked_var_value("QT_FATAL_CRITICALS");
-        return is_fatal_count_down(fatalCriticals);
+    if (v == Uninitialized) {
+        // first, initialize from the environment
+        // note that the atomic stores the env.var value plus 1, so adjust
+        const int env = checked_var_value(varname) + 1;
+        if (env == NeverFatal) {
+            // not fatal, now or in the future, so use a fast path
+            n.storeRelaxed(NeverFatal);
+            return false;
+        } else if (env == ImmediatelyFatal) {
+            return true;
+        } else if (n.testAndSetRelaxed(Uninitialized, env - 1, v)) {
+            return false;       // not yet fatal, but decrement
+        } else {
+            // some other thread initialized before we did
+        }
     }
 
-    if (msgType == QtWarningMsg || msgType == QtCriticalMsg) {
-        static QAtomicInt fatalWarnings = checked_var_value("QT_FATAL_WARNINGS");
-        return is_fatal_count_down(fatalWarnings);
+    while (v > ImmediatelyFatal && !n.testAndSetRelaxed(v, v - 1, v))
+        qYieldCpu();
+
+    // We exited the loop, so either v already was ImmediatelyFatal or we
+    // succeeded to set n from v to v-1.
+    return v == ImmediatelyFatal;
+}
+
+Q_CONSTINIT static QBasicAtomicInt fatalCriticalsCount = Q_BASIC_ATOMIC_INITIALIZER(0);
+Q_CONSTINIT static QBasicAtomicInt fatalWarningsCount = Q_BASIC_ATOMIC_INITIALIZER(0);
+static bool isFatal(QtMsgType msgType)
+{
+    switch (msgType){
+    case QtFatalMsg:
+        return true;    // always fatal
+
+    case QtCriticalMsg:
+        return isFatalCountDown("QT_FATAL_CRITICALS", fatalCriticalsCount);
+
+    case QtWarningMsg:
+        return isFatalCountDown("QT_FATAL_WARNINGS", fatalWarningsCount);
+
+    case QtDebugMsg:
+    case QtInfoMsg:
+        break;  // never fatal
     }
 
     return false;
 }
+
+#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(Q_OS_FREEBSD) || defined(Q_OS_NETBSD)
+static bool qt_append_thread_name_to(QString &message)
+{
+    std::array<char, 16> name{};
+    if (pthread_getname_np(pthread_self(), name.data(), name.size()) == 0) {
+        QUtf8StringView threadName(name.data());
+        if (!threadName.isEmpty()) {
+            message.append(threadName);
+            return true;
+        }
+    }
+    return false;
+}
+#elif defined(Q_OS_WIN)
+typedef HRESULT (WINAPI *GetThreadDescriptionFunc)(HANDLE, PWSTR *);
+static bool qt_append_thread_name_to(QString &message)
+{
+    // Once MinGW 12.0 is required for Qt, we can call GetThreadDescription directly
+    // instead of this runtime resolve:
+    static GetThreadDescriptionFunc pGetThreadDescription = []() -> GetThreadDescriptionFunc {
+        HMODULE hKernel = GetModuleHandleW(L"kernel32.dll");
+        if (!hKernel)
+            return nullptr;
+        auto funcPtr = reinterpret_cast<QFunctionPointer>(GetProcAddress(hKernel, "GetThreadDescription"));
+        return reinterpret_cast<GetThreadDescriptionFunc>(funcPtr);
+    } ();
+    if (!pGetThreadDescription)
+        return false; // Not available on this system
+    PWSTR description = nullptr;
+    HRESULT hr = pGetThreadDescription(GetCurrentThread(), &description);
+    std::unique_ptr<WCHAR, decltype(&LocalFree)> descriptionOwner(description, &LocalFree);
+    if (SUCCEEDED(hr)) {
+        QStringView threadName(description);
+        if (!threadName.isEmpty()) {
+            message.append(threadName);
+            return true;
+        }
+    }
+    return false;
+}
+#else
+static bool qt_append_thread_name_to(QString &message)
+{
+    Q_UNUSED(message)
+    return false;
+}
+#endif
 
 #ifndef Q_OS_WASM
 
@@ -376,9 +409,7 @@ static void qt_message(QtMsgType msgType, const QMessageLogContext &context, con
 {
     QString buf = QString::vasprintf(msg, ap);
     qt_message_print(msgType, context, buf);
-
-    if (isFatal(msgType))
-        qt_message_fatal(msgType, context, buf);
+    qt_maybe_message_fatal(msgType, context, buf);
 }
 
 /*!
@@ -514,19 +545,6 @@ QDebug QMessageLogger::debug(QMessageLogger::CategoryFunction catFunc) const
 {
     return debug((*catFunc)());
 }
-
-/*!
-    \internal
-
-    Returns a QNoDebug object, which is used to ignore debugging output.
-
-    \sa QNoDebug, qDebug()
-*/
-QNoDebug QMessageLogger::noDebug() const noexcept
-{
-    return QNoDebug();
-}
-
 #endif
 
 /*!
@@ -933,10 +951,9 @@ QDebug QMessageLogger::fatal(QMessageLogger::CategoryFunction catFunc) const
 }
 #endif // QT_NO_DEBUG_STREAM
 
-#if !defined(QT_BOOTSTRAPPED)
 static bool isDefaultCategory(const char *category)
 {
-    return !category || strcmp(category, "default") == 0;
+    return !category || strcmp(category, QLoggingRegistry::defaultCategoryName) == 0;
 }
 
 /*!
@@ -1117,6 +1134,7 @@ static const char functionTokenC[] = "%{function}";
 static const char pidTokenC[] = "%{pid}";
 static const char appnameTokenC[] = "%{appname}";
 static const char threadidTokenC[] = "%{threadid}";
+static const char threadnameTokenC[] = "%{threadname}";
 static const char qthreadptrTokenC[] = "%{qthreadptr}";
 static const char timeTokenC[] = "%{time"; //not a typo: this command has arguments
 static const char backtraceTokenC[] = "%{backtrace"; //ditto
@@ -1163,15 +1181,13 @@ struct QMessagePattern
     std::unique_ptr<std::unique_ptr<const char[]>[]> literals;
     std::unique_ptr<const char *[]> tokens;
     QList<QString> timeArgs; // timeFormats in sequence of %{time
-#ifndef QT_BOOTSTRAPPED
     std::chrono::steady_clock::time_point appStartTime = std::chrono::steady_clock::now();
-#endif
-#ifdef QLOGGING_HAVE_BACKTRACE
     struct BacktraceParams
     {
         QString backtraceSeparator;
         int backtraceDepth;
     };
+#ifdef QLOGGING_HAVE_BACKTRACE
     QList<BacktraceParams> backtraceArgs; // backtrace arguments in sequence of %{backtrace
     int maxBacktraceDepth = 0;
 #endif
@@ -1191,9 +1207,7 @@ struct QMessagePattern
     }
 #endif
 };
-#ifdef QLOGGING_HAVE_BACKTRACE
 Q_DECLARE_TYPEINFO(QMessagePattern::BacktraceParams, Q_RELOCATABLE_TYPE);
-#endif
 
 Q_CONSTINIT QBasicMutex QMessagePattern::mutex;
 
@@ -1280,6 +1294,8 @@ void QMessagePattern::setPattern(const QString &pattern)
                 tokens[i] = appnameTokenC;
             else if (lexeme == QLatin1StringView(threadidTokenC))
                 tokens[i] = threadidTokenC;
+            else if (lexeme == QLatin1StringView(threadnameTokenC))
+                tokens[i] = threadnameTokenC;
             else if (lexeme == QLatin1StringView(qthreadptrTokenC))
                 tokens[i] = qthreadptrTokenC;
             else if (lexeme.startsWith(QLatin1StringView(timeTokenC))) {
@@ -1429,7 +1445,8 @@ Q_NEVER_INLINE void QInternalMessageLogContext::populateBacktrace(int frameCount
 {
     assert(frameCount >= 0);
     BacktraceStorage &result = backtrace.emplace(TypicalBacktraceFrameCount + frameCount);
-    int n = ::backtrace(result.data(), result.size());
+    Q_ASSERT(result.size() == int(result.size()));
+    int n = ::backtrace(result.data(), int(result.size()));
     if (n <= 0)
         result.clear();
     else
@@ -1585,7 +1602,13 @@ static QString formatBacktraceForLogMessage(const QMessagePattern::BacktracePara
 
     return frames.join(backtraceSeparator);
 }
-#endif // QLOGGING_HAVE_BACKTRACE && !QT_BOOTSTRAPPED
+#else
+void QInternalMessageLogContext::populateBacktrace(int)
+{
+    // initFrom() returns 0 to our caller, so we should never get here
+    Q_UNREACHABLE();
+}
+#endif // !QLOGGING_HAVE_BACKTRACE
 
 Q_GLOBAL_STATIC(QMessagePattern, qMessagePattern)
 
@@ -1676,6 +1699,9 @@ static QString formatLogMessage(QtMsgType type, const QMessageLogContext &contex
         } else if (token == threadidTokenC) {
             // print the TID as decimal
             message.append(QString::number(qt_gettid()));
+        } else if (token == threadnameTokenC) {
+            if (!qt_append_thread_name_to(message))
+                message.append(QString::number(qt_gettid())); // fallback to the TID
         } else if (token == qthreadptrTokenC) {
             message.append("0x"_L1);
             message.append(QString::number(qlonglong(QThread::currentThread()->currentThread()), 16));
@@ -1727,20 +1753,6 @@ static QString formatLogMessage(QtMsgType type, const QMessageLogContext &contex
     }
     return message;
 }
-#else // QT_BOOTSTRAPPED
-static QString formatLogMessage(QtMsgType type, const QMessageLogContext &context, const QString &str)
-{
-    Q_UNUSED(type);
-    Q_UNUSED(context);
-    return str;
-}
-#endif
-#ifndef QLOGGING_HAVE_BACKTRACE
-void QInternalMessageLogContext::populateBacktrace(int)
-{
-    Q_UNREACHABLE();
-}
-#endif
 
 static void qDefaultMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &buf);
 
@@ -1748,10 +1760,6 @@ static void qDefaultMessageHandler(QtMsgType type, const QMessageLogContext &con
 Q_CONSTINIT static QBasicAtomicPointer<void (QtMsgType, const QMessageLogContext &, const QString &)> messageHandler = Q_BASIC_ATOMIC_INITIALIZER(nullptr);
 
 // ------------------------ Alternate logging sinks -------------------------
-
-#if defined(QT_BOOTSTRAPPED)
-    // Bootstrapped tools always print to stderr, so no need for alternate sinks
-#else
 
 #if QT_CONFIG(slog2)
 #ifndef QT_LOG_CODE
@@ -1815,7 +1823,7 @@ static bool slog2_default_handler(QtMsgType type, const QMessageLogContext &,
 #if QT_CONFIG(journald)
 static bool systemd_default_message_handler(QtMsgType type,
                                             const QMessageLogContext &context,
-                                            const QString &formattedMessage)
+                                            const QString &message)
 {
     if (shouldLogToStderr())
         return false; // Leave logging up to stderr handler
@@ -1839,13 +1847,39 @@ static bool systemd_default_message_handler(QtMsgType type,
         break;
     }
 
-    sd_journal_send("MESSAGE=%s",     formattedMessage.toUtf8().constData(),
-                    "PRIORITY=%i",    priority,
-                    "CODE_FUNC=%s",   context.function ? context.function : "unknown",
-                    "CODE_LINE=%d",   context.line,
-                    "CODE_FILE=%s",   context.file ? context.file : "unknown",
-                    "QT_CATEGORY=%s", context.category ? context.category : "unknown",
-                    NULL);
+    // Explicit QByteArray instead of auto, to resolve the QStringBuilder proxy
+    const QByteArray messageField = "MESSAGE="_ba + message.toUtf8().constData();
+    const QByteArray priorityField = "PRIORITY="_ba + QByteArray::number(priority);
+    const QByteArray tidField = "TID="_ba + QByteArray::number(qlonglong(qt_gettid()));
+    const QByteArray fileField = context.file
+                                 ? "CODE_FILE="_ba + context.file : QByteArray();
+    const QByteArray funcField = context.function
+                                 ? "CODE_FUNC="_ba + context.function : QByteArray();
+    const QByteArray lineField = context.line
+                                 ? "CODE_LINE="_ba + QByteArray::number(context.line) : QByteArray();
+    const QByteArray categoryField = context.category
+                                 ? "QT_CATEGORY="_ba + context.category : QByteArray();
+
+    auto toIovec = [](const QByteArray &ba) {
+        return iovec{ const_cast<char*>(ba.data()), size_t(ba.size()) };
+    };
+
+    struct iovec fields[7] = {
+        toIovec(messageField),
+        toIovec(priorityField),
+        toIovec(tidField),
+    };
+    int nFields = 3;
+    if (context.file)
+        fields[nFields++] = toIovec(fileField);
+    if (context.function)
+        fields[nFields++] = toIovec(funcField);
+    if (context.line)
+        fields[nFields++] = toIovec(lineField);
+    if (context.category)
+        fields[nFields++] = toIovec(categoryField);
+
+    sd_journal_sendv(fields, nFields);
 
     return true; // Prevent further output to stderr
 }
@@ -1931,7 +1965,7 @@ static void win_outputDebugString_helper(const QString &message)
     if (message.length() <= maxOutputStringLength) {
         OutputDebugString(reinterpret_cast<const wchar_t *>(message.utf16()));
     } else {
-        wchar_t *messagePart = new wchar_t[maxOutputStringLength + 1];
+        wchar_t messagePart[maxOutputStringLength + 1];
         for (qsizetype i = 0; i < message.length(); i += maxOutputStringLength) {
             const qsizetype length = qMin(message.length() - i, maxOutputStringLength);
             const qsizetype len = QStringView{message}.mid(i, length).toWCharArray(messagePart);
@@ -1939,7 +1973,6 @@ static void win_outputDebugString_helper(const QString &message)
             messagePart[len] = 0;
             OutputDebugString(messagePart);
         }
-        delete[] messagePart;
     }
 }
 
@@ -1986,8 +2019,6 @@ static bool wasm_default_message_handler(QtMsgType type,
 }
 #endif
 
-#endif // Bootstrap check
-
 // --------------------------------------------------------------------------
 
 static void stderr_message_handler(QtMsgType type, const QMessageLogContext &context,
@@ -2014,14 +2045,12 @@ struct SystemMessageSink
 }
 
 static constexpr SystemMessageSink systemMessageSink = {
-#if defined(QT_BOOTSTRAPPED)
-        nullptr
-#elif defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
         win_message_handler
 #elif QT_CONFIG(slog2)
         slog2_default_handler
 #elif QT_CONFIG(journald)
-        systemd_default_message_handler
+        systemd_default_message_handler, true
 #elif QT_CONFIG(syslog)
         syslog_default_message_handler
 #elif defined(Q_OS_ANDROID)
@@ -2065,13 +2094,6 @@ static void qDefaultMessageHandler(QtMsgType type, const QMessageLogContext &con
     preformattedMessageHandler(type, context, formatLogMessage(type, context, message));
 }
 
-#if defined(QT_BOOTSTRAPPED)
-// there's no message handler in bootstrapped mode; force everything to stderr
-static bool grabMessageHandler() { return false; }
-static void ungrabMessageHandler() { }
-
-#elif defined(Q_COMPILER_THREAD_LOCAL)
-
 Q_CONSTINIT static thread_local bool msgHandlerGrabbed = false;
 
 static bool grabMessageHandler()
@@ -2088,14 +2110,8 @@ static void ungrabMessageHandler()
     msgHandlerGrabbed = false;
 }
 
-#else
-static bool grabMessageHandler() { return true; }
-static void ungrabMessageHandler() { }
-#endif // (Q_COMPILER_THREAD_LOCAL)
-
 static void qt_message_print(QtMsgType msgType, const QMessageLogContext &context, const QString &message)
 {
-#ifndef QT_BOOTSTRAPPED
     Q_TRACE(qt_message_print, msgType, context.category, context.function, context.file, context.line, message);
 
     // qDebug, qWarning, ... macros do not check whether category is enabledgc
@@ -2105,7 +2121,6 @@ static void qt_message_print(QtMsgType msgType, const QMessageLogContext &contex
                 return;
         }
     }
-#endif
 
     // prevent recursion in case the message handler generates messages
     // itself, e.g. by using Qt API
@@ -2118,9 +2133,11 @@ static void qt_message_print(QtMsgType msgType, const QMessageLogContext &contex
     }
 }
 
-template <typename String>
-static void qt_message_fatal(QtMsgType, const QMessageLogContext &context, String &&message)
+template <typename String> static void
+qt_maybe_message_fatal(QtMsgType msgType, const QMessageLogContext &context, String &&message)
 {
+    if (!isFatal(msgType))
+        return;
 #if defined(Q_CC_MSVC_ONLY) && defined(QT_DEBUG) && defined(_DEBUG) && defined(_CRT_ERROR)
     wchar_t contextFileL[256];
     // we probably should let the compiler do this for us, by declaring QMessageLogContext::file to
@@ -2156,8 +2173,7 @@ void qt_message_output(QtMsgType msgType, const QMessageLogContext &context, con
 {
     QInternalMessageLogContext ctx(context);
     qt_message_print(msgType, ctx, message);
-    if (isFatal(msgType))
-        qt_message_fatal(msgType, ctx, message);
+    qt_maybe_message_fatal(msgType, ctx, message);
 }
 
 void qErrnoWarning(const char *msg, ...)
@@ -2288,6 +2304,7 @@ void qErrnoWarning(int code, const char *msg, ...)
     \row \li \c %{message} \li The actual message
     \row \li \c %{pid} \li QCoreApplication::applicationPid()
     \row \li \c %{threadid} \li The system-wide ID of current thread (if it can be obtained)
+    \row \li \c %{threadname} \li The current thread name (if it can be obtained, or the thread ID, since Qt 6.10)
     \row \li \c %{qthreadptr} \li A pointer to the current QThread (result of QThread::currentThread())
     \row \li \c %{type} \li "debug", "warning", "critical" or "fatal"
     \row \li \c %{time process} \li time of the message, in seconds since the process started (the token "process" is literal)
@@ -2363,7 +2380,6 @@ QtMessageHandler qInstallMessageHandler(QtMessageHandler h)
         return qDefaultMessageHandler;
 }
 
-#ifndef QT_BOOTSTRAPPED
 void qSetMessagePattern(const QString &pattern)
 {
     const auto locker = qt_scoped_lock(QMessagePattern::mutex);
@@ -2371,7 +2387,6 @@ void qSetMessagePattern(const QString &pattern)
     if (!qMessagePattern()->fromEnvironment)
         qMessagePattern()->setPattern(pattern);
 }
-#endif
 
 static void copyInternalContext(QInternalMessageLogContext *self,
                                 const QMessageLogContext &logContext) noexcept

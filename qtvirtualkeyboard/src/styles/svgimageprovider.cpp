@@ -1,11 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "svgimageprovider.h"
 #include <QImage>
 #include <QPixmap>
 #include <QSvgRenderer>
 #include <QPainter>
+
+QT_BEGIN_NAMESPACE
 
 SvgImageProvider::SvgImageProvider() :
     QQuickImageProvider(QQuickImageProvider::Pixmap)
@@ -80,3 +83,5 @@ QPixmap SvgImageProvider::requestPixmap(const QString &id, QSize *size, const QS
 
     return result;
 }
+
+QT_END_NAMESPACE

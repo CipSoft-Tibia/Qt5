@@ -189,6 +189,11 @@ QDebug operator<<(QDebug debug, const QGrpcSerializationFormat &sfmt)
 }
 #endif
 
+/*
+//! [compares]
+    Returns \c true if the \l{suffix} and \l{serializer}, in \a lhs and \a rhs are
+//! [compares]
+*/
 bool comparesEqual(const QGrpcSerializationFormat &lhs,
                    const QGrpcSerializationFormat &rhs) noexcept
 {
@@ -196,6 +201,33 @@ bool comparesEqual(const QGrpcSerializationFormat &lhs,
         && lhs.d_func()->serializer == rhs.d_func()->serializer;
 }
 
+/*!
+    \since 6.8
+    \fn bool QGrpcSerializationFormat::operator==(const QGrpcSerializationFormat &lhs, const QGrpcSerializationFormat &rhs)
+    \include qgrpcserializationformat.cpp compares
+    equal.
+*/
+
+/*!
+    \since 6.8
+    \fn bool QGrpcSerializationFormat::operator!=(const QGrpcSerializationFormat &lhs, const QGrpcSerializationFormat &rhs)
+    \include qgrpcserializationformat.cpp compares
+    not equal.
+*/
+
+/*!
+    \since 6.8
+    \fn size_t QGrpcSerializationFormat::qHash(const QGrpcSerializationFormat &key)
+
+    Returns the hash value of \a key, using \c{0} to seed the calculation.
+*/
+
+/*!
+    \since 6.8
+    \fn size_t QGrpcSerializationFormat::qHash(const QGrpcSerializationFormat &key, size_t seed)
+
+    \include qtgrpc-shared.qdocinc qhash-desc
+*/
 size_t qHash(const QGrpcSerializationFormat &key, size_t seed) noexcept
 {
     return qHashMulti(seed, key.d_func()->suffix, key.d_func()->serializer.get());

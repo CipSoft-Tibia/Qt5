@@ -34,7 +34,7 @@ public:
     ~QQmlGrpcCallOptions() override;
 
     const QGrpcCallOptions &options() const & noexcept;
-    void options() && = delete;
+    void options() const && = delete;
 
     qint64 deadlineTimeout() const;
     void setDeadlineTimeout(qint64 value);

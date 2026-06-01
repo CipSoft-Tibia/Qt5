@@ -467,13 +467,17 @@ void QWaylandXdgOutputV1Private::sendLogicalSize(const QSize &size)
         send_logical_size(resource->handle, size.width(), size.height());
 }
 
+void QWaylandXdgOutputV1Private::maybeSendDone(const Resource *resource)
+{
+    if (resource->version() < 3)
+        send_done(resource->handle);
+}
+
 void QWaylandXdgOutputV1Private::sendDone()
 {
     const auto values = resourceMap().values();
-    for (auto *resource : values) {
-        if (resource->version() < 3)
-            send_done(resource->handle);
-    }
+    for (auto *resource : values)
+        maybeSendDone(resource);
 
     QWaylandOutputPrivate::get(output)->sendDone();
 }
@@ -551,7 +555,12 @@ void QWaylandXdgOutputV1Private::zxdg_output_v1_bind_resource(Resource *resource
         send_name(resource->handle, name);
     if (resource->version() >= ZXDG_OUTPUT_V1_DESCRIPTION_SINCE_VERSION)
         send_description(resource->handle, description);
-    send_done(resource->handle);
+    maybeSendDone(resource);
+
+    QWaylandOutputPrivate *output_d = QWaylandOutputPrivate::get(output);
+    auto *outputResource = output_d->resourceMap().value(resource->client());
+    if (outputResource)
+        output_d->maybeSendDone(outputResource);
 
     initialized = true;
 }

@@ -1,8 +1,8 @@
 Version: 2
 Include: [
     cmake_platforms.yaml: [
-        'rhel-8.10',
-        'windows-10_22h2-mingw13'
+        'rhel-9.4',
+        'windows-11_24h2-mingw13'
     ],
     cmake_platforms_target_android.yaml: [
         'android-15-x86_64-on-linux',

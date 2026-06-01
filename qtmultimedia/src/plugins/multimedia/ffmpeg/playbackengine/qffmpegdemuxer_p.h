@@ -30,8 +30,9 @@ class Demuxer : public PlaybackEngineObject
 {
     Q_OBJECT
 public:
-    Demuxer(AVFormatContext *context, TrackPosition initialPosUs, bool seekPending,
-            const LoopOffset &loopOffset, const StreamIndexes &streamIndexes, int loops);
+    Demuxer(const PlaybackEngineObjectID &id, AVFormatContext *context, TrackPosition initialPosUs,
+            bool seekPending, const LoopOffset &loopOffset, const StreamIndexes &streamIndexes,
+            int loops);
 
     using RequestingSignal = void (Demuxer::*)(Packet);
     static RequestingSignal signalByTrackType(QPlatformMediaPlayer::TrackType trackType);
@@ -45,11 +46,11 @@ signals:
     void requestProcessAudioPacket(Packet);
     void requestProcessVideoPacket(Packet);
     void requestProcessSubtitlePacket(Packet);
-    void firstPacketFound(Id id, TrackPosition absSeekPos);
+    void firstPacketFound(PlaybackEngineObjectID id, TrackPosition absSeekPos);
     void packetsBuffered();
 
 protected:
-    std::chrono::milliseconds timerInterval() const override;
+    TimePoint nextTimePoint() const override;
 
 private:
     bool canDoNextStep() const override;
@@ -84,6 +85,7 @@ private:
     QAtomicInt m_loops = QMediaPlayer::Once;
     bool m_buffered = false;
     qsizetype m_demuxerRetryCount = 0;
+    std::optional<TimePoint> m_failTimePoint;
     static constexpr qsizetype s_maxDemuxerRetries = 10; // Arbitrarily chosen
     static constexpr std::chrono::milliseconds s_demuxerRetryInterval = std::chrono::milliseconds(10);
 };

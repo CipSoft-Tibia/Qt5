@@ -6,6 +6,7 @@
 #define SANDBOX_LINUX_SYSTEM_HEADERS_LINUX_SECCOMP_H_
 
 #include <stdint.h>
+#include <signal.h>
 #include <sys/ioctl.h>
 
 #include "build/build_config.h"

@@ -9,7 +9,6 @@
 
 #include "base/component_export.h"
 #include "base/containers/flat_map.h"
-#include "build/chromeos_buildflags.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
@@ -91,11 +90,6 @@ class COMPONENT_EXPORT(UI_BASE_CLIPBOARD) ScopedClipboardWriter {
 
   void WriteImage(const SkBitmap& bitmap);
 
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  // Used by clipboard unit tests to write an encoded clipboard source DTE.
-  void WriteEncodedDataTransferEndpointForTesting(const std::string& json);
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
-
   // Mark the data to be written as confidential.
   void MarkAsConfidential();
 
@@ -110,6 +104,10 @@ class COMPONENT_EXPORT(UI_BASE_CLIPBOARD) ScopedClipboardWriter {
   // vector, and pass it to Clipboard::WritePortableRepresentations() during
   // object destruction.
   Clipboard::ObjectMap objects_;
+
+  // Same as `objects_`, but holds every type passed to `WritePickledData` to
+  // allow writing more than one to the clipboard at once.
+  std::vector<Clipboard::RawData> raw_objects_;
 
   std::vector<Clipboard::PlatformRepresentation> platform_representations_;
   // Keeps track of the unique custom formats registered in the clipboard.

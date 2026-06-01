@@ -4,10 +4,9 @@
 
 import * as Common from '../common/common.js';
 
-import {type HeapProfilerModel} from './HeapProfilerModel.js';
+import type {HeapProfilerModel} from './HeapProfilerModel.js';
 import {RuntimeModel} from './RuntimeModel.js';
-
-import {TargetManager, type SDKModelObserver} from './TargetManager.js';
+import {type SDKModelObserver, TargetManager} from './TargetManager.js';
 
 let isolateManagerInstance: IsolateManager;
 
@@ -142,9 +141,9 @@ export const enum Events {
   MEMORY_CHANGED = 'MemoryChanged',
 }
 
-export type EventTypes = {
-  [Events.MEMORY_CHANGED]: Isolate,
-};
+export interface EventTypes {
+  [Events.MEMORY_CHANGED]: Isolate;
+}
 
 export const MemoryTrendWindowMs = 120e3;
 const PollIntervalMs = 2e3;

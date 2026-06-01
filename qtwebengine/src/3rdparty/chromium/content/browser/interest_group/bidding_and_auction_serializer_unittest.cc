@@ -4,6 +4,8 @@
 
 #include "content/browser/interest_group/bidding_and_auction_serializer.h"
 
+#include <limits>
+
 #include "base/strings/stringprintf.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/time/time.h"
@@ -30,22 +32,22 @@ const size_t kBidderOverhead = 1 + 14 + 1 + 1;
 StorageInterestGroup MakeInterestGroup(blink::InterestGroup interest_group) {
   // Create fake previous wins. The time of these wins is ignored, since the
   // InterestGroupManager attaches the current time when logging a win.
-  std::vector<auction_worklet::mojom::PreviousWinPtr> previous_wins;
+  std::vector<blink::mojom::PreviousWinPtr> previous_wins;
   // Log a time that's before now, so that any new entry will have the largest
   // time.
   base::Time the_past = base::Time::Now() - base::Milliseconds(1);
-  previous_wins.push_back(auction_worklet::mojom::PreviousWin::New(
-      the_past, R"({"adRenderId": 0})"));
-  previous_wins.push_back(auction_worklet::mojom::PreviousWin::New(
-      the_past, R"({"adRenderId": 1})"));
-  previous_wins.push_back(auction_worklet::mojom::PreviousWin::New(
-      the_past, R"({"adRenderId": 2})"));
+  previous_wins.push_back(
+      blink::mojom::PreviousWin::New(the_past, R"({"adRenderId": 0})"));
+  previous_wins.push_back(
+      blink::mojom::PreviousWin::New(the_past, R"({"adRenderId": 1})"));
+  previous_wins.push_back(
+      blink::mojom::PreviousWin::New(the_past, R"({"adRenderId": 2})"));
 
   StorageInterestGroup storage_group;
   storage_group.interest_group = std::move(interest_group);
   storage_group.bidding_browser_signals =
-      auction_worklet::mojom::BiddingBrowserSignals::New(
-          3, 5, std::move(previous_wins), false);
+      blink::mojom::BiddingBrowserSignals::New(3, 5, std::move(previous_wins),
+                                               false);
   storage_group.joining_origin = storage_group.interest_group.owner;
   return storage_group;
 }
@@ -110,8 +112,6 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithDefaultConfig) {
       "Ads.InterestGroup.ServerAuction.Request.NumIterations", 4);
   histogram_tester.ExpectUniqueSample(
       "Ads.InterestGroup.ServerAuction.Request.NumGroups", 400, 1);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1, 1);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest, SerializeWithLargeRequestSize) {
@@ -138,13 +138,9 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithLargeRequestSize) {
       "Ads.InterestGroup.ServerAuction.Request.NumIterations", 0, 4);
   histogram_tester.ExpectUniqueSample(
       "Ads.InterestGroup.ServerAuction.Request.NumGroups", 400, 1);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1, 1);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest, SerializeWithSmallRequestSize) {
-  base::HistogramTester histogram_tester;
-
   const size_t kRequestSize = 2000;
   blink::mojom::AuctionDataConfigPtr config =
       blink::mojom::AuctionDataConfig::New();
@@ -162,12 +158,6 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithSmallRequestSize) {
 
   BiddingAndAuctionData data = serializer.Build();
   EXPECT_EQ(data.request.size(), kRequestSize - kEncryptionOverhead);
-  histogram_tester.ExpectTotalCount(
-      "Ads.InterestGroup.ServerAuction.Request.NumIterations", 4);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.NumGroups", 107, 1);
-  histogram_tester.ExpectTotalCount(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest, SerializeWithTooSmallRequestSize) {
@@ -194,8 +184,6 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithTooSmallRequestSize) {
       "Ads.InterestGroup.ServerAuction.Request.NumIterations", 2, 1);
   histogram_tester.ExpectTotalCount(
       "Ads.InterestGroup.ServerAuction.Request.NumGroups", 0);
-  histogram_tester.ExpectTotalCount(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 0);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest, SerializeWithPerOwnerSize) {
@@ -231,14 +219,10 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithPerOwnerSize) {
       "Ads.InterestGroup.ServerAuction.Request.NumIterations", 0, 4);
   histogram_tester.ExpectUniqueSample(
       "Ads.InterestGroup.ServerAuction.Request.NumGroups", 400, 1);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1, 1);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest,
        SerializeWithPerOwnerSizeBiggerThanRequestSize) {
-  base::HistogramTester histogram_tester;
-
   const size_t kRequestSize = 2000;
   blink::mojom::AuctionDataConfigPtr config =
       blink::mojom::AuctionDataConfig::New();
@@ -265,18 +249,9 @@ TEST_F(BiddingAndAuctionSerializerTest,
 
   BiddingAndAuctionData data = serializer.Build();
   EXPECT_EQ(data.request.size(), kRequestSize - kEncryptionOverhead);
-
-  histogram_tester.ExpectTotalCount(
-      "Ads.InterestGroup.ServerAuction.Request.NumIterations", 3);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.NumGroups", 192, 1);
-  histogram_tester.ExpectTotalCount(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest, SerializeWithPerOwnerSizeExpands) {
-  base::HistogramTester histogram_tester;
-
   const size_t kRequestSize = 6000;
   blink::mojom::AuctionDataConfigPtr config =
       blink::mojom::AuctionDataConfig::New();
@@ -303,12 +278,6 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithPerOwnerSizeExpands) {
 
   BiddingAndAuctionData data = serializer.Build();
   EXPECT_EQ(data.request.size(), kRequestSize - kEncryptionOverhead);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.NumIterations", 0, 4);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.NumGroups", 400, 1);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1, 1);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest, SerializeWithPerOwnerSizeShrinks) {
@@ -346,8 +315,6 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithPerOwnerSizeShrinks) {
       "Ads.InterestGroup.ServerAuction.Request.NumIterations", 4);
   histogram_tester.ExpectUniqueSample(
       "Ads.InterestGroup.ServerAuction.Request.NumGroups", 200, 1);
-  histogram_tester.ExpectTotalCount(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1);
 }
 
 TEST_F(BiddingAndAuctionSerializerTest, SerializeWithFixedSizeGroups) {
@@ -387,8 +354,6 @@ TEST_F(BiddingAndAuctionSerializerTest, SerializeWithFixedSizeGroups) {
       "Ads.InterestGroup.ServerAuction.Request.NumIterations", 4);
   histogram_tester.ExpectUniqueSample(
       "Ads.InterestGroup.ServerAuction.Request.NumGroups", 95, 1);
-  histogram_tester.ExpectUniqueSample(
-      "Ads.InterestGroup.ServerAuction.Request.RelativeCompressedSize", 1, 1);
 }
 
 // Test that the encrypted request still has the full size even when the
@@ -600,6 +565,39 @@ TEST_F(TargetSizeEstimatorTest, ProportionalWorstCase) {
   EXPECT_EQ(estimator.EstimateTargetSize(kOriginB, 100), 108 - kBidderOverhead);
   EXPECT_EQ(estimator.EstimateTargetSize(kOriginC, 208), 110 - kBidderOverhead);
   EXPECT_EQ(estimator.EstimateTargetSize(kOriginD, 318), 111 - kBidderOverhead);
+}
+
+TEST_F(TargetSizeEstimatorTest, LargeRequest) {
+  blink::mojom::AuctionDataConfigPtr config =
+      blink::mojom::AuctionDataConfig::New();
+  config->request_size = std::numeric_limits<uint32_t>::max();
+  config->per_buyer_configs[kOriginA] =
+      blink::mojom::AuctionDataBuyerConfig::New(
+          /*size=*/std::numeric_limits<uint32_t>::max());
+  config->per_buyer_configs[kOriginB] =
+      blink::mojom::AuctionDataBuyerConfig::New(
+          /*size=*/std::numeric_limits<uint32_t>::max());
+  config->per_buyer_configs[kOriginC] =
+      blink::mojom::AuctionDataBuyerConfig::New(
+          /*size=*/std::numeric_limits<uint32_t>::max());
+  config->per_buyer_configs[kOriginD] =
+      blink::mojom::AuctionDataBuyerConfig::New(
+          /*size=*/std::numeric_limits<uint32_t>::max());
+  BiddingAndAuctionSerializer::TargetSizeEstimator estimator(0, &*config);
+  // Values passed to UpdatePerBuyerMaxSize do not include overhead.
+  estimator.UpdatePerBuyerMaxSize(kOriginA, 100 - kBidderOverhead);
+  estimator.UpdatePerBuyerMaxSize(kOriginB, 100 - kBidderOverhead);
+  estimator.UpdatePerBuyerMaxSize(kOriginC, 100 - kBidderOverhead);
+  estimator.UpdatePerBuyerMaxSize(kOriginD, 100 - kBidderOverhead);
+  // Value returned from EstimateTargetSize do not include overhead.
+  EXPECT_EQ(estimator.EstimateTargetSize(kOriginA, 0),
+            1073741820 - kBidderOverhead);
+  EXPECT_EQ(estimator.EstimateTargetSize(kOriginB, 100),
+            1431655728 - kBidderOverhead);
+  EXPECT_EQ(estimator.EstimateTargetSize(kOriginC, 200),
+            2147483544 - kBidderOverhead);
+  EXPECT_EQ(estimator.EstimateTargetSize(kOriginD, 300),
+            4294966992 - kBidderOverhead);
 }
 
 }  // namespace

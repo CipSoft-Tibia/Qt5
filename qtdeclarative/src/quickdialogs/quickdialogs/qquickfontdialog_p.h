@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKFONTDIALOG_P_H
 #define QQUICKFONTDIALOG_P_H
@@ -28,7 +29,7 @@ class Q_QUICKDIALOGS2_EXPORT QQuickFontDialog : public QQuickAbstractDialog
     Q_PROPERTY(QFont currentFont READ currentFont WRITE setCurrentFont NOTIFY currentFontChanged FINAL)
     Q_PROPERTY(QFontDialogOptions::FontDialogOptions options READ options WRITE setOptions
                RESET resetOptions NOTIFY optionsChanged)
-    Q_FLAGS(QFontDialogOptions::FontDialogOptions)
+    QML_EXTENDED_NAMESPACE(QFontDialogOptions)
     QML_NAMED_ELEMENT(FontDialog)
     QML_ADDED_IN_VERSION(6, 2)
 

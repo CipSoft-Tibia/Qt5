@@ -199,8 +199,8 @@ function(qt_make_output_file infile prefix suffix source_dir binary_dir result)
     get_filename_component(outfilename "${infile}" NAME_WE)
 
     set(base_dir "${source_dir}")
-    string(FIND "${infile}" "${binary_dir}/" in_binary)
-    if (in_binary EQUAL 0)
+    _qt_internal_path_is_prefix(binary_dir "${infile}" in_binary)
+    if(in_binary)
         set(base_dir "${binary_dir}")
     endif()
 

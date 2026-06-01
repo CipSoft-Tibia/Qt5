@@ -41,6 +41,7 @@
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/uuid.h"
+#include "net/base/schemeful_site.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "services/network/public/mojom/referrer_policy.mojom-blink-forward.h"
 #include "services/network/public/mojom/restricted_cookie_manager.mojom-blink-forward.h"
@@ -58,7 +59,6 @@
 #include "third_party/blink/public/mojom/scroll/scrollbar_mode.mojom-blink-forward.h"
 #include "third_party/blink/public/web/web_form_related_change_type.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
-#include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/core/accessibility/axid.h"
 #include "third_party/blink/renderer/core/animation/animation_clock.h"
@@ -75,7 +75,6 @@
 #include "third_party/blink/renderer/core/dom/live_node_list_registry.h"
 #include "third_party/blink/renderer/core/dom/node_list_invalidation_type.h"
 #include "third_party/blink/renderer/core/dom/qualified_name.h"
-#include "third_party/blink/renderer/core/dom/synchronous_mutation_observer.h"
 #include "third_party/blink/renderer/core/dom/text_link_colors.h"
 #include "third_party/blink/renderer/core/dom/tree_scope.h"
 #include "third_party/blink/renderer/core/dom/user_action_element_set.h"
@@ -149,10 +148,10 @@ class CaretPositionFromPointOptions;
 class CDATASection;
 class CSSStyleSheet;
 class CanvasFontCache;
+class CharacterData;
 class CheckPseudoHasCacheScope;
 class ChromeClient;
 class Comment;
-class ComputedAccessibleNode;
 class ConsoleMessage;
 class CookieJar;
 class DOMFeaturePolicy;
@@ -239,6 +238,7 @@ class ScriptedAnimationController;
 class SecurityOrigin;
 class SelectorQueryCache;
 class SerializedScriptValue;
+class SetHTMLOptions;
 class Settings;
 class SlotAssignmentEngine;
 class StyleEngine;
@@ -249,12 +249,14 @@ class TextAutosizer;
 class TransformSource;
 class TreeWalker;
 class TrustedHTML;
+class V8DocumentReadyState;
 class V8NodeFilter;
 class V8UnionStringOrTrustedHTML;
 class ViewportData;
 class VisitedLinkState;
 class WebMouseEvent;
 class WorkletAnimationController;
+class V8VisibilityState;
 
 template <typename EventType>
 class EventWithHitTestResults;
@@ -511,7 +513,7 @@ class CORE_EXPORT Document : public ContainerNode,
   bool KeyboardFocusableScrollersEnabled();
   bool StandardizedBrowserZoomEnabled() const;
 
-  String readyState() const;
+  V8DocumentReadyState readyState() const;
 
   AtomicString characterSet() const { return Document::EncodingName(); }
 
@@ -548,7 +550,8 @@ class CORE_EXPORT Document : public ContainerNode,
     has_xml_declaration_ = has_xml_declaration ? 1 : 0;
   }
 
-  AtomicString visibilityState() const;
+  V8VisibilityState visibilityState() const;
+  String visibilityStateAsString() const;
   bool IsPageVisible() const;
   bool hidden() const;
   void DidChangeVisibilityState();
@@ -581,9 +584,7 @@ class CORE_EXPORT Document : public ContainerNode,
   HTMLCollection* DocumentAllNamedItems(const AtomicString& name);
 
   // The unassociated listed elements are listed elements that are not
-  // associated to a <form> element. Note that if
-  // `features::kAutofillIncludeShadowDomInUnassociatedListedElements` is
-  // enabled, this includes elements inside Shadow DOM.
+  // associated to a <form> element. This includes elements inside Shadow DOM.
   const ListedElement::List& UnassociatedListedElements() const;
   void MarkUnassociatedListedElementsDirty();
 
@@ -1056,6 +1057,7 @@ class CORE_EXPORT Document : public ContainerNode,
   inline bool HasExplicitlySetAttrElements() const {
     return !element_explicitly_set_attr_elements_map_.empty();
   }
+  bool HasExplicitlySetAttrElements(const Element* element) const;
 
   CachedAttrAssociatedElementsMap* GetCachedAttrAssociatedElementsMap(Element*);
   void MoveElementCachedAttrAssociatedElementsMapToNewDocument(
@@ -1131,7 +1133,8 @@ class CORE_EXPORT Document : public ContainerNode,
   void NodeChildrenWillBeRemoved(ContainerNode&);
   // nodeWillBeRemoved is only safe when removing one node at a time.
   void NodeWillBeRemoved(Node&);
-  bool CanAcceptChild(const Node& new_child,
+  bool CanAcceptChild(const Node* new_child,
+                      const VectorOf<Node>* new_children,
                       const Node* next,
                       const Node* old_child,
                       ExceptionState&) const;
@@ -1429,7 +1432,6 @@ class CORE_EXPORT Document : public ContainerNode,
   void ParseDNSPrefetchControlHeader(const String&);
 
   void MarkFirstPaint();
-  void OnPaintFinished();
   void OnLargestContentfulPaintUpdated();
   void OnPrepareToStopParsing();
   void FinishedParsing();
@@ -1649,6 +1651,21 @@ class CORE_EXPORT Document : public ContainerNode,
     return popover_pointerdown_target_.Get();
   }
   void SetPopoverPointerdownTarget(const HTMLElement*);
+  std::optional<gfx::PointF> CustomizableSelectMousedownLocation() const {
+    return customizable_select_mousedown_location_;
+  }
+  void SetCustomizableSelectMousedownLocation(std::optional<gfx::PointF>);
+  const HTMLDialogElement* DialogPointerdownTarget() const;
+  void SetDialogPointerdownTarget(const HTMLDialogElement*);
+
+  HeapLinkedHashSet<Member<HTMLDialogElement>>& AllOpenDialogs() {
+    return all_open_dialogs_;
+  }
+
+  void SetKeyboardInterestTargetElement(Element*);
+  Member<Element> KeyboardInterestTargetElement() const {
+    return keyboard_interest_target_element_;
+  }
 
   // https://crbug.com/1453291
   // The DOM Parts API:
@@ -1763,7 +1780,9 @@ class CORE_EXPORT Document : public ContainerNode,
   }
   PropertyRegistry& EnsurePropertyRegistry();
 
-  // May return nullptr when PerformanceManager instrumentation is disabled.
+  // May return nullptr when PerformanceManager instrumentation is disabled,
+  // when the Document is inactive or when the document was installed for
+  // discarding.
   DocumentResourceCoordinator* GetResourceCoordinator();
 
   const AtomicString& bgColor() const;
@@ -1869,8 +1888,6 @@ class CORE_EXPORT Document : public ContainerNode,
   // associated Web App Manifest, it will return false.
   bool IsInWebAppScope() const;
 
-  ComputedAccessibleNode* GetOrCreateComputedAccessibleNode(AXID ax_id);
-
   void DispatchHandleLoadStart();
   void DispatchHandleLoadComplete();
 
@@ -1917,6 +1934,7 @@ class CORE_EXPORT Document : public ContainerNode,
   // NOTE: only for use in testing.
   bool IsAnimatedPropertyCounted(CSSPropertyID property) const;
   void ClearUseCounterForTesting(mojom::WebFeature);
+  void ClearWebDXFeatureCounterForTesting(mojom::blink::WebDXFeature);
 
   void UpdateForcedColors();
   bool InForcedColorsMode() const;
@@ -1950,11 +1968,6 @@ class CORE_EXPORT Document : public ContainerNode,
   void MarkHasFindInPageBeforematchExpandedHiddenMatchable();
 
   void CancelPendingJavaScriptUrls();
-
-  HeapObserverList<SynchronousMutationObserver>&
-  SynchronousMutationObserverSet() {
-    return synchronous_mutation_observer_set_;
-  }
 
   void NotifyUpdateCharacterData(CharacterData* character_data,
                                  const TextDiffRange&);
@@ -2067,8 +2080,18 @@ class CORE_EXPORT Document : public ContainerNode,
   // it.
   bool HasAtLeastOneDataList() const { return data_list_count_; }
 
-  // Updates app title based to the latest app title meta tag value.
-  void UpdateAppTitle();
+  void IncrementDisabledFieldsetCount() { ++disabled_fieldset_count_; }
+  void DecrementDisabledFieldsetCount() {
+    DCHECK_GT(disabled_fieldset_count_, 0u);
+    --disabled_fieldset_count_;
+  }
+  bool HasAtLeastOneDisabledFieldset() const {
+    return disabled_fieldset_count_;
+  }
+
+  // Updates application title based to the latest application title meta tag
+  // value.
+  void UpdateApplicationTitle();
 
   void ResetAgent(Agent& agent);
 
@@ -2078,7 +2101,22 @@ class CORE_EXPORT Document : public ContainerNode,
 
   // https://github.com/whatwg/html/pull/9538
   static Document* parseHTMLUnsafe(ExecutionContext* context,
-                                   const String& html);
+                                   const String& html,
+                                   ExceptionState& exception_state);
+
+  // https://wicg.github.io/sanitizer-api/#framework
+  //
+  // parseHTMLUnsafe uses an overload, so that we can separately enable/disable
+  // the |options| parameter. Long-term, the two parseHTMLUnsage methods
+  // should be merged.
+  static Document* parseHTMLUnsafe(ExecutionContext* context,
+                                   const String& html,
+                                   SetHTMLOptions* options,
+                                   ExceptionState& exception_state);
+  static Document* parseHTML(ExecutionContext* context,
+                             const String& html,
+                             SetHTMLOptions* options,
+                             ExceptionState& exception_state);
 
   // Delays execution of pending async scripts until a milestone is reached.
   // Used in conjunction with kDelayAsyncScriptExecution experiment.
@@ -2106,6 +2144,24 @@ class CORE_EXPORT Document : public ContainerNode,
     if (event_type == event_type_names::kSelectionchange)
       has_scheduled_selectionchange_event_on_document_ = false;
   }
+
+  // To partition :visited links, we use a triple-key containing <link_url,
+  // top_level_site, frame_origin>. In practice, this means we are frequently
+  // querying TopFrameOrigin() and constructing a net::SchemefulSite from it.
+  // This is a relatively expensive operation, and since a Document may have
+  // many HTMLAnchorElements, it is much more efficient to calculate the
+  // SchemefulSite once and store that value here for easy access. Since usage
+  // of GetCachedTopFrameSite() is scoped only to VisitedLink use cases, we can
+  // reasonably cache top-level site without fear of stale results, as it is
+  // safe to assume that the top-level site will not change during the
+  // Document's lifetime.
+  class VisitedLinkPassKey {
+   private:
+    friend class HTMLAnchorElementBase;
+    VisitedLinkPassKey() = default;
+    ~VisitedLinkPassKey() = default;
+  };
+  net::SchemefulSite GetCachedTopFrameSite(VisitedLinkPassKey);
 
 #if BUILDFLAG(IS_ANDROID)
   // This method is invoked when a payment link element is encountered. It
@@ -2150,6 +2206,22 @@ class CORE_EXPORT Document : public ContainerNode,
   FRIEND_TEST_ALL_PREFIXES(
       RangeTest,
       ContainerNodeRemovalWithSequentialFocusNavigationStartingPoint);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementTest,
+                           PaymentLinkHandledWhenRelAndHrefSetBeforeAppend);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementTest,
+                           PaymentLinkHandledWhenHrefAndRelSetBeforeAppend);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementTest,
+                           PaymentLinkHandledWhenRelAndHrefSetAfterAppend);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementTest,
+                           PaymentLinkHandledWhenHrefAndRelSetAfterAppend);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementTest,
+                           PaymentLinkNotHandledWhenRelNotSet);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementTest,
+                           PaymentLinkNotHandledWhenHrefNotSet);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementTest,
+                           PaymentLinkNotHandledWhenNotAppended);
+  FRIEND_TEST_ALL_PREFIXES(HTMLLinkElementSimTest,
+                           PaymentLinkNotHandledWhenNotInTheMainFrame);
 
   // Listed elements that are not associated to a <form> element.
   class UnassociatedListedElementsList {
@@ -2268,7 +2340,6 @@ class CORE_EXPORT Document : public ContainerNode,
     kFirstPaint,
     kFinishedParsing,
     kLcpCandidate,
-    kPaint,
   };
   void MaybeExecuteDelayedAsyncScripts(MilestoneForDelayedAsyncScript);
 
@@ -2343,6 +2414,14 @@ class CORE_EXPORT Document : public ContainerNode,
   // Returns true if data loading has started.
   bool InitiateStyleOrLayoutDependentLoadForPrint();
 
+  // https://wicg.github.io/sanitizer-api/#framework
+  // Common implementation for parseHTML and parseHTMLUnsafe.
+  static Document* parseHTMLInternal(ExecutionContext* context,
+                                     const String& html,
+                                     SetHTMLOptions* options,
+                                     bool safe,
+                                     ExceptionState& exception_state);
+
   // Mutable because the token is lazily-generated on demand if no token is
   // explicitly set.
   mutable std::optional<DocumentToken> token_;
@@ -2361,6 +2440,12 @@ class CORE_EXPORT Document : public ContainerNode,
   // TODO(bokan): This should eventually be based on the document loading-mode:
   // https://github.com/jeremyroman/alternate-loading-modes/blob/main/prerendering-state.md#documentprerendering
   bool is_prerendering_;
+
+  // Tracks whether the current document was installed as the result of a
+  // discard operation.
+  // TODO(crbug.com/391949533): Explore combining this with
+  // `is_initial_empty_document_`.
+  const bool is_for_discard_;
 
   // Callbacks to execute upon activation of a prerendered page, just before the
   // prerenderingchange event is dispatched.
@@ -2587,7 +2672,7 @@ class CORE_EXPORT Document : public ContainerNode,
   bool has_draggable_regions_ = false;
   bool draggable_regions_dirty_ = false;
 
-  std::unique_ptr<SelectorQueryCache> selector_query_cache_;
+  Member<SelectorQueryCache> selector_query_cache_;
 
   // It is safe to keep a raw, untraced pointer to this stack-allocated
   // cache object: it is set upon the cache object being allocated on
@@ -2652,11 +2737,27 @@ class CORE_EXPORT Document : public ContainerNode,
   HeapVector<Member<HTMLElement>> popover_hint_stack_;
   // The popover (if any) that received the most recent pointerdown event.
   Member<const HTMLElement> popover_pointerdown_target_;
+  // The mouse location for the mousedown that opened the select, if any.
+  std::optional<gfx::PointF> customizable_select_mousedown_location_;
+  // The dialog (if any) that received the most recent pointerdown event. This
+  // is distinct from popover_pointerdown_target_ because the same pointer
+  // action could trigger light dismiss on a containing popover and not a
+  // containing dialog, or vice versa. This will be nullptr for a click on
+  // the ::backdrop pseudo element for a dialog.
+  Member<const HTMLDialogElement> dialog_pointerdown_target_;
   // A set of popovers for which hidePopover() has been called, but animations
   // are still running.
   HeapHashSet<Member<HTMLElement>> popovers_waiting_to_hide_;
   // A set of all open popovers, of all types.
   HeapHashSet<Member<HTMLElement>> all_open_popovers_;
+
+  // The ordered list of currently-open dialogs, in order they were opened.
+  HeapLinkedHashSet<Member<HTMLDialogElement>> all_open_dialogs_;
+
+  // If there was a keyboard-activated element with the `interesttarget`
+  // attribute, it will be stored here, so that when other elements are shown
+  // interest, this element can first "lose interest".
+  Member<Element> keyboard_interest_target_element_;
 
   Member<DocumentPartRoot> document_part_root_;
 
@@ -2796,9 +2897,6 @@ class CORE_EXPORT Document : public ContainerNode,
   HeapHashMap<WeakMember<Element>, Member<CachedAttrAssociatedElementsMap>>
       element_cached_attr_associated_elements_map_;
 
-  HeapObserverList<SynchronousMutationObserver>
-      synchronous_mutation_observer_set_;
-
   Member<DisplayLockDocumentState> display_lock_document_state_;
 
   bool in_forced_colors_mode_;
@@ -2860,6 +2958,9 @@ class CORE_EXPORT Document : public ContainerNode,
   // Number of data-list elements in this document.
   unsigned data_list_count_ = 0;
 
+  // Number of disabled <fieldset> elements in this document.
+  unsigned disabled_fieldset_count_ = 0;
+
   // If legacy DOM Mutation event listeners are supported by the embedder.
   std::optional<bool> legacy_dom_mutations_supported_;
 
@@ -2878,6 +2979,10 @@ class CORE_EXPORT Document : public ContainerNode,
   // certain state, when the insertion is triggered via the state-preserving
   // atomic move API (so far, `Node#moveBefore()`).
   bool state_preserving_atomic_move_in_progress_ = false;
+
+  // See VisitedLinkPassKey class description.
+  std::optional<net::SchemefulSite> cached_top_frame_site_for_visited_links_ =
+      std::nullopt;
 
 #if BUILDFLAG(IS_ANDROID)
   HeapMojoRemote<payments::facilitated::mojom::blink::PaymentLinkHandler>

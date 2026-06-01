@@ -28,12 +28,12 @@ QT_BEGIN_NAMESPACE
     over a custom scheme may be given access to local resources, be set to
     ignore Content-Security-Policy rules, or conversely, be denied access to any
     other content entirely. If it is to be accessed by normal content, ensure cross-origin
-    access is enabled, and if accessed from HTTPS that it is marked as secure.
+    access is enabled, and if accessed from HTTPS, that it is marked as secure.
 
     \note Make sure that you create and register the scheme object \e before the QGuiApplication
     or QApplication object is instantiated.
 
-    Then you must create a class derived from QWebEngineUrlSchemeHandler,
+    Then, you must create a class derived from QWebEngineUrlSchemeHandler,
     and reimplement the requestStarted() method.
 
     Finally, install the scheme handler object via QWebEngineProfile::installUrlSchemeHandler()

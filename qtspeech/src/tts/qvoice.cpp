@@ -20,7 +20,7 @@ QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QVoicePrivate)
 */
 
 /*!
-    \qmltype voice
+    \qmlvaluetype voice
     \inqmlmodule QtTextToSpeech
     \brief The voice type represents a particular voice.
 
@@ -163,7 +163,7 @@ bool QVoice::isEqual(const QVoice &other) const noexcept
 */
 
 /*!
-    \qmlproperty string Voice::name
+    \qmlproperty string voice::name
     \brief This property holds the name of the voice.
 */
 
@@ -232,7 +232,7 @@ QVoice::Gender QVoice::gender() const
 }
 
 /*!
-    \qmlproperty enumeration Voice::age
+    \qmlproperty enumeration voice::age
     \brief This property holds the age of the voice.
 
     \sa QVoice::Age

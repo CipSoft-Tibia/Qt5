@@ -39,6 +39,7 @@
 #include "third_party/blink/renderer/core/css/check_pseudo_has_cache_scope.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/parser/css_selector_parser.h"
+#include "third_party/blink/renderer/core/css/resolver/element_resolve_context.h"
 #include "third_party/blink/renderer/core/css/selector_checker.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
@@ -109,6 +110,7 @@ inline bool SelectorMatches(const CSSSelector& selector,
   SelectorChecker::SelectorCheckingContext context(&element);
   context.selector = &selector;
   context.scope = &root_node;
+  context.tree_scope = &root_node.GetTreeScope();
   return checker.Match(context);
 }
 
@@ -213,17 +215,16 @@ static void CollectElementsByTagName(
   }
 }
 
+// TODO(sesse): Reduce the duplication against SelectorChecker.
 static bool AttributeValueMatchesExact(const Attribute& attribute_item,
                                        const AtomicString& selector_value,
-                                       TextCaseSensitivity case_sensitivity) {
+                                       bool case_insensitive) {
   const AtomicString& value = attribute_item.Value();
   if (value.IsNull()) {
     return false;
   }
-  if (case_sensitivity == kTextCaseSensitive) {
-    return selector_value == value;
-  }
-  return EqualIgnoringASCIICase(selector_value, value);
+  return selector_value == value ||
+         (case_insensitive && EqualIgnoringASCIICase(selector_value, value));
 }
 
 // SynchronizeAttribute() is rather expensive to call. We can determine ahead of
@@ -254,28 +255,38 @@ static void CollectElementsByAttributeExact(
     typename SelectorQueryTrait::OutputType& output) {
   const QualifiedName& selector_attr = selector.Attribute();
   const AtomicString& selector_value = selector.Value();
-  const TextCaseSensitivity case_sensitivity =
-      (selector.AttributeMatch() ==
-       CSSSelector::AttributeMatchType::kCaseInsensitive)
-          ? kTextCaseASCIIInsensitive
-          : kTextCaseSensitive;
   const bool is_html_doc = IsA<HTMLDocument>(root_node.GetDocument());
   // Legacy dictates that values of some attributes should be compared in
   // a case-insensitive manner regardless of whether the case insensitive
-  // flag is set or not.
-  const bool legacy_case_insensitive =
-      is_html_doc && !selector.IsCaseSensitiveAttribute();
+  // flag is set or not (but an explicit case sensitive flag will override
+  // that, by causing LegacyCaseInsensitiveMatch() never to be set).
+  const bool case_insensitive =
+      selector.AttributeMatch() ==
+          CSSSelector::AttributeMatchType::kCaseInsensitive ||
+      (selector.LegacyCaseInsensitiveMatch() && is_html_doc);
   const bool needs_synchronize_attribute =
       NeedsSynchronizeAttribute(selector_attr, is_html_doc);
 
+  const uint32_t filter = Element::FilterForAttribute(selector_attr);
+
   for (Element& element : ElementTraversal::DescendantsOf(root_node)) {
     QUERY_STATS_INCREMENT(fast_scan);
+
     if (needs_synchronize_attribute) {
       // Synchronize the attribute in case it is lazy-computed.
       // Currently all lazy properties have a null namespace, so only pass
       // localName().
       element.SynchronizeAttribute(selector_attr.LocalName());
     }
+#if !DCHECK_IS_ON()
+    // In non-debug builds, we test the Bloom filter here and exit early
+    // if the attribute could not exist on the element. For non-debug builds,
+    // we go through the entire normal operation but verify that the Bloom
+    // filter would not erroneously reject a match.
+    if (!element.CouldHaveAttributeWithPrecomputedFilter(filter)) {
+      continue;
+    }
+#endif
     AttributeCollection attributes = element.AttributesWithoutUpdate();
     for (const auto& attribute_item : attributes) {
       if (!attribute_item.Matches(selector_attr)) {
@@ -295,8 +306,17 @@ static void CollectElementsByAttributeExact(
         }
       }
 
+#if DCHECK_IS_ON()
+      // NOTE: Even if the value doesn't match, we want to check that the
+      // attribute name was properly found.
+      DCHECK(element.CouldHaveAttributeWithPrecomputedFilter(filter))
+          << element << " should have contained attribute " << selector_attr
+          << ", Bloom bits on element are "
+          << element.AttributeBloomFilterForDebug();
+#endif
+
       if (AttributeValueMatchesExact(attribute_item, selector_value,
-                                     case_sensitivity)) {
+                                     case_insensitive)) {
         SelectorQueryTrait::AppendElement(output, element);
         if (SelectorQueryTrait::kShouldOnlyMatchFirstElement) {
           return;
@@ -304,34 +324,6 @@ static void CollectElementsByAttributeExact(
         break;
       }
 
-      if (case_sensitivity == kTextCaseASCIIInsensitive) {
-        if (selector_attr.NamespaceURI() != g_star_atom) {
-          break;
-        }
-        continue;
-      }
-
-      // If case-insensitive, re-check, and count if result differs.
-      // See http://code.google.com/p/chromium/issues/detail?id=327060
-      if (legacy_case_insensitive &&
-          AttributeValueMatchesExact(attribute_item, selector_value,
-                                     kTextCaseASCIIInsensitive)) {
-        // If the `s` modifier is in the attribute selector, return false
-        // despite of legacy_case_insensitive.
-        if (selector.AttributeMatch() ==
-            CSSSelector::AttributeMatchType::kCaseSensitiveAlways) {
-          DCHECK(RuntimeEnabledFeatures::CSSCaseSensitiveSelectorEnabled());
-          break;
-        }
-
-        UseCounter::Count(element.GetDocument(),
-                          WebFeature::kCaseInsensitiveAttrSelectorMatch);
-        SelectorQueryTrait::AppendElement(output, element);
-        if (SelectorQueryTrait::kShouldOnlyMatchFirstElement) {
-          return;
-        }
-        break;
-      }
       if (selector_attr.NamespaceURI() != g_star_atom) {
         break;
       }
@@ -560,6 +552,7 @@ void SelectorQuery::Execute(
             root_node, first_selector.Value(), nullptr, output);
         return;
       case CSSSelector::kTag:
+      case CSSSelector::kUniversalTag:
         if (first_selector.TagQName().NamespaceURI() == g_star_atom) {
           CollectElementsByTagName<SelectorQueryTrait>(
               root_node, first_selector.TagQName(), output);
@@ -583,11 +576,6 @@ void SelectorQuery::Execute(
   }
 
   FindTraverseRootsAndExecute<SelectorQueryTrait>(root_node, output);
-}
-
-std::unique_ptr<SelectorQuery> SelectorQuery::Adopt(
-    CSSSelectorList* selector_list) {
-  return base::WrapUnique(new SelectorQuery(selector_list));
 }
 
 SelectorQuery::SelectorQuery(CSSSelectorList* selector_list)
@@ -641,18 +629,17 @@ SelectorQuery* SelectorQueryCache::Add(const AtomicString& selectors,
     return nullptr;
   }
 
-  HashMap<AtomicString, std::unique_ptr<SelectorQuery>>::iterator it =
-      entries_.find(selectors);
+  auto it = entries_.find(selectors);
   if (it != entries_.end()) {
-    return it->value.get();
+    return it->value.Get();
   }
 
   HeapVector<CSSSelector> arena;
   base::span<CSSSelector> selector_vector = CSSParser::ParseSelector(
       MakeGarbageCollected<CSSParserContext>(
           document, document.BaseURL(), true /* origin_clean */, Referrer()),
-      CSSNestingType::kNone, /*parent_rule_for_nesting=*/nullptr,
-      /*is_within_scope=*/false, nullptr, selectors, arena);
+      CSSNestingType::kNone, /*parent_rule_for_nesting=*/nullptr, nullptr,
+      selectors, arena);
 
   if (selector_vector.empty()) {
     exception_state.ThrowDOMException(
@@ -669,8 +656,9 @@ SelectorQuery* SelectorQueryCache::Add(const AtomicString& selectors,
     entries_.erase(entries_.begin());
   }
 
-  return entries_.insert(selectors, SelectorQuery::Adopt(selector_list))
-      .stored_value->value.get();
+  return entries_
+      .insert(selectors, MakeGarbageCollected<SelectorQuery>(selector_list))
+      .stored_value->value.Get();
 }
 
 void SelectorQueryCache::Invalidate() {

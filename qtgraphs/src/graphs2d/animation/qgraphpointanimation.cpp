@@ -74,8 +74,10 @@ void QGraphPointAnimation::animate()
     // Hierarchy should look like GraphAnimation -> ParallelAnimationGroup -> GraphTransition -> QXYSeries
     auto series = qobject_cast<QXYSeries *>(parent()->parent()->parent());
 
-    if (!series)
+    if (!series) {
+        qCCritical(lcAnimation, "QGraphPointAnimation::animate. XYSeries not found.");
         return;
+    }
 
     if (animating() == QGraphAnimation::AnimationState::Playing) {
         end();
@@ -94,12 +96,19 @@ void QGraphPointAnimation::animate()
         auto startv = QVariant::fromValue(pointList.last());
         auto endv = QVariant::fromValue(m_newPoint);
 
+        qCDebug(lcAnimation) << "transition type:" << m_currentTransitionType
+                             << "start value:" << startv.toPointF()
+                             << "end value:" << endv.toPointF();
+
         setAnimatingValue(startv, endv);
     } break;
     case QGraphTransition::TransitionType::PointReplaced: {
         auto startv = QVariant::fromValue(pointList[m_activePointIndex]);
         auto endv = QVariant::fromValue(m_newPoint);
 
+        qCDebug(lcAnimation) << "transition type:" << m_currentTransitionType
+                             << "start value:" << startv.toPointF()
+                             << "end value:" << endv.toPointF();
         setAnimatingValue(startv, endv);
     } break;
     case QGraphTransition::TransitionType::PointRemoved: {
@@ -109,6 +118,11 @@ void QGraphPointAnimation::animate()
         auto startv = QVariant::fromValue(pointList[pointList.size() - 1]);
         auto endv = QVariant::fromValue(
             pointList[pointList.size() > 1 ? pointList.size() - 2 : pointList.size() - 1]);
+
+        qCDebug(lcAnimation) << "transition type:" << m_currentTransitionType
+                             << "start value:" << startv.toPointF()
+                             << "end value:" << endv.toPointF();
+
 
         setAnimatingValue(startv, endv);
     } break;

@@ -30,6 +30,7 @@ set(qml_files
     "RadioDelegate.qml"
     "RangeSlider.qml"
     "RoundButton.qml"
+    "SearchField.qml"
     "Slider.qml"
     "SpinBox.qml"
     "SwipeDelegate.qml"
@@ -50,6 +51,10 @@ set(qml_files
 
 set_source_files_properties(Config.qml PROPERTIES
     QT_QML_SINGLETON_TYPE TRUE
+)
+
+set_source_files_properties(SearchField.qml PROPERTIES
+    QT_QML_SOURCE_VERSIONS "6.10"
 )
 
 file(GLOB light_theme_resources RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "light/images/*.png")
@@ -90,6 +95,7 @@ qt_internal_add_qml_module(qtquickcontrols2fluentwinui3styleplugin
         Qt::QuickControls2Private
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
+        Qt::QuickControls2FusionPrivate
 )
 
 _qt_internal_add_qml_static_plugin_dependency(qtquickcontrols2fluentwinui3styleplugin

@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickgroupbox_p.h"
 #include "qquickframe_p_p.h"
@@ -32,6 +33,7 @@ QT_BEGIN_NAMESPACE
     for use together with layouts.
 
     \image qtquickcontrols-groupbox.png
+           {Group box with title and border containing checkboxes}
 
     \snippet qtquickcontrols-groupbox.qml 1
 
@@ -41,6 +43,7 @@ QT_BEGIN_NAMESPACE
     to create a checkable GroupBox by pairing it with a CheckBox.
 
     \image qtquickcontrols-groupbox-checkable.png
+           {Checkable group box with checkbox in title}
 
     It is a common pattern to enable or disable the groupbox's children when
     its checkbox is toggled on or off, but it is up to the application to decide

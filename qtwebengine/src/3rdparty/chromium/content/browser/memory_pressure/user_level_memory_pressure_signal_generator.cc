@@ -9,7 +9,6 @@
 
 #include "content/browser/memory_pressure/user_level_memory_pressure_signal_generator.h"
 
-#if BUILDFLAG(IS_ANDROID)
 #include <fcntl.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -52,17 +51,11 @@ base::TimeDelta MeasurementIntervalFor3GbDevices() {
 }
 
 base::TimeDelta MeasurementIntervalFor4GbDevices() {
-  static const base::FeatureParam<base::TimeDelta> kMeasurementInterval{
-      &content::features::kUserLevelMemoryPressureSignalOn4GbDevices,
-      "measurement_interval", kDefaultMeasurementInterval};
-  return kMeasurementInterval.Get();
+  return kDefaultMeasurementInterval;
 }
 
 base::TimeDelta MeasurementIntervalFor6GbDevices() {
-  static const base::FeatureParam<base::TimeDelta> kMeasurementInterval{
-      &content::features::kUserLevelMemoryPressureSignalOn6GbDevices,
-      "measurement_interval", kDefaultMeasurementInterval};
-  return kMeasurementInterval.Get();
+  return kDefaultMeasurementInterval;
 }
 
 // The memory threshold: 738 was selected at around the 99th percentile of
@@ -83,10 +76,7 @@ uint64_t MemoryThresholdParamFor3GbDevices() {
 constexpr size_t kMemoryThresholdMBOf4GbDevices = 458;
 
 uint64_t MemoryThresholdParamFor4GbDevices() {
-  static const base::FeatureParam<int> kMemoryThresholdParam{
-      &content::features::kUserLevelMemoryPressureSignalOn4GbDevices,
-      "memory_threshold_mb", kMemoryThresholdMBOf4GbDevices};
-  return base::as_unsigned(kMemoryThresholdParam.Get()) * k1MB;
+  return kMemoryThresholdMBOf4GbDevices * k1MB;
 }
 
 // The memory threshold: 494 was selected at around the 99th percentile of
@@ -95,10 +85,7 @@ uint64_t MemoryThresholdParamFor4GbDevices() {
 constexpr size_t kMemoryThresholdMBOf6GbDevices = 494;
 
 uint64_t MemoryThresholdParamFor6GbDevices() {
-  static const base::FeatureParam<int> kMemoryThresholdParam{
-      &content::features::kUserLevelMemoryPressureSignalOn6GbDevices,
-      "memory_threshold_mb", kMemoryThresholdMBOf6GbDevices};
-  return base::as_unsigned(kMemoryThresholdParam.Get()) * k1MB;
+  return kMemoryThresholdMBOf6GbDevices * k1MB;
 }
 
 }  // namespace
@@ -399,4 +386,3 @@ UserLevelMemoryPressureSignalGenerator::GetPrivateFootprint(
 
 }  // namespace memory_pressure
 
-#endif  // BUILDFLAG(IS_ANDROID)

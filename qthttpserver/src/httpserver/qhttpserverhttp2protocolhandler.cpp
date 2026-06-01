@@ -34,12 +34,11 @@ void toHeaderPairs(HPack::HttpHeader &fields, const QHttpHeaders &headers)
 QHttpServerHttp2ProtocolHandler::QHttpServerHttp2ProtocolHandler(QAbstractHttpServer *server,
                                                                  QIODevice *socket,
                                                                  QHttpServerRequestFilter *filter)
-    : QHttpServerStream(server),
+    : QHttpServerStream(socket, server),
       m_server(server),
       m_socket(socket),
       m_tcpSocket(qobject_cast<QTcpSocket *>(socket)),
-      m_filter(filter),
-      m_request(QHttpServerStream::initRequestFromSocket(m_tcpSocket))
+      m_filter(filter)
 {
     socket->setParent(this);
 
@@ -69,6 +68,8 @@ QHttpServerHttp2ProtocolHandler::QHttpServerHttp2ProtocolHandler(QAbstractHttpSe
             &QHttp2Connection::newIncomingStream,
             this,
             &QHttpServerHttp2ProtocolHandler::onStreamCreated);
+
+    lastActiveTimer.start();
 }
 
 void QHttpServerHttp2ProtocolHandler::responderDestroyed()
@@ -252,6 +253,8 @@ void QHttpServerHttp2ProtocolHandler::onStreamCreated(QHttp2Stream *stream)
 
     connections << connect(stream, &QHttp2Stream::uploadFinished, this,
                            [this, id]() { sendToStream(id); });
+
+    lastActiveTimer.restart();
 }
 
 void QHttpServerHttp2ProtocolHandler::onStreamHalfClosed(quint32 streamId)
@@ -261,9 +264,17 @@ void QHttpServerHttp2ProtocolHandler::onStreamHalfClosed(quint32 streamId)
     if (!stream)
         return;
 
-    m_request.d->parse(stream);
+    auto requestReceived = parser.parse(stream);
+    if (!requestReceived)
+        return;
 
-    qCDebug(lcHttpServerHttp2Handler) << "Request:" << m_request;
+#if QT_CONFIG(ssl)
+    auto request = QHttpServerRequest::create(parser, sslConfiguration);
+#else
+    auto request = QHttpServerRequest::create(parser);
+#endif
+
+    qCDebug(lcHttpServerHttp2Handler) << "Request:" << request;
 
     QHttpServerResponder responder(this);
     responder.d_ptr->m_streamId = streamId;
@@ -271,8 +282,8 @@ void QHttpServerHttp2ProtocolHandler::onStreamHalfClosed(quint32 streamId)
     if (!m_filter->isRequestWithinRate(m_tcpSocket->peerAddress())) {
         responder.sendResponse(
                 QHttpServerResponse(QHttpServerResponder::StatusCode::TooManyRequests));
-    } else if (!m_server->handleRequest(m_request, responder)) {
-        m_server->missingHandler(m_request, responder);
+    } else if (!m_server->handleRequest(request, responder)) {
+        m_server->missingHandler(request, responder);
     }
 }
 
@@ -283,6 +294,17 @@ void QHttpServerHttp2ProtocolHandler::onStreamClosed(quint32 streamId)
         disconnect(c);
 
     m_streamQueue.remove(streamId);
+}
+
+void QHttpServerHttp2ProtocolHandler::checkKeepAliveTimeout()
+{
+    if (m_streamQueue.size() > 0 || m_responderCounter > 0)
+        return;
+
+    if (lastActiveTimer.durationElapsed() > m_server->configuration().keepAliveTimeout()) {
+        m_connection->close();
+        m_tcpSocket->abort();
+    }
 }
 
 void QHttpServerHttp2ProtocolHandler::sendToStream(quint32 streamId)

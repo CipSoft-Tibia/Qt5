@@ -124,7 +124,9 @@
       // define to verify the Clang version we hard-code the versions
       // based on the best available info we have about the actual
       // version: http://en.wikipedia.org/wiki/Xcode#Toolchain_Versions
-#      if __apple_build_version__   >= 17000013 // Xcode 16.3
+#      if __apple_build_version__   >= 17000319 // Xcode 26.0
+#        define Q_CC_CLANG 1915
+#      elif __apple_build_version__ >= 17000013 // Xcode 16.3
 #        define Q_CC_CLANG 1914
 #      elif __apple_build_version__ >= 16000026 // Xcode 16.0
 #        define Q_CC_CLANG 1706
@@ -1443,6 +1445,10 @@ QT_WARNING_DISABLE_MSVC(4706) /* assignment within conditional expression */
 QT_WARNING_DISABLE_MSVC(4355) /* 'this' : used in base member initializer list */
 QT_WARNING_DISABLE_MSVC(4710) /* function not inlined */
 QT_WARNING_DISABLE_MSVC(4530) /* C++ exception handler used, but unwind semantics are not enabled. Specify /EHsc */
+#  elif defined(Q_CC_CLANG_ONLY)
+#    if __has_warning("-Wcharacter-conversion")
+        QT_WARNING_DISABLE_CLANG("-Wcharacter-conversion") /* until https://github.com/llvm/llvm-project/issues/163719 is fixed */
+#    endif
 #  elif defined(Q_CC_BOR)
 #    pragma option -w-inl
 #    pragma option -w-aus

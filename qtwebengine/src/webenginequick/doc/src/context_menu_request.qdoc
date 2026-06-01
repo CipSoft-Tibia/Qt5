@@ -55,14 +55,14 @@
     \qmlproperty string ContextMenuRequest::linkText
     \readonly
 
-    The text of the link if the context menu was requested for a link.
+    The text of the link, if the context menu was requested for a link.
 */
 
 /*!
     \qmlproperty url ContextMenuRequest::linkUrl
     \readonly
 
-    The URL of the link if the selected web page content is a link.
+    The URL of the link, if the selected web page content is a link.
     It is not guaranteed to be a valid URL.
 */
 
@@ -70,14 +70,14 @@
     \qmlproperty url ContextMenuRequest::mediaUrl
     \readonly
 
-    The URL of media if the selected web content is a media element.
+    The URL of media, if the selected web content is a media element.
 */
 
 /*!
     \qmlproperty enumeration ContextMenuRequest::mediaType
     \readonly
 
-    The type of the media element or \c MediaTypeNone if
+    The type of the media element, or \c MediaTypeNone if
     the selected web page content is not a media element.
 
     \value  ContextMenuRequest.MediaTypeNone

@@ -2,20 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "chrome/browser/ui/webui/ash/skyvault/local_files_migration_ui.h"
 
 #include "base/functional/bind.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "chrome/browser/ash/policy/skyvault/histogram_helper.h"
+#include "chrome/browser/ash/policy/skyvault/policy_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/ash/skyvault/local_files_migration_dialog.h"
 #include "chrome/browser/ui/webui/ash/skyvault/local_files_migration_page_handler.h"
-#include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/skyvault_resources.h"
@@ -23,6 +19,8 @@
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/web_dialogs/web_dialog_ui.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
+#include "ui/webui/webui_util.h"
 
 namespace policy::local_user_files {
 
@@ -59,9 +57,8 @@ LocalFilesMigrationUI::LocalFilesMigrationUI(content::WebUI* web_ui)
   };
   source->AddLocalizedStrings(kStrings);
 
-  webui::SetupWebUIDataSource(
-      source, base::make_span(kSkyvaultResources, kSkyvaultResourcesSize),
-      IDR_SKYVAULT_LOCAL_FILES_HTML);
+  webui::SetupWebUIDataSource(source, kSkyvaultResources,
+                              IDR_SKYVAULT_LOCAL_FILES_HTML);
 
   webui::EnableTrustedTypesCSP(source);
 }
@@ -72,6 +69,12 @@ void LocalFilesMigrationUI::BindInterface(
     mojo::PendingReceiver<mojom::PageHandlerFactory> receiver) {
   factory_receiver_.reset();
   factory_receiver_.Bind(std::move(receiver));
+}
+
+void LocalFilesMigrationUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
+  color_provider_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(receiver));
 }
 
 void LocalFilesMigrationUI::CreatePageHandler(
@@ -95,13 +98,14 @@ void LocalFilesMigrationUI::SetInitialDialogInfo(
   migration_start_time_ = migration_start_time;
 }
 
-void LocalFilesMigrationUI::ProcessResponseAndCloseDialog(UserAction action) {
+void LocalFilesMigrationUI::ProcessResponseAndCloseDialog(DialogAction action) {
   base::Value::List values;
-  if (action == UserAction::kUploadNow) {
+  if (action == DialogAction::kUploadNow) {
     // Signal to the dialog to run the migration callback.
     values.Append(kStartMigration);
   }
   CloseDialog(values);
+  SkyVaultMigrationDialogActionHistogram(cloud_provider_, action);
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(LocalFilesMigrationUI)

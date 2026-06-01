@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2024 The Khronos Group Inc.
+# Copyright (c) 2024-2025 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ class TestIcdGenerator(BaseGenerator):
             'vkGetPhysicalDeviceSurfaceSupportKHR',
             'vkGetPhysicalDeviceSurfaceCapabilitiesKHR',
             'vkGetPhysicalDeviceSurfaceCapabilities2KHR',
+            'vkGetPhysicalDeviceSurfaceCapabilities2EXT',
             'vkGetInstanceProcAddr',
             'vkGetDeviceProcAddr',
             'vkGetPhysicalDeviceMemoryProperties',
@@ -73,9 +74,9 @@ class TestIcdGenerator(BaseGenerator):
             'vkAllocateMemory',
             'vkFreeMemory',
             'vkMapMemory',
-            'vkMapMemory2KHR',
+            'vkMapMemory2',
             'vkUnmapMemory',
-            'vkUnmapMemory2KHR',
+            'vkUnmapMemory2',
             'vkGetImageSubresourceLayout',
             'vkCreateSwapchainKHR',
             'vkDestroySwapchainKHR',
@@ -126,7 +127,7 @@ class TestIcdGenerator(BaseGenerator):
 
             /***************************************************************************
             *
-            * Copyright (c) 2024 LunarG, Inc.
+            * Copyright (c) 2024-2025 LunarG, Inc.
             *
             * Licensed under the Apache License, Version 2.0 (the "License");
             * you may not use this file except in compliance with the License.

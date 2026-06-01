@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKPATH_P_H
 #define QQUICKPATH_P_H
@@ -41,6 +42,58 @@ public:
           , processPending(false), asynchronous(false), useCustomPath(false)
     {}
 
+    void appendPathElement(QQuickPathElement *pathElement)
+    {
+        if (pathElement && componentComplete) {
+            enablePathElement(pathElement);
+            _pathElements.append(pathElement);
+            q_func()->processPath();
+        } else {
+            _pathElements.append(pathElement);
+        }
+    }
+
+    void removeLastPathElement()
+    {
+        QQuickPathElement *pathElement = _pathElements.takeLast();
+        if (pathElement && componentComplete) {
+            disablePathElement(pathElement);
+            q_func()->processPath();
+        }
+    }
+
+    void replacePathElement(qsizetype position, QQuickPathElement *pathElement)
+    {
+        if (position >= _pathElements.length())
+            _pathElements.resize(position + 1, nullptr);
+
+        if (!componentComplete) {
+            _pathElements[position] = pathElement;
+            return;
+        }
+
+        bool changed = false;
+
+        QQuickPathElement *oldElement = _pathElements.at(position);
+        if (oldElement == pathElement)
+            return;
+
+        if (oldElement) {
+            disablePathElement(oldElement);
+            changed = true;
+        }
+
+        if (pathElement) {
+            enablePathElement(pathElement);
+            changed = true;
+        }
+
+        _pathElements[position] = pathElement;
+
+        if (changed)
+            q_func()->processPath();
+    }
+
     QPainterPath _path;
     QList<QQuickPathElement*> _pathElements;
     mutable QVector<QPointF> _pointCache;
@@ -60,6 +113,10 @@ public:
     bool processPending : 1;
     bool asynchronous : 1;
     bool useCustomPath : 1;
+
+private:
+    void enablePathElement(QQuickPathElement *pathElement);
+    void disablePathElement(QQuickPathElement *pathElement);
 };
 
 QT_END_NAMESPACE

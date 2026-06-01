@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "services/network/chunked_data_pipe_upload_data_stream.h"
 
 #include <stdint.h>
@@ -34,8 +39,7 @@ namespace {
 
 net::CompletionOnceCallback NoCallback() {
   return base::BindOnce([](int result) {
-    NOTREACHED_IN_MIGRATION()
-        << "This callback should not be called. result=" << result;
+    NOTREACHED() << "This callback should not be called. result=" << result;
   });
 }
 

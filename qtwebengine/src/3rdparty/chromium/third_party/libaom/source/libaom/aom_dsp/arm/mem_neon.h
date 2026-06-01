@@ -55,10 +55,50 @@ static inline uint16x8x4_t vld1q_u16_x4(const uint16_t *ptr) {
   return res;
 }
 
+static inline int16x8x2_t vld1q_s16_x2(const int16_t *ptr) {
+  int16x8x2_t res = { { vld1q_s16(ptr + 0 * 8), vld1q_s16(ptr + 1 * 8) } };
+  return res;
+}
+
+static inline int16x8x4_t vld1q_s16_x4(const int16_t *ptr) {
+  int16x8x4_t res = { { vld1q_s16(ptr + 0 * 8), vld1q_s16(ptr + 1 * 8),
+                        vld1q_s16(ptr + 2 * 8), vld1q_s16(ptr + 3 * 8) } };
+  return res;
+}
+
+static inline void vst1_u8_x2(uint8_t *ptr, uint8x8x2_t a) {
+  vst1_u8(ptr + 0 * 8, a.val[0]);
+  vst1_u8(ptr + 1 * 8, a.val[1]);
+}
+
+static inline void vst1_u8_x4(uint8_t *ptr, uint8x8x4_t a) {
+  vst1_u8(ptr + 0 * 8, a.val[0]);
+  vst1_u8(ptr + 1 * 8, a.val[1]);
+  vst1_u8(ptr + 2 * 8, a.val[2]);
+  vst1_u8(ptr + 3 * 8, a.val[3]);
+}
+
+static inline void vst1q_u16_x2(uint16_t *ptr, uint16x8x2_t a) {
+  vst1q_u16(ptr + 0 * 8, a.val[0]);
+  vst1q_u16(ptr + 1 * 8, a.val[1]);
+}
+
+static inline void vst1q_u16_x4(uint16_t *ptr, uint16x8x4_t a) {
+  vst1q_u16(ptr + 0 * 8, a.val[0]);
+  vst1q_u16(ptr + 1 * 8, a.val[1]);
+  vst1q_u16(ptr + 2 * 8, a.val[2]);
+  vst1q_u16(ptr + 3 * 8, a.val[3]);
+}
+
 #elif defined(__GNUC__) && !defined(__clang__)  // GCC 64-bit.
 #if __GNUC__ < 8
 static inline uint8x16x2_t vld1q_u8_x2(const uint8_t *ptr) {
   uint8x16x2_t res = { { vld1q_u8(ptr + 0 * 16), vld1q_u8(ptr + 1 * 16) } };
+  return res;
+}
+
+static inline int16x8x2_t vld1q_s16_x2(const int16_t *ptr) {
+  int16x8x2_t res = { { vld1q_s16(ptr + 0 * 8), vld1q_s16(ptr + 1 * 8) } };
   return res;
 }
 #endif  // __GNUC__ < 8
@@ -71,12 +111,29 @@ static inline uint8x16x3_t vld1q_u8_x3(const uint8_t *ptr) {
 }
 #endif  // __GNUC__ < 9
 
-// vld1q_u16_x4 is defined from GCC 8.5.0 and onwards.
 #if ((__GNUC__ << 8) | __GNUC_MINOR__) < 0x805
 static inline uint16x8x4_t vld1q_u16_x4(const uint16_t *ptr) {
   uint16x8x4_t res = { { vld1q_u16(ptr + 0 * 8), vld1q_u16(ptr + 1 * 8),
                          vld1q_u16(ptr + 2 * 8), vld1q_u16(ptr + 3 * 8) } };
   return res;
+}
+
+static inline int16x8x4_t vld1q_s16_x4(const int16_t *ptr) {
+  int16x8x4_t res = { { vld1q_s16(ptr + 0 * 8), vld1q_s16(ptr + 1 * 8),
+                        vld1q_s16(ptr + 2 * 8), vld1q_s16(ptr + 3 * 8) } };
+  return res;
+}
+
+static inline void vst1_u8_x2(uint8_t *ptr, uint8x8x2_t a) {
+  vst1_u8(ptr + 0 * 8, a.val[0]);
+  vst1_u8(ptr + 1 * 8, a.val[1]);
+}
+
+static inline void vst1_u8_x4(uint8_t *ptr, uint8x8x4_t a) {
+  vst1_u8(ptr + 0 * 8, a.val[0]);
+  vst1_u8(ptr + 1 * 8, a.val[1]);
+  vst1_u8(ptr + 2 * 8, a.val[2]);
+  vst1_u8(ptr + 3 * 8, a.val[3]);
 }
 #endif  // ((__GNUC__ << 8) | __GNUC_MINOR__) < 0x805
 #endif  // defined(__GNUC__) && !defined(__clang__)
@@ -163,6 +220,23 @@ static inline void load_u8_8x7(const uint8_t *s, ptrdiff_t p,
   *s6 = vld1_u8(s);
 }
 
+static inline void load_u8_8x6(const uint8_t *s, ptrdiff_t p,
+                               uint8x8_t *const s0, uint8x8_t *const s1,
+                               uint8x8_t *const s2, uint8x8_t *const s3,
+                               uint8x8_t *const s4, uint8x8_t *const s5) {
+  *s0 = vld1_u8(s);
+  s += p;
+  *s1 = vld1_u8(s);
+  s += p;
+  *s2 = vld1_u8(s);
+  s += p;
+  *s3 = vld1_u8(s);
+  s += p;
+  *s4 = vld1_u8(s);
+  s += p;
+  *s5 = vld1_u8(s);
+}
+
 static inline void load_u8_8x4(const uint8_t *s, const ptrdiff_t p,
                                uint8x8_t *const s0, uint8x8_t *const s1,
                                uint8x8_t *const s2, uint8x8_t *const s3) {
@@ -198,6 +272,23 @@ static inline void load_u16_4x4(const uint16_t *s, const ptrdiff_t p,
   s += p;
 }
 
+static inline void load_u16_4x6(const uint16_t *s, ptrdiff_t p,
+                                uint16x4_t *const s0, uint16x4_t *const s1,
+                                uint16x4_t *const s2, uint16x4_t *const s3,
+                                uint16x4_t *const s4, uint16x4_t *const s5) {
+  *s0 = vld1_u16(s);
+  s += p;
+  *s1 = vld1_u16(s);
+  s += p;
+  *s2 = vld1_u16(s);
+  s += p;
+  *s3 = vld1_u16(s);
+  s += p;
+  *s4 = vld1_u16(s);
+  s += p;
+  *s5 = vld1_u16(s);
+}
+
 static inline void load_u16_4x7(const uint16_t *s, ptrdiff_t p,
                                 uint16x4_t *const s0, uint16x4_t *const s1,
                                 uint16x4_t *const s2, uint16x4_t *const s3,
@@ -216,6 +307,65 @@ static inline void load_u16_4x7(const uint16_t *s, ptrdiff_t p,
   *s5 = vld1_u16(s);
   s += p;
   *s6 = vld1_u16(s);
+}
+
+static inline void load_u16_4x8(const uint16_t *s, ptrdiff_t p,
+                                uint16x4_t *const s0, uint16x4_t *const s1,
+                                uint16x4_t *const s2, uint16x4_t *const s3,
+                                uint16x4_t *const s4, uint16x4_t *const s5,
+                                uint16x4_t *const s6, uint16x4_t *const s7) {
+  *s0 = vld1_u16(s);
+  s += p;
+  *s1 = vld1_u16(s);
+  s += p;
+  *s2 = vld1_u16(s);
+  s += p;
+  *s3 = vld1_u16(s);
+  s += p;
+  *s4 = vld1_u16(s);
+  s += p;
+  *s5 = vld1_u16(s);
+  s += p;
+  *s6 = vld1_u16(s);
+  s += p;
+  *s7 = vld1_u16(s);
+}
+
+static inline void load_u16_4x14(const uint16_t *s, ptrdiff_t p,
+                                 uint16x4_t *const s0, uint16x4_t *const s1,
+                                 uint16x4_t *const s2, uint16x4_t *const s3,
+                                 uint16x4_t *const s4, uint16x4_t *const s5,
+                                 uint16x4_t *const s6, uint16x4_t *const s7,
+                                 uint16x4_t *const s8, uint16x4_t *const s9,
+                                 uint16x4_t *const s10, uint16x4_t *const s11,
+                                 uint16x4_t *const s12, uint16x4_t *const s13) {
+  *s0 = vld1_u16(s);
+  s += p;
+  *s1 = vld1_u16(s);
+  s += p;
+  *s2 = vld1_u16(s);
+  s += p;
+  *s3 = vld1_u16(s);
+  s += p;
+  *s4 = vld1_u16(s);
+  s += p;
+  *s5 = vld1_u16(s);
+  s += p;
+  *s6 = vld1_u16(s);
+  s += p;
+  *s7 = vld1_u16(s);
+  s += p;
+  *s8 = vld1_u16(s);
+  s += p;
+  *s9 = vld1_u16(s);
+  s += p;
+  *s10 = vld1_u16(s);
+  s += p;
+  *s11 = vld1_u16(s);
+  s += p;
+  *s12 = vld1_u16(s);
+  s += p;
+  *s13 = vld1_u16(s);
 }
 
 static inline void load_s16_8x2(const int16_t *s, const ptrdiff_t p,
@@ -578,6 +728,56 @@ static inline void store_u16_4x4(uint16_t *s, ptrdiff_t dst_stride,
   vst1_u16(s, s2);
   s += dst_stride;
   vst1_u16(s, s3);
+}
+
+static inline void store_u16_4x6(uint16_t *s, ptrdiff_t dst_stride,
+                                 const uint16x4_t s0, const uint16x4_t s1,
+                                 const uint16x4_t s2, const uint16x4_t s3,
+                                 const uint16x4_t s4, const uint16x4_t s5) {
+  vst1_u16(s, s0);
+  s += dst_stride;
+  vst1_u16(s, s1);
+  s += dst_stride;
+  vst1_u16(s, s2);
+  s += dst_stride;
+  vst1_u16(s, s3);
+  s += dst_stride;
+  vst1_u16(s, s4);
+  s += dst_stride;
+  vst1_u16(s, s5);
+}
+
+static inline void store_u16_4x12(uint16_t *s, ptrdiff_t dst_stride,
+                                  const uint16x4_t s0, const uint16x4_t s1,
+                                  const uint16x4_t s2, const uint16x4_t s3,
+                                  const uint16x4_t s4, const uint16x4_t s5,
+                                  const uint16x4_t s6, const uint16x4_t s7,
+                                  const uint16x4_t s8, const uint16x4_t s9,
+                                  const uint16x4_t s10, const uint16x4_t s11) {
+  vst1_u16(s, s0);
+  s += dst_stride;
+  vst1_u16(s, s1);
+  s += dst_stride;
+  vst1_u16(s, s2);
+  s += dst_stride;
+  vst1_u16(s, s3);
+  s += dst_stride;
+  vst1_u16(s, s4);
+  s += dst_stride;
+  vst1_u16(s, s5);
+  s += dst_stride;
+  vst1_u16(s, s6);
+  s += dst_stride;
+  vst1_u16(s, s7);
+  s += dst_stride;
+  vst1_u16(s, s8);
+  s += dst_stride;
+  vst1_u16(s, s9);
+  s += dst_stride;
+  vst1_u16(s, s10);
+  s += dst_stride;
+  vst1_u16(s, s11);
+  s += dst_stride;
 }
 
 static inline void store_u16_8x2(uint16_t *s, ptrdiff_t dst_stride,
@@ -1214,6 +1414,20 @@ static inline uint16x8_t load_unaligned_u16_4x2(const uint16_t *buf,
   return vreinterpretq_u16_u64(a_u64);
 }
 
+static inline int16x8_t load_unaligned_s16_4x2(const int16_t *buf,
+                                               uint32_t stride) {
+  int64_t a;
+  int64x2_t a_s64;
+  memcpy(&a, buf, 8);
+  buf += stride;
+  a_s64 = vdupq_n_s64(0);
+  a_s64 = vsetq_lane_s64(a, a_s64, 0);
+  memcpy(&a, buf, 8);
+  buf += stride;
+  a_s64 = vsetq_lane_s64(a, a_s64, 1);
+  return vreinterpretq_s16_s64(a_s64);
+}
+
 static inline void load_unaligned_u16_4x4(const uint16_t *buf, uint32_t stride,
                                           uint16x8_t *tu0, uint16x8_t *tu1) {
   *tu0 = load_unaligned_u16_4x2(buf, stride);
@@ -1351,6 +1565,17 @@ static inline void store_u8x2_strided_x2(uint8_t *dst, uint32_t dst_stride,
   store_u8_2x1_lane(dst, src, 0);
   dst += dst_stride;
   store_u8_2x1_lane(dst, src, 1);
+}
+
+static inline void store_u8x2_strided_x4(uint8_t *dst, uint32_t dst_stride,
+                                         uint8x8_t src) {
+  store_u8_2x1_lane(dst, src, 0);
+  dst += dst_stride;
+  store_u8_2x1_lane(dst, src, 1);
+  dst += dst_stride;
+  store_u8_2x1_lane(dst, src, 2);
+  dst += dst_stride;
+  store_u8_2x1_lane(dst, src, 3);
 }
 
 // Store two blocks of 32-bits from a single vector.

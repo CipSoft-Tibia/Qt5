@@ -76,6 +76,10 @@ class Extension;
 }
 #endif
 
+namespace fingerprinting_protection_filter {
+class UnverifiedRulesetDealer;
+}  // namespace fingerprinting_protection_filter
+
 namespace subresource_filter {
 class UnverifiedRulesetDealer;
 }
@@ -227,7 +231,7 @@ class ChromeContentRendererClient
   void DidSetUserAgent(const std::string& user_agent) override;
   void AppendContentSecurityPolicy(
       const blink::WebURL& url,
-      blink::WebVector<blink::WebContentSecurityPolicyHeader>* csp) override;
+      std::vector<blink::WebContentSecurityPolicyHeader>* csp) override;
   std::unique_ptr<blink::WebLinkPreviewTriggerer> CreateLinkPreviewTriggerer()
       override;
 
@@ -300,6 +304,8 @@ class ChromeContentRendererClient
 #endif
   std::unique_ptr<subresource_filter::UnverifiedRulesetDealer>
       subresource_filter_ruleset_dealer_;
+  std::unique_ptr<fingerprinting_protection_filter::UnverifiedRulesetDealer>
+      fingerprinting_protection_ruleset_dealer_;
 #if BUILDFLAG(ENABLE_PLUGINS)
   std::set<std::string> allowed_camera_device_origins_;
 #endif

@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,7 +23,6 @@
 #include "base/notreached.h"
 #include "base/numerics/checked_math.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
@@ -114,8 +114,8 @@ uint64_t GetMemoryDumpByteSize(
     const std::string& entry_name) {
   DCHECK(dump);
   auto entry_it =
-      base::ranges::find(dump->entries(), entry_name,
-                         &base::trace_event::MemoryAllocatorDump::Entry::name);
+      std::ranges::find(dump->entries(), entry_name,
+                        &base::trace_event::MemoryAllocatorDump::Entry::name);
   if (entry_it != dump->entries().cend()) {
     EXPECT_EQ(std::string(base::trace_event::MemoryAllocatorDump::kUnitsBytes),
               entry_it->units);
@@ -153,8 +153,7 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       SharedImageUsageSet usage,
       std::string debug_label,
       bool is_thread_safe) override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
   std::unique_ptr<SharedImageBacking> CreateSharedImage(
       const Mailbox& mailbox,
@@ -167,8 +166,7 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       std::string debug_label,
       bool is_thread_safe,
       base::span<const uint8_t> pixel_data) override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
   std::unique_ptr<SharedImageBacking> CreateSharedImage(
       const Mailbox& mailbox,
@@ -387,15 +385,13 @@ class ImageDecodeAcceleratorStubTest
   // registers |buffer| in the TransferBufferManager and releases the sync token
   // corresponding to |handle_release_count|.
   void RegisterDiscardableHandleBuffer(int32_t shm_id,
-                                       scoped_refptr<Buffer> buffer,
-                                       uint64_t handle_release_count) {
+                                       scoped_refptr<Buffer> buffer) {
     GpuChannel* channel = channel_manager()->LookupChannel(kChannelId);
     DCHECK(channel);
     CommandBufferStub* command_buffer =
         channel->LookupCommandBuffer(kCommandBufferRouteId);
     CHECK(command_buffer);
     command_buffer->RegisterTransferBufferForTest(shm_id, std::move(buffer));
-    command_buffer->OnFenceSyncRelease(handle_release_count);
   }
 
   // Creates a discardable handle and schedules a task in the GPU scheduler (in
@@ -419,8 +415,10 @@ class ImageDecodeAcceleratorStubTest
         base::BindOnce(
             &ImageDecodeAcceleratorStubTest::RegisterDiscardableHandleBuffer,
             weak_ptr_factory_.GetWeakPtr(), handle.shm_id(),
-            handle.BufferForTesting(), handle_release_count) /* closure */,
-        std::vector<SyncToken>() /* sync_token_fences */));
+            handle.BufferForTesting()) /* closure */,
+        std::vector<SyncToken>() /* sync_token_fences */,
+        SyncToken(CommandBufferNamespace::GPU_IO,
+                  command_buffer->command_buffer_id(), handle_release_count)));
     return handle;
   }
 

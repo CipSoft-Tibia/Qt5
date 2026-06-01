@@ -47,7 +47,7 @@ static void debugBinaryString(const char *input, qint64 maxlen)
 Q_DECL_COLD_FUNCTION
 static void checkWarnMessage(const QIODevice *device, const char *function, const char *what)
 {
-#ifndef QT_NO_WARNING_OUTPUT
+#if !defined(QT_NO_WARNING_OUTPUT) && !defined(QT_NO_DEBUG_STREAM)
     QDebug d = qWarning();
     d.noquote();
     d.nospace();
@@ -129,8 +129,12 @@ static void checkWarnMessage(const QIODevice *device, const char *function, cons
 /*!
     \internal
  */
-QIODevicePrivate::QIODevicePrivate()
+QIODevicePrivate::QIODevicePrivate(decltype(QObjectPrivateVersion) version)
+#ifndef QT_NO_QOBJECT
+    : QObjectPrivate(version)
+#endif
 {
+    Q_UNUSED(version);
 }
 
 /*!

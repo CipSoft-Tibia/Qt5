@@ -43,6 +43,20 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+#ifndef QT_EGL_NO_X11
+#undef Status
+#undef None
+#undef Bool
+#undef CursorShape
+#undef KeyPress
+#undef KeyRelease
+#undef FocusIn
+#undef FocusOut
+#undef FontChange
+#undef Expose
+#undef Unsorted
+#endif
+
 #include <stdint.h>
 
 QT_BEGIN_NAMESPACE

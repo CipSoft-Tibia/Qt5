@@ -3,6 +3,7 @@
 
 #include "qcustom3dlabel_p.h"
 #include "utils_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -162,11 +163,14 @@ QCustom3DLabel::~QCustom3DLabel() {}
 void QCustom3DLabel::setText(const QString &text)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_text != text) {
-        d->m_text = text;
-        emit textChanged(text);
-        emit needUpdate();
+    if (d->m_text == text) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(text));
+        return;
     }
+    d->m_text = text;
+    emit textChanged(text);
+    emit needUpdate();
 }
 
 QString QCustom3DLabel::text() const
@@ -185,11 +189,14 @@ QString QCustom3DLabel::text() const
 void QCustom3DLabel::setFont(const QFont &font)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_font != font) {
-        d->m_font = font;
-        emit fontChanged(font);
-        emit needUpdate();
+    if (d->m_font == font) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << font;
+        return;
     }
+    d->m_font = font;
+    emit fontChanged(font);
+    emit needUpdate();
 }
 
 QFont QCustom3DLabel::font() const
@@ -209,12 +216,16 @@ QFont QCustom3DLabel::font() const
 void QCustom3DLabel::setTextColor(QColor color)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_txtColor != color) {
-        d->m_txtColor = color;
-        d->m_customVisuals = true;
-        emit textColorChanged(color);
-        emit needUpdate();
+    if (d->m_txtColor == color) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(color.name()));
+        return;
     }
+
+    d->m_txtColor = color;
+    d->m_customVisuals = true;
+    emit textColorChanged(color);
+    emit needUpdate();
 }
 
 QColor QCustom3DLabel::textColor() const
@@ -234,12 +245,16 @@ QColor QCustom3DLabel::textColor() const
 void QCustom3DLabel::setBackgroundColor(QColor color)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_bgrColor != color) {
-        d->m_bgrColor = color;
-        d->m_customVisuals = true;
-        emit backgroundColorChanged(color);
-        emit needUpdate();
+    if (d->m_bgrColor == color) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(color.name()));
+        return;
     }
+
+    d->m_bgrColor = color;
+    d->m_customVisuals = true;
+    emit backgroundColorChanged(color);
+    emit needUpdate();
 }
 
 QColor QCustom3DLabel::backgroundColor() const
@@ -257,12 +272,16 @@ QColor QCustom3DLabel::backgroundColor() const
 void QCustom3DLabel::setBorderVisible(bool visible)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_borders != visible) {
-        d->m_borders = visible;
-        d->m_customVisuals = true;
-        emit borderVisibleChanged(visible);
-        emit needUpdate();
+    if (d->m_borders == visible) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << visible;
+        return;
     }
+
+    d->m_borders = visible;
+    d->m_customVisuals = true;
+    emit borderVisibleChanged(visible);
+    emit needUpdate();
 }
 
 bool QCustom3DLabel::isBorderVisible() const
@@ -281,12 +300,16 @@ bool QCustom3DLabel::isBorderVisible() const
 void QCustom3DLabel::setBackgroundVisible(bool visible)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_background != visible) {
-        d->m_background = visible;
-        d->m_customVisuals = true;
-        emit backgroundVisibleChanged(visible);
-        emit needUpdate();
+    if (d->m_background == visible) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << visible;
+        return;
     }
+
+    d->m_background = visible;
+    d->m_customVisuals = true;
+    emit backgroundVisibleChanged(visible);
+    emit needUpdate();
 }
 
 bool QCustom3DLabel::isBackgroundVisible() const
@@ -305,12 +328,15 @@ bool QCustom3DLabel::isBackgroundVisible() const
 void QCustom3DLabel::setFacingCamera(bool enabled)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_facingCamera != enabled) {
-        d->m_facingCamera = enabled;
-        d->m_facingCameraDirty = true;
-        emit facingCameraChanged(enabled);
-        emit needUpdate();
+    if (d->m_facingCamera == enabled) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enabled;
+        return;
     }
+    d->m_facingCamera = enabled;
+    d->m_facingCameraDirty = true;
+    emit facingCameraChanged(enabled);
+    emit needUpdate();
 }
 
 bool QCustom3DLabel::isFacingCamera() const

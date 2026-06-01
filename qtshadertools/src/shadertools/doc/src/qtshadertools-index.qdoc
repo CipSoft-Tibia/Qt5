@@ -56,5 +56,5 @@ See \l{Qt Licensing} for further details.
 Furthermore, Qt Shader Tools in \QtVersion may contain third party
 modules under following permissive licenses:
 
-\generatelist{groupsbymodule attributions-qtshadertools}
+\annotatedlist attributions-qtshadertools
 */

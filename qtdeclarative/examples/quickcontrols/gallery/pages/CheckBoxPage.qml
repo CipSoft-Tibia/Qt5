@@ -24,16 +24,13 @@ ScrollablePage {
             anchors.horizontalCenter: parent.horizontalCenter
 
             CheckBox {
+                enabled: !GalleryConfig.disabled
                 text: qsTr("First")
                 checked: true
             }
             CheckBox {
+                enabled: !GalleryConfig.disabled
                 text: qsTr("Second")
-            }
-            CheckBox {
-                text: qsTr("Third")
-                checked: true
-                enabled: false
             }
         }
     }

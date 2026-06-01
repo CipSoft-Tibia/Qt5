@@ -16,6 +16,8 @@ CustomMaterial {
     property real specularBrightness: 0.25
     readonly property real shininess: (1.0 - specularBrightness) * 100
 
+    property bool shaded: false
+
     shadingMode: CustomMaterial.Shaded
     sourceBlend: !transparency ? CustomMaterial.NoBlend : CustomMaterial.SrcAlpha
     destinationBlend: !transparency ? CustomMaterial.NoBlend : CustomMaterial.OneMinusSrcAlpha

@@ -1,6 +1,10 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if(LINUX OR QT_FIND_ALL_PACKAGES_ALWAYS)
+    qt_find_package(WaylandScanner MODULE PROVIDED_TARGETS Wayland::Scanner)
+endif()
+
 qt_feature("androiddeployqt" PRIVATE
     SECTION "Deployment"
     LABEL "Android deployment tool"
@@ -26,9 +30,17 @@ qt_feature("qmake" PRIVATE
     CONDITION QT_FEATURE_settings AND QT_FEATURE_cborstreamwriter AND
         QT_FEATURE_datestring AND QT_FEATURE_regularexpression AND QT_FEATURE_temporaryfile)
 
+qt_feature("qtwaylandscanner" PRIVATE
+    CONDITION TARGET Wayland::Scanner AND NOT INTEGRITY AND NOT ANDROID AND NOT WASM AND NOT IOS AND NOT QNX AND NOT VXWORKS
+)
+
 qt_configure_add_summary_section(NAME "Core tools")
 qt_configure_add_summary_entry(ARGS "androiddeployqt")
 qt_configure_add_summary_entry(ARGS "macdeployqt")
 qt_configure_add_summary_entry(ARGS "windeployqt")
 qt_configure_add_summary_entry(ARGS "qmake")
+qt_configure_end_summary_section()
+
+qt_configure_add_summary_section(NAME "Wayland tools")
+qt_configure_add_summary_entry(ARGS "qtwaylandscanner")
 qt_configure_end_summary_section()

@@ -67,23 +67,14 @@ QGrpcOperation::QGrpcOperation(std::shared_ptr<QGrpcOperationContext> operationC
     : QObject(*new QGrpcOperationPrivate(std::move(operationContext)), parent)
 {
     Q_D(QGrpcOperation);
-    [[maybe_unused]] bool valid = QObject::connect(d->operationContext.get(),
-                                                   &QGrpcOperationContext::messageReceived, this,
-                                                   [this](const QByteArray &data) {
-                                                       Q_D(QGrpcOperation);
-                                                       d->data = data;
-                                                   });
+    [[maybe_unused]] bool valid = false;
+    valid = connect(d->operationContext.get(), &QGrpcOperationContext::messageReceived, this,
+                    &QGrpcOperation::onMessageReceived);
     Q_ASSERT_X(valid, "QGrpcOperation::QGrpcOperation",
                "Unable to make connection to the 'messageReceived' signal");
 
-    valid = QObject::connect(d->operationContext.get(), &QGrpcOperationContext::finished, this,
-                             [this](const QGrpcStatus &status) {
-                                 if (!isFinished()) {
-                                     Q_D(QGrpcOperation);
-                                     d->isFinished.storeRelaxed(true);
-                                     emit this->finished(status);
-                                 }
-                             });
+    valid = connect(d->operationContext.get(), &QGrpcOperationContext::finished, this,
+                    &QGrpcOperation::onFinished);
     Q_ASSERT_X(valid, "QGrpcOperation::QGrpcOperation",
                "Unable to make connection to the 'finished' signal");
 }
@@ -121,8 +112,11 @@ QGrpcOperation::~QGrpcOperation() = default;
 */
 bool QGrpcOperation::read(QProtobufMessage *message) const
 {
-    Q_ASSERT_X(message != nullptr, "QGrpcOperation::read",
-               "Can't read to nullptr QProtobufMessage");
+    if (!message) {
+        qGrpcWarning("Read called on nullptr message");
+        return false;
+    }
+
     Q_D(const QGrpcOperation);
     const auto ser = d->operationContext->serializer();
     Q_ASSERT_X(ser, "QGrpcOperation", "The serializer is null");
@@ -155,15 +149,69 @@ void QGrpcOperation::cancel()
     emit d->operationContext->cancelRequested();
 }
 
-/*!
-    Returns the server metadata received from the channel.
+#if QT_DEPRECATED_SINCE(6, 13)
 
-    \include qtgrpc-shared.qdocinc http2-metadata-note
+/*!
+    \deprecated [6.13] Use serverInitialMetadata() and serverTrailingMetadata() instead.
+
+    \include qgrpcoperation.cpp serverInitialMetadata
+
+    \sa serverInitialMetadata() serverTrailingMetadata()
 */
 const QHash<QByteArray, QByteArray> &QGrpcOperation::metadata() const & noexcept
 {
     Q_D(const QGrpcOperation);
-    return d->operationContext->serverMetadata();
+    QT_IGNORE_DEPRECATIONS(return d->operationContext->serverMetadata();)
+}
+
+#endif // QT_DEPRECATED_SINCE(6, 13)
+
+/*!
+    \since 6.10
+
+//! [serverInitialMetadata]
+    Returns the initial metadata received from the server before any response
+    messages.
+
+    Initial metadata is sent by the server immediately after the call is
+    established. It may include key-value pairs that provide context for the
+    call.
+
+    \include qtgrpc-shared.qdocinc http2-metadata-note
+//! [serverInitialMetadata]
+
+    The metadata may contain multiple entries under the same key.
+
+    \sa serverTrailingMetadata()
+*/
+const QMultiHash<QByteArray, QByteArray> &QGrpcOperation::serverInitialMetadata() const & noexcept
+{
+    Q_D(const QGrpcOperation);
+    return d->operationContext->serverInitialMetadata();
+}
+
+/*!
+    \since 6.10
+
+//! [serverTrailingMetadata]
+    Returns the trailing metadata received from the server after all response
+    messages.
+
+    Trailing metadata is sent only by the server once all response messages
+    have been sent and just before the RPC completes. It may include key-value
+    pairs providing additional context about the completed call.
+
+    \include qtgrpc-shared.qdocinc http2-metadata-note
+//! [serverTrailingMetadata]
+
+    The metadata may contain multiple entries under the same key.
+
+    \sa serverInitialMetadata()
+*/
+const QMultiHash<QByteArray, QByteArray> &QGrpcOperation::serverTrailingMetadata() const & noexcept
+{
+    Q_D(const QGrpcOperation);
+    return d->operationContext->serverTrailingMetadata();
 }
 
 /*!
@@ -196,6 +244,34 @@ const QGrpcOperationContext &QGrpcOperation::context() const & noexcept
 {
     Q_D(const QGrpcOperation);
     return *d->operationContext;
+}
+
+void QGrpcOperation::writeMessage(const QProtobufMessage &message)
+{
+    Q_D(const QGrpcOperation);
+    auto messageData = d->operationContext->serializer()->serialize(&message);
+    emit d->operationContext->writeMessageRequested(messageData);
+}
+
+void QGrpcOperation::writesDone()
+{
+    Q_D(const QGrpcOperation);
+    emit d->operationContext->writesDoneRequested();
+}
+
+void QGrpcOperation::onMessageReceived(const QByteArray &data)
+{
+    Q_D(QGrpcOperation);
+    d->data = data;
+}
+
+void QGrpcOperation::onFinished(const QGrpcStatus &status)
+{
+    Q_D(QGrpcOperation);
+    if (isFinished())
+        return;
+    d->isFinished.storeRelaxed(true);
+    emit finished(status);
 }
 
 bool QGrpcOperation::event(QEvent *event)

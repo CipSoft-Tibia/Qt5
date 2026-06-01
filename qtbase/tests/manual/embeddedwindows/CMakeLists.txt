@@ -6,6 +6,7 @@ qt_internal_add_manual_test(embeddedwindows
         main.cpp
     LIBRARIES
         Qt::Gui
+    GUI
 )
 
 qt_internal_extend_target(embeddedwindows CONDITION WIN32
@@ -13,12 +14,5 @@ qt_internal_extend_target(embeddedwindows CONDITION WIN32
         app.manifest
 )
 
-if(QT_FEATURE_xcb)
-    target_link_libraries(embeddedwindows PRIVATE XCB::XCB)
-endif()
-
-if(APPLE)
-    enable_language(OBJCXX)
-    set_source_files_properties(main.cpp PROPERTIES LANGUAGE OBJCXX)
-    set_property(TARGET embeddedwindows PROPERTY PROPERTY MACOSX_BUNDLE TRUE)
-endif()
+include(../../shared/nativewindow.cmake)
+target_link_libraries(embeddedwindows PRIVATE nativewindow)

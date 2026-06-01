@@ -5,16 +5,74 @@
 #include "components/viz/service/display/occlusion_culler.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <limits>
+#include <vector>
 
+#include "base/check.h"
 #include "cc/base/math_util.h"
 #include "cc/base/region.h"
 #include "components/viz/common/display/renderer_settings.h"
+#include "components/viz/common/features.h"
 #include "components/viz/common/quads/aggregated_render_pass_draw_quad.h"
+#include "components/viz/common/quads/draw_quad.h"
+#include "components/viz/common/quads/shared_quad_state.h"
+#include "components/viz/common/quads/texture_draw_quad.h"
+#include "components/viz/service/display/display_resource_provider.h"
 #include "components/viz/service/display/overlay_processor_interface.h"
+#include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
 
 namespace viz {
 namespace {
+
+constexpr float kEpsilon = std::numeric_limits<float>::epsilon();
+
+bool IsRightAngledRotationOrPositiveScaleOrTranslation(
+    const gfx::Transform& transform) {
+  if (transform.IsPositiveScaleOrTranslation()) {
+    return true;
+  }
+
+  const bool is_2d_and_has_no_perspective =
+      cc::MathUtil::IsWithinEpsilon(transform.rc(3, 0), 0.0) &&
+      cc::MathUtil::IsWithinEpsilon(transform.rc(3, 1), 0.0) &&
+      cc::MathUtil::IsWithinEpsilon(transform.rc(3, 2), 0.0) &&
+      cc::MathUtil::IsWithinEpsilon(transform.rc(3, 3), 1.0) &&  // 4th row
+      cc::MathUtil::IsWithinEpsilon(transform.rc(2, 0), 0.0) &&
+      cc::MathUtil::IsWithinEpsilon(transform.rc(2, 1), 0.0) &&
+      cc::MathUtil::IsWithinEpsilon(transform.rc(2, 2), 1.0) &&
+      cc::MathUtil::IsWithinEpsilon(transform.rc(2, 3), 0.0) &&  // 3rd row
+      cc::MathUtil::IsWithinEpsilon(transform.rc(0, 2), 0.0) &&
+      cc::MathUtil::IsWithinEpsilon(transform.rc(1, 2), 0.0);
+
+  if (!is_2d_and_has_no_perspective ||
+      !transform.NonDegeneratePreserves2dAxisAlignment()) {
+    return false;
+  }
+
+  // Only scale, translation, mirroring and right angled rotations (90, 180,
+  // 270) preserve axis alignment.
+  const bool has_translation = std::abs(transform.rc(0, 3)) > kEpsilon ||
+                               std::abs(transform.rc(1, 3)) > kEpsilon;
+
+  // Inspect inner 2x2 matrix to check if the `transform` has rotation or
+  // positive scale.
+  const bool has_0_rotation_with_positive_scaling =
+      transform.rc(0, 0) > kEpsilon && transform.rc(1, 1) > kEpsilon;
+  const bool has_90_rotation_with_positive_scaling =
+      transform.rc(0, 1) < kEpsilon && transform.rc(1, 0) > kEpsilon;
+  const bool has_180_rotation_with_positive_scaling =
+      transform.rc(0, 0) < kEpsilon && transform.rc(1, 1) < kEpsilon;
+  const bool has_270_rotation_with_positive_scaling =
+      transform.rc(0, 1) > kEpsilon && transform.rc(1, 0) < kEpsilon;
+
+  return is_2d_and_has_no_perspective &&
+         (has_translation || has_0_rotation_with_positive_scaling ||
+          has_90_rotation_with_positive_scaling ||
+          has_180_rotation_with_positive_scaling ||
+          has_270_rotation_with_positive_scaling);
+}
 
 // SkRegion uses INT_MAX as a sentinel. Reduce gfx::Rect values when they are
 // equal to INT_MAX to prevent conversion to an empty region.
@@ -33,53 +91,6 @@ gfx::Rect SafeConvertRectForRegion(const gfx::Rect& r) {
     safe_rect.set_height(INT_MAX - 1);
   }
   return safe_rect;
-}
-
-// Decides whether or not a DrawQuad should be split into a more complex visible
-// region in order to avoid overdraw.
-bool CanSplitQuad(const DrawQuad::Material quad_material,
-                  const std::vector<gfx::Rect>& visible_region_rects,
-                  const gfx::Size& visible_region_bounding_size,
-                  int minimum_fragments_reduced,
-                  const float device_scale_factor) {
-  static constexpr DrawQuad::Material kNonSplittableMaterials[] = {
-      // Exclude debug quads from quad splitting.
-      DrawQuad::Material::kDebugBorder,
-      // Exclude possible overlay candidates from quad splitting
-      // See `OverlayCandidate::FromDrawQuad()`.
-      DrawQuad::Material::kTextureContent,
-      DrawQuad::Material::kVideoHole,
-  };
-
-  if (base::Contains(kNonSplittableMaterials, quad_material)) {
-    return false;
-  }
-
-  base::CheckedNumeric<int> area = 0;
-  for (const auto& r : visible_region_rects) {
-    area += r.size().GetCheckedArea();
-    // In calculations below, assume false if this addition overflows.
-    if (!area.IsValid()) {
-      return false;
-    }
-  }
-
-  base::CheckedNumeric<int> visible_region_bounding_area =
-      visible_region_bounding_size.GetCheckedArea();
-  if (!visible_region_bounding_area.IsValid()) {
-    // In calculations below, assume true if this overflows.
-    return true;
-  }
-
-  area = visible_region_bounding_area - area;
-  if (!area.IsValid()) {
-    // In calculations below, assume false if this subtraction underflows.
-    return false;
-  }
-
-  const int int_area = area.ValueOrDie();
-  return int_area * device_scale_factor * device_scale_factor >
-         minimum_fragments_reduced;
 }
 
 // Returns the bounds for the largest rect that can be inscribed in a rounded
@@ -109,12 +120,12 @@ gfx::RectF GetOccludingRectForRRectF(const gfx::RRectF& bounds) {
   // can be inscribed inside it has an inset of |((2 - sqrt(2)) / 2) * radius|.
   // Should you wish to convince yourself that sin(pi/4) is the max value check:
   // https://math.stackexchange.com/questions/240192/find-the-area-of-largest-rectangle-that-can-be-inscribed-in-an-ellipse
-  constexpr float kInsetCoeficient = 0.3f;
+  constexpr float kInsetCoefficient = 0.3f;
   occluding_rect.Inset(gfx::InsetsF::TLBR(
-      std::max(top_left.y(), top_right.y()) * kInsetCoeficient,
-      std::max(top_left.x(), lower_left.x()) * kInsetCoeficient,
-      std::max(lower_right.y(), lower_left.y()) * kInsetCoeficient,
-      std::max(top_right.x(), lower_right.x()) * kInsetCoeficient));
+      std::max(top_left.y(), top_right.y()) * kInsetCoefficient,
+      std::max(top_left.x(), lower_left.x()) * kInsetCoefficient,
+      std::max(lower_right.y(), lower_left.y()) * kInsetCoefficient,
+      std::max(top_right.x(), lower_right.x()) * kInsetCoefficient));
   return occluding_rect;
 }
 
@@ -124,39 +135,78 @@ gfx::RectF GetOccludingRectForRRectF(const gfx::RRectF& bounds) {
 // `complexity_limit`, false otherwise.
 bool ReduceComplexity(const cc::Region& region,
                       size_t complexity_limit,
-                      std::vector<gfx::Rect>& reduced_region) {
-  reduced_region.clear();
+                      std::vector<gfx::Rect>& reduced_region_out) {
+  CHECK(reduced_region_out.empty());
 
   for (gfx::Rect r : region) {
-    auto it = base::ranges::find_if(reduced_region, [&r](const gfx::Rect& a) {
-      return a.SharesEdgeWith(r);
-    });
+    auto it = std::ranges::find_if(
+        reduced_region_out,
+        [&r](const gfx::Rect& a) { return a.SharesEdgeWith(r); });
 
-    if (it != reduced_region.end()) {
+    if (it != reduced_region_out.end()) {
       it->Union(r);
       continue;
     }
 
-    reduced_region.push_back(r);
+    reduced_region_out.push_back(r);
 
-    if (reduced_region.size() >= complexity_limit) {
+    if (reduced_region_out.size() >= complexity_limit) {
+      reduced_region_out.clear();
       return false;
     }
   }
+
   return true;
+}
+
+bool CanContributeToOcclusion(const SharedQuadState* shared_quad_state) {
+  // TODO(yiyix): For transforms that don't preserve axis-alignmement, find a
+  // rect interior to each transformed quad.
+  return shared_quad_state->opacity == 1 &&
+         shared_quad_state->are_contents_opaque &&
+         (shared_quad_state->blend_mode == SkBlendMode::kSrcOver ||
+          shared_quad_state->blend_mode == SkBlendMode::kSrc) &&
+         shared_quad_state->quad_to_target_transform
+             .NonDegeneratePreserves2dAxisAlignment();
+}
+
+void MaybeReduceOccluderComplexity(cc::Region& occluder,
+                                   int complexity_threshold) {
+  // If region complexity is above our threshold, remove the smallest
+  // rects from occlusion region.
+  while (occluder.GetRegionComplexity() > complexity_threshold) {
+    gfx::Rect smallest_rect = *occluder.begin();
+    for (auto occluding_rect : occluder) {
+      if (occluding_rect.size().GetCheckedArea().ValueOrDefault(INT_MAX) <
+          smallest_rect.size().GetCheckedArea().ValueOrDefault(INT_MAX)) {
+        smallest_rect = occluding_rect;
+      }
+    }
+    occluder.Subtract(smallest_rect);
+  }
 }
 
 }  // namespace
 
 OcclusionCuller::OcclusionCuller(
     OverlayProcessorInterface* overlay_processor,
+    DisplayResourceProvider* resource_provider,
     const RendererSettings::OcclusionCullerSettings& settings)
-    : overlay_processor_(overlay_processor), settings_(settings) {}
+    : overlay_processor_(overlay_processor),
+      resource_provider_(resource_provider),
+      settings_(settings) {}
 
 OcclusionCuller::~OcclusionCuller() = default;
 
-void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame,
-                                          float device_scale_factor) {
+void OcclusionCuller::UpdateDeviceScaleFactor(float device_scale_factor) {
+  if (device_scale_factor_ == device_scale_factor) {
+    return;
+  }
+
+  device_scale_factor_ = device_scale_factor;
+}
+
+void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame) {
   if (frame->render_pass_list.empty()) {
     return;
   }
@@ -222,16 +272,11 @@ void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame,
         last_sqs = quad->shared_quad_state;
       }
 
-      gfx::Transform transform =
+      const gfx::Transform transform =
           quad->shared_quad_state->quad_to_target_transform;
 
-      // TODO(yiyix): Find a rect interior to each transformed quad.
       if (last_sqs != quad->shared_quad_state) {
-        if (last_sqs->opacity == 1 && last_sqs->are_contents_opaque &&
-            (last_sqs->blend_mode == SkBlendMode::kSrcOver ||
-             last_sqs->blend_mode == SkBlendMode::kSrc) &&
-            last_sqs->quad_to_target_transform
-                .NonDegeneratePreserves2dAxisAlignment()) {
+        if (CanContributeToOcclusion(last_sqs)) {
           gfx::Rect sqs_rect_in_target =
               cc::MathUtil::MapEnclosedRectWith2dAxisAlignedTransform(
                   last_sqs->quad_to_target_transform,
@@ -250,21 +295,12 @@ void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame,
             sqs_rect_in_target.Intersect(*last_sqs->clip_rect);
           }
 
-          // If region complexity is above our threshold, remove the smallest
-          // rects from occlusion region.
-          occlusion_in_target_space.Union(sqs_rect_in_target);
-          while (occlusion_in_target_space.GetRegionComplexity() >
-                 settings_.maximum_occluder_complexity) {
-            gfx::Rect smallest_rect = *occlusion_in_target_space.begin();
-            for (auto occluding_rect : occlusion_in_target_space) {
-              if (occluding_rect.size().GetCheckedArea().ValueOrDefault(
-                      INT_MAX) <
-                  smallest_rect.size().GetCheckedArea().ValueOrDefault(
-                      INT_MAX)) {
-                smallest_rect = occluding_rect;
-              }
-            }
-            occlusion_in_target_space.Subtract(smallest_rect);
+          if (sqs_rect_in_target.size().GetCheckedArea().ValueOrDefault(
+                  INT_MAX) > settings_.occluder_minium_visible_quad_size) {
+            occlusion_in_target_space.Union(sqs_rect_in_target);
+            MaybeReduceOccluderComplexity(
+                occlusion_in_target_space,
+                settings_.maximum_occluder_complexity);
           }
         }
 
@@ -281,26 +317,31 @@ void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame,
         current_sqs_intersects_occlusion =
             occlusion_in_target_space.Intersects(current_sqs_in_target_space);
 
-        // Compute the occlusion region in the quad content space for scale and
-        // translation transforms. Note that 0 scale transform will fail the
-        // positive scale check.
+        // Compute the occlusion region in the quad content space for scale,
+        // rotation(90, 180, 270) and translation transforms. Note that 0 scale
+        // transform will fail the positive scale check.
         if (current_sqs_intersects_occlusion &&
-            transform.IsPositiveScaleOrTranslation()) {
-          // Scale transform can be inverted by multiplying 1/scale (given
-          // scale > 0) and translation transform can be inverted by applying
-          // the reversed directional translation. Therefore, |transform| is
-          // always invertible.
-          gfx::Transform reverse_transform = transform.GetCheckedInverse();
+            IsRightAngledRotationOrPositiveScaleOrTranslation(transform)) {
+          // Given:
+          // * Scale transform can be inverted by multiplying 1/scale.
+          //  (given scale > 0)
+          // * Translation transform can be inverted by applying reversed
+          //   directional translation.
+          // * Rotation transform can be inverted by applying rotation
+          //   in opposite direction.
+          // Therefore, `transform` is always invertible.
+          const gfx::Transform reverse_transform =
+              transform.GetCheckedInverse();
           DCHECK_LE(occlusion_in_target_space.GetRegionComplexity(),
                     settings_.maximum_occluder_complexity);
 
-          // Since transform can only be a scale or a translation matrix, it is
-          // safe to use function MapEnclosedRectWith2dAxisAlignedTransform to
-          // define occluded region in the quad content space with inverted
-          // transform.
+          // Since transform can only be a scale, translation or right-angled
+          // matrix, it is safe to use function
+          // MapEnclosedRectWith2dAxisAlignedTransform to define occluded region
+          // in the quad content space with inverted transform.
           for (gfx::Rect rect_in_target_space : occlusion_in_target_space) {
             if (current_sqs_in_target_space.Intersects(rect_in_target_space)) {
-              auto rect_in_content =
+              const auto rect_in_content =
                   cc::MathUtil::MapEnclosedRectWith2dAxisAlignedTransform(
                       reverse_transform, rect_in_target_space);
               occlusion_in_quad_content_space.Union(
@@ -314,7 +355,7 @@ void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame,
           if (current_sqs_in_target_space.Intersects(
                   backdrop_filters_in_target_space.bounds())) {
             for (auto rect_in_target_space : backdrop_filters_in_target_space) {
-              auto rect_in_content =
+              const auto rect_in_content =
                   cc::MathUtil::MapEnclosedRectWith2dAxisAlignedTransform(
                       reverse_transform, rect_in_target_space);
               render_pass_quads_in_content_space.Union(rect_in_content);
@@ -351,10 +392,8 @@ void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame,
             !visible_region.Intersects(render_pass_quads_in_content_space) &&
             ReduceComplexity(visible_region, settings_.quad_split_limit,
                              reduced_visible_region) &&
-            CanSplitQuad(quad->material, reduced_visible_region,
-                         visible_region.bounds().size(),
-                         settings_.minimum_fragments_reduced,
-                         device_scale_factor);
+            CanSplitDrawQuad(*quad, visible_region.bounds().size(),
+                             reduced_visible_region);
         if (should_split_quads) {
           auto new_quad = pass->quad_list.InsertCopyBeforeDrawQuad(
               quad, reduced_visible_region.size() - 1);
@@ -379,6 +418,54 @@ void OcclusionCuller::RemoveOverdrawQuads(AggregatedFrame* frame,
       ++quad;
     }
   }
+}
+
+bool OcclusionCuller::CanSplitDrawQuad(
+    const DrawQuad* quad,
+    const gfx::Size& visible_region_bounding_size,
+    const std::vector<gfx::Rect>& visible_region_rects) {
+  if (quad->material == DrawQuad::Material::kDebugBorder ||
+      quad->material == DrawQuad::Material::kVideoHole) {
+    return false;
+  }
+
+  if (quad->material == DrawQuad::Material::kTextureContent) {
+    if (!features::IsOcclusionCullingForTextureQuadsEnabled()) {
+      return false;
+    }
+
+    // Exclude possible overlay candidates from quad splitting. See
+    // `OverlayCandidateFactory::FromDrawQuad()`.
+    if (resource_provider_->IsOverlayCandidate(quad->resource_id)) {
+      return false;
+    }
+  }
+
+  base::CheckedNumeric<int> area = 0;
+  for (const auto& r : visible_region_rects) {
+    area += r.size().GetCheckedArea();
+    // In calculations below, assume false if this addition overflows.
+    if (!area.IsValid()) {
+      return false;
+    }
+  }
+
+  base::CheckedNumeric<int> visible_region_bounding_area =
+      visible_region_bounding_size.GetCheckedArea();
+  if (!visible_region_bounding_area.IsValid()) {
+    // In calculations below, assume true if this overflows.
+    return true;
+  }
+
+  area = visible_region_bounding_area - area;
+  if (!area.IsValid()) {
+    // In calculations below, assume false if this subtraction underflows.
+    return false;
+  }
+
+  const int int_area = area.ValueOrDie();
+  return int_area * device_scale_factor_ * device_scale_factor_ >
+         settings_.minimum_fragments_reduced;
 }
 
 }  // namespace viz

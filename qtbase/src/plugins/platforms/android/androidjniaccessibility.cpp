@@ -1,10 +1,11 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#include "androiddeadlockprotector.h"
 #include "androidjniaccessibility.h"
 #include "androidjnimain.h"
 #include "qandroidplatformintegration.h"
+#include "qandroidplatformwindow.h"
 #include "qpa/qplatformaccessibility.h"
 #include <QtGui/private/qaccessiblebridgeutils_p.h>
 #include "qguiapplication.h"
@@ -44,6 +45,11 @@ namespace QtAndroidAccessibility
     static jmethodID m_setRangeInfoMethodID = 0;
     static jmethodID m_setVisibleToUserMethodID = 0;
 
+    static int RANGE_TYPE_INT = 0;
+    static int RANGE_TYPE_FLOAT = 0;
+    static int RANGE_TYPE_PERCENT = 0;
+    static int RANGE_TYPE_INDETERMINATE = 0;
+
     static bool m_accessibilityActivated = false;
 
     // This object is needed to schedule the execution of the code that
@@ -65,7 +71,14 @@ namespace QtAndroidAccessibility
     template <typename Func, typename Ret>
     void runInObjectContext(QObject *context, Func &&func, Ret *retVal)
     {
-        AndroidDeadlockProtector protector;
+        if (QAndroidPlatformWindow::surfacesCount() == 0) {
+            __android_log_print(ANDROID_LOG_WARN, m_qtTag,
+                "Could not run accessibility call in object context, no valid surface.");
+            return;
+        }
+
+        QtAndroidPrivate::AndroidDeadlockProtector protector(
+            u"QtAndroidAccessibility::runInObjectContext()"_s);
         if (!protector.acquire()) {
             __android_log_print(ANDROID_LOG_WARN, m_qtTag,
                                 "Could not run accessibility call in object context, accessing "
@@ -80,11 +93,6 @@ namespace QtAndroidAccessibility
             __android_log_print(ANDROID_LOG_WARN, m_qtTag,
                                 "Could not run accessibility call in object context, event loop suspended.");
         }
-    }
-
-    void initialize()
-    {
-        QtAndroid::initializeAccessibility();
     }
 
     bool isActive()
@@ -514,7 +522,6 @@ namespace QtAndroidAccessibility
             return QStringLiteral("android.widget.RadioButton");
         case QAccessible::Role::ProgressBar:
             return QStringLiteral("android.widget.ProgressBar");
-            // Range information need to be filled to announce percentages
         case QAccessible::Role::SpinBox:
             return QStringLiteral("android.widget.NumberPicker");
         case QAccessible::Role::WebDocument:
@@ -600,8 +607,12 @@ namespace QtAndroidAccessibility
         if (iface && iface->isValid()) {
             bool hasValue = false;
             desc = iface->text(QAccessible::Name);
-            if (desc.isEmpty())
-                desc = iface->text(QAccessible::Description);
+            const QString descStr = iface->text(QAccessible::Description);
+            if (!descStr.isEmpty()) {
+                if (!desc.isEmpty())
+                    desc.append(QStringLiteral(", "));
+                desc.append(descStr);
+            }
             if (desc.isEmpty()) {
                 desc = iface->text(QAccessible::Value);
                 hasValue = !desc.isEmpty();
@@ -715,20 +726,29 @@ namespace QtAndroidAccessibility
 
         if (info.hasValue && m_setRangeInfoMethodID) {
             int valueType = info.currentValue.typeId();
-            jint rangeType = 3; // RANGE_TYPE_INDETERMINATE
+            jint rangeType = RANGE_TYPE_INDETERMINATE;
             switch (valueType) {
             case QMetaType::Float:
             case QMetaType::Double:
-                rangeType = 1; // RANGE_TYPE_FLOAT
+                rangeType = RANGE_TYPE_FLOAT;
                 break;
             case QMetaType::Int:
-                rangeType = 0; // RANGE_TYPE_INT
+                rangeType = RANGE_TYPE_INT;
                 break;
             }
 
+            float min = info.minValue.toFloat();
+            float max = info.maxValue.toFloat();
+            float current = info.currentValue.toFloat();
+            if (info.role == QAccessible::ProgressBar) {
+                rangeType = RANGE_TYPE_PERCENT;
+                current = 100 * (current - min) / (max - min);
+                min = 0.0f;
+                max = 100.0f;
+            }
+
             QJniObject rangeInfo("android/view/accessibility/AccessibilityNodeInfo$RangeInfo",
-                                 "(IFFF)V", rangeType, info.minValue.toFloat(),
-                                 info.maxValue.toFloat(), info.currentValue.toFloat());
+                                 "(IFFF)V", rangeType, min, max, current);
 
             if (rangeInfo.isValid()) {
                 env->CallVoidMethod(node, m_setRangeInfoMethodID, rangeInfo.object());
@@ -791,6 +811,14 @@ namespace QtAndroidAccessibility
         return false; \
     }
 
+#define CHECK_AND_INIT_STATIC_FIELD(TYPE, VAR, CLASS, FIELD_NAME)             \
+    if (env.findStaticField<TYPE>(CLASS, FIELD_NAME) == nullptr) {            \
+        __android_log_print(ANDROID_LOG_FATAL, QtAndroid::qtTagText(),        \
+                            QtAndroid::staticFieldErrorMsgFmt(), FIELD_NAME); \
+        return false;                                                         \
+    }                                                                         \
+    VAR = QJniObject::getStaticField<TYPE>(CLASS, FIELD_NAME);
+
     bool registerNatives(QJniEnvironment &env)
     {
         if (!env.registerNativeMethods("org/qtproject/qt/android/QtNativeAccessibility",
@@ -819,6 +847,18 @@ namespace QtAndroidAccessibility
         GET_AND_CHECK_STATIC_METHOD(
                 m_setRangeInfoMethodID, nodeInfoClass, "setRangeInfo",
                 "(Landroid/view/accessibility/AccessibilityNodeInfo$RangeInfo;)V");
+
+        jclass rangeInfoClass =
+                env->FindClass("android/view/accessibility/AccessibilityNodeInfo$RangeInfo");
+        CHECK_AND_INIT_STATIC_FIELD(int, RANGE_TYPE_INT, rangeInfoClass, "RANGE_TYPE_INT");
+        CHECK_AND_INIT_STATIC_FIELD(int, RANGE_TYPE_FLOAT, rangeInfoClass, "RANGE_TYPE_FLOAT");
+        CHECK_AND_INIT_STATIC_FIELD(int, RANGE_TYPE_PERCENT, rangeInfoClass, "RANGE_TYPE_PERCENT");
+        if (QtAndroidPrivate::androidSdkVersion() >= 36) {
+            CHECK_AND_INIT_STATIC_FIELD(int, RANGE_TYPE_INDETERMINATE, rangeInfoClass,
+                                        "RANGE_TYPE_INDETERMINATE");
+        } else {
+            RANGE_TYPE_INDETERMINATE = RANGE_TYPE_FLOAT;
+        }
 
         return true;
     }

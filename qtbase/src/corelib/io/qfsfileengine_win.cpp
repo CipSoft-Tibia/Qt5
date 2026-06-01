@@ -898,12 +898,12 @@ bool QFSFileEnginePrivate::unmap(uchar *ptr)
 /*!
     \reimp
 */
-bool QFSFileEngine::cloneTo(QAbstractFileEngine *target)
+QAbstractFileEngine::TriStateResult QFSFileEngine::cloneTo(QAbstractFileEngine *target)
 {
     // There's some Windows Server 2016 API, but we won't
     // bother with it.
     Q_UNUSED(target);
-    return false;
+    return TriStateResult::NotSupported;
 }
 
 QT_END_NAMESPACE

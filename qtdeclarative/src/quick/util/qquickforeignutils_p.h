@@ -1,11 +1,13 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTQUICKFOREIGN_P_H
 #define QTQUICKFOREIGN_P_H
 
 #include <QtQuick/private/qtquickglobal_p.h>
 
+#include <QtGui/qaccessibilityhints.h>
 #include <QtGui/qstylehints.h>
 #include <QtGui/qeventpoint.h>
 #if QT_CONFIG(im)
@@ -19,6 +21,8 @@
 #endif
 
 #include <QtGui/qfontvariableaxis.h>
+
+#include <QtGui/QScreen>
 
 #include <QtQml/qqml.h>
 
@@ -34,6 +38,14 @@
 //
 
 QT_BEGIN_NAMESPACE
+
+struct QAccessibilityHintsForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QAccessibilityHints)
+    QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(6, 10)
+};
 
 struct QStyleHintsForeign
 {
@@ -123,6 +135,14 @@ struct QFontVariableAxisForeign
     QML_ANONYMOUS
     QML_ADDED_IN_VERSION(6, 9)
     QML_FOREIGN(QFontVariableAxis)
+};
+
+struct QScreenForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QScreen)
+    QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(2, 3) // used in ScreenInfo
 };
 
 QT_END_NAMESPACE

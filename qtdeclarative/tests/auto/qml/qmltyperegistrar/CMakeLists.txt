@@ -48,6 +48,7 @@ qt_internal_add_test(tst_qmltyperegistrar
     LIBRARIES
         # Remove: Lforeign
         Qt::Qml
+        Qt::QmlPrivate
         foreign
         tst_qmltyperegistrarPrivate
         Qt::QmlTypeRegistrarPrivate

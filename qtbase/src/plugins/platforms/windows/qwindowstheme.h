@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSTHEME_H
 #define QWINDOWSTHEME_H
@@ -33,8 +34,9 @@ public:
 
     Qt::ColorScheme colorScheme() const override;
     void requestColorScheme(Qt::ColorScheme scheme) override;
+    Qt::ContrastPreference contrastPreference() const override;
 
-    static void handleSettingsChanged();
+    static void handleThemeChange();
 
     const QPalette *palette(Palette type = SystemPalette) const override
         { return m_palettes[type]; }
@@ -46,7 +48,6 @@ public:
     QIcon fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions iconOptions = {}) const override;
     QIconEngine *createIconEngine(const QString &iconName) const override;
 
-    void windowsThemeChanged(QWindow *window);
     void displayChanged() { refreshIconPixmapSizes(); }
 
     QList<QSize> availableFileIconSizes() const { return m_fileIconSizes; }
@@ -64,7 +65,7 @@ public:
     static const char *name;
 
     static QPalette systemPalette(Qt::ColorScheme);
-
+    static bool queryHighContrast();
 private:
     void clearPalettes();
     void refreshPalettes();
@@ -76,15 +77,19 @@ private:
 
     static Qt::ColorScheme queryColorScheme();
     static Qt::ColorScheme effectiveColorScheme();
-    static bool queryHighContrast();
 
     static QWindowsTheme *m_instance;
     static inline Qt::ColorScheme s_colorScheme = Qt::ColorScheme::Unknown;
     static inline Qt::ColorScheme s_colorSchemeOverride = Qt::ColorScheme::Unknown;
 
+    friend class QWindowsContext;
+
     QPalette *m_palettes[NPalettes];
     QFont *m_fonts[NFonts];
     QList<QSize> m_fileIconSizes;
+
+    HWND m_themeChangeObserver = nullptr;
+    void destroyThemeChangeWindow();
 };
 
 QT_END_NAMESPACE

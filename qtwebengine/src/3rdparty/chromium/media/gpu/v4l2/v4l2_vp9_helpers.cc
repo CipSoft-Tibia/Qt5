@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/gpu/v4l2/v4l2_vp9_helpers.h"
 
 #include "base/containers/heap_array.h"
@@ -103,7 +108,7 @@ bool OverwriteShowFrame(base::span<uint8_t> frame_data,
 }  // namespace
 
 bool AppendVP9SuperFrameIndex(scoped_refptr<DecoderBuffer>& buffer) {
-  DCHECK(buffer->has_side_data());
+  DCHECK(buffer->side_data());
   std::vector<uint32_t> frame_sizes = buffer->side_data()->spatial_layers;
   DCHECK(!frame_sizes.empty());
 

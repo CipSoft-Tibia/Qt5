@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsiconengine.h"
 
@@ -63,8 +64,8 @@ static QString getGlyphs(QStringView iconName)
         {"go-home"_L1, u"\ue80f"},
         // {"go-jump"_L1, u"\uf719"},
         //{"go-last"_L1, u"\ue5dd"},
-        {"go-next"_L1, u"\ue893"},
-        {"go-previous"_L1, u"\ue892"},
+        {"go-next"_L1, u"\ue72a"},
+        {"go-previous"_L1, u"\ue72b"},
         //{"go-top"_L1, u"\ue25a"},
         {"go-up"_L1, u"\ue74a"},
         {"help-about"_L1, u"\ue946"},
@@ -100,7 +101,7 @@ static QString getGlyphs(QStringView iconName)
         //{"object-flip-vertical"_L1, u"\u"},
         {"object-rotate-left"_L1, u"\ue80c"},
         {"object-rotate-right"_L1, u"\ue80d"},
-        //{"process-stop"_L1, u"\ue5c9"},
+        {"process-stop"_L1, u"\uf140"},
         {"system-lock-screen"_L1, u"\uee3f"},
         {"system-log-out"_L1, u"\uf3b1"},
         //{"system-run"_L1, u"\u"},

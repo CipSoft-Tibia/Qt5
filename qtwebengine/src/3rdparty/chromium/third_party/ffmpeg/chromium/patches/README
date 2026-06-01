@@ -806,24 +806,6 @@ Affects:
     libavutil/x86/tx_float.asm
 
 ------------------------------------------------------------------
-commit c061281207072075c3f8c4b16895be3b6567e581
-Author: Ted Meyer <tmathmeyer@chromium.org>
-Date:   Tue Apr 2 14:26:12 2024 -0700
-
-    Add AAC_xHE case to aacdec_template.c for demuxing
-
-    The parser needs to be able to be created when demuxing, otherwise the
-    channel count and layout can't be successfully generated.
-
-    Bug: 330573128
-    Change-Id: Ib1404541e7cde321131efa6fcd2f991e398fe7b9
-    Reviewed-on: https://chromium-review.googlesource.com/c/chromium/third_party/ffmpeg/+/5406620
-    Reviewed-by: Frank Liberato <liberato@chromium.org>
-
-Affects:
-    libavcodec/aac/aacdec.c
-
-------------------------------------------------------------------
 commit bdcb0b447f433de3b69f0252732791b9f7e26f37
 Author: Ted Meyer <tmathmeyer@chromium.org>
 Date:   Tue Apr 2 18:49:30 2024 -0700
@@ -868,3 +850,192 @@ Date:   Mon Apr 22 22:21:36 2024 +0000
 Affects:
     libavutil/x86/x86inc.asm
 
+------------------------------------------------------------------
+commit d941d9677bb4802f01750fd908ec284fb72c84df
+Author: Dan Sanders <sandersd@chromium.org>
+Date:   Thu Jun 20 12:09:26 2024 -0700
+
+    Use saturated subtraction in mov_get_skip_samples()
+
+    Bug: 333605001
+    Change-Id: I548d76e111baebe268c21866a3b83b824e30d10a
+    Reviewed-on: https://chromium-review.googlesource.com/c/chromium/third_party/ffmpeg/+/5646169
+    Reviewed-by: Dale Curtis <dalecurtis@chromium.org>
+
+Affects:
+    libavformat/mov.c
+
+------------------------------------------------------------------
+commit 594bc6d3246fe6b293f253d07c8905c578cb75c9
+Author: Dale Curtis <dalecurtis@chromium.org>
+Date:   Tue Jul 30 16:32:24 2024 +0000
+
+    Add AVFMT_FLAG_NOVIDEOPARSE so video parsers can be disabled.
+
+    This allows us to remove parsing for video codecs w/o changing the
+    build configuration just yet. If this ships successfully we can
+    remove video parsers from the build config and this patch.
+
+    R=sandersd
+
+    Bug: 355485812
+    Change-Id: Id9ffd4d8c1e989b0ddcfb6e5f5e9c63ea96bf7c4
+    Reviewed-on: https://chromium-review.googlesource.com/c/chromium/third_party/ffmpeg/+/5750102
+    Reviewed-by: Dan Sanders <sandersd@chromium.org>
+
+Affects:
+    libavformat/avformat.h
+    libavformat/demux.c
+
+------------------------------------------------------------------
+commit 26f9ca48dc8f1dc37d1b47c7c79358cb65a53f53
+Author: Dale Curtis <dalecurtis@chromium.org>
+Date:   Tue Jul 30 19:25:12 2024 +0000
+
+    Leave vp9 parser enabled. Only allow H.264 parser control.
+
+    Unfortunately, we do need the vp9 parser to get the profile. Unlike
+    H.264 extradata isn't required, so we have no means to get the
+    right profile w/o ffmpeg parsers.
+
+    R=sandersd
+
+    Bug: 355485812
+    Change-Id: I3bfcdb5f7401a15f5043cfe19faa01fa82c3fce8
+    Reviewed-on: https://chromium-review.googlesource.com/c/chromium/third_party/ffmpeg/+/5750054
+    Reviewed-by: Dan Sanders <sandersd@chromium.org>
+
+Affects:
+    libavformat/avformat.h
+    libavformat/demux.c
+
+------------------------------------------------------------------
+commit 468b9c8a52555953618ba1677fffb0a778dd6d87
+Author: Ho Cheung <hocheung@chromium.org>
+Date:   Sun Sep 1 08:43:04 2024 +0800
+
+    [libavcodec] Check nullptr to fix crash in hevcdec
+
+    The previous CL forgot to check nullptr and caused
+    a crash in hevcdec. This CL fixes this crash.
+
+    Bug: chromium:362007482
+    Change-Id: I67a2c36318f7b188e81ad453b1e6466743d85351
+    Reviewed-on: https://chromium-review.googlesource.com/c/chromium/third_party/ffmpeg/+/5825845
+    Reviewed-by: Dale Curtis <dalecurtis@chromium.org>
+
+Affects:
+    libavcodec/hevc/hevcdec.c
+
+------------------------------------------------------------------
+commit d4258358c7672ae3ccaac0ffb16c5169bbff273c
+Merge: 91903c28af dc11c12b64
+Author: Dan Sanders <sandersd@chromium.org>
+Date:   Fri Sep 20 19:22:41 2024 +0000
+
+    Merge remote-tracking branch 'upstream/master' into sushi-2024-09-19-19-04-27
+
+Affects:
+    libavcodec/h264dec.c
+    libavcodec/hevc/hevcdec.c
+    libavformat/matroskadec.c
+
+------------------------------------------------------------------
+commit ce4bada8b24734982a48448dcafcf9897df7f06e
+Author: Dan Sanders <sandersd@chromium.org>
+Date:   Tue Sep 24 17:17:39 2024 +0000
+
+    Use full paths in libavcodec/opus
+
+Affects:
+    libavcodec/opus/parse.c
+    libavcodec/opus/parser.c
+
+------------------------------------------------------------------
+commit 30735bb16a66e84d6324b5858eef314822b6d419
+Author: Dan Sanders <sandersd@chromium.org>
+Date:   Wed Sep 25 17:57:29 2024 +0000
+
+    Disable xHE AAC specific config parser
+
+    This parser does not recognize our test streams. Revert to the generic
+    AAC parser, which does.
+
+    Bug: 369237342, 353279142
+    Change-Id: I39e7093a54e7c0dc66cfb74401ce3548457a69d5
+    Reviewed-on: https://chromium-review.googlesource.com/c/chromium/third_party/ffmpeg/+/5891970
+    Reviewed-by: Dale Curtis <dalecurtis@chromium.org>
+
+Affects:
+    libavcodec/aac/aacdec.c
+
+------------------------------------------------------------------
+commit 3ea8d0a2ce7dde53c1574d8f032b803e584a6355
+Author: Eugene Zemtsov <eugene@chromium.org>
+Date:   Wed Oct 23 18:29:41 2024 -0700
+
+    Fix crash when trying to get a fragment time for a non-existing fragment
+
+    Bug: https://issues.chromium.org/issues/372994341
+    Change-Id: I695d625717c078ed6f84f44e58c34da858af4d3b
+    Reviewed-on: https://chromium-review.googlesource.com/c/chromium/third_party/ffmpeg/+/5958151
+    Reviewed-by: Dale Curtis <dalecurtis@chromium.org>
+
+Affects:
+    libavformat/mov.c
+
+------------------------------------------------------------------
+commit 590dd6169ac0b8ee102086cfb40c51dee5a47072
+Author: Ted Meyer <tmathmeyer@chromium.org>
+Date:   Mon Dec 9 16:16:13 2024 -0800
+
+    Guard use of ff_aom_uninit_film_grain_params
+
+    All other use of the dynamic allocation operations for aom_film_grain
+    are guarded by this flag as well.
+
+Affects:
+    libavcodec/h2645_sei.c
+
+------------------------------------------------------------------
+commit e89a63b83dbfbce2f69f392b228e3ebe6f8a77b7
+Author: Ted Meyer <tmathmeyer@chromium.org>
+Date:   Mon Dec 9 16:24:28 2024 -0800
+
+    Guard use of ff_dvdclut* functions with a CONFIG
+
+    This functions are implemented in libavformat/dvdclut.c which is only
+    built when CONFIG_DVDVIDEO_DEMUXER is set. Chromium does not use this
+    demuxer, or set this flag, so the symbols are missing.
+
+Affects:
+    libavformat/mov.c
+
+------------------------------------------------------------------
+commit 89a09990a932e5442c603b902916cf013436246a
+Author: Ted Meyer <tmathmeyer@chromium.org>
+Date:   Thu Dec 12 17:19:33 2024 -0800
+
+    add __attribute__((used)) to ff_h264_cabac_tables
+
+    Bug: 383824580
+
+
+Affects:
+    libavcodec/cabac.c
+
+------------------------------------------------------------------
+commit 818bf360d55593a8676346864195b377699b2f13
+Author: Ted Meyer <tmathmeyer@chromium.org>
+Date:   Fri Dec 13 16:55:41 2024 -0800
+
+    Guard memmove length calculations
+
+    stts_count and ctts_count aren't guaranteed to be larger than
+    index_entry_pos, which could cause overflow of the unsigned size
+    argument for memmove, leading to massive out of bounds memory writes.
+
+    Bug: 383454674
+
+Affects:
+    libavformat/mov.c

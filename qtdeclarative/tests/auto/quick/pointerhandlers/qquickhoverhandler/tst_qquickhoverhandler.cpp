@@ -51,6 +51,7 @@ private slots:
     void ensureHoverHandlerWorksWhenItemHasHoverDisabled();
     void changeCursor();
     void touchDrag();
+    void asProperty();
 
 private:
     void createView(QScopedPointer<QQuickView> &window, const char *fileName);
@@ -470,7 +471,7 @@ void tst_HoverHandler::window() // QTBUG-98717
 {
     QQmlEngine engine;
     QQmlComponent component(&engine);
-    const QPoint pos(30, 30);
+    const QPoint pos(100, 100);
     component.loadUrl(testFileUrl("windowCursorShape.qml"));
     QScopedPointer<QQuickWindow> window(qobject_cast<QQuickWindow *>(component.create()));
     QVERIFY(!window.isNull());
@@ -751,7 +752,7 @@ void tst_HoverHandler::touchDrag()
     QTest::touchEvent(&window, touchscreen.get()).move(0, in, &window);
     QQuickTouchUtils::flush(&window);
     QTRY_COMPARE(handler->isHovered(), true);
-    QCOMPARE(handler->point().scenePosition(), in);
+    QCOMPARE(handler->point().scenePosition().toPoint(), in);
 
     in += {10, 10};
     QTest::touchEvent(&window, touchscreen.get()).move(0, in, &window);
@@ -759,7 +760,7 @@ void tst_HoverHandler::touchDrag()
     // ensure that the color change is visible
     QTRY_COMPARE_GE(frameSyncSpy.size(), 1);
     QCOMPARE(handler->isHovered(), true);
-    QCOMPARE(handler->point().scenePosition(), in);
+    QCOMPARE(handler->point().scenePosition().toPoint(), in);
 
     QTest::touchEvent(&window, touchscreen.get()).move(0, out, &window);
     QQuickTouchUtils::flush(&window);
@@ -767,6 +768,19 @@ void tst_HoverHandler::touchDrag()
     QCOMPARE(handler->isHovered(), false);
 
     QTest::touchEvent(&window, touchscreen.get()).release(0, out, &window);
+}
+
+void tst_HoverHandler::asProperty()
+{
+    QQuickView window;
+    window.setFlag(Qt::FramelessWindowHint, true);
+    QVERIFY(QQuickTest::showView(window, testFileUrl("asProperty.qml")));
+    const QQuickItem *root = window.rootObject();
+    QQuickHoverHandler *handler = root->property("handler").value<QQuickHoverHandler *>();
+    QVERIFY(handler);
+    QCOMPARE(handler->isHovered(), false);
+    QTest::mouseMove(&window, root->boundingRect().center().toPoint());
+    QTRY_COMPARE(handler->isHovered(), true);
 }
 
 QTEST_MAIN(tst_HoverHandler)

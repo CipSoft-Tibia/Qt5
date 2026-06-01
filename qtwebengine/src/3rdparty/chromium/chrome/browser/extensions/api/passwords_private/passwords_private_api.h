@@ -267,27 +267,27 @@ class PasswordsPrivateRequestExportProgressStatusFunction
   ResponseAction Run() override;
 };
 
-class PasswordsPrivateIsOptedInForAccountStorageFunction
+class PasswordsPrivateIsAccountStorageEnabledFunction
     : public ExtensionFunction {
  public:
-  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.isOptedInForAccountStorage",
-                             PASSWORDSPRIVATE_ISOPTEDINFORACCOUNTSTORAGE)
+  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.isAccountStorageEnabled",
+                             PASSWORDSPRIVATE_ISACCOUNTSTORAGEENABLED)
 
  protected:
-  ~PasswordsPrivateIsOptedInForAccountStorageFunction() override = default;
+  ~PasswordsPrivateIsAccountStorageEnabledFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
 };
 
-class PasswordsPrivateOptInForAccountStorageFunction
+class PasswordsPrivateSetAccountStorageEnabledFunction
     : public ExtensionFunction {
  public:
-  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.optInForAccountStorage",
-                             PASSWORDSPRIVATE_OPTINFORACCOUNTSTORAGE)
+  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.setAccountStorageEnabled",
+                             PASSWORDSPRIVATE_SETACCOUNTSTORAGEENABLED)
 
  protected:
-  ~PasswordsPrivateOptInForAccountStorageFunction() override = default;
+  ~PasswordsPrivateSetAccountStorageEnabledFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -369,18 +369,6 @@ class PasswordsPrivateGetPasswordCheckStatusFunction
 
  protected:
   ~PasswordsPrivateGetPasswordCheckStatusFunction() override;
-
-  // ExtensionFunction overrides.
-  ResponseAction Run() override;
-};
-
-class PasswordsPrivateIsAccountStoreDefaultFunction : public ExtensionFunction {
- public:
-  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.isAccountStoreDefault",
-                             PASSWORDSPRIVATE_ISACCOUNTSTOREDEFAULT)
-
- protected:
-  ~PasswordsPrivateIsAccountStoreDefaultFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;

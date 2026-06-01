@@ -24,6 +24,8 @@ component("constants") {
     "ash_switches.h",
     "devicetype.cc",
     "devicetype.h",
+    "generative_ai_country_restrictions.cc",
+    "generative_ai_country_restrictions.h",
     "geolocation_access_level.h",
     "notifier_catalogs.h",
     "personalization_entry_point.h",
@@ -31,6 +33,7 @@ component("constants") {
     "tray_background_view_catalog.h",
     "url_constants.cc",
     "url_constants.h",
+    "web_app_id_constants.h",
   ]
   public_deps = [
     "//base",

@@ -21,7 +21,6 @@ explained below. The complete code for each new extension to the code can be
 found in the tutorials at the location specified under each section's title or
 by following the link to the code at the very end of this page.
 
-\image extending-qml-advanced-word-cloud.png
 
 The base project defines the \c Person class and the \c BirthdayParty class,
 which model the attendees and the party itself respectively.

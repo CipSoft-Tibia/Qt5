@@ -28,8 +28,6 @@
 #ifndef SRC_TINT_LANG_CORE_IR_MODULE_H_
 #define SRC_TINT_LANG_CORE_IR_MODULE_H_
 
-#include <memory>
-#include <string>
 #include <utility>
 
 #include "src/tint/lang/core/constant/manager.h"
@@ -43,9 +41,8 @@
 #include "src/tint/utils/containers/filtered_iterator.h"
 #include "src/tint/utils/containers/vector.h"
 #include "src/tint/utils/diagnostic/source.h"
-#include "src/tint/utils/id/generation_id.h"
+#include "src/tint/utils/generation_id.h"
 #include "src/tint/utils/memory/block_allocator.h"
-#include "src/tint/utils/result/result.h"
 #include "src/tint/utils/symbol/symbol_table.h"
 
 namespace tint::core::ir {
@@ -57,6 +54,9 @@ class Module {
 
     /// Map of value to name
     Hashmap<const Value*, Symbol, 32> value_to_name_;
+
+    // The source information for a value
+    Hashmap<const Value*, Source, 32> value_to_source_;
 
     /// A predicate function that returns true if the instruction or value is alive.
     struct IsAlive {
@@ -122,6 +122,25 @@ class Module {
     /// Removes the name from @p value
     /// @param value the value to remove the name from
     void ClearName(Value* value);
+
+    /// @param inst the instruction to set the source of
+    /// @param src the source
+    /// @note requires the instruction be a single result instruction.
+    void SetSource(Instruction* inst, Source src);
+
+    /// @param value the value to set the source
+    /// @param src the source
+    void SetSource(Value* value, Source src);
+
+    /// @param inst the instruction
+    /// @return the source of the given instruction, or an empty source if the instruction does not
+    /// have a source or does not have a single return value.
+    Source SourceOf(const Instruction* inst) const;
+
+    /// @param value the value
+    /// @return the source of the given value, or an empty source if the value does not have a
+    /// source.
+    Source SourceOf(const Value* value) const;
 
     /// @return the type manager for the module
     core::type::Manager& Types() { return constant_values.types; }

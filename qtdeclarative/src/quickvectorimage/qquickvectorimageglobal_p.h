@@ -31,7 +31,8 @@ namespace QQuickVectorImageGenerator
     enum GeneratorFlag {
         OptimizePaths = 0x01,
         CurveRenderer = 0x02,
-        OutlineStrokeMode = 0x04
+        OutlineStrokeMode = 0x04,
+        AssumeTrustedSource = 0x08,
     };
 
     Q_DECLARE_FLAGS(GeneratorFlags, GeneratorFlag);

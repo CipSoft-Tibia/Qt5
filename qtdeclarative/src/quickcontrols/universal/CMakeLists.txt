@@ -20,6 +20,7 @@ set(qml_files
     "Frame.qml"
     "GroupBox.qml"
     "HorizontalHeaderView.qml"
+    "HorizontalHeaderViewDelegate.qml"
     "ItemDelegate.qml"
     "Label.qml"
     "Menu.qml"
@@ -39,6 +40,7 @@ set(qml_files
     "ScrollView.qml"
     "ScrollBar.qml"
     "ScrollIndicator.qml"
+    "SearchField.qml"
     "SelectionRectangle.qml"
     "Slider.qml"
     "SpinBox.qml"
@@ -57,6 +59,7 @@ set(qml_files
     "ToolTip.qml"
     "Tumbler.qml"
     "VerticalHeaderView.qml"
+    "VerticalHeaderViewDelegate.qml"
 )
 set_source_files_properties(DelayButton.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.2;6.0"
@@ -69,6 +72,9 @@ set_source_files_properties(DialogButtonBox.qml PROPERTIES
 )
 set_source_files_properties(HorizontalHeaderView.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.15;6.0"
+)
+set_source_files_properties(HorizontalHeaderViewDelegate.qml PROPERTIES
+    QT_QML_SOURCE_VERSIONS "6.10"
 )
 set_source_files_properties(MenuBar.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.3;6.0"
@@ -90,6 +96,9 @@ set_source_files_properties(ToolSeparator.qml PROPERTIES
 )
 set_source_files_properties(VerticalHeaderView.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.15;6.0"
+)
+set_source_files_properties(VerticalHeaderViewDelegate.qml PROPERTIES
+    QT_QML_SOURCE_VERSIONS "6.10"
 )
 
 add_subdirectory(impl)
@@ -123,6 +132,7 @@ qt_internal_add_qml_module(QuickControls2Universal
         Qt::QuickControls2UniversalStyleImpl
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
+        Qt::QuickControls2BasicPrivate
 )
 
 target_sources(qtquickcontrols2universalstyleplugin
@@ -143,6 +153,10 @@ qt_internal_add_resource(QuickControls2Universal "qtquickcontrols2universalstyle
         "images/checkmark@2x.png"
         "images/checkmark@3x.png"
         "images/checkmark@4x.png"
+        "images/close_big.png"
+        "images/close_big@2x.png"
+        "images/close_big@3x.png"
+        "images/close_big@4x.png"
         "images/downarrow.png"
         "images/downarrow@2x.png"
         "images/downarrow@3x.png"
@@ -155,6 +169,10 @@ qt_internal_add_resource(QuickControls2Universal "qtquickcontrols2universalstyle
         "images/rightarrow@2x.png"
         "images/rightarrow@3x.png"
         "images/rightarrow@4x.png"
+        "images/search-magnifier.png"
+        "images/search-magnifier@2x.png"
+        "images/search-magnifier@3x.png"
+        "images/search-magnifier@4x.png"
 )
 
 _qt_internal_add_qml_static_plugin_dependency(qtquickcontrols2universalstyleplugin quickwindow)

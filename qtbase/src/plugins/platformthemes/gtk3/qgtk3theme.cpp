@@ -164,28 +164,34 @@ QString QGtk3Theme::gtkFontName() const
     return QGnomeTheme::gtkFontName();
 }
 
-void QGtk3Theme::requestColorScheme(Qt::ColorScheme scheme)
-{
-    if (m_requestedColorScheme == scheme)
-        return;
-    qCDebug(lcQGtk3Interface) << scheme << "has been requested. Theme supports color scheme:"
-                              << m_storage->colorScheme();
-    m_requestedColorScheme = scheme;
-    m_storage->handleThemeChange();
-}
-
 Qt::ColorScheme QGtk3Theme::colorScheme() const
 {
     Q_ASSERT(m_storage);
+
+    Q_D(const QGnomeTheme);
+    const Qt::ColorScheme colorScheme = d->colorScheme();
+    const bool hasRequestedColorScheme = d->hasRequestedColorScheme();
+
 #ifdef QT_DEBUG
-    if (m_requestedColorScheme != Qt::ColorScheme::Unknown
-        && m_requestedColorScheme != m_storage->colorScheme()) {
-        qCDebug(lcQGtk3Interface) << "Requested color scheme" << m_requestedColorScheme
+    if (hasRequestedColorScheme && colorScheme != m_storage->colorScheme()) {
+        qCDebug(lcQGtk3Interface) << "Requested color scheme" << colorScheme
                                   << "differs from theme color scheme" << m_storage->colorScheme();
     }
 #endif
-    return m_requestedColorScheme == Qt::ColorScheme::Unknown ? m_storage->colorScheme()
-                                                              : m_requestedColorScheme;
+
+    return hasRequestedColorScheme ? colorScheme : m_storage->colorScheme();
+}
+
+void QGtk3Theme::requestColorScheme(Qt::ColorScheme scheme)
+{
+    const Qt::ColorScheme oldColorScheme = colorScheme();
+    QGnomeTheme::requestColorScheme(scheme);
+    if (oldColorScheme == colorScheme())
+        return;
+    qCDebug(lcQGtk3Interface) << scheme << "has been requested. Theme supports color scheme:"
+                              << m_storage->colorScheme();
+    m_storage->handleThemeChange();
+    QWindowSystemInterface::sendWindowSystemEvents(QEventLoop::AllEvents);
 }
 
 bool QGtk3Theme::usePlatformNativeDialog(DialogType type) const
@@ -234,18 +240,22 @@ bool QGtk3Theme::useNativeFileDialog()
 const QPalette *QGtk3Theme::palette(Palette type) const
 {
     Q_ASSERT(m_storage);
+
+    Q_D(const QGnomeTheme);
+    const Qt::ColorScheme colorScheme = d->colorScheme();
+    const bool hasRequestedColorScheme = d->hasRequestedColorScheme();
+
 #ifdef QT_DEBUG
-    if (m_requestedColorScheme != Qt::ColorScheme::Unknown
-        && m_requestedColorScheme != m_storage->colorScheme()) {
-        qCDebug(lcQGtk3Interface) << "Current KDE theme doesn't support reuqested color scheme"
-                                  << m_requestedColorScheme << "Falling back to fusion palette.";
+    if (hasRequestedColorScheme && colorScheme != m_storage->colorScheme()) {
+        qCDebug(lcQGtk3Interface) << "Current KDE theme doesn't support requested color scheme"
+                                  << colorScheme << "Falling back to fusion palette.";
         return QPlatformTheme::palette(type);
     }
 #endif
 
-    return (m_requestedColorScheme != Qt::ColorScheme::Unknown
-            && m_requestedColorScheme != m_storage->colorScheme())
-               ? QPlatformTheme::palette(type) : m_storage->palette(type);
+    return (hasRequestedColorScheme && colorScheme != m_storage->colorScheme())
+            ? QPlatformTheme::palette(type)
+            : m_storage->palette(type);
 }
 
 QPixmap QGtk3Theme::standardPixmap(StandardPixmap sp, const QSizeF &size) const
@@ -267,5 +277,15 @@ QIcon QGtk3Theme::fileIcon(const QFileInfo &fileInfo,
     Q_ASSERT(m_storage);
     return m_storage->fileIcon(fileInfo);
 }
+
+#if QT_CONFIG(dbus)
+void QGtk3Theme::updateColorScheme(Qt::ColorScheme newColorScheme)
+{
+    if (newColorScheme == colorScheme())
+        QGnomeTheme::updateColorScheme(newColorScheme);
+    else
+        m_storage->handleThemeChange();
+}
+#endif // QT_CONFIG(dbus)
 
 QT_END_NAMESPACE

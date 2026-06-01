@@ -11,6 +11,7 @@ qt_internal_add_qml_module(QuickControls2WindowsStyleImpl
     VERSION "${PROJECT_VERSION}"
     PAST_MAJOR_VERSIONS 2
     CLASS_NAME QtQuickControls2WindowsStyleImplPlugin
+    NO_PRIVATE_MODULE
     DEPENDENCIES
         QtQuick/auto
     PLUGIN_TARGET qtquickcontrols2windowsstyleimplplugin

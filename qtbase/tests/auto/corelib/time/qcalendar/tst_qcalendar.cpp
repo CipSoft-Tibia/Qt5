@@ -7,13 +7,15 @@
 #include <private/qgregoriancalendar_p.h>
 Q_DECLARE_METATYPE(QCalendar::System)
 
+using namespace Qt::StringLiterals;
+
 class tst_QCalendar : public QObject
 {
     Q_OBJECT
 private:
-    void checkYear(const QCalendar &cal, int year, bool normal=false);
+    void checkYear(const QCalendar &cal, int year);
 
-private slots:
+private Q_SLOTS:
     void basic_data();
     void basic();
     void unspecified_data() { basic_data(); }
@@ -61,7 +63,7 @@ static void checkCenturyResolution(const QCalendar &cal, const QCalendar::YearMo
                 QCOMPARE_LT(gap / 100, 8);
                 QCOMPARE_GT(gap / 100, -8);
             } else {
-                QVERIFY(gap / 100 >= 8 || gap / 100 <= -8);
+                QCOMPARE_GE(qAbs(gap) / 100, 8);
             }
             report.dismiss();
         } else {
@@ -75,20 +77,20 @@ static void checkCenturyResolution(const QCalendar &cal, const QCalendar::YearMo
 }
 
 // Support for basic():
-void tst_QCalendar::checkYear(const QCalendar &cal, int year, bool normal)
+void tst_QCalendar::checkYear(const QCalendar &cal, int year)
 {
     const int moons = cal.monthsInYear(year);
     // Months are numbered from 1 to moons:
-    QVERIFY(moons > 0);
+    QCOMPARE_GT(moons, 0);
     QVERIFY(!cal.isDateValid(year, moons + 1, 1));
     QVERIFY(!cal.isDateValid(year, 0, 1));
     QVERIFY(!QDate(year, 0, 1, cal).isValid());
-    QVERIFY(moons <= cal.maximumMonthsInYear());
+    QCOMPARE_LE(moons, cal.maximumMonthsInYear());
     QCOMPARE(cal.standaloneMonthName(QLocale::c(), moons + 1, year), QString());
     QCOMPARE(cal.monthName(QLocale::c(), 0, year), QString());
 
     const int days = cal.daysInYear(year);
-    QVERIFY(days > 0);
+    QCOMPARE_GT(days, 0);
 
     int sum = 0;
     const int longest = cal.maximumDaysInMonth();
@@ -96,15 +98,15 @@ void tst_QCalendar::checkYear(const QCalendar &cal, int year, bool normal)
         const int last = cal.daysInMonth(i, year);
         sum += last;
         // Valid month has some days and no more than max:
-        QVERIFY(last > 0);
-        QVERIFY(last <= longest);
+        QCOMPARE_GT(last, 0);
+        QCOMPARE_LE(last, longest);
         // Days are numbered from 1 to last:
         QVERIFY(cal.isDateValid(year, i, 1));
         QVERIFY(cal.isDateValid(year, i, last));
         QVERIFY(!cal.isDateValid(year, i, 0));
         QVERIFY(!cal.isDateValid(year, i, last + 1));
-        if (normal) // Unspecified year gets same daysInMonth():
-            QCOMPARE(cal.daysInMonth(i), last);
+        // Unspecified year gets max daysInMonth():
+        QCOMPARE_GE(cal.daysInMonth(i), last);
 
         checkCenturyResolution(cal, {year, i, (last + 1) / 2});
         if (QTest::currentTestFailed())
@@ -114,11 +116,7 @@ void tst_QCalendar::checkYear(const QCalendar &cal, int year, bool normal)
     QCOMPARE(sum, days);
 }
 
-#define CHECKYEAR(cal, year) checkYear(cal, year);   \
-    if (QTest::currentTestFailed()) \
-        return
-
-#define NORMALYEAR(cal, year) checkYear(cal, year, true); \
+#define CHECKYEAR(cal, year) checkYear(cal, year); \
     if (QTest::currentTestFailed()) \
         return
 
@@ -171,13 +169,13 @@ void tst_QCalendar::basic()
         for (int i = 10; i > 0 && cal.isLeapYear(year); --i)
             year--;
         if (!cal.isLeapYear(year))
-            QVERIFY(cal.daysInYear(year) < cal.daysInYear(leap));
+            QCOMPARE_LT(cal.daysInYear(year), cal.daysInYear(leap));
 
         CHECKYEAR(cal, leap);
     }
     // Either year is non-leap or we have a decade of leap years together;
     // expect daysInMonth() to treat year the same as unspecified.
-    NORMALYEAR(cal, year);
+    CHECKYEAR(cal, year);
 }
 
 void tst_QCalendar::unspecified()
@@ -189,15 +187,18 @@ void tst_QCalendar::unspecified()
     const int thisYear = today.year();
     QCOMPARE(cal.monthsInYear(QCalendar::Unspecified), cal.maximumMonthsInYear());
     for (int month = cal.maximumMonthsInYear(); month > 0; month--) {
-        const int days = cal.daysInMonth(month);
-        int count = 0;
+        const int maxDays = cal.daysInMonth(month);
+        bool hitMax = false;
         // 19 years = one Metonic cycle (used by some lunar calendars)
         for (int i = 19; i > 0; --i) {
-            if (cal.daysInMonth(month, thisYear - i) == days)
-                count++;
+            int days = cal.daysInMonth(month, thisYear - i);
+            if (days == maxDays)
+                hitMax = true;
+            else
+                QCOMPARE_LT(days, maxDays);
         }
         // Require a majority of the years tested:
-        QVERIFY2(count > 9, "Default daysInMonth() should be for a normal year");
+        QVERIFY2(hitMax, "Default daysInMonth() should be the longest that month gets");
     }
 }
 
@@ -396,8 +397,8 @@ void tst_QCalendar::aliases()
 #if QT_CONFIG(islamiccivilcalendar)
     // Exercise all constructors from name, while we're at it:
     QCOMPARE(QCalendar(u"islamic-civil").name(), u"Islamic Civil");
-    QCOMPARE(QCalendar(QLatin1String("islamic")).name(), u"Islamic Civil");
-    QCOMPARE(QCalendar(QStringLiteral("Islamic")).name(), u"Islamic Civil");
+    QCOMPARE(QCalendar("islamic"_L1).name(), u"Islamic Civil");
+    QCOMPARE(QCalendar(u"Islamic"_s).name(), u"Islamic Civil");
 #endif
 
     // Invalid is handled gracefully:
@@ -427,13 +428,13 @@ void tst_QCalendar::gregory()
                           lastTwo <= 31 && lastTwo > 12 ? lastTwo : 17);
         const int match = QGregorianCalendar::yearSharingWeekDays(probe);
         // A post-epoch year, no later than 2400 (implies four-digit):
-        QVERIFY(match >= 1970);
-        QVERIFY(match <= 2400);
+        QCOMPARE_GE(match, 1970);
+        QCOMPARE_LE(match, 2400);
         // Either that's the year we started with or:
         if (match != year) {
             // Its last two digits can't be mistaken for month or day:
-            QVERIFY(match % 100 != probe.month());
-            QVERIFY(match % 100 != probe.day());
+            QCOMPARE_NE(match % 100, probe.month());
+            QCOMPARE_NE(match % 100, probe.day());
             // If that wasn't in danger of happening, with year positive, they match lastTwo:
             if (year > 0 && lastTwo > 31)
                 QCOMPARE(match % 100, lastTwo);

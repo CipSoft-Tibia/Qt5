@@ -26,7 +26,7 @@ private Q_SLOTS:
 private:
     QProcess m_brokerProcess;
     QString m_testBroker;
-    quint16 m_port{1883};
+    quint16 m_port{0};
 };
 
 tst_QMqttSubscriptionProperties::tst_QMqttSubscriptionProperties()
@@ -70,8 +70,7 @@ void tst_QMqttSubscriptionProperties::getSet()
 
 void tst_QMqttSubscriptionProperties::subscribe()
 {
-    QMqttClient client;
-    client.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, client);
     client.setHostname(m_testBroker);
     client.setPort(m_port);
 

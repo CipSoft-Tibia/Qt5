@@ -5,6 +5,7 @@
 #define HTMLGENERATOR_H
 
 #include "codemarker.h"
+#include "genustypes.h"
 #include "xmlgenerator.h"
 #include "filesystem/fileresolver.h"
 
@@ -89,10 +90,11 @@ private:
                           Section::Style style, bool alignNames = false);
     void generateSectionInheritedList(const Section &section, const Node *relative);
     QString highlightedCode(const QString &markedCode, const Node *relative,
-                            bool alignNames = false, Node::Genus genus = Node::DontCare);
+                            bool alignNames = false, Genus genus = Genus::DontCare);
 
     void generateFullName(const Node *apparentNode, const Node *relative,
                           const Node *actualNode = nullptr);
+    void generateSourceLink(const Node *node);
     void generateDetailedMember(const Node *node, const PageNode *relative, CodeMarker *marker);
     void generateLink(const Atom *atom);
 

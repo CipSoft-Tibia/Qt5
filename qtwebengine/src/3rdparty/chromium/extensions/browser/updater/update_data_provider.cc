@@ -19,6 +19,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "crypto/sha2.h"
 #include "extensions/browser/content_verifier/content_verifier.h"
+#include "extensions/browser/disable_reason.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
@@ -80,8 +81,9 @@ void UpdateDataProvider::GetData(
     const Extension* extension = registry->GetInstalledExtension(id);
     data.push_back(extension ? std::make_optional<update_client::CrxComponent>()
                              : std::nullopt);
-    if (!extension)
+    if (!extension) {
       continue;
+    }
     DCHECK_NE(0u, update_crx_component.count(id));
     const ExtensionUpdateData& extension_data = update_crx_component.at(id);
     auto& crx_component = data.back();
@@ -113,16 +115,23 @@ void UpdateDataProvider::GetData(
         base::BindRepeating(&UpdateDataProvider::RunInstallCallback, this));
     if (!ExtensionsBrowserClient::Get()->IsExtensionEnabled(id,
                                                             browser_context_)) {
-      int disabled_reasons = extension_prefs->GetDisableReasons(id);
-      if (disabled_reasons == extensions::disable_reason::DISABLE_NONE ||
-          disabled_reasons >= extensions::disable_reason::DISABLE_REASON_LAST) {
+      DisableReasonSet disable_reasons = extension_prefs->GetDisableReasons(id);
+
+      // TODO(crbug.com/372186532): Once ExtensionPrefs::GetDisableReasons()
+      // starts collapsing unknown reasons to DISABLE_UNKNOWN, this code should
+      // be updated to handle that.
+      bool contains_invalid_reason = std::ranges::any_of(
+          disable_reasons,
+          [](int reason) { return !IsValidDisableReason(reason); });
+
+      if (disable_reasons.empty() || contains_invalid_reason) {
         crx_component->disabled_reasons.push_back(0);
       }
-      for (int enum_value = 1;
-           enum_value < extensions::disable_reason::DISABLE_REASON_LAST;
-           enum_value <<= 1) {
-        if (disabled_reasons & enum_value)
-          crx_component->disabled_reasons.push_back(enum_value);
+
+      for (int reason : disable_reasons) {
+        if (IsValidDisableReason(reason)) {
+          crx_component->disabled_reasons.push_back(reason);
+        }
       }
     }
     crx_component->install_source = extension_data.is_corrupt_reinstall

@@ -53,6 +53,10 @@ private:
         QBasicAtomicInt enabled;
     };
     Q_DECL_UNUSED_MEMBER bool placeholder[4]; // reserved for future use
+
+    QT_DEFINE_TAG_STRUCT(UnregisteredInitialization);
+    explicit constexpr QLoggingCategory(UnregisteredInitialization, const char *category) noexcept;
+    friend class QLoggingRegistry;
 };
 
 namespace { // allow different TUs to have different QT_NO_xxx_OUTPUT

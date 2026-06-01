@@ -27,8 +27,10 @@ IndentPPDirectives: AfterHash
 # We only indent with 2 spaces for preprocessor directives
 PPIndentWidth: 2
 
+# REUSE-IgnoreStart
 # Do not format copyright comment lines and qtdoc lines
 CommentPragmas: "^ SPDX-License-Identifier:|^ Copyright|\\since|\\overload|\\reentrant|\\value|\\li|\\l"
+# REUSE-IgnoreEnd
 
 # macros for which the opening brace stays attached.
 ForEachMacros:   [ foreach, Q_FOREACH, BOOST_FOREACH, forever, Q_FOREVER, QBENCHMARK, QBENCHMARK_ONCE ]

@@ -1,6 +1,7 @@
 // Copyright (C) 2013 Laszlo Papp <lpapp@kde.org>
 // Copyright (C) 2013 David Faure <faure@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcommandlineparser.h"
 
@@ -335,7 +336,7 @@ bool QCommandLineParser::addOption(const QCommandLineOption &option)
     if (!optionNames.isEmpty()) {
         for (const QString &name : optionNames) {
             if (d->nameHash.contains(name)) {
-                qWarning() << "QCommandLineParser: already having an option named" << name;
+                qWarning("QCommandLineParser: option already added: \"%ls\"", qUtf16Printable(name));
                 return false;
             }
         }

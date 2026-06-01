@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "profile_qt.h"
 
@@ -20,6 +21,7 @@
 #include "base/path_service.h"
 #include "base/files/file_util.h"
 #include "base/task/thread_pool.h"
+#include "base/version_info/version_info.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/prefs/pref_service.h"
 #include "components/user_prefs/user_prefs.h"
@@ -37,6 +39,7 @@
 #include "extensions/browser/extension_prefs_factory.h"
 #include "extensions/browser/extensions_browser_client.h"
 
+#include "extensions/extension_manager.h"
 #include "extensions/extension_system_qt.h"
 #endif
 
@@ -48,9 +51,7 @@ enum {
 };
 
 ProfileQt::ProfileQt(ProfileAdapter *profileAdapter)
-    : m_profileIOData(new ProfileIODataQt(this))
-    , m_profileAdapter(profileAdapter)
-    , m_userAgentMetadata(embedder_support::GetUserAgentMetadata())
+    : m_profileIOData(new ProfileIODataQt(this)), m_profileAdapter(profileAdapter)
 {
     profile_metrics::SetBrowserProfileType(this, IsOffTheRecord()
         ? profile_metrics::BrowserProfileType::kIncognito
@@ -68,6 +69,8 @@ ProfileQt::ProfileQt(ProfileAdapter *profileAdapter)
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     static_cast<extensions::ExtensionSystemQt*>(extensions::ExtensionSystem::Get(this))->InitForRegularProfile(true);
 #endif
+
+    initUserAgentMetadata();
 }
 
 ProfileQt::~ProfileQt()
@@ -300,6 +303,21 @@ const PrefServiceAdapter &ProfileQt::prefServiceAdapter() const
     return m_prefServiceAdapter;
 }
 
+void ProfileQt::initUserAgentMetadata()
+{
+    m_userAgentMetadata = embedder_support::GetUserAgentMetadata();
+    // We keep the brand lists identical throughout the lifetime of each major version of Chromium.
+    int seed = version_info::GetMajorVersionNumberAsInt();
+    std::string version = version_info::GetMajorVersionNumber();
+    m_userAgentMetadata.brand_version_list =
+            embedder_support::GenerateBrandVersionList(seed, {}, version,
+                                                       blink::UserAgentBrandVersionType::kMajorVersion);
+    version = version_info::GetVersionNumber();
+    m_userAgentMetadata.brand_full_version_list =
+            embedder_support::GenerateBrandVersionList(seed, {}, version,
+                                                       blink::UserAgentBrandVersionType::kFullVersion);
+}
+
 const blink::UserAgentMetadata &ProfileQt::userAgentMetadata()
 {
     return m_userAgentMetadata;
@@ -311,5 +329,13 @@ content::PlatformNotificationService *ProfileQt::GetPlatformNotificationService(
         m_platformNotificationService = std::make_unique<PlatformNotificationServiceQt>(this);
     return m_platformNotificationService.get();
 }
+
+#if QT_CONFIG(webengine_extensions)
+ExtensionManager *ProfileQt::extensionManager()
+{
+    return static_cast<extensions::ExtensionSystemQt *>(extensions::ExtensionSystem::Get(this))
+            ->extensionManager();
+}
+#endif
 
 } // namespace QtWebEngineCore

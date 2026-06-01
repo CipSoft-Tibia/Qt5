@@ -15,6 +15,22 @@
 import {HighPrecisionTimeSpan} from '../base/high_precision_time_span';
 import {time} from '../base/time';
 
+export enum TimestampFormat {
+  Timecode = 'timecode',
+  TraceNs = 'traceNs',
+  TraceNsLocale = 'traceNsLocale',
+  Seconds = 'seconds',
+  Milliseconds = 'milliseconds',
+  Microseconds = 'microseconds',
+  UTC = 'utc',
+  TraceTz = 'traceTz',
+}
+
+export enum DurationPrecision {
+  Full = 'full',
+  HumanReadable = 'human_readable',
+}
+
 export interface Timeline {
   // Bring a timestamp into view.
   panToTimestamp(ts: time): void;
@@ -24,4 +40,23 @@ export interface Timeline {
 
   // A span representing the current viewport location.
   readonly visibleWindow: HighPrecisionTimeSpan;
+
+  // Render a vertical line on the timeline at this timestamp.
+  hoverCursorTimestamp: time | undefined;
+
+  hoveredNoteTimestamp: time | undefined;
+  highlightedSliceId: number | undefined;
+
+  hoveredUtid: number | undefined;
+  hoveredPid: number | undefined;
+
+  // Get the current timestamp offset.
+  timestampOffset(): time;
+
+  // Get a time in the current domain as specified by timestampOffset.
+  toDomainTime(ts: time): time;
+
+  // These control how timestamps and durations are formatted throughout the UI
+  timestampFormat: TimestampFormat;
+  durationPrecision: DurationPrecision;
 }

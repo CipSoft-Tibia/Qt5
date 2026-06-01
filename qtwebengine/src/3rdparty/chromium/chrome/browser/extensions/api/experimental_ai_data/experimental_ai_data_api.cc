@@ -4,24 +4,73 @@
 
 #include "chrome/browser/extensions/api/experimental_ai_data/experimental_ai_data_api.h"
 
-#include "base/metrics/field_trial_params.h"
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "base/check.h"
 #include "base/strings/string_split.h"
+#include "base/version_info/channel.h"
+#include "chrome/browser/ai/ai_data_keyed_service.h"
+#include "chrome/browser/ai/ai_data_keyed_service_factory.h"
+#include "chrome/browser/extensions/chrome_extension_function_details.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/ui/browser.h"
+#include "chrome/common/channel_info.h"
 #include "chrome/common/extensions/api/experimental_ai_data.h"
+#include "components/optimization_guide/proto/features/model_prototyping.pb.h"
+#include "content/public/browser/web_contents.h"
 
 namespace extensions {
 
-// Feature to add allow listed extensions remotely.
-BASE_FEATURE(kAllowlistedAiDataExtensions,
-             "AllowlistedAiDataExtensions",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+ExperimentalAiDataApiFunction::ExperimentalAiDataApiFunction() = default;
 
-namespace {
+ExperimentalAiDataApiFunction::~ExperimentalAiDataApiFunction() = default;
 
-const base::FeatureParam<std::string> kAllowlistedExtensions{
-    &kAllowlistedAiDataExtensions, "allowlisted_extension_ids",
-    /*default_value=*/""};
+bool ExperimentalAiDataApiFunction::PreRunValidation(std::string* error) {
+  // Check the allowlist and return an error if extension is not allow listed.
+  std::vector<std::string> allowlisted_extensions =
+      AiDataKeyedService::GetAllowlistedExtensions();
+  if (std::find(allowlisted_extensions.begin(), allowlisted_extensions.end(),
+                extension_id()) == allowlisted_extensions.end()) {
+    *error = "API access restricted for this extension.";
+    return false;
+  }
 
-}  // namespace
+  // In addition to the extension framework channel restriction, we make sure
+  // the API is not available on Stable. In particular,
+  // extension::switches::kEnableExperimentalExtensionApis allows ignoring those
+  // channel restrictions.
+  if (chrome::GetChannel() == version_info::Channel::STABLE) {
+    *error = "API access restricted to non-Stable channels.";
+    return false;
+  }
+
+  auto* ai_data_service =
+      AiDataKeyedServiceFactory::GetAiDataKeyedService(browser_context());
+  if (!ai_data_service) {
+    *error = "Incognito profile not supported.";
+    return false;
+  }
+  DCHECK(ai_data_service);
+
+  return true;
+}
+
+void ExperimentalAiDataApiFunction::OnDataCollected(
+    AiDataKeyedService::AiData browser_collected_data) {
+  if (!browser_collected_data) {
+    return Respond(
+        Error("Data collection failed likely due to browser state change."));
+  }
+  // Convert Proto to bytes to send over the API channel.
+  const size_t size = browser_collected_data->ByteSizeLong();
+  std::vector<uint8_t> data_buffer(size);
+
+  browser_collected_data->SerializeToArray(&data_buffer[0], size);
+  Respond(ArgumentList(api::experimental_ai_data::GetAiData::Results::Create(
+      std::move(data_buffer))));
+}
 
 ExperimentalAiDataGetAiDataFunction::ExperimentalAiDataGetAiDataFunction() =
     default;
@@ -30,20 +79,62 @@ ExperimentalAiDataGetAiDataFunction::~ExperimentalAiDataGetAiDataFunction() =
     default;
 
 ExtensionFunction::ResponseAction ExperimentalAiDataGetAiDataFunction::Run() {
-  // Check the allowlist and return an error if extension is not allow listed.
-  std::string allowlisted_extension_string = kAllowlistedExtensions.Get();
-  std::vector<std::string_view> allowlisted_extensions =
-      base::SplitStringPiece(allowlisted_extension_string, ",",
-                             base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-  if (std::find(allowlisted_extensions.begin(), allowlisted_extensions.end(),
-                extension_id()) == allowlisted_extensions.end()) {
-    return RespondNow(Error("API access restricted for this extension."));
+  auto params = api::experimental_ai_data::GetAiData::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
+  content::WebContents* web_contents = nullptr;
+  if (!ExtensionTabUtil::GetTabById(params->tab_id, browser_context(), true,
+                                    &web_contents)) {
+    return RespondNow(Error("Invalid target tab passed in."));
+  }
+  DCHECK(web_contents);
+
+  auto* ai_data_service =
+      AiDataKeyedServiceFactory::GetAiDataKeyedService(browser_context());
+  DCHECK(ai_data_service);
+
+  ai_data_service->GetAiData(
+      params->dom_node_id, web_contents, params->user_input,
+      base::BindOnce(&ExperimentalAiDataGetAiDataFunction::OnDataCollected,
+                     this));
+  return RespondLater();
+}
+
+ExperimentalAiDataGetAiDataWithSpecifierFunction::
+    ExperimentalAiDataGetAiDataWithSpecifierFunction() = default;
+
+ExperimentalAiDataGetAiDataWithSpecifierFunction::
+    ~ExperimentalAiDataGetAiDataWithSpecifierFunction() = default;
+
+ExtensionFunction::ResponseAction
+ExperimentalAiDataGetAiDataWithSpecifierFunction::Run() {
+  auto params =
+      api::experimental_ai_data::GetAiDataWithSpecifier::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
+  content::WebContents* web_contents = nullptr;
+  if (!ExtensionTabUtil::GetTabById(params->tab_id, browser_context(), true,
+                                    &web_contents)) {
+    return RespondNow(Error("Invalid target tab passed in."));
+  }
+  DCHECK(web_contents);
+
+  auto* ai_data_service =
+      AiDataKeyedServiceFactory::GetAiDataKeyedService(browser_context());
+  DCHECK(ai_data_service);
+
+  // De-serailizing protos is safe per
+  // https://chromium.googlesource.com/chromium/src/+/HEAD/docs/security/rule-of-2.md
+  optimization_guide::proto::ModelPrototypingCollectionSpecifier specifier;
+  if (!specifier.ParseFromArray(params->ai_data_specifier.data(),
+                                params->ai_data_specifier.size())) {
+    return RespondNow(Error("Parsing ai data specifier failed."));
   }
 
-  std::vector<uint8_t> data_buffer;
-  return RespondNow(
-      ArgumentList(api::experimental_ai_data::GetAiData::Results::Create(
-          std::move(data_buffer))));
+  ai_data_service->GetAiDataWithSpecifier(
+      web_contents, specifier,
+      base::BindOnce(
+          &ExperimentalAiDataGetAiDataWithSpecifierFunction::OnDataCollected,
+          this));
+  return RespondLater();
 }
 
 }  // namespace extensions

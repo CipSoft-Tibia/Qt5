@@ -31,6 +31,7 @@
 #include <QtCore/QMutexLocker>
 #include <QtCore/QMutex>
 
+#include <algorithm>
 #include <array>
 
 // #define QFONTCACHE_DEBUG
@@ -110,34 +111,32 @@ bool QFontDef::exactMatch(const QFontDef &other) const
 
 extern bool qt_is_tty_app;
 
-Q_GUI_EXPORT int qt_defaultDpiX()
+Q_GUI_EXPORT QPoint qt_defaultDpis()
 {
     if (QCoreApplication::instance()->testAttribute(Qt::AA_Use96Dpi))
-        return 96;
+        return QPoint(96, 96);
 
     if (qt_is_tty_app)
-        return 75;
+        return QPoint(75, 75);
 
-    if (const QScreen *screen = QGuiApplication::primaryScreen())
-        return qRound(screen->logicalDotsPerInchX());
+    int dpis = QGuiApplicationPrivate::m_primaryScreenDpis.loadRelaxed();
+    int dpiX = (dpis >> 16) & 0xffff;
+    int dpiY = dpis & 0xffff;
+    if (dpiX > 0 && dpiY > 0)
+        return QPoint(dpiX, dpiY);
 
     //PI has not been initialised, or it is being initialised. Give a default dpi
-    return 100;
+    return QPoint(100, 100);
+}
+
+Q_GUI_EXPORT int qt_defaultDpiX()
+{
+    return qt_defaultDpis().x();
 }
 
 Q_GUI_EXPORT int qt_defaultDpiY()
 {
-    if (QCoreApplication::instance()->testAttribute(Qt::AA_Use96Dpi))
-        return 96;
-
-    if (qt_is_tty_app)
-        return 75;
-
-    if (const QScreen *screen = QGuiApplication::primaryScreen())
-        return qRound(screen->logicalDotsPerInchY());
-
-    //PI has not been initialised, or it is being initialised. Give a default dpi
-    return 100;
+    return qt_defaultDpis().y();
 }
 
 Q_GUI_EXPORT int qt_defaultDpi()
@@ -255,6 +254,19 @@ QFontEngine *QFontPrivate::engineForScript(int script) const
     if (!engineData || !QT_FONT_ENGINE_FROM_DATA(engineData, script))
         QFontDatabasePrivate::load(this, script);
     return QT_FONT_ENGINE_FROM_DATA(engineData, script);
+}
+
+QFontEngine *QFontPrivate::engineForCharacter(char32_t c, EngineQueryOptions opt) const
+{
+    const bool smallCaps = !(opt & EngineQueryOption::IgnoreSmallCapsEngine);
+    const auto script = QChar::script(c);
+    QFontEngine *engine;
+    if (smallCaps && capital == QFont::SmallCaps && QChar::isLower(c))
+        engine = smallCapsFontPrivate()->engineForScript(script);
+    else
+        engine = engineForScript(script);
+    Q_ASSERT(engine != nullptr);
+    return engine;
 }
 
 void QFontPrivate::alterCharForCapitalization(QChar &c) const {
@@ -425,7 +437,7 @@ QFontEngineData::~QFontEngineData()
     actually used are retrievable from a QFontInfo object. If the
     window system provides an exact match exactMatch() returns \c true.
     Use QFontMetricsF to get measurements, e.g. the pixel length of a
-    string using QFontMetrics::width().
+    string using QFontMetrics::horizontalAdvance().
 
     Attributes which are not specifically set will not affect the font
     selection algorithm, and default values will be preferred instead.
@@ -1816,6 +1828,8 @@ bool QFont::operator==(const QFont &f) const
 */
 bool QFont::operator<(const QFont &f) const
 {
+    // NB: This operator actually implements greater-than, because it consistently
+    //     swaps LHS (should be *this, but is `f`) and RHS (should be `f`, but is *this)
     if (f.d == d) return false;
     // the < operator for fontdefs ignores point sizes.
     const QFontDef &r1 = f.d->request;
@@ -1838,35 +1852,13 @@ bool QFont::operator<(const QFont &f) const
     int f2attrs = (d->underline << 3) + (d->overline << 2) + (d->strikeOut<<1) + d->kerning;
     if (f1attrs != f2attrs) return f1attrs < f2attrs;
 
-    if (d->features.size() != f.d->features.size())
-        return f.d->features.size() < d->features.size();
-
-    {
-        auto it = d->features.constBegin();
-        auto jt = f.d->features.constBegin();
-        for (; it != d->features.constEnd(); ++it, ++jt) {
-            if (it.key() != jt.key())
-                return jt.key() < it.key();
-            if (it.value() != jt.value())
-                return jt.value() < it.value();
-        }
+    if (d->features != f.d->features) {
+        return std::lexicographical_compare(f.d->features.keyValueBegin(), f.d->features.keyValueEnd(),
+                                            d->features.keyValueBegin(), d->features.keyValueEnd());
     }
 
-    if (r1.variableAxisValues.size() != r2.variableAxisValues.size())
-        return r1.variableAxisValues.size() < r2.variableAxisValues.size();
-
-    {
-        auto it = r1.variableAxisValues.constBegin();
-        auto jt = r2.variableAxisValues.constBegin();
-        for (; it != r1.variableAxisValues.constEnd(); ++it, ++jt) {
-            if (it.key() != jt.key())
-                return jt.key() < it.key();
-            if (it.value() != jt.value())
-                return jt.value() < it.value();
-        }
-    }
-
-    return false;
+    return std::lexicographical_compare(r1.variableAxisValues.keyValueBegin(), r1.variableAxisValues.keyValueEnd(),
+                                        r2.variableAxisValues.keyValueBegin(), r2.variableAxisValues.keyValueEnd());
 }
 
 
@@ -2409,9 +2401,8 @@ std::optional<QFont::Tag> QFont::Tag::fromString(QAnyStringView view) noexcept
 }
 
 /*!
-    \fn QDataStream &operator<<(QDataStream &, QFont::Tag)
-    \fn QDataStream &operator>>(QDataStream &, QFont::Tag &)
-    \relates QFont::Tag
+    \fn QDataStream &QFont::Tag::operator<<(QDataStream &, QFont::Tag)
+    \fn QDataStream &QFont::Tag::operator>>(QDataStream &, QFont::Tag &)
 
     Data stream operators for QFont::Tag.
 */

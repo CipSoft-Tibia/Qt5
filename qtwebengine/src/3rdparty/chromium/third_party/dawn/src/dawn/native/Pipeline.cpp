@@ -31,6 +31,7 @@
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "dawn/common/Enumerator.h"
 #include "dawn/native/BindGroupLayout.h"
 #include "dawn/native/Device.h"
@@ -50,14 +51,14 @@ bool IsDoubleValueRepresentableAsF16(double value) {
 namespace dawn::native {
 ResultOrError<ShaderModuleEntryPoint> ValidateProgrammableStage(DeviceBase* device,
                                                                 const ShaderModuleBase* module,
-                                                                const char* entryPointName,
+                                                                StringView entryPointName,
                                                                 uint32_t constantCount,
                                                                 const ConstantEntry* constants,
                                                                 const PipelineLayoutBase* layout,
                                                                 SingleShaderStage stage) {
     DAWN_TRY(device->ValidateObject(module));
 
-    if (entryPointName) {
+    if (!entryPointName.IsUndefined()) {
         DAWN_INVALID_IF(!module->HasEntryPoint(entryPointName),
                         "Entry point \"%s\" doesn't exist in the shader module %s.", entryPointName,
                         module);
@@ -99,46 +100,64 @@ ResultOrError<ShaderModuleEntryPoint> ValidateProgrammableStage(DeviceBase* devi
                     "stage (%s), entry point \"%s\"",
                     metadata.stage, entryPoint.name);
 
+    DAWN_INVALID_IF(
+        device->IsCompatibilityMode() && metadata.usesDepthTextureWithNonComparisonSampler,
+        "texture_depth_xx can not be used with non-comparison samplers in compatibility mode in "
+        "stage (%s), entry point \"%s\"",
+        metadata.stage, entryPoint.name);
+
+    const CombinedLimits& limits = device->GetLimits();
+    uint32_t maxCombos =
+        std::min(limits.v1.maxSampledTexturesPerShaderStage, limits.v1.maxSamplersPerShaderStage);
+    DAWN_INVALID_IF(
+        device->IsCompatibilityMode() && metadata.numTextureSamplerCombinations > maxCombos,
+        "Entry-point uses %u texture+sampler combinations which is more than the maximum of %u "
+        "combinations in compatibility mode",
+        metadata.numTextureSamplerCombinations, maxCombos);
+
     // Validate if overridable constants exist in shader module
     // pipelineBase is not yet constructed at this moment so iterate constants from descriptor
     size_t numUninitializedConstants = metadata.uninitializedOverrides.size();
     // Keep an initialized constants sets to handle duplicate initialization cases
-    absl::flat_hash_set<std::string> stageInitializedConstantIdentifiers;
+    absl::flat_hash_set<std::string_view> stageInitializedConstantIdentifiers;
     for (uint32_t i = 0; i < constantCount; i++) {
-        DAWN_INVALID_IF(metadata.overrides.count(constants[i].key) == 0,
+        absl::string_view key = {constants[i].key};
+        double value = constants[i].value;
+
+        DAWN_INVALID_IF(metadata.overrides.count(key) == 0,
                         "Pipeline overridable constant \"%s\" not found in %s.", constants[i].key,
                         module);
-        DAWN_INVALID_IF(!std::isfinite(constants[i].value),
+        DAWN_INVALID_IF(!std::isfinite(value),
                         "Pipeline overridable constant \"%s\" with value (%f) is not finite in %s",
-                        constants[i].key, constants[i].value, module);
+                        key, value, module);
 
         // Validate if constant value can be represented by the given scalar type in shader
-        auto type = metadata.overrides.at(constants[i].key).type;
+        auto type = metadata.overrides.at(key).type;
         switch (type) {
             case EntryPointMetadata::Override::Type::Float32:
-                DAWN_INVALID_IF(!IsDoubleValueRepresentable<float>(constants[i].value),
+                DAWN_INVALID_IF(!IsDoubleValueRepresentable<float>(value),
                                 "Pipeline overridable constant \"%s\" with value (%f) is not "
                                 "representable in type (%s)",
-                                constants[i].key, constants[i].value, "f32");
+                                key, value, "f32");
                 break;
             case EntryPointMetadata::Override::Type::Float16:
-                DAWN_INVALID_IF(!IsDoubleValueRepresentableAsF16(constants[i].value),
+                DAWN_INVALID_IF(!IsDoubleValueRepresentableAsF16(value),
                                 "Pipeline overridable constant \"%s\" with value (%f) is not "
                                 "representable in type (%s)",
-                                constants[i].key, constants[i].value, "f16");
+                                key, value, "f16");
                 break;
             case EntryPointMetadata::Override::Type::Int32:
-                DAWN_INVALID_IF(!IsDoubleValueRepresentable<int32_t>(constants[i].value),
+                DAWN_INVALID_IF(!IsDoubleValueRepresentable<int32_t>(value),
                                 "Pipeline overridable constant \"%s\" with value (%f) is not "
                                 "representable in type (%s)",
-                                constants[i].key, constants[i].value,
+                                key, value,
                                 type == EntryPointMetadata::Override::Type::Int32 ? "i32" : "b");
                 break;
             case EntryPointMetadata::Override::Type::Uint32:
-                DAWN_INVALID_IF(!IsDoubleValueRepresentable<uint32_t>(constants[i].value),
+                DAWN_INVALID_IF(!IsDoubleValueRepresentable<uint32_t>(value),
                                 "Pipeline overridable constant \"%s\" with value (%f) is not "
                                 "representable in type (%s)",
-                                constants[i].key, constants[i].value, "u32");
+                                key, value, "u32");
                 break;
             case EntryPointMetadata::Override::Type::Boolean:
                 // Conversion to boolean can't fail
@@ -148,15 +167,15 @@ ResultOrError<ShaderModuleEntryPoint> ValidateProgrammableStage(DeviceBase* devi
                 DAWN_UNREACHABLE();
         }
 
-        if (!stageInitializedConstantIdentifiers.contains(constants[i].key)) {
-            if (metadata.uninitializedOverrides.contains(constants[i].key)) {
+        if (!stageInitializedConstantIdentifiers.contains(key)) {
+            if (metadata.uninitializedOverrides.contains(key)) {
                 numUninitializedConstants--;
             }
-            stageInitializedConstantIdentifiers.insert(constants[i].key);
+            stageInitializedConstantIdentifiers.insert(key);
         } else {
             // There are duplicate initializations
             return DAWN_VALIDATION_ERROR(
-                "Pipeline overridable constants \"%s\" is set more than once", constants[i].key);
+                "Pipeline overridable constants \"%s\" is set more than once", key);
         }
     }
 
@@ -186,28 +205,15 @@ ResultOrError<ShaderModuleEntryPoint> ValidateProgrammableStage(DeviceBase* devi
     return entryPoint;
 }
 
-WGPUCreatePipelineAsyncStatus CreatePipelineAsyncStatusFromErrorType(InternalErrorType error) {
-    switch (error) {
-        case InternalErrorType::None:
-            return WGPUCreatePipelineAsyncStatus_Success;
-        case InternalErrorType::Validation:
-            return WGPUCreatePipelineAsyncStatus_ValidationError;
-        case InternalErrorType::DeviceLost:
-            return WGPUCreatePipelineAsyncStatus_DeviceLost;
-        case InternalErrorType::Internal:
-        case InternalErrorType::OutOfMemory:
-            return WGPUCreatePipelineAsyncStatus_InternalError;
-        default:
-            DAWN_UNREACHABLE();
-            return WGPUCreatePipelineAsyncStatus_Unknown;
-    }
+uint32_t GetRawBits(ImmediateConstantMask bits) {
+    return static_cast<uint32_t>(bits.to_ulong());
 }
 
 // PipelineBase
 
 PipelineBase::PipelineBase(DeviceBase* device,
                            PipelineLayoutBase* layout,
-                           const char* label,
+                           StringView label,
                            std::vector<StageAndDescriptor> stages)
     : ApiObjectBase(device, label), mLayout(layout) {
     DAWN_ASSERT(!stages.empty());
@@ -248,7 +254,7 @@ PipelineBase::PipelineBase(DeviceBase* device,
     }
 }
 
-PipelineBase::PipelineBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label)
+PipelineBase::PipelineBase(DeviceBase* device, ObjectBase::ErrorTag tag, StringView label)
     : ApiObjectBase(device, tag, label) {}
 
 PipelineBase::~PipelineBase() = default;
@@ -285,6 +291,10 @@ wgpu::ShaderStage PipelineBase::GetStageMask() const {
     return mStageMask;
 }
 
+const ImmediateConstantMask& PipelineBase::GetPipelineMask() const {
+    return mPipelineMask;
+}
+
 MaybeError PipelineBase::ValidateGetBindGroupLayout(BindGroupIndex groupIndex) {
     DAWN_TRY(GetDevice()->ValidateIsAlive());
     DAWN_TRY(GetDevice()->ValidateObject(this));
@@ -293,7 +303,7 @@ MaybeError PipelineBase::ValidateGetBindGroupLayout(BindGroupIndex groupIndex) {
                     "Bind group layout index (%u) exceeds the maximum number of bind groups (%u).",
                     groupIndex, kMaxBindGroups);
     DAWN_INVALID_IF(
-        !mLayout->GetBindGroupLayoutsMask()[groupIndex],
+        static_cast<uint32_t>(groupIndex) >= mLayout->GetExplicitBindGroupLayoutsCount(),
         "Bind group layout index (%u) doesn't correspond to a bind group for this pipeline.",
         groupIndex);
     return {};
@@ -373,7 +383,12 @@ MaybeError PipelineBase::Initialize(std::optional<ScopedUseShaderPrograms> scope
     if (!scopedUsePrograms) {
         scopedUsePrograms = UseShaderPrograms();
     }
-    return InitializeImpl();
+    DAWN_TRY_CONTEXT(InitializeImpl(), "initializing %s", this);
+    return {};
+}
+
+void PipelineBase::SetPipelineMaskForTesting(ImmediateConstantMask immediateConstantMask) {
+    mPipelineMask = immediateConstantMask;
 }
 
 }  // namespace dawn::native

@@ -23,21 +23,21 @@ const int signalSpyTimeout = 10000;
 static QString messageSecurityModeToString(QOpcUaEndpointDescription::MessageSecurityMode msm)
 {
     if (msm == QOpcUaEndpointDescription::None)
-        return "None";
+        return u"None"_s;
     else if (msm ==  QOpcUaEndpointDescription::Sign)
-        return "Sign";
+        return u"Sign"_s;
     else if (msm == QOpcUaEndpointDescription::SignAndEncrypt)
-        return "SignAndEncrypt";
-    return "Invalid";
+        return u"SignAndEncrypt"_s;
+    return u"Invalid"_s;
 }
 
 #define defineDataMethod(name) void name()\
 {\
     QTest::addColumn<QString>("backend");\
     QTest::addColumn<QOpcUaEndpointDescription>("endpoint");\
-    for (const auto &backend : m_backends)\
-        for (const auto &endpoint : m_endpoints) { \
-            const QString rowName = QStringLiteral("%1 using %2 %3") \
+    for (const auto &backend : std::as_const(m_backends))\
+        for (const auto &endpoint : std::as_const(m_endpoints)) { \
+            const QString rowName = u"%1 using %2 %3"_s \
                     .arg(backend, endpoint.securityPolicy(), \
                          messageSecurityModeToString(endpoint.securityMode())); \
             QTest::newRow(rowName.toLatin1().constData()) << backend << endpoint; \
@@ -49,7 +49,7 @@ static QString messageSecurityModeToString(QOpcUaEndpointDescription::MessageSec
     QTest::addColumn<QString>("backend"); \
     QTest::addColumn<QOpcUaEndpointDescription>("endpoint"); \
     for (const auto &backend : std::as_const(m_backends)) { \
-        const QString rowName = QStringLiteral("%1 using %2 %3") \
+        const QString rowName = u"%1 using %2 %3"_s \
               .arg(backend, m_noneEndpoint.securityPolicy(), \
                    messageSecurityModeToString(m_noneEndpoint.securityMode())); \
         QTest::newRow(rowName.toLatin1().constData()) << backend << m_noneEndpoint; \
@@ -88,13 +88,27 @@ private slots:
     defineDataMethod(connectAndDisconnectSecureWithCertAuthOtherCert_data)
     void connectAndDisconnectSecureWithCertAuthOtherCert();
 
+    // Error cases
+
+    defineDataMethod(attemptConnectToUntrustedServer_data)
+    void attemptConnectToUntrustedServer();
+
     defineDataMethod(initializeWithBrokenCert_data)
     void initializeWithBrokenCert();
+
+    defineDataMethod(initializeWithInvalidKeyPath_data)
+    void initializeWithInvalidKeyPath();
+
+    defineDataMethod(connectWithUnsupportedTokenPolicy_data)
+    void connectWithUnsupportedTokenPolicy();
+
+    defineDataMethod(connectCertificateAuthWithInvalidPath_data)
+    void connectCertificateAuthWithInvalidPath();
 
 private:
     QString envOrDefault(const char *env, QString def)
     {
-        return qEnvironmentVariableIsSet(env) ? qgetenv(env).constData() : def;
+        return qEnvironmentVariableIsSet(env) ? QString::fromUtf8(qgetenv(env).constData()) : def;
     }
 
     QString m_testServerPath;
@@ -117,22 +131,22 @@ void Tst_QOpcUaSecurity::initTestCase()
     const quint16 defaultPort = 43344;
     const QHostAddress defaultHost(QHostAddress::LocalHost);
 
-    m_pkiData = QTest::qExtractTestData("pki");
+    m_pkiData = QTest::qExtractTestData(u"pki"_s);
     qDebug() << "PKI data available at" << m_pkiData->path();
 
     if (qEnvironmentVariableIsEmpty("OPCUA_HOST") && qEnvironmentVariableIsEmpty("OPCUA_PORT")) {
         m_testServerPath = qApp->applicationDirPath()
 
 #if defined(Q_OS_MACOS)
-                                     + QLatin1String("/../../open62541-testserver/open62541-testserver.app/Contents/MacOS/open62541-testserver")
+                                     + "/../../open62541-testserver/open62541-testserver.app/Contents/MacOS/open62541-testserver"_L1
 #else
 
 #if defined(Q_OS_WIN) && !defined(TESTS_CMAKE_SPECIFIC_PATH)
-                                     + QLatin1String("/..")
+                                     + "/.."_L1
 #endif
-                                     + QLatin1String("/../../open62541-testserver/open62541-testserver")
+                                     + "/../../open62541-testserver/open62541-testserver"_L1
 #ifdef Q_OS_WIN
-                                     + QLatin1String(".exe")
+                                     + ".exe"_L1
 #endif
 
 #endif
@@ -157,7 +171,7 @@ void Tst_QOpcUaSecurity::initTestCase()
         QVERIFY2(server.listen(defaultHost, defaultPort) == true, "Port is occupied by another process. Check for defunct server.");
         server.close();
 
-        m_serverProcess.start(m_testServerPath, { QStringLiteral("--noNonePolicyPassword") });
+        m_serverProcess.start(m_testServerPath, { u"--noNonePolicyPassword"_s });
         QVERIFY2(m_serverProcess.waitForStarted(), qPrintable(m_serverProcess.errorString()));
         // Let the server come up
 
@@ -183,7 +197,7 @@ void Tst_QOpcUaSecurity::initTestCase()
     }
     QString host = envOrDefault("OPCUA_HOST", defaultHost.toString());
     QString port = envOrDefault("OPCUA_PORT", QString::number(defaultPort));
-    m_discoveryEndpoint = QStringLiteral("opc.tcp://%1:%2").arg(host, port);
+    m_discoveryEndpoint = u"opc.tcp://%1:%2"_s.arg(host, port);
     qDebug() << "Using endpoint:" << m_discoveryEndpoint;
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(m_backends.first()));
@@ -207,7 +221,7 @@ void Tst_QOpcUaSecurity::initTestCase()
             if (QOpcUa::isSecurePolicy(endpoint.securityPolicy())) {
                 m_endpoints.append(endpoint);
                 qDebug() << endpoint.securityPolicy();
-            } else if (endpoint.securityPolicy().contains(QStringLiteral("None"))) {
+            } else if (endpoint.securityPolicy().contains(u"None"_s)) {
                 m_noneEndpoint = endpoint;
             }
         }
@@ -220,16 +234,16 @@ void Tst_QOpcUaSecurity::connectAndDisconnectNonePolicyAnonymousUnencryptedKey()
     QFETCH(QOpcUaEndpointDescription, endpoint);
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
-    QVERIFY2(client, QStringLiteral("Loading backend failed: %1").arg(backend).toLatin1().data());
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
 
     const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + u"/own/certs/tst_security.der"_s);
+    pkiConfig.setPrivateKeyFile(pkidir + u"/own/private/privateKeyWithoutPassword.pem"_s);
+    pkiConfig.setTrustListDirectory(pkidir + u"/trusted/certs"_s);
+    pkiConfig.setRevocationListDirectory(pkidir + u"/trusted/crl"_s);
+    pkiConfig.setIssuerListDirectory(pkidir + u"/issuers/certs"_s);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + u"/issuers/crl"_s);
 
     const auto identity = pkiConfig.applicationIdentity();
     QOpcUaAuthenticationInformation authInfo;
@@ -271,20 +285,20 @@ void Tst_QOpcUaSecurity::connectAndDisconnectNonePolicyUsernameUnencryptedKey()
     QFETCH(QOpcUaEndpointDescription, endpoint);
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
-    QVERIFY2(client, QStringLiteral("Loading backend failed: %1").arg(backend).toLatin1().data());
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
 
     const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + u"/own/certs/tst_security.der"_s);
+    pkiConfig.setPrivateKeyFile(pkidir + u"/own/private/privateKeyWithoutPassword.pem"_s);
+    pkiConfig.setTrustListDirectory(pkidir + u"/trusted/certs"_s);
+    pkiConfig.setRevocationListDirectory(pkidir + u"/trusted/crl"_s);
+    pkiConfig.setIssuerListDirectory(pkidir + u"/issuers/certs"_s);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + u"/issuers/crl"_s);
 
     const auto identity = pkiConfig.applicationIdentity();
     QOpcUaAuthenticationInformation authInfo;
-    authInfo.setUsernameAuthentication("user1", "password");
+    authInfo.setUsernameAuthentication(u"user1"_s, u"password"_s);
 
     client->setAuthenticationInformation(authInfo);
     client->setApplicationIdentity(identity);
@@ -323,26 +337,26 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureUnencryptedKey()
     QFETCH(QOpcUaEndpointDescription, endpoint);
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
-    QVERIFY2(client, QStringLiteral("Loading backend failed: %1").arg(backend).toLatin1().data());
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
 
     if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
-        QSKIP(QStringLiteral("This test is skipped because backend %1 "
-                             "does not support security policy %2")
+        QSKIP(u"This test is skipped because backend %1 "
+              "does not support security policy %2"_s
               .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
     }
 
     const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + u"/own/certs/tst_security.der"_s);
+    pkiConfig.setPrivateKeyFile(pkidir + u"/own/private/privateKeyWithoutPassword.pem"_s);
+    pkiConfig.setTrustListDirectory(pkidir + u"/trusted/certs"_s);
+    pkiConfig.setRevocationListDirectory(pkidir + u"/trusted/crl"_s);
+    pkiConfig.setIssuerListDirectory(pkidir + u"/issuers/certs"_s);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + u"/issuers/crl"_s);
 
     const auto identity = pkiConfig.applicationIdentity();
     QOpcUaAuthenticationInformation authInfo;
-    authInfo.setUsernameAuthentication("user1", "password");
+    authInfo.setUsernameAuthentication(u"user1"_s, u"password"_s);
 
     client->setAuthenticationInformation(authInfo);
     client->setApplicationIdentity(identity);
@@ -394,26 +408,26 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureEncryptedKey()
     QFETCH(QOpcUaEndpointDescription, endpoint);
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
-    QVERIFY2(client, QStringLiteral("Loading backend failed: %1").arg(backend).toLatin1().data());
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
 
     if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
-        QSKIP(QStringLiteral("This test is skipped because backend %1 "
-                             "does not support security policy %2")
+        QSKIP(u"This test is skipped because backend %1 "
+              "does not support security policy %2"_s
               .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
     }
 
     const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithPassword_secret.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + u"/own/certs/tst_security.der"_s);
+    pkiConfig.setPrivateKeyFile(pkidir + u"/own/private/privateKeyWithPassword_secret.pem"_s);
+    pkiConfig.setTrustListDirectory(pkidir + u"/trusted/certs"_s);
+    pkiConfig.setRevocationListDirectory(pkidir + u"/trusted/crl"_s);
+    pkiConfig.setIssuerListDirectory(pkidir + u"/issuers/certs"_s);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + u"/issuers/crl"_s);
 
     const auto identity = pkiConfig.applicationIdentity();
     QOpcUaAuthenticationInformation authInfo;
-    authInfo.setUsernameAuthentication("user1", "password");
+    authInfo.setUsernameAuthentication(u"user1"_s, u"password"_s);
 
     client->setAuthenticationInformation(authInfo);
     client->setApplicationIdentity(identity);
@@ -430,16 +444,16 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureEncryptedKey()
             QVERIFY(password->isEmpty());
             QVERIFY(previousTryFailed == false);
         } else {
-            QVERIFY(*password == QLatin1String("wrong password"));
+            QVERIFY(*password == "wrong password"_L1);
             QVERIFY(previousTryFailed == true);
         }
 
         QCOMPARE(privateKeyFilePath, pkiConfig.privateKeyFile());
 
         if (passwordRequestSpy < 1)
-            *password = "wrong password";
+            *password = u"wrong password"_s;
         else
-            *password = "secret";
+            *password = u"secret"_s;
         ++passwordRequestSpy;
     });
 
@@ -480,34 +494,24 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureIgnoreUntrusted()
     QFETCH(QOpcUaEndpointDescription, endpoint);
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
-    QVERIFY2(client, QStringLiteral("Loading backend failed: %1").arg(backend).toLatin1().data());
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
 
     if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
-        QSKIP(QStringLiteral("This test is skipped because backend %1 "
-                             "does not support security policy %2")
+        QSKIP(u"This test is skipped because backend %1 "
+              "does not support security policy %2"_s
                   .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
     }
 
-    // Extract to a new path and remove the test server cert
+    // Initialize a PKI with only certificate and private key paths
     // This will make the connection fail with BadCertificateUntrusted
-    auto tempPkiDir = QTest::qExtractTestData("pki");
-    QDir pkiDir(tempPkiDir->path());
-    QVERIFY(pkiDir.cd("trusted"));
-    QVERIFY(pkiDir.cd("certs"));
-    QVERIFY(pkiDir.remove("open62541-testserver.der"));
-
-    const QString pkidir = tempPkiDir->path();
+    const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + u"/own/certs/tst_security.der"_s);
+    pkiConfig.setPrivateKeyFile(pkidir + u"/own/private/privateKeyWithoutPassword.pem"_s);
 
     const auto identity = pkiConfig.applicationIdentity();
     QOpcUaAuthenticationInformation authInfo;
-    authInfo.setUsernameAuthentication("user1", "password");
+    authInfo.setUsernameAuthentication(u"user1"_s, u"password"_s);
 
     client->setAuthenticationInformation(authInfo);
     client->setApplicationIdentity(identity);
@@ -515,6 +519,8 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureIgnoreUntrusted()
 
     qDebug() << "Testing security policy" << endpoint.securityPolicy();
     QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
+    QSignalSpy errorSpy(client.data(), &QOpcUaClient::errorChanged);
+
     bool errorStateReported = false;
 
     connect(client.data(), &QOpcUaClient::connectError,
@@ -536,6 +542,9 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureIgnoreUntrusted()
 
     QVERIFY(errorStateReported);
 
+    errorSpy.wait(std::chrono::milliseconds(100));
+    QVERIFY(errorSpy.empty());
+
     connectSpy.clear();
     client->disconnectFromEndpoint();
     connectSpy.wait(signalSpyTimeout);
@@ -553,22 +562,22 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureWithCertAuth()
     QFETCH(QOpcUaEndpointDescription, endpoint);
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
-    QVERIFY2(client, QStringLiteral("Loading backend failed: %1").arg(backend).toLatin1().data());
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
 
     if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
-        QSKIP(QStringLiteral("This test is skipped because backend %1 "
-                             "does not support security policy %2")
+        QSKIP(u"This test is skipped because backend %1 "
+              "does not support security policy %2"_s
                   .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
     }
 
     const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + u"/own/certs/tst_security.der"_s);
+    pkiConfig.setPrivateKeyFile(pkidir + u"/own/private/privateKeyWithoutPassword.pem"_s);
+    pkiConfig.setTrustListDirectory(pkidir + u"/trusted/certs"_s);
+    pkiConfig.setRevocationListDirectory(pkidir + u"/trusted/crl"_s);
+    pkiConfig.setIssuerListDirectory(pkidir + u"/issuers/certs"_s);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + u"/issuers/crl"_s);
 
     const auto identity = pkiConfig.applicationIdentity();
     QOpcUaAuthenticationInformation authInfo;
@@ -606,31 +615,31 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureWithCertAuthOtherCert()
     QFETCH(QString, backend);
     QFETCH(QOpcUaEndpointDescription, endpoint);
 
-    if (!endpoint.securityPolicy().contains("Basic256Sha256"))
+    if (!endpoint.securityPolicy().contains("Basic256Sha256"_L1))
         return;
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
-    QVERIFY2(client, QStringLiteral("Loading backend failed: %1").arg(backend).toLatin1().data());
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
 
     if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
-        QSKIP(QStringLiteral("This test is skipped because backend %1 "
-                             "does not support security policy %2")
-                  .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
+        QSKIP(u"This test is skipped because backend %1 "
+               "does not support security policy %2"_s
+               .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
     }
 
     const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + u"/own/certs/tst_security.der"_s);
+    pkiConfig.setPrivateKeyFile(pkidir + u"/own/private/privateKeyWithoutPassword.pem"_s);
+    pkiConfig.setTrustListDirectory(pkidir + u"/trusted/certs"_s);
+    pkiConfig.setRevocationListDirectory(pkidir + u"/trusted/crl"_s);
+    pkiConfig.setIssuerListDirectory(pkidir + u"/issuers/certs"_s);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + u"/issuers/crl"_s);
 
     const auto identity = pkiConfig.applicationIdentity();
     QOpcUaAuthenticationInformation authInfo;
-    authInfo.setCertificateAuthentication(pkidir + "/own/certs/tst_security.der",
-                                          pkidir + "/own/private/privateKeyWithoutPassword.pem");
+    authInfo.setCertificateAuthentication(pkidir + u"/own/certs/tst_security.der"_s,
+                                          pkidir + u"/own/private/privateKeyWithoutPassword.pem"_s);
 
     client->setAuthenticationInformation(authInfo);
     client->setApplicationIdentity(identity);
@@ -656,6 +665,70 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureWithCertAuthOtherCert()
     QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Disconnected);
 }
 
+void Tst_QOpcUaSecurity::attemptConnectToUntrustedServer()
+{
+    if (m_endpoints.size() == 0)
+        QSKIP("No secure endpoints available");
+
+    QFETCH(QString, backend);
+    QFETCH(QOpcUaEndpointDescription, endpoint);
+
+    QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
+    QVERIFY2(client, "Loading backend failed: %1"_L1.arg(backend).toLatin1().data());
+
+    if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
+        QSKIP("This test is skipped because backend %1 "
+              "does not support security policy %2"_L1
+                  .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
+    }
+
+    // Initialize a PKI with only certificate and private key paths
+    // This will make the connection fail with BadCertificateUntrusted
+    const QString pkidir = m_pkiData->path();
+    QOpcUaPkiConfiguration pkiConfig;
+    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der"_L1);
+    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem"_L1);
+
+    const auto identity = pkiConfig.applicationIdentity();
+    QOpcUaAuthenticationInformation authInfo;
+    authInfo.setUsernameAuthentication("user1"_L1, "password"_L1);
+
+    client->setAuthenticationInformation(authInfo);
+    client->setApplicationIdentity(identity);
+    client->setPkiConfiguration(pkiConfig);
+
+    qDebug() << "Testing security policy" << endpoint.securityPolicy();
+    QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
+    QSignalSpy errorSpy(client.data(), &QOpcUaClient::errorChanged);
+
+    bool errorStateReported = false;
+
+    // Register the state callback, but don't ignore the error
+    connect(client.data(), &QOpcUaClient::connectError,
+            this, [&](QOpcUaErrorState *errorState) {
+                if (errorState->connectionStep() == QOpcUaErrorState::ConnectionStep::CertificateValidation) {
+                    errorState->setIgnoreError(false);
+                    errorStateReported = true;
+                }
+            });
+
+    client->connectToEndpoint(endpoint);
+    connectSpy.wait(signalSpyTimeout);
+    if (connectSpy.size() != 2)
+        QVERIFY(connectSpy.wait());
+
+    if (errorSpy.isEmpty())
+        QVERIFY(errorSpy.wait());
+
+    QCOMPARE(connectSpy.size(), 2);
+    QCOMPARE(connectSpy.at(0).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Connecting);
+    QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Disconnected);
+
+    QVERIFY(errorStateReported);
+    QCOMPARE(errorSpy.at(0).at(0), QOpcUaClient::ClientError::CertificateUntrusted);
+    QCOMPARE(client->error(), QOpcUaClient::ClientError::CertificateUntrusted);
+}
+
 void Tst_QOpcUaSecurity::initializeWithBrokenCert()
 {
     if (m_endpoints.size() == 0)
@@ -675,31 +748,189 @@ void Tst_QOpcUaSecurity::initializeWithBrokenCert()
 
     const QString pkidir = m_pkiData->path();
     QOpcUaPkiConfiguration pkiConfig;
-    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/invalid_cert.der");
-    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem");
-    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs");
-    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl");
-    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs");
-    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl");
+    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/invalid_cert.der"_L1);
+    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem"_L1);
+    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs"_L1);
+    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl"_L1);
+    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs"_L1);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl"_L1);
 
-    const auto identity = pkiConfig.applicationIdentity();
-    QOpcUaAuthenticationInformation authInfo;
-    authInfo.setUsernameAuthentication("user1", "password");
-    client->setAuthenticationInformation(authInfo);
-    client->setApplicationIdentity(identity);
     client->setPkiConfiguration(pkiConfig);
 
     qDebug() << "Testing invalid certificate load with security policy" << endpoint.securityPolicy();
     QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
+    QSignalSpy errorSpy(client.data(), &QOpcUaClient::errorChanged);
 
     client->connectToEndpoint(endpoint);
     connectSpy.wait(signalSpyTimeout);
     if (client->state() == QOpcUaClient::Connecting)
         connectSpy.wait(signalSpyTimeout);
 
+    if (errorSpy.isEmpty())
+        QVERIFY(errorSpy.wait());
+
     QCOMPARE(connectSpy.size(), 2);
     QCOMPARE(connectSpy.at(0).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Connecting);
     QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Disconnected);
+
+    QCOMPARE(errorSpy.at(0).at(0), QOpcUaClient::ClientError::InvalidPki);
+    QCOMPARE(client->error(), QOpcUaClient::ClientError::InvalidPki);
+}
+
+void Tst_QOpcUaSecurity::initializeWithInvalidKeyPath()
+{
+    if (m_endpoints.size() == 0)
+        QSKIP("No secure endpoints available");
+
+    QFETCH(QString, backend);
+    QFETCH(QOpcUaEndpointDescription, endpoint);
+
+    QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
+
+    if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
+        QSKIP(u"This test is skipped because backend %1 "
+              "does not support security policy %2"_s
+                  .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
+    }
+
+    const QString pkidir = m_pkiData->path();
+    QOpcUaPkiConfiguration pkiConfig;
+    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der"_L1);
+    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/idonotexist.pem"_L1);
+
+    const auto identity = pkiConfig.applicationIdentity();
+    client->setApplicationIdentity(identity);
+    client->setPkiConfiguration(pkiConfig);
+
+    qDebug() << "Testing invalid private key path with security policy" << endpoint.securityPolicy();
+    QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
+    QSignalSpy errorSpy(client.data(), &QOpcUaClient::errorChanged);
+
+    client->connectToEndpoint(endpoint);
+    connectSpy.wait(signalSpyTimeout);
+    if (connectSpy.size() != 2)
+        QVERIFY(connectSpy.wait(signalSpyTimeout));
+
+    if (errorSpy.isEmpty())
+        QVERIFY(errorSpy.wait());
+
+    QCOMPARE(connectSpy.size(), 2);
+    QCOMPARE(connectSpy.at(0).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Connecting);
+    QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Disconnected);
+
+    QCOMPARE(errorSpy.at(0).at(0), QOpcUaClient::ClientError::InvalidPki);
+    QCOMPARE(client->error(), QOpcUaClient::ClientError::InvalidPki);
+}
+
+void Tst_QOpcUaSecurity::connectWithUnsupportedTokenPolicy()
+{
+    if (m_endpoints.size() == 0)
+        QSKIP("No secure endpoints available");
+
+    QFETCH(QString, backend);
+    QFETCH(QOpcUaEndpointDescription, endpoint);
+
+    QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
+
+    if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
+        QSKIP(u"This test is skipped because backend %1 "
+              "does not support security policy %2"_s
+                  .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
+    }
+
+    QOpcUaUserTokenPolicy pol;
+    pol.setTokenType(QOpcUaUserTokenPolicy::Username);
+    pol.setSecurityPolicy("http://idonotexist"_L1);
+    endpoint.setUserIdentityTokens({ pol });
+
+    const QString pkidir = m_pkiData->path();
+    QOpcUaPkiConfiguration pkiConfig;
+    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der"_L1);
+    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem"_L1);
+
+    QOpcUaAuthenticationInformation authInfo;
+    authInfo.setUsernameAuthentication("user1"_L1, "password"_L1);
+    client->setAuthenticationInformation(authInfo);
+
+    const auto identity = pkiConfig.applicationIdentity();
+    client->setApplicationIdentity(identity);
+    client->setPkiConfiguration(pkiConfig);
+
+    qDebug() << "Testing invalid user token security policy with secure channel security policy" << endpoint.securityPolicy();
+    QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
+    QSignalSpy errorSpy(client.data(), &QOpcUaClient::errorChanged);
+
+    client->connectToEndpoint(endpoint);
+    connectSpy.wait(signalSpyTimeout);
+    if (connectSpy.size() != 2)
+        QVERIFY(connectSpy.wait(signalSpyTimeout));
+
+    if (errorSpy.isEmpty())
+        QVERIFY(errorSpy.wait());
+
+    QCOMPARE(connectSpy.size(), 2);
+    QCOMPARE(connectSpy.at(0).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Connecting);
+    QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Disconnected);
+
+    QCOMPARE(errorSpy.at(0).at(0), QOpcUaClient::ClientError::NoMatchingUserIdentityTokenFound);
+    QCOMPARE(client->error(), QOpcUaClient::ClientError::NoMatchingUserIdentityTokenFound);
+}
+
+void Tst_QOpcUaSecurity::connectCertificateAuthWithInvalidPath()
+{
+    if (m_endpoints.size() == 0)
+        QSKIP("No secure endpoints available");
+
+    QFETCH(QString, backend);
+    QFETCH(QOpcUaEndpointDescription, endpoint);
+
+    QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(backend));
+    QVERIFY2(client, u"Loading backend failed: %1"_s.arg(backend).toLatin1().data());
+
+    if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
+        QSKIP(u"This test is skipped because backend %1 "
+              "does not support security policy %2"_s
+                  .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
+    }
+
+    const QString pkidir = m_pkiData->path();
+    QOpcUaPkiConfiguration pkiConfig;
+    pkiConfig.setClientCertificateFile(pkidir + "/own/certs/tst_security.der"_L1);
+    pkiConfig.setPrivateKeyFile(pkidir + "/own/private/privateKeyWithoutPassword.pem"_L1);
+    pkiConfig.setTrustListDirectory(pkidir + "/trusted/certs"_L1);
+    pkiConfig.setRevocationListDirectory(pkidir + "/trusted/crl"_L1);
+    pkiConfig.setIssuerListDirectory(pkidir + "/issuers/certs"_L1);
+    pkiConfig.setIssuerRevocationListDirectory(pkidir + "/issuers/crl"_L1);
+
+    const auto identity = pkiConfig.applicationIdentity();
+    QOpcUaAuthenticationInformation authInfo;
+    authInfo.setCertificateAuthentication(pkidir + "/own/certs/idontexist.der"_L1,
+                                          pkidir + "/own/private/idonotexist.pem"_L1);
+
+    client->setAuthenticationInformation(authInfo);
+    client->setApplicationIdentity(identity);
+    client->setPkiConfiguration(pkiConfig);
+
+    qDebug() << "Testing security policy" << endpoint.securityPolicy();
+    QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
+    QSignalSpy errorSpy(client.data(), &QOpcUaClient::errorChanged);
+
+    client->connectToEndpoint(endpoint);
+    connectSpy.wait(signalSpyTimeout);
+    if (connectSpy.size() != 2)
+        QVERIFY(connectSpy.wait(signalSpyTimeout));
+
+    if (errorSpy.empty())
+        QVERIFY(errorSpy.wait());
+
+    QCOMPARE(connectSpy.size(), 2);
+    QCOMPARE(connectSpy.at(0).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Connecting);
+    QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Disconnected);
+
+    QCOMPARE(errorSpy.at(0).at(0), QOpcUaClient::ClientError::InvalidAuthenticationInformation);
+    QCOMPARE(client->error(), QOpcUaClient::ClientError::InvalidAuthenticationInformation);
 }
 
 void Tst_QOpcUaSecurity::cleanupTestCase()

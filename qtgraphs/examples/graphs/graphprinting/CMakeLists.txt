@@ -4,24 +4,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(graphprinting LANGUAGES CXX)
 
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
-
-if(NOT DEFINED INSTALL_EXAMPLESDIR)
-  set(INSTALL_EXAMPLESDIR "examples")
-endif()
-
-set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}")
-
-find_package(Qt6 COMPONENTS Core)
-find_package(Qt6 COMPONENTS Gui)
-find_package(Qt6 COMPONENTS Quick)
-find_package(Qt6 COMPONENTS Quick3D)
-find_package(Qt6 COMPONENTS Graphs)
-find_package(Qt6 COMPONENTS PrintSupport)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui GuiPrivate Quick Graphs PrintSupport)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -37,7 +20,6 @@ target_link_libraries(graphprinting PRIVATE
     Qt::Core
     Qt::Gui
     Qt::Quick
-    Qt::Quick3D
     Qt::Graphs
     Qt::PrintSupport
     Qt::GuiPrivate
@@ -66,7 +48,15 @@ qt6_add_qml_module(graphprinting
 )
 
 install(TARGETS graphprinting
-    RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
-    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
-    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+qt_generate_deploy_app_script(
+    TARGET graphprinting
+    OUTPUT_SCRIPT deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+
+install(SCRIPT ${deploy_script})

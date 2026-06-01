@@ -8,14 +8,27 @@
 #include "src/gpu/graphite/render/BitmapTextRenderStep.h"
 
 #include "include/core/SkM44.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkSamplingOptions.h"
+#include "include/core/SkSize.h"
+#include "include/core/SkTileMode.h"
 #include "include/gpu/graphite/Recorder.h"
+#include "include/private/base/SkAssert.h"
+#include "include/private/base/SkDebug.h"
+#include "src/core/SkSLTypeShared.h"
 #include "src/gpu/AtlasTypes.h"
 #include "src/gpu/graphite/AtlasProvider.h"
+#include "src/gpu/graphite/Attribute.h"
 #include "src/gpu/graphite/ContextUtils.h"
+#include "src/gpu/graphite/DrawOrder.h"
 #include "src/gpu/graphite/DrawParams.h"
-#include "src/gpu/graphite/DrawWriter.h"
+#include "src/gpu/graphite/DrawTypes.h"
 #include "src/gpu/graphite/PipelineData.h"
 #include "src/gpu/graphite/RecorderPriv.h"
+#include "src/gpu/graphite/TextureProxy.h"
+#include "src/gpu/graphite/geom/Geometry.h"
+#include "src/gpu/graphite/geom/SubRunData.h"
+#include "src/gpu/graphite/geom/Transform_graphite.h"
 #include "src/gpu/graphite/render/CommonDepthStencilSettings.h"
 #include "src/gpu/graphite/text/TextAtlasManager.h"
 #include "src/sksl/SkSLString.h"
@@ -31,24 +44,20 @@ namespace {
 // We are expecting to sample from up to 4 textures
 constexpr int kNumTextAtlasTextures = 4;
 
-std::string variant_name(skgpu::MaskFormat variant) {
+RenderStep::RenderStepID variant_id(skgpu::MaskFormat variant) {
     switch (variant) {
-        case skgpu::MaskFormat::kA8:
-            return "mask";
-        case skgpu::MaskFormat::kA565:
-            return "LCD";
-        case skgpu::MaskFormat::kARGB:
-            return "color";
-        default:
-            SkUNREACHABLE;
+        case skgpu::MaskFormat::kA8:   return RenderStep::RenderStepID::kBitmapText_Mask;
+        case skgpu::MaskFormat::kA565: return RenderStep::RenderStepID::kBitmapText_LCD;
+        case skgpu::MaskFormat::kARGB: return RenderStep::RenderStepID::kBitmapText_Color;
     }
+
+    SkUNREACHABLE;
 }
 
 }  // namespace
 
 BitmapTextRenderStep::BitmapTextRenderStep(skgpu::MaskFormat variant)
-        : RenderStep("BitmapTextRenderStep",
-                     variant_name(variant),
+        : RenderStep(variant_id(variant),
                      Flags(variant),
                      /*uniforms=*/{{"subRunDeviceMatrix", SkSLType::kFloat4x4},
                                    {"deviceToLocal"     , SkSLType::kFloat4x4},
@@ -63,7 +72,7 @@ BitmapTextRenderStep::BitmapTextRenderStep(skgpu::MaskFormat variant)
                       {"indexAndFlags", VertexAttribType::kUShort2, SkSLType::kUShort2},
                       {"strikeToSourceScale", VertexAttribType::kFloat, SkSLType::kFloat},
                       {"depth", VertexAttribType::kFloat, SkSLType::kFloat},
-                      {"ssboIndices", VertexAttribType::kUShort2, SkSLType::kUShort2}},
+                      {"ssboIndices", VertexAttribType::kUInt2, SkSLType::kUInt2}},
                      /*varyings=*/
                      {{"textureCoords", SkSLType::kFloat2},
                       {"texIndex", SkSLType::kHalf},
@@ -145,7 +154,7 @@ const char* BitmapTextRenderStep::fragmentCoverageSkSL() const {
 
 void BitmapTextRenderStep::writeVertices(DrawWriter* dw,
                                          const DrawParams& params,
-                                         skvx::ushort2 ssboIndices) const {
+                                         skvx::uint2 ssboIndices) const {
     const SubRunData& subRunData = params.geometry().subRunData();
 
     subRunData.subRun()->vertexFiller().fillInstanceData(dw,

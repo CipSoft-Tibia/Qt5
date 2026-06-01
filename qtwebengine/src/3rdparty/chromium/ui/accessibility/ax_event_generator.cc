@@ -1039,7 +1039,7 @@ void AXEventGenerator::FireRelationSourceEvents(AXTree* tree,
     if (sources_it == target_to_sources.end())
       return;
 
-    base::ranges::for_each(sources_it->second, [&](AXNodeID source_id) {
+    std::ranges::for_each(sources_it->second, [&](AXNodeID source_id) {
       AXNode* source_node = tree->GetFromId(source_id);
 
       if (!source_node || source_nodes.count(source_node) > 0)
@@ -1053,8 +1053,8 @@ void AXEventGenerator::FireRelationSourceEvents(AXTree* tree,
     });
   };
 
-  base::ranges::for_each(tree->int_reverse_relations(), callback);
-  base::ranges::for_each(tree->intlist_reverse_relations(), [&](auto& entry) {
+  std::ranges::for_each(tree->int_reverse_relations(), callback);
+  std::ranges::for_each(tree->intlist_reverse_relations(), [&](auto& entry) {
     // Explicitly exclude relationships for which an additional event on the
     // source node would cause extra noise. For example, kRadioGroupIds
     // forms relations among all radio buttons and serves little value for
@@ -1481,9 +1481,7 @@ AXEventGenerator::Event ParseGeneratedEvent(const char* attribute) {
   if (MaybeParseGeneratedEvent(attribute, &event))
     return event;
 
-  LOG(ERROR) << "Could not parse: " << attribute;
-  NOTREACHED_IN_MIGRATION();
-  return AXEventGenerator::Event::NONE;
+  NOTREACHED() << "Could not parse: " << attribute;
 }
 
 }  // namespace ui

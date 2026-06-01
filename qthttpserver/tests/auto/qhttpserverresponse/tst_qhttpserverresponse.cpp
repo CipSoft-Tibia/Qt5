@@ -57,7 +57,7 @@ void tst_QHttpServerResponse::mimeTypeDetection()
     QFETCH(QString, content);
 
     QFile file(content);
-    file.open(QFile::ReadOnly);
+    QVERIFY(file.open(QFile::ReadOnly));
     QByteArray data = file.readAll();
     QHttpServerResponse response(data);
     file.close();

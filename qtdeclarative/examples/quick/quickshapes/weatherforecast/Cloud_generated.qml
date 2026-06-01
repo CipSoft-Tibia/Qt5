@@ -2,18 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Generated from SVG file cloud-svgrepo-com.svg
 import QtQuick
+import QtQuick.VectorImage
+import QtQuick.VectorImage.Helpers
 import QtQuick.Shapes
 
 Item {
     implicitWidth: 800
     implicitHeight: 800
+    component AnimationsInfo : QtObject
+    {
+        property bool paused: false
+        property int loops: 1
+        signal restart()
+    }
+    property AnimationsInfo animations : AnimationsInfo {}
     transform: [
         Scale { xScale: width / 128; yScale: height / 128 }
     ]
-        objectName: "svg1047"
+    objectName: "svg1047"
+    id: _qt_node0
     DemoShape {
         objectName: "path1043"
+        id: _qt_node1
         ShapePath {
+            id: _qt_shapePath_0
             objectName: "svg_path:path1043"
             strokeColor: "transparent"
             fillColor: "#ffe4eaee"
@@ -24,7 +36,9 @@ Item {
     }
     DemoShape {
         objectName: "path1045"
+        id: _qt_node2
         ShapePath {
+            id: _qt_shapePath_1
             objectName: "svg_path:path1045"
             strokeColor: "transparent"
             fillColor: "#ffbacdd2"
@@ -35,8 +49,13 @@ Item {
     }
     DemoShape {
         objectName: "path1183"
-        transform: Scale { xScale: 0.16; yScale: 0.16 }
+        id: _qt_node3
+        transform: TransformGroup {
+            id: _qt_node3_transform_base_group
+            Matrix4x4 { id: _qt_node3_transform_base; matrix: PlanarTransform.fromAffineMatrix(0.16, 0, 0, 0.16, 0, 0)}
+        }
         ShapePath {
+            id: _qt_shapePath_2
             objectName: "svg_path:path1183"
             strokeColor: "#ff000000"
             strokeWidth: 6.25

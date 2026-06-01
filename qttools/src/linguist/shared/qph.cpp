@@ -11,6 +11,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 class QPHReader : public QXmlStreamReader
 {
 public:
@@ -40,18 +42,18 @@ bool QPHReader::read(Translator &translator)
     while (!atEnd()) {
         readNext();
         if (isStartElement()) {
-            if (name() == QLatin1String("source")) {
+            if (name() == "source"_L1) {
                 m_currentField = SourceField;
-            } else if (name() == QLatin1String("target")) {
+            } else if (name() == "target"_L1) {
                 m_currentField = TargetField;
-            } else if (name() == QLatin1String("definition")) {
+            } else if (name() == "definition"_L1) {
                 m_currentField = DefinitionField;
             } else {
                 m_currentField = NoField;
-                if (name() == QLatin1String("QPH")) {
+                if (name() == "QPH"_L1) {
                     QXmlStreamAttributes atts = attributes();
-                    translator.setLanguageCode(atts.value(QLatin1String("language")).toString());
-                    translator.setSourceLanguageCode(atts.value(QLatin1String("sourcelanguage")).toString());
+                    translator.setLanguageCode(atts.value("language"_L1).toString());
+                    translator.setSourceLanguageCode(atts.value("sourcelanguage"_L1).toString());
                 }
             }
         } else if (isWhiteSpace()) {
@@ -63,7 +65,7 @@ bool QPHReader::read(Translator &translator)
                 m_currentTarget += text();
             else if (m_currentField == DefinitionField)
                 m_currentDefinition += text();
-        } else if (isEndElement() && name() == QLatin1String("phrase")) {
+        } else if (isEndElement() && name() == "phrase"_L1) {
             m_currentTarget.replace(Translator::TextVariantSeparator, Translator::BinaryVariantSeparator);
             TranslatorMessage msg;
             msg.setSourceText(m_currentSource);
@@ -93,23 +95,23 @@ static QString qphProtect(const QString &str)
         uint c = str.at(i).unicode();
         switch (c) {
         case '\"':
-            result += QLatin1String("&quot;");
+            result += "&quot;"_L1;
             break;
         case '&':
-            result += QLatin1String("&amp;");
+            result += "&amp;"_L1;
             break;
         case '>':
-            result += QLatin1String("&gt;");
+            result += "&gt;"_L1;
             break;
         case '<':
-            result += QLatin1String("&lt;");
+            result += "&lt;"_L1;
             break;
         case '\'':
-            result += QLatin1String("&apos;");
+            result += "&apos;"_L1;
             break;
         default:
             if (c < 0x20 && c != '\r' && c != '\n' && c != '\t')
-                result += QString(QLatin1String("&#%1;")).arg(c);
+                result += QString("&#%1;"_L1).arg(c);
             else // this also covers surrogates
                 result += QChar(c);
         }
@@ -122,16 +124,16 @@ static bool saveQPH(const Translator &translator, QIODevice &dev, ConversionData
     QTextStream t(&dev);
     t << "<!DOCTYPE QPH>\n<QPH";
     QString languageCode = translator.languageCode();
-    if (!languageCode.isEmpty() && languageCode != QLatin1String("C"))
+    if (!languageCode.isEmpty() && languageCode != "C"_L1)
         t << " language=\"" << languageCode << "\"";
     languageCode = translator.sourceLanguageCode();
-    if (!languageCode.isEmpty() && languageCode != QLatin1String("C"))
+    if (!languageCode.isEmpty() && languageCode != "C"_L1)
         t << " sourcelanguage=\"" << languageCode << "\"";
     t << ">\n";
     for (const TranslatorMessage &msg : translator.messages()) {
         t << "<phrase>\n";
         t << "    <source>" << qphProtect(msg.sourceText()) << "</source>\n";
-        QString str = msg.translations().join(QLatin1Char('@'));
+        QString str = msg.translations().join(u'@');
         str.replace(QChar(Translator::BinaryVariantSeparator),
                     QChar(Translator::TextVariantSeparator));
         t << "    <target>" << qphProtect(str)
@@ -148,7 +150,7 @@ int initQPH()
 {
     Translator::FileFormat format;
 
-    format.extension = QLatin1String("qph");
+    format.extension = "qph"_L1;
     format.untranslatedDescription = QT_TRANSLATE_NOOP("FMT", "Qt Linguist 'Phrase Book'");
     format.fileType = Translator::FileFormat::TranslationSource;
     format.priority = 0;

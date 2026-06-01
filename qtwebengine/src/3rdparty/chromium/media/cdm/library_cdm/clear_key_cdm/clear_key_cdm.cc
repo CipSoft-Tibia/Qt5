@@ -22,6 +22,7 @@
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
@@ -177,11 +178,14 @@ void* CreateCdmInstance(int cdm_interface_version,
     return nullptr;
   }
 
-  // We support CDM_10 and CDM_11.
+  // We support CDM_10, CDM_11, and CDM_12.
   using CDM_10 = cdm::ContentDecryptionModule_10;
   using CDM_11 = cdm::ContentDecryptionModule_11;
+  using CDM_12 = cdm::ContentDecryptionModule_12;
 
   if (cdm_interface_version == CDM_10::kVersion) {
+    static_assert(CDM_10::kVersion == CDM_10::Host::kVersion,
+                  "CDM host version mismatch");
     CDM_10::Host* host = static_cast<CDM_10::Host*>(
         get_cdm_host_func(CDM_10::Host::kVersion, user_data));
     if (!host)
@@ -193,6 +197,8 @@ void* CreateCdmInstance(int cdm_interface_version,
   }
 
   if (cdm_interface_version == CDM_11::kVersion) {
+    static_assert(CDM_11::kVersion == CDM_11::Host::kVersion,
+                  "CDM host version mismatch");
     CDM_11::Host* host = static_cast<CDM_11::Host*>(
         get_cdm_host_func(CDM_11::Host::kVersion, user_data));
     if (!host)
@@ -200,6 +206,18 @@ void* CreateCdmInstance(int cdm_interface_version,
 
     DVLOG(1) << __func__ << ": Create ClearKeyCdm with CDM_11::Host.";
     return static_cast<CDM_11*>(
+        new media::ClearKeyCdm(host, key_system_string));
+  }
+
+  if (cdm_interface_version == CDM_12::kVersion) {
+    CDM_12::Host* host = static_cast<CDM_12::Host*>(
+        get_cdm_host_func(CDM_12::Host::kVersion, user_data));
+    if (!host) {
+      return nullptr;
+    }
+
+    DVLOG(1) << __func__ << ": Create ClearKeyCdm with CDM_12::Host.";
+    return static_cast<CDM_12*>(
         new media::ClearKeyCdm(host, key_system_string));
   }
 
@@ -378,6 +396,7 @@ void ClearKeyCdm::CreateSessionAndGenerateRequest(
                      promise_id),
       base::BindOnce(&ClearKeyCdm::OnPromiseFailed, base::Unretained(this),
                      promise_id));
+  cdm_host_proxy_->ReportMetrics(cdm::kSdkVersion, 12345);
   cdm_->CreateSessionAndGenerateRequest(
       ToMediaSessionType(session_type), ToEmeInitDataType(init_data_type),
       std::vector<uint8_t>(init_data, init_data + init_data_size),
@@ -630,7 +649,7 @@ void ClearKeyCdm::ResetDecoder(cdm::StreamType decoder_type) {
       audio_decoder_->Reset();
       break;
     default:
-      NOTREACHED_IN_MIGRATION() << "ResetDecoder(): invalid cdm::StreamType";
+      NOTREACHED() << "ResetDecoder(): invalid cdm::StreamType";
   }
 #endif  // CLEAR_KEY_CDM_USE_FFMPEG_DECODER
 }
@@ -647,8 +666,7 @@ void ClearKeyCdm::DeinitializeDecoder(cdm::StreamType decoder_type) {
 #endif
       break;
     default:
-      NOTREACHED_IN_MIGRATION()
-          << "DeinitializeDecoder(): invalid cdm::StreamType";
+      NOTREACHED() << "DeinitializeDecoder(): invalid cdm::StreamType";
   }
 }
 
@@ -684,7 +702,7 @@ cdm::Status ClearKeyCdm::DecryptAndDecodeSamples(
   // that the session is properly closed.
   if (!last_session_id_.empty() &&
       key_system_ == kExternalClearKeyCrashKeySystem) {
-    CHECK(false) << "Crash in decrypt-and-decode with crash key system.";
+    NOTREACHED() << "Crash in decrypt-and-decode with crash key system.";
   }
 
   scoped_refptr<DecoderBuffer> buffer;
@@ -771,9 +789,7 @@ void ClearKeyCdm::OnPlatformChallengeResponse(
   DVLOG(1) << __func__;
 
   if (!is_running_platform_verification_test_) {
-    NOTREACHED_IN_MIGRATION()
-        << "OnPlatformChallengeResponse() called unexpectedly.";
-    return;
+    NOTREACHED() << "OnPlatformChallengeResponse() called unexpectedly.";
   }
 
   is_running_platform_verification_test_ = false;
@@ -792,9 +808,7 @@ void ClearKeyCdm::OnQueryOutputProtectionStatus(
            << ", output_protection_mask:" << output_protection_mask;
 
   if (!is_running_output_protection_test_) {
-    NOTREACHED_IN_MIGRATION()
-        << "OnQueryOutputProtectionStatus() called unexpectedly.";
-    return;
+    NOTREACHED() << "OnQueryOutputProtectionStatus() called unexpectedly.";
   }
 
   // A session ID is needed, so use |last_session_id_|. However, if this is
@@ -834,8 +848,7 @@ void ClearKeyCdm::OnStorageId(uint32_t version,
                               const uint8_t* storage_id,
                               uint32_t storage_id_size) {
   if (!is_running_storage_id_test_) {
-    NOTREACHED_IN_MIGRATION() << "OnStorageId() called unexpectedly.";
-    return;
+    NOTREACHED() << "OnStorageId() called unexpectedly.";
   }
 
   is_running_storage_id_test_ = false;
@@ -872,8 +885,7 @@ void ClearKeyCdm::OnSessionKeysChange(const std::string& session_id,
   // Crash if the special key ID "crash" is present.
   const std::vector<uint8_t> kCrashKeyId{'c', 'r', 'a', 's', 'h'};
   for (const auto& key_info : keys_info) {
-    if (key_info->key_id == kCrashKeyId)
-      CHECK(false) << "Crash on special crash key ID.";
+    CHECK(key_info->key_id != kCrashKeyId) << "Crash on special crash key ID.";
   }
 
   std::vector<cdm::KeyInformation> keys_vector;

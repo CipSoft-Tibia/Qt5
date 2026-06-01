@@ -6,12 +6,11 @@ import type * as ProtocolProxyApi from '../../generated/protocol-proxy-api.js';
 import type * as Protocol from '../../generated/protocol.js';
 import type * as Platform from '../platform/platform.js';
 
-import {type DebuggerModel} from './DebuggerModel.js';
-import {type RemoteObject} from './RemoteObject.js';
+import type {DebuggerModel} from './DebuggerModel.js';
+import type {RemoteObject} from './RemoteObject.js';
 import {RuntimeModel} from './RuntimeModel.js';
-
-import {Capability, type Target} from './Target.js';
 import {SDKModel} from './SDKModel.js';
+import {Capability, type Target} from './Target.js';
 
 export class HeapProfilerModel extends SDKModel<EventTypes> {
   #enabled: boolean;
@@ -168,13 +167,13 @@ export interface HeapSnapshotProgress {
   finished?: boolean;
 }
 
-export type EventTypes = {
-  [Events.HEAP_STATS_UPDATED]: HeapStatsUpdateSamples,
-  [Events.LAST_SEEN_OBJECT_ID]: LastSeenObjectId,
-  [Events.ADD_HEAP_SNAPSHOT_CHUNK]: string,
-  [Events.REPORT_HEAP_SNAPSHOT_PROGRESS]: HeapSnapshotProgress,
-  [Events.RESET_PROFILES]: HeapProfilerModel,
-};
+export interface EventTypes {
+  [Events.HEAP_STATS_UPDATED]: HeapStatsUpdateSamples;
+  [Events.LAST_SEEN_OBJECT_ID]: LastSeenObjectId;
+  [Events.ADD_HEAP_SNAPSHOT_CHUNK]: string;
+  [Events.REPORT_HEAP_SNAPSHOT_PROGRESS]: HeapSnapshotProgress;
+  [Events.RESET_PROFILES]: HeapProfilerModel;
+}
 
 export interface NativeProfilerCallFrame {
   functionName: string;

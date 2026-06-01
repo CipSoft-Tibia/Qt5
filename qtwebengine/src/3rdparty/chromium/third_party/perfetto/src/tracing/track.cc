@@ -116,6 +116,21 @@ void ThreadTrack::Serialize(protos::pbzero::TrackDescriptor* desc) const {
   desc->AppendRawProtoBytes(bytes.data(), bytes.size());
 }
 
+protos::gen::TrackDescriptor NamedTrack::Serialize() const {
+  auto desc = Track::Serialize();
+  if (static_name_) {
+    desc.set_static_name(static_name_.value);
+  } else {
+    desc.set_name(dynamic_name_.value);
+  }
+  return desc;
+}
+
+void NamedTrack::Serialize(protos::pbzero::TrackDescriptor* desc) const {
+  auto bytes = Serialize().SerializeAsString();
+  desc->AppendRawProtoBytes(bytes.data(), bytes.size());
+}
+
 protos::gen::TrackDescriptor CounterTrack::Serialize() const {
   auto desc = Track::Serialize();
   auto* counter = desc.mutable_counter();
@@ -198,20 +213,21 @@ void TrackRegistry::InitializeInstance() {
 
 // static
 uint64_t TrackRegistry::ComputeProcessUuid() {
+  base::Hasher hash;
   // Use the process start time + pid as the unique identifier for this process.
   // This ensures that if there are two independent copies of the Perfetto SDK
   // in the same process (e.g., one in the app and another in a system
   // framework), events emitted by each will be consistently interleaved on
   // common thread and process tracks.
   if (uint64_t start_time = GetProcessStartTime()) {
-    base::Hasher hash;
     hash.Update(start_time);
-    hash.Update(Platform::GetCurrentProcessId());
-    return hash.digest();
+  } else {
+    // Fall back to a randomly generated identifier.
+    static uint64_t random_once = static_cast<uint64_t>(base::Uuidv4().lsb());
+    hash.Update(random_once);
   }
-  // Fall back to a randomly generated identifier.
-  static uint64_t random_once = static_cast<uint64_t>(base::Uuidv4().lsb());
-  return random_once;
+  hash.Update(Platform::GetCurrentProcessId());
+  return hash.digest();
 }
 
 void TrackRegistry::ResetForTesting() {
@@ -221,7 +237,7 @@ void TrackRegistry::ResetForTesting() {
 void TrackRegistry::UpdateTrack(Track track,
                                 const std::string& serialized_desc) {
   std::lock_guard<std::mutex> lock(mutex_);
-  tracks_[track.uuid] = std::move(serialized_desc);
+  tracks_[track.uuid] = {serialized_desc, track.parent_uuid};
 }
 
 void TrackRegistry::EraseTrack(Track track) {

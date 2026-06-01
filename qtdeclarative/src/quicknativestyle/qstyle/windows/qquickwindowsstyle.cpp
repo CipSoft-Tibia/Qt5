@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickwindowsstyle_p.h"
 #include "qquickwindowsstyle_p_p.h"
@@ -2294,6 +2295,9 @@ void QWindowsStyle::refreshPalette()
     if (auto nativeWindowsApp = dynamic_cast<QWindowsApplication *>(QGuiApplicationPrivate::platformIntegration()))
         nativeWindowsApp->populateLightSystemPalette(pal);
     QQuickTheme::instance()->setPalette(QQuickTheme::System, pal);
+    QPalette guiPalette = QGuiApplication::palette();
+    guiPalette.resolve(pal);
+    QGuiApplication::setPalette(guiPalette);
 }
 
 void QWindowsStyle::polish()

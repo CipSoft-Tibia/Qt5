@@ -32,21 +32,12 @@ QT_BEGIN_NAMESPACE
 
     \snippet multimedia-snippets/camera.cpp Camera selection
 
-    On hardware that supports it, QCamera lets you adjust the focus
-    and zoom. This also includes functionality such as a
-    "Macro" mode for close up work (e.g. reading barcodes, or
-    recognizing letters), or "touch to focus" - indicating an
-    interesting area of the image for the hardware to attempt
-    to focus on.
-
-    \snippet multimedia-snippets/camera.cpp Camera custom focus
-
-    The \l minimumZoomFactor() and \l maximumZoomFactor() methods provide the
-    range of supported zoom factors. The \l zoomTo() method allows changing
-    the zoom factor.
+    On hardware that supports it, \l QCamera lets you adjust the focus
+    and zoom. The \l minimumZoomFactor and \l maximumZoomFactor
+    properties provide the range of supported zoom factors. The
+    \l zoomFactor property allows changing the zoom factor.
 
     \snippet multimedia-snippets/camera.cpp Camera zoom
-
 
     After capturing the raw data for a camera frame, the camera hardware and
     software performs various image processing tasks to produce the final
@@ -61,6 +52,15 @@ QT_BEGIN_NAMESPACE
 
     For more information on image processing of camera frames, see
     \l {camera_image_processing}{Camera Image Processing}.
+
+    Most platforms require that the end-user grants permissions before a
+    camera can be activated. It is therefore strongly recommended that
+    application developers utilize the \l QCameraPermission class when
+    working with cameras. The following is a short example that requests
+    permissions from the end-user when the application starts, and then
+    activates the camera if permissions are granted.
+
+    \snippet multimedia-snippets/camera.cpp Camera permission
 
     See the \l{Camera Overview}{camera overview} for more information.
 
@@ -93,40 +93,10 @@ QT_BEGIN_NAMESPACE
     }
     \endqml
 
-    On hardware that supports it, QCamera lets you adjust the focus
-    and zoom. This also includes functionality such as a
-    "Macro" mode for close up work (e.g. reading barcodes, or
-    recognizing letters), or "touch to focus" - indicating an
-    interesting area of the image for the hardware to attempt
-    to focus on.
-
-    \qml
-
-    Item {
-        width: 640
-        height: 360
-
-        CaptureSession {
-            camera: Camera {
-                id: camera
-
-                focusMode: Camera.FocusModeAutoNear
-                customFocusPoint: Qt.point(0.2, 0.2) // Focus relative to top-left corner
-            }
-            videoOutput: videoOutput
-        }
-
-        VideoOutput {
-            id: videoOutput
-            anchors.fill: parent
-        }
-    }
-
-    \endqml
-
-    The \l minimumZoomFactor and \l maximumZoomFactor properties provide the
-    range of supported zoom factors. The \l zoomFactor property allows changing
-    the zoom factor.
+    On hardware that supports it, \l Camera lets you adjust the focus
+    and zoom. The \l minimumZoomFactor and \l maximumZoomFactor
+    properties provide the range of supported zoom factors. The
+    \l zoomFactor property allows changing the zoom factor.
 
     \qml
     Camera {
@@ -152,6 +122,25 @@ QT_BEGIN_NAMESPACE
 
     For more information on image processing of camera frames, see
     \l {camera_image_processing}{Camera Image Processing}.
+
+    Most platforms require that the end-user grants permissions before a
+    camera can be activated. It is therefore strongly recommended that
+    application developers utilize the \l CameraPermission component when
+    working with cameras. The following is a short example that requests
+    permissions from the end-user when the application starts, and then
+    activates the camera if permissions are granted.
+
+    \qml
+    CameraPermission {
+        id: cameraPermission
+    }
+
+    Camera {
+        active: cameraPermission.status === Qt.PermissionStatus.Granted
+    }
+
+    Component.onCompleted: cameraPermission.request()
+    \endqml
 
     See the \l{Camera Overview}{camera overview} for more information.
 */
@@ -281,13 +270,15 @@ void QCamera::setActive(bool active)
 
     Returns the error state of the camera.
 
-    \sa QCamera::Error
+    \qmlenumeratorsfrom QCamera::Error
 */
 
 /*!
     \property QCamera::error
 
     Returns the error state of the camera.
+
+    \sa QCamera::Error
 */
 
 QCamera::Error QCamera::error() const
@@ -336,10 +327,13 @@ QString QCamera::errorString() const
 */
 
 /*!
-    \qmlproperty Features QtMultimedia::Camera::supportedFeatures
-    Returns the features supported by this camera.
+    \qmlproperty enumeration QtMultimedia::Camera::supportedFeatures
 
-    \sa QCamera::Feature
+    Returns the features supported by this camera. The value is bitmask
+    that may contain any of the following flags. It stores an OR
+    combination of Feature values.
+
+    \qmlenumeratorsfrom QCamera::Feature
 */
 
 /*!
@@ -420,8 +414,8 @@ QPlatformCamera *QCamera::platformCamera()
 
     Gets or sets the currently active camera device.
 
-    When switching camera devices, the QCamera's capabilities are updated.
-    Additionally, the QCamera's control properties (such as \l focusMode,
+    When switching camera devices, the \l Camera's capabilities are updated.
+    Additionally, the \l Camera's control properties (such as \l focusMode,
     \l flashMode, \l focusDistance, \l zoomFactor) are updated as follows:
 
     \list
@@ -438,6 +432,19 @@ QPlatformCamera *QCamera::platformCamera()
     \property QCamera::cameraDevice
 
     Returns the QCameraDevice object associated with this camera.
+
+    When switching camera devices, the \l QCamera's capabilities are updated.
+    Additionally, the \l QCamera's control properties (such as \l focusMode,
+    \l flashMode, \l focusDistance, \l zoomFactor) are updated as follows:
+
+    \list
+        \li If a property is supported on the new device, the property value is applied to the
+            camera device.
+        \li If a property is supported but its range of valid values was changed, the property
+            is clamped to the new range and applied to the camera device.
+        \li If the new camera device does not support a property, the property value is reset
+            to default, and no changes are made to the camera device.
+    \endlist
  */
 QCameraDevice QCamera::cameraDevice() const
 {
@@ -487,6 +494,16 @@ void QCamera::setCameraDevice(const QCameraDevice &cameraDevice)
     semi-planar NV12/NV21. This depends on the codec implemented by the device
     OEM.
 
+    \note On macOS, camera-devices are shared across multiple
+    applications on the operating system. This means that another
+    application may override the format set by this property.
+    Application developers should account for receiving video frames
+    that have a different resolution, pixel format and framerate than
+    what is described by this property. This property does not change
+    when the device's format is modified by another application. The
+    format described by this property can be re-applied to the device
+    by re-activating the \l Camera.
+
     \sa cameraDevice::videoFormats
 */
 
@@ -499,6 +516,16 @@ void QCamera::setCameraDevice(const QCameraDevice &cameraDevice)
     \b YUV420P format, you will receive either a fully planar 4:2:0 YUV420P or a
     semi-planar NV12/NV21. This depends on the codec implemented by the device
     OEM.
+
+    \note On macOS, camera-devices are shared across multiple
+    applications on the operating system. This means that another
+    application may override the format set by this property.
+    Application developers should account for receiving video frames
+    that have a different resolution, pixel format and framerate than
+    what is described by this property. This property does not change
+    when the device's format is modified by another application. The
+    format described by this property can be re-applied to the device
+    by re-activating the \l QCamera.
 
     \sa QCameraDevice::videoFormats
 */
@@ -663,8 +690,6 @@ QPointF QCamera::focusPoint() const
     coordinates. This means that QPointF(0,0) points to the top-left corner
     of the frame, and QPointF(0.5,0.5) points to the center of the frame.
 
-    Custom focus point is used only in \c FocusPointCustom focus mode.
-
     You can check whether custom focus points are supported by querying
     supportedFeatures() with the Feature.CustomFocusPoint flag.
 */
@@ -674,8 +699,6 @@ QPointF QCamera::focusPoint() const
 
     This property represents the position of the custom focus point, in relative frame coordinates:
     QPointF(0,0) points to the left top frame point, QPointF(0.5,0.5) points to the frame center.
-
-    The custom focus point property is used only in \c FocusPointCustom focus mode.
 
     You can check whether custom focus points are supported by querying
     supportedFeatures() with the Feature.CustomFocusPoint flag.
@@ -887,11 +910,9 @@ void QCamera::zoomTo(float factor, float rate)
     This property only has an effect when capturing images using
     \l ImageCapture
 
-    \value Camera.FlashOff      Flash is Off.
-    \value Camera.FlashOn       Flash is On.
-    \value Camera.FlashAuto     Automatic flash.
+    \qmlenumeratorsfrom QCamera::FlashMode
 
-    \sa isFlashModeSupported, isFlashReady
+    \sa isFlashModeSupported(), isFlashReady(), flashReady
 */
 
 /*!
@@ -951,7 +972,7 @@ bool QCamera::isFlashReady() const
 }
 
 /*!
-    \qmlproperty Camera::TorchMode Camera::torchMode
+    \qmlproperty enumeration Camera::torchMode
 
     Gets or sets the torch mode being used.
 
@@ -959,7 +980,9 @@ bool QCamera::isFlashReady() const
     low light conditions. Enabling torch mode will usually override any currently set
     flash mode.
 
-    \sa QCamera::TorchMode, Camera::isTorchModeSupported(), Camera::flashMode
+    \qmlenumeratorsfrom QCamera::TorchMode
+
+    \sa isTorchModeSupported(), flashMode
 */
 
 /*!
@@ -1001,17 +1024,19 @@ bool QCamera::isTorchModeSupported(QCamera::TorchMode mode) const
 }
 
 /*!
-    \qmlproperty ExposureMode QtMultimedia::Camera::exposureMode
+    \qmlproperty enumeration QtMultimedia::Camera::exposureMode
     \brief The exposure mode being used.
 
-    \sa QCamera::ExposureMode, Camera::isExposureModeSupported()
+    \qmlenumeratorsfrom QCamera::ExposureMode
+
+    \sa isExposureModeSupported()
 */
 
 /*!
-  \property QCamera::exposureMode
-  \brief The exposure mode being used.
+    \property QCamera::exposureMode
+    \brief The exposure mode being used.
 
-  \sa QCamera::isExposureModeSupported
+    \sa QCamera::isExposureModeSupported
 */
 QCamera::ExposureMode QCamera::exposureMode() const
 {
@@ -1051,11 +1076,11 @@ bool QCamera::isExposureModeSupported(QCamera::ExposureMode mode) const
 */
 
 /*!
-  \property QCamera::exposureCompensation
-  \brief Exposure compensation in EV units.
+    \property QCamera::exposureCompensation
+    \brief Exposure compensation in EV units.
 
-  Exposure compensation property allows to adjust the automatically calculated
-  exposure.
+    Exposure compensation property allows to adjust the automatically calculated
+    exposure.
 */
 float QCamera::exposureCompensation() const
 {
@@ -1312,11 +1337,13 @@ void QCamera::setAutoExposureTime()
 
 
 /*!
-    \qmlproperty WhiteBalanceMode QtMultimedia::Camera::whiteBalanceMode
+    \qmlproperty enumeration QtMultimedia::Camera::whiteBalanceMode
 
     Gets or sets the white balance mode being used.
 
-    \sa QCamera::WhiteBalanceMode
+    \qmlenumeratorsfrom QCamera::WhiteBalanceMode
+
+    \sa isWhiteBalanceModeSupported()
 */
 
 /*!

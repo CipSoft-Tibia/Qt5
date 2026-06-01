@@ -52,6 +52,8 @@ public:
     virtual void setCookie(const QString &domain, const QString &name, const QString &value) = 0;
     virtual void deleteCookie(const QString &domain, const QString &name) = 0;
     virtual void deleteAllCookies() = 0;
+
+    virtual QWindow *nativeWindow() const = 0;
 };
 
 QT_END_NAMESPACE

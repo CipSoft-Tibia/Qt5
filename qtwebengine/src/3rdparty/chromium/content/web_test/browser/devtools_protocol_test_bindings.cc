@@ -27,7 +27,7 @@
 #include "content/web_test/common/web_test_switches.h"
 #include "ipc/ipc_channel.h"
 
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_FUCHSIA)
 #include "content/public/browser/devtools_frontend_host.h"
 #endif
 
@@ -79,7 +79,7 @@ GURL DevToolsProtocolTestBindings::MapTestURLIfNeeded(const GURL& test_url,
   return GURL(spec);
 }
 
-void DevToolsProtocolTestBindings::ParseLog(const std::string_view log) {
+void DevToolsProtocolTestBindings::ParseLog(std::string_view log) {
   if (log.empty()) {
     return;
   }
@@ -95,7 +95,7 @@ void DevToolsProtocolTestBindings::ParseLog(const std::string_view log) {
 
 void DevToolsProtocolTestBindings::ReadyToCommitNavigation(
     NavigationHandle* navigation_handle) {
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_FUCHSIA)
   content::RenderFrameHost* frame = navigation_handle->GetRenderFrameHost();
   if (frame->GetParent())
     return;
@@ -114,7 +114,7 @@ void DevToolsProtocolTestBindings::WebContentsDestroyed() {
 }
 
 void DevToolsProtocolTestBindings::HandleMessagesFromLog(
-    const std::string_view protocol_message_string) {
+    std::string_view protocol_message_string) {
   std::optional<base::Value::Dict> parsed =
       base::JSONReader::ReadDict(protocol_message_string);
   if (!parsed) {
@@ -168,7 +168,7 @@ void DevToolsProtocolTestBindings::HandleMessageFromTest(
       WebTestControlHost::Get()->PrintMessageToStderr(
           "Protocol message: " + *protocol_message + "\n");
       agent_host_->DispatchProtocolMessage(
-          this, base::as_bytes(base::make_span(*protocol_message)));
+          this, base::as_byte_span(*protocol_message));
     }
     return;
   }

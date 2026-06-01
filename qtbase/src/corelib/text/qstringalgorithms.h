@@ -1,5 +1,6 @@
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QSTRINGALGORITHMS_H
 #define QSTRINGALGORITHMS_H
@@ -129,7 +130,7 @@ namespace QtPrivate {
 [[nodiscard]] Q_CORE_EXPORT Q_DECL_PURE_FUNCTION bool isLatin1(QStringView   s) noexcept;
 [[nodiscard]] Q_CORE_EXPORT Q_DECL_PURE_FUNCTION bool isValidUtf16(QStringView s) noexcept;
 
-template <typename Char, size_t N> [[nodiscard]] constexpr Q_ALWAYS_INLINE
+template <typename Char, size_t N> [[nodiscard]] Q_ALWAYS_INLINE constexpr
 qsizetype lengthHelperContainerLoop(const Char (&str)[N])
 {
 #if defined(__cpp_lib_constexpr_algorithms) && defined(Q_CC_GNU_ONLY)
@@ -148,7 +149,7 @@ qsizetype lengthHelperContainerLoop(const Char (&str)[N])
 #endif
 }
 
-template <typename Char, size_t N> [[nodiscard]] constexpr Q_ALWAYS_INLINE
+template <typename Char, size_t N> [[nodiscard]] Q_ALWAYS_INLINE constexpr
 std::enable_if_t<sizeof(Char) == sizeof(char16_t), qsizetype>
 lengthHelperContainer(const Char (&str)[N])
 {

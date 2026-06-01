@@ -33,7 +33,9 @@
 #include "dawn/common/BitSetIterator.h"
 #include "dawn/common/Enumerator.h"
 #include "dawn/common/ityp_array.h"
+#include "dawn/common/ityp_bitset.h"
 #include "dawn/common/ityp_span.h"
+#include "dawn/native/Adapter.h"
 #include "dawn/native/ChainUtils.h"
 #include "dawn/native/CommandValidation.h"
 #include "dawn/native/Commands.h"
@@ -45,28 +47,37 @@
 
 namespace dawn::native {
 
-static constexpr ityp::array<wgpu::VertexFormat, VertexFormatInfo, 32> sVertexFormatTable =
+static constexpr ityp::array<wgpu::VertexFormat, VertexFormatInfo, 42> sVertexFormatTable =
     []() constexpr {
-        ityp::array<wgpu::VertexFormat, VertexFormatInfo, 32> table{};
+        ityp::array<wgpu::VertexFormat, VertexFormatInfo, 42> table{};
 
         // clang-format off
+        table[wgpu::VertexFormat::Uint8          ] = { 1, 1, VertexFormatBaseType::Uint };
         table[wgpu::VertexFormat::Uint8x2        ] = { 2, 2, VertexFormatBaseType::Uint };
         table[wgpu::VertexFormat::Uint8x4        ] = { 4, 4, VertexFormatBaseType::Uint };
+        table[wgpu::VertexFormat::Sint8          ] = { 1, 1, VertexFormatBaseType::Sint };
         table[wgpu::VertexFormat::Sint8x2        ] = { 2, 2, VertexFormatBaseType::Sint };
         table[wgpu::VertexFormat::Sint8x4        ] = { 4, 4, VertexFormatBaseType::Sint };
+        table[wgpu::VertexFormat::Unorm8         ] = { 1, 1, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Unorm8x2       ] = { 2, 2, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Unorm8x4       ] = { 4, 4, VertexFormatBaseType::Float};
+        table[wgpu::VertexFormat::Snorm8         ] = { 1, 1, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Snorm8x2       ] = { 2, 2, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Snorm8x4       ] = { 4, 4, VertexFormatBaseType::Float};
 
+        table[wgpu::VertexFormat::Uint16         ] = { 2, 1, VertexFormatBaseType::Uint };
         table[wgpu::VertexFormat::Uint16x2       ] = { 4, 2, VertexFormatBaseType::Uint };
         table[wgpu::VertexFormat::Uint16x4       ] = { 8, 4, VertexFormatBaseType::Uint };
+        table[wgpu::VertexFormat::Sint16         ] = { 2, 1, VertexFormatBaseType::Sint };
         table[wgpu::VertexFormat::Sint16x2       ] = { 4, 2, VertexFormatBaseType::Sint };
         table[wgpu::VertexFormat::Sint16x4       ] = { 8, 4, VertexFormatBaseType::Sint };
+        table[wgpu::VertexFormat::Unorm16        ] = { 2, 1, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Unorm16x2      ] = { 4, 2, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Unorm16x4      ] = { 8, 4, VertexFormatBaseType::Float};
+        table[wgpu::VertexFormat::Snorm16        ] = { 2, 1, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Snorm16x2      ] = { 4, 2, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Snorm16x4      ] = { 8, 4, VertexFormatBaseType::Float};
+        table[wgpu::VertexFormat::Float16        ] = { 2, 1, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Float16x2      ] = { 4, 2, VertexFormatBaseType::Float};
         table[wgpu::VertexFormat::Float16x4      ] = { 8, 4, VertexFormatBaseType::Float};
 
@@ -83,6 +94,7 @@ static constexpr ityp::array<wgpu::VertexFormat, VertexFormatInfo, 32> sVertexFo
         table[wgpu::VertexFormat::Sint32x3       ] = {12, 3, VertexFormatBaseType::Sint };
         table[wgpu::VertexFormat::Sint32x4       ] = {16, 4, VertexFormatBaseType::Sint };
         table[wgpu::VertexFormat::Unorm10_10_10_2] = { 4, 4, VertexFormatBaseType::Float};
+        table[wgpu::VertexFormat::Unorm8x4BGRA   ] = { 4, 4, VertexFormatBaseType::Float};
         // clang-format on
 
         return table;
@@ -140,9 +152,9 @@ MaybeError ValidateVertexAttribute(DeviceBase* device,
 
     DAWN_INVALID_IF(metadata.usedVertexInputs[location] &&
                         formatInfo.baseType != metadata.vertexInputBaseTypes[location],
-                    "Attribute base type (%s) does not match the "
-                    "shader's base type (%s) in location (%u).",
-                    formatInfo.baseType, metadata.vertexInputBaseTypes[location],
+                    "Attribute base type (%s for %s) does not match the shader's base type (%s) in "
+                    "location (%u).",
+                    formatInfo.baseType, attribute->format, metadata.vertexInputBaseTypes[location],
                     attribute->shaderLocation);
 
     DAWN_INVALID_IF((*attributesSetMask)[location],
@@ -165,11 +177,6 @@ MaybeError ValidateVertexBufferLayout(DeviceBase* device,
     DAWN_INVALID_IF(buffer->arrayStride % 4 != 0,
                     "Vertex buffer arrayStride (%u) is not a multiple of 4.", buffer->arrayStride);
 
-    DAWN_INVALID_IF(
-        buffer->stepMode == wgpu::VertexStepMode::VertexBufferNotUsed && buffer->attributeCount > 0,
-        "attributeCount (%u) is not zero although vertex buffer stepMode is %s.",
-        buffer->attributeCount, wgpu::VertexStepMode::VertexBufferNotUsed);
-
     for (uint32_t i = 0; i < buffer->attributeCount; ++i) {
         DAWN_TRY_CONTEXT(ValidateVertexAttribute(device, &buffer->attributes[i], metadata,
                                                  buffer->arrayStride, attributesSetMask),
@@ -188,9 +195,12 @@ ResultOrError<ShaderModuleEntryPoint> ValidateVertexState(
 
     const CombinedLimits& limits = device->GetLimits();
 
-    DAWN_INVALID_IF(descriptor->bufferCount > limits.v1.maxVertexBuffers,
-                    "Vertex buffer count (%u) exceeds the maximum number of vertex buffers (%u).",
-                    descriptor->bufferCount, limits.v1.maxVertexBuffers);
+    const uint32_t maxVertexBuffers = limits.v1.maxVertexBuffers;
+    DAWN_INVALID_IF(descriptor->bufferCount > maxVertexBuffers,
+                    "Vertex buffer count (%u) exceeds the maximum number of vertex buffers (%u).%s",
+                    descriptor->bufferCount, maxVertexBuffers,
+                    DAWN_INCREASE_LIMIT_MESSAGE(device->GetAdapter(), maxVertexBuffers,
+                                                descriptor->bufferCount));
 
     ShaderModuleEntryPoint entryPoint;
     DAWN_TRY_ASSIGN_CONTEXT(
@@ -509,10 +519,8 @@ MaybeError ValidateColorTargetState(
     DAWN_INVALID_IF(!format->IsColor() || !format->isRenderable,
                     "Color format (%s) is not color renderable.", format->format);
 
-    DAWN_INVALID_IF(
-        descriptor.blend &&
-            !(format->GetAspectInfo(Aspect::Color).supportedSampleTypes & SampleTypeBit::Float),
-        "Blending is enabled but color format (%s) is not blendable.", format->format);
+    DAWN_INVALID_IF(descriptor.blend && !format->isBlendable,
+                    "Blending is enabled but color format (%s) is not blendable.", format->format);
 
     if (!fragmentWritten) {
         DAWN_INVALID_IF(
@@ -651,8 +659,11 @@ ResultOrError<ShaderModuleEntryPoint> ValidateFragmentState(DeviceBase* device,
 
     uint32_t maxColorAttachments = device->GetLimits().v1.maxColorAttachments;
     DAWN_INVALID_IF(descriptor->targetCount > maxColorAttachments,
-                    "Number of targets (%u) exceeds the maximum (%u).", descriptor->targetCount,
-                    maxColorAttachments);
+                    "Number of targets (%u) exceeds the maximum (%u).%s", descriptor->targetCount,
+                    maxColorAttachments,
+                    DAWN_INCREASE_LIMIT_MESSAGE(device->GetAdapter(), maxColorAttachments,
+                                                descriptor->targetCount));
+
     auto targets =
         ityp::SpanFromUntyped<ColorAttachmentIndex>(descriptor->targets, descriptor->targetCount);
 
@@ -898,15 +909,17 @@ MaybeError ValidateRenderPipelineDescriptor(DeviceBase* device,
                                   descriptor->depthStencil, descriptor->multisample),
             "validating fragment state.");
 
-        bool hasStorageAttachments =
-            descriptor->layout != nullptr && descriptor->layout->HasAnyStorageAttachments();
-        DAWN_INVALID_IF(descriptor->fragment->targetCount == 0 && !descriptor->depthStencil &&
-                            !hasStorageAttachments,
-                        "No attachment was specified (color, depth-stencil or other).");
-
         DAWN_TRY(ValidateInterStageMatching(device, descriptor->vertex, vertexEntryPoint,
                                             *(descriptor->fragment), fragmentEntryPoint));
     }
+
+    bool hasStorageAttachments =
+        descriptor->layout != nullptr && descriptor->layout->HasAnyStorageAttachments();
+    bool hasColorAttachments =
+        descriptor->fragment != nullptr && descriptor->fragment->targetCount != 0;
+    bool hasDepthStencilAttachment = descriptor->depthStencil != nullptr;
+    DAWN_INVALID_IF(!hasColorAttachments && !hasDepthStencilAttachment && !hasStorageAttachments,
+                    "No attachment was specified.");
 
     return {};
 }
@@ -936,7 +949,8 @@ std::vector<StageAndDescriptor> GetRenderStagesAndSetPlaceholderShader(
 // RenderPipelineBase
 
 RenderPipelineBase::RenderPipelineBase(DeviceBase* device,
-                                       const UnpackedPtr<RenderPipelineDescriptor>& descriptor)
+                                       const UnpackedPtr<RenderPipelineDescriptor>& descriptor,
+                                       ImmediateConstantMask requiredInternalImmediateConstants)
     : PipelineBase(device,
                    descriptor->layout,
                    descriptor->label,
@@ -946,29 +960,26 @@ RenderPipelineBase::RenderPipelineBase(DeviceBase* device,
 
     auto buffers =
         ityp::SpanFromUntyped<VertexBufferSlot>(descriptor->vertex.buffers, mVertexBufferCount);
-    for (auto [slot, bufferOrig] : Enumerate(buffers)) {
+    for (auto [slot, buffer] : Enumerate(buffers)) {
         // Skip unused slots
-        if (bufferOrig.stepMode == wgpu::VertexStepMode::VertexBufferNotUsed) {
+        if (buffer.stepMode == wgpu::VertexStepMode::Undefined && buffer.attributeCount == 0) {
             continue;
         }
 
-        // Make a local copy with defaulting applied, before copying the
-        // now-defaulted values into mVertexBufferInfos.
-        VertexBufferLayout buffer = bufferOrig.WithTrivialFrontendDefaults();
-
         mVertexBuffersUsed.set(slot);
         mVertexBufferInfos[slot].arrayStride = buffer.arrayStride;
-        mVertexBufferInfos[slot].stepMode = buffer.stepMode;
+        mVertexBufferInfos[slot].stepMode = (buffer.stepMode == wgpu::VertexStepMode::Undefined)
+                                                ? wgpu::VertexStepMode::Vertex
+                                                : buffer.stepMode;
         mVertexBufferInfos[slot].usedBytesInStride = 0;
         mVertexBufferInfos[slot].lastStride = 0;
-        switch (buffer.stepMode) {
+        switch (mVertexBufferInfos[slot].stepMode) {
             case wgpu::VertexStepMode::Vertex:
                 mVertexBuffersUsedAsVertexBuffer.set(slot);
                 break;
             case wgpu::VertexStepMode::Instance:
                 mVertexBuffersUsedAsInstanceBuffer.set(slot);
                 break;
-            case wgpu::VertexStepMode::VertexBufferNotUsed:
             case wgpu::VertexStepMode::Undefined:
                 DAWN_UNREACHABLE();
         }
@@ -1072,7 +1083,7 @@ RenderPipelineBase::RenderPipelineBase(DeviceBase* device,
 
 RenderPipelineBase::RenderPipelineBase(DeviceBase* device,
                                        ObjectBase::ErrorTag tag,
-                                       const char* label)
+                                       StringView label)
     : PipelineBase(device, tag, label) {}
 
 RenderPipelineBase::~RenderPipelineBase() = default;
@@ -1086,10 +1097,10 @@ void RenderPipelineBase::DestroyImpl() {
 }
 
 // static
-Ref<RenderPipelineBase> RenderPipelineBase::MakeError(DeviceBase* device, const char* label) {
+Ref<RenderPipelineBase> RenderPipelineBase::MakeError(DeviceBase* device, StringView label) {
     class ErrorRenderPipeline final : public RenderPipelineBase {
       public:
-        explicit ErrorRenderPipeline(DeviceBase* device, const char* label)
+        explicit ErrorRenderPipeline(DeviceBase* device, StringView label)
             : RenderPipelineBase(device, ObjectBase::kError, label) {}
 
         MaybeError InitializeImpl() override {

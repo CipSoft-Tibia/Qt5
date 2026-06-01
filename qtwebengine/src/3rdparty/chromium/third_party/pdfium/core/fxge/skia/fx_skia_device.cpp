@@ -513,7 +513,7 @@ void PaintStroke(SkPaint* spaint,
                  const SkMatrix& matrix,
                  const CFX_FillRenderOptions& fill_options) {
   SkPaint::Cap cap;
-  switch (graph_state->m_LineCap) {
+  switch (graph_state->line_cap()) {
     case CFX_GraphStateData::LineCap::kRound:
       cap = SkPaint::kRound_Cap;
       break;
@@ -525,7 +525,7 @@ void PaintStroke(SkPaint* spaint,
       break;
   }
   SkPaint::Join join;
-  switch (graph_state->m_LineJoin) {
+  switch (graph_state->line_join()) {
     case CFX_GraphStateData::LineJoin::kRound:
       join = SkPaint::kRound_Join;
       break;
@@ -547,33 +547,32 @@ void PaintStroke(SkPaint* spaint,
 
   float width = fill_options.zero_area
                     ? 0.0f
-                    : std::max(graph_state->m_LineWidth,
+                    : std::max(graph_state->line_width(),
                                std::min(deviceUnits[0].length(),
                                         deviceUnits[1].length()));
-  if (!graph_state->m_DashArray.empty()) {
-    size_t count = (graph_state->m_DashArray.size() + 1) / 2;
+  const std::vector<float>& dash_array = graph_state->dash_array();
+  if (!dash_array.empty()) {
+    size_t count = (dash_array.size() + 1) / 2;
     DataVector<SkScalar> intervals(count * 2);
     // Set dash pattern
     for (size_t i = 0; i < count; i++) {
-      float on = graph_state->m_DashArray[i * 2];
+      float on = dash_array[i * 2];
       if (on <= 0.000001f) {
         on = 0.1f;
       }
-      float off = i * 2 + 1 == graph_state->m_DashArray.size()
-                      ? on
-                      : graph_state->m_DashArray[i * 2 + 1];
+      float off = i * 2 + 1 == dash_array.size() ? on : dash_array[i * 2 + 1];
       off = std::max(off, 0.0f);
       intervals[i * 2] = on;
       intervals[i * 2 + 1] = off;
     }
     spaint->setPathEffect(SkDashPathEffect::Make(
         intervals.data(), pdfium::checked_cast<int>(intervals.size()),
-        graph_state->m_DashPhase));
+        graph_state->dash_phase()));
   }
   spaint->setStyle(SkPaint::kStroke_Style);
   spaint->setAntiAlias(!fill_options.aliased_path);
   spaint->setStrokeWidth(width);
-  spaint->setStrokeMiter(graph_state->m_MiterLimit);
+  spaint->setStrokeMiter(graph_state->miter_limit());
   spaint->setStrokeCap(cap);
   spaint->setStrokeJoin(join);
 }
@@ -751,13 +750,13 @@ CFX_SkiaDeviceDriver::CFX_SkiaDeviceDriver(
 }
 
 CFX_SkiaDeviceDriver::CFX_SkiaDeviceDriver(SkCanvas& canvas)
-    : m_pCanvas(&canvas), m_bGroupKnockout(false) {
+    : m_pCanvas(&canvas), m_bRgbByteOrder(false), m_bGroupKnockout(false) {
   int width = m_pCanvas->imageInfo().width();
   int height = m_pCanvas->imageInfo().height();
   DCHECK_EQ(kUnknown_SkColorType, m_pCanvas->imageInfo().colorType());
 
-  constexpr uint32_t kMagenta = 0xffff00ff;
-  constexpr uint32_t kGreen = 0xff00ff00;
+  static constexpr uint32_t kMagenta = 0xffff00ff;
+  static constexpr uint32_t kGreen = 0xff00ff00;
   m_pBitmap = MakeDebugBitmap(width, height, kMagenta);
   m_pBackdropBitmap = MakeDebugBitmap(width, height, kGreen);
 }
@@ -1016,7 +1015,7 @@ int CFX_SkiaDeviceDriver::GetDeviceCaps(int caps_id) const {
              FXRC_BLEND_MODE | FXRC_SOFT_CLIP | FXRC_ALPHA_OUTPUT |
              FXRC_FILLSTROKE_PATH | FXRC_SHADING | FXRC_PREMULTIPLIED_ALPHA;
     default:
-      NOTREACHED_NORETURN();
+      NOTREACHED();
   }
 }
 

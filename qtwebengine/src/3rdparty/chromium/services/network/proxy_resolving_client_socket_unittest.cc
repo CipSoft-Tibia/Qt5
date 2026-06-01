@@ -19,6 +19,7 @@
 #include "net/base/network_isolation_key.h"
 #include "net/base/proxy_server.h"
 #include "net/base/proxy_string_util.h"
+#include "net/base/schemeful_site.h"
 #include "net/base/test_completion_callback.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/http/http_proxy_connect_job.h"
@@ -92,12 +93,11 @@ INSTANTIATE_TEST_SUITE_P(All,
 // case no proxy is in use.
 TEST_P(ProxyResolvingClientSocketTest, NetworkIsolationKeyDirect) {
   // This deliberately uses a different origin than the one being connected to.
-  url::Origin kNetworkIsolationKeyOrigin =
-      url::Origin::Create(GURL("https://foopy.test"));
-  net::NetworkIsolationKey kNetworkIsolationKey(
-      kNetworkIsolationKeyOrigin /* top_frame_origin */,
-      kNetworkIsolationKeyOrigin /* frame_origin */);
-  net::NetworkAnonymizationKey kNetworkAnonymizationKey =
+  const net::SchemefulSite kNetworkIsolationKeySite =
+      net::SchemefulSite(GURL("https://foopy.test"));
+  const net::NetworkIsolationKey kNetworkIsolationKey(kNetworkIsolationKeySite,
+                                                      kNetworkIsolationKeySite);
+  const net::NetworkAnonymizationKey kNetworkAnonymizationKey =
       net::NetworkAnonymizationKey::CreateFromNetworkIsolationKey(
           kNetworkIsolationKey);
   auto url_request_context = CreateBuilder("DIRECT")->Build();
@@ -217,7 +217,7 @@ TEST_P(ProxyResolvingClientSocketTest, NetworkIsolationKeyWithH2Proxy) {
   net::SequencedSocketData socket_data(spdy_reads, spdy_writes);
   session_deps.socket_factory->AddSocketDataProvider(&socket_data);
   net::SSLSocketDataProvider ssl_data(net::ASYNC, net::OK);
-  ssl_data.next_proto = net::kProtoHTTP2;
+  ssl_data.next_proto = net::NextProto::kProtoHTTP2;
   session_deps.socket_factory->AddSSLSocketDataProvider(&ssl_data);
 
   net::SpdyTestUtil spdy_util2;
@@ -239,7 +239,7 @@ TEST_P(ProxyResolvingClientSocketTest, NetworkIsolationKeyWithH2Proxy) {
   net::SequencedSocketData socket_data2(spdy_reads2, spdy_writes2);
   session_deps.socket_factory->AddSocketDataProvider(&socket_data2);
   net::SSLSocketDataProvider ssl_data2(net::ASYNC, net::OK);
-  ssl_data2.next_proto = net::kProtoHTTP2;
+  ssl_data2.next_proto = net::NextProto::kProtoHTTP2;
   session_deps.socket_factory->AddSSLSocketDataProvider(&ssl_data2);
 
   net::ConnectJobFactory connect_job_factory;
@@ -401,7 +401,7 @@ TEST_P(ProxyResolvingClientSocketTest, ConnectToProxy) {
     //
     // TODO(crbug.com/40946183): Investigate changing that.
     proxy_ssl_data.next_protos_expected_in_ssl_config =
-        net::NextProtoVector{net::kProtoHTTP11};
+        net::NextProtoVector{net::NextProto::kProtoHTTP11};
 
     if (!is_direct) {
       mock_client_socket_factory_.AddSSLSocketDataProvider(&proxy_ssl_data);

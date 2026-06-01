@@ -331,6 +331,7 @@ void tst_QCborValue_Json::nonStringKeysInMaps()
         QJsonObject o = m.toJsonObject();
         auto it = o.begin();
         QVERIFY(it != o.end());
+        QCOMPARE(it.keyView(), converted);
         QCOMPARE(it.key(), converted);
         QCOMPARE(it.value(), 0);
         QCOMPARE(++it, o.end());

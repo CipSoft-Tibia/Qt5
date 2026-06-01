@@ -34,6 +34,7 @@
 // performed on the main thread.
 namespace blink {
 
+class Digestor;
 class DiskDataAllocator;
 class WebProcessMemoryDump;
 struct BackgroundTaskParams;
@@ -44,7 +45,12 @@ struct BackgroundTaskParams;
 class PLATFORM_EXPORT ParkableStringImpl
     : public WTF::ThreadSafeRefCounted<ParkableStringImpl> {
  public:
-  enum class ParkingMode { kSynchronousOnly, kCompress, kToDisk };
+  enum class ParkingMode {
+    kSynchronousOnly,
+    kCompress,
+    kToDisk,
+    kCompressThenToDisk
+  };
   enum class AgeOrParkResult {
     kSuccessOrTransientFailure,
     kNonTransientFailure
@@ -65,6 +71,10 @@ class PLATFORM_EXPORT ParkableStringImpl
   // TODO(lizeb): This is the "right" way of hashing a string. Move this code
   // into WTF, and make sure it's the only way that is used.
   static std::unique_ptr<SecureDigest> HashString(StringImpl* string);
+  // Updates a digest to include the string width. This should be called after
+  // the Digestor has consumed all of the bytes of a string. Afterward, the
+  // digest can be used in MakeParkable.
+  static void UpdateDigestWithEncoding(Digestor* digestor, bool is_8bit);
 
   // Not all ParkableStringImpls are actually parkable.
   static scoped_refptr<ParkableStringImpl> MakeNonParkable(
@@ -232,7 +242,7 @@ class PLATFORM_EXPORT ParkableStringImpl
   // reference on the string before the posted task is executed.
   void ReleaseAndRemoveIfNeeded() const;
 
-  void PostBackgroundCompressionTask();
+  void PostBackgroundCompressionTask(ParkingMode mode);
   static void CompressInBackground(std::unique_ptr<BackgroundTaskParams>);
   // Called on the main thread after compression is done.
   // |params| is the same as the one passed to

@@ -17,6 +17,7 @@
 #include <QtQuickTemplates2/private/qquickheaderview_p.h>
 #include <QtQuickTemplates2/private/qquicklabel_p.h>
 #include <private/qquickheaderview_p_p.h>
+#include <private/qquickheaderviewdelegate_p.h>
 
 using namespace QQuickVisualTestUtils;
 
@@ -408,23 +409,31 @@ void tst_QQuickHeaderView::listModel()
     auto vhv = root->findChild<QQuickVerticalHeaderView *>("verticalHeader");
     QVERIFY(vhv);
 
-    auto hhvCell1 = hhv->childAt(0, 0)->childAt(0, 0)->findChild<QQuickText *>();
+    auto getDelegate = [](QQuickHeaderViewBase *headerView, qreal x,
+                          qreal y) -> QQuickHeaderViewDelegate * {
+        auto *item = headerView->childAt(x, y)->childAt(x, y);
+        return qobject_cast<QQuickHeaderViewDelegate*>(item);
+    };
+
+    auto hhvCell1 = getDelegate(hhv, 0, 0);
     QVERIFY(hhvCell1);
-    QCOMPARE(hhvCell1->property("text"), "AAA");
+    QVERIFY(hhvCell1->contentItem());
+    QCOMPARE(hhvCell1->contentItem()->property("text"), "AAA");
 
-    auto hhvCell2 = hhv->childAt(hhvCell1->width() + 5, 0)->
-                        childAt(hhvCell1->width() + 5, 0)->findChild<QQuickText *>();
+    auto hhvCell2 = getDelegate(hhv, hhvCell1->width() + 5, 0);
     QVERIFY(hhvCell2);
-    QCOMPARE(hhvCell2->property("text"), "BBB");
+    QVERIFY(hhvCell2->contentItem());
+    QCOMPARE(hhvCell2->contentItem()->property("text"), "BBB");
 
-    auto vhvCell1 = vhv->childAt(0, 0)->childAt(0, 0)->findChild<QQuickText *>();
+    auto vhvCell1 = getDelegate(vhv, 0, 0);
     QVERIFY(vhvCell1);
-    QCOMPARE(vhvCell1->property("text"), "111");
+    QVERIFY(vhvCell1->contentItem());
+    QCOMPARE(vhvCell1->contentItem()->property("text"), "111");
 
-    auto vhvCell2 = vhv->childAt(0, vhvCell1->height() + 5)->
-                        childAt(0, vhvCell1->height() + 5)->findChild<QQuickText *>();
+    auto vhvCell2 = getDelegate(vhv, 0, vhvCell1->height() + 5);
     QVERIFY(vhvCell2);
-    QCOMPARE(vhvCell2->property("text"), "222");
+    QVERIFY(vhvCell2->contentItem());
+    QCOMPARE(vhvCell2->contentItem()->property("text"), "222");
 }
 
 // A header shouldn't block events outside of itself.

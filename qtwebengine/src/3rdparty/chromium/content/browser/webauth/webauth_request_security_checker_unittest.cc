@@ -18,7 +18,6 @@
 #include "content/public/test/test_browser_context.h"
 #include "content/public/test/test_renderer_host.h"
 #include "content/public/test/test_web_contents_factory.h"
-#include "device/fido/features.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/permissions_policy/permissions_policy.h"
 #include "third_party/blink/public/mojom/webauthn/authenticator.mojom.h"
@@ -31,7 +30,7 @@ namespace {
 
 blink::ParsedPermissionsPolicy CreatePolicyToAllowWebAuthn() {
   return {blink::ParsedPermissionsPolicyDeclaration(
-      blink::mojom::PermissionsPolicyFeature::kPublicKeyCredentialsGet,
+      network::mojom::PermissionsPolicyFeature::kPublicKeyCredentialsGet,
       /*allowed_origins=*/{}, /*self_if_matches=*/std::nullopt,
       /*matches_all_origins=*/true,
       /*matches_opaque_src=*/false)};
@@ -41,7 +40,7 @@ blink::ParsedPermissionsPolicy CreatePolicyToAllowWebAuthn() {
 // with value 'none'.
 blink::ParsedPermissionsPolicy CreatePolicyToDenyWebAuthn() {
   return {blink::ParsedPermissionsPolicyDeclaration(
-      blink::mojom::PermissionsPolicyFeature::kPublicKeyCredentialsGet,
+      network::mojom::PermissionsPolicyFeature::kPublicKeyCredentialsGet,
       /*allowed_origins=*/{}, /*self_if_matches=*/std::nullopt,
       /*matches_all_origins=*/false,
       /*matches_opaque_src=*/false)};
@@ -49,7 +48,8 @@ blink::ParsedPermissionsPolicy CreatePolicyToDenyWebAuthn() {
 
 blink::ParsedPermissionsPolicy CreatePolicyToAllowWebPayments() {
   return {blink::ParsedPermissionsPolicyDeclaration(
-      blink::mojom::PermissionsPolicyFeature::kPayment, /*allowed_origins=*/{},
+      network::mojom::PermissionsPolicyFeature::kPayment,
+      /*allowed_origins=*/{},
       /*self_if_matches=*/std::nullopt,
       /*matches_all_origins=*/true, /*matches_opaque_src=*/false)};
 }
@@ -353,9 +353,6 @@ class WebAuthRequestSecurityCheckerWellKnownJSONTest : public testing::Test {
 };
 
 TEST_F(WebAuthRequestSecurityCheckerWellKnownJSONTest, Inputs) {
-  const base::test::ScopedFeatureList scoped_feature_list{
-      device::kWebAuthnRelatedOrigin};
-
   struct TestCase {
     const char* json;
     blink::mojom::AuthenticatorStatus expected;

@@ -44,7 +44,7 @@ import {type Config, InplaceEditor} from './InplaceEditor.js';
 import {Keys} from './KeyboardShortcut.js';
 import * as ThemeSupport from './theme_support/theme_support.js';
 import {Tooltip} from './Tooltip.js';
-import treeoutlineStyles from './treeoutline.css.legacy.js';
+import treeoutlineStyles from './treeoutline.css.js';
 import {
   createShadowRootWithCoreStyles,
   deepElementFromPoint,
@@ -64,13 +64,13 @@ export enum Events {
   /* eslint-enable @typescript-eslint/naming-convention */
 }
 
-export type EventTypes = {
-  [Events.ElementAttached]: TreeElement,
-  [Events.ElementsDetached]: void,
-  [Events.ElementExpanded]: TreeElement,
-  [Events.ElementCollapsed]: TreeElement,
-  [Events.ElementSelected]: TreeElement,
-};
+export interface EventTypes {
+  [Events.ElementAttached]: TreeElement;
+  [Events.ElementsDetached]: void;
+  [Events.ElementExpanded]: TreeElement;
+  [Events.ElementCollapsed]: TreeElement;
+  [Events.ElementSelected]: TreeElement;
+}
 
 export class TreeOutline extends Common.ObjectWrapper.ObjectWrapper<EventTypes> {
   readonly rootElementInternal: TreeElement;
@@ -349,9 +349,12 @@ export class TreeOutline extends Common.ObjectWrapper.ObjectWrapper<EventTypes> 
 
       // Usually, this.element is the tree container that scrolls. But sometimes
       // (i.e. in the Elements panel), its parent is.
-      let scrollParentElement: HTMLElement = this.element;
-      while (getComputedStyle(scrollParentElement).overflow === 'visible' && scrollParentElement.parentElement) {
-        scrollParentElement = scrollParentElement.parentElement;
+      let scrollParentElement: Element = this.element;
+      while (getComputedStyle(scrollParentElement).overflow === 'visible' &&
+             scrollParentElement.parentElementOrShadowHost()) {
+        const parent = scrollParentElement.parentElementOrShadowHost();
+        Platform.assertNotNullOrUndefined(parent);
+        scrollParentElement = parent;
       }
 
       const viewRect = scrollParentElement.getBoundingClientRect();
@@ -403,8 +406,7 @@ export class TreeOutlineInShadow extends TreeOutline {
     super();
     this.contentElement.classList.add('tree-outline');
     this.element = document.createElement('div');
-    this.shadowRoot =
-        createShadowRootWithCoreStyles(this.element, {cssFile: treeoutlineStyles, delegatesFocus: undefined});
+    this.shadowRoot = createShadowRootWithCoreStyles(this.element, {cssFile: treeoutlineStyles});
     this.disclosureElement = this.shadowRoot.createChild('div', 'tree-outline-disclosure');
     this.disclosureElement.appendChild(this.contentElement);
     this.renderSelection = true;
@@ -414,12 +416,10 @@ export class TreeOutlineInShadow extends TreeOutline {
     }
   }
 
-  registerRequiredCSS(cssFile: {cssContent: string}): void {
-    ThemeSupport.ThemeSupport.instance().appendStyle(this.shadowRoot, cssFile);
-  }
-
-  registerCSSFiles(cssFiles: CSSStyleSheet[]): void {
-    this.shadowRoot.adoptedStyleSheets = this.shadowRoot.adoptedStyleSheets.concat(cssFiles);
+  registerRequiredCSS(...cssFiles: {cssContent: string}[]): void {
+    for (const cssFile of cssFiles) {
+      ThemeSupport.ThemeSupport.instance().appendStyle(this.shadowRoot, cssFile);
+    }
   }
 
   hideOverflow(): void {
@@ -801,7 +801,7 @@ export class TreeElement {
     }
   }
 
-  setLeadingIcons(icons: IconButton.Icon.Icon[]): void {
+  setLeadingIcons(icons: IconButton.Icon.Icon[]|IconButton.FileSourceIcon.FileSourceIcon[]): void {
     if (!this.leadingIconsElement && !icons.length) {
       return;
     }

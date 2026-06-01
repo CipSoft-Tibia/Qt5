@@ -533,6 +533,8 @@ private Q_SLOTS:
 
     void ioHttpSingleRedirect();
     void ioHttpChangeMaxRedirects();
+    void ioHttpErrorString_data();
+    void ioHttpErrorString();
     void ioHttpRedirectErrors_data();
     void ioHttpRedirectErrors();
     void ioHttpRedirectPolicy_data();
@@ -780,7 +782,7 @@ private:
 
     void parseContentLength()
     {
-        int index = receivedData.indexOf("content-length:");
+        int index = receivedData.toLower().indexOf("content-length:");
         if (index == -1)
             return;
 
@@ -906,7 +908,7 @@ public:
 class MyMemoryCache: public QAbstractNetworkCache
 {
 public:
-    typedef QPair<QNetworkCacheMetaData, QByteArray> CachedContent;
+    using CachedContent = std::pair<QNetworkCacheMetaData, QByteArray>;
     typedef QHash<QByteArray, CachedContent> CacheData;
     CacheData cache;
 
@@ -3619,7 +3621,7 @@ void tst_QNetworkReply::connectToIPv6Address()
     QByteArray content = reply->readAll();
     //qDebug() << server.receivedData;
     QByteArray hostinfo = "\r\nhost: " + hostfield + ':' + QByteArray::number(server.serverPort()) + "\r\n";
-    QVERIFY(server.receivedData.contains(hostinfo));
+    QVERIFY(server.receivedData.toLower().contains(hostinfo));
     QCOMPARE(content, dataToSend);
     QCOMPARE(reply->url(), request.url());
     QCOMPARE(reply->error(), error);
@@ -8787,7 +8789,11 @@ void tst_QNetworkReply::httpUserAgent()
 
     QVERIFY(reply->isFinished());
     QCOMPARE(reply->error(), QNetworkReply::NoError);
-    QVERIFY(server.receivedData.contains("\r\nuser-agent: abcDEFghi\r\n"));
+    const char userAgentSearch[] = "\r\nuser-agent: ";
+    qsizetype userAgentIndex = server.receivedData.toLower().indexOf(userAgentSearch);
+    QCOMPARE_NE(userAgentIndex, -1);
+    userAgentIndex += sizeof(userAgentSearch) - 1;
+    QVERIFY(server.receivedData.slice(userAgentIndex).startsWith("abcDEFghi\r\n"));
 }
 
 void tst_QNetworkReply::synchronousAuthenticationCache()
@@ -8807,7 +8813,7 @@ void tst_QNetworkReply::synchronousAuthenticationCache()
                 "content-type: text/plain\r\n"
                 "\r\n"
                 "auth";
-            QRegularExpression rx("authorization: Basic ([^\r\n]*)\r\n");
+            QRegularExpression rx("[Aa]uthorization: Basic ([^\r\n]*)\r\n");
             QRegularExpressionMatch match = rx.match(receivedData);
             if (match.hasMatch()) {
                 if (QByteArray::fromBase64(match.captured(1).toLatin1()) == "login:password") {
@@ -9176,6 +9182,53 @@ void tst_QNetworkReply::ioHttpChangeMaxRedirects()
     QVERIFY(validateRedirectedResponseHeaders(reply2));
 }
 
+void tst_QNetworkReply::ioHttpErrorString_data()
+{
+    QTest::addColumn<int>("statusCode");
+    QTest::addColumn<QString>("reasonPhrase");
+
+    QTest::newRow("404 - page not found") << 404 << "page not found";
+    QTest::newRow("404 - <no reason provided>") << 404 << QString();
+    QTest::newRow("500 - internal error") << 500 << "internal error";
+    QTest::newRow("500 - <no reason provided>") << 500 << QString();
+}
+
+void tst_QNetworkReply::ioHttpErrorString()
+{
+    QFETCH(const int, statusCode);
+    QFETCH(const QString, reasonPhrase);
+
+    QString serverReply = uR"(HTTP/1.1 %1%2
+    content-type: text/plain
+
+    Hello world)"_s;
+    if (reasonPhrase.isEmpty())
+        serverReply = serverReply.arg(QString::number(statusCode), "");
+    else
+        serverReply = serverReply.arg(QString::number(statusCode), u" " % reasonPhrase);
+    MiniHttpServer server(serverReply.toUtf8());
+
+    QUrl serverAddress;
+    serverAddress.setScheme(u"http"_s);
+    serverAddress.setHost(u"127.0.0.1"_s);
+    serverAddress.setPort(server.serverPort());
+
+    QNetworkRequest request(serverAddress);
+    QNetworkReplyPtr reply(manager.get(request));
+
+    QTRY_VERIFY(reply->isFinished());
+    QCOMPARE_NE(reply->error(), QNetworkReply::NoError);
+    if (!reasonPhrase.isEmpty()) {
+        QCOMPARE(reply->errorString(),
+                 "Error transferring %1 - server replied: %2"_L1.arg(serverAddress.toString(),
+                                                                     reasonPhrase));
+    } else {
+        QCOMPARE(reply->errorString(),
+                 "Error transferring %1 - server replied with status code %2"_L1.arg(
+                         serverAddress.toString(), QString::number(statusCode)));
+    }
+}
+
 void tst_QNetworkReply::ioHttpRedirectErrors_data()
 {
     QTest::addColumn<QString>("url");
@@ -9473,7 +9526,7 @@ void tst_QNetworkReply::ioHttpCookiesDuringRedirect()
     manager.setRedirectPolicy(oldRedirectPolicy);
 
     QVERIFY(waitForFinish(reply) == Success);
-    QVERIFY(target.receivedData.contains("\r\ncookie: hello=world\r\n"));
+    QVERIFY(target.receivedData.toLower().contains("\r\ncookie: hello=world\r\n"));
     QVERIFY(validateRedirectedResponseHeaders(reply));
 }
 
@@ -10233,7 +10286,7 @@ void tst_QNetworkReply::requestWithTimeout()
     QSignalSpy spy(reply.data(), &QNetworkReply::errorOccurred);
     QCOMPARE(waitForFinish(reply), int(Failure));
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(reply->error(), QNetworkReply::OperationCanceledError);
+    QCOMPARE(reply->error(), QNetworkReply::TimeoutError);
 }
 #endif
 
@@ -10386,7 +10439,7 @@ void tst_QNetworkReply::contentEncoding()
     {
         // Check that we included the content encoding method in our Accept-Encoding header
         const QByteArray &receivedData = server.receivedData;
-        int start = receivedData.indexOf("accept-encoding");
+        int start = receivedData.toLower().indexOf("accept-encoding");
         QVERIFY(start != -1);
         int end = receivedData.indexOf("\r\n", start);
         QVERIFY(end != -1);

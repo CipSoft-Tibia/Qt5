@@ -38,7 +38,7 @@ if sys.version_info < (3, 9, 0):
 
   class CrossBenchArgumentParser(_BaseCrossBenchArgumentParser):
 
-    def error(self, message) -> None:
+    def error(self, message):
       # Let the CrossBenchCLI handle all errors and simplify testing.
       exception = sys.exc_info()[1]
       if isinstance(exception, BaseException):
@@ -47,7 +47,7 @@ if sys.version_info < (3, 9, 0):
 
 else:
 
-  class CrossBenchArgumentParser(_BaseCrossBenchArgumentParser):
+  class CrossBenchArgumentParser(_BaseCrossBenchArgumentParser):  # type: ignore
 
     def __init__(self, *args, **kwargs) -> None:
       kwargs["exit_on_error"] = False

@@ -66,7 +66,6 @@
 #include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/core/loader/fetch_priority_attribute.h"
 #include "third_party/blink/renderer/core/loader/preload_helper.h"
-#include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
 #include "third_party/blink/renderer/core/loader/web_bundle/script_web_bundle_rule.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/core/script/script_loader.h"
@@ -79,6 +78,7 @@
 #include "third_party/blink/renderer/platform/loader/subresource_integrity.h"
 #include "third_party/blink/renderer/platform/network/mime/content_type.h"
 #include "third_party/blink/renderer/platform/network/mime/mime_type_registry.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 
@@ -105,8 +105,7 @@ String InitiatorFor(const StringImpl* tag_impl, bool link_is_modulepreload) {
     return html_names::kScriptTag.LocalName();
   if (Match(tag_impl, html_names::kVideoTag))
     return html_names::kVideoTag.LocalName();
-  NOTREACHED_IN_MIGRATION();
-  return g_empty_string;
+  NOTREACHED();
 }
 
 bool MediaAttributeMatches(const MediaValuesCached& media_values,
@@ -174,13 +173,11 @@ class TokenPreloadScanner::StartTagScanner {
   StartTagScanner(
       const StringImpl* tag_impl,
       MediaValuesCached* media_values,
-      SubresourceIntegrity::IntegrityFeatures features,
       TokenPreloadScanner::ScannerType scanner_type,
       const HashSet<String>* disabled_image_types,
       features::LcppPreloadLazyLoadImageType preload_lazy_load_image_type)
       : tag_impl_(tag_impl),
         media_values_(media_values),
-        integrity_features_(features),
         scanner_type_(scanner_type),
         disabled_image_types_(disabled_image_types),
         preload_lazy_load_image_type_(preload_lazy_load_image_type) {
@@ -372,6 +369,11 @@ class TokenPreloadScanner::StartTagScanner {
       request->SetSharedStorageWritableOptedIn(true);
     }
 
+    if (browsing_topics_attr_set_) {
+      DCHECK(is_img);
+      request->SetBrowsingTopicsEligible(true);
+    }
+
     return request;
   }
 
@@ -393,8 +395,8 @@ class TokenPreloadScanner::StartTagScanner {
     } else if (!integrity_attr_set_ &&
                Match(attribute_name, html_names::kIntegrityAttr)) {
       integrity_attr_set_ = true;
-      SubresourceIntegrity::ParseIntegrityAttribute(
-          attribute_value, integrity_features_, integrity_metadata_);
+      SubresourceIntegrity::ParseIntegrityAttribute(attribute_value,
+                                                    integrity_metadata_);
     } else if (Match(attribute_name, html_names::kTypeAttr)) {
       type_attribute_value_ = attribute_value;
     } else if (Match(attribute_name, html_names::kLanguageAttr)) {
@@ -454,6 +456,8 @@ class TokenPreloadScanner::StartTagScanner {
       attributionsrc_attr_set_ = true;
     } else if (Match(attribute_name, html_names::kSharedstoragewritableAttr)) {
       shared_storage_writable_opted_in_ = true;
+    } else if (Match(attribute_name, html_names::kBrowsingtopicsAttr)) {
+      browsing_topics_attr_set_ = true;
     } else if (use_data_src_attr_match_for_image_ &&
                Match(attribute_name, html_names::kDataSrcAttr) &&
                img_src_url_.IsNull()) {
@@ -514,8 +518,8 @@ class TokenPreloadScanner::StartTagScanner {
     } else if (!integrity_attr_set_ &&
                Match(attribute_name, html_names::kIntegrityAttr)) {
       integrity_attr_set_ = true;
-      SubresourceIntegrity::ParseIntegrityAttribute(
-          attribute_value, integrity_features_, integrity_metadata_);
+      SubresourceIntegrity::ParseIntegrityAttribute(attribute_value,
+                                                    integrity_metadata_);
     } else if (Match(attribute_name, html_names::kImagesrcsetAttr) &&
                srcset_attribute_value_.IsNull()) {
       srcset_attribute_value_ = attribute_value;
@@ -663,8 +667,7 @@ class TokenPreloadScanner::StartTagScanner {
       return ResourceType::kCSSStyleSheet;
     if (link_is_preconnect_)
       return ResourceType::kRaw;
-    NOTREACHED_IN_MIGRATION();
-    return ResourceType::kRaw;
+    NOTREACHED();
   }
 
   bool ShouldPreconnect() const {
@@ -816,13 +819,13 @@ class TokenPreloadScanner::StartTagScanner {
   bool is_async_ = false;
   bool disabled_attr_set_ = false;
   IntegrityMetadataSet integrity_metadata_;
-  SubresourceIntegrity::IntegrityFeatures integrity_features_;
   LoadingAttributeValue loading_attr_value_ = LoadingAttributeValue::kAuto;
   TokenPreloadScanner::ScannerType scanner_type_;
   // For explanation, see TokenPreloadScanner's declaration.
   const HashSet<String>* disabled_image_types_;
   bool attributionsrc_attr_set_ = false;
   bool shared_storage_writable_opted_in_ = false;
+  bool browsing_topics_attr_set_ = false;
   std::optional<float> resource_width_;
   std::optional<float> resource_height_;
   features::LcppPreloadLazyLoadImageType preload_lazy_load_image_type_;
@@ -924,7 +927,7 @@ void TokenPreloadScanner::Scan(const HTMLToken& token,
                                PreloadRequestStream& requests,
                                MetaCHValues& meta_ch_values,
                                std::optional<ViewportDescription>* viewport,
-                               bool* is_csp_meta_tag) {
+                               int* csp_meta_tag_count) {
   if (!document_parameters_->do_html_preload_scanning)
     return;
 
@@ -1031,7 +1034,7 @@ void TokenPreloadScanner::Scan(const HTMLToken& token,
           String equiv_attribute_value(equiv_attribute->Value());
           if (EqualIgnoringASCIICase(equiv_attribute_value,
                                      "content-security-policy")) {
-            *is_csp_meta_tag = true;
+            ++(*csp_meta_tag_count);
           } else if (EqualIgnoringASCIICase(equiv_attribute_value,
                                             http_names::kAcceptCH)) {
             const HTMLToken::Attribute* content_attribute =
@@ -1092,8 +1095,8 @@ void TokenPreloadScanner::Scan(const HTMLToken& token,
 
       MediaValuesCached* media_values = EnsureMediaValues();
       StartTagScanner scanner(
-          tag_impl, media_values, document_parameters_->integrity_features,
-          scanner_type_, &document_parameters_->disabled_image_types,
+          tag_impl, media_values, scanner_type_,
+          &document_parameters_->disabled_image_types,
           document_parameters_->preload_lazy_load_image_type);
       scanner.ProcessAttributes(token.Attributes());
 
@@ -1155,7 +1158,7 @@ std::unique_ptr<HTMLPreloadScanner> HTMLPreloadScanner::Create(
       std::make_unique<CachedDocumentParameters>(&document),
       std::make_unique<MediaValuesCached::MediaValuesCachedData>(document),
       scanner_type, /* script_token_scanner=*/nullptr, TakePreloadFn(),
-      locators, skip_preload_scan);
+      std::move(locators), skip_preload_scan);
 }
 
 // static
@@ -1195,7 +1198,7 @@ HTMLPreloadScanner::BackgroundPtr HTMLPreloadScanner::CreateBackground(
           std::make_unique<MediaValuesCached::MediaValuesCachedData>(*document),
           TokenPreloadScanner::ScannerType::kMainDocument,
           BackgroundHTMLScanner::ScriptTokenScanner::Create(parser),
-          std::move(take_preload), locators, skip_preload_scan),
+          std::move(take_preload), std::move(locators), skip_preload_scan),
       Deleter{task_runner});
 }
 
@@ -1264,24 +1267,29 @@ std::unique_ptr<PendingPreloadData> HTMLPreloadScanner::Scan(
   while (HTMLToken* token = tokenizer_->NextToken(source_)) {
     if (token->GetType() == HTMLToken::kStartTag)
       tokenizer_->UpdateStateFor(*token);
-    bool seen_csp_meta_tag = false;
+    int csp_meta_tag_count = 0;
     scanner_.Scan(*token, source_, pending_data->requests,
                   pending_data->meta_ch_values, &pending_data->viewport,
-                  &seen_csp_meta_tag);
+                  &csp_meta_tag_count);
     if (script_token_scanner_)
       script_token_scanner_->ScanToken(*token);
-    pending_data->has_csp_meta_tag |= seen_csp_meta_tag;
+    pending_data->csp_meta_tag_count += csp_meta_tag_count;
     token->Clear();
-    // Don't preload anything if a CSP meta tag is found. We should rarely find
-    // them here because the HTMLPreloadScanner is only used for the synchronous
-    // parsing path.
-    if (seen_csp_meta_tag) {
-      // Reset the tokenizer, to avoid re-scanning tokens that we are about to
-      // start parsing.
-      source_.Clear();
-      tokenizer_->Reset();
-      return pending_data;
+
+    if (!RuntimeEnabledFeatures::AllowPreloadingWithCSPMetaTagEnabled()) {
+      // Don't preload anything if a CSP meta tag is found. We should rarely
+      // find them here because the HTMLPreloadScanner is only used for the
+      // synchronous parsing path.
+      CHECK(csp_meta_tag_count >= 0);
+      if (csp_meta_tag_count) {
+        // Reset the tokenizer, to avoid re-scanning tokens that we are about to
+        // start parsing.
+        source_.Clear();
+        tokenizer_->Reset();
+        return pending_data;
+      }
     }
+
     // Incrementally add preloads when scanning in the background.
     if (take_preload_ && !pending_data->requests.empty()) {
       take_preload_.Run(std::move(pending_data));
@@ -1319,15 +1327,13 @@ CachedDocumentParameters::CachedDocumentParameters(Document* document) {
   viewport_meta_enabled = document->GetSettings() &&
                           document->GetSettings()->GetViewportMetaEnabled();
   referrer_policy = document->GetReferrerPolicy();
-  integrity_features =
-      SubresourceIntegrityHelper::GetFeatures(document->GetExecutionContext());
   if (document->Loader() && document->Loader()->GetFrame()) {
     lazy_load_image_setting =
         document->Loader()->GetFrame()->GetLazyLoadImageSetting();
   } else {
     lazy_load_image_setting = LocalFrame::LazyLoadImageSetting::kDisabled;
   }
-  static const features::LcppPreloadLazyLoadImageType
+  const features::LcppPreloadLazyLoadImageType
       kPreloadLazyLoadImageType =
           features::kLCPCriticalPathPredictorPreloadLazyLoadImageType.Get();
   preload_lazy_load_image_type =

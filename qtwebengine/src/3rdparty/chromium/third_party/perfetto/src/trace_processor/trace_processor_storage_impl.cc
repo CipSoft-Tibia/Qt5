@@ -22,14 +22,12 @@
 #include <memory>
 #include <utility>
 
-#include "perfetto/base/logging.h"
 #include "perfetto/base/status.h"
 #include "perfetto/ext/base/string_view.h"
 #include "perfetto/ext/base/uuid.h"
 #include "perfetto/trace_processor/basic_types.h"
 #include "src/trace_processor/forwarding_trace_parser.h"
 #include "src/trace_processor/importers/common/args_tracker.h"
-#include "src/trace_processor/importers/common/async_track_set_tracker.h"
 #include "src/trace_processor/importers/common/clock_converter.h"  // IWYU pragma: keep
 #include "src/trace_processor/importers/common/clock_tracker.h"
 #include "src/trace_processor/importers/common/event_tracker.h"
@@ -38,18 +36,18 @@
 #include "src/trace_processor/importers/common/slice_tracker.h"
 #include "src/trace_processor/importers/common/stack_profile_tracker.h"
 #include "src/trace_processor/importers/common/trace_file_tracker.h"
-#include "src/trace_processor/importers/perf/dso_tracker.h"
 #include "src/trace_processor/importers/proto/default_modules.h"
 #include "src/trace_processor/importers/proto/packet_analyzer.h"
-#include "src/trace_processor/importers/proto/perf_sample_tracker.h"
 #include "src/trace_processor/importers/proto/proto_importer_module.h"
 #include "src/trace_processor/importers/proto/proto_trace_parser_impl.h"
 #include "src/trace_processor/importers/proto/proto_trace_reader.h"
+#include "src/trace_processor/sorter/trace_sorter.h"
 #include "src/trace_processor/storage/metadata.h"
 #include "src/trace_processor/storage/stats.h"
 #include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/trace_reader_registry.h"
 #include "src/trace_processor/types/variadic.h"
+#include "src/trace_processor/util/descriptors.h"
 #include "src/trace_processor/util/status_macros.h"
 #include "src/trace_processor/util/trace_type.h"
 
@@ -75,8 +73,8 @@ base::Status TraceProcessorStorageImpl::Parse(TraceBlobView blob) {
     return base::ErrStatus(
         "Failed unrecoverably while parsing in a previous Parse call");
   if (!parser_) {
-    active_file_ = context_.trace_file_tracker->StartNewFile();
-    auto parser = std::make_unique<ForwardingTraceParser>(&context_);
+    auto parser = std::make_unique<ForwardingTraceParser>(
+        &context_, context_.trace_file_tracker->AddFile());
     parser_ = parser.get();
     context_.chunk_readers.push_back(std::move(parser));
   }
@@ -96,7 +94,6 @@ base::Status TraceProcessorStorageImpl::Parse(TraceBlobView blob) {
                                            Variadic::String(id_for_uuid));
   }
 
-  active_file_->AddSize(blob.size());
   base::Status status = parser_->Parse(std::move(blob));
   unrecoverable_parse_error_ |= !status.ok();
   return status;
@@ -120,9 +117,6 @@ base::Status TraceProcessorStorageImpl::NotifyEndOfFile() {
   }
   Flush();
   RETURN_IF_ERROR(parser_->NotifyEndOfFile());
-  PERFETTO_CHECK(active_file_.has_value());
-  active_file_->SetTraceType(parser_->trace_type());
-  active_file_.reset();
   // NotifyEndOfFile might have pushed packets to the sorter.
   Flush();
   for (std::unique_ptr<ProtoImporterModule>& module : context_.modules) {
@@ -136,15 +130,10 @@ base::Status TraceProcessorStorageImpl::NotifyEndOfFile() {
   context_.slice_tracker->FlushPendingSlices();
   context_.args_tracker->Flush();
   context_.process_tracker->NotifyEndOfFile();
-  if (context_.perf_dso_tracker) {
-    perf_importer::DsoTracker::GetOrCreate(&context_).SymbolizeFrames();
-  }
   return base::OkStatus();
 }
 
 void TraceProcessorStorageImpl::DestroyContext() {
-  // End any active files. Eg. when NotifyEndOfFile is not called.
-  active_file_.reset();
   TraceProcessorContext context;
   context.storage = std::move(context_.storage);
 
@@ -156,6 +145,9 @@ void TraceProcessorStorageImpl::DestroyContext() {
   // kernel version (inside system_info_tracker) to know how to textualise
   // sched_switch.prev_state bitflags.
   context.system_info_tracker = std::move(context_.system_info_tracker);
+  // "__intrinsic_winscope_proto_to_args_with_defaults" requires proto
+  // descriptors.
+  context.descriptor_pool_ = std::move(context_.descriptor_pool_);
 
   context_ = std::move(context);
 

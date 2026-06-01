@@ -214,9 +214,9 @@ public:
 // -------------------------------------------------------------------------
 
 #ifdef Q_OS_MACOS
-Q_CORE_EXPORT bool qt_mac_applicationIsInDarkMode();
 Q_CORE_EXPORT bool qt_mac_runningUnderRosetta();
 Q_CORE_EXPORT std::optional<uint32_t> qt_mac_sipConfiguration();
+Q_CORE_EXPORT bool qt_mac_processHasEntitlement(const QString &entitlement);
 #ifdef QT_BUILD_INTERNAL
 Q_AUTOTEST_EXPORT void qt_mac_ensureResponsible();
 #endif
@@ -282,7 +282,7 @@ private:
 
 // --------------------------------------------------------------------------
 
-#if !defined(QT_BOOTSTRAPPED)
+#if !defined(QT_BOOTSTRAPPED) && !__has_feature(objc_arc)
 
 QT_END_NAMESPACE
 #include <os/activity.h>
@@ -353,7 +353,7 @@ QT_MAC_WEAK_IMPORT(_os_activity_current);
 
 #define QT_APPLE_SCOPED_LOG_ACTIVITY(...) QAppleLogActivity scopedLogActivity = QT_APPLE_LOG_ACTIVITY(__VA_ARGS__).enter();
 
-#endif // !defined(QT_BOOTSTRAPPED)
+#endif // !defined(QT_BOOTSTRAPPED) && !__has_feature(objc_arc)
 
 // -------------------------------------------------------------------------
 
@@ -387,7 +387,7 @@ public:
 
     void swap(QMacNotificationObserver &other) noexcept
     {
-        qt_ptr_swap(observer, other.observer);
+        std::swap(observer, other.observer);
     }
 
     void remove();
@@ -437,7 +437,7 @@ public:
     void swap(QMacKeyValueObserver &other) noexcept
     {
         std::swap(object, other.object);
-        qt_ptr_swap(keyPath, other.keyPath);
+        std::swap(keyPath, other.keyPath);
         callback.swap(other.callback);
     }
 

@@ -224,7 +224,7 @@ void MessageEvent::initMessageEvent(const AtomicString& type,
                                     const String& origin,
                                     const String& last_event_id,
                                     EventTarget* source,
-                                    MessagePortArray& ports) {
+                                    MessagePortArray ports) {
   if (IsBeingDispatched())
     return;
 
@@ -239,8 +239,7 @@ void MessageEvent::initMessageEvent(const AtomicString& type,
   if (ports.empty()) {
     ports_ = nullptr;
   } else {
-    ports_ = MakeGarbageCollected<MessagePortArray>();
-    swap(*ports_, ports);
+    ports_ = MakeGarbageCollected<MessagePortArray>(std::move(ports));
   }
   is_ports_dirty_ = true;
 }

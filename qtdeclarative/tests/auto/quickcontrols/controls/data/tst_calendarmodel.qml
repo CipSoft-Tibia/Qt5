@@ -88,4 +88,13 @@ TestCase {
 
         inst.destroy()
     }
+
+    function test_count() {
+        let m = calendarModel.createObject(testCase)
+        m.from = new Date(2025, 0, 1)
+        m.to = new Date(2025, 1, 28)
+        compare(m.count, 2)
+        m.to = new Date(2025,2,30)
+        compare(m.count, 3)
+    }
 }

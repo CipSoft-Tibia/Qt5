@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKIMAGE_P_H
 #define QQUICKIMAGE_P_H
@@ -78,8 +79,8 @@ public:
 Q_SIGNALS:
     void fillModeChanged();
     void paintedGeometryChanged();
-    void horizontalAlignmentChanged(HAlignment alignment);
-    void verticalAlignmentChanged(VAlignment alignment);
+    void horizontalAlignmentChanged(QQuickImage::HAlignment alignment);
+    void verticalAlignmentChanged(QQuickImage::VAlignment alignment);
     Q_REVISION(2, 3) void mipmapChanged(bool);
     Q_REVISION(2, 5) void autoTransformChanged();
 

@@ -19,6 +19,7 @@
     \section1 CheckDelegate Control
 
     \image qtquickcontrols-checkdelegate.gif
+           {Check delegate showing selection animation}
 
     \l CheckDelegate presents a checkable control that can be toggled on
     (checked) or off (unchecked). Check delegates are typically used to
@@ -29,6 +30,7 @@
     \section1 ItemDelegate Control
 
     \image qtquickcontrols-itemdelegate.gif
+           {Item delegate showing press animation}
 
     \l ItemDelegate presents a checkable control that can be pressed and
     clicked by the user.
@@ -36,6 +38,7 @@
     \section1 RadioDelegate Control
 
     \image qtquickcontrols-radiodelegate.gif
+           {Radio delegate showing selection animation}
 
     \l RadioDelegate presents a checkable control that can be toggled on
     (checked) or off (unchecked). Radio delegates are typically used to select
@@ -46,6 +49,7 @@
     \section1 SwipeDelegate Control
 
     \image qtquickcontrols-swipedelegate.gif
+           {Swipe delegate revealing actions through swipe gesture}
 
     \l SwipeDelegate presents a view item that can be swiped left or right to
     expose more options or information.
@@ -53,6 +57,7 @@
     \section1 SwitchDelegate Control
 
     \image qtquickcontrols-switchdelegate.gif
+           {Switch delegate showing toggle animation}
 
     \l SwitchDelegate presents a switchable delegate that can be toggled on or off.
 
@@ -61,6 +66,7 @@
     \section1 TableViewDelegate Control
 
     \image qtquickcontrols-tableviewdelegate.png
+           {Table view delegate showing cell with content}
 
     A \l TableViewDelegate is a delegate that can be assigned to the
     \l [QML]{TableView::}{delegate} property of a TableView.
@@ -70,6 +76,7 @@
     \section1 TreeViewDelegate Control
 
     \image qtquickcontrols-treeviewdelegate.png
+           {Tree view delegate showing hierarchical items}
 
     A \l TreeViewDelegate is a delegate that can be assigned to the delegate property
     of a TreeView.

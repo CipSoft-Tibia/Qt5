@@ -13,10 +13,11 @@ class tst_QHttpServerRequestFilter : public QObject
     Q_OBJECT
 
 private slots:
-    void testRateLimit();
+    void testIsRequestWithinRate();
+    void testIsRequestAllowed();
 };
 
-void tst_QHttpServerRequestFilter::testRateLimit()
+void tst_QHttpServerRequestFilter::testIsRequestWithinRate()
 {
     using namespace QHttpServerRequestFilterPrivate;
 
@@ -84,6 +85,60 @@ void tst_QHttpServerRequestFilter::testRateLimit()
     // check after all the hosts become garbage
     currTimeMSec += 3 * cPeriodDurationMSec;
     QCOMPARE(filter4.isRequestWithinRate(QHostAddress("168.0.0.1"), currTimeMSec), true);
+}
+
+void tst_QHttpServerRequestFilter::testIsRequestAllowed()
+{
+    using namespace QHttpServerRequestFilterPrivate;
+
+    QHttpServerRequestFilter filter;
+    QHttpServerConfiguration config;
+
+    // no blacklist or whitelist set
+    filter.setConfiguration(config);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("127.0.0.1")), true);
+
+    // whitelist only
+    QList<std::pair<QHostAddress, int>> whiteList = {
+        { QHostAddress("192.168.1.100"), 32 },
+        { QHostAddress("10.0.0.0"), 8 }
+    };
+    config.setWhitelist(whiteList);
+    filter.setConfiguration(config);
+
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("192.168.1.100")), true);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("192.168.1.101")), false);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("10.0.0.50")), true);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("11.0.0.1")), false);
+
+    // blacklist only
+    QList<std::pair<QHostAddress, int>> blackList = {
+        { QHostAddress("192.168.1.200"), 32 },
+        { QHostAddress("172.16.0.0"), 12 }
+    };
+    config.setBlacklist(blackList);
+    config.setWhitelist({});
+    filter.setConfiguration(config);
+
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("192.168.1.200")), false);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("192.168.1.201")), true);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("172.16.5.10")), false);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("172.32.0.1")), true);
+
+    // both whitelist and blacklist (whitelist should take priority)
+    whiteList = {
+        { QHostAddress("10.0.0.1"), 32 }
+    };
+    blackList = {
+        { QHostAddress("10.0.0.0"), 8 }
+    };
+    config.setWhitelist(whiteList);
+    config.setBlacklist(blackList);
+    filter.setConfiguration(config);
+
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("10.0.0.1")), true);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("10.0.0.2")), false);
+    QCOMPARE(filter.isRequestAllowed(QHostAddress("192.168.0.1")), false);
 }
 
 QT_END_NAMESPACE

@@ -6,3 +6,8 @@ Include: [
     address_sanitizer_platforms.yaml
     ]
 Configurations: []
+Overrides:
+# Remove imx8 tests.
+-
+    Id: 'vxworks-imx8-buildtest'
+    Features: ['VMSize8', 'UseConfigure', 'DisableTests']

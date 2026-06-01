@@ -32,6 +32,7 @@ set(qml_files
     "ScrollBar.qml"
     "ScrollIndicator.qml"
     "ScrollView.qml"
+    "SearchField.qml"
     "SelectionRectangle.qml"
     "Slider.qml"
     "SpinBox.qml"
@@ -46,6 +47,10 @@ if (QT_FEATURE_quick_treeview)
         "TreeViewDelegate.qml"
     )
 endif()
+
+set_source_files_properties(SearchField.qml PROPERTIES
+    QT_QML_SOURCE_VERSIONS "6.10"
+)
 
 qt_internal_add_qml_module(qtquickcontrols2macosstyleplugin
     URI "QtQuick.Controls.macOS"
@@ -85,6 +90,7 @@ qt_internal_add_qml_module(qtquickcontrols2macosstyleplugin
         Qt::QuickControls2Private
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
+        Qt::QuickControls2FusionPrivate
 )
 
 # Native style is a dependency of the macOS style.

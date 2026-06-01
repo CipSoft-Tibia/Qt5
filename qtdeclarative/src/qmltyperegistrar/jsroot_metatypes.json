@@ -5088,6 +5088,14 @@
                         "type": "number"
                     },
                     {
+                        "name": "NoPreference",
+                        "type": "number"
+                    },
+                    {
+                        "name": "HighContrast",
+                        "type": "number"
+                    },
+                    {
                         "name": "NoButton",
                         "type": "number"
                     },
@@ -8016,6 +8024,10 @@
                         "type": "number"
                     },
                     {
+                        "name": "Key_Keyboard",
+                        "type": "number"
+                    },
+                    {
                         "name": "Key_New",
                         "type": "number"
                     },
@@ -9176,7 +9188,23 @@
                         "type": "number"
                     },
                     {
+                        "name": "RangeModelDataRole",
+                        "type": "number"
+                    },
+                    {
                         "name": "UserRole",
+                        "type": "number"
+                    },
+                    {
+                        "name": "StandardItemFlagsRole",
+                        "type": "number"
+                    },
+                    {
+                        "name": "FileInfoRole",
+                        "type": "number"
+                    },
+                    {
+                        "name": "RemoteObjectsCacheRole",
                         "type": "number"
                     },
                     {
@@ -9872,6 +9900,13 @@
                         "arguments": [
                         ],
                         "isJavaScriptFunction": true,
+                        "name": "uiLanguageChanged"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
                         "name": "include"
                     },
                     {
@@ -10125,6 +10160,27 @@
                         ],
                         "isJavaScriptFunction": true,
                         "name": "callLater"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "enumStringToValue"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "enumValueToString"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "enumValueToStrings"
                     }
                 ],
                 "object": true,
@@ -10277,6 +10333,238 @@
                     {
                         "access": "public",
                         "name": "ObjectPrototype"
+                    }
+                ]
+            },
+            {
+                "classInfos": [
+                    {
+                        "name": "QML.Element",
+                        "value": "anonymous"
+                    }
+                ],
+                "className": "DOMException",
+                "methods": [
+                ],
+                "object": true,
+                "properties": [
+                    {
+                        "name": "INDEX_SIZE_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "DOMSTRING_SIZE_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "HIERARCHY_REQUEST_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "WRONG_DOCUMENT_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "INVALID_CHARACTER_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "NO_DATA_ALLOWED_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "NO_MODIFICATION_ALLOWED_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "NOT_FOUND_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "NOT_SUPPORTED_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "INUSE_ATTRIBUTE_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "INVALID_STATE_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "SYNTAX_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "INVALID_MODIFICATION_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "NAMESPACE_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "INVALID_ACCESS_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "VALIDATION_ERR",
+                        "type": "number"
+                    },
+                    {
+                        "name": "TYPE_MISMATCH_ERR",
+                        "type": "number"
+                    }
+                ],
+                "qualifiedClassName": "DOMException",
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "ObjectPrototype"
+                    }
+                ]
+            },
+            {
+                "classInfos": [
+                    {
+                        "name": "QML.Element",
+                        "value": "anonymous"
+                    }
+                ],
+                "className": "XMLHttpRequestPrototype",
+                "methods": [
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "open"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "setRequestHeader"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "send"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "abort"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "getResponseHeader"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "getAllResponseHeaders"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "overrideMimeType"
+                    }
+                ],
+                "object": true,
+                "properties": [
+                    {
+                        "name": "UNSENT",
+                        "type": "number"
+                    },
+                    {
+                        "name": "OPENED",
+                        "type": "number"
+                    },
+                    {
+                        "name": "HEADERS_RECEIVED",
+                        "type": "number"
+                    },
+                    {
+                        "name": "LOADING",
+                        "type": "number"
+                    },
+                    {
+                        "name": "DONE",
+                        "type": "number"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "readyState"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "status"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "statusText"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "responseText"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "responseXML"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "response"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "responseURL"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "responseType"
+                    }
+                ],
+                "qualifiedClassName": "XMLHttpRequestPrototype",
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "ObjectPrototype"
+                    }
+                ]
+            },
+            {
+                "classInfos": [
+                    {
+                        "name": "QML.Element",
+                        "value": "anonymous"
+                    }
+                ],
+                "className": "XMLHttpRequest",
+                "methods": [
+                ],
+                "object": true,
+                "properties": [
+                ],
+                "qualifiedClassName": "XMLHttpRequest",
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "XMLHttpRequestPrototype"
                     }
                 ]
             },
@@ -10879,6 +11167,15 @@
                         ],
                         "isJavaScriptFunction": true,
                         "name": "gc"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isConstructor": true,
+                        "isJavaScriptFunction": true,
+                        "name": "XMLHttpRequest",
+                        "returnType": "XMLHttpRequest"
                     }
                 ],
                 "object": true,
@@ -10923,6 +11220,11 @@
                         "member": "fakeMember",
                         "name": "console",
                         "type": "Console"
+                    },
+                    {
+                        "member": "fakeMember",
+                        "name": "DOMException",
+                        "type": "DOMException"
                     }
                 ],
                 "qualifiedClassName": "GlobalObject",

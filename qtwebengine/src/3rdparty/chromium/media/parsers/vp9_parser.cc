@@ -17,6 +17,7 @@
 #include "media/parsers/vp9_parser.h"
 
 #include <algorithm>
+#include <array>
 
 #include "base/containers/circular_deque.h"
 #include "base/containers/span.h"
@@ -39,7 +40,7 @@ constexpr size_t kQIndexRange = 256;
 // libva is the only user of high bit depth VP9 formats and only supports
 // 10 bits per component, see https://github.com/01org/libva/issues/137.
 // TODO(mcasas): Add the 12 bit versions of these tables.
-const int16_t kDcQLookup[][kQIndexRange] = {
+const std::array<std::array<const int16_t, kQIndexRange>,2> kDcQLookup = {{
     {
         4,    8,    8,    9,    10,   11,   12,   12,  13,   14,   15,   16,
         17,   18,   19,   19,   20,   21,   22,   23,  24,   25,   26,   26,
@@ -88,9 +89,9 @@ const int16_t kDcQLookup[][kQIndexRange] = {
         3188, 3280, 3375, 3478, 3586, 3702, 3823, 3953, 4089, 4236, 4394, 4559,
         4737, 4929, 5130, 5347
    }
-};
+}};
 
-const int16_t kAcQLookup[][kQIndexRange] = {
+const std::array<std::array<const int16_t, kQIndexRange>,2> kAcQLookup = {{
     {
         4,    8,    9,    10,   11,   12,   13,   14,   15,   16,   17,   18,
         19,   20,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30,
@@ -139,7 +140,7 @@ const int16_t kAcQLookup[][kQIndexRange] = {
         5476, 5584, 5692, 5804, 5916, 6032, 6148, 6268, 6388, 6512, 6640, 6768,
         6900, 7036, 7172, 7312
    }
-};
+}};
 // clang-format on
 
 static_assert(std::size(kDcQLookup[0]) == std::size(kAcQLookup[0]),
@@ -345,28 +346,15 @@ VideoColorSpace Vp9FrameHeader::GetColorSpace() const {
 
 Vp9Parser::FrameInfo::FrameInfo() = default;
 
-Vp9Parser::FrameInfo::~FrameInfo() = default;
-
 Vp9Parser::FrameInfo::FrameInfo(const uint8_t* ptr, off_t size)
     : ptr(ptr), size(size) {}
 
-Vp9Parser::FrameInfo::FrameInfo(const FrameInfo& copy_from)
-    : ptr(copy_from.ptr),
-      size(copy_from.size),
-      allocate_size(copy_from.allocate_size),
-      decrypt_config(copy_from.decrypt_config
-                         ? copy_from.decrypt_config->Clone()
-                         : nullptr) {}
+Vp9Parser::FrameInfo::FrameInfo(FrameInfo&& other) = default;
 
-Vp9Parser::FrameInfo& Vp9Parser::FrameInfo::operator=(
-    const FrameInfo& copy_from) {
-  this->ptr = copy_from.ptr;
-  this->size = copy_from.size;
-  this->allocate_size = copy_from.allocate_size;
-  this->decrypt_config =
-      copy_from.decrypt_config ? copy_from.decrypt_config->Clone() : nullptr;
-  return *this;
-}
+Vp9Parser::FrameInfo& Vp9Parser::FrameInfo::operator=(FrameInfo&& other) =
+    default;
+
+Vp9Parser::FrameInfo::~FrameInfo() = default;
 
 bool Vp9FrameContext::IsValid() const {
   // probs should be in [1, 255] range.
@@ -587,7 +575,7 @@ Vp9Parser::Result Vp9Parser::ParseNextFrame(
   // compressed header parsing.
   if (curr_frame_info_.IsValid()) {
     DCHECK(parsing_compressed_header_);
-    frame_info = curr_frame_info_;
+    frame_info = std::move(curr_frame_info_);
     curr_frame_info_.Reset();
   } else {
     if (frames_.empty()) {
@@ -611,7 +599,7 @@ Vp9Parser::Result Vp9Parser::ParseNextFrame(
       }
     }
 
-    frame_info = frames_.front();
+    frame_info = std::move(frames_.front());
     frames_.pop_front();
     if (frame_decrypt_config) {
       if (frame_info.decrypt_config) {

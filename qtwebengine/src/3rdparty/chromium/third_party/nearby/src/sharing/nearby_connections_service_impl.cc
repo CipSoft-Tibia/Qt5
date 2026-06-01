@@ -35,6 +35,7 @@
 #include "connections/strategy.h"
 #include "internal/analytics/event_logger.h"
 #include "internal/platform/logging.h"
+#include "sharing/internal/public/connectivity_manager.h"
 #include "sharing/nearby_connections_service.h"
 #include "sharing/nearby_connections_types.h"
 
@@ -49,8 +50,16 @@ Core* GetService(NearbyConnectionsService::HANDLE handle) {
 }  // namespace
 
 NearbyConnectionsServiceImpl::NearbyConnectionsServiceImpl(
-    nearby::analytics::EventLogger* event_logger) {
-  static ServiceControllerRouter* router = new ServiceControllerRouter();
+    nearby::ConnectivityManager* connectivity_manager,
+    nearby::analytics::EventLogger* event_logger)
+    : connectivity_manager_(*connectivity_manager) {
+  static ServiceControllerRouter* router =
+      new ServiceControllerRouter([this]() {
+        // WARNING: there can be only 1 instance of
+        // NearbyConnectionsServiceImpl, otherwise the router could be pointing
+        // at an invalid instance.
+        return connectivity_manager_.IsHPRealtekDevice();
+      });
   static Core* core = new Core(event_logger, router);
   service_handle_ = core;
 }
@@ -203,6 +212,8 @@ void NearbyConnectionsServiceImpl::RequestConnection(
     options.remote_bluetooth_mac_address =
         NcByteArray(std::string(mac_address.begin(), mac_address.end()));
   }
+  options.non_disruptive_hotspot_mode =
+      connection_options.non_disruptive_hotspot_mode;
   NcConnectionRequestInfo connection_request_info;
   connection_request_info.endpoint_info =
       NcByteArray(std::string(endpoint_info.begin(), endpoint_info.end()));

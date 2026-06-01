@@ -87,12 +87,15 @@ private slots:
     void moveRows();
     void moveRowsInvalid_data();
     void moveRowsInvalid();
+#if QT_CONFIG(draganddrop)
+    void supportedDragActions();
+#endif
 
 private:
     std::unique_ptr<QTableWidget> testWidget;
 };
 
-using IntPair = QPair<int, int>;
+using IntPair = std::pair<int, int>;
 using IntList = QList<int>;
 using IntIntList = QList<IntPair>;
 
@@ -1812,7 +1815,7 @@ void tst_QTableWidget::search()
         Qt::Key key;
         QString text;
     };
-    auto checkSeries = [](TestTableWidget &tw, const QList<QPair<KeyPress, int>> &series) {
+    auto checkSeries = [](TestTableWidget &tw, const QList<std::pair<KeyPress, int>> &series) {
         for (const auto &p : series) {
             QKeyEvent e(QEvent::KeyPress, p.first.key, Qt::NoModifier, p.first.text);
             tw.keyPressEvent(&e);
@@ -2046,6 +2049,27 @@ void tst_QTableWidget::moveRowsInvalid()
     QCOMPARE(rowAboutMovedSpy.size(), 0);
     delete baseWidget;
 }
+
+#if QT_CONFIG(draganddrop)
+class MoveOnlyTableWidget : public QTableWidget
+{
+    Q_OBJECT
+public:
+    using QTableWidget::QTableWidget;
+    Qt::DropActions supportedDropActions() const override { return Qt::MoveAction; }
+};
+
+void tst_QTableWidget::supportedDragActions()
+{
+    MoveOnlyTableWidget tableWidget;
+    QCOMPARE(tableWidget.model()->supportedDropActions(), Qt::MoveAction);
+    // For Qt < 6.8 compatibility reasons, supportedDragActions defaults to supportedDropActions
+    QCOMPARE(tableWidget.model()->supportedDragActions(), Qt::MoveAction);
+
+    tableWidget.setSupportedDragActions(Qt::CopyAction);
+    QCOMPARE(tableWidget.model()->supportedDragActions(), Qt::CopyAction);
+}
+#endif // QT_CONFIG(draganddrop)
 
 QTEST_MAIN(tst_QTableWidget)
 #include "tst_qtablewidget.moc"

@@ -4,11 +4,11 @@
 
 #include "components/autofill/core/browser/data_model/autofill_i18n_api.h"
 
+#include <algorithm>
 #include <string>
 #include <type_traits>
 
 #include "base/containers/contains.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/scoped_feature_list.h"
 #include "components/autofill/core/browser/data_model/autofill_i18n_formatting_expressions.h"
@@ -54,6 +54,7 @@ class AutofillI18nApiTest : public testing::Test {
             features::kAutofillUseFRAddressModel,
             features::kAutofillUseINAddressModel,
             features::kAutofillUseITAddressModel,
+            features::kAutofillUseNLAddressModel,
             features::kAutofillUsePLAddressModel,
         },
         {});
@@ -175,25 +176,6 @@ TEST_F(AutofillI18nApiTest, ParseValueByI18nRegularExpression) {
             ParseValueByI18nRegularExpression(street_address,
                                               ADDRESS_HOME_STREET_ADDRESS,
                                               kLegacyHierarchyCountryCode));
-}
-
-TEST_F(AutofillI18nApiTest, GetStopwordsExpression) {
-  // The expected values are contained in `kAutofillModelStopwords`.
-  EXPECT_EQ(u"Ponto de referência:",
-            GetStopwordsExpression(ADDRESS_HOME_OVERFLOW_AND_LANDMARK,
-                                   AddressCountryCode("BR")));
-  EXPECT_EQ(u"Andar", GetStopwordsExpression(ADDRESS_HOME_SUBPREMISE,
-                                             AddressCountryCode("BR")));
-  EXPECT_EQ(u"Entre Calles",
-            GetStopwordsExpression(ADDRESS_HOME_BETWEEN_STREETS_OR_LANDMARK,
-                                   AddressCountryCode("MX")));
-  EXPECT_EQ(u"Apt\\.|Floor", GetStopwordsExpression(ADDRESS_HOME_SUBPREMISE,
-                                                    AddressCountryCode("XX")));
-  EXPECT_EQ(std::nullopt, GetStopwordsExpression(ADDRESS_HOME_OVERFLOW,
-                                                 AddressCountryCode("MX")));
-  EXPECT_EQ(std::nullopt,
-            GetStopwordsExpression(ADDRESS_HOME_BETWEEN_STREETS_OR_LANDMARK,
-                                   AddressCountryCode("")));
 }
 
 TEST_F(AutofillI18nApiTest, IsTypeEnabledForCountry) {

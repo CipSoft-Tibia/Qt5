@@ -99,6 +99,56 @@ else()
         DEFINES
             USE_SPLINEGRAPH
     )
+
+    set(LOCAL_TRACE_SOURCE_2D
+            graphs2d/qsgrenderer/axisrenderer.cpp
+            graphs2d/qgraphsview.cpp
+    )
+
+
+    if(QT_FEATURE_graphs_2d_bar)
+        set(LOCAL_TRACE_SOURCE_2D
+                ${LOCAL_TRACE_SOURCE_2D}
+                graphs2d/qsgrenderer/barsrenderer.cpp
+                graphs2d/barchart/qbarmodelmapper.cpp
+        )
+    endif()
+
+    if(QT_FEATURE_graphs_2d_donut_pie)
+        set(LOCAL_TRACE_SOURCE_2D
+                ${LOCAL_TRACE_SOURCE_2D}
+                graphs2d/qsgrenderer/pierenderer.cpp
+                graphs2d/piechart/qpiemodelmapper.cpp
+                graphs2d/piechart/qpieseries.cpp
+        )
+    endif()
+
+    if(QT_FEATURE_graphs_2d_spline)
+        set(LOCAL_TRACE_SOURCE_2D
+                ${LOCAL_TRACE_SOURCE_2D}
+                graphs2d/splinechart/qsplineseries.cpp
+        )
+    endif()
+
+    if(QT_FEATURE_graphs_2d_area)
+        set(LOCAL_TRACE_SOURCE_2D
+                ${LOCAL_TRACE_SOURCE_2D}
+                graphs2d/qsgrenderer/arearenderer.cpp
+        )
+    endif()
+    if(QT_FEATURE_graphs_2d_area OR QT_FEATURE_graphs_2d_line OR QT_FEATURE_graphs_2d_scatter
+        OR QT_FEATURE_graphs_2d_spline)
+        set(LOCAL_TRACE_SOURCE_2D
+                ${LOCAL_TRACE_SOURCE_2D}
+                graphs2d/qsgrenderer/pointrenderer.cpp
+                graphs2d/xychart/qxymodelmapper.cpp
+        )
+    endif()
+
+    set(TRACE_SOURCES_2D
+            ${LOCAL_TRACE_SOURCE_2D}
+        PARENT_SCOPE
+    )
 endif()
 
 add_subdirectory(qml/designer)

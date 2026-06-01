@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "components/dom_distiller/core/url_utils.h"
 
 #include <string>
@@ -56,7 +61,7 @@ const GURL GetDistillerViewUrlFromUrl(const std::string& scheme,
   return net::AppendOrReplaceQueryParameter(view_url, kUrlKey, url.spec());
 }
 
-const GURL GetOriginalUrlFromDistillerUrl(const GURL& url) {
+GURL GetOriginalUrlFromDistillerUrl(const GURL& url) {
   if (!IsUrlDistilledFormat(url))
     return url;
 

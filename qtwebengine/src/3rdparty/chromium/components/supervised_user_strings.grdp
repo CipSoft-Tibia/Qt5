@@ -70,12 +70,6 @@
       <message name="IDS_CHILD_BLOCK_MESSAGE_MANUAL_MULTI_PARENT" desc="Message to be shown to a child when a site was blocked due to a manual blocklist entry and the child has two parents.">
         Your parents can unblock it for you
       </message>
-      <message name="IDS_PARENT_BLOCKED_SITE_BANNER_TITLE" desc="The banner title for the first time a user is blocked from a website because of parental controls">
-        New: Family Link choices for Chrome apply here
-      </message>
-      <message name="IDS_PARENT_BLOCKED_SITE_BANNER_MESSAGE" desc="The banner message for the first time a user is blocked from a website because of parental controls">
-        The settings your parent chose are now keeping you safer online
-      </message>
       <message name="IDS_SUPERVISED_USER_VERIFY_PAGE_TAB_TITLE" desc="The title of the tab when displaying a message to the child user when they attempt to visit YouTube.com. The child is signed in to their Google Account in Chrome, but their credentials have expired, so they need to sign in to get all the settings that their parent chose for them on YouTube.">
         YouTube
       </message>
@@ -93,5 +87,15 @@
       </message>
       <message name="IDS_SUPERVISED_USER_VERIFY_PAGE_SUBFRAME_BLOCKED_SITE_HEADING" desc="A message for the child user when they visit a permitted site, but then encounter embedded content from a second site that is not permitted by their parent. Before they can ask their parent to let them view the content, the child first needs to enter their Google Account password because their credentials expired.">
         To ask to see this content, continue with your Google Account
+      </message>
+      <!-- Supervised user PACP widget custom subtitles for local web approvals -->
+      <message name="IDS_PARENT_WEBSITE_APPROVAL_BLOCK_ALL_URL" desc="This text displayed as a subtitle in a bottom sheet asking a parent to allow or not allow a website. This informs the parent that this site has not been permitted by the parent.">
+      You haven't approved <ph name="BLOCKED_URL">$1<ex>example.com</ex></ph> before
+      </message>
+      <message name="IDS_PARENT_WEBSITE_APPROVAL_SAFE_SITES_URL" desc="This text displayed as a subtitle in a bottom sheet asking a parent to allow or not allow a website. This informs the parent that this site was blocked due to the SafeSites safety check.">
+      <ph name="BLOCKED_URL">$1<ex>example.com</ex></ph> may have mature content
+      </message>
+      <message name="IDS_PARENT_WEBSITE_APPROVAL_MANUAL_URL" desc="This text displayed as a subtitle in a bottom sheet asking a parent to allow or not allow a website. This informs the parent that this site was blocked due to a manual blocklist entry.">
+      You previously blocked <ph name="BLOCKED_URL">$1<ex>example.com</ex></ph>
       </message>
 </grit-part>

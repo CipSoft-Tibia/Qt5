@@ -75,6 +75,7 @@ class CONTENT_EXPORT ServiceWorkerMainResourceLoader
   // is used instead of NavigationURLLoaderImpl.
   ServiceWorkerMainResourceLoader(
       NavigationLoaderInterceptor::FallbackCallback fallback_callback,
+      std::string fetch_event_client_id,
       base::WeakPtr<ServiceWorkerClient> service_worker_client,
       FrameTreeNodeId frame_tree_node_id,
       base::TimeTicks find_registration_start_time);
@@ -99,10 +100,6 @@ class CONTENT_EXPORT ServiceWorkerMainResourceLoader
   // Otherwise |this| will be kept around as far as the loader
   // endpoint is held by the client.
   void DetachedFromRequest();
-
-  void set_worker_parent_client_uuid(std::string uuid) {
-    worker_parent_client_uuid_ = std::move(uuid);
-  }
 
   base::WeakPtr<ServiceWorkerMainResourceLoader> AsWeakPtr();
 
@@ -175,8 +172,6 @@ class CONTENT_EXPORT ServiceWorkerMainResourceLoader
       const std::optional<GURL>& new_url) override;
   void SetPriority(net::RequestPriority priority,
                    int32_t intra_priority_value) override;
-  void PauseReadingBodyFromNet() override;
-  void ResumeReadingBodyFromNet() override;
 
   void OnBlobReadingComplete(int net_error);
 
@@ -190,6 +185,9 @@ class CONTENT_EXPORT ServiceWorkerMainResourceLoader
       blink::EmbeddedWorkerStatus embedded_status,
       bool is_warming_up,
       bool is_warmed_up);
+
+  void Fallback(ResponseHeadUpdateParams response_header_params);
+
   std::string GetInitialServiceWorkerStatusString();
   std::string GetFrameTreeNodeTypeString();
   bool IsEligibleForRecordingTimingMetrics();
@@ -228,6 +226,8 @@ class CONTENT_EXPORT ServiceWorkerMainResourceLoader
   // Records metrics related to the fetch event handler execution.
   void RecordFetchEventHandlerMetrics(
       ServiceWorkerFetchDispatcher::FetchEventResult fetch_result);
+
+  void RecordFindRegistrationTiming(bool is_fallback);
 
   void TransitionToStatus(Status new_status);
 
@@ -287,13 +287,7 @@ class CONTENT_EXPORT ServiceWorkerMainResourceLoader
   std::optional<network::mojom::ServiceWorkerStatus>
       initial_service_worker_status_;
   const bool is_browser_startup_completed_;
-  enum class FrameTreeNodeType {
-    kOutermostMainFrame = 0,
-    kNotOutermostMainFrame = 1,
-    kUnknown = 2,
-    kMaxValue = kUnknown,
-  };
-  FrameTreeNodeType frame_tree_node_type_ = FrameTreeNodeType::kUnknown;
+  const std::string frame_tree_node_type_;
   bool is_detached_ = false;
 
   scoped_refptr<network::SharedURLLoaderFactory>
@@ -305,10 +299,9 @@ class CONTENT_EXPORT ServiceWorkerMainResourceLoader
 
   base::TimeTicks find_registration_start_time_;
 
-  // Dedicated Worker's parent container's UUID.
-  // Valid for fetching the worker script with the PlzDedicatedWorker is
-  // enabled.
-  std::string worker_parent_client_uuid_;
+  // FetchEvent.clientId
+  // https://w3c.github.io/ServiceWorker/#fetch-event-clientid
+  const std::string fetch_event_client_id_;
 
   bool has_fetch_event_finished_ = false;
 

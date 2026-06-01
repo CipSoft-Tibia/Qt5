@@ -99,6 +99,6 @@ See \l{Qt Licensing} for further details.
 Furthermore Qt Qml in Qt \QtVersion may contain third party
 modules under following permissive licenses:
 
-\generatelist{groupsbymodule attributions-qtqml}
+\annotatedlist attributions-qtqml
 
 */

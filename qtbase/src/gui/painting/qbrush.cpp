@@ -148,6 +148,10 @@ Q_GUI_EXPORT QImage qt_imageForBrush(int brushStyle, bool invert)
     return qt_brushPatternImageCache()->getImage(brushStyle, invert);
 }
 
+struct QBasicBrushData : public QBrushData
+{
+};
+
 struct QTexturedBrushData : public QBrushData
 {
     QTexturedBrushData() {
@@ -223,8 +227,23 @@ static void deleteData(QBrushData *d)
     case Qt::ConicalGradientPattern:
         delete static_cast<QGradientBrushData*>(d);
         break;
-    default:
-        delete d;
+    case Qt::NoBrush:
+    case Qt::SolidPattern:
+    case Qt::Dense1Pattern:
+    case Qt::Dense2Pattern:
+    case Qt::Dense3Pattern:
+    case Qt::Dense4Pattern:
+    case Qt::Dense5Pattern:
+    case Qt::Dense6Pattern:
+    case Qt::Dense7Pattern:
+    case Qt::HorPattern:
+    case Qt::VerPattern:
+    case Qt::CrossPattern:
+    case Qt::BDiagPattern:
+    case Qt::FDiagPattern:
+    case Qt::DiagCrossPattern:
+        delete static_cast<QBasicBrushData*>(d);
+        break;
     }
 }
 
@@ -318,8 +337,8 @@ void QBrushDataPointerDeleter::operator()(QBrushData *d) const noexcept
 class QNullBrushData
 {
 public:
-    QBrushData *brush;
-    QNullBrushData() : brush(new QBrushData)
+    QBasicBrushData *brush;
+    QNullBrushData() : brush(new QBasicBrushData)
     {
         brush->ref.storeRelaxed(1);
         brush->style = Qt::BrushStyle(0);
@@ -376,8 +395,21 @@ void QBrush::init(const QColor &color, Qt::BrushStyle style)
     case Qt::ConicalGradientPattern:
         d.reset(new QGradientBrushData);
         break;
-    default:
-        d.reset(new QBrushData);
+    case Qt::SolidPattern:
+    case Qt::Dense1Pattern:
+    case Qt::Dense2Pattern:
+    case Qt::Dense3Pattern:
+    case Qt::Dense4Pattern:
+    case Qt::Dense5Pattern:
+    case Qt::Dense6Pattern:
+    case Qt::Dense7Pattern:
+    case Qt::HorPattern:
+    case Qt::VerPattern:
+    case Qt::CrossPattern:
+    case Qt::BDiagPattern:
+    case Qt::FDiagPattern:
+    case Qt::DiagCrossPattern:
+        d.reset(new QBasicBrushData);
         break;
     }
     d->ref.storeRelaxed(1);
@@ -585,8 +617,22 @@ void QBrush::detach(Qt::BrushStyle newStyle)
         x.reset(gbd);
         break;
         }
-    default:
-        x.reset(new QBrushData);
+    case Qt::NoBrush:
+    case Qt::SolidPattern:
+    case Qt::Dense1Pattern:
+    case Qt::Dense2Pattern:
+    case Qt::Dense3Pattern:
+    case Qt::Dense4Pattern:
+    case Qt::Dense5Pattern:
+    case Qt::Dense6Pattern:
+    case Qt::Dense7Pattern:
+    case Qt::HorPattern:
+    case Qt::VerPattern:
+    case Qt::CrossPattern:
+    case Qt::BDiagPattern:
+    case Qt::FDiagPattern:
+    case Qt::DiagCrossPattern:
+        x.reset(new QBasicBrushData);
         break;
     }
     x->ref.storeRelaxed(1); // must be first lest the QBrushDataPointerDeleter turns into a no-op
@@ -2168,11 +2214,10 @@ QRadialGradient::QRadialGradient(const QPointF &center, qreal centerRadius, cons
     m_data.radial.cx = center.x();
     m_data.radial.cy = center.y();
     m_data.radial.cradius = centerRadius;
-    m_data.radial.fradius = 0;
+    m_data.radial.fradius = focalRadius;
 
     m_data.radial.fx = focalPoint.x();
     m_data.radial.fy = focalPoint.y();
-    setFocalRadius(focalRadius);
 }
 
 /*!
@@ -2189,11 +2234,10 @@ QRadialGradient::QRadialGradient(qreal cx, qreal cy, qreal centerRadius, qreal f
     m_data.radial.cx = cx;
     m_data.radial.cy = cy;
     m_data.radial.cradius = centerRadius;
-    m_data.radial.fradius = 0;
+    m_data.radial.fradius = focalRadius;
 
     m_data.radial.fx = fx;
     m_data.radial.fy = fy;
-    setFocalRadius(focalRadius);
 }
 
 /*!
@@ -2377,7 +2421,8 @@ void QRadialGradient::setFocalPoint(const QPointF &focalPoint)
     Conical gradients interpolate interpolate colors counter-clockwise
     around a center point.
 
-    \image qconicalgradient.png
+    \image qconicalgradient.png {Screenshot that shows an example of
+           what a conical gradient looks like}
 
     The colors in a gradient is defined using stop points of the
     QGradientStop type, i.e. a position and a color. Use the

@@ -18,15 +18,15 @@ public:
     }
 };
 
-class QtTestAccessibleWidgetIface: public QAccessibleWidget
+class QtTestAccessibleWidgetIface: public QAccessibleWidgetV2
 {
 public:
-    QtTestAccessibleWidgetIface(QtTestAccessibleWidget *w): QAccessibleWidget(w) {}
+    QtTestAccessibleWidgetIface(QtTestAccessibleWidget *w): QAccessibleWidgetV2(w) {}
     QString text(QAccessible::Text t) const override
     {
         if (t == QAccessible::Help)
             return QString::fromLatin1("Help yourself");
-        return QAccessibleWidget::text(t);
+        return QAccessibleWidgetV2::text(t);
     }
     static QAccessibleInterface *ifaceFactory(const QString &key, QObject *o)
     {
@@ -63,7 +63,7 @@ public:
     QString text;
 };
 
-class CustomTextWidgetIface: public QAccessibleWidget, public QAccessibleTextInterface
+class CustomTextWidgetIface: public QAccessibleWidgetV2, public QAccessibleTextInterface
 {
 public:
     static QAccessibleInterface *ifaceFactory(const QString &key, QObject *o)
@@ -72,7 +72,7 @@ public:
             return new CustomTextWidgetIface(static_cast<CustomTextWidget*>(o));
         return 0;
     }
-    CustomTextWidgetIface(CustomTextWidget *w): QAccessibleWidget(w) {}
+    CustomTextWidgetIface(CustomTextWidget *w): QAccessibleWidgetV2(w) {}
     void *interface_cast(QAccessible::InterfaceType t) override
     {
         if (t == QAccessible::TextInterface)
@@ -85,7 +85,7 @@ public:
     {
         if (t == QAccessible::Value)
             return textWidget()->text;
-        return QAccessibleWidget::text(t);
+        return QAccessibleWidgetV2::text(t);
     }
 
     QString textBeforeOffset(int offset, QAccessible::TextBoundaryType boundaryType, int *startOffset, int *endOffset) const override

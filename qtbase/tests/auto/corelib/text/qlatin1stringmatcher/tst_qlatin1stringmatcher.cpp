@@ -17,7 +17,7 @@
 #    undef interface
 #endif
 
-using namespace Qt::Literals::StringLiterals;
+using namespace Qt::StringLiterals;
 
 class tst_QLatin1StringMatcher : public QObject
 {
@@ -563,9 +563,15 @@ void tst_QLatin1StringMatcher::haystacksWithMoreThan4GiBWork()
 
     {
         qsizetype dynamicResult;
+        QString toSearch;
+        try {
+            toSearch = QString::fromLatin1(large);
+        } catch (const std::bad_alloc &) {
+            QSKIP("Could not allocate additional 8GiB plus a couple hundred bytes of RAM.");
+        }
         auto t = std::thread{ [&] {
             QLatin1StringMatcher m(QLatin1StringView(needle), Qt::CaseSensitive);
-            dynamicResult = m.indexIn(QStringView(QString::fromLatin1(large)));
+            dynamicResult = m.indexIn(QStringView(toSearch));
         } };
         t.join();
 

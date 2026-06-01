@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "fuchsia_web/webengine/renderer/web_engine_audio_renderer.h"
 
 #include <lib/sys/cpp/component_context.h>
@@ -413,8 +418,7 @@ void WebEngineAudioRenderer::StopTicking() {
   switch (GetPlaybackState()) {
     case PlaybackState::kStopped:
     case PlaybackState::kPaused:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
 
     case PlaybackState::kStartPending: {
       base::AutoLock lock(timeline_lock_);

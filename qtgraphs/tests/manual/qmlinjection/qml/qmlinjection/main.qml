@@ -22,6 +22,10 @@ Item {
         }
 
         TabButton {
+            text: qsTr("Node Injection")
+        }
+
+        TabButton {
             text: qsTr("Multi-view")
         }
 
@@ -39,9 +43,12 @@ Item {
 
         GraphInjection {}
 
+        GraphNodeInjection {}
+
         MultiView {}
 
         MultiGraph {}
+
 
     }
 }

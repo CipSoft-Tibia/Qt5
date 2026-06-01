@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLAYOUT_H
 #define QLAYOUT_H
@@ -30,7 +31,11 @@ class Q_WIDGETS_EXPORT QLayout : public QObject, public QLayoutItem
     Q_PROPERTY(int spacing READ spacing WRITE setSpacing)
     Q_PROPERTY(QMargins contentsMargins READ contentsMargins WRITE setContentsMargins
                RESET unsetContentsMargins)
+
     Q_PROPERTY(SizeConstraint sizeConstraint READ sizeConstraint WRITE setSizeConstraint)
+    Q_PROPERTY(SizeConstraint horizontalSizeConstraint READ horizontalSizeConstraint WRITE setHorizontalSizeConstraint)
+    Q_PROPERTY(SizeConstraint verticalSizeConstraint READ verticalSizeConstraint WRITE setVerticalSizeConstraint)
+
 public:
     enum SizeConstraint {
         SetDefaultConstraint,
@@ -59,8 +64,17 @@ public:
     bool setAlignment(QLayout *l, Qt::Alignment alignment);
     using QLayoutItem::setAlignment;
 
-    void setSizeConstraint(SizeConstraint);
+    void setSizeConstraint(SizeConstraint constraint);
     SizeConstraint sizeConstraint() const;
+
+    void setSizeConstraints(SizeConstraint horizontal, SizeConstraint vertical);
+
+    void setHorizontalSizeConstraint(SizeConstraint constraint);
+    SizeConstraint horizontalSizeConstraint() const;
+
+    void setVerticalSizeConstraint(SizeConstraint constraint);
+    SizeConstraint verticalSizeConstraint() const;
+
     void setMenuBar(QWidget *w);
     QWidget *menuBar() const;
 

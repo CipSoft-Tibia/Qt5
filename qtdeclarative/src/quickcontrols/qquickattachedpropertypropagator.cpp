@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickattachedpropertypropagator.h"
 
@@ -177,12 +178,20 @@ static QQuickAttachedPropertyPropagator *findAttachedParent(const QMetaObject *o
         QQuickPopup *popup = qobject_cast<QQuickPopup *>(objectWeAreAttachedTo);
         if (popup) {
             qCDebug(lcAttached).noquote() << "- attachee is a popup; checking its window";
-            auto* popupWindow = popup->popupItem()->window();
-            auto *object = attachedObject(ourAttachedType, popupWindow);
+            auto *window = popup->popupItem()->window();
+            auto *object = attachedObject(ourAttachedType, window);
             // Check if the attached object exists for the popup window. If it
             // doesn't, use transient parent attached object
-            if (!object && qobject_cast<QQuickPopupWindow *>(popupWindow))
-                return attachedObject(ourAttachedType, popupWindow->transientParent());
+            if (!object && qobject_cast<QQuickPopupWindow *>(window)) {
+                auto *transientParentWnd = window->transientParent();
+                do {
+                    object = attachedObject(ourAttachedType, transientParentWnd);
+                    if (object)
+                        break;
+                    transientParentWnd = transientParentWnd->transientParent();
+                } while (transientParentWnd);
+                qCDebug(lcAttached).noquote() << "- attached object of the transient parent window: " << object;
+            }
             return object;
         }
     }

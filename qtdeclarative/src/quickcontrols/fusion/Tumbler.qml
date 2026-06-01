@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Templates as T
@@ -42,5 +43,12 @@ T.Tumbler {
                 y: (control.visibleItemCount + 1) * control.__delegateHeight - control.__delegateHeight / 2
             }
         }
+    }
+
+    background: Rectangle {
+        visible: Fusion.highContrast
+        border.color: control.visualFocus ? Fusion.highlight(control.palette) : Fusion.outline(control.palette)
+        color: "transparent"
+        radius: 2
     }
 }

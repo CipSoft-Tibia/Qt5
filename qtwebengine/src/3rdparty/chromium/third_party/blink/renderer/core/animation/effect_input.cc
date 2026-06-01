@@ -51,6 +51,7 @@
 #include "third_party/blink/renderer/core/css/css_primitive_value_mappings.h"
 #include "third_party/blink/renderer/core/css/css_style_sheet.h"
 #include "third_party/blink/renderer/core/css/css_value_id_mappings_generated.h"
+#include "third_party/blink/renderer/core/css/media_values.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/properties/computed_style_utils.h"
 #include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
@@ -58,7 +59,6 @@
 #include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/execution_context/security_context.h"
 #include "third_party/blink/renderer/core/frame/frame_console.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
@@ -89,21 +89,20 @@ Vector<std::optional<EffectModel::CompositeOperation>> ParseCompositeProperty(
   switch (composite->GetContentType()) {
     case V8UnionCompositeOperationOrAutoOrCompositeOperationOrAutoSequence::
         ContentType::kCompositeOperationOrAuto:
-      return {EffectModel::StringToCompositeOperation(
-          composite->GetAsCompositeOperationOrAuto().AsString())};
+      return {EffectModel::EnumToCompositeOperation(
+          composite->GetAsCompositeOperationOrAuto().AsEnum())};
     case V8UnionCompositeOperationOrAutoOrCompositeOperationOrAutoSequence::
         ContentType::kCompositeOperationOrAutoSequence: {
       Vector<std::optional<EffectModel::CompositeOperation>> result;
       for (const auto& composite_operation :
            composite->GetAsCompositeOperationOrAutoSequence()) {
-        result.push_back(EffectModel::StringToCompositeOperation(
-            composite_operation.AsString()));
+        result.push_back(EffectModel::EnumToCompositeOperation(
+            composite_operation.AsEnum()));
       }
       return result;
     }
   }
-  NOTREACHED_IN_MIGRATION();
-  return {};
+  NOTREACHED();
 }
 
 struct ParsedOffset {
@@ -143,6 +142,8 @@ std::optional<ParsedOffset> ParseOffsetFromCssText(
     ExceptionState& exception_state) {
   const CSSParserContext* context =
       document.ElementSheet().Contents()->ParserContext();
+  MediaValues* media_values =
+      MediaValues::CreateDynamicIfFrameExists(document.GetFrame());
   CSSParserTokenStream stream(css_text);
   stream.ConsumeWhitespace();
 
@@ -152,8 +153,8 @@ std::optional<ParsedOffset> ParseOffsetFromCssText(
     const CSSPrimitiveValue* primitive = css_parsing_utils::ConsumeNumber(
         stream, *context, CSSPrimitiveValue::ValueRange::kAll);
     if (primitive && stream.AtEnd()) {
-      return ParsedOffset(
-          {TimelineOffset::NamedRange::kNone, primitive->GetValue<double>()});
+      return ParsedOffset({TimelineOffset::NamedRange::kNone,
+                           primitive->ComputeNumber(*media_values)});
     }
     stream.Restore(savepoint);
   }
@@ -165,7 +166,7 @@ std::optional<ParsedOffset> ParseOffsetFromCssText(
         stream, *context, CSSPrimitiveValue::ValueRange::kAll);
     if (primitive && stream.AtEnd()) {
       return ParsedOffset({TimelineOffset::NamedRange::kNone,
-                           primitive->GetValue<double>() / 100});
+                           primitive->ComputeNumber(*media_values)});
     }
     stream.Restore(savepoint);
   }
@@ -182,8 +183,8 @@ std::optional<ParsedOffset> ParseOffsetFromCssText(
   TimelineOffset::NamedRange range =
       To<CSSIdentifierValue>(range_name_percent->Item(0))
           .ConvertTo<TimelineOffset::NamedRange>();
-  double relative_offset =
-      To<CSSPrimitiveValue>(range_name_percent->Item(1)).GetFloatValue() / 100;
+  double relative_offset = To<CSSPrimitiveValue>(range_name_percent->Item(1))
+                               .ComputeNumber(*media_values);
 
   return ParsedOffset({range, relative_offset});
 }
@@ -213,8 +214,7 @@ std::optional<ParsedOffset> ParseOffset(Document& document,
 
   // If calling using a PropertyIndexKeyframe, we must already have handled
   // sequences.
-  NOTREACHED_IN_MIGRATION();
-  return std::nullopt;
+  NOTREACHED();
 }
 
 void SetKeyframeOffset(Keyframe& keyframe, ParsedOffset& offset) {
@@ -500,7 +500,8 @@ StringKeyframeVector ConvertArrayForm(Element* element,
     }
 
     std::optional<EffectModel::CompositeOperation> composite =
-        EffectModel::StringToCompositeOperation(base_keyframe->composite());
+        EffectModel::EnumToCompositeOperation(
+            base_keyframe->composite().AsEnum());
     if (composite) {
       keyframe->SetComposite(composite.value());
     }
@@ -667,8 +668,7 @@ StringKeyframeVector ConvertObjectForm(Element* element,
 
   // 5.3 Sort processed keyframes by the computed keyframe offset of each
   // keyframe in increasing order.
-  Vector<double> keys;
-  WTF::CopyKeysToVector(keyframes, keys);
+  Vector<double> keys(keyframes.Keys());
   std::sort(keys.begin(), keys.end());
 
   // Steps 5.5 - 5.12 deal with assigning the user-specified offset, easing, and

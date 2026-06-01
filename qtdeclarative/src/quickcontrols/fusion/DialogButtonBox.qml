@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Templates as T
@@ -31,11 +32,18 @@ T.DialogButtonBox {
     }
 
     background: Rectangle {
-        implicitHeight: 32
-        x: 1; y: 1
-        width: parent.width - 2
-        height: parent.height - 2
-        color: control.palette.window
+        implicitHeight: 34
+        width: parent.width
+        height: parent.height
+        color: "transparent"
+        border.color: Fusion.highContrast ? control.palette.windowText : "transparent"
         radius: 2
+        Rectangle {
+            x: 1; y: 1
+            width: parent.width - 2
+            height: parent.height - 2
+            color: control.palette.window
+            radius: 2
+        }
     }
 }

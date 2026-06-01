@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKANIMATORCONTROLLER_P_H
 #define QQUICKANIMATORCONTROLLER_P_H
@@ -45,6 +46,7 @@ public:
     // These are called from the GUI thread (the proxy)
     void start(const QSharedPointer<QAbstractAnimationJob> &job);
     void cancel(const QSharedPointer<QAbstractAnimationJob> &job);
+    void pause(const QSharedPointer<QAbstractAnimationJob> &job);
     bool isPendingStart(const QSharedPointer<QAbstractAnimationJob> &job) const { return m_rootsPendingStart.contains(job); }
 
     void lock() { m_mutex.lock(); }
@@ -64,6 +66,7 @@ private:
     QHash<QAbstractAnimationJob *, QSharedPointer<QAbstractAnimationJob> > m_animationRoots;
     QSet<QSharedPointer<QAbstractAnimationJob> > m_rootsPendingStop;
     QSet<QSharedPointer<QAbstractAnimationJob> > m_rootsPendingStart;
+    QSet<QSharedPointer<QAbstractAnimationJob> > m_rootsPendingPause;
 
     QQuickWindow *m_window;
     QMutex m_mutex;

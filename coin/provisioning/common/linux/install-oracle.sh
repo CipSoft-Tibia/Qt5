@@ -46,6 +46,6 @@ sudo unzip -o -q /tmp/${packageFile} -d ${installFolder}
 echo "Remove downloaded ${packageFile} ..."
 rm -rf /tmp/${packageFile}
 
-SetEnvVar "Oracle_ROOT" "${installFolder}/${distdir}/sdk/"
+SetEnvVar "Oracle_ROOT" "${installFolder}/${distdir}/"
 
 echo "Oracle Instant Client = $version" >> ~/versions.txt

@@ -8,20 +8,31 @@
 \title qt_add_statecharts
 \keyword qt6_add_statecharts
 
+\summary {Converts \c .scxml files into C++ source code.}
+
 \cmakecommandsince 6.1
 
-\section1 Description
+The command is defined in the \c Scxml component of the \c Qt6 package.
+Load the package with:
 
-The \c qt6_add_statecharts macro instructs CMake to invoke the qscxmlc tool to
-read the provided .scxml files and produce C++ source and header files,
-that contain the classes that implement the state machines as defined in SCXML.
+\badcode
+find_package(Qt6 REQUIRED COMPONENTS Scxml)
+\endcode
 
 \section1 Synopsis
 
 \badcode
-qt6_add_statecharts(<TARGET> file1.scxml [file2.scxml ...]
+qt_add_statecharts(<TARGET> file1.scxml [file2.scxml ...]
                     [OPTIONS ...])
 \endcode
+
+\versionlessCMakeCommandsNote qt6_add_statecharts()
+
+\section1 Description
+
+The \c qt_add_statecharts macro instructs CMake to invoke the \c qscxmlc tool to
+read the provided \c .scxml files and produce C++ source and header files,
+that contain the classes that implement the state machines as defined in SCXML.
 
 For further instructions, options and examples please refer to
 \l {Using the Qt SCXML Compiler (qscxmlc)}

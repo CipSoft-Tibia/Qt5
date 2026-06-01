@@ -4,11 +4,12 @@
 
 #include "third_party/blink/renderer/core/speculation_rules/document_speculation_rules.h"
 
+#include <algorithm>
+
 #include "base/containers/contains.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/not_fatal_until.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/ranges/algorithm.h"
 #include "base/state_transitions.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
@@ -17,7 +18,6 @@
 #include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 #include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/shadow_including_tree_order_traversal.h"
 #include "third_party/blink/renderer/core/execution_context/agent.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
@@ -66,8 +66,7 @@ bool AcceptableReferrerPolicy(const Referrer& referrer,
       return true;
 
     case network::mojom::ReferrerPolicy::kDefault:
-      NOTREACHED_IN_MIGRATION();
-      return false;
+      NOTREACHED();
   }
 }
 
@@ -116,7 +115,7 @@ std::optional<Referrer> GetReferrer(const SpeculationRule* rule,
                                     const SpeculationRuleSet& rule_set,
                                     Document& document,
                                     mojom::blink::SpeculationAction action,
-                                    HTMLAnchorElement* link,
+                                    HTMLAnchorElementBase* link,
                                     std::optional<KURL> opt_url) {
   ExecutionContext* execution_context = document.GetExecutionContext();
   DCHECK(link || opt_url);
@@ -252,7 +251,7 @@ void DocumentSpeculationRules::AddRuleSet(SpeculationRuleSet* rule_set) {
     } else if (rule_set->source()->IsFromBrowserInjected()) {
       outcome = SpeculationRulesLoadOutcome::kParseErrorBrowserInjected;
     } else {
-      NOTREACHED_IN_MIGRATION() << "error with unknown rule source";
+      NOTREACHED() << "error with unknown rule source";
     }
   } else if (rule_set->source()->IsFromBrowserInjectedAndRespectsOptOut()) {
     // Don't insert browser-injected rule sets that respect the opt-out on pages
@@ -328,10 +327,10 @@ void DocumentSpeculationRules::AddRuleSet(SpeculationRuleSet* rule_set) {
 }
 
 void DocumentSpeculationRules::RemoveRuleSet(SpeculationRuleSet* rule_set) {
-  auto it = base::ranges::remove(rule_sets_, rule_set);
-  CHECK(it != rule_sets_.end(), base::NotFatalUntil::M130)
+  auto removed = std::ranges::remove(rule_sets_, rule_set);
+  CHECK(!removed.empty(), base::NotFatalUntil::M130)
       << "rule set was removed without existing";
-  rule_sets_.erase(it, rule_sets_.end());
+  rule_sets_.erase(removed.begin(), removed.end());
   if (rule_set->has_document_rule()) {
     InvalidateAllLinks();
     if (!rule_set->selectors().empty()) {
@@ -339,8 +338,8 @@ void DocumentSpeculationRules::RemoveRuleSet(SpeculationRuleSet* rule_set) {
     }
   }
   if (wants_pointer_events_ && rule_set->requires_unfiltered_input() &&
-      base::ranges::none_of(rule_sets_,
-                            &SpeculationRuleSet::requires_unfiltered_input)) {
+      std::ranges::none_of(rule_sets_,
+                           &SpeculationRuleSet::requires_unfiltered_input)) {
     wants_pointer_events_ = false;
     Document& document = *GetSupplementable();
     if (auto* frame = document.GetFrame()) {
@@ -373,7 +372,7 @@ void DocumentSpeculationRules::RemoveSpeculationRuleLoader(
   speculation_rule_loaders_.erase(speculation_rule_loader);
 }
 
-void DocumentSpeculationRules::LinkInserted(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::LinkInserted(HTMLAnchorElementBase* link) {
   if (!initialized_)
     return;
 
@@ -383,7 +382,7 @@ void DocumentSpeculationRules::LinkInserted(HTMLAnchorElement* link) {
   QueueUpdateSpeculationCandidates();
 }
 
-void DocumentSpeculationRules::LinkRemoved(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::LinkRemoved(HTMLAnchorElementBase* link) {
   if (!initialized_)
     return;
 
@@ -393,7 +392,7 @@ void DocumentSpeculationRules::LinkRemoved(HTMLAnchorElement* link) {
 }
 
 void DocumentSpeculationRules::HrefAttributeChanged(
-    HTMLAnchorElement* link,
+    HTMLAnchorElementBase* link,
     const AtomicString& old_value,
     const AtomicString& new_value) {
   if (!initialized_)
@@ -413,15 +412,17 @@ void DocumentSpeculationRules::HrefAttributeChanged(
 }
 
 void DocumentSpeculationRules::ReferrerPolicyAttributeChanged(
-    HTMLAnchorElement* link) {
+    HTMLAnchorElementBase* link) {
   LinkAttributeChanged(link);
 }
 
-void DocumentSpeculationRules::RelAttributeChanged(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::RelAttributeChanged(
+    HTMLAnchorElementBase* link) {
   LinkAttributeChanged(link);
 }
 
-void DocumentSpeculationRules::TargetAttributeChanged(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::TargetAttributeChanged(
+    HTMLAnchorElementBase* link) {
   LinkAttributeChanged(link);
 }
 
@@ -440,14 +441,14 @@ void DocumentSpeculationRules::DocumentBaseTargetChanged() {
 }
 
 void DocumentSpeculationRules::LinkMatchedSelectorsUpdated(
-    HTMLAnchorElement* link) {
+    HTMLAnchorElementBase* link) {
   DCHECK(initialized_);
   InvalidateLink(link);
   QueueUpdateSpeculationCandidates();
 }
 
 void DocumentSpeculationRules::LinkGainedOrLostComputedStyle(
-    HTMLAnchorElement* link) {
+    HTMLAnchorElementBase* link) {
   if (!initialized_) {
     return;
   }
@@ -476,9 +477,7 @@ void DocumentSpeculationRules::ChildStyleRecalcBlocked(Element* root) {
   while (node) {
     if (node->IsLink() && (node->HasTagName(html_names::kATag) ||
                            node->HasTagName(html_names::kAreaTag))) {
-      HTMLAnchorElement* anchor = node->HasTagName(html_names::kATag)
-                                      ? To<HTMLAnchorElement>(node)
-                                      : To<HTMLAreaElement>(node);
+      HTMLAnchorElementBase* anchor = To<HTMLAnchorElementBase>(node);
       if (stale_links_.insert(anchor).is_new_entry) {
         InvalidateLink(anchor);
         queue_update = true;
@@ -517,9 +516,7 @@ void DocumentSpeculationRules::DidStyleChildren(Element* root) {
   while (node) {
     if (node->IsLink() && (node->HasTagName(html_names::kATag) ||
                            node->HasTagName(html_names::kAreaTag))) {
-      HTMLAnchorElement* anchor = node->HasTagName(html_names::kATag)
-                                      ? To<HTMLAnchorElement>(node)
-                                      : To<HTMLAreaElement>(node);
+      HTMLAnchorElementBase* anchor = To<HTMLAnchorElementBase>(node);
       if (auto it = stale_links_.find(anchor); it != stale_links_.end()) {
         stale_links_.erase(it);
         InvalidateLink(anchor);
@@ -668,7 +665,7 @@ void DocumentSpeculationRules::UpdateSpeculationCandidates() {
             rule->requires_anonymous_client_ip_when_cross_origin(),
             rule->target_browsing_context_name_hint().value_or(
                 mojom::blink::SpeculationTargetHint::kNoHint),
-            rule->eagerness(), rule->no_vary_search_expected().Clone(),
+            rule->eagerness(), rule->no_vary_search_hint().Clone(),
             rule->injection_type(), rule_set, /*anchor=*/nullptr));
       }
     }
@@ -711,12 +708,13 @@ void DocumentSpeculationRules::UpdateSpeculationCandidates() {
   // Note that the document's URL is not necessarily the same as the base URL
   // (e,g., when a <base> element is present in the document).
   const KURL& document_url = document.Url();
-  auto last = base::ranges::remove_if(candidates, [&](const auto& candidate) {
+  auto last = std::ranges::remove_if(candidates, [&](const auto& candidate) {
     const KURL& url = candidate->url();
     return url.HasFragmentIdentifier() &&
            EqualIgnoringFragmentIdentifier(url, document_url);
   });
-  candidates.Shrink(base::checked_cast<wtf_size_t>(last - candidates.begin()));
+  candidates.Shrink(
+      base::checked_cast<wtf_size_t>(last.begin() - candidates.begin()));
 
   probe::SpeculationCandidatesUpdated(document, candidates);
 
@@ -759,7 +757,7 @@ void DocumentSpeculationRules::AddLinkBasedSpeculationCandidates(
   // Match all the unmatched
   while (!pending_links_.empty()) {
     auto it = pending_links_.begin();
-    HTMLAnchorElement* link = *it;
+    HTMLAnchorElementBase* link = *it;
     HeapVector<Member<SpeculationCandidate>>* link_candidates =
         MakeGarbageCollected<HeapVector<Member<SpeculationCandidate>>>();
     Document& document = *GetSupplementable();
@@ -821,8 +819,8 @@ void DocumentSpeculationRules::AddLinkBasedSpeculationCandidates(
                     link->HrefURL(), action, referrer.value(),
                     rule->requires_anonymous_client_ip_when_cross_origin(),
                     target_hint, rule->eagerness(),
-                    rule->no_vary_search_expected().Clone(),
-                    rule->injection_type(), rule_set, link);
+                    rule->no_vary_search_hint().Clone(), rule->injection_type(),
+                    rule_set, link);
             link_candidates->push_back(std::move(candidate));
           }
         };
@@ -867,14 +865,14 @@ void DocumentSpeculationRules::InitializeIfNecessary() {
        ShadowIncludingTreeOrderTraversal::DescendantsOf(*GetSupplementable())) {
     if (!node.IsLink())
       continue;
-    if (auto* anchor = DynamicTo<HTMLAnchorElement>(node))
+    if (auto* anchor = DynamicTo<HTMLAnchorElementBase>(node)) {
       pending_links_.insert(anchor);
-    else if (auto* area = DynamicTo<HTMLAreaElement>(node))
-      pending_links_.insert(area);
+    }
   }
 }
 
-void DocumentSpeculationRules::LinkAttributeChanged(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::LinkAttributeChanged(
+    HTMLAnchorElementBase* link) {
   if (!initialized_) {
     return;
   }
@@ -891,7 +889,7 @@ void DocumentSpeculationRules::DocumentPropertyChanged() {
   QueueUpdateSpeculationCandidates();
 }
 
-void DocumentSpeculationRules::AddLink(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::AddLink(HTMLAnchorElementBase* link) {
   DCHECK(initialized_);
   DCHECK(link->IsLink());
   DCHECK(!base::Contains(unmatched_links_, link));
@@ -907,7 +905,7 @@ void DocumentSpeculationRules::AddLink(HTMLAnchorElement* link) {
   }
 }
 
-void DocumentSpeculationRules::RemoveLink(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::RemoveLink(HTMLAnchorElementBase* link) {
   DCHECK(initialized_);
   stale_links_.erase(link);
 
@@ -930,7 +928,7 @@ void DocumentSpeculationRules::RemoveLink(HTMLAnchorElement* link) {
   pending_links_.erase(it);
 }
 
-void DocumentSpeculationRules::InvalidateLink(HTMLAnchorElement* link) {
+void DocumentSpeculationRules::InvalidateLink(HTMLAnchorElementBase* link) {
   DCHECK(initialized_);
 
   pending_links_.insert(link);
@@ -950,8 +948,9 @@ void DocumentSpeculationRules::InvalidateAllLinks() {
     pending_links_.insert(it.key);
   matched_links_.clear();
 
-  for (HTMLAnchorElement* link : unmatched_links_)
+  for (HTMLAnchorElementBase* link : unmatched_links_) {
     pending_links_.insert(link);
+  }
   unmatched_links_.clear();
 }
 

@@ -94,10 +94,15 @@
                 "file type": "module and plugin",
                 "spdx": ["LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"]
             },
-            "src/spatialaudioquick3d/" : {
-                "comment" : "Special case",
-                "file type" : "module and plugin",
-                "spdx"      : ["LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-3.0-only"]
+            "src/multimedia/pipewire/qpipewire_spa_compat_p.h": {
+                "comment": "Special case (backport from pipewire sources)",
+                "file type": "module and plugin",
+                "spdx": ["MIT"]
+            },
+            "src/spatialaudioquick3d/": {
+                "comment": "Special case",
+                "file type": "module and plugin",
+                "spdx": ["LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-3.0-only"]
             },
             "src/spatialaudio/": {
                 "comment": "Special case",

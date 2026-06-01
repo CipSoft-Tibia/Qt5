@@ -1,7 +1,7 @@
-diff --git a/third_party/libxml/src/include/libxml/tree.h b/third_party/libxml/src/include/libxml/tree.h
+diff --git a/chromium/third_party/libxml/src/include/libxml/tree.h b/chromium/third_party/libxml/src/include/libxml/tree.h
 index e5a8fb709471f..7819d5819b427 100644
---- a/third_party/libxml/src/include/libxml/tree.h
-+++ b/third_party/libxml/src/include/libxml/tree.h
+--- a/chromium/third_party/libxml/src/include/libxml/tree.h
++++ b/chromium/third_party/libxml/src/include/libxml/tree.h
 @@ -454,6 +454,7 @@ struct _xmlAttr {
      xmlAttributeType atype;     /* the attribute type if validating */
      void            *psvi;	/* for type/PSVI information */

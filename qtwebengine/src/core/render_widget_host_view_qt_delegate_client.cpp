@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "render_widget_host_view_qt_delegate_client.h"
 
@@ -880,7 +881,7 @@ void RenderWidgetHostViewQtDelegateClient::handleInputMethodEvent(QInputMethodEv
 
     m_receivedEmptyImeEvent = false;
 
-    // Finish compostion: insert or erase text.
+    // Finish composition: insert or erase text.
     if (!commitString.isEmpty() || replacementLength > 0) {
         m_rwhv->host()->ImeCommitText(toString16(commitString), underlines, replacementRange, 0);
         m_imeInProgress = false;

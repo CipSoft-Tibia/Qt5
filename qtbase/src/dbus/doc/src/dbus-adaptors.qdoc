@@ -295,8 +295,9 @@
     Qt D-Bus provides template specializations for arrays and maps for
     use with Qt's \l{Container classes}{container classes}, such as
     QMap and QList, so it is not necessary to write the streaming
-    operator functions for those. For other types, and specially for
-    types implementing structures, the operators have to be explicitly
+    operator functions for those. For structures Qt provides generic
+    specializations mapping to and from \c std::tuple. In order to use
+    a custom type instead or for other types the operators have to be explicitly
     implemented.
 
     See the documentation for QDBusArgument for examples for

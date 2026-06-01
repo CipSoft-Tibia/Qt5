@@ -3,8 +3,11 @@
 
 # Generated from compositor-extensions.pro.
 
-add_subdirectory(xdgshell)
-add_subdirectory(iviapplication)
-add_subdirectory(wlshell)
-add_subdirectory(qtshell)
-add_subdirectory(presentationtime)
+if(QT_FEATURE_wayland_compositor_quick)
+    add_subdirectory(xdgshell)
+    add_subdirectory(iviapplication)
+    add_subdirectory(wlshell)
+    add_subdirectory(qtshell)
+    add_subdirectory(presentationtime)
+endif()
+

@@ -19,9 +19,9 @@
 
 static QString qtToolFilePath(const QString &toolName, QLibraryInfo::LibraryPath location)
 {
-    QString filePath = QLibraryInfo::path(location) + QLatin1Char('/') + toolName;
+    QString filePath = QLibraryInfo::path(location) + u'/' + toolName;
 #ifdef Q_OS_WIN
-    filePath.append(QLatin1String(".exe"));
+    filePath.append(".exe"_L1);
 #endif
     return QDir::cleanPath(filePath);
 }
@@ -36,7 +36,7 @@ static QString shellQuoted(const QString &str)
     static QRegularExpression rx(QStringLiteral("\\s"));
     QString result = str;
     if (result.contains(rx)) {
-        const QLatin1Char dblqt = QLatin1Char('"');
+        const QLatin1Char dblqt('"');
         result.prepend(dblqt);
         result.append(dblqt);
     }
@@ -55,9 +55,7 @@ static QStringList shellQuoted(const QStringList &strs)
 static QString commandLineForSystem(const QString &program,
                                     const QStringList &arguments)
 {
-    return shellQuoted(program)
-            + QLatin1Char(' ')
-            + shellQuoted(arguments).join(QLatin1Char(' '));
+    return shellQuoted(program) + u' ' + shellQuoted(arguments).join(u' ');
 }
 
 static int runQtToolHelper(const QString &toolName, const QStringList &arguments,

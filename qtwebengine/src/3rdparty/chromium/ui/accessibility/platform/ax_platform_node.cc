@@ -33,13 +33,13 @@ AXPlatformNode* AXPlatformNode::FromNativeWindow(
   return nullptr;
 }
 
-#if !BUILDFLAG_INTERNAL_HAS_NATIVE_ACCESSIBILITY()
+#if !BUILDFLAG(HAS_NATIVE_ACCESSIBILITY)
 // static
 AXPlatformNode* AXPlatformNode::FromNativeViewAccessible(
     gfx::NativeViewAccessible accessible) {
   return nullptr;
 }
-#endif  // !BUILDFLAG_INTERNAL_HAS_NATIVE_ACCESSIBILITY()
+#endif  // !BUILDFLAG(HAS_NATIVE_ACCESSIBILITY)
 
 // static
 void AXPlatformNode::RegisterNativeWindowHandler(
@@ -64,11 +64,11 @@ AXPlatformNodeId AXPlatformNode::GetUniqueId() const {
   return CHECK_DEREF(GetDelegate()).GetUniqueId();
 }
 
-std::string AXPlatformNode::ToString() {
+std::string AXPlatformNode::ToString() const {
   return GetDelegate() ? GetDelegate()->ToString() : "No delegate";
 }
 
-std::string AXPlatformNode::SubtreeToString() {
+std::string AXPlatformNode::SubtreeToString() const {
   return GetDelegate() ? GetDelegate()->SubtreeToString() : "No delegate";
 }
 

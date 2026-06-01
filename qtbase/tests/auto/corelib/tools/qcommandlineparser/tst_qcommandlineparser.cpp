@@ -94,7 +94,7 @@ void tst_QCommandLineParser::testDuplicateOption()
     QCoreApplication app(empty_argc, empty_argv);
     QCommandLineParser parser;
     QVERIFY(parser.addOption(QCommandLineOption(QStringLiteral("h"), QStringLiteral("Hostname."), QStringLiteral("hostname"))));
-    QTest::ignoreMessage(QtWarningMsg, "QCommandLineParser: already having an option named \"h\"");
+    QTest::ignoreMessage(QtWarningMsg, "QCommandLineParser: option already added: \"h\"");
     parser.addHelpOption();
 }
 

@@ -94,7 +94,7 @@ public:
     // Set 'blockSendPostedEvents' to true if you _really_ need
     // to make sure that qt events are not posted while calling
     // low-level cocoa functions (like beginModalForWindow). And
-    // use a QBoolBlocker to be safe:
+    // use a QScopedValueRollback to be safe:
     bool blockSendPostedEvents;
     // The following variables help organizing modal sessions:
     QStack<QCocoaModalSessionInfo> cocoaModalSessionStack;

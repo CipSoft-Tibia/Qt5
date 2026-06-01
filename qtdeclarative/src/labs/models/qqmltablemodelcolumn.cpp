@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqmltablemodelcolumn_p.h"
 
@@ -13,6 +14,34 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule Qt.labs.qmlmodels
     \brief Represents a column in a model.
     \since 5.14
+
+    The TableModelColumn class represents columns in TableModel.
+    TableModel supports JavaScript/JSON data where each row is an object,
+    a list of simple key-value pairs where the keys are unordered.
+
+    \code
+    {
+        // Each property is one cell/column.
+        checked: false,
+        amount: 1,
+        fruitType: "Apple",
+        fruitName: "Granny Smith",
+        fruitPrice: 1.50
+    },
+    // ...
+    \endcode
+
+    However, models in Qt are manipulated via row and column indices. Specifying
+    the columns with TableModelColumn allows a mapping between Qt's built-in
+    roles to any property in each row object.
+
+    \snippet qml/tablemodel/fruit-example-simpledelegate.qml file
+
+    TableModelColumn also has basic read-only support for complex rows. For more
+    information, see \l {Supported Row Data Structures}.
+
+    \note Most of the above concepts also apply to TreeModel, except in
+    TreeModel each row represents a node of the tree.
 
     \section1 Supported Roles
 
@@ -73,7 +102,7 @@ QQmlTableModelColumn::~QQmlTableModelColumn()
 {
 }
 
-#define DEFINE_ROLE_PROPERTIES(getterGetterName, getterSetterName, getterSignal, setterGetterName, setterSetterName, setterSignal, roleName) \
+#define DEFINE_ROLE_PROPERTIES(getterGetterName, getterSetterName, getterSignal, roleName) \
 QJSValue QQmlTableModelColumn::getterGetterName() const \
 { \
     return mGetters.value(roleName); \
@@ -90,71 +119,44 @@ void QQmlTableModelColumn::getterSetterName(const QJSValue &stringOrFunction) \
 \
     mGetters[roleName] = stringOrFunction; \
     emit decorationChanged(); \
-} \
-\
-QJSValue QQmlTableModelColumn::setterGetterName() const \
-{ \
-    return mSetters.value(roleName); \
-} \
-\
-void QQmlTableModelColumn::setterSetterName(const QJSValue &function) \
-{ \
-    if (!function.isCallable()) { \
-        qmlWarning(this).quote() << "setter for " << roleName << " must be a function"; \
-        return; \
-    } \
-\
-    if (function.strictlyEquals(getSetDisplay())) \
-        return; \
-\
-    mSetters[roleName] = function; \
-    emit setDisplayChanged(); \
 }
 
 DEFINE_ROLE_PROPERTIES(display, setDisplay, displayChanged,
-    getSetDisplay, setSetDisplay, setDisplayChanged, displayRoleName)
+    displayRoleName)
 DEFINE_ROLE_PROPERTIES(decoration, setDecoration, decorationChanged,
-    getSetDecoration, setSetDecoration, setDecorationChanged, decorationRoleName)
+    decorationRoleName)
 DEFINE_ROLE_PROPERTIES(edit, setEdit, editChanged,
-    getSetEdit, setSetEdit, setEditChanged, editRoleName)
+    editRoleName)
 DEFINE_ROLE_PROPERTIES(toolTip, setToolTip, toolTipChanged,
-    getSetToolTip, setSetToolTip, setToolTipChanged, toolTipRoleName)
+    toolTipRoleName)
 DEFINE_ROLE_PROPERTIES(statusTip, setStatusTip, statusTipChanged,
-    getSetStatusTip, setSetStatusTip, setStatusTipChanged, statusTipRoleName)
+    statusTipRoleName)
 DEFINE_ROLE_PROPERTIES(whatsThis, setWhatsThis, whatsThisChanged,
-    getSetWhatsThis, setSetWhatsThis, setWhatsThisChanged, whatsThisRoleName)
+    whatsThisRoleName)
 
 DEFINE_ROLE_PROPERTIES(font, setFont, fontChanged,
-    getSetFont, setSetFont, setFontChanged, fontRoleName)
+    fontRoleName)
 DEFINE_ROLE_PROPERTIES(textAlignment, setTextAlignment, textAlignmentChanged,
-    getSetTextAlignment, setSetTextAlignment, setTextAlignmentChanged, textAlignmentRoleName)
+    textAlignmentRoleName)
 DEFINE_ROLE_PROPERTIES(background, setBackground, backgroundChanged,
-    getSetBackground, setSetBackground, setBackgroundChanged, backgroundRoleName)
+    backgroundRoleName)
 DEFINE_ROLE_PROPERTIES(foreground, setForeground, foregroundChanged,
-    getSetForeground, setSetForeground, setForegroundChanged, foregroundRoleName)
+    foregroundRoleName)
 DEFINE_ROLE_PROPERTIES(checkState, setCheckState, checkStateChanged,
-    getSetCheckState, setSetCheckState, setCheckStateChanged, checkStateRoleName)
+    checkStateRoleName)
 
 DEFINE_ROLE_PROPERTIES(accessibleText, setAccessibleText, accessibleTextChanged,
-    getSetAccessibleText, setSetAccessibleText, setAccessibleTextChanged, accessibleTextRoleName)
+    accessibleTextRoleName)
 DEFINE_ROLE_PROPERTIES(accessibleDescription, setAccessibleDescription, accessibleDescriptionChanged,
-    getSetAccessibleDescription, setSetAccessibleDescription, setAccessibleDescriptionChanged, accessibleDescriptionRoleName)
+    accessibleDescriptionRoleName)
 
 DEFINE_ROLE_PROPERTIES(sizeHint, setSizeHint, sizeHintChanged,
-    getSetSizeHint, setSetSizeHint, setSizeHintChanged, sizeHintRoleName)
+    sizeHintRoleName)
 
 QJSValue QQmlTableModelColumn::getterAtRole(const QString &roleName)
 {
     auto it = mGetters.find(roleName);
     if (it == mGetters.end())
-        return QJSValue();
-    return *it;
-}
-
-QJSValue QQmlTableModelColumn::setterAtRole(const QString &roleName)
-{
-    auto it = mSetters.find(roleName);
-    if (it == mSetters.end())
         return QJSValue();
     return *it;
 }

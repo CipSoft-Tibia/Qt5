@@ -23,15 +23,15 @@ process_version("branding_header") {
     "-e",
     "COMPANY_SHORTNAME_UPPERCASE=\"$enterprise_companion_company_short_name_uppercase\"",
     "-e",
-    "CRASH_PRODUCT_NAME=\"$crash_product_name\"",
+    "CRASH_PRODUCT_NAME=\"$enterprise_companion_crash_product_name\"",
     "-e",
-    "CRASH_UPLOAD_URL=\"$crash_upload_url\"",
+    "CRASH_UPLOAD_URL=\"$enterprise_companion_crash_upload_url\"",
     "-e",
-    "DEVICE_MANAGEMENT_ENCRYPTED_REPORTING_URL=\"$device_management_encrypted_reporting_url\"",
+    "DEVICE_MANAGEMENT_ENCRYPTED_REPORTING_URL=\"$enterprise_companion_device_management_encrypted_reporting_url\"",
     "-e",
-    "DEVICE_MANAGEMENT_REALTIME_REPORTING_URL=\"$device_management_realtime_reporting_url\"",
+    "DEVICE_MANAGEMENT_REALTIME_REPORTING_URL=\"$enterprise_companion_device_management_realtime_reporting_url\"",
     "-e",
-    "DEVICE_MANAGEMENT_SERVER_URL=\"$device_management_server_url\"",
+    "DEVICE_MANAGEMENT_SERVER_URL=\"$enterprise_companion_device_management_server_url\"",
     "-e",
     "ENTERPRISE_COMPANION_APPID=\"$enterprise_companion_appid\"",
     "-e",
@@ -48,6 +48,10 @@ process_version("branding_header") {
 
   template_file = "enterprise_companion_branding.h.in"
   output = "$target_gen_dir/enterprise_companion_branding.h"
+}
+
+source_set("flags") {
+  sources = [ "flags.h" ]
 }
 
 source_set("base") {
@@ -81,19 +85,25 @@ source_set("base") {
     "ipc_support.h",
     "lock.cc",
     "lock.h",
+    "proxy_config_service.cc",
+    "proxy_config_service.h",
     "url_loader_factory_provider.cc",
     "url_loader_factory_provider.h",
   ]
   deps = [
     ":branding_header",
     ":client",
+    ":flags",
     ":installer_paths",
     ":version_header",
     "mojom/",
     "//base",
     "//chrome/enterprise_companion/device_management_storage",
     "//chrome/enterprise_companion/proto",
+    "//chrome/enterprise_companion/telemetry_logger/proto",
     "//chrome/updater:public_sources",
+    "//chrome/updater/protos:omaha_proto",
+    "//components/crash/core/common",
     "//components/named_mojo_ipc_server",
     "//components/named_system_lock",
     "//components/policy/core/common",
@@ -145,6 +155,7 @@ executable("test_crashpad_embedder") {
     ":base",
     ":client",
     ":constants_test",
+    ":flags",
     "//base",
     "//chrome/updater:constants_test",
   ]
@@ -164,6 +175,8 @@ source_set("test_utils") {
   deps = [
     ":base",
     ":branding_header",
+    ":client",
+    ":flags",
     ":installer_paths",
     ":version_header",
     "//base",
@@ -196,6 +209,8 @@ test("enterprise_companion_tests") {
     "enterprise_companion_service_unittest.cc",
     "enterprise_companion_status_unittest.cc",
     "event_logger_unittest.cc",
+    "proxy_config_service_unittest.cc",
+    "telemetry_logger/telemetry_logger_unittest.cc",
     "test/run_all_unittests.cc",
     "url_loader_factory_provider_unittest.cc",
   ]
@@ -211,7 +226,9 @@ test("enterprise_companion_tests") {
     "//chrome/enterprise_companion/device_management_storage",
     "//chrome/enterprise_companion/device_management_storage:unit_tests",
     "//chrome/enterprise_companion/proto",
+    "//chrome/enterprise_companion/telemetry_logger/proto",
     "//chrome/updater:constants_test",
+    "//chrome/updater/protos:omaha_proto",
     "//components/named_mojo_ipc_server",
     "//components/policy/core/common",
     "//components/policy/core/common:test_support",
@@ -248,6 +265,7 @@ test("enterprise_companion_integration_tests") {
     ":branding_header",
     ":client",
     ":constants_test",
+    ":flags",
     ":installer_paths",
     ":test_utils",
     ":version_header",
@@ -256,8 +274,10 @@ test("enterprise_companion_integration_tests") {
     "//base/test:test_support",
     "//chrome/enterprise_companion/device_management_storage",
     "//chrome/enterprise_companion/proto",
+    "//chrome/enterprise_companion/telemetry_logger/proto",
     "//chrome/updater:constants_test",
     "//chrome/updater:public_sources",
+    "//chrome/updater/protos:omaha_proto",
     "//components/named_mojo_ipc_server:named_mojo_ipc_server",
     "//components/policy/core/common",
     "//components/policy/core/common:common_constants",
@@ -267,17 +287,15 @@ test("enterprise_companion_integration_tests") {
     "//testing/gtest",
   ]
   data = [ "//testing/scripts/run_telemetry_as_googletest.py" ]
-  data_deps = [ ":enterprise_companion_test" ]
+  data_deps = []
 
-  # The MacOS integration tests require the pkg installer to be built, which is
-  # only possible on MacOS hosts.
-  if (is_mac && host_os == "mac") {
-    sources += [ "test/integration_tests_mac.cc" ]
-    data_deps += [ "//chrome/enterprise_companion/mac:enterprise_companion_installer_unsigned" ]
-  }
-
-  if (is_win) {
+  if (is_mac) {
+    data_deps +=
+        [ "//chrome/enterprise_companion/mac:enterprise_companion_bundle_test" ]
+  } else if (is_win) {
     sources += [ "test/integration_tests_win.cc" ]
+    data_deps += [ ":enterprise_companion_test" ]
+  } else if (is_linux) {
     data_deps += [ ":enterprise_companion_test" ]
   }
 
@@ -286,13 +304,16 @@ test("enterprise_companion_integration_tests") {
 
 static_library("client") {
   sources = [
+    "constants.h",
     "enterprise_companion_client.cc",
     "enterprise_companion_client.h",
   ]
   deps = [
     ":branding_header",
+    ":flags",
     ":installer_paths",
     "//components/named_mojo_ipc_server",
+    "//components/policy/core/common:common_constants",
     "//mojo/public/cpp/platform",
   ]
   public_deps = [ "mojom/" ]
@@ -342,8 +363,6 @@ static_library("constants_prod") {
 }
 
 static_library("constants_test") {
-  testonly = true
-
   public = [ "global_constants.h" ]
   sources = [ "global_constants.cc" ]
   deps = [
@@ -354,6 +373,7 @@ static_library("constants_test") {
   ]
   visibility = [
     ":*",
+    "//chrome/enterprise_companion/mac:*",
     "//chrome/updater:*",
   ]
   defines = [ "ENTERPRISE_COMPANION_TEST_ONLY" ]
@@ -375,12 +395,11 @@ executable("enterprise_companion") {
 # Enterprise Companion application used by integration tests. Constants can be
 # overridden via global_constants.h.
 executable("enterprise_companion_test") {
-  testonly = true
   sources = [ "main.cc" ]
   deps = [
     ":base",
     ":constants_test",
-    "//chrome/updater:constants_prod",
+    "//chrome/updater:constants_test",
   ]
 
   if (is_win) {
@@ -400,10 +419,6 @@ group("all") {
   ]
   if (!is_official_build) {
     deps += [ ":enterprise_companion" ]
-
-    if (is_mac) {
-      deps += [ "//chrome/enterprise_companion/mac" ]
-    }
   }
 }
 
@@ -419,8 +434,13 @@ artifact_zip("enterprise_companion_zip") {
       "$root_build_dir/${enterprise_companion_product_full_name}.app/Contents/Info.plist",
       "$root_build_dir/${enterprise_companion_product_full_name}.app/Contents/MacOS/${enterprise_companion_product_full_name}",
       "$root_build_dir/${enterprise_companion_product_full_name}.app/Contents/PkgInfo",
+      "$root_build_dir/EnterpriseCompanionSigning/sign.py",
+      "$root_build_dir/EnterpriseCompanionSigning/pkg-dmg",
     ]
-    deps = [ "//chrome/enterprise_companion/mac:enterprise_companion_bundle" ]
+    deps = [
+      "//chrome/enterprise_companion/mac:copy_signing",
+      "//chrome/enterprise_companion/mac:enterprise_companion_bundle",
+    ]
   } else if (is_win) {
     inputs = [ "$root_build_dir/enterprise_companion.exe" ]
     deps = [ ":enterprise_companion" ]

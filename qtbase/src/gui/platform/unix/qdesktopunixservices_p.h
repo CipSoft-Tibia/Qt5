@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #ifndef QDESKTOPUNIXSERVICES_H
 #define QDESKTOPUNIXSERVICES_H
@@ -25,6 +26,7 @@ QT_BEGIN_NAMESPACE
 
 class QDBusPendingCallWatcher;
 class QWindow;
+class QDBusServiceWatcher;
 
 class Q_GUI_EXPORT QDesktopUnixServices : public QPlatformServices
 {
@@ -50,6 +52,7 @@ private:
     QString m_documentLauncher;
 #if QT_CONFIG(dbus)
     QPointer<QDBusPendingCallWatcher> m_watcher = nullptr;
+    std::unique_ptr<QDBusServiceWatcher> m_portalWatcher;
 #endif
     bool m_hasScreenshotPortalWithColorPicking = false;
 };

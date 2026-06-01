@@ -9,9 +9,11 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "osp/public/connect_request.h"
 #include "osp/public/presentation/presentation_common.h"
 #include "osp/public/presentation/presentation_connection.h"
 #include "osp/public/protocol_connection.h"
@@ -61,7 +63,8 @@ class ReceiverObserver {
 };
 
 class Controller final : public ServiceListener::Observer,
-                         public Connection::Controller {
+                         public Connection::Controller,
+                         public ConnectRequestCallback {
  public:
   class ReceiverWatch {
    public:
@@ -76,10 +79,13 @@ class Controller final : public ServiceListener::Observer,
     ~ReceiverWatch();
 
     explicit operator bool() const { return observer_; }
-
-    friend void swap(ReceiverWatch& a, ReceiverWatch& b);
+    // Stop this ReceiverWatch by calling `StopWatching()` and reset its
+    // members.
+    void Reset();
 
    private:
+    void StopWatching();
+
     std::vector<std::string> urls_;
     ReceiverObserver* observer_ = nullptr;
     Controller* controller_ = nullptr;
@@ -91,21 +97,24 @@ class Controller final : public ServiceListener::Observer,
     ConnectRequest(Controller* controller,
                    const std::string& instance_name,
                    bool is_reconnect,
-                   std::optional<uint64_t> request_id);
+                   uint64_t request_id);
     ConnectRequest(const ConnectRequest&) = delete;
     ConnectRequest& operator=(const ConnectRequest&) = delete;
     ConnectRequest(ConnectRequest&&) noexcept;
     ConnectRequest& operator=(ConnectRequest&&) noexcept;
     ~ConnectRequest();
 
-    explicit operator bool() const { return request_id_.has_value(); }
-
-    friend void swap(ConnectRequest& a, ConnectRequest& b);
+    explicit operator bool() const { return request_id_ > 0; }
+    // Cancel this ConnectRequest by calling `CancelRequest()` and reset its
+    // members.
+    void Reset();
 
    private:
+    void CancelRequest();
+
     std::string instance_name_;
     bool is_reconnect_ = false;
-    std::optional<uint64_t> request_id_;
+    uint64_t request_id_ = 0;
     Controller* controller_ = nullptr;
   };
 
@@ -114,7 +123,7 @@ class Controller final : public ServiceListener::Observer,
   Controller& operator=(const Controller&) = delete;
   Controller(Controller&&) noexcept = delete;
   Controller& operator=(Controller&&) noexcept = delete;
-  ~Controller();
+  ~Controller() override;
 
   // Connection::Controller overrides.
   Error CloseConnection(Connection* connection,
@@ -123,6 +132,10 @@ class Controller final : public ServiceListener::Observer,
                                  TerminationSource source,
                                  TerminationReason reason) override;
   void OnConnectionDestroyed(Connection* connection) override;
+
+  // Build an underlying connection to `instance_name`.`OnConnectSucceed` is
+  // called if succeed. Otherwise, `OnConnectFailed` is called.
+  void BuildConnection(std::string_view instance_name);
 
   // Requests receivers compatible with all urls in `urls` and registers
   // `observer` for availability changes.  The screens will be a subset of the
@@ -166,6 +179,10 @@ class Controller final : public ServiceListener::Observer,
   ProtocolConnection* GetConnectionRequestGroupStream(
       const std::string& instance_name);
 
+  UrlAvailabilityRequester* availability_requester() {
+    return availability_requester_.get();
+  }
+
  private:
   class TerminationListener;
   class MessageGroupStreams;
@@ -186,7 +203,13 @@ class Controller final : public ServiceListener::Observer,
   void OnReceiverRemoved(const ServiceInfo& info) override;
   void OnAllReceiversRemoved() override;
   void OnError(const Error& error) override;
-  void OnMetrics(ServiceListener::Metrics) override;
+
+  // ConnectRequestCallback overrides.
+  void OnConnectSucceed(uint64_t request_id,
+                        std::string_view instance_name,
+                        uint64_t instance_id) override;
+  void OnConnectFailed(uint64_t request_id,
+                       std::string_view instance_name) override;
 
   static std::string MakePresentationId(const std::string& url,
                                         const std::string& instance_name);
@@ -216,11 +239,14 @@ class Controller final : public ServiceListener::Observer,
   std::unique_ptr<UrlAvailabilityRequester> availability_requester_;
 
   std::map<std::string, ControlledPresentation> presentations_by_id_;
-  // TODO(crbug.com/347268871): Replace instance_name as an agent identifier
-  std::map<std::string, std::unique_ptr<MessageGroupStreams>>
-      group_streams_by_instance_name_;
   std::map<std::string, std::unique_ptr<TerminationListener>>
       termination_listener_by_id_;
+
+  // TODO(crbug.com/347268871): Replace instance_name as an agent identifier
+  std::map<std::string, openscreen::osp::ConnectRequest>
+      connect_requests_by_instance_name_;
+  std::map<std::string, std::unique_ptr<MessageGroupStreams>>
+      group_streams_by_instance_name_;
 };
 
 }  // namespace openscreen::osp

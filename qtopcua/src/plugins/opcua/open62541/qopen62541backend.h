@@ -113,12 +113,23 @@ private:
     void disconnectInternal(QOpcUaClient::ClientError error = QOpcUaClient::ClientError::NoError);
 
 #ifdef UA_ENABLE_ENCRYPTION
+    bool setupClientConfigSecurity(const QOpcUaAuthenticationInformation &authInfo,
+                                   const QOpcUaPkiConfiguration &pkiConfig,
+                                   const QOpcUaEndpointDescription &endpoint);
+#endif
+
+    void establishConnectionInternal(const QOpcUaAuthenticationInformation &authInfo,
+#ifdef UA_ENABLE_ENCRYPTION
+                                     const QOpcUaPkiConfiguration &pkiConfig,
+#endif
+                         const QOpcUaEndpointDescription &endpoint);
+
+#ifdef UA_ENABLE_ENCRYPTION
     bool loadPrivateKeyWithPotentialPassword(const QString &privateKeyPath, UA_ByteString &privateKey);
     UA_StatusCode setSecurityPolicyInClientConfig(UA_ClientConfig *conf, const UA_ByteString &cert, const UA_ByteString &key,
-                                                  const QOpcUaEndpointDescription &desc, const QString &additionalAuthSecurityPolicy);
+                                                  const QOpcUaEndpointDescription &desc);
     UA_StatusCode setAuthSecurityPolicyInClientConfig(UA_ClientConfig *conf, const UA_ByteString &cert, const UA_ByteString &key,
-                                                      const QOpcUaEndpointDescription &desc, QOpcUaUserTokenPolicy::TokenType tokenType,
-                                                      QString *addedSecurityPolicyUri);
+                                                      const QOpcUaEndpointDescription &desc, QOpcUaUserTokenPolicy::TokenType tokenType);
 #endif
 
     QTimer m_clientIterateTimer;

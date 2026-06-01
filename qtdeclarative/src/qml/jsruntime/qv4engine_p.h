@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 #ifndef QV4ENGINE_H
 #define QV4ENGINE_H
 
@@ -21,7 +22,6 @@
 #include <private/qv4context_p.h>
 #include <private/qv4enginebase_p.h>
 #include <private/qv4executablecompilationunit_p.h>
-#include <private/qv4function_p.h>
 #include <private/qv4global_p.h>
 #include <private/qv4stacklimits_p.h>
 
@@ -139,7 +139,7 @@ private:
     friend struct ExecutionContext;
     friend struct Heap::ExecutionContext;
 public:
-    enum class DiskCache {
+    enum class DiskCache : quint8 {
         Disabled    = 0,
         AotByteCode = 1 << 0,
         AotNative   = 1 << 1,
@@ -153,14 +153,14 @@ public:
 
     Q_DECLARE_FLAGS(DiskCacheOptions, DiskCache);
 
-    ExecutableAllocator *executableAllocator;
-    ExecutableAllocator *regExpAllocator;
+    ExecutableAllocator *executableAllocator = nullptr;
+    ExecutableAllocator *regExpAllocator = nullptr;
 
-    WTF::BumpPointerAllocator *bumperPointerAllocator; // Used by Yarr Regex engine.
+    WTF::BumpPointerAllocator *bumperPointerAllocator = nullptr; // Used by Yarr Regex engine.
 
-    WTF::PageAllocation *jsStack;
+    WTF::PageAllocation *jsStack = nullptr;
 
-    WTF::PageAllocation *gcStack;
+    WTF::PageAllocation *gcStack = nullptr;
 
     QML_NEARLY_ALWAYS_INLINE Value *jsAlloca(int nValues) {
         Value *ptr = jsStackTop;
@@ -168,11 +168,11 @@ public:
         return ptr;
     }
 
-    Function *globalCode;
+    Function *globalCode = nullptr;
 
     QJSEngine *jsEngine() const { return publicEngine; }
     QQmlEngine *qmlEngine() const { return m_qmlEngine; }
-    QJSEngine *publicEngine;
+    QJSEngine *publicEngine = nullptr;
 
     template<typename TypeLoader = QQmlTypeLoader>
     TypeLoader *typeLoader()
@@ -265,7 +265,7 @@ public:
         ThrowerObject,
         NJSObjects
     };
-    Value *jsObjects;
+    Value *jsObjects = nullptr;
     enum { NTypedArrayTypes = 9 }; // == TypedArray::NValues, avoid header dependency
 
     ExecutionContext *rootContext() const { return reinterpret_cast<ExecutionContext *>(jsObjects + RootContext); }
@@ -305,7 +305,7 @@ public:
     {
         return reinterpret_cast<FunctionObject *>(jsObjects + UrlSearchParams_Ctor);
     }
-    FunctionObject *typedArrayCtors;
+    FunctionObject *typedArrayCtors = nullptr;
 
     FunctionObject *getSymbolSpecies() const { return reinterpret_cast<FunctionObject *>(jsObjects + GetSymbolSpecies); }
 
@@ -341,7 +341,7 @@ public:
     Object *weakMapPrototype() const { return reinterpret_cast<Object *>(jsObjects + WeakMapProto); }
     Object *mapPrototype() const { return reinterpret_cast<Object *>(jsObjects + MapProto); }
     Object *intrinsicTypedArrayPrototype() const { return reinterpret_cast<Object *>(jsObjects + IntrinsicTypedArrayProto); }
-    Object *typedArrayPrototype;
+    Object *typedArrayPrototype = nullptr;
 
     Object *valueTypeWrapperPrototype() const { return reinterpret_cast<Object *>(jsObjects + ValueTypeProto); }
     Object *signalHandlerPrototype() const { return reinterpret_cast<Object *>(jsObjects + SignalHandlerProto); }
@@ -417,7 +417,7 @@ public:
 
         NJSStrings
     };
-    Value *jsStrings;
+    Value *jsStrings = nullptr;
 
     enum JSSymbols {
         Symbol_hasInstance,
@@ -434,7 +434,7 @@ public:
         Symbol_revokableProxy,
         NJSSymbols
     };
-    Value *jsSymbols;
+    Value *jsSymbols = nullptr;
 
     String *id_empty() const { return reinterpret_cast<String *>(jsStrings + String_Empty); }
     String *id_undefined() const { return reinterpret_cast<String *>(jsStrings + String_undefined); }
@@ -500,9 +500,9 @@ public:
     Symbol *symbol_unscopables() const { return reinterpret_cast<Symbol *>(jsSymbols + Symbol_unscopables); }
     Symbol *symbol_revokableProxy() const { return reinterpret_cast<Symbol *>(jsSymbols + Symbol_revokableProxy); }
 
-    quint32 m_engineId;
+    quint32 m_engineId = 0;
 
-    RegExpCache *regExpCache;
+    RegExpCache *regExpCache = nullptr;
 
     // Scarce resources are "exceptionally high cost" QVariant types where allowing the
     // normal JavaScript GC to clean them up is likely to lead to out-of-memory or other
@@ -522,9 +522,9 @@ public:
     // Normally the JS wrappers for QObjects are stored in the QQmlData/QObjectPrivate,
     // but any time a QObject is wrapped a second time in another engine, we have to do
     // bookkeeping.
-    MultiplyWrappedQObjectMap *m_multiplyWrappedQObjects;
+    MultiplyWrappedQObjectMap *m_multiplyWrappedQObjects = nullptr;
 #if QT_CONFIG(qml_jit)
-    const bool m_canAllocateExecutableMemory;
+    const bool m_canAllocateExecutableMemory = false;
 #endif
 
     quintptr protoIdCount = 1;
@@ -697,19 +697,15 @@ public:
     bool checkStackLimits();
     int safeForAllocLength(qint64 len64);
 
-    bool canJIT(Function *f = nullptr)
+    template<typename Jittable>
+    bool canJIT(Jittable *jittable) const
     {
 #if QT_CONFIG(qml_jit)
-        if (!m_canAllocateExecutableMemory)
-            return false;
-        if (f) {
-            return f->kind != Function::AotCompiled
-                    && !f->isGenerator()
-                    && f->interpreterCallCount >= s_jitCallCountThreshold;
-        }
-        return true;
+        return m_canAllocateExecutableMemory
+                && jittable->isJittable()
+                && jittable->interpreterCallCount >= s_jitCallCountThreshold;
 #else
-        Q_UNUSED(f);
+        Q_UNUSED(jittable);
         return false;
 #endif
     }
@@ -722,10 +718,8 @@ public:
     void freezeObject(const QV4::Value &value);
     void lockObject(const QV4::Value &value);
 
-    // Return the list of illegal id names (the names of the properties on the global object)
-    const QSet<QString> &illegalNames() const;
-
 #if QT_CONFIG(qml_xml_http_request)
+    void setupXmlHttpRequestExtension();
     void *xmlHttpRequestData() const { return m_xmlHttpRequestData; }
 #endif
 
@@ -832,6 +826,16 @@ private:
 #endif
     }
 
+    void setCppStackProperties()
+    {
+        const StackProperties stack = stackProperties();
+        cppStackBase = stack.base;
+        if (s_stackSizeSoftLimit == -1)
+            cppStackLimit = stack.softLimit;
+        else
+            cppStackLimit = incrementStackPointer(stack.base, s_stackSizeSoftLimit);
+    }
+
     bool hasCppStackOverflow()
     {
         if (s_maxCallDepth >= 0)
@@ -842,9 +846,8 @@ private:
 
         // Double check the stack limits on failure.
         // We may have moved to a different thread.
-        const StackProperties stack = stackProperties();
-        cppStackBase = stack.base;
-        cppStackLimit = stack.softLimit;
+        setCppStackProperties();
+
         return !inStack(currentStackPointer());
     }
 
@@ -862,21 +865,21 @@ private:
     static int s_jitCallCountThreshold;
     static int s_maxJSStackSize;
     static int s_maxGCStackSize;
+    static int s_stackSizeSoftLimit;
 
 #if QT_CONFIG(qml_debug)
     QScopedPointer<QV4::Debugging::Debugger> m_debugger;
     QScopedPointer<QV4::Profiling::Profiler> m_profiler;
 #endif
-    QSet<QString> m_illegalNames;
 
     // used by generated Promise objects to handle 'then' events
     QScopedPointer<QV4::Promise::ReactionHandler> m_reactionHandler;
 
 #if QT_CONFIG(qml_xml_http_request)
-    void *m_xmlHttpRequestData;
+    void *m_xmlHttpRequestData = nullptr;
 #endif
 
-    QQmlEngine *m_qmlEngine;
+    QQmlEngine *m_qmlEngine = nullptr;
 
     QQmlDelayedCallQueue m_delayedCallQueue;
 

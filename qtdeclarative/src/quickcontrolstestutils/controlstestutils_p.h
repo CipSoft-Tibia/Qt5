@@ -108,11 +108,30 @@ namespace QQuickControlsTestUtils
     };
 
     [[nodiscard]] bool arePopupWindowsSupported();
+    [[nodiscard]] QQuickPopup *popupParent(QQuickItem *item);
 }
+
+namespace QQuickTest
+{
+namespace Private {
+// Overload of the one in quicktest.h.
+[[nodiscard]] QByteArray qActiveFocusFailureMessage(QQuickPopup *popup);
+} // namespace Private
+} // namespace QQuickTest
 
 #define VERIFY_VISUAL_FOCUS(control) \
 do { \
     QVERIFY2(control->hasVisualFocus(), qUtf8Printable(visualFocusFailureMessage(control))); \
+} while (false)
+
+#define TRY_VERIFY_POPUP_OPENED(popup) \
+do { \
+    QTRY_VERIFY(popup->isOpened()); \
+    if (auto *popupWindow = QQuickPopupPrivate::get(popup)->popupWindow) { \
+        QVERIFY(QTest::qWaitForWindowExposed(popupWindow)); \
+        if (QQuickTest::qIsPolishScheduled(popupWindow)) \
+            QQuickTest::qWaitForPolish(popupWindow); \
+    } \
 } while (false)
 
 QT_END_NAMESPACE

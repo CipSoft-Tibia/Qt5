@@ -12,20 +12,20 @@
 
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "gtest/gtest.h"
+#include "platform/base/span.h"
 #include "util/big_endian.h"
 #include "util/std_util.h"
 
-namespace openscreen::cast {
-namespace message_serialization {
+namespace openscreen::cast::message_serialization {
 
 using proto::CastMessage;
 
 namespace {
 
-static constexpr size_t kHeaderSize = sizeof(uint32_t);
+constexpr size_t kHeaderSize = sizeof(uint32_t);
 
 // Cast specifies a max message body size of 64 KiB.
-static constexpr size_t kMaxBodySize = 65536;
+constexpr size_t kMaxBodySize = 65536;
 
 }  // namespace
 
@@ -45,7 +45,7 @@ class CastFramerTest : public testing::Test {
     cast_message_serial_ = std::move(result.value());
   }
 
-  void WriteToBuffer(const std::vector<uint8_t>& data) {
+  void WriteToBuffer(ByteView data) {
     memcpy(&buffer_[0], data.data(), data.size());
   }
 
@@ -146,5 +146,4 @@ TEST_F(CastFramerTest, TestUnparsableBodyProto) {
   EXPECT_EQ(Error::Code::kCastV2InvalidMessage, result.error().code());
 }
 
-}  // namespace message_serialization
-}  // namespace openscreen::cast
+}  // namespace openscreen::cast::message_serialization

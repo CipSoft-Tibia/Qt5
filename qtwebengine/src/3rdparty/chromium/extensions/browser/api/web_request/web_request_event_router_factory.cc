@@ -43,9 +43,10 @@ WebRequestEventRouterFactory::WebRequestEventRouterFactory()
 
 WebRequestEventRouterFactory::~WebRequestEventRouterFactory() = default;
 
-KeyedService* WebRequestEventRouterFactory::BuildServiceInstanceFor(
+std::unique_ptr<KeyedService>
+WebRequestEventRouterFactory::BuildServiceInstanceForBrowserContext(
     BrowserContext* context) const {
-  return new WebRequestEventRouter(context);
+  return std::make_unique<WebRequestEventRouter>(context);
 }
 
 BrowserContext* WebRequestEventRouterFactory::GetBrowserContextToUse(
@@ -53,7 +54,7 @@ BrowserContext* WebRequestEventRouterFactory::GetBrowserContextToUse(
   // WebRequestAPI shares an instance between regular and incognito profiles,
   // so this must do the same.
   return ExtensionsBrowserClient::Get()->GetContextRedirectedToOriginal(
-      context, /*force_guest_profile=*/true);
+      context);
 }
 
 bool WebRequestEventRouterFactory::ServiceIsCreatedWithBrowserContext() const {

@@ -325,7 +325,8 @@ QString QGeoPolygon::toString() const
 
     QString pathString;
     for (const auto &p : perimeter())
-        pathString += p.toString() + QLatin1Char(',');
+        pathString += p.toString() + QLatin1StringView("; ");
+    pathString.chop(2);
 
     return QStringLiteral("QGeoPolygon([ %1 ])").arg(pathString);
 }

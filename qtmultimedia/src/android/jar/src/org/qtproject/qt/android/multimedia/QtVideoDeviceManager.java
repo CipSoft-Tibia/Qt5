@@ -3,9 +3,7 @@
 
 package org.qtproject.qt.android.multimedia;
 
-import android.annotation.TargetApi;
 import android.content.Context;
-import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
@@ -16,7 +14,6 @@ import android.media.MediaCodecInfo;
 import android.os.Build;
 import android.util.Range;
 import android.util.Size;
-import android.util.Log;
 
 import java.lang.String;
 import java.util.ArrayList;

@@ -82,6 +82,7 @@ class Q_QUICK3D_EXPORT QQuick3DModel : public QQuick3DNode
     Q_PROPERTY(float instancingLodMin READ instancingLodMin WRITE setInstancingLodMin NOTIFY instancingLodMinChanged REVISION(6, 5))
     Q_PROPERTY(float instancingLodMax READ instancingLodMax WRITE setInstancingLodMax NOTIFY instancingLodMaxChanged REVISION(6, 5))
     Q_PROPERTY(float levelOfDetailBias READ levelOfDetailBias WRITE setLevelOfDetailBias NOTIFY levelOfDetailBiasChanged REVISION(6, 5))
+    Q_PROPERTY(float texelsPerUnit READ texelsPerUnit WRITE setTexelsPerUnit NOTIFY texelsPerUnitChanged FINAL REVISION(6, 10))
 
     QML_NAMED_ELEMENT(Model)
 
@@ -118,6 +119,9 @@ public:
     Q_REVISION(6, 5) float instancingLodMin() const;
     Q_REVISION(6, 5) float instancingLodMax() const;
     Q_REVISION(6, 5) float levelOfDetailBias() const;
+
+    Q_REVISION(6, 10) float texelsPerUnit() const;
+    Q_REVISION(6, 10) void setTexelsPerUnit(float newTexelsPerUnit);
 
 public Q_SLOTS:
     void setSource(const QUrl &source);
@@ -165,6 +169,8 @@ Q_SIGNALS:
     Q_REVISION(6, 5) void instancingLodMinChanged();
     Q_REVISION(6, 5) void instancingLodMaxChanged();
     Q_REVISION(6, 5) void levelOfDetailBiasChanged();
+
+    Q_REVISION(6, 10) void texelsPerUnitChanged();
 
 protected:
     QSSGRenderGraphObject *updateSpatialNode(QSSGRenderGraphObject *node) override;
@@ -215,7 +221,6 @@ private:
     static qsizetype qmlMorphTargetsCount(QQmlListProperty<QQuick3DMorphTarget> *list);
     static void qmlClearMorphTargets(QQmlListProperty<QQuick3DMorphTarget> *list);
     QVector<QQuick3DMorphTarget *> m_morphTargets;
-    size_t m_numMorphAttribs = 0;
     QQuick3DGeometry *m_geometry = nullptr;
     QQuick3DBounds3 m_bounds;
     QQuick3DSkeleton *m_skeleton = nullptr;
@@ -238,6 +243,7 @@ private:
     float m_instancingLodMin = -1;
     float m_instancingLodMax = -1;
     float m_levelOfDetailBias = 1.0f;
+    float m_texelsPerUnit = 0.0f;
 };
 
 QT_END_NAMESPACE

@@ -125,6 +125,7 @@ private slots:
     void deadModelData();
     void valuesOfInnerList();
     void arrayLikes();
+    void functionInNested();
 };
 
 bool tst_qqmllistmodel::compareVariantList(const QVariantList &testList, QVariant object)
@@ -904,11 +905,11 @@ void tst_qqmllistmodel::get_nested()
     //  get(1).listRoleB
     //  get(1).listRoleC
 
-    QList<QPair<int, QString> > testData;
-    testData << qMakePair(0, QString("listRoleA"));
-    testData << qMakePair(1, QString("listRoleA"));
-    testData << qMakePair(1, QString("listRoleB"));
-    testData << qMakePair(1, QString("listRoleC"));
+    QList<std::pair<int, QString> > testData;
+    testData << std::make_pair(0, QString("listRoleA"));
+    testData << std::make_pair(1, QString("listRoleA"));
+    testData << std::make_pair(1, QString("listRoleB"));
+    testData << std::make_pair(1, QString("listRoleC"));
 
     for (int i=0; i<testData.size(); i++) {
         int outerListIndex = testData[i].first;
@@ -1747,7 +1748,7 @@ void tst_qqmllistmodel::objectDestroyed()
             QUrl());
 
     std::unique_ptr<QObject> obj = std::make_unique<QObject>();
-    connect(obj.get(), &QObject::destroyed, [&]() { obj.release(); });
+    connect(obj.get(), &QObject::destroyed, obj.get(), [&obj] { obj.release(); });
 
     engine.rootContext()->setContextProperty(u"contextObject"_s, obj.get());
     engine.setObjectOwnership(obj.get(), QJSEngine::JavaScriptOwnership);
@@ -2196,6 +2197,18 @@ void tst_qqmllistmodel::arrayLikes()
     QCOMPARE(o->property("a").toInt(), 3);
     QCOMPARE(o->property("r").toInt(), 1);
     QCOMPARE(o->property("s").toString(), "2t");
+}
+
+void tst_qqmllistmodel::functionInNested()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("functionInNested.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+
+    QTest::ignoreMessage(QtDebugMsg, "called");
+
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
 }
 
 QTEST_MAIN(tst_qqmllistmodel)

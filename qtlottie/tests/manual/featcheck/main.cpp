@@ -5,9 +5,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QFile>
 
-#include "private/bmbase_p.h"
-#include "private/bmlayer_p.h"
+#include <QtLottie/private/qlottiebase_p.h>
+#include <QtLottie/private/qlottielayer_p.h>
+
+using namespace Qt::StringLiterals;
 
 int main(int argc, char *argv[])
 {
@@ -44,11 +47,22 @@ int main(int argc, char *argv[])
     if (rootObj.value(QLatin1String("markers")).toArray().count())
         qWarning() << "markers not supported";
 
+    QMap<QString, QJsonObject> assets;
     QJsonArray jsonLayers = rootObj.value(QLatin1String("layers")).toArray();
+    QJsonArray jsonAssets = rootObj.value(QLatin1String("assets")).toArray();
+    QJsonArray::const_iterator jsonAssetsIt = jsonAssets.constBegin();
+    while (jsonAssetsIt != jsonAssets.constEnd()) {
+        QJsonObject jsonAsset = (*jsonAssetsIt).toObject();
+
+        jsonAsset.insert(QLatin1String("fileSource"), QJsonValue::fromVariant(sourceFile.fileName()));
+        QString id = jsonAsset.value(QLatin1String("id")).toString();
+        assets.insert(id, jsonAsset);
+        jsonAssetsIt++;
+    }
     QJsonArray::const_iterator jsonLayerIt = jsonLayers.constBegin();
     while (jsonLayerIt != jsonLayers.constEnd()) {
         QJsonObject jsonLayer = (*jsonLayerIt).toObject();
-        BMLayer *layer = BMLayer::construct(jsonLayer);
+        QLottieLayer *layer = QLottieLayer::construct(jsonLayer, assets);
         if (layer)
             delete layer;
         jsonLayerIt++;

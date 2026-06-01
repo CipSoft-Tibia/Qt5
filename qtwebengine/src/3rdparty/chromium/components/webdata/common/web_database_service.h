@@ -30,7 +30,7 @@ class WebDatabaseBackend;
 namespace base {
 class Location;
 class SequencedTaskRunner;
-}
+}  // namespace base
 
 namespace os_crypt_async {
 class OSCryptAsync;
@@ -122,6 +122,10 @@ class WEBDATA_EXPORT WebDatabaseService
   // Note: if the database load is already complete, then the callback will NOT
   // be stored or called.
   void RegisterDBErrorCallback(DBLoadErrorCallback callback);
+
+  // API to verify if the database is stored in-memory only, as opposed to
+  // on-disk storage. Used for metric logging purposes only.
+  bool UsesInMemoryDatabaseForMetrics() const;
 
  private:
   class BackendDelegate;

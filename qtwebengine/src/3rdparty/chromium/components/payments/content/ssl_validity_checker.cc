@@ -43,8 +43,7 @@ std::string SslValidityChecker::GetInvalidSslCertificateErrorMessage(
       break;
 
     case security_state::SECURITY_LEVEL_COUNT:
-      NOTREACHED_IN_MIGRATION();
-      return errors::kInvalidSslCertificate;
+      NOTREACHED();
   }
 
   std::string message;
@@ -92,8 +91,7 @@ security_state::SecurityLevel SslValidityChecker::GetSecurityLevel(
       security_state::GetVisibleSecurityState(web_contents);
   DCHECK(state);
 
-  return security_state::GetSecurityLevel(
-      *state, /*used_policy_installed_certificate=*/false);
+  return security_state::GetSecurityLevel(*state);
 }
 
 }  // namespace payments

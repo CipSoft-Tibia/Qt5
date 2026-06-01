@@ -69,13 +69,18 @@ bool HeapAllocator::CanAllocateInReadOnlySpace() const {
 }
 
 template <AllocationType type>
-V8_WARN_UNUSED_RESULT V8_INLINE AllocationResult HeapAllocator::AllocateRaw(
+V8_WARN_UNUSED_RESULT inline AllocationResult HeapAllocator::AllocateRaw(
     int size_in_bytes, AllocationOrigin origin, AllocationAlignment alignment) {
   DCHECK(!heap_->IsInGC());
   DCHECK(AllowHandleAllocation::IsAllowed());
   DCHECK(AllowHeapAllocation::IsAllowed());
   CHECK(AllowHeapAllocationInRelease::IsAllowed());
   DCHECK(local_heap_->IsRunning());
+#if V8_ENABLE_WEBASSEMBLY
+  if (!v8_flags.wasm_jitless) {
+    trap_handler::AssertThreadNotInWasm();
+  }
+#endif
 #if DEBUG
   local_heap_->VerifyCurrent();
 #endif
@@ -165,6 +170,7 @@ V8_WARN_UNUSED_RESULT V8_INLINE AllocationResult HeapAllocator::AllocateRaw(
   return allocation;
 }
 
+V8_WARN_UNUSED_RESULT inline
 AllocationResult HeapAllocator::AllocateRaw(int size_in_bytes,
                                             AllocationType type,
                                             AllocationOrigin origin,
@@ -201,31 +207,8 @@ AllocationResult HeapAllocator::AllocateRaw(int size_in_bytes,
   UNREACHABLE();
 }
 
-AllocationResult HeapAllocator::AllocateRawData(int size_in_bytes,
-                                                AllocationType type,
-                                                AllocationOrigin origin,
-                                                AllocationAlignment alignment) {
-  switch (type) {
-    case AllocationType::kYoung:
-      return AllocateRaw<AllocationType::kYoung>(size_in_bytes, origin,
-                                                 alignment);
-    case AllocationType::kOld:
-      return AllocateRaw<AllocationType::kOld>(size_in_bytes, origin,
-                                               alignment);
-    case AllocationType::kCode:
-    case AllocationType::kMap:
-    case AllocationType::kReadOnly:
-    case AllocationType::kSharedMap:
-    case AllocationType::kSharedOld:
-    case AllocationType::kTrusted:
-    case AllocationType::kSharedTrusted:
-      UNREACHABLE();
-  }
-  UNREACHABLE();
-}
-
 template <HeapAllocator::AllocationRetryMode mode>
-V8_WARN_UNUSED_RESULT V8_INLINE Tagged<HeapObject>
+V8_WARN_UNUSED_RESULT inline Tagged<HeapObject>
 HeapAllocator::AllocateRawWith(int size, AllocationType allocation,
                                AllocationOrigin origin,
                                AllocationAlignment alignment) {

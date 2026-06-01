@@ -17,8 +17,11 @@
 
 #include <QtQuick3D/qtquick3dglobal.h>
 #include <QtCore/qobject.h>
+#include <QtCore/qelapsedtimer.h>
 #include <ssg/qssgrendercontextcore.h>
 #include <QtQuick3DRuntimeRender/private/qssgrhicontext_p.h>
+
+#include <QtQml/qqmlregistration.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -52,6 +55,10 @@ class Q_QUICK3D_EXPORT QQuick3DRenderStats : public QObject
     Q_PROPERTY(quint64 vmemUsedBytes READ vmemUsedBytes NOTIFY vmemUsedBytesChanged)
     Q_PROPERTY(QString graphicsApiName READ graphicsApiName NOTIFY graphicsApiNameChanged)
     Q_PROPERTY(float lastCompletedGpuTime READ lastCompletedGpuTime NOTIFY lastCompletedGpuTimeChanged)
+
+    QML_NAMED_ELEMENT(RenderStats)
+    QML_UNCREATABLE("The type is internal and only intended to be accessed by user through a View3D.")
+    QML_ADDED_IN_VERSION(6, 10)
 
 public:
     QQuick3DRenderStats(QObject *parent = nullptr);

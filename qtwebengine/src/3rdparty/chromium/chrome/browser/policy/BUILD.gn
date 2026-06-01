@@ -5,6 +5,7 @@
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//components/nacl/features.gni")
+import("//components/services/on_device_translation/buildflags/features.gni")
 import("//components/signin/features.gni")
 import("//extensions/buildflags/buildflags.gni")
 import("//media/media_options.gni")
@@ -113,6 +114,31 @@ source_set("onc") {
   }
 }
 
+source_set("system_features_disable_list") {
+  sources = []
+
+  if (is_chromeos) {
+    sources += [
+      "system_features_disable_list_policy_handler.cc",
+      "system_features_disable_list_policy_handler.h",
+    ]
+
+    public_deps = [
+      "//base",
+      "//components/policy/core/browser",
+      "//components/prefs",
+    ]
+
+    deps = [
+      "//ash/constants",
+      "//build:chromeos_buildflags",
+      "//components/policy:generated",
+      "//components/policy:policy_code_generate",
+      "//components/policy/core/common:common_constants",
+    ]
+  }
+}
+
 source_set("test_support") {
   testonly = true
 
@@ -147,7 +173,7 @@ source_set("test_support") {
     ]
   }
 
-  if (enable_dice_support || is_chromeos_lacros) {
+  if (enable_dice_support) {
     sources += [
       "cloud/user_policy_signin_service_test_util.cc",
       "cloud/user_policy_signin_service_test_util.h",
@@ -198,7 +224,6 @@ source_set("policy_specific_browser_tests") {
     "site_isolation_policy_browsertest.cc",
     "test/back_forward_cache_policy_browsertest.cc",
     "test/certificate_transparency_policy_browsertest.cc",
-    "test/css_custom_state_deprecated_syntax_policy_browsertest.cc",
     "test/force_permission_policy_unload_default_enabled_policy_browsertest.cc",
     "test/hsts_policy_browsertest.cc",
     "test/keyboard_focusable_scollers_policy_browsertest.cc",
@@ -207,6 +232,7 @@ source_set("policy_specific_browser_tests") {
     "test/policy_statistics_collector_browsertest.cc",
     "test/proxy_policies_browsertest.cc",
     "test/safe_browsing_policy_browsertest.cc",
+    "test/select_parser_relaxation_policy_browsertest.cc",
     "test/shared_clipboard_enabled_browsertest.cc",
     "test/ssl_error_overriding_allowed_policy_browsertest.cc",
     "test/standardized_browser_zoom_browsertest.cc",
@@ -222,6 +248,7 @@ source_set("policy_specific_browser_tests") {
     "//base",
     "//chrome/app:command_ids",
     "//chrome/browser",
+    "//chrome/browser/preloading:prefs",
     "//chrome/browser/ui/autofill",
     "//chrome/common",
     "//chrome/test:test_support",
@@ -244,7 +271,7 @@ source_set("policy_specific_browser_tests") {
   if (is_chromeos) {
     deps += [
       "//chrome/browser/policy:onc",
-      "//chromeos:test_utils",
+      "//chromeos:test_support",
       "//chromeos/components/onc:test_support",
       "//components/onc:onc",
       "//crypto:test_support",
@@ -256,7 +283,6 @@ source_set("policy_specific_browser_tests") {
       "//chrome/browser/ash/login/lock:test_support",
       "//chrome/browser/ash/login/saml:test_support",
       "//chrome/browser/ash/net",
-      "//chrome/browser/ash/note_taking",
       "//components/session_manager/core",
       "//components/user_manager",
     ]
@@ -264,6 +290,7 @@ source_set("policy_specific_browser_tests") {
 
   if (!is_android) {
     sources += [
+      "test/autofill_ai_policy_browsertest.cc",
       "test/autofill_policy_browsertest.cc",
       "test/automatic_fullscreen_policy_browsertest.cc",
       "test/autoplay_policy_browsertest.cc",
@@ -275,6 +302,7 @@ source_set("policy_specific_browser_tests") {
       "test/ipv6_reachability_override_policy_browsertest.cc",
       "test/local_fonts_policy_browsertest.cc",
       "test/media_stream_policy_browsertest.cc",
+      "test/partitioned_blob_url_browsertest.cc",
       "test/quic_allowed_browsertest.cc",
       "test/shared_dictionary_policy_browsertest.cc",
       "test/signed_exchange_browsertest.cc",
@@ -288,10 +316,12 @@ source_set("policy_specific_browser_tests") {
 
     deps += [
       "//chrome/browser/autofill",
+      "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/devtools:test_support",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/task_manager",
       "//components/autofill/content/browser:test_support",
+      "//components/autofill_ai/core/browser",
       "//components/bookmarks/common:common",
       "//components/enterprise",
       "//components/enterprise:test_support",
@@ -315,6 +345,11 @@ source_set("policy_specific_browser_tests") {
   if (!is_chromeos) {
     sources += [ "test/variation_restrict_parameter_policy_browsertest.cc" ]
     deps += [ "//components/variations/service" ]
+  }
+
+  if (enable_on_device_translation) {
+    sources += [ "test/translator_api_policy_browsertest.cc" ]
+    deps += [ "//chrome/browser/on_device_translation:test_support" ]
   }
 }
 
@@ -396,7 +431,6 @@ source_set("browser_tests") {
       "test/audio_output_allowed_browsertest.cc",
       "test/gen_ai_vc_background_policy_browsertest.cc",
       "test/gen_ai_wallpaper_policy_browsertest.cc",
-      "test/note_taking_on_lock_screen_policy_browsertest.cc",
       "test/orca_policy_browsertest.cc",
       "test/power_sounds_policy_browsertest.cc",
       "test/privacy_hub_policy_browsertest.cc",
@@ -410,9 +444,7 @@ source_set("browser_tests") {
     ]
 
     deps += [
-      "//ash/components/arc:arc_test_support",
-      "//ash/components/arc:prefs",
-      "//ash/components/arc/session:session",
+      ":system_features_disable_list",
       "//chrome/browser/apps/app_service/app_icon",
       "//chrome/browser/ash/accessibility",
       "//chrome/browser/ash/arc/session",
@@ -422,7 +454,6 @@ source_set("browser_tests") {
       "//chrome/browser/ash/login/users/avatar",
       "//chrome/browser/ash/login/users/avatar:test_support",
       "//chrome/browser/ash/login/users/default_user_image",
-      "//chrome/browser/ash/note_taking",
       "//chrome/browser/ash/policy/core",
       "//chrome/browser/ash/policy/handlers",
       "//chrome/browser/ash/system_web_apps/apps/personalization_app",
@@ -431,6 +462,9 @@ source_set("browser_tests") {
       "//chromeos/ash/components/audio",
       "//chromeos/ash/components/cryptohome",
       "//chromeos/ash/components/dbus/userdataauth",
+      "//chromeos/ash/experiences/arc:arc_test_support",
+      "//chromeos/ash/experiences/arc:prefs",
+      "//chromeos/ash/experiences/arc/session:session",
       "//chromeos/ash/services/assistant/public/cpp",
       "//chromeos/dbus/constants",
       "//components/account_id",
@@ -486,7 +520,11 @@ source_set("browser_tests") {
     # tabs policy are win/mac/linux only.
     sources += [ "test/promotional_tabs_enabled_policy_browsertest.cc" ]
 
-    deps += [ "//chrome/common:version_header" ]
+    deps += [
+      "//chrome/browser/prefs:util",
+      "//chrome/browser/ui/webui/whats_new",
+      "//chrome/common:version_header",
+    ]
   }
 
   if (!is_android && !is_chromeos_ash) {

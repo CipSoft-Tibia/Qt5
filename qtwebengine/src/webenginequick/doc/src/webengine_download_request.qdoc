@@ -150,7 +150,7 @@
 /*!
     \qmlproperty string WebEngineDownloadRequest::downloadDirectory
 
-    Holds the full target path without file name where data is being downloaded to.
+    Holds the full target path (without file name) where data is being downloaded to.
 
     The download directory can only be set in the
     \l{WebEngineProfile::downloadRequested}{downloadRequested} handler before

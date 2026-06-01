@@ -18,7 +18,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "chrome/browser/apps/app_service/app_service_proxy.h"
 #include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -26,8 +25,10 @@
 #include "chrome/browser/web_applications/os_integration/os_integration_manager.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/grit/generated_resources.h"
+#include "chromeos/ash/experiences/arc/app/arc_app_constants.h"
 #include "components/app_constants/constants.h"
 #include "components/services/app_service/public/cpp/app_registry_cache.h"
+#include "components/services/app_service/public/cpp/app_types.h"
 #include "components/services/app_service/public/cpp/intent_filter.h"
 #include "components/services/app_service/public/cpp/intent_filter_util.h"
 #include "components/services/app_service/public/cpp/intent_util.h"
@@ -45,7 +46,7 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/app_list/arc/arc_app_utils.h"
 #endif
 
@@ -58,7 +59,7 @@ namespace {
 const char kFileHandlingLearnMore[] =
     "https://support.google.com/chrome/?p=pwa_default_associations";
 
-bool ShouldHideMoreSettings(const std::string app_id) {
+bool ShouldHideMoreSettings(const std::string& app_id) {
   constexpr auto kAppIdsWithHiddenMoreSettings =
       base::MakeFixedFlatSet<std::string_view>({
           extensions::kWebStoreAppId,
@@ -68,7 +69,7 @@ bool ShouldHideMoreSettings(const std::string app_id) {
   return kAppIdsWithHiddenMoreSettings.contains(app_id);
 }
 
-bool ShouldHidePinToShelf(const std::string app_id) {
+bool ShouldHidePinToShelf(const std::string& app_id) {
   constexpr auto kAppIdsWithHiddenPinToShelf =
       base::MakeFixedFlatSet<std::string_view>({
           app_constants::kChromeAppId,
@@ -78,8 +79,8 @@ bool ShouldHidePinToShelf(const std::string app_id) {
   return kAppIdsWithHiddenPinToShelf.contains(app_id);
 }
 
-bool ShouldHideStoragePermission(const std::string app_id) {
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+bool ShouldHideStoragePermission(const std::string& app_id) {
+#if BUILDFLAG(IS_CHROMEOS)
   constexpr auto kAppIdsWithHiddenStoragePermission =
       base::MakeFixedFlatSet<std::string_view>({
           arc::kPlayStoreAppId,
@@ -104,7 +105,7 @@ bool CanShowDefaultAppAssociationsUi() {
 
 }  // namespace
 
-AppManagementPageHandlerBase::~AppManagementPageHandlerBase() {}
+AppManagementPageHandlerBase::~AppManagementPageHandlerBase() = default;
 
 void AppManagementPageHandlerBase::GetApps(GetAppsCallback callback) {
   std::vector<app_management::mojom::AppPtr> app_management_apps;
@@ -237,7 +238,7 @@ AppManagementPageHandlerBase::CreateAppFromAppUpdate(
         // Mime types are ignored.
         std::set<std::string> mime_types;
         for (auto& filter : filters) {
-          bool is_potential_file_handler_action = base::ranges::any_of(
+          bool is_potential_file_handler_action = std::ranges::any_of(
               filter->conditions.begin(), filter->conditions.end(),
               [](const std::unique_ptr<apps::Condition>& condition) {
                 if (condition->condition_type != apps::ConditionType::kAction) {
@@ -302,6 +303,9 @@ AppManagementPageHandlerBase::CreateAppFromAppUpdate(
   }
 
   app->publisher_id = update.PublisherId();
+  app->disable_user_choice_navigation_capturing =
+      (update.AppType() == apps::AppType::kWeb) &&
+      (update.WindowMode() == apps::WindowMode::kBrowser);
 
   return app;
 }

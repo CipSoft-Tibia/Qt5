@@ -24,6 +24,13 @@ qt_internal_add_test(tst_qtgrpcgen
         BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
 
+qt_internal_extend_target(tst_qtgrpcgen
+    CONDITION
+        CMAKE_CROSSCOMPILING
+    DEFINES
+        CROSSCOMPILING
+)
+
 qt_add_protobuf(tst_qtgrpcgen_protobuf_common
     OUTPUT_DIRECTORY
         "${CMAKE_CURRENT_BINARY_DIR}/${cmake_generated_dir}/protobuf_common"

@@ -438,6 +438,20 @@ void QImageCapture::setFileFormat(QImageCapture::FileFormat format)
 }
 
 /*!
+    \qmlproperty list<FileFormat> QtMultimedia::ImageCapture::supportedFormats
+    \since 6.10
+
+    Contains a list of supported file formats.
+
+    \sa fileFormat
+*/
+
+/*!
+    \property QImageCapture::supportedFormats
+    \brief a list of supported file formats.
+*/
+
+/*!
     Returns a list of supported file formats.
 
     \sa {QImageCapture::}{FileFormat}

@@ -24,6 +24,62 @@
 
 #include <QtCore/qscopeguard.h>
 
+namespace {
+    class LayoutWithContent : public QGridLayout
+    {
+    public:
+        LayoutWithContent(QWidget *parentWdg) : QGridLayout(parentWdg)
+        {
+            QWidget *minMaxSizeWdg = new QWidget();
+            minMaxSizeWdg->setMinimumSize(40, 40);
+            minMaxSizeWdg->setMaximumSize(140, 140);
+            QLabel *label1 = new QLabel(QStringLiteral("This is a qt label 1"));
+            QLabel *label2 = new QLabel(QStringLiteral("This is a qt label 2"));
+            addWidget(minMaxSizeWdg, 0, 0);
+            label1->setMaximumHeight(100);
+            label2->setMaximumHeight(100);
+            label1->setMaximumWidth(100);
+            label2->setMaximumWidth(100);
+            addWidget(label1, 1, 0);
+            addWidget(label2, 0, 1);
+        }
+
+        void applySizeConstraint(SizeConstraint sc)
+        {
+            setSizeConstraint(sc);
+            activate();
+        }
+
+        void applyVerticalSizeConstraint(SizeConstraint sc)
+        {
+            setVerticalSizeConstraint(sc);
+            activate();
+        }
+
+        void applyHorizontalSizeConstraint(SizeConstraint sc)
+        {
+            setHorizontalSizeConstraint(sc);
+            activate();
+        }
+
+        void clearConstraintAndResize(QSize sz, Qt::Orientations o = Qt::Horizontal | Qt::Vertical)
+        {
+            if (o == (Qt::Horizontal | Qt::Vertical))
+                setSizeConstraint(QLayout::SizeConstraint::SetNoConstraint);
+            else if (o == Qt::Vertical)
+                setVerticalSizeConstraint(QLayout::SizeConstraint::SetNoConstraint);
+            else if (o == Qt::Horizontal)
+                setHorizontalSizeConstraint(QLayout::SizeConstraint::SetNoConstraint);
+
+            // Make sure we can always remove any set constraint as they are not removed by a change of the constraint.
+            parentWidget()->setMinimumSize(0, 0);
+            parentWidget()->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+            parentWidget()->resize(sz);
+            activate();
+        }
+    };
+}
+
 using namespace QTestPrivate;
 
 class tst_QLayout : public QObject
@@ -48,6 +104,14 @@ private slots:
     void adjustSizeShouldMakeSureLayoutIsActivated();
     void testRetainSizeWhenHidden();
     void removeWidget();
+    void sizeConstraints();
+
+    void checkVerticalSizeConstraint_data();
+    void checkVerticalSizeConstraint();
+    void checkHorizontalSizeConstraint_data();
+    void checkHorizontalSizeConstraint();
+private:
+    void setupDataSizeConstraint();
 };
 
 tst_QLayout::tst_QLayout()
@@ -79,9 +143,6 @@ public:
     : QFrame(0), sh(sh), msh(msh) {
         setFrameStyle(QFrame::Box | QFrame::Plain);
     }
-
-
-
     void setSizeHint(const QSize &s) { sh = s; }
     QSize sizeHint() const override { return sh; }
     QSize minimumSizeHint() const override { return msh; }
@@ -404,6 +465,224 @@ void tst_QLayout::removeWidget()
     layout.setEnabled(false);
     w.reset();
     layout.setEnabled(true);
+}
+
+void tst_QLayout::sizeConstraints()
+{
+    QWidget windowWdg;
+    auto *layout = new LayoutWithContent(&windowWdg);
+
+    // Check fixed size
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetFixedSize);
+    QCOMPARE(windowWdg.size(), layout->totalSizeHint());
+    layout->clearConstraintAndResize(QSize(100, 100));
+
+    const QSize verySmall(5, 5);
+    const QSize veryBig(1500, 1500);
+
+    // Check minimumSize changes
+    layout->clearConstraintAndResize(verySmall);
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetMinimumSize);
+    QCOMPARE(windowWdg.size(), layout->minimumSize());
+
+    // Check no-max on minimumSize changes
+    layout->clearConstraintAndResize(veryBig);
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetMinimumSize);
+    QCOMPARE(windowWdg.size(), veryBig);
+
+    // Check maximumSize
+    layout->clearConstraintAndResize(veryBig);
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetMaximumSize);
+    QCOMPARE(windowWdg.size(), layout->maximumSize());
+
+    // Check no-max on minimumSize changes
+    layout->clearConstraintAndResize(verySmall);
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetMaximumSize);
+    QCOMPARE(windowWdg.size(), verySmall);
+
+    // Check min on MinMax
+    layout->clearConstraintAndResize(verySmall);
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetMinAndMaxSize);
+    QCOMPARE(windowWdg.size(), layout->minimumSize());
+
+    // Check max on MinMax
+    layout->clearConstraintAndResize(veryBig);
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetMinAndMaxSize);
+    QCOMPARE(windowWdg.size(), layout->maximumSize());
+
+    // Default size constaint with window
+    layout->clearConstraintAndResize(verySmall);
+    layout->applySizeConstraint(QLayout::SizeConstraint::SetDefaultConstraint);
+    QCOMPARE(windowWdg.size(), layout->totalMinimumSize());
+
+    // Default size constaint without window.
+    // It can appear weird that the default constraint removes earlier constraints in
+    // non-window mode when nothing similar happens for other constraints.
+    // So this part could *maybe* be a subject for a change.
+    // However, we need to be extremely careful as about every widget application
+    // uses layouts.
+    QWidget windowWidget;
+    QHBoxLayout *topLayout = new QHBoxLayout(&windowWidget);
+    QWidget *innerWidget = new QWidget();
+    topLayout->addWidget(innerWidget);
+    auto *layout2 = new LayoutWithContent(innerWidget);
+    // make sure we set a minimumSize (that shouldn't be explicit) here.
+    layout2->applySizeConstraint(QLayout::SizeConstraint::SetMinimumSize);
+    QCOMPARE(innerWidget->minimumSize(), layout2->totalMinimumSize());
+    // Only set here as we actually like to keep the size we had from minimumSize
+    layout2->setSizeConstraint(QLayout::SizeConstraint::SetDefaultConstraint);
+    QCOMPARE(innerWidget->minimumSize(), layout2->totalMinimumSize());
+    layout2->activate();
+    QCOMPARE(innerWidget->minimumSize(), QSize(0, 0));
+}
+
+void tst_QLayout::setupDataSizeConstraint()
+{
+    QTest::addColumn<QLayout::SizeConstraint>("constraint");
+
+    const auto constraints = {
+        QLayout::SetFixedSize,
+        QLayout::SetMinimumSize,
+        QLayout::SetMaximumSize,
+        QLayout::SetMinAndMaxSize,
+        QLayout::SetDefaultConstraint,
+        QLayout::SetNoConstraint
+    };
+
+    for (auto c : constraints) {
+        const QString desc = QLatin1String("Constraint_") + QTest::toString(c);
+        QTest::addRow("%s", qPrintable(desc)) << c;
+    }
+}
+
+void tst_QLayout::checkVerticalSizeConstraint_data()
+{
+    setupDataSizeConstraint();
+}
+
+void tst_QLayout::checkVerticalSizeConstraint()
+{
+    QFETCH(QLayout::SizeConstraint, constraint);
+
+    QWidget windowWdg;
+    auto *layout = new LayoutWithContent(&windowWdg);
+    layout->setHorizontalSizeConstraint(constraint);
+
+    // Check fixed size
+    layout->applyVerticalSizeConstraint(QLayout::SetFixedSize);
+    QCOMPARE(windowWdg.height(), layout->totalSizeHint().height());
+    layout->clearConstraintAndResize(QSize(100, 100), Qt::Vertical);
+
+    const QSize verySmall(5, 5);
+    const QSize veryBig(1500, 1500);
+
+    layout->clearConstraintAndResize(verySmall, Qt::Vertical);
+    layout->applyVerticalSizeConstraint(QLayout::SetMinimumSize);
+    QCOMPARE(windowWdg.size().height(), layout->minimumSize().height());
+
+    layout->clearConstraintAndResize(veryBig, Qt::Vertical);
+    layout->applyVerticalSizeConstraint(QLayout::SetMinimumSize);
+    QCOMPARE(windowWdg.size().height(), veryBig.height());
+
+    layout->clearConstraintAndResize(veryBig, Qt::Vertical);
+    layout->applyVerticalSizeConstraint(QLayout::SetMaximumSize);
+    QCOMPARE(windowWdg.size().height(), layout->maximumSize().height());
+
+    layout->clearConstraintAndResize(verySmall, Qt::Vertical);
+    layout->applyVerticalSizeConstraint(QLayout::SetMaximumSize);
+    QCOMPARE(windowWdg.size().height(), verySmall.height());
+
+    layout->clearConstraintAndResize(verySmall, Qt::Vertical);
+    layout->applyVerticalSizeConstraint(QLayout::SetMinAndMaxSize);
+    QCOMPARE(windowWdg.size().height(), layout->minimumSize().height());
+
+    layout->clearConstraintAndResize(veryBig, Qt::Vertical);
+    layout->applyVerticalSizeConstraint(QLayout::SetMinAndMaxSize);
+    QCOMPARE(windowWdg.size().height(), layout->maximumSize().height());
+
+    layout->clearConstraintAndResize(verySmall, Qt::Vertical);
+    layout->applyVerticalSizeConstraint(QLayout::SetDefaultConstraint);
+    QCOMPARE(windowWdg.size().height(), layout->totalMinimumSize().height());
+
+    // Inner widget check
+    QWidget windowWidget;
+    QHBoxLayout *topLayout = new QHBoxLayout(&windowWidget);
+    QWidget *innerWidget = new QWidget();
+    topLayout->addWidget(innerWidget);
+    auto *layout2 = new LayoutWithContent(innerWidget);
+    layout2->applyVerticalSizeConstraint(QLayout::SetMinimumSize);
+    QCOMPARE(innerWidget->minimumSize().height(), layout2->totalMinimumSize().height());
+    layout2->setVerticalSizeConstraint(QLayout::SetDefaultConstraint);
+    QCOMPARE(innerWidget->minimumSize().height(), layout2->totalMinimumSize().height());
+    layout2->activate();
+    QCOMPARE(innerWidget->minimumSize().height(), 0);
+}
+
+void tst_QLayout::checkHorizontalSizeConstraint_data()
+{
+    setupDataSizeConstraint();
+}
+
+void tst_QLayout::checkHorizontalSizeConstraint()
+{
+    QFETCH(QLayout::SizeConstraint, constraint);
+
+    QWidget windowWdg;
+    auto *layout = new LayoutWithContent(&windowWdg);
+    layout->setVerticalSizeConstraint(constraint);
+
+    // Fixed size
+    layout->applyHorizontalSizeConstraint(QLayout::SetFixedSize);
+    QCOMPARE(windowWdg.width(), layout->totalSizeHint().width());
+    layout->clearConstraintAndResize(QSize(100, 100), Qt::Horizontal);
+
+    const QSize verySmall(5, 5);
+    const QSize veryBig(1500, 1500);
+
+    // Minimum size
+    layout->clearConstraintAndResize(verySmall, Qt::Horizontal);
+    layout->applyHorizontalSizeConstraint(QLayout::SetMinimumSize);
+    QCOMPARE(windowWdg.size().width(), layout->minimumSize().width());
+
+    layout->clearConstraintAndResize(veryBig, Qt::Horizontal);
+    layout->applyHorizontalSizeConstraint(QLayout::SetMinimumSize);
+    QCOMPARE(windowWdg.size().width(), veryBig.width());
+
+    // Maximum size
+    layout->clearConstraintAndResize(veryBig, Qt::Horizontal);
+    layout->applyHorizontalSizeConstraint(QLayout::SetMaximumSize);
+    QCOMPARE(windowWdg.size().width(), layout->maximumSize().width());
+
+    layout->clearConstraintAndResize(verySmall, Qt::Horizontal);
+    layout->applyHorizontalSizeConstraint(QLayout::SetMaximumSize);
+    QCOMPARE(windowWdg.size().width(), verySmall.width());
+
+    // Min and Max
+    layout->clearConstraintAndResize(verySmall, Qt::Horizontal);
+    layout->applyHorizontalSizeConstraint(QLayout::SetMinAndMaxSize);
+    QCOMPARE(windowWdg.size().width(), layout->minimumSize().width());
+
+    layout->clearConstraintAndResize(veryBig, Qt::Horizontal);
+    layout->applyHorizontalSizeConstraint(QLayout::SetMinAndMaxSize);
+    QCOMPARE(windowWdg.size().width(), layout->maximumSize().width());
+
+    // Default constraint
+    layout->clearConstraintAndResize(verySmall, Qt::Horizontal);
+    layout->applyHorizontalSizeConstraint(QLayout::SetDefaultConstraint);
+    QCOMPARE(windowWdg.size().width(), layout->totalMinimumSize().width());
+
+    // Final innerWidget check
+    QWidget windowWidget;
+    QHBoxLayout *topLayout = new QHBoxLayout(&windowWidget);
+    QWidget *innerWidget = new QWidget();
+    topLayout->addWidget(innerWidget);
+    auto *layout2 = new LayoutWithContent(innerWidget);
+    layout2->applyHorizontalSizeConstraint(QLayout::SetMinimumSize);
+    QCOMPARE(innerWidget->minimumSize().width(), layout2->totalMinimumSize().width());
+    layout2->setHorizontalSizeConstraint(QLayout::SetDefaultConstraint);
+    QCOMPARE(innerWidget->minimumSize().width(), layout2->totalMinimumSize().width());
+    layout2->activate();
+    QCOMPARE(innerWidget->minimumSize().width(), 0);
 }
 
 QTEST_MAIN(tst_QLayout)

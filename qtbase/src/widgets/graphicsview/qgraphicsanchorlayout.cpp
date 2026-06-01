@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QGraphicsAnchorLayout
@@ -20,7 +21,9 @@
     are removed, all their anchors will be automatically removed.
 
     \div {class="float-left"}
-    \inlineimage simpleanchorlayout-example.png Using an anchor layout to align simple colored widgets.
+    \inlineimage simpleanchorlayout-example.png
+        {Three widgets using anchor layout to align to the widget edges}
+    \caption Using an anchor layout to align simple colored widgets.
     \enddiv
 
     Anchors are always set up between edges of an item, where the "center" is also considered to

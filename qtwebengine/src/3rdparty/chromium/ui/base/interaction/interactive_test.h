@@ -8,12 +8,14 @@
 #include <concepts>
 #include <functional>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "base/functional/callback_helpers.h"
 #include "base/strings/strcat.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/bind.h"
@@ -91,10 +93,11 @@ class InteractiveTestApi {
   // such as SetMustBeVisibleAtStart(), SetTransitionOnlyOnEvent(),
   // SetContext(), etc.
   //
-  // Note that `SelectMenuItem()` and `SelectDropdownItem()` are not outside of
-  // interactive tests (e.g. interactive_ui_tests); the exception is
-  // `SelectDropdownItem()` with the default `input_type`, which
-  // programmatically sets the value rather than using the actual drop-down.
+  // Note that `ActivateSurface()`, `SelectMenuItem()` and
+  // `SelectDropdownItem()` are not outside of interactive tests (e.g.
+  // interactive_ui_tests); the exception is `SelectDropdownItem()` with the
+  // default `input_type`, which programmatically sets the value rather than
+  // using the actual drop-down.
   [[nodiscard]] StepBuilder PressButton(
       ElementSpecifier button,
       InputType input_type = InputType::kDontCare);
@@ -141,6 +144,12 @@ class InteractiveTestApi {
   // ```
   template <typename... Args>
   [[nodiscard]] static StepBuilder Log(Args... args);
+
+  // Dumps all of the elements in the current UI tree in all contexts.
+  [[nodiscard]] StepBuilder DumpElements();
+
+  // Dumps all of the elements in the current UI tree in the current context.
+  [[nodiscard]] StepBuilder DumpElementsInContext();
 
   // Does an action at this point in the test sequence.
   template <typename A>
@@ -408,9 +417,23 @@ class InteractiveTestApi {
   template <typename T>
   [[nodiscard]] static StepBuilder InSameContext(T&& step);
 
+  // Specifies that test step(s) should be executed in a specific context.
   [[nodiscard]] MultiStep InContext(ElementContext context, MultiStep steps);
   template <typename T>
   [[nodiscard]] StepBuilder InContext(ElementContext context, T&& step);
+
+  // Specifies that test step(s) should be executed in the same context as a
+  // specific `element`, which should be unique across contexts or a specific
+  // named element.
+  //
+  // NOTE: If the previous step already references the element, prefer
+  // `InSameContext()` as it has fewer limitations and handles elements that may
+  // be present in multiple contexts.
+  [[nodiscard]] static MultiStep InSameContextAs(ElementSpecifier element,
+                                                 MultiStep steps);
+  template <typename T>
+  [[nodiscard]] static MultiStep InSameContextAs(ElementSpecifier element,
+                                                 T&& step);
 
   // Specifies that these test step(s) should be executed as soon as they are
   // eligible to trigger, one after the other. By default, once a step is
@@ -531,8 +554,9 @@ class InteractiveTestApi {
   static void AddStep(MultiStep& dest, StepBuilder src);
   static void AddStep(MultiStep& dest, MultiStep src);
 
-  // Equivalent to calling FormatDescription(format) on every step in `steps`.
-  static void AddDescription(MultiStep& steps, std::string_view format);
+  // Equivalent to calling `AddDescriptionPrefix(prefix)` on every step in
+  // `steps`.
+  static void AddDescriptionPrefix(MultiStep& steps, std::string_view prefix);
 
   // Call this from any test verb which requires an environment suitable for
   // interactive testing. Typically, this means the test must be in an
@@ -756,7 +780,7 @@ InteractionSequence::StepBuilder InteractiveTestApi::NameElementRelative(
 template <typename T>
 InteractionSequence::StepBuilder InteractiveTestApi::InAnyContext(T&& step) {
   return std::move(step.SetContext(InteractionSequence::ContextMode::kAny)
-                       .FormatDescription("InAnyContext( %s )"));
+                       .AddDescriptionPrefix("InAnyContext()"));
 }
 
 // static
@@ -764,16 +788,24 @@ template <typename T>
 InteractionSequence::StepBuilder InteractiveTestApi::InSameContext(T&& step) {
   return std::move(
       step.SetContext(InteractionSequence::ContextMode::kFromPreviousStep)
-          .FormatDescription("InSameContext( %s )"));
+          .AddDescriptionPrefix("InSameContext()"));
 }
 
 template <typename T>
 InteractionSequence::StepBuilder InteractiveTestApi::InContext(
     ElementContext context,
     T&& step) {
-  const auto fmt = base::StringPrintf("InContext( %p, %%s )",
-                                      static_cast<const void*>(context));
-  return std::move(step.SetContext(context).FormatDescription(fmt));
+  return std::move(
+      step.SetContext(context).AddDescriptionPrefix(base::StringPrintf(
+          "InContext( %p, )", static_cast<const void*>(context))));
+}
+
+// static
+template <typename T>
+InteractiveTestApi::MultiStep InteractiveTestApi::InSameContextAs(
+    ElementSpecifier element,
+    T&& step) {
+  return InSameContextAs(element, Steps(std::forward<T>(step)));
 }
 
 // static
@@ -781,7 +813,7 @@ template <typename T>
 InteractionSequence::StepBuilder InteractiveTestApi::WithoutDelay(T&& step) {
   return std::move(
       step.SetStepStartMode(InteractionSequence::StepStartMode::kImmediate)
-          .FormatDescription("WithoutDelay( %s )"));
+          .AddDescriptionPrefix("WithoutDelay()"));
 }
 
 // static
@@ -1028,7 +1060,7 @@ InteractiveTestApi::MultiStep InteractiveTestApi::WaitForState(
   auto result = Steps(WithElement(internal::kInteractiveTestPivotElementId,
                                   std::move(wait_callback)),
                       WaitForShow(id.identifier()));
-  AddDescription(result, "WaitForState( %s )");
+  AddDescriptionPrefix(result, "WaitForState()");
   return result;
 }
 

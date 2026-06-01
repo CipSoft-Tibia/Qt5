@@ -443,7 +443,8 @@ void QGtk3FileDialogHelper::applyOptions()
     if (opts->initialDirectory().isLocalFile())
         setDirectory(opts->initialDirectory());
 
-    foreach (const QUrl &filename, opts->initiallySelectedFiles())
+    const auto initiallySelected = opts->initiallySelectedFiles();
+    for (const QUrl &filename : initiallySelected)
         selectFileInternal(filename);
 
     const QString initialNameFilter = opts->initiallySelectedNameFilter();
@@ -478,13 +479,13 @@ void QGtk3FileDialogHelper::setNameFilters(const QStringList &filters)
     _filters.clear();
     _filterNames.clear();
 
-    foreach (const QString &filter, filters) {
+    for (const QString &filter : filters) {
         GtkFileFilter *gtkFilter = gtk_file_filter_new();
         const QString name = filter.left(filter.indexOf(u'('));
         const QStringList extensions = cleanFilterList(filter);
 
         gtk_file_filter_set_name(gtkFilter, qUtf8Printable(name.isEmpty() ? extensions.join(", "_L1) : name));
-        foreach (const QString &ext, extensions)
+        for (const QString &ext : extensions)
             gtk_file_filter_add_pattern(gtkFilter, qUtf8Printable(ext));
 
         gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(gtkDialog), gtkFilter);

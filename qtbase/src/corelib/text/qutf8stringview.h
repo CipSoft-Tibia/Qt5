@@ -1,5 +1,6 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 #ifndef QUTF8STRINGVIEW_H
 #define QUTF8STRINGVIEW_H
 
@@ -286,8 +287,13 @@ public:
     [[nodiscard]] constexpr storage_type front() const { return Q_ASSERT(!empty()), m_data[0]; }
     [[nodiscard]] constexpr storage_type back()  const { return Q_ASSERT(!empty()), m_data[m_size - 1]; }
 
-    [[nodiscard]] Q_IMPLICIT operator std::basic_string_view<storage_type>() const noexcept
-    { return std::basic_string_view<storage_type>(data(), size_t(size())); }
+    [[nodiscard]] Q_IMPLICIT operator std::string_view() const noexcept
+    { return std::string_view{reinterpret_cast<const char*>(data()), size_t(size())}; }
+
+#ifdef __cpp_lib_char8_t
+    [[nodiscard]] Q_IMPLICIT operator std::u8string_view() const noexcept
+    { return std::u8string_view{utf8(), size_t(size())}; }
+#endif
 
     [[nodiscard]] constexpr qsizetype max_size() const noexcept { return maxSize(); }
 

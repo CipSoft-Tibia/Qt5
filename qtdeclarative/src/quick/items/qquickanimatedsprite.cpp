@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickanimatedsprite_p.h"
 #include "qquickanimatedsprite_p_p.h"
@@ -553,7 +554,7 @@ void QQuickAnimatedSprite::setSource(const QUrl &arg)
     Q_D(QQuickAnimatedSprite);
 
     if (d->m_sprite->m_source != arg) {
-        const qreal targetDevicePixelRatio = (window() ? window()->effectiveDevicePixelRatio() : qApp->devicePixelRatio());
+        const qreal targetDevicePixelRatio = d->effectiveDevicePixelRatio();
         d->m_sprite->setDevicePixelRatio(targetDevicePixelRatio);
         d->m_sprite->setSource(arg);
         Q_EMIT sourceChanged(arg);

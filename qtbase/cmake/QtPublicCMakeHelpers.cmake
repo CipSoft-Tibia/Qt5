@@ -189,6 +189,30 @@ function(_qt_internal_get_check_cxx_source_compiles_out_var out_output_var out_f
     set(${out_func_args} "${extra_func_args}" PARENT_SCOPE)
 endfunction()
 
+# Sets TARGET_SUPPORTS_SHARED_LIBS to TRUE when using Emscripten to build Qt for WebAssembly
+# or user projects.
+# The upstream Emscripten cmake toolchain file sets TARGET_SUPPORTS_SHARED_LIBS to FALSE, claiming
+# true shared library support is not available.
+# See https://github.com/emscripten-core/emscripten/pull/8362#issuecomment-3050586255
+# Upstream CMake 4.2+ will set it to TRUE itself, when not using the Emscripten cmake toolchain
+# file directly.
+function(_qt_internal_handle_target_supports_shared_libs)
+    if(NOT EMSCRIPTEN)
+        return()
+    endif()
+
+    if(QT_NO_ENABLE_TARGET_SUPPORTS_SHARED_LIBS)
+        return()
+    endif()
+
+    get_property(target_supports_shared_libs GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
+    if(target_supports_shared_libs)
+        return()
+    endif()
+
+    set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+endfunction()
+
 # This function gets all targets below this directory
 #
 # Multi-value Arguments:
@@ -813,6 +837,47 @@ function(_qt_internal_relative_path path_var)
     set(${arg_OUTPUT_VARIABLE} "${${arg_OUTPUT_VARIABLE}}" PARENT_SCOPE)
 endfunction()
 
+# Compatibility of `cmake_path(IS_PREFIX)`
+#
+# NORMALIZE keyword is not supported
+#
+# Synopsis
+#
+#   _qt_internal_path_is_prefix(<path-var> <input> <out-var>)
+#
+# Arguments
+#
+# `path-var`
+#   Equivalent to `cmake_path(IS_PREFIX <path-var>)`.
+#
+# `input`
+#   Equivalent to `cmake_path(IS_PREFIX <input>)`.
+#
+# `out-var`
+#   Equivalent to `cmake_path(IS_PREFIX <out-var>)`.
+function(_qt_internal_path_is_prefix path_var input out_var)
+
+    # Make sure the path ends with `/`
+    if(NOT ${path_var} MATCHES "/$")
+        set(${path_var} "${${path_var}}/")
+    endif()
+    # For the case input == path_var, we need to also include a trailing `/` to match the
+    # previous change. We discard the actual path for input so we can add it unconditionally
+    set(input "${input}/")
+    if(CMAKE_VERSION VERSION_LESS 3.20)
+        string(FIND "${input}" "${${path_var}}" find_pos)
+        if(find_pos EQUAL 0)
+            # input starts_with path_var
+            set(${out_var} ON)
+        else()
+            set(${out_var} OFF)
+        endif()
+    else()
+        cmake_path(IS_PREFIX ${path_var} ${input} ${out_var})
+    endif()
+    set(${out_var} "${${out_var}}" PARENT_SCOPE)
+endfunction()
+
 # Configures the file using either the input template or the CONTENT.
 # Behaves as either file(CONFIGURE or configure_file( command, but do not depend
 # on CMake version.
@@ -885,12 +950,39 @@ function(_qt_internal_configure_file mode)
     configure_file("${input_file}" "${arg_OUTPUT}" @ONLY)
 endfunction()
 
-function(qt_set01 result)
-    if (${ARGN})
-        set("${result}" 1 PARENT_SCOPE)
+# The function checks if `value` is a valid C indentifier.
+#
+# Synopsis
+#
+#  _qt_internal_is_c_identifier(<out_var> <value>)
+#
+# Arguments
+#
+#  `out_var`
+#    Variable name for the evaluation result.
+#
+#  `value`
+#    The string for the evaluation.
+function(_qt_internal_is_c_identifier out_var value)
+    string(MAKE_C_IDENTIFIER "${value}" value_valid)
+
+    if(value AND "${value}" STREQUAL "${value_valid}")
+        set(${out_var} "TRUE" PARENT_SCOPE)
     else()
-        set("${result}" 0 PARENT_SCOPE)
+        set(${out_var} "FALSE" PARENT_SCOPE)
     endif()
+endfunction()
+
+# Makes appending of the CMake configure time dependencies unique.
+function(_qt_internal_append_cmake_configure_depends)
+    get_property(configure_depends DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+    foreach(path IN LISTS ARGN)
+        get_filename_component(abs_path "${path}" REALPATH)
+        if(NOT "${abs_path}" IN_LIST configure_depends)
+            list(APPEND configure_depends "${abs_path}")
+        endif()
+    endforeach()
+    set_property(DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS "${configure_depends}")
 endfunction()
 
 function(_qt_internal_get_moc_compiler_flavor_flags out_var)
@@ -905,43 +997,15 @@ function(_qt_internal_get_moc_compiler_flavor_flags out_var)
     set(${out_var} "${flags}" PARENT_SCOPE)
 endfunction()
 
-# Compatibility of `cmake_path(IS_PREFIX)`
-#
-# NORMALIZE keyword is not supported
-#
-# Synopsis
-#
-#   _qt_internal_path_is_prefix(<path-var> <input> <out-var>)
-#
-# Arguments
-#
-# `path-var`
-#   Equivalent to `cmake_path(IS_PREFIX <path-var>)`.
-#
-# `input`
-#   Equivalent to `cmake_path(IS_PREFIX <input>)`.
-#
-# `out-var`
-#   Equivalent to `cmake_path(IS_PREFIX <out-var>)`.
-function(_qt_internal_path_is_prefix path_var input out_var)
-
-    # Make sure the path ends with `/`
-    if(NOT ${path_var} MATCHES "/$")
-        set(${path_var} "${${path_var}}/")
-    endif()
-    # For the case input == path_var, we need to also include a trailing `/` to match the
-    # previous change. We discard the actual path for input so we can add it unconditionally
-    set(input "${input}/")
-    if(CMAKE_VERSION VERSION_LESS 3.20)
-        string(FIND "${input}" "${${path_var}}" find_pos)
-        if(find_pos EQUAL 0)
-            # input starts_with path_var
-            set(${out_var} ON)
-        else()
-            set(${out_var} OFF)
-        endif()
-    else()
-        cmake_path(IS_PREFIX ${path_var} ${input} ${out_var})
-    endif()
-    set(${out_var} "${${out_var}}" PARENT_SCOPE)
+# Create a non-existent, unique target name.
+# If the target ${name} doesn't exist, return that name in ${out_var}.
+# Otherwise, append an incrementing number, starting with 1.
+function(_qt_internal_unique_target_name out_var name)
+    set(target "${name}")
+    set(id 0)
+    while(TARGET "${target}")
+        math(EXPR id "${id} + 1")
+        set(target "${name}_${id}")
+    endwhile()
+    set("${out_var}" "${target}" PARENT_SCOPE)
 endfunction()

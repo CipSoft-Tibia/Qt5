@@ -8,6 +8,7 @@
 #include "qvideoframe_p.h"
 #include "qvideoframetexturefromsource_p.h"
 #include "private/qmultimediautils_p.h"
+#include "private/qaudio_alignment_support_p.h"
 
 #include <QtCore/qfile.h>
 #include <qpainter.h>
@@ -19,6 +20,12 @@ Q_STATIC_LOGGING_CATEGORY(qLcVideoTextureHelper, "qt.multimedia.video.texturehel
 
 namespace QVideoTextureHelper
 {
+
+bool forceGlTextureExternalOesIsSet() {
+    static const bool isSet =
+            qEnvironmentVariableIsSet("QT_MULTIMEDIA_FORCE_GL_TEXTURE_EXTERNAL_OES");
+    return isSet;
+}
 
 static const TextureDescription descriptions[QVideoFrameFormat::NPixelFormats] = {
     //  Format_Invalid
@@ -101,7 +108,7 @@ static const TextureDescription descriptions[QVideoFrameFormat::NPixelFormats] =
     },
     // Format_YUV420P
     { 3, 1,
-      [](int stride, int height) { return stride * ((height * 3 / 2 + 1) & ~1); },
+      [](int stride, int height) { return stride * (height + QtMultimediaPrivate::alignUp(height, 2) / 2); },
      { TextureDescription::Red_8, TextureDescription::Red_8, TextureDescription::Red_8 },
      { { 1, 1 }, { 2, 2 }, { 2, 2 } }
     },
@@ -113,7 +120,7 @@ static const TextureDescription descriptions[QVideoFrameFormat::NPixelFormats] =
     },
      // Format_YV12
     { 3, 1,
-      [](int stride, int height) { return stride * ((height * 3 / 2 + 1) & ~1); },
+      [](int stride, int height) { return stride * (height + QtMultimediaPrivate::alignUp(height, 2) / 2); },
      {TextureDescription::Red_8, TextureDescription::Red_8, TextureDescription::Red_8 },
      { { 1, 1 }, { 2, 2 }, { 2, 2 } }
     },
@@ -221,7 +228,7 @@ static const TextureDescription descriptions[QVideoFrameFormat::NPixelFormats] =
     },
     // Format_YUV420P10
     { 3, 2,
-        [](int stride, int height) { return stride * ((height * 3 / 2 + 1) & ~1); },
+        [](int stride, int height) { return stride * (height + QtMultimediaPrivate::alignUp(height, 2) / 2); },
         { TextureDescription::Red_16, TextureDescription::Red_16, TextureDescription::Red_16 },
         { { 1, 1 }, { 2, 2 }, { 2, 2 } }
     },
@@ -238,7 +245,7 @@ static bool isRhiTextureFormatSupported(const QRhi *rhi, QRhiTexture::Format for
     return rhi->isTextureFormatSupported(format);
 }
 
-QRhiTexture::Format TextureDescription::rhiTextureFormat(int plane, QRhi *rhi) const
+QRhiTexture::Format TextureDescription::rhiTextureFormat(int plane, QRhi *rhi, FallbackPolicy policy) const
 {
     QRhiTexture::Format preferredFormat = QRhiTexture::UnknownFormat;
 
@@ -266,6 +273,8 @@ QRhiTexture::Format TextureDescription::rhiTextureFormat(int plane, QRhi *rhi) c
         default:
             Q_UNREACHABLE();
     }
+    if (policy == FallbackPolicy::Disable)
+        return preferredFormat;
 
     return resolvedRhiTextureFormat(preferredFormat, rhi);
 }
@@ -435,6 +444,7 @@ QString fragmentShaderFileName(const QVideoFrameFormat &format, QRhi *,
 
     Q_ASSERT_X(QFile::exists(shaderFile), Q_FUNC_INFO,
                QStringLiteral("Shader file %1 does not exist").arg(shaderFile).toLatin1());
+    qCDebug(qLcVideoTextureHelper) << "fragmentShaderFileName returns" << shaderFile;
     return shaderFile;
 }
 
@@ -585,7 +595,6 @@ void updateUniformData(QByteArray *dst, QRhi *rhi, const QVideoFrameFormat &form
     case QVideoFrameFormat::Format_Invalid:
         return;
 
-    case QVideoFrameFormat::Format_Jpeg:
     case QVideoFrameFormat::Format_ARGB8888:
     case QVideoFrameFormat::Format_ARGB8888_Premultiplied:
     case QVideoFrameFormat::Format_XRGB8888:
@@ -595,8 +604,24 @@ void updateUniformData(QByteArray *dst, QRhi *rhi, const QVideoFrameFormat &form
     case QVideoFrameFormat::Format_ABGR8888:
     case QVideoFrameFormat::Format_XBGR8888:
     case QVideoFrameFormat::Format_RGBA8888:
-    case QVideoFrameFormat::Format_RGBX8888:
+    case QVideoFrameFormat::Format_RGBX8888: {
+        if (format.colorRange() == QVideoFrameFormat::ColorRange_Video) {
+            constexpr float scale = 255.0f / 219.0f; // (255 - 0) / (235 - 16)
+            constexpr float offset = -16.0f / 219.0f; // -16 / (235 - 16)
+            // clang-format off
+            cmat = QMatrix4x4 {
+                scale, 0.f,   0.f, offset,
+                0.f, scale,   0.f, offset,
+                0.f,   0.f, scale, offset,
+                0.f,   0.f,   0.f, 1.f,
+            };
+            // clang-format on
+        }
 
+        break;
+    }
+
+    case QVideoFrameFormat::Format_Jpeg:
     case QVideoFrameFormat::Format_Y8:
     case QVideoFrameFormat::Format_Y16:
         break;
@@ -662,16 +687,24 @@ void updateUniformData(QByteArray *dst, QRhi *rhi, const QVideoFrameFormat &form
     ud->maxLum = fromLinear(float(maxNits)/100.f);
     const TextureDescription* desc = textureDescription(format.pixelFormat());
 
+    const bool isDmaBuf = QVideoFramePrivate::hasDmaBuf(frame);
+    using FallbackPolicy = QVideoTextureHelper::TextureDescription::FallbackPolicy;
+    auto fallbackPolicy = isDmaBuf
+            ? FallbackPolicy::Disable
+            : FallbackPolicy::Enable;
+
     // Let's consider using the red component if Red_8 is not used,
     // it's useful for compatibility the shaders with 16bit formats.
 
     const bool useRedComponent =
-            !desc->hasTextureFormat(TextureDescription::Red_8) ||
-            isRhiTextureFormatSupported(rhi, QRhiTexture::R8) ||
-            rhi->isFeatureSupported(QRhi::RedOrAlpha8IsRed);
+            !desc->hasTextureFormat(TextureDescription::Red_8)
+            || isRhiTextureFormatSupported(rhi, QRhiTexture::R8)
+            || rhi->isFeatureSupported(QRhi::RedOrAlpha8IsRed)
+            || isDmaBuf;
     ud->redOrAlphaIndex = useRedComponent ? 0 : 3; // r:0 g:1 b:2 a:3
+
     for (int plane = 0; plane < desc->nplanes; ++plane)
-        ud->planeFormats[plane] = desc->rhiTextureFormat(plane, rhi);
+        ud->planeFormats[plane] = desc->rhiTextureFormat(plane, rhi, fallbackPolicy);
 }
 
 enum class UpdateTextureWithMapResult : uint8_t {
@@ -824,6 +857,7 @@ static QVideoFrameTexturesUPtr createTexturesFromMemory(QVideoFrame frame, QRhi 
                                                         QRhiResourceUpdateBatch &rub,
                                                         QVideoFrameTexturesUPtr &oldTextures)
 {
+    qCDebug(qLcVideoTextureHelper) << "createTexturesFromMemory, pixelFormat:" << frame.pixelFormat();
     if (!frame.map(QVideoFrame::ReadOnly)) {
         qWarning() << "Cannot map a video frame in ReadOnly mode!";
         return {};

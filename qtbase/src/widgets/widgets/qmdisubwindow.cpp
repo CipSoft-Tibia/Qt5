@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QMdiSubWindow
@@ -16,6 +17,7 @@
     title bar and a center area for the internal widget.
 
     \image qmdisubwindowlayout.png
+           {MDI window with a title bar and an internal widget}
 
     The most common way to construct a QMdiSubWindow is to call
     QMdiArea::addSubWindow() with the internal widget as the argument.
@@ -479,7 +481,7 @@ void ControlLabel::updateWindowIcon()
     if (menuIcon.isNull())
         menuIcon = style()->standardIcon(QStyle::SP_TitleBarMenuButton, nullptr, parentWidget());
     const int iconSize = style()->pixelMetric(QStyle::PM_TitleBarButtonIconSize, nullptr, parentWidget());
-    label = menuIcon.pixmap(iconSize);
+    label = menuIcon.pixmap(QSize(iconSize, iconSize), devicePixelRatio());
     update();
 }
 
@@ -2218,7 +2220,7 @@ QMdiSubWindow::QMdiSubWindow(QWidget *parent, Qt::WindowFlags flags)
     d->titleBarPalette = d->desktopPalette();
     d->font = QApplication::font("QMdiSubWindowTitleBar");
     // We don't want the menu icon by default on mac.
-#ifndef Q_OS_MAC
+#ifndef Q_OS_DARWIN
     if (windowIcon().isNull())
         d->menuIcon = style()->standardIcon(QStyle::SP_TitleBarMenuButton, nullptr, this);
     else
@@ -2845,8 +2847,11 @@ bool QMdiSubWindow::event(QEvent *event)
         break;
     case QEvent::WindowIconChange:
         d->menuIcon = windowIcon();
+        // We don't want the default menu icon on mac.
+#ifndef Q_OS_DARWIN
         if (d->menuIcon.isNull())
             d->menuIcon = style()->standardIcon(QStyle::SP_TitleBarMenuButton, nullptr, this);
+#endif
         if (d->controlContainer)
             d->controlContainer->updateWindowIcon(d->menuIcon);
         if (!maximizedSystemMenuIconWidget())

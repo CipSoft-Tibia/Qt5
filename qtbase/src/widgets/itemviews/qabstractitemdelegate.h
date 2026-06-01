@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTITEMDELEGATE_H
 #define QABSTRACTITEMDELEGATE_H
@@ -66,6 +67,8 @@ public:
                              QAbstractItemModel *model,
                              const QStyleOptionViewItem &option,
                              const QModelIndex &index);
+    // for widget editors
+    bool handleEditorEvent(QObject *object, QEvent *event);
 
     virtual bool helpEvent(QHelpEvent *event,
                            QAbstractItemView *view,
@@ -81,6 +84,7 @@ Q_SIGNALS:
 
 protected:
     QAbstractItemDelegate(QObjectPrivate &, QObject *parent = nullptr);
+
 private:
     Q_DECLARE_PRIVATE(QAbstractItemDelegate)
     Q_DISABLE_COPY(QAbstractItemDelegate)

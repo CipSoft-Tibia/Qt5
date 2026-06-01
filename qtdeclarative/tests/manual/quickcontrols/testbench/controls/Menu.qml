@@ -37,6 +37,15 @@ QtObject {
                 text: "Disabled"
                 enabled: false
             }
+            MenuItem {
+                text: "Icon"
+                icon.source: Utils.iconUrl
+            }
+            MenuItem {
+                text: "Transparent Icon"
+                icon.source: Utils.iconUrl
+                icon.color: "transparent"
+            }
 
             MenuSeparator {}
 

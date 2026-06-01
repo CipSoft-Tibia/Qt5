@@ -336,6 +336,22 @@ void QtProtobufQtTypesQtCoreTest::qDateTime()
         msg.deserialize(&serializer, QByteArray::fromHex(emptyValue));
         QVERIFY(msg.testField().isNull());
     }
+
+    // rvalue test
+    {
+        QDateTime dateTime = {date, QTime(7, 30, 21, 321), zone};
+        QDateTime dateTimeCopy = dateTime;
+        msg.setTestField(std::move(dateTime));
+        QDateTimeMessage msgCopy = msg;
+        QCOMPARE_EQ(msg.testField(), dateTimeCopy);
+        QCOMPARE_EQ(msg, msgCopy);
+
+        msg.setTestField({ QDate(2011, 3, 14),
+                           QTime(6, 30, 21, 321),
+                           QTimeZone(QTimeZone::UTC) });
+        QCOMPARE_NE(msg.testField(), dateTimeCopy);
+        QCOMPARE_NE(msg, msgCopy);
+    }
 }
 
 void QtProtobufQtTypesQtCoreTest::qSize()

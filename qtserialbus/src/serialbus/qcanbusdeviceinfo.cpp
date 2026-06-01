@@ -1,10 +1,13 @@
 // Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcanbusdeviceinfo.h"
 #include "qcanbusdeviceinfo_p.h"
 
 QT_BEGIN_NAMESPACE
+
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QCanBusDeviceInfoPrivate)
 
 /*!
     \class QCanBusDeviceInfo
@@ -21,6 +24,13 @@ QT_BEGIN_NAMESPACE
     Constructs a copy of \a other.
 */
 QCanBusDeviceInfo::QCanBusDeviceInfo(const QCanBusDeviceInfo &) = default;
+
+/*!
+    \fn QCanBusDeviceInfo::QCanBusDeviceInfo(QCanBusDeviceInfo &&other)
+
+    Move-constructs a CAN bus device info from \a other.
+    \since 6.10
+*/
 
 /*!
     Constructs a CAN bus device info from QCanBusDeviceInfoPrivate \a dd.

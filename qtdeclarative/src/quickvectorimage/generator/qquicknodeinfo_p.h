@@ -22,42 +22,26 @@
 #include <QQuickItem>
 #include <QtGui/private/qfixed_p.h>
 
+#include "qquickanimatedproperty_p.h"
+
 QT_BEGIN_NAMESPACE
+
+namespace QQuickVectorImageGenerator {
 
 struct NodeInfo
 {
     QString nodeId;
     QString typeName;
-    QTransform transform;
-    qreal opacity = 1.0;
+    QQuickAnimatedProperty transform = QQuickAnimatedProperty(QVariant::fromValue(QTransform{}));
+    QQuickAnimatedProperty opacity = QQuickAnimatedProperty(QVariant::fromValue(1.0));
     bool isDefaultTransform = true;
     bool isDefaultOpacity = true;
     bool isVisible = true;
     bool isDisplayed = true; // TODO: Map to display enum in QtSvg
-
-    struct AnimateColor {
-        int start = 0;
-        int repeatCount = 0;
-        bool fill = false;
-        bool freeze = false;
-        QList<QPair<qreal, QColor> > keyFrames;
-    };
-    QList<AnimateColor> animateColors;
-
-    struct TransformAnimation {
-        struct TransformKeyFrame {
-            TransformKeyFrame() = default;
-
-            QTransform baseMatrix;
-            QList<qreal> values; // animationTypes.size() * 3, content depends on each type
-            bool indefiniteAnimation = false;
-        };
-
-        QList<QTransform::TransformationType> animationTypes;
-        QMap<QFixed, TransformKeyFrame> keyFrames;
-    };
-
-    TransformAnimation transformAnimation;
+    QQuickAnimatedProperty visibility = QQuickAnimatedProperty(QVariant::fromValue(true));
+    int visibilityEndTime = -1;
+    int layerNum = -1;
+    int transformReferenceLayerNum = -1;
 };
 
 struct ImageNodeInfo : NodeInfo
@@ -74,7 +58,8 @@ struct StrokeStyle
     int miterLimit = 4;
     qreal dashOffset = 0;
     QList<qreal> dashArray;
-    QColor color = QColorConstants::Transparent;
+    QQuickAnimatedProperty color = QQuickAnimatedProperty(QVariant::fromValue(QColorConstants::Transparent));
+    QQuickAnimatedProperty opacity = QQuickAnimatedProperty(QVariant::fromValue(qreal(1.0)));
     qreal width = 1.0;
 
     static StrokeStyle fromPen(const QPen &p)
@@ -91,14 +76,24 @@ struct StrokeStyle
     }
 };
 
+struct PathTrimInfo
+{
+    bool enabled = false;
+    QQuickAnimatedProperty start = QQuickAnimatedProperty(QVariant::fromValue(0.0));
+    QQuickAnimatedProperty end = QQuickAnimatedProperty(QVariant::fromValue(1.0));
+    QQuickAnimatedProperty offset = QQuickAnimatedProperty(QVariant::fromValue(0.0));
+};
+
 struct PathNodeInfo : NodeInfo
 {
     QPainterPath painterPath;
     Qt::FillRule fillRule = Qt::FillRule::WindingFill;
-    QColor fillColor;
+    QQuickAnimatedProperty fillColor = QQuickAnimatedProperty(QVariant::fromValue(QColor{}));
+    QQuickAnimatedProperty fillOpacity = QQuickAnimatedProperty(QVariant::fromValue(qreal(1.0)));
     StrokeStyle strokeStyle;
     QGradient grad;
     QTransform fillTransform;
+    PathTrimInfo trim;
 };
 
 struct TextNodeInfo : NodeInfo
@@ -110,8 +105,10 @@ struct TextNodeInfo : NodeInfo
     QString text;
     QFont font;
     Qt::Alignment alignment;
-    QColor fillColor;
-    QColor strokeColor;
+    QQuickAnimatedProperty fillColor = QQuickAnimatedProperty(QVariant::fromValue(QColor{}));
+    QQuickAnimatedProperty fillOpacity = QQuickAnimatedProperty(QVariant::fromValue(qreal(1.0)));
+    QQuickAnimatedProperty strokeColor = QQuickAnimatedProperty(QVariant::fromValue(QColor{}));
+    QQuickAnimatedProperty strokeOpacity = QQuickAnimatedProperty(QVariant::fromValue(qreal(1.0)));
 };
 
 struct AnimateColorNodeInfo : NodeInfo
@@ -126,7 +123,6 @@ enum class StructureNodeStage
 
 struct UseNodeInfo : NodeInfo
 {
-    QPointF startPos;
     StructureNodeStage stage;
 };
 
@@ -139,6 +135,7 @@ struct StructureNodeInfo : NodeInfo
     bool isPathContainer = false;
 };
 
+}
 
 QT_END_NAMESPACE
 

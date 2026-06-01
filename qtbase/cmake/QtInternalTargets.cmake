@@ -23,16 +23,9 @@ function(qt_internal_set_warnings_are_errors_flags target target_scope)
             COMPILERS CLANG AppleClang
                     OPTIONS
                     -Werror -Wno-error=\#warnings -Wno-error=deprecated-declarations
-            COMPILERS CLANG
-                CONDITIONS VERSION_GREATER_EQUAL 10
-                    OPTIONS
-                    # We do mixed enum arithmetic all over the place:
-                    -Wno-error=deprecated-enum-enum-conversion
                 CONDITIONS VERSION_GREATER_EQUAL 14
                     OPTIONS
-                    # Clang 14 introduced these two but we are not clean for it.
-                    -Wno-error=deprecated-copy-with-user-provided-copy
-                    -Wno-error=unused-but-set-variable
+                    -Wno-error=deprecated-pragma
             COMMON_CONDITIONS
                 ${common_conditions}
                 ${clang_msvc_frontend_args}
@@ -46,17 +39,8 @@ function(qt_internal_set_warnings_are_errors_flags target target_scope)
                     # error: assuming signed overflow does not occur when assuming that (X + c) < X
                     #        is always false
                     -Wno-error=strict-overflow
-                CONDITIONS VERSION_GREATER_EQUAL 7
-                    OPTIONS
-                    # GCC 7 includes -Wimplicit-fallthrough in -Wextra, but Qt is not yet free of
-                    # implicit fallthroughs.
-                    -Wno-error=implicit-fallthrough
                 CONDITIONS VERSION_GREATER_EQUAL 9
                     OPTIONS
-                    # GCC 9 introduced these but we are not clean for it.
-                    -Wno-error=deprecated-copy
-                    -Wno-error=redundant-move
-                    -Wno-error=init-list-lifetime
                     # GCC 9 introduced -Wformat-overflow in -Wall, but it is buggy:
                     -Wno-error=format-overflow
                 CONDITIONS VERSION_GREATER_EQUAL 10
@@ -70,9 +54,6 @@ function(qt_internal_set_warnings_are_errors_flags target target_scope)
                     OPTIONS
                     # Ditto
                     -Wno-error=stringop-overread
-                    # We do mixed enum arithmetic all over the place:
-                    -Wno-error=deprecated-enum-enum-conversion
-                    -Wno-error=deprecated-enum-float-conversion
                 CONDITIONS VERSION_GREATER_EQUAL 11.0 AND VERSION_LESS 11.2
                     OPTIONS
                     # GCC 11.1 has a regression in the integrated preprocessor, so disable it as a
@@ -89,9 +70,25 @@ function(qt_internal_set_warnings_are_errors_flags target target_scope)
                     # being suppressed (QTBUG-134415)
                     # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64117
                     -Wno-error=tsan
+                CONDITIONS VERSION_GREATER_EQUAL 16.0
+                    OPTIONS
+                    # We are not clean; see QTBUG-143470
+                    -Wno-error=sfinae-incomplete
             COMMON_CONDITIONS
                 ${common_conditions}
             ${language_args}
+        )
+    endif()
+    if(APPLE)
+        qt_internal_add_compiler_dependent_flags("${target}" ${target_scope}
+            COMPILERS CLANG AppleClang
+                CONDITIONS $<BOOL:$<TARGET_PROPERTY:UNITY_BUILD>>
+                    OPTIONS
+                        -Wno-error=nullability-completeness
+            COMMON_CONDITIONS
+                ${common_conditions}
+            LANGUAGES
+                OBJCXX
         )
     endif()
     # Other options are gated at compile time that are not likely to change between different build
@@ -291,6 +288,13 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
         "$<$<AND:${not_disabled},${is_xcode15}>:LINKER:-no_warn_duplicate_libraries>")
 endif()
 
+if(CYGWIN)
+    # CYGWIN doesn't define _GNU_SOURCE by default for better support with W32API
+    target_compile_definitions(PlatformCommonInternal INTERFACE
+        "_GNU_SOURCE"
+    )
+endif()
+
 if(MSVC)
     target_compile_definitions(PlatformCommonInternal INTERFACE
         "_CRT_SECURE_NO_WARNINGS"
@@ -353,6 +357,13 @@ if (MSVC AND NOT CLANG)
     )
 endif()
 
+if (WIN32 AND (CLANG OR MINGW) AND (TEST_architecture_arch STREQUAL x86_64))
+    # windows 10 requires cmpxchg16b
+    target_compile_options(PlatformCommonInternal INTERFACE
+        -mcx16
+    )
+endif()
+
 set(_qt_internal_clang_msvc_frontend False)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
     CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
@@ -369,6 +380,25 @@ endif()
 
 if (GCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "9.2")
     target_compile_options(PlatformCommonInternal INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
+endif()
+
+if(QT_FEATURE_stdlib_libcpp)
+    # Disable transitive C++ inclusions when using libc++, on all
+    # language versions. See
+    # https://libcxx.llvm.org/DesignDocs/HeaderRemovalPolicy.html
+    target_compile_definitions(PlatformCommonInternal INTERFACE _LIBCPP_REMOVE_TRANSITIVE_INCLUDES)
+endif()
+
+if((QT_USE_CCACHE
+      OR (CMAKE_CXX_COMPILER_LAUNCHER MATCHES "^(.*[/\\])?sccache$"))
+    AND CLANG
+    AND BUILD_WITH_PCH)
+    # The ccache man page says we must compile with -fno-pch-timestamp when using clang and pch.
+    foreach(language IN ITEMS C CXX OBJC OBJCXX)
+        target_compile_options(PlatformCommonInternal INTERFACE
+            "$<$<COMPILE_LANGUAGE:${language}>:SHELL:-Xclang -fno-pch-timestamp>"
+        )
+    endforeach()
 endif()
 
 # Hardening options

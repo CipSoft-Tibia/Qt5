@@ -246,9 +246,9 @@ void tst_theme::initializeProperties()
     QCOMPARE(axisZLabelFontSpy.size(), 1);
 
     QCOMPARE(gridSpy.size(), 2);
-    QCOMPARE(axisXSpy.size(), 1);
-    QCOMPARE(axisYSpy.size(), 1);
-    QCOMPARE(axisZSpy.size(), 1);
+    QCOMPARE(axisXSpy.size(), 2);
+    QCOMPARE(axisYSpy.size(), 2);
+    QCOMPARE(axisZSpy.size(), 2);
 
     QCOMPARE(labelFontSpy.size(), 1);
     QCOMPARE(labelsVisibleSpy.size(), 1);

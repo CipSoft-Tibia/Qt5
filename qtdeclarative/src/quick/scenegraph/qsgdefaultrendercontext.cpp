@@ -19,6 +19,8 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_STATIC_LOGGING_CATEGORY(lcGlyphCaches, "qt.scenegraph.text.glyphcache")
+
 QSGDefaultRenderContext::QSGDefaultRenderContext(QSGContext *context)
     : QSGRenderContext(context)
     , m_rhi(nullptr)
@@ -58,22 +60,30 @@ void QSGDefaultRenderContext::initialize(const QSGRenderContext::InitParams *par
     emit initialized();
 }
 
-void QSGDefaultRenderContext::invalidateGlyphCaches()
+static QFontEngine *fontEngineOfRawFont(const QRawFont &font)
 {
-    {
-        auto it = m_glyphCaches.begin();
-        while (it != m_glyphCaches.end()) {
-            if (!(*it)->isActive()) {
-                delete *it;
-                it = m_glyphCaches.erase(it);
-            } else {
-                ++it;
-            }
+    QRawFontPrivate *d = QRawFontPrivate::get(font);
+    if (d != nullptr)
+        return d->fontEngine;
+    else
+        return nullptr;
+}
+
+void QSGDefaultRenderContext::flushGlyphCaches()
+{
+    auto it = m_staleGlyphCaches.begin();
+    while (it != m_staleGlyphCaches.end()) {
+        if (!(*it)->isActive()) {
+            qCDebug(lcGlyphCaches()) << "Deleting stale glyph cache:"
+                                     << (*it)
+                                     << "fontEngine:" << fontEngineOfRawFont((*it)->referenceFont())
+                                     << (*it)->referenceFont().familyName();
+            delete *it;
+            it = m_staleGlyphCaches.erase(it);
+        } else {
+            ++it;
         }
     }
-
-    qDeleteAll(m_curveGlyphAtlases);
-    m_curveGlyphAtlases.clear();
 
     {
         auto it = m_fontEnginesToClean.begin();
@@ -88,6 +98,44 @@ void QSGDefaultRenderContext::invalidateGlyphCaches()
             }
         }
     }
+}
+
+void QSGDefaultRenderContext::invalidateGlyphCaches()
+{
+    {
+        auto it = m_glyphCaches.begin();
+        while (it != m_glyphCaches.end()) {
+            if (!(*it)->isActive()) {
+                qCDebug(lcGlyphCaches()) << "Direct delete glyph cache:"
+                                         << it.value()
+                                         << "fontEngine:" << fontEngineOfRawFont(it.value()->referenceFont())
+                                         << it.value()->referenceFont().familyName()
+                                         << it.value()->referenceFont().styleName()
+                                         << ", key:"
+                                         << it.key().familyName
+                                         << it.key().styleName
+                                         << it.key().faceId.filename;
+                delete *it;
+            } else {
+                qCDebug(lcGlyphCaches()) << "Stale glyph cache:"
+                                         << it.value()
+                                         << "fontEngine:" << fontEngineOfRawFont(it.value()->referenceFont())
+                                         << it.value()->referenceFont().familyName()
+                                         << it.value()->referenceFont().styleName()
+                                         << ", key:"
+                                         << it.key().familyName
+                                         << it.key().styleName
+                                         << it.key().faceId.filename;
+
+                m_staleGlyphCaches.append(*it);
+            }
+
+            it = m_glyphCaches.erase(it);
+        }
+    }
+
+    qDeleteAll(m_curveGlyphAtlases);
+    m_curveGlyphAtlases.clear();
 }
 
 void QSGDefaultRenderContext::invalidate()
@@ -146,8 +194,15 @@ void QSGDefaultRenderContext::invalidate()
     qDeleteAll(m_curveGlyphAtlases);
     m_curveGlyphAtlases.clear();
 
+    qCDebug(lcGlyphCaches()) << "Deleting" << m_glyphCaches.size() << "live glyph caches";
+
     qDeleteAll(m_glyphCaches);
     m_glyphCaches.clear();
+
+    qCDebug(lcGlyphCaches()) << "Deleting" << m_staleGlyphCaches.size() << "stale glyph caches";
+
+    qDeleteAll(m_staleGlyphCaches);
+    m_staleGlyphCaches.clear();
 
     resetGlyphCacheResources();
 
@@ -246,6 +301,11 @@ void QSGDefaultRenderContext::preprocess()
         it.value()->processPendingGlyphs();
         it.value()->update();
     }
+
+    for (auto it = m_staleGlyphCaches.begin(); it != m_staleGlyphCaches.end(); ++it) {
+        (*it)->processPendingGlyphs();
+        (*it)->update();
+    }
 }
 
 QSGCurveGlyphAtlas *QSGDefaultRenderContext::curveGlyphAtlas(const QRawFont &font)
@@ -267,6 +327,26 @@ QSGDistanceFieldGlyphCache *QSGDefaultRenderContext::distanceFieldGlyphCache(con
     if (!cache && font.isValid()) {
         cache = new QSGRhiDistanceFieldGlyphCache(this, font, renderTypeQuality);
         m_glyphCaches.insert(key, cache);
+
+        qCDebug(lcGlyphCaches()) << "Creating new glyph cache:"
+                                 << cache
+                                 << "fontEngine:" << fontEngineOfRawFont(cache->referenceFont())
+                                 << cache->referenceFont().familyName()
+                                 << cache->referenceFont().styleName()
+                                 << ", key:"
+                                 << key.familyName
+                                 << key.styleName
+                                 << key.faceId.filename;
+    } else {
+        qCDebug(lcGlyphCaches()) << "Found existing glyph cache:"
+                                 << cache
+                                 << "fontEngine:" << fontEngineOfRawFont(cache->referenceFont())
+                                 << cache->referenceFont().familyName()
+                                 << cache->referenceFont().styleName()
+                                 << ", key:"
+                                 << key.familyName
+                                 << key.styleName
+                                 << key.faceId.filename;
     }
 
     return cache;

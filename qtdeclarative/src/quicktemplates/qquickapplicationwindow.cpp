@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickapplicationwindow_p.h"
 #include "qquickapplicationwindow_p_p.h"
@@ -45,9 +46,10 @@ using namespace Qt::StringLiterals;
     the window's properties, appearance and layout from QML.
 
     \image qtquickcontrols-applicationwindow-wireframe.png
+           {Window layout showing menu bar, header, content area, and footer}
 
     \qml
-    import QtQuick.Controls 2.12
+    import QtQuick.Controls
 
     ApplicationWindow {
         visible: true
@@ -139,20 +141,25 @@ void QQuickApplicationWindowPrivate::updateHasBackgroundFlags()
 void QQuickApplicationWindowPrivate::relayout()
 {
     Q_Q(QQuickApplicationWindow);
-    if (!componentComplete || insideRelayout)
+    if (!componentComplete)
         return;
 
+    // Note: We track whether we are inside relayout, but we do
+    // allow nested relayouts, as those are necessary to compute
+    // the height and position of footers when using safe areas.
     QScopedValueRollback<bool> guard(insideRelayout, true);
 
-    qreal menuBarHeight = menuBar && menuBar->isVisible() ? menuBar->height() : 0;
-    qreal headerheight = header && header->isVisible() ? header->height() : 0;
-    qreal footerHeight = footer && footer->isVisible() ? footer->height() : 0;
+    // Re-evaluate component heights for each use, as they
+    // may change between each use due to recursive layouts.
+    auto menuBarHeight = [this]{ return menuBar && menuBar->isVisible() ? menuBar->height() : 0; };
+    auto headerheight = [this]{ return header && header->isVisible() ? header->height() : 0; };
+    auto footerHeight = [this]{ return footer && footer->isVisible() ? footer->height() : 0; };
 
     control->setSize(q->size());
 
     layoutItem(menuBar, 0, q->width());
-    layoutItem(header, menuBarHeight, q->width());
-    layoutItem(footer, control->height() - footerHeight, q->width());
+    layoutItem(header, menuBarHeight(), q->width());
+    layoutItem(footer, control->height() - footerHeight(), q->width());
 
     if (background) {
         if (!hasBackgroundWidth && qFuzzyIsNull(background->x()))
@@ -168,8 +175,8 @@ void QQuickApplicationWindowPrivate::relayout()
     auto *windowSafeArea = static_cast<QQuickSafeArea*>(qmlAttachedPropertiesObject<QQuickSafeArea>(q));
     const auto inheritedMargins = windowSafeArea->margins();
     controlSafeArea->setAdditionalMargins(QMarginsF(
-        0, (menuBarHeight + headerheight) - inheritedMargins.top(),
-        0, footerHeight - inheritedMargins.bottom()));
+        0, (menuBarHeight() + headerheight()) - inheritedMargins.top(),
+        0, footerHeight() - inheritedMargins.bottom()));
 }
 
 void QQuickApplicationWindowPrivate::itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &diff)
@@ -784,12 +791,9 @@ void QQuickApplicationWindow::classBegin()
     auto *context = qmlContext(this);
     auto installPropertyBinding = [&](QObject *targetObject, const QString &targetPropertyName,
                                       QObject *sourceObject, const QString &sourcePropertyName) {
-        QQmlProperty targetProperty(targetObject, targetPropertyName);
-        QQmlProperty sourceProperty(sourceObject, sourcePropertyName);
-        QQmlAnyBinding binding;
-        binding = new QQmlPropertyToPropertyBinding(context->engine(),
-                sourceObject, QQmlPropertyPrivate::get(sourceProperty)->encodedIndex(),
-                targetObject, targetProperty.index());
+        const QQmlProperty targetProperty(targetObject, targetPropertyName);
+        QQmlAnyBinding binding = QQmlPropertyToPropertyBinding::create(
+                context->engine(), QQmlProperty(sourceObject, sourcePropertyName),  targetProperty);
         binding.installOn(targetProperty);
     };
 

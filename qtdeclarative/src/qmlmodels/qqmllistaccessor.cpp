@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmllistaccessor_p.h"
 
@@ -110,7 +111,9 @@ void QQmlListAccessor::setList(const QVariant &v)
     const QQmlType type = QQmlMetaType::qmlListType(variantsType);
     if (type.isSequentialContainer()) {
         m_metaSequence = type.listMetaSequence();
-        m_type = Sequence;
+        m_type = m_metaSequence.valueMetaType().flags().testFlag(QMetaType::PointerToQObject)
+                ? ObjectSequence
+                : ValueSequence;
         return;
     }
 
@@ -123,7 +126,9 @@ void QQmlListAccessor::setList(const QVariant &v)
         if (sequence.hasSize() && sequence.canGetValueAtIndex()) {
             // If the resulting iterable is useful for anything, use it.
             m_metaSequence = sequence;
-            m_type = Sequence;
+            m_type = sequence.valueMetaType().flags().testFlag(QMetaType::PointerToQObject)
+                    ? ObjectSequence
+                    : ValueSequence;
             return;
         }
 
@@ -161,7 +166,8 @@ qsizetype QQmlListAccessor::count() const
     case ListProperty:
         Q_ASSERT(d.metaType() == QMetaType::fromType<QQmlListReference>());
         return reinterpret_cast<const QQmlListReference *>(d.constData())->count();
-    case Sequence:
+    case ValueSequence:
+    case ObjectSequence:
         Q_ASSERT(m_metaSequence != QMetaSequence());
         return m_metaSequence.size(d.constData());
     case Instance:
@@ -193,7 +199,8 @@ QVariant QQmlListAccessor::at(qsizetype idx) const
     case ListProperty:
         Q_ASSERT(d.metaType() == QMetaType::fromType<QQmlListReference>());
         return QVariant::fromValue(reinterpret_cast<const QQmlListReference *>(d.constData())->at(idx));
-    case Sequence: {
+    case ValueSequence:
+    case ObjectSequence: {
         Q_ASSERT(m_metaSequence != QMetaSequence());
         QVariant result;
         const QMetaType valueMetaType = m_metaSequence.valueMetaType();
@@ -239,7 +246,8 @@ void QQmlListAccessor::set(qsizetype idx, const QVariant &value)
         Q_ASSERT(d.metaType() == QMetaType::fromType<QQmlListReference>());
         static_cast<QQmlListReference *>(d.data())->replace(idx, value.value<QObject *>());
         break;
-    case Sequence: {
+    case ValueSequence:
+    case ObjectSequence: {
         Q_ASSERT(m_metaSequence != QMetaSequence());
         const QMetaType valueMetaType = m_metaSequence.valueMetaType();
         if (valueMetaType == QMetaType::fromType<QVariant>()) {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Effects
 import Thermostat
 
@@ -30,7 +30,7 @@ Row {
         spacing: internal.columnSpacing
 
         Label {
-            text: "oC"
+            text: "°C"
             font.pixelSize: internal.smallFontSize
             font.weight: 600
             font.family: "Titillium Web"
@@ -60,7 +60,7 @@ Row {
     QtObject {
         id: internal
         property int rowSpacing: 7
-        property int fontSize: 96
+        property int fontSize: 70
         property int columnSpacing: 20
         property int smallFontSize: 24
 
@@ -82,11 +82,22 @@ Row {
         },
         State {
             name: "mobileLayout"
-            when: Constants.isMobileLayout || Constants.isSmallLayout
+            when: Constants.isMobileLayout
             PropertyChanges {
                 target: internal
                 rowSpacing: 0
                 fontSize: 56
+                columnSpacing: 12
+                smallFontSize: 14
+            }
+        },
+        State {
+            name: "smallLayout"
+            when: Constants.isSmallLayout
+            PropertyChanges {
+                target: internal
+                rowSpacing: 0
+                fontSize: 46
                 columnSpacing: 12
                 smallFontSize: 14
             }

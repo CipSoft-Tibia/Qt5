@@ -7,7 +7,7 @@ $assert DATATYPE in ["F32", "QC8", "QC4"]
 #include "xnnpack/assembly.h"
 
 $DATATYPE_SPEC = {"F32": "f32", "QC8": "f32_qc8w", "QC4": "f32_qc4w"}[DATATYPE]
-# LINT.IfChange
+
 # void xnn_${DATATYPE_SPEC}_gemm${"inc" if INC else ""}_minmax_ukernel_6x8__asm_aarch64_neonfma_ld128(
 #     size_t mr,                x0
 #     size_t nc,                x1
@@ -97,6 +97,7 @@ BEGIN_FUNCTION xnn_${DATATYPE_SPEC}_gemm${"inc" if INC else ""}_minmax_ukernel_6
           STP         d8,  d9, [sp, -16]!     // Save d8-d9 on stack
           # Load min/max/zerop values
           LD3R        {v6.4s, v7.4s, v8.4s}, [x8]
+          NEG         v8.4s, v8.4s
           MOVI        v9.16b, 15
         $else:
           # Load min/max values
@@ -519,7 +520,6 @@ BEGIN_FUNCTION xnn_${DATATYPE_SPEC}_gemm${"inc" if INC else ""}_minmax_ukernel_6
         RET
 
 END_FUNCTION xnn_${DATATYPE_SPEC}_gemm${"inc" if INC else ""}_minmax_ukernel_6x8__asm_aarch64_neonfma_ld128
-# LINT.ThenChange(gen/f32-gemm-6x8-aarch64-neonfma-ld128.cc)
 
 #ifdef __ELF__
 .section ".note.GNU-stack","",%progbits

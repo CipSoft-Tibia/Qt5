@@ -16,6 +16,7 @@
 #include <QtQuickTemplates2/private/qquickbutton_p.h>
 #include <QtQuickTemplates2/private/qquickoverlay_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p.h>
+#include <QtQuickTest/quicktest.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
 #include <QtGui/QWindow>
@@ -163,6 +164,7 @@ private slots:
 #endif
     void cleanupRhi();
     void dontRecreateRootElementOnWindowChange();
+    void preserveClearColorOnWindowChange();
     void setInitialProperties();
     void fromModuleCtor();
     void loadFromModule_data();
@@ -405,6 +407,10 @@ void tst_qquickwidget::errors()
     view->setSource(testFileUrl("error1.qml"));
     QCOMPARE(view->status(), QQuickWidget::Error);
     QCOMPARE(view->errors().size(), 1);
+
+    QQuickWidget invalidRoot;
+    invalidRoot.setSource(testFileUrl("error2.qml")); // don't crash
+    QCOMPARE(invalidRoot.status(), QQuickWidget::Error);
 }
 
 void tst_qquickwidget::engine()
@@ -1112,11 +1118,11 @@ void tst_qquickwidget::focusOnClick()
     QVERIFY(text2);
 
     QTest::mouseClick(window, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 25));
-    QTRY_VERIFY(text1->hasActiveFocus());
+    QTRY_VERIFY_ACTIVE_FOCUS(text1);
     QVERIFY(!text2->hasActiveFocus());
 
     QTest::mouseClick(window, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 75));
-    QTRY_VERIFY(text2->hasActiveFocus());
+    QTRY_VERIFY_ACTIVE_FOCUS(text2);
     QVERIFY(!text1->hasActiveFocus());
 
 }
@@ -1124,6 +1130,9 @@ void tst_qquickwidget::focusOnClick()
 #if QT_CONFIG(graphicsview)
 void tst_qquickwidget::focusOnClickInProxyWidget()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("Crashes on Android, see QTBUG-139400");
+#endif
     QGraphicsScene scene(0,0,400,400);
 
     QGraphicsView view1(&scene);
@@ -1158,7 +1167,7 @@ void tst_qquickwidget::focusOnClickInProxyWidget()
 
     // Click on text1
     QTest::mouseClick(window1, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 25));
-    QTRY_VERIFY(text1->hasActiveFocus());
+    QTRY_VERIFY_ACTIVE_FOCUS(text1);
     QVERIFY(!text2->hasActiveFocus());
 
 
@@ -1169,14 +1178,14 @@ void tst_qquickwidget::focusOnClickInProxyWidget()
 
     QVERIFY(QTest::qWaitForWindowExposed(&view2));
     QWindow *window2 = view2.windowHandle();
-    QVERIFY(window2);
+    QVERIFY(QTest::qWaitForWindowActive(window2));
 
     QTest::mouseClick(window2, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(300, 300));
     QTRY_VERIFY(!text1->hasActiveFocus());
     QTRY_VERIFY(!text2->hasActiveFocus());
 
     QTest::mouseClick(window2, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 25));
-    QTRY_VERIFY(text1->hasActiveFocus());
+    QTRY_VERIFY_ACTIVE_FOCUS(text1);
     QVERIFY(!text2->hasActiveFocus());
 }
 #endif
@@ -1215,11 +1224,11 @@ void tst_qquickwidget::focusPreserved()
     QVERIFY(QTest::qWaitForWindowExposed(quick.get()));
     QTRY_VERIFY(quick->hasFocus());
     QTRY_VERIFY(content->hasFocus());
-    QTRY_VERIFY(content->hasActiveFocus());
+    QTRY_VERIFY_ACTIVE_FOCUS(content.get());
 
     content2->forceActiveFocus();
     QVERIFY(content2->hasFocus());
-    QVERIFY(content2->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(content2.get());
 
     widget->show();
     widget->setFocus();
@@ -1234,7 +1243,7 @@ void tst_qquickwidget::focusPreserved()
     quick->activateWindow();
     QTRY_VERIFY(quick->hasFocus());
     QTRY_VERIFY(content2->hasFocus());
-    QTRY_VERIFY(content2->hasActiveFocus());
+    QTRY_VERIFY_ACTIVE_FOCUS(content2.get());
 }
 
 #if QT_CONFIG(accessibility)
@@ -1354,6 +1363,22 @@ void tst_qquickwidget::dontRecreateRootElementOnWindowChange()
     QCoreApplication::sendEvent(quickWidget, &event);
 
     QVERIFY(!wasDestroyed);
+}
+
+void tst_qquickwidget::preserveClearColorOnWindowChange()
+{
+    auto *quickWidget = new QQuickWidget();
+    quickWidget->setSource(testFileUrl("rectangle.qml"));
+
+    QColor color("#F00BAA");
+    quickWidget->setClearColor(color);
+
+    QVERIFY(quickWidget->quickWindow()->color() == color);
+
+    QEvent event(QEvent::WindowChangeInternal);
+    QCoreApplication::sendEvent(quickWidget, &event);
+
+    QVERIFY(quickWidget->quickWindow()->color() == color);
 }
 
 void tst_qquickwidget::setInitialProperties()

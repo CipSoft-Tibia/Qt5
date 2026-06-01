@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/core/html/custom/ce_reactions_scope.h"
 
+#include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
@@ -28,8 +29,16 @@ CEReactionsScope::CEReactionsScope() : prev_(top_of_stack_) {
 }
 
 CEReactionsScope::~CEReactionsScope() {
-  if (stack_)
+  if (stack_) {
+    DCHECK(try_catch_);
+    v8::Local<v8::Value> original_exception = try_catch_->Exception();
     stack_->PopInvokingReactions();
+    if (!original_exception.IsEmpty()) [[unlikely]] {
+      V8ThrowException::ThrowException(stack_->GetSupplementable()->isolate(),
+                                       original_exception);
+      try_catch_->ReThrow();
+    }
+  }
   top_of_stack_ = top_of_stack_->prev_;
 }
 
@@ -40,6 +49,9 @@ void CEReactionsScope::EnqueueToCurrentQueue(CustomElementReactionStack& stack,
     stack.Push();
   stack_ = &stack;
   stack.EnqueueToCurrentQueue(element, reaction);
+  if (!try_catch_) {
+    try_catch_.emplace(stack.GetSupplementable()->isolate());
+  }
 }
 
 }  // namespace blink

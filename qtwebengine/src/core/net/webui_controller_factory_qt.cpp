@@ -49,17 +49,9 @@
 // #include "chrome/browser/ui/webui/certificate_viewer_ui.h"
 // #endif
 
-// #if BUILDFLAG(ENABLE_EXTENSIONS)
-// #include "chrome/browser/extensions/extension_web_ui.h"
-// #include "chrome/browser/ui/webui/extensions/extensions_ui.h"
-// #include "chrome/common/extensions/extension_constants.h"
-// #include "extensions/browser/extension_registry.h"
-// #include "extensions/browser/extension_system.h"
-// #include "extensions/common/constants.h"
-// #include "extensions/common/extension.h"
-// #include "extensions/common/feature_switch.h"
-// #include "extensions/common/manifest.h"
-// #endif
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+#include "extensions/webui/extensions_ui_qt.h"
+#endif
 
 using content::WebUI;
 using content::WebUIController;
@@ -83,7 +75,6 @@ std::unique_ptr<WebUIController> NewWebUI(WebUI *web_ui, const GURL & /*url*/)
 WebUIFactoryFunction GetWebUIFactoryFunction(WebUI *web_ui, Profile *profile, const GURL &url)
 {
     Q_UNUSED(web_ui);
-    Q_UNUSED(profile);
     // This will get called a lot to check all URLs, so do a quick check of other
     // schemes to filter out most URLs.
     if (!content::HasWebUIScheme(url))
@@ -118,10 +109,15 @@ WebUIFactoryFunction GetWebUIFactoryFunction(WebUI *web_ui, Profile *profile, co
 //    if (url.host_piece() == chrome::kChromeUICertificateViewerHost)
 //        return &NewWebUI<CertificateViewerUI>;
 //#endif  // USE_NSS_CERTS && USE_AURA
-//#if BUILDFLAG(ENABLE_EXTENSIONS)
-//    if (url.host_piece() == chrome::kChromeUIExtensionsFrameHost)
-//        return &NewWebUI<extensions::ExtensionsUI>;
-//#endif
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+    if (url.host_piece() == chrome::kChromeUIExtensionsHost) {
+        if (profile->IsIncognitoProfile()) {
+            qWarning("chrome://extensions is not supported with an off-the-record profile.");
+            return nullptr;
+        }
+        return &NewWebUI<ExtensionsUIQt>;
+    }
+#endif
 //#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 //    if (url.host_piece() == chrome::kChromeUIPrintHost &&
 //        !profile->GetPrefs()->GetBoolean(prefs::kPrintPreviewDisabled)) {

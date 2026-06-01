@@ -8,7 +8,6 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/qoffscreensurface.h>
 #include <QtGui/qpa/qplatformintegration.h>
-#include <QtGui/rhi/qrhi.h>
 
 #if defined(Q_OS_ANDROID)
 #  include <QtCore/qmetaobject.h>
@@ -18,10 +17,24 @@ QT_BEGIN_NAMESPACE
 
 namespace {
 
+static thread_local QRhi::Implementation s_preferredBackend = QRhi::Null;
+
+#if QT_CONFIG(opengl)
+
+bool openGLCapsSupported(const QPlatformIntegration &qpa)
+{
+     return qpa.hasCapability(QPlatformIntegration::OpenGL) &&
+            qpa.hasCapability(QPlatformIntegration::RasterGLSurface) &&
+            !QCoreApplication::testAttribute(Qt::AA_ForceRasterWidgets) &&
+            (QThread::isMainThread() ||
+                (qpa.hasCapability(QPlatformIntegration::ThreadedOpenGL) &&
+                 qpa.hasCapability(QPlatformIntegration::OffscreenSurface)));
+}
+#endif
+
 class ThreadLocalRhiHolder
 {
 public:
-    ThreadLocalRhiHolder();
     ~ThreadLocalRhiHolder() { resetRhi(); }
 
     QRhi *ensureRhi(QRhi *referenceRhi)
@@ -35,24 +48,22 @@ public:
         if (qpa && qpa->hasCapability(QPlatformIntegration::RhiBasedRendering)) {
 
 #if QT_CONFIG(metal)
-            if (referenceBackend == QRhi::Metal || referenceBackend == QRhi::Null) {
+            if (canUseRhiImpl(QRhi::Metal, referenceBackend)) {
                 QRhiMetalInitParams params;
                 m_rhi.reset(QRhi::create(QRhi::Metal, &params));
             }
 #endif
 
 #if defined(Q_OS_WIN)
-            if (referenceBackend == QRhi::D3D11 || referenceBackend == QRhi::Null) {
+            if (!m_rhi && canUseRhiImpl(QRhi::D3D11, referenceBackend)) {
                 QRhiD3D11InitParams params;
                 m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
             }
 #endif
 
 #if QT_CONFIG(opengl)
-            if (!m_rhi && (referenceBackend == QRhi::OpenGLES2 || referenceBackend == QRhi::Null)) {
-                if (qpa->hasCapability(QPlatformIntegration::OpenGL)
-                    && qpa->hasCapability(QPlatformIntegration::RasterGLSurface)
-                    && !QCoreApplication::testAttribute(Qt::AA_ForceRasterWidgets)) {
+            if (!m_rhi && canUseRhiImpl(QRhi::OpenGLES2, referenceBackend)) {
+                if (openGLCapsSupported(*qpa)) {
 
                     m_fallbackSurface.reset(QRhiGles2InitParams::newFallbackSurface());
                     QRhiGles2InitParams params;
@@ -93,7 +104,6 @@ public:
         return m_rhi.get();
     }
 
-private:
     void resetRhi()
     {
         m_rhi.reset();
@@ -101,6 +111,21 @@ private:
         m_fallbackSurface.reset();
 #endif
         m_cpuOnly = false;
+    }
+
+    bool canUseRhiImpl(const QRhi::Implementation implementation,
+                       const QRhi::Implementation reference)
+    {
+        // First priority goes to reference backend
+        if (reference != QRhi::Null)
+            return implementation == reference;
+
+        // If no reference, but preference exists, compare to that
+        if (s_preferredBackend != QRhi::Null)
+            return implementation == s_preferredBackend;
+
+        // Can use (assuming platform and configuration allow)
+        return true;
     }
 
 private:
@@ -117,26 +142,19 @@ private:
 #endif
 };
 
-Q_CONSTINIT thread_local std::optional<ThreadLocalRhiHolder> g_threadLocalRhiHolder;
+QThreadStorage<ThreadLocalRhiHolder> g_threadLocalRhiHolder;
 
-ThreadLocalRhiHolder::ThreadLocalRhiHolder()
-{
-    if (QThread::isMainThread()) {
-        // ensure cleanup in qApp dtor
-        qAddPostRoutine([] {
-            g_threadLocalRhiHolder.reset();
-        });
-    }
 }
-
-} // namespace
 
 QRhi *qEnsureThreadLocalRhi(QRhi *referenceRhi)
 {
-    if (!g_threadLocalRhiHolder)
-        g_threadLocalRhiHolder.emplace();
+    return g_threadLocalRhiHolder.localData().ensureRhi(referenceRhi);
+}
 
-    return g_threadLocalRhiHolder->ensureRhi(referenceRhi);
+void qSetPreferredThreadLocalRhiBackend(QRhi::Implementation backend)
+{
+    s_preferredBackend = backend;
+    g_threadLocalRhiHolder.localData().resetRhi();
 }
 
 QT_END_NAMESPACE

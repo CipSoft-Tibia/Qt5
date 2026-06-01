@@ -40,7 +40,7 @@
 
 using segmentation_platform::HasTrainingLabel;
 using segmentation_platform::MockSegmentationPlatformService;
-using URLType = visited_url_ranking::FetchOptions::URLType;
+using URLType = visited_url_ranking::URLVisitAggregate::URLType;
 using ResultOption = visited_url_ranking::FetchOptions::ResultOption;
 using testing::_;
 
@@ -233,8 +233,8 @@ class VisitedURLRankingServiceImplTest : public testing::Test {
         *segmentation_platform_service_,
         CollectTrainingData(
             _, test_request_id,
-            HasTrainingLabel("action",
-                             static_cast<base::HistogramBase::Sample>(action)),
+            HasTrainingLabel(
+                "action", static_cast<base::HistogramBase::Sample32>(action)),
             _))
         .WillOnce([&wait_loop](
                       segmentation_platform::proto::SegmentId,

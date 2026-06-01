@@ -35,14 +35,14 @@ bool ModuleScope::iterateDirectSubpaths(const DomItem &self, DirectVisitor visit
     cont = cont && self.dvItemField(visitor, Fields::exports, [this, &self]() {
         int minorVersion = version.minorVersion;
         return self.subMapItem(Map(
-                self.pathFromOwner().field(Fields::exports),
+                self.pathFromOwner().withField(Fields::exports),
                 [minorVersion](const DomItem &mapExp, const QString &name) -> DomItem {
                     DomItem mapExpOw = mapExp.owner();
                     QList<DomItem> exports =
                             mapExp.ownerAs<ModuleIndex>()->exportsWithNameAndMinorVersion(
                                     mapExpOw, name, minorVersion);
                     return mapExp.subListItem(List::fromQList<DomItem>(
-                            mapExp.pathFromOwner().key(name), exports,
+                            mapExp.pathFromOwner().withKey(name), exports,
                             [](const DomItem &, const PathEls::PathComponent &, const DomItem &el) {
                                 return el;
                             },
@@ -55,11 +55,11 @@ bool ModuleScope::iterateDirectSubpaths(const DomItem &self, DirectVisitor visit
                 QLatin1String("List<Exports>")));
     });
     cont = cont && self.dvItemField(visitor, Fields::symbols, [&self]() {
-        Path basePath = Path::Current(PathCurrent::Obj).field(Fields::exports);
+        Path basePath = Path::fromCurrent(PathCurrent::Obj).withField(Fields::exports);
         return self.subMapItem(Map(
-                self.pathFromOwner().field(Fields::symbols),
+                self.pathFromOwner().withField(Fields::symbols),
                 [basePath](const DomItem &mapExp, const QString &name) -> DomItem {
-                    QList<Path> symb({ basePath.key(name) });
+                    QList<Path> symb({ basePath.withKey(name) });
                     return mapExp.subReferencesItem(PathEls::Key(name), symb);
                 },
                 [](const DomItem &mapExp) {
@@ -120,7 +120,7 @@ bool ModuleIndex::iterateDirectSubpaths(const DomItem &self, DirectVisitor visit
     cont = cont && self.dvValueField(visitor, Fields::majorVersion, majorVersion());
     cont = cont && self.dvItemField(visitor, Fields::moduleScope, [this, &self]() {
         return self.subMapItem(Map(
-                pathFromOwner(self).field(Fields::moduleScope),
+                pathFromOwner(self).withField(Fields::moduleScope),
                 [](const DomItem &map, const QString &minorVersionStr) {
                     bool ok;
                     int minorVersion = minorVersionStr.toInt(&ok);
@@ -165,7 +165,7 @@ QSet<QString> ModuleIndex::exportNames(const DomItem &self) const
 QList<DomItem> ModuleIndex::autoExports(const DomItem &self) const
 {
     QList<DomItem> res;
-    Path selfPath = canonicalPath(self).field(Fields::autoExports);
+    Path selfPath = canonicalPath(self).withField(Fields::autoExports);
     RefCacheEntry cached = RefCacheEntry::forPath(self, selfPath);
     QList<Path> cachedPaths;
     switch (cached.cached) {
@@ -223,8 +223,8 @@ QList<DomItem> ModuleIndex::exportsWithNameAndMinorVersion(const DomItem &self, 
                                                            int minorVersion) const
 {
     Path myPath = Paths::moduleScopePath(uri(), Version(majorVersion(), minorVersion))
-                          .field(Fields::exports)
-                          .key(name);
+                          .withField(Fields::exports)
+                          .withKey(name);
     QList<Path> mySources = sources();
     QList<DomItem> res;
     QList<DomItem> undef;

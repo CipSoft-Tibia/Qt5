@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2017, 2019-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2017, 2019-2024 Valve Corporation
- * Copyright (c) 2015-2017, 2019-2024 LunarG, Inc.
+/* Copyright (c) 2015-2017, 2019-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2017, 2019-2025 Valve Corporation
+ * Copyright (c) 2015-2017, 2019-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,7 @@
 #include <cassert>
 #include <limits>
 #include <memory>
-#include <map>
 #include <unordered_map>
-#include <set>
 #include <algorithm>
 #include <iterator>
 #include <type_traits>
@@ -35,6 +33,8 @@
 #ifdef USE_ROBIN_HOOD_HASHING
 #include "robin_hood.h"
 #else
+#include <map>
+#include <set>
 #include <unordered_set>
 #endif
 
@@ -814,51 +814,6 @@ class small_unordered_map : public small_container<Key, typename vvl::unordered_
 template <typename Key, int N = 1>
 class small_unordered_set : public small_container<Key, Key, vvl::unordered_set<Key>, value_type_helper_set<Key>, N> {};
 
-// For the given data key, look up the layer_data instance from given layer_data_map
-template <typename DATA_T>
-DATA_T *GetLayerDataPtr(void *data_key, small_unordered_map<void *, DATA_T *, 2> &layer_data_map) {
-    /* TODO: We probably should lock here, or have caller lock */
-    DATA_T *&got = layer_data_map[data_key];
-
-    if (got == nullptr) {
-        got = new DATA_T;
-    }
-
-    return got;
-}
-
-template <typename DATA_T>
-void FreeLayerDataPtr(void *data_key, small_unordered_map<void *, DATA_T *, 2> &layer_data_map) {
-    delete layer_data_map[data_key];
-    layer_data_map.erase(data_key);
-}
-
-// For the given data key, look up the layer_data instance from given layer_data_map
-template <typename DATA_T>
-DATA_T *GetLayerDataPtr(void *data_key, std::unordered_map<void *, DATA_T *> &layer_data_map) {
-    DATA_T *debug_data;
-    /* TODO: We probably should lock here, or have caller lock */
-    auto got = layer_data_map.find(data_key);
-
-    if (got == layer_data_map.end()) {
-        debug_data = new DATA_T;
-        layer_data_map[(void *)data_key] = debug_data;
-    } else {
-        debug_data = got->second;
-    }
-
-    return debug_data;
-}
-
-template <typename DATA_T>
-void FreeLayerDataPtr(void *data_key, std::unordered_map<void *, DATA_T *> &layer_data_map) {
-    auto got = layer_data_map.find(data_key);
-    assert(got != layer_data_map.end());
-
-    delete got->second;
-    layer_data_map.erase(got);
-}
-
 namespace vvl {
 
 inline constexpr std::in_place_t in_place{};
@@ -909,8 +864,8 @@ class IndexedIterator {
   public:
     IndexedIterator(T *data, IndexType index = 0) : index_(index), data_(data) {}
 
-    IndexedIterator<T, IndexType> &operator*() { return *this; }
-    const IndexedIterator<T, IndexType> &operator*() const { return *this; }
+    std::pair<IndexType, T &> operator*() { return std::pair<IndexType, T &>(index_, *data_); }
+    std::pair<IndexType, T> operator*() const { return std::make_pair(index_, *data_); }
 
     // prefix increment
     IndexedIterator<T, IndexType> &operator++() {
@@ -955,20 +910,26 @@ span<T> make_span(T *begin, T *end) {
 }
 
 template <typename T, typename IndexType>
-enumeration<T, IndexedIterator<T, IndexType>> enumerate(T *begin, IndexType count) {
+auto enumerate(T *begin, IndexType count) {
     return enumeration<T, IndexedIterator<T, IndexType>>(begin, count);
 }
 template <typename T>
-enumeration<T, IndexedIterator<T>> enumerate(T *begin, T *end) {
+auto enumerate(T *begin, T *end) {
     return enumeration<T, IndexedIterator<T>>(begin, end);
 }
 
 template <typename Container>
-enumeration<typename Container::value_type, IndexedIterator<typename Container::value_type, typename Container::size_type>>
-enumerate(Container &container) {
+auto enumerate(Container &container) {
     return enumeration<typename Container::value_type,
                        IndexedIterator<typename Container::value_type, typename Container::size_type>>(container.data(),
                                                                                                        container.size());
+}
+
+template <typename Container>
+auto enumerate(const Container &container) {
+    return enumeration<std::add_const_t<typename Container::value_type>,
+                       IndexedIterator<std::add_const_t<typename Container::value_type>, typename Container::size_type>>(
+        container.data(), container.size());
 }
 
 template <typename BaseType>
@@ -1054,6 +1015,12 @@ template <typename T>
 bool Contains(const std::vector<T> &v, const T &value) {
     return std::find(v.cbegin(), v.cend(), value) != v.cend();
 }
+// Overload for the case of shared_ptr<const T> and shared_ptr<T>.
+// They are convertible but conversion is not performed during template type deduction.
+template <typename T>
+bool Contains(const std::vector<std::shared_ptr<const T>> &v, const std::shared_ptr<T> &value) {
+    return std::find(v.cbegin(), v.cend(), value) != v.cend();
+}
 
 //
 // if (auto* thing = vvl::Find(map, key)) { thing->jump(); }
@@ -1086,6 +1053,11 @@ const Value &FindExisting(const Container &container, const Key &key) {
     return it->second;
 }
 
+template <typename T>
+void Append(std::vector<T> &dst, const std::vector<T> &src) {
+    dst.insert(dst.end(), src.begin(), src.end());
+}
+
 // EraseIf is not implemented as std::erase(std::remove_if(...), ...) for two reasons:
 //   1) Robin Hood containers don't support two-argument erase functions
 //   2) STL remove_if requires the predicate to be const w.r.t the value-type, and std::erase_if doesn't AFAICT
@@ -1101,6 +1073,16 @@ typename Container::size_type EraseIf(Container &c, Predicate &&p) {
         }
     }
     return before_size - c.size();
+}
+
+// Replace with the std version after VVL switches to C++20.
+// https://en.cppreference.com/w/cpp/container/vector/erase2
+template <typename T, typename Pred>
+typename std::vector<T>::size_type erase_if(std::vector<T> &c, Pred pred) {
+    auto it = std::remove_if(c.begin(), c.end(), pred);
+    auto r = c.end() - it;
+    c.erase(it, c.end());
+    return r;
 }
 
 template <typename T>

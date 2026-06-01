@@ -34,40 +34,30 @@ and less features than other Qt builds.
 is a toolchain for compiling to WebAssembly. It lets you run Qt on the web at
 near-native speed without browser plugins.
 
-Refer to the \l{https://emscripten.org/docs/getting_started/index.html}
-{Emscripten documentation} for more information about installing the
-Emscripten SDK.
-
-After installation, you should have the Emscripten compiler in your path.
-Check this with the following command:
-\badcode
-    em++ --version
-\endcode
-
 Each minor version of Qt targets a specific Emscripten version, which remains unchanged
 in patch releases. Qt's binary packages are built using the target Emscripten version.
 Applications should use the same version since Emscripten does not guarantee
 \l{https://github.com/emscripten-core/emscripten/blob/main/ChangeLog.md}{ABI compatibility}
 between versions.
 
-The Emscripten versions are:
-\list
-   \li Qt 6.2: 2.0.14
-   \li Qt 6.3: 3.0.0
-   \li Qt 6.4: 3.1.14
-   \li Qt 6.5: 3.1.25
-   \li Qt 6.6: 3.1.37
-   \li Qt 6.7: 3.1.50
-   \li Qt 6.8: 3.1.56
-   \li Qt 6.9: 3.1.70
-\endlist
+The supported version of Emscripten for \QtVersion is Emscripten 4.0.7.
+
+Refer to the \l{https://emscripten.org/docs/getting_started/index.html}
+{Emscripten documentation} for more information about installing the
+Emscripten SDK.
 
 Use \c emsdk to install specific \c Emscripten versions. For example, to install
-it for Qt 6.8 enter:
+it for \QtVersion enter:
 \list
-    \li ./emsdk install 3.1.70
-    \li ./emsdk activate 3.1.70
+    \li ./emsdk install 4.0.7
+    \li ./emsdk activate 4.0.7
 \endlist
+
+After installation, you should have the Emscripten compiler in your path.
+Check this with the following command:
+\badcode
+    em++ --version
+\endcode
 
 On Windows, Emscripten is in your path after installation. On macOS or Linux
 you need to add it to your path, like this:
@@ -197,6 +187,19 @@ The qtwasmserver script starts one server which binds to localhost by default. Y
 add additional addresses using the \e -a command-line argument, or use \e --all to bind
 to all available addresses.
 
+The qtwasmserver script lives in the sources at
+\code
+    qtbase/util/wasm/qtwasmserver/qtwasmserver.py
+\endcode
+
+or can be installed using pip:
+\code
+    pip install qtwasmserver
+\endcode
+
+For more information on qtwasmserver \l{https://pypi.org/project/qtwasmserver/}{qtwasmserver}
+
+Using qtwasmserver:
 \badcode
     python /path/to/qtbase/util/wasm/qtwasmserver/qtwasmserver.py --all
 \endcode
@@ -404,6 +407,17 @@ modules are listed below, other modules may or may not work.
     \li \l {Qt OpenGL}
     \li \l {Qt SVG}
     \li \l {Qt WebSockets}
+    \li \l {Qt Concurrent}
+    \li \l {Qt Charts}
+    \li \l {Qt Graphs}
+\endlist
+
+The following modules are in tech preview. They may have limited functionality or may change
+significantly in future releases.
+
+\list
+    \li \l {Qt Multimedia}
+    \li \l {Qt Quick 3D}
 \endlist
 
 In all cases, module support may not be complete and there may be
@@ -440,14 +454,14 @@ WebGL closely conforms to OpenGL ES, with the following version mapping:
         \li OpenGL
         \li WebGL
     \row
-        \li OpengL ES 2
+        \li OpengL ES 2.0
         \li WebGL 1
     \row
-        \li OpengL ES 3
+        \li OpengL ES 3.0
         \li WebGL 2
 \endtable
 
-Qt useses the highest available WebGL version. This is typically WebGL 2 on
+Qt uses the highest available WebGL version. This is typically WebGL 2 on
 today's browsers, but might be WebGL 1 if limited by hardware. We recommend
 targeting devices which support WebGL 2 with Qt for WebAssembly.
 
@@ -474,18 +488,28 @@ and/or full ES3 emulation by adding
 
 to your project's \c {CMakeLists.txt}.
 
-\section3 Sharing OpenGL contexts
+For more information regarding Emscripten's OpenGL support visit
+\l{https://emscripten.org/docs/porting/multimedia_and_graphics/OpenGL-support.html}
 
-WebGL allows one context per native surface only, and does not support OpenGL
-context sharing. Qt works around this by reusing the native context when
-multiple OpenGLContexts are used.
+\section3 OpenGL Context Limitations
 
-We recommend limiting OpenGL context usage to one context per native surface,
-for example by using QOpenGLWindow instead of QOpenGLWidget.
-QOpenGLWidget may work, provided that application code restores all relevant
-OpenGL state when making QOpenGLWidget::paintGL() calls, and does not rely on
-persisting the state between QOpenGLWidget::initializeGL() and
-QOpenGLWidget::paintGL() calls.
+WebGL does not support multiple contexts per surface. This has implications for
+applications that use QOpenGLContext either directly or indirectly via other
+classes such as QOpenGLWidget.
+
+Each QOpenGLContext instance should be used with a single surface only. In practice,
+the context gets associated with the surface on the first makeCurrent() call. Calling
+makeCurrent() on a different surface afterward, or from a different QOpenGLContext with
+the same surface, is not supported.
+
+OpenGL context sharing is not supported. Calling QOpenGLContext::setShareContext() has
+no effect, and QOpenGLContext::shareContext() always returns nullptr.
+
+Destroying a surface (for example, a QWindow) causes context loss for the associated context.
+The application should handle this by recreating the context.
+
+QOpenGLWidget and other classes which uses context sharing internally are not
+supported.
 
 \section2 Multithreading
 
@@ -577,6 +601,10 @@ socket functionality to ensure security within the web sandbox. Consequently, an
 relying on QWebSocketServer for accepting incoming network connections cannot be utilized within
 the web environment.
 
+\note QtMqtt and QtRemoteObjects modules can be used with QtWebSockets as transports.
+They are not officially supported and may or may not work, or have missing functionality.
+See \l QMqttClient::connectToHostWebSocket and the \l {QtRemoteObjects WebSockets Applications} example.
+
 \section3 Cross-Origin Resource Sharing (CORS) and Policy (CORP)
 
 WebAssembly apps that use networking may require Cross-Origin Resource Sharing
@@ -627,8 +655,11 @@ Emscripten provides several file systems with a POSIX like API. These include:
 \endlist
 
 Emscripten mounts a temporary MEMFS filesystem to "/" at app startup. This means
-that QFile can be used, and will read and write files to memory by default. Qt
-provides other API as well:
+that QFile can be used, and will read and write files to memory by default. It is
+not preserved over a browser reload.
+
+Since web pages do not have direct access to the local filesystem, Qt provides
+a QFileDialog API for use with Qt for WebAssembly.
 
 \list
 \li \l {https://doc.qt.io/qt-5/qfiledialog.html#getOpenFileContent}{QFileDialog::getOpenFileContent() }
@@ -639,9 +670,11 @@ saves a file to the local file system via file download
 
 \section2 Clipboard Access
 
-Qt supports copying and pasting text to the system clipboard, with some differences due
-to the web sandbox. In general clipboard access require user permission, which can be obtained
-by handling an input event (e.g. CTRL+c), or by using the
+Qt supports copying and pasting text, urls, known file types and images with
+the system clipboard, with some differences due to the web sandbox. It does not
+support arbitrary application/octet-stream binary data. In general clipboard access
+require user permission, which can be obtained by handling an input event
+(e.g. CTRL+c), or by using the
 \l{https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API}{Clipboard API}.
 
 Browsers that support the Clipboard API are preferred. Note that a requirement for this API
@@ -739,23 +772,33 @@ int main(int argc, char **argv)
 }
 \endcode
 
-\section3 Asyncify
+\section3 Asyncify and JSPI
 
-The default build of Qt for WebAssembly does not support reentering the event loop,
-for example by calling QEventLoop::exec() or QDialog::exec(), due to restrictions
-of the web platform.
+The default Qt build for WebAssembly does not support reentering the event loop, such as 
+by calling QEventLoop::exec() or QDialog::exec(), due to web platform restrictions that
+prevent synchronous C++ code from invoking asynchronous JavaScript APIs.
 
-Emscripten's \l{https://emscripten.org/docs/porting/asyncify.html}{asyncify} feature lifts
-these restrictions by allowing synchronous calls (like QEventLoop::exec() and QDialog::exec())
-to yield to the event loop. Nested calls are not supported, and for this reason asyncify is
-not used for the top-level QApplication::exec() call.
-
-Features that require asyncify are:
+Features that require asyncify/JSPI include:
 \list
     \li QDialogs, QMessageBoxes with return values.
     \li Drag and drop (specifically drag).
     \li Nested/secondary event loops exec().
 \endlist
+
+Emscripten provides support for working around these limitations using the
+\l{https://emscripten.org/docs/porting/asyncify.html}{Asyncify} feature. This feature
+is available in two versions:
+
+\list
+    \li Asyncify, implemented via a WebAssembly code post-processing step.
+    \li JSPI, implemented using the WebAssembly \l{https://webassembly.org/features/}{JS Promise Integration} feature.
+\endlist
+
+See the sections below for details on how to enable each option and the trade-offs involved. In brief,
+Asyncify is available today but introduces overhead in the form of longer build times, larger binary sizes,
+and runtime performance costs. JSPI has minimal or no overhead, but it is not yet supported by all browsers.
+
+\section3 Asyncify
 
 Enable asyncify by adding the "-sASYNCIFY -Os" flags to the linker options:
 
@@ -772,16 +815,13 @@ QMAKE_LFLAGS += -sASYNCIFY -Os
 Enabling asyncify adds overhead in the form of increased binary sizes and increased CPU
 usage. Build with optimizations enabled to minimize the overhead.
 
-\section3 Asyncify JSPI (JavaScript Promise Integration)
+\section3 JSPI (JS Promise Integration)
 
-\l{https://v8.dev/blog/jspi}{JSPI} is a new asyncify backend implemented using
-native browser support instead of code transformations. Compared to Emscripten
-asyncify this improves application link times and does not increase code size.
+Unlike Asyncify, using JSPI requires building Qt from source. Pass the
+-feature-wasm-jspi -feature-wasm-exceptions flags to the Qt configure script to enable it.
+(JSPI is not compatible with the default Emscripten emulated exceptions.)
 
-The \l{https://webassembly.org/features/}{JSPI WebAssembly feature} is current
-in the "Implementation" phase, and is not yet standardized.
-
-Enable JSPI by adding the "-sJSPI" flag to the linker options:
+Then, enable JSPI for your application by adding the -sJSPI flag to the linker options:
 
 CMake:
 \badcode
@@ -795,7 +835,7 @@ qmake:
 
 \section2 Debugging and Profiling
 
-Wasm debugging is done on browser JavaScript console, debugging applications on Wasm
+Wasm debugging is done on the browser JavaScript console. Debugging applications on Wasm
 directly within \QC is not possible.
 
 \list
@@ -980,7 +1020,7 @@ Note that calling QApplication::exec() is not supported when exceptions are enab
 internal implementation details. Instead, write main() in the form where it returns early and
 does not call exec(), as described in \l{Application Startup and the Event Loop}.
 
-\section2 Shared Libraries and Dynamic Linking Developer Preview
+\section2 Shared Libraries and Dynamic Linking (Technology Preview)
 
 Qt for WebAssembly uses static linking by default, where the application is deployed as a single
 WebAssembly file which contains the Qt libraries and application code. Dynamic linking is an alternative
@@ -999,12 +1039,10 @@ libraries and plugins:
 \li <qtpath>/qml/QtQuick/Window/libquickwindowplugin.so
 \endlist
 
-Dynamic linking support is currently in developer preview. The implementation is suitable for prototyping
+Dynamic linking support in \QtVer is in Technology Preview. The implementation is suitable for prototyping
 and evaluation, but is not suitable for production use. Current limitations and restrictions include:
 
 \list
-\li The Emscripten SDK must be patched. Use emsdk 3.1.70, and apply this patch:
-\l{https://github.com/emscripten-core/emscripten/pull/18418/commits/e9f86cebc3eb18f52e03ec67730f3edaa91d4564}{patch#1}.
 \li Multithreading is not supported.
 \li Asyncify is not supported.
 \endlist
@@ -1066,9 +1104,19 @@ Qt provides two scripts for generating preload lists, see Quick Start section ab
 
 \list
 \li Nested event loops are not supported. Applications should not call API like QDialog::exec()
-and QEventLoop::exec(). Experimental feature Asyncify could be used.
-\li Printing is not supported
-\li QDnsLookup lookups, QTcpSocket, QSsl do not work and are not supported due to the web sandbox
+and QEventLoop::exec(). The experimental feature Asyncify could be used.
+\li Printing is not supported.
+\li QDnsLookup lookups and QSsl do not work and are not supported due to the web sandbox.
+The browser handles dns lookups and SSL certificates. DNS over HTTP could be used
+by applications needing dns lookups.
+\li QTcpSockets can be used but not all POSIX sockets functions are proxied. A Websockets
+server proxy like \l{https://github.com/novnc/websockify}{Websockify} needs to be used.
+\li All Q*Server classes are not supported by the platform.
+\li QWebSocket connections are supported by Emscripten only on the main thread.
+\li QWebSockets for WebAssembly does not support sending ping or pong frames, as the API available to
+web pages and browsers does not expose this functionality.
+\li To use QtWebsockets, the subprotocol might need to be set to 'mqtt' for using QtMqtt. Use
+QWebSocketHandshakeOptions when you open the QWebSocket.
 \li Fonts: Wasm sandbox does not allow access to system fonts. Font files must be
 distributed with the application, for example in Qt resources or downloading.
 Qt for WebAssembly itself embeds one such font.
@@ -1083,16 +1131,6 @@ is not providing that capability
  set_target_properties(<target> PROPERTIES QT_WASM_INITIAL_MEMORY "150MB")
 \li add_executable in CMakeLists.txt does not produce <target>.html or copy qtloader.js. Use
  qt_add_executable instead.
-\li QWebSocket connections are supported by Emscripten only on the main thread.
-\li QWebSockets for WebAssembly does not support sending ping or pong frames, as the API available to
-web pages and browsers does not expose this functionality.
-\li Runtime error such as "RangeError: Out of memory" can be worked around by
-setting MAXIMUM_MEMORY to a value the device supports, for example
-\badcode
-target_link_options(<your target> PRIVATE -s MAXIMUM_MEMORY=1GB)
-\endcode
-\li To use QtWebsockets, the subprotocol might need to be set to 'mqtt' for using QtMqtt. Use
-QWebSocketHandshakeOptions when you open the QWebSocket.
 \endlist
 
 \section1 Other Topics
@@ -1113,9 +1151,6 @@ The following configure options are relevant when building Qt for WebAssembly fr
     \row
         \li -feature-wasm-exceptions
         \li Enable WebAssembly exceptions support.
-    \row
-        \li -feature-opengles3
-        \li Use opengles3 in addition to the default opengles2.
     \row
         \li -device-option QT_EMSCRIPTEN_ASYNCIFY=1
         \li Enable asyncify support.
@@ -1168,16 +1203,8 @@ For more information, see \l{Minimizing the size of binaries}.
 
 \section2 Examples
 
-\list
-        \li \l {https://www.qt.io/web-assembly-example-industrial-panel}
-               {Industrial Panel Demo}
-        \li \l {https://www.qt.io/web-assembly-example-slate}
-               {QMainWindow app}
-        \li \l {https://www.qt.io/web-assembly-example-gallery}
-               {A gallery of available controls in Qt Quick Controls}
-        \li \l {https://www.qt.io/web-assembly-example-pizza-shop}
-               {Web app for ordering pizzas}
-\endlist
+Examples and demos of Qt applications running in a web browser:
+\l{https://www.qt.io/qt-demos}{Qt Demos}
 
 \section1 External resources
 

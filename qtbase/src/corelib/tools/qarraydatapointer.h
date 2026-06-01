@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QARRAYDATAPOINTER_H
 #define QARRAYDATAPOINTER_H
@@ -111,7 +112,7 @@ public:
         }
     }
 
-    bool isNull() const noexcept
+    constexpr bool isNull() const noexcept
     {
         return !ptr;
     }
@@ -345,7 +346,9 @@ public:
         const auto capacityBegin = begin() - offset;
         const auto prependBufferEnd = begin();
 
-        if constexpr (!std::is_nothrow_constructible_v<T, decltype(std::invoke(proj, *first))>) {
+        if constexpr (!std::is_nothrow_constructible_v<T, decltype(std::invoke(proj, *first))>
+                      || !std::is_nothrow_invocable_v<Projection, decltype(*first)>)
+        {
             // If construction can throw, and we have freeSpaceAtBegin(),
             // it's easiest to just clear the container and start fresh.
             // The alternative would be to keep track of two active, disjoint ranges.
@@ -394,7 +397,9 @@ public:
                     dst = std::uninitialized_copy(first, last, dst);
                     break;
                 } else if constexpr (IsFwdIt && !IsIdentity
-                           && std::is_nothrow_constructible_v<T, decltype(std::invoke(proj, *first))>) {
+                           && std::is_nothrow_constructible_v<T, decltype(std::invoke(proj, *first))>
+                           && std::is_nothrow_invocable_v<Projection, decltype(*first)>)
+                {
                     for (; first != last; ++dst, ++first)   // uninitialized_copy with projection
                         q20::construct_at(dst, std::invoke(proj, *first));
                     break;

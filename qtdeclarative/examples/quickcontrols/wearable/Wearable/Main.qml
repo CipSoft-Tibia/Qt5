@@ -89,6 +89,7 @@ QQC2.ApplicationWindow {
 
         title: ""
 
+        visible: stackView.depth > 1
         enabled: stackView.depth > 1
 
         onBackClicked: stackView.pop()
@@ -103,7 +104,8 @@ QQC2.ApplicationWindow {
 //! [DemoModeIndicator]
     DemoModeIndicator {
         id: demoModeIndicator
-        y: WearableSettings.demoMode ? header.height + 3 : -height - 5
+        visible: WearableSettings.demoMode
+        y: WearableSettings.demoMode ? header.height + 3 : -height - header.height - 3
         anchors.horizontalCenter: parent.horizontalCenter
         z: header.z + 1
     }

@@ -8,6 +8,8 @@
 \title deferred-property-id
 \brief BRIEF
 
+\qmllintwarningcategory deferred-property-id
+
 \section1 deferred-property-id
 
 \section2 What happened?

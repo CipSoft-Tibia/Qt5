@@ -29,10 +29,10 @@
 #include <CoreVideo/CVOpenGLESTextureCache.h>
 #endif
 
-#include <dispatch/dispatch.h>
+#import <dispatch/dispatch.h>
+#import <AVFoundation/AVFoundation.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(AVFCaptureFramesDelegate);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureVideoDataOutput);
+@class AVFCaptureFramesDelegate;
 
 QT_BEGIN_NAMESPACE
 
@@ -77,10 +77,6 @@ private:
     AVCaptureVideoDataOutput *m_videoDataOutput = nullptr;
 
     bool m_needsHorizontalMirroring = false;
-
-#ifdef Q_OS_IOS
-    CVOpenGLESTextureCacheRef m_textureCache = nullptr;
-#endif
 
     QVideoFrame m_lastViewfinderFrame;
     QMutex m_vfMutex;

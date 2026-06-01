@@ -33,25 +33,30 @@ In addition, it supports the following options:
     \li Option
     \li Description
 \row
-    \li --copyright-statement <string>
+    \li \c{--no-assume-trusted-source}
+    \li Indicates that the input is an untrusted file and additional checks and restrictions should
+        be enabled. By default the SVG file will be parsed with the
+        \l{QtSvg::Option}{AssumeTrustedSource option}. Passing this argument will unset that option.
+\row
+    \li \c{--copyright-statement <string>}
     \li Adds <string> as a comment at the beginning of the generated file.
 \row
-    \li -c, --curve-renderer
+    \li \c{-c}, \c{--curve-renderer}
     \li Enables the curve renderer backend for \l{Qt Quick Shapes}. This enables smooth, antialiased
     shapes in the scene without multi-sampling, but at some extra cost.
 \row
-    \li -p, --optimize-paths
+    \li \c{-p}, \c{--optimize-paths}
     \li Enables optimization of paths before committing them to the QML file, potentially making
     them faster to load and render later.
 \row
-    \li --outline-stroke-mode
+    \li \c{--outline-stroke-mode}
     \li Stroke the outline (contour) of the filled shape instead of the original path.
 \row
-    \li -t, --type-name <string>
+    \li \c{-t}, \c{--type-name <string>}
     \li In place of \l{Shape}, the output will use the type name <string> instead. This is
     enables using a custom item to override the default behavior of \l{Shape} items.
 \row
-    \li -v, --view
+    \li \c{-v}, \c{--view}
     \li Display a preview of the Qt Quick item as it will be generated.
 \endtable
 

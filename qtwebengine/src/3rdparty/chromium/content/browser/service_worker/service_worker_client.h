@@ -20,6 +20,7 @@
 #include "content/public/browser/service_worker_client_info.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "services/network/public/mojom/cross_origin_embedder_policy.mojom-forward.h"
+#include "services/network/public/mojom/document_isolation_policy.mojom-forward.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_client.mojom-forward.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_container.mojom.h"
@@ -149,6 +150,8 @@ class CONTENT_EXPORT ServiceWorkerClient final
       const PolicyContainerPolicies& policy_container_policies,
       mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
           coep_reporter,
+      mojo::PendingRemote<network::mojom::DocumentIsolationPolicyReporter>
+          dip_reporter,
       ukm::SourceId ukm_source_id);
 
   // For service worker window clients. Called after the navigation commits to a
@@ -168,6 +171,14 @@ class CONTENT_EXPORT ServiceWorkerClient final
       const GURL& url,
       const std::optional<url::Origin>& top_frame_origin,
       const blink::StorageKey& storage_key);
+
+  // The storage key to be used for `UpdateUrls()`.
+  // For other purposes, use `key()` instead.
+  // `isolation_info_from_interceptor` is
+  // `isolation_info_from_interceptor::isolation_info_`.
+  blink::StorageKey CalculateStorageKeyForUpdateUrls(
+      const GURL& url,
+      const net::IsolationInfo& isolation_info_from_interceptor) const;
 
   // For service worker clients. Makes this client be controlled by
   // |registration|'s active worker, or makes this client be not
@@ -209,8 +220,9 @@ class CONTENT_EXPORT ServiceWorkerClient final
 
   // The StorageKey for this context. Any service worker registrations/versions
   // that are persisted from this context (e.x., via `register()`) are
-  // associated with this particular StorageKey. Note: This doesn't hold true
-  // when "disable-web-security" is active, see
+  // associated with this particular StorageKey. Corresponds to
+  // https://storage.spec.whatwg.org/#obtain-a-storage-key.
+  // Note: This doesn't hold true when "disable-web-security" is active, see
   // `service_worker_security_utils::GetCorrectStorageKeyForWebSecurityState()`
   // and its usages for more details.
   const blink::StorageKey& key() const { return key_; }
@@ -270,6 +282,10 @@ class CONTENT_EXPORT ServiceWorkerClient final
       base::PassKey<StoragePartitionImpl>) const;
 
   // For service worker clients.
+  // The type of `ongoing_navigation_frame_tree_node_id_` (if any) for metrics.
+  std::string GetFrameTreeNodeTypeStringBeforeCommit() const;
+
+  // For service worker clients.
   const std::string& client_uuid() const;
 
   // For service worker clients. Returns this client's controller.
@@ -299,16 +315,16 @@ class CONTENT_EXPORT ServiceWorkerClient final
 
   // For service worker clients. Returns the URL that is used for scope matching
   // algorithm. This can be different from url() in the case of blob URL
-  // workers. In that case, url() may be like "blob://https://a.test" and the
-  // scope matching URL is "https://a.test", inherited from the parent container
-  // host.
+  // workers or srcdoc/about:blank iframes. In that case, url() may be like
+  // "blob://https://a.test" or "about:srcdoc" and the scope matching URL is
+  // "https://a.test", inherited from the parent container host.
   const GURL& GetUrlForScopeMatch() const;
 
-  // For service worker clients that are dedicated workers. Inherits the
-  // controller of the creator document or worker. Used when the client was
-  // created with a blob URL.
+  // For service worker clients that are dedicated workers and srcdoc iframe.
+  // Inherits the controller of the creator document or worker. Used when the
+  // client was created with a blob, about:srcdoc or about:blank URL.
   void InheritControllerFrom(ServiceWorkerClient& creator_host,
-                             const GURL& blob_url);
+                             const GURL& client_url);
 
   void SetContainerReady();
 
@@ -488,11 +504,12 @@ class CONTENT_EXPORT ServiceWorkerClient final
   base::flat_set<PendingUpdateVersion> versions_to_update_;
 
   // The type of client.
-  std::optional<ServiceWorkerClientInfo> client_info_;
+  ServiceWorkerClientInfo client_info_;
 
   // The URL used for service worker scope matching. It is empty except in the
-  // case of a service worker client with a blob URL.
-  GURL scope_match_url_for_blob_client_;
+  // case of a service worker client with a blob, about:blank or about:srcdoc
+  // URL.
+  GURL scope_match_url_for_client_;
 
   // Become true if the container is inherited by other container.
   bool is_inherited_ = false;

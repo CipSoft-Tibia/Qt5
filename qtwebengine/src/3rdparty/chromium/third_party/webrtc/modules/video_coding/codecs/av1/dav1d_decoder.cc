@@ -71,9 +71,6 @@ class ScopedDav1dPicture
 
 constexpr char kDav1dName[] = "dav1d";
 
-// Calling `dav1d_data_wrap` requires a `free_callback` to be registered.
-void NullFreeCallback(const uint8_t* buffer, void* opaque) {}
-
 Dav1dDecoder::Dav1dDecoder() = default;
 
 Dav1dDecoder::~Dav1dDecoder() {
@@ -84,9 +81,9 @@ bool Dav1dDecoder::Configure(const Settings& settings) {
   Dav1dSettings s;
   dav1d_default_settings(&s);
 
-  s.n_threads = std::max(2, settings.number_of_cores());
-  s.max_frame_delay = 1;   // For low latency decoding.
-  s.all_layers = 0;        // Don't output a frame for every spatial layer.
+  s.n_threads = std::clamp(settings.number_of_cores(), 1, DAV1D_MAX_THREADS);
+  s.max_frame_delay = 1;  // For low latency decoding.
+  s.all_layers = 0;       // Don't output a frame for every spatial layer.
   // Limit max frame size to avoid OOM'ing fuzzers. crbug.com/325284120.
   s.frame_size_limit = 16384 * 16384;
   s.operating_point = 31;  // Decode all operating points.
@@ -127,9 +124,25 @@ int32_t Dav1dDecoder::Decode(const EncodedImage& encoded_image,
 
   ScopedDav1dData scoped_dav1d_data;
   Dav1dData& dav1d_data = scoped_dav1d_data.Data();
-  dav1d_data_wrap(&dav1d_data, encoded_image.data(), encoded_image.size(),
-                  /*free_callback=*/&NullFreeCallback,
-                  /*user_data=*/nullptr);
+
+  // Calling GetEncodedData will create a new `scoped_refptr` and increment the
+  // ref count. By simply releasing we are now responsible for decrementing
+  // the ref count when appropriate, which is when dav1d calls the
+  // `free_callback` to indicate that the buffer is no longer needed.
+  EncodedImageBufferInterface* bitstream_buffer =
+      encoded_image.GetEncodedData().release();
+
+  // Note that the `bitstream_buffer` can have a higher capacity than what is
+  // actually being used, so `encoded_image.size()` should be used to get the
+  // actual size of the bitstream.
+  dav1d_data_wrap(
+      &dav1d_data, encoded_image.data(), encoded_image.size(),
+      /*free_callback=*/
+      [](const uint8_t* /* buffer */, void* user_data) {
+        auto* bb = static_cast<EncodedImageBufferInterface*>(user_data);
+        bb->Release();
+      },
+      /*user_data=*/bitstream_buffer);
 
   if (int decode_res = dav1d_send_data(context_, &dav1d_data)) {
     RTC_LOG(LS_WARNING)

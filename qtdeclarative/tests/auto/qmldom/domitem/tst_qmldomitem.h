@@ -61,13 +61,13 @@ private slots:
                                    DomCreationOption::Default, universePtr));
         env = DomItem(envPtr);
         testOwnerPtr = std::shared_ptr<MockOwner>(new MockOwner(
-                Path::Root(u"env").field(u"testOwner"), 0,
+                Path::fromRoot(u"env").withField(u"testOwner"), 0,
                 QMap<QString, MockObject> {
                         MockObject(
-                                Path::Field(u"obj1"),
+                                Path::fromField(u"obj1"),
                                 QMap<QString, MockObject> {
                                         MockObject(
-                                                Path::Field(u"obj1").field(u"obj1_2"),
+                                                Path::fromField(u"obj1").withField(u"obj1_2"),
                                                 QMap<QString, MockObject> {},
                                                 QMap<QString, QCborValue> {
                                                         { QStringLiteral(u"val1"), QCborValue(3) },
@@ -78,10 +78,10 @@ private slots:
                                         { QLatin1String("val2"), QCborValue(2) } })
                                 .asStringPair(),
                         MockObject(
-                                Path::Field(u"obj2"),
+                                Path::fromField(u"obj2"),
                                 QMap<QString, MockObject> {
                                         MockObject(
-                                                Path::Field(u"obj2").field(u"obj2_2"),
+                                                Path::fromField(u"obj2").withField(u"obj2_2"),
                                                 QMap<QString, MockObject> {},
                                                 QMap<QString, QCborValue> {
                                                         { QStringLiteral(u"val1"), QCborValue(5) },
@@ -99,13 +99,13 @@ private slots:
                 QMap<QString, QMap<QString, MockObject>> {
                         { QStringLiteral(u"map"),
                           QMap<QString, MockObject> {
-                                  MockObject(Path::Field(u"map").key(u"a"),
+                                  MockObject(Path::fromField(u"map").withKey(u"a"),
                                              QMap<QString, MockObject> {},
                                              QMap<QString, QCborValue> {
                                                      { QStringLiteral(u"val1"), QCborValue(10) },
                                                      { QLatin1String("val2"), QCborValue(11) } })
                                           .asStringPair(),
-                                  MockObject(Path::Field(u"map").key(u"b"),
+                                  MockObject(Path::fromField(u"map").withKey(u"b"),
                                              QMap<QString, MockObject> {},
                                              QMap<QString, QCborValue> {
                                                      { QStringLiteral(u"val1"), QCborValue(12) },
@@ -116,13 +116,13 @@ private slots:
                           QMultiMap<QString, MockObject> {
                                   { QStringLiteral(u"a"),
                                     MockObject(
-                                            Path::Field(u"mmap").key(u"a").index(0),
+                                            Path::fromField(u"mmap").withKey(u"a").withIndex(0),
                                             QMap<QString, MockObject> {},
                                             QMap<QString, QCborValue> {
                                                     { QStringLiteral(u"val1"), QCborValue(14) },
                                                     { QLatin1String("val2"), QCborValue(15) } }) },
                                   { QStringLiteral(u"a"),
-                                    MockObject(Path::Field(u"mmap").key(u"a").index(1),
+                                    MockObject(Path::fromField(u"mmap").withKey(u"a").withIndex(1),
                                                QMap<QString, MockObject> {},
                                                QMap<QString, QCborValue> {
                                                        { QStringLiteral(u"val1"), QCborValue(16) },
@@ -131,12 +131,12 @@ private slots:
                 QMap<QString, QList<MockObject>> {
                         { QStringLiteral(u"list"),
                           QList<MockObject> {
-                                  MockObject(Path::Field(u"list").index(0),
+                                  MockObject(Path::fromField(u"list").withIndex(0),
                                              QMap<QString, MockObject> {},
                                              QMap<QString, QCborValue> {
                                                      { QStringLiteral(u"val1"), QCborValue(18) },
                                                      { QLatin1String("val2"), QCborValue(19) } }),
-                                  MockObject(Path::Field(u"list").index(1),
+                                  MockObject(Path::fromField(u"list").withIndex(1),
                                              QMap<QString, MockObject> {},
                                              QMap<QString, QCborValue> {
                                                      { QStringLiteral(u"val1"), QCborValue(20) },
@@ -155,8 +155,8 @@ private slots:
         QCOMPARE(&(l[1]), &(l[1]));
         QCOMPARE(&(l3[0]), &(l3[0]));
         // QCOMPARE(&(l3[0]), &(l4[0])); // shallow copy actually copies els (QVector behavior)...
-        DomItem list1 = env.subListItem(List::fromQListRef<int>(Path::Field(u"list"), l, &wrapInt));
-        DomItem list2 = env.subListItem(List::fromQListRef<int>(Path::Field(u"reverseList"), l,
+        DomItem list1 = env.subListItem(List::fromQListRef<int>(Path::fromField(u"list"), l, &wrapInt));
+        DomItem list2 = env.subListItem(List::fromQListRef<int>(Path::fromField(u"reverseList"), l,
                                                                 &wrapInt, ListOptions::Reverse));
         QCOMPARE(list1.domKind(), DomKind::List);
         QCOMPARE(list1.indexes(), 4);
@@ -187,7 +187,7 @@ private slots:
         // QCOMPARE(&(*it), &(map2[QStringLiteral(u"a")]));
         QCOMPARE(&(*it3), &(*it4));
         // QCOMPARE(&(*it3), &(*it5));
-        DomItem map1 = env.subMapItem(Map::fromMapRef<int>(Path::Field(u"map"), map, &wrapInt));
+        DomItem map1 = env.subMapItem(Map::fromMapRef<int>(Path::fromField(u"map"), map, &wrapInt));
         QCOMPARE(map1.domKind(), DomKind::Map);
         QCOMPARE(map1[u"a"].value().toInteger(), 1);
         QCOMPARE(map1.key(QStringLiteral(u"a")).value().toInteger(), 1);
@@ -216,7 +216,7 @@ private slots:
         // QCOMPARE(&(*it), &(*it3));
         QCOMPARE(&(*it4), &(*it5));
         // QCOMPARE(&(*it4), &(*it6));
-        DomItem map1 = env.subMapItem(Map::fromMultiMapRef<int>(Path::Field(u"mmap"), mmap));
+        DomItem map1 = env.subMapItem(Map::fromMultiMapRef<int>(Path::fromField(u"mmap"), mmap));
         QCOMPARE(map1[u"b"].index(0).value().toInteger(), 2);
         QVERIFY(!map1[u"b"].index(2));
         QVERIFY(!map1[u"c"]);
@@ -271,7 +271,7 @@ private slots:
     }
     void testReference()
     {
-        Path p = Path::Root(u"env");
+        Path p = Path::fromRoot(u"env");
         DomItem ref = env.subReferenceItem(PathEls::Field(u"ref"), p);
         QCOMPARE(ref.field(u"referredObjectPath").value().toString(), p.toString());
         QCOMPARE(ref.fields(),
@@ -282,7 +282,7 @@ private slots:
     }
     void testRefCache()
     {
-        Path refPath = env.canonicalPath().field(u"dummyRef");
+        Path refPath = env.canonicalPath().withField(u"dummyRef");
         RefCacheEntry e0 = RefCacheEntry::forPath(env, refPath);
         QCOMPARE(e0.cached, RefCacheEntry::Cached::None);
         bool didAdd1 = RefCacheEntry::addForPath(
@@ -318,7 +318,7 @@ private slots:
         QCOMPARE(env.pathFromOwner(), Path());
         QCOMPARE(env.containingObject().internalKind(), DomType::Empty);
         QCOMPARE(env.container().internalKind(), DomType::Empty);
-        QCOMPARE(env.canonicalPath(), Path::Root(u"env"));
+        QCOMPARE(env.canonicalPath(), Path::fromRoot(u"env"));
         QCOMPARE(env.path(u"$env").internalKind(), DomType::DomEnvironment);
         QCOMPARE(env.top().internalKind(), DomType::DomEnvironment);
         QCOMPARE(env.environment().internalKind(), DomType::DomEnvironment);
@@ -531,7 +531,7 @@ private slots:
             QCOMPARE(rect3.internalKind(), DomType::QmlObject);
             QList<DomItem> rects;
             obj1.resolve(
-                    Path::Current(PathCurrent::Lookup).field(Fields::type).key(u"Rectangle"_s),
+                    Path::fromCurrent(PathCurrent::Lookup).withField(Fields::type).withKey(u"Rectangle"_s),
                     [&rects](Path, const DomItem &el) {
                         rects.append(el);
                         return true;
@@ -2572,7 +2572,7 @@ private slots:
             // pathFromOwner!
             DomItem scriptElement =
                     binding.index(0).field(Fields::value).field(Fields::scriptElement);
-            QCOMPARE(scriptElement.pathFromOwner(), Path().field(Fields::scriptElement));
+            QCOMPARE(scriptElement.pathFromOwner(), Path().withField(Fields::scriptElement));
             compareFileLocationsPathWithCanonicalPath(scriptElement);
         }
 
@@ -2593,7 +2593,7 @@ private slots:
             DomItem scriptElement = bindingInPropertyDefinition.index(0)
                                             .field(Fields::value)
                                             .field(Fields::scriptElement);
-            QCOMPARE(scriptElement.pathFromOwner(), Path().field(Fields::scriptElement));
+            QCOMPARE(scriptElement.pathFromOwner(), Path().withField(Fields::scriptElement));
             compareFileLocationsPathWithCanonicalPath(scriptElement);
         }
         // check the parameters + returnType of the method
@@ -2614,7 +2614,7 @@ private slots:
                 DomItem scriptElement =
                         parameters.index(i).field(Fields::value).field(Fields::scriptElement);
                 QCOMPARE(scriptElement.internalKind(), DomType::ScriptFormalParameter);
-                QCOMPARE(scriptElement.pathFromOwner(), Path().field(Fields::scriptElement));
+                QCOMPARE(scriptElement.pathFromOwner(), Path().withField(Fields::scriptElement));
                 compareFileLocationsPathWithCanonicalPath(scriptElement);
             }
         }
@@ -2626,7 +2626,7 @@ private slots:
             QCOMPARE(body.internalKind(), DomType::ScriptExpression);
             DomItem scriptElement = body.field(Fields::scriptElement);
             QCOMPARE(scriptElement.internalKind(), DomType::ScriptBlockStatement);
-            QCOMPARE(scriptElement.pathFromOwner(), Path().field(Fields::scriptElement));
+            QCOMPARE(scriptElement.pathFromOwner(), Path().withField(Fields::scriptElement));
             compareFileLocationsPathWithCanonicalPath(scriptElement);
         }
 
@@ -2644,7 +2644,7 @@ private slots:
             // pathFromOwner!
             DomItem scriptElement =
                     binding.index(0).field(Fields::value).field(Fields::scriptElement);
-            QCOMPARE(scriptElement.pathFromOwner(), Path().field(Fields::scriptElement));
+            QCOMPARE(scriptElement.pathFromOwner(), Path().withField(Fields::scriptElement));
             compareFileLocationsPathWithCanonicalPath(scriptElement);
             // also check that the left hand side of the binding is correctly attached to the Dom:
             scriptElement = binding.index(0).field(Fields::bindingIdentifiers);
@@ -2885,6 +2885,8 @@ private slots:
 
         QTest::addRow("bracketsInBinding")
                 << baseDir + u"/crashes/bracketsInBinding.qml"_s;
+
+        QTest::addRow("varInObject") << baseDir + u"/crashes/varInObject.qml"_s;
     }
     void crashes()
     {
@@ -3361,7 +3363,7 @@ private slots:
                          });
         envPtr->loadPendingDependencies();
 
-        FieldFilter filter({}, { { QString(), QString::fromUtf16(Fields::propertyDefs) } });
+        FieldFilter filter({}, { { QString(), Fields::propertyDefs.toString() } });
 
         // check if propertyDefs is visited without the filter
         bool success = false;

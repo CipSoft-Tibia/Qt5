@@ -35,8 +35,10 @@ public:
             QJSValue jsValue = v.value<QJSValue>();
             if (jsValue.isArray())
                 return v.value<QVariantList>();
+#if QT_DEPRECATED_SINCE(6, 9)
             else if (jsValue.isVariant())
                 return jsValue.toVariant();
+#endif
         } else if (v.userType() == quick3DShaderDataArrayTypeId) {
             Quick3DShaderDataArray *array = v.value<Quick3DShaderDataArray *>();
             QVariantList innerValues;

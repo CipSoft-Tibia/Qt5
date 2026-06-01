@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSQLDATABASE_H
 #define QSQLDATABASE_H
@@ -34,7 +35,18 @@ public:
     QSqlDriver *createObject() const override { return new T; }
 };
 
-class Q_SQL_EXPORT QSqlDatabase
+struct QSqlDatabaseDefaultConnectionName
+{
+    // separate class because of the static inline constexpr variable
+    static constexpr const char defaultConnection[] = "qt_sql_default_connection";
+    static QString defaultConnectionName() noexcept
+    {
+        using namespace Qt::StringLiterals;
+        return u"qt_sql_default_connection"_s;
+    }
+};
+
+class Q_SQL_EXPORT QSqlDatabase : public QSqlDatabaseDefaultConnectionName
 {
     Q_GADGET
     Q_PROPERTY(QSql::NumericalPrecisionPolicy numericalPrecisionPolicy READ numericalPrecisionPolicy WRITE setNumericalPrecisionPolicy)
@@ -87,18 +99,20 @@ public:
 
     QSqlDriver* driver() const;
 
+#if QT_SQL_REMOVED_SINCE(6, 10)
     static const char *defaultConnection;
+#endif
 
     static QSqlDatabase addDatabase(const QString& type,
-                                 const QString& connectionName = QLatin1StringView(defaultConnection));
+                                 const QString &connectionName = defaultConnectionName());
     static QSqlDatabase addDatabase(QSqlDriver* driver,
-                                 const QString& connectionName = QLatin1StringView(defaultConnection));
-    static QSqlDatabase cloneDatabase(const QSqlDatabase &other, const QString& connectionName);
-    static QSqlDatabase cloneDatabase(const QString &other, const QString& connectionName);
-    static QSqlDatabase database(const QString& connectionName = QLatin1StringView(defaultConnection),
+                                 const QString &connectionName = defaultConnectionName());
+    static QSqlDatabase cloneDatabase(const QSqlDatabase &other, const QString &connectionName);
+    static QSqlDatabase cloneDatabase(const QString &other, const QString &connectionName);
+    static QSqlDatabase database(const QString &connectionName = defaultConnectionName(),
                                  bool open = true);
-    static void removeDatabase(const QString& connectionName);
-    static bool contains(const QString& connectionName = QLatin1StringView(defaultConnection));
+    static void removeDatabase(const QString &connectionName);
+    static bool contains(const QString &connectionName = defaultConnectionName());
     static QStringList drivers();
     static QStringList connectionNames();
     static void registerSqlDriver(const QString &name, QSqlDriverCreatorBase *creator);

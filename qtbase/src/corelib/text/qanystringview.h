@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 #ifndef QANYSTRINGVIEW_H
 #define QANYSTRINGVIEW_H
 
@@ -24,6 +25,11 @@ struct wrapped { using type = Result; };
 
 template <typename Tag, typename Result>
 using wrapped_t = typename wrapped<Tag, Result>::type;
+
+template <typename Char>
+struct is_compatible_utf32_char : std::false_type {};
+template <> struct is_compatible_utf32_char<char32_t> : std::true_type {};
+template <> struct is_compatible_utf32_char<wchar_t> : std::bool_constant<sizeof(wchar_t) == 4> {};
 
 } // namespace QtPrivate
 
@@ -62,6 +68,11 @@ private:
         Utf16    = TwoByteCodePointFlag,
         Unused   = TypeMask,
     };
+
+    template <typename Char>
+    using if_compatible_utf32_char = std::enable_if_t<
+        QtPrivate::is_compatible_utf32_char<Char>::value
+    , bool>;
 
     template <typename Char>
     using is_compatible_char = std::disjunction<
@@ -200,7 +211,7 @@ public:
     inline constexpr QAnyStringView(QLatin1StringView str) noexcept;
 
     template <typename Container, if_compatible_container<Container> = true>
-    constexpr Q_ALWAYS_INLINE QAnyStringView(const Container &c) noexcept
+    Q_ALWAYS_INLINE constexpr QAnyStringView(const Container &c) noexcept
         : QAnyStringView(std::data(c), QtPrivate::lengthHelperContainer(c)) {}
 
     template <typename Container, if_convertible_to<QString, Container> = true>
@@ -220,7 +231,7 @@ public:
     constexpr QAnyStringView(Char ch, QCharContainer &&capacity = QCharContainer()) noexcept
         : QAnyStringView{&(capacity.ch = ch), 1} {}
     template <typename Char, typename Container = decltype(QChar::fromUcs4(U'x')),
-              std::enable_if_t<std::is_same_v<Char, char32_t>, bool> = true>
+              if_compatible_utf32_char<Char> = true>
     constexpr QAnyStringView(Char c, Container &&capacity = {}) noexcept
         : QAnyStringView(capacity = QChar::fromUcs4(c)) {}
 

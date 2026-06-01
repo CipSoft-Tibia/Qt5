@@ -9,9 +9,12 @@
 
 #include <QtTest/qtest.h>
 
+#include <QtQml/private/qtqml-config_p.h>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlprivate.h>
+#include <QtQml/qtqmlglobal.h>
+#include <QtQml/private/qtqmlglobal_p.h>
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qfile.h>
@@ -103,9 +106,26 @@ void tst_qmltyperegistrar::superAndForeignTypes()
     QVERIFY(qmltypesData.contains("values: [\"Pixel\", \"Centimeter\", \"Inch\", \"Point\"]"));
     QVERIFY(qmltypesData.contains("name: \"SizeGadget\""));
     QVERIFY(qmltypesData.contains("prototype: \"SizeEnums\""));
-    QVERIFY(qmltypesData.contains("Property { name: \"height\"; type: \"int\"; read: \"height\"; write: \"setHeight\"; index: 0; isFinal: true }"));
-    QVERIFY(qmltypesData.contains("Property { name: \"width\"; type: \"int\"; read: \"width\"; write: \"setWidth\"; index: 0; isFinal: true }"));
-    QVERIFY(qmltypesData.contains("Method { name: \"sizeToString\"; type: \"QString\"; isMethodConstant: true }"));
+    QVERIFY(qmltypesData.contains(R"(Property {
+            name: "height"
+            type: "int"
+            read: "height"
+            write: "setHeight"
+            index: 0
+            lineNumber: 31
+            isFinal: true
+        })"));
+    QVERIFY(qmltypesData.contains(R"(Property {
+            name: "width"
+            type: "int"
+            read: "width"
+            write: "setWidth"
+            index: 0
+            lineNumber: 94
+            isFinal: true
+        })"));
+    QVERIFY(qmltypesData.contains("Method { name: \"sizeToString\"; type: \"QString\"; "
+                                  "isMethodConstant: true; lineNumber: 100 }"));
     QCOMPARE(qmltypesData.count("extension: \"SizeValueType\""), 1);
 }
 
@@ -117,7 +137,13 @@ void tst_qmltyperegistrar::accessSemantics()
 
 void tst_qmltyperegistrar::isBindable()
 {
-    QVERIFY(qmltypesData.contains(R"(Property { name: "someProperty"; type: "int"; bindable: "bindableSomeProperty"; index: 0 })"));
+    QVERIFY(qmltypesData.contains(R"(Property {
+            name: "someProperty"
+            type: "int"
+            bindable: "bindableSomeProperty"
+            index: 0
+            lineNumber: 162
+        })"));
 }
 
 void tst_qmltyperegistrar::doNotRestrictToImportVersion()
@@ -249,7 +275,7 @@ void tst_qmltyperegistrar::finalProperty()
 {
     QCOMPARE(qmltypesData.count("name: \"FinalProperty\""), 1);
     QCOMPARE(qmltypesData.count(
-                     "Property { name: \"fff\"; type: \"int\"; index: 0; isFinal: true }"),
+                     "Property { name: \"fff\"; type: \"int\"; index: 0; lineNumber: 244; isFinal: true }"),
              1);
 }
 
@@ -573,16 +599,18 @@ void tst_qmltyperegistrar::clonedSignal()
 {
     QVERIFY(qmltypesData.contains(R"(Signal {
             name: "clonedSignal"
+            lineNumber: 548
             Parameter { name: "i"; type: "int" }
         })"));
 
-    QVERIFY(qmltypesData.contains(R"(Signal { name: "clonedSignal"; isCloned: true })"));
+    QVERIFY(qmltypesData.contains(R"(Signal { name: "clonedSignal"; isCloned: true; lineNumber: 548 })"));
 }
 
 void tst_qmltyperegistrar::hasIsConstantInParameters()
 {
     QVERIFY(qmltypesData.contains(R"(        Signal {
             name: "mySignal"
+            lineNumber: 17
             Parameter { name: "myObject"; type: "QObject"; isPointer: true }
             Parameter { name: "myConstObject"; type: "QObject"; isPointer: true; isTypeConstant: true }
             Parameter { name: "myConstObject2"; type: "QObject"; isPointer: true; isTypeConstant: true }
@@ -593,6 +621,7 @@ void tst_qmltyperegistrar::hasIsConstantInParameters()
 
     QVERIFY(qmltypesData.contains(R"(Signal {
             name: "myVolatileSignal"
+            lineNumber: 19
             Parameter { name: "a"; type: "volatile QObject"; isPointer: true; isTypeConstant: true }
             Parameter { name: "b"; type: "volatile QObject"; isPointer: true; isTypeConstant: true }
             Parameter { name: "nonConst"; type: "volatile QObject"; isPointer: true }
@@ -760,6 +789,7 @@ void tst_qmltyperegistrar::unconstructibleValueType()
     QVERIFY(qmltypesData.contains(
             R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 551
         name: "Unconstructible"
         accessSemantics: "value"
         exports: ["QmlTypeRegistrarTest/unconstructible 1.0"]
@@ -773,6 +803,7 @@ void tst_qmltyperegistrar::constructibleValueType()
     QVERIFY(qmltypesData.contains(
     R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 558
         name: "Constructible"
         accessSemantics: "value"
         exports: ["QmlTypeRegistrarTest/constructible 1.0"]
@@ -780,9 +811,10 @@ void tst_qmltyperegistrar::constructibleValueType()
         Method {
             name: "Constructible"
             isConstructor: true
+            lineNumber: 564
             Parameter { name: "i"; type: "int" }
         }
-        Method { name: "Constructible"; isCloned: true; isConstructor: true }
+        Method { name: "Constructible"; isCloned: true; isConstructor: true; lineNumber: 564 }
     })"));
 }
 
@@ -791,12 +823,13 @@ void tst_qmltyperegistrar::structuredValueType()
     QVERIFY(qmltypesData.contains(
     R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 570
         name: "Structured"
         accessSemantics: "value"
         exports: ["QmlTypeRegistrarTest/structured 1.0"]
         isStructured: true
         exportMetaObjectRevisions: [256]
-        Property { name: "i"; type: "int"; index: 0; isFinal: true }
+        Property { name: "i"; type: "int"; index: 0; lineNumber: 575; isFinal: true }
     })"));
 }
 
@@ -805,6 +838,7 @@ void tst_qmltyperegistrar::anonymousAndUncreatable()
     QVERIFY(qmltypesData.contains(
     R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 581
         name: "AnonymousAndUncreatable"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -815,7 +849,12 @@ void tst_qmltyperegistrar::omitInvisible()
 {
     // If it cannot resolve the type a QML_FOREIGN refers to, it should not generate anything.
     QVERIFY(qmltypesData.contains(
-                R"(Component { file: "tst_qmltyperegistrar.h"; name: "Invisible"; accessSemantics: "none" })"));
+    R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        lineNumber: 592
+        name: "Invisible"
+        accessSemantics: "none"
+    })"));
 }
 
 void tst_qmltyperegistrar::typedEnum()
@@ -823,6 +862,7 @@ void tst_qmltyperegistrar::typedEnum()
     QVERIFY(qmltypesData.contains(
     R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 599
         name: "TypedEnum"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -831,56 +871,67 @@ void tst_qmltyperegistrar::typedEnum()
         Enum {
             name: "UChar"
             type: "quint8"
+            lineNumber: 604
             values: ["V0"]
         }
         Enum {
             name: "Int8_T"
             type: "qint8"
+            lineNumber: 606
             values: ["V1"]
         }
         Enum {
             name: "UInt8_T"
             type: "quint8"
+            lineNumber: 608
             values: ["V2"]
         }
         Enum {
             name: "Int16_T"
             type: "short"
+            lineNumber: 610
             values: ["V3"]
         }
         Enum {
             name: "UInt16_T"
             type: "ushort"
+            lineNumber: 612
             values: ["V4"]
         }
         Enum {
             name: "Int32_T"
             type: "int"
+            lineNumber: 614
             values: ["V5"]
         }
         Enum {
             name: "UInt32_T"
             type: "uint"
+            lineNumber: 616
             values: ["V6"]
         }
         Enum {
             name: "S"
             type: "short"
+            lineNumber: 622
             values: ["A", "B", "C"]
         }
         Enum {
             name: "T"
             type: "ushort"
+            lineNumber: 627
             values: ["D", "E", "F"]
         }
         Enum {
             name: "U"
             type: "qint8"
+            lineNumber: 632
             values: ["G", "H", "I"]
         }
         Enum {
             name: "V"
             type: "quint8"
+            lineNumber: 637
             values: ["J", "K", "L"]
         }
     })"));
@@ -891,11 +942,13 @@ void tst_qmltyperegistrar::listSignal()
     QVERIFY(qmltypesData.contains(
     R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 643
         name: "ListSignal"
         accessSemantics: "reference"
         prototype: "QObject"
         Signal {
             name: "objectListHappened"
+            lineNumber: 649
             Parameter { type: "QObjectList" }
         }
     })"));
@@ -905,6 +958,7 @@ void tst_qmltyperegistrar::withNamespace()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 652
         name: "Bar"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -913,6 +967,7 @@ void tst_qmltyperegistrar::withNamespace()
             type: "int"
             read: "bar"
             index: 0
+            lineNumber: 655
             isReadonly: true
             isPropertyConstant: true
         }
@@ -920,6 +975,7 @@ void tst_qmltyperegistrar::withNamespace()
 
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 672
         name: "Testing::Bar"
         accessSemantics: "reference"
         prototype: "Testing::Foo"
@@ -930,6 +986,7 @@ void tst_qmltyperegistrar::withNamespace()
             type: "int"
             read: "bar"
             index: 0
+            lineNumber: 676
             isReadonly: true
             isPropertyConstant: true
         }
@@ -937,6 +994,7 @@ void tst_qmltyperegistrar::withNamespace()
 
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 663
         name: "Testing::Foo"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -945,6 +1003,7 @@ void tst_qmltyperegistrar::withNamespace()
             type: "int"
             read: "foo"
             index: 0
+            lineNumber: 666
             isReadonly: true
             isPropertyConstant: true
         }
@@ -952,6 +1011,7 @@ void tst_qmltyperegistrar::withNamespace()
 
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 684
         name: "Testing::Inner::Baz"
         accessSemantics: "reference"
         prototype: "Testing::Bar"
@@ -966,6 +1026,7 @@ void tst_qmltyperegistrar::sequenceRegistration()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 699
         name: "std::vector<QByteArray>"
         accessSemantics: "sequence"
         valueType: "QByteArray"
@@ -976,15 +1037,25 @@ void tst_qmltyperegistrar::valueTypeSelfReference()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 708
         name: "QPersistentModelIndex"
         accessSemantics: "value"
         extension: "QPersistentModelIndexValueType"
     })"));
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 708
         name: "QPersistentModelIndexValueType"
         accessSemantics: "value"
-        Property { name: "row"; type: "int"; read: "row"; index: 0; isReadonly: true; isFinal: true }
+        Property {
+            name: "row"
+            type: "int"
+            read: "row"
+            index: 0
+            lineNumber: 711
+            isReadonly: true
+            isFinal: true
+        }
     })"));
 }
 
@@ -1032,6 +1103,7 @@ void tst_qmltyperegistrar::nameExplosion()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 751
         name: "NameExplosion"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -1058,6 +1130,7 @@ void tst_qmltyperegistrar::javaScriptExtension()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 760
         name: "JavaScriptExtension"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -1072,6 +1145,7 @@ void tst_qmltyperegistrar::relatedAddedInVersion()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 511
         name: "AddedIn1_0"
         accessSemantics: "reference"
         prototype: "AddedIn1_5"
@@ -1087,21 +1161,23 @@ void tst_qmltyperegistrar::longNumberTypes()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 768
         name: "LongNumberTypes"
         accessSemantics: "reference"
         prototype: "QObject"
         exports: ["QmlTypeRegistrarTest/LongNumberTypes 1.0"]
         exportMetaObjectRevisions: [256]
-        Property { name: "a"; type: "qlonglong"; index: 0 }
-        Property { name: "b"; type: "qlonglong"; index: 1 }
-        Property { name: "c"; type: "qulonglong"; index: 2 }
-        Property { name: "d"; type: "qulonglong"; index: 3 }
+        Property { name: "a"; type: "qlonglong"; index: 0; lineNumber: 772 }
+        Property { name: "b"; type: "qlonglong"; index: 1; lineNumber: 773 }
+        Property { name: "c"; type: "qulonglong"; index: 2; lineNumber: 774 }
+        Property { name: "d"; type: "qulonglong"; index: 3; lineNumber: 775 }
     })"));
 }
 
 void tst_qmltyperegistrar::enumList() {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 783
         name: "QList<NetworkManager::NM>"
         accessSemantics: "sequence"
         valueType: "NetworkManager::NM"
@@ -1112,12 +1188,19 @@ void tst_qmltyperegistrar::constReturnType()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 791
         name: "ConstInvokable"
         accessSemantics: "reference"
         prototype: "QObject"
         exports: ["QmlTypeRegistrarTest/ConstInvokable 1.0"]
         exportMetaObjectRevisions: [256]
-        Method { name: "getObject"; type: "QObject"; isPointer: true; isTypeConstant: true }
+        Method {
+            name: "getObject"
+            type: "QObject"
+            isPointer: true
+            isTypeConstant: true
+            lineNumber: 796
+        }
     })"));
 }
 
@@ -1125,12 +1208,21 @@ void tst_qmltyperegistrar::usingDeclaration()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 808
         name: "WithMyInt"
         accessSemantics: "reference"
         prototype: "QObject"
         exports: ["QmlTypeRegistrarTest/WithMyInt 1.0"]
         exportMetaObjectRevisions: [256]
-        Property { name: "a"; type: "int"; read: "a"; index: 0; isReadonly: true; isPropertyConstant: true }
+        Property {
+            name: "a"
+            type: "int"
+            read: "a"
+            index: 0
+            lineNumber: 812
+            isReadonly: true
+            isPropertyConstant: true
+        }
     })"));
 }
 
@@ -1175,12 +1267,13 @@ void tst_qmltyperegistrar::slotsBeforeInvokables()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 826
         name: "SlotsBeforeInvokables"
         accessSemantics: "reference"
         prototype: "QObject"
-        Method { name: "bar" }
-        Method { name: "foo" }
-        Method { name: "baz" }
+        Method { name: "bar"; lineNumber: 833 }
+        Method { name: "foo"; lineNumber: 831 }
+        Method { name: "baz"; lineNumber: 835 }
     })"));
 }
 
@@ -1188,12 +1281,13 @@ void tst_qmltyperegistrar::omitQQmlV4FunctionPtrArg()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 838
         name: "JavaScriptFunction"
         accessSemantics: "reference"
         prototype: "QObject"
         exports: ["QmlTypeRegistrarTest/JavaScriptFunction 1.0"]
         exportMetaObjectRevisions: [256]
-        Method { name: "jsfunc"; isJavaScriptFunction: true }
+        Method { name: "jsfunc"; isJavaScriptFunction: true; lineNumber: 844 }
     })"));
 }
 
@@ -1201,6 +1295,7 @@ void tst_qmltyperegistrar::preserveVoidStarPropTypes()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 855
         name: "VoidProperties"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -1212,6 +1307,7 @@ void tst_qmltyperegistrar::preserveVoidStarPropTypes()
             isPointer: true
             read: "void1"
             index: 0
+            lineNumber: 858
             isReadonly: true
             isPropertyConstant: true
         }
@@ -1221,6 +1317,7 @@ void tst_qmltyperegistrar::preserveVoidStarPropTypes()
             isPointer: true
             read: "void2"
             index: 1
+            lineNumber: 859
             isReadonly: true
             isPropertyConstant: true
         }
@@ -1238,16 +1335,18 @@ void tst_qmltyperegistrar::inaccessibleBase()
     // This shows up in qmltypes but we're not actually including base.h
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "base.h"
+        lineNumber: 9
         name: "InaccessibleBase"
         accessSemantics: "reference"
         prototype: "QObject"
-        Property { name: "a"; type: "int"; index: 0; isPropertyConstant: true }
+        Property { name: "a"; type: "int"; index: 0; lineNumber: 12; isPropertyConstant: true }
     })"));
 
     QVERIFY(!qmltypesData.contains(R"(name: "InaccessibleProperty")"));
 
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 868
         name: "AccessibleDerived"
         accessSemantics: "reference"
         prototype: "InaccessibleBase"
@@ -1258,6 +1357,7 @@ void tst_qmltyperegistrar::inaccessibleBase()
             type: "InaccessibleProperty"
             isPointer: true
             index: 0
+            lineNumber: 872
             isPropertyConstant: true
         }
     })"));
@@ -1267,6 +1367,7 @@ void tst_qmltyperegistrar::enumsExplicitlyScoped()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 879
         name: "EnumsExplicitlyScoped"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -1295,12 +1396,21 @@ void tst_qmltyperegistrar::derivedFromInvisible()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 886
         name: "DerivedFromInvisible"
         accessSemantics: "reference"
         prototype: "InvisibleBase"
         exports: ["QmlTypeRegistrarTest/DerivedFromInvisible 1.0"]
         exportMetaObjectRevisions: [256]
-        Property { name: "b"; type: "int"; read: "b"; index: 0; isReadonly: true; isPropertyConstant: true }
+        Property {
+            name: "b"
+            type: "int"
+            read: "b"
+            index: 0
+            lineNumber: 890
+            isReadonly: true
+            isPropertyConstant: true
+        }
     })"));
 }
 
@@ -1308,6 +1418,7 @@ void tst_qmltyperegistrar::foreignNamespacedWithEnum()
 {
     QVERIFY(qmltypesData.contains(R"(Component {
         file: "tst_qmltyperegistrar.h"
+        lineNumber: 910
         name: "F::ForeignQObject"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -1317,6 +1428,7 @@ void tst_qmltyperegistrar::foreignNamespacedWithEnum()
         Enum {
             name: "Enum"
             isScoped: true
+            lineNumber: 903
             values: ["ValueA", "ValueB"]
         }
     })"));
@@ -1326,12 +1438,16 @@ void tst_qmltyperegistrar::foreignNamespacedWithEnum()
 #ifdef QT_QMLJSROOTGEN_PRESENT
 void tst_qmltyperegistrar::verifyJsRoot()
 {
+#if !QT_CONFIG(qml_xml_http_request)
+    QSKIP("root types are inconsistent if feature has been disabled - QTBUG-138605");
+#endif
     QProcess process;
 
     QTemporaryDir dir;
 
     QProcess jsrootProcess;
-    connect(&jsrootProcess, &QProcess::errorOccurred, [&](QProcess::ProcessError error) {
+    connect(&jsrootProcess, &QProcess::errorOccurred,
+            this, [&jsrootProcess](QProcess::ProcessError error) {
         qWarning() << error << jsrootProcess.errorString();
     });
     jsrootProcess.setWorkingDirectory(dir.path());

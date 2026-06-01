@@ -5,6 +5,7 @@
 #include <QtTest/qsignalspy.h>
 #include <QtQml/qqmlfile.h>
 #include <QtQuick/private/qquicklistview_p.h>
+#include <QtQuick/private/qquickmousearea_p.h>
 #include <QtQuickTemplates2/private/qquickitemdelegate_p.h>
 #include <QtQuickDialogs2/private/qquickfontdialog_p.h>
 #include <QtQuickDialogs2QuickImpl/private/qquickfontdialogimpl_p.h>
@@ -50,6 +51,9 @@ private slots:
     void changeDialogTitle();
     void searchFamily();
     void setCurrentFontFromApi();
+    void checkModality_data();
+    void checkModality();
+    void checkFrameless();
 
 private:
     QQuickAbstractButton *findDialogButton(QQuickDialogButtonBox *box, const QString &buttonText)
@@ -485,7 +489,7 @@ void tst_QQuickFontDialogImpl::searchFamily()
     const QPoint familyEditCenterPos =
             familyEdit->mapToScene({ familyEdit->width() / 2, familyEdit->height() / 2 }).toPoint();
     QTest::mouseClick(dialogHelper.popupWindow(), Qt::LeftButton, Qt::NoModifier, familyEditCenterPos);
-    QVERIFY(familyEdit->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(familyEdit);
 
     QSignalSpy familyListViewCurrentIndexSpy(fontFamilyListView, SIGNAL(currentIndexChanged()));
     QVERIFY(familyListViewCurrentIndexSpy.isValid());
@@ -599,6 +603,73 @@ void tst_QQuickFontDialogImpl::setCurrentFontFromApi()
     }
 
     CLOSE_DIALOG("Ok");
+}
+
+void tst_QQuickFontDialogImpl::checkModality_data()
+{
+    QTest::addColumn<Qt::WindowModality>("modality");
+    QTest::addColumn<QFontDialogOptions::FontDialogOption>("options");
+    QTest::addColumn<int>("expectedRootWindowChildCount");
+    QTest::addColumn<int>("expectedChildWindowClickCount");
+
+    QTest::newRow("nonModal") << Qt::NonModal << QFontDialogOptions::DontUseNativeDialog << 1 << 1;
+    QTest::newRow("windowModal") << Qt::WindowModal << QFontDialogOptions::DontUseNativeDialog << 0 << 1;
+    // Verify application modal case only for the platform which supports multiple windows
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::MultipleWindows))
+        QTest::newRow("applicationModal") << Qt::ApplicationModal << QFontDialogOptions::DontUseNativeDialog << 0 << 0;
+}
+
+void tst_QQuickFontDialogImpl::checkModality()
+{
+    QFETCH(Qt::WindowModality, modality);
+    QFETCH(QFontDialogOptions::FontDialogOption, options);
+    QFETCH(int, expectedRootWindowChildCount);
+    QFETCH(int, expectedChildWindowClickCount);
+
+    DialogTestHelper<QQuickFontDialog, QQuickFontDialogImpl> dialogHelper(this, "checkModality.qml");
+    QVERIFY2(dialogHelper.isWindowInitialized(), dialogHelper.failureMessage());
+    QVERIFY(dialogHelper.waitForWindowActive());
+
+    dialogHelper.dialog->setModality(modality);
+    QCOMPARE(dialogHelper.dialog->modality(), modality);
+
+    dialogHelper.dialog->setOptions(options);
+    QCOMPARE(dialogHelper.dialog->options(), options);
+
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    auto *childWindow = dialogHelper.window()->property("childWindow").value<QQuickWindow *>();
+    QVERIFY(childWindow);
+
+    // Setting the child window transient parent as root window won't allow it to receive mouse
+    // events, causing WindowModal case not to be tested. Thus, resetting the transient parent.
+    if (modality == Qt::WindowModal)
+        childWindow->setTransientParent(nullptr);
+
+    const auto *rootMouseArea = dialogHelper.window()->property("rootMArea").value<QQuickMouseArea *>();
+    QVERIFY(rootMouseArea);
+    QSignalSpy rmaMouseSpy(rootMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+    QCOMPARE(rmaMouseSpy.size(), expectedRootWindowChildCount);
+
+    const auto *childMouseArea = dialogHelper.window()->property("childMArea").value<QQuickMouseArea *>();
+    QVERIFY(childMouseArea);
+    QSignalSpy cmaMouseSpy(childMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(childWindow, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+    QCOMPARE(cmaMouseSpy.size(), expectedChildWindowClickCount);
+}
+
+void tst_QQuickFontDialogImpl::checkFrameless()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    QSKIP("Frameless window is not supported on Android/IOS");
+#endif
+    DialogTestHelper<QQuickFontDialog, QQuickFontDialogImpl> dialogHelper(this, "fontDialogFrameless.qml");
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    QVERIFY(dialogHelper.popupWindow()->flags().testFlag(Qt::FramelessWindowHint));
 }
 
 QTEST_MAIN(tst_QQuickFontDialogImpl)

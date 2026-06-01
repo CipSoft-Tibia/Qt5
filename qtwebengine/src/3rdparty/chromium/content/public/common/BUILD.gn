@@ -3,19 +3,28 @@
 # found in the LICENSE file.
 
 import("//build/buildflag_header.gni")
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/ui.gni")
+import("//content/public/common/features.gni")
 import("//content/public/common/zygote/features.gni")
 import("//media/media_options.gni")
 import("//mojo/public/tools/bindings/mojom.gni")
 import("//ppapi/buildflags/buildflags.gni")
 import("//third_party/webrtc/webrtc.gni")
 import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
+import("//ui/webui/webui_features.gni")
 
 if (is_android) {
   import("//build/config/android/rules.gni")
+}
+
+buildflag_header("buildflags") {
+  header = "buildflags.h"
+  flags = [
+    "ENABLE_SCREEN_CAPTURE=$enable_screen_capture",
+    "LOAD_WEBUI_FROM_DISK=$load_webui_from_disk",
+  ]
 }
 
 # See //content/BUILD.gn for how this works. Note that targets in `//content`
@@ -38,7 +47,6 @@ source_set("result_codes") {
 # a header-only dependency, without bringing in all of content.
 source_set("content_descriptors") {
   sources = [ "content_descriptors.h" ]
-  deps = [ "//build:chromeos_buildflags" ]
 }
 
 source_set("content_descriptor_keys") {
@@ -85,10 +93,10 @@ source_set("static_switches") {
   ]
 
   public_configs = [ ":static_switches_defines" ]
+  public_deps = [ ":buildflags" ]
 
   # Deps required by the above headers.
-  public_deps = [
-    "//build:chromeos_buildflags",
+  public_deps += [
     "//media:media_buildflags",
     "//tools/v8_context_snapshot:buildflags",
   ]
@@ -107,10 +115,11 @@ source_set("switches") {
 
   # Deps required by the above header.
   public_deps = [
-    "//build:chromeos_buildflags",
     "//media:media_buildflags",
     "//tools/v8_context_snapshot:buildflags",
   ]
+
+  public_deps += [ ":buildflags" ]
 
   configs += [ "//content:content_implementation" ]
 
@@ -266,12 +275,12 @@ jumbo_source_set("common_sources") {
   deps = [
     ":content_descriptor_keys",
     "//build:branding_buildflags",
-    "//build:chromeos_buildflags",
     "//build/config/chromebox_for_meetings:buildflags",
 
     # This looks needless as we have //content/common in public_deps, but it's
     # needed because of allow_circular_includes_from.
     "//content/common:mojo_bindings",
+    "//content/public/common:buildflags",
     "//device/vr/buildflags",
     "//media",
     "//media/mojo/mojom",
@@ -303,7 +312,7 @@ jumbo_source_set("common_sources") {
     deps += [ "//sandbox/win:common" ]
   }
 
-  if (is_chromeos_ash) {
+  if (is_chromeos) {
     public_deps += [ "//media/capture/video/chromeos/public" ]
   }
 

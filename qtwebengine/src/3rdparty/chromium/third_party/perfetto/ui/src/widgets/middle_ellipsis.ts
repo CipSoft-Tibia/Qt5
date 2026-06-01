@@ -17,6 +17,13 @@ import m from 'mithril';
 export interface MiddleEllipsisAttrs {
   text: string;
   endChars?: number;
+  className?: string;
+}
+
+function replaceLeadingTrailingSpacesWithNbsp(text: string) {
+  return text.replace(/^\s+|\s+$/g, function (match) {
+    return '\u00A0'.repeat(match.length);
+  });
 }
 
 /**
@@ -27,14 +34,24 @@ export interface MiddleEllipsisAttrs {
 export class MiddleEllipsis implements m.ClassComponent<MiddleEllipsisAttrs> {
   view({attrs, children}: m.Vnode<MiddleEllipsisAttrs>): m.Children {
     const {text, endChars = text.length > 16 ? 10 : 0} = attrs;
-    const index = text.length - endChars;
-    const left = text.substring(0, index);
-    const right = text.substring(index);
+    const trimmed = text.trim();
+    const index = trimmed.length - endChars;
+    const left = trimmed.substring(0, index);
+    const right = trimmed.substring(index);
     return m(
       '.pf-middle-ellipsis',
-      m('span.pf-middle-ellipsis-left', left),
-      m('span.pf-middle-ellipsis-right', right),
-      m('span.pf-middle-ellipsis-extras', children),
+      {
+        className: attrs.className,
+      },
+      m(
+        'span.pf-middle-ellipsis-left',
+        replaceLeadingTrailingSpacesWithNbsp(left),
+      ),
+      m(
+        'span.pf-middle-ellipsis-right',
+        replaceLeadingTrailingSpacesWithNbsp(right),
+      ),
+      children,
     );
   }
 }

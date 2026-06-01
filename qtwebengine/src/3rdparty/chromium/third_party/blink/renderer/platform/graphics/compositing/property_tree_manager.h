@@ -28,7 +28,6 @@ enum class RenderSurfaceReason : uint8_t;
 
 namespace gfx {
 class PointF;
-class Rect;
 class RRectF;
 }
 
@@ -113,8 +112,7 @@ class PropertyTreeManager {
   // Ensure the compositor scroll and transform nodes for a scroll translation
   // transform node. Returns the id of the scroll node.
   int EnsureCompositorScrollAndTransformNode(
-      const TransformPaintPropertyNode& scroll_translation,
-      const gfx::Rect& scrolling_contents_cull_rect);
+      const TransformPaintPropertyNode& scroll_translation);
 
   // Same as above but marks the scroll nodes as being the viewport.
   int EnsureCompositorInnerScrollAndTransformNode(
@@ -176,12 +174,14 @@ class PropertyTreeManager {
   static void DropCompositorScrollDeltaNextCommit(cc::LayerTreeHost&,
                                                   CompositorElementId);
 
-  static uint32_t GetMainThreadScrollingReasons(const cc::LayerTreeHost&,
-                                                const ScrollPaintPropertyNode&);
+  static uint32_t GetMainThreadRepaintReasons(const cc::LayerTreeHost&,
+                                              const ScrollPaintPropertyNode&);
   // TODO(crbug.com/40517276): Remove this function after launching
   // RasterInducingScroll.
   static bool UsesCompositedScrolling(const cc::LayerTreeHost&,
                                       const ScrollPaintPropertyNode&);
+  static bool UsesRasterInducingScroll(const cc::LayerTreeHost&,
+                                       const ScrollPaintPropertyNode&);
 
   // Updates conditional render surface reasons for all effect nodes in
   // |GetEffectTree|. Every effect is supposed to have render surface enabled
@@ -358,7 +358,7 @@ class PropertyTreeManager {
 
   void UpdatePixelMovingFilterClipExpanders();
 
-  uint32_t NonCompositedMainThreadScrollingReasons(
+  uint32_t NonCompositedMainThreadRepaintReasons(
       const TransformPaintPropertyNode& scroll_translation) const;
 
   PropertyTreeManagerClient& client_;

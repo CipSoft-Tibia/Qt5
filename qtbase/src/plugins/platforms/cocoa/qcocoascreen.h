@@ -12,8 +12,8 @@
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreVideo/CoreVideo.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(NSScreen);
-Q_FORWARD_DECLARE_OBJC_CLASS(NSArray);
+#import <AppKit/NSScreen.h>
+#import <Foundation/NSArray.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -48,6 +48,8 @@ public:
     static NSScreen *nativeScreenForDisplayId(CGDirectDisplayID displayId);
     NSScreen *nativeScreen() const;
 
+    bool isOnline() const;
+
     bool requestUpdate();
     void deliverUpdateRequests();
 
@@ -66,6 +68,8 @@ private:
     static void updateScreens();
     static void cleanupScreens();
 
+    static void updateHdrWindows();
+
     static QMacNotificationObserver s_screenParameterObserver;
     static CGDisplayReconfigurationCallBack s_displayReconfigurationCallBack;
 
@@ -74,7 +78,6 @@ private:
     void update(CGDirectDisplayID displayId);
     void remove();
 
-    bool isOnline() const;
     bool isMirroring() const;
 
     CGDirectDisplayID m_displayId = kCGNullDirectDisplay;

@@ -133,6 +133,9 @@ private slots:
     void isDir_data();
     void isDir();
 
+    void isOther_data();
+    void isOther();
+
     void isRoot_data();
     void isRoot();
 
@@ -258,6 +261,7 @@ private:
     QString m_resourcesDir;
     QTemporaryDir m_dir;
     QSharedPointer<QTemporaryDir> m_dataDir;
+    QTemporaryDir m_tempSubDir;
 };
 
 void tst_QFileInfo::initTestCase()
@@ -410,6 +414,107 @@ void tst_QFileInfo::isDir()
         QVERIFY2(isDir, msgIsNoDirectory(path).constData());
     else
         QVERIFY(!isDir);
+}
+
+void tst_QFileInfo::isOther_data()
+{
+    QTest::addColumn<QString>("path");
+    QTest::addColumn<bool>("expected");
+
+    m_tempSubDir.remove();
+    m_tempSubDir = QTemporaryDir(m_dir.path() + "/isother_test_dir.XXXXXX"_L1);
+
+    const QString prefix = m_tempSubDir.path() + u'/';
+
+    const QString filePath = prefix + "file"_L1;
+    QFile file(filePath);
+    if (file.open(QFile::WriteOnly)) {
+        file.write("JAJAJAA");
+        file.close();
+    }
+    const QString linkToFile = prefix + "link-to-file"_L1;
+    file.link(linkToFile);
+
+    const QString dirPath = m_dir.path();
+    const QString linkToDir = prefix + "link-to-dir"_L1;
+    QFile::link(dirPath, linkToDir);
+
+    const QString brokenLink = prefix + "broken-symlink"_L1;
+    QFile dummy(prefix + "dummyfile"_L1);
+    (void)dummy.open(QIODevice::WriteOnly);
+    dummy.link(brokenLink);
+    dummy.remove();
+
+    QTest::newRow("regular-file") << filePath << false;
+    QTest::newRow("symlink-to-regular-file") << linkToFile << false;
+    QTest::newRow("dir") << dirPath << false;
+    QTest::newRow("symlink-to-dir") << linkToDir << false;
+    QTest::newRow("broken-symlink") << brokenLink << false;
+
+    QTest::newRow("qresources-file") << ":/tst_qfileinfo/resources/file1" << false;
+    QTest::newRow("qresources-broken-dir") << ":/I/do_not_expect_this_path_to_exist/" << false;
+    QTest::newRow("qresources-broken-file") << ":/tst_qfileinfo/resources/ghost-file" << false;
+
+#ifdef Q_OS_UNIX
+    auto addSpecialRow = [&prefix](const QString &s, uint type) {
+        const QString name = prefix + s;
+        if (::mknod(name.toLatin1().constData(), 0777 | type, dev_t{}) == 0)
+            QTest::addRow("%s", qPrintable(name)) << name << true;
+        else
+            qDebug("mknod call failed: %s", strerror(errno));
+    };
+    addSpecialRow("fifo-test", S_IFIFO);
+    addSpecialRow("socket-test", S_IFSOCK);
+
+    const QString linkToSpecial = prefix + "link-to-dev-null"_L1;
+    QFile::link(u"/dev/null"_s, linkToSpecial);
+
+    QTest::newRow("character-device") << u"/dev/null"_s << true;
+    QTest::newRow("symlink-to-special") << linkToSpecial << true;
+#elif defined(Q_OS_WIN)
+    const QString name = prefix + "win-CreateSymbolicLink-file"_L1;
+    const auto res = FileSystem::createSymbolicLink(name.toLatin1().constData(),
+                                                    file.fileName().toLatin1().constData());
+    if (res.dwErr == ERROR_SUCCESS)
+        QTest::newRow("win-CreateSymbolicLink-file") << name << false;
+    else if (res.dwErr == ERROR_PRIVILEGE_NOT_HELD)
+        qDebug() << msgInsufficientPrivileges(res.errorMessage);
+    else
+        qDebug() << res.errorMessage;
+
+    const QString winLnk = prefix + "winLnk.lnk"_L1;
+    QFile lnkTarget(prefix + "lnkTarget"_L1);
+    (void)lnkTarget.open(QIODevice::WriteOnly);
+    lnkTarget.link(winLnk);
+    QTest::newRow("winLnk") << winLnk << true;
+
+    const QString brokenWinLnk = prefix + "broken_winLnk.lnk"_L1;
+    const QString dummyPath = prefix + "lnkDummy"_L1;
+    lnkTarget.copy(dummyPath);
+    QFile lnkDummy(dummyPath);
+    lnkDummy.link(brokenWinLnk);
+    lnkDummy.remove();
+    QTest::newRow("broken-winLnk") << brokenWinLnk << true;
+#endif // Q_OS_UNIX
+}
+
+void tst_QFileInfo::isOther()
+{
+    QFETCH(QString, path);
+    QFETCH(bool, expected);
+
+    QFileInfo info(path);
+    QCOMPARE(info.isOther(), expected);
+    if (!QByteArrayView{QTest::currentDataTag()}.contains("broken"))
+        QVERIFY(info.exists());
+
+#if QT_CONFIG(cxx17_filesystem) // This code doesn't work in QNX on the CI
+    if (QByteArrayView{QTest::currentDataTag()}.contains("winLnk"))
+        QEXPECT_FAIL("", "QFileInfo::isOther() returns true for '.lnk' files on Windows, "
+                         "std::filesystem::is_other() returns false", Continue);
+
+    QCOMPARE_EQ(info.isOther(), std::filesystem::is_other(path.toStdString()));
+#endif
 }
 
 void tst_QFileInfo::isRoot_data()

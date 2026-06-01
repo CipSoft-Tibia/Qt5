@@ -9,6 +9,7 @@
 #include <QFileSystemWatcher>
 #include <QQmlParserStatus>
 #include <QUrl>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 class AssetFixer : public QObject, public QQmlParserStatus
 {
@@ -20,6 +21,7 @@ class AssetFixer : public QObject, public QQmlParserStatus
     Q_PROPERTY(QDateTime assetDirectoryLastModified READ assetDirectoryLastModified WRITE setAssetDirectoryLastModified
         NOTIFY assetDirectoryLastModifiedChanged FINAL)
     Q_INTERFACES(QQmlParserStatus)
+    QML_ELEMENT
 
 public:
     explicit AssetFixer(QObject *parent = nullptr);

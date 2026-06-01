@@ -19,11 +19,6 @@
 
 QT_BEGIN_NAMESPACE
 
-// Used internally to store the flags
-namespace {
-constexpr auto DataFlagsRole = Qt::ItemDataRole(Qt::UserRole - 1);
-}
-
 static inline QString qStandardItemModelDataListMimeType()
 {
     return QStringLiteral("application/x-qstandarditemmodeldatalist");
@@ -284,7 +279,7 @@ QMap<int, QVariant> QStandardItemPrivate::itemData() const
 {
     QMap<int, QVariant> result;
     for (const auto &data : values) {
-        if (data.role != DataFlagsRole)
+        if (data.role != Qt::StandardItemFlagsRole)
             result.insert(data.role, data.value);
     }
     return result;
@@ -997,7 +992,7 @@ void QStandardItem::emitDataChanged()
 */
 void QStandardItem::setFlags(Qt::ItemFlags flags)
 {
-    setData((int)flags, DataFlagsRole);
+    setData((int)flags, Qt::StandardItemFlagsRole);
 }
 
 /*!
@@ -1012,7 +1007,7 @@ void QStandardItem::setFlags(Qt::ItemFlags flags)
 */
 Qt::ItemFlags QStandardItem::flags() const
 {
-    QVariant v = data(DataFlagsRole);
+    QVariant v = data(Qt::StandardItemFlagsRole);
     if (!v.isValid())
         return (Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsEditable
                 |Qt::ItemIsDragEnabled|Qt::ItemIsDropEnabled);

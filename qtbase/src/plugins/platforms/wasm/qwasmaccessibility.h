@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWASMACCESIBILITY_H
 #define QWASMACCESIBILITY_H
@@ -30,18 +31,25 @@ public:
     static QWasmAccessibility* get();
 
     static void addAccessibilityEnableButton(QWindow *window);
-    static void removeAccessibilityEnableButton(QWindow *window);
+    static void onShowWindow(QWindow *);
+    static void onRemoveWindow(QWindow *);
+    static bool isEnabled();
 
 private:
     void addAccessibilityEnableButtonImpl(QWindow *window);
-    void removeAccessibilityEnableButtonImpl(QWindow *window);
     void enableAccessibility();
+    void onShowWindowImpl(QWindow *);
+    void onRemoveWindowImpl(QWindow *);
 
-    static emscripten::val getContainer(QWindow *window);
-    static emscripten::val getContainer(QAccessibleInterface *iface);
-    static emscripten::val getDocument(const emscripten::val &container);
-    static emscripten::val getDocument(QAccessibleInterface *iface);
-    static QWindow *getWindow(QAccessibleInterface *iface);
+    emscripten::val getA11yContainer(QWindow *window);
+    emscripten::val getA11yContainer(QAccessibleInterface *iface);
+    emscripten::val getDescribedByContainer(QWindow *window);
+    emscripten::val getDescribedByContainer(QAccessibleInterface *iface);
+    emscripten::val getElementContainer(QWindow *window);
+    emscripten::val getElementContainer(QAccessibleInterface *iface);
+    emscripten::val getDocument(const emscripten::val &container);
+    emscripten::val getDocument(QAccessibleInterface *iface);
+    QWindow *getWindow(QAccessibleInterface *iface);
 
     emscripten::val createHtmlElement(QAccessibleInterface *iface);
     void destroyHtmlElement(QAccessibleInterface *iface);
@@ -51,7 +59,7 @@ private:
     void setHtmlElementGeometry(emscripten::val element, QRect geometry);
     void setHtmlElementTextName(QAccessibleInterface *iface);
     void setHtmlElementTextNameLE(QAccessibleInterface *iface);
-    void setHtmlElementDescription(QAccessibleInterface *iface);
+    void setHtmlElementFocus(QAccessibleInterface *iface);
 
     void handleStaticTextUpdate(QAccessibleEvent *event);
     void handleButtonUpdate(QAccessibleEvent *event);
@@ -66,6 +74,8 @@ private:
     void handleSliderUpdate(QAccessibleEvent *event);
     void handleScrollBarUpdate(QAccessibleEvent *event);
     void handlePageTabListUpdate(QAccessibleEvent *event);
+    void handleIdentifierUpdate(QAccessibleInterface *iface);
+    void handleDescriptionChanged(QAccessibleInterface *iface);
 
     void handleEventFromHtmlElement(const emscripten::val event);
 
@@ -74,6 +84,16 @@ private:
     void setRootObject(QObject *o) override;
     void initialize() override;
     void cleanup() override;
+
+    void setAttribute(emscripten::val element, const std::string &attr, const std::string &val);
+    void setAttribute(emscripten::val element, const std::string &attr, const char *val);
+    void setAttribute(emscripten::val element, const std::string &attr, bool val);
+
+    void setProperty(emscripten::val element, const std::string &attr, const std::string &val);
+    void setProperty(emscripten::val element, const std::string &attr, const char *val);
+    void setProperty(emscripten::val element, const std::string &attr, bool val);
+
+    void addEventListener(emscripten::val element, const char *eventType);
 
 public: // public for EMSCRIPTEN_BINDINGS
     static void onHtmlEventReceived(emscripten::val event);
@@ -84,7 +104,7 @@ private:
     bool m_accessibilityEnabled = false;
     std::map<QWindow *, std::tuple<emscripten::val, std::shared_ptr<qstdweb::EventCallback>>> m_enableButtons;
     QHash<QAccessibleInterface *, emscripten::val> m_elements;
-
+    int m_eventHandlerIndex;
 };
 
 #endif // QT_CONFIG(accessibility)

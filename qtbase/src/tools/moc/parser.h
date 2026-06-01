@@ -19,6 +19,7 @@ public:
     bool displayWarnings = true;
     bool displayNotes = true;
     bool activeQtMode = false;
+    bool qmlMacroWarningIsFatal = false;
 
     struct IncludePath
     {
@@ -50,6 +51,7 @@ public:
 
     Q_NORETURN void error(const Symbol &symbol);
     Q_NORETURN void error(const char *msg = nullptr);
+    Q_NORETURN void error(const Symbol &symbol, const char *msg);
     void warning(const char * = nullptr);
     void warning(const Symbol &sym, QByteArrayView msg);
     void note(const char * = nullptr);

@@ -23,8 +23,7 @@ namespace autofillPrivate {
     boolean isAutofillSyncToggleEnabled;
   };
 
-  // A copy of FieldType from
-  // chrome/common/extensions/api/autofill_private.idl
+  // A copy of FieldType from components/autofill/core/browser/field_types.h.
   enum FieldType {
     NO_SERVER_DATA,
     UNKNOWN_TYPE,
@@ -35,6 +34,9 @@ namespace autofillPrivate {
     NAME_MIDDLE_INITIAL,
     NAME_FULL,
     NAME_SUFFIX,
+    ALTERNATIVE_FULL_NAME,
+    ALTERNATIVE_GIVEN_NAME,
+    ALTERNATIVE_FAMILY_NAME,
     EMAIL_ADDRESS,
     PHONE_HOME_NUMBER,
     PHONE_HOME_CITY_CODE,
@@ -88,6 +90,8 @@ namespace autofillPrivate {
     ADDRESS_HOME_HOUSE_NUMBER,
     ADDRESS_HOME_SUBPREMISE,
     ADDRESS_HOME_OTHER_SUBUNIT,
+    NAME_LAST_PREFIX,
+    NAME_LAST_CORE,
     NAME_LAST_FIRST,
     NAME_LAST_CONJUNCTION,
     NAME_LAST_SECOND,
@@ -122,6 +126,14 @@ namespace autofillPrivate {
     ADDRESS_HOME_HOUSE_NUMBER_AND_APT,
     SINGLE_USERNAME_WITH_INTERMEDIATE_VALUES,
     IMPROVED_PREDICTION,
+    PASSPORT_NAME_TAG,
+    PASSPORT_NUMBER,
+    PASSPORT_ISSUING_COUNTRY_TAG,
+    PASSPORT_EXPIRATION_DATE_TAG,
+    PASSPORT_ISSUE_DATE_TAG,
+    LOYALTY_MEMBERSHIP_PROGRAM,
+    LOYALTY_MEMBERSHIP_PROVIDER,
+    LOYALTY_MEMBERSHIP_ID,
     MAX_VALID_FIELD_TYPE
   };
 
@@ -284,6 +296,9 @@ namespace autofillPrivate {
     // Globally unique identifier for this entry.
     DOMString? guid;
 
+    // The IBAN's instrument ID from the GPay server, if applicable.
+    DOMString? instrumentId;
+
     // IBAN value.
     DOMString? value;
 
@@ -311,6 +326,9 @@ namespace autofillPrivate {
   callback GetCreditCardCallback = void(optional CreditCardEntry card);
   callback CheckForDeviceAuthCallback = void(boolean isDeviceAuthAvailable);
   callback GetUserAnnotationsEntriesCallback = void(UserAnnotationsEntry[] items);
+  callback hasUserAnnotationsEntriesCallback = void(boolean hasEntries);
+  callback isUserEligibleForAutofillImprovementsCallback = void(boolean eligible);
+  callback annotationsBootstrappingCallback = void(boolean bootstrapped);
 
   interface Functions {
     // Gets currently signed-in user profile info, no value is returned if
@@ -323,6 +341,10 @@ namespace autofillPrivate {
     // will be assigned a new one and added as a new entry.
     // |address|: The address entry to save.
     static void saveAddress(AddressEntry address);
+
+    // Removes the address with the given ID.
+    // |guid|: ID of the address to remove.
+    static void removeAddress(DOMString guid);
 
     // Gets the list of all countries.
     // |forAccountAddressProfile|: whether the address profile opened in the
@@ -356,9 +378,9 @@ namespace autofillPrivate {
     // |iban|: The IBAN entry to save.
     static void saveIban(IbanEntry iban);
 
-    // Removes the entry (address or credit card) with the given ID.
-    // |guid|: ID of the entry to remove.
-    static void removeEntry(DOMString guid);
+    // Removes the payments entity with the given ID.
+    // |guid|: ID of the entity to remove.
+    static void removePaymentsEntity(DOMString guid);
 
     // Gets the list of credit cards.
     // |callback|: Callback which will be called with the list of credit cards.
@@ -381,6 +403,9 @@ namespace autofillPrivate {
 
     // Logs that the server cards edit link was clicked.
     static void logServerCardLinkClicked();
+
+    // Logs that a server IBAN's edit link was clicked.
+    static void logServerIbanLinkClicked();
 
     // Enrolls a credit card into virtual cards.
     // |cardId|: The server side id of the credit card to be enrolled. Note it
@@ -421,11 +446,26 @@ namespace autofillPrivate {
     static void getUserAnnotationsEntries(
         GetUserAnnotationsEntriesCallback callback);
 
+    // Returns if there are any saved user annotations entries.
+    static void hasUserAnnotationsEntries(
+        hasUserAnnotationsEntriesCallback callback);
+
+    // Returns if the user is eligible for autofill improvements.
+    static void isUserEligibleForAutofillImprovements(
+        isUserEligibleForAutofillImprovementsCallback callback);
+
     // Deletes the user annotations entry by its id.
     static void deleteUserAnnotationsEntry(long entryId);
 
     // Deletes all user annotations entries.
     static void deleteAllUserAnnotationsEntries();
+
+    // Notifies autofill client about the prediction improvements pre changing.
+    static void predictionImprovementsIphFeatureUsed();
+
+    // Triggers bootstrapping of user annotations. Returns true if
+    // bootstrapping was successful (entries were added), false otherwise.
+    static void triggerAnnotationsBootstrapping(annotationsBootstrappingCallback callback);
   };
 
   interface Events {

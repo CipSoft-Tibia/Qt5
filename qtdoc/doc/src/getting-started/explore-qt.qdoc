@@ -42,17 +42,17 @@
         \enddetails
 
     You can also explore the Qt documentation in more depth by checking out the
-    list of \l {Qt Modules}, \l {Supported Platforms}, or learning about
+    list of \l {All Modules}, \l {Supported Platforms}, or learning about
     \l {Qt Licensing}.
 
     \section1 Qt Academy and Qt Quick
 
     You can explore \l {https://www.qt.io/academy/course-catalog} {courses}
     in \l {https://academy.qt.io/users/sign_in} {Qt Academy} for visual learning.
-    Use \l {try.qt.io} for an interactive Qt Quick experience.
+    Use \l {https://try.qt.io} for an interactive Qt Quick experience.
 
     \section1 Participate in the Qt Community
 
-    Qt's vibrant and active community site \l{http://qt.io}, houses
+    Qt's vibrant and active community site \l{https://qt.io}, houses
     a wiki, a forum, and additional learning guides and presentations.
 */

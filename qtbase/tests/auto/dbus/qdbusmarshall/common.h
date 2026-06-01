@@ -160,6 +160,14 @@ void commonInit()
     qDBusRegisterMetaType<QList<MyVariantMapStruct> >();
     qDBusRegisterMetaType<MyFileDescriptorStruct>();
     qDBusRegisterMetaType<QList<MyFileDescriptorStruct> >();
+
+    qDBusRegisterMetaType<std::tuple<int>>();
+    qDBusRegisterMetaType<std::tuple<QString>>();
+    qDBusRegisterMetaType<std::tuple<QVariantMap>>();
+    qDBusRegisterMetaType<std::tuple<QPoint>>();
+    qDBusRegisterMetaType<std::tuple<std::tuple<int>>>();
+    qDBusRegisterMetaType<std::tuple<QList<int>>>();
+    qDBusRegisterMetaType<std::tuple<int, QString, QVariantMap>>();
 }
 #ifdef USE_PRIVATE_CODE
 #include "private/qdbusintrospection_p.h"
@@ -510,6 +518,21 @@ bool compareToArgument(const QDBusArgument &arg, const QVariant &v2)
             return compare<MyFileDescriptorStruct>(arg, v2);
         else if (id == qMetaTypeId<QList<MyFileDescriptorStruct> >())
             return compare<QList<MyFileDescriptorStruct> >(arg, v2);
+
+        else if (id == qMetaTypeId<std::tuple<int>>())
+            return compare<std::tuple<int>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QString>>())
+            return compare<std::tuple<QString>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QVariantMap>>())
+            return compare<std::tuple<QVariantMap>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QPoint>>())
+            return compare<std::tuple<QPoint>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<std::tuple<int>>>())
+            return compare<std::tuple<std::tuple<int>>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QList<int>>>())
+            return compare<std::tuple<QList<int>>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<int, QString, QVariantMap>>())
+            return compare<std::tuple<int, QString, QVariantMap>>(arg, v2);
     }
 
     qWarning() << "Unexpected QVariant type" << v2.userType()

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbconnection.h"
 #include "qxcbkeyboard.h"
@@ -1598,7 +1599,7 @@ void QXcbConnection::xi2ReportTabletEvent(const void *event, TabletData *tabletD
     QPointF local(fixed1616ToReal(ev->event_x), fixed1616ToReal(ev->event_y));
     QPointF global(fixed1616ToReal(ev->root_x), fixed1616ToReal(ev->root_y));
     double pressure = 0, rotation = 0, tangentialPressure = 0;
-    int xTilt = 0, yTilt = 0;
+    qreal xTilt = 0, yTilt = 0;
     static const bool useValuators = !qEnvironmentVariableIsSet("QT_XCB_TABLET_LEGACY_COORDINATES");
     const QPointingDevice *dev = QPointingDevicePrivate::tabletDevice(QInputDevice::DeviceType(tabletData->tool),
                                                                       QPointingDevice::PointerType(tabletData->pointerType),
@@ -1664,7 +1665,7 @@ void QXcbConnection::xi2ReportTabletEvent(const void *event, TabletData *tabletD
 
     if (Q_UNLIKELY(lcQpaXInputEvents().isDebugEnabled()))
         qCDebug(lcQpaXInputEvents, "XI2 event on tablet %d with tool %s %llx type %s seq %d detail %d time %d "
-            "pos %6.1f, %6.1f root pos %6.1f, %6.1f buttons 0x%x pressure %4.2lf tilt %d, %d rotation %6.2lf modifiers 0x%x",
+            "pos %6.1f, %6.1f root pos %6.1f, %6.1f buttons 0x%x pressure %4.2lf tilt %4.2lf, %4.2lf rotation %6.2lf modifiers 0x%x",
             tabletData->deviceId, toolName(tabletData->tool), tabletData->serialId, pointerTypeName(tabletData->pointerType),
             ev->sequence, ev->detail, ev->time,
             local.x(), local.y(), global.x(), global.y(),

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlnotifier_p.h"
 #include "qqmlproperty_p.h"
@@ -13,14 +14,18 @@ typedef void (*Callback)(QQmlNotifierEndpoint *, void **);
 void QQmlBoundSignal_callback(QQmlNotifierEndpoint *, void **);
 void QQmlJavaScriptExpressionGuard_callback(QQmlNotifierEndpoint *, void **);
 void QQmlVMEMetaObjectEndpoint_callback(QQmlNotifierEndpoint *, void **);
-void QQmlPropertyGuard_callback(QQmlNotifierEndpoint *, void **);
+void QQmlUnbindableToUnbindableGuard_callback(QQmlNotifierEndpoint *, void **);
+void QQmlUnbindableToBindableGuard_callback(QQmlNotifierEndpoint *, void **);
+void QQmlDirtyReferenceObject_callback(QQmlNotifierEndpoint *, void **);
 
 static Callback QQmlNotifier_callbacks[] = {
     nullptr,
     QQmlBoundSignal_callback,
     QQmlJavaScriptExpressionGuard_callback,
     QQmlVMEMetaObjectEndpoint_callback,
-    QQmlPropertyGuard_callback
+    QQmlUnbindableToUnbindableGuard_callback,
+    QQmlUnbindableToBindableGuard_callback,
+    QQmlDirtyReferenceObject_callback,
 };
 
 namespace {

@@ -93,6 +93,11 @@ export function sqliteString(str: string): string {
   return `'${str.replaceAll("'", "''")}'`;
 }
 
+// Makes a string safe to be used as a SQL table/view/function name.
+export function sqlNameSafe(str: string): string {
+  return str.replace(/[^a-zA-Z0-9_]+/g, '_');
+}
+
 // Chat apps (including G Chat) sometimes replace ASCII characters with similar
 // looking unicode characters that break code snippets.
 // This function attempts to undo these replacements.
@@ -121,4 +126,11 @@ export function cropText(str: string, charWidth: number, rectWidth: number) {
     displayText = str.substring(0, limit) + maybeTripleDot;
   }
   return displayText;
+}
+
+export function splitLinesNonEmpty(text: string): string[] {
+  return text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
 }

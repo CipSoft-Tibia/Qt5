@@ -40,16 +40,14 @@ using namespace tint::core::number_suffixes;  // NOLINT
 using SpirvWriter_ShaderIOTest = core::ir::transform::TransformTest;
 
 TEST_F(SpirvWriter_ShaderIOTest, NoInputsOrOutputs) {
-    auto* ep = b.Function("foo", ty.void_());
-    ep->SetStage(core::ir::Function::PipelineStage::kCompute);
-    ep->SetWorkgroupSize(1, 1, 1);
+    auto* ep = b.ComputeFunction("foo");
 
     b.Append(ep->Block(), [&] {  //
         b.Return(ep);
     });
 
     auto* src = R"(
-%foo = @compute @workgroup_size(1, 1, 1) func():void {
+%foo = @compute @workgroup_size(1u, 1u, 1u) func():void {
   $B1: {
     ret
   }
@@ -59,7 +57,8 @@ TEST_F(SpirvWriter_ShaderIOTest, NoInputsOrOutputs) {
 
     auto* expect = src;
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -140,7 +139,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -292,7 +292,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -414,7 +415,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -461,7 +463,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -507,7 +510,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -617,7 +621,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -662,8 +667,8 @@ TEST_F(SpirvWriter_ShaderIOTest, ReturnValue_DualSourceBlending) {
 
     auto* src = R"(
 Output = struct @align(4) {
-  color1:f32 @offset(0), @location(0)
-  color2:f32 @offset(4), @location(0)
+  color1:f32 @offset(0), @location(0), @blend_src(0)
+  color2:f32 @offset(4), @location(0), @blend_src(1)
 }
 
 %foo = @fragment func():Output {
@@ -704,7 +709,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -845,7 +851,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -942,7 +949,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -1038,7 +1046,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -1189,7 +1198,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = false;
     Run(ShaderIO, config);
 
@@ -1286,7 +1296,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = true;
     Run(ShaderIO, config);
 
@@ -1443,8 +1454,280 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.clamp_frag_depth = true;
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(SpirvWriter_ShaderIOTest, ClampFragDepth_With_Prepared_Push_Constants) {
+    auto* str_ty = ty.Struct(mod.symbols.New("Outputs"),
+                             {
+                                 {
+                                     mod.symbols.New("color"),
+                                     ty.f32(),
+                                     core::IOAttributes{
+                                         /* location */ 0u,
+                                         /* blend_src */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
+                                 },
+                                 {
+                                     mod.symbols.New("depth"),
+                                     ty.f32(),
+                                     core::IOAttributes{
+                                         /* location */ std::nullopt,
+                                         /* blend_src */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kFragDepth,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
+                                 },
+                             });
+
+    auto* ep = b.Function("foo", str_ty);
+    ep->SetStage(core::ir::Function::PipelineStage::kFragment);
+
+    b.Append(ep->Block(), [&] {  //
+        b.Return(ep, b.Construct(str_ty, 0.5_f, 2_f));
+    });
+
+    auto* src = R"(
+Outputs = struct @align(4) {
+  color:f32 @offset(0), @location(0)
+  depth:f32 @offset(4), @builtin(frag_depth)
+}
+
+%foo = @fragment func():Outputs {
+  $B1: {
+    %2:Outputs = construct 0.5f, 2.0f
+    ret %2
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+Outputs = struct @align(4) {
+  color:f32 @offset(0)
+  depth:f32 @offset(4)
+}
+
+tint_push_constant_struct = struct @align(4), @block {
+  depth_min:f32 @offset(4)
+  depth_max:f32 @offset(8)
+}
+
+$B1: {  # root
+  %tint_push_constants:ptr<push_constant, tint_push_constant_struct, read> = var
+  %foo_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %foo_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+}
+
+%foo_inner = func():Outputs {
+  $B2: {
+    %5:Outputs = construct 0.5f, 2.0f
+    ret %5
+  }
+}
+%foo = @fragment func():void {
+  $B3: {
+    %7:Outputs = call %foo_inner
+    %8:f32 = access %7, 0u
+    store %foo_loc0_Output, %8
+    %9:f32 = access %7, 1u
+    %10:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %11:f32 = load %10
+    %12:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %13:f32 = load %12
+    %14:f32 = clamp %9, %11, %13
+    store %foo_frag_depth_Output, %14
+    ret
+  }
+}
+)";
+
+    core::ir::transform::PreparePushConstantsConfig push_constants_config;
+    push_constants_config.AddInternalConstant(4, mod.symbols.New("depth_min"), ty.f32());
+    push_constants_config.AddInternalConstant(8, mod.symbols.New("depth_max"), ty.f32());
+    auto push_constants = PreparePushConstants(mod, push_constants_config);
+    EXPECT_EQ(push_constants, Success);
+
+    ShaderIOConfig config{push_constants.Get()};
+    config.depth_range_offsets = {4, 8};
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(SpirvWriter_ShaderIOTest,
+       ClampFragDepth_With_Prepared_Push_Constants_MultipleFragmentShaders) {
+    auto* str_ty = ty.Struct(mod.symbols.New("Outputs"),
+                             {
+                                 {
+                                     mod.symbols.New("color"),
+                                     ty.f32(),
+                                     core::IOAttributes{
+                                         /* location */ 0u,
+                                         /* blend_src */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
+                                 },
+                                 {
+                                     mod.symbols.New("depth"),
+                                     ty.f32(),
+                                     core::IOAttributes{
+                                         /* location */ std::nullopt,
+                                         /* blend_src */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kFragDepth,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
+                                 },
+                             });
+
+    auto make_entry_point = [&](std::string_view name) {
+        auto* ep = b.Function(name, str_ty);
+        ep->SetStage(core::ir::Function::PipelineStage::kFragment);
+        b.Append(ep->Block(), [&] {  //
+            b.Return(ep, b.Construct(str_ty, 0.5_f, 2_f));
+        });
+    };
+    make_entry_point("ep1");
+    make_entry_point("ep2");
+    make_entry_point("ep3");
+
+    auto* src = R"(
+Outputs = struct @align(4) {
+  color:f32 @offset(0), @location(0)
+  depth:f32 @offset(4), @builtin(frag_depth)
+}
+
+%ep1 = @fragment func():Outputs {
+  $B1: {
+    %2:Outputs = construct 0.5f, 2.0f
+    ret %2
+  }
+}
+%ep2 = @fragment func():Outputs {
+  $B2: {
+    %4:Outputs = construct 0.5f, 2.0f
+    ret %4
+  }
+}
+%ep3 = @fragment func():Outputs {
+  $B3: {
+    %6:Outputs = construct 0.5f, 2.0f
+    ret %6
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+Outputs = struct @align(4) {
+  color:f32 @offset(0)
+  depth:f32 @offset(4)
+}
+
+tint_push_constant_struct = struct @align(4), @block {
+  depth_min:f32 @offset(4)
+  depth_max:f32 @offset(8)
+}
+
+$B1: {  # root
+  %tint_push_constants:ptr<push_constant, tint_push_constant_struct, read> = var
+  %ep1_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %ep1_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+  %ep2_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %ep2_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+  %ep3_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %ep3_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+}
+
+%ep1_inner = func():Outputs {
+  $B2: {
+    %9:Outputs = construct 0.5f, 2.0f
+    ret %9
+  }
+}
+%ep2_inner = func():Outputs {
+  $B3: {
+    %11:Outputs = construct 0.5f, 2.0f
+    ret %11
+  }
+}
+%ep3_inner = func():Outputs {
+  $B4: {
+    %13:Outputs = construct 0.5f, 2.0f
+    ret %13
+  }
+}
+%ep1 = @fragment func():void {
+  $B5: {
+    %15:Outputs = call %ep1_inner
+    %16:f32 = access %15, 0u
+    store %ep1_loc0_Output, %16
+    %17:f32 = access %15, 1u
+    %18:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %19:f32 = load %18
+    %20:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %21:f32 = load %20
+    %22:f32 = clamp %17, %19, %21
+    store %ep1_frag_depth_Output, %22
+    ret
+  }
+}
+%ep2 = @fragment func():void {
+  $B6: {
+    %24:Outputs = call %ep2_inner
+    %25:f32 = access %24, 0u
+    store %ep2_loc0_Output, %25
+    %26:f32 = access %24, 1u
+    %27:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %28:f32 = load %27
+    %29:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %30:f32 = load %29
+    %31:f32 = clamp %26, %28, %30
+    store %ep2_frag_depth_Output, %31
+    ret
+  }
+}
+%ep3 = @fragment func():void {
+  $B7: {
+    %33:Outputs = call %ep3_inner
+    %34:f32 = access %33, 0u
+    store %ep3_loc0_Output, %34
+    %35:f32 = access %33, 1u
+    %36:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %37:f32 = load %36
+    %38:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %39:f32 = load %38
+    %40:f32 = clamp %35, %37, %39
+    store %ep3_frag_depth_Output, %40
+    ret
+  }
+}
+)";
+
+    core::ir::transform::PreparePushConstantsConfig push_constants_config;
+    push_constants_config.AddInternalConstant(4, mod.symbols.New("depth_min"), ty.f32());
+    push_constants_config.AddInternalConstant(8, mod.symbols.New("depth_max"), ty.f32());
+    auto push_constants = PreparePushConstants(mod, push_constants_config);
+    EXPECT_EQ(push_constants, Success);
+
+    ShaderIOConfig config{push_constants.Get()};
+    config.depth_range_offsets = {4, 8};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -1491,7 +1774,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.emit_vertex_point_size = true;
     Run(ShaderIO, config);
 
@@ -1530,7 +1814,7 @@ TEST_F(SpirvWriter_ShaderIOTest, F16_IO_WithoutPolyfill) {
     auto* in1 = b.FunctionParam("in1", ty.f16());
     auto* in2 = b.FunctionParam("in2", ty.vec4<f16>());
     in1->SetLocation(1);
-    in1->SetLocation(2);
+    in2->SetLocation(2);
     auto* func = b.Function("main", outputs, core::ir::Function::PipelineStage::kFragment);
     func->SetParams({in1, in2});
     b.Append(func->Block(), [&] {  //
@@ -1543,7 +1827,7 @@ Outputs = struct @align(8) {
   out2:vec4<f16> @offset(8), @location(2)
 }
 
-%main = @fragment func(%in1:f16 [@location(2)], %in2:vec4<f16>):Outputs {
+%main = @fragment func(%in1:f16 [@location(1)], %in2:vec4<f16> [@location(2)]):Outputs {
   $B1: {
     %4:Outputs = construct %in1, %in2
     ret %4
@@ -1559,8 +1843,8 @@ Outputs = struct @align(8) {
 }
 
 $B1: {  # root
-  %main_loc2_Input:ptr<__in, f16, read> = var @location(2)
-  %main_Input:ptr<__in, vec4<f16>, read> = var
+  %main_loc1_Input:ptr<__in, f16, read> = var @location(1)
+  %main_loc2_Input:ptr<__in, vec4<f16>, read> = var @location(2)
   %main_loc1_Output:ptr<__out, f16, write> = var @location(1)
   %main_loc2_Output:ptr<__out, vec4<f16>, write> = var @location(2)
 }
@@ -1573,8 +1857,8 @@ $B1: {  # root
 }
 %main = @fragment func():void {
   $B3: {
-    %10:f16 = load %main_loc2_Input
-    %11:vec4<f16> = load %main_Input
+    %10:f16 = load %main_loc1_Input
+    %11:vec4<f16> = load %main_loc2_Input
     %12:Outputs = call %main_inner, %10, %11
     %13:f16 = access %12, 0u
     store %main_loc1_Output, %13
@@ -1585,7 +1869,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.polyfill_f16_io = false;
     Run(ShaderIO, config);
 
@@ -1624,7 +1909,7 @@ TEST_F(SpirvWriter_ShaderIOTest, F16_IO_WithPolyfill) {
     auto* in1 = b.FunctionParam("in1", ty.f16());
     auto* in2 = b.FunctionParam("in2", ty.vec4<f16>());
     in1->SetLocation(1);
-    in1->SetLocation(2);
+    in2->SetLocation(2);
     auto* func = b.Function("main", outputs, core::ir::Function::PipelineStage::kFragment);
     func->SetParams({in1, in2});
     b.Append(func->Block(), [&] {  //
@@ -1637,7 +1922,7 @@ Outputs = struct @align(8) {
   out2:vec4<f16> @offset(8), @location(2)
 }
 
-%main = @fragment func(%in1:f16 [@location(2)], %in2:vec4<f16>):Outputs {
+%main = @fragment func(%in1:f16 [@location(1)], %in2:vec4<f16> [@location(2)]):Outputs {
   $B1: {
     %4:Outputs = construct %in1, %in2
     ret %4
@@ -1653,8 +1938,8 @@ Outputs = struct @align(8) {
 }
 
 $B1: {  # root
-  %main_loc2_Input:ptr<__in, f32, read> = var @location(2)
-  %main_Input:ptr<__in, vec4<f32>, read> = var
+  %main_loc1_Input:ptr<__in, f32, read> = var @location(1)
+  %main_loc2_Input:ptr<__in, vec4<f32>, read> = var @location(2)
   %main_loc1_Output:ptr<__out, f32, write> = var @location(1)
   %main_loc2_Output:ptr<__out, vec4<f32>, write> = var @location(2)
 }
@@ -1667,9 +1952,9 @@ $B1: {  # root
 }
 %main = @fragment func():void {
   $B3: {
-    %10:f32 = load %main_loc2_Input
+    %10:f32 = load %main_loc1_Input
     %11:f16 = convert %10
-    %12:vec4<f32> = load %main_Input
+    %12:vec4<f32> = load %main_loc2_Input
     %13:vec4<f16> = convert %12
     %14:Outputs = call %main_inner, %11, %13
     %15:f16 = access %14, 0u
@@ -1683,7 +1968,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     config.polyfill_f16_io = true;
     Run(ShaderIO, config);
 

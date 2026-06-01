@@ -132,7 +132,7 @@ public:
 };
 
 template <>
-class Arg<QPair<const QChar *, int> > : ArgBase
+class Arg<std::pair<const QChar *, int> > : ArgBase
 {
 public:
     explicit Arg(const char *str) : ArgBase(str) {}
@@ -371,6 +371,7 @@ private slots:
     void check_QDataStream();
     void fromRawData();
     void setRawData();
+    void nullTerminated();
     void setUnicode();
     void endsWith();
     void startsWith();
@@ -425,7 +426,7 @@ private slots:
     void prepend_qlatin1string_data() { prepend_data({EmptyIsNoop, Latin1Encoded}); }
     void prepend_qutf8stringview()    { prepend_impl<QUtf8StringView, QString &(QString::*)(QUtf8StringView)>(); }
     void prepend_qutf8stringview_data() { prepend_data(EmptyIsNoop); }
-    void prepend_qcharstar_int()      { prepend_impl<QPair<const QChar *, int>, QString &(QString::*)(const QChar *, qsizetype)>(); }
+    void prepend_qcharstar_int()      { prepend_impl<std::pair<const QChar *, int>, QString &(QString::*)(const QChar *, qsizetype)>(); }
     void prepend_qcharstar_int_data() { prepend_data(EmptyIsNoop); }
     void prepend_qchar()              { prepend_impl<Reversed<QChar>, QString &(QString::*)(QChar)>(); }
     void prepend_qchar_data()         { prepend_data(EmptyIsNoop); }
@@ -454,7 +455,7 @@ private slots:
     void append_qlatin1string_data() { append_data(Latin1Encoded); }
     void append_qutf8stringview()    { append_impl<QUtf8StringView,  QString &(QString::*)(QUtf8StringView)>(); }
     void append_qutf8stringview_data() { append_data(); }
-    void append_qcharstar_int()      { append_impl<QPair<const QChar *, int>, QString&(QString::*)(const QChar *, qsizetype)>(); }
+    void append_qcharstar_int()      { append_impl<std::pair<const QChar *, int>, QString&(QString::*)(const QChar *, qsizetype)>(); }
     void append_qcharstar_int_data() { append_data(EmptyIsNoop); }
     void append_qchar()              { append_impl<QChar, QString &(QString::*)(QChar)>(); }
     void append_qchar_data()         { append_data(EmptyIsNoop); }
@@ -523,7 +524,7 @@ private slots:
     void insert_qlatin1string_data() { insert_data({EmptyIsNoop, Latin1Encoded}); }
     void insert_qutf8stringview()    { insert_impl<QUtf8StringView, QString &(QString::*)(qsizetype, QUtf8StringView)>(); }
     void insert_qutf8stringview_data() { insert_data(EmptyIsNoop); }
-    void insert_qcharstar_int()      { insert_impl<QPair<const QChar *, int>, QString &(QString::*)(qsizetype, const QChar*, qsizetype) >(); }
+    void insert_qcharstar_int()      { insert_impl<std::pair<const QChar *, int>, QString &(QString::*)(qsizetype, const QChar*, qsizetype) >(); }
     void insert_qcharstar_int_data() { insert_data(EmptyIsNoop); }
     void insert_qchar()              { insert_impl<Reversed<QChar>, QString &(QString::*)(qsizetype, QChar)>(); }
     void insert_qchar_data()         { insert_data(EmptyIsNoop); }
@@ -712,6 +713,7 @@ private slots:
     void vasprintfWithPrecision();
 
     void rawData();
+    void testUtf16();
     void clear();
     void first();
     void last();
@@ -6019,6 +6021,42 @@ void tst_QString::setRawData()
     QVERIFY(cstr.data_ptr() != csd);
 }
 
+void tst_QString::nullTerminated()
+{
+    const QChar ptr[] = { u'ሴ', u'ʎ', u'\0' };
+
+    QTest::ThrowOnFailEnabler thrower;
+
+    auto check = [ptr] (const QString &r) {
+        QVERIFY(r.constData() != ptr);
+        QCOMPARE(r.constData()[0], ptr[0]);
+        QCOMPARE(r.constData()[1], ptr[1]);
+        QCOMPARE(r.constData()[2], u'\0');
+        QCOMPARE(r.size(), 2);
+    };
+
+    {
+        QString str = QString::fromRawData(ptr, 2);
+        QCOMPARE(str.constData(), ptr);
+        QCOMPARE(str.constData()[0], ptr[0]);
+        QCOMPARE(str.constData()[1], ptr[1]);
+        QCOMPARE(str.size(), 2);
+
+        check(str.nullTerminated());
+        check(QString::fromRawData(ptr, 2).nullTerminated()); // rvalue
+    }
+
+    {
+        QString str = QString::fromRawData(ptr, 2);
+        QCOMPARE(str.constData(), ptr);
+        QCOMPARE(str.constData()[0], ptr[0]);
+        QCOMPARE(str.constData()[1], ptr[1]);
+        QCOMPARE(str.size(), 2);
+
+        check(str.nullTerminate());
+    }
+}
+
 void tst_QString::setUnicode()
 {
     const QChar ptr[] = { u'ሴ', QChar(0x0000) };
@@ -6774,7 +6812,7 @@ void tst_QString::arg()
     QTest::ignoreMessage(QtWarningMsg, nonAsciiArgWarning);
     QCOMPARE( QString("%2²%1").arg("a").arg("b"), QString("ba") );
 #else
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: %¹, foo");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"%¹\", \"foo\"");
     QCOMPARE(u"%¹"_s.arg(foo), u"%¹");
     QCOMPARE(u"%¹%1"_s.arg(foo), u"%¹foo");
     QCOMPARE(u"%1²"_s.arg(u"E=mc"_s), u"E=mc²");
@@ -6816,10 +6854,7 @@ void tst_QString::arg()
     // char-ish overloads
     QCOMPARE(s4.arg('\xE4'), QStringView(u"[ä]"));
     QCOMPARE(s4.arg(u'ø'), QStringView(u"[ø]"));
-#ifdef Q_OS_WIN
     QCOMPARE(QLatin1String("[%1]").arg(L'ø'), QStringView(u"[ø]"));
-#endif
-    QEXPECT_FAIL("", "QTBUG-126054", Continue);
     QCOMPARE(s4.arg(L'ø'), QStringView(u"[ø]"));
 #ifndef __cpp_char8_t
 #ifndef QT_NO_CAST_FROM_ASCII
@@ -6828,19 +6863,23 @@ void tst_QString::arg()
 #endif
     QCOMPARE(s4.arg(u8'a'), QLatin1String("[a]"));
 
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: , foo");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"\", \"foo\"");
     QCOMPARE(QString().arg(foo), QString());
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"\" , 0");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"\", 0");
     QCOMPARE( QString().arg(0), QString() );
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"\" , 0");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"\", 0");
+    QCOMPARE( QString().arg(0U), QString() );
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"\", 0");
+    QCOMPARE( QString().arg(0.0), QString() );
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"\", 0");
     QCOMPARE(QString(u""_s).arg(0), u""_s);
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \" \" , 0");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \" \", 0");
     QCOMPARE(QString(u" "_s).arg(0), " "_L1);
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"%\" , 0");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"%\", 0");
     QCOMPARE(QString(u"%"_s).arg(0), "%"_L1);
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"%%\" , 0");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"%%\", 0");
     QCOMPARE(QString(u"%%"_s).arg(0), "%%"_L1);
-    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"%%%\" , 0");
+    QTest::ignoreMessage(QtWarningMsg, "QString::arg: Argument missing: \"%%%\", 0");
     QCOMPARE(QString(u"%%%"_s).arg(0), "%%%"_L1);
     QCOMPARE(QString(u"%%%1%%%2"_s).arg(foo).arg(bar), "%%foo%%bar"_L1);
 
@@ -6942,6 +6981,13 @@ using arg_compile_test = decltype(std::declval<S>().arg(std::declval<Ts>()...));
 template <typename S, typename...Ts>
 constexpr bool arg_compiles_v = qxp::is_detected_v<arg_compile_test, S, Ts...>;
 
+template <typename T>
+struct Wrapper { // QTBUG-138471
+    Q_IMPLICIT operator T() const {
+        return T(1);
+    }
+};
+
 void tst_QString::arg_negative_tests()
 {
     static_assert(!arg_compiles_v<QString&, QObject*>);
@@ -6955,6 +7001,12 @@ void tst_QString::arg_negative_tests()
     // strong enums don't match:
     enum class Strong {};
     static_assert(!arg_compiles_v<QString&, Strong>);
+
+    // types that merely implicitly convert to a supported type don't match:
+    static_assert(!arg_compiles_v<QString, Wrapper<float>>);
+    static_assert(!arg_compiles_v<QString, Wrapper<double>>);
+    static_assert(!arg_compiles_v<QString, Wrapper<int>>);
+    static_assert(!arg_compiles_v<QString, Wrapper<char16_t>>);
 }
 
 void tst_QString::number()
@@ -9352,6 +9404,28 @@ void tst_QString::rawData()
 
     // utf pointer is valid while the string is not changed
     QCOMPARE(QString::fromUtf16(char16Ptr), s);
+}
+
+void tst_QString::testUtf16()
+{
+    {
+        constexpr char16_t arr[] = {u'a', u'b', u'c'};
+        QString s = QString::fromRawData(arr, 3); // doesn't guarantee null-termination
+        QCOMPARE(s.size(), qsizetype(std::size(arr)));
+        // The string points to the raw data
+        QCOMPARE(static_cast<const void *>(s.constData()), static_cast<const void *>(arr));
+        const ushort *p = s.utf16();
+        // the data was deep-copied
+        QCOMPARE_NE(static_cast<const void *>(p), static_cast<const void *>(arr));
+        QCOMPARE(s.constData()[3], u'\0'); // and null-terminated
+    }
+
+    {
+        QString s = QString::fromUtf16(u"abc");
+        const QChar *ptr = s.constData();
+        // calling utf16() doesn't modify the string
+        QCOMPARE(static_cast<const void *>(ptr), static_cast<const void *>(s.utf16()));
+    }
 }
 
 void tst_QString::clear()

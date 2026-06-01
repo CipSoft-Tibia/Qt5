@@ -77,7 +77,7 @@ private:
 class QQuick3DPhysicsMeshManager
 {
 public:
-    static QQuick3DPhysicsMesh *getMesh(const QUrl &source, const QObject *contextObject);
+    static QQuick3DPhysicsMesh *getMesh(const QUrl &source, QObject *contextObject);
     static QQuick3DPhysicsMesh *getMesh(QQuick3DGeometry *source);
     static void releaseMesh(QQuick3DPhysicsMesh *mesh);
 

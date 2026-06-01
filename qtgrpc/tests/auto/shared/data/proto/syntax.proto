@@ -144,3 +144,12 @@ message NameClashingMap {
     int32 Field1_Entry = 2;
     int32 Field2Entry = 3;
 }
+
+message MutFieldMessage {
+    int32 data = 1;
+}
+
+message NameClashingMutableGetters {
+    MutFieldMessage field = 1;
+    MutFieldMessage mutField = 2;
+}

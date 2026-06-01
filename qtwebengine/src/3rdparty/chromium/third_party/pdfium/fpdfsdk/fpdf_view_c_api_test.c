@@ -179,6 +179,7 @@ int CheckPDFiumCApi() {
     CHK(FPDFGlyphPath_CountGlyphSegments);
     CHK(FPDFGlyphPath_GetGlyphPathSegment);
     CHK(FPDFImageObj_GetBitmap);
+    CHK(FPDFImageObj_GetIccProfileDataDecoded);
     CHK(FPDFImageObj_GetImageDataDecoded);
     CHK(FPDFImageObj_GetImageDataRaw);
     CHK(FPDFImageObj_GetImageFilter);
@@ -212,6 +213,7 @@ int CheckPDFiumCApi() {
     CHK(FPDFPageObj_GetDashCount);
     CHK(FPDFPageObj_GetDashPhase);
     CHK(FPDFPageObj_GetFillColor);
+    CHK(FPDFPageObj_GetIsActive);
     CHK(FPDFPageObj_GetLineCap);
     CHK(FPDFPageObj_GetLineJoin);
     CHK(FPDFPageObj_GetMark);
@@ -229,6 +231,7 @@ int CheckPDFiumCApi() {
     CHK(FPDFPageObj_SetDashArray);
     CHK(FPDFPageObj_SetDashPhase);
     CHK(FPDFPageObj_SetFillColor);
+    CHK(FPDFPageObj_SetIsActive);
     CHK(FPDFPageObj_SetLineCap);
     CHK(FPDFPageObj_SetLineJoin);
     CHK(FPDFPageObj_SetMatrix);

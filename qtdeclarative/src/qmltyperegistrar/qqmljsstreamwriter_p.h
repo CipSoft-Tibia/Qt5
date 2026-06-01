@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSSTREAMWRITER_P_H
 #define QQMLJSSTREAMWRITER_P_H
@@ -18,7 +19,7 @@
 #include <QtCore/QList>
 #include <QtCore/QString>
 #include <QtCore/QScopedPointer>
-#include <QtCore/QPair>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -39,7 +40,7 @@ public:
 
     // TODO: Drop this once we can drop qmlplugindump. It is substantially weird.
     void writeEnumObjectLiteralBinding(
-        QByteArrayView name, const QList<QPair<QAnyStringView, int>> &keyValue);
+        QByteArrayView name, const QList<std::pair<QAnyStringView, int>> &keyValue);
 
     // TODO: these would look better with generator functions.
     void writeArrayBinding(QByteArrayView name, const QByteArrayList &elements);

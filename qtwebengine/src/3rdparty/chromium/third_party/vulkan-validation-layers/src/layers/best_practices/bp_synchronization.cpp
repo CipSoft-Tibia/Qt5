@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
  *
@@ -38,19 +38,19 @@ bool BestPractices::CheckPipelineStageFlags(const LogObjectList& objlist, const 
                                             VkPipelineStageFlags2KHR flags) const {
     bool skip = false;
 
-    if (flags & VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR) {
-        skip |= LogWarning("BestPractices-pipeline-stage-flags2-graphics", objlist, loc,
-                           "using VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR");
-    } else if (flags & VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR) {
-        skip |= LogWarning("BestPractices-pipeline-stage-flags2-compute", objlist, loc,
-                           "using VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR");
+    if (flags & VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT) {
+        skip |=
+            LogWarning("BestPractices-pipeline-stage-flags2-graphics", objlist, loc, "using VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT");
+    } else if (flags & VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT) {
+        skip |=
+            LogWarning("BestPractices-pipeline-stage-flags2-compute", objlist, loc, "using VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT");
     }
 
     return skip;
 }
 
 bool BestPractices::CheckDependencyInfo(const LogObjectList& objlist, const Location& dep_loc,
-                                        const VkDependencyInfoKHR& dep_info) const {
+                                        const VkDependencyInfo& dep_info) const {
     bool skip = false;
     auto stage_masks = sync_utils::GetGlobalStageMasks(dep_info);
 
@@ -108,7 +108,7 @@ bool BestPractices::PreCallValidateCmdSetEvent(VkCommandBuffer commandBuffer, Vk
 
 void BestPractices::PreCallRecordCmdSetEvent(VkCommandBuffer commandBuffer, VkEvent event, VkPipelineStageFlags stageMask,
                                              const RecordObject& record_obj) {
-    ValidationStateTracker::PreCallRecordCmdSetEvent(commandBuffer, event, stageMask, record_obj);
+    BaseClass::PreCallRecordCmdSetEvent(commandBuffer, event, stageMask, record_obj);
     auto cb_state = GetWrite<bp_state::CommandBuffer>(commandBuffer);
     RecordCmdSetEvent(*cb_state, event);
 }
@@ -134,7 +134,7 @@ void BestPractices::PreCallRecordCmdSetEvent2KHR(VkCommandBuffer commandBuffer, 
 
 void BestPractices::PreCallRecordCmdSetEvent2(VkCommandBuffer commandBuffer, VkEvent event, const VkDependencyInfo* pDependencyInfo,
                                               const RecordObject& record_obj) {
-    ValidationStateTracker::PreCallRecordCmdSetEvent2(commandBuffer, event, pDependencyInfo, record_obj);
+    BaseClass::PreCallRecordCmdSetEvent2(commandBuffer, event, pDependencyInfo, record_obj);
     auto cb_state = GetWrite<bp_state::CommandBuffer>(commandBuffer);
     RecordCmdSetEvent(*cb_state, event);
 }
@@ -148,7 +148,7 @@ bool BestPractices::PreCallValidateCmdResetEvent(VkCommandBuffer commandBuffer, 
 
 void BestPractices::PreCallRecordCmdResetEvent(VkCommandBuffer commandBuffer, VkEvent event, VkPipelineStageFlags stageMask,
                                                const RecordObject& record_obj) {
-    ValidationStateTracker::PreCallRecordCmdResetEvent(commandBuffer, event, stageMask, record_obj);
+    BaseClass::PreCallRecordCmdResetEvent(commandBuffer, event, stageMask, record_obj);
     auto cb_state = GetWrite<bp_state::CommandBuffer>(commandBuffer);
     RecordCmdResetEvent(*cb_state, event);
 }
@@ -172,7 +172,7 @@ void BestPractices::PreCallRecordCmdResetEvent2KHR(VkCommandBuffer commandBuffer
 
 void BestPractices::PreCallRecordCmdResetEvent2(VkCommandBuffer commandBuffer, VkEvent event, VkPipelineStageFlags2 stageMask,
                                                 const RecordObject& record_obj) {
-    ValidationStateTracker::PreCallRecordCmdResetEvent2(commandBuffer, event, stageMask, record_obj);
+    BaseClass::PreCallRecordCmdResetEvent2(commandBuffer, event, stageMask, record_obj);
     auto cb_state = GetWrite<bp_state::CommandBuffer>(commandBuffer);
     RecordCmdResetEvent(*cb_state, event);
 }
@@ -390,7 +390,8 @@ bool BestPractices::PreCallValidateCmdPipelineBarrier(
                 auto image_state = Get<vvl::Image>(pImageMemoryBarriers[i].image);
                 if (image_state && !(image_state->create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT)) {
                     const LogObjectList objlist(commandBuffer, pImageMemoryBarriers[i].image);
-                    skip |= LogPerformanceWarning("BestPractices-AMD-vkImage-AvoidGeneral", objlist, error_obj.location,
+                    skip |= LogPerformanceWarning("BestPractices-AMD-vkImage-AvoidGeneral", objlist,
+                                                  error_obj.location.dot(Field::pImageMemoryBarriers, i).dot(Field::image),
                                                   "%s VK_IMAGE_LAYOUT_GENERAL should only be used with "
                                                   "VK_IMAGE_USAGE_STORAGE_BIT images.",
                                                   VendorSpecificTag(kBPVendorAMD));
@@ -469,8 +470,7 @@ void BestPractices::RecordCmdPipelineBarrierImageBarrier(VkCommandBuffer command
         auto image = Get<bp_state::Image>(barrier.image);
         ASSERT_AND_RETURN(image);
         auto subresource_range = barrier.subresourceRange;
-        cb_state->queue_submit_functions.emplace_back([image, subresource_range](const ValidationStateTracker& vst,
-                                                                                 const vvl::Queue& qs,
+        cb_state->queue_submit_functions.emplace_back([image, subresource_range](const vvl::Device& vst, const vvl::Queue& qs,
                                                                                  const vvl::CommandBuffer& cbs) -> bool {
             ForEachSubresource(*image, subresource_range, [&](uint32_t layer, uint32_t level) {
                 // Update queue family index without changing usage, signifying a correct queue family transfer
@@ -490,7 +490,7 @@ void BestPractices::PostCallRecordCmdPipelineBarrier(
     VkDependencyFlags dependencyFlags, uint32_t memoryBarrierCount, const VkMemoryBarrier* pMemoryBarriers,
     uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier* pBufferMemoryBarriers, uint32_t imageMemoryBarrierCount,
     const VkImageMemoryBarrier* pImageMemoryBarriers, const RecordObject& record_obj) {
-    ValidationStateTracker::PostCallRecordCmdPipelineBarrier(
+    BaseClass::PostCallRecordCmdPipelineBarrier(
         commandBuffer, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount,
         pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers, record_obj);
 
@@ -503,7 +503,7 @@ void BestPractices::PostCallRecordCmdPipelineBarrier(
 
 void BestPractices::PostCallRecordCmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo* pDependencyInfo,
                                                       const RecordObject& record_obj) {
-    ValidationStateTracker::PostCallRecordCmdPipelineBarrier2(commandBuffer, pDependencyInfo, record_obj);
+    BaseClass::PostCallRecordCmdPipelineBarrier2(commandBuffer, pDependencyInfo, record_obj);
 
     for (uint32_t i = 0; i < pDependencyInfo->imageMemoryBarrierCount; ++i) {
         RecordCmdPipelineBarrierImageBarrier(commandBuffer, pDependencyInfo->pImageMemoryBarriers[i]);

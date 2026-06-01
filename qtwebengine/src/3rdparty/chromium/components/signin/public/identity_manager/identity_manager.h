@@ -14,7 +14,6 @@
 #include "base/scoped_observation.h"
 #include "base/scoped_observation_traits.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "components/account_manager_core/account.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/signin/internal/identity_manager/primary_account_manager.h"
@@ -41,10 +40,6 @@ class AccountManagerFacade;
 }
 #endif
 
-namespace gaia {
-struct ListedAccount;
-}  // namespace gaia
-
 namespace network {
 class SharedURLLoaderFactory;
 class TestURLLoaderFactory;
@@ -60,7 +55,7 @@ class PrivacySandboxSettingsDelegate;
 
 namespace signin {
 
-struct AccountsInCookieJarInfo;
+class AccountsInCookieJarInfo;
 struct AccountAvailabilityOptions;
 class IdentityManagerTest;
 class IdentityTestEnvironment;
@@ -134,16 +129,19 @@ class IdentityManager : public KeyedService,
     virtual void OnRefreshTokensLoaded() {}
 
     // Called whenever the list of Gaia accounts in the cookie jar has changed.
-    // |accounts_in_cookie_jar_info.accounts| is ordered by the order of the
-    // accounts in the cookie.
     //
-    // This observer method is also called when fetching the list of accounts
-    // in Gaia cookies fails after a number of internal retries. In this case:
-    // * |error| hold the last error to fetch the list of accounts;
-    // * |accounts_in_cookie_jar_info.accounts_are_fresh| is set to false as
-    //   the accounts information is considered stale;
-    // * |accounts_in_cookie_jar_info.accounts| holds the last list of known
-    //   accounts in the cookie jar.
+    // This observer method is also called when fetching the list of accounts in
+    // Gaia cookies fails after a number of internal retries.
+    //
+    // * `accounts_in_cookie_jar_info` contains the information about accounts
+    //    cookies. Accounts in this object are ordered by the order of accounts
+    //    in the cookie. If fetching accounts failed or hasn't finished yet,
+    //    this object will contain the last known state of accounts in the
+    //    cookie jar. See `AccountsInCookieJarInfo` documentation for more
+    //    details on the information available there.
+    // * `error` holds the last error that occurred while fetching the list of
+    //    accounts (or `GoogleServiceAuthError::AuthErrorNone()`, if fetching
+    //    succeeded).
     virtual void OnAccountsInCookieUpdated(
         const AccountsInCookieJarInfo& accounts_in_cookie_jar_info,
         const GoogleServiceAuthError& error) {}
@@ -160,6 +158,11 @@ class IdentityManager : public KeyedService,
 
     // Called after removing an account info.
     virtual void OnExtendedAccountInfoRemoved(const AccountInfo& info) {}
+
+#if BUILDFLAG(IS_IOS)
+    // Called after the list of accounts in `GetAccountsOnDevice` changes.
+    virtual void OnAccountsOnDeviceChanged() {}
+#endif
 
     // Called on Shutdown(), for observers that aren't KeyedServices to remove
     // their observers.
@@ -203,7 +206,9 @@ class IdentityManager : public KeyedService,
                                      const std::string& oauth_consumer_name,
                                      const ScopeSet& scopes,
                                      AccessTokenFetcher::TokenCallback callback,
-                                     AccessTokenFetcher::Mode mode);
+                                     AccessTokenFetcher::Mode mode,
+                                     AccessTokenFetcher::Source token_source =
+                                         AccessTokenFetcher::Source::kProfile);
 
   // Creates an AccessTokenFetcher given the passed-in information, allowing
   // to specify a custom |url_loader_factory| as well.
@@ -241,6 +246,11 @@ class IdentityManager : public KeyedService,
 
   // Returns true if a refresh token exists for |account_id|.
   bool HasAccountWithRefreshToken(const CoreAccountId& account_id) const;
+
+#if BUILDFLAG(IS_IOS)
+  bool HasAccountWithRefreshTokenOnDevice(
+      const CoreAccountId& account_id) const;
+#endif
 
   // Returns true if all refresh tokens have been loaded from disk.
   bool AreRefreshTokensLoaded() const;
@@ -282,7 +292,7 @@ class IdentityManager : public KeyedService,
   AccountInfo FindExtendedAccountInfoByEmailAddress(
       const std::string& email_address) const;
   // The same as `FindExtendedAccountInfo()` but finds an account by gaia ID.
-  AccountInfo FindExtendedAccountInfoByGaiaId(const std::string& gaia_id) const;
+  AccountInfo FindExtendedAccountInfoByGaiaId(const GaiaId& gaia_id) const;
 
   // Provides the information of all accounts that are present in the Gaia
   // cookie in the cookie jar, ordered by their order in the cookie.
@@ -308,6 +318,13 @@ class IdentityManager : public KeyedService,
   // Returns pointer to the object used to seed accounts information from the
   // device-level accounts. May be null if the system has no such notion.
   DeviceAccountsSynchronizer* GetDeviceAccountsSynchronizer();
+
+#if BUILDFLAG(IS_IOS)
+  // Gets all accounts on the device, including the ones from other profiles, in
+  // the order provided by the system (usually the order in which the accounts
+  // were added).
+  [[nodiscard]] std::vector<AccountInfo> GetAccountsOnDevice();
+#endif
 
   // Observer interface for classes that want to monitor status of various
   // requests. Mostly useful in tests and debugging contexts (e.g., WebUI).
@@ -408,7 +425,7 @@ class IdentityManager : public KeyedService,
   void OnNetworkInitialized();
 
   // Picks the correct account_id for account with the given gaia id and email.
-  CoreAccountId PickAccountIdForAccount(const std::string& gaia,
+  CoreAccountId PickAccountIdForAccount(const GaiaId& gaia,
                                         const std::string& email) const;
 
   // Methods used only by embedder-level factory classes.
@@ -438,7 +455,12 @@ class IdentityManager : public KeyedService,
 
 #if BUILDFLAG(IS_ANDROID)
   // Get the reference on the java IdentityManager.
-  base::android::ScopedJavaLocalRef<jobject> GetJavaObject();
+  base::android::ScopedJavaLocalRef<jobject> GetJavaObject() const;
+
+  // Get the reference on the java IdentityManager.
+  static IdentityManager* FromJavaObject(
+      JNIEnv* env,
+      const base::android::JavaRef<jobject>& j_identity_manager);
 
   // Provide the reference on the java IdentityMutator.
   base::android::ScopedJavaLocalRef<jobject> GetIdentityMutatorJavaObject();
@@ -538,7 +560,7 @@ class IdentityManager : public KeyedService,
       IdentityManager* identity_manager,
       const CoreAccountId& account_id,
       const std::string& email,
-      const std::string& gaia,
+      const GaiaId& gaia,
       const std::string& hosted_domain,
       const std::string& full_name,
       const std::string& given_name,
@@ -548,7 +570,7 @@ class IdentityManager : public KeyedService,
 #if BUILDFLAG(IS_CHROMEOS)
   friend account_manager::AccountManagerFacade* GetAccountManagerFacade(
       IdentityManager* identity_manager);
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   // Temporary access to getters (e.g. GetTokenService()).
   // TODO(crbug.com/40619310): Remove this friendship by
@@ -644,11 +666,14 @@ class IdentityManager : public KeyedService,
                           const GoogleServiceAuthError& auth_error,
                           signin_metrics::SourceForRefreshTokenOperation
                               token_operation_source) override;
+#if BUILDFLAG(IS_IOS)
+  void OnAccountsOnDeviceChanged() override;
+  void OnAccountOnDeviceUpdated(const AccountInfo& account_info) override;
+#endif
 
   // GaiaCookieManagerService callbacks:
   void OnGaiaAccountsInCookieUpdated(
-      const std::vector<gaia::ListedAccount>& signed_in_accounts,
-      const std::vector<gaia::ListedAccount>& signed_out_accounts,
+      const AccountsInCookieJarInfo& accounts_in_cookie_jar_info,
       const GoogleServiceAuthError& error);
   void OnGaiaCookieDeletedByUserAction();
 
@@ -744,5 +769,23 @@ struct ScopedObservationTraits<signin::IdentityManager,
 };
 
 }  // namespace base
+
+#if BUILDFLAG(IS_ANDROID)
+namespace jni_zero {
+template <>
+inline signin::IdentityManager* FromJniType<signin::IdentityManager*>(
+    JNIEnv* env,
+    const JavaRef<jobject>& j_identity_manager) {
+  return signin::IdentityManager::FromJavaObject(env, j_identity_manager);
+}
+
+template <>
+inline ScopedJavaLocalRef<jobject> ToJniType(
+    JNIEnv* env,
+    signin::IdentityManager* identity_manager) {
+  return identity_manager ? identity_manager->GetJavaObject() : nullptr;
+}
+}  // namespace jni_zero
+#endif
 
 #endif  // COMPONENTS_SIGNIN_PUBLIC_IDENTITY_MANAGER_IDENTITY_MANAGER_H_

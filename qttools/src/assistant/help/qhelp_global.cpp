@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelp_global.h"
+#include <QtTools/qttools-config.h>
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qmutex.h>
-#include <QtGui/qtextdocument.h>
+#if QT_CONFIG(fullqthelp)
+#  include <QtGui/qtextdocument.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -22,6 +25,7 @@ QString QHelpGlobal::uniquifyConnectionName(const QString &name, void *pointer)
 
 QString QHelpGlobal::documentTitle(const QString &content)
 {
+#if QT_CONFIG(fullqthelp)
     QString title = QCoreApplication::translate("QHelp", "Untitled");
     if (!content.isEmpty()) {
         const int start = content.indexOf("<title>"_L1, 0, Qt::CaseInsensitive) + 7;
@@ -36,6 +40,10 @@ QString QHelpGlobal::documentTitle(const QString &content)
         }
     }
     return title;
+#else
+    Q_UNUSED(content);
+    return {};
+#endif
 }
 
 QT_END_NAMESPACE

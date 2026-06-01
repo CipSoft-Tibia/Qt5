@@ -207,10 +207,6 @@ std::vector<gl::GLImplementationParts>
 WaylandSurfaceFactory::GetAllowedGLImplementations() {
   std::vector<gl::GLImplementationParts> impls;
   if (egl_implementation_) {
-    // Allow for Angle-vulkan implementation.
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-    impls.emplace_back(gl::kGLImplementationEGLANGLE);
-#endif
     impls.emplace_back(gl::ANGLEImplementation::kOpenGL);
     impls.emplace_back(gl::ANGLEImplementation::kOpenGLES);
     impls.emplace_back(gl::ANGLEImplementation::kSwiftShader);
@@ -234,6 +230,9 @@ GLOzone* WaylandSurfaceFactory::GetGLOzone(
 std::unique_ptr<gpu::VulkanImplementation>
 WaylandSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
                                                   bool allow_protected_memory) {
+  LOG_IF(ERROR, !use_swiftshader)
+      << "'--ozone-platform=wayland' is not compatible with Vulkan. "
+         "Consider switching to '--ozone-platform=x11' or disabling Vulkan";
   return std::make_unique<VulkanImplementationWayland>(use_swiftshader);
 }
 #endif
@@ -250,17 +249,20 @@ scoped_refptr<gfx::NativePixmap> WaylandSurfaceFactory::CreateNativePixmap(
     return nullptr;
   }
 #if defined(WAYLAND_GBM)
-  scoped_refptr<GbmPixmapWayland> pixmap =
-      base::MakeRefCounted<GbmPixmapWayland>(buffer_manager_);
+  auto* gbm_device = buffer_manager_->GetGbmDevice();
+  if (gbm_device && gbm_device->CanCreateBufferForFormat(
+                        GetFourCCFormatFromBufferFormat(format))) {
+    scoped_refptr<GbmPixmapWayland> pixmap =
+        base::MakeRefCounted<GbmPixmapWayland>(buffer_manager_);
 
-  if (!pixmap->InitializeBuffer(widget, size, format, usage,
-                                framebuffer_size)) {
-    return nullptr;
+    if (!pixmap->InitializeBuffer(widget, size, format, usage,
+                                  framebuffer_size)) {
+      return nullptr;
+    }
+    return pixmap;
   }
-  return pixmap;
-#else
-  return nullptr;
 #endif
+  return nullptr;
 }
 
 void WaylandSurfaceFactory::CreateNativePixmapAsync(
@@ -284,8 +286,8 @@ WaylandSurfaceFactory::CreateNativePixmapFromHandle(
     gfx::NativePixmapHandle handle) {
 #if defined(WAYLAND_GBM)
   auto* gbm_device = buffer_manager_->GetGbmDevice();
-  if (gbm_device->CanCreateBufferForFormat(
-          GetFourCCFormatFromBufferFormat(format))) {
+  if (gbm_device && gbm_device->CanCreateBufferForFormat(
+                        GetFourCCFormatFromBufferFormat(format))) {
     scoped_refptr<GbmPixmapWayland> pixmap =
         base::MakeRefCounted<GbmPixmapWayland>(buffer_manager_);
     if (pixmap->InitializeBufferFromHandle(widget, size, format,

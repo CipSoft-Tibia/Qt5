@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -21,15 +22,16 @@
 #include "base/lazy_instance.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/thread_pool.h"
+#include "base/types/expected.h"
 #include "base/uuid.h"
 #include "chrome/browser/apps/app_service/app_launch_params.h"
 #include "chrome/browser/devtools/devtools_window.h"
+#include "chrome/browser/extensions/account_extension_tracker.h"
 #include "chrome/browser/extensions/api/developer_private/extension_info_generator.h"
 #include "chrome/browser/extensions/chrome_zipfile_installer.h"
 #include "chrome/browser/extensions/crx_installer.h"
@@ -38,6 +40,8 @@
 #include "chrome/browser/extensions/extension_commands_global_registry.h"
 #include "chrome/browser/extensions/extension_management.h"
 #include "chrome/browser/extensions/extension_service.h"
+#include "chrome/browser/extensions/extension_sync_service.h"
+#include "chrome/browser/extensions/extension_sync_util.h"
 #include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/extension_util.h"
@@ -54,6 +58,7 @@
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/supervised_user/supervised_user_browser_utils.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
@@ -72,6 +77,7 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/policy/core/common/policy_pref_names.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_frame_host.h"
@@ -179,6 +185,12 @@ const char kExtensionNotAffectedByMV2Deprecation[] =
 const char kCannotRepairNonWebstoreExtension[] =
     "Cannot repair an extension that is not installed from the Chrome Web "
     "Store.";
+const char kCannotDismissExtensionOnUnsupportedStage[] =
+    "Cannot dismiss the MV2 deprecation notice for extension with ID '*' on "
+    "the unsupported stage.";
+const char kUserNotSignedIn[] = "User is not signed in.";
+const char kCannotUploadExtensionToAccount[] =
+    "Extension with ID '*' cannot be uploaded to the user's account.";
 
 const char kUnpackedAppsFolder[] = "apps_target";
 const char kManifestFile[] = "manifest.json";
@@ -499,6 +511,7 @@ void BrowserContextKeyedAPIFactory<
   DependsOn(ExtensionSystemFactory::GetInstance());
   DependsOn(PermissionsManager::GetFactory());
   DependsOn(ToolbarActionsModelFactory::GetInstance());
+  DependsOn(AccountExtensionTracker::GetFactory());
 }
 
 // static
@@ -527,6 +540,12 @@ DeveloperPrivateEventRouter::DeveloperPrivateEventRouter(Profile* profile)
       ExtensionSystem::Get(profile)->extension_service()->allowlist());
   permissions_manager_observation_.Observe(PermissionsManager::Get(profile));
   toolbar_actions_model_observation_.Observe(ToolbarActionsModel::Get(profile));
+
+  if (sync_util::IsExtensionsExplicitSigninEnabled()) {
+    account_extension_tracker_observation_.Observe(
+        AccountExtensionTracker::Get(profile));
+  }
+
   pref_change_registrar_.Init(profile->GetPrefs());
   // The unretained is safe, since the PrefChangeRegistrar unregisters the
   // callback on destruction.
@@ -542,10 +561,13 @@ DeveloperPrivateEventRouter::DeveloperPrivateEventRouter(Profile* profile)
       kMV2DeprecationDisabledAcknowledgedGloballyPref.name,
       base::BindRepeating(&DeveloperPrivateEventRouter::OnProfilePrefChanged,
                           base::Unretained(this)));
+  pref_change_registrar_.Add(
+      kMV2DeprecationUnsupportedAcknowledgedGloballyPref.name,
+      base::BindRepeating(&DeveloperPrivateEventRouter::OnProfilePrefChanged,
+                          base::Unretained(this)));
 }
 
-DeveloperPrivateEventRouter::~DeveloperPrivateEventRouter() {
-}
+DeveloperPrivateEventRouter::~DeveloperPrivateEventRouter() = default;
 
 void DeveloperPrivateEventRouter::AddExtensionId(
     const ExtensionId& extension_id) {
@@ -669,7 +691,7 @@ void DeveloperPrivateEventRouter::OnExtensionCommandRemoved(
 
 void DeveloperPrivateEventRouter::OnExtensionDisableReasonsChanged(
     const ExtensionId& extension_id,
-    int disable_reasons) {
+    DisableReasonSet disable_reasons) {
   BroadcastItemStateChanged(developer::EventType::kPrefsChanged, extension_id);
 }
 
@@ -732,6 +754,22 @@ void DeveloperPrivateEventRouter::OnToolbarPinnedActionsChanged() {
   for (const auto& extension : extensions) {
     if (ui_util::ShouldDisplayInExtensionSettings(*extension)) {
       BroadcastItemStateChanged(developer::EventType::kPinnedActionsChanged,
+                                extension->id());
+    }
+  }
+}
+
+void DeveloperPrivateEventRouter::OnExtensionUploadabilityChanged(
+    const ExtensionId& id) {
+  BroadcastItemStateChanged(developer::EventType::kPrefsChanged, id);
+}
+
+void DeveloperPrivateEventRouter::OnExtensionsUploadabilityChanged() {
+  const ExtensionSet extensions =
+      ExtensionRegistry::Get(profile_)->GenerateInstalledExtensionsSet();
+  for (const auto& extension : extensions) {
+    if (sync_util::ShouldSync(profile_, extension.get())) {
+      BroadcastItemStateChanged(developer::EventType::kPrefsChanged,
                                 extension->id());
     }
   }
@@ -807,7 +845,7 @@ DeveloperPrivateAPI::UnpackedRetryId DeveloperPrivateAPI::AddUnpackedPath(
   WebContentsData* data = GetOrCreateWebContentsData(web_contents);
   IdToPathMap& paths = data->allowed_unpacked_paths;
   auto existing =
-      base::ranges::find(paths, path, &IdToPathMap::value_type::second);
+      std::ranges::find(paths, path, &IdToPathMap::value_type::second);
   if (existing != paths.end())
     return existing->first;
 
@@ -869,7 +907,7 @@ DeveloperPrivateAPI::GetOrCreateWebContentsData(
   return &web_contents_data_[web_contents];
 }
 
-DeveloperPrivateAPI::~DeveloperPrivateAPI() {}
+DeveloperPrivateAPI::~DeveloperPrivateAPI() = default;
 
 void DeveloperPrivateAPI::Shutdown() {}
 
@@ -897,8 +935,7 @@ void DeveloperPrivateAPI::OnListenerRemoved(
 
 namespace api {
 
-DeveloperPrivateAPIFunction::~DeveloperPrivateAPIFunction() {
-}
+DeveloperPrivateAPIFunction::~DeveloperPrivateAPIFunction() = default;
 
 const Extension* DeveloperPrivateAPIFunction::GetExtensionById(
     const ExtensionId& id) {
@@ -912,7 +949,8 @@ const Extension* DeveloperPrivateAPIFunction::GetEnabledExtensionById(
       GetByID(id);
 }
 
-DeveloperPrivateAutoUpdateFunction::~DeveloperPrivateAutoUpdateFunction() {}
+DeveloperPrivateAutoUpdateFunction::~DeveloperPrivateAutoUpdateFunction() =
+    default;
 
 ExtensionFunction::ResponseAction DeveloperPrivateAutoUpdateFunction::Run() {
   ExtensionUpdater* updater =
@@ -933,12 +971,10 @@ void DeveloperPrivateAutoUpdateFunction::OnComplete() {
 }
 
 DeveloperPrivateGetExtensionsInfoFunction::
-DeveloperPrivateGetExtensionsInfoFunction() {
-}
+    DeveloperPrivateGetExtensionsInfoFunction() = default;
 
 DeveloperPrivateGetExtensionsInfoFunction::
-~DeveloperPrivateGetExtensionsInfoFunction() {
-}
+    ~DeveloperPrivateGetExtensionsInfoFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateGetExtensionsInfoFunction::Run() {
@@ -970,12 +1006,10 @@ void DeveloperPrivateGetExtensionsInfoFunction::OnInfosGenerated(
 }
 
 DeveloperPrivateGetExtensionInfoFunction::
-DeveloperPrivateGetExtensionInfoFunction() {
-}
+    DeveloperPrivateGetExtensionInfoFunction() = default;
 
 DeveloperPrivateGetExtensionInfoFunction::
-~DeveloperPrivateGetExtensionInfoFunction() {
-}
+    ~DeveloperPrivateGetExtensionInfoFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateGetExtensionInfoFunction::Run() {
@@ -1000,10 +1034,10 @@ void DeveloperPrivateGetExtensionInfoFunction::OnInfosGenerated(
 }
 
 DeveloperPrivateGetExtensionSizeFunction::
-    DeveloperPrivateGetExtensionSizeFunction() {}
+    DeveloperPrivateGetExtensionSizeFunction() = default;
 
 DeveloperPrivateGetExtensionSizeFunction::
-    ~DeveloperPrivateGetExtensionSizeFunction() {}
+    ~DeveloperPrivateGetExtensionSizeFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateGetExtensionSizeFunction::Run() {
@@ -1029,8 +1063,7 @@ void DeveloperPrivateGetExtensionSizeFunction::OnSizeCalculated(
 }
 
 DeveloperPrivateGetProfileConfigurationFunction::
-~DeveloperPrivateGetProfileConfigurationFunction() {
-}
+    ~DeveloperPrivateGetProfileConfigurationFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateGetProfileConfigurationFunction::Run() {
@@ -1050,8 +1083,7 @@ DeveloperPrivateGetProfileConfigurationFunction::Run() {
 }
 
 DeveloperPrivateUpdateProfileConfigurationFunction::
-~DeveloperPrivateUpdateProfileConfigurationFunction() {
-}
+    ~DeveloperPrivateUpdateProfileConfigurationFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateUpdateProfileConfigurationFunction::Run() {
@@ -1079,7 +1111,7 @@ DeveloperPrivateUpdateProfileConfigurationFunction::Run() {
 }
 
 DeveloperPrivateUpdateExtensionConfigurationFunction::
-~DeveloperPrivateUpdateExtensionConfigurationFunction() {}
+    ~DeveloperPrivateUpdateExtensionConfigurationFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateUpdateExtensionConfigurationFunction::Run() {
@@ -1134,7 +1166,7 @@ DeveloperPrivateUpdateExtensionConfigurationFunction::Run() {
         modifier.SetWithholdHostPermissions(false);
         break;
       case developer::HostAccess::kNone:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
   if (update.show_access_requests_in_toolbar) {
@@ -1272,7 +1304,8 @@ void DeveloperPrivateReloadFunction::ClearObservers() {
   Release();  // Balanced in Run().
 }
 
-DeveloperPrivateLoadUnpackedFunction::DeveloperPrivateLoadUnpackedFunction() {}
+DeveloperPrivateLoadUnpackedFunction::DeveloperPrivateLoadUnpackedFunction() =
+    default;
 
 DeveloperPrivateLoadUnpackedFunction::~DeveloperPrivateLoadUnpackedFunction() {
   // There may be pending file dialogs, we need to tell them that we've gone
@@ -1462,18 +1495,10 @@ DeveloperPrivateInstallDroppedFileFunction::Run() {
 
   ExtensionService* service = GetExtensionService(browser_context());
   if (path.MatchesExtension(FILE_PATH_LITERAL(".zip"))) {
-    if (base::FeatureList::IsEnabled(
-            extensions_features::kExtensionsZipFileInstalledInProfileDir)) {
       ZipFileInstaller::Create(GetExtensionFileTaskRunner(),
                                MakeRegisterInExtensionServiceCallback(service))
           ->InstallZipFileToUnpackedExtensionsDir(
               path, service->unpacked_install_directory());
-    } else {
-      ZipFileInstaller::Create(GetExtensionFileTaskRunner(),
-                               MakeRegisterInExtensionServiceCallback(service))
-          ->InstallZipFileToTempDir(path);
-    }
-
   } else {
     auto prompt = std::make_unique<ExtensionInstallPrompt>(web_contents);
     scoped_refptr<CrxInstaller> crx_installer =
@@ -1611,11 +1636,11 @@ ExtensionFunction::ResponseAction DeveloperPrivatePackDirectoryFunction::Run() {
   return RespondLater();
 }
 
-DeveloperPrivatePackDirectoryFunction::DeveloperPrivatePackDirectoryFunction() {
-}
+DeveloperPrivatePackDirectoryFunction::DeveloperPrivatePackDirectoryFunction() =
+    default;
 
 DeveloperPrivatePackDirectoryFunction::
-~DeveloperPrivatePackDirectoryFunction() {}
+    ~DeveloperPrivatePackDirectoryFunction() = default;
 
 ExtensionFunction::ResponseAction DeveloperPrivateLoadDirectoryFunction::Run() {
   // In theory `extension()` can be null when an ExtensionFunction is invoked
@@ -1849,7 +1874,8 @@ DeveloperPrivateLoadDirectoryFunction::DeveloperPrivateLoadDirectoryFunction()
 DeveloperPrivateLoadDirectoryFunction::~DeveloperPrivateLoadDirectoryFunction()
     {}
 
-DeveloperPrivateChoosePathFunction::DeveloperPrivateChoosePathFunction() {}
+DeveloperPrivateChoosePathFunction::DeveloperPrivateChoosePathFunction() =
+    default;
 
 DeveloperPrivateChoosePathFunction::~DeveloperPrivateChoosePathFunction() {
   // There may be pending file dialogs, we need to tell them that we've gone
@@ -1904,7 +1930,7 @@ ExtensionFunction::ResponseAction DeveloperPrivateChoosePathFunction::Run() {
     file_type_info.include_all_files = true;
     file_type_index = 1;
   } else {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
   const base::FilePath last_directory =
@@ -1944,14 +1970,13 @@ DeveloperPrivateIsProfileManagedFunction::Run() {
 }
 
 DeveloperPrivateIsProfileManagedFunction::
-    ~DeveloperPrivateIsProfileManagedFunction() {
-}
+    ~DeveloperPrivateIsProfileManagedFunction() = default;
 
 DeveloperPrivateRequestFileSourceFunction::
-    DeveloperPrivateRequestFileSourceFunction() {}
+    DeveloperPrivateRequestFileSourceFunction() = default;
 
 DeveloperPrivateRequestFileSourceFunction::
-    ~DeveloperPrivateRequestFileSourceFunction() {}
+    ~DeveloperPrivateRequestFileSourceFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateRequestFileSourceFunction::Run() {
@@ -2019,8 +2044,10 @@ void DeveloperPrivateRequestFileSourceFunction::Finish(
   Respond(WithArguments(response.ToValue()));
 }
 
-DeveloperPrivateOpenDevToolsFunction::DeveloperPrivateOpenDevToolsFunction() {}
-DeveloperPrivateOpenDevToolsFunction::~DeveloperPrivateOpenDevToolsFunction() {}
+DeveloperPrivateOpenDevToolsFunction::DeveloperPrivateOpenDevToolsFunction() =
+    default;
+DeveloperPrivateOpenDevToolsFunction::~DeveloperPrivateOpenDevToolsFunction() =
+    default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateOpenDevToolsFunction::Run() {
@@ -2117,7 +2144,7 @@ DeveloperPrivateOpenDevToolsFunction::Run() {
 }
 
 DeveloperPrivateDeleteExtensionErrorsFunction::
-~DeveloperPrivateDeleteExtensionErrorsFunction() {}
+    ~DeveloperPrivateDeleteExtensionErrorsFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateDeleteExtensionErrorsFunction::Run() {
@@ -2146,7 +2173,7 @@ DeveloperPrivateDeleteExtensionErrorsFunction::Run() {
 }
 
 DeveloperPrivateRepairExtensionFunction::
-~DeveloperPrivateRepairExtensionFunction() {}
+    ~DeveloperPrivateRepairExtensionFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateRepairExtensionFunction::Run() {
@@ -2199,7 +2226,8 @@ void DeveloperPrivateRepairExtensionFunction::OnReinstallComplete(
   Respond(success ? NoArguments() : Error(error));
 }
 
-DeveloperPrivateShowOptionsFunction::~DeveloperPrivateShowOptionsFunction() {}
+DeveloperPrivateShowOptionsFunction::~DeveloperPrivateShowOptionsFunction() =
+    default;
 
 ExtensionFunction::ResponseAction DeveloperPrivateShowOptionsFunction::Run() {
   std::optional<developer::ShowOptions::Params> params =
@@ -2221,7 +2249,7 @@ ExtensionFunction::ResponseAction DeveloperPrivateShowOptionsFunction::Run() {
   return RespondNow(NoArguments());
 }
 
-DeveloperPrivateShowPathFunction::~DeveloperPrivateShowPathFunction() {}
+DeveloperPrivateShowPathFunction::~DeveloperPrivateShowPathFunction() = default;
 
 ExtensionFunction::ResponseAction DeveloperPrivateShowPathFunction::Run() {
   std::optional<developer::ShowPath::Params> params =
@@ -2240,7 +2268,7 @@ ExtensionFunction::ResponseAction DeveloperPrivateShowPathFunction::Run() {
 }
 
 DeveloperPrivateSetShortcutHandlingSuspendedFunction::
-~DeveloperPrivateSetShortcutHandlingSuspendedFunction() {}
+    ~DeveloperPrivateSetShortcutHandlingSuspendedFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateSetShortcutHandlingSuspendedFunction::Run() {
@@ -2253,7 +2281,7 @@ DeveloperPrivateSetShortcutHandlingSuspendedFunction::Run() {
 }
 
 DeveloperPrivateUpdateExtensionCommandFunction::
-~DeveloperPrivateUpdateExtensionCommandFunction() {}
+    ~DeveloperPrivateUpdateExtensionCommandFunction() = default;
 
 ExtensionFunction::ResponseAction
 DeveloperPrivateUpdateExtensionCommandFunction::Run() {
@@ -2416,7 +2444,7 @@ DeveloperPrivateAddUserSpecifiedSitesFunction::Run() {
       return RespondNow(
           Error("Site set must be USER_PERMITTED or USER_RESTRICTED"));
     case developer::SiteSet::kNone:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 
   return RespondNow(NoArguments());
@@ -2455,7 +2483,7 @@ DeveloperPrivateRemoveUserSpecifiedSitesFunction::Run() {
       return RespondNow(
           Error("Site set must be USER_PERMITTED or USER_RESTRICTED"));
     case developer::SiteSet::kNone:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 
   return RespondNow(NoArguments());
@@ -2696,7 +2724,7 @@ DeveloperPrivateUpdateSiteAccessFunction::Run() {
         done_callback.Run();
         break;
       case developer::HostAccess::kNone:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
 
@@ -2888,6 +2916,10 @@ DeveloperPrivateDismissMv2DeprecationNoticeForExtensionFunction::Run() {
 
       return RespondLater();
     }
+
+    case MV2ExperimentStage::kUnsupported:
+      return RespondNow(Error(ErrorUtils::FormatErrorMessage(
+          kCannotDismissExtensionOnUnsupportedStage, extension_id_)));
   }
 }
 
@@ -2923,6 +2955,121 @@ void DeveloperPrivateDismissMv2DeprecationNoticeForExtensionFunction::
     return;
   }
 
+  Respond(NoArguments());
+}
+
+DeveloperPrivateUploadExtensionToAccountFunction::
+    DeveloperPrivateUploadExtensionToAccountFunction() = default;
+DeveloperPrivateUploadExtensionToAccountFunction::
+    ~DeveloperPrivateUploadExtensionToAccountFunction() = default;
+
+ExtensionFunction::ResponseAction
+DeveloperPrivateUploadExtensionToAccountFunction::Run() {
+  auto params = developer::UploadExtensionToAccount::Params::Create(args());
+
+  EXTENSION_FUNCTION_VALIDATE(params);
+  extension_id_ = std::move(params->extension_id);
+  profile_ = Profile::FromBrowserContext(browser_context());
+
+  auto result = VerifyExtensionAndSigninState();
+  if (!result.has_value()) {
+    return RespondNow(Error(result.error()));
+  }
+  const Extension* extension = *result;
+
+  // Return an error if the extension cannot be uploaded for reasons such as:
+  // - syncing extensions in transport mode (signed in but not full sync) is
+  //   disabled.
+  // - the extension is already associated with the signed in user's account.
+  // - the extension is not syncable (for example, if it's unpacked).
+  if (!sync_util::IsExtensionsExplicitSigninEnabled() ||
+      !AccountExtensionTracker::Get(profile_)->CanUploadAsAccountExtension(
+          *extension)) {
+    return RespondNow(Error(ErrorUtils::FormatErrorMessage(
+        kCannotUploadExtensionToAccount, extension_id_)));
+  }
+
+  if (accept_bubble_for_testing_.has_value()) {
+    if (*accept_bubble_for_testing_) {
+      OnDialogAccepted();
+    } else {
+      OnDialogCancelled();
+    }
+    return AlreadyResponded();
+  }
+
+  content::WebContents* web_contents = GetSenderWebContents();
+  if (!web_contents) {
+    return RespondNow(Error(kCouldNotFindWebContentsError));
+  }
+
+  Browser* browser = chrome::FindBrowserWithTab(web_contents);
+  if (!browser) {
+    return RespondNow(Error(kCouldNotFindWebContentsError));
+  }
+
+  ShowUploadExtensionToAccountDialog(
+      browser, *extension,
+      base::BindOnce(
+          &DeveloperPrivateUploadExtensionToAccountFunction::OnDialogAccepted,
+          this),
+      base::BindOnce(
+          &DeveloperPrivateUploadExtensionToAccountFunction::OnDialogCancelled,
+          this));
+
+  return RespondLater();
+}
+
+base::expected<const Extension*, std::string>
+DeveloperPrivateUploadExtensionToAccountFunction::
+    VerifyExtensionAndSigninState() {
+  const Extension* extension =
+      ExtensionRegistry::Get(browser_context())
+          ->GetExtensionById(extension_id_, ExtensionRegistry::EVERYTHING);
+  if (!extension) {
+    return base::unexpected(
+        ErrorUtils::FormatErrorMessage(kNoExtensionError, extension_id_));
+  }
+
+  // Return an error if there is no signed in user.
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(profile_);
+  AccountInfo account_info = identity_manager->FindExtendedAccountInfo(
+      identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin));
+  if (account_info.IsEmpty()) {
+    return base::unexpected(kUserNotSignedIn);
+  }
+
+  return base::ok(extension);
+}
+
+void DeveloperPrivateUploadExtensionToAccountFunction::UploadExtensionToAccount(
+    const Extension& extension) {
+  AccountExtensionTracker::Get(browser_context())
+      ->OnAccountUploadInitiatedForExtension(extension.id());
+  ExtensionSyncService::Get(browser_context())
+      ->SyncExtensionChangeIfNeeded(extension);
+}
+
+void DeveloperPrivateUploadExtensionToAccountFunction::OnDialogAccepted() {
+  // We cannot proceed if the `browser_context` is not valid as the relevant
+  // classes needed to upload the extension will not exist.
+  if (!browser_context()) {
+    return;
+  }
+
+  auto result = VerifyExtensionAndSigninState();
+  if (!result.has_value()) {
+    Respond(Error(result.error()));
+    return;
+  }
+  const Extension* extension = *result;
+
+  UploadExtensionToAccount(*extension);
+  Respond(NoArguments());
+}
+
+void DeveloperPrivateUploadExtensionToAccountFunction::OnDialogCancelled() {
   Respond(NoArguments());
 }
 

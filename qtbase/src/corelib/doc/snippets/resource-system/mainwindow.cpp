@@ -108,9 +108,9 @@ void MainWindow::createActions()
     exitAct->setStatusTip(tr("Exit the application"));
     connect(exitAct, &QAction::triggered, this, &MainWindow::close);
 
-//! [21]
+//! [1]
     cutAct = new QAction(QIcon(":/images/cut.png"), tr("Cu&t"), this);
-//! [21]
+//! [1]
     cutAct->setShortcuts(QKeySequence::Cut);
     cutAct->setStatusTip(tr("Cut the current selection's contents to the "
                             "clipboard"));

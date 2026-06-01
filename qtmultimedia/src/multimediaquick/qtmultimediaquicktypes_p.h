@@ -29,12 +29,15 @@
 #include <QtMultimedia/qmediaformat.h>
 #include <QtMultimedia/qmediametadata.h>
 #include <QtMultimedia/qmediarecorder.h>
+#include <QtMultimedia/qplaybackoptions.h>
 #include <QtMultimedia/qscreencapture.h>
 #include <QtMultimedia/qwindowcapture.h>
 
 #include <QtQml/qqmlregistration.h>
 
 QT_BEGIN_NAMESPACE
+
+namespace QtMultimediaPrivate {
 
 struct QMediaCaptureSessionForeign
 {
@@ -62,13 +65,6 @@ struct QScreenCaptureForeign
     Q_GADGET
     QML_ANONYMOUS
     QML_FOREIGN(QScreenCapture)
-};
-
-struct QScreenForeign
-{
-    Q_GADGET
-    QML_ANONYMOUS
-    QML_FOREIGN(QScreen)
 };
 
 struct QMediaRecorderForeign
@@ -195,6 +191,7 @@ struct QCapturableWindowForeign
     Q_GADGET
     QML_FOREIGN(QCapturableWindow)
     QML_VALUE_TYPE(capturableWindow)
+    QML_CONSTRUCTIBLE_VALUE
 };
 
 struct QWindowCaptureForeign
@@ -203,6 +200,35 @@ struct QWindowCaptureForeign
     QML_FOREIGN(QWindowCapture)
     QML_NAMED_ELEMENT(WindowCapture)
 };
+
+class QPlaybackOptionsDerived : public QPlaybackOptions
+{
+    Q_PROPERTY(qint64 networkTimeoutMs READ networkTimeoutMs WRITE setNetworkTimeoutMs RESET resetNetworkTimeoutMs FINAL)
+
+    Q_GADGET
+    QML_FOREIGN(QPlaybackOptions)
+    QML_VALUE_TYPE(playbackOptions)
+    QML_EXTENDED(QPlaybackOptionsDerived)
+    QML_ADDED_IN_VERSION(6, 10)
+
+public:
+    qint64 networkTimeoutMs() const { return networkTimeout().count(); }
+
+    void setNetworkTimeoutMs(qint64 timeout) { setNetworkTimeout(std::chrono::milliseconds(timeout)); }
+
+    void resetNetworkTimeoutMs() { resetNetworkTimeout(); }
+};
+
+namespace QPlaybackOptionsNamespaceForeign {
+    Q_NAMESPACE
+    QML_NAMED_ELEMENT(PlaybackOptions)
+    QML_FOREIGN_NAMESPACE(QPlaybackOptions)
+    QML_ADDED_IN_VERSION(6, 10)
+} // namespace QPlaybackOptionsNamespaceForeign
+
+
+
+} // namespace QtMultimediaPrivate
 
 QT_END_NAMESPACE
 

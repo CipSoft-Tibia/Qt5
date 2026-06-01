@@ -7,6 +7,8 @@
 
 #include <QtDBus/QDBusPendingReply>
 
+using namespace QtSensorsPrivate;
+
 char const * const IIOSensorProxyOrientationSensor::id("iio-sensor-proxy.orientationsensor");
 
 static inline QString dbusPath() { return QStringLiteral("/net/hadess/SensorProxy"); }

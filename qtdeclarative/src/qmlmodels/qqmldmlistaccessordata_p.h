@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDMLISTACCESSORDATA_P_H
 #define QQMLDMLISTACCESSORDATA_P_H
@@ -68,9 +69,10 @@ public:
 
     QV4::ReturnedValue get() override
     {
-        QQmlAdaptorModelEngineData *data = QQmlAdaptorModelEngineData::get(v4);
-        QV4::Scope scope(v4);
-        QV4::ScopedObject o(scope, v4->memoryManager->allocate<QQmlDelegateModelItemObject>(this));
+        QV4::Scope scope(metaType->v4Engine);
+        QQmlAdaptorModelEngineData *data = QQmlAdaptorModelEngineData::get(scope.engine);
+        QV4::ScopedObject o(
+                scope, scope.engine->memoryManager->allocate<QQmlDelegateModelItemObject>(this));
         QV4::ScopedObject p(scope, data->listItemProto.value());
         o->setPrototypeOf(p);
         ++scriptRef;
@@ -265,12 +267,12 @@ public:
     bool notify(const QQmlAdaptorModel &model, const QList<QQmlDelegateModelItem *> &items, int index, int count, const QVector<int> &) const override
     {
         for (auto modelItem : items) {
-            const int modelItemIndex = modelItem->index;
+            const int modelItemIndex = modelItem->modelIndex();
             if (modelItemIndex < index || modelItemIndex >= index + count)
                 continue;
 
             auto listModelItem = static_cast<QQmlDMListAccessorData *>(modelItem);
-            QVariant updatedModelData = model.list.at(listModelItem->index);
+            QVariant updatedModelData = model.list.at(listModelItem->modelIndex());
             listModelItem->setModelData(updatedModelData);
         }
         return true;

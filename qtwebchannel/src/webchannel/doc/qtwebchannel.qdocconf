@@ -7,6 +7,9 @@ version                                             = $QT_VERSION
 
 examplesinstallpath                                 = webchannel
 
+# Path to the root of qtwebchannel (for automatic linking to source code)
+url.sources.rootdir                                 = ../../..
+
 qhp.projects                                        = QtWebChannel
 
 qhp.QtWebChannel.file                               = qtwebchannel.qhp

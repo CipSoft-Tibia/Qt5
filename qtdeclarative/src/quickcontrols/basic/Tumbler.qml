@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -44,5 +45,11 @@ T.Tumbler {
                 y: (control.visibleItemCount + 1) * control.__delegateHeight - control.__delegateHeight / 2
             }
         }
+    }
+
+    background: Rectangle {
+        visible: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast
+        border.color: control.visualFocus ? control.palette.highlight : control.palette.windowText
+        border.width: control.visualFocus ? 2 : 1
     }
 }

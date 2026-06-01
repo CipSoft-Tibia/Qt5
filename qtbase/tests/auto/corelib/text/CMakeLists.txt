@@ -1,23 +1,21 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-if (NOT WASM) # QTBUG-121822
 add_subdirectory(qanystringview)
-endif()
 add_subdirectory(qbytearray)
 add_subdirectory(qbytearray_large)
 add_subdirectory(qbytearrayapisymmetry)
 add_subdirectory(qbytearraylist)
 add_subdirectory(qbytearraymatcher)
 add_subdirectory(qbytearrayview)
-add_subdirectory(qbytedatabuffer)
 add_subdirectory(qchar)
 add_subdirectory(qcollator)
 add_subdirectory(qlatin1stringmatcher)
 add_subdirectory(qlatin1stringview)
-if (NOT WASM) # QTBUG-121822
-add_subdirectory(qregularexpression)
+if(NOT QT_BUILD_WASM_BATCHED_TESTS)
+    add_subdirectory(qlocale)
 endif()
+add_subdirectory(qregularexpression)
 add_subdirectory(qstring)
 add_subdirectory(qstring_no_cast_from_bytearray)
 add_subdirectory(qstringapisymmetry)
@@ -31,4 +29,3 @@ add_subdirectory(qstringview)
 add_subdirectory(qtextboundaryfinder)
 add_subdirectory(qunicodetools)
 add_subdirectory(qutf8stringview)
-add_subdirectory(qlocale)

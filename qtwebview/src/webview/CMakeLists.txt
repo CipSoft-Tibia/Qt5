@@ -11,7 +11,6 @@ qt_internal_add_module(WebView
         QtQuick/auto
     SOURCES
         qabstractwebview_p.h
-        qnativeviewcontroller_p.h
         qtwebviewfunctions.cpp qtwebviewfunctions.h
         qwebview.cpp qwebview_p.h
         qwebview_global.h
@@ -29,13 +28,6 @@ qt_internal_add_module(WebView
         Qt::CorePrivate
         Qt::GuiPrivate
     NO_GENERATE_CPP_EXPORTS
-)
-
-qt_internal_extend_target(WebView CONDITION WIN32 AND TARGET Qt::WebEngineQuick
-    PUBLIC_LIBRARIES
-        Qt::WebEngineQuick
-    DEFINES
-        QTWEBVIEW_LINK_WEBENGINE
 )
 
 if(ANDROID)

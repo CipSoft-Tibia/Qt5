@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2017, 2019-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2017, 2019-2024 Valve Corporation
- * Copyright (c) 2015-2017, 2019-2024 LunarG, Inc.
+/* Copyright (c) 2015-2017, 2019-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2017, 2019-2025 Valve Corporation
+ * Copyright (c) 2015-2017, 2019-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,33 +36,32 @@ VertexInputState::VertexInputState(const vvl::Pipeline &p, const vku::safe_VkGra
 
     if (input_state) {
         if (input_state->vertexBindingDescriptionCount) {
-            for (const auto [i, bd] :
+            for (const auto [i, description] :
                  vvl::enumerate(input_state->pVertexBindingDescriptions, input_state->vertexBindingDescriptionCount)) {
-                bindings.emplace(bd->binding, VertexBindingState(i, bd));
+                bindings.emplace(description.binding, VertexBindingState(i, &description));
             }
-            const auto *divisor_info =
-                vku::FindStructInPNextChain<VkPipelineVertexInputDivisorStateCreateInfoEXT>(input_state->pNext);
+            const auto *divisor_info = vku::FindStructInPNextChain<VkPipelineVertexInputDivisorStateCreateInfo>(input_state->pNext);
             if (divisor_info) {
                 for (const auto [i, di] :
                      vvl::enumerate(divisor_info->pVertexBindingDivisors, divisor_info->vertexBindingDivisorCount)) {
-                    if (auto *binding_state = vvl::Find(bindings, di->binding)) {
-                        binding_state->desc.divisor = di->divisor;
+                    if (auto *binding_state = vvl::Find(bindings, di.binding)) {
+                        binding_state->desc.divisor = di.divisor;
                     }
                 }
             }
         }
-        for (const auto [i, ad] :
+        for (const auto [i, description] :
              vvl::enumerate(input_state->pVertexAttributeDescriptions, input_state->vertexAttributeDescriptionCount)) {
-            auto *binding_state = vvl::Find(bindings, ad->binding);
+            auto *binding_state = vvl::Find(bindings, description.binding);
             if (!binding_state) {
                 continue;
             }
-            binding_state->locations.emplace(ad->location, VertexAttrState(i, ad));
+            binding_state->locations.emplace(description.location, VertexAttrState(i, &description));
         }
     }
 }
 
-PreRasterState::PreRasterState(const vvl::Pipeline &p, const ValidationStateTracker &state_data,
+PreRasterState::PreRasterState(const vvl::Pipeline &p, const vvl::Device &state_data,
                                const vku::safe_VkGraphicsPipelineCreateInfo &create_info, std::shared_ptr<const vvl::RenderPass> rp,
                                spirv::StatelessData stateless_data[kCommonMaxGraphicsShaderStages])
     : PipelineSubState(p),
@@ -84,6 +83,10 @@ PreRasterState::PreRasterState(const vvl::Pipeline &p, const ValidationStateTrac
         all_stages |= stage;
 
         auto module_state = state_data.Get<vvl::ShaderModule>(stage_ci.module);
+        if (!module_state && p.pipeline_cache) {
+            // Attempt to look up the pipeline cache for shader module data
+            module_state = p.pipeline_cache->GetStageModule(p, i);
+        }
         if (!module_state) {
             // If module is null and there is a VkShaderModuleCreateInfo in the pNext chain of the stage info, then this
             // module is part of a library and the state must be created.
@@ -193,12 +196,16 @@ std::unique_ptr<const vku::safe_VkPipelineShaderStageCreateInfo> ToShaderStageCI
 }
 
 template <typename CreateInfo>
-void SetFragmentShaderInfoPrivate(FragmentShaderState &fs_state, const ValidationStateTracker &state_data,
+void SetFragmentShaderInfoPrivate(const vvl::Pipeline &pipeline_state, FragmentShaderState &fs_state, const vvl::Device &state_data,
                                   const CreateInfo &create_info,
                                   spirv::StatelessData stateless_data[kCommonMaxGraphicsShaderStages]) {
     for (uint32_t i = 0; i < create_info.stageCount; ++i) {
         if (create_info.pStages[i].stage == VK_SHADER_STAGE_FRAGMENT_BIT) {
             auto module_state = state_data.Get<vvl::ShaderModule>(create_info.pStages[i].module);
+            if (!module_state && pipeline_state.pipeline_cache) {
+                // Attempt to look up the pipeline cache for shader module data
+                module_state = pipeline_state.pipeline_cache->GetStageModule(pipeline_state, i);
+            }
             if (!module_state) {
                 // If module is null and there is a VkShaderModuleCreateInfo in the pNext chain of the stage info, then this
                 // module is part of a library and the state must be created
@@ -239,20 +246,21 @@ void SetFragmentShaderInfoPrivate(FragmentShaderState &fs_state, const Validatio
 }
 
 // static
-void FragmentShaderState::SetFragmentShaderInfo(FragmentShaderState &fs_state, const ValidationStateTracker &state_data,
-                                                const VkGraphicsPipelineCreateInfo &create_info,
+void FragmentShaderState::SetFragmentShaderInfo(const vvl::Pipeline &pipeline_state, FragmentShaderState &fs_state,
+                                                const vvl::Device &state_data, const VkGraphicsPipelineCreateInfo &create_info,
                                                 spirv::StatelessData stateless_data[kCommonMaxGraphicsShaderStages]) {
-    SetFragmentShaderInfoPrivate(fs_state, state_data, create_info, stateless_data);
+    SetFragmentShaderInfoPrivate(pipeline_state, fs_state, state_data, create_info, stateless_data);
 }
 
 // static
-void FragmentShaderState::SetFragmentShaderInfo(FragmentShaderState &fs_state, const ValidationStateTracker &state_data,
+void FragmentShaderState::SetFragmentShaderInfo(const vvl::Pipeline &pipeline_state, FragmentShaderState &fs_state,
+                                                const vvl::Device &state_data,
                                                 const vku::safe_VkGraphicsPipelineCreateInfo &create_info,
                                                 spirv::StatelessData stateless_data[kCommonMaxGraphicsShaderStages]) {
-    SetFragmentShaderInfoPrivate(fs_state, state_data, create_info, stateless_data);
+    SetFragmentShaderInfoPrivate(pipeline_state, fs_state, state_data, create_info, stateless_data);
 }
 
-FragmentShaderState::FragmentShaderState(const vvl::Pipeline &p, const ValidationStateTracker &dev_data,
+FragmentShaderState::FragmentShaderState(const vvl::Pipeline &p, const vvl::Device &dev_data,
                                          std::shared_ptr<const vvl::RenderPass> rp, uint32_t subp, VkPipelineLayout layout)
     : PipelineSubState(p), rp_state(rp), subpass(subp), pipeline_layout(dev_data.Get<vvl::PipelineLayout>(layout)) {}
 

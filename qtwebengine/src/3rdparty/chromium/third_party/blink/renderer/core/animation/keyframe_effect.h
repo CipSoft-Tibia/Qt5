@@ -87,9 +87,9 @@ class CORE_EXPORT KeyframeEffect final : public AnimationEffect {
   void setTarget(Element*);
   const String& pseudoElement() const;
   void setPseudoElement(String, ExceptionState&);
-  String composite() const;
-  void setComposite(String);
-  HeapVector<ScriptValue> getKeyframes(ScriptState*);
+  V8CompositeOperation composite() const;
+  void setComposite(const V8CompositeOperation&);
+  HeapVector<ScriptObject> getKeyframes(ScriptState*);
   void setKeyframes(ScriptState*,
                     const ScriptValue& keyframes,
                     ExceptionState&);

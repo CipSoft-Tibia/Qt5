@@ -30,9 +30,8 @@
 
     \section2 Loading Web Pages
 
-    An application can load pages into the WebEngineView, using either the \l url property or the
-    \l loadHtml method and navigate within the view's session history. The GET
-    method is always used to load URLs.
+    An application can load pages into the WebEngineView using either the \l url property, or the
+    \l loadHtml method. The GET method is always used to load URLs.
 
     The history is represented by a WebEngineHistory data model that is held by
     the \l history property.
@@ -70,7 +69,7 @@
 
     The \l {WebEngineSettings::focusOnNavigationEnabled} {focusOnNavigationEnabled} setting can be
     used to make the view automatically receive focus when a navigation operation occurs
-    (like loading or reloading a page or navigating through history).
+    (like loading or reloading a page, or navigating through history).
 
     The \l linkHovered() signal is emitted when a mouse pointer passes over a link and thus
     corresponds to the \c{mouseover} DOM event.
@@ -110,9 +109,9 @@
 
     \section2 Platform Features
 
-    Web pages can request access to platform features, such as geolocation or audio and video
+    Web pages can request access to platform features such as geolocation, or audio and video
     capture devices. The \l permissionRequested() signal is emitted when a web page requests
-    to make use of a resource. The supported platform features are described by the QWebEnginePermission::Feature
+    to make use of a resource. The supported platform features are described by the WebEnginePermission::Feature
     property.
 
     \section2 Rendering to OpenGL Surface
@@ -330,7 +329,10 @@
     \qmlproperty size WebEngineView::contentsSize
     \since QtWebEngine 1.3
 
-    Size of the page contents.
+    The size of the full page contents, measured in logical pixels. On devices with a
+    scale factor other than 100%, this will not correspond to the on-screen size; instead,
+    it will be the size before scaling is applied. In such cases, the size may contain
+    fractional values.
 */
 
 /*!
@@ -360,6 +362,19 @@
     is retrieved from \c http://www.example.com/documents/overview.html, which
     is the base URL, then an image referenced with the relative URL, \c diagram.png,
     should be at \c{http://www.example.com/documents/diagram.png}.
+
+    When using this method, the web engine assumes that external resources, such as JavaScript
+    programs or style sheets, are encoded in UTF-8, unless otherwise specified. For example,
+    the encoding of an external script can be specified through the charset attribute of the
+    HTML script tag. It is also possible for the encoding to be specified by the web server.
+
+    \note This method will not affect session or global history for the page.
+
+    \warning This function works only for HTML.
+
+    \warning The content will be percent encoded before being sent to the renderer.
+    This may increase its size. The maximum size of the percent encoded content is
+    2 megabytes minus 30 bytes.
 
     \sa url
 */
@@ -574,7 +589,7 @@
     This signal is emitted when \a request is issued to load a page in a separate
     web engine view. This can either be because the current page requested it explicitly
     through a JavaScript call to \c window.open, or because the user clicked on a link
-    while holding Shift, Ctrl, or a built-in combination that triggers the page to open
+    while holding Shift, Cmd/Ctrl, or a built-in combination that triggers the page to open
     in a new window.
 
     The signal is handled by calling acceptAsNewWindow() on the destination view.
@@ -588,7 +603,7 @@
 */
 
 /*!
-    \qmlmethod void WebEngineView::acceptAsNewWindow(QWebEngineNewWindowRequest *request)
+    \qmlmethod void WebEngineView::acceptAsNewWindow(WebEngineNewWindowRequest request)
     \since QtWebEngine 2.0
 
     Handle the newWindowRequested signal by opening the \a request in this view.
@@ -759,96 +774,93 @@
             should be enabled to get automatic focus.
     \value  WebEngineView.PasteAndMatchStyle
             Paste content from the clipboard with current style.
-    \value  WebEngineView.OpenLinkInThisWindow
-            Open the current link in the current window. (Added in Qt 5.6)
-    \value  WebEngineView.OpenLinkInNewWindow
+    \value  [since 5.6] WebEngineView.OpenLinkInThisWindow
+            Open the current link in the current window.
+    \value  [since 5.6] WebEngineView.OpenLinkInNewWindow
             Open the current link in a new window. Requires a handler for the
-            \l newWindowRequested() signal. (Added in Qt 5.6)
-    \value  WebEngineView.OpenLinkInNewTab
+            \l newWindowRequested() signal.
+    \value  [since 5.6] WebEngineView.OpenLinkInNewTab
             Open the current link in a new tab. Requires a handler for the
-            \l newWindowRequested() signal. (Added in Qt 5.6)
-    \value  WebEngineView.CopyLinkToClipboard
-            Copy the current link to the clipboard. (Added in Qt 5.6)
-    \value  WebEngineView.CopyImageToClipboard
-            Copy the clicked image to the clipboard. (Added in Qt 5.6)
-    \value  WebEngineView.CopyImageUrlToClipboard
-            Copy the clicked image's URL to the clipboard. (Added in Qt 5.6)
-    \value  WebEngineView.CopyMediaUrlToClipboard
-            Copy the hovered audio or video's URL to the clipboard. (Added in Qt 5.6)
-    \value  WebEngineView.ToggleMediaControls
+            \l newWindowRequested() signal.
+    \value  [since 5.6] WebEngineView.CopyLinkToClipboard
+            Copy the current link to the clipboard.
+    \value  [since 5.6] WebEngineView.CopyImageToClipboard
+            Copy the clicked image to the clipboard.
+    \value  [since 5.6] WebEngineView.CopyImageUrlToClipboard
+            Copy the clicked image's URL to the clipboard.
+    \value  [since 5.6] WebEngineView.CopyMediaUrlToClipboard
+            Copy the hovered audio or video's URL to the clipboard.
+    \value  [since 5.6] WebEngineView.ToggleMediaControls
             Toggle between showing and hiding the controls for the hovered audio or video element.
-            (Added in Qt 5.6)
-    \value  WebEngineView.ToggleMediaLoop
+    \value  [since 5.6] WebEngineView.ToggleMediaLoop
             Toggle whether the hovered audio or video should loop on completetion or not.
-           (Added in Qt 5.6)
-    \value  WebEngineView.ToggleMediaPlayPause
-            Toggle the play/pause state of the hovered audio or video element. (Added in Qt 5.6)
-    \value  WebEngineView.ToggleMediaMute
-            Mute or unmute the hovered audio or video element. (Added in Qt 5.6)
-    \value  WebEngineView.DownloadLinkToDisk
+    \value  [since 5.6] WebEngineView.ToggleMediaPlayPause
+            Toggle the play/pause state of the hovered audio or video element.
+    \value  [since 5.6] WebEngineView.ToggleMediaMute
+            Mute or unmute the hovered audio or video element.
+    \value  [since 5.6] WebEngineView.DownloadLinkToDisk
             Download the current link to the disk. To implement download
             actions, connect to the \l {QQuickWebEngineProfile::downloadRequested}
-            {WebEngineProfile.downloadRequested} signal. (Added in Qt 5.6)
-    \value  WebEngineView.DownloadImageToDisk
-            Download the highlighted image to the disk. (Added in Qt 5.6)
-    \value  WebEngineView.DownloadMediaToDisk
-            Download the hovered audio or video to the disk. (Added in Qt 5.6)
-    \value  WebEngineView.InspectElement
+            {WebEngineProfile.downloadRequested} signal.
+    \value  [since 5.6] WebEngineView.DownloadImageToDisk
+            Download the highlighted image to the disk.
+    \value  [since 5.6] WebEngineView.DownloadMediaToDisk
+            Download the hovered audio or video to the disk.
+    \value  [since 5.6] WebEngineView.InspectElement
             Trigger any attached Web Inspector to inspect the highlighed element.
-           (Added in Qt 5.6)
-    \value  WebEngineView.ExitFullScreen
-            Exit the fullscreen mode. (Added in Qt 5.6)
-    \value  WebEngineView.SavePage
-            Save the current web page to disk. (Added in Qt 5.7)
+    \value  [since 5.6] WebEngineView.ExitFullScreen
+            Exit the fullscreen mode.
+    \value  [since 5.7] WebEngineView.SavePage
+            Save the current web page to disk.
     \omitvalue WebEngineView.OpenLinkInNewBackgroundTab
-    \value  WebEngineView.ViewSource
+    \value  [since 5.8] WebEngineView.ViewSource
             Show the source of the current page in a new tab. Requires a handler for the
-            \l newWindowRequested() signal. (Added in Qt 5.8)
+            \l newWindowRequested() signal.
 
-    \value  WebEngineView.ToggleBold
+    \value  [since 5.10] WebEngineView.ToggleBold
             Toggles boldness for the selection or at the cursor position.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.ToggleItalic
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.ToggleItalic
             Toggles italics for the selection or at the cursor position.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.ToggleUnderline
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.ToggleUnderline
             Toggles underlining of the selection or at the cursor position.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.ToggleStrikethrough
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.ToggleStrikethrough
             Toggles striking through the selection or at the cursor position.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
+            Requires \c contenteditable="true".
 
-    \value  WebEngineView.AlignLeft
+    \value  [since 5.10] WebEngineView.AlignLeft
             Aligns the lines containing the selection or the cursor to the left.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.AlignCenter
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.AlignCenter
             Aligns the lines containing the selection or the cursor at the center.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.AlignRight
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.AlignRight
             Aligns the lines containing the selection or the cursor to the right.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.AlignJustified
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.AlignJustified
             Stretches the lines containing the selection or the cursor so that each
             line has equal width.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.Indent
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.Indent
             Indents the lines containing the selection or the cursor.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.Outdent
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.Outdent
             Outdents the lines containing the selection or the cursor.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
+            Requires \c contenteditable="true".
 
-    \value  WebEngineView.InsertOrderedList
+    \value  [since 5.10] WebEngineView.InsertOrderedList
             Inserts an ordered list at the current cursor position, deleting the current selection.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.InsertUnorderedList
+            Requires \c contenteditable="true".
+    \value  [since 5.10] WebEngineView.InsertUnorderedList
             Inserts an unordered list at the current cursor position,
             deleting the current selection.
-            Requires \c contenteditable="true". (Added in Qt 5.10)
-    \value  WebEngineView.ChangeTextDirectionLTR
-            Changes text direction to left-to-right in the focused input element. (Added in Qt 6.6)
-    \value  WebEngineView.ChangeTextDirectionRTL
-            Changes text direction to right-to-left in the focused input element. (Added in Qt 6.6)
+            Requires \c contenteditable="true".
+    \value  [since 6.6] WebEngineView.ChangeTextDirectionLTR
+            Changes text direction to left-to-right in the focused input element.
+    \value  [since 6.6] WebEngineView.ChangeTextDirectionRTL
+            Changes text direction to right-to-left in the focused input element.
     \omitvalue WebActionCount
 */
 
@@ -867,22 +879,19 @@
             Video devices, such as cameras.
     \value  WebEngineView.MediaAudioVideoCapture
             Both audio and video capture devices.
-    \value  WebEngineView.DesktopVideoCapture
+    \value  [since 5.10] WebEngineView.DesktopVideoCapture
             Video output capture, that is, the capture of the user's display.
-            (Added in Qt 5.10)
-    \value  WebEngineView.DesktopAudioVideoCapture
-            Both audio and video output capture. (Added in Qt 5.10)
+    \value  [since 5.10] WebEngineView.DesktopAudioVideoCapture
+            Both audio and video output capture.
     \value  WebEngineView.Notifications
             Web notifications for the end-user.
-    \value  WebEngineView.ClipboardReadWrite
+    \value  [since 6.8] WebEngineView.ClipboardReadWrite
             Read and write access for the clipboard. If both \l{WebEngineSettings::}
             {javascriptCanPaste} and \l{WebEngineSettings::}
             {javascriptCanAccessClipboard} settings are enabled, this permission will always be granted
             automatically and no feature requests will be made.
-            (Added in Qt 6.8)
-    \value  WebEngineView.LocalFontsAccess
+    \value  [since 6.8] WebEngineView.LocalFontsAccess
             Access to the fonts installed on the user's machine. Only available on desktop platforms.
-            (Added in Qt 6.8)
 
     \sa featurePermissionRequested(), grantFeaturePermission()
 */
@@ -1095,18 +1104,17 @@
     \since QtWebEngine 1.3
 
     This signal is emitted when the page's audible state, specified by
-    \a recentlyAudible, is changed, due to audio being played or stopped.
+    \a recentlyAudible, is changed due to audio being played or stopped.
 
     \note The signal is also emitted when the \l audioMuted property changes.
-    Also if the audio is paused, this signal is emitted with an approximate \b{two-second
+    Also, if the audio is paused, this signal is emitted with an approximate \b{two-second
     delay}, from the moment the audio is paused.
 
     If a web page contains two videos that are started in sequence, this signal
     gets emitted only once, for the first video to generate sound. After both
     videos are stopped, the signal is emitted upon the last sound generated.
-    This means that the signal is emitted both when any kind of sound is
-    generated and when everything is completely silent within a web page,
-    regardless of the number of audio streams.
+    This means that the signal is emitted both when any sound is generated, and when
+    everything falls completely silent, regardless of the number of audio streams.
 
     Spurious signal emissions might also happen. For example, when sound is
     stopped, this signal gets emitted first with a value of \c true, and then
@@ -1162,7 +1170,7 @@
 */
 
 /*!
-    \qmlmethod void WebEngineView::replaceMisspelledWord(const QString &replacement)
+    \qmlmethod void WebEngineView::replaceMisspelledWord(const string replacement)
     \since QtWebEngine 1.3
 
     Replace the current misspelled word with \a replacement.
@@ -1173,7 +1181,7 @@
     \since QtWebEngine 1.3
 
     This signal is emitted when the page's audible state, specified by
-    \a wasRecentlyAudible, is changed, due to audio being played or stopped.
+    \a wasRecentlyAudible, is changed due to audio being played or stopped.
 
     \note The signal is also emitted when calling the setAudioMuted method.
 */
@@ -1453,7 +1461,7 @@
     Setting the lifecycle state to a lower resource usage state than the
     recommended state may cause side-effects such as stopping background audio
     playback or loss of HTML form input. Setting the lifecycle state to a higher
-    resource state is however completely safe.
+    resource state is, however, completely safe.
 
     \sa lifecycleState, {Page Lifecycle API}, {WebEngine Lifecycle Example}
 */
@@ -1517,7 +1525,7 @@
 */
 
 /*!
-    \qmlsignal WebEngineView::touchSelectionMenuRequested(TouchSelectionMenuRequest *request)
+    \qmlsignal WebEngineView::touchSelectionMenuRequested(TouchSelectionMenuRequest request)
     \since QtWebEngine 6.3
     \readonly
 
@@ -1596,7 +1604,7 @@
 */
 
 /*!
-    \qmlmethod void WebEngineView::save(const QString &filePath, QWebEngineDownloadRequest::SavePageFormat format)
+    \qmlmethod void WebEngineView::save(string filePath, WebEngineDownloadRequest.SavePageFormat format)
     \since QtWebEngine 6.6
 
     Save the current web page to disk.
@@ -1611,30 +1619,30 @@
 
     This function issues an asynchronous download request for the web page and returns immediately.
 
-    \sa QWebEngineDownloadRequest::SavePageFormat
+    \sa WebEngineDownloadRequest::savePageFormat
 */
 
 /*!
-    \qmlsignal WebEngineView::webAuthUxRequested(QWebEngineWebAuthUxRequest *request);
+    \qmlsignal WebEngineView::webAuthUxRequested(WebEngineWebAuthUxRequest request);
     \since QtWebEngine 6.7
 
     This signal is emitted when a WebAuth authenticator requires user interaction
     during the authentication process. These requests are handled by displaying a dialog to the user.
 
-    The \a request contains the information and API required to complete the WebAuth UX request.
+    The \a request object contains the information and API required to complete the WebAuth UX request.
 
-    \sa QWebEngineWebAuthUxRequest
+    \sa WebEngineWebAuthUxRequest
 */
 
 /*!
-    \qmlsignal WebEngineView::desktopMediaRequested(WebEngineDesktopMediaRequest request)
+    \qmlsignal WebEngineView::desktopMediaRequested(webEngineDesktopMediaRequest request)
     \since QtWebEngine 6.7
 
     This signal is emitted when a web application requests access to the contents of a display.
 
     The \a request argument holds references to data models for windows and screens available
     for capturing. To accept the request, the signal handler can call either
-    WebEngineDesktopMediaRequest::selectScreen() or WebEngineDesktopMediaRequest::selectWindow().
+    webEngineDesktopMediaRequest::selectScreen() or webEngineDesktopMediaRequest::selectWindow().
 */
 
 /*!

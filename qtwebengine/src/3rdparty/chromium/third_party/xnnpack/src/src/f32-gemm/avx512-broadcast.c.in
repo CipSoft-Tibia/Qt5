@@ -5,6 +5,7 @@
 
 $assert DATATYPE in ["F32", "QC4", "QC8"]
 $assert NR % 16 == 0
+$assert 16 <= NR <= 64
 #include <assert.h>
 
 #include <immintrin.h>
@@ -34,7 +35,7 @@ void xnn_${DATATYPE_SPEC}_gemm${"inc" if INC else ""}_minmax_ukernel_${MR}x${NR}
     $if INC:
       const float* restrict acc,
     $if DATATYPE == "QC4":
-      const union xnn_f32_qc4w_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])
+      const struct xnn_f32_qc4w_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])
     $else:
       const union xnn_f32_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])
 {
@@ -69,10 +70,6 @@ void xnn_${DATATYPE_SPEC}_gemm${"inc" if INC else ""}_minmax_ukernel_${MR}x${NR}
         a${M} = a${M-1};
         c${M} = c${M-1};
       }
-  $if DATATYPE == "QC4":
-    const __m128i vminus_kernel_zero_point = _mm_load_si128((const __m128i *) params->sse.minus_kernel_zero_point);
-    const __m128i vmask = _mm_load_si128((const __m128i *) params->sse.mask);
-
   do {
     $if INC:
       $for M in range(MR):
@@ -151,37 +148,16 @@ void xnn_${DATATYPE_SPEC}_gemm${"inc" if INC else ""}_minmax_ukernel_${MR}x${NR}
 
       nc -= ${NR};
     } else {
-      $for LOG2N in reversed(range(4, NR.bit_length())):
-        $if NR != 1 << LOG2N:
-          if (nc & ${1 << LOG2N}) {
-            $if LOG2N >= 4:
-              $for M in RANGE_MR:
-                _mm512_storeu_ps(c${M}, vacc${M}x0);
-                $for N in range(16, 1 << LOG2N, 16):
-                  _mm512_storeu_ps(c${M} + ${N}, vacc${M}x${N//16});
+      // NC remainder (1..${NR-1})
+      assert(nc >= 1);
+      assert(nc <= ${NR-1});
+      // Prepare mask for valid 32-bit elements (depends on nc).
+      $for N in range(0, NR, 16):
+        const __mmask16 vmask${N//16} = _cvtu32_mask16((uint32_t) (((UINT64_C(1) << nc) - 1) >> ${N}));
 
-              $for M in RANGE_MR:
-                $for N in range(0, NR - (1 << LOG2N), 16):
-                  vacc${M}x${N//16} = vacc${M}x${(N + (1 << LOG2N))//16};
-
-              $for M in RANGE_MR:
-                c${M} += ${1 << LOG2N};
-          }
-        $if LOG2N == 4:
-          $if NR > 16:
-            if (nc & 15) {
-              // Prepare mask for valid 32-bit elements (depends on nc).
-              const __mmask16 vmask = _cvtu32_mask16((uint32_t) (UINT32_C(1) << (nc & 15)) - UINT32_C(1));
-              $for M in RANGE_MR:
-                _mm512_mask_storeu_ps(c${M}, vmask, vacc${M}x0);
-            }
-          $else:
-            assert(nc != 0);
-            assert(nc < ${NR});
-            // Prepare mask for valid 32-bit elements (depends on nc).
-            const __mmask16 vmask = _cvtu32_mask16((uint32_t) (UINT32_C(1) << nc) - UINT32_C(1));
-            $for M in RANGE_MR:
-              _mm512_mask_storeu_ps(c${M}, vmask, vacc${M}x0);
+      $for M in RANGE_MR:
+        $for N in range(0, NR, 16):
+          _mm512_mask_storeu_ps(c${M} + ${N}, vmask${N//16}, vacc${M}x${N//16});
       nc = 0;
     }
   } while (nc != 0);

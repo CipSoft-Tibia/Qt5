@@ -13,7 +13,10 @@ class tst_generate_qmlls_ini : public QObject
 {
     Q_OBJECT
 private slots:
+    void qmllsIniAreCorrect_data();
     void qmllsIniAreCorrect();
+
+    void qmllsBuildIni();
 };
 
 using namespace Qt::StringLiterals;
@@ -25,65 +28,58 @@ using namespace Qt::StringLiterals;
 #  define BUILD_DIRECTORY u"invalid_build_directory"_s
 #endif
 
-void tst_generate_qmlls_ini::qmllsIniAreCorrect()
+static QString contentOf(const QString &fileName)
 {
-    const QString qmllsIniName = u".qmlls.ini"_s;
-    QDir source(SOURCE_DIRECTORY);
-    QDir build(BUILD_DIRECTORY);
-    if (!source.exists())
-        QSKIP(u"Cannot find source directory '%1', skipping test..."_s.arg(SOURCE_DIRECTORY)
-                      .toLatin1());
-
-    const QString qmllsIniTemplate = uR"([General]
-buildDir="%1"
-no-cmake-calls=false
-docDir=%2
-importPaths="%3"
-)"_s;
-
-    const QString &docPath = QLibraryInfo::path(QLibraryInfo::DocumentationPath);
-    const QString defaultImportPath = QLibraryInfo::path(QLibraryInfo::QmlImportsPath);
-    {
-        auto file = QFile(source.absoluteFilePath(qmllsIniName));
+    auto file = QFile(fileName);
+    [&file] {
         QVERIFY(file.exists());
         QVERIFY(file.open(QFile::ReadOnly | QFile::Text));
-        const auto fileContent = QString::fromUtf8(file.readAll());
-        auto secondFolder = QDir(build.absolutePath().append(u"/qml/hello/subfolders"_s));
-        QVERIFY(secondFolder.exists());
-        QCOMPARE(fileContent,
-                 qmllsIniTemplate.arg(build.absolutePath()
-                                              .append(QDir::listSeparator())
-                                              .append(secondFolder.absolutePath()),
-                                      docPath, defaultImportPath));
+    }();
+    return QString::fromUtf8(file.readAll());
+}
+
+void tst_generate_qmlls_ini::qmllsIniAreCorrect_data()
+{
+    QTest::addColumn<QString>("folder");
+    QTest::addColumn<QStringList>("expectedBuildDirs");
+    QTest::addColumn<QString>("expectedNoCMakeCalls");
+    QTest::addColumn<QString>("expectedDocDir");
+    QTest::addColumn<QStringList>("expectedImportPaths");
+
+    QDir source(SOURCE_DIRECTORY);
+    QDir build(BUILD_DIRECTORY);
+    if (!source.exists()) {
+        QSKIP(u"Cannot find source directory '%1', skipping test..."_s.arg(SOURCE_DIRECTORY)
+                      .toLatin1());
     }
+
+    const QString &docPath = QLibraryInfo::path(QLibraryInfo::DocumentationPath);
+    const QStringList defaultImportPaths{ QLibraryInfo::path(QLibraryInfo::QmlImportsPath) };
+    const QString noCMakeCalls = "false"_L1;
+
+    QTest::addRow("subfolders") << source.absolutePath()
+                                << QStringList{ build.absolutePath(),
+                                                QDir(build.absolutePath().append(
+                                                             "/qml/hello/subfolders"_L1))
+                                                        .absolutePath() }
+                                << noCMakeCalls << docPath << defaultImportPaths;
 
     {
         QDir sourceSubfolder = source;
         QVERIFY(sourceSubfolder.cd(u"SomeSubfolder"_s));
-        QDir buildSubfolder(build.absolutePath().append(u"/SomeSubfolder/qml/Some/Sub/Folder"_s));
-        {
-            auto file = QFile(sourceSubfolder.absoluteFilePath(qmllsIniName));
-            QVERIFY(file.exists());
-            QVERIFY(file.open(QFile::ReadOnly | QFile::Text));
-            const auto fileContent = QString::fromUtf8(file.readAll());
-            QCOMPARE(fileContent,
-                     qmllsIniTemplate.arg(buildSubfolder.absolutePath(), docPath,
-                                          defaultImportPath));
-        }
+        QTest::addRow("subfolders2")
+                << sourceSubfolder.absolutePath()
+                << QStringList{ build.absoluteFilePath(u"SomeSubfolder/qml/Some/Sub/Folder"_s) }
+                << noCMakeCalls << docPath << defaultImportPaths;
     }
 
     {
         QDir dottedUriSubfolder = source;
         QVERIFY(dottedUriSubfolder.cd(u"Dotted"_s));
         QVERIFY(dottedUriSubfolder.cd(u"Uri"_s));
-        {
-            auto file = QFile(dottedUriSubfolder.absoluteFilePath(qmllsIniName));
-            QVERIFY(file.exists());
-            QVERIFY(file.open(QFile::ReadOnly | QFile::Text));
-            const auto fileContent = QString::fromUtf8(file.readAll());
-            QCOMPARE(fileContent,
-                     qmllsIniTemplate.arg(build.absolutePath(), docPath, defaultImportPath));
-        }
+        QTest::addRow("dotted-uri")
+                << dottedUriSubfolder.absolutePath() << QStringList{ build.absolutePath() }
+                << noCMakeCalls << docPath << defaultImportPaths;
     }
     {
         QDir dottedUriSubfolder = source;
@@ -91,46 +87,98 @@ importPaths="%3"
         QVERIFY(dottedUriSubfolder.cd(u"Uri"_s));
         QVERIFY(dottedUriSubfolder.cd(u"Hello"_s));
         QVERIFY(dottedUriSubfolder.cd(u"World"_s));
-        {
-            auto file = QFile(dottedUriSubfolder.absoluteFilePath(qmllsIniName));
-            QVERIFY(file.exists());
-            QVERIFY(file.open(QFile::ReadOnly | QFile::Text));
-            const auto fileContent = QString::fromUtf8(file.readAll());
-            QCOMPARE(fileContent,
-                     qmllsIniTemplate.arg(build.absolutePath(), docPath, defaultImportPath));
-        }
+
+        QTest::addRow("dotted-uri2")
+                << dottedUriSubfolder.absolutePath() << QStringList{ build.absolutePath() }
+                << noCMakeCalls << docPath << defaultImportPaths;
     }
     {
         QDir dottedUriSubfolder = source;
         QVERIFY(dottedUriSubfolder.cd(u"ModuleWithDependency"_s));
         QVERIFY(dottedUriSubfolder.cd(u"MyModule"_s));
-        {
-            auto file = QFile(dottedUriSubfolder.absoluteFilePath(qmllsIniName));
-            QVERIFY(file.exists());
-            QVERIFY(file.open(QFile::ReadOnly | QFile::Text));
-            const auto fileContent = QString::fromUtf8(file.readAll());
-            QCOMPARE(fileContent,
-                     qmllsIniTemplate.arg(build.absoluteFilePath(u"ModuleWithDependency"_s),
-                                          docPath,
-                                          build.absoluteFilePath(u"Dependency"_s)
-                                                  + QDir::listSeparator() + defaultImportPath));
-        }
+        QTest::addRow("module-with-dependency")
+                << dottedUriSubfolder.absolutePath() << QStringList{ build.absoluteFilePath(u"ModuleWithDependency"_s), }
+                << noCMakeCalls << docPath << QStringList { build.absoluteFilePath(u"Dependency"_s) } + defaultImportPaths;
     }
     {
         QDir quotesInPath = source;
         QVERIFY(quotesInPath.cd(u"quotesInPath"_s));
-        {
-            auto file = QFile(quotesInPath.absoluteFilePath(qmllsIniName));
-            QVERIFY(file.exists());
-            QVERIFY(file.open(QFile::ReadOnly | QFile::Text));
-            const auto fileContent = QString::fromUtf8(file.readAll());
-            QCOMPARE(fileContent,
-                     qmllsIniTemplate.arg(build.absolutePath(),
-                                          docPath,
-                                          uR"(\"hello\"\"world\")"_s
-                                                  + QDir::listSeparator() + defaultImportPath));
-        }
+        QTest::addRow("quotes-in-path")
+                << quotesInPath.absolutePath() << QStringList{ build.absolutePath(), }
+                << noCMakeCalls << docPath << QStringList {R"(\"hello\"\"world\")"_L1 } + defaultImportPaths;
     }
+    {
+        QDir withoutCMakeBuilds = source;
+        QVERIFY(withoutCMakeBuilds.cd(u"WithoutCMakeBuilds"_s));
+        QTest::addRow("without-cmake-calls")
+                << withoutCMakeBuilds.absolutePath() << QStringList{ build.absolutePath(), }
+                << u"true"_s << docPath << defaultImportPaths;
+    }
+    {
+        QDir wrongOutput = source;
+        QVERIFY(wrongOutput.cd(u"WrongOutput"_s));
+        QTest::addRow("wrong-output")
+                << wrongOutput.absolutePath() << QStringList{ build.filePath("WrongOutput"), }
+                << noCMakeCalls << docPath << defaultImportPaths;
+    }
+}
+
+void tst_generate_qmlls_ini::qmllsIniAreCorrect()
+{
+    QFETCH(QString, folder);
+    QFETCH(QStringList, expectedBuildDirs);
+    QFETCH(QString, expectedNoCMakeCalls);
+    QFETCH(QString, expectedDocDir);
+    QFETCH(QStringList, expectedImportPaths);
+
+    static constexpr QLatin1String qmllsIniName = ".qmlls.ini"_L1;
+    static constexpr QLatin1String qmllsIniTemplate = R"([General]
+buildDir="%1"
+no-cmake-calls=%2
+docDir=%3
+importPaths="%4"
+)"_L1;
+
+    const QString iniContent = contentOf(QString(folder).append("/"_L1).append(qmllsIniName));
+    QCOMPARE(iniContent,
+             qmllsIniTemplate.arg(expectedBuildDirs.join(QDir::listSeparator()),
+                                  expectedNoCMakeCalls, expectedDocDir,
+                                  expectedImportPaths.join(QDir::listSeparator())));
+}
+
+void tst_generate_qmlls_ini::qmllsBuildIni()
+{
+    static constexpr QLatin1String qmllsBuildIniPath = ".qt/.qmlls.build.ini"_L1;
+
+    QDir build(BUILD_DIRECTORY);
+    QVERIFY(build.exists());
+
+    QDir source(SOURCE_DIRECTORY);
+    if (!source.exists()) {
+        QSKIP(u"Cannot find source directory '%1', skipping test..."_s.arg(SOURCE_DIRECTORY)
+                      .toLatin1());
+    }
+
+    const QString content = contentOf(build.filePath(qmllsBuildIniPath));
+    const QString pathOfCurrentModule = build.absolutePath();
+
+    QVERIFY(source.cd("QmllsBuildIni"_L1));
+    QVERIFY(build.cd("QmllsBuildIni"_L1));
+
+    const QString escapedSource = source.absolutePath().replace("/"_L1, "<SLASH>"_L1);
+    const QString importPaths =
+            QStringList{ build.absoluteFilePath("qml2"_L1),
+                         build.absoluteFilePath("qml"_L1),
+                         build.absoluteFilePath("qml3/MyModule3"_L1),
+                         pathOfCurrentModule,
+                         build.absolutePath(),
+                         build.absoluteFilePath(QLibraryInfo::path(QLibraryInfo::QmlImportsPath)) }
+                    .join(QDir::listSeparator());
+
+    static constexpr QLatin1String expectedContent = R"([%1]
+importPaths="%2"
+)"_L1;
+    QVERIFY(content.contains(expectedContent.arg(escapedSource, importPaths)));
 }
 
 QTEST_MAIN(tst_generate_qmlls_ini)

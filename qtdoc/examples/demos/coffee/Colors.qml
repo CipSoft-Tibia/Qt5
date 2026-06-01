@@ -5,32 +5,42 @@ pragma Singleton
 import QtQuick
 
 Item {
-    QtObject {
-        id: light
-        readonly property color background: "#ffffff"
-        readonly property color textColor: "#121111"
-        readonly property color borderColor: "#D8D8D8"
-        readonly property color cardColor: "#FFFFFF"
-        readonly property color caption: "#898989"
+    id: root
+
+    component Theme : QtObject {
+        property color background
+        property color textColor
+        property color borderColor
+        property color cardColor
+        property color caption
     }
-    QtObject {
+
+    Theme {
+        id: light
+        background: "#ffffff"
+        textColor: "#121111"
+        borderColor: "#D8D8D8"
+        cardColor: "#FFFFFF"
+        caption: "#898989"
+    }
+    Theme {
         id: dark
-        readonly property color background: "#121212"
-        readonly property color textColor: "#FEFEFE"
-        readonly property color borderColor: "#3E3E3E"
-        readonly property color cardColor: "#212121"
-        readonly property color caption: "#898989"
+        background: "#121212"
+        textColor: "#FEFEFE"
+        borderColor: "#3E3E3E"
+        cardColor: "#212121"
+        caption: "#898989"
     }
 
     Gradient {
         id: invertedGreyBorder
-        GradientStop { position: 0.0; color: currentTheme.cardColor }
-        GradientStop { position: 1.0; color: currentTheme.borderColor }
+        GradientStop { position: 0.0; color: root.currentTheme.cardColor }
+        GradientStop { position: 1.0; color: root.currentTheme.borderColor }
     }
     Gradient {
         id: greyBorder
-        GradientStop { position: 0.0; color: currentTheme.borderColor }
-        GradientStop { position: 1.0; color: currentTheme.cardColor }
+        GradientStop { position: 0.0; color: root.currentTheme.borderColor }
+        GradientStop { position: 1.0; color: root.currentTheme.cardColor }
     }
     Gradient {
         id: invertedGreenBorder
@@ -49,14 +59,14 @@ Item {
         }
         GradientStop {
             position: 0.0
-            color: currentTheme.cardColor
+            color: root.currentTheme.cardColor
         }
     }
     Gradient {
         id: greenBorder
         GradientStop {
             position: 1.0
-            color: currentTheme.cardColor
+            color: root.currentTheme.cardColor
         }
         GradientStop {
             position: 0.66
@@ -120,7 +130,7 @@ Item {
     property color shadow: "white"
     property color border: "#898989"
     property color grey: "#585858"
-    property var currentTheme: dark
+    property Theme currentTheme: dark
     property alias dark: dark
     property alias light: light
     property alias invertedGreenBorder: invertedGreenBorder

@@ -4015,9 +4015,9 @@ void tst_qquickvisualdatamodel::asynchronousInsert()
     QVERIFY(!requester.itemCreated);
     QVERIFY(!requester.itemDestroyed);
 
-    QList<QPair<QString, QString> > newItems;
+    QList<std::pair<QString, QString> > newItems;
     for (int i = 0; i < insertCount; i++)
-        newItems.append(qMakePair(QLatin1String("New item") + QString::number(i), QString(QLatin1String(""))));
+        newItems.append(std::make_pair(QLatin1String("New item") + QString::number(i), QString(QLatin1String(""))));
     model.insertItems(insertIndex, newItems);
 
     item = qobject_cast<QQuickItem*>(visualModel->object(completeIndex));

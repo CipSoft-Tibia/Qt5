@@ -8,11 +8,11 @@
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qxmlstream.h>
 
+using namespace Qt::Literals::StringLiterals;
+
 bool isSupportedExtension(const QString &ext)
 {
-    return ext == QLatin1String("qml")
-        || ext == QLatin1String("js") || ext == QLatin1String("qs")
-        || ext == QLatin1String("ui") || ext == QLatin1String("jui");
+    return ext == "qml"_L1 || ext == "js"_L1 || ext == "qs"_L1 || ext == "ui"_L1 || ext == "jui"_L1;
 }
 
 ReadQrcResult readQrcFile(const QString &resourceFile, const QString &content)
@@ -21,8 +21,7 @@ ReadQrcResult readQrcFile(const QString &resourceFile, const QString &content)
     QString dirPath = QFileInfo(resourceFile).path();
     QXmlStreamReader reader(content);
     bool isFileTag = false;
-    QStringList tagStack;
-    tagStack << QLatin1String("RCC") << QLatin1String("qresource") << QLatin1String("file");
+    QStringList tagStack{ "RCC"_L1, "qresource"_L1, "file"_L1 };
     int curDepth = 0;
     while (!reader.atEnd()) {
         QXmlStreamReader::TokenType t = reader.readNext();
@@ -53,7 +52,7 @@ ReadQrcResult readQrcFile(const QString &resourceFile, const QString &content)
             if (isFileTag) {
                 QString fn = reader.text().toString();
                 if (!QFileInfo(fn).isAbsolute())
-                    fn = dirPath + QLatin1Char('/') + fn;
+                    fn = dirPath + u'/' + fn;
                 QFileInfo cfi(fn);
                 if (isSupportedExtension(cfi.suffix()))
                     result.files << cfi.filePath();

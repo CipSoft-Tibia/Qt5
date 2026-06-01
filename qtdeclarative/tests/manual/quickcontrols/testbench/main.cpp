@@ -10,10 +10,6 @@
 #include <QQuickStyle>
 #include <QtQuickControls2/private/qquickstyle_p.h>
 
-#include "assetfixer.h"
-#include "clipboard.h"
-#include "directoryvalidator.h"
-
 int main(int argc, char *argv[])
 {
     QGuiApplication::setApplicationName("testbench");
@@ -30,19 +26,17 @@ int main(int argc, char *argv[])
     else
         QQuickStyle::setStyle(settings.value("style").isValid() ? settings.value("style").toString() : "Imagine");
 
-    if (QFontDatabase::addApplicationFont(":/fonts/fontello.ttf") == -1) {
+    if (QFontDatabase::addApplicationFont(":qt/qml/Testbench/fonts/fontello.ttf") == -1)
         qWarning() << "Failed to load fontawesome font";
-    }
 
     QQmlApplicationEngine engine;
-
-    qmlRegisterType<AssetFixer>("Backend", 1, 0, "AssetFixer");
-    qmlRegisterType<Clipboard>("Backend", 1, 0, "Clipboard");
-    qmlRegisterType<DirectoryValidator>("Backend", 1, 0, "DirectoryValidator");
-
-    engine.rootContext()->setContextProperty("availableStyles", QQuickStylePrivate::builtInStyles());
-
-    engine.load(QUrl(QStringLiteral("qrc:/testbench.qml")));
+    QObject::connect(
+            &engine,
+            &QQmlApplicationEngine::objectCreationFailed,
+            &app,
+            []() { QCoreApplication::exit(-1); },
+            Qt::QueuedConnection);
+    engine.loadFromModule("Testbench", "Main");
 
     return app.exec();
 }

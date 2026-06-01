@@ -271,15 +271,27 @@ def blink_type_info(idl_type):
     if real_type.is_symbol:
         assert False, "Blink does not support/accept IDL symbol type."
 
-    if real_type.is_any or real_type.is_object:
+    if real_type.is_any:
         return TypeInfo("ScriptValue",
                         ref_fmt="{}&",
                         const_ref_fmt="const {}&",
                         has_null_value=True,
                         is_traceable=True)
 
+    if real_type.is_object:
+        return TypeInfo("ScriptObject",
+                        ref_fmt="{}&",
+                        const_ref_fmt="const {}&",
+                        has_null_value=True,
+                        is_traceable=True)
+
     if real_type.is_undefined:
-        assert False, "Blink does not support/accept IDL undefined type."
+        return TypeInfo("ToV8UndefinedGenerator",
+                        ref_fmt="{}&",
+                        const_ref_fmt="const {}&",
+                        has_null_value=False,
+                        is_traceable=False,
+                        clear_member_var_fmt="")
 
     if real_type.type_definition_object:
         typename = blink_class_name(real_type.type_definition_object)
@@ -360,13 +372,12 @@ def blink_type_info(idl_type):
                             clear_member_var_fmt="{}.clear()")
 
     if real_type.is_promise:
-        if "IDLTypeImplementedAsV8Promise" in real_type.extended_attributes:
-            type_name = "v8::Local<v8::Promise>"
-        else:
-            type_name = "ScriptPromiseUntyped"
+        type_name = "ScriptPromise<{}>".format(
+            native_value_tag(real_type.result_type))
         return TypeInfo(type_name,
-                        ref_fmt="{}&",
-                        const_ref_fmt="const {}&",
+                        member_fmt="Member{}",
+                        ref_fmt="Member{}&",
+                        const_ref_fmt="const Member{}&",
                         is_traceable=True)
 
     if real_type.is_union:
@@ -419,12 +430,13 @@ def native_value_tag(idl_type, argument=None, apply_optional_to_last_arg=True):
             and not (idl_type.is_nullable or argument.default_value)
             and (apply_optional_to_last_arg
                  or argument != argument.owner.arguments[-1])):
-        return "IDLOptional<{}>".format(_native_value_tag_impl(idl_type))
+        return "IDLOptional<{}>".format(
+            _native_value_tag_impl(idl_type, argument))
 
-    return _native_value_tag_impl(idl_type)
+    return _native_value_tag_impl(idl_type, argument)
 
 
-def _pass_as_span_conversion_arguments(idl_type):
+def _pass_as_span_conversion_arguments(idl_type, support_reentry):
     real_type = idl_type.unwrap(typedef=True)
     types = real_type.flattened_member_types if real_type.is_union else [
         real_type
@@ -462,15 +474,18 @@ def _pass_as_span_conversion_arguments(idl_type):
         "AllowShared" in t.effective_annotations for t in types)
     if allow_shared:
         flags.append("PassAsSpanMarkerBase::Flags::kAllowShared")
+    if support_reentry:
+        flags.append("PassAsSpanMarkerBase::Flags::kSupportReentry")
 
     return [
         " | ".join(flags) or "PassAsSpanMarkerBase::Flags::kNone", native_type
     ]
 
 
-def _native_value_tag_impl(idl_type):
+def _native_value_tag_impl(idl_type, argument=None):
     """Returns the tag type of NativeValueTraits."""
     assert isinstance(idl_type, web_idl.IdlType)
+    assert argument is None or isinstance(argument, web_idl.Argument)
 
     if idl_type.is_event_handler:
         return "IDL{}".format(idl_type.identifier)
@@ -478,7 +493,12 @@ def _native_value_tag_impl(idl_type):
     real_type = idl_type.unwrap(typedef=True)
 
     if "PassAsSpan" in idl_type.effective_annotations:
-        conversion_arguments = _pass_as_span_conversion_arguments(idl_type)
+        assert argument, "PassAsSpan can only appear on an argument"
+        # TODO(caseq): This works for now. Refine this to check no args
+        # involving JS calls (strings, dicts) is passed after this one.
+        support_reentry = "NoAllocDirectCall" not in argument.owner.extended_attributes
+        conversion_arguments = _pass_as_span_conversion_arguments(
+            idl_type, support_reentry)
         return "PassAsSpan<{}>".format(", ".join(conversion_arguments))
 
     if (real_type.is_boolean or real_type.is_numeric or real_type.is_string
@@ -522,7 +542,8 @@ def _native_value_tag_impl(idl_type):
             _native_value_tag_impl(real_type.value_type))
 
     if real_type.is_promise:
-        return "IDLPromise"
+        return "IDLPromise<{}>".format(
+            _native_value_tag_impl(real_type.result_type))
 
     if real_type.is_union:
         return blink_class_name(real_type.union_definition_object)
@@ -696,6 +717,11 @@ def make_default_value_expr(idl_type, default_value):
             initializer_deps = ["isolate"]
             assignment_value = "ScriptValue::CreateNull(${isolate})"
             assignment_deps = ["isolate"]
+        elif type_info.typename == "ScriptObject":
+            initializer_expr = "${isolate}, v8::Null(${isolate})"
+            initializer_deps = ["isolate"]
+            assignment_value = "ScriptObject::CreateNull(${isolate})"
+            assignment_deps = ["isolate"]
         elif idl_type.unwrap().is_union:
             initializer_expr = "nullptr"
             is_initialization_lightweight = True
@@ -832,6 +858,8 @@ def make_v8_to_blink_value(blink_var_name,
                 "${exception_state}",
             ]
         if "StringContext" in idl_type.effective_annotations:
+            arguments.append("${class_like_name}")
+            arguments.append("${property_name}")
             arguments.append("${execution_context_of_document_tree}")
         blink_value_expr = _format("NativeValueTraits<{_1}>::{_2}({_3})",
                                    _1=native_value_tag(
@@ -927,6 +955,8 @@ def make_v8_to_blink_value_variadic(blink_var_name, v8_array,
         str(v8_array_start_index), "${exception_state}"
     ]
     if "StringContext" in idl_type.element_type.effective_annotations:
+        arguments.append("${class_like_name}")
+        arguments.append("${property_name}")
         arguments.append("${execution_context_of_document_tree}")
     text = _format(
         pattern,

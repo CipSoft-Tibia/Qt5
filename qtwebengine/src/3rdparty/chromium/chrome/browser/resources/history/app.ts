@@ -9,7 +9,6 @@ import 'chrome://resources/cr_elements/cr_lazy_render/cr_lazy_render.js';
 import 'chrome://resources/cr_elements/cr_shared_style.css.js';
 import 'chrome://resources/cr_elements/cr_shared_vars.css.js';
 import 'chrome://resources/cr_elements/cr_tabs/cr_tabs.js';
-import 'chrome://resources/polymer/v3_0/iron-media-query/iron-media-query.js';
 import 'chrome://resources/cr_elements/cr_page_selector/cr_page_selector.js';
 import './history_embeddings_promo.js';
 import './history_list.js';
@@ -17,7 +16,7 @@ import './history_toolbar.js';
 import './query_manager.js';
 import './shared_style.css.js';
 import './side_bar.js';
-import './strings.m.js';
+import '/strings.m.js';
 import './product_specifications_lists.js';
 
 import {HelpBubbleMixin} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin.js';
@@ -281,7 +280,12 @@ export class HistoryAppElement extends HistoryAppElementBase {
 
       compareHistoryEnabled_: Boolean,
       tabContentScrollOffset_: Number,
+      nonEmbeddingsResultClicked_: Boolean,
     };
+  }
+
+  static get observers() {
+    return ['onQueryStateChanged_(queryState_.*)'];
   }
 
   footerInfo: FooterInfo;
@@ -317,6 +321,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
   private tabContentScrollOffset_: number = 0;
   private dataFromNativeBeforeInput_: string|null = null;
   private numCharsTypedInSearch_: number = 0;
+  private nonEmbeddingsResultClicked_: boolean = false;
 
   constructor() {
     super();
@@ -353,6 +358,12 @@ export class HistoryAppElement extends HistoryAppElementBase {
     this.shadowRoot!.querySelector('history-query-manager')!.initialize();
     this.browserService_!.getForeignSessions().then(
         sessionList => this.setForeignSessions_(sessionList));
+
+    const mediaQuery = window.matchMedia('(max-width: 1023px)');
+    this.hasDrawer_ = mediaQuery.matches;
+    this.eventTracker_.add(
+        mediaQuery, 'change',
+        (e: MediaQueryListEvent) => this.hasDrawer_ = e.matches);
   }
 
   override ready() {
@@ -382,6 +393,10 @@ export class HistoryAppElement extends HistoryAppElementBase {
 
   private getShowResultsByGroup_() {
     return this.selectedPage_ === Page.HISTORY_CLUSTERS;
+  }
+
+  private getShowHistoryList_() {
+    return this.selectedPage_ === Page.HISTORY;
   }
 
   private onShowResultsByGroupChanged_(e: CustomEvent<{value: boolean}>) {
@@ -589,6 +604,10 @@ export class HistoryAppElement extends HistoryAppElementBase {
       return;
     }
 
+    if (e.detail.resultType !== HistoryResultType.EMBEDDINGS) {
+      this.nonEmbeddingsResultClicked_ = true;
+    }
+
     this.browserService_!.recordHistogram(
         'History.SearchResultClicked.Type', e.detail.resultType,
         HistoryResultType.END);
@@ -691,8 +710,9 @@ export class HistoryAppElement extends HistoryAppElementBase {
   }
 
   private updateTabsContentPage_() {
-    this.tabsContentPage_ = (this.selectedPage_ === Page.HISTORY_CLUSTERS &&
-                             this.historyClustersEnabled_) ?
+    this.tabsContentPage_ =
+        (this.selectedPage_ === Page.HISTORY_CLUSTERS &&
+         this.historyClustersEnabled_ && this.historyClustersVisible_) ?
         Page.HISTORY_CLUSTERS :
         Page.HISTORY;
   }
@@ -918,6 +938,10 @@ export class HistoryAppElement extends HistoryAppElementBase {
       this.tabContentScrollOffset_ = entries[0].contentRect.height;
     });
     this.historyEmbeddingsResizeObserver_.observe(historyEmbeddingsContainer);
+  }
+
+  private onQueryStateChanged_() {
+    this.nonEmbeddingsResultClicked_ = false;
   }
 
   private onToolbarSearchInputNativeBeforeInput_(

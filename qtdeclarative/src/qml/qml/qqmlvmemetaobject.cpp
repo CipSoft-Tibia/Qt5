@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 BasysKom GmbH.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlvmemetaobject_p.h"
 
@@ -10,17 +11,18 @@
 
 #include <private/qqmlglobal_p.h>
 
-#include <private/qv4object_p.h>
-#include <private/qv4variantobject_p.h>
-#include <private/qv4variantassociationobject_p.h>
-#include <private/qv4functionobject_p.h>
-#include <private/qv4scopedvalue_p.h>
-#include <private/qv4jscall_p.h>
-#include <private/qv4qobjectwrapper_p.h>
-#include <private/qv4sequenceobject_p.h>
 #include <private/qqmlpropertycachecreator_p.h>
 #include <private/qqmlpropertycachemethodarguments_p.h>
 #include <private/qqmlvaluetypewrapper_p.h>
+#include <private/qv4functionobject_p.h>
+#include <private/qv4jscall_p.h>
+#include <private/qv4object_p.h>
+#include <private/qv4qobjectwrapper_p.h>
+#include <private/qv4runtime_p.h>
+#include <private/qv4scopedvalue_p.h>
+#include <private/qv4sequenceobject_p.h>
+#include <private/qv4variantassociationobject_p.h>
+#include <private/qv4variantobject_p.h>
 
 #include <QtCore/qsequentialiterable.h>
 
@@ -220,14 +222,19 @@ void QQmlVMEMetaObjectEndpoint::tryConnect()
         int sigIdx = aliasId + metaObject->propCount();
         metaObject->activate(metaObject->object, sigIdx, nullptr);
     } else if (const QV4::CompiledData::Object *compiledObject = metaObject->findCompiledObject()) {
-        const QV4::CompiledData::Alias *aliasData = &compiledObject->aliasTable()[aliasId];
-        if (!aliasData->isObjectAlias()) {
+        const QQmlPropertyData *aliasProperty
+                = metaObject->cache->property(metaObject->aliasOffset() + aliasId);
+        const int targetPropertyIndex = aliasProperty ? aliasProperty->aliasTarget() : -1;
+
+        if (targetPropertyIndex != -1) {
+            const QV4::CompiledData::Alias *aliasData = &compiledObject->aliasTable()[aliasId];
+
             QQmlRefPointer<QQmlContextData> ctxt = metaObject->ctxt;
             QObject *target = ctxt->idValue(aliasData->targetObjectId());
             if (!target)
                 return;
 
-            QQmlPropertyIndex encodedIndex = QQmlPropertyIndex::fromEncoded(aliasData->encodedMetaPropertyIndex);
+            QQmlPropertyIndex encodedIndex = QQmlPropertyIndex::fromEncoded(targetPropertyIndex);
             int coreIndex = encodedIndex.coreIndex();
             int valueTypeIndex = encodedIndex.valueTypeIndex();
             const QQmlPropertyData *pd = QQmlData::ensurePropertyCache(target)->property(coreIndex);
@@ -275,11 +282,22 @@ QQmlInterceptorMetaObject::~QQmlInterceptorMetaObject()
 
 }
 
+static bool propertyIndicesConflict(QQmlPropertyIndex a, QQmlPropertyIndex b)
+{
+    if (a.coreIndex() != b.coreIndex())
+        return false;
+
+    if (!a.hasValueTypeIndex() || !b.hasValueTypeIndex())
+        return true;
+
+    return a.valueTypeIndex() == b.valueTypeIndex();
+}
+
 void QQmlInterceptorMetaObject::registerInterceptor(QQmlPropertyIndex index, QQmlPropertyValueInterceptor *interceptor)
 {
     for (QQmlPropertyValueInterceptor *vi = interceptors; vi; vi = vi->m_next) {
-        if (Q_UNLIKELY(vi->m_propertyIndex.coreIndex() == index.coreIndex())) {
-            qWarning() << "Attempting to set another interceptor on "
+        if (Q_UNLIKELY(propertyIndicesConflict(vi->m_propertyIndex, index))) {
+            qWarning() << "Attempting to set another interceptor on"
                        << object->metaObject()->className() << "property"
                        << object->metaObject()->property(index.coreIndex()).name()
                        << "- unsupported";
@@ -374,7 +392,10 @@ bool QQmlInterceptorMetaObject::doIntercept(QMetaObject::Call c, int id, void **
                     // current value is explicitly set.
                     // So, we cannot return here if prevComponentValue == newComponentValue.
                     valueType->writeOnGadget(valueProp, std::move(prevComponentValue));
-                    valueType->write(object, id, QQmlPropertyData::DontRemoveBinding | QQmlPropertyData::BypassInterceptor);
+                    valueType->write(
+                        object, id,
+                        QQmlPropertyData::DontRemoveBinding | QQmlPropertyData::BypassInterceptor,
+                        QV4::ReferenceObject::AllProperties);
 
                     vi->write(newComponentValue);
                     return true;
@@ -760,39 +781,10 @@ int QQmlVMEMetaObject::metaCall(QObject *o, QMetaObject::Call c, int _id, void *
                         const QMetaType propType = propertyData->propType();
 
                         if (propType.flags().testFlag(QMetaType::IsQmlList)) {
-                            // when reading from the list, we need to find the correct MetaObject,
-                            // namely this. However, obejct->metaObject might point to any
-                            // MetaObject down the inheritance hierarchy, so we need to store how
-                            // far we have to go down
-                            // To do this, we encode the hierarchy depth together with the id of the
-                            // property in a single quintptr, with the first half storing the depth
-                            // and the second half storing the property id
-                            auto mo = static_cast<QQmlVMEMetaObject *>(
-                                        QObjectPrivate::get(object)->metaObject);
-                            quintptr inheritanceDepth = 0u;
-                            while (mo && mo != this) {
-                                mo = mo->parentVMEMetaObject();
-                                ++inheritanceDepth;
-                            }
-                            constexpr quintptr idBits = sizeof(quintptr) * CHAR_BIT / 2u;
-                            if (Q_UNLIKELY(inheritanceDepth >= (quintptr(1) << idBits))) {
-                                qmlWarning(object) << "Too many objects in inheritance hierarchy "
-                                                      "for list property";
+                            if (!getListProperty(
+                                        id, static_cast<QQmlListProperty<QObject> *>(a[0]))) {
                                 return -1;
                             }
-                            if (Q_UNLIKELY(quintptr(id) >= (quintptr(1) << idBits))) {
-                                qmlWarning(object) << "Too many properties in object "
-                                                      "for list property";
-                                return -1;
-                            }
-                            quintptr encodedIndex = (inheritanceDepth << idBits) + id;
-
-                            initPropertyAsList(id);
-                            *static_cast<QQmlListProperty<QObject> *>(a[0])
-                                    = QQmlListProperty<QObject>(
-                                        object, reinterpret_cast<void *>(quintptr(encodedIndex)),
-                                        list_append, list_count, list_at,
-                                        list_clear, list_replace, list_removeLast);
                         } else if (QV4::MemberData *md = propertyAndMethodStorageAsMemberData()) {
                             // Value type list
                             QV4::Scope scope(engine);
@@ -903,8 +895,37 @@ int QQmlVMEMetaObject::metaCall(QObject *o, QMetaObject::Call c, int _id, void *
                         const QMetaType propType = propertyData->propType();
 
                         if (propType.flags().testFlag(QMetaType::IsQmlList)) {
-                            // Writing such a property is not supported. Content is added through
-                            // the list property methods.
+                            // Object list
+                            QQmlListProperty<QObject> listProp;
+                            if (!getListProperty(id, &listProp))
+                                return -1;
+
+                            QQmlListProperty<QObject> *input
+                                    = static_cast<QQmlListProperty<QObject> *>(a[0]);
+
+                            // First check if we need to do anything at all. If the lists are
+                            // the same we don't.
+                            if (listProp.count(&listProp) != input->count(input)) {
+                                needActivate = true;
+                            } else {
+                                for (qsizetype i = 0, end = input->count(input); i < end; ++i) {
+                                    if (listProp.at(&listProp, i) == input->at(input, i))
+                                        continue;
+                                    needActivate = true;
+                                    break;
+                                }
+                            }
+
+                            // Then clear the property and re-fill it using the input list,
+                            // without sending separate signals for each element. We're sending a
+                            // summary signal below.
+                            if (needActivate) {
+                                QQmlVMEMetaObject::list_clear_nosignal(&listProp);
+                                for (qsizetype i = 0, end = input->count(input); i < end; ++i) {
+                                    QQmlVMEMetaObject::list_append_nosignal(
+                                            &listProp, input->at(input, i));
+                                }
+                            }
                         } else if (QV4::MemberData *md = propertyAndMethodStorageAsMemberData()) {
                             // Value type list
                             QV4::Scope scope(engine);
@@ -1079,7 +1100,10 @@ int QQmlVMEMetaObject::metaCall(QObject *o, QMetaObject::Call c, int _id, void *
 
                 connectAlias(compiledObject, id);
 
-                if (aliasData->isObjectAlias()) {
+                const QQmlPropertyData *aliasProperty = cache->property(aliasOffset() + id);
+                const int targetPropertyIndex = aliasProperty ? aliasProperty->aliasTarget() : -1;
+
+                if (targetPropertyIndex == -1) {
                     *reinterpret_cast<QObject **>(a[0]) = target;
                     return -1;
                 }
@@ -1088,7 +1112,8 @@ int QQmlVMEMetaObject::metaCall(QObject *o, QMetaObject::Call c, int _id, void *
                 if (!targetDData)
                     return -1;
 
-                QQmlPropertyIndex encodedIndex = QQmlPropertyIndex::fromEncoded(aliasData->encodedMetaPropertyIndex);
+                QQmlPropertyIndex encodedIndex
+                        = QQmlPropertyIndex::fromEncoded(targetPropertyIndex);
                 int coreIndex = encodedIndex.coreIndex();
                 const int valueTypePropertyIndex = encodedIndex.valueTypeIndex();
 
@@ -1100,8 +1125,10 @@ int QQmlVMEMetaObject::metaCall(QObject *o, QMetaObject::Call c, int _id, void *
                         if (flags & QQmlPropertyData::RemoveBindingOnAliasWrite) {
                             QQmlData *targetData = QQmlData::get(target);
                             if (targetData && targetData->hasBindingBit(coreIndex)) {
-                                QQmlPropertyPrivate::removeBinding(target, encodedIndex);
-                                targetData->clearBindingBit(coreIndex);
+                                if (QQmlPropertyPrivate::removeBinding(
+                                            target, encodedIndex, QQmlPropertyPrivate::None)) {
+                                    targetData->clearBindingBit(coreIndex);
+                                }
                             }
                         }
                     }
@@ -1218,6 +1245,44 @@ int QQmlVMEMetaObject::metaCall(QObject *o, QMetaObject::Call c, int _id, void *
         return object->qt_metacall(c, _id, a);
 }
 
+bool QQmlVMEMetaObject::getListProperty(int id, QQmlListProperty<QObject> *target)
+{
+    // when accessing the list, we need to find the correct MetaObject,
+    // namely this. However, obejct->metaObject might point to any
+    // MetaObject down the inheritance hierarchy, so we need to store how
+    // far we have to go down
+    // To do this, we encode the hierarchy depth together with the id of the
+    // property in a single quintptr, with the first half storing the depth
+    // and the second half storing the property id
+
+    auto mo = static_cast<QQmlVMEMetaObject *>(
+            QObjectPrivate::get(object)->metaObject);
+    quintptr inheritanceDepth = 0u;
+    while (mo && mo != this) {
+        mo = mo->parentVMEMetaObject();
+        ++inheritanceDepth;
+    }
+    constexpr quintptr idBits = sizeof(quintptr) * CHAR_BIT / 2u;
+    if (Q_UNLIKELY(inheritanceDepth >= (quintptr(1) << idBits))) {
+        qmlWarning(object) << "Too many objects in inheritance hierarchy "
+                              "for list property";
+        return false;
+    }
+    if (Q_UNLIKELY(quintptr(id) >= (quintptr(1) << idBits))) {
+        qmlWarning(object) << "Too many properties in object "
+                              "for list property";
+        return false;
+    }
+    quintptr encodedIndex = (inheritanceDepth << idBits) + id;
+
+    initPropertyAsList(id);
+    *target = QQmlListProperty<QObject>(
+                    object, reinterpret_cast<void *>(quintptr(encodedIndex)),
+                    list_append, list_count, list_at,
+                    list_clear, list_replace, list_removeLast);
+    return true;
+}
+
 QV4::ReturnedValue QQmlVMEMetaObject::method(int localMethodIndex) const
 {
     if (ctxt.isNull() || !ctxt->isValid()) {
@@ -1265,9 +1330,13 @@ void QQmlVMEMetaObject::writeVarProperty(int id, const QV4::Value &value)
     if (!md)
         return;
 
+    const QV4::Value &oldValue = (*md)[id];
+    if (QV4::RuntimeHelpers::strictEqual(oldValue, value))
+        return;
+
     // Importantly, if the current value is a scarce resource, we need to ensure that it
     // gets automatically released by the engine if no other references to it exist.
-    const QV4::VariantObject *oldVariant = (md->data() + id)->as<QV4::VariantObject>();
+    const QV4::VariantObject *oldVariant = oldValue.as<QV4::VariantObject>();
     if (oldVariant)
         oldVariant->removeVmePropertyReference();
 
@@ -1430,8 +1499,11 @@ bool QQmlVMEMetaObject::aliasTarget(int index, QObject **target, int *coreIndex,
     if (!*target)
         return false;
 
-    if (!aliasData->isObjectAlias()) {
-        QQmlPropertyIndex encodedIndex = QQmlPropertyIndex::fromEncoded(aliasData->encodedMetaPropertyIndex);
+    const QQmlPropertyData *aliasProperty = cache->property(aliasOffset() + aliasId);
+    const int targetPropertyIndex = aliasProperty ? aliasProperty->aliasTarget() : -1;
+
+    if (targetPropertyIndex != -1) {
+        QQmlPropertyIndex encodedIndex = QQmlPropertyIndex::fromEncoded(targetPropertyIndex);
         *coreIndex = encodedIndex.coreIndex();
         *valueTypeIndex = encodedIndex.valueTypeIndex();
     }

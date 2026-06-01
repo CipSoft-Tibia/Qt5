@@ -6,6 +6,7 @@
     \title What's New in Qt 6.8
     \ingroup whatsnewqt6
     \brief Lists the new features in Qt 6.8.
+    \meta sortkey 608
 
     \section1 New and Restored Modules in Qt 6.8
     Qt 6.8 adds the following modules and tools:
@@ -298,7 +299,7 @@
         \li The \l{Qt Protobuf} module is promoted out of tech preview.
     \endlist
 
-    \section2 Qt QML Module
+    \section2 Qt Qml Module
     \list
         \li Added new features to QML Language Server: semantic highlighting,
             more JavaScript language support, snippet support for Quick types,
@@ -777,6 +778,7 @@
     \page newclasses68.html
     \title New Classes and Functions in Qt 6.8
     \ingroup whatsnewqt6-api
+    \meta sortkey 608
     \brief A list of new APIs in Qt 6.8.
 
     This page contains a comprehensive list of all new classes and functions

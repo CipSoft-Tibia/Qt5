@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickanimation_p.h"
 #include "qquickanimation_p_p.h"
@@ -2274,7 +2275,7 @@ void QQuickPropertyAnimation::setTo(const QVariant &t)
     \qmlproperty real QtQuick::PropertyAnimation::easing.period
     \qmlproperty list<real> QtQuick::PropertyAnimation::easing.bezierCurve
 
-//! propertyanimation.easing
+//! [propertyanimation.easing]
     \brief Specifies the easing curve used for the animation
 
     To specify an easing curve you need to specify at least the type. For some curves you can also specify
@@ -2478,7 +2479,7 @@ void QQuickPropertyAnimation::setTo(const QVariant &t)
     end point: [cx1, cy1, cx2, cy2, endx, endy, ...].  The last point must be 1,1.
 
     See the \l {Qt Quick Examples - Animation#Easing Curves}{Easing Curves} for a demonstration of the different easing settings.
-//! propertyanimation.easing
+//! [propertyanimation.easing]
 */
 QEasingCurve QQuickPropertyAnimation::easing() const
 {
@@ -2709,7 +2710,7 @@ void QQuickAnimationPropertyUpdater::setValue(qreal v)
     for (int ii = 0; ii < actions.size(); ++ii) {
         QQuickStateAction &action = actions[ii];
 
-        if (v == 1.) {
+        if (v == qreal(1.0) && extendedInterpolator == nullptr) {
             QQmlPropertyPrivate::write(action.property, action.toValue, QQmlPropertyData::BypassInterceptor | QQmlPropertyData::DontRemoveBinding);
         } else {
             if (!fromIsSourced && !fromIsDefined) {
@@ -2725,8 +2726,21 @@ void QQuickAnimationPropertyUpdater::setValue(qreal v)
                     interpolator = QVariantAnimationPrivate::getInterpolator(prevInterpolatorType);
                 }
             }
-            if (interpolator)
-                QQmlPropertyPrivate::write(action.property, interpolator(action.fromValue.constData(), action.toValue.constData(), v), QQmlPropertyData::BypassInterceptor | QQmlPropertyData::DontRemoveBinding);
+
+            QVariant interpolated;
+            if (extendedInterpolator) {
+                QVariant current = action.property.read();
+                interpolated = extendedInterpolator(action.fromValue.constData(),
+                                                    action.toValue.constData(),
+                                                    current,
+                                                    v);
+
+            } else if (interpolator) {
+                interpolated = interpolator(action.fromValue.constData(), action.toValue.constData(), v);
+            }
+            QQmlPropertyPrivate::write(action.property,
+                                       interpolated,
+                                       QQmlPropertyData::BypassInterceptor | QQmlPropertyData::DontRemoveBinding);
         }
         if (deleted)
             return;
@@ -2880,6 +2894,7 @@ QAbstractAnimationJob* QQuickPropertyAnimation::transition(QQuickStateActions &a
         QQuickAnimationPropertyUpdater *data = new QQuickAnimationPropertyUpdater;
         data->interpolatorType = d->interpolatorType;
         data->interpolator = d->interpolator;
+        data->extendedInterpolator = d->extendedInterpolator;
         data->reverse = direction == Backward ? true : false;
         data->fromIsSourced = false;
         data->fromIsDefined = d->fromIsDefined;

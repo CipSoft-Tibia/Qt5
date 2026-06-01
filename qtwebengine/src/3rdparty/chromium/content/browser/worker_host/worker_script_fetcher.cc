@@ -31,6 +31,7 @@
 #include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/shared_cors_origin_access_list.h"
 #include "content/public/browser/url_loader_throttles.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui_url_loader_factory.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_features.h"
@@ -330,8 +331,7 @@ void WorkerScriptFetcher::CreateAndStart(
           static_cast<int>(blink::mojom::ResourceType::kSharedWorker);
       break;
     default:
-      NOTREACHED_IN_MIGRATION() << static_cast<int>(request_destination);
-      break;
+      NOTREACHED() << static_cast<int>(request_destination);
   }
 
   // Upgrade the request to an a priori authenticated URL, if appropriate.
@@ -349,8 +349,7 @@ void WorkerScriptFetcher::CreateAndStart(
   // shared workers, `ancestor_render_frame_host` and
   // `creator_render_frame_host` are always same.
   devtools_instrumentation::OnWorkerMainScriptRequestWillBeSent(
-      ancestor_render_frame_host.frame_tree_node(), devtools_worker_token,
-      *resource_request);
+      ancestor_render_frame_host, devtools_worker_token, *resource_request);
 
   WorkerScriptFetcher::CreateScriptLoader(
       worker_process_id, worker_token, initial_request_url,
@@ -398,9 +397,11 @@ void WorkerScriptFetcher::CreateScriptLoader(
   BrowserContext* browser_context = factory_process->GetBrowserContext();
   DCHECK(browser_context);  // Checked in the Start method.
 
-  // Do not enforce COEP on the main script fetch.
+  // Do not enforce COEP or Document-Isolation-Policy on the main script fetch.
   client_security_state->cross_origin_embedder_policy =
       network::CrossOriginEmbedderPolicy();
+  client_security_state->document_isolation_policy =
+      network::DocumentIsolationPolicy();
 
   // Create the URL loader factory for WorkerScriptLoaderFactory to use to load
   // the main script.
@@ -425,7 +426,7 @@ void WorkerScriptFetcher::CreateScriptLoader(
       url_loader_network_observer =
           factory_process->GetStoragePartition()
               ->CreateURLLoaderNetworkObserverForFrame(
-                  creator_render_frame_host->GetProcess()->GetID(),
+                  creator_render_frame_host->GetProcess()->GetDeprecatedID(),
                   creator_render_frame_host->GetRoutingID());
       devtools_observer = NetworkServiceDevToolsObserver::MakeSelfOwned(
           creator_render_frame_host->GetDevToolsFrameToken().ToString());
@@ -434,10 +435,13 @@ void WorkerScriptFetcher::CreateScriptLoader(
     const url::Origin& request_initiator = *resource_request->request_initiator;
     // TODO(crbug.com/40122194): Pass the Mojo remote which is connected
     // to the COEP reporter in DedicatedWorkerHost.
+    // TODO(crbug.com/382243021): Pass the Mojo remote connected to a DIP
+    // reporter in DedicatedWorkerHost.
     network::mojom::URLLoaderFactoryParamsPtr factory_params =
         URLLoaderFactoryParamsHelper::CreateForWorker(
             factory_process, request_initiator, trusted_isolation_info,
             /*coep_reporter=*/mojo::NullRemote(),
+            /*dip_reporter*/ mojo::NullRemote(),
             std::move(url_loader_network_observer),
             std::move(devtools_observer), client_security_state.Clone(),
             /*debug_tag=*/"CreateScriptLoader",
@@ -461,8 +465,8 @@ void WorkerScriptFetcher::CreateScriptLoader(
             url_loader_factory::FactoryOverrideOption::kAllow),
         url_loader_factory::ContentClientParams(
             browser_context, creator_render_frame_host,
-            factory_process->GetID(), request_initiator, net::IsolationInfo(),
-            source_id, &bypass_redirect_checks),
+            factory_process->GetDeprecatedID(), request_initiator,
+            net::IsolationInfo(), source_id, &bypass_redirect_checks),
         devtools_instrumentation::WillCreateURLLoaderFactoryParams::
             ForWorkerMainScript(devtools_agent_host, devtools_worker_token,
                                 ancestor_render_frame_host));
@@ -481,10 +485,28 @@ void WorkerScriptFetcher::CreateScriptLoader(
   // frame tree node ID has the same issue.
   base::RepeatingCallback<WebContents*()> wc_getter =
       base::BindRepeating([]() -> WebContents* { return nullptr; });
+  FrameTreeNodeId frame_tree_node_id = FrameTreeNodeId();
+#if BUILDFLAG(IS_FUCHSIA)
+  // To make `WebEngineContentBrowserClient::CreateURLLoaderThrottles()`
+  // returns throttles, valid `frame_tree_node_id` and `wc_getter` should
+  // be passed. See crbug.com/40244093#comment17.
+  // Upon `UrlRequestRewriteDoesNotAddHeadersForSharedWorkers`, SharedWorkers
+  // are not expected to return throttles and excluded.
+  //
+  // In case of the corner case a shared worker creates a dedicated worker after
+  // the closest ancestor's frame is gone, `wc_getter` will returns nullptr,
+  // and `WebEngineContentBrowserClient::CreateURLLoaderThrottles()` also
+  // returns {}.
+  if (absl::holds_alternative<blink::DedicatedWorkerToken>(worker_token)) {
+    frame_tree_node_id = ancestor_render_frame_host.GetFrameTreeNodeId();
+    wc_getter = base::BindRepeating(&WebContents::FromFrameTreeNodeId,
+                                    frame_tree_node_id);
+  }
+#endif
   std::vector<std::unique_ptr<blink::URLLoaderThrottle>> throttles =
       CreateContentBrowserURLLoaderThrottles(
           *resource_request, browser_context, wc_getter,
-          nullptr /* navigation_ui_data */, FrameTreeNodeId(),
+          nullptr /* navigation_ui_data */, frame_tree_node_id,
           /*navigation_id=*/std::nullopt);
 
   // Create a BrowserContext getter using |service_worker_context|.
@@ -695,13 +717,13 @@ void WorkerScriptFetcher::OnReceiveRedirect(
 void WorkerScriptFetcher::OnUploadProgress(int64_t current_position,
                                            int64_t total_size,
                                            OnUploadProgressCallback callback) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void WorkerScriptFetcher::OnTransferSizeUpdated(int32_t transfer_size_diff) {
   network::RecordOnTransferSizeUpdatedUMA(
       network::OnTransferSizeUpdatedFrom::kWorkerScriptFetcher);
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void WorkerScriptFetcher::OnComplete(

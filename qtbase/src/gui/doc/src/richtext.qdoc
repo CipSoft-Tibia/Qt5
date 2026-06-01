@@ -650,7 +650,8 @@
     the QTextLayout class, to help developers perform word-wrapping and
     layout tasks without the need to create a document first.
 
-    \image plaintext-layout.png
+    \image plaintext-layout.webp {Screenshot of a text that flows around a
+           circle.}
 
     Formatting and drawing a paragraph of plain text is straightforward.
     The example below will lay out a paragraph of text, using a single
@@ -856,7 +857,7 @@
     \row    \li \c body
             \li Document body
             \li Supports the \c bgcolor attribute, which
-               can be a Qt \l{QColor::setNamedColor()}{color name}
+               can be a Qt \l{QColor::fromString()}{color name}
                or a \c #RRGGBB color specification.
     \row    \li \c br
             \li Line break
@@ -892,7 +893,7 @@
             \li Font size, family, and/or color
             \li Supports the following attributes:
                \c size, \c face, and \c color (Qt
-               \l{QColor::setNamedColor()}{color names} or
+               \l{QColor::fromString()}{color names} or
                \c #RRGGBB).
     \row    \li \c h1
             \li Level 1 heading
@@ -985,7 +986,7 @@
     \row    \li \c table
             \li Table
             \li Supports the following attributes: \c border,
-               \c bgcolor (Qt \l{QColor::setNamedColor()}{color names}
+               \c bgcolor (Qt \l{QColor::fromString()}{color names}
                or \c #RRGGBB), \c cellspacing, \c cellpadding,
                \c width (absolute or relative), and \c height.
     \row    \li \c tbody
@@ -1012,7 +1013,7 @@
     \row    \li \c tr
             \li Table row
             \li Supports the \c bgcolor attribute, which
-               can be a Qt \l{QColor::setNamedColor()}{color name}
+               can be a Qt \l{QColor::fromString()}{color name}
                or a \c #RRGGBB color specification.
     \row    \li \c tt
             \li Typewrite font
@@ -1046,6 +1047,12 @@
     \li \c type (\c 1, \c a, \c A, \c square, \c disc, \c circle)
     \endlist
 
+    Additionally, the following attribute is supported by the \c ol tag:
+
+    \list
+    \li \c start
+    \endlist
+
     \section1 Table Cell Attributes
 
     The following attributes are supported by the \c td and \c th
@@ -1053,7 +1060,7 @@
 
     \list
     \li \c width (absolute, relative, or no-value)
-    \li \c bgcolor (Qt \l{QColor::setNamedColor()}{color names} or \c #RRGGBB)
+    \li \c bgcolor (Qt \l{QColor::fromString()}{color names} or \c #RRGGBB)
     \li \c colspan
     \li \c rowspan
     \li \c align (\c left, \c right, \c center, \c justify)

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLTYPELOADER_P_H
 #define QQMLTYPELOADER_P_H
@@ -18,33 +19,33 @@
 #include <private/qqmldatablob_p.h>
 #include <private/qqmlimport_p.h>
 #include <private/qqmlmetatype_p.h>
+#include <private/qqmltypeloaderdata_p.h>
 #include <private/qqmltypeloaderthread_p.h>
 #include <private/qv4compileddata_p.h>
+#include <private/qv4engine_p.h>
 
 #include <QtQml/qtqmlglobal.h>
 #include <QtQml/qqmlerror.h>
-
-#include <QtCore/qcache.h>
-#include <QtCore/qmutex.h>
 
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
-class QQmlScriptBlob;
-class QQmlQmldirData;
-class QQmlTypeData;
+class QQmlEngine;
 class QQmlEngineExtensionInterface;
 class QQmlExtensionInterface;
+class QQmlNetworkAccessManagerFactory;
 class QQmlProfiler;
+class QQmlQmldirData;
+class QQmlScriptBlob;
+class QQmlTypeData;
 class QQmlTypeLoaderThread;
-class QQmlEngine;
 
 class Q_QML_EXPORT QQmlTypeLoader
 {
     Q_DECLARE_TR_FUNCTIONS(QQmlTypeLoader)
 public:
-    using ChecksumCache = QHash<quintptr, QByteArray>;
+    using ChecksumCache = QQmlTypeLoaderThreadData::ChecksumCache;
     enum Mode { PreferSynchronous, Asynchronous, Synchronous };
 
     class Q_QML_EXPORT Blob : public QQmlDataBlob
@@ -79,6 +80,9 @@ public:
         using PendingImportPtr = std::shared_ptr<PendingImport>;
 
         void importQmldirScripts(const PendingImportPtr &import, const QQmlTypeLoaderQmldirContent &qmldir, const QUrl &qmldirUrl);
+        bool handleLocalQmldirForImport(
+                const PendingImportPtr &import, const QString &qmldirFilePath,
+                const QString &qmldirUrl, QList<QQmlError> *errors);
 
     protected:
         bool addImport(const QV4::CompiledData::Import *import, QQmlImports::ImportFlags,
@@ -101,7 +105,7 @@ public:
                 const QQmlRefPointer<QQmlScriptBlob> &, const QV4::CompiledData::Location &,
                 const QString &, const QString &)
         {
-            Q_ASSERT(isTypeLoaderThread());
+            assertTypeLoaderThread();
         }
 
         void dependencyComplete(const QQmlDataBlob::Ptr &) override;
@@ -119,11 +123,6 @@ public:
                 QTypeRevision version, quint16 precedence, QQmlImports::ImportFlags flags,
                 QList<QQmlError> *errors);
         virtual QString stringAt(int) const { return QString(); }
-
-        bool isDebugging() const;
-        bool readCacheFile() const;
-        bool writeCacheFile() const;
-        QQmlMetaType::CacheMode aotCacheMode() const;
 
         QQmlRefPointer<QQmlImports> m_importCache;
         QVector<PendingImportPtr> m_unresolvedImports;
@@ -151,14 +150,41 @@ public:
         return &engine->typeLoader;
     }
 
-    QQmlImportDatabase *importDatabase() const;
-    ChecksumCache *checksumCache() { return &m_checksumCache; }
-    const ChecksumCache *checksumCache() const { return &m_checksumCache; }
+    static void sanitizeUNCPath(QString *path)
+    {
+        // This handles the UNC path case as when the path is retrieved from the QUrl it
+        // will convert the host name from upper case to lower case. So the absoluteFilePath
+        // is changed at this point to make sure it will match later on in that case.
+        if (path->startsWith(QStringLiteral("//"))) {
+            // toLocalFile() since that faithfully restores all the things you can do to a
+            // path but not a URL, in particular weird characters like '%'.
+            *path = QUrl::fromLocalFile(*path).toLocalFile();
+        }
+    }
+
+    // We can't include QQmlTypeData here.
+    // Use a template specialized only for QQmlTypeData::TypeReference instead.
+    template<typename TypeReference>
+    QByteArray hashDependencies(
+            QV4::CompiledData::ResolvedTypeReferenceMap *resolvedTypeCache,
+            const QList<TypeReference> &compositeSingletons)
+    {
+        QQmlTypeLoaderThreadDataPtr data(&m_data);
+
+        QCryptographicHash hash(QCryptographicHash::Md5);
+        return (resolvedTypeCache->addToHash(&hash, &data->checksumCache)
+                    && addTypeReferenceChecksumsToHash(
+                        compositeSingletons, &data->checksumCache, &hash))
+                ? hash.result()
+                : QByteArray();
+    }
 
     static QUrl normalize(const QUrl &unNormalizedUrl);
 
-    QQmlRefPointer<QQmlTypeData> getType(const QUrl &unNormalizedUrl, Mode mode = PreferSynchronous);
-    QQmlRefPointer<QQmlTypeData> getType(const QByteArray &, const QUrl &url, Mode mode = PreferSynchronous);
+    QQmlRefPointer<QQmlTypeData> getType(
+            const QUrl &unNormalizedUrl, Mode mode = PreferSynchronous);
+    QQmlRefPointer<QQmlTypeData> getType(
+            const QByteArray &data, const QUrl &url, Mode mode = PreferSynchronous);
 
     QQmlRefPointer<QV4::CompiledData::CompilationUnit> injectModule(
             const QUrl &relativeUrl, const QV4::CompiledData::Unit *unit);
@@ -179,36 +205,114 @@ public:
     bool isTypeLoaded(const QUrl &url) const;
     bool isScriptLoaded(const QUrl &url) const;
 
-    void lock() { m_thread->lock(); }
-    void unlock() { m_thread->unlock(); }
+    void loadWithStaticData(
+            const QQmlDataBlob::Ptr &blob, const QByteArray &data, Mode mode = PreferSynchronous);
 
-    void load(const QQmlDataBlob::Ptr &,  Mode = PreferSynchronous);
-    void loadWithStaticData(const QQmlDataBlob::Ptr &blob, const QByteArray &, Mode = PreferSynchronous);
-    void loadWithCachedUnit(const QQmlDataBlob::Ptr &blob, const QQmlPrivate::CachedQmlUnit *unit, Mode mode = PreferSynchronous);
     void drop(const QQmlDataBlob::Ptr &blob);
 
-    QQmlEngine *engine() const;
     void initializeEngine(QQmlEngineExtensionInterface *, const char *);
     void initializeEngine(QQmlExtensionInterface *, const char *);
     void invalidate();
+
+    void addUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor);
+    void removeUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor);
+    QList<QQmlAbstractUrlInterceptor *> urlInterceptors() const;
+    QUrl interceptUrl(const QUrl &url, QQmlAbstractUrlInterceptor::DataType type) const;
+    bool hasUrlInterceptors() const;
 
 #if !QT_CONFIG(qml_debug)
     quintptr profiler() const { return 0; }
     void setProfiler(quintptr) {}
 #else
-    QQmlProfiler *profiler() const { return m_profiler.data(); }
+    QQmlProfiler *profiler() const
+    {
+        QQmlTypeLoaderConfiguredDataConstPtr data(&m_data);
+        return data->profiler.data();
+    }
     void setProfiler(QQmlProfiler *profiler);
 #endif // QT_CONFIG(qml_debug)
 
+    QStringList importPathList() const
+    {
+        QQmlTypeLoaderConfiguredDataConstPtr data(&m_data);
+        return data->importPaths;
+    }
+    void setImportPathList(const QStringList &paths);
+    void addImportPath(const QString& dir);
+
+    QStringList pluginPathList() const
+    {
+        QQmlTypeLoaderConfiguredDataConstPtr data(&m_data);
+        return data->pluginPaths;
+    }
+    void setPluginPathList(const QStringList &paths);
+    void addPluginPath(const QString& path);
+
+    void setPluginInitialized(const QString &plugin)
+    {
+        QQmlTypeLoaderThreadDataPtr data(&m_data);
+        data->initializedPlugins.insert(plugin);
+    }
+    bool isPluginInitialized(const QString &plugin) const
+    {
+        QQmlTypeLoaderThreadDataConstPtr data(&m_data);
+        return data->initializedPlugins.contains(plugin);
+    }
+
+    void setModulePluginProcessingDone(const QString &module)
+    {
+        QQmlTypeLoaderThreadDataPtr data(&m_data);
+        data->modulesForWhichPluginsHaveBeenProcessed.insert(module);
+    }
+    bool isModulePluginProcessingDone(const QString &module)
+    {
+        QQmlTypeLoaderThreadDataConstPtr data(&m_data);
+        return data->modulesForWhichPluginsHaveBeenProcessed.contains(module);
+    }
+
+#if QT_CONFIG(qml_network)
+    QQmlNetworkAccessManagerFactoryPtrConst networkAccessManagerFactory() const;
+    void setNetworkAccessManagerFactory(QQmlNetworkAccessManagerFactory *factory);
+    QNetworkAccessManager *createNetworkAccessManager(QObject *parent) const;
+#endif
+
+    bool writeCacheFile();
+    bool readCacheFile();
+    bool isDebugging();
 
 private:
+    friend struct PlainLoader;
+    friend struct CachedLoader;
+    friend struct StaticLoader;
+
     friend class QQmlDataBlob;
     friend class QQmlTypeLoaderThread;
 #if QT_CONFIG(qml_network)
     friend class QQmlTypeLoaderNetworkReplyProxy;
 #endif // qml_network
 
+    enum PathType { Local, Remote, LocalOrRemote };
+
+    enum LocalQmldirResult {
+        QmldirFound,
+        QmldirNotFound,
+        QmldirInterceptedToRemote,
+        QmldirRejected
+    };
+
+    QQmlTypeLoaderThread *thread() const { return m_data.thread(); }
+    QQmlEngine *engine() const { return m_data.engine(); }
+
+    void startThread();
     void shutdownThread();
+    QQmlTypeLoaderThread *ensureThread()
+    {
+        if (!thread())
+            startThread();
+        return thread();
+    }
+
+    void trimCache(const QQmlTypeLoaderSharedDataPtr &data);
 
     void loadThread(const QQmlDataBlob::Ptr &);
     void loadWithStaticDataThread(const QQmlDataBlob::Ptr &, const QByteArray &);
@@ -216,8 +320,6 @@ private:
 #if QT_CONFIG(qml_network)
     void networkReplyFinished(QNetworkReply *);
     void networkReplyProgress(QNetworkReply *, qint64, qint64);
-
-    typedef QHash<QNetworkReply *, QQmlDataBlob::Ptr> NetworkReplies;
 #endif
 
     void setData(const QQmlDataBlob::Ptr &, const QByteArray &);
@@ -225,37 +327,45 @@ private:
     void setData(const QQmlDataBlob::Ptr &, const QQmlDataBlob::SourceCodeData &);
     void setCachedUnit(const QQmlDataBlob::Ptr &blob, const QQmlPrivate::CachedQmlUnit *unit);
 
-    typedef QHash<QUrl, QQmlRefPointer<QQmlTypeData>> TypeCache;
-    typedef QHash<QUrl, QQmlRefPointer<QQmlScriptBlob>> ScriptCache;
-    typedef QHash<QUrl, QQmlRefPointer<QQmlQmldirData>> QmldirCache;
-    typedef QCache<QString, QCache<QString, bool> > ImportDirCache;
-    typedef QStringHash<QQmlTypeLoaderQmldirContent *> ImportQmlDirCache;
+    QStringList importPathList(PathType type) const;
+    void clearQmldirInfo();
 
-    QQmlEngine *m_engine;
-    QQmlTypeLoaderThread *m_thread;
+    LocalQmldirResult locateLocalQmldir(
+            QQmlTypeLoader::Blob *blob, const QQmlTypeLoader::Blob::PendingImportPtr &import,
+            QList<QQmlError> *errors);
 
-#if QT_CONFIG(qml_debug)
-    QScopedPointer<QQmlProfiler> m_profiler;
-#endif
-
-#if QT_CONFIG(qml_network)
-    NetworkReplies m_networkReplies;
-#endif
-    TypeCache m_typeCache;
-    int m_typeCacheTrimThreshold;
-    ScriptCache m_scriptCache;
-    QmldirCache m_qmldirCache;
-    ImportDirCache m_importDirCache;
-    ImportQmlDirCache m_importQmlDirCache;
-    ChecksumCache m_checksumCache;
+    void load(const QQmlDataBlob::Ptr &blob, Mode mode = PreferSynchronous);
+    void loadWithCachedUnit(
+            const QQmlDataBlob::Ptr &blob, const QQmlPrivate::CachedQmlUnit *unit,
+            Mode mode = PreferSynchronous);
 
     template<typename Loader>
     void doLoad(const Loader &loader, const QQmlDataBlob::Ptr &blob, Mode mode);
-    void updateTypeCacheTrimThreshold();
+    void updateTypeCacheTrimThreshold(const QQmlTypeLoaderSharedDataPtr &data);
 
-    friend struct PlainLoader;
-    friend struct CachedLoader;
-    friend struct StaticLoader;
+    template<typename TypeReference>
+    static bool addTypeReferenceChecksumsToHash(
+            const QList<TypeReference> &typeRefs,
+            QHash<quintptr, QByteArray> *checksums, QCryptographicHash *hash)
+    {
+        for (const auto &typeRef: typeRefs) {
+            if (typeRef.typeData) {
+                const auto unit = typeRef.typeData->compilationUnit()->unitData();
+                hash->addData({unit->md5Checksum, sizeof(unit->md5Checksum)});
+            } else if (const QMetaObject *mo = typeRef.type.metaObject()) {
+                const auto propertyCache = QQmlMetaType::propertyCache(mo);
+                bool ok = false;
+                hash->addData(propertyCache->checksum(checksums, &ok));
+                if (!ok)
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    QQmlMetaType::CacheMode aotCacheMode();
+
+    QQmlTypeLoaderLockedData m_data;
 };
 
 QT_END_NAMESPACE

@@ -14,7 +14,7 @@ qt_internal_add_qml_module(Quick
     CLASS_NAME QtQuick2Plugin
     IMPORTS
         QtQml/auto
-    PLUGIN_TYPES scenegraph
+    PLUGIN_TYPES scenegraph vectorimageformats
     SOURCES
         handlers/qquickdragaxis.cpp handlers/qquickdragaxis_p.h
         handlers/qquickdraghandler.cpp handlers/qquickdraghandler_p.h
@@ -244,8 +244,6 @@ qt_internal_add_qml_module(Quick
         Qt::Core
         Qt::Gui
         Qt::Qml
-        Qt::QmlMeta
-        Qt::QmlModels
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
         Qt::GuiPrivate
@@ -569,6 +567,7 @@ qt_internal_extend_target(Quick CONDITION QT_FEATURE_quick_designer
 qt_internal_extend_target(Quick CONDITION QT_FEATURE_accessibility
     SOURCES
         accessible/qaccessiblequickitem.cpp accessible/qaccessiblequickitem_p.h
+        accessible/qaccessiblequicktextedit.cpp accessible/qaccessiblequicktextedit_p.h
         accessible/qaccessiblequickview.cpp accessible/qaccessiblequickview_p.h
         accessible/qquickaccessiblefactory.cpp accessible/qquickaccessiblefactory_p.h
     LIBRARIES

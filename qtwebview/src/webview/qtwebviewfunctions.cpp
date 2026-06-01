@@ -8,10 +8,6 @@
 
 #include <QtCore/QCoreApplication>
 
-#if defined(QTWEBVIEW_LINK_WEBENGINE)
-#  include <QtWebEngineQuick/QtWebEngineQuick>
-#endif
-
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -56,8 +52,6 @@ void QtWebView::initialize()
 {
 #ifdef QT_STATIC
     initializeImpl();
-#elif defined(QTWEBVIEW_LINK_WEBENGINE)
-    QtWebEngineQuick::initialize();
 #endif
 }
 

@@ -10,6 +10,14 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qoperatingsystemversion.h>
+#include <QtGui/qcolorspace.h>
+#include <QtGui/private/qicon_p.h>
+
+#if defined(Q_OS_MACOS)
+# include <AppKit/AppKit.h>
+#elif defined(QT_PLATFORM_UIKIT)
+# include <UIKit/UIKit.h>
+#endif
 
 QT_USE_NAMESPACE
 
@@ -74,7 +82,32 @@ QImage qt_mac_toQImage(CGImageRef image)
     CGRect rect = CGRectMake(0, 0, w, h);
     QMacCGContext ctx(&ret);
     qt_mac_drawCGImage(ctx, &rect, image);
+
+    CGColorSpaceRef colorSpace = CGImageGetColorSpace(image);
+    QCFType<CFDataRef> iccData = CGColorSpaceCopyICCData(colorSpace);
+    ret.setColorSpace(QColorSpace::fromIccProfile(QByteArray::fromRawCFData(iccData)));
+
     return ret;
+}
+
+QImage qt_mac_padToSquareImage(const QImage &image)
+{
+    if (image.width() == image.height())
+        return image;
+
+    const int size = std::max(image.width(), image.height());
+    QImage squareImage(size, size, image.format());
+    squareImage.setDevicePixelRatio(image.devicePixelRatio());
+    squareImage.fill(Qt::transparent);
+
+    QPoint pos((size - image.width()) / (2.0 * image.devicePixelRatio()),
+               (size - image.height()) / (2.0 * image.devicePixelRatio()));
+
+    QPainter painter(&squareImage);
+    painter.drawImage(pos, image);
+    painter.end();
+
+    return squareImage;
 }
 
 #ifdef Q_OS_MACOS
@@ -107,25 +140,24 @@ QT_END_NAMESPACE
 
 + (instancetype)imageFromQIcon:(const QIcon &)icon
 {
-    return [NSImage imageFromQIcon:icon withSize:0];
+    return [NSImage imageFromQIcon:icon withSize:QSize()];
 }
 
-+ (instancetype)imageFromQIcon:(const QIcon &)icon withSize:(int)size
++ (instancetype)imageFromQIcon:(const QIcon &)icon withSize:(const QSize &)size
 {
-    return [NSImage imageFromQIcon:icon withSize:0 withMode:QIcon::Normal withState:QIcon::Off];
+    return [NSImage imageFromQIcon:icon withSize:size withMode:QIcon::Normal withState:QIcon::Off];
 }
 
-
-+ (instancetype)imageFromQIcon:(const QIcon &)icon withSize:(int)size withMode:(QIcon::Mode)mode
-                                                                     withState:(QIcon::State)state
++ (instancetype)imageFromQIcon:(const QIcon &)icon withSize:(const QSize &)size
+                    withMode:(QIcon::Mode)mode withState:(QIcon::State)state
 
 {
     if (icon.isNull())
         return nil;
 
     auto availableSizes = icon.availableSizes();
-    if (availableSizes.isEmpty() && size > 0)
-        availableSizes << QSize(size, size);
+    if (availableSizes.isEmpty() && !size.isNull())
+        availableSizes << size;
 
     auto nsImage = [[[NSImage alloc] initWithSize:NSZeroSize] autorelease];
 
@@ -141,6 +173,9 @@ QT_END_NAMESPACE
         auto *imageRep = [[NSBitmapImageRep alloc] initWithCGImage:cgImage];
         imageRep.size = image.deviceIndependentSize().toCGSize();
         [nsImage addRepresentation:[imageRep autorelease]];
+        // Match behavior of loading icns files, where the NSImage size
+        // reflects the largest representation.
+        nsImage.size = imageRep.size;
     }
 
     if (!nsImage.representations.count)
@@ -148,11 +183,26 @@ QT_END_NAMESPACE
 
     [nsImage setTemplate:icon.isMask()];
 
-    if (size)
-        nsImage.size = CGSizeMake(size, size);
+    if (!size.isNull()) {
+        auto imageSize = QSizeF::fromCGSize(nsImage.size);
+        nsImage.size = imageSize.scaled(size, Qt::KeepAspectRatio).toCGSize();
+    }
 
     return nsImage;
 }
+
++ (instancetype)internalImageFromQIcon:(const QT_PREPEND_NAMESPACE(QIcon) &)icon
+{
+    if (icon.isNull())
+        return nil;
+
+    // Check if the icon is backed by an NSImage. If so, we can use that directly.
+    auto *iconPrivate = QIconPrivate::get(&icon);
+    NSImage *iconImage = nullptr;
+    iconPrivate->engine->virtual_hook(QIconPrivate::PlatformIconHook, &iconImage);
+    return iconImage;
+}
+
 @end
 
 QT_BEGIN_NAMESPACE

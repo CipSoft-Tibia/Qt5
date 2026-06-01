@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqmllintsuggestions_p.h"
 
@@ -217,10 +218,13 @@ static Diagnostic messageToDiagnostic_helper(AdvanceFunc advancePositionPastLoca
     return diagnostic;
 };
 
-static bool isSnapshotNew(std::optional<int> snapshotVersion, std::optional<int> processedVersion)
+static bool isSnapshotNew(std::optional<int> snapshotVersion, std::optional<int> processedVersion,
+                          bool force)
 {
     if (!snapshotVersion)
         return false;
+    if (force)
+        return true;
     if (!processedVersion || *snapshotVersion > *processedVersion)
         return true;
     return false;
@@ -229,7 +233,7 @@ static bool isSnapshotNew(std::optional<int> snapshotVersion, std::optional<int>
 using namespace std::chrono_literals;
 
 QmlLintSuggestions::VersionToDiagnose
-QmlLintSuggestions::chooseVersionToDiagnoseHelper(const QByteArray &url)
+QmlLintSuggestions::chooseVersionToDiagnoseHelper(const QByteArray &url, bool force)
 {
     const std::chrono::milliseconds maxInvalidTime = 400ms;
     QmlLsp::OpenDocumentSnapshot snapshot = m_codeModel->snapshotByUrl(url);
@@ -237,17 +241,17 @@ QmlLintSuggestions::chooseVersionToDiagnoseHelper(const QByteArray &url)
     LastLintUpdate &lastUpdate = m_lastUpdate[url];
 
     // ignore updates when already processed
-    if (lastUpdate.version && *lastUpdate.version == snapshot.docVersion) {
+    if (!force && lastUpdate.version && *lastUpdate.version == snapshot.docVersion) {
         qCDebug(lspServerLog) << "skipped update of " << url << "unchanged valid doc";
         return NoDocumentAvailable{};
     }
 
     // try out a valid version, if there is one
-    if (isSnapshotNew(snapshot.validDocVersion, lastUpdate.version))
+    if (isSnapshotNew(snapshot.validDocVersion, lastUpdate.version, force))
         return VersionedDocument{ snapshot.validDocVersion, snapshot.validDoc };
 
     // try out an invalid version, if there is one
-    if (isSnapshotNew(snapshot.docVersion, lastUpdate.version)) {
+    if (isSnapshotNew(snapshot.docVersion, lastUpdate.version, force)) {
         if (auto since = lastUpdate.invalidUpdatesSince) {
             // did we wait enough to get a valid document?
             if (std::chrono::steady_clock::now() - *since > maxInvalidTime) {
@@ -265,10 +269,10 @@ QmlLintSuggestions::chooseVersionToDiagnoseHelper(const QByteArray &url)
 }
 
 QmlLintSuggestions::VersionToDiagnose
-QmlLintSuggestions::chooseVersionToDiagnose(const QByteArray &url)
+QmlLintSuggestions::chooseVersionToDiagnose(const QByteArray &url, bool force)
 {
     QMutexLocker l(&m_mutex);
-    auto versionToDiagnose = chooseVersionToDiagnoseHelper(url);
+    auto versionToDiagnose = chooseVersionToDiagnoseHelper(url, force);
     if (auto versionedDocument = std::get_if<VersionedDocument>(&versionToDiagnose)) {
         // update immediately, and do not keep track of sent version, thus in extreme cases sent
         // updates could be out of sync
@@ -281,13 +285,23 @@ QmlLintSuggestions::chooseVersionToDiagnose(const QByteArray &url)
 
 void QmlLintSuggestions::diagnose(const QByteArray &url)
 {
-    auto versionedDocument = chooseVersionToDiagnose(url);
+    diagnoseImpl(url, false);
+}
+
+void QmlLintSuggestions::forceDiagnose(const QByteArray &url)
+{
+    diagnoseImpl(url, true);
+}
+
+void QmlLintSuggestions::diagnoseImpl(const QByteArray &url, bool force)
+{
+    auto versionedDocument = chooseVersionToDiagnose(url, force);
 
     std::visit(qOverloadedVisitor{
                        [](NoDocumentAvailable) {},
-                       [this, &url](const TryAgainLater &tryAgainLater) {
+                       [this, &url, &force](const TryAgainLater &tryAgainLater) {
                            QTimer::singleShot(tryAgainLater.time, Qt::VeryCoarseTimer, this,
-                                              [this, url]() { diagnose(url); });
+                                              [this, url, force]() { diagnoseImpl(url, force); });
                        },
                        [this, &url](const VersionedDocument &versionedDocument) {
                            diagnoseHelper(url, versionedDocument);
@@ -333,8 +347,9 @@ void QmlLintSuggestions::diagnoseHelper(const QByteArray &url,
         QQmlJS::LoggingUtils::updateLogLevels(categories, settings, nullptr);
     }
 
-    linter.lintFile(filename, &fileContents, silent, nullptr, imports, qmltypesFiles,
-                    resourceFiles, categories);
+    // TODO: pass the workspace folders to QQmlJSLinter
+    linter.lintFile(filename, &fileContents, silent, nullptr, imports, qmltypesFiles, resourceFiles,
+                    categories);
 
     // ###  TODO: C++20 replace with bind_front
     auto advancePositionPastLocation = [&fileContents](const QQmlJS::SourceLocation &location, Position &position)
@@ -369,19 +384,17 @@ void QmlLintSuggestions::diagnoseHelper(const QByteArray &url,
 
     if (const QQmlJSLogger *logger = linter.logger()) {
         qsizetype nDiagnostics = diagnostics.size();
-        for (const Message &message : logger->messages()) {
+        logger->iterateAllMessages([&](const Message &message) {
             if (!message.message.contains(u"Failed to import")) {
                 diagnostics.append(messageToDiagnostic(message));
-                continue;
+                return;
             }
 
             Message modified {message};
-            modified.message.append(
-                    u" Did you build your project? If yes, did you set the "
-                    u"\"QT_QML_GENERATE_QMLLS_INI\" CMake variable on your project to \"ON\"?");
+            modified.message.append(u" Did you build your project?");
 
             diagnostics.append(messageToDiagnostic(modified));
-        }
+        });
         if (diagnostics.size() != nDiagnostics && imports.size() == 1)
             diagnostics.append(createMissingBuildDirDiagnostic());
     }

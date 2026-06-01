@@ -6,28 +6,33 @@
 #include <QTest>
 #include <emscripten/val.h>
 
-class QWasmWindow
+class TestQWindow
 {
+public:
+    int flags() { return 0; }
+    QVariant property(const char *) { return QVariant(); }
 };
 
+class TestWindowTreeNode;
+
 using OnSubtreeChangedCallback = std::function<void(
-        QWasmWindowTreeNodeChangeType changeType, QWasmWindowTreeNode *parent, QWasmWindow *child)>;
-using SetWindowZOrderCallback = std::function<void(QWasmWindow *window, int z)>;
+        QWasmWindowTreeNodeChangeType changeType, QWasmWindowTreeNode<TestWindowTreeNode> *parent, TestWindowTreeNode *child)>;
+using SetWindowZOrderCallback = std::function<void(TestWindowTreeNode *window, int z)>;
 
 struct OnSubtreeChangedCallData
 {
     QWasmWindowTreeNodeChangeType changeType;
-    QWasmWindowTreeNode *parent;
-    QWasmWindow *child;
+    QWasmWindowTreeNode<TestWindowTreeNode> *parent;
+    TestWindowTreeNode *child;
 };
 
 struct SetWindowZOrderCallData
 {
-    QWasmWindow *window;
+    TestWindowTreeNode *window;
     int z;
 };
 
-class TestWindowTreeNode final : public QWasmWindowTreeNode, public QWasmWindow
+class TestWindowTreeNode final : public QWasmWindowTreeNode<TestWindowTreeNode>
 {
 public:
     TestWindowTreeNode(OnSubtreeChangedCallback onSubtreeChangedCallback,
@@ -42,7 +47,7 @@ public:
     {
         auto *previous = m_parent;
         m_parent = parent;
-        onParentChanged(previous, parent, QWasmWindowStack::PositionPreference::Regular);
+        onParentChanged(previous, parent, QWasmWindowStack<TestWindowTreeNode>::PositionPreference::Regular);
     }
 
     void setContainerElement(emscripten::val container) { m_containerElement = container; }
@@ -51,29 +56,41 @@ public:
 
     void sendToBottom() { QWasmWindowTreeNode::sendToBottom(); }
 
-    const QWasmWindowStack &childStack() { return QWasmWindowTreeNode::childStack(); }
+    const QWasmWindowStack<TestWindowTreeNode> &childStack() { return QWasmWindowTreeNode::childStack(); }
 
     emscripten::val containerElement() final { return m_containerElement; }
 
     QWasmWindowTreeNode *parentNode() final { return m_parent; }
 
-    QWasmWindow *asWasmWindow() final { return this; }
+    TestWindowTreeNode *asWasmWindow() final { return this; }
+    TestWindowTreeNode *transientParent() const {
+        return nullptr;
+    }
+    TestQWindow *window() { return &m_qWindow; }
+    void requestActivateWindow() { ; }
+    void setZOrder(int) { ; }
+    bool isModal() const { return false; }
+    Qt::WindowFlags windowFlags() const { return Qt::WindowFlags(); }
 
 protected:
-    void onSubtreeChanged(QWasmWindowTreeNodeChangeType changeType, QWasmWindowTreeNode *parent,
-                          QWasmWindow *child) final
+    void onSubtreeChanged(QWasmWindowTreeNodeChangeType changeType, QWasmWindowTreeNode<TestWindowTreeNode> *parent,
+        TestWindowTreeNode *child) final
     {
         m_onSubtreeChangedCallback(changeType, parent, child);
     }
 
-    void setWindowZOrder(QWasmWindow *window, int z) final { m_setWindowZOrderCallback(window, z); }
+    void setWindowZOrder(TestWindowTreeNode *window, int z) final { m_setWindowZOrderCallback(window, z); }
 
     TestWindowTreeNode *m_parent = nullptr;
     emscripten::val m_containerElement = emscripten::val::undefined();
 
     OnSubtreeChangedCallback m_onSubtreeChangedCallback;
     SetWindowZOrderCallback m_setWindowZOrderCallback;
+    TestQWindow m_qWindow;
 };
+
+#define QWasmWindowTreeNode QWasmWindowTreeNode<TestWindowTreeNode>
+#define QWasmWindow TestWindowTreeNode
 
 class tst_QWasmWindowTreeNode : public QObject
 {

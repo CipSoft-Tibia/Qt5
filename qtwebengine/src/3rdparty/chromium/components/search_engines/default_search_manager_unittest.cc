@@ -11,10 +11,9 @@
 
 #include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/time/time.h"
-#include "build/chromeos_buildflags.h"
-#include "components/search_engines/prepopulated_engines.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
 #include "components/search_engines/search_engine_type.h"
 #include "components/search_engines/search_engines_pref_names.h"
@@ -27,6 +26,7 @@
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/variations/scoped_variations_ids_provider.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/search_engines_data/resources/definitions/prepopulated_engines.h"
 #include "url/gurl.h"
 
 namespace {
@@ -106,10 +106,6 @@ class DefaultSearchManagerTest : public testing::Test {
     return std::make_unique<DefaultSearchManager>(
         pref_service(), search_engine_choice_service(),
         DefaultSearchManager::ObserverCallback()
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-            ,
-        /*for_lacros_main_profile=*/false
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
     );
   }
 
@@ -158,6 +154,8 @@ TEST_F(DefaultSearchManagerTest, DefaultSearchSetByUserPref) {
                 manager->GetDefaultSearchEngine(&source));
   EXPECT_EQ(DefaultSearchManager::FROM_FALLBACK, source);
 
+  base::HistogramTester histograms;
+
   // Setting a user pref overrides the pre-populated values.
   std::unique_ptr<TemplateURLData> data = GenerateDummyTemplateURLData("user");
   manager->SetUserSelectedDefaultSearchEngine(*data);
@@ -175,6 +173,15 @@ TEST_F(DefaultSearchManagerTest, DefaultSearchSetByUserPref) {
 
   ExpectSimilar(new_data.get(), manager->GetDefaultSearchEngine(&source));
   EXPECT_EQ(DefaultSearchManager::FROM_USER, source);
+
+  // Check that the mirrored pref metric didn't record a mismatch.
+  // Metric is recorded once for the first search manager, and then four more
+  // times when there are two search managers.
+  histograms.ExpectBucketCount(
+      DefaultSearchManager::kDefaultSearchEngineMirroredMetric, true, 1);
+
+  histograms.ExpectBucketCount(
+      DefaultSearchManager::kDefaultSearchEngineMirroredMetric, false, 0);
 
   // Clearing the user pref should cause the default search to revert to the
   // prepopulated values.
@@ -292,6 +299,13 @@ TEST_F(DefaultSearchManagerTest, DefaultSearchSetByUserAndRecommendedPolicy) {
   ExpectSimilar(user_data.get(), manager->GetDefaultSearchEngine(&source));
   EXPECT_EQ(DefaultSearchManager::FROM_USER, source);
 
+  // Check that the TemplateURLData was mirrored to the mirrored pref.
+  const base::Value* user_value = pref_service()->GetUserPrefValue(
+      DefaultSearchManager::kMirroredDefaultSearchProviderDataPrefName);
+  ASSERT_TRUE(user_value && user_value->is_dict());
+  auto turl_data = TemplateURLDataFromDictionary(user_value->GetDict());
+  ExpectSimilar(user_data.get(), turl_data.get());
+
   // Set recommended policy DSE.
   std::unique_ptr<TemplateURLData> policy_data =
       GenerateDummyTemplateURLData("policy");
@@ -369,12 +383,6 @@ TEST_F(DefaultSearchManagerTest,
   manager->SetUserSelectedDefaultSearchEngine(*supplied_engine);
   auto* result = manager->GetDefaultSearchEngine(nullptr);
   ExpectSimilar(builtin_engine, result);
-
-  // Play definitions must not be reconciled using prepopulated_id.
-  supplied_engine->created_from_play_api = true;
-  manager->SetUserSelectedDefaultSearchEngine(*supplied_engine);
-  result = manager->GetDefaultSearchEngine(nullptr);
-  ExpectSimilar(supplied_engine.get(), result);
 }
 
 TEST_F(DefaultSearchManagerTest,
@@ -452,7 +460,7 @@ TEST_F(DefaultSearchManagerTest,
   auto all_engines = TemplateURLPrepopulateData::GetPrepopulatedEngines(
       pref_service(), search_engine_choice_service());
   const auto& builtin_engine =
-      *base::ranges::find_if(all_engines, [](const auto& engine) {
+      *std::ranges::find_if(all_engines, [](const auto& engine) {
         GURL url(engine->url());
         return url.is_valid() && url.host_piece() == "emea.search.yahoo.com";
       });

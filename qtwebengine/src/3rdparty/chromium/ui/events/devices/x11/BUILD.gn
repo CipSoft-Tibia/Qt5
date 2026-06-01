@@ -26,7 +26,6 @@ jumbo_component("x11") {
 
   deps = [
     "//base",
-    "//build:chromeos_buildflags",
     "//skia",
     "//ui/display",
     "//ui/events:events_base",

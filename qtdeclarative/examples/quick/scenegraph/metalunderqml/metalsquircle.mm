@@ -29,7 +29,7 @@ private:
         FragmentStage
     };
     void prepareShader(Stage stage);
-    using FuncAndLib = QPair<id<MTLFunction>, id<MTLLibrary> >;
+    using FuncAndLib = std::pair<id<MTLFunction>, id<MTLLibrary> >;
     FuncAndLib compileShaderFromSource(const QByteArray &src, const QByteArray &entryPoint);
     void init(int framesInFlight);
 

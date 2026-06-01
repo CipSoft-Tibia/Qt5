@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/modules/webgpu/gpu_render_pipeline.h"
 
 #include "third_party/blink/renderer/bindings/core/v8/native_value_traits_impl.h"
@@ -151,7 +146,6 @@ wgpu::PrimitiveState AsDawnType(const GPUPrimitiveState* webgpu_desc) {
 
 wgpu::DepthStencilState AsDawnType(GPUDevice* device,
                                    const GPUDepthStencilState* webgpu_desc,
-                                   wgpu::PrimitiveTopology topology,
                                    ExceptionState& exception_state) {
   DCHECK(webgpu_desc);
 
@@ -181,30 +175,6 @@ wgpu::DepthStencilState AsDawnType(GPUDevice* device,
   dawn_desc.depthBiasSlopeScale = webgpu_desc->depthBiasSlopeScale();
   dawn_desc.depthBiasClamp = webgpu_desc->depthBiasClamp();
 
-  // Setting depth bias for points or lines will be a validation error soon.
-  // TODO(crbug.com/352567424): Remove after deprecation period.
-  switch (topology) {
-    case wgpu::PrimitiveTopology::PointList:
-    case wgpu::PrimitiveTopology::LineList:
-    case wgpu::PrimitiveTopology::LineStrip:
-      if (dawn_desc.depthBias != 0 || dawn_desc.depthBiasSlopeScale != 0 ||
-          dawn_desc.depthBiasClamp != 0) {
-        // Warn about upcoming validation error and force the values to zero
-        // for now so that validation passes in Dawn.
-        device->AddConsoleWarning(
-            "Setting depthBias, depthBiasSlopeScale, or depthBiasClamp for "
-            "pipelines that use a line or point topology has no effect, "
-            "and will soon be a validation error.");
-
-        dawn_desc.depthBias = 0;
-        dawn_desc.depthBiasSlopeScale = 0.0f;
-        dawn_desc.depthBiasClamp = 0.0f;
-      }
-      break;
-    default:
-      break;
-  }
-
   return dawn_desc;
 }
 
@@ -220,6 +190,8 @@ wgpu::MultisampleState AsDawnType(const GPUMultisampleState* webgpu_desc) {
   return dawn_desc;
 }
 
+// TODO(crbug.com/351564777): should be UNSAFE_BUFFER_USAGE
+// or avoid UNSAFE entirely (maybe possible using HeapArray)
 void AsDawnVertexBufferLayouts(GPUDevice* device,
                                const GPUVertexState* descriptor,
                                OwnedVertexState* dawn_desc_info) {
@@ -246,19 +218,13 @@ void AsDawnVertexBufferLayouts(GPUDevice* device,
       std::make_unique<std::unique_ptr<wgpu::VertexAttribute[]>[]>(
           dawn_vertex->bufferCount);
   for (wtf_size_t i = 0; i < dawn_vertex->bufferCount; ++i) {
-    const auto& maybe_buffer = descriptor->buffers()[i];
-    if (!maybe_buffer) {
-      // This buffer layout is empty.
-      // Explicitly set VertexBufferNotUsed step mode to represent
-      // this slot is empty for Dawn, and continue the loop.
-      dawn_desc_info->buffers[i].stepMode =
-          wgpu::VertexStepMode::VertexBufferNotUsed;
-      continue;
+    if (const auto* buffer = descriptor->buffers()[i].Get()) {
+      UNSAFE_TODO(dawn_desc_info->attributes.get()[i]) =
+          AsDawnType(buffer->attributes());
+      wgpu::VertexBufferLayout* dawn_buffer = &dawn_desc_info->buffers[i];
+      dawn_buffer->attributes =
+          UNSAFE_TODO(dawn_desc_info->attributes.get()[i].get());
     }
-    const GPUVertexBufferLayout* buffer = maybe_buffer.Get();
-    dawn_desc_info->attributes.get()[i] = AsDawnType(buffer->attributes());
-    wgpu::VertexBufferLayout* dawn_buffer = &dawn_desc_info->buffers[i];
-    dawn_buffer->attributes = dawn_desc_info->attributes.get()[i].get();
   }
 }
 
@@ -388,9 +354,8 @@ void ConvertToDawnType(v8::Isolate* isolate,
 
   // DepthStencil
   if (webgpu_desc->hasDepthStencil()) {
-    dawn_desc_info->depth_stencil = AsDawnType(
-        device, webgpu_desc->depthStencil(),
-        dawn_desc_info->dawn_desc.primitive.topology, exception_state);
+    dawn_desc_info->depth_stencil =
+        AsDawnType(device, webgpu_desc->depthStencil(), exception_state);
     dawn_desc_info->dawn_desc.depthStencil = &dawn_desc_info->depth_stencil;
   }
 
@@ -416,14 +381,51 @@ GPURenderPipeline* GPURenderPipeline::Create(
   DCHECK(webgpu_desc);
 
   v8::Isolate* isolate = script_state->GetIsolate();
-  ExceptionState exception_state(isolate, v8::ExceptionContext::kConstructor,
-                                 "GPURenderPipeline");
-
   GPURenderPipeline* pipeline;
   OwnedRenderPipelineDescriptor dawn_desc_info;
   ConvertToDawnType(isolate, device, webgpu_desc, &dawn_desc_info,
-                    exception_state);
-  if (exception_state.HadException()) {
+                    PassThroughException(isolate));
+
+  // TODO(376924407): Remove WebGPUOneComponentVertexFormats and the check here
+  // once the feature is safely landed.
+  if (!RuntimeEnabledFeatures::WebGPUOneComponentVertexFormatsEnabled()) {
+    const wgpu::VertexState& vertex = dawn_desc_info.dawn_desc.vertex;
+    // SAFETY: WebGPU works on the C equivalent of spans.
+    const auto buffers =
+        UNSAFE_BUFFERS(base::span<const wgpu::VertexBufferLayout>(
+            vertex.buffers, vertex.bufferCount));
+    for (const auto& buffer : buffers) {
+      // SAFETY: WebGPU works on the C equivalent of spans.
+      const auto attributes =
+          UNSAFE_BUFFERS(base::span<const wgpu::VertexAttribute>(
+              buffer.attributes, buffer.attributeCount));
+      for (const auto& attribute : attributes) {
+        switch (attribute.format) {
+          case wgpu::VertexFormat::Unorm8:
+          case wgpu::VertexFormat::Snorm8:
+          case wgpu::VertexFormat::Uint8:
+          case wgpu::VertexFormat::Sint8:
+          case wgpu::VertexFormat::Unorm16:
+          case wgpu::VertexFormat::Snorm16:
+          case wgpu::VertexFormat::Uint16:
+          case wgpu::VertexFormat::Sint16:
+          case wgpu::VertexFormat::Float16:
+          case wgpu::VertexFormat::Unorm8x4BGRA: {
+            ExceptionState exception_state(isolate);
+            exception_state.ThrowTypeError(
+                "Vertex format requires the WebGPUOneComponentVertexFormats "
+                "Blink feature.");
+            return nullptr;
+          }
+
+          default:
+            continue;
+        }
+      }
+    }
+  }
+
+  if (isolate->HasPendingException()) {
     return nullptr;
   }
 

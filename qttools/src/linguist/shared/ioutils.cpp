@@ -22,6 +22,7 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
 using namespace QMakeInternal;
 
 QString IoUtils::binaryAbsLocation(const QString &argv0)
@@ -29,25 +30,23 @@ QString IoUtils::binaryAbsLocation(const QString &argv0)
     QString ret;
     if (!argv0.isEmpty() && isAbsolutePath(argv0)) {
         ret = argv0;
-    } else if (argv0.contains(QLatin1Char('/'))
+    } else if (argv0.contains(u'/')
 #ifdef Q_OS_WIN
-               || argv0.contains(QLatin1Char('\\'))
+               || argv0.contains(u'\\')
 #endif
     ) { // relative PWD
         ret = QDir::current().absoluteFilePath(argv0);
     } else { // in the PATH
         QByteArray pEnv = qgetenv("PATH");
         QDir currentDir = QDir::current();
+        QStringList paths = QString::fromLocal8Bit(pEnv).split(QDir::listSeparator());
 #ifdef Q_OS_WIN
-        QStringList paths = QString::fromLocal8Bit(pEnv).split(QLatin1String(";"));
-        paths.prepend(QLatin1String("."));
-#else
-        QStringList paths = QString::fromLocal8Bit(pEnv).split(QLatin1String(":"));
+        paths.prepend("."_L1);
 #endif
         for (QStringList::const_iterator p = paths.constBegin(); p != paths.constEnd(); ++p) {
             if ((*p).isEmpty())
                 continue;
-            QString candidate = currentDir.absoluteFilePath(*p + QLatin1Char('/') + argv0);
+            QString candidate = currentDir.absoluteFilePath(*p + u'/' + argv0);
             if (QFile::exists(candidate)) {
                 ret = candidate;
                 break;
@@ -77,14 +76,14 @@ IoUtils::FileType IoUtils::fileType(const QString &fileName)
 bool IoUtils::isRelativePath(const QString &path)
 {
 #ifdef QMAKE_BUILTIN_PRFS
-    if (path.startsWith(QLatin1String(":/")))
+    if (path.startsWith(":/"_L1))
         return false;
 #endif
 #ifdef Q_OS_WIN
     // Unlike QFileInfo, this considers only paths with both a drive prefix and
     // a subsequent (back-)slash absolute:
-    if (path.length() >= 3 && path.at(1) == QLatin1Char(':') && path.at(0).isLetter()
-        && (path.at(2) == QLatin1Char('/') || path.at(2) == QLatin1Char('\\'))) {
+    if (path.length() >= 3 && path.at(1) == u':' && path.at(0).isLetter()
+        && (path.at(2) == u'/' || path.at(2) == u'\\')) {
         return false;
     }
     // ... unless, of course, they're UNC:
@@ -94,7 +93,7 @@ bool IoUtils::isRelativePath(const QString &path)
         return false;
     }
 #else
-    if (path.startsWith(QLatin1Char('/')))
+    if (path.startsWith(u'/'))
         return false;
 #endif // Q_OS_WIN
     return true;
@@ -102,12 +101,12 @@ bool IoUtils::isRelativePath(const QString &path)
 
 QStringView IoUtils::pathName(const QString &fileName)
 {
-    return QStringView{fileName}.left(fileName.lastIndexOf(QLatin1Char('/')) + 1);
+    return QStringView{ fileName }.left(fileName.lastIndexOf(u'/') + 1);
 }
 
 QStringView IoUtils::fileName(const QString &fileName)
 {
-    return QStringView(fileName).mid(fileName.lastIndexOf(QLatin1Char('/')) + 1);
+    return QStringView(fileName).mid(fileName.lastIndexOf(u'/') + 1);
 }
 
 QString IoUtils::resolvePath(const QString &baseDir, const QString &fileName)
@@ -122,7 +121,7 @@ QString IoUtils::resolvePath(const QString &baseDir, const QString &fileName)
         return QDir::cleanPath(baseDir.left(2) + fileName);
     }
 #endif // Q_OS_WIN
-    return QDir::cleanPath(baseDir + QLatin1Char('/') + fileName);
+    return QDir::cleanPath(baseDir + u'/' + fileName);
 }
 
 inline static
@@ -156,7 +155,7 @@ QString IoUtils::shellQuoteUnix(const QString &arg)
 
     QString ret(arg);
     if (hasSpecialChars(ret, iqm)) {
-        ret.replace(QLatin1Char('\''), QLatin1String("'\\''"));
+        ret.replace(QLatin1Char('\''), "'\\''"_L1);
         ret.prepend(QLatin1Char('\''));
         ret.append(QLatin1Char('\''));
     }
@@ -189,7 +188,7 @@ QString IoUtils::shellQuoteWin(const QString &arg)
         // Consequently, quotes are escaped and their preceding backslashes are doubled.
         ret.replace(QRegularExpression(QLatin1String("(\\\\*)\"")), QLatin1String("\\1\\1\\\""));
         // Trailing backslashes must be doubled as well, as they are followed by a quote.
-        ret.replace(QRegularExpression(QLatin1String("(\\\\+)$")), QLatin1String("\\1\\1"));
+        ret.replace(QRegularExpression("(\\\\+)$"_L1), "\\1\\1"_L1);
         // However, the shell also interprets the command, and no backslash-escaping exists
         // there - a quote always toggles the quoting state, but is nonetheless passed down
         // to the called process verbatim. In the unquoted state, the circumflex escapes
@@ -200,12 +199,12 @@ QString IoUtils::shellQuoteWin(const QString &arg)
             if (c.unicode() == '"')
                 quoted = !quoted;
             else if (!quoted && isSpecialChar(c.unicode(), ism))
-                ret.insert(i++, QLatin1Char('^'));
+                ret.insert(i++, u'^');
         }
         if (!quoted)
-            ret.append(QLatin1Char('^'));
-        ret.append(QLatin1Char('"'));
-        ret.prepend(QLatin1Char('"'));
+            ret.append(u'^');
+        ret.append(u'"');
+        ret.prepend(u'"');
     }
     return ret;
 }

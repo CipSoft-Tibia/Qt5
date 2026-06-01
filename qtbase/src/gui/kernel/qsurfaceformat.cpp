@@ -9,6 +9,10 @@
 #include <QtGui/qcolorspace.h>
 #include <QtGui/qguiapplication.h>
 
+#ifndef QT_NO_OPENGL
+#include <QtGui/private/qopenglcontext_p.h>
+#endif
+
 #ifdef major
 #undef major
 #endif
@@ -770,12 +774,6 @@ Q_GLOBAL_STATIC(QSurfaceFormat, qt_default_surface_format)
     and surfaces, even the ones created internally by Qt, will use the same
     format.
 
-    \note When setting Qt::AA_ShareOpenGLContexts, it is strongly recommended to
-    place the call to this function before the construction of the
-    QGuiApplication or QApplication. Otherwise \a format will not be applied to
-    the global share context and therefore issues may arise with context sharing
-    afterwards.
-
     \since 5.4
     \sa defaultFormat()
  */
@@ -783,7 +781,7 @@ void QSurfaceFormat::setDefaultFormat(const QSurfaceFormat &format)
 {
 #ifndef QT_NO_OPENGL
     if (qApp) {
-        QOpenGLContext *globalContext = QOpenGLContext::globalShareContext();
+        QOpenGLContext *globalContext = qt_gl_global_share_context();
         if (globalContext && globalContext->isValid()) {
             qWarning("Warning: Setting a new default format with a different version or profile "
                      "after the global shared context is created may cause issues with context "

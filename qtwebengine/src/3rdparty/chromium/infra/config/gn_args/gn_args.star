@@ -14,34 +14,6 @@ gn_args.config(
 )
 
 gn_args.config(
-    name = "also_build_ash_chrome",
-    args = {
-        "also_build_ash_chrome": True,
-    },
-)
-
-gn_args.config(
-    name = "also_build_lacros_chrome",
-    args = {
-        "also_build_lacros_chrome": True,
-    },
-)
-
-gn_args.config(
-    name = "also_build_lacros_chrome_for_architecture_amd64",
-    args = {
-        "also_build_lacros_chrome_for_architecture": "amd64",
-    },
-)
-
-gn_args.config(
-    name = "also_build_lacros_chrome_for_architecture_arm64",
-    args = {
-        "also_build_lacros_chrome_for_architecture": "arm64",
-    },
-)
-
-gn_args.config(
     name = "amd64-generic",
     args_file = "//build/args/chromeos/amd64-generic.gni",
 )
@@ -443,7 +415,7 @@ gn_args.config(
         "use_partition_alloc": False,
         "enable_reporting": True,
         "use_hashed_jni_names": True,
-        "default_min_sdk_version": 21,
+        "default_min_sdk_version": 23,
         "enable_base_tracing": False,
         "clang_use_default_sample_profile": False,
         "media_use_ffmpeg": False,
@@ -477,7 +449,6 @@ gn_args.config(
         "include_transport_security_state_preload_list": False,
         "is_cronet_build": True,
         "use_platform_icu_alternatives": True,
-        "enable_rust": False,
     },
 )
 
@@ -565,9 +536,23 @@ gn_args.config(
 )
 
 gn_args.config(
-    name = "enable_all_rust_features",
+    name = "enable_rust_mojo",
     args = {
-        "enable_all_rust_features": True,
+        "enable_rust_mojo": True,
+    },
+)
+
+gn_args.config(
+    name = "enable_rust_mojom_bindings",
+    args = {
+        "enable_rust_mojom_bindings": True,
+    },
+)
+
+gn_args.config(
+    name = "enable_rust_png",
+    args = {
+        "enable_rust_png": True,
     },
 )
 
@@ -587,6 +572,16 @@ gn_args.config(
     name = "enable_backup_ref_ptr_feature_flag",
     args = {
         "enable_backup_ref_ptr_feature_flag": True,
+    },
+)
+
+# Enables the instance tracer for BackupRefPtr. This provides more useful stack
+# traces when triggering the dangling pointer detector, but at the cost of some
+# runtime performance (last measured at ~10% in release builds).
+gn_args.config(
+    name = "enable_backup_ref_ptr_instance_tracer",
+    args = {
+        "enable_backup_ref_ptr_instance_tracer": True,
     },
 )
 
@@ -831,21 +826,21 @@ gn_args.config(
 )
 
 gn_args.config(
-    name = "lacros",
-    args = {
-        "target_os": "chromeos",
-        "chromeos_is_browser_only": True,
-    },
-)
-
-gn_args.config(
-    name = "lacros_on_linux",
-    args = {
-        "chromeos_is_browser_only": True,
-    },
+    name = "chromeos_on_linux",
     configs = [
         "chromeos",
     ],
+)
+
+# Do not use this for non-FYI builders.
+gn_args.config(
+    name = "libcxx_modules",
+    args = {
+        # TODO: crbug.com/351909443 - remove once performance of plugins is
+        # improved.
+        "clang_use_chrome_plugins": False,
+        "use_libcxx_modules": True,
+    },
 )
 
 gn_args.config(
@@ -1114,13 +1109,6 @@ gn_args.config(
 )
 
 gn_args.config(
-    name = "pgo_phase_0",
-    args = {
-        "chrome_pgo_phase": 0,
-    },
-)
-
-gn_args.config(
     name = "pgo_phase_1",
     args = {
         "chrome_pgo_phase": 1,
@@ -1135,15 +1123,6 @@ gn_args.config(
     args = {
         "use_remoteexec": True,
     },
-)
-
-gn_args.config(
-    name = "reclient_with_remoteexec_links",
-    args = {
-        "use_reclient_links": True,
-        "concurrent_links": 50,
-    },
-    configs = ["remoteexec"],
 )
 
 gn_args.config(
@@ -1208,6 +1187,13 @@ gn_args.config(
 )
 
 gn_args.config(
+    name = "save_lld_reproducers",
+    args = {
+        "save_reproducers_on_lld_crash": True,
+    },
+)
+
+gn_args.config(
     name = "skip_generate_fuzzer_owners",
     args = {
         "generate_fuzzer_owners": False,
@@ -1246,6 +1232,13 @@ gn_args.config(
     name = "strip_debug_info",
     args = {
         "strip_debug_info": True,
+    },
+)
+
+gn_args.config(
+    name = "system_headers_in_deps",
+    args = {
+        "system_headers_in_deps": True,
     },
 )
 
@@ -1424,6 +1417,13 @@ gn_args.config(
     configs = [
         "x64",
     ],
+)
+
+gn_args.config(
+    name = "v8_sandbox_testing",
+    args = {
+        "v8_enable_memory_corruption_api": True,
+    },
 )
 
 gn_args.config(

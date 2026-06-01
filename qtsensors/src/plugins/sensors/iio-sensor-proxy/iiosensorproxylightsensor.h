@@ -9,7 +9,11 @@
 
 #include <qlightsensor.h>
 
+namespace QtSensorsPrivate {
+
 class NetHadessSensorProxyInterface;
+
+} // namespace QtSensorsPrivate
 
 class IIOSensorProxyLightSensor : public IIOSensorProxySensorBase
 {
@@ -30,7 +34,7 @@ private:
     void updateLightLevel(double lux);
 
     QLightReading m_reading;
-    NetHadessSensorProxyInterface *m_sensorProxyInterface;
+    QtSensorsPrivate::NetHadessSensorProxyInterface *m_sensorProxyInterface;
 };
 
 #endif // IIOSENSORPROXY_LIGHTSENSOR_H

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QACCESSIBLEWIDGETS_H
 #define QACCESSIBLEWIDGETS_H
@@ -41,7 +42,7 @@ class QTextCursor;
 class QTextDocument;
 
 #ifndef QT_NO_CURSOR
-class QAccessibleTextWidget : public QAccessibleWidget,
+class QAccessibleTextWidget : public QAccessibleWidgetV2,
                               public QAccessibleTextInterface,
                               public QAccessibleEditableTextInterface
 {
@@ -83,7 +84,7 @@ public:
     void insertText(int offset, const QString &text) override;
     void replaceText(int startOffset, int endOffset, const QString &text) override;
 
-    using QAccessibleWidget::text;
+    using QAccessibleWidgetV2::text;
 
 protected:
     QTextCursor textCursorForRange(int startOffset, int endOffset) const;
@@ -150,7 +151,7 @@ protected:
 #endif // QT_CONFIG(textedit)
 #endif  //QT_NO_CURSOR
 
-class QAccessibleStackedWidget : public QAccessibleWidget
+class QAccessibleStackedWidget : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleStackedWidget(QWidget *widget);
@@ -164,7 +165,7 @@ protected:
     QStackedWidget *stackedWidget() const;
 };
 
-class QAccessibleToolBox : public QAccessibleWidget
+class QAccessibleToolBox : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleToolBox(QWidget *widget);
@@ -180,7 +181,7 @@ protected:
 };
 
 #if QT_CONFIG(mdiarea)
-class QAccessibleMdiArea : public QAccessibleWidget
+class QAccessibleMdiArea : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleMdiArea(QWidget *widget);
@@ -193,7 +194,7 @@ protected:
     QMdiArea *mdiArea() const;
 };
 
-class QAccessibleMdiSubWindow : public QAccessibleWidget
+class QAccessibleMdiSubWindow : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleMdiSubWindow(QWidget *widget);
@@ -212,7 +213,7 @@ protected:
 #endif // QT_CONFIG(mdiarea)
 
 #if QT_CONFIG(dialogbuttonbox)
-class QAccessibleDialogButtonBox : public QAccessibleWidget
+class QAccessibleDialogButtonBox : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleDialogButtonBox(QWidget *widget);
@@ -230,7 +231,7 @@ public:
 #endif // QT_CONFIG(textbrowser) && QT_NO_CURSOR
 
 #if QT_CONFIG(calendarwidget)
-class QAccessibleCalendarWidget : public QAccessibleWidget
+class QAccessibleCalendarWidget : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleCalendarWidget(QWidget *widget);
@@ -250,7 +251,7 @@ private:
 #endif // QT_CONFIG(calendarwidget)
 
 #if QT_CONFIG(dockwidget)
-class QAccessibleDockWidget: public QAccessibleWidget
+class QAccessibleDockWidget: public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleDockWidget(QWidget *widget);
@@ -269,7 +270,7 @@ protected:
 #endif // QT_CONFIG(dockwidget)
 
 #if QT_CONFIG(mainwindow)
-class QAccessibleMainWindow : public QAccessibleWidget
+class QAccessibleMainWindow : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleMainWindow(QWidget *widget);

@@ -17,8 +17,7 @@
 /*!
     \module QtGuiPrivate
     \title Qt GUI Private C++ Classes
-    \qtcmakepackage Gui
-    \qtcmaketargetitem GuiPrivate
+    \qtcmakepackage GuiPrivate
     \qtvariable gui-private
 
     \brief Provides access to private GUI functionality.
@@ -27,7 +26,7 @@
     private Qt GUI APIs:
 
     \badcode
-    find_package(Qt6 REQUIRED COMPONENTS Gui)
+    find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
     target_link_libraries(mytarget PRIVATE Qt6::GuiPrivate)
     \endcode
 */
@@ -107,5 +106,5 @@
     Furthermore, Qt GUI in Qt \QtVersion may contain third-party
     modules under following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtgui}
+    \annotatedlist attributions-qtgui
  */

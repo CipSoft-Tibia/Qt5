@@ -41,14 +41,6 @@ static std::optional<QByteArray> qEnvironmentVariableOptionalByteArray(const cha
     return value.isNull() ? std::nullopt : std::optional(std::move(value));
 }
 
-static std::optional<int> qEnvironmentVariableOptionalInt(const char *name)
-{
-    bool ok = false;
-    const int value = qEnvironmentVariableIntValue(name, &ok);
-    auto opt = ok ? std::optional(value) : std::nullopt;
-    return opt;
-}
-
 static std::optional<qreal> qEnvironmentVariableOptionalReal(const char *name)
 {
     const QByteArray val = qgetenv(name);
@@ -403,7 +395,7 @@ void QHighDpiScaling::initHighDpiScaling()
 
     // Read environment variables
     static const char* envDebugStr = "environment variable set:";
-    std::optional<int> envEnableHighDpiScaling = qEnvironmentVariableOptionalInt(enableHighDpiScalingEnvVar);
+    std::optional envEnableHighDpiScaling = qEnvironmentVariableIntegerValue(enableHighDpiScalingEnvVar);
     if (envEnableHighDpiScaling.has_value())
         qCDebug(lcHighDpi) << envDebugStr << enableHighDpiScalingEnvVar << envEnableHighDpiScaling.value();
 
@@ -415,7 +407,7 @@ void QHighDpiScaling::initHighDpiScaling()
     if (envScreenFactors.isNull())
         qCDebug(lcHighDpi) << envDebugStr << screenFactorsEnvVar << envScreenFactors;
 
-    std::optional<int> envUsePhysicalDpi = qEnvironmentVariableOptionalInt(usePhysicalDpiEnvVar);
+    std::optional envUsePhysicalDpi = qEnvironmentVariableIntegerValue(usePhysicalDpiEnvVar);
     if (envUsePhysicalDpi.has_value())
         qCDebug(lcHighDpi) << envDebugStr << usePhysicalDpiEnvVar << envUsePhysicalDpi.value();
 
@@ -448,7 +440,8 @@ void QHighDpiScaling::initHighDpiScaling()
         QByteArray policyText = envScaleFactorRoundingPolicy.value();
         auto policyEnumValue = lookupScaleFactorRoundingPolicy(policyText);
         if (policyEnumValue != Qt::HighDpiScaleFactorRoundingPolicy::Unset) {
-            QGuiApplication::setHighDpiScaleFactorRoundingPolicy(policyEnumValue);
+            // set directly to avoid setHighDpiScaleFactorRoundingPolicy() warning
+            QGuiApplicationPrivate::highDpiScaleFactorRoundingPolicy = policyEnumValue;
         } else {
             auto values = joinEnumValues(std::begin(scaleFactorRoundingPolicyLookup),
                                          std::end(scaleFactorRoundingPolicyLookup));

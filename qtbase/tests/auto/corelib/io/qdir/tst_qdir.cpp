@@ -92,7 +92,7 @@ private slots:
     void mkdirRmdir();
     void mkdirOnSymlink();
     void mkdirWithPermissions_data();
-    void mkdirWithPermissions();
+    void mkdirWithPermissions(); // QDir::{mkdir,mkpath}()
 
     void makedirReturnCode();
 
@@ -423,7 +423,7 @@ void tst_QDir::mkdirRmdir()
 
 void tst_QDir::mkdirOnSymlink()
 {
-#if !defined(Q_OS_UNIX) || defined(Q_NO_SYMLINKS) || defined(Q_OS_INTEGRITY)
+#if !defined(Q_OS_UNIX) || defined(Q_NO_SYMLINKS) || defined(Q_OS_INTEGRITY) || defined(Q_OS_WASM)
     QSKIP("Test only valid on an OS that supports symlinks");
 #else
     // Create the structure:
@@ -508,6 +508,7 @@ void tst_QDir::mkdirWithPermissions()
         QFile::ReadOwner, QFile::WriteOwner, QFile::ExeOwner
     };
 
+    {
     const QString path = u"tmpdir"_s;
     QDir dir;
     auto deleteDirectory = qScopeGuard([&dir, &path] { dir.rmdir(path); });
@@ -517,6 +518,22 @@ void tst_QDir::mkdirWithPermissions()
     QCOMPARE(actualPermissions & setPermissions, permissions);
     QVERIFY(dir.rmdir(path));
     deleteDirectory.dismiss();
+    }
+
+    {
+        // On Unix we need at least 'wx' permissions to be able to create "subdir"
+        if (permissions.testFlags(QFile::WriteOwner | QFile::ExeOwner)) {
+            const QString path = u"mkpath-tmpdir/subdir"_s;
+            QDir dir;
+            auto deleteDirectory = qScopeGuard([&dir, &path] { dir.rmpath(path); });
+
+            QVERIFY(dir.mkpath(path, permissions));
+            auto actualPermissions = QFileInfo(path).permissions();
+            QCOMPARE(actualPermissions & setPermissions, permissions);
+            QVERIFY(dir.rmpath(path));
+            deleteDirectory.dismiss();
+        }
+    }
 }
 
 void tst_QDir::makedirReturnCode()
@@ -970,14 +987,14 @@ void tst_QDir::entryListWithTestFiles()
 #if defined(Q_OS_WIN)
     // ### Sadly, this is a platform difference right now.
     // Note we are using capital L in entryList on one side here, to test case-insensitivity
-    const QList<QPair<QString, QString> > symLinks =
+    const QList<std::pair<QString, QString>> symLinks =
     {
         {m_dataPath + "/entryList/file", entrylistPath + "linktofile.lnk"},
         {m_dataPath + "/entryList/directory", entrylistPath + "linktodirectory.lnk"},
         {m_dataPath + "/entryList/nothing", entrylistPath + "brokenlink.lnk"}
     };
 #else
-    const QList<QPair<QString, QString> > symLinks =
+    const QList<std::pair<QString, QString>> symLinks =
     {
         {"file", entrylistPath + "linktofile.lnk"},
         {"directory", entrylistPath + "linktodirectory.lnk"},

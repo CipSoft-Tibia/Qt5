@@ -1,6 +1,0 @@
-<RCC>
-    <qresource prefix="/qt/qml/Translated">
-        <file>Main.qml</file>
-        <file>qmldir</file>
-    </qresource>
-</RCC>

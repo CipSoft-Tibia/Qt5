@@ -41,13 +41,13 @@ public:
     explicit QWebEngineWebViewSettingsPrivate(QWebEngineWebViewPrivate *p = nullptr);
 
     bool localStorageEnabled() const override;
-    bool javascriptEnabled() const override;
+    bool javaScriptEnabled() const override;
     bool localContentCanAccessFileUrls() const override;
     bool allowFileAccess() const override;
 
 public Q_SLOTS:
     void setLocalContentCanAccessFileUrls(bool enabled) override;
-    void setJavascriptEnabled(bool enabled) override;
+    void setJavaScriptEnabled(bool enabled) override;
     void setLocalStorageEnabled(bool enabled) override;
     void setAllowFileAccess(bool enabled) override;
 
@@ -77,13 +77,8 @@ public:
     int loadProgress() const override;
     bool isLoading() const override;
 
-    void setParentView(QObject *parentView) override;
-    QObject *parentView() const override;
-    void setGeometry(const QRect &geometry) override;
-    void setVisibility(QWindow::Visibility visibility) override;
-    void setVisible(bool visible) override;
-    void setFocus(bool focus) override;
     QAbstractWebViewSettings *getSettings() const override;
+    QWindow *nativeWindow() const override { return nullptr; }
 
 public Q_SLOTS:
     void goBack() override;

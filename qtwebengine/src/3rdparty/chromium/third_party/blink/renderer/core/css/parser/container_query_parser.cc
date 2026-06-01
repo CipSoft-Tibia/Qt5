@@ -53,7 +53,7 @@ class SizeFeatureSet : public MediaQueryParser::FeatureSet {
   STACK_ALLOCATED();
 
  public:
-  bool IsAllowed(const String& feature) const override {
+  bool IsAllowed(const AtomicString& feature) const override {
     return feature == media_feature_names::kWidthMediaFeature ||
            feature == media_feature_names::kMinWidthMediaFeature ||
            feature == media_feature_names::kMaxWidthMediaFeature ||
@@ -71,7 +71,7 @@ class SizeFeatureSet : public MediaQueryParser::FeatureSet {
            feature == media_feature_names::kMaxAspectRatioMediaFeature ||
            feature == media_feature_names::kOrientationMediaFeature;
   }
-  bool IsAllowedWithoutValue(const String& feature,
+  bool IsAllowedWithoutValue(const AtomicString& feature,
                              const ExecutionContext*) const override {
     return feature == media_feature_names::kWidthMediaFeature ||
            feature == media_feature_names::kHeightMediaFeature ||
@@ -80,7 +80,9 @@ class SizeFeatureSet : public MediaQueryParser::FeatureSet {
            feature == media_feature_names::kAspectRatioMediaFeature ||
            feature == media_feature_names::kOrientationMediaFeature;
   }
-  bool IsCaseSensitive(const String& feature) const override { return false; }
+  bool IsCaseSensitive(const AtomicString& feature) const override {
+    return false;
+  }
   bool SupportsRange() const override { return true; }
 };
 
@@ -88,15 +90,15 @@ class StyleFeatureSet : public MediaQueryParser::FeatureSet {
   STACK_ALLOCATED();
 
  public:
-  bool IsAllowed(const String& feature) const override {
+  bool IsAllowed(const AtomicString& feature) const override {
     // TODO(crbug.com/1302630): Only support querying custom properties for now.
     return CSSVariableParser::IsValidVariableName(feature);
   }
-  bool IsAllowedWithoutValue(const String& feature,
+  bool IsAllowedWithoutValue(const AtomicString& feature,
                              const ExecutionContext*) const override {
     return true;
   }
-  bool IsCaseSensitive(const String& feature) const override {
+  bool IsCaseSensitive(const AtomicString& feature) const override {
     // TODO(crbug.com/1302630): non-custom properties are case-insensitive.
     return true;
   }
@@ -107,17 +109,21 @@ class StateFeatureSet : public MediaQueryParser::FeatureSet {
   STACK_ALLOCATED();
 
  public:
-  bool IsAllowed(const String& feature) const override {
+  bool IsAllowed(const AtomicString& feature) const override {
     return (RuntimeEnabledFeatures::CSSStickyContainerQueriesEnabled() &&
             feature == media_feature_names::kStuckMediaFeature) ||
            (RuntimeEnabledFeatures::CSSSnapContainerQueriesEnabled() &&
-            feature == media_feature_names::kSnappedMediaFeature);
+            feature == media_feature_names::kSnappedMediaFeature) ||
+           (RuntimeEnabledFeatures::CSSScrollableContainerQueriesEnabled() &&
+            feature == media_feature_names::kScrollableMediaFeature);
   }
-  bool IsAllowedWithoutValue(const String& feature,
+  bool IsAllowedWithoutValue(const AtomicString& feature,
                              const ExecutionContext*) const override {
     return true;
   }
-  bool IsCaseSensitive(const String& feature) const override { return false; }
+  bool IsCaseSensitive(const AtomicString& feature) const override {
+    return false;
+  }
   bool SupportsRange() const override { return false; }
 };
 
@@ -194,8 +200,10 @@ const MediaQueryExpNode* ContainerQueryParser::ConsumeQueryInParens(
   } else if (RuntimeEnabledFeatures::CSSScrollStateContainerQueriesEnabled() &&
              stream.Peek().GetType() == kFunctionToken &&
              stream.Peek().FunctionId() == CSSValueID::kScrollState) {
-    // scroll-state(stuck: [ none | top | left | right | bottom | inset-* ] )
-    // scroll-state(snapped: [ none | block | inline | x | y ] )
+    // scroll-state(stuck: [ none | top | right | bottom | left | block-start |
+    // inline-start | block-end | inline-end ] ) scroll-state(snapped: [ none |
+    // x | y | block | inline ] ) scroll-state(overflowing: [ none | top | right
+    // | bottom | left | block-start | inline-start | block-end | inline-end ] )
     CSSParserTokenStream::RestoringBlockGuard guard(stream);
     stream.ConsumeWhitespace();
 
@@ -219,6 +227,29 @@ const MediaQueryExpNode* ContainerQueryParser::ConsumeContainerCondition(
         return this->ConsumeQueryInParens(stream);
       },
       stream);
+}
+
+// <if-test> = style( <style-query> )
+// <style-query>     = not <style-in-parens>
+//                   | <style-in-parens> [ [ and <style-in-parens> ]* | [ or
+//                   <style-in-parens> ]* ] | <style-feature>
+// <style-in-parens> = ( <style-query> )
+//                   | ( <style-feature> )
+//                   | <general-enclosed>
+const MediaQueryExpNode* ContainerQueryParser::ConsumeIfTest(
+    CSSParserTokenStream& stream) {
+  if (stream.Peek().GetType() == kFunctionToken &&
+      stream.Peek().FunctionId() == CSSValueID::kStyle) {
+    CSSParserTokenStream::RestoringBlockGuard guard(stream);
+    stream.ConsumeWhitespace();
+    if (const MediaQueryExpNode* query =
+            ConsumeFeatureQuery(stream, StyleFeatureSet())) {
+      guard.Release();
+      stream.ConsumeWhitespace();
+      return MediaQueryExpNode::Function(query, AtomicString("style"));
+    }
+  }
+  return nullptr;
 }
 
 const MediaQueryExpNode* ContainerQueryParser::ConsumeFeatureQuery(

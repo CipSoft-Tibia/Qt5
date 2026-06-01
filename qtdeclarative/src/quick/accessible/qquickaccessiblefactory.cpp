@@ -1,20 +1,25 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickaccessiblefactory_p.h"
 
 #include "qaccessiblequickview_p.h"
 #include "qaccessiblequickitem_p.h"
+#include "qaccessiblequicktextedit_p.h"
 #include <QtQuick/private/qquickitem_p.h>
+#include <QtQuick/private/qquicktextedit_p.h>
 
 QT_BEGIN_NAMESPACE
 #if QT_CONFIG(accessibility)
 
 QAccessibleInterface *qQuickAccessibleFactory(const QString &classname, QObject *object)
 {
-    if (classname == QLatin1String("QQuickWindow")) {
+    if (classname == QLatin1String("QQuickWindow"))
         return new QAccessibleQuickWindow(qobject_cast<QQuickWindow *>(object));
-    } else if (classname == QLatin1String("QQuickItem")) {
+    if (classname == QLatin1String("QQuickTextEdit"))
+        return new QAccessibleQuickTextEdit(qobject_cast<QQuickTextEdit *>(object));
+    if (classname == QLatin1String("QQuickItem")) {
         QQuickItem *item = qobject_cast<QQuickItem *>(object);
         Q_ASSERT(item);
         QQuickItemPrivate *itemPrivate = QQuickItemPrivate::get(item);

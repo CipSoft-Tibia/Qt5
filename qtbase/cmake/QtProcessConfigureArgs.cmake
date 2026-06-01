@@ -290,7 +290,6 @@ defstub(qt_feature_definition)
 defstub(qt_find_package)
 defstub(set_package_properties)
 defstub(qt_qml_find_python)
-defstub(qt_set01)
 defstub(qt_internal_check_if_linker_is_available)
 defstub(qt_internal_add_sbom)
 defstub(qt_internal_extend_sbom)
@@ -316,7 +315,7 @@ endmacro()
 
 function(qt_commandline_option name)
     set(options CONTROLS_FEATURE)
-    set(oneValueArgs TYPE NAME VALUE)
+    set(oneValueArgs TYPE NAME VALUE CMAKE_VARIABLE)
     set(multiValueArgs VALUES MAPPING)
     cmake_parse_arguments(arg "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -326,6 +325,9 @@ function(qt_commandline_option name)
     if(NOT "${arg_NAME}" STREQUAL "")
         set(input_name ${arg_NAME})
         set(commandline_option_${name}_variable "${arg_NAME}" PARENT_SCOPE)
+    endif()
+    if(DEFINED arg_CMAKE_VARIABLE)
+        set_property(GLOBAL PROPERTY INPUTCMAKEVAR_${input_name} "${arg_CMAKE_VARIABLE}")
     endif()
     set(mapping_type "${arg_TYPE}")
     if(arg_CONTROLS_FEATURE)
@@ -345,11 +347,34 @@ endfunction()
 # Add the common command line options for every qt repo.
 macro(qt_add_common_commandline_options)
     qt_commandline_option(headersclean TYPE boolean)
-    qt_commandline_option(sbom TYPE boolean)
-    qt_commandline_option(sbom-json TYPE boolean)
-    qt_commandline_option(sbom-json-required TYPE boolean)
-    qt_commandline_option(sbom-verify TYPE boolean)
-    qt_commandline_option(sbom-verify-required TYPE boolean)
+    qt_commandline_option(sbom TYPE boolean CMAKE_VARIABLE QT_GENERATE_SBOM)
+
+    # Semi-public, undocumented.
+    qt_commandline_option(sbom-all TYPE boolean CMAKE_VARIABLE QT_SBOM_GENERATE_AND_VERIFY_ALL)
+
+    qt_commandline_option(sbom-spdx-v2 TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_GENERATE_SPDX_V2)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6 TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_GENERATE_CYDX_V1_6)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_GENERATE_CYDX_V1_6)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6-verify-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_VERIFY_CYDX_V1_6)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6-verbose TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_VERBOSE_CYDX_V1_6)
+
+    qt_commandline_option(sbom-json TYPE boolean CMAKE_VARIABLE QT_SBOM_GENERATE_SPDX_V2_JSON)
+    qt_commandline_option(sbom-json-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_GENERATE_SPDX_V2_JSON
+    )
+
+    qt_commandline_option(sbom-verify TYPE boolean CMAKE_VARIABLE QT_SBOM_VERIFY_SPDX_V2)
+    qt_commandline_option(sbom-verify-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_VERIFY_SPDX_V2)
 endmacro()
 
 function(qt_commandline_prefix arg var)
@@ -531,6 +556,18 @@ function(qt_commandline_string arg val nextok)
     if(success)
         qtConfCommandlineSetInput("${opt}" "${val}")
     endif()
+endfunction()
+
+# Handle command line arguments of type "path" exactly like strings.
+# They are treated differently by translate_input, however.
+function(qt_commandline_path arg val nextok)
+    qt_commandline_string("${arg}" "${val}" "${nextok}")
+endfunction()
+
+# Handle command line arguments of type "stringList" exactly like strings.
+# They are treated differently by translate_input, however.
+function(qt_commandline_stringList arg val nextok)
+    qt_commandline_string("${arg}" "${val}" "${nextok}")
 endfunction()
 
 function(qt_commandline_optionalString arg val nextok)
@@ -826,9 +863,10 @@ get_property(config_inputs GLOBAL PROPERTY CONFIG_INPUTS)
 list(REMOVE_DUPLICATES config_inputs)
 foreach(var ${config_inputs})
     get_property(INPUT_${var} GLOBAL PROPERTY INPUT_${var})
-    if("${commandline_input_type}" STREQUAL "")
+    if("${commandline_input_${var}_type}" STREQUAL "")
         get_property(commandline_input_${var}_type GLOBAL PROPERTY INPUTTYPE_${var})
     endif()
+    get_property(commandline_input_${var}_cmake_variable GLOBAL PROPERTY INPUTCMAKEVAR_${var})
 endforeach()
 
 macro(drop_input name)
@@ -867,6 +905,24 @@ macro(translate_list_input name cmake_var)
         list(JOIN INPUT_${name} "[[;]]" value)
         list(APPEND cmake_args "-D${cmake_var}=${value}")
         drop_input(${name})
+    endif()
+endmacro()
+
+macro(translate_input name cmake_var)
+    if("${commandline_input_${name}_type}" STREQUAL "boolean")
+        translate_boolean_input(${name} ${cmake_var})
+    elseif("${commandline_input_${name}_type}" STREQUAL "path")
+        translate_path_input(${name} ${cmake_var})
+    elseif("${commandline_input_${name}_type}" STREQUAL "string")
+        translate_string_input(${name} ${cmake_var})
+    elseif("${commandline_input_${name}_type}" STREQUAL "addString"
+            OR "${commandline_input_${name}_type}" STREQUAL "stringList")
+        translate_list_input(${name} ${cmake_var})
+    else()
+        message(FATAL_ERROR
+            "translate_input cannot handle input '${name}' "
+            "of type '${commandline_input_${name}_type}'."
+        )
     endif()
 endmacro()
 
@@ -951,47 +1007,23 @@ function(check_qt_build_parts type)
     set(cmake_args "${cmake_args}" PARENT_SCOPE)
 endfunction()
 
+# Translate command line arguments that have CMAKE_VARIABLE set.
+foreach(input IN LISTS config_inputs)
+    if(NOT "${commandline_input_${input}_cmake_variable}" STREQUAL "")
+        translate_input("${input}" "${commandline_input_${input}_cmake_variable}")
+    endif()
+endforeach()
+
 drop_input(commercial)
 drop_input(confirm-license)
-translate_boolean_input(precompile_header BUILD_WITH_PCH)
-translate_boolean_input(unity_build QT_UNITY_BUILD)
-translate_string_input(unity_build_batch_size QT_UNITY_BUILD_BATCH_SIZE)
-translate_boolean_input(ccache QT_USE_CCACHE)
-translate_boolean_input(vcpkg QT_USE_VCPKG)
-translate_boolean_input(sbom QT_GENERATE_SBOM)
-translate_boolean_input(sbom-json QT_SBOM_GENERATE_JSON)
-translate_boolean_input(sbom-json-required QT_SBOM_REQUIRE_GENERATE_JSON)
-translate_boolean_input(sbom-verify QT_SBOM_VERIFY)
-translate_boolean_input(sbom-verify-required QT_SBOM_REQUIRE_VERIFY)
 translate_boolean_input(shared BUILD_SHARED_LIBS)
-translate_boolean_input(warnings_are_errors WARNINGS_ARE_ERRORS)
-translate_boolean_input(qtinlinenamespace QT_INLINE_NAMESPACE)
-translate_string_input(qt_namespace QT_NAMESPACE)
-translate_string_input(qt_libinfix QT_LIBINFIX)
-translate_string_input(qreal QT_COORD_TYPE)
-translate_path_input(prefix CMAKE_INSTALL_PREFIX)
-translate_path_input(extprefix CMAKE_STAGING_PREFIX)
-foreach(kind bin lib archdata libexec qml data doc sysconf examples tests)
-    string(TOUPPER ${kind} uc_kind)
-    translate_path_input(${kind}dir INSTALL_${uc_kind}DIR)
-endforeach()
-translate_path_input(headerdir INSTALL_INCLUDEDIR)
-translate_path_input(plugindir INSTALL_PLUGINSDIR)
-translate_path_input(translationdir INSTALL_TRANSLATIONSDIR)
-translate_path_input(sbomdir INSTALL_SBOMDIR)
 
 if(NOT "${INPUT_device}" STREQUAL "")
     push("-DQT_QMAKE_TARGET_MKSPEC=devices/${INPUT_device}")
     drop_input(device)
 endif()
-translate_string_input(platform QT_QMAKE_TARGET_MKSPEC)
-translate_string_input(xplatform QT_QMAKE_TARGET_MKSPEC)
 guess_compiler_from_mkspec()
-translate_string_input(qpa_default_platform QT_QPA_DEFAULT_PLATFORM)
-translate_list_input(qpa_platforms QT_QPA_PLATFORMS)
 
-translate_path_input(android-sdk ANDROID_SDK_ROOT)
-translate_path_input(android-ndk ANDROID_NDK_ROOT)
 if(DEFINED INPUT_android-ndk-platform)
     drop_input(android-ndk-platform)
     push("-DANDROID_PLATFORM=${INPUT_android-ndk-platform}")
@@ -1003,14 +1035,9 @@ if(DEFINED INPUT_android-abis)
     endif()
     translate_string_input(android-abis ANDROID_ABI)
 endif()
-translate_string_input(android-javac-source QT_ANDROID_JAVAC_SOURCE)
-translate_string_input(android-javac-target QT_ANDROID_JAVAC_TARGET)
-
-translate_string_input(sdk QT_APPLE_SDK)
 
 drop_input(make)
 drop_input(nomake)
-translate_boolean_input(install-examples-sources QT_INSTALL_EXAMPLES_SOURCES)
 
 check_qt_build_parts(nomake)
 check_qt_build_parts(make)
@@ -1075,10 +1102,7 @@ if("${INPUT_ltcg}" STREQUAL "yes")
     endforeach()
 endif()
 
-translate_path_input(ffmpeg-dir FFMPEG_DIR)
-translate_boolean_input(ffmpeg-deploy QT_DEPLOY_FFMPEG)
-
-translate_list_input(device-option QT_QMAKE_DEVICE_OPTIONS)
+# Handle -D, -I and friends.
 translate_list_input(defines QT_EXTRA_DEFINES)
 translate_list_input(fpaths QT_EXTRA_FRAMEWORKPATHS)
 translate_list_input(includes QT_EXTRA_INCLUDEPATHS)

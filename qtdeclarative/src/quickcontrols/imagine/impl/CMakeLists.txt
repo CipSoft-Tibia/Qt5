@@ -14,6 +14,7 @@ qt_internal_add_qml_module(QuickControls2ImagineStyleImpl
     VERSION "${PROJECT_VERSION}"
     CLASS_NAME QtQuickControls2ImagineStyleImplPlugin
     PLUGIN_TARGET qtquickcontrols2imaginestyleimplplugin
+    NO_PRIVATE_MODULE
     QML_FILES
         ${qml_files}
     IMPORTS

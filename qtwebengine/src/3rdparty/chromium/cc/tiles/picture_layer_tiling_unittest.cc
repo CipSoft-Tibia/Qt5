@@ -16,6 +16,7 @@
 #include "cc/test/fake_picture_layer_tiling_client.h"
 #include "cc/test/fake_raster_source.h"
 #include "cc/tiles/picture_layer_tiling_set.h"
+#include "cc/tiles/prioritized_tile.h"
 #include "cc/trees/layer_tree_settings.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gfx/geometry/quad_f.h"
@@ -1360,7 +1361,7 @@ TEST_F(PictureLayerTilingIteratorTest,
         EXPECT_EQ(gfx::RectF(1.125f, 0.125f, 156, 3), texture_rect);
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
   }
   EXPECT_EQ(3, i);

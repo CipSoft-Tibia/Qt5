@@ -4,6 +4,7 @@
     "Name": "Unicode Character Database (UCD)",
     "QDocModule": "qtcore",
     "QtUsage": "Qt Core uses data obtained from UCD files for working with characters and strings.",
+    "SecurityCritical": false,
     "Comment": {
         "Files": "For update, see qtbase/util/unicode/README",
         "General": "no relevant CPE and PURL found"
@@ -17,16 +18,17 @@
         "Version": [ "Don't use the Unicode standard version;",
                      "UCD has its own 'Revision' numbers",
                      "see the 'UAX #44, UCD' page (https://www.unicode.org/reports/tr44/)" ]},
-    "Version": "34",
+    "Version": "36",
     "License": "Unicode License Agreement - Data Files and Software (2016)",
     "LicenseId": "Unicode-3.0",
-    "Copyright": "Copyright (C) 1991-2022 Unicode, Inc."
+    "Copyright": "Copyright (C) 1991-2025 Unicode, Inc."
 },
 {
     "Id": "unicode-cldr",
     "Name": "Unicode Common Locale Data Repository (CLDR)",
     "QDocModule": "qtcore",
     "QtUsage": "Used in Qt Core (QTimeZone, QLocale).",
+    "SecurityCritical": false,
     "Comment": {
         "Files": "For update, see qtbase/util/locale_database/cldr2qlocalexml.py",
         "General": "no relevant CPE and PURL found"
@@ -41,7 +43,7 @@
  world's languages, with the largest and most extensive standard repository of locale data
  available.",
     "Homepage": "https://cldr.unicode.org/",
-    "Version": "v47",
+    "Version": "v48.1",
     "License": "Unicode License v3",
     "LicenseId": "Unicode-3.0",
     "Copyright": "Copyright (C) 2004-2025 Unicode, Inc."

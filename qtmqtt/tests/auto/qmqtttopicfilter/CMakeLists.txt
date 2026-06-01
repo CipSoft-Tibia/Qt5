@@ -5,7 +5,9 @@
 ## tst_qmqtttopicfilter Test:
 #####################################################################
 
-qt_internal_add_test(tst_qmqtttopicfilter
+qtmqtt_add_test(
+    TARGET
+        tst_qmqtttopicfilter
     SOURCES
         tst_qmqtttopicfilter.cpp
     DEFINES

@@ -23,6 +23,23 @@
 #define QDOCTEST_MACRO2(x) (x) < 0 ? 0 : (x)
 
 /*!
+    \variable QDOCTEST_GLOBAL_VARIABLE
+    \relates TestQDoc
+    \since Test 1.2
+    \brief A test variable for since documentation.
+*/
+extern int QDOCTEST_GLOBAL_VARIABLE;
+
+// Test conditional macro like Qt's nodiscard pattern
+#if !defined(QDOCTEST_CONDITIONAL_MACRO) && !defined(QDOCTEST_NO_CONDITIONAL_MACRO)
+#  define QDOCTEST_CONDITIONAL_MACRO
+#endif
+
+// Test macros for shared documentation
+#define QDOCTEST_SHARED_MACRO_A(x) ((x) + 1)
+#define QDOCTEST_SHARED_MACRO_B(x) ((x) - 1)
+
+/*!
     \namespace TestQDoc
     \inheaderfile TestCPP
     \inmodule TestCPP
@@ -266,6 +283,18 @@ class TestDerived : public Test {
     QDOC_PROPERTY(bool secondBoolProp READ secondBoolProp NOTIFY boolPropChanged)
 
 public:
+
+    /*!
+        \value Val1
+        \value Val2
+    */
+    enum { Val1, Val2 };
+
+    /*!
+        \value Val3
+        \value Val4
+    */
+    enum { Val3, Val4 };
 /*!
     \typealias TestQDoc::TestDerived::DerivedType
     An aliased typedef.

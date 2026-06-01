@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmlsa.h"
 #include "qqmlsa_p.h"
@@ -15,7 +16,6 @@
 #include <QtQmlCompiler/private/qqmlsasourcelocation_p.h>
 
 #include <memory>
-#include <new>
 
 QT_BEGIN_NAMESPACE
 
@@ -156,7 +156,7 @@ static_assert(QQmlJSScope::sizeofQQmlSAElement() == sizeof(Element));
  */
 Binding::Bindings::Bindings() : d_ptr{ new BindingsPrivate{ this } } { }
 
-BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *interface) : q_ptr{ interface } { }
+BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *iface) : q_ptr{ iface } { }
 
 /*!
     Creates a copy of \a other.
@@ -171,13 +171,13 @@ Binding::Bindings::Bindings(const Bindings &other)
  */
 Binding::Bindings::~Bindings() = default;
 
-BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *interface, const BindingsPrivate &other)
-    : m_bindings{ other.m_bindings.begin(), other.m_bindings.end() }, q_ptr{ interface }
+BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *iface, const BindingsPrivate &other)
+    : m_bindings{ other.m_bindings.begin(), other.m_bindings.end() }, q_ptr{ iface }
 {
 }
 
-BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *interface, BindingsPrivate &&other)
-    : m_bindings{ std::move(other.m_bindings) }, q_ptr{ interface }
+BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *iface, BindingsPrivate &&other)
+    : m_bindings{ std::move(other.m_bindings) }, q_ptr{ iface }
 {
 }
 
@@ -231,7 +231,7 @@ QMultiHash<QString, Binding>::const_iterator BindingsPrivate::constEnd() const
  */
 Binding::Binding() : d_ptr{ new BindingPrivate{ this } } { }
 
-BindingPrivate::BindingPrivate(Binding *interface) : q_ptr{ interface } { }
+BindingPrivate::BindingPrivate(Binding *iface) : q_ptr{ iface } { }
 
 /*!
     Creates a copy of \a other.
@@ -289,8 +289,8 @@ bool Binding::operatorEqualsImpl(const Binding &lhs, const Binding &rhs)
             && lhs.d_func()->m_isAttached == rhs.d_func()->m_isAttached;
 }
 
-BindingPrivate::BindingPrivate(Binding *interface, const BindingPrivate &other)
-    : m_binding{ other.m_binding }, m_bindingScope{ other.m_bindingScope }, q_ptr{ interface },
+BindingPrivate::BindingPrivate(Binding *iface, const BindingPrivate &other)
+    : m_binding{ other.m_binding }, m_bindingScope{ other.m_bindingScope }, q_ptr{ iface },
       m_isAttached{ other.m_isAttached }
 {
 }
@@ -441,6 +441,19 @@ bool Binding::hasUndefinedScriptValue() const
 }
 
 /*!
+    Returns whether this binding has script value type function like when it
+    is assigned a (lambda) method, an arrow function or a statement block. If
+    the content type of this binding is not \l{QQmlSA::BindingType::Script},
+    returns \c false.
+ */
+bool Binding::hasFunctionScriptValue() const
+{
+    const auto &jsBinding = BindingPrivate::binding(*this);
+    return jsBinding.bindingType() == BindingType::Script
+            && jsBinding.scriptValueType() == ScriptValue_Function;
+}
+
+/*!
     Returns \c true if \a bindingType is a literal type, and \c false
     otherwise.
  */
@@ -518,22 +531,22 @@ QMultiHash<QString, Method>::const_iterator MethodsPrivate::constEnd() const
     return m_methods.constEnd();
 }
 
-MethodsPrivate::MethodsPrivate(QQmlSA::Method::Methods *interface) : q_ptr{ interface } { }
+MethodsPrivate::MethodsPrivate(QQmlSA::Method::Methods *iface) : q_ptr{ iface } { }
 
-MethodsPrivate::MethodsPrivate(QQmlSA::Method::Methods *interface, const MethodsPrivate &other)
-    : m_methods{ other.m_methods }, q_ptr{ interface }
+MethodsPrivate::MethodsPrivate(QQmlSA::Method::Methods *iface, const MethodsPrivate &other)
+    : m_methods{ other.m_methods }, q_ptr{ iface }
 {
 }
 
-MethodsPrivate::MethodsPrivate(QQmlSA::Method::Methods *interface, MethodsPrivate &&other)
-    : m_methods{ std::move(other.m_methods) }, q_ptr{ interface }
+MethodsPrivate::MethodsPrivate(QQmlSA::Method::Methods *iface, MethodsPrivate &&other)
+    : m_methods{ std::move(other.m_methods) }, q_ptr{ iface }
 {
 }
 
-MethodPrivate::MethodPrivate(Method *interface) : q_ptr{ interface } { }
+MethodPrivate::MethodPrivate(Method *iface) : q_ptr{ iface } { }
 
-MethodPrivate::MethodPrivate(Method *interface, const MethodPrivate &other)
-    : m_method{ other.m_method }, q_ptr{ interface }
+MethodPrivate::MethodPrivate(Method *iface, const MethodPrivate &other)
+    : m_method{ other.m_method }, q_ptr{ iface }
 {
 }
 
@@ -675,15 +688,19 @@ QQmlJSMetaMethod MethodPrivate::method(const QQmlSA::Method &method)
     return method.d_func()->m_method;
 }
 
-PropertyPrivate::PropertyPrivate(Property *interface) : q_ptr{ interface } { }
+/*!
+    \class QQmlSA::PropertyPrivate
+    \internal
+*/
+PropertyPrivate::PropertyPrivate(Property *iface) : q_ptr{ iface } { }
 
-PropertyPrivate::PropertyPrivate(Property *interface, const PropertyPrivate &other)
-    : m_property{ other.m_property }, q_ptr{ interface }
+PropertyPrivate::PropertyPrivate(Property *iface, const PropertyPrivate &other)
+    : m_property{ other.m_property }, q_ptr{ iface }
 {
 }
 
-PropertyPrivate::PropertyPrivate(Property *interface, PropertyPrivate &&other)
-    : m_property{ std::move(other.m_property) }, q_ptr{ interface }
+PropertyPrivate::PropertyPrivate(Property *iface, PropertyPrivate &&other)
+    : m_property{ std::move(other.m_property) }, q_ptr{ iface }
 {
 }
 
@@ -1048,6 +1065,15 @@ QQmlSA::SourceLocation Element::sourceLocation() const
 }
 
 /*!
+    Returns the location in the QML code where this Element is assigned its id, if it has one.
+ */
+QQmlSA::SourceLocation Element::idSourceLocation() const
+{
+    return QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(
+            QQmlJSScope::scope(*this)->idSourceLocation());
+}
+
+/*!
     Returns the file path of the QML code that defines this Element.
  */
 QString Element::filePath() const
@@ -1119,7 +1145,7 @@ BindingsPrivate::createBindings(const QMultiHash<QString, QQmlJSMetaPropertyBind
 }
 
 QQmlSA::Binding::Bindings BindingsPrivate::createBindings(
-        QPair<QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator,
+        std::pair<QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator,
               QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator> iterators)
 {
     QMultiHash<QString, QQmlSA::Binding> saBindings;
@@ -1198,16 +1224,16 @@ class GenericPassPrivate {
     Q_DECLARE_PUBLIC(GenericPass);
 
 public:
-    GenericPassPrivate(GenericPass *interface, PassManager *manager)
-        : m_manager{ manager }, q_ptr{ interface }
+    GenericPassPrivate(GenericPass *iface, PassManager *manager)
+        : m_manager{ manager }, q_ptr{ iface }
     {
         Q_ASSERT(manager);
     }
 
 private:
-    PassManager *m_manager;
+    PassManager *m_manager = nullptr;
 
-    GenericPass *q_ptr;
+    GenericPass *q_ptr = nullptr;
 };
 
 /*!
@@ -1350,10 +1376,10 @@ Element GenericPass::resolveLiteralType(const QQmlSA::Binding &binding)
 Element GenericPass::resolveIdToElement(QAnyStringView id, const Element &context)
 {
     Q_D(const GenericPass);
-    const auto scope = PassManagerPrivate::visitor(*d->m_manager)
-                               ->addressableScopes()
-                               .scope(id.toString(), QQmlJSScope::scope(context));
-    return QQmlJSScope::createQQmlSAElement(scope);
+    QQmlJSScopesById::MostLikelyCallback<QQmlJSScope::ConstPtr> result;
+    PassManagerPrivate::visitor(*d->m_manager)->addressableScopes().possibleScopes(
+            id.toString(), QQmlJSScope::scope(context), Default, result);
+    return QQmlJSScope::createQQmlSAElement(result.result);
 }
 
 /*!
@@ -1362,9 +1388,10 @@ Element GenericPass::resolveIdToElement(QAnyStringView id, const Element &contex
 QString GenericPass::resolveElementToId(const Element &element, const Element &context)
 {
     Q_D(const GenericPass);
-    return PassManagerPrivate::visitor(*d->m_manager)
-            ->addressableScopes()
-            .id(QQmlJSScope::scope(element), QQmlJSScope::scope(context));
+    QQmlJSScopesById::MostLikelyCallback<QString> result;
+    PassManagerPrivate::visitor(*d->m_manager)->addressableScopes().possibleIds(
+            QQmlJSScope::scope(element), QQmlJSScope::scope(context), Default, result);
+    return result.result;
 }
 
 /*!
@@ -1497,6 +1524,27 @@ bool PassManagerPrivate::registerPropertyPass(std::shared_ptr<PropertyPass> pass
     return true;
 }
 
+bool PassManagerPrivate::registerPropertyPassOnBuiltinType(std::shared_ptr<PropertyPass> pass,
+                                                           QAnyStringView builtinTypeName,
+                                                           QAnyStringView propertyName,
+                                                           bool allowInheritance)
+{
+    auto typeImporter = m_visitor->importer();
+    const auto scope = typeImporter->builtinInternalNames().type(builtinTypeName.toString()).scope;
+    const auto element = QQmlJSScope::createQQmlSAElement(scope);
+
+    if (element.isNull())
+        return false;
+
+    const QString name = lookupName(element, Register);
+
+    const QQmlSA::PropertyPassInvocation passInfo{ propertyName.toString(), std::move(pass),
+                                                   allowInheritance };
+    m_propertyPasses.insert({ name, passInfo });
+
+    return true;
+}
+
 void PassManagerPrivate::addBindingSourceLocations(const Element &element, const Element &scope,
                                                    const QString prefix, bool isAttached)
 {
@@ -1544,12 +1592,12 @@ void PassManager::analyze(const Element &root)
     d->analyze(root);
 }
 
-static QQmlJS::ConstPtrWrapperIterator childScopesBegin(const Element &element)
+static QQmlJS::ChildScopesIterator childScopesBegin(const Element &element)
 {
     return QQmlJSScope::scope(element)->childScopesBegin();
 }
 
-static QQmlJS::ConstPtrWrapperIterator childScopesEnd(const Element &element)
+static QQmlJS::ChildScopesIterator childScopesEnd(const Element &element)
 {
     return QQmlJSScope::scope(element)->childScopesEnd();
 }
@@ -1576,21 +1624,24 @@ void PassManagerPrivate::analyzeWrite(const Element &element, const QString &pro
                                       const Element &value, const Element &writeScope,
                                       const QQmlSA::SourceLocation &location)
 {
-    for (PropertyPass *pass : findPropertyUsePasses(element, propertyName))
+    const auto &passes = findPropertyUsePasses(element, propertyName);
+    for (PropertyPass *pass : passes)
         pass->onWrite(element, propertyName, value, writeScope, location);
 }
 
 void PassManagerPrivate::analyzeRead(const Element &element, const QString &propertyName,
                                      const Element &readScope, const QQmlSA::SourceLocation &location)
 {
-    for (PropertyPass *pass : findPropertyUsePasses(element, propertyName))
+    const auto &passes = findPropertyUsePasses(element, propertyName);
+    for (PropertyPass *pass : passes)
         pass->onRead(element, propertyName, readScope, location);
 }
 
 void PassManagerPrivate::analyzeCall(const Element &element, const QString &propertyName,
                                      const Element &readScope, const QQmlSA::SourceLocation &location)
 {
-    for (PropertyPass *pass : findPropertyUsePasses(element, propertyName))
+    const auto &passes = findPropertyUsePasses(element, propertyName);
+    for (PropertyPass *pass : passes)
         pass->onCall(element, propertyName, readScope, location);
 }
 
@@ -1664,15 +1715,10 @@ QQmlJSTypeResolver *QQmlSA::PassManagerPrivate::resolver(const QQmlSA::PassManag
 QSet<PropertyPass *> PassManagerPrivate::findPropertyUsePasses(const QQmlSA::Element &element,
                                                                const QString &propertyName)
 {
-    QStringList typeNames { lookupName(element) };
+    QStringList typeNames;
 
-    QQmlJSUtils::searchBaseAndExtensionTypes(
-            QQmlJSScope::scope(element),
-            [&](const QQmlJSScope::ConstPtr &scope, QQmlJSScope::ExtensionKind mode) {
-                Q_UNUSED(mode);
-                typeNames.append(lookupName(QQmlJSScope::createQQmlSAElement(scope)));
-                return false;
-            });
+    for (auto it = QQmlJSScope::scope(element); it; it = it->baseType())
+        typeNames.append(lookupName(QQmlJSScope::createQQmlSAElement(it)));
 
     QSet<PropertyPass *> passes;
 
@@ -1950,25 +1996,25 @@ std::unordered_map<quint32, Binding> PassManager::bindingsByLocation() const
     return d->m_bindingsByLocation;
 }
 
-FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *interface) : q_ptr{ interface } { }
+FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *iface) : q_ptr{ iface } { }
 
-FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *interface, const QString &fixDescription,
+FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *iface, const QString &fixDescription,
                                            const QQmlSA::SourceLocation &location,
                                            const QString &replacement)
     : m_fixSuggestion{ fixDescription, QQmlSA::SourceLocationPrivate::sourceLocation(location),
                        replacement },
-      q_ptr{ interface }
+      q_ptr{ iface }
 {
 }
 
-FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *interface,
+FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *iface,
                                            const FixSuggestionPrivate &other)
-    : m_fixSuggestion{ other.m_fixSuggestion }, q_ptr{ interface }
+    : m_fixSuggestion{ other.m_fixSuggestion }, q_ptr{ iface }
 {
 }
 
-FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *interface, FixSuggestionPrivate &&other)
-    : m_fixSuggestion{ std::move(other.m_fixSuggestion) }, q_ptr{ interface }
+FixSuggestionPrivate::FixSuggestionPrivate(FixSuggestion *iface, FixSuggestionPrivate &&other)
+    : m_fixSuggestion{ std::move(other.m_fixSuggestion) }, q_ptr{ iface }
 {
 }
 
@@ -2175,6 +2221,22 @@ bool QQmlSA::FixSuggestion::isAutoApplicable() const
 bool FixSuggestion::operatorEqualsImpl(const FixSuggestion &lhs, const FixSuggestion &rhs)
 {
     return lhs.d_func()->m_fixSuggestion == rhs.d_func()->m_fixSuggestion;
+}
+
+void emitWarningWithOptionalFix(GenericPass &pass, QAnyStringView diagnostic,
+                                const LoggerWarningId &id,
+                                const QQmlSA::SourceLocation &srcLocation,
+                                const std::optional<QQmlJSFixSuggestion> &fix)
+{
+    if (!fix.has_value()) {
+        pass.emitWarning(diagnostic, id, srcLocation);
+        return;
+    }
+
+    const QQmlSA::SourceLocation location =
+            QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(fix->location());
+    const QQmlSA::FixSuggestion saFix{ fix->fixDescription(), location, fix->replacement() };
+    pass.emitWarning(diagnostic, id, srcLocation, saFix);
 }
 
 bool isRegularBindingType(BindingType type)

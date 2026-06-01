@@ -108,6 +108,8 @@ public:
         QIODevice *device, QSsl::EncodingFormat format = QSsl::Pem);
     static QList<QSslCertificate> fromData(
         const QByteArray &data, QSsl::EncodingFormat format = QSsl::Pem);
+    static QList<QSslCertificate> fromFile(
+        const QString &filePath, QSsl::EncodingFormat format = QSsl::Pem);
 
 #ifndef QT_NO_SSL
     static QList<QSslError> verify(const QList<QSslCertificate> &certificateChain, const QString &hostName = QString());

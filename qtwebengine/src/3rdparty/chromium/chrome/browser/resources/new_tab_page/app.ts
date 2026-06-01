@@ -4,7 +4,7 @@
 
 import './iframe.js';
 import './logo.js';
-import './strings.m.js';
+import '/strings.m.js';
 import 'chrome://resources/cr_components/searchbox/searchbox.js';
 import 'chrome://resources/cr_elements/cr_button/cr_button.js';
 
@@ -30,9 +30,11 @@ import {CustomizeDialogPage} from './customize_dialog_types.js';
 import type {IframeElement} from './iframe.js';
 import type {LogoElement} from './logo.js';
 import {recordDuration, recordLoadDuration} from './metrics_utils.js';
+import {ParentTrustedDocumentProxy} from './modules/microsoft_auth_frame_connector.js';
 import type {PageCallbackRouter, PageHandlerRemote, Theme} from './new_tab_page.mojom-webui.js';
 import {CustomizeChromeSection, IphFeature, NtpBackgroundImageSource} from './new_tab_page.mojom-webui.js';
 import {NewTabPageProxy} from './new_tab_page_proxy.js';
+import type {MicrosoftAuthUntrustedDocumentRemote} from './ntp_microsoft_auth_shared_ui.mojom-webui.js';
 import {$$} from './utils.js';
 import {Action as VoiceAction, recordVoiceAction} from './voice_search_overlay.js';
 import {WindowProxy} from './window_proxy.js';
@@ -95,6 +97,7 @@ enum NtpWallpaperSearchButtonHideCondition {
 
 const CUSTOMIZE_URL_PARAM: string = 'customize';
 const OGB_IFRAME_ORIGIN = 'chrome-untrusted://new-tab-page';
+const MSAL_IFRAME_ORIGIN = 'chrome-untrusted://ntp-microsoft-auth';
 
 export const CUSTOMIZE_CHROME_BUTTON_ELEMENT_ID =
     'NewTabPageUI::kCustomizeChromeButtonElementId';
@@ -195,36 +198,12 @@ export class AppElement extends AppElementBase {
         notify: true,
       },
 
-      realboxIsTall_: {
-        type: Boolean,
-        reflect: true,
-      },
-
       realboxShown_: {type: Boolean},
-
-      /* Searchbox width behavior. */
-      searchboxWidthBehavior_: {
-        type: String,
-        reflect: true,
-      },
-
       logoEnabled_: {type: Boolean},
       oneGoogleBarEnabled_: {type: Boolean},
       shortcutsEnabled_: {type: Boolean},
-      singleRowShortcutsEnabled_: {type: Boolean},
       middleSlotPromoEnabled_: {type: Boolean},
       modulesEnabled_: {type: Boolean},
-
-      modulesRedesignedEnabled_: {
-        type: Boolean,
-        reflect: true,
-      },
-
-      wideModulesEnabled_: {
-        type: Boolean,
-        reflect: true,
-      },
-
       middleSlotPromoLoaded_: {type: Boolean},
       modulesLoaded_: {type: Boolean},
 
@@ -232,6 +211,9 @@ export class AppElement extends AppElementBase {
         type: Boolean,
         reflect: true,
       },
+
+      microsoftModuleEnabled_: {type: Boolean},
+      microsoftAuthIframePath_: {type: String},
 
       /**
        * In order to avoid flicker, the promo and modules are hidden until both
@@ -253,6 +235,10 @@ export class AppElement extends AppElementBase {
       wallpaperSearchButtonAnimationEnabled_: {
         type: Boolean,
         reflect: true,
+      },
+
+      wallpaperSearchButtonEnabled_: {
+        type: Boolean,
       },
 
       showWallpaperSearchButton_: {
@@ -281,29 +267,24 @@ export class AppElement extends AppElementBase {
   protected singleColoredLogo_: boolean;
   realboxCanShowSecondarySide: boolean;
   realboxHadSecondarySide: boolean;
-  protected realboxIsTall_ = loadTimeData.getBoolean('realboxIsTall');
   protected realboxShown_: boolean;
-  protected searchboxWidthBehavior_: string =
-      loadTimeData.getString('searchboxWidthBehavior');
   protected showLensUploadDialog_: boolean = false;
   protected logoEnabled_: boolean = loadTimeData.getBoolean('logoEnabled');
   protected oneGoogleBarEnabled_: boolean =
       loadTimeData.getBoolean('oneGoogleBarEnabled');
   protected shortcutsEnabled_: boolean =
       loadTimeData.getBoolean('shortcutsEnabled');
-  protected singleRowShortcutsEnabled_: boolean =
-      loadTimeData.getBoolean('singleRowShortcutsEnabled');
   private modulesFreShown: boolean;
   protected middleSlotPromoEnabled_: boolean =
       loadTimeData.getBoolean('middleSlotPromoEnabled');
   protected modulesEnabled_: boolean =
       loadTimeData.getBoolean('modulesEnabled');
-  protected modulesRedesignedEnabled_: boolean =
-      loadTimeData.getBoolean('modulesRedesignedEnabled');
-  protected wideModulesEnabled_ = loadTimeData.getBoolean('wideModulesEnabled');
   private middleSlotPromoLoaded_: boolean = false;
   private modulesLoaded_: boolean = false;
   protected modulesShownToUser: boolean;
+  protected microsoftModuleEnabled_: boolean =
+      loadTimeData.getBoolean('microsoftModuleEnabled');
+  protected microsoftAuthIframePath_: string = MSAL_IFRAME_ORIGIN;
   protected promoAndModulesLoaded_: boolean = false;
   protected lazyRender_: boolean;
   protected scrolledToTop_: boolean = document.documentElement.scrollTop <= 0;
@@ -316,6 +297,7 @@ export class AppElement extends AppElementBase {
   private callbackRouter_: PageCallbackRouter;
   private pageHandler_: PageHandlerRemote;
   private backgroundManager_: BackgroundManager;
+  private connectMicrosoftAuthToParentDocumentListenerId_: number|null = null;
   private setThemeListenerId_: number|null = null;
   private setCustomizeChromeSidePanelVisibilityListener_: number|null = null;
   private setWallpaperSearchButtonVisibilityListener_: number|null = null;
@@ -382,6 +364,15 @@ export class AppElement extends AppElementBase {
     super.connectedCallback();
     realboxCanShowSecondarySideMediaQueryList.addEventListener(
         'change', this.onRealboxCanShowSecondarySideChanged_.bind(this));
+
+    // Listen for chrome-untrusted://ntp-microsoft-auth iframe trying to
+    // connect to the NTP.
+    this.connectMicrosoftAuthToParentDocumentListenerId_ =
+        this.callbackRouter_.connectToParentDocument.addListener(
+            (childDocumentRemote: MicrosoftAuthUntrustedDocumentRemote) => {
+              ParentTrustedDocumentProxy.setInstance(childDocumentRemote);
+            });
+
     this.setThemeListenerId_ =
         this.callbackRouter_.setTheme.addListener((theme: Theme) => {
           if (!this.theme_) {
@@ -411,13 +402,13 @@ export class AppElement extends AppElementBase {
     this.setWallpaperSearchButtonVisibilityListener_ =
         this.callbackRouter_.setWallpaperSearchButtonVisibility.addListener(
             (visible: boolean) => {
-              // We only show the button if wallpaper search is enabled when the
-              // NTP loads. This prevents the button from showing if Customize
-              // Chrome doesn't have the wallpaper search element yet.
+              // Hides the wallpaper search button if the browser indicates that
+              // it should be hidden.
+              // Note: We don't resurface the button later even if the browser
+              // says we should, to avoid issues if Customize Chrome doesn't
+              // have the wallpaper search element yet.
               if (!visible) {
                 this.wallpaperSearchButtonEnabled_ = visible;
-                this.showWallpaperSearchButton_ =
-                    this.computeShowWallpaperSearchButton_();
               }
             });
 
@@ -469,6 +460,8 @@ export class AppElement extends AppElementBase {
     super.disconnectedCallback();
     realboxCanShowSecondarySideMediaQueryList.removeEventListener(
         'change', this.onRealboxCanShowSecondarySideChanged_.bind(this));
+    this.callbackRouter_.removeListener(
+        this.connectMicrosoftAuthToParentDocumentListenerId_!);
     this.callbackRouter_.removeListener(this.setThemeListenerId_!);
     this.callbackRouter_.removeListener(
         this.setCustomizeChromeSidePanelVisibilityListener_!);
@@ -721,28 +714,19 @@ export class AppElement extends AppElementBase {
     this.updateBackgroundImagePath_();
   }
 
-
   private onThemeLoaded_(theme: Theme) {
     chrome.metricsPrivate.recordSparseValueWithPersistentHash(
         'NewTabPage.Collections.IdOnLoad',
         theme.backgroundImageCollectionId ?? '');
 
-    if (!theme.backgroundImage || !theme.backgroundImage.imageSource) {
+    if (!theme.backgroundImage) {
       chrome.metricsPrivate.recordEnumerationValue(
           'NewTabPage.BackgroundImageSource', NtpBackgroundImageSource.kNoImage,
           NtpBackgroundImageSource.MAX_VALUE + 1);
-      return;
     } else {
       chrome.metricsPrivate.recordEnumerationValue(
           'NewTabPage.BackgroundImageSource', theme.backgroundImage.imageSource,
           NtpBackgroundImageSource.MAX_VALUE + 1);
-    }
-
-    if (theme.backgroundImage.imageSource ===
-            NtpBackgroundImageSource.kWallpaperSearch ||
-        theme.backgroundImage.imageSource ===
-            NtpBackgroundImageSource.kWallpaperSearchInspiration) {
-      this.wallpaperSearchButtonAnimationEnabled_ = false;
     }
   }
 
@@ -764,9 +748,18 @@ export class AppElement extends AppElementBase {
    */
   private updateBackgroundImagePath_() {
     const backgroundImage = this.theme_ && this.theme_.backgroundImage;
+    if (!backgroundImage) {
+      return;
+    }
 
-    if (backgroundImage) {
-      this.backgroundManager_.setBackgroundImage(backgroundImage);
+    this.backgroundManager_.setBackgroundImage(backgroundImage);
+
+    if (this.wallpaperSearchButtonAnimationEnabled_ &&
+            backgroundImage.imageSource ===
+                NtpBackgroundImageSource.kWallpaperSearch ||
+        backgroundImage.imageSource ===
+            NtpBackgroundImageSource.kWallpaperSearchInspiration) {
+      this.wallpaperSearchButtonAnimationEnabled_ = false;
     }
   }
 

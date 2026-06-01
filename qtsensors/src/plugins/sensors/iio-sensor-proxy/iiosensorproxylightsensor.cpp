@@ -7,6 +7,8 @@
 
 #include <QtDBus/QDBusPendingReply>
 
+using namespace QtSensorsPrivate;
+
 char const * const IIOSensorProxyLightSensor::id("iio-sensor-proxy.lightsensor");
 
 static inline QString dbusPath() { return QStringLiteral("/net/hadess/SensorProxy"); }

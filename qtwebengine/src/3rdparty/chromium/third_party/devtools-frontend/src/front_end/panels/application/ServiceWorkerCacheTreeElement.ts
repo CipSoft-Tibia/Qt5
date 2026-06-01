@@ -12,7 +12,7 @@ import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import {ApplicationPanelTreeElement, ExpandableApplicationPanelTreeElement} from './ApplicationPanelTreeElement.js';
-import {type ResourcesPanel} from './ResourcesPanel.js';
+import type {ResourcesPanel} from './ResourcesPanel.js';
 import {ServiceWorkerCacheView} from './ServiceWorkerCacheViews.js';
 
 const UIStrings = {
@@ -20,6 +20,14 @@ const UIStrings = {
    *@description Text in Application Panel Sidebar of the Application panel
    */
   cacheStorage: 'Cache storage',
+  /**
+   *@description Text in Application Panel if no cache storage was detected.
+   */
+  noCacheStorage: 'No cache storage detected',
+  /**
+   *@description Description text in Application Panel describing the cache storage tab
+   */
+  cacheStorageDescription: 'On this page you can view and delete cache data.',
   /**
    *@description A context menu item in the Application Panel Sidebar of the Application panel
    */
@@ -37,7 +45,9 @@ export class ServiceWorkerCacheTreeElement extends ExpandableApplicationPanelTre
   private storageBucket?: Protocol.Storage.StorageBucket;
 
   constructor(resourcesPanel: ResourcesPanel, storageBucket?: Protocol.Storage.StorageBucket) {
-    super(resourcesPanel, i18nString(UIStrings.cacheStorage), 'cache-storage');
+    super(
+        resourcesPanel, i18nString(UIStrings.cacheStorage), i18nString(UIStrings.noCacheStorage),
+        i18nString(UIStrings.cacheStorageDescription), 'cache-storage');
     const icon = IconButton.Icon.create('database');
     this.setLink(
         'https://developer.chrome.com/docs/devtools/storage/cache/?utm_source=devtools' as

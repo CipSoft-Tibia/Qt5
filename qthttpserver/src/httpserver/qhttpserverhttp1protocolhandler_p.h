@@ -7,8 +7,11 @@
 
 #include <QtHttpServer/qthttpserverglobal.h>
 #include <QtHttpServer/qhttpserverrequest.h>
+#include <QtHttpServer/private/qhttpserverparser_p.h>
 #include <QtHttpServer/private/qhttpserverstream_p.h>
 #include <QtHttpServer/private/qhttpserverrequestfilter_p.h>
+
+#include <QtCore/qelapsedtimer.h>
 
 //
 //  W A R N I N G
@@ -67,6 +70,7 @@ private:
     void write(const QByteArray &data);
     void write(const char *body, qint64 size);
 
+    void checkKeepAliveTimeout();
     void resumeListening();
 
     QAbstractHttpServer *server;
@@ -84,12 +88,11 @@ private:
         IODeviceTransferBegun,
     } state = TransferState::Ready;
 
-    QHttpServerRequest request;
-
    // To avoid destroying the object when socket object is destroyed while
    // a request is still being handled.
     bool handlingRequest = false;
     bool protocolChanged = false;
+    QElapsedTimer lastActiveTimer;
     bool useHttp1_1 = false;
     void completeWriting();
 

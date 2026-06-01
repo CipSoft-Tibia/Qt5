@@ -44,12 +44,13 @@ QAudioFormat audioFormatFromFrame(const Frame &frame)
 
 } // namespace
 
-AudioRenderer::AudioRenderer(const TimeController &tc, QAudioOutput *output,
-                             QAudioBufferOutput *bufferOutput)
-    : Renderer(tc),
+AudioRenderer::AudioRenderer(const PlaybackEngineObjectID &id, const TimeController &tc,
+                             QAudioOutput *output, QAudioBufferOutput *bufferOutput,
+                             bool pitchCompensation)
+    : Renderer(id, tc),
       m_output(output),
       m_bufferOutput(bufferOutput),
-      m_pitchCompensation{ qEnvironmentVariableIsSet("QT_MEDIA_PLAYER_ENABLE_PITCH_COMPENSATION") }
+      m_pitchCompensation(pitchCompensation)
 {
     if (output) {
         // TODO: implement the signals in QPlatformAudioOutput and connect to them, QTBUG-112294
@@ -68,6 +69,17 @@ void AudioRenderer::setOutput(QAudioBufferOutput *bufferOutput)
 {
     setOutputInternal(m_bufferOutput, bufferOutput,
                       [this](QAudioBufferOutput *) { m_bufferOutputChanged = true; });
+}
+
+void AudioRenderer::setPitchCompensation(bool enabled)
+{
+    invokePriorityMethod([this, enabled] {
+        if (m_pitchCompensation == enabled)
+            return;
+
+        m_pitchCompensation = enabled;
+        m_audioFrameConverter.reset();
+    });
 }
 
 AudioRenderer::~AudioRenderer()
@@ -114,7 +126,7 @@ AudioRenderer::RenderingResult AudioRenderer::pushFrameToOutput(const Frame &fra
     auto firstFrameFlagGuard = qScopeGuard([&]() { m_firstFrameToSink = false; });
 
     const SynchronizationStamp syncStamp{ m_sink->state(), m_sink->bytesFree(),
-                                          m_bufferedData.offset, RealClock::now() };
+                                          m_bufferedData.offset, SteadyClock::now() };
 
     if (!m_bufferedData.isValid()) {
         if (!frame.isValid()) {
@@ -177,17 +189,26 @@ void AudioRenderer::onPlaybackRateChanged()
     m_audioFrameConverter.reset();
 }
 
-std::chrono::milliseconds AudioRenderer::timerInterval() const
+AudioRenderer::TimePoint AudioRenderer::nextTimePoint() const
 {
+    const TimePoint timePoint = Renderer::nextTimePoint();
+
+    // if the first frame is expected, don't force the immediate job
+    if (m_firstFrameToSink)
+        return timePoint;
+
+    // if the sink is active, don't force the immediate job
+    if (!m_sink || m_sink->state() != QAudio::IdleState)
+        return timePoint;
+
+    // if the waiting interval is out of a heuristic fixable range,
+    // don't force the immediate job.
     constexpr auto MaxFixableInterval = 50ms;
+    if (timePoint == TimePoint::min() ||
+        timePoint - std::chrono::steady_clock::now() > MaxFixableInterval)
+        return timePoint;
 
-    const auto interval = Renderer::timerInterval();
-
-    if (m_firstFrameToSink || !m_sink || m_sink->state() != QAudio::IdleState
-        || interval > MaxFixableInterval)
-        return interval;
-
-    return 0ms;
+    return TimePoint::min(); // do the job now
 }
 
 void AudioRenderer::onPauseChanged()
@@ -199,7 +220,7 @@ void AudioRenderer::onPauseChanged()
 void AudioRenderer::initAudioFrameConverter(const Frame &frame)
 {
     // We recreate the frame converter whenever format or playback rate is changed
-    if (!m_pitchCompensation || qFuzzyCompare(playbackRate(), 1.0f)) {
+    if (!m_pitchCompensation || QtPrivate::fuzzyCompare(playbackRate(), 1.0f)) {
         m_audioFrameConverter = makeTrivialAudioFrameConverter(frame, m_sinkFormat, playbackRate());
     } else {
         m_audioFrameConverter =

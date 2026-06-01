@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWIDGET_P_H
 #define QWIDGET_P_H
@@ -65,8 +66,6 @@ class QWidgetItemV2;
 
 class QStyle;
 
-class QUnifiedToolbarSurface;
-
 // implemented in qshortcut.cpp
 bool qWidgetShortcutContextMatcher(QObject *object, Qt::ShortcutContext context);
 void qSendWindowChangeToTextureChildrenRecursively(QWidget *widget, QEvent::Type eventType);
@@ -83,6 +82,7 @@ public:
 
 protected:
     friend class QApplication;
+    friend class QApplicationPrivate;
     QRegion m_region;
 };
 
@@ -207,7 +207,7 @@ public:
     Q_ENUM(Direction)
 
     // Functions.
-    explicit QWidgetPrivate(int version = QObjectPrivateVersion);
+    explicit QWidgetPrivate(decltype(QObjectPrivateVersion) = QObjectPrivateVersion);
     ~QWidgetPrivate();
 
     static QWidgetPrivate *get(QWidget *w) { return w->d_func(); }
@@ -736,6 +736,7 @@ public:
     uint childrenHiddenByWState : 1;
     uint childrenShownByExpose : 1;
     uint dontSetExplicitShowHide : 1;
+    uint inheritStyleRecursionGuard : 1;
 
     // *************************** Focus abstraction ************************************
     enum class FocusDirection {

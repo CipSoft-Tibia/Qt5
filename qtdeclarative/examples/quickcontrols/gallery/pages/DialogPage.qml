@@ -30,6 +30,7 @@ ScrollablePage {
 
             Dialog {
                 id: messageDialog
+                enabled: !GalleryConfig.disabled
 
                 x: (parent.width - width) / 2
                 y: (parent.height - height) / 2
@@ -51,6 +52,7 @@ ScrollablePage {
 
             Dialog {
                 id: confirmationDialog
+                enabled: !GalleryConfig.disabled
 
                 x: (parent.width - width) / 2
                 y: (parent.height - height) / 2
@@ -82,6 +84,7 @@ ScrollablePage {
 
             Dialog {
                 id: contentDialog
+                enabled: !GalleryConfig.disabled
 
                 x: (parent.width - width) / 2
                 y: (parent.height - height) / 2
@@ -144,6 +147,7 @@ ScrollablePage {
 
             Dialog {
                 id: inputDialog
+                enabled: !GalleryConfig.disabled
 
                 x: (parent.width - width) / 2
                 y: (parent.height - height) / 2

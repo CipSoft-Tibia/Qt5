@@ -24,7 +24,7 @@
 #include <QJsonValue>
 #include <QMimeData>
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 #include <QPrinter>
 #include <QPainter>
 #endif
@@ -40,6 +40,7 @@ JsonViewer::JsonViewer()
 void JsonViewer::init(QFile *file, QWidget *parent, QMainWindow *mainWindow)
 {
     AbstractViewer::init(file, new QTreeView(parent), mainWindow);
+    setTranslationBaseName("jsonviewer"_L1);
     m_tree = qobject_cast<QTreeView *>(widget());
 }
 //! [pluginCpp]
@@ -57,30 +58,16 @@ QStringList JsonViewer::supportedMimeTypes() const
 void JsonViewer::setupJsonUi()
 {
     // Build Menus and toolbars
-    QMenu *menu  = addMenu(tr("Json"));
-    QToolBar *tb = addToolBar(tr("Json Actions"));
+    m_jsonMenu = addMenu(tr("Json"));
+    m_jsonToolBar = addToolBar(tr("Json Actions"));
 
     const QIcon zoomInIcon = QIcon::fromTheme(QIcon::ThemeIcon::ZoomIn);
-    QAction *a = menu->addAction(zoomInIcon,  tr("&+Expand all"), m_tree, &QTreeView::expandAll);
-    tb->addAction(a);
-    a->setPriority(QAction::LowPriority);
-    a->setShortcut(QKeySequence::New);
+    m_expandAllAction = m_jsonMenu->addAction(zoomInIcon, tr("&+Expand all"), m_tree, &QTreeView::expandAll);
+    m_jsonToolBar->addAction(m_expandAllAction);
 
     const QIcon zoomOutIcon = QIcon::fromTheme(QIcon::ThemeIcon::ZoomOut);
-    a = menu->addAction(zoomOutIcon,  tr("&-Collapse all"), m_tree, &QTreeView::collapseAll);
-    tb->addAction(a);
-    a->setPriority(QAction::LowPriority);
-    a->setShortcut(QKeySequence::New);
-
-    if (!m_searchKey)
-        m_searchKey = new QLineEdit(tb);
-
-    auto *label = new QLabel(tb);
-    const QPixmap magnifier = QPixmap(":/icons/images/magnifier.png"_L1).scaled(QSize(28, 28));
-    label->setPixmap(magnifier);
-    tb->addWidget(label);
-    tb->addWidget(m_searchKey);
-    connect(m_searchKey, &QLineEdit::textEdited, m_tree, &QTreeView::keyboardSearch);
+    m_collapseAllAction = m_jsonMenu->addAction(zoomOutIcon, tr("&-Collapse all"), m_tree, &QTreeView::collapseAll);
+    m_jsonToolBar->addAction(m_collapseAllAction);
 
     openJsonFile();
 
@@ -145,9 +132,15 @@ bool JsonViewer::openJsonFile()
     disablePrinting();
 
     QJsonParseError err;
-    m_file->open(QIODevice::ReadOnly);
-    m_root = QJsonDocument::fromJson(m_file->readAll(), &err);
+
     const QString type = tr("open");
+    if (!m_file->open(QIODevice::ReadOnly)) {
+        statusMessage(tr("Unable to open Json document from %1. %2")
+                      .arg(QDir::toNativeSeparators(m_file->fileName()),
+                           err.errorString()),type);
+        return false;
+    }
+    m_root = QJsonDocument::fromJson(m_file->readAll(), &err);
     if (err.error != QJsonParseError::NoError) {
         statusMessage(tr("Unable to parse Json document from %1. %2")
                       .arg(QDir::toNativeSeparators(m_file->fileName()),
@@ -289,7 +282,7 @@ bool JsonViewer::hasContent() const
     return !m_root.isEmpty();
 }
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 void JsonViewer::printDocument(QPrinter *printer) const
 {
     if (!hasContent())
@@ -299,7 +292,7 @@ void JsonViewer::printDocument(QPrinter *printer) const
     doc.print(printer);
 }
 
-#endif // QT_DOCUMENTVIEWER_PRINTSUPPORT
+#endif // DOCUMENTVIEWER_PRINTSUPPORT
 
 QByteArray JsonViewer::saveState() const
 {
@@ -320,6 +313,30 @@ bool JsonViewer::restoreState(QByteArray &array)
     QByteArray header;
     stream >> header;
     return m_tree->header()->restoreState(header);
+}
+
+void JsonViewer::retranslate()
+{
+    if (m_jsonMenu)
+        m_jsonMenu->setTitle(tr("Json"));
+    if (m_jsonToolBar)
+        m_jsonToolBar->setWindowTitle(tr("Json Actions"));
+    if (m_expandAllAction)
+        m_expandAllAction->setText(tr("&+Expand all"));
+    if (m_collapseAllAction)
+        m_collapseAllAction->setText(tr("&-Collapse all"));
+    if (m_toplevel && m_uiAssets.tabs) {
+        // Update the tab title
+        int tabIndex = m_uiAssets.tabs->indexOf(m_toplevel);
+        if (tabIndex >= 0)
+            m_uiAssets.tabs->setTabText(tabIndex, tr("Bookmarks"));
+        // Update tooltip for all bookmark items
+        for (int i = 0; i < m_toplevel->count(); ++i) {
+            QListWidgetItem *item = m_toplevel->item(i);
+            if (item)
+                item->setToolTip(tr("Toplevel Item %1").arg(i));
+        }
+    }
 }
 
 JsonTreeItem::JsonTreeItem(JsonTreeItem *parent)

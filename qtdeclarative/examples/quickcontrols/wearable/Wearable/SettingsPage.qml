@@ -7,6 +7,7 @@ import WearableSettings
 
 Item {
     id: settingspage
+    clip: true
 
     property alias listView: listViewItem
 

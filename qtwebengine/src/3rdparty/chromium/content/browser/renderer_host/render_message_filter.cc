@@ -18,7 +18,7 @@ RenderMessageFilter::RenderMessageFilter(
     RenderWidgetHelper* render_widget_helper)
     : render_widget_helper_(render_widget_helper),
       render_process_id_(render_process_id),
-      cache_response_size_(features::kFrameRoutingCacheResponseSize.Get()) {
+      cache_response_size_(::features::kFrameRoutingCacheResponseSize.Get()) {
   if (render_widget_helper) {
     render_widget_helper_->Init(render_process_id_);
   }

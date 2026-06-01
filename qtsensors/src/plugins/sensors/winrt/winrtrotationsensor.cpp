@@ -16,7 +16,7 @@ using namespace ABI::Windows::Devices::Sensors;
 
 typedef ITypedEventHandler<Inclinometer *, InclinometerReadingChangedEventArgs *> InclinometerReadingHandler;
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtRotationSensorPrivate
 {
@@ -174,3 +174,5 @@ void WinRtRotationSensor::stop()
     }
     d->token.value = 0;
 }
+
+QT_END_NAMESPACE

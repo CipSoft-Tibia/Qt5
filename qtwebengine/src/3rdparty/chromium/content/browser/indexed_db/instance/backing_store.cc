@@ -22,15 +22,17 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/sequence_checker.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/stl_util.h"
 #include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/task/sequenced_task_runner.h"
+#include "base/system/sys_info.h"
 #include "base/thread_annotations.h"
 #include "base/trace_event/base_tracing.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "build/build_config.h"
+#include "components/services/storage/indexed_db/locks/partitioned_lock_manager.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scope.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scopes.h"
 #include "components/services/storage/indexed_db/scopes/varint_coding.h"
@@ -43,6 +45,7 @@
 #include "components/services/storage/public/mojom/file_system_access_context.mojom.h"
 #include "content/browser/indexed_db/file_path_util.h"
 #include "content/browser/indexed_db/indexed_db_data_format_version.h"
+#include "content/browser/indexed_db/indexed_db_data_loss_info.h"
 #include "content/browser/indexed_db/indexed_db_database_error.h"
 #include "content/browser/indexed_db/indexed_db_external_object.h"
 #include "content/browser/indexed_db/indexed_db_leveldb_coding.h"
@@ -51,13 +54,11 @@
 #include "content/browser/indexed_db/indexed_db_value.h"
 #include "content/browser/indexed_db/instance/active_blob_registry.h"
 #include "content/browser/indexed_db/instance/bucket_context.h"
+#include "content/browser/indexed_db/instance/leveldb_compaction_task.h"
+#include "content/browser/indexed_db/instance/leveldb_tombstone_sweeper.h"
+#include "content/browser/indexed_db/status.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
-#include "net/base/load_flags.h"
-#include "net/traffic_annotation/network_traffic_annotation.h"
 #include "storage/browser/blob/blob_data_handle.h"
-#include "storage/browser/file_system/file_stream_writer.h"
-#include "storage/browser/file_system/file_writer_delegate.h"
-#include "storage/browser/file_system/local_file_stream_writer.h"
 #include "storage/common/database/database_identifier.h"
 #include "storage/common/file_system/file_system_mount_option.h"
 #include "third_party/blink/public/common/blob/blob_utils.h"
@@ -65,11 +66,11 @@
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/blob/blob.mojom.h"
 #include "third_party/leveldatabase/env_chromium.h"
+#include "third_party/leveldatabase/leveldb_chrome.h"
 
 using blink::IndexedDBDatabaseMetadata;
 using blink::IndexedDBKey;
 using blink::IndexedDBKeyRange;
-using leveldb::Status;
 
 namespace content::indexed_db {
 
@@ -99,9 +100,147 @@ std::string ComputeOriginIdentifier(
          "@1";
 }
 
-leveldb::Status GetDBSizeFromEnv(leveldb::Env* env,
-                                 const std::string& path,
-                                 int64_t* total_size_out) {
+// Returns some configuration that is shared across leveldb DB instances. The
+// configuration is further tweaked in `CreateLevelDBState()`.
+leveldb_env::Options GetLevelDBOptions() {
+  leveldb_env::Options options;
+  options.paranoid_checks = true;
+  options.compression = leveldb::kSnappyCompression;
+  // For info about the troubles we've run into with this parameter, see:
+  // https://crbug.com/227313#c11
+  options.max_open_files = 80;
+
+  // Thread-safe: static local construction, and `LDBComparator` contains no
+  // state.
+  options.comparator = GetDefaultLevelDBComparator();
+
+  // Thread-safe: static local construction, and `leveldb::Cache` implements
+  // internal synchronization.
+  options.block_cache = leveldb_chrome::GetSharedWebBlockCache();
+
+  // Thread-safe: calls base histogram `FactoryGet()` methods, which are
+  // thread-safe.
+  options.on_get_error = base::BindRepeating(
+      ReportLevelDBError, "WebCore.IndexedDB.LevelDBReadErrors");
+  options.on_write_error = base::BindRepeating(
+      ReportLevelDBError, "WebCore.IndexedDB.LevelDBWriteErrors");
+
+  // Thread-safe: static local construction, and `BloomFilterPolicy` state is
+  // read-only after construction.
+  static const leveldb::FilterPolicy* g_filter_policy =
+      leveldb::NewBloomFilterPolicy(10);
+  options.filter_policy = g_filter_policy;
+
+  // Thread-safe: static local construction, and `ChromiumEnv` implements
+  // internal synchronization.
+  static base::NoDestructor<leveldb_env::ChromiumEnv> g_leveldb_env{
+      /*log_lock_errors=*/true};
+  options.env = g_leveldb_env.get();
+
+  return options;
+}
+
+std::tuple<scoped_refptr<LevelDBState>,
+           Status,
+           /* is_disk_full= */ bool>
+CreateLevelDBState(const base::FilePath& file_name,
+                   bool create_if_missing,
+                   const std::string& in_memory_name) {
+  leveldb_env::Options options = GetLevelDBOptions();
+  if (file_name.empty()) {
+    if (!create_if_missing) {
+      return {nullptr, Status::NotFound("", ""), false};
+    }
+
+    std::unique_ptr<leveldb::Env> in_memory_env =
+        leveldb_chrome::NewMemEnv(in_memory_name, options.env);
+    leveldb_env::Options in_memory_options = options;
+    in_memory_options.env = in_memory_env.get();
+    in_memory_options.paranoid_checks = false;
+    std::unique_ptr<leveldb::DB> db;
+    Status status(leveldb_env::OpenDB(in_memory_options, std::string(), &db));
+
+    if (!status.ok()) [[unlikely]] {
+      LOG(ERROR) << "Failed to open in-memory LevelDB database: "
+                 << status.ToString();
+      return {nullptr, status, false};
+    }
+
+    return {LevelDBState::CreateForInMemoryDB(std::move(in_memory_env),
+                                              options.comparator, std::move(db),
+                                              "in-memory-database"),
+            status, false};
+  }
+
+  options.write_buffer_size = leveldb_env::WriteBufferSize(
+      base::SysInfo::AmountOfTotalDiskSpace(file_name));
+  options.create_if_missing = create_if_missing;
+  std::unique_ptr<leveldb::DB> db;
+  Status status(leveldb_env::OpenDB(options, file_name.AsUTF8Unsafe(), &db));
+  if (!status.ok()) [[unlikely]] {
+    if (!create_if_missing && status.IsInvalidArgument()) {
+      return {nullptr, Status::NotFound("", ""), false};
+    }
+    constexpr int64_t kBytesInOneKilobyte = 1024;
+    int64_t free_disk_space_bytes =
+        base::SysInfo::AmountOfFreeDiskSpace(file_name);
+    bool below_100kb = free_disk_space_bytes != -1 &&
+                       free_disk_space_bytes < 100 * kBytesInOneKilobyte;
+
+    // Disks with <100k of free space almost never succeed in opening a
+    // leveldb database.
+    bool is_disk_full =
+        below_100kb || leveldb_env::IndicatesDiskFull(status.leveldb_status());
+
+    LOG(ERROR) << "Failed to open LevelDB database from "
+               << file_name.AsUTF8Unsafe() << "," << status.ToString();
+    return {nullptr, status, is_disk_full};
+  }
+
+  return {LevelDBState::CreateForDiskDB(options.comparator, std::move(db),
+                                        std::move(file_name)),
+          status, false};
+}
+
+std::tuple<bool, Status> AreSchemasKnown(TransactionalLevelDBDatabase* db) {
+  int64_t db_schema_version = 0;
+  bool found = false;
+  Status s = GetInt(db, SchemaVersionKey::Encode(), &db_schema_version, &found);
+  if (!s.ok()) {
+    return {false, s};
+  }
+  if (!found) {
+    return {true, s};
+  }
+  if (db_schema_version < 0) {
+    return {false,
+            Status::Corruption("Invalid IndexedDB database schema version.")};
+  }
+  if (db_schema_version > kLatestKnownSchemaVersion ||
+      db_schema_version < kEarliestSupportedSchemaVersion) {
+    return {false, s};
+  }
+
+  int64_t raw_db_data_version = 0;
+  s = GetInt(db, DataVersionKey::Encode(), &raw_db_data_version, &found);
+  if (!s.ok()) {
+    return {false, s};
+  }
+  if (!found) {
+    return {true, s};
+  }
+  if (raw_db_data_version < 0) {
+    return {false, Status::Corruption("Invalid IndexedDB data version.")};
+  }
+
+  return {IndexedDBDataFormatVersion::GetCurrent().IsAtLeast(
+              IndexedDBDataFormatVersion::Decode(raw_db_data_version)),
+          s};
+}
+
+Status GetDBSizeFromEnv(leveldb::Env* env,
+                        const std::string& path,
+                        int64_t* total_size_out) {
   *total_size_out = 0;
   // Root path should be /, but in MemEnv, a path name is not tailed with '/'.
   DCHECK_EQ(path.back(), '/');
@@ -109,7 +248,7 @@ leveldb::Status GetDBSizeFromEnv(leveldb::Env* env,
 
   // This assumes that leveldb will not put a subdirectory into the directory.
   std::vector<std::string> file_names;
-  leveldb::Status s = env->GetChildren(path_without_slash, &file_names);
+  Status s(env->GetChildren(path_without_slash, &file_names));
   if (!s.ok()) {
     return s;
   }
@@ -143,7 +282,7 @@ Status GetBlobJournal(std::string_view key,
 
   std::string data;
   bool found = false;
-  Status s = transaction->Get(key, &data, &found);
+  Status s(transaction->Get(key, &data, &found));
   if (!s.ok()) {
     INTERNAL_READ_ERROR(READ_BLOB_JOURNAL);
     return s;
@@ -182,24 +321,24 @@ void ClearBlobJournal(TransactionType* transaction, const std::string& key) {
 // Overwrite the specified blob journal via the supplied transaction.
 // The key must be either the recovery journal key or active journal key.
 template <typename TransactionType>
-leveldb::Status UpdateBlobJournal(TransactionType* transaction,
-                                  const std::string& key,
-                                  const BlobJournalType& journal) {
+Status UpdateBlobJournal(TransactionType* transaction,
+                         const std::string& key,
+                         const BlobJournalType& journal) {
   std::string data;
   EncodeBlobJournal(journal, &data);
-  return transaction->Put(key, &data);
+  return Status(transaction->Put(key, &data));
 }
 
 template <typename TransactionType>
-leveldb::Status UpdateRecoveryBlobJournal(TransactionType* transaction,
-                                          const BlobJournalType& journal) {
+Status UpdateRecoveryBlobJournal(TransactionType* transaction,
+                                 const BlobJournalType& journal) {
   return UpdateBlobJournal(transaction, RecoveryBlobJournalKey::Encode(),
                            journal);
 }
 
 template <typename TransactionType>
-leveldb::Status UpdateActiveBlobJournal(TransactionType* transaction,
-                                        const BlobJournalType& journal) {
+Status UpdateActiveBlobJournal(TransactionType* transaction,
+                               const BlobJournalType& journal) {
   return UpdateBlobJournal(transaction, ActiveBlobJournalKey::Encode(),
                            journal);
 }
@@ -409,14 +548,23 @@ bool DecodeExternalObjects(const std::string& data,
   return true;
 }
 
+// Returns the created iterator and status in a pair for convenience.
+std::pair<std::unique_ptr<TransactionalLevelDBIterator>, Status>
+CreateIteratorAndGetStatus(TransactionalLevelDBTransaction& transaction) {
+  leveldb::Status status_out;
+  std::unique_ptr<TransactionalLevelDBIterator> iterator =
+      transaction.CreateIterator(status_out);
+  return {std::move(iterator), Status(status_out)};
+}
+
 Status DeleteBlobsInRange(BackingStore::Transaction* transaction,
                           int64_t database_id,
                           const std::string& start_key,
                           const std::string& end_key,
                           bool upper_open) {
   Status s;
-  std::unique_ptr<TransactionalLevelDBIterator> it =
-      transaction->transaction()->CreateIterator(s);
+  std::unique_ptr<TransactionalLevelDBIterator> it;
+  std::tie(it, s) = CreateIteratorAndGetStatus(*transaction->transaction());
   if (!s.ok()) {
     INTERNAL_WRITE_ERROR(CREATE_ITERATOR);
     return s;
@@ -617,7 +765,7 @@ Status ReadIndexes(TransactionalLevelDBDatabase* db,
 
   std::unique_ptr<TransactionalLevelDBIterator> it =
       db->CreateIterator(db->DefaultReadOptions());
-  Status s = it->Seek(start_key);
+  Status s(it->Seek(start_key));
   while (s.ok() && it->IsValid() && CompareKeys(it->Key(), stop_key) < 0) {
     IndexMetaDataKey meta_data_key;
     {
@@ -726,7 +874,7 @@ Status ReadObjectStores(
 
   std::unique_ptr<TransactionalLevelDBIterator> it =
       db->CreateIterator(db->DefaultReadOptions());
-  Status s = it->Seek(start_key);
+  Status s(it->Seek(start_key));
   while (s.ok() && it->IsValid() && CompareKeys(it->Key(), stop_key) < 0) {
     ObjectStoreMetaDataKey meta_data_key;
     {
@@ -915,6 +1063,11 @@ Status FindDatabaseId(TransactionalLevelDBDatabase* db,
   return s;
 }
 
+// The number of iterations for every 'round' of the tombstone sweeper.
+const int kTombstoneSweeperRoundIterations = 1000;
+// The maximum total iterations for the tombstone sweeper.
+const int kTombstoneSweeperMaxIterations = 10 * 1000 * 1000;
+
 }  // namespace
 
 BackingStore::BackingStore(
@@ -924,27 +1077,23 @@ BackingStore::BackingStore(
     TransactionalLevelDBFactory& transactional_leveldb_factory,
     std::unique_ptr<TransactionalLevelDBDatabase> db,
     BlobFilesCleanedCallback blob_files_cleaned,
-    ReportOutstandingBlobsCallback report_outstanding_blobs,
-    scoped_refptr<base::SequencedTaskRunner> idb_task_runner)
+    ReportOutstandingBlobsCallback report_outstanding_blobs)
     : backing_store_mode_(backing_store_mode),
       bucket_locator_(bucket_locator),
       blob_path_(backing_store_mode == Mode::kInMemory ? base::FilePath()
                                                        : blob_path),
       origin_identifier_(ComputeOriginIdentifier(bucket_locator)),
-      idb_task_runner_(std::move(idb_task_runner)),
       transactional_leveldb_factory_(transactional_leveldb_factory),
       db_(std::move(db)),
       blob_files_cleaned_(std::move(blob_files_cleaned)) {
-  DCHECK(idb_task_runner_->RunsTasksInCurrentSequence());
   active_blob_registry_ = std::make_unique<ActiveBlobRegistry>(
       std::move(report_outstanding_blobs),
       base::BindRepeating(&BackingStore::ReportBlobUnused,
                           weak_factory_.GetWeakPtr()));
+  InitializeGlobalSweepAndCompactionTimes();
 }
 
-BackingStore::~BackingStore() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-}
+BackingStore::~BackingStore() = default;
 
 BackingStore::RecordIdentifier::RecordIdentifier(std::string primary_key,
                                                  int64_t version)
@@ -954,13 +1103,10 @@ BackingStore::RecordIdentifier::RecordIdentifier(std::string primary_key,
 
 BackingStore::RecordIdentifier::RecordIdentifier() = default;
 
-BackingStore::RecordIdentifier::~RecordIdentifier() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-}
+BackingStore::RecordIdentifier::~RecordIdentifier() = default;
 
 void BackingStore::RecordIdentifier::Reset(std::string primary_key,
                                            int64_t version) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   primary_key_ = std::move(primary_key);
   version_ = version;
 }
@@ -969,9 +1115,8 @@ constexpr const int BackingStore::kMaxJournalCleanRequests;
 constexpr const base::TimeDelta BackingStore::kMaxJournalCleaningWindowTime;
 constexpr const base::TimeDelta BackingStore::kInitialJournalCleaningWindowTime;
 
-leveldb::Status BackingStore::Initialize(bool clean_active_journal) {
+Status BackingStore::Initialize(bool clean_active_journal) {
 #if DCHECK_IS_ON()
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!initialized_);
 #endif
 
@@ -1087,10 +1232,8 @@ void BackingStore::TearDown(base::WaitableEvent* signal_on_destruction) {
 }
 
 Status BackingStore::AnyDatabaseContainsBlobs(bool* blobs_exist) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   std::vector<std::u16string> names;
-  leveldb::Status status = GetDatabaseNames(&names);
+  Status status = GetDatabaseNames(&names);
   if (!status.ok()) {
     return status;
   }
@@ -1142,10 +1285,8 @@ Status BackingStore::AnyDatabaseContainsBlobs(bool* blobs_exist) {
 Status BackingStore::UpgradeBlobEntriesToV4(
     LevelDBWriteBatch* write_batch,
     std::vector<base::FilePath>* empty_blobs_to_delete) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   std::vector<std::u16string> names;
-  leveldb::Status status = GetDatabaseNames(&names);
+  Status status = GetDatabaseNames(&names);
   if (!status.ok()) {
     return status;
   }
@@ -1198,7 +1339,7 @@ Status BackingStore::UpgradeBlobEntriesToV4(
 
           base::File::Info info;
           if (!base::GetFileInfo(path, &info)) {
-            return leveldb::Status::Corruption(
+            return Status::Corruption(
                 "Unable to upgrade to database version 4.", "");
           }
           object.set_size(info.size);
@@ -1217,7 +1358,7 @@ Status BackingStore::UpgradeBlobEntriesToV4(
         }
       }
       if (status.IsNotFound()) {
-        status = leveldb::Status::OK();
+        status = Status::OK();
       }
       if (!status.ok()) {
         return status;
@@ -1232,10 +1373,8 @@ Status BackingStore::UpgradeBlobEntriesToV4(
 }
 
 Status BackingStore::ValidateBlobFiles() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   std::vector<std::u16string> names;
-  leveldb::Status status = GetDatabaseNames(&names);
+  Status status = GetDatabaseNames(&names);
   if (!status.ok()) {
     return status;
   }
@@ -1290,13 +1429,13 @@ Status BackingStore::ValidateBlobFiles() {
               GetBlobFileName(metadata.id, object.blob_number());
           base::File::Info info;
           if (!base::GetFileInfo(path, &info)) {
-            return leveldb::Status::Corruption(
+            return Status::Corruption(
                 "Unable to upgrade to database version 5.", "");
           }
         }
       }
       if (status.IsNotFound()) {
-        status = leveldb::Status::OK();
+        status = Status::OK();
       }
       if (!status.ok()) {
         return status;
@@ -1313,7 +1452,6 @@ Status BackingStore::ValidateBlobFiles() {
 std::unique_ptr<BackingStore::Transaction> BackingStore::CreateTransaction(
     blink::mojom::IDBTransactionDurability durability,
     blink::mojom::IDBTransactionMode mode) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return std::make_unique<BackingStore::Transaction>(weak_factory_.GetWeakPtr(),
                                                      durability, mode);
 }
@@ -1331,15 +1469,153 @@ bool BackingStore::ShouldSyncOnCommit(
   }
 }
 
-leveldb::Status BackingStore::GetCompleteMetadata(
+// static
+std::tuple<std::unique_ptr<BackingStore>,
+           Status,
+           IndexedDBDataLossInfo,
+           bool /* is_disk_full */>
+BackingStore::OpenAndVerify(BucketContext& bucket_context,
+                            base::FilePath data_directory,
+                            base::FilePath database_path,
+                            base::FilePath blob_path,
+                            PartitionedLockManager* lock_manager,
+                            bool is_first_attempt,
+                            bool create_if_missing) {
+  CHECK_EQ(database_path.empty(), data_directory.empty());
+  CHECK_EQ(blob_path.empty(), data_directory.empty());
+  TRACE_EVENT0("IndexedDB", "BackingStore::OpenAndVerify");
+
+  const storage::BucketLocator& bucket_locator =
+      bucket_context.bucket_locator();
+
+  bool in_memory = data_directory.empty();
+  Status status;
+  IndexedDBDataLossInfo data_loss_info;
+  if (!in_memory) {
+    // Check for previous corruption, and if found then try to delete the
+    // database.
+    std::string corruption_message =
+        ReadCorruptionInfo(data_directory, bucket_locator);
+    if (!corruption_message.empty()) [[unlikely]] {
+      LOG(ERROR) << "IndexedDB recovering from a corrupted (and deleted) "
+                    "database.";
+      if (is_first_attempt) {
+        ReportOpenStatus(INDEXED_DB_BACKING_STORE_OPEN_FAILED_PRIOR_CORRUPTION,
+                         bucket_locator);
+      }
+      data_loss_info.status = blink::mojom::IDBDataLoss::Total;
+      data_loss_info.message = base::StrCat(
+          {"IndexedDB (database was corrupt): ", corruption_message});
+      // This is a special case where we want to make sure the database is
+      // deleted, so we try to delete again.
+      status = DestroyDatabase(database_path);
+      if (!status.ok()) [[unlikely]] {
+        LOG(ERROR) << "Unable to delete backing store: " << status.ToString();
+        return {nullptr, status, data_loss_info, /*is_disk_full=*/false};
+      }
+    }
+  }
+
+  // Open the leveldb database.
+  scoped_refptr<LevelDBState> database_state;
+  {
+    TRACE_EVENT0("IndexedDB", "BackingStore::OpenAndVerify.OpenLevelDB");
+    base::TimeTicks begin_time = base::TimeTicks::Now();
+    bool is_disk_full = false;
+    std::tie(database_state, status, is_disk_full) = CreateLevelDBState(
+        database_path, create_if_missing,
+        base::StringPrintf("indexedDB-bucket-%" PRId64,
+                           bucket_context.bucket_info().id.GetUnsafeValue()));
+    if (!status.ok()) [[unlikely]] {
+      if (!status.IsNotFound()) {
+        ReportLevelDBError("WebCore.IndexedDB.LevelDBOpenErrors",
+                           status.leveldb_status());
+      }
+      return {nullptr, status, IndexedDBDataLossInfo(), is_disk_full};
+    }
+    DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES("WebCore.IndexedDB.LevelDB.OpenTime",
+                                          base::TimeTicks::Now() - begin_time);
+  }
+
+  // Create the LevelDBScopes wrapper.
+  std::unique_ptr<LevelDBScopes> scopes;
+  {
+    TRACE_EVENT0("IndexedDB", "BackingStore::OpenAndVerify.LevelDBScopes");
+    scopes = std::make_unique<LevelDBScopes>(
+        ScopesPrefix::Encode(),
+        /*max_write_batch_size_bytes=*/1024 * 1024, database_state,
+        lock_manager,
+        base::BindRepeating(
+            [](base::RepeatingCallback<void(Status, const std::string&)>
+                   on_fatal_error,
+               leveldb::Status s) { on_fatal_error.Run(Status(s), {}); },
+            base::BindRepeating(&BucketContext::OnDatabaseError,
+                                bucket_context.AsWeakPtr())));
+    status = scopes->Initialize();
+    if (!status.ok()) [[unlikely]] {
+      return {nullptr, status, std::move(data_loss_info),
+              /*is_disk_full=*/false};
+    }
+  }
+
+  // Create the TransactionalLevelDBDatabase wrapper.
+  std::unique_ptr<TransactionalLevelDBDatabase> database =
+      bucket_context.transactional_leveldb_factory()->CreateLevelDBDatabase(
+          std::move(database_state), std::move(scopes),
+          base::SequencedTaskRunner::GetCurrentDefault(),
+          TransactionalLevelDBDatabase::kDefaultMaxOpenIteratorsPerDatabase);
+
+  bool are_schemas_known = false;
+  std::tie(are_schemas_known, status) = AreSchemasKnown(database.get());
+  if (!status.ok()) [[unlikely]] {
+    LOG(ERROR) << "IndexedDB had an error checking schema, treating it as "
+                  "failure to open: "
+               << status.ToString();
+    ReportOpenStatus(
+        INDEXED_DB_BACKING_STORE_OPEN_FAILED_IO_ERROR_CHECKING_SCHEMA,
+        bucket_locator);
+    return {nullptr, status, std::move(data_loss_info), /*is_disk_full=*/false};
+  }
+  if (!are_schemas_known) [[unlikely]] {
+    LOG(ERROR) << "IndexedDB backing store had unknown schema, treating it as "
+                  "failure to open.";
+    ReportOpenStatus(INDEXED_DB_BACKING_STORE_OPEN_FAILED_UNKNOWN_SCHEMA,
+                     bucket_locator);
+    return {nullptr, Status::Corruption("Unknown IndexedDB schema"),
+            std::move(data_loss_info), /*is_disk_full=*/false};
+  }
+
+  Mode backing_store_mode = in_memory ? Mode::kInMemory : Mode::kOnDisk;
+  auto backing_store = std::make_unique<BackingStore>(
+      backing_store_mode, bucket_locator, blob_path,
+      *bucket_context.transactional_leveldb_factory(), std::move(database),
+      base::BindRepeating(bucket_context.delegate().on_files_written,
+                          /*flushed=*/true),
+      base::BindRepeating(&BucketContext::ReportOutstandingBlobs,
+                          bucket_context.AsWeakPtr()));
+  status = backing_store->Initialize(/*clean_active_blob_journal=*/!in_memory);
+  if (!status.ok()) [[unlikely]] {
+    return {nullptr, status, IndexedDBDataLossInfo(), /*is_disk_full=*/false};
+  }
+
+  return {std::move(backing_store), status, std::move(data_loss_info),
+          /*is_disk_full=*/false};
+}
+
+// static
+Status BackingStore::DestroyDatabase(const base::FilePath file_path) {
+  return Status(
+      leveldb::DestroyDB(file_path.AsUTF8Unsafe(), GetLevelDBOptions()));
+}
+
+Status BackingStore::GetCompleteMetadata(
     std::vector<IndexedDBDatabaseMetadata>* output) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
 
   std::vector<std::u16string> names;
-  leveldb::Status status = GetDatabaseNames(&names);
+  Status status = GetDatabaseNames(&names);
   if (!status.ok()) {
     return status;
   }
@@ -1440,7 +1716,6 @@ Status BackingStore::CreateDatabase(
 Status BackingStore::DeleteDatabase(const std::u16string& name,
                                     std::vector<PartitionedLock> locks,
                                     base::OnceClosure on_complete) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -1518,7 +1793,7 @@ Status BackingStore::DeleteDatabase(const std::u16string& name,
   return s;
 }
 
-leveldb::Status BackingStore::SetDatabaseVersion(
+Status BackingStore::SetDatabaseVersion(
     Transaction* transaction,
     int64_t row_id,
     int64_t version,
@@ -1534,7 +1809,7 @@ leveldb::Status BackingStore::SetDatabaseVersion(
       version);
 }
 
-leveldb::Status BackingStore::CreateObjectStore(
+Status BackingStore::CreateObjectStore(
     Transaction* transaction,
     int64_t database_id,
     int64_t object_store_id,
@@ -1799,10 +2074,9 @@ Status BackingStore::DeleteIndex(
       IndexMetaDataKey::Encode(database_id, object_store_id, metadata.id, 0);
   const std::string index_meta_data_end =
       IndexMetaDataKey::EncodeMaxKey(database_id, object_store_id, metadata.id);
-  Status s = transaction->transaction()->RemoveRange(
+  return Status(transaction->transaction()->RemoveRange(
       index_meta_data_start, index_meta_data_end,
-      LevelDBScopeDeletionMode::kImmediateWithRangeEndExclusive);
-  return s;
+      LevelDBScopeDeletionMode::kImmediateWithRangeEndExclusive));
 }
 
 Status BackingStore::RenameIndex(Transaction* transaction,
@@ -1819,7 +2093,7 @@ Status BackingStore::RenameIndex(Transaction* transaction,
       database_id, object_store_id, metadata->id, IndexMetaDataKey::NAME);
 
   // TODO(dmurph): Add consistancy checks & umas for old name.
-  leveldb::Status s = PutString(transaction->transaction(), name_key, new_name);
+  Status s = PutString(transaction->transaction(), name_key, new_name);
   if (!s.ok()) {
     return s;
   }
@@ -1829,7 +2103,6 @@ Status BackingStore::RenameIndex(Transaction* transaction,
 }
 
 void BackingStore::Compact() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -1841,7 +2114,6 @@ Status BackingStore::GetRecord(Transaction* transaction,
                                int64_t object_store_id,
                                const IndexedDBKey& key,
                                IndexedDBValue* record) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -1860,7 +2132,7 @@ Status BackingStore::GetRecord(Transaction* transaction,
   record->clear();
 
   bool found = false;
-  Status s = leveldb_transaction->Get(leveldb_key, &data, &found);
+  Status s(leveldb_transaction->Get(leveldb_key, &data, &found));
   if (!s.ok()) {
     INTERNAL_READ_ERROR(GET_RECORD);
     return s;
@@ -1886,7 +2158,6 @@ Status BackingStore::GetRecord(Transaction* transaction,
 }
 
 int64_t BackingStore::GetInMemorySize() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(in_memory());
 
   int64_t blob_size = 0;
@@ -1900,7 +2171,7 @@ int64_t BackingStore::GetInMemorySize() const {
   }
 
   int64_t level_db_size = 0;
-  leveldb::Status s = GetDBSizeFromEnv(db_->env(), "/", &level_db_size);
+  Status s = GetDBSizeFromEnv(db_->env(), "/", &level_db_size);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to GetDBSizeFromEnv: " << s.ToString();
   }
@@ -1914,7 +2185,6 @@ Status BackingStore::PutRecord(BackingStore::Transaction* transaction,
                                const IndexedDBKey& key,
                                IndexedDBValue* value,
                                RecordIdentifier* record_identifier) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -1969,7 +2239,6 @@ Status BackingStore::PutRecord(BackingStore::Transaction* transaction,
 Status BackingStore::ClearObjectStore(BackingStore::Transaction* transaction,
                                       int64_t database_id,
                                       int64_t object_store_id) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2004,17 +2273,15 @@ Status BackingStore::ClearObjectStore(BackingStore::Transaction* transaction,
   if (!s.ok()) {
     return s;
   }
-  return transaction->transaction()->RemoveRange(
+  return Status(transaction->transaction()->RemoveRange(
       start_key2, stop_key2,
-      LevelDBScopeDeletionMode::kImmediateWithRangeEndExclusive);
+      LevelDBScopeDeletionMode::kImmediateWithRangeEndExclusive));
 }
 
 Status BackingStore::DeleteRecord(BackingStore::Transaction* transaction,
                                   int64_t database_id,
                                   int64_t object_store_id,
                                   const RecordIdentifier& record_identifier) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   TRACE_EVENT0("IndexedDB", "BackingStore::DeleteRecord");
   if (!KeyPrefix::ValidIds(database_id, object_store_id)) {
     return InvalidDBKeyStatus();
@@ -2024,7 +2291,7 @@ Status BackingStore::DeleteRecord(BackingStore::Transaction* transaction,
 
   const std::string object_store_data_key = ObjectStoreDataKey::Encode(
       database_id, object_store_id, record_identifier.primary_key());
-  Status s = leveldb_transaction->Remove(object_store_data_key);
+  Status s(leveldb_transaction->Remove(object_store_data_key));
   if (!s.ok()) {
     return s;
   }
@@ -2036,14 +2303,13 @@ Status BackingStore::DeleteRecord(BackingStore::Transaction* transaction,
 
   const std::string exists_entry_key = ExistsEntryKey::Encode(
       database_id, object_store_id, record_identifier.primary_key());
-  return leveldb_transaction->Remove(exists_entry_key);
+  return Status(leveldb_transaction->Remove(exists_entry_key));
 }
 
 Status BackingStore::DeleteRange(BackingStore::Transaction* transaction,
                                  int64_t database_id,
                                  int64_t object_store_id,
                                  const IndexedDBKeyRange& key_range) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2114,7 +2380,6 @@ Status BackingStore::GetKeyGeneratorCurrentNumber(
     int64_t database_id,
     int64_t object_store_id,
     int64_t* key_generator_current_number) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2133,8 +2398,8 @@ Status BackingStore::GetKeyGeneratorCurrentNumber(
   std::string data;
 
   bool found = false;
-  Status s =
-      leveldb_transaction->Get(key_generator_current_number_key, &data, &found);
+  Status s(leveldb_transaction->Get(key_generator_current_number_key, &data,
+                                    &found));
   if (!s.ok()) {
     INTERNAL_READ_ERROR(GET_KEY_GENERATOR_CURRENT_NUMBER);
     return s;
@@ -2158,8 +2423,8 @@ Status BackingStore::GetKeyGeneratorCurrentNumber(
   const std::string stop_key =
       ObjectStoreDataKey::Encode(database_id, object_store_id, MaxIDBKey());
 
-  std::unique_ptr<TransactionalLevelDBIterator> it =
-      leveldb_transaction->CreateIterator(s);
+  std::unique_ptr<TransactionalLevelDBIterator> it;
+  std::tie(it, s) = CreateIteratorAndGetStatus(*leveldb_transaction);
   if (!s.ok()) {
     INTERNAL_READ_ERROR(GET_KEY_GENERATOR_CURRENT_NUMBER);
     return s;
@@ -2199,7 +2464,6 @@ Status BackingStore::MaybeUpdateKeyGeneratorCurrentNumber(
     int64_t object_store_id,
     int64_t new_number,
     bool check_current) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2234,7 +2498,6 @@ Status BackingStore::KeyExistsInObjectStore(
     const IndexedDBKey& key,
     RecordIdentifier* found_record_identifier,
     bool* found) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2247,7 +2510,7 @@ Status BackingStore::KeyExistsInObjectStore(
       ObjectStoreDataKey::Encode(database_id, object_store_id, key);
   std::string data;
 
-  Status s = transaction->transaction()->Get(leveldb_key, &data, found);
+  Status s(transaction->transaction()->Get(leveldb_key, &data, found));
   if (!s.ok()) {
     INTERNAL_READ_ERROR(KEY_EXISTS_IN_OBJECT_STORE);
     return s;
@@ -2274,7 +2537,6 @@ Status BackingStore::KeyExistsInObjectStore(
 
 void BackingStore::ReportBlobUnused(int64_t database_id, int64_t blob_number) {
   DCHECK(KeyPrefix::IsValidDatabaseId(database_id));
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2340,7 +2602,6 @@ void BackingStore::ReportBlobUnused(int64_t database_id, int64_t blob_number) {
 }
 
 void BackingStore::StartJournalCleaningTimer() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2351,7 +2612,7 @@ void BackingStore::StartJournalCleaningTimer() {
   }
 
   if (num_aggregated_journal_cleaning_requests_ >= kMaxJournalCleanRequests) {
-    journal_cleaning_timer_.AbandonAndStop();
+    journal_cleaning_timer_.Stop();
     CleanRecoveryJournalIgnoreReturn();
     return;
   }
@@ -2369,7 +2630,7 @@ void BackingStore::StartJournalCleaningTimer() {
       std::min(kInitialJournalCleaningWindowTime, time_until_max);
 
   if (delay <= base::Seconds(0)) {
-    journal_cleaning_timer_.AbandonAndStop();
+    journal_cleaning_timer_.Stop();
     CleanRecoveryJournalIgnoreReturn();
     return;
   }
@@ -2381,13 +2642,11 @@ void BackingStore::StartJournalCleaningTimer() {
 // This assumes a file path of dbId/second-to-LSB-of-counter/counter.
 base::FilePath BackingStore::GetBlobFileName(int64_t database_id,
                                              int64_t blob_number) const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return GetBlobFileNameForKey(blob_path_, database_id, blob_number);
 }
 
 bool BackingStore::RemoveBlobFile(int64_t database_id,
                                   int64_t blob_number) const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   base::FilePath path = GetBlobFileName(database_id, blob_number);
 #if DCHECK_IS_ON()
   ++num_blob_files_deleted_;
@@ -2398,14 +2657,13 @@ bool BackingStore::RemoveBlobFile(int64_t database_id,
 }
 
 bool BackingStore::RemoveBlobDirectory(int64_t database_id) const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   base::FilePath path = GetBlobDirectoryName(blob_path_, database_id);
   return base::DeletePathRecursively(path);
 }
 
 Status BackingStore::CleanUpBlobJournal(const std::string& level_db_key) const {
   TRACE_EVENT0("IndexedDB", "BackingStore::CleanUpBlobJournal");
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
   DCHECK(!committing_transaction_count_);
   std::unique_ptr<LevelDBDirectTransaction> journal_transaction =
       transactional_leveldb_factory().CreateLevelDBDirectTransaction(db_.get());
@@ -2434,7 +2692,6 @@ Status BackingStore::CleanUpBlobJournal(const std::string& level_db_key) const {
 
 Status BackingStore::CleanUpBlobJournalEntries(
     const BlobJournalType& journal) const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("IndexedDB", "BackingStore::CleanUpBlobJournalEntries");
   if (journal.empty() || in_memory()) {
     return Status::OK();
@@ -2458,12 +2715,10 @@ Status BackingStore::CleanUpBlobJournalEntries(
 }
 
 void BackingStore::WillCommitTransaction() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   ++committing_transaction_count_;
 }
 
 void BackingStore::DidCommitTransaction() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_GT(committing_transaction_count_, 0UL);
   --committing_transaction_count_;
   if (committing_transaction_count_ == 0 &&
@@ -2477,7 +2732,6 @@ Status BackingStore::Transaction::GetExternalObjectsForRecord(
     int64_t database_id,
     const std::string& object_store_data_key,
     IndexedDBValue* value) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   IndexedDBExternalObjectChangeRecord* change_record = nullptr;
   auto object_iter = external_object_change_map_.find(object_store_data_key);
   if (object_iter != external_object_change_map_.end()) {
@@ -2500,13 +2754,12 @@ Status BackingStore::Transaction::GetExternalObjectsForRecord(
   std::string_view leveldb_key_piece(object_store_data_key);
   if (!BlobEntryKey::FromObjectStoreDataKey(&leveldb_key_piece,
                                             &blob_entry_key)) {
-    NOTREACHED_IN_MIGRATION();
-    return InternalInconsistencyStatus();
+    NOTREACHED();
   }
   std::string encoded_key = blob_entry_key.Encode();
   bool found;
   std::string encoded_value;
-  Status s = transaction()->Get(encoded_key, &encoded_value, &found);
+  Status s(transaction()->Get(encoded_key, &encoded_value, &found));
   if (!s.ok()) {
     return s;
   }
@@ -2538,12 +2791,10 @@ Status BackingStore::Transaction::GetExternalObjectsForRecord(
 
 base::WeakPtr<BackingStore::Transaction>
 BackingStore::Transaction::AsWeakPtr() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return weak_ptr_factory_.GetWeakPtr();
 }
 
 void BackingStore::CleanRecoveryJournalIgnoreReturn() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // While a transaction is busy it is not safe to clean the journal.
   if (committing_transaction_count_ > 0) {
     execute_journal_cleaning_on_no_txns_ = true;
@@ -2553,12 +2804,55 @@ void BackingStore::CleanRecoveryJournalIgnoreReturn() {
   CleanUpBlobJournal(RecoveryBlobJournalKey::Encode());
 }
 
+std::list<std::unique_ptr<BackingStorePreCloseTaskQueue::PreCloseTask>>
+BackingStore::GetPreCloseTasks() {
+  std::list<std::unique_ptr<BackingStorePreCloseTaskQueue::PreCloseTask>> tasks;
+  if (ShouldRunTombstoneSweeper()) {
+    tasks.push_back(std::make_unique<LevelDbTombstoneSweeper>(
+        kTombstoneSweeperRoundIterations, kTombstoneSweeperMaxIterations,
+        db_->db()));
+  }
+
+  if (ShouldRunCompaction()) {
+    tasks.push_back(std::make_unique<IndexedDBCompactionTask>(db_->db()));
+  }
+  return tasks;
+}
+
+bool BackingStore::ShouldRunTombstoneSweeper() {
+  if (GetEarliestSweepTime(db_.get()) > base::Time::Now()) {
+    return false;
+  }
+
+  // A sweep will happen now, so reset the sweep timers.
+  std::unique_ptr<LevelDBDirectTransaction> txn =
+      transactional_leveldb_factory_->CreateLevelDBDirectTransaction(db_.get());
+  if (!UpdateEarliestSweepTime(txn.get()).ok() || !txn->Commit().ok()) {
+    return false;
+  }
+  return true;
+}
+
+bool BackingStore::ShouldRunCompaction() {
+  if (GetEarliestCompactionTime(db_.get()) > base::Time::Now()) {
+    return false;
+  }
+
+  // A compaction will happen now, so reset the compaction timers.
+  std::unique_ptr<LevelDBDirectTransaction> txn =
+      transactional_leveldb_factory_->CreateLevelDBDirectTransaction(db_.get());
+  if (!UpdateEarliestCompactionTime(txn.get()).ok() || !txn->Commit().ok()) {
+    return false;
+  }
+  return true;
+}
+
 Status BackingStore::ClearIndex(BackingStore::Transaction* transaction,
                                 int64_t database_id,
                                 int64_t object_store_id,
                                 int64_t index_id) {
   TRACE_EVENT0("IndexedDB", "BackingStore::ClearIndex");
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2572,9 +2866,9 @@ Status BackingStore::ClearIndex(BackingStore::Transaction* transaction,
       IndexDataKey::EncodeMinKey(database_id, object_store_id, index_id);
   const std::string index_data_end =
       IndexDataKey::EncodeMaxKey(database_id, object_store_id, index_id);
-  Status s = leveldb_transaction->RemoveRange(
+  Status s(leveldb_transaction->RemoveRange(
       index_data_start, index_data_end,
-      LevelDBScopeDeletionMode::kImmediateWithRangeEndInclusive);
+      LevelDBScopeDeletionMode::kImmediateWithRangeEndInclusive));
 
   if (!s.ok()) {
     INTERNAL_WRITE_ERROR(DELETE_INDEX);
@@ -2591,7 +2885,7 @@ Status BackingStore::PutIndexDataForRecord(
     const IndexedDBKey& key,
     const RecordIdentifier& record_identifier) {
   TRACE_EVENT0("IndexedDB", "BackingStore::PutIndexDataForRecord");
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2611,7 +2905,7 @@ Status BackingStore::PutIndexDataForRecord(
   EncodeVarInt(record_identifier.version(), &data);
   data.append(record_identifier.primary_key());
 
-  return transaction->transaction()->Put(index_data_key, &data);
+  return Status(transaction->transaction()->Put(index_data_key, &data));
 }
 
 Status BackingStore::FindKeyInIndex(BackingStore::Transaction* transaction,
@@ -2622,7 +2916,7 @@ Status BackingStore::FindKeyInIndex(BackingStore::Transaction* transaction,
                                     std::string* found_encoded_primary_key,
                                     bool* found) {
   TRACE_EVENT0("IndexedDB", "BackingStore::FindKeyInIndex");
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2636,8 +2930,8 @@ Status BackingStore::FindKeyInIndex(BackingStore::Transaction* transaction,
   const std::string leveldb_key =
       IndexDataKey::Encode(database_id, object_store_id, index_id, key);
   Status s;
-  std::unique_ptr<TransactionalLevelDBIterator> it =
-      leveldb_transaction->CreateIterator(s);
+  std::unique_ptr<TransactionalLevelDBIterator> it;
+  std::tie(it, s) = CreateIteratorAndGetStatus(*leveldb_transaction);
   if (!s.ok()) {
     INTERNAL_WRITE_ERROR(CREATE_ITERATOR);
     return s;
@@ -2693,7 +2987,7 @@ Status BackingStore::GetPrimaryKeyViaIndex(
     const IndexedDBKey& key,
     std::unique_ptr<IndexedDBKey>* primary_key) {
   TRACE_EVENT0("IndexedDB", "BackingStore::GetPrimaryKeyViaIndex");
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2734,7 +3028,7 @@ Status BackingStore::KeyExistsInIndex(
     std::unique_ptr<IndexedDBKey>* found_primary_key,
     bool* exists) {
   TRACE_EVENT0("IndexedDB", "BackingStore::KeyExistsInIndex");
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
@@ -2833,7 +3127,7 @@ Status BackingStore::GetDatabaseNamesAndVersions(
   return s;
 }
 
-leveldb::Status BackingStore::ReadMetadataForDatabaseName(
+Status BackingStore::ReadMetadataForDatabaseName(
     const std::u16string& name,
     blink::IndexedDBDatabaseMetadata* metadata,
     bool* found) {
@@ -2919,9 +3213,7 @@ BackingStore::Cursor::Cursor(base::WeakPtr<Transaction> transaction,
   DCHECK(transaction_);
 }
 
-BackingStore::Cursor::~Cursor() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-}
+BackingStore::Cursor::~Cursor() = default;
 
 // static
 std::unique_ptr<TransactionalLevelDBIterator>
@@ -2930,32 +3222,33 @@ BackingStore::Cursor::CloneIterator(const BackingStore::Cursor* other) {
     return nullptr;
   }
 
-  DCHECK_CALLED_ON_VALID_SEQUENCE(other->sequence_checker_);
   if (!other->iterator_) {
     return nullptr;
   }
 
   Status s;
-  auto iter = other->transaction_->transaction()->CreateIterator(s);
+  std::unique_ptr<TransactionalLevelDBIterator> it;
+  std::tie(it, s) =
+      CreateIteratorAndGetStatus(*other->transaction_->transaction());
   if (!s.ok()) {
     INTERNAL_WRITE_ERROR(CREATE_ITERATOR);
     return nullptr;
   }
 
   if (other->iterator_->IsValid()) {
-    s = iter->Seek(other->iterator_->Key());
+    s = it->Seek(other->iterator_->Key());
     // TODO(cmumford): Handle this error (crbug.com/363397)
-    DCHECK(iter->IsValid());
+    DCHECK(it->IsValid());
   }
 
-  return iter;
+  return it;
 }
 
 bool BackingStore::Cursor::FirstSeek(Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(transaction_);
   DCHECK(s);
-  iterator_ = transaction_->transaction()->CreateIterator(*s);
+  std::tie(iterator_, *s) =
+      CreateIteratorAndGetStatus(*transaction_->transaction());
   if (!s->ok()) {
     INTERNAL_WRITE_ERROR(CREATE_ITERATOR);
     return false;
@@ -2976,7 +3269,6 @@ bool BackingStore::Cursor::FirstSeek(Status* s) {
 }
 
 bool BackingStore::Cursor::Advance(uint32_t count, Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   *s = Status::OK();
   while (count--) {
     if (!Continue(s)) {
@@ -2990,7 +3282,6 @@ bool BackingStore::Cursor::Continue(const IndexedDBKey* key,
                                     const IndexedDBKey* primary_key,
                                     IteratorState next_state,
                                     Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("IndexedDB", "BackingStore::Cursor::Continue");
   DCHECK(!key || next_state == SEEK);
 
@@ -3008,7 +3299,6 @@ BackingStore::Cursor::ContinueResult BackingStore::Cursor::ContinueNext(
     const IndexedDBKey* primary_key,
     IteratorState next_state,
     Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(cursor_options_.forward);
   DCHECK(!key || key->IsValid());
   DCHECK(!primary_key || primary_key->IsValid());
@@ -3082,7 +3372,6 @@ BackingStore::Cursor::ContinueResult BackingStore::Cursor::ContinuePrevious(
     const IndexedDBKey* primary_key,
     IteratorState next_state,
     Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!cursor_options_.forward);
   DCHECK(!key || key->IsValid());
   DCHECK(!primary_key || primary_key->IsValid());
@@ -3195,8 +3484,6 @@ BackingStore::Cursor::ContinueResult BackingStore::Cursor::ContinuePrevious(
 }
 
 bool BackingStore::Cursor::HaveEnteredRange() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   if (cursor_options_.forward) {
     int compare = CompareIndexKeys(iterator_->Key(), cursor_options_.low_key);
     if (cursor_options_.low_open) {
@@ -3212,8 +3499,6 @@ bool BackingStore::Cursor::HaveEnteredRange() const {
 }
 
 bool BackingStore::Cursor::IsPastBounds() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   if (cursor_options_.forward) {
     int compare = CompareIndexKeys(iterator_->Key(), cursor_options_.high_key);
     if (cursor_options_.high_open) {
@@ -3229,7 +3514,6 @@ bool BackingStore::Cursor::IsPastBounds() const {
 }
 
 const IndexedDBKey& BackingStore::Cursor::primary_key() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return *current_key_;
 }
 
@@ -3247,8 +3531,6 @@ class ObjectStoreKeyCursorImpl : public BackingStore::Cursor {
   ObjectStoreKeyCursorImpl& operator=(const ObjectStoreKeyCursorImpl&) = delete;
 
   std::unique_ptr<Cursor> Clone() const override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
     auto iter = CloneIterator(this);
     if (!iter) {
       return nullptr;
@@ -3258,22 +3540,17 @@ class ObjectStoreKeyCursorImpl : public BackingStore::Cursor {
   }
 
   // BackingStore::Cursor
-  IndexedDBValue* value() override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
-  }
+  IndexedDBValue* value() override { NOTREACHED(); }
   bool LoadCurrentRow(Status* s) override;
 
  protected:
   std::string EncodeKey(const IndexedDBKey& key) override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return ObjectStoreDataKey::Encode(cursor_options_.database_id,
                                       cursor_options_.object_store_id, key);
   }
   std::string EncodeKey(const IndexedDBKey& key,
                         const IndexedDBKey& primary_key) override {
-    NOTREACHED_IN_MIGRATION();
-    return std::string();
+    NOTREACHED();
   }
 
  private:
@@ -3292,13 +3569,10 @@ BackingStore::Cursor::CursorOptions::~CursorOptions() = default;
 
 const BackingStore::RecordIdentifier& BackingStore::Cursor::record_identifier()
     const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return record_identifier_;
 }
 
 bool ObjectStoreKeyCursorImpl::LoadCurrentRow(Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   std::string_view slice(iterator_->Key());
   ObjectStoreDataKey object_store_data_key;
   if (!ObjectStoreDataKey::Decode(&slice, &object_store_data_key)) {
@@ -3338,15 +3612,11 @@ class ObjectStoreCursorImpl : public BackingStore::Cursor {
   ObjectStoreCursorImpl(const ObjectStoreCursorImpl&) = delete;
   ObjectStoreCursorImpl& operator=(const ObjectStoreCursorImpl&) = delete;
 
-  ~ObjectStoreCursorImpl() override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  }
+  ~ObjectStoreCursorImpl() override = default;
 
   // BackingStore::Cursor:
 
   std::unique_ptr<Cursor> Clone() const override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
     auto iter = CloneIterator(this);
     if (!iter) {
       return nullptr;
@@ -3355,21 +3625,18 @@ class ObjectStoreCursorImpl : public BackingStore::Cursor {
   }
 
   IndexedDBValue* value() override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return &current_value_;
   }
   bool LoadCurrentRow(Status* s) override;
 
  protected:
   std::string EncodeKey(const IndexedDBKey& key) override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return ObjectStoreDataKey::Encode(cursor_options_.database_id,
                                       cursor_options_.object_store_id, key);
   }
   std::string EncodeKey(const IndexedDBKey& key,
                         const IndexedDBKey& primary_key) override {
-    NOTREACHED_IN_MIGRATION();
-    return std::string();
+    NOTREACHED();
   }
 
  private:
@@ -3378,11 +3645,10 @@ class ObjectStoreCursorImpl : public BackingStore::Cursor {
       std::unique_ptr<TransactionalLevelDBIterator> iterator)
       : BackingStore::Cursor(other, std::move(iterator)) {}
 
-  IndexedDBValue current_value_ GUARDED_BY_CONTEXT(sequence_checker_);
+  IndexedDBValue current_value_;
 };
 
 bool ObjectStoreCursorImpl::LoadCurrentRow(Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(transaction_);
 
   std::string_view key_slice(iterator_->Key());
@@ -3430,13 +3696,9 @@ class IndexKeyCursorImpl : public BackingStore::Cursor {
   IndexKeyCursorImpl(const IndexKeyCursorImpl&) = delete;
   IndexKeyCursorImpl& operator=(const IndexKeyCursorImpl&) = delete;
 
-  ~IndexKeyCursorImpl() override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  }
+  ~IndexKeyCursorImpl() override = default;
 
   std::unique_ptr<Cursor> Clone() const override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
     auto iter = CloneIterator(this);
     if (!iter) {
       return nullptr;
@@ -3445,30 +3707,21 @@ class IndexKeyCursorImpl : public BackingStore::Cursor {
   }
 
   // BackingStore::Cursor
-  IndexedDBValue* value() override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
-  }
-  const IndexedDBKey& primary_key() const override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    return *primary_key_;
-  }
+  IndexedDBValue* value() override { NOTREACHED(); }
+  const IndexedDBKey& primary_key() const override { return *primary_key_; }
   const BackingStore::RecordIdentifier& record_identifier() const override {
-    NOTREACHED_IN_MIGRATION();
-    return record_identifier_;
+    NOTREACHED();
   }
   bool LoadCurrentRow(Status* s) override;
 
  protected:
   std::string EncodeKey(const IndexedDBKey& key) override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return IndexDataKey::Encode(cursor_options_.database_id,
                                 cursor_options_.object_store_id,
                                 cursor_options_.index_id, key);
   }
   std::string EncodeKey(const IndexedDBKey& key,
                         const IndexedDBKey& primary_key) override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return IndexDataKey::Encode(cursor_options_.database_id,
                                 cursor_options_.object_store_id,
                                 cursor_options_.index_id, key, primary_key);
@@ -3481,12 +3734,10 @@ class IndexKeyCursorImpl : public BackingStore::Cursor {
       : BackingStore::Cursor(other, std::move(iterator)),
         primary_key_(std::make_unique<IndexedDBKey>(*other->primary_key_)) {}
 
-  std::unique_ptr<IndexedDBKey> primary_key_
-      GUARDED_BY_CONTEXT(sequence_checker_);
+  std::unique_ptr<IndexedDBKey> primary_key_;
 };
 
 bool IndexKeyCursorImpl::LoadCurrentRow(Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(transaction_);
 
   std::string_view slice(iterator_->Key());
@@ -3567,12 +3818,9 @@ class IndexCursorImpl : public BackingStore::Cursor {
   IndexCursorImpl(const IndexCursorImpl&) = delete;
   IndexCursorImpl& operator=(const IndexCursorImpl&) = delete;
 
-  ~IndexCursorImpl() override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  }
+  ~IndexCursorImpl() override = default;
 
   std::unique_ptr<Cursor> Clone() const override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     auto iter = CloneIterator(this);
     if (!iter) {
       return nullptr;
@@ -3582,29 +3830,24 @@ class IndexCursorImpl : public BackingStore::Cursor {
 
   // BackingStore::Cursor
   IndexedDBValue* value() override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return &current_value_;
   }
   const IndexedDBKey& primary_key() const override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return *primary_key_;
   }
   const BackingStore::RecordIdentifier& record_identifier() const override {
-    NOTREACHED_IN_MIGRATION();
-    return record_identifier_;
+    NOTREACHED();
   }
   bool LoadCurrentRow(Status* s) override;
 
  protected:
   std::string EncodeKey(const IndexedDBKey& key) override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return IndexDataKey::Encode(cursor_options_.database_id,
                                 cursor_options_.object_store_id,
                                 cursor_options_.index_id, key);
   }
   std::string EncodeKey(const IndexedDBKey& key,
                         const IndexedDBKey& primary_key) override {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return IndexDataKey::Encode(cursor_options_.database_id,
                                 cursor_options_.object_store_id,
                                 cursor_options_.index_id, key, primary_key);
@@ -3619,14 +3862,12 @@ class IndexCursorImpl : public BackingStore::Cursor {
         current_value_(other->current_value_),
         primary_leveldb_key_(other->primary_leveldb_key_) {}
 
-  std::unique_ptr<IndexedDBKey> primary_key_
-      GUARDED_BY_CONTEXT(sequence_checker_);
-  IndexedDBValue current_value_ GUARDED_BY_CONTEXT(sequence_checker_);
-  std::string primary_leveldb_key_ GUARDED_BY_CONTEXT(sequence_checker_);
+  std::unique_ptr<IndexedDBKey> primary_key_;
+  IndexedDBValue current_value_;
+  std::string primary_leveldb_key_;
 };
 
 bool IndexCursorImpl::LoadCurrentRow(Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(transaction_);
 
   std::string_view slice(iterator_->Key());
@@ -3710,7 +3951,6 @@ std::unique_ptr<BackingStore::Cursor> BackingStore::OpenObjectStoreCursor(
     const IndexedDBKeyRange& range,
     blink::mojom::IDBCursorDirection direction,
     Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("IndexedDB", "BackingStore::OpenObjectStoreCursor");
 
   TransactionalLevelDBTransaction* leveldb_transaction =
@@ -3740,7 +3980,6 @@ std::unique_ptr<BackingStore::Cursor> BackingStore::OpenObjectStoreKeyCursor(
     const IndexedDBKeyRange& range,
     blink::mojom::IDBCursorDirection direction,
     Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("IndexedDB", "BackingStore::OpenObjectStoreKeyCursor");
 
   TransactionalLevelDBTransaction* leveldb_transaction =
@@ -3771,7 +4010,6 @@ std::unique_ptr<BackingStore::Cursor> BackingStore::OpenIndexKeyCursor(
     const IndexedDBKeyRange& range,
     blink::mojom::IDBCursorDirection direction,
     Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("IndexedDB", "BackingStore::OpenIndexKeyCursor");
   *s = Status::OK();
   TransactionalLevelDBTransaction* leveldb_transaction =
@@ -3800,7 +4038,6 @@ std::unique_ptr<BackingStore::Cursor> BackingStore::OpenIndexCursor(
     const IndexedDBKeyRange& range,
     blink::mojom::IDBCursorDirection direction,
     Status* s) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("IndexedDB", "BackingStore::OpenIndexCursor");
   TransactionalLevelDBTransaction* leveldb_transaction =
       transaction->transaction();
@@ -3819,13 +4056,18 @@ std::unique_ptr<BackingStore::Cursor> BackingStore::OpenIndexCursor(
   return cursor;
 }
 
+void BackingStore::WriteToIndexedDBForTesting(const std::string& key,
+                                              const std::string& value) {
+  std::string value_copy = value;
+  Status s(db_->Put(key, &value_copy));
+  CHECK(s.ok()) << s.ToString();
+}
+
 bool BackingStore::IsBlobCleanupPending() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return journal_cleaning_timer_.IsRunning();
 }
 
 void BackingStore::ForceRunBlobCleanup() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   journal_cleaning_timer_.FireNow();
 }
 
@@ -3838,7 +4080,6 @@ BackingStore::Transaction::BlobWriteState::BlobWriteState(
 
 BackingStore::Transaction::BlobWriteState::~BlobWriteState() = default;
 
-// `backing_store` can be null in unittests (see FakeTransaction).
 BackingStore::Transaction::Transaction(
     base::WeakPtr<BackingStore> backing_store,
     blink::mojom::IDBTransactionDurability durability,
@@ -3848,18 +4089,14 @@ BackingStore::Transaction::Transaction(
       mode_(mode) {
   // `Default` should have already been converted to the bucket's setting.
   DCHECK(durability_ != blink::mojom::IDBTransactionDurability::Default);
-  DCHECK(!backing_store_ ||
-         backing_store_->idb_task_runner()->RunsTasksInCurrentSequence());
+  DCHECK(backing_store_);
 }
 
 BackingStore::Transaction::~Transaction() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!committing_);
 }
 
 void BackingStore::Transaction::Begin(std::vector<PartitionedLock> locks) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK_CALLED_ON_VALID_SEQUENCE(backing_store_->sequence_checker_);
   DCHECK(backing_store_);
   DCHECK(!transaction_.get());
   TRACE_EVENT0("IndexedDB", "BackingStore::Transaction::Begin");
@@ -3877,8 +4114,6 @@ void BackingStore::Transaction::Begin(std::vector<PartitionedLock> locks) {
 }
 
 Status BackingStore::MigrateToV4(LevelDBWriteBatch* write_batch) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   const int64_t db_schema_version = 4;
   const std::string schema_version_key = SchemaVersionKey::Encode();
   Status s;
@@ -3901,8 +4136,6 @@ Status BackingStore::MigrateToV4(LevelDBWriteBatch* write_batch) {
 }
 
 Status BackingStore::MigrateToV5(LevelDBWriteBatch* write_batch) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   // Some blob files were not written to disk due to a bug.
   // Validate that all blob files in the db exist on disk,
   // and return InternalInconsistencyStatus if any do not.
@@ -3924,7 +4157,6 @@ Status BackingStore::MigrateToV5(LevelDBWriteBatch* write_batch) {
 }
 
 Status BackingStore::Transaction::HandleBlobPreTransaction() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(backing_store_);
   DCHECK(blobs_to_write_.empty());
 
@@ -3979,11 +4211,10 @@ Status BackingStore::Transaction::HandleBlobPreTransaction() {
 
   AppendBlobsToRecoveryBlobJournal(direct_txn.get(), blobs_to_write_);
 
-  return direct_txn->Commit();
+  return Status(direct_txn->Commit());
 }
 
 bool BackingStore::Transaction::CollectBlobFilesToRemove() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(backing_store_);
 
   if (backing_store_->in_memory()) {
@@ -3996,10 +4227,7 @@ bool BackingStore::Transaction::CollectBlobFilesToRemove() {
     BlobEntryKey blob_entry_key;
     std::string_view key_piece(iter.second->object_store_data_key());
     if (!BlobEntryKey::FromObjectStoreDataKey(&key_piece, &blob_entry_key)) {
-      NOTREACHED_IN_MIGRATION();
-      INTERNAL_WRITE_ERROR(TRANSACTION_COMMIT_METHOD);
-      transaction_ = nullptr;
-      return false;
+      NOTREACHED();
     }
     if (database_id_ < 0) {
       database_id_ = blob_entry_key.database_id();
@@ -4009,8 +4237,8 @@ bool BackingStore::Transaction::CollectBlobFilesToRemove() {
     std::string blob_entry_key_bytes = blob_entry_key.Encode();
     bool found;
     std::string blob_entry_value_bytes;
-    Status s = transaction_->Get(blob_entry_key_bytes, &blob_entry_value_bytes,
-                                 &found);
+    Status s(transaction_->Get(blob_entry_key_bytes, &blob_entry_value_bytes,
+                               &found));
     if (s.ok() && found) {
       std::vector<IndexedDBExternalObject> external_objects;
       if (!DecodeExternalObjects(blob_entry_value_bytes, &external_objects)) {
@@ -4038,7 +4266,6 @@ bool BackingStore::Transaction::CollectBlobFilesToRemove() {
 void BackingStore::Transaction::PartitionBlobsToRemove(
     BlobJournalType* inactive_blobs,
     BlobJournalType* active_blobs) const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(backing_store_);
 
   ActiveBlobRegistry* registry = backing_store_->active_blob_registry();
@@ -4054,10 +4281,8 @@ void BackingStore::Transaction::PartitionBlobsToRemove(
 }
 
 Status BackingStore::Transaction::CommitPhaseOne(BlobWriteCallback callback) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(transaction_.get());
   DCHECK(backing_store_);
-  DCHECK(backing_store_->idb_task_runner()->RunsTasksInCurrentSequence());
   TRACE_EVENT0("IndexedDB", "BackingStore::Transaction::CommitPhaseOne");
 
   Status s;
@@ -4091,8 +4316,6 @@ Status BackingStore::Transaction::CommitPhaseOne(BlobWriteCallback callback) {
 }
 
 Status BackingStore::Transaction::CommitPhaseTwo() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK_CALLED_ON_VALID_SEQUENCE(backing_store_->sequence_checker_);
   DCHECK(backing_store_);
   TRACE_EVENT0("IndexedDB", "BackingStore::Transaction::CommitPhaseTwo");
 
@@ -4119,8 +4342,7 @@ Status BackingStore::Transaction::CommitPhaseTwo() {
         std::string_view key_piece(iter.second->object_store_data_key());
         if (!BlobEntryKey::FromObjectStoreDataKey(&key_piece,
                                                   &blob_entry_key)) {
-          NOTREACHED_IN_MIGRATION();
-          return InternalInconsistencyStatus();
+          NOTREACHED();
         }
         // Add the new blob-table entry for each blob to the main transaction,
         // or remove any entry that may exist if there's no new one.
@@ -4231,9 +4453,7 @@ Status BackingStore::Transaction::CommitPhaseTwo() {
   return s;
 }
 
-leveldb::Status BackingStore::Transaction::WriteNewBlobs(
-    BlobWriteCallback callback) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+Status BackingStore::Transaction::WriteNewBlobs(BlobWriteCallback callback) {
   DCHECK(backing_store_);
   DCHECK(!backing_store_->in_memory());
   DCHECK(!external_object_change_map_.empty());
@@ -4278,7 +4498,6 @@ leveldb::Status BackingStore::Transaction::WriteNewBlobs(
         if (!transaction) {
           return;
         }
-        DCHECK_CALLED_ON_VALID_SEQUENCE(transaction->sequence_checker_);
 
         // This can be null if Rollback() is called.
         if (!transaction->write_state_) {
@@ -4389,18 +4608,15 @@ leveldb::Status BackingStore::Transaction::WriteNewBlobs(
       }
     }
   }
-  return leveldb::Status::OK();
+  return Status::OK();
 }
 
 void BackingStore::Transaction::Reset() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   backing_store_.reset();
   transaction_ = nullptr;
 }
 
 void BackingStore::Transaction::Rollback() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(backing_store_);
   TRACE_EVENT0("IndexedDB", "BackingStore::Transaction::Rollback");
 
@@ -4421,7 +4637,6 @@ void BackingStore::Transaction::Rollback() {
 }
 
 uint64_t BackingStore::Transaction::GetTransactionSize() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(transaction_);
   return transaction_->GetTransactionSize();
 }
@@ -4430,8 +4645,6 @@ Status BackingStore::Transaction::PutExternalObjectsIfNeeded(
     int64_t database_id,
     const std::string& object_store_data_key,
     std::vector<IndexedDBExternalObject>* external_objects) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   if (!external_objects || external_objects->empty()) {
     external_object_change_map_.erase(object_store_data_key);
     in_memory_external_object_map_.erase(object_store_data_key);
@@ -4440,12 +4653,11 @@ Status BackingStore::Transaction::PutExternalObjectsIfNeeded(
     std::string_view leveldb_key_piece(object_store_data_key);
     if (!BlobEntryKey::FromObjectStoreDataKey(&leveldb_key_piece,
                                               &blob_entry_key)) {
-      NOTREACHED_IN_MIGRATION();
-      return InternalInconsistencyStatus();
+      NOTREACHED();
     }
     std::string value;
     bool found = false;
-    Status s = transaction()->Get(blob_entry_key.Encode(), &value, &found);
+    Status s(transaction()->Get(blob_entry_key.Encode(), &value, &found));
     if (!s.ok()) {
       return s;
     }
@@ -4465,7 +4677,6 @@ void BackingStore::Transaction::PutExternalObjects(
     int64_t database_id,
     const std::string& object_store_data_key,
     std::vector<IndexedDBExternalObject>* external_objects) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!object_store_data_key.empty());
   if (database_id_ < 0) {
     database_id_ = database_id;

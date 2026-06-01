@@ -4,6 +4,8 @@
 #include "qgraphanimation_p.h"
 #include <private/qgraphanimation_p.h>
 
+QT_BEGIN_NAMESPACE
+
 /*!
     \qmltype GraphAnimation
     \qmlabstract
@@ -44,6 +46,8 @@
         A ControlPointAnimation animation.
 */
 
+Q_LOGGING_CATEGORY(lcAnimation, "qt.graphs2d.animation")
+
 QGraphAnimation::QGraphAnimation(QObject *parent)
     : QVariantAnimation(parent)
 {
@@ -63,8 +67,14 @@ QGraphAnimation::AnimationState QGraphAnimation::animating() const
 
 void QGraphAnimation::setAnimating(AnimationState newAnimating)
 {
-    if (m_animating == newAnimating)
+    if (m_animating == newAnimating) {
+        qCDebug(lcAnimation) << "QGraphAnimation::setAnimating. AnimationState is already set to: " << newAnimating;
         return;
+    }
     m_animating = newAnimating;
+
+    qCDebug(lcAnimation) << "animation state:" << m_animating;
     emit animatingChanged();
 }
+
+QT_END_NAMESPACE

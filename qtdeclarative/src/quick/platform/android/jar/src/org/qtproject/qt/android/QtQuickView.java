@@ -3,9 +3,9 @@
 
 package org.qtproject.qt.android;
 
+import org.qtproject.qt.android.QtSignalListener;
+
 import android.content.Context;
-import android.view.View;
-import android.view.ViewGroup;
 import android.util.Log;
 
 import java.lang.IllegalArgumentException;
@@ -43,7 +43,7 @@ public class QtQuickView extends QtView {
     native void setRootObjectProperty(long windowReference, String propertyName, Object value);
     native Object getRootObjectProperty(long windowReference, String propertyName);
     native int addRootObjectSignalListener(long windowReference, String signalName,
-                                           Class<?> argType, Object listener);
+                                           Class<?>[] argTypes, Object listener);
     native boolean removeRootObjectSignalListener(long windowReference, int signalListenerId);
 
     /**
@@ -140,13 +140,13 @@ public class QtQuickView extends QtView {
         qmlContent.detachView();
         qmlContent.attachView(this);
         // The first QQuickView creation happen after first libs loading
-        // and windowReference() returns a reference to native QQuickView
+        // and getWindowReference() returns a reference to native QQuickView
         // instance, after that. We don't load library again if the view
         // exists.
-        if (windowReference() == 0) {
+        if (getWindowReference() == 0) {
             loadQtLibraries(libName);
         } else {
-            createQuickView(m_qmlUri, getWidth(), getHeight(), 0, windowReference(),
+            createQuickView(m_qmlUri, getWidth(), getHeight(), 0, getWindowReference(),
                             m_qmlImportPaths);
         }
     }
@@ -167,7 +167,7 @@ public class QtQuickView extends QtView {
 
     @Override
     protected void createWindow(long parentWindowReference) {
-        createQuickView(m_qmlUri, getWidth(), getHeight(), parentWindowReference, windowReference(),
+        createQuickView(m_qmlUri, getWidth(), getHeight(), parentWindowReference, getWindowReference(),
                         m_qmlImportPaths);
     }
 
@@ -188,7 +188,7 @@ public class QtQuickView extends QtView {
      **/
     public void setProperty(String propertyName, Object value)
     {
-        setRootObjectProperty(windowReference(), propertyName, value);
+        setRootObjectProperty(getWindowReference(), propertyName, value);
     }
 
     /**
@@ -211,7 +211,7 @@ public class QtQuickView extends QtView {
     @SuppressWarnings("unchecked")
     public <T> T getProperty(String propertyName)
     {
-        return (T)getRootObjectProperty(windowReference(), propertyName);
+        return (T)getRootObjectProperty(getWindowReference(), propertyName);
     }
 
     /**
@@ -227,8 +227,23 @@ public class QtQuickView extends QtView {
     public <T> int connectSignalListener(String signalName, Class<T> argType,
                                          QtSignalListener<T> listener)
     {
+        return connectSignalListener(signalName, new Class<?>[] { argType }, listener);
+    }
+
+    /**
+     * Connects a SignalListener to a signal of the QML root object.
+     *
+     * @param signalName the name of the root object's signal
+     * @param argTypes   the Class types of the signal arguments
+     * @param listener   an instance of the {@link QtSignalListener} interface
+     * @return a connection id between signal and listener or the existing connection id if there
+     *         is an existing connection between the same signal and listener. Otherwise, a
+     *         negative value is returned if the signal does not exist on the QML root object.
+     **/
+    public int connectSignalListener(String signalName, Class<?>[] argTypes, Object listener)
+    {
         int signalListenerId =
-                addRootObjectSignalListener(windowReference(), signalName, argType, listener);
+                addRootObjectSignalListener(getWindowReference(), signalName, argTypes, listener);
         if (signalListenerId < 0) {
             Log.w(TAG, "The signal " + signalName + " does not exist in the root object "
                                      + "or the arguments do not match with the listener.");
@@ -238,7 +253,8 @@ public class QtQuickView extends QtView {
 
     /**
      * Disconnects a SignalListener with a given id obtained from
-     * {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} call,
+     * {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} or
+     * {@link QtQuickView#connectSignalListener(String, Class[], Object)} call,
      * from listening to a signal.
      *
      * @param signalListenerId the connection id
@@ -247,7 +263,7 @@ public class QtQuickView extends QtView {
      **/
     public boolean disconnectSignalListener(int signalListenerId)
     {
-        return removeRootObjectSignalListener(windowReference(), signalListenerId);
+        return removeRootObjectSignalListener(getWindowReference(), signalListenerId);
     }
 
     /**
@@ -255,11 +271,13 @@ public class QtQuickView extends QtView {
      *
      * @return Returns QtQmlStatus.READY when the QML component is ready. Invoking methods that
      *         operate on the QML root object {@link QtQuickView#setProperty(String, Object)},
-     *         {@link QtQuickView#getProperty(String)} and
-     *         {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} would
+     *         {@link QtQuickView#getProperty(String)},
+     *         {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} and
+     *         {@link QtQuickView#connectSignalListener(String, Class[], Object)} would
      *         succeed <b>only</b> if the current status is {@link QtQmlStatus#READY READY}.
-     *         It can also return {@link QtQmlStatus#NULL NULL}, {@link QtQmlStatus#LOADING LOADING},
-     *         or {@link QtQmlStatus#ERROR ERROR} based on the status of the underlaying QQuickView
+     *         It can also return {@link QtQmlStatus#NULL NULL},
+     *         {@link QtQmlStatus#LOADING LOADING}, or
+     *         {@link QtQmlStatus#ERROR ERROR} based on the status of the underlying QQuickView
      *         instance.
      * @see <a href="https://doc.qt.io/qt-6/qquickview.html">QQuickView</a>
      **/
@@ -300,15 +318,12 @@ public class QtQuickView extends QtView {
 
     private void sendStatusChanged(QtQmlStatus status)
     {
-        QtNative.runAction(() -> {
-            if (m_statusChangeListener != null) {
-                QtQuickViewContent content = m_loadedComponent != null ?
-                    m_loadedComponent.get() : null;
-                if (content == null)
-                    m_statusChangeListener.onStatusChanged(status);
-                else
-                    m_statusChangeListener.onStatusChanged(status, content);
-            }
-        });
+        if (m_statusChangeListener != null) {
+            QtQuickViewContent content = m_loadedComponent != null ? m_loadedComponent.get() : null;
+            if (content == null)
+                m_statusChangeListener.onStatusChanged(status);
+            else
+                m_statusChangeListener.onStatusChanged(status, content);
+        }
     }
 }

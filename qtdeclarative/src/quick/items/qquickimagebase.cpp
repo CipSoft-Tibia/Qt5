@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickimagebase_p.h"
 #include "qquickimagebase_p_p.h"
@@ -298,7 +299,7 @@ void QQuickImageBase::loadPixmap(const QUrl &url, LoadPixmapOptions loadOptions)
         loadUrl = context->resolvedUrl(url);
 
     if (loadOptions & HandleDPR) {
-        const qreal targetDevicePixelRatio = (window() ? window()->effectiveDevicePixelRatio() : qApp->devicePixelRatio());
+        const qreal targetDevicePixelRatio = d->effectiveDevicePixelRatio();
         d->devicePixelRatio = 1.0;
         bool updatedDevicePixelRatio = false;
         if (d->sourcesize.isValid()

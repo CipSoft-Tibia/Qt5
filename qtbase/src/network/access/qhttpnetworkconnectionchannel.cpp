@@ -5,7 +5,6 @@
 
 #include "qhttpnetworkconnectionchannel_p.h"
 #include "qhttpnetworkconnection_p.h"
-#include "qhttp2configuration.h"
 #include "private/qnoncontiguousbytedevice_p.h"
 
 #include <qdebug.h>
@@ -158,7 +157,7 @@ void QHttpNetworkConnectionChannel::init()
         if (!ignoreSslErrorsList.isEmpty())
             sslSocket->ignoreSslErrors(ignoreSslErrorsList);
 
-        if (sslConfiguration.data() && !sslConfiguration->isNull())
+        if (sslConfiguration && !sslConfiguration->isNull())
            sslSocket->setSslConfiguration(*sslConfiguration);
     } else {
 #endif // !QT_NO_SSL
@@ -741,10 +740,10 @@ void QHttpNetworkConnectionChannel::setSslConfiguration(const QSslConfiguration 
     if (socket)
         static_cast<QSslSocket *>(socket)->setSslConfiguration(config);
 
-    if (sslConfiguration.data())
+    if (sslConfiguration)
         *sslConfiguration = config;
     else
-        sslConfiguration.reset(new QSslConfiguration(config));
+        sslConfiguration = QSslConfiguration(config);
 }
 
 #endif
@@ -856,6 +855,10 @@ void QHttpNetworkConnectionChannel::_q_disconnected()
             state = QHttpNetworkConnectionChannel::ReadingState;
             _q_receiveReply();
         }
+    } else if (reply && reply->contentLength() == -1 && !reply->d_func()->isChunked()) {
+        // There was no content-length header and it's not chunked encoding,
+        // so this is a valid way to have the connection closed by the server
+        _q_receiveReply();
     } else if (state == QHttpNetworkConnectionChannel::IdleState && resendCurrent) {
         // re-sending request because the socket was in ClosingState
         QMetaObject::invokeMethod(connection, "_q_startNextRequest", Qt::QueuedConnection);

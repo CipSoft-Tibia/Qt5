@@ -9,7 +9,7 @@ this file manually, you might introduce QML code that is not supported by Qt Des
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Thermostat
 import ThermostatCustomControls
@@ -22,7 +22,7 @@ Pane {
     bottomPadding: 15
 
     property int currentRoomIndex: 0
-    required property var roomsList
+    required property list<Room> roomsList
 
     background: Rectangle {
         color: Constants.backgroundColor
@@ -57,9 +57,13 @@ Pane {
             CustomComboBox {
                 id: comboBox
                 Layout.alignment: Qt.AlignLeft | Qt.AlignTop
-                model: roomsList
+                roomsList: root.roomsList
                 currentIndex: root.currentRoomIndex
-                onCurrentIndexChanged: root.currentRoomIndex = currentIndex
+                Connections {
+                    function onCurrentIndexChanged() {
+                        root.currentRoomIndex = comboBox.currentIndex
+                    }
+                }
             }
         }
     }
@@ -68,14 +72,12 @@ Pane {
         id: scrollView
 
         anchors.top: title.bottom
-        anchors.topMargin: 12
-        anchors.leftMargin: 28
 
         width: internal.contentWidth
         height: internal.contentHeight
         isOneColumn: internal.isOneColumn
 
-        model: roomsList
+        roomsList: root.roomsList
         currentRoomIndex: root.currentRoomIndex
     }
 
@@ -84,14 +86,18 @@ Pane {
 
         anchors.top: title.bottom
 
-        model: roomsList
+        roomsList: root.roomsList
 
         width: internal.contentWidth
         height: internal.contentHeight
         isOneColumn: internal.isOneColumn
 
         currentRoomIndex: root.currentRoomIndex
-        onCurrentRoomIndexChanged: root.currentRoomIndex = currentRoomIndex
+        Connections {
+            function onCurrentRoomIndexChanged() {
+                root.currentRoomIndex = swipeView.currentRoomIndex
+            }
+        }
         visible: false
     }
 
@@ -101,7 +107,7 @@ Pane {
         readonly property int contentHeight: root.height - title.height
                                              - root.topPadding - root.bottomPadding
         readonly property int contentWidth: root.width - root.rightPadding - root.leftPadding
-        readonly property bool isOneColumn: contentWidth < 900
+        readonly property bool isOneColumn: Constants.isSmallLayout || Constants.isMobileLayout
     }
 
     states: [
@@ -168,12 +174,6 @@ Pane {
             PropertyChanges {
                 target: label
                 visible: false
-            }
-            PropertyChanges {
-                target: root
-                leftPadding: 15
-                rightPadding: 15
-                topPadding: 3
             }
             PropertyChanges {
                 target: scrollView

@@ -4,10 +4,12 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: rain
+
+    required property Camera sceneCamera
+
     ParticleEmitter3D {
 
         enabled: rain.visible
@@ -21,7 +23,7 @@ ParticleSystem3D {
             id: particleRed1
             color: "#ffffff"
             alignMode: Particle3D.AlignTowardsStartVelocity
-            alignTargetPosition: sceneCamera.position
+            alignTargetPosition: rain.sceneCamera.position
             maxAmount: 50000
             hasTransparency: true
             fadeOutDuration: 100
@@ -58,7 +60,7 @@ ParticleSystem3D {
         source: "#Cube"
         castsReflections: true
         receivesShadows: true
-        materials: rainMat
+        materials: [rainMat]
         instancing: particleRed1.instanceTable
         castsShadows: true
         receivesReflections: true
@@ -121,7 +123,7 @@ ParticleSystem3D {
             scale.x: 1
             scale.y: 1
             instancing: particleRed5.instanceTable
-            materials: splashMat
+            materials: [splashMat]
             receivesReflections: true
             castsShadows: true
             scale.z: 1

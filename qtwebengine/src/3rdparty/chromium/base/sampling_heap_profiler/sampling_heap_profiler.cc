@@ -17,10 +17,8 @@
 #include "base/compiler_specific.h"
 #include "base/containers/to_vector.h"
 #include "base/debug/stack_trace.h"
-#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/sampling_heap_profiler/lock_free_address_hash_set.h"
@@ -28,8 +26,11 @@
 #include "base/threading/thread_local_storage.h"
 #include "base/trace_event/heap_profiler_allocation_context_tracker.h"  // no-presubmit-check
 #include "build/build_config.h"
-#include "partition_alloc/partition_alloc.h"
 #include "partition_alloc/shim/allocator_shim.h"
+
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC)
+#include "partition_alloc/partition_alloc.h"  // nogncheck
+#endif
 
 #if BUILDFLAG(IS_APPLE)
 #include <pthread.h>
@@ -61,12 +62,6 @@ ThreadLocalData_SHP* GetThreadLocalData_SHP() {
 #endif
 }
 
-#if BUILDFLAG(CAN_UNWIND_WITH_FRAME_POINTERS)
-BASE_FEATURE(kAvoidFramePointers,
-             "AndroidHeapSamplerAvoidFramePointers",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-#endif
-
 using StackUnwinder = SamplingHeapProfiler::StackUnwinder;
 using base::allocator::dispatcher::AllocationSubsystem;
 
@@ -77,8 +72,9 @@ using base::allocator::dispatcher::AllocationSubsystem;
 const char* GetAndLeakThreadName() {
   const char* thread_name =
       base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
-  if (thread_name && *thread_name != '\0')
+  if (thread_name && *thread_name != '\0') {
     return thread_name;
+  }
 
   // prctl requires 16 bytes, snprintf requires 19, pthread_getname_np requires
   // 64 on macOS, see PlatformThread::SetName in platform_thread_apple.mm.
@@ -89,12 +85,14 @@ const char* GetAndLeakThreadName() {
   // not be set in cases where the thread started before heap profiling was
   // enabled.
   int err = prctl(PR_GET_NAME, name);
-  if (!err)
+  if (!err) {
     return strdup(name);
+  }
 #elif BUILDFLAG(IS_APPLE)
   int err = pthread_getname_np(pthread_self(), name, kBufferLen);
-  if (err == 0 && *name != '\0')
+  if (err == 0 && *name != '\0') {
     return strdup(name);
+  }
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) ||
         // BUILDFLAG(IS_ANDROID)
 
@@ -106,8 +104,9 @@ const char* GetAndLeakThreadName() {
 
 const char* UpdateAndGetThreadName(const char* name) {
   ThreadLocalData_SHP* const thread_local_data = GetThreadLocalData_SHP();
-  if (name)
+  if (name) {
     thread_local_data->thread_name = name;
+  }
   if (!thread_local_data->thread_name) {
     thread_local_data->thread_name = GetAndLeakThreadName();
   }
@@ -126,11 +125,8 @@ const char* UpdateAndGetThreadName(const char* name) {
 StackUnwinder ChooseStackUnwinder() {
 #if BUILDFLAG(CAN_UNWIND_WITH_FRAME_POINTERS)
   // Use frame pointers if available, since they can be faster than the default.
-  if (!base::FeatureList::IsEnabled(kAvoidFramePointers)) {
-    return StackUnwinder::kFramePointers;
-  }
-#endif
-#if BUILDFLAG(IS_ANDROID)
+  return StackUnwinder::kFramePointers;
+#elif BUILDFLAG(IS_ANDROID)
   // Default unwind tables aren't always present on Android.
   return CheckForDefaultUnwindTables();
 #else
@@ -150,48 +146,43 @@ SamplingHeapProfiler::Sample::~Sample() = default;
 
 SamplingHeapProfiler::SamplingHeapProfiler() = default;
 SamplingHeapProfiler::~SamplingHeapProfiler() {
-  if (record_thread_names_)
+  if (record_thread_names_.load(std::memory_order_acquire)) {
     base::ThreadIdNameManager::GetInstance()->RemoveObserver(this);
+  }
 }
 
 uint32_t SamplingHeapProfiler::Start() {
   const auto unwinder = ChooseStackUnwinder();
-#if BUILDFLAG(IS_ANDROID)
-  // Record which unwinder is in use on Android, since it's hard to keep track
-  // of which methods are available at runtime.
-  base::UmaHistogramEnumeration("HeapProfiling.AndroidStackUnwinder", unwinder);
-#endif
   if (unwinder == StackUnwinder::kUnavailable) {
     LOG(WARNING) << "Sampling heap profiler: Stack unwinding is not available.";
     return 0;
   }
-  unwinder_.store(unwinder);
+  unwinder_.store(unwinder, std::memory_order_release);
 
   AutoLock lock(start_stop_mutex_);
-  if (!running_sessions_++)
+  if (!running_sessions_++) {
     PoissonAllocationSampler::Get()->AddSamplesObserver(this);
-  return last_sample_ordinal_;
+  }
+  return last_sample_ordinal_.load(std::memory_order_acquire);
 }
 
 void SamplingHeapProfiler::Stop() {
   AutoLock lock(start_stop_mutex_);
   DCHECK_GT(running_sessions_, 0);
-  if (!--running_sessions_)
+  if (!--running_sessions_) {
     PoissonAllocationSampler::Get()->RemoveSamplesObserver(this);
+  }
 }
 
 void SamplingHeapProfiler::SetSamplingInterval(size_t sampling_interval_bytes) {
   PoissonAllocationSampler::Get()->SetSamplingInterval(sampling_interval_bytes);
 }
 
-void SamplingHeapProfiler::SetRecordThreadNames(bool value) {
-  if (record_thread_names_ == value)
-    return;
-  record_thread_names_ = value;
-  if (value) {
+void SamplingHeapProfiler::EnableRecordThreadNames() {
+  bool was_enabled = record_thread_names_.exchange(/*desired=*/true,
+                                                   std::memory_order_acq_rel);
+  if (!was_enabled) {
     base::ThreadIdNameManager::GetInstance()->AddObserver(this);
-  } else {
-    base::ThreadIdNameManager::GetInstance()->RemoveObserver(this);
   }
 }
 
@@ -204,7 +195,7 @@ span<const void*> SamplingHeapProfiler::CaptureStackTrace(
     span<const void*> frames) {
   size_t skip_frames = 0;
   size_t frame_count = 0;
-  switch (unwinder_) {
+  switch (unwinder_.load(std::memory_order_acquire)) {
 #if BUILDFLAG(CAN_UNWIND_WITH_FRAME_POINTERS)
     case StackUnwinder::kFramePointers:
       frame_count = base::debug::TraceStackFramePointers(frames, skip_frames);
@@ -235,7 +226,9 @@ void SamplingHeapProfiler::SampleAdded(void* address,
     return;
   }
   DCHECK(PoissonAllocationSampler::ScopedMuteThreadSamples::IsMuted());
-  Sample sample(size, total, ++last_sample_ordinal_);
+  uint32_t previous_last =
+      last_sample_ordinal_.fetch_add(1, std::memory_order_acq_rel);
+  Sample sample(size, total, previous_last + 1);
   sample.allocator = type;
   CaptureNativeStack(context, &sample);
   AutoLock lock(mutex_);
@@ -264,14 +257,16 @@ void SamplingHeapProfiler::CaptureNativeStack(const char* context,
       base::span(stack).first(kMaxStackEntries - 1));
   sample->stack = ToVector(frames);
 
-  if (record_thread_names_)
+  if (record_thread_names_.load(std::memory_order_acquire)) {
     sample->thread_name = CachedThreadName();
+  }
 
   if (!context) {
     const auto* tracker =
         trace_event::AllocationContextTracker::GetInstanceForCurrentThread();
-    if (tracker)
+    if (tracker) {
       context = tracker->TaskContext();
+    }
   }
   sample->context = context;
 }
@@ -297,8 +292,9 @@ std::vector<SamplingHeapProfiler::Sample> SamplingHeapProfiler::GetSamples(
   samples.reserve(samples_.size());
   for (auto& it : samples_) {
     Sample& sample = it.second;
-    if (sample.ordinal > profile_id)
+    if (sample.ordinal > profile_id) {
       samples.push_back(sample);
+    }
   }
   return samples;
 }

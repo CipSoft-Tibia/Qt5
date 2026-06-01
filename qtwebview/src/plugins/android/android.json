@@ -1,3 +1,6 @@
 {
-    "Keys": ["native"]
+    "Keys": [
+        "native",
+        "android_view"
+    ]
 }

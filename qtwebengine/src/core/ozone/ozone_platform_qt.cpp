@@ -21,6 +21,7 @@
 #include "ui/ozone/public/input_controller.h"
 #include "ui/ozone/public/ozone_platform.h"
 #include "ui/ozone/public/platform_screen.h"
+#include "ui/ozone/public/stub_input_controller.h"
 #include "ui/ozone/public/system_input_injector.h"
 #include "ui/ozone/platform/wayland/gpu/wayland_gl_egl_utility.h"
 #include "ui/platform_window/platform_window_delegate.h"
@@ -45,6 +46,8 @@
 
 extern void *GetQtXDisplay();
 #endif
+
+#include <mutex>
 
 namespace ui {
 
@@ -111,12 +114,11 @@ OzonePlatformQt::~OzonePlatformQt() {}
 const ui::OzonePlatform::PlatformProperties &OzonePlatformQt::GetPlatformProperties()
 {
     static base::NoDestructor<ui::OzonePlatform::PlatformProperties> properties;
-    static bool initialized = false;
-    if (!initialized) {
+    static std::once_flag flag;
+    std::call_once(flag, [this]() {
         DCHECK(m_supportsNativePixmaps);
         properties->fetch_buffer_formats_for_gmb_on_gpu = m_supportsNativePixmaps.value();
-        initialized = true;
-    }
+    });
 
     return *properties;
 }
@@ -226,7 +228,7 @@ bool OzonePlatformQt::InitializeUI(const ui::OzonePlatform::InitParams &)
     KeyboardLayoutEngineManager::SetKeyboardLayoutEngine(m_keyboardLayoutEngine.get());
 
     overlay_manager_.reset(new StubOverlayManager());
-    input_controller_ = CreateStubInputController();
+    input_controller_.reset(new StubInputController());
     cursor_factory_.reset(new BitmapCursorFactory());
     gpu_platform_support_host_.reset(ui::CreateStubGpuPlatformSupportHost());
     m_supportsNativePixmaps = QtWebEngineCore::SurfaceFactoryQt::SupportsNativePixmaps();

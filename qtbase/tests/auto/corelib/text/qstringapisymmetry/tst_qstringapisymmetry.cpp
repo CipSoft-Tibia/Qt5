@@ -123,7 +123,7 @@ private:
     //
 
     void compare_data(bool hasConceptOfNullAndEmpty=true);
-    template <typename LHS, typename RHS>
+    template <typename LHS, typename RHS, bool CheckCompareThreeWay = true>
     void compare_impl() const;
 
 private Q_SLOTS:
@@ -184,6 +184,8 @@ private Q_SLOTS:
     void compare_QString_QByteArrayView() { compare_impl<QString, QByteArrayView>(); }
     void compare_QString_const_char_star_data() { compare_data(); }
     void compare_QString_const_char_star() { compare_impl<QString, const char *>(); }
+    void compare_QString_std_u16_string_view_data() { compare_data(); }
+    void compare_QString_std_u16_string_view() { compare_impl<QString, std::u16string_view, false>(); }
 
     void compare_QStringView_QChar_data() { compare_data(false); }
     void compare_QStringView_QChar() { compare_impl<QStringView, QChar>(); }
@@ -203,6 +205,8 @@ private Q_SLOTS:
     void compare_QStringView_QByteArrayView() { compare_impl<QStringView, QByteArrayView>(); }
     void compare_QStringView_const_char_star_data() { compare_data(); }
     void compare_QStringView_const_char_star() { compare_impl<QStringView, const char *>(); }
+    void compare_QStringView_std_u16_string_data() { compare_data(); }
+    void compare_QStringView_std_u16_string() { compare_impl<QStringView, std::u16string, false>(); }
 
     void compare_QUtf8StringView_QChar_data() { compare_data(false); }
     void compare_QUtf8StringView_QChar() { compare_impl<QUtf8StringView, QChar>(); }
@@ -260,6 +264,13 @@ private Q_SLOTS:
     void compare_QByteArray_QByteArrayView() { compare_impl<QByteArray, QByteArrayView>(); }
     void compare_QByteArray_const_char_star_data() { compare_data(); }
     void compare_QByteArray_const_char_star() { compare_impl<QByteArray, const char *>(); }
+    void compare_QByteArray_std_string_view_data() { compare_data(); }
+    void compare_QByteArray_std_string_view()
+    {
+#ifdef QT_BYTEARRAY_CONVERTS_TO_STD_STRING_VIEW
+        compare_impl<QByteArray, std::string_view, false>();
+#endif
+    }
 
     void compare_QByteArrayView_QChar_data() { compare_data(false); }
     void compare_QByteArrayView_QChar() { compare_impl<QByteArrayView, QChar>(); }
@@ -279,6 +290,8 @@ private Q_SLOTS:
     void compare_QByteArrayView_QByteArrayView() { compare_impl<QByteArrayView, QByteArrayView>(); }
     void compare_QByteArrayView_const_char_star_data() { compare_data(); }
     void compare_QByteArrayView_const_char_star() { compare_impl<QByteArrayView, const char *>(); }
+    void compare_QByteArrayView_std_string_data() { compare_data(); }
+    void compare_QByteArrayView_std_string() { compare_impl<QByteArrayView, std::string, false>(); }
 
     void compare_const_char_star_QChar_data() { compare_data(false); }
     void compare_const_char_star_QChar() { compare_impl<const char *, QChar>(); }
@@ -590,6 +603,8 @@ private Q_SLOTS:
     void arg1_QString_char16_t() {
         arg1_impl<QString, char16_t>();
     }
+    void arg1_QString_wchar_t_data() { arg1_data(false); }
+    void arg1_QString_wchar_t() { arg1_impl<QString, wchar_t>(); }
 
     void arg1_QStringView_QString_data() { arg1_data(); }
     void arg1_QStringView_QString() { arg1_impl<QStringView, QString>(); }
@@ -625,6 +640,8 @@ private Q_SLOTS:
     void arg1_QStringView_QLatin1Char() { arg1_impl<QStringView, QLatin1Char>(); }
     void arg1_QStringView_char16_t_data() { arg1_data(false); }
     void arg1_QStringView_char16_t() { arg1_impl<QStringView, char16_t>(); }
+    void arg1_QStringView_wchar_t_data() { arg1_data(false); }
+    void arg1_QStringView_wchar_t() { arg1_impl<QStringView, wchar_t>(); }
 
     void arg1_QLatin1StringView_QString_data() { arg1_data(); }
     void arg1_QLatin1StringView_QString() { arg1_impl<QLatin1StringView, QString>(); }
@@ -660,6 +677,8 @@ private Q_SLOTS:
     void arg1_QLatin1StringView_QLatin1Char() { arg1_impl<QLatin1StringView, QLatin1Char>(); }
     void arg1_QLatin1StringView_char16_t_data() { arg1_data(false); }
     void arg1_QLatin1StringView_char16_t() { arg1_impl<QLatin1StringView, char16_t>(); }
+    void arg1_QLatin1StringView_wchar_t_data() { arg1_data(false); }
+    void arg1_QLatin1StringView_wchar_t() { arg1_impl<QLatin1StringView, wchar_t>(); }
 
     void arg1_QUtf8StringView_QString_data() { arg1_data(); }
     void arg1_QUtf8StringView_QString() { arg1_impl<QUtf8StringView, QString>(); }
@@ -695,6 +714,8 @@ private Q_SLOTS:
     void arg1_QUtf8StringView_QLatin1Char() { arg1_impl<QUtf8StringView, QLatin1Char>(); }
     void arg1_QUtf8StringView_char16_t_data() { arg1_data(false); }
     void arg1_QUtf8StringView_char16_t() { arg1_impl<QUtf8StringView, char16_t>(); }
+    void arg1_QUtf8StringView_wchar_t_data() { arg1_data(false); }
+    void arg1_QUtf8StringView_wchar_t() { arg1_impl<QUtf8StringView, wchar_t>(); }
 
     void arg1_QAnyStringViewUsingL1_QString_data() { arg1_data(); }
     void arg1_QAnyStringViewUsingL1_QString() { arg1_impl<QAnyStringViewUsingL1, QString>(); }
@@ -730,6 +751,8 @@ private Q_SLOTS:
     void arg1_QAnyStringViewUsingL1_QLatin1Char() { arg1_impl<QAnyStringViewUsingL1, QLatin1Char>(); }
     void arg1_QAnyStringViewUsingL1_char16_t_data() { arg1_data(false); }
     void arg1_QAnyStringViewUsingL1_char16_t() { arg1_impl<QAnyStringViewUsingL1, char16_t>(); }
+    void arg1_QAnyStringViewUsingL1_wchar_t_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingL1_wchar_t() { arg1_impl<QAnyStringViewUsingL1, wchar_t>(); }
 
     void arg1_QAnyStringViewUsingU8_QString_data() { arg1_data(); }
     void arg1_QAnyStringViewUsingU8_QString() { arg1_impl<QAnyStringViewUsingU8, QString>(); }
@@ -765,6 +788,8 @@ private Q_SLOTS:
     void arg1_QAnyStringViewUsingU8_QLatin1Char() { arg1_impl<QAnyStringViewUsingU8, QLatin1Char>(); }
     void arg1_QAnyStringViewUsingU8_char16_t_data() { arg1_data(false); }
     void arg1_QAnyStringViewUsingU8_char16_t() { arg1_impl<QAnyStringViewUsingU8, char16_t>(); }
+    void arg1_QAnyStringViewUsingU8_wchar_t_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU8_wchar_t() { arg1_impl<QAnyStringViewUsingU8, wchar_t>(); }
 
     void arg1_QAnyStringViewUsingU16_QString_data() { arg1_data(); }
     void arg1_QAnyStringViewUsingU16_QString() { arg1_impl<QAnyStringViewUsingU16, QString>(); }
@@ -800,6 +825,8 @@ private Q_SLOTS:
     void arg1_QAnyStringViewUsingU16_QLatin1Char() { arg1_impl<QAnyStringViewUsingU16, QLatin1Char>(); }
     void arg1_QAnyStringViewUsingU16_char16_t_data() { arg1_data(false); }
     void arg1_QAnyStringViewUsingU16_char16_t() { arg1_impl<QAnyStringViewUsingU16, char16_t>(); }
+    void arg1_QAnyStringViewUsingU16_wchar_t_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU16_wchar_t() { arg1_impl<QAnyStringViewUsingU16, wchar_t>(); }
 
 private:
     void split_data(bool rhsHasVariableLength = true);
@@ -1614,6 +1641,7 @@ template <class Str> Str  make(QStringView sf, QLatin1String l1, const QByteArra
 MAKE(QChar)                  { return sv.isEmpty() ? QChar() : sv.at(0); }
 MAKE(char)                   { return sv.isEmpty() ? char() : char(sv.at(0).unicode()); }
 MAKE(char16_t)               { return sv.isEmpty() ? char16_t() : char16_t{sv.at(0).unicode()}; }
+MAKE(wchar_t)                { return make<char16_t>(sv, l1, u8); }
 MAKE(QLatin1Char)            { return l1.isEmpty() ? QLatin1Char('\0') : l1.at(0); }
 MAKE(QString)                { return sv.toString(); }
 MAKE(QStringView)            { return sv; }
@@ -1630,6 +1658,13 @@ MAKE(QUtf8StringView)        { return u8; }
 MAKE(QAnyStringViewUsingL1)  { return {QAnyStringView{l1}}; }
 MAKE(QAnyStringViewUsingU8)  { return {QAnyStringView{u8}}; }
 MAKE(QAnyStringViewUsingU16) { return {QAnyStringView{sv}}; }
+MAKE(std::string)            { return u8.toStdString(); }
+#ifdef QT_BYTEARRAY_CONVERTS_TO_STD_STRING_VIEW
+MAKE(std::string_view)       { return u8; }
+#else
+MAKE(std::string_view)       { return std::string_view(u8.data(), size_t(u8.size())); }
+#endif
+MAKE(std::u16string_view)    { return sv; }
 #undef MAKE
 
 // Some types have ASCII-only case-insensitive compare, but are handled as containing
@@ -1642,7 +1677,7 @@ template <> constexpr bool is_bytearray_like_v<QByteArrayView> = true;
 template <typename LHS, typename RHS>
 constexpr bool has_nothrow_member_compare_v = is_bytearray_like_v<LHS> == is_bytearray_like_v<RHS>;
 
-template <typename LHS, typename RHS>
+template <typename LHS, typename RHS, bool CheckCompareThreeWay>
 void tst_QStringApiSymmetry::compare_impl() const
 {
     QFETCH(QStringView, lhsUnicode);
@@ -1686,11 +1721,14 @@ void tst_QStringApiSymmetry::compare_impl() const
     CHECK(<=);
     CHECK(>=);
 #undef CHECK
-    // Test that all string-like types implemente compareThreeWay() as a friend
-    // function.
-    const Qt::strong_ordering expectedOrdering =
-            Qt::compareThreeWay(caseSensitiveCompareResult, 0);
-    QCOMPARE_EQ(qCompareThreeWay(lhs, rhs), expectedOrdering);
+
+    if constexpr (CheckCompareThreeWay) {
+        // Test that all string-like types implemente compareThreeWay() as a friend
+        // function.
+        const Qt::strong_ordering expectedOrdering =
+                Qt::compareThreeWay(caseSensitiveCompareResult, 0);
+        QCOMPARE_EQ(qCompareThreeWay(lhs, rhs), expectedOrdering);
+    }
 }
 
 template <typename LHS, typename RHS>
@@ -2542,19 +2580,11 @@ void tst_QStringApiSymmetry::replace_split_impl() const
     {
         auto copy = haystack;
         copy.replace(needle, replacement);
-        if constexpr (std::is_same_v<Haystack, QByteArray>) {
-            QEXPECT_FAIL("null ~= null$",  "QTBUG-134079", Continue);
-            QEXPECT_FAIL("null ~= empty$", "QTBUG-134079", Continue);
-        }
         QCOMPARE(copy, result);
     }
     {
         auto copy = detached(haystack);
         copy.replace(needle, replacement);
-        if constexpr (std::is_same_v<Haystack, QByteArray>) {
-            QEXPECT_FAIL("null ~= null$",  "QTBUG-134079", Continue);
-            QEXPECT_FAIL("null ~= empty$", "QTBUG-134079", Continue);
-        }
         QCOMPARE(copy, result);
     }
 }

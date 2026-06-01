@@ -753,10 +753,32 @@ double QJsonValue::toDouble(double defaultValue) const
     Converts the value to a QString and returns it.
 
     If type() is not String, the \a defaultValue will be returned.
+
+    \sa toStringView()
  */
 QString QJsonValue::toString(const QString &defaultValue) const
 {
     return value.toString(defaultValue);
+}
+
+/*!
+    \since 6.10
+
+    Returns the string value stored in this QJsonValue, if it is of the
+    \l{String}{string} type. Otherwise, it returns \a defaultValue. Since
+    QJsonValue stores strings in either US-ASCII, UTF-8 or UTF-16, the returned
+    QAnyStringView may be in any of these encodings.
+
+    This function does not allocate memory. The return value is valid until the
+    next call to a non-const member function on this object. If this object goes
+    out of scope, the return value is valid until the next call to a non-const
+    member function on the parent JSON object or array.
+
+    \sa toString()
+*/
+QAnyStringView QJsonValue::toStringView(QAnyStringView defaultValue) const
+{
+    return value.toStringView(defaultValue);
 }
 
 /*!
@@ -1075,11 +1097,31 @@ QString QJsonValueConstRef::concreteString(QJsonValueConstRef self, const QStrin
     return d->stringAt(index);
 }
 
+QAnyStringView QJsonValueConstRef::concreteStringView(QJsonValueConstRef self, QAnyStringView defaultValue)
+{
+    const QCborContainerPrivate *d = QJsonPrivate::Value::container(self);
+    const qsizetype index = QJsonPrivate::Value::indexHelper(self);
+    if (d->elements.at(index).type != QCborValue::String)
+        return defaultValue;
+    return d->anyStringViewAt(index);
+}
+
 QJsonValue QJsonValueConstRef::concrete(QJsonValueConstRef self) noexcept
 {
     const QCborContainerPrivate *d = QJsonPrivate::Value::container(self);
     qsizetype index = QJsonPrivate::Value::indexHelper(self);
     return QJsonPrivate::Value::fromTrustedCbor(d->valueAt(index));
+}
+
+QAnyStringView QJsonValueConstRef::objectKeyView(QJsonValueConstRef self)
+{
+    Q_ASSERT(self.is_object);
+    const QCborContainerPrivate *d = QJsonPrivate::Value::container(self);
+    const qsizetype index = QJsonPrivate::Value::indexHelper(self);
+
+    Q_ASSERT(d);
+    Q_ASSERT(index < d->elements.size());
+    return d->anyStringViewAt(index - 1);
 }
 
 QString QJsonValueConstRef::objectKey(QJsonValueConstRef self)

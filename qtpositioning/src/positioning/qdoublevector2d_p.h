@@ -204,7 +204,7 @@ constexpr inline const QDoubleVector2D operator/(const QDoubleVector2D &vector, 
 
 constexpr inline bool qFuzzyCompare(const QDoubleVector2D &v1, const QDoubleVector2D &v2)
 {
-    return qFuzzyCompare(v1.xp, v2.xp) && qFuzzyCompare(v1.yp, v2.yp);
+    return QtPrivate::fuzzyCompare(v1.xp, v2.xp) && QtPrivate::fuzzyCompare(v1.yp, v2.yp);
 }
 
 constexpr inline QPointF QDoubleVector2D::toPointF() const

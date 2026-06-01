@@ -9,9 +9,7 @@
 
 #include "base/containers/fixed_flat_set.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "components/commerce/core/commerce_constants.h"
-#include "components/lens/buildflags.h"
 #include "components/nacl/common/buildflags.h"
 #include "device/vr/buildflags/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
@@ -29,8 +27,7 @@ namespace chrome {
 // Note: Add hosts to `ChromeURLHosts()` at the bottom of this file to be listed
 // by chrome://chrome-urls (about:about) and the built-in AutocompleteProvider.
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-
+#if BUILDFLAG(IS_CHROMEOS)
 bool IsSystemWebUIHost(std::string_view host) {
   // Compares host instead of full URL for performance (the strings are
   // shorter).
@@ -67,12 +64,11 @@ bool IsSystemWebUIHost(std::string_view host) {
       kChromeUISetTimeHost,
       kChromeUISmbCredentialsHost,
       kChromeUISmbShareHost,
-      kChromeUIVcTrayTesterHost,
   });
 
   return kHosts.contains(host);
 }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 // Add hosts here to be included in chrome://chrome-urls (about:about).
 // These hosts will also be suggested by BuiltinProvider.
@@ -93,7 +89,7 @@ base::span<const base::cstring_view> ChromeURLHosts() {
 #endif
       kChromeUICrashesHost,
       kChromeUICreditsHost,
-#if BUILDFLAG(IS_CHROMEOS_ASH) && !defined(OFFICIAL_BUILD)
+#if BUILDFLAG(IS_CHROMEOS) && !defined(OFFICIAL_BUILD)
       kChromeUIDeviceEmulatorHost,
 #endif
       kChromeUIDeviceLogHost,
@@ -190,11 +186,10 @@ base::span<const base::cstring_view> ChromeURLHosts() {
 #endif
 #endif
 #if BUILDFLAG(IS_ANDROID)
-      kChromeUIOfflineInternalsHost,
       kChromeUISnippetsInternalsHost,
       kChromeUIWebApksHost,
 #endif
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
       kChromeUIBorealisCreditsHost,
       kChromeUICertificateManagerHost,
       kChromeUICrostiniCreditsHost,
@@ -212,11 +207,8 @@ base::span<const base::cstring_view> ChromeURLHosts() {
       kChromeUIAssistantOptInHost,
 #endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS_ASH)
-      kChromeUIConnectorsInternalsHost,
-#endif
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
+      kChromeUIConnectorsInternalsHost,
       kChromeUIDiscardsHost,
 #endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -253,26 +245,6 @@ base::span<const base::cstring_view> ChromeURLHosts() {
   return base::span(kChromeURLHosts);
 }
 
-// Add chrome://internals/* subpages here to be included in chrome://chrome-urls
-// (about:about).
-base::span<const base::cstring_view> ChromeInternalsURLPaths() {
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_SESSION_SERVICE)
-  static constexpr auto kChromeInternalsURLPaths =
-      std::to_array<base::cstring_view>({
-#if BUILDFLAG(IS_ANDROID)
-          kChromeUIInternalsQueryTilesPath,
-#endif  // BUILDFLAG(IS_ANDROID)
-#if BUILDFLAG(ENABLE_SESSION_SERVICE)
-          kChromeUISessionServiceInternalsPath,
-#endif
-      });
-
-  return base::span(kChromeInternalsURLPaths);
-#else
-  return {};
-#endif
-}
-
 base::span<const base::cstring_view> ChromeDebugURLs() {
   // TODO(crbug.com/40253037): make this list comprehensive
   static constexpr auto kChromeDebugURLs = std::to_array<base::cstring_view>(
@@ -280,12 +252,10 @@ base::span<const base::cstring_view> ChromeDebugURLs() {
        blink::kChromeUIBrowserCrashURL,
        blink::kChromeUIBrowserDcheckURL,
        blink::kChromeUICrashURL,
-#if BUILDFLAG(ENABLE_RUST_CRASH)
        blink::kChromeUICrashRustURL,
 #if defined(ADDRESS_SANITIZER)
        blink::kChromeUICrashRustOverflowURL,
 #endif
-#endif  // BUILDFLAG(ENABLE_RUST_CRASH)
        blink::kChromeUIDumpURL,
        blink::kChromeUIKillURL,
        blink::kChromeUIHangURL,
@@ -304,10 +274,9 @@ base::span<const base::cstring_view> ChromeDebugURLs() {
 #if BUILDFLAG(IS_ANDROID)
        blink::kChromeUIGpuJavaCrashURL,
        kChromeUIJavaCrashURL,
-#endif
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#else
        kChromeUIWebUIJsErrorURL,
-#endif
+#endif  // BUILDFLAG(IS_ANDROID)
        kChromeUIQuitURL,
        kChromeUIRestartURL});
 

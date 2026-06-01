@@ -103,6 +103,12 @@ class QCborContainerPrivate : public QSharedData
     ~QCborContainerPrivate();
 
 public:
+    QCborContainerPrivate() = default;
+    QCborContainerPrivate(const QCborContainerPrivate &) = default;
+    QCborContainerPrivate(QCborContainerPrivate &&) = default;
+    QCborContainerPrivate &operator=(const QCborContainerPrivate &) = delete;
+    QCborContainerPrivate &operator=(QCborContainerPrivate &&) = delete;
+
     enum ContainerDisposition { CopyContainer, MoveContainer };
 
     QByteArray::size_type usedData = 0;
@@ -281,6 +287,18 @@ public:
         if (e.flags & QtCbor::Element::StringIsAscii)
             return data->asLatin1();
         return data->toUtf8String();
+    }
+    QAnyStringView anyStringViewAt(qsizetype idx) const
+    {
+        const auto &e = elements.at(idx);
+        const auto data = byteData(e);
+        if (!data)
+            return nullptr;
+        if (e.flags & QtCbor::Element::StringIsUtf16)
+            return data->asStringView();
+        if (e.flags & QtCbor::Element::StringIsAscii)
+            return data->asLatin1();
+        return data->asUtf8StringView();
     }
 
     static void resetValue(QCborValue &v)

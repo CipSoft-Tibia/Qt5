@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //
 //  W A R N I N G
@@ -70,7 +71,7 @@ private:
     // BrowserContextKeyedServiceFactory:
     content::BrowserContext *
     GetBrowserContextToUse(content::BrowserContext *context) const override;
-    KeyedService *BuildServiceInstanceFor(content::BrowserContext *context) const override;
+    std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(content::BrowserContext *context) const override;
 };
 
 class FaviconClientQt : public favicon::FaviconClient
@@ -105,7 +106,7 @@ private:
     // BrowserContextKeyedServiceFactory:
     content::BrowserContext *
     GetBrowserContextToUse(content::BrowserContext *context) const override;
-    KeyedService *BuildServiceInstanceFor(content::BrowserContext *context) const override;
+    std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(content::BrowserContext *context) const override;
 };
 
 } // namespace QtWebEngineCore

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmllocale_p.h"
 #include <private/qqmlcontext_p.h>
@@ -935,6 +936,16 @@ ReturnedValue QQmlLocale::method_localeCompare(const QV4::FunctionObject *b, con
     specified \a format. If \c format is omitted, \c Locale.LongFormat is used.
 
     \sa QLocale::toString(QDate, QLocale::FormatType)
+*/
+
+/*!
+    \qmlmethod string QtQml::Locale::createSeparatedList(list<string> list)
+    \since 6.10
+
+    Returns a string that represents a join of a given \a list of strings with a
+    separator defined by the locale.
+
+    \sa QLocale::createSeparatedList()
 */
 
 /*!

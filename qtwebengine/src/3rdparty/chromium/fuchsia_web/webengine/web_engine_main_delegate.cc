@@ -35,7 +35,7 @@ void InitializeResources() {
   constexpr char kCommonResourcesPakPath[] = "web_engine_common_resources.pak";
 
   constexpr char kWebUiGeneratedResourcesPakPath[] =
-      "ui/resources/webui_resources.pak";
+      "ui/webui/resources/webui_resources.pak";
 
   base::FilePath asset_root;
   bool result = base::PathService::Get(base::DIR_ASSETS, &asset_root);
@@ -105,7 +105,7 @@ std::optional<int> WebEngineMainDelegate::PreBrowserMain() {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kGoogleApiKey)) {
 #if BUILDFLAG(SUPPORT_EXTERNAL_GOOGLE_API_KEY)
-    google_apis::SetAPIKey(
+    google_apis::InitializeAndOverrideAPIKey(
         command_line->GetSwitchValueASCII(switches::kGoogleApiKey));
 #else
     LOG(WARNING) << "Ignored " << switches::kGoogleApiKey;

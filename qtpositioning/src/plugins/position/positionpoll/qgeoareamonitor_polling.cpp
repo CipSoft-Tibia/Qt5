@@ -17,8 +17,9 @@
 
 #define UPDATE_INTERVAL_5S  5000
 
-typedef QHash<QString, QGeoAreaMonitorInfo> MonitorTable;
+QT_BEGIN_NAMESPACE
 
+typedef QHash<QString, QGeoAreaMonitorInfo> MonitorTable;
 
 static QMetaMethod areaEnteredSignal()
 {
@@ -472,6 +473,8 @@ void QGeoAreaMonitorPolling::processAreaEvent(const QGeoAreaMonitorInfo &minfo,
     else
         emit areaExited(minfo, pinfo);
 }
+
+QT_END_NAMESPACE
 
 #include "qgeoareamonitor_polling.moc"
 #include "moc_qgeoareamonitor_polling.cpp"

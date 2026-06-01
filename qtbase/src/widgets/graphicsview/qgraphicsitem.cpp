@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QGraphicsItem
@@ -15,7 +16,7 @@
     painting implementation and item interaction through its event handlers.
     QGraphicsItem is part of the \l{Graphics View Framework}
 
-    \image graphicsview-items.png
+    \image graphicsview-items.png {Various shapes and graphics on a grid}
 
     For convenience, Qt provides a set of standard graphics items for the most
     common shapes. These are:
@@ -95,6 +96,7 @@
     transformation to all children.
 
     \image graphicsview-parentchild.png
+           {Several coordinate system transformations}
 
     \section1 Transformations
 
@@ -163,6 +165,7 @@
     order will be A, then B, then C.
 
     \image graphicsview-zorder.png
+           {Robot with numbered nodes and limbs}
 
     This example shows the stacking order of all limbs of the robot from the
     \l{graphicsview/dragdroprobot}{Drag and Drop Robot} example. The torso is
@@ -8075,6 +8078,8 @@ QPainterPath QAbstractGraphicsShapeItem::opaqueArea() const
     returns the current path.
 
     \image graphicsview-pathitem.png
+           {Path drawn near the origin}
+
 
     QGraphicsPathItem uses the path to provide a reasonable
     implementation of boundingRect(), shape(), and contains(). The
@@ -8268,6 +8273,7 @@ QVariant QGraphicsPathItem::extension(const QVariant &variant) const
     returns the current rectangle.
 
     \image graphicsview-rectitem.png
+           {Rectangle drawn near the origin}
 
     QGraphicsRectItem uses the rectangle and the pen width to provide
     a reasonable implementation of boundingRect(), shape(), and
@@ -8500,7 +8506,9 @@ QVariant QGraphicsRectItem::extension(const QVariant &variant) const
     \table
         \row
             \li \inlineimage graphicsview-ellipseitem.png
+                             {Complete ellipse shape}
             \li \inlineimage graphicsview-ellipseitem-pie.png
+                             {Ellipse shape with a start and span angle}
     \endtable
 
     To set the item's ellipse, pass a QRectF to QGraphicsEllipseItem's
@@ -8800,6 +8808,7 @@ QVariant QGraphicsEllipseItem::extension(const QVariant &variant) const
     function. The polygon() function returns the current polygon.
 
     \image graphicsview-polygonitem.png
+           {Polygon drawn near the origin}
 
     QGraphicsPolygonItem uses the polygon and the pen width to provide
     a reasonable implementation of boundingRect(), shape(), and
@@ -9024,6 +9033,7 @@ QVariant QGraphicsPolygonItem::extension(const QVariant &variant) const
     width of 0, but you can change this by calling setPen().
 
     \image graphicsview-lineitem.png
+           {Line segment drawn near the origin}
 
     QGraphicsLineItem uses the line and the pen width to provide a reasonable
     implementation of boundingRect(), shape(), and contains(). The paint()
@@ -9275,6 +9285,7 @@ QVariant QGraphicsLineItem::extension(const QVariant &variant) const
     reasonable implementation of boundingRect(), shape(), and contains().
 
     \image graphicsview-pixmapitem.png
+           {Pixmap of the Qt logo drawn near the origin}
 
     The pixmap is drawn at the item's (0, 0) coordinate, as returned by
     offset(). You can change the drawing offset by calling setOffset().
@@ -9313,7 +9324,7 @@ QVariant QGraphicsLineItem::extension(const QVariant &variant) const
     QPixmap::createHeuristicMask().  The performance and memory consumption
     is similar to MaskShape.
 */
-extern QPainterPath qt_regionToPath(const QRegion &region);
+Q_GUI_EXPORT extern QPainterPath qt_regionToPath(const QRegion &region);
 
 class QGraphicsPixmapItemPrivate : public QGraphicsItemPrivate
 {
@@ -9644,6 +9655,7 @@ QVariant QGraphicsPixmapItem::extension(const QVariant &variant) const
     Otherwise, you can call adjustSize() after setting the item's text.
 
     \image graphicsview-textitem.png
+           {Paragraph drawn near the origin}
 
     \note QGraphicsTextItem accepts \l{QGraphicsItem::acceptHoverEvents()}{hover events}
           by default. You can change this with \l{QGraphicsItem::}{setAcceptHoverEvents()}.
@@ -10557,6 +10569,7 @@ void QGraphicsSimpleTextItemPrivate::updateBoundingRect()
     QGraphicsTextItem, which provides full text control capabilities.
 
     \image graphicsview-simpletextitem.png
+           {"Qt" text with custom fill and outline drawn near the origin}
 
     \sa QGraphicsTextItem, QGraphicsPathItem, QGraphicsRectItem,
     QGraphicsEllipseItem, QGraphicsPixmapItem, QGraphicsPolygonItem,
@@ -11165,10 +11178,8 @@ QDebug operator<<(QDebug debug, const QGraphicsItem *item)
     QDebugStateSaver saver(debug);
     debug.nospace();
 
-    if (!item) {
-        debug << "QGraphicsItem(0)";
-        return debug;
-    }
+    if (!item)
+        return debug << "QGraphicsItem(0x0)";
 
     if (const QGraphicsObject *o = item->toGraphicsObject())
         debug << o->metaObject()->className();
@@ -11183,7 +11194,7 @@ QDebug operator<<(QDebug debug, const QGraphicsItem *item)
                 debug << ", name=" << w->objectName();
             debug << ')';
         } else {
-            debug << "QWidget(0)";
+            debug << "QWidget(0x0)";
         }
     }
     formatGraphicsItemHelper(debug, item);
@@ -11196,10 +11207,8 @@ QDebug operator<<(QDebug debug, const QGraphicsObject *item)
     QDebugStateSaver saver(debug);
     debug.nospace();
 
-    if (!item) {
-        debug << "QGraphicsObject(0)";
-        return debug;
-    }
+    if (!item)
+        return debug << "QGraphicsObject(0x0)";
 
     debug << item->metaObject()->className() << '(' << static_cast<const void *>(item);
     if (!item->objectName().isEmpty())

@@ -5,6 +5,7 @@
 #include "content/browser/renderer_host/render_frame_host_delegate.h"
 
 #include <stddef.h>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,6 +26,12 @@
 
 namespace content {
 
+blink::mojom::PartitionedPopinParamsPtr
+PartitionedPopinOpenerProperties::AsMojom() const {
+  return blink::mojom::PartitionedPopinParams::New(top_frame_origin,
+                                                   site_for_cookies);
+}
+
 bool RenderFrameHostDelegate::OnMessageReceived(
     RenderFrameHostImpl* render_frame_host,
     const IPC::Message& message) {
@@ -42,6 +49,7 @@ bool RenderFrameHostDelegate::DidAddMessageToConsole(
 }
 
 void RenderFrameHostDelegate::RequestMediaAccessPermission(
+    RenderFrameHostImpl* render_frame_host,
     const MediaStreamRequest& request,
     MediaResponseCallback callback) {
   LOG(ERROR) << "RenderFrameHostDelegate::RequestMediaAccessPermission: "
@@ -49,6 +57,15 @@ void RenderFrameHostDelegate::RequestMediaAccessPermission(
   std::move(callback).Run(blink::mojom::StreamDevicesSet(),
                           blink::mojom::MediaStreamRequestResult::NOT_SUPPORTED,
                           std::unique_ptr<MediaStreamUI>());
+}
+
+void RenderFrameHostDelegate::ProcessSelectAudioOutput(
+    const SelectAudioOutputRequest& request,
+    SelectAudioOutputCallback callback) {
+  LOG(ERROR) << "RenderFrameHostDelegate::ProcessSelectAudioOutput: "
+             << "Not supported.";
+  std::move(callback).Run(
+      base::unexpected(content::SelectAudioOutputError::kNotSupported));
 }
 
 bool RenderFrameHostDelegate::CheckMediaAccessPermission(
@@ -86,11 +103,6 @@ void RenderFrameHostDelegate::FullscreenStateChanged(
     blink::mojom::FullscreenOptionsPtr options) {}
 
 bool RenderFrameHostDelegate::CanUseWindowingControls(RenderFrameHostImpl*) {
-  return false;
-}
-
-bool RenderFrameHostDelegate::ShouldRouteMessageEvent(
-    RenderFrameHostImpl* target_rfh) const {
   return false;
 }
 
@@ -203,11 +215,12 @@ bool RenderFrameHostDelegate::IsPartitionedPopin() const {
   return false;
 }
 
-RenderFrameHostImpl* RenderFrameHostDelegate::PartitionedPopinOpener() const {
-  return nullptr;
+const PartitionedPopinOpenerProperties&
+RenderFrameHostDelegate::GetPartitionedPopinOpenerProperties() const {
+  NOTREACHED();
 }
 
-WebContents* RenderFrameHostDelegate::OpenedPartitionedPopin() const {
+WebContents* RenderFrameHostDelegate::GetOpenedPartitionedPopin() const {
   return nullptr;
 }
 

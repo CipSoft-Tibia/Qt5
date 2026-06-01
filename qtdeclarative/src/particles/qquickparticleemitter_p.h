@@ -22,8 +22,10 @@
 #include "qquickdirection_p.h"
 
 #include <QList>
-#include <QPair>
 #include <QPointF>
+
+#include <utility>
+
 QT_BEGIN_NAMESPACE
 
 class Q_QUICKPARTICLES_EXPORT QQuickParticleEmitter : public QQuickItem
@@ -309,7 +311,7 @@ protected:
        bool m_overwrite;
 
        int m_pulseLeft;
-       QList<QPair<int, QPointF > > m_burstQueue;
+       QList<std::pair<int, QPointF > > m_burstQueue;
        int m_maxParticleCount;
 
        //Used in default implementation, but might be useful

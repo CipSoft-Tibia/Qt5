@@ -28,11 +28,6 @@ class SingleThreadTaskRunner;
 namespace gpu {
 
 class GPU_EXPORT Scheduler {
-  // A callback to be used for reporting when the task is ready to run (when the
-  // dependencies have been solved).
-  using ReportingCallback =
-      base::OnceCallback<void(base::TimeTicks task_ready)>;
-
  public:
   struct GPU_EXPORT Task {
     // Use the signature with TaskCallback if the task needs to determine when
@@ -86,7 +81,6 @@ class GPU_EXPORT Scheduler {
    private:
     const raw_ptr<Scheduler> scheduler_;
     const SequenceId sequence_id_;
-    const SchedulingPriority priority_;
   };
 
   explicit Scheduler(SyncPointManager* sync_point_manager);
@@ -105,18 +99,23 @@ class GPU_EXPORT Scheduler {
       scoped_refptr<base::SingleThreadTaskRunner> task_runner)
       LOCKS_EXCLUDED(lock());
 
-  // Should be only used for tests.
-  SequenceId CreateSequenceForTesting(SchedulingPriority priority)
-      LOCKS_EXCLUDED(lock());
+  // Similar to the method above, but also creates a SyncPointClientState
+  // associated with the sequence. The SyncPointClientState object is destroyed
+  // when the sequence is destroyed.
+  SequenceId CreateSequence(
+      SchedulingPriority priority,
+      scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+      CommandBufferNamespace namespace_id,
+      CommandBufferId command_buffer_id) LOCKS_EXCLUDED(lock());
 
   // Destroy the sequence and run any scheduled tasks immediately. Sequence
   // could be destroyed outside of GPU thread.
   void DestroySequence(SequenceId sequence_id) LOCKS_EXCLUDED(lock());
 
-  void CreateSyncPointClientState(SequenceId sequence_id,
-                                  CommandBufferNamespace namespace_id,
-                                  CommandBufferId command_buffer_id)
-      LOCKS_EXCLUDED(lock());
+  [[nodiscard]] ScopedSyncPointClientState CreateSyncPointClientState(
+      SequenceId sequence_id,
+      CommandBufferNamespace namespace_id,
+      CommandBufferId command_buffer_id) LOCKS_EXCLUDED(lock());
 
   // Enables the sequence so that its tasks may be scheduled.
   void EnableSequence(SequenceId sequence_id) LOCKS_EXCLUDED(lock());
@@ -184,9 +183,12 @@ class GPU_EXPORT Scheduler {
   // lock. Please see locking annotation of individual methods.
   class GPU_EXPORT Sequence : public TaskGraph::Sequence {
    public:
-    Sequence(Scheduler* scheduler,
-             scoped_refptr<base::SingleThreadTaskRunner> task_runner,
-             SchedulingPriority priority);
+    Sequence(
+        Scheduler* scheduler,
+        scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+        SchedulingPriority priority,
+        CommandBufferNamespace namespace_id = CommandBufferNamespace::INVALID,
+        CommandBufferId command_buffer_id = {});
 
     Sequence(const Sequence&) = delete;
     Sequence& operator=(const Sequence&) = delete;
@@ -238,7 +240,7 @@ class GPU_EXPORT Scheduler {
     uint32_t AddTask(base::OnceClosure task_closure,
                      std::vector<SyncToken> wait_fences,
                      const SyncToken& release,
-                     TaskGraph::ReportingCallback report_callback) override
+                     ReportingCallback report_callback) override
         EXCLUSIVE_LOCKS_REQUIRED(lock());
 
     // Returns the next order number and closure. Sets running state to RUNNING.

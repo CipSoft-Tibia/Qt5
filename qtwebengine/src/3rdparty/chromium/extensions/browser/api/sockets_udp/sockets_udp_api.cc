@@ -234,10 +234,13 @@ ExtensionFunction::ResponseAction SocketsUdpSendFunction::Work() {
   params_ = sockets_udp::Send::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params_);
   io_buffer_size_ = params_->data.size();
+  if (!TakeWriteQuota(io_buffer_size_)) {
+    return RespondNow(Error(kExceedWriteQuotaError));
+  }
 
   io_buffer_ =
       base::MakeRefCounted<net::IOBufferWithSize>(params_->data.size());
-  base::ranges::copy(params_->data, io_buffer_->data());
+  std::ranges::copy(params_->data, io_buffer_->data());
 
   ResumableUDPSocket* socket = GetUdpSocket(params_->socket_id);
   if (!socket) {
@@ -289,6 +292,8 @@ void SocketsUdpSendFunction::StartSendTo() {
 }
 
 void SocketsUdpSendFunction::OnCompleted(int net_result) {
+  ReturnWriteQuota();
+
   if (net_result >= net::OK) {
     SetSendResult(net::OK, net_result);
   } else {

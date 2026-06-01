@@ -6,8 +6,8 @@
 #define QHTTPSERVERREQUEST_P_H
 
 #include <QtHttpServer/qhttpserverrequest.h>
+
 #include <QtNetwork/private/qhttpheaderparser_p.h>
-#include <QtCore/private/qbytedata_p.h>
 
 //
 //  W A R N I N G
@@ -23,8 +23,10 @@ QT_BEGIN_NAMESPACE
 
 class QHttp2Stream;
 
-class QHttpServerRequestPrivate
+class QHttpServerRequestPrivate : public QSharedData
 {
+    friend class QHttpServerParser;
+
 public:
     QHttpServerRequestPrivate(const QHostAddress &remoteAddress, quint16 remotePort,
                               const QHostAddress &localAddress, quint16 localPort);
@@ -33,40 +35,14 @@ public:
                               const QHostAddress &localAddress, quint16 localPort,
                               const QSslConfiguration &sslConfiguration);
 #endif
-
-    quint16 port = 0;
-
-    enum class State {
-        NothingDone,
-        ReadingRequestLine,
-        ReadingHeader,
-        ExpectContinue,
-        ReadingData,
-        AllDone,
-    } state = State::NothingDone;
+    QHttpServerRequestPrivate() = default;
+    QHttpServerRequestPrivate(const QHttpServerRequestPrivate &other) = default;
 
     QUrl url;
     QHttpServerRequest::Method method;
-    QHttpHeaderParser parser;
-
-    bool parseRequestLine(QByteArrayView line);
-    qsizetype readRequestLine(QIODevice *socket);
-    qsizetype readHeader(QIODevice *socket);
-    qsizetype sendContinue(QIODevice *socket);
-    qsizetype readBodyFast(QIODevice *socket);
-    qsizetype readRequestBodyRaw(QIODevice *socket, qsizetype size);
-    qsizetype readRequestBodyChunked(QIODevice *socket);
-    qsizetype getChunkSize(QIODevice *socket, qsizetype *chunkSize);
-
-    bool parse(QIODevice *socket);
-#if QT_CONFIG(http)
-    bool parse(QHttp2Stream *socket);
-#endif
-    void clear();
+    QHttpHeaders headers;
 
     qint64 contentLength() const;
-    QByteArray headerField(const QByteArray &name) const
-    { return parser.combinedHeaderValue(name); }
 
     QHostAddress remoteAddress;
     quint16 remotePort;
@@ -77,17 +53,6 @@ public:
 #if QT_CONFIG(ssl)
     QSslConfiguration sslConfiguration;
 #endif
-    bool handling{false};
-    qsizetype bodyLength;
-    qsizetype contentRead;
-    bool chunkedTransferEncoding;
-    bool lastChunkRead;
-    qsizetype currentChunkRead;
-    qsizetype currentChunkSize;
-    bool upgrade;
-
-    QByteArray fragment;
-    QByteDataBuffer bodyBuffer;
     QByteArray body;
 };
 

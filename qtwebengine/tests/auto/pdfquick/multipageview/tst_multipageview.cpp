@@ -382,8 +382,8 @@ void tst_MultiPageView::pinchDragPinch()
         const int movement = 100;
         QCOMPARE_GT(movement, threshold);
         const qreal initialScale = paper->scale();
-        QPoint p0(100, 200);
-        QPoint p1(200, 200);
+        QPoint p0(100, 250);
+        QPoint p1(200, 250);
         QTest::QTouchEventSequence seq = QTest::touchEvent(&window, touchscreen.get());
         seq.press(0, p0, &window).commit();
         seq.stationary(0).press(1, p1, &window).commit();

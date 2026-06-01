@@ -2,15 +2,19 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/cronet/config.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//testing/test.gni")
+import("//tools/grit/grit_rule.gni")
 
 if (is_android) {
   import("//build/config/android/rules.gni")
   import("//third_party/jni_zero/jni_zero.gni")
+}
+
+if (is_chromeos) {
+  import("//third_party/protobuf/proto_library.gni")
 }
 
 # Dependency for histogram manager users: cronet and ios/webview
@@ -209,6 +213,8 @@ if (!is_cronet_build || is_ios) {
       "reporting_service.h",
       "sampling_metrics_provider.cc",
       "sampling_metrics_provider.h",
+      "server_urls.cc",
+      "server_urls.h",
       "stability_metrics_helper.cc",
       "stability_metrics_helper.h",
       "stability_metrics_provider.cc",
@@ -220,16 +226,9 @@ if (!is_cronet_build || is_ios) {
       "unsent_log_store_metrics.h",
       "unsent_log_store_metrics_impl.cc",
       "unsent_log_store_metrics_impl.h",
-      "url_constants.h",
       "version_utils.cc",
       "version_utils.h",
     ]
-
-    if (is_chrome_branded) {
-      sources += [ "internal/url_constants.cc" ]
-    } else {
-      sources += [ "url_constants.cc" ]
-    }
 
     public_deps = [
       ":metrics_component",
@@ -241,13 +240,13 @@ if (!is_cronet_build || is_ios) {
 
     deps = [
       ":library_support",
+      ":server_urls_grd",
       "//base",
       "//base:base_static",
       "//base:i18n",
       "//build:branding_buildflags",
-      "//build:chromeos_buildflags",
       "//components/flags_ui:switches",
-      "//components/metrics/dwa",
+      "//components/metrics/public/mojom:call_stack_mojo_bindings",
       "//components/metrics/public/mojom:histogram_fetcher_mojo_bindings",
       "//components/network_time",
       "//components/prefs",
@@ -256,7 +255,9 @@ if (!is_cronet_build || is_ios) {
       "//components/version_info:version_info",
       "//crypto",
       "//extensions/buildflags",
+      "//mojo/public/cpp/base:protobuf_support",
       "//third_party/icu",
+      "//ui/base",
       "//url",
     ]
 
@@ -286,6 +287,15 @@ if (!is_cronet_build || is_ios) {
         "psi_memory_parser.h",
         "psi_memory_parser_linux.cc",
       ]
+    }
+
+    if (is_chromeos) {
+      sources += [
+        "call_stacks/stack_sampling_recorder.cc",
+        "call_stacks/stack_sampling_recorder.h",
+      ]
+
+      deps += [ ":system_stack_sampled_metrics_status_proto" ]
     }
 
     if (is_mac) {
@@ -374,6 +384,8 @@ if (!is_cronet_build) {
         "content/accessibility_metrics_provider.h",
         "content/content_stability_metrics_provider.cc",
         "content/content_stability_metrics_provider.h",
+        "content/dwa_web_contents_observer.cc",
+        "content/dwa_web_contents_observer.h",
         "content/extensions_helper.h",
         "content/gpu_metrics_provider.cc",
         "content/gpu_metrics_provider.h",
@@ -387,6 +399,7 @@ if (!is_cronet_build) {
       public_deps = [ ":metrics" ]
       deps = [
         "//base",
+        "//components/metrics/dwa",
         "//content/public/browser",
         "//extensions/buildflags",
         "//gpu/config",
@@ -412,7 +425,6 @@ if (!is_cronet_build) {
 
     deps = [
       "//base",
-      "//build:chromeos_buildflags",
       "//components/encrypted_messages:encrypted_message_proto",
       "//components/encrypted_messages:encrypted_messages",
       "//components/variations",
@@ -469,6 +481,7 @@ if (!is_cronet_build) {
 
     deps = [
       "//base:base",
+      "//components/sampling_profiler:profile_params",
       "//third_party/metrics_proto",
     ]
   }
@@ -489,6 +502,8 @@ if (!is_cronet_build) {
     deps = [
       "//base",
       "//components/metrics/public/mojom:call_stack_mojo_bindings",
+      "//components/sampling_profiler:profile_params",
+      "//mojo/public/cpp/base:protobuf_support",
       "//third_party/metrics_proto",
     ]
 
@@ -564,6 +579,7 @@ if (!is_cronet_build) {
       "persistent_synthetic_trial_observer_unittest.cc",
       "persistent_system_profile_unittest.cc",
       "reporting_service_unittest.cc",
+      "server_urls_unittest.cc",
       "single_sample_metrics_factory_impl_unittest.cc",
       "stability_metrics_helper_unittest.cc",
       "stability_metrics_provider_unittest.cc",
@@ -585,17 +601,20 @@ if (!is_cronet_build) {
       "//base",
       "//base:base_stack_sampling_profiler_test_util",
       "//base/test:test_support",
-      "//build:chromeos_buildflags",
+      "//build:branding_buildflags",
       "//components/component_updater:test_support",
       "//components/encrypted_messages:encrypted_message_proto",
+      "//components/metrics/dwa",
       "//components/metrics/public/mojom:call_stack_mojo_bindings",
       "//components/network_time:network_time_test_support",
       "//components/prefs:test_support",
+      "//components/sampling_profiler:profile_params",
       "//components/sync:test_support",
       "//components/sync/base",
       "//components/variations",
       "//components/variations:test_support",
       "//extensions/buildflags",
+      "//mojo/public/cpp/base:protobuf_support",
       "//mojo/public/cpp/bindings",
       "//net:test_support",
       "//services/network:test_support",
@@ -625,8 +644,11 @@ if (!is_cronet_build) {
       deps += [ ":serialization" ]
     }
 
-    if (is_chromeos_ash) {
+    if (is_chromeos) {
+      sources += [ "call_stacks/stack_sampling_recorder_unittest.cc" ]
+
       deps += [
+        ":system_stack_sampled_metrics_status_proto",
         "//chromeos/ash/components/dbus:test_support",
         "//chromeos/ash/components/network:test_support",
       ]
@@ -655,6 +677,7 @@ if (!is_cronet_build) {
     } else {
       sources += [
         "content/content_stability_metrics_provider_unittest.cc",
+        "content/dwa_web_contents_observer_unittest.cc",
         "content/subprocess_metrics_provider_unittest.cc",
       ]
       deps += [ "//extensions/buildflags" ]
@@ -674,4 +697,16 @@ if (!is_cronet_build) {
       "//components/test:test_support",
     ]
   }
+}
+
+grit("server_urls_grd") {
+  if (is_chrome_branded) {
+    source = "internal/server_urls.grd"
+  } else {
+    source = "server_urls.grd"
+  }
+  outputs = [
+    "grit/metrics_server_urls.h",
+    "metrics_server_urls.pak",
+  ]
 }

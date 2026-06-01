@@ -851,10 +851,10 @@ void tst_Gestures::graphicsItemGesture()
 
     CustomEvent event;
     // gesture without hotspot should not be delivered to items in the view
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
     sendCustomGesture(&event, item, &scene);
 
     QTRY_COMPARE(item->customEventsReceived, TotalCustomEventsCount);

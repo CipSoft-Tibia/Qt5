@@ -24,7 +24,7 @@ public:
     QPieSeriesPrivate();
     ~QPieSeriesPrivate() = default;
 
-    void updateData();
+    void updateData(bool clearHidden = false);
     void updateLabels();
     void setSizes(qreal innerSize, qreal outerSize);
 
@@ -37,6 +37,8 @@ private:
     qreal m_pieEndAngle;
     qreal m_sum;
     qreal m_holeRelativeSize;
+    qreal m_angleSpanVisibleLimit;
+    QPieSeries::LabelVisibility m_angleSpanVisibleMode;
     Q_DECLARE_PUBLIC(QPieSeries)
 };
 

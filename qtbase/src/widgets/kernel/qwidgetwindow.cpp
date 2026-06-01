@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "private/qwindow_p.h"
 #include "qwidgetwindow_p.h"
@@ -590,6 +591,10 @@ void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
             }
         }
 
+        // Event delivery above might have destroyed this object. See QTBUG-138419.
+        if (self.isNull())
+            return;
+
         if (QApplication::activePopupWidget() != activePopupWidget
             && QApplicationPrivate::replayMousePress
             && QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::ReplayMousePressOutsidePopup).toBool()) {
@@ -950,7 +955,7 @@ void QWidgetWindow::handleWheelEvent(QWheelEvent *event)
 
 #if QT_CONFIG(draganddrop)
 
-static QWidget *findDnDTarget(QWidget *parent, const QPoint &pos)
+static QWidget *findDnDTarget(QWidget *parent, const QPointF &pos)
 {
     // Find a target widget under mouse that accepts drops (QTBUG-22987).
     QWidget *widget = parent->childAt(pos);
@@ -976,7 +981,7 @@ void QWidgetWindow::handleDragEnterEvent(QDragMoveEvent *event, QWidget *widget)
 {
     Q_ASSERT(m_dragTarget == nullptr);
     if (!widget)
-        widget = findDnDTarget(m_widget, event->position().toPoint());
+        widget = findDnDTarget(m_widget, event->position());
     if (!widget) {
         event->ignore();
         return;
@@ -993,7 +998,7 @@ void QWidgetWindow::handleDragEnterEvent(QDragMoveEvent *event, QWidget *widget)
 
 void QWidgetWindow::handleDragMoveEvent(QDragMoveEvent *event)
 {
-    QPointer<QWidget> widget = findDnDTarget(m_widget, event->position().toPoint());
+    QPointer<QWidget> widget = findDnDTarget(m_widget, event->position());
     if (!widget) {
         event->ignore();
         if (m_dragTarget) { // Send DragLeave to previous

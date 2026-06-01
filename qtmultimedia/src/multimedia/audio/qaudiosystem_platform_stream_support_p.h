@@ -123,6 +123,8 @@ public:
     using QPlatformAudioIOStream::ShutdownPolicy;
     using AudioCallback = QPlatformAudioSink::AudioCallback;
 
+    using QPlatformAudioIOStream::requestStop;
+
 protected:
     QPlatformAudioSinkStream(QAudioDevice, const QAudioFormat &, std::optional<int> ringbufferSize,
                              std::optional<int32_t> hardwareBufferFrames, float volume);
@@ -168,10 +170,9 @@ protected:
     {
         if (parent) {
             Q_ASSERT(thread()->isCurrentThread());
+            parent->m_stream = {};
             parent->setError(QAudio::IOError);
             parent->updateStreamState(QtAudio::State::StoppedState);
-
-            parent->m_stream = {};
         }
     }
 
@@ -239,6 +240,8 @@ public:
     using QPlatformAudioIOStream::ShutdownPolicy;
     using AudioCallback = QPlatformAudioSource::AudioCallback;
 
+    using QPlatformAudioIOStream::requestStop;
+
 protected:
     QPlatformAudioSourceStream(QAudioDevice, const QAudioFormat &,
                                std::optional<int> ringbufferSize,
@@ -272,8 +275,6 @@ protected:
     {
         if (parent) {
             Q_ASSERT(thread()->isCurrentThread());
-            parent->setError(QAudio::IOError);
-            parent->updateStreamState(QtAudio::State::StoppedState);
 
             if (deviceIsRingbufferReader())
                 // we own the qiodevice, so let's keep it alive to allow users to drain the
@@ -281,6 +282,9 @@ protected:
                 parent->m_retiredStream = std::move(parent->m_stream);
             else
                 parent->m_stream = {};
+
+            parent->setError(QAudio::IOError);
+            parent->updateStreamState(QtAudio::State::StoppedState);
         }
     }
 

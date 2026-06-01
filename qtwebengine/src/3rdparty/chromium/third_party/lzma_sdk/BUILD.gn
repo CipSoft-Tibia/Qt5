@@ -5,7 +5,7 @@
 import("//build/config/arm.gni")
 import("//build/config/compiler/compiler.gni")
 
-# TODO(richard.townsend@arm.com): Optimizations temporarily disabled for
+# TODO(ritownsend@google.com): Optimizations temporarily disabled for
 # Windows on Arm MSVC builds, see http://crbug.com/v8/10012.
 use_arm_neon_optimizations = (target_cpu == "arm" || target_cpu == "arm64") &&
                              arm_use_neon && !(is_win && !is_clang)
@@ -40,6 +40,7 @@ config("lzma_build_config") {
     "Z7_NO_METHODS_FILTERS",
     "Z7_ST",
     "_LZMA_PROB32",
+    "Z7_NO_CRC_HW_FORCE",
   ]
 
   if (enable_lzma_opt) {
@@ -120,9 +121,7 @@ static_library("lzma_sdk") {
   ]
 
   if (enable_lzma_opt) {
-    sources += [
-      "Asm/x86/LzmaDecOpt.asm",
-    ]
+    sources += [ "Asm/x86/LzmaDecOpt.asm" ]
   }
 
   configs -= [ "//build/config/compiler:chromium_code" ]

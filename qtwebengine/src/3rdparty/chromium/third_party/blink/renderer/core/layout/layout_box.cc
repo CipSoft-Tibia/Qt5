@@ -39,7 +39,6 @@
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/focus_params.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/scroll_marker_group_pseudo_element.h"
 #include "third_party/blink/renderer/core/dom/scroll_marker_pseudo_element.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
@@ -197,7 +196,7 @@ LayoutUnit TextFieldIntrinsicInlineSize(const HTMLInputElement& input,
     if (LayoutBox* spin_box =
             spin_button ? spin_button->GetLayoutBox() : nullptr) {
       const Length& logical_width = spin_box->StyleRef().LogicalWidth();
-      result += spin_box->BorderAndPaddingLogicalWidth();
+      result += spin_box->BorderAndPaddingInlineSize();
       // Since the width of spin_box is not calculated yet,
       // spin_box->LogicalWidth() returns 0. Use the computed logical
       // width instead.
@@ -251,7 +250,7 @@ LayoutUnit FileUploadControlIntrinsicInlineSize(const HTMLInputElement& input,
   // characters (using "0" as the nominal character).
   constexpr int kDefaultWidthNumChars = 34;
   constexpr UChar kCharacter = '0';
-  const String character_as_string = String(&kCharacter, 1u);
+  const String character_as_string = String(base::span_from_ref(kCharacter));
   const float min_default_label_width =
       kDefaultWidthNumChars *
       ComputeTextWidth(character_as_string, box.StyleRef());
@@ -332,9 +331,9 @@ LayoutUnit MenuListIntrinsicInlineSize(const HTMLSelectElement& select,
   const ComputedStyle& style = box.StyleRef();
   float max_option_width = 0;
   if (!box.ShouldApplySizeContainment()) {
-    for (auto* const option : select.GetOptionList()) {
+    for (const auto& option : select.GetOptionList()) {
       String text =
-          style.ApplyTextTransform(option->TextIndentedToRespectGroupLabel());
+          style.ApplyTextTransform(option.TextIndentedToRespectGroupLabel());
       // We apply SELECT's style, not OPTION's style because max_option_width is
       // used to determine intrinsic width of the menulist box.
       max_option_width =
@@ -354,11 +353,9 @@ LayoutUnit MenuListIntrinsicBlockSize(const HTMLSelectElement& select,
     return kIndefiniteSize;
   const SimpleFontData* font_data = box.StyleRef().GetFont()->PrimaryFont();
   DCHECK(font_data);
-  const LayoutBox* inner_box =
-      select.InnerElementForAppearanceAuto().GetLayoutBox();
+  const LayoutBox* inner_box = select.InnerElement().GetLayoutBox();
   return (font_data ? font_data->GetFontMetrics().Height() : 0) +
-         (inner_box ? inner_box->BorderAndPaddingLogicalHeight()
-                    : LayoutUnit());
+         (inner_box ? inner_box->BorderAndPaddingBlockSize() : LayoutUnit());
 }
 
 #if DCHECK_IS_ON()
@@ -1214,7 +1211,8 @@ LayoutUnit LayoutBox::DefaultIntrinsicContentInlineSize() const {
 
   const bool apply_fixed_size = StyleRef().ApplyControlFixedSize(&element);
   const auto* select = DynamicTo<HTMLSelectElement>(element);
-  if (select && select->UsesMenuList() && !select->IsAppearanceBaseButton())
+  if (select && select->UsesMenuList() &&
+      StyleRef().EffectiveAppearance() != AppearanceValue::kBaseSelect)
       [[unlikely]] {
     return apply_fixed_size ? MenuListIntrinsicInlineSize(*select, *this)
                             : kIndefiniteSize;
@@ -1232,11 +1230,11 @@ LayoutUnit LayoutBox::DefaultIntrinsicContentInlineSize() const {
       return SliderIntrinsicInlineSize(*this);
     }
     auto effective_appearance = StyleRef().EffectiveAppearance();
-    if (effective_appearance == kCheckboxPart) {
+    if (effective_appearance == AppearanceValue::kCheckbox) {
       return ThemePartIntrinsicSize(*this, WebThemeEngine::kPartCheckbox)
           .inline_size;
     }
-    if (effective_appearance == kRadioPart) {
+    if (effective_appearance == AppearanceValue::kRadio) {
       return ThemePartIntrinsicSize(*this, WebThemeEngine::kPartRadio)
           .inline_size;
     }
@@ -1256,11 +1254,11 @@ LayoutUnit LayoutBox::DefaultIntrinsicContentBlockSize() const {
   NOT_DESTROYED();
 
   auto effective_appearance = StyleRef().EffectiveAppearance();
-  if (effective_appearance == kCheckboxPart) {
+  if (effective_appearance == AppearanceValue::kCheckbox) {
     return ThemePartIntrinsicSize(*this, WebThemeEngine::kPartCheckbox)
         .block_size;
   }
-  if (effective_appearance == kRadioPart) {
+  if (effective_appearance == AppearanceValue::kRadio) {
     return ThemePartIntrinsicSize(*this, WebThemeEngine::kPartRadio).block_size;
   }
 
@@ -1268,12 +1266,11 @@ LayoutUnit LayoutBox::DefaultIntrinsicContentBlockSize() const {
     return kIndefiniteSize;
   }
   if (const auto* select = DynamicTo<HTMLSelectElement>(GetNode())) {
-    if (!select->IsAppearanceBaseButton()) {
-      if (select->UsesMenuList()) {
-        return MenuListIntrinsicBlockSize(*select, *this);
-      }
+    if (!select->UsesMenuList()) {
       return ListBoxItemBlockSize(*select, *this) * select->ListBoxSize() -
              ComputeLogicalScrollbars().BlockSum();
+    } else if (effective_appearance != AppearanceValue::kBaseSelect) {
+      return MenuListIntrinsicBlockSize(*select, *this);
     }
   }
   if (IsTextField()) {
@@ -1400,9 +1397,8 @@ PhysicalRect LayoutBox::PhysicalBackgroundRect(
     case EFillBox::kContent:
       return PhysicalContentBoxRect();
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
-  return PhysicalRect();
 }
 
 void LayoutBox::AddOutlineRects(OutlineRectCollector& collector,
@@ -2038,7 +2034,7 @@ static bool IsCandidateForOpaquenessTest(const LayoutBox& child_box) {
   if (child_box.HasLayer())
     return false;
   const ComputedStyle& child_style = child_box.StyleRef();
-  if (child_style.UsedVisibility() != EVisibility::kVisible ||
+  if (child_style.Visibility() != EVisibility::kVisible ||
       child_style.ShapeOutside()) {
     return false;
   }
@@ -2457,18 +2453,11 @@ PhysicalOffset LayoutBox::OffsetFromContainerInternal(
 
   PhysicalOffset offset = PhysicalLocation();
 
-  if (IsStickyPositioned() && !(mode & kIgnoreStickyOffset)) {
-    offset += StickyPositionOffset();
-  }
-
-  if (o->IsScrollContainer())
-    offset += OffsetFromScrollableContainer(o, mode & kIgnoreScrollOffset);
-
   if (NeedsAnchorPositionScrollAdjustment()) {
     offset += AnchorPositionScrollTranslationOffset();
   }
 
-  return offset;
+  return offset + LayoutBoxModelObject::OffsetFromContainerInternal(o, mode);
 }
 
 bool LayoutBox::HasInlineFragments() const {
@@ -2701,8 +2690,6 @@ void LayoutBox::FinalizeLayoutResults() {
 
 void LayoutBox::RebuildFragmentTreeSpine() {
   DCHECK(PhysicalFragmentCount());
-  SCOPED_BLINK_UMA_HISTOGRAM_TIMER_HIGHRES(
-      "Blink.Layout.RebuildFragmentTreeSpine");
   // If this box has an associated layout-result, rebuild the spine of the
   // fragment-tree to ensure consistency.
   LayoutBox* container = this;
@@ -2857,11 +2844,6 @@ void LayoutBox::ClearSpannerPlaceholder() {
   if (!rare_data_)
     return;
   rare_data_->spanner_placeholder_ = nullptr;
-}
-
-PhysicalRect LayoutBox::LocalVisualRectIgnoringVisibility() const {
-  NOT_DESTROYED();
-  return SelfVisualOverflowRect();
 }
 
 void LayoutBox::InflateVisualRectForFilterUnderContainer(
@@ -3055,9 +3037,7 @@ LayoutUnit LayoutBox::ContainingBlockLogicalHeightForPositioned(
   return height_result;
 }
 
-PhysicalRect LayoutBox::LocalCaretRect(
-    int caret_offset,
-    LayoutUnit* extra_width_to_end_of_line) const {
+PhysicalRect LayoutBox::LocalCaretRect(int caret_offset) const {
   NOT_DESTROYED();
   // VisiblePositions at offsets inside containers either a) refer to the
   // positions before/after those containers (tables and select elements) or
@@ -3067,20 +3047,8 @@ PhysicalRect LayoutBox::LocalCaretRect(
   // before/after elements.
   LayoutUnit caret_width = GetFrameView()->CaretWidth();
   LogicalSize size(LogicalWidth(), LogicalHeight());
-  const bool is_horizontal = IsHorizontalWritingMode();
-  PhysicalOffset offset = PhysicalLocation();
-  PhysicalRect rect(offset, is_horizontal
-                                ? PhysicalSize(caret_width, size.block_size)
-                                : PhysicalSize(size.block_size, caret_width));
-  bool ltr = StyleRef().IsLeftToRightDirection();
 
-  if ((!caret_offset) ^ ltr) {
-    rect.Move(
-        is_horizontal
-            ? PhysicalOffset(size.inline_size - caret_width, LayoutUnit())
-            : PhysicalOffset(LayoutUnit(), size.inline_size - caret_width));
-  }
-
+  LayoutUnit caret_block_size = size.block_size;
   // If height of box is smaller than font height, use the latter one,
   // otherwise the caret might become invisible.
   //
@@ -3094,99 +3062,57 @@ PhysicalRect LayoutBox::LocalCaretRect(
   LayoutUnit font_height =
       LayoutUnit(font_data ? font_data->GetFontMetrics().Height() : 0);
   if (font_height > size.block_size || (!IsAtomicInlineLevel() && !IsTable())) {
-    if (is_horizontal) {
-      rect.SetHeight(font_height);
-    } else {
-      rect.SetWidth(font_height);
-    }
+    caret_block_size = font_height;
   }
 
-  if (extra_width_to_end_of_line) {
-    *extra_width_to_end_of_line =
-        is_horizontal ? (offset.left + Size().width - rect.Right())
-                      : (offset.top + Size().height - rect.Bottom());
+  // FIXME: Border/padding should be added for all elements but this workaround
+  // is needed because we use offsets inside an "atomic" element to represent
+  // positions before and after the element in deprecated editing offsets.
+  bool apply_border_padding =
+      GetNode() &&
+      !(EditingIgnoresContent(*GetNode()) || IsDisplayInsideTable(GetNode()));
+
+  if (RuntimeEnabledFeatures::SidewaysWritingModesEnabled()) {
+    WritingDirectionMode writing_direction = Style()->GetWritingDirection();
+    LogicalOffset offset;
+    LayoutUnit content_inline_size = size.inline_size;
+    if (apply_border_padding) {
+      BoxStrut border_padding = (BorderOutsets() + PaddingOutsets())
+                                    .ConvertToLogical(writing_direction);
+      offset.inline_offset = border_padding.inline_start;
+      offset.block_offset = border_padding.block_start;
+      content_inline_size -= border_padding.InlineSum();
+    }
+    if (caret_offset) {
+      offset.inline_offset += content_inline_size - caret_width;
+    }
+
+    LogicalRect rect(offset, LogicalSize(caret_width, caret_block_size));
+    return WritingModeConverter(writing_direction, Size()).ToPhysical(rect);
+  }
+  const bool is_horizontal = IsHorizontalWritingMode();
+  PhysicalOffset offset = PhysicalLocation();
+  PhysicalRect rect(offset, is_horizontal
+                                ? PhysicalSize(caret_width, caret_block_size)
+                                : PhysicalSize(caret_block_size, caret_width));
+  bool ltr = StyleRef().IsLeftToRightDirection();
+
+  if ((!caret_offset) ^ ltr) {
+    rect.Move(
+        is_horizontal
+            ? PhysicalOffset(size.inline_size - caret_width, LayoutUnit())
+            : PhysicalOffset(LayoutUnit(), size.inline_size - caret_width));
   }
 
   // Move to local coords
   rect.Move(-offset);
 
-  // FIXME: Border/padding should be added for all elements but this workaround
-  // is needed because we use offsets inside an "atomic" element to represent
-  // positions before and after the element in deprecated editing offsets.
-  if (GetNode() &&
-      !(EditingIgnoresContent(*GetNode()) || IsDisplayInsideTable(GetNode()))) {
+  if (apply_border_padding) {
     rect.SetX(rect.X() + BorderLeft() + PaddingLeft());
     rect.SetY(rect.Y() + PaddingTop() + BorderTop());
   }
 
   return rect;
-}
-
-// Implements scroll tracking for scroll marker controls as per
-// https://drafts.csswg.org/css-overflow-5/#scroll-container-scroll.
-void LayoutBox::UpdateScrollMarkerControlsAfterScroll() const {
-  NOT_DESTROYED();
-  CHECK(IsScrollContainerWithScrollMarkerGroup());
-  LayoutObject* scroll_marker_group_object = GetScrollMarkerGroup();
-  if (!scroll_marker_group_object) {
-    return;
-  }
-  auto* scroll_marker_group =
-      To<ScrollMarkerGroupPseudoElement>(scroll_marker_group_object->GetNode());
-  ScrollMarkerPseudoElement* selected = nullptr;
-  PhysicalOffset scroll_offset = ScrolledContentOffset();
-  for (ScrollMarkerPseudoElement* scroll_marker :
-       scroll_marker_group->ScrollMarkers()) {
-    if (!selected) {
-      selected = scroll_marker;
-    }
-    const LayoutBox* target_box =
-        scroll_marker->OriginatingElement()->GetLayoutBox();
-    if (!target_box) {
-      continue;
-    }
-    PhysicalBoxStrut scroll_margin =
-        target_box->Style() ? target_box->Style()->ScrollMarginStrut()
-                            : PhysicalBoxStrut();
-    // Ignore sticky position offsets for the purposes of scrolling elements
-    // into view. See https://www.w3.org/TR/css-position-3/#stickypos-scroll for
-    // details
-    const MapCoordinatesFlags flag =
-        (RuntimeEnabledFeatures::CSSPositionStickyStaticScrollPositionEnabled())
-            ? kIgnoreStickyOffset
-            : 0;
-    PhysicalRect rect_to_scroll = AbsoluteToLocalRect(
-        target_box->AbsoluteBoundingBoxRectForScrollIntoView(), flag);
-    rect_to_scroll.Expand(scroll_margin);
-    ScrollOffset target_scroll_offset =
-        scroll_into_view_util::GetScrollOffsetToExpose(
-            *GetScrollableArea(), rect_to_scroll, scroll_margin,
-            scroll_into_view_util::PhysicalAlignmentFromSnapAlignStyle(
-                *target_box, kHorizontalScroll),
-            scroll_into_view_util::PhysicalAlignmentFromSnapAlignStyle(
-                *target_box, kVerticalScroll));
-    PhysicalOffset target_offset(LayoutUnit(target_scroll_offset.x()),
-                                 LayoutUnit(target_scroll_offset.y()));
-    // TODO(332396355, 355460994): It's a bug for now, since scroll area doesn't
-    // account for its border when If left/top of scroll offset is zero, don't
-    // check that dimension for now, since target can have some border/margin
-    // and will always be more than zero.
-    // Note: use of abs here is determined by the fact that for direction: rtl
-    // the scroll offset starts at zero and goes to the negative side, all the
-    // target offsets go to the negative side as well. We can't end up in
-    // situation of scroll offset to be on the wrong side of zero, so it's safe
-    // to do so.
-    if ((target_offset.left.Abs() <= scroll_offset.left.Abs() ||
-         !scroll_offset.left) &&
-        (target_offset.top.Abs() <= scroll_offset.top.Abs() ||
-         !scroll_offset.top)) {
-      selected = scroll_marker;
-    }
-  }
-  if (!selected) {
-    return;
-  }
-  scroll_marker_group->SetSelected(*selected);
 }
 
 PositionWithAffinity LayoutBox::PositionForPointInFragments(
@@ -3365,8 +3291,7 @@ void LayoutBox::SetScrollableOverflowFromLayoutResults() {
         offset_adjust = {consumed_block_size, LayoutUnit()};
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
 
     PhysicalRect fragment_scrollable_overflow = fragment.ScrollableOverflow();
@@ -3621,9 +3546,6 @@ void LayoutBox::CopyVisualOverflowFromFragments() {
   const PhysicalRect visual_overflow = VisualOverflowRect();
   if (visual_overflow == previous_visual_overflow)
     return;
-  if (!RuntimeEnabledFeatures::IntersectionOptimizationEnabled()) {
-    DeprecatedInvalidateIntersectionObserverCachedRects();
-  }
   SetShouldCheckForPaintInvalidation();
 }
 
@@ -4250,6 +4172,9 @@ PhysicalRect LayoutBox::ComputeStickyConstrainingRect() const {
                                         -BorderTop() + PaddingTop()));
   constraining_rect.ContractEdges(LayoutUnit(), PaddingLeft() + PaddingRight(),
                                   PaddingTop() + PaddingBottom(), LayoutUnit());
+
+  // Subtract off the scroll origin to move into scrolling content space.
+  constraining_rect.Move(-PhysicalOffset(ScrollOrigin()));
   return constraining_rect;
 }
 
@@ -4367,7 +4292,7 @@ const LayoutObject* LayoutBox::AcceptableImplicitAnchor() const {
   // Go through the already built PhysicalAnchorQuery to avoid tree traversal.
   bool is_acceptable_anchor = false;
   auto validate_anchor = [&](const PhysicalAnchorQuery& anchor_query) {
-    if (anchor_query.AnchorLayoutObject(*this, anchor_layout_object)) {
+    if (anchor_query.AnchorLayoutObject(*this, anchor_element)) {
       is_acceptable_anchor = true;
     }
   };
@@ -4405,6 +4330,14 @@ const BoxStrut& LayoutBox::OutOfFlowInsetsForGetComputedStyle() const {
   });
 #endif
   return GetLayoutResults().front()->OutOfFlowInsetsForGetComputedStyle();
+}
+
+Element* LayoutBox::AccessibilityAnchor() const {
+  const auto& layout_results = GetLayoutResults();
+  if (layout_results.empty()) {
+    return nullptr;
+  }
+  return layout_results.front()->AccessibilityAnchor();
 }
 
 const HeapHashSet<Member<Element>>* LayoutBox::DisplayLocksAffectedByAnchors()
@@ -4489,12 +4422,12 @@ bool LayoutBox::IsReadingFlowContainer() const {
   return false;
 }
 
-const HeapVector<Member<Element>>& LayoutBox::ReadingFlowElements() const {
-  if (const auto* elements = GetPhysicalFragment(0)->ReadingFlowElements()) {
-    return *elements;
+const HeapVector<Member<Node>>& LayoutBox::ReadingFlowNodes() const {
+  if (const auto* nodes = GetPhysicalFragment(0)->ReadingFlowNodes()) {
+    return *nodes;
   }
-  DEFINE_STATIC_LOCAL(Persistent<HeapVector<Member<Element>>>, empty_vector,
-                      (MakeGarbageCollected<HeapVector<Member<Element>>>()));
+  DEFINE_STATIC_LOCAL(Persistent<HeapVector<Member<Node>>>, empty_vector,
+                      (MakeGarbageCollected<HeapVector<Member<Node>>>()));
   return *empty_vector;
 }
 

@@ -31,25 +31,17 @@ inline static Array defaultObjectsArray()
     return { T{ {}, {} }, T{ {}, {} }, T{ {}, {} } };
 }
 
-// TODO: investigate what's better: profile and try network case
-// Most likely, shouldPauseStreams = false is better because of:
-//     - packet and frame buffers are not big, the saturration of the is pretty fast.
-//     - after any pause a user has some preloaded buffers, so the playback is
-//       supposed to be more stable in cases with a weak processor or bad internet.
-//     - the code is simplier, usage is more convenient.
-//
-static constexpr bool shouldPauseStreams = false;
-
-PlaybackEngine::PlaybackEngine()
+PlaybackEngine::PlaybackEngine(const QPlaybackOptions &options)
     : m_demuxer({}, {}),
       m_streams(defaultObjectsArray<decltype(m_streams)>()),
-      m_renderers(defaultObjectsArray<decltype(m_renderers)>())
+      m_renderers(defaultObjectsArray<decltype(m_renderers)>()),
+      m_options{ options }
 {
     qCDebug(qLcPlaybackEngine) << "Create PlaybackEngine";
     qRegisterMetaType<QFFmpeg::Packet>();
     qRegisterMetaType<QFFmpeg::Frame>();
     qRegisterMetaType<QFFmpeg::TrackPosition>();
-    qRegisterMetaType<QFFmpeg::TrackDuration>();
+    qRegisterMetaType<QFFmpeg::PlaybackEngineObjectID>();
 }
 
 PlaybackEngine::~PlaybackEngine() {
@@ -60,8 +52,11 @@ PlaybackEngine::~PlaybackEngine() {
     deleteFreeThreads();
 }
 
-void PlaybackEngine::onRendererFinished()
+void PlaybackEngine::onRendererFinished(const PlaybackEngineObjectID &id)
 {
+    if (!hasRenderer(id))
+        return;
+
     auto isAtEnd = [this](auto trackType) {
         return !m_renderers[trackType] || m_renderers[trackType]->isAtEnd();
     };
@@ -87,7 +82,8 @@ void PlaybackEngine::onRendererFinished()
     emit endOfStream();
 }
 
-void PlaybackEngine::onRendererLoopChanged(quint64 id, TrackPosition offset, int loopIndex)
+void PlaybackEngine::onRendererLoopChanged(const PlaybackEngineObjectID &id, TrackPosition offset,
+                                           int loopIndex)
 {
     if (!hasRenderer(id))
         return;
@@ -102,40 +98,43 @@ void PlaybackEngine::onRendererLoopChanged(quint64 id, TrackPosition offset, int
     }
 }
 
-void PlaybackEngine::onFirsPacketFound(quint64 id, TrackPosition absSeekPos)
+void PlaybackEngine::onFirstPacketFound(const PlaybackEngineObjectID &id, TrackPosition absSeekPos)
 {
-    if (!m_demuxer || m_demuxer->id() != id)
+    if (!checkObjectID(m_demuxer, id))
         return;
 
-    if (m_shouldUpdateTimeOnFirstPacket) {
-        const auto timePoint = RealClock::now();
-        const RealClock::time_point expectedTimePoint =
-                m_timeController.timeFromPosition(absSeekPos);
-        const auto delay = std::chrono::duration_cast<std::chrono::microseconds>(
-                timePoint - expectedTimePoint);
-        qCDebug(qLcPlaybackEngine) << "Delay of demuxer initialization:" << delay;
-        m_timeController.sync(timePoint, absSeekPos);
+    if (m_timeController.isStarted())
+        return;
 
-        m_shouldUpdateTimeOnFirstPacket = false; // turn the flag back to ensure the consistency.
-    }
+    const SteadyClock::time_point now = SteadyClock::now();
+    const SteadyClock::time_point expectedTimePoint = m_timeController.timeFromPosition(absSeekPos);
+    const auto delay =
+            std::chrono::round<std::chrono::microseconds>(now - expectedTimePoint);
+    qCDebug(qLcPlaybackEngine) << "Delay of demuxer initialization:" << delay;
+    m_timeController.sync(now, absSeekPos);
+    m_timeController.start();
 
-    forEachExistingObject<Renderer>([&](auto &renderer) { renderer->start(m_timeController); });
+    forEachExistingObject<Renderer>(
+            [&](auto &renderer) { renderer->setTimeController(m_timeController); });
 }
 
-void PlaybackEngine::onRendererSynchronized(quint64 id, RealClock::time_point tp, TrackPosition pos)
+void PlaybackEngine::onRendererSynchronized(const PlaybackEngineObjectID &id,
+                                            SteadyClock::time_point tp, TrackPosition pos)
 {
     if (!hasRenderer(id))
         return;
 
-    Q_ASSERT(m_renderers[QPlatformMediaPlayer::AudioStream]
-             && m_renderers[QPlatformMediaPlayer::AudioStream]->id() == id);
-
-    m_timeController.sync(tp, pos);
+    Q_ASSERT(checkObjectID(m_renderers[QPlatformMediaPlayer::AudioStream], id));
 
     forEachExistingObject<Renderer>([&](auto &renderer) {
-        if (id != renderer->id())
-            renderer->syncSoft(tp, pos);
+        if (id.objectID != renderer->objectID()) {
+            auto tc = m_timeController;
+            tc.syncSoft(tp, pos);
+            renderer->setTimeController(tc);
+        }
     });
+
+    m_timeController.sync(tp, pos);
 }
 
 void PlaybackEngine::setState(QMediaPlayer::PlaybackState state) {
@@ -163,28 +162,14 @@ void PlaybackEngine::setState(QMediaPlayer::PlaybackState state) {
 
 void PlaybackEngine::updateObjectsPausedState()
 {
-    const auto paused = m_state != QMediaPlayer::PlayingState;
+    const bool paused = m_state != QMediaPlayer::PlayingState;
     m_timeController.setPaused(paused);
 
     forEachExistingObject([&](auto &object) {
-        bool objectPaused = false;
-
         if constexpr (std::is_same_v<decltype(*object), Renderer &>)
-            objectPaused = paused;
-        else if constexpr (shouldPauseStreams) {
-            auto streamPaused = [](bool p, auto &r) {
-                const auto needMoreFrames = r && r->stepInProgress();
-                return p && !needMoreFrames;
-            };
-
-            if constexpr (std::is_same_v<decltype(*object), StreamDecoder &>)
-                objectPaused = streamPaused(paused, renderer(object->trackType()));
-            else
-                objectPaused = std::accumulate(m_renderers.begin(), m_renderers.end(), paused,
-                                               streamPaused);
-        }
-
-        object->setPaused(objectPaused);
+            object->setPaused(paused);
+        else
+            object->setPaused(false);
     });
 }
 
@@ -223,7 +208,8 @@ PlaybackEngine::createRenderer(QPlatformMediaPlayer::TrackType trackType)
                            : RendererPtr{ {}, {} };
     case QPlatformMediaPlayer::AudioStream:
         return m_audioOutput || m_audioBufferOutput
-                ? createPlaybackEngineObject<AudioRenderer>(m_timeController, m_audioOutput, m_audioBufferOutput)
+                ? createPlaybackEngineObject<AudioRenderer>(
+                          m_timeController, m_audioOutput, m_audioBufferOutput, m_pitchCompensation)
                 : RendererPtr{ {}, {} };
     case QPlatformMediaPlayer::SubtitleStream:
         return m_videoSink
@@ -258,7 +244,7 @@ void PlaybackEngine::seek(TrackPosition pos)
 {
     pos = boundPosition(pos);
 
-    m_timeController.setPaused(true);
+    m_timeController.deactivate();
     m_timeController.sync(m_currentLoopOffset.loopStartTimeUs.asDuration() + pos);
     m_seekPending = true;
 
@@ -318,7 +304,7 @@ float PlaybackEngine::playbackRate() const {
 
 void PlaybackEngine::recreateObjects()
 {
-    m_timeController.setPaused(true);
+    m_timeController.deactivate();
 
     forEachExistingObject([](auto &object) { object.reset(); });
 
@@ -334,6 +320,10 @@ void PlaybackEngine::createObjectsIfNeeded()
         createStreamAndRenderer(static_cast<QPlatformMediaPlayer::TrackType>(i));
 
     createDemuxer();
+
+    // temporary, to comply with the test disablingAllTracks_doesNotStopPlayback
+    if (!m_demuxer)
+        m_timeController.start();
 }
 
 void PlaybackEngine::forceUpdate()
@@ -364,10 +354,6 @@ void PlaybackEngine::createStreamAndRenderer(QPlatformMediaPlayer::TrackType tra
         connect(renderer.get(), &Renderer::loopChanged, this,
                 &PlaybackEngine::onRendererLoopChanged);
 
-        if constexpr (shouldPauseStreams)
-            connect(renderer.get(), &Renderer::forceStepDone, this,
-                    &PlaybackEngine::updateObjectsPausedState);
-
         connect(renderer.get(), &PlaybackEngineObject::atEnd, this,
                 &PlaybackEngine::onRendererFinished);
     }
@@ -396,7 +382,7 @@ std::optional<CodecContext> PlaybackEngine::codecContextForTrack(QPlatformMediaP
         qCDebug(qLcPlaybackEngine)
                 << "Create codec for stream:" << streamIndex << "trackType:" << trackType;
         auto maybeCodecContext = CodecContext::create(m_media.avContext()->streams[streamIndex],
-                                                      m_media.avContext());
+                                                      m_media.avContext(), m_options);
 
         if (!maybeCodecContext) {
             emit errorOccured(QMediaPlayer::FormatError,
@@ -449,8 +435,7 @@ void PlaybackEngine::createDemuxer()
                 &Demuxer::onPacketProcessed);
     });
 
-    m_shouldUpdateTimeOnFirstPacket = true;
-    connect(m_demuxer.get(), &Demuxer::firstPacketFound, this, &PlaybackEngine::onFirsPacketFound);
+    connect(m_demuxer.get(), &Demuxer::firstPacketFound, this, &PlaybackEngine::onFirstPacketFound);
 }
 
 void PlaybackEngine::deleteFreeThreads() {
@@ -567,6 +552,13 @@ int PlaybackEngine::activeTrack(QPlatformMediaPlayer::TrackType type) const
     return m_media.activeTrack(type);
 }
 
+void PlaybackEngine::setPitchCompensation(bool enabled)
+{
+    m_pitchCompensation = enabled;
+    if (AudioRenderer *renderer = getAudioRenderer())
+        renderer->setPitchCompensation(enabled);
+}
+
 void PlaybackEngine::setActiveTrack(QPlatformMediaPlayer::TrackType trackType, int streamNumber)
 {
     if (!m_media.setActiveTrack(trackType, streamNumber))
@@ -578,21 +570,22 @@ void PlaybackEngine::setActiveTrack(QPlatformMediaPlayer::TrackType trackType, i
     m_streams = defaultObjectsArray<decltype(m_streams)>();
     m_demuxer.reset();
 
-    updateVideoSinkSize();
-    createObjectsIfNeeded();
-    updateObjectsPausedState();
-
+    // Don't deactivate m_timeController:
+    //
     // We strive to have a smooth playback if we change the active track. It means that
     // we don't want to do any time shiftings. Instead, we rely on the fact that
     // buffers in renderers are not empty to compensate the demuxer's lag.
-    m_shouldUpdateTimeOnFirstPacket = false;
+
+    updateVideoSinkSize();
+    createObjectsIfNeeded();
+    updateObjectsPausedState();
 }
 
 void PlaybackEngine::finilizeTime(TrackPosition pos)
 {
     Q_ASSERT(pos >= TrackPosition(0) && pos <= duration().asTimePoint());
 
-    m_timeController.setPaused(true);
+    m_timeController.deactivate();
     m_timeController.sync(pos);
     m_currentLoopOffset = {};
 }
@@ -606,17 +599,16 @@ void PlaybackEngine::finalizeOutputs()
     updateActiveVideoOutput(nullptr, true);
 }
 
-bool PlaybackEngine::hasRenderer(quint64 id) const
+bool PlaybackEngine::hasRenderer(const PlaybackEngineObjectID &id) const
 {
     return std::any_of(m_renderers.begin(), m_renderers.end(),
-                       [id](auto &renderer) { return renderer && renderer->id() == id; });
+                       [&](auto &renderer) { return checkObjectID(renderer, id); });
 }
 
 template <typename AudioOutput>
 void PlaybackEngine::updateActiveAudioOutput(AudioOutput *output)
 {
-    if (auto renderer =
-                qobject_cast<AudioRenderer *>(m_renderers[QPlatformMediaPlayer::AudioStream].get()))
+    if (AudioRenderer *renderer = getAudioRenderer())
         renderer->setOutput(output);
 }
 
@@ -661,6 +653,12 @@ TrackPosition PlaybackEngine::boundPosition(TrackPosition position) const
     position = qMax(position, TrackPosition(0));
     return duration() > TrackDuration(0) ? qMin(position, duration().asTimePoint()) : position;
 }
+
+AudioRenderer *PlaybackEngine::getAudioRenderer()
+{
+    return qobject_cast<AudioRenderer *>(m_renderers[QPlatformMediaPlayer::AudioStream].get());
+}
+
 } // namespace QFFmpeg
 
 QT_END_NAMESPACE

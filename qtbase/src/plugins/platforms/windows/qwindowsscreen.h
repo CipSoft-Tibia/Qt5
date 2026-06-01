@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSSCREEN_H
 #define QWINDOWSSCREEN_H
@@ -115,12 +116,14 @@ public:
 
     const QWindowsScreen *screenAtDp(const QPoint &p) const;
     const QWindowsScreen *screenForHwnd(HWND hwnd) const;
+    const QWindowsScreen *screenForRect(const RECT *rect) const;
 
     static bool isSingleScreen();
 
 private:
     void addScreen(const QWindowsScreenData &screenData);
     void removeScreen(int index);
+    const QWindowsScreen *screenForMonitor(HMONITOR monitor) const;
 
     HWND m_displayChangeObserver = nullptr;
     WindowsScreenList m_screens;

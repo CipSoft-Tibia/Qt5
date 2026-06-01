@@ -43,15 +43,18 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmltype LegendData
+    \qmlvaluetype legendData
     \nativetype QLegendData
     \inqmlmodule QtGraphs
     \ingroup graphs_qml__2D
-    \brief The LegendData struct contains information to display on a sets
+    \brief The legendData value type contains information to display on a sets
     legend marker.
 
     The information needed to make a visual association between a set and a
     marker include properties such as color, border color, and a name of a set.
+
+    \note Before Qt 6.10, this value type was only provided as an anonymous
+    type.
 */
 
 /*!
@@ -161,6 +164,21 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \property QAbstractSeries::hovered
+    \brief Check whether a series is hovered on.
+
+    Can be used to check whether mouse/touch is currently
+    hovering on a series.
+    \sa QAbstractSeries::hovered
+*/
+/*!
+    \qmlproperty bool AbstractSeries::hovered
+    Can be used to check whether mouse/touch is currently
+    hovering on a series.
+    \sa QAbstractSeries::hovered
+*/
+
+/*!
     \property QAbstractSeries::opacity
     \brief The opacity of the series.
 
@@ -183,6 +201,57 @@ QT_BEGIN_NAMESPACE
     \qmlproperty real AbstractSeries::valuesMultiplier
     This variable can be used for animating the series values so they scale from 0 to actual value size.
     By default, the valuesMultiplier is 1.0. The valid values range from 0.0 (height 0) to 1.0 (full value).
+*/
+
+/*!
+    \property QAbstractSeries::axisX
+    \brief X-axis of this series.
+    \since 6.10
+
+    The x-axis used for this series. Creates a separate axis from the one defined
+    in GraphsView showing the user multiple axis per graph.
+*/
+/*!
+    \qmlproperty AbstractAxis AbstractSeries::axisX
+    \since 6.10
+    The x-axis used for this series. Creates a separate axis from the one defined
+    in GraphsView showing the user multiple axis per graph.
+    \sa axisY
+*/
+
+/*!
+    \property QAbstractSeries::axisY
+    \brief Y-axis of this series.
+    \since 6.10
+
+    The y-axis used for this series. Creates a separate axis from the one defined
+    in GraphsView showing the user multiple axis per graph.
+*/
+/*!
+    \qmlproperty AbstractAxis AbstractSeries::axisY
+    \since 6.10
+    The y-axis used for this series. Creates a separate axis from the one defined
+    in GraphsView showing the user multiple axis per graph.
+    \sa axisX
+*/
+
+/*!
+    \property QAbstractSeries::zValue
+    \brief Controls the order in which the series is drawn
+    \since 6.10
+
+    The series list of GraphsView is sorted by the zValue property. Since each series type is
+    rendered at once, the order mostly works as an internal order of each series type. The highest
+    zValue of each series type determines the order of rendering among series types. The default
+    value is 0.
+*/
+/*!
+    \qmlproperty int AbstractSeries::zValue
+    \since 6.10
+    The series list of GraphsView is sorted by the zValue property. Since each series type is
+    rendered at once, the order mostly works as an internal order of each series type. The highest
+    zValue of each series type determines the order of rendering among series types. The default
+    value is 0.
 */
 
 /*!
@@ -226,6 +295,11 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlsignal AbstractSeries::hoveredChanged()
+    This signal is emitted when the series \l hovered changes.
+*/
+
+/*!
     \qmlsignal AbstractSeries::opacityChanged()
     This signal is emitted when the \l opacity of the series changes.
 */
@@ -233,6 +307,27 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlsignal AbstractSeries::valuesMultiplierChanged()
     This signal is emitted when the valuesMultiplier of the series changes.
+*/
+
+/*!
+    \qmlsignal QAbstractSeries::axisXChanged(QAbstractAxis *newAxis)
+    \since 6.10
+    This signal is emitted whenever the X axis in control changes.
+    The \a newAxis parameter holds the new axis.
+*/
+
+/*!
+    \qmlsignal QAbstractSeries::axisYChanged(QAbstractAxis *newAxis)
+    \since 6.10
+    This signal is emitted whenever the Y axis in control changes.
+    The \a newAxis parameter holds the new axis.
+*/
+
+/*!
+    \qmlsignal QAbstractSeries::zValueChanged(int newDrawOrder)
+    \since 6.10
+    This signal is emitted when the series draw order changes.
+    The \a newAxis parameter specifies the new order.
 */
 
 /*!
@@ -263,6 +358,9 @@ QT_BEGIN_NAMESPACE
     \brief Constructs QAbstractSeries object with \a parent.
 */
 
+Q_LOGGING_CATEGORY(lcSeries2D, "qt.graphs2d.series")
+Q_LOGGING_CATEGORY(lcProperties2D, "qt.graphs2d.series.properties")
+
 QAbstractSeries::QAbstractSeries(QAbstractSeriesPrivate &dd, QObject *parent)
     : QObject(dd, parent)
 {}
@@ -288,8 +386,11 @@ void QAbstractSeries::setName(const QString &name)
     Q_D(QAbstractSeries);
     if (name != d->m_name) {
         d->m_name = name;
-        update();
+        emit update();
         emit nameChanged();
+    } else {
+        qCDebug(lcProperties2D,"QAbstractSeries::setName. Name is already set to: %s",
+                qPrintable(name));
     }
 }
 
@@ -304,8 +405,11 @@ void QAbstractSeries::setVisible(bool visible)
     Q_D(QAbstractSeries);
     if (visible != d->m_visible) {
         d->m_visible = visible;
-        update();
+        emit update();
         emit visibleChanged();
+    } else {
+        qCDebug(lcProperties2D) << "QAbstractSeries::setVisible. series visibility already set to"
+                                << visible;
     }
 }
 
@@ -320,8 +424,11 @@ void QAbstractSeries::setSelectable(bool selectable)
     Q_D(QAbstractSeries);
     if (selectable != d->m_selectable) {
         d->m_selectable = selectable;
-        update();
+        emit update();
         emit selectableChanged();
+    } else {
+        qCDebug(lcProperties2D) << "QAbstractSeries::setSelectable. Selectable already set to:"
+                                << selectable;
     }
 }
 
@@ -336,8 +443,11 @@ void QAbstractSeries::setHoverable(bool hoverable)
     Q_D(QAbstractSeries);
     if (hoverable != d->m_hoverable) {
         d->m_hoverable = hoverable;
-        update();
+        emit update();
         emit hoverableChanged();
+    } else {
+        qCDebug(lcProperties2D) << "QAbstractSeries::setHoverable. Hoverable already set to:"
+                                << hoverable;
     }
 }
 
@@ -345,6 +455,88 @@ bool QAbstractSeries::hasLoaded() const
 {
     Q_D(const QAbstractSeries);
     return d->m_loaded;
+}
+
+bool QAbstractSeries::isHovered() const
+{
+    Q_D(const QAbstractSeries);
+    return d->m_hovered;
+}
+
+void QAbstractSeries::setHovered(bool enabled)
+{
+    Q_D(QAbstractSeries);
+
+    if (enabled != d->m_hovered) {
+        d->m_hovered = enabled;
+        emit hoveredChanged(d->m_hovered);
+    }
+}
+
+QAbstractAxis *QAbstractSeries::axisX() const
+{
+    Q_D(const QAbstractSeries);
+    return d->m_axisX;
+}
+
+void QAbstractSeries::setAxisX(QAbstractAxis *newAxisX)
+{
+    Q_D(QAbstractSeries);
+    if (d->m_axisX == newAxisX)
+        return;
+
+    if (d->m_axisX) {
+        disconnect(d->m_axisX, &QAbstractAxis::update, this, &QAbstractSeries::update);
+
+        if (d->m_graph)
+            d->m_graph->removeAxis(d->m_axisX);
+    }
+
+    if (newAxisX) {
+        if (newAxisX->alignment() != Qt::AlignBottom && newAxisX->alignment() != Qt::AlignTop)
+            newAxisX->setAlignment(Qt::AlignBottom);
+        connect(newAxisX, &QAbstractAxis::update, this, &QAbstractSeries::update);
+
+        if (d->m_graph)
+            d->m_graph->addAxis(newAxisX);
+    }
+
+    d->m_axisX = newAxisX;
+    emit update();
+    emit axisXChanged(newAxisX);
+}
+
+QAbstractAxis *QAbstractSeries::axisY() const
+{
+    Q_D(const QAbstractSeries);
+    return d->m_axisY;
+}
+
+void QAbstractSeries::setAxisY(QAbstractAxis *newAxisY)
+{
+    Q_D(QAbstractSeries);
+    if (d->m_axisY == newAxisY)
+        return;
+
+    if (d->m_axisY) {
+        disconnect(d->m_axisY, &QAbstractAxis::update, this, &QAbstractSeries::update);
+
+        if (d->m_graph)
+            d->m_graph->removeAxis(d->m_axisY);
+    }
+
+    if (newAxisY) {
+        if (newAxisY->alignment() != Qt::AlignLeft && newAxisY->alignment() != Qt::AlignRight)
+            newAxisY->setAlignment(Qt::AlignLeft);
+        connect(newAxisY, &QAbstractAxis::update, this, &QAbstractSeries::update);
+
+        if (d->m_graph)
+            d->m_graph->addAxis(newAxisY);
+    }
+
+    d->m_axisY = newAxisY;
+    emit update();
+    emit axisYChanged(newAxisY);
 }
 
 qreal QAbstractSeries::opacity() const
@@ -358,8 +550,11 @@ void QAbstractSeries::setOpacity(qreal opacity)
     Q_D(QAbstractSeries);
     if (opacity != d->m_opacity) {
         d->m_opacity = opacity;
-        update();
+        emit update();
         emit opacityChanged();
+    } else {
+        qCDebug(lcProperties2D, "QAbstractSeries::setOpacity. Opacity is already set to: %f",
+                opacity);
     }
 }
 
@@ -375,9 +570,25 @@ void QAbstractSeries::setValuesMultiplier(qreal valuesMultiplier)
     valuesMultiplier = std::clamp<qreal>(valuesMultiplier, 0.0, 1.0);
     if (valuesMultiplier != d->m_valuesMultiplier) {
         d->m_valuesMultiplier = valuesMultiplier;
-        update();
+        emit update();
         emit valuesMultiplierChanged();
     }
+}
+
+int QAbstractSeries::zValue() const
+{
+    Q_D(const QAbstractSeries);
+    return d->m_drawOrder;
+}
+
+void QAbstractSeries::setZValue(int newDrawOrder)
+{
+    Q_D(QAbstractSeries);
+    if (d->m_drawOrder == newDrawOrder)
+        return;
+    d->m_drawOrder = newDrawOrder;
+    emit update();
+    emit zValueChanged(newDrawOrder);
 }
 
 /*!
@@ -506,4 +717,3 @@ void QAbstractSeriesPrivate::appendSeriesChildren(QQmlListProperty<QObject> *lis
 QT_END_NAMESPACE
 
 #include "moc_qabstractseries.cpp"
-#include "moc_qabstractseries_p.cpp"

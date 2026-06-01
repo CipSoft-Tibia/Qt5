@@ -9,9 +9,7 @@ import logging
 import math
 from math import floor, log10
 from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterable, List,
-                    Optional, Sequence, Set, Tuple, Union, Hashable)
-
-from ordered_set import OrderedSet
+                    Optional, Sequence, Set, Tuple, Union)
 
 from crossbench.probes import helper
 
@@ -19,26 +17,6 @@ if TYPE_CHECKING:
   from crossbench.path import LocalPath
   from crossbench.types import Json, JsonDict
 
-
-def format_metric(value: Union[float, int],
-                  stddev: Optional[float] = None) -> str:
-  """Format value and stdev to only expose significant + 1 digits.
-  Example outputs:
-    100 ± 10%
-    100.1 ± 1.2%
-    100.12 ± 0.12%
-    100.123 ± 0.012%
-    100.1235 ± 0.0012%
-  """
-  if not stddev:
-    return str(value)
-  stddev = float(stddev)
-  stddev_significant_digit = int(floor(log10(abs(stddev))))
-  value_width = max(0, 1 - stddev_significant_digit)
-  percent = stddev / value * 100
-  percent_significant_digit = int(floor(log10(abs(percent))))
-  percent_width = max(0, 1 - percent_significant_digit)
-  return f"{value:.{value_width}f} ± {percent:.{percent_width}f}%"
 
 
 def is_number(value: Any) -> bool:
@@ -52,13 +30,38 @@ class Metric:
   """
 
   @classmethod
+  def format(cls,
+             value: Union[float, int],
+             stddev: Optional[float] = None) -> str:
+    """Format value and stdev to only expose significant + 1 digits.
+    Example outputs:
+      100 ± 10%
+      100.1 ± 1.2%
+      100.12 ± 0.12%
+      100.123 ± 0.012%
+      100.1235 ± 0.0012%
+    """
+    if not stddev:
+      return str(value)
+    stddev = float(stddev)
+    stddev_significant_digit = int(floor(log10(abs(stddev))))
+    value_width = max(0, 1 - stddev_significant_digit)
+    percent = stddev / value * 100
+    percent_significant_digit = int(floor(log10(abs(percent))))
+    percent_width = max(0, 1 - percent_significant_digit)
+    return f"{value:.{value_width}f} ± {percent:.{percent_width}f}%"
+
+  @classmethod
   def from_json(cls, json_data: JsonDict) -> Metric:
     values = json_data["values"]
     assert isinstance(values, list)
     return cls(values)
 
-  def __init__(self, values: Optional[List] = None) -> None:
-    self.values = values or []
+  def __init__(self, values: Optional[Iterable] = None) -> None:
+    if not values:
+      self.values: List[float] = []
+    else:
+      self.values = list(values)
     self._is_numeric: bool = all(map(is_number, self.values))
 
   def __len__(self) -> int:
@@ -109,7 +112,7 @@ class Metric:
     self.values.append(value)
     self._is_numeric = self._is_numeric and is_number(value)
 
-  def to_json(self) -> JsonDict:
+  def to_json(self) -> Json:
     json_data: JsonDict = {"values": self.values}
     if not self.values:
       return json_data
@@ -126,20 +129,23 @@ class Metric:
         json_data["stddevPercent"] = (stddev / average) * 100
       return json_data
     # Try to simplify repeated non-numeric values
-    if not isinstance(self.values[0], Hashable):
-      return json_data
+    first_value = self.values[0]
     if len(set(self.values)) == 1:
-      return self.values[0]
+      return first_value
     return json_data
 
 
 def geomean(values: Iterable[Union[int, float]]) -> float:
   product: float = 1
-  length = 0
+  length: int = 0
   for value in values:
     product *= value
     length += 1
   return product**(1 / length)
+
+
+def metric_geomean(metric: Metric) -> float:
+  return metric.geomean
 
 
 class MetricsMerger:
@@ -278,71 +284,78 @@ class MetricsMerger:
       items.sort()
     return dict(items)
 
-  def to_csv(self,
-             value_fn: Optional[Callable[[Any], Any]] = None,
-             headers: Sequence[Sequence[Any]] = (),
-             include_path: bool = True,
-             sort: bool = True) -> List[Sequence[Any]]:
-    """
-    Input: {
-        "VanillaJS-TodoMVC/Adding100Items/Async": 1
-        "VanillaJS-TodoMVC/Adding100Items/Sync": 2
-        "VanillaJS-TodoMVC/Total": 3
-        "Total": 3
-      }
-    output: [
-      ["VanillaJS-TodoMVC",                      "VanillaJS-TodoMVC"],
-      ["VanillaJS-TodoMVC/Adding100Items",       "Adding100Items"],
-      ["VanillaJS-TodoMVC/Adding100Items/Async", "Async", 1]
-      ["VanillaJS-TodoMVC/Adding100Items/Sync",  "Sync",  2]
-      ["VanillaJS-TodoMVC/Total",                "Total", 3]
-      ["Total"                                   "Total", 3]
-    ]
-    """
-    converted = self.to_json(value_fn, sort)
-    lookup: Dict[str, Any] = {}
-    toplevel: OrderedSet[str] = OrderedSet()
-    items = converted.items()
-    if sort:
-      items = sorted(items)
-    for key, value in items:
-      path = None
-      segments = key.split("/")
-      for segment in segments:
-        if path:
-          path += "/" + segment
-        else:
-          path = segment
-        if path not in lookup:
-          lookup[path] = None
-      if len(segments) == 1:
-        toplevel.add(key)
-      lookup[key] = value
-    csv_data: List[Sequence[Any]] = []
-    for header in headers:
-      assert isinstance(header, Sequence), (
-          f"Additional CSV headers must be Sequences, got {type(header)}: "
-          f"{header}")
-      csv_data.append(header)
-    for path, value in lookup.items():
-      if path in toplevel:
-        continue
-      name = path.split("/")[-1]
-      if value is None:
-        if include_path:
-          csv_data.append([path, name])
-        else:
-          csv_data.append([name])
-      else:
-        if include_path:
-          csv_data.append([path, name, value])
-        else:
-          csv_data.append([name, value])
-    # Write toplevel entries last
-    for key in toplevel:
-      if include_path:
-        csv_data.append([key, key, lookup[key]])
-      else:
-        csv_data.append([key, lookup[key]])
 
-    return csv_data
+class CSVFormatter:
+  """
+  Headers: [
+    ["label_1", "value_1"],
+    ["label_2", "value_2"],
+  ]
+  Input: {
+      "A_1/B_1/Async": 1,
+      "A_1/B_2/Sync": 2,
+      "A_1/Total": 3,
+      "Total": 3,
+    }
+  Output: [
+    ["label_1",      "",      "",      "",      "value_1],
+    ["label_2",      "",      "",      "",      "value_2],
+    ["A_1/B1/Async", "A1",    "B1",    "Async", 1],
+    ["A_1/B2/Sync",  "A1",    "B2",    "Sync",  2],
+    ["A_1/Total",    "A1",    "Total", "",      3],
+    ["Total"         "Total", "",      "",      3],
+  ]
+  """
+
+  def __init__(self,
+               metrics: MetricsMerger,
+               value_fn: Optional[Callable[[Any], Any]] = None,
+               headers: Sequence[Tuple[Any, ...]] = (),
+               include_parts: bool = True,
+               sort: bool = True):
+    self._table: List[Sequence[Any]] = []
+    converted = metrics.to_json(value_fn, sort)
+    items = self.format_items(converted, sort=sort)
+    max_path_depth: int = self.extract_max_depth(items, include_parts)
+    self.append_headers(headers, max_path_depth)
+    self.append_body(items, include_parts, max_path_depth)
+
+  def extract_max_depth(self, items: Sequence[Tuple[str, Json]],
+                        include_parts: bool) -> int:
+    max_path_depth = 0
+    if include_parts:
+      for path, _ in items:
+        max_path_depth = max(max_path_depth, path.count("/"))
+    max_path_depth += 1
+    return max_path_depth
+
+  def append_headers(self, headers, max_path_depth: int) -> None:
+    header_padding = ("",) * max_path_depth
+    for header in headers:
+      assert isinstance(header, tuple), (
+          f"Additional CSV headers must be tuples, got {type(header)}: "
+          f"{header}")
+      row = header[:1] + header_padding + header[1:]
+      self._table.append(row)
+
+  def append_body(self, items: Sequence[Tuple[str, Json]], include_parts: bool,
+                  max_path_depth: int) -> None:
+    for path, value in items:
+      if include_parts:
+        parts = tuple(path.split("/"))
+        buffer = ("",) * (max_path_depth - len(parts))
+        row = (path,) + parts + buffer + (value,)
+      else:
+        row = (path, value)
+      self._table.append(row)
+
+  def format_items(self, data: Dict[str, Json],
+                   sort: bool) -> Sequence[Tuple[str, Json]]:
+    items = tuple(data.items())
+    if not sort:
+      return items
+    return sorted(items)
+
+  @property
+  def table(self) -> List[Sequence[Any]]:
+    return self._table

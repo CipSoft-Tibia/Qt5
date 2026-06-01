@@ -15,13 +15,17 @@
 // We mean it.
 //
 
-#include <QtMultimedia/qtmultimediaexports.h>
 #include <QtMultimedia/private/qplatformvideodevices_p.h>
+
 #include <QtCore/private/qcore_mac_p.h>
 
-#include <functional>
+#include <QtMultimedia/private/qavfcamerautility_p.h>
+#include <QtMultimedia/qtmultimediaexports.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureDevice);
+#include <functional>
+#include <vector>
+
+#import <AVFoundation/AVCaptureDevice.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -51,8 +55,10 @@ private:
     // AVCaptureDevices in order to determine whether they should be exposed as
     // QCameraDevice to the user.
     struct ObservedAVCaptureDevice {
+        AVFScopedPointer<AVCaptureDevice> avCaptureDevice;
+        // Note: Observer holds weak ref to avCaptureDevice, and must
+        // be destroyed before avCaptureDevice.
         QMacKeyValueObserver observer;
-        AVCaptureDevice* avCaptureDevice;
     };
 
     void clearObservedAvCaptureDevices();
@@ -60,7 +66,7 @@ private:
     // All modifications and read of m_observedAvCaptureDevices happen by
     // posting jobs the QAVFVideoDevices' thread, and so this doesn't need a
     // lock.
-    QList<ObservedAVCaptureDevice> m_observedAvCaptureDevices;
+    std::vector<ObservedAVCaptureDevice> m_observedAvCaptureDevices;
 };
 
 QT_END_NAMESPACE

@@ -17,6 +17,7 @@
 
 #include <QtCore/qobject.h>
 #include <QtCore/qurl.h>
+#include <QtCore/qpointer.h>
 #include <QtGui/qwindow.h>
 #include <QtGui/qpa/qplatformwindow.h>
 #include <QtGui/qpa/qplatformwindow_p.h>
@@ -35,13 +36,13 @@ public:
     explicit QWasmWebViewSettingsPrivate(QObject *p = nullptr);
 
     bool localStorageEnabled() const final;
-    bool javascriptEnabled() const final;
+    bool javaScriptEnabled() const final;
     bool localContentCanAccessFileUrls() const final;
     bool allowFileAccess() const final;
 
 public Q_SLOTS:
     void setLocalContentCanAccessFileUrls(bool enabled) final;
-    void setJavascriptEnabled(bool enabled) final;
+    void setJavaScriptEnabled(bool enabled) final;
     void setLocalStorageEnabled(bool enabled) final;
     void setAllowFileAccess(bool enabled) final;
 };
@@ -62,11 +63,11 @@ public:
     int loadProgress() const final;
     bool isLoading() const final;
 
-    void setParentView(QObject *view) final;
-    QObject *parentView() const final;
-    void setGeometry(const QRect &geometry) final;
-    void setVisibility(QWindow::Visibility visibility) final;
-    void setVisible(bool visible) final;
+    QWindow *nativeWindow() const override { return m_window; }
+    // NOTE: This is a temporary solution for WASM and should
+    // be removed once window containers are supported.
+    void setParentView(QObject *view) override;
+    void geometryChange(const QRectF &geometry) override;
 
 public Q_SLOTS:
     void goBack() final;
@@ -84,10 +85,11 @@ protected:
     QAbstractWebViewSettings *getSettings() const final;
 
 private:
-    void initializeIFrame();
+    Q_INVOKABLE void initializeIFrame();
     void updateGeometry();
 
     QWasmWebViewSettingsPrivate *m_settings;
+    QPointer<QWindow> m_parentWindow;
     QWindow *m_window = nullptr;
     std::optional<emscripten::val> m_iframe;
     std::optional<QRect> m_geometry;

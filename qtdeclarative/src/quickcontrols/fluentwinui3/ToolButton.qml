@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -31,6 +32,14 @@ T.ToolButton {
     icon.color: __buttonText
 
     readonly property color __buttonText: {
+        if (Application.styleHints.accessibility.contrastPreference === Qt.HighContrast) {
+            if (control.checked && (control.hovered || control.down))
+                return control.palette.highlight
+            else if (!control.checked && !(control.down || control.hovered))
+                return control.palette.buttonText
+            else
+                return control.palette.button
+        }
         if (control.down) {
             return (control.checked || control.highlighted)
                 ? Application.styleHints.colorScheme == Qt.Light
@@ -74,5 +83,15 @@ T.ToolButton {
         implicitWidth: implicitHeight
         radius: control.__config.background.topOffset
         subtle: !(control.checked || control.highlighted) || control.flat
+        highContrastBackgroundColorFunc: function() {
+            if (!control.enabled)
+                return "transparent"
+            else if (control.checked && control.hovered)
+                return control.palette.highlightedText
+            else if (control.checked || control.hovered)
+                return control.palette.highlight
+            else
+                return control.palette.button
+        }
     }
 }

@@ -178,8 +178,7 @@ struct QSGRhiShaderMaterialTypeCache
             : vs(vs),
               fs(fs)
         {
-            QtPrivate::QHashCombine hashGen;
-            hash = hashGen(hashGen(0, vs), fs);
+            hash = qHashMulti(0, vs, fs);
         }
         bool operator==(const Key &other) const {
             return vs == other.vs && fs == other.fs;

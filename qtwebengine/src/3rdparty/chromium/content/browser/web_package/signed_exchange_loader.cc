@@ -26,8 +26,8 @@
 #include "net/url_request/redirect_util.h"
 #include "services/network/public/cpp/constants.h"
 #include "services/network/public/cpp/data_pipe_to_source_stream.h"
-#include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
+#include "services/network/public/cpp/loading_params.h"
 #include "services/network/public/cpp/record_ontransfersizeupdate_utils.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/source_stream_to_data_pipe.h"
@@ -115,13 +115,13 @@ SignedExchangeLoader::SignedExchangeLoader(
   } else {
     // Can't use HttpResponseHeaders::GetMimeType() because
     // SignedExchangeHandler checks "v=" parameter.
-    std::string content_type;
-    outer_response_head_->headers->EnumerateHeader(nullptr, "content-type",
-                                                   &content_type);
+    std::optional<std::string_view> content_type =
+        outer_response_head_->headers->EnumerateHeader(nullptr, "content-type");
 
     signed_exchange_handler_ = std::make_unique<SignedExchangeHandler>(
         network::IsUrlPotentiallyTrustworthy(outer_request_.url),
-        web_package::HasNoSniffHeader(*outer_response_head_), content_type,
+        web_package::HasNoSniffHeader(*outer_response_head_),
+        content_type.value_or(std::string_view()),
         std::make_unique<network::DataPipeToSourceStream>(
             std::move(outer_response_body)),
         base::BindOnce(&SignedExchangeLoader::OnHTTPExchangeFound,
@@ -147,7 +147,7 @@ SignedExchangeLoader::~SignedExchangeLoader() = default;
 
 void SignedExchangeLoader::OnReceiveEarlyHints(
     network::mojom::EarlyHintsPtr early_hints) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void SignedExchangeLoader::OnReceiveResponse(
@@ -156,7 +156,7 @@ void SignedExchangeLoader::OnReceiveResponse(
     std::optional<mojo_base::BigBuffer> cached_metadata) {
   // Must not be called because this SignedExchangeLoader and the client
   // endpoints were bound after OnReceiveResponse() is called.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void SignedExchangeLoader::OnReceiveRedirect(
@@ -164,7 +164,7 @@ void SignedExchangeLoader::OnReceiveRedirect(
     network::mojom::URLResponseHeadPtr response_head) {
   // Must not be called because this SignedExchangeLoader and the client
   // endpoints were bound after OnReceiveResponse() is called.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void SignedExchangeLoader::OnUploadProgress(
@@ -173,7 +173,7 @@ void SignedExchangeLoader::OnUploadProgress(
     OnUploadProgressCallback ack_callback) {
   // Must not be called because this SignedExchangeLoader and the client
   // endpoints were bound after OnReceiveResponse() is called.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void SignedExchangeLoader::OnTransferSizeUpdated(int32_t transfer_size_diff) {
@@ -197,20 +197,12 @@ void SignedExchangeLoader::FollowRedirect(
     const net::HttpRequestHeaders& modified_headers,
     const net::HttpRequestHeaders& modified_cors_exempt_headers,
     const std::optional<GURL>& new_url) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void SignedExchangeLoader::SetPriority(net::RequestPriority priority,
                                        int intra_priority_value) {
   url_loader_->SetPriority(priority, intra_priority_value);
-}
-
-void SignedExchangeLoader::PauseReadingBodyFromNet() {
-  url_loader_->PauseReadingBodyFromNet();
-}
-
-void SignedExchangeLoader::ResumeReadingBodyFromNet() {
-  url_loader_->ResumeReadingBodyFromNet();
 }
 
 void SignedExchangeLoader::ConnectToClient(
@@ -305,8 +297,7 @@ void SignedExchangeLoader::OnHTTPExchangeFound(
   options.struct_size = sizeof(MojoCreateDataPipeOptions);
   options.flags = MOJO_CREATE_DATA_PIPE_FLAG_NONE;
   options.element_num_bytes = 1;
-  options.capacity_num_bytes =
-      network::features::GetDataPipeDefaultAllocationSize();
+  options.capacity_num_bytes = network::GetDataPipeDefaultAllocationSize();
   if (mojo::CreateDataPipe(&options, producer_handle, consumer_handle) !=
       MOJO_RESULT_OK) {
     forwarding_client_->OnComplete(

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmldebugtranslationservice.h"
 #include "proxytranslator.h"
@@ -44,6 +45,30 @@ QDebug operator<<(QDebug debug, const TranslationBindingInformation &translation
             "QDebug translation binding"
         )));
     return debug << qPrintable(error.toString());
+}
+
+static QString translationIdString(const QQmlTranslation::QsTrData &data)
+{
+    return QString::fromUtf8(data.text());
+}
+
+static QString translationIdString(const QQmlTranslation::QsTrIdData &data)
+{
+    return QString::fromUtf8(data.id());
+}
+
+static QString translationIdString(const QQmlTranslation &translation)
+{
+    return translation.visit(
+            [](auto &&arg) -> QString {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr (!std::is_same_v<T, std::nullptr_t>)
+                    return translationIdString(arg);
+                else {
+                    Q_ASSERT_X(false, "QQmlTranslation", "Uninitialized Translation");
+                    return {};
+                }
+            });
 }
 
 class QQmlDebugTranslationServicePrivate : public QObject
@@ -159,7 +184,7 @@ public:
 
                 auto textProperty = scopeObject->metaObject()->property(textIndex);
                 qmlElement.propertyName = textProperty.name();
-                qmlElement.translationId = information.translation.idForQmlDebug();
+                qmlElement.translationId = translationIdString(information.translation);
                 qmlElement.translatedText = textProperty.read(scopeObject).toString();
                 qmlElement.elementId = qmlContext(scopeObject)->nameForObject(scopeObject);
 

@@ -380,10 +380,8 @@ QDebug operator<<(QDebug debug, const QInputDevice *device)
     debug.noquote();
 
     debug << "QInputDevice(";
-    if (!device) {
-        debug << "0)";
-        return debug;
-    }
+    if (!device)
+        return debug << "0x0)";
 
     const QInputDevicePrivate *d = QInputDevicePrivate::get(device);
 

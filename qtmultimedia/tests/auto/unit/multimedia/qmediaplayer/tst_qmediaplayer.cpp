@@ -17,6 +17,9 @@
 #include "qmockaudiooutput.h"
 #include "qvideosink.h"
 #include "qaudiooutput.h"
+#include <QtMultimedia/qplaybackoptions.h>
+
+using namespace std::chrono_literals;
 
 QT_USE_NAMESPACE
 
@@ -98,6 +101,10 @@ private slots:
     void testDestructor();
     void testQrc_data();
     void testQrc();
+    void playbackOptions_returnsDefaultAfterConstruction();
+    void setPlaybackOptions_setsPlaybackOptions();
+    void setPlaybackOptions_doesNotEmitChangeSignal_whenOptionsDidNotChange();
+    void resetPlaybackOptions_resetsPlaybackOptionsToDefault();
 
 private:
     void setupCommonTestData();
@@ -871,6 +878,45 @@ void tst_QMediaPlayer::testQrc()
     // Check the media actually passed to the backend
     QCOMPARE(mockPlayer->media().scheme(), backendMediaContentScheme);
     QCOMPARE(bool(mockPlayer->mediaStream()), backendHasStream);
+}
+
+void tst_QMediaPlayer::playbackOptions_returnsDefaultAfterConstruction()
+{
+    QCOMPARE_EQ(player->playbackOptions(), QPlaybackOptions{});
+}
+
+void tst_QMediaPlayer::setPlaybackOptions_setsPlaybackOptions()
+{
+    QSignalSpy spy{ player, &QMediaPlayer::playbackOptionsChanged };
+
+    QPlaybackOptions options;
+    const std::chrono::milliseconds defaultNetworkTimeout = options.networkTimeout();
+    options.setNetworkTimeout(defaultNetworkTimeout + 1ms);
+
+    player->setPlaybackOptions(options);
+
+    QCOMPARE_NE(player->playbackOptions().networkTimeout(), defaultNetworkTimeout);
+
+    QCOMPARE_EQ(spy.size(), 1);
+}
+
+void tst_QMediaPlayer::setPlaybackOptions_doesNotEmitChangeSignal_whenOptionsDidNotChange()
+{
+    QSignalSpy spy{ player, &QMediaPlayer::playbackOptionsChanged };
+
+    player->setPlaybackOptions(player->playbackOptions());
+
+    QCOMPARE_EQ(spy.size(), 0);
+}
+
+void tst_QMediaPlayer::resetPlaybackOptions_resetsPlaybackOptionsToDefault()
+{
+    auto options = player->playbackOptions();
+    options.setNetworkTimeout(options.networkTimeout() + 1ms);
+    player->setPlaybackOptions(options);
+
+    player->resetPlaybackOptions();
+    QCOMPARE_EQ(player->playbackOptions(), QPlaybackOptions{});
 }
 
 QTEST_GUILESS_MAIN(tst_QMediaPlayer)

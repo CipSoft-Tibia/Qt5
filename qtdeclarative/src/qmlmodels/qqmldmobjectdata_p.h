@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDMOBJECTDATA_P_H
 #define QQMLDMOBJECTDATA_P_H
@@ -24,12 +25,11 @@
 QT_BEGIN_NAMESPACE
 
 class VDMObjectDelegateDataType;
-class QQmlDMObjectData : public QQmlDelegateModelItem, public QQmlAdaptorModelProxyInterface
+class QQmlDMObjectData : public QQmlDelegateModelItem
 {
     Q_OBJECT
     Q_PROPERTY(QObject *modelData READ modelData NOTIFY modelDataChanged)
     QT_ANONYMOUS_PROPERTY(QObject * READ modelData NOTIFY modelDataChanged FINAL)
-    Q_INTERFACES(QQmlAdaptorModelProxyInterface)
 public:
     QQmlDMObjectData(
             const QQmlRefPointer<QQmlDelegateModelItemMetaType> &metaType,
@@ -47,7 +47,7 @@ public:
     }
 
     QObject *modelData() const { return object; }
-    QObject *proxiedObject() override { return object; }
+    QQmlRefPointer<QQmlContextData> initProxy() final;
 
     QPointer<QObject> object;
 
@@ -60,26 +60,26 @@ class VDMObjectDelegateDataType final
       public QQmlAdaptorModel::Accessors
 {
 public:
-    int propertyOffset;
-    int signalOffset;
-    bool shared;
     QMetaObjectBuilder builder;
+    QQmlAdaptorModel *model = nullptr;
+    int propertyOffset = 0;
+    int signalOffset = 0;
+    bool shared = false;
 
-    VDMObjectDelegateDataType()
-        : propertyOffset(0)
-        , signalOffset(0)
+    VDMObjectDelegateDataType(QQmlAdaptorModel *model)
+        : model(model)
         , shared(true)
     {
     }
 
     VDMObjectDelegateDataType(const VDMObjectDelegateDataType &type)
-        : propertyOffset(type.propertyOffset)
-        , signalOffset(type.signalOffset)
-        , shared(false)
-        , builder(type.metaObject.data(), QMetaObjectBuilder::Properties
+        : builder(type.metaObject.data(), QMetaObjectBuilder::Properties
                 | QMetaObjectBuilder::Signals
                 | QMetaObjectBuilder::SuperClass
                 | QMetaObjectBuilder::ClassName)
+        , model(type.model)
+        , propertyOffset(type.propertyOffset)
+        , signalOffset(type.signalOffset)
     {
         builder.setFlags(MetaObjectFlag::DynamicMetaObject);
     }
@@ -107,15 +107,14 @@ public:
             int index, int row, int column) override
     {
         if (!metaObject)
-            initializeMetaType(model);
+            initializeMetaObject();
         return index >= 0 && index < model.list.count()
                 ? new QQmlDMObjectData(metaType, this, index, row, column, qvariant_cast<QObject *>(model.list.at(index)))
                 : nullptr;
     }
 
-    void initializeMetaType(QQmlAdaptorModel &model)
+    void initializeMetaObject()
     {
-        Q_UNUSED(model);
         QQmlAdaptorModelEngineData::setModelDataType<QQmlDMObjectData>(&builder, this);
 
         metaObject.reset(builder.toMetaObject());
@@ -135,12 +134,13 @@ public:
     bool notify(const QQmlAdaptorModel &model, const QList<QQmlDelegateModelItem *> &items, int index, int count, const QVector<int> &) const override
     {
         for (auto modelItem : items) {
-            const int modelItemIndex = modelItem->index;
+            const int modelItemIndex = modelItem->modelIndex();
             if (modelItemIndex < index || modelItemIndex >= index + count)
                 continue;
 
             auto objectModelItem = static_cast<QQmlDMObjectData *>(modelItem);
-            QObject *updatedModelData = qvariant_cast<QObject *>(model.list.at(objectModelItem->index));
+            QObject *updatedModelData = qvariant_cast<QObject *>(
+                    model.list.at(objectModelItem->modelIndex()));
             objectModelItem->setModelData(updatedModelData);
         }
         return true;
@@ -218,8 +218,9 @@ public:
             } else {
                 propertyBuilder = m_type->builder.addProperty(property.name(), property.typeName());
             }
-            propertyBuilder.setWritable(property.isWritable());
-            propertyBuilder.setResettable(property.isResettable());
+            const bool modelWritable = m_type->model->delegateModelAccess != QQmlDelegateModel::ReadOnly;
+            propertyBuilder.setWritable(modelWritable && property.isWritable());
+            propertyBuilder.setResettable(modelWritable && property.isResettable());
             propertyBuilder.setConstant(property.isConstant());
         }
 

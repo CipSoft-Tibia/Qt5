@@ -6,6 +6,7 @@
 
 #include "importrec.h"
 #include "aggregate.h"
+#include "genustypes.h"
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qlist.h>
@@ -21,7 +22,7 @@ typedef QList<ImportRec> ImportList;
 class QmlTypeNode : public Aggregate
 {
 public:
-    QmlTypeNode(Aggregate *parent, const QString &name, Node::NodeType type);
+    QmlTypeNode(Aggregate *parent, const QString &name, NodeType type);
     [[nodiscard]] bool isFirstClassAggregate() const override { return true; }
     ClassNode *classNode() override { return m_classNode; }
     void setClassNode(ClassNode *cn) override { m_classNode = cn; }
@@ -42,6 +43,7 @@ public:
     void setQmlBaseName(const QString &name) { m_qmlBaseName = name; }
     [[nodiscard]] QmlTypeNode *qmlBaseNode() const override { return m_qmlBaseNode; }
     void resolveInheritance(NodeMap &previousSearches);
+    void checkInheritance();
     static void addInheritedBy(const Node *base, Node *sub);
     static void subclasses(const Node *base, NodeList &subs);
     static void terminate();

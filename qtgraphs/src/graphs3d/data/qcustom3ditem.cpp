@@ -3,6 +3,7 @@
 
 #include <QtCore/qfileinfo.h>
 #include "qcustom3ditem_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -238,16 +239,22 @@ void QCustom3DItem::setMeshFile(const QString &meshFile)
 {
     Q_D(QCustom3DItem);
     QFileInfo validfile(meshFile);
+
     if (!validfile.exists() || !validfile.isFile()) {
-        qWarning("Mesh file %ls does not exist.", qUtf16Printable(meshFile));
+        qCWarning(lcProperties3D, "%s mesh file %s does not exist",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(meshFile));
         return;
     }
-    if (d->m_meshFile != meshFile) {
-        d->m_meshFile = meshFile;
-        d->m_dirtyBits.meshDirty = true;
-        emit meshFileChanged(meshFile);
-        emit needUpdate();
+    if (d->m_meshFile == meshFile) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(meshFile));
+        return;
     }
+
+    d->m_meshFile = meshFile;
+    d->m_dirtyBits.meshDirty = true;
+    emit meshFileChanged(meshFile);
+    emit needUpdate();
 }
 
 QString QCustom3DItem::meshFile() const
@@ -277,12 +284,16 @@ QString QCustom3DItem::meshFile() const
 void QCustom3DItem::setPosition(QVector3D position)
 {
     Q_D(QCustom3DItem);
-    if (d->m_position != position) {
-        d->m_position = position;
-        d->m_dirtyBits.positionDirty = true;
-        emit positionChanged(position);
-        emit needUpdate();
+    if (d->m_position == position) {
+        qCDebug(lcProperties3D, "%s value is already set to: %.1f %.1f %.1f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), position.x(), position.y(), position.z());
+        return;
     }
+
+    d->m_position = position;
+    d->m_dirtyBits.positionDirty = true;
+    emit positionChanged(position);
+    emit needUpdate();
 }
 
 QVector3D QCustom3DItem::position() const
@@ -305,12 +316,16 @@ QVector3D QCustom3DItem::position() const
 void QCustom3DItem::setPositionAbsolute(bool positionAbsolute)
 {
     Q_D(QCustom3DItem);
-    if (d->m_positionAbsolute != positionAbsolute) {
-        d->m_positionAbsolute = positionAbsolute;
-        d->m_dirtyBits.positionDirty = true;
-        emit positionAbsoluteChanged(positionAbsolute);
-        emit needUpdate();
+    if (d->m_positionAbsolute == positionAbsolute) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << positionAbsolute;
+        return;
     }
+
+    d->m_positionAbsolute = positionAbsolute;
+    d->m_dirtyBits.positionDirty = true;
+    emit positionAbsoluteChanged(positionAbsolute);
+    emit needUpdate();
 }
 
 bool QCustom3DItem::isPositionAbsolute() const
@@ -340,12 +355,16 @@ bool QCustom3DItem::isPositionAbsolute() const
 void QCustom3DItem::setScaling(QVector3D scaling)
 {
     Q_D(QCustom3DItem);
-    if (d->m_scaling != scaling) {
-        d->m_scaling = scaling;
-        d->m_dirtyBits.scalingDirty = true;
-        emit scalingChanged(scaling);
-        emit needUpdate();
+    if (d->m_scaling == scaling) {
+        qCDebug(lcProperties3D, "%s value is already set to: %.1f %.1f %.1f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), scaling.x(), scaling.y(), scaling.z());
+        return;
     }
+
+    d->m_scaling = scaling;
+    d->m_dirtyBits.scalingDirty = true;
+    emit scalingChanged(scaling);
+    emit needUpdate();
 }
 
 QVector3D QCustom3DItem::scaling() const
@@ -381,14 +400,19 @@ void QCustom3DItem::setScalingAbsolute(bool scalingAbsolute)
 {
     Q_D(QCustom3DItem);
     if (d->m_isLabelItem && !scalingAbsolute) {
-        qWarning("%ls Data bounds are not supported for label items.",
+        qCWarning(lcProperties3D, "%ls data bounds are not supported for label items.",
                  qUtf16Printable(QString::fromUtf8(__func__)));
-    } else if (d->m_scalingAbsolute != scalingAbsolute) {
-        d->m_scalingAbsolute = scalingAbsolute;
-        d->m_dirtyBits.scalingDirty = true;
-        emit scalingAbsoluteChanged(scalingAbsolute);
-        emit needUpdate();
+        return;
+    } else if (d->m_scalingAbsolute == scalingAbsolute) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << scalingAbsolute;
+        return;
     }
+
+    d->m_scalingAbsolute = scalingAbsolute;
+    d->m_dirtyBits.scalingDirty = true;
+    emit scalingAbsoluteChanged(scalingAbsolute);
+    emit needUpdate();
 }
 
 bool QCustom3DItem::isScalingAbsolute() const
@@ -406,12 +430,16 @@ bool QCustom3DItem::isScalingAbsolute() const
 void QCustom3DItem::setRotation(const QQuaternion &rotation)
 {
     Q_D(QCustom3DItem);
-    if (d->m_rotation != rotation) {
-        d->m_rotation = rotation;
-        d->m_dirtyBits.rotationDirty = true;
-        emit rotationChanged(rotation);
-        emit needUpdate();
+    if (d->m_rotation == rotation) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << rotation;
+        return;
     }
+
+    d->m_rotation = rotation;
+    d->m_dirtyBits.rotationDirty = true;
+    emit rotationChanged(rotation);
+    emit needUpdate();
 }
 
 QQuaternion QCustom3DItem::rotation()
@@ -429,12 +457,16 @@ QQuaternion QCustom3DItem::rotation()
 void QCustom3DItem::setVisible(bool visible)
 {
     Q_D(QCustom3DItem);
-    if (d->m_visible != visible) {
-        d->m_visible = visible;
-        d->m_dirtyBits.visibleDirty = true;
-        emit visibleChanged(visible);
-        emit needUpdate();
+    if (d->m_visible == visible) {
+        qCDebug(lcProperties3D) << qUtf8Printable(QLatin1String(__FUNCTION__))
+            << "value is already set to:" << visible;
+        return;
     }
+
+    d->m_visible = visible;
+    d->m_dirtyBits.visibleDirty = true;
+    emit visibleChanged(visible);
+    emit needUpdate();
 }
 
 bool QCustom3DItem::isVisible() const
@@ -454,12 +486,16 @@ bool QCustom3DItem::isVisible() const
 void QCustom3DItem::setShadowCasting(bool enabled)
 {
     Q_D(QCustom3DItem);
-    if (d->m_shadowCasting != enabled) {
-        d->m_shadowCasting = enabled;
-        d->m_dirtyBits.shadowCastingDirty = true;
-        emit shadowCastingChanged(enabled);
-        emit needUpdate();
+    if (d->m_shadowCasting == enabled) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enabled;
+        return;
     }
+
+    d->m_shadowCasting = enabled;
+    d->m_dirtyBits.shadowCastingDirty = true;
+    emit shadowCastingChanged(enabled);
+    emit needUpdate();
 }
 
 bool QCustom3DItem::isShadowCasting() const
@@ -489,22 +525,26 @@ void QCustom3DItem::setRotationAxisAndAngle(QVector3D axis, float angle)
 void QCustom3DItem::setTextureImage(const QImage &textureImage)
 {
     Q_D(QCustom3DItem);
-    if (textureImage != d->m_textureImage) {
-        if (textureImage.isNull()) {
-            // Make a solid gray texture
-            d->m_textureImage = QImage(2, 2, QImage::Format_RGB32);
-            d->m_textureImage.fill(Qt::gray);
-        } else {
-            d->m_textureImage = textureImage;
-        }
-
-        if (!d->m_textureFile.isEmpty()) {
-            d->m_textureFile.clear();
-            emit textureFileChanged(d->m_textureFile);
-        }
-        d->m_dirtyBits.textureDirty = true;
-        emit needUpdate();
+    if (textureImage == d->m_textureImage) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << textureImage;
+        return;
     }
+
+    if (textureImage.isNull()) {
+        // Make a solid gray texture
+        d->m_textureImage = QImage(2, 2, QImage::Format_RGB32);
+        d->m_textureImage.fill(Qt::gray);
+    } else {
+        d->m_textureImage = textureImage;
+    }
+
+    if (!d->m_textureFile.isEmpty()) {
+        d->m_textureFile.clear();
+        emit textureFileChanged(d->m_textureFile);
+    }
+    d->m_dirtyBits.textureDirty = true;
+    emit needUpdate();
 }
 
 /*! \property QCustom3DItem::textureFile
@@ -520,18 +560,23 @@ void QCustom3DItem::setTextureImage(const QImage &textureImage)
 void QCustom3DItem::setTextureFile(const QString &textureFile)
 {
     Q_D(QCustom3DItem);
-    if (d->m_textureFile != textureFile) {
-        d->m_textureFile = textureFile;
-        if (!textureFile.isEmpty()) {
-            d->m_textureImage = QImage(textureFile);
-        } else {
-            d->m_textureImage = QImage(2, 2, QImage::Format_RGB32);
-            d->m_textureImage.fill(Qt::gray);
-        }
-        emit textureFileChanged(textureFile);
-        d->m_dirtyBits.textureDirty = true;
-        emit needUpdate();
+    if (d->m_textureFile == textureFile) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(textureFile));
+        return;
     }
+
+    d->m_textureFile = textureFile;
+    if (!textureFile.isEmpty()) {
+        d->m_textureImage = QImage(textureFile);
+    } else {
+        d->m_textureImage = QImage(2, 2, QImage::Format_RGB32);
+        d->m_textureImage.fill(Qt::gray);
+        qCWarning(lcProperties3D, "%s texture file was empty, texture defaults to grey", qUtf8Printable(textureFile));
+    }
+    emit textureFileChanged(textureFile);
+    d->m_dirtyBits.textureDirty = true;
+    emit needUpdate();
 }
 
 QString QCustom3DItem::textureFile() const

@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
@@ -45,7 +45,7 @@ void core::CommandBuffer::RecordWaitEvents(vvl::Func command, uint32_t eventCoun
     auto first_event_index = events.size();
     vvl::CommandBuffer::RecordWaitEvents(command, eventCount, pEvents, srcStageMask);
     auto event_added_count = events.size() - first_event_index;
-    eventUpdates.emplace_back(
+    event_updates.emplace_back(
         [command, event_added_count, first_event_index, srcStageMask](
             vvl::CommandBuffer& cb_state, bool do_validate, EventMap& local_event_signal_info, VkQueue queue, const Location& loc) {
             if (!do_validate) return false;
@@ -58,4 +58,24 @@ std::shared_ptr<vvl::CommandBuffer> CoreChecks::CreateCmdBufferState(VkCommandBu
                                                                      const VkCommandBufferAllocateInfo* allocate_info,
                                                                      const vvl::CommandPool* pool) {
     return std::static_pointer_cast<vvl::CommandBuffer>(std::make_shared<core::CommandBuffer>(*this, handle, allocate_info, pool));
+}
+
+core::Queue::Queue(vvl::Device& dev_data, VkQueue handle, uint32_t family_index, uint32_t queue_index,
+                   VkDeviceQueueCreateFlags flags, const VkQueueFamilyProperties& queue_family_properties,
+                   const vvl::Device& error_logger)
+    : vvl::Queue(dev_data, handle, family_index, queue_index, flags, queue_family_properties),
+      queue_submission_validator_(error_logger) {}
+
+void core::Queue::Retire(vvl::QueueSubmission& submission) {
+    // Call validation before parent call. Validation needs initial submission state (Retire updates state)
+    queue_submission_validator_.Validate(submission);
+
+    vvl::Queue::Retire(submission);
+}
+
+std::shared_ptr<vvl::Queue> CoreChecks::CreateQueue(VkQueue handle, uint32_t family_index, uint32_t queue_index,
+                                                    VkDeviceQueueCreateFlags flags,
+                                                    const VkQueueFamilyProperties& queue_family_properties) {
+    return std::static_pointer_cast<vvl::Queue>(
+        std::make_shared<core::Queue>(*this, handle, family_index, queue_index, flags, queue_family_properties, *this));
 }

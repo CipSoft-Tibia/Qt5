@@ -24,6 +24,7 @@
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "google_apis/gaia/core_account_id.h"
+#include "google_apis/gaia/gaia_id.h"
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 const char kExplicitSigninMigrationHistogramName[] =
@@ -105,14 +106,81 @@ void MaybeRecordWebSigninToChromeSigninTimes(
     signin_metrics::AccessPoint access_point) {
   std::string_view access_point_string;
   switch (access_point) {
-    case signin_metrics::AccessPoint::ACCESS_POINT_AVATAR_BUBBLE_SIGN_IN:
+    case signin_metrics::AccessPoint::kAvatarBubbleSignInWithSyncPromo:
       access_point_string = "ProfileMenu";
       break;
-    case signin_metrics::AccessPoint::ACCESS_POINT_PASSWORD_BUBBLE:
+    case signin_metrics::AccessPoint::kPasswordBubble:
       access_point_string = "PasswordSigninPromo";
       break;
-    default:
-      // All other access point should not record this metric.
+    case signin_metrics::AccessPoint::kAddressBubble:
+      access_point_string = "AddressSigninPromo";
+      break;
+    // All other access point should not record this metric.
+    case signin_metrics::AccessPoint::kStartPage:
+    case signin_metrics::AccessPoint::kNtpLink:
+    case signin_metrics::AccessPoint::kMenu:
+    case signin_metrics::AccessPoint::kSettings:
+    case signin_metrics::AccessPoint::kSupervisedUser:
+    case signin_metrics::AccessPoint::kExtensionInstallBubble:
+    case signin_metrics::AccessPoint::kExtensions:
+    case signin_metrics::AccessPoint::kBookmarkBubble:
+    case signin_metrics::AccessPoint::kBookmarkManager:
+    case signin_metrics::AccessPoint::kAvatarBubbleSignIn:
+    case signin_metrics::AccessPoint::kUserManager:
+    case signin_metrics::AccessPoint::kDevicesPage:
+    case signin_metrics::AccessPoint::kSigninPromo:
+    case signin_metrics::AccessPoint::kRecentTabs:
+    case signin_metrics::AccessPoint::kUnknown:
+    case signin_metrics::AccessPoint::kAutofillDropdown:
+    case signin_metrics::AccessPoint::kResigninInfobar:
+    case signin_metrics::AccessPoint::kTabSwitcher:
+    case signin_metrics::AccessPoint::kMachineLogon:
+    case signin_metrics::AccessPoint::kGoogleServicesSettings:
+    case signin_metrics::AccessPoint::kSyncErrorCard:
+    case signin_metrics::AccessPoint::kForcedSignin:
+    case signin_metrics::AccessPoint::kAccountRenamed:
+    case signin_metrics::AccessPoint::kWebSignin:
+    case signin_metrics::AccessPoint::kSafetyCheck:
+    case signin_metrics::AccessPoint::kKaleidoscope:
+    case signin_metrics::AccessPoint::kEnterpriseSignoutCoordinator:
+    case signin_metrics::AccessPoint::kSigninInterceptFirstRunExperience:
+    case signin_metrics::AccessPoint::kSendTabToSelfPromo:
+    case signin_metrics::AccessPoint::kNtpFeedTopPromo:
+    case signin_metrics::AccessPoint::kSettingsSyncOffRow:
+    case signin_metrics::AccessPoint::kPostDeviceRestoreSigninPromo:
+    case signin_metrics::AccessPoint::kPostDeviceRestoreBackgroundSignin:
+    case signin_metrics::AccessPoint::kNtpSignedOutIcon:
+    case signin_metrics::AccessPoint::kNtpFeedCardMenuPromo:
+    case signin_metrics::AccessPoint::kNtpFeedBottomPromo:
+    case signin_metrics::AccessPoint::kDesktopSigninManager:
+    case signin_metrics::AccessPoint::kForYouFre:
+    case signin_metrics::AccessPoint::kCreatorFeedFollow:
+    case signin_metrics::AccessPoint::kReadingList:
+    case signin_metrics::AccessPoint::kReauthInfoBar:
+    case signin_metrics::AccessPoint::kAccountConsistencyService:
+    case signin_metrics::AccessPoint::kSearchCompanion:
+    case signin_metrics::AccessPoint::kSetUpList:
+    case signin_metrics::AccessPoint::kPasswordMigrationWarningAndroid:
+    case signin_metrics::AccessPoint::kSaveToPhotosIos:
+    case signin_metrics::AccessPoint::kChromeSigninInterceptBubble:
+    case signin_metrics::AccessPoint::kRestorePrimaryAccountOnProfileLoad:
+    case signin_metrics::AccessPoint::kTabOrganization:
+    case signin_metrics::AccessPoint::kSaveToDriveIos:
+    case signin_metrics::AccessPoint::kTipsNotification:
+    case signin_metrics::AccessPoint::kNotificationsOptInScreenContentToggle:
+    case signin_metrics::AccessPoint::kSigninChoiceRemembered:
+    case signin_metrics::AccessPoint::kProfileMenuSignoutConfirmationPrompt:
+    case signin_metrics::AccessPoint::kSettingsSignoutConfirmationPrompt:
+    case signin_metrics::AccessPoint::kNtpIdentityDisc:
+    case signin_metrics::AccessPoint::kOidcRedirectionInterception:
+    case signin_metrics::AccessPoint::kWebauthnModalDialog:
+    case signin_metrics::AccessPoint::kAccountMenu:
+    case signin_metrics::AccessPoint::kProductSpecifications:
+    case signin_metrics::AccessPoint::kAccountMenuFailedSwitch:
+    case signin_metrics::AccessPoint::kCctAccountMismatchNotification:
+    case signin_metrics::AccessPoint::kDriveFilePickerIos:
+    case signin_metrics::AccessPoint::kCollaborationTabGroup:
+    case signin_metrics::AccessPoint::kGlicLaunchButton:
       return;
   }
 
@@ -308,24 +376,21 @@ void SigninMetricsService::HandleSigninErrors(
     AccountInfo account_info = identity_manager_->FindExtendedAccountInfo(
         identity_manager_->GetPrimaryAccountInfo(
             signin::ConsentLevel::kSignin));
-    if (account_info.access_point !=
-        signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN) {
+    if (account_info.access_point != signin_metrics::AccessPoint::kUnknown) {
       // Only record `Started` from WEB_SIGNIN, since there is no way to
       // know that a WebSignin resolution has started until it was
       // completed. Other access points are client access points which can
       // be tracked at the real started event.
       if (account_info.access_point ==
-          signin_metrics::AccessPoint::ACCESS_POINT_WEB_SIGNIN) {
+          signin_metrics::AccessPoint::kWebSignin) {
         base::UmaHistogramEnumeration(
             "Signin.SigninPending.ResolutionSourceStarted",
-            account_info.access_point,
-            signin_metrics::AccessPoint::ACCESS_POINT_MAX);
+            account_info.access_point);
       }
 
       base::UmaHistogramEnumeration(
           "Signin.SigninPending.ResolutionSourceCompleted",
-          account_info.access_point,
-          signin_metrics::AccessPoint::ACCESS_POINT_MAX);
+          account_info.access_point);
     }
   }
 }
@@ -334,8 +399,7 @@ void SigninMetricsService::OnExtendedAccountInfoUpdated(
     const AccountInfo& info) {
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
   if (switches::IsExplicitBrowserSigninUIOnDesktopEnabled() &&
-      info.access_point ==
-          signin_metrics::AccessPoint::ACCESS_POINT_WEB_SIGNIN &&
+      info.access_point == signin_metrics::AccessPoint::kWebSignin &&
       !identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
     ScopedDictPrefUpdate update(&pref_service_.get(),
                                 kWebSigninAccountStartTimesPref);
@@ -394,9 +458,8 @@ void SigninMetricsService::MaybeRecordWebSigninToChromeSigninMetrics(
     if (start_time.has_value()) {
       MaybeRecordWebSigninToChromeSigninTimes(start_time.value(), access_point);
 
-      base::UmaHistogramEnumeration(
-          "Signin.WebSignin.SourceToChromeSignin", access_point,
-          signin_metrics::AccessPoint::ACCESS_POINT_MAX);
+      base::UmaHistogramEnumeration("Signin.WebSignin.SourceToChromeSignin",
+                                    access_point);
     }
     // Clear all related web signin information on the first Chrome signin
     // event.
@@ -405,7 +468,7 @@ void SigninMetricsService::MaybeRecordWebSigninToChromeSigninMetrics(
 }
 
 void SigninMetricsService::RecordSigninInterceptionMetrics(
-    const std::string& gaia_id,
+    const GaiaId& gaia_id,
     signin_metrics::AccessPoint access_point) {
   ChromeSigninUserChoice signin_choice =
       SigninPrefs(pref_service_.get())
@@ -414,8 +477,8 @@ void SigninMetricsService::RecordSigninInterceptionMetrics(
                                 signin_choice);
   if (signin_choice == ChromeSigninUserChoice::kDoNotSignin) {
     base::UmaHistogramEnumeration(
-        "Signin.Settings.ChromeSignin.AccessPointWithDoNotSignin", access_point,
-        signin_metrics::AccessPoint::ACCESS_POINT_MAX);
+        "Signin.Settings.ChromeSignin.AccessPointWithDoNotSignin",
+        access_point);
   }
 }
 

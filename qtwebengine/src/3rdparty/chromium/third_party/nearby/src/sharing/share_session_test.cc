@@ -15,6 +15,8 @@
 #include "sharing/share_session.h"
 
 #include <cstdint>
+#include <memory>
+#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,12 +30,14 @@
 #include "absl/time/time.h"
 #include "internal/analytics/mock_event_logger.h"
 #include "internal/test/fake_clock.h"
+#include "internal/test/fake_device_info.h"
 #include "internal/test/fake_task_runner.h"
 #include "sharing/analytics/analytics_recorder.h"
 #include "sharing/certificates/fake_nearby_share_certificate_manager.h"
-#include "sharing/fake_nearby_connection.h"
 #include "sharing/fake_nearby_connections_manager.h"
 #include "sharing/nearby_connection.h"
+#include "sharing/nearby_connection_impl.h"
+#include "sharing/nearby_connections_types.h"
 #include "sharing/paired_key_verification_runner.h"
 #include "sharing/share_target.h"
 #include "sharing/transfer_metadata.h"
@@ -55,15 +59,11 @@ constexpr absl::string_view kEndpointId = "12345";
 class TestShareSession : public ShareSession {
  public:
   TestShareSession(std::string endpoint_id, const ShareTarget& share_target)
-      : ShareSession(fake_task_runner_, analytics_recorder_,
-                     std::move(endpoint_id), share_target),
+      : ShareSession(&fake_clock_, fake_task_runner_, &connections_manager_,
+                     analytics_recorder_, std::move(endpoint_id), share_target),
         is_incoming_(share_target.is_incoming) {}
 
   bool IsIncoming() const override { return is_incoming_; }
-
-  void SetOnNewConnectionResult(bool result) {
-    on_new_connection_result_ = result;
-  }
 
   void SetAttachmentPayloadId(int64_t attachment_id, int64_t payload_id) {
     ShareSession::SetAttachmentPayloadId(attachment_id, payload_id);
@@ -76,24 +76,37 @@ class TestShareSession : public ShareSession {
                                                      share_target_os_type);
   }
 
+  FakeNearbyConnectionsManager& connections_manager() {
+    return connections_manager_;
+  }
+
+  FakeDeviceInfo& device_info() { return device_info_; }
+
+  void SetNearbyConnection(NearbyConnection* connection) {
+    std::vector<uint8_t> endpoint_info = {1, 2, 3, 4};
+    std::vector<uint8_t> bluetooth_mac_address = {5, 6, 7, 8};
+    connections_manager_.Connect(
+        endpoint_info, kEndpointId, bluetooth_mac_address,
+        nearby::sharing::proto::DataUsage::ONLINE_DATA_USAGE,
+        TransportType::kHighQuality,
+        [&](absl::string_view endpoint_id, NearbyConnection* connection,
+            Status status) {});
+    SetConnection(connection);
+  }
+
   MOCK_METHOD(void, InvokeTransferUpdateCallback,
               (const TransferMetadata& metadata), (override));
-
- protected:
-  bool OnNewConnection(NearbyConnection* connection) override {
-    connection_ = connection;
-    return on_new_connection_result_;
-  }
+  MOCK_METHOD(void, OnConnectionDisconnected, (), (override));
 
  private:
   FakeClock fake_clock_;
   FakeTaskRunner fake_task_runner_{&fake_clock_, 1};
+  FakeNearbyConnectionsManager connections_manager_;
+  FakeDeviceInfo device_info_;
   nearby::analytics::MockEventLogger mock_event_logger_;
   analytics::AnalyticsRecorder analytics_recorder_{/*vendor_id=*/0,
                                                    &mock_event_logger_};
   const bool is_incoming_;
-  NearbyConnection* connection_ = nullptr;
-  bool on_new_connection_result_ = true;
 };
 
 TEST(ShareSessionTest, UpdateTransferMetadata) {
@@ -137,55 +150,43 @@ TEST(ShareSessionTest, SetDisconnectStatus) {
   EXPECT_EQ(session.disconnect_status(), TransferMetadata::Status::kCancelled);
 }
 
-TEST(ShareSessionTest, OnConnectedFails) {
-  FakeNearbyConnectionsManager connections_manager;
-  ShareTarget share_target;
-  TestShareSession session(std::string(kEndpointId), share_target);
-  session.SetOnNewConnectionResult(false);
-
-  EXPECT_FALSE(session.OnConnected(absl::Now(), &connections_manager,
-                                   /*connection=*/nullptr));
-}
-
 TEST(ShareSessionTest, OnConnectedSucceeds) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  session.SetOnNewConnectionResult(true);
-  absl::Time connect_start_time = absl::Now();
+  NearbyConnectionImpl connection(session.device_info());
 
-  EXPECT_TRUE(session.OnConnected(connect_start_time, &connections_manager,
-                                  &connection));
-  EXPECT_EQ(session.connection_start_time(), connect_start_time);
+  session.SetNearbyConnection(&connection);
   EXPECT_EQ(session.connection(), &connection);
 }
 
 TEST(ShareSessionTest, IncomingRunPairedKeyVerificationSuccess) {
-  FakeNearbyConnectionsManager connections_manager;
-  FakeClock fake_clock;
   FakeNearbyShareCertificateManager certificate_manager;
-  FakeNearbyConnection connection;
   std::vector<uint8_t> token = {0, 1, 2, 3, 4, 5};
   ShareTarget share_target;
   share_target.is_incoming = true;
   TestShareSession session(std::string(kEndpointId), share_target);
-  session.SetOnNewConnectionResult(true);
-  absl::Time connect_start_time = absl::Now();
-  EXPECT_TRUE(session.OnConnected(connect_start_time, &connections_manager,
-                                  &connection));
+  session.connections_manager().SetRawAuthenticationToken(kEndpointId, token);
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
+  std::queue<std::vector<uint8_t>> frames_data;
+  session.connections_manager().set_send_payload_callback(
+      [&](std::unique_ptr<Payload> payload,
+          std::weak_ptr<NearbyConnectionsManager::PayloadStatusListener>
+              listener) {
+        frames_data.push(std::move(payload->content.bytes_payload.bytes));
+      });
   absl::Notification notification;
   PairedKeyVerificationRunner::PairedKeyVerificationResult verification_result;
 
   session.RunPairedKeyVerification(
-      &fake_clock, OSType::WINDOWS,
+      OSType::WINDOWS,
       {
           .visibility = proto::DeviceVisibility::DEVICE_VISIBILITY_EVERYONE,
           .last_visibility =
               proto::DeviceVisibility::DEVICE_VISIBILITY_EVERYONE,
           .last_visibility_time = absl::Now(),
       },
-      &certificate_manager, token,
+      &certificate_manager,
       [&notification, &verification_result](
           PairedKeyVerificationRunner::PairedKeyVerificationResult result,
           location::nearby::proto::sharing::OSType) {
@@ -204,7 +205,7 @@ TEST(ShareSessionTest, IncomingRunPairedKeyVerificationSuccess) {
       ->mutable_paired_key_encryption()
       ->set_signed_data("signed_data");
   std::string in_encryption_buffer = in_encryption_frame.SerializeAsString();
-  connection.AppendReadableData(std::vector<uint8_t>(
+  connection.WriteMessage(std::vector<uint8_t>(
       in_encryption_buffer.begin(), in_encryption_buffer.end()));
   // Receive PairedKeyResultFrame from remote device.
   nearby::sharing::service::proto::Frame in_result_frame;
@@ -214,17 +215,29 @@ TEST(ShareSessionTest, IncomingRunPairedKeyVerificationSuccess) {
   in_result_frame.mutable_v1()->mutable_paired_key_result()->set_status(
       nearby::sharing::service::proto::PairedKeyResultFrame::SUCCESS);
   std::string in_result_buffer = in_result_frame.SerializeAsString();
-  connection.AppendReadableData(
+  connection.WriteMessage(
       std::vector<uint8_t>(in_result_buffer.begin(), in_result_buffer.end()));
 
+  EXPECT_TRUE(notification.WaitForNotificationWithTimeout(absl::Seconds(1)));
+
+  EXPECT_EQ(frames_data.size(), 2);
   // Check that PairedKeyEncryptionFrame is sent.
-  std::vector<uint8_t> data = connection.GetWrittenData();
+  std::vector<uint8_t> data = frames_data.front();
   nearby::sharing::service::proto::Frame out_encryption_frame;
   ASSERT_TRUE(out_encryption_frame.ParseFromArray(data.data(), data.size()));
   ASSERT_TRUE(out_encryption_frame.has_v1());
   ASSERT_TRUE(out_encryption_frame.v1().has_paired_key_encryption());
 
-  EXPECT_TRUE(notification.WaitForNotificationWithTimeout(absl::Seconds(1)));
+  // Check that PairedKeyResultFrame is sent.
+  frames_data.pop();
+  std::vector<uint8_t> data2 = frames_data.front();
+  nearby::sharing::service::proto::Frame out_result_frame;
+  ASSERT_TRUE(out_result_frame.ParseFromArray(data2.data(), data2.size()));
+  ASSERT_TRUE(out_result_frame.has_v1());
+  ASSERT_TRUE(out_result_frame.v1().has_paired_key_result());
+  ASSERT_EQ(out_result_frame.v1().paired_key_result().status(),
+            nearby::sharing::service::proto::PairedKeyResultFrame::UNABLE);
+
   // Remote PairedKeyEncryptionFrame failed verification.
   EXPECT_EQ(verification_result,
             PairedKeyVerificationRunner::PairedKeyVerificationResult::kUnable);
@@ -238,37 +251,41 @@ TEST(ShareSessionTest, OnDisconnect) {
   EXPECT_CALL(session, InvokeTransferUpdateCallback(AllOf(
                            HasStatus(TransferMetadata::Status::kCancelled),
                            IsFinalStatus())));
+  EXPECT_CALL(session, OnConnectionDisconnected());
 
   session.OnDisconnect();
 }
 
 TEST(ShareSessionTest, CancelPayloads) {
-  FakeNearbyConnectionsManager connections_manager;
-  FakeNearbyConnection connection;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
   session.SetAttachmentPayloadId(1, 2);
   session.SetAttachmentPayloadId(3, 4);
 
   session.CancelPayloads();
 
-  EXPECT_TRUE(connections_manager.WasPayloadCanceled(2));
-  EXPECT_TRUE(connections_manager.WasPayloadCanceled(4));
+  EXPECT_TRUE(session.connections_manager().WasPayloadCanceled(2));
+  EXPECT_TRUE(session.connections_manager().WasPayloadCanceled(4));
 }
 
 TEST(ShareSessionTest, WriteResponseFrame) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
+  std::queue<std::vector<uint8_t>> frames_data;
+  session.connections_manager().set_send_payload_callback(
+      [&](std::unique_ptr<Payload> payload,
+          std::weak_ptr<NearbyConnectionsManager::PayloadStatusListener>
+              listener) {
+        frames_data.push(std::move(payload->content.bytes_payload.bytes));
+      });
 
   session.WriteResponseFrame(ConnectionResponseFrame::REJECT);
 
-  std::vector<uint8_t> frame_data = connection.GetWrittenData();
+  std::vector<uint8_t> frame_data = frames_data.front();
   Frame frame;
   ASSERT_TRUE(frame.ParseFromArray(frame_data.data(), frame_data.size()));
   ASSERT_EQ(frame.version(), Frame::V1);
@@ -278,16 +295,21 @@ TEST(ShareSessionTest, WriteResponseFrame) {
 }
 
 TEST(ShareSessionTest, WriteCancelFrame) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
+  std::queue<std::vector<uint8_t>> frames_data;
+  session.connections_manager().set_send_payload_callback(
+      [&](std::unique_ptr<Payload> payload,
+          std::weak_ptr<NearbyConnectionsManager::PayloadStatusListener>
+              listener) {
+        frames_data.push(std::move(payload->content.bytes_payload.bytes));
+      });
 
   session.WriteCancelFrame();
 
-  std::vector<uint8_t> frame_data = connection.GetWrittenData();
+  std::vector<uint8_t> frame_data = frames_data.front();
   Frame frame;
   ASSERT_TRUE(frame.ParseFromArray(frame_data.data(), frame_data.size()));
   ASSERT_EQ(frame.version(), Frame::V1);
@@ -295,12 +317,10 @@ TEST(ShareSessionTest, WriteCancelFrame) {
 }
 
 TEST(ShareSessionTest, HandleKeyVerificationResultFail) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
   session.SetTokenForTests("9876");
 
   EXPECT_FALSE(session.HandleKeyVerificationResult(
@@ -311,13 +331,11 @@ TEST(ShareSessionTest, HandleKeyVerificationResultFail) {
 }
 
 TEST(ShareSessionTest, HandleKeyVerificationResultSelfShareSuccess) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   share_target.for_self_share = true;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
   session.SetTokenForTests("9876");
 
   EXPECT_TRUE(session.HandleKeyVerificationResult(
@@ -329,12 +347,10 @@ TEST(ShareSessionTest, HandleKeyVerificationResultSelfShareSuccess) {
 }
 
 TEST(ShareSessionTest, HandleKeyVerificationResultNotSelfShareSuccess) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
   session.SetTokenForTests("9876");
 
   EXPECT_TRUE(session.HandleKeyVerificationResult(
@@ -347,13 +363,11 @@ TEST(ShareSessionTest, HandleKeyVerificationResultNotSelfShareSuccess) {
 }
 
 TEST(ShareSessionTest, HandleKeyVerificationResultSelfShareUnable) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   share_target.for_self_share = true;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
   session.SetTokenForTests("9876");
 
   EXPECT_TRUE(session.HandleKeyVerificationResult(
@@ -365,12 +379,10 @@ TEST(ShareSessionTest, HandleKeyVerificationResultSelfShareUnable) {
 }
 
 TEST(ShareSessionTest, HandleKeyVerificationResultNotSelfShareUnable) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
   session.SetTokenForTests("9876");
 
   EXPECT_TRUE(session.HandleKeyVerificationResult(
@@ -382,12 +394,10 @@ TEST(ShareSessionTest, HandleKeyVerificationResultNotSelfShareUnable) {
 }
 
 TEST(ShareSessionTest, HandleKeyVerificationResultUnknown) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
   session.SetTokenForTests("9876");
 
   EXPECT_FALSE(session.HandleKeyVerificationResult(
@@ -408,38 +418,40 @@ TEST(ShareSessionTest, AbortNotConnected) {
 }
 
 TEST(ShareSessionTest, AbortConnected) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  bool disconnected = false;
-  connection.SetDisconnectionListener(
-      [&disconnected]() { disconnected = true; });
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
+  EXPECT_TRUE(session.connections_manager()
+                  .connection_endpoint_info(kEndpointId)
+                  .has_value());
   EXPECT_CALL(session, InvokeTransferUpdateCallback(AllOf(
                            HasStatus(TransferMetadata::Status::kNotEnoughSpace),
                            IsFinalStatus())));
 
   session.Abort(TransferMetadata::Status::kNotEnoughSpace);
 
-  EXPECT_TRUE(disconnected);
+  // Verify that the connection is closed.
+  EXPECT_FALSE(session.connections_manager()
+                   .connection_endpoint_info(kEndpointId)
+                   .has_value());
 }
 
 TEST(ShareSessionTest, Disconnect) {
-  FakeNearbyConnectionsManager connections_manager;
   ShareTarget share_target;
   TestShareSession session(std::string(kEndpointId), share_target);
-  FakeNearbyConnection connection;
-  bool disconnected = false;
-  connection.SetDisconnectionListener(
-      [&disconnected]() { disconnected = true; });
-  EXPECT_TRUE(
-      session.OnConnected(absl::Now(), &connections_manager, &connection));
+  NearbyConnectionImpl connection(session.device_info());
+  session.SetNearbyConnection(&connection);
+  EXPECT_TRUE(session.connections_manager()
+                  .connection_endpoint_info(kEndpointId)
+                  .has_value());
 
   session.Disconnect();
 
-  EXPECT_TRUE(disconnected);
+  // Verify that the connection is closed.
+  EXPECT_FALSE(session.connections_manager()
+                   .connection_endpoint_info(kEndpointId)
+                   .has_value());
 }
 
 TEST(ShareSessionTest, DisconnectNotConnected) {

@@ -7,17 +7,21 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <fp16/fp16.h>
 #include "xnnpack.h"
 #include "xnnpack/allocation-type.h"
 #include "xnnpack/allocator.h"
 #include "xnnpack/common.h"
+#include "xnnpack/config-types.h"
+#include "xnnpack/config.h"
+#include "xnnpack/fp16.h"
 #include "xnnpack/hardware-config.h"
+#include "xnnpack/internal.h"
 #include "xnnpack/log.h"
 #include "xnnpack/math.h"
 #include "xnnpack/node-type.h"
@@ -26,6 +30,73 @@
 #ifndef XNN_ENABLE_SPARSE
   #error "XNN_ENABLE_SPARSE not defined"
 #endif
+
+enum xnn_status xnn_insert_clamp_node(xnn_subgraph_t subgraph, float output_min, float output_max, struct xnn_node *node) {
+  uint32_t output_id = node->outputs[0];
+  struct xnn_value* output_value = &subgraph->values[output_id];
+  uint32_t new_id = XNN_INVALID_VALUE_ID;
+  enum xnn_status status;
+  size_t num_dims = output_value->shape.num_dims;
+  size_t dims[XNN_MAX_TENSOR_DIMS];
+  memcpy(dims, output_value->shape.dim, num_dims * sizeof(size_t));
+  switch (output_value->datatype) {
+    case xnn_datatype_fp16:
+      status = xnn_define_tensor_value(
+          subgraph, xnn_datatype_fp16, num_dims, dims, NULL,
+          /*external_id=*/XNN_INVALID_VALUE_ID, /*flags=*/0, &new_id);
+      break;
+    case xnn_datatype_fp32:
+      status = xnn_define_tensor_value(
+          subgraph, xnn_datatype_fp32, num_dims, dims, NULL,
+          /*external_id=*/XNN_INVALID_VALUE_ID, /*flags=*/0, &new_id);
+      break;
+    case xnn_datatype_quint8:
+      status = xnn_define_quantized_tensor_value(
+          subgraph, xnn_datatype_quint8, output_value->quantization.zero_point,
+          output_value->quantization.scale, num_dims, dims, NULL,
+          /*external_id=*/XNN_INVALID_VALUE_ID, /*flags=*/0, &new_id);
+      break;
+    case xnn_datatype_qint8:
+      status = xnn_define_quantized_tensor_value(
+          subgraph, xnn_datatype_qint8, output_value->quantization.zero_point,
+          output_value->quantization.scale, num_dims, dims, NULL,
+          /*external_id=*/XNN_INVALID_VALUE_ID, /*flags=*/0, &new_id);
+      break;
+    default:
+      XNN_UNREACHABLE;
+  }
+  if (status != xnn_status_success) {
+    return status;
+  }
+  struct xnn_value* new_value = &subgraph->values[new_id];
+  new_value->size = 0;
+  node->outputs[0] = new_id;
+  node->activation.output_min = -INFINITY;
+  node->activation.output_max = INFINITY;
+  union xnn_unary_params params;
+  params.clamp.min = output_min;
+  params.clamp.max = output_max;
+  return xnn_define_unary(subgraph, xnn_unary_clamp, &params, new_id, output_id,
+                          /*flags=*/0);
+}
+
+enum xnn_status xnn_insert_pack_lh_node(xnn_subgraph_t subgraph, const struct xnn_value* input, uint32_t input_id, uint32_t *new_id) {
+  switch (input->datatype) {
+    case xnn_datatype_fp16:
+    case xnn_datatype_fp32:
+      break;
+    default:
+      XNN_UNREACHABLE;
+  }
+  enum xnn_status status = xnn_define_tensor_value(
+          subgraph, input->datatype, 0, NULL, NULL,
+          /*external_id=*/XNN_INVALID_VALUE_ID, /*flags=*/0, new_id);
+  if (status != xnn_status_success) {
+    return status;
+  }
+
+  return xnn_define_pack_lh(subgraph, input_id, *new_id, /*flags=*/0);
+}
 
 enum xnn_status xnn_create_subgraph(
     uint32_t external_value_ids,
@@ -122,6 +193,7 @@ void xnn_value_copy(
   dst_value->data = src_value->data;
   dst_value->producer = src_value->producer;
   dst_value->first_consumer = src_value->first_consumer;
+  dst_value->all_consumers_types_same = src_value->all_consumers_types_same;
   dst_value->num_consumers = src_value->num_consumers;
   dst_value->num_nchw_compatible_consumers = src_value->num_nchw_compatible_consumers;
   dst_value->layout = src_value->layout;
@@ -130,6 +202,7 @@ void xnn_value_copy(
   dst_value->fp32_id = src_value->fp32_id;
   dst_value->fp16_temp_data = src_value->fp16_temp_data;
   dst_value->fp32_data = src_value->fp32_data;
+  dst_value->gemm_config = src_value->gemm_config;
 }
 
 struct xnn_node* xnn_subgraph_new_node(xnn_subgraph_t subgraph)
@@ -208,6 +281,10 @@ void xnn_subgraph_analyze_consumers_and_producers(xnn_subgraph_t subgraph)
       if (subgraph->values[input_id].num_consumers++ == 0) {
         assert(subgraph->values[input_id].first_consumer == XNN_INVALID_NODE_ID);
         subgraph->values[input_id].first_consumer = n;
+        subgraph->values[input_id].all_consumers_types_same = true;
+      } else {
+        enum xnn_node_type first_consumer_type = subgraph->nodes[subgraph->values[input_id].first_consumer].type;
+        subgraph->values[input_id].all_consumers_types_same &= (first_consumer_type == node->type);
       }
     }
 
@@ -237,12 +314,28 @@ void xnn_subgraph_analyze_consumers_and_producers(xnn_subgraph_t subgraph)
 #define XNN_LAYOUT_FLAG_COMPATIBLE_NCHW2NHWC 4
 #define XNN_LAYOUT_FLAG_INCOMPATIBLE_CLUSTER 8
 
+static bool all_values_fp(xnn_subgraph_t subgraph, const struct xnn_node* node) {
+  for (uint32_t i = 0; i < node->num_inputs; i++) {
+    if (subgraph->values[node->inputs[i]].datatype != xnn_datatype_fp16 &&
+        subgraph->values[node->inputs[i]].datatype != xnn_datatype_fp32) {
+      return false;
+    }
+  }
+  for (uint32_t i = 0; i < node->num_outputs; i++) {
+    if (subgraph->values[node->outputs[i]].datatype != xnn_datatype_fp16 &&
+        subgraph->values[node->outputs[i]].datatype != xnn_datatype_fp32) {
+      return false;
+    }
+  }
+  return true;
+}
+
 uint32_t xnn_check_nchw_compatibility(xnn_subgraph_t subgraph, struct xnn_node* node) {
-  if (node->compute_type != xnn_compute_type_fp16 && node->compute_type != xnn_compute_type_fp32) {
+  if (!all_values_fp(subgraph, node)) {
     if (node->type != xnn_node_type_invalid) {
       xnn_log_info(
-          "Node %s compute type %d is incompatible with sparse inference",
-          xnn_node_type_to_string(node->type), node->compute_type);
+          "Node %s compute type is incompatible with sparse inference",
+          xnn_node_type_to_string(node->type));
     }
     return 0;
   }
@@ -413,8 +506,12 @@ uint32_t xnn_check_nchw_compatibility(xnn_subgraph_t subgraph, struct xnn_node* 
       return XNN_LAYOUT_FLAG_COMPATIBLE_NCHW2NHWC;
     case xnn_node_type_global_average_pooling_2d:
       return XNN_LAYOUT_FLAG_COMPATIBLE_NCHW | XNN_LAYOUT_FLAG_COMPATIBLE_NCHW2NHWC;
-    case xnn_node_type_add2:
-    case xnn_node_type_multiply2:
+    case xnn_node_type_binary_elementwise:
+      if (node->binary_operator != xnn_binary_add &&
+          node->binary_operator != xnn_binary_multiply) {
+        // TODO: We can probably handle any binary operator here?
+        return false;
+      }
       assert(node->num_inputs == 2);
       assert(node->num_outputs == 1);
       if (subgraph->values[node->inputs[0]].shape.num_dims != 4 ||
@@ -461,21 +558,20 @@ uint32_t xnn_check_nchw_compatibility(xnn_subgraph_t subgraph, struct xnn_node* 
                      xnn_node_type_to_string(node->type));
         return 0;
       }
-    case xnn_node_type_abs:
-    case xnn_node_type_bankers_rounding:
-    case xnn_node_type_ceiling:
-    case xnn_node_type_clamp:
-    case xnn_node_type_elu:
-    case xnn_node_type_floor:
-    case xnn_node_type_hardswish:
-    case xnn_node_type_leaky_relu:
-    case xnn_node_type_negate:
-    case xnn_node_type_sigmoid:
-    case xnn_node_type_square:
+    case xnn_node_type_unary_elementwise:
       assert(node->num_inputs == 1);
       assert(node->num_outputs == 1);
       if (subgraph->values[node->inputs[0]].shape.num_dims == 4) {
         return XNN_LAYOUT_FLAG_COMPATIBLE_NCHW;
+      } else {
+        xnn_log_info("Node %s inputs shape is incompatible with sparse inference",
+                     xnn_node_type_to_string(node->type));
+        return 0;
+      }
+    case xnn_node_type_static_mean:
+    case xnn_node_type_static_sum:
+      if (subgraph->values[node->inputs[0]].shape.num_dims == 4) {
+        return XNN_LAYOUT_FLAG_COMPATIBLE_NCHW | XNN_LAYOUT_FLAG_COMPATIBLE_NCHW2NHWC;
       } else {
         xnn_log_info("Node %s inputs shape is incompatible with sparse inference",
                      xnn_node_type_to_string(node->type));
@@ -546,7 +642,7 @@ void xnn_subgraph_rewrite_for_nchw(xnn_subgraph_t subgraph)
   if (!update) {
     return;
   }
-  // Propagate the cluster leader to other nodes in the graph untill all the
+  // Propagate the cluster leader to other nodes in the graph until all the
   // nodes in the cluster is not updated
   while (update) {
     update = false;
@@ -661,10 +757,24 @@ void xnn_subgraph_rewrite_for_nchw(xnn_subgraph_t subgraph)
       const size_t num_params = filter->shape.dim[0] * filter->shape.dim[3];
       subgraph->nodes[node->cluster_leader].num_params += num_params;
 
-      const float* data = (const float*) filter->data;
       size_t num_zeroes = 0;
-      for (size_t i = 0; i < num_params; i++) {
-        num_zeroes += (size_t) (data[i] == 0.0f);
+      switch (filter->datatype) {
+        case xnn_datatype_fp32: {
+          const float* data = (const float*)filter->data;
+          for (size_t i = 0; i < num_params; i++) {
+            num_zeroes += (size_t)(data[i] == 0.0f);
+          }
+          break;
+        }
+        case xnn_datatype_fp16: {
+          const xnn_float16* data = (const xnn_float16*)filter->data;
+          for (size_t i = 0; i < num_params; i++) {
+            num_zeroes += (size_t)(xnn_float16_is_zero(data[i]));
+          }
+          break;
+        }
+        default:
+          XNN_UNREACHABLE;
       }
       xnn_log_debug("1x1 Convolution 2D Node #%" PRIu32 ": %zu / %zu sparsity", n, num_zeroes, num_params);
       subgraph->nodes[node->cluster_leader].num_zeroes += num_zeroes;
@@ -708,6 +818,34 @@ void xnn_subgraph_rewrite_for_nchw(xnn_subgraph_t subgraph)
   }
 }
 
+static bool any_values_fp32(xnn_subgraph_t subgraph, const struct xnn_node* node) {
+  for (uint32_t i = 0; i < node->num_inputs; i++) {
+    if (subgraph->values[node->inputs[i]].datatype == xnn_datatype_fp32) {
+      return true;
+    }
+  }
+  for (uint32_t i = 0; i < node->num_outputs; i++) {
+    if (subgraph->values[node->outputs[i]].datatype == xnn_datatype_fp32) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool all_values_fp32(xnn_subgraph_t subgraph, const struct xnn_node* node) {
+  for (uint32_t i = 0; i < node->num_inputs; i++) {
+    if (subgraph->values[node->inputs[i]].datatype != xnn_datatype_fp32) {
+      return false;
+    }
+  }
+  for (uint32_t i = 0; i < node->num_outputs; i++) {
+    if (subgraph->values[node->outputs[i]].datatype != xnn_datatype_fp32) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
 {
   xnn_log_info("Analyzing subgraph for FP16 compatibility");
@@ -728,66 +866,41 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
       continue;
     }
 
-    switch (node->compute_type) {
-      case xnn_compute_type_fp32:
-      case xnn_compute_type_fp32_to_qd8:
-      case xnn_compute_type_qd8_to_fp32:
-      case xnn_compute_type_qs8_to_fp32:
-        break;
-      default:
-        xnn_log_warning("FP16 rewrite aborted: node #%" PRIu32 " (%s) is not FP32", n, xnn_node_type_to_string(node->type));
-        return false;
+    if (!any_values_fp32(subgraph, node)) {
+      xnn_log_warning("FP16 rewrite aborted: node #%" PRIu32 " (%s) is not FP32", n, xnn_node_type_to_string(node->type));
+      return false;
     }
     switch (node->type) {
-      case xnn_node_type_abs:
-      case xnn_node_type_add2:
+      case xnn_node_type_binary_elementwise:
+      case xnn_node_type_unary_elementwise:
       case xnn_node_type_batch_matrix_multiply:
-      case xnn_node_type_divide:
-      case xnn_node_type_maximum2:
-      case xnn_node_type_minimum2:
-      case xnn_node_type_multiply2:
       case xnn_node_type_concatenate2:
       case xnn_node_type_concatenate3:
       case xnn_node_type_concatenate4:
       case xnn_node_type_concatenate5:
       case xnn_node_type_convert:
-      case xnn_node_type_squared_difference:
-      case xnn_node_type_subtract:
       case xnn_node_type_average_pooling_2d:
-      case xnn_node_type_bankers_rounding:
-      case xnn_node_type_ceiling:
-      case xnn_node_type_clamp:
       case xnn_node_type_copy:
       case xnn_node_type_convolution_2d:
       case xnn_node_type_deconvolution_2d:
       case xnn_node_type_depthwise_convolution_2d:
       case xnn_node_type_depth_to_space_2d:
-      case xnn_node_type_elu:
       case xnn_node_type_even_split2:
       case xnn_node_type_even_split3:
       case xnn_node_type_even_split4:
-      case xnn_node_type_floor:
       case xnn_node_type_fully_connected:
       case xnn_node_type_global_average_pooling_2d:
       case xnn_node_type_global_sum_pooling_2d:
-      case xnn_node_type_hardswish:
-      case xnn_node_type_leaky_relu:
       case xnn_node_type_max_pooling_2d:
-      case xnn_node_type_negate:
-      case xnn_node_type_prelu:
-      case xnn_node_type_reciprocal_square_root:
-      case xnn_node_type_sigmoid:
       case xnn_node_type_softmax:
       case xnn_node_type_space_to_depth_2d:
       case xnn_node_type_static_constant_pad:
       case xnn_node_type_static_mean:
       case xnn_node_type_static_slice:
+      case xnn_node_type_static_sum:
       case xnn_node_type_static_reshape:
       case xnn_node_type_static_resize_bilinear_2d:
       case xnn_node_type_static_transpose:
-      case xnn_node_type_square:
-      case xnn_node_type_square_root:
-      case xnn_node_type_tanh:
       case xnn_node_type_rope:
         break;
       default:
@@ -798,19 +911,18 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
   }
 
   // Annotate Values to be converted to FP16 as FP16-compatible.
-  // Note that static weights in [Depthwise] Convolution, Fully Connected, and PReLU Nodes remain FP32,
+  // Note that static weights in [Depthwise] Convolution, Fully Connected Nodes remain FP32,
   // they will be converted to FP16 during weight repacking when the operator is created.
   for (uint32_t n = 0; n < subgraph->num_nodes; n++) {
     struct xnn_node* node = &subgraph->nodes[n];
     switch (node->type) {
       case xnn_node_type_deconvolution_2d:
       case xnn_node_type_depthwise_convolution_2d:
-      case xnn_node_type_prelu:
         subgraph->values[node->inputs[0]].fp16_compatible = true;
         subgraph->values[node->outputs[0]].fp16_compatible = true;
         break;
       case xnn_node_type_convolution_2d:
-        if (node->compute_type == xnn_compute_type_qd8_to_fp32) {
+        if (subgraph->values[node->inputs[0]].datatype == xnn_datatype_qdint8) {
           subgraph->values[node->outputs[0]].fp16_compatible = true;
         } else {
           subgraph->values[node->inputs[0]].fp16_compatible = true;
@@ -818,37 +930,62 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
         }
         break;
       case xnn_node_type_fully_connected:
-        if (node->compute_type == xnn_compute_type_qd8_to_fp32) {
+        if (subgraph->values[node->inputs[0]].datatype == xnn_datatype_qdint8 ||
+            subgraph->values[node->inputs[0]].datatype ==
+                xnn_datatype_qduint8 ||
+            subgraph->values[node->inputs[0]].datatype == xnn_datatype_qpint8) {
+          // TODO(b/340399245) - Coerce any `qpint8` or `qduint8` values back to
+          // `qdint8` for conversion to fp16.
+          subgraph->values[node->inputs[0]].datatype = xnn_datatype_qdint8;
           subgraph->values[node->outputs[0]].fp16_compatible = true;
-        } else if (node->compute_type == xnn_compute_type_fp32) {
+        } else if (subgraph->values[node->inputs[0]].datatype ==
+                       xnn_datatype_fp32 &&
+                   subgraph->values[node->inputs[1]].datatype ==
+                       xnn_datatype_fp16 &&
+                   subgraph->values[node->outputs[0]].datatype ==
+                       xnn_datatype_fp32) {
+          subgraph->values[node->inputs[0]].fp16_compatible = true;
+          subgraph->values[node->outputs[0]].fp16_compatible = true;
+          if (node->num_inputs > 2 &&
+              subgraph->values[node->inputs[2]].datatype == xnn_datatype_fp32) {
+            subgraph->values[node->inputs[2]].fp16_compatible = true;
+          }
+        } else if (all_values_fp32(subgraph, node)) {
           subgraph->values[node->inputs[0]].fp16_compatible = true;
           subgraph->values[node->outputs[0]].fp16_compatible = true;
         } else {
-          xnn_log_warning("FP16 rewrite aborted: node #%" PRIu32 " (%s). Invalid compute type: %d",
-            n, xnn_node_type_to_string(node->type), node->compute_type);
+          xnn_log_warning(
+              "FP16 rewrite aborted: node #%" PRIu32
+              " (%s). Invalid compute type (input=%s, weights=%s, output=%s)",
+              n, xnn_node_type_to_string(node->type),
+              xnn_datatype_to_string(
+                  subgraph->values[node->inputs[0]].datatype),
+              xnn_datatype_to_string(
+                  subgraph->values[node->inputs[1]].datatype),
+              xnn_datatype_to_string(
+                  subgraph->values[node->outputs[0]].datatype));
           return false;
         }
         break;
       case xnn_node_type_convert:
-        switch (node->compute_type) {
-          case xnn_compute_type_fp32_to_qd8:
-          case xnn_compute_type_fp32_to_qs8:
-          case xnn_compute_type_fp32_to_qu8:
-            subgraph->values[node->inputs[0]].fp16_compatible = true;
-            break;
-          case xnn_compute_type_qs8_to_fp32:
-          case xnn_compute_type_qu8_to_fp32:
-            subgraph->values[node->outputs[0]].fp16_compatible = true;
-          default:
-            break;
+        if (subgraph->values[node->inputs[0]].datatype == xnn_datatype_fp32) {
+          subgraph->values[node->inputs[0]].fp16_compatible = true;
+        }
+        if (subgraph->values[node->outputs[0]].datatype == xnn_datatype_fp32) {
+          subgraph->values[node->outputs[0]].fp16_compatible = true;
         }
         break;
       default:
         for (uint32_t i = 0; i < node->num_inputs; i++) {
-          subgraph->values[node->inputs[i]].fp16_compatible = true;
+          if (subgraph->values[node->inputs[i]].datatype == xnn_datatype_fp32) {
+            subgraph->values[node->inputs[i]].fp16_compatible = true;
+          }
         }
         for (uint32_t o = 0; o < node->num_outputs; o++) {
-          subgraph->values[node->outputs[o]].fp16_compatible = true;
+          if (subgraph->values[node->outputs[o]].datatype ==
+              xnn_datatype_fp32) {
+            subgraph->values[node->outputs[o]].fp16_compatible = true;
+          }
         }
         break;
     }
@@ -944,7 +1081,11 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
       assert(value->datatype == xnn_datatype_fp32);
       if (xnn_value_is_static(value)) {
         const size_t num_elements = xnn_shape_multiply_all_dims(&value->shape);
-        xnn_run_convert_nc_f32_f16(1, 1, 1, num_elements, value->data, value->fp16_temp_data, 0, NULL);
+        xnn_run_unary_elementwise_nc(
+            xnn_unary_convert, xnn_datatype_fp32, xnn_datatype_fp16,
+            /*params=*/NULL, /*input_quantization=*/NULL,
+            /*output_quantization=*/NULL, 0, num_elements, 1, 1, 1, NULL,
+            value->data, value->fp16_temp_data);
         // Remember pointer to the original fp32 data, nodes like convolution need fp32 weights/biases.
         value->fp32_data = value->data;
         value->data = value->fp16_temp_data;
@@ -971,22 +1112,6 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
       continue;
     }
 
-    switch (node->compute_type) {
-      case xnn_compute_type_fp32:
-        node->compute_type = xnn_compute_type_fp16;
-        break;
-      case xnn_compute_type_fp32_to_qd8:
-        node->compute_type = xnn_compute_type_fp16_to_qd8;
-        break;
-      case xnn_compute_type_qd8_to_fp32:
-        node->compute_type = xnn_compute_type_qd8_to_fp16;
-        break;
-      case xnn_compute_type_qs8_to_fp32:
-        node->compute_type = xnn_compute_type_qs8_to_fp16;
-        break;
-      default:
-        XNN_UNREACHABLE;
-    }
     if (node->type == xnn_node_type_static_constant_pad) {
       node->params.static_pad.padding_value =
         fp16_ieee_from_fp32_value(uint32_as_float(node->params.static_pad.padding_value));
@@ -1020,7 +1145,7 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
         assert(output_node >= subgraph->nodes);
         xnn_node_clear(output_node);
         output_node->id = output_node_id;
-        xnn_init_convert_node(output_node, xnn_compute_type_fp16_to_fp32, value->id, value->fp32_id, 0 /* flags */);
+        xnn_init_convert_node(output_node, value->id, value->fp32_id, 0 /* flags */);
         output_node -= 1;
       }
     }
@@ -1045,7 +1170,7 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
           assert(output_node >= subgraph->nodes);
           xnn_node_clear(output_node);
           output_node->id = output_node_id;
-          xnn_init_convert_node(output_node, xnn_compute_type_fp32_to_fp16, value->fp32_id, value->id, 0 /* flags */);
+          xnn_init_convert_node(output_node, value->fp32_id, value->id, 0 /* flags */);
           output_node -= 1;
         }
       }
@@ -1084,6 +1209,29 @@ static void xnn_node_replace_output(struct xnn_node* node, uint32_t old_output_i
   }
 }
 
+static bool is_clamp(const struct xnn_node* node)
+{
+  return node->type == xnn_node_type_unary_elementwise && node->unary_operator == xnn_unary_clamp;
+}
+
+static bool has_clamp(const struct xnn_node* node)
+{
+  if (is_clamp(node)) {
+    return true;
+  }
+  switch (node->type) {
+    case xnn_node_type_average_pooling_2d:
+    case xnn_node_type_convolution_2d:
+    case xnn_node_type_deconvolution_2d:
+    case xnn_node_type_depthwise_convolution_2d:
+    case xnn_node_type_fully_connected:
+    case xnn_node_type_max_pooling_2d:
+      return true;
+    default:
+      return false;
+  }
+}
+
 enum xnn_status xnn_subgraph_fusion(
     xnn_subgraph_t subgraph)
 {
@@ -1106,43 +1254,36 @@ enum xnn_status xnn_subgraph_fusion(
       struct xnn_node* producer = &subgraph->nodes[producer_id];
       assert(producer->type != xnn_node_type_invalid);
       struct xnn_node* consumer = &subgraph->nodes[consumer_id];
-      assert(consumer->type != xnn_node_type_invalid);
+      if (consumer->type == xnn_node_type_invalid) {
+        xnn_log_fatal("Node %u has no consumers. Should an external output have been set?", consumer_id);
+        return xnn_status_invalid_state;
+      }
 
       // Try to fuse Clamp Node upstream into producer Node
-      if (consumer->type == xnn_node_type_clamp) {
-        switch (producer->type) {
-          case xnn_node_type_add2:
-          case xnn_node_type_average_pooling_2d:
-          case xnn_node_type_clamp:
-          case xnn_node_type_convolution_2d:
-          case xnn_node_type_divide:
-          case xnn_node_type_deconvolution_2d:
-          case xnn_node_type_depthwise_convolution_2d:
-          case xnn_node_type_fully_connected:
-          case xnn_node_type_multiply2:
-          case xnn_node_type_max_pooling_2d:
-          case xnn_node_type_subtract:
-            xnn_log_info("fuse Clamp Node #%"PRIu32" into upstream Node #%"PRIu32, consumer_id, producer_id);
-            assert(producer->num_outputs == 1);
-            assert(consumer->num_inputs == 1);
-            assert(consumer->num_outputs == 1);
+      if (is_clamp(consumer) && has_clamp(producer)) {
+        xnn_log_info("fuse Clamp Node #%"PRIu32" into upstream Node #%"PRIu32, consumer_id, producer_id);
+        assert(producer->num_outputs == 1);
+        assert(consumer->num_inputs == 1);
+        assert(consumer->num_outputs == 1);
 
-            const uint32_t fused_output_id = consumer->outputs[0];
-            assert(fused_output_id < subgraph->num_values);
-            subgraph->values[fused_output_id].producer = producer_id;
-            producer->outputs[0] = fused_output_id;
+        const uint32_t fused_output_id = consumer->outputs[0];
+        assert(fused_output_id < subgraph->num_values);
+        subgraph->values[fused_output_id].producer = producer_id;
+        producer->outputs[0] = fused_output_id;
 
-            producer->activation.output_min =
-              math_max_f32(producer->activation.output_min, consumer->activation.output_min);
-            producer->activation.output_max =
-              math_min_f32(producer->activation.output_max, consumer->activation.output_max);
+        producer->activation.output_min =
+          math_max_f32(producer->activation.output_min, consumer->activation.output_min);
+        producer->activation.output_max =
+          math_min_f32(producer->activation.output_max, consumer->activation.output_max);
+        producer->params.unary.clamp.min =
+            math_max_f32(producer->params.unary.clamp.min,
+                          consumer->params.unary.clamp.min);
+        producer->params.unary.clamp.max =
+            math_min_f32(producer->params.unary.clamp.max,
+                          consumer->params.unary.clamp.max);
 
-            xnn_node_clear(consumer);
-            xnn_value_clear(value);
-            break;
-          default:
-            break;
-        }
+        xnn_node_clear(consumer);
+        xnn_value_clear(value);
       }
       // Try to fuse Constant Pad node downstream into [Depthwise] Convolution 2D Node
       if (producer->type == xnn_node_type_static_constant_pad) {
@@ -1274,9 +1415,159 @@ enum xnn_status xnn_subgraph_fusion(
   return xnn_status_success;
 }
 
+void xnn_subgraph_optimize_dynamic_quantization_ops(xnn_subgraph_t subgraph) {
+  enum xnn_weights_type {
+    xnn_weights_type_invalid = 0,
+    xnn_weights_type_qb4w = 1,
+    xnn_weights_type_qc4w = 2,
+    xnn_weights_type_qc8w = 4,
+  };
+  enum xnn_consumer_type {
+    xnn_consumer_type_invalid = 0,
+    xnn_consumer_type_batch_mat_mul = 1,
+    xnn_consumer_type_convolution_2d = 2,
+    xnn_consumer_type_deconvolution = 4,
+    xnn_consumer_type_fully_connected = 8,
+  };
+  for (uint32_t n = 0; n < subgraph->num_nodes; n++) {
+    enum xnn_consumer_type consumer_type = xnn_consumer_type_invalid;
+    enum xnn_weights_type weights_type = xnn_weights_type_invalid;
+    struct xnn_node* node = &subgraph->nodes[n];
+    const uint32_t input_id = node->inputs[0];
+    const uint32_t output_id = node->outputs[0];
+    struct xnn_value* input = &subgraph->values[input_id];
+    struct xnn_value* output = &subgraph->values[output_id];
+    // Only replace nodes for which all consumer are of the same type.
+    if (!output->all_consumers_types_same) continue;
+    if (output->datatype == xnn_datatype_qdint8) {
+      struct xnn_node* first_consumer_node = &subgraph->nodes[output->first_consumer];
+      switch (first_consumer_node->type) {
+        case xnn_node_type_fully_connected:
+          consumer_type = xnn_consumer_type_fully_connected;
+          break;
+        case xnn_node_type_convolution_2d:
+          consumer_type = xnn_consumer_type_convolution_2d;
+          break;
+        case xnn_node_type_deconvolution_2d:
+          consumer_type = xnn_consumer_type_deconvolution;
+          break;
+        case xnn_node_type_batch_matrix_multiply:
+          consumer_type = xnn_consumer_type_batch_mat_mul;
+          break;
+        default:
+          XNN_UNREACHABLE;
+      }
+      const struct xnn_value* filter = &subgraph->values[first_consumer_node->inputs[1]];
+      switch (filter->datatype) {
+        case xnn_datatype_qbint4:
+          weights_type = xnn_weights_type_qb4w;
+          break;
+        case xnn_datatype_qcint4:
+          weights_type = xnn_weights_type_qc4w;
+          break;
+        case xnn_datatype_qcint8:
+          weights_type = xnn_weights_type_qc8w;
+          break;
+        default:
+          XNN_UNREACHABLE;
+      }
+      bool pack_activations = false;
+      if (input->datatype == xnn_datatype_fp32) {
+        // Coerce the input from `xnn_datatype_qdint8` to `xnn_datatype_qpint8` if we
+        // know that we're converting for a GEMM and `qp8_f32_*` kernels are
+        // available.
+        // TODO(b/340399245) - Remove xnn_init_qp8_f32_qc4w_gemm_config check once we
+        // have full qp8 support.
+
+        if (consumer_type == xnn_consumer_type_fully_connected ||
+            consumer_type == xnn_consumer_type_batch_mat_mul) {
+          if ((weights_type == xnn_weights_type_qc4w) &&
+              xnn_init_qp8_f32_qc4w_gemm_config() != NULL) {
+            pack_activations = true;
+          } else if ((weights_type == xnn_weights_type_qc8w) &&
+                     xnn_init_qp8_f32_qc8w_gemm_config() != NULL) {
+            pack_activations = true;
+          } else if ((weights_type == xnn_weights_type_qb4w) &&
+                     xnn_init_qp8_f32_qb4w_gemm_config() != NULL) {
+            pack_activations = true;
+          }
+        }
+        if (pack_activations) {
+          xnn_log_debug("Coercing type of output ID #%" PRIu32
+                        " of %s operator from `%s` to `%s`.",
+                        output_id,
+                        xnn_node_type_to_string(xnn_node_type_convert),
+                        xnn_datatype_to_string(output->datatype),
+                        xnn_datatype_to_string(xnn_datatype_qpint8));
+          subgraph->values[output_id].datatype = xnn_datatype_qpint8;
+          switch (weights_type) {
+            case xnn_weights_type_qb4w:
+              output->gemm_config = xnn_init_qp8_f32_qb4w_gemm_config();
+              break;
+            case xnn_weights_type_qc4w:
+              output->gemm_config = xnn_init_qp8_f32_qc4w_gemm_config();
+              break;
+            case xnn_weights_type_qc8w:
+              output->gemm_config = xnn_init_qp8_f32_qc8w_gemm_config();
+              break;
+            default:
+              XNN_UNREACHABLE;
+          }
+          // To prevent issues with packing, coerce the shape of the inputs from
+          // `[B, M, K]` to `[B * M, K]` for the fully-connected op.
+          if (consumer_type == xnn_consumer_type_fully_connected) {
+            output->flags |= XNN_FLAG_SQUASH_GROUPS;
+          }
+        }
+      }
+
+      if (!pack_activations) {
+        const struct xnn_gemm_config *original_config = NULL;
+        const struct xnn_gemm_config *unsigned_config = NULL;
+        if (input->datatype == xnn_datatype_fp32) {
+          if (weights_type == xnn_weights_type_qc4w) {
+            original_config = xnn_init_qd8_f32_qc4w_gemm_config();
+            unsigned_config = xnn_init_qdu8_f32_qc4w_gemm_config();
+          } else if (weights_type == xnn_weights_type_qc8w) {
+            original_config = xnn_init_qd8_f32_qc8w_gemm_config();
+            unsigned_config = xnn_init_qdu8_f32_qc8w_gemm_config();
+          } else if (weights_type == xnn_weights_type_qb4w) {
+            original_config = xnn_init_qd8_f32_qb4w_gemm_config();
+            unsigned_config = xnn_init_qdu8_f32_qb4w_gemm_config();
+          }
+        } else if (input->datatype == xnn_datatype_fp16) {
+          if (weights_type == xnn_weights_type_qc4w) {
+            original_config = xnn_init_qd8_f16_qc4w_gemm_config();
+            unsigned_config = xnn_init_qdu8_f16_qc4w_gemm_config();
+          } else if (weights_type == xnn_weights_type_qc8w) {
+            original_config = xnn_init_qd8_f16_qc8w_gemm_config();
+            unsigned_config = xnn_init_qdu8_f16_qc8w_gemm_config();
+          }
+        }
+        bool convert_to_qu8 = false;
+        if (original_config && unsigned_config) {
+          enum xnn_arch_flags qdu8_arch = unsigned_config->arch;
+          enum xnn_arch_flags qd8_arch = original_config->arch;
+          if (qdu8_arch > qd8_arch) {
+            convert_to_qu8 = true;
+          }
+        }
+        if (convert_to_qu8) {
+          xnn_log_debug("Coercing type of output ID #%" PRIu32
+                        " of %s operator from `%s` to `%s`.",
+                        output_id, xnn_node_type_to_string(xnn_node_type_convert),
+                        xnn_datatype_to_string(output->datatype),
+                        xnn_datatype_to_string(xnn_datatype_qduint8));
+          subgraph->values[output_id].datatype = xnn_datatype_qduint8;
+        }
+      }
+    }
+  }
+}
+
 enum xnn_status xnn_subgraph_optimize(
   xnn_subgraph_t subgraph,
-  uint32_t flags)
+  uint32_t optimization_flags)
 {
   xnn_subgraph_analyze_consumers_and_producers(subgraph);
 
@@ -1298,7 +1589,7 @@ enum xnn_status xnn_subgraph_optimize(
     }
   }
 
-  if (!(flags & XNN_FLAG_NO_OPERATOR_FUSION)) {
+  if (!(optimization_flags & XNN_FLAG_NO_OPERATOR_FUSION)) {
     xnn_subgraph_fusion(subgraph);
   }
 
@@ -1308,13 +1599,13 @@ enum xnn_status xnn_subgraph_optimize(
     return xnn_status_unsupported_hardware;
   }
 
-  if ((flags & XNN_FLAG_FORCE_FP16_INFERENCE) && (!xnn_is_f16_compatible_config(hardware_config))) {
+  if ((optimization_flags & XNN_FLAG_FORCE_FP16_INFERENCE) && (!xnn_is_f16_compatible_config(hardware_config))) {
     xnn_log_error("failed to force FP16 inference: hardware supports neither native nor emulated FP16 operators");
     return xnn_status_unsupported_hardware;
   }
   const bool try_native_fp16 =
-    (flags & XNN_FLAG_HINT_FP16_INFERENCE) && xnn_is_f16_supported_natively(hardware_config);
-  const bool force_fp16 = (flags & XNN_FLAG_FORCE_FP16_INFERENCE);
+    (optimization_flags & XNN_FLAG_HINT_FP16_INFERENCE) && xnn_is_f16_supported_natively(hardware_config);
+  const bool force_fp16 = (optimization_flags & XNN_FLAG_FORCE_FP16_INFERENCE);
   if (try_native_fp16 || force_fp16) {
     const bool fp16_rewrite_succeeded = xnn_subgraph_rewrite_for_fp16(subgraph);
     if (force_fp16 && !fp16_rewrite_succeeded) {
@@ -1324,10 +1615,12 @@ enum xnn_status xnn_subgraph_optimize(
   }
 
   #if XNN_ENABLE_SPARSE
-    if ((flags & XNN_FLAG_HINT_SPARSE_INFERENCE) && (xnn_is_chw_compatible_config(hardware_config))) {
+    if ((optimization_flags & XNN_FLAG_HINT_SPARSE_INFERENCE) && (xnn_is_chw_compatible_config(hardware_config))) {
       xnn_subgraph_rewrite_for_nchw(subgraph);
     }
   #endif
+
+  xnn_subgraph_optimize_dynamic_quantization_ops(subgraph);
 
   return xnn_status_success;
 }
@@ -1361,4 +1654,28 @@ enum xnn_status xnn_delete_subgraph(
     xnn_release_memory(subgraph);
   }
   return xnn_status_success;
+}
+
+enum xnn_node_type xnn_reduce_operator_to_node_type(enum xnn_reduce_operator type)
+{
+  switch (type) {
+    case xnn_reduce_mean:
+      return xnn_node_type_static_mean;
+    case xnn_reduce_sum:
+      return xnn_node_type_static_sum;
+    default:
+      return xnn_node_type_invalid;
+  }
+}
+
+enum xnn_reduce_operator xnn_node_type_to_reduce_operator(enum xnn_node_type type)
+{
+  switch (type) {
+    case xnn_node_type_static_mean:
+      return xnn_reduce_mean;
+    case xnn_node_type_static_sum:
+      return xnn_reduce_sum;
+    default:
+      return xnn_reduce_invalid;
+  }
 }

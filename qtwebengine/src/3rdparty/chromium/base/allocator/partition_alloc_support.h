@@ -37,12 +37,21 @@ BASE_EXPORT std::map<std::string, std::string> ProposeSyntheticFinchTrials();
 BASE_EXPORT void InstallDanglingRawPtrChecks();
 BASE_EXPORT void InstallUnretainedDanglingRawPtrChecks();
 
+// Once called, makes `free()` do nothing. This is done to reduce
+// shutdown hangs on CrOS.
+// Does nothing if Dangling Pointer Detector (`docs/dangling_ptr.md`)
+// is not active.
+// Does nothing if allocator shim support is not built.
+BASE_EXPORT void MakeFreeNoOp();
+
 // Allows to re-configure PartitionAlloc at run-time.
 class BASE_EXPORT PartitionAllocSupport {
  public:
   struct BrpConfiguration {
     bool enable_brp = false;
-    bool process_affected_by_brp_flag = false;
+
+    // TODO(https://crbug.com/371135823): Remove after the investigation.
+    size_t extra_extras_size = 0;
   };
 
   // Reconfigure* functions re-configure PartitionAlloc. It is impossible to

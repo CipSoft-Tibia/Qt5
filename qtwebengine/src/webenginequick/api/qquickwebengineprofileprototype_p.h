@@ -1,5 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #ifndef QQUICKWEBENGINEPROFILEPROTOTYPE_H
 #define QQUICKWEBENGINEPROFILEPROTOTYPE_H
 
@@ -15,10 +17,14 @@
 //
 
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
-#include <QObject>
 #include <QtQml/qqmlregistration.h>
 #include <QtQml/qqmlparserstatus.h>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
+#include <QObject>
+#include <QString>
+#include <QList>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -40,6 +46,8 @@ class Q_WEBENGINEQUICK_EXPORT QQuickWebEngineProfilePrototype : public QObject,
     Q_PROPERTY(int httpCacheMaximumSize READ httpCacheMaximumSize WRITE setHttpCacheMaximumSize FINAL)
     Q_PROPERTY(QQuickWebEngineProfile::PersistentPermissionsPolicy persistentPermissionsPolicy READ
                        persistentPermissionsPolicy WRITE setPersistentPermissionsPolicy FINAL)
+    Q_PROPERTY(QStringList additionalTrustedCertificateFiles READ additionalTrustedCertificateFiles
+                       WRITE setAdditionalTrustedCertificateFiles FINAL)
     QML_NAMED_ELEMENT(WebEngineProfilePrototype)
     QML_ADDED_IN_VERSION(6, 9)
 
@@ -69,6 +77,9 @@ public:
     QQuickWebEngineProfile::PersistentPermissionsPolicy persistentPermissionsPolicy() const;
     void setPersistentPermissionsPolicy(
             QQuickWebEngineProfile::PersistentPermissionsPolicy persistentPermissionsPolicy);
+
+    Q_REVISION(6, 10) QStringList additionalTrustedCertificateFiles() const;
+    Q_REVISION(6, 10) void setAdditionalTrustedCertificateFiles(const QStringList &paths);
 
     Q_INVOKABLE QQuickWebEngineProfile *instance();
 

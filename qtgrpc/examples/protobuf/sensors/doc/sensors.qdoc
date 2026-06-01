@@ -27,7 +27,8 @@
 
     Use the emulator application to change the values of sensor data and send
     the data to the client's UDP port.
-    \image emulator.webp
+    \image emulator.webp {Screenshot showing an emulator console application
+           to send coordinates, weather temperaute, and a warning message}
 
     The applications use the generated messages from the \c protobuf_sensors
     library to communicate. The library is generated from the protobuf schema

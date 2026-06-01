@@ -1,6 +1,7 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef ANDROID_APP_H
 #define ANDROID_APP_H
@@ -43,7 +44,6 @@ namespace QtAndroid
     QWindow *windowFromId(int windowId);
     int availableWidthPixels();
     int availableHeightPixels();
-    double scaledDensity();
     double pixelDensity();
     jobject assets();
     AAssetManager *assetManager();
@@ -54,7 +54,6 @@ namespace QtAndroid
     jobject createBitmapDrawable(jobject bitmap, JNIEnv *env = nullptr);
 
 #if QT_CONFIG(accessibility)
-    void initializeAccessibility();
     void notifyAccessibilityLocationChange(uint accessibilityObjectId);
     void notifyObjectHide(uint accessibilityObjectId, uint parentObjectId);
     void notifyObjectShow(uint parentObjectId);
@@ -68,6 +67,7 @@ namespace QtAndroid
 
     const char *classErrorMsgFmt();
     const char *methodErrorMsgFmt();
+    const char *staticFieldErrorMsgFmt();
     const char *qtTagText();
 
     QString deviceName();

@@ -23,10 +23,15 @@ namespace value_store {
 class ValueStoreFactory;
 }
 
+namespace QtWebEngineCore {
+class ExtensionManager;
+}
+
 namespace extensions {
 
 class ExtensionRegistry;
 class InfoMap;
+class ManagementPolicy;
 class RendererStartupHelper;
 class ServiceWorkerManager;
 class StateStoreNotificationObserver;
@@ -73,6 +78,8 @@ public:
 
     void PerformActionBasedOnOmahaAttributes(const std::string &, const base::Value::Dict &) override { /* fixme? */}
 
+    QtWebEngineCore::ExtensionManager *extensionManager();
+
 private:
     void NotifyExtensionLoaded(const Extension *extension);
     void LoadExtension(const base::Value::Dict &manifest, const base::FilePath &directory);
@@ -81,6 +88,7 @@ private:
     std::unique_ptr<ServiceWorkerManager> service_worker_manager_;
     std::unique_ptr<QuotaService> quota_service_;
     std::unique_ptr<UserScriptManager> user_script_manager_;
+    std::unique_ptr<ManagementPolicy> management_policy_;
 
     // For verifying the contents of extensions read from disk.
     scoped_refptr<ContentVerifier> content_verifier_;
@@ -91,6 +99,7 @@ private:
     ExtensionRegistry *extension_registry_;
     extensions::RendererStartupHelper *renderer_helper_;
     bool initialized_;
+    std::unique_ptr<QtWebEngineCore::ExtensionManager> extension_manager_;
 
     base::WeakPtrFactory<ExtensionSystemQt> weak_ptr_factory_;
 };

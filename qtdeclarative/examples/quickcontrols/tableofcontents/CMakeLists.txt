@@ -22,7 +22,6 @@ qt_add_resources(apptableofcontents "contentdata"
 
 qt_add_qml_module(apptableofcontents
     URI tableofcontents
-    VERSION 1.0
     QML_FILES
         Main.qml
     SOURCES

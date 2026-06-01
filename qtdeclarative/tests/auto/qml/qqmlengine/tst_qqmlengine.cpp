@@ -435,6 +435,40 @@ void tst_qqmlengine::clearComponentCache()
     // event delivery. Call sendPostedEvents() to get rid of it so that
     // the temporary directory can be removed.
     QCoreApplication::sendPostedEvents();
+
+    engine.clearComponentCache();
+    {
+        // Type referenced by a QQmlGadgetPtrWrapper can be removed using clearComponentCache().
+
+        QQmlComponent component(&engine, testFileUrl("clearGadgetPtrWrappers.qml"));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        std::unique_ptr<QObject> obj { component.create() };
+        QVERIFY(obj.get() != nullptr);
+
+        static const QRegularExpression re("MyItem_QMLTYPE_([0-9]+)\\(0x[0-9a-f]+\\)");
+        auto match = re.match(obj->objectName());
+        QVERIFY(match.hasMatch());
+        bool ok = false;
+        const int typeNumber = match.captured(1).toInt(&ok);
+        QVERIFY(ok);
+        QVERIFY(typeNumber >= 0);
+
+        const QUrl source = obj->property("source").value<QUrl>();
+        QVERIFY(source.isValid());
+        obj->setProperty("source", QUrl());
+
+        engine.collectGarbage();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
+        engine.clearComponentCache();
+
+        obj->setProperty("source", source);
+        match = re.match(obj->objectName());
+        QVERIFY(match.hasMatch());
+        ok = false;
+        QVERIFY(match.captured(1).toInt(&ok) > typeNumber);
+        QVERIFY(ok);
+    }
 }
 
 struct ComponentCacheFunctions : public QObject, public QQmlIncubationController
@@ -591,6 +625,9 @@ QT_WARNING_POP
 
     QQmlEngine engine;
 
+    const QObject *qtObject = engine.globalObject().property("Qt").toQObject();
+    QVERIFY(qtObject != nullptr);
+
     QCOMPARE(engine.singletonInstance<ObjectCaller *>(cppInstance), &objectCaller1);
 #if QT_DEPRECATED_SINCE(6, 3)
     QCOMPARE(engine.singletonInstance<ObjectCaller *>(deprecatedCppInstance), &objectCaller2);
@@ -621,6 +658,7 @@ QT_WARNING_POP
               "    property int c: JsValue\n"
               "    property QtObject d: JsObject\n"
               "    property QtObject e: QmlSingleton\n"
+              "    property QtObject g: Qt\n"
               "}", QUrl());
     QVERIFY2(c.isReady(), qPrintable(c.errorString()));
     QScopedPointer<QObject> singletonUser(c.create());
@@ -632,6 +670,7 @@ QT_WARNING_POP
     QCOMPARE(singletonUser->property("c").toUInt(), 13u);
     QCOMPARE(qvariant_cast<QObject *>(singletonUser->property("d")), oldJsSingleton);
     QCOMPARE(qvariant_cast<QObject *>(singletonUser->property("e")), oldQmlSingleton);
+    QVERIFY(qvariant_cast<QObject *>(singletonUser->property("g")) != nullptr);
 
     engine.clearSingletons();
     QCOMPARE(CppSingleton::instantiations, oldCppSingletonId);
@@ -680,8 +719,14 @@ QT_WARNING_POP
     QCOMPARE(qvariant_cast<QObject *>(singletonUser->property("d")), nullptr);
     QCOMPARE(qvariant_cast<QObject *>(singletonUser->property("e")), nullptr);
 
+    // The Qt object is not deleted because it's explicitly C++-owned.
+    QVERIFY(qvariant_cast<QObject *>(singletonUser->property("g")) != nullptr);
+
     // Value types are unaffected as they are copied.
     QCOMPARE(singletonUser->property("c").toUInt(), 13u);
+
+    // The "Qt" object still exists as part of the global object.
+    QCOMPARE(engine.globalObject().property("Qt").toQObject(), qtObject);
 }
 
 void tst_qqmlengine::repeatedCompilation()
@@ -1362,9 +1407,7 @@ void tst_qqmlengine::uiLanguage()
     {
         QQmlEngine engine;
 
-        QObject::connect(&engine, &QJSEngine::uiLanguageChanged, [&engine]() {
-            engine.retranslate();
-        });
+        QObject::connect(&engine, &QJSEngine::uiLanguageChanged, &engine, &QQmlEngine::retranslate);
 
         QSignalSpy uiLanguageChangeSpy(&engine, SIGNAL(uiLanguageChanged()));
 

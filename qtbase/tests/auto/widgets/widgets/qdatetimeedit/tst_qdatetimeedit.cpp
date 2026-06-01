@@ -3824,7 +3824,7 @@ void tst_QDateTimeEdit::setLocaleOnCalendarWidget()
 
 #ifdef QT_BUILD_INTERNAL
 
-typedef QPair<Qt::Key, Qt::KeyboardModifier> KeyPair;
+using KeyPair = std::pair<Qt::Key, Qt::KeyboardModifier>;
 typedef QList<KeyPair> KeyPairList;
 
 Q_DECLARE_METATYPE(KeyPair)
@@ -4419,6 +4419,7 @@ void tst_QDateTimeEdit::stepModifierButtons()
     testWidget->hide();
 
     EditorDateEdit edit;
+    edit.setDisplayFormat("HH:mm:ss");
     edit.setTime(startTime);
     edit.show();
     QVERIFY(QTest::qWaitForWindowActive(&edit));

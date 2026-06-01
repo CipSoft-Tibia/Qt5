@@ -54,7 +54,8 @@ struct ExternalTextureParams {
     std::array<float, 2> samplePlane0RectMax = {};
     std::array<float, 2> samplePlane1RectMin = {};
     std::array<float, 2> samplePlane1RectMax = {};
-    std::array<uint32_t, 2> visibleSize = {};
+    // The shader-visible size of the texture for textureLoad and textureDimensions
+    std::array<uint32_t, 2> apparentSize = {};
     // textureLoad() passes coords in plane0 related size.
     // Use this Factor to calculate plane1 load coord.
     std::array<float, 2> plane1CoordFactor = {};
@@ -73,11 +74,8 @@ class ExternalTextureBase : public ApiObjectBase {
     const std::array<Ref<TextureViewBase>, kMaxPlanesPerFormat>& GetTextureViews() const;
     ObjectType GetType() const override;
 
-    const Extent2D& GetVisibleSize() const;
-    const Origin2D& GetVisibleOrigin() const;
-
     MaybeError ValidateCanUseInSubmitNow() const;
-    static Ref<ExternalTextureBase> MakeError(DeviceBase* device, const char* label = nullptr);
+    static Ref<ExternalTextureBase> MakeError(DeviceBase* device, StringView label = {});
 
     void APIExpire();
     void APIDestroy();
@@ -93,7 +91,7 @@ class ExternalTextureBase : public ApiObjectBase {
 
   private:
     enum class ExternalTextureState { Active, Expired, Destroyed };
-    ExternalTextureBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
+    ExternalTextureBase(DeviceBase* device, ObjectBase::ErrorTag tag, StringView label);
 
     MaybeError ValidateRefresh();
     MaybeError ValidateExpire();
@@ -101,12 +99,6 @@ class ExternalTextureBase : public ApiObjectBase {
     Ref<TextureBase> mPlaceholderTexture;
     Ref<BufferBase> mParamsBuffer;
     std::array<Ref<TextureViewBase>, kMaxPlanesPerFormat> mTextureViews;
-
-    // TODO(dawn:1082) Use the visible size and origin in the external texture shader
-    // code to sample video content.
-    Origin2D mVisibleOrigin;
-    Extent2D mVisibleSize;
-
     ExternalTextureState mState;
 };
 }  // namespace dawn::native

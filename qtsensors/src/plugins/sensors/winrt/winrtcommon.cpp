@@ -5,7 +5,7 @@
 
 #include <windows.foundation.h>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcWinRtSensors, "qt.sensors.winrt")
 
@@ -14,3 +14,5 @@ quint64 dateTimeToMsSinceEpoch(const ABI::Windows::Foundation::DateTime &dateTim
     // Convert 100-ns units since 01-01-1601 to ms since 01-01-1970
     return dateTime.UniversalTime / 10000 - 11644473600000LL;
 }
+
+QT_END_NAMESPACE

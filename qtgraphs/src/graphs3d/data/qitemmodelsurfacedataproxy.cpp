@@ -3,6 +3,7 @@
 
 #include "qitemmodelsurfacedataproxy_p.h"
 #include "surfaceitemmodelhandler_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -651,10 +652,13 @@ QAbstractItemModel *QItemModelSurfaceDataProxy::itemModel() const
 void QItemModelSurfaceDataProxy::setRowRole(const QString &role)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_rowRole != role) {
-        d->m_rowRole = role;
-        emit rowRoleChanged(role);
+    if (d->m_rowRole == role) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_rowRole = role;
+    emit rowRoleChanged(role);
 }
 
 QString QItemModelSurfaceDataProxy::rowRole() const
@@ -676,10 +680,13 @@ QString QItemModelSurfaceDataProxy::rowRole() const
 void QItemModelSurfaceDataProxy::setColumnRole(const QString &role)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_columnRole != role) {
-        d->m_columnRole = role;
-        emit columnRoleChanged(role);
+    if (d->m_columnRole == role) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_columnRole = role;
+    emit columnRoleChanged(role);
 }
 
 QString QItemModelSurfaceDataProxy::columnRole() const
@@ -699,10 +706,13 @@ QString QItemModelSurfaceDataProxy::columnRole() const
 void QItemModelSurfaceDataProxy::setXPosRole(const QString &role)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_xPosRole != role) {
-        d->m_xPosRole = role;
-        emit xPosRoleChanged(role);
+    if (d->m_xPosRole == role) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_xPosRole = role;
+    emit xPosRoleChanged(role);
 }
 
 QString QItemModelSurfaceDataProxy::xPosRole() const
@@ -719,10 +729,13 @@ QString QItemModelSurfaceDataProxy::xPosRole() const
 void QItemModelSurfaceDataProxy::setYPosRole(const QString &role)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_yPosRole != role) {
-        d->m_yPosRole = role;
-        emit yPosRoleChanged(role);
+    if (d->m_yPosRole == role) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_yPosRole = role;
+    emit yPosRoleChanged(role);
 }
 
 QString QItemModelSurfaceDataProxy::yPosRole() const
@@ -742,10 +755,13 @@ QString QItemModelSurfaceDataProxy::yPosRole() const
 void QItemModelSurfaceDataProxy::setZPosRole(const QString &role)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_zPosRole != role) {
-        d->m_zPosRole = role;
-        emit zPosRoleChanged(role);
+    if (d->m_zPosRole == role) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(role));
+        return;
     }
+    d->m_zPosRole = role;
+    emit zPosRoleChanged(role);
 }
 
 QString QItemModelSurfaceDataProxy::zPosRole() const
@@ -762,10 +778,13 @@ QString QItemModelSurfaceDataProxy::zPosRole() const
 void QItemModelSurfaceDataProxy::setRowCategories(const QStringList &categories)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_rowCategories != categories) {
-        d->m_rowCategories = categories;
-        emit rowCategoriesChanged();
+    if (d->m_rowCategories == categories) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << categories;
+        return;
     }
+    d->m_rowCategories = categories;
+    emit rowCategoriesChanged();
 }
 
 QStringList QItemModelSurfaceDataProxy::rowCategories() const
@@ -782,10 +801,13 @@ QStringList QItemModelSurfaceDataProxy::rowCategories() const
 void QItemModelSurfaceDataProxy::setColumnCategories(const QStringList &categories)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_columnCategories != categories) {
-        d->m_columnCategories = categories;
-        emit columnCategoriesChanged();
+    if (d->m_columnCategories == categories) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << categories;
+        return;
     }
+    d->m_columnCategories = categories;
+    emit columnCategoriesChanged();
 }
 
 QStringList QItemModelSurfaceDataProxy::columnCategories() const
@@ -805,10 +827,13 @@ QStringList QItemModelSurfaceDataProxy::columnCategories() const
 void QItemModelSurfaceDataProxy::setUseModelCategories(bool enable)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_useModelCategories != enable) {
-        d->m_useModelCategories = enable;
-        emit useModelCategoriesChanged(enable);
+    if (d->m_useModelCategories == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    d->m_useModelCategories = enable;
+    emit useModelCategoriesChanged(enable);
 }
 
 bool QItemModelSurfaceDataProxy::useModelCategories() const
@@ -829,10 +854,13 @@ bool QItemModelSurfaceDataProxy::useModelCategories() const
 void QItemModelSurfaceDataProxy::setAutoRowCategories(bool enable)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_autoRowCategories != enable) {
-        d->m_autoRowCategories = enable;
-        emit autoRowCategoriesChanged(enable);
+    if (d->m_autoRowCategories == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    d->m_autoRowCategories = enable;
+    emit autoRowCategoriesChanged(enable);
 }
 
 bool QItemModelSurfaceDataProxy::autoRowCategories() const
@@ -853,10 +881,13 @@ bool QItemModelSurfaceDataProxy::autoRowCategories() const
 void QItemModelSurfaceDataProxy::setAutoColumnCategories(bool enable)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_autoColumnCategories != enable) {
-        d->m_autoColumnCategories = enable;
-        emit autoColumnCategoriesChanged(enable);
+    if (d->m_autoColumnCategories == enable) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << enable;
+        return;
     }
+    d->m_autoColumnCategories = enable;
+    emit autoColumnCategoriesChanged(enable);
 }
 
 bool QItemModelSurfaceDataProxy::autoColumnCategories() const
@@ -927,10 +958,13 @@ qsizetype QItemModelSurfaceDataProxy::columnCategoryIndex(const QString &categor
 void QItemModelSurfaceDataProxy::setRowRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_rowRolePattern != pattern) {
-        d->m_rowRolePattern = pattern;
-        emit rowRolePatternChanged(pattern);
+    if (d->m_rowRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_rowRolePattern = pattern;
+    emit rowRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelSurfaceDataProxy::rowRolePattern() const
@@ -954,10 +988,13 @@ QRegularExpression QItemModelSurfaceDataProxy::rowRolePattern() const
 void QItemModelSurfaceDataProxy::setColumnRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_columnRolePattern != pattern) {
-        d->m_columnRolePattern = pattern;
-        emit columnRolePatternChanged(pattern);
+    if (d->m_columnRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_columnRolePattern = pattern;
+    emit columnRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelSurfaceDataProxy::columnRolePattern() const
@@ -981,10 +1018,13 @@ QRegularExpression QItemModelSurfaceDataProxy::columnRolePattern() const
 void QItemModelSurfaceDataProxy::setXPosRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_xPosRolePattern != pattern) {
-        d->m_xPosRolePattern = pattern;
-        emit xPosRolePatternChanged(pattern);
+    if (d->m_xPosRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_xPosRolePattern = pattern;
+    emit xPosRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelSurfaceDataProxy::xPosRolePattern() const
@@ -1008,10 +1048,13 @@ QRegularExpression QItemModelSurfaceDataProxy::xPosRolePattern() const
 void QItemModelSurfaceDataProxy::setYPosRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_yPosRolePattern != pattern) {
-        d->m_yPosRolePattern = pattern;
-        emit yPosRolePatternChanged(pattern);
+    if (d->m_yPosRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_yPosRolePattern = pattern;
+    emit yPosRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelSurfaceDataProxy::yPosRolePattern() const
@@ -1035,10 +1078,13 @@ QRegularExpression QItemModelSurfaceDataProxy::yPosRolePattern() const
 void QItemModelSurfaceDataProxy::setZPosRolePattern(const QRegularExpression &pattern)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_zPosRolePattern != pattern) {
-        d->m_zPosRolePattern = pattern;
-        emit zPosRolePatternChanged(pattern);
+    if (d->m_zPosRolePattern == pattern) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << pattern;
+        return;
     }
+    d->m_zPosRolePattern = pattern;
+    emit zPosRolePatternChanged(pattern);
 }
 
 QRegularExpression QItemModelSurfaceDataProxy::zPosRolePattern() const
@@ -1062,10 +1108,13 @@ QRegularExpression QItemModelSurfaceDataProxy::zPosRolePattern() const
 void QItemModelSurfaceDataProxy::setRowRoleReplace(const QString &replace)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_rowRoleReplace != replace) {
-        d->m_rowRoleReplace = replace;
-        emit rowRoleReplaceChanged(replace);
+    if (d->m_rowRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_rowRoleReplace = replace;
+    emit rowRoleReplaceChanged(replace);
 }
 
 QString QItemModelSurfaceDataProxy::rowRoleReplace() const
@@ -1090,10 +1139,13 @@ QString QItemModelSurfaceDataProxy::rowRoleReplace() const
 void QItemModelSurfaceDataProxy::setColumnRoleReplace(const QString &replace)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_columnRoleReplace != replace) {
-        d->m_columnRoleReplace = replace;
-        emit columnRoleReplaceChanged(replace);
+    if (d->m_columnRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_columnRoleReplace = replace;
+    emit columnRoleReplaceChanged(replace);
 }
 
 QString QItemModelSurfaceDataProxy::columnRoleReplace() const
@@ -1118,10 +1170,13 @@ QString QItemModelSurfaceDataProxy::columnRoleReplace() const
 void QItemModelSurfaceDataProxy::setXPosRoleReplace(const QString &replace)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_xPosRoleReplace != replace) {
-        d->m_xPosRoleReplace = replace;
-        emit xPosRoleReplaceChanged(replace);
+    if (d->m_xPosRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_xPosRoleReplace = replace;
+    emit xPosRoleReplaceChanged(replace);
 }
 
 QString QItemModelSurfaceDataProxy::xPosRoleReplace() const
@@ -1146,10 +1201,13 @@ QString QItemModelSurfaceDataProxy::xPosRoleReplace() const
 void QItemModelSurfaceDataProxy::setYPosRoleReplace(const QString &replace)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_yPosRoleReplace != replace) {
-        d->m_yPosRoleReplace = replace;
-        emit yPosRoleReplaceChanged(replace);
+    if (d->m_yPosRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_yPosRoleReplace = replace;
+    emit yPosRoleReplaceChanged(replace);
 }
 
 QString QItemModelSurfaceDataProxy::yPosRoleReplace() const
@@ -1174,10 +1232,13 @@ QString QItemModelSurfaceDataProxy::yPosRoleReplace() const
 void QItemModelSurfaceDataProxy::setZPosRoleReplace(const QString &replace)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_zPosRoleReplace != replace) {
-        d->m_zPosRoleReplace = replace;
-        emit zPosRoleReplaceChanged(replace);
+    if (d->m_zPosRoleReplace == replace) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(replace));
+        return;
     }
+    d->m_zPosRoleReplace = replace;
+    emit zPosRoleReplaceChanged(replace);
 }
 
 QString QItemModelSurfaceDataProxy::zPosRoleReplace() const
@@ -1204,10 +1265,12 @@ void QItemModelSurfaceDataProxy::setMultiMatchBehavior(
     QItemModelSurfaceDataProxy::MultiMatchBehavior behavior)
 {
     Q_D(QItemModelSurfaceDataProxy);
-    if (d->m_multiMatchBehavior != behavior) {
-        d->m_multiMatchBehavior = behavior;
-        emit multiMatchBehaviorChanged(behavior);
+    if (d->m_multiMatchBehavior == behavior) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << behavior;
     }
+    d->m_multiMatchBehavior = behavior;
+    emit multiMatchBehaviorChanged(behavior);
 }
 
 QItemModelSurfaceDataProxy::MultiMatchBehavior QItemModelSurfaceDataProxy::multiMatchBehavior() const

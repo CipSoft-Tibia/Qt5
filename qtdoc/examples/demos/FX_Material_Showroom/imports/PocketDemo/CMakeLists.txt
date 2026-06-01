@@ -6,10 +6,6 @@ set_source_files_properties(Constants.qml
 qt_add_library(PocketDemo STATIC)
 qt_add_qml_module(PocketDemo
     URI "PocketDemo"
-    VERSION 1.0
     QML_FILES
         Constants.qml
-        DirectoryFontLoader.qml
-        EventListModel.qml
-        EventListSimulator.qml
 )

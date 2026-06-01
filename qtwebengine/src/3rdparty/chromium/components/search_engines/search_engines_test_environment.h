@@ -8,10 +8,15 @@
 #include <memory>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_span.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
+
+namespace regional_capabilities {
+class RegionalCapabilitiesService;
+}
 
 namespace search_engines {
 
@@ -27,7 +32,7 @@ class SearchEnginesTestEnvironment {
     raw_ptr<sync_preferences::TestingPrefServiceSyncable> pref_service =
         nullptr;
     raw_ptr<TestingPrefServiceSimple> local_state = nullptr;
-    base::span<const TemplateURLService::Initializer>
+    base::raw_span<const TemplateURLService::Initializer>
         template_url_service_initializer;
   };
 
@@ -67,6 +72,8 @@ class SearchEnginesTestEnvironment {
       owned_pref_service_;
   raw_ptr<sync_preferences::TestingPrefServiceSyncable> pref_service_;
 
+  std::unique_ptr<regional_capabilities::RegionalCapabilitiesService>
+      regional_capabilities_service_;
   std::unique_ptr<SearchEngineChoiceService> search_engine_choice_service_;
   std::unique_ptr<TemplateURLService> template_url_service_;
 };

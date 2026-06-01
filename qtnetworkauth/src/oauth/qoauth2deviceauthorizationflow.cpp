@@ -205,10 +205,10 @@ void QOAuth2DeviceAuthorizationFlowPrivate::authorizationReplyFinished(QRestRepl
     const auto receivedExpiresIn = data.value(QtOAuth2RfcKeywords::expiresIn).toInt();
     QUrl receivedVerificationUrl;
     // The RFC keyword is 'verification_uri', but some auth servers provide 'verification_url'
-    if (data.contains(QtOAuth2RfcKeywords::verificationUri))
-        receivedVerificationUrl = data.value(QtOAuth2RfcKeywords::verificationUri).toString();
-    else if (data.contains(QtOAuth2RfcKeywords::verificationUrl))
-        receivedVerificationUrl = data.value(QtOAuth2RfcKeywords::verificationUrl).toString();
+    if (auto it = data.find(QtOAuth2RfcKeywords::verificationUri); it != data.end())
+        receivedVerificationUrl.setUrl(it->toString());
+    else if (auto it = data.find(QtOAuth2RfcKeywords::verificationUrl); it != data.end())
+        receivedVerificationUrl.setUrl(it->toString());
 
     if (receivedDeviceCode.isEmpty() || receivedUserCode.isEmpty()
         || receivedVerificationUrl.isEmpty() || receivedExpiresIn <= 0) {
@@ -244,13 +244,10 @@ void QOAuth2DeviceAuthorizationFlowPrivate::authorizationReplyFinished(QRestRepl
     QUrl receivedVerificationUrlComplete;
     // The RFC keyword is 'verification_uri_complete', but some auth servers
     // use 'verification_url_complete'
-    if (data.contains(QtOAuth2RfcKeywords::completeVerificationUri)) {
-        receivedVerificationUrlComplete =
-            data.value(QtOAuth2RfcKeywords::completeVerificationUri).toString();
-    } else if (data.contains(QtOAuth2RfcKeywords::completeVerificationUrl)) {
-        receivedVerificationUrlComplete =
-            data.value(QtOAuth2RfcKeywords::completeVerificationUrl).toString();
-    }
+    if (auto it = data.find(QtOAuth2RfcKeywords::completeVerificationUri); it != data.end())
+        receivedVerificationUrlComplete.setUrl(it->toString());
+    else if (auto it = data.find(QtOAuth2RfcKeywords::completeVerificationUrl); it != data.end())
+        receivedVerificationUrlComplete.setUrl(it->toString());
 
     deviceCode = std::move(receivedDeviceCode);
     setUserCode(receivedUserCode);

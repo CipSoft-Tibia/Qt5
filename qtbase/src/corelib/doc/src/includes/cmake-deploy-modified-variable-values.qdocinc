@@ -17,7 +17,6 @@ set(deploy_script "${CMAKE_CURRENT_BINARY_DIR}/deploy_MyApp.cmake")
 file(GENERATE OUTPUT ${deploy_script} CONTENT "
 
 set(QT_DEPLOY_PLUGINS_DIR \"mypluginsdir\")
-set(QT_DEPLOY_QML_DIR \"myqmldir\")
 set(QT_DEPLOY_TRANSLATIONS_DIR \"i18n\")
 
 include(\"${QT_DEPLOY_SUPPORT}\")

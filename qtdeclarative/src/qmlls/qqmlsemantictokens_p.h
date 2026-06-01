@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQMLSEMANTICTOKENS_P_H
 #define QQMLSEMANTICTOKENS_P_H
@@ -24,7 +25,7 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(semanticTokens)
 
-namespace HighlightingUtils {
+namespace QmlHighlighting {
 Q_NAMESPACE
 
 // Protocol agnostic highlighting kinds
@@ -68,8 +69,9 @@ enum class QmlHighlightModifier {
     None = 0,
     QmlPropertyDefinition = 1 << 0,
     QmlDefaultProperty = 1 << 1,
-    QmlRequiredProperty = 1 << 2,
-    QmlReadonlyProperty = 1 << 3,
+    QmlFinalProperty = 1 << 2,
+    QmlRequiredProperty = 1 << 3,
+    QmlReadonlyProperty = 1 << 4,
 };
 Q_DECLARE_FLAGS(QmlHighlightModifiers, QmlHighlightModifier)
 Q_DECLARE_OPERATORS_FOR_FLAGS(QmlHighlightModifiers)
@@ -115,44 +117,26 @@ enum class SemanticTokenProtocolTypes {
 };
 Q_ENUM_NS(SemanticTokenProtocolTypes)
 
-} // namespace HighlightingUtils
-
 // Represents a semantic highlighting token
 // startLine and startColumn are 0-based as in LSP spec.
-struct Token
+struct HighlightToken
 {
-    Token() = default;
-    Token(const QQmlJS::SourceLocation &loc, int tokenType, int tokenModifier = 0)
-        : offset(loc.offset),
-          length(loc.length),
-          startLine(loc.startLine - 1),
-          startColumn(loc.startColumn - 1),
-          tokenType(tokenType),
-          tokenModifier(tokenModifier)
+    HighlightToken() = default;
+    HighlightToken(const QQmlJS::SourceLocation &loc, QmlHighlightKind,
+                   QmlHighlightModifiers = QmlHighlightModifier::None);
+
+    inline friend bool operator==(const HighlightToken &lhs, const HighlightToken &rhs)
     {
+        return lhs.loc == rhs.loc  && lhs.kind == rhs.kind && lhs.modifiers == rhs.modifiers;
     }
 
-    inline friend bool operator<(const Token &lhs, const Token &rhs)
-    {
-        return lhs.offset < rhs.offset;
-    }
-
-    inline friend bool operator==(const Token &lhs, const Token &rhs)
-    {
-        return lhs.offset == rhs.offset && lhs.length == rhs.length
-                && lhs.startLine == rhs.startLine && lhs.startColumn == rhs.startColumn
-                && lhs.tokenType == rhs.tokenType && lhs.tokenModifier == rhs.tokenModifier;
-    }
-
-    int offset;
-    int length;
-    int startLine;
-    int startColumn;
-    int tokenType;
-    int tokenModifier;
+    QQmlJS::SourceLocation loc;
+    QmlHighlightKind kind;
+    QmlHighlightModifiers modifiers;
 };
 
-using HighlightsContainer = QMap<int, QT_PREPEND_NAMESPACE(Token)>;
+using HighlightsContainer = QMap<int, HighlightToken>;
+using QmlHighlightKindToLspKind = int (*)(QmlHighlightKind);
 
 /*!
 \internal
@@ -164,50 +148,32 @@ struct HighlightsRange
     int endOffset;
 };
 
-class Highlights
+namespace Utils
 {
-public:
-    using QmlHighlightKindToLspKind = int (*)(HighlightingUtils::QmlHighlightKind);
-    Highlights(HighlightingUtils::HighlightingMode mode = HighlightingUtils::HighlightingMode::Default);
-    void addHighlight(const QQmlJS::SourceLocation &loc, HighlightingUtils::QmlHighlightKind,
-                      HighlightingUtils::QmlHighlightModifiers =
-                              HighlightingUtils::QmlHighlightModifier::None);
-    HighlightsContainer &tokens() { return m_highlights; }
-    const HighlightsContainer &tokens() const { return m_highlights; }
-
-private:
-    void addHighlightImpl(const QQmlJS::SourceLocation &loc, int tokenType, int tokenModifier = 0);
-    HighlightsContainer m_highlights;
-    QmlHighlightKindToLspKind m_mapToProtocol;
-};
-
-namespace HighlightingUtils
-{
-    QList<int> encodeSemanticTokens(Highlights &highlights);
-    QList<QQmlJS::SourceLocation>
-    sourceLocationsFromMultiLineToken(QStringView code,
-                                      const QQmlJS::SourceLocation &tokenLocation);
-    void addModifier(QLspSpecification::SemanticTokenModifiers modifier, int *baseModifier);
-    bool rangeOverlapsWithSourceLocation(const QQmlJS::SourceLocation &loc, const HighlightsRange &r);
-    QList<QLspSpecification::SemanticTokensEdit> computeDiff(const QList<int> &, const QList<int> &);
-    void updateResultID(QByteArray &resultID);
-    QList<int> collectTokens(const QQmlJS::Dom::DomItem &item,
-                             const std::optional<HighlightsRange> &range,
-                             HighlightingMode mode = HighlightingMode::Default);
-    Highlights visitTokens(const QQmlJS::Dom::DomItem &item,
-                                 const std::optional<HighlightsRange> &range,
-                                 HighlightingMode mode = HighlightingMode::Default);
-} // namespace HighlightingUtils
+QList<int> encodeSemanticTokens(const HighlightsContainer &highlights, HighlightingMode mode = HighlightingMode::Default);
+QList<QQmlJS::SourceLocation>
+sourceLocationsFromMultiLineToken(QStringView code,
+                                    const QQmlJS::SourceLocation &tokenLocation);
+void addModifier(QLspSpecification::SemanticTokenModifiers modifier, int *baseModifier);
+bool rangeOverlapsWithSourceLocation(const QQmlJS::SourceLocation &loc, const HighlightsRange &r);
+QList<QLspSpecification::SemanticTokensEdit> computeDiff(const QList<int> &, const QList<int> &);
+void updateResultID(QByteArray &resultID);
+QList<int> collectTokens(const QQmlJS::Dom::DomItem &item,
+                            const std::optional<HighlightsRange> &range,
+                            HighlightingMode mode = HighlightingMode::Default);
+HighlightsContainer visitTokens(const QQmlJS::Dom::DomItem &item,
+                                const std::optional<HighlightsRange> &range);
+void addHighlight(HighlightsContainer &out, const QQmlJS::SourceLocation &loc, QmlHighlightKind,
+                    QmlHighlightModifiers = QmlHighlightModifier::None);
+} // namespace Utils
 
 class HighlightingVisitor
 {
 public:
     HighlightingVisitor(const QQmlJS::Dom::DomItem &item,
-                        const std::optional<HighlightsRange> &range,
-                        HighlightingUtils::HighlightingMode mode =
-                                HighlightingUtils::HighlightingMode::Default);
-    const Highlights &hightights() const { return m_highlights; }
-    Highlights &highlights() { return m_highlights; }
+                        const std::optional<HighlightsRange> &range);
+    const HighlightsContainer &hightights() const { return m_highlights; }
+    HighlightsContainer &highlights() { return m_highlights; }
 
 private:
     bool visitor(QQmlJS::Dom::Path, const QQmlJS::Dom::DomItem &item, bool);
@@ -227,11 +193,14 @@ private:
     void highlightScriptExpressions(const QQmlJS::Dom::DomItem &item);
     void highlightCallExpression(const QQmlJS::Dom::DomItem &item);
     void highlightFieldMemberAccess(const QQmlJS::Dom::DomItem &item, QQmlJS::SourceLocation loc);
-
+    void addHighlight(const QQmlJS::SourceLocation &loc, QmlHighlightKind,
+                      QmlHighlightModifiers = QmlHighlightModifier::None);
 private:
-    Highlights m_highlights;
+    HighlightsContainer m_highlights;
     std::optional<HighlightsRange> m_range;
 };
+
+} // namespace QmlHighlighting
 
 QT_END_NAMESPACE
 

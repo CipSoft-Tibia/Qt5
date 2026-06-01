@@ -10,10 +10,14 @@
 #include <QtCore/qmetatype.h>
 #include <QtCore/qtextstream.h>
 
-QT_DECL_METATYPE_EXTERN(qfloat16, Q_CORE_EXPORT)
 QT_BEGIN_NAMESPACE
 
-QT_IMPL_METATYPE_EXTERN(qfloat16)
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+Q_CORE_EXPORT int qRegisterNormalizedMetaType_qfloat16(const QByteArray &)
+{
+    return QMetaType::Float16;
+}
+#endif
 
 /*!
     \class qfloat16

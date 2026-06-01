@@ -15,18 +15,18 @@ namespace payments {
 
 PaymentHandlerPermissionContext::PaymentHandlerPermissionContext(
     content::BrowserContext* browser_context)
-    : PermissionContextBase(browser_context,
-                            ContentSettingsType::PAYMENT_HANDLER,
-                            blink::mojom::PermissionsPolicyFeature::kNotFound) {
-}
+    : PermissionContextBase(
+          browser_context,
+          ContentSettingsType::PAYMENT_HANDLER,
+          network::mojom::PermissionsPolicyFeature::kNotFound) {}
 
-PaymentHandlerPermissionContext::~PaymentHandlerPermissionContext() {}
+PaymentHandlerPermissionContext::~PaymentHandlerPermissionContext() = default;
 
 void PaymentHandlerPermissionContext::DecidePermission(
     permissions::PermissionRequestData request_data,
     permissions::BrowserPermissionCallback callback) {
   // The user should never be prompted to authorize payment handler.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 }  // namespace payments

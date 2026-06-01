@@ -8,7 +8,6 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
@@ -22,7 +21,6 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.view.Display;
 import android.util.DisplayMetrics;
 import android.util.Log;
 

@@ -31,6 +31,7 @@
 #include "src/tint/lang/core/ir/module.h"
 #include "src/tint/lang/core/ir/validator.h"
 #include "src/tint/lang/core/type/sampled_texture.h"
+#include "src/tint/lang/core/type/texture.h"
 
 using namespace tint::core::fluent_types;     // NOLINT
 using namespace tint::core::number_suffixes;  // NOLINT
@@ -90,6 +91,9 @@ struct State {
                             worklist.Push(builtin);
                         }
                         break;
+                    case core::BuiltinFn::kSmoothstep:
+                        worklist.Push(builtin);
+                        break;
                     case core::BuiltinFn::kExtractBits:
                         if (config.extract_bits != BuiltinPolyfillLevel::kNone) {
                             worklist.Push(builtin);
@@ -120,10 +124,22 @@ struct State {
                             worklist.Push(builtin);
                         }
                         break;
+                    case core::BuiltinFn::kReflect:
+                        if (config.reflect_vec2_f32) {
+                            // Polyfill for vec2<f32>. See crbug.com/tint/1798
+                            auto* vec_ty = builtin->Result(0)->Type()->As<core::type::Vector>();
+                            if (vec_ty->Width() == 2 && vec_ty->Type()->Is<core::type::F32>()) {
+                                worklist.Push(builtin);
+                            }
+                        }
+                        break;
                     case core::BuiltinFn::kSaturate:
                         if (config.saturate) {
                             worklist.Push(builtin);
                         }
+                        break;
+                    case core::BuiltinFn::kTextureSampleBias:
+                        worklist.Push(builtin);
                         break;
                     case core::BuiltinFn::kTextureSampleBaseClampToEdge:
                         if (config.texture_sample_base_clamp_to_edge_2d_f32) {
@@ -158,6 +174,14 @@ struct State {
                         }
                         break;
                     }
+                    case core::BuiltinFn::kPack4X8Snorm:
+                    case core::BuiltinFn::kPack4X8Unorm:
+                    case core::BuiltinFn::kUnpack4X8Snorm:
+                    case core::BuiltinFn::kUnpack4X8Unorm:
+                        if (config.pack_unpack_4x8_norm) {
+                            worklist.Push(builtin);
+                        }
+                        break;
                     default:
                         break;
                 }
@@ -179,6 +203,9 @@ struct State {
                 case core::BuiltinFn::kDegrees:
                     Degrees(builtin);
                     break;
+                case core::BuiltinFn::kSmoothstep:
+                    SmoothStep(builtin);
+                    break;
                 case core::BuiltinFn::kExtractBits:
                     ExtractBits(builtin);
                     break;
@@ -197,11 +224,17 @@ struct State {
                 case core::BuiltinFn::kRadians:
                     Radians(builtin);
                     break;
+                case core::BuiltinFn::kReflect:
+                    Reflect(builtin);
+                    break;
                 case core::BuiltinFn::kSaturate:
                     Saturate(builtin);
                     break;
                 case core::BuiltinFn::kTextureSampleBaseClampToEdge:
                     TextureSampleBaseClampToEdge_2d_f32(builtin);
+                    break;
+                case core::BuiltinFn::kTextureSampleBias:
+                    TextureSampleBiasClamp(builtin);
                     break;
                 case core::BuiltinFn::kDot4I8Packed:
                     Dot4I8Packed(builtin);
@@ -227,10 +260,130 @@ struct State {
                 case core::BuiltinFn::kUnpack4XU8:
                     Unpack4xU8(builtin);
                     break;
+                case core::BuiltinFn::kPack4X8Snorm:
+                    Pack4x8Snorm(builtin);
+                    break;
+                case core::BuiltinFn::kPack4X8Unorm:
+                    Pack4x8Unorm(builtin);
+                    break;
+                case core::BuiltinFn::kUnpack4X8Snorm:
+                    Unpack4x8Snorm(builtin);
+                    break;
+                case core::BuiltinFn::kUnpack4X8Unorm:
+                    Unpack4x8Unorm(builtin);
+                    break;
                 default:
                     break;
             }
         }
+    }
+
+    /// Polyfill a `pack4x8snorm` builtin call
+    void Pack4x8Snorm(ir::CoreBuiltinCall* call) {
+        auto* arg = call->Args()[0];
+
+        b.InsertBefore(call, [&] {
+            auto* vec4f = ty.vec4<f32>();
+            auto* vec4u = ty.vec4<u32>();
+
+            auto* neg_one = b.Splat(vec4f, -1_f);
+            auto* one = b.Splat(vec4f, 1_f);
+
+            core::ir::Value* v =
+                b.Call(vec4f, core::BuiltinFn::kClamp, Vector{arg, neg_one, one})->Result(0);
+            v = b.Multiply(vec4f, b.Splat(vec4f, 127_f), v)->Result(0);
+            v = b.Add(vec4f, b.Splat(vec4f, 0.5_f), v)->Result(0);
+            v = b.Call(vec4f, core::BuiltinFn::kFloor, Vector{v})->Result(0);
+            v = b.Convert(ty.vec4<i32>(), v)->Result(0);
+            v = b.Bitcast(vec4u, v)->Result(0);
+            v = b.And(vec4u, v, b.Splat(vec4u, 0xff_u))->Result(0);
+            v = b.ShiftLeft(vec4u, v, b.Construct(vec4u, 0_u, 8_u, 16_u, 24_u))->Result(0);
+
+            auto* x = b.Access(ty.u32(), v, 0_u);
+            auto* y = b.Access(ty.u32(), v, 1_u);
+            auto* z = b.Access(ty.u32(), v, 2_u);
+            auto* w = b.Access(ty.u32(), v, 3_u);
+
+            v = b.Or(ty.u32(), x, b.Or(ty.u32(), y, b.Or(ty.u32(), z, w)))->Result(0);
+
+            call->Result(0)->ReplaceAllUsesWith(v);
+        });
+        call->Destroy();
+    }
+
+    /// Polyfill a `pack4x8unorm` builtin call
+    void Pack4x8Unorm(ir::CoreBuiltinCall* call) {
+        auto* arg = call->Args()[0];
+
+        b.InsertBefore(call, [&] {
+            auto* vec4f = ty.vec4<f32>();
+            auto* vec4u = ty.vec4<u32>();
+
+            auto* zero = b.Zero(vec4f);
+            auto* one = b.Splat(vec4f, 1_f);
+
+            auto* v = b.Call(vec4f, core::BuiltinFn::kClamp, Vector{arg, zero, one})->Result(0);
+            v = b.Multiply(vec4f, b.Splat(vec4f, 255_f), v)->Result(0);
+            v = b.Add(vec4f, b.Splat(vec4f, 0.5_f), v)->Result(0);
+            v = b.Call(vec4f, core::BuiltinFn::kFloor, Vector{v})->Result(0);
+            v = b.Convert(vec4u, v)->Result(0);
+            v = b.And(vec4u, v, b.Splat(vec4u, 0xff_u))->Result(0);
+            v = b.ShiftLeft(vec4u, v, b.Construct(vec4u, 0_u, 8_u, 16_u, 24_u))->Result(0);
+
+            auto* x = b.Access(ty.u32(), v, 0_u);
+            auto* y = b.Access(ty.u32(), v, 1_u);
+            auto* z = b.Access(ty.u32(), v, 2_u);
+            auto* w = b.Access(ty.u32(), v, 3_u);
+
+            v = b.Or(ty.u32(), x, b.Or(ty.u32(), y, b.Or(ty.u32(), z, w)))->Result(0);
+
+            call->Result(0)->ReplaceAllUsesWith(v);
+        });
+        call->Destroy();
+    }
+
+    /// Polyfill a `unpack4x8snorm` builtin call
+    void Unpack4x8Snorm(ir::CoreBuiltinCall* call) {
+        auto* arg = call->Args()[0];
+
+        b.InsertBefore(call, [&] {
+            auto* vec4f = ty.vec4<f32>();
+            auto* vec4u = ty.vec4<u32>();
+            auto* vec4i = ty.vec4<i32>();
+
+            auto* v = b.Construct(vec4u, arg)->Result(0);
+            // Shift left to put the 8th bit of each number into the sign bit location, we then
+            // convert to an i32 and shift back, so the sign bit will be set as needed. The bits
+            // outside the bottom 8 are then masked off.
+            v = b.ShiftLeft(vec4u, v, b.Construct(vec4u, 24_u, 16_u, 8_u, 0_u))->Result(0);
+            v = b.Bitcast(vec4i, v)->Result(0);
+            v = b.ShiftRight(vec4i, v, b.Splat(vec4u, 24_u))->Result(0);
+            v = b.Convert(vec4f, v)->Result(0);
+            v = b.Divide(vec4f, v, b.Splat(vec4f, 127_f))->Result(0);
+            v = b.Call(vec4f, core::BuiltinFn::kMax, v, b.Splat(vec4f, -1_f))->Result(0);
+
+            call->Result(0)->ReplaceAllUsesWith(v);
+        });
+        call->Destroy();
+    }
+
+    /// Polyfill a `unpack4x8unorm` builtin call
+    void Unpack4x8Unorm(ir::CoreBuiltinCall* call) {
+        auto* arg = call->Args()[0];
+
+        b.InsertBefore(call, [&] {
+            auto* vec4f = ty.vec4<f32>();
+            auto* vec4u = ty.vec4<u32>();
+
+            auto* v = b.Construct(vec4u, arg)->Result(0);
+            v = b.ShiftRight(vec4u, v, b.Construct(vec4u, 0_u, 8_u, 16_u, 24_u))->Result(0);
+            v = b.And(vec4u, v, b.Splat(vec4u, 0xff_u))->Result(0);
+            v = b.Convert(vec4f, v)->Result(0);
+            v = b.Divide(vec4f, v, b.Splat(vec4f, 255_f))->Result(0);
+
+            call->Result(0)->ReplaceAllUsesWith(v);
+        });
+        call->Destroy();
     }
 
     /// Polyfill a `clamp()` builtin call for integers.
@@ -253,8 +406,8 @@ struct State {
     void CountLeadingZeros(ir::CoreBuiltinCall* call) {
         auto* input = call->Args()[0];
         auto* result_ty = input->Type();
-        auto* uint_ty = ty.match_width(ty.u32(), result_ty);
-        auto* bool_ty = ty.match_width(ty.bool_(), result_ty);
+        auto* uint_ty = ty.MatchWidth(ty.u32(), result_ty);
+        auto* bool_ty = ty.MatchWidth(ty.bool_(), result_ty);
 
         // Make an u32 constant with the same component count as result_ty.
         auto V = [&](uint32_t u) { return b.MatchWidth(u32(u), result_ty); };
@@ -315,8 +468,8 @@ struct State {
     void CountTrailingZeros(ir::CoreBuiltinCall* call) {
         auto* input = call->Args()[0];
         auto* result_ty = input->Type();
-        auto* uint_ty = ty.match_width(ty.u32(), result_ty);
-        auto* bool_ty = ty.match_width(ty.bool_(), result_ty);
+        auto* uint_ty = ty.MatchWidth(ty.u32(), result_ty);
+        auto* bool_ty = ty.MatchWidth(ty.bool_(), result_ty);
 
         // Make an u32 constant with the same component count as result_ty.
         auto V = [&](uint32_t u) { return b.MatchWidth(u32(u), result_ty); };
@@ -388,6 +541,46 @@ struct State {
         call->Destroy();
     }
 
+    /// Polyfill an `smoothStep()` builtin call.
+    /// @param call the builtin call instruction
+    void SmoothStep(ir::CoreBuiltinCall* call) {
+        auto* edge0_arg = call->Args()[0];
+        auto* edge1_arg = call->Args()[1];
+        auto* x_arg = call->Args()[2];
+        auto* type = x_arg->Type();
+        ir::Constant* zero = nullptr;
+        ir::Constant* one = nullptr;
+        ir::Constant* two = nullptr;
+        ir::Constant* three = nullptr;
+        if (type->DeepestElement()->Is<core::type::F32>()) {
+            zero = b.MatchWidth(0_f, type);
+            one = b.MatchWidth(1_f, type);
+            two = b.MatchWidth(2_f, type);
+            three = b.MatchWidth(3_f, type);
+        } else if (type->DeepestElement()->Is<core::type::F16>()) {
+            zero = b.MatchWidth(0_h, type);
+            one = b.MatchWidth(1_h, type);
+            two = b.MatchWidth(2_h, type);
+            three = b.MatchWidth(3_h, type);
+        }
+
+        b.InsertBefore(call, [&] {
+            auto* dividend = b.Subtract(type, x_arg, edge0_arg);
+            auto* divisor = b.Subtract(type, edge1_arg, edge0_arg);
+            auto* quotient = b.Divide(type, dividend, divisor);
+            auto* t_clamped = b.Call(type, core::BuiltinFn::kClamp, quotient, zero, one);
+
+            // Smoothstep is a well defined function.
+            // result = t * t * (3.0 - 2.0 * t);
+            auto* smooth_result =
+                b.Multiply(type, t_clamped,
+                           b.Multiply(type, t_clamped,
+                                      b.Subtract(type, three, b.Multiply(type, two, t_clamped))));
+            smooth_result->SetResults(Vector{call->DetachResult()});
+        });
+        call->Destroy();
+    }
+
     /// Polyfill an `extractBits()` builtin call.
     /// @param call the builtin call instruction
     void ExtractBits(ir::CoreBuiltinCall* call) {
@@ -422,7 +615,7 @@ struct State {
                 // }
                 auto* e = call->Args()[0];
                 auto* result_ty = e->Type();
-                auto* uint_ty = ty.match_width(ty.u32(), result_ty);
+                auto* uint_ty = ty.MatchWidth(ty.u32(), result_ty);
                 auto V = [&](uint32_t u) { return b.MatchWidth(u32(u), result_ty); };
                 b.InsertBefore(call, [&] {
                     auto* s = b.Call<u32>(core::BuiltinFn::kMin, offset, 32_u);
@@ -451,8 +644,8 @@ struct State {
     void FirstLeadingBit(ir::CoreBuiltinCall* call) {
         auto* input = call->Args()[0];
         auto* result_ty = input->Type();
-        auto* uint_ty = ty.match_width(ty.u32(), result_ty);
-        auto* bool_ty = ty.match_width(ty.bool_(), result_ty);
+        auto* uint_ty = ty.MatchWidth(ty.u32(), result_ty);
+        auto* bool_ty = ty.MatchWidth(ty.bool_(), result_ty);
 
         // Make an u32 constant with the same component count as result_ty.
         auto V = [&](uint32_t u) { return b.MatchWidth(u32(u), result_ty); };
@@ -513,8 +706,8 @@ struct State {
     void FirstTrailingBit(ir::CoreBuiltinCall* call) {
         auto* input = call->Args()[0];
         auto* result_ty = input->Type();
-        auto* uint_ty = ty.match_width(ty.u32(), result_ty);
-        auto* bool_ty = ty.match_width(ty.bool_(), result_ty);
+        auto* uint_ty = ty.MatchWidth(ty.u32(), result_ty);
+        auto* bool_ty = ty.MatchWidth(ty.bool_(), result_ty);
 
         // Make an u32 constant with the same component count as result_ty.
         auto V = [&](uint32_t u) { return b.MatchWidth(u32(u), result_ty); };
@@ -616,7 +809,7 @@ struct State {
                 auto* e = call->Args()[0];
                 auto* newbits = call->Args()[1];
                 auto* result_ty = e->Type();
-                auto* uint_ty = ty.match_width(ty.u32(), result_ty);
+                auto* uint_ty = ty.MatchWidth(ty.u32(), result_ty);
                 b.InsertBefore(call, [&] {
                     auto* oc = b.Add<u32>(offset, count);
                     auto* t1 = b.ShiftLeft<u32>(1_u, offset);
@@ -663,6 +856,35 @@ struct State {
         call->Destroy();
     }
 
+    /// Polyfill a `reflect()` builtin call.
+    /// @param call the builtin call instruction
+    void Reflect(ir::CoreBuiltinCall* call) {
+        auto* e1 = call->Args()[0];
+        auto* e2 = call->Args()[1];
+        auto* vec_ty = e1->Type()->As<core::type::Vector>();
+        // Only polyfills vec2<f32> (crbug.com/tint/1798)
+        TINT_ASSERT(vec_ty && vec_ty->Width() == 2 && vec_ty->Type()->Is<core::type::F32>());
+
+        b.InsertBefore(call, [&] {
+            // The generated HLSL must effectively be emitted as:
+            //      e1 + (-2 * dot(e1,e2) * e2)
+            // Rather than the mathemetically equivalent:
+            //      e1 - 2 * dot(e2,e2) * e2
+            //
+            // When FXC compiles HLSL reflect, or the second case above,
+            // it emits a `dp4` instruction for `2 * dot(e1,e2)`, which is
+            // miscompiled by certain Intel drivers. The workaround (first
+            // case above) results in FXC emitting a `dp2` for the dot,
+            // followed by a `mul 2`, which works around the bug.
+            auto* dot = b.Call(ty.f32(), core::BuiltinFn::kDot, e1, e2);
+            auto* factor = b.Multiply(ty.f32(), -2.0_f, dot);
+            auto* vfactor = b.Construct(vec_ty, factor);
+            auto* mul = b.Multiply(vec_ty, vfactor, e2);
+            b.AddWithResult(call->DetachResult(), e1, mul);
+        });
+        call->Destroy();
+    }
+
     /// Polyfill a `saturate()` builtin call.
     /// @param call the builtin call instruction
     void Saturate(ir::CoreBuiltinCall* call) {
@@ -705,6 +927,23 @@ struct State {
                              sampler, clamped, 0_f);
         });
         call->Destroy();
+    }
+
+    /// Polyfill clamping for the (f32) bias parameter of TextureSampleBias
+    /// @param call the builtin call instruction
+    void TextureSampleBiasClamp(ir::CoreBuiltinCall* call) {
+        b.InsertBefore(call, [&] {
+            auto* texture_type = call->Args()[0]->Type()->As<core::type::Texture>();
+            bool is_array_texture = type::IsTextureArray(texture_type->Dim());
+            const uint32_t kBiasParameterIndex = is_array_texture ? 4 : 3;
+            auto* bias_parameter = call->Args()[kBiasParameterIndex];
+            // TODO(crbug.com/371033198): Consider applying clamp here if 'bias_parameter' is a
+            // constant. This might not be the most prudent idea for two reasons: 1. the platform
+            // compilers will perform this optimization 2. it will bifurcate the testing paths.
+            call->SetArg(kBiasParameterIndex, b.Call(ty.f32(), core::BuiltinFn::kClamp,
+                                                     bias_parameter, -16.00_f, 15.99_f)
+                                                  ->Result(0));
+        });
     }
 
     /// Polyfill a `dot4I8Packed()` builtin call
@@ -906,7 +1145,7 @@ struct State {
 }  // namespace
 
 Result<SuccessType> BuiltinPolyfill(Module& ir, const BuiltinPolyfillConfig& config) {
-    auto result = ValidateAndDumpIfNeeded(ir, "BuiltinPolyfill transform");
+    auto result = ValidateAndDumpIfNeeded(ir, "core.BuiltinPolyfill");
     if (result != Success) {
         return result;
     }

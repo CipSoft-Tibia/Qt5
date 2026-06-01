@@ -152,7 +152,7 @@ video_capture::mojom::VideoCaptureService& GetVideoCaptureService() {
   auto& remote = GetUIThreadRemote();
   if (!remote.is_bound()) {
     auto receiver = remote.BindNewPipeAndPassReceiver();
-    if (features::IsVideoCaptureServiceEnabledForBrowserProcess()) {
+    if (::features::IsVideoCaptureServiceEnabledForBrowserProcess()) {
       auto dedicated_task_runner = CREATE_IN_PROCESS_TASK_RUNNER(
           {base::MayBlock(), base::WithBaseSyncPrimitives(),
            base::TaskPriority::BEST_EFFORT},

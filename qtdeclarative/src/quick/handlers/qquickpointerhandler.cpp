@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickpointerhandler_p.h"
 #include "qquickpointerhandler_p_p.h"
@@ -462,14 +463,17 @@ void QQuickPointerHandler::classBegin()
 
 /*!
     Overridden from QQmlParserStatus to ensure that parentItem() sets its
-    cursor if this handler's \l cursorShape property has been set.
+    cursor if this handler's \l cursorShape property has been set, and that
+    this handler is added to the parent item. If it was declared as a named property
+    rather than declared directly inside an Item, data_append() will miss adding it.
 */
 void QQuickPointerHandler::componentComplete()
 {
     Q_D(const QQuickPointerHandler);
-    if (d->cursorSet) {
-        if (auto *parent = parentItem()) {
-            QQuickItemPrivate *itemPriv = QQuickItemPrivate::get(parent);
+    if (auto *parent = parentItem()) {
+        QQuickItemPrivate *itemPriv = QQuickItemPrivate::get(parent);
+        itemPriv->addPointerHandler(this);
+        if (d->cursorSet) {
             itemPriv->hasCursorHandler = true;
             itemPriv->setHasCursorInChild(true);
         }
@@ -498,6 +502,9 @@ QPointerEvent *QQuickPointerHandler::currentEvent()
 */
 bool QQuickPointerHandler::setExclusiveGrab(QPointerEvent *ev, const QEventPoint &point, bool grab)
 {
+    // If the handler loses its grab because its window is deactivated, there's no QPointerEvent.
+    if (!ev)
+        return true;
     if ((grab && ev->exclusiveGrabber(point) == this) || (!grab && ev->exclusiveGrabber(point) != this))
         return true;
     // TODO m_hadKeepMouseGrab m_hadKeepTouchGrab
@@ -580,10 +587,17 @@ bool QQuickPointerHandler::parentContains(const QPointF &scenePosition) const
 }
 
 /*!
-     \qmlproperty bool QtQuick::PointerHandler::enabled
+    \qmlproperty bool QtQuick::PointerHandler::enabled
 
-     If a PointerHandler is disabled, it will reject all events
-     and no signals will be emitted.
+    If a PointerHandler is disabled, it will reject all events
+    and no signals will be emitted.
+
+    If a PointerHandler's \l parent is \l {Item::enabled}{disabled},
+    the handler will also be effectively disabled, even when the \c enabled
+    property remains \c true.
+
+    \note HoverHandler behaves differently: see the documentation of its
+    \l {HoverHandler::}{enabled} property for more information.
 */
 bool QQuickPointerHandler::enabled() const
 {

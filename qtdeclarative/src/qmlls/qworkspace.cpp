@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qworkspace_p.h"
 #include "qqmllanguageserver_p.h"
@@ -131,8 +132,8 @@ void WorkspaceHandlers::clientInitialized(QLanguageServer *server)
                 },
                 [protocol](const ResponseError &err) {
                     LogMessageParams msg;
-                    msg.message = QByteArray("registration of file udates failed, will miss file "
-                                             "changes done outside the editor due to error ");
+                    msg.message = QByteArray("Registration of file updates failed, will miss file "
+                                             "changes from outside the editor.");
                     msg.message.append(QString::number(err.code).toUtf8());
                     if (!err.message.isEmpty())
                         msg.message.append(" ");

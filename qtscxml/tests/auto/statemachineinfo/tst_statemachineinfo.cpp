@@ -5,6 +5,8 @@
 #include <QtScxml/qscxmlstatemachine.h>
 #include <QtScxml/private/qscxmlstatemachineinfo_p.h>
 
+#include <memory>
+
 class tst_StateMachineInfo: public QObject
 {
     Q_OBJECT
@@ -68,7 +70,7 @@ void tst_StateMachineInfo::checkInfo()
                 QScxmlStateMachine::fromFile(QString(":/tst_statemachineinfo/statemachine.scxml")));
     QVERIFY(!stateMachine.isNull());
     QVERIFY(stateMachine->parseErrors().isEmpty());
-    auto info = new QScxmlStateMachineInfo(stateMachine.data());
+    auto info = std::make_unique<QScxmlStateMachineInfo>(stateMachine.get());
 
     const QString machineName = QLatin1String("InfoTest");
     QCOMPARE(stateMachine->name(), machineName);
@@ -161,11 +163,11 @@ void tst_StateMachineInfo::checkInfo()
     QCOMPARE(info->transitionEvents(transitions.at(5)).size(), 0);
 
     Recorder recorder;
-    QObject::connect(info, &QScxmlStateMachineInfo::statesEntered,
+    QObject::connect(info.get(), &QScxmlStateMachineInfo::statesEntered,
                      &recorder, &Recorder::statesEntered);
-    QObject::connect(info, &QScxmlStateMachineInfo::statesExited,
+    QObject::connect(info.get(), &QScxmlStateMachineInfo::statesExited,
                      &recorder, &Recorder::statesExited);
-    QObject::connect(info, &QScxmlStateMachineInfo::transitionsTriggered,
+    QObject::connect(info.get(), &QScxmlStateMachineInfo::transitionsTriggered,
                      &recorder, &Recorder::transitionsTriggered);
     QObject::connect(stateMachine.data(), &QScxmlStateMachine::reachedStableState,
                      &recorder, &Recorder::reachedStableState);

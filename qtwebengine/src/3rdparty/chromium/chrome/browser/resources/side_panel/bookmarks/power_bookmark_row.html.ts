@@ -8,6 +8,7 @@ import type {PowerBookmarkRowElement} from './power_bookmark_row.ts';
 
 export function getHtml(this: PowerBookmarkRowElement) {
   const { id, url, title, children } = this.bookmark || {};
+  // clang-format off
   const urlListItem = html`
 <cr-url-list-item id="crUrlListItem"
     role="listitem"
@@ -43,10 +44,10 @@ export function getHtml(this: PowerBookmarkRowElement) {
     </cr-input>` : ''}
 
   ${this.showTrailingIcon_() ? html`
-    ${this.isPriceTracked_(this.bookmark) ? html`
+    ${this.isPriceTracked ? html`
     <sp-list-item-badge slot="badges"
         .updated="${this.showDiscountedPrice_(this.bookmark)}">
-      <iron-icon icon="bookmarks:price-tracking"></iron-icon>
+      <cr-icon icon="bookmarks:price-tracking"></cr-icon>
       <div>
         ${this.getCurrentPrice_(this.bookmark)}
       </div>
@@ -64,17 +65,21 @@ export function getHtml(this: PowerBookmarkRowElement) {
   ` : ''}
 
   ${this.isBookmarksBar_() ? html`
-    <iron-icon slot="folder-icon" icon="bookmarks:bookmarks-bar"></iron-icon>
+    <cr-icon class="bookmark-icon" slot="folder-icon"
+        icon="bookmarks:bookmarks-bar"></cr-icon>
   ` :''}
 
   ${this.isShoppingCollection_(this.bookmark) ? html`
-    <iron-icon slot="folder-icon" icon="bookmarks:shopping-collection">
-        </iron-icon>` : ''}
+    <cr-icon slot="folder-icon" icon="bookmarks:shopping-collection">
+    </cr-icon>
+  ` : ''}
 </cr-url-list-item>`;
 
 if (this.shouldExpand_()) {
   return html`
 <cr-expand-button no-hover id="expandButton"
+    collapse-icon="cr:expand-more"
+    expand-icon="cr:chevron-right"
     @expanded-changed=${this.onExpandedChanged_}>
   ${urlListItem}
 </cr-expand-button>
@@ -87,10 +92,14 @@ if (this.shouldExpand_()) {
           .depth="${this.depth + 1}"
           trailingIconTooltip="$i18n{tooltipMore}"
           .hasCheckbox="${this.hasCheckbox}"
+          .selectedBookmarks="${this.selectedBookmarks}"
           .renamingId="${this.renamingId}"
           .imageUrls="${this.imageUrls}"
           .shoppingCollectionFolderId="${this.shoppingCollectionFolderId}"
           .bookmarksService="${this.bookmarksService}"
+          .draggable="${this.canDrag}"
+          .can-drag="${this.canDrag}"
+          .keyArrowNavigationService="${this.keyArrowNavigationService}"
           .contextMenuBookmark="${this.contextMenuBookmark}">
       </power-bookmark-row>
     `)}`: ''
@@ -104,3 +113,4 @@ if (this.shouldExpand_()) {
     }`;
   }
 }
+// clang-format off

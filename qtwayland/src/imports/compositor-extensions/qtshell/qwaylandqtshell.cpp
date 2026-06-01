@@ -16,7 +16,7 @@
 
 #include <QtWaylandCompositor/QWaylandResource>
 #include <QDebug>
-#include <compositor/compositor_api/qwaylandseat.h>
+#include "compositor_api/qwaylandseat.h"
 
 #include <QtWaylandCompositor/private/qwaylandutils_p.h>
 

@@ -4,6 +4,7 @@
 #include "qlogvalue3daxisformatter_p.h"
 #include "qvalue3daxis_p.h"
 #include <QtCore/qmath.h>
+#include <qgraphs3dlogging_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -144,16 +145,20 @@ void QLogValue3DAxisFormatter::setBase(qreal base)
 {
     Q_D(QLogValue3DAxisFormatter);
     if (base < 0.0f || base == 1.0f) {
-        qWarning(
-            "Warning: The logarithm base must be greater than 0 and not equal to 1, attempted: %f",
-            base);
+        qCWarning(lcAProperties3D,
+                  "%s the logarithm base must be greater than 0 and not equal to 1, attempted: %.1f",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)), base);
         return;
     }
-    if (d->m_base != base) {
-        d->m_base = base;
-        markDirty(true);
-        emit baseChanged(base);
+    if (qFuzzyCompare(d->m_base + 1, base + 1)) {
+        qCDebug(lcAProperties3D,
+                "%s Base value is already set to: %.1f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), base);
+        return;
     }
+    d->m_base = base;
+    markDirty(true);
+    emit baseChanged(base);
 }
 
 qreal QLogValue3DAxisFormatter::base() const
@@ -178,11 +183,15 @@ qreal QLogValue3DAxisFormatter::base() const
 void QLogValue3DAxisFormatter::setAutoSubGrid(bool enabled)
 {
     Q_D(QLogValue3DAxisFormatter);
-    if (d->m_autoSubGrid != enabled) {
-        d->m_autoSubGrid = enabled;
-        markDirty(false);
-        emit autoSubGridChanged(enabled);
+    if (d->m_autoSubGrid == enabled) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "auto subgrid value is already set to:" << enabled;
+        return;
     }
+    d->m_autoSubGrid = enabled;
+    markDirty(false);
+    emit autoSubGridChanged(enabled);
+
 }
 
 bool QLogValue3DAxisFormatter::autoSubGrid() const
@@ -209,11 +218,16 @@ bool QLogValue3DAxisFormatter::autoSubGrid() const
 void QLogValue3DAxisFormatter::setEdgeLabelsVisible(bool enabled)
 {
     Q_D(QLogValue3DAxisFormatter);
-    if (d->m_edgeLabelsVisible != enabled) {
-        d->m_edgeLabelsVisible = enabled;
-        markDirty(true);
-        emit edgeLabelsVisibleChanged(enabled);
+    if (d->m_edgeLabelsVisible == enabled) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "edge labels visibility is already set to:" << enabled;
+        return;
     }
+
+    d->m_edgeLabelsVisible = enabled;
+    markDirty(true);
+    emit edgeLabelsVisibleChanged(enabled);
+
 }
 
 bool QLogValue3DAxisFormatter::edgeLabelsVisible() const
@@ -304,8 +318,8 @@ void QLogValue3DAxisFormatterPrivate::recalculate()
         qreal minDiff = qCeil(logMin) - logMin;
         qreal maxDiff = logMax - qFloor(logMax);
 
-        m_evenMinSegment = qFuzzyCompare(qreal(0.0), minDiff);
-        m_evenMaxSegment = qFuzzyCompare(qreal(0.0), maxDiff);
+        m_evenMinSegment = qFuzzyIsNull(minDiff);
+        m_evenMaxSegment = qFuzzyIsNull(maxDiff);
 
         segmentCount = qRound(logRangeNormalizer - minDiff - maxDiff);
 

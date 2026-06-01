@@ -8,6 +8,10 @@
 #include <QtQml/qqmlengine.h>
 #include <QtCore/qmutex.h>
 
+#if defined(Q_OS_WASM)
+#include <QtQuick/private/qquickrendercontrol_p.h>
+#endif // Q_OS_WASM
+
 namespace {
 
 class CallbackStorage
@@ -59,16 +63,18 @@ Q_GLOBAL_STATIC(CallbackStorage, callbacks)
 */
 
 QQuickWebView::QQuickWebView(QQuickItem *parent)
-    : QQuickViewController(parent)
+    : QQuickWindowContainer(parent)
     , m_webView(new QWebView(this))
     , m_settings(new QQuickWebViewSettings(m_webView->getSettings(), this))
 {
-    setView(m_webView);
+    if (QWindow *nativeWindow = m_webView->nativeWindow())
+        onNativeWindowChanged(nativeWindow);
+
+    connect(m_webView, &QWebView::nativeWindowChanged, this, &QQuickWebView::onNativeWindowChanged);
     connect(m_webView, &QWebView::titleChanged, this, &QQuickWebView::titleChanged);
     connect(m_webView, &QWebView::urlChanged, this, &QQuickWebView::urlChanged);
     connect(m_webView, &QWebView::loadProgressChanged, this, &QQuickWebView::loadProgressChanged);
     connect(m_webView, &QWebView::loadingChanged, this, &QQuickWebView::onLoadingChanged);
-    connect(m_webView, &QWebView::requestFocus, this, &QQuickWebView::onFocusRequest);
     connect(m_webView, &QWebView::javaScriptResult, this, &QQuickWebView::onRunJavaScriptResult);
     connect(m_webView, &QWebView::httpUserAgentChanged, this, &QQuickWebView::httpUserAgentChanged);
     connect(m_webView, &QWebView::cookieAdded, this, &QQuickWebView::cookieAdded);
@@ -330,12 +336,46 @@ void QQuickWebView::deleteAllCookies()
     m_webView->deleteAllCookies();
 }
 
+
+#if defined(Q_OS_WASM)
+void QQuickWebView::geometryChange(const QRectF &newGeometry, const QRectF &)
+{
+    QQuickWindow *w = window();
+    if (w && m_webView) {
+        QSize itemSize = QSize(newGeometry.width(), newGeometry.height());
+        if (!itemSize.isValid())
+            return;
+
+        // Find this item's geometry in the scene.
+        QRect itemGeometry = mapRectToScene(QRect(QPoint(0, 0), itemSize)).toRect();
+        // Check if we should be clipped to our parent's shape
+        // Note: This is crude but it should give an acceptable result on all platforms.
+        QQuickItem *p = parentItem();
+        const bool clip = p != 0 ? p->clip() : false;
+        if (clip) {
+            const QSize &parentSize = QSize(p->width(), p->height());
+                    const QRect &parentGeometry = p->mapRectToScene(QRect(QPoint(0, 0), parentSize)).toRect();
+                    itemGeometry &= parentGeometry;
+                    itemSize = itemGeometry.size();
+        }
+
+        // Find the top left position of this item, in global coordinates.
+        const QPoint &tl = w->mapToGlobal(itemGeometry.topLeft());
+        // Get the actual render window, in case we're rendering into a off-screen window.
+        QWindow *rw = QQuickRenderControl::renderWindowFor(w);
+        QWebView::get(*m_webView)->geometryChange(rw ? QRect(rw->mapFromGlobal(tl), itemSize) : itemGeometry);
+    }
+}
+#endif // Q_OS_WASM
+
 void QQuickWebView::itemChange(ItemChange change, const ItemChangeData &value)
 {
-    if (change == QQuickItem::ItemActiveFocusHasChanged) {
-        m_webView->setFocus(value.boolValue);
-    }
     QQuickItem::itemChange(change, value);
+
+#if defined(Q_OS_WASM)
+    if (change == ItemChange::ItemSceneChange && m_webView)
+        QWebView::get(*m_webView)->setParentView(value.window);
+#endif // Q_OS_WASM
 }
 
 void QQuickWebView::onRunJavaScriptResult(int id, const QVariant &variant)
@@ -358,15 +398,17 @@ void QQuickWebView::onRunJavaScriptResult(int id, const QVariant &variant)
     callback.call(args);
 }
 
-void QQuickWebView::onFocusRequest(bool focus)
-{
-    setFocus(focus);
-}
-
 void QQuickWebView::onLoadingChanged(const QWebViewLoadRequestPrivate &loadRequest)
 {
     QQuickWebViewLoadRequest qqLoadRequest(loadRequest);
     Q_EMIT loadingChanged(&qqLoadRequest);
+}
+
+void QQuickWebView::onNativeWindowChanged(QWindow *nativeWindow)
+{
+    if (nativeWindow)
+        nativeWindow->setParent(window());
+    setContainedWindow(nativeWindow);
 }
 
 QJSValue QQuickWebView::takeCallback(int id)

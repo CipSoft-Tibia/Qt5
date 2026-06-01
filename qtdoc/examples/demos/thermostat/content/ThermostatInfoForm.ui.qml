@@ -9,11 +9,10 @@ this file manually, you might introduce QML code that is not supported by Qt Des
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Effects
 import Thermostat
-import ThermostatCustomControls
 
 Pane {
     id: root
@@ -103,42 +102,39 @@ Pane {
                 color: Constants.primaryTextColor
             }
 
-            RowLayout {
-                spacing: 32
 
-                Row {
-                    spacing: 10
+            Row {
+                spacing: 10
 
-                    Image {
-                        id: bottomLeftIcon
-                    }
-
-                    Label {
-                        id: bottomLeftLabel
-
-                        text: qsTr("Night: 25°C (10pm-6am)")
-                        font.pixelSize: internal.infoFontSize
-                        font.weight: 600
-                        font.family: "Titillium Web"
-                        color: Constants.primaryTextColor
-                    }
+                Image {
+                    id: bottomLeftIcon
                 }
 
-                Row {
-                    spacing: 10
+                Label {
+                    id: bottomLeftLabel
 
-                    Image {
-                        id: bottomRightIcon
-                    }
+                    text: qsTr("Night: 25°C (10pm-6am)")
+                    font.pixelSize: internal.infoFontSize
+                    font.weight: 600
+                    font.family: "Titillium Web"
+                    color: Constants.primaryTextColor
+                }
+            }
 
-                    Label {
-                        id: bottomRightLabel
+            Row {
+                spacing: 10
 
-                        font.pixelSize: internal.infoFontSize
-                        font.weight: 600
-                        font.family: "Titillium Web"
-                        color: Constants.primaryTextColor
-                    }
+                Image {
+                    id: bottomRightIcon
+                }
+
+                Label {
+                    id: bottomRightLabel
+
+                    font.pixelSize: internal.infoFontSize
+                    font.weight: 600
+                    font.family: "Titillium Web"
+                    color: Constants.primaryTextColor
                 }
             }
         }

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/377326291): Fix and remove.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "content/public/browser/browser_message_filter.h"
 
 #include "base/check_op.h"
@@ -165,7 +170,7 @@ void BrowserMessageFilter::ShutdownForBadMessage() {
 
   if (base::Process::Current().Handle() == peer_process_.Handle()) {
     // Just crash in single process. Matches RenderProcessHostImpl behavior.
-    CHECK(false);
+    NOTREACHED();
   }
 
   ChildProcessLauncher::TerminateProcess(

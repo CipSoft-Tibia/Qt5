@@ -14,6 +14,7 @@
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
 #include "third_party/blink/renderer/platform/fonts/font_height.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/blink/renderer/platform/wtf/vector_traits.h"
 
@@ -43,6 +44,7 @@ struct InlineBoxState {
 
  public:
   unsigned fragment_start = 0;
+  GC_PLUGIN_IGNORE("GC API violation: https://crbug.com/389707047")
   const InlineItem* item = nullptr;
   Member<const ComputedStyle> style;
 
@@ -321,6 +323,7 @@ class CORE_EXPORT InlineLayoutStateStack {
     // Ruby columns in the above range.
     Member<HeapVector<Member<LogicalRubyColumn>>> ruby_column_list;
 
+    GC_PLUGIN_IGNORE("GC API violation: https://crbug.com/389707047")
     const InlineItem* item;
     LogicalRect rect;
 

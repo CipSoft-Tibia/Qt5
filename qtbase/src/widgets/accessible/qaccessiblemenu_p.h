@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QACCESSIBLEMENU_H
 #define QACCESSIBLEMENU_H
@@ -28,7 +29,7 @@ class QMenu;
 class QMenuBar;
 class QAction;
 
-class QAccessibleMenu : public QAccessibleWidget
+class QAccessibleMenu : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleMenu(QWidget *w);
@@ -47,7 +48,7 @@ protected:
 };
 
 #if QT_CONFIG(menubar)
-class QAccessibleMenuBar : public QAccessibleWidget
+class QAccessibleMenuBar : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleMenuBar(QWidget *w);

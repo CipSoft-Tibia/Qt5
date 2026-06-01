@@ -92,6 +92,7 @@
 #include <memory>
 #include <numeric>
 #include <utility>
+#include <vector>
 
 #include "base/compiler_specific.h"
 #include "base/notreached.h"
@@ -121,7 +122,6 @@
 #include "third_party/blink/public/platform/web_isolated_world_info.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_url_error.h"
-#include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/public/web/blink.h"
 #include "third_party/blink/public/web/web_associated_url_loader_options.h"
 #include "third_party/blink/public/web/web_autofill_client.h"
@@ -188,6 +188,7 @@
 #include "third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.h"
 #include "third_party/blink/renderer/core/exported/web_plugin_container_impl.h"
 #include "third_party/blink/renderer/core/exported/web_view_impl.h"
+#include "third_party/blink/renderer/core/frame/attribution_src_loader.h"
 #include "third_party/blink/renderer/core/frame/csp/content_security_policy.h"
 #include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/find_in_page.h"
@@ -362,7 +363,7 @@ class ChromePrintContext : public PrintContext {
 
   void SpoolPagesWithBoundariesForTesting(cc::PaintCanvas* canvas,
                                           const gfx::Size& spool_size_in_pixels,
-                                          const WebVector<uint32_t>* pages) {
+                                          const std::vector<uint32_t>* pages) {
     gfx::Rect all_pages_rect(spool_size_in_pixels);
 
     PaintRecordBuilder builder;
@@ -374,7 +375,7 @@ class ChromePrintContext : public PrintContext {
     // Fill the whole background by white.
     context.FillRect(all_pages_rect, Color::kWhite, AutoDarkMode::Disabled());
 
-    WebVector<uint32_t> all_pages;
+    std::vector<uint32_t> all_pages;
     if (!pages) {
       all_pages.reserve(PageCount());
       all_pages.resize(PageCount());
@@ -761,20 +762,18 @@ bool WebLocalFrameImpl::IsWebRemoteFrame() const {
 }
 
 WebRemoteFrame* WebLocalFrameImpl::ToWebRemoteFrame() {
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 const WebRemoteFrame* WebLocalFrameImpl::ToWebRemoteFrame() const {
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
-void WebLocalFrameImpl::Close() {
-  WebLocalFrame::Close();
+void WebLocalFrameImpl::Close(DetachReason detach_reason) {
+  WebLocalFrame::Close(detach_reason);
 
   if (frame_widget_) {
-    frame_widget_->Close();
+    frame_widget_->Close(detach_reason);
     frame_widget_ = nullptr;
   }
 
@@ -884,7 +883,7 @@ gfx::Size WebLocalFrameImpl::DocumentSize() const {
 bool WebLocalFrameImpl::HasVisibleContent() const {
   auto* layout_object = GetFrame()->OwnerLayoutObject();
   if (layout_object &&
-      layout_object->StyleRef().UsedVisibility() != EVisibility::kVisible) {
+      layout_object->StyleRef().Visibility() != EVisibility::kVisible) {
     return false;
   }
 
@@ -1396,7 +1395,7 @@ void WebLocalFrameImpl::RemoveSpellingMarkers() {
 }
 
 void WebLocalFrameImpl::RemoveSpellingMarkersUnderWords(
-    const WebVector<WebString>& words) {
+    const std::vector<WebString>& words) {
   Vector<String> converted_words;
   converted_words.AppendSpan(base::span(words));
   GetFrame()->RemoveSpellingMarkersUnderWords(converted_words);
@@ -1644,7 +1643,7 @@ bool WebLocalFrameImpl::SetEditableSelectionOffsets(int start, int end) {
 }
 
 bool WebLocalFrameImpl::AddImeTextSpansToExistingText(
-    const WebVector<ui::ImeTextSpan>& ime_text_spans,
+    const std::vector<ui::ImeTextSpan>& ime_text_spans,
     unsigned text_start,
     unsigned text_end) {
   TRACE_EVENT0("blink", "WebLocalFrameImpl::AddImeTextSpansToExistingText");
@@ -1690,7 +1689,7 @@ bool WebLocalFrameImpl::ClearImeTextSpansByType(ui::ImeTextSpan::Type type,
 bool WebLocalFrameImpl::SetCompositionFromExistingText(
     int composition_start,
     int composition_end,
-    const WebVector<ui::ImeTextSpan>& ime_text_spans) {
+    const std::vector<ui::ImeTextSpan>& ime_text_spans) {
   TRACE_EVENT0("blink", "WebLocalFrameImpl::setCompositionFromExistingText");
   if (EditContext* edit_context =
           GetFrame()->GetInputMethodController().GetActiveEditContext()) {
@@ -1984,7 +1983,7 @@ WebPrintPageDescription WebLocalFrameImpl::GetPageDescription(
 }
 
 gfx::Size WebLocalFrameImpl::SpoolSizeInPixelsForTesting(
-    const WebVector<uint32_t>& pages) {
+    const std::vector<uint32_t>& pages) {
   int spool_width = 0;
   int spool_height = 0;
 
@@ -2008,7 +2007,7 @@ gfx::Size WebLocalFrameImpl::SpoolSizeInPixelsForTesting(
 }
 
 gfx::Size WebLocalFrameImpl::SpoolSizeInPixelsForTesting(uint32_t page_count) {
-  WebVector<uint32_t> pages(page_count);
+  std::vector<uint32_t> pages(page_count);
   std::iota(pages.begin(), pages.end(), 0);
   return SpoolSizeInPixelsForTesting(pages);
 }
@@ -2016,7 +2015,7 @@ gfx::Size WebLocalFrameImpl::SpoolSizeInPixelsForTesting(uint32_t page_count) {
 void WebLocalFrameImpl::PrintPagesForTesting(
     cc::PaintCanvas* canvas,
     const gfx::Size& spool_size_in_pixels,
-    const WebVector<uint32_t>* pages) {
+    const std::vector<uint32_t>* pages) {
   DCHECK(print_context_);
 
   print_context_->SpoolPagesWithBoundariesForTesting(
@@ -2705,8 +2704,29 @@ void WebLocalFrameImpl::SendPings(const WebURL& destination_url) {
   DCHECK(GetFrame());
   if (Node* node = ContextMenuNodeInner()) {
     Element* anchor = node->EnclosingLinkEventParentOrSelf();
+    // TODO(crbug.com/369219144): Should this be
+    // DynamicTo<HTMLAnchorElementBase>?
     if (auto* html_anchor = DynamicTo<HTMLAnchorElement>(anchor))
       html_anchor->SendPings(destination_url);
+  }
+}
+
+void WebLocalFrameImpl::SendAttributionSrc(
+    const std::optional<Impression>& impression,
+    bool did_navigate) {
+  auto* frame = GetFrame();
+  DCHECK(frame);
+
+  if (AttributionSrcLoader* attribution_src_loader =
+          frame->GetAttributionSrcLoader()) {
+    HTMLAnchorElementBase* anchor = nullptr;
+    if (Node* node = ContextMenuNodeInner(); did_navigate && node) {
+      anchor = DynamicTo<HTMLAnchorElementBase>(
+          node->EnclosingLinkEventParentOrSelf());
+    }
+
+    attribution_src_loader->RegisterFromContextMenuNavigation(impression,
+                                                              anchor);
   }
 }
 
@@ -2765,7 +2785,8 @@ blink::mojom::CommitResult WebLocalFrameImpl::CommitSameDocumentNavigation(
     bool is_browser_initiated,
     bool has_ua_visual_transition,
     std::optional<scheduler::TaskAttributionId>
-        soft_navigation_heuristics_task_id) {
+        soft_navigation_heuristics_task_id,
+    bool should_skip_screenshot) {
   DCHECK(GetFrame());
   DCHECK(!url.ProtocolIs("javascript"));
 
@@ -2777,7 +2798,8 @@ blink::mojom::CommitResult WebLocalFrameImpl::CommitSameDocumentNavigation(
       has_transient_user_activation, initiator_origin.Get(),
       /*is_synchronously_committed=*/false, /*source_element=*/nullptr,
       mojom::blink::TriggeringEventInfo::kNotFromEvent, is_browser_initiated,
-      has_ua_visual_transition, soft_navigation_heuristics_task_id);
+      has_ua_visual_transition, soft_navigation_heuristics_task_id,
+      should_skip_screenshot);
 }
 
 bool WebLocalFrameImpl::IsLoading() const {
@@ -2826,8 +2848,14 @@ void WebLocalFrameImpl::DownloadURL(
                           std::move(blob_url_token));
 }
 
+WebFrame* WebLocalFrameImpl::GetProvisionalOwnerFrame() {
+  return GetFrame()->IsProvisional()
+             ? WebFrame::FromCoreFrame(GetFrame()->GetProvisionalOwnerFrame())
+             : nullptr;
+}
+
 void WebLocalFrameImpl::MaybeStartOutermostMainFrameNavigation(
-    const WebVector<WebURL>& urls) const {
+    const std::vector<WebURL>& urls) const {
   Vector<KURL> kurls;
   std::move(urls.begin(), urls.end(), std::back_inserter(kurls));
   GetFrame()->MaybeStartOutermostMainFrameNavigation(std::move(kurls));
@@ -3187,6 +3215,12 @@ WebDevToolsAgentImpl* WebLocalFrameImpl::DevToolsAgentImpl(
   return dev_tools_agent_.Get();
 }
 
+void WebLocalFrameImpl::OnDevToolsSessionConnectionChanged(bool attached) {
+  if (frame_widget_) {
+    frame_widget_->OnDevToolsSessionConnectionChanged(attached);
+  }
+}
+
 void WebLocalFrameImpl::WasHidden() {
   if (frame_)
     frame_->WasHidden();
@@ -3334,7 +3368,7 @@ void WebLocalFrameImpl::SetLCPPHint(
 }
 
 bool WebLocalFrameImpl::IsFeatureEnabled(
-    const mojom::blink::PermissionsPolicyFeature& feature) const {
+    const network::mojom::PermissionsPolicyFeature& feature) const {
   return GetFrame()->DomWindow()->IsFeatureEnabled(feature);
 }
 

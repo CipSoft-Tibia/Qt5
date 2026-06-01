@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
@@ -36,6 +37,7 @@ public:
 #endif
 
     bool isReady() const;
+    bool CanFireEvents() const override;
 
     QtWebEngineCore::BrowserAccessibilityInterface *interface = nullptr;
 };
@@ -162,6 +164,13 @@ bool BrowserAccessibilityQt::isReady() const
     return manager()->GetFromID(node()->id()) != nullptr;
 }
 
+bool BrowserAccessibilityQt::CanFireEvents() const
+{
+    if (!node() || !interface || !isReady())
+        return false;
+    return BrowserAccessibility::CanFireEvents();
+}
+
 #if defined(Q_OS_MACOS)
 
 // Mac-only logic based on ui/accessibility/platform/browser_accessibility_mac.mm:
@@ -267,6 +276,8 @@ BrowserAccessibilityInterface::BrowserAccessibilityInterface(BrowserAccessibilit
 
 BrowserAccessibilityInterface::~BrowserAccessibilityInterface()
 {
+    if (m_object)
+        m_object->deleteLater();
     q->interface = nullptr;
 }
 

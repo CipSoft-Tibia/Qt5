@@ -97,8 +97,7 @@ InsetBias GetAlignmentInsetBias(
                                                  : bias.InlineEnd();
     case ItemPosition::kLegacy:
     case ItemPosition::kAuto:
-      NOTREACHED_IN_MIGRATION();
-      return InsetBias::kStart;
+      NOTREACHED();
   }
 }
 
@@ -731,7 +730,7 @@ bool ComputeOofInlineDimensions(
     const MinMaxSizes min_max_inline_sizes = ComputeMinMaxInlineSizes(
         space, node, border_padding,
         apply_automatic_min_size ? &Length::MinIntrinsic() : nullptr,
-        MinMaxSizesFunc, imcb.InlineSize());
+        MinMaxSizesFunc, TransferredSizesMode::kNormal, imcb.InlineSize());
 
     inline_size = min_max_inline_sizes.ClampSizeToMinAndMax(main_inline_size);
   }
@@ -808,8 +807,8 @@ const LayoutResult* ComputeOofBlockDimensions(
     const LayoutUnit main_block_size = ResolveMainBlockLength(
         space, style, border_padding, style.LogicalHeight(),
         &Length::FillAvailable(), kIndefiniteSize, imcb.BlockSize());
-    const MinMaxSizes min_max_block_sizes =
-        ComputeInitialMinMaxBlockSizes(space, node, border_padding);
+    const MinMaxSizes min_max_block_sizes = ComputeInitialMinMaxBlockSizes(
+        space, node, border_padding, imcb.BlockSize());
     block_size = min_max_block_sizes.ClampSizeToMinAndMax(main_block_size);
   } else {
     DCHECK_NE(dimensions->size.inline_size, kIndefiniteSize);
@@ -821,6 +820,9 @@ const LayoutResult* ComputeOofBlockDimensions(
     builder.SetAvailableSize({dimensions->size.inline_size, imcb.BlockSize()});
     builder.SetIsFixedInlineSize(true);
     builder.SetPercentageResolutionSize(space.PercentageResolutionSize());
+    if (space.IsHiddenForPaint()) {
+      builder.SetIsHiddenForPaint(true);
+    }
 
     // Tables need to know about the explicit stretch constraint to produce
     // the correct result.

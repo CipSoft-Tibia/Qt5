@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "third_party/blink/renderer/modules/webcodecs/encoded_audio_chunk.h"
 
 #include <utility>
@@ -78,8 +83,10 @@ EncodedAudioChunk* EncodedAudioChunk::Create(ScriptState* script_state,
 EncodedAudioChunk::EncodedAudioChunk(scoped_refptr<media::DecoderBuffer> buffer)
     : buffer_(std::move(buffer)) {}
 
-String EncodedAudioChunk::type() const {
-  return buffer_->is_key_frame() ? "key" : "delta";
+V8EncodedAudioChunkType EncodedAudioChunk::type() const {
+  return V8EncodedAudioChunkType(buffer_->is_key_frame()
+                                     ? V8EncodedAudioChunkType::Enum::kKey
+                                     : V8EncodedAudioChunkType::Enum::kDelta);
 }
 
 int64_t EncodedAudioChunk::timestamp() const {

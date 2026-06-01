@@ -18,6 +18,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/models/combobox_model.h"
 #include "ui/base/models/simple_combobox_model.h"
+#include "ui/base/mojom/menu_source_type.mojom-forward.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/events/event.h"
 #include "ui/events/event_constants.h"
@@ -63,9 +64,10 @@ class TestContextMenuController : public ContextMenuController {
   ~TestContextMenuController() override = default;
 
   // ContextMenuController:
-  void ShowContextMenuForViewImpl(View* source,
-                                  const gfx::Point& point,
-                                  ui::MenuSourceType source_type) override {
+  void ShowContextMenuForViewImpl(
+      View* source,
+      const gfx::Point& point,
+      ui::mojom::MenuSourceType source_type) override {
     opened_menu_ = true;
   }
 
@@ -186,8 +188,9 @@ void EditableComboboxTest::InitEditableCombobox(const int item_count,
                                                 const bool filter_on_edit,
                                                 const bool show_on_empty) {
   std::vector<ui::SimpleComboboxModel::Item> items;
-  for (int i = 0; i < item_count; ++i)
+  for (int i = 0; i < item_count; ++i) {
     items.emplace_back(ASCIIToUTF16(base::StringPrintf("item[%i]", i)));
+  }
   InitEditableCombobox(items, filter_on_edit, show_on_empty);
 }
 
@@ -196,8 +199,9 @@ void EditableComboboxTest::InitEditableCombobox(
     bool filter_on_edit,
     bool show_on_empty) {
   std::vector<ui::SimpleComboboxModel::Item> items;
-  for (const auto& item_str : strings)
+  for (const auto& item_str : strings) {
     items.emplace_back(item_str);
+  }
   InitEditableCombobox(items, filter_on_edit, show_on_empty);
 }
 
@@ -683,10 +687,10 @@ TEST_F(EditableComboboxTest, MAYBE_MenuCanAdaptToContentChange) {
 #if BUILDFLAG(IS_LINUX)
 // Flaky on Linux. https://crbug.com/1204584
 #define MAYBE_RefocusingReopensMenuBasedOnLatestContent \
-    DISABLED_RefocusingReopensMenuBasedOnLatestContent
+  DISABLED_RefocusingReopensMenuBasedOnLatestContent
 #else
 #define MAYBE_RefocusingReopensMenuBasedOnLatestContent \
-    RefocusingReopensMenuBasedOnLatestContent
+  RefocusingReopensMenuBasedOnLatestContent
 #endif
 TEST_F(EditableComboboxTest, MAYBE_RefocusingReopensMenuBasedOnLatestContent) {
   std::vector<std::u16string> items = {u"abc", u"abd", u"bac", u"bad", u"bac2"};
@@ -928,9 +932,9 @@ TEST_F(EditableComboboxTest, AccessibleValue) {
 
   data = ui::AXNodeData();
   combobox_->GetViewAccessibility().GetAccessibleNodeData(&data);
-  std::u16string val;
-  ASSERT_TRUE(
-      data.GetString16Attribute(ax::mojom::StringAttribute::kValue, &val));
+  ASSERT_TRUE(data.HasStringAttribute(ax::mojom::StringAttribute::kValue));
+  std::u16string val =
+      data.GetString16Attribute(ax::mojom::StringAttribute::kValue);
   EXPECT_EQ(u"item[0]", val);
 }
 
@@ -959,15 +963,17 @@ class ConfigurableComboboxModel final : public ui::ComboboxModel {
  public:
   explicit ConfigurableComboboxModel(bool* destroyed = nullptr)
       : destroyed_(destroyed) {
-    if (destroyed_)
+    if (destroyed_) {
       *destroyed_ = false;
+    }
   }
   ConfigurableComboboxModel(ConfigurableComboboxModel&) = delete;
   ConfigurableComboboxModel& operator=(const ConfigurableComboboxModel&) =
       delete;
   ~ConfigurableComboboxModel() override {
-    if (destroyed_)
+    if (destroyed_) {
       *destroyed_ = true;
+    }
   }
 
   // ui::ComboboxModel:

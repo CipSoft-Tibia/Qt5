@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlxmlhttprequest_p.h"
 
@@ -1030,7 +1031,7 @@ private:
     QByteArray m_data;
     int m_redirectCount;
 
-    typedef QPair<QByteArray, QByteArray> HeaderPair;
+    typedef std::pair<QByteArray, QByteArray> HeaderPair;
     typedef QList<HeaderPair> HeadersList;
     HeadersList m_headersList;
     void fillHeadersList();
@@ -1234,6 +1235,13 @@ void QQmlXMLHttpRequest::requestFromUrl(const QUrl &url)
         }
     }
 
+    if (!m_nam) {
+        qWarning() << "XMLHttpRequest:" << qPrintable(m_method)
+                   << "No network accessmanager available.";
+        m_state = Done;
+        return;
+    }
+
     if (m_method == QLatin1String("GET")) {
         m_network = networkAccessManager()->get(request);
     } else if (m_method == QLatin1String("HEAD")) {
@@ -1366,6 +1374,8 @@ void QQmlXMLHttpRequest::error(QNetworkReply::NetworkError error)
         error == QNetworkReply::ContentNotFoundError ||
         error == QNetworkReply::AuthenticationRequiredError ||
         error == QNetworkReply::ContentReSendError ||
+        error == QNetworkReply::ContentConflictError ||
+        error == QNetworkReply::ContentGoneError ||
         error == QNetworkReply::UnknownContentError ||
         error == QNetworkReply::ProtocolInvalidOperationError ||
         error == QNetworkReply::InternalServerError ||

@@ -50,12 +50,15 @@
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/date_math.h"
 #include "third_party/blink/renderer/platform/wtf/ref_counted.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
 
+class UnencodedDigest;
 class ResourceLoadTiming;
 class ServiceWorkerRouterInfo;
+class UseCounter;
 
 // A ResourceResponse is a "response" object used in blink. Conceptually
 // it is https://fetch.spec.whatwg.org/#concept-response, but it contains
@@ -156,6 +159,7 @@ class PLATFORM_EXPORT ResourceResponse final {
   bool IsAttachment() const;
 
   AtomicString HttpContentType() const;
+  AtomicString GetFilteredHttpContentEncoding() const;
 
   // These functions return parsed values of the corresponding response headers.
   // NaN means that the header was not present or had invalid value.
@@ -164,12 +168,13 @@ class PLATFORM_EXPORT ResourceResponse final {
   bool CacheControlContainsMustRevalidate() const;
   bool HasCacheValidatorFields() const;
   std::optional<base::TimeDelta> CacheControlMaxAge() const;
-  std::optional<base::Time> Date() const;
+  std::optional<base::Time> Date(UseCounter&) const;
   std::optional<base::TimeDelta> Age() const;
-  std::optional<base::Time> Expires() const;
-  std::optional<base::Time> LastModified() const;
+  std::optional<base::Time> Expires(UseCounter&) const;
+  std::optional<base::Time> LastModified(UseCounter&) const;
   // Will always return values >= 0.
   base::TimeDelta CacheControlStaleWhileRevalidate() const;
+  std::optional<UnencodedDigest> GetUnencodedDigest() const;
 
   unsigned ConnectionID() const;
   void SetConnectionID(unsigned);

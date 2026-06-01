@@ -23,12 +23,10 @@ void tst_QPasswordDigestor::inputSanityChecks()
 {
     const QByteArray pass("password");
     const QByteArray salt("saltsalt");
-#ifndef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
     //1. PBKDF1 supports only SHA1 and (if not disabled in Qt) MD5 algorithms.
     QTest::ignoreMessage(QtWarningMsg, "The only supported algorithms for pbkdf1 are SHA-1 and MD5!");
     auto derivedKey = QPasswordDigestor::deriveKeyPbkdf1(QCryptographicHash::Sha224, pass, salt, 2, 48);
     QCOMPARE(derivedKey, QByteArray());
-#endif // QT_CRYPTOGRAPHICHASH_ONLY_SHA1
 
     // 2. Salt size must be == 8:
     QTest::ignoreMessage(QtWarningMsg, "The salt must be 8 bytes long!");

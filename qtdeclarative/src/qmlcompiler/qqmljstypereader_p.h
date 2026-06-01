@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSTYPEREADER_P_H
 #define QQMLJSTYPEREADER_P_H
@@ -16,12 +17,10 @@
 
 #include "qqmljsscope_p.h"
 #include "qqmljsimporter_p.h"
-#include "qqmljsresourcefilemapper_p.h"
 
 #include <QtQml/private/qqmljsastfwd_p.h>
 #include <QtQml/private/qqmljsdiagnosticmessage_p.h>
 
-#include <QtCore/qpair.h>
 #include <QtCore/qset.h>
 
 QT_BEGIN_NAMESPACE

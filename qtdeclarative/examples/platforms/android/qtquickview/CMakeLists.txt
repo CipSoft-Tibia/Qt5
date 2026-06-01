@@ -16,7 +16,6 @@ qt_add_executable(qtquickview
 
 qt_add_qml_module(qtquickview
     URI qmlModule
-    VERSION 1.0
     QML_FILES Main.qml
     QML_FILES Second.qml
 )

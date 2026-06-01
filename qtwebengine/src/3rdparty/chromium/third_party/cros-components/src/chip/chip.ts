@@ -68,6 +68,10 @@ export class Chip extends LitElement {
       display: inline-block;
     }
 
+    :host([disabled]) {
+      pointer-events: none;
+    }
+
     md-filter-chip {
       --md-filter-chip-disabled-label-text-color: var(--cros-sys-on_surface);
       --md-filter-chip-disabled-label-text-opacity: var(--cros-sys-opacity-disabled);
@@ -268,6 +272,18 @@ export class Chip extends LitElement {
    */
   private resizeObserverDebounceTimeout: number = -1;
 
+  /**
+   * Stops event propagation when the chip is disabled to ensure subsequent
+   * handlers are not called.
+   */
+  private onClick = (e: MouseEvent) => {
+    if (this.disabled) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      return;
+    }
+  };
+
   constructor() {
     super();
     this.disabled = false;
@@ -277,6 +293,9 @@ export class Chip extends LitElement {
     this.label = '';
     this.avatar = false;
     this.showTooltipWhenTruncated = false;
+
+    // Ensure onClick is first click listener called.
+    this.addEventListener('click', this.onClick);
   }
 
   override firstUpdated() {

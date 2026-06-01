@@ -26,6 +26,7 @@ namespace QWebViewFactory
     QWebViewPlugin *getPlugin();
     QAbstractWebView *createWebView();
     bool requiresExtraInitializationSteps();
+    Q_WEBVIEW_EXPORT bool loadedPluginHasKey(const QString key);
 };
 
 QT_END_NAMESPACE

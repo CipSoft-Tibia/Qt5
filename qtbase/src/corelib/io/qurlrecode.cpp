@@ -23,7 +23,7 @@ enum EncodingAction {
 //    sub-delims    = "!" / "$" / "&" / "'" / "(" / ")"
 //                  / "*" / "+" / "," / ";" / "="
 static const uchar defaultActionTable[96] = {
-    2, // space
+    0, // space
     1, // '!' (sub-delim)
     2, // '"'
     1, // '#' (gen-delim)
@@ -649,8 +649,8 @@ qt_urlRecode(QString &appendTo, QStringView in,
     memcpy(actionTable, defaultActionTable, sizeof actionTable);
     if (encoding & QUrl::DecodeReserved)
         maskTable(actionTable, reservedMask);
-    if (!(encoding & QUrl::EncodeSpaces))
-        actionTable[0] = DecodeCharacter; // decode
+    if (encoding & QUrl::EncodeSpaces)
+        actionTable[0] = EncodeCharacter;
 
     if (tableModifications) {
         for (const ushort *p = tableModifications; *p; ++p)
@@ -659,6 +659,24 @@ qt_urlRecode(QString &appendTo, QStringView in,
 
     return recode(appendTo, reinterpret_cast<const char16_t *>(in.begin()),
                   reinterpret_cast<const char16_t *>(in.end()), encoding, actionTable, false);
+}
+
+qsizetype qt_encodeFromUser(QString &appendTo, const QString &in, const ushort *tableModifications)
+{
+    uchar actionTable[sizeof defaultActionTable];
+    memcpy(actionTable, defaultActionTable, sizeof actionTable);
+
+    // Different defaults to the regular encoded-to-encoded recoding
+    actionTable['[' - ' '] = EncodeCharacter;
+    actionTable[']' - ' '] = EncodeCharacter;
+
+    if (tableModifications) {
+        for (const ushort *p = tableModifications; *p; ++p)
+            actionTable[uchar(*p) - ' '] = *p >> 8;
+    }
+
+    return recode(appendTo, reinterpret_cast<const char16_t *>(in.begin()),
+                  reinterpret_cast<const char16_t *>(in.end()), {}, actionTable, true);
 }
 
 QT_END_NAMESPACE

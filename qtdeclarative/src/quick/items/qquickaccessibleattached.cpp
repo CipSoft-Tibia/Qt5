@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickaccessibleattached_p.h"
 
@@ -243,6 +244,24 @@ QT_BEGIN_NAMESPACE
 
     By default this property is \c false.
 */
+/*! \qmlproperty Item QtQuick::Accessible::labelledBy
+    \brief This property holds the item that is used as a label for this item.
+
+    Setting this property automatically sets up the labelFor relation of the other object.
+
+    By default this property is \c undefined.
+
+    \since 6.10
+ */
+/*! \qmlproperty Item QtQuick::Accessible::labelFor
+    \brief This property holds the item that this item is a label for.
+
+    Setting this property automatically sets up the labelledBy relation of the other object.
+
+    By default this property is \c undefined.
+
+    \since 6.10
+ */
 
 /*!
     \qmlsignal QtQuick::Accessible::pressAction()
@@ -346,12 +365,19 @@ QQuickAccessibleAttached::QQuickAccessibleAttached(QObject *parent)
             return;
         };
         const QMetaObject &smo = staticMetaObject;
-        static const int valueChangedIndex = smo.indexOfSlot("valueChanged()");
-        connectPropertyChangeSignal("value", "valueChanged", valueChangedIndex);
 
-        static const int cursorPositionChangedIndex = smo.indexOfSlot("cursorPositionChanged()");
-        connectPropertyChangeSignal("cursorPosition", "cursorPositionChanged",
-                                    cursorPositionChangedIndex);
+        QAccessibleInterface *iface = ev.accessibleInterface();
+        if (iface && iface->valueInterface()) {
+            static const int valueChangedIndex = smo.indexOfSlot("valueChanged()");
+            connectPropertyChangeSignal("value", "valueChanged", valueChangedIndex);
+        }
+
+        if (iface && iface->textInterface()) {
+            static const int cursorPositionChangedIndex =
+                    smo.indexOfSlot("cursorPositionChanged()");
+            connectPropertyChangeSignal("cursorPosition", "cursorPositionChanged",
+                                        cursorPositionChangedIndex);
+        }
     }
 
     if (!sigPress.isValid()) {
@@ -592,6 +618,16 @@ void QQuickAccessibleAttached::announce(const QString &message, QAccessible::Ann
     QAccessibleAnnouncementEvent event(parent(), message);
     event.setPoliteness(politeness);
     QAccessible::updateAccessibility(&event);
+}
+
+QQuickItem *QQuickAccessibleAttached::findRelation(QAccessible::Relation relation) const
+{
+    const auto it = std::find_if(m_relations.cbegin(), m_relations.cend(),
+                                 [relation](const auto &rel) {
+        return rel.second == relation;
+    });
+
+    return it != m_relations.cend() ? it->first : nullptr;
 }
 
 QT_END_NAMESPACE

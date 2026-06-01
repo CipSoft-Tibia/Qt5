@@ -12,11 +12,9 @@ import android.content.res.Configuration;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.Rect;
-import android.os.Build;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
-import android.view.Display;
 import android.view.ViewTreeObserver;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.AlphaAnimation;
@@ -55,6 +53,8 @@ class QtActivityDelegate extends QtActivityDelegateBase
         super.initMembers();
         setActionBarVisibility(false);
         setActivityBackgroundDrawable();
+        if (QtNativeAccessibility.accessibilitySupported())
+            m_accessibilityDelegate.initLayoutAccessibility(m_layout);
     }
 
     void registerBackends()
@@ -94,7 +94,6 @@ class QtActivityDelegate extends QtActivityDelegateBase
         QtNative.runAction(() -> {
             if (m_layout != null) {
                 m_displayManager.setSystemUiVisibility(isFullScreen, expandedToCutout);
-                m_layout.requestLayout();
                 QtWindow.updateWindows();
             }
         });
@@ -142,14 +141,10 @@ class QtActivityDelegate extends QtActivityDelegateBase
         m_activity.setContentView(m_layout,
                                   new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                                                              ViewGroup.LayoutParams.MATCH_PARENT));
-        QtDisplayManager.handleOrientationChanges(m_activity);
 
-        handleUiModeChange(m_activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK);
+        handleUiModeChange();
 
-        Display display = (Build.VERSION.SDK_INT < Build.VERSION_CODES.R)
-                ? m_activity.getWindowManager().getDefaultDisplay()
-                : m_activity.getDisplay();
-        QtDisplayManager.handleRefreshRateChanged(QtDisplayManager.getRefreshRate(display));
+        m_displayManager.initDisplayProperties();
 
         m_layout.getViewTreeObserver().addOnPreDrawListener(() -> {
             if (!m_inputDelegate.isKeyboardVisible())
@@ -158,7 +153,7 @@ class QtActivityDelegate extends QtActivityDelegateBase
             Rect r = new Rect();
             m_activity.getWindow().getDecorView().getWindowVisibleDisplayFrame(r);
             DisplayMetrics metrics = new DisplayMetrics();
-            m_activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
+            QtDisplayManager.getDisplay(m_activity).getMetrics(metrics);
             final int kbHeight = metrics.heightPixels - r.bottom;
             if (kbHeight < 0) {
                 m_inputDelegate.setKeyboardVisibility(false, System.nanoTime());
@@ -285,15 +280,6 @@ class QtActivityDelegate extends QtActivityDelegateBase
     public void notifyScrolledEvent(int viewId)
     {
         m_accessibilityDelegate.notifyScrolledEvent(viewId);
-    }
-
-    @Override
-    public void initializeAccessibility()
-    {
-        QtNative.runAction(() -> {
-            // FIXME make QtAccessibilityDelegate window based
-            m_accessibilityDelegate.initLayoutAccessibility(m_layout);
-        });
     }
 
     @Override

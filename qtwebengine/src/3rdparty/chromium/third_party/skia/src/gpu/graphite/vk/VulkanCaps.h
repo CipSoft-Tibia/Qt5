@@ -49,13 +49,11 @@ public:
 
     TextureInfo getDefaultStorageTextureInfo(SkColorType) const override;
 
-    ImmutableSamplerInfo getImmutableSamplerInfo(const TextureProxy* proxy) const override;
+    ImmutableSamplerInfo getImmutableSamplerInfo(const TextureInfo&) const override;
 
     UniqueKey makeGraphicsPipelineKey(const GraphicsPipelineDesc&,
                                       const RenderPassDesc&) const override;
     UniqueKey makeComputePipelineKey(const ComputePipelineDesc&) const override { return {}; }
-
-    GraphiteResourceKey makeSamplerKey(const SamplerDesc&) const override;
 
     uint32_t channelMask(const TextureInfo&) const override;
 
@@ -68,7 +66,6 @@ public:
     void buildKeyForTexture(SkISize dimensions,
                             const TextureInfo&,
                             ResourceType,
-                            Shareable,
                             GraphiteResourceKey*) const override;
 
     bool shouldAlwaysUseDedicatedImageMemory() const {
@@ -89,14 +86,10 @@ public:
     }
 
     bool supportsYcbcrConversion() const { return fSupportsYcbcrConversion; }
-
     bool supportsDeviceFaultInfo() const { return fSupportsDeviceFaultInfo; }
 
-    uint32_t maxVertexAttributes() const {
-        return fMaxVertexAttributes;
-    }
+    uint32_t maxVertexAttributes()   const { return fMaxVertexAttributes;   }
     uint64_t maxUniformBufferRange() const { return fMaxUniformBufferRange; }
-
     uint64_t maxStorageBufferRange() const { return fMaxStorageBufferRange; }
 
     const VkPhysicalDeviceMemoryProperties2& physicalDeviceMemoryProperties2() const {
@@ -105,6 +98,8 @@ public:
 
     bool isTransferSrc(const VulkanTextureInfo&) const;
     bool isTransferDst(const VulkanTextureInfo&) const;
+
+    bool mustLoadFullImageForMSAA() const { return fMustLoadFullImageForMSAA; }
 
 private:
     enum VkVendor {
@@ -250,6 +245,9 @@ private:
     bool fGpuOnlyBuffersMorePerformant = false;
     bool fShouldPersistentlyMapCpuToGpuBuffers = true;
     bool fSupportsDeviceFaultInfo = false;
+
+    // Flags to enable workarounds for driver bugs
+    bool fMustLoadFullImageForMSAA = false;
 };
 
 } // namespace skgpu::graphite

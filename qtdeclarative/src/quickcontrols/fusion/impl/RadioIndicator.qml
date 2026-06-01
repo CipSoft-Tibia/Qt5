@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -19,6 +20,8 @@ Rectangle {
     radius: width / 2
     color: control.down ? indicator.pressedColor : Qt.lighter(control.palette.base, 1.75)
     border.color: control.visualFocus ? Fusion.highlightedOutline(control.palette)
+                                      : Fusion.highContrast
+                                      ? Fusion.outline(control.palette)
                                       : Qt.darker(control.palette.window, 1.5)
 
     Rectangle {

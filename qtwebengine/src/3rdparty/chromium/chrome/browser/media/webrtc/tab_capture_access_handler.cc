@@ -99,7 +99,7 @@ TabCaptureAccessHandler::TabCaptureAccessHandler() = default;
 TabCaptureAccessHandler::~TabCaptureAccessHandler() = default;
 
 bool TabCaptureAccessHandler::SupportsStreamType(
-    content::WebContents* web_contents,
+    content::RenderFrameHost* render_frame_host,
     const blink::mojom::MediaStreamType type,
     const extensions::Extension* extension) {
   return type == blink::mojom::MediaStreamType::GUM_TAB_VIDEO_CAPTURE ||
@@ -126,11 +126,7 @@ void TabCaptureAccessHandler::HandleRequest(
   extensions::TabCaptureRegistry* tab_capture_registry =
       extensions::TabCaptureRegistry::Get(profile);
   if (!tab_capture_registry) {
-    NOTREACHED_IN_MIGRATION();
-    std::move(callback).Run(
-        blink::mojom::StreamDevicesSet(),
-        blink::mojom::MediaStreamRequestResult::INVALID_STATE, /*ui=*/nullptr);
-    return;
+    NOTREACHED();
   }
 
   AllowedScreenCaptureLevel capture_level =

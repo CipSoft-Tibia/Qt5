@@ -1,6 +1,10 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_protocols_dir(protocols_dir)
+qt_internal_get_wayland_extensions_dir(extensions_dir)
+
 # Generated from compositor.pro.
 
 #####################################################################
@@ -47,8 +51,6 @@ qt_internal_add_module(WaylandCompositor
         extensions/qwaylandxdgoutputv1.cpp extensions/qwaylandxdgoutputv1.h extensions/qwaylandxdgoutputv1_p.h
         extensions/qwaylandxdgshell.cpp extensions/qwaylandxdgshell.h extensions/qwaylandxdgshell_p.h
         extensions/qwaylandxdgdialogv1.cpp extensions/qwaylandxdgdialogv1_p.h
-        extensions/qwlqtkey.cpp extensions/qwlqtkey_p.h
-        extensions/qwlqttouch.cpp extensions/qwlqttouch_p.h
         global/qtwaylandcompositorglobal.h global/qtwaylandcompositorglobal_p.h
         global/qtwaylandqmlinclude.h
         global/qwaylandcompositorextension.cpp global/qwaylandcompositorextension.h global/qwaylandcompositorextension_p.h
@@ -79,16 +81,16 @@ qt_internal_add_module(WaylandCompositor
         "^qwayland-.*\.h|^wayland-.*-protocol\.h"
     ATTRIBUTION_FILE_DIR_PATHS
         ../3rdparty/protocol/ivi
-        ../3rdparty/protocol/presentation-time
-        ../3rdparty/protocol/scaler
-        ../3rdparty/protocol/text-input/v2
-        ../3rdparty/protocol/text-input/v3
-        ../3rdparty/protocol/viewporter
-        ../3rdparty/protocol/wayland
-        ../3rdparty/protocol/xdg-decoration
-        ../3rdparty/protocol/xdg-output
-        ../3rdparty/protocol/xdg-shell
-        ../3rdparty/protocol/xdg-dialog
+        ${protocols_dir}/presentation-time
+        ${protocols_dir}/scaler
+        ${protocols_dir}/text-input/v2
+        ${protocols_dir}/text-input/v3
+        ${protocols_dir}/viewporter
+        ${protocols_dir}/wayland
+        ${protocols_dir}/xdg-decoration
+        ${protocols_dir}/xdg-output
+        ${protocols_dir}/xdg-shell
+        ${protocols_dir}/xdg-dialog
 )
 
 # all those macros define structs with Q_OBJECT macros, and should be picked up by moc
@@ -126,25 +128,23 @@ qt_internal_add_resource(WaylandCompositor "compositor"
 qt6_generate_wayland_protocol_server_sources(WaylandCompositor
     PRIVATE_CODE
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/idle-inhibit/idle-inhibit-unstable-v1.xml
+        ${protocols_dir}/idle-inhibit/idle-inhibit-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/ivi/ivi-application.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/presentation-time/presentation-time.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/scaler/scaler.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/text-input/v2/text-input-unstable-v2.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/text-input/v3/text-input-unstable-v3.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/viewporter/viewporter.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/wayland/wayland.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-decoration/xdg-decoration-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-output/xdg-output-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-shell/xdg-shell.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-dialog/xdg-dialog-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/hardware-integration.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-key-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-text-input-method-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-texture-sharing-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-windowmanager.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/server-buffer-extension.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/touch-extension.xml
+        ${protocols_dir}/presentation-time/presentation-time.xml
+        ${protocols_dir}/scaler/scaler.xml
+        ${protocols_dir}/text-input/v2/text-input-unstable-v2.xml
+        ${protocols_dir}/text-input/v3/text-input-unstable-v3.xml
+        ${protocols_dir}/viewporter/viewporter.xml
+        ${protocols_dir}/wayland/wayland.xml
+        ${protocols_dir}/xdg-decoration/xdg-decoration-unstable-v1.xml
+        ${protocols_dir}/xdg-output/xdg-output-unstable-v1.xml
+        ${protocols_dir}/xdg-shell/xdg-shell.xml
+        ${protocols_dir}/xdg-dialog/xdg-dialog-v1.xml
+        ${extensions_dir}/hardware-integration.xml
+        ${extensions_dir}/qt-text-input-method-unstable-v1.xml
+        ${extensions_dir}/qt-texture-sharing-unstable-v1.xml
+        ${extensions_dir}/qt-windowmanager.xml
+        ${extensions_dir}/server-buffer-extension.xml
 )
 
 #### Keys ignored in scope 1:.:.:compositor.pro:<TRUE>:

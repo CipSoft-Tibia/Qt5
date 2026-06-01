@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "content/browser/attribution_reporting/attribution_data_host_manager_impl.h"
 
 #include <stddef.h>
@@ -39,7 +44,6 @@
 #include "components/attribution_reporting/destination_set.h"
 #include "components/attribution_reporting/event_report_windows.h"
 #include "components/attribution_reporting/event_trigger_data.h"
-#include "components/attribution_reporting/features.h"
 #include "components/attribution_reporting/filters.h"
 #include "components/attribution_reporting/max_event_level_reports.h"
 #include "components/attribution_reporting/os_registration.h"
@@ -76,7 +80,6 @@
 #include "net/base/schemeful_site.h"
 #include "net/http/http_response_headers.h"
 #include "services/data_decoder/public/cpp/test_support/in_process_data_decoder.h"
-#include "services/network/public/cpp/features.h"
 #include "services/network/public/mojom/attribution.mojom-shared.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -867,10 +870,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
 TEST_F(AttributionDataHostManagerImplTest,
        NavigationSourceUniqueScopesSet_NoScopes) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      attribution_reporting::features::kAttributionScopes);
-
   base::HistogramTester histograms;
 
   const auto page_origin = *SuitableOrigin::Deserialize("https://page.example");
@@ -1002,10 +1001,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
 TEST_F(AttributionDataHostManagerImplTest,
        NavigationSourceUniqueScopesSet_WithScopes) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      attribution_reporting::features::kAttributionScopes);
-
   base::HistogramTester histograms;
 
   const auto page_origin = *SuitableOrigin::Deserialize("https://page.example");
@@ -1709,9 +1704,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
 TEST_F(AttributionDataHostManagerImplTest,
        ClientOsAttributionDisabled_OsSourceNotRegistered) {
-  base::test::ScopedFeatureList scoped_feature_list(
-      network::features::kAttributionReportingCrossAppWeb);
-
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
 
@@ -1745,10 +1737,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
 TEST_F(AttributionDataHostManagerImplTest, NavigationRedirectOsSource) {
   base::HistogramTester histograms;
-
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      network::features::kAttributionReportingCrossAppWeb);
 
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
@@ -1790,10 +1778,6 @@ TEST_F(AttributionDataHostManagerImplTest, NavigationRedirectOsSource) {
 
 TEST_F(AttributionDataHostManagerImplTest,
        NavigationRedirectOsSource_InvalidOsHeader) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      network::features::kAttributionReportingCrossAppWeb);
-
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
 
@@ -1819,10 +1803,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
 TEST_F(AttributionDataHostManagerImplTest,
        NavigationRedirectOsSource_WebAndOsHeaders) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      network::features::kAttributionReportingCrossAppWeb);
-
   const GURL reporter_url("https://report.test");
   const auto source_site = *SuitableOrigin::Deserialize("https://source.test");
 
@@ -1849,16 +1829,12 @@ TEST_F(AttributionDataHostManagerImplTest,
 
 TEST_F(AttributionDataHostManagerImplTest,
        DataHost_NavigationTiedOsRegistrationsAreBuffered) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      {network::features::kAttributionReportingCrossAppWeb}, {});
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
 
   const blink::AttributionSrcToken attribution_src_token;
 
   const auto reporting_url = GURL("https://report.test");
-  const auto reporting_origin = *SuitableOrigin::Create(reporting_url);
   const auto context_origin =
       *SuitableOrigin::Deserialize("https://source.test");
 
@@ -1906,7 +1882,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
   // A first source is received through the data host.
   data_host_remote->OsSourceDataAvailable(
-      reporting_origin,
       {attribution_reporting::OsRegistrationItem{.url =
                                                      GURL("https://b.test/x")}},
       kViaServiceWorker);
@@ -1915,7 +1890,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
   // A second source is received through the data host.
   data_host_remote->OsSourceDataAvailable(
-      reporting_origin,
       {attribution_reporting::OsRegistrationItem{.url =
                                                      GURL("https://b.test/x")}},
       kViaServiceWorker);
@@ -1930,9 +1904,6 @@ TEST_F(AttributionDataHostManagerImplTest,
        FencedFrame_NavigationTiedOsRegistrationsAreBuffered) {
   base::HistogramTester histograms;
 
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      {network::features::kAttributionReportingCrossAppWeb}, {});
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
 
@@ -2010,9 +1981,6 @@ TEST_F(
     NavigationTiedOsRegistrationsAreBuffered_AfterTimeoutRegistrationsAreSentDirectlyToTheOS) {
   base::HistogramTester histograms;
 
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      {network::features::kAttributionReportingCrossAppWeb}, {});
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
 
@@ -2759,10 +2727,6 @@ TEST_F(AttributionDataHostManagerImplTest, NavigationBeaconSource_Registered) {
 
 TEST_F(AttributionDataHostManagerImplTest,
        NavigationBeaconOsSource_Registered) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      network::features::kAttributionReportingCrossAppWeb);
-
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
 
@@ -3295,15 +3259,10 @@ TEST_F(AttributionDataHostManagerImplTest, OsSourceAvailable) {
           /*is_nested_within_fenced_frame=*/true, kFrameId, kLastNavigationId),
       RegistrationEligibility::kSourceOrTrigger, kIsForBackgroundRequests);
 
-  const auto reporting_origin =
-      *SuitableOrigin::Deserialize("https://report.test");
-
   // A call with no items should be ignored.
-  data_host_remote->OsSourceDataAvailable(reporting_origin, {},
-                                          kViaServiceWorker);
+  data_host_remote->OsSourceDataAvailable({}, kViaServiceWorker);
 
   data_host_remote->OsSourceDataAvailable(
-      reporting_origin,
       {attribution_reporting::OsRegistrationItem{.url = kRegistrationUrl,
                                                  .debug_reporting = true}},
       kViaServiceWorker);
@@ -3336,15 +3295,10 @@ TEST_F(AttributionDataHostManagerImplTest, OsTriggerAvailable) {
           /*is_nested_within_fenced_frame=*/true, kFrameId, kLastNavigationId),
       RegistrationEligibility::kSourceOrTrigger, kIsForBackgroundRequests);
 
-  const auto reporting_origin =
-      *SuitableOrigin::Deserialize("https://report.test");
-
   // A call with no items should be ignored.
-  data_host_remote->OsTriggerDataAvailable(reporting_origin, {},
-                                           kViaServiceWorker);
+  data_host_remote->OsTriggerDataAvailable({}, kViaServiceWorker);
 
   data_host_remote->OsTriggerDataAvailable(
-      reporting_origin,
       {attribution_reporting::OsRegistrationItem{.url = kRegistrationUrl,
                                                  .debug_reporting = true}},
       kViaServiceWorker);
@@ -3407,9 +3361,6 @@ TEST_F(AttributionDataHostManagerImplTest, WebDisabled_SourceNotRegistered) {
 
 TEST_F(AttributionDataHostManagerImplTest, HeadersSize_SourceMetricsRecorded) {
   base::HistogramTester histograms;
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      network::features::kAttributionReportingCrossAppWeb);
 
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
@@ -3480,10 +3431,7 @@ class AttributionDataHostManagerImplWithInBrowserMigrationAndAppToWebTest
     : public AttributionDataHostManagerImplWithInBrowserMigrationTest {
  public:
   AttributionDataHostManagerImplWithInBrowserMigrationAndAppToWebTest()
-      : AttributionDataHostManagerImplWithInBrowserMigrationTest(
-            /*enabled_features=*/{
-                network::features::kAttributionReportingCrossAppWeb}),
-        scoped_api_state_setting_(
+      : scoped_api_state_setting_(
             AttributionOsLevelManager::ScopedApiStateForTesting(
                 AttributionOsLevelManager::ApiState::kEnabled)) {}
 
@@ -4893,14 +4841,7 @@ const PreferredPlatformTestCase kPreferredPlatformTestCases[] = {
 
 class AttributionDataHostManagerImplPreferredPlatformEnabledTest
     : public AttributionDataHostManagerImplTest,
-      public ::testing::WithParamInterface<PreferredPlatformTestCase> {
- public:
-  AttributionDataHostManagerImplPreferredPlatformEnabledTest() = default;
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_{
-      network::features::kAttributionReportingCrossAppWeb};
-};
+      public ::testing::WithParamInterface<PreferredPlatformTestCase> {};
 
 INSTANTIATE_TEST_SUITE_P(
     ,
@@ -5163,9 +5104,6 @@ TEST_F(AttributionDataHostManagerImplTest,
 
 TEST_F(AttributionDataHostManagerImplTest,
        NavigationRegistrationOsSource_ReportRegistrationHeaderError) {
-  base::test::ScopedFeatureList scoped_feature_list(
-      network::features::kAttributionReportingCrossAppWeb);
-
   AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
       AttributionOsLevelManager::ApiState::kEnabled);
 
@@ -5263,12 +5201,10 @@ TEST_F(AttributionDataHostManagerImplTest,
     data_host_remote->TriggerDataAvailable(
         reporting_origin, TriggerRegistration(), kViaServiceWorker);
     data_host_remote->OsSourceDataAvailable(
-        reporting_origin,
         {attribution_reporting::OsRegistrationItem{
             .url = GURL("https://a.test/x")}},
         kViaServiceWorker);
     data_host_remote->OsTriggerDataAvailable(
-        reporting_origin,
         {attribution_reporting::OsRegistrationItem{
             .url = GURL("https://b.test/x")}},
         kViaServiceWorker);
@@ -5414,6 +5350,241 @@ TEST_F(AttributionDataHostManagerImplTest, RegistrationInfoErrorMetric) {
       histograms.ExpectTotalCount(kRegistrationInfoErrorMetric, 0);
     }
   }
+}
+
+TEST_F(AttributionDataHostManagerImplTest,
+       GoogleAmpViewerContext_DataHostSource) {
+  AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
+      AttributionOsLevelManager::ApiState::kEnabled);
+
+  auto page_origin = *SuitableOrigin::Deserialize("https://page.example");
+  auto destination_site =
+      net::SchemefulSite::Deserialize("https://trigger.example");
+  auto reporting_origin =
+      *SuitableOrigin::Deserialize("https://reporter.example");
+
+  for (const bool is_web : {false, true}) {
+    SCOPED_TRACE(is_web);
+    for (const bool is_context_google_amp_viewer : {false, true}) {
+      SCOPED_TRACE(is_context_google_amp_viewer);
+
+      base::HistogramTester histograms;
+
+      mojo::Remote<attribution_reporting::mojom::DataHost> data_host_remote;
+      data_host_manager_.RegisterDataHost(
+          data_host_remote.BindNewPipeAndPassReceiver(),
+          AttributionSuitableContext::CreateForTesting(
+              page_origin,
+              /*is_nested_within_fenced_frame=*/false, kFrameId,
+              kLastNavigationId, AttributionInputEvent(),
+              {ContentBrowserClient::AttributionReportingOsRegistrar::kWeb,
+               ContentBrowserClient::AttributionReportingOsRegistrar::kWeb},
+              /*attribution_data_host_manager=*/nullptr,
+              is_context_google_amp_viewer),
+          RegistrationEligibility::kSourceOrTrigger, kIsForBackgroundRequests);
+
+      if (is_web) {
+        data_host_remote->SourceDataAvailable(
+            reporting_origin,
+            SourceRegistration(*DestinationSet::Create({destination_site})),
+            kViaServiceWorker);
+      } else {
+        data_host_remote->OsSourceDataAvailable(
+            {attribution_reporting::OsRegistrationItem{
+                .url = GURL("https://a.test/x")}},
+            kViaServiceWorker);
+      }
+
+      data_host_remote.FlushForTesting();
+
+      histograms.ExpectBucketCount("Conversions.GoogleAmpViewer.Source",
+                                   is_context_google_amp_viewer, 1);
+    }
+  }
+}
+
+TEST_F(AttributionDataHostManagerImplTest,
+       GoogleAmpViewerContext_DataHostTrigger) {
+  AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
+      AttributionOsLevelManager::ApiState::kEnabled);
+
+  auto page_origin = *SuitableOrigin::Deserialize("https://page.example");
+  auto reporting_origin =
+      *SuitableOrigin::Deserialize("https://reporter.example");
+
+  for (const bool is_web : {false, true}) {
+    SCOPED_TRACE(is_web);
+    for (const bool is_context_google_amp_viewer : {false, true}) {
+      SCOPED_TRACE(is_context_google_amp_viewer);
+
+      base::HistogramTester histograms;
+
+      mojo::Remote<attribution_reporting::mojom::DataHost> data_host_remote;
+      data_host_manager_.RegisterDataHost(
+          data_host_remote.BindNewPipeAndPassReceiver(),
+          AttributionSuitableContext::CreateForTesting(
+              page_origin,
+              /*is_nested_within_fenced_frame=*/false, kFrameId,
+              kLastNavigationId, AttributionInputEvent(),
+              {ContentBrowserClient::AttributionReportingOsRegistrar::kWeb,
+               ContentBrowserClient::AttributionReportingOsRegistrar::kWeb},
+              /*attribution_data_host_manager=*/nullptr,
+              is_context_google_amp_viewer),
+          RegistrationEligibility::kSourceOrTrigger, kIsForBackgroundRequests);
+
+      if (is_web) {
+        data_host_remote->TriggerDataAvailable(
+            reporting_origin, TriggerRegistration(), kViaServiceWorker);
+      } else {
+        data_host_remote->OsTriggerDataAvailable(
+            {attribution_reporting::OsRegistrationItem{
+                .url = GURL("https://a.test/x")}},
+            kViaServiceWorker);
+      }
+
+      data_host_remote.FlushForTesting();
+
+      histograms.ExpectBucketCount("Conversions.GoogleAmpViewer.Trigger",
+                                   is_context_google_amp_viewer, 1);
+    }
+  }
+}
+
+TEST_F(AttributionDataHostManagerImplWithInBrowserMigrationTest,
+       GoogleAmpViewerContext_BackgroundSource) {
+  AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
+      AttributionOsLevelManager::ApiState::kEnabled);
+
+  auto page_origin = *SuitableOrigin::Deserialize("https://page.example");
+  GURL reporting_url("https://report.test");
+
+  for (const bool is_web : {false, true}) {
+    SCOPED_TRACE(is_web);
+    for (const bool is_context_google_amp_viewer : {false, true}) {
+      SCOPED_TRACE(is_context_google_amp_viewer);
+
+      base::HistogramTester histograms;
+
+      auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+      if (is_web) {
+        headers->SetHeader(kAttributionReportingRegisterSourceHeader,
+                           kRegisterSourceJson);
+      } else {
+        headers->SetHeader(kAttributionReportingRegisterOsSourceHeader,
+                           R"("https://r.test/x")");
+      }
+
+      data_host_manager_.NotifyBackgroundRegistrationStarted(
+          kBackgroundId,
+          AttributionSuitableContext::CreateForTesting(
+              page_origin,
+              /*is_nested_within_fenced_frame=*/false, kFrameId,
+              kLastNavigationId, AttributionInputEvent(),
+              {ContentBrowserClient::AttributionReportingOsRegistrar::kWeb,
+               ContentBrowserClient::AttributionReportingOsRegistrar::kWeb},
+              /*attribution_data_host_manager=*/nullptr,
+              is_context_google_amp_viewer),
+          RegistrationEligibility::kSourceOrTrigger,
+          /*attribution_src_token=*/std::nullopt, kDevtoolsRequestId);
+
+      data_host_manager_.NotifyBackgroundRegistrationData(
+          kBackgroundId, headers.get(), reporting_url);
+      data_host_manager_.NotifyBackgroundRegistrationCompleted(kBackgroundId);
+
+      task_environment_.FastForwardBy(base::TimeDelta());
+
+      histograms.ExpectBucketCount("Conversions.GoogleAmpViewer.Source",
+                                   is_context_google_amp_viewer, 1);
+    }
+  }
+}
+
+TEST_F(AttributionDataHostManagerImplWithInBrowserMigrationTest,
+       GoogleAmpViewerContext_BackgroundTrigger) {
+  AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
+      AttributionOsLevelManager::ApiState::kEnabled);
+
+  auto page_origin = *SuitableOrigin::Deserialize("https://page.example");
+  GURL reporting_url("https://report.test");
+
+  for (const bool is_web : {false, true}) {
+    SCOPED_TRACE(is_web);
+    for (const bool is_context_google_amp_viewer : {false, true}) {
+      SCOPED_TRACE(is_context_google_amp_viewer);
+
+      base::HistogramTester histograms;
+
+      auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+      if (is_web) {
+        headers->SetHeader(kAttributionReportingRegisterTriggerHeader,
+                           kRegisterTriggerJson);
+      } else {
+        headers->SetHeader(kAttributionReportingRegisterOsTriggerHeader,
+                           R"("https://r.test/x")");
+      }
+
+      data_host_manager_.NotifyBackgroundRegistrationStarted(
+          kBackgroundId,
+          AttributionSuitableContext::CreateForTesting(
+              page_origin,
+              /*is_nested_within_fenced_frame=*/false, kFrameId,
+              kLastNavigationId, AttributionInputEvent(),
+              {ContentBrowserClient::AttributionReportingOsRegistrar::kWeb,
+               ContentBrowserClient::AttributionReportingOsRegistrar::kWeb},
+              /*attribution_data_host_manager=*/nullptr,
+              is_context_google_amp_viewer),
+          RegistrationEligibility::kSourceOrTrigger,
+          /*attribution_src_token=*/std::nullopt, kDevtoolsRequestId);
+
+      data_host_manager_.NotifyBackgroundRegistrationData(
+          kBackgroundId, headers.get(), reporting_url);
+      data_host_manager_.NotifyBackgroundRegistrationCompleted(kBackgroundId);
+
+      task_environment_.FastForwardBy(base::TimeDelta());
+
+      histograms.ExpectBucketCount("Conversions.GoogleAmpViewer.Trigger",
+                                   is_context_google_amp_viewer, 1);
+    }
+  }
+}
+
+// Regression test for crbug.com/382164270.
+TEST_F(
+    AttributionDataHostManagerImplWithInBrowserMigrationTest,
+    BackgroundWithRegistrationInfo_NavigationTiedToCompletedIneligibleNavigation) {
+  const blink::AttributionSrcToken attribution_src_token;
+
+  const auto reporting_url = GURL("https://report.test");
+  const auto reporting_origin = *SuitableOrigin::Create(reporting_url);
+  const auto context_origin =
+      *SuitableOrigin::Deserialize("https://source.test");
+
+  EXPECT_CALL(mock_manager_, HandleSource).Times(0);
+
+  // A background registrations starts, registers data and completes. The
+  // parsing should not have started.
+  data_host_manager_.NotifyBackgroundRegistrationStarted(
+      kBackgroundId,
+      AttributionSuitableContext::CreateForTesting(
+          context_origin,
+          /*is_nested_within_fenced_frame=*/false, kFrameId, kLastNavigationId),
+      RegistrationEligibility::kSource, attribution_src_token,
+      kDevtoolsRequestId);
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->SetHeader(kAttributionReportingRegisterSourceHeader,
+                     kRegisterSourceJson);
+  headers->SetHeader(kAttributionReportingInfoHeader, "foo");
+  EXPECT_TRUE(data_host_manager_.NotifyBackgroundRegistrationData(
+      kBackgroundId, headers.get(), reporting_url));
+  data_host_manager_.NotifyBackgroundRegistrationCompleted(kBackgroundId);
+
+  // A navigation completes without starting indicating that it is ineligible.
+  data_host_manager_.NotifyNavigationWithBackgroundRegistrationsWillStart(
+      attribution_src_token, /*expected_registrations=*/1);
+  data_host_manager_.NotifyNavigationRegistrationCompleted(
+      attribution_src_token);
+
+  task_environment_.FastForwardBy(base::TimeDelta());
 }
 
 }  // namespace

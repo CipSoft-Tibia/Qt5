@@ -10,7 +10,9 @@
 #include "base/containers/contains.h"
 #include "base/debug/crash_logging.h"
 #include "base/functional/overloaded.h"
+#include "base/notreached.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/types/optional_util.h"
 #include "base/uuid.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
@@ -18,6 +20,10 @@
 #include "content/browser/service_worker/service_worker_container_host.h"
 #include "content/browser/service_worker/service_worker_context_core.h"
 #include "content/browser/service_worker/service_worker_security_utils.h"
+#include "content/browser/worker_host/dedicated_worker_host.h"
+#include "content/browser/worker_host/dedicated_worker_service_impl.h"
+#include "content/browser/worker_host/shared_worker_host.h"
+#include "content/browser/worker_host/shared_worker_service_impl.h"
 #include "content/common/content_navigation_policy.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/common/content_client.h"
@@ -394,7 +400,6 @@ void ServiceWorkerClient::ClaimedByRegistration(
 blink::mojom::ServiceWorkerClientType ServiceWorkerClient::GetClientType()
     const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(client_info_);
   return absl::visit(
       base::Overloaded{
           [](GlobalRenderFrameHostId render_frame_host_id) {
@@ -406,30 +411,24 @@ blink::mojom::ServiceWorkerClientType ServiceWorkerClient::GetClientType()
           [](blink::SharedWorkerToken shared_worker_token) {
             return blink::mojom::ServiceWorkerClientType::kSharedWorker;
           }},
-      *client_info_);
+      client_info_);
 }
 
 bool ServiceWorkerClient::IsContainerForWindowClient() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return client_info_ &&
-         absl::holds_alternative<GlobalRenderFrameHostId>(*client_info_);
+  return absl::holds_alternative<GlobalRenderFrameHostId>(client_info_);
 }
 
 bool ServiceWorkerClient::IsContainerForWorkerClient() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  using blink::mojom::ServiceWorkerClientType;
-  if (!client_info_) {
-    return false;
-  }
-
-  return absl::holds_alternative<blink::DedicatedWorkerToken>(*client_info_) ||
-         absl::holds_alternative<blink::SharedWorkerToken>(*client_info_);
+  return absl::holds_alternative<blink::DedicatedWorkerToken>(client_info_) ||
+         absl::holds_alternative<blink::SharedWorkerToken>(client_info_);
 }
 
 ServiceWorkerClientInfo ServiceWorkerClient::GetServiceWorkerClientInfo()
     const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return *client_info_;
+  return client_info_;
 }
 
 blink::mojom::ServiceWorkerContainerInfoForClientPtr
@@ -439,6 +438,8 @@ ServiceWorkerClient::CommitResponse(
     const PolicyContainerPolicies& policy_container_policies,
     mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
         coep_reporter,
+    mojo::PendingRemote<network::mojom::DocumentIsolationPolicyReporter>
+        dip_reporter,
     ukm::SourceId ukm_source_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK_EQ(client_phase_, ClientPhase::kInitial);
@@ -468,7 +469,7 @@ ServiceWorkerClient::CommitResponse(
   container_host_ = std::make_unique<ServiceWorkerContainerHostForClient>(
       base::PassKey<ServiceWorkerClient>(), AsWeakPtr(), container_info,
       policy_container_policies, std::move(coep_reporter),
-      std::move(ukm_source_id));
+      std::move(dip_reporter), std::move(ukm_source_id));
 
   TransitionToClientPhase(ClientPhase::kResponseCommitted);
 
@@ -533,6 +534,109 @@ void ServiceWorkerClient::UpdateUrlsInternal(
   }
 
   SyncMatchingRegistrations();
+}
+
+namespace {
+
+// Attempt to get the storage key from |RenderFrameHostImpl|. This correctly
+// accounts for extension URLs. The absence of this logic was a potential cause
+// for https://crbug.com/1346450.
+std::optional<blink::StorageKey> GetStorageKeyFromRenderFrameHost(
+    FrameTreeNodeId frame_tree_node_id,
+    const url::Origin& origin,
+    const base::UnguessableToken* nonce) {
+  FrameTreeNode* frame_tree_node =
+      FrameTreeNode::GloballyFindByID(frame_tree_node_id);
+  if (!frame_tree_node) {
+    return std::nullopt;
+  }
+  RenderFrameHostImpl* frame_host = frame_tree_node->current_frame_host();
+  if (!frame_host) {
+    return std::nullopt;
+  }
+
+  return frame_host->CalculateStorageKey(origin, nonce);
+}
+
+// For dedicated/shared worker cases, if a storage key is returned, it will have
+// its origin replaced by |origin|. This would mean that the origin of the
+// WorkerHost and the origin as used by the service worker code don't match,
+// however in cases where these wouldn't match the load will be aborted later
+// anyway.
+std::optional<blink::StorageKey> GetStorageKeyFromDedicatedWorkerHost(
+    content::StoragePartition* storage_partition,
+    blink::DedicatedWorkerToken dedicated_worker_token,
+    const url::Origin& origin) {
+  auto* worker_service = static_cast<DedicatedWorkerServiceImpl*>(
+      storage_partition->GetDedicatedWorkerService());
+  auto* worker_host =
+      worker_service->GetDedicatedWorkerHostFromToken(dedicated_worker_token);
+  if (worker_host) {
+    return worker_host->GetStorageKey().WithOrigin(origin);
+  }
+  return std::nullopt;
+}
+
+std::optional<blink::StorageKey> GetStorageKeyFromSharedWorkerHost(
+    content::StoragePartition* storage_partition,
+    blink::SharedWorkerToken shared_worker_token,
+    const url::Origin& origin) {
+  auto* worker_service = static_cast<SharedWorkerServiceImpl*>(
+      storage_partition->GetSharedWorkerService());
+  auto* worker_host =
+      worker_service->GetSharedWorkerHostFromToken(shared_worker_token);
+  if (worker_host) {
+    return worker_host->GetStorageKey().WithOrigin(origin);
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
+blink::StorageKey ServiceWorkerClient::CalculateStorageKeyForUpdateUrls(
+    const GURL& url,
+    const net::IsolationInfo& isolation_info_from_interceptor) const {
+  CHECK(!is_response_committed());
+
+  const url::Origin origin = url::Origin::Create(url);
+
+  const std::optional<blink::StorageKey> storage_key = absl::visit(
+      base::Overloaded(
+          [&](GlobalRenderFrameHostId render_frame_host_id) {
+            // We use `ongoing_navigation_frame_tree_node_id_` instead of
+            // `render_frame_host_id` because this method is called before
+            // response commit.
+            return GetStorageKeyFromRenderFrameHost(
+                ongoing_navigation_frame_tree_node_id_, origin,
+                base::OptionalToPtr(isolation_info_from_interceptor.nonce()));
+          },
+          [&](blink::DedicatedWorkerToken dedicated_worker_token) {
+            auto* process = RenderProcessHost::FromID(GetProcessId());
+            return process ? GetStorageKeyFromDedicatedWorkerHost(
+                                 process->GetStoragePartition(),
+                                 dedicated_worker_token, origin)
+                           : std::nullopt;
+          },
+          [&](blink::SharedWorkerToken shared_worker_token) {
+            auto* process = RenderProcessHost::FromID(GetProcessId());
+            return process ? GetStorageKeyFromSharedWorkerHost(
+                                 process->GetStoragePartition(),
+                                 shared_worker_token, origin)
+                           : std::nullopt;
+          }),
+      client_info_);
+
+  if (storage_key) {
+    return *storage_key;
+  }
+
+  // If we're in this case then we couldn't get the StorageKey from the RFH,
+  // which means we also can't get the storage partitioning status from
+  // RuntimeFeatureState(Read)Context. Using
+  // CreateFromOriginAndIsolationInfo() will create a key based on
+  // net::features::kThirdPartyStoragePartitioning state.
+  return blink::StorageKey::CreateFromOriginAndIsolationInfo(
+      origin, isolation_info_from_interceptor);
 }
 
 void ServiceWorkerClient::UpdateUrls(
@@ -643,7 +747,7 @@ bool ServiceWorkerClient::is_execution_ready() const {
 GlobalRenderFrameHostId ServiceWorkerClient::GetRenderFrameHostId() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(IsContainerForWindowClient());
-  return absl::get<GlobalRenderFrameHostId>(*client_info_);
+  return absl::get<GlobalRenderFrameHostId>(client_info_);
 }
 
 int ServiceWorkerClient::GetProcessId() const {
@@ -673,6 +777,18 @@ NavigationRequest* ServiceWorkerClient::GetOngoingNavigationRequestBeforeCommit(
   FrameTreeNode* frame_tree_node =
       FrameTreeNode::GloballyFindByID(ongoing_navigation_frame_tree_node_id_);
   return frame_tree_node ? frame_tree_node->navigation_request() : nullptr;
+}
+
+std::string ServiceWorkerClient::GetFrameTreeNodeTypeStringBeforeCommit()
+    const {
+  CHECK(!is_response_committed());
+  if (FrameTreeNode* frame_tree_node = FrameTreeNode::GloballyFindByID(
+          ongoing_navigation_frame_tree_node_id_)) {
+    CHECK(IsContainerForWindowClient());
+    return frame_tree_node->IsOutermostMainFrame() ? "OutermostMainFrame"
+                                                   : "NotOutermostMainFrame";
+  }
+  return "Unknown";
 }
 
 const std::string& ServiceWorkerClient::client_uuid() const {
@@ -728,7 +844,7 @@ void ServiceWorkerClient::OnEnterBackForwardCache() {
                             static_cast<int32_t>(GetClientType()));
     SCOPED_CRASH_KEY_BOOL("SWC_OnEBFC", "is_execution_ready",
                           is_execution_ready());
-    SCOPED_CRASH_KEY_BOOL("SWC_OnEBFC", "is_blob_url",
+    SCOPED_CRASH_KEY_BOOL("SWC_OnEBFC", "is_blob_or_about_url",
                           url() != GetUrlForScopeMatch());
     SCOPED_CRASH_KEY_BOOL("SWC_OnEBFC", "is_inherited", is_inherited());
     CHECK(!controller_->BFCacheContainsControllee(client_uuid()));
@@ -743,7 +859,7 @@ void ServiceWorkerClient::OnRestoreFromBackForwardCache() {
   // TODO(crbug.com/330928087): remove check when this issue resolved.
   SCOPED_CRASH_KEY_BOOL("SWC_OnRFBFC", "is_in_bfcache",
                         is_in_back_forward_cache_);
-  SCOPED_CRASH_KEY_BOOL("SWC_OnRFBFC", "is_blob_url",
+  SCOPED_CRASH_KEY_BOOL("SWC_OnRFBFC", "is_blob_or_about_url",
                         url() != GetUrlForScopeMatch());
   SCOPED_CRASH_KEY_BOOL("SWC_OnRFBFC", "is_inherited", is_inherited());
   if (controller_) {
@@ -886,7 +1002,7 @@ void ServiceWorkerClient::UpdateController(bool notify_controllerchange) {
                             static_cast<int32_t>(GetClientType()));
     SCOPED_CRASH_KEY_BOOL("SWV_RCFBCM", "is_execution_ready",
                           is_execution_ready());
-    SCOPED_CRASH_KEY_BOOL("SWV_RCFBCM", "is_blob_url",
+    SCOPED_CRASH_KEY_BOOL("SWV_RCFBCM", "is_blob_or_about_url",
                           url() != GetUrlForScopeMatch());
     SCOPED_CRASH_KEY_BOOL("SWV_RCFBCM", "is_inherited", is_inherited());
     CHECK(!version->BFCacheContainsControllee(client_uuid()));
@@ -942,13 +1058,13 @@ void ServiceWorkerClient::CheckControllerConsistency(bool should_crash) const {
       if (should_crash) {
         ServiceWorkerVersion::Status status = controller_->status();
         base::debug::Alias(&status);
-        CHECK(false) << "Controller service worker has a bad status: "
+        NOTREACHED() << "Controller service worker has a bad status: "
                      << ServiceWorkerVersion::VersionStatusToString(status);
       }
       break;
     case ServiceWorkerVersion::REDUNDANT: {
       if (should_crash) {
-        CHECK(false);
+        NOTREACHED();
       }
       break;
     }
@@ -961,26 +1077,39 @@ void ServiceWorkerClient::CheckControllerConsistency(bool should_crash) const {
 #endif  // DCHECK_IS_ON()
 
 const GURL& ServiceWorkerClient::GetUrlForScopeMatch() const {
-  if (!scope_match_url_for_blob_client_.is_empty()) {
-    return scope_match_url_for_blob_client_;
+  if (!scope_match_url_for_client_.is_empty()) {
+    return scope_match_url_for_client_;
   }
   return url_;
 }
 
 void ServiceWorkerClient::InheritControllerFrom(
     ServiceWorkerClient& creator_host,
-    const GURL& blob_url) {
+    const GURL& client_url) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(base::FeatureList::IsEnabled(kSharedWorkerBlobURLFix) ||
-         blink::mojom::ServiceWorkerClientType::kDedicatedWorker ==
-             GetClientType());
-  DCHECK(blob_url.SchemeIsBlob());
+  DCHECK(GetClientType() ==
+             blink::mojom::ServiceWorkerClientType::kDedicatedWorker ||
+         (base::FeatureList::IsEnabled(kSharedWorkerBlobURLFix) &&
+          GetClientType() ==
+              blink::mojom::ServiceWorkerClientType::kSharedWorker) ||
+         (base::FeatureList::IsEnabled(features::kServiceWorkerSrcdocSupport) &&
+          GetClientType() == blink::mojom::ServiceWorkerClientType::kWindow &&
+          client_url.IsAboutSrcdoc()));
+  // Only expect srcdoc url or blob url of same origin as creator for
+  // client_url.
+  DCHECK((client_url.SchemeIsBlob() &&
+          url::Origin::Create(client_url)
+              .IsSameOriginWith(creator_host.key().origin())) ||
+         (base::FeatureList::IsEnabled(features::kServiceWorkerSrcdocSupport) &&
+          client_url.IsAboutSrcdoc()));
 
-  UpdateUrls(blob_url, creator_host.top_frame_origin(), creator_host.key());
-
-  // Let `scope_match_url_for_blob_client_` be the creator's url for scope match
+  // Let `scope_match_url_for_client_` be the creator's url for scope match
   // because a client should be handled by the service worker of its creator.
-  scope_match_url_for_blob_client_ = creator_host.GetUrlForScopeMatch();
+  // Update it before UpdateUrls so that CheckOnUpdateUrls inside UpdateUrls
+  // checks with the updated GetUrlForScopeMatch().
+  scope_match_url_for_client_ = creator_host.GetUrlForScopeMatch();
+
+  UpdateUrls(client_url, creator_host.top_frame_origin(), creator_host.key());
 
   // Inherit the controller of the creator.
   if (creator_host.controller_registration()) {
@@ -989,6 +1118,10 @@ void ServiceWorkerClient::InheritControllerFrom(
     // be in back forward cache. Otherwise, CHECK fail during restoring from
     // back forward cache.
     is_in_back_forward_cache_ = creator_host.is_in_back_forward_cache();
+    // TODO(crbug.com/341322515): remove this CHECK.
+    // This CHECK is to ensure this path does not cause the crash at
+    // ServiceWorkerVersion::RemoveControlleeFromBackForwardCacheMap().
+    CHECK(creator_host.controller_registration()->active_version());
     SetControllerRegistration(creator_host.controller_registration(),
                               false /* notify_controllerchange */);
   }

@@ -4,8 +4,27 @@
 #include "baritemmodelhandler_p.h"
 #include "qbar3dseries_p.h"
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
 
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+              "class BarItemModelHandler;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandlerResolveModel_modelCategories_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandlerResolveModel_modelCategories_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandlerResolveModel_noModelCategories_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandlerResolveModel_noModelCategories_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandleDataChanged_entry, bool useModelCategories);
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandleDataChanged_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandlerResolveModel_labelGen_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs3DBarItemModelHandlerResolveModel_labelGen_exit);
 BarItemModelHandler::BarItemModelHandler(QItemModelBarDataProxy *proxy, QObject *parent)
     : AbstractItemModelHandler(parent)
     , m_proxy(proxy)
@@ -25,6 +44,7 @@ void BarItemModelHandler::handleDataChanged(const QModelIndex &topLeft,
 {
     // Do nothing if full reset already pending
     if (!m_fullReset) {
+        Q_TRACE_SCOPE(QGraphs3DBarItemModelHandleDataChanged, m_proxy->useModelCategories());
         if (!m_proxy->useModelCategories()) {
             // If the data model doesn't directly map rows and columns, we cannot
             // optimize
@@ -78,7 +98,6 @@ void BarItemModelHandler::resolveModel()
         m_proxy->resetArray();
         return;
     }
-
     // Value and rotation patterns can be reused on single item changes,
     // so store them to member variables.
     QRegularExpression rowPattern(m_proxy->rowRolePattern());
@@ -109,6 +128,7 @@ void BarItemModelHandler::resolveModel()
     if (m_proxy->useModelCategories()) {
         if (!m_proxy->series())
             return;
+        Q_TRACE(QGraphs3DBarItemModelHandlerResolveModel_modelCategories_entry);
         // If dimensions have changed, recreate the array
         if (m_proxyArray.data() != m_proxy->series()->dataArray().data()
             || columnCount != m_columnCount || rowCount != m_proxyArray.size()) {
@@ -141,6 +161,8 @@ void BarItemModelHandler::resolveModel()
                 }
             }
         }
+        Q_TRACE(QGraphs3DBarItemModelHandlerResolveModel_modelCategories_exit);
+        Q_TRACE_SCOPE(QGraphs3DBarItemModelHandlerResolveModel_labelGen)
         // Generate labels from headers if using model rows/columns
         for (int i = 0; i < rowCount; i++)
             rowLabels << m_itemModel->headerData(i, Qt::Vertical).toString();
@@ -148,6 +170,7 @@ void BarItemModelHandler::resolveModel()
             columnLabels << m_itemModel->headerData(i, Qt::Horizontal).toString();
         m_columnCount = columnCount;
     } else {
+        Q_TRACE_SCOPE(QGraphs3DBarItemModelHandlerResolveModel_noModelCategories)
         int rowRole = roleHash.key(m_proxy->rowRole().toLatin1());
         int columnRole = roleHash.key(m_proxy->columnRole().toLatin1());
 

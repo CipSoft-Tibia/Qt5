@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickradiobutton_p.h"
 #include "qquickcontrol_p_p.h"
@@ -19,6 +20,7 @@ QT_BEGIN_NAMESPACE
     \brief Exclusive radio button that can be toggled on or off.
 
     \image qtquickcontrols-radiobutton.gif
+           {Radio buttons showing exclusive selection behavior}
 
     RadioButton presents an option button that can be toggled on (checked) or
     off (unchecked). Radio buttons are typically used to select one option

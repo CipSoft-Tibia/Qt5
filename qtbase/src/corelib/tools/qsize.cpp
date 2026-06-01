@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsize.h"
 #include "qdatastream.h"
@@ -192,19 +193,19 @@ QSize QSize::scaled(const QSize &s, Qt::AspectRatioMode mode) const noexcept
         return s;
     } else {
         bool useHeight;
-        qint64 rw = qint64(s.ht) * qint64(wd) / qint64(ht);
+        qint64 rw = qint64(s.height()) * qint64(width()) / qint64(height());
 
         if (mode == Qt::KeepAspectRatio) {
-            useHeight = (rw <= s.wd);
+            useHeight = (rw <= s.width());
         } else { // mode == Qt::KeepAspectRatioByExpanding
-            useHeight = (rw >= s.wd);
+            useHeight = (rw >= s.width());
         }
 
         if (useHeight) {
-            return QSize(rw, s.ht);
+            return QSize(int(rw), s.height());
         } else {
-            return QSize(s.wd,
-                         qint32(qint64(s.wd) * qint64(ht) / qint64(wd)));
+            return QSize(s.width(),
+                         qint32(qint64(s.width()) * qint64(height()) / qint64(width())));
         }
     }
 }

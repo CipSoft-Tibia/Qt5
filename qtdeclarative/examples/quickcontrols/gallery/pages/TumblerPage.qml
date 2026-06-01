@@ -19,6 +19,7 @@ ScrollablePage {
         }
 
         Tumbler {
+            enabled: !GalleryConfig.disabled
             model: 10
             anchors.horizontalCenter: parent.horizontalCenter
         }

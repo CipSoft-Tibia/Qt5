@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2023-2024 The Khronos Group Inc.
-# Copyright (c) 2023-2024 LunarG, Inc.
+# Copyright (c) 2023-2025 The Khronos Group Inc.
+# Copyright (c) 2023-2025 LunarG, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,8 +80,8 @@ class SyncValidationOutputGenerator(BaseGenerator):
 
             /***************************************************************************
             *
-            * Copyright (c) 2015-2024 Valve Corporation
-            * Copyright (c) 2015-2024 LunarG, Inc.
+            * Copyright (c) 2015-2025 Valve Corporation
+            * Copyright (c) 2015-2025 LunarG, Inc.
             *
             * Licensed under the Apache License, Version 2.0 (the "License");
             * you may not use this file except in compliance with the License.
@@ -165,6 +165,10 @@ class SyncValidationOutputGenerator(BaseGenerator):
         shader_write_expansion = [e.name for e in shader_write_access.equivalent.accesses]
         out.append(f'static constexpr VkAccessFlags2 kShaderWriteExpandBits = {"|".join(shader_write_expansion)};\n')
 
+        all_transfer_stage = next((s for s in self.vk.syncStage if s.flag.name == 'VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT'), None)
+        all_transfer_expansion = [e.name for e in all_transfer_stage.equivalent.stages]
+        out.append(f'static constexpr VkPipelineStageFlags2 kAllTransferExpandBits = {"|".join(all_transfer_expansion)};\n')
+
         out.append(f'''
 // Fake stages and accesses for acquire present support
 static const VkPipelineStageFlagBits2 VK_PIPELINE_STAGE_2_PRESENT_ENGINE_BIT_SYNCVAL = 0x{(1 << self.pipelineStagePresentEngine.value):016X}ULL;
@@ -173,7 +177,7 @@ static const VkAccessFlagBits2 VK_ACCESS_2_PRESENT_PRESENTED_BIT_SYNCVAL = 0x{(1
 ''')
 
         out.append('// Unique number for each  stage/access combination\n')
-        out.append('enum SyncStageAccessIndex {\n')
+        out.append('enum SyncAccessIndex {\n')
         for access in self.stageAccessCombo:
             out.append(f'    {access["stage_access"]} = {access["index"]},\n')
         out.append('};\n')
@@ -181,61 +185,61 @@ static const VkAccessFlagBits2 VK_ACCESS_2_PRESENT_PRESENTED_BIT_SYNCVAL = 0x{(1
         out.append('\n')
 
         syncStageAccessFlagsSize = 192
-        out.append(f'using SyncStageAccessFlags = std::bitset<{syncStageAccessFlagsSize}>;\n')
+        out.append(f'using SyncAccessFlags = std::bitset<{syncStageAccessFlagsSize}>;\n')
         out.append('// Unique bit for each stage/access combination\n')
-        for access in [x for x in self.stageAccessCombo if x['stage_access_bit'] is not None]:
-            out.append(f'static const SyncStageAccessFlags {access["stage_access_bit"]} = (SyncStageAccessFlags(1) << {access["stage_access"]});\n')
+        for access in [x for x in self.stageAccessCombo if x['access_bit'] is not None]:
+            out.append(f'static const SyncAccessFlags {access["access_bit"]} = (SyncAccessFlags(1) << {access["stage_access"]});\n')
 
         if len(self.stageAccessCombo) > syncStageAccessFlagsSize:
             print("The bitset is too small, errors will occur, need to increase syncStageAccessFlagsSize\n")
             sys.exit(1)
 
         out.append(f'''
-struct SyncStageAccessInfoType {{
+struct SyncAccessInfo {{
     const char *name;
-    VkPipelineStageFlags2 stage_mask;
-    VkAccessFlags2 access_mask;
-    SyncStageAccessIndex stage_access_index;
-    SyncStageAccessFlags stage_access_bit;
+    VkPipelineStageFlagBits2 stage_mask;
+    VkAccessFlagBits2 access_mask;
+    SyncAccessIndex access_index;
+    SyncAccessFlags access_bit;
 }};
 
 // Array of text names and component masks for each stage/access index
-const std::array<SyncStageAccessInfoType, {len(self.stageAccessCombo)}>& syncStageAccessInfoByStageAccessIndex();
+const std::array<SyncAccessInfo, {len(self.stageAccessCombo)}>& syncAccessInfoByAccessIndex();
 
 ''')
 
-        out.append('// Constants defining the mask of all read and write stage_access states\n')
-        out.append('static const SyncStageAccessFlags syncStageAccessReadMask = ( //  Mask of all read StageAccess bits\n')
-        read_list = [x['stage_access_bit'] for x in self.stageAccessCombo if x['is_read'] is not None and x['is_read'] == 'true']
+        out.append('// Constants defining the mask of all read and write access states\n')
+        out.append('static const SyncAccessFlags syncAccessReadMask = ( //  Mask of all read accesses\n')
+        read_list = [x['access_bit'] for x in self.stageAccessCombo if x['is_read'] is not None and x['is_read'] == 'true']
         out.append('    ')
         out.append(' |\n    '.join(read_list))
         out.append('\n);')
         out.append('\n\n')
 
-        out.append('static const SyncStageAccessFlags syncStageAccessWriteMask = ( //  Mask of all write StageAccess bits\n')
-        write_list = [x['stage_access_bit'] for x in self.stageAccessCombo if x['is_read'] is not None and x['is_read'] != 'true']
+        out.append('static const SyncAccessFlags syncAccessWriteMask = ( //  Mask of all write accesses\n')
+        write_list = [x['access_bit'] for x in self.stageAccessCombo if x['is_read'] is not None and x['is_read'] != 'true']
         out.append('    ')
         out.append(' |\n    '.join(write_list))
         out.append('\n);\n')
 
         out.append('''
-// Bit order mask of stage_access bit for each stage
-const std::map<VkPipelineStageFlags2, SyncStageAccessFlags>& syncStageAccessMaskByStageBit();
+// Bit order mask of accesses for each stage. Order matters, don't try to use vvl::unordered_map
+const std::map<VkPipelineStageFlagBits2, SyncAccessFlags>& syncAccessMaskByStageBit();
 
-// Bit order mask of stage_access bit for each access
-const std::map<VkAccessFlags2, SyncStageAccessFlags>& syncStageAccessMaskByAccessBit();
+// Bit order mask of accesses for each VkAccess. Order matters, don't try to use vvl::unordered_map
+const std::map<VkAccessFlagBits2, SyncAccessFlags>& syncAccessMaskByAccessBit();
 
 // Direct VkPipelineStageFlags to valid VkAccessFlags lookup table
-const std::map<VkPipelineStageFlags2, VkAccessFlags2>& syncDirectStageToAccessMask();
+const vvl::unordered_map<VkPipelineStageFlagBits2, VkAccessFlags2>& syncDirectStageToAccessMask();
 
 // Pipeline stages corresponding to VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT for each VkQueueFlagBits
-const std::map<VkQueueFlagBits, VkPipelineStageFlags2>& syncAllCommandStagesByQueueFlags();
+const vvl::unordered_map<VkQueueFlagBits, VkPipelineStageFlags2>& syncAllCommandStagesByQueueFlags();
 
 // Masks of logically earlier stage flags for a given stage flag
-const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyEarlierStages();
+const vvl::unordered_map<VkPipelineStageFlagBits2, VkPipelineStageFlags2>& syncLogicallyEarlierStages();
 
 // Masks of logically later stage flags for a given stage flag
-const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLaterStages();
+const vvl::unordered_map<VkPipelineStageFlagBits2, VkPipelineStageFlags2>& syncLogicallyLaterStages();
 ''')
 
         out.append('// clang-format on\n')
@@ -247,31 +251,31 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
             #include "sync_validation_types.h"
             ''')
 
-        # syncStageAccessInfoByStageAccessIndex
+        # syncAccessInfoByAccessIndex
         out.append('// clang-format off\n')
-        out.append(f'const std::array<SyncStageAccessInfoType, {len(self.stageAccessCombo)}>& syncStageAccessInfoByStageAccessIndex() {{\n')
-        out.append(f'static const std::array<SyncStageAccessInfoType, {len(self.stageAccessCombo)}> variable = {{ {{\n')
+        out.append(f'const std::array<SyncAccessInfo, {len(self.stageAccessCombo)}>& syncAccessInfoByAccessIndex() {{\n')
+        out.append(f'static const std::array<SyncAccessInfo, {len(self.stageAccessCombo)}> variable = {{ {{\n')
         for stageAccess in self.stageAccessCombo:
             out.append(f'''    {{
         {stageAccess["stage_access_string"]},
         {stageAccess["stage"]},
         {stageAccess["access"]},
         {stageAccess["stage_access"]},
-        {stageAccess["stage_access_bit"] if stageAccess["stage_access_bit"] is not None else "SyncStageAccessFlags(0)"}
+        {stageAccess["access_bit"] if stageAccess["access_bit"] is not None else "SyncAccessFlags(0)"}
     }},
 ''')
         out.append('}};\n')
         out.append('return variable;\n')
         out.append('}\n')
 
-        # syncStageAccessMaskByStageBit
-        out.append('const std::map<VkPipelineStageFlags2, SyncStageAccessFlags>& syncStageAccessMaskByStageBit() {\n')
-        out.append('    static const std::map<VkPipelineStageFlags2, SyncStageAccessFlags> variable = {\n')
+        # syncAccessMaskByStageBit
+        out.append('const std::map<VkPipelineStageFlagBits2, SyncAccessFlags>& syncAccessMaskByStageBit() {\n')
+        out.append('    static const std::map<VkPipelineStageFlagBits2, SyncAccessFlags> variable = {\n')
         stage_to_stageAccess = {}
         for stageAccess_info in self.stageAccessCombo:
             stage = stageAccess_info['stage']
-            if stage == 'VK_PIPELINE_STAGE_2_NONE_KHR': continue
-            stageAccess_bit = stageAccess_info['stage_access_bit']
+            if stage == 'VK_PIPELINE_STAGE_2_NONE': continue
+            stageAccess_bit = stageAccess_info['access_bit']
             stage_to_stageAccess[stage] = stage_to_stageAccess.get(stage, []) + [stageAccess_bit]
         stages_in_bit_order = sorted([x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags], key=lambda x: x.value)
         for flag in [x for x in stages_in_bit_order if x.name in stage_to_stageAccess]:
@@ -280,32 +284,34 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('    return variable;\n')
         out.append('}\n\n')
 
-        # syncStageAccessMaskByAccessBit
-        out.append('const std::map<VkAccessFlags2, SyncStageAccessFlags>& syncStageAccessMaskByAccessBit() {\n')
-        out.append('    static const std::map<VkAccessFlags2, SyncStageAccessFlags> variable = {\n')
+        # syncAccessMaskByAccessBit
+        out.append('const std::map<VkAccessFlagBits2, SyncAccessFlags>& syncAccessMaskByAccessBit() {\n')
+        out.append('    static const std::map<VkAccessFlagBits2, SyncAccessFlags> variable = {\n')
         access_to_stageAccess = {}
         for stageAccess_info in self.stageAccessCombo:
             access = stageAccess_info['access']
-            if access == 'VK_ACCESS_2_FLAG_NONE_KHR': continue
-            stageAccess_bit = stageAccess_info['stage_access_bit']
+            if access == 'VK_ACCESS_2_NONE':
+                continue
+            stageAccess_bit = stageAccess_info['access_bit']
             access_to_stageAccess[access] = access_to_stageAccess.get(access, []) + [stageAccess_bit]
 
         accesses_in_bit_order = sorted([x for x in self.vk.bitmasks['VkAccessFlagBits2'].flags], key=lambda x: x.value)
         for flag in [x for x in accesses_in_bit_order if x.name in access_to_stageAccess]:
             out.append(f'    {{ {flag.name}, (\n        {separator.join(access_to_stageAccess[flag.name])}\n    )}},\n')
-        out.append('    { VK_ACCESS_2_MEMORY_READ_BIT, (\n        syncStageAccessReadMask\n    )},\n')
-        out.append('    { VK_ACCESS_2_MEMORY_WRITE_BIT, (\n        syncStageAccessWriteMask\n    )},\n')
+        out.append('    { VK_ACCESS_2_MEMORY_READ_BIT, (\n        syncAccessReadMask\n    )},\n')
+        out.append('    { VK_ACCESS_2_MEMORY_WRITE_BIT, (\n        syncAccessWriteMask\n    )},\n')
         out.append('    };\n')
         out.append('    return variable;\n')
         out.append('}\n\n')
 
         # syncDirectStageToAccessMask
-        out.append('const std::map<VkPipelineStageFlags2, VkAccessFlags2>& syncDirectStageToAccessMask() {\n')
-        out.append('    static const std::map<VkPipelineStageFlags2, VkAccessFlags2> variable = {\n')
+        out.append('const vvl::unordered_map<VkPipelineStageFlagBits2, VkAccessFlags2>& syncDirectStageToAccessMask() {\n')
+        out.append('    static const vvl::unordered_map<VkPipelineStageFlagBits2, VkAccessFlags2> variable = {\n')
         stage_to_access = {}
         for stageAccess_info in self.stageAccessCombo:
             stage = stageAccess_info['stage']
-            if stage == 'VK_PIPELINE_STAGE_2_NONE_KHR': continue
+            if stage == 'VK_PIPELINE_STAGE_2_NONE':
+                continue
             stage_to_access[stage] = stage_to_access.get(stage, []) + [stageAccess_info['access']]
 
         stages_in_bit_order = sorted([x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags], key=lambda x: x.value)
@@ -316,8 +322,8 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('}\n\n')
 
         # syncAllCommandStagesByQueueFlags
-        out.append('const std::map<VkQueueFlagBits, VkPipelineStageFlags2>& syncAllCommandStagesByQueueFlags() {\n')
-        out.append('    static const std::map<VkQueueFlagBits, VkPipelineStageFlags2> variable = {\n')
+        out.append('const vvl::unordered_map<VkQueueFlagBits, VkPipelineStageFlags2>& syncAllCommandStagesByQueueFlags() {\n')
+        out.append('    static const vvl::unordered_map<VkQueueFlagBits, VkPipelineStageFlags2> variable = {\n')
         ignoreQueueFlag = [
             'VK_PIPELINE_STAGE_2_NONE',
             'VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT',
@@ -333,8 +339,8 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('}\n\n')
 
         # syncLogicallyEarlierStages
-        out.append('const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyEarlierStages() {\n')
-        out.append('    static const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2> variable = {\n')
+        out.append('const vvl::unordered_map<VkPipelineStageFlagBits2, VkPipelineStageFlags2>& syncLogicallyEarlierStages() {\n')
+        out.append('    static const vvl::unordered_map<VkPipelineStageFlagBits2, VkPipelineStageFlags2> variable = {\n')
         earlier_stages = {}
         earlier_stages['VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT'] = set(['VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT'])
         earlier_stages['VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT'] = set(['VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT', 'VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT'])
@@ -361,8 +367,8 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('}\n\n')
 
         # syncLogicallyLaterStages
-        out.append('const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLaterStages() {\n')
-        out.append('    static const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2> variable = {\n')
+        out.append('const vvl::unordered_map<VkPipelineStageFlagBits2, VkPipelineStageFlags2>& syncLogicallyLaterStages() {\n')
+        out.append('    static const vvl::unordered_map<VkPipelineStageFlagBits2, VkPipelineStageFlags2> variable = {\n')
         later_stages = {}
         later_stages['VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT'] = set(['VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT'])
         later_stages['VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT'] = set(['VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT', 'VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT'])
@@ -465,10 +471,10 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         stage_accesses.append({
                         'stage_access': none_stage_access,
                         'stage_access_string' : '"' + none_stage_access + '"',
-                        'stage_access_bit': None,
+                        'access_bit': None,
                         'index': 0,
-                        'stage': 'VK_PIPELINE_STAGE_2_NONE_KHR',
-                        'access': 'VK_ACCESS_2_NONE_KHR',
+                        'stage': 'VK_PIPELINE_STAGE_2_NONE',
+                        'access': 'VK_ACCESS_2_NONE',
                         'is_read': None}) #tri-state logic hack...
 
         # < stage, [accesses] >
@@ -518,12 +524,12 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
                 mini_access = mini_access.replace('_BIT', '')
                 stage_access = '_'.join((mini_stage,mini_access))
                 stage_access = enum_prefix + stage_access
-                stage_access_bit = BitSuffixed(stage_access)
+                access_bit = BitSuffixed(stage_access)
                 is_read = stage_access.endswith('_READ') or ( '_READ_' in stage_access)
                 stage_accesses.append({
                         'stage_access': stage_access,
                         'stage_access_string' : '"' + stage_access + '"',
-                        'stage_access_bit': stage_access_bit,
+                        'access_bit': access_bit,
                         'index': index,
                         'stage': stage,
                         'access': access,
@@ -532,17 +538,17 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
 
         # Add synthetic stage/access
         synth_stage_access = [ 'IMAGE_LAYOUT_TRANSITION', 'QUEUE_FAMILY_OWNERSHIP_TRANSFER']
-        stage = 'VK_PIPELINE_STAGE_2_NONE_KHR'
-        access = 'VK_ACCESS_2_NONE_KHR'
+        stage = 'VK_PIPELINE_STAGE_2_NONE'
+        access = 'VK_ACCESS_2_NONE'
 
         for synth in synth_stage_access :
             stage_access = enum_prefix + synth
-            stage_access_bit = BitSuffixed(stage_access)
+            access_bit = BitSuffixed(stage_access)
             is_read = False # both ILT and QFO are R/W operations
             stage_accesses.append({
                         'stage_access': stage_access,
                         'stage_access_string' : '"' + stage_access + '"',
-                        'stage_access_bit': stage_access_bit,
+                        'access_bit': access_bit,
                         'index': index,
                         'stage': stage,
                         'access': access,

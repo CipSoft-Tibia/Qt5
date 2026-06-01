@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQMLCODEMODEL_P_H
 #define QQMLCODEMODEL_P_H
@@ -71,6 +72,26 @@ struct RegisteredSemanticTokens
     QList<int> lastTokens;
 };
 
+struct ModuleSetting
+{
+    QString sourceFolder;
+    QStringList importPaths;
+};
+
+using ModuleSettings = QList<ModuleSetting>;
+class QQmllsBuildInformation
+{
+public:
+    QQmllsBuildInformation();
+    void loadSettingsFrom(const QStringList &buildPaths);
+    QStringList importPathsFor(const QString &filePath);
+
+private:
+    QString m_docDir;
+    ModuleSettings m_moduleSettings;
+    QSet<QString> m_seenSettings;
+};
+
 class QQmlCodeModel : public QObject
 {
     Q_OBJECT
@@ -80,6 +101,7 @@ public:
 
     explicit QQmlCodeModel(QObject *parent = nullptr, QQmlToolingSettings *settings = nullptr);
     ~QQmlCodeModel();
+    void prepareForShutdown();
     QQmlJS::Dom::DomItem currentEnv() const { return m_currentEnv; };
     QQmlJS::Dom::DomItem validEnv() const { return m_validEnv; };
     OpenDocumentSnapshot snapshotByUrl(const QByteArray &url);
@@ -91,7 +113,6 @@ public:
     // void updateDocument(const OpenDocument &doc);
     QString url2Path(const QByteArray &url, UrlLookup options = UrlLookup::Caching);
     void newOpenFile(const QByteArray &url, int version, const QString &docText);
-    void newDocForOpenFile(const QByteArray &url, int version, const QString &docText);
     void closeOpenFile(const QByteArray &url);
     void setRootUrls(const QList<QByteArray> &urls);
     QList<QByteArray> rootUrls() const;
@@ -99,7 +120,7 @@ public:
     QStringList buildPathsForRootUrl(const QByteArray &url);
     QStringList buildPathsForFileUrl(const QByteArray &url);
     void setBuildPathsForRootUrl(QByteArray url, const QStringList &paths);
-    QStringList importPathsForFile(const QString &fileName) const;
+    QStringList importPathsForFile(const QString &fileName);
     QStringList importPaths() const { return m_importPaths; };
     void setImportPaths(const QStringList &paths) { m_importPaths = paths; };
     void removeRootUrls(const QList<QByteArray> &urls);
@@ -119,13 +140,18 @@ public:
 Q_SIGNALS:
     void updatedSnapshot(const QByteArray &url);
     void documentationRootPathChanged(const QString &path);
+    void openUpdateThreadFinished();
 
 private:
     void addDirectory(const QString &path, int leftDepth);
+
+    // only to be called from the openUpdateThread
+    void newDocForOpenFile(const QByteArray &url, int version, const QString &docText);
     bool openUpdateSome();
+    void openUpdate(const QByteArray &);
+
     void openUpdateStart();
     void openUpdateEnd();
-    void openUpdate(const QByteArray &);
 
     static bool callCMakeBuild(const QStringList &buildPaths);
     void addFileWatches(const QQmlJS::Dom::DomItem &qmlFile);
@@ -135,6 +161,7 @@ private:
     mutable QMutex m_mutex;
     State m_state = State::Running;
     int m_nUpdateInProgress = 0;
+    QThread *m_openUpdateThread = nullptr; // needed for asserts
     QStringList m_importPaths;
     QQmlJS::Dom::DomItem m_currentEnv;
     QQmlJS::Dom::DomItem m_validEnv;
@@ -146,6 +173,7 @@ private:
     QHash<QString, QByteArray> m_path2url;
     QHash<QByteArray, OpenDocument> m_openDocuments;
     QQmlToolingSettings *m_settings;
+    QQmllsBuildInformation m_buildInformation;
     QFileSystemWatcher m_cppFileWatcher;
     QFactoryLoader m_pluginLoader;
     bool m_rebuildRequired = true; // always trigger a rebuild on start

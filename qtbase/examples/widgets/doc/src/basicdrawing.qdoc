@@ -20,6 +20,7 @@
     but it can in addition do view and world transformation.
 
     \image basicdrawing-example.png
+           {Window with various options for changing the drawing}
 
     The example provides a render area, displaying the currently
     active shape, and lets the user manipulate the rendered shape and
@@ -171,7 +172,7 @@
     The QComboBox::itemData() function returns the data as a QVariant,
     so we need to cast the data to \c RenderArea::Shape. If there is
     no data for the given role, the function returns
-    QVariant::Invalid.
+    QMetaType::UnknownType.
 
     In the end we call the \c RenderArea::setShape() slot to update
     the \c RenderArea widget.

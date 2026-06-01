@@ -17,6 +17,7 @@ source_set("model") {
     "//components/version_info",
     "//ios/chrome/browser/metrics/model:accessor",
     "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/paths",
     "//ios/chrome/common",
     "//ios/web/public",
   ]
@@ -51,6 +52,10 @@ source_set("store") {
     ":store_private",
     "//components/variations",
   ]
+
+  # Required because ":store_private" exists to restrict which targets
+  # have access to "ios_chrome_variations_seed_store+fetcher.h" header.
+  allow_circular_includes_from = [ ":store_private" ]
 }
 
 source_set("store_private") {

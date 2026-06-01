@@ -8,6 +8,7 @@
 #include <QtCore/QtDebug>
 
 #include <QTest>
+#include <QtCore/qbuffer.h>
 #include <QtConcurrentRun>
 #include <QFutureSynchronizer>
 #include <QVariant>
@@ -77,6 +78,7 @@ private slots:
     void warningWithoutDebug() const;
     void criticalWithoutDebug() const;
     void basics() const;
+    void constructors() const;
     void debugWithBool() const;
     void debugSpaceHandling() const;
     void debugNoQuotes() const;
@@ -255,6 +257,57 @@ void tst_QDebug::basics() const
 
     qDebug() << nullptr;
     QCOMPARE(s_msg, "(nullptr)");
+}
+
+void tst_QDebug::constructors() const
+{
+    const char input[] = "testing QDebug constructors";
+    const QLatin1StringView expected{"testing QDebug constructors "};
+
+    // QDebug(QString *); no buffering for a QTextStream that operates on a QString,
+    // so flushing is no-op, see QTextStream::flush()
+    {
+        QString str;
+        QDebug d(&str);
+        d << input;
+        QCOMPARE(str, expected);
+    }
+
+    // QDebug(QByteArray *)
+    {
+        QByteArray ba;
+        QDebug d(&ba);
+        d << input << Qt::flush;
+        QCOMPARE(ba, expected);
+    }
+    {
+        QByteArray ba;
+        {
+            QDebug d(&ba);
+            d << input;
+        }
+        QCOMPARE(ba, expected);
+    }
+
+    // QDebug(QIODevice *)
+    {
+        QByteArray ba;
+        QBuffer buf(&ba);
+        QVERIFY(buf.open(QIODevice::WriteOnly));
+        QDebug d(&buf);
+        d << input << Qt::flush;
+        QCOMPARE(ba, expected);
+    }
+    {
+        QByteArray ba;
+        QBuffer buf(&ba);
+        QVERIFY(buf.open(QIODevice::WriteOnly));
+        {
+            QDebug d(&buf);
+            d << input;
+        }
+        QCOMPARE(ba, expected);
+    }
 }
 
 void tst_QDebug::debugWithBool() const
@@ -773,8 +826,8 @@ void tst_QDebug::qDebugStdSet() const
 
     {
         QDebug d = qDebug();
-        std::set<int> Set{1, 2, 3, 2, 1};
-        d.nospace().noquote() << Set;
+        std::set<int>set{1, 2, 3, 2, 1};
+        d.nospace().noquote() << set;
     }
 #ifndef QT_NO_MESSAGELOGCONTEXT
     file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
@@ -785,15 +838,11 @@ void tst_QDebug::qDebugStdSet() const
     QCOMPARE(s_line, line);
     QCOMPARE(s_function, function);
 
-    {
-        qDebug() << std::set<std::string>{"apple", "banana", "cherry", "banana", "apple"};
-    }
+    qDebug() << std::set<std::string>{"apple", "banana", "cherry", "banana", "apple"};
 
     QCOMPARE(s_msg, "std::set(\"apple\", \"banana\", \"cherry\")"_L1);
 
-    {
-        qDebug() << std::set<int>{};
-    }
+    qDebug() << std::set<int>{};
 
     QCOMPARE(s_msg, "std::set()"_L1);
 }
@@ -858,25 +907,20 @@ void tst_QDebug::qDebugStdUnorderedMap() const
     QCOMPARE(s_msgType, QtDebugMsg);
 
     QStringList expectedValues = {"std::unordered_map","std::pair(1, One)","std::pair(2, Two)","std::pair(3, Three)"};
-    for (const QString &expextedValue : expectedValues) {
+
+    for (const QString &expextedValue : expectedValues)
         QVERIFY(s_msg.contains(expextedValue));
-    }
     QCOMPARE(s_file, file);
     QCOMPARE(s_line, line);
     QCOMPARE(s_function, function);
 
-    {
-        qDebug() << std::unordered_map<std::string, float>{{"quarter", 0.25f}, {"half", 0.5f}};
-    }
+    qDebug() << std::unordered_map<std::string, float>{{"quarter", 0.25f}, {"half", 0.5f}, {"full", 1.0f}};
 
-    expectedValues= {"std::unordered_map","std::pair(\"quarter\", 0.25)","std::pair(\"half\", 0.5)"};
-    for (const QString &expextedValue : expectedValues) {
-        QVERIFY(s_msg.contains(expextedValue));
-    }
+    expectedValues = {"std::unordered_map","std::pair(\"quarter\", 0.25)","std::pair(\"half\", 0.5)","std::pair(\"full\", 1)"};
+    for (const QString &expectedValue : expectedValues)
+        QVERIFY(s_msg.contains(expectedValue));
 
-    {
-        qDebug()<< std::unordered_map<int, QString> {};
-    }
+    qDebug()<< std::unordered_map<int, QString> {};
 
     QCOMPARE(s_msg, "std::unordered_map()"_L1);
 }
@@ -884,7 +928,7 @@ void tst_QDebug::qDebugStdUnorderedMap() const
 void tst_QDebug::qDebugStdUnorderedSet() const
 {
     QByteArray file, function;
-    int line = 0;
+    [[maybe_unused]] int line = 0;
     MessageHandlerSetter mhs(myMessageHandler);
 
     {
@@ -898,25 +942,18 @@ void tst_QDebug::qDebugStdUnorderedSet() const
     QCOMPARE(s_msgType, QtDebugMsg);
 
     QStringList expectedValues = {"std::unordered_set", "1", "2", "3"};
-    for (const QString &expectedValue : expectedValues) {
-        QVERIFY(s_msg.contains(expectedValue));
-    }
-    QCOMPARE(s_file, file);
-    QCOMPARE(s_line, line);
-    QCOMPARE(s_function, function);
 
-    {
-        qDebug() << std::unordered_set<std::string>{"apple", "banana", "cherry", "banana", "apple"};
-    }
+    for (const QString &expectedValue : expectedValues)
+        QVERIFY(s_msg.contains(expectedValue));
+
+    qDebug() << std::unordered_set<std::string>{"apple", "banana", "cherry", "banana", "apple"};
+
 
     expectedValues = {"std::unordered_set", "\"apple\"", "\"banana\"", "\"cherry\""};
-    for (const QString &expectedValue : expectedValues) {
+    for (const QString &expectedValue : expectedValues)
         QVERIFY(s_msg.contains(expectedValue));
-    }
 
-    {
-        qDebug() << std::unordered_set<int>{}; // Empty set
-    }
+    qDebug() << std::unordered_set<int>{};
 
     QCOMPARE(s_msg, "std::unordered_set()"_L1);
 }

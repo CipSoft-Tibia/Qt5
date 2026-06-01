@@ -36,6 +36,7 @@ qt_internal_add_qml_module(WebEngineQuickDelegatesQml
     PAST_MAJOR_VERSIONS 1
     NO_SYNC_QT
     PLUGIN_TARGET qtwebenginequickdelegatesplugin
+    NO_PRIVATE_MODULE
     DEPENDENCIES QtQuickControls2
     NO_GENERATE_CPP_EXPORTS
 )

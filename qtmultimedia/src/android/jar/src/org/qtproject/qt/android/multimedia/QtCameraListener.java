@@ -10,8 +10,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
-import android.graphics.SurfaceTexture;
-import android.util.Log;
 import java.lang.Math;
 import java.io.ByteArrayOutputStream;
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QMLJSLINTER_P_H
 #define QMLJSLINTER_P_H
@@ -18,6 +19,7 @@
 
 #include <QtQmlCompiler/private/qqmljslogger_p.h>
 #include <QtQmlCompiler/private/qqmljsimporter_p.h>
+#include <QtQmlCompiler/private/qqmljscontextproperties_p.h>
 
 #include <QtQml/private/qqmljssourcelocation_p.h>
 
@@ -27,7 +29,6 @@
 #include <QtCore/qscopedpointer.h>
 
 #include <vector>
-#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -44,7 +45,7 @@ public:
     QQmlJSLinter(const QStringList &importPaths, const QStringList &extraPluginPaths = {},
                  bool useAbsolutePath = false);
 
-    enum LintResult { FailedToOpen, FailedToParse, HasWarnings, LintSuccess };
+    enum LintResult { FailedToOpen, FailedToParse, HasWarnings, HasErrors, LintSuccess };
     enum FixResult { NothingToFix, FixError, FixSuccess };
 
     class Q_QMLCOMPILER_EXPORT Plugin
@@ -109,7 +110,8 @@ public:
     LintResult lintFile(const QString &filename, const QString *fileContents, const bool silent,
                         QJsonArray *json, const QStringList &qmlImportPaths,
                         const QStringList &qmldirFiles, const QStringList &resourceFiles,
-                        const QList<QQmlJS::LoggerCategory> &categories);
+                        const QList<QQmlJS::LoggerCategory> &categories,
+                        const QQmlJS::ContextProperties &contextProperties = {});
 
     LintResult lintModule(const QString &uri, const bool silent, QJsonArray *json,
                           const QStringList &qmlImportPaths, const QStringList &resourceFiles);

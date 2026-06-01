@@ -3,8 +3,8 @@
 
 import QtQuick
 import QtQuick3D
+import QtQuick3D.Helpers
 import QtQuick3D.Physics
-import QtQuick3D.Physics.Helpers as Helpers
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -211,7 +211,7 @@ Window {
                 Model {
                     // not visible from the camera, but casts a shadow
                     eulerRotation.z: 90
-                    geometry: Helpers.CapsuleGeometry {}
+                    geometry: CapsuleGeometry {}
                     materials: PrincipledMaterial {
                         baseColor: "red"
                     }

@@ -8,10 +8,10 @@
 #include <optional>
 #include <string>
 
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 #include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/mojom/permissions/permission.mojom-forward.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom-shared.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 
 namespace blink {
 
@@ -34,7 +34,7 @@ enum class PermissionType {
   BACKGROUND_SYNC = 10,
   // FLASH = 11,
   SENSORS = 12,
-  ACCESSIBILITY_EVENTS = 13,
+  // ACCESSIBILITY_EVENTS = 13,  // Deprecated.
   // CLIPBOARD_READ = 14, // Replaced by CLIPBOARD_READ_WRITE in M81.
   // CLIPBOARD_WRITE = 15, // Replaced by CLIPBOARD_SANITIZED_WRITE in M81.
   PAYMENT_HANDLER = 16,
@@ -67,6 +67,7 @@ enum class PermissionType {
 
   // Always keep this at the end.
   NUM,
+  MIN_VALUE = MIDI_SYSEX,
 };
 
 // Converts a permission string ("granted", "denied", "prompt") into a
@@ -103,7 +104,7 @@ PermissionDescriptorInfoToPermissionType(
 
 // Converts `permission` type into the corresponding permission policy feature.
 // If there is no, returns nullopt.
-BLINK_COMMON_EXPORT std::optional<mojom::PermissionsPolicyFeature>
+BLINK_COMMON_EXPORT std::optional<network::mojom::PermissionsPolicyFeature>
 PermissionTypeToPermissionsPolicyFeature(PermissionType permission);
 
 }  // namespace blink

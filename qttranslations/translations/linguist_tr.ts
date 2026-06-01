@@ -288,6 +288,11 @@ Tek bir evrensel form alır.</translation>
         <translation>Arama hedefini çeviri durumuna göre süzmenize olanak tanır.</translation>
     </message>
     <message>
+        <source></source>
+        <comment>Choose Edit|Find from the menu bar or press Ctrl+F to pop up the Find dialog</comment>
+        <translation></translation>
+    </message>
+    <message>
         <source>All</source>
         <translation>Tümü</translation>
     </message>
@@ -980,8 +985,13 @@ Tek bir evrensel form alır.</translation>
         <translation>Bu öğeyi bitti olarak işaretle.</translation>
     </message>
     <message>
+        <source></source>
+        <comment>This is the application&apos;s main window.</comment>
+        <translation></translation>
+    </message>
+    <message>
         <source>Source text</source>
-        <translation>Kaynak metin</translation>
+        <translation>Kaynak Metin</translation>
     </message>
     <message>
         <source>Index</source>
@@ -1118,17 +1128,17 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Translate - Qt Linguist</source>
-        <translation>Çevir — Qt Linguist</translation>
+        <translation type="vanished">Çevir — Qt Linguist</translation>
     </message>
     <message numerus="yes">
         <source>Translated %n entry(s)</source>
-        <translation>
+        <translation type="vanished">
             <numerusform>%n girdi çevrildi</numerusform>
         </translation>
     </message>
     <message>
         <source>No more occurrences of &apos;%1&apos;. Start over?</source>
-        <translation>Daha fazla “%1” oluşu yok. Baştan başlansın mı?</translation>
+        <translation type="vanished">Daha fazla “%1” oluşu yok. Baştan başlansın mı?</translation>
     </message>
     <message>
         <source>Create New Phrase Book</source>
@@ -1187,6 +1197,14 @@ Tüm dosyalar (*)</translation>
         <translation>Qt Linguist, Qt uygulamalarına çeviri eklemek için bir araçtır.</translation>
     </message>
     <message>
+        <source>Displays the manual for %1.</source>
+        <translation>%1 için olan kılavuzu görüntüler.</translation>
+    </message>
+    <message>
+        <source>Displays information about %1.</source>
+        <translation>%1 hakkında bilgi görüntüler.</translation>
+    </message>
+    <message>
         <source>Copyright (C) %1 The Qt Company Ltd.</source>
         <translation type="vanished">Telif Hakkı © %1 The Qt Company Ltd.</translation>
     </message>
@@ -1224,11 +1242,11 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Display the manual for %1.</source>
-        <translation>%1 için kılavuzu görüntüleyin.</translation>
+        <translation type="vanished">%1 için kılavuzu görüntüleyin.</translation>
     </message>
     <message>
         <source>Display information about %1.</source>
-        <translation>%1 ile ilgili bilgileri görüntüleyin.</translation>
+        <translation type="vanished">%1 ile ilgili bilgileri görüntüleyin.</translation>
     </message>
     <message>
         <source>&amp;Save &apos;%1&apos;</source>
@@ -1328,9 +1346,22 @@ Tüm dosyalar (*)</translation>
         <source>Shift+F3</source>
         <translation>Üst Karakter+F3</translation>
     </message>
+    <message>
+        <source>&amp;QML preview</source>
+        <translation>&amp;QML Önizleme</translation>
+    </message>
+    <message>
+        <source>Displays a preview of QML documents.</source>
+        <translation>QML belgelerinin bir önizlemesini görüntüler.</translation>
+    </message>
 </context>
 <context>
     <name>MessageEditor</name>
+    <message>
+        <source></source>
+        <comment>This is the right panel of the main window.</comment>
+        <translation></translation>
+    </message>
     <message>
         <source>This whole panel allows you to view and edit the translation of some source text.</source>
         <translation>Bu panelin tamamı, bazı kaynak metnin çevirisini görüntülemenizi ve düzenlemenizi sağlar.</translation>
@@ -1495,6 +1526,11 @@ Satır: %2</translation>
     <message>
         <source>Close</source>
         <translation>Kapat</translation>
+    </message>
+    <message>
+        <source></source>
+        <comment>Go to Phrase &gt; Edit Phrase Book... The dialog that pops up is a PhraseBookBox.</comment>
+        <translation></translation>
     </message>
     <message>
         <source>(New Entry)</source>
@@ -1737,6 +1773,17 @@ Satır: %2</translation>
     <message>
         <source>Any Country</source>
         <translation type="vanished">Herhangi Bir Ülke</translation>
+    </message>
+</context>
+<context>
+    <name>QmlFormPreviewView</name>
+    <message>
+        <source>Qt Linguist</source>
+        <translation>Qt Linguist</translation>
+    </message>
+    <message>
+        <source>Error loading QML file: %1</source>
+        <translation>QML dosyası yüklenirken hata: %1</translation>
     </message>
 </context>
 </TS>

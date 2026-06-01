@@ -10,7 +10,6 @@
 #include "base/metrics/histogram_macros.h"
 #include "build/build_config.h"
 #include "build/chromecast_buildflags.h"
-#include "build/chromeos_buildflags.h"
 #include "components/viz/common/buildflags.h"
 #include "components/viz/common/display/renderer_settings.h"
 #include "components/viz/common/features.h"
@@ -141,15 +140,9 @@ OverlayProcessorInterface::CreateOverlayProcessor(
     }
   }
 
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  return std::make_unique<OverlayProcessorDelegated>(
-      std::move(overlay_candidates),
-      std::move(renderer_settings.overlay_strategies), sii);
-#else
   return std::make_unique<OverlayProcessorOzone>(
       std::move(overlay_candidates),
       std::move(renderer_settings.overlay_strategies), sii);
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 
 #elif BUILDFLAG(IS_ANDROID)
   DCHECK(display_controller);

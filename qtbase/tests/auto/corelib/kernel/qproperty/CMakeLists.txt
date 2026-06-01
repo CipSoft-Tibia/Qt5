@@ -16,4 +16,5 @@ qt_internal_add_test(tst_qproperty
         tst_qproperty.cpp
     LIBRARIES
         Qt::CorePrivate
+        Qt::TestPrivate
 )

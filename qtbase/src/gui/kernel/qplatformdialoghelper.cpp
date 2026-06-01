@@ -8,7 +8,6 @@
 #if QT_CONFIG(regularexpression)
 #include <QtCore/QRegularExpression>
 #endif
-#include <QtCore/QSharedData>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
 #include <QtGui/QColor>
@@ -142,7 +141,7 @@ QVariant  QPlatformDialogHelper::defaultStyleHint(QPlatformDialogHelper::StyleHi
 
 // Font dialog
 
-class QFontDialogOptionsPrivate : public QSharedData
+class QFontDialogOptionsPrivate
 {
 public:
     QFontDialogOptionsPrivate() = default;
@@ -257,10 +256,14 @@ QColorDialogStaticData::QColorDialogStaticData() : customSet(false)
 
 Q_GLOBAL_STATIC(QColorDialogStaticData, qColorDialogStaticData)
 
-class QColorDialogOptionsPrivate : public QSharedData
+class QColorDialogOptionsPrivate
 {
 public:
     QColorDialogOptionsPrivate() = default;
+    QColorDialogOptionsPrivate(const QColorDialogOptionsPrivate &) = default;
+    QColorDialogOptionsPrivate(QColorDialogOptionsPrivate &&) = default;
+    QColorDialogOptionsPrivate &operator=(const QColorDialogOptionsPrivate &) = delete;
+    QColorDialogOptionsPrivate &operator=(QColorDialogOptionsPrivate &&) = delete;
 
     QColorDialogOptions::ColorDialogOptions options;
     QString windowTitle;
@@ -392,7 +395,7 @@ void QPlatformColorDialogHelper::setOptions(const QSharedPointer<QColorDialogOpt
 
 // File dialog
 
-class QFileDialogOptionsPrivate : public QSharedData
+class QFileDialogOptionsPrivate
 {
 public:
     QFileDialogOptions::FileDialogOptions options;
@@ -726,7 +729,7 @@ QStringList QPlatformFileDialogHelper::cleanFilterList(const QString &filter)
 
 // Message dialog
 
-class QMessageDialogOptionsPrivate : public QSharedData
+class QMessageDialogOptionsPrivate
 {
 public:
     QMessageDialogOptionsPrivate() :

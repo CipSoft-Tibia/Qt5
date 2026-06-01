@@ -2,12 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import '../../../ui/components/icon_button/icon_button.js';
+
 import * as i18n from '../../../core/i18n/i18n.js';
-import * as IconButton from '../../../ui/components/icon_button/icon_button.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as Lit from '../../../ui/lit/lit.js';
 import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 
-import linearMemoryNavigatorStyles from './linearMemoryNavigator.css.js';
+import linearMemoryNavigatorStylesRaw from './linearMemoryNavigator.css.js';
+
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const linearMemoryNavigatorStyles = new CSSStyleSheet();
+linearMemoryNavigatorStyles.replaceSync(linearMemoryNavigatorStylesRaw.cssContent);
 
 const UIStrings = {
   /**
@@ -38,7 +43,7 @@ const UIStrings = {
 const str_ =
     i18n.i18n.registerUIStrings('panels/linear_memory_inspector/components/LinearMemoryNavigator.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
-const {render, html} = LitHtml;
+const {render, html, Directives: {ifDefined}} = Lit;
 
 export const enum Navigation {
   BACKWARD = 'Backward',
@@ -98,7 +103,6 @@ export const enum Mode {
 }
 
 export class LinearMemoryNavigator extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-linear-memory-inspector-navigator`;
 
   readonly #shadow = this.attachShadow({mode: 'open'});
   #address = '0';
@@ -160,17 +164,17 @@ export class LinearMemoryNavigator extends HTMLElement {
     // clang-format on
   }
 
-  #createAddressInput(): LitHtml.TemplateResult {
+  #createAddressInput(): Lit.TemplateResult {
     const classMap = {
       'address-input': true,
       invalid: !this.#valid,
     };
     return html`
-      <input class=${LitHtml.Directives.classMap(classMap)} data-input="true" .value=${this.#address}
+      <input class=${Lit.Directives.classMap(classMap)} data-input="true" .value=${this.#address}
         jslog=${VisualLogging.textField('linear-memory-inspector.address').track({
       change: true,
     })}
-        title=${this.#valid ? i18nString(UIStrings.enterAddress) : this.#error} @change=${
+        title=${ifDefined(this.#valid ? i18nString(UIStrings.enterAddress) : this.#error)} @change=${
         this.#onAddressChange.bind(this, Mode.SUBMITTED)} @input=${this.#onAddressChange.bind(this, Mode.EDIT)}/>`;
   }
 
@@ -180,13 +184,13 @@ export class LinearMemoryNavigator extends HTMLElement {
   }
 
   #createButton(data: {icon: string, title: string, event: Event, enabled: boolean, jslogContext: string}):
-      LitHtml.TemplateResult {
+      Lit.TemplateResult {
     return html`
       <button class="navigator-button" ?disabled=${!data.enabled}
         jslog=${VisualLogging.action().track({click: true, keydown: 'Enter'}).context(data.jslogContext)}
         data-button=${data.event.type} title=${data.title}
         @click=${this.dispatchEvent.bind(this, data.event)}>
-        <${IconButton.Icon.Icon.litTagName} name=${data.icon}></${IconButton.Icon.Icon.litTagName}>
+        <devtools-icon name=${data.icon}></devtools-icon>
       </button>`;
   }
 }

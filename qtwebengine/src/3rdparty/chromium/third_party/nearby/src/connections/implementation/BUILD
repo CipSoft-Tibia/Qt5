@@ -108,6 +108,7 @@ cc_library(
     visibility = [
         "//chrome/chromeos/assistant/data_migration/lib:__pkg__",
         "//connections:__pkg__",
+        "//connections:partners",
         "//connections/implementation/fuzzers:__pkg__",
         "//connections/implementation/mediums/multiplex:__pkg__",
         "//sharing:__subpackages__",
@@ -135,6 +136,7 @@ cc_library(
         "//internal/platform/implementation:comm",
         "//internal/platform/implementation:platform",
         "//internal/platform/implementation:types",
+        "//internal/platform/implementation:wifi_utils",
         "//internal/proto/analytics:connections_log_cc_proto",
         "//proto:connections_enums_cc_proto",
         "@com_google_absl//absl/base:core_headers",
@@ -148,22 +150,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_ukey2//:ukey2",
-    ],
-)
-
-cc_library(
-    name = "message_lite",
-    hdrs = [
-        "message_lite.h",
-    ],
-    visibility = [
-        "//connections:__subpackages__",
-    ],
-    deps = [
-        "@com_google_protobuf//:protobuf_lite",
     ],
 )
 
@@ -189,6 +179,7 @@ cc_library(
     deps = [
         ":internal",
         "//connections:core_types",
+        "//connections/implementation/analytics",
         "//connections/implementation/flags:connections_flags",
         "//connections/v3:v3_types",
         "//internal/flags:nearby_flags",
@@ -198,6 +189,7 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_for_library_testonly",
     ],
 )
@@ -460,6 +452,7 @@ cc_test(
         ":internal_test",
         "//connections:core_types",
         "//connections/implementation/mediums",
+        "//internal/platform:base",
         "//internal/platform:test_util",
         "//internal/platform:types",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
@@ -490,6 +483,7 @@ cc_test(
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "//proto:connections_enums_cc_proto",
         "@com_github_protobuf_matchers//protobuf-matchers",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",

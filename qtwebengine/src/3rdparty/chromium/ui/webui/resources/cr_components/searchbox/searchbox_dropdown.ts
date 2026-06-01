@@ -4,7 +4,6 @@
 
 import './searchbox_match.js';
 import './searchbox_dropdown_shared_style.css.js';
-import '//resources/polymer/v3_0/iron-selector/iron-selector.js';
 import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import '//resources/cr_elements/cr_icons.css.js';
 
@@ -132,8 +131,10 @@ export class SearchboxDropdownElement extends PolymerElement {
   canShowSecondarySide: boolean;
   hadSecondarySide: boolean;
   hasSecondarySide: boolean;
+  hasEmptyInput: boolean;
   result: AutocompleteResult;
   selectedMatchIndex: number;
+  showThumbnail: boolean;
   private hiddenGroupIds_: number[];
   private selectableMatchElements_: SearchboxMatchElement[];
   private showSecondarySide_: boolean;

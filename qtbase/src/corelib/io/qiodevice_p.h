@@ -23,6 +23,8 @@
 #include "private/qringbuffer_p.h"
 #ifndef QT_NO_QOBJECT
 #include "private/qobject_p.h"
+#else
+static constexpr int QObjectPrivateVersion = QT_VERSION;
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -42,7 +44,7 @@ class Q_CORE_EXPORT QIODevicePrivate
     Q_DISABLE_COPY_MOVE(QIODevicePrivate)
 
 public:
-    QIODevicePrivate();
+    QIODevicePrivate(decltype(QObjectPrivateVersion) version = QObjectPrivateVersion);
     virtual ~QIODevicePrivate();
 
     enum class ReadLineOption {

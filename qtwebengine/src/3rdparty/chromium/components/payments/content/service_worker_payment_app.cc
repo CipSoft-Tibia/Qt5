@@ -398,8 +398,7 @@ bool ServiceWorkerPaymentApp::CanPreselect() const {
 }
 
 std::u16string ServiceWorkerPaymentApp::GetMissingInfoLabel() const {
-  NOTREACHED_IN_MIGRATION();
-  return std::u16string();
+  NOTREACHED();
 }
 
 bool ServiceWorkerPaymentApp::HasEnrolledInstrument() const {
@@ -407,10 +406,6 @@ bool ServiceWorkerPaymentApp::HasEnrolledInstrument() const {
   // interface should not be invoked.
   DCHECK(can_make_payment_result_);
   return has_enrolled_instrument_result_;
-}
-
-void ServiceWorkerPaymentApp::RecordUse() {
-  NOTIMPLEMENTED();
 }
 
 bool ServiceWorkerPaymentApp::NeedsInstallation() const {

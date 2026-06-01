@@ -16,16 +16,19 @@
     <tr><td style="border:0px">
     \endraw
     \image qtquickcontrols-gallery-welcome.png
+           {Gallery welcome screen showing available control categories}
     \caption Welcome Screen
     \raw HTML
     </td><td style="border:0px">
     \endraw
     \image qtquickcontrols-gallery-drawer.png
+           {Side drawer menu displaying list of Qt Quick Controls}
     \caption Side Drawer
     \raw HTML
     </td><td style="border:0px">
     \endraw
     \image qtquickcontrols-gallery-menu.png
+           {Options menu with settings and about items}
     \caption Options Menu
     \raw HTML
     </td></tr>

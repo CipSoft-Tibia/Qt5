@@ -17,16 +17,14 @@ std::string_view CallSiteToString(CallTimerState::CallSite call_site) {
   switch (call_site) {
     case CTS::kApplyFieldsAction:
       return "ApplyFieldsAction";
-    case CTS::kBatchSelectOrSelectListOptionChange:
-      return "BatchSelectOrSelectListOptionChange";
+    case CTS::kBatchSelectOptionChange:
+      return "BatchSelectOptionChange";
     case CTS::kDidChangeScrollOffsetImpl:
       return "DidChangeScrollOffsetImpl";
     case CTS::kExtractForm:
       return "ExtractForm";
     case CTS::kFocusedElementChanged:
       return "FocusedElementChanged";
-    case CTS::kFocusedElementChangedDeprecated:
-      return "FocusedElementChangedDeprecated";
     case CTS::kGetFormDataFromUnownedInputElements:
       return "GetFormDataFromUnownedInputElements";
     case CTS::kGetFormDataFromWebForm:
@@ -39,12 +37,10 @@ std::string_view CallSiteToString(CallTimerState::CallSite call_site) {
       return "JavaScriptChangedValue";
     case CTS::kNotifyPasswordManagerAboutClearedForm:
       return "NotifyPasswordManagerAboutClearedForm";
-    case CTS::kOnFormSubmitted:
-      return "OnFormSubmitted";
     case CTS::kOnProvisionallySaveForm:
       return "OnProvisionallySaveForm";
-    case CTS::kOnTextFieldDidChange:
-      return "OnTextFieldDidChange";
+    case CTS::kOnTextFieldValueChanged:
+      return "OnTextFieldValueChanged";
     case CTS::kQueryAutofillSuggestions:
       return "QueryAutofillSuggestions";
     case CTS::kShowSuggestionPopup:
@@ -53,6 +49,14 @@ std::string_view CallSiteToString(CallTimerState::CallSite call_site) {
       return "UpdateFormCache";
     case CTS::kUpdateLastInteractedElement:
       return "UpdateLastInteractedElement";
+    case CTS::kDidDispatchDomContentLoadedEvent:
+      return "DidDispatchDomContentLoadedEvent";
+    case CTS::kEmitFormIssuesToDevtools:
+      return "EmitFormIssuesToDevtools";
+    case CTS::kExtractForms:
+      return "ExtractForms";
+    case CTS::kExtractFormsAndNotifyPasswordAutofillAgent:
+      return "ExtractFormsAndNotifyPasswordAutofillAgent";
   }
   NOTREACHED();
 }

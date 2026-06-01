@@ -574,6 +574,8 @@ static constexpr struct {
     { Qt::Key_MicVolumeUp,                QT_TRANSLATE_NOOP("QShortcut", "Microphone Volume Up") },
     { Qt::Key_MicVolumeDown,              QT_TRANSLATE_NOOP("QShortcut", "Microphone Volume Down") },
 
+    { Qt::Key_Keyboard,                   QT_TRANSLATE_NOOP("QShortcut", "Keyboard") },
+
     { Qt::Key_New,                        QT_TRANSLATE_NOOP("QShortcut", "New") },
     { Qt::Key_Open,                       QT_TRANSLATE_NOOP("QShortcut", "Open") },
     { Qt::Key_Find,                       QT_TRANSLATE_NOOP("QShortcut", "Find") },

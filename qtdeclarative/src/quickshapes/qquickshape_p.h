@@ -180,6 +180,38 @@ private:
     qreal m_angle = 0;
 };
 
+class Q_QUICKSHAPES_EXPORT QQuickShapeTrim : public QObject
+{
+    Q_OBJECT
+
+    Q_PROPERTY(qreal start READ start WRITE setStart NOTIFY startChanged FINAL)
+    Q_PROPERTY(qreal end READ end WRITE setEnd NOTIFY endChanged FINAL)
+    Q_PROPERTY(qreal offset READ offset WRITE setOffset NOTIFY offsetChanged FINAL)
+    QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(6, 10)
+public:
+    QQuickShapeTrim(QObject *parent = nullptr);
+
+    qreal start() const;
+    void setStart(qreal t);
+
+    qreal end() const;
+    void setEnd(qreal t);
+
+    qreal offset() const;
+    void setOffset(qreal t);
+
+Q_SIGNALS:
+    void startChanged();
+    void endChanged();
+    void offsetChanged();
+
+private:
+    qreal m_start = 0;
+    qreal m_end = 1;
+    qreal m_offset = 0;
+};
+
 class Q_QUICKSHAPES_EXPORT QQuickShapePath : public QQuickPath
 {
     Q_OBJECT
@@ -199,6 +231,7 @@ class Q_QUICKSHAPES_EXPORT QQuickShapePath : public QQuickPath
     Q_PROPERTY(PathHints pathHints READ pathHints WRITE setPathHints NOTIFY pathHintsChanged REVISION(6, 7) FINAL)
     Q_PROPERTY(QMatrix4x4 fillTransform READ fillTransform WRITE setFillTransform NOTIFY fillTransformChanged REVISION(6, 8) FINAL)
     Q_PROPERTY(QQuickItem *fillItem READ fillItem WRITE setFillItem NOTIFY fillItemChanged REVISION(6, 8) FINAL)
+    Q_PROPERTY(QQuickShapeTrim *trim READ trim CONSTANT REVISION(6, 10) FINAL)
     QML_NAMED_ELEMENT(ShapePath)
     QML_ADDED_IN_VERSION(1, 0)
 
@@ -286,6 +319,9 @@ public:
 
     QQuickItem *fillItem() const;
     void setFillItem(QQuickItem *newFillItem);
+
+    QQuickShapeTrim *trim();
+    bool hasTrim() const;
 
 Q_SIGNALS:
     void shapePathChanged();
@@ -408,6 +444,8 @@ public:
     Q_REVISION(6, 7) void setVerticalAlignment(VAlignment newVerticalAlignment);
 
 protected:
+    QQuickShape(QQuickShapePrivate &dd, QQuickItem *parent);
+
     QSGNode *updatePaintNode(QSGNode *node, UpdatePaintNodeData *) override;
     void updatePolish() override;
     void itemChange(ItemChange change, const ItemChangeData &data) override;

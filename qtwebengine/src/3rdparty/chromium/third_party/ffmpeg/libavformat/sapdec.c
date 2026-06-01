@@ -179,7 +179,9 @@ static int sap_read_header(AVFormatContext *s)
             goto fail;
         }
         st->id = i;
-        avcodec_parameters_copy(st->codecpar, sap->sdp_ctx->streams[i]->codecpar);
+        ret = avcodec_parameters_copy(st->codecpar, sap->sdp_ctx->streams[i]->codecpar);
+        if (ret < 0)
+            goto fail;
         st->time_base = sap->sdp_ctx->streams[i]->time_base;
     }
 
@@ -197,6 +199,9 @@ static int sap_fetch_packet(AVFormatContext *s, AVPacket *pkt)
     int n, ret;
     struct pollfd p = {fd, POLLIN, 0};
     uint8_t recvbuf[RTP_MAX_PACKET_LENGTH];
+
+    if (fd < 0)
+        return fd;
 
     if (sap->eof)
         return AVERROR_EOF;

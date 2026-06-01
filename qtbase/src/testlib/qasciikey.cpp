@@ -467,7 +467,9 @@ char QTest::keyToAscii(Qt::Key key)
     case Qt::Key_Yes : return 0; // = 0x01010001
     case Qt::Key_No : return 0; // = 0x01010002
 
-    default: QTEST_ASSERT(false); return 0;
+    default:
+        qWarning() << __FUNCTION__ << "Unhandled key code" << key;
+        return 0;
     }
 }
 

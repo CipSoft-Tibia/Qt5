@@ -64,8 +64,8 @@ int main(int argc, char **argv)
     QTranslator qtTranslator;
     QString sysLocale = QLocale::system().name();
     QString resourceDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
-    if (translator.load(QLatin1String("linguist_") + sysLocale, resourceDir)
-        && qtTranslator.load(QLatin1String("qt_") + sysLocale, resourceDir)) {
+    if (translator.load("linguist_"_L1 + sysLocale, resourceDir)
+        && qtTranslator.load("qt_"_L1 + sysLocale, resourceDir)) {
         app.installTranslator(&translator);
         app.installTranslator(&qtTranslator);
     }
@@ -80,22 +80,20 @@ int main(int argc, char **argv)
 
     for (int i = 1; i < args.size(); ++i) {
         QString arg = args.at(i);
-        if (arg == QLatin1String("-help")
-                || arg == QLatin1String("--help")
-                || arg == QLatin1String("-h")) {
+        if (arg == "-help"_L1 || arg == "--help"_L1 || arg == "-h"_L1) {
             printUsage();
             return 0;
-        } else if (arg == QLatin1String("-keep")) {
+        } else if (arg == "-keep"_L1) {
             keepProjectDescription = true;
-        } else if (arg == QLatin1String("-silent")) {
+        } else if (arg == "-silent"_L1) {
             lupdateOptions << arg;
             lprodumpOptions << arg;
-        } else if (arg == QLatin1String("-pro-debug")) {
+        } else if (arg == "-pro-debug"_L1) {
             lprodumpOptions << arg;
-        } else if (arg == QLatin1String("-version")) {
+        } else if (arg == "-version"_L1) {
             printOut(QStringLiteral("lupdate-pro version %1\n").arg(QLatin1String(QT_VERSION_STR)));
             return 0;
-        } else if (arg == QLatin1String("-pro")) {
+        } else if (arg == "-pro"_L1) {
             ++i;
             if (i == argc) {
                 printErr(u"The -pro option should be followed by a filename of .pro file.\n"_s);
@@ -103,7 +101,7 @@ int main(int argc, char **argv)
             }
             lprodumpOptions << arg << args[i];
             hasProFiles = true;
-        } else if (arg == QLatin1String("-pro-out")) {
+        } else if (arg == "-pro-out"_L1) {
             ++i;
             if (i == argc) {
                 printErr(u"The -pro-out option should be followed by a directory name.\n"_s);

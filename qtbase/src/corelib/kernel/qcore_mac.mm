@@ -50,6 +50,8 @@ extern char **environ;
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 // --------------------------------------------------------------------------
 
 #if defined(Q_OS_MACOS)
@@ -174,6 +176,7 @@ os_log_type_t AppleUnifiedLogger::logTypeForMessageType(QtMsgType msgType)
 
 #endif // QT_USE_APPLE_UNIFIED_LOGGING
 
+#ifndef QT_NO_DEBUG_STREAM
 // -------------------------------------------------------------------------
 
 QDebug operator<<(QDebug dbg, id obj)
@@ -228,6 +231,7 @@ QT_FOR_EACH_CORE_FOUNDATION_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
 QT_FOR_EACH_MUTABLE_CORE_FOUNDATION_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
 QT_FOR_EACH_CORE_GRAPHICS_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
 QT_FOR_EACH_MUTABLE_CORE_GRAPHICS_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
+#endif // QT_NO_DEBUG_STREAM
 
 // -------------------------------------------------------------------------
 
@@ -320,14 +324,7 @@ QDebug operator<<(QDebug debug, const QCFString &string)
 }
 #endif // !QT_NO_DEBUG_STREAM
 
-#ifdef Q_OS_MACOS
-bool qt_mac_applicationIsInDarkMode()
-{
-    auto appearance = [NSApp.effectiveAppearance bestMatchFromAppearancesWithNames:
-            @[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
-    return [appearance isEqualToString:NSAppearanceNameDarkAqua];
-}
-
+#if defined(Q_OS_MACOS) && !defined(QT_BOOTSTRAPPED)
 bool qt_mac_runningUnderRosetta()
 {
     int translated = 0;
@@ -384,19 +381,36 @@ std::optional<uint32_t> qt_mac_sipConfiguration()
             return {}; // SIP config is not available
 
         if (auto type = CFGetTypeID(csrConfig); type != CFDataGetTypeID()) {
+#ifndef QT_NO_DEBUG_STREAM
             qWarning() << "Unexpected SIP config type" << CFCopyTypeIDDescription(type);
+#endif
             return {};
         }
 
         QByteArray data = QByteArray::fromRawCFData(csrConfig.as<CFDataRef>());
         if (data.size() != sizeof(uint32_t)) {
-            qWarning() << "Unexpected SIP config size" << data.size();
+            qWarning("Unexpected SIP config size %td", ptrdiff_t(data.size()));
             return {};
         }
 
         return qFromLittleEndian<uint32_t>(data.constData());
     }();
     return configuration;
+}
+
+bool qt_mac_processHasEntitlement(const QString &entitlement)
+{
+    if (QCFType<SecTaskRef> task = SecTaskCreateFromSelf(kCFAllocatorDefault)) {
+        if (QCFType<CFTypeRef> value = SecTaskCopyValueForEntitlement(task,
+            entitlement.toCFString(), nullptr)) {
+
+            if (CFGetTypeID(value) != CFBooleanGetTypeID())
+                return false;
+
+            return CFBooleanGetValue(value.as<CFBooleanRef>());
+        }
+    }
+    return false;
 }
 
 #define CHECK_SPAWN(expr) \
@@ -477,55 +491,11 @@ AppleApplication *qt_apple_sharedApplication()
 
 #if !defined(QT_BOOTSTRAPPED)
 
-#if defined(Q_OS_MACOS)
-namespace {
-struct SandboxChecker
-{
-    SandboxChecker() : m_thread([this]{
-            m_isSandboxed = []{
-                QCFType<SecStaticCodeRef> staticCode = nullptr;
-                NSURL *executableUrl = NSBundle.mainBundle.executableURL;
-                if (SecStaticCodeCreateWithPath((__bridge CFURLRef)executableUrl,
-                    kSecCSDefaultFlags, &staticCode) != errSecSuccess)
-                    return false;
-
-                QCFType<SecRequirementRef> sandboxRequirement;
-                if (SecRequirementCreateWithString(CFSTR("entitlement[\"com.apple.security.app-sandbox\"] exists"),
-                    kSecCSDefaultFlags, &sandboxRequirement) != errSecSuccess)
-                    return false;
-
-                if (SecStaticCodeCheckValidityWithErrors(staticCode,
-                    kSecCSBasicValidateOnly, sandboxRequirement, nullptr) != errSecSuccess)
-                    return false;
-
-                return true;
-            }();
-        })
-    {}
-    ~SandboxChecker() {
-        std::scoped_lock lock(m_mutex);
-        if (m_thread.joinable())
-            m_thread.detach();
-    }
-    bool isSandboxed() const {
-        std::scoped_lock lock(m_mutex);
-        if (m_thread.joinable())
-            m_thread.join();
-        return m_isSandboxed;
-    }
-private:
-    bool m_isSandboxed;
-    mutable std::thread m_thread;
-    mutable std::mutex m_mutex;
-};
-} // namespace
-static SandboxChecker sandboxChecker;
-#endif // Q_OS_MACOS
-
 bool qt_apple_isSandboxed()
 {
 #if defined(Q_OS_MACOS)
-    return sandboxChecker.isSandboxed();
+    static bool isSandboxed = qt_mac_processHasEntitlement(u"com.apple.security.app-sandbox"_s);
+    return isSandboxed;
 #else
     return true; // All other Apple platforms
 #endif
@@ -585,6 +555,7 @@ QMacRootLevelAutoReleasePool::~QMacRootLevelAutoReleasePool()
 
 // -------------------------------------------------------------------------
 
+#ifndef QT_BOOTSTRAPPED
 void qt_apple_check_os_version()
 {
 #if defined(__WATCH_OS_VERSION_MIN_REQUIRED)
@@ -632,6 +603,7 @@ void qt_apple_check_os_version()
     }
 }
 Q_CONSTRUCTOR_FUNCTION(qt_apple_check_os_version);
+#endif // QT_BOOTSTRAPPED
 
 // -------------------------------------------------------------------------
 
@@ -678,6 +650,7 @@ QT_BEGIN_NAMESPACE
 
 // -------------------------------------------------------------------------
 
+#ifndef QT_BOOTSTRAPPED
 QOperatingSystemVersion QMacVersion::buildSDK(VersionTarget target)
 {
     switch (target) {
@@ -797,6 +770,7 @@ QMacVersion::VersionTuple QMacVersion::libraryVersion()
     }();
     return version;
 }
+#endif // QT_BOOTSTRAPPED
 
 // -------------------------------------------------------------------------
 

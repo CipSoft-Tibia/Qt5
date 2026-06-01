@@ -51,10 +51,11 @@ private Q_SLOTS:
     void subscriptionIdsOverlap();
     void keepAlive_data();
     void keepAlive();
+    void reconnect();
 private:
     QProcess m_brokerProcess;
     QString m_testBroker;
-    quint16 m_port{1883};
+    quint16 m_port{0};
 };
 
 Tst_QMqttClient::Tst_QMqttClient()
@@ -185,7 +186,7 @@ void Tst_QMqttClient::sendReceive()
         QSKIP("The MQTT 5 test broker does not support huge packages.", SkipOnce);
     publisher.publish(testTopic, data, 1);
 
-    QTRY_VERIFY2(received, "Subscriber did not receive message");
+    QTRY_VERIFY2_WITH_TIMEOUT(received, "Subscriber did not receive message", std::chrono::seconds(180));
     QVERIFY2(verified, "Subscriber received different message");
 }
 
@@ -270,6 +271,9 @@ void Tst_QMqttClient::willMessage()
     client1.connectToHost();
     QTRY_COMPARE(client1.state(), QMqttClient::Connected);
 
+    if (!client1.isTcp())
+        QSKIP("This test is only for tcp");
+
     auto client1Sub = client1.subscribe(willTopic, 1);
     connect(client1Sub, &QMqttSubscription::messageReceived, [=](QMqttMessage message) {
         Q_UNUSED(message);
@@ -282,7 +286,7 @@ void Tst_QMqttClient::willMessage()
 
     // Client B connects (via TcpSocket)
     QTcpSocket sock;
-    sock.connectToHost(m_testBroker, m_port);
+    sock.connectToHost(client1.hostname(), client1.port());
     QVERIFY(sock.waitForConnected());
 
     for (int i = 1; i > 0; --i) {
@@ -336,10 +340,12 @@ void Tst_QMqttClient::compliantTopic_data()
 void Tst_QMqttClient::compliantTopic()
 {
     QFETCH(QString, topic);
+    QFETCH(QMqttClient::ProtocolVersion, mqttVersion);
+
     QString truncTopic = topic;
     truncTopic.truncate(std::numeric_limits<std::uint16_t>::max());
 
-    QMqttClient publisher;
+    VersionClient(mqttVersion, publisher);
     publisher.setClientId(QLatin1String("publisher"));
     publisher.setHostname(m_testBroker);
     publisher.setPort(m_port);
@@ -347,7 +353,7 @@ void Tst_QMqttClient::compliantTopic()
     publisher.connectToHost();
     QTRY_COMPARE(publisher.state(), QMqttClient::Connected);
 
-    QMqttClient subscriber;
+    VersionClient(mqttVersion, subscriber);
     subscriber.setClientId(QLatin1String("subscriber"));
     subscriber.setHostname(m_testBroker);
     subscriber.setPort(m_port);
@@ -505,6 +511,9 @@ void Tst_QMqttClient::reconnect_QTBUG65726()
     client.setHostname(QLatin1String("localhost"));
     client.setPort(5726);
 
+    if (!client.isTcp())
+        QSKIP("This test is only for tcp");
+
     server.version = client.protocolVersion();
 
     client.connectToHost();
@@ -567,6 +576,9 @@ void Tst_QMqttClient::staticProperties_QTBUG_67176()
     client.setHostname(m_testBroker);
     client.setPort(m_port);
 
+    auto clientVersion = client.protocolVersion();
+    const QString hostname = client.hostname();
+    const int port = client.port();
     const QString clientId = client.clientId();
     const quint16 keepAlive = client.keepAlive();
     const bool clean = client.cleanSession();
@@ -578,16 +590,16 @@ void Tst_QMqttClient::staticProperties_QTBUG_67176()
     QCOMPARE(client.clientId(), clientId);
 
     client.setHostname(QLatin1String("some.domain.foo"));
-    QCOMPARE(client.hostname(), m_testBroker);
+    QCOMPARE(client.hostname(), hostname);
 
     client.setPort(1234);
-    QCOMPARE(client.port(), m_port);
+    QCOMPARE(client.port(), port);
 
     client.setKeepAlive(keepAlive + 10);
     QCOMPARE(client.keepAlive(), keepAlive);
 
     client.setProtocolVersion(QMqttClient::MQTT_3_1);
-    QCOMPARE(client.protocolVersion(), mqttVersion);
+    QCOMPARE(client.protocolVersion(), clientVersion);
 
     client.setUsername(QLatin1String("someUser"));
     QCOMPARE(client.username(), QLatin1String());
@@ -601,8 +613,7 @@ void Tst_QMqttClient::staticProperties_QTBUG_67176()
 
 void Tst_QMqttClient::authentication()
 {
-    QMqttClient client;
-    client.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, client);
     client.setHostname(m_testBroker);
     client.setPort(m_port);
 
@@ -645,12 +656,12 @@ void Tst_QMqttClient::messageStatus()
     QFETCH(int, qos);
     QFETCH(QList<QMqtt::MessageStatus>, expectedStatus);
 
-    QMqttClient client;
-    client.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, client);
     client.setHostname(m_testBroker);
     client.setPort(m_port);
 
     client.connectToHost();
+
     QTRY_VERIFY2(client.state() == QMqttClient::Connected, "Could not connect to broker.");
 
     const QString topic = QLatin1String("Qt/client/statusCheck");
@@ -684,16 +695,14 @@ void Tst_QMqttClient::messageStatusReceive()
     QFETCH(int, qos);
     QFETCH(QList<QMqtt::MessageStatus>, expectedStatus);
 
-    QMqttClient publisher;
-    publisher.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, publisher);
     publisher.setHostname(m_testBroker);
     publisher.setPort(m_port);
 
     publisher.connectToHost();
     QTRY_VERIFY2(publisher.state() == QMqttClient::Connected, "Could not connect to broker.");
 
-    QMqttClient subscriber;
-    subscriber.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, subscriber);
     subscriber.setHostname(m_testBroker);
     subscriber.setPort(m_port);
 
@@ -737,8 +746,7 @@ void Tst_QMqttClient::subscriptionIdsOverlap()
 
     const QString topic = QLatin1String("Qt/client/idcheck");
     // Connect publisher
-    QMqttClient pub;
-    pub.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, pub);
     pub.setHostname(m_testBroker);
     pub.setPort(m_port);
 
@@ -746,8 +754,7 @@ void Tst_QMqttClient::subscriptionIdsOverlap()
     QTRY_VERIFY2(pub.state() == QMqttClient::Connected, "Could not connect publisher.");
 
     // Connect subA
-    QMqttClient subClientA;
-    subClientA.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, subClientA);
     subClientA.setHostname(m_testBroker);
     subClientA.setPort(m_port);
 
@@ -769,8 +776,7 @@ void Tst_QMqttClient::subscriptionIdsOverlap()
     });
 
     // Connect subB
-    QMqttClient subClientB;
-    subClientB.setProtocolVersion(QMqttClient::MQTT_5_0);
+    VersionClient(QMqttClient::MQTT_5_0, subClientB);
     subClientB.setHostname(m_testBroker);
     subClientB.setPort(m_port);
 
@@ -884,6 +890,76 @@ void Tst_QMqttClient::keepAlive()
 
     client.disconnectFromHost();
     QTRY_COMPARE(client.state(), QMqttClient::Disconnected);
+}
+
+void Tst_QMqttClient::reconnect()
+{
+    VersionClient(QMqttClient::ProtocolVersion(0), client);
+    client.setHostname(m_testBroker);
+    client.setPort(m_port);
+    client.connectToHost();
+    QTRY_COMPARE(client.state(), QMqttClient::Connected);
+
+    client.disconnectFromHost();
+    QTRY_COMPARE(client.state(), QMqttClient::Disconnected);
+
+    /* The rest requires a mosquitto installation that runs
+       on multiple ports.
+    */
+#if defined(MQTT_TEST_BROKER)
+    client.setPort(client.port() + 1000);
+    client.connectToHost();
+    QTRY_COMPARE(client.state(), QMqttClient::Connected);
+
+    client.disconnectFromHost();
+    QTRY_COMPARE(client.state(), QMqttClient::Disconnected);
+
+    QMqttClient client2;
+    client2.setHostname(client.hostname());
+
+    for (int i = 0; i < 2; ++i) {
+#if defined(QT_MQTT_WITH_WEBSOCKETS)
+        client2.setPort(9080);
+        client2.connectToHostWebSocket();
+        QTRY_COMPARE(client2.state(), QMqttClient::Connected);
+
+        client2.disconnectFromHost();
+        QTRY_COMPARE(client2.state(), QMqttClient::Disconnected);
+#endif
+
+#if defined(QT_MQTT_WITH_WEBSOCKETS) && !defined(QT_NO_SSL)
+        client2.setPort(9081);
+        QUrl url(QString(u"wss://") + client2.hostname() + QString(u":") + QString::number(client2.port()));
+        QWebSocketHandshakeOptions options;
+        options.setSubprotocols(QStringList{ QString::fromUtf8("mqttv3.1") });
+        QWebSocket socket;
+        socket.setSslConfiguration(makeConfig(QString::fromUtf8(getenv("MQTT_TEST_BROKER_CERTIFICATE"))));
+        socket.open(url, options);
+
+        client2.connectToHostWebSocketEncrypted(&socket);
+        QTRY_COMPARE(client2.state(), QMqttClient::Connected);
+
+        client2.disconnectFromHost();
+        QTRY_COMPARE(client2.state(), QMqttClient::Disconnected);
+#endif
+
+#if !defined(QT_NO_SSL)
+        client2.setPort(9883);
+        client2.connectToHostEncrypted(makeConfig(QString::fromUtf8(getenv("MQTT_TEST_BROKER_CERTIFICATE"))));
+        QTRY_COMPARE(client2.state(), QMqttClient::Connected);
+
+        client2.disconnectFromHost();
+        QTRY_COMPARE(client2.state(), QMqttClient::Disconnected);
+#endif
+
+        client2.setPort(2883);
+        client2.connectToHost();
+        QTRY_COMPARE(client2.state(), QMqttClient::Connected);
+
+        client2.disconnectFromHost();
+        QTRY_COMPARE(client2.state(), QMqttClient::Disconnected);
+    }
+#endif
 }
 
 QTEST_MAIN(Tst_QMqttClient)

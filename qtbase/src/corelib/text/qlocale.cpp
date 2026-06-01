@@ -30,6 +30,7 @@ QT_WARNING_DISABLE_GCC("-Wfree-nonheap-object") // false positive tracking
 #include "private/qduplicatetracker_p.h"
 #include "qhashfunctions.h"
 #include "qstring.h"
+#include "qstringiterator_p.h"
 #include "qlocale.h"
 #include "qlocale_p.h"
 #include "qlocale_tools_p.h"
@@ -1336,7 +1337,7 @@ void QLocale::setNumberOptions(NumberOptions options)
 */
 QLocale::NumberOptions QLocale::numberOptions() const
 {
-    return static_cast<NumberOptions>(d->m_numberOptions);
+    return d->m_numberOptions;
 }
 
 /*!
@@ -2212,6 +2213,124 @@ QString QLocale::toString(qulonglong i) const
                  ? 0 : QLocaleData::GroupDigits);
 
     return d->m_data->unsLongLongToString(i, -1, 10, -1, flags);
+}
+// ### Incorrect way of calculating the width, will be fixed soon.
+static qsizetype stringWidth(QStringView text)
+{
+    QStringIterator counter(text);
+    qsizetype count = 0;
+    while (counter.hasNext()) {
+        ++count;
+        [[maybe_unused]] auto ch = counter.next();
+    }
+    return count;
+}
+
+static unsigned calculateFlags(int fieldWidth, char32_t fillChar,
+                               const QLocale &locale)
+{
+    unsigned flags = QLocaleData::NoFlags;
+    if (!(locale.numberOptions() & QLocale::OmitGroupSeparator))
+        flags |= QLocaleData::GroupDigits;
+    if (fieldWidth < 0)
+        flags |= QLocaleData::LeftAdjusted;
+    else if (fillChar == U'0')
+        flags |= QLocaleData::ZeroPadded;
+
+    return flags;
+}
+
+static QString calculateFiller(qsizetype padding,
+                               char32_t fillChar,
+                               [[maybe_unused]] qsizetype fieldWidth,
+                               const QLocaleData *localeData)
+{
+    QString filler;
+    if (fillChar == U'0') {
+        Q_ASSERT(fieldWidth < 0);
+        filler = localeData->zeroDigit();
+    } else {
+        filler = QString(QChar::fromUcs4(fillChar));
+    }
+    // ### size is not width
+    if (padding > 1)
+        filler = filler.repeated(padding);
+    return filler;
+}
+
+/*!
+    \fn QString QLocale::toString(short number, int fieldWidth, char32_t fillChar) const
+    \fn QString QLocale::toString(int number, int fieldWidth, char32_t fillChar) const
+    \fn QString QLocale::toString(long number, int fieldWidth, char32_t fillChar) const
+    \include qlocale.cpp tostring-with-padding
+    \include qlocale.cpp tostring-signed-padding
+*/
+/*!
+//! [tostring-with-padding]
+    Returns a string representation of the given \a number.
+
+    The string's length shall be at least the absolute value of \a fieldWidth,
+    using \a fillChar as padding if the \a number has fewer digits. If
+    \a fillChar is \c{'0'} the zero digit of this locale is used as padding.
+    If \a fieldWidth is negative the string starts with its representation
+    of \a number and, if shorter, is padded to length \c{-fieldWidth} with
+    the given \a fillChar. For positive fieldWidth, the padding appears before
+    the representation of \a number.
+//! [tostring-with-padding]
+//! [tostring-signed-padding]
+    When the \a number is negative and \a fieldWidth is positive, if
+    \a fillChar is a \c{'0'} the padding is inserted between this locale's
+    minus sign and the start of the number's digits.
+    \overload toString()
+//! [tostring-signed-padding]
+ */
+QString QLocale::toString(qlonglong number, int fieldWidth, char32_t fillChar) const
+{
+    int absFieldWidth = qAbs(fieldWidth);
+    int width = (fillChar == U'0') ? absFieldWidth : -1;
+    unsigned flags = calculateFlags(fieldWidth, fillChar, *this);
+
+    QString result = d->m_data->longLongToString(number, -1, 10, width, flags);
+    qsizetype padding = absFieldWidth - stringWidth(result);
+
+    if (padding > 0) {
+        QString filler = calculateFiller(padding, fillChar, fieldWidth, d->m_data);
+        if (fieldWidth < 0)
+            result.append(filler);
+        else
+            result.prepend(filler);
+    }
+    return result;
+}
+
+/*!
+    \fn QString QLocale::toString(ushort number, int fieldWidth, char32_t fillChar) const
+    \fn QString QLocale::toString(uint number, int fieldWidth, char32_t fillChar) const
+    \fn QString QLocale::toString(ulong number, int fieldWidth, char32_t fillChar) const
+    \include qlocale.cpp tostring-with-padding
+    \overload toString()
+ */
+/*!
+    \include qlocale.cpp tostring-with-padding
+    \overload toString()
+ */
+QString QLocale::toString(qulonglong number, int fieldWidth, char32_t fillChar) const
+{
+    int absFieldWidth = qAbs(fieldWidth);
+    int width = (fillChar == U'0') ? absFieldWidth : -1;
+    unsigned flags = calculateFlags(fieldWidth, fillChar, *this);
+
+    QString result = d->m_data->unsLongLongToString(number, -1, 10, width, flags);
+    qsizetype padding = absFieldWidth - stringWidth(result);
+
+    if (padding > 0) {
+        QString filler = calculateFiller(padding, fillChar, fieldWidth, d->m_data);
+        if (fieldWidth < 0)
+            result.append(filler);
+        else
+            result.prepend(filler);
+    }
+    return result;
 }
 
 /*!
@@ -3838,10 +3957,11 @@ QString QCalendarBackend::dateTimeToString(QStringView format, const QDateTime &
                 // so ms == 2 is always printed as "002", but ms == 200 can be either "2" or "200"
                 appendToResult(time.msec(), 3);
                 if (repeat != 3) {
-                    if (result.endsWith(locale.zeroDigit()))
-                        result.chop(1);
-                    if (result.endsWith(locale.zeroDigit()))
-                        result.chop(1);
+                    const QString zero = locale.zeroDigit();
+                    if (result.endsWith(zero))
+                        result.chop(zero.size());
+                    if (result.endsWith(zero))
+                        result.chop(zero.size());
                 }
                 break;
 
@@ -4326,6 +4446,13 @@ public:
     inline int asBmpDigit(char16_t digit) const;
     inline bool isInfNanChar(char ch) const { return matchInfNaN.matches(ch); }
     char nextToken();
+    bool fractionGroupClash() const
+    {
+        // If the user's hand-configuration of the system makes group and
+        // fractional part separators coincide, we have some kludges to apply,
+        // though we can skip them in integer mode.
+        return Q_UNLIKELY(m_mode != QLocaleData::IntegerMode && m_guide.group == m_guide.decimal);
+    }
 };
 
 int NumericTokenizer::asBmpDigit(char16_t digit) const
@@ -4393,6 +4520,12 @@ char NumericTokenizer::nextToken()
     }
     if (!m_guide.group.isEmpty() && tail.startsWith(m_guide.group)) {
         m_index += m_guide.group.size();
+        // When group and decimal coincide, and a fractional part is not
+        // unexpected, treat the last as a fractional part separator (and leave
+        // the caller to special-case the situations where that causes a
+        // parse-fail that we can dodge by not reading it that way).
+        if (fractionGroupClash() && tail.indexOf(m_guide.decimal, m_guide.group.size()) == -1)
+            return '.';
         return ',';
     }
     if (m_mode != QLocaleData::IntegerMode && tail.startsWith(m_guide.decimal)) {
@@ -4529,10 +4662,22 @@ bool QLocaleData::numberToCLocale(QStringView s, QLocale::NumberOptions number_o
         if (out == '.') {
             if (stage > Grouped) // Too late to start a fractional part.
                 return false;
-            // That's the end of the integral part - check size of last group:
-            if (badLeastGroup())
-                return false;
-            stage = Fraction;
+
+            if (tokens.fractionGroupClash() && badLeastGroup()
+                && digitsInGroup == grouping.higher) {
+                // Reinterpret '.' as ',' (as they're indistinguishable) to
+                // interpret the recent digits as a group, with the least to
+                // follow (hopefully of a suitable length):
+                out = ',';
+                stage = Grouped;
+                needHigherGroup = false;
+                digitsInGroup = 0;
+            } else {
+                // That's the end of the integral part - check size of last group:
+                if (badLeastGroup())
+                    return false;
+                stage = Fraction;
+            }
         } else if (out == 'e') {
             if (wantDigits || stage == Name || stage > Fraction)
                 return false;
@@ -4549,6 +4694,11 @@ bool QLocaleData::numberToCLocale(QStringView s, QLocale::NumberOptions number_o
             stage = Exponent;
             wantDigits = true; // We need some in the exponent
         } else if (out == ',') {
+            // (If tokens.fractionGroupClash(), a comma only comes out of
+            // nextToken() if there's a later separator, since the last is
+            // always treated as dot. So if we have a comma here, treating it as
+            // a dot wouldn't save the parse: the later dot-or-comma would make
+            // the text malformed.)
             if (number_options.testFlag(QLocale::RejectGroupSeparator))
                 return false;
 
@@ -4619,7 +4769,6 @@ bool QLocaleData::numberToCLocale(QStringView s, QLocale::NumberOptions number_o
             return false;
     }
 
-    result->append('\0');
     return true;
 }
 
@@ -4729,7 +4878,7 @@ double QLocaleData::stringToDouble(QStringView str, bool *ok,
             *ok = false;
         return 0.0;
     }
-    auto r = qt_asciiToDouble(buff.constData(), buff.size() - 1);
+    auto r = qt_asciiToDouble(buff.constData(), buff.size());
     if (ok != nullptr)
         *ok = r.ok();
     return r.result;
@@ -4998,11 +5147,11 @@ QString QLocale::formattedDataSize(qint64 bytes, int precision, DataSizeFormats 
 
     For example, using the default separator QLocale::TagSeparator::Dash, if the
     user has configured their system to use English as used in the USA, the list
-    would be "en-Latn-US", "en-US", "en". The order of entries is the order in
-    which to check for translations; earlier items in the list are to be
-    preferred over later ones. If your translation files use underscores, rather
-    than dashes, to separate locale tags, pass QLocale::TagSeparator::Underscore
-    as \a separator.
+    would be "en-Latn-US", "en-US", "en-Latn", "en". The order of entries is the
+    order in which to check for translations; earlier items in the list are to
+    be preferred over later ones. If your translation files (or other resources
+    specific to locale) use underscores, rather than dashes, to separate locale
+    tags, pass QLocale::TagSeparator::Underscore as \a separator.
 
     Returns a list of locale names. This may include multiple languages,
     especially for the system locale when multiple UI translation languages are
@@ -5016,8 +5165,9 @@ QString QLocale::formattedDataSize(qint64 bytes, int precision, DataSizeFormats 
     that would be more appropriate fallbacks.
 
     Starting from Qt 6.9, reasonable truncations are included in the returned
-    list \e after the explicitly specified locales. This change allows for more
-    accurate fallback options without callers needing to do any truncation.
+    list \e after all entries equivalent to the explicitly specified
+    locales. This change allows for more accurate fallback options without
+    callers needing to do any truncation.
 
     Users can explicitly include preferred fallback locales (such as en-US) in
     their system configuration to control the order of preference. You are
@@ -5055,23 +5205,33 @@ QStringList QLocale::uiLanguages(TagSeparator separator) const
             localeIds.append(QLocaleId::fromName(entry));
         if (localeIds.isEmpty())
             localeIds.append(systemLocale()->fallbackLocale().d->m_data->id());
-        // If the system locale (isn't C and) didn't include itself in the list,
-        // or as fallback, presume to know better than it and put its name
-        // first. (Known issue, QTBUG-104930, on some macOS versions when in
-        // locale en_DE.) Our translation system might have a translation for a
-        // locale the platform doesn't believe in.
+        /* Note: Darwin allows entirely independent choice of locale and of
+           preferred languages, so it's possible the locale implied by
+           LanguageId, ScriptId and TerritoryId is absent from the UILanguages
+           list and that this faithfully reflects the user's wishes. None the
+           less, we include it (if it isn't C) in the list below, after the last
+           with the same language and script or (if none has) at the end, in
+           case there is no better option available. (See, QTBUG-104930.)
+        */
         const QString name = QString::fromLatin1(d->m_data->id().name(sep)); // Raw name
         if (!name.isEmpty() && language() != C && !uiLanguages.contains(name)) {
             // That uses contains(name) as a cheap pre-test, but there may be an
             // entry that matches this on purging likely subtags.
             const QLocaleId id = d->m_data->id();
-            const QLocaleId mine = id.withLikelySubtagsRemoved();
-            const auto isMine = [mine](const QString &entry) {
-                return QLocaleId::fromName(entry).withLikelySubtagsRemoved() == mine;
-            };
-            if (std::none_of(uiLanguages.constBegin(), uiLanguages.constEnd(), isMine)) {
-                localeIds.prepend(id);
-                uiLanguages.prepend(QString::fromLatin1(id.name(sep)));
+            const QLocaleId max = id.withLikelySubtagsAdded();
+            const QLocaleId mine = max.withLikelySubtagsRemoved();
+            // Default to putting at the end:
+            qsizetype lastAlike = uiLanguages.size() - 1;
+            bool seen = false;
+            for (qsizetype i = 0; !seen && i < uiLanguages.size(); ++i) {
+                const auto its = QLocaleId::fromName(uiLanguages.at(i)).withLikelySubtagsAdded();
+                seen = its.withLikelySubtagsRemoved() == mine;
+                if (!seen && its.language_id == max.language_id && its.script_id == max.script_id)
+                    lastAlike = i;
+            }
+            if (!seen) {
+                localeIds.insert(lastAlike + 1, id);
+                uiLanguages.insert(lastAlike + 1, QString::fromLatin1(id.name(sep)));
             }
         }
     } else
@@ -5246,7 +5406,7 @@ QStringList QLocale::uiLanguages(TagSeparator separator) const
                 }
             }
             if (found) // Don't duplicate.
-                break; // any further truncations of prefix would also be found.
+                continue; // Some shorter truncations may still be missing.
             // Now we're committed to adding it, get it into known:
             (void) known.hasSeen(prefix);
             if (justAfter) {

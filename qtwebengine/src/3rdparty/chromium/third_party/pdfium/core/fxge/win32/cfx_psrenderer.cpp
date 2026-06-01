@@ -48,14 +48,14 @@ std::optional<ByteString> GenerateType42SfntData(
     return std::nullopt;
 
   // Per Type 42 font spec.
-  constexpr size_t kMaxSfntStringSize = 65535;
+  static constexpr size_t kMaxSfntStringSize = 65535;
   if (font_data.size() > kMaxSfntStringSize) {
     // TODO(thestig): Fonts that are too big need to be written out in sections.
     return std::nullopt;
   }
 
   // Each byte is written as 2 ASCIIHex characters, so really 64 chars per line.
-  constexpr size_t kMaxBytesPerLine = 32;
+  static constexpr size_t kMaxBytesPerLine = 32;
   fxcrt::ostringstream output;
   output << "/" << psname << "_sfnts [\n<\n";
   size_t bytes_per_line = 0;
@@ -388,7 +388,7 @@ void CFX_PSRenderer::SetClip_PathStroke(const CFX_Path& path,
 
   OutputPath(path, nullptr);
   CFX_FloatRect rect = path.GetBoundingBoxForStrokePath(
-      pGraphState->m_LineWidth, pGraphState->m_MiterLimit);
+      pGraphState->line_width(), pGraphState->miter_limit());
   m_ClipBox.Intersect(pObject2Device->TransformRect(rect).GetOuterRect());
 
   WriteString("strokepath W n sm\n");
@@ -453,27 +453,28 @@ bool CFX_PSRenderer::DrawPath(const CFX_Path& path,
 void CFX_PSRenderer::SetGraphState(const CFX_GraphStateData* pGraphState) {
   fxcrt::ostringstream buf;
   if (!m_bGraphStateSet ||
-      m_CurGraphState.m_LineCap != pGraphState->m_LineCap) {
-    buf << static_cast<int>(pGraphState->m_LineCap) << " J\n";
+      m_CurGraphState.line_cap() != pGraphState->line_cap()) {
+    buf << static_cast<int>(pGraphState->line_cap()) << " J\n";
   }
   if (!m_bGraphStateSet ||
-      m_CurGraphState.m_DashArray != pGraphState->m_DashArray) {
+      m_CurGraphState.dash_array() != pGraphState->dash_array()) {
     buf << "[";
-    for (const auto& dash : pGraphState->m_DashArray)
+    for (float dash : pGraphState->dash_array()) {
       buf << dash << " ";
-    buf << "]" << pGraphState->m_DashPhase << " d\n";
+    }
+    buf << "]" << pGraphState->dash_phase() << " d\n";
   }
   if (!m_bGraphStateSet ||
-      m_CurGraphState.m_LineJoin != pGraphState->m_LineJoin) {
-    buf << static_cast<int>(pGraphState->m_LineJoin) << " j\n";
+      m_CurGraphState.line_join() != pGraphState->line_join()) {
+    buf << static_cast<int>(pGraphState->line_join()) << " j\n";
   }
   if (!m_bGraphStateSet ||
-      m_CurGraphState.m_LineWidth != pGraphState->m_LineWidth) {
-    buf << pGraphState->m_LineWidth << " w\n";
+      m_CurGraphState.line_width() != pGraphState->line_width()) {
+    buf << pGraphState->line_width() << " w\n";
   }
   if (!m_bGraphStateSet ||
-      m_CurGraphState.m_MiterLimit != pGraphState->m_MiterLimit) {
-    buf << pGraphState->m_MiterLimit << " M\n";
+      m_CurGraphState.miter_limit() != pGraphState->miter_limit()) {
+    buf << pGraphState->miter_limit() << " M\n";
   }
   m_CurGraphState = *pGraphState;
   m_bGraphStateSet = true;
@@ -578,7 +579,7 @@ bool CFX_PSRenderer::DrawDIBits(RetainPtr<const CFX_DIBBase> bitmap,
       case FXDIB_Format::kBgraPremul:
 #endif
         // Should have returned early due to IsAlphaFormat() check above.
-        NOTREACHED_NORETURN();
+        NOTREACHED();
     }
     if (!bitmap) {
       WriteString("\nQ\n");
@@ -667,7 +668,7 @@ void CFX_PSRenderer::FindPSFontGlyph(CFX_GlyphCache* pGlyphCache,
         glyph.adjust_matrix.has_value() == charpos.m_bGlyphAdjust) {
       bool found;
       if (glyph.adjust_matrix.has_value()) {
-        constexpr float kEpsilon = 0.01f;
+        static constexpr float kEpsilon = 0.01f;
         const auto& adjust_matrix = glyph.adjust_matrix.value();
         found = fabs(adjust_matrix[0] - charpos.m_AdjustMatrix[0]) < kEpsilon &&
                 fabs(adjust_matrix[1] - charpos.m_AdjustMatrix[1]) < kEpsilon &&

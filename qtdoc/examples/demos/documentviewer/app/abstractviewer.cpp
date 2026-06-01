@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "abstractviewer.h"
+#include "translator.h"
 
 #include <QApplication>
 #include <QMainWindow>
@@ -18,10 +19,10 @@
 #include <QFile>
 #include <QSettings>
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 #include <QPrinter>
 #include <QPrintDialog>
-#endif // QT_DOCUMENTVIEWER_PRINTSUPPORT
+#endif // DOCUMENTVIEWER_PRINTSUPPORT
 
 using namespace Qt::StringLiterals;
 
@@ -42,6 +43,22 @@ void AbstractViewer::init(QFile *file, QWidget *widget, QMainWindow *mainWindow)
 AbstractViewer::~AbstractViewer()
 {
     AbstractViewer::cleanup();
+}
+
+void AbstractViewer::setTranslationBaseName(const QString &baseName)
+{
+    m_translator.reset(new Translator);
+    m_translator->setBaseName(baseName);
+    m_translator->install();
+}
+
+void AbstractViewer::updateTranslation(QLocale::Language lang)
+{
+    if (m_translator) {
+        m_translator->setLanguage(lang);
+        m_translator->install();
+        retranslate();
+    }
 }
 
 bool AbstractViewer::isEmpty() const
@@ -144,9 +161,7 @@ void AbstractViewer::statusMessage(const QString &message, const QString &type, 
 QToolBar *AbstractViewer::addToolBar(const QString &title)
 {
     auto *bar = mainWindow()->addToolBar(title);
-    QString name = title;
-    name.remove(u' ');
-    bar->setObjectName(name);
+    bar->setObjectName(viewerName() + "ToolBar"_L1);
     m_toolBars.append(bar);
     return bar;
 }
@@ -154,7 +169,7 @@ QToolBar *AbstractViewer::addToolBar(const QString &title)
 QMenu *AbstractViewer::addMenu(const QString &title)
 {
     QMenu *menu = new QMenu(title, menuBar());
-    menu->setObjectName(title);
+    menu->setObjectName(viewerName() + "Menu"_L1);
     menuBar()->insertMenu(m_uiAssets.help, menu);
     m_menus.append(menu);
     return menu;
@@ -179,28 +194,9 @@ void AbstractViewer::cleanup()
     maybeSetPrintingEnabled(false);
 }
 
-QMenu *AbstractViewer::fileMenu()
-{
-    static constexpr QLatin1StringView name = QLatin1StringView("qtFileMenu");
-    static QMenu *fileMenu = nullptr;
-    if (fileMenu)
-        return fileMenu;
-
-    const QList<QMenu *> menus = mainWindow()->findChildren<QMenu *>();
-    for (auto *menu : menus) {
-        if (menu->objectName() == name) {
-            fileMenu = menu;
-            return fileMenu;
-        }
-    }
-    fileMenu = addMenu(tr("&File"));
-    fileMenu->setObjectName(name);
-    return fileMenu;
-}
-
 void AbstractViewer::print()
 {
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
     static const QString type = tr("Printing");
     if (!hasContent()) {
         statusMessage(tr("No content to print."), type);
@@ -248,7 +244,7 @@ void AbstractViewer::print()
  */
 void AbstractViewer::maybeSetPrintingEnabled(bool enabled)
 {
-#ifndef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifndef DOCUMENTVIEWER_PRINTSUPPORT
     enabled = false;
 #else
     if (!hasContent())

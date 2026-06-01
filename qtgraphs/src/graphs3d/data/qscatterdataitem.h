@@ -28,6 +28,7 @@ public:
     QVector3D position() const noexcept { return m_position; }
     void setRotation(const QQuaternion &rot) noexcept { m_rotation = rot; }
     QQuaternion rotation() const { return m_rotation; }
+
     void setX(float value) noexcept { m_position.setX(value); }
     void setY(float value) noexcept { m_position.setY(value); }
     void setZ(float value) noexcept { m_position.setZ(value); }

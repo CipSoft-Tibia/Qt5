@@ -20,6 +20,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 static QString phraseViewHeaderKey()
 {
     return settingPath("PhraseViewHeader");
@@ -32,7 +34,7 @@ PhraseView::PhraseView(MultiDataModel *model, QList<QHash<QString, QList<Phrase 
       m_modelIndex(-1),
       m_doGuesses(true)
 {
-    setObjectName(QLatin1String("phrase list view"));
+    setObjectName("phrase list view");
 
     m_phraseModel = new PhraseModel(this);
 
@@ -258,7 +260,7 @@ QList<Phrase *> PhraseView::getPhrases(int model, const QString &source)
 {
     QList<Phrase *> phrases;
     const QString f = MainWindow::friendlyString(source);
-    const QStringList lookupWords = f.split(QLatin1Char(' '));
+    const QStringList lookupWords = f.split(u' ');
 
     for (const QString &s : lookupWords) {
         if (m_phraseDict->at(model).contains(s)) {

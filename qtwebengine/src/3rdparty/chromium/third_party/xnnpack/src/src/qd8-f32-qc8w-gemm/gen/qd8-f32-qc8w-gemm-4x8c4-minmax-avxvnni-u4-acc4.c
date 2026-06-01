@@ -12,6 +12,7 @@
 
 #include <immintrin.h>
 
+#include "xnnpack/common.h"
 #include "xnnpack/gemm.h"
 #include "xnnpack/intrinsics-polyfill.h"
 #include "xnnpack/math.h"
@@ -63,13 +64,14 @@ void xnn_qd8_f32_qc8w_gemm_minmax_ukernel_4x8c4__avxvnni_u4_acc4(
     c3 = c2;
   }
 
-  const __m256i vinput_zero_point0 = _mm256_set1_epi32((int) quantization_params[0].zero_point + 128);
-  const __m256i vinput_zero_point1 = _mm256_set1_epi32((int) quantization_params[1].zero_point + 128);
-  const __m256i vinput_zero_point2 = _mm256_set1_epi32((int) quantization_params[2].zero_point + 128);
-  const __m256i vinput_zero_point3 = _mm256_set1_epi32((int) quantization_params[3].zero_point + 128);
-  const __m256 voutput_min = _mm256_set1_ps(params->avxvnni.min);
-  const __m256 voutput_max = _mm256_set1_ps(params->avxvnni.max);
-  const __m256i vsign_mask = _mm256_set1_epi8(params->avxvnni.sign_mask);
+  const __m256i vinput_zero_point0 = _mm256_set1_epi32((int) quantization_params[0].zero_point);
+  const __m256i vinput_zero_point1 = _mm256_set1_epi32((int) quantization_params[1].zero_point);
+  const __m256i vinput_zero_point2 = _mm256_set1_epi32((int) quantization_params[2].zero_point);
+  const __m256i vinput_zero_point3 = _mm256_set1_epi32((int) quantization_params[3].zero_point);
+  const __m256 voutput_min = _mm256_set1_ps(params->scalar.min);
+  const __m256 voutput_max = _mm256_set1_ps(params->scalar.max);
+  // XNN_FORCE_REALIZATION(voutput_min);
+  // XNN_FORCE_REALIZATION(voutput_max);
   do {
     const __m256i vksum01234567 = _mm256_load_si256(w);
     __m256i vacc0x0x01234567 = _mm256_mullo_epi32(vksum01234567, vinput_zero_point0);
@@ -112,23 +114,6 @@ void xnn_qd8_f32_qc8w_gemm_minmax_ukernel_4x8c4__avxvnni_u4_acc4(
       __m256i va3x2x0123 = _mm256_set1_epi32((int) unaligned_load_u32(a3 + 8));
       __m256i va3x3x0123 = _mm256_set1_epi32((int) unaligned_load_u32(a3 + 12));
       a3 += 16;
-
-      va0x0x0123 = _mm256_xor_si256(va0x0x0123, vsign_mask);
-      va0x1x0123 = _mm256_xor_si256(va0x1x0123, vsign_mask);
-      va0x2x0123 = _mm256_xor_si256(va0x2x0123, vsign_mask);
-      va0x3x0123 = _mm256_xor_si256(va0x3x0123, vsign_mask);
-      va1x0x0123 = _mm256_xor_si256(va1x0x0123, vsign_mask);
-      va1x1x0123 = _mm256_xor_si256(va1x1x0123, vsign_mask);
-      va1x2x0123 = _mm256_xor_si256(va1x2x0123, vsign_mask);
-      va1x3x0123 = _mm256_xor_si256(va1x3x0123, vsign_mask);
-      va2x0x0123 = _mm256_xor_si256(va2x0x0123, vsign_mask);
-      va2x1x0123 = _mm256_xor_si256(va2x1x0123, vsign_mask);
-      va2x2x0123 = _mm256_xor_si256(va2x2x0123, vsign_mask);
-      va2x3x0123 = _mm256_xor_si256(va2x3x0123, vsign_mask);
-      va3x0x0123 = _mm256_xor_si256(va3x0x0123, vsign_mask);
-      va3x1x0123 = _mm256_xor_si256(va3x1x0123, vsign_mask);
-      va3x2x0123 = _mm256_xor_si256(va3x2x0123, vsign_mask);
-      va3x3x0123 = _mm256_xor_si256(va3x3x0123, vsign_mask);
 
       const __m256i vb0x01234567 = _mm256_load_si256((const __m256i*) ((const int8_t*) w + 0));
       const __m256i vb1x01234567 = _mm256_load_si256((const __m256i*) ((const int8_t*) w + 32));
@@ -176,11 +161,6 @@ void xnn_qd8_f32_qc8w_gemm_minmax_ukernel_4x8c4__avxvnni_u4_acc4(
       a2 += 4;
       __m256i va3x0123 = _mm256_set1_epi32((int) unaligned_load_u32(a3));
       a3 += 4;
-
-      va0x0123 = _mm256_xor_si256(va0x0123, vsign_mask);
-      va1x0123 = _mm256_xor_si256(va1x0123, vsign_mask);
-      va2x0123 = _mm256_xor_si256(va2x0123, vsign_mask);
-      va3x0123 = _mm256_xor_si256(va3x0123, vsign_mask);
 
       const __m256i vb01234567 = _mm256_load_si256(w);
 

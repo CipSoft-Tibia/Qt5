@@ -142,10 +142,9 @@ void QThreadStoragePrivate::init()
     destructors();
 }
 
-void QThreadStorageData::finish(void **p)
+void QThreadStoragePrivate::finish(QList<void *> *tls)
 {
-    QList<void *> *tls = reinterpret_cast<QList<void *> *>(p);
-    if (!tls || tls->isEmpty() || !destructors())
+    if (tls->isEmpty() || !destructors())
         return; // nothing to do
 
     DEBUG_MSG("QThreadStorageData: Destroying storage for thread %p", QThread::currentThread());
@@ -166,7 +165,7 @@ void QThreadStorageData::finish(void **p)
         locker.unlock();
 
         if (!destructor) {
-            if (QCoreApplicationPrivate::isAlive())
+            if (QCoreApplication::instanceExists())
                 qWarning("QThreadStorage: entry %d destroyed before end of thread %p",
                          i, QThread::currentThread());
             continue;

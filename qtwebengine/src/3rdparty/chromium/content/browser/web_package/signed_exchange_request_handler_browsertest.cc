@@ -160,7 +160,7 @@ class MockContentBrowserClient final
     return accept_langs_;
   }
 
-  void SetAcceptLangs(const std::string langs) { accept_langs_ = langs; }
+  void SetAcceptLangs(const std::string& langs) { accept_langs_ = langs; }
 
  private:
   std::string accept_langs_ = "en";
@@ -233,7 +233,7 @@ class SignedExchangeRequestHandlerBrowserTestBase
         original_cert, "test.example.org", dummy_result, net::OK);
   }
 
-  void SetAcceptLangs(const std::string langs) {
+  void SetAcceptLangs(const std::string& langs) {
     client_->SetAcceptLangs(langs);
     StoragePartitionImpl* partition =
         static_cast<StoragePartitionImpl*>(shell()
@@ -719,8 +719,8 @@ IN_PROC_BROWSER_TEST_P(SignedExchangeRequestHandlerBrowserTest,
   embedded_test_server()->ServeFilesFromSourceDirectory("content/test/data");
   ASSERT_TRUE(embedded_test_server()->Start());
 
-  SetCookie(shell()->web_contents()->GetBrowserContext(),
-            GURL("https://test.example.org/test/"), "milk=1");
+  ASSERT_TRUE(SetCookie(shell()->web_contents()->GetBrowserContext(),
+                        GURL("https://test.example.org/test/"), "milk=1"));
 
   GURL url =
       embedded_test_server()->GetURL("/sxg/test.example.org_vary_cookie.sxg");
@@ -1117,7 +1117,7 @@ class SignedExchangeAcceptHeaderBrowserTest : public ContentBrowserTest {
     ContentBrowserTest::SetUp();
   }
 
-  void NavigateAndWaitForTitle(const GURL& url, const std::string title) {
+  void NavigateAndWaitForTitle(const GURL& url, const std::string& title) {
     std::u16string expected_title = base::ASCIIToUTF16(title);
     TitleWatcher title_watcher(shell()->web_contents(), expected_title);
     EXPECT_TRUE(NavigateToURL(shell(), url));

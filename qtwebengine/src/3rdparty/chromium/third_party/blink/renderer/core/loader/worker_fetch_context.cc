@@ -250,7 +250,8 @@ void WorkerFetchContext::PopulateResourceRequestBeforeCacheAccess(
   MixedContentChecker::UpgradeInsecureRequest(
       request, &GetResourceFetcherProperties().GetFetchClientSettingsObject(),
       global_scope_, mojom::RequestContextFrameType::kNone,
-      global_scope_->ContentSettingsClient(), nullptr);
+      global_scope_->ContentSettingsClient(),
+      nullptr);
 }
 
 void WorkerFetchContext::WillSendRequest(ResourceRequest& request) {

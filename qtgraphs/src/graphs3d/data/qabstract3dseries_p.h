@@ -37,6 +37,7 @@ struct QAbstract3DSeriesChangeBitField
     bool singleHighlightGradientChanged : 1;
     bool multiHighlightColorChanged : 1;
     bool multiHighlightGradientChanged : 1;
+    bool lightingModeChanged: 1;
     bool nameChanged : 1;
     bool itemLabelChanged : 1;
     bool itemLabelVisibilityChanged : 1;
@@ -54,6 +55,7 @@ struct QAbstract3DSeriesChangeBitField
         , singleHighlightGradientChanged(true)
         , multiHighlightColorChanged(true)
         , multiHighlightGradientChanged(true)
+        , lightingModeChanged(true)
         , nameChanged(true)
         , itemLabelChanged(true)
         , itemLabelVisibilityChanged(true)
@@ -119,6 +121,8 @@ public:
     void setItemLabelVisible(bool visible);
     bool isUsingGradient();
 
+    void setLightingMode(QAbstract3DSeries::LightingMode mode);
+
 protected:
     QAbstract3DSeriesChangeBitField m_changeTracker;
     QAbstract3DSeriesThemeOverrideBitField m_themeTracker;
@@ -144,6 +148,8 @@ protected:
     QString m_itemLabel;
     bool m_itemLabelDirty;
     bool m_itemLabelVisible;
+
+    QAbstract3DSeries::LightingMode m_lightingMode;
 
     friend class QQuickGraphsScatter;
     friend class QQuickGraphsSurface;

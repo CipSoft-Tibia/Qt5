@@ -35,6 +35,7 @@ qt_internal_add_module(QmlLSPrivate
         qqmlsemantictokens_p.h qqmlsemantictokens.cpp
         qqmllshelpplugininterface_p.h qqmllshelpplugininterface.cpp
         qqmllshelputils_p.h qqmllshelputils.cpp
+        qmllsmain_p.h qmllsmain.cpp
 
         documentSymbolSupport/qqmldocumentsymbolsupport_p.h
         documentSymbolSupport/qqmldocumentsymbolsupport.cpp

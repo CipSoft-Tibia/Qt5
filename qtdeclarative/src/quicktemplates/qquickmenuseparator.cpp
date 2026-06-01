@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickmenuseparator_p.h"
 #include "qquickcontrol_p_p.h"
@@ -18,7 +19,8 @@ QT_BEGIN_NAMESPACE
     MenuSeparator is used to visually distinguish between groups of items in a
     menu by separating them with a line.
 
-    \image qtquickcontrols-menuseparator.png
+    \image qtquickcontrols-menuseparator.webp
+           {Menu separator dividing menu items}
 
     \quotefromfile qtquickcontrols-menuseparator-custom.qml
     \skipto import QtQuick

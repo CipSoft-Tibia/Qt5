@@ -43,6 +43,13 @@ QCoreAudioSinkStream::QCoreAudioSinkStream(QAudioDevice audioDevice, const QAudi
 {
 }
 
+QCoreAudioSinkStream::~QCoreAudioSinkStream()
+{
+#ifdef Q_OS_MACOS
+    m_stopOnDisconnected.cancelChain();
+#endif
+}
+
 bool QCoreAudioSinkStream::open()
 {
     using namespace QCoreAudioUtils;
@@ -267,7 +274,7 @@ OSStatus QCoreAudioSinkStream::processAudioCallback(uint32_t numberOfFrames,
         ioData->mBuffers[0].mDataByteSize,
     };
 
-    runAudioCallback(*m_audioCallback, inputSpan, m_format);
+    runAudioCallback(*m_audioCallback, inputSpan, m_format, volume());
 
     return noErr;
 }
@@ -297,10 +304,11 @@ bool QCoreAudioSinkStream::addDisconnectListener(AudioObjectID id)
 {
     m_stopOnDisconnected.cancel();
 
-    if (!m_disconnectMonitor.addDisconnectListener(id))
+    auto disconnectionFuture = m_disconnectMonitor.addDisconnectListener(id);
+    if (!disconnectionFuture)
         return false;
 
-    m_stopOnDisconnected = m_disconnectMonitor.then(m_parent, [this] {
+    m_stopOnDisconnected = disconnectionFuture->then(m_parent, [this] {
         // Coreaudio will pause for a bit and restart the audio unit with a different device.
         // This is problematic, as it switches kAudioOutputUnitProperty_CurrentDevice and
         // invalidates the native device ID (and the disconnect handler). furthermore, we don't have

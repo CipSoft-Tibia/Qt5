@@ -16,14 +16,14 @@ from crossbench.browsers.webdriver import WebDriverBrowser
 if TYPE_CHECKING:
   from crossbench.browsers.settings import Settings
   from crossbench.flags.base import Flags
-  from crossbench.path import RemotePath
-  from crossbench.runner.groups import BrowserSessionRunGroup
+  from crossbench.path import AnyPath
+  from crossbench.runner.groups.session import BrowserSessionRunGroup
 
 
 class Firefox(Browser):
 
   @classmethod
-  def default_path(cls, platform: plt.Platform) -> RemotePath:
+  def default_path(cls, platform: plt.Platform) -> AnyPath:
     return platform.search_app_or_executable(
         "Firefox",
         macos=["Firefox.app"],
@@ -31,7 +31,7 @@ class Firefox(Browser):
         win=["Mozilla Firefox/firefox.exe"])
 
   @classmethod
-  def developer_edition_path(cls, platform: plt.Platform) -> RemotePath:
+  def developer_edition_path(cls, platform: plt.Platform) -> AnyPath:
     return platform.search_app_or_executable(
         "Firefox Developer Edition",
         macos=["Firefox Developer Edition.app"],
@@ -39,7 +39,7 @@ class Firefox(Browser):
         win=["Firefox Developer Edition/firefox.exe"])
 
   @classmethod
-  def nightly_path(cls, platform: plt.Platform) -> RemotePath:
+  def nightly_path(cls, platform: plt.Platform) -> AnyPath:
     return platform.search_app_or_executable(
         "Firefox Nightly",
         macos=["Firefox Nightly.app"],
@@ -52,7 +52,7 @@ class Firefox(Browser):
       self.cache_dir = cache_dir
       self.clear_cache_dir = False
     else:
-      self.cache_dir: RemotePath = settings.platform.mkdtemp(prefix="firefox")
+      self.cache_dir: AnyPath = settings.platform.mkdtemp(prefix="firefox")
       self.clear_cache_dir = True
 
   @property
@@ -73,10 +73,8 @@ class Firefox(Browser):
       self, session: BrowserSessionRunGroup) -> Tuple[str, ...]:
     flags_copy = self.flags.copy()
     flags_copy.update(session.extra_flags)
-    flags_copy.update(self.network.extra_flags(self))
+    flags_copy.update(self.network.extra_flags(self.attributes))
     self._handle_viewport_flags(flags_copy)
-    if self.cache_dir and self.cache_dir:
-      flags_copy["--profile"] = str(self.cache_dir)
     if self.log_file:
       flags_copy["--MOZ_LOG_FILE"] = str(self.log_file)
     return tuple(flags_copy)

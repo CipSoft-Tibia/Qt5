@@ -63,6 +63,7 @@
     and build and run them directly from Qt Creator. For more information, see
     \l {Qt Creator: Build and run tests}.
 
+    \target qttest-creating-a-test
     \section1 Creating a Test
 
     To create a test, subclass QObject and add one or more private slots to it. Each
@@ -162,11 +163,12 @@
 
     \section2 Building with CMake and CTest
 
-    You can use \l {Building with CMake and CTest} to create a test.
-    \l{https://cmake.org/cmake/help/latest/manual/ctest.1.html}{CTest} enables
-    you to include or exclude tests based on a regular expression that is
-    matched against the test name. You can further apply the \c LABELS property
-    to a test and CTest can then include or exclude tests based on those labels.
+    You can use CMake and
+    \l{https://cmake.org/cmake/help/latest/manual/ctest.1.html}{CTest} to create
+    a test. CTest enables you to include or exclude tests based on a regular
+    expression that is matched against the test name. You can further apply the
+    \c LABELS property to a test and CTest can then include or exclude tests
+    based on those labels.
     All labeled targets will be run when \c {test} target is called on the
     command line.
 
@@ -185,7 +187,7 @@
 
     The following is an example of a CMakeLists.txt file that specifies the
     project name and the language used (here, \e mytest and C++), the Qt
-    modules required for building the test (Qt5Test), and the files that are
+    modules required for building the test (Qt Test), and the files that are
     included in the test (\e tst_mytest.cpp).
 
     \quotefile code/doc_src_cmakelists.txt
@@ -419,6 +421,7 @@
     added in Qt 6.1.
     \endlist
 
+    \target qttest-creating-a-benchmark
     \section1 Creating a Benchmark
 
     To create a benchmark, follow the instructions for creating a test and then add a

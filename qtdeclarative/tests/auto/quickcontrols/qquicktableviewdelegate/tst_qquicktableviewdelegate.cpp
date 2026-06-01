@@ -141,7 +141,7 @@ void tst_qquicktableviewdelegate::checkCurrentIndex()
     QVERIFY(item->current());
     QVERIFY(!item->selected());
     QVERIFY(!item->editing());
-    QVERIFY(tableView->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(tableView);
 
     // Select the cell
     tableView->selectionModel()->setCurrentIndex(tableView->modelIndex({0, 0}), QItemSelectionModel::Select);

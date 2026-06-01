@@ -19,5 +19,9 @@ Item {
         function is(state) {
             return container.states.indexOf(state) !== -1
         }
+
+        function anyStateContains(state) {
+            return container.states.some(s => s.indexOf(state) !== -1)
+        }
     }
 }

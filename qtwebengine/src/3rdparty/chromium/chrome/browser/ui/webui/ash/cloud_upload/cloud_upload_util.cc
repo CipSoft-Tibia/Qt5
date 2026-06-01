@@ -4,12 +4,13 @@
 
 #include "chrome/browser/ui/webui/ash/cloud_upload/cloud_upload_util.h"
 
+#include <algorithm>
 #include <optional>
 
+#include "ash/constants/web_app_id_constants.h"
 #include "ash/webui/system_apps/public/system_web_app_type.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
-#include "base/ranges/algorithm.h"
 #include "chrome/browser/apps/app_service/app_service_proxy.h"
 #include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
 #include "chrome/browser/ash/file_manager/fileapi_util.h"
@@ -24,7 +25,6 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/webui/ash/cloud_upload/cloud_upload_dialog.h"
-#include "chrome/browser/web_applications/web_app_id_constants.h"
 #include "chrome/common/extensions/api/file_system_provider_capabilities/file_system_provider_capabilities_handler.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/grit/generated_resources.h"
@@ -132,6 +132,8 @@ SourceType GetSourceType(Profile* profile,
       << source_url.filesystem_id() << ")";
   // Local by default.
   if (!source_volume) {
+    LOG(ERROR) << "Unable to find source volume (source path filesystem_id: "
+               << source_url.filesystem_id() << ")";
     return SourceType::LOCAL;
   }
   // First, look at whether the filesystem is read-only.
@@ -244,7 +246,7 @@ base::FilePath GetODFSFuseboxMount(Profile* profile) {
 
 bool IsODFSInstalled(Profile* profile) {
   auto* service = ash::file_system_provider::Service::Get(profile);
-  return base::ranges::any_of(
+  return std::ranges::any_of(
       service->GetProviders(), [](const auto& provider) {
         return provider.first ==
                ash::file_system_provider::ProviderId::CreateFromExtensionId(
@@ -264,7 +266,7 @@ bool IsOfficeWebAppInstalled(Profile* profile) {
   auto* proxy = apps::AppServiceProxyFactory::GetForProfile(profile);
   bool installed = false;
   proxy->AppRegistryCache().ForOneApp(
-      web_app::kMicrosoft365AppId, [&installed](const apps::AppUpdate& update) {
+      ash::kMicrosoft365AppId, [&installed](const apps::AppUpdate& update) {
         installed = apps_util::IsInstalled(update.Readiness());
       });
   return installed;

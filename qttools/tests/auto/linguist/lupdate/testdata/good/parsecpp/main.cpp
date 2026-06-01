@@ -83,8 +83,8 @@ void Dialog2::func()
     trans.translate("QTranslator", "Plural without comment", 0, 1);
     trans.translate("QTranslator", "Plural with comment", "comment 1", n);
     trans.translate("QTranslator", "Plural with comment", "comment 2", getCount());
-
-
+    trans.translate("QTranslator", "Plural with comment and static cast", "comment 3",
+                    static_cast<long>(getCount()));
 
 
 
@@ -726,5 +726,33 @@ class QTBUG36589 : QObject {
     Q_OBJECT
     const QString txt() {
         tr("string after an enum class");
+    }
+};
+
+class TestMetaStrings : QObject
+{
+    Q_OBJECT
+    void func()
+    {
+        //= id1
+        //@ label1
+        tr("msg with id1");
+
+        //@ label2
+        tr("invalid usage of label because of missing id");
+
+        //@ label3
+        //% "propagating label"
+        qtTrId("id2");
+
+        qtTrId("id2");
+
+        //% "invalid usage of label, contradicting labels for id"
+        //@ label4
+        qtTrId("id4");
+        //@ label5
+        qtTrId("id4");
+
+        //@ label6
     }
 };

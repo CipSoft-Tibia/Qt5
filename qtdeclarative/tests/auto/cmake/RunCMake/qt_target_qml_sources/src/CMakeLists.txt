@@ -8,7 +8,8 @@ if(RunCMake_TEST STREQUAL "subdirectory_only")
             Main.qml
             SubPage.qml
     )
-elseif(RunCMake_TEST STREQUAL "subdirectory_with_top")
+elseif(RunCMake_TEST STREQUAL "subdirectory_with_top"
+        OR RunCMake_TEST STREQUAL "subdirectory_without_qt_in_root")
     qt_target_qml_sources(main
         QML_FILES
             SubPage.qml

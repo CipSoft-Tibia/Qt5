@@ -2,6 +2,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2013 Richard J. Moore <rich@kde.org>.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #ifndef QCRYPTOGRAPHICHASH_H
 #define QCRYPTOGRAPHICHASH_H
@@ -21,12 +22,9 @@ class Q_CORE_EXPORT QCryptographicHash
     Q_GADGET
 public:
     enum Algorithm {
-#ifndef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
         Md4,
         Md5,
-#endif
         Sha1 = 2,
-#ifndef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
         Sha224,
         Sha256,
         Sha384,
@@ -60,7 +58,6 @@ public:
         Blake2s_160,
         Blake2s_224,
         Blake2s_256,
-#endif
         NumAlgorithms
     };
     Q_ENUM(Algorithm)

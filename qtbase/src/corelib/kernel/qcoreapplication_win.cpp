@@ -5,6 +5,7 @@
 #include "qcoreapplication.h"
 #include "qcoreapplication_p.h"
 #include "qstringlist.h"
+#include "qdir.h"
 #include "qfileinfo.h"
 #ifndef QT_NO_QOBJECT
 #include "qmutex.h"
@@ -52,7 +53,10 @@ QString qAppFileName()                // get application file name
         v = GetModuleFileName(hInstance, space.data(), DWORD(space.size()));
     } while (Q_UNLIKELY(v >= size));
 
-    return QString::fromWCharArray(space.data(), v);
+    // QCoreApplication::applicationFilePath() expects a canonical path with
+    // Qt-style separators
+    QStringView nativePath(space.data(), v);
+    return QDir::fromNativeSeparators(nativePath.toString());
 }
 
 QString QCoreApplicationPrivate::appName() const
@@ -174,7 +178,7 @@ static const char *findWMstr(uint msg)
  { 0x0014, "WM_ERASEBKGND" },
  { 0x0015, "WM_SYSCOLORCHANGE" },
  { 0x0018, "WM_SHOWWINDOW" },
- { 0x001A, "WM_WININICHANGE" },
+ { 0x001A, "WM_SETTINGCHANGE" },
  { 0x001B, "WM_DEVMODECHANGE" },
  { 0x001C, "WM_ACTIVATEAPP" },
  { 0x001D, "WM_FONTCHANGE" },
@@ -406,6 +410,7 @@ static const char *findWMstr(uint msg)
  { 0x0317, "WM_PRINT" },
  { 0x0318, "WM_PRINTCLIENT" },
  { 0x0319, "WM_APPCOMMAND" },
+ { 0x0320, "WM_DWMCOLORIZATIONCOLORCHANGED" },
  { 0x031A, "WM_THEMECHANGED" },
  { 0x0358, "WM_HANDHELDFIRST" },
  { 0x0359, "WM_HANDHELDFIRST + 1" },
@@ -799,6 +804,10 @@ QString decodeMSG(const MSG& msg)
             parameters = "End session: "_L1;
             if (const char *logoffOption = sessionMgrLogOffOption(uint(wParam)))
                 parameters += QLatin1StringView(logoffOption);
+            break;
+        case WM_SETTINGCHANGE:
+            parameters = "wParam"_L1 + wParamS + " lParam("_L1
+                + QString::fromWCharArray(reinterpret_cast<LPCWSTR>(lParam)) + u')';
             break;
         default:
             parameters = "wParam"_L1 + wParamS + " lParam"_L1 + lParamS;

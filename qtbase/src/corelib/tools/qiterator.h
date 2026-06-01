@@ -1,11 +1,16 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QITERATOR_H
 #define QITERATOR_H
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qcontainertools_impl.h>
+
+#ifdef __cpp_lib_ranges
+#include <ranges>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -237,7 +242,21 @@ public: \
 #define Q_DECLARE_MUTABLE_ASSOCIATIVE_FORWARD_ITERATOR(C)
 #endif // QT_NO_JAVA_STYLE_ITERATORS
 
-template<typename Key, typename T, class Iterator>
+namespace QtPrivate {
+
+template <typename Key, typename T, typename Iterator>
+struct QDefaultKeyValues
+{
+    static Key key(const Iterator &it) { return it.key(); }
+    static Key key(Iterator &it) { return it.key(); }
+    static T value(const Iterator &it) { return it.value(); }
+    static T value(Iterator &it) { return it.value(); }
+};
+
+} // namespace QtPrivate
+
+template <typename Key, typename T, class Iterator,
+          class Traits = QtPrivate::QDefaultKeyValues<Key, T, Iterator>>
 class QKeyValueIterator
 {
 public:
@@ -251,13 +270,13 @@ public:
         : i(std::move(o)) {}
 
     std::pair<Key, T> operator*() const {
-        return std::pair<Key, T>(i.key(), i.value());
+        return std::pair<Key, T>(Traits::key(i), Traits::value(i));
     }
 
     using pointer = QtPrivate::ArrowProxy<value_type>;
 
     pointer operator->() const {
-        return pointer{std::pair<Key, T>(i.key(), i.value())};
+        return pointer{ std::pair<Key, T>(Traits::key(i), Traits::value(i)) };
     }
 
     friend bool operator==(QKeyValueIterator lhs, QKeyValueIterator rhs) noexcept { return lhs.i == rhs.i; }
@@ -280,6 +299,8 @@ class QKeyValueRangeStorage
 {
 protected:
     Map m_map;
+    Map &map() { return m_map; }
+    const Map &map() const { return m_map; }
 public:
     explicit QKeyValueRangeStorage(const Map &map) : m_map(map) {}
     explicit QKeyValueRangeStorage(Map &&map) : m_map(std::move(map)) {}
@@ -287,11 +308,16 @@ public:
 
 template <typename Map>
 class QKeyValueRangeStorage<Map &>
+#ifdef __cpp_lib_ranges
+    : public std::ranges::view_base
+#endif
 {
 protected:
-    Map &m_map;
+    Map *m_map;
+    Map &map() { return *m_map; }
+    const Map &map() const { return *m_map; }
 public:
-    explicit QKeyValueRangeStorage(Map &map) : m_map(map) {}
+    explicit QKeyValueRangeStorage(Map &map) : m_map(&map) {}
 };
 
 template <typename Map>
@@ -299,17 +325,11 @@ class QKeyValueRange : public QKeyValueRangeStorage<Map>
 {
 public:
     using QKeyValueRangeStorage<Map>::QKeyValueRangeStorage;
-    auto begin() { return this->m_map.keyValueBegin(); }
-    auto begin() const { return this->m_map.keyValueBegin(); }
-    auto end() { return this->m_map.keyValueEnd(); }
-    auto end() const { return this->m_map.keyValueEnd(); }
+    auto begin() { return this->map().keyValueBegin(); }
+    auto begin() const { return this->map().keyValueBegin(); }
+    auto end() { return this->map().keyValueEnd(); }
+    auto end() const { return this->map().keyValueEnd(); }
 };
-
-template <typename Map>
-QKeyValueRange(Map &) -> QKeyValueRange<Map &>;
-
-template <typename Map, std::enable_if_t<!std::is_reference_v<Map>, bool> = false>
-QKeyValueRange(Map &&) -> QKeyValueRange<std::remove_const_t<Map>>;
 
 } // namespace QtPrivate
 

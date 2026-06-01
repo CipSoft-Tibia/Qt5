@@ -10,6 +10,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 QOpcUaClientPrivate::QOpcUaClientPrivate(QOpcUaClientImpl *impl)
     : QObjectPrivate()
     , m_impl(impl)
@@ -27,23 +29,6 @@ QOpcUaClientPrivate::~QOpcUaClientPrivate()
 
 void QOpcUaClientPrivate::connectToEndpoint(const QOpcUaEndpointDescription &endpoint)
 {
-    // Some pre-connection checks
-    if (QOpcUa::isSecurePolicy(endpoint.securityPolicy())) {
-        // We are going to connect to a secure endpoint
-
-        if (!m_pkiConfig.isPkiValid()) {
-            qCWarning(QT_OPCUA) << "Can not connect to a secure endpoint without a valid PKI setup.";
-            setStateAndError(m_state, QOpcUaClient::AccessDenied);
-            return;
-        }
-
-        if (!m_pkiConfig.isKeyAndCertificateFileSet()) {
-            qCWarning(QT_OPCUA) << "Can not connect to a secure endpoint without a client certificate.";
-            setStateAndError(m_state, QOpcUaClient::AccessDenied);
-            return;
-        }
-    }
-
     m_endpoint = endpoint;
     m_impl->connectToEndpoint(endpoint);
 }
@@ -101,7 +86,7 @@ bool QOpcUaClientPrivate::updateNamespaceArray()
         return false;
 
     if (!m_namespaceArrayNode) {
-        m_namespaceArrayNode.reset(m_impl->node(QStringLiteral("ns=0;i=2255")));
+        m_namespaceArrayNode.reset(m_impl->node(u"ns=0;i=2255"_s));
         if (!m_namespaceArrayNode)
             return false;
         QObjectPrivate::connect(m_namespaceArrayNode.data(), &QOpcUaNode::attributeRead, this, &QOpcUaClientPrivate::namespaceArrayUpdated);
@@ -129,7 +114,8 @@ void QOpcUaClientPrivate::namespaceArrayUpdated(QOpcUa::NodeAttributes attr)
 
     QStringList updatedNamespaceArray(value.toList().size());
     int index = 0;
-    for (const auto &it : value.toList())
+    const auto list = value.toList();
+    for (const auto &it : list)
         updatedNamespaceArray[index++] = (it.toString());
 
     if (updatedNamespaceArray != m_namespaceArray) {

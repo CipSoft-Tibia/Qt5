@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcbormap.h"
 #include "qcborvalue_p.h"
@@ -165,6 +166,98 @@ using namespace QtCbor;
     \sa begin(), constBegin(), find(), constFind()
  */
 
+/*! \typedef QCborMap::const_key_value_iterator
+    \inmodule QtCore
+    \since 6.10
+    \brief The QCborMap::const_key_value_iterator typedef provides an STL-style iterator for
+   QCborMap.
+
+    QCborMap::const_key_value_iterator is essentially the same as QCborMap::const_iterator
+    but provided for symmetry with other containers like QJsonObject.
+
+    \sa QKeyValueIterator
+ */
+
+/*! \typedef QCborMap::key_value_iterator
+    \inmodule QtCore
+    \since 6.10
+    \brief The QCborMap::key_value_iterator typedef provides an STL-style iterator for QCborMap.
+
+    QCborMap::key_value_iterator is essentially the same as QCborMap::iterator
+    but provided for symmetry with other containers like QJsonObject.
+
+    \sa QKeyValueIterator
+ */
+
+/*! \fn QCborMap::key_value_iterator QCborMap::keyValueBegin()
+    \since 6.10
+
+    Returns an \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the map.
+
+    \sa keyValueEnd()
+ */
+
+/*! \fn QCborMap::key_value_iterator QCborMap::keyValueEnd()
+    \since 6.10
+
+    Returns an \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the map.
+
+    \sa keyValueBegin()
+*/
+
+/*! \fn QCborMap::const_key_value_iterator QCborMap::keyValueBegin() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the map.
+
+    \sa keyValueEnd()
+ */
+
+/*! \fn QCborMap::const_key_value_iterator QCborMap::constKeyValueBegin() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the map.
+
+    \sa keyValueBegin()
+ */
+
+/*! \fn QCborMap::const_key_value_iterator QCborMap::keyValueEnd() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the map.
+
+    \sa keyValueBegin()
+ */
+
+/*! \fn QCborMap::const_key_value_iterator QCborMap::constKeyValueEnd() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the map.
+
+    \sa constKeyValueBegin()
+ */
+
+/*! \fn auto QCborMap::asKeyValueRange() &
+    \fn auto QCborMap::asKeyValueRange() const &
+    \fn auto QCborMap::asKeyValueRange() &&
+    \fn auto QCborMap::asKeyValueRange() const &&
+    \since 6.10
+
+    Returns a range object that allows iteration over this map as
+    key/value pairs.
+
+    Note that the values obtained this way are references into the one in the
+    map. Specifically, mutating the value will modify the map itself.
+
+    \sa QKeyValueIterator
+ */
+
 /*!
     Constructs an empty CBOR Map object.
 
@@ -182,6 +275,17 @@ QCborMap::QCborMap(const QCborMap &other) noexcept
     : d(other.d)
 {
 }
+
+/*!
+    \fn QCborMap::QCborMap(QCborMap &&other)
+    \since 6.10
+
+    Move-constructor.
+
+    The moved-from object \a other is placed in the default-constructed state.
+
+    \sa QCborMap::QCborMap()
+*/
 
 /*!
     \fn QCborMap::QCborMap(std::initializer_list<value_type> args)
@@ -215,6 +319,15 @@ QCborMap &QCborMap::operator=(const QCborMap &other) noexcept
     d = other.d;
     return *this;
 }
+
+/*!
+    \fn QCborMap &QCborMap::operator=(QCborMap &&other)
+    \since 6.10
+
+    Move-assignment operator.
+
+    The moved-from object \a other is placed in a valid, but unspecified state.
+*/
 
 /*!
     \fn void QCborMap::swap(QCborMap &other)
@@ -1122,8 +1235,7 @@ QCborValue QCborMap::extract(iterator it)
 
     For more information on CBOR equality in Qt, see, QCborValue::compare().
 
-    \sa compare(), QCborValue::operator==(), QCborMap::operator==(),
-        operator!=(), operator<()
+    \sa compare(), QCborValue::operator==(), operator!=(), operator<()
  */
 
 /*!
@@ -1141,8 +1253,7 @@ QCborValue QCborMap::extract(iterator it)
 
     For more information on CBOR equality in Qt, see, QCborValue::compare().
 
-    \sa compare(), QCborValue::operator==(), QCborMap::operator==(),
-        operator==(), operator<()
+    \sa compare(), QCborValue::operator==(), operator==(), operator<()
  */
 
 /*!

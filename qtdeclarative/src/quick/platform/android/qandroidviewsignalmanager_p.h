@@ -17,6 +17,7 @@
 
 #include <QtCore/qhash.h>
 #include <QtCore/qjnitypes.h>
+#include <QtCore/qjniobject.h>
 #include <QtCore/qmap.h>
 #include <QtCore/qobject.h>
 
@@ -24,34 +25,37 @@ QT_BEGIN_NAMESPACE
 
 class QAndroidViewSignalManager : public QObject
 {
-    Q_OBJECT
 public:
+    explicit QAndroidViewSignalManager() : QObject() { }
+
+    int qt_metacall(QMetaObject::Call call, int methodId, void **args) override;
+
+    void removeConnection(int signalIdx);
+    int addConnection(const QString &signalName,
+                      const QJniArray<jclass> &argTypes,
+                      const QJniObject &listener,
+                      const QObject &rootView);
+
+private:
+    /*
+        This will store the necessary information to call the listener
+        when the signal is emitted, including the Java function name and
+        signature so that we can call it quickly without recalculating those.
+    */
     struct ConnectionInfo
     {
-        int id;
-        QJniObject listener;
-        QByteArray javaArgType;
-        QByteArray signalSignature;
-        int propertyIndex{ -1 };
+        QMetaObject::Connection connection;
+        QJniObject listenerObject;
+        QString qmlSignalName;
+
+        QList<QMetaType::Type> qmlArgumentTypes;
+        bool isPropertySignal;
+        std::optional<int> qmlPropertyIndex; // Only filled if isPropertySignal
     };
 
-    explicit QAndroidViewSignalManager()
-        : QObject(), connectionHandleCounter(0)
-    {
-    }
-    void invokeListener(QObject *sender, int senderSignalIndex, QVariant signalValue);
-
-    int connectionHandleCounter;
-    QMultiMap<QByteArray, ConnectionInfo> connectionInfoMap;
-    QHash<int, QMetaObject::Connection> connections;
-
-public slots:
-    void forwardSignal();
-    void forwardSignal(int);
-    void forwardSignal(double);
-    void forwardSignal(float);
-    void forwardSignal(bool);
-    void forwardSignal(QString);
+    bool hasConnection(int signalIdx) const;
+    // Key is the signal index
+    QMap<int, ConnectionInfo> m_connections;
 };
 
 QT_END_NAMESPACE

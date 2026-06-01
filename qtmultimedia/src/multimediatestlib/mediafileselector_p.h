@@ -15,7 +15,8 @@
 // We mean it.
 //
 
-#include <QUrl>
+#include <QtCore/qurl.h>
+#include <QtCore/private/qexpected_p.h>
 #include <qmediaplayer.h>
 #include <qaudiooutput.h>
 #include <qvideosink.h>
@@ -31,7 +32,7 @@
 
 QT_BEGIN_NAMESPACE
 
-using MaybeUrl = QMaybe<QUrl, QString>;
+using MaybeUrl = q23::expected<QUrl, QString>;
 
 #define CHECK_SELECTED_URL(maybeUrl)                                                             \
   if (!maybeUrl)                                                                                 \
@@ -82,7 +83,7 @@ public:
             return foundUrl;
 
         ++m_failedSelectionsCount;
-        return QUnexpected{ dumpErrors(candidates) };
+        return q23::unexpected{ dumpErrors(candidates) };
     }
 
 private:
@@ -141,18 +142,18 @@ private:
         };
 
         if (!waitingFinished)
-            return QUnexpected{ "The media got stuck in the status "_L1
-                                + enumValueToString(player.mediaStatus()) };
+            return q23::unexpected{ "The media got stuck in the status "_L1
+                                    + enumValueToString(player.mediaStatus()) };
 
         if (player.mediaStatus() == QMediaPlayer::InvalidMedia)
-            return QUnexpected{ "Unable to load the media. Error ["_L1
-                                + enumValueToString(player.error()) + " "_L1 + player.errorString()
-                                + "]"_L1 };
+            return q23::unexpected{ "Unable to load the media. Error ["_L1
+                                    + enumValueToString(player.error()) + " "_L1
+                                    + player.errorString() + "]"_L1 };
 
         if (player.error() != QMediaPlayer::NoError)
-            return QUnexpected{ "Unable to start playing the media, codecs issues. Error ["_L1
-                                + enumValueToString(player.error()) + " "_L1 + player.errorString()
-                                + "]"_L1 };
+            return q23::unexpected{ "Unable to start playing the media, codecs issues. Error ["_L1
+                                    + enumValueToString(player.error()) + " "_L1
+                                    + player.errorString() + "]"_L1 };
 
         return QUrl(media);
     }

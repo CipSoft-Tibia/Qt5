@@ -35,8 +35,10 @@ private slots:
     void actionAccessibility();
     void actionAccessibilityImplicitName();
 
-    void accessibleName();
     void sliderTest();
+
+    void accessibleName();
+    void locale();
 
 private:
     QQmlEngine engine;
@@ -339,45 +341,6 @@ void tst_accessibility::actionAccessibilityImplicitName()
 #endif
 }
 
-void tst_accessibility::accessibleName()
-{
-#if QT_CONFIG(accessibility)
-    if (!QAccessible::isActive()) {
-        QPlatformAccessibility *accessibility = platformAccessibility();
-        if (!accessibility)
-            QSKIP("No QPlatformAccessibility available.");
-        accessibility->setActive(true);
-    }
-
-    QQmlComponent component(&engine);
-
-    // verify that accessible name matches the button text if none was set explicitly
-    component.loadUrl(testFileUrl("accessibleName/button.qml"));
-    QScopedPointer<QObject> object(component.create());
-    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
-    QAccessibleInterface *buttonAcc = QAccessible::queryAccessibleInterface(object.get());
-    QVERIFY(buttonAcc);
-    QCOMPARE(buttonAcc->text(QAccessible::Name), "Hello world");
-
-    // verify that ampersand ('&') for mnemonic and to escape literal ampersand in button
-    // text are not contained in accessible name
-    component.loadUrl(testFileUrl("accessibleName/button2.qml"));
-    QScopedPointer<QObject> object2(component.create());
-    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
-    QAccessibleInterface *button2Acc = QAccessible::queryAccessibleInterface(object2.get());
-    QVERIFY(button2Acc);
-    QCOMPARE(button2Acc->text(QAccessible::Name), "This & that");
-
-    // verify that explicitly set accesible name is used
-    component.loadUrl(testFileUrl("accessibleName/button3.qml"));
-    QScopedPointer<QObject> object3(component.create());
-    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
-    QAccessibleInterface *button3Acc = QAccessible::queryAccessibleInterface(object3.get());
-    QVERIFY(button3Acc);
-    QCOMPARE(button3Acc->text(QAccessible::Name), "Explicitly set accessible name");
-#endif
-}
-
 void tst_accessibility::sliderTest()
 {
 #if QT_CONFIG(accessibility)
@@ -424,6 +387,87 @@ void tst_accessibility::sliderTest()
         QCOMPARE(valueIface->minimumValue(), 0);
         QCOMPARE(valueIface->maximumValue(), 100);
     }
+#endif
+}
+
+void tst_accessibility::accessibleName()
+{
+#if QT_CONFIG(accessibility)
+    if (!QAccessible::isActive()) {
+        QPlatformAccessibility *accessibility = platformAccessibility();
+        if (!accessibility)
+            QSKIP("No QPlatformAccessibility available.");
+        accessibility->setActive(true);
+    }
+
+    QQmlComponent component(&engine);
+
+    // verify that accessible name matches the button text if none was set explicitly
+    component.loadUrl(testFileUrl("accessibleName/button.qml"));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+    QAccessibleInterface *buttonAcc = QAccessible::queryAccessibleInterface(object.get());
+    QVERIFY(buttonAcc);
+    QCOMPARE(buttonAcc->text(QAccessible::Name), "Hello world");
+
+    // verify that ampersand ('&') for mnemonic and to escape literal ampersand in button
+    // text are not contained in accessible name
+    component.loadUrl(testFileUrl("accessibleName/button2.qml"));
+    QScopedPointer<QObject> object2(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+    QAccessibleInterface *button2Acc = QAccessible::queryAccessibleInterface(object2.get());
+    QVERIFY(button2Acc);
+    QCOMPARE(button2Acc->text(QAccessible::Name), "This & that");
+
+    // verify that explicitly set accesible name is used
+    component.loadUrl(testFileUrl("accessibleName/button3.qml"));
+    QScopedPointer<QObject> object3(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+    QAccessibleInterface *button3Acc = QAccessible::queryAccessibleInterface(object3.get());
+    QVERIFY(button3Acc);
+    QCOMPARE(button3Acc->text(QAccessible::Name), "Explicitly set accessible name");
+#endif
+}
+
+void tst_accessibility::locale()
+{
+#if QT_CONFIG(accessibility)
+    if (!QAccessible::isActive()) {
+        QPlatformAccessibility *accessibility = platformAccessibility();
+        if (!accessibility)
+            QSKIP("No QPlatformAccessibility available.");
+        accessibility->setActive(true);
+    }
+
+    QQmlComponent component(&engine);
+
+    // verify that locale is the default locale if none was set explicitly
+    component.loadUrl(testFileUrl("locale/button.qml"));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+    QAccessibleInterface *buttonAcc = QAccessible::queryAccessibleInterface(object.get());
+    QVERIFY(buttonAcc);
+    QVERIFY(buttonAcc->attributesInterface());
+    QVERIFY(buttonAcc->attributesInterface()->attributeKeys().contains(
+            QAccessible::Attribute::Locale));
+    const QVariant localeVariant =
+            buttonAcc->attributesInterface()->attributeValue(QAccessible::Attribute::Locale);
+    QVERIFY(localeVariant.isValid() && localeVariant.canConvert<QLocale>());
+    QCOMPARE(localeVariant.toLocale(), QLocale());
+
+    // verify that locale is the one explicitly set for the button
+    component.loadUrl(testFileUrl("locale/button2.qml"));
+    QScopedPointer<QObject> object2(component.create());
+    QVERIFY2(!object2.isNull(), qPrintable(component.errorString()));
+    QAccessibleInterface *chineseButtonAcc = QAccessible::queryAccessibleInterface(object2.get());
+    QVERIFY(chineseButtonAcc);
+    QVERIFY(chineseButtonAcc->attributesInterface());
+    QVERIFY(chineseButtonAcc->attributesInterface()->attributeKeys().contains(
+            QAccessible::Attribute::Locale));
+    const QVariant chineseLocaleVariant =
+            chineseButtonAcc->attributesInterface()->attributeValue(QAccessible::Attribute::Locale);
+    QVERIFY(chineseLocaleVariant.isValid() && localeVariant.canConvert<QLocale>());
+    QCOMPARE(chineseLocaleVariant.toLocale(), QLocale("zh_CN"));
 #endif
 }
 

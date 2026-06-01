@@ -24,15 +24,13 @@ ScrollablePage {
             anchors.horizontalCenter: parent.horizontalCenter
 
             Switch {
+                enabled: !GalleryConfig.disabled
                 text: qsTr("First")
             }
             Switch {
+                enabled: !GalleryConfig.disabled
                 text: qsTr("Second")
                 checked: true
-            }
-            Switch {
-                text: qsTr("Third")
-                enabled: false
             }
         }
     }

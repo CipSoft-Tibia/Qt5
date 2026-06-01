@@ -86,7 +86,7 @@ auto QWindowsResampler::processOutput(ComPtr<IMFMediaBuffer> buffer, Functor &&f
 {
     HRESULT hr = replaceBuffer(m_outputSample, buffer);
     if (FAILED(hr))
-        return QUnexpected{ hr };
+        return q23::unexpected{ hr };
 
     MFT_OUTPUT_DATA_BUFFER outputDataBuffer;
     outputDataBuffer.dwStreamID = 0;
@@ -96,12 +96,12 @@ auto QWindowsResampler::processOutput(ComPtr<IMFMediaBuffer> buffer, Functor &&f
     DWORD status = 0;
     hr = m_resampler->ProcessOutput(0, 1, &outputDataBuffer, &status);
     if (FAILED(hr))
-        return QUnexpected{ hr };
+        return q23::unexpected{ hr };
 
     return f(buffer);
 }
 
-QMaybe<QByteArray, HRESULT> QWindowsResampler::processOutput()
+q23::expected<QByteArray, HRESULT> QWindowsResampler::processOutput()
 {
     using namespace QWMF;
 
@@ -109,7 +109,7 @@ QMaybe<QByteArray, HRESULT> QWindowsResampler::processOutput()
     HRESULT hr = QByteArrayMFMediaBuffer::CreateInstance(overAllocatedOutputBufferSize(),
                                                          buffer.GetAddressOf());
     if (FAILED(hr))
-        return QUnexpected{ hr };
+        return q23::unexpected{ hr };
 
     return processOutput(std::move(buffer), [&](const ComPtr<IMFMediaBuffer> &buffer) {
         return withLockedBuffer(buffer, [&](QSpan<BYTE> data, QSpan<BYTE> /*max*/) {

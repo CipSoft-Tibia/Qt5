@@ -33,4 +33,12 @@ BirthdayParty {
     property list<Binding> bindings: src.bindings
     property list<QtObject> objectsFromBindings: src.bindings
     property list<Binding> nulls: src.objects
+
+    function shuffle() {
+        numbers[1] = 3;
+        objects[1] = self;
+        bindings[1] = null;
+        objectsFromBindings[1] = self;
+        nulls[1] = null;
+    }
 }

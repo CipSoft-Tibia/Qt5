@@ -14,6 +14,7 @@ qt_internal_add_module(HttpServer
         qhttpserverconfiguration.cpp qhttpserverconfiguration.h
         qhttpserverhttp1protocolhandler.cpp qhttpserverhttp1protocolhandler_p.h
         qhttpserverliterals.cpp qhttpserverliterals_p.h
+        qhttpserverparser.cpp qhttpserverparser_p.h
         qhttpserverrequest.cpp qhttpserverrequest.h qhttpserverrequest_p.h
         qhttpserverrequestfilter.cpp qhttpserverrequestfilter_p.h
         qhttpserverresponder.cpp qhttpserverresponder.h qhttpserverresponder_p.h

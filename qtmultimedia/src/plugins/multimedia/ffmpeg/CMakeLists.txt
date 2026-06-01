@@ -7,7 +7,9 @@ qt_find_package(VAAPI COMPONENTS VA DRM PROVIDED_TARGETS VAAPI::VAAPI MODULE_NAM
 qt_internal_add_module(FFmpegMediaPluginImplPrivate
     STATIC
     INTERNAL_MODULE
+    PRECOMPILED_HEADER ffmpeg_pch.h
     SOURCES
+        ffmpeg_pch.h
         qffmpeg.cpp qffmpeg_p.h
         qffmpegdefs_p.h
         qffmpegcodecstorage.cpp qffmpegcodecstorage_p.h
@@ -127,12 +129,19 @@ endif()
 
 qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION APPLE
     SOURCES
-        qffmpeghwaccel_videotoolbox.mm qffmpeghwaccel_videotoolbox_p.h
+        darwin/qffmpegdarwinintegrationfactory_p.h
+        darwin/qffmpegdarwinhwframehelpers.mm darwin/qffmpegdarwinhwframehelpers_p.h
+        darwin/qffmpeghwaccel_videotoolbox.mm darwin/qffmpeghwaccel_videotoolbox_p.h
+        darwin/qavfcamerarotationtracker.mm darwin/qavfcamerarotationtracker_p.h
         darwin/qavfcamera.mm darwin/qavfcamera_p.h
+        darwin/qcvimagevideobuffer.cpp darwin/qcvimagevideobuffer_p.h
         darwin/qavfsamplebufferdelegate.mm darwin/qavfsamplebufferdelegate_p.h
+        darwin/qavfimagecapture.mm darwin/qavfimagecapture_p.h
+        darwin/qavfstillphotonotifier.cpp darwin/qavfstillphotonotifier_p.h
+        darwin/qavfcapturephotooutputdelegate.mm darwin/qavfcapturephotooutputdelegate_p.h
 
     NO_UNITY_BUILD_SOURCES
-        qffmpeghwaccel_videotoolbox.mm # AVMediaType clash between libavformat and AVFoundation
+        darwin/qffmpeghwaccel_videotoolbox.mm # AVMediaType clash between libavformat and AVFoundation
 
     LIBRARIES
         ${FWAudioToolbox}
@@ -225,25 +234,25 @@ qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION QT_FEATURE_linu
 if (ANDROID)
     qt_internal_extend_target(FFmpegMediaPluginImplPrivate
         SOURCES
-            qffmpeghwaccel_mediacodec.cpp qffmpeghwaccel_mediacodec_p.h
-            qandroidcamera_p.h qandroidcamera.cpp
-            qandroidvideodevices.cpp qandroidvideodevices_p.h
-            qandroidvideoframebuffer_p.h  qandroidvideoframebuffer.cpp
-            qandroidvideoframefactory_p.h qandroidvideoframefactory.cpp
-            qandroidimagecapture_p.h qandroidimagecapture.cpp
-            qandroidscreencapture_p.h qandroidscreencapture.cpp
+            android/qffmpeghwaccel_mediacodec.cpp android/qffmpeghwaccel_mediacodec_p.h
+            android/qandroidcamera_p.h android/qandroidcamera.cpp
+            android/qandroidvideojnitypes_p.h
+            android/qandroidvideodevices.cpp android/qandroidvideodevices_p.h
+            android/qandroidvideoframebuffer_p.h android/qandroidvideoframebuffer.cpp
+            android/qandroidvideoframefactory_p.h android/qandroidvideoframefactory.cpp
+            android/qandroidimagecapture_p.h android/qandroidimagecapture.cpp
+            android/qandroidscreencapture_p.h android/qandroidscreencapture.cpp
             ../android/wrappers/jni/androidsurfacetexture_p.h
             ../android/wrappers/jni/androidsurfacetexture.cpp
         NO_UNITY_BUILD_SOURCES
             # Duplicate declration of JNI Classes using `Q_DECLARE_JNI_CLASS`
-            qandroidcamera.cpp
-            qandroidvideodevices.cpp
-            qandroidvideoframebuffer.cpp
+            android/qandroidcamera.cpp
+            android/qandroidvideodevices.cpp
+            android/qandroidvideoframebuffer.cpp
         INCLUDE_DIRECTORIES
             ${FFMPEG_DIR}/include
             ../android/wrappers/jni/
         LIBRARIES
-            OpenSLES
             mediandk
             android
     )
@@ -279,7 +288,7 @@ else()
     # applications need to link against the ffmpeg libs via qt_add_ios_ffmpeg_libraries
     foreach(ffmpeg_lib IN LISTS ffmpeg_libs)
         qt_internal_add_target_include_dirs(FFmpegMediaPluginImplPrivate ${ffmpeg_lib})
-        target_include_directories(FFmpegMediaPluginImplPrivate PUBLIC
+        target_compile_definitions(FFmpegMediaPluginImplPrivate PUBLIC
             "$<TARGET_PROPERTY:${ffmpeg_lib},INTERFACE_COMPILE_DEFINITIONS>")
     endforeach()
 endif()

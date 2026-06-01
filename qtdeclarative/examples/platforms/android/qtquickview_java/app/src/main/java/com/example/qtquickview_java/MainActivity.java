@@ -15,8 +15,10 @@ import android.widget.TextView;
 import org.qtproject.qt.android.QtQmlStatus;
 import org.qtproject.qt.android.QtQmlStatusChangeListener;
 import org.qtproject.qt.android.QtQuickView;
+//! [qmlTypeImports]
 import org.qtproject.example.qtquickview.QmlModule.Main;
 import org.qtproject.example.qtquickview.QmlModule.Second;
+//! [qmlTypeImports]
 import org.qtproject.qt.android.QtQuickViewContent;
 import java.util.HashMap;
 import java.util.Map;

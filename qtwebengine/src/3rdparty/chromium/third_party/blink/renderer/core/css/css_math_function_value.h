@@ -66,11 +66,6 @@ class CORE_EXPORT CSSMathFunctionValue : public CSSPrimitiveValue {
     allows_negative_percentage_reference_ = true;
   }
 
-  BoolStatus IsZero() const;
-  BoolStatus IsOne() const;
-  BoolStatus IsHundred() const;
-  BoolStatus IsNegative() const;
-
   bool IsComputationallyIndependent() const;
 
   // TODO(crbug.com/979895): The semantics of this function is still not very
@@ -86,10 +81,19 @@ class CORE_EXPORT CSSMathFunctionValue : public CSSPrimitiveValue {
   double ComputeDegrees(const CSSLengthResolver&) const;
   double ComputeLengthPx(const CSSLengthResolver&) const;
   double ComputeDotsPerPixel() const;
+  double ComputeDotsPerPixel(const CSSLengthResolver&) const;
   int ComputeInteger(const CSSLengthResolver&) const;
   double ComputeNumber(const CSSLengthResolver&) const;
   double ComputePercentage(const CSSLengthResolver&) const;
   double ComputeValueInCanonicalUnit(const CSSLengthResolver&) const;
+  std::optional<double> GetValueIfKnown() const {
+    std::optional<double> val = expression_->GetValueIfKnown();
+    if (val.has_value()) {
+      return ClampToPermittedRange(*val);
+    } else {
+      return val;
+    }
+  }
 
   bool AccumulateLengthArray(CSSLengthArray& length_array,
                              double multiplier) const;

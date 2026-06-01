@@ -760,11 +760,11 @@ private:
         qml->writeStartObject("Enum");
         qml->writeStringBinding("name", QUtf8StringView(e.name()));
 
-        QList<QPair<QAnyStringView, int>> namesValues;
+        QList<std::pair<QAnyStringView, int>> namesValues;
         const int keyCount = e.keyCount();
         namesValues.reserve(keyCount);
         for (int index = 0; index < keyCount; ++index)
-            namesValues.append(qMakePair(QUtf8StringView(e.key(index)), e.value(index)));
+            namesValues.append(std::make_pair(QUtf8StringView(e.key(index)), e.value(index)));
 
         qml->writeEnumObjectLiteralBinding("values", namesValues);
         qml->writeEndObject();

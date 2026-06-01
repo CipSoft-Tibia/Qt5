@@ -38,6 +38,7 @@ source_set("impl") {
   deps = [
     ":search_engine_choice",
     "//chrome/browser:browser_process",
+    "//chrome/browser/regional_capabilities",
     "//components/search_engines",
     "//components/variations/service",
   ]
@@ -56,7 +57,10 @@ source_set("impl") {
     ]
 
     if (is_chromeos) {
-      deps += [ "//chromeos/components/kiosk" ]
+      deps += [
+        "//chromeos/components/kiosk",
+        "//chromeos/components/mgs",
+      ]
     }
   }
 }
@@ -78,6 +82,7 @@ if (!is_android) {
         "//chrome/browser",
         "//chrome/browser:browser_process",
         "//chrome/browser:test_support",
+        "//chrome/browser/prefs:util",
         "//chrome/browser/search_engines",
         "//chrome/browser/ui",
         "//chrome/browser/web_applications",
@@ -142,6 +147,7 @@ if (!is_android) {
       "//chrome/browser/search_engines",
       "//chrome/test:test_support",
       "//components/country_codes",
+      "//components/regional_capabilities",
       "//components/search_engines",
       "//components/signin/public/base",
       "//components/web_modal:test_support",

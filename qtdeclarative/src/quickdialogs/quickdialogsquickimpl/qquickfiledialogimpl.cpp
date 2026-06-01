@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickfiledialogimpl_p.h"
 #include "qquickfiledialogimpl_p_p.h"
@@ -9,6 +10,9 @@
 #include <QtGui/qpa/qplatformtheme.h>
 #include <QtQml/qqmlinfo.h>
 #include <QtQml/qqmlfile.h>
+#if QT_CONFIG(accessibility)
+#include <QtQuick/private/qquickaccessibleattached_p.h>
+#endif
 #include <QtQuick/private/qquickitemview_p_p.h>
 #include <QtQuickTemplates2/private/qquickdialogbuttonbox_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopupitem_p_p.h>
@@ -17,7 +21,6 @@
 
 #include "qquickfiledialogdelegate_p.h"
 #include "qquickfolderbreadcrumbbar_p.h"
-#include "qquicksidebar_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -283,7 +286,6 @@ void QQuickFileDialogImplPrivate::selectFile()
 QQuickFileDialogImpl::QQuickFileDialogImpl(QObject *parent)
     : QQuickDialog(*(new QQuickFileDialogImplPrivate), parent)
 {
-    setPopupType(QQuickPopup::Window);
 }
 
 QQuickFileDialogImplAttached *QQuickFileDialogImpl::qmlAttachedProperties(QObject *object)
@@ -370,11 +372,15 @@ void QQuickFileDialogImpl::setInitialCurrentFolderAndSelectedFile(const QUrl &fi
     d->updateFileNameTextEdit();
     d->setCurrentIndexToInitiallySelectedFile = true;
 
+    bool isListViewCurrentIndexNegative = false;
+    if (const auto *attached = d->attachedOrWarn())
+        isListViewCurrentIndexNegative = attached->fileDialogListView()->currentIndex() < 0;
+
     // If the currentFolder didn't change, the FolderListModel won't change and
     // neither will the ListView. This means that setFileDialogListViewCurrentIndex
     // will never get called and the currentIndex will not reflect selectedFile.
     // We need to account for that here.
-    if (!currentFolderChanged) {
+    if (!currentFolderChanged || isListViewCurrentIndexNegative) {
         const QFileInfo newSelectedFileInfo(d->selectedFile.toLocalFile());
         const int indexOfSelectedFileInFileDialogListView = d->cachedFileList.indexOf(newSelectedFileInfo);
         d->tryUpdateFileDialogListViewCurrentIndex(indexOfSelectedFileInFileDialogListView);
@@ -548,6 +554,14 @@ void QQuickFileDialogImpl::componentComplete()
     }
 
     keyNavigationAttached->setTab(attached->breadcrumbBar()->upButton());
+
+#if QT_CONFIG(accessibility)
+    auto *label = attached->filterLabel();
+    auto *comboBox = attached->nameFiltersComboBox();
+    if (label && comboBox)
+        if (QQuickAccessibleAttached *accessibleAttached = QQuickControlPrivate::accessibleAttached(label))
+            accessibleAttached->setLabelFor(comboBox);
+#endif
 }
 
 void QQuickFileDialogImpl::itemChange(QQuickItem::ItemChange change, const QQuickItem::ItemChangeData &data)
@@ -712,6 +726,24 @@ void QQuickFileDialogImplAttached::setNameFiltersComboBox(QQuickComboBox *nameFi
     emit nameFiltersComboBoxChanged();
 }
 
+QQuickLabel *QQuickFileDialogImplAttached::filterLabel() const
+{
+    Q_D(const QQuickFileDialogImplAttached);
+    return d->filterLabel;
+}
+
+void QQuickFileDialogImplAttached::setFilterLabel(QQuickLabel *label)
+{
+    Q_D(QQuickFileDialogImplAttached);
+
+    if (d->filterLabel == label)
+        return;
+
+    d->filterLabel = label;
+
+    emit filterLabelChanged();
+}
+
 QString QQuickFileDialogImplAttached::selectedNameFilter() const
 {
     Q_D(const QQuickFileDialogImplAttached);
@@ -745,10 +777,15 @@ void QQuickFileDialogImplAttached::setFileDialogListView(QQuickListView *fileDia
     if (fileDialogListView == d->fileDialogListView)
         return;
 
+    if (d->fileDialogListView)
+        QObjectPrivate::disconnect(d->fileDialogListView, &QQuickListView::currentIndexChanged,
+            d, &QQuickFileDialogImplAttachedPrivate::fileDialogListViewCurrentIndexChanged);
+
     d->fileDialogListView = fileDialogListView;
 
-    QObjectPrivate::connect(d->fileDialogListView, &QQuickListView::currentIndexChanged,
-        d, &QQuickFileDialogImplAttachedPrivate::fileDialogListViewCurrentIndexChanged);
+    if (d->fileDialogListView)
+        QObjectPrivate::connect(d->fileDialogListView, &QQuickListView::currentIndexChanged,
+            d, &QQuickFileDialogImplAttachedPrivate::fileDialogListViewCurrentIndexChanged);
 
     emit fileDialogListViewChanged();
 }

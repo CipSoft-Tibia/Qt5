@@ -210,7 +210,7 @@ size_t qHash(const QOcspResponse &response, size_t seed) noexcept
     const QOcspResponsePrivate *d = response.d.data();
     Q_ASSERT(d);
 
-    QtPrivate::QHashCombine hasher;
+    QtPrivate::QHashCombine hasher(seed);
     size_t hash = hasher(seed, int(d->certificateStatus));
     hash = hasher(hash, int(d->revocationReason));
     if (!d->signerCert.isNull())

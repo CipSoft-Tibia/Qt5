@@ -357,7 +357,7 @@ public:
     {
         QStringList nameEls = component.name().split(QChar::fromLatin1('.'));
         QString key = nameEls.mid(1).join(QChar::fromLatin1('.'));
-        return insertUpdatableElementInMultiMap(Path::Field(Fields::components), lazyMembers().m_components,
+        return insertUpdatableElementInMultiMap(Path::fromField(Fields::components), lazyMembers().m_components,
                                                 key, component, option, cPtr);
     }
 
@@ -390,7 +390,7 @@ public:
                                               : i.importId.split(QChar::fromLatin1('.'))),
                         Paths::qmlDirPath(path));
         }
-        return Path::Field(Fields::imports).index(idx);
+        return Path::fromField(Fields::imports).withIndex(idx);
     }
     std::shared_ptr<QQmlJS::Engine> engine() const { return m_engine; }
     RegionComments &comments() { return lazyMembers().m_comments; }
@@ -405,7 +405,7 @@ public:
         auto &members = lazyMembers();
         int idx = members.m_pragmas.size();
         members.m_pragmas.append(pragma);
-        return Path::Field(Fields::pragmas).index(idx);
+        return Path::fromField(Fields::pragmas).withIndex(idx);
     }
     ImportScope &importScope() { return lazyMembers().m_importScope; }
     const ImportScope &importScope() const { return lazyMembers().m_importScope; }
@@ -529,7 +529,7 @@ public:
     {
         for (const Export &e : comp.exports())
             addExport(e);
-        return insertUpdatableElementInMultiMap(Path::Field(u"components"), m_components,
+        return insertUpdatableElementInMultiMap(Path::fromField(u"components"), m_components,
                                                 comp.name(), comp, option, cPtr);
     }
     const QMultiMap<QString, Export> &exports() const & { return m_exports; }
@@ -539,7 +539,7 @@ public:
         index_type i = m_exports.values(e.typeName).size();
         m_exports.insert(e.typeName, e);
         addUri(e.uri, e.version.majorVersion);
-        return canonicalPath().field(Fields::exports).index(i);
+        return canonicalPath().withField(Fields::exports).withIndex(i);
     }
 
     const QMap<QString, QSet<int>> &uris() const & { return m_uris; }
@@ -590,7 +590,7 @@ public:
     void setRootComponent(const GlobalComponent &ob)
     {
         m_rootComponent = ob;
-        m_rootComponent.updatePathFromOwner(Path::Field(Fields::rootComponent));
+        m_rootComponent.updatePathFromOwner(Path::fromField(Fields::rootComponent));
     }
 
 private:

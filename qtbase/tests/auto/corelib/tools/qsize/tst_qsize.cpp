@@ -336,5 +336,11 @@ void tst_QSize::structuredBinding()
     }
 }
 
+namespace ConstexprTests {
+constexpr QSize s = (QSize(10, 20) + QSize(30, 40)) * 2;
+static_assert(s.width() == 80);
+static_assert(s.height() == 120);
+} // namespace ConstexprTests
+
 QTEST_APPLESS_MAIN(tst_QSize)
 #include "tst_qsize.moc"

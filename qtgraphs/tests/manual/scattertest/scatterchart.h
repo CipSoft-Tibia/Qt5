@@ -46,10 +46,12 @@ public:
     void setFpsLabel(QLabel *fpsLabel) { m_fpsLabel = fpsLabel; }
     void testItemChanges();
     void testAxisReverse();
+    void testNanSeries();
 
 public Q_SLOTS:
     void changeShadowQuality(int quality);
     void shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality shadowQuality);
+    void changeLightingMode(int mode);
     void clear();
     void resetAxes();
     void addOne();
@@ -104,6 +106,8 @@ private:
     void populateFlatSeries(QScatter3DSeries *series, int rows, int columns, float value);
     void populateRisingSeries(QScatter3DSeries *series, int rows, int columns, float minValue,
                               float maxValue);
+
+    void populateNanSeries(QScatter3DSeries *series, int rows, int columns, float value);
     void deleteAxis(QValue3DAxis *axis);
 
     Q3DScatterWidgetItem *m_chart;

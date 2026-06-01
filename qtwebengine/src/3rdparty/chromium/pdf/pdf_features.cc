@@ -27,6 +27,12 @@ BASE_FEATURE(kPdfIncrementalLoading,
 
 BASE_FEATURE(kPdfOopif, "PdfOopif", base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Kill switch in case this goes horribly wrong.
+// TODO(crbug.com/40216952): Remove after this lands safely in a Stable release.
+BASE_FEATURE(kPdfPaintManagerDrawsBackground,
+             "PdfPaintManagerDrawsBackground",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 // "Partial loading" refers to loading only specific parts of the PDF.
 // TODO(crbug.com/40123601): Remove this once partial loading is fixed.
 BASE_FEATURE(kPdfPartialLoading,
@@ -34,6 +40,22 @@ BASE_FEATURE(kPdfPartialLoading,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPdfPortfolio, "PdfPortfolio", base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPdfSearchify, "PdfSearchify", base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPdfSearchifySave,
+             "PdfSearchifySave",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables accessibility tags in PDFs to be parsed and integrated into the
+// accessibility tree by Chrome's PDF Viewer. Accessibility tags provide
+// structure and semantics to the text found in a PDF, e.g. they could mark a
+// specific piece of text as a heading, or a block of text as a paragraph.
+BASE_FEATURE(kPdfTags, "PdfTags", base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPdfUseShowSaveFilePicker,
+             "PdfUseShowSaveFilePicker",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPdfUseSkiaRenderer,
              "PdfUseSkiaRenderer",
@@ -55,6 +77,11 @@ void SetIsOopifPdfPolicyEnabled(bool is_oopif_pdf_policy_enabled) {
 bool IsOopifPdfEnabled() {
   return g_is_oopif_pdf_policy_enabled &&
          base::FeatureList::IsEnabled(kPdfOopif);
+}
+
+bool IsPdfSearchifySaveEnabled() {
+  return base::FeatureList::IsEnabled(kPdfSearchify) &&
+         base::FeatureList::IsEnabled(kPdfSearchifySave);
 }
 
 }  // namespace chrome_pdf::features

@@ -13,7 +13,6 @@ if TYPE_CHECKING:
   from crossbench.runner.groups.session import BrowserSessionRunGroup
 
 
-
 class LiveNetwork(Network):
 
   @property

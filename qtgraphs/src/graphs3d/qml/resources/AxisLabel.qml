@@ -21,7 +21,7 @@ Model {
 
     materials: PrincipledMaterial {
         lighting: PrincipledMaterial.NoLighting
-        alphaMode: PrincipledMaterial.Blend
+        alphaMode: PrincipledMaterial.Mask
         baseColorMap: Texture {
             sourceItem: Item {
                 id: labelItem

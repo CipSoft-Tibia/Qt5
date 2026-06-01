@@ -52,6 +52,8 @@ class DummyExecutionContextForLookup : public ExecutionContext {
 
   const WorkerNode* GetWorkerNode() const override { NOTREACHED(); }
 
+  NodeState GetNodeState() const override { NOTREACHED(); }
+
  private:
   const raw_ref<const blink::ExecutionContextToken> token_;
 };

@@ -12,18 +12,20 @@ from typing import TYPE_CHECKING, List, Optional, cast
 from selenium.webdriver.safari.options import Options as SafariOptions
 
 from crossbench import compat
-from crossbench.browsers.chromium.webdriver import ChromiumWebDriver
+from crossbench.browsers.chromium.webdriver import ChromiumBasedWebDriver
 from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeContext,
-                                     ProbeIncompatibleBrowser, ProbeKeyT,
-                                     ProbeResult, ProbeValidationError,
-                                     ResultLocation)
+                                     ProbeKeyT)
+from crossbench.probes.probe_error import (ProbeIncompatibleBrowser,
+                                           ProbeValidationError)
+from crossbench.probes.result_location import ResultLocation
 
 if TYPE_CHECKING:
   from selenium.webdriver.common.options import BaseOptions
 
   from crossbench.browsers.browser import Browser
   from crossbench.env import HostEnvironment
-  from crossbench.path import RemotePath
+  from crossbench.path import AnyPath
+  from crossbench.probes.results import ProbeResult
   from crossbench.runner.run import Run
 
 
@@ -124,13 +126,16 @@ class BrowserProfilingProbe(Probe):
     if attributes.is_chromium_based or attributes.is_safari:
       return
     if attributes.is_firefox:
-      browser_env = browser.platform.environ
-      for env_var in list(FirefoxProfilerEnvVars):
-        if env_var.value in browser_env:
-          env.handle_warning(
-              f"Probe({self}) conflicts with existing "
-              f"env[{env_var.value}]={browser_env[env_var.value]}")
+      self._validate_firefox(env, browser)
     raise ProbeIncompatibleBrowser(self, browser)
+
+  def _validate_firefox(self, env: HostEnvironment, browser: Browser) -> None:
+    browser_env = browser.platform.environ
+    for env_var in list(FirefoxProfilerEnvVars):
+      env_var_str = str(env_var)
+      if env_var_str in browser_env:
+        env.handle_warning(f"Probe({self}) conflicts with existing "
+                           f"env[{env_var_str}]={browser_env[env_var_str]}")
 
   def get_context(self, run: Run) -> BrowserProfilingProbeContext:
     attributes = run.browser.attributes
@@ -160,13 +165,13 @@ class BrowserProfilingProbeContext(
 class ChromiumWebDriverBrowserProfilerProbeContext(BrowserProfilingProbeContext
                                                   ):
 
-  def get_default_result_path(self) -> RemotePath:
+  def get_default_result_path(self) -> AnyPath:
     return (super().get_default_result_path().parent /
             f"{self.browser.type_name}.profile.json")
 
   @property
-  def chromium(self) -> ChromiumWebDriver:
-    return cast(ChromiumWebDriver, self.browser)
+  def chromium(self) -> ChromiumBasedWebDriver:
+    return cast(ChromiumBasedWebDriver, self.browser)
 
   def start(self) -> None:
     self.chromium.start_profiling()
@@ -177,6 +182,9 @@ class ChromiumWebDriverBrowserProfilerProbeContext(BrowserProfilingProbeContext
       local_result_path = self.local_result_path
       with local_result_path.open("w", encoding="utf-8") as f:
         json.dump(profile, f)
+        # TODO(375390958): figure out why files aren't fully written to
+        # pyfakefs here.
+        f.write("\n")
 
   def teardown(self) -> ProbeResult:
     return self.browser_result(json=[self.result_path])
@@ -184,7 +192,7 @@ class ChromiumWebDriverBrowserProfilerProbeContext(BrowserProfilingProbeContext
 
 class FirefoxBrowserProfilerProbeContext(BrowserProfilingProbeContext):
 
-  def get_default_result_path(self) -> RemotePath:
+  def get_default_result_path(self) -> AnyPath:
     return super().get_default_result_path().parent / "firefox.profile.json"
 
   def setup(self) -> None:
@@ -205,7 +213,7 @@ class FirefoxBrowserProfilerProbeContext(BrowserProfilingProbeContext):
 
 class SafariWebdriverBrowserProfilerProbeContext(BrowserProfilingProbeContext):
 
-  def get_default_result_path(self) -> RemotePath:
+  def get_default_result_path(self) -> AnyPath:
     return super().get_default_result_path().parent / "safari.timeline.json"
 
   def setup_selenium_options(self, options: BaseOptions) -> None:

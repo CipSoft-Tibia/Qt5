@@ -4,7 +4,6 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: heatwave
@@ -68,7 +67,7 @@ ParticleSystem3D {
         receivesReflections: true
         receivesShadows: true
         castsShadows: true
-        materials: heatwaveMat
+        materials: [heatwaveMat]
         scale.z: 1
         scale.y: 1
         scale.x: 1

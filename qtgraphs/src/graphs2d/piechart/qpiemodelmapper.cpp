@@ -5,7 +5,24 @@
 #include <QtGraphs/qpieseries.h>
 #include <private/qpiemodelmapper_p.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+               "class QPieModelMapper;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieModelMapperInitPieFromModel_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieModelMapperInitPieFromModel_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieModelMapperRemoveData_entry, int start, int end);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieModelMapperRemoveData_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieModelMapperInsertData_entry, int start, int end);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPieModelMapperInsertData_exit);
 
 /*!
     \class QPieModelMapper
@@ -665,6 +682,7 @@ void QPieModelMapperPrivate::insertData(qsizetype start, qsizetype end) {
     if (m_count != -1 && start >= m_first + m_count) {
         return;
     } else {
+        Q_TRACE_SCOPE(QGraphs2DPieModelMapperInsertData, start, end);
         qsizetype addedCount = end - start + 1;
         if (m_count != -1 && addedCount > m_count)
             addedCount = m_count;
@@ -708,6 +726,7 @@ void QPieModelMapperPrivate::removeData(qsizetype start, qsizetype end) {
     if (m_model == 0 || m_series == 0)
         return;
 
+    Q_TRACE_SCOPE(QGraphs2DPieModelMapperRemoveData, start, end);
     qsizetype removedCount = end - start + 1;
     if (m_count != -1 && start >= m_first + m_count) {
         return;
@@ -756,6 +775,7 @@ void QPieModelMapperPrivate::initializePieFromModel() {
     if (m_model == nullptr || m_series == nullptr)
         return;
 
+    Q_TRACE_SCOPE(QGraphs2DPieModelMapperInitPieFromModel);
     blockSeriesSignals();
     // clear current content
     m_series->clear();

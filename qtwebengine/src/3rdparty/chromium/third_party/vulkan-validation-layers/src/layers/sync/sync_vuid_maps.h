@@ -27,13 +27,13 @@ struct DeviceExtensions;
 
 namespace sync_vuid_maps {
 
-const std::map<VkPipelineStageFlags2KHR, std::string> &GetFeatureNameMap();
+const vvl::unordered_map<VkPipelineStageFlags2, std::string> &GetFeatureNameMap();
 
 const std::string &GetBadFeatureVUID(const Location &loc, VkPipelineStageFlags2 bit, const DeviceExtensions &device_extensions);
 
-const std::string &GetBadAccessFlagsVUID(const Location &loc, VkAccessFlags2KHR bit);
+const std::string &GetBadAccessFlagsVUID(const Location &loc, VkAccessFlags2 bit);
 
-const std::string &GetStageQueueCapVUID(const Location &loc, VkPipelineStageFlags2KHR bit);
+const std::string &GetStageQueueCapVUID(const Location &loc, VkPipelineStageFlags2 bit);
 
 enum class QueueError {
     kSrcNoExternalExt = 0,
@@ -46,9 +46,10 @@ enum class QueueError {
     kExclusiveSrc,
     kExclusiveDst,
     kHostStage,
+    kSubmitQueueMustMatchSrcOrDst,
 };
 
-const std::map<QueueError, std::string> &GetQueueErrorSummaryMap();
+const vvl::unordered_map<QueueError, std::string> &GetQueueErrorSummaryMap();
 
 const std::string &GetBarrierQueueVUID(const Location &loc, QueueError error);
 
@@ -59,7 +60,6 @@ enum class BufferError {
     kOffsetTooBig,
     kSizeOutOfRange,
     kSizeZero,
-    kQueueFamilyExternal,
 };
 
 const std::string &GetBufferBarrierVUID(const Location &loc, BufferError error);

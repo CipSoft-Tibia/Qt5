@@ -36,11 +36,12 @@ public:
     bool hasContent() const override;
     QByteArray saveState() const override { return QByteArray(); }
     bool restoreState(QByteArray &) override { return true; }
+    void retranslate() override;
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 protected:
     void printDocument(QPrinter *printer) const override;
-#endif // QT_DOCUMENTVIEWER_PRINTSUPPORT
+#endif // DOCUMENTVIEWER_PRINTSUPPORT
 
 public slots:
     void openPdfFile();
@@ -71,6 +72,8 @@ private:
     QAction *m_actionBack = nullptr;
     QTreeView *m_bookmarks = nullptr;
     QListView *m_pages = nullptr;
+    QAction *m_actionZoomIn = nullptr;
+    QAction *m_actionZoomOut = nullptr;
 };
 
 #endif //PDFVIEWER_H

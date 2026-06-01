@@ -1,7 +1,7 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
- * Copyright (C) 2015-2024 Google Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
+ * Copyright (C) 2015-2025 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
  *
@@ -22,18 +22,18 @@
 #include <variant>
 
 #include "state_tracker/device_memory_state.h"
+#include "state_tracker/fence_state.h"
 #include "state_tracker/image_layout_map.h"
 #include "utils/vk_layer_utils.h"
 
 namespace vvl {
+class Device;
 class Fence;
 class Semaphore;
 class Surface;
 class Swapchain;
 class VideoProfileDesc;
 }  // namespace vvl
-
-class ValidationStateTracker;
 
 static inline bool operator==(const VkImageSubresource &lhs, const VkImageSubresource &rhs) {
     return (lhs.aspectMask == rhs.aspectMask) && (lhs.mipLevel == rhs.mipLevel) && (lhs.arrayLayer == rhs.arrayLayer);
@@ -125,9 +125,8 @@ class Image : public Bindable {
 
     vvl::unordered_set<std::shared_ptr<const vvl::VideoProfileDesc>> supported_video_profiles;
 
-    Image(const ValidationStateTracker &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo,
-          VkFormatFeatureFlags2KHR features);
-    Image(const ValidationStateTracker &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo, VkSwapchainKHR swapchain,
+    Image(const Device &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo, VkFormatFeatureFlags2KHR features);
+    Image(const Device &dev_data, VkImage handle, const VkImageCreateInfo *pCreateInfo, VkSwapchainKHR swapchain,
           uint32_t swapchain_index, VkFormatFeatureFlags2KHR features);
     Image(Image const &rh_obj) = delete;
     std::shared_ptr<const Image> shared_from_this() const { return SharedFromThisImpl(this); }
@@ -146,6 +145,9 @@ class Image : public Bindable {
     bool IsCreateInfoDedicatedAllocationImageAliasingCompatible(const VkImageCreateInfo &other_create_info) const;
 
     bool IsSwapchainImage() const { return create_from_swapchain != VK_NULL_HANDLE; }
+
+    // TODO - need to understand if VkBindImageMemorySwapchainInfoKHR counts as "bound"
+    bool HasBeenBound() const { return (MemoryState() != nullptr) || (bind_swapchain); }
 
     inline bool IsImageTypeEqual(const VkImageCreateInfo &other_create_info) const {
         return create_info.imageType == other_create_info.imageType;
@@ -313,6 +315,11 @@ struct SwapchainImage {
     bool acquired = false;
     std::shared_ptr<vvl::Semaphore> acquire_semaphore;
     std::shared_ptr<vvl::Fence> acquire_fence;
+
+    // Each swapchain image keeps information about submissions associated with current present.
+    // When the image is re-acquired later this information can be used to synchronize with
+    // these submissions by using acquire fence.
+    AcquireFenceSync acquire_fence_sync;
 };
 
 // State for VkSwapchainKHR objects.
@@ -333,10 +340,10 @@ class Swapchain : public StateObject {
     const vku::safe_VkImageCreateInfo image_create_info;
 
     std::shared_ptr<vvl::Surface> surface;
-    ValidationStateTracker &dev_data;
+    Device &dev_data;
     uint32_t acquired_images = 0;
 
-    Swapchain(ValidationStateTracker &dev_data, const VkSwapchainCreateInfoKHR *pCreateInfo, VkSwapchainKHR handle);
+    Swapchain(Device &dev_data, const VkSwapchainCreateInfoKHR *pCreateInfo, VkSwapchainKHR handle);
 
     ~Swapchain() {
         if (!Destroyed()) {
@@ -346,7 +353,9 @@ class Swapchain : public StateObject {
 
     VkSwapchainKHR VkHandle() const { return handle_.Cast<VkSwapchainKHR>(); }
 
-    void PresentImage(uint32_t image_index, uint64_t present_id);
+    void PresentImage(uint32_t image_index, uint64_t present_id, const AcquireFenceSync &acquire_fence_sync);
+
+    void ReleaseImage(uint32_t image_index);
 
     void AcquireImage(uint32_t image_index, const std::shared_ptr<vvl::Semaphore> &semaphore_state,
                       const std::shared_ptr<vvl::Fence> &fence_state);
@@ -381,8 +390,6 @@ struct hash<GpuQueue> {
 };
 }  // namespace std
 
-class ValidationObject;
-
 namespace vvl {
 
 // Parent -> child relationships in the object usage tree:
@@ -407,13 +414,11 @@ class Surface : public StateObject {
     bool GetQueueSupport(VkPhysicalDevice phys_dev, uint32_t qfi) const;
 
     void SetPresentModes(VkPhysicalDevice phys_dev, vvl::span<const VkPresentModeKHR> modes);
-    std::vector<VkPresentModeKHR> GetPresentModes(VkPhysicalDevice phys_dev, const Location &loc,
-                                                  const ValidationObject *validation_obj) const;
+    std::vector<VkPresentModeKHR> GetPresentModes(VkPhysicalDevice phys_dev) const;
 
     void SetFormats(VkPhysicalDevice phys_dev, std::vector<vku::safe_VkSurfaceFormat2KHR> &&fmts);
     vvl::span<const vku::safe_VkSurfaceFormat2KHR> GetFormats(bool get_surface_capabilities2, VkPhysicalDevice phys_dev,
-                                                              const void *surface_info2_pnext, const Location &loc,
-                                                              const ValidationObject *validation_obj) const;
+                                                              const void *surface_info2_pnext) const;
 
     // Cache capabilities that do not depend on the present mode
     void UpdateCapabilitiesCache(VkPhysicalDevice phys_dev, const VkSurfaceCapabilitiesKHR &surface_caps);
@@ -421,6 +426,7 @@ class Surface : public StateObject {
     void UpdateCapabilitiesCache(VkPhysicalDevice phys_dev, const VkSurfaceCapabilities2KHR &surface_caps,
                                  VkPresentModeKHR present_mode);
 
+    bool IsLastCapabilityQueryUsedPresentMode(VkPhysicalDevice phys_dev) const;
     VkSurfaceCapabilitiesKHR GetSurfaceCapabilities(VkPhysicalDevice phys_dev, const void *surface_info_pnext) const;
     VkSurfaceCapabilitiesKHR GetPresentModeSurfaceCapabilities(VkPhysicalDevice phys_dev, VkPresentModeKHR present_mode) const;
     VkSurfacePresentScalingCapabilitiesEXT GetPresentModeScalingCapabilities(VkPhysicalDevice phys_dev,
@@ -453,6 +459,7 @@ class Surface : public StateObject {
         std::optional<std::vector<VkPresentModeKHR>> present_modes;
         std::optional<VkSurfaceCapabilitiesKHR> capabilities;
         std::vector<PresentModeInfo> present_mode_infos;
+        bool last_capability_query_used_present_mode = false;
 
         const PresentModeInfo *GetPresentModeInfo(VkPresentModeKHR present_mode) const;
     };

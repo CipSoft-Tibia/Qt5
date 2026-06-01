@@ -70,6 +70,7 @@ private:
 
     GNetworkMonitor *networkMonitor = nullptr;
     gulong connectivityHandlerId = 0;
+    gulong networkHandlerId = 0;
     gulong meteredHandlerId = 0;
 };
 
@@ -109,6 +110,10 @@ QGlibNetworkInformationBackend::QGlibNetworkInformationBackend()
     connectivityHandlerId = g_signal_connect_swapped(networkMonitor, "notify::connectivity",
                                                      G_CALLBACK(updateConnectivity), this);
 
+    // needed until GLib 2.86 for netlink support
+    networkHandlerId = g_signal_connect_swapped(networkMonitor, "notify::network-available",
+                                                     G_CALLBACK(updateConnectivity), this);
+
     meteredHandlerId = g_signal_connect_swapped(networkMonitor, "notify::network-metered",
                                                 G_CALLBACK(updateMetered), this);
 }
@@ -116,6 +121,7 @@ QGlibNetworkInformationBackend::QGlibNetworkInformationBackend()
 QGlibNetworkInformationBackend::~QGlibNetworkInformationBackend()
 {
     g_signal_handler_disconnect(networkMonitor, meteredHandlerId);
+    g_signal_handler_disconnect(networkMonitor, networkHandlerId);
     g_signal_handler_disconnect(networkMonitor, connectivityHandlerId);
 }
 

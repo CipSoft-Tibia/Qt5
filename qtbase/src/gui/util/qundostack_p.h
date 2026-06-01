@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QUNDOSTACK_P_H
 #define QUNDOSTACK_P_H
@@ -48,12 +49,37 @@ class QUndoStackPrivate : public QObjectPrivate
 public:
     QUndoStackPrivate() : index(0), clean_index(0), group(nullptr), undo_limit(0) {}
 
+    /*!
+     * \internal
+     * \brief Holds the presentation state for an Undo or Redo command.
+     * This structure serves a change-detection purpose.
+     */
+    struct ActionState
+    {
+        bool enabled = false;
+        QString text;
+
+        friend bool operator==(const ActionState &lhs, const ActionState &rhs) noexcept
+#ifdef __cpp_impl_three_way_comparison
+            = default;
+#else
+        { return lhs.enabled == rhs.enabled && lhs.text == rhs.text; }
+        friend bool operator!=(const ActionState &lhs, const ActionState &rhs) noexcept
+        { return !(lhs == rhs); }
+#endif
+        // some compiler's reject seed = 0) = delete, overload instead:
+        friend void qHash(const ActionState &key, size_t seed) = delete;
+        friend void qHash(const ActionState &key) = delete;
+    };
+
     QList<QUndoCommand*> command_list;
     QList<QUndoCommand*> macro_stack;
     int index;
     int clean_index;
     QUndoGroup *group;
     int undo_limit;
+    ActionState undoActionState;
+    ActionState redoActionState;
 
     void setIndex(int idx, bool clean);
     bool checkUndoLimit();

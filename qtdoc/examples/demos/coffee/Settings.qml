@@ -1,8 +1,19 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 import QtQuick
+import Qt.labs.synchronizer
 
 SettingsForm {
+    id: settingsForm
+
+    required property var appFlow
+    required property CoffeeConfig coffeeConfig
+
+    foamAmount: coffeeConfig.foamAmount
+    milkAmount: coffeeConfig.milkAmount
+    coffeeAmount: coffeeConfig.coffeeAmount
+    state: Config.mode
+
     rectangle.states: [
         State {
             name: "smallerFont"
@@ -16,7 +27,7 @@ SettingsForm {
     ]
     sugarSlider.states: State {
         name: "pressed"
-        when: sugarSlider.pressed
+        when: settingsForm.sugarSlider.pressed
         PropertyChanges {
             target: handle
             scale: 1.1
@@ -57,22 +68,33 @@ SettingsForm {
             }
         }
     ]
-    sugarSlider.onMoved: {
-        sugarText.sugarAmount = sugarSlider.position * 4
+
+    confirmButton.onClicked: appFlow.confirmButton()
+
+    //! [synchronizer]
+    Synchronizer {
+         sourceObject: settingsForm.coffeeConfig
+         sourceProperty: "sugarAmount"
+         targetObject: settingsForm.sugarSlider
+         targetProperty: "value"
     }
-    confirmButton.onClicked: applicationFlow.confirmButton()
-    //! [Value changed]
-    coffeeSlider.onValueChanged: {
-        applicationFlow.coffeeAmount = coffeeSlider.value
+    //! [synchronizer]
+    Synchronizer {
+         sourceObject: settingsForm.coffeeConfig
+         sourceProperty: "foamAmount"
+         targetObject: settingsForm.foamSlider
+         targetProperty: "value"
     }
-    //! [Value changed]
-    milkSlider.onValueChanged: {
-        applicationFlow.milkAmount = milkSlider.value
+    Synchronizer {
+         sourceObject: settingsForm.coffeeConfig
+         sourceProperty: "milkAmount"
+         targetObject: settingsForm.milkSlider
+         targetProperty: "value"
     }
-    foamSlider.onValueChanged: {
-        applicationFlow.foamAmount = foamSlider.value
-    }
-    sugarSlider.onValueChanged: {
-        applicationFlow.sugarAmount = sugarSlider.value
+    Synchronizer {
+         sourceObject: settingsForm.coffeeConfig
+         sourceProperty: "coffeeAmount"
+         targetObject: settingsForm.coffeeSlider
+         targetProperty: "value"
     }
 }

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSTYPERESOLVER_P_H
 #define QQMLJSTYPERESOLVER_P_H
@@ -80,6 +81,7 @@ public:
     QQmlJSScope::ConstPtr variantListType() const { return m_variantListType; }
     QQmlJSScope::ConstPtr variantMapType() const { return m_variantMapType; }
     QQmlJSScope::ConstPtr varType() const { return m_varType; }
+    QQmlJSScope::ConstPtr qmlPropertyMapType() const { return m_qmlPropertyMapType; }
     QQmlJSScope::ConstPtr jsValueType() const { return m_jsValueType; }
     QQmlJSScope::ConstPtr jsPrimitiveType() const { return m_jsPrimitiveType; }
     QQmlJSScope::ConstPtr listPropertyType() const { return m_listPropertyType; }
@@ -91,6 +93,7 @@ public:
     QQmlJSScope::ConstPtr arrayPrototype() const { return m_arrayPrototype; }
     QQmlJSScope::ConstPtr forInIteratorPtr() const { return m_forInIteratorPtr; }
     QQmlJSScope::ConstPtr forOfIteratorPtr() const { return m_forOfIteratorPtr; }
+    QQmlJSScope::ConstPtr qQmlScriptStringType() const { return m_qQmlScriptStringType; }
 
     QQmlJSRegisterContent jsGlobalObjectContent() const { return m_jsGlobalObjectContent; }
     QQmlJSScope::ConstPtr mathObject() const;
@@ -137,9 +140,7 @@ public:
             const QQmlJSScope::ConstPtr &scope, const QString &name,
             QQmlJSScopesByIdOptions options = Default) const
     {
-        return canFindComponentBoundaries(scope)
-                ? m_objectsById.scope(name, scope, options)
-                : QQmlJSScope::ConstPtr();
+        return m_objectsById.scope(name, scope, options);
     }
 
     const QQmlJSScopesById &objectsById() const { return m_objectsById; }
@@ -299,8 +300,6 @@ protected:
             const QString &name, const QQmlJSScope::ConstPtr &base,
             const QQmlJSScope::ConstPtr &propType) const;
 
-    bool canFindComponentBoundaries(const QQmlJSScope::ConstPtr &scope) const;
-
     std::unique_ptr<QQmlJSRegisterContentPool> m_pool;
 
     QQmlJSScope::ConstPtr m_voidType;
@@ -331,6 +330,7 @@ protected:
     QQmlJSScope::ConstPtr m_variantListType;
     QQmlJSScope::ConstPtr m_variantMapType;
     QQmlJSScope::ConstPtr m_varType;
+    QQmlJSScope::ConstPtr m_qmlPropertyMapType;
     QQmlJSScope::ConstPtr m_jsValueType;
     QQmlJSScope::ConstPtr m_jsPrimitiveType;
     QQmlJSScope::ConstPtr m_listPropertyType;

@@ -116,24 +116,24 @@ public:
 
         OwnerIds            = UserId | GroupId,
 
-        PosixStatFlags      = QFileSystemMetaData::OtherPermissions
-                            | QFileSystemMetaData::GroupPermissions
-                            | QFileSystemMetaData::OwnerPermissions
-                            | QFileSystemMetaData::FileType
-                            | QFileSystemMetaData::DirectoryType
-                            | QFileSystemMetaData::SequentialType
-                            | QFileSystemMetaData::SizeAttribute
-                            | QFileSystemMetaData::WasDeletedAttribute
-                            | QFileSystemMetaData::Times
-                            | QFileSystemMetaData::OwnerIds,
+        PosixStatFlags      = OtherPermissions
+                            | GroupPermissions
+                            | OwnerPermissions
+                            | FileType
+                            | DirectoryType
+                            | SequentialType
+                            | SizeAttribute
+                            | WasDeletedAttribute
+                            | Times
+                            | OwnerIds,
 
 #if defined(Q_OS_WIN)
-        WinStatFlags        = QFileSystemMetaData::FileType
-                            | QFileSystemMetaData::DirectoryType
-                            | QFileSystemMetaData::HiddenAttribute
-                            | QFileSystemMetaData::ExistsAttribute
-                            | QFileSystemMetaData::SizeAttribute
-                            | QFileSystemMetaData::Times,
+        WinStatFlags        = FileType
+                            | DirectoryType
+                            | HiddenAttribute
+                            | ExistsAttribute
+                            | SizeAttribute
+                            | Times,
 #endif
 
         AllMetaDataFlags    = 0xFFFFFFFF

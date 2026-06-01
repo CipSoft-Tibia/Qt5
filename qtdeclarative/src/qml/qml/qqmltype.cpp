@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmltype_p_p.h"
 
@@ -139,12 +140,12 @@ bool QQmlType::availableInVersion(const QHashedStringRef &module, QTypeRevision 
     return availableInVersion(version);
 }
 
-QQmlType QQmlTypePrivate::resolveCompositeBaseType(QQmlEnginePrivate *engine) const
+QQmlType QQmlTypePrivate::resolveCompositeBaseType(QQmlTypeLoader *typeLoader) const
 {
     Q_ASSERT(isComposite());
-    if (!engine)
+    if (!typeLoader)
         return QQmlType();
-    QQmlRefPointer<QQmlTypeData> td(engine->typeLoader.getType(sourceUrl()));
+    QQmlRefPointer<QQmlTypeData> td(typeLoader->getType(sourceUrl()));
     if (td.isNull() || !td->isComplete())
         return QQmlType();
     QV4::CompiledData::CompilationUnit *compilationUnit = td->compilationUnit();
@@ -710,16 +711,27 @@ QTypeRevision QQmlType::metaObjectRevision() const
     return d ? d->revision : QTypeRevision();
 }
 
-QQmlAttachedPropertiesFunc QQmlType::attachedPropertiesFunction(QQmlEnginePrivate *engine) const
+QQmlAttachedPropertiesFunc QQmlType::attachedPropertiesFunction(
+        QQmlEnginePrivate *enginePrivate) const
 {
-    if (const QQmlTypePrivate *base = d ? d->attachedPropertiesBase(engine) : nullptr)
+    return attachedPropertiesFunction(&enginePrivate->typeLoader);
+}
+
+QQmlAttachedPropertiesFunc QQmlType::attachedPropertiesFunction(QQmlTypeLoader *typeLoader) const
+{
+    if (const QQmlTypePrivate *base = d ? d->attachedPropertiesBase(typeLoader) : nullptr)
         return base->extraData.cppTypeData->attachedPropertiesFunc;
     return nullptr;
 }
 
-const QMetaObject *QQmlType::attachedPropertiesType(QQmlEnginePrivate *engine) const
+const QMetaObject *QQmlType::attachedPropertiesType(QQmlEnginePrivate *enginePrivate) const
 {
-    if (const QQmlTypePrivate *base = d ? d->attachedPropertiesBase(engine) : nullptr)
+    return attachedPropertiesType(&enginePrivate->typeLoader);
+}
+
+const QMetaObject *QQmlType::attachedPropertiesType(QQmlTypeLoader *typeLoader) const
+{
+    if (const QQmlTypePrivate *base = d ? d->attachedPropertiesBase(typeLoader) : nullptr)
         return base->extraData.cppTypeData->attachedPropertiesType;
     return nullptr;
 }
@@ -790,38 +802,89 @@ int QQmlType::enumValue(QQmlTypeLoader *typeLoader, const QV4::String *name, boo
 
 int QQmlType::scopedEnumIndex(QQmlTypeLoader *typeLoader, const QV4::String *name, bool *ok) const
 {
-    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Scoped>(d, typeLoader, name, ok);
+    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Scoped>(
+            d, typeLoader, name, ok);
 }
 
 int QQmlType::scopedEnumIndex(QQmlTypeLoader *typeLoader, const QString &name, bool *ok) const
 {
-    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Scoped>(d, typeLoader, name, ok);
+    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Scoped>(
+            d, typeLoader, name, ok);
 }
 
 int QQmlType::unscopedEnumIndex(QQmlTypeLoader *typeLoader, const QV4::String *name, bool *ok) const
 {
-    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Unscoped>(d, typeLoader, name, ok);
+    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Unscoped>(
+            d, typeLoader, name, ok);
 }
 
 int QQmlType::unscopedEnumIndex(QQmlTypeLoader *typeLoader, const QString &name, bool *ok) const
 {
-    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Unscoped>(d, typeLoader, name, ok);
+    return QQmlTypePrivate::enumIndex<QQmlTypePrivate::Enums::Unscoped>(
+            d, typeLoader, name, ok);
 }
 
 int QQmlType::scopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QV4::String *name, bool *ok) const
 {
-    return QQmlTypePrivate::scopedEnumValue(d, typeLoader, index, name, ok);
+    return QQmlTypePrivate::enumValue<QQmlTypePrivate::Enums::Scoped>(
+            d, typeLoader, index, name, ok);
 }
 
 int QQmlType::scopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QString &name, bool *ok) const
 {
-    return QQmlTypePrivate::scopedEnumValue(d, typeLoader, index, name, ok);
+    return QQmlTypePrivate::enumValue<QQmlTypePrivate::Enums::Scoped>(
+            d, typeLoader, index, name, ok);
 }
 
 int QQmlType::scopedEnumValue(QQmlTypeLoader *typeLoader, const QHashedStringRef &scopedEnumName, const QHashedStringRef &name, bool *ok) const
 {
-    return QQmlTypePrivate::scopedEnumValue(d, typeLoader, scopedEnumName, name, ok);
+    return QQmlTypePrivate::enumValue<QQmlTypePrivate::Enums::Scoped>(
+            d, typeLoader, scopedEnumName, name, ok);
 }
+
+int QQmlType::unscopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QV4::String *name, bool *ok) const
+{
+    return QQmlTypePrivate::enumValue<QQmlTypePrivate::Enums::Unscoped>(
+            d, typeLoader, index, name, ok);
+}
+
+int QQmlType::unscopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QString &name, bool *ok) const
+{
+    return QQmlTypePrivate::enumValue<QQmlTypePrivate::Enums::Unscoped>(
+            d, typeLoader, index, name, ok);
+}
+
+int QQmlType::unscopedEnumValue(QQmlTypeLoader *typeLoader, const QHashedStringRef &scopedEnumName, const QHashedStringRef &name, bool *ok) const
+{
+    return QQmlTypePrivate::enumValue<QQmlTypePrivate::Enums::Unscoped>(
+            d, typeLoader, scopedEnumName, name, ok);
+}
+
+QString QQmlType::scopedEnumKey(QQmlTypeLoader *typeLoader, int index, int value, bool *ok) const
+{
+    return QQmlTypePrivate::enumKey<QQmlTypePrivate::Enums::Scoped>(
+            d, typeLoader, index, value, ok);
+}
+
+QStringList QQmlType::scopedEnumKeys(QQmlTypeLoader *typeLoader, int index, int value, bool *ok) const
+{
+    return QQmlTypePrivate::enumKeys<QQmlTypePrivate::Enums::Scoped>(
+            d, typeLoader, index, value, ok);
+}
+
+QString QQmlType::unscopedEnumKey(QQmlTypeLoader *typeLoader, int index, int value, bool *ok) const
+{
+    return QQmlTypePrivate::enumKey<QQmlTypePrivate::Enums::Unscoped>(
+            d, typeLoader, index, value, ok);
+}
+
+QStringList QQmlType::unscopedEnumKeys(QQmlTypeLoader *typeLoader, int index, int value,
+                                       bool *ok) const
+{
+    return QQmlTypePrivate::enumKeys<QQmlTypePrivate::Enums::Unscoped>(
+            d, typeLoader, index, value, ok);
+}
+
 
 void QQmlType::refHandle(const QQmlTypePrivate *priv)
 {

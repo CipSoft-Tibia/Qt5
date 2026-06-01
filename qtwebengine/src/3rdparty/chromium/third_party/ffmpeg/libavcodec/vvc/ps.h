@@ -151,6 +151,12 @@ typedef struct VVCPH {
     //derived values
     uint32_t max_num_subblock_merge_cand;           ///< MaxNumSubblockMergeCand
     int32_t  poc;                                   ///< PicOrderCntVal
+
+    uint8_t  num_ver_vbs;                           ///< NumVerVirtualBoundaries
+    uint16_t vb_pos_x[VVC_MAX_VBS];                 ///< VirtualBoundaryPosX
+    uint8_t  num_hor_vbs;                           ///< NumHorVirtualBoundaries
+    uint16_t vb_pos_y[VVC_MAX_VBS];                 ///< VirtualBoundaryPosY
+
     PredWeightTable pwt;
 } VVCPH;
 
@@ -163,6 +169,7 @@ typedef struct VVCPH {
 #define ALF_NUM_COEFF_CC         7
 
 typedef struct VVCALF {
+    const H266RawAPS *r;
     int16_t luma_coeff     [ALF_NUM_FILTERS_LUMA][ALF_NUM_COEFF_LUMA];
     uint8_t luma_clip_idx  [ALF_NUM_FILTERS_LUMA][ALF_NUM_COEFF_LUMA];
 

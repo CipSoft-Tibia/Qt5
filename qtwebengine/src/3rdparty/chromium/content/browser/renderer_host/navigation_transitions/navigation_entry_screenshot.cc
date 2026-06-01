@@ -4,6 +4,7 @@
 
 #include "content/browser/renderer_host/navigation_transitions/navigation_entry_screenshot.h"
 
+#include "base/feature_list.h"
 #include "content/browser/renderer_host/navigation_transitions/navigation_entry_screenshot_cache.h"
 #include "content/browser/renderer_host/navigation_transitions/navigation_transition_config.h"
 
@@ -11,7 +12,7 @@
 #include "base/functional/callback.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/thread_pool.h"
-#include "ui/android/resources/ui_resource_provider.h"
+#include "ui/android/resources/etc1_utils.h"
 #endif
 
 namespace content {
@@ -32,8 +33,16 @@ void CompressNavigationScreenshotOnWorkerThread(
     CompressionDoneCallback done_callback) {
   TRACE_EVENT0("navigation", "CompressNavigationScreenshotOnWorkerThread");
 
-  if (auto compressed_bitmap = ui::UIResourceProvider::CompressBitmap(
-          bitmap, supports_etc_non_power_of_two)) {
+  sk_sp<SkPixelRef> compressed_bitmap = nullptr;
+  if (base::FeatureList::IsEnabled(ui::kCompressBitmapAtBackgroundPriority)) {
+    compressed_bitmap = ui::Etc1::CompressBitmapAtBackgroundPriority(
+        bitmap, supports_etc_non_power_of_two);
+  } else {
+    compressed_bitmap =
+        ui::Etc1::CompressBitmap(bitmap, supports_etc_non_power_of_two);
+  }
+
+  if (compressed_bitmap) {
     std::move(done_callback).Run(std::move(compressed_bitmap));
   }
 }
@@ -56,10 +65,10 @@ void NavigationEntryScreenshot::SetDisableCompressionForTesting(bool disable) {
 
 NavigationEntryScreenshot::NavigationEntryScreenshot(
     const SkBitmap& bitmap,
-    int navigation_entry_id,
+    NavigationTransitionData::UniqueId unique_id,
     bool supports_etc_non_power_of_two)
     : bitmap_(cc::UIResourceBitmap(bitmap)),
-      navigation_entry_id_(navigation_entry_id),
+      unique_id_(unique_id),
       dimensions_without_compression_(bitmap_->GetSize()) {
   CHECK(NavigationTransitionConfig::AreBackForwardTransitionsEnabled());
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
@@ -69,7 +78,7 @@ NavigationEntryScreenshot::NavigationEntryScreenshot(
 
 NavigationEntryScreenshot::~NavigationEntryScreenshot() {
   if (cache_) {
-    cache_->OnNavigationEntryGone(navigation_entry_id_);
+    cache_->OnNavigationEntryGone(unique_id_);
   }
 }
 
@@ -140,8 +149,7 @@ void NavigationEntryScreenshot::OnCompressionFinished(
   // may still be in use in the UI.
   if (cache_) {
     bitmap_.reset();
-    cache_->OnScreenshotCompressed(navigation_entry_id_,
-                                   GetBitmap().SizeInBytes());
+    cache_->OnScreenshotCompressed(unique_id_, GetBitmap().SizeInBytes());
   }
 }
 

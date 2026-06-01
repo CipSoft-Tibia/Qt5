@@ -3,7 +3,35 @@
 
 #include "qdoc/utilities.h"
 
+#include "qdoc/inode.h"
+#include "qdoc/location.h"
+
 #include <QtTest/QtTest>
+
+QT_BEGIN_NAMESPACE
+
+/*!
+    \brief A basic Node implementation for serialization function tests.
+  */
+enum class Genus : unsigned char { DontCare };
+enum class NodeType : unsigned char { NoType };
+
+class TestNode : public INode
+{
+public:
+    explicit TestNode(QString name) : m_name(std::move(name)) {}
+
+    [[nodiscard]] Genus genus() const override { return Genus::DontCare; }
+    [[nodiscard]] NodeType nodeType() const override { return NodeType::NoType; }
+
+    [[nodiscard]] const QString &name() const override { return m_name; }
+    [[nodiscard]] QString fullName() const override { return m_name; }
+
+private:
+    QString m_name;
+};
+
+QT_END_NAMESPACE
 
 class tst_Utilities : public QObject
 {
@@ -20,6 +48,18 @@ private slots:
     void callCommaForOneWord();
     void callCommaForTwoWords();
     void callCommaForThreeWords();
+    void uniqueId();
+
+    // stringForNode and nodeForString
+    void stringForNode_ValidPointer();
+    void stringForNode_NullPointer();
+    void nodeForString_ValidString();
+    void nodeForString_ZeroString();
+    void nodeForString_InvalidString();
+    void roundTrip_ValidPointer();
+    void roundTrip_NullPointer();
+
+    void isGeneratedFile();
 };
 
 void tst_Utilities::loggingCategoryName()
@@ -125,6 +165,110 @@ void tst_Utilities::callCommaForThreeWords()
     for (const auto &word : listOfWords) {
         result.append(word);
         result.append(Utilities::comma(index++, listOfWords.size()));
+    }
+    QCOMPARE(result, expected);
+}
+
+void tst_Utilities::uniqueId()
+{
+    const QString expected = QStringLiteral("prefix-path-1");
+    Location loc { "../some/path" };
+    loc.start();
+    QCOMPARE(Utilities::uniqueIdentifier(loc, "prefix"), expected);
+}
+
+void tst_Utilities::stringForNode_ValidPointer()
+{
+    TestNode testNode(QStringLiteral("TestNode"));
+    INode* nodePtr = &testNode;
+
+    QString nodeString = Utilities::stringForNode(nodePtr);
+
+    QVERIFY(!nodeString.isEmpty());
+    bool ok = false;
+    quintptr addressFromString = nodeString.toULongLong(&ok);
+    QVERIFY(ok);
+    QCOMPARE(addressFromString, reinterpret_cast<quintptr>(nodePtr));
+}
+
+void tst_Utilities::stringForNode_NullPointer()
+{
+    INode* nodePtr = nullptr;
+    QString nodeString = Utilities::stringForNode(nodePtr);
+
+    // A null pointer should result in the string "0"
+    QCOMPARE(nodeString, QStringLiteral("0"));
+}
+
+void tst_Utilities::nodeForString_ValidString()
+{
+    TestNode testNode(QStringLiteral("TestNode"));
+    INode* originalPtr = &testNode;
+    QString nodeString = Utilities::stringForNode(originalPtr);
+
+    const INode* recoveredPtr = Utilities::nodeForString(nodeString);
+
+    QCOMPARE(recoveredPtr, originalPtr);
+}
+
+void tst_Utilities::nodeForString_ZeroString()
+{
+    QString zeroString = QStringLiteral("0");
+    const INode* recoveredPtr = Utilities::nodeForString(zeroString);
+
+    // The string "0" should result in a null pointer
+    QCOMPARE(recoveredPtr, nullptr);
+}
+
+void tst_Utilities::roundTrip_ValidPointer()
+{
+    TestNode testNode(QStringLiteral("TestNode"));
+    INode* originalPtr = &testNode;
+
+    // Convert pointer to string
+    QString nodeString = Utilities::stringForNode(originalPtr);
+    // Convert string back to pointer
+    const INode* recoveredPtr = Utilities::nodeForString(nodeString);
+
+    // The final pointer must match the original
+    QCOMPARE(recoveredPtr, originalPtr);
+}
+
+void tst_Utilities::roundTrip_NullPointer()
+{
+    INode* originalPtr = nullptr;
+
+    // Convert null pointer to string
+    QString nodeString = Utilities::stringForNode(originalPtr);
+    // Convert string ("0") back to pointer
+    const INode* recoveredPtr = Utilities::nodeForString(nodeString);
+
+    // The final pointer must also be null
+    QCOMPARE(recoveredPtr, nullptr);
+}
+
+void tst_Utilities::nodeForString_InvalidString()
+{
+    // Passing a non‑numeric string should yield a null pointer
+    const INode *back = Utilities::nodeForString(QStringLiteral("not a number"));
+    QCOMPARE(back, nullptr);
+}
+
+void tst_Utilities::isGeneratedFile()
+{
+    const QStringList listOfPaths {
+        "", "/", "abc.cpp", "moc.cpp", "moc/cpp", "/moc/cpp",
+        "moc_abc.cpp", "ui_def.cpp", "qrc_ghi.cpp",
+        "/moc_abc.cpp", "abc/ui_def.cpp", "/def/qrc_ghi.cpp"
+    };
+    const QVector<bool> expected = {
+        false, false, false, false, false, false,
+        true, true, true, true, true, true
+    };
+    int index = 0;
+    QVector<bool> result(12);
+    for (const auto &path : listOfPaths) {
+        result[index++] = Utilities::isGeneratedFile(path);
     }
     QCOMPARE(result, expected);
 }

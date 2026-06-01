@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "gpu/config/gpu_info_collector.h"
 
 #include <stddef.h>
@@ -46,6 +41,7 @@
 #include "ui/gl/gl_version_info.h"
 #include "ui/gl/init/create_gr_gl_interface.h"
 #include "ui/gl/init/gl_factory.h"
+#include "ui/gl/startup_trace.h"
 
 #if BUILDFLAG(IS_MAC)
 #include "base/apple/bundle_locations.h"
@@ -76,13 +72,10 @@ namespace {
 #define EGL_ANGLE_feature_control 1
 #define EGL_FEATURE_NAME_ANGLE 0x3460
 #define EGL_FEATURE_CATEGORY_ANGLE 0x3461
-#define EGL_FEATURE_DESCRIPTION_ANGLE 0x3462
-#define EGL_FEATURE_BUG_ANGLE 0x3463
 #define EGL_FEATURE_STATUS_ANGLE 0x3464
 #define EGL_FEATURE_COUNT_ANGLE 0x3465
 #define EGL_FEATURE_OVERRIDES_ENABLED_ANGLE 0x3466
 #define EGL_FEATURE_OVERRIDES_DISABLED_ANGLE 0x3467
-#define EGL_FEATURE_CONDITION_ANGLE 0x3468
 #endif /* EGL_ANGLE_feature_control */
 
 scoped_refptr<gl::GLSurface> InitializeGLSurface(gl::GLDisplay* display) {
@@ -97,6 +90,7 @@ scoped_refptr<gl::GLSurface> InitializeGLSurface(gl::GLDisplay* display) {
 }
 
 scoped_refptr<gl::GLContext> InitializeGLContext(gl::GLSurface* surface) {
+  GPU_STARTUP_TRACE_EVENT("gpu_info_collector::InitializeGLContext");
   gl::GLContextAttribs attribs;
   attribs.client_major_es_version = 2;
   scoped_refptr<gl::GLContext> context(
@@ -151,12 +145,11 @@ std::string GetVersionFromString(const std::string& version_string) {
 
 // Return the array index of the found name, or return -1.
 int StringContainsName(const std::string& str,
-                       const std::string* names,
-                       size_t num_names) {
+                       base::span<const std::string> names) {
   std::vector<std::string> tokens = base::SplitString(
       str, " .,()-_", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   for (size_t ii = 0; ii < tokens.size(); ++ii) {
-    for (size_t name_index = 0; name_index < num_names; ++name_index) {
+    for (size_t name_index = 0; name_index < names.size(); ++name_index) {
       if (tokens[ii] == names[name_index]) {
         return base::checked_cast<int>(name_index);
       }
@@ -206,8 +199,7 @@ std::string GetDisplayTypeString(gl::DisplayType type) {
     case gl::ANGLE_METAL_NULL:
       return "ANGLE_METAL_NULL";
     default:
-      NOTREACHED_IN_MIGRATION();
-      return "";
+      NOTREACHED();
   }
 }
 
@@ -240,8 +232,7 @@ std::string GetDawnBackendTypeString(wgpu::BackendType type) {
     case wgpu::BackendType::OpenGLES:
       return "OpenGLES backend";
     default:
-      NOTREACHED_IN_MIGRATION();
-      return "";
+      NOTREACHED();
   }
 }
 
@@ -319,9 +310,10 @@ void ReportWebGPUAdapterMetrics(dawn::native::Instance* instance) {
 #endif
 
   bool supports_shader_f16 = false;
-  for (dawn::native::Adapter& adapter :
+  for (dawn::native::Adapter& nativeAdapter :
        instance->EnumerateAdapters(&adapter_options)) {
-    adapter.SetUseTieredLimits(false);
+    nativeAdapter.SetUseTieredLimits(false);
+    wgpu::Adapter adapter = wgpu::Adapter(nativeAdapter.Get());
     wgpu::AdapterInfo info;
     adapter.GetInfo(&info);
     if (info.adapterType != wgpu::AdapterType::DiscreteGPU &&
@@ -330,7 +322,7 @@ void ReportWebGPUAdapterMetrics(dawn::native::Instance* instance) {
       continue;
     }
 
-    WGPUSupportedLimits limits;
+    wgpu::SupportedLimits limits;
     limits.nextInChain = nullptr;
     if (adapter.GetLimits(&limits) != wgpu::Status::Success) {
       continue;
@@ -366,11 +358,13 @@ void ReportWebGPUAdapterMetrics(dawn::native::Instance* instance) {
 }
 
 void ReportWebGPUSupportMetrics(dawn::native::Instance* instance) {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
   static BASE_FEATURE(kCollectWebGPUSupportMetrics,
                       "CollectWebGPUSupportMetrics",
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
                       base::FEATURE_DISABLED_BY_DEFAULT);
 #else
+  static BASE_FEATURE(kCollectWebGPUSupportMetrics,
+                      "CollectWebGPUSupportMetrics",
                       base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
   if (!base::FeatureList::IsEnabled(kCollectWebGPUSupportMetrics)) {
@@ -426,7 +420,7 @@ void ReportWebGPUSupportMetrics(dawn::native::Instance* instance) {
 #if BUILDFLAG(DAWN_ENABLE_BACKEND_OPENGLES)
   // Check for compat adapters on GLES.
   adapter_options.backendType = wgpu::BackendType::OpenGLES;
-  adapter_options.compatibilityMode = true;
+  adapter_options.featureLevel = wgpu::FeatureLevel::Compatibility;
 
   dawn::native::opengl::RequestAdapterOptionsGetGLProc
       adapter_options_get_gl_proc = {};
@@ -540,6 +534,7 @@ bool CollectGraphicsDeviceInfoFromCommandLine(
 
 bool CollectBasicGraphicsInfo(const base::CommandLine* command_line,
                               GPUInfo* gpu_info) {
+  GPU_STARTUP_TRACE_EVENT("gpu_info_collector::CollectBasicGraphicsInfo");
   // In the info-collection GPU process on Windows, we get the device info from
   // the browser.
   if (CollectGraphicsDeviceInfoFromCommandLine(command_line, gpu_info)) {
@@ -588,7 +583,7 @@ bool CollectBasicGraphicsInfo(const base::CommandLine* command_line,
 }
 
 bool CollectGraphicsInfoGL(GPUInfo* gpu_info, gl::GLDisplay* display) {
-  TRACE_EVENT0("startup", "gpu_info_collector::CollectGraphicsInfoGL");
+  GPU_STARTUP_TRACE_EVENT("gpu_info_collector::CollectGraphicsInfoGL");
   DCHECK_NE(gl::GetGLImplementationParts(), gl::kGLImplementationNone);
   gl::GLDisplayEGL* egl_display = display->GetAs<gl::GLDisplayEGL>();
 
@@ -697,15 +692,15 @@ void IdentifyActiveGPU(GPUInfo* gpu_info) {
   const std::string kIntelName = "intel";
   const std::string kAMDName = "amd";
   const std::string kATIName = "ati";
-  const std::string kVendorNames[] = {kNVidiaName, kNouveauName, kIntelName,
-                                      kAMDName, kATIName};
+  const std::array<std::string, 5> kVendorNames = {
+      {kNVidiaName, kNouveauName, kIntelName, kAMDName, kATIName}};
 
   const uint32_t kNVidiaID = 0x10de;
   const uint32_t kIntelID = 0x8086;
   const uint32_t kAMDID = 0x1002;
   const uint32_t kATIID = 0x1002;
-  const uint32_t kVendorIDs[] = {kNVidiaID, kNVidiaID, kIntelID, kAMDID,
-                                 kATIID};
+  const std::array<uint32_t, 5> kVendorIDs = {
+      {kNVidiaID, kNVidiaID, kIntelID, kAMDID, kATIID}};
 
   DCHECK(gpu_info);
   if (gpu_info->secondary_gpus.size() == 0) {
@@ -719,16 +714,14 @@ void IdentifyActiveGPU(GPUInfo* gpu_info) {
   uint32_t active_vendor_id = 0;
   if (!gpu_info->gl_vendor.empty()) {
     std::string gl_vendor_lower = base::ToLowerASCII(gpu_info->gl_vendor);
-    int index = StringContainsName(gl_vendor_lower, kVendorNames,
-                                   std::size(kVendorNames));
+    int index = StringContainsName(gl_vendor_lower, kVendorNames);
     if (index >= 0) {
       active_vendor_id = kVendorIDs[index];
     }
   }
   if (active_vendor_id == 0 && !gpu_info->gl_renderer.empty()) {
     std::string gl_renderer_lower = base::ToLowerASCII(gpu_info->gl_renderer);
-    int index = StringContainsName(gl_renderer_lower, kVendorNames,
-                                   std::size(kVendorNames));
+    int index = StringContainsName(gl_renderer_lower, kVendorNames);
     if (index >= 0) {
       active_vendor_id = kVendorIDs[index];
     }
@@ -816,6 +809,7 @@ void CollectGraphicsInfoForTesting(GPUInfo* gpu_info) {
 
 bool CollectGpuExtraInfo(gfx::GpuExtraInfo* gpu_extra_info,
                          const GpuPreferences& prefs) {
+  GPU_STARTUP_TRACE_EVENT("gpu_info_collector::CollectGpuExtraInfo");
   // Populate the list of ANGLE features by querying the functions exposed by
   // EGL_ANGLE_feature_control if it's available.
   if (gl::g_driver_egl.client_ext.b_EGL_ANGLE_feature_control) {
@@ -829,14 +823,8 @@ bool CollectGpuExtraInfo(gfx::GpuExtraInfo* gpu_extra_info,
           QueryEGLStringi(display, EGL_FEATURE_NAME_ANGLE, i);
       gpu_extra_info->angle_features[i].category =
           QueryEGLStringi(display, EGL_FEATURE_CATEGORY_ANGLE, i);
-      gpu_extra_info->angle_features[i].description =
-          QueryEGLStringi(display, EGL_FEATURE_DESCRIPTION_ANGLE, i);
-      gpu_extra_info->angle_features[i].bug =
-          QueryEGLStringi(display, EGL_FEATURE_BUG_ANGLE, i);
       gpu_extra_info->angle_features[i].status =
           QueryEGLStringi(display, EGL_FEATURE_STATUS_ANGLE, i);
-      gpu_extra_info->angle_features[i].condition =
-          QueryEGLStringi(display, EGL_FEATURE_CONDITION_ANGLE, i);
     }
   }
 
@@ -850,9 +838,11 @@ bool CollectGpuExtraInfo(gfx::GpuExtraInfo* gpu_extra_info,
   return true;
 }
 
+// TODO(crbug.com/351564777): should be UNSAFE_BUFFER_USAGE
 void CollectDawnInfo(const gpu::GpuPreferences& gpu_preferences,
                      bool collect_metrics,
                      std::vector<std::string>* dawn_info_list) {
+  GPU_STARTUP_TRACE_EVENT("gpu_info_collector::CollectDawnInfo");
 #if BUILDFLAG(USE_DAWN)
   DawnProcTable procs = dawn::native::GetProcs();
   dawnProcSetProcs(&procs);
@@ -928,26 +918,34 @@ void CollectDawnInfo(const gpu::GpuPreferences& gpu_preferences,
   adapter_options_get_gl_proc.display = display;
   adapter_options_get_gl_proc.nextInChain = adapter_options.nextInChain;
   adapter_options.nextInChain = &adapter_options_get_gl_proc;
-  EGLSurface drawSurface = eglGetCurrentSurface(EGL_DRAW);
-  EGLSurface readSurface = eglGetCurrentSurface(EGL_READ);
-  EGLContext context = eglGetCurrentContext();
+  EGLSurface drawSurface = nullptr;
+  EGLSurface readSurface = nullptr;
+  EGLContext context = nullptr;
+  if (gl::GetGLImplementation() != gl::kGLImplementationDisabled) {
+    drawSurface = eglGetCurrentSurface(EGL_DRAW);
+    readSurface = eglGetCurrentSurface(EGL_READ);
+    context = eglGetCurrentContext();
+  }
 
   // Dawn WebGPU API calls, such as adapter.CreateDevice(), may change the
   // EGLContext. Restore the context on return from this function.
   absl::Cleanup on_return = [display, drawSurface, readSurface, context] {
-    eglMakeCurrent(display, drawSurface, readSurface, context);
+    if (gl::GetGLImplementation() != gl::kGLImplementationDisabled) {
+      eglMakeCurrent(display, drawSurface, readSurface, context);
+    }
   };
 #endif
 
-  for (bool compatibilityMode : {false, true}) {
-    adapter_options.compatibilityMode = compatibilityMode;
+  for (wgpu::FeatureLevel featureLevel :
+       {wgpu::FeatureLevel::Compatibility, wgpu::FeatureLevel::Core}) {
+    adapter_options.featureLevel = featureLevel;
     std::vector<dawn::native::Adapter> adapters = instance->EnumerateAdapters(
         reinterpret_cast<const WGPURequestAdapterOptions*>(&adapter_options));
     for (dawn::native::Adapter& native_adapter : adapters) {
       wgpu::Adapter adapter(native_adapter.Get());
       wgpu::AdapterInfo info = {};
       adapter.GetInfo(&info);
-      if (compatibilityMode &&
+      if (featureLevel == wgpu::FeatureLevel::Compatibility &&
           info.backendType != wgpu::BackendType::OpenGLES) {
         continue;
       }
@@ -958,7 +956,7 @@ void CollectDawnInfo(const gpu::GpuPreferences& gpu_preferences,
         std::string gpu_str = GetDawnAdapterTypeString(info.adapterType);
         gpu_str += " " + GetDawnBackendTypeString(info.backendType);
         gpu_str += " - " + std::string(info.device);
-        if (compatibilityMode) {
+        if (featureLevel == wgpu::FeatureLevel::Compatibility) {
           gpu_str += " (Compatibility Mode)";
         }
         dawn_info_list->push_back(gpu_str);
@@ -974,10 +972,13 @@ void CollectDawnInfo(const gpu::GpuPreferences& gpu_preferences,
         // Get supported features under required adapter toggles if Dawn
         // available, or default toggles otherwise.
         dawn_info_list->push_back("[Adapter Supported Features]");
-        std::vector<wgpu::FeatureName> features(
-            adapter.EnumerateFeatures(nullptr));
-        adapter.EnumerateFeatures(features.data());
-        for (wgpu::FeatureName f : features) {
+        wgpu::SupportedFeatures supportedFeatures;
+        adapter.GetFeatures(&supportedFeatures);
+        // SAFETY: Required from caller
+        const auto features =
+            UNSAFE_BUFFERS(base::span<const wgpu::FeatureName>(
+                supportedFeatures.features, supportedFeatures.featureCount));
+        for (const auto& f : features) {
           dawn_info_list->push_back(dawn::native::GetFeatureInfo(f)->name);
         }
 

@@ -6,3 +6,4 @@
 add_subdirectory(events)
 add_subdirectory(colorresolving)
 add_subdirectory(curverenderer)
+add_subdirectory(qsggeometry)

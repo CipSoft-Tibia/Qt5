@@ -54,7 +54,9 @@ installPackages+=(libgbm-dev)
 installPackages+=(libxkbfile-dev)
 installPackages+=(libxshmfence-dev)
 installPackages+=(libxss-dev)
-# installPackages+=(nodejs) too old
+installPackages+=(rustc)
+installPackages+=(bindgen)
+installPackages+=(clang)
 installPackages+=(python3-html5lib)
 #
 ## Common event loop handling
@@ -250,6 +252,8 @@ installPackages+=(libusb-1.0-0-dev)
 # password management support for Qt Creator
 installPackages+=(libsecret-1-dev)
 installPackages+=(debian-archive-keyring)
+# Keep zoneinfo up-to-date (COIN-1282)
+installPackages+=(tzdata)
 
 
 echo "Running update for apt"
@@ -263,7 +267,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y install cmake apt-cacher-ng -t
 # Disable keyring password prompt
 keyring --disable
 
-pip install --user -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
+pip install --user -r "${BASH_SOURCE%/*}/../common/shared/requirements.txt"
 
 source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 

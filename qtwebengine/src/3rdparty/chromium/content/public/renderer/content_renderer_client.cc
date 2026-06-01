@@ -218,14 +218,22 @@ ContentRendererClient::GetSupportedKeySystems(
   return nullptr;
 }
 
-bool ContentRendererClient::IsSupportedAudioType(const media::AudioType& type) {
+bool ContentRendererClient::IsDecoderSupportedAudioType(
+    const media::AudioType& type) {
   // Defer to media's default support.
-  return ::media::IsDefaultSupportedAudioType(type);
+  return ::media::IsDefaultDecoderSupportedAudioType(type);
 }
 
-bool ContentRendererClient::IsSupportedVideoType(const media::VideoType& type) {
+bool ContentRendererClient::IsDecoderSupportedVideoType(
+    const media::VideoType& type) {
   // Defer to media's default support.
-  return ::media::IsDefaultSupportedVideoType(type);
+  return ::media::IsDefaultDecoderSupportedVideoType(type);
+}
+
+bool ContentRendererClient::IsEncoderSupportedVideoType(
+    const media::VideoType& type) {
+  // Defer to media's default support.
+  return ::media::IsDefaultEncoderSupportedVideoType(type);
 }
 
 media::ExternalMemoryAllocator* ContentRendererClient::GetMediaAllocator() {
@@ -235,6 +243,11 @@ media::ExternalMemoryAllocator* ContentRendererClient::GetMediaAllocator() {
 bool ContentRendererClient::IsSupportedBitstreamAudioCodec(
     media::AudioCodec codec) {
   switch (codec) {
+#if BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
+    case media::AudioCodec::kAC3:
+    case media::AudioCodec::kEAC3:
+      return true;
+#endif  // BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
 #if BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
     case media::AudioCodec::kDTS:
     case media::AudioCodec::kDTSXP2:
@@ -313,7 +326,7 @@ ContentRendererClient::GetAudioRendererAlgorithmParameters(
 
 void ContentRendererClient::AppendContentSecurityPolicy(
     const blink::WebURL& url,
-    blink::WebVector<blink::WebContentSecurityPolicyHeader>* csp) {}
+    std::vector<blink::WebContentSecurityPolicyHeader>* csp) {}
 
 std::unique_ptr<media::RendererFactory>
 ContentRendererClient::GetBaseRendererFactory(

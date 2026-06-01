@@ -10,6 +10,8 @@
 #include "qdatetime.h"
 #include "qloggingcategory.h"
 
+#include <QtMultimedia/qplaybackoptions.h>
+
 #include <math.h>
 #include <optional>
 
@@ -181,9 +183,14 @@ QPlatformMediaPlayer::TrackType MediaDataHolder::trackTypeFromMediaType(int medi
 }
 
 namespace {
-QMaybe<AVFormatContextUPtr, MediaDataHolder::ContextError>
-loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancelToken> &cancelToken)
+q23::expected<AVFormatContextUPtr, MediaDataHolder::ContextError>
+loadMedia(const QUrl &mediaUrl, QIODevice *stream, const QPlaybackOptions &playbackOptions,
+          const std::shared_ptr<ICancelToken> &cancelToken)
 {
+    using std::chrono::duration_cast;
+    using std::chrono::microseconds;
+    using std::chrono::milliseconds;
+
     const QByteArray url = mediaUrl.toString(QUrl::PreferLocalFile).toUtf8();
 
     AVFormatContextUPtr context{ avformat_alloc_context() };
@@ -191,9 +198,11 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
     if (stream) {
         if (!stream->isOpen()) {
             if (!stream->open(QIODevice::ReadOnly))
-                return QUnexpected{
-                    MediaDataHolder::ContextError{ QMediaPlayer::ResourceError,
-                                                   QLatin1String("Could not open source device.") },
+                return q23::unexpected{
+                    MediaDataHolder::ContextError{
+                            QMediaPlayer::ResourceError,
+                            QLatin1String("Could not open source device."),
+                    },
                 };
         }
 
@@ -213,12 +222,34 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
     }
 
     AVDictionaryHolder dict;
-    constexpr auto NetworkTimeoutUs = "5000000";
-    av_dict_set(dict, "timeout", NetworkTimeoutUs, 0);
+    {
+        const milliseconds timeout = playbackOptions.networkTimeout();
+        av_dict_set_int(dict, "timeout", duration_cast<microseconds>(timeout).count(), 0);
+        qCDebug(qLcMediaDataHolder) << "Using custom network timeout:" << timeout;
+    }
+
+    {
+        const int probeSize = playbackOptions.probeSize();
+        if (probeSize != -1) {
+            constexpr int minProbeSizeFFmpeg = 32;
+            if (probeSize >= minProbeSizeFFmpeg) {
+                av_dict_set_int(dict, "probesize", probeSize, 0);
+                qCDebug(qLcMediaDataHolder) << "Using custom probesize" << probeSize;
+            }
+            else
+                qCWarning(qLcMediaDataHolder) << "Invalid probe size, using default";
+        }
+    }
 
     const QByteArray protocolWhitelist = qgetenv("QT_FFMPEG_PROTOCOL_WHITELIST");
     if (!protocolWhitelist.isNull())
         av_dict_set(dict, "protocol_whitelist", protocolWhitelist.data(), 0);
+
+    if (playbackOptions.playbackIntent() == QPlaybackOptions::PlaybackIntent::LowLatencyStreaming) {
+        av_dict_set(dict, "fflags", "nobuffer", 0);
+        av_dict_set_int(dict, "flush_packets", 1, 0);
+        qCDebug(qLcMediaDataHolder) << "Enabled low latency streaming";
+    }
 
     context->interrupt_callback.opaque = cancelToken.get();
     context->interrupt_callback.callback = [](void *opaque) {
@@ -245,15 +276,18 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
         qCWarning(qLcMediaDataHolder)
                 << "Could not open media. FFmpeg error description:" << AVError(ret);
 
-        return QUnexpected{ MediaDataHolder::ContextError{
-                code, QMediaPlayer::tr("Could not open file") } };
+        return q23::unexpected{
+            MediaDataHolder::ContextError{ code, QMediaPlayer::tr("Could not open file") },
+        };
     }
 
     ret = avformat_find_stream_info(context.get(), nullptr);
     if (ret < 0) {
-        return QUnexpected{ MediaDataHolder::ContextError{
-                QMediaPlayer::FormatError,
-                QMediaPlayer::tr("Could not find stream information for media file") } };
+        return q23::unexpected{
+            MediaDataHolder::ContextError{
+                    QMediaPlayer::FormatError,
+                    QMediaPlayer::tr("Could not find stream information for media file") },
+        };
     }
 
     if (qLcMediaDataHolder().isInfoEnabled())
@@ -266,15 +300,16 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
 } // namespace
 
 MediaDataHolder::Maybe MediaDataHolder::create(const QUrl &url, QIODevice *stream,
+                                               const QPlaybackOptions &options,
                                                const std::shared_ptr<ICancelToken> &cancelToken)
 {
-    QMaybe context = loadMedia(url, stream, cancelToken);
+    q23::expected context = loadMedia(url, stream, options, cancelToken);
     if (context) {
         // MediaDataHolder is wrapped in a shared pointer to interop with signal/slot mechanism
         return std::make_shared<MediaDataHolder>(
                 MediaDataHolder{ std::move(context.value()), cancelToken });
     }
-    return QUnexpected{ context.error() };
+    return q23::unexpected{ context.error() };
 }
 
 MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,

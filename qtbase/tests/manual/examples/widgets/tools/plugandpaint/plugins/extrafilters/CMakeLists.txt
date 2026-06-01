@@ -7,7 +7,7 @@ qt_add_plugin(pnp_extrafilters
 )
 
 set_target_properties(pnp_extrafilters PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/app"
+    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins"
 )
 
 target_include_directories(pnp_extrafilters PRIVATE

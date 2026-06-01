@@ -72,9 +72,8 @@ static void updateUniformsForDefaultMaterial(QSSGRhiShaderPipeline &shaderPipeli
     const auto &modelNode = subsetRenderable.modelContext.model;
     QRhiTexture *lightmapTexture = inData.getLightmapTexture(subsetRenderable.modelContext);
 
-    const QMatrix4x4 &localInstanceTransform(modelNode.localInstanceTransform);
-    const QMatrix4x4 &globalInstanceTransform(modelNode.globalInstanceTransform);
-    const QMatrix4x4 &modelMatrix(modelNode.usesBoneTexture() ? QMatrix4x4() : subsetRenderable.globalTransform);
+    const auto &[localInstanceTransform, globalInstanceTransform] = inData.getInstanceTransforms(modelNode);
+    const QMatrix4x4 &modelMatrix(modelNode.usesBoneTexture() ? QMatrix4x4() : inData.getGlobalTransform(modelNode));
 
     QSSGMaterialShaderGenerator::setRhiMaterialProperties(*renderer->contextInterface(),
                                                           shaderPipeline,
@@ -257,20 +256,20 @@ static std::unique_ptr<QSSGRenderCamera> computeShadowCameraFromFrustum(const QM
     QRectF theViewport(0.0f, 0.0f, boundsDims.x(), boundsDims.y());
 
     auto camera = std::make_unique<QSSGRenderCamera>(QSSGRenderGraphObject::Type::OrthographicCamera);
-    camera->clipNear = -0.5f * boundsDims.z();
-    camera->clipFar = 0.5f * boundsDims.z();
-    camera->fov = qDegreesToRadians(90.f);
+    camera->clipPlanes = QSSGRenderCamera::ClipPlanes{-0.5f * boundsDims.z(), 0.5f * boundsDims.z()};
+    camera->fov = QSSGRenderCamera::FieldOfView::fromDegrees(90.f);
     camera->parent = nullptr;
     camera->localTransform = QSSGRenderNode::calculateTransformMatrix(boundsCenterWorld,
                                                                       QSSGRenderNode::initScale,
                                                                       lightPivot,
                                                                       QQuaternion::fromDirection(lightForward, lightUp));
-    camera->calculateGlobalVariables(theViewport);
+    QSSGRenderCamera::calculateProjectionInternal(*camera, theViewport);
 
     return camera;
 }
 
-static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamerasForShadowMap(const QSSGRenderCamera &inCamera,
+static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamerasForShadowMap(const QSSGLayerRenderData &data,
+                                                                                               const QSSGRenderCamera &inCamera,
                                                                                                const QSSGRenderLight *inLight,
                                                                                                const int shadowMapResolution,
                                                                                                const float pcfRadius,
@@ -289,7 +288,8 @@ static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamer
     if (clipNear >= clipFar || qFuzzyCompare(clipNear, clipFar))
         return result;
 
-    const QVector3D lightDir = inLight->getDirection();
+    const QMatrix4x4 lightGlobalTransform = data.getGlobalTransform(*inLight);
+    const QVector3D lightDir = inLight->getDirection(lightGlobalTransform);
     const QVector3D lightPivot = inLight->pivot;
 
     const QVector3D forward = lightDir.normalized();
@@ -305,10 +305,11 @@ static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamer
     lightMatrix.setRow(3, QVector4D(0.0f, 0.0f, 0.0f, 1.0f));
     QMatrix4x4 lightMatrixInverted = lightMatrix.inverted();
 
-    const float farScale = (clipFar - clipNear) / (inCamera.clipFar - inCamera.clipNear);
+    const float farScale = (clipFar - clipNear) / (inCamera.clipPlanes.clipFar() - inCamera.clipPlanes.clipNear());
 
+    const QMatrix4x4 cameraGlobalTransform = data.getGlobalTransform(inCamera);
     QMatrix4x4 viewProjection(Qt::Uninitialized);
-    inCamera.calculateViewProjectionMatrix(viewProjection);
+    inCamera.calculateViewProjectionMatrix(cameraGlobalTransform, viewProjection);
     const QSSGBoxPoints frustum = computeFrustumBounds(viewProjection);
     const QSSGBoxPoints frustumUntransformed = lockShadowmapTexels ? computeFrustumBounds(inCamera.projection) : QSSGBoxPoints();
 
@@ -393,7 +394,7 @@ static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamer
     return result;
 }
 
-static void setupCubeReflectionCameras(const QSSGRenderReflectionProbe *inProbe, QSSGRenderCamera inCameras[6])
+static void setupCubeReflectionCameras(const QSSGLayerRenderData &inData, const QSSGRenderReflectionProbe *inProbe, QSSGRenderCamera inCameras[6])
 {
     Q_ASSERT(inProbe != nullptr);
 
@@ -409,17 +410,17 @@ static void setupCubeReflectionCameras(const QSSGRenderReflectionProbe *inProbe,
                                          QQuaternion::fromEulerAngles(0.f, 0.f, qRadiansToDegrees(QSSG_PI)),
                                          };
 
-    const QVector3D inProbePos = inProbe->getGlobalPos();
+    auto inProbeGlobalTranform = inData.getGlobalTransform(*inProbe);
+    const QVector3D inProbePos = QSSGRenderNode::getGlobalPos(inProbeGlobalTranform);
     const QVector3D inProbePivot = inProbe->pivot;
 
     for (int i = 0; i < 6; ++i) {
         inCameras[i].parent = nullptr;
-        inCameras[i].clipNear = 1.0f;
-        inCameras[i].clipFar = qMax<float>(2.0f, 10000.0f);
-        inCameras[i].fov = qDegreesToRadians(90.f);
+        inCameras[i].clipPlanes = {1.0f, qMax<float>(2.0f, 10000.0f)};
+        inCameras[i].fov = QSSGRenderCamera::FieldOfView::fromDegrees(90.f);
 
         inCameras[i].localTransform = QSSGRenderNode::calculateTransformMatrix(inProbePos, QSSGRenderNode::initScale, inProbePivot, rotOfs[i]);
-        inCameras[i].calculateGlobalVariables(theViewport);
+        QSSGRenderCamera::calculateProjectionInternal(inCameras[i], theViewport);
     }
 }
 
@@ -517,7 +518,10 @@ static void addOpaqueDepthPrePassBindings(QSSGRhiContext *rhiCtx,
     }
 }
 
-static void setupCubeShadowCameras(const QSSGRenderLight *inLight, float shadowMapFar, QSSGRenderCamera inCameras[6])
+static void setupCubeShadowCameras(const QSSGLayerRenderData &inData,
+                                   const QSSGRenderLight *inLight,
+                                   float shadowMapFar,
+                                   QSSGRenderCamera inCameras[6])
 {
     Q_ASSERT(inLight != nullptr);
     Q_ASSERT(inLight->type != QSSGRenderLight::Type::DirectionalLight);
@@ -534,16 +538,16 @@ static void setupCubeShadowCameras(const QSSGRenderLight *inLight, float shadowM
                                          QQuaternion::fromEulerAngles(0.f, 0.f, qRadiansToDegrees(QSSG_PI)),
                                          };
 
-    const QVector3D inLightPos = inLight->getGlobalPos();
+    const auto gt = inData.getGlobalTransform(*inLight);
+    const QVector3D inLightPos = QSSGRenderNode::getGlobalPos(gt);
     constexpr QVector3D lightPivot = QVector3D(0, 0, 0);
 
     for (int i = 0; i < 6; ++i) {
         inCameras[i].parent = nullptr;
-        inCameras[i].clipNear = 1.0f;
-        inCameras[i].clipFar = shadowMapFar;
-        inCameras[i].fov = qDegreesToRadians(90.f);
+        inCameras[i].clipPlanes = {1.0f, shadowMapFar};
+        inCameras[i].fov = QSSGRenderCamera::FieldOfView::fromDegrees(90.f);
         inCameras[i].localTransform = QSSGRenderNode::calculateTransformMatrix(inLightPos, QSSGRenderNode::initScale, lightPivot, rotOfs[i]);
-        inCameras[i].calculateGlobalVariables(theViewport);
+        QSSGRenderCamera::calculateProjectionInternal(inCameras[i], theViewport);
     }
 
     /*
@@ -624,8 +628,9 @@ static void rhiPrepareResourcesForReflectionMap(QSSGRhiContext *rhiCtx,
         if (inObject.type == QSSGRenderableObject::Type::DefaultMaterialMeshSubset || inObject.type == QSSGRenderableObject::Type::CustomMaterialMeshSubset) {
             QSSGSubsetRenderable &renderable(static_cast<QSSGSubsetRenderable &>(inObject));
             const bool hasSkinning = defaultMaterialShaderKeyProperties.m_boneCount.getValue(renderable.shaderDescription) > 0;
+            const QMatrix4x4 &globalTransform = renderable.modelContext.globalTransform;
             modelViewProjection = hasSkinning ? pEntry->m_viewProjection
-                                              : pEntry->m_viewProjection * renderable.globalTransform;
+                                              : pEntry->m_viewProjection * globalTransform;
         }
 
         // here we pass on our own alteredCamera and alteredModelViewProjection
@@ -717,7 +722,7 @@ static void rhiPrepareResourcesForShadowMap(QSSGRhiContext *rhiCtx,
         if (theObject->type == QSSGRenderableObject::Type::DefaultMaterialMeshSubset || theObject->type == QSSGRenderableObject::Type::CustomMaterialMeshSubset) {
             const bool hasSkinning = defaultMaterialShaderKeyProperties.m_boneCount.getValue(renderable.shaderDescription) > 0;
             modelViewProjection = hasSkinning ? pEntry->m_lightViewProjection[cascadeIndex]
-                                              : pEntry->m_lightViewProjection[cascadeIndex] * renderable.globalTransform;
+                                              : pEntry->m_lightViewProjection[cascadeIndex] * renderable.modelContext.globalTransform;
             // cascadeIndex is 0..3 for directional light and 0 for the pointlight & spotlight
             // cubeFaceIdx is 0 for directional & spotlight and 0..5 for the pointlight
             // pEntry is unique per light and a light can only be one of directional, point, or spotlight.
@@ -1005,11 +1010,12 @@ void RenderHelpers::rhiPrepareRenderable(QSSGRhiContext *rhiCtx,
             ia = subsetRenderable.subset.rhi.ia;
             const QSSGRenderCameraDataList &cameraDatas(*inData.renderedCameraData);
             QVector3D cameraDirection = cameraDatas[0].direction;
-            if (alteredCamera)
-                cameraDirection = alteredCamera->getScalingCorrectDirection();
             QVector3D cameraPosition = cameraDatas[0].position;
-            if (alteredCamera)
-                cameraPosition = alteredCamera->getGlobalPos();
+            if (alteredCamera) {
+                const QMatrix4x4 camGlobalTranform = inData.getGlobalTransform(*alteredCamera);
+                cameraDirection = QSSGRenderNode::getScalingCorrectDirection(camGlobalTranform);
+                cameraPosition = QSSGRenderNode::getGlobalPos(camGlobalTranform);
+            }
             int instanceBufferBinding = setupInstancing(&subsetRenderable, ps, rhiCtx, cameraDirection, cameraPosition);
             QSSGRhiHelpers::bakeVertexInputLocations(&ia, *shaderPipeline, instanceBufferBinding);
 
@@ -1379,8 +1385,8 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
                 }
                 if (indexBuffer) {
                     cb->setVertexInput(0, vertexBufferCount, vertexBuffers, indexBuffer, 0, renderable->subset.rhi.indexBuffer->indexFormat());
-                    cb->drawIndexed(renderable->subset.count, instances, renderable->subset.offset);
-                    QSSGRHICTX_STAT(rhiCtx, drawIndexed(renderable->subset.count, instances));
+                    cb->drawIndexed(renderable->subset.lodCount(renderable->subsetLevelOfDetail), instances, renderable->subset.lodOffset(renderable->subsetLevelOfDetail));
+                    QSSGRHICTX_STAT(rhiCtx, drawIndexed(renderable->subset.lodCount(renderable->subsetLevelOfDetail), instances));
                 } else {
                     cb->setVertexInput(0, vertexBufferCount, vertexBuffers);
                     cb->draw(renderable->subset.count, instances, renderable->subset.offset);
@@ -1443,19 +1449,22 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
             // This is just a way to store the old camera so we can use it for debug
             // drawing. There are probably cleaner ways to do this
             if (!disableShadowCameraUpdate && debugCamera) {
-                debugCamera->clipNear = camera.clipNear;
-                debugCamera->clipFar = camera.clipFar;
+                debugCamera->clipPlanes = camera.clipPlanes;
                 debugCamera->projection = camera.projection;
-                debugCamera->globalTransform = camera.globalTransform;
+                // NOTE: Since the debug camera is an internally injected camera, there will only be
+                // the local transform. Anywhere the global transform is looked up for the debug camera
+                // it will return the local transform.
+                debugCamera->localTransform = layerData.getGlobalTransform(camera);
             }
 
             QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> cascades;
             if (light->type == QSSGRenderLight::Type::DirectionalLight) {
                 const float pcfRadius = light->m_softShadowQuality == QSSGRenderLight::SoftShadowQuality::Hard ? 0.f : light->m_pcfFactor;
-                const float clipNear = camera.clipNear;
-                const float clipFar = qMin(light->m_shadowMapFar, camera.clipFar);
+                const float clipNear = camera.clipPlanes.clipNear();
+                const float clipFar = qMin(light->m_shadowMapFar, camera.clipPlanes.clipFar());
                 const float clipRange = clipFar - clipNear;
-                cascades = setupCascadingCamerasForShadowMap(disableShadowCameraUpdate ? *debugCamera : camera,
+                cascades = setupCascadingCamerasForShadowMap(layerData,
+                                                             disableShadowCameraUpdate ? *debugCamera : camera,
                                                              light,
                                                              size.width(),
                                                              pcfRadius,
@@ -1476,11 +1485,11 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
                 pEntry->m_shadowMapFar = clipFar;
             } else if (light->type == QSSGRenderLight::Type::SpotLight) {
                 auto spotlightCamera = std::make_unique<QSSGRenderCamera>(QSSGRenderCamera::Type::PerspectiveCamera);
-                spotlightCamera->fov = qDegreesToRadians(light->m_coneAngle * 2.0f);
-                spotlightCamera->clipNear = 1.0f;
-                spotlightCamera->clipFar = light->m_shadowMapFar;
-                const QVector3D lightDir = light->getDirection();
-                const QVector3D lightPos = light->getGlobalPos() - lightDir * spotlightCamera->clipNear;
+                spotlightCamera->fov = QSSGRenderCamera::FieldOfView::fromDegrees(light->m_coneAngle * 2.0f);
+                spotlightCamera->clipPlanes = { 1.0f, light->m_shadowMapFar };
+                const QMatrix4x4 lightGlobalTransform = layerData.getGlobalTransform(*light);
+                const QVector3D lightDir = QSSGRenderNode::getDirection(lightGlobalTransform);
+                const QVector3D lightPos = QSSGRenderNode::getGlobalPos(lightGlobalTransform) - lightDir * spotlightCamera->clipPlanes.clipNear();
                 const QVector3D lightPivot = light->pivot;
                 const QVector3D forward = lightDir.normalized();
                 const QVector3D right = qFuzzyCompare(qAbs(forward.y()), 1.0f)
@@ -1492,7 +1501,7 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
                                                                                            lightPivot,
                                                                                            QQuaternion::fromDirection(forward, up));
                 QRectF theViewport(0.0f, 0.0f, (float)light->m_shadowMapRes, (float)light->m_shadowMapRes);
-                spotlightCamera->calculateGlobalVariables(theViewport);
+                QSSGRenderCamera::calculateProjectionInternal(*spotlightCamera, theViewport);
                 cascades.push_back(std::move(spotlightCamera));
                 pEntry->m_shadowMapFar = light->m_shadowMapFar;
             } else {
@@ -1501,13 +1510,17 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
 
             memset(pEntry->m_csmActive, 0, sizeof(pEntry->m_csmActive));
 
+            QMatrix4x4 cascadeCameraGlobalTransforms(Qt::Uninitialized);
             for (int cascadeIndex = 0; cascadeIndex < cascades.length(); cascadeIndex++) {
                 const auto &cascadeCamera = cascades[cascadeIndex];
                 if (!cascadeCamera)
                     continue;
+
+                cascadeCameraGlobalTransforms = layerData.getGlobalTransform(*cascadeCamera);
                 pEntry->m_csmActive[cascadeIndex] = 1.f;
-                cascadeCamera->calculateViewProjectionMatrix(pEntry->m_lightViewProjection[cascadeIndex]);
-                pEntry->m_lightView = cascadeCamera->globalTransform.inverted(); // pre-calculate this for the material
+                cascadeCamera->calculateViewProjectionMatrix(cascadeCameraGlobalTransforms, pEntry->m_lightViewProjection[cascadeIndex]);
+
+                pEntry->m_lightView = cascadeCameraGlobalTransforms.inverted(); // pre-calculate this for the material
                 const bool isOrtho = cascadeCamera->type == QSSGRenderGraphObject::Type::OrthographicCamera;
                 rhiPrepareResourcesForShadowMap(rhiCtx, layerData, passKey, pEntry, &ps, &depthAdjust, sortedOpaqueObjects, *cascadeCamera, isOrtho, QSSGRenderTextureCubeFaceNone, cascadeIndex);
                 // Render into the 2D texture pEntry->m_rhiDepthMap, using
@@ -1522,7 +1535,7 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
 
                 if (drawDirectionalLightShadowBoxes) {
                     QMatrix4x4 viewProjection(Qt::Uninitialized);
-                    cascadeCamera->calculateViewProjectionMatrix(viewProjection);
+                    cascadeCamera->calculateViewProjectionMatrix(cascadeCameraGlobalTransforms, viewProjection);
                     ShadowmapHelpers::addDirectionalLightDebugBox(computeFrustumBounds(viewProjection), debugDrawSystem);
                 }
             }
@@ -1539,14 +1552,16 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
                                              QSSGRenderCamera{QSSGRenderCamera::Type::PerspectiveCamera},
                                              QSSGRenderCamera{QSSGRenderCamera::Type::PerspectiveCamera} };
             const float shadowMapFar = qMax<float>(2.0f, light->m_shadowMapFar);
-            setupCubeShadowCameras(light, shadowMapFar, theCameras);
+            setupCubeShadowCameras(layerData, light, shadowMapFar, theCameras);
             pEntry->m_lightView = QMatrix4x4();
             pEntry->m_shadowMapFar = shadowMapFar;
 
             const bool swapYFaces = !rhi->isYUpInFramebuffer();
+            QMatrix4x4 cameraGlobalTransform(Qt::Uninitialized);
             for (const auto face : QSSGRenderTextureCubeFaces) {
-                theCameras[quint8(face)].calculateViewProjectionMatrix(pEntry->m_lightViewProjection[0]);
-                pEntry->m_lightCubeView[quint8(face)] = theCameras[quint8(face)].globalTransform.inverted(); // pre-calculate this for the material
+                cameraGlobalTransform = layerData.getGlobalTransform(theCameras[quint8(face)]);
+                theCameras[quint8(face)].calculateViewProjectionMatrix(cameraGlobalTransform, pEntry->m_lightViewProjection[0]);
+                pEntry->m_lightCubeView[quint8(face)] = cameraGlobalTransform.inverted(); // pre-calculate this for the material
 
                 rhiPrepareResourcesForShadowMap(rhiCtx,
                                                 layerData,
@@ -1599,7 +1614,8 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
             }
 
             if (drawPointLightShadowBoxes) {
-                ShadowmapHelpers::addPointLightDebugBox(light->getGlobalPos(), shadowMapFar, debugDrawSystem);
+                QMatrix4x4 lightGlobalTransform = layerData.getGlobalTransform(*light);
+                ShadowmapHelpers::addPointLightDebugBox(QSSGRenderNode::getGlobalPos(lightGlobalTransform), shadowMapFar, debugDrawSystem);
             }
         }
     }
@@ -1647,11 +1663,13 @@ void RenderHelpers::rhiRenderReflectionMap(QSSGRhiContext *rhiCtx,
                                          QSSGRenderCamera{QSSGRenderCamera::Type::PerspectiveCamera},
                                          QSSGRenderCamera{QSSGRenderCamera::Type::PerspectiveCamera},
                                          QSSGRenderCamera{QSSGRenderCamera::Type::PerspectiveCamera} };
-        setupCubeReflectionCameras(reflectionProbes[i], theCameras);
+        setupCubeReflectionCameras(inData, reflectionProbes[i], theCameras);
         const bool swapYFaces = !rhi->isYUpInFramebuffer();
+        QMatrix4x4 cameraGlobalTransform(Qt::Uninitialized);
         for (const auto face : QSSGRenderTextureCubeFaces) {
             const auto cubeFaceIdx = QSSGBaseTypeHelpers::indexOfCubeFace(face);
-            theCameras[cubeFaceIdx].calculateViewProjectionMatrix(pEntry->m_viewProjection);
+            cameraGlobalTransform = inData.getGlobalTransform(theCameras[cubeFaceIdx]);
+            theCameras[cubeFaceIdx].calculateViewProjectionMatrix(cameraGlobalTransform, pEntry->m_viewProjection);
 
             rhiPrepareResourcesForReflectionMap(rhiCtx, passKey, inData, pEntry, ps,
                                                 reflectionPassObjects, theCameras[cubeFaceIdx], renderer, face);
@@ -1679,7 +1697,7 @@ void RenderHelpers::rhiRenderReflectionMap(QSSGRhiContext *rhiCtx,
                 const auto &shaderCache = renderer.contextInterface()->shaderCache();
                 const bool isSkyBox = inData.layer.background == QSSGRenderLayer::Background::SkyBox;
                 const auto &shaderPipeline = isSkyBox ? shaderCache->getBuiltInRhiShaders().getRhiSkyBoxShader(QSSGRenderLayer::TonemapMode::None, inData.layer.skyBoxIsRgbe8, 1)
-                                                      : shaderCache->getBuiltInRhiShaders().getRhiSkyBoxCubeShader(1);
+                                                      : shaderCache->getBuiltInRhiShaders().getRhiSkyBoxCubeShader(QSSGRenderLayer::TonemapMode::None, !inData.layer.skyBoxIsSrgb, 1);
                 Q_ASSERT(shaderPipeline);
                 QSSGRhiGraphicsPipelineStatePrivate::setShaderPipeline(*ps, shaderPipeline.get());
                 QRhiShaderResourceBindings *srb = pEntry->m_skyBoxSrbs[quint8(face)];
@@ -1792,7 +1810,7 @@ void RenderHelpers::rhiRenderAoTexture(QSSGRhiContext *rhiCtx,
     const QSize textureSize = rhiAoTexture.texture->pixelSize();
     const float rw = float(textureSize.width());
     const float rh = float(textureSize.height());
-    const float fov = camera.verticalFov(rw / rh);
+    const float fov = camera.fov.asVerticalFov(rw / rh).radians();
     const float tanHalfFovY = tanf(0.5f * fov * (rh / rw));
     const float invFocalLenX = tanHalfFovY * (rw / rh);
 
@@ -1800,7 +1818,7 @@ void RenderHelpers::rhiRenderAoTexture(QSSGRhiContext *rhiCtx,
     const QVector4D aoProps2(float(ao.aoSamplerate), (ao.aoDither) ? 1.0f : 0.0f, 0.0f, 0.0f);
     const QVector4D aoScreenConst(1.0f / R2, rh / (2.0f * tanHalfFovY), 1.0f / rw, 1.0f / rh);
     const QVector4D uvToEyeConst(2.0f * invFocalLenX, -2.0f * tanHalfFovY, -invFocalLenX, tanHalfFovY);
-    const QVector2D cameraProps(camera.clipNear, camera.clipFar);
+    const QVector2D cameraProps = camera.clipPlanes;
 
     //    layout(std140, binding = 0) uniform buf {
     //        vec4 aoProperties;
@@ -1919,6 +1937,10 @@ bool RenderHelpers::rhiPrepareScreenTexture(QSSGRhiContext *rhiCtx,
 
 void RenderHelpers::rhiPrepareGrid(QSSGRhiContext *rhiCtx, QSSGPassKey passKey, QSSGRenderLayer &layer, QSSGRenderCameraList &cameras, QSSGRenderer &renderer)
 {
+    QSSG_ASSERT(layer.renderData, return);
+
+    const auto *renderData = layer.renderData;
+
     QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
     QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
     cb->debugMarkBegin(QByteArrayLiteral("Quick3D prepare grid"));
@@ -1937,8 +1959,7 @@ void RenderHelpers::rhiPrepareGrid(QSSGRhiContext *rhiCtx, QSSGPassKey passKey, 
     }
 
     // Param
-    const float nearF = cameras[0]->clipNear;
-    const float farF = cameras[0]->clipFar;
+    const auto clipPlanes = cameras[0]->clipPlanes;
     const float scale = layer.gridScale;
     const quint32 gridFlags = layer.gridFlags;
 
@@ -1947,9 +1968,11 @@ void RenderHelpers::rhiPrepareGrid(QSSGRhiContext *rhiCtx, QSSGPassKey passKey, 
     quint32 ubufOffset = 0;
     char *ubufData = dcd.ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
 
+    QMatrix4x4 cameraGlobalTransform(Qt::Uninitialized);
+    QMatrix4x4 viewProj(Qt::Uninitialized);
     for (qsizetype viewIdx = 0; viewIdx < cameras.count(); ++viewIdx) {
-        QMatrix4x4 viewProj(Qt::Uninitialized);
-        cameras[viewIdx]->calculateViewProjectionMatrix(viewProj);
+        cameraGlobalTransform = renderData->getGlobalTransform(*cameras[viewIdx]);
+        cameras[viewIdx]->calculateViewProjectionMatrix(cameraGlobalTransform, viewProj);
         QMatrix4x4 invViewProj = viewProj.inverted();
         quint32 viewDataOffset = ubufOffset;
         memcpy(ubufData + viewDataOffset + viewIdx * 64, viewProj.constData(), 64);
@@ -1958,10 +1981,8 @@ void RenderHelpers::rhiPrepareGrid(QSSGRhiContext *rhiCtx, QSSGPassKey passKey, 
     }
     ubufOffset += (64 + 64) * cameras.count();
 
-    memcpy(ubufData + ubufOffset, &nearF, 4);
-    ubufOffset += 4;
-    memcpy(ubufData + ubufOffset, &farF, 4);
-    ubufOffset += 4;
+    memcpy(ubufData + ubufOffset, &clipPlanes, 8);
+    ubufOffset += 8;
     memcpy(ubufData + ubufOffset, &scale, 4);
     ubufOffset += 4;
     memcpy(ubufData + ubufOffset, &yFactor, 4);
@@ -1984,8 +2005,13 @@ static void rhiPrepareSkyBox_helper(QSSGRhiContext *rhiCtx,
                                     QSSGRenderCameraList &cameras,
                                     QSSGRenderer &renderer,
                                     QSSGReflectionMapEntry *entry = nullptr,
-                                    QSSGRenderTextureCubeFace cubeFace = QSSGRenderTextureCubeFaceNone)
+                                    QSSGRenderTextureCubeFace cubeFace = QSSGRenderTextureCubeFaceNone,
+                                    uint tonemapMode = 0)
 {
+    QSSG_ASSERT(layer.renderData, return);
+
+    const auto *renderData = layer.renderData;
+
     QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
     const bool cubeMapMode = layer.background == QSSGRenderLayer::Background::SkyBoxCubeMap;
     const QSSGRenderImageTexture lightProbeTexture =
@@ -1995,6 +2021,8 @@ static void rhiPrepareSkyBox_helper(QSSGRhiContext *rhiCtx,
     if (hasValidTexture) {
         if (cubeFace == QSSGRenderTextureCubeFaceNone)
             layer.skyBoxIsRgbe8 = lightProbeTexture.m_flags.isRgbe8();
+        if (cubeMapMode)
+            layer.skyBoxIsSrgb = !lightProbeTexture.m_flags.isLinear();
 
         QSSGRhiShaderResourceBindingList bindings;
 
@@ -2024,14 +2052,16 @@ static void rhiPrepareSkyBox_helper(QSSGRhiContext *rhiCtx,
         const float exposure = layer.lightProbeSettings.probeExposure;
         // orientation
         const QMatrix3x3 &rotationMatrix(layer.lightProbeSettings.probeOrientation);
-        const float blurAmount = layer.skyboxBlurAmount;
-        const float maxMipLevel = float(lightProbeTexture.m_mipmapCount - 2);
+
+        // The cubemap shader doesn't use blur or mipmapping, so it uses those for tonemapping and texture color space
+        const float blurAmountOrSrgb = cubeMapMode ? layer.skyBoxIsSrgb : layer.skyboxBlurAmount;
+        const float maxMipLevelOrTonemapMode = cubeMapMode ? float(tonemapMode) : float(lightProbeTexture.m_mipmapCount - 2);
 
         const QVector4D skyboxProperties = {
             adjustY,
             exposure,
-            blurAmount,
-            maxMipLevel
+            blurAmountOrSrgb,
+            maxMipLevelOrTonemapMode
         };
 
         char *ubufData = dcd.ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
@@ -2049,9 +2079,9 @@ static void rhiPrepareSkyBox_helper(QSSGRhiContext *rhiCtx,
 
         for (qsizetype viewIdx = 0; viewIdx < cameras.count(); ++viewIdx) {
             const QMatrix4x4 &inverseProjection = cameras[viewIdx]->projection.inverted();
-            const QMatrix4x4 &viewMatrix = cameras[viewIdx]->globalTransform;
+            const QMatrix4x4 &viewMatrix = renderData->getGlobalTransform(*cameras[viewIdx]);
             QMatrix4x4 viewProjection(Qt::Uninitialized); // For cube mode
-            cameras[viewIdx]->calculateViewProjectionWithoutTranslation(0.1f, 5.0f, viewProjection);
+            cameras[viewIdx]->calculateViewProjectionWithoutTranslation(viewMatrix, 0.1f, 5.0f, viewProjection);
 
             quint32 viewDataOffset = ubufOffset;
             memcpy(ubufData + viewDataOffset + viewIdx * 64, viewProjection.constData(), 64);
@@ -2082,12 +2112,13 @@ void RenderHelpers::rhiPrepareSkyBox(QSSGRhiContext *rhiCtx,
                                      QSSGPassKey passKey,
                                      QSSGRenderLayer &layer,
                                      QSSGRenderCameraList &cameras,
-                                     QSSGRenderer &renderer)
+                                     QSSGRenderer &renderer,
+                                     uint tonemapMode)
 {
     QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
     cb->debugMarkBegin(QByteArrayLiteral("Quick3D prepare skybox"));
 
-    rhiPrepareSkyBox_helper(rhiCtx, passKey, layer, cameras, renderer);
+    rhiPrepareSkyBox_helper(rhiCtx, passKey, layer, cameras, renderer, nullptr, QSSGRenderTextureCubeFaceNone, tonemapMode);
 
     cb->debugMarkEnd();
 }
@@ -2325,8 +2356,8 @@ void RenderHelpers::rhiRenderDepthPass(QSSGRhiContext *rhiCtx,
 
                 if (indexBuffer) {
                     cb->setVertexInput(0, vertexBufferCount, vertexBuffers, indexBuffer, 0, subsetRenderable->subset.rhi.indexBuffer->indexFormat());
-                    cb->drawIndexed(subsetRenderable->subset.count, instances, subsetRenderable->subset.offset);
-                    QSSGRHICTX_STAT(rhiCtx, drawIndexed(subsetRenderable->subset.count, instances));
+                    cb->drawIndexed(subsetRenderable->subset.lodCount(subsetRenderable->subsetLevelOfDetail), instances, subsetRenderable->subset.lodOffset(subsetRenderable->subsetLevelOfDetail));
+                    QSSGRHICTX_STAT(rhiCtx, drawIndexed(subsetRenderable->subset.lodCount(subsetRenderable->subsetLevelOfDetail), instances));
                 } else {
                     cb->setVertexInput(0, vertexBufferCount, vertexBuffers);
                     cb->draw(subsetRenderable->subset.count, instances, subsetRenderable->subset.offset);

@@ -16,6 +16,7 @@
 #include <QtMultimedia/private/qaudiosystem_p.h>
 
 #include <private/mediabackendutils_p.h>
+#include <private/osdetection_p.h>
 #include <private/qmockiodevice_p.h>
 
 #include <memory>
@@ -50,6 +51,7 @@ private slots:
     void format();
     void invalidFormat_data();
     void invalidFormat();
+    void nullFormat();
 
     void bufferSize();
     void bufferSize_getValidDefault();
@@ -57,6 +59,7 @@ private slots:
     void bufferSize_updatedAfterStart();
 
     void stopWhileStopped();
+    void stopWhileSuspended();
     void suspendWhileStopped();
     void resumeWhileStopped();
 
@@ -106,8 +109,6 @@ private:
 
     std::unique_ptr<QByteArray> m_byteArray;
     std::unique_ptr<QBuffer> m_buffer;
-
-    bool m_inCISystem = isCI();
 };
 
 void tst_QAudioSource::generate_audiofile_testrows()
@@ -131,17 +132,8 @@ QString tst_QAudioSource::formatToFileName(const QAudioFormat &format)
 
 void tst_QAudioSource::initTestCase()
 {
-#ifdef Q_OS_ANDROID
-    // The test might fail because libOpenSLES cannot create AudioRecorder for that emulator. The
-    // Android documentation states that the emulator doesn't support this at all all
-    // https://developer.android.com/media/platform/mediarecorder. However, in practice this test
-    // fails only prior to Android 10.
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < __ANDROID_API_Q__)
-        QSKIP("Emulated Android version doesn't support audio recording");
-#endif
-
-    if (m_inCISystem)
-        QSKIP("SKIP initTestCase on CI. To be fixed");
+    if (isMacOS && isCI())
+        QSKIP("QAudioSource requires microphone permissions");
 
     // Only perform tests if audio input device exists
     const QList<QAudioDevice> devices = QMediaDevices::audioInputs();
@@ -223,9 +215,6 @@ void tst_QAudioSource::invalidFormat_data()
 
     QAudioFormat format;
 
-    QTest::newRow("Null Format")
-            << format;
-
     format = audioDevice.preferredFormat();
     format.setChannelCount(0);
     QTest::newRow("Channel count 0")
@@ -263,6 +252,22 @@ void tst_QAudioSource::invalidFormat()
     // Check that error is raised
     QTRY_VERIFY2((audioSource.error() == QAudio::OpenError),
                  "error() was not set to QAudio::OpenError after start()");
+}
+
+void tst_QAudioSource::nullFormat()
+{
+    QAudioDevice audioDevice = QMediaDevices::defaultAudioInput();
+    if (audioDevice.isNull())
+        QSKIP("No audio inputs found");
+
+    {
+        QAudioSource audioSource;
+        QCOMPARE(audioSource.format(), audioDevice.preferredFormat());
+    }
+    {
+        QAudioSource audioSource(audioDevice);
+        QCOMPARE(audioSource.format(), audioDevice.preferredFormat());
+    }
 }
 
 void tst_QAudioSource::bufferSize()
@@ -355,6 +360,22 @@ void tst_QAudioSource::stopWhileStopped()
     QVERIFY2((stateSignal.size() == 0), "stop() while stopped is emitting a signal and it shouldn't");
     QVERIFY2((audioSource.error() == QAudio::NoError),
              "error() was not set to QAudio::NoError after stop()");
+}
+
+void tst_QAudioSource::stopWhileSuspended()
+{
+    using namespace std::chrono_literals;
+
+    QAudioSource audioSource(audioDevice.preferredFormat(), this);
+    audioSource.start();
+    QTest::qWait(10ms); // give WASAPI worker thread a bit of time to arrive at WaitForSingleObject
+
+    audioSource.suspend();
+    QTRY_COMPARE_EQ(audioSource.state(), QAudio::SuspendedState);
+    QTest::qWait(10ms); // give WASAPI worker thread a bit of time to arrive at WaitForSingleObject
+
+    audioSource.stop();
+    QTRY_COMPARE_EQ(audioSource.state(), QAudio::StoppedState);
 }
 
 void tst_QAudioSource::suspendWhileStopped()
@@ -697,10 +718,6 @@ void tst_QAudioSource::push()
 
 void tst_QAudioSource::pushSuspendResume()
 {
-#ifdef Q_OS_LINUX
-    if (m_inCISystem)
-        QSKIP("QTBUG-26504 Fails 20% of time with pulseaudio backend");
-#endif
     QFETCH(FilePtr, audioFile);
     QFETCH(QAudioFormat, audioFormat);
     QAudioSource audioSource(audioFormat, this);
@@ -985,6 +1002,10 @@ void tst_QAudioSource::stop_stopsAudioSource_whenInvokedUponFirstStateChange_dat
 
 void tst_QAudioSource::stop_stopsAudioSource_whenInvokedUponFirstStateChange()
 {
+    if (isAndroid)
+        // Revisit after migrating to AAudio
+        QSKIP("'initializer(audioSource)' returned FALSE");
+
     QFETCH(const AudioSourceInitializer, initializer);
 
     const QAudioDevice defaultAudioInputDevice = QMediaDevices::defaultAudioInput();
@@ -1005,9 +1026,7 @@ void tst_QAudioSource::stop_stopsAudioSource_whenInvokedUponFirstStateChange()
 
     connect(&audioSource, &QAudioSource::stateChanged, this, stop, Qt::SingleShotConnection);
 
-    if (!initializer(audioSource))
-        QSKIP("Cannot start the audio source"); // Pulse audio backend fails on some Linux CI.
-                                                // TODO: replace with QVERIFY, QTBUG-130272
+    QVERIFY(initializer(audioSource));
 
     QTRY_COMPARE(audioSource.state(), QtAudio::State::StoppedState);
 }
@@ -1016,7 +1035,7 @@ void tst_QAudioSource::stateChanged_stringBasedConnect()
 {
     const QAudioDevice defaultAudioInputDevice = QMediaDevices::defaultAudioInput();
 
-    QAudioSource audioSource(defaultAudioInputDevice, defaultAudioInputDevice.preferredFormat());
+    QAudioSource audioSource(defaultAudioInputDevice);
 
     QSignalSpy stateSignal(&audioSource, SIGNAL(stateChanged(QAudio::State)));
 

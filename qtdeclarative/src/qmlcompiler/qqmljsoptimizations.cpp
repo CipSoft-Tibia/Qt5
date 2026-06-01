@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsoptimizations_p.h"
 #include "qqmljsbasicblocks_p.h"
@@ -342,8 +343,8 @@ void QQmlJSOptimizations::adjustTypes()
     // Handle the array definitions first.
     // Changing the array type changes the expected element types.
     auto adjustArray = [&](int instructionOffset, int mode) {
-        auto it = m_readerLocations.find(instructionOffset);
-        if (it == m_readerLocations.end())
+        auto it = m_readerLocations.constFind(instructionOffset);
+        if (it == m_readerLocations.cend())
             return;
 
         const InstructionAnnotation &annotation = m_annotations[instructionOffset];
@@ -451,7 +452,7 @@ void QQmlJSOptimizations::adjustTypes()
         }
     }
 
-    for (auto it = m_readerLocations.begin(), end = m_readerLocations.end(); it != end; ++it) {
+    for (auto it = m_readerLocations.cbegin(), end = m_readerLocations.cend(); it != end; ++it) {
         handleRegisterReadersAndConversions(it);
 
         // There is always one first occurrence of any tracked type. Conversions don't change
@@ -479,7 +480,7 @@ void QQmlJSOptimizations::adjustTypes()
 
             QQmlJSScope::ConstPtr newResult;
             const auto content = conversion->second.content;
-            if (content.isConversion()) {
+            if (content.isConversion() && !content.original().isValid()) {
                 const auto conversionOrigins = content.conversionOrigins();
                 for (const auto &origin : conversionOrigins)
                     newResult = m_typeResolver->merge(newResult, origin.containedType());

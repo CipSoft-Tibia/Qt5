@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/fxcrt/check.h"
 #include "core/fxcrt/notreached.h"
 #include "public/cpp/fpdf_scopers.h"
 #include "public/fpdf_annot.h"
@@ -121,7 +122,7 @@ const char* AnnotSubtypeToCString(FPDF_ANNOTATION_SUBTYPE subtype) {
   if (subtype == FPDF_ANNOT_XFAWIDGET) {
     return "XFAWidget";
   }
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 void AppendFlagString(const char* flag, std::string* output) {
@@ -179,7 +180,7 @@ const char* PageObjectTypeToCString(int type) {
   if (type == FPDF_PAGEOBJ_FORM) {
     return "Form";
   }
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 std::vector<uint8_t> EncodePng(pdfium::span<const uint8_t> input,
@@ -206,7 +207,7 @@ std::vector<uint8_t> EncodePng(pdfium::span<const uint8_t> input,
                                           /*discard_transparency=*/false);
       break;
     default:
-      NOTREACHED_NORETURN();
+      NOTREACHED();
   }
   return png;
 }
@@ -554,7 +555,8 @@ void WriteEmf(FPDF_PAGE page, const char* pdf_name, int num) {
   // If a PS_NULL pen is used, the dimensions of the rectangle are 1 pixel less.
   Rectangle(dc, 0, 0, width + 1, height + 1);
 
-  FPDF_RenderPage(dc, page, 0, 0, width, height, 0, FPDF_ANNOT | FPDF_PRINTING);
+  CHECK(FPDF_RenderPage(dc, page, 0, 0, width, height, 0,
+                        FPDF_ANNOT | FPDF_PRINTING));
 
   DeleteEnhMetaFile(CloseEnhMetaFile(dc));
 }
@@ -573,7 +575,8 @@ void WritePS(FPDF_PAGE page, const char* pdf_name, int num) {
 
   int width = static_cast<int>(FPDF_GetPageWidthF(page));
   int height = static_cast<int>(FPDF_GetPageHeightF(page));
-  FPDF_RenderPage(dc, page, 0, 0, width, height, 0, FPDF_ANNOT | FPDF_PRINTING);
+  CHECK(FPDF_RenderPage(dc, page, 0, 0, width, height, 0,
+                        FPDF_ANNOT | FPDF_PRINTING));
 
   HENHMETAFILE emf = CloseEnhMetaFile(dc);
   std::vector<const ENHMETARECORD*> items;

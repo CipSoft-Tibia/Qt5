@@ -9,6 +9,9 @@
 
 #include <optional>
 
+// Include minimal set of headers
+#define WIN32_LEAN_AND_MEAN
+#define NOGDI
 #include <qt_windows.h>
 
 QT_BEGIN_NAMESPACE

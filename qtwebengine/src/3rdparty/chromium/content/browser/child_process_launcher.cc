@@ -10,16 +10,19 @@
 #include "base/check_op.h"
 #include "base/clang_profiling_buildflags.h"
 #include "base/command_line.h"
+#include "base/feature_list.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/i18n/icu_util.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "base/process/launch.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "base/tracing/protos/chrome_track_event.pbzero.h"
 #include "base/types/expected.h"
 #include "base/types/optional_util.h"
 #include "build/build_config.h"
+#include "content/common/features.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_launcher_utils.h"
 #include "content/public/common/content_features.h"
@@ -97,8 +100,12 @@ ChildProcessLauncher::ChildProcessLauncher(
     mojo::OutgoingInvitation mojo_invitation,
     const mojo::ProcessErrorCallback& process_error_callback,
     std::unique_ptr<ChildProcessLauncherFileData> file_data,
-    base::UnsafeSharedMemoryRegion histogram_memory_region,
-    base::ReadOnlySharedMemoryRegion tracing_config_memory_region,
+    scoped_refptr<base::RefCountedData<base::UnsafeSharedMemoryRegion>>
+        histogram_memory_region,
+    scoped_refptr<base::RefCountedData<base::ReadOnlySharedMemoryRegion>>
+        tracing_config_memory_region,
+    scoped_refptr<base::RefCountedData<base::UnsafeSharedMemoryRegion>>
+        tracing_output_memory_region,
     bool terminate_on_shutdown)
     : client_(client),
       starting_(true),
@@ -111,6 +118,7 @@ ChildProcessLauncher::ChildProcessLauncher(
 #endif
 {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  TRACE_EVENT_NESTABLE_ASYNC_BEGIN0("startup", "ChildProcessLauncher", this);
 
 #if BUILDFLAG(IS_WIN)
   should_launch_elevated_ = delegate->ShouldLaunchElevated();
@@ -124,7 +132,8 @@ ChildProcessLauncher::ChildProcessLauncher(
 #endif
       std::move(mojo_invitation), process_error_callback, std::move(file_data),
       std::move(histogram_memory_region),
-      std::move(tracing_config_memory_region));
+      std::move(tracing_config_memory_region),
+      std::move(tracing_output_memory_region));
   helper_->StartLaunchOnClientThread();
 }
 
@@ -167,6 +176,8 @@ void ChildProcessLauncher::Notify(ChildProcessLauncherHelper::Process process,
 #endif
                                   int error_code) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  TRACE_EVENT_NESTABLE_ASYNC_END0("startup", "ChildProcessLauncher", this);
+
   starting_ = false;
   process_ = std::move(process);
 
@@ -275,6 +286,16 @@ ChildProcessLauncher::Client* ChildProcessLauncher::ReplaceClientForTest(
 bool RenderProcessPriority::is_background() const {
 #if !BUILDFLAG(IS_ANDROID)
   if (priority_override) {
+    // TODO(pmonette): Migrate this logic to the performance manager's voting
+    // system if it has a positive impact.
+    if (base::FeatureList::IsEnabled(features::kPriorityOverridePendingViews) &&
+        boost_for_pending_views) {
+      return false;
+    }
+    // TODO(351953350): Migrate this logic to the performance manager.
+    if (boost_for_loading) {
+      return false;
+    }
     return *priority_override == base::Process::Priority::kBestEffort;
   }
 #endif
@@ -285,6 +306,16 @@ bool RenderProcessPriority::is_background() const {
 base::Process::Priority RenderProcessPriority::GetProcessPriority() const {
 #if !BUILDFLAG(IS_ANDROID)
   if (priority_override) {
+    // TODO(pmonette): Migrate this logic to the performance manager's voting
+    // system if it has a positive impact.
+    if (base::FeatureList::IsEnabled(features::kPriorityOverridePendingViews) &&
+        boost_for_pending_views) {
+      return base::Process::Priority::kUserBlocking;
+    }
+    // TODO(351953350): Migrate this logic to the performance manager.
+    if (boost_for_loading) {
+      return base::Process::Priority::kUserBlocking;
+    }
     return *priority_override;
   }
 #endif

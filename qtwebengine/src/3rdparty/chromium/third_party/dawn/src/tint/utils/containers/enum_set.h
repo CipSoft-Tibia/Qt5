@@ -34,7 +34,7 @@
 #include <utility>
 
 #include "src/tint/utils/math/hash.h"
-#include "src/tint/utils/traits/traits.h"
+#include "src/tint/utils/rtti/traits.h"
 
 namespace tint {
 
@@ -147,6 +147,18 @@ struct EnumSet {
 
     /// @return true if the set is empty
     inline bool Empty() const { return set == 0; }
+
+    /// @returns number of enums currently in the set
+    /// This is an O(N) operation, where N can be upto 64
+    inline size_t Size() const {
+        size_t result = 0;
+        uint64_t bits = set;
+        while (bits) {
+            result += bits & 1;
+            bits >>= 1;
+        }
+        return result;
+    }
 
     /// @return the hash value of this object
     tint::HashCode HashCode() const { return Hash(Value()); }

@@ -131,8 +131,7 @@ bool CopyFileContentsWithOffsetAndSize(base::File* infile,
     }
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 // Copies the contents of |copy_from| to |copy_to|, with the given |offset| and

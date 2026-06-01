@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbeglintegration.h"
 
@@ -141,6 +142,11 @@ QPlatformOffscreenSurface *QXcbEglIntegration::createPlatformOffscreenSurface(QO
 {
     QXcbScreen *screen = static_cast<QXcbScreen *>(surface->screen()->handle());
     return new QEGLPbuffer(eglDisplay(), screen->surfaceFormatFor(surface->requestedFormat()), surface);
+}
+
+bool QXcbEglIntegration::canCreatePlatformOffscreenSurface() const
+{
+    return true;
 }
 
 xcb_visualid_t QXcbEglIntegration::getCompatibleVisualId(xcb_screen_t *screen, EGLConfig config) const

@@ -19,8 +19,5 @@ jumbo_component("range") {
 
   defines = [ "GFX_RANGE_IMPLEMENTATION" ]
 
-  deps = [
-    "//base",
-    "//ui/gfx:gfx_export",
-  ]
+  deps = [ "//base" ]
 }

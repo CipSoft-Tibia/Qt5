@@ -72,126 +72,126 @@
   <testcase name="compareFloats(EQ:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(EQ:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1
-   Baseline (rhs): 1.1]]>
+      <![CDATA[   Computed (lhs): 1 (0x1p+0)
+   Baseline (rhs): 1.1 (0x1.19999ap+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(EQ:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1.1
-   Baseline (rhs): 1]]>
+      <![CDATA[   Computed (lhs): 1.1 (0x1.19999ap+0)
+   Baseline (rhs): 1 (0x1p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(NE:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be different from the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1
-   Baseline (rhs): 1]]>
+      <![CDATA[   Computed (lhs): 1 (0x1p+0)
+   Baseline (rhs): 1 (0x1p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(NE:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(NE:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(LT:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be less than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1
-   Baseline (rhs): 1]]>
+      <![CDATA[   Computed (lhs): 1 (0x1p+0)
+   Baseline (rhs): 1 (0x1p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(LT:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(LT:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be less than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1.1
-   Baseline (rhs): 1]]>
+      <![CDATA[   Computed (lhs): 1.1 (0x1.19999ap+0)
+   Baseline (rhs): 1 (0x1p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(LE:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(LE:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(LE:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be less than or equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1.1
-   Baseline (rhs): 1]]>
+      <![CDATA[   Computed (lhs): 1.1 (0x1.19999ap+0)
+   Baseline (rhs): 1 (0x1p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(GT:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be greater than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1
-   Baseline (rhs): 1]]>
+      <![CDATA[   Computed (lhs): 1 (0x1p+0)
+   Baseline (rhs): 1 (0x1p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(GT:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be greater than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1
-   Baseline (rhs): 1.1]]>
+      <![CDATA[   Computed (lhs): 1 (0x1p+0)
+   Baseline (rhs): 1.1 (0x1.19999ap+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(GT:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(GE:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareFloats(GE:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be greater than or equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 1
-   Baseline (rhs): 1.1]]>
+      <![CDATA[   Computed (lhs): 1 (0x1p+0)
+   Baseline (rhs): 1.1 (0x1.19999ap+0)]]>
     </failure>
   </testcase>
   <testcase name="compareFloats(GE:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(EQ:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(EQ:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0
-   Baseline (rhs): 0.1]]>
+      <![CDATA[   Computed (lhs): 0 (0x0p+0)
+   Baseline (rhs): 0.1 (0x1.999999999999ap-4)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(EQ:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0.1
-   Baseline (rhs): 0]]>
+      <![CDATA[   Computed (lhs): 0.1 (0x1.999999999999ap-4)
+   Baseline (rhs): 0 (0x0p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(NE:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be different from the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0
-   Baseline (rhs): 0]]>
+      <![CDATA[   Computed (lhs): 0 (0x0p+0)
+   Baseline (rhs): 0 (0x0p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(NE:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(NE:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(LT:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be less than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0
-   Baseline (rhs): 0]]>
+      <![CDATA[   Computed (lhs): 0 (0x0p+0)
+   Baseline (rhs): 0 (0x0p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(LT:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(LT:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be less than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0.1
-   Baseline (rhs): 0]]>
+      <![CDATA[   Computed (lhs): 0.1 (0x1.999999999999ap-4)
+   Baseline (rhs): 0 (0x0p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(LE:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(LE:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(LE:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be less than or equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0.1
-   Baseline (rhs): 0]]>
+      <![CDATA[   Computed (lhs): 0.1 (0x1.999999999999ap-4)
+   Baseline (rhs): 0 (0x0p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(GT:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be greater than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0
-   Baseline (rhs): 0]]>
+      <![CDATA[   Computed (lhs): 0 (0x0p+0)
+   Baseline (rhs): 0 (0x0p+0)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(GT:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be greater than the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0
-   Baseline (rhs): 0.1]]>
+      <![CDATA[   Computed (lhs): 0 (0x0p+0)
+   Baseline (rhs): 0.1 (0x1.999999999999ap-4)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(GT:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(GE:left == right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>
   <testcase name="compareDoubles(GE:left &lt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@">
     <failure type="fail" message="The computed value is expected to be greater than or equal to the baseline, but is not">
-      <![CDATA[   Computed (lhs): 0
-   Baseline (rhs): 0.1]]>
+      <![CDATA[   Computed (lhs): 0 (0x0p+0)
+   Baseline (rhs): 0.1 (0x1.999999999999ap-4)]]>
     </failure>
   </testcase>
   <testcase name="compareDoubles(GE:left &gt; right)" classname="tst_ExtendedCompare" time="@TEST_DURATION@"/>

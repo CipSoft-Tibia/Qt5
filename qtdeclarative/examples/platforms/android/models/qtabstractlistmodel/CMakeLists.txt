@@ -16,7 +16,6 @@ qt_add_executable(qtabstractlistmodel
 
 qt_add_qml_module(qtabstractlistmodel
     URI QmlModule
-    VERSION 1.0
     QML_FILES Main.qml
 )
 

@@ -15,8 +15,8 @@
 #endif
 #include "content/public/browser/permission_result.h"
 #include "components/permissions/permission_request_enums.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 
 namespace blink {
 enum class PermissionType;
@@ -77,7 +77,7 @@ class PermissionUtil {
 
   // Returns the corresponding permissions policy feature to the given content
   // settings type, or nullopt if there is none.
-  static std::optional<blink::mojom::PermissionsPolicyFeature>
+  static std::optional<network::mojom::PermissionsPolicyFeature>
   GetPermissionsPolicyFeature(ContentSettingsType type);
 
   // Checks whether the given ContentSettingsType is a permission. Use this
@@ -89,6 +89,15 @@ class PermissionUtil {
   // acceptance rates data (notifications and geolocations have the lowest
   // acceptance data)
   static bool IsLowPriorityPermissionRequest(const PermissionRequest* request);
+
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  // Check whether the given permission request could prompt a secondary UI, it
+  // means:
+  // - The request is initiated from a permission element.
+  // - The request type is permission element supported type.
+  static bool ShouldCurrentRequestUsePermissionElementSecondaryUI(
+      PermissionPrompt::Delegate* delegate);
+#endif
 
   // Checks whether the given ContentSettingsType is a guard content setting,
   // meaning it does not support allow setting and toggles between "ask" and
@@ -116,18 +125,18 @@ class PermissionUtil {
   static GURL GetLastCommittedOriginAsURL(
       content::RenderFrameHost* render_frame_host);
 
-  // Helper method to convert `PermissionType` to `ContentSettingType`.
+  // Helper method to convert `PermissionType` to `ContentSettingsType`.
   // If `PermissionType` is not supported or found, returns
   // ContentSettingsType::DEFAULT.
-  static ContentSettingsType PermissionTypeToContentSettingTypeSafe(
+  static ContentSettingsType PermissionTypeToContentSettingsTypeSafe(
       blink::PermissionType permission);
 
-  // Helper method to convert `PermissionType` to `ContentSettingType`.
-  static ContentSettingsType PermissionTypeToContentSettingType(
+  // Helper method to convert `PermissionType` to `ContentSettingsType`.
+  static ContentSettingsType PermissionTypeToContentSettingsType(
       blink::PermissionType permission);
 
-  // Helper method to convert `ContentSettingType` to `PermissionType`.
-  static blink::PermissionType ContentSettingTypeToPermissionType(
+  // Helper method to convert `ContentSettingsType` to `PermissionType`.
+  static blink::PermissionType ContentSettingsTypeToPermissionType(
       ContentSettingsType permission);
 
   // Helper method to convert PermissionStatus to ContentSetting.

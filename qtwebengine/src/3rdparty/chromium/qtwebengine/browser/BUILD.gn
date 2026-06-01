@@ -4,13 +4,8 @@ import ("//mojo/public/tools/bindings/mojom.gni")
 
 mojom("interfaces") {
   sources = [
-    "plugin.mojom",
     "qtwebchannel.mojom",
     "qtwebenginepage.mojom"
-  ]
-
-  deps = [
-    "//mojo/public/mojom/base",
   ]
 }
 

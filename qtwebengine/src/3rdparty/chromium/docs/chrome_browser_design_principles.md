@@ -12,29 +12,20 @@ code. Some code is used on Android.
 ## Structure, modularity:
 * Features should be modular.
     * For most features, all code should live in some combination of
-      //component/<feature> and //chrome/browser/<feature> (or
-      //chrome/browser/ui/<feature>), and not in //chrome/browser/ui/views.
+      //component/\<feature> and //chrome/browser/\<feature> (or
+      //chrome/browser/ui/\<feature>), and not in //chrome/browser/ui/views.
         * The historical rule restricting access to views in //chrome/browser
           and //chrome/browser/ui has been removed.
         * The historical rule disallowing ui code in //chrome/browser has been
           removed.
     * WebUI resources are the only exception. They will continue to live in
-      //chrome/browser/resources/<feature> alongside standalone BUILD.gn files.
+      //chrome/browser/resources/\<feature> alongside standalone BUILD.gn files.
     * This directory should have a standalone BUILD.gn and OWNERs file.
     * All files in the directory should belong to targets in the BUILD.gn.
         * Do NOT add to `//chrome/browser/BUILD.gn:browser`,
           `//chrome/test/BUILD.gn` or `//chrome/browser/ui/BUILD.gn:ui`.
     * gn circular dependencies are disallowed. Logical
       circular dependencies are allowed (for legacy reasons) but discouraged.
-        * [Lens
-          overlay](https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/lens/BUILD.gn;drc=8e2c1c747f15a93c55ab2f10ebc8b32801ba129e)
-          is an example of a feature with no circular dependencies.
-            * The BUILD.gn should use public/sources separation.
-                * The main reason for this is to guard against future, unexpected usage
-                  of parts of the code that were intended to be private. This makes it
-                  difficult to change implementation details in the future.
-                * This directory may have a public/ subdirectory to enforce further
-                  encapsulation, though this example does not use it.
         * [cookie
           controls](https://chromium-review.googlesource.com/c/chromium/src/+/5771416/5/chrome/browser/ui/cookie_controls/BUILD.gn)
           is an example of a feature with logical circular dependencies.
@@ -52,6 +43,17 @@ code. Some code is used on Android.
               still logical circular dependencies from the cc files. This
               discrepancy is because C++ allows headers to forward declare
               dependencies, which do not need to be reflected in gn.
+        * [Lens
+          overlay](https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/lens/BUILD.gn;drc=8e2c1c747f15a93c55ab2f10ebc8b32801ba129e)
+          is an example with *almost* no circular dependencies.
+            * It has a logical circular dependency on `//chrome/browser/browser/ui:ui`,
+              which will no longer be necessary once NTP is also modularized (crbug.com/382237520).
+            * The BUILD.gn should use public/sources separation.
+                * The main reason for this is to guard against future, unexpected usage
+                  of parts of the code that were intended to be private. This makes it
+                  difficult to change implementation details in the future.
+                * This directory may have a public/ subdirectory to enforce further
+                  encapsulation, though this example does not use it.
     * This directory may have its own namespace.
     * Corollary: There are several global functions that facilitate dependency
       inversion. It will not be possible to call them from modularized features

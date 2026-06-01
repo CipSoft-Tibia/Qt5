@@ -16,23 +16,10 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
   let view: Elements.ElementStatePaneWidget.ElementStatePaneWidget;
 
   const pseudoClasses = [
-    'enabled',
-    'disabled',
-    'valid',
-    'invalid',
-    'user-valid',
-    'user-invalid',
-    'required',
-    'optional',
-    'read-only',
-    'read-write',
-    'in-range',
-    'out-of-range',
-    'visited',
-    'checked',
-    'indeterminate',
-    'placeholder-shown',
-    'autofill',
+    'enabled',       'disabled',          'valid',    'invalid',   'user-valid',
+    'user-invalid',  'required',          'optional', 'read-only', 'read-write',
+    'in-range',      'out-of-range',      'visited',  'link',      'checked',
+    'indeterminate', 'placeholder-shown', 'autofill', 'open',
   ];
 
   beforeEach(() => {
@@ -72,7 +59,9 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
     for (const pseudoClass of pseudoClasses) {
       const div = view.contentElement.querySelector(`#${pseudoClass}`);
       assert.instanceOf(div, HTMLDivElement);
-      assert.strictEqual(!div.hidden, expectedPseudoClasses.includes(div.id), `Wrong state for ${div.id}`);
+      const shouldShow = expectedPseudoClasses.includes(pseudoClass);
+      assert.strictEqual(
+          !div.hidden, shouldShow, `Checkbox for ${pseudoClass} should be ${shouldShow ? 'shown' : 'hidden'}`);
     }
   };
 
@@ -103,7 +92,7 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
       const args = checkboxes.lastCall.args;
       assert.strictEqual(args[0], node, 'Called forcePseudoState with wrong node');
       assert.strictEqual(args[1], pseudoClass, 'Called forcePseudoState with wrong pseudo-state');
-      assert.strictEqual(args[2], true, 'Called forcePseudoState with wrong enable state');
+      assert.isTrue(args[2], 'Called forcePseudoState with wrong enable state');
     }
   });
 
@@ -153,17 +142,16 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
     await assertExpectedPseudoClasses(
         'input',
         [
-          'enabled',
           'disabled',
           'valid',
           'invalid',
           'user-valid',
           'user-invalid',
           'required',
-          'optional',
-          'read-write',
+          'read-only',
           'placeholder-shown',
           'autofill',
+          'open',
         ],
     );
   });
@@ -171,14 +159,14 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
   it('Shows the specific pseudo-classes for button', async () => {
     await assertExpectedPseudoClasses(
         'button',
-        ['enabled', 'disabled', 'valid', 'invalid', 'read-only'],
+        ['disabled', 'valid', 'invalid', 'read-write'],
     );
   });
 
   it('Shows the specific pseudo-classes for fieldset', async () => {
     await assertExpectedPseudoClasses(
         'fieldset',
-        ['enabled', 'disabled', 'valid', 'invalid', 'read-only'],
+        ['disabled', 'valid', 'invalid', 'read-write'],
     );
   });
 
@@ -186,45 +174,82 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
     await assertExpectedPseudoClasses(
         'textarea',
         [
-          'enabled',
           'disabled',
           'valid',
           'invalid',
           'user-valid',
           'user-invalid',
           'required',
-          'optional',
-          'read-write',
+          'read-only',
           'placeholder-shown',
         ],
     );
+    await assertExpectedPseudoClasses(
+        'textarea',
+        [
+          'disabled',
+          'valid',
+          'invalid',
+          'user-valid',
+          'user-invalid',
+          'required',
+          'read-write',
+          'placeholder-shown',
+        ],
+        false, ['readonly', '']);
+    await assertExpectedPseudoClasses(
+        'textarea',
+        [
+          'enabled',
+          'valid',
+          'invalid',
+          'user-valid',
+          'user-invalid',
+          'required',
+          'read-write',
+          'placeholder-shown',
+        ],
+        false, ['disabled', '']);
+    await assertExpectedPseudoClasses(
+        'textarea',
+        [
+          'disabled',
+          'valid',
+          'invalid',
+          'user-valid',
+          'user-invalid',
+          'optional',
+          'read-only',
+          'placeholder-shown',
+        ],
+        false, ['required', '']);
   });
 
   it('Shows the specific pseudo-classes for select', async () => {
     await assertExpectedPseudoClasses(
         'select',
-        ['enabled', 'disabled', 'valid', 'invalid', 'user-valid', 'user-invalid', 'required', 'optional', 'read-only'],
+        ['disabled', 'valid', 'invalid', 'user-valid', 'user-invalid', 'required', 'read-write', 'open'],
     );
   });
 
   it('Shows the specific pseudo-classes for option', async () => {
     await assertExpectedPseudoClasses(
         'option',
-        ['enabled', 'disabled', 'checked', 'read-only'],
+        ['disabled', 'checked', 'read-write'],
     );
   });
 
   it('Shows the specific pseudo-classes for optgroup', async () => {
     await assertExpectedPseudoClasses(
         'optgroup',
-        ['enabled', 'disabled', 'read-only'],
+        ['disabled', 'read-write'],
     );
   });
 
   it('Shows the specific pseudo-classes for FormAssociated', async () => {
     await assertExpectedPseudoClasses(
         'CustomFormAssociatedElement',
-        ['enabled', 'disabled', 'valid', 'invalid'],
+        ['disabled', 'valid', 'invalid', 'read-write'],
         true,
     );
   });
@@ -232,39 +257,60 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
   it('Shows the specific pseudo-classes for object, output and img', async () => {
     await assertExpectedPseudoClasses(
         'object',
-        ['valid', 'invalid'],
+        ['valid', 'invalid', 'read-write'],
     );
 
     await assertExpectedPseudoClasses(
         'output',
-        ['valid', 'invalid', 'read-only'],
+        ['valid', 'invalid', 'read-write'],
     );
 
     await assertExpectedPseudoClasses(
         'img',
-        ['valid', 'invalid'],
+        ['valid', 'invalid', 'read-write'],
     );
   });
   it('Shows the specific pseudo-classes for progress', async () => {
     await assertExpectedPseudoClasses(
         'progress',
-        ['read-only', 'indeterminate'],
+        ['read-write', 'indeterminate'],
     );
   });
 
   it('Shows the specific pseudo-classes for a and area with href', async () => {
     await assertExpectedPseudoClasses(
         'a',
-        ['visited'],
+        ['visited', 'link', 'read-write'],
         false,
         ['href', 'www.google.com'],
     );
 
     await assertExpectedPseudoClasses(
-        'a',
-        ['visited'],
+        'area',
+        ['visited', 'link', 'read-write'],
         false,
         ['href', 'www.google.com'],
+    );
+  });
+
+  it('Shows the specific pseudo-classes for a and area without href', async () => {
+    await assertExpectedPseudoClasses(
+        'a',
+        ['read-write'],
+    );
+
+    await assertExpectedPseudoClasses(
+        'area',
+        ['read-write'],
+    );
+  });
+
+  it('Shows the specific pseudo-classes for contenteditable div', async () => {
+    await assertExpectedPseudoClasses(
+        'div',
+        ['read-only'],
+        false,
+        ['contenteditable', ''],
     );
   });
 
@@ -272,19 +318,18 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
     await assertExpectedPseudoClasses(
         'input',
         [
-          'enabled',
           'disabled',
           'valid',
           'invalid',
           'user-valid',
           'user-invalid',
           'required',
-          'optional',
-          'read-write',
+          'read-only',
           'placeholder-shown',
           'autofill',
           'checked',
           'indeterminate',
+          'open',
         ],
         false,
         ['type', 'checkbox'],
@@ -292,19 +337,18 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
     await assertExpectedPseudoClasses(
         'input',
         [
-          'enabled',
           'disabled',
           'valid',
           'invalid',
           'user-valid',
           'user-invalid',
           'required',
-          'optional',
-          'read-write',
+          'read-only',
           'placeholder-shown',
           'autofill',
           'checked',
           'indeterminate',
+          'open',
         ],
         false,
         ['type', 'radio'],
@@ -314,19 +358,19 @@ describeWithMockConnection('ElementStatePaneWidget', () => {
   it('Shows the specific pseudo-classes for datalist, label, legend and meter', async () => {
     await assertExpectedPseudoClasses(
         'datalist',
-        ['read-only'],
+        ['read-write'],
     );
     await assertExpectedPseudoClasses(
         'label',
-        ['read-only'],
+        ['read-write'],
     );
     await assertExpectedPseudoClasses(
         'legend',
-        ['read-only'],
+        ['read-write'],
     );
     await assertExpectedPseudoClasses(
         'meter',
-        ['read-only'],
+        ['read-write'],
     );
   });
 });

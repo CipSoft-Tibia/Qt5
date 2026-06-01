@@ -635,15 +635,18 @@ void tst_QQmlProfilerService::signalSourceLocation()
     checkTraceReceived();
     checkJsHeap();
 
-    auto createType = [](int line, int column) {
+    auto createType = [](int line, int column, RangeType rangeType = HandlingSignal) {
         return QQmlProfilerEventType(
-                    MaximumMessage, HandlingSignal, -1,
+                    MaximumMessage, rangeType, -1,
                     QQmlProfilerEventLocation(QLatin1String("signalSourceLocation.qml"), line,
                                               column));
     };
 
-    VERIFY(MessageListQML, 4, createType(8, 5), CheckType | CheckNumbers, m_rangeStart);
-    VERIFY(MessageListQML, 6, createType(7, 5), CheckType | CheckNumbers, m_rangeEnd);
+    // Creating the attached object
+    VERIFY(MessageListQML, 3, createType(8, 5, Creating), CheckType | CheckNumbers, m_rangeStart);
+
+    VERIFY(MessageListQML, 6, createType(8, 5), CheckType | CheckNumbers, m_rangeStart);
+    VERIFY(MessageListQML, 8, createType(7, 5), CheckType | CheckNumbers, m_rangeEnd);
 }
 
 void tst_QQmlProfilerService::javascript()

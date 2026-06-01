@@ -12,7 +12,7 @@ endif()
 
 set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/wayland/custom-extension/cpp-client")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui WaylandClient)
+find_package(Qt6 REQUIRED COMPONENTS Core GuiPrivate WaylandClient)
 
 qt_add_executable(custom-extension-cpp-client
     ../client-common/customextension.cpp ../client-common/customextension.h

@@ -38,9 +38,10 @@
 #include "libavutil/avstring.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
+
+#include "filters.h"
 #include "drawutils.h"
 #include "avfilter.h"
-#include "internal.h"
 #include "formats.h"
 #include "video.h"
 
@@ -86,6 +87,40 @@ static const int ass_libavfilter_log_level_map[] = {
     [6] = AV_LOG_VERBOSE,   /* MSGL_V */
     [7] = AV_LOG_DEBUG,     /* MSGL_DBG2 */
 };
+
+static enum AVColorSpace ass_get_color_space(ASS_YCbCrMatrix ass_matrix, enum AVColorSpace inlink_space) {
+    switch (ass_matrix) {
+    case YCBCR_NONE:            return inlink_space;
+    case YCBCR_SMPTE240M_TV:
+    case YCBCR_SMPTE240M_PC:    return AVCOL_SPC_SMPTE240M;
+    case YCBCR_FCC_TV:
+    case YCBCR_FCC_PC:          return AVCOL_SPC_FCC;
+    case YCBCR_BT709_TV:
+    case YCBCR_BT709_PC:        return AVCOL_SPC_BT709;
+    case YCBCR_BT601_TV:
+    case YCBCR_BT601_PC:
+    case YCBCR_DEFAULT:
+    case YCBCR_UNKNOWN:
+    default:                    return AVCOL_SPC_SMPTE170M;
+    }
+}
+
+static enum AVColorRange ass_get_color_range(ASS_YCbCrMatrix ass_matrix, enum AVColorRange inlink_range) {
+    switch (ass_matrix) {
+    case YCBCR_NONE:            return inlink_range;
+    case YCBCR_SMPTE240M_PC:
+    case YCBCR_FCC_PC:
+    case YCBCR_BT709_PC:
+    case YCBCR_BT601_PC:        return AVCOL_RANGE_JPEG;
+    case YCBCR_SMPTE240M_TV:
+    case YCBCR_FCC_TV:
+    case YCBCR_BT709_TV:
+    case YCBCR_BT601_TV:
+    case YCBCR_DEFAULT:
+    case YCBCR_UNKNOWN:
+    default:                    return AVCOL_RANGE_MPEG;
+    }
+}
 
 static void ass_log(int ass_level, const char *fmt, va_list args, void *ctx)
 {
@@ -137,16 +172,21 @@ static av_cold void uninit(AVFilterContext *ctx)
         ass_library_done(ass->library);
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out,
+                                  ff_draw_supported_pixel_formats(0));
 }
 
 static int config_input(AVFilterLink *inlink)
 {
     AssContext *ass = inlink->dst->priv;
 
-    ff_draw_init2(&ass->draw, inlink->format, inlink->colorspace, inlink->color_range,
+    ff_draw_init2(&ass->draw, inlink->format,
+                  ass_get_color_space(ass->track->YCbCrMatrix, inlink->colorspace),
+                  ass_get_color_range(ass->track->YCbCrMatrix, inlink->color_range),
                   ass->alpha ? FF_DRAW_PROCESS_ALPHA : 0);
 
     ass_set_frame_size  (ass->renderer, inlink->w, inlink->h);
@@ -254,7 +294,7 @@ const AVFilter ff_vf_ass = {
     .uninit        = uninit,
     FILTER_INPUTS(ass_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .priv_class    = &ass_class,
 };
 #endif
@@ -509,7 +549,7 @@ const AVFilter ff_vf_subtitles = {
     .uninit        = uninit,
     FILTER_INPUTS(ass_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .priv_class    = &subtitles_class,
 };
 #endif

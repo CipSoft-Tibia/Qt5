@@ -889,14 +889,14 @@ void QQmlXmlListModelQueryRunnable::processElement(QQmlXmlListModelQueryResult *
     readSubTree(QString(), reader, results, &currentResult->errors);
 
     if (reader.hasError())
-        currentResult->errors.push_back(qMakePair(this, reader.errorString()));
+        currentResult->errors.push_back(std::make_pair(this, reader.errorString()));
 
     currentResult->data << results;
 }
 
 void QQmlXmlListModelQueryRunnable::readSubTree(const QString &prefix, QXmlStreamReader &reader,
                                                 QFlatMap<int, QString> &results,
-                                                QList<QPair<void *, QString>> *errors)
+                                                QList<std::pair<void *, QString>> *errors)
 {
     const QStringList &elementNames = m_job.elementNames;
     const QStringList &attributes = m_job.elementAttributes;
@@ -925,7 +925,7 @@ void QQmlXmlListModelQueryRunnable::readSubTree(const QString &prefix, QXmlStrea
                         if (elementAttributes.hasAttribute(attribute)) {
                             roleResult = elementAttributes.value(attributes.at(index)).toString();
                         } else {
-                            errors->push_back(qMakePair(m_job.roleQueryErrorId.at(index),
+                            errors->push_back(std::make_pair(m_job.roleQueryErrorId.at(index),
                                                         QLatin1String("Attribute %1 not found")
                                                                 .arg(attributes[index])));
                         }

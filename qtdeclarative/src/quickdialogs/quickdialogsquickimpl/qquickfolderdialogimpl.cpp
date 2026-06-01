@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickfolderdialogimpl_p.h"
 #include "qquickfolderdialogimpl_p_p.h"
@@ -144,7 +145,6 @@ void QQuickFolderDialogImplPrivate::handleClick(QQuickAbstractButton *button)
 QQuickFolderDialogImpl::QQuickFolderDialogImpl(QObject *parent)
     : QQuickDialog(*(new QQuickFolderDialogImplPrivate), parent)
 {
-    setPopupType(QQuickPopup::Window);
 }
 
 QQuickFolderDialogImplAttached *QQuickFolderDialogImpl::qmlAttachedProperties(QObject *object)

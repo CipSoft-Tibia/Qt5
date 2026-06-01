@@ -7,6 +7,7 @@
 
 #include <QtCore/qmutex.h>
 #include <QtCore/qresultstore.h>
+#include <QtCore/qtcoreexports.h>
 #ifndef QT_NO_EXCEPTIONS
 #include <exception>
 #endif
@@ -41,9 +42,13 @@ template<class Function, class ResultType>
 class FailureHandler;
 #endif
 
+struct UnwrapHandler;
+
+#if QT_CORE_REMOVED_SINCE(6, 10)
 void Q_CORE_EXPORT watchContinuationImpl(const QObject *context,
                                          QtPrivate::QSlotObjectBase *slotObj,
                                          QFutureInterfaceBase &fi);
+#endif // QT_CORE_REMOVED_SINCE(6, 10)
 }
 
 class Q_CORE_EXPORT QFutureInterfaceBase
@@ -125,6 +130,7 @@ public:
 
     void cancel();
     void cancelAndFinish() { cancel(CancelMode::CancelAndFinish); }
+    void cancelChain();
 
     void setSuspended(bool suspend);
     void toggleSuspended();
@@ -165,6 +171,7 @@ public:
 #ifndef QFUTURE_TEST
 private:
 #endif
+    friend class QFutureInterfaceBasePrivate;
     QFutureInterfaceBasePrivate *d;
 
 private:
@@ -182,16 +189,34 @@ private:
     friend class QtPrivate::FailureHandler;
 #endif
 
+    friend struct QtPrivate::UnwrapHandler;
+
+#if QT_CORE_REMOVED_SINCE(6, 10)
     friend Q_CORE_EXPORT void QtPrivate::watchContinuationImpl(
             const QObject *context, QtPrivate::QSlotObjectBase *slotObj, QFutureInterfaceBase &fi);
+#endif // QT_CORE_REMOVED_SINCE(6, 10)
 
     template<class T>
     friend class QPromise;
 
 protected:
+    enum class ContinuationType : quint8
+    {
+        Unknown,
+        Then,
+        OnFailed,
+        OnCanceled,
+    };
+
+#if QT_CORE_REMOVED_SINCE(6, 10)
     void setContinuation(std::function<void(const QFutureInterfaceBase &)> func);
     void setContinuation(std::function<void(const QFutureInterfaceBase &)> func,
                          QFutureInterfaceBasePrivate *continuationFutureData);
+#endif // QT_CORE_REMOVED_SINCE(6, 10)
+    void setContinuation(std::function<void(const QFutureInterfaceBase &)> func,
+                         void *continuationFutureData, ContinuationType type);
+    void setContinuation(const QObject *context, std::function<void()> func,
+                         const QVariant &continuationFuture, ContinuationType type);
     void cleanContinuation();
     void runContinuation() const;
 
@@ -202,6 +227,7 @@ protected:
 
     enum class CancelMode { CancelOnly, CancelAndFinish };
     void cancel(CancelMode mode);
+    void cancelChain(CancelMode mode);
 };
 
 inline void swap(QFutureInterfaceBase &lhs, QFutureInterfaceBase &rhs) noexcept

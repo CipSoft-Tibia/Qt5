@@ -272,9 +272,13 @@ QLocale QTextToSpeechEngineWinRT::locale() const
 
     ComPtr<IVoiceInformation> voiceInfo;
     HRESULT hr = d->synth->get_Voice(&voiceInfo);
+    if (FAILED(hr) || !voiceInfo)
+        return QLocale(QLocale::C, QLocale::AnyTerritory);
 
     HString language;
     hr = voiceInfo->get_Language(language.GetAddressOf());
+    if (FAILED(hr))
+        return QLocale(QLocale::C, QLocale::AnyTerritory);
 
     return QLocale(QString::fromWCharArray(language.GetRawBuffer(0)));
 }
@@ -355,7 +359,6 @@ void QTextToSpeechEngineWinRT::timerEvent(QTimerEvent *e)
 {
     Q_D(QTextToSpeechEngineWinRT);
     if (e->timerId() == d->boundaryTimer.timerId()) {
-        const qint64 expected = d->currentBoundary->startTime;
         const qint64 elapsed = d->elapsedTimer.nsecsElapsed() / 1000 + d->playedTime;
         if (d->currentBoundary->type == AudioSource::Boundary::Word)
             emit sayingWord(d->currentBoundary->text, d->currentBoundary->beginIndex,

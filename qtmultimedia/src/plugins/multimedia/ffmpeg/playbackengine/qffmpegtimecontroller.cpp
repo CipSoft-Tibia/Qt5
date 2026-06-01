@@ -38,7 +38,7 @@ void TimeController::setPlaybackRate(PlaybackRate playbackRate)
 
 void TimeController::sync(TrackPosition trackPos)
 {
-    sync(RealClock::now(), trackPos);
+    sync(SteadyClock::now(), trackPos);
 }
 
 void TimeController::sync(TimePoint tp, TrackPosition pos)
@@ -48,9 +48,9 @@ void TimeController::sync(TimePoint tp, TrackPosition pos)
     m_timePoint = tp;
 }
 
-void TimeController::syncSoft(TimePoint tp, TrackPosition pos, RealClock::duration fixingTime)
+void TimeController::syncSoft(TimePoint tp, TrackPosition pos, SteadyClock::duration fixingTime)
 {
-    const auto srcTime = RealClock::now();
+    const auto srcTime = SteadyClock::now();
     const auto srcPos = positionFromTime(srcTime, true);
     const auto dstTime = srcTime + fixingTime;
 
@@ -60,23 +60,43 @@ void TimeController::syncSoft(TimePoint tp, TrackPosition pos, RealClock::durati
     m_softSyncData = makeSoftSyncData(srcTime, srcPos, dstTime);
 }
 
-TrackPosition TimeController::currentPosition(RealClock::duration offset) const
+TrackPosition TimeController::currentPosition(SteadyClock::duration offset) const
 {
-    return positionFromTime(RealClock::now() + offset);
+    return positionFromTime(SteadyClock::now() + offset);
+}
+void TimeController::start()
+{
+    m_started = true;
+    updateActive();
+}
+
+void TimeController::deactivate()
+{
+    m_started = false;
+    m_paused = true;
+    updateActive();
 }
 
 void TimeController::setPaused(bool paused)
 {
-    if (m_paused == paused)
+    m_paused = paused;
+    updateActive();
+}
+
+void TimeController::updateActive()
+{
+    const bool active = !m_paused && m_started;
+    if (m_active == active)
         return;
 
     scrollTimeTillNow();
-    m_paused = paused;
+
+    m_active = active;
 }
 
-TrackPosition TimeController::positionFromTime(TimePoint tp, bool ignorePause) const
+TrackPosition TimeController::positionFromTime(TimePoint tp, bool ignoreInactive) const
 {
-    tp = m_paused && !ignorePause ? m_timePoint : tp;
+    tp = !m_active && !ignoreInactive ? m_timePoint : tp;
 
     if (m_softSyncData && tp < m_softSyncData->dstTimePoint) {
         const PlaybackRate rate =
@@ -90,9 +110,9 @@ TrackPosition TimeController::positionFromTime(TimePoint tp, bool ignorePause) c
 }
 
 TimeController::TimePoint TimeController::timeFromPosition(TrackPosition pos,
-                                                           bool ignorePause) const
+                                                           bool ignoreInactive) const
 {
-    auto position = m_paused && !ignorePause ? m_position : TrackPosition(pos);
+    auto position = !m_active && !ignoreInactive ? m_position : TrackPosition(pos);
 
     if (m_softSyncData && position < m_softSyncData->dstPosition) {
         const auto rate = position > m_softSyncData->srcPosition ? m_softSyncData->internalRate
@@ -133,8 +153,8 @@ TimeController::TimePoint TimeController::timeFromPositionInternal(const TrackPo
 
 void TimeController::scrollTimeTillNow()
 {
-    const auto now = RealClock::now();
-    if (!m_paused) {
+    const auto now = SteadyClock::now();
+    if (m_active) {
         m_position = positionFromTimeInternal(now);
 
         // let's forget outdated syncronizations
@@ -148,13 +168,13 @@ void TimeController::scrollTimeTillNow()
     m_timePoint = now;
 }
 
-RealClock::duration TimeController::toClockDuration(TrackDuration trackDuration, PlaybackRate rate)
+SteadyClock::duration TimeController::toClockDuration(TrackDuration trackDuration, PlaybackRate rate)
 {
-    return std::chrono::duration_cast<RealClock::duration>(
+    return std::chrono::duration_cast<SteadyClock::duration>(
             std::chrono::microseconds(trackDuration.get()) / rate);
 }
 
-TrackDuration TimeController::toTrackDuration(RealClock::duration clockDuration, PlaybackRate rate)
+TrackDuration TimeController::toTrackDuration(SteadyClock::duration clockDuration, PlaybackRate rate)
 {
     return TrackDuration(
             std::chrono::duration_cast<std::chrono::microseconds>(clockDuration * rate).count());

@@ -12,6 +12,11 @@ Item {
     signal boolSignal(value: bool)
     signal doubleSignal(value: double)
     signal stringSignal(value: string)
+    signal manyTypeArgSignal(
+        intValue: int,
+        boolValue: bool,
+        doubleValue: double,
+        stringValue: string)
 
     readonly property int signalWaitTime: 1000
 
@@ -44,6 +49,11 @@ Item {
         target: communicator
         signalName: "stringSignal"
     }
+    SignalSpy {
+        id: manyTypeSpy
+        target: communicator
+        signalName: "manyTypeSignal"
+    }
 
     function wipeSpies() {
         basicSpy.clear()
@@ -51,6 +61,7 @@ Item {
         boolSpy.clear()
         doubleSpy.clear()
         stringSpy.clear()
+        manyTypeSpy.clear()
     }
 
     TestCase {
@@ -112,6 +123,24 @@ Item {
             compare(stringSpy.count, 1)
             compare(stringSpy.signalArguments.length, 1)
             compare(stringSpy.signalArguments[0][0], testVal)
+        }
+
+        function test_manyTypes() {
+            let testInt = 123
+            let testBool = true
+            let testDouble = 123.456
+            let testString = "Testing testing, is this thing on?"
+            compare(manyTypeSpy.count, 0)
+
+            root.manyTypeArgSignal(testInt, testBool, testDouble, testString)
+            manyTypeSpy.wait(root.signalWaitTime)
+
+            compare(manyTypeSpy.count, 1)
+            compare(manyTypeSpy.signalArguments.length, 1)
+            compare(manyTypeSpy.signalArguments[0][0], testInt)
+            compare(manyTypeSpy.signalArguments[0][1], testBool)
+            compare(manyTypeSpy.signalArguments[0][2], testDouble)
+            compare(manyTypeSpy.signalArguments[0][3], testString)
         }
     }
 
@@ -193,6 +222,26 @@ Item {
                 compare(arg[0], testVal)
             }
         }
+
+        function test_manyTypes() {
+            const testInt = 123
+            const testBool = true
+            const testDouble = 123.456
+            const testString = "Testing testing, is this thing on?"
+            compare(manyTypeSpy.count, 0)
+            for (let i = 0; i < spam_count; ++i) {
+                root.manyTypeArgSignal(testInt, testBool, testDouble, testString)
+            }
+            waitWhileSignalsArrive(manyTypeSpy, spam_count)
+
+            compare(manyTypeSpy.count, spam_count)
+            for (const arg of manyTypeSpy.signalArguments) {
+                compare(arg[0], testInt)
+                compare(arg[1], testBool)
+                compare(arg[2], testDouble)
+                compare(arg[3], testString)
+            }
+        }
     }
 
     TestCase {
@@ -267,16 +316,6 @@ Item {
             compare(stringSpy.count, 1)
             compare(stringSpy.signalArguments.length, 1)
             compare(stringSpy.signalArguments[0][0], "")
-        }
-    }
-
-    // Workaround for QTBUG-137025, allow the Android UI thread to loop.
-    TestCase {
-        name: "aDelayToAllowProcessing"
-        when: windowShown
-        function test_a() {
-            wait(1000)
-            verify(true)
         }
     }
 

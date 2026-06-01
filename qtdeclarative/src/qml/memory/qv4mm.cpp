@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:low-level-memory-management
 
 #include "PageAllocation.h"
 #include "PageReservation.h"
@@ -556,16 +557,17 @@ done:
 
 void BlockAllocator::sweep()
 {
+    const auto firstEmptyChunkPos = partition(chunks, [this](const std::size_t i) {
+        return chunks.at(i)->sweep(engine);
+    });
+    const auto firstEmptyChunk = chunks.begin() + firstEmptyChunkPos;
+
     nextFree = nullptr;
     nFree = 0;
     memset(freeBins, 0, sizeof(freeBins));
 
 //    qDebug() << "BlockAlloc: sweep";
     usedSlotsAfterLastSweep = 0;
-
-    auto firstEmptyChunk = std::partition(chunks.begin(), chunks.end(), [this](Chunk *c) {
-        return c->sweep(engine);
-    });
 
     std::for_each(chunks.begin(), firstEmptyChunk, [this](Chunk *c) {
         c->sortIntoBins(freeBins, NumBins);
@@ -1312,7 +1314,7 @@ void MemoryManager::runGC()
         t.start();
         gcStateMachine->step();
         qint64 markTime = t.nsecsElapsed()/1000;
-        t.restart();
+        t.start();
         const size_t usedAfter = getUsedMem();
         const size_t largeItemsAfter = getLargeItemsMem();
 
@@ -1544,23 +1546,28 @@ static GCState executeWithLoggingIfEnabled(GCStateMachine* that, GCStateInfo& st
     return next;
 }
 
+static void redrainDuringSweep(GCStateMachine *that)
+{
+    if (that->state > GCState::InitCallDestroyObjects) {
+        /* initCallDestroyObjects is the last action which drains the mark
+           stack by default. But as our write-barrier might end up putting
+           objects on the markStack which still reference other objects.
+           Especially when we call user code triggered by Component.onDestruction,
+           but also when we run into a timeout.
+           We don't redrain before InitCallDestroyObjects, as that would
+           potentially lead to useless busy-work (e.g., if the last referencs
+           to objects are removed while the mark phase is running)
+        */
+        redrain(that);
+    }
+}
+
 void GCStateMachine::transition() {
     if (timeLimit.count() > 0) {
         deadline = QDeadlineTimer(timeLimit);
         bool deadlineExpired = false;
-        while (!(deadlineExpired = deadline.hasExpired()) && state != GCState::Invalid) {
-            if (state > GCState::InitCallDestroyObjects) {
-                /* initCallDestroyObjects is the last action which drains the mark
-                   stack by default. But as our write-barrier might end up putting
-                   objects on the markStack which still reference other objects.
-                   Especially when we call user code triggered by Component.onDestruction,
-                   but also when we run into a timeout.
-                   We don't redrain before InitCallDestroyObjects, as that would
-                   potentially lead to useless busy-work (e.g., if the last referencs
-                   to objects are removed while the mark phase is running)
-                */
-                redrain(this);
-            }
+        do {
+            redrainDuringSweep(this);
             qCDebug(lcGcStateTransitions) << "Preparing to execute the"
                                           << QMetaEnum::fromType<GCState>().key(state) << "state";
             GCStateInfo& stateInfo = stateInfoMap[int(state)];
@@ -1569,7 +1576,7 @@ void GCStateMachine::transition() {
                                           << QMetaEnum::fromType<GCState>().key(state) << "state";
             if (stateInfo.breakAfter)
                 break;
-        }
+        } while (!(deadlineExpired = deadline.hasExpired()) && state != GCState::Invalid);
         if (deadlineExpired)
             handleTimeout(state);
         if (state != GCState::Invalid)
@@ -1579,6 +1586,7 @@ void GCStateMachine::transition() {
     } else {
         deadline = QDeadlineTimer::Forever;
         while (state != GCState::Invalid) {
+            redrainDuringSweep(this);
             qCDebug(lcGcStateTransitions) << "Preparing to execute the"
                                           << QMetaEnum::fromType<GCState>().key(state) << "state";
             GCStateInfo& stateInfo = stateInfoMap[int(state)];

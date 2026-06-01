@@ -8,6 +8,7 @@
 #include "base/time/time.h"
 #include "third_party/blink/renderer/core/css/rule_set.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 
 namespace blink {
 
@@ -17,7 +18,7 @@ class StyleRule;
 struct RulePerfDataPerRequest {
   DISALLOW_NEW();
 
-  public:
+ public:
   RulePerfDataPerRequest(const RuleData* r, bool f, bool m, base::TimeDelta e)
       : style_rule(r->Rule()),
         selector_text(r->Selector().SelectorText()),

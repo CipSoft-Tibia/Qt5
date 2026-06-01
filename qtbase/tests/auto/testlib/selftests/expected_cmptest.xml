@@ -281,14 +281,6 @@
     </Incident>
     <Duration msecs="0"/>
   </TestFunction>
-  <TestFunction name="compareQListDouble">
-    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
-      <Description><![CDATA[Compared lists differ at index 0.
-   Actual   (double1): 1.5
-   Expected (double2): 1]]></Description>
-    </Incident>
-    <Duration msecs="0"/>
-  </TestFunction>
   <TestFunction name="compareContainerToInitializerList">
     <Incident type="pass" file="" line="0" />
     <Duration msecs="0"/>

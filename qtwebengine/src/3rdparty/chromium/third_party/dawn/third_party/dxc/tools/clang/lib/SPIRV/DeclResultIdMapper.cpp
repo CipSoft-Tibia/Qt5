@@ -15,6 +15,7 @@
 
 #include "dxc/DXIL/DxilConstants.h"
 #include "dxc/DXIL/DxilTypeSystem.h"
+#include "dxc/Support/SPIRVOptions.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/HlslTypes.h"
 #include "clang/SPIRV/AstTypeProbe.h"
@@ -391,10 +392,16 @@ bool isBooleanStageIOVar(const NamedDecl *decl, QualType type,
   // [[vk::builtin(...)]] makes the decl a built-in stage variable.
   // IsFrontFace (if used as PSIn) is the only known boolean built-in stage
   // variable.
-  const bool isBooleanBuiltin =
-      (decl->getAttr<VKBuiltInAttr>() != nullptr) ||
-      (semanticKind == hlsl::Semantic::Kind::IsFrontFace &&
-       sigPointKind == hlsl::SigPoint::Kind::PSIn);
+  bool isBooleanBuiltin = false;
+
+  if ((decl->getAttr<VKBuiltInAttr>() != nullptr))
+    isBooleanBuiltin = true;
+  else if (semanticKind == hlsl::Semantic::Kind::IsFrontFace &&
+           sigPointKind == hlsl::SigPoint::Kind::PSIn) {
+    isBooleanBuiltin = true;
+  } else if (semanticKind == hlsl::Semantic::Kind::CullPrimitive) {
+    isBooleanBuiltin = true;
+  }
 
   // TODO: support boolean matrix stage I/O variable if needed.
   QualType elemType = {};
@@ -516,9 +523,10 @@ SpirvLayoutRule getLayoutRuleForExternVar(QualType type,
   return SpirvLayoutRule::Void;
 }
 
-spv::ImageFormat getSpvImageFormat(const VKImageFormatAttr *imageFormatAttr) {
+std::optional<spv::ImageFormat>
+getSpvImageFormat(const VKImageFormatAttr *imageFormatAttr) {
   if (imageFormatAttr == nullptr)
-    return spv::ImageFormat::Unknown;
+    return std::nullopt;
 
   switch (imageFormatAttr->getImageFormat()) {
   case VKImageFormatAttr::unknown:
@@ -1050,7 +1058,7 @@ DeclResultIdMapper::createFnParam(const ParmVarDecl *param,
   fnParamInstr->setContainsAliasComponent(isAlias);
 
   assert(astDecls[param].instr == nullptr);
-  astDecls[param].instr = fnParamInstr;
+  registerVariableForDecl(param, fnParamInstr);
 
   if (spirvOptions.debugInfoRich) {
     // Add DebugLocalVariable information
@@ -1099,7 +1107,7 @@ DeclResultIdMapper::createFnVar(const VarDecl *var,
   bool isAlias = false;
   (void)getTypeAndCreateCounterForPotentialAliasVar(var, &isAlias);
   varInstr->setContainsAliasComponent(isAlias);
-  astDecls[var].instr = varInstr;
+  registerVariableForDecl(var, varInstr);
   return varInstr;
 }
 
@@ -1144,7 +1152,7 @@ DeclResultIdMapper::createFileVar(const VarDecl *var,
   bool isAlias = false;
   (void)getTypeAndCreateCounterForPotentialAliasVar(var, &isAlias);
   varInstr->setContainsAliasComponent(isAlias);
-  astDecls[var].instr = varInstr;
+  registerVariableForDecl(var, varInstr);
 
   createDebugGlobalVariable(varInstr, type, loc, name);
 
@@ -1234,14 +1242,13 @@ SpirvVariable *DeclResultIdMapper::createExternVar(const VarDecl *var,
   VkImageFeatures vkImgFeatures = {
       var->getAttr<VKCombinedImageSamplerAttr>() != nullptr,
       getSpvImageFormat(var->getAttr<VKImageFormatAttr>())};
-  if (vkImgFeatures.format != spv::ImageFormat::Unknown) {
+  if (vkImgFeatures.format) {
     // Legalization is needed to propagate the correct image type for
     // instructions in addition to cases where the resource is assigned to
     // another variable or function parameter
     needsLegalization = true;
   }
-  if (vkImgFeatures.isCombinedImageSampler ||
-      vkImgFeatures.format != spv::ImageFormat::Unknown) {
+  if (vkImgFeatures.isCombinedImageSampler || vkImgFeatures.format) {
     spvContext.registerVkImageFeaturesForSpvVariable(varInstr, vkImgFeatures);
   }
 
@@ -1255,8 +1262,9 @@ SpirvVariable *DeclResultIdMapper::createExternVar(const VarDecl *var,
   }
 
   if (hlsl::IsHLSLResourceType(type)) {
-    if (!areFormatAndTypeCompatible(vkImgFeatures.format,
-                                    hlsl::GetHLSLResourceResultType(type))) {
+    if (!areFormatAndTypeCompatible(
+            vkImgFeatures.format.value_or(spv::ImageFormat::Unknown),
+            hlsl::GetHLSLResourceResultType(type))) {
       emitError("The image format and the sampled type are not compatible.\n"
                 "For the table of compatible types, see "
                 "https://docs.vulkan.org/spec/latest/appendices/"
@@ -1266,7 +1274,7 @@ SpirvVariable *DeclResultIdMapper::createExternVar(const VarDecl *var,
     }
   }
 
-  astDecls[var] = createDeclSpirvInfo(varInstr);
+  registerVariableForDecl(var, createDeclSpirvInfo(varInstr));
 
   createDebugGlobalVariable(varInstr, type, loc, name);
 
@@ -1304,7 +1312,7 @@ SpirvInstruction *DeclResultIdMapper::createResultId(const VarDecl *var) {
   }
 
   SpirvInstruction *init = theEmitter.doExpr(var->getInit());
-  astDecls[var] = createDeclSpirvInfo(init);
+  registerVariableForDecl(var, createDeclSpirvInfo(init));
   return init;
 }
 
@@ -1323,7 +1331,7 @@ DeclResultIdMapper::createOrUpdateStringVar(const VarDecl *var) {
   const StringLiteral *stringLiteral =
       dyn_cast<StringLiteral>(var->getInit()->IgnoreParenCasts());
   SpirvString *init = spvBuilder.getString(stringLiteral->getString());
-  astDecls[var] = createDeclSpirvInfo(init);
+  registerVariableForDecl(var, createDeclSpirvInfo(init));
   return init;
 }
 
@@ -1482,7 +1490,7 @@ SpirvVariable *DeclResultIdMapper::createCTBuffer(const HLSLBufferDecl *decl) {
     if (isResourceType(varDecl->getType()))
       continue;
 
-    astDecls[varDecl] = createDeclSpirvInfo(bufferVar, index++);
+    registerVariableForDecl(varDecl, createDeclSpirvInfo(bufferVar, index++));
   }
   // If it does not contains a member with non-resource type, we do not want to
   // set a dedicated binding number.
@@ -1548,7 +1556,7 @@ SpirvVariable *DeclResultIdMapper::createPushConstant(const VarDecl *decl) {
   }
 
   // Register the VarDecl
-  astDecls[decl] = createDeclSpirvInfo(var);
+  registerVariableForDecl(decl, createDeclSpirvInfo(var));
 
   // Do not push this variable into resourceVars since it does not need
   // descriptor set.
@@ -1599,7 +1607,7 @@ DeclResultIdMapper::createShaderRecordBuffer(const VarDecl *decl,
   }
 
   // Register the VarDecl
-  astDecls[decl] = createDeclSpirvInfo(var);
+  registerVariableForDecl(decl, createDeclSpirvInfo(var));
 
   // Do not push this variable into resourceVars since it does not need
   // descriptor set.
@@ -1637,7 +1645,7 @@ DeclResultIdMapper::createShaderRecordBuffer(const HLSLBufferDecl *decl,
     if (isResourceType(varDecl->getType()))
       continue;
 
-    astDecls[varDecl] = createDeclSpirvInfo(bufferVar, index++);
+    registerVariableForDecl(varDecl, createDeclSpirvInfo(bufferVar, index++));
   }
   return bufferVar;
 }
@@ -1687,7 +1695,7 @@ void DeclResultIdMapper::createGlobalsCBuffer(const VarDecl *var) {
       if (isResourceType(varDecl->getType()))
         continue;
 
-      astDecls[varDecl] = createDeclSpirvInfo(globals, index++);
+      registerVariableForDecl(varDecl, createDeclSpirvInfo(globals, index++));
     }
   }
 
@@ -1800,7 +1808,7 @@ DeclResultIdMapper::getCounterVarFields(const DeclaratorDecl *decl) {
 void DeclResultIdMapper::registerSpecConstant(const VarDecl *decl,
                                               SpirvInstruction *specConstant) {
   specConstant->setRValue();
-  astDecls[decl] = createDeclSpirvInfo(specConstant);
+  registerVariableForDecl(decl, createDeclSpirvInfo(specConstant));
 }
 
 void DeclResultIdMapper::createCounterVar(
@@ -1814,24 +1822,24 @@ void DeclResultIdMapper::createCounterVar(
   }
 
   const SpirvType *counterType = spvContext.getACSBufferCounterType();
+  llvm::Optional<uint32_t> noArrayStride;
   QualType declType = decl->getType();
   if (declType->isArrayType()) {
     // Vulkan does not support multi-dimentional arrays of resource, so we
     // assume the array is a single dimensional array.
     assert(!declType->getArrayElementTypeNoTypeQual()->isArrayType());
-    uint32_t arrayStride = 4;
+
     if (const auto *constArrayType =
             astContext.getAsConstantArrayType(declType)) {
       counterType = spvContext.getArrayType(
-          counterType, constArrayType->getSize().getZExtValue(), arrayStride);
+          counterType, constArrayType->getSize().getZExtValue(), noArrayStride);
     } else {
       assert(declType->isIncompleteArrayType());
-      counterType = spvContext.getRuntimeArrayType(counterType, arrayStride);
+      counterType = spvContext.getRuntimeArrayType(counterType, noArrayStride);
     }
   } else if (isResourceDescriptorHeap(decl->getType()) ||
              isSamplerDescriptorHeap(decl->getType())) {
-    counterType =
-        spvContext.getRuntimeArrayType(counterType, /* arrayStride= */ 4);
+    counterType = spvContext.getRuntimeArrayType(counterType, noArrayStride);
   }
 
   // {RW|Append|Consume}StructuredBuffer are all in Uniform storage class.
@@ -2506,6 +2514,17 @@ bool DeclResultIdMapper::decorateResourceBindings() {
 
   BindingSet bindingSet;
 
+  // If some bindings are reserved for heaps, mark those are used.
+  if (spirvOptions.resourceHeapBinding)
+    bindingSet.useBinding(spirvOptions.resourceHeapBinding->binding,
+                          spirvOptions.resourceHeapBinding->set);
+  if (spirvOptions.samplerHeapBinding)
+    bindingSet.useBinding(spirvOptions.samplerHeapBinding->binding,
+                          spirvOptions.samplerHeapBinding->set);
+  if (spirvOptions.counterHeapBinding)
+    bindingSet.useBinding(spirvOptions.counterHeapBinding->binding,
+                          spirvOptions.counterHeapBinding->set);
+
   // Decorates the given varId of the given category with set number
   // setNo, binding number bindingNo. Ignores overlaps.
   const auto tryToDecorate = [this, &bindingSet](const ResourceVar &var,
@@ -2698,6 +2717,15 @@ bool DeclResultIdMapper::decorateResourceBindings() {
   return true;
 }
 
+SpirvCodeGenOptions::BindingInfo DeclResultIdMapper::getBindingInfo(
+    BindingSet &bindingSet,
+    const std::optional<SpirvCodeGenOptions::BindingInfo> &userProvidedInfo) {
+  if (userProvidedInfo.has_value()) {
+    return *userProvidedInfo;
+  }
+  return {bindingSet.useNextBinding(0), /* set= */ 0};
+}
+
 void DeclResultIdMapper::decorateResourceHeapsBindings(BindingSet &bindingSet) {
   bool hasResource = false;
   bool hasSamplers = false;
@@ -2725,12 +2753,21 @@ void DeclResultIdMapper::decorateResourceHeapsBindings(BindingSet &bindingSet) {
   // Allocate bindings only for used resources. The order of this allocation is
   // important:
   //  - First resource heaps, then sampler heaps, and finally counter heaps.
-  const uint32_t resourceBinding =
-      hasResource ? bindingSet.useNextBinding(0) : 0;
-  const uint32_t samplersBinding =
-      hasSamplers ? bindingSet.useNextBinding(0) : 0;
-  const uint32_t countersBinding =
-      hasCounters ? bindingSet.useNextBinding(0) : 0;
+  SpirvCodeGenOptions::BindingInfo resourceBinding = {/* binding= */ 0,
+                                                      /* set= */ 0};
+  SpirvCodeGenOptions::BindingInfo samplersBinding = {/* binding= */ 0,
+                                                      /* set= */ 0};
+  SpirvCodeGenOptions::BindingInfo countersBinding = {/* binding= */ 0,
+                                                      /* set= */ 0};
+  if (hasResource)
+    resourceBinding =
+        getBindingInfo(bindingSet, spirvOptions.resourceHeapBinding);
+  if (hasSamplers)
+    samplersBinding =
+        getBindingInfo(bindingSet, spirvOptions.samplerHeapBinding);
+  if (hasCounters)
+    countersBinding =
+        getBindingInfo(bindingSet, spirvOptions.counterHeapBinding);
 
   for (const auto &var : resourceVars) {
     if (!var.getDeclaration())
@@ -2739,13 +2776,14 @@ void DeclResultIdMapper::decorateResourceHeapsBindings(BindingSet &bindingSet) {
     if (!decl)
       continue;
 
-    if (isResourceDescriptorHeap(decl->getType()))
-      spvBuilder.decorateDSetBinding(var.getSpirvInstr(), /* set= */ 0,
-                                     var.isCounter() ? countersBinding
-                                                     : resourceBinding);
-    else if (isSamplerDescriptorHeap(decl->getType()))
-      spvBuilder.decorateDSetBinding(var.getSpirvInstr(), /* set= */ 0,
-                                     samplersBinding);
+    const bool isResourceHeap = isResourceDescriptorHeap(decl->getType());
+    const bool isSamplerHeap = isSamplerDescriptorHeap(decl->getType());
+    if (!isSamplerHeap && !isResourceHeap)
+      continue;
+    const SpirvCodeGenOptions::BindingInfo &info =
+        isSamplerHeap ? samplersBinding
+                      : (var.isCounter() ? countersBinding : resourceBinding);
+    spvBuilder.decorateDSetBinding(var.getSpirvInstr(), info.set, info.binding);
   }
 }
 
@@ -4786,7 +4824,7 @@ void DeclResultIdMapper::tryToCreateImplicitConstVar(const ValueDecl *decl) {
   SpirvInstruction *constVal =
       spvBuilder.getConstantInt(astContext.UnsignedIntTy, val->getInt());
   constVal->setRValue(true);
-  astDecls[varDecl].instr = constVal;
+  registerVariableForDecl(varDecl, constVal);
 }
 
 void DeclResultIdMapper::decorateWithIntrinsicAttrs(
@@ -4847,6 +4885,21 @@ void DeclResultIdMapper::setInterlockExecutionMode(spv::ExecutionMode mode) {
 spv::ExecutionMode DeclResultIdMapper::getInterlockExecutionMode() {
   return interlockExecutionMode.getValueOr(
       spv::ExecutionMode::PixelInterlockOrderedEXT);
+}
+
+void DeclResultIdMapper::registerVariableForDecl(const VarDecl *var,
+                                                 SpirvInstruction *varInstr) {
+  DeclSpirvInfo spirvInfo;
+  spirvInfo.instr = varInstr;
+  spirvInfo.indexInCTBuffer = -1;
+  registerVariableForDecl(var, spirvInfo);
+}
+
+void DeclResultIdMapper::registerVariableForDecl(const VarDecl *var,
+                                                 DeclSpirvInfo spirvInfo) {
+  for (const auto *v : var->redecls()) {
+    astDecls[v] = spirvInfo;
+  }
 }
 
 void DeclResultIdMapper::copyHullOutStageVarsToOutputPatch(

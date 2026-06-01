@@ -235,17 +235,18 @@ void tst_QAction::setStandardKeys()
     QCOMPARE(act.shortcut(), act.shortcuts().constFirst());
 
     QList<QKeySequence> expected;
+    const QKeySequence copy = QKeySequence(QStringLiteral("Copy"));
     const QKeySequence ctrlC = QKeySequence(QStringLiteral("CTRL+C"));
     const QKeySequence ctrlInsert = QKeySequence(QStringLiteral("CTRL+INSERT"));
     switch (m_keyboardScheme) {
     case QPlatformTheme::MacKeyboardScheme:
-        expected  << ctrlC;
+        expected  << ctrlC << copy;
         break;
     case QPlatformTheme::WindowsKeyboardScheme:
-        expected  << ctrlC << ctrlInsert;
+        expected  << ctrlC<< ctrlInsert << copy ;
         break;
     default: // X11
-        expected  << ctrlC << ctrlInsert << QKeySequence(QStringLiteral("F16"));
+        expected  << ctrlC << ctrlInsert << QKeySequence(QStringLiteral("F16")) << copy;
         break;
     }
 

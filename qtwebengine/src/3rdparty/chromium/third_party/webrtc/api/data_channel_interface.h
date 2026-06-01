@@ -99,7 +99,7 @@ class DataChannelObserver {
   //  A data buffer was successfully received.
   virtual void OnMessage(const DataBuffer& buffer) = 0;
   // The data channel's buffered_amount has changed.
-  virtual void OnBufferedAmountChange(uint64_t sent_data_size) {}
+  virtual void OnBufferedAmountChange(uint64_t /* sent_data_size */) {}
 
   // Override this to get callbacks directly on the network thread.
   // An implementation that does that must not block the network thread
@@ -161,8 +161,10 @@ class RTC_EXPORT DataChannelInterface : public RefCountInterface {
   // DataChannel was created with.
   virtual bool ordered() const;
   // TODO(hta): Deprecate and remove the following two functions.
-  virtual uint16_t maxRetransmitTime() const;
-  virtual uint16_t maxRetransmits() const;
+  [[deprecated("Use maxPacketLifeTime")]] virtual uint16_t maxRetransmitTime()
+      const;
+  [[deprecated("Use maxRetransmitsOpt")]] virtual uint16_t maxRetransmits()
+      const;
   virtual std::optional<int> maxRetransmitsOpt() const;
   virtual std::optional<int> maxPacketLifeTime() const;
   virtual std::string protocol() const;

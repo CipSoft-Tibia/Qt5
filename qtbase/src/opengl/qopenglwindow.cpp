@@ -161,7 +161,7 @@ public:
         , shareContext(shareContext)
     {
         if (!shareContext)
-            this->shareContext = qt_gl_global_share_context();
+            this->shareContext = QOpenGLContext::globalShareContext();
     }
 
     ~QOpenGLWindowPrivate();

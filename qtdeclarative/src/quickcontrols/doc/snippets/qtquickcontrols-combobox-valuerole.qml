@@ -18,17 +18,17 @@ ApplicationWindow {
     }
 
     ComboBox {
-        textRole: "text"
-        valueRole: "value"
-        // When an item is selected, update the backend.
-        onActivated: backend.modifier = currentValue
-        // Set the initial currentIndex to the value stored in the backend.
-        Component.onCompleted: currentIndex = indexOfValue(backend.modifier)
         model: [
             { value: Qt.NoModifier, text: qsTr("No modifier") },
             { value: Qt.ShiftModifier, text: qsTr("Shift") },
             { value: Qt.ControlModifier, text: qsTr("Control") }
         ]
+        textRole: "text"
+        valueRole: "value"
+        // Set currentValue to the value stored in the backend.
+        currentValue: backend.modifier
+        // When an item is selected, update the backend.
+        onActivated: backend.modifier = currentValue
     }
 }
 //! [file]

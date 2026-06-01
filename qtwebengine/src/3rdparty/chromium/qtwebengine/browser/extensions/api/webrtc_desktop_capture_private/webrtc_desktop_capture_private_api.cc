@@ -73,7 +73,7 @@ WebrtcDesktopCapturePrivateChooseDesktopMediaFunction::Run() {
   }
 
   content::RenderFrameHost* const main_frame = web_contents->GetPrimaryMainFrame();
-  content::MediaStreamRequest request(main_frame->GetProcess()->GetID() /* render_process_id */,
+  content::MediaStreamRequest request(main_frame->GetProcess()->GetDeprecatedID() /* render_process_id */,
                                       main_frame->GetRoutingID() /* render_frame_id */,
                                       request_id_ /* page_request_id */,
                                       origin /* security_origin */,
@@ -124,7 +124,7 @@ void WebrtcDesktopCapturePrivateChooseDesktopMediaFunction::ProcessAccessRequest
   }
 
   std::string result = content::DesktopStreamsRegistry::GetInstance()->RegisterStream(
-        main_frame->GetProcess()->GetID(), main_frame->GetRoutingID(),
+        main_frame->GetProcess()->GetDeprecatedID(), main_frame->GetRoutingID(),
         url::Origin::Create(origin), source, content::kRegistryStreamTypeDesktop);
 
   Options options;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 // Most of the code here was originally written by Serika Kurusugawa
 // a.k.a. Junji Takagi, and is included in Qt with the author's permission,
@@ -52,7 +53,7 @@ QT_BEGIN_NAMESPACE
 
 class QJpUnicodeConv {
 public:
-    virtual ~QJpUnicodeConv() {}
+    virtual ~QJpUnicodeConv();
     enum Rules {
         // "ASCII" is ANSI X.3.4-1986, a.k.a. US-ASCII here.
         Default                        = 0x0000,

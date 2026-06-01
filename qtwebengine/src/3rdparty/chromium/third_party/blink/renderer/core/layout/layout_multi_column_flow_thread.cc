@@ -676,8 +676,7 @@ bool LayoutMultiColumnFlowThread::DescendantIsValidColumnSpanner(
     if (!CanContainSpannerInParentFragmentationContext(*ancestor))
       return false;
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 void LayoutMultiColumnFlowThread::AddColumnSetToThread(
@@ -897,8 +896,8 @@ static inline bool NeedsToReinsertIntoFlowThread(
   // re-evaluate the need for column sets. There may be out-of-flow descendants
   // further down that become part of the flow thread, or cease to be part of
   // the flow thread, because of this change.
-  if (object.ComputeIsFixedContainer(&old_style) !=
-      object.ComputeIsFixedContainer(&new_style)) {
+  if (object.ComputeIsFixedContainer(old_style) !=
+      object.ComputeIsFixedContainer(new_style)) {
     return true;
   }
   return old_style.GetPosition() != new_style.GetPosition();

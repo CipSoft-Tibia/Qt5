@@ -6,15 +6,15 @@
 package org.qtproject.qt.android;
 
 import android.app.Activity;
+import android.app.UiModeManager;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Color;
 import android.os.Build;
 import android.view.Window;
 import android.view.WindowInsetsController;
-
-import org.qtproject.qt.android.QtInputDelegate.KeyboardVisibilityListener;
 
 import java.util.HashMap;
 
@@ -28,6 +28,9 @@ abstract class QtActivityDelegateBase
 
     private boolean m_membersInitialized = false;
     private boolean m_contextMenuVisible = false;
+
+    static native boolean canOverrideColorSchemeHint();
+    static native void updateUiContrast(float newUiContrast);
 
     // Subclass must implement these
     abstract void startNativeApplicationImpl(String appParams, String mainLib);
@@ -96,21 +99,28 @@ abstract class QtActivityDelegateBase
         hideSplashScreen(0);
     }
 
-    void handleUiModeChange(int uiMode)
+    void handleUiModeChange()
     {
-        // QTBUG-108365
-        if (Build.VERSION.SDK_INT >= 30) {
-            // Since 29 version we are using Theme_DeviceDefault_DayNight
+        Resources resources = m_activity.getResources();
+        Configuration config = resources.getConfiguration();
+        int uiMode = config.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+
+        if (m_displayManager.decorFitsSystemWindows()) {
             Window window = m_activity.getWindow();
-            WindowInsetsController controller = window.getInsetsController();
-            if (controller != null) {
-                // set APPEARANCE_LIGHT_STATUS_BARS if needed
-                int appearanceLight = Color.luminance(window.getStatusBarColor()) > 0.5 ?
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0;
-                controller.setSystemBarsAppearance(appearanceLight,
-                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-            }
+            QtDisplayManager.enableSystemBarsBackgroundDrawing(window);
+            int status = QtDisplayManager.getThemeDefaultStatusBarColor(m_activity);
+            QtDisplayManager.setStatusBarColor(window, status);
+            int nav = QtDisplayManager.getThemeDefaultNavigationBarColor(m_activity);
+            QtDisplayManager.setNavigationBarColor(window, nav);
         }
+
+        // Don't override color scheme if the app has it set explicitly.
+        if (canOverrideColorSchemeHint()) {
+            boolean isLight = uiMode == Configuration.UI_MODE_NIGHT_NO;
+            QtDisplayManager.setStatusBarColorHint(m_activity, isLight);
+            QtDisplayManager.setNavigationBarColorHint(m_activity, isLight);
+        }
+
         switch (uiMode) {
             case Configuration.UI_MODE_NIGHT_NO:
                 ExtractStyle.runIfNeeded(m_activity, false);
@@ -120,6 +130,13 @@ abstract class QtActivityDelegateBase
                 ExtractStyle.runIfNeeded(m_activity, true);
                 QtDisplayManager.handleUiDarkModeChanged(1);
                 break;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // FIXME: Handle contrast changes the same way as uiMode changes (QTBUG-140749).
+            UiModeManager uiModeManager =
+                (UiModeManager) m_activity.getSystemService(m_activity.UI_MODE_SERVICE);
+            updateUiContrast(uiModeManager.getContrast());
         }
     }
 }

@@ -36,6 +36,20 @@ instructions:
   - type: EnvironmentVariable
     variableName: COIN_CMAKE_ARGS
     variableValue: "{{.Env.NON_QTBASE_TARGET_CMAKE_ARGS}} {{.Env.COMMON_NON_QTBASE_TARGET_CMAKE_ARGS}}"
+  - type: AppendToEnvironmentVariable
+    variableName: COIN_CONFIGURE_ARGS
+    variableValue: " ${{ToUpper .Env.TESTED_MODULE_COIN}}_TARGET_CONFIGURE_ARGS"
+    enable_if:
+      condition: runtime
+      env_var: "{{ToUpper .Env.TESTED_MODULE_COIN}}_TARGET_CONFIGURE_ARGS"
+      not_equals_value: null
+  - type: AppendToEnvironmentVariable
+    variableName: COIN_CMAKE_ARGS
+    variableValue: " ${{ToUpper .Env.TESTED_MODULE_COIN}}_TARGET_CMAKE_ARGS"
+    enable_if:
+      condition: runtime
+      env_var: "{{ToUpper .Env.TESTED_MODULE_COIN}}_TARGET_CMAKE_ARGS"
+      not_equals_value: null
   - type: EnvironmentVariable
     variableName: CONFIGURE_ENV_PREFIX
     variableValue: "{{.Env.TARGET_ENV_PREFIX}}"
@@ -117,3 +131,19 @@ instructions:
   - !include "{{qt/qtbase}}/cmake_build_standalone_examples_target.yaml"
   - !include "{{qt/qtbase}}/qmake/get_qmake_location_target.yaml"
   - !include "{{qt/qtbase}}/qmake_examples/build_qmake_examples_instructions.yaml"
+
+  - type: Group
+    instructions:
+      - !include "{{qt/qtbase}}/build_android_javadocs.yaml"
+    enable_if:
+      condition: and
+      conditions:
+        - condition: property
+          property: features
+          contains_value: JavaDocs
+        - condition: property
+          property: target.osVersion
+          equals_value: "Android_ANY"
+        - condition: runtime
+          env_var: TESTED_MODULE_COIN
+          equals_value: "qtdeclarative"

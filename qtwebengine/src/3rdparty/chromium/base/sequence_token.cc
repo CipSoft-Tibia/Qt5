@@ -5,7 +5,7 @@
 #include "base/sequence_token.h"
 
 #include "base/atomic_sequence_num.h"
-#include "third_party/abseil-cpp/absl/base/attributes.h"
+#include "base/check.h"
 
 namespace base {
 namespace internal {
@@ -18,8 +18,8 @@ base::AtomicSequenceNumber g_task_token_generator;
 
 thread_local SequenceToken current_sequence_token;
 thread_local TaskToken current_task_token;
-thread_local bool current_task_is_thread_bound = true;
-thread_local bool current_task_is_running_synchronously = false;
+constinit thread_local bool current_task_is_thread_bound = true;
+constinit thread_local bool current_task_is_running_synchronously = false;
 
 }  // namespace
 

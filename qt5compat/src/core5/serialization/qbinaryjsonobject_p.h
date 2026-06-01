@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 #ifndef QBINARYJSONOBJECT_H
 #define QBINARYJSONOBJECT_H
@@ -35,8 +36,8 @@ public:
 
     QBinaryJsonObject &operator =(QBinaryJsonObject &&other) noexcept
     {
-        qSwap(d, other.d);
-        qSwap(o, other.o);
+        qt_ptr_swap(d, other.d);
+        qt_ptr_swap(o, other.o);
         return *this;
     }
 

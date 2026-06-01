@@ -17,15 +17,14 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_SYSTEM_PROBES_PARSER_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_SYSTEM_PROBES_PARSER_H_
 
-#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "perfetto/protozero/field.h"
-#include "protos/perfetto/trace/sys_stats/sys_stats.pbzero.h"
 #include "src/trace_processor/storage/trace_storage.h"
 
-namespace perfetto {
-namespace trace_processor {
+namespace perfetto::trace_processor {
 
 class TraceProcessorContext;
 
@@ -37,7 +36,7 @@ class SystemProbesParser {
   explicit SystemProbesParser(TraceProcessorContext*);
 
   void ParseProcessTree(ConstBytes);
-  void ParseProcessStats(int64_t timestamp, ConstBytes);
+  void ParseProcessStats(int64_t ts, ConstBytes);
   void ParseSysStats(int64_t ts, ConstBytes);
   void ParseSystemInfo(ConstBytes);
   void ParseCpuInfo(ConstBytes);
@@ -51,30 +50,16 @@ class SystemProbesParser {
   TraceProcessorContext* const context_;
 
   const StringId utid_name_id_;
-  const StringId ns_unit_id_;
-  const StringId bytes_unit_id_;
-  const StringId available_chunks_unit_id_;
 
-  const StringId num_forks_name_id_;
-  const StringId num_irq_total_name_id_;
-  const StringId num_softirq_total_name_id_;
-  const StringId oom_score_adj_id_;
-  const StringId thermal_unit_id_;
-  const StringId gpufreq_id;
-  const StringId gpufreq_unit_id;
-  std::vector<StringId> meminfo_strs_id_;
-  std::vector<StringId> vmstat_strs_id_;
+  // Arm CPU identifier string IDs
+  const StringId arm_cpu_implementer;
+  const StringId arm_cpu_architecture;
+  const StringId arm_cpu_variant;
+  const StringId arm_cpu_part;
+  const StringId arm_cpu_revision;
 
-  // Maps a proto field number for memcounters in ProcessStats::Process to
-  // their StringId. Keep kProcStatsProcessSize equal to 1 + max proto field
-  // id of ProcessStats::Process. Also update the value in
-  // ChromeSystemProbesParser.
-  static constexpr size_t kProcStatsProcessSize = 24;
-  std::array<StringId, kProcStatsProcessSize> proc_stats_process_names_{};
-
-  // Maps a SysStats::PsiSample::PsiResource type to its StringId.
-  std::array<StringId, protos::pbzero::SysStats_PsiSample_PsiResource_MAX + 1>
-      sys_stats_psi_resource_names_{};
+  std::vector<const char*> meminfo_strs_;
+  std::vector<const char*> vmstat_strs_;
 
   uint32_t page_size_ = 0;
 
@@ -88,7 +73,6 @@ class SystemProbesParser {
   int64_t prev_flush_time = -1;
 };
 
-}  // namespace trace_processor
-}  // namespace perfetto
+}  // namespace perfetto::trace_processor
 
 #endif  // SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_SYSTEM_PROBES_PARSER_H_

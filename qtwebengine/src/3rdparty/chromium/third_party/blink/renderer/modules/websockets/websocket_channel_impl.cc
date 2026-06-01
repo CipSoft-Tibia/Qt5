@@ -84,6 +84,7 @@
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/ascii_ctype.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_impl.h"
 #include "v8/include/v8.h"
@@ -105,9 +106,16 @@ enum WebSocketOpCode {
 
 }  // namespace
 
+WebSocketChannelImpl::MessageDataDeleter::MessageDataDeleter(
+    v8::Isolate* isolate,
+    size_t size)
+    : isolate_(isolate), size_(size) {
+  external_memory_accounter_.Increase(isolate, size);
+}
+
 void WebSocketChannelImpl::MessageDataDeleter::operator()(char* p) const {
   DCHECK(isolate_) << "Cannot call deleter when default constructor was used";
-  isolate_->AdjustAmountOfExternalAllocatedMemory(-static_cast<int64_t>(size_));
+  external_memory_accounter_.Decrease(isolate_.get(), size_);
   WTF::Partitions::FastFree(p);
 }
 
@@ -115,10 +123,6 @@ void WebSocketChannelImpl::MessageDataDeleter::operator()(char* p) const {
 WebSocketChannelImpl::MessageData WebSocketChannelImpl::CreateMessageData(
     v8::Isolate* isolate,
     size_t message_size) {
-  // The conversion to int64_t here can overflow in principle, but V8 has
-  // checks for that.
-  isolate->AdjustAmountOfExternalAllocatedMemory(
-      static_cast<int64_t>(message_size));
   return MessageData(
       static_cast<char*>(WTF::Partitions::FastMalloc(
           message_size, "blink::WebSockChannelImpl::MessageData")),
@@ -472,7 +476,7 @@ WebSocketChannel::SendResult WebSocketChannelImpl::Send(
     "WebSocketSend", InspectorWebSocketTransferEvent::Data,
     execution_context_.Get(), identifier_, byte_length);
   bool did_attempt_to_send = false;
-  base::span<const char> message = base::make_span(
+  auto message = base::span(
       static_cast<const char*>(buffer.Data()) + byte_offset, byte_length);
   if (messages_.empty() && !wait_for_writable_) {
     did_attempt_to_send = true;
@@ -718,7 +722,7 @@ WebSocketChannelImpl::Message::Message(v8::Isolate* isolate,
       did_call_send_message_(did_call_send_message),
       completion_callback_(std::move(completion_callback)) {
   memcpy(message_data_.get(), text.data(), text.length());
-  pending_payload_ = base::make_span(message_data_.get(), text.length());
+  pending_payload_ = base::span(message_data_.get(), text.length());
 }
 
 WebSocketChannelImpl::Message::Message(
@@ -728,7 +732,7 @@ WebSocketChannelImpl::Message::Message(
 WebSocketChannelImpl::Message::Message(MessageData data, size_t size)
     : message_data_(std::move(data)),
       type_(kMessageTypeArrayBuffer),
-      pending_payload_(base::make_span(message_data_.get(), size)) {}
+      pending_payload_(base::span(message_data_.get(), size)) {}
 
 WebSocketChannelImpl::Message::Message(v8::Isolate* isolate,
                                        base::span<const char> message,
@@ -739,7 +743,7 @@ WebSocketChannelImpl::Message::Message(v8::Isolate* isolate,
       did_call_send_message_(did_call_send_message),
       completion_callback_(std::move(completion_callback)) {
   memcpy(message_data_.get(), message.data(), message.size());
-  pending_payload_ = base::make_span(message_data_.get(), message.size());
+  pending_payload_ = base::span(message_data_.get(), message.size());
 }
 
 WebSocketChannelImpl::Message::Message(uint16_t code, const String& reason)
@@ -1121,13 +1125,13 @@ void WebSocketChannelImpl::ConsumeDataFrame(
   }
 
   if (!fin) {
-    message_chunks_->Append(base::make_span(data, size));
+    message_chunks_->Append(base::span(data, size));
     return;
   }
 
   Vector<base::span<const char>> chunks = message_chunks_->GetView();
   if (size > 0) {
-    chunks.push_back(base::make_span(data, size));
+    chunks.push_back(base::span(data, size));
   }
   auto opcode = receiving_message_type_is_text_
                     ? WebSocketOpCode::kOpCodeText
@@ -1205,17 +1209,15 @@ String WebSocketChannelImpl::GetTextMessage(
   // We can skip UTF8 encoding if received text contains only ASCII.
   // We do this in order to avoid constructing a temporary buffer.
   if (received_text_is_all_ascii_) {
-    LChar* buffer;
-    scoped_refptr<StringImpl> string_impl =
-        StringImpl::CreateUninitialized(size, buffer);
-    size_t index = 0;
+    StringBuffer<LChar> ascii_string_buffer(size);
+    auto ascii_buffer = base::as_writable_chars(ascii_string_buffer.Span());
     for (const auto& chunk : chunks) {
-      DCHECK_LE(index + chunk.size(), size);
-      memcpy(buffer + index, chunk.data(), chunk.size());
-      index += chunk.size();
+      auto [copy_dest, rest] = ascii_buffer.split_at(chunk.size());
+      copy_dest.copy_from(chunk);
+      ascii_buffer = rest;
     }
-    DCHECK_EQ(index, size);
-    return String(std::move(string_impl));
+    DCHECK(ascii_buffer.empty());
+    return String(ascii_string_buffer.Release());
   }
 
   Vector<char> flatten;
@@ -1230,7 +1232,7 @@ String WebSocketChannelImpl::GetTextMessage(
     span = chunks[0];
   }
   DCHECK_EQ(span.size(), size);
-  return String::FromUTF8(span.data(), span.size());
+  return String::FromUTF8(base::as_bytes(span));
 }
 
 void WebSocketChannelImpl::OnConnectionError(const base::Location& set_from,
@@ -1245,7 +1247,7 @@ void WebSocketChannelImpl::OnConnectionError(const base::Location& set_from,
   if (description.empty()) {
     message = failure_message_;
   } else {
-    message = String::FromUTF8(description.c_str(), description.size());
+    message = String::FromUTF8(description);
   }
 
   // This function is called when the implementation in the network service is

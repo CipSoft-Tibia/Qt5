@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbcursor.h"
 #include "qxcbconnection.h"
@@ -247,6 +248,8 @@ QXcbCursorCacheKey::QXcbCursorCacheKey(const QCursor &c)
             maskCacheKey = c.mask().cacheKey();
         }
     }
+    hotspotCacheKey.x = c.hotSpot().x();
+    hotspotCacheKey.y = c.hotSpot().y();
 }
 
 #endif // !QT_NO_CURSOR

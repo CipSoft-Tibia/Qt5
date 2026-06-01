@@ -4,15 +4,11 @@
 
 import argparse
 import os
-import pathlib
-import socket
 import ssl
 import subprocess
-import sys
 import tempfile
 import threading
 from enum import Enum
-from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from subprocess import run
 from functools import partial
@@ -110,7 +106,7 @@ class CompressionHttpRequesthandler(HTTPCompressionRequestHandler):
                 if not buf:
                     yield compressor.finish()
                     return
-                yield compressor.compress(buf)
+                yield compressor.process(buf)
 
                 # must flush compressor state to work around crash/assert in brotlicffi,
                 # see https://github.com/python-hyper/brotlicffi/issues/167

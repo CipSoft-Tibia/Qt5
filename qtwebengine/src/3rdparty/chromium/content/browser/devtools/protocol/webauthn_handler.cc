@@ -29,9 +29,16 @@
 #include "device/fido/virtual_fido_device.h"
 #include "device/fido/virtual_u2f_device.h"
 
+// This should be after all other #includes.
+#if defined(_WINDOWS_)  // Detect whether windows.h was included.
+#include "base/win/windows_h_disallowed.h"
+#endif  // defined(_WINDOWS_)
+
 namespace content::protocol {
 
 namespace {
+static constexpr char kAlreadyHasInternalAuthenticator[] =
+    "Chrome only supports one internal authenticator per environment";
 static constexpr char kAuthenticatorNotFound[] =
     "Could not find a Virtual Authenticator matching the ID";
 static constexpr char kCableNotSupportedOnU2f[] =
@@ -80,9 +87,9 @@ class GetCredentialCallbackAggregator
       const GetCredentialCallbackAggregator&) = delete;
 
   void OnLargeBlob(std::unique_ptr<WebAuthn::Credential> credential,
-                   const std::optional<std::vector<uint8_t>>& blob) {
+                   std::optional<std::vector<uint8_t>> blob) {
     if (blob) {
-      credential->SetLargeBlob(Binary::fromVector(*blob));
+      credential->SetLargeBlob(Binary::fromVector(std::move(*blob)));
     }
     credentials_->emplace_back(std::move(credential));
   }
@@ -136,6 +143,12 @@ std::unique_ptr<WebAuthn::Credential> BuildCredentialFromRegistration(
     credential->SetRpId(registration->rp->id);
   if (registration->user) {
     credential->SetUserHandle(Binary::fromVector(registration->user->id));
+    if (registration->user->name) {
+      credential->SetUserName(*registration->user->name);
+    }
+    if (registration->user->display_name) {
+      credential->SetUserDisplayName(*registration->user->display_name);
+    }
   }
 
   return credential;
@@ -161,7 +174,7 @@ void WebAuthnHandler::Wire(UberDispatcher* dispatcher) {
   WebAuthn::Dispatcher::wire(dispatcher, this);
 }
 
-Response WebAuthnHandler::Enable(Maybe<bool> enable_ui) {
+Response WebAuthnHandler::Enable(std::optional<bool> enable_ui) {
   if (!frame_host_)
     return Response::ServerError(kDevToolsNotAttached);
 
@@ -222,42 +235,49 @@ Response WebAuthnHandler::AddVirtualAuthenticator(
     return Response::InvalidParams(kRequiresCtap2_1);
   }
 
-  auto virt_auth_options =
-      blink::test::mojom::VirtualAuthenticatorOptions::New();
-  virt_auth_options->protocol = protocol;
-  virt_auth_options->transport = *transport;
+  if (transport == device::FidoTransportProtocol::kInternal &&
+      std::ranges::any_of(authenticator_manager->GetAuthenticators(),
+                          [](const auto& authenticator) {
+                            return authenticator->transport() ==
+                                   device::FidoTransportProtocol::kInternal;
+                          })) {
+    return Response::InvalidParams(kAlreadyHasInternalAuthenticator);
+  }
+
+  VirtualAuthenticator::Options virt_auth_options;
+  virt_auth_options.protocol = protocol;
+  virt_auth_options.transport = *transport;
 
   switch (protocol) {
     case device::ProtocolVersion::kU2f:
-      virt_auth_options->attachment =
+      virt_auth_options.attachment =
           device::AuthenticatorAttachment::kCrossPlatform;
       break;
     case device::ProtocolVersion::kCtap2:
-      virt_auth_options->ctap2_version = *ctap2_version;
-      virt_auth_options->attachment =
+      virt_auth_options.ctap2_version = *ctap2_version;
+      virt_auth_options.attachment =
           transport == device::FidoTransportProtocol::kInternal
               ? device::AuthenticatorAttachment::kPlatform
               : device::AuthenticatorAttachment::kCrossPlatform;
-      virt_auth_options->has_resident_key = has_resident_key;
-      virt_auth_options->has_user_verification =
+      virt_auth_options.has_resident_key = has_resident_key;
+      virt_auth_options.has_user_verification =
           options->GetHasUserVerification(/*defaultValue=*/false);
-      virt_auth_options->has_large_blob = has_large_blob;
-      virt_auth_options->has_cred_blob = has_cred_blob;
-      virt_auth_options->has_min_pin_length = has_min_pin_length;
-      virt_auth_options->has_prf = has_prf;
-      virt_auth_options->default_backup_eligibility =
+      virt_auth_options.has_large_blob = has_large_blob;
+      virt_auth_options.has_cred_blob = has_cred_blob;
+      virt_auth_options.has_min_pin_length = has_min_pin_length;
+      virt_auth_options.has_prf = has_prf;
+      virt_auth_options.default_backup_eligibility =
           options->GetDefaultBackupEligibility(/*defaultValue=*/false);
-      virt_auth_options->default_backup_state =
+      virt_auth_options.default_backup_state =
           options->GetDefaultBackupState(/*defaultValue=*/false);
       break;
     case device::ProtocolVersion::kUnknown:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 
   VirtualAuthenticator* const authenticator =
       authenticator_manager->AddAuthenticatorAndReturnNonOwningPointer(
-          *virt_auth_options);
+          virt_auth_options);
   if (!authenticator)
     return Response::ServerError(kErrorCreatingAuthenticator);
 
@@ -287,9 +307,9 @@ Response WebAuthnHandler::RemoveVirtualAuthenticator(
 
 Response WebAuthnHandler::SetResponseOverrideBits(
     const String& authenticator_id,
-    Maybe<bool> is_bogus_signature,
-    Maybe<bool> is_bad_uv,
-    Maybe<bool> is_bad_up) {
+    std::optional<bool> is_bogus_signature,
+    std::optional<bool> is_bad_uv,
+    std::optional<bool> is_bad_up) {
   VirtualAuthenticatorManagerImpl* authenticator_manager =
       AuthenticatorEnvironment::GetInstance()
           ->MaybeGetVirtualAuthenticatorManager(frame_host_->frame_tree_node());
@@ -356,7 +376,8 @@ void WebAuthnHandler::AddCredential(
 
     credential_created = authenticator->AddResidentRegistration(
         credential_id, credential->GetRpId(""), credential->GetPrivateKey(),
-        credential->GetSignCount(), CopyBinaryToVector(user_handle));
+        credential->GetSignCount(), CopyBinaryToVector(user_handle),
+        credential->GetUserName(""), credential->GetUserDisplayName(""));
   } else {
     credential_created = authenticator->AddRegistration(
         credential_id, credential->GetRpId(""), credential->GetPrivateKey(),
@@ -422,13 +443,13 @@ void WebAuthnHandler::GetCredential(
       base::BindOnce(
           [](std::unique_ptr<WebAuthn::Credential> registration,
              std::unique_ptr<GetCredentialCallback> callback,
-             const std::optional<std::vector<uint8_t>>& blob) {
+             const std::optional<std::vector<uint8_t>> blob) {
             if (blob) {
-              registration->SetLargeBlob(Binary::fromVector(*blob));
+              registration->SetLargeBlob(Binary::fromVector(std::move(*blob)));
             }
             callback->sendSuccess(std::move(registration));
           },
-          BuildCredentialFromRegistration(base::make_span(registration->first),
+          BuildCredentialFromRegistration(base::span(registration->first),
                                           &registration->second),
           std::move(callback)));
 }
@@ -450,7 +471,7 @@ void WebAuthnHandler::GetCredentials(
         registration.first,
         base::BindOnce(
             &GetCredentialCallbackAggregator::OnLargeBlob, aggregator,
-            BuildCredentialFromRegistration(base::make_span(registration.first),
+            BuildCredentialFromRegistration(base::span(registration.first),
                                             &registration.second)));
   }
 }
@@ -504,8 +525,8 @@ Response WebAuthnHandler::SetAutomaticPresenceSimulation(
 Response WebAuthnHandler::SetCredentialProperties(
     const String& authenticator_id,
     const Binary& in_credential_id,
-    Maybe<bool> backup_eligibility,
-    Maybe<bool> backup_state) {
+    std::optional<bool> backup_eligibility,
+    std::optional<bool> backup_state) {
   VirtualAuthenticator* authenticator;
   Response response = FindAuthenticator(authenticator_id, &authenticator);
   if (!response.IsSuccess()) {
@@ -549,6 +570,21 @@ void WebAuthnHandler::OnCredentialCreated(
     VirtualAuthenticator* authenticator,
     const device::VirtualFidoDevice::Credential& credential) {
   frontend_->CredentialAdded(
+      authenticator->unique_id(),
+      BuildCredentialFromRegistration(credential.first, credential.second));
+}
+
+void WebAuthnHandler::OnCredentialDeleted(
+    VirtualAuthenticator* authenticator,
+    base::span<const uint8_t> credential_id) {
+  frontend_->CredentialDeleted(authenticator->unique_id(),
+                               Binary::fromSpan(credential_id));
+}
+
+void WebAuthnHandler::OnCredentialUpdated(
+    VirtualAuthenticator* authenticator,
+    const device::VirtualFidoDevice::Credential& credential) {
+  frontend_->CredentialUpdated(
       authenticator->unique_id(),
       BuildCredentialFromRegistration(credential.first, credential.second));
 }

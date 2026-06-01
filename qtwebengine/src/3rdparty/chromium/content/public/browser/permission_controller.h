@@ -68,6 +68,13 @@ class CONTENT_EXPORT PermissionController
       blink::PermissionType permission,
       RenderFrameHost* render_frame_host) = 0;
 
+  // The method does the same as `GetPermissionStatusForCurrentDocument` but it
+  // also takes into account the device's status (OS permission status).
+  // Currently, this function is only used for Page Embedded Permission Control.
+  virtual PermissionStatus GetCombinedPermissionAndDeviceStatus(
+      blink::PermissionType permission,
+      RenderFrameHost* render_frame_host) = 0;
+
   // Returns the permission status for a given origin. Use this API only if
   // there is no document and it is not a ServiceWorker.
   virtual PermissionResult GetPermissionResultForOriginWithoutContext(
@@ -137,18 +144,5 @@ class CONTENT_EXPORT PermissionController
 };
 
 }  // namespace content
-
-namespace std {
-
-template <>
-struct hash<content::PermissionController::SubscriptionId> {
-  std::size_t operator()(
-      const content::PermissionController::SubscriptionId& v) const {
-    content::PermissionController::SubscriptionId::Hasher hasher;
-    return hasher(v);
-  }
-};
-
-}  // namespace std
 
 #endif  // CONTENT_PUBLIC_BROWSER_PERMISSION_CONTROLLER_H_

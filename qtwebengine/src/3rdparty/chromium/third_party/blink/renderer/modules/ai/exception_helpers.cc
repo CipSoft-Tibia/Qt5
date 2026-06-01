@@ -6,9 +6,12 @@
 
 #include "base/debug/dump_without_crashing.h"
 #include "base/notreached.h"
+#include "third_party/blink/public/mojom/ai/ai_manager.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/ai/ai_manager.mojom-shared.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/platform/bindings/exception_code.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/bindings/script_state.h"
 
 namespace blink {
 
@@ -22,22 +25,33 @@ const char kExceptionMessagePermissionDenied[] =
     "allowed to execute model.";
 const char kExceptionMessageGenericError[] = "Other generic failures occurred.";
 const char kExceptionMessageFiltered[] =
-    "The execution yielded a bad response.";
+    "The execution yielded an unsafe response.";
+const char kExceptionMessageOutputLanguageFiltered[] =
+    "The model attempted to output text in an untested language, and was "
+    "prevented from doing so.";
+const char kExceptionMessageResponseLowQuality[] =
+    "The model attempted to output text with low quality, and was prevented "
+    "from doing so.";
 const char kExceptionMessageDisabled[] = "The response was disabled.";
-const char kExceptionMessageCancelled[] = "The request was canceled.";
+const char kExceptionMessageCancelled[] = "The request was cancelled.";
 const char kExceptionMessageSessionDestroyed[] =
     "The model execution session has been destroyed.";
+const char kExceptionMessageRequestAborted[] = "The request has been aborted.";
+const char kExceptionRequestTooLarge[] = "The prompt request is too large.";
 
 const char kExceptionMessageInvalidTemperatureAndTopKFormat[] =
     "Initializing a new session must either specify both topK and temperature, "
     "or neither of them.";
 const char kExceptionMessageUnableToCreateSession[] =
     "The session cannot be created.";
+const char kExceptionMessageInitialPromptTooLarge[] =
+    "The initial prompts / system prompts are too large to fit in the "
+    "context.";
 const char kExceptionMessageUnableToCloneSession[] =
     "The session cannot be cloned.";
-const char kExceptionMessageRequestAborted[] = "The request has been aborted.";
-const char kExceptionMessageSystemPromptAndInitialPromptsExist[] =
-    "The systemPrompt and initialPrompts should not present at the same time.";
+const char kExceptionMessageSystemPromptIsDefinedMultipleTimes[] =
+    "The system prompt should not be defined in both systemPrompt and "
+    "initialPrompts.";
 const char kExceptionMessageSystemPromptIsNotTheFirst[] =
     "The prompt with 'system' role must be placed at the first entry of "
     "initialPrompts.";
@@ -52,14 +66,38 @@ void ThrowSessionDestroyedException(ExceptionState& exception_state) {
                                     kExceptionMessageSessionDestroyed);
 }
 
+void ThrowAbortedException(ExceptionState& exception_state) {
+  exception_state.ThrowDOMException(DOMExceptionCode::kAbortError,
+                                    kExceptionMessageRequestAborted);
+}
+
 void RejectPromiseWithInternalError(ScriptPromiseResolverBase* resolver) {
-  resolver->Reject(CreateInternalErrorException());
+  if (resolver) {
+    resolver->Reject(CreateInternalErrorException());
+  }
 }
 
 DOMException* CreateInternalErrorException() {
   return DOMException::Create(
       kExceptionMessageServiceUnavailable,
       DOMException::GetErrorName(DOMExceptionCode::kOperationError));
+}
+
+bool HandleAbortSignal(AbortSignal* signal,
+                       ScriptState* script_state,
+                       ExceptionState& exception_state) {
+  if (signal && signal->aborted()) {
+    auto reason = signal->reason(script_state);
+    if (reason.IsEmpty()) {
+      ThrowAbortedException(exception_state);
+    } else {
+      V8ThrowException::ThrowException(script_state->GetIsolate(),
+                                       reason.V8Value());
+    }
+    return true;
+  }
+
+  return false;
 }
 
 namespace {
@@ -101,8 +139,9 @@ DOMException* ConvertModelStreamingResponseErrorToDOMException(
       base::debug::DumpWithoutCrashing();
       return CreateUnknown("kErrorNonRetryableError");
     case ModelStreamingResponseStatus::kErrorUnsupportedLanguage:
-      base::debug::DumpWithoutCrashing();
-      return CreateUnknown("kErrorUnsupportedLanguage");
+      return DOMException::Create(
+          kExceptionMessageOutputLanguageFiltered,
+          DOMException::GetErrorName(DOMExceptionCode::kNotSupportedError));
     case ModelStreamingResponseStatus::kErrorFiltered:
       return DOMException::Create(
           kExceptionMessageFiltered,
@@ -110,7 +149,7 @@ DOMException* ConvertModelStreamingResponseErrorToDOMException(
     case ModelStreamingResponseStatus::kErrorDisabled:
       return DOMException::Create(
           kExceptionMessageDisabled,
-          DOMException::GetErrorName(DOMExceptionCode::kNotReadableError));
+          DOMException::GetErrorName(DOMExceptionCode::kAbortError));
     case ModelStreamingResponseStatus::kErrorCancelled:
       return DOMException::Create(
           kExceptionMessageCancelled,
@@ -119,9 +158,17 @@ DOMException* ConvertModelStreamingResponseErrorToDOMException(
       return DOMException::Create(
           kExceptionMessageSessionDestroyed,
           DOMException::GetErrorName(DOMExceptionCode::kInvalidStateError));
+    case ModelStreamingResponseStatus::kErrorPromptRequestTooLarge:
+      return DOMException::Create(
+          kExceptionRequestTooLarge,
+          DOMException::GetErrorName(DOMExceptionCode::kQuotaExceededError));
+    case ModelStreamingResponseStatus::kErrorResponseLowQuality:
+      return DOMException::Create(
+          kExceptionMessageResponseLowQuality,
+          DOMException::GetErrorName(DOMExceptionCode::kNotSupportedError));
     case ModelStreamingResponseStatus::kOngoing:
     case ModelStreamingResponseStatus::kComplete:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
   NOTREACHED();
 }
@@ -137,8 +184,6 @@ WTF::String ConvertModelAvailabilityCheckResultToDebugString(
       return "The service is unable to create new session.";
     case mojom::blink::ModelAvailabilityCheckResult::kNoFeatureNotEnabled:
       return "The feature flag gating model execution was disabled.";
-    case mojom::blink::ModelAvailabilityCheckResult::kNoModelNotAvailable:
-      return "There was no model available.";
     case mojom::blink::ModelAvailabilityCheckResult::
         kNoConfigNotAvailableForFeature:
       return "The model was available but there was not an execution config "
@@ -165,11 +210,16 @@ WTF::String ConvertModelAvailabilityCheckResultToDebugString(
       return "Model validation is still pending.";
     case mojom::blink::ModelAvailabilityCheckResult::kNoValidationFailed:
       return "Model validation failed.";
+    case mojom::blink::ModelAvailabilityCheckResult::kModelNotEligible:
+      return "The device is not eligible for running on-device model.";
+    case mojom::blink::ModelAvailabilityCheckResult::kNoInsufficientDiskSpace:
+      return "The device does not have enough space for downloading the "
+             "on-device model";
     case mojom::blink::ModelAvailabilityCheckResult::kReadily:
     case mojom::blink::ModelAvailabilityCheckResult::kAfterDownload:
     case mojom::blink::ModelAvailabilityCheckResult::
         kNoModelAdaptationNotAvailable:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
   NOTREACHED();
 }

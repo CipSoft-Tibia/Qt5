@@ -938,12 +938,6 @@ function(_qt_internal_get_xcode_version_raw out_var)
 
         string(REPLACE "\n" " " xcode_version "${xcode_version}")
         string(STRIP "${xcode_version}" xcode_version)
-
-        if(NOT xcode_version)
-            message(FATAL_ERROR
-                    "Can't determine Xcode version. Is Xcode installed?"
-                    " Error details:\n${xcrun_error}")
-        endif()
     endif()
     set(${out_var} "${xcode_version}" PARENT_SCOPE)
 endfunction()
@@ -984,7 +978,11 @@ function(_qt_internal_get_cached_xcode_version out_var)
         set(xcode_version "${QT_INTERNAL_XCODE_VERSION}")
     else()
         _qt_internal_get_xcode_version(xcode_version)
-        set(QT_INTERNAL_XCODE_VERSION "${xcode_version}" CACHE STRING "Xcode version")
+        if(QT_NO_XCODE_MIN_VERSION_CHECK)
+            set(xcode_version "")
+        else()
+            set(QT_INTERNAL_XCODE_VERSION "${xcode_version}" CACHE STRING "Xcode version")
+        endif()
     endif()
 
     set(${out_var} "${xcode_version}" PARENT_SCOPE)
@@ -1028,7 +1026,6 @@ function(_qt_internal_check_apple_sdk_and_xcode_versions)
     endif()
 
     _qt_internal_get_cached_apple_sdk_version(sdk_version)
-    _qt_internal_get_cached_xcode_version(xcode_version)
 
     if(NOT max_sdk_version MATCHES "^[0-9]+$")
         message(FATAL_ERROR
@@ -1075,12 +1072,20 @@ function(_qt_internal_check_apple_sdk_and_xcode_versions)
         )
     endif()
 
-    if(xcode_version VERSION_LESS min_xcode_version AND NOT QT_NO_XCODE_MIN_VERSION_CHECK)
-        message(${message_type}
-            "Qt requires at least version ${min_xcode_version} of Xcode, "
-            "you're building against version ${xcode_version}. Please upgrade."
-            ${extra_message}
-        )
+    if(NOT QT_NO_XCODE_MIN_VERSION_CHECK)
+        _qt_internal_get_cached_xcode_version(xcode_version)
+        if(NOT xcode_version)
+            message(FATAL_ERROR
+                    "Can't determine Xcode version. Is Xcode installed?"
+                    " Error details:\n${xcrun_error}")
+        endif()
+        if(xcode_version VERSION_LESS min_xcode_version)
+            message(${message_type}
+                "Qt requires at least version ${min_xcode_version} of Xcode, "
+                "you're building against version ${xcode_version}. Please upgrade."
+                ${extra_message}
+            )
+        endif()
     endif()
 
     if(QT_NO_APPLE_SDK_MAX_VERSION_CHECK)

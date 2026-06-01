@@ -29,6 +29,7 @@ qt_internal_add_module(ActiveQt
         control/qclassfactory_p.h
         shared/qaxtypes_p.h
     NO_GENERATE_CPP_EXPORTS
+    QT_LICENSE_ID QT_COMMERCIAL_OR_BSD3
 )
 qt_internal_add_docs(ActiveQt
     doc/activeqt.qdocconf

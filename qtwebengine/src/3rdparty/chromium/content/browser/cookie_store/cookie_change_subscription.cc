@@ -35,8 +35,7 @@ proto::CookieMatchType CookieMatchTypeToProto(
     case ::network::mojom::CookieMatchType::STARTS_WITH:
       return proto::CookieMatchType::STARTS_WITH;
   }
-  NOTREACHED_IN_MIGRATION();
-  return proto::CookieMatchType::EQUALS;
+  NOTREACHED();
 }
 
 network::mojom::CookieMatchType CookieMatchTypeFromProto(
@@ -156,6 +155,7 @@ void CookieChangeSubscription::Serialize(
   mojo_subscription->match_type = match_type_;
 }
 
+// TODO(crbug.com/378827534) Plumb scope semantics to function
 bool CookieChangeSubscription::ShouldObserveChangeTo(
     const net::CanonicalCookie& cookie,
     net::CookieAccessSemantics access_semantics) const {
@@ -179,6 +179,7 @@ bool CookieChangeSubscription::ShouldObserveChangeTo(
       .IncludeForRequestURL(url_, net_options,
                             net::CookieAccessParams{
                                 access_semantics,
+                                net::CookieScopeSemantics::UNKNOWN,
                                 network::IsUrlPotentiallyTrustworthy(url_),
                             })
       .status.IsInclude();

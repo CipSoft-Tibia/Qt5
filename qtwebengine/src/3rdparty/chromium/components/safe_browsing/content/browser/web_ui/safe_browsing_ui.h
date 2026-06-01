@@ -382,7 +382,7 @@ class SafeBrowsingUIHandler : public content::WebUIMessageHandler {
 
 // The WebUI for chrome://safe-browsing
 class SafeBrowsingUI : public content::WebUIController {
- public:
+ protected:
   SafeBrowsingUI(content::WebUI* web_ui,
                  std::unique_ptr<SafeBrowsingLocalStateDelegate> delegate);
 
@@ -702,7 +702,8 @@ class WebUIInfoSingleton : public RealTimeUrlLookupServiceBase::WebUIDelegate,
       content::BrowserContext* browser_context);
 
 #if BUILDFLAG(IS_ANDROID)
-  ReferringAppInfo GetReferringAppInfo(content::WebContents* web_contents);
+  internal::ReferringAppInfo GetReferringAppInfo(
+      content::WebContents* web_contents);
 #endif
 
   void set_safe_browsing_service(SafeBrowsingServiceInterface* sb_service) {

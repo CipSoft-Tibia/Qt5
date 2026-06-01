@@ -136,7 +136,7 @@ public:
 struct ItemDesc
 {
     ItemDesc(int row, int col)
-    : m_pos(qMakePair(row, col))
+    : m_pos({row, col})
     {
     }
 
@@ -249,7 +249,7 @@ struct ItemDesc
     }
 
 //private:
-    QPair<int,int> m_pos; // row,col
+    std::pair<int,int> m_pos; // row,col
     int m_rowSpan = 1;
     int m_colSpan = 1;
     QSizePolicy m_sizePolicy{QSizePolicy::Preferred, QSizePolicy::Preferred};
@@ -2943,7 +2943,7 @@ void tst_QGraphicsGridLayout::styleInfoLeak()
 
 void tst_QGraphicsGridLayout::task236367_maxSizeHint()
 {
-    QGraphicsWidget *widget = new QGraphicsWidget;
+    const auto widget = std::make_unique<QGraphicsWidget>();
     QGraphicsGridLayout *layout = new QGraphicsGridLayout;
     widget->setLayout(layout);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -3048,7 +3048,7 @@ void tst_QGraphicsGridLayout::heightForWidth()
 
 void tst_QGraphicsGridLayout::widthForHeight()
 {
-    QGraphicsWidget *widget = new QGraphicsWidget;
+    const auto widget = std::make_unique<QGraphicsWidget>();
     QGraphicsGridLayout *layout = new QGraphicsGridLayout;
     widget->setLayout(layout);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -3125,7 +3125,7 @@ void tst_QGraphicsGridLayout::widthForHeight()
 
 void tst_QGraphicsGridLayout::heightForWidthWithSpanning()
 {
-    QGraphicsWidget *widget = new QGraphicsWidget;
+    const auto widget = std::make_unique<QGraphicsWidget>();
     QGraphicsGridLayout *layout = new QGraphicsGridLayout;
     widget->setLayout(layout);
     layout->setContentsMargins(0, 0, 0, 0);

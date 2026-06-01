@@ -23,7 +23,6 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_ELEMENT_RULE_COLLECTOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_ELEMENT_RULE_COLLECTOR_H_
 
-#include "base/auto_reset.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/stack_allocated.h"
@@ -37,6 +36,7 @@
 #include "third_party/blink/renderer/core/css/style_recalc_context.h"
 #include "third_party/blink/renderer/core/css/style_request.h"
 #include "third_party/blink/renderer/core/style/computed_style_base_constants.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 #include "third_party/blink/renderer/platform/wtf/ref_counted.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -45,7 +45,6 @@ namespace blink {
 class Element;
 class ElementResolveContext;
 class ElementRuleCollector;
-class HTMLSlotElement;
 class RuleData;
 class SelectorFilter;
 class StyleRuleUsageTracker;
@@ -179,12 +178,10 @@ class CORE_EXPORT ElementRuleCollector {
   StyleRuleList* MatchedStyleRuleList();
   RuleIndexList* MatchedCSSRuleList();
 
-  void CollectMatchingRules(const MatchRequest&);
+  void CollectMatchingRules(const MatchRequest&, PartNames* part_names);
   void CollectMatchingShadowHostRules(const MatchRequest&);
   void CollectMatchingSlottedRules(const MatchRequest&);
-  void CollectMatchingPartPseudoRules(const MatchRequest&,
-                                      PartNames*,
-                                      bool for_shadow_pseudo);
+  void CollectMatchingPartPseudoRules(const MatchRequest&, PartNames*);
   void SortAndTransferMatchedRules(CascadeOrigin origin,
                                    bool is_vtt_embedded_style,
                                    StyleRuleUsageTracker* tracker);
@@ -203,7 +200,7 @@ class CORE_EXPORT ElementRuleCollector {
   // Return 'false' when we don't know if a StyleScope is in scope or not.
   //
   // [1] https://drafts.csswg.org/css-cascade-6/#in-scope
-  bool CanRejectScope(const StyleScope&);
+  bool CanRejectScope(const StyleScope&) const;
 
   void AddElementStyleProperties(const CSSPropertyValueSet*,
                                  CascadeOrigin,
@@ -235,44 +232,7 @@ class CORE_EXPORT ElementRuleCollector {
     return matched_rules_;
   }
 
-  // Temporarily swap the StyleRecalcContext with one which points to the
-  // closest query container for matching ::slotted rules for a given slot.
-  class SlottedRulesScope {
-    STACK_ALLOCATED();
-
-   public:
-    SlottedRulesScope(ElementRuleCollector& collector, HTMLSlotElement& slot)
-        : context_(&collector.style_recalc_context_,
-                   collector.style_recalc_context_.ForSlottedRules(slot)) {}
-
-   private:
-    base::AutoReset<StyleRecalcContext> context_;
-  };
-
-  // Temporarily swap the StyleRecalcContext with one which points to the
-  // closest query container for matching ::part rules for a given host.
-  class PartRulesScope {
-    STACK_ALLOCATED();
-
-   public:
-    PartRulesScope(ElementRuleCollector& collector, Element& host)
-        : context_(&collector.style_recalc_context_,
-                   collector.style_recalc_context_.ForPartRules(host)) {}
-
-   private:
-    base::AutoReset<StyleRecalcContext> context_;
-  };
-
  private:
-  struct PartRequest {
-    STACK_ALLOCATED();
-
-   public:
-    // If this is true, we're matching for a pseudo-element of the part, such as
-    // ::placeholder.
-    bool for_shadow_pseudo = false;
-  };
-
   // If stop_at_first_match = true, CollectMatchingRules*() will stop
   // whenever any rule matches, return true, and not store the result
   // anywhere nor update the match counters. Otherwise, these functions
@@ -286,7 +246,7 @@ class CORE_EXPORT ElementRuleCollector {
   // invalidate style on the element anyway.
 
   template <bool stop_at_first_match>
-  bool CollectMatchingRulesInternal(const MatchRequest&);
+  bool CollectMatchingRulesInternal(const MatchRequest&, PartNames* part_names);
 
   template <bool stop_at_first_match, bool perf_trace_enabled>
   bool CollectMatchingRulesForListInternal(
@@ -295,8 +255,7 @@ class CORE_EXPORT ElementRuleCollector {
       const RuleSet*,
       int,
       const SelectorChecker&,
-      SelectorChecker::SelectorCheckingContext&,
-      PartRequest* = nullptr);
+      SelectorChecker::SelectorCheckingContext&);
 
   template <bool stop_at_first_match>
   bool CollectMatchingRulesForList(base::span<const RuleData>,
@@ -304,8 +263,7 @@ class CORE_EXPORT ElementRuleCollector {
                                    const RuleSet*,
                                    int,
                                    const SelectorChecker&,
-                                   SelectorChecker::SelectorCheckingContext&,
-                                   PartRequest* = nullptr);
+                                   SelectorChecker::SelectorCheckingContext&);
 
   bool Match(SelectorChecker&,
              const SelectorChecker::SelectorCheckingContext&,

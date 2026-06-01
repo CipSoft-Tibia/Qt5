@@ -1,7 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#include "qquickbasicstyle_p.h"
 #include "qquickbasictheme_p.h"
 
 #include <QtQuickControls2/private/qquickstyleplugin_p.h>
@@ -21,6 +21,7 @@ public:
 
     QString name() const override;
     void initializeTheme(QQuickTheme *theme) override;
+    void updateTheme() override;
 
     QQuickBasicTheme theme;
 };
@@ -39,6 +40,11 @@ QString QtQuickControls2BasicStylePlugin::name() const
 void QtQuickControls2BasicStylePlugin::initializeTheme(QQuickTheme *theme)
 {
     this->theme.initialize(theme);
+}
+
+void QtQuickControls2BasicStylePlugin::updateTheme()
+{
+    this->theme.updateTheme();
 }
 
 QT_END_NAMESPACE

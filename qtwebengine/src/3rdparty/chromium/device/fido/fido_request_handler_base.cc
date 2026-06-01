@@ -27,7 +27,6 @@
 #include "device/fido/fido_constants.h"
 #include "device/fido/fido_discovery_base.h"
 #include "device/fido/fido_discovery_factory.h"
-#include "device/fido/mac/icloud_keychain.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "device/fido/win/authenticator.h"
@@ -37,6 +36,7 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "base/process/process_info.h"
+#include "device/fido/mac/icloud_keychain.h"
 #include "device/fido/mac/util.h"
 #endif
 
@@ -54,7 +54,6 @@ bool IsGpmPasskeyAuthenticator(const FidoAuthenticator& authenticator) {
     case AuthenticatorType::kOther:
       return false;
     case AuthenticatorType::kEnclave:
-    case AuthenticatorType::kChromeOSPasskeys:
       return true;
   }
   NOTREACHED();
@@ -290,10 +289,12 @@ void FidoRequestHandlerBase::InitDiscoveries(
   // Thus, if the responsible process is not Chromium itself, then we do not
   // make any Bluetooth API calls.
   const bool can_call_ble_apis =
-      g_always_allow_ble_calls || base::IsProcessSelfResponsible();
+      g_always_allow_ble_calls ||
+      base::DoesResponsibleProcessHaveBluetoothMetadata();
   if (!can_call_ble_apis) {
-    FIDO_LOG(ERROR) << "Cannot test Bluetooth power status because process is "
-                       "not self-responsible. Launch from Finder to fix.";
+    FIDO_LOG(ERROR) << "Cannot use Bluetooth because the responsible app for "
+                       "the process does not have Bluetooth metadata in its "
+                       "Info.plist. Launch from Finder to fix.";
   }
 #else
   const bool can_call_ble_apis = true;
@@ -508,10 +509,8 @@ void FidoRequestHandlerBase::AuthenticatorAdded(
   std::tie(std::ignore, was_inserted) =
       active_authenticators_.insert({authenticator->GetId(), authenticator});
   if (!was_inserted) {
-    NOTREACHED_IN_MIGRATION();
-    FIDO_LOG(ERROR) << "Authenticator with duplicate ID "
-                    << authenticator->GetId();
-    return;
+    NOTREACHED() << "Authenticator with duplicate ID "
+                 << authenticator->GetId();
   }
 
   // If |observer_| exists, dispatching request to |authenticator| is

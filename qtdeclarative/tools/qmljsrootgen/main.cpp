@@ -347,6 +347,12 @@ int main(int argc, char *argv[])
     QJSEngine engine;
     engine.installExtensions(QJSEngine::AllExtensions);
 
+    // ugly hack: yes, there's no way to have XmlHttpRequest in plain JS, but we'll add another extension later.
+    // We need this approach to have a solution to get XMLHttpRequest into qmltypes for Qt < 6.11
+#if QT_CONFIG(qml_xml_http_request)
+    engine.handle()->setupXmlHttpRequestExtension();
+#endif
+
     QJsonArray classesArray;
     State seen;
 

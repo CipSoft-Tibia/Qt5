@@ -17,7 +17,7 @@ ApplicationWindow {
     }
     Overlay.overlay.anchors.fill: background
     contentItem.anchors.fill: background
-    contentItem.parent.rotation: rotated ? 90 : 0
+    Overlay.overlay.parent.rotation: rotated ? 90 : 0
 
     property bool rotated: false
     property int drawerSize: 100

@@ -25,6 +25,11 @@ qt_generate_deploy_qml_app_script(
     [NO_UNSUPPORTED_PLATFORM_ERROR]
     [NO_TRANSLATIONS]
     [NO_COMPILER_RUNTIME]
+    [NO_PLUGINS]                                  # since Qt 6.10
+    [EXCLUDE_PLUGIN_TYPES type_or_target...]      # since Qt 6.10
+    [INCLUDE_PLUGIN_TYPES type_or_target...]      # since Qt 6.10
+    [EXCLUDE_PLUGINS name...]                     # since Qt 6.10
+    [INCLUDE_PLUGINS name...]                     # since Qt 6.10
     [DEPLOY_TOOL_OPTIONS ...]
     [DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM]
     [MACOS_BUNDLE_POST_BUILD]
@@ -114,6 +119,13 @@ The options \c{PRE_INCLUDE_REGEXES}, \c{PRE_EXCLUDE_REGEXES},
 dependencies. These options do not apply to all platforms and are forwarded
 unmodified to
 \l{qt6_deploy_runtime_dependencies}{qt_deploy_runtime_dependencies()}.
+
+The options \c EXCLUDE_PLUGINS, \c EXCLUDE_PLUGIN_TYPES, \c INCLUDE_PLUGINS, and
+\c INCLUDE_PLUGIN_TYPES are used to select Qt plugins. See
+\l{qt6_deploy_runtime_dependencies}{qt_deploy_runtime_dependencies()} for their
+documentation.
+
+You can turn off plugin deployment altogether with the \c NO_PLUGINS option.
 
 For deploying a non-QML application, use
 \l{qt6_generate_deploy_app_script}{qt_generate_deploy_app_script()}

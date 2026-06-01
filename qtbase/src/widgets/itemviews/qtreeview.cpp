@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #include "qtreeview.h"
 
 #include <qheaderview.h>
@@ -7,6 +8,7 @@
 #include <qapplication.h>
 #include <qscrollbar.h>
 #include <qpainter.h>
+#include <qpainterstateguard.h>
 #include <qstack.h>
 #include <qstyle.h>
 #include <qstyleoption.h>
@@ -38,6 +40,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtWidgets
 
     \image fusion-treeview.png
+           {Directory widget showing the contents using a tree view}
 
     A QTreeView implements a tree representation of items from a
     model. This class is used to provide standard hierarchical lists that
@@ -1609,21 +1612,21 @@ void QTreeViewPrivate::calcLogicalIndices(
         }
     }
 
-    itemPositions->resize(logicalIndices->size());
-    for (int currentLogicalSection = 0; currentLogicalSection < logicalIndices->size(); ++currentLogicalSection) {
-        const int headerSection = logicalIndices->at(currentLogicalSection);
+    const auto indicesCount = logicalIndices->size();
+    itemPositions->resize(indicesCount);
+    for (qsizetype currentLogicalSection = 0; currentLogicalSection < indicesCount; ++currentLogicalSection) {
         // determine the viewItemPosition depending on the position of column 0
-        int nextLogicalSection = currentLogicalSection + 1 >= logicalIndices->size()
+        int nextLogicalSection = currentLogicalSection + 1 >= indicesCount
                                  ? logicalIndexAfterRight
                                  : logicalIndices->at(currentLogicalSection + 1);
         int prevLogicalSection = currentLogicalSection - 1 < 0
                                  ? logicalIndexBeforeLeft
                                  : logicalIndices->at(currentLogicalSection - 1);
+        const int headerSection = logicalIndices->at(currentLogicalSection);
         QStyleOptionViewItem::ViewItemPosition pos;
-        if (columnCount == 1 || (nextLogicalSection == 0 && prevLogicalSection == -1)
-            || (headerSection == 0 && nextLogicalSection == -1) || spanning)
-            pos = QStyleOptionViewItem::OnlyOne;
-        else if (isTreePosition(headerSection) || (nextLogicalSection != 0 && prevLogicalSection == -1))
+        if ((nextLogicalSection == -1 && prevLogicalSection == -1) || spanning) {
+           pos = QStyleOptionViewItem::OnlyOne;
+        } else if ((nextLogicalSection != 0 && prevLogicalSection == -1) || isTreePosition(headerSection))
             pos = QStyleOptionViewItem::Beginning;
         else if (nextLogicalSection == 0 || nextLogicalSection == -1)
             pos = QStyleOptionViewItem::End;
@@ -1897,9 +1900,11 @@ void QTreeView::drawBranches(QPainter *painter, const QRect &rect,
         extraFlags |= QStyle::State_Enabled;
     if (hasFocus())
         extraFlags |= QStyle::State_Active;
-    QPoint oldBO = painter->brushOrigin();
-    if (verticalScrollMode() == QAbstractItemView::ScrollPerPixel)
+    QPainterStateGuard psg(painter, QPainterStateGuard::InitialState::NoSave);
+    if (verticalScrollMode() == QAbstractItemView::ScrollPerPixel) {
+        psg.save();
         painter->setBrushOrigin(QPoint(0, verticalOffset()));
+    }
 
     if (d->alternatingColors) {
         opt.features.setFlag(QStyleOptionViewItem::Alternate, d->current & 1);
@@ -1960,7 +1965,6 @@ void QTreeView::drawBranches(QPainter *painter, const QRect &rect,
         current = ancestor;
         ancestor = current.parent();
     }
-    painter->setBrushOrigin(oldBO);
 }
 
 /*!
@@ -3323,6 +3327,7 @@ QPixmap QTreeViewPrivate::renderTreeToPixmapForAnimation(const QRect &rect) cons
         return pixmap;
     pixmap.fill(Qt::transparent); //the base might not be opaque, and we don't want uninitialized pixels.
     QPainter painter(&pixmap);
+    painter.setLayoutDirection(q->layoutDirection());
     painter.fillRect(QRect(QPoint(0,0), rect.size()), q->palette().base());
     painter.translate(0, -rect.top());
     q->drawTree(&painter, QRegion(rect));

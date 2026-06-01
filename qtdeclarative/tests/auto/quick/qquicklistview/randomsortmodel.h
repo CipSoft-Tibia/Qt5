@@ -20,7 +20,7 @@ public:
     void randomize();
 
   private:
-    QList<QPair<QString, int> > mData;
+    QList<std::pair<QString, int> > mData;
 };
 
 #endif // RANDOMSORTMODEL_H

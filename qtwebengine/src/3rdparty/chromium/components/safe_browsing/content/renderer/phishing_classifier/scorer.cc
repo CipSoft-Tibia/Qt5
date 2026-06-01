@@ -23,6 +23,7 @@
 #include "base/trace_event/trace_event.h"
 #include "components/safe_browsing/content/common/visual_utils.h"
 #include "components/safe_browsing/content/renderer/phishing_classifier/features.h"
+#include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/proto/client_model.pb.h"
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "content/public/renderer/render_thread.h"
@@ -483,7 +484,7 @@ double Scorer::ComputeRuleScore(const flat::ClientSideModel_::Rule* rule,
   for (int32_t feature : *rule->feature()) {
     const flat::Hash* hash = flatbuffer_model_->hashes()->Get(feature);
 
-    if (!hash->data()) {
+    if (!hash || !hash->data()) {
       return 0.0;
     }
 

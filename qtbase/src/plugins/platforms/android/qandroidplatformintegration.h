@@ -1,5 +1,6 @@
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QANDROIDPLATFORMINTERATION_H
 #define QANDROIDPLATFORMINTERATION_H
@@ -40,8 +41,10 @@ protected:
 };
 
 class QAndroidPlatformIntegration : public QPlatformIntegration
+#if QT_CONFIG(egl)
                                   , QNativeInterface::Private::QEGLIntegration
                                   , QNativeInterface::Private::QAndroidOffScreenIntegration
+#endif
 {
     friend class QAndroidPlatformScreen;
 
@@ -56,22 +59,20 @@ public:
     QPlatformWindow *createPlatformWindow(QWindow *window) const override;
     QPlatformWindow *createForeignWindow(QWindow *window, WId nativeHandle) const override;
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override;
+#if QT_CONFIG(egl)
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
     QOpenGLContext *createOpenGLContext(EGLContext context, EGLDisplay display, QOpenGLContext *shareContext) const override;
+#endif
     QAbstractEventDispatcher *createEventDispatcher() const override;
     QAndroidPlatformScreen *screen() { return m_primaryScreen; }
+#if QT_CONFIG(egl)
     QPlatformOffscreenSurface *createPlatformOffscreenSurface(QOffscreenSurface *surface) const override;
     QOffscreenSurface *createOffscreenSurface(ANativeWindow *nativeSurface) const override;
+#endif
 
     void setAvailableGeometry(const QRect &availableGeometry);
     void setPhysicalSize(int width, int height);
     void setScreenSize(int width, int height);
-    // The 3 methods above were replaced by a new one, so that we could have
-    // a better control over "geometry changed" event handling. Technically
-    // they are no longer used and can be removed. Not doing it now, because
-    // I'm not sure if it might be helpful to have them or not.
-    void setScreenSizeParameters(const QSize &physicalSize, const QSize &screenSize,
-                                 const QRect &availableGeometry);
     void setRefreshRate(qreal refreshRate);
     bool isVirtualDesktop() { return true; }
 
@@ -99,9 +100,6 @@ public:
     QStringList themeNames() const override;
     QPlatformTheme *createPlatformTheme(const QString &name) const override;
 
-    static void setDefaultDisplayMetrics(int availableLeft, int availableTop, int availableWidth,
-                                         int availableHeight, int physicalWidth, int physicalHeight,
-                                         int screenWidth, int screenHeight);
     static void setScreenOrientation(Qt::ScreenOrientation currentOrientation,
                                      Qt::ScreenOrientation nativeOrientation);
 
@@ -125,10 +123,6 @@ private:
     QThread *m_mainThread;
 
     static Qt::ColorScheme m_colorScheme;
-
-    static QRect m_defaultAvailableGeometry;
-    static QSize m_defaultPhysicalSize;
-    static QSize m_defaultScreenSize;
 
     static Qt::ScreenOrientation m_orientation;
     static Qt::ScreenOrientation m_nativeOrientation;

@@ -20,6 +20,8 @@ class Q_GRAPHS_EXPORT QScatter3DSeries : public QAbstract3DSeries
         qsizetype selectedItem READ selectedItem WRITE setSelectedItem NOTIFY selectedItemChanged FINAL)
     Q_PROPERTY(float itemSize READ itemSize WRITE setItemSize NOTIFY itemSizeChanged FINAL)
     Q_PROPERTY(QScatterDataArray dataArray READ dataArray WRITE setDataArray NOTIFY dataArrayChanged FINAL)
+    Q_PROPERTY(QList<QVector3D> scaleArray READ scaleArray WRITE setScaleArray NOTIFY
+        scaleArrayChanged REVISION(6, 10))
 
     QML_ELEMENT
     QML_UNCREATABLE("Trying to create uncreatable: QScatter3DSeries, use Scatter3DSeries instead.")
@@ -44,11 +46,17 @@ public:
     const QScatterDataArray &dataArray() const &;
     QScatterDataArray dataArray() &&;
 
+    void setScaleArray(const QList<QVector3D> &newScaleArray);
+    void clearScaleArray();
+    const QList<QVector3D> &scaleArray() const &;
+    QList<QVector3D> scaleArray() &&;
+
 Q_SIGNALS:
     void dataProxyChanged(QScatterDataProxy *proxy);
     void selectedItemChanged(qsizetype index);
     void itemSizeChanged(float size);
     void dataArrayChanged(const QScatterDataArray &array);
+    Q_REVISION(6, 10) void scaleArrayChanged(const QList<QVector3D> &scaleArray);
 
 protected:
     explicit QScatter3DSeries(QScatter3DSeriesPrivate &d, QObject *parent = nullptr);

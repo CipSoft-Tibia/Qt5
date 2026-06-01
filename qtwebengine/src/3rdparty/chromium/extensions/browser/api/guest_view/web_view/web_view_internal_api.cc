@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "extensions/browser/api/guest_view/web_view/web_view_internal_api.h"
 
 #include <memory>
@@ -26,6 +31,7 @@
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/stop_find_action.h"
+#include "extensions/browser/extension_api_frame_id_map.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/guest_view/web_view/controlled_frame_embedder_url_fetcher.h"
 #include "extensions/browser/guest_view/web_view/web_view_constants.h"
@@ -33,9 +39,9 @@
 #include "extensions/common/api/web_view_internal.h"
 #include "extensions/common/error_utils.h"
 #include "extensions/common/manifest_constants.h"
+#include "extensions/common/mojom/match_origin_as_fallback.mojom-shared.h"
 #include "extensions/common/mojom/run_location.mojom-shared.h"
 #include "extensions/common/permissions/permissions_data.h"
-#include "extensions/common/script_constants.h"
 #include "extensions/common/user_script.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 
@@ -213,9 +219,9 @@ std::unique_ptr<extensions::UserScript> ParseContentScript(
   if (script_value.match_about_blank) {
     script->set_match_origin_as_fallback(
         *script_value.match_about_blank
-            ? extensions::MatchOriginAsFallbackBehavior::
+            ? extensions::mojom::MatchOriginAsFallbackBehavior::
                   kMatchForAboutSchemeAndClimbTree
-            : extensions::MatchOriginAsFallbackBehavior::kNever);
+            : extensions::mojom::MatchOriginAsFallbackBehavior::kNever);
   }
 
   // css:
@@ -355,6 +361,11 @@ void WebViewInternalCaptureVisibleRegionFunction::GetQuotaLimitHeuristics(
       "MAX_CAPTURE_VISIBLE_REGION_CALLS_PER_SECOND"));
 }
 
+bool WebViewInternalCaptureVisibleRegionFunction::ShouldSkipQuotaLimiting()
+    const {
+  return user_gesture();
+}
+
 WebContentsCaptureClient::ScreenshotAccess
 WebViewInternalCaptureVisibleRegionFunction::GetScreenshotAccess(
     content::WebContents* web_contents) const {
@@ -381,23 +392,21 @@ void WebViewInternalCaptureVisibleRegionFunction::OnCaptureSuccess(
 void WebViewInternalCaptureVisibleRegionFunction::EncodeBitmapOnWorkerThread(
     scoped_refptr<base::TaskRunner> reply_task_runner,
     const SkBitmap& bitmap) {
-  std::string base64_result;
-  bool success = EncodeBitmap(bitmap, &base64_result);
+  std::optional<std::string> base64_result = EncodeBitmap(bitmap);
   reply_task_runner->PostTask(
       FROM_HERE, base::BindOnce(&WebViewInternalCaptureVisibleRegionFunction::
                                     OnBitmapEncodedOnUIThread,
-                                this, success, std::move(base64_result)));
+                                this, std::move(base64_result)));
 }
 
 void WebViewInternalCaptureVisibleRegionFunction::OnBitmapEncodedOnUIThread(
-    bool success,
-    std::string base64_result) {
-  if (!success) {
+    std::optional<std::string> base64_result) {
+  if (!base64_result) {
     OnCaptureFailure(FAILURE_REASON_ENCODING_FAILED);
     return;
   }
 
-  Respond(WithArguments(std::move(base64_result)));
+  Respond(WithArguments(std::move(base64_result.value())));
 }
 
 void WebViewInternalCaptureVisibleRegionFunction::OnCaptureFailure(
@@ -423,9 +432,8 @@ std::string WebViewInternalCaptureVisibleRegionFunction::GetErrorMessage(
       reason_description = "screenshot has been disabled";
       break;
     case OK:
-      NOTREACHED_IN_MIGRATION()
+      NOTREACHED()
           << "GetErrorMessage should not be called with a successful result";
-      return "";
   }
   return ErrorUtils::FormatErrorMessage("Failed to capture webview: *",
                                         reason_description);
@@ -513,6 +521,13 @@ bool WebViewInternalExecuteCodeFunction::IsWebView() const {
   return true;
 }
 
+int WebViewInternalExecuteCodeFunction::GetRootFrameId() const {
+  WebViewGuest* guest =
+      WebViewGuest::FromInstanceID(source_process_id(), guest_instance_id_);
+  CHECK(guest);
+  return ExtensionApiFrameIdMap::GetFrameId(guest->GetGuestMainFrame());
+}
+
 const GURL& WebViewInternalExecuteCodeFunction::GetWebViewSrc() const {
   return guest_src_;
 }
@@ -531,8 +546,7 @@ bool WebViewInternalExecuteCodeFunction::LoadFileForEmbedder(
 
   switch (host_id().type) {
     case mojom::HostID::HostType::kExtensions:
-      NOTREACHED_IN_MIGRATION();
-      return false;
+      NOTREACHED();
     case mojom::HostID::HostType::kControlledFrameEmbedder:
       url_fetcher_ = std::make_unique<ControlledFrameEmbedderURLFetcher>(
           source_process_id(), render_frame_host()->GetRoutingID(), file_url,
@@ -771,7 +785,7 @@ ExtensionFunction::ResponseAction WebViewInternalSetZoomModeFunction::Run() {
       zoom_mode = ZoomController::ZOOM_MODE_DISABLED;
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 
   GetGuest().SetZoomMode(zoom_mode);
@@ -801,7 +815,7 @@ ExtensionFunction::ResponseAction WebViewInternalGetZoomModeFunction::Run() {
       zoom_mode = web_view_internal::ZoomMode::kDisabled;
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 
   return RespondNow(WithArguments(web_view_internal::ToString(zoom_mode)));
@@ -979,7 +993,7 @@ ExtensionFunction::ResponseAction WebViewInternalSetPermissionFunction::Run() {
     case api::web_view_internal::SetPermissionAction::kDefault:
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 
   std::string user_input;

@@ -84,11 +84,7 @@ public:
     QDtlsPrivateOpenSSL *dtlsPrivate = nullptr;
     QByteArray secret;
 
-#ifdef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
-    QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Sha1;
-#else
     QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Sha256;
-#endif
 
 private:
 

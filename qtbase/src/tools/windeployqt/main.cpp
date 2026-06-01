@@ -407,10 +407,6 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
                                        QStringLiteral("Skip plugin deployment."));
     parser->addOption(noPluginsOption);
 
-    QCommandLineOption includeSoftPluginsOption(QStringLiteral("include-soft-plugins"),
-                                                QStringLiteral("Include in the deployment all relevant plugins by taking into account all soft dependencies."));
-    parser->addOption(includeSoftPluginsOption);
-
     QCommandLineOption skipPluginTypesOption(QStringLiteral("skip-plugin-types"),
                                          QStringLiteral("A comma-separated list of plugin types that are not deployed (qmltooling,generic)."),
                                          QStringLiteral("plugin types"));
@@ -575,19 +571,19 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
     options->quickImports = !parser->isSet(noQuickImportOption);
 
     // default to deployment of compiler runtime for windows desktop configurations
-    if (options->platform == WindowsDesktopMinGW || options->platform.testFlags(WindowsDesktopMsvc)
-            || parser->isSet(compilerRunTimeOption))
+    if (options->platform == WindowsDesktopMinGW || options->platform == WindowsDesktopClangMinGW
+        || options->platform.testFlags(WindowsDesktopMsvc) || parser->isSet(compilerRunTimeOption))
         options->compilerRunTime = true;
     if (parser->isSet(noCompilerRunTimeOption))
         options->compilerRunTime = false;
 
     if (options->compilerRunTime && options->platform != WindowsDesktopMinGW
+        && options->platform != WindowsDesktopClangMinGW
         && !options->platform.testFlags(WindowsDesktopMsvc)) {
-        *errorMessage = QStringLiteral("Deployment of the compiler runtime is implemented for Desktop MSVC/g++ only.");
+        *errorMessage = QStringLiteral("Deployment of the compiler runtime is implemented for "
+            "Desktop MSVC and MinGW (g++ and Clang) only.");
         return CommandLineParseError;
     }
-
-    options->pluginSelections.includeSoftPlugins = parser->isSet(includeSoftPluginsOption);
 
     if (parser->isSet(skipPluginTypesOption))
         options->pluginSelections.disabledPluginTypes = parser->value(skipPluginTypesOption).split(u',');
@@ -1150,7 +1146,7 @@ QStringList findQtPlugins(ModuleBitset *usedQtModules, const ModuleBitset &disab
 
     // If missing Qt modules were added during plugin deployment make additional pass, because we may need
     // additional plugins.
-    if (pluginSelections.includeSoftPlugins && missingQtModulesAdded) {
+    if (missingQtModulesAdded) {
         if (optVerboseLevel) {
             std::wcout << "Performing additional pass of finding Qt plugins due to updated Qt module list: "
                        << formatQtModules(*usedQtModules).constData() << "\n";
@@ -1584,46 +1580,6 @@ static DeployResult deploy(const Options &options, const QMap<QString, QString> 
         return result;
     }
 
-    // Some Windows-specific checks: Qt5Core depends on ICU when configured with "-icu". Other than
-    // that, Qt5WebKit has a hard dependency on ICU.
-    if (options.platform.testFlag(WindowsBased))  {
-        const QStringList qtLibs = dependentQtLibs.filter(QStringLiteral("Qt6Core"), Qt::CaseInsensitive)
-            + dependentQtLibs.filter(QStringLiteral("Qt5WebKit"), Qt::CaseInsensitive);
-        for (const QString &qtLib : qtLibs) {
-            QStringList icuLibs = findDependentLibraries(qtLib, errorMessage).filter(QStringLiteral("ICU"), Qt::CaseInsensitive);
-            if (!icuLibs.isEmpty()) {
-                // Find out the ICU version to add the data library icudtXX.dll, which does not show
-                // as a dependency.
-                const QString icuVersion = getIcuVersion(icuLibs.constFirst());
-                if (!icuVersion.isEmpty())  {
-                    if (optVerboseLevel > 1)
-                        std::wcout << "Adding ICU version " << icuVersion << '\n';
-                    QString icuLib = QStringLiteral("icudt") + icuVersion
-                            + QLatin1StringView(windowsSharedLibrarySuffix);
-                    // Some packages contain debug dlls of ICU libraries even though it's a C
-                    // library and the official packages do not differentiate (QTBUG-87677)
-                    if (result.isDebug) {
-                        const QString icuLibCandidate = QStringLiteral("icudtd") + icuVersion
-                                + QLatin1StringView(windowsSharedLibrarySuffix);
-                        if (!findInPath(icuLibCandidate).isEmpty()) {
-                            icuLib = icuLibCandidate;
-                        }
-                    }
-                    icuLibs.push_back(icuLib);
-                }
-                for (const QString &icuLib : std::as_const(icuLibs)) {
-                    const QString icuPath = findInPath(icuLib);
-                    if (icuPath.isEmpty()) {
-                        *errorMessage = QStringLiteral("Unable to locate ICU library ") + icuLib;
-                        return result;
-                    }
-                    dependentQtLibs.push_back(icuPath);
-                } // for each icuLib
-                break;
-            } // !icuLibs.isEmpty()
-        } // Qt6Core/Qt6WebKit
-    } // Windows
-
     // Scan Quick2 imports
     QmlImportScanResult qmlScanResult;
     if (options.quickImports && usesQml2) {
@@ -1686,6 +1642,46 @@ static DeployResult deploy(const Options &options, const QMap<QString, QString> 
         disabled[QtQmlModuleId] = 1;
         disabled[QtQuickModuleId] = 1;
     }
+
+    // Some Windows-specific checks: Qt5Core depends on ICU when configured with "-icu". Other than
+    // that, Qt5WebKit has a hard dependency on ICU.
+    if (options.platform.testFlag(WindowsBased))  {
+        const QStringList qtLibs = dependentQtLibs.filter(QStringLiteral("Qt6Core"), Qt::CaseInsensitive)
+        + dependentQtLibs.filter(QStringLiteral("Qt5WebKit"), Qt::CaseInsensitive);
+        for (const QString &qtLib : qtLibs) {
+            QStringList icuLibs = findDependentLibraries(qtLib, errorMessage).filter(QStringLiteral("ICU"), Qt::CaseInsensitive);
+            if (!icuLibs.isEmpty()) {
+                // Find out the ICU version to add the data library icudtXX.dll, which does not show
+                // as a dependency.
+                const QString icuVersion = getIcuVersion(icuLibs.constFirst());
+                if (!icuVersion.isEmpty())  {
+                    if (optVerboseLevel > 1)
+                        std::wcout << "Adding ICU version " << icuVersion << '\n';
+                    QString icuLib = QStringLiteral("icudt") + icuVersion
+                            + QLatin1StringView(windowsSharedLibrarySuffix);
+                    // Some packages contain debug dlls of ICU libraries even though it's a C
+                    // library and the official packages do not differentiate (QTBUG-87677)
+                    if (result.isDebug) {
+                        const QString icuLibCandidate = QStringLiteral("icudtd") + icuVersion
+                                + QLatin1StringView(windowsSharedLibrarySuffix);
+                        if (!findInPath(icuLibCandidate).isEmpty()) {
+                            icuLib = icuLibCandidate;
+                        }
+                    }
+                    icuLibs.push_back(icuLib);
+                }
+                for (const QString &icuLib : std::as_const(icuLibs)) {
+                    const QString icuPath = findInPath(icuLib);
+                    if (icuPath.isEmpty()) {
+                        *errorMessage = QStringLiteral("Unable to locate ICU library ") + icuLib;
+                        return result;
+                    }
+                    deployedQtLibraries.push_back(icuPath);
+                } // for each icuLib
+                break;
+            } // !icuLibs.isEmpty()
+        } // Qt6Core/Qt6WebKit
+    } // Windows
 
     QStringList openSslLibs;
     if (!options.openSslRootDirectory.isEmpty()) {

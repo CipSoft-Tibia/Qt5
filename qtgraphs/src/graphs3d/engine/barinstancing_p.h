@@ -29,7 +29,6 @@ struct BarItemHolder
     float heightValue = .0f;
     bool selectedBar = false;
     QColor color = {0, 0, 0};
-    ;
 };
 
 class Q_GRAPHS_EXPORT BarInstancing : public QQuick3DInstancing

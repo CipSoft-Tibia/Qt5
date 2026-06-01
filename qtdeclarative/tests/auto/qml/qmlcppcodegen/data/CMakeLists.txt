@@ -26,11 +26,15 @@ set(cpp_sources
     multiforeign.h
     objectwithmethod.h
     person.cpp person.h
+    propertymap.h
     qmlusing.h
+    recursiveObject.h
+    refuseWrite.h
     resettable.h
     scriptstringholder.h
     sequenceToIterable.h
     sequencetypeexample.cpp sequencetypeexample.h
+    shadowingSingleton.h
     state.h
     takenumber.cpp takenumber.h
     theme.cpp theme.h
@@ -46,13 +50,16 @@ set(qml_files
     AccessModelMethodsFromOutside.qml
     Action.qml
     AnonymousComposite.qml
+    AnotherScriptString.qml
     ArraySequenceLengthInterop.qml
     B.qml
     BadType.qml
     BaseConstraint.qml
     BaseMember.qml
     BindingExpression.qml
+    BindingToScriptStringProperty.qml
     Categorizer.qml
+    CategorizerBase.qml
     CxxTypeFromDir.qml
     CxxTypeFromImplicit.qml
     Cycle1.qml
@@ -64,11 +71,13 @@ set(qml_files
     Dummy2.qml
     EditConstraint.qml
     Enums.qml
+    FinalProperty.qml
     Foozle.qml
     GetOptionalLookupNonVoidableBase.qml
     GetOptionalLookupOnQJSValueNonStrict.qml
     GetOptionalLookupShadowed.qml
     Loopy.qml
+    MyObject.qml
     NotificationItem.qml
     NotificationsUtils.js
     OkType.qml
@@ -92,6 +101,8 @@ set(qml_files
     Variable.qml
     WindowDerived.qml
     aliasLookup.qml
+    aliasToAliasResolutionSkipCorruption.qml
+    aliasToLocalAlias.qml
     ambiguous1/Ambiguous.qml
     ambiguous2/Ambiguous.qml
     ambiguousAs.qml
@@ -126,6 +137,7 @@ set(qml_files
     componentReturnType.qml
     compositeTypeMethod.qml
     compositesingleton.qml
+    conditionalEval.qml
     consoleObject.qml
     consoleTrace.qml
     construct.qml
@@ -141,14 +153,19 @@ set(qml_files
     cycleHead.qml
     dateConstruction.qml
     dateConversions.qml
+    deadContext.qml
+    deadContext2.qml
+    deadContext3.qml
     deadShoeSize.qml
     deadStoreLoop.qml
     destroyAndToString.qml
     detachOnAssignment.qml
+    detachedListAssignment.qml
     detachedreferences.qml
     dialog.qml
     dialogButtonBox.qml
     disappearingArrowFunction.qml
+    dynamicObjectProperty.qml
     dynamicscene.qml
     enforceSignature.qml
     enumConversion.qml
@@ -174,6 +191,7 @@ set(qml_files
     fallbacklookups.qml
     fallbackresettable.qml
     fileDialog.qml
+    finalUser.qml
     flagEnum.qml
     fromBoolValue.qml
     funcWithParams.qml
@@ -184,6 +202,7 @@ set(qml_files
     getOptionalLookup.qml
     globals.qml
     idAccess.qml
+    idVsMember.qml
     ignoredFunctionReturn.qml
     immediateQuit.qml
     imports/QmlBench/Globals.qml
@@ -224,6 +243,8 @@ set(qml_files
     listPropertyAsModel.qml
     listToString.qml
     listlength.qml
+    markJSValue.qml
+    markRecursive.qml
     math.qml
     mathMinMax.qml
     mathOperations.qml
@@ -234,7 +255,9 @@ set(qml_files
     methodOnListLookup.qml
     methods.qml
     modulePrefix.qml
+    moveAliasedRegister.qml
     moveRegVoid.qml
+    multiAdjust.qml
     multiRedirect.qml
     multiforeign.qml
     multipleCtors.qml
@@ -264,6 +287,7 @@ set(qml_files
     popContextAfterRet.qml
     prefixedMetaType.qml
     pressAndHoldButton.qml
+    propertyMap.qml
     qmlUsing.qml
     qtbug113150.qml
     qtfont.qml
@@ -288,19 +312,23 @@ set(qml_files
     shadowedAsCasts.qml
     shadowedMethod.qml
     shadowedPrimitiveCmpEqNull.qml
+    shadowingSingleton.qml
     shared/Slider.qml
     shifts.qml
+    sideEffectOnArgument.qml
     signal.qml
     signalHandler.qml
     signalIndexMismatch.qml
     signalsWithLists.qml
     signatureIgnored.qml
     specificParent.qml
+    splice.qml
     storeElementSideEffects.qml
     stringArg.qml
     stringLength.qml
     stringToByteArray.qml
     structuredValueType.qml
+    multiEnginePropertyCache.qml
     takenumber.qml
     testlogger.js
     text.qml
@@ -339,6 +367,7 @@ set(qml_files
     versionmismatch.qml
     voidConversion.qml
     voidfunction.qml
+    writeBackReferenceObject.qml
     writeback.qml
     dummy_imports.qml
 )
@@ -451,6 +480,21 @@ qt6_add_qml_module(codegen_test_module
     OUTPUT_DIRECTORY TestTypes # Make sure tst_qmlcachegen doesn't see our output
     __QT_INTERNAL_DISAMBIGUATE_QMLDIR_RESOURCE
 )
+
+# we want the generated C++ code to be warning free
+if(MSVC)
+    # intentionally empty, no easy way to have a higher warning level
+    # without causing a warning about overriding the level
+else()
+    # assumption: everything that's not MSVC handles Wall and Wextra
+    target_compile_options(codegen_test_module PRIVATE -Wall -Wextra)
+    # TODO: this should be enabled everywhere, but MSVC in CI seems to ignore the pragma
+    # which silences divide by 0 warnings...
+    set_property(TARGET codegen_test_module
+                 PROPERTY COMPILE_WARNING_AS_ERROR ON
+    )
+endif()
+
 
 target_link_libraries(codegen_test_module PRIVATE Qt6::QmlPrivate)
 

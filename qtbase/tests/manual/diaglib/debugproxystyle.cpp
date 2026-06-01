@@ -14,10 +14,9 @@ QDebug operator<<(QDebug debug, const QStyleOption *option)
     QDebugStateSaver saver(debug);
     debug.noquote();
     debug.nospace();
-    if (!option) {
-        debug << "QStyleOption(0)";
-        return debug;
-    }
+    if (!option)
+        return debug << "QStyleOption(0x0)";
+
     if (const QStyleOptionViewItem *ivo = qstyleoption_cast<const QStyleOptionViewItem *>(option)) {
         debug << "QStyleOptionViewItem(";
         debug << ivo->index;

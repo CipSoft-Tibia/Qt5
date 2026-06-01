@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include <private/qqmlengine_p.h>
 #include <private/qqmlextensionplugin_p.h>
@@ -14,8 +15,16 @@ QT_BEGIN_NAMESPACE
 QQmlTypeLoaderThread::QQmlTypeLoaderThread(QQmlTypeLoader *loader)
     : m_loader(loader)
 {
-    // Do that after initializing all the members.
-    startup();
+}
+
+QQmlTypeLoaderThread::~QQmlTypeLoaderThread()
+{
+    // The thread has to be shutdown() first.
+    Q_ASSERT(!thread()->isRunning());
+
+    // Discard all remaining messages.
+    // We don't need the lock anymore because the thread is dead.
+    discardMessages();
 }
 
 #if QT_CONFIG(qml_network)
@@ -23,7 +32,7 @@ QNetworkAccessManager *QQmlTypeLoaderThread::networkAccessManager() const
 {
     Q_ASSERT(isThisThread());
     if (!m_networkAccessManager) {
-        m_networkAccessManager = QQmlEnginePrivate::get(m_loader->engine())->createNetworkAccessManager(nullptr);
+        m_networkAccessManager = m_loader->createNetworkAccessManager(nullptr);
         QObject::connect(thread(), &QThread::finished, m_networkAccessManager, &QObject::deleteLater);
         m_networkReplyProxy = new QQmlTypeLoaderNetworkReplyProxy(m_loader, threadObject());
         QObject::connect(thread(), &QThread::finished, m_networkReplyProxy, &QObject::deleteLater);
@@ -132,15 +141,19 @@ void QQmlTypeLoaderThread::callDownloadProgressChangedMain(const QQmlDataBlob::P
 void QQmlTypeLoaderThread::initializeExtensionMain(QQmlExtensionInterface *iface,
                                                 const char *uri)
 {
-    Q_ASSERT(m_loader->engine()->thread() == QThread::currentThread());
-    iface->initializeEngine(m_loader->engine(), uri);
+    // We can use m_engine because we're on the engine thread.
+    QQmlEngine *engine = m_loader->engine();
+    Q_ASSERT(engine->thread() == QThread::currentThread());
+    iface->initializeEngine(engine, uri);
 }
 
 void QQmlTypeLoaderThread::initializeEngineExtensionMain(QQmlEngineExtensionInterface *iface,
                                                 const char *uri)
 {
-    Q_ASSERT(m_loader->engine()->thread() == QThread::currentThread());
-    iface->initializeEngine(m_loader->engine(), uri);
+    // We can use m_engine because we're on the engine thread.
+    QQmlEngine *engine = m_loader->engine();
+    Q_ASSERT(engine->thread() == QThread::currentThread());
+    iface->initializeEngine(engine, uri);
 }
 
 void QQmlTypeLoaderThread::dropThread(const QQmlDataBlob::Ptr &b)

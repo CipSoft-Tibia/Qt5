@@ -10,7 +10,8 @@
 #include "components/android_autofill/browser/android_autofill_provider_bridge.h"
 #include "components/android_autofill/browser/autofill_provider.h"
 #include "components/android_autofill/browser/form_data_android.h"
-#include "components/autofill/core/browser/autofill_manager.h"
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/foundations/autofill_manager.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/webauthn/android/webauthn_cred_man_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -88,19 +89,18 @@ class AndroidAutofillProvider : public AutofillProvider,
       const FormData& form,
       const FormFieldData& field,
       AutofillSuggestionTriggerSource /*unused_trigger_source*/) override;
-  void OnTextFieldDidChange(AndroidAutofillManager* manager,
-                            const FormData& form,
-                            const FormFieldData& field,
-                            const base::TimeTicks timestamp) override;
+  void OnTextFieldValueChanged(AndroidAutofillManager* manager,
+                               const FormData& form,
+                               const FormFieldData& field,
+                               const base::TimeTicks timestamp) override;
   void OnTextFieldDidScroll(AndroidAutofillManager* manager,
                             const FormData& form,
                             const FormFieldData& field) override;
-  void OnSelectControlDidChange(AndroidAutofillManager* manager,
-                                const FormData& form,
-                                const FormFieldData& field) override;
+  void OnSelectControlSelectionChanged(AndroidAutofillManager* manager,
+                                       const FormData& form,
+                                       const FormFieldData& field) override;
   void OnFormSubmitted(AndroidAutofillManager* manager,
                        const FormData& form,
-                       bool known_success,
                        mojom::SubmissionSource source) override;
   void OnFocusOnNonFormField(AndroidAutofillManager* manager) override;
   void OnFocusOnFormField(AndroidAutofillManager* manager,
@@ -231,7 +231,7 @@ class AndroidAutofillProvider : public AutofillProvider,
         const FormStructure& form_structure);
 
     // Creates a map as expected by `FormDataAndroid::UpdateFieldTypes`.
-    base::flat_map<FieldGlobalId, AutofillType> ToFieldTypeMap() const;
+    base::flat_map<FieldGlobalId, FieldType> ToFieldTypeMap() const;
 
     std::optional<FieldGlobalId> username_field_id;
     std::optional<FieldGlobalId> password_field_id;
@@ -263,6 +263,7 @@ class AndroidAutofillProvider : public AutofillProvider,
   void OnCredManUiClosed(
       FormGlobalId form_id,
       std::optional<AndroidAutofillProviderBridge::FieldInfo> field_to_focus,
+      webauthn::WebAuthnCredManDelegate::State has_passkeys,
       bool success);
 
   // Returns true if CredMan *may* be shown for the given field. It only returns
@@ -348,9 +349,6 @@ class AndroidAutofillProvider : public AutofillProvider,
   content::GlobalRenderFrameHostId last_queried_field_rfh_id_;
 
   base::WeakPtr<AndroidAutofillManager> manager_;
-  bool check_submission_ = false;
-  // Valid only if check_submission_ is true.
-  mojom::SubmissionSource pending_submission_source_;
 
   static constexpr SessionId kMinimumSessionId = SessionId(1);
   static constexpr SessionId kMaximumSessionId = SessionId(0xffff);

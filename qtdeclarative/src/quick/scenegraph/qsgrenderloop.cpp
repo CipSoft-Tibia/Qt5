@@ -580,14 +580,6 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
     if (!ensureRhi(window, data))
         return;
 
-    bool lastDirtyWindow = true;
-    for (auto it = m_windows.cbegin(), end = m_windows.cend(); it != end; ++it) {
-        if (it->updatePending) {
-            lastDirtyWindow = false;
-            break;
-        }
-    }
-
     cd->deliveryAgentPrivate()->flushFrameSynchronousEvents(window);
     // Event delivery/processing triggered the window to be deleted or stop rendering.
     if (!m_windows.contains(window))
@@ -689,8 +681,7 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
     data.rhi->makeThreadLocalNativeContextCurrent();
 
     cd->syncSceneGraph();
-    if (lastDirtyWindow)
-        data.rc->endSync();
+    data.rc->endSync();
 
     if (profileFrames)
         syncTime = renderTimer.nsecsElapsed();
@@ -824,15 +815,11 @@ void QSGGuiThreadRenderLoop::maybeUpdate(QQuickWindow *window)
     if (winDataIt == m_windows.end())
         return;
 
-    // Even if the window is not renderable,
-    // renderWindow() called on different window
-    // should not delete QSGTexture's
-    // from this unrenderable window.
-    winDataIt->updatePending = true;
-
     QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
     if (!cd->isRenderable())
         return;
+
+    winDataIt->updatePending = true;
 
     // An updatePolish() implementation may call update() to get the QQuickItem
     // dirtied. That's fine but it also leads to calling this function.

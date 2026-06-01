@@ -87,7 +87,7 @@ bool ReadHashAndVerifyArchive(base::File* file,
   size_t len = 0;
   while ((len = ReadAndHashBuffer(buffer, std::size(buffer), file, hash)) > 0) {
     for (auto& verifier : verifiers) {
-      verifier->VerifyUpdate(base::make_span(buffer, len));
+      verifier->VerifyUpdate(base::span(buffer, len));
     }
   }
   for (auto& verifier : verifiers) {
@@ -213,14 +213,13 @@ VerifierResult VerifyCrx3(
       auto v = std::make_unique<crypto::SignatureVerifier>();
       static_assert(sizeof(unsigned char) == sizeof(uint8_t),
                     "Unsupported char size.");
-      if (!v->VerifyInit(proof_type.second,
-                         base::as_bytes(base::make_span(sig)),
-                         base::as_bytes(base::make_span(key)))) {
+      if (!v->VerifyInit(proof_type.second, base::as_byte_span(sig),
+                         base::as_byte_span(key))) {
         return VerifierResult::ERROR_SIGNATURE_INITIALIZATION_FAILED;
       }
-      v->VerifyUpdate(base::as_bytes(base::make_span(kSignatureContext)));
+      v->VerifyUpdate(base::as_byte_span(kSignatureContext));
       v->VerifyUpdate(header_size_octets);
-      v->VerifyUpdate(base::as_bytes(base::make_span(signed_header_data_str)));
+      v->VerifyUpdate(base::as_byte_span(signed_header_data_str));
       verifiers.push_back(std::move(v));
     }
   }
@@ -296,14 +295,13 @@ VerifierResult Verify(
   }
 
   // Finalize file hash.
-  uint8_t final_hash[crypto::kSHA256Length] = {};
-  file_hash->Finish(final_hash, sizeof(final_hash));
+  std::array<uint8_t, crypto::kSHA256Length> final_hash;
+  file_hash->Finish(final_hash);
   if (!required_file_hash.empty()) {
     if (required_file_hash.size() != crypto::kSHA256Length) {
       return VerifierResult::ERROR_EXPECTED_HASH_INVALID;
     }
-    if (!crypto::SecureMemEqual(final_hash, required_file_hash.data(),
-                                crypto::kSHA256Length)) {
+    if (!crypto::SecureMemEqual(final_hash, required_file_hash)) {
       return VerifierResult::ERROR_FILE_HASH_FAILED;
     }
   }

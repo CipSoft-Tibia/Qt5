@@ -29,7 +29,7 @@ class QEventDispatcherWin32Private;
 // forward declaration
 LRESULT QT_WIN_CALLBACK qt_internal_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp);
 
-class Q_CORE_EXPORT QEventDispatcherWin32 : public QAbstractEventDispatcher
+class Q_CORE_EXPORT QEventDispatcherWin32 : public QAbstractEventDispatcherV2
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QEventDispatcherWin32)
@@ -43,12 +43,12 @@ public:
     void registerSocketNotifier(QSocketNotifier *notifier) override;
     void unregisterSocketNotifier(QSocketNotifier *notifier) override;
 
-    void registerTimer(int timerId, qint64 interval, Qt::TimerType timerType, QObject *object) override;
-    bool unregisterTimer(int timerId) override;
-    bool unregisterTimers(QObject *object) override;
-    QList<TimerInfo> registeredTimers(QObject *object) const override;
-
-    int remainingTime(int timerId) override;
+    void registerTimer(Qt::TimerId timerId, Duration interval, Qt::TimerType timerType,
+                       QObject *object) final;
+    bool unregisterTimer(Qt::TimerId timerId) final;
+    bool unregisterTimers(QObject *object) final;
+    QList<TimerInfoV2> timersForObject(QObject *object) const final;
+    Duration remainingTime(Qt::TimerId timerId) const final;
 
     void wakeUp() override;
     void interrupt() override;
@@ -85,7 +85,7 @@ struct QSockFd {
 typedef QHash<qintptr, QSockFd> QSFDict;
 
 struct WinTimerInfo {                           // internal timer info
-    qint64 interval;
+    qint64 interval;                            // - in milliseconds
     quint64 timeout;                            // - when to actually fire
     QObject *dispatcher;
     QObject *obj;                               // - object to receive events
@@ -93,6 +93,8 @@ struct WinTimerInfo {                           // internal timer info
     Qt::TimerType timerType;
     UINT fastTimerId;
     bool inTimerEvent;
+    bool usesExtendedInterval;
+    bool isSecondTimeout;
 };
 
 class QZeroTimerEvent : public QTimerEvent

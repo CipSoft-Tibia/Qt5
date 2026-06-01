@@ -4,6 +4,7 @@
 #include "cppcodeparser.h"
 
 #include "access.h"
+#include "qmlenumnode.h"
 #include "classnode.h"
 #include "clangcodeparser.h"
 #include "collectionnode.h"
@@ -13,6 +14,7 @@
 #include "externalpagenode.h"
 #include "functionnode.h"
 #include "generator.h"
+#include "genustypes.h"
 #include "headernode.h"
 #include "namespacenode.h"
 #include "qdocdatabase.h"
@@ -20,6 +22,7 @@
 #include "qmlpropertyarguments.h"
 #include "qmlpropertynode.h"
 #include "sharedcommentnode.h"
+#include "utilities.h"
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qmap.h>
@@ -34,12 +37,12 @@ QT_BEGIN_NAMESPACE
   All these can appear in a C++ namespace. Don't add
   anything that can't be in a C++ namespace.
  */
-static const QMap<QString, Node::NodeType> s_nodeTypeMap{
-    { COMMAND_NAMESPACE, Node::Namespace }, { COMMAND_NAMESPACE, Node::Namespace },
-    { COMMAND_CLASS, Node::Class },         { COMMAND_STRUCT, Node::Struct },
-    { COMMAND_UNION, Node::Union },         { COMMAND_ENUM, Node::Enum },
-    { COMMAND_TYPEALIAS, Node::TypeAlias }, { COMMAND_TYPEDEF, Node::Typedef },
-    { COMMAND_PROPERTY, Node::Property },   { COMMAND_VARIABLE, Node::Variable }
+static const QMap<QString, NodeType> s_nodeTypeMap{
+    { COMMAND_NAMESPACE, NodeType::Namespace }, { COMMAND_NAMESPACE, NodeType::Namespace },
+    { COMMAND_CLASS, NodeType::Class },         { COMMAND_STRUCT, NodeType::Struct },
+    { COMMAND_UNION, NodeType::Union },         { COMMAND_ENUM, NodeType::Enum },
+    { COMMAND_TYPEALIAS, NodeType::TypeAlias }, { COMMAND_TYPEDEF, NodeType::Typedef },
+    { COMMAND_PROPERTY, NodeType::Property },   { COMMAND_VARIABLE, NodeType::Variable }
 };
 
 typedef bool (Node::*NodeTypeTestFunc)() const;
@@ -52,7 +55,7 @@ static const QMap<QString, NodeTypeTestFunc> s_nodeTypeTestFuncMap{
 };
 
 CppCodeParser::CppCodeParser(FnCommandParser&& parser)
-    : fn_parser{parser}
+    : fn_parser{std::move(parser)}
 {
     Config &config = Config::instance();
     QStringList exampleFilePatterns{config.get(CONFIG_EXAMPLES
@@ -95,13 +98,13 @@ Node *CppCodeParser::processTopicCommand(const Doc &doc, const QString &command,
           this way to allow the writer to refer to the entity
           without including the namespace qualifier.
          */
-        Node::NodeType type = s_nodeTypeMap[command];
+        NodeType type = s_nodeTypeMap[command];
         QStringList words = arg.first.split(QLatin1Char(' '));
         QStringList path;
         qsizetype idx = 0;
         Node *node = nullptr;
 
-        if (type == Node::Variable && words.size() > 1)
+        if (type == NodeType::Variable && words.size() > 1)
             idx = words.size() - 1;
         path = words[idx].split("::");
 
@@ -110,10 +113,10 @@ Node *CppCodeParser::processTopicCommand(const Doc &doc, const QString &command,
         if (node == nullptr && command == COMMAND_CLASS) {
             node = database->findNodeByNameAndType(path, &Node::isTypeAlias);
             if (node) {
-                auto access = node->access();
-                auto loc = node->location();
-                auto templateDecl = node->templateDecl();
-                node = new ClassNode(Node::Class, node->parent(), node->name());
+                const auto &access = node->access();
+                const auto &loc = node->location();
+                const auto &templateDecl = node->templateDecl();
+                node = new ClassNode(NodeType::Class, node->parent(), node->name());
                 node->setAccess(access);
                 node->setLocation(loc);
                 node->setTemplateDecl(templateDecl);
@@ -126,7 +129,7 @@ Node *CppCodeParser::processTopicCommand(const Doc &doc, const QString &command,
                                 .arg(arg.first, command));
             }
         } else if (node->isAggregate()) {
-            if (type == Node::Namespace) {
+            if (type == NodeType::Namespace) {
                 auto *ns = static_cast<NamespaceNode *>(node);
                 ns->markSeen();
                 ns->setWhereDocumented(ns->tree()->camelCaseModuleName());
@@ -172,7 +175,7 @@ Node *CppCodeParser::processTopicCommand(const Doc &doc, const QString &command,
     } else if (command == COMMAND_QMLTYPE ||
                command == COMMAND_QMLVALUETYPE ||
                command == COMMAND_QMLBASICTYPE) {
-        auto nodeType = (command == COMMAND_QMLTYPE) ? Node::QmlType : Node::QmlValueType;
+        auto nodeType = (command == COMMAND_QMLTYPE) ? NodeType::QmlType : NodeType::QmlValueType;
         QString qmid;
         if (auto args = doc.metaCommandArgs(COMMAND_INQMLMODULE); !args.isEmpty())
             qmid = args.first().first;
@@ -190,11 +193,35 @@ Node *CppCodeParser::processTopicCommand(const Doc &doc, const QString &command,
             database->addToQmlModule(qmid, qcn);
         qcn->setLocation(doc.startLocation());
         return qcn;
+    } else if (command == COMMAND_QMLENUM) {
+        return processQmlEnumTopic(doc.enumItemNames(), doc.location(), arg.first);
     } else if ((command == COMMAND_QMLSIGNAL) || (command == COMMAND_QMLMETHOD)
                || (command == COMMAND_QMLATTACHEDSIGNAL) || (command == COMMAND_QMLATTACHEDMETHOD)) {
         Q_UNREACHABLE();
     }
     return nullptr;
+}
+
+/*!
+    Finds a QmlTypeNode \a name, under the specific \a moduleName, from the primary tree.
+    If one is not found, creates one.
+
+    Returns the found or created node.
+*/
+QmlTypeNode *findOrCreateQmlType(const QString &moduleName, const QString &name, const Location &location)
+{
+    QDocDatabase* database = QDocDatabase::qdocDB();
+    auto *aggregate = database->findQmlTypeInPrimaryTree(moduleName, name);
+    // Note: Constructing a QmlType node by default, as opposed to QmlValueType.
+    // This may lead to unexpected behavior if documenting \qmlvaluetype's members
+    // before the type itself.
+    if (!aggregate) {
+        aggregate = new QmlTypeNode(database->primaryTreeRoot(), name, NodeType::QmlType);
+        aggregate->setLocation(location);
+        if (!moduleName.isEmpty())
+            database->addToQmlModule(moduleName, aggregate);
+    }
+    return aggregate;
 }
 
 std::vector<TiedDocumentation> CppCodeParser::processQmlProperties(const UntiedDocumentation &untied)
@@ -213,18 +240,7 @@ std::vector<TiedDocumentation> CppCodeParser::processQmlProperties(const UntiedD
         return {};
 
     NodeList sharedNodes;
-    QDocDatabase *database = QDocDatabase::qdocDB();
-    QmlTypeNode *qmlType = database->findQmlTypeInPrimaryTree((*firstTopicArgs).m_module,
-                                                              (*firstTopicArgs).m_qmltype);
-    // Note: Constructing a QmlType node by default, as opposed to QmlValueType.
-    // This may lead to unexpected behavior if documenting \qmlvaluetype's properties
-    // before the type itself.
-    if (qmlType == nullptr) {
-        qmlType = new QmlTypeNode(database->primaryTreeRoot(), (*firstTopicArgs).m_qmltype, Node::QmlType);
-        qmlType->setLocation(doc.startLocation());
-        if (!(*firstTopicArgs).m_module.isEmpty())
-            database->addToQmlModule((*firstTopicArgs).m_module, qmlType);
-    }
+    auto *qmlType = findOrCreateQmlType((*firstTopicArgs).m_module, (*firstTopicArgs).m_qmltype, doc.startLocation());
 
     for (const auto &topicCommand : topics) {
         QString cmd = topicCommand.m_topic;
@@ -232,7 +248,7 @@ std::vector<TiedDocumentation> CppCodeParser::processQmlProperties(const UntiedD
             bool attached = cmd.contains(QLatin1String("attached"));
             if (auto qpa = QmlPropertyArguments::parse(topicCommand.m_args, doc.location(),
                     QmlPropertyArguments::ParsingOptions::RequireQualifiedPath)) {
-                if (qmlType != database->findQmlTypeInPrimaryTree(qpa->m_module, qpa->m_qmltype)) {
+                if (qmlType != QDocDatabase::qdocDB()->findQmlTypeInPrimaryTree(qpa->m_module, qpa->m_qmltype)) {
                     doc.startLocation().warning(
                             QStringLiteral(
                                     "All properties in a group must belong to the same type: '%1'")
@@ -253,7 +269,7 @@ std::vector<TiedDocumentation> CppCodeParser::processQmlProperties(const UntiedD
                 auto *qpn = new QmlPropertyNode(qmlType, qpa->m_name, qpa->m_type, attached);
                 qpn->setIsList(qpa->m_isList);
                 qpn->setLocation(doc.startLocation());
-                qpn->setGenus(Node::QML);
+                qpn->setGenus(Genus::QML);
 
                 tied.emplace_back(TiedDocumentation{doc, qpn});
 
@@ -403,10 +419,15 @@ void CppCodeParser::processMetaCommand(const Doc &doc, const QString &command,
     } else if (command == COMMAND_QMLDEFAULT) {
         node->markDefault();
     } else if (command == COMMAND_QMLENUMERATORSFROM) {
-        if (!node->isQmlProperty()) {
-            doc.location().warning("Ignored '\\%1', applies only to '\\%2'"_L1
-                    .arg(command, COMMAND_QMLPROPERTY));
-        } else if (!static_cast<QmlPropertyNode*>(node)->setEnumNode(argPair.first, argPair.second)) {
+        NativeEnum *nativeEnum{nullptr};
+        if (auto *ne_if = dynamic_cast<NativeEnumInterface *>(node))
+            nativeEnum = ne_if->nativeEnum();
+        else {
+            doc.location().warning("Ignored '\\%1', applies only to '\\%2' and '\\%3'"_L1
+                    .arg(command, COMMAND_QMLPROPERTY, COMMAND_QMLENUM));
+            return;
+        }
+        if (!nativeEnum->resolve(argPair.first, argPair.second)) {
             doc.location().warning("Failed to find C++ enumeration '%2' passed to \\%1"_L1
                     .arg(command, arg), "Use \\value commands instead"_L1);
         }
@@ -605,6 +626,39 @@ void CppCodeParser::processMetaCommands(const Doc &doc, Node *node)
 }
 
 /*!
+    Creates an EnumNode instance explicitly for the \qmlenum command.
+    Utilizes QmlPropertyArguments for argument (\a arg) parsing.
+
+    Adds a list of \a enumItemNames as enumerators to facilitate linking
+    via enumerator names.
+*/
+EnumNode *CppCodeParser::processQmlEnumTopic(const QStringList &enumItemNames,
+                                             const Location &location, const QString &arg)
+{
+    if (arg.isEmpty()) {
+        location.warning(u"Missing argument to \\%1 command."_s.arg(COMMAND_QMLENUM));
+        return nullptr;
+    }
+
+    auto parsedArgs = QmlPropertyArguments::parse(arg, location,
+            QmlPropertyArguments::ParsingOptions::RequireQualifiedPath |
+            QmlPropertyArguments::ParsingOptions::IgnoreType);
+
+    if (!parsedArgs)
+        return nullptr;
+
+    auto *qmlType = findOrCreateQmlType((*parsedArgs).m_module, (*parsedArgs).m_qmltype, location);
+
+    auto *enumNode = new QmlEnumNode(qmlType, (*parsedArgs).m_name);
+    enumNode->setLocation(location);
+
+    for (const auto &item : enumItemNames)
+        enumNode->addItem(EnumItem(item, 0));
+
+    return enumNode;
+}
+
+/*!
  Parse QML signal/method topic commands.
  */
 FunctionNode *CppCodeParser::parseOtherFuncArg(const QString &topic, const Location &location,
@@ -640,18 +694,7 @@ FunctionNode *CppCodeParser::parseOtherFuncArg(const QString &topic, const Locat
     }
     funcName = colonSplit.last();
 
-    QDocDatabase* database = QDocDatabase::qdocDB();
-
-    auto *aggregate = database->findQmlTypeInPrimaryTree(moduleName, elementName);
-    // Note: Constructing a QmlType node by default, as opposed to QmlValueType.
-    // This may lead to unexpected behavior if documenting \qmlvaluetype's methods
-    // before the type itself.
-    if (!aggregate) {
-        aggregate = new QmlTypeNode(database->primaryTreeRoot(), elementName, Node::QmlType);
-        aggregate->setLocation(location);
-        if (!moduleName.isEmpty())
-            database->addToQmlModule(moduleName, aggregate);
-    }
+    auto *aggregate = findOrCreateQmlType(moduleName, elementName, location);
 
     QString params;
     QStringList leftParenSplit = funcArg.split('(');
@@ -762,8 +805,7 @@ void CppCodeParser::setExampleFileLists(ExampleNode *en)
                     mainCpp = fileName;
                 return true;
             }
-            return fileName.contains("/qrc_") || fileName.contains("/moc_")
-                    || fileName.contains("/ui_");
+            return Utilities::isGeneratedFile(fileName);
         };
 
         exampleFiles.erase(
@@ -901,11 +943,11 @@ static void checkModuleInclusion(Node *n)
     if (n->physicalModuleName().isEmpty()) {
         if (n->isInAPI() && !n->name().isEmpty()) {
             switch (n->nodeType()) {
-            case Node::Class:
-            case Node::Struct:
-            case Node::Union:
-            case Node::Namespace:
-            case Node::HeaderFile:
+            case NodeType::Class:
+            case NodeType::Struct:
+            case NodeType::Union:
+            case NodeType::Namespace:
+            case NodeType::HeaderFile:
                 break;
             default:
                 return;

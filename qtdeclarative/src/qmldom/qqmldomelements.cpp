@@ -60,17 +60,17 @@ Path moduleIndexPath(const QString &uri, int majorVersion, const ErrorHandler &e
         Path::myErrors()
                 .error(Path::tr("Invalid module name in import %1").arg(uri))
                 .handle(errorHandler);
-    return Path::Root(PathRoot::Env).field(Fields::moduleIndexWithUri).key(uri).key(version);
+    return Path::fromRoot(PathRoot::Env).withField(Fields::moduleIndexWithUri).withKey(uri).withKey(version);
 }
 
 Path moduleScopePath(const QString &uri, Version version, const ErrorHandler &)
 {
-    return Path::Root(PathRoot::Env)
-            .field(Fields::moduleIndexWithUri)
-            .key(uri)
-            .key(version.majorSymbolicString())
-            .field(Fields::moduleScope)
-            .key(version.minorString());
+    return Path::fromRoot(PathRoot::Env)
+            .withField(Fields::moduleIndexWithUri)
+            .withKey(uri)
+            .withKey(version.majorSymbolicString())
+            .withField(Fields::moduleScope)
+            .withKey(version.minorString());
 }
 
 Path moduleScopePath(const QString &uri, const QString &version, const ErrorHandler &errorHandler)
@@ -99,8 +99,8 @@ bool CommentableDomElement::iterateDirectSubpaths(const DomItem &self, DirectVis
 void Component::updatePathFromOwner(const Path &newPath)
 {
     DomElement::updatePathFromOwner(newPath);
-    updatePathFromOwnerMultiMap(m_enumerations, newPath.field(Fields::enumerations));
-    updatePathFromOwnerQList(m_objects, newPath.field(Fields::objects));
+    updatePathFromOwnerMultiMap(m_enumerations, newPath.withField(Fields::enumerations));
+    updatePathFromOwnerQList(m_objects, newPath.withField(Fields::objects));
 }
 
 Component::Component(const QString &name) : CommentableDomElement(Path()), m_name(name) { }
@@ -133,7 +133,7 @@ DomItem Component::field(const DomItem &self, QStringView name) const
 
 Path Component::addObject(const QmlObject &object, QmlObject **oPtr)
 {
-    return appendUpdatableElementInQList(pathFromOwner().field(Fields::objects), m_objects, object,
+    return appendUpdatableElementInQList(pathFromOwner().withField(Fields::objects), m_objects, object,
                                          oPtr);
 }
 
@@ -155,7 +155,7 @@ bool QmlComponent::iterateDirectSubpaths(const DomItem &self, DirectVisitor visi
 void QmlComponent::updatePathFromOwner(const Path &newPath)
 {
     Component::updatePathFromOwner(newPath);
-    updatePathFromOwnerMultiMap(m_ids, newPath.field(Fields::annotations));
+    updatePathFromOwnerMultiMap(m_ids, newPath.withField(Fields::annotations));
 }
 
 void QmlComponent::writeOut(const DomItem &self, OutWriter &lw) const
@@ -378,12 +378,12 @@ bool Id::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 
 void Id::updatePathFromOwner(const Path &newPath)
 {
-    updatePathFromOwnerQList(annotations, newPath.field(Fields::annotations));
+    updatePathFromOwnerQList(annotations, newPath.withField(Fields::annotations));
 }
 
 Path Id::addAnnotation(const Path &selfPathFromOwner, const QmlObject &annotation, QmlObject **aPtr)
 {
-    return appendUpdatableElementInQList(selfPathFromOwner.field(Fields::annotations), annotations,
+    return appendUpdatableElementInQList(selfPathFromOwner.withField(Fields::annotations), annotations,
                                          annotation, aPtr);
 }
 
@@ -406,7 +406,7 @@ bool QmlObject::iterateBaseDirectSubpaths(const DomItem &self, DirectVisitor vis
     cont = cont && self.dvWrapField(visitor, Fields::annotations, m_annotations);
     cont = cont && self.dvItemField(visitor, Fields::propertyInfos, [this, &self]() {
         return self.subMapItem(Map(
-                pathFromOwner().field(Fields::propertyInfos),
+                pathFromOwner().withField(Fields::propertyInfos),
                 [&self](const DomItem &map, const QString &k) {
                     auto pInfo = self.propertyInfoWithName(k);
                     return map.wrap(PathEls::Key(k), pInfo);
@@ -425,12 +425,12 @@ bool QmlObject::iterateBaseDirectSubpaths(const DomItem &self, DirectVisitor vis
 QList<QString> QmlObject::fields() const
 {
     static QList<QString> myFields(
-            { QString::fromUtf16(Fields::comments), QString::fromUtf16(Fields::idStr),
-              QString::fromUtf16(Fields::name), QString::fromUtf16(Fields::prototypes),
-              QString::fromUtf16(Fields::nextScope), QString::fromUtf16(Fields::propertyDefs),
-              QString::fromUtf16(Fields::bindings), QString::fromUtf16(Fields::methods),
-              QString::fromUtf16(Fields::children), QString::fromUtf16(Fields::annotations),
-              QString::fromUtf16(Fields::propertyInfos) });
+            { Fields::comments.toString(), Fields::idStr.toString(),
+              Fields::name.toString(), Fields::prototypes.toString(),
+              Fields::nextScope.toString(), Fields::propertyDefs.toString(),
+              Fields::bindings.toString(), Fields::methods.toString(),
+              Fields::children.toString(), Fields::annotations.toString(),
+              Fields::propertyInfos.toString() });
     return myFields;
 }
 
@@ -479,7 +479,7 @@ DomItem QmlObject::field(const DomItem &self, QStringView name) const
     if (name == Fields::propertyInfos) {
         // Need to explicitly copy self here since we might store this and call it later.
         return self.subMapItem(Map(
-                pathFromOwner().field(Fields::propertyInfos),
+                pathFromOwner().withField(Fields::propertyInfos),
                 [copiedSelf = self](const DomItem &map, const QString &k) {
                     return map.wrap(PathEls::Key(k), copiedSelf.propertyInfoWithName(k));
                 },
@@ -493,7 +493,7 @@ DomItem QmlObject::field(const DomItem &self, QStringView name) const
         return self.subDataItem(PathEls::Field(Fields::defaultPropertyName),
                                 defaultPropertyName(self));
     }
-    static QStringList knownLookups({ QString::fromUtf16(Fields::fileLocationsTree) });
+    static QStringList knownLookups({ Fields::fileLocationsTree.toString() });
     if (!knownLookups.contains(name)) {
         qCWarning(domLog()) << "Asked non existing field " << name << " in QmlObject "
                             << pathFromOwner();
@@ -504,11 +504,11 @@ DomItem QmlObject::field(const DomItem &self, QStringView name) const
 void QmlObject::updatePathFromOwner(const Path &newPath)
 {
     DomElement::updatePathFromOwner(newPath);
-    updatePathFromOwnerMultiMap(m_propertyDefs, newPath.field(Fields::propertyDefs));
-    updatePathFromOwnerMultiMap(m_bindings, newPath.field(Fields::bindings));
-    updatePathFromOwnerMultiMap(m_methods, newPath.field(Fields::methods));
-    updatePathFromOwnerQList(m_children, newPath.field(Fields::children));
-    updatePathFromOwnerQList(m_annotations, newPath.field(Fields::annotations));
+    updatePathFromOwnerMultiMap(m_propertyDefs, newPath.withField(Fields::propertyDefs));
+    updatePathFromOwnerMultiMap(m_bindings, newPath.withField(Fields::bindings));
+    updatePathFromOwnerMultiMap(m_methods, newPath.withField(Fields::methods));
+    updatePathFromOwnerQList(m_children, newPath.withField(Fields::children));
+    updatePathFromOwnerQList(m_annotations, newPath.withField(Fields::annotations));
 }
 
 QString QmlObject::localDefaultPropertyName() const
@@ -726,10 +726,6 @@ void QmlObject::writeOutId(const DomItem &self, OutWriter &ow) const
                 .writeRegion(IdColonTokenRegion)
                 .ensureSpace()
                 .writeRegion(IdNameRegion, idStr());
-        if (ow.lineWriter.options().attributesSequence
-            == LineWriterOptions::AttributesSequence::Normalize) {
-            ow.ensureNewline(2);
-        }
         if (myId) {
             myId.writeOutPost(ow);
             ow.ensureNewline(1);
@@ -737,7 +733,7 @@ void QmlObject::writeOutId(const DomItem &self, OutWriter &ow) const
     }
 }
 
-QList<QPair<SourceLocation, DomItem>> QmlObject::orderOfAttributes(const DomItem &self,
+QList<std::pair<SourceLocation, DomItem>> QmlObject::orderOfAttributes(const DomItem &self,
                                                                    const DomItem &component) const
 {
     auto startLoc = [&](const FileLocations::Tree &l) {
@@ -746,7 +742,7 @@ QList<QPair<SourceLocation, DomItem>> QmlObject::orderOfAttributes(const DomItem
         return SourceLocation(posOfNewElements, 0, 0, 0);
     };
 
-    QList<QPair<SourceLocation, DomItem>> attribs;
+    QList<std::pair<SourceLocation, DomItem>> attribs;
     const auto objLocPtr = FileLocations::treeOf(self);
     FileLocations::Tree componentLoc;
     if (component && objLocPtr)
@@ -808,10 +804,9 @@ QList<QPair<SourceLocation, DomItem>> QmlObject::orderOfAttributes(const DomItem
     return attribs;
 }
 
-void QmlObject::writeOutAttributes(const DomItem &self, OutWriter &ow, const DomItem &component,
+void QmlObject::writeOutAttributes(OutWriter &ow, const Attributes &attribs,
                                    const QString &code) const
 {
-    const QList<QPair<SourceLocation, DomItem>> attribs = orderOfAttributes(self, component);
     qsizetype iAttr = 0;
     while (iAttr != attribs.size()) {
         auto &el = attribs[iAttr++];
@@ -1073,8 +1068,8 @@ void QmlObject::writeOutSortedAttributes(const DomItem &self, OutWriter &ow,
 void QmlObject::writeOut(const DomItem &self, OutWriter &ow, const QString &onTarget) const
 {
     bool isRootObject = pathFromOwner().length() == 5
-            && pathFromOwner()[0] == Path::Field(Fields::components)
-            && pathFromOwner()[3] == Path::Field(Fields::objects);
+            && pathFromOwner()[0] == Path::fromField(Fields::components)
+            && pathFromOwner()[3] == Path::fromField(Fields::objects);
     ow.writeRegion(IdentifierRegion, name());
     if (!onTarget.isEmpty()) {
         ow.ensureSpace().writeRegion(OnTokenRegion).ensureSpace().writeRegion(OnTargetRegion,
@@ -1084,18 +1079,25 @@ void QmlObject::writeOut(const DomItem &self, OutWriter &ow, const QString &onTa
     ow.writeRegion(LeftBraceRegion);
     int baseIndent = ow.increaseIndent();
 
-    // *always* put id first
-    writeOutId(self, ow);
-
     DomItem component;
     if (isRootObject)
         component = self.containingObject();
+    const Attributes attributes = orderOfAttributes(self, component);
+
+    // *always* put id first
+    writeOutId(self, ow);
+
+    if (!idStr().isEmpty() && ow.lineWriter.options().attributesSequence
+                == LineWriterOptions::AttributesSequence::Normalize) {
+        ow.ensureNewline(attributes.empty() ? 1 : 2);
+    }
+
     if (ow.lineWriter.options().attributesSequence
         == LineWriterOptions::AttributesSequence::Preserve) {
         QString code;
         if (std::shared_ptr<QmlFile> qmlFilePtr = self.ownerAs<QmlFile>())
             code = qmlFilePtr->code();
-        writeOutAttributes(self, ow, component, code);
+        writeOutAttributes(ow, attributes, code);
     } else {
         writeOutSortedAttributes(self, ow, component);
     }
@@ -1259,16 +1261,16 @@ void Binding::setValue(std::unique_ptr<BindingValue> &&value)
 
 Path Binding::addAnnotation(const Path &selfPathFromOwner, const QmlObject &annotation, QmlObject **aPtr)
 {
-    return appendUpdatableElementInQList(selfPathFromOwner.field(Fields::annotations),
+    return appendUpdatableElementInQList(selfPathFromOwner.withField(Fields::annotations),
                                          m_annotations, annotation, aPtr);
 }
 
 void Binding::updatePathFromOwner(const Path &newPath)
 {
-    Path base = newPath.field(Fields::annotations);
+    Path base = newPath.withField(Fields::annotations);
     if (m_value)
-        m_value->updatePathFromOwner(newPath.field(Fields::value));
-    updatePathFromOwnerQList(m_annotations, newPath.field(Fields::annotations));
+        m_value->updatePathFromOwner(newPath.withField(Fields::value));
+    updatePathFromOwnerQList(m_annotations, newPath.withField(Fields::annotations));
 }
 
 void Binding::writeOut(const DomItem &self, OutWriter &lw) const
@@ -1369,14 +1371,14 @@ bool AttributeInfo::iterateDirectSubpaths(const DomItem &self, DirectVisitor vis
 Path AttributeInfo::addAnnotation(const Path &selfPathFromOwner, const QmlObject &annotation,
                                   QmlObject **aPtr)
 {
-    return appendUpdatableElementInQList(selfPathFromOwner.field(Fields::annotations), annotations,
+    return appendUpdatableElementInQList(selfPathFromOwner.withField(Fields::annotations), annotations,
                                          annotation, aPtr);
 }
 
 void AttributeInfo::updatePathFromOwner(const Path &newPath)
 {
-    Path base = newPath.field(Fields::annotations);
-    updatePathFromOwnerQList(annotations, newPath.field(Fields::annotations));
+    Path base = newPath.withField(Fields::annotations);
+    updatePathFromOwnerQList(annotations, newPath.withField(Fields::annotations));
 }
 
 bool EnumDecl::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
@@ -1391,7 +1393,7 @@ bool EnumDecl::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor)
 void EnumDecl::updatePathFromOwner(const Path &newPath)
 {
     DomElement::updatePathFromOwner(newPath);
-    updatePathFromOwnerQList(m_annotations, newPath.field(Fields::annotations));
+    updatePathFromOwnerQList(m_annotations, newPath.withField(Fields::annotations));
 }
 
 void EnumDecl::setAnnotations(const QList<QmlObject> &annotations)
@@ -1401,7 +1403,7 @@ void EnumDecl::setAnnotations(const QList<QmlObject> &annotations)
 
 Path EnumDecl::addAnnotation(const QmlObject &annotation, QmlObject **aPtr)
 {
-    return appendUpdatableElementInQList(pathFromOwner().field(Fields::annotations), m_annotations,
+    return appendUpdatableElementInQList(pathFromOwner().withField(Fields::annotations), m_annotations,
                                          annotation, aPtr);
 }
 
@@ -1424,7 +1426,7 @@ QList<Path> ImportScope::allSources(const DomItem &self) const
 {
     DomItem top = self.top();
     DomItem env = top.environment();
-    Path selfPath = self.canonicalPath().field(Fields::allSources);
+    Path selfPath = self.canonicalPath().withField(Fields::allSources);
     RefCacheEntry cached = (env ? RefCacheEntry::forPath(env, selfPath) : RefCacheEntry());
     if (cached.cached == RefCacheEntry::Cached::All)
         return cached.canonicalPaths;
@@ -1478,7 +1480,7 @@ bool ImportScope::iterateDirectSubpaths(const DomItem &self, DirectVisitor visit
     cont = cont && self.dvReferencesField(visitor, Fields::importSources, m_importSourcePaths);
     cont = cont && self.dvItemField(visitor, Fields::allSources, [this, &self]() -> DomItem {
         return self.subListItem(List::fromQList<Path>(
-                self.pathFromOwner().field(Fields::allSources), allSources(self),
+                self.pathFromOwner().withField(Fields::allSources), allSources(self),
                 [](const DomItem &list, const PathEls::PathComponent &p, const Path &el) {
                     return list.subDataItem(p, el.toString());
                 }));
@@ -1486,10 +1488,10 @@ bool ImportScope::iterateDirectSubpaths(const DomItem &self, DirectVisitor visit
     cont = cont && self.dvWrapField(visitor, Fields::qualifiedImports, m_subImports);
     cont = cont && self.dvItemField(visitor, Fields::imported, [this, &self]() -> DomItem {
         return self.subMapItem(Map(
-                self.pathFromOwner().field(Fields::imported),
+                self.pathFromOwner().withField(Fields::imported),
                 [this, &self](const DomItem &map, const QString &key) {
                     return map.subListItem(List::fromQList<DomItem>(
-                            map.pathFromOwner().key(key), importedItemsWithName(self, key),
+                            map.pathFromOwner().withKey(key), importedItemsWithName(self, key),
                             [](const DomItem &, const PathEls::PathComponent &, const DomItem &el) {
                                 return el;
                             }));
@@ -1577,7 +1579,7 @@ DomItem BindingValue::value(const DomItem &binding) const
         return binding.subOwnerItem(PathEls::Field(Fields::value), scriptExpression);
     case BindingValueKind::Array:
         return binding.subListItem(List::fromQListRef<QmlObject>(
-                binding.pathFromOwner().field(u"value"), array,
+                binding.pathFromOwner().withField(u"value"), array,
                 [](const DomItem &self, const PathEls::PathComponent &, const QmlObject &obj) {
                     return self.copy(&obj);
                 }));
@@ -1827,13 +1829,13 @@ QString ScriptExpression::astRelocatableDump() const
 
 void ScriptExpression::writeOut(const DomItem &, OutWriter &lw) const
 {
-    reformatAst(
-            lw, m_astComments,
-            [this](SourceLocation astL) {
-                SourceLocation l = this->locationToLocal(astL); // use engine->code() instead?
-                return this->code().mid(l.offset, l.length);
-            },
-            ast());
+    reformatAst(lw, this);
+}
+
+QStringView ScriptExpression::loc2Str(SourceLocation astL) const
+{
+    SourceLocation l = this->locationToLocal(astL); // use engine->code() instead?
+    return this->code().mid(l.offset, l.length);
 }
 
 SourceLocation ScriptExpression::globalLocation(const DomItem &self) const
@@ -1854,6 +1856,8 @@ void PropertyDefinition::writeOut(const DomItem &, OutWriter &lw) const
     lw.ensureNewline();
     if (isDefaultMember)
         lw.writeRegion(DefaultKeywordRegion).ensureSpace();
+    if (isFinal)
+        lw.writeRegion(FinalKeywordRegion).ensureSpace();
     if (isRequired)
         lw.writeRegion(RequiredKeywordRegion).ensureSpace();
     if (isReadonly)
@@ -1912,7 +1916,7 @@ QString MethodInfo::preCode(const DomItem &self) const
     }
     ow.writeRegion(RightParenthesisRegion);
     ow.ensureSpace().writeRegion(LeftBraceRegion);
-    ow.itemEnd(standin);
+    ow.itemEnd();
     ow.eof();
     return res;
 }
@@ -1992,7 +1996,7 @@ QString MethodInfo::signature(const DomItem &self) const
 
     writeOutReturnType(ow);
 
-    ow.itemEnd(self);
+    ow.itemEnd();
     lw.eof(false);
     res.flush();
     return resultStr.simplified();

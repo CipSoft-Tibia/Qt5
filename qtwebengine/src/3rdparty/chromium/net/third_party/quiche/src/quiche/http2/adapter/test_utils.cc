@@ -7,9 +7,9 @@
 
 #include "absl/strings/str_format.h"
 #include "quiche/http2/adapter/http2_visitor_interface.h"
+#include "quiche/http2/core/spdy_protocol.h"
 #include "quiche/http2/hpack/hpack_encoder.h"
 #include "quiche/common/quiche_data_reader.h"
-#include "quiche/spdy/core/spdy_protocol.h"
 
 namespace http2 {
 namespace adapter {
@@ -122,25 +122,6 @@ std::pair<int64_t, bool> TestVisitor::PackMetadataForStream(
 void TestVisitor::AppendMetadataForStream(
     Http2StreamId stream_id, const quiche::HttpHeaderBlock& payload) {
   outbound_metadata_map_.insert({stream_id, EncodeHeaders(payload)});
-}
-
-VisitorDataSource::VisitorDataSource(Http2VisitorInterface& visitor,
-                                     Http2StreamId stream_id)
-    : visitor_(visitor), stream_id_(stream_id) {}
-
-bool VisitorDataSource::send_fin() const { return has_fin_; }
-
-std::pair<int64_t, bool> VisitorDataSource::SelectPayloadLength(
-    size_t max_length) {
-  auto [payload_length, end_data, end_stream] =
-      visitor_.OnReadyToSendDataForStream(stream_id_, max_length);
-  has_fin_ = end_stream;
-  return {payload_length, end_data};
-}
-
-bool VisitorDataSource::Send(absl::string_view frame_header,
-                             size_t payload_length) {
-  return visitor_.SendDataFrame(stream_id_, frame_header, payload_length);
 }
 
 TestMetadataSource::TestMetadataSource(const quiche::HttpHeaderBlock& entries)

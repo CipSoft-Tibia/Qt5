@@ -269,15 +269,23 @@ When an \l{Identified Modules}{identified module} is imported,
 the QML engine searches the \e{import path} for a matching module.
 
 This import path, as returned by QQmlEngine::importPathList(), defines the
-default locations to be searched by the engine. By default, this list contains:
+default locations to be searched by the engine. By default, this list contains,
+in this order of precedence:
 
 \list
-\li The directory of the current file
-\li The location specified by QLibraryInfo::QmlImportsPath
-\li Paths specified by the \c QML_IMPORT_PATH environment variable
+\li Platform-specific bundle paths if applicable (for example on macOS or Android)
+\li The directory of the application binary
 \li The qrc:/qt-project.org/imports path inside the resources.
 \li The qrc:/qt/qml path inside the resources (since Qt 6.5).
+\li Paths specified by the \c QML2_IMPORT_PATH environment variable (deprecated)
+\li Paths specified by the \c QML_IMPORT_PATH environment variable
+\li The location specified by QLibraryInfo::QmlImportsPath
 \endlist
+
+If the \c{Qt::AA_PluginApplication} attribute is set on \l{QCoreApplication},
+then the application directory, any paths specified by environment variables,
+and any platform specific bundle paths outside the resource file system are
+omitted by default.
 
 Additional import paths can be added through QQmlEngine::addImportPath() or the
 \c QML_IMPORT_PATH environment variable. When running the

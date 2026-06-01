@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 BasysKom GmbH.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLVMEMETAOBJECT_P_H
 #define QQMLVMEMETAOBJECT_P_H
@@ -34,7 +35,6 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qmetaobject.h>
-#include <QtCore/qpair.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -206,6 +206,7 @@ public:
 
 protected:
     int metaCall(QObject *o, QMetaObject::Call _c, int _id, void **_a) override;
+    bool getListProperty(int id, QQmlListProperty<QObject> *target);
 
 public:
     QV4::ExecutionEngine *engine;

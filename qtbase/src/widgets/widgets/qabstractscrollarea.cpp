@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstractscrollarea.h"
 
@@ -23,6 +24,9 @@
 #include "qabstractscrollarea_p.h"
 #include "qscrollbar_p.h"
 #include <qwidget.h>
+
+#include <private/qguiapplication_p.h>
+#include <qpa/qplatformtheme.h>
 
 #include <private/qapplication_p.h>
 
@@ -1498,6 +1502,12 @@ void QAbstractScrollArea::setSizeAdjustPolicy(SizeAdjustPolicy policy)
 void QAbstractScrollArea::setupViewport(QWidget *viewport)
 {
     Q_UNUSED(viewport);
+}
+
+int QAbstractScrollAreaPrivate::defaultSingleStep() const
+{
+    auto *platformTheme = QGuiApplicationPrivate::platformTheme();
+    return platformTheme->themeHint(QPlatformTheme::ScrollSingleStepDistance).value<int>();
 }
 
 QT_END_NAMESPACE

@@ -56,19 +56,39 @@ return 0;
 
 #### Features
 
+qt_feature("wayland-server" PRIVATE
+    LABEL "Qt Wayland Compositor"
+    CONDITION NOT WIN32 AND QT_FEATURE_wayland AND QT_FEATURE_waylandscanner
+)
 qt_feature("wayland-dmabuf-client-buffer" PRIVATE
-    LABEL "Linux dma-buf client buffer integration"
+    LABEL "Linux dma-buf client buffer"
     CONDITION QT_FEATURE_wayland_server AND QT_FEATURE_opengl AND QT_FEATURE_egl AND TEST_dmabuf_client_buffer
 )
 qt_feature("wayland-layer-integration-vsp2" PRIVATE
-    LABEL "VSP2 hardware layer integration"
+    LABEL "VSP2 hardware layer"
     CONDITION QT_FEATURE_wayland_server AND QT_FEATURE_eglfs_vsp2 AND Waylandkms_FOUND
 )
 qt_feature("wayland-compositor-quick" PUBLIC
-    LABEL "QtQuick integration for wayland compositor"
+    LABEL "QtQuick integration"
     PURPOSE "Allows QtWayland compositor types to be used with QtQuick"
     CONDITION QT_FEATURE_wayland_server AND TARGET Qt::Quick
 )
-qt_configure_add_summary_section(NAME "Qt Wayland Compositor Layer Plugins")
+
+qt_configure_add_summary_section(NAME "Wayland Compositor")
+qt_configure_add_summary_section(NAME "Hardware Integrations")
+qt_configure_add_summary_entry(ARGS "wayland-dmabuf-client-buffer")
 qt_configure_add_summary_entry(ARGS "wayland-layer-integration-vsp2")
-qt_configure_end_summary_section() # end of "Qt Wayland Compositor Layer Plugins" section
+qt_configure_add_summary_entry(ARGS "wayland-compositor-quick")
+qt_configure_end_summary_section() # end of "Hardware Integrations" section
+qt_configure_end_summary_section() # end of "Wayland Compositor" section
+
+qt_configure_add_report_entry(
+    TYPE NOTE
+    MESSAGE "Qt Gui has been built without 'qtwaylandscanner' feature. This feature is required for building Qt Wayland Server."
+    CONDITION NOT QT_FEATURE_waylandscanner AND QT_FEATURE_wayland_server
+)
+qt_configure_add_report_entry(
+    TYPE NOTE
+    MESSAGE "Qt Gui has been built without 'wayland' feature. This feature is required for building Qt Wayland Server."
+    CONDITION NOT QT_FEATURE_wayland AND QT_FEATURE_wayland_server
+)

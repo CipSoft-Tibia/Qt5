@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <set>
@@ -18,10 +19,10 @@
 #include "base/check_op.h"
 #include "base/feature_list.h"
 #include "base/not_fatal_until.h"
-#include "base/ranges/algorithm.h"
 #include "base/time/time.h"
 #include "components/country_codes/country_codes.h"
 #include "components/prefs/pref_service.h"
+#include "components/regional_capabilities/regional_capabilities_utils.h"
 #include "components/search_engines/keyword_web_data_service.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_utils.h"
@@ -70,7 +71,7 @@ MergeEngineRequirements ComputeMergeEnginesRequirements(
       search_engines::IsEeaChoiceCountry(country_id);
 
   bool update_builtin_keywords;
-  if (search_engines::HasSearchEngineCountryListOverride()) {
+  if (regional_capabilities::HasSearchEngineCountryListOverride()) {
     // The search engine list is being explicitly overridden, so also force
     // recomputing it for the keywords database.
     update_builtin_keywords = true;
@@ -521,7 +522,9 @@ void ApplyActionsFromCurrentData(
     auto j = FindTemplateURL(template_urls, removed_engine);
     CHECK(j != template_urls->end(), base::NotFatalUntil::M130);
     DCHECK(!default_search_provider ||
-           (*j)->prepopulate_id() != default_search_provider->prepopulate_id());
+           (*j)->prepopulate_id() !=
+               default_search_provider->prepopulate_id() ||
+           (*j)->keyword() != default_search_provider->keyword());
     std::unique_ptr<TemplateURL> template_url = std::move(*j);
     template_urls->erase(j);
     if (service) {
@@ -548,7 +551,7 @@ void ApplyActionsFromCurrentData(
 }
 
 void GetSearchProvidersUsingKeywordResult(
-    const WDTypedResult& result,
+    const WDKeywordsResult& keyword_result,
     KeywordWebDataService* service,
     PrefService* prefs,
     search_engines::SearchEngineChoiceService* search_engine_choice_service,
@@ -559,12 +562,8 @@ void GetSearchProvidersUsingKeywordResult(
     std::set<std::string>* removed_keyword_guids) {
   DCHECK(template_urls);
   DCHECK(template_urls->empty());
-  DCHECK_EQ(KEYWORDS_RESULT, result.GetType());
 
-  WDKeywordsResult keyword_result = reinterpret_cast<
-      const WDResult<WDKeywordsResult>*>(&result)->GetValue();
-
-  for (auto& keyword : keyword_result.keywords) {
+  for (TemplateURLData keyword : keyword_result.keywords) {
     // Fix any duplicate encodings in the local database.  Note that we don't
     // adjust the last_modified time of this keyword; this way, we won't later
     // overwrite any changes on the sync server that happened to this keyword
@@ -659,5 +658,5 @@ bool DeDupeEncodings(std::vector<std::string>* encodings) {
 TemplateURLService::OwnedTemplateURLVector::iterator FindTemplateURL(
     TemplateURLService::OwnedTemplateURLVector* urls,
     const TemplateURL* url) {
-  return base::ranges::find(*urls, url, &std::unique_ptr<TemplateURL>::get);
+  return std::ranges::find(*urls, url, &std::unique_ptr<TemplateURL>::get);
 }

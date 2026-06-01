@@ -177,14 +177,6 @@ RealTimeUrlLookupServiceBase::RealTimeUrlLookupServiceBase(
 RealTimeUrlLookupServiceBase::~RealTimeUrlLookupServiceBase() = default;
 
 // static
-bool RealTimeUrlLookupServiceBase::CanCheckUrl(const GURL& url) {
-  if (VerdictCacheManager::has_artificial_cached_url()) {
-    return true;
-  }
-  return CanGetReputationOfUrl(url);
-}
-
-// static
 SBThreatType RealTimeUrlLookupServiceBase::GetSBThreatTypeForRTThreatType(
     RTLookupResponse::ThreatInfo::ThreatType rt_threat_type,
     RTLookupResponse::ThreatInfo::VerdictType rt_verdict_type) {
@@ -199,8 +191,7 @@ SBThreatType RealTimeUrlLookupServiceBase::GetSBThreatTypeForRTThreatType(
       case RTLookupResponse::ThreatInfo::SAFE:
         return SB_THREAT_TYPE_SAFE;
       default:
-        NOTREACHED_IN_MIGRATION();
-        return SB_THREAT_TYPE_SAFE;
+        NOTREACHED();
     }
   }
 
@@ -219,9 +210,7 @@ SBThreatType RealTimeUrlLookupServiceBase::GetSBThreatTypeForRTThreatType(
       return SB_THREAT_TYPE_BILLING;
     case RTLookupResponse::ThreatInfo::MANAGED_POLICY:
     case RTLookupResponse::ThreatInfo::THREAT_TYPE_UNSPECIFIED:
-      NOTREACHED_IN_MIGRATION()
-          << "Unexpected RTLookupResponse::ThreatType encountered";
-      return SB_THREAT_TYPE_SAFE;
+      NOTREACHED() << "Unexpected RTLookupResponse::ThreatType encountered";
   }
 }
 
@@ -333,7 +322,8 @@ void RealTimeUrlLookupServiceBase::MayBeCacheRealTimeUrlVerdict(
 void RealTimeUrlLookupServiceBase::SendSampledRequest(
     const GURL& url,
     scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
-    SessionID tab_id) {
+    SessionID tab_id,
+    std::optional<internal::ReferringAppInfo> referring_app_info) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(url.is_valid());
 
@@ -341,14 +331,16 @@ void RealTimeUrlLookupServiceBase::SendSampledRequest(
                    /* access_token_string */ std::string(),
                    /* response_callback */ base::NullCallback(),
                    std::move(callback_task_runner),
-                   /* is_sampled_report */ true, tab_id);
+                   /* is_sampled_report */ true, tab_id,
+                   std::move(referring_app_info));
 }
 
 void RealTimeUrlLookupServiceBase::StartLookup(
     const GURL& url,
     RTLookupResponseCallback response_callback,
     scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
-    SessionID tab_id) {
+    SessionID tab_id,
+    std::optional<internal::ReferringAppInfo> referring_app_info) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(url.is_valid());
 
@@ -375,13 +367,14 @@ void RealTimeUrlLookupServiceBase::StartLookup(
 
   if (CanPerformFullURLLookupWithToken()) {
     GetAccessToken(url, std::move(response_callback),
-                   std::move(callback_task_runner), tab_id);
+                   std::move(callback_task_runner), tab_id,
+                   std::move(referring_app_info));
   } else {
-    MaybeSendRequest(url,
-                     /* access_token_string */ std::string(),
-                     std::move(response_callback),
-                     std::move(callback_task_runner),
-                     /* is_sampled_report */ false, tab_id);
+    MaybeSendRequest(
+        url,
+        /* access_token_string */ std::string(), std::move(response_callback),
+        std::move(callback_task_runner),
+        /* is_sampled_report */ false, tab_id, std::move(referring_app_info));
   }
 }
 
@@ -391,7 +384,8 @@ void RealTimeUrlLookupServiceBase::MaybeSendRequest(
     RTLookupResponseCallback response_callback,
     scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
     bool is_sampled_report,
-    SessionID tab_id) {
+    SessionID tab_id,
+    std::optional<internal::ReferringAppInfo> referring_app_info) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   GURL sanitized_url = SanitizeURL(url);
@@ -410,8 +404,8 @@ void RealTimeUrlLookupServiceBase::MaybeSendRequest(
     return;
   }
 
-  std::unique_ptr<RTLookupRequest> request =
-      FillRequestProto(sanitized_url, is_sampled_report, tab_id);
+  std::unique_ptr<RTLookupRequest> request = FillRequestProto(
+      sanitized_url, is_sampled_report, tab_id, std::move(referring_app_info));
   RecordRequestPopulationWithAndWithoutSuffix(
       "SafeBrowsing.RT.Request.UserPopulation", GetMetricSuffix(),
       request->population().user_population());
@@ -427,6 +421,9 @@ void RealTimeUrlLookupServiceBase::MaybeSendRequest(
 
   auto resource_request = GetResourceRequest();
   if (!access_token_string.empty()) {
+    LogAuthenticatedCookieResets(
+        *resource_request,
+        SafeBrowsingAuthenticatedEndpoint::kRealtimeUrlLookup);
     SetAccessTokenAndClearCookieInResourceRequest(resource_request.get(),
                                                   access_token_string);
   }
@@ -522,11 +519,6 @@ void RealTimeUrlLookupServiceBase::OnURLLoaderComplete(
   MaybeLogProtegoPingCookieHistograms(request_had_cookie, was_first_request,
                                       sent_with_token);
 
-  if (sent_with_token) {
-    MaybeLogCookieReset(*url_loader,
-                        SafeBrowsingAuthenticatedEndpoint::kRealtimeUrlLookup);
-  }
-
   if (response_code == net::HTTP_UNAUTHORIZED &&
       access_token_string.has_value()) {
     OnResponseUnauthorized(access_token_string.value());
@@ -602,7 +594,8 @@ RealTimeUrlLookupServiceBase::GetResourceRequest() {
 std::unique_ptr<RTLookupRequest> RealTimeUrlLookupServiceBase::FillRequestProto(
     const GURL& url,
     bool is_sampled_report,
-    SessionID tab_id) {
+    SessionID tab_id,
+    std::optional<internal::ReferringAppInfo> referring_app_info) {
   auto request = std::make_unique<RTLookupRequest>();
   request->set_url(url.spec());
   request->set_lookup_type(RTLookupRequest::NAVIGATION);
@@ -611,6 +604,16 @@ std::unique_ptr<RTLookupRequest> RealTimeUrlLookupServiceBase::FillRequestProto(
   request->set_report_type(is_sampled_report ? RTLookupRequest::SAMPLED_REPORT
                                              : RTLookupRequest::FULL_REPORT);
   request->set_frame_type(RTLookupRequest::MAIN_FRAME);
+  if (referring_app_info) {
+    safe_browsing::ReferringAppInfo referring_app_info_proto;
+    referring_app_info_proto.set_referring_app_name(
+        referring_app_info.value().referring_app_name);
+    referring_app_info_proto.set_referring_app_source(
+        referring_app_info.value().referring_app_source);
+    // TODO(chlily): Populate WebAPK fields.
+    *request->mutable_referring_app_info() =
+        std::move(referring_app_info_proto);
+  }
   std::optional<std::string> dm_token_string = GetDMTokenString();
   if (dm_token_string.has_value()) {
     request->set_dm_token(dm_token_string.value());
@@ -651,18 +654,12 @@ std::unique_ptr<RTLookupRequest> RealTimeUrlLookupServiceBase::FillRequestProto(
     // pending if the page has already loaded. If the navigation event is not
     // found, try to fetch the referrer chain as a regular event URL rather than
     // a pending one.
-    if (attribution_result == ReferrerChainProvider::AttributionResult::
-                                  NAVIGATION_EVENT_NOT_FOUND &&
-        base::FeatureList::IsEnabled(
-            safe_browsing::kSafeBrowsingAsyncRealTimeCheck)) {
+    if (attribution_result ==
+        ReferrerChainProvider::AttributionResult::NAVIGATION_EVENT_NOT_FOUND) {
       CHECK(request->referrer_chain().empty());
       referrer_chain_provider_->IdentifyReferrerChainByEventURL(
           SanitizeURL(url), tab_id, GetReferrerUserGestureLimit(),
           request->mutable_referrer_chain());
-
-      RecordBooleanWithAndWithoutSuffix(
-          "SafeBrowsing.RT.EventUrlReferrerChainFetchSucceeded",
-          GetMetricSuffix(), !request->referrer_chain().empty());
     }
     SanitizeReferrerChainEntries(request->mutable_referrer_chain(),
                                  GetMinAllowedTimestampForReferrerChains(),
@@ -708,6 +705,8 @@ void RealTimeUrlLookupServiceBase::OnResponseUnauthorized(
     const std::string& invalid_access_token) {}
 
 void RealTimeUrlLookupServiceBase::Shutdown() {
+  shutting_down_ = true;
+
   pending_requests_.clear();
 
   // Clear references to other KeyedServices.

@@ -328,11 +328,6 @@ void FrameSinkBundleImpl::Submit(
           sink->DidNotProduceFrame(
               submission->data->get_did_not_produce_frame());
           break;
-
-        case mojom::BundledFrameSubmissionData::Tag::kDidDeleteSharedBitmap:
-          sink->DidDeleteSharedBitmap(
-              submission->data->get_did_delete_shared_bitmap());
-          break;
       }
     }
   }
@@ -350,20 +345,11 @@ void FrameSinkBundleImpl::Submit(
   }
 }
 
-void FrameSinkBundleImpl::DidAllocateSharedBitmap(
-    uint32_t sink_id,
-    base::ReadOnlySharedMemoryRegion region,
-    const SharedBitmapId& id) {
-  if (auto* sink = GetFrameSink(sink_id)) {
-    sink->DidAllocateSharedBitmap(std::move(region), id);
-  }
-}
-
 #if BUILDFLAG(IS_ANDROID)
-void FrameSinkBundleImpl::SetThreadIds(uint32_t sink_id,
-                                       const std::vector<int32_t>& thread_ids) {
+void FrameSinkBundleImpl::SetThreads(uint32_t sink_id,
+                                     const std::vector<Thread>& threads) {
   if (auto* sink = GetFrameSink(sink_id)) {
-    sink->SetThreadIds(thread_ids);
+    sink->SetThreads(threads);
   }
 }
 #endif

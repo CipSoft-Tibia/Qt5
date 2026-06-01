@@ -5,7 +5,7 @@
 #include <QtCore/QCoreApplication>
 #include <QTest>
 
-#include <private/cycle_p.h>
+#include <private/cycle_include_p.h>
 
 class tst_BenchlibTickCounter: public QObject
 {

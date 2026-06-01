@@ -12,9 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {RouteArgs} from './route_schema';
 import {CommandManager} from './command';
 import {OmniboxManager} from './omnibox';
 import {SidebarManager} from './sidebar';
+import {Analytics} from './analytics';
+import {PluginManager} from './plugin';
+import {Trace} from './trace';
+import {PageManager} from './page';
+import {FeatureFlagManager} from './feature_flag';
+import {Raf} from './raf';
 
 /**
  * The API endpoint to interact programmaticaly with the UI before a trace has
@@ -29,4 +36,38 @@ export interface App {
   readonly commands: CommandManager;
   readonly sidebar: SidebarManager;
   readonly omnibox: OmniboxManager;
+  readonly analytics: Analytics;
+  readonly plugins: PluginManager;
+  readonly pages: PageManager;
+  readonly featureFlags: FeatureFlagManager;
+
+  /**
+   * The parsed querystring passed when starting the app, before any navigation
+   * happens.
+   */
+  readonly initialRouteArgs: RouteArgs;
+
+  /**
+   * Returns the current trace object, if any. The instance being returned is
+   * bound to the same plugin of App.pluginId.
+   */
+  readonly trace?: Trace;
+
+  /**
+   * Used to schedule things.
+   */
+  readonly raf: Raf;
+
+  /**
+   * Navigate to a new page.
+   */
+  navigate(newHash: string): void;
+
+  openTraceFromFile(file: File): void;
+  openTraceFromUrl(url: string): void;
+  openTraceFromBuffer(args: {
+    buffer: ArrayBuffer;
+    title: string;
+    fileName: string;
+  }): void;
 }

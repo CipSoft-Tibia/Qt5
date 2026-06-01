@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4numberobject_p.h"
 #include "qv4runtime_p.h"
@@ -15,12 +16,14 @@ using namespace QV4;
 DEFINE_OBJECT_VTABLE(NumberCtor);
 DEFINE_OBJECT_VTABLE(NumberObject);
 
+namespace {
 struct NumberLocaleHolder : public NumberLocale
 {
     NumberLocaleHolder() {}
 };
 
 Q_GLOBAL_STATIC(NumberLocaleHolder, numberLocaleHolder)
+} // namespace
 
 NumberLocale::NumberLocale() : QLocale(QLocale::C),
     // -128 means shortest string that can accurately represent the number.

@@ -20,7 +20,6 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
-#include "chrome/test/base/testing_profile.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/core/browser/about_signin_internals.h"
 #include "components/signin/core/browser/account_reconcilor.h"
@@ -37,9 +36,9 @@
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
-#include "content/public/test/browser_task_environment.h"
 #include "crypto/signature_verifier.h"
 #include "google_apis/gaia/core_account_id.h"
+#include "google_apis/gaia/gaia_id.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -93,7 +92,7 @@ class DiceTestSigninClient : public TestSigninClient, public GaiaAuthConsumer {
   DiceTestSigninClient(const DiceTestSigninClient&) = delete;
   DiceTestSigninClient& operator=(const DiceTestSigninClient&) = delete;
 
-  ~DiceTestSigninClient() override {}
+  ~DiceTestSigninClient() override = default;
 
   std::unique_ptr<GaiaAuthFetcher> CreateGaiaAuthFetcher(
       GaiaAuthConsumer* consumer,
@@ -238,8 +237,7 @@ class DiceResponseHandlerTest : public testing::Test,
         dice_params.signout_info->account_infos.push_back(account_info);
         break;
       case DiceAction::NONE:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
     return dice_params;
   }
@@ -352,7 +350,7 @@ class TestProcessDiceHeaderDelegate : public ProcessDiceHeaderDelegate {
   }
 
   signin_metrics::AccessPoint GetAccessPoint() override {
-    return signin_metrics::AccessPoint::ACCESS_POINT_SETTINGS;
+    return signin_metrics::AccessPoint::kSettings;
   }
 
   void OnDiceSigninHeaderReceived() override {}
@@ -413,24 +411,7 @@ void DiceResponseHandlerTest::RunSignoutTest(
   }
 }
 
-class SigninDiceResponseHandlerTestPreconnect
-    : public DiceResponseHandlerTest,
-      public ::testing::WithParamInterface<bool> {
- public:
-  SigninDiceResponseHandlerTestPreconnect() {
-    feature_list_.InitWithFeatureState(
-        switches::kPreconnectAccountCapabilitiesPostSignin,
-        PreconnectEnabled());
-  }
-
-  bool PreconnectEnabled() { return GetParam(); }
-
- private:
-  base::test::ScopedFeatureList feature_list_;
-};
-
-// Checks that a SIGNIN action triggers a token exchange request.
-TEST_P(SigninDiceResponseHandlerTestPreconnect, Signin) {
+TEST_F(DiceResponseHandlerTest, Signin) {
   DiceResponseParams dice_params = MakeDiceParams(DiceAction::SIGNIN);
   const auto& account_info = dice_params.signin_info->account_info;
   CoreAccountId account_id = identity_manager()->PickAccountIdForAccount(
@@ -463,10 +444,10 @@ TEST_P(SigninDiceResponseHandlerTestPreconnect, Signin) {
   EXPECT_TRUE(extended_account_info.is_under_advanced_protection);
   // Check that the AccessPoint was propagated from the delegate.
   EXPECT_EQ(extended_account_info.access_point,
-            signin_metrics::AccessPoint::ACCESS_POINT_SETTINGS);
+            signin_metrics::AccessPoint::kSettings);
   EXPECT_EQ(
       identity_test_env_.GetNumCallsToPrepareForFetchingAccountCapabilities(),
-      PreconnectEnabled() ? 1 : 0);
+      1);
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
   histogram_tester_.ExpectUniqueSample(
       kTokenBindingOutcomeHistogram,
@@ -474,10 +455,6 @@ TEST_P(SigninDiceResponseHandlerTestPreconnect, Signin) {
       /*expected_bucket_count=*/1);
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 }
-
-INSTANTIATE_TEST_SUITE_P(PreconnectEnabled,
-                         SigninDiceResponseHandlerTestPreconnect,
-                         ::testing::Bool());
 
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 // Checks that a SIGNIN action triggers a token exchange request.
@@ -1068,7 +1045,7 @@ TEST_F(DiceResponseHandlerTest, SigninWithTwoAccounts) {
   const auto& account_info_1 = dice_params_1.signin_info->account_info;
   DiceResponseParams dice_params_2 = MakeDiceParams(DiceAction::SIGNIN);
   dice_params_2.signin_info->account_info.email = "other_email";
-  dice_params_2.signin_info->account_info.gaia_id = "other_gaia_id";
+  dice_params_2.signin_info->account_info.gaia_id = GaiaId("other_gaia_id");
   const auto& account_info_2 = dice_params_2.signin_info->account_info;
   CoreAccountId account_id_1 = identity_manager()->PickAccountIdForAccount(
       account_info_1.gaia_id, account_info_1.email);
@@ -1375,7 +1352,7 @@ TEST_F(DiceResponseHandlerTest, SigninSignoutDifferentAccount) {
   DiceResponseParams signin_params_1 = MakeDiceParams(DiceAction::SIGNIN);
   DiceResponseParams signin_params_2 = MakeDiceParams(DiceAction::SIGNIN);
   signin_params_2.signin_info->account_info.email = "other_email";
-  signin_params_2.signin_info->account_info.gaia_id = "other_gaia_id";
+  signin_params_2.signin_info->account_info.gaia_id = GaiaId("other_gaia_id");
   const auto& signin_account_info_1 = signin_params_1.signin_info->account_info;
   const auto& signin_account_info_2 = signin_params_2.signin_info->account_info;
   CoreAccountId account_id_1 = identity_manager()->PickAccountIdForAccount(
@@ -1449,21 +1426,6 @@ TEST_F(DiceResponseHandlerTest,
   // Check that the reconcilor was not blocked.
   EXPECT_EQ(0, reconcilor_blocked_count_);
   EXPECT_EQ(0, reconcilor_unblocked_count_);
-}
-
-// Tests that the DiceResponseHandler is created for a normal profile but not
-// for off-the-record profiles.
-TEST(DiceResponseHandlerFactoryTest, NotInOffTheRecord) {
-  content::BrowserTaskEnvironment task_environment;
-  TestingProfile profile;
-  EXPECT_THAT(DiceResponseHandler::GetForProfile(&profile), testing::NotNull());
-  EXPECT_THAT(DiceResponseHandler::GetForProfile(
-                  profile.GetPrimaryOTRProfile(/*create_if_needed=*/true)),
-              testing::IsNull());
-  EXPECT_THAT(DiceResponseHandler::GetForProfile(profile.GetOffTheRecordProfile(
-                  Profile::OTRProfileID::CreateUniqueForTesting(),
-                  /*create_if_needed=*/true)),
-              testing::IsNull());
 }
 
 class ExplicitBrowserSigninDiceResponseHandlerSignoutTest

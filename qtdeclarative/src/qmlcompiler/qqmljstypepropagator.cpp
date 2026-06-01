@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsscope_p.h"
 #include "qqmljstypepropagator_p.h"
@@ -28,13 +29,13 @@ using namespace Qt::StringLiterals;
 
 QQmlJSTypePropagator::QQmlJSTypePropagator(const QV4::Compiler::JSUnitGenerator *unitGenerator,
                                            const QQmlJSTypeResolver *typeResolver,
-                                           QQmlJSLogger *logger,
-                                           QList<QQmlJS::DiagnosticMessage> *errors,
-                                           const BasicBlocks &basicBlocks,
+                                           QQmlJSLogger *logger, const BasicBlocks &basicBlocks,
                                            const InstructionAnnotations &annotations,
-                                           QQmlSA::PassManager *passManager)
-    : QQmlJSCompilePass(unitGenerator, typeResolver, logger, errors, basicBlocks, annotations),
-      m_passManager(passManager)
+                                           QQmlSA::PassManager *passManager,
+                                           const QQmlJS::ContextProperties &knownContextProperties)
+    : QQmlJSCompilePass(unitGenerator, typeResolver, logger, basicBlocks, annotations),
+      m_passManager(passManager),
+      m_knownContextProperties(knownContextProperties)
 {
 }
 
@@ -43,19 +44,14 @@ QQmlJSCompilePass::BlocksAndAnnotations QQmlJSTypePropagator::run(const Function
     m_function = function;
     m_returnType = m_function->returnType;
 
-    QList<QQmlJS::DiagnosticMessage> oldErrors;
-    std::swap(oldErrors, *m_errors);
-    auto restoreErrors = qScopeGuard([&]() {
-        oldErrors << *std::move(m_errors);
-        *m_errors = std::move(oldErrors);
-    });
+    // We cannot assume anything about how a script string will be used
+    if (m_returnType.containedType() == m_typeResolver->qQmlScriptStringType())
+        return {};
 
     do {
         // Reset the error if we need to do another pass
-        if (m_state.needsMorePasses) {
-            m_errors->clear();
+        if (m_state.needsMorePasses)
             m_logger->rollback();
-        }
 
         m_logger->startTransaction();
 
@@ -93,8 +89,8 @@ QQmlJSCompilePass::BlocksAndAnnotations QQmlJSTypePropagator::run(const Function
 void QQmlJSTypePropagator::generate_ret_SAcheck()
 {
     const QQmlJS::SourceLocation location = m_function->isProperty
-            ? getCurrentBindingSourceLocation()
-            : getCurrentNonEmptySourceLocation();
+            ? currentFunctionSourceLocation()
+            : currentNonEmptySourceLocation();
     QQmlSA::PassManagerPrivate::get(m_passManager)
             ->analyzeBinding(
                     QQmlJSScope::createQQmlSAElement(m_function->qmlScope.containedType()),
@@ -118,7 +114,7 @@ void QQmlJSTypePropagator::generate_Ret()
             // Do not complain if the function didn't have a valid annotation in the first place.
             m_logger->log(u"Function without return type annotation returns %1"_s.arg(
                                   m_state.accumulatorIn().containedTypeName()),
-                          qmlIncompatibleType, getCurrentBindingSourceLocation());
+                          qmlIncompatibleType, currentFunctionSourceLocation());
         }
         return;
     } else if (!canConvertFromTo(m_state.accumulatorIn(), m_returnType)) {
@@ -129,7 +125,7 @@ void QQmlJSTypePropagator::generate_Ret()
         m_logger->log(u"Cannot assign binding of type %1 to %2"_s.arg(
                               m_state.accumulatorIn().containedTypeName(),
                               m_returnType.containedTypeName()),
-                      qmlIncompatibleType, getCurrentBindingSourceLocation());
+                      qmlIncompatibleType, currentFunctionSourceLocation());
         return;
     }
 
@@ -296,47 +292,9 @@ void QQmlJSTypePropagator::generate_LoadGlobalLookup(int index)
     generate_LoadName(m_jsUnitGenerator->lookupNameIndex(index));
 }
 
-QQmlJS::SourceLocation QQmlJSTypePropagator::getCurrentSourceLocation() const
-{
-    Q_ASSERT(m_function->sourceLocations);
-    const auto &entries = m_function->sourceLocations->entries;
-
-    auto item = std::lower_bound(entries.begin(), entries.end(), currentInstructionOffset(),
-                                 [](auto entry, uint offset) { return entry.offset < offset; });
-    Q_ASSERT(item != entries.end());
-    auto location = item->location;
-
-    return location;
-}
-
-QQmlJS::SourceLocation QQmlJSTypePropagator::getCurrentBindingSourceLocation() const
-{
-    Q_ASSERT(m_function->sourceLocations);
-    const auto &entries = m_function->sourceLocations->entries;
-
-    Q_ASSERT(!entries.isEmpty());
-    return combine(entries.constFirst().location, entries.constLast().location);
-}
-
-QQmlJS::SourceLocation QQmlJSTypePropagator::getCurrentNonEmptySourceLocation() const
-{
-    Q_ASSERT(m_function->sourceLocations);
-    const auto &entries = m_function->sourceLocations->entries;
-
-    auto item = std::lower_bound(entries.cbegin(), entries.cend(), currentInstructionOffset(),
-                                 [](auto entry, uint offset) { return entry.offset < offset; });
-    Q_ASSERT(item != entries.end());
-
-    // filter out empty locations
-    while (item->location.length == 0 && item != entries.begin()) {
-        --item;
-    }
-    return item->location;
-}
-
 void QQmlJSTypePropagator::handleUnqualifiedAccess(const QString &name, bool isMethod) const
 {
-    auto location = getCurrentSourceLocation();
+    auto location = currentSourceLocation();
 
     const auto qmlScopeContained = m_function->qmlScope.containedType();
     if (qmlScopeContained->isInCustomParserParent()) {
@@ -428,7 +386,8 @@ void QQmlJSTypePropagator::handleUnqualifiedAccess(const QString &name, bool isM
     if (!suggestion.has_value()) {
         for (QQmlJSScope::ConstPtr scope = qmlScope; !scope.isNull(); scope = scope->parentScope()) {
             if (scope->hasProperty(name)) {
-                const QString id = m_function->addressableScopes.id(scope, qmlScope);
+                QQmlJSScopesById::MostLikelyCallback<QString> id;
+                m_function->addressableScopes.possibleIds(scope, qmlScope, Default, id);
 
                 QQmlJS::SourceLocation fixLocation = location;
                 fixLocation.length = 0;
@@ -436,10 +395,10 @@ void QQmlJSTypePropagator::handleUnqualifiedAccess(const QString &name, bool isM
                     name
                             + " is a member of a parent element.\n      You can qualify the access "
                               "with its id to avoid this warning.\n"_L1,
-                    fixLocation, (id.isEmpty() ? u"<id>."_s : (id + u'.'))
+                    fixLocation, (id.result.isEmpty() ? u"<id>."_s : (id.result + u'.'))
                 };
 
-                if (id.isEmpty())
+                if (id.result.isEmpty())
                     suggestion->setHint("You first have to give the element an id"_L1);
                 else
                     suggestion->setAutoApplicable();
@@ -519,7 +478,7 @@ void QQmlJSTypePropagator::checkDeprecated(QQmlJSScope::ConstPtr scope, const QS
     if (!deprecation.reason.isEmpty())
         message.append(QStringLiteral(" (Reason: %1)").arg(deprecation.reason));
 
-    m_logger->log(message, qmlDeprecated, getCurrentSourceLocation());
+    m_logger->log(message, qmlDeprecated, currentSourceLocation());
 }
 
 // Only to be called once a lookup has already failed
@@ -543,7 +502,7 @@ QQmlJSTypePropagator::PropertyResolution QQmlJSTypePropagator::propertyResolutio
     m_logger->log(
             u"Type \"%1\" of property \"%2\" not %3. This is likely due to a missing dependency entry or a type not being exposed declaratively."_s
                     .arg(property.typeName(), propertyName, errorType),
-            qmlUnresolvedType, getCurrentSourceLocation());
+            qmlUnresolvedType, currentSourceLocation());
 
     return PropertyTypeUnresolved;
 }
@@ -585,7 +544,7 @@ bool QQmlJSTypePropagator::isCallingProperty(QQmlJSScope::ConstPtr scope, const 
     }
 
     m_logger->log(u"%1 \"%2\" is %3"_s.arg(propertyType, name, errorType), qmlUseProperFunction,
-                  getCurrentSourceLocation(), true, true, {});
+                  currentSourceLocation(), true, true, {});
 
     return true;
 }
@@ -598,9 +557,54 @@ void QQmlJSTypePropagator::generate_LoadQmlContextPropertyLookup_SAcheck(const Q
             QQmlJSScope::createQQmlSAElement(qmlScope), name,
             QQmlJSScope::createQQmlSAElement(qmlScope),
             QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(
-                    getCurrentNonEmptySourceLocation()));
+                    currentNonEmptySourceLocation()));
 }
 
+static bool shouldMentionRequiredProperties(const QQmlJSScope::ConstPtr &qmlScope)
+{
+    if (!qmlScope->isWrappedInImplicitComponent() && !qmlScope->isFileRootComponent()
+        && !qmlScope->isInlineComponent()) {
+        return false;
+    }
+
+    const auto properties = qmlScope->properties();
+    return std::none_of(properties.constBegin(), properties.constEnd(),
+                        [&qmlScope](const QQmlJSMetaProperty &property) {
+                            return qmlScope->isPropertyRequired(property.propertyName());
+                        });
+}
+
+static void warnAboutContextPropertyUsage(const QString name,
+                                          const QQmlJS::ContextProperties &contextProperties,
+                                          const QQmlJSScope::ConstPtr &qmlScope,
+                                          QQmlJSLogger *logger,
+                                          const QQmlJS::SourceLocation &location)
+{
+    Q_ASSERT(qmlScope);
+
+    // only warn if the property is using the same name as one of the context properties
+    auto it = contextProperties.find(name);
+    if (it == contextProperties.end())
+        return;
+
+    QString warningMessage =
+            "Potential context property access detected."
+            " Context properties are discouraged in QML: use normal, required, or singleton properties instead."_L1;
+
+    if (shouldMentionRequiredProperties(qmlScope)) {
+        warningMessage.append(
+                "\nNote: '%1' assumed to be a potential context property because it is not declared as required property."_L1
+                        .arg(name));
+    }
+
+    for (const auto &candidate : *it) {
+        warningMessage.append(
+                "\nNote: candidate context property declaration '%1' at %2:%3:%4"_L1.arg(
+                        name, candidate.filename, QString::number(candidate.location.startLine),
+                        QString::number(candidate.location.startColumn)));
+    }
+    logger->log(warningMessage, qmlContextProperties, location);
+}
 
 void QQmlJSTypePropagator::generate_LoadQmlContextPropertyLookup(int index)
 {
@@ -625,6 +629,10 @@ void QQmlJSTypePropagator::generate_LoadQmlContextPropertyLookup(int index)
 
     if (!accumulatorOut.isValid()) {
         addError(u"Cannot access value for name "_s + name);
+
+        warnAboutContextPropertyUsage(name, m_knownContextProperties,
+                                      m_function->qmlScope.containedType(), m_logger,
+                                      currentSourceLocation());
         handleUnqualifiedAccess(name, false);
         setVarAccumulatorAndError();
         return;
@@ -658,7 +666,7 @@ void QQmlJSTypePropagator::generate_StoreNameCommon_SAcheck(QQmlJSRegisterConten
             QQmlJSScope::createQQmlSAElement(in.containedType()),
             QQmlJSScope::createQQmlSAElement(qmlScope),
             QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(
-                    getCurrentNonEmptySourceLocation()));
+                    currentNonEmptySourceLocation()));
 }
 
 /*!
@@ -690,7 +698,7 @@ void QQmlJSTypePropagator::generate_StoreNameCommon(int nameIndex)
         // The interpreter treats methods as read-only properties in its error messages
         // and we lack a better fitting category. We might want to revisit this later.
         m_logger->log(message.arg(name), qmlReadOnlyProperty,
-                      getCurrentSourceLocation());
+                      currentSourceLocation());
         addError(u"Cannot assign to non-property "_s + name);
         return;
     }
@@ -699,7 +707,7 @@ void QQmlJSTypePropagator::generate_StoreNameCommon(int nameIndex)
         addError(u"Can't assign to read-only property %1"_s.arg(name));
 
         m_logger->log(u"Cannot assign to read-only property %1"_s.arg(name), qmlReadOnlyProperty,
-                      getCurrentSourceLocation());
+                      currentSourceLocation());
 
         return;
     }
@@ -742,22 +750,13 @@ bool QQmlJSTypePropagator::checkForEnumProblems(
         const auto metaEn = base.enumeration();
         if (!metaEn.hasKey(propertyName)) {
             auto fixSuggestion = QQmlJSUtils::didYouMean(propertyName, metaEn.keys(),
-                                                         getCurrentSourceLocation());
+                                                         currentSourceLocation());
             const QString error = u"\"%1\" is not an entry of enum \"%2\"."_s
                                           .arg(propertyName, metaEn.name());
             addError(error);
             m_logger->log(
-                    error, qmlMissingEnumEntry, getCurrentSourceLocation(), true, true,
+                    error, qmlMissingEnumEntry, currentSourceLocation(), true, true,
                     fixSuggestion);
-            return true;
-        }
-    } else if (base.variant() == QQmlJSRegisterContent::MetaType) {
-        const QQmlJSMetaEnum metaEn = base.scopeType()->enumeration(propertyName);
-        if (metaEn.isValid() && !metaEn.isScoped() && !metaEn.isQml()) {
-            const QString error
-                    = u"You cannot access unscoped enum \"%1\" from here."_s.arg(propertyName);
-            addError(error);
-            m_logger->log(error, qmlRestrictedType, getCurrentSourceLocation());
             return true;
         }
     }
@@ -867,56 +866,125 @@ void QQmlJSTypePropagator::propagatePropertyLookup_SAcheck(const QString &proper
                     ? in.attachee().containedType()
                     : m_function->qmlScope.containedType()),
             QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(
-                    getCurrentNonEmptySourceLocation()));
+                    currentNonEmptySourceLocation()));
+}
+
+
+bool QQmlJSTypePropagator::handleImportNamespaceLookup(const QString &propertyName)
+{
+    const QQmlJSRegisterContent accumulatorIn = m_state.accumulatorIn();
+
+    if (m_typeResolver->isPrefix(propertyName)) {
+        Q_ASSERT(accumulatorIn.isValid());
+
+        if (!accumulatorIn.containedType()->isReferenceType()) {
+            m_logger->log(u"Cannot use non-QObject type %1 to access prefixed import"_s.arg(
+                                  accumulatorIn.containedType()->internalName()),
+                          qmlPrefixedImportType,
+                          currentSourceLocation());
+            setVarAccumulatorAndError();
+            return true;
+        }
+
+        addReadAccumulator();
+        setAccumulator(m_pool->createImportNamespace(
+                m_jsUnitGenerator->getStringId(propertyName),
+                accumulatorIn.containedType(),
+                QQmlJSRegisterContent::ModulePrefix,
+                accumulatorIn));
+        return true;
+    }
+
+    if (accumulatorIn.isImportNamespace()) {
+        m_logger->log(u"Type not found in namespace"_s, qmlUnresolvedType,
+                      currentSourceLocation());
+    }
+
+    return false;
+}
+
+void QQmlJSTypePropagator::handleLookupError(const QString &propertyName)
+{
+    const QQmlJSRegisterContent accumulatorIn = m_state.accumulatorIn();
+
+    setVarAccumulatorAndError();
+    if (checkForEnumProblems(accumulatorIn, propertyName))
+        return;
+
+    addError(u"Cannot load property %1 from %2."_s
+                     .arg(propertyName, accumulatorIn.descriptiveName()));
+
+    const QString typeName = accumulatorIn.containedTypeName();
+
+    if (typeName == u"QVariant")
+        return;
+    if (accumulatorIn.isList() && propertyName == u"length")
+        return;
+
+    auto baseType = accumulatorIn.containedType();
+    // Warn separately when a property is only not found because of a missing type
+
+    if (propertyResolution(baseType, propertyName) != PropertyMissing)
+        return;
+
+    if (baseType->isScript())
+        return;
+
+    std::optional<QQmlJSFixSuggestion> fixSuggestion;
+
+    if (auto suggestion = QQmlJSUtils::didYouMean(propertyName, baseType->properties().keys(),
+                                                  currentSourceLocation());
+        suggestion.has_value()) {
+        fixSuggestion = suggestion;
+    }
+
+    if (!fixSuggestion.has_value()
+        && accumulatorIn.variant() == QQmlJSRegisterContent::MetaType) {
+
+        const QQmlJSScope::ConstPtr scopeType = accumulatorIn.scopeType();
+        const auto metaEnums = scopeType->enumerations();
+        const bool enforcesScoped = scopeType->enforcesScopedEnums();
+
+        QStringList enumKeys;
+        for (const QQmlJSMetaEnum &metaEnum : metaEnums) {
+            if (!enforcesScoped || !metaEnum.isScoped())
+                enumKeys << metaEnum.keys();
+        }
+
+        if (auto suggestion = QQmlJSUtils::didYouMean(
+                    propertyName, enumKeys, currentSourceLocation());
+            suggestion.has_value()) {
+            fixSuggestion = suggestion;
+        }
+    }
+
+    m_logger->log(u"Member \"%1\" not found on type \"%2\""_s.arg(propertyName).arg(typeName),
+                  qmlMissingProperty, currentSourceLocation(), true, true, fixSuggestion);
 }
 
 void QQmlJSTypePropagator::propagatePropertyLookup(const QString &propertyName, int lookupIndex)
 {
+    const QQmlJSRegisterContent accumulatorIn = m_state.accumulatorIn();
     setAccumulator(
             m_typeResolver->memberType(
-                m_state.accumulatorIn(),
-                m_state.accumulatorIn().isImportNamespace()
-                    ? m_jsUnitGenerator->stringForIndex(m_state.accumulatorIn().importNamespace())
+                accumulatorIn,
+                accumulatorIn.isImportNamespace()
+                    ? m_jsUnitGenerator->stringForIndex(accumulatorIn.importNamespace())
                       + u'.' + propertyName
                     : propertyName, lookupIndex));
 
-    if (!m_state.accumulatorOut().isValid()) {
-        if (m_typeResolver->isPrefix(propertyName)) {
-
-            const QQmlJSRegisterContent accumulatorIn = m_state.accumulatorIn();
-            Q_ASSERT(accumulatorIn.isValid());
-
-            if (!accumulatorIn.containedType()->isReferenceType()) {
-                m_logger->log(u"Cannot use non-QObject type %1 to access prefixed import"_s.arg(
-                                      accumulatorIn.containedType()->internalName()),
-                              qmlPrefixedImportType,
-                              currentSourceLocation());
-                setVarAccumulatorAndError();
-                return;
-            }
-
-            addReadAccumulator();
-            setAccumulator(m_pool->createImportNamespace(
-                        m_jsUnitGenerator->getStringId(propertyName),
-                        m_state.accumulatorIn().containedType(),
-                        QQmlJSRegisterContent::ModulePrefix,
-                        m_state.accumulatorIn()));
-            return;
-        }
-        if (m_state.accumulatorIn().isImportNamespace())
-            m_logger->log(u"Type not found in namespace"_s, qmlUnresolvedType,
-                          getCurrentSourceLocation());
-    }
+    if (!m_state.accumulatorOut().isValid() && handleImportNamespaceLookup(propertyName))
+        return;
 
     if (m_state.accumulatorOut().variant() == QQmlJSRegisterContent::Singleton
-        && m_state.accumulatorIn().variant() == QQmlJSRegisterContent::ModulePrefix
-        && !isQmlScopeObject(m_state.accumulatorIn().scope())) {
+            && accumulatorIn.variant() == QQmlJSRegisterContent::ModulePrefix
+            && !isQmlScopeObject(accumulatorIn.scope())) {
         m_logger->log(
                 u"Cannot access singleton as a property of an object. Did you want to access an attached object?"_s,
-                qmlAccessSingleton, getCurrentSourceLocation());
+                qmlAccessSingleton, currentSourceLocation());
         setAccumulator(QQmlJSRegisterContent());
     } else if (m_state.accumulatorOut().isEnumeration()) {
-        switch (m_state.accumulatorIn().variant()) {
+        switch (accumulatorIn.variant()) {
         case QQmlJSRegisterContent::MetaType:
         case QQmlJSRegisterContent::Attachment:
         case QQmlJSRegisterContent::Enum:
@@ -929,60 +997,7 @@ void QQmlJSTypePropagator::propagatePropertyLookup(const QString &propertyName, 
     }
 
     if (m_state.instructionHasError || !m_state.accumulatorOut().isValid()) {
-        setVarAccumulatorAndError();
-        if (checkForEnumProblems(m_state.accumulatorIn(), propertyName))
-            return;
-
-        addError(u"Cannot load property %1 from %2."_s
-                         .arg(propertyName, m_state.accumulatorIn().descriptiveName()));
-
-        const QString typeName = m_state.accumulatorIn().containedTypeName();
-
-        if (typeName == u"QVariant")
-            return;
-        if (m_state.accumulatorIn().isList() && propertyName == u"length")
-            return;
-
-        auto baseType = m_state.accumulatorIn().containedType();
-        // Warn separately when a property is only not found because of a missing type
-
-        if (propertyResolution(baseType, propertyName) != PropertyMissing)
-            return;
-
-        if (baseType->isScript())
-            return;
-
-        std::optional<QQmlJSFixSuggestion> fixSuggestion;
-
-        if (auto suggestion = QQmlJSUtils::didYouMean(propertyName, baseType->properties().keys(),
-                                                      getCurrentSourceLocation());
-            suggestion.has_value()) {
-            fixSuggestion = suggestion;
-        }
-
-        if (!fixSuggestion.has_value()
-                && m_state.accumulatorIn().variant() == QQmlJSRegisterContent::MetaType) {
-
-            const QQmlJSScope::ConstPtr scopeType
-                    = m_state.accumulatorIn().scopeType();
-            const auto metaEnums = scopeType->enumerations();
-            const bool enforcesScoped = scopeType->enforcesScopedEnums();
-
-            QStringList enumKeys;
-            for (const QQmlJSMetaEnum &metaEnum : metaEnums) {
-                if (!enforcesScoped || !metaEnum.isScoped())
-                    enumKeys << metaEnum.keys();
-            }
-
-            if (auto suggestion = QQmlJSUtils::didYouMean(
-                        propertyName, enumKeys, getCurrentSourceLocation());
-                suggestion.has_value()) {
-                fixSuggestion = suggestion;
-            }
-        }
-
-        m_logger->log(u"Member \"%1\" not found on type \"%2\""_s.arg(propertyName).arg(typeName),
-                      qmlMissingProperty, getCurrentSourceLocation(), true, true, fixSuggestion);
+        handleLookupError(propertyName);
         return;
     }
 
@@ -994,14 +1009,14 @@ void QQmlJSTypePropagator::propagatePropertyLookup(const QString &propertyName, 
     if (m_state.accumulatorOut().isProperty()) {
         const QQmlJSScope::ConstPtr mathObject
                 = m_typeResolver->jsGlobalObject()->property(u"Math"_s).type();
-        if (m_state.accumulatorIn().contains(mathObject)) {
+        if (accumulatorIn.contains(mathObject)) {
             QQmlJSMetaProperty prop;
             prop.setPropertyName(propertyName);
             prop.setTypeName(u"double"_s);
             prop.setType(m_typeResolver->realType());
             setAccumulator(
                 m_pool->createProperty(
-                    prop, m_state.accumulatorIn().resultLookupIndex(), lookupIndex,
+                    prop, accumulatorIn.resultLookupIndex(), lookupIndex,
                     // Use pre-determined scope type here to avoid adjusting it later.
                     QQmlJSRegisterContent::Property, m_state.accumulatorOut().scope())
             );
@@ -1011,14 +1026,14 @@ void QQmlJSTypePropagator::propagatePropertyLookup(const QString &propertyName, 
 
         if (m_state.accumulatorOut().contains(m_typeResolver->voidType())) {
             addError(u"Type %1 does not have a property %2 for reading"_s
-                             .arg(m_state.accumulatorIn().descriptiveName(), propertyName));
+                             .arg(accumulatorIn.descriptiveName(), propertyName));
             return;
         }
 
         if (!m_state.accumulatorOut().property().type()) {
             m_logger->log(
                     QString::fromLatin1("Type of property \"%2\" not found").arg(propertyName),
-                    qmlMissingType, getCurrentSourceLocation());
+                    qmlMissingType, currentSourceLocation());
         }
     }
 
@@ -1030,7 +1045,7 @@ void QQmlJSTypePropagator::propagatePropertyLookup(const QString &propertyName, 
     case QQmlJSRegisterContent::Singleton:
         // For reading enums or singletons, we don't need to access anything, unless it's an
         // import namespace. Then we need the name.
-        if (m_state.accumulatorIn().isImportNamespace())
+        if (accumulatorIn.isImportNamespace())
             addReadAccumulator();
         break;
     default:
@@ -1061,6 +1076,24 @@ void QQmlJSTypePropagator::generate_GetOptionalLookup(int index, int offset)
     Q_UNUSED(offset);
     saveRegisterStateForJump(offset);
     propagatePropertyLookup(m_jsUnitGenerator->lookupName(index), index);
+    if (m_passManager)
+        generate_GetOptionalLookup_SAcheck();
+}
+
+void QQmlJSTypePropagator::generate_GetOptionalLookup_SAcheck()
+{
+    auto suggMsg = "Consider using non-optional chaining instead: '?.' -> '.'"_L1;
+    auto suggestion = std::make_optional(QQmlJSFixSuggestion(suggMsg, currentSourceLocation()));
+    if (m_state.accumulatorOut().variant() == QQmlJSRegisterContent::Enum) {
+        m_logger->log("Redundant optional chaining for enum lookup"_L1, qmlRedundantOptionalChaining,
+                      currentSourceLocation(), true, true, suggestion);
+    } else if (!m_state.accumulatorIn().containedType()->isReferenceType()
+               && !m_typeResolver->canHoldUndefined(m_state.accumulatorIn())) {
+        auto baseType = m_state.accumulatorIn().containedTypeName();
+        m_logger->log("Redundant optional chaining for lookup on non-voidable and non-nullable "_L1
+                      "type %1"_L1.arg(baseType), qmlRedundantOptionalChaining,
+                      currentSourceLocation(), true, true, suggestion);
+    }
 }
 
 void QQmlJSTypePropagator::generate_StoreProperty_SAcheck(const QString &propertyName,
@@ -1077,7 +1110,7 @@ void QQmlJSTypePropagator::generate_StoreProperty_SAcheck(const QString &propert
                     ? callBase.attachee().containedType()
                     : m_function->qmlScope.containedType()),
             QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(
-                    getCurrentNonEmptySourceLocation()));
+                    currentNonEmptySourceLocation()));
 }
 
 void QQmlJSTypePropagator::generate_StoreProperty(int nameIndex, int base)
@@ -1102,7 +1135,7 @@ void QQmlJSTypePropagator::generate_StoreProperty(int nameIndex, int base)
         addError(u"Can't assign to read-only property %1"_s.arg(propertyName));
 
         m_logger->log(u"Cannot assign to read-only property %1"_s.arg(propertyName),
-                      qmlReadOnlyProperty, getCurrentSourceLocation());
+                      qmlReadOnlyProperty, currentSourceLocation());
 
         return;
     }
@@ -1284,7 +1317,7 @@ void QQmlJSTypePropagator::propagateCall_SAcheck(const QQmlJSMetaMethod &method,
 
     const QQmlSA::Element saBaseType = QQmlJSScope::createQQmlSAElement(baseType);
     const QQmlSA::SourceLocation saLocation{
-        QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(getCurrentSourceLocation())
+        QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(currentSourceLocation())
     };
     const QQmlSA::Element saContainedType{ QQmlJSScope::createQQmlSAElement(
             m_function->qmlScope.containedType()) };
@@ -1302,7 +1335,7 @@ void QQmlJSTypePropagator::generate_callProperty_SAcheck(const QString &property
     const QQmlSA::Element saContainedType{ QQmlJSScope::createQQmlSAElement(
             m_function->qmlScope.containedType()) };
     const QQmlSA::SourceLocation saLocation{
-        QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(getCurrentSourceLocation())
+        QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(currentSourceLocation())
     };
 
     QQmlSA::PassManagerPrivate::get(m_passManager)
@@ -1369,14 +1402,14 @@ void QQmlJSTypePropagator::generate_CallProperty(int nameIndex, int base, int ar
         std::optional<QQmlJSFixSuggestion> fixSuggestion;
 
         if (auto suggestion = QQmlJSUtils::didYouMean(propertyName, baseType->methods().keys(),
-                                                      getCurrentSourceLocation());
+                                                      currentSourceLocation());
             suggestion.has_value()) {
             fixSuggestion = suggestion;
         }
 
         m_logger->log(u"Member \"%1\" not found on type \"%2\""_s.arg(
                               propertyName, callBase.containedTypeName()),
-                      qmlMissingProperty, getCurrentSourceLocation(), true, true, fixSuggestion);
+                      qmlMissingProperty, currentSourceLocation(), true, true, fixSuggestion);
         return;
     }
 
@@ -1646,7 +1679,7 @@ void QQmlJSTypePropagator::propagateTranslationMethod_SAcheck(const QString &met
                   methodName,
                   QQmlJSScope::createQQmlSAElement(m_function->qmlScope.containedType()),
                   QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(
-                          getCurrentNonEmptySourceLocation()));
+                          currentNonEmptySourceLocation()));
 }
 
 bool QQmlJSTypePropagator::propagateTranslationMethod(
@@ -1936,7 +1969,8 @@ bool QQmlJSTypePropagator::propagateArrayMethod(
     }
 
     if (name == u"splice" && argc > 0) {
-        for (int i = 0; i < 2; ++i) {
+        const int startAndDeleteCount = std::min(argc, 2);
+        for (int i = 0; i < startAndDeleteCount; ++i) {
             if (!canConvertFromTo(m_state.registers[argv + i].content, intType))
                 return false;
         }
@@ -1946,7 +1980,7 @@ bool QQmlJSTypePropagator::propagateArrayMethod(
                 return false;
         }
 
-        for (int i = 0; i < 2; ++i)
+        for (int i = 0; i < startAndDeleteCount; ++i)
             addReadRegister(argv + i, intType);
 
         for (int i = 2; i < argc; ++i)
@@ -1991,6 +2025,21 @@ void QQmlJSTypePropagator::generate_CallPossiblyDirectEval(int argc, int argv)
     m_state.setHasExternalSideEffects();
     Q_UNUSED(argc)
     Q_UNUSED(argv)
+
+    // qmllint needs to be able to warn about eval calls
+    if (m_passManager) {
+        const QQmlSA::SourceLocation saLocation{
+            QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(currentSourceLocation())
+        };
+        const QQmlSA::Element saBaseType{ QQmlJSScope::createQQmlSAElement(
+                m_typeResolver->jsGlobalObject()) };
+        const QQmlSA::Element saContainedType{ QQmlJSScope::createQQmlSAElement(
+                m_function->qmlScope.containedType()) };
+
+        QQmlSA::PassManagerPrivate::get(m_passManager)
+                ->analyzeCall(saBaseType, "eval"_L1, saContainedType, saLocation);
+    }
+
     INSTR_PROLOGUE_NOT_IMPLEMENTED_POPULATES_ACC();
 }
 
@@ -2186,7 +2235,8 @@ void QQmlJSTypePropagator::generate_DeadTemporalZoneCheck(int name)
 
     const QQmlJSRegisterContent in = m_state.accumulatorIn();
     if (in.isConversion()) {
-        for (QQmlJSRegisterContent origin : in.conversionOrigins()) {
+        const auto &inConversionOrigins = in.conversionOrigins();
+        for (QQmlJSRegisterContent origin : inConversionOrigins) {
             if (!origin.contains(m_typeResolver->emptyType()))
                 continue;
             fail();
@@ -2561,6 +2611,64 @@ void QQmlJSTypePropagator::recordCompareType(int lhs)
     }
 }
 
+static bool mightContainStringOrNumberOrBoolean(const QQmlJSScope::ConstPtr &scope,
+                                                const QQmlJSTypeResolver *resolver)
+{
+    return scope == resolver->varType() || scope == resolver->jsValueType()
+            || scope == resolver->jsPrimitiveType();
+}
+
+static bool isStringOrNumberOrBoolean(const QQmlJSScope::ConstPtr &scope,
+                                      const QQmlJSTypeResolver *resolver)
+{
+    return scope == resolver->boolType() || scope == resolver->stringType()
+            || resolver->isNumeric(scope);
+}
+
+static bool isVoidOrUndefined(const QQmlJSScope::ConstPtr &scope,
+                              const QQmlJSTypeResolver *resolver)
+{
+    return scope == resolver->nullType() || scope == resolver->voidType();
+}
+
+static bool requiresStrictEquality(const QQmlJSScope::ConstPtr &lhs,
+                                   const QQmlJSScope::ConstPtr &rhs,
+                                   const QQmlJSTypeResolver *resolver)
+{
+    if (lhs == rhs)
+        return false;
+
+    if (resolver->isNumeric(lhs) && resolver->isNumeric(rhs))
+        return false;
+
+    if (isVoidOrUndefined(lhs, resolver) || isVoidOrUndefined(rhs, resolver))
+        return false;
+
+    if (isStringOrNumberOrBoolean(lhs, resolver)
+        && !mightContainStringOrNumberOrBoolean(rhs, resolver)) {
+        return true;
+    }
+
+    if (isStringOrNumberOrBoolean(rhs, resolver)
+        && !mightContainStringOrNumberOrBoolean(lhs, resolver)) {
+        return true;
+    }
+
+    return false;
+}
+
+void QQmlJSTypePropagator::warnAboutTypeCoercion(int lhs)
+{
+    const QQmlJSScope::ConstPtr lhsType = checkedInputRegister(lhs).containedType();
+    const QQmlJSScope::ConstPtr rhsType = m_state.accumulatorIn().containedType();
+
+    if (!requiresStrictEquality(lhsType, rhsType, m_typeResolver))
+        return;
+
+    m_logger->log("== and != may perform type coercion, use === or !== to avoid it."_L1,
+                  qmlEqualityTypeCoercion, currentNonEmptySourceLocation());
+}
+
 void QQmlJSTypePropagator::generate_CmpEqNull()
 {
     recordEqualsNullType();
@@ -2593,12 +2701,14 @@ void QQmlJSTypePropagator::generate_CmpNeInt(int lhsConst)
 
 void QQmlJSTypePropagator::generate_CmpEq(int lhs)
 {
+    warnAboutTypeCoercion(lhs);
     recordEqualsType(lhs);
     propagateBinaryOperation(QSOperator::Op::Equal, lhs);
 }
 
 void QQmlJSTypePropagator::generate_CmpNe(int lhs)
 {
+    warnAboutTypeCoercion(lhs);
     recordEqualsType(lhs);
     propagateBinaryOperation(QSOperator::Op::NotEqual, lhs);
 }
@@ -3116,16 +3226,14 @@ void QQmlJSTypePropagator::endInstruction(QV4::Moth::Instr::Type instr)
                  || (!populates && changedIndex != Accumulator));
     }
 
-    const auto noError = std::none_of(m_errors->cbegin(), m_errors->cend(),
-                                      [](const auto &e) { return e.isError(); });
-    if (noError && !isNoop(instr)) {
+    if (!m_logger->currentFunctionHasCompileError() && !isNoop(instr)) {
         // An instruction needs to have side effects or write to another register or be a known
         // noop. Anything else is a problem.
         Q_ASSERT(m_state.hasInternalSideEffects() || changedIndex != InvalidRegister);
     }
 
     if (changedIndex != InvalidRegister) {
-        Q_ASSERT(!m_errors->isEmpty() || m_state.changedRegister().isValid());
+        Q_ASSERT(m_logger->currentFunctionHasCompileError() || m_state.changedRegister().isValid());
         VirtualRegister &r = m_state.registers[changedIndex];
         r.content = m_state.changedRegister();
         r.canMove = false;

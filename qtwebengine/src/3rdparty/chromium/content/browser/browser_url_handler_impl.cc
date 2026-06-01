@@ -6,8 +6,9 @@
 
 #include <stddef.h>
 
+#include <algorithm>
+
 #include "base/not_fatal_until.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "content/browser/renderer_host/debug_urls.h"
 #include "content/browser/webui/web_ui_impl.h"
@@ -180,11 +181,12 @@ void BrowserURLHandlerImpl::RemoveHandlerForTesting(URLHandler handler) {
   auto it = url_handlers_.begin();
   for (; it != url_handlers_.end(); ++it) {
     if (it->first == handler) {
+      CHECK(url_handlers_.end() != it, base::NotFatalUntil::M130);
       url_handlers_.erase(it);
       return;
     }
   }
-  CHECK(true, base::NotFatalUntil::M130);
+  NOTREACHED();
 }
 
 }  // namespace content

@@ -3,6 +3,7 @@
 
 set(qml_files
     "CheckIndicator.qml"
+    "SliderHandle.qml"
     "SwitchHandle.qml"
     "SwitchIndicator.qml"
 )
@@ -15,6 +16,7 @@ qt_internal_add_qml_module(QuickControls2MacOSStyleImpl
     DEPENDENCIES
         QtQuick/auto
     PLUGIN_TARGET qtquickcontrols2macosstyleimplplugin
+    NO_PRIVATE_MODULE
     QML_FILES
         ${qml_files}
     DEFINES

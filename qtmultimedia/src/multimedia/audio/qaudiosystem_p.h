@@ -20,14 +20,29 @@
 #include <QtMultimedia/qaudio.h>
 #include <QtMultimedia/qaudiodevice.h>
 #include <QtMultimedia/qaudioformat.h>
+#include <QtMultimedia/private/qaudiohelpers_p.h>
+#include <QtMultimedia/private/qaudio_rtsan_support_p.h>
 #include <QtMultimedia/private/qmultimedia_assume_p.h>
 
 #include <QtCore/qelapsedtimer.h>
 #include <QtCore/qspan.h>
 #include <QtCore/private/qglobal_p.h>
 
+#include <array>
 #include <functional>
 #include <variant>
+
+#include <stdlib.h>
+#if __has_include(<alloca.h>)
+#  include <alloca.h>
+#endif
+#if __has_include(<malloc.h>)
+#  include <malloc.h>
+#endif
+
+#if defined(Q_CC_MSVC) && !defined(alloca)
+#  define alloca _alloca
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -54,6 +69,14 @@ using AudioSinkCallbackType = std::function<void(QSpan<SampleType>)>;
 
 template <typename SampleType>
 using AudioSourceCallbackType = std::function<void(QSpan<const SampleType>)>;
+
+#if __cpp_lib_move_only_function
+template <typename SampleType>
+using AudioSinkMoveOnlyCallbackType = std::move_only_function<void(QSpan<SampleType>)>;
+
+template <typename SampleType>
+using AudioSourceMoveOnlyCallbackType = std::move_only_function<void(QSpan<const SampleType>)>;
+#endif
 
 template <typename>
 struct GetSampleTypeImpl;
@@ -95,6 +118,20 @@ struct GetSampleTypeImpl<AudioSourceCallbackType<T>> : GetSampleTypeImpl<T>
 {
 };
 
+#if __cpp_lib_move_only_function
+
+template <typename T>
+struct GetSampleTypeImpl<AudioSinkMoveOnlyCallbackType<T>> : GetSampleTypeImpl<T>
+{
+};
+
+template <typename T>
+struct GetSampleTypeImpl<AudioSourceMoveOnlyCallbackType<T>> : GetSampleTypeImpl<T>
+{
+};
+
+#endif
+
 template <typename SampleTypeOrCallbackType>
 using GetSampleType = typename GetSampleTypeImpl<SampleTypeOrCallbackType>::type;
 
@@ -104,12 +141,23 @@ static constexpr QAudioFormat::SampleFormat getSampleFormat()
     return GetSampleTypeImpl<SampleTypeOrCallbackType>::sample_format;
 }
 
+#if __cpp_lib_move_only_function
+using AudioSinkCallback =
+        std::variant<AudioSinkMoveOnlyCallbackType<float>, AudioSinkMoveOnlyCallbackType<uint8_t>,
+                     AudioSinkMoveOnlyCallbackType<int16_t>,
+                     AudioSinkMoveOnlyCallbackType<int32_t>>;
+using AudioSourceCallback = std::variant<
+        AudioSourceMoveOnlyCallbackType<float>, AudioSourceMoveOnlyCallbackType<uint8_t>,
+        AudioSourceMoveOnlyCallbackType<int16_t>, AudioSourceMoveOnlyCallbackType<int32_t>>;
+#else
 using AudioSinkCallback =
         std::variant<AudioSinkCallbackType<float>, AudioSinkCallbackType<uint8_t>,
                      AudioSinkCallbackType<int16_t>, AudioSinkCallbackType<int32_t>>;
 using AudioSourceCallback =
         std::variant<AudioSourceCallbackType<float>, AudioSourceCallbackType<uint8_t>,
                      AudioSourceCallbackType<int16_t>, AudioSourceCallbackType<int32_t>>;
+
+#endif
 
 template <typename AnyAudioCallback>
 constexpr bool validateAudioCallbackImpl(const AnyAudioCallback &audioCallback,
@@ -141,11 +189,43 @@ constexpr bool validateAudioCallback(const AudioSourceCallback &audioCallback,
     return validateAudioCallbackImpl(audioCallback, format);
 }
 
+// if the requested buffer is reasonably small (64kb, big enougth for 16 channels, 1024 frames,
+// float32) we can use a stack-allocated temporary buffer.
+// otherwise we allocate a heap buffer.
+template <size_t limit = 1024 * 64, typename Functor>
+inline auto withTemporaryBuffer(size_t bufferSize, Functor &&f) noexcept QT_MM_NONBLOCKING
+{
+    if (bufferSize <= limit) Q_LIKELY_BRANCH {
+#ifdef alloca
+        std::byte *stackBuffer = reinterpret_cast<std::byte *>(alloca(bufferSize));
+        auto stackBufferSpan = QSpan<std::byte>{
+            stackBuffer,
+            qsizetype(bufferSize),
+        };
+#else
+        std::array<std::byte, limit> stackArray;
+        auto stackBufferSpan = QSpan<std::byte>{
+            stackArray,
+            qsizetype(bufferSize),
+        };
+#endif
+        return f(stackBufferSpan);
+    } else {
+        QtPrivate::ScopedRTSanDisabler allowAllocations;
+        auto heapBuffer = q20::make_unique_for_overwrite<std::byte[]>(bufferSize);
+        auto heapBufferSpan = QSpan<std::byte>{
+            heapBuffer.get(),
+            qsizetype(bufferSize),
+        };
+        return f(heapBufferSpan);
+    }
+}
+
 template <bool IsSink>
-inline void runAudioCallback(
-        const std::conditional_t<IsSink, AudioSinkCallback, AudioSourceCallback> &audioCallback,
-        QSpan<std::conditional_t<IsSink, std::byte, const std::byte>> hostBuffer,
-        const QAudioFormat &format)
+inline void
+runAudioCallback(std::conditional_t<IsSink, AudioSinkCallback, AudioSourceCallback> &audioCallback,
+                 QSpan<std::conditional_t<IsSink, std::byte, const std::byte>> hostBuffer,
+                 const QAudioFormat &format)
 {
     Q_ASSERT(!hostBuffer.empty());
 
@@ -154,7 +234,7 @@ inline void runAudioCallback(
 
     int numberOfSamples = format.framesForBytes(hostBuffer.size()) * format.channelCount();
 
-    std::visit([&](const auto &callback) {
+    std::visit([&](auto &callback) {
         using FunctorType = std::decay_t<decltype(callback)>;
         Q_ASSERT(getSampleFormat<FunctorType>() == format.sampleFormat());
 
@@ -172,16 +252,49 @@ inline void runAudioCallback(
     }, audioCallback);
 }
 
-inline void runAudioCallback(const AudioSinkCallback &audioCallback, QSpan<std::byte> hostBuffer,
-                             const QAudioFormat &format)
+inline void runAudioCallback(AudioSinkCallback &audioCallback, QSpan<std::byte> hostBuffer,
+                             const QAudioFormat &format, float volume)
 {
-    return runAudioCallback<true>(audioCallback, hostBuffer, format);
+    runAudioCallback<true>(audioCallback, hostBuffer, format);
+    QAudioHelperInternal::applyVolume(volume, format, hostBuffer, hostBuffer);
 }
 
-inline void runAudioCallback(const AudioSourceCallback &audioCallback,
-                             QSpan<const std::byte> hostBuffer, const QAudioFormat &format)
+inline void runAudioCallback(AudioSinkCallback &audioCallback, QSpan<std::byte> hostBuffer,
+                             const QAudioFormat &applicationFormat, float volume,
+                             const QAudioFormat &hostFormat)
 {
-    return runAudioCallback<false>(audioCallback, hostBuffer, format);
+    using namespace QAudioHelperInternal;
+    const int32_t numberOfFrames = hostFormat.framesForBytes(hostBuffer.size());
+    const int32_t applicationBufferSize = applicationFormat.bytesForFrames(numberOfFrames);
+
+    withTemporaryBuffer(applicationBufferSize, [&](QSpan<std::byte> tempBuffer) {
+        runAudioCallback(audioCallback, tempBuffer, applicationFormat, volume);
+        convertSampleFormat(tempBuffer, toNativeSampleFormat(applicationFormat.sampleFormat()),
+                            hostBuffer, toNativeSampleFormat(hostFormat.sampleFormat()));
+    });
+}
+
+// NB: we we provide two overloads for running audio callbacks based on the host buffer:
+// * if the host buffer is immutable, we need to apply the volume on a temporary buffer
+// * if the host buffer is mutable, we can apply the volume in-place (currently unused)
+inline void runAudioCallback(AudioSourceCallback &audioCallback, QSpan<const std::byte> hostBuffer,
+                             const QAudioFormat &format, float volume)
+{
+    if (volume == 1.0f) {
+        runAudioCallback<false>(audioCallback, hostBuffer, format);
+    } else {
+        withTemporaryBuffer(hostBuffer.size(), [&](QSpan<std::byte> tempBuffer) {
+            QAudioHelperInternal::applyVolume(volume, format, hostBuffer, tempBuffer);
+            runAudioCallback<false>(audioCallback, tempBuffer, format);
+        });
+    }
+}
+
+inline void runAudioCallback(AudioSourceCallback &audioCallback, QSpan<std::byte> hostBuffer,
+                             const QAudioFormat &format, float volume)
+{
+    QAudioHelperInternal::applyVolume(volume, format, hostBuffer, hostBuffer);
+    runAudioCallback<false>(audioCallback, hostBuffer, format);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,6 +307,7 @@ class Q_MULTIMEDIA_EXPORT QPlatformAudioEndpointBase : public QObject
 
 public:
     explicit QPlatformAudioEndpointBase(QAudioDevice, const QAudioFormat &, QObject *parent);
+    ~QPlatformAudioEndpointBase() override;
 
     // LATER: can we devirtualize these functions
     QAudio::Error error() const { return m_error; }
@@ -235,8 +349,12 @@ private:
 
 class Q_MULTIMEDIA_EXPORT QPlatformAudioSink : public QPlatformAudioEndpointBase
 {
+    Q_OBJECT
+
 public:
     explicit QPlatformAudioSink(QAudioDevice, const QAudioFormat &, QObject *parent);
+    ~QPlatformAudioSink() override;
+
     virtual void start(QIODevice *device) = 0;
     virtual QIODevice* start() = 0;
     virtual void stop() = 0;
@@ -265,8 +383,12 @@ public:
 
 class Q_MULTIMEDIA_EXPORT QPlatformAudioSource : public QPlatformAudioEndpointBase
 {
+    Q_OBJECT
+
 public:
     explicit QPlatformAudioSource(QAudioDevice, const QAudioFormat &, QObject *parent);
+    ~QPlatformAudioSource() override;
+
     virtual void start(QIODevice *device) = 0;
     virtual QIODevice* start() = 0;
     virtual void stop() = 0;

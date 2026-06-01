@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickitem.h"
 
@@ -3145,6 +3146,12 @@ void QQuickItemPrivate::derefWindow()
     if (!parentItem)
         c->parentlessItems.remove(q);
 
+    if (auto *da = deliveryAgentPrivate()) {
+        if (da->activeFocusItem == q) {
+            qCDebug(lcFocus) << "Removing active focus item from window's delivery agent";
+            da->activeFocusItem = nullptr;
+        }
+    }
     window = nullptr;
 
     itemNodeInstance = nullptr;
@@ -3169,6 +3176,10 @@ void QQuickItemPrivate::derefWindow()
     itemChange(QQuickItem::ItemSceneChange, (QQuickWindow *)nullptr);
 }
 
+qreal QQuickItemPrivate::effectiveDevicePixelRatio() const
+{
+    return (window ? window->effectiveDevicePixelRatio() : qApp->devicePixelRatio());
+}
 
 /*!
     Returns a transform that maps points from window space into item space.
@@ -7038,7 +7049,7 @@ void QQuickItem::setSmooth(bool smooth)
     focus chain behavior; ignore the events in other key handlers
     to allow it to propagate.
 
-    \note {QStyleHints::tabFocusBehavior}{tabFocusBehavior} can further limit focus
+    \note \l{QStyleHints::tabFocusBehavior}{tabFocusBehavior} can further limit focus
     to only specific types of controls, such as only text or list controls. This is
     the case on macOS, where focus to particular controls may be restricted based on
     system settings.
@@ -7051,7 +7062,7 @@ void QQuickItem::setSmooth(bool smooth)
     This property holds whether the item wants to be in the tab focus
     chain. By default, this is set to \c false.
 
-    \note {QStyleHints::tabFocusBehavior}{tabFocusBehavior} can further limit focus
+    \note \l{QStyleHints::tabFocusBehavior}{tabFocusBehavior} can further limit focus
     to only specific types of controls, such as only text or list controls. This is
     the case on macOS, where focus to particular controls may be restricted based on
     system settings.
@@ -8362,7 +8373,7 @@ void QQuickItem::setCursor(const QCursor &cursor)
     Q_D(QQuickItem);
 
     Qt::CursorShape oldShape = d->extra.isAllocated() ? d->extra->cursor.shape() : Qt::ArrowCursor;
-    qCDebug(lcHoverTrace) << oldShape << "->" << cursor.shape();
+    qCDebug(lcHoverCursor) << oldShape << "->" << cursor.shape();
 
     if (oldShape != cursor.shape() || oldShape >= Qt::LastCursor || cursor.shape() >= Qt::LastCursor) {
         d->extra.value().cursor = cursor;

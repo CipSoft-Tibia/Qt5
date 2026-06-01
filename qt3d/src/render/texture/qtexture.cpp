@@ -9,8 +9,10 @@
 #include "qtexture.h"
 #include "qtexture_p.h"
 #include <QFileInfo>
+#if QT_CONFIG(mimetype)
 #include <QMimeDatabase>
 #include <QMimeType>
+#endif
 #include <QtCore/QBuffer>
 #include <qendian.h>
 #include <Qt3DCore/private/qscene_p.h>
@@ -1044,11 +1046,13 @@ QTextureDataPtr QTextureFromSourceGenerator::operator ()()
 
             QStringList ext(suffix);
 
+#if QT_CONFIG(mimetype)
             QMimeDatabase db;
             QMimeType mtype = db.mimeTypeForData(m_sourceData);
             if (mtype.isValid()) {
                 ext << mtype.suffixes();
             }
+#endif
 
             for (const QString &s: std::as_const(ext)) {
                 textureData = TextureLoadingHelper::loadTextureData(&buffer, s, true, m_mirrored);

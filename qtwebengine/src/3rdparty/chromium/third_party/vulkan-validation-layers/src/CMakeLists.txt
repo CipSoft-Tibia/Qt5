@@ -1,6 +1,6 @@
 # ~~~
-# Copyright (c) 2014-2024 Valve Corporation
-# Copyright (c) 2014-2024 LunarG, Inc.
+# Copyright (c) 2014-2025 Valve Corporation
+# Copyright (c) 2014-2025 LunarG, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ~~~
-cmake_minimum_required(VERSION 3.17.2)
+cmake_minimum_required(VERSION 3.22.1)
 
 project(VVL LANGUAGES CXX)
 
@@ -85,7 +85,7 @@ if (VVL_ENABLE_TRACY)
         message(FATAL_ERROR "Tracy cannot be used with mimalloc")
     endif()
 
-    if (VVL_TRACY_CALLSTACK STREQUAL "OFF") 
+    if (VVL_TRACY_CALLSTACK STREQUAL "OFF")
         set(VVL_TRACY_CALLSTACK 48)
     endif()
 
@@ -98,6 +98,13 @@ if (VVL_ENABLE_TRACY)
 
     if(VVL_ENABLE_TRACY_CPU_MEMORY)
         add_compile_definitions(VVL_TRACY_CPU_MEMORY)
+    endif()
+
+    if(VVL_ENABLE_TRACY_GPU)
+        add_compile_definitions(
+            VVL_TRACY_GPU
+            TRACY_VK_USE_SYMBOL_TABLE
+        )
     endif()
 endif()
 
@@ -190,4 +197,6 @@ option(BUILD_TESTS "Build the tests")
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+    # Set tests as Visual Studio startup project
+    set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT vk_layer_validation_tests)
 endif()

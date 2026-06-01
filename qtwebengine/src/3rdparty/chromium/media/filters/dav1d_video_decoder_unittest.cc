@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -114,8 +119,7 @@ class Dav1dVideoDecoderTest : public testing::Test {
         case DecoderStatus::Codes::kOk:
           break;
         case DecoderStatus::Codes::kAborted:
-          NOTREACHED_IN_MIGRATION();
-          [[fallthrough]];
+          NOTREACHED();
         default:
           DCHECK(output_frames_.empty());
           return status;

@@ -4,6 +4,8 @@
 
 #include "net/cookies/test_cookie_access_delegate.h"
 
+#include <algorithm>
+#include <optional>
 #include <set>
 #include <utility>
 #include <vector>
@@ -12,10 +14,8 @@
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
 #include "base/functional/callback.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/types/optional_util.h"
 #include "net/base/schemeful_site.h"
 #include "net/cookies/cookie_constants.h"
 #include "net/cookies/cookie_util.h"
@@ -35,6 +35,15 @@ CookieAccessSemantics TestCookieAccessDelegate::GetAccessSemantics(
   if (it != expectations_.end())
     return it->second;
   return CookieAccessSemantics::UNKNOWN;
+}
+
+CookieScopeSemantics TestCookieAccessDelegate::GetScopeSemantics(
+    const CanonicalCookie& cookie) const {
+  auto it = expectations_scoped_.find(GetKeyForDomainValue(cookie.Domain()));
+  if (it != expectations_scoped_.end()) {
+    return it->second;
+  }
+  return CookieScopeSemantics::UNKNOWN;
 }
 
 bool TestCookieAccessDelegate::ShouldIgnoreSameSiteRestrictions(
@@ -67,11 +76,9 @@ TestCookieAccessDelegate::ComputeFirstPartySetMetadataMaybeAsync(
     base::OnceCallback<void(FirstPartySetMetadata,
                             FirstPartySetsCacheFilter::MatchInfo)> callback)
     const {
-  std::optional<FirstPartySetEntry> top_frame_owner =
-      top_frame_site ? FindFirstPartySetEntry(*top_frame_site) : std::nullopt;
   FirstPartySetMetadata metadata(
-      base::OptionalToPtr(FindFirstPartySetEntry(site)),
-      base::OptionalToPtr(top_frame_owner));
+      FindFirstPartySetEntry(site),
+      top_frame_site ? FindFirstPartySetEntry(*top_frame_site) : std::nullopt);
   FirstPartySetsCacheFilter::MatchInfo match_info(
       first_party_sets_cache_filter_.GetMatchInfo(site));
 
@@ -125,6 +132,12 @@ void TestCookieAccessDelegate::SetExpectationForCookieDomain(
     const std::string& cookie_domain,
     CookieAccessSemantics access_semantics) {
   expectations_[GetKeyForDomainValue(cookie_domain)] = access_semantics;
+}
+
+void TestCookieAccessDelegate::SetExpectationForCookieScope(
+    const std::string& cookie_domain,
+    CookieScopeSemantics scoped_semantics) {
+  expectations_scoped_[GetKeyForDomainValue(cookie_domain)] = scoped_semantics;
 }
 
 void TestCookieAccessDelegate::SetIgnoreSameSiteRestrictionsScheme(

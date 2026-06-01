@@ -70,6 +70,6 @@ See \l {Qt Licensing} for further details.
 Furthermore Qt Quick 3D Physics contains third party modules
 under the following permissive licenses:
 
-\generatelist{groupsbymodule attributions-qtquick3dphysics}
+\annotatedlist attributions-qtquick3dphysics
 
 */

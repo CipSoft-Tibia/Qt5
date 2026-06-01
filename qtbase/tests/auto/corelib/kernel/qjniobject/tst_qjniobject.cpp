@@ -115,6 +115,7 @@ private slots:
     void setStaticObjectField();
 
     void templateApiCheck();
+    void defaultTemplateApiCheck();
     void isClassAvailable();
     void fromLocalRef();
     void largeObjectArray();
@@ -1875,6 +1876,31 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(reverse.toContainer(), (QList<jdouble>{1.0, 2.0, 3.0}));
     }
 
+}
+
+void tst_QJniObject::defaultTemplateApiCheck()
+{
+    // static QJniObject calls --------------------------------------------------------------------
+    QJniObject::callStaticMethod(testClassName, "staticVoidMethod");
+    QJniObject::callStaticMethod(testClassName, "staticVoidMethodWithArgs", "(IZC)V", 1, true, 'c');
+    QJniObject::callStaticMethod(testClassName, "staticVoidMethodWithArgs", 1, true, 'c');
+
+    // instance QJniObject calls ------------------------------------------------------------------
+    QJniObject testClass(testClassName);
+    QVERIFY(testClass.isValid());
+
+    testClass.callMethod("voidMethod");
+    testClass.callMethod("voidMethodWithArgs", "(IZC)V", 1, true, 'c');
+    testClass.callMethod("voidMethodWithArgs", 1, true, 'c');
+
+    // static QtJniType calls ---------------------------------------------------------------------
+    TestClass::callStaticMethod("staticVoidMethod");
+    TestClass::callStaticMethod("staticVoidMethodWithArgs", 1, true, 'c');
+
+    // instance QtJniType calls -------------------------------------------------------------------
+    TestClass instance;
+    instance.callMethod("voidMethod");
+    instance.callMethod("voidMethodWithArgs", 1, true, 'c');
 }
 
 void tst_QJniObject::isClassAvailable()

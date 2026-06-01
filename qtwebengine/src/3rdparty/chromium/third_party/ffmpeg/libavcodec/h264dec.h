@@ -93,6 +93,14 @@
 
 #define IS_REF0(a)         ((a) & MB_TYPE_REF0)
 #define IS_8x8DCT(a)       ((a) & MB_TYPE_8x8DCT)
+#define IS_SUB_8X8(a)      ((a) & MB_TYPE_16x16) // note reused
+#define IS_SUB_8X4(a)      ((a) & MB_TYPE_16x8)  // note reused
+#define IS_SUB_4X8(a)      ((a) & MB_TYPE_8x16)  // note reused
+#define IS_SUB_4X4(a)      ((a) & MB_TYPE_8x8)   // note reused
+#define IS_DIR(a, part, list) ((a) & (MB_TYPE_P0L0 << ((part) + 2 * (list))))
+
+// does this mb use listX, note does not work if subMBs
+#define USES_LIST(a, list) ((a) & ((MB_TYPE_P0L0 | MB_TYPE_P1L0) << (2 * (list))))
 
 /**
  * Memory management control operation.
@@ -336,7 +344,7 @@ typedef struct H264Context {
     H264DSPContext h264dsp;
     H264ChromaContext h264chroma;
     H264QpelContext h264qpel;
-    H274FilmGrainDatabase* h274db;  // Dynamic allocation due to large size.
+    H274FilmGrainDatabase h274db;
 
     H264Picture DPB[H264_MAX_PICTURE_COUNT];
     H264Picture *cur_pic_ptr;

@@ -19,18 +19,13 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qsize.h>
+#include <QtCore/qtclasshelpermacros.h>
+
+#include <QtMultimedia/qcameradevice.h>
 #include <QtMultimedia/qtmultimediaexports.h>
 
-#include "qcameradevice.h"
-
-#include <AVFoundation/AVFoundation.h>
-
-#ifdef Q_OS_IOS
-#import <UIKit/UIDevice.h>
-#endif
-
-// In case we have SDK below 10.7/7.0:
-@class AVCaptureDeviceFormat;
+#import <AVFoundation/AVCaptureDevice.h>
+#import <AVFoundation/AVCaptureSession.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -101,11 +96,21 @@ class AVFScopedPointer<dispatch_queue_t>
 public:
     AVFScopedPointer() : m_queue(nullptr) {}
     explicit AVFScopedPointer(dispatch_queue_t q) : m_queue(q) {}
+    AVFScopedPointer(AVFScopedPointer &&other) noexcept :
+        m_queue{ std::exchange(other.m_queue, nullptr) }
+    {}
+
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(AVFScopedPointer)
 
     ~AVFScopedPointer()
     {
         if (m_queue)
             dispatch_release(m_queue);
+    }
+
+    void swap(AVFScopedPointer &other)
+    {
+        std::swap(m_queue, other.m_queue);
     }
 
     operator dispatch_queue_t() const
@@ -124,6 +129,13 @@ public:
         if (m_queue)
             dispatch_release(m_queue);
         m_queue = q;
+    }
+
+    // Relinquishes ownership of the dispatch_queue_t and returns the
+    // pointer, without freeing the object.
+    [[nodiscard]] dispatch_queue_t take()
+    {
+        return std::exchange(m_queue, nullptr);
     }
 
 private:
@@ -163,11 +175,6 @@ Q_MULTIMEDIA_EXPORT QList<AudioValueRange> qt_supported_sample_rates_for_format(
 Q_MULTIMEDIA_EXPORT QList<AudioValueRange> qt_supported_bit_rates_for_format(int codecId);
 Q_MULTIMEDIA_EXPORT std::optional<QList<UInt32>> qt_supported_channel_counts_for_format(int codecId);
 Q_MULTIMEDIA_EXPORT QList<UInt32> qt_supported_channel_layout_tags_for_format(int codecId, int noChannels);
-
-#ifdef Q_OS_IOS
-// Returns a rotation, measured in angles, 0 to 360 depending on the UIDeviceOrientation.
-Q_MULTIMEDIA_EXPORT int qt_ui_device_orientation_to_rotation_angle_degrees(UIDeviceOrientation orientation);
-#endif
 
 QT_END_NAMESPACE
 

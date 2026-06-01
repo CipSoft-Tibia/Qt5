@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "build/chromeos_buildflags.h"
 #include "extensions/common/extensions_export.h"
@@ -161,8 +162,8 @@ inline constexpr char kMimeTypePng[] = "image/png";
 inline constexpr char kWebStoreAppId[] = "ahfgeienlihckogmohjhadlkjgocpleb";
 
 // The key used for signing some pieces of data from the webstore.
-EXTENSIONS_EXPORT extern const uint8_t kWebstoreSignaturesPublicKey[];
-EXTENSIONS_EXPORT extern const size_t kWebstoreSignaturesPublicKeySize;
+EXTENSIONS_EXPORT extern const base::span<const uint8_t>
+    kWebstoreSignaturesPublicKey;
 
 // A preference for storing the extension's update URL data.
 inline constexpr char kUpdateURLData[] = "update_url_data";
@@ -365,7 +366,7 @@ inline constexpr char kGoogleSheetsAppId[] = "felcaaldnbdncclmgdcncolpebgiejap";
 // The extension id of the Google Slides application.
 inline constexpr char kGoogleSlidesAppId[] = "aapocclcgogkmnckokdopfmhonfmgoek";
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 // The id of the testing extension allowed in the signin profile.
 inline constexpr char kSigninProfileTestExtensionId[] =
     "mecfefiddjlmabpeilblgegnbioikfmp";
@@ -425,9 +426,7 @@ inline constexpr char kXboxCloudGamingAppId[] =
 // that that on other operating systems would be considered part of the OS,
 // for example the file manager.
 EXTENSIONS_EXPORT bool IsSystemUIApp(std::string_view extension_id);
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
-#if BUILDFLAG(IS_CHROMEOS)
 // The extension id of the default Demo Mode Highlights app.
 inline constexpr char kHighlightsAppId[] = "lpmakjfjcconjeehbidjclhdlpjmfjjj";
 
@@ -486,6 +485,9 @@ inline constexpr int kContentVerificationDefaultBlockSize = 4096;
 // resolved.
 inline constexpr char kDocsOfflineExtensionId[] =
     "ghbmnnjooekpmoecnnnilnnbdlolhkhi";
+
+// This is used extensively, generally as a key in a dictionary.
+inline constexpr char kId[] = "id";
 
 }  // namespace extension_misc
 

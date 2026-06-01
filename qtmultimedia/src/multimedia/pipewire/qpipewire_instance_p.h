@@ -30,6 +30,7 @@ class QPipeWireInstance
 {
 public:
     [[nodiscard]] static std::shared_ptr<QPipeWireInstance> instance();
+    static bool isLoaded();
 
     QPipeWireInstance();
     ~QPipeWireInstance();

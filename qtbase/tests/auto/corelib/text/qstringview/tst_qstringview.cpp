@@ -288,6 +288,7 @@ private Q_SLOTS:
     void tokenize() const;
 
     void std_stringview_conversion();
+    void userDefinedLiterals();
 
 private:
     template <typename String>
@@ -974,6 +975,28 @@ void tst_QStringView::std_stringview_conversion()
     QCOMPARE(s.size(), 12);
     QCOMPARE(sv.size(), size_t(12));
     QCOMPARE(sv, std::u16string_view(u"Hello\0world\0", 12));
+}
+
+void tst_QStringView::userDefinedLiterals()
+{
+    using namespace Qt::StringLiterals;
+    auto sv = u"test"_sv;
+    static_assert(std::is_same_v<decltype(sv), QStringView>);
+
+    QCOMPARE(sv.size(), 4);
+    QCOMPARE(sv, "test");
+
+    sv = u""_sv;
+    QCOMPARE(sv.size(), 0);
+    QCOMPARE(sv, "");
+
+    sv = u"embedded\0nul"_sv;
+    QCOMPARE(sv.size(), 12);
+    QCOMPARE(sv, QStringView(u"embedded\0nul", 12));
+
+    constexpr auto csv = u"constexpr test"_sv;
+    static_assert(csv.size() == 14);
+    QCOMPARE(csv, "constexpr test");
 }
 
 QTEST_APPLESS_MAIN(tst_QStringView)

@@ -3,6 +3,7 @@
 
 #include "qbar3dseries_p.h"
 #include "qbardataproxy_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -142,7 +143,7 @@ QBar3DSeries *QBarDataProxy::series() const
 {
     Q_D(const QBarDataProxy);
     if (!d->series())
-        qWarning("Series needs to be created to access data members");
+        qCWarning(lcGraphs3D, "series needs to be created to access data members");
     return static_cast<QBar3DSeries *>(d->series());
 }
 
@@ -168,8 +169,10 @@ void QBarDataProxy::resetArray()
 void QBarDataProxy::resetArray(QBarDataArray newArray)
 {
     Q_D(QBarDataProxy);
-    if (!series())
+    if (!series()) {
+        qCWarning(lcGraphs3D, "Series needs to be valid before using resetArray");
         return;
+    }
 
     d->resetArray(std::move(newArray), QStringList(), QStringList());
     emit arrayReset();

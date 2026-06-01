@@ -335,9 +335,11 @@ void QWaylandTextInputPrivate::zwp_text_input_v2_enable(Resource *resource, wl_r
     QWaylandSurface *s = QWaylandSurface::fromResource(surface);
     enabledSurfaces.insert(resource, s);
 
+#if QT_CONFIG(im)
     QWaylandInputMethodControl *control = s->inputMethodControl();
     if (control)
         control->updateTextInput();
+#endif
 
     emit q->surfaceEnabled(s);
 }

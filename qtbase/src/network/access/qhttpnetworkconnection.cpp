@@ -235,6 +235,18 @@ static QByteArray makeAcceptLanguage()
     return (systemLocale + ",en,*"_L1).toLatin1();
 }
 
+static QStringView removeZoneId(QStringView ipv6HostAddress)
+{
+    const auto zoneIdentfierIndex = ipv6HostAddress.indexOf(u'%');
+    // Only perform a minimal sanity check, as at this point the
+    // ipv6HostAddress was already used successfully to establish the connection.
+    if (zoneIdentfierIndex == -1) {
+        return ipv6HostAddress;
+    }
+
+    return ipv6HostAddress.left(zoneIdentfierIndex);
+}
+
 void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
 {
     QHttpNetworkRequest &request = messagePair.first;
@@ -318,7 +330,7 @@ void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
         QByteArray host;
         if (add.setAddress(hostName)) {
             if (add.protocol() == QAbstractSocket::IPv6Protocol)
-                host = (u'[' + hostName + u']').toLatin1(); //format the ipv6 in the standard way
+                host = (u'[' + removeZoneId(hostName) + u']').toLatin1(); //format the ipv6 in the standard way
             else
                 host = hostName.toLatin1();
 

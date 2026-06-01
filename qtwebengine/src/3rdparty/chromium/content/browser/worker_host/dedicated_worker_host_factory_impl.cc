@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
 #include "content/browser/devtools/devtools_throttle_handle.h"
 #include "content/browser/devtools/worker_devtools_manager.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
@@ -174,6 +175,7 @@ void DedicatedWorkerHostFactoryImpl::CreateWorkerHostAndStartScriptLoad(
     mojo::ReportBadMessage("DWH_BROWSER_SCRIPT_FETCH_DISABLED");
     return;
   }
+  base::TimeTicks start_time = base::TimeTicks::Now();
 
   // Get the dedicated worker service.
   auto* worker_process_host = RenderProcessHost::FromID(worker_process_id_);
@@ -226,7 +228,10 @@ void DedicatedWorkerHostFactoryImpl::CreateWorkerHostAndStartScriptLoad(
       std::move(client));
   remote_client->OnWorkerHostCreated(
       std::move(broker), std::move(pending_remote_host), renderer_origin);
+  base::UmaHistogramTimes("Worker.BrowserProcess.WorkerHostCreateTime",
+                          base::TimeTicks::Now() - start_time);
 
+  base::TimeTicks host_created_time = base::TimeTicks::Now();
   auto devtools_throttle_handle =
       base::MakeRefCounted<DevToolsThrottleHandle>(base::BindOnce(
           &DedicatedWorkerHost::StartScriptLoad, host->GetWeakPtr(), script_url,
@@ -238,8 +243,12 @@ void DedicatedWorkerHostFactoryImpl::CreateWorkerHostAndStartScriptLoad(
   // devtools to be able to instrument the URLLoaderFactory. This call will
   // create a DevtoolsAgentHost.
   WorkerDevToolsManager::GetInstance().WorkerCreated(
-      host, worker_process_host->GetID(), ancestor_render_frame_host_id_,
-      std::move(devtools_throttle_handle));
+      host, worker_process_host->GetDeprecatedID(),
+      ancestor_render_frame_host_id_, std::move(devtools_throttle_handle));
+  base::UmaHistogramTimes("Worker.BrowserProcess.StartScriptLoadTime",
+                          base::TimeTicks::Now() - start_time);
+  base::UmaHistogramTimes("Worker.BrowserProcess.DevToolsCreateTime",
+                          base::TimeTicks::Now() - host_created_time);
 }
 
 }  // namespace content

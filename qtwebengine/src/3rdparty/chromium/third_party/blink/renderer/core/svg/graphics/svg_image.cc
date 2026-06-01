@@ -36,8 +36,8 @@
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/frame/visual_viewport.h"
-#include "third_party/blink/renderer/core/layout/intrinsic_sizing_info.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
+#include "third_party/blink/renderer/core/layout/natural_sizing_info.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_root.h"
 #include "third_party/blink/renderer/core/page/page_animator.h"
 #include "third_party/blink/renderer/core/paint/paint_auto_dark_mode.h"
@@ -86,6 +86,20 @@ void SVGImageViewInfo::Trace(Visitor* visitor) const {
 
 SVGImage::SVGImage(ImageObserver* observer, bool is_multipart)
     : Image(observer, is_multipart),
+      // TODO(chikamune): use an existing AgentGroupScheduler
+      // SVG will be shared via MemoryCache (which is renderer process
+      // global cache) across multiple AgentSchedulingGroups. That's
+      // why we can't use an existing AgentSchedulingGroup for now. If
+      // we incorrectly use the existing ASG/AGS and if we freeze task
+      // queues on a AGS, it will affect SVGs on other AGS. To
+      // mitigate this problem, we need to split the MemoryCache into
+      // smaller granularity. There is an active effort to mitigate
+      // this which is called "Memory Cache Per Context"
+      // (https://crbug.com/1127971).
+      agent_group_scheduler_(Thread::MainThread()
+                                 ->Scheduler()
+                                 ->ToMainThreadScheduler()
+                                 ->CreateAgentGroupScheduler()),
       has_pending_timeline_rewind_(false) {}
 
 SVGImage::~SVGImage() {
@@ -144,8 +158,6 @@ bool SVGImage::CurrentFrameHasSingleSecurityOrigin() const {
   if (!document_host_) {
     return true;
   }
-
-  CheckLoaded();
 
   SVGSVGElement* root_element = RootElement();
   if (!root_element)
@@ -207,7 +219,7 @@ void SVGImage::ApplyViewInfo(const SVGImageViewInfo* viewinfo) {
 
 bool SVGImage::GetIntrinsicSizingInfo(
     const SVGViewSpec* override_viewspec,
-    IntrinsicSizingInfo& intrinsic_sizing_info) const {
+    NaturalSizingInfo& intrinsic_sizing_info) const {
   const LayoutSVGRoot* layout_root = LayoutRoot();
   if (!layout_root)
     return false;
@@ -224,7 +236,7 @@ bool SVGImage::GetIntrinsicSizingInfo(
         SVGPreserveAspectRatio::kSvgPreserveaspectratioNone) {
       // Clear all the fields so that the concrete object size will equal the
       // default object size.
-      intrinsic_sizing_info = IntrinsicSizingInfo();
+      intrinsic_sizing_info = NaturalSizingInfo();
       intrinsic_sizing_info.has_width = false;
       intrinsic_sizing_info.has_height = false;
     }
@@ -662,6 +674,11 @@ Image::SizeAvailability SVGImage::DataChanged(bool all_data_received) {
   SCOPED_BLINK_UMA_HISTOGRAM_TIMER_HIGHRES("Blink.SVGImage.DataChanged");
   base::ElapsedTimer elapsed_timer;
 
+  CHECK(!document_host_);
+  chrome_client_ = MakeGarbageCollected<SVGImageChromeClient>(this);
+  chrome_client_->InitAnimationTimer(
+      agent_group_scheduler_->CompositorTaskRunner());
+
   // Because an SVGImage has no relation to a normal Page, it can't get default
   // font settings from the embedder. Copy settings for fonts and other things
   // so we have sensible defaults. These settings are fixed and will not update
@@ -676,12 +693,8 @@ Image::SizeAvailability SVGImage::DataChanged(bool all_data_received) {
   // This will become an issue when SVGImage will be able to load other
   // SVGImage objects, but we're safe now, because SVGImage can only be
   // loaded by a top-level document.
-  CHECK(!document_host_);
-  std::tie(chrome_client_, document_host_) =
-      IsolatedSVGDocumentHostInitializer::Get()->GetOrCreate();
-  chrome_client_->SetImage(this);
-  document_host_->InstallDocument(
-      Data(),
+  document_host_ = MakeGarbageCollected<IsolatedSVGDocumentHost>(
+      *chrome_client_, *agent_group_scheduler_, Data(),
       WTF::BindOnce(&SVGImage::NotifyAsyncLoadCompleted,
                     weak_ptr_factory_.GetWeakPtr()),
       settings_to_use, IsolatedSVGDocumentHost::ProcessingMode::kAnimated);
@@ -692,7 +705,7 @@ Image::SizeAvailability SVGImage::DataChanged(bool all_data_received) {
   // Set the concrete object size before a container size is available.
   // TODO(fs): Make this just set/copy width and height directly. See
   // crbug.com/789511.
-  IntrinsicSizingInfo sizing_info;
+  NaturalSizingInfo sizing_info;
   if (GetIntrinsicSizingInfo(nullptr, sizing_info)) {
     intrinsic_size_ = PhysicalSize::FromSizeFFloor(blink::ConcreteObjectSize(
         sizing_info, gfx::SizeF(LayoutReplaced::kDefaultWidth,

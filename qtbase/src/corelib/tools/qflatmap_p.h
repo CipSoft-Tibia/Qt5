@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFLATMAP_P_H
 #define QFLATMAP_P_H
@@ -15,7 +16,9 @@
 // We mean it.
 //
 
+#include <QtCore/qcontainertools_impl.h>
 #include "qlist.h"
+#include <QtCore/qtclasshelpermacros.h>
 #include "private/qglobal_p.h"
 
 #include <algorithm>
@@ -42,23 +45,9 @@ QT_BEGIN_NAMESPACE
       QFlatMap<float, int, std::less<float>, std::vector<float>, std::vector<int>>
 */
 
-// Qt 6.4:
-// - removed QFlatMap API which was incompatible with STL semantics
-// - will be released with said API disabled, to catch any out-of-tree users
-// - also allows opting in to the new API using QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
-// Qt 6.5
-// - will make QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT the default:
-
-#ifndef QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
-# if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-#  define QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
-# endif
-#endif
-
 namespace Qt {
 
-struct OrderedUniqueRange_t {};
-constexpr OrderedUniqueRange_t OrderedUniqueRange = {};
+QT_DEFINE_TAG(OrderedUniqueRange);
 
 } // namespace Qt
 
@@ -83,35 +72,11 @@ public:
     }
 };
 
-namespace qflatmap {
-namespace detail {
-template <class T>
-class QFlatMapMockPointer
-{
-    T ref;
-public:
-    QFlatMapMockPointer(T r)
-        : ref(r)
-    {
-    }
-
-    T *operator->()
-    {
-        return &ref;
-    }
-};
-} // namespace detail
-} // namespace qflatmap
-
 template<class Key, class T, class Compare = std::less<Key>, class KeyContainer = QList<Key>,
          class MappedContainer = QList<T>>
 class QFlatMap : private QFlatMapValueCompare<Key, T, Compare>
 {
     static_assert(std::is_nothrow_destructible_v<T>, "Types with throwing destructors are not supported in Qt containers.");
-
-    template<class U>
-    using mock_pointer = qflatmap::detail::QFlatMapMockPointer<U>;
-
 public:
     using key_type = Key;
     using mapped_type = T;
@@ -134,7 +99,7 @@ public:
         using difference_type = ptrdiff_t;
         using value_type = std::pair<const Key, T>;
         using reference = std::pair<const Key &, T &>;
-        using pointer = mock_pointer<reference>;
+        using pointer = QtPrivate::ArrowProxy<reference>;
         using iterator_category = std::random_access_iterator_tag;
 
         iterator() = default;
@@ -266,7 +231,7 @@ public:
         using difference_type = ptrdiff_t;
         using value_type = std::pair<const Key, const T>;
         using reference = std::pair<const Key &, const T &>;
-        using pointer = mock_pointer<reference>;
+        using pointer = QtPrivate::ArrowProxy<reference>;
         using iterator_category = std::random_access_iterator_tag;
 
         const_iterator() = default;
@@ -415,7 +380,6 @@ private:
 public:
     QFlatMap() = default;
 
-#ifdef QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
     explicit QFlatMap(const key_container_type &keys, const mapped_container_type &values)
         : c{keys, values}
     {
@@ -451,7 +415,6 @@ public:
         initWithRange(first, last);
         ensureOrderedUnique();
     }
-#endif
 
     explicit QFlatMap(Qt::OrderedUniqueRange_t, const key_container_type &keys,
                       const mapped_container_type &values)
@@ -493,7 +456,6 @@ public:
     {
     }
 
-#ifdef QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
     explicit QFlatMap(const key_container_type &keys, const mapped_container_type &values,
                       const Compare &compare)
         : value_compare(compare), c{keys, values}
@@ -534,7 +496,6 @@ public:
         initWithRange(first, last);
         ensureOrderedUnique();
     }
-#endif
 
     explicit QFlatMap(Qt::OrderedUniqueRange_t, const key_container_type &keys,
                       const mapped_container_type &values, const Compare &compare)
@@ -649,14 +610,18 @@ public:
     T value(const Key &key) const
     {
         auto it = find(key);
-        return it == end() ? T() : it.value();
+        if (it == end())
+            return T();
+        return it.value();
     }
 
     template <class X, class Y = Compare, is_marked_transparent<Y> = nullptr>
     T value(const X &key) const
     {
         auto it = find(key);
-        return it == end() ? T() : it.value();
+        if (it == end())
+            return T();
+        return it.value();
     }
 
     T &operator[](const Key &key)
@@ -674,7 +639,6 @@ public:
         return value(key);
     }
 
-#ifdef QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
     std::pair<iterator, bool> insert(const Key &key, const T &value)
     {
         return try_emplace(key, value);
@@ -694,7 +658,6 @@ public:
     {
         return try_emplace(std::move(key), std::move(value));
     }
-#endif
 
     template <typename...Args>
     std::pair<iterator, bool> try_emplace(const Key &key, Args&&...args)
@@ -738,7 +701,6 @@ public:
         return r;
     }
 
-#ifdef QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
     template <class InputIt, is_compatible_iterator<InputIt> = nullptr>
     void insert(InputIt first, InputIt last)
     {
@@ -764,7 +726,6 @@ public:
     {
         insertOrderedUniqueRange(first, last);
     }
-#endif
 
     iterator begin() { return { &c, 0 }; }
     const_iterator begin() const { return { &c, 0 }; }
@@ -943,12 +904,13 @@ private:
 
     T do_take(iterator it)
     {
-        if (it != end()) {
+        if (it == end())
+            return {};
+        return [&] {
             T result = std::move(it.value());
             erase(it);
             return result;
-        }
-        return {};
+        }();
     }
 
     template <class InputIt, is_compatible_iterator<InputIt> = nullptr>

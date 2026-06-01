@@ -22,14 +22,14 @@
 
 #include "absl/base/attributes.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "internal/platform/clock.h"
 #include "sharing/advertisement.h"
 #include "sharing/attachment_container.h"
+#include "sharing/certificates/nearby_share_certificate_manager.h"
 #include "sharing/internal/api/sharing_rpc_notifier.h"
 #include "sharing/local_device_data/nearby_share_local_device_data_manager.h"
 #include "sharing/nearby_sharing_settings.h"
-#include "sharing/share_target.h"
 #include "sharing/share_target_discovered_callback.h"
 #include "sharing/transfer_update_callback.h"
 
@@ -40,7 +40,6 @@ class AccountManager;
 namespace sharing {
 
 class NearbyNotificationDelegate;
-class NearbyShareCertificateManager;
 class NearbyShareContactManager;
 class NearbyShareHttpNotifier;
 
@@ -139,14 +138,6 @@ class NearbySharingService {
 
   // Shutdown the Nearby Sharing service, and cleanup.
   virtual void Shutdown(
-      std::function<void(StatusCodes)> status_codes_callback) = 0;
-
-  // Registers a send surface for handling payload transfer status and device
-  // discovery.
-  ABSL_DEPRECATED("Use the variant with vendor ID/blocking request instead.")
-  virtual void RegisterSendSurface(
-      TransferUpdateCallback* transfer_callback,
-      ShareTargetDiscoveredCallback* discovery_callback, SendSurfaceState state,
       std::function<void(StatusCodes)> status_codes_callback) = 0;
 
   // Registers a send surface for handling payload transfer status and device
@@ -255,6 +246,7 @@ class NearbySharingService {
   virtual NearbyShareContactManager* GetContactManager() = 0;
   virtual NearbyShareCertificateManager* GetCertificateManager() = 0;
   virtual AccountManager* GetAccountManager() = 0;
+  virtual Clock& GetClock() = 0;
 };
 
 }  // namespace sharing

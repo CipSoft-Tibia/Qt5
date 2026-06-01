@@ -177,7 +177,7 @@ static QLibraryScanResult qt_find_pattern(const char *s, qsizetype s_len, QStrin
     return QElfParser::parse({s, s_len}, errMsg);
 #elif defined(Q_OF_MACH_O)
     return QMachOParser::parse(s, s_len, errMsg);
-#elif defined(Q_OS_WIN)
+#elif defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
     return QCoffPeParser::parse({s, s_len}, errMsg);
 #else
 #   warning "Qt does not know how to efficiently parse your platform's binary format; using slow fall-back."
@@ -615,7 +615,7 @@ QtPluginInstanceFunction QLibraryPrivate::loadPlugin()
  */
 bool QLibrary::isLibrary(const QString &fileName)
 {
-#if defined(Q_OS_WIN)
+#if defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
     return fileName.endsWith(".dll"_L1, Qt::CaseInsensitive);
 #else // Generic Unix
 # if defined(Q_OS_DARWIN)

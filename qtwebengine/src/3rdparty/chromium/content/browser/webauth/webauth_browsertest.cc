@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include <stdint.h>
 
 #include <cstring>
@@ -19,6 +24,7 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/notreached.h"
 #include "base/run_loop.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
@@ -29,7 +35,7 @@
 #include "base/test/test_future.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "content/browser/payments/stub_payment_credential.h"
+#include "content/browser/payments/stub_secure_payment_confirmation_service.h"
 #include "content/browser/renderer_host/back_forward_cache_disable.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/webauth/authenticator_environment.h"
@@ -38,6 +44,7 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/scoped_authenticator_environment_for_testing.h"
+#include "content/public/browser/web_authentication_delegate.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
@@ -53,6 +60,7 @@
 #include "content/public/test/content_mock_cert_verifier.h"
 #include "content/public/test/test_utils.h"
 #include "content/shell/browser/shell.h"
+#include "content/test/content_browser_test_utils_internal.h"
 #include "content/test/did_commit_navigation_interceptor.h"
 #include "content/test/fake_network_url_loader_factory.h"
 #include "device/fido/fake_fido_discovery.h"
@@ -61,7 +69,9 @@
 #include "device/fido/fido_test_data.h"
 #include "device/fido/fido_transport_protocol.h"
 #include "device/fido/fido_types.h"
+#include "device/fido/large_blob.h"
 #include "device/fido/public_key_credential_params.h"
+#include "device/fido/public_key_credential_user_entity.h"
 #include "device/fido/virtual_fido_device.h"
 #include "device/fido/virtual_fido_device_factory.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -169,6 +179,10 @@ constexpr char kRpIdNoEntryMessage[] =
     ".well-known/webauthn resource of the claimed RP ID was "
     "successful, but no listed origin matched the caller.";
 
+constexpr char kMaxLargeBlobMessage[] =
+    "NotSupportedError: The 'largeBlob' extension's 'write' parameter exceeds "
+    "the maximum allowed size (2kb)";
+
 // Templates to be used with base::ReplaceStringPlaceholders. Can be
 // modified to include up to 9 replacements. The default values for
 // any additional replacements added should also be added to the
@@ -190,7 +204,7 @@ constexpr char kCreatePublicKeyTemplate[] =
     "     authenticatorAttachment: '$5',"
     "  },"
     "  attestation: '$6',"
-    "  extensions: {payment: {isPayment: $8}},"
+    "  extensions: {payment: {isPayment: $8}, $9},"
     "}}).then(c => 'OK',"
     "         e => e.toString())";
 
@@ -211,7 +225,7 @@ constexpr char kCreatePublicKeyWithAbortSignalTemplate[] =
     "     authenticatorAttachment: '$5',"
     "  },"
     "  attestation: '$6',"
-    "  extensions: {payment: {isPayment: $8}},"
+    "  extensions: {payment: {isPayment: $8}, $9},"
     "}, signal: _signal_}"
     ").then(c => 'OK',"
     "       e => e.toString())";
@@ -230,6 +244,7 @@ struct CreateParameters {
   std::string signal = "";
   std::string timeout = "10000";
   bool is_payment = false;
+  std::string extra_extension;
 };
 
 std::string BuildCreateCallWithParameters(const CreateParameters& parameters) {
@@ -242,6 +257,7 @@ std::string BuildCreateCallWithParameters(const CreateParameters& parameters) {
   substitutions.push_back(parameters.attestation);
   substitutions.push_back(parameters.exclude_credentials);
   substitutions.push_back(parameters.is_payment ? "true" : "false");
+  substitutions.push_back(parameters.extra_extension);
 
   std::string result;
   if (parameters.signal.empty()) {
@@ -265,7 +281,8 @@ constexpr char kGetPublicKeyTemplate[] =
     "  userVerification: '$1',"
     "  allowCredentials: $2,"
     "  timeout: $3,"
-    "  rpId: '$4'}"
+    "  rpId: '$4',"
+    "  extensions: {$5}}"
     "}).then(c => 'OK',"
     "        e => e.toString())";
 
@@ -276,7 +293,8 @@ constexpr char kGetPublicKeyWithAbortSignalTemplate[] =
     "  allowCredentials: $2,"
     "  timeout: $3,"
     "  rpId: '$4',"
-    "}, signal: $5}"
+    "  extensions: {$5}"
+    "}, signal: $6}"
     ").catch(c => c.toString())";
 
 // Default values for kGetPublicKeyTemplate.
@@ -289,6 +307,7 @@ struct GetParameters {
   std::string signal = "";
   std::string timeout = "10000";
   std::string rp_id = "acme.com";
+  std::string extra_extension;
 };
 
 std::string BuildGetCallWithParameters(const GetParameters& parameters) {
@@ -297,6 +316,7 @@ std::string BuildGetCallWithParameters(const GetParameters& parameters) {
   substitutions.push_back(parameters.allow_credentials);
   substitutions.push_back(parameters.timeout);
   substitutions.push_back(parameters.rp_id);
+  substitutions.push_back(parameters.extra_extension);
   if (parameters.signal.empty()) {
     return base::ReplaceStringPlaceholders(kGetPublicKeyTemplate, substitutions,
                                            nullptr);
@@ -446,11 +466,12 @@ class WebAuthBrowserTestContentBrowserClient
     return std::make_unique<WebAuthBrowserTestClientDelegate>(test_state_);
   }
 
-  void CreatePaymentCredential(
+  void CreateSecurePaymentConfirmationService(
       RenderFrameHost* render_frame_host,
-      mojo::PendingReceiver<payments::mojom::PaymentCredential> receiver)
-      override {
-    StubPaymentCredential::Create(render_frame_host, std::move(receiver));
+      mojo::PendingReceiver<payments::mojom::SecurePaymentConfirmationService>
+          receiver) override {
+    StubSecurePaymentConfirmationService::Create(render_frame_host,
+                                                 std::move(receiver));
   }
 
   scoped_refptr<network::SharedURLLoaderFactory>
@@ -490,12 +511,11 @@ class WebAuthBrowserTestContentBrowserClient
 
     void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver)
         override {
-      CHECK(false);
+      NOTREACHED();
     }
 
     std::unique_ptr<network::PendingSharedURLLoaderFactory> Clone() override {
-      CHECK(false);
-      return nullptr;
+      NOTREACHED();
     }
 
     void CreateLoaderAndStart(
@@ -523,12 +543,11 @@ class WebAuthBrowserTestContentBrowserClient
    public:
     void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver)
         override {
-      CHECK(false);
+      NOTREACHED();
     }
 
     std::unique_ptr<network::PendingSharedURLLoaderFactory> Clone() override {
-      CHECK(false);
-      return nullptr;
+      NOTREACHED();
     }
 
     void CreateLoaderAndStart(
@@ -653,6 +672,12 @@ class WebAuthLocalClientBrowserTest : public WebAuthBrowserTestBase {
  protected:
   void SetUpOnMainThread() override {
     WebAuthBrowserTestBase::SetUpOnMainThread();
+    // The renderer would disable bfcache during the lifetime of a request.
+    // Since we don't have a renderer here and some of the navigation tests
+    // depend on bfcache being disabled, do so manually.
+    content::BackForwardCache::DisableForRenderFrameHost(
+        shell()->web_contents()->GetPrimaryMainFrame(),
+        RenderFrameHostDisabledForTestingReason());
     ConnectToAuthenticator();
   }
 
@@ -1718,6 +1743,52 @@ IN_PROC_BROWSER_TEST_F(WebAuthJavascriptClientBrowserTest,
                    BuildCreateCallWithParameters(parameters)));
 }
 
+// Tests storing a large blob exceeding 2kb through WebAuthn.
+IN_PROC_BROWSER_TEST_F(WebAuthJavascriptClientBrowserTest, LargeBlobMaxSize) {
+  // This call is necessary for WebAuthenticationDelegate::SupportsResidentKeys
+  // to return true.
+  content::AuthenticatorEnvironment::GetInstance()
+      ->EnableVirtualAuthenticatorFor(
+          static_cast<content::RenderFrameHostImpl*>(
+              shell()->web_contents()->GetPrimaryMainFrame())
+              ->frame_tree_node(),
+          /*enable_ui=*/false);
+  auto* virtual_device_factory = InjectVirtualFidoDeviceFactory();
+  device::VirtualCtap2Device::Config config;
+  config.resident_key_support = true;
+  config.internal_uv_support = true;
+  config.large_blob_support = true;
+  config.pin_uv_auth_token_support = true;
+  config.ctap2_versions = {device::Ctap2Version::kCtap2_1};
+  virtual_device_factory->SetSupportedProtocol(device::ProtocolVersion::kCtap2);
+  virtual_device_factory->SetCtap2Config(config);
+  virtual_device_factory->mutable_state()->fingerprints_enrolled = true;
+  const std::vector<uint8_t> kCredentialId = {1};
+  virtual_device_factory->mutable_state()->InjectResidentKey(
+      kCredentialId, device::PublicKeyCredentialRpEntity("acme.com"),
+      device::PublicKeyCredentialUserEntity({2}));
+  ASSERT_TRUE(
+      NavigateToURL(shell(), GetHttpsURL("www.acme.com", "/title1.html")));
+  {
+    // Attempt writing a large blob at exactly the max size. This should be
+    // allowed.
+    GetParameters get;
+    get.allow_credentials = "[{type: 'public-key', id: new Uint8Array([1])}]";
+    get.extra_extension = "largeBlob: { write: new Uint8Array(2048) }";
+    EXPECT_EQ(kOkMessage,
+              EvalJs(shell()->web_contents(), BuildGetCallWithParameters(get)));
+  }
+  {
+    // Attempt writing a large blob that exceeds the max size. This should not
+    // be allowed.
+    GetParameters get;
+    get.allow_credentials = "[{type: 'public-key', id: new Uint8Array([1])}]";
+    get.extra_extension = "largeBlob: { write: new Uint8Array(2049) }";
+    EXPECT_EQ(kMaxLargeBlobMessage,
+              EvalJs(shell()->web_contents(), BuildGetCallWithParameters(get)));
+  }
+}
+
 class WebAuthCrossDomainTest : public WebAuthBrowserTestBase {
  public:
   void SetUpOnMainThread() override {
@@ -1732,8 +1803,6 @@ class WebAuthCrossDomainTest : public WebAuthBrowserTestBase {
 
  protected:
   raw_ptr<device::test::VirtualFidoDeviceFactory> virtual_device_factory_;
-  const base::test::ScopedFeatureList scoped_feature_list{
-      device::kWebAuthnRelatedOrigin};
 };
 
 IN_PROC_BROWSER_TEST_F(WebAuthCrossDomainTest, Create) {
@@ -1790,7 +1859,7 @@ IN_PROC_BROWSER_TEST_F(WebAuthCrossDomainTest, Get) {
                                    0x64, 0x43, 0x72, 0x65, 0x64, 0x65,
                                    0x6E, 0x74, 0x69, 0x61, 0x6C};
   ASSERT_TRUE(virtual_device_factory_->mutable_state()->InjectRegistration(
-      device::fido_parsing_utils::Materialize(base::make_span(kCredentialId)),
+      device::fido_parsing_utils::Materialize(base::span(kCredentialId)),
       "foo.com"));
 
   GetParameters parameters;
@@ -1806,15 +1875,26 @@ IN_PROC_BROWSER_TEST_F(WebAuthCrossDomainTest, Get) {
 
 class WebAuthLocalClientBackForwardCacheBrowserTest
     : public WebAuthLocalClientBrowserTest {
+ public:
+  WebAuthLocalClientBackForwardCacheBrowserTest() {
+    scoped_feature_list_.InitAndDisableFeature(
+        device::kWebAuthnNewBfCacheHandling);
+  }
+
  protected:
   BackForwardCacheDisabledTester tester_;
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 IN_PROC_BROWSER_TEST_F(WebAuthLocalClientBackForwardCacheBrowserTest,
                        WebAuthDisablesBackForwardCache) {
   // Initialisation of the test should disable bfcache.
   EXPECT_TRUE(tester_.IsDisabledForFrameWithReason(
-      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
+      shell()
+          ->web_contents()
+          ->GetPrimaryMainFrame()
+          ->GetProcess()
+          ->GetDeprecatedID(),
       shell()->web_contents()->GetPrimaryMainFrame()->GetRoutingID(),
       BackForwardCacheDisable::DisabledReason(
           BackForwardCacheDisable::DisabledReasonId::kWebAuthenticationAPI)));

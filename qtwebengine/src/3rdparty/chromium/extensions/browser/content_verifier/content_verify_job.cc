@@ -2,15 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "extensions/browser/content_verifier/content_verify_job.h"
 
 #include <algorithm>
 
+#include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/lazy_instance.h"
 #include "base/memory/raw_ptr.h"
@@ -18,7 +14,6 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/task/thread_pool.h"
 #include "base/timer/elapsed_timer.h"
-#include "build/buildflag.h"
 #include "content/public/browser/browser_thread.h"
 #include "crypto/secure_hash.h"
 #include "crypto/sha2.h"
@@ -26,10 +21,6 @@
 #include "extensions/browser/content_verifier/content_hash.h"
 #include "extensions/browser/content_verifier/content_verifier.h"
 #include "extensions/common/constants.h"
-
-#if BUILDFLAG(IS_MAC)
-#include "extensions/common/extension_features.h"
-#endif
 
 namespace extensions {
 
@@ -138,19 +129,6 @@ void ContentVerifyJob::StartWithContentHash(
       return;
     }
     case ContentHashReader::InitStatus::NO_HASHES_FOR_RESOURCE: {
-#if BUILDFLAG(IS_MAC)
-      // Skip verification for file paths ending with a separator. Unlike other
-      // platforms, macOS strips the trailing separator when `realpath` is used,
-      // which causes inconsistencies. See https://crbug.com/356878412.
-      // TODO(crbug.com/357636604): Remove after the flag is removed in M132.
-      if (!base::FeatureList::IsEnabled(
-              extensions_features::kMacRejectFilePathsEndingWithSeparator) &&
-          relative_path_.EndsWithSeparator()) {
-        ReportJobFinished(NONE);
-        return;
-      }
-#endif
-
       // Proceed and dispatch failure only if the file exists.
       break;
     }
@@ -167,7 +145,7 @@ void ContentVerifyJob::StartWithContentHash(
     DCHECK_EQ(read_error_, MOJO_RESULT_OK);
     std::string tmp;
     queue_.swap(tmp);
-    BytesReadImpl(std::data(tmp), tmp.size(), MOJO_RESULT_OK);
+    BytesReadImpl(tmp, MOJO_RESULT_OK);
     if (failed_) {
       return;
     }
@@ -178,12 +156,11 @@ void ContentVerifyJob::StartWithContentHash(
   }
 }
 
-void ContentVerifyJob::BytesRead(const char* data,
-                                 int count,
+void ContentVerifyJob::BytesRead(base::span<const char> data,
                                  MojoResult read_result) {
   base::AutoLock auto_lock(lock_);
   DCHECK(!done_reading_);
-  BytesReadImpl(data, count, read_result);
+  BytesReadImpl(data, read_result);
 }
 
 void ContentVerifyJob::DoneReading() {
@@ -249,8 +226,7 @@ void ContentVerifyJob::OnHashMismatch() {
   }
 }
 
-void ContentVerifyJob::BytesReadImpl(const char* data,
-                                     int count,
+void ContentVerifyJob::BytesReadImpl(base::span<const char> data,
                                      MojoResult read_result) {
   ScopedElapsedTimer timer(&time_spent_);
   if (failed_)
@@ -268,13 +244,13 @@ void ContentVerifyJob::BytesReadImpl(const char* data,
   }
 
   if (!hashes_ready_) {
-    queue_.append(data, count);
+    queue_.append(data.begin(), data.end());
     return;
   }
   if (hash_reader_->status() != ContentHashReader::InitStatus::SUCCESS) {
     return;
   }
-  DCHECK_GE(count, 0);
+  const int count = data.size();
   int bytes_added = 0;
 
   while (bytes_added < count) {
@@ -290,7 +266,7 @@ void ContentVerifyJob::BytesReadImpl(const char* data,
         std::min(hash_reader_->block_size() - current_hash_byte_count_,
                  count - bytes_added);
     DCHECK_GT(bytes_to_hash, 0);
-    current_hash_->Update(data + bytes_added, bytes_to_hash);
+    current_hash_->Update(&data[bytes_added], bytes_to_hash);
     bytes_added += bytes_to_hash;
     current_hash_byte_count_ += bytes_to_hash;
     total_bytes_read_ += bytes_to_hash;
@@ -366,7 +342,7 @@ void ContentVerifyJob::DispatchFailureCallback(FailureReason reason) {
 void ContentVerifyJob::ReportJobFinished(FailureReason reason) {
   auto record_job_finished = [this, &reason](const char* mv2_histogram,
                                              const char* mv3_histogram) {
-    if (manifest_version_ == 2) {
+    if (mv2_histogram && manifest_version_ == 2) {
       base::UmaHistogramEnumeration(mv2_histogram, reason, FAILURE_REASON_MAX);
     } else if (manifest_version_ == 3) {
       base::UmaHistogramEnumeration(mv3_histogram, reason, FAILURE_REASON_MAX);
@@ -380,7 +356,7 @@ void ContentVerifyJob::ReportJobFinished(FailureReason reason) {
   // milestones.
   if (extension_id_ == extension_misc::kDocsOfflineExtensionId) {
     record_job_finished(
-        "Extensions.ContentVerification.VerifyJobResultMV2.GoogleDocsOffline",
+        nullptr,  // No MV2 Google Docs Offline version.
         "Extensions.ContentVerification.VerifyJobResultMV3.GoogleDocsOffline");
   }
 

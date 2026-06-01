@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlconnections_p.h"
 
@@ -389,7 +390,7 @@ void QQmlConnections::connectSignalsToMethods()
 
     QObject *target = this->target();
     QQmlData *ddata = QQmlData::get(this);
-    if (!ddata)
+    if (!ddata || !ddata->propertyCache || !ddata->context || !ddata->context->isValid())
         return;
 
     QV4::ExecutionEngine *engine = ddata->context->engine()->handle();

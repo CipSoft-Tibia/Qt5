@@ -6,6 +6,8 @@
 #include <QtPositioning/QNmeaSatelliteInfoSource>
 #include "../../utils/qnmeaproxyfactory.h"
 
+#include <memory>
+
 class DummyNmeaSatelliteInfoSource : public QNmeaSatelliteInfoSource
 {
     Q_OBJECT
@@ -132,7 +134,7 @@ void tst_DummyNmeaSatelliteInfoSource::testOverloadedParseFunction()
 {
     DummyNmeaSatelliteInfoSource source;
     QNmeaProxyFactory factory;
-    QScopedPointer<QNmeaSatelliteInfoSourceProxy> proxy(
+    std::unique_ptr<QNmeaSatelliteInfoSourceProxy> proxy(
             factory.createSatelliteInfoSourceProxy(&source));
 
     QSignalSpy inUseSpy(proxy->source(), &QNmeaSatelliteInfoSource::satellitesInUseUpdated);

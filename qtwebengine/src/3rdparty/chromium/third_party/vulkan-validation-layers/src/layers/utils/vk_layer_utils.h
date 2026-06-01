@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2017, 2019-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2017, 2019-2024 Valve Corporation
- * Copyright (c) 2015-2017, 2019-2024 LunarG, Inc.
+/* Copyright (c) 2015-2017, 2019-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2017, 2019-2025 Valve Corporation
+ * Copyright (c) 2015-2017, 2019-2025 LunarG, Inc.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,19 +18,26 @@
 
 #pragma once
 
+#include <algorithm>
+#include <atomic>
+#include <bitset>
 #include <cassert>
 #include <cctype>
+#include <cmath>
 #include <cstring>
-#include <string>
-#include <vector>
-#include <bitset>
+#include <memory>
+#include <optional>
 #include <shared_mutex>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 #include <vulkan/utility/vk_format_utils.h>
 #include <vulkan/utility/vk_concurrent_unordered_map.hpp>
+#include <vulkan/utility/vk_struct_helper.hpp>
+#include "vulkan/vk_layer.h"
 
-#include "generated/vk_extension_helper.h"
-#include "error_message/logging.h"
+#include "generated/vk_layer_dispatch_table.h"
 
 #ifndef WIN32
 #include <strings.h>  // For ffs()
@@ -98,9 +105,21 @@ VkLayerDeviceCreateInfo *GetChainInfo(const VkDeviceCreateInfo *pCreateInfo, VkL
 
 template <typename T>
 constexpr bool IsPowerOfTwo(T x) {
-    static_assert(std::numeric_limits<T>::is_integer, "Unsigned integer required.");
-    static_assert(std::is_unsigned<T>::value, "Unsigned integer required.");
+    static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>, "Unsigned integer required");
     return x && !(x & (x - 1));
+}
+
+template <typename T>
+constexpr uint32_t GetBitSetCount(T value) {
+    static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>, "Unsigned integer required");
+    static_assert(sizeof(T) == 4 || sizeof(T) == 8, "32 or 64 bit value is expected");
+    return static_cast<uint32_t>(std::bitset<sizeof(T) * 8>(value).count());
+}
+
+template <typename T>
+constexpr bool IsSingleBitSet(T flags) {
+    static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>, "Unsigned integer required");
+    return IsPowerOfTwo(flags);
 }
 
 // Returns the 0-based index of the MSB, like the x86 bit scan reverse (bsr) instruction
@@ -265,7 +284,7 @@ static inline uint32_t GetIndexAlignment(VkIndexType indexType) {
             return 2;
         case VK_INDEX_TYPE_UINT32:
             return 4;
-        case VK_INDEX_TYPE_UINT8_KHR:
+        case VK_INDEX_TYPE_UINT8:
             return 1;
         case VK_INDEX_TYPE_NONE_KHR:  // alias VK_INDEX_TYPE_NONE_NV
             return 0;
@@ -274,6 +293,22 @@ static inline uint32_t GetIndexAlignment(VkIndexType indexType) {
             // to have already picked up on the enum being nonsense.
             return 1;
     }
+}
+
+inline constexpr uint32_t GetIndexBitsSize(VkIndexType indexType) {
+    switch (indexType) {
+        case VK_INDEX_TYPE_UINT16:
+            return 16;
+        case VK_INDEX_TYPE_UINT32:
+            return 32;
+        case VK_INDEX_TYPE_NONE_KHR:
+            return 0;
+        case VK_INDEX_TYPE_UINT8_KHR:
+            return 8;
+        case VK_INDEX_TYPE_MAX_ENUM:
+            return 0;
+    }
+    return 0;
 }
 
 // vkspec.html#formats-planes-image-aspect
@@ -308,6 +343,23 @@ static inline bool IsAnyPlaneAspect(VkImageAspectFlags aspect_mask) {
         VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT;
     return (aspect_mask & valid_planes) != 0;
 }
+
+static inline uint32_t GetVertexInputFormatSize(VkFormat format) {
+    // Vertex input attributes use VkFormat, but only to make use of how they define sizes, things such as
+    // depth/multi-plane/compressed will never be used here because they would mean nothing. So we can ensure these are "standard"
+    // color formats being used. This function is a wrapper to make it more clear of the intent.
+    return vkuFormatTexelBlockSize(format);
+}
+
+static inline uint32_t GetTexelBufferFormatSize(VkFormat format) {
+    // The spec says "If format is a block-compressed format, then bufferFeatures must not support any features for the format"
+    // For Texel Buffers, we can assume the texel blocks are a 1x1x1 extent
+    // See https://gitlab.khronos.org/vulkan/vulkan/-/issues/4155 for more details
+    return vkuFormatTexelBlockSize(format);
+}
+
+bool AreFormatsSizeCompatible(VkFormat a, VkFormat b);
+std::string DescribeFormatsSizeCompatible(VkFormat a, VkFormat b);
 
 static const VkShaderStageFlags kShaderStageAllGraphics =
     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
@@ -382,24 +434,6 @@ static inline VkDeviceSize SafeDivision(VkDeviceSize dividend, VkDeviceSize divi
     return result;
 }
 
-inline std::optional<VkDeviceSize> ComputeValidSize(VkDeviceSize offset, VkDeviceSize size, VkDeviceSize whole_size) {
-    std::optional<VkDeviceSize> valid_size;
-    if (offset < whole_size) {
-        if (size == VK_WHOLE_SIZE) {
-            valid_size.emplace(whole_size - offset);
-        } else if ((offset + size) <= whole_size) {
-            valid_size.emplace(size);
-        }
-    }
-    return valid_size;
-}
-
-// Only 32 bit fields should need a bit count
-static inline uint32_t GetBitSetCount(uint32_t field) {
-    std::bitset<32> view_bits(field);
-    return static_cast<uint32_t>(view_bits.count());
-}
-
 static inline uint32_t FullMipChainLevels(VkExtent3D extent) {
     // uint cast applies floor()
     return 1u + static_cast<uint32_t>(log2(std::max({extent.height, extent.width, extent.depth})));
@@ -447,12 +481,10 @@ typedef enum VkStringErrorFlagBits {
 } VkStringErrorFlagBits;
 typedef VkFlags VkStringErrorFlags;
 
-void LayerDebugMessengerActions(DebugReport *debug_report, const char *layer_identifier);
-
 std::string GetTempFilePath();
 
 // Aliases to avoid excessive typing. We can't easily auto these away because
-// there are virtual methods in ValidationObject which return lock guards
+// there are virtual methods in vvl::base::Device which return lock guards
 // and those cannot use return type deduction.
 typedef std::shared_lock<std::shared_mutex> ReadLockGuard;
 typedef std::unique_lock<std::shared_mutex> WriteLockGuard;
@@ -491,18 +523,6 @@ static constexpr bool HasNonShaderTileImageAccessFlags(VkAccessFlags2 in_flags) 
 bool RangesIntersect(int64_t x, uint64_t x_size, int64_t y, uint64_t y_size);
 
 namespace vvl {
-
-static inline void ToLower(std::string &str) {
-    // std::tolower() returns int which can cause compiler warnings
-    transform(str.begin(), str.end(), str.begin(),
-              [](char c) { return static_cast<char>(std::tolower(c)); });
-}
-
-static inline void ToUpper(std::string &str) {
-    // std::toupper() returns int which can cause compiler warnings
-    transform(str.begin(), str.end(), str.begin(),
-              [](char c) { return static_cast<char>(std::toupper(c)); });
-}
 
 // The standard does not specify the value of data() for zero-sized contatiners as being null or non-null,
 // only that it is not dereferenceable.

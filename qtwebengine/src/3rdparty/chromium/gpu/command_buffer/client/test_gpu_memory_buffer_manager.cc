@@ -76,7 +76,7 @@ class GpuMemoryBufferImpl : public gfx::GpuMemoryBuffer {
   gfx::GpuMemoryBufferHandle CloneHandle() const override {
     gfx::GpuMemoryBufferHandle handle;
     handle.type = gfx::SHARED_MEMORY_BUFFER;
-    handle.region = region_.Duplicate();
+    handle.set_region(region_.Duplicate());
     handle.offset = base::checked_cast<uint32_t>(offset_);
     handle.stride = base::checked_cast<uint32_t>(stride_);
     return handle;
@@ -197,10 +197,8 @@ void TestGpuMemoryBufferManager::CopyGpuMemoryBufferAsync(
   std::move(callback).Run(false);
 }
 
-bool TestGpuMemoryBufferManager::CopyGpuMemoryBufferSync(
-    gfx::GpuMemoryBufferHandle buffer_handle,
-    base::UnsafeSharedMemoryRegion memory_region) {
-  return false;
+bool TestGpuMemoryBufferManager::IsConnected() {
+  return true;
 }
 
 }  // namespace gpu

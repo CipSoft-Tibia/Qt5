@@ -69,12 +69,16 @@ template("fuzzer_test") {
       test_deps += [ "//testing/libfuzzer:fuzzing_engine_main" ]
     }
     test_data_deps = []
+    test_data = []
 
     if (defined(invoker.deps)) {
       test_deps += invoker.deps
     }
     if (defined(invoker.data_deps)) {
       test_data_deps += invoker.data_deps
+    }
+    if (defined(invoker.data)) {
+      test_data += invoker.data
     }
 
     supporting_file_test_deps = []
@@ -118,6 +122,7 @@ template("fuzzer_test") {
       }
 
       if (archive_seed_corpus) {
+        test_data_deps += [ ":" + target_name + "_seed_corpus" ]
         supporting_file_test_deps += [ ":" + target_name + "_seed_corpus" ]
       }
     }
@@ -133,6 +138,7 @@ template("fuzzer_test") {
           sources = [ invoker.dict ]
           outputs = [ "$root_build_dir/" + target_name + ".dict" ]
         }
+        test_data_deps += [ ":" + target_name + "_dict_copy" ]
         supporting_file_test_deps += [ ":" + target_name + "_dict_copy" ]
       }
 
@@ -304,6 +310,7 @@ template("fuzzer_test") {
                              ])
       deps = test_deps
       data_deps = test_data_deps
+      data = test_data
 
       if (defined(invoker.additional_configs)) {
         configs += invoker.additional_configs

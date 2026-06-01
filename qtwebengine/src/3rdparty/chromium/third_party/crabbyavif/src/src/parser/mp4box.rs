@@ -44,7 +44,7 @@ impl BoxHeader {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FileTypeBox {
     pub major_brand: String,
     // minor_version "is informative only" (section 4.3.1 of ISO/IEC 14496-12)
@@ -63,21 +63,48 @@ impl FileTypeBox {
         self.compatible_brands.iter().any(|x| x.as_str() == brand)
     }
 
-    pub fn is_avif(&self) -> bool {
-        self.has_brand("avif") || self.has_brand("avis")
+    fn has_brand_any(&self, brands: &[&str]) -> bool {
+        brands.iter().any(|brand| self.has_brand(brand))
+    }
+
+    pub(crate) fn is_avif(&self) -> bool {
         // "avio" also exists but does not identify the file as AVIF on its own. See
         // https://aomediacodec.github.io/av1-avif/v1.1.0.html#image-and-image-collection-brand
+        self.has_brand_any(&[
+            "avif",
+            "avis",
+            #[cfg(feature = "heic")]
+            "heic",
+            #[cfg(feature = "heic")]
+            "heix",
+            #[cfg(feature = "heic")]
+            "mif1",
+        ])
     }
 
-    pub fn needs_meta(&self) -> bool {
-        self.has_brand("avif")
+    pub(crate) fn needs_meta(&self) -> bool {
+        self.has_brand_any(&[
+            "avif",
+            #[cfg(feature = "heic")]
+            "heic",
+            #[cfg(feature = "heic")]
+            "heix",
+            #[cfg(feature = "heic")]
+            "mif1",
+        ])
     }
 
-    pub fn needs_moov(&self) -> bool {
-        self.has_brand("avis")
+    pub(crate) fn needs_moov(&self) -> bool {
+        self.has_brand_any(&[
+            "avis",
+            #[cfg(feature = "heic")]
+            "hevc",
+            #[cfg(feature = "heic")]
+            "msf1",
+        ])
     }
 
-    pub fn has_tmap(&self) -> bool {
+    pub(crate) fn has_tmap(&self) -> bool {
         self.has_brand("tmap")
     }
 }
@@ -111,8 +138,8 @@ pub struct PixelInformation {
     pub plane_depths: Vec<u8>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct CodecConfiguration {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Av1CodecConfiguration {
     pub seq_profile: u8,
     pub seq_level_idx0: u8,
     pub seq_tier0: u8,
@@ -122,29 +149,114 @@ pub struct CodecConfiguration {
     pub chroma_subsampling_x: u8,
     pub chroma_subsampling_y: u8,
     pub chroma_sample_position: ChromaSamplePosition,
+    pub raw_data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct HevcCodecConfiguration {
+    pub bitdepth: u8,
+    pub nal_length_size: u8,
+    pub vps: Vec<u8>,
+    pub sps: Vec<u8>,
+    pub pps: Vec<u8>,
 }
 
 impl CodecConfiguration {
-    pub fn depth(&self) -> u8 {
-        match self.twelve_bit {
-            true => 12,
-            false => match self.high_bitdepth {
-                true => 10,
-                false => 8,
+    pub(crate) fn depth(&self) -> u8 {
+        match self {
+            Self::Av1(config) => match config.twelve_bit {
+                true => 12,
+                false => match config.high_bitdepth {
+                    true => 10,
+                    false => 8,
+                },
             },
+            Self::Hevc(config) => config.bitdepth,
         }
     }
 
-    pub fn pixel_format(&self) -> PixelFormat {
-        if self.monochrome {
-            PixelFormat::Yuv400
-        } else if self.chroma_subsampling_x == 1 && self.chroma_subsampling_y == 1 {
-            PixelFormat::Yuv420
-        } else if self.chroma_subsampling_x == 1 {
-            PixelFormat::Yuv422
-        } else {
-            PixelFormat::Yuv444
+    pub(crate) fn pixel_format(&self) -> PixelFormat {
+        match self {
+            Self::Av1(config) => {
+                if config.monochrome {
+                    PixelFormat::Yuv400
+                } else if config.chroma_subsampling_x == 1 && config.chroma_subsampling_y == 1 {
+                    PixelFormat::Yuv420
+                } else if config.chroma_subsampling_x == 1 {
+                    PixelFormat::Yuv422
+                } else {
+                    PixelFormat::Yuv444
+                }
+            }
+            Self::Hevc(_) => {
+                // It is okay to always return Yuv420 here since that is the only format that
+                // android_mediacodec returns.
+                // TODO: b/370549923 - Identify the correct YUV subsampling type from the codec
+                // configuration data.
+                PixelFormat::Yuv420
+            }
         }
+    }
+
+    pub(crate) fn chroma_sample_position(&self) -> ChromaSamplePosition {
+        match self {
+            Self::Av1(config) => config.chroma_sample_position,
+            Self::Hevc(_) => {
+                // It is okay to always return ChromaSamplePosition::default() here since that is
+                // the only format that android_mediacodec returns.
+                // TODO: b/370549923 - Identify the correct chroma sample position from the codec
+                // configuration data.
+                ChromaSamplePosition::default()
+            }
+        }
+    }
+
+    #[cfg(feature = "android_mediacodec")]
+    pub(crate) fn raw_data(&self) -> Vec<u8> {
+        match self {
+            Self::Av1(config) => config.raw_data.clone(),
+            Self::Hevc(config) => {
+                // For HEVC, the codec specific data consists of the following 3 NAL units in
+                // order: VPS, SPS and PPS. Each unit should be preceded by a start code of
+                // "\x00\x00\x00\x01".
+                // https://developer.android.com/reference/android/media/MediaCodec#CSD
+                let mut data: Vec<u8> = Vec::new();
+                for nal_unit in [&config.vps, &config.sps, &config.pps] {
+                    // Start code.
+                    data.extend_from_slice(&[0, 0, 0, 1]);
+                    // Data.
+                    data.extend_from_slice(&nal_unit[..]);
+                }
+                data
+            }
+        }
+    }
+
+    pub fn profile(&self) -> u8 {
+        match self {
+            Self::Av1(config) => config.seq_profile,
+            Self::Hevc(_) => {
+                // TODO: b/370549923 - Identify the correct profile from the codec configuration
+                // data.
+                0
+            }
+        }
+    }
+
+    #[cfg(feature = "android_mediacodec")]
+    pub(crate) fn nal_length_size(&self) -> u8 {
+        match self {
+            Self::Av1(_) => 0, // Unused. This function is only used for HEVC.
+            Self::Hevc(config) => config.nal_length_size,
+        }
+    }
+
+    pub(crate) fn is_avif(&self) -> bool {
+        matches!(self, Self::Av1(_))
+    }
+
+    pub(crate) fn is_heic(&self) -> bool {
+        matches!(self, Self::Hevc(_))
     }
 }
 
@@ -177,6 +289,18 @@ pub struct PixelAspectRatio {
 pub struct ContentLightLevelInformation {
     pub max_cll: u16,
     pub max_pall: u16,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CodecConfiguration {
+    Av1(Av1CodecConfiguration),
+    Hevc(HevcCodecConfiguration),
+}
+
+impl Default for CodecConfiguration {
+    fn default() -> Self {
+        Self::Av1(Av1CodecConfiguration::default())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -290,8 +414,31 @@ fn parse_header(stream: &mut IStream, top_level: bool) -> AvifResult<BoxHeader> 
     })
 }
 
+// Reads a truncated ftyp box. Populates as many brands as it can read.
+fn parse_truncated_ftyp(stream: &mut IStream) -> FileTypeBox {
+    // Section 4.3.2 of ISO/IEC 14496-12.
+    // unsigned int(32) major_brand;
+    let major_brand = match stream.read_string(4) {
+        Ok(major_brand) => major_brand,
+        Err(_) => return FileTypeBox::default(),
+    };
+    let mut compatible_brands: Vec<String> = Vec::new();
+    // unsigned int(32) compatible_brands[];  // to end of the box
+    while stream.has_bytes_left().unwrap_or_default() {
+        match stream.read_string(4) {
+            Ok(brand) => compatible_brands.push(brand),
+            Err(_) => break,
+        }
+    }
+    FileTypeBox {
+        major_brand,
+        compatible_brands,
+    }
+}
+
 fn parse_ftyp(stream: &mut IStream) -> AvifResult<FileTypeBox> {
     // Section 4.3.2 of ISO/IEC 14496-12.
+    // unsigned int(32) major_brand;
     let major_brand = stream.read_string(4)?;
     // unsigned int(4) minor_version;
     stream.skip_u32()?;
@@ -302,6 +449,7 @@ fn parse_ftyp(stream: &mut IStream) -> AvifResult<FileTypeBox> {
         )));
     }
     let mut compatible_brands: Vec<String> = create_vec_exact(stream.bytes_left()? / 4)?;
+    // unsigned int(32) compatible_brands[];  // to end of the box
     while stream.has_bytes_left()? {
         compatible_brands.push(stream.read_string(4)?);
     }
@@ -501,6 +649,7 @@ fn parse_pixi(stream: &mut IStream) -> AvifResult<ItemProperty> {
 
 #[allow(non_snake_case)]
 fn parse_av1C(stream: &mut IStream) -> AvifResult<ItemProperty> {
+    let raw_data = stream.get_immutable_vec(stream.bytes_left()?)?;
     // See https://aomediacodec.github.io/av1-isobmff/v1.2.0.html#av1codecconfigurationbox-syntax.
     let mut bits = stream.sub_bit_stream(4)?;
     // unsigned int (1) marker = 1;
@@ -517,7 +666,7 @@ fn parse_av1C(stream: &mut IStream) -> AvifResult<ItemProperty> {
             "Invalid version ({version}) in av1C"
         )));
     }
-    let av1C = CodecConfiguration {
+    let av1C = Av1CodecConfiguration {
         // unsigned int(3) seq_profile;
         // unsigned int(5) seq_level_idx_0;
         seq_profile: bits.read(3)? as u8,
@@ -536,6 +685,7 @@ fn parse_av1C(stream: &mut IStream) -> AvifResult<ItemProperty> {
         chroma_subsampling_x: bits.read(1)? as u8,
         chroma_subsampling_y: bits.read(1)? as u8,
         chroma_sample_position: bits.read(2)?.into(),
+        raw_data,
     };
 
     // unsigned int(3) reserved = 0;
@@ -573,7 +723,83 @@ fn parse_av1C(stream: &mut IStream) -> AvifResult<ItemProperty> {
 
     // unsigned int(8) configOBUs[];
 
-    Ok(ItemProperty::CodecConfiguration(av1C))
+    Ok(ItemProperty::CodecConfiguration(CodecConfiguration::Av1(
+        av1C,
+    )))
+}
+
+#[allow(non_snake_case)]
+#[cfg(feature = "heic")]
+fn parse_hvcC(stream: &mut IStream) -> AvifResult<ItemProperty> {
+    // unsigned int(8) configurationVersion;
+    let configuration_version = stream.read_u8()?;
+    if configuration_version != 0 && configuration_version != 1 {
+        return Err(AvifError::BmffParseFailed(format!(
+            "Unknown configurationVersion({configuration_version}) in hvcC. Expected 0 or 1."
+        )));
+    }
+    let mut bits = stream.sub_bit_stream(21)?;
+    // unsigned int(2) general_profile_space;
+    // unsigned int(1) general_tier_flag;
+    // unsigned int(5) general_profile_idc;
+    // unsigned int(32) general_profile_compatibility_flags;
+    // unsigned int(48) general_constraint_indicator_flags;
+    // unsigned int(8) general_level_idc;
+    // bit(4) reserved = '1111'b;
+    // unsigned int(12) min_spatial_segmentation_idc;
+    // bit(6) reserved = '111111'b;
+    // unsigned int(2) parallelismType;
+    // bit(6) reserved = '111111'b;
+    // unsigned int(2) chroma_format_idc;
+    // bit(5) reserved = '11111'b;
+    bits.skip(2 + 1 + 5 + 32 + 48 + 8 + 4 + 12 + 6 + 2 + 6 + 2 + 5)?;
+    // unsigned int(3) bit_depth_luma_minus8;
+    let bitdepth = bits.read(3)? as u8 + 8;
+    // bit(5) reserved = '11111'b;
+    // unsigned int(3) bit_depth_chroma_minus8;
+    // unsigned int(16) avgFrameRate;
+    // unsigned int(2) constantFrameRate;
+    // unsigned int(3) numTemporalLayers;
+    // unsigned int(1) temporalIdNested;
+    bits.skip(5 + 3 + 16 + 2 + 3 + 1)?;
+    // unsigned int(2) lengthSizeMinusOne;
+    let nal_length_size = 1 + bits.read(2)? as u8;
+    assert!(bits.remaining_bits()? == 0);
+
+    // unsigned int(8) numOfArrays;
+    let num_of_arrays = stream.read_u8()?;
+    let mut vps: Vec<u8> = Vec::new();
+    let mut sps: Vec<u8> = Vec::new();
+    let mut pps: Vec<u8> = Vec::new();
+    for _i in 0..num_of_arrays {
+        // unsigned int(1) array_completeness;
+        // bit(1) reserved = 0;
+        // unsigned int(6) NAL_unit_type;
+        stream.skip(1)?;
+        // unsigned int(16) numNalus;
+        let num_nalus = stream.read_u16()?;
+        for _j in 0..num_nalus {
+            // unsigned int(16) nalUnitLength;
+            let nal_unit_length = stream.read_u16()?;
+            let nal_unit = stream.get_slice(nal_unit_length as usize)?;
+            let nal_unit_type = (nal_unit[0] >> 1) & 0x3f;
+            match nal_unit_type {
+                32 => vps = nal_unit.to_vec(),
+                33 => sps = nal_unit.to_vec(),
+                34 => pps = nal_unit.to_vec(),
+                _ => {}
+            }
+        }
+    }
+    Ok(ItemProperty::CodecConfiguration(CodecConfiguration::Hevc(
+        HevcCodecConfiguration {
+            bitdepth,
+            nal_length_size,
+            vps,
+            pps,
+            sps,
+        },
+    )))
 }
 
 fn parse_colr(stream: &mut IStream) -> AvifResult<ItemProperty> {
@@ -774,6 +1000,8 @@ fn parse_ipco(stream: &mut IStream) -> AvifResult<Vec<ItemProperty>> {
             "lsel" => properties.push(parse_lsel(&mut sub_stream)?),
             "a1lx" => properties.push(parse_a1lx(&mut sub_stream)?),
             "clli" => properties.push(parse_clli(&mut sub_stream)?),
+            #[cfg(feature = "heic")]
+            "hvcC" => properties.push(parse_hvcC(&mut sub_stream)?),
             _ => properties.push(ItemProperty::Unknown(header.box_type)),
         }
     }
@@ -1293,7 +1521,7 @@ fn parse_sample_entry(stream: &mut IStream, format: String) -> AvifResult<Sample
     // unsigned int(16) data_reference_index;
     stream.skip(2)?;
 
-    if sample_entry.format == "av01" {
+    if sample_entry.is_supported_format() {
         // https://aomediacodec.github.io/av1-isobmff/v1.2.0.html#av1sampleentry-syntax:
         //   class AV1SampleEntry extends VisualSampleEntry('av01'){
         //     AV1CodecConfigurationBox config;
@@ -1505,8 +1733,10 @@ fn parse_elst(stream: &mut IStream, track: &mut Track) -> AvifResult<()> {
     //   flags - the following values are defined. The values of flags greater than 1 are reserved
     //     RepeatEdits 1
     if (flags & 1) == 0 {
+        // The only EditList feature that we support is repetition count for animated images. So in
+        // this case, we know that the repetition count is zero and we do not care about the rest
+        // of this box.
         track.is_repeating = false;
-        // TODO: This early return is not part of the spec, investigate
         return Ok(());
     }
     track.is_repeating = true;
@@ -1623,7 +1853,7 @@ fn parse_moov(stream: &mut IStream) -> AvifResult<Vec<Track>> {
     Ok(tracks)
 }
 
-pub fn parse(io: &mut GenericIO) -> AvifResult<AvifBoxes> {
+pub(crate) fn parse(io: &mut GenericIO) -> AvifResult<AvifBoxes> {
     let mut ftyp: Option<FileTypeBox> = None;
     let mut meta: Option<MetaBox> = None;
     let mut tracks: Option<Vec<Track>> = None;
@@ -1644,6 +1874,15 @@ pub fn parse(io: &mut GenericIO) -> AvifResult<AvifBoxes> {
         // Read the rest of the box if necessary.
         match header.box_type.as_str() {
             "ftyp" | "meta" | "moov" => {
+                if ftyp.is_none() && header.box_type != "ftyp" {
+                    // Section 6.3.4 of ISO/IEC 14496-12:
+                    //   The FileTypeBox shall occur before any variable-length box. Only a
+                    //   fixed-size box such as a file signature, if required, may precede it.
+                    return Err(AvifError::BmffParseFailed(format!(
+                        "expected ftyp box. found {}.",
+                        header.box_type,
+                    )));
+                }
                 let box_data = match header.size {
                     BoxSize::UntilEndOfStream => io.read(parse_offset, usize::MAX)?,
                     BoxSize::FixedSize(size) => io.read_exact(parse_offset, size)?,
@@ -1657,10 +1896,7 @@ pub fn parse(io: &mut GenericIO) -> AvifResult<AvifBoxes> {
                         }
                     }
                     "meta" => meta = Some(parse_meta(&mut box_stream)?),
-                    "moov" => {
-                        tracks = Some(parse_moov(&mut box_stream)?);
-                        // decoder.image_sequence_track_present = true;
-                    }
+                    "moov" => tracks = Some(parse_moov(&mut box_stream)?),
                     _ => {} // Not reached.
                 }
                 if ftyp.is_some() {
@@ -1690,7 +1926,6 @@ pub fn parse(io: &mut GenericIO) -> AvifResult<AvifBoxes> {
     if (ftyp.needs_meta() && meta.is_none()) || (ftyp.needs_moov() && tracks.is_none()) {
         return Err(AvifError::TruncatedData);
     }
-    // TODO: Enforce 'ftyp' as first box seen, for consistency with peek_compatible_file_type()?
     Ok(AvifBoxes {
         ftyp,
         meta: meta.unwrap_or_default(),
@@ -1698,7 +1933,7 @@ pub fn parse(io: &mut GenericIO) -> AvifResult<AvifBoxes> {
     })
 }
 
-pub fn peek_compatible_file_type(data: &[u8]) -> AvifResult<bool> {
+pub(crate) fn peek_compatible_file_type(data: &[u8]) -> AvifResult<bool> {
     let mut stream = IStream::create(data);
     let header = parse_header(&mut stream, /*top_level=*/ true)?;
     if header.box_type != "ftyp" {
@@ -1707,17 +1942,23 @@ pub fn peek_compatible_file_type(data: &[u8]) -> AvifResult<bool> {
         //   Only a fixed-size box such as a file signature, if required, may precede it.
         return Ok(false);
     }
-    if header.size == BoxSize::UntilEndOfStream {
+    let header_size = match header.size {
+        BoxSize::FixedSize(size) => size,
         // The 'ftyp' box goes on till the end of the file. Either there is no brand requiring
         // anything in the file but a FileTypebox (so not AVIF), or it is invalid.
-        return Ok(false);
-    }
-    let mut header_stream = stream.sub_stream(&header.size)?;
-    let ftyp = parse_ftyp(&mut header_stream)?;
+        BoxSize::UntilEndOfStream => return Ok(false),
+    };
+    let ftyp = if header_size > stream.bytes_left()? {
+        let mut header_stream = stream.sub_stream(&BoxSize::FixedSize(stream.bytes_left()?))?;
+        parse_truncated_ftyp(&mut header_stream)
+    } else {
+        let mut header_stream = stream.sub_stream(&header.size)?;
+        parse_ftyp(&mut header_stream)?
+    };
     Ok(ftyp.is_avif())
 }
 
-pub fn parse_tmap(stream: &mut IStream) -> AvifResult<Option<GainMapMetadata>> {
+pub(crate) fn parse_tmap(stream: &mut IStream) -> AvifResult<Option<GainMapMetadata>> {
     // Experimental, not yet specified.
 
     // unsigned int(8) version = 0;
@@ -1799,12 +2040,14 @@ mod tests {
             0x00, 0x00, 0x00, 0xf2, 0x6d, 0x65, 0x74, 0x61, //
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28, //
         ];
-        let min_required_bytes = 32;
+        // Peeking should succeed starting from byte length 12. Since that is the end offset of the
+        // first valid AVIF brand.
+        let min_required_bytes = 12;
         for i in 0..buf.len() {
             let res = mp4box::peek_compatible_file_type(&buf[..i]);
             if i < min_required_bytes {
-                // Not enough bytes.
-                assert!(res.is_err());
+                // Not enough bytes. The return should either be an error or false.
+                assert!(res.is_err() || !res.unwrap());
             } else {
                 assert!(res?);
             }

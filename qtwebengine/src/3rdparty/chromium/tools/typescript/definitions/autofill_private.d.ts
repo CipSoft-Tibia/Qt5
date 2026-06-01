@@ -33,6 +33,9 @@ declare global {
         NAME_MIDDLE_INITIAL,
         NAME_FULL,
         NAME_SUFFIX,
+        ALTERNATIVE_FULL_NAME,
+        ALTERNATIVE_GIVEN_NAME,
+        ALTERNATIVE_FAMILY_NAME,
         EMAIL_ADDRESS,
         PHONE_HOME_NUMBER,
         PHONE_HOME_CITY_CODE,
@@ -86,6 +89,8 @@ declare global {
         ADDRESS_HOME_HOUSE_NUMBER,
         ADDRESS_HOME_SUBPREMISE,
         ADDRESS_HOME_OTHER_SUBUNIT,
+        NAME_LAST_PREFIX,
+        NAME_LAST_CORE,
         NAME_LAST_FIRST,
         NAME_LAST_CONJUNCTION,
         NAME_LAST_SECOND,
@@ -187,15 +192,10 @@ declare global {
 
       export interface IbanEntry {
         guid?: string;
+        instrumentId?: string;
         value?: string;
         nickname?: string;
         metadata?: AutofillMetadata;
-      }
-
-      export interface ValidatePhoneParams {
-        phoneNumbers: string[];
-        indexOfNewNumber: number;
-        countryCode: string;
       }
 
       export interface UserAnnotationsEntry {
@@ -206,6 +206,7 @@ declare global {
 
       export function getAccountInfo(): Promise<AccountInfo|undefined>;
       export function saveAddress(address: AddressEntry): void;
+      export function removeAddress(guid: string): void;
       export function getCountryList(forAccountAddressProfile: boolean):
           Promise<CountryEntry[]>;
       export function getAddressComponents(
@@ -213,9 +214,7 @@ declare global {
       export function getAddressList(): Promise<AddressEntry[]>;
       export function saveCreditCard(card: CreditCardEntry): void;
       export function saveIban(iban: IbanEntry): void;
-      export function removeEntry(guid: string): void;
-      export function validatePhoneNumbers(
-          params: ValidatePhoneParams): Promise<string[]>;
+      export function removePaymentsEntity(guid: string): void;
       export function getCreditCardList(): Promise<CreditCardEntry[]>;
       export function getIbanList(): Promise<IbanEntry[]>;
       export function isValidIban(ibanValue: string): Promise<boolean>;
@@ -229,11 +228,14 @@ declare global {
       export function checkIfDeviceAuthAvailable(): Promise<boolean>;
       export function bulkDeleteAllCvcs(): void;
       export function setAutofillSyncToggleEnabled(enabled: boolean): void;
+      export function hasUserAnnotationsEntries(): Promise<boolean>;
+      export function triggerAnnotationsBootstrapping(): Promise<boolean>;
+      export function isUserEligibleForAutofillImprovements(): Promise<boolean>;
       export function getUserAnnotationsEntries():
           Promise<UserAnnotationsEntry[]>;
       export function deleteUserAnnotationsEntry(entryId: number): void;
       export function deleteAllUserAnnotationsEntries(): void;
-
+      export function predictionImprovementsIphFeatureUsed(): void;
       export const onPersonalDataChanged: ChromeEvent<
           (addresses: AddressEntry[], creditCards: CreditCardEntry[],
            ibans: IbanEntry[], accountInfo?: AccountInfo) => void>;

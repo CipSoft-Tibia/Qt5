@@ -45,6 +45,7 @@ class ProtoFactory:
       message_desc = self.descriptor_pool.FindMessageTypeByName(message_type)
       if hasattr(message_factory, 'GetMessageClass'):
         return message_factory.GetMessageClass(message_desc)
+      # AOSP is stil using the old libprotobuf to create message classes.
       return message_factory.MessageFactory().GetPrototype(message_desc)
 
     # Create proto messages to correctly communicate with the RPC API by sending

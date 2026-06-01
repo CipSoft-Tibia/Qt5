@@ -33,7 +33,7 @@ Rectangle {
             width: 72
             height: 19
             color: "#f2f2f2"
-            text: qsTr("€287.00")
+            text: qsTr("$287.0")
             font.pixelSize: 18
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignTop

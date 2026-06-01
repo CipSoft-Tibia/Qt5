@@ -34,6 +34,7 @@
 #include "base/allocator/partition_alloc_support.h"
 #include "base/debug/alias.h"
 #include "base/feature_list.h"
+#include "base/memory/aligned_memory.h"
 #include "base/no_destructor.h"
 #include "base/strings/safe_sprintf.h"
 #include "base/task/sequenced_task_runner.h"
@@ -53,7 +54,7 @@ namespace WTF {
 const char* const Partitions::kAllocatedObjectPoolName =
     "partition_alloc/allocated_objects";
 
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 BASE_FEATURE(kBlinkUseLargeEmptySlotSpanRingForBufferRoot,
              "BlinkUseLargeEmptySlotSpanRingForBufferRoot",
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -116,7 +117,6 @@ partition_alloc::PartitionOptions PartitionOptionsFromFeatures() {
   // No need to call ChangeMemoryTaggingModeForAllThreadsPerProcess() as it will
   // be handled in ReconfigureAfterFeatureListInit().
   PartitionOptions opts;
-  opts.star_scan_quarantine = PartitionOptions::kAllowed;
   opts.backup_ref_ptr = brp_setting;
   opts.memory_tagging = {.enabled = memory_tagging};
   opts.use_pool_offset_freelists = use_pool_offset_freelists;
@@ -191,7 +191,6 @@ void Partitions::InitializeArrayBufferPartition() {
   static base::NoDestructor<partition_alloc::PartitionAllocator>
       array_buffer_allocator([]() {
         partition_alloc::PartitionOptions opts;
-        opts.star_scan_quarantine = partition_alloc::PartitionOptions::kAllowed;
         opts.backup_ref_ptr = partition_alloc::PartitionOptions::kDisabled;
         // When the V8 virtual memory cage is enabled, the ArrayBuffer
         // partition must be placed inside of it. For that, PA's
@@ -362,9 +361,44 @@ void* Partitions::BufferTryRealloc(void* p, size_t n, const char* type_name) {
       p, n, type_name);
 }
 
+ // static
+void* Partitions::BufferTryAlignedZeroedMalloc(size_t n,
+                                               size_t alignment,
+                                               const char* type_name) {
+#if defined(MEMORY_TOOL_REPLACES_ALLOCATOR)
+  // TODO(crbug.com/487660033): PartitionAlloc's AlignedAlloc enforces alignment
+  // via a PA_CHECK. Under sanitizers (ASAN/TSAN), it redirects to standard
+  // malloc/calloc which only guarantees 8/16-byte alignment. Requesting higher
+  // alignment (e.g. 32-byte for SIMD) will cause a FATAL crash. We bypass this
+  // by using base::AlignedAlloc which is correctly hooked by sanitizers.
+  void* result = base::AlignedAlloc(n, alignment);
+  if (result) {
+    // SAFETY: base::AlignedAlloc(n, alignment) returns a valid pointer to n
+    // bytes.
+    UNSAFE_BUFFERS(memset(result, 0, n));
+  }
+  return result;
+#else
+  return BufferPartition()->AlignedAlloc<
+      partition_alloc::AllocFlags::kZeroFill |
+      partition_alloc::AllocFlags::kReturnNull>(alignment, n);
+#endif
+}
+
 // static
 void Partitions::BufferFree(void* p) {
   BufferPartition()->Free(p);
+}
+
+// static
+void Partitions::BufferAlignedFree(void* p) {
+#if defined(MEMORY_TOOL_REPLACES_ALLOCATOR)
+  // TODO(crbug.com/487660033): See the comment in BufferTryAlignedZeroedMalloc
+  // above for why this is necessary.
+  base::AlignedFree(p);
+#else
+  BufferPartition()->Free(p);
+#endif
 }
 
 // static

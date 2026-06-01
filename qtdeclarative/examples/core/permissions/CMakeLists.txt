@@ -6,8 +6,8 @@ project(permissions LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2)
-qt_standard_project_setup(REQUIRES 6.8)
+find_package(Qt6 REQUIRED COMPONENTS CorePrivate Gui Quick QuickControls2)
+qt_standard_project_setup(REQUIRES 6.9)
 
 qt_add_executable(permissions
     main.cpp

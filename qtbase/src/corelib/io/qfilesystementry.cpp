@@ -5,6 +5,7 @@
 #include "qfilesystementry_p.h"
 
 #include <QtCore/qdir.h>
+#include <QtCore/private/qdir_p.h>
 #include <QtCore/qfile.h>
 #include <QtCore/private/qfsfileengine_p.h>
 #ifdef Q_OS_WIN
@@ -339,7 +340,8 @@ void QFileSystemEntry::findFileNameSeparators() const
             stop = lastSeparator;
         }
 
-        int i = m_filePath.size() - 1;
+        Q_ASSERT(m_filePath.size() == int(m_filePath.size()));
+        int i = int(m_filePath.size() - 1);
         for (; i >= stop; --i) {
             if (m_filePath.at(i).unicode() == '.') {
                 firstDotInFileName = lastDotInFileName = i;
@@ -374,32 +376,7 @@ void QFileSystemEntry::findFileNameSeparators() const
 bool QFileSystemEntry::isClean() const
 {
     resolveFilePath();
-    int dots = 0;
-    bool dotok = true; // checking for ".." or "." starts to relative paths
-    bool slashok = true;
-    for (QString::const_iterator iter = m_filePath.constBegin(); iter != m_filePath.constEnd(); ++iter) {
-        if (*iter == u'/') {
-            if (dots == 1 || dots == 2)
-                return false; // path contains "./" or "../"
-            if (!slashok)
-                return false; // path contains "//"
-            dots = 0;
-            dotok = true;
-            slashok = false;
-        } else if (dotok) {
-            slashok = true;
-            if (*iter == u'.') {
-                dots++;
-                if (dots > 2)
-                    dotok = false;
-            } else {
-                //path element contains a character other than '.', it's clean
-                dots = 0;
-                dotok = false;
-            }
-        }
-    }
-    return (dots != 1 && dots != 2); // clean if path doesn't end in . or ..
+    return qt_isPathNormalized(m_filePath, QDirPrivate::DefaultNormalization);
 }
 
 QT_END_NAMESPACE

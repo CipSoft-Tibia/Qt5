@@ -388,10 +388,12 @@ class DummyAuthContentBrowserClient
       content::WebContents* web_contents,
       content::BrowserContext* browser_context,
       const GlobalRequestID& request_id,
-      bool is_request_for_primary_main_frame,
+      bool is_request_for_primary_main_frame_navigation,
+      bool is_request_for_navigation,
       const GURL& url,
       scoped_refptr<net::HttpResponseHeaders> response_headers,
       bool first_auth_attempt,
+      content::GuestPageHolder* guest,
       LoginAuthRequiredCallback auth_required_callback) override {
     create_login_delegate_called_ = true;
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
@@ -525,14 +527,13 @@ class SharedDictionaryBrowserTestBase : public ContentBrowserTest {
   int64_t GetTestDataFileSize(const std::string& name) {
     base::FilePath file_path;
     CHECK(base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &file_path));
-    int64_t file_size = 0;
     {
       base::ScopedAllowBlockingForTesting allow_blocking;
-      CHECK(base::GetFileSize(
-          file_path.Append(GetTestDataFilePath()).AppendASCII(name),
-          &file_size));
+      std::optional<int64_t> size_result = base::GetFileSize(
+          file_path.Append(GetTestDataFilePath()).AppendASCII(name));
+      CHECK(size_result.has_value());
+      return size_result.value();
     }
-    return file_size;
   }
   std::string GetTestDataFile(const std::string& name) {
     base::FilePath file_path;

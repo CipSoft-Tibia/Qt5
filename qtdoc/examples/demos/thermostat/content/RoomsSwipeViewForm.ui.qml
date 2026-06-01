@@ -8,35 +8,34 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
+import Thermostat
 
 Item {
     id: root
 
-    property alias model: repeater.model
-    property alias swipeView: swipeView
-    property alias previousItem: previousItem
-    property alias nextItem: nextItem
-
+    required property list<Room> roomsList
     required property int delegatePreferredHeight
     required property int delegatePreferredWidth
 
     ListView {
         id: roomSelector
 
-        model: root.model
+        model: root.roomsList
         orientation: ListView.Horizontal
         width: parent.width
         height: 28
         spacing: 26
+        clip: true
         delegate: Label {
             id: labelDelegate
-
-            required property string name
+            required property Room modelData
             required property int index
 
-            text: name
+            text: modelData.name
             font.pixelSize: 12
             font.family: "Titillium Web"
             font.weight: 400
@@ -65,6 +64,14 @@ Item {
 
         TapHandler {
             id: previousItem
+            property Connections _: Connections {
+                function onTapped() {
+                    let prevIndex = swipeView.currentIndex - 1;
+                    if (prevIndex < 0)
+                        prevIndex = swipeView.count - 1
+                    swipeView.setCurrentIndex(prevIndex)
+                }
+            }
         }
     }
 
@@ -77,6 +84,12 @@ Item {
 
         TapHandler {
             id: nextItem
+            property Connections _: Connections {
+                function onTapped(){
+                    let nextIndex = (swipeView.currentIndex + 1) % swipeView.count;
+                    swipeView.setCurrentIndex(nextIndex)
+                }
+            }
         }
     }
 
@@ -96,9 +109,11 @@ Item {
         Repeater {
             id: repeater
 
+            model: root.roomsList
             RoomItem {
                 id: roomItem
-
+                required property Room modelData
+                room: modelData
                 height: root.delegatePreferredHeight
                 width: root.delegatePreferredWidth
             }

@@ -29,6 +29,7 @@
 #include <utility>
 
 #include "base/metrics/histogram_macros.h"
+#include "base/notreached.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/types/expected.h"
 #include "third_party/blink/public/common/features.h"
@@ -41,7 +42,6 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_compile_hints_consumer.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_compile_hints_producer.h"
 #include "third_party/blink/renderer/core/dom/document.h"
-#include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/web_memory_allocator_dump.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/web_process_memory_dump.h"
 #include "third_party/blink/renderer/platform/loader/fetch/cached_metadata.h"
@@ -89,9 +89,7 @@ bool IsRequestContextSupported(
     default:
       break;
   }
-  NOTREACHED_IN_MIGRATION()
-      << "Incompatible request context type: " << request_context;
-  return false;
+  NOTREACHED() << "Incompatible request context type: " << request_context;
 }
 
 }  // namespace
@@ -106,15 +104,14 @@ ScriptResource* ScriptResource::Fetch(
         v8_compile_hints_producer,
     v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*
         v8_compile_hints_consumer,
-    bool v8_compile_hints_magic_comment_runtime_enabled) {
+    v8_compile_hints::MagicCommentMode magic_comment_mode) {
   DCHECK(IsRequestContextSupported(
       params.GetResourceRequest().GetRequestContext()));
   auto* resource = To<ScriptResource>(fetcher->RequestResource(
       params,
       ScriptResourceFactory(isolate, streaming_allowed,
                             v8_compile_hints_producer,
-                            v8_compile_hints_consumer,
-                            v8_compile_hints_magic_comment_runtime_enabled,
+                            v8_compile_hints_consumer, magic_comment_mode,
                             params.GetScriptType()),
       client));
   return resource;
@@ -134,7 +131,7 @@ ScriptResource* ScriptResource::CreateForTest(
       request, options, decoder_options, isolate, kNoStreaming,
       /*v8_compile_hints_producer=*/nullptr,
       /*v8_compile_hints_consumer=*/nullptr,
-      /*v8_compile_hints_magic_comment_runtime_enabled=*/false, script_type);
+      v8_compile_hints::MagicCommentMode::kNever, script_type);
 }
 
 ScriptResource::ScriptResource(
@@ -147,7 +144,7 @@ ScriptResource::ScriptResource(
         v8_compile_hints_producer,
     v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*
         v8_compile_hints_consumer,
-    bool v8_compile_hints_magic_comment_runtime_enabled,
+    v8_compile_hints::MagicCommentMode magic_comment_mode,
     mojom::blink::ScriptType initial_request_script_type)
     : TextResource(resource_request,
                    ResourceType::kScript,
@@ -162,8 +159,7 @@ ScriptResource::ScriptResource(
           std::make_unique<TextResourceDecoder>(decoder_options)),
       v8_compile_hints_producer_(v8_compile_hints_producer),
       v8_compile_hints_consumer_(v8_compile_hints_consumer),
-      v8_compile_hints_magic_comment_runtime_enabled_(
-          v8_compile_hints_magic_comment_runtime_enabled) {
+      magic_comment_mode_(magic_comment_mode) {
   static bool script_streaming_enabled =
       base::FeatureList::IsEnabled(features::kScriptStreaming);
   static bool script_streaming_for_non_http_enabled =
@@ -542,8 +538,7 @@ void ScriptResource::AdvanceStreamingState(StreamingState new_state) {
       CHECK_EQ(new_state, StreamingState::kStreamingDisabled);
       break;
     case StreamingState::kStreamingDisabled:
-      CHECK(false);
-      break;
+      NOTREACHED();
   }
 
   streaming_state_ = new_state;

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLTOOLINGSETTINGS_P_H
 #define QQMLTOOLINGSETTINGS_P_H
@@ -32,6 +33,11 @@ public:
     bool search(const QString &path);
 
     QVariant value(const QString &name) const;
+    QStringList valueAsStringList(const QString &name) const;
+
+    static void resolveRelativeImportPaths(const QString &filePath, QStringList *paths);
+    QStringList valueAsAbsolutePathList(const QString &name,
+                                        const QString &baseForRelativePaths) const;
     bool isSet(const QString &name) const;
 
 private:
@@ -39,6 +45,7 @@ private:
     QString m_currentSettingsPath;
     QHash<QString, QString> m_seenDirectories;
     QVariantHash m_values;
+    QVariantHash m_savedValues;
 
     bool read(const QString &settingsFilePath);
 };

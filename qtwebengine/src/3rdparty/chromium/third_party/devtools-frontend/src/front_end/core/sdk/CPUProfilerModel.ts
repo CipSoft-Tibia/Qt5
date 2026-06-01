@@ -28,15 +28,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import * as i18n from '../i18n/i18n.js';
 import type * as ProtocolProxyApi from '../../generated/protocol-proxy-api.js';
 import type * as Protocol from '../../generated/protocol.js';
+import * as i18n from '../i18n/i18n.js';
 
 import {DebuggerModel, Location} from './DebuggerModel.js';
-import {type RuntimeModel} from './RuntimeModel.js';
-
-import {Capability, type Target} from './Target.js';
+import type {RuntimeModel} from './RuntimeModel.js';
 import {SDKModel} from './SDKModel.js';
+import {Capability, type Target} from './Target.js';
 
 const UIStrings = {
   /**
@@ -166,10 +165,10 @@ export const enum Events {
   CONSOLE_PROFILE_FINISHED = 'ConsoleProfileFinished',
 }
 
-export type EventTypes = {
-  [Events.CONSOLE_PROFILE_STARTED]: EventData,
-  [Events.CONSOLE_PROFILE_FINISHED]: ProfileFinishedData,
-};
+export interface EventTypes {
+  [Events.CONSOLE_PROFILE_STARTED]: EventData;
+  [Events.CONSOLE_PROFILE_FINISHED]: ProfileFinishedData;
+}
 
 SDKModel.register(CPUProfilerModel, {capabilities: Capability.JS, autostart: true});
 

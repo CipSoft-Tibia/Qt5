@@ -55,6 +55,8 @@ foreach(arch ${archs})
 
         set(gnCxxCompileOptions "")
         if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+            get_gn_arch(cpu ${TEST_architecture_arch})
+
             # Silence warning in boringssl headers.
             list(APPEND gnCxxCompileOptions -Wno-ignored-qualifiers)
 
@@ -62,6 +64,12 @@ foreach(arch ${archs})
                 # GCC 11.1 has a regression in the integrated preprocessor, so disable it as a workaround (QTBUG-93360)
                 # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100796
                 list(APPEND gnCxxCompileOptions -no-integrated-cpp)
+            endif()
+
+            if(CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL "15.1.0" AND cpu STREQUAL "arm")
+                # GCC 15.1 workaround for invalid use of NEON registers,
+                # see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=120351
+                list(APPEND gnCxxCompileOptions -fno-late-combine-instructions)
             endif()
         endif()
 
@@ -85,7 +93,6 @@ foreach(arch ${archs})
                 autofill_popup_controller.cpp autofill_popup_controller.h autofill_popup_controller_p.h
                 browser_accessibility_manager_qt.cpp browser_accessibility_manager_qt.h
                 browser_main_parts_qt.cpp browser_main_parts_qt.h
-                browser_message_filter_qt.cpp browser_message_filter_qt.h
                 browsing_data_remover_delegate_qt.cpp browsing_data_remover_delegate_qt.h
                 build_config_qt.h
                 certificate_error_controller.cpp certificate_error_controller.h
@@ -96,7 +103,6 @@ foreach(arch ${archs})
                 clipboard_qt.cpp clipboard_qt.h
                 color_chooser_controller.cpp color_chooser_controller.h color_chooser_controller_p.h
                 color_chooser_qt.cpp color_chooser_qt.h
-                common/qt_messages.cpp common/qt_messages.h
                 compositor/compositor.cpp compositor/compositor.h
                 compositor/display_overrides.cpp
                 compositor/display_software_output_surface.cpp compositor/display_software_output_surface.h
@@ -126,6 +132,7 @@ foreach(arch ${archs})
                 file_system_access/file_system_access_permission_request_manager_qt.cpp file_system_access/file_system_access_permission_request_manager_qt.h
                 find_text_helper.cpp find_text_helper.h
                 global_descriptors_qt.h
+                gpu/content_gpu_client_qt.cpp gpu/content_gpu_client_qt.h
                 javascript_dialog_controller.cpp javascript_dialog_controller.h javascript_dialog_controller_p.h
                 javascript_dialog_manager_qt.cpp javascript_dialog_manager_qt.h
                 login_delegate_qt.cpp login_delegate_qt.h
@@ -193,6 +200,7 @@ foreach(arch ${archs})
                 web_usb_detector_qt.cpp web_usb_detector_qt.h
                 authenticator_request_client_delegate_qt.cpp authenticator_request_client_delegate_qt.h
                 authenticator_request_dialog_controller.cpp authenticator_request_dialog_controller.h authenticator_request_dialog_controller_p.h
+                content_settings_manager_qt.cpp content_settings_manager_qt.h
         )
 
         extend_gn_target(${buildGn} CONDITION config STREQUAL "Debug"
@@ -207,7 +215,7 @@ foreach(arch ${archs})
 
         extend_gn_target(${buildGn} CONDITION LINUX
             SOURCES
-                ozone/gl_ozone_angle_qt.cpp ozone/gl_ozone_angle_qt.h
+                ozone/gl_ozone_qt.cpp ozone/gl_ozone_qt.h
                 ozone/ozone_util_qt.cpp ozone/ozone_util_qt.h
                 ozone/platform_window_qt.cpp ozone/platform_window_qt.h
                 ozone/surface_factory_qt.cpp ozone/surface_factory_qt.h
@@ -244,6 +252,7 @@ foreach(arch ${archs})
                 native_web_keyboard_event_qt_mac.mm
                 compositor/native_skia_output_device_mac.mm
                 compositor/native_skia_output_device_metal.cpp compositor/native_skia_output_device_metal.h
+                cursor_utils_qt_mac.mm cursor_utils_qt_mac.h
         )
 
         extend_gn_target(${buildGn} CONDITION QT_FEATURE_webengine_pepper_plugins
@@ -276,6 +285,9 @@ foreach(arch ${archs})
             SOURCES
                 common/extensions/extensions_api_provider_qt.cpp common/extensions/extensions_api_provider_qt.h
                 common/extensions/extensions_client_qt.cpp common/extensions/extensions_client_qt.h
+                extensions/api/display_info_provider_qt.cpp extensions/api/display_info_provider_qt.h
+                extensions/api/runtime_api_delegate_qt.cpp extensions/api/runtime_api_delegate_qt.h
+                extensions/api/management_api_delegate_qt.cpp extensions/api/management_api_delegate_qt.h
                 extensions/component_extension_resource_manager_qt.cpp extensions/component_extension_resource_manager_qt.h
                 extensions/extension_host_delegate_qt.cpp extensions/extension_host_delegate_qt.h
                 extensions/extension_system_factory_qt.cpp extensions/extension_system_factory_qt.h
@@ -283,14 +295,21 @@ foreach(arch ${archs})
                 extensions/extension_web_contents_observer_qt.cpp extensions/extension_web_contents_observer_qt.h
                 extensions/extensions_api_client_qt.cpp extensions/extensions_api_client_qt.h
                 extensions/extensions_browser_client_qt.cpp extensions/extensions_browser_client_qt.h
+                extensions/extension_manager.cpp extensions/extension_manager.h
+                extensions/extension_loader.cpp extensions/extension_loader.h
+                extensions/extension_installer.cpp extensions/extension_installer.h
                 extensions/file_system_delegate_qt.cpp extensions/file_system_delegate_qt.h
                 extensions/messaging_delegate_qt.cpp extensions/messaging_delegate_qt.h
                 extensions/mime_handler_view_guest_delegate_qt.cpp extensions/mime_handler_view_guest_delegate_qt.h
                 extensions/plugin_service_filter_qt.cpp extensions/plugin_service_filter_qt.h
+                extensions/unpacked_extension_installer.h extensions/unpacked_extension_installer.cpp
                 net/plugin_response_interceptor_url_loader_throttle.cpp net/plugin_response_interceptor_url_loader_throttle.h
                 renderer/extensions/extensions_renderer_api_provider_qt.cpp renderer/extensions/extensions_renderer_api_provider_qt.h
                 renderer/extensions/extensions_renderer_client_qt.cpp renderer/extensions/extensions_renderer_client_qt.h
                 renderer/extensions/resource_request_policy_qt.cpp renderer/extensions/resource_request_policy_qt.h
+                extensions/webui/extensions_ui_page_handler_qt.cpp extensions/webui/extensions_ui_page_handler_qt.h
+                extensions/webui/extensions_ui_qt.cpp extensions/webui/extensions_ui_qt.h
+                extensions/webui/select_file_dialog.cpp extensions/webui/select_file_dialog.h
         )
 
         extend_gn_target(${buildGn} CONDITION QT_FEATURE_webengine_extensions AND QT_FEATURE_webengine_printing_and_pdf
@@ -327,6 +346,7 @@ foreach(arch ${archs})
             qtwebengine_target="${buildDir}/${config}/${arch}:QtWebEngineCore"
             build_dawn_tests=false
             build_with_tflite_lib=false
+            webnn_use_tflite=false
             is_qtwebengine=true
             is_qtpdf=false
             chrome_pgo_phase=0
@@ -371,7 +391,6 @@ foreach(arch ${archs})
             use_static_angle=true
             devtools_fast_bundle=false
             devtools_skip_typecheck=false
-            content_enable_legacy_ipc=true
             headless_use_policy=false
         )
         extend_gn_list(gnArgArg
@@ -447,7 +466,7 @@ foreach(arch ${archs})
             list(APPEND gnArgArg
                 angle_enable_gl=true
                 use_gtk=false # GTK toolkit bindings
-                use_qt=false # Qt5 toolkit bindings
+                use_qt5=false # Qt5 toolkit bindings
                 use_gio=false
                 use_bundled_fontconfig=false
                 use_glib=false
@@ -460,7 +479,7 @@ foreach(arch ${archs})
                 ozone_platform="qt"
                 ozone_extra_path="${CMAKE_CURRENT_LIST_DIR}/ozone/ozone_extra.gni"
             )
-            set(systemLibs libjpeg libpng freetype harfbuzz libevent libwebp libxml
+            set(systemLibs libjpeg libpng freetype harfbuzz libwebp libxml
                 opus snappy icu ffmpeg re2 lcms2 libopenjpeg2 libvpx
             )
             foreach(slib ${systemLibs})
@@ -514,6 +533,10 @@ foreach(arch ${archs})
             extend_gn_list(gnArgArg
                 ARGS use_system_minigbm
                 CONDITION QT_FEATURE_webengine_system_gbm
+            )
+            extend_gn_list(gnArgArg
+                ARGS rtc_system_openh264
+                CONDITION QT_FEATURE_webengine_webrtc_system_openh264
             )
             extend_gn_list(gnArgArg
                 ARGS use_vaapi

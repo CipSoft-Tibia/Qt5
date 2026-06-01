@@ -55,7 +55,7 @@ struct QQmlXmlListModelQueryResult
 public:
     int queryId;
     QList<QFlatMap<int, QString>> data;
-    QList<QPair<void *, QString>> errors;
+    QList<std::pair<void *, QString>> errors;
 };
 
 class Q_QMLXMLLISTMODEL_EXPORT QQmlXmlListModelRole : public QObject
@@ -208,7 +208,7 @@ private:
     void processElement(QQmlXmlListModelQueryResult *currentResult, const QString &element,
                         QXmlStreamReader &reader);
     void readSubTree(const QString &prefix, QXmlStreamReader &reader,
-                     QFlatMap<int, QString> &results, QList<QPair<void *, QString>> *errors);
+                     QFlatMap<int, QString> &results, QList<std::pair<void *, QString>> *errors);
 
     QQmlXmlListModelQueryJob m_job;
     QPromise<QQmlXmlListModelQueryResult> m_promise;

@@ -9,7 +9,6 @@ foreignwindows \
 fontfeatures \
 gestures \
 highdpi \
-inputmethodhints \
 keypadnavigation \
 keyevents \
 lance \
@@ -32,7 +31,6 @@ qstorageinfo \
 qscreen \
 qscreen_xrandr \
 qssloptions \
-qsslsocket \
 qsysinfo \
 qtabletevent \
 qtexteditlist \

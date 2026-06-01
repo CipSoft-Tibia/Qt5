@@ -208,8 +208,7 @@ void OneDriveUploadHandler::OnFailedUpload(
     LOG(ERROR) << "Upload to OneDrive: " << error_message;
     notification_manager_->ShowUploadError(error_message);
   }
-    std::move(callback_).Run(OfficeTaskResult::kFailedToUpload, std::nullopt,
-                             0);
+  std::move(callback_).Run(OfficeTaskResult::kFailedToUpload, std::nullopt, 0);
 }
 
 void OneDriveUploadHandler::OnIOTaskStatus(
@@ -254,10 +253,8 @@ void OneDriveUploadHandler::OnIOTaskStatus(
       ShowIOTaskError(status);
       return;
     case file_manager::io_task::State::kNeedPassword:
-      NOTREACHED_IN_MIGRATION()
-          << "Encrypted file should not need password to be copied or "
-             "moved. Case should not be reached.";
-      return;
+      NOTREACHED() << "Encrypted file should not need password to be copied or "
+                      "moved. Case should not be reached.";
   }
 }
 

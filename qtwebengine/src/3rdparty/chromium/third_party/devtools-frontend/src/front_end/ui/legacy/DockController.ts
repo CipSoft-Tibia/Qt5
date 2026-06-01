@@ -34,9 +34,9 @@ import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
-import {type ActionDelegate} from './ActionRegistration.js';
+import type {ActionDelegate} from './ActionRegistration.js';
 import {alert} from './ARIAUtils.js';
-import {type Context} from './Context.js';
+import type {Context} from './Context.js';
 import {type Provider, ToolbarButton, type ToolbarItem} from './Toolbar.js';
 
 const UIStrings = {
@@ -236,11 +236,11 @@ export interface ChangeEvent {
   to: DockState;
 }
 
-export type EventTypes = {
-  [Events.BEFORE_DOCK_SIDE_CHANGED]: ChangeEvent,
-  [Events.DOCK_SIDE_CHANGED]: ChangeEvent,
-  [Events.AFTER_DOCK_SIDE_CHANGED]: ChangeEvent,
-};
+export interface EventTypes {
+  [Events.BEFORE_DOCK_SIDE_CHANGED]: ChangeEvent;
+  [Events.DOCK_SIDE_CHANGED]: ChangeEvent;
+  [Events.AFTER_DOCK_SIDE_CHANGED]: ChangeEvent;
+}
 
 export class ToggleDockActionDelegate implements ActionDelegate {
   handleAction(_context: Context, _actionId: string): boolean {

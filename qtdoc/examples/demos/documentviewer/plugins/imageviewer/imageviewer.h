@@ -24,15 +24,16 @@ public:
     void init(QFile *file, QWidget *parent, QMainWindow *mainWindow) override;
     QString viewerName() const override { return QLatin1StringView(staticMetaObject.className()); };
     QStringList supportedMimeTypes() const override;
+    void retranslate() override;
     bool hasContent() const override;
     QByteArray saveState() const override { return {}; }
     bool restoreState(QByteArray &) override { return true; }
     bool supportsOverview() const override { return false; }
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 protected:
     void printDocument(QPrinter *printer) const override;
-#endif // QT_DOCUMENTVIEWER_PRINTSUPPORT
+#endif // DOCUMENTVIEWER_PRINTSUPPORT
 
 private slots:
     void setupImageUi();

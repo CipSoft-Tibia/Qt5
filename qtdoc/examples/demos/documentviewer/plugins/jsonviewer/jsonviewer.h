@@ -36,8 +36,9 @@ public:
 //! [pluginReimp]
     QByteArray saveState() const override;
     bool restoreState(QByteArray &) override;
+    void retranslate() override;
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 protected:
     void printDocument(QPrinter *printer) const override;
 #endif // QT_ABSTRACTVIEWER_PRINTSUPPORT
@@ -58,8 +59,10 @@ private:
     QTreeView *m_tree;
     QListWidget *m_toplevel = nullptr;
     QJsonDocument m_root;
-
-    QPointer<QLineEdit> m_searchKey;
+    QMenu *m_jsonMenu = nullptr;
+    QToolBar *m_jsonToolBar = nullptr;
+    QAction *m_expandAllAction = nullptr;
+    QAction *m_collapseAllAction = nullptr;
 };
 //! [pluginPrivateMembers]
 

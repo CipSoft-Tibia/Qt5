@@ -61,7 +61,6 @@ AudioSource::AudioSource(ComPtr<IAsyncOperation<SpeechSynthesisStream*>> synthOp
 */
 AudioSource::~AudioSource()
 {
-    Q_ASSERT(ref == 0);
     close();
 }
 
@@ -241,25 +240,6 @@ bool AudioSource::atEnd() const
         randomAccessStream->get_Position(&ioPos);
     }
     return ioPos >= ioSize;
-}
-
-HRESULT AudioSource::QueryInterface(REFIID riid, VOID **ppvInterface)
-{
-    if (!ppvInterface)
-        return E_POINTER;
-
-    if (riid == __uuidof(IUnknown)) {
-        *ppvInterface = static_cast<IUnknown*>(static_cast<StreamReadyHandler *>(this));
-    } else if (riid == __uuidof(StreamReadyHandler)) {
-        *ppvInterface = static_cast<StreamReadyHandler *>(this);
-    } else if (riid == __uuidof(BytesReadyHandler)) {
-        *ppvInterface = static_cast<BytesReadyHandler *>(this);
-    } else {
-        *ppvInterface = nullptr;
-        return E_NOINTERFACE;
-    }
-    AddRef();
-    return S_OK;
 }
 
 /*

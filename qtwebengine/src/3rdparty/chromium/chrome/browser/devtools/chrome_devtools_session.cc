@@ -129,9 +129,8 @@ ChromeDevToolsSession::ChromeDevToolsSession(
 
 ChromeDevToolsSession::~ChromeDevToolsSession() = default;
 
-base::HistogramBase::Sample GetCommandUmaId(
-    const std::string_view command_name) {
-  return static_cast<base::HistogramBase::Sample>(
+base::HistogramBase::Sample32 GetCommandUmaId(std::string_view command_name) {
+  return static_cast<base::HistogramBase::Sample32>(
       base::HashMetricName(command_name));
 }
 
@@ -144,7 +143,7 @@ void ChromeDevToolsSession::HandleCommand(
       dispatcher_.Dispatch(dispatchable);
 
   auto command_uma_id = GetCommandUmaId(std::string_view(
-      reinterpret_cast<const char*>(dispatchable.Method().begin()),
+      reinterpret_cast<const char*>(dispatchable.Method().data()),
       dispatchable.Method().size()));
   std::string client_type = client_channel_->GetClient()->GetTypeForMetrics();
   DCHECK(client_type == "DevTools" || client_type == "Extension" ||

@@ -8,8 +8,10 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Effects
 import ThermostatCustomControls
 import Thermostat
@@ -17,13 +19,8 @@ import Thermostat
 Pane {
     id: root
 
-    required property var model
-    property alias buttonGroup: buttonGroup
-    property alias powerButton: powerButton
-    property alias powerToggle: powerToggle
-    property alias roomIconSource: roomIcon.source
-    property alias roomNameText: roomName.text
-    property bool isActive: false
+    required property Room room
+    property bool isActive: room.active
 
     padding: 0
 
@@ -45,7 +42,7 @@ Pane {
 
             Image {
                 id: roomIcon
-                source: "images/" + root.model.iconName
+                source: "images/" + root.room.iconName
 
                 sourceSize.width: internal.iconSize
                 sourceSize.height: internal.iconSize
@@ -61,7 +58,7 @@ Pane {
 
         Label {
             id: roomName
-            text: qsTr("Living room")
+            text: root.room.name
             font.pixelSize: internal.headerSize
             font.weight: 600
             font.family: "Titillium Web"
@@ -90,19 +87,29 @@ Pane {
         anchors.topMargin: internal.thermostatTopMargin
         enabled: root.isActive
 
-        currentTemp: root.model.temp
-        targetTemp: root.model.thermostatTemp
-        onTargetTempChanged: root.model.thermostatTemp = targetTemp
+        currentTemp: root.room.temp
+        targetTemp: root.room.thermostatTemp
+        Connections {
+            target: thermostat
+            function onTargetTempChanged() {
+                root.room.thermostatTemp = thermostat.targetTemp
+            }
+        }
     }
 
     ButtonGroup {
         id: buttonGroup
+        property Connections _: Connections {
+            function onClicked(button) {
+                root.room.mode = button.text
+            }
+        }
     }
 
     Column {
         id: leftButtons
 
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenter: thermostat.verticalCenter
         anchors.left: parent.left
         anchors.leftMargin: 100
         spacing: 25
@@ -111,6 +118,7 @@ Pane {
             model: [qsTr("Cool"), qsTr("Fan"), qsTr("Auto")]
 
             CustomRoundButton {
+                required property string modelData
                 width: internal.buttonWidth
                 height: internal.buttonHeight
                 text: modelData
@@ -122,14 +130,14 @@ Pane {
                 radius: internal.radius
                 ButtonGroup.group: buttonGroup
                 enabled: root.isActive
-                checked: enabled && root.model.mode == modelData
+                checked: enabled && root.room.mode === modelData
             }
         }
     }
 
     Column {
         id: rightButtons
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenter: thermostat.verticalCenter
         anchors.right: parent.right
         anchors.rightMargin: 100
         spacing: 25
@@ -138,6 +146,7 @@ Pane {
             model: [qsTr("Heat"), qsTr("Dry"), qsTr("Eco")]
 
             CustomRoundButton {
+                required property string modelData
                 width: internal.buttonWidth
                 height: internal.buttonHeight
                 text: modelData
@@ -148,7 +157,7 @@ Pane {
                 radius: internal.radius
                 ButtonGroup.group: buttonGroup
                 enabled: root.isActive
-                checked: enabled && root.model.mode == modelData
+                checked: enabled && root.room.mode === modelData
             }
         }
     }
@@ -205,7 +214,7 @@ Pane {
                 optionIconSize: 42
                 headerSpacing: 24
                 headerSize: 24
-                thermostatTopMargin: 14
+                thermostatTopMargin: 60
             }
             PropertyChanges {
                 target: powerButton
@@ -220,6 +229,14 @@ Pane {
             PropertyChanges {
                 target: powerToggle
                 visible: false
+            }
+            PropertyChanges {
+                target: leftButtons
+                anchors.leftMargin: Constants.isSmallDesktopLayout ? 50 : 100
+            }
+            PropertyChanges {
+                target: rightButtons
+                anchors.rightMargin: Constants.isSmallDesktopLayout ? 50 : 100
             }
         },
         State {
@@ -298,20 +315,10 @@ Pane {
                 anchors.leftMargin: 14
                 spacing: 9
             }
-            AnchorChanges {
-                target: leftButtons
-                anchors.verticalCenter: thermostat.verticalCenter
-                anchors.top: undefined
-            }
             PropertyChanges {
                 target: rightButtons
                 anchors.rightMargin: 14
                 spacing: 9
-            }
-            AnchorChanges {
-                target: rightButtons
-                anchors.verticalCenter: thermostat.verticalCenter
-                anchors.top: undefined
             }
             PropertyChanges {
                 target: powerToggle

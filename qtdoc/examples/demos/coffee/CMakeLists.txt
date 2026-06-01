@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
-project(coffee LANGUAGES CXX)
+project(CoffeeMachine LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
 qt_standard_project_setup(REQUIRES 6.6)
@@ -11,7 +11,7 @@ qt_add_executable(coffeemachine
     main.cpp
 )
 
-set_source_files_properties(Colors.qml PROPERTIES
+set_source_files_properties(Colors.qml Config.qml PROPERTIES
     QT_QML_SINGLETON_TYPE TRUE
 )
 
@@ -24,7 +24,9 @@ qt_add_qml_module(coffeemachine
         ChoosingCoffee.qml
         CoffeeCard.qml
         CoffeeCardForm.ui.qml
+        CoffeeConfig.qml
         Colors.qml
+        Config.qml
         CustomButton.qml
         CustomButtonForm.ui.qml
         CustomSlider.qml
@@ -36,7 +38,7 @@ qt_add_qml_module(coffeemachine
         HomeForm.ui.qml
         Insert.qml
         InsertForm.ui.qml
-        main.qml
+        Main.qml
         Progress.qml
         ProgressForm.ui.qml
         Ready.qml

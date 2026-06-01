@@ -1572,14 +1572,6 @@ _NAMED_TYPE_INFO = {
       'GL_EXCLUSIVE_EXT',
     ],
   },
-  'SwapBuffersFlags': {
-    'type': 'GLbitfield',
-    'is_complete': True,
-    'valid': [
-      '0',
-      'gpu::SwapBuffersFlags::kVSyncParams',
-    ],
-  },
   'SharedImageAccessMode': {
     'type': 'GLenum',
     'is_complete': True,
@@ -3182,15 +3174,6 @@ _FUNCTION_INFO = {
     'no_gl': True,
     'expectation': False,
   },
-  'SwapBuffers': {
-    'impl_func': False,
-    'decoder_func': 'DoSwapBuffers',
-    'client_test': False,
-    'expectation': False,
-    'extension': True,
-    'trace_level': 1,
-    'trace_queueing_flow': True,
-  },
   'TexImage2D': {
     'type': 'Custom',
     'impl_func': False,
@@ -3539,16 +3522,6 @@ _FUNCTION_INFO = {
   'Viewport': {
     'impl_func': False,
     'decoder_func': 'DoViewport',
-  },
-  'ResizeCHROMIUM': {
-    'type': 'Custom',
-    'impl_func': False,
-    'client_test': False,
-    'cmd_args': 'GLint width, GLint height, GLfloat scale_factor, GLboolean '
-                'alpha, GLuint shm_id, GLuint shm_offset, GLsizei '
-                'color_space_size',
-    'extension': True,
-    'trace_level': 1,
   },
   'GetRequestableExtensionsCHROMIUM': {
     'type': 'Custom',
@@ -3994,38 +3967,6 @@ _FUNCTION_INFO = {
   # from RasterImplementationGLES to be used with Passthrough Command Decoder.
   # Also, they have similar implementations to corresponding functions for
   # Raster Decoder.
-  # TODO(hitawala): Remove these methods once OOP-C is launched and we prefer
-  # Raster Decoder over Passthrough Command Decoder everywhere.
-  'ConvertRGBAToYUVAMailboxesINTERNAL': {
-    'decoder_func': 'DoConvertRGBAToYUVAMailboxesINTERNAL',
-    'extension': 'CHROMIUM_shared_image',
-    'internal': False,
-    'type': 'PUT',
-    'count': 80, #GL_MAILBOX_SIZE_CHROMIUM x5
-    'impl_func': True,
-    'unit_test': False,
-    'trace_level': 2,
-  },
-  'ConvertYUVAMailboxesToRGBINTERNAL': {
-    'decoder_func': 'DoConvertYUVAMailboxesToRGBINTERNAL',
-    'extension': 'CHROMIUM_shared_image',
-    'internal': False,
-    'type': 'PUT',
-    'count': 144, #GL_MAILBOX_SIZE_CHROMIUM x5 + 16 floats
-    'impl_func': True,
-    'unit_test': False,
-    'trace_level': 2,
-  },
-  'ConvertYUVAMailboxesToTextureINTERNAL': {
-    'decoder_func': 'DoConvertYUVAMailboxesToTextureINTERNAL',
-    'extension': 'CHROMIUM_shared_image',
-    'internal': False,
-    'type': 'PUT',
-    'count': 64, #GL_MAILBOX_SIZE_CHROMIUM x4
-    'impl_func': True,
-    'unit_test': False,
-    'trace_level': 2,
-  },
   'CopySharedImageINTERNAL': {
     'decoder_func': 'DoCopySharedImageINTERNAL',
     'extension': 'CHROMIUM_shared_image',

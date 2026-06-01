@@ -9,6 +9,8 @@
 #include <QtQmlDom/private/qqmldomitem_p.h>
 #include <QtQmlDom/private/qqmldomtop_p.h>
 
+#include <QSignalSpy>
+
 tst_qmlls_qqmlcodemodel::tst_qmlls_qqmlcodemodel() : QQmlDataTest(QT_QQMLCODEMODEL_DATADIR) { }
 
 void tst_qmlls_qqmlcodemodel::buildPathsForFileUrl_data()
@@ -179,7 +181,10 @@ void tst_qmlls_qqmlcodemodel::openFiles()
         QCOMPARE(fileAComponents.size(), 1);
     }
 
-    model.newDocForOpenFile(fileAUrl, 1, readFile(u"FileA2.qml"_s));
+    QSignalSpy spy(&model, &QmlLsp::QQmlCodeModel::openUpdateThreadFinished);
+    model.newOpenFile(fileAUrl, 1, readFile(u"FileA2.qml"_s));
+    // wait for QQmlCodeModel to finish loading
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 3000);
 
     {
         const DomItem fileAComponents = model.validEnv()
@@ -244,6 +249,7 @@ void tst_qmlls_qqmlcodemodel::importPathViaSettings()
 static void reloadLotsOfFileMethod()
 {
     QmlLsp::QQmlCodeModel model;
+    model.setImportPaths(QLibraryInfo::paths(QLibraryInfo::QmlImportsPath));
 
     QTemporaryDir folder;
     QVERIFY(folder.isValid());
@@ -285,20 +291,65 @@ static void reloadLotsOfFileMethod()
         file.write("\n\n");
     }
 
+    QSignalSpy spy(&model, &QmlLsp::QQmlCodeModel::openUpdateThreadFinished);
     // update one file
-    model.newDocForOpenFile(QUrl::fromLocalFile(fileNames.front()).toEncoded(), 1,
-                            content + "\n\n");
+    model.newOpenFile(QUrl::fromLocalFile(fileNames.front()).toEncoded(), 1, content + "\n\n");
+
+    // wait for QQmlCodeModel to finish loading before leaving the scope
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 3000);
 }
 
 void tst_qmlls_qqmlcodemodel::reloadLotsOfFiles()
 {
-    QThread *thread = QThread::create([]() { reloadLotsOfFileMethod(); });
+    QScopedPointer<QThread> thread(QThread::create([]() { reloadLotsOfFileMethod(); }));
 
     // should not stack-overflow despite the small stack size to make sure QML files are loaded
     // correctly and not recursively
     thread->setStackSize(1 << 20);
     thread->start();
     thread->wait();
+}
+
+void tst_qmlls_qqmlcodemodel::withQmllsBuildIniRelativeImportPath()
+{
+    const QString defaultImportPath = QLibraryInfo::path(QLibraryInfo::QmlImportsPath);
+
+    QTemporaryDir buildPathA;
+    QVERIFY(buildPathA.isValid());
+
+    QDir(buildPathA.path()).mkdir(".qt"_L1);
+
+    {
+        const QString qmllsBuildIni = buildPathA.filePath(".qt/.qmlls.build.ini"_L1);
+        QFile qmllsBuildIniFile(qmllsBuildIni);
+        QVERIFY(qmllsBuildIniFile.open(QFile::WriteOnly | QFile::Text));
+
+        const QString rootA = testFile("twoWorkspaces/WorkSpaceA/"_L1);
+        qmllsBuildIniFile.write(
+                "[General]\n[%1]\nimportPaths=\"%2\"\n"_L1
+                        .arg(QString(rootA).replace("/"_L1, "<SLASH>"_L1), "../ImportPathA")
+                        .toUtf8());
+    }
+
+    QmlLsp::QQmlCodeModel codemodel;
+    codemodel.setBuildPathsForRootUrl({}, { buildPathA.path() });
+
+    const QString importPathA = testFile("twoWorkspaces/ImportPathA"_L1);
+    const QStringList expectedImportPathA{ defaultImportPath, importPathA };
+    QCOMPARE_EQ(codemodel.importPathsForFile(testFile("twoWorkspaces/WorkSpaceA/file.qml"_L1)),
+                expectedImportPathA);
+}
+
+void tst_qmlls_qqmlcodemodel::withQmllsIniRelativeImportPath()
+{
+    const QString defaultImportPath = QLibraryInfo::path(QLibraryInfo::QmlImportsPath);
+
+    QQmlToolingSettings settings("qmlls");
+    QmlLsp::QQmlCodeModel model(nullptr, &settings);
+    const QString importPathA = testFile("twoWorkspaces"_L1);
+    const QStringList expectedImportPathA = (model.importPaths() << importPathA);
+    QCOMPARE_EQ(model.importPathsForFile(testFile("FolderWithQmllsIni/SomeType.qml")),
+                expectedImportPathA);
 }
 
 QTEST_MAIN(tst_qmlls_qqmlcodemodel)

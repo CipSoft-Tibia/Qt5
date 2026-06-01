@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 The Khronos Group Inc.
+/* Copyright (c) 2021-2025 The Khronos Group Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -127,6 +127,9 @@ struct ExecutionModeSet {
         stencil_ref_replacing_bit = 1 << 25,
 
         fp_fast_math_default = 1 << 26,
+
+        derivative_group_linear = 1 << 27,
+        derivative_group_quads = 1 << 28,
     };
 
     // bits to know if things have been set or not by a Decoration
@@ -356,7 +359,6 @@ struct StageInterfaceVariable : public VariableBase {
     const Instruction &base_type;
     const bool is_builtin;
     bool nested_struct;
-    bool physical_storage_buffer;
 
     const std::vector<InterfaceSlot> interface_slots;  // Only for User Defined variables
     const std::vector<uint32_t> builtin_block;
@@ -403,10 +405,9 @@ struct ResourceInterfaceVariable : public VariableBase {
     // most likly will be OpTypeImage, OpTypeStruct, OpTypeSampler, or OpTypeAccelerationStructureKHR
     const Instruction &base_type;
 
-    // This is true if either:
-    // - The descriptor is made up of an OpRuntimeArray
-    // - Not all OpAccessChains pointing to this descriptor or easily determined constant
-    bool is_dynamic_accessed;
+    // True if the Resource variable itself is runtime descriptor array
+    // Online example to showcase various arrays we do/don't care about here https://godbolt.org/z/h9jhsKaPn
+    bool is_runtime_descriptor_array;
 
     // Sampled Type width of the OpTypeImage the variable points to, 0 if doesn't use the image
     const uint32_t image_sampled_type_width;
@@ -442,9 +443,6 @@ struct ResourceInterfaceVariable : public VariableBase {
     uint64_t descriptor_hash = 0;
     bool IsImage() const { return info.image_format_type != NumericTypeUnknown; }
 
-    // If dealing with an image array, only check the indexes accesses
-    vvl::unordered_set<uint32_t> image_access_chain_indexes;
-
     // Type of resource type (vkspec.html#interfaces-resources-storage-class-correspondence)
     bool is_storage_image{false};
     bool is_storage_texel_buffer{false};
@@ -457,8 +455,6 @@ struct ResourceInterfaceVariable : public VariableBase {
 
   protected:
     static const Instruction &FindBaseType(ResourceInterfaceVariable &variable, const Module &module_state);
-    static bool IsDynamicAccessed(ResourceInterfaceVariable &variable, const Module &module_state,
-                                  const AccessChainVariableMap &access_chain_map);
     static uint32_t FindImageSampledTypeWidth(const Module &module_state, const Instruction &base_type);
     static NumericType FindImageFormatType(const Module &module_state, const Instruction &base_type);
     static bool IsStorageBuffer(const ResourceInterfaceVariable &variable);
@@ -532,9 +528,13 @@ struct EntryPoint {
     bool has_passthrough{false};
     bool has_alpha_to_coverage_variable{false};  // only for Fragment shaders
 
+    bool has_physical_storage_buffer_interface{false};
+
     EntryPoint(const Module &module_state, const Instruction &entrypoint_insn, const ImageAccessMap &image_access_map,
                const AccessChainVariableMap &access_chain_map, const VariableAccessMap &variable_access_map,
                const DebugNameMap &debug_name_map);
+
+    bool HasBuiltIn(spv::BuiltIn built_in) const;
 
   protected:
     static vvl::unordered_set<uint32_t> GetAccessibleIds(const Module &module_state, EntryPoint &entrypoint);
@@ -625,6 +625,11 @@ struct Module {
         bool has_specialization_constants{false};
         bool uses_interpolate_at_sample{false};
 
+        // Will check if there is source debug information
+        // Won't save any other info and will retrieve the debug info if requested in a VU error message
+        bool using_legacy_debug_info{false};
+        uint32_t shader_debug_info_set_id = 0;  // non-zero means shader has NonSemantic.Shader.DebugInfo.100
+
         // EntryPoint has pointer references inside it that need to be preserved
         std::vector<std::shared_ptr<EntryPoint>> entry_points;
 
@@ -651,7 +656,7 @@ struct Module {
     VulkanTypedHandle handle_;                            // Will be updated once its known its valid SPIR-V
     VulkanTypedHandle handle() const { return handle_; }  // matches normal convention to get handle
 
-    // Used for when modifying the SPIR-V (spirv-opt, GPU-AV instrumentation, etc) and need reparse it for VVL validaiton
+    // Used for when modifying the SPIR-V (spirv-opt, GPU-AV instrumentation, etc) and need reparse it for VVL validation
     Module(vvl::span<const uint32_t> code) : valid_spirv(true), words_(code.begin(), code.end()), static_data_(*this) {}
 
     // StatelessData is a pointer as we have cases were we don't need it and simpler to just null check the few cases that use it
@@ -709,6 +714,7 @@ struct Module {
     void DescribeTypeInner(std::ostringstream &ss, uint32_t type, uint32_t indent) const;
     std::string DescribeType(uint32_t type) const;
     std::string DescribeVariable(uint32_t id) const;
+    std::string DescribeInstruction(const Instruction &error_insn) const;
 
     // Note that some shaders can have an input and output topology
     std::optional<VkPrimitiveTopology> GetTopology(const EntryPoint &entrypoint) const;

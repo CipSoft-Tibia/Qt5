@@ -93,7 +93,7 @@ void QmldirFile::setFromQmldir()
     m_uri = QmlUri::fromUriString(m_qmldir.typeNamespace());
     if (m_uri.isValid())
         m_uri = QmlUri::fromDirectoryString(canonicalFilePath());
-    Path exportsPath = Path::Field(Fields::exports);
+    Path exportsPath = Path::fromField(Fields::exports);
     QDir baseDir = QFileInfo(canonicalFilePath()).dir();
     int majorVersion = Version::Undefined;
     bool ok;
@@ -134,7 +134,7 @@ void QmldirFile::setFromQmldir()
         exp.version =
                 Version((el.version.hasMajorVersion() ? el.version.majorVersion() : majorVersion),
                         el.version.hasMinorVersion() ? el.version.minorVersion() : 0);
-        exp.typePath = Paths::jsFilePath(canonicalExportFilePath).field(Fields::rootComponent);
+        exp.typePath = Paths::jsFilePath(canonicalExportFilePath).withField(Fields::rootComponent);
         exp.uri = uri().toString();
         exp.typeName = el.nameSpace;
         m_exports.insert(exp.typeName, exp);
@@ -251,7 +251,7 @@ bool QmldirFile::iterateDirectSubpaths(const DomItem &self, DirectVisitor visito
     cont = cont && self.dvItemField(visitor, Fields::plugins, [this, &self]() {
         QStringList cNames = classNames();
         return self.subListItem(List::fromQListRef<QQmlDirParser::Plugin>(
-                self.pathFromOwner().field(Fields::plugins), m_plugins,
+                self.pathFromOwner().withField(Fields::plugins), m_plugins,
                 [cNames](const DomItem &list, const PathEls::PathComponent &p,
                          const QQmlDirParser::Plugin &plugin) {
                     return list.subDataItem(p, pluginData(plugin, cNames));
@@ -262,7 +262,7 @@ bool QmldirFile::iterateDirectSubpaths(const DomItem &self, DirectVisitor visito
     cont = cont && self.dvItemField(visitor, Fields::qmlFiles, [this, &self]() {
         const QMap<QString, QString> typeFileMap = qmlFiles();
         return self.subMapItem(Map(
-                self.pathFromOwner().field(Fields::qmlFiles),
+                self.pathFromOwner().withField(Fields::qmlFiles),
                 [typeFileMap](const DomItem &map, const QString &typeV) {
                     QString path = typeFileMap.value(typeV);
                     if (path.isEmpty())
@@ -503,7 +503,18 @@ void QmlFile::writeOut(const DomItem &self, OutWriter &ow) const
     for (const DomItem &p : self.field(Fields::pragmas).values()) {
         p.writeOut(ow);
     }
-    for (auto i : self.field(Fields::imports).values()) {
+    auto imports = self.field(Fields::imports).values();
+
+    if (ow.lineWriter.options().sortImports) {
+        std::stable_sort (imports.begin(), imports.end(),
+                         [](const DomItem& item1, const DomItem& item2) {
+                             const auto uri1 = item1[Fields::uri].toString();
+                             const auto uri2 = item2[Fields::uri].toString();
+                             return uri1 < uri2;
+                         });
+    }
+
+    for (const DomItem& i : imports) {
         i.writeOut(ow);
     }
     ow.ensureNewline(2);
@@ -549,12 +560,12 @@ bool QmltypesFile::iterateDirectSubpaths(const DomItem &self, DirectVisitor visi
     cont = cont && self.dvWrapField(visitor, Fields::exports, m_exports);
     cont = cont && self.dvItemField(visitor, Fields::uris, [this, &self]() {
         return self.subMapItem(Map::fromMapRef<QSet<int>>(
-                self.pathFromOwner().field(Fields::uris), m_uris,
+                self.pathFromOwner().withField(Fields::uris), m_uris,
                 [](const DomItem &map, const PathEls::PathComponent &p, const QSet<int> &el) {
                     QList<int> l(el.cbegin(), el.cend());
                     std::sort(l.begin(), l.end());
                     return map.subListItem(
-                            List::fromQList<int>(map.pathFromOwner().appendComponent(p), l,
+                            List::fromQList<int>(map.pathFromOwner().withComponent(p), l,
                                                  [](const DomItem &list, const PathEls::PathComponent &p,
                                                     int el) { return list.subDataItem(p, el); }));
                 }));
@@ -581,7 +592,7 @@ bool QmlDirectory::iterateDirectSubpaths(const DomItem &self, DirectVisitor visi
     cont = cont && self.dvItemField(visitor, Fields::qmlFiles, [this, &self]() -> DomItem {
         QDir baseDir(canonicalFilePath());
         return self.subMapItem(Map(
-                self.pathFromOwner().field(Fields::qmlFiles),
+                self.pathFromOwner().withField(Fields::qmlFiles),
                 [this, baseDir](const DomItem &map, const QString &key) -> DomItem {
                     QList<Path> res;
                     auto it = m_qmlFiles.find(key);

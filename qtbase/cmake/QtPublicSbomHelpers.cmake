@@ -30,6 +30,10 @@ function(_qt_internal_sbom_begin_project)
     set(opt_args
         USE_GIT_VERSION
         __QT_INTERNAL_HANDLE_QT_REPO
+        NO_AUTO_DOCUMENT_NAMESPACE_INFIX
+        NO_AUTO_SEARCH_EXTERNAL_DOCUMENTS_IN_CMAKE_PATHS
+        NO_AUTO_SPDX_ID_SUFFIX
+        NO_AUTO_ADD_BUILD_TOOLS
     )
     set(single_args
         INSTALL_PREFIX
@@ -39,6 +43,11 @@ function(_qt_internal_sbom_begin_project)
         SUPPLIER_URL
         DOWNLOAD_LOCATION
         DOCUMENT_NAMESPACE
+        DOCUMENT_NAMESPACE_INFIX
+        DOCUMENT_NAMESPACE_SUFFIX
+        DOCUMENT_NAMESPACE_URL_PREFIX
+        SPDX_ID_SUFFIX
+        SPDX_ID_SUFFIX_HASH_LENGTH
         VERSION
         SBOM_PROJECT_NAME
         QT_REPO_PROJECT_NAME
@@ -48,6 +57,7 @@ function(_qt_internal_sbom_begin_project)
     set(multi_args
         COPYRIGHTS
         LICENSE_DIR_PATHS
+        EXTERNAL_DOCUMENT_SEARCH_PATHS
     )
 
     cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
@@ -85,7 +95,8 @@ function(_qt_internal_sbom_begin_project)
     _qt_internal_sbom_get_root_project_name_for_spdx_id(repo_project_name_for_spdx_id)
     _qt_internal_sbom_get_root_project_name_lower_case(repo_project_name_lowercase)
 
-    set(begin_project_generate_args "")
+    set(begin_project_generate_args_spdx "")
+    set(begin_project_generate_args_cydx "")
 
     if(arg_SUPPLIER_URL)
         set(repo_supplier_url "${arg_SUPPLIER_URL}")
@@ -93,7 +104,8 @@ function(_qt_internal_sbom_begin_project)
         _qt_internal_sbom_get_default_supplier_url(repo_supplier_url)
     endif()
     if(repo_supplier_url)
-        list(APPEND begin_project_generate_args SUPPLIER_URL "${repo_supplier_url}")
+        list(APPEND begin_project_generate_args_spdx SUPPLIER_URL "${repo_supplier_url}")
+        list(APPEND begin_project_generate_args_cydx SUPPLIER_URL "${repo_supplier_url}")
     endif()
 
     set(sbom_project_version_args "")
@@ -108,18 +120,126 @@ function(_qt_internal_sbom_begin_project)
     )
     _qt_internal_handle_sbom_project_version(${sbom_project_version_args})
 
+    if(arg___QT_INTERNAL_HANDLE_QT_REPO)
+        _qt_internal_sbom_compute_qt_uniqueish_document_namespace_infix(
+            OUT_VAR_UUID_INFIX_MERGED document_namespace_infix
+        )
+        if(document_namespace_infix)
+            set(arg_DOCUMENT_NAMESPACE_INFIX "-${document_namespace_infix}")
+        endif()
+    endif()
+
+    if(arg_EXTERNAL_DOCUMENT_SEARCH_PATHS)
+        set_property(GLOBAL APPEND PROPERTY _qt_internal_sbom_external_document_search_paths
+            ${arg_EXTERNAL_DOCUMENT_SEARCH_PATHS})
+    endif()
+
+    if(arg_NO_AUTO_SEARCH_EXTERNAL_DOCUMENTS_IN_CMAKE_PATHS)
+        set(auto_search_external_documents_in_cmake_paths FALSE)
+    else()
+        set(auto_search_external_documents_in_cmake_paths TRUE)
+    endif()
+    set_property(GLOBAL PROPERTY
+        _qt_internal_sbom_auto_search_external_documents_in_paths
+        "${auto_search_external_documents_in_cmake_paths}")
+
     if(arg_DOCUMENT_NAMESPACE)
         set(repo_spdx_namespace "${arg_DOCUMENT_NAMESPACE}")
+
+        if(QT_SBOM_DOCUMENT_NAMESPACE_INFIX)
+            string(APPEND repo_spdx_namespace "${QT_SBOM_DOCUMENT_NAMESPACE_INFIX}")
+        elseif(arg_DOCUMENT_NAMESPACE_INFIX)
+            string(APPEND repo_spdx_namespace "${arg_DOCUMENT_NAMESPACE_INFIX}")
+        elseif(NOT arg_NO_AUTO_DOCUMENT_NAMESPACE_INFIX
+                AND NOT QT_SBOM_NO_AUTO_DOCUMENT_NAMESPACE_INFIX)
+            _qt_internal_sbom_compute_uniqueish_document_namespace_infix(
+                OUT_VAR_UUID_INFIX_MERGED document_namespace_infix
+            )
+            string(APPEND repo_spdx_namespace "-${document_namespace_infix}")
+        endif()
+
+        if(QT_SBOM_DOCUMENT_NAMESPACE_SUFFIX)
+            string(APPEND repo_spdx_namespace "${QT_SBOM_DOCUMENT_NAMESPACE_SUFFIX}")
+        elseif(arg_DOCUMENT_NAMESPACE_SUFFIX)
+            string(APPEND repo_spdx_namespace "${arg_DOCUMENT_NAMESPACE_SUFFIX}")
+        endif()
     else()
         set(compute_project_namespace_args "")
         if(repo_supplier_url)
             list(APPEND compute_project_namespace_args SUPPLIER_URL "${repo_supplier_url}")
         endif()
+
+        if(QT_SBOM_DOCUMENT_NAMESPACE_INFIX)
+            list(APPEND compute_project_namespace_args
+                DOCUMENT_NAMESPACE_INFIX "${QT_SBOM_DOCUMENT_NAMESPACE_INFIX}")
+        elseif(arg_DOCUMENT_NAMESPACE_INFIX)
+            list(APPEND compute_project_namespace_args
+                DOCUMENT_NAMESPACE_INFIX "${arg_DOCUMENT_NAMESPACE_INFIX}")
+        elseif(NOT arg_NO_AUTO_DOCUMENT_NAMESPACE_INFIX
+                AND NOT QT_SBOM_NO_AUTO_DOCUMENT_NAMESPACE_INFIX)
+            _qt_internal_sbom_compute_uniqueish_document_namespace_infix(
+                OUT_VAR_UUID_INFIX_MERGED document_namespace_infix
+            )
+            list(APPEND compute_project_namespace_args
+                DOCUMENT_NAMESPACE_INFIX "-${document_namespace_infix}")
+        endif()
+
+        if(QT_SBOM_DOCUMENT_NAMESPACE_SUFFIX)
+            list(APPEND compute_project_namespace_args
+                DOCUMENT_NAMESPACE_SUFFIX "${QT_SBOM_DOCUMENT_NAMESPACE_SUFFIX}")
+        elseif(arg_DOCUMENT_NAMESPACE_SUFFIX)
+            list(APPEND compute_project_namespace_args
+                DOCUMENT_NAMESPACE_SUFFIX "${arg_DOCUMENT_NAMESPACE_SUFFIX}")
+        endif()
+
+        if(QT_SBOM_DOCUMENT_NAMESPACE_URL_PREFIX)
+            list(APPEND compute_project_namespace_args
+                DOCUMENT_NAMESPACE_URL_PREFIX "${QT_SBOM_DOCUMENT_NAMESPACE_URL_PREFIX}")
+        elseif(arg_DOCUMENT_NAMESPACE_URL_PREFIX)
+            list(APPEND compute_project_namespace_args
+                DOCUMENT_NAMESPACE_URL_PREFIX "${arg_DOCUMENT_NAMESPACE_URL_PREFIX}")
+        endif()
+
         _qt_internal_sbom_compute_project_namespace(repo_spdx_namespace
             PROJECT_NAME "${repo_project_name_lowercase}"
             ${compute_project_namespace_args}
         )
     endif()
+
+    _qt_internal_sbom_get_cyclone_bom_serial_number(
+        SPDX_NAMESPACE "${repo_spdx_namespace}"
+        OUT_VAR_UUID cyclone_dx_bom_serial_number_uuid
+    )
+    list(APPEND begin_project_generate_args_cydx
+        BOM_SERIAL_NUMBER_UUID "${cyclone_dx_bom_serial_number_uuid}")
+
+    if(QT_SBOM_SPDX_ID_SUFFIX)
+        set(spdx_id_unique_suffix "-${QT_SBOM_SPDX_ID_SUFFIX}")
+    elseif(arg_SPDX_ID_SUFFIX)
+        set(spdx_id_unique_suffix "-${arg_SPDX_ID_SUFFIX}")
+    elseif(NOT arg_NO_AUTO_SPDX_ID_SUFFIX AND NOT QT_SBOM_NO_AUTO_SPDX_SUFFIX)
+        set(compute_unique_spdx_id_suffix_args "")
+
+        if(QT_SBOM_SPDX_ID_SUFFIX_HASH_LENGTH)
+            list(APPEND compute_unique_spdx_id_suffix_args
+                HASH_LENGTH "${QT_SBOM_SPDX_ID_SUFFIX_HASH_LENGTH}")
+        elseif(arg_SPDX_ID_SUFFIX_HASH_LENGTH)
+            list(APPEND compute_unique_spdx_id_suffix_args
+                HASH_LENGTH "${arg_SPDX_ID_SUFFIX_HASH_LENGTH}")
+        endif()
+
+        _qt_internal_sbom_compute_uniqueish_spdx_id_suffix(
+            SPDX_NAMESPACE "${repo_spdx_namespace}"
+            OUT_VAR_UNIQUE_SUFFIX spdx_id_unique_suffix
+            ${compute_unique_spdx_id_suffix_args}
+        )
+        string(PREPEND spdx_id_unique_suffix "-")
+    else()
+        set(spdx_id_unique_suffix "")
+    endif()
+
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_repo_spdx_id_unique_suffix
+        "${spdx_id_unique_suffix}")
 
     if(arg_INSTALL_SBOM_DIR)
         set(install_sbom_dir "${arg_INSTALL_SBOM_DIR}")
@@ -143,17 +263,41 @@ function(_qt_internal_sbom_begin_project)
         list(APPEND compute_project_file_name_args VERSION_SUFFIX "${explicit_version}")
     endif()
 
-    _qt_internal_sbom_compute_project_file_name(repo_project_file_name
+    _qt_internal_sbom_compute_project_file_name(repo_project_file_name_spdx
+        SPDX_TAG_VALUE
         PROJECT_NAME "${repo_project_name_lowercase}"
         ${compute_project_file_name_args}
     )
 
-    _qt_internal_path_join(repo_spdx_relative_install_path
-        "${arg_INSTALL_SBOM_DIR}" "${repo_project_file_name}")
+    _qt_internal_sbom_compute_project_file_name(repo_project_file_name_cydx
+        CYCLONEDX_TOML
+        PROJECT_NAME "${repo_project_name_lowercase}"
+        ${compute_project_file_name_args}
+    )
+
+    _qt_internal_path_join(repo_spdx_relative_install_path_spdx
+        "${install_sbom_dir}" "${repo_project_file_name_spdx}")
+
+    # Currently only used for exporting as a target's property.
+    _qt_internal_path_join(repo_spdx_relative_install_path_spdx_json
+        "${install_sbom_dir}" "${repo_project_file_name_spdx}.json")
+
+    # This is actually the path to the intermediate CycloneDX toml file.
+    _qt_internal_path_join(repo_spdx_relative_install_path_cydx
+        "${install_sbom_dir}" "${repo_project_file_name_cydx}")
+
+    # Compute the relative path to the final cydx json file, to be exported in a target's property.
+    get_filename_component(repo_project_file_name_cydx_without_ext
+        "${repo_project_file_name_cydx}" NAME_WLE)
+
+    _qt_internal_path_join(repo_spdx_relative_install_path_cydx_json
+        "${install_sbom_dir}" "${repo_project_file_name_cydx_without_ext}.json")
 
     # Prepend DESTDIR, to allow relocating installed sbom. Needed for CI.
-    _qt_internal_path_join(repo_spdx_install_path
-        "\$ENV{DESTDIR}${install_prefix}" "${repo_spdx_relative_install_path}")
+    _qt_internal_path_join(repo_spdx_install_path_spdx
+        "\$ENV{DESTDIR}${install_prefix}" "${repo_spdx_relative_install_path_spdx}")
+    _qt_internal_path_join(repo_spdx_install_path_cydx
+        "\$ENV{DESTDIR}${install_prefix}" "${repo_spdx_relative_install_path_cydx}")
 
     if(arg_LICENSE_EXPRESSION)
         set(repo_license "${arg_LICENSE_EXPRESSION}")
@@ -164,7 +308,8 @@ function(_qt_internal_sbom_begin_project)
         set(repo_license "")
     endif()
     if(repo_license)
-        list(APPEND begin_project_generate_args LICENSE "${repo_license}")
+        list(APPEND begin_project_generate_args_spdx LICENSE "${repo_license}")
+        list(APPEND begin_project_generate_args_cydx LICENSE "${repo_license}")
     endif()
 
     if(arg_COPYRIGHTS)
@@ -174,7 +319,8 @@ function(_qt_internal_sbom_begin_project)
         _qt_internal_sbom_get_default_qt_copyright_header(repo_copyright)
     endif()
     if(repo_copyright)
-        list(APPEND begin_project_generate_args COPYRIGHT "${repo_copyright}")
+        list(APPEND begin_project_generate_args_spdx COPYRIGHT "${repo_copyright}")
+        list(APPEND begin_project_generate_args_cydx COPYRIGHT "${repo_copyright}")
     endif()
 
     if(arg_SUPPLIER)
@@ -184,7 +330,8 @@ function(_qt_internal_sbom_begin_project)
     endif()
     if(repo_supplier)
         # This must not contain spaces!
-        list(APPEND begin_project_generate_args SUPPLIER "${repo_supplier}")
+        list(APPEND begin_project_generate_args_spdx SUPPLIER "${repo_supplier}")
+        list(APPEND begin_project_generate_args_cydx SUPPLIER "${repo_supplier}")
     endif()
 
     if(arg_CPE)
@@ -195,7 +342,8 @@ function(_qt_internal_sbom_begin_project)
         set(qt_cpe "")
     endif()
     if(qt_cpe)
-        list(APPEND begin_project_generate_args CPE "${qt_cpe}")
+        list(APPEND begin_project_generate_args_spdx CPE "${qt_cpe}")
+        list(APPEND begin_project_generate_args_cydx CPE "${qt_cpe}")
     endif()
 
     if(arg_DOWNLOAD_LOCATION)
@@ -204,11 +352,12 @@ function(_qt_internal_sbom_begin_project)
         _qt_internal_sbom_get_qt_repo_source_download_location(download_location)
     endif()
     if(download_location)
-        list(APPEND begin_project_generate_args DOWNLOAD_LOCATION "${download_location}")
+        list(APPEND begin_project_generate_args_spdx DOWNLOAD_LOCATION "${download_location}")
+        list(APPEND begin_project_generate_args_cydx DOWNLOAD_LOCATION "${download_location}")
     endif()
 
     if(arg_DOCUMENT_CREATOR_TOOL)
-        list(APPEND begin_project_generate_args
+        list(APPEND begin_project_generate_args_spdx
             DOCUMENT_CREATOR_TOOL "${arg_DOCUMENT_CREATOR_TOOL}")
     endif()
 
@@ -229,24 +378,53 @@ function(_qt_internal_sbom_begin_project)
         set(project_comment PROJECT_COMMENT "${project_comment}")
     endif()
 
-    _qt_internal_sbom_begin_project_generate(
-        OUTPUT "${repo_spdx_install_path}"
-        OUTPUT_RELATIVE_PATH "${repo_spdx_relative_install_path}"
-        PROJECT "${repo_project_name_lowercase}"
-        ${project_comment}
-        PROJECT_FOR_SPDX_ID "${repo_project_name_for_spdx_id}"
-        NAMESPACE "${repo_spdx_namespace}"
-        ${begin_project_generate_args}
-        OUT_VAR_PROJECT_SPDX_ID repo_project_spdx_id
-    )
+    if(QT_SBOM_GENERATE_SPDX_V2)
+        _qt_internal_sbom_begin_project_generate(
+            OUTPUT "${repo_spdx_install_path_spdx}"
+            OUTPUT_RELATIVE_PATH "${repo_spdx_relative_install_path_spdx}"
+            PROJECT "${repo_project_name_lowercase}"
+            ${project_comment}
+            PROJECT_FOR_SPDX_ID "${repo_project_name_for_spdx_id}"
+            NAMESPACE "${repo_spdx_namespace}"
+            ${begin_project_generate_args_spdx}
+            OUT_VAR_PROJECT_SPDX_ID repo_project_spdx_id
+        )
+    endif()
+
+    if(QT_SBOM_GENERATE_CYDX_V1_6)
+        _qt_internal_sbom_begin_project_generate_cyclone(
+            OUTPUT "${repo_spdx_install_path_cydx}"
+            OUTPUT_RELATIVE_PATH "${repo_spdx_relative_install_path_cydx}"
+            PROJECT "${repo_project_name_lowercase}"
+            ${project_comment}
+            PROJECT_FOR_SPDX_ID "${repo_project_name_for_spdx_id}"
+            NAMESPACE "${repo_spdx_namespace}"
+            ${begin_project_generate_args_cydx}
+            OUT_VAR_PROJECT_SPDX_ID repo_project_spdx_id
+        )
+    endif()
 
     set_property(GLOBAL PROPERTY _qt_internal_project_attribution_files "")
 
     set_property(GLOBAL PROPERTY _qt_internal_sbom_repo_document_namespace
         "${repo_spdx_namespace}")
 
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_repo_cyclone_dx_bom_serial_number_uuid
+        "${cyclone_dx_bom_serial_number_uuid}")
+
+    # TODO: Figure out what needs to be done to fully port usage to the tag value var below,
+    # taking into account compatibility for Qt Creator, etc.
     set_property(GLOBAL PROPERTY _qt_internal_sbom_relative_installed_repo_document_path
-        "${repo_spdx_relative_install_path}")
+        "${repo_spdx_relative_install_path_spdx}")
+
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_document_spdx_v2_tag_value_relative_path
+        "${repo_spdx_relative_install_path_spdx}")
+
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_document_spdx_v2_json_relative_path
+        "${repo_spdx_relative_install_path_spdx_json}")
+
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_document_cydx_v1_6_json_relative_path
+        "${repo_spdx_relative_install_path_cydx_json}")
 
     set_property(GLOBAL PROPERTY _qt_internal_sbom_repo_project_name_lowercase
         "${repo_project_name_lowercase}")
@@ -256,6 +434,8 @@ function(_qt_internal_sbom_begin_project)
 
     set_property(GLOBAL PROPERTY _qt_internal_sbom_project_spdx_id
         "${repo_project_spdx_id}")
+
+    _qt_internal_create_project_sbom_target()
 
     # Collect project licenses.
     set(license_dirs "")
@@ -305,6 +485,10 @@ function(_qt_internal_sbom_begin_project)
     set_property(GLOBAL PROPERTY _qt_internal_sbom_repo_begin_called TRUE)
 
     _qt_internal_sbom_setup_project_ops()
+
+    if(NOT arg_NO_AUTO_ADD_BUILD_TOOLS)
+        _qt_internal_sbom_add_project_default_build_tools()
+    endif()
 endfunction()
 
 # Check various internal options to decide which sbom generation operations should be setup.
@@ -312,7 +496,10 @@ endfunction()
 function(_qt_internal_sbom_setup_project_ops)
     set(options "")
 
-    if(QT_SBOM_GENERATE_JSON OR QT_INTERNAL_SBOM_GENERATE_JSON OR QT_INTERNAL_SBOM_DEFAULT_CHECKS)
+    if(QT_SBOM_GENERATE_JSON
+            OR QT_SBOM_GENERATE_SPDX_V2_JSON
+            OR QT_INTERNAL_SBOM_GENERATE_JSON
+            OR QT_INTERNAL_SBOM_DEFAULT_CHECKS)
         list(APPEND options GENERATE_JSON)
     endif()
 
@@ -320,18 +507,46 @@ function(_qt_internal_sbom_setup_project_ops)
     # The user can explicitly request to fail the build if dependencies are not found.
     # error out. For internal options that the CI uses, we always want to fail the build if the
     # deps are not found.
-    if(QT_SBOM_REQUIRE_GENERATE_JSON OR QT_INTERNAL_SBOM_GENERATE_JSON
+    if(QT_SBOM_REQUIRE_GENERATE_JSON
+            OR QT_SBOM_REQUIRE_GENERATE_SPDX_V2_JSON
+            OR QT_INTERNAL_SBOM_GENERATE_JSON
             OR QT_INTERNAL_SBOM_DEFAULT_CHECKS)
         list(APPEND options GENERATE_JSON_REQUIRED)
     endif()
 
-    if(QT_SBOM_VERIFY OR QT_INTERNAL_SBOM_VERIFY OR QT_INTERNAL_SBOM_DEFAULT_CHECKS)
+    if(QT_SBOM_VERIFY
+            OR QT_SBOM_VERIFY_SPDX_V2
+            OR QT_INTERNAL_SBOM_VERIFY
+            OR QT_INTERNAL_SBOM_DEFAULT_CHECKS)
         list(APPEND options VERIFY_SBOM)
     endif()
 
     # Do the same requirement check for SBOM verification.
-    if(QT_SBOM_REQUIRE_VERIFY OR QT_INTERNAL_SBOM_VERIFY OR QT_INTERNAL_SBOM_DEFAULT_CHECKS)
+    if(QT_SBOM_REQUIRE_VERIFY
+            OR QT_SBOM_REQUIRE_VERIFY_SPDX_V2
+            OR QT_INTERNAL_SBOM_VERIFY
+            OR QT_INTERNAL_SBOM_DEFAULT_CHECKS)
         list(APPEND options VERIFY_SBOM_REQUIRED)
+    endif()
+
+    if(QT_SBOM_GENERATE_CYDX_V1_6)
+        list(APPEND options GENERATE_CYCLONE_DX_V1_6)
+    endif()
+
+    if(QT_SBOM_REQUIRE_GENERATE_CYDX_V1_6)
+        list(APPEND options GENERATE_CYCLONE_DX_V1_6_REQUIRED)
+    endif()
+
+    if(QT_SBOM_VERIFY_CYDX_V1_6)
+        list(APPEND options VERIFY_CYCLONE_DX_V1_6)
+    endif()
+
+    if(QT_SBOM_REQUIRE_VERIFY_CYDX_V1_6)
+        list(APPEND options VERIFY_CYCLONE_DX_V1_6_REQUIRED)
+    endif()
+
+    if(QT_SBOM_VERBOSE_CYDX_V1_6)
+        list(APPEND options VERBOSE_CYCLONE_DX_V1_6)
     endif()
 
     if(QT_SBOM_VERIFY_NTIA_COMPLIANT
@@ -367,12 +582,20 @@ function(_qt_internal_sbom_setup_project_ops)
 endfunction()
 
 # Sets up SBOM generation and verification options.
-# By default SBOM generation is disabled.
-# By default JSON generation and SBOM verification are enabled by default, if the dependencies
-# are present, otherwise they will be silently skipped. Unless the user explicitly requests to
-# fail the build if the dependencies are not found.
 #
-# The QT_GENERATE_SBOM_DEFAULT option can be set by a project to change the default value.
+# By default, the main toggle for SBOM generation is disabled. The GENERATE_SBOM_DEFAULT option
+# overrides that value and can be set by a project that sets up SBOM generation.
+#
+# If the main toggle gets enabled, we enable SPDX V2.3 tag:value generation, and try to enable
+# CycloneDX V1.6 generation. Try, because CDX generation needs python dependencies. If they are
+# not found, the generation is silently skipped.
+#
+# By default SPDX v2.3 JSON generation and verification is enabled, if the python dependencies
+# are found. Otherwise they will be silently skipped.
+# Unless the user explicitly requests to fail the build if the dependencies are not found.
+# The same can be done for CycloneDX generation.
+#
+# Some older variables that were added pre-CycloneDX generation are deprecated.
 function(_qt_internal_setup_sbom)
     set(opt_args "")
     set(single_args
@@ -388,23 +611,167 @@ function(_qt_internal_setup_sbom)
         set(default_value "${arg_GENERATE_SBOM_DEFAULT}")
     endif()
 
-    option(QT_GENERATE_SBOM "Generate SBOM documents in SPDX v2.3 tag:value format."
-        "${default_value}")
+    # Main SBOM toggle. Used to be the toggle for SPDX v2.3 only, but now would also enable Cyclone
+    # DX as well.
+    set(sbom_help_string "Generate SBOM.")
+    option(QT_GENERATE_SBOM "${sbom_help_string}" "${default_value}")
 
-    string(CONCAT help_string
+
+    # Toggle for SPDX V2.3 generation.
+    set(spdx_v2_help_string "Generate SBOM documents in SPDX v2.3 tag:value format.")
+    option(QT_SBOM_GENERATE_SPDX_V2 "${spdx_v2_help_string}" ON)
+
+
+    # Toggles for CycloneDX V1.6 generation.
+    set(cydx_help_string "Generate SBOM documents in CycloneDX v1.6 JSON format.")
+    option(QT_SBOM_GENERATE_CYDX_V1_6 "${cydx_help_string}" ON)
+
+    set(cydx_require_help_string
+        "Error out if CycloneDX SBOM generation dependencies are not found.")
+    option(QT_SBOM_REQUIRE_GENERATE_CYDX_V1_6 "${cydx_require_help_string}" OFF)
+
+
+    # Options for SPDX v2.3 JSON generation and verification.
+
+    string(CONCAT spdx_v23_json_help_string
         "Generate SBOM documents in SPDX v2.3 JSON format if required python dependency "
-        "spdx-tools is available"
+        "spdx-tools is available."
     )
 
-    option(QT_SBOM_GENERATE_JSON
-        "${help_string}" ON)
-    option(QT_SBOM_REQUIRE_GENERATE_JSON
-        "Error out if JSON SBOM generation depdendency is not found." OFF)
+    set(spdx_v23_json_require_help_string
+        "Error out if JSON SBOM generation depdendency is not found.")
 
-    option(QT_SBOM_VERIFY "Verify generated SBOM documents using python spdx-tools package." ON)
-    option(QT_SBOM_REQUIRE_VERIFY
-        "Error out if SBOM verification dependencies are not found." OFF)
+    set(spdx_v23_verify_help_string
+        "Verify generated SBOM documents using python spdx-tools package.")
+
+    set(spdx_v23_verify_require_help_string
+        "Error out if SBOM verification dependencies are not found.")
+
+    option(QT_SBOM_GENERATE_SPDX_V2_JSON "${spdx_v23_json_help_string}" ON)
+    option(QT_SBOM_REQUIRE_GENERATE_SPDX_V2_JSON "${spdx_v23_json_require_help_string}" OFF)
+
+    option(QT_SBOM_VERIFY_SPDX_V2 "${spdx_v23_verify_help_string}" ON)
+    option(QT_SBOM_REQUIRE_VERIFY_SPDX_V2 "${spdx_v23_verify_require_help_string}" OFF)
+
+
+    # Options for CycloneDX verification and verbosity.
+
+    set(cydx_verify_help_string
+        "Verify generated CycloneDX document against its json schema.")
+    option(QT_SBOM_VERIFY_CYDX_V1_6 "${cydx_verify_help_string}" ON)
+
+    set(cydx_verify_require_help_string
+        "Error out if SBOM verification dependencies are not found.")
+    option(QT_SBOM_REQUIRE_VERIFY_CYDX_V1_6 "${cydx_verify_require_help_string}" OFF)
+
+    set(cydx_verbose_help_string
+        "Enable verbose output for CycloneDX generation.")
+    option(QT_SBOM_VERBOSE_CYDX_V1_6 "${cydx_verbose_help_string}" OFF)
+
+
+    # Deprecated options, superseded by the options above.
+    # Only add them if the values was previously defined, but update the doc string.
+
+    if(DEFINED QT_SBOM_GENERATE_JSON)
+        option(QT_SBOM_GENERATE_JSON "Deprecated: ${spdx_v23_json_help_string}" ON)
+    endif()
+    if(DEFINED QT_SBOM_REQUIRE_GENERATE_JSON)
+        option(QT_SBOM_REQUIRE_GENERATE_JSON "Deprecated: ${spdx_v23_json_require_help_string}" OFF)
+    endif()
+    if(DEFINED QT_SBOM_VERIFY)
+        option(QT_SBOM_VERIFY "Deprecated: ${spdx_v23_verify_help_string}" ON)
+    endif()
+    if(DEFINED QT_SBOM_REQUIRE_VERIFY)
+        option(QT_SBOM_REQUIRE_VERIFY "Deprecated: ${spdx_v23_verify_require_help_string}" OFF)
+    endif()
+
+    # Semi-public, undocumented options to allow enabling all SBOM stuff, for easier testing.
+    if(QT_SBOM_GENERATE_AND_VERIFY_ALL)
+        set(QT_SBOM_GENERATE_ALL ON)
+        set(QT_SBOM_GENERATE_REQUIRED_ALL ON)
+        set(QT_SBOM_VERIFY_REQUIRED_ALL ON)
+    endif()
+
+    if(QT_SBOM_GENERATE_ALL)
+        set(QT_GENERATE_SBOM ON CACHE BOOL "${sbom_help_string}" FORCE)
+        set(QT_SBOM_GENERATE_SPDX_V2 ON CACHE BOOL "${spdx_v2_help_string}" FORCE)
+        set(QT_SBOM_GENERATE_SPDX_V2_JSON ON CACHE BOOL "${spdx_v23_json_help_string}" FORCE)
+        set(QT_SBOM_GENERATE_CYDX_V1_6 ON CACHE BOOL "${cydx_help_string}" FORCE)
+        unset(QT_SBOM_GENERATE_ALL CACHE)
+        unset(QT_SBOM_GENERATE_ALL)
+    endif()
+
+    if(QT_SBOM_GENERATE_REQUIRED_ALL)
+        set(QT_SBOM_REQUIRE_GENERATE_SPDX_V2_JSON ON CACHE BOOL
+            "${spdx_v23_json_require_help_string}" FORCE)
+        set(QT_SBOM_REQUIRE_GENERATE_CYDX_V1_6 ON CACHE BOOL "${cydx_require_help_string}" FORCE)
+
+        unset(QT_SBOM_GENERATE_REQUIRED_ALL CACHE)
+        unset(QT_SBOM_GENERATE_REQUIRED_ALL)
+    endif()
+
+    if(QT_SBOM_VERIFY_REQUIRED_ALL)
+        set(QT_SBOM_VERIFY_SPDX_V2 ON CACHE BOOL "${spdx_v23_verify_help_string}" FORCE)
+        set(QT_SBOM_VERIFY_CYDX_V1_6 ON CACHE BOOL "${cydx_verify_help_string}" FORCE)
+
+        set(QT_SBOM_REQUIRE_VERIFY_SPDX_V2 ON CACHE BOOL "${spdx_v23_verify_require_help_string}"
+            FORCE)
+        set(QT_SBOM_REQUIRE_VERIFY_CYDX_V1_6 ON CACHE BOOL "${cydx_verify_require_help_string}"
+            FORCE)
+
+        unset(QT_SBOM_VERIFY_ALL CACHE)
+        unset(QT_SBOM_VERIFY_ALL)
+    endif()
+
+    # Various sanity checks.
+
+    # Disable SPDX v2.3 JSON generation if tag:value generation is disabled.
+    if(QT_GENERATE_SBOM
+            AND QT_SBOM_GENERATE_SPDX_V2_JSON
+            AND NOT QT_SBOM_GENERATE_SPDX_V2)
+        if(NOT QT_NO_SBOM_INFORMATIONAL_MESSAGES)
+            message(STATUS
+                "Disabling SPDX v2.3 SBOM JSON generation because tag:value generation is "
+                "disabled and that is a requirement for JSON generation.")
+        endif()
+        set(QT_SBOM_GENERATE_SPDX_V2_JSON OFF CACHE BOOL "${spdx_v23_json_help_string}" FORCE)
+        set(QT_SBOM_VERIFY_SPDX_V2 OFF CACHE BOOL "${spdx_v23_verify_help_string}" FORCE)
+    endif()
+
+    # Disable CycloneDX generation if dependencies are not found and it wasn't required.
+    if(QT_GENERATE_SBOM
+            AND QT_SBOM_GENERATE_CYDX_V1_6
+            AND NOT QT_SBOM_REQUIRE_GENERATE_CYDX_V1_6)
+        _qt_internal_sbom_find_cydx_dependencies(OUT_VAR_DEPS_FOUND deps_found)
+        if(NOT deps_found)
+            if(NOT QT_NO_SBOM_INFORMATIONAL_MESSAGES)
+                message(STATUS
+                    "Disabling Cyclone DX SBOM generation because dependencies were not found, "
+                    "and generation was not marked as required.")
+            endif()
+            set(QT_SBOM_GENERATE_CYDX_V1_6 OFF CACHE BOOL "${cydx_help_string}" FORCE)
+        endif()
+    endif()
+
+    # Disable sbom generation if none of the formats are enabled. Failing to do so will cause
+    # errors in _qt_internal_sbom_begin_project.
+    if(QT_GENERATE_SBOM
+            AND NOT QT_SBOM_GENERATE_SPDX_V2
+            AND NOT QT_SBOM_GENERATE_CYDX_V1_6)
+        if(NOT QT_NO_SBOM_INFORMATIONAL_MESSAGES)
+            message(STATUS
+                "Disabling SBOM generation because none of the supported formats were enabled.")
+        endif()
+        set(QT_GENERATE_SBOM OFF CACHE BOOL "${sbom_help_string}" FORCE)
+    endif()
 endfunction()
+
+# Disable SBOM processing for targets created under tests/ or examples/.
+# Some repos create mock qt modules under these directories like qtdeclarative and
+# qtwebengine.
+macro(_qt_internal_conditionally_disable_sbom_in_current_scope)
+    set(QT_GENERATE_SBOM OFF)
+endmacro()
 
 # Ends repo sbom project generation.
 # Should be called after all relevant targets are added to the sbom.
@@ -414,10 +781,6 @@ function(_qt_internal_sbom_end_project)
     if(NOT QT_GENERATE_SBOM)
         return()
     endif()
-
-    # Now that we know which system libraries are linked against because we added all
-    # subdirectories, we can add the recorded system libs to the sbom.
-    _qt_internal_sbom_add_recorded_system_libraries()
 
     # Run sbom finalization for targets that had it scheduled, but haven't run yet.
     # This can happen when _qt_internal_sbom_end_project is called within the same
@@ -462,7 +825,24 @@ function(_qt_internal_sbom_end_project)
         endif()
     endwhile()
 
-    _qt_internal_sbom_end_project_generate()
+    # Now that we know which system libraries are linked against because we added all
+    # subdirectories and finalized all targets, we can add the recorded system libs to the sbom.
+    _qt_internal_sbom_add_recorded_system_libraries()
+
+    # Add any external target dependencies, for CycloneDX generation.
+    # E.g. For QtSvg, we need to create a QtCore component in the QtSvg document, so that we
+    # can declare a dependency on it.
+    if(QT_SBOM_GENERATE_CYDX_V1_6)
+        _qt_internal_sbom_add_cydx_external_target_dependencies()
+    endif()
+
+    if(QT_SBOM_GENERATE_SPDX_V2)
+        _qt_internal_sbom_end_project_generate()
+    endif()
+
+    if(QT_SBOM_GENERATE_CYDX_V1_6)
+        _qt_internal_sbom_end_project_generate_cyclone()
+    endif()
 
     # Clean up external document ref properties, because each repo needs to start from scratch
     # in a top-level build.
@@ -470,14 +850,17 @@ function(_qt_internal_sbom_end_project)
     set_property(GLOBAL PROPERTY _qt_known_external_documents "")
     foreach(external_document IN LISTS known_external_documents)
         set_property(GLOBAL PROPERTY _qt_known_external_documents_${external_document} "")
+        set_property(GLOBAL PROPERTY _qt_known_external_documents_${external_document}_target "")
     endforeach()
 
     set_property(GLOBAL PROPERTY _qt_internal_sbom_repo_begin_called FALSE)
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_repo_spdx_id_unique_suffix "")
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_external_document_search_paths "")
+    set_property(GLOBAL PROPERTY _qt_internal_sbom_auto_search_external_documents_in_paths "")
 
     # Add configure-time dependency on project attribution files.
     get_property(attribution_files GLOBAL PROPERTY _qt_internal_project_attribution_files)
-    list(REMOVE_DUPLICATES attribution_files)
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${attribution_files}")
+    _qt_internal_append_cmake_configure_depends(${attribution_files})
 endfunction()
 
 # Automatically begins sbom generation for a qt git repo unless QT_SKIP_SBOM_AUTO_PROJECT is TRUE.
@@ -634,6 +1017,7 @@ macro(_qt_internal_get_sbom_add_target_common_options opt_args single_args multi
         NO_DEFAULT_QT_SUPPLIER
         SBOM_INCOMPLETE_3RD_PARTY_DEPENDENCIES
         IS_QT_3RD_PARTY_HEADER_MODULE
+        IS_EXTERNAL_SBOM_ENTITY
         USE_ATTRIBUTION_FILES
         CREATE_SBOM_FOR_EACH_ATTRIBUTION
         __QT_INTERNAL_HANDLE_QT_ENTITY_TYPE_PACKAGE_VERSION
@@ -645,9 +1029,12 @@ macro(_qt_internal_get_sbom_add_target_common_options opt_args single_args multi
         __QT_INTERNAL_HANDLE_QT_ENTITY_ATTRIBUTION_FILES
     )
     set(${single_args}
+        SPDX_ID
+        EXTERNAL_SBOM_DOCUMENT_TARGET
         DEFAULT_SBOM_ENTITY_TYPE
         SBOM_ENTITY_TYPE
         PACKAGE_VERSION
+        PACKAGE_SUMMARY
         FRIENDLY_PACKAGE_NAME
         SUPPLIER
         CPE_VENDOR
@@ -667,6 +1054,9 @@ macro(_qt_internal_get_sbom_add_target_common_options opt_args single_args multi
         ATTRIBUTION_FILE_PATHS
         ATTRIBUTION_FILE_DIR_PATHS
         ATTRIBUTION_IDS
+        SBOM_RELATIONSHIP_ENTRIES
+        # deprecated, previously used for SPDX v2 string-ified relationships
+        # still used by WebEngine.
         SBOM_RELATIONSHIPS
     )
 
@@ -778,7 +1168,8 @@ function(_qt_internal_sbom_add_target target)
         set_target_properties(${target} PROPERTIES _qt_sbom_is_qt_module TRUE)
     endif()
 
-    set(project_package_options "")
+    set(project_package_options_spdx "")
+    set(project_package_options_cydx "")
 
     if(arg_FRIENDLY_PACKAGE_NAME)
         set(package_name_for_spdx_id "${arg_FRIENDLY_PACKAGE_NAME}")
@@ -810,13 +1201,7 @@ function(_qt_internal_sbom_add_target target)
         string(APPEND package_comment "Contained in CMake package: ${qt_package_name}\n")
     endif()
 
-    # Record the target spdx id right now, so we can refer to it in later attribution targets
-    # if needed.
-    _qt_internal_sbom_record_target_spdx_id(${target}
-        SBOM_ENTITY_TYPE "${sbom_entity_type}"
-        PACKAGE_NAME "${package_name_for_spdx_id}"
-        OUT_VAR package_spdx_id
-    )
+    _qt_internal_sbom_get_spdx_id_for_target("${target}" package_spdx_id)
 
     if(arg_USE_ATTRIBUTION_FILES)
         set(attribution_args
@@ -888,7 +1273,8 @@ function(_qt_internal_sbom_add_target target)
     endif()
 
     if(license_expression)
-        list(APPEND project_package_options LICENSE_CONCLUDED "${license_expression}")
+        list(APPEND project_package_options_spdx LICENSE_CONCLUDED "${license_expression}")
+        list(APPEND project_package_options_cydx LICENSE_CONCLUDED "${license_expression}")
     endif()
 
     if(license_expression AND
@@ -899,7 +1285,9 @@ function(_qt_internal_sbom_add_target target)
             LICENSE_CONCLUDED_EXPRESSION "${license_expression}"
             OUT_VAR qt_entity_license_declared_expression)
         if(qt_entity_license_declared_expression)
-            list(APPEND project_package_options
+            list(APPEND project_package_options_spdx
+                LICENSE_DECLARED "${qt_entity_license_declared_expression}")
+            list(APPEND project_package_options_cydx
                 LICENSE_DECLARED "${qt_entity_license_declared_expression}")
         endif()
     endif()
@@ -924,7 +1312,8 @@ function(_qt_internal_sbom_add_target target)
     endif()
     if(copyrights)
         list(JOIN copyrights "\n" copyrights)
-        list(APPEND project_package_options COPYRIGHT "<text>${copyrights}</text>")
+        list(APPEND project_package_options_spdx COPYRIGHT "<text>${copyrights}</text>")
+        list(APPEND project_package_options_cydx COPYRIGHT "${copyrights}")
     endif()
 
     set(package_version "")
@@ -944,7 +1333,12 @@ function(_qt_internal_sbom_add_target target)
     endif()
 
     if(package_version)
-        list(APPEND project_package_options VERSION "${package_version}")
+        list(APPEND project_package_options_spdx VERSION "${package_version}")
+        list(APPEND project_package_options_cydx VERSION "${package_version}")
+
+        # Also export the value in a target property, to make it available for cydx generation.
+        set_property(TARGET "${target}" PROPERTY _qt_sbom_package_version "${package_version}")
+        set_property(TARGET "${target}" APPEND PROPERTY EXPORT_PROPERTIES _qt_sbom_package_version)
     endif()
 
     set(supplier "")
@@ -962,7 +1356,8 @@ function(_qt_internal_sbom_add_target target)
     endif()
 
     if(supplier)
-        list(APPEND project_package_options SUPPLIER "Organization: ${supplier}")
+        list(APPEND project_package_options_spdx SUPPLIER "Organization: ${supplier}")
+        list(APPEND project_package_options_cydx CYDX_SUPPLIER "${supplier}")
     endif()
 
     set(download_location "")
@@ -1003,11 +1398,22 @@ function(_qt_internal_sbom_add_target target)
     endif()
 
     if(download_location)
-        list(APPEND project_package_options DOWNLOAD_LOCATION "${download_location}")
+        set(placeholder_args "")
+        if(package_version)
+            list(APPEND placeholder_args VERSION "${package_version}")
+        endif()
+        _qt_internal_sbom_replace_qa_placeholders(
+            VALUES "${download_location}"
+            ${placeholder_args}
+            OUT_VAR download_location_replaced
+        )
+
+        list(APPEND project_package_options_spdx DOWNLOAD_LOCATION "${download_location_replaced}")
+        list(APPEND project_package_options_cydx DOWNLOAD_LOCATION "${download_location_replaced}")
     endif()
 
     _qt_internal_sbom_get_package_purpose("${sbom_entity_type}" package_purpose)
-    list(APPEND project_package_options PURPOSE "${package_purpose}")
+    list(APPEND project_package_options_spdx PURPOSE "${package_purpose}")
 
     set(cpe_values "")
 
@@ -1047,7 +1453,8 @@ function(_qt_internal_sbom_add_target target)
     endif()
 
     if(cpe_values)
-        list(APPEND project_package_options CPE ${cpe_values})
+        list(APPEND project_package_options_spdx CPE ${cpe_values})
+        list(APPEND project_package_options_cydx CPE ${cpe_values})
     endif()
 
     # Assemble arguments to forward to the function that handles purl options.
@@ -1089,12 +1496,16 @@ function(_qt_internal_sbom_add_target target)
 
         list(APPEND purl_args PURL_VALUES ${qa_purls_replaced})
     endif()
-    list(APPEND purl_args OUT_VAR purl_package_options)
+    list(APPEND purl_args
+        OUT_VAR_PURL_VALUES purl_values
+        OUT_VAR_SPDX_EXT_REF_VALUES spdx_ext_ref_values
+    )
 
     _qt_internal_sbom_handle_purl_values(${target} ${purl_args})
 
-    if(purl_package_options)
-        list(APPEND project_package_options ${purl_package_options})
+    if(spdx_ext_ref_values)
+        list(APPEND project_package_options_spdx ${spdx_ext_ref_values})
+        list(APPEND project_package_options_cydx PURL_VALUES ${purl_values})
     endif()
 
     if(arg_USE_ATTRIBUTION_FILES)
@@ -1137,32 +1548,78 @@ function(_qt_internal_sbom_add_target target)
     endif()
 
     if(package_comment)
-        list(APPEND project_package_options COMMENT "<text>\n${package_comment}</text>")
+        list(APPEND project_package_options_spdx COMMENT "<text>\n${package_comment}</text>")
+        list(APPEND project_package_options_cydx COMMENT "\n${package_comment}")
     endif()
-
-    _qt_internal_sbom_handle_target_dependencies("${target}"
-        SPDX_ID "${package_spdx_id}"
-        LIBRARIES "${arg_LIBRARIES}"
-        PUBLIC_LIBRARIES "${arg_PUBLIC_LIBRARIES}"
-        OUT_RELATIONSHIPS relationships
-    )
 
     get_cmake_property(project_spdx_id _qt_internal_sbom_project_spdx_id)
-    list(APPEND relationships "${project_spdx_id} CONTAINS ${package_spdx_id}")
 
-    if(arg_SBOM_RELATIONSHIPS)
-        list(APPEND relationships "${arg_SBOM_RELATIONSHIPS}")
+    _qt_internal_forward_function_args(
+        FORWARD_PREFIX arg
+        FORWARD_OUT_VAR relationship_args
+        FORWARD_MULTI
+            LIBRARIES
+            PUBLIC_LIBRARIES
+            SBOM_RELATIONSHIP_ENTRIES
+            SBOM_RELATIONSHIPS # deprecated, still used by WebEngine
+    )
+
+    _qt_internal_sbom_handle_target_relationships("${target}"
+        SPDX_ID "${package_spdx_id}"
+        PROJECT_SPDX_ID "${project_spdx_id}"
+        ${relationship_args}
+        OUT_VAR_SBOM_RELATIONSHIP_ENTRIES sbom_relationship_entries
+        OUT_VAR_SPDX_V2_RELATIONSHIPS spdx_relationships # deprecated, still used by WebEngine
+    )
+    if(sbom_relationship_entries)
+        list(APPEND project_package_options_cydx
+            SBOM_RELATIONSHIP_ENTRIES ${sbom_relationship_entries})
+        list(APPEND project_package_options_spdx
+            SBOM_RELATIONSHIP_ENTRIES ${sbom_relationship_entries})
+    endif()
+    if(spdx_relationships)
+        list(APPEND project_package_options_spdx RELATIONSHIPS ${spdx_relationships})
     endif()
 
-    list(REMOVE_DUPLICATES relationships)
-    list(JOIN relationships "\nRelationship: " relationships)
-    list(APPEND project_package_options RELATIONSHIP "${relationships}")
+    if(arg_PACKAGE_SUMMARY)
+        list(APPEND project_package_options_spdx PACKAGE_SUMMARY "${arg_PACKAGE_SUMMARY}")
+    endif()
 
-    _qt_internal_sbom_generate_add_package(
-        PACKAGE "${package_name_for_spdx_id}"
-        SPDXID "${package_spdx_id}"
-        ${project_package_options}
-    )
+    if(QT_SBOM_GENERATE_SPDX_V2)
+        _qt_internal_sbom_generate_add_package(
+            PACKAGE "${package_name_for_spdx_id}"
+            SPDXID "${package_spdx_id}"
+            ${project_package_options_spdx}
+        )
+    endif()
+
+    if(QT_SBOM_GENERATE_CYDX_V1_6)
+        get_property(external_targets
+            GLOBAL PROPERTY _qt_internal_sbom_external_target_dependencies)
+
+        # Prevent against case when a system library is also an external target dependency,
+        # which would lead to its creation twice, once via
+        # _qt_internal_sbom_add_recorded_system_libraries
+        # and second time via
+        # _qt_internal_sbom_add_cydx_external_target_dependencies.
+        # Skip the case when it's done via the first function, and only allow the second.
+        # TODO: Can this be done better somehow?
+        if(NOT target IN_LIST external_targets)
+            _qt_internal_sbom_handle_qt_entity_cydx_properties(
+                SBOM_ENTITY_TYPE "${sbom_entity_type}"
+                OUT_CYDX_PROPERTIES cydx_properties
+            )
+
+            _qt_internal_sbom_generate_cyclone_add_package(
+                PACKAGE "${package_name_for_spdx_id}"
+                SPDXID "${package_spdx_id}"
+                SBOM_ENTITY_TYPE "${sbom_entity_type}"
+                ${project_package_options_cydx}
+                CONTAINING_COMPONENT "${project_spdx_id}"
+                CYDX_PROPERTIES ${cydx_properties}
+            )
+        endif()
+    endif()
 
     set(no_install_option "")
     if(arg_NO_INSTALL)
@@ -1200,25 +1657,27 @@ function(_qt_internal_sbom_add_target target)
         set(license_option LICENSE_EXPRESSION "${license_expression}")
     endif()
 
-    _qt_internal_sbom_handle_target_binary_files("${target}"
-        ${no_install_option}
-        ${framework_option}
-        ${install_prefix_option}
-        SBOM_ENTITY_TYPE "${sbom_entity_type}"
-        ${target_binary_multi_config_args}
-        SPDX_ID "${package_spdx_id}"
-        ${copyrights_option}
-        ${license_option}
-    )
+    if(QT_SBOM_GENERATE_SPDX_V2)
+        _qt_internal_sbom_handle_target_binary_files("${target}"
+            ${no_install_option}
+            ${framework_option}
+            ${install_prefix_option}
+            SBOM_ENTITY_TYPE "${sbom_entity_type}"
+            ${target_binary_multi_config_args}
+            SPDX_ID "${package_spdx_id}"
+            ${copyrights_option}
+            ${license_option}
+        )
 
-    _qt_internal_sbom_handle_target_custom_files("${target}"
-        ${no_install_option}
-        ${install_prefix_option}
-        PACKAGE_TYPE "${sbom_entity_type}"
-        PACKAGE_SPDX_ID "${package_spdx_id}"
-        ${copyrights_option}
-        ${license_option}
-    )
+        _qt_internal_sbom_handle_target_custom_files("${target}"
+            ${no_install_option}
+            ${install_prefix_option}
+            PACKAGE_TYPE "${sbom_entity_type}"
+            PACKAGE_SPDX_ID "${package_spdx_id}"
+            ${copyrights_option}
+            ${license_option}
+        )
+    endif()
 endfunction()
 
 # Helper to add sbom information for a possibly non-existing target.
@@ -1229,9 +1688,7 @@ function(_qt_internal_add_sbom target)
         return()
     endif()
 
-    set(opt_args
-        IMMEDIATE_FINALIZATION
-    )
+    set(opt_args "")
     set(single_args "")
     set(multi_args "")
     cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
@@ -1242,10 +1699,6 @@ function(_qt_internal_add_sbom target)
     # If a target doesn't exist we create it.
     if(NOT TARGET "${target}")
         _qt_internal_create_sbom_target("${target}" ${forward_args})
-    endif()
-
-    if(arg_IMMEDIATE_FINALIZATION)
-        list(APPEND forward_args IMMEDIATE_FINALIZATION)
     endif()
 
     # Save the passed options.
@@ -1279,9 +1732,99 @@ function(_qt_internal_create_sbom_target target)
     )
 endfunction()
 
+# Creates a custom target to represent a project's root SBOM package / component.
+# For SPDX it represents what we consider the root package, although the spec doesn't define
+# any such package.
+# For CYDX it represents the root component, which is defined by the spec.
+# The target is currently intended to be used in sbom relationship entries, but might be expanded
+# with further information.
+function(_qt_internal_create_project_sbom_target)
+    if(NOT QT_GENERATE_SBOM)
+        return()
+    endif()
+
+    set(opt_args "")
+    set(single_args "")
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    _qt_internal_sbom_get_current_project_target(target)
+    if(TARGET "${target}")
+        message(FATAL_ERROR "The target ${target} already exists.")
+    endif()
+
+    add_library("${target}" INTERFACE IMPORTED)
+
+    get_property(project_spdx_id GLOBAL PROPERTY _qt_internal_sbom_project_spdx_id)
+    if(NOT project_spdx_id)
+        message(FATAL_ERROR "The global property _qt_internal_sbom_project_spdx_id was not set, "
+            "which is required to create a project sbom target.")
+    endif()
+
+    get_property(repo_document_namespace
+        GLOBAL PROPERTY _qt_internal_sbom_repo_document_namespace)
+
+    if(NOT repo_document_namespace)
+        message(FATAL_ERROR "The global property _qt_internal_sbom_repo_document_namespace was not"
+            " set, which is required to create a project sbom target.")
+    endif()
+
+    get_property(bom_serial_number_uuid
+        GLOBAL PROPERTY _qt_internal_sbom_repo_cyclone_dx_bom_serial_number_uuid)
+
+    if(NOT bom_serial_number_uuid)
+        message(FATAL_ERROR "The global property "
+            "_qt_internal_sbom_repo_cyclone_dx_bom_serial_number_uuid"
+            " was not set, which is required to create a project sbom target.")
+    endif()
+
+    _qt_internal_sbom_compute_external_document_ref_spdx_id(
+        "${arg_PROJECT_NAME}" external_document_ref)
+
+    set_target_properties("${target}" PROPERTIES
+        IMPORTED_GLOBAL TRUE
+
+        _qt_sbom_is_custom_sbom_target "TRUE"
+        _qt_sbom_is_project_sbom_target "TRUE"
+
+        _qt_sbom_spdx_id "${project_spdx_id}"
+        _qt_sbom_entity_type "SBOM_PROJECT"
+        _qt_sbom_spdx_repo_document_namespace "${repo_document_namespace}"
+        _qt_sbom_spdx_v2_external_document_ref "${external_document_ref}"
+        _qt_sbom_cydx_bom_serial_number_uuid "${bom_serial_number_uuid}"
+        _qt_sbom_spdx_repo_project_name_lowercase "${project_name}"
+    )
+
+    # The computation for these relies on the previous ones being set.
+    _qt_internal_sbom_compute_external_spdx_v2_id("${target}" external_spdx_v2_id)
+    _qt_internal_sbom_get_cydx_external_bom_link("${target}" external_bom_link)
+
+    set_target_properties("${target}" PROPERTIES
+        _qt_sbom_spdx_v2_external_spdx_id "${external_spdx_v2_id}"
+        _qt_sbom_cydx_external_bom_link "${external_bom_link}"
+    )
+endfunction()
+
+# Returns the target name representing the current sbom project.
+# When SBOM generation is disable, returns an empty string.
+function(_qt_internal_sbom_get_current_project_target out_var)
+    if(NOT QT_GENERATE_SBOM)
+        set(${out_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    _qt_internal_sbom_get_root_project_name_lower_case(project_name)
+
+    set(target "${project_name}ProjectSbom")
+    set(${out_var} "${target}" PARENT_SCOPE)
+endfunction()
+
 # Helper to add additional sbom information for an existing target.
 # Just appends the options to the target's sbom args property, which will will be evaluated
 # during finalization.
+# For external sbom targets there is no finalization, so the relevant info is recorded
+# immediately.
 function(_qt_internal_extend_sbom target)
     if(NOT QT_GENERATE_SBOM)
         return()
@@ -1296,12 +1839,15 @@ function(_qt_internal_extend_sbom target)
     set(opt_args
         NO_FINALIZATION
         IMMEDIATE_FINALIZATION
+        IS_EXTERNAL_SBOM_ENTITY
     )
     set(single_args
         TYPE # deprecated
         SBOM_ENTITY_TYPE
         DEFAULT_SBOM_ENTITY_TYPE
         FRIENDLY_PACKAGE_NAME
+        SPDX_ID
+        EXTERNAL_SBOM_DOCUMENT_TARGET
     )
     set(multi_args "")
     cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
@@ -1317,29 +1863,69 @@ function(_qt_internal_extend_sbom target)
 
     _qt_internal_map_sbom_entity_type(sbom_entity_type ${ARGN})
 
-    # Make sure a spdx id is recorded for the target right now, so it is "known" when handling
-    # relationships for other targets, even if the target was not yet finalized.
-    if(sbom_entity_type)
-        # Friendly package name is allowed to be empty.
-        set(package_name_option "")
-        if(arg_FRIENDLY_PACKAGE_NAME)
-            set(package_name_option PACKAGE_NAME "${arg_FRIENDLY_PACKAGE_NAME}")
+    # Make sure the spdx id and sbom entity type is recorded for the target right now, so it is
+    # "known" when handling relationships for other targets, even if the target was not yet
+    # finalized.
+    # The SBOM entity type is expected to be passed when creating a new SBOM target, or extending
+    # an existing target for the first time with SBOM info.
+    _qt_internal_sbom_get_spdx_id_for_target("${target}" spdx_id)
+    if(NOT spdx_id)
+        set(record_spdx_id_args "")
+
+        # Isn't allowed to be empty when creating the spdx id.
+        if(sbom_entity_type)
+            list(APPEND record_spdx_id_args SBOM_ENTITY_TYPE "${sbom_entity_type}")
+        else()
+            message(FATAL_ERROR
+                "Target '${target}' is missing an SBOM_ENTITY_TYPE value. "
+                "Make sure to pass it when creating new SBOM target or extending an existing "
+                "target with SBOM infromation for the first time.")
         endif()
 
-        _qt_internal_sbom_record_target_spdx_id(${target}
-            SBOM_ENTITY_TYPE "${sbom_entity_type}"
-            ${package_name_option}
-        )
+        # Friendly package name is allowed to be empty.
+        if(arg_FRIENDLY_PACKAGE_NAME)
+            list(APPEND record_spdx_id_args PACKAGE_NAME "${arg_FRIENDLY_PACKAGE_NAME}")
+        endif()
+
+        # Allow specifying a custom spdx id, even for non-external targets.
+        if(arg_SPDX_ID)
+            list(APPEND record_spdx_id_args SPDX_ID "${arg_SPDX_ID}")
+        endif()
+
+        if(arg_IS_EXTERNAL_SBOM_ENTITY)
+            list(APPEND record_spdx_id_args IS_EXTERNAL_SBOM_ENTITY)
+        endif()
+
+        if(arg_EXTERNAL_SBOM_DOCUMENT_TARGET)
+            list(APPEND record_spdx_id_args
+                EXTERNAL_SBOM_DOCUMENT_TARGET ${arg_EXTERNAL_SBOM_DOCUMENT_TARGET})
+        endif()
+
+        _qt_internal_sbom_record_target_spdx_id(${target} ${record_spdx_id_args})
     endif()
+
     get_target_property(is_system_library "${target}" _qt_internal_sbom_is_system_library)
+    get_target_property(is_project_sbom_target "${target}" _qt_sbom_is_project_sbom_target)
 
     set_property(TARGET ${target} APPEND PROPERTY _qt_finalize_sbom_args "${forward_args}")
+
+    # Record the target's relevant properties immediately after they are saved above, so we can
+    # refer to it in relationship entries.
+    if(arg_IS_EXTERNAL_SBOM_ENTITY AND QT_SBOM_GENERATE_CYDX_V1_6)
+        _qt_internal_sbom_record_external_target_dependecies(TARGETS "${target}")
+    endif()
 
     # If requested via NO_FINALIZATION or the target is a system library, don't run finalization.
     # This is necessary for system libraries because those are handled in special code path just
     # before finishing project sbom generation, and finalizing them would cause issues because they
     # don't actually have a TYPE until a later point in time.
-    if(NOT arg_NO_FINALIZATION AND NOT is_system_library)
+    # Also skip regular processing / finalization for external targets, because their handling
+    # is different, and we don't create a regular package for them.
+    if(NOT arg_NO_FINALIZATION
+            AND NOT is_system_library
+            AND NOT is_project_sbom_target
+            AND NOT arg_IS_EXTERNAL_SBOM_ENTITY
+        )
         # Defer finalization. In case it was already deferred, it will be a no-op.
         # Some targets need immediate finalization, like the PlatformInternal ones,
         # because otherwise they would be finalized after the sbom was already generated.
@@ -1509,7 +2095,7 @@ function(_qt_internal_sbom_get_root_project_name_lower_case out_var)
     get_cmake_property(project_name _qt_internal_sbom_repo_project_name)
 
     if(NOT project_name)
-        message(FATAL_ERROR "No SBOM project name was set.")
+        message(FATAL_ERROR "The current active SBOM project name was not found.")
     endif()
 
     string(TOLOWER "${project_name}" repo_project_name_lowercase)
@@ -1529,9 +2115,110 @@ function(_qt_internal_sbom_get_qt_repo_project_name_lower_case out_var)
     set(${out_var} "${repo_project_name_lowercase}" PARENT_SCOPE)
 endfunction()
 
-# Get a spdx id to reference an external document.
+# Compute a SPDX v2.3 DocumentRef ID, to reference the current project's SPDX document as an
+# external document in another project.
+#
+# This is only meant to be used for exporting the value as part of the target's properties, to be
+# used in a different project.
+#
+# It should NOT be used to refer to already exported targets.
+#
+# For querying the DocumentRef of an exported target, use
+# _qt_internal_sbom_get_external_document_ref_spdx_id_from_sbom_target.
+function(_qt_internal_sbom_compute_external_document_ref_spdx_id repo_name out_var)
+    _qt_internal_sbom_get_spdx_id_unique_suffix(spdx_id_unique_suffix)
+    set(${out_var} "DocumentRef-${repo_name}${spdx_id_unique_suffix}" PARENT_SCOPE)
+endfunction()
+
+# Older deprecated function name of the function above, kept for compatibility in case it is used.
 function(_qt_internal_sbom_get_external_document_ref_spdx_id repo_name out_var)
-    set(${out_var} "DocumentRef-${repo_name}" PARENT_SCOPE)
+    if(NOT QT_NO_DEPRECATED_GET_EXTERNAL_DOCUMENT_REF_SPDX_ID)
+        message(DEPRECATION
+            "This function is deprecated. "
+            "Please use _qt_internal_sbom_compute_external_document_ref_spdx_id() instead."
+            "To silence this deprecation, pass "
+            "-DQT_NO_DEPRECATED_GET_EXTERNAL_DOCUMENT_REF_SPDX_ID=ON "
+            "when configuring the project."
+        )
+    endif()
+
+    _qt_internal_sbom_compute_external_document_ref_spdx_id("${repo_name}" external_document_ref)
+
+    set(${out_var} "${external_document_ref}" PARENT_SCOPE)
+endfunction()
+
+# Query the external reference DocumentRef ID from the given SBOM target.
+#
+# If CREATE_TEMPORARY_REF_WHEN_MISSING is set, it instead of erroring out when the document ref
+# isn't found, create one and assign it to the to the usual target property.
+# This allows referring to older targets that were exported without the necessary properties.
+function(_qt_internal_sbom_get_external_document_ref_spdx_id_from_sbom_target)
+    if(NOT QT_GENERATE_SBOM)
+        set(${out_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    set(opt_args
+        CREATE_TEMPORARY_REF_WHEN_MISSING
+    )
+    set(single_args
+        TARGET
+        OUT_VAR
+    )
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_TARGET)
+        message(FATAL_ERROR "TARGET argument is required.")
+    endif()
+
+    if(NOT arg_OUT_VAR)
+        message(FATAL_ERROR "OUT_VAR argument is required.")
+    endif()
+
+    set(target_unaliased "${arg_TARGET}")
+    _qt_internal_dealias_target(target_unaliased)
+
+    get_target_property(external_document_ref
+        "${target_unaliased}" _qt_sbom_spdx_v2_external_document_ref)
+
+    if(NOT external_document_ref)
+        if(NOT arg_CREATE_TEMPORARY_REF_WHEN_MISSING
+                AND NOT QT_SBOM_NO_AUTO_CREATE_DOCUMENT_REF_WHEN_MISSING)
+            message(FATAL_ERROR
+                "The target '${arg_TARGET}' does not have a recorded SPDX v2.3 external document "
+                "DocumentRef value recorded.")
+        else()
+            string(MAKE_C_IDENTIFIER "${arg_TARGET}" target_c_identifier)
+            string(REPLACE "_" "-" target_c_identifier "${target_c_identifier}")
+            _qt_internal_sbom_compute_external_document_ref_spdx_id("${target_c_identifier}"
+                external_document_ref
+            )
+            set_target_properties("${target_unaliased}" PROPERTIES
+                _qt_sbom_spdx_v2_external_document_ref "${external_document_ref}")
+
+            message(DEBUG "Did not find external document ref for target '${arg_TARGET}'. "
+                "Created one and set it to '${external_document_ref}' in the target's properties.")
+        endif()
+    endif()
+
+    set(${arg_OUT_VAR} "${external_document_ref}" PARENT_SCOPE)
+endfunction()
+
+# Computes a spdx id to reference the target's spdx v2 package via a SPDX v2 external document ref.
+# To be used for exporting the value as part of the target's metadata.
+function(_qt_internal_sbom_compute_external_spdx_v2_id target out_var)
+    get_target_property(project_name_lowercase "${target}"
+        _qt_sbom_spdx_repo_project_name_lowercase)
+
+    _qt_internal_sbom_compute_external_document_ref_spdx_id(
+        "${project_name_lowercase}" external_document_ref)
+
+    _qt_internal_sbom_get_spdx_id_for_target("${target}" spdx_id)
+
+    set(ext_spdx_id "${external_document_ref}:${spdx_id}")
+    set(${out_var} "${ext_spdx_id}" PARENT_SCOPE)
 endfunction()
 
 # Sanitize a given value to be used as a SPDX id.
@@ -1545,12 +2232,21 @@ function(_qt_internal_sbom_get_sanitized_spdx_id out_var hint)
     set(${out_var} "${spdx_id}" PARENT_SCOPE)
 endfunction()
 
-# Generates a spdx id for a target and saves it its properties.
+# Generates a spdx id for a target and saves it, the passed in SBOM_ENTITY_TYPE value, and a lot
+# of other project specific properties like the spdx document namespace, cyclone dx document serial
+# number, etc, in its target properties.
+# A SBOM_ENTITY_TYPE value is required when saving the spdx id.
+
+# Exits early and returns the spdx id if it was already created earlier.
 function(_qt_internal_sbom_record_target_spdx_id target)
-    set(opt_args "")
+    set(opt_args
+        IS_EXTERNAL_SBOM_ENTITY
+    )
     set(single_args
+        SPDX_ID
         PACKAGE_NAME
         SBOM_ENTITY_TYPE
+        EXTERNAL_SBOM_DOCUMENT_TARGET
         OUT_VAR
     )
     set(multi_args "")
@@ -1573,11 +2269,33 @@ function(_qt_internal_sbom_record_target_spdx_id target)
         set(package_name_for_spdx_id "${target}")
     endif()
 
-    _qt_internal_sbom_generate_target_package_spdx_id(package_spdx_id
-        SBOM_ENTITY_TYPE "${arg_SBOM_ENTITY_TYPE}"
+    # If an explicit SPDX_ID is set, use it rather than generating one.
+    if(arg_SPDX_ID)
+        set(package_spdx_id "${arg_SPDX_ID}")
+    else()
+        _qt_internal_sbom_generate_target_package_spdx_id(package_spdx_id
+            SBOM_ENTITY_TYPE "${arg_SBOM_ENTITY_TYPE}"
+            PACKAGE_NAME "${package_name_for_spdx_id}"
+        )
+    endif()
+
+    set(save_spdx_id_args "")
+
+    if(arg_IS_EXTERNAL_SBOM_ENTITY)
+        list(APPEND save_spdx_id_args IS_EXTERNAL_SBOM_ENTITY)
+    endif()
+
+    if(arg_EXTERNAL_SBOM_DOCUMENT_TARGET)
+        list(APPEND save_spdx_id_args
+            EXTERNAL_SBOM_DOCUMENT_TARGET ${arg_EXTERNAL_SBOM_DOCUMENT_TARGET})
+    endif()
+
+    _qt_internal_sbom_save_spdx_id_for_target("${target}"
+        SPDX_ID "${package_spdx_id}"
         PACKAGE_NAME "${package_name_for_spdx_id}"
+        SBOM_ENTITY_TYPE "${arg_SBOM_ENTITY_TYPE}"
+        ${save_spdx_id_args}
     )
-    _qt_internal_sbom_save_spdx_id_for_target("${target}" "${package_spdx_id}")
 
     _qt_internal_sbom_is_qt_entity_type("${arg_SBOM_ENTITY_TYPE}" is_qt_entity_type)
     _qt_internal_sbom_save_spdx_id_for_qt_entity_type(
@@ -1608,18 +2326,77 @@ function(_qt_internal_sbom_generate_target_package_spdx_id out_var)
 
     _qt_internal_sbom_get_root_project_name_for_spdx_id(repo_project_name_spdx_id)
     _qt_internal_sbom_get_package_infix("${arg_SBOM_ENTITY_TYPE}" package_infix)
+    _qt_internal_sbom_get_spdx_id_unique_suffix(spdx_id_unique_suffix)
 
-    _qt_internal_sbom_get_sanitized_spdx_id(spdx_id
-        "SPDXRef-${repo_project_name_spdx_id}-${package_infix}-${arg_PACKAGE_NAME}")
+    string(CONCAT spdx_id_input
+        "SPDXRef-${repo_project_name_spdx_id}-${package_infix}-${arg_PACKAGE_NAME}"
+        "${spdx_id_unique_suffix}"
+    )
+    _qt_internal_sbom_get_sanitized_spdx_id(spdx_id "${spdx_id_input}")
 
     set(${out_var} "${spdx_id}" PARENT_SCOPE)
 endfunction()
 
 # Save a spdx id for a target inside its target properties.
-# Also saves the repo document namespace and relative installed repo document path.
 # These are used when generating a SPDX external document reference for exported targets, to
 # include them in relationships.
-function(_qt_internal_sbom_save_spdx_id_for_target target spdx_id)
+# Also saves the repo document namespace and relative installed repo document path.
+# Also saves the sbom entity type and package name, because it's needed when creating CycloneDX
+# components where the target is in an external document.
+function(_qt_internal_sbom_save_spdx_id_for_target target)
+    set(opt_args
+        IS_EXTERNAL_SBOM_ENTITY
+    )
+    set(single_args
+        SPDX_ID
+        PACKAGE_NAME
+        SBOM_ENTITY_TYPE
+        EXTERNAL_SBOM_DOCUMENT_TARGET
+    )
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_SPDX_ID)
+        message(FATAL_ERROR "arg_SPDX_ID must be set")
+    endif()
+
+    if(NOT arg_PACKAGE_NAME)
+        message(FATAL_ERROR "PACKAGE_NAME must be set")
+    endif()
+
+    if(NOT arg_SBOM_ENTITY_TYPE)
+        message(FATAL_ERROR "SBOM_ENTITY_TYPE must be set")
+    endif()
+
+    if(arg_IS_EXTERNAL_SBOM_ENTITY AND NOT arg_EXTERNAL_SBOM_DOCUMENT_TARGET)
+        message(FATAL_ERROR
+            "Target '${target}' is marked as external with the IS_EXTERNAL_SBOM_ENTITY option "
+            "but no EXTERNAL_SBOM_DOCUMENT_TARGET was provided. Make sure to pass in a "
+            "an external sbom document target created by "
+            "_qt_internal_sbom_add_external_reference_document() to the mentioned option.")
+    endif()
+
+    if(arg_EXTERNAL_SBOM_DOCUMENT_TARGET AND NOT TARGET "${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}")
+        message(FATAL_ERROR
+            "The target '${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}' passed to "
+            "EXTERNAL_SBOM_DOCUMENT_TARGET does not exist.")
+    endif()
+
+    if(arg_EXTERNAL_SBOM_DOCUMENT_TARGET)
+        get_target_property(is_external_project_sbom_target "${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}"
+            _qt_sbom_is_external_project_sbom_target)
+        if(NOT is_external_project_sbom_target)
+            message(FATAL_ERROR
+                "The target '${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}' passed to "
+                "EXTERNAL_SBOM_DOCUMENT_TARGET is not marked as an external project sbom target. "
+                "Make sure to create the target with "
+                "_qt_internal_sbom_add_external_reference_document().")
+        endif()
+    endif()
+
+    set(spdx_id "${arg_SPDX_ID}")
+
     message(DEBUG "Saving spdx id for target ${target}: ${spdx_id}")
 
     set(target_unaliased "${target}")
@@ -1628,20 +2405,73 @@ function(_qt_internal_sbom_save_spdx_id_for_target target spdx_id)
     set_target_properties(${target_unaliased} PROPERTIES
         _qt_sbom_spdx_id "${spdx_id}")
 
-    # Retrieve repo specific properties.
-    get_property(repo_document_namespace
-        GLOBAL PROPERTY _qt_internal_sbom_repo_document_namespace)
+    # Retrieve some of the repo / project specific properties.
+    if(arg_IS_EXTERNAL_SBOM_ENTITY)
+        get_target_property(repo_document_namespace
+            "${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}" _qt_sbom_spdx_repo_document_namespace)
+    else()
+        get_property(repo_document_namespace
+            GLOBAL PROPERTY _qt_internal_sbom_repo_document_namespace)
+    endif()
 
-    get_property(relative_installed_repo_document_path
-        GLOBAL PROPERTY _qt_internal_sbom_relative_installed_repo_document_path)
+    if(arg_IS_EXTERNAL_SBOM_ENTITY)
+        get_target_property(bom_serial_number_uuid
+            "${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}" _qt_sbom_cydx_bom_serial_number_uuid)
+    else()
+        get_property(bom_serial_number_uuid
+            GLOBAL PROPERTY _qt_internal_sbom_repo_cyclone_dx_bom_serial_number_uuid)
+    endif()
 
-    get_property(project_name_lowercase
-        GLOBAL PROPERTY _qt_internal_sbom_repo_project_name_lowercase)
+    if(arg_IS_EXTERNAL_SBOM_ENTITY)
+        get_target_property(relative_installed_repo_document_path
+            "${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}"
+            _qt_sbom_spdx_relative_installed_repo_document_path)
+    else()
+        get_property(relative_installed_repo_document_path
+            GLOBAL PROPERTY _qt_internal_sbom_relative_installed_repo_document_path)
+    endif()
+
+    if(NOT arg_IS_EXTERNAL_SBOM_ENTITY)
+        get_property(document_spdx_v2_tag_value_relative_path
+            GLOBAL PROPERTY _qt_internal_sbom_document_spdx_v2_tag_value_relative_path)
+
+        get_property(document_spdx_v2_json_relative_path
+            GLOBAL PROPERTY _qt_internal_sbom_document_spdx_v2_json_relative_path)
+
+        get_property(document_cydx_v1_6_json_relative_path
+            GLOBAL PROPERTY _qt_internal_sbom_document_cydx_v1_6_json_relative_path)
+    endif()
+
+    if(arg_IS_EXTERNAL_SBOM_ENTITY)
+        get_target_property(project_name_lowercase
+            "${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}" _qt_sbom_spdx_repo_project_name_lowercase)
+    else()
+        get_property(project_name_lowercase
+            GLOBAL PROPERTY _qt_internal_sbom_repo_project_name_lowercase)
+    endif()
 
     # And save them on the target.
     set_property(TARGET ${target_unaliased} PROPERTY
         _qt_sbom_spdx_repo_document_namespace
         "${repo_document_namespace}")
+
+    set_property(TARGET ${target_unaliased} PROPERTY
+        _qt_sbom_cydx_bom_serial_number_uuid
+        "${bom_serial_number_uuid}")
+
+    if(NOT arg_IS_EXTERNAL_SBOM_ENTITY)
+        set_property(TARGET ${target_unaliased} PROPERTY
+            _qt_sbom_spdx_v2_document_tag_value_relative_path
+            "${document_spdx_v2_tag_value_relative_path}")
+
+        set_property(TARGET ${target_unaliased} PROPERTY
+            _qt_sbom_spdx_v2_document_json_relative_path
+            "${document_spdx_v2_json_relative_path}")
+
+        set_property(TARGET ${target_unaliased} PROPERTY
+            _qt_sbom_cydx_v1_6_document_json_relative_path
+            "${document_cydx_v1_6_json_relative_path}")
+    endif()
 
     set_property(TARGET ${target_unaliased} PROPERTY
         _qt_sbom_spdx_relative_installed_repo_document_path
@@ -1651,16 +2481,61 @@ function(_qt_internal_sbom_save_spdx_id_for_target target spdx_id)
         _qt_sbom_spdx_repo_project_name_lowercase
         "${project_name_lowercase}")
 
-    # Export the properties, so they can be queried by other repos.
-    # We also do it for versionless targets.
-    set(export_properties
-        _qt_sbom_spdx_id
-        _qt_sbom_spdx_repo_document_namespace
-        _qt_sbom_spdx_relative_installed_repo_document_path
-        _qt_sbom_spdx_repo_project_name_lowercase
-    )
-    set_property(TARGET "${target_unaliased}" APPEND PROPERTY
-        EXPORT_PROPERTIES "${export_properties}")
+    set_property(TARGET ${target_unaliased} PROPERTY
+        _qt_sbom_package_name
+        "${arg_PACKAGE_NAME}")
+
+    set_property(TARGET ${target_unaliased} PROPERTY
+        _qt_sbom_entity_type
+        "${arg_SBOM_ENTITY_TYPE}")
+
+    if(arg_IS_EXTERNAL_SBOM_ENTITY)
+        get_target_property(external_document_ref
+            "${arg_EXTERNAL_SBOM_DOCUMENT_TARGET}" _qt_sbom_spdx_v2_external_document_ref)
+    else()
+        _qt_internal_sbom_compute_external_document_ref_spdx_id(
+            "${project_name_lowercase}" external_document_ref)
+    endif()
+
+    set_property(TARGET "${target_unaliased}" PROPERTY
+        _qt_sbom_spdx_v2_external_document_ref "${external_document_ref}")
+
+    _qt_internal_sbom_compute_external_spdx_v2_id("${target_unaliased}" external_spdx_v2_id)
+
+    set_property(TARGET "${target_unaliased}" PROPERTY
+        _qt_sbom_spdx_v2_external_spdx_id "${external_spdx_v2_id}")
+
+    _qt_internal_sbom_get_cydx_external_bom_link("${target_unaliased}" external_bom_link)
+    set_property(TARGET "${target_unaliased}" PROPERTY
+        _qt_sbom_cydx_external_bom_link "${external_bom_link}")
+
+    _qt_internal_sbom_get_cydx_external_urn_bom_version("${target_unaliased}"
+        external_urn_bom_version)
+    set_property(TARGET "${target_unaliased}" PROPERTY
+        _qt_sbom_cydx_external_urn_bom_version "${external_urn_bom_version}")
+
+    if(NOT arg_IS_EXTERNAL_SBOM_ENTITY)
+        # Export the properties, so they can be queried by other repos.
+        # We also do it for versionless targets.
+        set(export_properties
+            _qt_sbom_entity_type
+            _qt_sbom_package_name
+            _qt_sbom_spdx_id
+            _qt_sbom_spdx_repo_document_namespace
+            _qt_sbom_spdx_v2_external_document_ref
+            _qt_sbom_spdx_v2_external_spdx_id
+            _qt_sbom_spdx_v2_document_tag_value_relative_path
+            _qt_sbom_spdx_v2_document_json_relative_path
+            _qt_sbom_cydx_bom_serial_number_uuid
+            _qt_sbom_cydx_external_bom_link
+            _qt_sbom_cydx_external_urn_bom_version
+            _qt_sbom_cydx_v1_6_document_json_relative_path
+            _qt_sbom_spdx_relative_installed_repo_document_path
+            _qt_sbom_spdx_repo_project_name_lowercase
+        )
+        set_property(TARGET "${target_unaliased}" APPEND PROPERTY
+            EXPORT_PROPERTIES "${export_properties}")
+    endif()
 endfunction()
 
 # Returns whether the given sbom type is considered to be a Qt type like a module or a tool.
@@ -1720,11 +2595,18 @@ function(_qt_internal_sbom_save_spdx_id_for_qt_entity_type target is_qt_entity_t
             versionless_target
             versionless_private_target
         )
+
+        get_property(package_name TARGET "${target}" PROPERTY _qt_sbom_package_name)
+        get_property(sbom_entity_type TARGET "${target}" PROPERTY _qt_sbom_entity_type)
     endif()
 
     foreach(target_name IN LISTS ${target_names})
         if(TARGET "${target_name}")
-            _qt_internal_sbom_save_spdx_id_for_target("${target_name}" "${package_spdx_id}")
+            _qt_internal_sbom_save_spdx_id_for_target("${target_name}"
+                SPDX_ID "${package_spdx_id}"
+                PACKAGE_NAME "${package_name}"
+                SBOM_ENTITY_TYPE "${sbom_entity_type}"
+            )
         endif()
     endforeach()
 endfunction()
@@ -1732,6 +2614,12 @@ endfunction()
 # Retrieves a saved spdx id from the target. Might be empty.
 function(_qt_internal_sbom_get_spdx_id_for_target target out_var)
     get_target_property(spdx_id ${target} _qt_sbom_spdx_id)
+    set(${out_var} "${spdx_id}" PARENT_SCOPE)
+endfunction()
+
+# Retrieves a saved spdx id for the current project. Might be empty.
+function(_qt_internal_sbom_get_current_project_spdx_id out_var)
+    get_cmake_property(spdx_id _qt_internal_sbom_project_spdx_id)
     set(${out_var} "${spdx_id}" PARENT_SCOPE)
 endfunction()
 
@@ -1771,10 +2659,14 @@ function(_qt_internal_sbom_get_package_infix type out_infix)
         set(package_infix "3rdparty-library-with-files")
     elseif(type STREQUAL "THIRD_PARTY_SOURCES")
         set(package_infix "3rdparty-sources")
+    elseif(type STREQUAL "SBOM_PROJECT")
+        set(package_infix "sbom-project")
     elseif(type STREQUAL "TRANSLATIONS")
         set(package_infix "translations")
     elseif(type STREQUAL "RESOURCES")
         set(package_infix "resource")
+    elseif(type STREQUAL "BUILD_TOOL")
+        set(package_infix "build-tool")
     elseif(type STREQUAL "CUSTOM")
         set(package_infix "custom")
     elseif(type STREQUAL "CUSTOM_NO_INFIX")
@@ -1822,9 +2714,13 @@ function(_qt_internal_sbom_get_package_purpose type out_purpose)
         set(package_purpose "LIBRARY")
     elseif(type STREQUAL "THIRD_PARTY_SOURCES")
         set(package_purpose "LIBRARY")
+    elseif(type STREQUAL "SBOM_PROJECT")
+        set(package_purpose "OTHER")
     elseif(type STREQUAL "TRANSLATIONS")
         set(package_purpose "OTHER")
     elseif(type STREQUAL "RESOURCES")
+        set(package_purpose "OTHER")
+    elseif(type STREQUAL "BUILD_TOOL")
         set(package_purpose "OTHER")
     elseif(type STREQUAL "CUSTOM")
         set(package_purpose "OTHER")
@@ -1982,51 +2878,14 @@ function(_qt_internal_get_configure_line out_var)
     set(${out_var} "${content}" PARENT_SCOPE)
 endfunction()
 
-function(_qt_internal_sbom_compute_project_namespace out_var)
-    set(opt_args "")
-    set(single_args
-        SUPPLIER_URL
-        PROJECT_NAME
-        VERSION_SUFFIX
-    )
-    set(multi_args "")
-
-    cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
-    _qt_internal_validate_all_args_are_parsed(arg)
-
-    if(NOT arg_PROJECT_NAME)
-        message(FATAL_ERROR "PROJECT_NAME must be set")
-    endif()
-
-    if(NOT arg_SUPPLIER_URL)
-        message(FATAL_ERROR "SUPPLIER_URL must be set")
-    endif()
-
-    string(TOLOWER "${arg_PROJECT_NAME}" project_name_lowercase)
-
-    set(version_suffix "")
-
-    if(arg_VERSION_SUFFIX)
-        set(version_suffix "-${arg_VERSION_SUFFIX}")
-    else()
-        _qt_internal_sbom_get_git_version_vars()
-        if(QT_SBOM_GIT_VERSION)
-            set(version_suffix "-${QT_SBOM_GIT_VERSION}")
-        endif()
-    endif()
-
-    # Used in external refs, it should be either aa URI + UUID or a URI + checksum.
-    # We currently use a URI + git version, which is probably not conformant to the spec.
-    set(repo_name_and_version "${project_name_lowercase}${version_suffix}")
-    set(repo_spdx_namespace
-        "${arg_SUPPLIER_URL}/spdxdocs/${repo_name_and_version}")
-
-    set(${out_var} "${repo_spdx_namespace}" PARENT_SCOPE)
-endfunction()
-
 function(_qt_internal_sbom_compute_project_file_name out_var)
     set(opt_args
-        EXTENSION_JSON
+        SPDX_TAG_VALUE
+        SPDX_JSON
+        CYCLONEDX_JSON
+        CYCLONEDX_TOML
+
+        EXTENSION_JSON # deprecated, used by WebEngine
     )
     set(single_args
         PROJECT_NAME
@@ -2039,6 +2898,16 @@ function(_qt_internal_sbom_compute_project_file_name out_var)
 
     if(NOT arg_PROJECT_NAME)
         message(FATAL_ERROR "PROJECT_NAME must be set")
+    endif()
+
+    if(NOT arg_SPDX_JSON
+            AND NOT arg_SPDX_TAG_VALUE
+            AND NOT arg_CYCLONEDX_TOML
+            AND NOT arg_CYCLONEDX_JSON
+            AND NOT arg_EXTENSION_JSON
+        )
+        message(FATAL_ERROR "One of the following options should be set: "
+            "SPDX_TAG_VALUE, SPDX_JSON, CYCLONEDX_JSON, CYCLONEDX_TOML")
     endif()
 
     string(TOLOWER "${arg_PROJECT_NAME}" project_name_lowercase)
@@ -2051,10 +2920,16 @@ function(_qt_internal_sbom_compute_project_file_name out_var)
         set(version_suffix "-${QT_REPO_MODULE_VERSION}")
     endif()
 
-    if(arg_EXTENSION_JSON)
-        set(extension "spdx.json")
-    else()
+    if(arg_SPDX_TAG_VALUE)
         set(extension "spdx")
+    elseif(arg_SPDX_JSON OR arg_EXTENSION_JSON)
+        set(extension "spdx.json")
+    elseif(arg_CYCLONEDX_TOML)
+        set(extension "cdx.toml")
+    elseif(arg_CYCLONEDX_JSON)
+        set(extension "cdx.json")
+    else()
+        message(FATAL_ERROR "Unknown file extension for SBOM generation.")
     endif()
 
     set(result

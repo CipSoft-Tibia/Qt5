@@ -16,27 +16,20 @@ namespace messages {
 
 namespace {
 
-const base::Feature* kFeaturesExposedToJava[] = {
+const base::Feature* const kFeaturesExposedToJava[] = {
     &kMessagesForAndroidFullyVisibleCallback,
     &kMessagesAndroidExtraHistograms,
 };
 
 // static
 base::android::FeatureMap* GetFeatureMap() {
-  static base::NoDestructor<base::android::FeatureMap> kFeatureMap(std::vector(
-      std::begin(kFeaturesExposedToJava), std::end(kFeaturesExposedToJava)));
+  static base::NoDestructor<base::android::FeatureMap> kFeatureMap(
+      kFeaturesExposedToJava);
   return kFeatureMap.get();
 }
 
 }  // namespace
 
-BASE_FEATURE(kMessagesForAndroidAdsBlocked,
-             "MessagesForAndroidAdsBlocked",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kMessagesForAndroidSaveCard,
-             "MessagesForAndroidSaveCard",
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kMessagesForAndroidFullyVisibleCallback,
              "MessagesForAndroidFullyVisibleCallback",
@@ -46,18 +39,6 @@ BASE_FEATURE(kMessagesForAndroidFullyVisibleCallback,
 BASE_FEATURE(kMessagesAndroidExtraHistograms,
              "MessagesAndroidExtraHistograms",
              base::FEATURE_ENABLED_BY_DEFAULT);
-
-bool IsAdsBlockedMessagesUiEnabled() {
-  return base::FeatureList::IsEnabled(kMessagesForAndroidAdsBlocked);
-}
-
-bool IsSaveCardMessagesUiEnabled() {
-  return base::FeatureList::IsEnabled(kMessagesForAndroidSaveCard);
-}
-
-bool ISdFullyVisibleCallbackEnabled() {
-  return base::FeatureList::IsEnabled(kMessagesForAndroidFullyVisibleCallback);
-}
 
 static jlong JNI_MessageFeatureMap_GetNativeMap(JNIEnv* env) {
   return reinterpret_cast<jlong>(GetFeatureMap());

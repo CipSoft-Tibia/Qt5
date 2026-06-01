@@ -94,6 +94,8 @@
 #include "src/tint/utils/math/math.h"
 #include "src/tint/utils/rtti/switch.h"
 
+TINT_BEGIN_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
+
 // Helper for incrementing nesting_depth_ and then decrementing nesting_depth_ at the end
 // of the scope that holds the call.
 #define SCOPED_NESTING() \
@@ -248,11 +250,11 @@ class State {
                         attrs.Push(b.Builtin(core::BuiltinValue::kSampleMask));
                         break;
                     case core::BuiltinValue::kSubgroupInvocationId:
-                        Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+                        Enable(wgsl::Extension::kSubgroups);
                         attrs.Push(b.Builtin(core::BuiltinValue::kSubgroupInvocationId));
                         break;
                     case core::BuiltinValue::kSubgroupSize:
-                        Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+                        Enable(wgsl::Extension::kSubgroups);
                         attrs.Push(b.Builtin(core::BuiltinValue::kSubgroupSize));
                         break;
                     case core::BuiltinValue::kClipDistances:
@@ -293,7 +295,7 @@ class State {
             case core::ir::Function::PipelineStage::kCompute: {
                 auto wgsize = fn->WorkgroupSize().value();
                 attrs.Push(b.Stage(ast::PipelineStage::kCompute));
-                attrs.Push(b.WorkgroupSize(u32(wgsize[0]), u32(wgsize[1]), u32(wgsize[2])));
+                attrs.Push(b.WorkgroupSize(Expr(wgsize[0]), Expr(wgsize[1]), Expr(wgsize[2])));
                 break;
             }
             case core::ir::Function::PipelineStage::kFragment:
@@ -595,6 +597,14 @@ class State {
             case core::AddressSpace::kHandle:
                 b.GlobalVar(name, ty, init, std::move(attrs));
                 return;
+            case core::AddressSpace::kPixelLocal:
+                Enable(wgsl::Extension::kChromiumExperimentalPixelLocal);
+                b.GlobalVar(name, ty, init, ref->AddressSpace(), std::move(attrs));
+                return;
+            case core::AddressSpace::kPushConstant:
+                Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
+                b.GlobalVar(name, ty, init, ref->AddressSpace(), std::move(attrs));
+                return;
             default:
                 b.GlobalVar(name, ty, init, ref->AddressSpace(), std::move(attrs));
                 return;
@@ -657,8 +667,10 @@ class State {
                     case wgsl::BuiltinFn::kSubgroupShuffleUp:
                     case wgsl::BuiltinFn::kSubgroupShuffleDown:
                     case wgsl::BuiltinFn::kSubgroupAdd:
+                    case wgsl::BuiltinFn::kSubgroupInclusiveAdd:
                     case wgsl::BuiltinFn::kSubgroupExclusiveAdd:
                     case wgsl::BuiltinFn::kSubgroupMul:
+                    case wgsl::BuiltinFn::kSubgroupInclusiveMul:
                     case wgsl::BuiltinFn::kSubgroupExclusiveMul:
                     case wgsl::BuiltinFn::kSubgroupAnd:
                     case wgsl::BuiltinFn::kSubgroupOr:
@@ -671,7 +683,8 @@ class State {
                     case wgsl::BuiltinFn::kQuadSwapX:
                     case wgsl::BuiltinFn::kQuadSwapY:
                     case wgsl::BuiltinFn::kQuadSwapDiagonal:
-                        Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+                        Enable(wgsl::Extension::kF16);
+                        Enable(wgsl::Extension::kSubgroups);
                         break;
                     default:
                         break;
@@ -977,12 +990,12 @@ class State {
                 }
             },
             [&](const core::type::Array* a) {
-                auto el = Type(a->ElemType());
-                if (!el) {
+                if (ContainsBuiltinStruct(a)) {
                     // The element type is untypeable, so we need to infer it instead.
                     return ast::Type{b.Expr(b.Ident("array"))};
                 }
 
+                auto el = Type(a->ElemType());
                 Vector<const ast::Attribute*, 1> attrs;
                 if (!a->IsStrideImplicit()) {
                     attrs.Push(b.Stride(a->Stride()));
@@ -1042,8 +1055,7 @@ class State {
 
     ast::Type Struct(const core::type::Struct* s) {
         // Skip builtin structures.
-        // TODO(350778507): Consider using a struct flag for builtin structures instead.
-        if (tint::HasPrefix(s->Name().NameView(), "__")) {
+        if (ContainsBuiltinStruct(s)) {
             return ast::Type{};
         }
 
@@ -1071,7 +1083,7 @@ class State {
                 }
                 if (auto builtin = ir_attrs.builtin) {
                     if (RequiresSubgroups(*builtin)) {
-                        Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+                        Enable(wgsl::Extension::kSubgroups);
                     } else if (*builtin == core::BuiltinValue::kClipDistances) {
                         Enable(wgsl::Extension::kClipDistances);
                     }
@@ -1095,6 +1107,20 @@ class State {
         });
 
         return b.ty(n);
+    }
+
+    bool ContainsBuiltinStruct(const core::type::Type* ty) {
+        if (auto* s = ty->As<core::type::Struct>()) {
+            // Note: We don't need to check the members of the struct, as builtin structures cannot
+            // be nested inside other structures.
+            // TODO(350778507): Consider using a struct flag for builtin structures instead.
+            if (tint::HasPrefix(s->Name().NameView(), "__")) {
+                return true;
+            }
+        } else if (auto* a = ty->As<core::type::Array>()) {
+            return ContainsBuiltinStruct(a->ElemType());
+        }
+        return false;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1248,8 +1274,7 @@ class State {
         }
     }
 
-    /// @returns true if the builtin value requires the kChromiumExperimentalSubgroups extension to
-    /// be enabled.
+    /// @returns true if the builtin value requires the kSubgroups extension to be enabled.
     bool RequiresSubgroups(core::BuiltinValue builtin) {
         switch (builtin) {
             case core::BuiltinValue::kSubgroupInvocationId:
@@ -1274,3 +1299,5 @@ Program IRToProgram(const core::ir::Module& i, const ProgramOptions& options) {
 }
 
 }  // namespace tint::wgsl::writer
+
+TINT_END_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);

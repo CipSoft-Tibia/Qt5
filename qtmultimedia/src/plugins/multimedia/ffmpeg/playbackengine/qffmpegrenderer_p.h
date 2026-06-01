@@ -31,11 +31,9 @@ class Renderer : public PlaybackEngineObject
 {
     Q_OBJECT
 public:
-    using TimePoint = RealClock::time_point;
+    using TimePoint = SteadyClock::time_point;
 
-    Renderer(const TimeController &tc);
-
-    void syncSoft(TimePoint tp, TrackPosition trackPos);
+    Renderer(const PlaybackEngineObjectID &id, const TimeController &tc);
 
     TrackPosition seekPosition() const;
 
@@ -47,22 +45,22 @@ public:
 
     bool isStepForced() const;
 
-    void start(const TimeController &tc);
+    void setTimeController(const TimeController &tc);
 
 public slots:
 
-    void onFinalFrameReceived();
+    void onFinalFrameReceived(PlaybackEngineObjectID sourceID);
 
     void render(Frame);
 
 signals:
     void frameProcessed(Frame);
 
-    void synchronized(Id id, TimePoint tp, TrackPosition pos);
+    void synchronized(PlaybackEngineObjectID id, TimePoint tp, TrackPosition pos);
 
     void forceStepDone();
 
-    void loopChanged(Id id, TrackPosition offset, int index);
+    void loopChanged(PlaybackEngineObjectID id, TrackPosition offset, int index);
 
 protected:
     bool setForceStepDone();
@@ -71,7 +69,7 @@ protected:
 
     bool canDoNextStep() const override;
 
-    std::chrono::milliseconds timerInterval() const override;
+    TimePoint nextTimePoint() const override;
 
     virtual void onPlaybackRateChanged() { }
 
@@ -86,7 +84,7 @@ protected:
     float playbackRate() const;
 
     std::chrono::microseconds frameDelay(const Frame &frame,
-                                         TimePoint timePoint = RealClock::now()) const;
+                                         TimePoint timePoint = SteadyClock::now()) const;
 
     void changeRendererTime(std::chrono::microseconds offset);
 
@@ -116,7 +114,6 @@ private:
     QQueue<Frame> m_frames;
 
     QAtomicInteger<bool> m_isStepForced = false;
-    bool m_started = false;
     std::optional<TimePoint> m_explicitNextFrameTime;
 };
 

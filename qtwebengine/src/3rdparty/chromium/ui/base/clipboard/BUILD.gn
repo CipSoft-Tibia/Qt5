@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("///build/config/ozone.gni")
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/ui.gni")
@@ -149,7 +148,6 @@ jumbo_component("clipboard") {
 
   deps = [
     "//base",
-    "//build:chromeos_buildflags",
     "//mojo/public/cpp/base",
     "//net",
     "//ui/base:features",
@@ -221,7 +219,6 @@ jumbo_source_set("clipboard_test_support") {
   deps = [
     "//base/test:test_support",
     "//build:chromecast_buildflags",
-    "//build:chromeos_buildflags",
     "//ui/base:features",
     "//ui/gfx",
   ]
@@ -282,7 +279,7 @@ source_set("clipboard_test") {
     deps += [ ":url_file_parser" ]
   }
 
-  if ((use_aura && !is_chromeos_lacros) || is_mac) {
+  if (use_aura || is_mac) {
     sources += [
       "clipboard_data_unittest.cc",
       "clipboard_non_backed_unittest.cc",

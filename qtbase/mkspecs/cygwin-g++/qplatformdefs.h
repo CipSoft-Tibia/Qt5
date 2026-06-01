@@ -4,10 +4,6 @@
 #ifndef QPLATFORMDEFS_H
 #define QPLATFORMDEFS_H
 
-// Get Qt defines/settings
-
-#include "qglobal.h"
-
 // Set any POSIX/XOPEN defines at the top of this file to turn on specific APIs
 
 // 1) need to reset default environment if _BSD_SOURCE is defined
@@ -17,11 +13,11 @@
 #  define _GNU_SOURCE
 #endif
 
-#include <unistd.h>
+#include <features.h>
 
+// Get Qt defines/settings
 
-// We are hot - unistd.h should have turned on the specific APIs we requested
-
+#include "qglobal.h"
 
 #include <pthread.h>
 #include <dirent.h>
@@ -30,17 +26,16 @@
 #include <pwd.h>
 #include <signal.h>
 #include <dlfcn.h>
+#include <unistd.h>
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
-// Cygwin does not provide <sys/ipc.h> and <sys/shm.h> because it
-// doesn't support SysV IPC or shared memory. See for example:
-//      http://afni.nimh.nih.gov/afni/afniboard/messages/1725.html
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-//#include <qt_windows.h>
 #include <netinet/in.h>
 
 #define QT_NO_USE_FSEEKO

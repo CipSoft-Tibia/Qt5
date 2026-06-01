@@ -4,6 +4,7 @@
 
 #include "components/reading_list/core/reading_list_model_impl.h"
 
+#include "base/auto_reset.h"
 #include "base/check_is_test.h"
 #include "base/check_op.h"
 #include "base/functional/bind.h"
@@ -409,11 +410,6 @@ void ReadingListModelImpl::SetReadStatusIfExists(const GURL& url, bool read) {
   for (ReadingListModelObserver& observer : observers_) {
     observer.ReadingListDidMoveEntry(this, url);
     observer.ReadingListDidApplyChanges(this);
-  }
-
-  if (read) {
-    base::UmaHistogramEnumeration("ReadingList.MarkEntryRead",
-                                  GetStorageStateForUma());
   }
 }
 

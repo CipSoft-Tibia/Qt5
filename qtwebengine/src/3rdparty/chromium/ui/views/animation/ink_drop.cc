@@ -24,7 +24,7 @@ namespace views {
 
 namespace {
 
-DEFINE_OWNED_UI_CLASS_PROPERTY_KEY(InkDropHost, kInkDropKey, nullptr)
+DEFINE_OWNED_UI_CLASS_PROPERTY_KEY(InkDropHost, kInkDropKey)
 
 // TODO(pbos): Remove this by changing the constructor parameters to
 // InkDropImpl.
@@ -128,13 +128,12 @@ void InkDrop::RemoveObserver(InkDropObserver* observer) {
 InkDrop::InkDrop() = default;
 
 void InkDrop::NotifyInkDropAnimationStarted() {
-  for (InkDropObserver& observer : observers_)
-    observer.InkDropAnimationStarted();
+  observers_.Notify(&InkDropObserver::InkDropAnimationStarted);
 }
 
 void InkDrop::NotifyInkDropRippleAnimationEnded(InkDropState ink_drop_state) {
-  for (InkDropObserver& observer : observers_)
-    observer.InkDropRippleAnimationEnded(ink_drop_state);
+  observers_.Notify(&InkDropObserver::InkDropRippleAnimationEnded,
+                    ink_drop_state);
 }
 
 InkDropContainerView::InkDropContainerView() {

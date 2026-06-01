@@ -29,9 +29,9 @@ bool QWasmWebViewSettingsPrivate::localStorageEnabled() const
     return false;
 }
 
-bool QWasmWebViewSettingsPrivate::javascriptEnabled() const
+bool QWasmWebViewSettingsPrivate::javaScriptEnabled() const
 {
-    qWarning("javascriptEnabled() not supported on this platform");
+    qWarning("javaScriptEnabled() not supported on this platform");
     return false;
 }
 
@@ -53,10 +53,10 @@ void QWasmWebViewSettingsPrivate::setLocalContentCanAccessFileUrls(bool enabled)
     qWarning("setLocalContentCanAccessFileUrls() not supported on this platform");
 }
 
-void QWasmWebViewSettingsPrivate::setJavascriptEnabled(bool enabled)
+void QWasmWebViewSettingsPrivate::setJavaScriptEnabled(bool enabled)
 {
     Q_UNUSED(enabled);
-    qWarning("setJavascriptEnabled() not supported on this platform");
+    qWarning("setJavaScriptEnabled() not supported on this platform");
 }
 
 void QWasmWebViewSettingsPrivate::setLocalStorageEnabled(bool enabled)
@@ -77,6 +77,19 @@ QWasmWebViewPrivate::QWasmWebViewPrivate(QObject *p) : QAbstractWebView(p), m_wi
 }
 
 QWasmWebViewPrivate::~QWasmWebViewPrivate() { }
+
+void QWasmWebViewPrivate::setParentView(QObject *view)
+{
+    m_parentWindow = qobject_cast<QWindow *>(view);
+    if (m_parentWindow)
+        QMetaObject::invokeMethod(this, &QWasmWebViewPrivate::initializeIFrame, Qt::QueuedConnection);
+}
+
+void QWasmWebViewPrivate::geometryChange(const QRectF &geometry)
+{
+    m_geometry = { geometry.toRect() };
+    updateGeometry();
+}
 
 QString QWasmWebViewPrivate::httpUserAgent() const
 {
@@ -167,36 +180,6 @@ bool QWasmWebViewPrivate::isLoading() const
     return false;
 }
 
-void QWasmWebViewPrivate::setParentView(QObject *view)
-{
-    m_window = qobject_cast<QWindow *>(view);
-}
-
-QObject *QWasmWebViewPrivate::parentView() const
-{
-    return m_window;
-}
-
-void QWasmWebViewPrivate::setGeometry(const QRect &geometry)
-{
-    m_geometry = geometry;
-    updateGeometry();
-}
-
-void QWasmWebViewPrivate::setVisibility(QWindow::Visibility visibility)
-{
-    setVisible(visibility != QWindow::Hidden ? true : false);
-}
-
-void QWasmWebViewPrivate::setVisible(bool visible)
-{
-    if (!m_iframe && m_window && m_window->handle())
-        initializeIFrame();
-
-    if (m_iframe)
-        (*m_iframe)["style"].set("display", visible ? "block" : "none");
-}
-
 void QWasmWebViewPrivate::setCookie(const QString &domain, const QString &name,
                                     const QString &value)
 {
@@ -232,15 +215,20 @@ QAbstractWebViewSettings *QWasmWebViewPrivate::getSettings() const
 
 void QWasmWebViewPrivate::initializeIFrame()
 {
-    auto m_wasmWindow = dynamic_cast<QNativeInterface::Private::QWasmWindow *>(m_window->handle());
-    auto document = m_wasmWindow->document();
-    auto clientArea = m_wasmWindow->clientArea();
+    if (auto wasmWindow = dynamic_cast<QNativeInterface::Private::QWasmWindow *>(m_parentWindow->handle())) {
+        auto document = wasmWindow->document();
+        auto clientArea = wasmWindow->clientArea();
 
-    m_iframe = document.call<emscripten::val>("createElement", emscripten::val("iframe"));
-    clientArea.call<void>("appendChild", *m_iframe);
-    (*m_iframe)["style"].set("position", "absolute");
-    (*m_iframe)["style"].set("border", "none");
-    updateGeometry();
+        m_iframe = document.call<emscripten::val>("createElement", emscripten::val("iframe"));
+        clientArea.call<void>("appendChild", *m_iframe);
+        (*m_iframe)["style"].set("position", "absolute");
+        (*m_iframe)["style"].set("border", "none");
+        m_window = QWindow::fromWinId(reinterpret_cast<WId>(&m_iframe.value()));
+        Q_EMIT nativeWindowChanged(m_window);
+        updateGeometry();
+        // NOTE: Make sure any pending url is set now.
+        setUrl(m_currentUrl);
+    }
 }
 
 void QWasmWebViewPrivate::updateGeometry()

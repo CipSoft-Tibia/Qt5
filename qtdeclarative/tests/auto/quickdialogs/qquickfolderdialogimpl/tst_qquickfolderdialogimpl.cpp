@@ -5,6 +5,7 @@
 #include <QtTest/qsignalspy.h>
 #include <QtQml/qqmlfile.h>
 #include <QtQuick/private/qquicklistview_p.h>
+#include <QtQuick/private/qquickmousearea_p.h>
 #include <QtQuickTest/quicktest.h>
 #include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 #include <QtQuickControlsTestUtils/private/dialogstestutils_p.h>
@@ -65,6 +66,9 @@ private slots:
     void itemsDisabledWhenNecessary();
     void done_data();
     void done();
+    void checkModality_data();
+    void checkModality();
+    void checkFrameless();
 
 private:
     QTemporaryDir tempDir;
@@ -403,7 +407,7 @@ void tst_QQuickFolderDialogImpl::changeFolderViaEnter()
     QQuickFileDialogDelegate *subDir1Delegate = nullptr;
     QTRY_VERIFY(findViewDelegateItem(folderDialogListView, 0, subDir1Delegate));
     COMPARE_URL(subDir1Delegate->file(), QUrl::fromLocalFile(tempSubDir1CanonicalPath));
-    QVERIFY(subDir1Delegate->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(subDir1Delegate);
 
     // Select the delegate by pressing enter.
     const FolderDialogSignalHelper signalHelper(dialogHelper);
@@ -870,6 +874,71 @@ void tst_QQuickFolderDialogImpl::done()
     QVERIFY(!dialogHelper.dialog->isVisible());
     QTRY_VERIFY(!dialogHelper.quickDialog->isVisible());
     QCOMPARE(dialogHelper.dialog->result(), result);
+}
+
+void tst_QQuickFolderDialogImpl::checkModality_data()
+{
+    QTest::addColumn<Qt::WindowModality>("modality");
+    QTest::addColumn<QFileDialogOptions::FileDialogOption>("options");
+    QTest::addColumn<int>("expectedRootWindowChildCount");
+    QTest::addColumn<int>("expectedChildWindowClickCount");
+
+    QTest::newRow("nonModal") << Qt::NonModal << QFileDialogOptions::DontUseNativeDialog << 1 << 1;
+    QTest::newRow("windowModal") << Qt::WindowModal << QFileDialogOptions::DontUseNativeDialog << 0 << 1;
+    // Verify application modal case only for the platform which supports multiple windows
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::MultipleWindows))
+        QTest::newRow("applicationModal") << Qt::ApplicationModal << QFileDialogOptions::DontUseNativeDialog << 0 << 0;
+}
+
+void tst_QQuickFolderDialogImpl::checkModality()
+{
+    QFETCH(Qt::WindowModality, modality);
+    QFETCH(QFileDialogOptions::FileDialogOption, options);
+    QFETCH(int, expectedRootWindowChildCount);
+    QFETCH(int, expectedChildWindowClickCount);
+
+    FolderDialogTestHelper dialogHelper(this, "checkModality.qml");
+
+    dialogHelper.dialog->setModality(modality);
+    QCOMPARE(dialogHelper.dialog->modality(), modality);
+
+    dialogHelper.dialog->setOptions(options);
+    QCOMPARE(dialogHelper.dialog->options(), options);
+
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    auto *childWindow = dialogHelper.window()->property("childWindow").value<QQuickWindow *>();
+    QVERIFY(childWindow);
+
+    // Setting the child window transient parent as root window won't allow it to receive mouse
+    // events, causing WindowModal case not to be tested. Thus, resetting the transient parent.
+    if (modality == Qt::WindowModal)
+        childWindow->setTransientParent(nullptr);
+
+    const auto *rootMouseArea = dialogHelper.window()->property("rootMArea").value<QQuickMouseArea *>();
+    QVERIFY(rootMouseArea);
+    QSignalSpy rmaMouseSpy(rootMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+    QCOMPARE(rmaMouseSpy.size(), expectedRootWindowChildCount);
+
+    const auto *childMouseArea = dialogHelper.window()->property("childMArea").value<QQuickMouseArea *>();
+    QVERIFY(childMouseArea);
+    QSignalSpy cmaMouseSpy(childMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(childWindow, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+    QCOMPARE(cmaMouseSpy.size(), expectedChildWindowClickCount);
+}
+
+void tst_QQuickFolderDialogImpl::checkFrameless()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    QSKIP("Frameless window is not supported on Android/IOS");
+#endif
+    FolderDialogTestHelper dialogHelper(this, "folderDialogFrameless.qml");
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    QVERIFY(dialogHelper.popupWindow()->flags().testFlag(Qt::FramelessWindowHint));
 }
 
 QTEST_MAIN(tst_QQuickFolderDialogImpl)

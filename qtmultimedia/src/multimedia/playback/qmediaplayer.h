@@ -17,6 +17,7 @@ class QAudioDevice;
 class QMediaMetaData;
 class QMediaTimeRange;
 class QAudioBufferOutput;
+class QPlaybackOptions;
 
 class QMediaPlayerPrivate;
 class Q_MULTIMEDIA_EXPORT QMediaPlayer : public QObject
@@ -53,6 +54,18 @@ class Q_MULTIMEDIA_EXPORT QMediaPlayer : public QObject
                        activeTracksChanged)
     Q_PROPERTY(int activeSubtitleTrack READ activeSubtitleTrack WRITE setActiveSubtitleTrack NOTIFY
                        activeTracksChanged)
+
+    Q_REVISION(6, 10)
+    Q_PROPERTY(PitchCompensationAvailability pitchCompensationAvailability READ
+                       pitchCompensationAvailability CONSTANT)
+
+    Q_REVISION(6, 10)
+    Q_PROPERTY(bool pitchCompensation READ pitchCompensation WRITE setPitchCompensation NOTIFY
+                       pitchCompensationChanged)
+
+    Q_REVISION(6, 10)
+    Q_PROPERTY(QPlaybackOptions playbackOptions READ playbackOptions WRITE setPlaybackOptions NOTIFY
+                       playbackOptionsChanged RESET resetPlaybackOptions)
 
 public:
     enum PlaybackState
@@ -92,6 +105,14 @@ public:
         Once = 1
     };
     Q_ENUM(Loops)
+
+    enum class PitchCompensationAvailability
+    {
+        AlwaysOn,
+        Available,
+        Unavailable,
+    };
+    Q_ENUM(PitchCompensationAvailability)
 
     explicit QMediaPlayer(QObject *parent = nullptr);
     ~QMediaPlayer() override;
@@ -149,6 +170,11 @@ public:
     bool isAvailable() const;
     QMediaMetaData metaData() const;
 
+    PitchCompensationAvailability pitchCompensationAvailability() const;
+    bool pitchCompensation() const;
+
+    QPlaybackOptions playbackOptions() const;
+
 public Q_SLOTS:
     void play();
     void pause();
@@ -160,6 +186,11 @@ public Q_SLOTS:
 
     void setSource(const QUrl &source);
     void setSourceDevice(QIODevice *device, const QUrl &sourceUrl = QUrl());
+
+    void setPitchCompensation(bool) const;
+
+    void setPlaybackOptions(const QPlaybackOptions &options);
+    void resetPlaybackOptions();
 
 Q_SIGNALS:
     void sourceChanged(const QUrl &media);
@@ -189,6 +220,12 @@ Q_SIGNALS:
 
     void errorChanged();
     void errorOccurred(QMediaPlayer::Error error, const QString &errorString);
+
+    Q_REVISION(6, 10)
+    void pitchCompensationChanged(bool);
+
+    Q_REVISION(6, 10)
+    void playbackOptionsChanged();
 
 private:
     Q_DISABLE_COPY(QMediaPlayer)

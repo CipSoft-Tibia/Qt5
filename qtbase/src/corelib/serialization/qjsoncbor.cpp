@@ -108,7 +108,7 @@ static QString encodeTag(const QCborContainerPrivate *d)
     return s;
 }
 
-static Q_NEVER_INLINE QString makeString(const QCborContainerPrivate *d, qsizetype idx,
+Q_NEVER_INLINE static QString makeString(const QCborContainerPrivate *d, qsizetype idx,
                                          ConversionMode mode)
 {
     const auto &e = d->elements.at(idx);

@@ -35,7 +35,6 @@
 
 import * as Common from '../../../core/common/common.js';
 import * as Host from '../../../core/host/host.js';
-import inspectorSyntaxHighlightStyles from '../inspectorSyntaxHighlight.css.legacy.js';
 
 let themeSupportInstance: ThemeSupport;
 
@@ -43,7 +42,6 @@ const themeValueByTargetByName = new Map<Element|null, Map<string, string>>();
 
 export class ThemeSupport extends EventTarget {
   private themeNameInternal = 'default';
-  private customSheets: Set<string> = new Set();
   private computedStyleOfHTML = Common.Lazy.lazy(() => window.getComputedStyle(document.documentElement));
 
   readonly #documentsToTheme: Set<Document> = new Set([document]);
@@ -149,26 +147,10 @@ export class ThemeSupport extends EventTarget {
     return this.themeNameInternal;
   }
 
-  injectHighlightStyleSheets(element: Element|ShadowRoot): void {
-    this.appendStyle(element, inspectorSyntaxHighlightStyles);
-  }
-
   appendStyle(node: Node, {cssContent}: {cssContent: string}): void {
     const styleElement = document.createElement('style');
     styleElement.textContent = cssContent;
     node.appendChild(styleElement);
-  }
-
-  injectCustomStyleSheets(element: Element|ShadowRoot): void {
-    for (const sheet of this.customSheets) {
-      const styleElement = document.createElement('style');
-      styleElement.textContent = sheet;
-      element.appendChild(styleElement);
-    }
-  }
-
-  addCustomStylesheet(sheetText: string): void {
-    this.customSheets.add(sheetText);
   }
 
   #applyTheme(): void {
@@ -186,11 +168,15 @@ export class ThemeSupport extends EventTarget {
     document.documentElement.classList.toggle('theme-with-dark-background', this.themeNameInternal === 'dark');
 
     const useChromeTheme = Common.Settings.moduleSetting('chrome-theme-colors').get();
-    if (useChromeTheme) {
-      // Baseline is the name of Chrome's default color theme and there are two of these: default and grayscale.
-      // The collective name for the rest of the color themes is dynamic.
-      // In the baseline themes Chrome uses custom values for surface colors, whereas for dynamic themes these are color-mixed.
-      // To match Chrome we need to know if any of the baseline themes is currently active and assign specific values to surface colors.
+    const hostConfig = Common.Settings.Settings.instance().getHostConfig();
+    const isIncognito = !hostConfig || hostConfig.isOffTheRecord === true;
+    // Baseline is the name of Chrome's default color theme and there are two of these: default and grayscale.
+    // The collective name for the rest of the color themes is dynamic.
+    // In the baseline themes Chrome uses custom values for surface colors, whereas for dynamic themes these are color-mixed.
+    // To match Chrome we need to know if any of the baseline themes is currently active and assign specific values to surface colors.
+    if (isIncognito) {
+      document.documentElement.classList.toggle('baseline-grayscale', true);
+    } else if (useChromeTheme) {
       const selectedTheme = getComputedStyle(document.body).getPropertyValue('--user-color-source');
       document.documentElement.classList.toggle('baseline-default', selectedTheme === 'baseline-default');
       document.documentElement.classList.toggle('baseline-grayscale', selectedTheme === 'baseline-grayscale');
@@ -200,7 +186,6 @@ export class ThemeSupport extends EventTarget {
 
     // In the event the theme changes we need to clear caches and notify subscribers.
     themeValueByTargetByName.clear();
-    this.customSheets.clear();
     this.dispatchEvent(new ThemeChangeEvent());
   }
 

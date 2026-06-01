@@ -18,8 +18,8 @@ Item {
         forceDebugDraw: true
         typicalLength: 1
         typicalSpeed: 10
-        minimumTimestep: 16.6667
-        maximumTimestep: 16.6667
+        minimumTimestep: 15
+        maximumTimestep: 15
         scene: viewport.scene
     }
     property bool simulationActuallyRunning: false
@@ -59,8 +59,8 @@ Item {
                         source: "#Cube"
                         scale: Qt.vector3d(2, 1, 2).times(0.01)
                         eulerRotation: Qt.vector3d(0, 90, 0)
-                        materials: DefaultMaterial {
-                            diffuseColor: "green"
+                        materials: PrincipledMaterial {
+                            baseColor: "green"
                         }
                     }
                 }
@@ -127,17 +127,19 @@ Item {
                         source: "#Cube"
                         scale: Qt.vector3d(2, 1, 2).times(0.01)
                         eulerRotation: Qt.vector3d(0, 90, 0)
-                        materials: DefaultMaterial {
-                            diffuseColor: "red"
+                        materials: PrincipledMaterial {
+                            baseColor: "red"
                         }
                     }
                 }
 
+                property int frame: 0;
                 property var createdObject: null
                 property bool createdObjectIsStable: createdObject ? createdObject.stable : false
                 function checkStable() {
-                    if (createdObject)
+                    if (createdObject && frame > 10)
                         createdObject.checkStable()
+                    frame += 1
                 }
                 Component {
                     id: spawnComponent
@@ -176,8 +178,8 @@ Item {
                     Model {
                         source: "#Cube"
                         scale: slide.extents.times(0.01)
-                        materials: DefaultMaterial {
-                            diffuseColor: "orange"
+                        materials: PrincipledMaterial {
+                            baseColor: "orange"
                         }
                     }
                 }

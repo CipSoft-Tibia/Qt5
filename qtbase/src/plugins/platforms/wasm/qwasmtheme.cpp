@@ -1,14 +1,14 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwasmtheme.h"
 #include <QtCore/qvariant.h>
 #include <QFontDatabase>
 #include <QList>
+#include <qloggingcategory.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <qpalette.h>
-
-#include <private/qstdweb_p.h>
 
 #include <emscripten.h>
 #include <emscripten/bind.h>
@@ -16,21 +16,45 @@
 
 Q_GUI_EXPORT QPalette qt_fusionPalette();
 
-Qt::ColorScheme QWasmTheme::s_autoColorScheme = Qt::ColorScheme::Unknown;
-bool QWasmTheme::s_autoPaletteIsDirty = false;
-
 QT_BEGIN_NAMESPACE
+
+Q_STATIC_LOGGING_CATEGORY(lcQpaThemeWasm, "qt.qpa.theme.wasm")
+
+namespace {
+bool matchMedia(std::string mediaQueryString)
+{
+    return emscripten::val::global("window")
+            .call<emscripten::val>("matchMedia", mediaQueryString)["matches"]
+            .as<bool>();
+}
+
+Qt::ColorScheme getColorSchemeFromMedia()
+{
+    if (matchMedia(colorSchemePreferenceDark)) {
+        return Qt::ColorScheme::Dark;
+    } else {
+        return Qt::ColorScheme::Light;
+    }
+}
+
+Qt::ContrastPreference getContrastPreferenceFromMedia()
+{
+    if (matchMedia(contrastPreferenceMore)) {
+        return Qt::ContrastPreference::HighContrast;
+    } else {
+        return Qt::ContrastPreference::NoPreference;
+    }
+}
+} // namespace
 
 using namespace Qt::StringLiterals;
 
 QWasmTheme::QWasmTheme()
 {
-    if (emscripten::val::global("window").call<emscripten::val>(
-        "matchMedia",
-        std::string("(prefers-color-scheme:dark)"))["matches"].as<bool>())
-        s_autoColorScheme = Qt::ColorScheme::Dark;
-    else
-        s_autoColorScheme = Qt::ColorScheme::Light;
+    m_colorScheme = getColorSchemeFromMedia();
+    qCDebug(lcQpaThemeWasm) << "Initializing Wasm theme. Color scheme: " << m_colorScheme;
+    m_contrastPreference = getContrastPreferenceFromMedia();
+    qCDebug(lcQpaThemeWasm) << "Initializing Wasm theme. Contrast preference: " << m_contrastPreference;
 
     for (auto family : QFontDatabase::families())
         if (QFontDatabase::isFixedPitch(family))
@@ -39,15 +63,15 @@ QWasmTheme::QWasmTheme()
     m_palette = std::make_unique<QPalette>();
     m_paletteIsDirty = true; // Force update later
 
-    const auto callback = [=](emscripten::val event) { QWasmTheme::onColorSchemeChange(event); };
-    const emscripten::val window = emscripten::val::global("window");
-    if (!window.isUndefined()) {
-        const emscripten::val matchMedia = window.call<emscripten::val>("matchMedia", emscripten::val("(prefers-color-scheme: dark)"));
-        if (!matchMedia.isUndefined()) {
-            static auto changeEvent =
-                std::make_unique<qstdweb::EventCallback>(matchMedia, "change", callback);
-        }
-    }
+    registerCallbacks(
+            { colorSchemePreferenceDark },
+            [this](emscripten::val) { QWasmTheme::onColorSchemeChange(); },
+            m_colorSchemeChangeCallback);
+    registerCallbacks(
+            { contrastPreferenceNoPreference, contrastPreferenceMore, contrastPreferenceLess,
+              contrastPreferenceCustom },
+            [this](emscripten::val) { QWasmTheme::onContrastPreferenceChange(); },
+            m_contrastPreferenceChangeCallbacks);
 }
 
 QWasmTheme::~QWasmTheme()
@@ -59,9 +83,8 @@ QWasmTheme::~QWasmTheme()
 const QPalette *QWasmTheme::palette(Palette type) const
 {
     if (type == SystemPalette) {
-        if (m_paletteIsDirty || s_autoPaletteIsDirty) {
+        if (m_paletteIsDirty) {
             m_paletteIsDirty = false;
-            s_autoPaletteIsDirty = false;
             *m_palette = qt_fusionPalette();
         }
         return m_palette.get();
@@ -71,9 +94,7 @@ const QPalette *QWasmTheme::palette(Palette type) const
 
 Qt::ColorScheme QWasmTheme::colorScheme() const
 {
-    if (m_colorScheme != Qt::ColorScheme::Unknown)
-        return m_colorScheme;
-    return s_autoColorScheme;
+    return m_colorScheme;
 }
 
 void QWasmTheme::requestColorScheme(Qt::ColorScheme scheme)
@@ -83,6 +104,11 @@ void QWasmTheme::requestColorScheme(Qt::ColorScheme scheme)
         m_colorScheme = scheme;
         QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
     }
+}
+
+Qt::ContrastPreference QWasmTheme::contrastPreference() const
+{
+    return m_contrastPreference;
 }
 
 QVariant QWasmTheme::themeHint(ThemeHint hint) const
@@ -102,20 +128,25 @@ const QFont *QWasmTheme::font(Font type) const
     return nullptr;
 }
 
-void QWasmTheme::onColorSchemeChange(emscripten::val event)
+void QWasmTheme::onColorSchemeChange()
 {
-    const emscripten::val matches = event["matches"];
-    if (!matches.isUndefined()) {
-        const auto oldAutoColorScheme = s_autoColorScheme;
-        if (matches.as<int>())
-            s_autoColorScheme = Qt::ColorScheme::Dark;
-        else
-            s_autoColorScheme = Qt::ColorScheme::Light;
+    auto colorScheme = getColorSchemeFromMedia();
+    if (m_colorScheme != colorScheme) {
+        qCDebug(lcQpaThemeWasm) << "Color scheme changed to " << colorScheme;
+        m_colorScheme = colorScheme;
+        m_paletteIsDirty = true;
+        QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
+    }
+}
 
-        if (oldAutoColorScheme != s_autoColorScheme) {
-            s_autoPaletteIsDirty = true;
-            QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
-        }
+void QWasmTheme::onContrastPreferenceChange()
+{
+    auto contrastPreference = getContrastPreferenceFromMedia();
+    if (m_contrastPreference != contrastPreference) {
+        qCDebug(lcQpaThemeWasm) << "Contrast preference changed to " << contrastPreference;
+        m_contrastPreference = contrastPreference;
+        m_paletteIsDirty = true;
+        QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
     }
 }
 

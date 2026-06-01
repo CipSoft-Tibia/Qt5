@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlpropertycache_p.h"
 
@@ -12,6 +13,7 @@
 #include <private/qqmlpropertycachemethodarguments_p.h>
 #include <private/qqmlsignalnames_p.h>
 
+#include <private/qv4codegen_p.h>
 #include <private/qv4value_p.h>
 
 #include <QtCore/qdebug.h>
@@ -220,18 +222,23 @@ void QQmlPropertyCache::appendProperty(const QString &name, QQmlPropertyData::Fl
     data.setFlags(flags);
     data.setTypeVersion(version);
 
-    QQmlPropertyData *old = findNamedProperty(name);
-    const OverrideResult overrideResult = handleOverride(name, &data, old);
-    if (overrideResult == InvalidOverride) {
-        // Insert the overridden member once more, to keep the counts in sync
-        propertyIndexCache.append(*old);
-        return;
-    }
+    doAppendPropertyData(name, std::move(data));
+}
 
-    int index = propertyIndexCache.size();
-    propertyIndexCache.append(data);
+void QQmlPropertyCache::appendAlias(
+        const QString &name, QQmlPropertyData::Flags flags, int coreIndex, QMetaType propType,
+        QTypeRevision version, int notifyIndex, int encodedTargetIndex)
+{
+    QQmlPropertyData data;
+    data.setPropType(propType);
+    data.setCoreIndex(coreIndex);
+    data.setNotifyIndex(notifyIndex);
+    flags.setIsAlias(true);
+    data.setFlags(flags);
+    data.setAliasTarget(encodedTargetIndex);
+    data.setTypeVersion(version);
 
-    setNamedProperty(name, index + propertyOffset(), propertyIndexCache.data() + index);
+    doAppendPropertyData(name, std::move(data));
 }
 
 void QQmlPropertyCache::appendSignal(const QString &name, QQmlPropertyData::Flags flags,
@@ -568,7 +575,7 @@ void QQmlPropertyCache::append(const QMetaObject *metaObject,
         }
 
         // otherwise always dispatch over a 'normal' meta-call so the QQmlValueType can intercept
-        if (!isGadget)
+        if (!isGadget && !data->isAlias())
             data->trySetStaticMetaCallFunction(metaObject->d.static_metacall, ii - propOffset);
     }
 }
@@ -741,10 +748,10 @@ QQmlPropertyCacheMethodArguments *QQmlPropertyCache::createArgumentsObject(
     return args;
 }
 
-QString QQmlPropertyCache::signalParameterStringForJS(QV4::ExecutionEngine *engine, const QList<QByteArray> &parameterNameList, QString *errorString)
+QString QQmlPropertyCache::signalParameterStringForJS(
+        const QList<QByteArray> &parameterNameList, QString *errorString)
 {
     bool unnamedParameter = false;
-    const QSet<QString> &illegalNames = engine->illegalNames();
     QString parameters;
 
     const qsizetype count = parameterNameList.size();
@@ -761,7 +768,7 @@ QString QQmlPropertyCache::signalParameterStringForJS(QV4::ExecutionEngine *engi
             if (errorString)
                 *errorString = QCoreApplication::translate("QQmlRewrite", "Signal uses unnamed parameter followed by named parameter.");
             return QString();
-        } else if (illegalNames.contains(QString::fromUtf8(param))) {
+        } else if (QV4::Compiler::Codegen::isNameGlobal(param)) {
             if (errorString)
                 *errorString = QCoreApplication::translate("QQmlRewrite", "Signal parameter \"%1\" hides global variable.").arg(QString::fromUtf8(param));
             return QString();
@@ -940,14 +947,14 @@ const char *QQmlPropertyCache::className() const
 
 void QQmlPropertyCache::toMetaObjectBuilder(QMetaObjectBuilder &builder) const
 {
-    struct Sort { static bool lt(const QPair<QString, const QQmlPropertyData *> &lhs,
-                                 const QPair<QString, const QQmlPropertyData *> &rhs) {
+    struct Sort { static bool lt(const std::pair<QString, const QQmlPropertyData *> &lhs,
+                                 const std::pair<QString, const QQmlPropertyData *> &rhs) {
         return lhs.second->coreIndex() < rhs.second->coreIndex();
     } };
 
     struct Insert { static void in(const QQmlPropertyCache *This,
-                                   QList<QPair<QString, const QQmlPropertyData *> > &properties,
-                                   QList<QPair<QString, const QQmlPropertyData *> > &methods,
+                                   QList<std::pair<QString, const QQmlPropertyData *> > &properties,
+                                   QList<std::pair<QString, const QQmlPropertyData *> > &methods,
                                    StringCache::ConstIterator iter, const QQmlPropertyData *data) {
         if (data->isSignalHandler())
             return;
@@ -956,7 +963,7 @@ void QQmlPropertyCache::toMetaObjectBuilder(QMetaObjectBuilder &builder) const
             if (data->coreIndex() < This->methodIndexCacheStart)
                 return;
 
-            QPair<QString, const QQmlPropertyData *> entry = qMakePair((QString)iter.key(), data);
+            std::pair<QString, const QQmlPropertyData *> entry = std::make_pair((QString)iter.key(), data);
             // Overrides can cause the entry to already exist
             if (!methods.contains(entry)) methods.append(entry);
 
@@ -966,7 +973,7 @@ void QQmlPropertyCache::toMetaObjectBuilder(QMetaObjectBuilder &builder) const
             if (data->coreIndex() < This->propertyIndexCacheStart)
                 return;
 
-            QPair<QString, const QQmlPropertyData *> entry = qMakePair((QString)iter.key(), data);
+            std::pair<QString, const QQmlPropertyData *> entry = std::make_pair((QString)iter.key(), data);
             // Overrides can cause the entry to already exist
             if (!properties.contains(entry)) properties.append(entry);
 
@@ -978,8 +985,8 @@ void QQmlPropertyCache::toMetaObjectBuilder(QMetaObjectBuilder &builder) const
 
     builder.setClassName(_dynamicClassName);
 
-    QList<QPair<QString, const QQmlPropertyData *> > properties;
-    QList<QPair<QString, const QQmlPropertyData *> > methods;
+    QList<std::pair<QString, const QQmlPropertyData *> > properties;
+    QList<std::pair<QString, const QQmlPropertyData *> > methods;
 
     for (StringCache::ConstIterator iter = stringCache.begin(), cend = stringCache.end(); iter != cend; ++iter)
         Insert::in(this, properties, methods, iter, iter.value().second);

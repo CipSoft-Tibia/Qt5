@@ -1,10 +1,10 @@
 <div id="toolbar">
   <div id="start">
-    <cr-icon-button id="sidenavToggle" iron-icon="cr20:menu"
+    <cr-icon-button id="sidenavToggle" iron-icon="${this.menuIcon_()}"
         title="$i18n{menu}" aria-label="$i18n{menu}"
         aria-expanded="${this.getAriaExpanded_()}"
 <if expr="enable_ink">
-        ?disabled="${this.annotationMode}"
+        ?disabled="${this.isInInk1AnnotationMode_()}"
 </if>
         @click="${this.onSidenavToggleClick_}">
     </cr-icon-button>
@@ -37,18 +37,14 @@
     </span>
     <span class="vertical-separator"></span>
     <cr-icon-button id="fit" .ironIcon="${this.fitToButtonIcon_()}"
-        title="${this.getFitToButtonTooltip_('$i18nPolymer{tooltipFitToPage}',
-                                        '$i18nPolymer{tooltipFitToWidth}')}"
-        aria-label="${this.getFitToButtonTooltip_(
-            '$i18nPolymer{tooltipFitToPage}',
-            '$i18nPolymer{tooltipFitToWidth}')}"
+        title="${this.getFitToButtonTooltip_()}"
+        aria-label="${this.getFitToButtonTooltip_()}"
         @click="${this.onFitToButtonClick_}">
     </cr-icon-button>
-    <cr-icon-button
-        iron-icon="${this.iconsetName_()}:rotate-left"
+    <cr-icon-button id="rotate" .ironIcon="${this.iconsetName_()}:rotate-left"
         suppress-rtl-flip
 <if expr="enable_ink">
-        ?disabled="${this.annotationMode}"
+        ?disabled="${this.isInInk1AnnotationMode_()}"
 </if>
         aria-label="$i18n{tooltipRotateCCW}" title="$i18n{tooltipRotateCCW}"
         @click="${this.onRotateClick_}">
@@ -59,9 +55,9 @@
         <span class="vertical-separator"></span>
         <cr-icon-button id="annotate" iron-icon="pdf:annotate"
             @click="${this.onAnnotationClick_}"
-            aria-label="$i18n{tooltipAnnotate}"
+            aria-label="$i18n{ink2Draw}"
             ?disabled="${!this.annotationAvailable}"
-            title="$i18n{tooltipAnnotate}"></cr-icon-button>
+            title="$i18n{ink2Draw}"></cr-icon-button>
         <span class="vertical-separator"></span>
         <cr-icon-button id="undo" ?disabled="${!this.canUndoAnnotation_}"
             iron-icon="${this.iconsetName_()}:undo"
@@ -93,11 +89,11 @@
 </if>
         .isFormFieldFocused="${this.isFormFieldFocused_()}">
     </viewer-download-controls>
-    <cr-icon-button id="print" iron-icon="cr:print"
+    <cr-icon-button id="print" iron-icon="${this.printIcon_()}"
         ?hidden="${!this.printingEnabled}" title="$i18n{tooltipPrint}"
         aria-label="$i18n{tooltipPrint}" @click="${this.onPrintClick_}">
     </cr-icon-button>
-    <cr-icon-button id="more" iron-icon="cr:more-vert"
+    <cr-icon-button id="more" iron-icon="${this.moreIcon_()}"
         title="$i18n{moreActions}" aria-label="$i18n{moreActions}"
         @click="${this.onMoreClick_}"></cr-icon-button>
   </div>
@@ -110,7 +106,7 @@
   <button id="two-page-view-button" class="dropdown-item"
       @click="${this.toggleTwoPageViewClick_}" role="checkbox"
 <if expr="enable_ink">
-      ?disabled="${this.annotationMode}"
+      ?disabled="${this.isInInk1AnnotationMode_()}"
 </if>
       aria-checked="${this.getAriaChecked_(this.twoUpViewEnabled)}">
     <span class="check-container">

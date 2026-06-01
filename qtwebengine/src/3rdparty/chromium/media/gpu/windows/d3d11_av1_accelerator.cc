@@ -18,6 +18,7 @@
 #include "media/gpu/av1_picture.h"
 #include "media/gpu/codec_picture.h"
 #include "media/gpu/windows/d3d11_picture_buffer.h"
+#include "third_party/libgav1/src/src/utils/common.h"
 
 namespace media {
 
@@ -56,8 +57,11 @@ class D3D11AV1Picture : public AV1Picture {
 };
 
 D3D11AV1Accelerator::D3D11AV1Accelerator(D3D11VideoDecoderClient* client,
-                                         MediaLog* media_log)
-    : media_log_(media_log->Clone()), client_(client) {
+                                         MediaLog* media_log,
+                                         bool disable_invalid_ref)
+    : media_log_(media_log->Clone()),
+      client_(client),
+      disable_invalid_ref_(disable_invalid_ref) {
   DCHECK(client_);
 }
 
@@ -279,7 +283,14 @@ void D3D11AV1Accelerator::FillPicParams(
     const auto* rp =
         static_cast<const D3D11AV1Picture*>(ref_frames[ref_idx].get());
     if (!rp) {
-      pp->frame_refs[i].Index = 0xFF;
+      // On some Intel devices, the driver crashes on Index 0xFF for non-intra
+      // frames. For these devices, we use the current frame as the reference,
+      // until a driver fix for this is in place.
+      if (disable_invalid_ref_) {
+        pp->frame_refs[i].Index = picture_index;
+      } else {
+        pp->frame_refs[i].Index = 0xFF;
+      }
       continue;
     }
 

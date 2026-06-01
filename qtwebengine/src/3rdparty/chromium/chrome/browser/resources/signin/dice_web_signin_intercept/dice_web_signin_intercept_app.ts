@@ -4,9 +4,8 @@
 
 import 'chrome://resources/cr_elements/cr_button/cr_button.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
-import 'chrome://resources/polymer/v3_0/paper-spinner/paper-spinner-lite.js';
-import 'chrome://resources/cr_elements/icons_lit.html.js';
-import './strings.m.js';
+import 'chrome://resources/cr_elements/icons.html.js';
+import '/strings.m.js';
 
 import type {CrButtonElement} from 'chrome://resources/cr_elements/cr_button/cr_button.js';
 import {WebUiListenerMixinLit} from 'chrome://resources/cr_elements/web_ui_listener_mixin_lit.js';
@@ -60,10 +59,12 @@ export class DiceWebSigninInterceptAppElement extends
     headerTextColor: '',
     interceptedProfileColor: '',
     primaryProfileColor: '',
-    interceptedAccount: {pictureUrl: '', avatarBadge: ''},
-    primaryAccount: {pictureUrl: '', avatarBadge: ''},
+    interceptedAccount: {pictureUrl: '', avatarBadge: '', userBadgeAltText: ''},
+    primaryAccount: {pictureUrl: '', avatarBadge: '', userBadgeAltText: ''},
     useV2Design: false,
     showManagedDisclaimer: false,
+    interceptedProfileBadgeColor: '',
+    primaryProfileBadgeColor: '',
   };
   protected acceptButtonClicked_: boolean = false;
   private diceWebSigninInterceptBrowserProxy_:
@@ -104,6 +105,10 @@ export class DiceWebSigninInterceptAppElement extends
     this.style.setProperty(
         '--primary-profile-color', parameters.primaryProfileColor);
     this.style.setProperty('--header-text-color', parameters.headerTextColor);
+    this.style.setProperty(
+      '--intercepted-profile-avatar-badge-color', parameters.interceptedProfileBadgeColor);
+    this.style.setProperty(
+      '--primary-profile-avatar-badge-color', parameters.primaryProfileBadgeColor);
   }
 
   protected sanitizeInnerHtml_(text: string): TrustedHTML {

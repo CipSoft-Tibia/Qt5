@@ -303,16 +303,11 @@ std::string SerializeReportingInfo(
 // false if there was a problem encrypting.
 bool EncryptString(const std::string& plaintext, std::string* encrypted) {
   encrypted_messages::EncryptedMessage encrypted_message;
-  if (!encrypted_messages::EncryptSerializedMessage(
+  CHECK(encrypted_messages::EncryptSerializedMessage(
           kServerPublicKey, kServerPublicKeyVersion, kEncryptedMessageLabel,
-          plaintext, &encrypted_message)) {
-    NOTREACHED_IN_MIGRATION() << "Error encrypting string.";
-    return false;
-  }
-  if (!encrypted_message.SerializeToString(encrypted)) {
-    NOTREACHED_IN_MIGRATION() << "Error serializing encrypted string.";
-    return false;
-  }
+          plaintext, &encrypted_message)) << "Error encrypting string.";
+  CHECK(encrypted_message.SerializeToString(encrypted))
+    << "Error serializing encrypted string.";
   return true;
 }
 

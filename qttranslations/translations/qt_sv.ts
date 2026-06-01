@@ -3,8 +3,6 @@
 <TS version="2.1" language="sv">
 <dependencies>
 <dependency catalog="qtbase_sv"/>
-<dependency catalog="qtscript_sv"/>
 <dependency catalog="qtmultimedia_sv"/>
-<dependency catalog="qtxmlpatterns_sv"/>
 </dependencies>
 </TS>

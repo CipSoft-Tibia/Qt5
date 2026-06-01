@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "base/strings/string_util.h"
 #include "components/autofill/core/browser/metrics/payments/card_unmask_authentication_metrics.h"
 #include "components/autofill/core/browser/payments/otp_unmask_delegate.h"
 #include "components/autofill/core/browser/payments/otp_unmask_result.h"
@@ -77,8 +78,7 @@ void CardUnmaskOtpInputDialogControllerImpl::OnOtpVerificationResult(
       ShowInvalidState(result);
       break;
     case OtpUnmaskResult::kUnknownType:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 }
 
@@ -218,7 +218,7 @@ void CardUnmaskOtpInputDialogControllerImpl::ShowInvalidState(
     case OtpUnmaskResult::kSuccess:
     case OtpUnmaskResult::kPermanentFailure:
     case OtpUnmaskResult::kUnknownType:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 }
 

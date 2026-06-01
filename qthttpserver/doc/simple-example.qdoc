@@ -4,6 +4,7 @@
 /*!
 \ingroup qthttpserver-examples
 \title Simple HTTP Server
+\examplecategory {Networking}
 \examplecategory {Web Technologies}
 \brief Simple example of how to set up an HTTP server.
 \image browserwindow.png {Simple HTTP server output in browser}

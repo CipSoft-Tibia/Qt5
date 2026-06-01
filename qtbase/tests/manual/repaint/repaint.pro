@@ -5,5 +5,4 @@ SUBDIRS = mainwindow \
     splitter \
     tableview \
     task141091 \
-    toplevel \
     widget

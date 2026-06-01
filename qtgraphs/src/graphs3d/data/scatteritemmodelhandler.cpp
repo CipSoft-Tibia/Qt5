@@ -6,7 +6,21 @@
 
 #include <QtGui/qquaternion.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+                  "QT_BEGIN_NAMESPACE" \
+                  "class ScatterItemModelHandler;" \
+                  "QT_END_NAMESPACE"
+              )
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DScatterItemModelHandlerResolveModel_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs3DScatterItemModelHandlerResolveModel_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DScatterItemModelHandlerHandleDataChanged_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs3DScatterItemModelHandlerHandleDataChanged_exit);
 
 ScatterItemModelHandler::ScatterItemModelHandler(QItemModelScatterDataProxy *proxy, QObject *parent)
     : AbstractItemModelHandler(parent)
@@ -16,10 +30,12 @@ ScatterItemModelHandler::ScatterItemModelHandler(QItemModelScatterDataProxy *pro
     , m_yPosRole(noRoleIndex)
     , m_zPosRole(noRoleIndex)
     , m_rotationRole(noRoleIndex)
+    , m_scaleRole(noRoleIndex)
     , m_haveXPosPattern(false)
     , m_haveYPosPattern(false)
     , m_haveZPosPattern(false)
     , m_haveRotationPattern(false)
+    , m_haveScalePattern(false)
 {}
 
 ScatterItemModelHandler::~ScatterItemModelHandler() {}
@@ -30,6 +46,7 @@ void ScatterItemModelHandler::handleDataChanged(const QModelIndex &topLeft,
 {
     // Do nothing if full reset already pending
     if (!m_fullReset) {
+        Q_TRACE_SCOPE(QGraphs3DScatterItemModelHandlerHandleDataChanged);
         if (m_itemModel->columnCount() > 1) {
             // If the data model is multi-column, do full asynchronous reset to
             // simplify things
@@ -119,6 +136,32 @@ static inline QQuaternion toQuaternion(const QVariant &variant)
     return QQuaternion();
 }
 
+static inline QVector3D toVector3D(const QVariant &variant)
+{
+    if (variant.canConvert<QVector3D>()) {
+        return variant.value<QVector3D>();
+    } else if (variant.canConvert<QString>()) {
+        QString s = variant.toString();
+        if (!s.isEmpty()) {
+            if (s.count(QLatin1Char(',')) == 2) {
+                qsizetype index = s.indexOf(QLatin1Char(','));
+                qsizetype index2 = s.indexOf(QLatin1Char(','), index + 1);
+
+                bool xGood, yGood, zGood;
+                float xCoord = s.left(index).toFloat(&xGood);
+                float yCoord = s.mid(index + 1, index2 - index - 1).toFloat(&yGood);
+                float zCoord = s.mid(index2 + 1).toFloat(&zGood);
+
+                if (xGood && yGood && zGood) {
+                        return QVector3D(xCoord, yCoord, zCoord);
+                }
+            }
+        }
+    }
+    return QVector3D();
+
+}
+
 void ScatterItemModelHandler::modelPosToScatterItem(int modelRow,
                                                     int modelColumn,
                                                     QScatterDataItem &item)
@@ -167,6 +210,26 @@ void ScatterItemModelHandler::modelPosToScatterItem(int modelRow,
     item.setPosition(QVector3D(xPos, yPos, zPos));
 }
 
+QVector3D ScatterItemModelHandler::modelDataToScale(int modelRow,
+                                                    int modelColumn)
+{
+    QModelIndex index = m_itemModel->index(modelRow, modelColumn);
+
+    if (m_scaleRole != noRoleIndex) {
+        QVariant scaleVar = index.data(m_scaleRole);
+        QVector3D scale = QVector3D(1.0, 1.0, 1.0);
+        if (m_haveScalePattern) {
+            scale = toVector3D(
+                    QVariant(scaleVar.toString().replace(m_scalePattern, m_scaleReplace)));
+        } else {
+            scale = toVector3D(scaleVar);
+        }
+        return scale;
+    }
+
+    return QVector3D(1.0f, 1.0f, 1.0f);
+}
+
 // Resolve entire item model into QScatterDataArray.
 void ScatterItemModelHandler::resolveModel()
 {
@@ -176,26 +239,32 @@ void ScatterItemModelHandler::resolveModel()
         m_proxyArray.clear();
         return;
     }
+    Q_TRACE(QGraphs3DScatterItemModelHandlerResolveModel_entry);
 
     m_xPosPattern = m_proxy->xPosRolePattern();
     m_yPosPattern = m_proxy->yPosRolePattern();
     m_zPosPattern = m_proxy->zPosRolePattern();
     m_rotationPattern = m_proxy->rotationRolePattern();
+    m_scalePattern = m_proxy->scaleRolePattern();
     m_xPosReplace = m_proxy->xPosRoleReplace();
     m_yPosReplace = m_proxy->yPosRoleReplace();
     m_zPosReplace = m_proxy->zPosRoleReplace();
     m_rotationReplace = m_proxy->rotationRoleReplace();
+    m_scaleReplace = m_proxy->scaleRoleReplace();
     m_haveXPosPattern = !m_xPosPattern.namedCaptureGroups().isEmpty() && m_xPosPattern.isValid();
     m_haveYPosPattern = !m_yPosPattern.namedCaptureGroups().isEmpty() && m_yPosPattern.isValid();
     m_haveZPosPattern = !m_zPosPattern.namedCaptureGroups().isEmpty() && m_zPosPattern.isValid();
     m_haveRotationPattern = !m_rotationPattern.namedCaptureGroups().isEmpty()
                             && m_rotationPattern.isValid();
+    m_haveScalePattern = !m_scalePattern.namedCaptureGroups().isEmpty()
+                            && m_scalePattern.isValid();
 
     QHash<int, QByteArray> roleHash = m_itemModel->roleNames();
     m_xPosRole = roleHash.key(m_proxy->xPosRole().toLatin1(), noRoleIndex);
     m_yPosRole = roleHash.key(m_proxy->yPosRole().toLatin1(), noRoleIndex);
     m_zPosRole = roleHash.key(m_proxy->zPosRole().toLatin1(), noRoleIndex);
     m_rotationRole = roleHash.key(m_proxy->rotationRole().toLatin1(), noRoleIndex);
+    m_scaleRole = roleHash.key(m_proxy->scaleRole().toLatin1(), noRoleIndex);
     const int columnCount = m_itemModel->columnCount();
     const int rowCount = m_itemModel->rowCount();
     const int totalCount = rowCount * columnCount;
@@ -205,17 +274,23 @@ void ScatterItemModelHandler::resolveModel()
     if (m_proxyArray.data() != m_proxy->series()->dataArray().data()
         || totalCount != m_proxyArray.size()) {
         m_proxyArray.resize(totalCount);
+        if (m_scaleRole != noRoleIndex)
+            m_scaleArray.resize(totalCount);
     }
 
     // Parse data into newProxyArray
     for (int i = 0; i < rowCount; i++) {
         for (int j = 0; j < columnCount; j++) {
             modelPosToScatterItem(i, j, m_proxyArray[runningCount]);
+            if (m_scaleRole != noRoleIndex)
+                m_scaleArray[runningCount] = modelDataToScale(i, j);
             runningCount++;
         }
     }
 
+    Q_TRACE(QGraphs3DScatterItemModelHandlerResolveModel_exit);
     m_proxy->resetArray(m_proxyArray);
+    m_proxy->resetScaleArray(m_scaleArray);
 }
 
 QT_END_NAMESPACE

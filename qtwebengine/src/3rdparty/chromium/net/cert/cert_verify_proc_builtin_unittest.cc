@@ -4,13 +4,13 @@
 
 #include "net/cert/cert_verify_proc_builtin.h"
 
+#include <algorithm>
 #include <optional>
 #include <string_view>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/sequenced_task_runner.h"
@@ -410,8 +410,10 @@ TEST_F(CertVerifyProcBuiltinTest, ShouldBypassHSTS) {
     context()->transport_security_state()->AddHSTS(
         test_server.base_url().host(), base::Time::Now() + base::Seconds(30),
         /*include_subdomains=*/true);
+    // Setting `is_top_level_nav` true prevents the upgrade from being blocked
+    // by kHstsTopLevelNavigationsOnly.
     ASSERT_TRUE(context()->transport_security_state()->ShouldUpgradeToSSL(
-        test_server.base_url().host()));
+        test_server.base_url().host(), /*is_top_level_nav=*/true));
     Verify(chain.get(), "www.example.com",
            CertVerifyProc::VERIFY_REV_CHECKING_ENABLED,
            &verify_result, &verify_net_log_source, verify_callback.callback());
@@ -1101,27 +1103,27 @@ TEST_F(CertVerifyProcBuiltinTest, EVNoOCSPRevocationChecks) {
 
   auto events = net_log_observer.GetEntriesForSource(verify_net_log_source);
 
-  auto event = base::ranges::find(
+  auto event = std::ranges::find(
       events, NetLogEventType::CERT_VERIFY_PROC_PATH_BUILD_ATTEMPT,
       &NetLogEntry::type);
   ASSERT_NE(event, events.end());
   EXPECT_EQ(net::NetLogEventPhase::BEGIN, event->phase);
   EXPECT_EQ(true, event->params.FindBool("is_ev_attempt"));
 
-  event = base::ranges::find(++event, events.end(),
-                             NetLogEventType::CERT_VERIFY_PROC_PATH_BUILT,
-                             &NetLogEntry::type);
+  event = std::ranges::find(++event, events.end(),
+                            NetLogEventType::CERT_VERIFY_PROC_PATH_BUILT,
+                            &NetLogEntry::type);
   ASSERT_NE(event, events.end());
   EXPECT_EQ(net::NetLogEventPhase::BEGIN, event->phase);
 
-  event = base::ranges::find(++event, events.end(),
-                             NetLogEventType::CERT_VERIFY_PROC_PATH_BUILT,
-                             &NetLogEntry::type);
+  event = std::ranges::find(++event, events.end(),
+                            NetLogEventType::CERT_VERIFY_PROC_PATH_BUILT,
+                            &NetLogEntry::type);
   ASSERT_NE(event, events.end());
   EXPECT_EQ(net::NetLogEventPhase::END, event->phase);
   EXPECT_FALSE(event->params.FindString("errors"));
 
-  event = base::ranges::find(
+  event = std::ranges::find(
       ++event, events.end(),
       NetLogEventType::CERT_VERIFY_PROC_PATH_BUILD_ATTEMPT, &NetLogEntry::type);
   ASSERT_NE(event, events.end());
@@ -1659,6 +1661,51 @@ TEST_F(CertVerifyProcBuiltinTest, ChromeRootStoreConstraintMinAndMaxVersion) {
   }
 }
 
+TEST_F(CertVerifyProcBuiltinTest, ChromeRootStoreConstraintNameConstraints) {
+  auto [leaf, root] = CertBuilder::CreateSimpleChain2();
+  ScopedTestRoot scoped_root(root->GetX509Certificate());
+
+  // If the the CRS root has dns name constraints and the cert's names don't
+  // match the name constraints, verification should fail.
+  {
+    std::array<std::string_view, 2> permitted_dns_names = {
+        std::string_view("example.org"),
+        std::string_view("foo.example.com"),
+    };
+    SetMockChromeRootConstraints(
+        {{.permitted_dns_names = permitted_dns_names}});
+    CertVerifyResult verify_result;
+    NetLogSource verify_net_log_source;
+    TestCompletionCallback callback;
+    Verify(leaf->GetX509Certificate(), "www.example.com",
+           /*flags=*/0, &verify_result, &verify_net_log_source,
+           callback.callback());
+
+    int error = callback.WaitForResult();
+    EXPECT_THAT(error, IsError(ERR_CERT_AUTHORITY_INVALID));
+  }
+
+  // If cert's names match the CRS name constraints, verification should
+  // succeed.
+  {
+    std::array<std::string_view, 2> permitted_dns_names = {
+        std::string_view("example.org"),
+        std::string_view("example.com"),
+    };
+    SetMockChromeRootConstraints(
+        {{.permitted_dns_names = permitted_dns_names}});
+    CertVerifyResult verify_result;
+    NetLogSource verify_net_log_source;
+    TestCompletionCallback callback;
+    Verify(leaf->GetX509Certificate(), "www.example.com",
+           /*flags=*/0, &verify_result, &verify_net_log_source,
+           callback.callback());
+
+    int error = callback.WaitForResult();
+    EXPECT_THAT(error, IsOk());
+  }
+}
+
 // Tests multiple constraint objects in the constraints vector. The CRS
 // constraints are satisfied if at least one of the constraint objects is
 // satisfied.
@@ -2052,7 +2099,7 @@ TEST_F(CertVerifyProcBuiltinTest, IterationLimit) {
   int error = callback.WaitForResult();
 
   auto events = net_log_observer.GetEntriesForSource(verify_net_log_source);
-  auto event = base::ranges::find_if(events, [](const NetLogEntry& e) {
+  auto event = std::ranges::find_if(events, [](const NetLogEntry& e) {
     return e.type == NetLogEventType::CERT_VERIFY_PROC_PATH_BUILD_ATTEMPT &&
            e.phase == NetLogEventPhase::END;
   });

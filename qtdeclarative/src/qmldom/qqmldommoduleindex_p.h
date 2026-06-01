@@ -35,13 +35,13 @@ public:
 
     Path pathFromOwner() const
     {
-        return Path::Field(Fields::moduleScope)
-                .key(version.isValid() ? QString::number(version.minorVersion) : QString());
+        return Path::fromField(Fields::moduleScope)
+                .withKey(version.isValid() ? QString::number(version.minorVersion) : QString());
     }
     Path pathFromOwner(const DomItem &) const override { return pathFromOwner(); }
     Path canonicalPath(const DomItem &self) const override
     {
-        return self.owner().canonicalPath().path(pathFromOwner());
+        return self.owner().canonicalPath().withPath(pathFromOwner());
     }
     bool iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const override;
 

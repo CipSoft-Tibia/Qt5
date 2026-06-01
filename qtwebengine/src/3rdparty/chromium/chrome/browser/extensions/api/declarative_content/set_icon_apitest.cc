@@ -44,7 +44,7 @@ class SetIconAPITest : public ExtensionApiTest {
       // Set the channel to "trunk" since declarativeContent is restricted
       // to trunk.
       : current_channel_(version_info::Channel::UNKNOWN) {}
-  ~SetIconAPITest() override {}
+  ~SetIconAPITest() override = default;
 
  protected:
   const Extension* LoadTestExtension() {
@@ -112,11 +112,11 @@ IN_PROC_BROWSER_TEST_F(SetIconAPITest, Overview) {
   ASSERT_TRUE(action);
 
   EXPECT_TRUE(action->GetDeclarativeIcon(tab_id).IsEmpty());
-  EXPECT_FALSE(NavigateInRenderer(tab, GURL("http://example.com/?show")));
+  EXPECT_FALSE(NavigateInRenderer(tab, GURL("https://example.com/?show")));
   EXPECT_FALSE(action->GetDeclarativeIcon(tab_id).IsEmpty());
 
   // Navigating to an unmatched page should reset the icon.
-  EXPECT_FALSE(NavigateInRenderer(tab, GURL("http://example.com/?hide")));
+  EXPECT_FALSE(NavigateInRenderer(tab, GURL("https://example.com/?hide")));
   EXPECT_TRUE(action->GetDeclarativeIcon(tab_id).IsEmpty());
 }
 

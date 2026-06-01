@@ -114,6 +114,10 @@ public:
     virtual void setTopRightRadius(qreal radius) = 0;
     virtual void setBottomLeftRadius(qreal radius) = 0;
     virtual void setBottomRightRadius(qreal radius) = 0;
+    virtual void resetTopLeftRadius() = 0;
+    virtual void resetTopRightRadius() = 0;
+    virtual void resetBottomLeftRadius() = 0;
+    virtual void resetBottomRightRadius() = 0;
     virtual void setAntialiasing(bool antialiasing) { Q_UNUSED(antialiasing); }
     virtual void setAligned(bool aligned) = 0;
 

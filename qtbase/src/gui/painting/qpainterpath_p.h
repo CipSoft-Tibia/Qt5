@@ -19,11 +19,11 @@
 #include "QtGui/qpainterpath.h"
 #include "QtGui/qregion.h"
 #include "QtCore/qlist.h"
-#include "QtCore/qshareddata.h"
 #include "QtCore/qvarlengtharray.h"
 
 #include <private/qvectorpath_p.h>
 #include <private/qstroker_p.h>
+#include <private/qbezier_p.h>
 
 #include <memory>
 
@@ -35,8 +35,8 @@ class QVectorPathConverter;
 class QVectorPathConverter
 {
 public:
-    QVectorPathConverter(const QList<QPainterPath::Element> &path, uint fillRule, bool convex)
-        : pathData(path, fillRule, convex),
+    QVectorPathConverter(const QList<QPainterPath::Element> &path, bool hasWindingFill, bool convex)
+        : pathData(path, hasWindingFill, convex),
           path(pathData.points.data(), path.size(), pathData.elements.data(), pathData.flags)
     {
     }
@@ -46,7 +46,7 @@ public:
     }
 
     struct QVectorPathData {
-        QVectorPathData(const QList<QPainterPath::Element> &path, uint fillRule, bool convex)
+        QVectorPathData(const QList<QPainterPath::Element> &path, bool hasWindingFill, bool convex)
             : elements(path.size()), points(path.size() * 2), flags(0)
         {
             int ptsPos = 0;
@@ -65,7 +65,7 @@ public:
                 isLines = isLines && e.type == (QPainterPath::ElementType) (i%2);
             }
 
-            if (fillRule == Qt::WindingFill)
+            if (hasWindingFill)
                 flags |= QVectorPath::WindingFill;
             else
                 flags |= QVectorPath::OddEvenFill;
@@ -91,7 +91,7 @@ private:
     Q_DISABLE_COPY_MOVE(QVectorPathConverter)
 };
 
-class QPainterPathPrivate : public QSharedData
+class QPainterPathPrivate
 {
 public:
     friend class QPainterPath;
@@ -105,44 +105,41 @@ public:
 #endif
 
     QPainterPathPrivate() noexcept
-        : QSharedData(),
-          cStart(0),
-          fillRule(Qt::OddEvenFill),
-          require_moveTo(false),
+        : require_moveTo(false),
           dirtyBounds(false),
           dirtyControlBounds(false),
           convex(false),
-          pathConverter(nullptr)
+          hasWindingFill(false),
+          cacheEnabled(false)
     {
     }
 
     QPainterPathPrivate(QPointF startPoint)
-        : QSharedData(),
-          elements{ { startPoint.x(), startPoint.y(), QPainterPath::MoveToElement } },
-          cStart(0),
-          fillRule(Qt::OddEvenFill),
+        : elements{ { startPoint.x(), startPoint.y(), QPainterPath::MoveToElement } },
           bounds(startPoint, QSizeF(0, 0)),
           controlBounds(startPoint, QSizeF(0, 0)),
           require_moveTo(false),
           dirtyBounds(false),
           dirtyControlBounds(false),
           convex(false),
-          pathConverter(nullptr)
+          hasWindingFill(false),
+          cacheEnabled(false)
     {
     }
 
     QPainterPathPrivate(const QPainterPathPrivate &other) noexcept
-        : QSharedData(other),
-          elements(other.elements),
-          cStart(other.cStart),
-          fillRule(other.fillRule),
+        : elements(other.elements),
+          m_runLengths(other.m_runLengths),
           bounds(other.bounds),
           controlBounds(other.controlBounds),
+          cStart(other.cStart),
           require_moveTo(false),
           dirtyBounds(other.dirtyBounds),
           dirtyControlBounds(other.dirtyControlBounds),
+          dirtyRunLengths(other.dirtyRunLengths),
           convex(other.convex),
-          pathConverter(nullptr)
+          hasWindingFill(other.hasWindingFill),
+          cacheEnabled(other.cacheEnabled)
     {
     }
 
@@ -153,28 +150,53 @@ public:
     inline void close();
     inline void maybeMoveTo();
     inline void clear();
+    QPointF endPointOfElement(int elemIdx) const;
+    void computeRunLengths();
+    int elementAtLength(qreal len);
+    int elementAtT(qreal t);
+    QBezier bezierAtT(const QPainterPath &path, qreal t, qreal *startingLength,
+                      qreal *bezierLength) const;
+    enum TrimFlags {
+        TrimStart = 0x01,
+        TrimEnd = 0x02
+    };
+    void appendTrimmedElement(QPainterPath *to, int elemIdx, int trimFlags, qreal startLen, qreal endLen);
+    void appendStartOfElement(QPainterPath *to, int elemIdx, qreal len)
+    {
+        appendTrimmedElement(to, elemIdx, TrimEnd, 0, len);
+    }
+    void appendEndOfElement(QPainterPath *to, int elemIdx, qreal len)
+    {
+        appendTrimmedElement(to, elemIdx, TrimStart, len, 0);
+    }
+    void appendSliceOfElement(QPainterPath *to, int elemIdx, qreal fromLen, qreal toLen)
+    {
+        appendTrimmedElement(to, elemIdx, TrimStart | TrimEnd, fromLen, toLen);
+    }
+    void appendElementRange(QPainterPath *to, int first, int last);
 
     const QVectorPath &vectorPath() {
         if (!pathConverter)
-            pathConverter.reset(new QVectorPathConverter(elements, fillRule, convex));
+            pathConverter.reset(new QVectorPathConverter(elements, hasWindingFill, convex));
         return pathConverter->path;
     }
 
 private:
     QList<QPainterPath::Element> elements;
-
-    int cStart;
-    Qt::FillRule fillRule;
-
+    std::unique_ptr<QVectorPathConverter> pathConverter;
+    QList<qreal> m_runLengths;
     QRectF bounds;
     QRectF controlBounds;
 
-    uint require_moveTo : 1;
-    uint dirtyBounds : 1;
-    uint dirtyControlBounds : 1;
-    uint convex : 1;
+    int cStart = 0;
 
-    std::unique_ptr<QVectorPathConverter> pathConverter;
+    bool require_moveTo : 1;
+    bool dirtyBounds : 1;
+    bool dirtyControlBounds : 1;
+    bool dirtyRunLengths : 1;
+    bool convex : 1;
+    bool hasWindingFill : 1;
+    bool cacheEnabled : 1;
 };
 
 class QPainterPathStrokerPrivate
@@ -217,10 +239,7 @@ inline const QPainterPath QVectorPath::convertToPainterPath() const
             }
         }
 
-        if (m_hints & OddEvenFill)
-            data->fillRule = Qt::OddEvenFill;
-        else
-            data->fillRule = Qt::WindingFill;
+        data->hasWindingFill = !(m_hints & OddEvenFill);
         return path;
 }
 
@@ -236,12 +255,11 @@ inline bool QPainterPathPrivate::isClosed() const
 
 inline void QPainterPathPrivate::close()
 {
-    Q_ASSERT(ref.loadRelaxed() == 1);
     require_moveTo = true;
     const QPainterPath::Element &first = elements.at(cStart);
     QPainterPath::Element &last = elements.last();
     if (first.x != last.x || first.y != last.y) {
-        if (qFuzzyCompare(first.x, last.x) && qFuzzyCompare(first.y, last.y)) {
+        if (qFuzzyCompare(QPointF(first), QPointF(last))) {
             last.x = first.x;
             last.y = first.y;
         } else {
@@ -263,9 +281,8 @@ inline void QPainterPathPrivate::maybeMoveTo()
 
 inline void QPainterPathPrivate::clear()
 {
-    Q_ASSERT(ref.loadRelaxed() == 1);
-
     elements.clear();
+    m_runLengths.clear();
 
     cStart = 0;
     bounds = {};
@@ -274,12 +291,39 @@ inline void QPainterPathPrivate::clear()
     require_moveTo = false;
     dirtyBounds = false;
     dirtyControlBounds = false;
+    dirtyRunLengths = false;
     convex = false;
 
     pathConverter.reset();
 }
-#define KAPPA qreal(0.5522847498)
 
+inline QPointF QPainterPathPrivate::endPointOfElement(int elemIdx) const
+{
+    const QPainterPath::Element &e = elements.at(elemIdx);
+    if (e.isCurveTo())
+        return elements.at(elemIdx + 2);
+    else
+        return e;
+}
+
+inline int QPainterPathPrivate::elementAtLength(qreal len)
+{
+    Q_ASSERT(cacheEnabled);
+    Q_ASSERT(!dirtyRunLengths);
+    const auto it = std::lower_bound(m_runLengths.constBegin(), m_runLengths.constEnd(), len);
+    return (it == m_runLengths.constEnd()) ? m_runLengths.size() - 1 : int(it - m_runLengths.constBegin());
+}
+
+inline int QPainterPathPrivate::elementAtT(qreal t)
+{
+    Q_ASSERT(cacheEnabled);
+    if (dirtyRunLengths)
+        computeRunLengths();
+    qreal len = t * m_runLengths.constLast();
+    return elementAtLength(len);
+}
+
+#define KAPPA qreal(0.5522847498)
 
 QT_END_NAMESPACE
 

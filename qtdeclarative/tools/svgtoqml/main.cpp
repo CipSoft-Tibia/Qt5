@@ -72,6 +72,11 @@ int main(int argc, char *argv[])
                                                                            "this option is set."));
     parser.addOption(keepPathsOption);
 
+    QCommandLineOption untrustedOption("no-assume-trusted-source",
+                                       QCoreApplication::translate("main", "When parsing the SVG, this enables certain checks and restrictions which "
+                                                                           "are not enabled by default."));
+    parser.addOption(untrustedOption);
+
 #ifdef ENABLE_GUI
     QCommandLineOption guiOption({ "v", "view" },
                                  QCoreApplication::translate("main", "Display the generated QML in a window. This is the default behavior if no "
@@ -101,6 +106,8 @@ int main(int argc, char *argv[])
     }
 
     QQuickVectorImageGenerator::GeneratorFlags flags;
+    if (!parser.isSet(untrustedOption))
+        flags |= QQuickVectorImageGenerator::GeneratorFlag::AssumeTrustedSource;
     if (parser.isSet(curveRendererOption))
         flags |= QQuickVectorImageGenerator::GeneratorFlag::CurveRenderer;
     if (parser.isSet(optimizeOption))
@@ -128,7 +135,7 @@ int main(int argc, char *argv[])
                 QCoreApplication::exit(-1);
             if (obj) {
                 auto *containerItem = obj->findChild<QQuickItem*>(QStringLiteral("svg_item"));
-                QQuickItemGenerator generator(inFileName, flags, containerItem);
+                QQuickItemGenerator generator(inFileName, flags, containerItem, engine.rootContext());
                 generator.generate();
             }
         });

@@ -4,6 +4,7 @@
 """Definitions of builders in the tryserver.chromium.android builder group."""
 
 load("//lib/branches.star", "branches")
+load("//lib/builder_config.star", "builder_config")
 load("//lib/builders.star", "os", "siso")
 load("//lib/try.star", "try_")
 load("//lib/consoles.star", "consoles")
@@ -31,6 +32,34 @@ consoles.list_view(
 )
 
 try_.builder(
+    name = "android-desktop-arm64-clobber-rel",
+    mirrors = [
+        "ci/android-desktop-arm64-archive-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/android-desktop-arm64-archive-rel",
+            "release_try_builder",
+            "chrome_with_codecs",
+        ],
+    ),
+)
+
+try_.builder(
+    name = "android-desktop-x64-clobber-rel",
+    mirrors = [
+        "ci/android-desktop-x64-archive-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/android-desktop-x64-archive-rel",
+            "release_try_builder",
+            "chrome_with_codecs",
+        ],
+    ),
+)
+
+try_.builder(
     name = "android-desktop-arm64-compile-rel",
     mirrors = [
         "ci/android-desktop-arm64-compile-rel",
@@ -48,12 +77,18 @@ try_.builder(
     mirrors = [
         "ci/android-desktop-x64-compile-rel",
     ],
+    builder_config_settings = builder_config.try_settings(
+        include_all_triggered_testers = True,
+        is_compile_only = True,
+    ),
     gn_args = gn_args.config(
         configs = [
             "ci/android-desktop-x64-compile-rel",
             "release_try_builder",
         ],
     ),
+    builderless = False,
+    tryjob = try_.job(),
 )
 
 try_.builder(
@@ -78,6 +113,34 @@ try_.builder(
         configs = [
             "ci/android-desktop-x64-compile-dbg",
             "debug_try_builder",
+        ],
+    ),
+)
+
+try_.builder(
+    name = "android-desktop-14-x64-rel",
+    mirrors = [
+        "ci/android-desktop-x64-compile-rel",
+        "ci/android-desktop-x64-rel-14-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/android-desktop-x64-compile-rel",
+            "release_try_builder",
+        ],
+    ),
+)
+
+try_.builder(
+    name = "android-desktop-15-x64-rel",
+    mirrors = [
+        "ci/android-desktop-x64-compile-rel",
+        "ci/android-desktop-x64-rel-15-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/android-desktop-x64-compile-rel",
+            "release_try_builder",
         ],
     ),
 )

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsutils_p.h"
 #include "qqmljstyperesolver_p.h"
@@ -123,8 +124,8 @@ std::optional<QQmlJSFixSuggestion> QQmlJSUtils::didYouMean(const QString &userIn
          * Roughly based on
          * https://en.wikipedia.org/wiki/Levenshtein_distance#Iterative_with_two_matrix_rows.
          */
-        QList<int> v0(candidate.size() + 1);
-        QList<int> v1(candidate.size() + 1);
+        QVarLengthArray<int> v0(candidate.size() + 1);
+        QVarLengthArray<int> v1(candidate.size() + 1);
 
         std::iota(v0.begin(), v0.end(), 0);
 
@@ -252,10 +253,11 @@ QStringList QQmlJSUtils::resourceFilesFromBuildFolders(const QStringList &buildF
 {
     QStringList result;
     for (const QString &path : buildFolders) {
-        QDirIterator it(path, QStringList{ u"*.qrc"_s }, QDir::Files | QDir::Hidden,
-                        QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            result.append(it.next());
+        for (auto it : QDirListing{ path, QStringList{ u"*.qrc"_s },
+                                    QDirListing::IteratorFlag::Recursive
+                                            | QDirListing::IteratorFlag::FilesOnly
+                                            | QDirListing::IteratorFlag::IncludeHidden }) {
+            result.append(it.filePath());
         }
     }
     return result;

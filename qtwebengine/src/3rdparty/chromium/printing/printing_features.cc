@@ -18,7 +18,7 @@ namespace features {
 // Add printers via printscanmgr instead of debugd.
 BASE_FEATURE(kAddPrinterViaPrintscanmgr,
              "AddPrinterViaPrintscanmgr",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
@@ -69,7 +69,12 @@ BASE_FEATURE(kUseXpsForPrintingFromPdf,
 // out-of-process.
 BASE_FEATURE(kEnableOopPrintDrivers,
              "EnableOopPrintDrivers",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
+             base::FEATURE_ENABLED_BY_DEFAULT
+#else
+             base::FEATURE_DISABLED_BY_DEFAULT
+#endif
+);
 
 const base::FeatureParam<bool> kEnableOopPrintDriversEarlyStart{
     &kEnableOopPrintDrivers, "EarlyStart", false};

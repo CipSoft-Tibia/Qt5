@@ -35,8 +35,7 @@
 #include "third_party/blink/renderer/core/css/container_query_evaluator.h"
 #include "third_party/blink/renderer/core/css/css_resolution_units.h"
 #include "third_party/blink/renderer/core/dom/element.h"
-#include "third_party/blink/renderer/core/dom/layout_tree_builder_traversal.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
+#include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
 #include "third_party/blink/renderer/core/layout/adjust_for_absolute_zoom.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
@@ -57,7 +56,7 @@ std::optional<double> FindSizeForContainerAxis(
   const TreeScope* tree_scope = nullptr;
   if (container_name) {
     selector = ContainerSelector(container_name->GetName(), requested_axis,
-                                 kLogicalAxesNone);
+                                 kLogicalAxesNone, /* scroll_state */ false);
     tree_scope = container_name->GetTreeScope();
   } else {
     selector = ContainerSelector(requested_axis);
@@ -66,10 +65,9 @@ std::optional<double> FindSizeForContainerAxis(
 
   for (Element* container = ContainerQueryEvaluator::FindContainer(
            context_element, selector, tree_scope);
-       container;
-       container = ContainerQueryEvaluator::FindContainer(
-           ContainerQueryEvaluator::ParentContainerCandidateElement(*container),
-           selector, tree_scope)) {
+       container; container = ContainerQueryEvaluator::FindContainer(
+                      FlatTreeTraversal::ParentElement(*container), selector,
+                      tree_scope)) {
     ContainerQueryEvaluator& evaluator =
         container->EnsureContainerQueryEvaluator();
     evaluator.SetReferencedByUnit();
@@ -310,7 +308,8 @@ CSSToLengthConversionData::CSSToLengthConversionData(
     const ContainerSizes& container_sizes,
     const AnchorData& anchor_data,
     float zoom,
-    Flags& flags)
+    Flags& flags,
+    const Element* element)
     : CSSLengthResolver(
           ClampTo<float>(zoom, std::numeric_limits<float>::denorm_min())),
       writing_mode_(writing_mode),
@@ -319,7 +318,8 @@ CSSToLengthConversionData::CSSToLengthConversionData(
       viewport_size_(viewport_size),
       container_sizes_(container_sizes),
       anchor_data_(anchor_data),
-      flags_(&flags) {}
+      flags_(&flags),
+      element_(element) {}
 
 float CSSToLengthConversionData::EmFontSize(float zoom) const {
   SetFlag(Flag::kEm);
@@ -343,12 +343,14 @@ float CSSToLengthConversionData::RexFontSize(float zoom) const {
   // element does not necessarily cause a style difference for the root element,
   // hence will not cause an invalidation of root font relative dependent
   // styles. See also Node::MarkSubtreeNeedsStyleRecalcForFontUpdates().
+  SetFlag(Flag::kRexRelative);
   SetFlag(Flag::kGlyphRelative);
   SetFlag(Flag::kRootFontRelative);
   return font_sizes_.Rex(zoom);
 }
 
 float CSSToLengthConversionData::ChFontSize(float zoom) const {
+  SetFlag(Flag::kChRelative);
   SetFlag(Flag::kGlyphRelative);
   return font_sizes_.Ch(zoom);
 }
@@ -360,12 +362,14 @@ float CSSToLengthConversionData::RchFontSize(float zoom) const {
   // element does not necessarily cause a style difference for the root element,
   // hence will not cause an invalidation of root font relative dependent
   // styles. See also Node::MarkSubtreeNeedsStyleRecalcForFontUpdates().
+  SetFlag(Flag::kRchRelative);
   SetFlag(Flag::kGlyphRelative);
   SetFlag(Flag::kRootFontRelative);
   return font_sizes_.Rch(zoom);
 }
 
 float CSSToLengthConversionData::IcFontSize(float zoom) const {
+  SetFlag(Flag::kIcRelative);
   SetFlag(Flag::kGlyphRelative);
   return font_sizes_.Ic(zoom);
 }
@@ -377,6 +381,7 @@ float CSSToLengthConversionData::RicFontSize(float zoom) const {
   // element does not necessarily cause a style difference for the root element,
   // hence will not cause an invalidation of root font relative dependent
   // styles. See also Node::MarkSubtreeNeedsStyleRecalcForFontUpdates().
+  SetFlag(Flag::kRicRelative);
   SetFlag(Flag::kGlyphRelative);
   SetFlag(Flag::kRootFontRelative);
   return font_sizes_.Ric(zoom);
@@ -384,7 +389,7 @@ float CSSToLengthConversionData::RicFontSize(float zoom) const {
 
 float CSSToLengthConversionData::LineHeight(float zoom) const {
   SetFlag(Flag::kGlyphRelative);
-  SetFlag(Flag::kLineHeightRelative);
+  SetFlag(Flag::kLhRelative);
   return line_height_size_.Lh(zoom);
 }
 
@@ -397,7 +402,7 @@ float CSSToLengthConversionData::RootLineHeight(float zoom) const {
   // styles. See also Node::MarkSubtreeNeedsStyleRecalcForFontUpdates().
   SetFlag(Flag::kGlyphRelative);
   SetFlag(Flag::kRootFontRelative);
-  SetFlag(Flag::kLineHeightRelative);
+  SetFlag(Flag::kRlhRelative);
   return line_height_size_.Rlh(zoom);
 }
 
@@ -409,6 +414,7 @@ float CSSToLengthConversionData::CapFontSize(float zoom) const {
   // hence will not cause an invalidation of root font relative dependent
   // styles. See also Node::MarkSubtreeNeedsStyleRecalcForFontUpdates().
   SetFlag(Flag::kGlyphRelative);
+  SetFlag(Flag::kCapRelative);
   return font_sizes_.Cap(zoom);
 }
 
@@ -420,37 +426,38 @@ float CSSToLengthConversionData::RcapFontSize(float zoom) const {
   // hence will not cause an invalidation of root font relative dependent
   // styles. See also Node::MarkSubtreeNeedsStyleRecalcForFontUpdates().
   SetFlag(Flag::kGlyphRelative);
+  SetFlag(Flag::kRcapRelative);
   SetFlag(Flag::kRootFontRelative);
   return font_sizes_.Rcap(zoom);
 }
 
 double CSSToLengthConversionData::ViewportWidth() const {
-  SetFlag(Flag::kStaticViewport);
+  SetFlag(Flag::kViewport);
   return viewport_size_.LargeWidth();
 }
 
 double CSSToLengthConversionData::ViewportHeight() const {
-  SetFlag(Flag::kStaticViewport);
+  SetFlag(Flag::kViewport);
   return viewport_size_.LargeHeight();
 }
 
 double CSSToLengthConversionData::SmallViewportWidth() const {
-  SetFlag(Flag::kStaticViewport);
+  SetFlag(Flag::kSmallLargeViewport);
   return viewport_size_.SmallWidth();
 }
 
 double CSSToLengthConversionData::SmallViewportHeight() const {
-  SetFlag(Flag::kStaticViewport);
+  SetFlag(Flag::kSmallLargeViewport);
   return viewport_size_.SmallHeight();
 }
 
 double CSSToLengthConversionData::LargeViewportWidth() const {
-  SetFlag(Flag::kStaticViewport);
+  SetFlag(Flag::kSmallLargeViewport);
   return viewport_size_.LargeWidth();
 }
 
 double CSSToLengthConversionData::LargeViewportHeight() const {
-  SetFlag(Flag::kStaticViewport);
+  SetFlag(Flag::kSmallLargeViewport);
   return viewport_size_.LargeHeight();
 }
 
@@ -507,6 +514,10 @@ void CSSToLengthConversionData::ReferenceTreeScope() const {
 
 void CSSToLengthConversionData::ReferenceAnchor() const {
   SetFlag(Flag::kAnchorRelative);
+}
+
+void CSSToLengthConversionData::ReferenceSibling() const {
+  SetFlag(Flag::kSiblingRelative);
 }
 
 }  // namespace blink

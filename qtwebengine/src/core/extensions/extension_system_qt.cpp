@@ -7,6 +7,8 @@
 
 #include "extension_system_qt.h"
 
+#include "extension_manager.h"
+
 #include <algorithm>
 
 #include "base/base_paths.h"
@@ -42,6 +44,7 @@
 #include "extensions/browser/extension_pref_value_map_factory.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
+#include "extensions/browser/management_policy.h"
 #include "extensions/browser/quota_service.h"
 #include "extensions/browser/renderer_startup_helper.h"
 #include "extensions/browser/service_worker_manager.h"
@@ -116,6 +119,11 @@ public:
     // Called when ExtensionSystem is shutting down.
     void Shutdown() override {}
 };
+
+QtWebEngineCore::ExtensionManager *ExtensionSystemQt::extensionManager()
+{
+    return extension_manager_.get();
+}
 
 void ExtensionSystemQt::LoadExtension(const base::Value::Dict &manifest, const base::FilePath &directory)
 {
@@ -220,7 +228,7 @@ ExtensionService *ExtensionSystemQt::extension_service()
 
 ManagementPolicy *ExtensionSystemQt::management_policy()
 {
-    return nullptr;
+    return management_policy_.get();
 }
 
 UserScriptManager *ExtensionSystemQt::user_script_manager()
@@ -290,6 +298,8 @@ void ExtensionSystemQt::Init(bool extensions_enabled)
     service_worker_manager_ = std::make_unique<ServiceWorkerManager>(browser_context_);
     user_script_manager_ = std::make_unique<UserScriptManager>(browser_context_);
     quota_service_ = std::make_unique<QuotaService>();
+    extension_manager_ = std::make_unique<QtWebEngineCore::ExtensionManager>(browser_context_);
+    management_policy_ = std::make_unique<ManagementPolicy>();
 
     // Make the chrome://extension-icon/ resource available.
     // content::URLDataSource::Add(browser_context_, new ExtensionIconSource(browser_context_));

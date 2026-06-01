@@ -20,6 +20,7 @@ ScrollablePage {
         }
 
         DelayButton {
+            enabled: !GalleryConfig.disabled
             text: qsTr("DelayButton")
             anchors.horizontalCenter: parent.horizontalCenter
         }

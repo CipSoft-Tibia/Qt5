@@ -245,9 +245,10 @@ BlockedByResponseReasonToResourceRequestBlockedReason(
           kCorpNotSameOriginAfterDefaultedToSameOriginByCoepAndDip;
     case network::mojom::BlockedByResponseReason::kCorpNotSameSite:
       return blink::ResourceRequestBlockedReason::kCorpNotSameSite;
+    case network::mojom::BlockedByResponseReason::kSRIMessageSignatureMismatch:
+      return blink::ResourceRequestBlockedReason::kSRIMessageSignatureMismatch;
   }
-  NOTREACHED_IN_MIGRATION();
-  return blink::ResourceRequestBlockedReason::kOther;
+  NOTREACHED();
 }
 }  // namespace
 
@@ -288,8 +289,7 @@ String DescriptionForBlockedByClientOrResponse(
   std::string detail;
   switch (*reason) {
     case ResourceRequestBlockedReason::kOther:
-      NOTREACHED_IN_MIGRATION();  // handled above
-      break;
+      NOTREACHED();  // handled above
     case ResourceRequestBlockedReason::kCSP:
       detail = "CSP";
       break;
@@ -336,6 +336,8 @@ String DescriptionForBlockedByClientOrResponse(
     case ResourceRequestBlockedReason::kConversionRequest:
       detail = "ConversionRequest";
       break;
+    case ResourceRequestBlockedReason::kSRIMessageSignatureMismatch:
+      detail = "SRIMessageSignatureMismatch";
   }
   return WebString::FromASCII(net::ErrorToString(error) + "." + detail);
 }

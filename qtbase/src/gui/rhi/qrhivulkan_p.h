@@ -669,6 +669,15 @@ struct QVkSwapChain : public QRhiSwapChain
     friend class QRhiVulkan;
 };
 
+class QVulkanAdapter : public QRhiAdapter
+{
+public:
+    QRhiDriverInfo info() const override;
+
+    VkPhysicalDevice physDev;
+    QRhiDriverInfo adapterInfo;
+};
+
 class QRhiVulkan : public QRhiImplementation
 {
 public:
@@ -676,6 +685,7 @@ public:
 
     bool create(QRhi::Flags flags) override;
     void destroy() override;
+    QRhi::AdapterList enumerateAdaptersBeforeCreate(QRhiNativeHandles *nativeHandles) const override;
 
     QRhiGraphicsPipeline *createGraphicsPipeline() override;
     QRhiComputePipeline *createComputePipeline() override;
@@ -822,7 +832,7 @@ public:
     QRhi::FrameOpResult startPrimaryCommandBuffer(VkCommandBuffer *cb);
     QRhi::FrameOpResult endAndSubmitPrimaryCommandBuffer(VkCommandBuffer cb, VkFence cmdFence,
                                                          VkSemaphore *waitSem, VkSemaphore *signalSem);
-    void waitCommandCompletion(int frameSlot);
+    QRhi::FrameOpResult waitCommandCompletion(int frameSlot);
     VkDeviceSize subresUploadByteSize(const QRhiTextureSubresourceUploadDescription &subresDesc) const;
     using BufferImageCopyList = QVarLengthArray<VkBufferImageCopy, 16>;
     void prepareUploadSubres(QVkTexture *texD, int layer, int level,
@@ -847,6 +857,7 @@ public:
     void executeDeferredReleases(bool forced = false);
     void finishActiveReadbacks(bool forced = false);
 
+    void setAllocationName(QVkAlloc allocation, const QByteArray &name, int slot = -1);
     void setObjectName(uint64_t object, VkObjectType type, const QByteArray &name, int slot = -1);
     void trackedBufferBarrier(QVkCommandBuffer *cbD, QVkBuffer *bufD, int slot,
                               VkAccessFlags access, VkPipelineStageFlags stage);
@@ -989,7 +1000,7 @@ public:
         VkBuffer stagingBuf;
         QVkAlloc stagingAlloc;
         quint32 byteSize;
-        QSize pixelSize;
+        QRect rect;
         QRhiTexture::Format format;
     };
     QVarLengthArray<TextureReadback, 2> activeTextureReadbacks;

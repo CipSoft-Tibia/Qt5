@@ -160,6 +160,9 @@ macro(qt_internal_setup_configure_install_paths)
     qt_configure_process_path(INSTALL_INCLUDEDIR "include" "Header files [PREFIX/include]")
     qt_configure_process_path(INSTALL_LIBDIR "lib" "Libraries [PREFIX/lib]")
     qt_configure_process_path(INSTALL_MKSPECSDIR "mkspecs" "Mkspecs files [PREFIX/mkspecs]")
+    qt_configure_process_path(INSTALL_SHAREDIR "share" "Share files [PREFIX/share]")
+    qt_configure_process_path(INSTALL_QT_SHAREDIR "${INSTALL_SHAREDIR}/qt6"
+        "Qt namespaced sharedir [SHAREDIR/qt6]")
     qt_configure_process_path(INSTALL_ARCHDATADIR "." "Arch-dependent data [PREFIX]")
     qt_configure_process_path(INSTALL_PLUGINSDIR
                               "${INSTALL_ARCHDATADIR}/plugins"
@@ -263,3 +266,20 @@ macro(qt_internal_setup_paths_and_prefixes)
 
     qt_internal_set_qt_apple_support_files_path()
 endmacro()
+
+# Returns the prefix for the variables defined by HostInfo package. The prefix
+# is based on version information provided by HostInfo. Falls back to current
+# project version if ${INSTALL_CMAKE_NAMESPACE}HostInfo_VERSION_MAJOR is not
+# defined.
+function(qt_internal_get_host_info_var_prefix out_var)
+    if(${INSTALL_CMAKE_NAMESPACE}HostInfo_VERSION_MAJOR)
+        set(${out_var} "QT${${INSTALL_CMAKE_NAMESPACE}HostInfo_VERSION_MAJOR}_HOST_INFO"
+            PARENT_SCOPE)
+    else()
+        # This is not a valid way to define the host info versioned prefix, but
+        # it's backward compatible with Qt versions older than 6.10.
+        #
+        # TODO: remove once Qt LTS versions older than 6.10 reach end of life.
+        set(${out_var} "QT${PROJECT_VERSION_MAJOR}_HOST_INFO" PARENT_SCOPE)
+    endif()
+endfunction()

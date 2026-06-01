@@ -13,9 +13,9 @@
 #include "base/functional/callback.h"
 #include "components/autofill/content/browser/bad_message.h"
 #include "components/autofill/content/browser/content_autofill_driver_factory.h"
-#include "components/autofill/core/browser/autofill_client.h"
-#include "components/autofill/core/browser/autofill_driver_router.h"
 #include "components/autofill/core/browser/form_structure.h"
+#include "components/autofill/core/browser/foundations/autofill_client.h"
+#include "components/autofill/core/browser/foundations/autofill_driver_router.h"
 #include "components/autofill/core/common/aliases.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_util.h"
@@ -25,10 +25,10 @@
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/bindings/message.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/permissions_policy/permissions_policy_features.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
 #include "url/origin.h"
 
 namespace autofill {
@@ -62,16 +62,19 @@ FormData Lift(ContentAutofillDriver& source, FormData form) {
   content::RenderFrameHost& rfh = *source.render_frame_host();
   form.set_host_frame(source.GetFrameToken());
   form.set_main_frame_origin(rfh.GetMainFrame()->GetLastCommittedOrigin());
-  form.set_url([&] {
-    // GetLastCommittedURL() doesn't include URL updates due to
-    // document.open() and so it might be about:blank or about:srcdoc. In this
-    // case fallback to GetLastCommittedOrigin(). See crbug.com/1209270.
-    GURL url = StripAuthAndParams(rfh.GetLastCommittedURL());
-    if (url.SchemeIs(url::kAboutScheme)) {
-      url = StripAuthAndParams(rfh.GetLastCommittedOrigin().GetURL());
-    }
-    return url;
-  }());
+
+  // GetLastCommittedURL() doesn't include URL updates due to
+  // document.open() and so it might be about:blank or about:srcdoc. In this
+  // case fallback to GetLastCommittedOrigin(). See crbug.com/1209270.
+  GURL unstripped_url = rfh.GetLastCommittedURL();
+  if (unstripped_url.SchemeIs(url::kAboutScheme)) {
+    unstripped_url = rfh.GetLastCommittedOrigin().GetURL();
+  }
+  form.set_url(StripAuthAndParams(unstripped_url));
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillIncludeUrlInCrowdsourcing)) {
+    form.set_full_url(StripAuth(unstripped_url));
+  }
 
   // The form signature must be calculated after setting FormData::url.
   FormSignature signature = CalculateFormSignature(form);
@@ -240,7 +243,7 @@ void RouteToManager(ContentAutofillDriver& source,
                         RouterArgs...),
                     void (AutofillManager::*manager_fun)(ManagerArgs...),
                     ActualArgs&&... args) {
-  if (!bad_message::CheckFieldInForm(args...) ||
+  if (!bad_message::CheckArgs(args...) ||
       !bad_message::CheckFrameNotPrerendering(source.render_frame_host())) {
     return;
   }
@@ -322,6 +325,24 @@ void ContentAutofillDriver::GetFourDigitCombinationsFromDom(
   }
 }
 
+void ContentAutofillDriver::ExtractLabeledTextNodeValue(
+    const std::u16string& value_regex,
+    const std::u16string& label_regex,
+    uint32_t number_of_ancestor_levels_to_search,
+    base::OnceCallback<void(const std::string& amount)> response_callback) {
+  if (!IsActive()) {
+    LOG(WARNING) << "Skipped Autofill message for inactive frame";
+    std::move(response_callback).Run(std::string());
+    return;
+  }
+  content::RenderFrameHost* main_rfh = render_frame_host_->GetMainFrame();
+  if (auto* main_driver = GetForRenderFrameHost(main_rfh)) {
+    main_driver->GetAutofillAgent()->ExtractLabeledTextNodeValue(
+        value_regex, label_regex, number_of_ancestor_levels_to_search,
+        std::move(response_callback));
+  }
+}
+
 // static
 ContentAutofillDriver* ContentAutofillDriver::GetForRenderFrameHost(
     content::RenderFrameHost* render_frame_host) {
@@ -369,7 +390,7 @@ std::optional<LocalFrameToken> ContentAutofillDriver::Resolve(
   blink::RemoteFrameToken blink_remote_token(
       absl::get<RemoteFrameToken>(query).value());
   content::RenderFrameHost* remote_rfh =
-      content::RenderFrameHost::FromPlaceholderToken(rph->GetID(),
+      content::RenderFrameHost::FromPlaceholderToken(rph->GetDeprecatedID(),
                                                      blink_remote_token);
   if (!remote_rfh) {
     return std::nullopt;
@@ -377,17 +398,25 @@ std::optional<LocalFrameToken> ContentAutofillDriver::Resolve(
   return LocalFrameToken(remote_rfh->GetFrameToken().value());
 }
 
+ukm::SourceId ContentAutofillDriver::GetPageUkmSourceId() const {
+  if (render_frame_host_->IsInLifecycleState(
+          content::RenderFrameHost::LifecycleState::kPrerendering)) {
+    // TODO(crbug.com/380129810): When `return ukm::kInvalidSourceId` is
+    // removed, FormInteractionsUkmLogger::CanLog() doesn't need to check the
+    // `ukm::SourceId` anymore.
+    NOTREACHED(base::NotFatalUntil::M134);
+    return ukm::kInvalidSourceId;
+  }
+  return render_frame_host_->GetPageUkmSourceId();
+}
+
 bool ContentAutofillDriver::IsActive() const {
   return render_frame_host_->IsActive();
 }
 
-bool ContentAutofillDriver::IsInAnyMainFrame() const {
-  return render_frame_host_->GetMainFrame() == render_frame_host();
-}
-
 bool ContentAutofillDriver::HasSharedAutofillPermission() const {
   return render_frame_host_->IsFeatureEnabled(
-      blink::mojom::PermissionsPolicyFeature::kSharedAutofill);
+      network::mojom::PermissionsPolicyFeature::kSharedAutofill);
 }
 
 bool ContentAutofillDriver::CanShowAutofillUi() const {
@@ -452,11 +481,13 @@ void ContentAutofillDriver::ExtractForm(FormGlobalId form_id,
 }
 
 void ContentAutofillDriver::SendTypePredictionsToRenderer(
-    const std::vector<raw_ptr<FormStructure, VectorExperimental>>& forms) {
+    base::span<const raw_ptr<FormStructure, VectorExperimental>> forms) {
+  if (!base::FeatureList::IsEnabled(
+          features::test::kAutofillShowTypePredictions)) {
+    return;
+  }
   std::vector<FormDataPredictions> type_predictions =
       FormStructure::GetFieldTypePredictions(forms);
-  // TODO(crbug.com/40753022) Send the FormDataPredictions object only if the
-  // debugging flag is enabled.
   RouteToAgent(router(), &AutofillDriverRouter::SendTypePredictionsToRenderer,
                &mojom::AutofillAgent::FieldTypePredictionsAvailable,
                type_predictions);
@@ -502,11 +533,9 @@ void ContentAutofillDriver::FormsSeen(
 
 void ContentAutofillDriver::FormSubmitted(
     const FormData& form,
-    bool known_success,
     mojom::SubmissionSource submission_source) {
   RouteToManager(*this, router(), &AutofillDriverRouter::FormSubmitted,
-                 &AutofillManager::OnFormSubmitted, form, known_success,
-                 submission_source);
+                 &AutofillManager::OnFormSubmitted, form, submission_source);
 }
 
 void ContentAutofillDriver::CaretMovedInFormField(
@@ -518,11 +547,11 @@ void ContentAutofillDriver::CaretMovedInFormField(
                  caret_bounds);
 }
 
-void ContentAutofillDriver::TextFieldDidChange(const FormData& form,
-                                               FieldRendererId field_id,
-                                               base::TimeTicks timestamp) {
-  RouteToManager(*this, router(), &AutofillDriverRouter::TextFieldDidChange,
-                 &AutofillManager::OnTextFieldDidChange, form, field_id,
+void ContentAutofillDriver::TextFieldValueChanged(const FormData& form,
+                                                  FieldRendererId field_id,
+                                                  base::TimeTicks timestamp) {
+  RouteToManager(*this, router(), &AutofillDriverRouter::TextFieldValueChanged,
+                 &AutofillManager::OnTextFieldValueChanged, form, field_id,
                  timestamp);
 }
 
@@ -532,10 +561,12 @@ void ContentAutofillDriver::TextFieldDidScroll(const FormData& form,
                  &AutofillManager::OnTextFieldDidScroll, form, field_id);
 }
 
-void ContentAutofillDriver::SelectControlDidChange(const FormData& form,
-                                                   FieldRendererId field_id) {
-  RouteToManager(*this, router(), &AutofillDriverRouter::SelectControlDidChange,
-                 &AutofillManager::OnSelectControlDidChange, form, field_id);
+void ContentAutofillDriver::SelectControlSelectionChanged(
+    const FormData& form,
+    FieldRendererId field_id) {
+  RouteToManager(
+      *this, router(), &AutofillDriverRouter::SelectControlSelectionChanged,
+      &AutofillManager::OnSelectControlSelectionChanged, form, field_id);
 }
 
 void ContentAutofillDriver::AskForValuesToFill(
@@ -543,10 +574,6 @@ void ContentAutofillDriver::AskForValuesToFill(
     FieldRendererId field_id,
     const gfx::Rect& caret_bounds,
     AutofillSuggestionTriggerSource trigger_source) {
-  // `kPlusAddressUpdatedInBrowserProcess` should never be used by the renderer.
-  if (!bad_message::CheckValidTriggerSource(trigger_source)) {
-    return;
-  }
   RouteToManager(*this, router(), &AutofillDriverRouter::AskForValuesToFill,
                  &AutofillManager::OnAskForValuesToFill, form, field_id,
                  caret_bounds, trigger_source);
@@ -585,12 +612,10 @@ void ContentAutofillDriver::DidEndTextFieldEditing() {
                  &AutofillManager::OnDidEndTextFieldEditing);
 }
 
-void ContentAutofillDriver::SelectOrSelectListFieldOptionsDidChange(
-    const FormData& form) {
+void ContentAutofillDriver::SelectFieldOptionsDidChange(const FormData& form) {
   RouteToManager(*this, router(),
-                 &AutofillDriverRouter::SelectOrSelectListFieldOptionsDidChange,
-                 &AutofillManager::OnSelectOrSelectListFieldOptionsDidChange,
-                 form);
+                 &AutofillDriverRouter::SelectFieldOptionsDidChange,
+                 &AutofillManager::OnSelectFieldOptionsDidChange, form);
 }
 
 void ContentAutofillDriver::JavaScriptChangedAutofilledValue(

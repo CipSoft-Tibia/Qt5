@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4typedarray_p.h"
 #include "qv4arrayiterator_p.h"
@@ -40,6 +41,7 @@ struct ClampedUInt8 {
     quint8 c;
 };
 
+namespace {
 template <typename T>
 ReturnedValue typeToValue(T t) {
     return Encode(t);
@@ -98,11 +100,11 @@ double valueToType(Value value)
 }
 
 template <typename T>
-ReturnedValue read(const char *data) {
+ReturnedValue readValue(const char *data) {
     return typeToValue(*reinterpret_cast<const T *>(data));
 }
 template <typename T>
-void write(char *data, Value value)
+void writeValue(char *data, Value value)
 {
     *reinterpret_cast<T *>(data) = valueToType<T>(value);
 }
@@ -189,14 +191,15 @@ ReturnedValue atomicStore(char *data, Value v)
     return typeToValue(value);
 }
 
+} // namespace
 
 template<typename T>
 constexpr TypedArrayOperations TypedArrayOperations::create(const char *name)
 {
     return { sizeof(T),
              name,
-             ::read<T>,
-             ::write<T>,
+             ::readValue<T>,
+             ::writeValue<T>,
              { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr },
              nullptr,
              nullptr,
@@ -209,8 +212,8 @@ constexpr TypedArrayOperations TypedArrayOperations::createWithAtomics(const cha
 {
     return { sizeof(T),
              name,
-             ::read<T>,
-             ::write<T>,
+             ::readValue<T>,
+             ::writeValue<T>,
              { ::atomicAdd<T>, ::atomicAnd<T>, ::atomicExchange<T>, ::atomicOr<T>, ::atomicSub<T>, ::atomicXor<T> },
              ::atomicCompareExchange<T>,
              ::atomicLoad<T>,
@@ -539,12 +542,14 @@ bool TypedArray::virtualDefineOwnProperty(Managed *m, PropertyKey id, const Prop
     return true;
 }
 
+namespace {
 struct TypedArrayOwnPropertyKeyIterator : ObjectOwnPropertyKeyIterator
 {
     ~TypedArrayOwnPropertyKeyIterator() override = default;
     PropertyKey next(const Object *o, Property *pd = nullptr, PropertyAttributes *attrs = nullptr) override;
 
 };
+} // namespace
 
 PropertyKey TypedArrayOwnPropertyKeyIterator::next(const Object *o, Property *pd, PropertyAttributes *attrs)
 {

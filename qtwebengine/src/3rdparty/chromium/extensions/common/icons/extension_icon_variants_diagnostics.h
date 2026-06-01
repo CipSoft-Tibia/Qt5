@@ -17,6 +17,7 @@ enum class Id {
   kIconVariantsInvalid,
   kIconVariantSizeInvalid,
   kIconVariantsKeyMustBeAList,
+  kIconVariantsInvalidMimeType,
 };
 
 // Represents how significant something is.

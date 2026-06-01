@@ -3,6 +3,7 @@
 
 #include "qplatformaudiodevices_p.h"
 
+#include <QtCore/qdebug.h>
 #include <QtMultimedia/qaudiodevice.h>
 #include <QtMultimedia/qmediadevices.h>
 #include <QtMultimedia/private/qaudiosystem_p.h>
@@ -21,6 +22,10 @@
 #endif
 #if QT_CONFIG(pulseaudio)
 #  include <QtMultimedia/private/qpulseaudiodevices_p.h>
+#  include <QtMultimedia/private/qpulsehelpers_p.h>
+#endif
+#if QT_CONFIG(pipewire)
+#  include <QtMultimedia/private/qpipewire_audiodevices_p.h>
 #endif
 #if defined(Q_OS_QNX)
 #  include <QtMultimedia/private/qqnxaudiodevices_p.h>
@@ -35,21 +40,59 @@ std::unique_ptr<QPlatformAudioDevices> QPlatformAudioDevices::create()
 {
 #ifdef Q_OS_DARWIN
     return std::make_unique<QDarwinAudioDevices>();
-#elif defined(Q_OS_WINDOWS)
-    return std::make_unique<QWindowsAudioDevices>();
-#elif defined(Q_OS_ANDROID)
-    return std::make_unique<QAndroidAudioDevices>();
-#elif QT_CONFIG(alsa)
-    return std::make_unique<QAlsaAudioDevices>();
-#elif QT_CONFIG(pulseaudio)
-    return std::make_unique<QPulseAudioDevices>();
-#elif defined(Q_OS_QNX)
-    return std::make_unique<QQnxAudioDevices>();
-#elif defined(Q_OS_WASM)
-    return std::make_unique<QWasmMediaDevices>();
-#else
-    return std::make_unique<QPlatformAudioDevices>();
 #endif
+#if defined(Q_OS_WINDOWS)
+    return std::make_unique<QWindowsAudioDevices>();
+#endif
+#if defined(Q_OS_ANDROID)
+    return std::make_unique<QAndroidAudioDevices>();
+#endif
+#if QT_CONFIG(pipewire)
+    using namespace Qt::Literals;
+    QByteArray requestedBackend = qgetenv("QT_AUDIO_BACKEND");
+    const bool pipewireRequested = requestedBackend == "pipewire"_ba;
+
+#  if QT_CONFIG(pulseaudio)
+    using namespace QPulseAudioInternal;
+    // Check if PulseAudio is actually the vanilla PulseAudio server, not PipeWire's PulseAudio server.
+    // Some funny still distros ship PipeWire and PulseAudio side by side. In that case, we should not
+    // use the PipeWire backend, as it might not report any audio devices.
+    auto skipPipewire = [&] {
+        if (pipewireRequested)
+            return false;
+        return requestedBackend.isNull()
+                && pulseaudioDetectServerType() == PulseaudioServerType::Pulseaudio;
+    };
+#  else
+    auto skipPipewire = [] {
+        return false;
+    };
+#  endif
+
+    const bool considerPipewire = requestedBackend.isNull() || pipewireRequested;
+
+    if (considerPipewire && QtPipeWire::QAudioDevices::isSupported()) {
+        if (!skipPipewire())
+            return std::make_unique<QtPipeWire::QAudioDevices>();
+    }
+
+    if (pipewireRequested)
+        qDebug() << "PipeWire audio backend requested. not available. Using default backend";
+
+#endif
+#if QT_CONFIG(pulseaudio)
+    return std::make_unique<QPulseAudioDevices>();
+#endif
+#if QT_CONFIG(alsa)
+    return std::make_unique<QAlsaAudioDevices>();
+#endif
+#if defined(Q_OS_QNX)
+    return std::make_unique<QQnxAudioDevices>();
+#endif
+#if defined(Q_OS_WASM)
+    return std::make_unique<QWasmMediaDevices>();
+#endif
+    return std::make_unique<QPlatformAudioDevices>();
 }
 
 QPlatformAudioDevices::QPlatformAudioDevices()
@@ -108,7 +151,7 @@ QPlatformAudioSink *QPlatformAudioDevices::createAudioSink(const QAudioDevice &,
     return nullptr;
 }
 
-QPlatformAudioSource *QPlatformAudioDevices::audioInputDevice(const QAudioFormat &format,
+QPlatformAudioSource *QPlatformAudioDevices::audioInputDevice(QAudioFormat format,
                                                               const QAudioDevice &deviceInfo,
                                                               QObject *parent)
 {
@@ -119,10 +162,13 @@ QPlatformAudioSource *QPlatformAudioDevices::audioInputDevice(const QAudioFormat
     if (device.isNull())
         return nullptr;
 
+    if (format == QAudioFormat{})
+        format = device.preferredFormat();
+
     return createAudioSource(device, format, parent);
 }
 
-QPlatformAudioSink *QPlatformAudioDevices::audioOutputDevice(const QAudioFormat &format,
+QPlatformAudioSink *QPlatformAudioDevices::audioOutputDevice(QAudioFormat format,
                                                              const QAudioDevice &deviceInfo,
                                                              QObject *parent)
 {
@@ -132,6 +178,9 @@ QPlatformAudioSink *QPlatformAudioDevices::audioOutputDevice(const QAudioFormat 
 
     if (device.isNull())
         return nullptr;
+
+    if (format == QAudioFormat{})
+        format = device.preferredFormat();
 
     return createAudioSink(device, format, parent);
 }

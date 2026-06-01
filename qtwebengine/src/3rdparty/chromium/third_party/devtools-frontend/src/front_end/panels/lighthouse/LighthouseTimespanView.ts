@@ -7,7 +7,7 @@ import * as Buttons from '../../ui/components/buttons/buttons.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import lighthouseDialogStyles from './lighthouseDialog.css.js';
-import {type LighthousePanel} from './LighthousePanel.js';
+import type {LighthousePanel} from './LighthousePanel.js';
 
 const UIStrings = {
   /**
@@ -68,8 +68,8 @@ export class TimespanView extends UI.Dialog.Dialog {
   }
 
   render(): void {
-    const dialogRoot = UI.UIUtils.createShadowRootWithCoreStyles(
-        this.contentElement, {cssFile: [lighthouseDialogStyles], delegatesFocus: undefined});
+    const dialogRoot =
+        UI.UIUtils.createShadowRootWithCoreStyles(this.contentElement, {cssFile: lighthouseDialogStyles});
 
     this.endButton = UI.UIUtils.createTextButton(
         i18nString(UIStrings.endTimespan),

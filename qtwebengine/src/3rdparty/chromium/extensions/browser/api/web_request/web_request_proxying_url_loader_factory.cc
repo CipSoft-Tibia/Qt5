@@ -105,8 +105,7 @@ class ShutdownNotifierFactory2
 
   content::BrowserContext* GetBrowserContextToUse(
       content::BrowserContext* context) const override {
-    return ExtensionsBrowserClient::Get()->GetContextOwnInstance(
-        context, /*force_guest_profile=*/true);
+    return ExtensionsBrowserClient::Get()->GetContextOwnInstance(context);
   }
 };
 
@@ -225,8 +224,6 @@ WebRequestProxyingURLLoaderFactory::InProgressRequest::~InProgressRequest() {
       TRACE_EVENT_FLAG_FLOW_IN, "state", state_);
 
   if (request_.keepalive && !for_cors_preflight_) {
-    UMA_HISTOGRAM_ENUMERATION("Extensions.WebRequest.KeepaliveRequestState",
-                              state_);
     if (base::FeatureList::IsEnabled(
             extensions_features::kReportKeepaliveUkm)) {
       ukm::builders::Extensions_WebRequest_KeepaliveRequestFinished(
@@ -397,20 +394,6 @@ void WebRequestProxyingURLLoaderFactory::InProgressRequest::SetPriority(
     int32_t intra_priority_value) {
   if (target_loader_.is_bound()) {
     target_loader_->SetPriority(priority, intra_priority_value);
-  }
-}
-
-void WebRequestProxyingURLLoaderFactory::InProgressRequest::
-    PauseReadingBodyFromNet() {
-  if (target_loader_.is_bound()) {
-    target_loader_->PauseReadingBodyFromNet();
-  }
-}
-
-void WebRequestProxyingURLLoaderFactory::InProgressRequest::
-    ResumeReadingBodyFromNet() {
-  if (target_loader_.is_bound()) {
-    target_loader_->ResumeReadingBodyFromNet();
   }
 }
 
@@ -918,7 +901,7 @@ void WebRequestProxyingURLLoaderFactory::InProgressRequest::
         pending_follow_redirect_params_->modified_headers.SetHeader(
             set_header, *header_value);
       } else {
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
       }
     }
 
@@ -1044,8 +1027,7 @@ void WebRequestProxyingURLLoaderFactory::InProgressRequest::
       state_ = State::kRejectedByOnAuthRequired;
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      return;
+      NOTREACHED();
   }
 
   auth_credentials_ = std::nullopt;

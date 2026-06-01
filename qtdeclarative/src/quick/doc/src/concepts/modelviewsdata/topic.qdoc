@@ -3,7 +3,7 @@
 
 /*!
 \page qtquick-modelviewsdata-topic.html
-\title Important Concepts In Qt Quick - Data - Models, Views and Data Storage
+\title Important Concepts In Qt Quick - Data - Models, Views, and Data Storage
 \brief Overview of the data, model and view concepts
 
 Most applications will have data that needs to be displayed to the user.  That
@@ -23,9 +23,9 @@ see the page titled \l{qtquick-modelviewsdata-modelview.html}
 
 \section1 Data Storage and Access
 
-Databases are commonly used to store information in applications.  Qt Quick
-provides simplified access to relational databases via the
-\l QtQuick.LocalStorage module.
+Databases are commonly used to store information in applications, and Qt includes
+\l{Using SQL databases with Qt Quick Views}{models that provide access to SQL databases}.
+For simple access to SQLite storage, Qt Quick provides the \l QtQuick.LocalStorage module.
 
 */
 

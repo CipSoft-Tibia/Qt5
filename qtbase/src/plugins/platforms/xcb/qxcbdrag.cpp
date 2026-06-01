@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbdrag.h"
 #include <xcb/xcb.h>
@@ -27,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt::Literals::StringLiterals;
+using namespace Qt::StringLiterals;
 
 const int xdnd_version = 5;
 
@@ -860,7 +861,7 @@ void QXcbDrag::handle_xdnd_status(const xcb_client_message_event_t *event)
     if (event->data.data32[0] && event->data.data32[0] != current_target)
         return;
 
-    const bool dropPossible = event->data.data32[1];
+    const bool dropPossible = event->data.data32[1] & 1;
     setCanDrop(dropPossible);
 
     if (dropPossible) {
@@ -994,10 +995,12 @@ void QXcbDrag::handleDrop(QPlatformWindow *, const xcb_client_message_event_t *e
         if (dropData && dropData->hasImage())
             dropData = 0;
     }
+
+    const QDrag *currentDragObject = currentDrag();
     // if we can't find it, then use the data in the drag manager
-    if (currentDrag()) {
+    if (currentDragObject) {
         if (!dropData)
-            dropData = currentDrag()->mimeData();
+            dropData = currentDragObject->mimeData();
         supported_drop_actions = Qt::DropActions(l[4]);
     } else {
         if (!dropData)
@@ -1008,8 +1011,8 @@ void QXcbDrag::handleDrop(QPlatformWindow *, const xcb_client_message_event_t *e
     if (!dropData)
         return;
 
-    auto buttons = currentDrag() ? b : connection()->queryMouseButtons();
-    auto modifiers = currentDrag() ? mods : connection()->keyboard()->queryKeyboardModifiers();
+    auto buttons = currentDragObject ? b : connection()->queryMouseButtons();
+    auto modifiers = currentDragObject ? mods : connection()->keyboard()->queryKeyboardModifiers();
 
     QPlatformDropQtResponse response = QWindowSystemInterface::handleDrop(
                 currentWindow.data(), dropData, currentPosition, supported_drop_actions,

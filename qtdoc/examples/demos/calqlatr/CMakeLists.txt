@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
-project(calqlatr LANGUAGES CXX)
+project(Calqlatr LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 
-qt_standard_project_setup(REQUIRES 6.8)
+qt_standard_project_setup(REQUIRES 6.9)
 
 qt_add_executable(calqlatr WIN32 MACOSX_BUNDLE
     main.cpp
@@ -22,9 +22,9 @@ target_link_libraries(calqlatr PRIVATE
 
 qt_add_qml_module(calqlatr
     URI demos.calqlatr
-    VERSION 1.0
     QML_FILES
         "Main.qml"
+        "content/ApplicationState.qml"
         "content/Display.qml"
         "content/NumberPad.qml"
         "content/CalculatorButton.qml"
@@ -55,12 +55,19 @@ if(ANDROID)
     endif()
 endif()
 
-if(IOS)
-    set(asset_catalog_path "ios/Assets.xcassets")
-    target_sources(calqlatr PRIVATE "${asset_catalog_path}")
-    set_source_files_properties(${asset_catalog_path} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-    set_target_properties(calqlatr
-        PROPERTIES XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon)
+if(APPLE)
+    set_target_properties(calqlatr PROPERTIES
+        OUTPUT_NAME "Calqlatr"
+        MACOSX_BUNDLE_BUNDLE_NAME "Calqlatr"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.qt.calqlatr"
+    )
+    if(IOS)
+        set(asset_catalog_path "ios/Assets.xcassets")
+        target_sources(calqlatr PRIVATE "${asset_catalog_path}")
+        set_source_files_properties(${asset_catalog_path} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+        set_target_properties(calqlatr
+            PROPERTIES XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon)
+    endif()
 endif()
 
 if(WIN32)

@@ -78,13 +78,14 @@ class GTest_TestAdaptor : public ::testing::Test {
         EXPECT_TRUE(false) << "Death test is not supported.";
 #endif
       } else {
-        test->RunInUnitTestMode(configuration_);
+        EXPECT_TRUE(test->RunInUnitTestMode(configuration_))
+            << "Failure(s) found in the unit-test mode.";
       }
     } else {
       // TODO(b/245753736): Consider using `tolerate_failure` when FuzzTest can
       // tolerate crashes in fuzzing mode.
-      ASSERT_EQ(0, test->RunInFuzzingMode(argc_, argv_, configuration_))
-          << "Fuzzing failure.";
+      EXPECT_TRUE(test->RunInFuzzingMode(argc_, argv_, configuration_))
+          << "Failure(s) found in the fuzzing mode.";
     }
   }
 
@@ -115,6 +116,7 @@ class GTest_EventListener : public Base {
   void OnTestPartResult(const TestPartResult& test_part_result) override {
     if (!test_part_result.failed()) return;
     Runtime& runtime = Runtime::instance();
+    runtime.SetCrashTypeIfUnset("GoogleTest assertion failure");
     if (runtime.run_mode() == RunMode::kFuzz) {
       if (runtime.should_terminate_on_non_fatal_failure()) {
         // The SIGABRT will trigger a report.

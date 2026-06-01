@@ -96,7 +96,7 @@ const crosTokenLookup = new Set<string>(CROS_TOKENS);
  * A structure in the JSON data that should correspond to something that needs
  * to be dynamically colored.
  */
-interface DynamicallyColoredObject {
+declare interface DynamicallyColoredObject {
   /**
    * The name of a shape. For Material3 compliant animations, this will be the
    * token name of the color to apply, and we use this field to detect which
@@ -115,7 +115,7 @@ interface DynamicallyColoredObject {
  * This definition of this type is taken from
  * https://lottiefiles.github.io/lottie-docs/concepts/#colors
  */
-export interface LottieShape extends DynamicallyColoredObject {
+export declare interface LottieShape extends DynamicallyColoredObject {
   /** If the color is represented as an array of four floats: [r, g, b, a]. */
   c?: {k: LottieRGBAArray};
   /** If the color is represented as a hex string (less common than `c`). */
@@ -127,7 +127,7 @@ export interface LottieShape extends DynamicallyColoredObject {
  * This definition of this type is taken from
  * https://lottiefiles.github.io/lottie-docs/shapes/#gradients
  */
-export interface LottieGradientShape extends DynamicallyColoredObject {
+export declare interface LottieGradientShape extends DynamicallyColoredObject {
   /** Gradient color type. */
   g: {
     /** The number of colors in this gradient. */

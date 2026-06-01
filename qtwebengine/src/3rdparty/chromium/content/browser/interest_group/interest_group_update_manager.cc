@@ -495,6 +495,11 @@ constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
         }
       }
     }
+    const std::string* maybe_creative_scanning_metadata =
+        ads_dict->FindString("creativeScanningMetadata");
+    if (maybe_creative_scanning_metadata) {
+      ad.creative_scanning_metadata = *maybe_creative_scanning_metadata;
+    }
     const base::Value* maybe_metadata = ads_dict->Find("metadata");
     if (maybe_metadata) {
       std::string metadata;
@@ -816,20 +821,24 @@ InterestGroupUpdateManager::~InterestGroupUpdateManager() = default;
 void InterestGroupUpdateManager::UpdateInterestGroupsOfOwner(
     const url::Origin& owner,
     network::mojom::ClientSecurityStatePtr client_security_state,
+    std::optional<std::string> user_agent_override,
     AreReportingOriginsAttestedCallback callback) {
   attestation_callback_ = std::move(callback);
-  owners_to_update_.Enqueue(owner, std::move(client_security_state));
+  owners_to_update_.Enqueue(owner, std::move(client_security_state),
+                            std::move(user_agent_override));
   MaybeContinueUpdatingCurrentOwner();
 }
 
 void InterestGroupUpdateManager::UpdateInterestGroupsOfOwners(
     base::span<url::Origin> owners,
     network::mojom::ClientSecurityStatePtr client_security_state,
+    std::optional<std::string> user_agent_override,
     AreReportingOriginsAttestedCallback callback) {
   // Shuffle the list of interest group owners for fairness.
   base::RandomShuffle(owners.begin(), owners.end());
   for (const url::Origin& owner : owners) {
-    UpdateInterestGroupsOfOwner(owner, client_security_state.Clone(), callback);
+    UpdateInterestGroupsOfOwner(owner, client_security_state.Clone(),
+                                user_agent_override, callback);
   }
 }
 
@@ -861,9 +870,35 @@ InterestGroupUpdateManager::OwnersToUpdate::FrontSecurityState() const {
   return security_state_map_.at(FrontOwner()).Clone();
 }
 
+InterestGroupUpdateManager::OwnersToUpdate::InterestGroupOwnerUpdateData::
+    InterestGroupOwnerUpdateData() = default;
+
+InterestGroupUpdateManager::OwnersToUpdate::InterestGroupOwnerUpdateData::
+    InterestGroupOwnerUpdateData(std::optional<std::string> user_agent_override)
+    : user_agent_override(std::move(user_agent_override)) {}
+
+InterestGroupUpdateManager::OwnersToUpdate::InterestGroupOwnerUpdateData::
+    ~InterestGroupOwnerUpdateData() = default;
+
+InterestGroupUpdateManager::OwnersToUpdate::InterestGroupOwnerUpdateData::
+    InterestGroupOwnerUpdateData(const InterestGroupOwnerUpdateData& other) =
+        default;
+InterestGroupUpdateManager::OwnersToUpdate::InterestGroupOwnerUpdateData&
+InterestGroupUpdateManager::OwnersToUpdate::InterestGroupOwnerUpdateData::
+operator=(const InterestGroupOwnerUpdateData& other) = default;
+
 bool InterestGroupUpdateManager::OwnersToUpdate::Enqueue(
     const url::Origin& owner,
-    network::mojom::ClientSecurityStatePtr client_security_state) {
+    network::mojom::ClientSecurityStatePtr client_security_state,
+    std::optional<std::string> user_agent_override) {
+  InterestGroupOwnerUpdateData owner_update_data(user_agent_override);
+
+  if (!interest_group_owner_update_data_
+           .emplace(owner, std::move(owner_update_data))
+           .second) {
+    return false;
+  }
+
   if (!security_state_map_.emplace(owner, std::move(client_security_state))
            .second) {
     return false;
@@ -874,10 +909,11 @@ bool InterestGroupUpdateManager::OwnersToUpdate::Enqueue(
 
 void InterestGroupUpdateManager::OwnersToUpdate::PopFront() {
   security_state_map_.erase(owners_to_update_.front());
+  interest_group_owner_update_data_.erase(owners_to_update_.front());
   owners_to_update_.pop_front();
 
   if (owners_to_update_.empty()) {
-    joining_origin_isolation_info_map_.clear();
+    Clear();
   }
 }
 
@@ -889,12 +925,23 @@ InterestGroupUpdateManager::OwnersToUpdate::GetIsolationInfoByJoiningOrigin(
   if (isolation_info_it != joining_origin_isolation_info_map_.end()) {
     return &isolation_info_it->second;
   } else {
-    net::IsolationInfo isolation_info = net::IsolationInfo::CreateTransient();
+    net::IsolationInfo isolation_info =
+        net::IsolationInfo::CreateTransient(/*nonce=*/std::nullopt);
     const auto [it, success] = joining_origin_isolation_info_map_.insert(
         {joining_origin, std::move(isolation_info)});
     CHECK(success);
     return &it->second;
   }
+}
+
+std::optional<std::string>
+InterestGroupUpdateManager::OwnersToUpdate::MaybeGetUserAgentOverride(
+    const url::Origin& owner) const {
+  auto it = interest_group_owner_update_data_.find(owner);
+  if ((it != interest_group_owner_update_data_.end())) {
+    return it->second.user_agent_override;
+  }
+  return std::nullopt;
 }
 
 void InterestGroupUpdateManager::OwnersToUpdate::
@@ -904,6 +951,7 @@ void InterestGroupUpdateManager::OwnersToUpdate::
 
 void InterestGroupUpdateManager::OwnersToUpdate::Clear() {
   owners_to_update_.clear();
+  interest_group_owner_update_data_.clear();
   security_state_map_.clear();
   joining_origin_isolation_info_map_.clear();
 }
@@ -982,7 +1030,8 @@ void InterestGroupUpdateManager::UpdateInterestGroupByBatch(
   // NIK for all storage interest groups.
   net::IsolationInfo per_update_isolation_info;
   if (!base::FeatureList::IsEnabled(::features::kGroupNIKByJoiningOrigin)) {
-    per_update_isolation_info = net::IsolationInfo::CreateTransient();
+    per_update_isolation_info =
+        net::IsolationInfo::CreateTransient(/*nonce=*/std::nullopt);
   }
 
   for (auto& [interest_group_key, update_url, joining_origin] :
@@ -1007,6 +1056,16 @@ void InterestGroupUpdateManager::UpdateInterestGroupByBatch(
     }
     resource_request->trusted_params->client_security_state =
         owners_to_update_.FrontSecurityState();
+
+    auto user_agent_override =
+        owners_to_update_.MaybeGetUserAgentOverride(owner);
+
+    if (user_agent_override) {
+      resource_request->headers.SetHeader(
+          net::HttpRequestHeaders::kUserAgent,
+          std::move(user_agent_override.value()));
+    }
+
     auto simple_url_loader = network::SimpleURLLoader::Create(
         std::move(resource_request), kTrafficAnnotation);
     simple_url_loader->SetTimeoutDuration(base::Seconds(30));

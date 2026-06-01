@@ -66,7 +66,8 @@ class IRProgramTestBase : public BASE, public ProgramBuilder {
             return lower.Failure();
         }
 
-        if (auto validate = core::ir::Validate(result.Get()); validate != Success) {
+        auto validate = core::ir::Validate(result.Get(), kCapabilities);
+        if (validate != Success) {
             return validate.Failure();
         }
         return result;
@@ -79,13 +80,16 @@ class IRProgramTestBase : public BASE, public ProgramBuilder {
         Source::File file("test.wgsl", std::move(wgsl));
         auto result = wgsl::reader::WgslToIR(&file);
         if (result == Success) {
-            auto validated = core::ir::Validate(result.Get());
+            auto validated = core::ir::Validate(result.Get(), kCapabilities);
             if (validated != Success) {
                 return validated.Failure();
             }
         }
         return result;
     }
+
+    core::ir::Capabilities kCapabilities =
+        core::ir::Capabilities{core::ir::Capability::kAllowOverrides};
 };
 
 using IRProgramTest = IRProgramTestBase<testing::Test>;

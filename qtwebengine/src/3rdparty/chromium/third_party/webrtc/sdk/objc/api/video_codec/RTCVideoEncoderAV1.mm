@@ -11,11 +11,11 @@
 
 #import <Foundation/Foundation.h>
 
-#import "RTCMacros.h"
 #import "RTCNativeVideoEncoder.h"
 #import "RTCNativeVideoEncoderBuilder+Native.h"
 #import "RTCVideoEncoderAV1.h"
 #import "helpers/NSString+StdString.h"
+#import "sdk/objc/base/RTCMacros.h"
 
 #include "api/video_codecs/scalability_mode.h"
 #include "modules/video_coding/codecs/av1/av1_svc_config.h"
@@ -27,7 +27,8 @@
 
     @implementation RTC_OBJC_TYPE (RTCVideoEncoderAV1Builder)
 
-    - (std::unique_ptr<webrtc::VideoEncoder>)build:(const webrtc::Environment&)env {
+    - (std::unique_ptr<webrtc::VideoEncoder>)build:
+        (const webrtc::Environment&)env {
       return webrtc::CreateLibaomAv1Encoder(env);
     }
 
@@ -40,12 +41,14 @@
     }
 
     + (NSArray<NSString*>*)supportedScalabilityModes {
-      // `LibaomAv1EncoderSupportedScalabilityModes` returns an std::vector-like container, but
-      // exact type might change, thus use `auto`.
+      // `LibaomAv1EncoderSupportedScalabilityModes` returns an std::vector-like
+      // container, but exact type might change, thus use `auto`.
       auto modes = webrtc::LibaomAv1EncoderSupportedScalabilityModes();
-      NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:std::size(modes)];
+      NSMutableArray<NSString*>* result =
+          [NSMutableArray arrayWithCapacity:std::size(modes)];
       for (webrtc::ScalabilityMode mode : modes) {
-        [result addObject:[NSString stringForAbslStringView:webrtc::ScalabilityModeToString(mode)]];
+        [result addObject:[NSString stringForAbslStringView:
+                                        webrtc::ScalabilityModeToString(mode)]];
       }
       return result;
     }

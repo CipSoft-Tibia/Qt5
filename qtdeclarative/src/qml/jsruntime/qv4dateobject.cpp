@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4dateobject_p.h"
 #include "qv4runtime_p.h"
@@ -527,10 +528,13 @@ static inline double ParseString(const QString &s, double localTZA)
             // ISO 8601 and RFC 2822 with a GMT as prefix on its offset, or GMT as zone.
             QStringLiteral("yyyy-MM-dd hh:mm:ss t"),
             QStringLiteral("ddd, d MMM yyyy hh:mm:ss t"),
+            QStringLiteral("ddd, d MMM yy hh:mm:ss t"),
+            QStringLiteral("ddd, d MMM yyyy h:mm:ss t"),
+            QStringLiteral("ddd, d MMM yy h:mm:ss t"),
         };
 
         for (const QString &format : formats) {
-            dt = format.indexOf(QLatin1String("hh:mm")) < 0
+            dt = format.indexOf(QLatin1String("h:mm")) < 0
                     ? QDate::fromString(s, format).startOfDay(QTimeZone::UTC)
                     : QDateTime::fromString(s, format); // as local time
             if (dt.isValid())
@@ -690,6 +694,10 @@ QDateTime Date::toQDateTime() const
 
 QVariant Date::toVariant() const
 {
+    // Note that we shouldn't and don't read-back here, compared to
+    // most other methods, as this is only used when we perform a
+    // write-back, that is we are sending our version of the data back
+    // to the originating element.
     switch (storage & (HasQDate | HasQTime)) {
     case HasQDate:
         return toQDate();
@@ -704,11 +712,15 @@ QVariant Date::toVariant() const
 
 QDateTime DateObject::toQDateTime() const
 {
+    if (d()->isAttachedToProperty())
+        d()->readReference();
     return d()->toQDateTime();
 }
 
 QString DateObject::toString() const
 {
+    if (d()->isAttachedToProperty())
+        d()->readReference();
     return ToString(d()->date(), engine()->localTZA);
 }
 
@@ -924,8 +936,12 @@ void DatePrototype::init(ExecutionEngine *engine, Object *ctor)
 
 double DatePrototype::getThisDate(ExecutionEngine *v4, const Value *thisObject)
 {
-    if (const DateObject *that = thisObject->as<DateObject>())
+    if (const DateObject *that = thisObject->as<DateObject>()) {
+        if (that->d()->isAttachedToProperty())
+            that->d()->readReference();
+
         return that->date();
+    }
     v4->throwTypeError();
     return 0;
 }
@@ -1511,6 +1527,9 @@ ReturnedValue DatePrototype::method_toUTCString(const FunctionObject *b, const V
     if (!self)
         return v4->throwTypeError();
 
+    if (self->d()->isAttachedToProperty())
+        self->d()->readReference();
+
     double t = self->date();
     return Encode(v4->newString(ToUTCString(t)));
 }
@@ -1534,6 +1553,9 @@ ReturnedValue DatePrototype::method_toISOString(const FunctionObject *b, const V
     DateObject *self = const_cast<DateObject *>(thisObject->as<DateObject>());
     if (!self)
         return v4->throwTypeError();
+
+    if (self->d()->isAttachedToProperty())
+        self->d()->readReference();
 
     double t = self->date();
     if (!std::isfinite(t))

@@ -49,6 +49,7 @@
 QT_USE_NAMESPACE
 
 using namespace Qt::Literals;
+using namespace std::chrono_literals;
 
 namespace {
 qreal colorDifference(QRgb first, QRgb second)
@@ -98,11 +99,17 @@ private slots:
     void getters_returnExpectedValues_whenCalledWithDefaultConstructedPlayer_data() const;
     void getters_returnExpectedValues_whenCalledWithDefaultConstructedPlayer() const;
 
-    void setSource_emitsSourceChanged_whenCalledWithInvalidFile();
-    void setSource_emitsError_whenCalledWithInvalidFile();
-    void setSource_emitsMediaStatusChange_whenCalledWithInvalidFile();
-    void setSource_doesNotEmitPlaybackStateChange_whenCalledWithInvalidFile();
-    void setSource_setsSourceMediaStatusAndError_whenCalledWithInvalidFile();
+    void makeInvalidMediaCase();
+    void setSource_emitsSourceChanged_whenCalledWithInvalidMedia_data();
+    void setSource_emitsSourceChanged_whenCalledWithInvalidMedia();
+    void setSource_emitsError_whenCalledWithInvalidMedia_data();
+    void setSource_emitsError_whenCalledWithInvalidMedia();
+    void setSource_emitsMediaStatusChange_whenCalledWithInvalidMedia_data();
+    void setSource_emitsMediaStatusChange_whenCalledWithInvalidMedia();
+    void setSource_doesNotEmitPlaybackStateChange_whenCalledWithInvalidMedia_data();
+    void setSource_doesNotEmitPlaybackStateChange_whenCalledWithInvalidMedia();
+    void setSource_setsSourceMediaStatusAndError_whenCalledWithInvalidMedia_data();
+    void setSource_setsSourceMediaStatusAndError_whenCalledWithInvalidMedia();
     void setSource_initializesExpectedDefaultState();
     void setSource_initializesExpectedDefaultState_data();
     void setSource_silentlyCancelsPreviousCall_whenServerDoesNotRespond();
@@ -251,6 +258,9 @@ private slots:
     void stressTest_setupAndTeardown_keepVideoOutput();
     void stressTest_setupAndTeardown_keepVideoOutput_data();
 
+    void destruction_doesNotDeadlock_afterMediaPlayerCall();
+    void destruction_doesNotDeadlock_afterMediaPlayerCall_data();
+
 private:
     QUrl selectVideoFile(const QStringList &mediaCandidates);
 
@@ -261,35 +271,35 @@ private:
     void detectVlcCommand();
 
     // one second local wav file
-    MaybeUrl m_localWavFile{ QUnexpect{} };
-    MaybeUrl m_localWavFile2{ QUnexpect{} };
-    MaybeUrl m_localVideoFile{ QUnexpect{} };
-    MaybeUrl m_localVideoFile2{ QUnexpect{} };
-    MaybeUrl m_localVideoFile1Sec{ QUnexpect{} };
-    MaybeUrl m_av1File{ QUnexpect{} };
-    MaybeUrl m_videoDimensionTestFile{ QUnexpect{} };
-    MaybeUrl m_localCompressedSoundFile{ QUnexpect{} };
-    MaybeUrl m_localMp3FileWithMetadataAndEmbeddedThumbnail{ QUnexpect{} };
-    MaybeUrl m_localVideoFile3ColorsWithSound{ QUnexpect{} };
-    MaybeUrl m_videoFileWithJpegThumbnail{ QUnexpect{} };
-    MaybeUrl m_videoFileWithPngThumbnail{ QUnexpect{} };
-    MaybeUrl m_oneRedFrameVideo{ QUnexpect{} };
-    MaybeUrl m_192x108_PAR_2_3_Video{ QUnexpect{} };
-    MaybeUrl m_192x108_PAR_3_2_Video{ QUnexpect{} };
-    MaybeUrl m_colorMatrixVideo{ QUnexpect{} };
-    MaybeUrl m_colorMatrixMirroredVideo{ QUnexpect{} };
-    MaybeUrl m_colorMatrix90degClockwiseVideo{ QUnexpect{} };
-    MaybeUrl m_colorMatrix90degClockwiseMirroredVideo{ QUnexpect{} };
-    MaybeUrl m_colorMatrix180degClockwiseVideo{ QUnexpect{} };
-    MaybeUrl m_colorMatrix180degClockwiseMirroredVideo{ QUnexpect{} };
-    MaybeUrl m_colorMatrix270degClockwiseVideo{ QUnexpect{} };
-    MaybeUrl m_colorMatrix270degClockwiseMirroredVideo{ QUnexpect{} };
-    MaybeUrl m_hdrVideo{ QUnexpect{} };
-    MaybeUrl m_15sVideo{ QUnexpect{} };
-    MaybeUrl m_subtitleVideo{ QUnexpect{} };
-    MaybeUrl m_multitrackVideo{ QUnexpect{} };
-    MaybeUrl m_multitrackSubtitleStartsAtZeroVideo{ QUnexpect{} };
-    MaybeUrl m_oggEndingWithInvalidTiming{ QUnexpect{} };
+    MaybeUrl m_localWavFile{ q23::unexpect };
+    MaybeUrl m_localWavFile2{ q23::unexpect };
+    MaybeUrl m_localVideoFile{ q23::unexpect };
+    MaybeUrl m_localVideoFile2{ q23::unexpect };
+    MaybeUrl m_localVideoFile1Sec{ q23::unexpect };
+    MaybeUrl m_av1File{ q23::unexpect };
+    MaybeUrl m_videoDimensionTestFile{ q23::unexpect };
+    MaybeUrl m_localCompressedSoundFile{ q23::unexpect };
+    MaybeUrl m_localMp3FileWithMetadataAndEmbeddedThumbnail{ q23::unexpect };
+    MaybeUrl m_localVideoFile3ColorsWithSound{ q23::unexpect };
+    MaybeUrl m_videoFileWithJpegThumbnail{ q23::unexpect };
+    MaybeUrl m_videoFileWithPngThumbnail{ q23::unexpect };
+    MaybeUrl m_oneRedFrameVideo{ q23::unexpect };
+    MaybeUrl m_192x108_PAR_2_3_Video{ q23::unexpect };
+    MaybeUrl m_192x108_PAR_3_2_Video{ q23::unexpect };
+    MaybeUrl m_colorMatrixVideo{ q23::unexpect };
+    MaybeUrl m_colorMatrixMirroredVideo{ q23::unexpect };
+    MaybeUrl m_colorMatrix90degClockwiseVideo{ q23::unexpect };
+    MaybeUrl m_colorMatrix90degClockwiseMirroredVideo{ q23::unexpect };
+    MaybeUrl m_colorMatrix180degClockwiseVideo{ q23::unexpect };
+    MaybeUrl m_colorMatrix180degClockwiseMirroredVideo{ q23::unexpect };
+    MaybeUrl m_colorMatrix270degClockwiseVideo{ q23::unexpect };
+    MaybeUrl m_colorMatrix270degClockwiseMirroredVideo{ q23::unexpect };
+    MaybeUrl m_hdrVideo{ q23::unexpect };
+    MaybeUrl m_15sVideo{ q23::unexpect };
+    MaybeUrl m_subtitleVideo{ q23::unexpect };
+    MaybeUrl m_multitrackVideo{ q23::unexpect };
+    MaybeUrl m_multitrackSubtitleStartsAtZeroVideo{ q23::unexpect };
+    MaybeUrl m_oggEndingWithInvalidTiming{ q23::unexpect };
 
     MediaFileSelector m_mediaSelector;
 
@@ -542,48 +552,89 @@ void tst_QMediaPlayerBackend::getters_returnExpectedValues_whenCalledWithDefault
     COMPARE_MEDIA_PLAYER_STATE_EQ(actualState, expectedState);
 }
 
-void tst_QMediaPlayerBackend::setSource_emitsSourceChanged_whenCalledWithInvalidFile()
+void tst_QMediaPlayerBackend::makeInvalidMediaCase()
 {
-    m_fixture->player.setSource({ "Some not existing media" });
-    QTRY_COMPARE_EQ(m_fixture->player.error(), QMediaPlayer::ResourceError);
+    QTest::addColumn<QUrl>("invalidMedia");
 
-    QCOMPARE_EQ(m_fixture->sourceChanged, SignalList({ { QUrl("Some not existing media") } }));
+    QTest::newRow("invalidFile") << QUrl("some_not_existing_file.mp4");
+    QTest::newRow("invalidQrcResource") << QUrl("qrc:/some_not_existing_qrc_resource.mp4");
+    QTest::newRow("invalidHttpsAddress") << QUrl("https://qt.io/invalid_https_address.mp4");
 }
 
-void tst_QMediaPlayerBackend::setSource_emitsError_whenCalledWithInvalidFile()
+void tst_QMediaPlayerBackend::setSource_emitsSourceChanged_whenCalledWithInvalidMedia_data()
 {
-    m_fixture->player.setSource({ "Some not existing media" });
-    QTRY_COMPARE_EQ(m_fixture->player.error(), QMediaPlayer::ResourceError);
+    makeInvalidMediaCase();
+}
+
+void tst_QMediaPlayerBackend::setSource_emitsSourceChanged_whenCalledWithInvalidMedia()
+{
+    QFETCH(QUrl, invalidMedia);
+    m_fixture->player.setSource(invalidMedia);
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(m_fixture->player.error(), QMediaPlayer::ResourceError, 10s);
+
+    QCOMPARE_EQ(m_fixture->sourceChanged, SignalList({ { invalidMedia } }));
+}
+
+void tst_QMediaPlayerBackend::setSource_emitsError_whenCalledWithInvalidMedia_data()
+{
+    makeInvalidMediaCase();
+}
+
+void tst_QMediaPlayerBackend::setSource_emitsError_whenCalledWithInvalidMedia()
+{
+    QFETCH(QUrl, invalidMedia);
+    m_fixture->player.setSource(invalidMedia);
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(m_fixture->player.error(), QMediaPlayer::ResourceError, 10s);
 
     QCOMPARE_EQ(m_fixture->errorOccurred[0][0], QMediaPlayer::ResourceError);
 }
 
-void tst_QMediaPlayerBackend::setSource_emitsMediaStatusChange_whenCalledWithInvalidFile()
+void tst_QMediaPlayerBackend::setSource_emitsMediaStatusChange_whenCalledWithInvalidMedia_data()
 {
-    m_fixture->player.setSource({ "Some not existing media" });
-    QTRY_COMPARE_EQ(m_fixture->player.error(), QMediaPlayer::ResourceError);
+    makeInvalidMediaCase();
+}
+
+void tst_QMediaPlayerBackend::setSource_emitsMediaStatusChange_whenCalledWithInvalidMedia()
+{
+    QFETCH(QUrl, invalidMedia);
+    if (invalidMedia == QUrl("qrc:/some_not_existing_qrc_resource.mp4"))
+        QSKIP_FFMPEG("FFmpeg: Doesn`t emit QMediaPlayer::LoadingMedia...");
+
+    m_fixture->player.setSource(invalidMedia);
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(m_fixture->player.error(), QMediaPlayer::ResourceError, 10s);
 
     QCOMPARE_EQ(m_fixture->mediaStatusChanged,
                 SignalList({ { QMediaPlayer::LoadingMedia }, { QMediaPlayer::InvalidMedia } }));
 }
 
-void tst_QMediaPlayerBackend::setSource_doesNotEmitPlaybackStateChange_whenCalledWithInvalidFile()
+void tst_QMediaPlayerBackend::setSource_doesNotEmitPlaybackStateChange_whenCalledWithInvalidMedia_data()
 {
-    m_fixture->player.setSource({ "Some not existing media" });
-    QTRY_COMPARE_EQ(m_fixture->player.error(), QMediaPlayer::ResourceError);
+    makeInvalidMediaCase();
+}
+
+void tst_QMediaPlayerBackend::setSource_doesNotEmitPlaybackStateChange_whenCalledWithInvalidMedia()
+{
+    QFETCH(QUrl, invalidMedia);
+    m_fixture->player.setSource(invalidMedia);
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(m_fixture->player.error(), QMediaPlayer::ResourceError, 10s);
 
     QVERIFY(m_fixture->playbackStateChanged.empty());
 }
 
-void tst_QMediaPlayerBackend::setSource_setsSourceMediaStatusAndError_whenCalledWithInvalidFile()
+void tst_QMediaPlayerBackend::setSource_setsSourceMediaStatusAndError_whenCalledWithInvalidMedia_data()
 {
-    const QUrl invalidFile{ "Some not existing media" };
+    makeInvalidMediaCase();
+}
 
-    m_fixture->player.setSource(invalidFile);
-    QTRY_COMPARE_EQ(m_fixture->player.error(), QMediaPlayer::ResourceError);
+void tst_QMediaPlayerBackend::setSource_setsSourceMediaStatusAndError_whenCalledWithInvalidMedia()
+{
+    QFETCH(QUrl, invalidMedia);
+
+    m_fixture->player.setSource(invalidMedia);
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(m_fixture->player.error(), QMediaPlayer::ResourceError, 10s);
 
     MediaPlayerState expectedState = MediaPlayerState::defaultState();
-    expectedState.source = invalidFile;
+    expectedState.source = invalidMedia;
     expectedState.mediaStatus = QMediaPlayer::InvalidMedia;
     expectedState.error = QMediaPlayer::ResourceError;
 
@@ -1700,6 +1751,7 @@ void tst_QMediaPlayerBackend::play_playbackLastsForTheExpectedTime()
                 "QTBUG-133652: if we pause before play, setLoops may not be applied correctly");
 
     QMediaPlayer &player = m_fixture->player;
+    QSignalSpy mediaStatusSpy(&player, &QMediaPlayer::mediaStatusChanged);
 
     player.setSource(media);
 
@@ -1730,6 +1782,7 @@ void tst_QMediaPlayerBackend::play_playbackLastsForTheExpectedTime()
                                 .arg(round<milliseconds>(duration).count())));
 
     QCOMPARE_EQ(player.mediaStatus(), QMediaPlayer::EndOfMedia);
+    QVERIFY(mediaStatusSpy.contains(QList{ QVariant::fromValue(QMediaPlayer::EndOfMedia) }));
 }
 
 void tst_QMediaPlayerBackend::play_playbackLastsForTheExpectedTime_data()
@@ -4630,7 +4683,7 @@ void tst_QMediaPlayerBackend::makeStressTestCases()
     QTest::addColumn<MaybeUrl>("media");
     QTest::addColumn<bool>("play");
 
-    QTest::newRow("no media") << MaybeUrl{ QUnexpect{} } << false;
+    QTest::newRow("no media") << MaybeUrl{ q23::unexpect } << false;
     QTest::newRow("audio, not playing") << m_localWavFile << false;
     QTest::newRow("audio, playing") << m_localWavFile << true;
     QTest::newRow("video, not playing") << m_localVideoFile << false;
@@ -4639,10 +4692,6 @@ void tst_QMediaPlayerBackend::makeStressTestCases()
 
 void tst_QMediaPlayerBackend::stressTest_setupAndTeardown()
 {
-#ifdef Q_OS_MACOS
-    QSKIP_FFMPEG("QTBUG-127137: Crashes on CI");
-#endif
-
     QSKIP_GSTREAMER("race condition in gst_play");
 
     QFETCH(MaybeUrl, media);
@@ -4737,6 +4786,78 @@ void tst_QMediaPlayerBackend::stressTest_setupAndTeardown_keepVideoOutput()
 void tst_QMediaPlayerBackend::stressTest_setupAndTeardown_keepVideoOutput_data()
 {
     makeStressTestCases();
+}
+
+enum DestructionOrder { AVM, AMV, MAV, MVA, VMA, VAM };
+enum MediaPlayerCall { Pause, Stop, SetSource, None };
+
+void tst_QMediaPlayerBackend::destruction_doesNotDeadlock_afterMediaPlayerCall()
+{
+    QSKIP_GSTREAMER("QTBUG-140805: Triggers a deadlock between gstPlay thread and Qt main thread");
+
+    QFETCH(DestructionOrder, destructionOrder);
+    QFETCH(MediaPlayerCall, mediaPlayerCall);
+
+    // setup
+    auto mediaPlayer = std::make_unique<QMediaPlayer>();
+    auto audioOutput = std::make_unique<QAudioOutput>();
+    auto videoSink = std::make_unique<QVideoSink>();
+    mediaPlayer->setVideoSink(videoSink.get());
+    mediaPlayer->setAudioOutput(audioOutput.get());
+    mediaPlayer->setSource(*m_localVideoFile);
+    mediaPlayer->play();
+    QTRY_COMPARE_GT(mediaPlayer->position(), 0);
+
+    // act
+    switch (mediaPlayerCall) {
+    case MediaPlayerCall::Pause: mediaPlayer->pause(); break;
+    case MediaPlayerCall::Stop: mediaPlayer->stop(); break;
+    case MediaPlayerCall::SetSource: mediaPlayer->setSource(QUrl()); break;
+    case MediaPlayerCall::None: break;
+    }
+
+    switch (destructionOrder) {
+    // Usually doesn`t crash
+    case DestructionOrder::AVM: audioOutput.reset(); videoSink.reset(); mediaPlayer.reset(); break;
+    // Usually doesn¨t crash
+    case DestructionOrder::AMV: audioOutput.reset(); mediaPlayer.reset(); videoSink.reset(); break;
+    // Crash: ~QGstreamerMediaPlayer() -> m_playbin.setStateSync(GST_STATE_NULL);
+    case DestructionOrder::MAV: mediaPlayer.reset(); audioOutput.reset(); videoSink.reset(); break;
+    // Crash: ~QGstreamerMediaPlayer() -> m_playbin.setStateSync(GST_STATE_NULL);
+    case DestructionOrder::MVA: mediaPlayer.reset(); videoSink.reset(); audioOutput.reset(); break;
+    // Crash: ~QMediaPlayer() -> setAudioOutput -> m_playbin.set("audio-sink"...
+    case DestructionOrder::VMA: videoSink.reset(); mediaPlayer.reset(); audioOutput.reset(); break;
+    // Crash: ~QAudioOutput() -> setAudioOutput -> m_playbin.set("audio-sink"...
+    case DestructionOrder::VAM: videoSink.reset(); audioOutput.reset(); mediaPlayer.reset(); break;
+    }
+}
+
+void tst_QMediaPlayerBackend::destruction_doesNotDeadlock_afterMediaPlayerCall_data()
+{
+    QTest::addColumn<DestructionOrder>("destructionOrder");
+    QTest::addColumn<MediaPlayerCall>("mediaPlayerCall");
+
+    static const std::pair<const char *, DestructionOrder> destructionOrders[] = {
+        {"AVM", DestructionOrder::AVM},
+        {"AMV", DestructionOrder::AMV},
+        {"MAV", DestructionOrder::MAV},
+        {"MVA", DestructionOrder::MVA},
+        {"VMA", DestructionOrder::VMA},
+        {"VAM", DestructionOrder::VAM},
+        };
+
+    static const std::pair<const char *, MediaPlayerCall> call[] = {
+        {"none",      MediaPlayerCall::None},
+        {"pause",     MediaPlayerCall::Pause},
+        {"stop",      MediaPlayerCall::Stop},
+        {"setSource", MediaPlayerCall::SetSource},
+        };
+
+    for (auto &[orderName, order] : destructionOrders) {
+        for (auto &[callName, call] : call) {
+            QTest::addRow("destructionOrder%s_%s", orderName, callName) << order << call;
+        }
+    }
 }
 
 QTEST_MAIN(tst_QMediaPlayerBackend)

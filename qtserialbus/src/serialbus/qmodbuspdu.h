@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef QMODBUSPDU_H
 #define QMODBUSPDU_H
 
@@ -110,7 +111,11 @@ private:
     };
 
     template <typename T>
-    using is_pod = std::integral_constant<bool, std::is_trivial<T>::value && std::is_standard_layout<T>::value>;
+    using is_pod = std::conjunction<
+            std::is_trivially_copyable<T>,
+            std::is_trivially_default_constructible<T>,
+            std::is_standard_layout<T>
+        >;
 
     template <typename T> void encode(QDataStream *stream, const T &t) {
         static_assert(is_pod<T>::value, "Only POD types supported.");

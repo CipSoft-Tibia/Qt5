@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickscrollindicator_p.h"
 #include "qquickcontrol_p_p.h"
@@ -20,6 +21,7 @@ QT_BEGIN_NAMESPACE
     \brief Vertical or horizontal non-interactive scroll indicator.
 
     \image qtquickcontrols-scrollindicator.gif
+           {Scroll indicator showing scroll position}
 
     ScrollIndicator is a non-interactive indicator that indicates the current scroll
     position. A scroll indicator can be either \l vertical or \l horizontal, and can
@@ -89,6 +91,7 @@ QT_BEGIN_NAMESPACE
     \snippet qtquickcontrols-scrollindicator-non-attached.qml 1
 
     \image qtquickcontrols-scrollindicator-non-attached.png
+           {Scroll indicator used standalone without attached property}
 
     \include varying-delegate-heights-section.qdocinc {file} {1} {ScrollIndicator}
 

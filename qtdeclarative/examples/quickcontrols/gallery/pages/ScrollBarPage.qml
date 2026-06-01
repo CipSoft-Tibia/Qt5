@@ -6,7 +6,7 @@ import QtQuick.Controls
 
 Flickable {
     id: flickable
-
+    enabled: !GalleryConfig.disabled
     contentHeight: pane.height
 
     Pane {
@@ -18,6 +18,12 @@ Flickable {
             id: column
             spacing: 40
             width: parent.width
+
+            CheckBox {
+                id: alwaysOnCheckBox
+                width: parent.width
+                text: qsTr("Always on")
+            }
 
             Label {
                 width: parent.width
@@ -32,9 +38,12 @@ Flickable {
                 rotation: 90
                 source: "../images/arrows.png"
                 anchors.horizontalCenter: parent.horizontalCenter
+                Accessible.name: qsTr("Image of an arrow pointing in both vertical directions")
             }
         }
     }
 
-    ScrollBar.vertical: ScrollBar { }
+    ScrollBar.vertical: ScrollBar {
+        policy: alwaysOnCheckBox.checked ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+    }
 }

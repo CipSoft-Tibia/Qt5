@@ -34,12 +34,15 @@ static String IgnoredReasonName_ITBH(AXIgnoredReason reason) {
       return "emptyAlt";
     case kAXEmptyText:
       return "emptyText";
-    case kAXHiddenByChildTree:
-      return "hiddenByChildTree";
     case kAXInertElement:
       return "inertElement";
     case kAXInertSubtree:
       return "inertSubtree";
+    case kAXInertStyle:
+      // TODO(crbug.com/370065759): Should either use "inertStyle" when devtools
+      // can handle that, or just drop kAXInertStyle and use kAXInertElement to
+      // indicate that the computed value of interactivity is 'inert'.
+      return "inertElement";
     case kAXLabelContainer:
       return "labelContainer";
     case kAXLabelFor:
@@ -55,8 +58,7 @@ static String IgnoredReasonName_ITBH(AXIgnoredReason reason) {
     case kAXUninteresting:
       return "uninteresting";
   }
-  NOTREACHED_IN_MIGRATION();
-  return "";
+  NOTREACHED();
 }
 
 std::unique_ptr<AXProperty> CreateProperty(IgnoredReason reason) {

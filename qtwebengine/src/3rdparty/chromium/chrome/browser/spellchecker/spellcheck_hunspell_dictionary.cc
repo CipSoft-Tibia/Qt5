@@ -164,8 +164,7 @@ void SpellcheckHunspellDictionary::RetryDownloadDictionary(
     content::BrowserContext* browser_context) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   if (dictionary_file_.file.IsValid()) {
-    NOTREACHED_IN_MIGRATION();
-    return;
+    NOTREACHED();
   }
   browser_context_ = browser_context;
   DownloadDictionary(GetDictionaryURL());
@@ -482,7 +481,7 @@ void SpellcheckHunspellDictionary::PlatformSupportsLanguageComplete(
       return;
     }
 #endif  // BUILDFLAG(USE_BROWSER_SPELLCHECKER)
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   } else {
     // Either the platform spellchecker is unavailable / disabled, or it doesn't
     // support this language. In either case, we must use Hunspell for this

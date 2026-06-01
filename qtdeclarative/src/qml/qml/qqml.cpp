@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqml.h"
 
@@ -1218,7 +1219,8 @@ static void iterateVariant(const QVariant &element, std::vector<QVariant> *eleme
 #define ADD_CASE(Type, id, T) \
     case QMetaType::Type:
 
-    switch (element.metaType().id()) {
+    const QMetaType elementMetaType = element.metaType();
+    switch (elementMetaType.id()) {
     case QMetaType::QVariantMap:
         for (const QVariant &variant : *static_cast<const QVariantMap *>(element.constData()))
             elements->push_back(variant);
@@ -1239,6 +1241,14 @@ static void iterateVariant(const QVariant &element, std::vector<QVariant> *eleme
         return;
     default:
         break;
+    }
+
+    if (elementMetaType == QMetaType::fromType<QJSValue>()
+            || elementMetaType == QMetaType::fromType<QJSManagedValue>()
+            || elementMetaType == QMetaType::fromType<QJSPrimitiveValue>()) {
+        // QJSValue and QJSManagedValue effectively hold persistent values anyway.
+        // QJSPrimitiveValue can only hold primitives or QString.
+        return;
     }
 
     QSequentialIterable iterable;
@@ -1274,10 +1284,10 @@ void AOTCompiledContext::mark(const QVariant &variant, QV4::MarkStack *markStack
     iterateVariant(variant, &stack);
 
     while (!stack.empty()) {
-        const QVariant &element = std::as_const(stack).back();
+        const QVariant element = std::as_const(stack).back();
+        stack.pop_back();
         if (!markPointer(element, markStack))
             iterateVariant(element, &stack);
-        stack.pop_back();
     }
 }
 
@@ -1377,16 +1387,16 @@ struct FallbackPropertyQmlData
 
 static FallbackPropertyQmlData findFallbackPropertyQmlData(QV4::Lookup *lookup, QObject *object)
 {
-    QQmlData *qmlData = QQmlData::get(object);
-    if (qmlData && qmlData->isQueuedForDeletion)
-        return {qmlData, nullptr, PropertyResult::Deleted};
+    // We've just initialized the lookup. So everything must be fine here.
 
+    QQmlData *qmlData = QQmlData::get(object);
+
+    Q_ASSERT(!qmlData || !qmlData->isQueuedForDeletion);
     Q_ASSERT(!QQmlData::wasDeleted(object));
 
     const QMetaObject *metaObject
             = reinterpret_cast<const QMetaObject *>(lookup->qobjectFallbackLookup.metaObject - 1);
-    if (!metaObject || metaObject != object->metaObject())
-        return {qmlData, nullptr, PropertyResult::NeedsInit};
+    Q_ASSERT(metaObject == object->metaObject());
 
     return {qmlData, metaObject, PropertyResult::OK};
 }
@@ -1486,7 +1496,8 @@ static PropertyResult changeObjectProperty(QV4::Lookup *lookup, QObject *object,
         return data.result;
 
     const QQmlPropertyData *property = lookup->qobjectLookup.propertyData;
-    QQmlPropertyPrivate::removeBinding(object, QQmlPropertyIndex(property->coreIndex()));
+    QQmlPropertyPrivate::removeBinding(
+            object, QQmlPropertyIndex(property->coreIndex()), QQmlPropertyPrivate::None);
     op(property);
     return PropertyResult::OK;
 }
@@ -1522,7 +1533,8 @@ static PropertyResult changeFallbackProperty(QV4::Lookup *lookup, QObject *objec
         return data.result;
 
     const int coreIndex = lookup->qobjectFallbackLookup.coreIndex;
-    QQmlPropertyPrivate::removeBinding(object, QQmlPropertyIndex(coreIndex));
+    QQmlPropertyPrivate::removeBinding(
+            object, QQmlPropertyIndex(coreIndex), QQmlPropertyPrivate::None);
 
     op(data.metaObject, coreIndex);
     return PropertyResult::OK;
@@ -2236,6 +2248,15 @@ static bool callArrowFunction(
     Q_UNREACHABLE_RETURN(false);
 }
 
+static void throwIsNotAFunctionError(
+        const AOTCompiledContext *aotContext, QV4::Lookup *lookup, const QString &object)
+{
+    aotContext->engine->handle()->throwTypeError(
+            QStringLiteral("Property '%1' of object %2 is not a function").arg(
+                    aotContext->compilationUnit->runtimeStrings[lookup->nameIndex]->toQString(),
+                    object));
+};
+
 bool AOTCompiledContext::callQmlContextPropertyLookup(uint index, void **args, int argc) const
 {
     QV4::Lookup *lookup = compilationUnit->runtimeLookups + index;
@@ -2243,17 +2264,18 @@ bool AOTCompiledContext::callQmlContextPropertyLookup(uint index, void **args, i
     if (lookup->call == QV4::Lookup::Call::ContextGetterScopeObjectMethod)
         return callQObjectMethod(engine->handle(), lookup, qmlScopeObject, args, argc);
 
-    const auto doCall = [&](auto &&call) {
+    if (lookup->call == QV4::Lookup::Call::ContextGetterScopeObjectProperty) {
         QV4::Scope scope(engine->handle());
         QV4::ScopedValue undefined(scope);
         QV4::Scoped<QV4::ArrowFunction> function(
                 scope, lookup->contextGetter(scope.engine, undefined));
-        Q_ASSERT(function);
-        return call(scope.engine, function, qmlScopeObject, args, argc);
-    };
+        if (function)
+            return callArrowFunction(scope.engine, function, qmlScopeObject, args, argc);
 
-    if (lookup->call == QV4::Lookup::Call::ContextGetterScopeObjectProperty)
-        return doCall(&callArrowFunction);
+        QV4::Scoped<QV4::QObjectWrapper> object(
+                scope, QV4::QObjectWrapper::wrap(scope.engine, qmlScopeObject));
+        throwIsNotAFunctionError(this, lookup, object->toQStringNoThrow());
+    }
 
     return false;
 }
@@ -2331,9 +2353,9 @@ void AOTCompiledContext::initCallQmlContextPropertyLookup(uint index, int relati
         return;
     }
 
-    scope.engine->throwTypeError(
-            QStringLiteral("Property '%1' of object [null] is not a function").arg(
-                    compilationUnit->runtimeStrings[lookup->nameIndex]->toQString()));
+    QV4::Scoped<QV4::QObjectWrapper> object(
+            scope, QV4::QObjectWrapper::wrap(scope.engine, qmlScopeObject));
+    throwIsNotAFunctionError(this, lookup, object->toQStringNoThrow());
 }
 
 bool AOTCompiledContext::loadContextIdLookup(uint index, void *target) const
@@ -2430,10 +2452,10 @@ bool AOTCompiledContext::callObjectPropertyLookup(
         // The getter mustn't touch the asVariant bit
         Q_ASSERT(!lookup->asVariant);
 
-        // If the method can't be shadowed, it has to stay the same.
-        Q_ASSERT(function);
+        if (function)
+            return callArrowFunction(scope.engine, function, object, args, argc);
 
-        return callArrowFunction(scope.engine, function, qmlScopeObject, args, argc);
+        throwIsNotAFunctionError(this, lookup, thisObject->toQStringNoThrow());
     }
     default:
         break;
@@ -2452,16 +2474,10 @@ void AOTCompiledContext::initCallObjectPropertyLookupAsVariant(uint index, QObje
     QV4::Lookup *lookup = compilationUnit->runtimeLookups + index;
     QV4::Scope scope(engine->handle());
 
-    const auto throwInvalidObjectError = [&](const QString &object) {
-        scope.engine->throwTypeError(
-                QStringLiteral("Property '%1' of object %2 is not a function").arg(
-                        compilationUnit->runtimeStrings[lookup->nameIndex]->toQString(), object));
-    };
-
     const auto *ddata = QQmlData::get(object, false);
     if (ddata && ddata->hasVMEMetaObject && ddata->jsWrapper.isNullOrUndefined()) {
         // We cannot lookup functions on an object with VME metaobject but no QObjectWrapper
-        throwInvalidObjectError(QStringLiteral("[object Object]"));
+        throwIsNotAFunctionError(this, lookup, QStringLiteral("[object Object]"));
         return;
     }
 
@@ -2479,7 +2495,7 @@ void AOTCompiledContext::initCallObjectPropertyLookupAsVariant(uint index, QObje
         return;
     }
 
-    throwInvalidObjectError(thisObject->toQStringNoThrow());
+    throwIsNotAFunctionError(this, lookup, thisObject->toQStringNoThrow());
 }
 
 void AOTCompiledContext::initCallObjectPropertyLookup(
@@ -2493,16 +2509,10 @@ void AOTCompiledContext::initCallObjectPropertyLookup(
     QV4::Lookup *lookup = compilationUnit->runtimeLookups + index;
     QV4::Scope scope(engine->handle());
 
-    const auto throwInvalidObjectError = [&]() {
-        scope.engine->throwTypeError(
-                QStringLiteral("Property '%1' of object [object Object] is not a function")
-                        .arg(compilationUnit->runtimeStrings[lookup->nameIndex]->toQString()));
-    };
-
     const auto *ddata = QQmlData::get(object, false);
     if (ddata && ddata->hasVMEMetaObject && ddata->jsWrapper.isNullOrUndefined()) {
         // We cannot lookup functions on an object with VME metaobject but no QObjectWrapper
-        throwInvalidObjectError();
+        throwIsNotAFunctionError(this, lookup, QStringLiteral("[object Object]"));
         return;
     }
 
@@ -2521,7 +2531,7 @@ void AOTCompiledContext::initCallObjectPropertyLookup(
         return;
     }
 
-    throwInvalidObjectError();
+    throwIsNotAFunctionError(this, lookup, thisObject->toQStringNoThrow());
 }
 
 bool AOTCompiledContext::loadGlobalLookup(uint index, void *target) const
@@ -2568,6 +2578,7 @@ bool AOTCompiledContext::loadScopeObjectPropertyLookup(uint index, void *target)
         break;
     case QV4::Lookup::Call::ContextGetterScopeObjectPropertyFallback:
         result = loadFallbackProperty(lookup, qmlScopeObject, target, this);
+        lookup->call = QV4::Lookup::Call::ContextGetterGeneric;
         break;
     default:
         return false;
@@ -2599,6 +2610,7 @@ bool AOTCompiledContext::writeBackScopeObjectPropertyLookup(uint index, void *so
         break;
     case QV4::Lookup::Call::ContextGetterScopeObjectPropertyFallback:
         result = writeBackFallbackProperty(lookup, qmlScopeObject, source);
+        lookup->call = QV4::Lookup::Call::ContextGetterGeneric;
         break;
     default:
         return false;
@@ -2799,6 +2811,7 @@ bool AOTCompiledContext::getObjectLookup(uint index, QObject *object, void *targ
         result = lookup->asVariant
                 ? loadFallbackAsVariant(lookup, object, target, this)
                 : loadFallbackProperty(lookup, object, target, this);
+        lookup->call = QV4::Lookup::Call::GetterGeneric;
         break;
     default:
         return false;
@@ -2833,6 +2846,7 @@ bool AOTCompiledContext::writeBackObjectLookup(uint index, QObject *object, void
         result = lookup->asVariant
                 ? writeBackFallbackAsVariant(lookup, object, source)
                 : writeBackFallbackProperty(lookup, object, source);
+        lookup->call = QV4::Lookup::Call::GetterGeneric;
         break;
     default:
         return false;
@@ -2993,6 +3007,7 @@ bool AOTCompiledContext::setObjectLookup(uint index, QObject *object, void *valu
         result = lookup->asVariant
                 ? storeFallbackAsVariant(engine->handle(), lookup, object, value)
                 : storeFallbackProperty(lookup, object, value);
+        lookup->call = QV4::Lookup::Call::SetterGeneric;
         break;
     default:
         return false;

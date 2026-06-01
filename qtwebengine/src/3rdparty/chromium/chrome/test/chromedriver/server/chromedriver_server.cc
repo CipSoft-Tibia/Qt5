@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <array>
 #include <locale>
 #include <memory>
 #include <string>
@@ -51,7 +52,6 @@
 #include "net/base/ip_endpoint.h"
 #include "net/base/net_errors.h"
 #include "net/log/net_log_source.h"
-#include "third_party/abseil-cpp/absl/base/attributes.h"
 
 namespace {
 
@@ -120,8 +120,8 @@ void HandleRequestOnIOThread(
                               send_response_func)));
 }
 
-ABSL_CONST_INIT thread_local HttpServer* server_ipv4 = nullptr;
-ABSL_CONST_INIT thread_local HttpServer* server_ipv6 = nullptr;
+constinit thread_local HttpServer* server_ipv4 = nullptr;
+constinit thread_local HttpServer* server_ipv6 = nullptr;
 
 void StopServerOnIOThread() {
   delete server_ipv4;
@@ -323,7 +323,7 @@ int main(int argc, char *argv[]) {
   std::string url_base;
   if (cmd_line->HasSwitch("h") || cmd_line->HasSwitch("help")) {
     std::string options;
-    const char* const kOptionAndDescriptions[] = {
+    const auto kOptionAndDescriptions = std::to_array<const char*>({
         "port=PORT",
         "port to listen on",
         "adb-port=PORT",
@@ -365,7 +365,7 @@ int main(int argc, char *argv[]) {
         "ignore-explicit-port",
         "(experimental) ignore the port specified explicitly, "
         "find a free port instead",
-    };
+    });
     for (size_t i = 0; i < std::size(kOptionAndDescriptions) - 1; i += 2) {
       options += base::StringPrintf(
           "  --%-30s%s\n",

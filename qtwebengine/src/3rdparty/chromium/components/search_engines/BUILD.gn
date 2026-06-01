@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//tools/json_to_struct/json_to_struct.gni")
 if (is_android) {
@@ -15,15 +14,16 @@ static_library("search_engines") {
     "choice_made_location.h",
     "default_search_manager.cc",
     "default_search_manager.h",
-    "eea_countries_ids.h",
     "enterprise/default_search_policy_handler.cc",
     "enterprise/default_search_policy_handler.h",
-    "enterprise/enterprise_site_search_manager.cc",
-    "enterprise/enterprise_site_search_manager.h",
+    "enterprise/enterprise_search_manager.cc",
+    "enterprise/enterprise_search_manager.h",
     "keyword_table.cc",
     "keyword_table.h",
     "keyword_web_data_service.cc",
     "keyword_web_data_service.h",
+    "reconciling_template_url_data_holder.cc",
+    "reconciling_template_url_data_holder.h",
     "search_engine_choice/search_engine_choice_metrics_service_accessor.h",
     "search_engine_choice/search_engine_choice_service.cc",
     "search_engine_choice/search_engine_choice_service.h",
@@ -58,7 +58,6 @@ static_library("search_engines") {
   ]
 
   public_deps = [
-    ":prepopulated_engines",
     ":search_engine_type",
     ":search_engine_utils",
     ":search_engines_switches",
@@ -70,6 +69,7 @@ static_library("search_engines") {
     "//components/webdata/common",
     "//third_party/metrics_proto",
     "//third_party/omnibox_proto",
+    "//third_party/search_engines_data:prepopulated_engines",
   ]
 
   deps = [
@@ -85,6 +85,7 @@ static_library("search_engines") {
     "//components/policy:generated",
     "//components/policy/core/browser",
     "//components/pref_registry",
+    "//components/regional_capabilities",
     "//components/search_provider_logos:switches",
     "//components/signin/public/base",
     "//components/strings",
@@ -134,15 +135,12 @@ static_library("search_engines") {
 
   if (is_linux || is_win || is_mac || is_chromeos) {
     sources += [
+      "enterprise/search_aggregator_policy_handler.cc",
+      "enterprise/search_aggregator_policy_handler.h",
+      "enterprise/search_engine_fields_validators.cc",
+      "enterprise/search_engine_fields_validators.h",
       "enterprise/site_search_policy_handler.cc",
       "enterprise/site_search_policy_handler.h",
-    ]
-  }
-
-  if (is_chromeos_lacros) {
-    deps += [
-      "//chromeos/crosapi/mojom",
-      "//chromeos/lacros",
     ]
   }
 }
@@ -154,9 +152,9 @@ source_set("search_engine_utils") {
   ]
 
   public_deps = [
-    ":prepopulated_engines",
     ":search_engine_type",
     "//components/google/core/common",
+    "//third_party/search_engines_data:prepopulated_engines",
   ]
 
   deps = [ "//url" ]
@@ -187,6 +185,8 @@ static_library("test_support") {
     "//components/metrics:metrics_pref_names",
     "//components/os_crypt/async/browser:test_support",
     "//components/prefs:test_support",
+    "//components/regional_capabilities",
+    "//components/regional_capabilities:test_support",
     "//components/sync_preferences:test_support",
     "//testing/gtest",
   ]
@@ -196,8 +196,9 @@ source_set("unit_tests") {
   testonly = true
   sources = [
     "default_search_manager_unittest.cc",
-    "enterprise/enterprise_site_search_manager_unittest.cc",
+    "enterprise/enterprise_search_manager_unittest.cc",
     "keyword_table_unittest.cc",
+    "reconciling_template_url_data_holder_unittest.cc",
     "search_engine_choice/search_engine_choice_service_unittest.cc",
     "search_engine_choice/search_engine_choice_utils_unittest.cc",
     "search_host_to_urls_map_unittest.cc",
@@ -209,7 +210,6 @@ source_set("unit_tests") {
   ]
 
   deps = [
-    ":prepopulated_engines",
     ":test_support",
     "//base",
     "//base/test:test_support",
@@ -222,6 +222,7 @@ source_set("unit_tests") {
     "//components/pref_registry:pref_registry",
     "//components/prefs",
     "//components/prefs:test_support",
+    "//components/regional_capabilities",
     "//components/sync:test_support",
     "//components/sync_preferences:test_support",
     "//components/variations:test_support",
@@ -230,14 +231,21 @@ source_set("unit_tests") {
     "//services/network:test_support",
     "//services/network/public/cpp",
     "//sql",
+    "//sql:test_support",
     "//testing/gmock",
     "//testing/gtest",
+    "//third_party/search_engines_data:prepopulated_engines",
     "//ui/base",
     "//url",
   ]
 
   if (is_linux || is_win || is_mac || is_chromeos) {
-    sources += [ "enterprise/site_search_policy_handler_unittest.cc" ]
+    sources += [
+      "enterprise/field_validation_test_utils.cc",
+      "enterprise/field_validation_test_utils.h",
+      "enterprise/search_aggregator_policy_handler_unittest.cc",
+      "enterprise/site_search_policy_handler_unittest.cc",
+    ]
   }
 
   if (!is_ios) {
@@ -251,20 +259,8 @@ source_set("unit_tests") {
 
   if (is_android) {
     sources += [ "android/template_url_service_android_unittest.cc" ]
-    deps += [
-      "//components/search_engines/android:jni_headers",
-      "//components/search_engines/android:test_utils_jni_headers",
-    ]
+    deps += [ "//components/search_engines/android:jni_headers" ]
   }
-}
-
-json_to_struct("prepopulated_engines") {
-  visibility = [ ":*" ]
-
-  source = "prepopulated_engines.json"
-  schema_file = "prepopulated_engines_schema.json"
-  namespace = "TemplateURLPrepopulateData"
-  deps = [ ":search_engine_type" ]
 }
 
 if (is_android) {
@@ -286,7 +282,12 @@ component("search_engines_switches") {
     "search_engines_switches.h",
   ]
 
-  deps = [ "//base" ]
+  deps = [
+    "//base",
+
+    # TODO(crbug.com/390993114): Remove with the header forwarding.
+    "//components/regional_capabilities",
+  ]
 }
 
 if (!is_android) {
@@ -295,11 +296,11 @@ if (!is_android) {
 
     inputs = [
       "//tools/search_engine_choice/generate_search_engine_icons_config.json",
-      "//components/search_engines/prepopulated_engines.json",
       "//components/search_engines/search_engine_countries-inc.cc",
       "//tools/json_comment_eater/json_comment_eater.py",
       "//tools/search_engine_choice/generate_search_engine_icons.py",
       "//tools/search_engine_choice/search_engine_icons_utils.py",
+      "//third_party/search_engines_data/resources/definitions/prepopulated_engines.json",
     ]
 
     outputs = [

@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -23,7 +24,14 @@ T.Slider {
         radius: width / 2
         color: control.pressed ? control.palette.light : control.palette.window
         border.width: control.visualFocus ? 2 : 1
-        border.color: control.visualFocus ? control.palette.highlight : control.enabled ? control.palette.mid : control.palette.midlight
+        border.color: {
+            if (activeFocus)
+                return control.palette.highlight
+            else if (Qt.styleHints.accessibility.contrastPreference !== Qt.HighContrast)
+                return control.enabled ? control.palette.mid : control.palette.midlight
+            else
+                return control.enabled ? control.palette.windowText : control.palette.mid
+        }
     }
 
     background: Rectangle {
@@ -36,6 +44,8 @@ T.Slider {
         radius: 3
         color: control.palette.midlight
         scale: control.horizontal && control.mirrored ? -1 : 1
+        border.width: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast ? 1 : 0
+        border.color: enabled ? control.palette.dark : control.palette.mid
 
         Rectangle {
             y: control.horizontal ? 0 : control.visualPosition * parent.height

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmltoolingsettings_p.h"
 
@@ -134,6 +135,30 @@ bool QQmlToolingSettings::search(const QString &path)
 QVariant QQmlToolingSettings::value(const QString &name) const
 {
     return m_values.value(name);
+}
+
+QStringList QQmlToolingSettings::valueAsStringList(const QString &name) const
+{
+    return value(name).toString().split(QDir::listSeparator());
+}
+
+void QQmlToolingSettings::resolveRelativeImportPaths(const QString &filePath, QStringList *paths)
+{
+    // transform relative paths in absolute paths starting from filePath's directory
+    const QDir fileDir = QFileInfo(filePath).absoluteDir();
+    for (auto it = paths->begin(), end = paths->end(); it != end; ++it) {
+        if (QFileInfo(*it).isAbsolute())
+            continue;
+        *it = QDir::cleanPath(fileDir.filePath(*it));
+    }
+}
+
+QStringList QQmlToolingSettings::valueAsAbsolutePathList(const QString &name,
+                                                         const QString &baseForRelativePaths) const
+{
+    QStringList paths = valueAsStringList(name);
+    resolveRelativeImportPaths(baseForRelativePaths, &paths);
+    return paths;
 }
 
 bool QQmlToolingSettings::isSet(const QString &name) const

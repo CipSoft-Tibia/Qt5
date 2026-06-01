@@ -1,6 +1,7 @@
+import QtQml
 import AttachedProperties 1.0
 QtObject {
-    TestType.object: Component {}
+    TestType.object: Component { QtObject {} }
     TestType.count: 42 + 2
     Component.onCompleted: {
         TestType.count = 42;

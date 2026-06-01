@@ -83,7 +83,7 @@ default_args = {
 no_check_targets = [
 ]
 
-# These are the list of GN files that run exec_script. This whitelist exists
+# These are the list of GN files that run exec_script. This allowlist exists
 # to force additional review for new uses of exec_script, which is strongly
 # discouraged.
 #

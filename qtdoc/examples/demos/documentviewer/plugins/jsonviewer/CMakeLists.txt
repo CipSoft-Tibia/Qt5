@@ -6,15 +6,8 @@ qt_add_plugin(jsonviewer
     jsonviewer.cpp jsonviewer.h
 )
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets
-                 OPTIONAL_COMPONENTS PrintSupport)
-
 set_target_properties(jsonviewer PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/app"
-)
-
-target_include_directories(jsonviewer PRIVATE
-    ../../app
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/.."
 )
 
 target_link_libraries(jsonviewer PRIVATE
@@ -24,18 +17,12 @@ target_link_libraries(jsonviewer PRIVATE
     abstractviewer
 )
 
+qt_add_translations(jsonviewer
+    SOURCE_TARGETS jsonviewer
+    TS_FILE_BASE jsonviewer
+)
+
 if(TARGET Qt6::PrintSupport)
     target_link_libraries(jsonviewer PRIVATE Qt6::PrintSupport)
 endif()
 
-if(WIN32)
-    set(install_destination "${CMAKE_INSTALL_BINDIR}/app")
-elseif(APPLE)
-    set(install_destination ".")
-else()
-    set(install_destination "${CMAKE_INSTALL_BINDIR}")
-endif()
-install(TARGETS jsonviewer
-    RUNTIME DESTINATION "${install_destination}"
-    LIBRARY DESTINATION "${install_destination}"
-)

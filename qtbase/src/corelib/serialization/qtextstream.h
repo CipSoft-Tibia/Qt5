@@ -171,6 +171,8 @@ public:
     QTextStream &operator<<(const char *c);
     QTextStream &operator<<(const void *ptr);
 
+    explicit operator bool() const noexcept { return status() == Ok; }
+
 private:
     Q_DISABLE_COPY(QTextStream)
     friend class QDebugStateSaverPrivate;

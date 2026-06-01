@@ -1,6 +1,9 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_extensions_dir(extensions_dir)
+
 # Generated from vulkan-server.pro.
 
 #####################################################################
@@ -29,8 +32,8 @@ qt_internal_add_plugin(VulkanServerBufferIntegrationPlugin
 qt6_generate_wayland_protocol_server_sources(VulkanServerBufferIntegrationPlugin
     PRIVATE_CODE
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/qt-vulkan-server-buffer-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/server-buffer-extension.xml
+        ${extensions_dir}/qt-vulkan-server-buffer-unstable-v1.xml
+        ${extensions_dir}/server-buffer-extension.xml
 )
 
 #### Keys ignored in scope 1:.:.:vulkan-server.pro:<TRUE>:

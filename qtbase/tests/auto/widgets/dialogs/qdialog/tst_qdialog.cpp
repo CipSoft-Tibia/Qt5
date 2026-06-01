@@ -568,6 +568,10 @@ void tst_QDialog::dialogInGraphicsView()
 // bar would offset the dialog position when shown next time.
 void tst_QDialog::keepPositionOnClose()
 {
+#ifdef Q_OS_LINUX
+    if (QString(QGuiApplication::platformName().toLower()) == QStringLiteral("xcb"))
+        QSKIP("Test has been written for Windows and is flaky on Linux xcb.");
+#endif
     QDialog dialog;
     dialog.setWindowTitle(QTest::currentTestFunction());
     const QRect availableGeometry = QGuiApplication::primaryScreen()->availableGeometry();

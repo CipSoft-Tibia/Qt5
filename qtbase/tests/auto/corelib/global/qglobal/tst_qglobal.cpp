@@ -92,6 +92,7 @@ private slots:
     void qIsNull();
     void for_each();
     void qassert();
+    void qpresume();
     void qtry();
     void checkptr();
     void qstaticassert();
@@ -264,6 +265,18 @@ void tst_QGlobal::qassert()
     else
         passed = true;
     QVERIFY(passed);
+}
+
+/*non-static*/ Q_NEVER_INLINE char presumedValue(const char *str)
+{
+    Q_PRESUME(str);
+    // an optimizing compiler should delete the str? check
+    return str ? str[0] : '\0';
+}
+
+void tst_QGlobal::qpresume()
+{
+    QCOMPARE(presumedValue("Hello World"), 'H');
 }
 
 void tst_QGlobal::qtry()
@@ -1100,4 +1113,5 @@ static_assert(QTypeInfo<Trivial1>::isRelocatable);
 QT_END_NAMESPACE
 
 QTEST_APPLESS_MAIN(tst_QGlobal)
+#include "expansion_to_defined_check.h"
 #include "tst_qglobal.moc"

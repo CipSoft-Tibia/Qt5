@@ -7,18 +7,29 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import datetime as dt
-from typing import (Any, Dict, Final, Iterator, List, Optional, Sequence, Tuple,
-                    Type)
+from typing import (TYPE_CHECKING, Any, Dict, Final, Iterator, List, Optional,
+                    Sequence, Tuple, Type, cast)
 
-from crossbench import cli_helper, exception
-from crossbench.benchmarks.loading.action import Action, ActionType
+from crossbench import exception
+from crossbench.action_runner.action.action import Action
+from crossbench.action_runner.action.action_type import ActionType
+from crossbench.action_runner.action.all import ACTIONS_TUPLE
+from crossbench.action_runner.action.get import GetAction
 from crossbench.config import ConfigError, ConfigObject, ConfigParser
+from crossbench.parse import NumberParser, ObjectParser
+
+if TYPE_CHECKING:
+  from crossbench.action_runner.base import ActionRunner
+  from crossbench.benchmarks.loading.page.interactive import InteractivePage
+  from crossbench.runner.run import Run
+
+assert ACTIONS_TUPLE, "import failed"
+
+LOGIN_LABEL: Final[str] = "login"
 
 
 @dataclasses.dataclass(frozen=True)
 class ActionBlock(ConfigObject):
-  LOGIN_LABEL: Final[str] = "login"
-
   label: str = "default"
   index: int = 0
   actions: Tuple[Action, ...] = tuple()
@@ -43,13 +54,10 @@ class ActionBlock(ConfigObject):
 
   @classmethod
   def config_parser(cls: Type[ActionBlock]) -> ConfigParser[ActionBlock]:
-    parser = ConfigParser(f"{cls.__name__} parser", cls)
+    parser = ConfigParser(cls)
     parser.add_argument("label", type=cls._parse_block_label, default="default")
     parser.add_argument(
-        "index",
-        type=cli_helper.parse_positive_zero_int,
-        default=0,
-        required=False)
+        "index", type=NumberParser.positive_zero_int, default=0, required=False)
     # TODO: enable passing index
     parser.add_argument("actions", type=Action, required=True, is_list=True)
     return parser
@@ -67,22 +75,31 @@ class ActionBlock(ConfigObject):
   def _parse_block_label(cls, value: Any) -> Optional[str]:
     if not value:
       return None
-    label = cli_helper.parse_non_empty_str(value)
-    if label == cls.LOGIN_LABEL:
+    label = ObjectParser.non_empty_str(value)
+    if label == LOGIN_LABEL:
       raise ConfigError(
           f"Block label {repr(label)} is reserved for login blocks")
     return value
 
   def validate(self) -> None:
     super().validate()
-    cli_helper.parse_non_empty_sequence(self.actions, "actions")
+    self.validate_actions()
+
+  def validate_actions(self) -> None:
+    ObjectParser.non_empty_sequence(self.actions, "actions")
     # TODO: enable validating action indices
     # for index, action in enumerate(self.actions):
     #   if index != action.index:
     #     raise ValueError(
-    #         f"action[{index}].index should be {index}, but got {action.index}")
+    #         f"action[{index}].index should be {index}, "
+    #         f"but got {action.index}")
     if not self.actions:
       raise argparse.ArgumentTypeError("Invalid block without actions")
+
+  def run_with(self, runner: ActionRunner, run: Run,
+               page: InteractivePage) -> None:
+    del page
+    runner.run_block(run, self)
 
   def to_json(self) -> Dict[str, Any]:
     return {
@@ -107,6 +124,13 @@ class ActionBlock(ConfigObject):
 
   def __len__(self) -> int:
     return len(self.actions)
+
+  @property
+  def first_url(self) -> str:
+    for action in self.actions:
+      if action.TYPE == ActionType.GET:
+        return cast(GetAction, action).url
+    raise RuntimeError("No GET action with an URL found.")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -136,7 +160,7 @@ class ActionBlockListConfig(ConfigObject):
     Default block actions:
     [{ "action": "get", ...}, { "action": ...}, ...]
     """
-    config = cli_helper.parse_non_empty_sequence(config, "actions")
+    config = ObjectParser.non_empty_sequence(config, "actions")
     info = "action block"
     if cls._is_default_block_actions(config):
       info = "default actions"
@@ -148,7 +172,7 @@ class ActionBlockListConfig(ConfigObject):
     def block_config_data_gen():
       for index, block_config in enumerate(config):
         with exception.annotate_argparsing(f"Parsing {info} ...[{index}]"):
-          block_config = cli_helper.parse_dict(block_config, f"blocks[{index}]")
+          block_config = ObjectParser.dict(block_config, f"blocks[{index}]")
           label = block_config.get("label")
           yield index, label, block_config
 
@@ -166,7 +190,7 @@ class ActionBlockListConfig(ConfigObject):
   @classmethod
   def parse_dict(cls: Type[ActionBlockListConfig],
                  config: Dict[str, Any]) -> ActionBlockListConfig:
-    config = cli_helper.parse_non_empty_dict(config, "blocks")
+    config = ObjectParser.non_empty_dict(config, "blocks")
 
     def block_config_data_gen():
       for index, (label, block_data) in enumerate(config.items()):
@@ -203,12 +227,14 @@ class ActionBlockListConfig(ConfigObject):
     super().validate()
     if not self.blocks:
       raise ValueError("Missing action blocks.")
-    cli_helper.parse_non_empty_sequence(self.blocks, "blocks")
+    ObjectParser.non_empty_sequence(self.blocks, "blocks")
     found_get = False
     for index, block in enumerate(self.blocks):
       if index != block.index:
         raise ValueError(
             f"blocks[{index}].index should be {index}, but got {block.index}")
-      found_get |= any(action.TYPE == ActionType.GET for action in block)
+      found_get |= any(
+          action.TYPE in (ActionType.GET, ActionType.MEET_CREATE)
+          for action in block)
     if not found_get:
       raise ValueError("Expected at least one get action in one of the blocks.")

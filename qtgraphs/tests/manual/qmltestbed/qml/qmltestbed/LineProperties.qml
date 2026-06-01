@@ -207,6 +207,7 @@ Rectangle {
             name: "Second"
             width: widthSlider2.value
             draggable: true
+            hoverable: true
             pointDelegate: Item {
                 property color pointColor
                 property real pointValueX
@@ -236,6 +237,11 @@ Rectangle {
             XYPoint { x: 3.3; y: 6.9 }
             XYPoint { x: 3.6; y: 5.0 }
             XYPoint { x: 4.0; y: 5.3 }
+
+            onHoveredChanged: (enabled)=> {
+                                  console.log("hoveredChanged:", enabled)
+                                  console.log("isHovered:", lineSeries2.hovered)
+                              }
         }
 
         LineSeries {

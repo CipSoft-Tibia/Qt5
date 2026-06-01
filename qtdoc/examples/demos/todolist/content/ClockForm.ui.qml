@@ -23,8 +23,6 @@ Item {
     property alias angle: clockHand.rotation
     property alias centerPoint: mouseArea.centerPoint
 
-    onIsHourClockChanged: angle = isHourClock ? hourClockRotation : minutesClockRotation
-
     Image {
         id: clockHand
 
@@ -41,6 +39,9 @@ Item {
         id: clockFace
 
         source: "images/Clock.svg"
+        sourceSize.width: parent.width
+        fillMode: Image.PreserveAspectFit
+
 
         MouseArea {
             id: mouseArea

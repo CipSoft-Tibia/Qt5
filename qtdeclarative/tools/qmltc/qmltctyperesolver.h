@@ -26,7 +26,7 @@ public:
     QQmlJSScope::Ptr scopeForLocation(const QV4::CompiledData::Location &location) const;
 
     // returns an import pair {url, modifiable type} for a given \a type
-    QPair<QString, QQmlJSScope::Ptr> importedType(const QQmlJSScope::ConstPtr &type) const;
+    std::pair<QString, QQmlJSScope::Ptr> importedType(const QQmlJSScope::ConstPtr &type) const;
 
 private:
     QQmlJSImporter *m_importer = nullptr;

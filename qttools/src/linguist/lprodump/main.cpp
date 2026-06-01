@@ -107,7 +107,7 @@ public:
     {
         if (verbose && !(type & CumulativeEvalMessage) && (type & CategoryMask) == ErrorMessage) {
             // "Downgrade" errors, as we don't really care for them
-            printErr(QLatin1String("WARNING: ") + msg + QLatin1Char('\n'));
+            printErr("WARNING: "_L1 + msg + u'\n');
         }
     }
 
@@ -152,7 +152,7 @@ static QStringList getSources(const ProFileEvaluator &visitor, const QString &pr
                               QMakeVfs *vfs)
 {
     QStringList baseVPaths;
-    baseVPaths += visitor.absolutePathValues(QLatin1String("VPATH"), projectDir);
+    baseVPaths += visitor.absolutePathValues("VPATH"_L1, projectDir);
     baseVPaths << projectDir; // QMAKE_ABSOLUTE_SOURCE_PATH
     baseVPaths.removeDuplicates();
 
@@ -168,19 +168,18 @@ static QStringList getSources(const ProFileEvaluator &visitor, const QString &pr
     for (const QString &resource : resourceFiles)
         sourceFiles += getResources(resource, vfs);
 
-    QStringList installs = visitor.values(QLatin1String("INSTALLS"))
-                         + visitor.values(QLatin1String("DEPLOYMENT"));
+    QStringList installs = visitor.values("INSTALLS"_L1) + visitor.values("DEPLOYMENT"_L1);
     installs.removeDuplicates();
     QDir baseDir(projectDir);
     for (const QString &inst : std::as_const(installs)) {
-        for (const QString &file : visitor.values(inst + QLatin1String(".files"))) {
+        for (const QString &file : visitor.values(inst + ".files"_L1)) {
             QFileInfo info(file);
             if (!info.isAbsolute())
                 info.setFile(baseDir.absoluteFilePath(file));
             QStringList nameFilter;
             QString searchPath;
             if (info.isDir()) {
-                nameFilter << QLatin1String("*");
+                nameFilter << "*"_L1;
                 searchPath = info.filePath();
             } else {
                 nameFilter << info.fileName();
@@ -206,7 +205,7 @@ static QStringList getSources(const ProFileEvaluator &visitor, const QString &pr
 
 QStringList getExcludes(const ProFileEvaluator &visitor, const QString &projectDirPath)
 {
-    const QStringList trExcludes = visitor.values(QLatin1String("TR_EXCLUDE"));
+    const QStringList trExcludes = visitor.values("TR_EXCLUDE"_L1);
     QStringList excludes;
     excludes.reserve(trExcludes.size());
     const QDir projectDir(projectDirPath);
@@ -217,7 +216,7 @@ QStringList getExcludes(const ProFileEvaluator &visitor, const QString &projectD
 
 static void excludeProjects(const ProFileEvaluator &visitor, QStringList *subProjects)
 {
-    for (const QString &ex : visitor.values(QLatin1String("TR_EXCLUDE"))) {
+    for (const QString &ex : visitor.values("TR_EXCLUDE"_L1)) {
         QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(ex));
         for (auto it = subProjects->begin(); it != subProjects->end(); ) {
             if (rx.match(*it).hasMatch())
@@ -239,26 +238,25 @@ static QJsonObject processProject(const QString &proFile, const QStringList &tra
                                   QMakeParser *parser, ProFileEvaluator &visitor)
 {
     QJsonObject result;
-    QStringList tmp = visitor.values(QLatin1String("CODECFORSRC"));
+    QStringList tmp = visitor.values("CODECFORSRC"_L1);
     if (!tmp.isEmpty())
         result[QStringLiteral("codec")] = tmp.last();
     QString proPath = QFileInfo(proFile).path();
     if (visitor.templateType() == ProFileEvaluator::TT_Subdirs) {
-        QStringList subProjects = visitor.values(QLatin1String("SUBDIRS"));
+        QStringList subProjects = visitor.values("SUBDIRS"_L1);
         excludeProjects(visitor, &subProjects);
         QStringList subProFiles;
         QDir proDir(proPath);
         for (const QString &subdir : std::as_const(subProjects)) {
-            QString realdir = visitor.value(subdir + QLatin1String(".subdir"));
+            QString realdir = visitor.value(subdir + ".subdir"_L1);
             if (realdir.isEmpty())
-                realdir = visitor.value(subdir + QLatin1String(".file"));
+                realdir = visitor.value(subdir + ".file"_L1);
             if (realdir.isEmpty())
                 realdir = subdir;
             QString subPro = QDir::cleanPath(proDir.absoluteFilePath(realdir));
             QFileInfo subInfo(subPro);
             if (subInfo.isDir()) {
-                subProFiles << (subPro + QLatin1Char('/')
-                                + subInfo.fileName() + QLatin1String(".pro"));
+                subProFiles << (subPro + u'/' + subInfo.fileName() + ".pro"_L1);
             } else {
                 subProFiles << subPro;
             }
@@ -270,8 +268,7 @@ static QJsonObject processProject(const QString &proFile, const QStringList &tra
             setValue(result, "subProjects", subResults);
     } else {
         const QStringList sourceFiles = getSources(visitor, proPath, vfs);
-        setValue(result, "includePaths",
-                 visitor.absolutePathValues(QLatin1String("INCLUDEPATH"), proPath));
+        setValue(result, "includePaths", visitor.absolutePathValues("INCLUDEPATH"_L1, proPath));
         setValue(result, "excluded", getExcludes(visitor, proPath));
         setValue(result, "sources", sourceFiles);
     }
@@ -319,9 +316,8 @@ static QJsonArray processProjects(bool topLevel, const QStringList &proFiles,
         }
         if (!tsFiles.isEmpty())
             setValue(prj, "translations", tsFiles);
-        if (visitor.contains(QLatin1String("LUPDATE_COMPILE_COMMANDS_PATH"))) {
-            const QStringList thepathjson = visitor.values(
-                QLatin1String("LUPDATE_COMPILE_COMMANDS_PATH"));
+        if (visitor.contains("LUPDATE_COMPILE_COMMANDS_PATH"_L1)) {
+            const QStringList thepathjson = visitor.values("LUPDATE_COMPILE_COMMANDS_PATH"_L1);
             setValue(prj, "compileCommands", thepathjson.value(0));
         }
         result.append(prj);
@@ -343,26 +339,24 @@ int main(int argc, char **argv)
 
     for (int i = 1; i < args.size(); ++i) {
         QString arg = args.at(i);
-        if (arg == QLatin1String("-help")
-                || arg == QLatin1String("--help")
-                || arg == QLatin1String("-h")) {
+        if (arg == "-help"_L1 || arg == "--help"_L1 || arg == "-h"_L1) {
             printUsage();
             return 0;
-        } else if (arg == QLatin1String("-out")) {
+        } else if (arg == "-out"_L1) {
             ++i;
             if (i == argc) {
                 printErr(u"The option -out requires a parameter.\n"_s);
                 return 1;
             }
             outputFilePath = args[i];
-        } else if (arg == QLatin1String("-silent")) {
+        } else if (arg == "-silent"_L1) {
             evalHandler.verbose = false;
-        } else if (arg == QLatin1String("-pro-debug")) {
+        } else if (arg == "-pro-debug"_L1) {
             proDebug++;
-        } else if (arg == QLatin1String("-version")) {
+        } else if (arg == "-version"_L1) {
             printOut(QStringLiteral("lprodump version %1\n").arg(QLatin1String(QT_VERSION_STR)));
             return 0;
-        } else if (arg == QLatin1String("-pro")) {
+        } else if (arg == "-pro"_L1) {
             ++i;
             if (i == argc) {
                 printErr(QStringLiteral("The -pro option should be followed by a filename of .pro file.\n"));
@@ -371,7 +365,7 @@ int main(int argc, char **argv)
             QString file = QDir::cleanPath(QFileInfo(args[i]).absoluteFilePath());
             proFiles += file;
             outDirMap[file] = outDir;
-        } else if (arg == QLatin1String("-pro-out")) {
+        } else if (arg == "-pro-out"_L1) {
             ++i;
             if (i == argc) {
                 printErr(QStringLiteral("The -pro-out option should be followed by a directory name.\n"));
@@ -385,8 +379,8 @@ int main(int argc, char **argv)
                          u"comma-separated list of variable names.\n"_s);
                 return 1;
             }
-            translationsVariables = args.at(i).split(QLatin1Char(','));
-        } else if (arg.startsWith(QLatin1String("-")) && arg != QLatin1String("-")) {
+            translationsVariables = args.at(i).split(u',');
+        } else if (arg.startsWith("-"_L1) && arg != "-"_L1) {
             printErr(QStringLiteral("Unrecognized option '%1'.\n").arg(arg));
             return 1;
         } else {
@@ -415,13 +409,11 @@ int main(int argc, char **argv)
     ProFileGlobals option;
     option.qmake_abslocation = QString::fromLocal8Bit(qgetenv("QMAKE"));
     if (option.qmake_abslocation.isEmpty()) {
-        option.qmake_abslocation = QLibraryInfo::path(QLibraryInfo::BinariesPath)
-            + QLatin1String("/qmake");
+        option.qmake_abslocation = QLibraryInfo::path(QLibraryInfo::BinariesPath) + "/qmake"_L1;
     }
     option.debugLevel = proDebug;
     option.initProperties();
-    option.setCommandLineArguments(QDir::currentPath(),
-                                   QStringList() << QLatin1String("CONFIG+=lupdate_run"));
+    option.setCommandLineArguments(QDir::currentPath(), { "CONFIG+=lupdate_run"_L1 });
     QMakeVfs vfs;
     QMakeParser parser(0, &vfs, &evalHandler);
 

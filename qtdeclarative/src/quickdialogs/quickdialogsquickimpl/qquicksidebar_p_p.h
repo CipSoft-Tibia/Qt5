@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKSIDEBAR_P_P_H
 #define QQUICKSIDEBAR_P_P_H
@@ -60,6 +61,14 @@ public:
     void handleContextMenuRequested(QPointF pos);
     void handleRemoveAction();
 
+protected:
+    qreal getContentWidth() const override;
+    qreal getContentHeight() const override;
+    void itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &diff) override;
+    void itemImplicitWidthChanged(QQuickItem *item) override;
+    void itemImplicitHeightChanged(QQuickItem *item) override;
+
+
 private:
     QQuickDialog *dialog = nullptr;
     QQmlComponent *buttonDelegate = nullptr;
@@ -72,6 +81,8 @@ private:
     QList<QStandardPaths::StandardLocation> folderPaths;
     QList<QUrl> favoritePaths;
     QUrl currentButtonClickedUrl;
+    qreal addFavoriteButtonImplicitSize = 0;
+    qreal separatorImplicitSize = 0;
     bool folderPathsValid = false;
     bool favoritePathsValid = false;
     bool repopulating = false;

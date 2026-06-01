@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 
@@ -57,7 +56,6 @@ jumbo_source_set("generic_sensor") {
 
   deps = [
     "//base",
-    "//build:chromeos_buildflags",
     "//device/base/synchronization",
     "//services/device/public/cpp:device_features",
     "//ui/gfx/geometry:geometry",
@@ -131,6 +129,11 @@ jumbo_source_set("generic_sensor") {
       "platform_sensor_reader_winrt.h",
       "platform_sensor_win.cc",
       "platform_sensor_win.h",
+    ]
+
+    jumbo_excluded_sources = [
+      "platform_sensor_provider_winrt.cc",
+      "platform_sensor_reader_winrt.cc",
     ]
 
     libs = [

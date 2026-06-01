@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 
 CoffeeCardForm {
+    id: coffeeCard
 
     coffeeCardRectangle.states: State {
         name: "small"
@@ -16,7 +17,7 @@ CoffeeCardForm {
 
     button.states: State {
         name: "pressed"
-        when: button.pressed
+        when: coffeeCard.button.pressed
         PropertyChanges {
             target: coffeeCardRectangle
             scale: 0.9
@@ -72,7 +73,7 @@ CoffeeCardForm {
         },
         State {
             name: "smaller"
-            when: applicationFlow.mode == "portrait" && ((Screen.height * Screen.devicePixelRatio) + (Screen.width * Screen.devicePixelRatio)) < 1200
+            when: Config.mode == "portrait" && ((Screen.height * Screen.devicePixelRatio) + (Screen.width * Screen.devicePixelRatio)) < 1200
             PropertyChanges {
                 target: coffeeCardCircle
                 implicitWidth: coffeeCardRectangle.implicitWidth / 2

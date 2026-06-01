@@ -9,6 +9,7 @@
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qlist.h>
+#include <QtCore/qmap.h>
 #include <QtCore/qstring.h>
 
 QT_BEGIN_NAMESPACE
@@ -16,9 +17,12 @@ QT_BEGIN_NAMESPACE
 class FunctionNode;
 class PropertyNode;
 class QmlTypeNode;
+class Tree;
 
 class ClassNode : public Aggregate
 {
+    friend class Tree;
+
 public:
     ClassNode(NodeType type, Aggregate *parent, const QString &name) : Aggregate(type, parent, name)
     {
@@ -35,11 +39,9 @@ public:
     void removePrivateAndInternalBases();
     void resolvePropertyOverriddenFromPtrs(PropertyNode *pn);
 
-    QList<RelatedClass> &baseClasses() { return m_bases; }
-    QList<RelatedClass> &derivedClasses() { return m_derived; }
-    QList<RelatedClass> &ignoredBaseClasses() { return m_ignoredBases; }
-
     [[nodiscard]] const QList<RelatedClass> &baseClasses() const { return m_bases; }
+    [[nodiscard]] const QList<RelatedClass> &derivedClasses() const { return m_derived; }
+    [[nodiscard]] const QList<RelatedClass> &ignoredBaseClasses() const { return m_ignoredBases; }
 
     [[nodiscard]] bool isAbstract() const override { return m_abstract; }
     void setAbstract(bool b) override { m_abstract = b; }
@@ -52,8 +54,24 @@ public:
     bool isQmlNativeType() { return !m_nativeTypeForQml.empty(); }
     const QSet<QmlTypeNode *> &qmlNativeTypes() { return m_nativeTypeForQml; }
 
+    enum class HierarchyDirection { Base, Derived };
+
+    [[nodiscard]] bool hasCircularInheritance(QStringList *cyclePath = nullptr) const;
+    [[nodiscard]] bool hasCircularDerivedClasses(QStringList *cyclePath = nullptr) const;
+
+private:
+    enum class Color { White, Gray, Black };
+
+    [[nodiscard]] bool hasCircularRelationship(HierarchyDirection direction,
+                                               QStringList *cyclePath) const;
+    [[nodiscard]] bool detectCycleRecursive(HierarchyDirection direction,
+                                            QMap<const ClassNode*, Color> &colors,
+                                            QList<const ClassNode*> &path) const;
+
 private:
     void promotePublicBases(const QList<RelatedClass> &bases);
+
+    QList<RelatedClass> &baseClasses_mutable() { return m_bases; }
 
 private:
     QList<RelatedClass> m_bases {};

@@ -21,7 +21,8 @@ qt_internal_add_app(linguist
         batchtranslationdialog.cpp batchtranslationdialog.h
         errorsview.cpp errorsview.h
         finddialog.cpp finddialog.h finddialog.ui
-        formpreviewview.cpp formpreviewview.h
+        uiformpreviewview.cpp uiformpreviewview.h
+        qmlformpreviewview.h qmlformpreviewview.cpp
         globals.cpp globals.h
         main.cpp
         mainwindow.cpp mainwindow.h mainwindow.ui
@@ -52,6 +53,8 @@ qt_internal_add_app(linguist
         Qt::GuiPrivate
         Qt::UiToolsPrivate
         Qt::Widgets
+        Qt::QuickWidgets
+        Qt::QuickLayouts
 )
 
 qt_internal_extend_target(linguist CONDITION QT_FEATURE_printsupport
@@ -60,6 +63,48 @@ qt_internal_extend_target(linguist CONDITION QT_FEATURE_printsupport
     LIBRARIES
         Qt::PrintSupport
 )
+
+set(available_plugins "")
+
+set(plugin_targets
+    Qt::qtquickcontrols2plugin
+    Qt::qtquick2plugin
+    Qt::qtquickdialogsplugin
+    Qt::qtquickcontrols2universalstyleplugin
+    Qt::qtquickcontrols2basicstyleplugin
+    Qt::qtquickcontrols2fluentwinui3styleplugin
+    Qt::qtquickcontrols2fusionstyleplugin
+    Qt::qtquickcontrols2imaginestyleplugin
+    Qt::qtquickcontrols2iosstyleplugin
+    Qt::qtquickcontrols2macosstyleplugin
+    Qt::qtquickcontrols2materialstyleplugin
+    Qt::qtquicktemplates2plugin
+    Qt::qtquickcontrols2implplugin
+    Qt::qtquickdialogs2quickimplplugin
+    Qt::qtquickcontrols2universalstyleimplplugin
+    Qt::qtquickcontrols2basicstyleimplplugin
+    Qt::qtquickcontrols2fluentwinui3styleimplplugin
+    Qt::qtquickcontrols2fusionstyleimplplugin
+    Qt::qtquickcontrols2imaginestyleimplplugin
+    Qt::qtquickcontrols2iosstyleimplplugin
+    Qt::qtquickcontrols2macosstyleimplplugin
+    Qt::qtquickcontrols2materialstyleimplplugin
+    Qt::quickwindow
+)
+
+foreach(plugin ${plugin_targets})
+    if(TARGET ${plugin})
+        list(APPEND available_plugins ${plugin})
+    endif()
+endforeach()
+
+if (available_plugins)
+    if(BUILD_SHARED_LIBS)
+        add_dependencies(linguist ${available_plugins})
+    else()
+        qt_internal_extend_target(linguist LIBRARIES ${available_plugins})
+    endif()
+endif()
 
 qt_add_ui(linguist
     SOURCES
@@ -75,56 +120,119 @@ qt_add_ui(linguist
 # Resources:
 set(linguist_resource_files
     "images/appicon.png"
-    "images/down.png"
-    "images/editdelete.png"
     "images/icons/linguist-128-32.png"
-    "images/mac/accelerator.png"
-    "images/mac/book.png"
-    "images/mac/done.png"
-    "images/mac/doneandnext.png"
-    "images/mac/editcopy.png"
-    "images/mac/editcut.png"
-    "images/mac/editpaste.png"
-    "images/mac/fileopen.png"
-    "images/mac/filesave.png"
-    "images/mac/next.png"
-    "images/mac/nextunfinished.png"
-    "images/mac/phrase.png"
-    "images/mac/prev.png"
-    "images/mac/prevunfinished.png"
-    "images/mac/print.png"
-    "images/mac/punctuation.png"
-    "images/mac/redo.png"
-    "images/mac/searchfind.png"
-    "images/mac/surroundingwhitespace.png"
-    "images/mac/undo.png"
-    "images/mac/validateplacemarkers.png"
-    "images/mac/whatsthis.png"
-    "images/minus.png"
-    "images/plus.png"
-    "images/up.png"
-    "images/win/accelerator.png"
-    "images/win/book.png"
-    "images/win/done.png"
-    "images/win/doneandnext.png"
-    "images/win/editcopy.png"
-    "images/win/editcut.png"
-    "images/win/editpaste.png"
-    "images/win/fileopen.png"
-    "images/win/filesave.png"
-    "images/win/next.png"
-    "images/win/nextunfinished.png"
-    "images/win/phrase.png"
-    "images/win/prev.png"
-    "images/win/prevunfinished.png"
-    "images/win/print.png"
-    "images/win/punctuation.png"
-    "images/win/redo.png"
-    "images/win/searchfind.png"
-    "images/win/surroundingwhitespace.png"
-    "images/win/undo.png"
-    "images/win/validateplacemarkers.png"
-    "images/win/whatsthis.png"
+    "images/darkicons/check-ampersands.png"
+    "images/darkicons/check-ending-pontuation.png"
+    "images/darkicons/check-phrase-suggestions.png"
+    "images/darkicons/check-place-markers.png"
+    "images/darkicons/check-white-spaces.png"
+    "images/darkicons/copy-general.png"
+    "images/darkicons/cut.png"
+    "images/darkicons/hit-help-chosen-option.png"
+    "images/darkicons/library.png"
+    "images/darkicons/mark-current-translation-done.png"
+    "images/darkicons/mark-current-translation-done-move-to-next.png"
+    "images/darkicons/minus-square-fill.png"
+    "images/darkicons/next-translation-item.png"
+    "images/darkicons/next-unfinished-translation-item.png"
+    "images/darkicons/open-new.png"
+    "images/darkicons/paste-general.png"
+    "images/darkicons/plus-square-fill.png"
+    "images/darkicons/previous-translation-item.png"
+    "images/darkicons/previous-unfinished-translation-item.png"
+    "images/darkicons/print.png"
+    "images/darkicons/redo-arrow-right.png"
+    "images/darkicons/save-fl-disk.png"
+    "images/darkicons/search-magnifier.png"
+    "images/darkicons/undo-arrow-left.png"
+
+    "images/darkicons/check-ampersands-disabled.png"
+    "images/darkicons/check-ending-pontuation-disabled.png"
+    "images/darkicons/check-phrase-suggestions-disabled.png"
+    "images/darkicons/check-place-markers-disabled.png"
+    "images/darkicons/check-white-spaces-disabled.png"
+    "images/darkicons/copy-general-disabled.png"
+    "images/darkicons/cut-disabled.png"
+    "images/darkicons/hit-help-chosen-option-disabled.png"
+    "images/darkicons/library-disabled.png"
+    "images/darkicons/mark-current-translation-done-disabled.png"
+    "images/darkicons/mark-current-translation-done-move-to-next-disabled.png"
+    "images/darkicons/minus-square-fill-disabled.png"
+    "images/darkicons/next-translation-item-disabled.png"
+    "images/darkicons/next-unfinished-translation-item-disabled.png"
+    "images/darkicons/open-new-disabled.png"
+    "images/darkicons/paste-general-disabled.png"
+    "images/darkicons/plus-square-fill-disabled.png"
+    "images/darkicons/previous-translation-item-disabled.png"
+    "images/darkicons/previous-unfinished-translation-item-disabled.png"
+    "images/darkicons/print-disabled.png"
+    "images/darkicons/redo-arrow-right-disabled.png"
+    "images/darkicons/save-fl-disk-disabled.png"
+    "images/darkicons/search-magnifier-disabled.png"
+    "images/darkicons/undo-arrow-left-disabled.png"
+
+    "images/lighticons/check-ampersands.png"
+    "images/lighticons/check-ending-pontuation.png"
+    "images/lighticons/check-phrase-suggestions.png"
+    "images/lighticons/check-place-markers.png"
+    "images/lighticons/check-white-spaces.png"
+    "images/lighticons/copy-general.png"
+    "images/lighticons/cut.png"
+    "images/lighticons/hit-help-chosen-option.png"
+    "images/lighticons/library.png"
+    "images/lighticons/mark-current-translation-done.png"
+    "images/lighticons/mark-current-translation-done-move-to-next.png"
+    "images/lighticons/minus-square-fill.png"
+    "images/lighticons/next-translation-item.png"
+    "images/lighticons/next-unfinished-translation-item.png"
+    "images/lighticons/open-new.png"
+    "images/lighticons/paste-general.png"
+    "images/lighticons/plus-square-fill.png"
+    "images/lighticons/previous-translation-item.png"
+    "images/lighticons/previous-unfinished-translation-item.png"
+    "images/lighticons/print.png"
+    "images/lighticons/redo-arrow-right.png"
+    "images/lighticons/save-fl-disk.png"
+    "images/lighticons/search-magnifier.png"
+    "images/lighticons/undo-arrow-left.png"
+
+    "images/lighticons/check-ampersands-disabled.png"
+    "images/lighticons/check-ending-pontuation-disabled.png"
+    "images/lighticons/check-phrase-suggestions-disabled.png"
+    "images/lighticons/check-place-markers-disabled.png"
+    "images/lighticons/check-white-spaces-disabled.png"
+    "images/lighticons/copy-general-disabled.png"
+    "images/lighticons/cut-disabled.png"
+    "images/lighticons/hit-help-chosen-option-disabled.png"
+    "images/lighticons/library-disabled.png"
+    "images/lighticons/mark-current-translation-done-disabled.png"
+    "images/lighticons/mark-current-translation-done-move-to-next-disabled.png"
+    "images/lighticons/minus-square-fill-disabled.png"
+    "images/lighticons/next-translation-item-disabled.png"
+    "images/lighticons/next-unfinished-translation-item-disabled.png"
+    "images/lighticons/open-new-disabled.png"
+    "images/lighticons/paste-general-disabled.png"
+    "images/lighticons/plus-square-fill-disabled.png"
+    "images/lighticons/previous-translation-item-disabled.png"
+    "images/lighticons/previous-unfinished-translation-item-disabled.png"
+    "images/lighticons/print-disabled.png"
+    "images/lighticons/redo-arrow-right-disabled.png"
+    "images/lighticons/save-fl-disk-disabled.png"
+    "images/lighticons/search-magnifier-disabled.png"
+    "images/lighticons/undo-arrow-left-disabled.png"
+
+    "images/lightmarks/danger-mark.png"
+    "images/lightmarks/empty-mark.png"
+    "images/lightmarks/obsolete-mark.png"
+    "images/lightmarks/off-mark.png"
+    "images/lightmarks/on-mark.png"
+    "images/lightmarks/warning-mark.png"
+    "images/darkmarks/danger-mark.png"
+    "images/darkmarks/empty-mark.png"
+    "images/darkmarks/obsolete-mark.png"
+    "images/darkmarks/off-mark.png"
+    "images/darkmarks/on-mark.png"
+    "images/darkmarks/warning-mark.png"
 )
 
 qt_internal_add_resource(linguist "linguist"
@@ -161,6 +269,24 @@ if(UNIX)
     set_target_properties(linguist PROPERTIES
         QT_TARGET_VERSION "${PROJECT_VERSION}"
     )
+endif()
+
+if(QT_INSTALL_XDG_DESKTOP_ENTRIES)
+    if(UNIX AND NOT APPLE)
+        qt_path_join(xdg_install_dir ${QT_INSTALL_DIR} ${CMAKE_INSTALL_DATAROOTDIR})
+
+        qt_install(FILES linguist.desktop
+            DESTINATION "${xdg_install_dir}/applications"
+        )
+        qt_install(FILES linguist.metainfo.xml
+            RENAME io.qt.Linguist.metainfo.xml
+            DESTINATION "${xdg_install_dir}/metainfo"
+        )
+        qt_install(FILES images/icons/linguist-128-32.png
+            RENAME linguist.png
+            DESTINATION "${xdg_install_dir}/icons/hicolor/128x128/apps"
+        )
+    endif()
 endif()
 
 if(APPLE)

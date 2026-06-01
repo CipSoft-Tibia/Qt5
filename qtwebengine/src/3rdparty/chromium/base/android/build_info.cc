@@ -91,7 +91,8 @@ BuildInfo::BuildInfo(const std::vector<std::string>& params)
       vulkan_deqp_level_(GetIntParam(params, 30)),
       is_foldable_(GetIntParam(params, 31)),
       soc_manufacturer_(StrDupParam(params, 32)),
-      is_debug_app_(GetIntParam(params, 33)) {}
+      is_debug_app_(GetIntParam(params, 33)),
+      is_desktop_(GetIntParam(params, 34)) {}
 
 BuildInfo::~BuildInfo() = default;
 
@@ -105,13 +106,12 @@ void BuildInfo::set_gms_version_code_for_test(
 
 std::string BuildInfo::host_signing_cert_sha256() {
   JNIEnv* env = AttachCurrentThread();
-  return base::android::ConvertJavaStringToUTF8(
-      env, Java_BuildInfo_lazyGetHostSigningCertSha256(env));
+  return Java_BuildInfo_lazyGetHostSigningCertSha256(env);
 }
 
 // static
 BuildInfo* BuildInfo::GetInstance() {
-  return Singleton<BuildInfo, BuildInfoSingletonTraits >::get();
+  return Singleton<BuildInfo, BuildInfoSingletonTraits>::get();
 }
 
 }  // namespace android

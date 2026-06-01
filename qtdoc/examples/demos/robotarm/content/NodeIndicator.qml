@@ -3,18 +3,16 @@
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick3D
-import RobotArm
 
 Item {
     id: root
     property real size: 100
     property bool isFocused: true
-    property View3D view3D: parent
+    property View3D view3D: parent as View3D
     property vector3d scenePosition
     property vector3d screenPosition
-    property alias label: label.text
+    property alias label: indicatorLabel.text
 
     x: screenPosition.x
     y: screenPosition.y
@@ -22,21 +20,17 @@ Item {
     visible: x > 0 && y > 0
 
     Label {
-        id: label
+        id: indicatorLabel
         enabled: root.isFocused
         anchors.bottom: rect.top
         anchors.horizontalCenter: rect.horizontalCenter
     }
 
-    Rectangle {
+    Circle {
         id: rect
+        isFocused: root.isFocused
         width: root.size
         height: root.size
-        color: "Transparent"
-        radius: width / 2
-        border.width: 2
-        border.color: root.isFocused ? Material.accentColor : Material.secondaryTextColor
-
         anchors.horizontalCenter: parent.left
         anchors.verticalCenter: parent.top
     }

@@ -5,6 +5,7 @@
 #include "content/browser/renderer_host/render_frame_host_android.h"
 
 #include <jni.h>
+
 #include <utility>
 
 #include "base/android/callback_android.h"
@@ -21,9 +22,9 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/site_instance.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
 #include "third_party/blink/public/mojom/webauthn/authenticator.mojom.h"
 #include "url/android/gurl_android.h"
 #include "url/origin.h"
@@ -127,7 +128,7 @@ ScopedJavaLocalRef<jobject> RenderFrameHostAndroid::GetLastCommittedURL(
 
 ScopedJavaLocalRef<jobject> RenderFrameHostAndroid::GetLastCommittedOrigin(
     JNIEnv* env) {
-  return render_frame_host_->GetLastCommittedOrigin().ToJavaObject();
+  return render_frame_host_->GetLastCommittedOrigin().ToJavaObject(env);
 }
 
 ScopedJavaLocalRef<jobject> RenderFrameHostAndroid::GetMainFrame(JNIEnv* env) {
@@ -145,9 +146,10 @@ void RenderFrameHostAndroid::GetCanonicalUrlForSharing(
 std::vector<ScopedJavaLocalRef<jobject>>
 RenderFrameHostAndroid::GetAllRenderFrameHosts(JNIEnv* env) const {
   std::vector<ScopedJavaLocalRef<jobject>> ret;
-  render_frame_host_->ForEachRenderFrameHost([&ret](RenderFrameHostImpl* rfh) {
-    ret.push_back(rfh->GetJavaRenderFrameHost());
-  });
+  render_frame_host_->ForEachRenderFrameHostImpl(
+      [&ret](RenderFrameHostImpl* rfh) {
+        ret.push_back(rfh->GetJavaRenderFrameHost());
+      });
   return ret;
 }
 
@@ -155,7 +157,7 @@ bool RenderFrameHostAndroid::IsFeatureEnabled(
     JNIEnv* env,
     jint feature) const {
   return render_frame_host_->IsFeatureEnabled(
-      static_cast<blink::mojom::PermissionsPolicyFeature>(feature));
+      static_cast<network::mojom::PermissionsPolicyFeature>(feature));
 }
 
 base::UnguessableToken RenderFrameHostAndroid::GetAndroidOverlayRoutingToken(
@@ -175,14 +177,14 @@ void RenderFrameHostAndroid::NotifyWebAuthnAssertionRequestSucceeded(
 
 jboolean RenderFrameHostAndroid::IsCloseWatcherActive(JNIEnv* env) const {
   auto* close_listener_host =
-      CloseListenerHost::GetOrCreateForCurrentDocument(render_frame_host_);
-  return close_listener_host->IsActive();
+      CloseListenerHost::GetForCurrentDocument(render_frame_host_);
+  return close_listener_host && close_listener_host->IsActive();
 }
 
 jboolean RenderFrameHostAndroid::SignalCloseWatcherIfActive(JNIEnv* env) const {
   auto* close_listener_host =
-      CloseListenerHost::GetOrCreateForCurrentDocument(render_frame_host_);
-  return close_listener_host->SignalIfActive();
+      CloseListenerHost::GetForCurrentDocument(render_frame_host_);
+  return close_listener_host && close_listener_host->SignalIfActive();
 }
 
 jboolean RenderFrameHostAndroid::IsRenderFrameLive(JNIEnv* env) const {
@@ -218,7 +220,7 @@ void RenderFrameHostAndroid::PerformGetAssertionWebAuthSecurityChecks(
     const base::android::JavaParamRef<jobject>& effective_origin,
     jboolean is_payment_credential_get_assertion,
     const base::android::JavaParamRef<jobject>& callback) const {
-  url::Origin origin = url::Origin::FromJavaObject(effective_origin);
+  url::Origin origin = url::Origin::FromJavaObject(env, effective_origin);
   render_frame_host_->PerformGetAssertionWebAuthSecurityChecks(
       ConvertJavaStringToUTF8(env, relying_party_id), origin,
       is_payment_credential_get_assertion,
@@ -240,7 +242,7 @@ void RenderFrameHostAndroid::PerformMakeCredentialWebAuthSecurityChecks(
     const base::android::JavaParamRef<jobject>& effective_origin,
     jboolean is_payment_credential_creation,
     const base::android::JavaParamRef<jobject>& callback) const {
-  url::Origin origin = url::Origin::FromJavaObject(effective_origin);
+  url::Origin origin = url::Origin::FromJavaObject(env, effective_origin);
   render_frame_host_->PerformMakeCredentialWebAuthSecurityChecks(
       ConvertJavaStringToUTF8(env, relying_party_id), origin,
       is_payment_credential_creation,

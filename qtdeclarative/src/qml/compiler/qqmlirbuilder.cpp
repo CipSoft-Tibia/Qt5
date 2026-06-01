@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlirbuilder_p.h"
 
@@ -36,7 +37,7 @@ void Object::simplifyRequiredProperties() {
     if (required.isEmpty())
         return;
     for (auto it = this->propertiesBegin(); it != this->propertiesEnd(); ++it) {
-        auto requiredIt = required.find(it->nameIndex);
+        auto requiredIt = required.find(it->nameIndex());
         if (requiredIt != required.end()) {
             it->setIsRequired(true);
             required.erase(requiredIt);
@@ -131,16 +132,18 @@ void Object::init(QQmlJS::MemoryPool *pool, int typeNameIndex, int idIndex,
     declarationsOverride = nullptr;
 }
 
-QString IRBuilder::sanityCheckFunctionNames(Object *obj, const QSet<QString> &illegalNames, QQmlJS::SourceLocation *errorLocation)
+QString IRBuilder::sanityCheckFunctionNames(Object *obj, QQmlJS::SourceLocation *errorLocation)
 {
     QSet<int> functionNames;
     for (auto functionit = obj->functionsBegin(); functionit != obj->functionsEnd(); ++functionit) {
         Function *f = functionit.ptr;
         errorLocation->startLine = f->location.line();
         errorLocation->startColumn = f->location.column();
-        if (functionNames.contains(f->nameIndex))
-            return tr("Duplicate method name");
-        functionNames.insert(f->nameIndex);
+        if (f->isQmlFunction) {
+            if (functionNames.contains(f->nameIndex))
+                return tr("Duplicate method name");
+            functionNames.insert(f->nameIndex);
+        }
 
         for (auto signalit = obj->signalsBegin(); signalit != obj->signalsEnd(); ++signalit) {
             QmlIR::Signal *s = signalit.ptr;
@@ -149,9 +152,10 @@ QString IRBuilder::sanityCheckFunctionNames(Object *obj, const QSet<QString> &il
         }
 
         const QString name = stringAt(f->nameIndex);
-        if (name.at(0).isUpper())
+        Q_ASSERT(!f->isQmlFunction || !name.isEmpty());
+        if (!name.isEmpty() && name.at(0).isUpper())
             return tr("Method names cannot begin with an upper case letter");
-        if (illegalNames.contains(name))
+        if (QV4::Compiler::Codegen::isNameGlobal(name))
             return tr("Illegal method name");
     }
     return QString(); // no error
@@ -194,11 +198,11 @@ QString Object::appendProperty(Property *prop, const QString &propertyName, bool
         target = this;
 
     for (Property *p = target->properties->first; p; p = p->next)
-        if (p->nameIndex == prop->nameIndex)
+        if (p->nameIndex() == prop->nameIndex())
             return tr("Duplicate property name");
 
     for (Alias *a = target->aliases->first; a; a = a->next)
-        if (a->nameIndex() == prop->nameIndex)
+        if (a->nameIndex() == prop->nameIndex())
             return tr("Property duplicates alias name");
 
     if (propertyName.constData()->isUpper())
@@ -228,7 +232,7 @@ QString Object::appendAlias(Alias *alias, const QString &aliasName, bool isDefau
         return tr("Duplicate alias name");
 
     const auto aliasSameAsProperty = std::find_if(target->properties->begin(), target->properties->end(), [&alias](const Property &targetProp){
-        return targetProp.nameIndex == alias->nameIndex();
+        return targetProp.nameIndex() == alias->nameIndex();
     });
 
     if (aliasSameAsProperty != target->properties->end())
@@ -366,9 +370,8 @@ void ScriptDirectivesCollector::importModule(const QString &uri, const QString &
     document->imports << import;
 }
 
-IRBuilder::IRBuilder(const QSet<QString> &illegalNames)
-    : illegalNames(illegalNames)
-    , _object(nullptr)
+IRBuilder::IRBuilder()
+    : _object(nullptr)
     , _propertyDeclaration(nullptr)
     , pool(nullptr)
     , jsGenerator(nullptr)
@@ -643,7 +646,7 @@ bool IRBuilder::defineQMLObject(
         return false;
 
     QQmlJS::SourceLocation loc;
-    QString error = sanityCheckFunctionNames(obj, illegalNames, &loc);
+    QString error = sanityCheckFunctionNames(obj, &loc);
     if (!error.isEmpty()) {
         recordError(loc, error);
         return false;
@@ -676,7 +679,7 @@ bool IRBuilder::visit(QQmlJS::AST::UiImport *node)
     if (!node->importId.isNull()) {
         QString qualifier = node->importId.toString();
         if (!qualifier.at(0).isUpper()) {
-            recordError(node->importIdToken, QCoreApplication::translate("QQmlParser","Invalid import qualifier ID"));
+            recordError(node->importIdToken, QCoreApplication::translate("QQmlParser","Invalid import qualifier '%1': must start with an uppercase letter").arg(qualifier));
             return false;
         }
         if (qualifier == QLatin1String("Qt")) {
@@ -1055,7 +1058,7 @@ bool IRBuilder::visit(QQmlJS::AST::UiPublicMember *node)
             }
         }
 
-        if (illegalNames.contains(signalName))
+        if (QV4::Compiler::Codegen::isNameGlobal(signalName))
             COMPILE_EXCEPTION(node->identifierToken, tr("Illegal signal name"));
 
         QString error = _object->appendSignal(signal);
@@ -1073,6 +1076,7 @@ bool IRBuilder::visit(QQmlJS::AST::UiPublicMember *node)
             Property *property = New<Property>();
             property->setIsReadOnly(node->isReadonly());
             property->setIsRequired(node->isRequired());
+            property->setIsFinal(node->isFinal());
 
             const QV4::CompiledData::CommonType builtinPropertyType
                     = Parameter::stringToBuiltinType(memberType);
@@ -1090,7 +1094,7 @@ bool IRBuilder::visit(QQmlJS::AST::UiPublicMember *node)
             }
 
             const QString propName = name.toString();
-            property->nameIndex = registerString(propName);
+            property->setNameIndex(registerString(propName));
 
             QQmlJS::SourceLocation loc = node->firstSourceLocation();
             property->location.set(loc.startLine, loc.startColumn);
@@ -1098,7 +1102,7 @@ bool IRBuilder::visit(QQmlJS::AST::UiPublicMember *node)
             QQmlJS::SourceLocation errorLocation;
             QString error;
 
-            if (illegalNames.contains(propName))
+            if (QV4::Compiler::Codegen::isNameGlobal(propName))
                 error = tr("Illegal property name");
             else
                 error = _object->appendProperty(property, propName, node->isDefaultMember(), node->defaultToken(), &errorLocation);
@@ -1117,13 +1121,52 @@ bool IRBuilder::visit(QQmlJS::AST::UiPublicMember *node)
                 QQmlJS::AST::Node::accept(node->binding, this);
             } else if (node->statement) {
                 if (!isRedundantNullInitializerForPropertyDeclaration(_propertyDeclaration, node->statement))
-                    appendBinding(node->identifierToken, node->identifierToken, _propertyDeclaration->nameIndex, node->statement, node);
+                    appendBinding(node->identifierToken, node->identifierToken, _propertyDeclaration->nameIndex(), node->statement, node);
             }
             qSwap(_propertyDeclaration, property);
         }
     }
 
     return false;
+}
+
+void IRBuilder::registerFunctionExpr(QQmlJS::AST::FunctionExpression *fexp, IsQmlFunction isQmlFunction)
+{
+    CompiledFunctionOrExpression *foe = New<CompiledFunctionOrExpression>();
+    foe->node = fexp;
+    foe->parentNode = fexp;
+    foe->nameIndex = registerString(fexp->name.toString());
+    const int index = _object->functionsAndExpressions->append(foe);
+
+    Function *f = New<Function>();
+    QQmlJS::SourceLocation loc = fexp->identifierToken;
+    f->location.set(loc.startLine, loc.startColumn);
+    f->index = index;
+    f->nameIndex = registerString(fexp->name.toString());
+    f->isQmlFunction = isQmlFunction == IsQmlFunction::Yes;
+
+    const auto idGenerator = [this](const QString &str) { return registerString(str); };
+
+    Parameter::initType(
+            &f->returnType, idGenerator,
+            fexp->typeAnnotation ? fexp->typeAnnotation->type : nullptr);
+
+    const QQmlJS::AST::BoundNames formals = fexp->formals ? fexp->formals->formals()
+                                                          : QQmlJS::AST::BoundNames();
+    int formalsCount = formals.size();
+    f->formals.allocate(pool, formalsCount);
+
+    int i = 0;
+    for (const auto &arg : formals) {
+        Parameter *functionParameter = &f->formals[i];
+        functionParameter->nameIndex = registerString(arg.id);
+        Parameter::initType(
+                &functionParameter->type, idGenerator,
+                arg.typeAnnotation.isNull() ? nullptr : arg.typeAnnotation->type);
+        ++i;
+    }
+
+    _object->appendFunction(f);
 }
 
 bool IRBuilder::visit(QQmlJS::AST::UiSourceElement *node)
@@ -1136,40 +1179,7 @@ bool IRBuilder::visit(QQmlJS::AST::UiSourceElement *node)
                                 "QQmlParser", "Function declaration inside grouped property"));
             return false;
         }
-
-        CompiledFunctionOrExpression *foe = New<CompiledFunctionOrExpression>();
-        foe->node = funDecl;
-        foe->parentNode = funDecl;
-        foe->nameIndex = registerString(funDecl->name.toString());
-        const int index = _object->functionsAndExpressions->append(foe);
-
-        Function *f = New<Function>();
-        QQmlJS::SourceLocation loc = funDecl->identifierToken;
-        f->location.set(loc.startLine, loc.startColumn);
-        f->index = index;
-        f->nameIndex = registerString(funDecl->name.toString());
-
-        const auto idGenerator = [this](const QString &str) { return registerString(str); };
-
-        Parameter::initType(
-                    &f->returnType, idGenerator,
-                    funDecl->typeAnnotation ? funDecl->typeAnnotation->type : nullptr);
-
-        const QQmlJS::AST::BoundNames formals = funDecl->formals ? funDecl->formals->formals() : QQmlJS::AST::BoundNames();
-        int formalsCount = formals.size();
-        f->formals.allocate(pool, formalsCount);
-
-        int i = 0;
-        for (const auto &arg : formals) {
-            Parameter *functionParameter = &f->formals[i];
-            functionParameter->nameIndex = registerString(arg.id);
-            Parameter::initType(
-                        &functionParameter->type, idGenerator,
-                        arg.typeAnnotation.isNull() ? nullptr : arg.typeAnnotation->type);
-            ++i;
-        }
-
-        _object->appendFunction(f);
+        registerFunctionExpr(funDecl, IsQmlFunction::Yes);
     } else {
         recordError(node->firstSourceLocation(), QCoreApplication::translate("QQmlParser","JavaScript declaration outside Script element"));
     }
@@ -1452,7 +1462,7 @@ bool IRBuilder::appendAlias(QQmlJS::AST::UiPublicMember *node)
      QQmlJS::SourceLocation errorLocation;
      QString error;
 
-     if (illegalNames.contains(propName))
+     if (QV4::Compiler::Codegen::isNameGlobal(propName))
          error = tr("Illegal property name");
      else
          error = _object->appendAlias(alias, propName, node->isDefaultMember(), node->defaultToken(), &errorLocation);
@@ -1510,7 +1520,7 @@ bool IRBuilder::setId(const QQmlJS::SourceLocation &idLocation, QQmlJS::AST::Sta
     }
 
     QString idQString(str.toString());
-    if (illegalNames.contains(idQString))
+    if (QV4::Compiler::Codegen::isNameGlobal(idQString))
         COMPILE_EXCEPTION(loc, tr( "ID illegally masks global JavaScript property"));
 
     if (_object->idNameIndex != emptyStringIndex)
@@ -1989,14 +1999,13 @@ char *QmlUnitGenerator::writeBindings(char *bindingPtr, const Object *o, Binding
     return bindingPtr;
 }
 
-JSCodeGen::JSCodeGen(Document *document, const QSet<QString> &globalNames,
-                     QV4::Compiler::CodegenWarningInterface *iface,
-                     bool storeSourceLocations)
+JSCodeGen::JSCodeGen(
+        Document *document, QV4::Compiler::CodegenWarningInterface *iface,
+        bool storeSourceLocations)
     : QV4::Compiler::Codegen(&document->jsGenerator, /*strict mode*/ false, iface,
                              storeSourceLocations),
       document(document)
 {
-    m_globalNames = globalNames;
     _module = &document->jsModule;
     _fileNameIsUrl = true;
 }

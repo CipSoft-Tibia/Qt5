@@ -15,10 +15,11 @@
 // We mean it.
 //
 
-#include <QtCore/qobject.h>
 #include <QtMultimedia/private/qplatformcamera_p.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureDevice);
+#include <QtCore/qobject.h>
+
+#import <AVFoundation/AVCaptureDevice.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -78,6 +79,7 @@ public:
 #endif
 
     AVCaptureDevice *device() const;
+    [[nodiscard]] static AVCaptureDevice* tryGetAvCaptureDevice(const QCameraDevice &device);
 
 protected:
     // Called by setActive() when the active status is successfully changed.
@@ -85,7 +87,9 @@ protected:
     // guaranteed to have been granted already.
     virtual void onActiveChanged(bool active) = 0;
     // Called by setCamera() when the camera is successfully changed.
-    virtual void onCameraDeviceChanged(const QCameraDevice &device) = 0;
+    virtual void onCameraDeviceChanged(
+        const QCameraDevice &,
+        const QCameraFormat &) = 0;
     // Should be implemented by the backend to apply the camera-format
     // to the physical camera if possible.
     // Returns true if the format was successfully applied.
@@ -93,8 +97,8 @@ protected:
 
     bool checkCameraPermission();
 
-    void updateCameraConfiguration();
-    void updateSupportedFeatures();
+    void updateCameraConfiguration(const QCameraDevice &);
+    void updateSupportedFeatures(const QCameraDevice &);
     void applyFlashSettings();
 
     // Applies the focusDistance to the AVCaptureDevice.

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef CONTENT_MAIN_DELEGATE_QT_H
 #define CONTENT_MAIN_DELEGATE_QT_H
@@ -9,6 +10,7 @@
 #include "content_browser_client_qt.h"
 #include "content_client_qt.h"
 #include "content_utility_client_qt.h"
+#include "gpu/content_gpu_client_qt.h"
 
 namespace QtWebEngineCore {
 
@@ -22,6 +24,7 @@ public:
 
     content::ContentClient *CreateContentClient() override;
     content::ContentBrowserClient* CreateContentBrowserClient() override;
+    content::ContentGpuClient* CreateContentGpuClient() override;
     content::ContentRendererClient* CreateContentRendererClient() override;
     content::ContentUtilityClient* CreateContentUtilityClient() override;
     std::optional<int> BasicStartupComplete() override;
@@ -29,6 +32,7 @@ public:
 private:
     ContentClientQt m_contentClient;
     std::unique_ptr<ContentBrowserClientQt> m_browserClient;
+    std::unique_ptr<ContentGpuClientQt> m_gpuClient;
     std::unique_ptr<ContentUtilityClientQt> m_utilityClient;
 };
 

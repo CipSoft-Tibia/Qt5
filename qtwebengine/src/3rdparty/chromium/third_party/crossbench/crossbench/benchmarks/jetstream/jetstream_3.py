@@ -9,6 +9,7 @@ from typing import Tuple, Type
 
 from crossbench.benchmarks.jetstream.jetstream_2 import (JetStream2Benchmark,
                                                          JetStream2Probe,
+                                                         JetStream2ProbeContext,
                                                          JetStream2Story)
 
 
@@ -18,6 +19,10 @@ class JetStream3Probe(JetStream2Probe, metaclass=abc.ABCMeta):
   JetStream3-specific Probe.
   Extracts all JetStream 3 times and scores.
   """
+
+
+class JetStream3ProbeContext(JetStream2ProbeContext):
+  pass
 
 
 # TODO: introduce JetStreamStory

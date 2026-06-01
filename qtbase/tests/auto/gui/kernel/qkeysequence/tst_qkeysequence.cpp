@@ -64,6 +64,10 @@ static QChar macSymbolForQtKey(int key)
 
 #endif
 
+QT_BEGIN_NAMESPACE
+extern void qt_set_sequence_auto_mnemonic(bool);
+QT_END_NAMESPACE
+
 class tst_QKeySequence : public QObject
 {
     Q_OBJECT
@@ -348,17 +352,18 @@ void tst_QKeySequence::keyBindings()
           QKeySequence::keyBindings(QKeySequence::Copy);
 
     QList<QKeySequence> expected;
+    const QKeySequence copy = QKeySequence(QStringLiteral("Copy"));
     const QKeySequence ctrlC = QKeySequence(QStringLiteral("CTRL+C"));
     const QKeySequence ctrlInsert = QKeySequence(QStringLiteral("CTRL+INSERT"));
     switch (m_keyboardScheme) {
     case QPlatformTheme::MacKeyboardScheme:
-        expected  << ctrlC;
+        expected  << ctrlC << copy;
         break;
     case QPlatformTheme::WindowsKeyboardScheme:
-        expected  << ctrlC << ctrlInsert;
+        expected  << ctrlC << ctrlInsert << copy;
         break;
     default: // X11
-        expected  << ctrlC << ctrlInsert << QKeySequence(QStringLiteral("F16"));
+        expected  << ctrlC << ctrlInsert << QKeySequence(QStringLiteral("F16")) << copy;
         break;
     }
     QCOMPARE(bindings, expected);
@@ -366,9 +371,6 @@ void tst_QKeySequence::keyBindings()
 
 void tst_QKeySequence::mnemonic_data()
 {
-#ifdef Q_OS_MAC
-    QSKIP("Test not applicable to OS X");
-#endif
     QTest::addColumn<QString>("string");
     QTest::addColumn<QString>("key");
     QTest::addColumn<bool>("warning");
@@ -388,10 +390,20 @@ void tst_QKeySequence::mnemonic_data()
 
 void tst_QKeySequence::mnemonic()
 {
+    const auto resetAutoMnemonic = qScopeGuard([] {
 #ifndef Q_OS_MAC
+        qt_set_sequence_auto_mnemonic(true);
+#else
+        qt_set_sequence_auto_mnemonic(false);
+#endif
+    });
+
     QFETCH(QString, string);
     QFETCH(QString, key);
     QFETCH(bool, warning);
+
+    qt_set_sequence_auto_mnemonic(false);
+    QCOMPARE(QKeySequence::mnemonic(string), QKeySequence());
 
 #ifdef QT_NO_DEBUG
     Q_UNUSED(warning);
@@ -402,11 +414,9 @@ void tst_QKeySequence::mnemonic()
     //    qWarning(qPrintable(str));
     }
 #endif
-    QKeySequence seq = QKeySequence::mnemonic(string);
-    QKeySequence res = QKeySequence(key);
 
-    QCOMPARE(seq, res);
-#endif
+    qt_set_sequence_auto_mnemonic(true);
+    QCOMPARE(QKeySequence::mnemonic(string), QKeySequence(key));
 }
 
 void tst_QKeySequence::toString_data()

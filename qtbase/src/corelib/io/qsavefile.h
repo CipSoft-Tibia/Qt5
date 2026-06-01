@@ -23,18 +23,14 @@ class QSaveFilePrivate;
 
 class Q_CORE_EXPORT QSaveFile : public QFileDevice
 {
-#ifndef QT_NO_QOBJECT
     Q_OBJECT
-#endif
     Q_DECLARE_PRIVATE(QSaveFile)
 
 public:
 
     explicit QSaveFile(const QString &name);
-#ifndef QT_NO_QOBJECT
     explicit QSaveFile(QObject *parent = nullptr);
     explicit QSaveFile(const QString &name, QObject *parent);
-#endif
     ~QSaveFile();
 
     QString fileName() const override;
@@ -59,6 +55,7 @@ private:
 
 private:
     Q_DISABLE_COPY(QSaveFile)
+    friend class QFilePrivate;
 };
 
 QT_END_NAMESPACE

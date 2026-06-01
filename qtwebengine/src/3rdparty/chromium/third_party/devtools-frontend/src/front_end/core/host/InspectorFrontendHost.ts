@@ -410,16 +410,20 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
         blockedByAge: false,
         blockedByEnterprisePolicy: false,
         blockedByGeo: false,
-        disallowLogging: false,
+        disallowLogging: true,
+        enterprisePolicyValue: 0,
       },
       devToolsConsoleInsights: {
         modelId: '',
-        temperature: 0,
+        temperature: -1,
         enabled: false,
       },
-      devToolsFreestylerDogfood: {
+      devToolsFreestyler: {
         modelId: '',
-        temperature: 0,
+        temperature: -1,
+        enabled: false,
+      },
+      devToolsImprovedWorkspaces: {
         enabled: false,
       },
       devToolsVeLogging: {
@@ -429,7 +433,20 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
       devToolsPrivacyUI: {
         enabled: false,
       },
+      devToolsEnableOriginBoundCookies: {
+        portBindingEnabled: false,
+        schemeBindingEnabled: false,
+      },
+      devToolsAnimationStylesInStylesTab: {
+        enabled: false,
+      },
       isOffTheRecord: false,
+      thirdPartyCookieControls: {
+        thirdPartyCookieRestrictionEnabled: false,
+        thirdPartyCookieMetadataEnabled: true,
+        thirdPartyCookieHeuristicsEnabled: true,
+        managedBlockThirdPartyCookies: 'Unset',
+      },
     };
     if ('hostConfigForTesting' in globalThis) {
       const {hostConfigForTesting} = (globalThis as unknown as {hostConfigForTesting: Root.Runtime.HostConfig});
@@ -555,7 +572,7 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
   }
 }
 
-// @ts-ignore Global injected by devtools-compatibility.js
+// @ts-ignore Global injected by devtools_compatibility.js
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export let InspectorFrontendHostInstance: InspectorFrontendHostStub = globalThis.InspectorFrontendHost;
 
@@ -603,7 +620,7 @@ function initializeInspectorFrontendHost(): void {
   let proto;
   if (!InspectorFrontendHostInstance) {
     // Instantiate stub for web-hosted mode if necessary.
-    // @ts-ignore Global injected by devtools-compatibility.js
+    // @ts-ignore Global injected by devtools_compatibility.js
     globalThis.InspectorFrontendHost = InspectorFrontendHostInstance = new InspectorFrontendHostStub();
   } else {
     // Otherwise add stubs for missing methods that are declared in the interface.
@@ -612,13 +629,13 @@ function initializeInspectorFrontendHost(): void {
       // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
       // @ts-expect-error
       const stub = proto[name];
-      // @ts-ignore Global injected by devtools-compatibility.js
+      // @ts-ignore Global injected by devtools_compatibility.js
       if (typeof stub !== 'function' || InspectorFrontendHostInstance[name]) {
         continue;
       }
 
       console.error(`Incompatible embedder: method Host.InspectorFrontendHost.${name} is missing. Using stub instead.`);
-      // @ts-ignore Global injected by devtools-compatibility.js
+      // @ts-ignore Global injected by devtools_compatibility.js
       InspectorFrontendHostInstance[name] = stub;
     }
   }
@@ -630,7 +647,7 @@ function initializeInspectorFrontendHost(): void {
 // FIXME: This file is included into both apps, since the devtools_app needs the InspectorFrontendHostAPI only,
 // so the host instance should not be initialized there.
 initializeInspectorFrontendHost();
-// @ts-ignore Global injected by devtools-compatibility.js
+// @ts-ignore Global injected by devtools_compatibility.js
 globalThis.InspectorFrontendAPI = new InspectorFrontendAPIImpl();
 })();
 

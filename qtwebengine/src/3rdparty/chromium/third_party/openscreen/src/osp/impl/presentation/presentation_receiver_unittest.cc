@@ -34,9 +34,12 @@ class MockConnectRequestCallback final : public ConnectRequestCallback {
  public:
   ~MockConnectRequestCallback() override = default;
 
-  MOCK_METHOD2(OnConnectSucceed,
-               void(uint64_t request_id, uint64_t instance_id));
-  MOCK_METHOD1(OnConnectFailed, void(uint64_t request_id));
+  MOCK_METHOD3(OnConnectSucceed,
+               void(uint64_t request_id,
+                    std::string_view instance_name,
+                    uint64_t instance_id));
+  MOCK_METHOD2(OnConnectFailed,
+               void(uint64_t request_id, std::string_view instance_name));
 };
 
 class MockReceiverDelegate final : public ReceiverDelegate {
@@ -77,8 +80,9 @@ class PresentationReceiverTest : public ::testing::Test {
                                           &mock_connect_request_callback);
     EXPECT_TRUE(connect_request_);
     std::unique_ptr<ProtocolConnection> stream;
-    EXPECT_CALL(mock_connect_request_callback, OnConnectSucceed(_, _))
-        .WillOnce([&stream](uint64_t request_id, uint64_t instance_id) {
+    EXPECT_CALL(mock_connect_request_callback, OnConnectSucceed(_, _, _))
+        .WillOnce([&stream](uint64_t request_id, std::string_view instance_name,
+                            uint64_t instance_id) {
           stream = CreateClientProtocolConnection(instance_id);
         });
     quic_bridge_.RunTasksUntilIdle();
@@ -87,6 +91,16 @@ class PresentationReceiverTest : public ::testing::Test {
 
   void SetUp() override {
     quic_bridge_.CreateNetworkServiceManager(nullptr, nullptr);
+    ON_CALL(quic_bridge_.mock_server_observer(), OnIncomingConnectionMock(_))
+        .WillByDefault(
+            Invoke([this](std::unique_ptr<ProtocolConnection>& connection) {
+              server_connections_.push_back(std::move(connection));
+            }));
+    ON_CALL(quic_bridge_.mock_client_observer(), OnIncomingConnectionMock(_))
+        .WillByDefault(
+            Invoke([this](std::unique_ptr<ProtocolConnection>& connection) {
+              client_connections_.push_back(std::move(connection));
+            }));
     receiver_.Init();
     receiver_.SetReceiverDelegate(&mock_receiver_delegate_);
   }
@@ -101,9 +115,11 @@ class PresentationReceiverTest : public ::testing::Test {
   Receiver receiver_;
   FakeClock fake_clock_;
   FakeTaskRunner task_runner_;
-  const std::string url1_{"https://www.example.com/receiver.html"};
+  const std::string url1_ = "https://www.example.com/receiver.html";
   FakeQuicBridge quic_bridge_;
   MockReceiverDelegate mock_receiver_delegate_;
+  std::vector<std::unique_ptr<ProtocolConnection>> server_connections_;
+  std::vector<std::unique_ptr<ProtocolConnection>> client_connections_;
 };
 
 }  // namespace
@@ -139,8 +155,9 @@ TEST_F(PresentationReceiverTest, QueryAvailability) {
       .WillOnce(Invoke([&response](uint64_t instance_id, uint64_t cid,
                                    msgs::Type message_type, const uint8_t* buf,
                                    size_t buffer_size, Clock::time_point now) {
-        ssize_t result = msgs::DecodePresentationUrlAvailabilityResponse(
-            buf, buffer_size, response);
+        const msgs::CborResult result =
+            msgs::DecodePresentationUrlAvailabilityResponse(buf, buffer_size,
+                                                            response);
         return result;
       }));
   quic_bridge_.RunTasksUntilIdle();
@@ -186,7 +203,7 @@ TEST_F(PresentationReceiverTest, StartPresentation) {
       .WillOnce(Invoke([&response](uint64_t instance_id, uint64_t cid,
                                    msgs::Type message_type, const uint8_t* buf,
                                    size_t buf_size, Clock::time_point now) {
-        ssize_t result =
+        const msgs::CborResult result =
             msgs::DecodePresentationStartResponse(buf, buf_size, response);
         return result;
       }));

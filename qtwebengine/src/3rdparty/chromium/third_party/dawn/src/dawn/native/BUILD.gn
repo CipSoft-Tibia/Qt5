@@ -296,6 +296,9 @@ source_set("sources") {
     "Format.cpp",
     "Format.h",
     "Forward.h",
+    "ImmediateConstantsLayout.h",
+    "ImmediateConstantsTracker.cpp",
+    "ImmediateConstantsTracker.h",
     "IndirectDrawMetadata.cpp",
     "IndirectDrawMetadata.h",
     "IndirectDrawValidationEncoder.cpp",
@@ -419,7 +422,7 @@ source_set("sources") {
   }
 
   # Only win32 app needs to link with user32.lib
-  # In UWP, all availiable APIs are defined in WindowsApp.lib
+  # In UWP, all available APIs are defined in WindowsApp.lib
   if (is_win && !dawn_is_winuwp) {
     libs += [
       "user32.lib",
@@ -757,6 +760,14 @@ source_set("sources") {
       "opengl/SamplerGL.h",
       "opengl/ShaderModuleGL.cpp",
       "opengl/ShaderModuleGL.h",
+      "opengl/SharedFenceEGL.cpp",
+      "opengl/SharedFenceEGL.h",
+      "opengl/SharedFenceGL.cpp",
+      "opengl/SharedFenceGL.h",
+      "opengl/SharedTextureMemoryEGL.cpp",
+      "opengl/SharedTextureMemoryEGL.h",
+      "opengl/SharedTextureMemoryGL.cpp",
+      "opengl/SharedTextureMemoryGL.h",
       "opengl/SwapChainEGL.cpp",
       "opengl/SwapChainEGL.h",
       "opengl/TextureGL.cpp",
@@ -784,7 +795,8 @@ source_set("sources") {
       "vulkan/BufferVk.h",
       "vulkan/CommandBufferVk.cpp",
       "vulkan/CommandBufferVk.h",
-      "vulkan/CommandRecordingContext.h",
+      "vulkan/CommandRecordingContextVk.cpp",
+      "vulkan/CommandRecordingContextVk.h",
       "vulkan/ComputePipelineVk.cpp",
       "vulkan/ComputePipelineVk.h",
       "vulkan/DescriptorSetAllocation.h",
@@ -802,6 +814,8 @@ source_set("sources") {
       "vulkan/PipelineCacheVk.h",
       "vulkan/PipelineLayoutVk.cpp",
       "vulkan/PipelineLayoutVk.h",
+      "vulkan/PipelineVk.cpp",
+      "vulkan/PipelineVk.h",
       "vulkan/QuerySetVk.cpp",
       "vulkan/QuerySetVk.h",
       "vulkan/QueueVk.cpp",
@@ -830,6 +844,7 @@ source_set("sources") {
       "vulkan/SwapChainVk.h",
       "vulkan/TextureVk.cpp",
       "vulkan/TextureVk.h",
+      "vulkan/UniqueVkHandle.h",
       "vulkan/UtilsVulkan.cpp",
       "vulkan/UtilsVulkan.h",
       "vulkan/VulkanError.cpp",
@@ -906,7 +921,7 @@ source_set("sources") {
 dawn_component("native") {
   DEFINE_PREFIX = "DAWN_NATIVE"
 
-  #Make headers publically visible
+  #Make headers publicly visible
   public_deps = [ ":headers" ]
 
   deps = [

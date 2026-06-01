@@ -1,5 +1,7 @@
 // Copyright (C) 2015 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// Qt-Security score:significant reason:default
+
 
 #include <qstringlist.h>
 #include <qlist.h>
@@ -177,7 +179,8 @@ struct Arg {
 
     ~Arg()
     {
-        for (int i = 0, last = argv.size() - 1; i < last; ++i)
+        // Note: QGuiApplication may shift the array when removing Qt arguments
+        for (int i = 0, last = argv.size() - 1; i < last && argv.at(i) != nullptr; ++i)
             free(argv.at(i));
     }
 

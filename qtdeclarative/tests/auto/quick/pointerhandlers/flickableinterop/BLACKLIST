@@ -11,6 +11,3 @@ android
 android
 [touchAndDragHandlerOnFlickable]
 android
-# QTBUG-118063
-[nativeGesturePinchOnFlickableWithParentTapHandler]
-opensuse-leap

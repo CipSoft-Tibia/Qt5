@@ -119,20 +119,16 @@ cargo_crate("{{this.name}}") {
   ]
   {{/with}}
   {{/if}}
-  {{#if rustenv}}
-  rustenv = [
-    {{#each rustenv}}
-    "{{this}}",
-    {{/each}}
-  ]
-  {{/if}}
-  {{#if rustflags}}
+  {{#with extra_kv.configs_to_remove}}
+  {{#each this}}
+    library_configs -= [ "{{this}}" ]
+    executable_configs -= [ "{{this}}" ]
+    proc_macro_configs -= [ "{{this}}" ]
+  {{/each}}
+  {{/with}}
   rustflags = [
-    {{#each rustflags}}
-    "{{this}}",
-    {{/each}}
+    "--cap-lints=allow",  # Suppress all warnings in crates.io crates
   ]
-  {{/if}}
   {{#if output_dir}}
   output_dir = "{{output_dir}}"
   {{/if}}

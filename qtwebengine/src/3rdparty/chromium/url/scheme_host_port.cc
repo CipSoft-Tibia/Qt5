@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <compare>
 #include <ostream>
 #include <string_view>
 #include <tuple>
@@ -30,7 +31,7 @@ namespace url {
 
 namespace {
 
-bool IsCanonicalHost(std::string_view host) {
+bool IsCanonicalHost(std::string_view host, bool is_file_scheme) {
   std::string canon_host;
 
   // Try to canonicalize the host (copy/pasted from net/base. :( ).
@@ -38,8 +39,13 @@ bool IsCanonicalHost(std::string_view host) {
                                      base::checked_cast<int>(host.length()));
   StdStringCanonOutput canon_host_output(&canon_host);
   CanonHostInfo host_info;
-  CanonicalizeHostVerbose(host.data(), raw_host_component,
-                          &canon_host_output, &host_info);
+  if (is_file_scheme) {
+    CanonicalizeFileHostVerbose(host.data(), raw_host_component,
+                                canon_host_output, host_info);
+  } else {
+    CanonicalizeSpecialHostVerbose(host.data(), raw_host_component,
+                                   canon_host_output, host_info);
+  }
 
   if (host_info.out_host.is_nonempty() &&
       host_info.family != CanonHostInfo::BROKEN) {
@@ -86,7 +92,7 @@ bool IsValidInput(std::string_view scheme,
     return (cs->has_host_component() == !host.empty() &&
             cs->has_port_component() == (port != 0) &&
             (policy != SchemeHostPort::CHECK_CANONICALIZATION || host.empty() ||
-             IsCanonicalHost(host)));
+             IsCanonicalHost(host, false /* is file url? (allows spaces) */)));
   }
 
   SchemeType scheme_type = SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION;
@@ -133,9 +139,9 @@ bool IsValidInput(std::string_view scheme,
       // Don't do an expensive canonicalization if the host is already
       // canonicalized.
       DCHECK(policy == SchemeHostPort::CHECK_CANONICALIZATION ||
-             IsCanonicalHost(host));
+             IsCanonicalHost(host, scheme == url::kFileScheme));
       if (policy == SchemeHostPort::CHECK_CANONICALIZATION &&
-          !IsCanonicalHost(host)) {
+          !IsCanonicalHost(host, scheme == url::kFileScheme)) {
         return false;
       }
 
@@ -151,9 +157,9 @@ bool IsValidInput(std::string_view scheme,
       // Don't do an expensive canonicalization if the host is already
       // canonicalized.
       DCHECK(policy == SchemeHostPort::CHECK_CANONICALIZATION ||
-             IsCanonicalHost(host));
+             IsCanonicalHost(host, scheme == url::kFileScheme));
       if (policy == SchemeHostPort::CHECK_CANONICALIZATION &&
-          !IsCanonicalHost(host)) {
+          !IsCanonicalHost(host, scheme == url::kFileScheme)) {
         return false;
       }
 
@@ -163,8 +169,7 @@ bool IsValidInput(std::string_view scheme,
       return false;
 
     default:
-      NOTREACHED_IN_MIGRATION();
-      return false;
+      NOTREACHED();
   }
 }
 
@@ -319,10 +324,10 @@ size_t SchemeHostPort::EstimateMemoryUsage() const {
          base::trace_event::EstimateMemoryUsage(host_);
 }
 
-bool SchemeHostPort::operator<(const SchemeHostPort& other) const {
-  return std::tie(port_, scheme_, host_) <
-         std::tie(other.port_, other.scheme_, other.host_);
-}
+bool SchemeHostPort::operator==(const SchemeHostPort& other) const = default;
+
+std::strong_ordering SchemeHostPort::operator<=>(
+    const SchemeHostPort& other) const = default;
 
 std::string SchemeHostPort::SerializeInternal(url::Parsed* parsed) const {
   std::string result;
@@ -359,7 +364,7 @@ std::string SchemeHostPort::SerializeInternal(url::Parsed* parsed) const {
   return result;
 }
 
-bool SchemeHostPort::ShouldDiscardHostAndPort(const std::string_view scheme) {
+bool SchemeHostPort::ShouldDiscardHostAndPort(std::string_view scheme) {
   return IsAndroidWebViewHackEnabledScheme(scheme) &&
          IsUsingStandardCompliantNonSpecialSchemeURLParsing();
 }

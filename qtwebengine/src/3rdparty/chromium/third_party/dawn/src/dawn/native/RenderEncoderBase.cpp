@@ -32,7 +32,7 @@
 #include <utility>
 
 #include "dawn/common/Constants.h"
-#include "dawn/common/Log.h"
+#include "dawn/native/BindGroup.h"
 #include "dawn/native/Buffer.h"
 #include "dawn/native/CommandEncoder.h"
 #include "dawn/native/CommandValidation.h"
@@ -44,7 +44,7 @@
 namespace dawn::native {
 
 RenderEncoderBase::RenderEncoderBase(DeviceBase* device,
-                                     const char* label,
+                                     StringView label,
                                      EncodingContext* encodingContext,
                                      Ref<AttachmentState> attachmentState,
                                      bool depthReadOnly,
@@ -61,7 +61,7 @@ RenderEncoderBase::RenderEncoderBase(DeviceBase* device,
 RenderEncoderBase::RenderEncoderBase(DeviceBase* device,
                                      EncodingContext* encodingContext,
                                      ErrorTag errorTag,
-                                     const char* label)
+                                     StringView label)
     : ProgrammableEncoder(device, encodingContext, errorTag, label),
       mIndirectDrawMetadata(device->GetLimits()),
       mDisableBaseVertex(device->IsToggleEnabled(Toggle::DisableBaseVertex)),
@@ -117,7 +117,7 @@ void RenderEncoderBase::APIDraw(uint32_t vertexCount,
 
                 DAWN_TRY(mCommandBufferState.ValidateCanDraw());
 
-                if (GetDevice()->IsCompatibilityMode()) {
+                if (!GetDevice()->HasFlexibleTextureViews()) {
                     DAWN_TRY(mCommandBufferState.ValidateNoDifferentTextureViewsOnSameTexture());
                 }
 
@@ -164,7 +164,7 @@ void RenderEncoderBase::APIDrawIndexed(uint32_t indexCount,
 
                 DAWN_TRY(mCommandBufferState.ValidateCanDrawIndexed());
 
-                if (GetDevice()->IsCompatibilityMode()) {
+                if (!GetDevice()->HasFlexibleTextureViews()) {
                     DAWN_TRY(mCommandBufferState.ValidateNoDifferentTextureViewsOnSameTexture());
                 }
 
@@ -204,7 +204,7 @@ void RenderEncoderBase::APIDrawIndirect(BufferBase* indirectBuffer, uint64_t ind
                 DAWN_TRY(GetDevice()->ValidateObject(indirectBuffer));
                 DAWN_TRY(ValidateCanUseAs(indirectBuffer, wgpu::BufferUsage::Indirect));
                 DAWN_TRY(mCommandBufferState.ValidateCanDraw());
-                if (GetDevice()->IsCompatibilityMode()) {
+                if (!GetDevice()->HasFlexibleTextureViews()) {
                     DAWN_TRY(mCommandBufferState.ValidateNoDifferentTextureViewsOnSameTexture());
                 }
 
@@ -263,7 +263,7 @@ void RenderEncoderBase::APIDrawIndexedIndirect(BufferBase* indirectBuffer,
                 DAWN_TRY(GetDevice()->ValidateObject(indirectBuffer));
                 DAWN_TRY(ValidateCanUseAs(indirectBuffer, wgpu::BufferUsage::Indirect));
                 DAWN_TRY(mCommandBufferState.ValidateCanDrawIndexed());
-                if (GetDevice()->IsCompatibilityMode()) {
+                if (!GetDevice()->HasFlexibleTextureViews()) {
                     DAWN_TRY(mCommandBufferState.ValidateNoDifferentTextureViewsOnSameTexture());
                 }
 
@@ -375,7 +375,7 @@ void RenderEncoderBase::APIMultiDrawIndirect(BufferBase* indirectBuffer,
 
                 DAWN_TRY(mCommandBufferState.ValidateCanDraw());
 
-                if (GetDevice()->IsCompatibilityMode()) {
+                if (!GetDevice()->HasFlexibleTextureViews()) {
                     DAWN_TRY(mCommandBufferState.ValidateNoDifferentTextureViewsOnSameTexture());
                 }
             }
@@ -481,7 +481,7 @@ void RenderEncoderBase::APIMultiDrawIndexedIndirect(BufferBase* indirectBuffer,
 
                 DAWN_TRY(mCommandBufferState.ValidateCanDrawIndexed());
 
-                if (GetDevice()->IsCompatibilityMode()) {
+                if (!GetDevice()->HasFlexibleTextureViews()) {
                     DAWN_TRY(mCommandBufferState.ValidateNoDifferentTextureViewsOnSameTexture());
                 }
             }

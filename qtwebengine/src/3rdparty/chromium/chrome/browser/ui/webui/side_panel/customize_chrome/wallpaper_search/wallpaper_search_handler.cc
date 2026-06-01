@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/wallpaper_search/wallpaper_search_handler.h"
 
 #include <optional>
@@ -44,7 +49,8 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/image_fetcher/core/image_decoder.h"
 #include "components/optimization_guide/core/model_execution/optimization_guide_model_execution_error.h"
-#include "components/optimization_guide/core/model_quality/feature_type_map.h"
+#include "components/optimization_guide/core/model_quality/model_execution_logging_wrappers.h"
+#include "components/optimization_guide/core/model_quality/model_quality_log_entry.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/core/optimization_guide_util.h"
 #include "components/optimization_guide/proto/features/wallpaper_search.pb.h"
@@ -182,9 +188,7 @@ WallpaperSearchHandler::~WallpaperSearchHandler() {
 
   if (!log_entries_.empty()) {
     auto& [log_entry, render_time] = log_entries_.back();
-    auto* quality =
-        log_entry
-            ->quality_data<optimization_guide::WallpaperSearchFeatureTypeMap>();
+    auto* quality = log_entry->log_ai_data_request()->mutable_wallpaper_search()->mutable_quality();
     quality->set_final_request_in_session(true);
     if (render_time.has_value()) {
       quality->set_complete_latency_ms(
@@ -382,11 +386,17 @@ void WallpaperSearchHandler::GetWallpaperSearchResults(
           HueToSkColor(result_descriptors->color->get_hue())));
     }
   }
-  optimization_guide_keyed_service->ExecuteModel(
+
+  optimization_guide::ModelExecutionCallbackWithLogging<
+      optimization_guide::proto::WallpaperSearchLoggingData>
+      wrapper_callback = base::BindOnce(
+          &WallpaperSearchHandler::OnWallpaperSearchResultsRetrieved,
+          weak_ptr_factory_.GetWeakPtr(), std::move(callback),
+          base::ElapsedTimer());
+  optimization_guide::ExecuteModelWithLogging(
+      optimization_guide_keyed_service,
       optimization_guide::ModelBasedCapabilityKey::kWallpaperSearch, request,
-      base::BindOnce(&WallpaperSearchHandler::OnWallpaperSearchResultsRetrieved,
-                     weak_ptr_factory_.GetWeakPtr(), std::move(callback),
-                     base::ElapsedTimer()));
+      /*execution_timeout=*/std::nullopt, std::move(wrapper_callback));
 }
 
 void WallpaperSearchHandler::SetBackgroundToHistoryImage(
@@ -535,7 +545,9 @@ void WallpaperSearchHandler::SetUserFeedback(UserFeedback selected_option) {
     auto* quality =
         log_entries_.back()
             .first
-            ->quality_data<optimization_guide::WallpaperSearchFeatureTypeMap>();
+            ->log_ai_data_request()
+            ->mutable_wallpaper_search()
+            ->mutable_quality();
     if (quality) {
       quality->set_user_feedback(user_feedback);
     }
@@ -543,10 +555,9 @@ void WallpaperSearchHandler::SetUserFeedback(UserFeedback selected_option) {
 }
 
 void WallpaperSearchHandler::OpenHelpArticle() {
-  NavigateParams navigate_params(
-      profile_,
-      GURL("https://support.google.com/chrome?p=create_themes_with_ai"),
-      ui::PAGE_TRANSITION_LINK);
+  NavigateParams navigate_params(profile_,
+                                 GURL(chrome::kWallpaperSearchLearnMorePageURL),
+                                 ui::PAGE_TRANSITION_LINK);
   navigate_params.window_action = NavigateParams::WindowAction::SHOW_WINDOW;
   navigate_params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
   Navigate(&navigate_params);
@@ -744,12 +755,12 @@ void WallpaperSearchHandler::OnHistoryDecoded(
             bitmap, skia::ImageOperations::RESIZE_GOOD,
             /* width */ dimensions.first,
             /* height */ dimensions.second);
-        std::vector<unsigned char> encoded;
-        const bool success = gfx::PNGCodec::EncodeBGRASkBitmap(
-            small_bitmap, /*discard_transparency=*/false, &encoded);
-        if (success) {
+        std::optional<std::vector<uint8_t>> encoded =
+            gfx::PNGCodec::EncodeBGRASkBitmap(small_bitmap,
+                                              /*discard_transparency=*/false);
+        if (encoded) {
           auto thumbnail = WallpaperSearchResult::New();
-          thumbnail->image = base::Base64Encode(encoded);
+          thumbnail->image = base::Base64Encode(encoded.value());
           thumbnail->id = std::move(id);
           if (entry.subject) {
             thumbnail->descriptors =
@@ -946,29 +957,46 @@ void WallpaperSearchHandler::OnWallpaperSearchResultsRetrieved(
     GetWallpaperSearchResultsCallback callback,
     base::ElapsedTimer request_timer,
     optimization_guide::OptimizationGuideModelExecutionResult result,
-    std::unique_ptr<optimization_guide::ModelQualityLogEntry> log_entry) {
+    std::unique_ptr<optimization_guide::proto::WallpaperSearchLoggingData>
+        logging_data) {
   if (!log_entries_.empty()) {
     auto& [prev_log_entry, render_time] = log_entries_.back();
     if (render_time.has_value()) {
       prev_log_entry
-          ->quality_data<optimization_guide::WallpaperSearchFeatureTypeMap>()
+          ->log_ai_data_request()->mutable_wallpaper_search()->mutable_quality()
           ->set_complete_latency_ms(
               (base::Time::Now() - *render_time).InMilliseconds());
     }
   }
-  if (log_entry) {
-    // Clear out images in response to save bytes for logging.
-    log_entry->log_ai_data_request()
-        ->mutable_wallpaper_search()
-        ->mutable_response()
-        ->clear_images();
-    log_entries_.emplace_back(std::move(log_entry), std::nullopt);
+
+  base::WeakPtr<optimization_guide::ModelQualityLogsUploaderService>
+      logs_uploader_ptr;
+  auto* optimization_guide_keyed_service =
+      OptimizationGuideKeyedServiceFactory::GetForProfile(profile_);
+  if (optimization_guide_keyed_service) {
+    auto* logs_uploader =
+        optimization_guide_keyed_service->GetModelQualityLogsUploaderService();
+    if (logs_uploader) {
+      logs_uploader_ptr = logs_uploader->GetWeakPtr();
+    }
   }
+  CHECK(logging_data);
+  auto log_entry = std::make_unique<optimization_guide::ModelQualityLogEntry>(
+      logs_uploader_ptr);
+  *log_entry->log_ai_data_request()->mutable_wallpaper_search() = *logging_data;
+  // Clear out images in response to save bytes for logging.
+  log_entry->log_ai_data_request()
+      ->mutable_wallpaper_search()
+      ->mutable_response()
+      ->clear_images();
+  log_entries_.emplace_back(std::move(log_entry), std::nullopt);
   if (!log_entries_.empty()) {
     auto* quality =
         log_entries_.back()
             .first
-            ->quality_data<optimization_guide::WallpaperSearchFeatureTypeMap>();
+            ->log_ai_data_request()
+            ->mutable_wallpaper_search()
+            ->mutable_quality();
     quality->set_session_id(session_id_);
     quality->set_index(log_entries_.size() - 1);
     // We will set this to true for the respective log entry when the side panel
@@ -977,8 +1005,8 @@ void WallpaperSearchHandler::OnWallpaperSearchResultsRetrieved(
     quality->set_request_latency_ms(request_timer.Elapsed().InMilliseconds());
   }
 
-  if (!result.has_value()) {
-    if (result.error().error() ==
+  if (!result.response.has_value()) {
+    if (result.response.error().error() ==
         optimization_guide::OptimizationGuideModelExecutionError::
             ModelExecutionError::kRequestThrottled) {
       std::move(callback).Run(WallpaperSearchStatus::kRequestThrottled,
@@ -987,7 +1015,8 @@ void WallpaperSearchHandler::OnWallpaperSearchResultsRetrieved(
     return;
   }
   auto response = optimization_guide::ParsedAnyMetadata<
-      optimization_guide::proto::WallpaperSearchResponse>(result.value());
+      optimization_guide::proto::WallpaperSearchResponse>(
+      result.response.value());
   if (response->images().empty()) {
     return;
   }
@@ -1007,8 +1036,9 @@ void WallpaperSearchHandler::OnWallpaperSearchResultsRetrieved(
     if (!log_entries_.empty()) {
       auto* quality =
           log_entries_.back()
-              .first->quality_data<
-                  optimization_guide::WallpaperSearchFeatureTypeMap>();
+              .first->log_ai_data_request()
+              ->mutable_wallpaper_search()
+              ->mutable_quality();
       image_quality = quality->add_images_quality();
       image_quality->set_image_id(image.image_id());
       // We default to false and will flip if image was previewed or selected.
@@ -1063,17 +1093,17 @@ void WallpaperSearchHandler::OnWallpaperSearchResultsDecoded(
         CalculateResizeDimensions(bitmap.width(), bitmap.height(), 100);
     SkBitmap small_bitmap = skia::ImageOperations::Resize(
         bitmap, skia::ImageOperations::RESIZE_GOOD,
-        /* width */ dimensions.first,
-        /* height */ dimensions.second);
-    std::vector<unsigned char> encoded;
-    const bool success = gfx::PNGCodec::EncodeBGRASkBitmap(
-        small_bitmap, /*discard_transparency=*/false, &encoded);
-    if (success) {
+        /*dest_width=*/dimensions.first,
+        /*dest_height=*/dimensions.second);
+    std::optional<std::vector<uint8_t>> encoded =
+        gfx::PNGCodec::EncodeBGRASkBitmap(small_bitmap,
+                                          /*discard_transparency=*/false);
+    if (encoded) {
       auto thumbnail = WallpaperSearchResult::New();
       auto id = base::Token::CreateRandom();
       wallpaper_search_results_[id] =
           std::make_tuple(image_quality, std::nullopt, std::move(bitmap));
-      thumbnail->image = base::Base64Encode(encoded);
+      thumbnail->image = base::Base64Encode(encoded.value());
       thumbnail->id = std::move(id);
       thumbnails.push_back(std::move(thumbnail));
     }

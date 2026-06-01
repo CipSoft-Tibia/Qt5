@@ -85,8 +85,10 @@ enum class IntelGpuSeriesType {
   // Intel 13th gen
   kLunarlake = 29,
   kBattlemage = 31,
+  // Intel 14th gen
+  kPantherlake = 32,
   // Please also update |gpu_series_map| in process_json.py.
-  kMaxValue = kBattlemage,
+  kMaxValue = kPantherlake,
 };
 
 // Video profile.  This *must* match media::VideoCodecProfile.
@@ -298,7 +300,7 @@ struct GPU_EXPORT GPUInfo {
     // unique relative its vendor, not to each other. If there are more than one
     // of the same exact graphics card, they all have the same vendor id and
     // device id but different LUIDs.
-    CHROME_LUID luid;
+    CHROME_LUID luid = {};
 #endif  // BUILDFLAG(IS_WIN)
 
     // The 64-bit ID used for GPU selection by ANGLE_platform_angle_device_id.
@@ -493,6 +495,8 @@ struct GPU_EXPORT GPUInfo {
   uint32_t visibility_callback_call_count = 0;
 
 #if BUILDFLAG(ENABLE_VULKAN)
+  bool hardware_supports_vulkan = false;
+
   std::optional<VulkanInfo> vulkan_info;
 #endif
 

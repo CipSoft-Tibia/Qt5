@@ -1,5 +1,5 @@
-/* Copyright (c) 2023-2024 Nintendo
- * Copyright (c) 2023-2024 LunarG, Inc.
+/* Copyright (c) 2023-2025 Nintendo
+ * Copyright (c) 2023-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@
 namespace vvl {
 // Represents a VkShaderEXT (VK_EXT_shader_object) handle
 struct ShaderObject : public StateObject {
-    ShaderObject(ValidationStateTracker &dev_data, const VkShaderCreateInfoEXT &create_info, VkShaderEXT shader_object,
+    ShaderObject(Device &dev_data, const VkShaderCreateInfoEXT &create_info, VkShaderEXT shader_object,
                  std::shared_ptr<spirv::Module> &spirv_module, uint32_t createInfoCount, VkShaderEXT *pShaders);
 
     const vku::safe_VkShaderCreateInfoEXT safe_create_info;
@@ -52,6 +52,7 @@ struct ShaderObject : public StateObject {
     // TOOD Create a shader object inherited class
     struct InstrumentationData {
         bool was_instrumented = false;
+        uint32_t unique_shader_id = 0;
     } instrumentation_data;
 
     VkShaderEXT VkHandle() const { return handle_.Cast<VkShaderEXT>(); }

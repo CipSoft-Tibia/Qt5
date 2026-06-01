@@ -15,9 +15,6 @@ SOURCES += main.cpp \
     bargraph.cpp \
     graphmodifier.cpp \
     rainfalldata.cpp \
-    variantdataset.cpp \
-    variantbardataproxy.cpp \
-    variantbardatamapping.cpp \
     scattergraph.cpp \
     scatterdatamodifier.cpp \
     surfacegraph.cpp \
@@ -31,9 +28,6 @@ HEADERS += \
     bargraph.h \
     graphmodifier.h \
     rainfalldata.h \
-    variantdataset.h \
-    variantbardataproxy.h \
-    variantbardatamapping.h \
     scattergraph.h \
     scatterdatamodifier.h \
     surfacegraph.h \

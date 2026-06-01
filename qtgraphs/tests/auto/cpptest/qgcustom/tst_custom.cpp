@@ -135,9 +135,14 @@ void tst_custom::initializeProperties()
 void tst_custom::invalidProperties()
 {
     QVERIFY(m_custom);
+#ifdef Q_CC_MSVC
+    QTest::ignoreMessage(QtWarningMsg, "QCustom3DItem::setMeshFile mesh file"
+            " :/nonexistentitem.mesh does not exist");
+#else
+    QTest::ignoreMessage(QtWarningMsg, "setMeshFile mesh file"
+            " :/nonexistentitem.mesh does not exist");
+#endif
 
-    // Verify we're getting this warning
-    QTest::ignoreMessage(QtWarningMsg, "Mesh file :/nonexistentitem.mesh does not exist.");
     m_custom->setMeshFile(":/nonexistentitem.mesh");
     QEXPECT_FAIL("", "Nonexistent file given", Continue);
     QCOMPARE(m_custom->meshFile(), QString(":/nonexistentitem.mesh"));

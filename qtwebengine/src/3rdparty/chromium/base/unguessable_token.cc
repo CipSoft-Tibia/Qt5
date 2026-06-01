@@ -57,6 +57,8 @@ std::optional<UnguessableToken> UnguessableToken::DeserializeFromString(
   return UnguessableToken(token.value());
 }
 
+std::strong_ordering UnguessableToken::operator<=>(const UnguessableToken& other) const = default;
+
 bool UnguessableToken::operator==(const UnguessableToken& other) const {
 #if BUILDFLAG(IS_NACL)
   // BoringSSL is unavailable for NaCl builds so it remains timing dependent.

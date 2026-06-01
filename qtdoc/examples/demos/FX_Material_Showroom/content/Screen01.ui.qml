@@ -33,7 +33,7 @@ Rectangle {
         layer.format: ShaderEffectSource.RGB
 
         environment: layout.dotBtns.sceneState
-                     == 2 ? colorful : (layout.dotBtns.sceneState == 1 ? studio : bright)
+                     === 2 ? colorful : (layout.dotBtns.sceneState === 1 ? studio : bright)
 
         Node {
             id: scene
@@ -43,7 +43,7 @@ Rectangle {
 
                 Node {
                     id: brightLights
-                    visible: layout.dotBtns.sceneState == 0
+                    visible: layout.dotBtns.sceneState === 0
                     DirectionalLight {
                         visible: true
                         shadowBias: 0.02
@@ -77,7 +77,7 @@ Rectangle {
 
                 Node {
                     id: colorfulLights
-                    visible: layout.dotBtns.sceneState == 2
+                    visible: layout.dotBtns.sceneState === 2
                     DirectionalLight {
                         shadowMapFar: 5000
                         shadowBias: 0.02
@@ -96,9 +96,9 @@ Rectangle {
                 id: floor
                 receivesReflections: true
                 aoState: material_pop_up.modelsL.selection
-                         == "None" ? 3 : (material_pop_up.modelsL.selection
-                                          == "Dragon" ? 1 : (material_pop_up.modelsL.selection
-                                                             == "Rabbit" ? 2 : 0))
+                         === "None" ? 3 : (material_pop_up.modelsL.selection
+                                          === "Dragon" ? 1 : (material_pop_up.modelsL.selection
+                                                             === "Rabbit" ? 2 : 0))
                 scale.x: 150
                 scale.y: 150
                 scale.z: 150
@@ -113,12 +113,12 @@ Rectangle {
             Model {
                 id: studioFloor
                 y: -1
-                visible: layout.dotBtns.sceneState == 1
+                visible: layout.dotBtns.sceneState === 1
                 opacity: 1
                 source: "#Rectangle"
                 eulerRotation.z: 0
                 eulerRotation.x: -90
-                materials: floorMat
+                materials: [floorMat]
                 eulerRotation.y: 0
                 scale.y: 35
                 scale.z: 35
@@ -126,7 +126,7 @@ Rectangle {
                 Model {
                     id: areaLight
                     source: "#Rectangle"
-                    materials: lightMaterial
+                    materials: [lightMaterial]
                     eulerRotation.z: 0
                     eulerRotation.y: 0
                     scale.y: 0.05
@@ -138,7 +138,7 @@ Rectangle {
                 Model {
                     id: pillar
                     source: "#Cube"
-                    materials: asphalt
+                    materials: [asphalt]
                     x: 0
                     y: 38
                     receivesReflections: true
@@ -151,7 +151,7 @@ Rectangle {
                 Model {
                     id: pillar1
                     source: "#Cube"
-                    materials: asphalt
+                    materials: [asphalt]
                     x: 38
                     y: 0
                     receivesReflections: true
@@ -164,7 +164,7 @@ Rectangle {
                 Model {
                     id: pillar2
                     source: "#Cube"
-                    materials: asphalt
+                    materials: [asphalt]
                     x: -38
                     y: 0
                     z: 10.03454
@@ -177,7 +177,7 @@ Rectangle {
                 Model {
                     id: pillar3
                     source: "#Cube"
-                    materials: asphalt
+                    materials: [asphalt]
                     x: 0
                     y: -38
                     z: 9.60788
@@ -196,7 +196,7 @@ Rectangle {
                         y: 35
                         source: "#Rectangle"
                         eulerRotation.z: 0
-                        materials: lightMaterial
+                        materials: [lightMaterial]
                         eulerRotation.y: 0
                         z: 20
                         scale.x: 0.7
@@ -210,7 +210,7 @@ Rectangle {
                         y: 0
                         source: "#Rectangle"
                         eulerRotation.z: 90
-                        materials: lightMaterial
+                        materials: [lightMaterial]
                         eulerRotation.y: -90
                         z: 20
                         scale.x: 0.7
@@ -224,7 +224,7 @@ Rectangle {
                         y: -35
                         source: "#Rectangle"
                         eulerRotation.z: 0
-                        materials: lightMaterial
+                        materials: [lightMaterial]
                         eulerRotation.y: 0
                         z: 20
                         scale.x: 0.7
@@ -238,7 +238,7 @@ Rectangle {
                         y: 0
                         source: "#Rectangle"
                         eulerRotation.z: 90
-                        materials: lightMaterial
+                        materials: [lightMaterial]
                         eulerRotation.y: 90
                         z: 20
                         scale.x: 0.7
@@ -286,34 +286,36 @@ Rectangle {
 
                 HeatwaveEffect {
                     id: heatwave
-                    visible: material_pop_up.effectsL.selection == "Heatwave"
+                    visible: material_pop_up.effectsL.selection === "Heatwave"
                 }
 
                 RainEffect {
                     id: rain
-                    visible: material_pop_up.effectsL.selection == "Rain"
+                    sceneCamera: sceneCamera
+                    visible: material_pop_up.effectsL.selection === "Rain"
                 }
 
                 SmokeEffect {
                     id: smoke
-                    visible: material_pop_up.effectsL.selection == "Smoke"
+                    visible: material_pop_up.effectsL.selection === "Smoke"
                 }
 
                 SteamEffect {
                     id: steam
                     y: 100
-                    visible: material_pop_up.effectsL.selection == "Steam"
+                    visible: material_pop_up.effectsL.selection === "Steam"
                     z: 100
                 }
 
                 SnowEffect {
                     id: snow
-                    visible: material_pop_up.effectsL.selection == "Snow"
+                    visible: material_pop_up.effectsL.selection === "Snow"
                 }
 
                 FireEffect {
                     id: fire
-                    visible: material_pop_up.effectsL.selection == "Flames"
+                    sceneCamera: sceneCamera
+                    visible: material_pop_up.effectsL.selection === "Flames"
                 }
 
                 Node {
@@ -322,7 +324,7 @@ Rectangle {
 
                     SparksEffect {
                         id: sparks
-                        visible: material_pop_up.effectsL.selection == "Sparks"
+                        visible: material_pop_up.effectsL.selection === "Sparks"
                         y: 100
                         z: 250
                     }
@@ -330,37 +332,39 @@ Rectangle {
 
                 ShockwaveEffect {
                     id: shockwave
-                    visible: material_pop_up.effectsL.selection == "Shockwave"
+                    visible: material_pop_up.effectsL.selection === "Shockwave"
                 }
 
                 DustEffect {
                     id: dust
-                    visible: material_pop_up.effectsL.selection == "Dust"
+                    sceneCamera: sceneCamera
+                    visible: material_pop_up.effectsL.selection === "Dust"
                 }
 
                 FlashEffect {
                     id: flash
-                    visible: material_pop_up.effectsL.selection == "Flash"
+                    visible: material_pop_up.effectsL.selection === "Flash"
                 }
 
                 ExplosionEffect {
                     id: explosion
-                    visible: material_pop_up.effectsL.selection == "Explosion"
+                    visible: material_pop_up.effectsL.selection === "Explosion"
                 }
 
                 BubblesEffect {
                     id: bubbles
+                    sceneCamera: sceneCamera
                     x: 0
                     y: 125.976
-                    visible: material_pop_up.effectsL.selection == "Bubbles"
+                    visible: material_pop_up.effectsL.selection === "Bubbles"
                     z: 62.12978
                 }
 
                 CloudEffect {
                     id: cloud
-
+                    sceneCamera: sceneCamera
                     y: 100
-                    visible: material_pop_up.effectsL.selection == "Clouds"
+                    visible: material_pop_up.effectsL.selection === "Clouds"
                     time: 10000
                     startTime: 0
                 }
@@ -403,7 +407,7 @@ Rectangle {
                     id: materialBall
                     y: 4
 
-                    visible: material_pop_up.modelsL.selection == "Qt material ball"
+                    visible: material_pop_up.modelsL.selection === "Qt material ball"
                     source: "file:content/Meshes/materialBall.mesh"
                     castsReflections: false
                     receivesReflections: true
@@ -417,7 +421,7 @@ Rectangle {
                     id: bunny
                     x: 50
                     y: -75
-                    visible: material_pop_up.modelsL.selection == "Rabbit"
+                    visible: material_pop_up.modelsL.selection === "Rabbit"
                     source: "file:content/Meshes/bunnyUV.mesh"
                     castsReflections: false
                     z: -50
@@ -432,7 +436,7 @@ Rectangle {
                 Model {
                     id: dragon
                     y: -10
-                    visible: material_pop_up.modelsL.selection == "Dragon"
+                    visible: material_pop_up.modelsL.selection === "Dragon"
                     source: "file:content/Meshes/stanford_Dragon.mesh"
                     eulerRotation.x: -90
                     castsReflections: false
@@ -598,6 +602,7 @@ Rectangle {
 
     MouseRotatorAndWASD {
         id: mouseRotatorAndWASD
+        controlledObject: cameraRoot
         anchors.top: parent.top
         anchors.fill: parent
         anchors.leftMargin: 636 * menutransition_open.phase
@@ -615,9 +620,11 @@ Rectangle {
         Connections {
             target: mouseArea
 
-            onWheel: (wheel) => sceneCamera.fieldOfView += wheel.angleDelta.y * 0.04
+            function onWheel(wheel) {
+                sceneCamera.fieldOfView += wheel.angleDelta.y * 0.04
                              * (sceneCamera.fieldOfView + wheel.angleDelta.y * 0.04 > 0.0)
                              * (sceneCamera.fieldOfView + wheel.angleDelta.y * 0.04 < 60.0)
+            }
         }
 
         PinchArea {
@@ -626,14 +633,15 @@ Rectangle {
 
             Connections {
                 target: pinchArea
-                onPinchUpdated: if (pinch.previousScale - pinch.scale > 0.008
-                                        || pinch.previousScale - pinch.scale < -1 * 0.008) {
-                                    let velocity = (pinch.previousScale
-                                                    - pinch.scale) > 0 ? 1.25 : -1.25
-                                    sceneCamera.fieldOfView += velocity
-                                            * (sceneCamera.fieldOfView + velocity > 0.0)
-                                            * (sceneCamera.fieldOfView + velocity < 60.0)
-                                }
+                function onPinchUpdated(pinch) {
+                    if (pinch.previousScale - pinch.scale > 0.008
+                     || pinch.previousScale - pinch.scale < -1 * 0.008) {
+                        let velocity = (pinch.previousScale - pinch.scale) > 0 ? 1.25 : -1.25
+                        sceneCamera.fieldOfView += velocity
+                                * (sceneCamera.fieldOfView + velocity > 0.0)
+                                * (sceneCamera.fieldOfView + velocity < 60.0)
+                    }
+                }
             }
         }
     }
@@ -1185,6 +1193,8 @@ Rectangle {
 
     LayoutFull {
         id: layoutFull
+        openmenuTransition: menutransition_open
+        openmenuTransitionPhase: menutransition_open.phase
     }
 
     Layout {
@@ -1193,6 +1203,9 @@ Rectangle {
 
     Material_pop_up {
         id: material_pop_up
+        openmenuTransitionPhase: menutransition_open.phase
+        closemenuTransition: menutransition_close
+        screen: rectangle1
     }
 
     Rectangle {
@@ -1371,7 +1384,7 @@ Rectangle {
         id: sparkrotation
         target: sparkrotation
         property: "phase"
-        running: material_pop_up.effectsL.selection == "Sparks"
+        running: material_pop_up.effectsL.selection === "Sparks"
         loops: -1
         easing.bezierCurve: [0.2, 0.2, 0.8, 0.8, 1, 1]
         duration: 10000
@@ -1396,7 +1409,7 @@ Rectangle {
     states: [
         State {
             name: "silverState"
-            when: rectangle1.matselText == "Silver"
+            when: rectangle1.matselText === "Silver"
             PropertyChanges {
                 target: rectangle1
                 matChoice: silver
@@ -1404,7 +1417,7 @@ Rectangle {
         },
         State {
             name: "steelState"
-            when: rectangle1.matselText == "Brushed Steel"
+            when: rectangle1.matselText === "Brushed Steel"
             PropertyChanges {
                 target: rectangle1
                 matChoice: steelBrushed
@@ -1412,7 +1425,7 @@ Rectangle {
         },
         State {
             name: "copperState"
-            when: rectangle1.matselText == "Copper"
+            when: rectangle1.matselText === "Copper"
             PropertyChanges {
                 target: rectangle1
                 matChoice: copper
@@ -1420,7 +1433,7 @@ Rectangle {
         },
         State {
             name: "glassState"
-            when: rectangle1.matselText == "Wax"
+            when: rectangle1.matselText === "Wax"
             PropertyChanges {
                 target: rectangle1
                 matChoice: waxMat
@@ -1428,7 +1441,7 @@ Rectangle {
         },
         State {
             name: "woodState"
-            when: rectangle1.matselText == "Wood"
+            when: rectangle1.matselText === "Wood"
             PropertyChanges {
                 target: rectangle1
                 matChoice: wood
@@ -1436,7 +1449,7 @@ Rectangle {
         },
         State {
             name: "stoneState"
-            when: rectangle1.matselText == "Stone"
+            when: rectangle1.matselText === "Stone"
             PropertyChanges {
                 target: rectangle1
                 matChoice: stone
@@ -1444,7 +1457,7 @@ Rectangle {
         },
         State {
             name: "carbonfiberState"
-            when: rectangle1.matselText == "Carbon Fiber"
+            when: rectangle1.matselText === "Carbon Fiber"
             PropertyChanges {
                 target: rectangle1
                 matChoice: carbonFiber
@@ -1452,7 +1465,7 @@ Rectangle {
         },
         State {
             name: "plasticState"
-            when: rectangle1.matselText == "Plastic"
+            when: rectangle1.matselText === "Plastic"
             PropertyChanges {
                 target: rectangle1
                 matChoice: plasticTextured
@@ -1460,7 +1473,7 @@ Rectangle {
         },
         State {
             name: "fabricState"
-            when: rectangle1.matselText == "Fabric"
+            when: rectangle1.matselText === "Fabric"
             PropertyChanges {
                 target: rectangle1
                 matChoice: fabric
@@ -1468,7 +1481,7 @@ Rectangle {
         },
         State {
             name: "leatherState"
-            when: rectangle1.matselText == "Leather"
+            when: rectangle1.matselText === "Leather"
             PropertyChanges {
                 target: rectangle1
                 matChoice: leather

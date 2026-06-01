@@ -14,7 +14,9 @@
 // We mean it.
 //
 
+#include <QtCore/qobject.h>
 #include <QtCore/qstring.h>
+#include <QtCore/private/qexpected_p.h>
 
 #include <QtMultimedia/qcapturablewindow.h>
 #include <QtMultimedia/qmediarecorder.h>
@@ -37,7 +39,6 @@ class QImageCapture;
 class QMediaDevices;
 class QMediaPlayer;
 class QMediaRecorder;
-class QObject;
 class QPlatformAudioDecoder;
 class QPlatformAudioDevices;
 class QPlatformAudioInput;
@@ -74,47 +75,48 @@ public:
     ~QPlatformMediaIntegration() override;
     const QPlatformMediaFormatInfo *formatInfo();
 
-    virtual QMaybe<QPlatformCamera *> createCamera(QCamera *)
+    virtual q23::expected<QPlatformCamera *, QString> createCamera(QCamera *)
     {
-        return QUnexpected{ notAvailable };
+        return q23::unexpected{ notAvailable };
     }
     virtual QPlatformSurfaceCapture *createScreenCapture(QScreenCapture *) { return nullptr; }
     virtual QPlatformSurfaceCapture *createWindowCapture(QWindowCapture *) { return nullptr; }
 
-    virtual QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *)
+    virtual q23::expected<QPlatformAudioDecoder *, QString> createAudioDecoder(QAudioDecoder *)
     {
-        return QUnexpected{ notAvailable };
+        return q23::unexpected{ notAvailable };
     }
-    virtual QMaybe<std::unique_ptr<QPlatformAudioResampler>>
+    virtual q23::expected<std::unique_ptr<QPlatformAudioResampler>, QString>
     createAudioResampler(const QAudioFormat & /*inputFormat*/,
                          const QAudioFormat & /*outputFormat*/);
-    virtual QMaybe<QPlatformMediaCaptureSession *> createCaptureSession()
+    virtual q23::expected<QPlatformMediaCaptureSession *, QString> createCaptureSession()
     {
-        return QUnexpected{ notAvailable };
+        return q23::unexpected{ notAvailable };
     }
-    virtual QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *)
+    virtual q23::expected<QPlatformMediaPlayer *, QString> createPlayer(QMediaPlayer *)
     {
-        return QUnexpected{ notAvailable };
+        return q23::unexpected{ notAvailable };
     }
-    virtual QMaybe<QPlatformMediaRecorder *> createRecorder(QMediaRecorder *)
+    virtual q23::expected<QPlatformMediaRecorder *, QString> createRecorder(QMediaRecorder *)
     {
-        return QUnexpected{ notAvailable };
+        return q23::unexpected{ notAvailable };
     }
-    virtual QMaybe<QPlatformImageCapture *> createImageCapture(QImageCapture *)
+    virtual q23::expected<QPlatformImageCapture *, QString> createImageCapture(QImageCapture *)
     {
-        return QUnexpected{ notAvailable };
+        return q23::unexpected{ notAvailable };
     }
 
-    virtual QMaybe<QPlatformAudioInput *> createAudioInput(QAudioInput *);
-    virtual QMaybe<QPlatformAudioOutput *> createAudioOutput(QAudioOutput *);
+    virtual q23::expected<QPlatformAudioInput *, QString> createAudioInput(QAudioInput *);
+    virtual q23::expected<QPlatformAudioOutput *, QString> createAudioOutput(QAudioOutput *);
 
-    virtual QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *)
+    virtual q23::expected<QPlatformVideoSink *, QString> createVideoSink(QVideoSink *)
     {
-        return QUnexpected{ notAvailable };
+        return q23::unexpected{ notAvailable };
     }
 
     QList<QCapturableWindow> capturableWindowsList();
     bool isCapturableWindowValid(const QCapturableWindowPrivate &);
+    [[nodiscard]] q23::expected<QCapturableWindow, QString> capturableWindowFromQWindow(QWindow *);
 
     QPlatformVideoDevices *videoDevices();
 

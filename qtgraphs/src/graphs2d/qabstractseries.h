@@ -19,6 +19,8 @@ class QGraphsView;
 struct Q_GRAPHS_EXPORT QLegendData
 {
     Q_GADGET
+    QML_VALUE_TYPE(legendData)
+    QML_ADDED_IN_VERSION(6, 10) // formerly anonymous
     Q_PROPERTY(QColor color MEMBER color FINAL)
     Q_PROPERTY(QColor borderColor MEMBER borderColor FINAL)
     Q_PROPERTY(QString label MEMBER label FINAL)
@@ -45,7 +47,12 @@ class Q_GRAPHS_EXPORT QAbstractSeries : public QObject, public QQmlParserStatus
     Q_PROPERTY(SeriesType type READ type CONSTANT FINAL)
     Q_PROPERTY(QQmlListProperty<QObject> seriesChildren READ seriesChildren CONSTANT FINAL)
     Q_PROPERTY(QList<QLegendData> legendData READ legendData NOTIFY legendDataChanged FINAL)
+    Q_PROPERTY(bool hovered READ isHovered NOTIFY hoveredChanged REVISION(6, 10))
+    Q_PROPERTY(QAbstractAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged REVISION(6, 10))
+    Q_PROPERTY(QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged REVISION(6, 10))
+    Q_PROPERTY(int zValue READ zValue WRITE setZValue NOTIFY zValueChanged REVISION(6, 10))
     Q_CLASSINFO("DefaultProperty", "seriesChildren")
+    QML_ANONYMOUS
 
 public:
     enum class SeriesType {
@@ -99,6 +106,18 @@ public:
 
     bool hasLoaded() const;
 
+    bool isHovered() const;
+    void setHovered(bool enabled);
+
+    QAbstractAxis *axisX() const;
+    void setAxisX(QAbstractAxis *newAxisX);
+
+    QAbstractAxis *axisY() const;
+    void setAxisY(QAbstractAxis *newAxisY);
+
+    int zValue() const;
+    void setZValue(int newDrawOrder);
+
 Q_SIGNALS:
     void update();
     void nameChanged();
@@ -111,6 +130,11 @@ Q_SIGNALS:
     void hoverEnter(const QString &seriesName, QPointF position, QPointF value);
     void hoverExit(const QString &seriesName, QPointF position);
     void hover(const QString &seriesName, QPointF position, QPointF value);
+    Q_REVISION(6, 10) void hoveredChanged(bool hovered);
+
+    Q_REVISION(6, 10) void axisXChanged(QAbstractAxis *newAxis);
+    Q_REVISION(6, 10) void axisYChanged(QAbstractAxis *newAxis);
+    Q_REVISION(6, 10) void zValueChanged(int z);
 
 protected:
     friend class BarsRenderer;

@@ -726,6 +726,7 @@ void QQuick3DTexture::setSourceItem(QQuickItem *sourceItem)
 
         sourcePrivate->removeItemChangeListener(this, QQuickItemPrivate::Geometry);
         disconnect(m_sourceItem, SIGNAL(destroyed(QObject*)), this, SLOT(sourceItemDestroyed(QObject*)));
+        disconnect(m_sourceItem, &QQuickItem::windowChanged, this, &QQuick3DTexture::sourceItemWindowChanged);
         if (m_sourceItemReparented) {
             m_sourceItem->setParentItem(nullptr);
             m_sourceItemReparented = false;
@@ -739,6 +740,7 @@ void QQuick3DTexture::setSourceItem(QQuickItem *sourceItem)
         QQuickItemPrivate *sourcePrivate = QQuickItemPrivate::get(m_sourceItem);
         sourcePrivate->addItemChangeListener(this, QQuickItemPrivate::Geometry);
         connect(m_sourceItem, SIGNAL(destroyed(QObject*)), this, SLOT(sourceItemDestroyed(QObject*)));
+        connect(m_sourceItem, &QQuickItem::windowChanged, this, &QQuick3DTexture::sourceItemWindowChanged);
         sourcePrivate->ensureSubsceneDeliveryAgent();
     }
 
@@ -1446,6 +1448,47 @@ void QQuick3DTexture::sourceItemDestroyed(QObject *item)
     m_dirtyFlags.setFlag(DirtyFlag::TextureDataDirty);
     emit sourceItemChanged();
     update();
+}
+
+class QQuick3DLayerCleanupJob : public QRunnable
+{
+public:
+    explicit QQuick3DLayerCleanupJob(QSGLayer *l)
+        : layer(l)
+    {}
+    void run() final
+    {
+        delete layer;
+    }
+
+private:
+    QSGLayer *layer = nullptr;
+};
+
+void QQuick3DTexture::sourceItemWindowChanged(QQuickWindow *window)
+{
+    if (m_layer != nullptr && window == nullptr) {
+        // During teardown the sourceItem may lose its window first after
+        // the 3D scene has been torn down, so we need to make sure we still
+        // have a valid sceneManager to remove the layer from.
+        if (const auto &manager = QQuick3DObjectPrivate::get(this)->sceneManager) {
+            manager->qsgDynamicTextures.removeAll(m_layer);
+            // Make sure we get set up again once updateSpatialNode is called next.
+            m_initializedSourceItem = nullptr;
+            m_initializedSourceItemSize = QSize();
+
+            if (manager->window()) {
+                manager->window()->scheduleRenderJob(new QQuick3DLayerCleanupJob(m_layer),
+                                                     QQuickWindow::AfterSynchronizingStage);
+                m_layer = nullptr;
+            }
+            markAllDirty();
+            update();
+        }
+    } else {
+        markAllDirty();
+        update();
+    }
 }
 
 void QQuick3DTexture::markDirty(QQuick3DTexture::DirtyFlag type)

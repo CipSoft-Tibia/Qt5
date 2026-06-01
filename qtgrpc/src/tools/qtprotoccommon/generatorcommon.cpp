@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2020 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:critical reason:data-parser
 
 #include "generatorcommon.h"
 #include "options.h"
@@ -560,6 +561,9 @@ PropertyMap common::producePropertyMap(const FieldDescriptor *field, const Descr
 
     propertyMap["property_name"] = propertyName;
     propertyMap["property_name_cap"] = propertyNameCap;
+    propertyMap["mutable_getter_name"] = CommonTemplates::MutableGetterPrefix();
+    propertyMap["mutable_getter_name"] += propertyNameCap;
+
     propertyMap["scriptable"] = scriptable;
     propertyMap["export_macro"] = common::buildExportMacro();
 

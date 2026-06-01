@@ -2,10 +2,6 @@
 [pressAndHold]
 macos ci
 
-# QTBUG-82282
-[pressOneAndTapAnother]
-opensuse-leap
-
 # QTBUG-103092
 [pressOneAndTapAnother]
 android

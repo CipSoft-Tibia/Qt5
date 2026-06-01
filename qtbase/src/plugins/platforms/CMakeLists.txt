@@ -56,3 +56,7 @@ endif()
 if(QT_FEATURE_vkkhrdisplay)
     add_subdirectory(vkkhrdisplay)
 endif()
+if(QT_FEATURE_wayland)
+    add_subdirectory(wayland)
+endif()
+

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -82,6 +83,8 @@ ColorDialogImpl {
 
             Layout.alignment: Qt.AlignRight
             Layout.rightMargin: 16
+
+            Accessible.name: qsTr("Eye dropper")
         }
     }
 
@@ -101,6 +104,8 @@ ColorDialogImpl {
             orientation: Qt.Horizontal
             value: control.hue
             onMoved: function() { control.hue = value; }
+
+            Accessible.name: qsTr("Hue")
 
             Layout.fillWidth: true
             Layout.leftMargin: 16
@@ -188,6 +193,8 @@ ColorDialogImpl {
                     }
                 }
             }
+
+            Accessible.name: qsTr("Alpha")
 
             Layout.fillWidth: true
             Layout.leftMargin: 16

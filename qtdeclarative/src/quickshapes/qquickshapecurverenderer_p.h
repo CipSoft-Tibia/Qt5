@@ -44,7 +44,6 @@ public:
     ~QQuickShapeCurveRenderer() override;
 
     void beginSync(int totalCount, bool *countChanged) override;
-    void setPath(int index, const QQuickPath *path) override;
     void setPath(int index, const QPainterPath &path, QQuickShapePath::PathHints pathHints = {}) override;
     void setStrokeColor(int index, const QColor &color) override;
     void setStrokeWidth(int index, qreal w) override;

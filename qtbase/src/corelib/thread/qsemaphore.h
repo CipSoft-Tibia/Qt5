@@ -10,8 +10,6 @@
 
 #include <chrono>
 
-QT_REQUIRE_CONFIG(thread);
-
 QT_BEGIN_NAMESPACE
 
 class QSemaphorePrivate;

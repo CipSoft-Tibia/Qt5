@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "chrome/browser/media/webrtc/webrtc_text_log_handler.h"
 
 #include <map>
@@ -554,27 +559,11 @@ void WebRtcTextLogHandler::OnGetNetworkInterfaceListFinish(
        ""}));
 #endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
-#if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
-  if (media::IsChromeWideEchoCancellationEnabled()) {
-    LogToCircularBuffer(base::StrCat(
-        {"ChromeWideEchoCancellation : Enabled", ", minimize_resampling = ",
-         media::kChromeWideEchoCancellationMinimizeResampling.Get() ? "true"
-                                                                    : "false",
-         ", allow_all_sample_rates = ",
-         media::kChromeWideEchoCancellationAllowAllSampleRates.Get()
-             ? "true"
-             : "false"}));
-  } else {
-    LogToCircularBuffer("ChromeWideEchoCancellation : Disabled");
-  }
-
-  if (base::FeatureList::IsEnabled(media::kDecreaseProcessingAudioFifoSize)) {
-    LogToCircularBuffer(base::StrCat(
-        {"DecreaseProcessingAudioFifoSize : Enabled", ", fifo_size = ",
-         base::NumberToString(media::GetProcessingAudioFifoSize())}));
-  } else {
-    LogToCircularBuffer("DecreaseProcessingAudioFifoSize : Disabled");
-  }
+#if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION) && !BUILDFLAG(IS_QTWEBENGINE)
+  LogToCircularBuffer(
+      base::StrCat({"ChromeWideEchoCancellation : ",
+                    enabled_or_disabled_bool_string(
+                        media::IsChromeWideEchoCancellationEnabled())}));
 #endif
 
   // Audio manager

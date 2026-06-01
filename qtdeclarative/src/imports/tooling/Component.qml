@@ -8,6 +8,7 @@ QtObject {
     default property list<Tooling.Member> members
 
     property string file
+    property int lineNumber
     required property string name
     property list<string> aliases: []
     property string prototype

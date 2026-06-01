@@ -38,6 +38,12 @@ protected:
     void render() final;
 
 private:
+    enum PartialUpdateMode {
+        AutoPartialUpdate,
+        ForcePartialUpdate,
+        DisablePartialUpdate
+    } m_partialUpdateMode = AutoPartialUpdate;
+
     QPaintDevice* m_paintDevice;
     QBackingStore* m_backingStore;
     QRegion m_flushRegion;

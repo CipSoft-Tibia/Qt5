@@ -1,4 +1,6 @@
 // Copyright (c) 2016 Google Inc.
+// Modifications Copyright (C) 2024 Advanced Micro Devices, Inc. All rights
+// reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,23 +27,14 @@
 #include "source/binary.h"
 #include "source/latest_version_spirv_header.h"
 #include "source/parsed_operand.h"
+#include "source/to_string.h"
 #include "spirv-tools/libspirv.h"
 
 namespace spvtools {
-namespace {
 
-// Converts a uint32_t to its string decimal representation.
-std::string to_string(uint32_t id) {
-  // Use stringstream, since some versions of Android compilers lack
-  // std::to_string.
-  std::stringstream os;
-  os << id;
-  return os.str();
+NameMapper GetTrivialNameMapper() {
+  return [](uint32_t i) { return spvtools::to_string(i); };
 }
-
-}  // anonymous namespace
-
-NameMapper GetTrivialNameMapper() { return to_string; }
 
 FriendlyNameMapper::FriendlyNameMapper(const spv_const_context context,
                                        const uint32_t* code,
@@ -249,6 +242,10 @@ spv_result_t FriendlyNameMapper::ParseInstruction(
     case spv::Op::OpTypeRuntimeArray:
       SaveName(result_id,
                std::string("_runtimearr_") + NameForId(inst.words[2]));
+      break;
+    case spv::Op::OpTypeNodePayloadArrayAMDX:
+      SaveName(result_id,
+               std::string("_payloadarr_") + NameForId(inst.words[2]));
       break;
     case spv::Op::OpTypePointer:
       SaveName(result_id, std::string("_ptr_") +

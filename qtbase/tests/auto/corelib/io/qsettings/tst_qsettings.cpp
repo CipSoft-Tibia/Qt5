@@ -182,7 +182,20 @@ private slots:
     void childKeys();
     void testIniParsing_data();
     void testIniParsing();
-    void testEscapes();
+
+    void testEscapedKeys_data();
+    void testEscapedKeys();
+    void testUnescapedKeys_data();
+    void testUnescapedKeys();
+    void testEscapedStringList_data();
+    void testEscapedStringList();
+    void testUnescapedStringList_data();
+    void testUnescapedStringList();
+    void testEscapedVariant_data();
+    void testEscapedVariant();
+    void testBadEscape();
+    void testBadEscape_data();
+
     void testNormalizedKey_data();
     void testNormalizedKey();
     void testVariantTypes_data() { populateWithFormats(); }
@@ -2355,6 +2368,8 @@ void tst_QSettings::testRegistryShortRootNames()
 {
 #ifndef Q_OS_WIN
     QSKIP("This test is specific to the Windows registry only.");
+#elif defined(Q_PROCESSOR_ARM)
+    QSKIP("This test fails on Windows for ARM. See QTBUG-135470.");
 #else
     QVERIFY(QSettings("HKEY_CURRENT_USER", QSettings::NativeFormat).childGroups() == QSettings("HKCU", QSettings::NativeFormat).childGroups());
     QVERIFY(QSettings("HKEY_LOCAL_MACHINE", QSettings::NativeFormat).childGroups() == QSettings("HKLM", QSettings::NativeFormat).childGroups());
@@ -2823,127 +2838,254 @@ QString escapeWeirdChars(const QString &s)
 }
 
 #ifdef QT_BUILD_INTERNAL
-void tst_QSettings::testEscapes()
+
+void tst_QSettings::testEscapedKeys_data()
 {
-    QSettings settings(QSettings::UserScope, "software.org", "KillerAPP");
+    QTest::addColumn<QString>("plainKey");
+    QTest::addColumn<QByteArray>("escKey");
 
-#define testEscapedKey(plainKey, escKey) \
-    QCOMPARE(iniEscapedKey(plainKey), QByteArray(escKey)); \
-    QCOMPARE(iniUnescapedKey(escKey), QString(plainKey));
+    QTest::newRow("empty-string") << u""_s << ""_ba;
+    QTest::newRow("space") << u" "_s << "%20"_ba;
+    QTest::newRow(" 0123 abcd ") << " 0123 abcd " << "%200123%20abcd%20"_ba;
 
-#define testUnescapedKey(escKey, plainKey, reescKey) \
-    QCOMPARE(iniUnescapedKey(escKey), QString(plainKey)); \
-    QCOMPARE(iniEscapedKey(plainKey), QByteArray(reescKey)); \
-    QCOMPARE(iniUnescapedKey(reescKey), QString(plainKey));
+    QTest::newRow("special-characters")
+        << "~!@#$%^&*()_+.-/\\="
+        << "%7E%21%40%23%24%25%5E%26%2A%28%29_%2B.-\\%5C%3D"_ba;
 
-#define testEscapedStringList(plainStrList, escStrList) \
-    { \
-        QStringList plainList(plainStrList); \
-        QByteArray escList(escStrList); \
-        QCOMPARE(iniEscapedStringList(plainList), escList); \
-        QCOMPARE(iniUnescapedStringList(escList), plainList); \
-    } \
+    const std::array arr1 = {QChar(0xabcd), QChar(0x1234), QChar(0x0081)};
+    QTest::newRow("qchar-array1") << QString(arr1) << "%UABCD%U1234%81"_ba;
 
+    const std::array arr2 = {QChar(0xFE), QChar(0xFF), QChar(0x100), QChar(0x101)};
+    QTest::newRow("qchar-array2") << QString(arr2) << "%FE%FF%U0100%U0101"_ba;
+}
 
-#define testUnescapedStringList(escStrList, plainStrList, reescStrList) \
-    { \
-        QStringList plainList(plainStrList); \
-        QByteArray escList(escStrList); \
-        QByteArray reescList(reescStrList); \
-        QCOMPARE(iniUnescapedStringList(escList), plainList); \
-        QCOMPARE(iniEscapedStringList(plainList), reescList); \
-        QCOMPARE(iniUnescapedStringList(reescList), plainList); \
-    } \
+void tst_QSettings::testEscapedKeys()
+{
+    QFETCH(QString, plainKey);
+    QFETCH(QByteArray, escKey);
 
+    QSettings settings(QSettings::UserScope, "example.org", "KillerAPP");
 
-#define testVariant(val, escStr, func) \
-    { \
-        QVariant v(val); \
-        QString s = QSettingsPrivate::variantToString(v); \
-        QCOMPARE(s, escStr); \
-        QCOMPARE(QVariant(QSettingsPrivate::stringToVariant(escStr)), v); \
-        QVERIFY((val) == v.func());                                     \
-    }
+    QCOMPARE(iniEscapedKey(plainKey), escKey);
+    QCOMPARE(iniUnescapedKey(escKey), plainKey);
+}
 
-#define testBadEscape(escStr, vStr) \
-    { \
-        QVariant v = QSettingsPrivate::stringToVariant(QString(escStr)); \
-        QCOMPARE(v.toString(), QString(vStr)); \
-    }
+void tst_QSettings::testUnescapedKeys_data()
+{
+    QTest::addColumn<QByteArray>("escKey");
+    QTest::addColumn<QString>("plainKey");
+    QTest::addColumn<QByteArray>("reescKey");
 
-    testEscapedKey("", "");
-    testEscapedKey(" ", "%20");
-    testEscapedKey(" 0123 abcd ", "%200123%20abcd%20");
-    testEscapedKey("~!@#$%^&*()_+.-/\\=", "%7E%21%40%23%24%25%5E%26%2A%28%29_%2B.-\\%5C%3D");
-    testEscapedKey(QString() + QChar(0xabcd) + QChar(0x1234) + QChar(0x0081), "%UABCD%U1234%81");
-    testEscapedKey(QString() + QChar(0xFE) + QChar(0xFF) + QChar(0x100) + QChar(0x101), "%FE%FF%U0100%U0101");
+    QTest::newRow("empty-string") << ""_ba << u""_s << ""_ba;
+    QTest::newRow("space") << "%20"_ba << u" "_s << "%20"_ba;
+    QTest::newRow("%") << "%"_ba << u"%"_s << "%25"_ba;
 
-    testUnescapedKey("", "", "");
-    testUnescapedKey("%20", " ", "%20");
-    testUnescapedKey("/alpha/beta", "/alpha/beta", "\\alpha\\beta");
-    testUnescapedKey("\\alpha\\beta", "/alpha/beta", "\\alpha\\beta");
-    testUnescapedKey("%5Calpha%5Cbeta", "\\alpha\\beta", "%5Calpha%5Cbeta");
-    testUnescapedKey("%", "%", "%25");
-    testUnescapedKey("%f%!%%%%1x%x1%U%Uz%U123%U1234%1234%", QString("%f%!%%%%1x%x1%U%Uz%U123") + QChar(0x1234) + "\x12" + "34%",
-                     "%25f%25%21%25%25%25%251x%25x1%25U%25Uz%25U123%U1234%1234%25");
+    QTest::newRow("/alpha/beta")     << "/alpha/beta"_ba     << "/alpha/beta" << "\\alpha\\beta"_ba;
+    QTest::newRow("\\alpha\\beta")   << "\\alpha\\beta"_ba   << "/alpha/beta" << "\\alpha\\beta"_ba;
+    QTest::newRow("%5Calpha%5Cbeta") << "%5Calpha%5Cbeta"_ba << "\\alpha\\beta" << "%5Calpha%5Cbeta"_ba;
 
-    testEscapedStringList("", "");
-    testEscapedStringList(" ", "\" \"");
-    testEscapedStringList(";", "\";\"");
-    testEscapedStringList(",", "\",\"");
-    testEscapedStringList("=", "\"=\"");
-    testEscapedStringList("abc-def", "abc-def");
-    testEscapedStringList(QChar(0) + QString("0"), "\\0\\x30");
-    testEscapedStringList("~!@#$%^&*()_+.-/\\=", "\"~!@#$%^&*()_+.-/\\\\=\"");
-    testEscapedStringList("~!@#$%^&*()_+.-/\\", "~!@#$%^&*()_+.-/\\\\");
-    testEscapedStringList(QString("\x7F") + "12aFz", QByteArray("\x7f") + "12aFz");
-    testEscapedStringList(QString("   \t\n\\n") + QChar(0x123) + QChar(0x4567), "\"   \\t\\n\\\\n\xC4\xA3\xE4\x95\xA7\"");
-    testEscapedStringList(QString("\a\b\f\n\r\t\v'\"?\001\002\x03\x04"), "\\a\\b\\f\\n\\r\\t\\v'\\\"?\\x1\\x2\\x3\\x4");
-    testEscapedStringList(QStringList() << "," << ";" << "a" << "ab,  \tc, d ", "\",\", \";\", a, \"ab,  \\tc, d \"");
+    QTest::newRow("many-percent")
+        << "%f%!%%%%1x%x1%U%Uz%U123%U1234%1234%"_ba
+        << QString("%f%!%%%%1x%x1%U%Uz%U123"_L1 + QChar(0x1234) + "\x12" + "34%")
+        << "%25f%25%21%25%25%25%251x%25x1%25U%25Uz%25U123%U1234%1234%25"_ba;
+}
+
+void tst_QSettings::testUnescapedKeys()
+{
+    QFETCH(QByteArray, escKey);
+    QFETCH(QString, plainKey);
+    QFETCH(QByteArray, reescKey);
+
+    QSettings settings(QSettings::UserScope, "example.org", "KillerAPP");
+
+    QCOMPARE(iniUnescapedKey(escKey), plainKey);
+    QCOMPARE(iniEscapedKey(plainKey), reescKey);
+    QCOMPARE(iniUnescapedKey(reescKey), plainKey);
+}
+
+void tst_QSettings::testEscapedStringList_data()
+{
+    QTest::addColumn<QStringList>("plainStrList");
+    QTest::addColumn<QByteArray>("escapedList");
+
+    QTest::newRow("empty-string") << QStringList{u""_s} << ""_ba;
+    QTest::newRow("space") << QStringList{u" "_s} << "\" \""_ba;
+    QTest::newRow(";") << QStringList{u";"_s} << "\";\""_ba;
+    QTest::newRow(",") << QStringList{u","_s} << "\",\""_ba;
+    QTest::newRow("=") << QStringList{u"="_s} << "\"=\""_ba;
+    QTest::newRow("abc-def") << QStringList{u"abc-def"_s} << "abc-def"_ba;
+
+    QTest::newRow("starts-with-NUL")
+        << QStringList{QChar(0) + u"0"_s}
+        << "\\0\\x30"_ba;
+
+    QTest::newRow("special-characters1")
+        << QStringList{u"~!@#$%^&*()_+.-/\\="_s}
+        << "\"~!@#$%^&*()_+.-/\\\\=\""_ba;
+
+    QTest::newRow("special-characters2")
+        << QStringList{u"~!@#$%^&*()_+.-/\\"_s}
+        << "~!@#$%^&*()_+.-/\\\\"_ba;
+
+    QTest::newRow("DEL-character")
+        << QStringList{u"\x7F"_s + u"12aFz"_s}
+        << "\x7f"_ba + "12aFz"_ba;
+
+    QTest::newRow("tab-newline")
+        << QStringList{u"   \t\n\\n"_s + QChar(0x123) + QChar(0x4567)}
+        << "\"   \\t\\n\\\\n\xC4\xA3\xE4\x95\xA7\""_ba;
+
+    QTest::newRow("backslash-espcaped-input")
+        << QStringList{u"\a\b\f\n\r\t\v'\"?\001\002\x03\x04"_s}
+        << "\\a\\b\\f\\n\\r\\t\\v'\\\"?\\x1\\x2\\x3\\x4"_ba;
+
+    QTest::newRow("stringlist-with-tab")
+        << QStringList{u","_s, u";"_s, u"a"_s, u"ab,  \tc, d "_s}
+        << "\",\", \";\", a, \"ab,  \\tc, d \""_ba;
+}
+
+void tst_QSettings::testEscapedStringList()
+{
+    QFETCH(QStringList, plainStrList);
+    QFETCH(QByteArray, escapedList);
+
+    QSettings settings(QSettings::UserScope, "example.org", "KillerAPP");
+
+    QCOMPARE(iniEscapedStringList(plainStrList), escapedList);
+    QCOMPARE(iniUnescapedStringList(escapedList), plainStrList);
+}
+
+void tst_QSettings::testUnescapedStringList_data()
+{
+    QTest::addColumn<QByteArray>("escStrList");
+    QTest::addColumn<QStringList>("plainStrList");
+    QTest::addColumn<QByteArray>("reescStrList");
 
     /*
       Test .ini syntax that cannot be generated by QSettings (but can be entered by users).
     */
-    testUnescapedStringList("", "", "");
-    testUnescapedStringList("\"\"", "", "");
-    testUnescapedStringList("\"abcdef\"", "abcdef", "abcdef");
-    testUnescapedStringList("\"\\?\\'\\\"\"", "?'\"", "?'\\\"");
-    testUnescapedStringList("\\0\\00\\000\\0000000\\1\\111\\11111\\x\\x0\\xABCDEFGH\\x0123456\\",
-                            QString() + QChar(0) + QChar(0) + QChar(0) + QChar(0) + QChar(1)
-                            + QChar(0111) + QChar(011111) + QChar(0) + QChar(0xCDEF) + "GH"
-                            + QChar(0x3456),
-                            "\\0\\0\\0\\0\\x1I\xE1\x89\x89\\0\xEC\xB7\xAFGH\xE3\x91\x96");
-    testUnescapedStringList(QByteArray("\\c\\d\\e\\f\\g\\$\\*\\\0", 16), "\f", "\\f");
-    testUnescapedStringList("\"a\",  \t\"bc \", \"  d\" , \"ef  \" ,,g,   hi  i,,, ,",
-                            QStringList() << "a" << "bc " << "  d" << "ef  " << "" << "g" << "hi  i"
-                                          << "" << "" << "" << "",
-                            "a, \"bc \", \"  d\", \"ef  \", , g, hi  i, , , , ");
-    testUnescapedStringList("a ,  b   ,   c   d   , efg   ",
-                            QStringList() << "a" << "b" << "c   d" << "efg",
-                            "a, b, c   d, efg");
+    QTest::newRow("empty")
+        << ""_ba
+        << QStringList{u""_s}
+        << ""_ba;
+
+    QTest::newRow("empty-double-quotes")
+        << "\"\""_ba
+        << QStringList{u""_s}
+        << ""_ba;
+
+    QTest::newRow("plain-quoted-string")
+        << "\"abcdef\""_ba
+        << QStringList{u"abcdef"_s}
+        << "abcdef"_ba;
+
+    QTest::newRow("backslash-non-letter-characters")
+        << "\"\\?\\'\\\"\""_ba
+        << QStringList{u"?'\""_s}
+        << "?'\\\""_ba;
+
+    const std::array arr = {QChar(0), QChar(0), QChar(0), QChar(0), QChar(1),
+                            QChar(0111), QChar(011111), QChar(0), QChar(0xCDEF),
+                            QChar(u'G'), QChar(u'H'), QChar(0x3456)};
+    QTest::newRow("array-of-qchar")
+        << "\\0\\00\\000\\0000000\\1\\111\\11111\\x\\x0\\xABCDEFGH\\x0123456\\"_ba
+        << QStringList{QString{arr}}
+        << "\\0\\0\\0\\0\\x1I\xE1\x89\x89\\0\xEC\xB7\xAFGH\xE3\x91\x96"_ba;
+
+    QTest::newRow("backslash-escapes")
+        << QByteArray("\\c\\d\\e\\f\\g\\$\\*\\\0", 16)
+        << QStringList{u"\f"_s}
+        << "\\f"_ba;
+
+    QTest::newRow("double-quotes-tab-character")
+        << "\"a\",  \t\"bc \", \"  d\" , \"ef  \" ,,g,   hi  i,,, ,"_ba
+        << QStringList{u"a"_s, u"bc "_s, u"  d"_s, u"ef  "_s, u""_s, u"g"_s,
+                       u"hi  i"_s, u""_s, u""_s, u""_s, u""_s}
+        << "a, \"bc \", \"  d\", \"ef  \", , g, hi  i, , , , "_ba;
+
+    QTest::newRow("abcdefg-extra-whitespaces")
+        << "a ,  b   ,   c   d   , efg   "_ba
+        << QStringList{u"a"_s, u"b"_s, u"c   d"_s, u"efg"_s}
+        << "a, b, c   d, efg"_ba;
+}
+
+void tst_QSettings::testUnescapedStringList()
+{
+    QFETCH(QByteArray, escStrList);
+    QFETCH(QStringList, plainStrList);
+    QFETCH(QByteArray, reescStrList);
+
+    QSettings settings(QSettings::UserScope, "example.org", "KillerAPP");
+
+    QCOMPARE(iniUnescapedStringList(escStrList), plainStrList);
+    QCOMPARE(iniEscapedStringList(plainStrList), reescStrList);
+    QCOMPARE(iniUnescapedStringList(reescStrList), plainStrList);
+}
+
+void tst_QSettings::testEscapedVariant_data()
+{
+    QTest::addColumn<QVariant>("val");
+    QTest::addColumn<QString>("escStr");
 
     // streaming qvariant into a string
-    testVariant(QString("Hello World!"), QString("Hello World!"), toString);
-    testVariant(QString("Hello, World!"), QString("Hello, World!"), toString);
-    testVariant(QString("@Hello World!"), QString("@@Hello World!"), toString);
-    testVariant(QString("@@Hello World!"), QString("@@@Hello World!"), toString);
-    testVariant(QVariant(100), QString("100"), toString);
-    testVariant(QStringList() << "ene" << "due" << "rike", QString::fromLatin1("@Variant(\x0\x0\x0\xb\x0\x0\x0\x3\x0\x0\x0\x6\x0\x65\x0n\x0\x65\x0\x0\x0\x6\x0\x64\x0u\x0\x65\x0\x0\x0\x8\x0r\x0i\x0k\x0\x65)", 50), toStringList);
-    testVariant(QRect(1, 2, 3, 4), QString("@Rect(1 2 3 4)"), toRect);
-    testVariant(QSize(5, 6), QString("@Size(5 6)"), toSize);
-    testVariant(QPoint(7, 8), QString("@Point(7 8)"), toPoint);
 
-    testBadEscape("", "");
-    testBadEscape("@", "@");
-    testBadEscape("@@", "@");
-    testBadEscape("@@@", "@@");
-    testBadEscape(" ", " ");
-    testBadEscape("@Rect", "@Rect");
-    testBadEscape("@Rect(", "@Rect(");
-    testBadEscape("@Rect()", "@Rect()");
-    testBadEscape("@Rect)", "@Rect)");
-    testBadEscape("@Rect(1 2 3)", "@Rect(1 2 3)");
-    testBadEscape("@@Rect(1 2 3)", "@Rect(1 2 3)");
+    QTest::newRow("Hello World!")   << QVariant{u"Hello World!"_s}   << u"Hello World!"_s;
+    QTest::newRow("Hello, World!")  << QVariant{u"Hello, World!"_s}  << u"Hello, World!"_s;
+    QTest::newRow("@Hello World!")  << QVariant{u"@Hello World!"_s}  << u"@@Hello World!"_s;
+    QTest::newRow("@@Hello World!") << QVariant{u"@@Hello World!"_s} << u"@@@Hello World!"_s;
+    QTest::newRow("int-100")        << QVariant{100}                 << u"100"_s;
+    QTest::newRow("qrect")          << QVariant{QRect(1, 2, 3, 4)}   << u"@Rect(1 2 3 4)"_s;
+    QTest::newRow("qsize")          << QVariant{QSize(5, 6)}         << u"@Size(5 6)"_s;
+    QTest::newRow("qpoint")         << QVariant{QPoint(7, 8)}        << u"@Point(7 8)"_s;
+
+    auto expected = QString::fromLatin1("@Variant(\x0\x0\x0\xb\x0\x0\x0\x3\x0\x0\x0\x6\x0\x65\x0n"
+                                        "\x0\x65\x0\x0\x0\x6\x0\x64\x0u\x0\x65\x0\x0\x0\x8\x0r\x0"
+                                        "i\x0k\x0\x65)", 50);
+    QTest::newRow("stringlist") << QVariant{QStringList{u"ene"_s, u"due"_s, u"rike"_s}} << expected;
+}
+
+void tst_QSettings::testEscapedVariant()
+{
+    QFETCH(QVariant, val);
+    QFETCH(QString, escStr);
+
+    QSettings settings(QSettings::UserScope, "example.org", "KillerAPP");
+
+    QString variantAsString = QSettingsPrivate::variantToString(val);
+    QCOMPARE(variantAsString, escStr);
+
+    QVariant stringAsVariant = QSettingsPrivate::stringToVariant(escStr);
+    QCOMPARE(stringAsVariant, val);
+}
+
+void tst_QSettings::testBadEscape_data()
+{
+    QTest::addColumn<QString>("escStr");
+    QTest::addColumn<QString>("variantStr");
+
+    QTest::newRow("empty")   << u""_s        << u""_s;
+    QTest::newRow("space")   << u" "_s       << u" "_s;
+    QTest::newRow("@")       << u"@"_s       << u"@"_s;
+    QTest::newRow("@@")      << u"@@"_s      << u"@"_s;
+    QTest::newRow("@@@")     << u"@@@"_s     << u"@@"_s;
+    QTest::newRow("@Rect")   << u"@Rect"_s   << u"@Rect"_s;
+    QTest::newRow("@Rect(")  << u"@Rect("_s  << u"@Rect("_s;
+    QTest::newRow("@Rect()") << u"@Rect()"_s << u"@Rect()"_s;
+    QTest::newRow("@Rect)")  << u"@Rect)"_s  << u"@Rect)"_s;
+
+    QTest::newRow("@Rect(1 2 3)")  << u"@Rect(1 2 3)"_s  << u"@Rect(1 2 3)"_s;
+    QTest::newRow("@@Rect(1 2 3)") << u"@@Rect(1 2 3)"_s << u"@Rect(1 2 3)"_s;
+}
+
+void tst_QSettings::testBadEscape()
+{
+    QFETCH(QString, escStr);
+    QFETCH(QString, variantStr);
+
+    QSettings settings(QSettings::UserScope, "example.org", "KillerAPP");
+
+    QVariant v = QSettingsPrivate::stringToVariant(escStr);
+    QCOMPARE(v.toString(), variantStr);
 }
 #endif
 

@@ -197,6 +197,8 @@ public:
 
     bool supportsDeviceFaultInfo() const { return fSupportsDeviceFaultInfo; }
 
+    bool supportsFrameBoundary() const { return fSupportsFrameBoundary; }
+
     // Returns whether we prefer to record draws directly into a primary command buffer.
     bool preferPrimaryOverSecondaryCommandBuffers() const {
         return fPreferPrimaryOverSecondaryCommandBuffers;
@@ -316,11 +318,19 @@ private:
 
         // 11th gen
         kIceLake,
+        kJasperLake,
 
-        // 12th gen
+        // 12th gen or above
         kRocketLake,
         kTigerLake,
         kAlderLake,
+        kRaptorLake,
+        kAlchemist,
+        kLunarLake,
+        kMeteorLake,
+        kArrowLake,
+        kBattlemage,
+        kPantherLake,
 
         kOther
     };
@@ -335,11 +345,19 @@ private:
         switch (type) {
             case IntelGPUType::kSkyLake:
                 return 9;
-            case IntelGPUType::kIceLake:
+            case IntelGPUType::kIceLake:     // fall through
+            case IntelGPUType::kJasperLake:
                 return 11;
-            case IntelGPUType::kRocketLake: // fall through
-            case IntelGPUType::kTigerLake:  // fall through
-            case IntelGPUType::kAlderLake:
+            case IntelGPUType::kRocketLake:  // fall through
+            case IntelGPUType::kTigerLake:   // fall through
+            case IntelGPUType::kAlderLake:   // fall through
+            case IntelGPUType::kRaptorLake:  // fall through
+            case IntelGPUType::kAlchemist:   // fall through
+            case IntelGPUType::kLunarLake:   // fall through
+            case IntelGPUType::kMeteorLake:  // fall through
+            case IntelGPUType::kArrowLake:   // fall through
+            case IntelGPUType::kBattlemage:  // fall through
+            case IntelGPUType::kPantherLake:
                 return 12;
             case IntelGPUType::kOther:
                 // For now all our workaround checks are in the form of "if gen > some_value". So
@@ -484,6 +502,8 @@ private:
     bool fSupportsDRMFormatModifiers = false;
 
     bool fSupportsDeviceFaultInfo = false;
+
+    bool fSupportsFrameBoundary = false;
 
     bool fPreferPrimaryOverSecondaryCommandBuffers = true;
     bool fMustInvalidatePrimaryCmdBufferStateAfterClearAttachments = false;

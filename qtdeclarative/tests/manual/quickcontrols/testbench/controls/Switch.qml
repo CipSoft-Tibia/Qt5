@@ -15,6 +15,13 @@ QtObject {
         ["checked", "pressed"],
         ["checked", "pressed", "mirrored"],
         ["mirrored"],
+        ["icon"],
+        ["transparent-icon"],
+        ["icon", "disabled"],
+        ["icon", "pressed"],
+        ["icon", "highlighted"],
+        ["icon", "highlighted", "pressed"],
+        ["icon", "mirrored"]
     ]
 
     property Component component: Switch {
@@ -23,6 +30,8 @@ QtObject {
         checked: is("checked")
         // Only set it if it's pressed, or the non-pressed examples will have no press effects
         down: is("pressed") ? true : undefined
+        icon.source: anyStateContains("icon") ? Utils.iconUrl : ""
+        icon.color: is("transparent-icon") ? "transparent" : undefined
 
         LayoutMirroring.enabled: is("mirrored")
     }

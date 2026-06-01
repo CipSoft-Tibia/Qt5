@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 // Qt-Security score:critical reason:data-parser
 
+#include <QtCore/private/qflatmap_p.h>
 #include <QtGui/private/qtguiglobal_p.h>
 #include "qdebug.h"
 #include "qtextformat.h"
@@ -26,6 +27,10 @@
 #include <stdlib.h>
 
 QT_BEGIN_NAMESPACE
+
+#if !defined(QT_NO_EMOJISEGMENTER)
+Q_STATIC_LOGGING_CATEGORY(lcEmojiSegmenter, "qt.text.emojisegmenter")
+#endif
 
 static const float smallCapsFraction = 0.7f;
 
@@ -1365,6 +1370,9 @@ void QTextEngine::shapeText(int item) const
     si.glyph_data_offset = layoutData->used;
 
     const ushort *string = reinterpret_cast<const ushort *>(layoutData->string.constData()) + si.position;
+    const ushort *baseString = reinterpret_cast<const ushort *>(layoutData->string.constData());
+    int baseStringStart = si.position;
+    int baseStringLength = layoutData->string.length();
     const int itemLength = length(item);
 
     QString casedString;
@@ -1390,6 +1398,9 @@ void QTextEngine::shapeText(int item) const
             }
         }
         string = reinterpret_cast<const ushort *>(casedString.constData());
+        baseString = string;
+        baseStringStart = 0;
+        baseStringLength = casedString.length();
     }
 
     if (Q_UNLIKELY(!ensureSpace(itemLength))) {
@@ -1403,7 +1414,7 @@ void QTextEngine::shapeText(int item) const
 #endif
     bool letterSpacingIsAbsolute;
     bool shapingEnabled = false;
-    QHash<QFont::Tag, quint32> features;
+    QMap<QFont::Tag, quint32> features;
     QFixed letterSpacing, wordSpacing;
 #ifndef QT_NO_RAWFONT
     if (useRawFont) {
@@ -1483,14 +1494,9 @@ void QTextEngine::shapeText(int item) const
 
 #if QT_CONFIG(harfbuzz)
     if (Q_LIKELY(shapingEnabled)) {
-        si.num_glyphs = shapeTextWithHarfbuzzNG(si,
-                                                string,
-                                                itemLength,
-                                                fontEngine,
-                                                itemBoundaries,
-                                                kerningEnabled,
-                                                letterSpacing != 0,
-                                                features);
+        si.num_glyphs = shapeTextWithHarfbuzzNG(si, baseString, baseStringStart, baseStringLength,
+                                                itemLength, fontEngine, itemBoundaries,
+                                                kerningEnabled, letterSpacing != 0, features);
     } else
 #endif
     {
@@ -1600,14 +1606,11 @@ QT_BEGIN_INCLUDE_NAMESPACE
 
 QT_END_INCLUDE_NAMESPACE
 
-int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
-                                         const ushort *string,
-                                         int itemLength,
-                                         QFontEngine *fontEngine,
-                                         QSpan<uint> itemBoundaries,
-                                         bool kerningEnabled,
-                                         bool hasLetterSpacing,
-                                         const QHash<QFont::Tag, quint32> &fontFeatures) const
+int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si, const ushort *string,
+                                         int stringBaseIndex, int stringLength, int itemLength,
+                                         QFontEngine *fontEngine, QSpan<uint> itemBoundaries,
+                                         bool kerningEnabled, bool hasLetterSpacing,
+                                         const QMap<QFont::Tag, quint32> &fontFeatures) const
 {
     uint glyphs_shaped = 0;
 
@@ -1639,7 +1642,12 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
 
         // prepare buffer
         hb_buffer_clear_contents(buffer);
-        hb_buffer_add_utf16(buffer, reinterpret_cast<const uint16_t *>(string) + item_pos, item_length, 0, item_length);
+
+        // Populate the buffer using the base string pointer and length, so HarfBuzz can grab an
+        // enclosing context for proper shaping at item boundaries in certain languages (e.g.
+        // Arabic).
+        hb_buffer_add_utf16(buffer, reinterpret_cast<const uint16_t *>(string), stringLength,
+                            stringBaseIndex + item_pos, item_length);
 
         hb_buffer_set_segment_properties(buffer, &props);
 
@@ -1664,26 +1672,26 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
 
             bool dontLigate = hasLetterSpacing && !scriptRequiresOpenType;
 
-            QHash<QFont::Tag, quint32> features;
-            features.insert(QFont::Tag("kern"), !!kerningEnabled);
+            QVarLengthFlatMap<QFont::Tag, hb_feature_t, 16> features;
+            auto insertFeature = [&features](QFont::Tag tag, quint32 value) {
+                features.insert(tag, { tag.value(),
+                                       value,
+                                       HB_FEATURE_GLOBAL_START,
+                                       HB_FEATURE_GLOBAL_END });
+            };
+            // fontFeatures have precedence
+            for (const auto &[tag, value]: fontFeatures.asKeyValueRange())
+                insertFeature(tag, value);
+            insertFeature(QFont::Tag("kern"), !!kerningEnabled);
             if (dontLigate) {
-                features.insert(QFont::Tag("liga"), false);
-                features.insert(QFont::Tag("clig"), false);
-                features.insert(QFont::Tag("dlig"), false);
-                features.insert(QFont::Tag("hlig"), false);
-            }
-            features.insert(fontFeatures);
-
-            QVarLengthArray<hb_feature_t, 16> featureArray;
-            for (auto it = features.constBegin(); it != features.constEnd(); ++it) {
-                featureArray.append({ it.key().value(),
-                                      it.value(),
-                                      HB_FEATURE_GLOBAL_START,
-                                      HB_FEATURE_GLOBAL_END });
+                insertFeature(QFont::Tag("liga"), false);
+                insertFeature(QFont::Tag("clig"), false);
+                insertFeature(QFont::Tag("dlig"), false);
+                insertFeature(QFont::Tag("hlig"), false);
             }
 
             // whitelist cross-platforms shapers only
-            static const char *shaper_list[] = {
+            constexpr const char *shaper_list[] = {
                 "graphite2",
                 "ot",
                 "fallback",
@@ -1692,8 +1700,8 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
 
             bool shapedOk = hb_shape_full(hb_font,
                                           buffer,
-                                          featureArray.constData(),
-                                          features.size(),
+                                          features.values().constData(),
+                                          features.values().size(),
                                           shaper_list);
             if (Q_UNLIKELY(!shapedOk)) {
                 hb_buffer_destroy(buffer);
@@ -1738,12 +1746,12 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
 
                     // fix up clusters so that the cluster indices will be monotonic
                     // and thus we never return out-of-order indices
-                    while (last_cluster++ < cluster && str_pos < item_length)
+                    for (uint j = last_cluster; j < cluster && str_pos < item_length; ++j)
                         log_clusters[str_pos++] = last_glyph_pos;
                     last_glyph_pos = i + glyphs_shaped;
                     last_cluster = cluster;
 
-                    applyVisibilityRules(string[item_pos + str_pos], &g, i, actualFontEngine);
+                    applyVisibilityRules(string[stringBaseIndex + item_pos + str_pos], &g, i, actualFontEngine);
                 }
             }
             while (str_pos < item_length)
@@ -1991,6 +1999,8 @@ void QTextEngine::itemize() const
 #if !defined(QT_NO_EMOJISEGMENTER)
     const bool disableEmojiSegmenter = QFontEngine::disableEmojiSegmenter() || option.flags().testFlag(QTextOption::DisableEmojiParsing);
 
+    qCDebug(lcEmojiSegmenter) << "Emoji segmenter disabled:" << disableEmojiSegmenter;
+
     QVarLengthArray<CharacterCategory> categorizedString;
     if (!disableEmojiSegmenter) {
         // Parse emoji sequences
@@ -2035,6 +2045,10 @@ void QTextEngine::itemize() const
                 categorizedString.append(CharacterCategory::EMOJI_TEXT_PRESENTATION);
             else
                 categorizedString.append(CharacterCategory::OTHER);
+
+            qCDebug(lcEmojiSegmenter) << "Checking character" << (isSurrogate ? (i - 1) : i)
+                                      << ", ucs4 ==" << ucs4
+                                      << ", category:" << categorizedString.last();
         }
     }
 #endif
@@ -2056,8 +2070,14 @@ void QTextEngine::itemize() const
     while (uc < e) {
 #if !defined(QT_NO_EMOJISEGMENTER)
         // Find next emoji sequence
-        if (!disableEmojiSegmenter && categoryIt == nextIt)
+        if (!disableEmojiSegmenter && categoryIt == nextIt) {
             nextIt = scan_emoji_presentation(categoryIt, categoriesEnd, &isEmoji, &hasVs);
+
+            qCDebug(lcEmojiSegmenter) << "Checking character" << (categoryIt - categoriesStart)
+                                      << ", sequence length:" << (nextIt - categoryIt)
+                                      << ", is emoji sequence:" << isEmoji;
+
+        }
 #endif
 
         switch (*uc) {

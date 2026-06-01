@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "ui/ozone/platform/wayland/host/wayland_buffer_manager_host.h"
 
 #include <sys/ioctl.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 
-#include <presentation-time-client-protocol.h>
 #include <memory>
 #include <utility>
 
@@ -20,23 +24,20 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/current_thread.h"
 #include "base/trace_event/trace_event.h"
-#include "base/version.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/gpu_fence_handle.h"
 #include "ui/gfx/linux/dmabuf_uapi.h"
 #include "ui/gfx/linux/drm_util_linux.h"
 #include "ui/ozone/platform/wayland/common/wayland_overlay_config.h"
-#include "ui/ozone/platform/wayland/host/surface_augmenter.h"
+#include "ui/ozone/platform/wayland/host/drm_syncobj_ioctl_wrapper.h"
 #include "ui/ozone/platform/wayland/host/wayland_buffer_backing.h"
 #include "ui/ozone/platform/wayland/host/wayland_buffer_backing_dmabuf.h"
 #include "ui/ozone/platform/wayland/host/wayland_buffer_backing_shm.h"
 #include "ui/ozone/platform/wayland/host/wayland_buffer_backing_single_pixel.h"
-#include "ui/ozone/platform/wayland/host/wayland_buffer_backing_solid_color.h"
 #include "ui/ozone/platform/wayland/host/wayland_buffer_factory.h"
 #include "ui/ozone/platform/wayland/host/wayland_buffer_handle.h"
 #include "ui/ozone/platform/wayland/host/wayland_connection.h"
 #include "ui/ozone/platform/wayland/host/wayland_window.h"
-#include "ui/ozone/platform/wayland/host/wayland_zaura_shell.h"
 
 namespace ui {
 
@@ -56,11 +57,7 @@ KernelVersion KernelVersionNumbers() {
   KernelVersion ver;
   struct utsname info;
   if (uname(&info) < 0) {
-    NOTREACHED_IN_MIGRATION();
-    ver.major = 0;
-    ver.minor = 0;
-    ver.bugfix = 0;
-    return ver;
+    NOTREACHED();
   }
   int num_read =
       sscanf(info.release, "%d.%d.%d", &ver.major, &ver.minor, &ver.bugfix);
@@ -126,10 +123,6 @@ void WaylandBufferManagerHost::OnCommitOverlayError(
   TerminateGpuProcess();
 }
 
-base::Version WaylandBufferManagerHost::GetServerVersion() const {
-  return connection_->GetServerVersion();
-}
-
 wl::BufferFormatsWithModifiersMap
 WaylandBufferManagerHost::GetSupportedBufferFormats() const {
   return connection_->buffer_factory()->GetSupportedBufferFormats();
@@ -140,16 +133,12 @@ bool WaylandBufferManagerHost::SupportsDmabuf() const {
 }
 
 bool WaylandBufferManagerHost::SupportsAcquireFence() const {
-  return !!connection_->linux_explicit_synchronization_v1() ||
+  return connection_->SupportsExplicitSync() ||
          connection_->UseImplicitSyncInterop();
 }
 
 bool WaylandBufferManagerHost::SupportsViewporter() const {
   return !!connection_->viewporter();
-}
-
-bool WaylandBufferManagerHost::SupportsNonBackedSolidColorBuffers() const {
-  return !!connection_->surface_augmenter();
 }
 
 bool WaylandBufferManagerHost::SupportsOverlays() const {
@@ -158,11 +147,6 @@ bool WaylandBufferManagerHost::SupportsOverlays() const {
 
 bool WaylandBufferManagerHost::SupportsSinglePixelBuffer() const {
   return !!connection_->single_pixel_buffer();
-}
-
-uint32_t WaylandBufferManagerHost::GetSurfaceAugmentorVersion() const {
-  auto* augmenter = connection_->surface_augmenter();
-  return augmenter ? augmenter->GetSurfaceAugmentorVersion() : 0u;
 }
 
 void WaylandBufferManagerHost::SetWaylandBufferManagerGpu(
@@ -239,45 +223,6 @@ void WaylandBufferManagerHost::CreateShmBasedBuffer(mojo::PlatformHandle shm_fd,
   auto result = buffer_backings_.emplace(
       buffer_id, std::make_unique<WaylandBufferBackingShm>(
                      connection_, std::move(fd), length, size, buffer_id));
-
-  if (!result.second) {
-    error_message_ = base::StrCat(
-        {"A buffer with id= ", NumberToString(buffer_id), " already exists"});
-    TerminateGpuProcess();
-    return;
-  }
-
-  auto* backing = result.first->second.get();
-  backing->EnsureBufferHandle();
-}
-
-void WaylandBufferManagerHost::CreateSolidColorBuffer(const gfx::Size& size,
-                                                      const SkColor4f& color,
-                                                      uint32_t buffer_id) {
-  DCHECK(base::CurrentUIThread::IsSet());
-  DCHECK(error_message_.empty());
-  TRACE_EVENT1("wayland", "WaylandBufferManagerHost::CreateSolidColorBuffer",
-               "Buffer id", buffer_id);
-
-  // Validate data and create a buffer associated with the |buffer_id|.
-  if (!ValidateDataFromGpu(size, buffer_id)) {
-    TerminateGpuProcess();
-    return;
-  }
-
-  // OzonePlatform::PlatformInitProperties has a control variable that tells
-  // viz to create a backing solid color buffers if the protocol is not
-  // available. But in order to avoid a missusage of that variable and this
-  // method (malformed requests), explicitly terminate the gpu.
-  if (!connection_->surface_augmenter()) {
-    error_message_ = "Surface augmenter protocol is not available.";
-    TerminateGpuProcess();
-    return;
-  }
-
-  auto result = buffer_backings_.emplace(
-      buffer_id, std::make_unique<WaylandBufferBackingSolidColor>(
-                     connection_, color, size, buffer_id));
 
   if (!result.second) {
     error_message_ = base::StrCat(
@@ -578,6 +523,11 @@ bool WaylandBufferManagerHost::SupportsImplicitSyncInterop() {
   static const bool can_import_export_sync_file = CheckImportExportFence();
 
   return can_import_export_sync_file;
+}
+
+void WaylandBufferManagerHost::SetDrmSyncobjWrapper(
+    std::unique_ptr<DrmSyncobjIoctlWrapper> wrapper) {
+  drm_syncobj_wrapper_ = std::move(wrapper);
 }
 
 void WaylandBufferManagerHost::TerminateGpuProcess() {

@@ -20,6 +20,7 @@
 #include "base/json/json_reader.h"
 #include "base/memory/ref_counted.h"
 #include "base/run_loop.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
 #include "base/values.h"
 #include "base/version.h"
@@ -39,9 +40,8 @@ namespace update_client {
 
 class PingManagerTest : public testing::Test,
                         public testing::WithParamInterface<bool> {
- public:
+ protected:
   PingManagerTest();
-  ~PingManagerTest() override = default;
 
   base::OnceClosure MakePingCallback();
   scoped_refptr<UpdateContext> MakeMockUpdateContext() const;
@@ -52,7 +52,6 @@ class PingManagerTest : public testing::Test,
 
   void PingSentCallback(int error, const std::string& response);
 
- protected:
   void Quit();
   void RunThreads();
 
@@ -60,14 +59,14 @@ class PingManagerTest : public testing::Test,
   scoped_refptr<PingManager> ping_manager_;
 
  private:
-  base::test::TaskEnvironment task_environment_;
+  base::test::TaskEnvironment task_environment_{
+      base::test::TaskEnvironment::MainThreadType::IO};
+  std::unique_ptr<TestingPrefServiceSimple> pref_{
+      std::make_unique<TestingPrefServiceSimple>()};
   base::OnceClosure quit_closure_;
-  std::unique_ptr<TestingPrefServiceSimple> pref_;
 };
 
-PingManagerTest::PingManagerTest()
-    : task_environment_(base::test::TaskEnvironment::MainThreadType::IO) {
-  pref_ = std::make_unique<TestingPrefServiceSimple>();
+PingManagerTest::PingManagerTest() {
   RegisterPersistedDataPrefs(pref_->registry());
 }
 
@@ -105,12 +104,10 @@ scoped_refptr<UpdateContext> PingManagerTest::MakeMockUpdateContext() const {
   if (!temp_dir.CreateUniqueTempDir()) {
     return nullptr;
   }
-  CrxCache::Options options(temp_dir.GetPath());
   return base::MakeRefCounted<UpdateContext>(
-      config_, base::MakeRefCounted<CrxCache>(options), false, false,
+      config_, base::MakeRefCounted<CrxCache>(temp_dir.GetPath()), false, false,
       std::vector<std::string>(), UpdateClient::CrxStateChangeCallback(),
-      UpdateEngine::NotifyObserversCallback(), UpdateEngine::Callback(),
-      nullptr,
+      UpdateEngine::Callback(), nullptr,
       /*is_update_check_only=*/false);
 }
 
@@ -328,15 +325,20 @@ TEST_P(PingManagerTest, SendPing) {
   {
     // Test a valid |previouversion| and |next_version| = base::Version("0")
     // are serialized correctly under <event...> for uninstall.
-    Component component(*update_context, "abc");
     CrxComponent crx_component;
     crx_component.app_id = "abc";
     crx_component.version = base::Version("1.2.3.4");
-    component.PingOnly(crx_component, {.event_type = 4, .result = 1});
 
     EXPECT_TRUE(interceptor->ExpectRequest(std::make_unique<AnyMatch>()));
-    ping_manager_->SendPing(component.session_id(), *component.crx_component_,
-                            component.GetEvents(), MakePingCallback());
+    base::MakeRefCounted<UpdateEngine>(
+        config_,
+        base::BindRepeating(
+            [](scoped_refptr<Configurator>) -> std::unique_ptr<UpdateChecker> {
+              return nullptr;
+            }),
+        ping_manager_, base::DoNothing())
+        ->SendPing(crx_component, {.event_type = 4, .result = 1},
+                   base::BindLambdaForTesting([&](Error) { Quit(); }));
     RunThreads();
 
     EXPECT_EQ(1, interceptor->GetCount()) << interceptor->GetRequestsAsString();
@@ -359,7 +361,7 @@ TEST_P(PingManagerTest, SendPing) {
 
   // Tests the presence of the `domain joined` in the ping request.
   {
-    for (const auto is_managed : std::initializer_list<std::optional<bool>>{
+    for (const auto& is_managed : std::initializer_list<std::optional<bool>>{
              std::nullopt, false, true}) {
       config_->SetIsMachineExternallyManaged(is_managed);
       EXPECT_TRUE(interceptor->ExpectRequest(std::make_unique<AnyMatch>()));
@@ -385,23 +387,27 @@ TEST_P(PingManagerTest, SendPing) {
 
   {
     // Test `app_command_id`.
-    Component component(*update_context, "abc");
     CrxComponent crx_component;
     crx_component.app_id = "abc";
     crx_component.version = base::Version("1.2.3.4");
-    component.PingOnly(
-        crx_component,
-        {
-            .event_type = protocol_request::kEventAppCommandComplete,
-            .result = false,
-            .error_code = -11,
-            .extra_code1 = 101,
-            .app_command_id = "appcommandid1",
-        });
 
     EXPECT_TRUE(interceptor->ExpectRequest(std::make_unique<AnyMatch>()));
-    ping_manager_->SendPing(component.session_id(), *component.crx_component_,
-                            component.GetEvents(), MakePingCallback());
+    base::MakeRefCounted<UpdateEngine>(
+        config_,
+        base::BindRepeating(
+            [](scoped_refptr<Configurator>) -> std::unique_ptr<UpdateChecker> {
+              return nullptr;
+            }),
+        ping_manager_, base::DoNothing())
+        ->SendPing(crx_component,
+                   {
+                       .event_type = protocol_request::kEventAppCommandComplete,
+                       .result = false,
+                       .error_code = -11,
+                       .extra_code1 = 101,
+                       .app_command_id = "appcommandid1",
+                   },
+                   base::BindLambdaForTesting([&](Error) { Quit(); }));
     RunThreads();
 
     EXPECT_EQ(1, interceptor->GetCount()) << interceptor->GetRequestsAsString();

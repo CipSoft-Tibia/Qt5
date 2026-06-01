@@ -7,18 +7,49 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <string>
 
-#include "xnnpack.h"
 #include "xnnpack/common.h"
-#include "xnnpack/memory.h"
-
 #include <benchmark/benchmark.h>
+#include "pthreadpool.h"
+
+#ifdef BENCHMARK_ARGS_BOTTLENECK
+#define XNN_BENCHMARK_MAIN()                            \
+  extern "C" {                                          \
+  int BenchmarkArgBottleneck(int& argc, char**& argv) { \
+    return benchmark::utils::ProcessArgs(argc, argv);   \
+  }                                                     \
+  }
+#else
+#define XNN_BENCHMARK_MAIN()                                            \
+  int main(int argc, char** argv) {                                     \
+    ::benchmark::Initialize(&argc, argv);                               \
+    int status = benchmark::utils::ProcessArgs(argc, argv);             \
+    if (status != 0) return status;                                     \
+    if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return 1; \
+    ::benchmark::RunSpecifiedBenchmarks();                              \
+  }                                                                     \
+  int main(int, char**)
+#endif  // BENCHMARK_ARGS_BOTTLENECK
+
+// Common flags for all benchmarks.
+extern int FLAGS_num_threads;
+extern int FLAGS_batch_size;
+extern uint32_t FLAGS_xnn_runtime_flags;
+extern uint32_t FLAGS_benchmark_min_iters;
 
 namespace benchmark {
 namespace utils {
 
+int ProcessArgs(int& argc, char**& argv);
+
 uint32_t WipeCache();
 uint32_t PrefetchToL1(const void* ptr, size_t size);
+
+// Clear the L2 cache in each thread of the given `threadpool`, calls
+// `state.PauseTiming()` while doing so.
+void WipePthreadpoolL2Caches(benchmark::State& state, pthreadpool_t threadpool);
 
 // Disable support for denormalized numbers in floating-point units.
 void DisableDenormals();
@@ -93,10 +124,11 @@ void BinaryElementwiseParameters(benchmark::internal::Benchmark* benchmark) {
   benchmark->Arg(characteristic_l2 / elementwise_size / 960 * 960);
 }
 
-// Set multi-threading parameters appropriate for the processor.
-void MultiThreadingParameters(benchmark::internal::Benchmark* benchmark);
+using IsaCheckFunction = std::function<bool(benchmark::State&)>;
 
-typedef bool (*IsaCheckFunction)(benchmark::State& state);
+// Check if the architecture flags are supported.
+// If unsupported, report error in benchmark state, and return false.
+bool CheckArchFlags(benchmark::State& state, uint64_t arch_flags);
 
 // Check if either ARM VFPv2 or VFPv3 extension is supported.
 // If VFP is unsupported, report error in benchmark state, and return false.
@@ -206,6 +238,10 @@ bool CheckAVX512FP16(benchmark::State& state);
 // If AVX-VNNI extension is unsupported, report error in benchmark state, and return false.
 bool CheckAVXVNNI(benchmark::State& state);
 
+// Check if x86 AVX-VNNI-INT8 extension is supported.
+// If AVX-VNNI-INT8 extension is unsupported, report error in benchmark state, and return false.
+bool CheckAVXVNNIINT8(benchmark::State& state);
+
 // Check if x86 AVX256SKX extension is supported.
 // If AVX256SKX extension is unsupported, report error in benchmark state, and return false.
 bool CheckAVX256SKX(benchmark::State& state);
@@ -252,18 +288,6 @@ inline T Doz(T a, T b) {
   return a >= b ? a - b : T(0);
 }
 
-#if XNN_PLATFORM_JIT
-
-// A struct that uses RAII pattern to allocate and release code memory.
-struct CodeMemoryHelper {
-  CodeMemoryHelper();
-  ~CodeMemoryHelper();
-
-  xnn_code_buffer buffer;
-  xnn_status status;
-};
-
-#endif  // XNN_PLATFORM_JIT
 
 }  // namespace utils
 }  // namespace benchmark

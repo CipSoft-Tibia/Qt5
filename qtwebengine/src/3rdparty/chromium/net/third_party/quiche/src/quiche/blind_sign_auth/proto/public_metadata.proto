@@ -36,6 +36,7 @@ message PublicMetadata {
     // City region geo id if requested by the client.
     string city_geo_id = 2;
   }
+
   Location exit_location = 1;
 
   // Indicates which service this token is associated with.
@@ -48,7 +49,9 @@ message PublicMetadata {
   enum DebugMode {
     UNSPECIFIED_DEBUG_MODE = 0;
     DEBUG_ALL = 1;
+    ADMIN = 2;
   }
+
   DebugMode debug_mode = 4;
 }
 

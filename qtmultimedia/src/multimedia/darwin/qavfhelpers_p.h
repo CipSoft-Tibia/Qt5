@@ -14,12 +14,16 @@
 // We mean it.
 //
 
+#include <QtMultimedia/private/qsharedhandle_p.h>
 #include <QtMultimedia/qvideoframe.h>
-#include <qvideoframeformat.h>
+#include <QtMultimedia/qvideoframeformat.h>
 
+#include <CoreMedia/CoreMedia.h>
 #include <CoreVideo/CVBase.h>
 #include <CoreVideo/CVPixelBuffer.h>
 #include <CoreVideo/CVImageBuffer.h>
+
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
@@ -28,12 +32,33 @@ constexpr CvPixelFormat CvPixelFormatInvalid = 0;
 
 namespace QAVFHelpers
 {
+
+struct QSharedCVPixelBufferHandleTraits
+{
+    using Type = CVPixelBufferRef;
+    static constexpr Type invalidValue() noexcept { return nullptr; }
+    static Type ref(Type handle) noexcept
+    {
+        CVPixelBufferRetain(handle);
+        return handle;
+    }
+    static bool unref(Type handle) noexcept
+    {
+        CVPixelBufferRelease(handle);
+        return true;
+    }
+};
+using QSharedCVPixelBuffer = QtPrivate::QSharedHandle<QSharedCVPixelBufferHandleTraits>;
+
 Q_MULTIMEDIA_EXPORT QVideoFrameFormat::ColorRange colorRangeForCVPixelFormat(CvPixelFormat cvPixelFormat);
 Q_MULTIMEDIA_EXPORT QVideoFrameFormat::PixelFormat fromCVPixelFormat(CvPixelFormat cvPixelFormat);
 Q_MULTIMEDIA_EXPORT CvPixelFormat toCVPixelFormat(QVideoFrameFormat::PixelFormat pixFmt,
                               QVideoFrameFormat::ColorRange colorRange);
 
 Q_MULTIMEDIA_EXPORT QVideoFrameFormat videoFormatForImageBuffer(CVImageBufferRef buffer, bool openGL = false);
+
+[[nodiscard]] Q_MULTIMEDIA_EXPORT std::chrono::microseconds CMTimeToMicroseconds(const CMTime &);
+
 };
 
 QT_END_NAMESPACE

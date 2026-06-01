@@ -639,12 +639,14 @@ void Qt3DRRD::ImGuiRenderer::onMouseChange(QMouseEvent *event)
     m_mousePressed[2] = event->buttons() & Qt::MiddleButton;
 }
 
+#if QT_CONFIG(wheelevent)
 void Qt3DRRD::ImGuiRenderer::onWheel(QWheelEvent *event)
 {
     // 5 lines per unit
     m_mouseWheelH += event->pixelDelta().x() / (ImGui::GetTextLineHeight());
     m_mouseWheel += event->pixelDelta().y() / (5.f * ImGui::GetTextLineHeight());
 }
+#endif
 
 void Qt3DRRD::ImGuiRenderer::onKeyPressRelease(QKeyEvent *event)
 {
@@ -679,9 +681,11 @@ void Qt3DRRD::ImGuiRenderer::processEvent(QEvent *event)
     case QEvent::MouseButtonRelease:
         this->onMouseChange(static_cast<QMouseEvent *>(event));
         break;
+#if QT_CONFIG(wheelevent)
     case QEvent::Wheel:
         this->onWheel(static_cast<QWheelEvent *>(event));
         break;
+#endif
     case QEvent::KeyPress:
     case QEvent::KeyRelease:
         this->onKeyPressRelease(static_cast<QKeyEvent *>(event));

@@ -173,22 +173,19 @@ T deserialize(const QJsonValue &value, bool &ok)
 
     // For types that "smaller" than qint64 we need to check if the value fits its limits range
     if constexpr (sizeof(T) != sizeof(qint64)) {
-        if (ok) {
+        constexpr auto Limits = []() {
             if constexpr (std::is_same_v<T, QtProtobuf::sfixed32>
-                          || std::is_same_v<T, QtProtobuf::int32>) {
-                using limits = std::numeric_limits<qint32>;
-                ok = raw >= limits::min() && raw <= limits::max();
-            } else if constexpr (std::is_same_v<T, QtProtobuf::fixed32>) {
-                using limits = std::numeric_limits<quint32>;
-                ok = raw >= limits::min() && raw <= limits::max();
-            } else {
-                using limits = std::numeric_limits<T>;
-                ok = raw >= limits::min() && raw <= limits::max();
-            }
-        }
+                          || std::is_same_v<T, QtProtobuf::int32>)
+                return std::numeric_limits<qint32>{};
+            else if constexpr (std::is_same_v<T, QtProtobuf::fixed32>)
+                return std::numeric_limits<quint32>{};
+            else
+                return std::numeric_limits<T>{};
+        }();
+        ok = ok && (raw >= Limits.min() && raw <= Limits.max());
     }
 
-    return T(raw);
+    return ok ? T(raw) : T{};
 }
 
 template <typename T, if_json_int64<T> = true>

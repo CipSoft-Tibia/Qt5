@@ -17,7 +17,6 @@
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
-#include "media/gpu/chromeos/chromeos_compressed_gpu_memory_buffer_video_frame_utils.h"
 #include "media/gpu/macros.h"
 
 namespace media {
@@ -67,6 +66,8 @@ scoped_refptr<VideoFrame> CreateMappedVideoFrame(
     MunmapBuffers(chunks, /*video_frame=*/nullptr);
     return nullptr;
   }
+
+  video_frame->set_color_space(src_video_frame->ColorSpace());
 
   // Pass org_video_frame so that it outlives video_frame.
   video_frame->AddDestructionObserver(
@@ -120,12 +121,6 @@ scoped_refptr<VideoFrame> GenericDmaBufVideoFrameMapper::MapFrame(
   if (video_frame->storage_type() != VideoFrame::StorageType::STORAGE_DMABUFS) {
     VLOGF(1) << "VideoFrame's storage type is not DMABUF: "
              << video_frame->storage_type();
-    return nullptr;
-  }
-
-  if (IsIntelMediaCompressedModifier(video_frame->layout().modifier())) {
-    VLOGF(1)
-        << "This mapper doesn't support Intel media compressed VideoFrames";
     return nullptr;
   }
 

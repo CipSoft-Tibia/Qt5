@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <private/qabstractspinbox_p.h>
 #include <qspinbox.h>
@@ -82,7 +83,7 @@ public:
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-spinbox.png
+    \image fusion-spinbox.png {Spin box widget displaying an integer}
 
     QSpinBox is designed to handle integers and discrete sets of
     values (e.g., month names); use QDoubleSpinBox for floating point
@@ -553,7 +554,7 @@ void QSpinBox::fixup(QString &input) const
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-doublespinbox.png
+    \image fusion-doublespinbox.png {Spin box displaying a double}
 
     QDoubleSpinBox allows the user to choose a value by clicking the
     up and down buttons or by pressing Up or Down on the keyboard to

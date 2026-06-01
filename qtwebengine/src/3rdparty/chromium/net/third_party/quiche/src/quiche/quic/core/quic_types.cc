@@ -160,6 +160,7 @@ std::string QuicFrameTypeToString(QuicFrameType t) {
     RETURN_STRING_LITERAL(NEW_TOKEN_FRAME)
     RETURN_STRING_LITERAL(RETIRE_CONNECTION_ID_FRAME)
     RETURN_STRING_LITERAL(ACK_FREQUENCY_FRAME)
+    RETURN_STRING_LITERAL(IMMEDIATE_ACK_FRAME)
     RETURN_STRING_LITERAL(RESET_STREAM_AT_FRAME)
     RETURN_STRING_LITERAL(NUM_FRAME_TYPES)
   }
@@ -325,6 +326,8 @@ std::string CongestionControlTypeToString(CongestionControlType cc_type) {
       return "PCC";
     case kGoogCC:
       return "GoogCC";
+    case kPragueCubic:
+      return "PRAGUE_CUBIC";
   }
   return absl::StrCat("Unknown(", static_cast<int>(cc_type), ")");
 }

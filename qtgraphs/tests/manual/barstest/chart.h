@@ -77,6 +77,7 @@ public:
     void setFpsLabel(QLabel *fpsLabel) { m_fpsLabel = fpsLabel; }
     void addRemoveSeries();
     void testItemAndRowChanges(bool checked);
+    void testNanSeries(bool checked);
     void reverseValueAxis(int enabled);
     void setInputHandlerRotationEnabled(int enabled);
     void setInputHandlerZoomEnabled(int enabled);
@@ -118,6 +119,7 @@ Q_SIGNALS:
 
 private:
     void populateFlatSeries(QBar3DSeries *series, int rows, int columns, float value);
+    void populateNanSeries(QBar3DSeries *series, int rows, int columns, float value);
     QBarDataRow createFlatRow(int columns, float value);
 
     Q3DBarsWidgetItem *m_graph;

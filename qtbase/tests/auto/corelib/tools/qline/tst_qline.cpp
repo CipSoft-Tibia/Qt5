@@ -637,6 +637,19 @@ void tst_QLine::toLineF()
     QCOMPARE(input.toLineF(), result);
 }
 
+namespace ConstexprTests {
+constexpr QLine l = QLine(1, 2, 3, 4).translated(5, 6);
+static_assert(l.x1() == 6);
+static_assert(l.x2() == 8);
+static_assert(l.y1() == 8);
+static_assert(l.y2() == 10);
+
+constexpr QLineF lf = QLineF(1.0, 2.0, 3.0, 4.0).translated(5.0, 6.0);
+static_assert(lf.x1() == 6.0);
+static_assert(lf.x2() == 8.0);
+static_assert(lf.y1() == 8.0);
+static_assert(lf.y2() == 10.0);
+} // namespace ConstexprTests
 
 QTEST_MAIN(tst_QLine)
 #include "tst_qline.moc"

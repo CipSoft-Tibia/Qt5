@@ -123,18 +123,20 @@ int QDeclarativeSatelliteSource::updateInterval() const
     This property holds the error which last occurred with the backend data
     provider.
 
-    \list
-        \li SatelliteSource.AccessError - The connection setup to the satellite
-            backend failed because the application lacked the required
-            privileges.
-        \li SatelliteSource.ClosedError - The satellite backend closed the
-            connection, which happens for example in case the user is switching
-            location services to off.
-        \li SatelliteSource.NoError - No error has occurred.
-        \li SatelliteSource.UnknownSourceError - An unidentified error occurred.
-        \li SatelliteSource.UpdateTimeoutError - The satellite information
-            could not be retrieved within the specified timeout.
-    \endlist
+    \value SatelliteSource.AccessError
+        The connection setup to the satellite
+        backend failed because the application lacked the required
+        privileges.
+    \value SatelliteSource.ClosedError
+        The satellite backend closed the
+        connection, which happens for example in case the user is switching
+        location services to off.
+    \value SatelliteSource.NoError
+        No error has occurred.
+    \value SatelliteSource.UnknownSourceError
+        An unidentified error occurred.
+    \value SatelliteSource.UpdateTimeoutError
+        The satellite information could not be retrieved within the specified timeout.
 */
 QDeclarativeSatelliteSource::SourceError QDeclarativeSatelliteSource::sourceError() const
 {

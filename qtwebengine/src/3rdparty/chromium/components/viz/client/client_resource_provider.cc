@@ -229,16 +229,6 @@ ClientResourceProvider::~ClientResourceProvider() {
 }
 
 gpu::SyncToken ClientResourceProvider::GenerateSyncTokenHelper(
-    gpu::gles2::GLES2Interface* gl) {
-  DCHECK(gl);
-  gpu::SyncToken sync_token;
-  gl->GenUnverifiedSyncTokenCHROMIUM(sync_token.GetData());
-  DCHECK(sync_token.HasData() ||
-         gl->GetGraphicsResetStatusKHR() != GL_NO_ERROR);
-  return sync_token;
-}
-
-gpu::SyncToken ClientResourceProvider::GenerateSyncTokenHelper(
     gpu::raster::RasterInterface* ri) {
   DCHECK(ri);
   gpu::SyncToken sync_token;
@@ -388,9 +378,6 @@ void ClientResourceProvider::ReceiveReturnsFromParent(
     // Save the sync token only when the exported count is going to 0. Or IOW
     // drop all by the last returned sync token.
     if (returned.sync_token.HasData()) {
-      DCHECK(
-          !imported.resource.is_software ||
-          base::FeatureList::IsEnabled(features::kSharedBitmapToSharedImage));
       imported.returned_sync_token = returned.sync_token;
     }
 

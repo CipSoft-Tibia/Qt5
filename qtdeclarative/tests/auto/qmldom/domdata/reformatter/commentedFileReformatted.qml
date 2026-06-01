@@ -11,8 +11,7 @@ Item {
     } // post method
 
     // binding comment
-    a: {
-        // header
+    a: {// header
 
         // before x()
         // before x()

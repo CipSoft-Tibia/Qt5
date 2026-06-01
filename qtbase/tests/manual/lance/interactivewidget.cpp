@@ -119,10 +119,17 @@ void InteractiveWidget::load()
 void InteractiveWidget::load(const QString &fname)
 {
     if (!fname.isEmpty()) {
+        QFile file(fname);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::critical(
+                window(),
+                tr("Unable to open file"),
+                tr("Cannot open file %1 for loading: %2").arg(fname, file.errorString())
+            );
+            return;
+        }
         m_filename = fname;
         ui_textEdit->clear();
-        QFile file(fname);
-        file.open(QIODevice::ReadOnly | QIODevice::Text);
         QTextStream textFile(&file);
         QString script = textFile.readAll();
         ui_textEdit->setPlainText(script);
@@ -141,9 +148,16 @@ void InteractiveWidget::save()
                             QFileInfo(m_filename).absoluteFilePath(),
                             QString("QPaintEngine Script (*.qps);;All files (*.*)"));
     if (!fname.isEmpty()) {
-        m_filename = fname;
         QFile file(fname);
-        file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QMessageBox::critical(
+                window(),
+                tr("Unable to open file"),
+                tr("Cannot open file %1 for saving: %2").arg(fname, file.errorString())
+            );
+            return;
+        }
+        m_filename = fname;
         QTextStream textFile(&file);
         textFile << script;
         m_onScreenWidget->m_filename = fname;

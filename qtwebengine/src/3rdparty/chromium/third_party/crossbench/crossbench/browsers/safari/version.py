@@ -5,26 +5,38 @@
 from __future__ import annotations
 
 import re
-from typing import Final, Tuple
+from typing import TYPE_CHECKING, Final, Tuple
 
 from crossbench.browsers.version import BrowserVersion, BrowserVersionChannel
 
+if TYPE_CHECKING:
+  VersionParseResult = Tuple[Tuple[int, ...], BrowserVersionChannel, str]
 
 class SafariVersion(BrowserVersion):
-  _MIN_PARTS_LEN: Final[int] = 4
-  _VERSION_RE = re.compile(
-      r"(?P<major_minor>\d+\.\d+)"
-      r"[^(]+ "
-      r"\((?P<version>(Release (?P<release>\d+), )?(?P<parts>([\d.]+)+))\)"
-      r".*", re.I)
+  _MIN_SIMPLE_PARTS_LEN: Final[int] = 3
+  _SIMPLE_VERSION_RE = re.compile(
+      r"(?P<name>Safari(?: Technology Preview)?) "
+      r"(?P<parts>(?:[\d.]+)+)", re.I)
+  _MIN_COMPLEX_PARTS_LEN: Final[int] = 4
+  _COMPLEX_VERSION_RE = re.compile(r"(?P<major_minor>\d+\.\d+)"
+                                   r"[^(]+ "
+                                   r"\("
+                                   r"(?P<version>(Release (?P<release>\d+), )?"
+                                   r"(?P<parts>(?:[\d.]+)+))"
+                                   r"\).*")
 
   @classmethod
-  def _parse(
-      cls,
-      full_version: str) -> Tuple[Tuple[int, ...], BrowserVersionChannel, str]:
-    matches = cls._VERSION_RE.fullmatch(full_version.strip())
-    if not matches:
-      raise cls.parse_error("Could not extract version number", full_version)
+  def _parse(cls, full_version: str) -> VersionParseResult:
+    full_version = full_version.strip()
+    if matches := cls._SIMPLE_VERSION_RE.fullmatch(full_version):
+      return cls._parse_simple_version(full_version, matches)
+    if matches := cls._COMPLEX_VERSION_RE.fullmatch(full_version):
+      return cls._parse_complex_version(full_version, matches)
+    raise cls.parse_error("Could not extract version number", full_version)
+
+  @classmethod
+  def _parse_complex_version(cls, full_version: str,
+                             matches) -> VersionParseResult:
     version_str = matches["version"]
     parts_str = matches["parts"]
     major_minor_str = matches["major_minor"]
@@ -34,16 +46,32 @@ class SafariVersion(BrowserVersion):
     release = 0
     if release_str := matches["release"]:
       release = int(release_str)
+    parts = cls._parse_parts(full_version, parts_str,
+                             cls._MIN_COMPLEX_PARTS_LEN)
+    parts = (major, minor, release) + parts
+    return parts, channel, f"{major_minor_str} ({version_str})"
+
+  @classmethod
+  def _parse_simple_version(cls, full_version: str,
+                            matches) -> VersionParseResult:
+    channel: BrowserVersionChannel = cls._parse_channel(full_version)
+    parts = cls._parse_parts(
+        full_version, matches["parts"], min_parts_len=cls._MIN_SIMPLE_PARTS_LEN)
+    parts += (0,)
+    return parts, channel, full_version
+
+  @classmethod
+  def _parse_parts(cls, full_version: str, parts_str: str,
+                   min_parts_len: int) -> Tuple[int, ...]:
     try:
       parts = tuple(map(int, parts_str.split(".")))
     except ValueError as e:
       raise cls.parse_error("Could not parse version number parts.",
                             full_version) from e
-    if len(parts) < cls._MIN_PARTS_LEN:
+    if len(parts) < min_parts_len:
       raise cls.parse_error("Invalid number of version number parts",
                             full_version)
-    parts = (major, minor, release) + parts
-    return parts, channel, f"{major_minor_str} ({version_str})"
+    return parts
 
   @classmethod
   def _parse_channel(cls, full_version: str) -> BrowserVersionChannel:
@@ -55,7 +83,7 @@ class SafariVersion(BrowserVersion):
 
   @property
   def has_complete_parts(self) -> bool:
-    return len(self.parts) >= self._MIN_PARTS_LEN
+    return len(self.parts) >= self._MIN_COMPLEX_PARTS_LEN
 
   @property
   def is_tech_preview(self) -> bool:
@@ -74,4 +102,4 @@ class SafariVersion(BrowserVersion):
 
   @property
   def key(self) -> Tuple[Tuple[int, ...], BrowserVersionChannel]:
-    return (self.comparable_parts(self._MIN_PARTS_LEN), self._channel)
+    return (self.comparable_parts(self._MIN_COMPLEX_PARTS_LEN), self._channel)

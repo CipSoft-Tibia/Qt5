@@ -1,5 +1,5 @@
-# Copyright (c) 2021-2024 Valve Corporation
-# Copyright (c) 2021-2024 LunarG, Inc.
+# Copyright (c) 2021-2025 Valve Corporation
+# Copyright (c) 2021-2025 LunarG, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,66 +49,32 @@ jobs:
       - name: Execute Source Code Format Checking Script
         run: python3 scripts/check_code_format.py --fetch-main --target-refspec=FETCH_HEAD
 
-  # Ensure we can build on an older Ubuntu distro with an older version of CMake.
-  linux_back_compat:
-    needs: check_vvl
-    runs-on: ubuntu-20.04
-    name: "Ubuntu Backcompat"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Test Minimum CMake Version
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: 3.17.2
-      - uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: linux_back_compat
-      - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
-      - run: cmake -S . -B build/ -D UPDATE_DEPS=ON -D CMAKE_BUILD_TYPE=Debug
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-          # Linker warnings as errors
-          LDFLAGS: -Wl,--fatal-warnings
-      - run: cmake --build build
-      - run: cmake --install build --prefix /tmp
-
   linux:
     needs: check_vvl
     runs-on: ubuntu-22.04
-    name: "linux (${{matrix.sanitize}} sanitizer, ${{matrix.config}}, robinhood ${{matrix.robin_hood}} )"
+    name: "linux (address sanitizer, ${{matrix.config}}, robinhood ${{matrix.robin_hood}} )"
     strategy:
       fail-fast: false
       matrix:
-        sanitize: [ address, thread ]
-        config: [debug, release]
-        robin_hood: [ "ON" ]
-        include:
-          # Test with Robin Hood disabled
-          # Chromium build, and some package managers don't use it.
-          - config: release
-            robin_hood: "OFF"
-            sanitize: address
-        exclude:
-          # Have found over time this finds nothing extra, while taking the longest and using the most CI minutes.
-          - config: debug
-            robin_hood: "ON"
-            sanitize: thread
+        config: [ release ]
+        # Test with Robin Hood disabled
+        # Chromium build, and some package managers don't use it.
+        robin_hood: [ "ON", "OFF" ]
     steps:
       - uses: actions/checkout@v4
       - uses: lukka/get-cmake@latest
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ${{ matrix.config }}-${{ matrix.sanitize }}-${{matrix.robin_hood}}
+          key: ${{ matrix.config }}-address-${{matrix.robin_hood}}
       - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
       # This is to combat a bug when using 6.6 linux kernels with thread/address sanitizer
       # https://github.com/google/sanitizers/issues/1716
       - run: sudo sysctl vm.mmap_rnd_bits=28
       - run: python scripts/tests.py --build --config ${{ matrix.config }} --cmake='-DUSE_ROBIN_HOOD_HASHING=${{matrix.robin_hood}}'
         env:
-          CFLAGS: -fsanitize=${{ matrix.sanitize }}
-          CXXFLAGS: -fsanitize=${{ matrix.sanitize }}
-          LDFLAGS: -fsanitize=${{ matrix.sanitize }}
+          CFLAGS: -fsanitize=address
+          CXXFLAGS: -fsanitize=address
+          LDFLAGS: -fsanitize=address
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
       - name: Test Max Profile
@@ -123,6 +89,64 @@ jobs:
         run: python scripts/tests.py --test
         env:
           VK_KHRONOS_PROFILES_PROFILE_FILE: ${{ github.workspace }}/tests/device_profiles/min_core.json
+
+  # Make sure a debug version builds, but no need to run tests on it (since we do with release already)
+  linux-debug:
+    needs: check_vvl
+    runs-on: ubuntu-22.04
+    name: "linux (Build Only, ${{matrix.config}}, robinhood ${{matrix.robin_hood}} )"
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ debug ]
+        robin_hood: [ "ON" ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/get-cmake@latest
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.config }}-buildOnly-${{matrix.robin_hood}}
+      - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
+      - run: python scripts/tests.py --build --config ${{ matrix.config }} --cmake='-DUSE_ROBIN_HOOD_HASHING=${{matrix.robin_hood}}'
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+
+  linux-tsan:
+    needs: check_vvl
+    runs-on: ubuntu-22.04
+    name: "linux (thread sanitizer, ${{matrix.config}}, robinhood ${{matrix.robin_hood}} )"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Have found over time debug finds nothing extra, while taking the longest and using the most CI minutes.
+        config: [ release ]
+        robin_hood: [ "ON" ]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/get-cmake@latest
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.config }}-thread-${{matrix.robin_hood}}
+      - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
+      # This is to combat a bug when using 6.6 linux kernels with thread/address sanitizer
+      # https://github.com/google/sanitizers/issues/1716
+      - run: sudo sysctl vm.mmap_rnd_bits=28
+      - run: python scripts/tests.py --build --config ${{ matrix.config }} --cmake='-DUSE_ROBIN_HOOD_HASHING=${{matrix.robin_hood}}'
+        env:
+          CFLAGS: -fsanitize=thread
+          CXXFLAGS: -fsanitize=thread
+          LDFLAGS: -fsanitize=thread
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      # Thread Sanitize will take about 9x longer to run than Address Sanitize.
+      # The main reason we have Max Core and Min Core is to catch issues with Vulkan 1.x vs Vulkan 1.y version issues.
+      # In effort to reduce the bottle neck time in testing, skipping these for Thread Sanitize.
+      - name: Test Max Profile
+        run: python scripts/tests.py --test --tsan
+        env:
+          VK_KHRONOS_PROFILES_PROFILE_FILE: ${{ github.workspace }}/tests/device_profiles/max_profile.json
 
   linuxUpload:
     needs: linux
@@ -315,7 +339,7 @@ jobs:
     # iOS is 10x expensive to run on GitHub machines, so only run if we know something else fast/simple passed as well
     # androidOnLinux does a basic build and only takes a 2 or 3 minutes to normally run
     needs: androidOnLinux
-    runs-on: macos-12
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

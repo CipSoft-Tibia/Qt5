@@ -2,18 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Generated from SVG file cloud-with-lightning-svgrepo-com.svg
 import QtQuick
+import QtQuick.VectorImage
+import QtQuick.VectorImage.Helpers
 import QtQuick.Shapes
 
 Item {
     implicitWidth: 800
     implicitHeight: 800
+    component AnimationsInfo : QtObject
+    {
+        property bool paused: false
+        property int loops: 1
+        signal restart()
+    }
+    property AnimationsInfo animations : AnimationsInfo {}
     transform: [
         Scale { xScale: width / 128; yScale: height / 128 }
     ]
-        objectName: "svg1314"
+    objectName: "svg1314"
+    id: _qt_node0
     DemoShape {
         objectName: "path1287"
+        id: _qt_node1
         ShapePath {
+            id: _qt_shapePath_0
             objectName: "svg_path:path1287"
             strokeColor: "#ffb0ab9d"
             strokeWidth: 1
@@ -28,7 +40,9 @@ Item {
     }
     DemoShape {
         objectName: "path1289"
+        id: _qt_node2
         ShapePath {
+            id: _qt_shapePath_1
             objectName: "svg_path:path1289"
             strokeColor: "transparent"
             fillColor: "#fffdb900"
@@ -39,7 +53,9 @@ Item {
     }
     DemoShape {
         objectName: "path1291"
+        id: _qt_node3
         ShapePath {
+            id: _qt_shapePath_2
             objectName: "svg_path:path1291"
             strokeColor: "transparent"
             fillColor: "#fffdb900"
@@ -50,7 +66,9 @@ Item {
     }
     DemoShape {
         objectName: "path1293"
+        id: _qt_node4
         ShapePath {
+            id: _qt_shapePath_3
             objectName: "svg_path:path1293"
             strokeColor: "transparent"
             fillColor: "#ffffe36a"
@@ -61,7 +79,9 @@ Item {
     }
     DemoShape {
         objectName: "path1295"
+        id: _qt_node5
         ShapePath {
+            id: _qt_shapePath_4
             objectName: "svg_path:path1295"
             strokeColor: "transparent"
             fillColor: "#ffffe36a"
@@ -72,7 +92,9 @@ Item {
     }
     DemoShape {
         objectName: "path1297"
+        id: _qt_node6
         ShapePath {
+            id: _qt_shapePath_5
             objectName: "svg_path:path1297"
             strokeColor: "transparent"
             fillColor: "#ffffe36a"
@@ -83,7 +105,9 @@ Item {
     }
     DemoShape {
         objectName: "path1299"
+        id: _qt_node7
         ShapePath {
+            id: _qt_shapePath_6
             objectName: "svg_path:path1299"
             strokeColor: "transparent"
             fillColor: "#ffe4eaee"
@@ -94,7 +118,9 @@ Item {
     }
     DemoShape {
         objectName: "path1312"
+        id: _qt_node8
         ShapePath {
+            id: _qt_shapePath_7
             objectName: "svg_path:path1312"
             strokeColor: "transparent"
             fillGradient: RadialGradient {
@@ -117,8 +143,13 @@ Item {
     }
     DemoShape {
         objectName: "path1377"
-        transform: Scale { xScale: 0.16; yScale: 0.16 }
+        id: _qt_node9
+        transform: TransformGroup {
+            id: _qt_node9_transform_base_group
+            Matrix4x4 { id: _qt_node9_transform_base; matrix: PlanarTransform.fromAffineMatrix(0.16, 0, 0, 0.16, 0, 0)}
+        }
         ShapePath {
+            id: _qt_shapePath_8
             objectName: "svg_path:path1377"
             strokeColor: "#ffb0ab9d"
             strokeWidth: 6.25

@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 
@@ -23,10 +24,12 @@
 #include "gpu/command_buffer/common/shared_image_capabilities.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_pool_service.h"
 #include "gpu/config/gpu_driver_bug_workarounds.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/gpu_gles2_export.h"
 #include "gpu/ipc/common/gpu_memory_buffer_support.h"
+#include "gpu/ipc/common/shared_image_pool_client_interface.mojom.h"
 #include "gpu/ipc/common/surface_handle.h"
 #include "ui/gfx/buffer_types.h"
 #include "ui/gfx/gpu_extra_info.h"
@@ -53,15 +56,17 @@ class GPU_GLES2_EXPORT SharedImageFactory {
                      bool is_for_display_compositor);
   ~SharedImageFactory();
 
-  bool CreateSharedImage(const Mailbox& mailbox,
-                         viz::SharedImageFormat si_format,
-                         const gfx::Size& size,
-                         const gfx::ColorSpace& color_space,
-                         GrSurfaceOrigin surface_origin,
-                         SkAlphaType alpha_type,
-                         SurfaceHandle surface_handle,
-                         SharedImageUsageSet usage,
-                         std::string debug_label);
+  bool CreateSharedImage(
+      const Mailbox& mailbox,
+      viz::SharedImageFormat si_format,
+      const gfx::Size& size,
+      const gfx::ColorSpace& color_space,
+      GrSurfaceOrigin surface_origin,
+      SkAlphaType alpha_type,
+      SurfaceHandle surface_handle,
+      SharedImageUsageSet usage,
+      std::string debug_label,
+      std::optional<SharedImagePoolId> pool_id = std::nullopt);
   bool CreateSharedImage(const Mailbox& mailbox,
                          viz::SharedImageFormat si_format,
                          const gfx::Size& size,
@@ -81,15 +86,17 @@ class GPU_GLES2_EXPORT SharedImageFactory {
                          SharedImageUsageSet usage,
                          std::string debug_label,
                          base::span<const uint8_t> pixel_data);
-  bool CreateSharedImage(const Mailbox& mailbox,
-                         viz::SharedImageFormat si_format,
-                         const gfx::Size& size,
-                         const gfx::ColorSpace& color_space,
-                         GrSurfaceOrigin surface_origin,
-                         SkAlphaType alpha_type,
-                         SharedImageUsageSet usage,
-                         std::string debug_label,
-                         gfx::GpuMemoryBufferHandle buffer_handle);
+  bool CreateSharedImage(
+      const Mailbox& mailbox,
+      viz::SharedImageFormat si_format,
+      const gfx::Size& size,
+      const gfx::ColorSpace& color_space,
+      GrSurfaceOrigin surface_origin,
+      SkAlphaType alpha_type,
+      SharedImageUsageSet usage,
+      std::string debug_label,
+      gfx::GpuMemoryBufferHandle buffer_handle,
+      std::optional<SharedImagePoolId> pool_id = std::nullopt);
   bool UpdateSharedImage(const Mailbox& mailbox);
   bool UpdateSharedImage(const Mailbox& mailbox,
                          std::unique_ptr<gfx::GpuFence> in_fence);
@@ -118,7 +125,8 @@ class GPU_GLES2_EXPORT SharedImageFactory {
                                       bool register_with_image_pipe);
 #endif  // BUILDFLAG(IS_FUCHSIA)
 
-  bool RegisterBacking(std::unique_ptr<SharedImageBacking> backing);
+  bool RegisterBacking(std::unique_ptr<SharedImageBacking> backing,
+                       std::optional<SharedImagePoolId> pool_id = std::nullopt);
   bool AddSecondaryReference(const gpu::Mailbox& mailbox);
 
   // Returns the usage for the shared image backing. If no backing is registered
@@ -140,6 +148,11 @@ class GPU_GLES2_EXPORT SharedImageFactory {
                                     viz::SharedImageFormat& format,
                                     gfx::Size& size,
                                     gfx::BufferUsage& buffer_usage);
+
+  bool CreateSharedImagePool(
+      const SharedImagePoolId& pool_id,
+      mojo::PendingRemote<mojom::SharedImagePoolClientInterface> client_remote);
+  bool DestroySharedImagePool(const SharedImagePoolId& pool_id);
 
   void RegisterSharedImageBackingFactoryForTesting(
       SharedImageBackingFactory* factory);
@@ -207,6 +220,12 @@ class GPU_GLES2_EXPORT SharedImageFactory {
                      SharedImageRepresentationFactoryRefKeyEqual>
       shared_images_;
 #endif
+
+  // Map of all the SharedImagePoolService objects corresponding to its unique
+  // pool id.
+  base::flat_map<SharedImagePoolId, std::unique_ptr<SharedImagePoolService>>
+      shared_image_pool_map_;
+
   // Array of all the backing factories to choose from for creating shared
   // images.
   std::vector<std::unique_ptr<SharedImageBackingFactory>> factories_;

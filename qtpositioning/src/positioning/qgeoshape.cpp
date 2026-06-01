@@ -338,6 +338,13 @@ QDataStream &QGeoShape::dataStreamOut(QDataStream &stream, const QGeoShape &shap
         stream << p.perimeter().size();
         for (const auto &c: p.perimeter())
             stream << c;
+        if (stream.version() >= QDataStream::Qt_6_10) {
+            // serialize holes
+            const qsizetype holesCount = p.holesCount();
+            stream << holesCount;
+            for (qsizetype i = 0; i < holesCount; ++i)
+                stream << p.holePath(i);
+        }
         break;
     }
     }
@@ -391,7 +398,18 @@ QDataStream &QGeoShape::dataStreamIn(QDataStream &stream, QGeoShape &shape)
             stream >> c;
             l.append(c);
         }
-        shape = QGeoPolygon(l);
+        QGeoPolygon p(l);
+        if (stream.version() >= QDataStream::Qt_6_10) {
+            // deserialize holes
+            qsizetype holesCount = 0;
+            stream >> holesCount;
+            for (qsizetype i = 0; i < holesCount; ++i) {
+                QList<QGeoCoordinate> holePath;
+                stream >> holePath;
+                p.addHole(holePath);
+            }
+        }
+        shape = p;
         break;
     }
     }

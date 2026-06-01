@@ -2,7 +2,12 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import contextlib
+import datetime as dt
 import logging
+import sys
+import threading
+from typing import Iterator
 
 import colorama
 
@@ -33,8 +38,34 @@ class ColoredLogFormatter(logging.Formatter):
     formatter = logging.Formatter(log_fmt)
     return formatter.format(record)
 
-  def formatException(self, ei):
+  def formatException(self, ei) -> str:
     return ""
 
-  def formatStack(self, stack_info):
+  def formatStack(self, stack_info) -> str:
     return ""
+
+
+@contextlib.contextmanager
+def timer(msg: str = "Elapsed Time") -> Iterator[None]:
+  start_time = dt.datetime.now()
+
+  def print_timer():
+    delta = dt.datetime.now() - start_time
+    indent = colorama.Cursor.FORWARD() * 3
+    sys.stdout.write(f"{indent}{msg}: {delta}\r")
+
+  with RepeatTimer(interval=0.25, function=print_timer):
+    yield
+
+
+class RepeatTimer(threading.Timer):
+
+  def run(self) -> None:
+    while not self.finished.wait(self.interval):
+      self.function(*self.args, **self.kwargs)
+
+  def __enter__(self, *args, **kwargs):
+    self.start()
+
+  def __exit__(self, *args, **kwargs):
+    self.cancel()

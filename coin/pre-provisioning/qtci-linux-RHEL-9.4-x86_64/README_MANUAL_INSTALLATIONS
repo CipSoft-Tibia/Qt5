@@ -38,6 +38,9 @@ sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 su
 echo "add_drivers+=\" virtio-blk \"" >> /etc/dracut.conf.d/virtio.conf
 dracut -f
+
+yum -y install qemu-guest-agent
+
 # Do these from Opennebula UI!
 
 # Enable network connection from right upper corner

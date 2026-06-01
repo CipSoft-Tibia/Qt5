@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QGraphicsEffect
@@ -33,15 +34,21 @@
     \table
     \row
     \li{2,1} \image graphicseffect-plain.png
+             {Image of a fish without any graphical effects}
     \row
     \li \image graphicseffect-blur.png
+             {Blur effect on an image of a fish}
     \li \image graphicseffect-colorize.png
+             {Blue color effect on an image of a fish}
     \row
     \li \image graphicseffect-opacity.png
+             {Opacity effect on an image of a fish}
     \li \image graphicseffect-drop-shadow.png
+             {Drop shadow effect on an image of a fish}
     \endtable
 
     \image graphicseffect-widget.png
+           {Opacity drop shadow effects applied on an application}
 
     For more information on how to use each effect, refer to the specific
     effect's documentation.
@@ -566,6 +573,7 @@ void QGraphicsEffect::sourceChanged(ChangeFlags flags)
     By default, the color is light blue (QColor(0, 0, 192)).
 
     \image graphicseffect-colorize.png
+           {Blue color effect on an image of a fish}
 
     \sa QGraphicsDropShadowEffect, QGraphicsBlurEffect, QGraphicsOpacityEffect
 */
@@ -695,6 +703,7 @@ void QGraphicsColorizeEffect::draw(QPainter *painter)
     device coordinates.
 
     \image graphicseffect-blur.png
+           {Blur effect on an image of a fish}
 
     \sa QGraphicsDropShadowEffect, QGraphicsColorizeEffect, QGraphicsOpacityEffect
 */
@@ -856,6 +865,7 @@ void QGraphicsBlurEffect::draw(QPainter *painter)
     in device coordinates.
 
     \image graphicseffect-drop-shadow.png
+           {Drop shadow effect on an image of a fish}
 
     \sa QGraphicsBlurEffect, QGraphicsColorizeEffect, QGraphicsOpacityEffect
 */
@@ -1046,6 +1056,7 @@ void QGraphicsDropShadowEffect::draw(QPainter *painter)
     By default, the opacity is 0.7.
 
     \image graphicseffect-opacity.png
+           {Opacity effect on an image of a fish}
 
     \sa QGraphicsDropShadowEffect, QGraphicsBlurEffect, QGraphicsColorizeEffect
 */

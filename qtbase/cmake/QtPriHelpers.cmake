@@ -738,9 +738,10 @@ function(qt_generate_global_config_pri_file)
     endif()
 
     if(CMAKE_CROSSCOMPILING)
+        qt_internal_get_host_info_var_prefix(host_info_var_prefix)
         string(APPEND content "host_build {
-    QT_ARCH = ${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_ARCH}
-    QT_BUILDABI = ${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BUILDABI}
+    QT_ARCH = ${${host_info_var_prefix}_ARCH}
+    QT_BUILDABI = ${${host_info_var_prefix}_BUILDABI}
     QT_TARGET_ARCH = ${TEST_architecture_arch}
     QT_TARGET_BUILDABI = ${TEST_buildAbi}
 } else {
@@ -972,8 +973,9 @@ function(qt_generate_global_module_pri_file)
     set(arch "${TEST_architecture_arch}")
     list(JOIN TEST_subarch_result " " subarchs)
     if(CMAKE_CROSSCOMPILING)
-        set(host_arch "${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_ARCH}")
-        list(JOIN QT${PROJECT_VERSION_MAJOR}_HOST_INFO_SUBARCHS " " host_subarchs)
+        qt_internal_get_host_info_var_prefix(host_info_var_prefix)
+        set(host_arch "${${host_info_var_prefix}_ARCH}")
+        list(JOIN ${host_info_var_prefix}_SUBARCHS " " host_subarchs)
         string(APPEND content "host_build {
     QT_CPU_FEATURES.${host_arch} = ${host_subarchs}
 } else {

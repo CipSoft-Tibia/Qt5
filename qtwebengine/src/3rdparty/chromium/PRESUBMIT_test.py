@@ -365,6 +365,15 @@ class CheckEachPerfettoTestDataFileHasDepsEntry(unittest.TestCase):
 
 class CheckAddedDepsHaveTestApprovalsTest(unittest.TestCase):
 
+    def setUp(self):
+        self.input_api = input_api = MockInputApi()
+        input_api.environ = {}
+        input_api.owners_client = self.FakeOwnersClient()
+        input_api.gerrit = self.fakeGerrit()
+        input_api.change.issue = 123
+        self.mockOwnersAndReviewers("owner", set(["reviewer"]))
+        self.mockListSubmodules([])
+
     def calculate(self, old_include_rules, old_specific_include_rules,
                   new_include_rules, new_specific_include_rules):
         return PRESUBMIT._CalculateAddedDeps(
@@ -436,6 +445,29 @@ class CheckAddedDepsHaveTestApprovalsTest(unittest.TestCase):
             set(), self.calculate(old_include_rules, {}, new_include_rules,
                                   {}))
 
+    def testFindAddedDepsThatRequireReview(self):
+        caring = ['new_usages_require_review = True']
+        self.input_api.InitFiles([
+            MockAffectedFile('cares/DEPS', caring),
+            MockAffectedFile('cares/inherits/DEPS', []),
+            MockAffectedFile('willynilly/DEPS', []),
+            MockAffectedFile('willynilly/butactually/DEPS', caring),
+        ])
+
+        expected = {
+            'cares': True,
+            'cares/sub/sub': True,
+            'cares/inherits': True,
+            'cares/inherits/sub': True,
+            'willynilly': False,
+            'willynilly/butactually': True,
+            'willynilly/butactually/sub': True,
+        }
+        results = PRESUBMIT._FindAddedDepsThatRequireReview(
+            self.input_api, set(expected))
+        actual = {k: k in results for k in expected}
+        self.assertEqual(expected, actual)
+
     class FakeOwnersClient(object):
         APPROVED = "APPROVED"
         PENDING = "PENDING"
@@ -461,15 +493,6 @@ class CheckAddedDepsHaveTestApprovalsTest(unittest.TestCase):
         def IsOwnersOverrideApproved(self, issue):
             return False
 
-    def setUp(self):
-        self.input_api = input_api = MockInputApi()
-        input_api.environ = {}
-        input_api.owners_client = self.FakeOwnersClient()
-        input_api.gerrit = self.fakeGerrit()
-        input_api.change.issue = 123
-        self.mockOwnersAndReviewers("owner", set(["reviewer"]))
-        self.mockListSubmodules([])
-
     def mockOwnersAndReviewers(self, owner, reviewers):
 
         def mock(*args, **kwargs):
@@ -485,11 +508,15 @@ class CheckAddedDepsHaveTestApprovalsTest(unittest.TestCase):
         self.input_api.ListSubmodules = mock
 
     def testApprovedAdditionalDep(self):
-        old_deps = """include_rules = []""".splitlines()
-        new_deps = """include_rules = ["+v8/123"]""".splitlines()
-        self.input_api.files = [
-            MockAffectedFile("pdf/DEPS", new_deps, old_deps)
-        ]
+        self.input_api.InitFiles([
+            MockAffectedFile('pdf/DEPS',
+                             ['include_rules=["+v8/123", "+foo/bar"]']),
+            MockAffectedFile('v8/DEPS', ['new_usages_require_review=True']),
+            # Check that we ignore "DEPS" directories. Note there are real cases
+            # of directories named "deps/" and, especially for case-insensitive file
+            # systems we should prevent these from being considered.
+            MockAffectedFile('foo/bar/DEPS/boofar', ['boofar file contents']),
+        ])
 
         # mark the additional dep as approved.
         os_path = self.input_api.os_path
@@ -501,11 +528,10 @@ class CheckAddedDepsHaveTestApprovalsTest(unittest.TestCase):
         self.assertEqual([], results)
 
     def testUnapprovedAdditionalDep(self):
-        old_deps = """include_rules = []""".splitlines()
-        new_deps = """include_rules = ["+v8/123"]""".splitlines()
-        self.input_api.files = [
-            MockAffectedFile('pdf/DEPS', new_deps, old_deps),
-        ]
+        self.input_api.InitFiles([
+            MockAffectedFile('pdf/DEPS', ['include_rules=["+v8/123"]']),
+            MockAffectedFile('v8/DEPS', ['new_usages_require_review=True']),
+        ])
 
         # pending.
         os_path = self.input_api.os_path
@@ -792,23 +818,19 @@ class PydepsNeedsUpdatingTest(unittest.TestCase):
         if not self.mock_input_api.platform.startswith('linux'):
             return []
 
-        self.mock_input_api.files = [
+        self.mock_input_api.InitFiles([
             MockAffectedFile('new.pydeps', [], action='A'),
-        ]
-
-        self.mock_input_api.CreateMockFileInPath([
-            x.LocalPath()
-            for x in self.mock_input_api.AffectedFiles(include_deletes=True)
         ])
+
         results = self._RunCheck()
         self.assertEqual(1, len(results))
         self.assertIn('PYDEPS_FILES', str(results[0]))
 
     def testPydepNotInSrc(self):
-        self.mock_input_api.files = [
+        self.mock_input_api.InitFiles([
             MockAffectedFile('new.pydeps', [], action='A'),
-        ]
-        self.mock_input_api.CreateMockFileInPath([])
+        ])
+        self.mock_input_api.os_path.exists = lambda x: False
         results = self._RunCheck()
         self.assertEqual(0, len(results))
 
@@ -817,12 +839,8 @@ class PydepsNeedsUpdatingTest(unittest.TestCase):
         if not self.mock_input_api.platform.startswith('linux'):
             return []
 
-        self.mock_input_api.files = [
+        self.mock_input_api.InitFiles([
             MockAffectedFile(PRESUBMIT._ALL_PYDEPS_FILES[0], [], action='D'),
-        ]
-        self.mock_input_api.CreateMockFileInPath([
-            x.LocalPath()
-            for x in self.mock_input_api.AffectedFiles(include_deletes=True)
         ])
         results = self._RunCheck()
         self.assertEqual(1, len(results))
@@ -1301,218 +1319,93 @@ class AccessibilityRelnotesFieldTest(unittest.TestCase):
             'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
 
 
-class AccessibilityEventsTestsAreIncludedForAndroidTest(unittest.TestCase):
-    # Test that no warning is raised when the Android file is also modified.
-    def testAndroidChangeIncluded(self):
-        mock_input_api = MockInputApi()
+class AccessibilityAriaElementAttributeGettersTest(unittest.TestCase):
 
+    # Test warning is surfaced for various possible uses of bad methods.
+    def testMatchingLines(self):
+        mock_input_api = MockInputApi()
         mock_input_api.files = [
-            MockAffectedFile(
-                'content/test/data/accessibility/event/foo-expected-mac.txt',
-                [''],
-                action='A'),
-            MockAffectedFile(
-                'accessibility/WebContentsAccessibilityEventsTest.java', [''],
-                action='M')
+            MockFile(
+                "third_party/blink/renderer/core/accessibility/ax_object.h",
+                [
+                    "->getAttribute(html_names::kAriaCheckedAttr)",
+                    "node->hasAttribute(html_names::kRoleAttr)",
+                    "->FastHasAttribute(html_names::kAriaLabelAttr)",
+                    "        .FastGetAttribute(html_names::kAriaCurrentAttr);",
+
+                ],
+                action='M'
+            ),
+            MockFile(
+                "third_party/blink/renderer/core/accessibility/ax_table.cc",
+                [
+                    "bool result = node->hasAttribute(html_names::kFooAttr);",
+                    "foo->getAttribute(html_names::kAriaInvalidValueAttr)",
+                    "foo->GetAriaCurrentState(html_names::kAriaCurrentStateAttr)",
+                ],
+                action='M'
+            ),
         ]
 
-        msgs = PRESUBMIT.CheckAccessibilityEventsTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
+        results = PRESUBMIT.CheckAccessibilityAriaElementAttributeGetters(mock_input_api, MockOutputApi())
+        self.assertEqual(1, len(results))
+        self.assertEqual(5, len(results[0].items))
+        self.assertIn("ax_object.h:1", results[0].items[0])
+        self.assertIn("ax_object.h:2", results[0].items[1])
+        self.assertIn("ax_object.h:3", results[0].items[2])
+        self.assertIn("ax_object.h:4", results[0].items[3])
+        self.assertIn("ax_table.cc:2", results[0].items[4])
+        self.assertIn("Please use ARIA-specific attribute access", results[0].message)
 
-    # Test that Android change is not required when no html file is added/removed.
-    def testIgnoreNonHtmlFiles(self):
+    # Test no warnings for files that are not accessibility related.
+    def testNonMatchingFiles(self):
         mock_input_api = MockInputApi()
-
         mock_input_api.files = [
-            MockAffectedFile('content/test/data/accessibility/event/foo.txt',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/event/foo.cc',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/event/foo.h',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/event/foo.py',
-                             [''],
-                             action='A')
+            MockFile(
+                "content/browser/foobar/foo.cc",
+                ["->getAttribute(html_names::kAriaCheckedAttr)"],
+                action='M'),
+            MockFile(
+                "third_party/blink/renderer/core/foo.cc",
+                ["node->hasAttribute(html_names::kRoleAttr)"],
+                action='M'),
+        ]
+        results = PRESUBMIT.CheckAccessibilityAriaElementAttributeGetters(mock_input_api, MockOutputApi())
+        self.assertEqual(0, len(results))
+
+    # Test no warning when methods are used with different attribute params.
+    def testNoBadParam(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockFile(
+                "third_party/blink/renderer/core/accessibility/ax_object.h",
+                [
+                    "->getAttribute(html_names::kCheckedAttr)",
+                    "->hasAttribute(html_names::kIdAttr)",
+                ],
+                action='M'
+            )
         ]
 
-        msgs = PRESUBMIT.CheckAccessibilityEventsTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
+        results = PRESUBMIT.CheckAccessibilityAriaElementAttributeGetters(mock_input_api, MockOutputApi())
+        self.assertEqual(0, len(results))
 
-    # Test that Android change is not required for unrelated html files.
-    def testIgnoreNonRelatedHtmlFiles(self):
+    # Test no warning when attribute params are used for different methods.
+    def testNoMethod(self):
         mock_input_api = MockInputApi()
-
         mock_input_api.files = [
-            MockAffectedFile('content/test/data/accessibility/aria/foo.html',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/html/foo.html',
-                             [''],
-                             action='A'),
-            MockAffectedFile('chrome/tests/data/accessibility/foo.html', [''],
-                             action='A')
+            MockFile(
+                "third_party/blink/renderer/core/accessibility/ax_object.cc",
+                [
+                    "foo(html_names::kAriaCheckedAttr)",
+                    "bar(html_names::kRoleAttr)"
+                ],
+                action='M'
+            )
         ]
 
-        msgs = PRESUBMIT.CheckAccessibilityEventsTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
-
-    # Test that only modifying an html file will not trigger the warning.
-    def testIgnoreModifiedFiles(self):
-        mock_input_api = MockInputApi()
-
-        mock_input_api.files = [
-            MockAffectedFile(
-                'content/test/data/accessibility/event/foo-expected-win.txt',
-                [''],
-                action='M')
-        ]
-
-        msgs = PRESUBMIT.CheckAccessibilityEventsTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
-
-
-class AccessibilityTreeTestsAreIncludedForAndroidTest(unittest.TestCase):
-    # Test that no warning is raised when the Android file is also modified.
-    def testAndroidChangeIncluded(self):
-        mock_input_api = MockInputApi()
-
-        mock_input_api.files = [
-            MockAffectedFile('content/test/data/accessibility/aria/foo.html',
-                             [''],
-                             action='A'),
-            MockAffectedFile(
-                'accessibility/WebContentsAccessibilityTreeTest.java', [''],
-                action='M')
-        ]
-
-        msgs = PRESUBMIT.CheckAccessibilityTreeTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
-
-    # Test that no warning is raised when the Android file is also modified.
-    def testAndroidChangeIncludedManyFiles(self):
-        mock_input_api = MockInputApi()
-
-        mock_input_api.files = [
-            MockAffectedFile(
-                'content/test/data/accessibility/accname/foo.html', [''],
-                action='A'),
-            MockAffectedFile('content/test/data/accessibility/aria/foo.html',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/css/foo.html',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/html/foo.html',
-                             [''],
-                             action='A'),
-            MockAffectedFile(
-                'accessibility/WebContentsAccessibilityTreeTest.java', [''],
-                action='M')
-        ]
-
-        msgs = PRESUBMIT.CheckAccessibilityTreeTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
-
-    # Test that a warning is raised when the Android file is not modified.
-    def testAndroidChangeMissing(self):
-        mock_input_api = MockInputApi()
-
-        mock_input_api.files = [
-            MockAffectedFile(
-                'content/test/data/accessibility/aria/foo-expected-win.txt',
-                [''],
-                action='A'),
-        ]
-
-        msgs = PRESUBMIT.CheckAccessibilityTreeTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            1, len(msgs),
-            'Expected %d messages, found %d: %s' % (1, len(msgs), msgs))
-
-    # Test that Android change is not required when no platform expectations files are changed.
-    def testAndroidChangNotMissing(self):
-        mock_input_api = MockInputApi()
-
-        mock_input_api.files = [
-            MockAffectedFile('content/test/data/accessibility/accname/foo.txt',
-                             [''],
-                             action='A'),
-            MockAffectedFile(
-                'content/test/data/accessibility/html/foo-expected-blink.txt',
-                [''],
-                action='A'),
-            MockAffectedFile('content/test/data/accessibility/html/foo.html',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/aria/foo.cc',
-                             [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/css/foo.h', [''],
-                             action='A'),
-            MockAffectedFile('content/test/data/accessibility/tree/foo.py',
-                             [''],
-                             action='A')
-        ]
-
-        msgs = PRESUBMIT.CheckAccessibilityTreeTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
-
-    # Test that Android change is not required for unrelated html files.
-    def testIgnoreNonRelatedHtmlFiles(self):
-        mock_input_api = MockInputApi()
-
-        mock_input_api.files = [
-            MockAffectedFile('content/test/data/accessibility/event/foo.html',
-                             [''],
-                             action='A'),
-        ]
-
-        msgs = PRESUBMIT.CheckAccessibilityTreeTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
-
-    # Test that only modifying an html file will not trigger the warning.
-    def testIgnoreModifiedFiles(self):
-        mock_input_api = MockInputApi()
-
-        mock_input_api.files = [
-            MockAffectedFile('content/test/data/accessibility/aria/foo.html',
-                             [''],
-                             action='M')
-        ]
-
-        msgs = PRESUBMIT.CheckAccessibilityTreeTestsAreIncludedForAndroid(
-            mock_input_api, MockOutputApi())
-        self.assertEqual(
-            0, len(msgs),
-            'Expected %d messages, found %d: %s' % (0, len(msgs), msgs))
+        results = PRESUBMIT.CheckAccessibilityAriaElementAttributeGetters(mock_input_api, MockOutputApi())
+        self.assertEqual(0, len(results))
 
 
 class AndroidDeprecatedTestAnnotationTest(unittest.TestCase):
@@ -1582,12 +1475,6 @@ class AndroidBannedImportTest(unittest.TestCase):
             MockAffectedFile('BannedTargetApi.java', [
                 'import android.annotation.TargetApi;',
             ]),
-            MockAffectedFile('BannedUiThreadTestRule.java', [
-                'import androidx.test.rule.UiThreadTestRule;',
-            ]),
-            MockAffectedFile('BannedUiThreadTest.java', [
-                'import androidx.test.annotation.UiThreadTest;',
-            ]),
             MockAffectedFile('BannedActivityTestRule.java', [
                 'import androidx.test.rule.ActivityTestRule;',
             ]),
@@ -1614,16 +1501,8 @@ class AndroidBannedImportTest(unittest.TestCase):
         self.assertTrue(msgs[4][0].message.startswith(
             textwrap.dedent("""\
       Banned imports were used.
-          BannedUiThreadTestRule.java:1:""")))
-        self.assertTrue(msgs[5][0].message.startswith(
-            textwrap.dedent("""\
-      Banned imports were used.
-          BannedUiThreadTest.java:1:""")))
-        self.assertTrue(msgs[6][0].message.startswith(
-            textwrap.dedent("""\
-      Banned imports were used.
           BannedActivityTestRule.java:1:""")))
-        self.assertTrue(msgs[7][0].message.startswith(
+        self.assertTrue(msgs[5][0].message.startswith(
             textwrap.dedent("""\
       Banned imports were used.
           BannedVectorDrawableCompat.java:1:""")))
@@ -3747,13 +3626,7 @@ class StringTest(unittest.TestCase):
 
     def makeInputApi(self, files):
         input_api = MockInputApi()
-        input_api.files = files
-        # Override os_path.exists because the presubmit uses the actual
-        # os.path.exists.
-        input_api.CreateMockFileInPath([
-            x.LocalPath()
-            for x in input_api.AffectedFiles(include_deletes=True)
-        ])
+        input_api.InitFiles(files)
         return input_api
 
     """ CL modified and added messages, but didn't add any screenshots."""
@@ -4931,7 +4804,7 @@ class AssertAshOnlyCodeTest(unittest.TestCase):
         ]
         other_files = [
             MockFile('chrome/browser/BUILD.gn', []),
-            MockFile('chrome/browser/BUILD.gn', ['assert(is_chromeos_ash)']),
+            MockFile('chrome/browser/foo/BUILD.gn', ['assert(is_chromeos_ash)']),
         ]
         input_api = MockInputApi()
         input_api.files = files_in_ash
@@ -4967,7 +4840,13 @@ class AssertAshOnlyCodeTest(unittest.TestCase):
             MockFile('ash/BUILD.gn', ['assert(is_chromeos_ash)']),
             MockFile('chrome/browser/ash/BUILD.gn',
                      ['assert(is_chromeos_ash)']),
-            MockFile('chrome/browser/ash/BUILD.gn',
+            MockFile('chrome/browser/ash/1/BUILD.gn',
+                     ['assert(is_chromeos)']),
+            MockFile('chrome/browser/ash/2/BUILD.gn',
+                     ['assert(is_chromeos_ash)']),
+            MockFile('chrome/browser/ash/3/BUILD.gn',
+                     ['assert(is_chromeos, "test")']),
+            MockFile('chrome/browser/ash/4/BUILD.gn',
                      ['assert(is_chromeos_ash, "test")']),
         ]
         errors = PRESUBMIT.CheckAssertAshOnlyCode(input_api, MockOutputApi())
@@ -5119,10 +4998,10 @@ class VerifyDcheckParentheses(unittest.TestCase):
             self.assertRegex(error.message, r'DCHECK_IS_ON().+parentheses')
 
 
-class CheckBatchAnnotation(unittest.TestCase):
-    """Test the CheckBatchAnnotation presubmit check."""
+class CheckAndroidTestAnnotations(unittest.TestCase):
+    """Test the CheckAndroidTestAnnotations presubmit check."""
 
-    def testTruePositives(self):
+    def testBatchTruePositives(self):
         """Examples of when there is no @Batch or @DoNotBatch is correctly flagged.
 """
         mock_input = MockInputApi()
@@ -5131,16 +5010,16 @@ class CheckBatchAnnotation(unittest.TestCase):
             MockFile('path/TwoTest.java', ['public class TwoTest']),
             MockFile('path/ThreeTest.java', [
                 '@Batch(Batch.PER_CLASS)',
-                'import org.chromium.base.test.BaseRobolectricTestRunner;',
+                '@RunWith(BaseRobolectricTestRunner.class)',
                 'public class Three {'
             ]),
             MockFile('path/FourTest.java', [
                 '@DoNotBatch(reason = "placeholder reason 1")',
-                'import org.chromium.base.test.BaseRobolectricTestRunner;',
+                '@RunWith(BaseRobolectricTestRunner.class)',
                 'public class Four {'
             ]),
         ]
-        errors = PRESUBMIT.CheckBatchAnnotation(mock_input, MockOutputApi())
+        errors = PRESUBMIT.CheckAndroidTestAnnotations(mock_input, MockOutputApi())
         self.assertEqual(2, len(errors))
         self.assertEqual(2, len(errors[0].items))
         self.assertIn('OneTest.java', errors[0].items[0])
@@ -5149,7 +5028,7 @@ class CheckBatchAnnotation(unittest.TestCase):
         self.assertIn('ThreeTest.java', errors[1].items[0])
         self.assertIn('FourTest.java', errors[1].items[1])
 
-    def testAnnotationsPresent(self):
+    def testBatchAnnotationsPresent(self):
         """Examples of when there is @Batch or @DoNotBatch is correctly flagged."""
         mock_input = MockInputApi()
         mock_input.files = [
@@ -5181,17 +5060,17 @@ class CheckBatchAnnotation(unittest.TestCase):
                 'public class Five extends BaseTestB {'
             ]),
             MockFile('path/SixTest.java', [
-                'import org.chromium.base.test.BaseRobolectricTestRunner;',
+                '@RunWith(BaseRobolectricTestRunner.class)',
                 'public class Six extends BaseTestA {'
             ], [
-                'import org.chromium.base.test.BaseRobolectricTestRunner;',
+                '@RunWith(BaseRobolectricTestRunner.class)',
                 'public class Six extends BaseTestB {'
             ]),
             MockFile('path/SevenTest.java', [
-                'import org.robolectric.annotation.Config;',
+                '@RunWith(BaseRobolectricTestRunner.class)',
                 'public class Seven extends BaseTestA {'
             ], [
-                'import org.robolectric.annotation.Config;',
+                '@RunWith(BaseRobolectricTestRunner.class)',
                 'public class Seven extends BaseTestB {'
             ]),
             MockFile(
@@ -5207,8 +5086,34 @@ class CheckBatchAnnotation(unittest.TestCase):
                 ['public @interface SomeAnnotation {'],
             ),
         ]
-        errors = PRESUBMIT.CheckBatchAnnotation(mock_input, MockOutputApi())
+        errors = PRESUBMIT.CheckAndroidTestAnnotations(mock_input, MockOutputApi())
         self.assertEqual(0, len(errors))
+
+    def testWrongRobolectricTestRunner(self):
+        mock_input = MockInputApi()
+        mock_input.files = [
+            MockFile('path/OneTest.java', [
+                '@RunWith(RobolectricTestRunner.class)',
+                'public class ThreeTest {'
+            ]),
+            MockFile('path/TwoTest.java', [
+                'import org.chromium.base.test.BaseRobolectricTestRule;',
+                '@RunWith(RobolectricTestRunner.class)',
+                'public class TwoTest {'
+            ]),
+            MockFile('path/ThreeTest.java', [
+                '@RunWith(FooRobolectricTestRunner.class)',
+                'public class ThreeTest {'
+            ]),
+            MockFile('webapks/FourTest.java', [
+                '@RunWith(RobolectricTestRunner.class)',
+                'public class ThreeTest {'
+            ]),
+        ]
+        errors = PRESUBMIT.CheckAndroidTestAnnotations(mock_input, MockOutputApi())
+        self.assertEqual(1, len(errors))
+        self.assertEqual(1, len(errors[0].items))
+        self.assertIn('OneTest.java', errors[0].items[0])
 
 
 class CheckMockAnnotation(unittest.TestCase):
@@ -5799,6 +5704,34 @@ class CheckDeprecatedSyncConsentFunctionsTest(unittest.TestCase):
         self.assertTrue('chrome/foo/file3.java' in results[0].message),
         self.assertTrue('chrome/foo/file4.java' in results[0].message),
         self.assertTrue('chrome/foo/file5.java' in results[0].message),
+
+
+class CheckAnonymousNamespaceTest(unittest.TestCase):
+    """Test the presubmit for anonymous namespaces."""
+
+    def testAnonymousNamespace(self):
+        input_api = MockInputApi()
+        input_api.files = [
+            MockFile('chrome/test.h', ['namespace {']),
+            MockFile('chrome/test.cc', ['namespace {']),
+            MockFile('chrome/test.java', ['namespace {']),
+            MockFile('chrome/test.cpp', ['namespace {']),
+            MockFile('chrome/test.txt', ['namespace {']),
+        ]
+
+        results = PRESUBMIT.CheckNoBannedFunctions(input_api, MockOutputApi())
+
+        self.assertEqual(1, len(results))
+        self.assertTrue(
+            'chrome/test.h' in results[0].message),
+        self.assertFalse(
+            'chrome/test.cc' in results[0].message),
+        self.assertFalse(
+            'chrome/test.java' in results[0].message),
+        self.assertFalse(
+            'chrome/test.cpp' in results[0].message),
+        self.assertFalse(
+            'chrome/test.txt' in results[0].message),
 
 
 if __name__ == '__main__':

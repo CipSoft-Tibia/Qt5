@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4managed_p.h"
 #include <private/qv4mm_p.h>
@@ -105,6 +106,18 @@ QString Managed::className() const
         break;
     case Type_QmlListProperty:
         s = "QML List";
+        break;
+    case Type_V4QObjectWrapper:
+        s = "V4QObjectWrapper";
+        break;
+    case Type_QMLTypeWrapper:
+        s = "QMLTypeWrapper";
+        break;
+    case Type_V4ReferenceObject:
+        s = "V4ReferenceObject";
+        break;
+    case Type_QMLValueTypeWrapper:
+        s = "QMLValueTypeWrapper";
         break;
     }
     return QString::fromLatin1(s);

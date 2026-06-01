@@ -88,7 +88,62 @@ void loader_init_global_debug_level(void) {
 
 void loader_set_global_debug_level(uint32_t new_loader_debug) { g_loader_debug = new_loader_debug; }
 
-void loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t msg_code, const char *format, ...) {
+void generate_debug_flag_str(VkFlags msg_type, size_t cmd_line_size, char *cmd_line_msg, size_t *num_used) {
+    cmd_line_msg[0] = '\0';
+
+// Helper macro which strncat's the given string literal, then updates num_used & cmd_line_end
+// Assumes that we haven't used the entire buffer - must manually check this when adding new filter types
+// We concat at the end of cmd_line_msg, so that strncat isn't a victim of Schlemiel the Painter
+// We write to the end - 1 of cmd_line_msg, as the end is actually a null terminator
+#define STRNCAT_TO_BUFFER(string_literal_to_cat)                                                                               \
+    loader_strncat(cmd_line_msg + *num_used, cmd_line_size - *num_used, string_literal_to_cat, sizeof(string_literal_to_cat)); \
+    *num_used += sizeof(string_literal_to_cat) - 1;  // subtract one to remove the null terminator in the string literal
+
+    if ((msg_type & VULKAN_LOADER_ERROR_BIT) != 0) {
+        STRNCAT_TO_BUFFER("ERROR");
+    }
+    if ((msg_type & VULKAN_LOADER_WARN_BIT) != 0) {
+        if (*num_used > 1) {
+            STRNCAT_TO_BUFFER(" | ");
+        }
+        STRNCAT_TO_BUFFER("WARNING");
+    }
+    if ((msg_type & VULKAN_LOADER_INFO_BIT) != 0) {
+        if (*num_used > 1) {
+            STRNCAT_TO_BUFFER(" | ");
+        }
+        STRNCAT_TO_BUFFER("INFO");
+    }
+    if ((msg_type & VULKAN_LOADER_DEBUG_BIT) != 0) {
+        if (*num_used > 1) {
+            STRNCAT_TO_BUFFER(" | ");
+        }
+        STRNCAT_TO_BUFFER("DEBUG");
+    }
+    if ((msg_type & VULKAN_LOADER_PERF_BIT) != 0) {
+        if (*num_used > 1) {
+            STRNCAT_TO_BUFFER(" | ");
+        }
+        STRNCAT_TO_BUFFER("PERF");
+    }
+    if ((msg_type & VULKAN_LOADER_DRIVER_BIT) != 0) {
+        if (*num_used > 1) {
+            STRNCAT_TO_BUFFER(" | ");
+        }
+        STRNCAT_TO_BUFFER("DRIVER");
+    }
+    if ((msg_type & VULKAN_LOADER_LAYER_BIT) != 0) {
+        if (*num_used > 1) {
+            STRNCAT_TO_BUFFER(" | ");
+        }
+        STRNCAT_TO_BUFFER("LAYER");
+    }
+
+#undef STRNCAT_TO_BUFFER
+}
+
+void DECORATE_PRINTF(4, 5)
+    loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t msg_code, const char *format, ...) {
     (void)msg_code;
     char msg[512] = {0};
 
@@ -143,14 +198,24 @@ void loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t ms
 
     // Always log to stderr if this is a fatal error
     if (0 == (msg_type & VULKAN_LOADER_FATAL_ERROR_BIT)) {
-        // Exit early if the current instance settings do not ask for logging to stderr
-        if (inst && inst->settings.settings_active && 0 == (msg_type & inst->settings.debug_level)) {
-            return;
+        if (inst && inst->settings.settings_active && inst->settings.debug_level > 0) {
+            // Exit early if the current instance settings have some debugging options but do match the current msg_type
+            if (0 == (msg_type & inst->settings.debug_level)) {
+                return;
+            }
             // Check the global settings and if that doesn't say to skip, check the environment variable
         } else if (0 == (msg_type & g_loader_debug)) {
             return;
         }
     }
+
+#if defined(DEBUG)
+    int debug_flag_mask =
+        msg_type & (VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_WARN_BIT | VULKAN_LOADER_INFO_BIT | VULKAN_LOADER_DEBUG_BIT);
+    assert((debug_flag_mask == 0 || debug_flag_mask == VULKAN_LOADER_ERROR_BIT || debug_flag_mask == VULKAN_LOADER_WARN_BIT ||
+            debug_flag_mask == VULKAN_LOADER_INFO_BIT || debug_flag_mask == VULKAN_LOADER_DEBUG_BIT) &&
+           "This log has more than one exclusive debug flags (error, warn, info, debug) set");
+#endif
 
     // Only need enough space to create the filter description header for log messages
     // Also use the same header for all output
@@ -158,54 +223,17 @@ void loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t ms
     size_t cmd_line_size = sizeof(cmd_line_msg);
     size_t num_used = 0;
 
-    cmd_line_msg[0] = '\0';
+    generate_debug_flag_str(msg_type, cmd_line_size, cmd_line_msg, &num_used);
 
-// Helper macro which strncat's the given string literal, then updates num_used & cmd_line_end
-// Assumes that we haven't used the entire buffer - must manually check this when adding new filter types
-// We concat at the end of cmd_line_msg, so that strncat isn't a victim of Schlemiel the Painter
-// We write to the end - 1 of cmd_line_msg, as the end is actually a null terminator
-#define STRNCAT_TO_BUFFER(string_literal_to_cat)                                                                             \
-    loader_strncat(cmd_line_msg + num_used, cmd_line_size - num_used, string_literal_to_cat, sizeof(string_literal_to_cat)); \
-    num_used += sizeof(string_literal_to_cat) - 1;  // subtract one to remove the null terminator in the string literal
-
-    if ((msg_type & VULKAN_LOADER_ERROR_BIT) != 0) {
-        STRNCAT_TO_BUFFER("ERROR");
-    } else if ((msg_type & VULKAN_LOADER_WARN_BIT) != 0) {
-        STRNCAT_TO_BUFFER("WARNING");
-    } else if ((msg_type & VULKAN_LOADER_INFO_BIT) != 0) {
-        STRNCAT_TO_BUFFER("INFO");
-    } else if ((msg_type & VULKAN_LOADER_DEBUG_BIT) != 0) {
-        STRNCAT_TO_BUFFER("DEBUG");
-    }
-
-    if ((msg_type & VULKAN_LOADER_PERF_BIT) != 0) {
-        if (num_used > 1) {
-            STRNCAT_TO_BUFFER(" | ");
-        }
-        STRNCAT_TO_BUFFER("PERF");
-    }
-    if ((msg_type & VULKAN_LOADER_DRIVER_BIT) != 0) {
-        if (num_used > 1) {
-            STRNCAT_TO_BUFFER(" | ");
-        }
-        STRNCAT_TO_BUFFER("DRIVER");
-    }
-    if ((msg_type & VULKAN_LOADER_LAYER_BIT) != 0) {
-        if (num_used > 1) {
-            STRNCAT_TO_BUFFER(" | ");
-        }
-        STRNCAT_TO_BUFFER("LAYER");
-    }
-
-    // Add a ": " to separate the filters from the message
-    STRNCAT_TO_BUFFER(": ");
-#undef STRNCAT_TO_BUFFER
+    // Appends a : to the end of the debug flags used
+    loader_strncat(cmd_line_msg + num_used, cmd_line_size - num_used, ": ", sizeof(": "));
+    num_used += sizeof(": ") - 1;
 
     // Justifies the output to at least 19 spaces
     if (num_used < 19) {
-        const char *space_buffer = "                   ";
+        const char space_buffer[] = "                   ";
         // Only write (19 - num_used) spaces
-        loader_strncat(cmd_line_msg + num_used, cmd_line_size - num_used, space_buffer, 19 - num_used);
+        loader_strncat(cmd_line_msg + num_used, cmd_line_size - num_used, space_buffer, sizeof(space_buffer) - 1 - num_used);
         num_used += sizeof(space_buffer) - 1 - num_used;
     }
     // Assert that we didn't write more than what is available in cmd_line_msg

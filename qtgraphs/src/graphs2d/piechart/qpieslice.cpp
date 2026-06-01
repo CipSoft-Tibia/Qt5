@@ -532,7 +532,7 @@ void QPieSlice::setLabelArmLengthFactor(qreal factor)
 {
     Q_D(QPieSlice);
 
-    if (qFuzzyCompare(d->m_labelArmLengthFactor, factor))
+    if (QtPrivate::fuzzyCompare(d->m_labelArmLengthFactor, factor))
         return;
 
     d->m_labelArmLengthFactor = factor;
@@ -549,7 +549,7 @@ void QPieSlice::setValue(qreal value)
 {
     Q_D(QPieSlice);
     value = qAbs(value); // negative values not allowed
-    if (qFuzzyCompare(d->m_value, value))
+    if (qFuzzyCompare(d->m_value + 1, value + 1))
         return;
 
     d->m_value = value;
@@ -585,7 +585,7 @@ void QPieSlice::setExplodeDistanceFactor(qreal factor)
 {
     Q_D(QPieSlice);
 
-    if (qFuzzyCompare(d->m_explodeDistanceFactor, factor))
+    if (QtPrivate::fuzzyCompare(d->m_explodeDistanceFactor, factor))
         return;
 
     d->m_explodeDistanceFactor = factor;
@@ -607,6 +607,7 @@ void QPieSlice::setColor(QColor color)
 
     d->m_color = color;
     emit colorChanged();
+    emit sliceChanged();
 }
 
 QColor QPieSlice::color() const
@@ -623,6 +624,7 @@ void QPieSlice::setBorderColor(QColor borderColor)
 
     d->m_borderColor = borderColor;
     emit borderColorChanged();
+    emit sliceChanged();
 }
 
 QColor QPieSlice::borderColor() const
@@ -639,6 +641,7 @@ void QPieSlice::setBorderWidth(qreal borderWidth)
 
     d->m_borderWidth = borderWidth;
     emit borderWidthChanged();
+    emit sliceChanged();
 }
 
 qreal QPieSlice::borderWidth() const
@@ -655,6 +658,7 @@ QPieSlicePrivate::QPieSlicePrivate()
     , m_percentage(0.0)
     , m_startAngle(0.0)
     , m_angleSpan(0.0)
+    , m_hideLabel(false)
     , m_isExploded(false)
     , m_explodeDistanceFactor(.15)
     , m_labelDirty(false)
@@ -678,7 +682,7 @@ QPieSlicePrivate::~QPieSlicePrivate() {}
 void QPieSlicePrivate::setPercentage(qreal percentage)
 {
     Q_Q(QPieSlice);
-    if (qFuzzyCompare(m_percentage, percentage))
+    if (QtPrivate::fuzzyCompare(m_percentage, percentage))
         return;
     m_percentage = percentage;
     emit q->percentageChanged();
@@ -687,7 +691,7 @@ void QPieSlicePrivate::setPercentage(qreal percentage)
 void QPieSlicePrivate::setStartAngle(qreal angle)
 {
     Q_Q(QPieSlice);
-    if (qFuzzyCompare(m_startAngle, angle))
+    if (QtPrivate::fuzzyCompare(m_startAngle, angle))
         return;
     m_startAngle = angle;
     emit q->startAngleChanged();
@@ -696,18 +700,23 @@ void QPieSlicePrivate::setStartAngle(qreal angle)
 void QPieSlicePrivate::setAngleSpan(qreal span)
 {
     Q_Q(QPieSlice);
-    if (qFuzzyCompare(m_angleSpan, span))
+    if (QtPrivate::fuzzyCompare(m_angleSpan, span))
         return;
+
     m_angleSpan = span;
     emit q->angleSpanChanged();
 }
 
-void QPieSlicePrivate::setLabelVisible(bool visible)
+void QPieSlicePrivate::setLabelVisible(bool visible, bool forceHidden)
 {
-    m_isLabelVisible = visible;
-    m_labelItem->setVisible(visible);
+    if (m_hideLabel)
+        return;
+
+    m_hideLabel = forceHidden;
+    m_isLabelVisible = (visible && !m_hideLabel);
+    m_labelItem->setVisible(m_isLabelVisible);
     if (m_labelPosition == QPieSlice::LabelPosition::Outside)
-        m_labelShape->setVisible(visible);
+        m_labelShape->setVisible(m_isLabelVisible);
 }
 
 void QPieSlicePrivate::setLabelPosition(QPieSlice::LabelPosition position)

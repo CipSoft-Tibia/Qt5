@@ -1,10 +1,13 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKWEBENGINEPROFILEPROTOTYPE_P_P_H
 #define QQUICKWEBENGINEPROFILEPROTOTYPE_P_P_H
 
 #include "qquickwebengineprofile_p.h"
+
+#include <QScopedPointer>
 //
 //  W A R N I N G
 //  -------------
@@ -23,6 +26,7 @@ struct QQuickWebEngineProfilePrototypePrivate
     QString m_storageName;
     QString m_persistentStoragePath;
     QString m_cachePath;
+    QStringList m_additionalTrustedCertificateFiles;
     QQuickWebEngineProfile::HttpCacheType m_httpCacheType = QQuickWebEngineProfile::DiskHttpCache;
     QQuickWebEngineProfile::PersistentCookiesPolicy m_persistentCookiesPolicy =
             QQuickWebEngineProfile::AllowPersistentCookies;

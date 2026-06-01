@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -36,6 +37,7 @@ namespace centipede {
 namespace {
 constexpr std::string_view kSymbolTableFileName = "symbol-table";
 constexpr std::string_view kPCTableFileName = "pc-table";
+constexpr std::string_view kCfTableFileName = "cf-table";
 }  // namespace
 
 void BinaryInfo::InitializeFromSanCovBinary(
@@ -56,12 +58,12 @@ void BinaryInfo::InitializeFromSanCovBinary(
   ScopedFile log_path(tmp_dir_path, "binary_info_log_tmp");
   LOG(INFO) << __func__ << ": tmp_dir: " << tmp_dir;
 
-  Command cmd(
-      binary_path_with_args, {},
-      {absl::StrCat("CENTIPEDE_RUNNER_FLAGS=:dump_binary_info:arg1=",
-                    pc_table_path.path(), ":arg2=", cf_table_path.path(),
-                    ":arg3=", dso_table_path.path(), ":")},
-      log_path.path());
+  Command::Options cmd_options;
+  cmd_options.env_add = {absl::StrCat(
+      "CENTIPEDE_RUNNER_FLAGS=:dump_binary_info:arg1=", pc_table_path.path(),
+      ":arg2=", cf_table_path.path(), ":arg3=", dso_table_path.path(), ":")};
+  cmd_options.stdout_file = std::string(log_path.path());
+  Command cmd{binary_path_with_args, std::move(cmd_options)};
   int exit_code = cmd.Execute();
   if (exit_code != EXIT_SUCCESS) {
     LOG(INFO) << __func__ << ": exit_code: " << exit_code;
@@ -72,7 +74,7 @@ void BinaryInfo::InitializeFromSanCovBinary(
 
   // Load CF Table.
   if (std::filesystem::exists(cf_table_path.path()))
-    cf_table = ReadCfTableFromFile(cf_table_path.path());
+    cf_table = ReadCfTable(cf_table_path.path());
 
   // Load the DSO Table.
   dso_table = ReadDsoTableFromFile(dso_table_path.path());
@@ -135,6 +137,9 @@ void BinaryInfo::Read(std::string_view dir) {
       pc_table_contents));
   std::istringstream pc_table_stream(pc_table_contents);
   pc_table = ReadPcTable(pc_table_stream);
+
+  cf_table =
+      ReadCfTable((std::filesystem::path(dir) / kCfTableFileName).c_str());
 }
 
 void BinaryInfo::Write(std::string_view dir) {
@@ -150,6 +155,12 @@ void BinaryInfo::Write(std::string_view dir) {
   CHECK_OK(RemoteFileSetContents(
       (std::filesystem::path(dir) / kPCTableFileName).c_str(),
       pc_table_stream.str()));
+
+  std::ostringstream cf_table_stream;
+  WriteCfTable(cf_table, cf_table_stream);
+  CHECK_OK(RemoteFileSetContents(
+      (std::filesystem::path(dir) / kCfTableFileName).c_str(),
+      cf_table_stream.str()));
 }
 
 }  // namespace centipede

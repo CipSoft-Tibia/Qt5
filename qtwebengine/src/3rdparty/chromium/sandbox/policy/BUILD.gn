@@ -7,9 +7,6 @@ import("//build/config/cast.gni")
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//chromeos/ash/components/assistant/assistant.gni")
-import("//components/nacl/features.gni")
-import("//printing/buildflags/buildflags.gni")
-import("//services/screen_ai/buildflags/features.gni")
 import("//testing/test.gni")
 
 # Most consumers of sandbox::policy should depend on this target.
@@ -31,9 +28,7 @@ component("policy") {
     "//base",
     "//build:chromeos_buildflags",
     "//ppapi/buildflags",
-    "//printing/buildflags",
     "//sandbox/policy/mojom",
-    "//services/screen_ai/buildflags",
   ]
   public_deps = [ "//sandbox:common" ]
   if (is_android) {
@@ -74,12 +69,18 @@ component("policy") {
       "linux/bpf_gpu_policy_linux.h",
       "linux/bpf_network_policy_linux.cc",
       "linux/bpf_network_policy_linux.h",
+      "linux/bpf_on_device_translation_policy_linux.cc",
+      "linux/bpf_on_device_translation_policy_linux.h",
       "linux/bpf_ppapi_policy_linux.cc",
       "linux/bpf_ppapi_policy_linux.h",
+      "linux/bpf_print_backend_policy_linux.cc",
+      "linux/bpf_print_backend_policy_linux.h",
       "linux/bpf_print_compositor_policy_linux.cc",
       "linux/bpf_print_compositor_policy_linux.h",
       "linux/bpf_renderer_policy_linux.cc",
       "linux/bpf_renderer_policy_linux.h",
+      "linux/bpf_screen_ai_policy_linux.cc",
+      "linux/bpf_screen_ai_policy_linux.h",
       "linux/bpf_service_policy_linux.cc",
       "linux/bpf_service_policy_linux.h",
       "linux/bpf_speech_recognition_policy_linux.cc",
@@ -102,18 +103,6 @@ component("policy") {
     }
     if (is_linux) {
       deps += [ "//net" ]  # TODO(crbug.com/40220507): remove this.
-    }
-    if (enable_oop_printing) {
-      sources += [
-        "linux/bpf_print_backend_policy_linux.cc",
-        "linux/bpf_print_backend_policy_linux.h",
-      ]
-    }
-    if (enable_screen_ai_service) {
-      sources += [
-        "linux/bpf_screen_ai_policy_linux.cc",
-        "linux/bpf_screen_ai_policy_linux.h",
-      ]
     }
     configs += [
       "//media:media_config",
@@ -198,6 +187,7 @@ component("policy") {
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.mediacodec:fuchsia.mediacodec_hlcpp",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.memorypressure:fuchsia.memorypressure_hlcpp",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.net.interfaces:fuchsia.net.interfaces_hlcpp",
+      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.scheduler:fuchsia.scheduler_cpp",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.sysmem:fuchsia.sysmem_hlcpp",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.tracing.perfetto:fuchsia.tracing.perfetto_hlcpp",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.tracing.provider:fuchsia.tracing.provider_hlcpp",
@@ -223,7 +213,6 @@ source_set("tests") {
     "//base",
     "//base/test:test_support",
     "//ppapi/buildflags:buildflags",
-    "//printing/buildflags",
     "//sandbox/policy/mojom",
     "//testing/gtest",
   ]

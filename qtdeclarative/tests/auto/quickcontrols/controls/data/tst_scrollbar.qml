@@ -840,7 +840,9 @@ TestCase {
     }
 
     function test_flashing() {
-        let control = createTemporaryObject(scrollBar, testCase, {size: 0.2})
+        // Use non-interactive scroll bar, to prevent the mouse hovering over the scrollbar
+        // from affecting the test, which may happen in CI as a result of other tests.
+        let control = createTemporaryObject(scrollBar, testCase, {size: 0.2, interactive: false})
         verify(control)
 
         let activeSpy = signalSpy.createObject(control, {target: control, signalName: "activeChanged"})

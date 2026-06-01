@@ -82,6 +82,9 @@ public:
     // Non-AA bounds filling (can handle inverse "fills" but will touch every pixel within the clip)
     const Renderer* nonAABounds() const { return &fNonAABoundsFill; }
 
+    // Circular arcs
+    const Renderer* circularArc() const { return &fCircularArc; }
+
     const Renderer* analyticBlur() const { return &fAnalyticBlur; }
 
     // TODO: May need to add support for inverse filled strokes (need to check SVG spec if this is a
@@ -93,7 +96,9 @@ public:
         return {fRenderers.data(), fRenderers.size()};
     }
 
-    const RenderStep* lookup(uint32_t uniqueID) const;
+    const RenderStep* lookup(RenderStep::RenderStepID renderStepID) const {
+        return fRenderSteps[(int) renderStepID].get();
+    }
 
 #ifdef SK_ENABLE_VELLO_SHADERS
     // Compute shader-based path renderer and compositor.
@@ -113,9 +118,16 @@ private:
     RendererProvider(const RendererProvider&) = delete;
     RendererProvider(RendererProvider&&) = delete;
 
+    RenderStep* assumeOwnership(std::unique_ptr<RenderStep> renderStep) {
+        int index = (int) renderStep->renderStepID();
+        SkASSERT(!fRenderSteps[index]);
+        fRenderSteps[index] = std::move(renderStep);
+        return fRenderSteps[index].get();
+    }
+
     // Renderers are composed of 1+ steps, and some steps can be shared by multiple Renderers.
     // Renderers don't keep their RenderSteps alive so RendererProvider holds them here.
-    std::vector<std::unique_ptr<RenderStep>> fRenderSteps;
+    std::unique_ptr<RenderStep> fRenderSteps[RenderStep::kNumRenderSteps];
 
     // NOTE: Keep all Renderers dense to support automatically completing 'fRenderers'.
     Renderer fStencilTessellatedCurves[kPathTypeCount];
@@ -131,6 +143,7 @@ private:
     Renderer fAnalyticRRect;
     Renderer fPerEdgeAAQuad;
     Renderer fNonAABoundsFill;
+    Renderer fCircularArc;
 
     Renderer fAnalyticBlur;
 

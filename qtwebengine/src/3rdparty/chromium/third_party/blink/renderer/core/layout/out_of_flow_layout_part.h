@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/css/counters_attachment_context.h"
 #include "third_party/blink/renderer/core/layout/absolute_utils.h"
 #include "third_party/blink/renderer/core/layout/block_node.h"
 #include "third_party/blink/renderer/core/layout/box_fragment_builder.h"
@@ -116,6 +117,8 @@ class CORE_EXPORT OutOfFlowLayoutPart {
   // pages that were laid out need to know the total page count (to support
   // counter(pages) in page margin boxes).
   bool NeedsTotalPageCount() { return needs_total_page_count_; }
+
+  bool AdditionalPagesWereAdded() const { return additional_pages_were_added_; }
 
   // Information needed to position descendant within a containing block.
   // Geometry expressed here is complicated:
@@ -250,6 +253,7 @@ class CORE_EXPORT OutOfFlowLayoutPart {
     // True if the element overflows the inset-modified containing block.
     bool overflows_containing_block = false;
 
+    Member<Element> accessibility_anchor;
     Member<HeapHashSet<Member<Element>>> display_locks_affected_by_anchors;
 
     void Trace(Visitor* visitor) const;
@@ -323,10 +327,11 @@ class CORE_EXPORT OutOfFlowLayoutPart {
   AnchorEvaluatorImpl CreateAnchorEvaluator(
       const ContainingBlockInfo& container_info,
       const BlockNode& candidate,
-      const LogicalAnchorQueryMap* anchor_queries) const;
+      const StitchedAnchorQueries* anchor_queries) const;
 
   ContainingBlockInfo ApplyPositionAreaOffsets(
       const PositionAreaOffsets& offsets,
+      PhysicalOffset default_anchor_scroll_shift,
       const ContainingBlockInfo& container_info) const;
 
   NodeInfo SetupNodeInfo(const LogicalOofPositionedNode& oof_node);
@@ -340,7 +345,7 @@ class CORE_EXPORT OutOfFlowLayoutPart {
   // changing this to a more accurate name.
   OffsetInfo CalculateOffset(
       const NodeInfo& node_info,
-      const LogicalAnchorQueryMap* anchor_queries = nullptr);
+      const StitchedAnchorQueries* anchor_queries = nullptr);
   // Calculates offsets with the given ComputedStyle. Returns nullopt if
   // |try_fit_available_space| is true and the layout result does not fit the
   // available space.
@@ -439,9 +444,9 @@ class CORE_EXPORT OutOfFlowLayoutPart {
   const BlockBreakToken* PreviousFragmentainerBreakToken(wtf_size_t) const;
 
   BoxFragmentBuilder* container_builder_;
-  // The builder for the outer block fragmentation context when this is an inner
-  // layout of nested block fragmentation.
-  BoxFragmentBuilder* outer_container_builder_ = nullptr;
+  // The OutOfFlowLayoutPart for the outer block fragmentation context when this
+  // is an inner layout of nested block fragmentation.
+  OutOfFlowLayoutPart* outer_oof_layout_part_ = nullptr;
   ContainingBlockInfo default_containing_block_info_for_absolute_;
   ContainingBlockInfo default_containing_block_info_for_fixed_;
   HeapHashMap<Member<const LayoutObject>, ContainingBlockInfo>
@@ -476,6 +481,8 @@ class CORE_EXPORT OutOfFlowLayoutPart {
   // Set if any additional pages that were laid out need to know the total page
   // count.
   bool needs_total_page_count_ = false;
+
+  bool additional_pages_were_added_ = false;
 };
 
 }  // namespace blink

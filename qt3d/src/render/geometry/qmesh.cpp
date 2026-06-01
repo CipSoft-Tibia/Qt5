@@ -9,8 +9,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QScopedPointer>
+#if QT_CONFIG(mimetype)
 #include <QMimeDatabase>
 #include <QMimeType>
+#endif
 #include <QtCore/QBuffer>
 #include <Qt3DRender/QRenderAspect>
 #include <Qt3DCore/QAspectEngine>
@@ -284,11 +286,13 @@ Qt3DCore::QGeometry *MeshLoaderFunctor::operator()()
             return nullptr;
         }
 
+#if QT_CONFIG(mimetype)
         QMimeDatabase db;
         QMimeType mtype = db.mimeTypeForData(m_sourceData);
         if (mtype.isValid()) {
             ext = mtype.suffixes();
         }
+#endif
         QFileInfo finfo(m_sourcePath.path());
         ext << finfo.suffix();
         ext.removeAll(QLatin1String(""));

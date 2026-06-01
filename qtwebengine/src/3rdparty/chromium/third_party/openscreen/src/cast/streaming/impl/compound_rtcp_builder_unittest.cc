@@ -8,8 +8,8 @@
 #include <chrono>
 
 #include "cast/streaming/impl/compound_rtcp_parser.h"
-#include "cast/streaming/public/constants.h"
 #include "cast/streaming/impl/rtcp_session.h"
+#include "cast/streaming/public/constants.h"
 #include "cast/streaming/testing/mock_compound_rtcp_parser_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -25,8 +25,8 @@ using testing::StrictMock;
 namespace openscreen::cast {
 namespace {
 
-constexpr Ssrc kSenderSsrc{1};
-constexpr Ssrc kReceiverSsrc{2};
+constexpr Ssrc kSenderSsrc = 1;
+constexpr Ssrc kReceiverSsrc = 2;
 
 class CompoundRtcpBuilderTest : public testing::Test {
  public:
@@ -35,9 +35,9 @@ class CompoundRtcpBuilderTest : public testing::Test {
   StrictMock<MockCompoundRtcpParserClient>* client() { return &client_; }
   CompoundRtcpParser* parser() { return &parser_; }
 
-  // Return |timestamp| converted to the NtpTimestamp wire format and then
+  // Return `timestamp` converted to the NtpTimestamp wire format and then
   // converted back to the local Clock's time_point. The result will be either
-  // exactly equal to |original|, or one tick off from it due to the lossy
+  // exactly equal to `original`, or one tick off from it due to the lossy
   // conversions.
   Clock::time_point ViaNtpTimestampTranslation(
       Clock::time_point timestamp) const {
@@ -57,7 +57,7 @@ class CompoundRtcpBuilderTest : public testing::Test {
 TEST_F(CompoundRtcpBuilderTest, TheBasics) {
   const FrameId checkpoint = FrameId::first() + 42;
   builder()->SetCheckpointFrame(checkpoint);
-  const milliseconds playout_delay{321};
+  const milliseconds playout_delay(321);
   builder()->SetPlayoutDelay(playout_delay);
 
   const auto send_time = Clock::now();

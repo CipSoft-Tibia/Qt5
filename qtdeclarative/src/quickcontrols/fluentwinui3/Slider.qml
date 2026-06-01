@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -32,7 +33,9 @@ T.Slider {
     readonly property bool __isDiscrete: stepSize >= Number.EPSILON
         && Math.abs(Math.round(__steps) - __steps) < Number.EPSILON
 
-    handle: Impl.StyleImage {
+    readonly property bool __isHighContrast: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast
+
+    handle: ItemGroup {
         x: Math.round(control.leftPadding + (control.horizontal
             ? control.visualPosition * (control.availableWidth - width)
             : (control.availableWidth - width) / 2))
@@ -40,10 +43,29 @@ T.Slider {
             ? (control.availableHeight - height) / 2
             : control.visualPosition * (control.availableHeight - height)))
 
-        imageConfig: control.__config.handle
+        Impl.StyleImage {
+            visible: !control.__isHighContrast
+            imageConfig: control.__config.handle
+        }
+
+        Rectangle {
+            visible: control.__isHighContrast
+            implicitWidth: control.__config.handle.width
+            implicitHeight: control.__config.handle.height
+            color: control.palette.buttonText
+            radius: width / 2
+        }
+
+        property HoverHandler _hoverHandler: HoverHandler {
+            parent: control.handle
+            target: control.handle
+        }
 
         property Rectangle indicator: Rectangle {
-            property real diameter: !control.enabled ? 10 : control.pressed ? 8 : control.hovered ? 14 : 10
+            property real diameter: !control.enabled ? 10
+                                                     : control.pressed ? 8
+                                                     : control.__isHighContrast && !control.hovered ? 0
+                                                     : control.handle?._hoverHandler.hovered ? 14 : 10
             parent: control.handle
             width: diameter
             height: diameter
@@ -57,7 +79,7 @@ T.Slider {
                                    : control.palette.accent
             Behavior on diameter {
                 // From WindowsUI 3 Animation Values
-                NumberAnimation{
+                NumberAnimation {
                     duration: 167
                     easing.type: Easing.OutCubic
                 }
@@ -67,13 +89,14 @@ T.Slider {
 
     background: Item {
         implicitWidth: control.horizontal
-            ? (_background.implicitWidth || _background.groove.implicitWidth)
-            : (_background.implicitHeight || _background.groove.implicitHeight)
+            ? (control.__config.groove.width)
+            : (control.__config.groove.height)
         implicitHeight: control.horizontal
-            ? (_background.implicitHeight || _background.groove.implicitHeight)
-            : (_background.implicitWidth || _background.groove.implicitWidth)
+            ? (control.__config.groove.height)
+            : (control.__config.groove.width)
 
         property Item _background: Impl.StyleImage {
+            visible: !control.__isHighContrast
             parent: control.background
             width: parent.width
             height: parent.height
@@ -110,7 +133,7 @@ T.Slider {
             }
 
             property Repeater ticksTop: Repeater {
-                parent: control.background._background.groove
+                parent: control.__isHighContrast ? control.background._highContrastBackground : control.background._background.groove
                 model: control.__isDiscrete ? Math.floor(control.__steps) + 1 : 0
                 delegate: Rectangle {
                     width: control.horizontal ? 1 : 4
@@ -128,7 +151,7 @@ T.Slider {
             }
 
             property Repeater ticksBottom: Repeater {
-                parent: control.background._background.groove
+                parent: control.__isHighContrast ? control.background._highContrastBackground : control.background._background.groove
                 model: control.__isDiscrete ? Math.floor(control.__steps) + 1 : 0
                 delegate: Rectangle {
                     width: control.horizontal ? 1 : 4
@@ -143,6 +166,35 @@ T.Slider {
 
                     required property int index
                 }
+            }
+        }
+        property Item _highContrastBackground: Rectangle {
+            parent: control.background
+            visible: control.__isHighContrast
+            implicitWidth: control.horizontal ? 200 : 4
+            implicitHeight: control.horizontal ? 4 : 200
+            x: control.leftPadding - control.leftInset + (control.horizontal
+                ? control.__config.handle.width / 2
+                : (control.availableWidth - width) / 2)
+            y: control.topPadding - control.topInset + (control.horizontal
+                ? ((control.availableHeight - height) / 2)
+                : control.__config.handle.height / 2)
+            width: control.horizontal
+                ? control.availableWidth - control.__config.handle.width
+                : implicitWidth
+            height: control.horizontal
+                ? implicitHeight
+                : control.availableHeight - control.__config.handle.width
+            radius: 2
+            color: control.palette.buttonText
+            scale: control.horizontal && control.mirrored ? -1 : 1
+
+            Rectangle {
+                y: control.horizontal ? 0 : parent.height - (parent.height * control.position)
+                implicitWidth: control.horizontal ? parent.width * control.position : parent.width
+                implicitHeight: control.horizontal ? parent.height : parent.height * control.position
+                radius: 2
+                color: control.palette.highlight
             }
         }
     }

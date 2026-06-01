@@ -180,7 +180,7 @@
     Furthermore, Qt Multimedia in Qt \QtVersion may contain third-party modules
     under the following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtmultimedia}
+    \annotatedlist attributions-qtmultimedia
 
     Note that video compression standards, such as the H.264 media compression
     standard, may be covered by patents and can incur royalty fees. This can
@@ -206,7 +206,7 @@
 
     \section2 The FFmpeg backend
 
-    The FFmpeg media backend relies on the \b{FFmpeg 7.1} libraries,
+    The FFmpeg media backend relies on the \b{FFmpeg \ffmpegversion} libraries,
     which are included with the Qt Online Installer and tested by the
     maintainers. The binary packages from the online installer use
     dynamic linking to FFmpeg. Therefore, applications must either
@@ -246,7 +246,7 @@
     \list
         \li \l{Qt Multimedia GStreamer Backend}{GStreamer backend} on Embedded Linux
         \li AVFoundation on macOS and iOS
-        \li Windows Media Foundation on Windows
+        \li Windows Media Foundation on Windows (deprecated since Qt 6.10)
         \li MediaCodec framework on Android
         \li WebAudio and WebVideo on WebAssembly
     \endlist
@@ -257,6 +257,9 @@
     recommended for embedded applications.
     \note MediaCodec on Android is deprecated as of Qt 6.8 and will be
     removed in the next major release.
+    \note The Windows media backend built on top of Windows Media
+    Foundation is deprecated as of Qt 6.10 and will be removed in the
+    next major release.
 
     Qt Maintainers will strive to fix critical issues with the native
     backends but don't guarantee fixing minor issues, including
@@ -293,11 +296,11 @@
     The following pages list issues for specific target platforms.
 
     \list
-      \li \l{Qt Multimedia on Windows}{Windows}
       \li \l{Qt Multimedia on macOS and iOS}{macOS and iOS}
       \li \l{Qt Multimedia on WebAssembly}{WebAssembly}
+      \li \l{Qt Multimedia on Windows}{Windows}
       \li \l{Qt Multimedia on Linux}{Linux}
-      \li \l{Qt Multimedia GStreamer Backend}{Embedded Linux and GStreamer}
+      \li \l{Qt Multimedia GStreamer Backend}{GStreamer backend for embedded Linux}
     \endlist
 
     \section1 Permissions

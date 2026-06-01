@@ -8,13 +8,15 @@
 #include "third_party/blink/renderer/core/layout/block_break_token.h"
 #include "third_party/blink/renderer/core/layout/box_fragment_builder.h"
 #include "third_party/blink/renderer/core/layout/layout_algorithm.h"
+#include "third_party/blink/renderer/core/layout/masonry/masonry_node.h"
 
 namespace blink {
 
 class GridSizingTrackCollection;
+struct GridItemData;
 
 class CORE_EXPORT MasonryLayoutAlgorithm
-    : public LayoutAlgorithm<BlockNode, BoxFragmentBuilder, BlockBreakToken> {
+    : public LayoutAlgorithm<MasonryNode, BoxFragmentBuilder, BlockBreakToken> {
  public:
   explicit MasonryLayoutAlgorithm(const LayoutAlgorithmParams& params);
 
@@ -24,9 +26,17 @@ class CORE_EXPORT MasonryLayoutAlgorithm
  private:
   friend class MasonryLayoutAlgorithmTest;
 
-  GridSizingTrackCollection ComputeCrossAxisTrackSizes() const;
+  GridSizingTrackCollection BuildGridAxisTracks() const;
 
   wtf_size_t ComputeAutomaticRepetitions() const;
+
+  ConstraintSpace CreateConstraintSpace(
+      const GridItemData& masonry_item,
+      const LogicalSize& containing_size,
+      LayoutResultCacheSlot result_cache_slot) const;
+
+  ConstraintSpace CreateConstraintSpaceForMeasure(
+      const GridItemData& masonry_item) const;
 };
 
 }  // namespace blink

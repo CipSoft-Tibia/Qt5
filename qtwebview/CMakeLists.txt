@@ -12,9 +12,7 @@ project(QtWebView
 )
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
-find_package(Qt6 ${PROJECT_VERSION} CONFIG OPTIONAL_COMPONENTS Gui Qml Quick OpenGL
-    WebEngineCore WebEngineQuick
-)
+find_package(Qt6 ${PROJECT_VERSION} CONFIG OPTIONAL_COMPONENTS Gui Qml Quick WebEngineCore WebEngineQuick)
 qt_internal_project_setup()
 
 # Make sure we use the fixed BASE argument of qt_add_resource.

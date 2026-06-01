@@ -48,7 +48,6 @@ namespace gpu {
 class ScopedAllowScheduleGpuTask;
 struct SwapBuffersCompleteParams;
 class SharedImageManager;
-class SyncPointManager;
 class Scheduler;
 }
 
@@ -59,14 +58,13 @@ class DisplayResourceProvider;
 class FrameIntervalDecider;
 class OutputSurface;
 class RendererSettings;
-class SharedBitmapManager;
 class SkiaOutputSurface;
 class SoftwareRenderer;
 class OcclusionCuller;
 
 class VIZ_SERVICE_EXPORT DisplayObserver {
  public:
-  virtual ~DisplayObserver() {}
+  virtual ~DisplayObserver() = default;
 
   virtual void OnDisplayDidFinishFrame(const BeginFrameAck& ack) = 0;
   virtual void OnDisplayDestroyed() = 0;
@@ -89,9 +87,7 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
   // TODO(penghuang): Remove skia_output_surface when all DirectRenderer
   // subclasses are replaced by SkiaRenderer.
   Display(
-      SharedBitmapManager* bitmap_manager,
       gpu::SharedImageManager* shared_image_manager,
-      gpu::SyncPointManager* sync_point_manager,
       gpu::Scheduler* gpu_scheduler,
       const RendererSettings& settings,
       const DebugRendererSettings* debug_settings,
@@ -265,7 +261,8 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
         std::unique_ptr<Surface::PresentationHelper> helper);
     void OnDraw(base::TimeTicks frame_time,
                 base::TimeTicks draw_start_timestamp,
-                base::flat_set<base::PlatformThreadId> thread_ids,
+                base::flat_set<base::PlatformThreadId> animation_thread_ids,
+                base::flat_set<base::PlatformThreadId> renderer_main_thread_ids,
                 HintSession::BoostType boost_type);
     void OnSwap(gfx::SwapTimings timings, DisplaySchedulerBase* scheduler);
     bool HasSwapped() const { return !swap_timings_.is_null(); }
@@ -278,7 +275,8 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
    private:
     base::TimeTicks frame_time_;
     base::TimeTicks draw_start_timestamp_;
-    base::flat_set<base::PlatformThreadId> thread_ids_;
+    base::flat_set<base::PlatformThreadId> animation_thread_ids_;
+    base::flat_set<base::PlatformThreadId> renderer_main_thread_ids_;
     gfx::SwapTimings swap_timings_;
     std::vector<std::unique_ptr<Surface::PresentationHelper>>
         presentation_helpers_;
@@ -290,9 +288,7 @@ class VIZ_SERVICE_EXPORT Display : public DisplaySchedulerClient,
   // ContextLostObserver implementation.
   void OnContextLost() override;
 
-  const raw_ptr<SharedBitmapManager> bitmap_manager_;
   const raw_ptr<gpu::SharedImageManager> shared_image_manager_;
-  const raw_ptr<gpu::SyncPointManager> sync_point_manager_;
   const raw_ptr<gpu::Scheduler> gpu_scheduler_;
   const RendererSettings settings_;
 

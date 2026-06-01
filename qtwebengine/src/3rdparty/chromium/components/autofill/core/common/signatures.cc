@@ -40,7 +40,7 @@ std::string StripDigitsIfRequired(std::string_view input) {
     // If `input[i]` is a digit, find the range of consecutive digits starting
     // at `i`. If this range is shorter than 5 characters append it to `result`.
     std::string_view ss = input.substr(i);
-    auto end_it = base::ranges::find_if_not(ss, IsDigit);
+    auto end_it = std::ranges::find_if_not(ss, IsDigit);
     std::string_view digits = base::MakeStringPiece(ss.begin(), end_it);
     DCHECK(std::ranges::all_of(digits, IsDigit));
     if (digits.size() < 5)
@@ -169,15 +169,15 @@ FieldSignature CalculateFieldSignatureForField(
 }
 
 uint64_t StrToHash64Bit(std::string_view str) {
-  auto bytes = base::as_bytes(base::make_span(str));
+  auto bytes = base::as_byte_span(str);
   const base::SHA1Digest digest = base::SHA1Hash(bytes);
-  return PackBytes(base::make_span(digest).subspan<0, 8>());
+  return PackBytes(base::span(digest).first<8>());
 }
 
 uint32_t StrToHash32Bit(std::string_view str) {
-  auto bytes = base::as_bytes(base::make_span(str));
+  auto bytes = base::as_byte_span(str);
   const base::SHA1Digest digest = base::SHA1Hash(bytes);
-  return PackBytes(base::make_span(digest).subspan<0, 4>());
+  return PackBytes(base::span(digest).first<4>());
 }
 
 int64_t HashFormSignature(FormSignature form_signature) {

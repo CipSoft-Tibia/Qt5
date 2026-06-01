@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef PROFILE_QT_H
 #define PROFILE_QT_H
@@ -11,13 +12,10 @@
 
 class PrefService;
 
-namespace extensions {
-class ExtensionSystemQt;
-}
-
 namespace QtWebEngineCore {
 
 class BrowsingDataRemoverDelegateQt;
+class ExtensionManager;
 class PermissionManagerQt;
 class ProfileAdapter;
 class ProfileIODataQt;
@@ -75,7 +73,11 @@ public:
     PrefServiceAdapter &prefServiceAdapter();
     const PrefServiceAdapter &prefServiceAdapter() const;
 
+    void initUserAgentMetadata();
     const blink::UserAgentMetadata &userAgentMetadata();
+#if QT_CONFIG(webengine_extensions)
+    ExtensionManager *extensionManager();
+#endif
 
 private:
     std::unique_ptr<BrowsingDataRemoverDelegateQt> m_removerDelegate;

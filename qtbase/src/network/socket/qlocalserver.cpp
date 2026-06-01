@@ -198,7 +198,7 @@ qintptr QLocalServer::socketDescriptor() const
     return d->tcpServer.socketDescriptor();
 #elif defined(Q_OS_WIN)
     const auto handle = d->connectionEventNotifier->handle();
-    return handle != INVALID_HANDLE_VALUE ? qintptr(handle) : -1;
+    return handle ? qintptr(handle) : -1;
 #else
     return d->socketNotifier->socket();
 #endif
@@ -454,7 +454,7 @@ bool QLocalServer::removeServer(const QString &name)
 
 /*!
     Returns the server name if the server is listening for connections;
-    otherwise returns QString()
+    otherwise returns QString().
 
     \sa listen(), fullServerName()
  */

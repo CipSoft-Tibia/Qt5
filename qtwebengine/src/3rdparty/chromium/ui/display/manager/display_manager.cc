@@ -4,6 +4,7 @@
 
 #include "ui/display/manager/display_manager.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -22,7 +23,6 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
@@ -32,7 +32,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
+#include "chromeos/constants/devicetype.h"
 #include "chromeos/ui/base/display_util.h"
 #include "components/device_event_log/device_event_log.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -56,6 +56,7 @@
 #include "ui/events/devices/touchscreen_device.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/font_render_params.h"
+#include "ui/gfx/font_render_params_linux.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size_conversions.h"
 #include "ui/strings/grit/ui_strings.h"
@@ -107,10 +108,10 @@ ManagedDisplayInfo::ManagedDisplayModeList::const_iterator FindDisplayMode(
     const ManagedDisplayMode& target_mode) {
   const ManagedDisplayInfo::ManagedDisplayModeList& modes =
       info.display_modes();
-  return base::ranges::find_if(modes,
-                               [target_mode](const ManagedDisplayMode& mode) {
-                                 return target_mode.IsEquivalent(mode);
-                               });
+  return std::ranges::find_if(modes,
+                              [target_mode](const ManagedDisplayMode& mode) {
+                                return target_mode.IsEquivalent(mode);
+                              });
 }
 
 void SetInternalManagedDisplayModeList(ManagedDisplayInfo* info) {
@@ -180,7 +181,7 @@ bool GetDisplayModeForNextResolution(const ManagedDisplayInfo& info,
   const gfx::Size resolution = tmp.GetSizeInDIP();
 
   auto iter =
-      base::ranges::find(modes, resolution, &ManagedDisplayMode::GetSizeInDIP);
+      std::ranges::find(modes, resolution, &ManagedDisplayMode::GetSizeInDIP);
   if (iter == modes.end()) {
     return false;
   }
@@ -193,7 +194,7 @@ bool GetDisplayModeForNextResolution(const ManagedDisplayInfo& info,
 const ManagedDisplayInfo* FindInfoById(const DisplayInfoList& display_info_list,
                                        int64_t id) {
   const auto iter =
-      base::ranges::find(display_info_list, id, &ManagedDisplayInfo::id);
+      std::ranges::find(display_info_list, id, &ManagedDisplayInfo::id);
 
   if (iter == display_info_list.end()) {
     return nullptr;
@@ -481,6 +482,7 @@ DisplayManager::DisplayManager(std::unique_ptr<Screen> screen)
 
 DisplayManager::~DisplayManager() {
   // Reset the font params.
+  gfx::SetForceDisableSubpixelFontRendering(/*disable=*/false);
   gfx::SetFontRenderParamsDeviceScaleFactor(1.0f);
   on_display_zoom_modify_timeout_.Cancel();
 }
@@ -536,6 +538,17 @@ void DisplayManager::UpdateInternalDisplay(
 }
 
 void DisplayManager::RefreshFontParams() {
+  bool force_disable_subpixel_font_rendering = false;
+  if (features::DoesFormFactorControlSubpixelRendering()) {
+    force_disable_subpixel_font_rendering =
+        chromeos::GetFormFactor() != chromeos::form_factor::kClamshell;
+  }
+  if (features::IsOledScaleFactorEnabled()) {
+    force_disable_subpixel_font_rendering = true;
+  }
+  gfx::SetForceDisableSubpixelFontRendering(
+      force_disable_subpixel_font_rendering);
+
   gfx::SetFontRenderParamsDeviceScaleFactor(
       chromeos::GetRepresentativeDeviceScaleFactor(active_display_list_));
 }
@@ -1449,7 +1462,7 @@ void DisplayManager::UpdateDisplaysWith(
     // `UpdateDisplaysWith()`.
     CHECK(pending_display_changes_->removed_displays.empty());
     pending_display_changes_->removed_displays = std::move(removed_displays);
-    base::ranges::transform(
+    std::ranges::transform(
         added_display_indices,
         std::back_inserter(pending_display_changes_->added_display_ids),
         [this](size_t index) { return active_display_list_[index].id(); });
@@ -1627,8 +1640,7 @@ Display DisplayManager::GetMirroringDisplayForUnifiedDesktop(
     }
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return Display();
+  NOTREACHED();
 }
 
 int DisplayManager::GetMirroringDisplayRowIndexInUnifiedMatrix(
@@ -1655,8 +1667,8 @@ const ManagedDisplayInfo& DisplayManager::GetDisplayInfo(
 
 const Display DisplayManager::GetMirroringDisplayById(
     int64_t display_id) const {
-  auto iter = base::ranges::find(software_mirroring_display_list_, display_id,
-                                 &Display::id);
+  auto iter = std::ranges::find(software_mirroring_display_list_, display_id,
+                                &Display::id);
   return iter == software_mirroring_display_list_.end() ? GetInvalidDisplay()
                                                         : *iter;
 }
@@ -2076,7 +2088,7 @@ void DisplayManager::ResetDisplayZoom(int64_t display_id) {
     const ManagedDisplayInfo& display_info = GetDisplayInfo(kUnifiedDisplayId);
     const ManagedDisplayInfo::ManagedDisplayModeList& modes =
         display_info.display_modes();
-    auto iter = base::ranges::find_if(modes, &ManagedDisplayMode::native);
+    auto iter = std::ranges::find_if(modes, &ManagedDisplayMode::native);
     SetDisplayMode(kUnifiedDisplayId, *iter);
     return;
   }
@@ -2317,7 +2329,7 @@ void DisplayManager::CreateUnifiedDesktopDisplayInfo(
 
   // Find the default mode.
   auto default_mode_iter =
-      base::ranges::find_if(modes, &ManagedDisplayMode::native);
+      std::ranges::find_if(modes, &ManagedDisplayMode::native);
   DCHECK(default_mode_iter != modes.end());
 
   if (default_mode_iter != modes.end()) {
@@ -2393,7 +2405,7 @@ void DisplayManager::CreateUnifiedDesktopDisplayInfo(
 }
 
 Display* DisplayManager::FindDisplayForId(int64_t id) {
-  auto iter = base::ranges::find(active_display_list_, id, &Display::id);
+  auto iter = std::ranges::find(active_display_list_, id, &Display::id);
   if (iter != active_display_list_.end()) {
     return &(*iter);
   }
@@ -2593,9 +2605,8 @@ void DisplayManager::RunPendingTasksForTest() {
 
 void DisplayManager::SetTabletState(const TabletState& tablet_state) {
   tablet_state_ = tablet_state;
-  for (auto& display_observer : display_observers_) {
-    display_observer.OnDisplayTabletStateChanged(tablet_state);
-  }
+  display_observers_.Notify(&DisplayObserver::OnDisplayTabletStateChanged,
+                            tablet_state);
 }
 
 void DisplayManager::NotifyMetricsChanged(const Display& display,
@@ -2604,9 +2615,8 @@ void DisplayManager::NotifyMetricsChanged(const Display& display,
     delegate_->UpdateDisplayMetrics(display, metrics);
   }
 
-  for (auto& display_observer : display_observers_) {
-    display_observer.OnDisplayMetricsChanged(display, metrics);
-  }
+  display_observers_.Notify(&DisplayObserver::OnDisplayMetricsChanged, display,
+                            metrics);
 }
 
 void DisplayManager::NotifyDisplayAdded(const Display& display) {
@@ -2616,33 +2626,24 @@ void DisplayManager::NotifyDisplayAdded(const Display& display) {
     in_creating_display_.reset();
   }
 
-  for (auto& display_observer : display_observers_) {
-    display_observer.OnDisplayAdded(display);
-  }
+  display_observers_.Notify(&DisplayObserver::OnDisplayAdded, display);
 }
 
 void DisplayManager::NotifyWillRemoveDisplays(const Displays& displays) {
-  for (auto& display_observer : display_observers_) {
-    display_observer.OnWillRemoveDisplays(displays);
-  }
+  display_observers_.Notify(&DisplayObserver::OnWillRemoveDisplays, displays);
 }
 
 void DisplayManager::NotifyDisplaysRemoved(const Displays& displays) {
-  for (auto& display_observer : display_observers_) {
-    display_observer.OnDisplaysRemoved(displays);
-  }
+  display_observers_.Notify(&DisplayObserver::OnDisplaysRemoved, displays);
 }
 
 void DisplayManager::NotifyDisplaysInitialized() {
-  for (auto& manager_observer : manager_observers_) {
-    manager_observer.OnDisplaysInitialized();
-  }
+  manager_observers_.Notify(&DisplayManagerObserver::OnDisplaysInitialized);
 }
 
 void DisplayManager::NotifyWillProcessDisplayChanges() {
-  for (auto& manager_observer : manager_observers_) {
-    manager_observer.OnWillProcessDisplayChanges();
-  }
+  manager_observers_.Notify(
+      &DisplayManagerObserver::OnWillProcessDisplayChanges);
 }
 
 void DisplayManager::NotifyDidProcessDisplayChanges(
@@ -2652,23 +2653,18 @@ void DisplayManager::NotifyDidProcessDisplayChanges(
   CHECK(!pending_display_changes_.has_value());
   BeginEndNotifier notifier(this, /*notify_on_pending_change_only=*/true);
 
-  for (auto& manager_observer : manager_observers_) {
-    manager_observer.OnDidProcessDisplayChanges(config_change);
-  }
+  manager_observers_.Notify(&DisplayManagerObserver::OnDidProcessDisplayChanges,
+                            config_change);
 }
 
 void DisplayManager::NotifyWillApplyDisplayChanges(bool clear_focus) {
   delegate_->PreDisplayConfigurationChange(clear_focus);
-  for (auto& manager_observer : manager_observers_) {
-    manager_observer.OnWillApplyDisplayChanges();
-  }
+  manager_observers_.Notify(&DisplayManagerObserver::OnWillApplyDisplayChanges);
 }
 
 void DisplayManager::NotifyDidApplyDisplayChanges() {
   delegate_->PostDisplayConfigurationChange();
-  for (auto& manager_observer : manager_observers_) {
-    manager_observer.OnDidApplyDisplayChanges();
-  }
+  manager_observers_.Notify(&DisplayManagerObserver::OnDidApplyDisplayChanges);
 }
 
 void DisplayManager::AddDisplayObserver(DisplayObserver* display_observer) {

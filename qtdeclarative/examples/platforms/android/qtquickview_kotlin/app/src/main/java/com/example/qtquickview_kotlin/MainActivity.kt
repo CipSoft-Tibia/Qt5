@@ -10,8 +10,10 @@ import android.widget.CompoundButton
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.example.qtquickview_kotlin.databinding.ActivityMainBinding
+//! [qmlTypeImports]
 import org.qtproject.example.qtquickview.QmlModule.Main
 import org.qtproject.example.qtquickview.QmlModule.Second
+//! [qmlTypeImports]
 import org.qtproject.qt.android.QtQmlStatus
 import org.qtproject.qt.android.QtQmlStatusChangeListener
 import org.qtproject.qt.android.QtQuickView

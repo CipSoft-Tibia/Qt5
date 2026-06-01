@@ -6,6 +6,7 @@
 #include <QtTest/qsignalspy.h>
 #include <QtQml/qqmlfile.h>
 #include <QtQuick/private/qquicklistview_p.h>
+#include <QtQuick/private/qquickmousearea_p.h>
 #include <QtQuickTest/quicktest.h>
 #include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 #include <QtQuickControlsTestUtils/private/dialogstestutils_p.h>
@@ -23,6 +24,7 @@
 #include <QtQuickTemplates2/private/qquickdialogbuttonbox_p_p.h>
 #include <QtQuickTemplates2/private/qquicklabel_p.h>
 #include <QtQuickTemplates2/private/qquickoverlay_p.h>
+#include <QtQuickTemplates2/private/qquickpopup_p.h>
 #include <QtQuickControls2/qquickstyle.h>
 
 using namespace QQuickVisualTestUtils;
@@ -95,7 +97,12 @@ private slots:
     void setSchemeForSelectedFile();
     void reopenAfterHideEvent();
     void sidebarStandardPaths();
+    void popupType();
     void reentrantFolder();
+    void checkModality_data();
+    void checkModality();
+    void folderBreadcrumbBarDoesntGrow();
+    void checkFrameless();
 
 private:
     enum DelegateOrderPolicy
@@ -147,11 +154,8 @@ QStringList tst_QQuickFileDialogImpl::tempSubDirExpectedVisibleFiles(DelegateOrd
         : QStringList { tempSubFile1->fileName(), tempSubFile2->fileName(), tempSubSubDir.path() };
 }
 
-// We don't want to fail on warnings until QTBUG-98964 is fixed,
-// as we deliberately prevent deferred execution in some of the tests here,
-// which causes warnings.
 tst_QQuickFileDialogImpl::tst_QQuickFileDialogImpl()
-    : QQmlDataTest(QT_QMLTEST_DATADIR, FailOnWarningsPolicy::DoNotFailOnWarnings)
+    : QQmlDataTest(QT_QMLTEST_DATADIR, FailOnWarningsPolicy::FailOnWarnings)
 {
 }
 
@@ -318,13 +322,12 @@ bool FileDialogTestHelper::openDialog()
     if (!DialogTestHelper::openDialog())
         return false;
 
-    fileDialogListView = quickDialog->findChild<QQuickListView*>("fileDialogListView");
+    fileDialogListView = quickDialog->contentItem()->findChild<QQuickListView*>("fileDialogListView");
     return fileDialogListView != nullptr;
 }
 
 void tst_QQuickFileDialogImpl::defaults()
 {
-    QTest::failOnWarning(QRegularExpression(".*"));
     FileDialogTestHelper dialogHelper(this, "fileDialog.qml");
     QVERIFY2(dialogHelper.isWindowInitialized(), dialogHelper.failureMessage());
     QVERIFY(dialogHelper.waitForWindowActive());
@@ -662,12 +665,14 @@ void tst_QQuickFileDialogImpl::chooseFileAndThenFolderViaTextEdit()
     VERIFY_FILE_SELECTED_AND_FOCUSED(QUrl::fromLocalFile(tempDirCanonicalPath),
         QUrl::fromLocalFile(tempSubDirCanonicalPath), 0);
 
+    auto *breadcrumbBar = dialogHelper.quickDialog->findChild<QQuickFolderBreadcrumbBar*>();
+    QVERIFY(breadcrumbBar);
 #if QT_CONFIG(shortcut)
     // Get the text edit visible with Ctrl+L.
     QTest::keySequence(dialogHelper.popupWindow(), editPathKeySequence);
+    QVERIFY(QQuickTest::qWaitForPolish(breadcrumbBar->textField()));
+    QTRY_VERIFY(breadcrumbBar->textField()->hasActiveFocus());
 #endif
-    auto breadcrumbBar = dialogHelper.quickDialog->findChild<QQuickFolderBreadcrumbBar*>();
-    QVERIFY(breadcrumbBar);
     QVERIFY(breadcrumbBar->textField()->isVisible());
     QCOMPARE(breadcrumbBar->textField()->text(), dialogHelper.dialog->currentFolder().toLocalFile());
     QCOMPARE(breadcrumbBar->textField()->selectedText(), breadcrumbBar->textField()->text());
@@ -696,6 +701,8 @@ void tst_QQuickFileDialogImpl::chooseFileAndThenFolderViaTextEdit()
 #if QT_CONFIG(shortcut)
     // Get the text edit visible with Ctrl+L.
     QTest::keySequence(dialogHelper.popupWindow(), editPathKeySequence);
+    QVERIFY(QQuickTest::qWaitForPolish(breadcrumbBar->textField()));
+    QTRY_VERIFY(breadcrumbBar->textField()->hasActiveFocus());
 #endif
     QVERIFY(breadcrumbBar->textField()->isVisible());
     // The text edit should show the directory that contains the last file that was selected.
@@ -738,7 +745,7 @@ void tst_QQuickFileDialogImpl::cancelDialogWhileTextEditHasFocus()
 #endif
     auto breadcrumbBar = dialogHelper.quickDialog->findChild<QQuickFolderBreadcrumbBar*>();
     QVERIFY(breadcrumbBar);
-    QVERIFY(breadcrumbBar->textField()->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(breadcrumbBar->textField());
 
     // Close it via the cancel button.
     auto dialogButtonBox = dialogHelper.quickDialog->footer()->findChild<QQuickDialogButtonBox*>();
@@ -856,7 +863,7 @@ void tst_QQuickFileDialogImpl::goUpWhileTextEditHasFocus()
 #endif
     auto breadcrumbBar = dialogHelper.quickDialog->findChild<QQuickFolderBreadcrumbBar*>();
     QVERIFY(breadcrumbBar);
-    QVERIFY(breadcrumbBar->textField()->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(breadcrumbBar->textField());
 
     // Go up a directory via the button next to the breadcrumb bar.
     auto barListView = qobject_cast<QQuickListView*>(breadcrumbBar->contentItem());
@@ -885,8 +892,8 @@ void tst_QQuickFileDialogImpl::goIntoLargeFolder()
 
     // If the screen is so tall that the contentItem is not vertically larger than the view,
     // then the test makes no sense.
-    if (QQuickTest::qIsPolishScheduled(dialogHelper.fileDialogListView))
-        QVERIFY(QQuickTest::qWaitForPolish(dialogHelper.fileDialogListView));
+    if (QQuickTest::qIsPolishScheduled(dialogHelper.popupWindow()))
+        QVERIFY(QQuickTest::qWaitForPolish(dialogHelper.popupWindow()));
     // Just to be safe, make sure it's at least twice as big.
     if (dialogHelper.fileDialogListView->contentItem()->height() < dialogHelper.fileDialogListView->height() * 2) {
         QSKIP(qPrintable(QString::fromLatin1("Expected height of dialogHelper.fileDialogListView's contentItem (%1)" \
@@ -1564,7 +1571,7 @@ void tst_QQuickFileDialogImpl::selectNewFileViaTextField()
                 fileNameTextField->mapToScene({ fileNameTextField->width() / 2, fileNameTextField->height() / 2 }).toPoint();
 
         QTest::mouseClick(dialogHelper.popupWindow(), Qt::LeftButton, Qt::NoModifier, textFieldCenterPos);
-        QTRY_VERIFY(fileNameTextField->hasActiveFocus());
+        QTRY_VERIFY_ACTIVE_FOCUS(fileNameTextField);
         QCOMPARE(acceptButton->isEnabled(), false);
 
         const QByteArray newFileName("foo.txt");
@@ -1578,7 +1585,7 @@ void tst_QQuickFileDialogImpl::selectNewFileViaTextField()
         QTRY_COMPARE(fileNameTextField->text(), newFileName);
         QCOMPARE(dialogHelper.dialog->selectedFile().fileName(), newFileName);
 
-        QVERIFY(fileNameTextField->hasActiveFocus());
+        QVERIFY_ACTIVE_FOCUS(fileNameTextField);
         for (int i = 0; i < newFileName.size(); i++)
             QTest::keyClick(dialogHelper.popupWindow(), Qt::Key_Backspace);
         QCOMPARE(acceptButton->isEnabled(), false);
@@ -1612,6 +1619,9 @@ void tst_QQuickFileDialogImpl::selectExistingFileShouldWarnUserWhenFileModeEqual
 
     QTRY_VERIFY(confirmationDialog->isOpened());
     QVERIFY(dialogHelper.dialog->isVisible());
+
+    QVERIFY(QQuickTest::qWaitForPolish(confirmationDialog->popupItem()));
+    QTRY_COMPARE(dialogHelper.popupWindow()->activeFocusItem(), confirmationButtonBox->standardButton(QPlatformDialogHelper::Yes));
 
     // Yes button should have focus by default
     QTest::keyClick(dialogHelper.popupWindow(), Qt::Key_Space, Qt::NoModifier);
@@ -1742,6 +1752,7 @@ void tst_QQuickFileDialogImpl::setSchemeForSelectedFile()
             fileNameTextField->mapToScene({ fileNameTextField->width() / 2, fileNameTextField->height() / 2 }).toPoint();
     QTest::mouseClick(dialogHelper.popupWindow(), Qt::LeftButton, Qt::NoModifier, textFieldCenterPos);
 
+    QTRY_COMPARE(dialogHelper.popupWindow()->activeFocusItem(), fileNameTextField);
     const QByteArray newFileName("helloworld.txt");
     for (const auto &c : newFileName)
         QTest::keyClick(dialogHelper.popupWindow(), c);
@@ -1805,6 +1816,42 @@ void tst_QQuickFileDialogImpl::sidebarStandardPaths()
     }
 }
 
+void tst_QQuickFileDialogImpl::popupType()
+{
+    FileDialogTestHelper dialogHelper(this, "fileDialog.qml");
+
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    // Window should be the default value
+    QCOMPARE(dialogHelper.quickDialog->popupType(), QQuickPopup::Window);
+    QCOMPARE(dialogHelper.dialog->popupType(), QQuickPopup::Window);
+
+    QVERIFY(dialogHelper.popupWindow());
+    QCOMPARE_NE(dialogHelper.popupWindow(), dialogHelper.window());
+
+    dialogHelper.dialog->close();
+    QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
+    dialogHelper.dialog->setPopupType(QQuickPopup::Item);
+    QVERIFY(dialogHelper.openDialog());
+    QQuickTest::qWaitForPolish(dialogHelper.window());
+    QCOMPARE(dialogHelper.quickDialog->popupType(), QQuickPopup::Item);
+    QCOMPARE(dialogHelper.quickDialog->window(), dialogHelper.window());
+
+    dialogHelper.dialog->close();
+    QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
+
+    dialogHelper.dialog->setPopupType(QQuickPopup::Window);
+    QVERIFY(dialogHelper.openDialog());
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    QVERIFY(dialogHelper.popupWindow());
+    QCOMPARE_NE(dialogHelper.popupWindow(), dialogHelper.window());
+    QCOMPARE(dialogHelper.quickDialog->popupType(), QQuickPopup::Window);
+
+    dialogHelper.dialog->close();
+}
+
 // We check that if the folder is reset from the qml
 // the view is correctly updated. We only check the
 // count to be correct.
@@ -1853,6 +1900,98 @@ void tst_QQuickFileDialogImpl::reentrantFolder()
     QVERIFY(doubleClickButton(delegate));
     QTRY_COMPARE(dialogHelper.quickDialog->currentFolder(), QUrl::fromLocalFile(baseDir));
     QTRY_COMPARE(dialogHelper.fileDialogListView->count(), 2); // { NotReachable1, NotReachable2 }
+}
+
+void tst_QQuickFileDialogImpl::checkModality_data()
+{
+    QTest::addColumn<Qt::WindowModality>("modality");
+    QTest::addColumn<QFileDialogOptions::FileDialogOption>("options");
+    QTest::addColumn<int>("expectedRootWindowChildCount");
+    QTest::addColumn<int>("expectedChildWindowClickCount");
+
+    QTest::newRow("nonModal") << Qt::NonModal << QFileDialogOptions::DontUseNativeDialog << 1 << 1;
+    QTest::newRow("windowModal") << Qt::WindowModal << QFileDialogOptions::DontUseNativeDialog << 0 << 1;
+    // Verify application modal case only for the platform which supports multiple windows
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::MultipleWindows))
+        QTest::newRow("applicationModal") << Qt::ApplicationModal << QFileDialogOptions::DontUseNativeDialog << 0 << 0;
+}
+
+void tst_QQuickFileDialogImpl::checkModality()
+{
+    QFETCH(Qt::WindowModality, modality);
+    QFETCH(QFileDialogOptions::FileDialogOption, options);
+    QFETCH(int, expectedRootWindowChildCount);
+    QFETCH(int, expectedChildWindowClickCount);
+
+    FileDialogTestHelper dialogHelper(this, "checkModality.qml");
+
+    dialogHelper.dialog->setModality(modality);
+    QCOMPARE(dialogHelper.dialog->modality(), modality);
+
+    dialogHelper.dialog->setOptions(options);
+    QCOMPARE(dialogHelper.dialog->options(), options);
+
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    auto *childWindow = dialogHelper.window()->property("childWindow").value<QQuickWindow *>();
+    QVERIFY(childWindow);
+
+    // Setting the child window transient parent as root window won't allow it to receive mouse
+    // events, causing WindowModal case not to be tested. Thus, resetting the transient parent.
+    if (modality == Qt::WindowModal)
+        childWindow->setTransientParent(nullptr);
+
+    const auto *rootMouseArea = dialogHelper.window()->property("rootMArea").value<QQuickMouseArea *>();
+    QVERIFY(rootMouseArea);
+    QSignalSpy rmaMouseSpy(rootMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+    QCOMPARE(rmaMouseSpy.size(), expectedRootWindowChildCount);
+
+    const auto *childMouseArea = dialogHelper.window()->property("childMArea").value<QQuickMouseArea *>();
+    QVERIFY(childMouseArea);
+    QSignalSpy cmaMouseSpy(childMouseArea, &QQuickMouseArea::clicked);
+    QTest::mouseClick(childWindow, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+    QCOMPARE(cmaMouseSpy.size(), expectedChildWindowClickCount);
+}
+
+void tst_QQuickFileDialogImpl::folderBreadcrumbBarDoesntGrow()
+{
+    qputenv("QT_QUICK_DIALOGS_SHOW_DIRS_FIRST", "1");
+    FileDialogTestHelper dialogHelper(this, "fileDialog.qml");
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    auto *folderBreadcrumbBar = dialogHelper.quickDialog->header()->findChild<QQuickFolderBreadcrumbBar *>();
+    QVERIFY(folderBreadcrumbBar);
+
+    const qreal initialFolderBreadcrumbBarWidth = folderBreadcrumbBar->width();
+
+    // Select the "sub-dir" delegate by double-clicking.
+    QQuickFileDialogDelegate *subDirDelegate = nullptr;
+    QTRY_VERIFY(findViewDelegateItem(dialogHelper.fileDialogListView, 0, subDirDelegate));
+    COMPARE_URL(subDirDelegate->file(), QUrl::fromLocalFile(tempSubDirCanonicalPath));
+    QVERIFY(doubleClickButton(subDirDelegate));
+
+    // Select the "sub-sub-dir" delegate by double-clicking.
+    QQuickFileDialogDelegate *subSubDirDelegate = nullptr;
+    QTRY_VERIFY(findViewDelegateItem(dialogHelper.fileDialogListView, 0, subSubDirDelegate));
+    COMPARE_URL(subSubDirDelegate->file(), QUrl::fromLocalFile(tempSubSubDir.canonicalPath()));
+    QVERIFY(doubleClickButton(subSubDirDelegate));
+
+    QCOMPARE(folderBreadcrumbBar->width(), initialFolderBreadcrumbBarWidth);
+}
+
+void tst_QQuickFileDialogImpl::checkFrameless()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    QSKIP("Frameless window is not supported on Android/IOS");
+#endif
+    FileDialogTestHelper dialogHelper(this, "fileDialogFrameless.qml");
+    OPEN_QUICK_DIALOG();
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
+    QVERIFY(dialogHelper.popupWindow()->flags().testFlag(Qt::FramelessWindowHint));
 }
 
 QTEST_MAIN(tst_QQuickFileDialogImpl)

@@ -27,11 +27,13 @@ void MojoVideoEncodeAcceleratorService::Create(
     CreateAndInitializeVideoEncodeAcceleratorCallback create_vea_callback,
     const gpu::GpuPreferences& gpu_preferences,
     const gpu::GpuDriverBugWorkarounds& gpu_workarounds,
-    const gpu::GPUInfo::GPUDevice& gpu_device) {
+    const gpu::GPUInfo::GPUDevice& gpu_device,
+    GetCommandBufferHelperCB get_command_buffer_helper_cb,
+    scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner) {
   mojo::MakeSelfOwnedReceiver(
       std::make_unique<MojoVideoEncodeAcceleratorService>(
           std::move(create_vea_callback), gpu_preferences, gpu_workarounds,
-          gpu_device),
+          gpu_device, get_command_buffer_helper_cb, gpu_task_runner),
       std::move(receiver));
 }
 
@@ -39,11 +41,15 @@ MojoVideoEncodeAcceleratorService::MojoVideoEncodeAcceleratorService(
     CreateAndInitializeVideoEncodeAcceleratorCallback create_vea_callback,
     const gpu::GpuPreferences& gpu_preferences,
     const gpu::GpuDriverBugWorkarounds& gpu_workarounds,
-    const gpu::GPUInfo::GPUDevice& gpu_device)
+    const gpu::GPUInfo::GPUDevice& gpu_device,
+    GetCommandBufferHelperCB get_command_buffer_helper_cb,
+    scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner)
     : create_vea_callback_(std::move(create_vea_callback)),
       gpu_preferences_(gpu_preferences),
       gpu_workarounds_(gpu_workarounds),
       gpu_device_(gpu_device),
+      get_command_buffer_helper_cb_(get_command_buffer_helper_cb),
+      gpu_task_runner_(gpu_task_runner),
       output_buffer_size_(0),
       supports_frame_size_change(false),
       timestamps_(128) {
@@ -63,10 +69,6 @@ void MojoVideoEncodeAcceleratorService::Initialize(
     InitializeCallback success_callback) {
   DVLOG(1) << __func__ << " " << config.AsHumanReadableString();
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(config.input_format == PIXEL_FORMAT_I420 ||
-         config.input_format == PIXEL_FORMAT_NV12)
-      << "Only I420 or NV12 format supported, got "
-      << VideoPixelFormatToString(config.input_format);
   TRACE_EVENT1("media", "MojoVideoEncodeAcceleratorService::Initialize",
                "config", config.AsHumanReadableString());
 
@@ -125,7 +127,8 @@ void MojoVideoEncodeAcceleratorService::Initialize(
 
   encoder_ = std::move(create_vea_callback_)
                  .Run(config, this, gpu_preferences_, gpu_workarounds_,
-                      gpu_device_, media_log_->Clone());
+                      gpu_device_, media_log_->Clone(),
+                      get_command_buffer_helper_cb_, gpu_task_runner_);
   if (!encoder_) {
     MEDIA_LOG(ERROR, media_log_.get())
         << __func__ << " Error creating or initializing VEA";
@@ -153,7 +156,8 @@ void MojoVideoEncodeAcceleratorService::Encode(
   }
 
   if (frame->coded_size() != input_coded_size_ &&
-      frame->storage_type() != media::VideoFrame::STORAGE_GPU_MEMORY_BUFFER) {
+      frame->storage_type() != media::VideoFrame::STORAGE_GPU_MEMORY_BUFFER &&
+      !frame->HasSharedImage()) {
     NotifyErrorStatus({EncoderStatus::Codes::kInvalidInputFrame,
                        "wrong input coded size, expected " +
                            input_coded_size_.ToString() + ", got " +

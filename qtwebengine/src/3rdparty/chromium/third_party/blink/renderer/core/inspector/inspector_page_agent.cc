@@ -28,11 +28,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/core/inspector/inspector_page_agent.h"
 
 #include <memory>
@@ -280,20 +275,18 @@ static std::unique_ptr<TextResourceDecoder> CreateResourceTextDecoder(
         TextResourceDecoderOptions::kPlainTextContent,
         WTF::TextEncoding("ISO-8859-1")));
   }
-  return std::unique_ptr<TextResourceDecoder>();
+  return nullptr;
 }
 
 static void MaybeEncodeTextContent(const String& text_content,
-                                   const char* buffer_data,
-                                   wtf_size_t buffer_size,
+                                   base::span<const uint8_t> buffer,
                                    String* result,
                                    bool* base64_encoded) {
   if (!text_content.IsNull()) {
     *result = text_content;
     *base64_encoded = false;
-  } else if (buffer_data) {
-    *result =
-        Base64Encode(base::as_bytes(base::make_span(buffer_data, buffer_size)));
+  } else if (buffer.data()) {
+    *result = Base64Encode(buffer);
     *base64_encoded = true;
   } else {
     *result = "";
@@ -306,15 +299,13 @@ static void MaybeEncodeTextContent(const String& text_content,
                                    String* result,
                                    bool* base64_encoded) {
   if (!buffer) {
-    return MaybeEncodeTextContent(text_content, nullptr, 0, result,
-                                  base64_encoded);
+    const base::span<const uint8_t> empty;
+    return MaybeEncodeTextContent(text_content, empty, result, base64_encoded);
   }
 
   const SegmentedBuffer::DeprecatedFlatData flat_buffer(buffer.get());
-  return MaybeEncodeTextContent(
-      text_content, flat_buffer.data(),
-      base::checked_cast<wtf_size_t>(flat_buffer.size()), result,
-      base64_encoded);
+  return MaybeEncodeTextContent(text_content, base::as_byte_span(flat_buffer),
+                                result, base64_encoded);
 }
 
 // static
@@ -340,25 +331,27 @@ bool InspectorPageAgent::SegmentedBufferContent(
   WTF::TextEncoding encoding(text_encoding_name);
 
   const SegmentedBuffer::DeprecatedFlatData flat_buffer(buffer);
+  const auto byte_buffer = base::as_byte_span(flat_buffer);
   if (decoder) {
-    text_content = decoder->Decode(flat_buffer);
+    text_content = decoder->Decode(byte_buffer);
     text_content = text_content + decoder->Flush();
   } else if (encoding.IsValid()) {
-    text_content = encoding.Decode(
-        flat_buffer.data(), base::checked_cast<wtf_size_t>(flat_buffer.size()));
+    text_content = encoding.Decode(byte_buffer);
   }
 
-  MaybeEncodeTextContent(text_content, flat_buffer.data(),
-                         base::checked_cast<wtf_size_t>(flat_buffer.size()),
-                         result, base64_encoded);
+  MaybeEncodeTextContent(text_content, byte_buffer, result, base64_encoded);
   return true;
 }
 
 // static
 bool InspectorPageAgent::CachedResourceContent(const Resource* cached_resource,
                                                String* result,
-                                               bool* base64_encoded) {
+                                               bool* base64_encoded,
+                                               bool* was_cached) {
   bool has_zero_size;
+  if (cached_resource && was_cached) {
+    *was_cached = cached_resource->GetResponse().WasCached();
+  }
   if (!PrepareResourceBuffer(cached_resource, &has_zero_size))
     return false;
 
@@ -590,19 +583,21 @@ protocol::Response InspectorPageAgent::disable() {
 
 protocol::Response InspectorPageAgent::addScriptToEvaluateOnNewDocument(
     const String& source,
-    Maybe<String> world_name,
-    Maybe<bool> include_command_line_api,
-    Maybe<bool> runImmediately,
+    std::optional<String> world_name,
+    std::optional<bool> include_command_line_api,
+    std::optional<bool> runImmediately,
     String* identifier) {
-  Vector<WTF::String> keys = scripts_to_evaluate_on_load_.Keys();
-  auto result = std::max_element(
-      keys.begin(), keys.end(), [](const WTF::String& a, const WTF::String& b) {
-        return Decimal::FromString(a) < Decimal::FromString(b);
-      });
-  if (result == keys.end()) {
-    *identifier = String::Number(1);
-  } else {
-    *identifier = String::Number(Decimal::FromString(*result).ToDouble() + 1);
+  {
+    const auto& keys = scripts_to_evaluate_on_load_.Keys();
+    auto result = std::max_element(
+        keys.begin(), keys.end(), [](const String& a, const String& b) {
+          return Decimal::FromString(a) < Decimal::FromString(b);
+        });
+    if (result == keys.end()) {
+      *identifier = String::Number(1);
+    } else {
+      *identifier = String::Number(Decimal::FromString(*result).ToDouble() + 1);
+    }
   }
 
   scripts_to_evaluate_on_load_.Set(*identifier, source);
@@ -636,9 +631,8 @@ protocol::Response InspectorPageAgent::removeScriptToEvaluateOnNewDocument(
 protocol::Response InspectorPageAgent::addScriptToEvaluateOnLoad(
     const String& source,
     String* identifier) {
-  return addScriptToEvaluateOnNewDocument(source, Maybe<String>(""),
-                                          Maybe<bool>(false),
-                                          Maybe<bool>(false), identifier);
+  return addScriptToEvaluateOnNewDocument(source, std::optional<String>(""),
+                                          false, false, identifier);
 }
 
 protocol::Response InspectorPageAgent::removeScriptToEvaluateOnLoad(
@@ -700,9 +694,9 @@ protocol::Response InspectorPageAgent::setAdBlockingEnabled(bool enable) {
 }
 
 protocol::Response InspectorPageAgent::reload(
-    Maybe<bool> optional_bypass_cache,
-    Maybe<String> optional_script_to_evaluate_on_load,
-    Maybe<String> loader_id) {
+    std::optional<bool> optional_bypass_cache,
+    std::optional<String> optional_script_to_evaluate_on_load,
+    std::optional<String> loader_id) {
   if (loader_id.has_value() && inspected_frames_->Root()
                                        ->Loader()
                                        .GetDocumentLoader()
@@ -774,11 +768,17 @@ void InspectorPageAgent::GetResourceContentAfterResourcesContentLoaded(
     return;
   }
   String content;
+  bool was_cached;
   bool base64_encoded;
   if (InspectorPageAgent::CachedResourceContent(
           CachedResource(frame, KURL(url), inspector_resource_content_loader_),
-          &content, &base64_encoded)) {
-    callback->sendSuccess(content, base64_encoded);
+          &content, &base64_encoded, &was_cached)) {
+    if (content.empty() && !was_cached) {
+      callback->sendFailure(protocol::Response::ServerError(
+          "Content unavailable. Resource was not cached"));
+    } else {
+      callback->sendSuccess(content, base64_encoded);
+    }
   } else {
     callback->sendFailure(
         protocol::Response::ServerError("No resource with given URL found"));
@@ -803,7 +803,7 @@ void InspectorPageAgent::getResourceContent(
 
 protocol::Response InspectorPageAgent::getAdScriptId(
     const String& frame_id,
-    Maybe<protocol::Page::AdScriptId>* ad_script_id) {
+    std::unique_ptr<protocol::Page::AdScriptId>* ad_script_id) {
   if (ad_script_identifiers_.Contains(frame_id)) {
     AdScriptIdentifier* ad_script_identifier =
         ad_script_identifiers_.at(frame_id);
@@ -833,12 +833,19 @@ void InspectorPageAgent::SearchContentAfterResourcesContentLoaded(
     return;
   }
   String content;
+  bool was_cached;
   bool base64_encoded;
   if (!InspectorPageAgent::CachedResourceContent(
           CachedResource(frame, KURL(url), inspector_resource_content_loader_),
-          &content, &base64_encoded)) {
+          &content, &base64_encoded, &was_cached)) {
     callback->sendFailure(
         protocol::Response::ServerError("No resource with given URL found"));
+    return;
+  }
+
+  if (content.empty() && !was_cached) {
+    callback->sendFailure(protocol::Response::ServerError(
+        "Content unavailable. Resource was not cached"));
     return;
   }
 
@@ -855,8 +862,8 @@ void InspectorPageAgent::searchInResource(
     const String& frame_id,
     const String& url,
     const String& query,
-    Maybe<bool> optional_case_sensitive,
-    Maybe<bool> optional_is_regex,
+    std::optional<bool> optional_case_sensitive,
+    std::optional<bool> optional_is_regex,
     std::unique_ptr<SearchInResourceCallback> callback) {
   if (!enabled_.Get()) {
     callback->sendFailure(
@@ -936,7 +943,7 @@ protocol::Response InspectorPageAgent::getPermissionsPolicyState(
   for (const auto& entry :
        blink::GetDefaultFeatureNameMap(is_isolated_context)) {
     const String& feature_name = entry.key;
-    const mojom::blink::PermissionsPolicyFeature feature = entry.value;
+    const network::mojom::PermissionsPolicyFeature feature = entry.value;
 
     if (blink::DisabledByOriginTrial(feature_name, frame->DomWindow()))
       continue;
@@ -1043,13 +1050,12 @@ void InspectorPageAgent::DidCreateMainWorldContext(LocalFrame* frame) {
                             request.grant_universal_access,
                             std::move(request.callback));
   }
-  Vector<WTF::String> keys = scripts_to_evaluate_on_load_.Keys();
-  std::sort(keys.begin(), keys.end(),
-            [](const WTF::String& a, const WTF::String& b) {
-              return Decimal::FromString(a) < Decimal::FromString(b);
-            });
+  Vector<String> keys(scripts_to_evaluate_on_load_.Keys());
+  std::sort(keys.begin(), keys.end(), [](const String& a, const String& b) {
+    return Decimal::FromString(a) < Decimal::FromString(b);
+  });
 
-  for (const WTF::String& key : keys) {
+  for (const String& key : keys) {
     EvaluateScriptOnNewDocument(*frame, key);
   }
 
@@ -1301,8 +1307,9 @@ protocol::Page::CrossOriginIsolatedContextType
 CreateProtocolCrossOriginIsolatedContextType(ExecutionContext* context) {
   if (context->CrossOriginIsolatedCapability()) {
     return protocol::Page::CrossOriginIsolatedContextTypeEnum::Isolated;
-  } else if (context->IsFeatureEnabled(mojom::blink::PermissionsPolicyFeature::
-                                           kCrossOriginIsolated)) {
+  } else if (context->IsFeatureEnabled(
+                 network::mojom::PermissionsPolicyFeature::
+                     kCrossOriginIsolated)) {
     return protocol::Page::CrossOriginIsolatedContextTypeEnum::NotIsolated;
   }
   return protocol::Page::CrossOriginIsolatedContextTypeEnum::
@@ -1570,7 +1577,7 @@ InspectorPageAgent::BuildObjectForResourceTree(LocalFrame* frame) {
             .setContentSize(cached_resource->GetResponse().DecodedBodyLength())
             .build();
     std::optional<base::Time> last_modified =
-        cached_resource->GetResponse().LastModified();
+        cached_resource->GetResponse().LastModified(*frame->GetDocument());
     if (last_modified) {
       resource_object->setLastModified(
           last_modified.value().InSecondsFSinceUnixEpoch());
@@ -1606,11 +1613,11 @@ InspectorPageAgent::BuildObjectForResourceTree(LocalFrame* frame) {
 }
 
 protocol::Response InspectorPageAgent::startScreencast(
-    Maybe<String> format,
-    Maybe<int> quality,
-    Maybe<int> max_width,
-    Maybe<int> max_height,
-    Maybe<int> every_nth_frame) {
+    std::optional<String> format,
+    std::optional<int> quality,
+    std::optional<int> max_width,
+    std::optional<int> max_height,
+    std::optional<int> every_nth_frame) {
   screencast_enabled_.Set(true);
   return protocol::Response::Success();
 }
@@ -1720,8 +1727,8 @@ protocol::Response InspectorPageAgent::getLayoutMetrics(
 
 void InspectorPageAgent::createIsolatedWorld(
     const String& frame_id,
-    Maybe<String> world_name,
-    Maybe<bool> grant_universal_access,
+    std::optional<String> world_name,
+    std::optional<bool> grant_universal_access,
     std::unique_ptr<CreateIsolatedWorldCallback> callback) {
   LocalFrame* frame =
       IdentifiersFactory::FrameById(inspected_frames_, frame_id);
@@ -1816,7 +1823,8 @@ protocol::Response InspectorPageAgent::setFontFamilies(
 
 protocol::Response InspectorPageAgent::setFontFamilies(
     std::unique_ptr<protocol::Page::FontFamilies> font_families,
-    Maybe<protocol::Array<protocol::Page::ScriptFontFamilies>> for_scripts) {
+    std::unique_ptr<protocol::Array<protocol::Page::ScriptFontFamilies>>
+        for_scripts) {
   LocalFrame* frame = inspected_frames_->Root();
   auto* settings = frame->GetSettings();
   if (!settings) {
@@ -1828,11 +1836,11 @@ protocol::Response InspectorPageAgent::setFontFamilies(
         "Font families can only be set once");
   }
 
-  if (!for_scripts.has_value()) {
+  if (!for_scripts) {
     for_scripts =
         std::make_unique<protocol::Array<protocol::Page::ScriptFontFamilies>>();
   }
-  auto& script_fonts = for_scripts.value();
+  auto& script_fonts = *for_scripts;
   script_fonts.push_back(protocol::Page::ScriptFontFamilies::create()
                              .setScript(blink::web_pref::kCommonScript)
                              .setFontFamilies(std::move(font_families))
@@ -1936,7 +1944,7 @@ void InspectorPageAgent::FileChooserOpened(LocalFrame* frame,
       IdentifiersFactory::FrameId(frame),
       multiple ? protocol::Page::FileChooserOpened::ModeEnum::SelectMultiple
                : protocol::Page::FileChooserOpened::ModeEnum::SelectSingle,
-      element ? Maybe<int>(element->GetDomNodeId()) : Maybe<int>());
+      element ? std::optional<int>(element->GetDomNodeId()) : std::nullopt);
 }
 
 protocol::Response InspectorPageAgent::produceCompilationCache(
@@ -1978,8 +1986,9 @@ protocol::Response InspectorPageAgent::setInterceptFileChooserDialog(
   return protocol::Response::Success();
 }
 
-protocol::Response InspectorPageAgent::generateTestReport(const String& message,
-                                                          Maybe<String> group) {
+protocol::Response InspectorPageAgent::generateTestReport(
+    const String& message,
+    std::optional<String> group) {
   LocalDOMWindow* window = inspected_frames_->Root()->DomWindow();
 
   // Construct the test report.

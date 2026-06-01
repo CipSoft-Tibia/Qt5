@@ -4,7 +4,6 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: smoke
@@ -74,7 +73,7 @@ ParticleSystem3D {
         instancing: particleRed2.instanceTable
         scale.y: .1
         receivesShadows: false
-        materials: smokeMat
+        materials: [smokeMat]
         scale.z: .1
         receivesReflections: true
     }
@@ -94,7 +93,7 @@ ParticleSystem3D {
         globalAmount.z: 5
         system: smoke
         globalPaceStart.y: 0.1
-        particles: particleRed2
+        particles: [particleRed2]
         uniquePace.z: 0.1
         uniquePace.y: 0.1
         globalPaceStart.z: 0.1

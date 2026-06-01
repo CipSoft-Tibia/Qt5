@@ -142,7 +142,7 @@ ShellSurface::OcclusionObserver::OcclusionObserver(ShellSurface* shell_surface,
   window_observation_.Observe(window);
 }
 
-ShellSurface::OcclusionObserver::~OcclusionObserver() {}
+ShellSurface::OcclusionObserver::~OcclusionObserver() = default;
 
 void ShellSurface::OcclusionObserver::OnWindowDestroying(aura::Window* window) {
   window_observation_.Reset();
@@ -601,9 +601,7 @@ gfx::Point ShellSurface::GetSurfaceOrigin() const {
                         client_bounds.height() - visible_bounds.height()) -
              visible_bounds.OffsetFromOrigin();
     default:
-      NOTREACHED_IN_MIGRATION()
-          << "Unsupported component:" << resize_component_;
-      return gfx::Point();
+      NOTREACHED() << "Unsupported component:" << resize_component_;
   }
 }
 
@@ -621,7 +619,7 @@ void ShellSurface::OnDidProcessDisplayChanges(
 
   // Keep client surface coordinates in sync with the server when display
   // layouts change.
-  const bool should_update_window_position = base::ranges::any_of(
+  const bool should_update_window_position = std::ranges::any_of(
       configuration_change.display_metrics_changes,
       [id = output_display_id()](
           const DisplayManagerObserver::DisplayMetricsChange& change) {

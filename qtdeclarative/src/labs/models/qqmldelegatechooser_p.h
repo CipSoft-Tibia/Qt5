@@ -33,6 +33,14 @@ struct Q_LABSQMLMODELS_EXPORT QQmlDelegateChooserForeign
     QML_ADDED_IN_VERSION(1, 0)
 };
 
+struct Q_LABSQMLMODELS_EXPORT QQmlDelegateChoiceForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QQmlDelegateChoice)
+    QML_NAMED_ELEMENT(DelegateChoice)
+    QML_ADDED_IN_VERSION(1, 0)
+};
+
 QT_END_NAMESPACE
 
 #endif // QQMLDELEGATECHOOSER_P_H

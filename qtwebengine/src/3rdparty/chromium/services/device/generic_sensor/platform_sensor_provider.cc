@@ -114,7 +114,7 @@ scoped_refptr<PlatformSensor> PlatformSensorProvider::GetSensor(
 
   auto it = sensor_map_.find(type);
   if (it != sensor_map_.end()) {
-    return it->second;
+    return it->second.get();
   }
   return nullptr;
 }
@@ -214,11 +214,12 @@ PlatformSensorProvider::GetSensorReadingSharedBufferForType(
   }
 
   size_t offset = GetSensorReadingSharedBufferOffset(type);
-  CHECK(offset % sizeof(SensorReadingSharedBuffer) == 0u);
+  CHECK(offset % sizeof(SensorReadingSharedBuffer) == 0);
 
   SensorReadingSharedBuffer& buffer =
       buffers[offset / sizeof(SensorReadingSharedBuffer)];
-  std::ranges::fill(base::byte_span_from_ref(buffer), 0u);
+  std::ranges::fill(base::byte_span_from_ref(base::allow_nonunique_obj, buffer),
+                    0);
   return &buffer;
 }
 

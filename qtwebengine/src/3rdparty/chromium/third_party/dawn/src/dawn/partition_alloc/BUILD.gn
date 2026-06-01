@@ -17,7 +17,7 @@ if (defined(dawn_partition_alloc_dir)) {
 
   # PartitionAlloc do not fully support MSVC cl.exe compiler. The condition
   # is_clang || !is_win is the one used by partition_alloc.
-#  is_clang_or_gcc = is_clang || is_gcc || is_mingw
+#  is_clang_or_gcc = is_clang || !is_win || is_mingw
 #  assert(is_clang_or_gcc, "PartitionAlloc is not fully supported on MSVC")
 
   group("partition_alloc") {

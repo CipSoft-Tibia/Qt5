@@ -13,13 +13,11 @@ import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
 import {type NetworkNode, NetworkRequestNode} from './NetworkDataGridNode.js';
-import {type NetworkLogView} from './NetworkLogView.js';
+import type {NetworkLogView} from './NetworkLogView.js';
 import {NetworkManageCustomHeadersView} from './NetworkManageCustomHeadersView.js';
-import {
-  type NetworkTimeCalculator,
-  type NetworkTransferDurationCalculator,
-  type NetworkTransferTimeCalculator,
-} from './NetworkTimeCalculator.js';
+import type {
+  NetworkTimeCalculator, NetworkTransferDurationCalculator, NetworkTransferTimeCalculator} from
+  './NetworkTimeCalculator.js';
 import {NetworkWaterfallColumn} from './NetworkWaterfallColumn.js';
 import {RequestInitiatorView} from './RequestInitiatorView.js';
 
@@ -312,10 +310,8 @@ export class NetworkLogViewColumns {
     this.dataGridScroller.addEventListener('touchstart', this.onTouchStart.bind(this));
     this.dataGridScroller.addEventListener('touchmove', this.onTouchMove.bind(this));
     this.dataGridScroller.addEventListener('touchend', this.onTouchEnd.bind(this));
-    this.waterfallScroller =
-        (this.waterfallColumn.contentElement.createChild('div', 'network-waterfall-v-scroll') as HTMLDivElement);
-    this.waterfallScrollerContent =
-        (this.waterfallScroller.createChild('div', 'network-waterfall-v-scroll-content') as HTMLDivElement);
+    this.waterfallScroller = this.waterfallColumn.contentElement.createChild('div', 'network-waterfall-v-scroll');
+    this.waterfallScrollerContent = this.waterfallScroller.createChild('div', 'network-waterfall-v-scroll-content');
 
     this.dataGridInternal.addEventListener(DataGrid.DataGrid.Events.PADDING_CHANGED, () => {
       this.waterfallScrollerWidthIsStale = true;
@@ -415,8 +411,7 @@ export class NetworkLogViewColumns {
   }
 
   private createWaterfallHeader(): void {
-    this.waterfallHeaderElement =
-        (this.waterfallColumn.contentElement.createChild('div', 'network-waterfall-header') as HTMLElement);
+    this.waterfallHeaderElement = this.waterfallColumn.contentElement.createChild('div', 'network-waterfall-header');
     this.waterfallHeaderElement.setAttribute('jslog', `${VisualLogging.tableHeader('waterfall').track({click: true})}`);
     this.waterfallHeaderElement.addEventListener('click', waterfallHeaderClicked.bind(this));
     this.waterfallHeaderElement.addEventListener('contextmenu', event => {
@@ -849,10 +844,10 @@ export class NetworkLogViewColumns {
     let color = 'transparent';
     switch (className) {
       case 'network-dcl-divider':
-        color = '#0867CB';
+        color = ThemeSupport.ThemeSupport.instance().getComputedValue('--sys-color-blue');
         break;
       case 'network-load-divider':
-        color = '#B31412';
+        color = ThemeSupport.ThemeSupport.instance().getComputedValue('--sys-color-error');
         break;
       default:
         return;

@@ -26,13 +26,13 @@ namespace performance_manager {
 
 class PerformanceManagerImplTest : public testing::Test {
  public:
-  PerformanceManagerImplTest() {}
+  PerformanceManagerImplTest() = default;
 
   PerformanceManagerImplTest(const PerformanceManagerImplTest&) = delete;
   PerformanceManagerImplTest& operator=(const PerformanceManagerImplTest&) =
       delete;
 
-  ~PerformanceManagerImplTest() override {}
+  ~PerformanceManagerImplTest() override = default;
 
   void SetUp() override {
     EXPECT_FALSE(PerformanceManagerImpl::IsAvailable());
@@ -164,6 +164,20 @@ TEST_F(PerformanceManagerImplTest, BatchDeleteNodes) {
   nodes.push_back(std::move(child2_frame));
 
   PerformanceManagerImpl::BatchDeleteNodes(std::move(nodes));
+}
+
+TEST_F(PerformanceManagerImplTest, GetGraphImpl) {
+  // Create a page node for something to target.
+  std::unique_ptr<PageNodeImpl> page_node =
+      PerformanceManagerImpl::CreatePageNode(nullptr, std::string(), GURL(),
+                                             PagePropertyFlags{},
+                                             base::TimeTicks::Now());
+
+  ASSERT_TRUE(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
+  GraphImpl* graph = PerformanceManagerImpl::GetGraphImpl();
+  EXPECT_EQ(page_node.get()->graph(), graph);
+
+  PerformanceManagerImpl::DeleteNode(std::move(page_node));
 }
 
 TEST_F(PerformanceManagerImplTest, CallOnGraphImpl) {

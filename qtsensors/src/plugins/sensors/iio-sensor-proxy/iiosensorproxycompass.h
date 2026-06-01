@@ -9,7 +9,11 @@
 
 #include <qcompass.h>
 
+namespace QtSensorsPrivate {
+
 class NetHadessSensorProxyCompassInterface;
+
+} // namespace QtSensorsPrivate
 
 class IIOSensorProxyCompass : public IIOSensorProxySensorBase
 {
@@ -30,7 +34,7 @@ private:
     void updateAzimuth(double azimuth);
 
     QCompassReading m_reading;
-    NetHadessSensorProxyCompassInterface *m_sensorProxyInterface;
+    QtSensorsPrivate::NetHadessSensorProxyCompassInterface *m_sensorProxyInterface;
 };
 
 #endif // IIOSENSORPROXY_COMPASS_H

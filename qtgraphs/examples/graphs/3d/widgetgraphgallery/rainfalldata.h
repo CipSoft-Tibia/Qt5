@@ -4,9 +4,14 @@
 #ifndef RAINFALLDATA_H
 #define RAINFALLDATA_H
 
-#include "variantbardataproxy.h"
-#include <QtGraphs/qcategory3daxis.h>
-#include <QtGraphs/qvalue3daxis.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qstringlist.h>
+
+QT_FORWARD_DECLARE_CLASS(QBar3DSeries)
+QT_FORWARD_DECLARE_CLASS(QItemModelBarDataProxy)
+QT_FORWARD_DECLARE_CLASS(QBar3DSeries)
+QT_FORWARD_DECLARE_CLASS(QValue3DAxis)
+QT_FORWARD_DECLARE_CLASS(QCategory3DAxis)
 
 class RainfallData : public QObject
 {
@@ -16,8 +21,6 @@ public:
 
     explicit RainfallData();
     ~RainfallData() override;
-
-    void addDataSet();
 
     //! [0]
     QBar3DSeries *customSeries() { return m_series; }
@@ -29,11 +32,9 @@ public:
 
 private:
     void updateYearsList(int start, int end);
+
     QStringList m_years;
-    QStringList m_numericMonths;
-    VariantBarDataProxy *m_proxy;
-    VariantBarDataMapping *m_mapping;
-    VariantDataSet *m_dataSet;
+    QItemModelBarDataProxy *m_proxy;
     QBar3DSeries *m_series;
     QValue3DAxis *m_valueAxis;
     QCategory3DAxis *m_rowAxis;

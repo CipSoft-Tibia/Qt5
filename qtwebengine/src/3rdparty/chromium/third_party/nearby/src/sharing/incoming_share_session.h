@@ -15,19 +15,20 @@
 #ifndef THIRD_PARTY_NEARBY_SHARING_INCOMING_SHARE_SESSION_H_
 #define THIRD_PARTY_NEARBY_SHARING_INCOMING_SHARE_SESSION_H_
 
-#include <cstdint>
 #include <filesystem>  // NOLINT
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "internal/platform/clock.h"
 #include "internal/platform/task_runner.h"
 #include "sharing/analytics/analytics_recorder.h"
 #include "sharing/nearby_connection.h"
+#include "sharing/nearby_connections_manager.h"
+#include "sharing/nearby_connections_types.h"
 #include "sharing/paired_key_verification_runner.h"
 #include "sharing/proto/wire_format.pb.h"
 #include "sharing/share_session.h"
@@ -42,7 +43,8 @@ namespace nearby::sharing {
 class IncomingShareSession : public ShareSession {
  public:
   IncomingShareSession(
-      TaskRunner& service_thread,
+      Clock* clock, TaskRunner& service_thread,
+      NearbyConnectionsManager* connections_manager,
       analytics::AnalyticsRecorder& analytics_recorder, std::string endpoint_id,
       const ShareTarget& share_target,
       std::function<void(const IncomingShareSession&, const TransferMetadata&)>
@@ -82,8 +84,7 @@ class IncomingShareSession : public ShareSession {
   // Accept the transfer and begin listening for payload transfer updates.
   // Returns false if session is not in a state to accept the transfer.
   bool AcceptTransfer(
-      Clock* clock,
-      std::function<void(int64_t, TransferMetadata)> update_callback);
+      absl::AnyInvocable<void()> payload_transfer_updates_callback);
 
   // Returns the file paths of all file payloads.
   std::vector<std::filesystem::path> GetPayloadFilePaths() const;
@@ -100,15 +101,21 @@ class IncomingShareSession : public ShareSession {
   // Process payload transfer updates.
   // The `update_file_paths_in_progress` flag determines if the payload paths
   // should be updated in the attachments on each update notification.
-  // Returns a pair where the first param indicates whether the transfer has
-  // completed.  And if it has completed, the second param indicates whether
-  // the transfer was successful.
-  std::pair<bool, bool> PayloadTransferUpdate(
-      bool update_file_paths_in_progress, const TransferMetadata& metadata);
+  // If queued PayloadTransferUpdates results in a change in the transfer
+  // metadata, the latest TransferMetadata is returned. Otherwise, nullopt is
+  // returned.
+  std::optional<TransferMetadata> ProcessPayloadTransferUpdates(
+      bool update_file_paths_in_progress);
+
+  // Pushes a payload transfer update to the queue.  For testing only.
+  void PushPayloadTransferUpdateForTest(
+      std::unique_ptr<PayloadTransferUpdate> update);
+
+  // Called when an incoming connection is established.
+  void OnConnected(NearbyConnection* connection);
 
  protected:
   void InvokeTransferUpdateCallback(const TransferMetadata& metadata) override;
-  bool OnNewConnection(NearbyConnection* connection) override;
 
  private:
   // Update file attachment paths with payload paths.

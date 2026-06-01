@@ -69,7 +69,7 @@ private:
 
     friend size_t qHash(const QRhiDepthStencilClearValue &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_d);
         seed = hash(seed, v.m_s);
         return seed;
@@ -118,7 +118,7 @@ private:
 
     friend size_t qHash(const QRhiViewport &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_rect[0]);
         seed = hash(seed, v.m_rect[1]);
         seed = hash(seed, v.m_rect[2]);
@@ -161,7 +161,7 @@ private:
 
     friend size_t qHash(const QRhiScissor &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_rect[0]);
         seed = hash(seed, v.m_rect[1]);
         seed = hash(seed, v.m_rect[2]);
@@ -215,7 +215,7 @@ private:
 
     friend size_t qHash(const QRhiVertexInputBinding &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_stride);
         seed = hash(seed, v.m_classification);
         seed = hash(seed, v.m_instanceStepRate);
@@ -303,7 +303,7 @@ private:
 
     friend size_t qHash(const QRhiVertexInputAttribute &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_binding);
         seed = hash(seed, v.m_location);
         seed = hash(seed, v.m_format);
@@ -363,7 +363,7 @@ private:
 
     friend size_t qHash(const QRhiVertexInputLayout &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_bindings);
         seed = hash(seed, v.m_attributes);
         return seed;
@@ -420,7 +420,7 @@ private:
 
     friend size_t qHash(const QRhiShaderStage &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_type);
         seed = hash(seed, v.m_shader);
         seed = hash(seed, v.m_shaderVariant);
@@ -793,10 +793,14 @@ public:
     int level() const { return m_level; }
     void setLevel(int level) { m_level = level; }
 
+    QRect rect() const { return m_rect; }
+    void setRect(const QRect &rectangle) { m_rect = rectangle; }
+
 private:
     QRhiTexture *m_texture = nullptr;
     int m_layer = 0;
     int m_level = 0;
+    QRect m_rect;
 };
 
 Q_DECLARE_TYPEINFO(QRhiReadbackDescription, Q_RELOCATABLE_TYPE);
@@ -936,6 +940,11 @@ public:
         R32F,
 
         RGB10A2,
+
+        R8SI,
+        R32SI,
+        RG32SI,
+        RGBA32SI,
 
         R8UI,
         R32UI,
@@ -1774,8 +1783,11 @@ public:
     bool hasOptimalCapacity() const;
 
     void updateDynamicBuffer(QRhiBuffer *buf, quint32 offset, quint32 size, const void *data);
+    void updateDynamicBuffer(QRhiBuffer *buf, quint32 offset, QByteArray data);
     void uploadStaticBuffer(QRhiBuffer *buf, quint32 offset, quint32 size, const void *data);
+    void uploadStaticBuffer(QRhiBuffer *buf, quint32 offset, QByteArray data);
     void uploadStaticBuffer(QRhiBuffer *buf, const void *data);
+    void uploadStaticBuffer(QRhiBuffer *buf, QByteArray data);
     void readBackBuffer(QRhiBuffer *buf, quint32 offset, quint32 size, QRhiReadbackResult *result);
     void uploadTexture(QRhiTexture *tex, const QRhiTextureUploadDescription &desc);
     void uploadTexture(QRhiTexture *tex, const QImage &image);
@@ -1831,6 +1843,13 @@ Q_DECLARE_TYPEINFO(QRhiStats, Q_RELOCATABLE_TYPE);
 #ifndef QT_NO_DEBUG_STREAM
 Q_GUI_EXPORT QDebug operator<<(QDebug, const QRhiStats &);
 #endif
+
+class Q_GUI_EXPORT QRhiAdapter
+{
+public:
+    virtual ~QRhiAdapter();
+    virtual QRhiDriverInfo info() const = 0;
+};
 
 struct Q_GUI_EXPORT QRhiInitParams
 {
@@ -1948,7 +1967,16 @@ public:
                         QRhiInitParams *params,
                         Flags flags = {},
                         QRhiNativeHandles *importDevice = nullptr);
+    static QRhi *create(Implementation impl,
+                        QRhiInitParams *params,
+                        Flags flags,
+                        QRhiNativeHandles *importDevice,
+                        QRhiAdapter *adapter);
     static bool probe(Implementation impl, QRhiInitParams *params);
+    using AdapterList = QVector<QRhiAdapter *>;
+    static AdapterList enumerateAdapters(Implementation impl,
+                                         QRhiInitParams *params,
+                                         QRhiNativeHandles *nativeHandles = nullptr);
 
     Implementation backend() const;
     const char *backendName() const;
@@ -1960,7 +1988,6 @@ public:
     void addCleanupCallback(const CleanupCallback &callback);
     void addCleanupCallback(const void *key, const CleanupCallback &callback);
     void removeCleanupCallback(const void *key);
-    void runCleanup();
 
     QRhiGraphicsPipeline *newGraphicsPipeline();
     QRhiComputePipeline *newComputePipeline();

@@ -19,7 +19,7 @@
 
 Q_LOGGING_CATEGORY(lcItemModels, "qt.corelib.tests.itemmodels")
 
-using IntPair = QPair<int, int>;
+using IntPair = std::pair<int, int>;
 using IntList = QList<int>;
 using IntPairList = QList<IntPair>;
 
@@ -2377,10 +2377,7 @@ void tst_QSortFilterProxyModel::sortFilterRole()
     proxy.setSourceModel(&model);
     model.insertColumns(0, 1);
 
-    const QList<QPair<QVariant, QVariant>>
-        sourceItems({QPair<QVariant, QVariant>("b", 3),
-                     QPair<QVariant, QVariant>("c", 2),
-                     QPair<QVariant, QVariant>("a", 1)});
+    const QList<std::pair<QVariant, QVariant>> sourceItems = {{"b", 3}, {"c", 2}, {"a", 1}};
 
     const QList<int> orderedItems({2, 1});
 
@@ -3635,7 +3632,7 @@ void tst_QSortFilterProxyModel::resetInvalidate()
                 endResetModel();
                 break;
             case 2: invalidate(); break;
-            case 3: invalidateFilter(); break;
+            case 3: endFilterChange(); break;
             }
         }
     };
@@ -4102,7 +4099,7 @@ public slots:
     void setMode(bool on)
     {
         mode = on;
-        invalidateFilter();
+        endFilterChange();
     }
 
 protected:
@@ -4160,7 +4157,7 @@ public slots:
     void setMode(bool on)
     {
         mode = on;
-        invalidateFilter();
+        endFilterChange();
     }
 
 protected:
@@ -5175,7 +5172,8 @@ class SortFilterProxyModel final : public QSortFilterProxyModel
     Q_OBJECT
 public:
     using QSortFilterProxyModel::QSortFilterProxyModel;
-    using QSortFilterProxyModel::invalidateFilter;
+    using QSortFilterProxyModel::beginFilterChange;
+    using QSortFilterProxyModel::endFilterChange;
 
     void setSourceModel(QAbstractItemModel *m) override
     {
@@ -5221,15 +5219,17 @@ void tst_QSortFilterProxyModel::checkFilteredIndexes()
     s.setSourceModel(&m);
     s.sort(0);
 
-    s.invalidateFilter();
+    s.endFilterChange();
     checkIndexes(s);
 
+    s.beginFilterChange();
     s.m_filteredRows = 5; // every 5th row is filtered
-    s.invalidateFilter();
+    s.endFilterChange();
     checkIndexes(s);
 
+    s.beginFilterChange();
     s.m_filteredRows = 3; // every 3rd row is filtered
-    s.invalidateFilter();
+    s.endFilterChange();
     checkIndexes(s);
 }
 
@@ -5264,6 +5264,8 @@ void tst_QSortFilterProxyModel::invalidateColumnsOrRowsFilter()
         using QSortFilterProxyModel::invalidateFilter;
         using QSortFilterProxyModel::invalidateRowsFilter;
         using QSortFilterProxyModel::invalidateColumnsFilter;
+        using QSortFilterProxyModel::beginFilterChange;
+        using QSortFilterProxyModel::endFilterChange;
     };
     QStandardItemModel model(10, 4);
     for (int i = 0; i < model.rowCount(); ++i) {
@@ -5283,19 +5285,19 @@ void tst_QSortFilterProxyModel::invalidateColumnsOrRowsFilter()
     QCOMPARE(proxy.columnFiltered, 44); // 4 parents + 4 * 10 children
 
     proxy.rowFiltered = proxy.columnFiltered = 0;
-    proxy.invalidateFilter();
+    proxy.endFilterChange();
 
     QCOMPARE(proxy.rowFiltered, 20);
     QCOMPARE(proxy.columnFiltered, 44);
 
     proxy.rowFiltered = proxy.columnFiltered = 0;
-    proxy.invalidateRowsFilter();
+    proxy.endFilterChange(QSortFilterProxyModel::Direction::Rows);
 
     QCOMPARE(proxy.rowFiltered, 20);
     QCOMPARE(proxy.columnFiltered, 0);
 
     proxy.rowFiltered = proxy.columnFiltered = 0;
-    proxy.invalidateColumnsFilter();
+    proxy.endFilterChange(QSortFilterProxyModel::Direction::Columns);
 
     QCOMPARE(proxy.rowFiltered, 0);
     QCOMPARE(proxy.columnFiltered, 44);
@@ -5303,12 +5305,12 @@ void tst_QSortFilterProxyModel::invalidateColumnsOrRowsFilter()
     QCOMPARE(proxy.rowCount(), 10);
     proxy.rejectA1 = true;
     proxy.rowFiltered = proxy.columnFiltered = 0;
-    proxy.invalidateRowsFilter();
+    proxy.endFilterChange(QSortFilterProxyModel::Direction::Rows);
     QCOMPARE(proxy.rowCount(), 9);
     QCOMPARE(proxy.rowFiltered, 19); // it will not check the child row of A1
 
     proxy.rowFiltered = proxy.columnFiltered = 0;
-    proxy.setRecursiveFilteringEnabled(true); // this triggers invalidateRowsFilter()
+    proxy.setRecursiveFilteringEnabled(true); // this triggers endFilterChange(QSortFilterProxyModel::Direction::Rows)
     QCOMPARE(proxy.rowCount(), 10);
     QCOMPARE(proxy.rowFiltered, 20);
 }
@@ -5524,7 +5526,7 @@ void tst_QSortFilterProxyModel::filterChangeEmitsModelChangedSignals()
 
             beginFilterChange();
             m_matchString = s;
-            invalidateFilter();
+            endFilterChange();
         }
 
         bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override

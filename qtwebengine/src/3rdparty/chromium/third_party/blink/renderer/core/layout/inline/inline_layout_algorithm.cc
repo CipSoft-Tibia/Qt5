@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/core/layout/inline/inline_layout_algorithm.h"
 
 #include <memory>
@@ -300,26 +295,14 @@ void InlineLayoutAlgorithm::PrepareBoxStates(
       .RebuildBoxStates(line_info, 0u, break_token->StartItemIndex());
 }
 
-static LayoutUnit AdjustLineOffsetForHanging(LineInfo* line_info,
-                                             LayoutUnit& line_offset) {
+static LayoutUnit AdjustLineOffsetForHanging(LineInfo* line_info) {
   if (IsLtr(line_info->BaseDirection()))
     return LayoutUnit();
 
-  // If !line_info->ShouldHangTrailingSpaces(), the hang width is not considered
-  // in ApplyTextAlign, and so line_offset points to where the left edge of the
-  // hanging spaces should be. Since the line box rect has to start at the left
-  // edge of the text instead (needed for caret positioning), we increase
-  // line_offset.
-  LayoutUnit hang_width = line_info->HangWidth();
-  if (!line_info->ShouldHangTrailingSpaces()) {
-    line_offset += hang_width;
-  }
-
-  // Now line_offset always points to where the left edge of the text should be.
   // If there are any hanging spaces, the starting position of the line must be
   // offset by the width of the hanging spaces so that the text starts at
   // line_offset.
-  return -hang_width;
+  return -line_info->HangWidth();
 }
 
 #if EXPENSIVE_DCHECKS_ARE_ON()
@@ -345,36 +328,18 @@ InlineLayoutAlgorithm::GetLineClampState(const LineInfo* line_info,
   const ConstraintSpace& space = GetConstraintSpace();
   LineClampData line_clamp_data = space.GetLineClampData();
   if (line_clamp_data.IsLineClampContext()) {
-    LayoutUnit line_end_offset;
-
-    if (line_clamp_data.state == LineClampData::kClampByBfcOffset) {
-      LayoutUnit line_start_offset =
-          container_builder_.LineBoxBfcBlockOffset().value_or(
-              space.GetBfcOffset().block_offset);
-
-      // Take ruby annotations into account for measuring the line's block size.
-      // For the purposes of line-clamp, we only count the extent of the
-      // annotation overflow that makes the line's leading grow, not the one
-      // that is covered by the end padding that would follow if we clamp here.
-      LayoutUnit annotation_overflow =
-          container_builder_.AnnotationOverflow().ClampNegativeToZero();
-      LayoutUnit total_block_size = line_info->ComputeTotalBlockSize(
-          line_box_height.ClampNegativeToZero(), annotation_overflow);
-      line_end_offset =
-          line_start_offset + total_block_size -
-          std::min(annotation_overflow, space.LineClampEndPadding());
+    if (!line_info->IsBlockInInline() && line_clamp_data.IsAtClampPoint()) {
+      if (RuntimeEnabledFeatures::CSSLineClampLineBreakingEllipsisEnabled()) {
+        return LineClampState::kLineClampEllipsis;
+      }
+      return LineClampState::kTextOverflowEllipsis;
     }
-
-    if (!line_info->IsBlockInInline() &&
-        line_clamp_data.IsAtClampPoint(line_end_offset)) {
-      return LineClampState::kEllipsize;
-    }
-    if (line_clamp_data.ShouldHideForPaint(line_end_offset)) {
+    if (line_clamp_data.ShouldHideForPaint()) {
       return LineClampState::kHide;
     }
   } else if (!line_info->IsBlockInInline() && line_info->HasOverflow() &&
              node_.GetLayoutBlockFlow()->ShouldTruncateOverflowingText()) {
-    return LineClampState::kEllipsize;
+    return LineClampState::kTextOverflowEllipsis;
   }
 
   return LineClampState::kShow;
@@ -386,7 +351,7 @@ void InlineLayoutAlgorithm::CreateLine(const LineLayoutOpportunity& opportunity,
   LogicalLineItems* line_box = &line_container->BaseLine();
   // Apply justification before placing items, because it affects size/position
   // of items, which are needed to compute inline static positions.
-  LayoutUnit line_offset_for_text_align = ApplyTextAlign(line_info);
+  const LayoutUnit line_offset_for_text_align = ApplyTextAlign(line_info);
 
   // Clear the current line without releasing the buffer.
   line_container->Shrink();
@@ -396,8 +361,7 @@ void InlineLayoutAlgorithm::CreateLine(const LineLayoutOpportunity& opportunity,
   line_builder.CreateLine(line_info, line_box, this);
 
   const LayoutUnit hang_width = line_info->HangWidth();
-  const LayoutUnit position =
-      AdjustLineOffsetForHanging(line_info, line_offset_for_text_align);
+  const LayoutUnit position = AdjustLineOffsetForHanging(line_info);
   LayoutUnit inline_size = box_states_->ComputeInlinePositions(
       line_box, position, line_info->IsBlockInInline());
   if (hang_width) [[unlikely]] {
@@ -442,7 +406,7 @@ void InlineLayoutAlgorithm::CreateLine(const LineLayoutOpportunity& opportunity,
   //  - If we've reached the line-clamp limit.
   const LineClampState line_clamp_state =
       GetLineClampState(line_info, line_box_metrics.LineHeight());
-  if (line_clamp_state == LineClampState::kEllipsize) [[unlikely]] {
+  if (line_clamp_state == LineClampState::kTextOverflowEllipsis) [[unlikely]] {
     DCHECK(!line_info->IsBlockInInline());
     LineTruncator truncator(*line_info);
     auto* input =
@@ -572,10 +536,15 @@ void InlineLayoutAlgorithm::CreateLine(const LineLayoutOpportunity& opportunity,
     container_builder_.SetMetrics(line_box_metrics);
 
   const ConstraintSpace& space = GetConstraintSpace();
-  if (space.ShouldTextBoxTrimStart() || space.ShouldTextBoxTrimEnd())
-      [[unlikely]] {
-    ApplyTextBoxTrim(*line_info,
-                     line_clamp_state == LineClampState::kEllipsize);
+  if (space.ShouldTextBoxTrimNodeStart() || space.ShouldTextBoxTrimNodeEnd() ||
+      space.ShouldTextBoxTrimFragmentainerStart() ||
+      space.ShouldTextBoxTrimFragmentainerEnd() ||
+      space.ShouldTextBoxTrimInsideWhenLineClamp()) [[unlikely]] {
+    LineClampData line_clamp_data = space.GetLineClampData();
+    bool is_truncated =
+        line_clamp_data.IsAtClampPoint() ||
+        line_clamp_data.state == LineClampData::kMeasureLinesUntilBfcOffset;
+    ApplyTextBoxTrim(*line_info, is_truncated);
   }
 
   // |container_builder_| is already set up by |PlaceBlockInInline|.
@@ -616,26 +585,19 @@ void InlineLayoutAlgorithm::CreateLine(const LineLayoutOpportunity& opportunity,
 void InlineLayoutAlgorithm::ApplyTextBoxTrim(LineInfo& line_info,
                                              bool is_truncated) {
   const ConstraintSpace& space = GetConstraintSpace();
-  if (const LayoutResult* block_in_inline =
-          line_info.BlockInInlineLayoutResult()) {
-    // If this is a wrapper line of a block-in-inline, the trimming is applied
-    // to the block. Propagate the result from the block, without trimming the
-    // wrapper line.
-    if (block_in_inline->IsBlockStartTrimmed() &&
-        space.ShouldTextBoxTrimStart()) {
-      container_builder_.SetIsBlockStartTrimmed();
-    }
-    if (block_in_inline->IsBlockEndTrimmed() && space.ShouldTextBoxTrimEnd()) {
-      container_builder_.SetIsBlockEndTrimmed();
-    }
+  if (line_info.BlockInInlineLayoutResult()) {
+    // If this is a wrapper line of a block-in-inline, any trimming takes place
+    // on a line box inside that block. Nothing to do here.
     return;
   }
 
-  const bool should_apply_start =
-      space.ShouldTextBoxTrimStart() && line_info.IsFirstFormattedLine();
-  const bool should_apply_end = space.ShouldTextBoxTrimEnd() &&
-                                (is_truncated || !line_info.GetBreakToken() ||
-                                 space.ShouldForceTextBoxTrimEnd());
+  const bool should_apply_start = (space.ShouldTextBoxTrimNodeStart() &&
+                                   line_info.IsFirstFormattedLine()) ||
+                                  space.ShouldTextBoxTrimFragmentainerStart();
+  const bool should_apply_end =
+      (space.ShouldTextBoxTrimNodeEnd() && !line_info.GetBreakToken()) ||
+      (space.ShouldTextBoxTrimInsideWhenLineClamp() && is_truncated) ||
+      space.ShouldForceTextBoxTrimEnd();
   if (!should_apply_start && !should_apply_end) {
     return;
   }
@@ -670,7 +632,6 @@ void InlineLayoutAlgorithm::ApplyTextBoxTrim(LineInfo& line_info,
             ? offset_for_trimming_box +
                   container_builder_.LineBoxBfcBlockOffset().value()
             : offset_for_trimming_box);
-    container_builder_.SetIsBlockStartTrimmed();
 
     // Cancel adjusting the block start for the initial letters and Ruby
     // annotation. The use of the `text-box-trim` accepts the risk of collisions
@@ -681,6 +642,7 @@ void InlineLayoutAlgorithm::ApplyTextBoxTrim(LineInfo& line_info,
   }
 
   if (should_apply_end) {
+    container_builder_.SetIsBlockEndTrimmableLine();
     // Ask the block layout algorithm to trim the end of the line box.
     LayoutUnit block_end_to_be_trimmed;
     if (is_flipped_line) [[unlikely]] {
@@ -691,7 +653,6 @@ void InlineLayoutAlgorithm::ApplyTextBoxTrim(LineInfo& line_info,
           line_box_metrics.descent - intrinsic_metrics.descent;
     }
     container_builder_.SetTrimBlockEndBy(block_end_to_be_trimmed);
-    container_builder_.SetIsBlockEndTrimmed();
   }
 }
 
@@ -1042,6 +1003,26 @@ bool InlineLayoutAlgorithm::AddAnyClearanceAfterLine(
   return true;
 }
 
+LayoutUnit InlineLayoutAlgorithm::SetupLineClampEllipsis() {
+  DCHECK(RuntimeEnabledFeatures::CSSLineClampLineBreakingEllipsisEnabled());
+  const Font* font = node_.Style().GetFont();
+  const SimpleFontData* font_data = font->PrimaryFont();
+  DCHECK(font_data);
+  String ellipsis_text =
+      font_data && font_data->GlyphForCharacter(kHorizontalEllipsisCharacter)
+          ? String(base::span_from_ref(kHorizontalEllipsisCharacter))
+          : String(u"...");
+  HarfBuzzShaper shaper(ellipsis_text);
+  const ShapeResult* shape_result = shaper.Shape(font, Node().BaseDirection());
+  DCHECK(shape_result);
+
+  FontHeight text_metrics = font_data->GetFontMetrics().GetFontHeight(
+      Node().Style().GetFontBaseline());
+
+  line_clamp_ellipsis_.emplace(ellipsis_text, shape_result, text_metrics);
+  return shape_result->SnappedWidth();
+}
+
 const LayoutResult* InlineLayoutAlgorithm::Layout() {
   const auto& constraint_space = GetConstraintSpace();
   ExclusionSpace initial_exclusion_space(constraint_space.GetExclusionSpace());
@@ -1054,7 +1035,8 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
   end_margin_strut_ = constraint_space.GetMarginStrut();
   container_builder_.SetAdjoiningObjectTypes(
       constraint_space.GetAdjoiningObjectTypes());
-  lines_until_clamp_ = constraint_space.GetLineClampData().LinesUntilClamp();
+  lines_until_clamp_ = constraint_space.GetLineClampData().LinesUntilClamp(
+      /*show_measured_lines*/ true);
 
   // In order to get the correct list of layout opportunities, we need to
   // position any "leading" floats within the exclusion space first.
@@ -1140,7 +1122,8 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
 
 #if DCHECK_IS_ON()
     // Make sure the last opportunity has the correct properties.
-    if (opportunities_it + 1 == opportunities.end()) {
+    // TODO(crbug.com/351564777): Resolve a buffer safety issue.
+    if (UNSAFE_TODO(opportunities_it + 1) == opportunities.end()) {
       // We shouldn't have any shapes affecting the last opportunity.
       DCHECK(!opportunity.HasShapeExclusions());
       DCHECK_EQ(line_block_size, LayoutUnit());
@@ -1165,9 +1148,10 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
         opportunity.ComputeLineLayoutOpportunity(constraint_space,
                                                  line_block_size, block_delta);
     if (line_break_strategy.NeedsToPrepare()) [[unlikely]] {
+      // TODO(crbug.com/351564777): Resolve a buffer safety issue.
       line_break_strategy.Prepare(
           context_, Node(), constraint_space,
-          base::make_span(opportunities_it, opportunities.end()),
+          UNSAFE_TODO(base::span(opportunities_it, opportunities.end())),
           line_opportunity, leading_floats, break_token, &GetExclusionSpace());
     }
     bool is_line_info_cached = false;
@@ -1184,7 +1168,22 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
                                leading_floats, break_token,
                                column_spanner_path_, &GetExclusionSpace());
       line_break_strategy.SetupLineBreaker(context_, line_breaker);
+      if (RuntimeEnabledFeatures::CSSLineClampLineBreakingEllipsisEnabled() &&
+          constraint_space.GetLineClampData().IsAtClampPoint()) {
+        LayoutUnit ellipsis_width = SetupLineClampEllipsis();
+        line_breaker.SetLineClampEllipsisWidth(ellipsis_width);
+      }
+
       line_breaker.NextLine(&line_info);
+
+      // The line-clamp ellipsis is not created as an InlineItemResult by the
+      // line breaker, but is instead appended afterwards in the
+      // LogicalLineBuilder. Therefore, we need to make sure to not add it in
+      // empty lines or in block-in-inlines.
+      if (line_clamp_ellipsis_.has_value() &&
+          (line_info.IsEmptyLine() || line_info.IsBlockInInline())) {
+        line_clamp_ellipsis_.reset();
+      }
     }
 
     if (Node().IsInitialLetterBox()) [[unlikely]] {
@@ -1256,10 +1255,12 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
       }
       // We've either don't have any shapes, or run out of block-delta space
       // to test, proceed to the next layout opportunity.
-      if (opportunities_it + 1 != opportunities.end()) {
+      // TODO(crbug.com/351564777): Resolve a buffer safety issue.
+      if (UNSAFE_TODO(opportunities_it + 1) != opportunities.end()) {
         block_delta = LayoutUnit();
         line_block_size = LayoutUnit();
-        ++opportunities_it;
+        // TODO(crbug.com/351564777): Resolve a buffer safety issue.
+        UNSAFE_TODO(++opportunities_it);
         continue;
       }
       // Normally the last opportunity should fit the line, but arithmetic
@@ -1339,7 +1340,8 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
     if (total_block_size + block_delta > opportunity.rect.BlockSize()) {
       block_delta = LayoutUnit();
       line_block_size = LayoutUnit();
-      ++opportunities_it;
+      // TODO(crbug.com/351564777): Resolve a buffer safety issue.
+      UNSAFE_TODO(++opportunities_it);
       continue;
     }
 
@@ -1383,8 +1385,17 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
       // https://drafts.csswg.org/css2/box.html#collapsing-margins
       if (!line_info.IsBlockInInline()) {
         end_margin_strut_ = MarginStrut();
-        if (lines_until_clamp_)
-          *lines_until_clamp_ = *lines_until_clamp_ - 1;
+
+        if (lines_until_clamp_) {
+          if (constraint_space.GetLineClampData().state ==
+              LineClampData::kClampByLines) {
+            *lines_until_clamp_ = *lines_until_clamp_ - 1;
+          } else {
+            DCHECK_EQ(constraint_space.GetLineClampData().state,
+                      LineClampData::kMeasureLinesUntilBfcOffset);
+            *lines_until_clamp_ = *lines_until_clamp_ + 1;
+          }
+        }
       }
 
       // As we aren't an empty inline we should have correctly placed all
@@ -1397,7 +1408,9 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
 
   CHECK(is_line_created);
   container_builder_.SetEndMarginStrut(end_margin_strut_);
-  container_builder_.SetLinesUntilClamp(lines_until_clamp_);
+  if (lines_until_clamp_) {
+    container_builder_.SetLinesUntilClamp(lines_until_clamp_);
+  }
 
   DCHECK(items_builder);
   container_builder_.PropagateChildrenData(*line_container);
@@ -1477,8 +1490,7 @@ PositionedFloat InlineLayoutAlgorithm::PositionFloat(
   // before clamp, we now that if the line's BFC offset is equal or greater than
   // the clamp BFC offset in the final relayout, the line will be hidden.
   bool is_hidden_for_paint =
-      GetConstraintSpace().GetLineClampData().ShouldHideForPaint(
-          origin_bfc_block_offset, /*is_float*/ true);
+      GetConstraintSpace().GetLineClampData().ShouldHideForPaint();
   UnpositionedFloat unpositioned_float(
       BlockNode(To<LayoutBox>(floating_object)),
       /* break_token */ nullptr, space.AvailableSize(),

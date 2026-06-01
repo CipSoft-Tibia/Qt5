@@ -10,7 +10,7 @@ if(LINUX AND TARGET Qt::DBus)
 endif()
 
 if(APPLE)
-    add_subdirectory(scnetworkreachability)
+    add_subdirectory(apple)
 endif()
 
 if(ANDROID)

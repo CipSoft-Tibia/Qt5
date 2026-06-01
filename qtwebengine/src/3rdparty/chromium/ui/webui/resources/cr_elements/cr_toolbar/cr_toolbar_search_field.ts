@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import '../cr_icon_button/cr_icon_button.js';
-import '../icons_lit.html.js';
+import '../icons.html.js';
 
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 
@@ -159,7 +159,7 @@ export class CrToolbarSearchFieldElement extends
   }
 
   private async showSearch_(e: Event) {
-    if (e.target !== this.shadowRoot!.querySelector('#clearSearch')) {
+    if (e.target !== this.shadowRoot.querySelector('#clearSearch')) {
       this.showingSearch = true;
     }
     if (this.narrow) {

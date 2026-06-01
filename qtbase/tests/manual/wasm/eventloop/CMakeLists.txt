@@ -3,6 +3,7 @@
 
 add_subdirectory(asyncify_exec)
 add_subdirectory(eventloop_auto)
+add_subdirectory(suspendresumecontrol_auto)
 add_subdirectory(main_exec)
 add_subdirectory(main_noexec)
 add_subdirectory(thread_exec)

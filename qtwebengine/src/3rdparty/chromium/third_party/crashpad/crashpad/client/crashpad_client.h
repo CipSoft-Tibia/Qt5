@@ -373,6 +373,9 @@ class CrashpadClient {
   //!     Arguments passed in other parameters and arguments required to perform
   //!     the handshake are the responsibility of this method, and must not be
   //!     specified in this parameter.
+  //! \param[in] attachments Attachment paths to pass to the Crashpad handler.
+  //!     The handler will be started with an `--attachment` argument for each
+  //!     path in this vector.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
   bool StartHandlerAtCrash(
@@ -433,7 +436,7 @@ class CrashpadClient {
   //!     FirstChanceHandler and crashes the current process.
   //!
   //! \param[in] message A message to be logged before crashing.
-  static void CrashWithoutDump(const std::string& message);
+  [[noreturn]] static void CrashWithoutDump(const std::string& message);
 
   //! \brief The type for custom handlers installed by clients.
   using FirstChanceHandler = bool (*)(int, siginfo_t*, ucontext_t*);
@@ -807,7 +810,7 @@ class CrashpadClient {
 #endif
 
  private:
-#if BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_WIN) || DOXYGEN
   //!  \brief Registers process handlers for the client.
   void RegisterHandlers();
 #endif

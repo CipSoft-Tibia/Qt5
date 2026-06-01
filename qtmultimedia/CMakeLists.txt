@@ -13,7 +13,13 @@ project(QtMultimedia
     LANGUAGES CXX C
 )
 
-find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
+find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals)
+
+# This should be called as early as possible, just after find_package(BuildInternals) where it is
+# defined.
+qt_internal_project_setup()
+
+find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED Core)
 find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG
     OPTIONAL_COMPONENTS
         Gui
@@ -28,7 +34,6 @@ find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG
         Quick3D
         OpenGLPrivate
         Concurrent)
-qt_internal_project_setup()
 
 if(NOT TARGET Qt::Gui)
     message(NOTICE "Skipping the build as the condition \"TARGET Qt::Gui\" is not met.")
@@ -37,6 +42,11 @@ endif()
 
 if(QNX AND CMAKE_SYSTEM_VERSION GREATER_EQUAL 800)
     message(NOTICE "Skipping the build as multimedia is not supported on QNX8.0.")
+    return()
+endif()
+
+if(NOT QT_FEATURE_thread)
+    message(NOTICE "Skipping the build of QtMultimedia as it is not supported without threads")
     return()
 endif()
 
@@ -64,6 +74,8 @@ set(QT_BUILD_EXTRA_IDE_FILE_PATTERNS
     src/multimedia/doc/src/platform-notes-apple.qdoc
     src/multimedia/doc/src/platform-notes-wasm.qdoc
     src/multimedia/doc/src/platform-notes-wayland.qdoc
+    src/multimedia/doc/src/platform-notes-linux.qdoc
+    src/multimedia/doc/src/backend-notes-gstreamer.qdoc
     src/multimedia/doc/src/qm-external-pages.qdoc
     src/multimedia/doc/src/qt6-changes.qdoc
     src/multimedia/doc/src/qtmultimedia-building-from-source.qdoc

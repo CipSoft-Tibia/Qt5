@@ -22,10 +22,11 @@ void _mm_pause(void);       // the compiler recognizes as intrinsic
 
 QT_BEGIN_NAMESPACE
 
+Q_ALWAYS_INLINE
 #ifdef Q_CC_GNU
 __attribute__((artificial))
 #endif
-Q_ALWAYS_INLINE void qYieldCpu(void) Q_DECL_NOEXCEPT;
+void qYieldCpu(void) Q_DECL_NOEXCEPT;
 
 void qYieldCpu(void)
 #ifdef __cplusplus

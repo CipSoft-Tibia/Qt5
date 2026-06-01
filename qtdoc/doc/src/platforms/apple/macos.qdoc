@@ -72,6 +72,9 @@
     To install or build Qt, follow the general \l{Getting Started with Qt}
     {getting started with Qt} guide.
 
+    You can also follow \l{Alternative ways of installing Qt for macOS} for information on
+    how to install Qt from Homebrew.
+
     \section2 Generating Xcode Project Files
 
     By default, CMake and qmake generates project files in Makefile
@@ -142,7 +145,7 @@
 
     Building Qt requires a \macos platform SDK and corresponding toolchain to be
     installed on the system. You can get this by installing the Xcode, as described
-    in \l {Qt for \macos#Build Environment}.
+    in \l {Qt for \macos#Build Environment}{Build Environment}.
 
     You should always use the exact same Xcode and SDK version as listed in the
     \l {Qt for \macos#Supported Configurations}{Supported Configurations}, to
@@ -205,7 +208,7 @@
         it as a set of dynamic libraries (dylibs) by specifying the
         \c{-no-framework} option.
 
-        As described in \l {Qt for \macos#Architectures}, Qt will
+        As described in \l {Qt for \macos#Architectures}{Architectures}, Qt will
         build for the architecture of your development machine by
         default. To configure a universal build of Qt with support
         for both Intel and Apple Silicon Macs, add the following argument:
@@ -419,7 +422,7 @@
     It is important to be aware of these structure as they directly affect the
     deployment of applications.
 
-    Qt provides a deploy tool, \l{The Mac Deployment Tool}{macdeployqt}, to
+    Qt provides a deploy tool, \l{macdeploy}{macdeployqt}, to
     simplify the deployment process. The \l{Qt for \macos - Deployment}
     article covers the deployment process in more detail.
 
@@ -427,7 +430,7 @@
 
     By default, Qt is built as a set of frameworks. Frameworks are the
     \macos preferred way of distributing libraries. The
-    \l{http://developer.apple.com/documentation/MacOSX/Conceptual/BPFrameworks/index.html}
+    \l{https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Frameworks.html#//apple_ref/doc/uid/10000183-SW1}
     {Apple's Framework Programming Guide} site has far more information about
     Frameworks.
 
@@ -442,7 +445,7 @@
 
     Alternatively, you can temporarily swap your debug and release versions,
     which is documented in
-    \l{http://developer.apple.com/technotes/tn2004/tn2124.html#SECJUSTONELIB}
+    \l{https://developer.apple.com/library/archive/technotes/tn2124/_index.html}
     {Apple's "Debugging Magic" technical note}.
 
     If you don't want to use frameworks, simply configure Qt with
@@ -675,7 +678,7 @@
     \endlist
     This is specific to \macos and beyond the scope of this document. For
     more information about bundles, see
-    \l {http://developer.apple.com/documentation/CoreFoundation/Conceptual/CFBundles/index.html}{Apple's Developer Website}.
+    \l {https://developer.apple.com/library/archive/documentation/CoreFoundation/Conceptual/CFBundles/Introduction/Introduction.html#//apple_ref/doc/uid/10000123i-CH1-SW1}{Apple's Developer Website}.
 
     To build your application as a bundle with CMake, set the
     \l {https://cmake.org/cmake/help/latest/prop_tgt/MACOSX_BUNDLE.html}
@@ -706,8 +709,8 @@
 
     \snippet snippets/code/doc_src_deployment.qdoc 27
 
-    You can check the various options that are available by running \c
-    configure -help.
+    You can check the various options that are available by running
+    \c{configure -help}.
 
     \section2 Linking the Application to the Static Version of Qt
 
@@ -1007,7 +1010,7 @@
     distributed. For more information, refer to the
     \l {https://developer.apple.com/}{Apple Developer} website.
 
-    Although the process of deploying an application do have some
+    Although the process of deploying an application does have some
     pitfalls, once you know the various issues you can easily create
     packages that all your \macos users will enjoy.
 
@@ -1066,14 +1069,13 @@
     sections describe a few things that you must be aware of while deploying
     your application.
 
-    \section1 The Mac Deployment Tool
+    \section1 The macOS Deployment Tool
     \target macdeploy
-    The Mac deployment tool can be found in QTDIR/bin/macdeployqt. It is
+    The macOS deployment tool can be found at \c{QTDIR/bin/macdeployqt}. It is
     designed to automate the process of creating a deployable
-    application bundle that contains the Qt libraries as private
-    frameworks.
+    application bundle that contains Qt libraries as private frameworks.
 
-    The mac deployment tool also deploys the Qt plugins, according
+    The macOS deployment tool also deploys the Qt plugins, according
     to the following rules (unless \c {-no-plugins} option is used):
     \list
     \li The platform plugin is always deployed.
@@ -1190,8 +1192,73 @@
 
     \section1 Entitlements
 
-    \c When signing, \c macdeployqt will automatically use the first .entitlements file it finds
+    When signing, \c macdeployqt will automatically use the first .entitlements file it finds
     in the Contents/Resources/ subdirectory in the application bundle if present. To prevent errors,
     ensure that there is at maximum one .entitlements file in this folder.
 */
 
+/*!
+\page macos-installation.html
+\title Qt for \macos - Alternative ways of installing Qt
+\brief This article explains how to install Qt on macOS using \QOI and Homebrew.
+
+\section1 Overview
+
+You can install the Qt Framework, design, and development tools on \macos from
+these sources:
+
+\list
+\li Using the \l{Get and Install Qt with \QOI}{\QOI} (Recommended).
+    \list
+    \li Gives you access to latest versions of Qt, on the day of their release.
+    \li Allows you to install older versions of Qt, in parallel to newer ones.
+    \li Features all Qt modules, including commercial-only ones.
+    \li Preconfigures Qt versions in \QC and \QDS.
+    \li Allows you to browse the Qt documentation and examples locally.
+    \endlist
+
+    \QOI is full-featured, flexible, and fully supports commercial use cases. It
+    is also the one supported best by The Qt Company and The Qt Project. We
+    recommend it if you plan to develop with Qt, or bundle Qt as part of
+    application.
+\li Using the Homebrew package manager.
+    \list
+    \li Does not require a Qt Account.
+    \li Installs a recent version of Qt 6 (though not always the latest one).
+    \li Allows you to install most (but not all) Qt modules.
+    \li Does not provide a local version of the Qt documentation or examples.
+    \li Allows you to share third-party modules with other libraries and
+        applications.
+    \endlist
+
+    Homebrew is lightweight and good for automation. Homebrew works great if you
+    need to install Qt as a dependency for a \macos application, but do not plan
+    to do development work with Qt yourself, nor need special or commercial-only
+    Qt modules.
+\endlist
+
+\section1 Installing Qt Using the \QOI
+
+See \l{Get and Install Qt with \QOI} for information about how to use \QOI.
+
+\section1 Installing Qt using Homebrew
+
+To install Qt, \QC, and \QDS with Homebrew, install Homebrew first using the
+\l{https://brew.sh/}{installation command}. Then run the following commands in
+a terminal:
+
+\code
+brew install qt
+brew install --cask qt-creator
+brew install --cask qt-design-studio
+\endcode
+
+When you start \QC or \QDS, you need to set the path to the Qt version
+installed by Homebrew. By default, Homebrew installs Qt in
+\c {/opt/homebrew/Cellar/qt/<version>/}.
+
+For more information on setting up a Qt Kit in \QC, see \l{\QC: Add Qt versions}.
+
+\image link-qt-kit.webp {Choose a linked Qt Kit in Qt Creator}
+
+*/

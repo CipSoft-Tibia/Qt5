@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickweeknumbercolumn_p.h"
 #include "qquickweeknumbermodel_p.h"
@@ -21,6 +22,7 @@ QT_BEGIN_NAMESPACE
     \l {Control::locale}{locale}.
 
     \image qtquickcontrols-weeknumbercolumn.webp
+           {Week number column displaying week numbers}
     \snippet qtquickcontrols-weeknumbercolumn.qml 1
 
     WeekNumberColumn can be used as a standalone control, but it is most
@@ -28,6 +30,7 @@ QT_BEGIN_NAMESPACE
     positioning of the column is left to the user.
 
     \image qtquickcontrols-weeknumbercolumn-layout.webp
+           {Week number column in calendar layout}
     \snippet qtquickcontrols-weeknumbercolumn-layout.qml 1
 
     The visual appearance of WeekNumberColumn can be changed by

@@ -6,7 +6,9 @@
 \ingroup qmllint-warnings-and-errors
 
 \title Quick: Attached property type
-\brief Misuses of the Quick attached property types.
+\brief [Quick.attached-property-type] Misuses of the Quick attached property types.
+
+\qmllintwarningcategory Quick.attached-property-type
 
 \section1 Attached property must be attached to an object deriving from a particular type
 

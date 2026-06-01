@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbintegration.h"
 #include "qxcbconnection.h"
@@ -43,7 +44,10 @@
 #endif
 
 #include <qpa/qplatforminputcontextfactory_p.h>
-#include <private/qgenericunixthemes_p.h>
+#include <private/qgenericunixtheme_p.h>
+#if QT_CONFIG(dbus)
+#include <private/qkdetheme_p.h>
+#endif
 #include <qpa/qplatforminputcontext.h>
 
 #include <QtGui/QOpenGLContext>
@@ -317,6 +321,8 @@ bool QXcbIntegration::hasCapability(QPlatformIntegration::Capability cap) const
     case SyncState:
     case RasterGLSurface:
         return true;
+    case OffscreenSurface:
+        return m_connection->glIntegration() && m_connection->glIntegration()->canCreatePlatformOffscreenSurface();
 
     case SwitchableWidgetComposition:
     {
@@ -333,7 +339,6 @@ QAbstractEventDispatcher *QXcbIntegration::createEventDispatcher() const
     return QXcbEventDispatcher::createEventDispatcher(connection());
 }
 
-using namespace Qt::Literals::StringLiterals;
 static const auto xsNetCursorBlink = "Net/CursorBlink"_ba;
 static const auto xsNetCursorBlinkTime = "Net/CursorBlinkTime"_ba;
 static const auto xsNetDoubleClickTime = "Net/DoubleClickTime"_ba;

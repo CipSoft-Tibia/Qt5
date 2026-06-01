@@ -320,7 +320,7 @@ Common.Settings.registerSettingExtension({
   storageType: Common.Settings.SettingStorageType.SYNCED,
   settingName: 'annotations-hidden',
   settingType: Common.Settings.SettingType.BOOLEAN,
-  defaultValue: true,
+  defaultValue: false,
 });
 
 Common.Linkifier.registerLinkifier({
@@ -353,5 +353,16 @@ Common.Revealer.registerRevealer({
   async loadRevealer() {
     const Timeline = await loadTimelineModule();
     return new Timeline.TimelinePanel.TraceRevealer();
+  },
+});
+
+Common.Revealer.registerRevealer({
+  contextTypes() {
+    return [SDK.TraceObject.RevealableEvent];
+  },
+  destination: Common.Revealer.RevealerDestination.TIMELINE_PANEL,
+  async loadRevealer() {
+    const Timeline = await loadTimelineModule();
+    return new Timeline.TimelinePanel.EventRevealer();
   },
 });

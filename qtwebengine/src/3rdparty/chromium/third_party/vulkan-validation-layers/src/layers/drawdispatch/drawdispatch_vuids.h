@@ -56,6 +56,7 @@ struct DrawDispatchVuid {
     const char* scissor_count_03418 = kVUIDUndefined;
     const char* viewport_scissor_count_03419 = kVUIDUndefined;
     const char* primitive_topology_class_07500 = kVUIDUndefined;
+    const char* primitive_topology_patch_list_10286 = kVUIDUndefined;
     const char* corner_sampled_address_mode_02696 = kVUIDUndefined;
     const char* imageview_atomic_02691 = kVUIDUndefined;
     const char* bufferview_atomic_07888 = kVUIDUndefined;
@@ -170,6 +171,7 @@ struct DrawDispatchVuid {
     const char* dynamic_shading_rate_image_enable_07647 = kVUIDUndefined;
     const char* dynamic_representative_fragment_test_enable_07648 = kVUIDUndefined;
     const char* dynamic_coverage_reduction_mode_07649 = kVUIDUndefined;
+    const char* dynamic_depth_clamp_control_09650 = kVUIDUndefined;
     const char* dynamic_viewport_07831 = kVUIDUndefined;
     const char* dynamic_scissor_07832 = kVUIDUndefined;
     const char* dynamic_depth_bias_07834 = kVUIDUndefined;
@@ -208,7 +210,7 @@ struct DrawDispatchVuid {
     const char* stippled_bresenham_lines_07496 = kVUIDUndefined;
     const char* stippled_smooth_lines_07497 = kVUIDUndefined;
     const char* stippled_default_strict_07498 = kVUIDUndefined;
-    const char* viewport_and_scissor_with_count_08635 = kVUIDUndefined;
+    const char* viewport_and_scissor_with_count_03419 = kVUIDUndefined;
     const char* viewport_w_scaling_08636 = kVUIDUndefined;
     const char* shading_rate_palette_08637 = kVUIDUndefined;
     const char* external_format_resolve_09362 = kVUIDUndefined;
@@ -226,20 +228,16 @@ struct DrawDispatchVuid {
     const char* set_rasterization_samples_08644 = kVUIDUndefined;
     const char* set_color_write_enable_08646 = kVUIDUndefined;
     const char* set_color_write_enable_08647 = kVUIDUndefined;
-    const char* set_discard_rectangles_enable_08648 = kVUIDUndefined;
-    const char* set_discard_rectangles_mode_08649 = kVUIDUndefined;
     const char* set_color_blend_enable_08657 = kVUIDUndefined;
     const char* set_color_blend_equation_08658 = kVUIDUndefined;
     const char* set_color_write_mask_08659 = kVUIDUndefined;
     const char* set_blend_operation_advance_09416 = kVUIDUndefined;
-    const char* set_sample_locations_enable_08664 = kVUIDUndefined;
     const char* set_line_rasterization_mode_08666 = kVUIDUndefined;
     const char* set_line_rasterization_mode_08667 = kVUIDUndefined;
     const char* set_line_rasterization_mode_08668 = kVUIDUndefined;
     const char* set_line_stipple_enable_08669 = kVUIDUndefined;
     const char* set_line_stipple_enable_08670 = kVUIDUndefined;
     const char* set_line_stipple_enable_08671 = kVUIDUndefined;
-    const char* set_line_stipple_08672 = kVUIDUndefined;
     const char* vertex_shader_08684 = kVUIDUndefined;
     const char* tessellation_control_shader_08685 = kVUIDUndefined;
     const char* tessellation_evaluation_shader_08686 = kVUIDUndefined;
@@ -267,7 +265,7 @@ struct DrawDispatchVuid {
     const char* vertex_input_format_08937 = kVUIDUndefined;
     const char* vertex_input_format_09203 = kVUIDUndefined;
     const char* vertex_input_format_07939 = kVUIDUndefined;
-    const char* set_clip_space_w_scaling_09232 = kVUIDUndefined;
+    const char* set_clip_space_w_scaling_04138 = kVUIDUndefined;
     const char* set_discard_rectangle_09236 = kVUIDUndefined;
     const char* set_viewport_coarse_sample_order_09233 = kVUIDUndefined;
     const char* set_viewport_shading_rate_palette_09234 = kVUIDUndefined;
@@ -309,6 +307,7 @@ struct DrawDispatchVuid {
     const char* color_blend_equation_07628 = kVUIDUndefined;
     const char* color_write_mask_07629 = kVUIDUndefined;
     const char* color_blend_advanced_07635 = kVUIDUndefined;
+    const char* image_layout_09600 = kVUIDUndefined;
     // Ray tracing
     const char* ray_tracing_pipeline_stack_size_09458 = kVUIDUndefined;
 };

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical raeson:low-level-memory-management
 
 #include <private/qv4stacklimits_p.h>
 #include <private/qobject_p.h>
@@ -71,35 +72,11 @@ enum StackDefaults : qsizetype {
 #endif
 };
 
-// We may not be able to take the negative of the type
-// used to represent stack size, but we can always add
-// or subtract it to/from a quint8 pointer.
-
-template<typename Size>
-static void *incrementStackPointer(void *base, Size amount)
-{
-#if Q_STACK_GROWTH_DIRECTION > 0
-    return static_cast<quint8 *>(base) + amount;
-#else
-    return static_cast<quint8 *>(base) - amount;
-#endif
-}
-
-template<typename Size>
-static void *decrementStackPointer(void *base, Size amount)
-{
-#if Q_STACK_GROWTH_DIRECTION > 0
-    return static_cast<quint8 *>(base) - amount;
-#else
-    return static_cast<quint8 *>(base) + amount;
-#endif
-}
-
-static StackProperties createStackProperties(void *base, qsizetype size = PlatformStackSize)
+static StackProperties createStackProperties(void *base, qsizetype size = PlatformStackSize, qsizetype margin = PlatformSafetyMargin)
 {
     return StackProperties {
         base,
-        incrementStackPointer(base, size - PlatformSafetyMargin),
+        incrementStackPointer(base, size - margin),
         incrementStackPointer(base, size),
     };
 }
@@ -242,7 +219,8 @@ StackProperties stackProperties()
 {
     TASK_DESC taskDescription;
     taskInfoGet(taskIdSelf(), &taskDescription);
-    return createStackProperties(taskDescription.td_pStackBase, taskDescription.td_stackSize);
+    return createStackProperties(taskDescription.td_pStackBase, taskDescription.td_stackSize,
+                                 taskDescription.td_stackSize / 8);
 }
 
 #else

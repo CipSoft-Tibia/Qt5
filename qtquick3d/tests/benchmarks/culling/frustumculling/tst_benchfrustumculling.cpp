@@ -41,7 +41,7 @@ private:
         return ObjectData{ {}, transform, bounds};
     }
 
-    static void populateRenderableList(const QList<ObjectData> &objects, QList<QSSGRenderableObject>&renderableObjects)
+    static void populateRenderableList(const QList<ObjectData> &objects, QList<QSSGRenderableObject *> &renderableObjects)
     {
         renderableObjects.clear();
         renderableObjects.reserve(objects.size());
@@ -51,7 +51,7 @@ private:
             globalBounds.transform(od.globalTransform);
             // NOTE: We pass in the global bounds, as that's the only thing we care about here.
             // In practice we never create the base type QSSGRenderableObject in the engine.
-            renderableObjects.push_back({ QSSGSubsetRenderable::Type::DefaultMaterialMeshSubset, QSSGRenderableObjectFlags(), od.worldCenterPt, od.globalTransform, globalBounds, 0.0f });
+            renderableObjects.push_back(new QSSGRenderableObject{ QSSGSubsetRenderable::Type::DefaultMaterialMeshSubset, QSSGRenderableObjectFlags(), od.worldCenterPt, globalBounds, 0.0f });
         }
     }
 
@@ -77,21 +77,21 @@ void BenchFrustumCulling::initTestCase()
     camera.setClipNear(95.0f);
     camera.setClipFar(105.0f);
     cameraNode.reset(static_cast<QSSGRenderCamera *>(QQuick3DObjectPrivate::updateSpatialNode(&camera, nullptr)));
-    cameraNode->calculateGlobalVariables(viewport);
+    QSSGRenderCamera::calculateProjectionInternal(*cameraNode, viewport);
 
     QMatrix4x4 viewProjectionMatrix = QMatrix4x4(Qt::Uninitialized);
     QSSGClipPlane nearPlane;
 
     {
         auto &camera = *cameraNode;
-        camera.calculateViewProjectionMatrix(viewProjectionMatrix);
+        camera.calculateViewProjectionMatrix(camera.localTransform, viewProjectionMatrix);
 
-        QMatrix3x3 theUpper33(camera.globalTransform.normalMatrix());
+        QMatrix3x3 theUpper33(camera.localTransform.normalMatrix());
 
         QVector3D dir(QSSGUtils::mat33::transform(theUpper33, QVector3D(0, 0, -1)));
         dir.normalize();
         nearPlane.normal = dir;
-        QVector3D theGlobalPos = camera.getGlobalPos() + camera.clipNear * dir;
+        QVector3D theGlobalPos = QSSGRenderNode::getGlobalPos(camera.localTransform) + camera.clipPlanes.clipNear() * dir;
         nearPlane.d = -(QVector3D::dotProduct(dir, theGlobalPos));
     }
     // the near plane's bbox edges are calculated in the clipping frustum's
@@ -146,7 +146,7 @@ void BenchFrustumCulling::bench_outputlist()
 
     QCOMPARE(objects.size(), objectCount);
 
-    QList<QSSGRenderableObject> renderableObjects;
+    QList<QSSGRenderableObject *> renderableObjects;
 
     // List of renderables
     populateRenderableList(objects, renderableObjects);
@@ -158,8 +158,8 @@ void BenchFrustumCulling::bench_outputlist()
     QSSGRenderableObjectList culledrenderables;
     renderables.reserve(objects.size());
 
-    for (auto &ro : renderableObjects)
-        renderables.push_back({ &ro, 0.0f });
+    for (auto *ro : renderableObjects)
+        renderables.push_back({ ro, 0.0f });
 
     QVERIFY(!cameraNode->isDirty(QSSGRenderCamera::DirtyFlag::CameraDirty));
 
@@ -205,7 +205,7 @@ void BenchFrustumCulling::bench_inline()
 
     QCOMPARE(objects.size(), objectCount);
 
-    QList<QSSGRenderableObject> renderableObjects;
+    QList<QSSGRenderableObject *> renderableObjects;
 
     // List of renderables
     populateRenderableList(objects, renderableObjects);
@@ -214,8 +214,8 @@ void BenchFrustumCulling::bench_inline()
     QSSGRenderableObjectList renderables;
     renderables.reserve(objects.size());
 
-    for (auto &ro : renderableObjects)
-        renderables.push_back({ &ro, 0.0f });
+    for (auto *ro : renderableObjects)
+        renderables.push_back({ ro, 0.0f });
 
     QVERIFY(!cameraNode->isDirty(QSSGRenderCamera::DirtyFlag::CameraDirty));
 

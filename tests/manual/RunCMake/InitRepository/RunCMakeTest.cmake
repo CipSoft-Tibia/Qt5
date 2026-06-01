@@ -2,15 +2,29 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
-include("${CMAKE_CURRENT_SOURCE_DIR}/../Common.cmake")
+
+list(APPEND CMAKE_MODULE_PATH "${EXTRA_MODULE_PATH}")
+include(Common)
 
 # The file is included separately from Common.cmake because it has side-effects
 # that we want to apply only in the RunCMake part of the test.
-include(QtIRRunCMake)
+include(RunCMake)
 
 # Uses prefix set from outside scope.
 function(run_suite_command name)
-    run_cmake_command(${prefix}_${name} ${ARGN})
+    set(RunCMake_TEST_COMMAND "${ARGN}")
+    set(RunCMake-check-file "check.cmake")
+
+    set(args ${ARGN})
+    list(JOIN args " " args_str)
+    set(working_dir "${RunCMake_TEST_COMMAND_WORKING_DIRECTORY}")
+    message(STATUS "Running command: '${args_str}' in dir: '${working_dir}'")
+
+    run_cmake("${prefix}${name}")
+    # set by the check file above.
+    if(should_error_out)
+        message(FATAL_ERROR "Command ${prefix}${name} failed. Exiting early.")
+    endif()
 endfunction()
 
 macro(read_expected_output test file_name)
@@ -92,12 +106,31 @@ function(run_suite)
     file(MAKE_DIRECTORY "${tmp_path}")
     set(RunCMake_TEST_COMMAND_WORKING_DIRECTORY "${tmp_path}")
 
-    # Make a copy of the qt6 repo
-    run_suite_command(0010_prepare_qt6_clone git clone "${local_clone_url}" qt6 --quiet)
+    set(code_qt_io_mirror "https://code.qt.io/qt/qt5.git")
+    set(gerrit_mirror "https://codereview.qt-project.org/qt/qt5")
+
+    # Make a copy of the qt6 repo on which the test will operate on.
+    # On the CI we clone it from the official mirror, because we don't have a git repo, but only
+    # a source archive.
+    # On a local build we use the current qt6 checkout.
+    set(ci_ref "$ENV{TESTED_MODULE_REVISION_COIN}")
+    if(ci_ref)
+        set(final_clone_url "${code_qt_io_mirror}")
+    else()
+        set(final_clone_url "${local_clone_url}")
+    endif()
+
+    run_suite_command(0010_prepare_qt6_clone git clone "${final_clone_url}" qt6 --quiet)
     set(RunCMake_TEST_COMMAND_WORKING_DIRECTORY "${qt6_repo_dir}")
 
+    # On the CI we also checkout the exact tested ref, so it behaves as it would with locally.
+    if(ci_ref)
+        run_suite_command(0011_fetch_ci_qt6_ref git fetch "${gerrit_mirror}" "${ci_ref}" --quiet)
+        run_suite_command(0012_checkout_ci_qt6_ref git checkout FETCH_HEAD --quiet)
+    endif()
+
     # Adjust its remote url to be the official mirror rather the local url.
-    set(remote_clone_url "https://code.qt.io/qt/qt5.git")
+    set(remote_clone_url "${code_qt_io_mirror}")
     run_suite_command(0020_set_qt6_remote_url git remote set-url origin "${remote_clone_url}")
 
     # Ignore certain lines

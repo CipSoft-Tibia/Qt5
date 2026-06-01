@@ -510,6 +510,11 @@ void QSGRenderContext::invalidateGlyphCaches()
 
 }
 
+void QSGRenderContext::flushGlyphCaches()
+{
+
+}
+
 void QSGRenderContext::registerFontengineForCleanup(QFontEngine *engine)
 {
     engine->ref.ref();

@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickcontrol_p.h"
 #include "qquickcontrol_p_p.h"
@@ -45,6 +46,7 @@ Q_LOGGING_CATEGORY(lcItemManagement, "qt.quick.controls.control.itemmanagement")
     The following diagram illustrates the layout of a typical control:
 
     \image qtquickcontrols-control.png
+           {Basic control showing structure}
 
     The \l {Item::}{implicitWidth} and \l {Item::}{implicitHeight} of a control
     are typically based on the implicit sizes of the background and the content
@@ -1038,14 +1040,16 @@ QFont QQuickControl::font() const
     Q_D(const QQuickControl);
     QFont font = d->resolvedFont;
     // The resolveMask should inherit from the requestedFont
-    font.setResolveMask(d->extra.value().requestedFont.resolveMask());
+    font.setResolveMask(d->extra.isAllocated() ? d->extra->requestedFont.resolveMask() : 0);
     return font;
 }
 
 void QQuickControl::setFont(const QFont &font)
 {
     Q_D(QQuickControl);
-    if (d->extra.value().requestedFont.resolveMask() == font.resolveMask() && d->extra.value().requestedFont == font)
+    if (d->extra.isAllocated()
+            && d->extra.value().requestedFont.resolveMask() == font.resolveMask()
+            && d->extra.value().requestedFont == font)
         return;
 
     d->extra.value().requestedFont = font;

@@ -6,10 +6,7 @@
 #define QABSTRACTSOCKET_H
 
 #include <QtNetwork/qtnetworkglobal.h>
-#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
-#include <QtNetwork/qabstractsocket.h>
-#endif
-#ifdef Q_QDOC
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(Q_QDOC)
 #include <QtNetwork/qhostaddress.h>
 #endif
 #include <QtCore/qiodevice.h>
@@ -29,7 +26,6 @@ class QAuthenticator;
 class Q_NETWORK_EXPORT QAbstractSocket : public QIODevice
 {
     Q_OBJECT
-    Q_MOC_INCLUDE(<QtNetwork/qauthenticator.h>)
 
 public:
     enum SocketType {

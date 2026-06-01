@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4codegen_p.h"
 
@@ -49,6 +50,13 @@ void CodegenWarningInterface::reportVarUsedBeforeDeclaration(
             << fileName << ":" << accessLocation.startLine << ":" << accessLocation.startColumn
             << " Variable \"" << name << "\" is used before its declaration at "
             << declarationLocation.startLine << ":" << declarationLocation.startColumn << ".";
+}
+
+void CodegenWarningInterface::reportFunctionUsedBeforeDeclaration(const QString &, const QString &,
+                                                                  QQmlJS::SourceLocation,
+                                                                  QQmlJS::SourceLocation)
+{
+    // we don't report this by default, only when using qmllint.
 }
 
 static inline void setJumpOutLocation(QV4::Moth::BytecodeGenerator *bytecodeGenerator,
@@ -108,61 +116,86 @@ Codegen::Codegen(QV4::Compiler::JSUnitGenerator *jsUnitGenerator, bool strict,
     pushExpr();
 }
 
-const char *Codegen::s_globalNames[] = {
-    "isNaN",
-    "parseFloat",
-    "String",
-    "EvalError",
-    "URIError",
-    "Math",
-    "encodeURIComponent",
-    "RangeError",
-    "eval",
-    "isFinite",
-    "ReferenceError",
-    "Infinity",
-    "Function",
-    "RegExp",
-    "Number",
-    "parseInt",
-    "Object",
-    "decodeURI",
-    "TypeError",
-    "Boolean",
-    "encodeURI",
-    "NaN",
-    "Error",
-    "decodeURIComponent",
-    "Date",
-    "Array",
-    "Symbol",
-    "escape",
-    "unescape",
-    "SyntaxError",
-    "undefined",
-    "JSON",
-    "ArrayBuffer",
-    "SharedArrayBuffer",
-    "DataView",
-    "Int8Array",
-    "Uint8Array",
-    "Uint8ClampedArray",
-    "Int16Array",
-    "Uint16Array",
-    "Int32Array",
-    "Uint32Array",
-    "Float32Array",
-    "Float64Array",
-    "WeakSet",
-    "Set",
-    "WeakMap",
-    "Map",
-    "Reflect",
-    "Proxy",
-    "Atomics",
-    "Promise",
-    nullptr
+static constexpr const QLatin1StringView s_globalNames[] = {
+    QLatin1StringView("Array"),
+    QLatin1StringView("ArrayBuffer"),
+    QLatin1StringView("Atomics"),
+    QLatin1StringView("Boolean"),
+    QLatin1StringView("DOMException"),
+    QLatin1StringView("DataView"),
+    QLatin1StringView("Date"),
+    QLatin1StringView("Error"),
+    QLatin1StringView("EvalError"),
+    QLatin1StringView("Float32Array"),
+    QLatin1StringView("Float64Array"),
+    QLatin1StringView("Function"),
+    QLatin1StringView("Infinity"),
+    QLatin1StringView("Int16Array"),
+    QLatin1StringView("Int32Array"),
+    QLatin1StringView("Int8Array"),
+    QLatin1StringView("JSON"),
+    QLatin1StringView("Map"),
+    QLatin1StringView("Math"),
+    QLatin1StringView("NaN"),
+    QLatin1StringView("Number"),
+    QLatin1StringView("Object"),
+    QLatin1StringView("Promise"),
+    QLatin1StringView("Proxy"),
+    QLatin1StringView("QT_TRANSLATE_NOOP"),
+    QLatin1StringView("QT_TRID_NOOP"),
+    QLatin1StringView("QT_TR_NOOP"),
+    QLatin1StringView("Qt"),
+    QLatin1StringView("RangeError"),
+    QLatin1StringView("ReferenceError"),
+    QLatin1StringView("Reflect"),
+    QLatin1StringView("RegExp"),
+    QLatin1StringView("SQLException"),
+    QLatin1StringView("Set"),
+    QLatin1StringView("SharedArrayBuffer"),
+    QLatin1StringView("String"),
+    QLatin1StringView("Symbol"),
+    QLatin1StringView("SyntaxError"),
+    QLatin1StringView("TypeError"),
+    QLatin1StringView("URIError"),
+    QLatin1StringView("URL"),
+    QLatin1StringView("URLSearchParams"),
+    QLatin1StringView("Uint16Array"),
+    QLatin1StringView("Uint32Array"),
+    QLatin1StringView("Uint8Array"),
+    QLatin1StringView("Uint8ClampedArray"),
+    QLatin1StringView("WeakMap"),
+    QLatin1StringView("WeakSet"),
+    QLatin1StringView("XMLHttpRequest"),
+    QLatin1StringView("console"),
+    QLatin1StringView("decodeURI"),
+    QLatin1StringView("decodeURIComponent"),
+    QLatin1StringView("encodeURI"),
+    QLatin1StringView("encodeURIComponent"),
+    QLatin1StringView("escape"),
+    QLatin1StringView("eval"),
+    QLatin1StringView("gc"),
+    QLatin1StringView("isFinite"),
+    QLatin1StringView("isNaN"),
+    QLatin1StringView("parseFloat"),
+    QLatin1StringView("parseInt"),
+    QLatin1StringView("print"),
+    QLatin1StringView("qsTr"),
+    QLatin1StringView("qsTrId"),
+    QLatin1StringView("qsTranslate"),
+    QLatin1StringView("undefined"),
+    QLatin1StringView("unescape"),
 };
+
+bool Codegen::isNameGlobal(QAnyStringView name)
+{
+    return std::binary_search(std::begin(s_globalNames), std::end(s_globalNames), name);
+}
+
+void Codegen::forEachGlobalName(qxp::function_ref<void (QLatin1StringView)> &&handler)
+{
+    for (QLatin1StringView name : s_globalNames)
+        handler(name);
+}
 
 void Codegen::generateFromProgram(
         const QString &sourceCode, Program *node, Module *module, ContextType contextType)
@@ -171,18 +204,6 @@ void Codegen::generateFromProgram(
 
     _module = module;
     _context = nullptr;
-
-    if (contextType == ContextType::ScriptImportedByQML) {
-        // the global object is frozen, so we know that members of it are
-        // pointing to the global object. This is important so that references
-        // to Math etc. do not go through the expensive path in the context wrapper
-        // that tries to see whether we have a matching type
-        //
-        // Since this can be called from the loader thread we can't get the list
-        // directly from the engine, so let's hardcode the most important ones here
-        for (const char **g = s_globalNames; *g != nullptr; ++g)
-            m_globalNames << QString::fromLatin1(*g);
-    }
 
     ScanFunctions scan(this, sourceCode, contextType);
     scan(node);
@@ -585,12 +606,15 @@ void Codegen::statementList(StatementList *ast)
             statement(static_cast<ExpressionNode *>(it->statement));
         if (it->statement == needsCompletion)
             requiresReturnValue = false;
-        if (it->statement->kind == Statement::Kind_ThrowStatement ||
-            it->statement->kind == Statement::Kind_BreakStatement ||
-            it->statement->kind == Statement::Kind_ContinueStatement ||
-            it->statement->kind == Statement::Kind_ReturnStatement)
-            // any code after those statements is unreachable
+        if (it->statement->kind == Statement::Kind_ThrowStatement
+            || it->statement->kind == Statement::Kind_BreakStatement
+            || it->statement->kind == Statement::Kind_ContinueStatement
+            || it->statement->kind == Statement::Kind_ReturnStatement) {
+
+            if (Visitor *visitor = _interface->unreachableVisitor())
+                Node::accept(it->next, visitor);
             break;
+        }
     }
     requiresReturnValue = _requiresReturnValue;
     insideSwitch = _insideSwitch;
@@ -1500,6 +1524,8 @@ bool Codegen::visit(BinaryExpression *ast)
         if (hasError())
             return false;
         r.loadInAccumulator();
+        // The location saved above may have been overwritten when evaluating the rhs expression
+        bytecodeGenerator->setLocation(ast->left->firstSourceLocation());
         if (exprAccept(nx))
             setExprResult(left.storeConsumeAccumulator());
         else
@@ -2667,8 +2693,13 @@ Codegen::Reference Codegen::referenceForName(const QString &name, bool isLhs, co
         if (resolved.declarationLocation.isValid() && accessLocation.isValid()
                 && resolved.declarationLocation.begin() > accessLocation.end()) {
             Q_ASSERT(_interface);
-            _interface->reportVarUsedBeforeDeclaration(
-                    name, url().toLocalFile(), resolved.declarationLocation, accessLocation);
+            if (resolved.memberType == Context::FunctionDefinition) {
+                _interface->reportFunctionUsedBeforeDeclaration(
+                        name, url().toLocalFile(), resolved.declarationLocation, accessLocation);
+            } else {
+                _interface->reportVarUsedBeforeDeclaration(
+                        name, url().toLocalFile(), resolved.declarationLocation, accessLocation);
+            }
             if (resolved.type == Context::ResolvedName::Stack && resolved.requiresTDZCheck)
                 throwsReferenceError = true;
         }
@@ -2707,8 +2738,15 @@ Codegen::Reference Codegen::referenceForName(const QString &name, bool isLhs, co
     r.global = useFastLookups && (resolved.type == Context::ResolvedName::Global || resolved.type == Context::ResolvedName::QmlGlobal);
     r.qmlGlobal = resolved.type == Context::ResolvedName::QmlGlobal;
     r.sourceLocation = accessLocation;
-    if (!r.global && !r.qmlGlobal && m_globalNames.contains(name))
+    if (!r.global && !r.qmlGlobal
+            && _context->contextType == ContextType::ScriptImportedByQML
+            && Codegen::isNameGlobal(name)) {
+        // the global object is frozen, so we know that members of it are
+        // pointing to the global object. This is important so that references
+        // to Math etc. do not go through the expensive path in the context wrapper
+        // that tries to see whether we have a matching type
         r.global = true;
+    }
     return r;
 }
 

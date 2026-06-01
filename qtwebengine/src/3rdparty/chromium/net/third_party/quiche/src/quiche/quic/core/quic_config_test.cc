@@ -4,6 +4,7 @@
 
 #include "quiche/quic/core/quic_config.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -12,8 +13,10 @@
 #include "quiche/quic/core/crypto/crypto_protocol.h"
 #include "quiche/quic/core/crypto/transport_parameters.h"
 #include "quiche/quic/core/quic_constants.h"
+#include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/core/quic_time.h"
+#include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/platform/api/quic_expect_bug.h"
 #include "quiche/quic/platform/api/quic_flags.h"
@@ -242,7 +245,7 @@ TEST_P(QuicConfigTest, MissingOptionalValuesInCHLO) {
 
   // Set all REQUIRED tags.
   msg.SetValue(kICSL, 1);
-  msg.SetValue(kMIBS, 1);
+  msg.SetValue(kMIDS, 1);
 
   // No error, as rest are optional.
   std::string error_details;
@@ -261,7 +264,7 @@ TEST_P(QuicConfigTest, MissingOptionalValuesInSHLO) {
 
   // Set all REQUIRED tags.
   msg.SetValue(kICSL, 1);
-  msg.SetValue(kMIBS, 1);
+  msg.SetValue(kMIDS, 1);
 
   // No error, as rest are optional.
   std::string error_details;
@@ -335,9 +338,12 @@ TEST_P(QuicConfigTest, HasClientSentConnectionOption) {
   QuicConfig client_config;
   QuicTagVector copt;
   copt.push_back(kTBBR);
+  copt.push_back(kPRGC);
   client_config.SetConnectionOptionsToSend(copt);
   EXPECT_TRUE(client_config.HasClientSentConnectionOption(
       kTBBR, Perspective::IS_CLIENT));
+  EXPECT_TRUE(client_config.HasClientSentConnectionOption(
+      kPRGC, Perspective::IS_CLIENT));
 
   CryptoHandshakeMessage msg;
   client_config.ToHandshakeMessage(&msg, version_.transport_version);
@@ -349,9 +355,11 @@ TEST_P(QuicConfigTest, HasClientSentConnectionOption) {
   EXPECT_TRUE(config_.negotiated());
 
   EXPECT_TRUE(config_.HasReceivedConnectionOptions());
-  EXPECT_EQ(1u, config_.ReceivedConnectionOptions().size());
+  EXPECT_EQ(2u, config_.ReceivedConnectionOptions().size());
   EXPECT_TRUE(
       config_.HasClientSentConnectionOption(kTBBR, Perspective::IS_SERVER));
+  EXPECT_TRUE(
+      config_.HasClientSentConnectionOption(kPRGC, Perspective::IS_SERVER));
 }
 
 TEST_P(QuicConfigTest, DontSendClientConnectionOptions) {
@@ -455,12 +463,52 @@ TEST_P(QuicConfigTest, ReceivedInvalidMinAckDelayInTransportParameter) {
   EXPECT_TRUE(error_details.empty());
 }
 
+TEST_P(QuicConfigTest, ReceivedInvalidMinAckDelayDraft10InTransportParameter) {
+  if (!version_.UsesTls()) {
+    // TransportParameters are only used for QUIC+TLS.
+    return;
+  }
+  TransportParameters params;
+
+  params.max_ack_delay.set_value(25 /*ms*/);
+  params.min_ack_delay_us_draft10 = 25 * kNumMicrosPerMilli + 1;
+  std::string error_details = "foobar";
+  EXPECT_THAT(config_.ProcessTransportParameters(
+                  params, /* is_resumption = */ false, &error_details),
+              IsError(IETF_QUIC_PROTOCOL_VIOLATION));
+  EXPECT_EQ("MinAckDelay is greater than MaxAckDelay.", error_details);
+
+  params.max_ack_delay.set_value(25 /*ms*/);
+  params.min_ack_delay_us_draft10 = 25 * kNumMicrosPerMilli;
+  EXPECT_THAT(config_.ProcessTransportParameters(
+                  params, /* is_resumption = */ false, &error_details),
+              IsQuicNoError());
+  EXPECT_TRUE(error_details.empty());
+}
+
+TEST_P(QuicConfigTest, ReceivedBothMinAckDelayVersionsInTransportParameter) {
+  if (!version_.UsesTls()) {
+    // TransportParameters are only used for QUIC+TLS.
+    return;
+  }
+  TransportParameters params;
+  params.min_ack_delay_us.set_value(25 * kNumMicrosPerMilli);
+  params.min_ack_delay_us_draft10 = 25 * kNumMicrosPerMilli;
+  std::string error_details = "foobar";
+  EXPECT_THAT(config_.ProcessTransportParameters(
+                  params, /* is_resumption = */ false, &error_details),
+              IsError(IETF_QUIC_PROTOCOL_VIOLATION));
+  EXPECT_EQ("Two versions of MinAckDelay. ACK_FREQUENCY frames are ambiguous.",
+            error_details);
+}
+
 TEST_P(QuicConfigTest, FillTransportParams) {
   if (!version_.UsesTls()) {
     // TransportParameters are only used for QUIC+TLS.
     return;
   }
   const std::string kFakeGoogleHandshakeMessage = "Fake handshake message";
+  const int32_t kDiscardLength = 2000;
   config_.SetInitialMaxStreamDataBytesIncomingBidirectionalToSend(
       2 * kMinimumFlowControlSendWindow);
   config_.SetInitialMaxStreamDataBytesOutgoingBidirectionalToSend(
@@ -474,8 +522,10 @@ TEST_P(QuicConfigTest, FillTransportParams) {
   config_.SetOriginalConnectionIdToSend(TestConnectionId(0x1111));
   config_.SetInitialSourceConnectionIdToSend(TestConnectionId(0x2222));
   config_.SetRetrySourceConnectionIdToSend(TestConnectionId(0x3333));
-  config_.SetMinAckDelayMs(kDefaultMinAckDelayTimeMs);
+  config_.SetMinAckDelayDraft10Ms(kDefaultMinAckDelayTimeMs);
+  config_.SetDiscardLengthToSend(kDiscardLength);
   config_.SetGoogleHandshakeMessageToSend(kFakeGoogleHandshakeMessage);
+  config_.SetReliableStreamReset(true);
 
   QuicIpAddress host;
   host.FromString("127.0.3.1");
@@ -526,7 +576,7 @@ TEST_P(QuicConfigTest, FillTransportParams) {
 
   EXPECT_EQ(
       static_cast<uint64_t>(kDefaultMinAckDelayTimeMs) * kNumMicrosPerMilli,
-      params.min_ack_delay_us.value());
+      *params.min_ack_delay_us_draft10);
 
   EXPECT_EQ(params.preferred_address->ipv4_socket_address, kTestServerAddress);
   EXPECT_EQ(params.preferred_address->ipv6_socket_address,
@@ -535,7 +585,10 @@ TEST_P(QuicConfigTest, FillTransportParams) {
   EXPECT_EQ(*reinterpret_cast<StatelessResetToken*>(
                 &params.preferred_address->stateless_reset_token.front()),
             new_stateless_reset_token);
+  EXPECT_EQ(kDiscardLength, params.discard_length);
   EXPECT_EQ(kFakeGoogleHandshakeMessage, params.google_handshake_message);
+
+  EXPECT_TRUE(params.reliable_stream_reset);
 }
 
 TEST_P(QuicConfigTest, DNATPreferredAddress) {
@@ -606,7 +659,7 @@ TEST_P(QuicConfigTest, SupportsServerPreferredAddress) {
   EXPECT_TRUE(config_.SupportsServerPreferredAddress(Perspective::IS_SERVER));
 
   SetQuicFlag(quic_always_support_server_preferred_address, false);
-  EXPECT_FALSE(config_.SupportsServerPreferredAddress(Perspective::IS_CLIENT));
+  EXPECT_TRUE(config_.SupportsServerPreferredAddress(Perspective::IS_CLIENT));
   EXPECT_FALSE(config_.SupportsServerPreferredAddress(Perspective::IS_SERVER));
 
   QuicTagVector copt;
@@ -623,16 +676,19 @@ TEST_P(QuicConfigTest, SupportsServerPreferredAddress) {
 TEST_P(QuicConfigTest, AddConnectionOptionsToSend) {
   QuicTagVector copt;
   copt.push_back(kNOIP);
+  copt.push_back(kFPPE);
   config_.AddConnectionOptionsToSend(copt);
   ASSERT_TRUE(config_.HasSendConnectionOptions());
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kNOIP));
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kFPPE));
 
   copt.clear();
   copt.push_back(kSPAD);
   copt.push_back(kSPA2);
   config_.AddConnectionOptionsToSend(copt);
-  ASSERT_EQ(3, config_.SendConnectionOptions().size());
+  ASSERT_EQ(4, config_.SendConnectionOptions().size());
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kNOIP));
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kFPPE));
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kSPAD));
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kSPA2));
 }
@@ -643,6 +699,7 @@ TEST_P(QuicConfigTest, ProcessTransportParametersServer) {
     return;
   }
   const std::string kFakeGoogleHandshakeMessage = "Fake handshake message";
+  const int32_t kDiscardLength = 2000;
   TransportParameters params;
 
   params.initial_max_stream_data_bidi_local.set_value(
@@ -662,6 +719,7 @@ TEST_P(QuicConfigTest, ProcessTransportParametersServer) {
   params.original_destination_connection_id = TestConnectionId(0x1111);
   params.initial_source_connection_id = TestConnectionId(0x2222);
   params.retry_source_connection_id = TestConnectionId(0x3333);
+  params.discard_length = kDiscardLength;
   params.google_handshake_message = kFakeGoogleHandshakeMessage;
 
   std::string error_details;
@@ -783,6 +841,7 @@ TEST_P(QuicConfigTest, ProcessTransportParametersServer) {
             TestConnectionId(0x3333));
   EXPECT_EQ(kFakeGoogleHandshakeMessage,
             config_.GetReceivedGoogleHandshakeMessage());
+  EXPECT_EQ(kDiscardLength, config_.GetDiscardLengthReceived());
 }
 
 TEST_P(QuicConfigTest, DisableMigrationTransportParameter) {

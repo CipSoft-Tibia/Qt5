@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import './strings.m.js';
+import '/strings.m.js';
 import '//resources/cr_elements/cr_button/cr_button.js';
 import '//resources/cr_elements/cr_checkbox/cr_checkbox.js';
 import '//resources/cr_elements/cr_dialog/cr_dialog.js';
@@ -311,11 +311,6 @@ export class CastFeedbackUiElement extends CrLitElement {
 
   private getProductSpecificData_(): Array<{key: string, value: string}> {
     const data = [
-      {
-        key: 'global_media_controls_cast_start_stop',
-        value: String(
-            !!loadTimeData.getBoolean('globalMediaControlsCastStartStop')),
-      },
       {
         key: 'feedbackUserCtlConsent',
         value: String(!!this.allowContactByEmail_),

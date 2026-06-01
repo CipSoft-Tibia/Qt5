@@ -13,7 +13,6 @@ qt_internal_add_plugin(QWasmIntegrationPlugin
         main.cpp
         qwasmaccessibility.cpp qwasmaccessibility.h
         qwasmbase64iconstore.cpp qwasmbase64iconstore.h
-        qwasmclipboard.cpp qwasmclipboard.h
         qwasmcompositor.cpp qwasmcompositor.h
         qwasmcssstyle.cpp qwasmcssstyle.h
         qwasmcursor.cpp qwasmcursor.h
@@ -30,12 +29,10 @@ qt_internal_add_plugin(QWasmIntegrationPlugin
         qwasmservices.cpp qwasmservices.h
         qwasmtheme.cpp qwasmtheme.h
         qwasmwindow.cpp qwasmwindow.h
-        qwasmwindowclientarea.cpp qwasmwindowclientarea.h
         qwasmwindowtreenode.cpp qwasmwindowtreenode.h
         qwasmwindownonclientarea.cpp qwasmwindownonclientarea.h
         qwasminputcontext.cpp qwasminputcontext.h
-        qwasmwindowstack.cpp qwasmwindowstack.h
-        qwasmdrag.cpp qwasmdrag.h
+        qwasmwindowstack.h
     DEFINES
         QT_EGL_NO_X11
         QT_NO_FOREACH
@@ -62,6 +59,16 @@ qt_internal_add_resource(QWasmIntegrationPlugin "wasmfonts"
         "${QtBase_SOURCE_DIR}/src/3rdparty/wasm"
     FILES
         ${wasmfonts_resource_files}
+)
+
+qt_internal_extend_target(QWasmIntegrationPlugin CONDITION QT_FEATURE_clipboard
+    SOURCES
+        qwasmclipboard.cpp qwasmclipboard.h
+)
+
+qt_internal_extend_target(QWasmIntegrationPlugin CONDITION QT_FEATURE_draganddrop
+    SOURCES
+        qwasmdrag.cpp qwasmdrag.h
 )
 
 qt_internal_extend_target(QWasmIntegrationPlugin CONDITION QT_FEATURE_opengl

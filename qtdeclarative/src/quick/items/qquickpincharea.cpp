@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickpincharea_p_p.h"
 #include "qquickwindow.h"
@@ -25,8 +26,6 @@ Q_STATIC_LOGGING_CATEGORY(lcPA, "qt.quick.pincharea")
     \inqmlmodule QtQuick
     \ingroup qtquick-input-events
     \brief For specifying information about a pinch event.
-
-    \b {The PinchEvent type was added in QtQuick 1.1}
 
     The \c center, \c startCenter, \c previousCenter properties provide the center position between the two touch points.
 
@@ -136,8 +135,6 @@ QQuickPinchAreaPrivate::~QQuickPinchAreaPrivate()
     \ingroup qtquick-input
     \inherits Item
     \brief Enables simple pinch gesture handling.
-
-    \b {The PinchArea type was added in QtQuick 1.1}
 
     A PinchArea is an invisible item that is typically used in conjunction with
     a visible item in order to provide pinch gesture handling for that item.

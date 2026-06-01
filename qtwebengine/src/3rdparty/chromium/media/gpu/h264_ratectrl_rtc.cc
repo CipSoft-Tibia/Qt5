@@ -5,6 +5,7 @@
 #include "h264_ratectrl_rtc.h"
 
 #include "base/logging.h"
+#include "base/strings/string_number_conversions.h"
 #include "media/gpu/h264_rate_control_util.h"
 
 namespace media {
@@ -46,7 +47,10 @@ std::string CreateRateControlConfigLogMessage(
   log_message << "width: " << config.frame_size.width()
               << ", height: " << config.frame_size.height()
               << ", gop_max_duration: "
-              << config.gop_max_duration.InMilliseconds()
+              << (config.gop_max_duration != base::TimeDelta::Max()
+                      ? base::NumberToString(
+                            config.gop_max_duration.InMilliseconds())
+                      : "infinite")
               << ", frame_rate_max: " << config.frame_rate_max
               << ", num_temporal_layers: " << config.num_temporal_layers
               << ", content_type: "
@@ -55,7 +59,9 @@ std::string CreateRateControlConfigLogMessage(
                       ? "camera"
                       : "display")
               << ", fixed_delta_qp: "
-              << (config.fixed_delta_qp ? "true" : "false")
+              << (config.fixed_delta_qp
+                      ? base::NumberToString(config.fixed_delta_qp.value())
+                      : "not set")
               << ", ease_hrd_reduction: "
               << (config.ease_hrd_reduction ? "true" : "false");
   for (size_t tl = 0; tl < config.num_temporal_layers; tl++) {
@@ -70,6 +76,19 @@ std::string CreateRateControlConfigLogMessage(
                 << " ]";
   }
 
+  return log_message.str();
+}
+
+std::string CreateBufferFullnessLogMessage(H264RateController& rate_controller,
+                                           size_t temporal_layer_id,
+                                           base::TimeDelta frame_timestamp) {
+  std::vector<int> buffer_fullness_vector(
+      h264_rate_control_util::kMaxNumTemporalLayers, 0);
+  base::span<int> buffer_fullness_values(buffer_fullness_vector);
+  rate_controller.GetHRDBufferFullness(buffer_fullness_values, frame_timestamp);
+  std::stringstream log_message;
+  log_message << "buffer_fullness: "
+              << buffer_fullness_values[temporal_layer_id] << "%";
   return log_message.str();
 }
 
@@ -113,7 +132,10 @@ H264RateCtrlRTC::FrameDropDecision H264RateCtrlRTC::ComputeQP(
   DVLOG(3) << "Compute QP - "
            << "temporal_layer_id: " << frame_params.temporal_layer_id
            << ", timestamp: " << frame_params.timestamp.InMilliseconds()
-           << ", frame_type: " << (frame_params.keyframe ? "I" : "P");
+           << ", frame_type: " << (frame_params.keyframe ? "I" : "P") << ", "
+           << CreateBufferFullnessLogMessage(rate_controller_,
+                                             frame_params.temporal_layer_id,
+                                             frame_params.timestamp);
 
   if (config_changed_) {
     // Apply new config.
@@ -186,7 +208,8 @@ H264RateCtrlRTC::FrameDropDecision H264RateCtrlRTC::ComputeQP(
 
   if (allow_drop && buffer_left == 0) {
     frame_qp_ = -1;  // Drop frame.
-    DVLOG(3) << "Rate controller estimated QP: " << frame_qp_
+    DVLOG(3) << "Estimated QP - "
+             << "temporal_layer_id: " << frame_params.temporal_layer_id
              << " - frame drop";
     return FrameDropDecision::kDrop;
   }
@@ -195,7 +218,9 @@ H264RateCtrlRTC::FrameDropDecision H264RateCtrlRTC::ComputeQP(
       std::clamp(frame_qp, static_cast<int>(h264_rate_control_util::kQPMin),
                  static_cast<int>(h264_rate_control_util::kQPMax));
 
-  DVLOG(3) << "Rate controller estimated QP: " << frame_qp_;
+  DVLOG(3) << "Estimated QP - "
+           << "temporal_layer_id: " << frame_params.temporal_layer_id
+           << ", frame_qp: " << frame_qp;
   return FrameDropDecision::kOk;
 }
 

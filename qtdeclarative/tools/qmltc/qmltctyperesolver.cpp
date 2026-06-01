@@ -43,7 +43,7 @@ QmltcTypeResolver::scopeForLocation(const QV4::CompiledData::Location &location)
     return m_objectsByLocationNonConst.value(location);
 }
 
-QPair<QString, QQmlJSScope::Ptr>
+std::pair<QString, QQmlJSScope::Ptr>
 QmltcTypeResolver::importedType(const QQmlJSScope::ConstPtr &type) const
 {
     const auto files = m_importer->importedFiles();

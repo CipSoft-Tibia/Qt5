@@ -36,6 +36,10 @@ public:
     void setTopRightRadius(qreal radius) override;
     void setBottomLeftRadius(qreal radius) override;
     void setBottomRightRadius(qreal radius) override;
+    void resetTopLeftRadius() override;
+    void resetTopRightRadius() override;
+    void resetBottomLeftRadius() override;
+    void resetBottomRightRadius() override;
     void setAntialiasing(bool antialiasing) override;
     void setAligned(bool aligned) override;
     void update() override;
@@ -53,10 +57,10 @@ protected:
     QColor m_color;
     QColor m_border_color;
     float m_radius = 0.0f;
-    float m_topLeftRadius = -1.0f;
-    float m_topRightRadius = -1.0f;
-    float m_bottomLeftRadius = -1.0f;
-    float m_bottomRightRadius = -1.0f;
+    float m_topLeftRadius = 0.0f;
+    float m_topRightRadius = 0.0f;
+    float m_bottomLeftRadius = 0.0f;
+    float m_bottomRightRadius = 0.0f;
     float m_pen_width = 0.0f;
 
     uint m_aligned : 1;
@@ -64,6 +68,11 @@ protected:
     uint m_gradient_is_opaque : 1;
     uint m_dirty_geometry : 1;
     uint m_gradient_is_vertical : 1;
+
+    uint m_isTopLeftRadiusSet : 1;
+    uint m_isTopRightRadiusSet : 1;
+    uint m_isBottomLeftRadiusSet : 1;
+    uint m_isBottomRightRadiusSet : 1;
 
     QSGGeometry m_geometry;
 };

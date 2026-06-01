@@ -33,6 +33,7 @@ private slots:
     void fromModuleCtor();
     void loadFromModule_data();
     void loadFromModule();
+    void setSourceRelativeQrcPath();
     void overlay();
 };
 
@@ -341,6 +342,20 @@ void tst_QQuickView::loadFromModule()
     view.loadFromModule(module, typeName);
     QTRY_COMPARE(view.status(), status);
     QCOMPARE(view.source(), url);
+}
+
+void tst_QQuickView::setSourceRelativeQrcPath()
+{
+    QQuickView view;
+    const auto url = QUrl("qrc:main.qml");
+    QTest::ignoreMessage(
+            QtMsgType::QtWarningMsg,
+            "QQmlComponent: attempted to load via a relative URL '%1' in resource file system. "
+            "This is not fully supported and may not work"_L1.arg(url.toString())
+                    .toLocal8Bit()
+                    .data());
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg, "qrc:main.qml: No such file or directory");
+    view.setSource(url);
 }
 
 void tst_QQuickView::overlay()

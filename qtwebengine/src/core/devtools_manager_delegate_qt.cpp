@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // based on content/shell/browser/shell_devtools_manager_delegate.cc:
 // Copyright 2013 The Chromium Authors. All rights reserved.
@@ -128,9 +129,9 @@ void DevToolsServerQt::stop()
 void DevToolsManagerDelegateQt::Initialized(const net::IPEndPoint *ip_address)
 {
     if (ip_address && ip_address->address().size()) {
-        qWarning("Remote debugging server started successfully. "
-                 "Try pointing a Chromium-based browser to http://%s",
-                 ip_address->ToString().c_str());
+        qDebug("Remote debugging server started successfully. "
+               "Try pointing a Chromium-based browser to http://%s",
+               ip_address->ToString().c_str());
     }
     else
         qWarning("Couldn't start the inspector server on bind address. In case of invalid input, try something like: \"12345\" or \"192.168.2.14:12345\" (with the address of one of this host's interface).");

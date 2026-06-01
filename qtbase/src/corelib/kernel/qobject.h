@@ -387,7 +387,10 @@ protected:
 
 private:
     void doSetObjectName(const QString &name);
+#if QT_CORE_REMOVED_SINCE(6, 10)
     bool doSetProperty(const char *name, const QVariant *lvalue, QVariant *rvalue);
+#endif
+    bool doSetProperty(const char *name, const QVariant &value, QVariant *rvalue);
 
     Q_DISABLE_COPY(QObject)
 
@@ -409,38 +412,27 @@ inline QMetaObject::Connection QObject::connect(const QObject *asender, const ch
 #if QT_CORE_INLINE_IMPL_SINCE(6, 6)
 bool QObject::setProperty(const char *name, const QVariant &value)
 {
-    return doSetProperty(name, &value, nullptr);
+    return doSetProperty(name, value, nullptr);
 }
 #endif // inline since 6.6
 bool QObject::setProperty(const char *name, QVariant &&value)
 {
-    return doSetProperty(name, &value, &value);
+    return doSetProperty(name, value, &value);
 }
 
 template <class T>
 inline T qobject_cast(QObject *object)
 {
-    static_assert(std::is_pointer_v<T>,
-                  "qobject_cast requires to cast towards a pointer type");
-    typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
-    static_assert(QtPrivate::HasQ_OBJECT_Macro<ObjType>::Value,
-                    "qobject_cast requires the type to have a Q_OBJECT macro");
-    return static_cast<T>(ObjType::staticMetaObject.cast(object));
+    return QtPrivate::qobject_cast_helper<T>(object);
 }
 
 template <class T>
 inline T qobject_cast(const QObject *object)
 {
-    static_assert(std::is_pointer_v<T>,
-                  "qobject_cast requires to cast towards a pointer type");
     static_assert(std::is_const_v<std::remove_pointer_t<T>>,
                   "qobject_cast cannot cast away constness (use const_cast)");
-    typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
-    static_assert(QtPrivate::HasQ_OBJECT_Macro<ObjType>::Value,
-                      "qobject_cast requires the type to have a Q_OBJECT macro");
-    return static_cast<T>(ObjType::staticMetaObject.cast(object));
+    return QtPrivate::qobject_cast_helper<T>(object);
 }
-
 
 template <class T> constexpr const char * qobject_interface_iid() = delete;
 template <class T> inline T *

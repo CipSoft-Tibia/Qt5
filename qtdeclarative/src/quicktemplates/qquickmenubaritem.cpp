@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickmenubaritem_p.h"
 #include "qquickmenubaritem_p_p.h"
@@ -21,6 +22,7 @@ QT_BEGIN_NAMESPACE
     is shown when a MenuBarItem is \l triggered via keyboard, mouse, or touch.
 
     \image qtquickcontrols-menubar.png
+           {Menu bar with File, Edit, and View menus}
 
     MenuBarItem is used as a default \l {MenuBar::}{delegate} type for MenuBar.
     Notice that it is not necessary to declare MenuBarItem instances by hand when
@@ -44,6 +46,18 @@ void QQuickMenuBarItemPrivate::setMenuBar(QQuickMenuBar *newMenuBar)
 
     menuBar = newMenuBar;
     emit q->menuBarChanged();
+}
+
+void QQuickMenuBarItemPrivate::accessiblePressAction()
+{
+    // This is inspired by the code in keyReleaseEvent
+
+    Q_Q(QQuickMenuBarItem);
+
+    // We override these event functions so that we can emit triggered here.
+    // We can't just connect clicked to triggered, because that would cause mouse clicks
+    // to open the menu, when only presses should.
+    emit q->triggered();
 }
 
 bool QQuickMenuBarItemPrivate::handlePress(const QPointF &point, ulong timestamp)

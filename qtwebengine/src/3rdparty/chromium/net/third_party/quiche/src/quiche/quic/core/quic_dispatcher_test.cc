@@ -659,6 +659,9 @@ TEST_P(QuicDispatcherTestAllVersions, TlsClientHelloCreatesSession) {
       .WillOnce(WithArg<2>(Invoke([this](const QuicEncryptedPacket& packet) {
         ValidatePacket(TestConnectionId(1), packet);
       })));
+  EXPECT_CALL(*reinterpret_cast<MockQuicConnection*>(session1_->connection()),
+              OnParsedClientHelloInfo(MatchParsedClientHello()))
+      .Times(1);
 
   ProcessFirstFlight(client_address, TestConnectionId(1));
 }
@@ -937,6 +940,41 @@ TEST_P(QuicDispatcherTestOneVersion, NoVersionNegotiationWithSmallPacket) {
   ProcessPacket(client_address, TestConnectionId(1), true,
                 QuicVersionReservedForNegotiation(), truncated_chlo, false,
                 CONNECTION_ID_PRESENT, PACKET_4BYTE_PACKET_NUMBER, 1);
+}
+
+TEST_P(QuicDispatcherTestOneVersion,
+       NoVersionNegotiationWithVersionNegotiationPacket) {
+  if (!version_.HasIetfQuicFrames()) {
+    return;
+  }
+  CreateTimeWaitListManager();
+  QuicSocketAddress client_address(QuicIpAddress::Loopback4(), 1);
+
+  ParsedQuicVersionVector supported_versions;
+  for (QuicByteCount i = 0; i < kMinPacketSizeForVersionNegotiation; i += 4) {
+    supported_versions.push_back(ParsedQuicVersion::RFCv1());
+  }
+
+  std::unique_ptr<QuicEncryptedPacket> packet(
+      QuicFramer::BuildVersionNegotiationPacket(
+          TestConnectionId(), EmptyQuicConnectionId(), /*ietf_quic=*/true,
+          version_.HasLengthPrefixedConnectionIds(), supported_versions));
+  ASSERT_GT(packet->length(), kMinPacketSizeForVersionNegotiation);
+
+  EXPECT_CALL(*dispatcher_, CreateQuicSession(_, _, _, _, _, _, _)).Times(0);
+  if (GetQuicReloadableFlag(quic_no_vn_in_response_to_vn)) {
+    EXPECT_CALL(*time_wait_list_manager_,
+                SendVersionNegotiationPacket(_, _, _, _, _, _, _, _))
+        .Times(0);
+  } else {
+    EXPECT_CALL(*time_wait_list_manager_,
+                SendVersionNegotiationPacket(_, _, _, _, _, _, _, _))
+        .Times(1);
+  }
+  dispatcher_->ProcessPacket(
+      server_address_, client_address,
+      QuicReceivedPacket(packet->data(), packet->length(), QuicTime::Zero(),
+                         /*owns_buffer=*/false));
 }
 
 // Disabling CHLO size validation allows the dispatcher to send version
@@ -2803,7 +2841,7 @@ TEST_P(BufferedPacketStoreTest, ProcessCHLOsUptoLimitAndBufferTheRest) {
   for (uint64_t conn_id = 1; conn_id <= kNumCHLOs; ++conn_id) {
     const bool should_drop =
         (conn_id > kMaxNumSessionsToCreate + kDefaultMaxConnectionsInStore);
-    if (store->replace_cid_on_first_packet() && !should_drop) {
+    if (!should_drop) {
       // MaybeReplaceConnectionId will be called once per connection, whether it
       // is buffered or not.
       EXPECT_CALL(connection_id_generator_,
@@ -2812,12 +2850,6 @@ TEST_P(BufferedPacketStoreTest, ProcessCHLOsUptoLimitAndBufferTheRest) {
     }
 
     if (conn_id <= kMaxNumSessionsToCreate) {
-      if (!store->replace_cid_on_first_packet()) {
-        EXPECT_CALL(
-            connection_id_generator_,
-            MaybeReplaceConnectionId(TestConnectionId(conn_id), version_))
-            .WillOnce(Return(std::nullopt));
-      }
       EXPECT_CALL(
           *dispatcher_,
           CreateQuicSession(TestConnectionId(conn_id), _, client_addr_,
@@ -2857,11 +2889,6 @@ TEST_P(BufferedPacketStoreTest, ProcessCHLOsUptoLimitAndBufferTheRest) {
        ++conn_id) {
     // MaybeReplaceConnectionId should have been called once per buffered
     // session.
-    if (!store->replace_cid_on_first_packet()) {
-      EXPECT_CALL(connection_id_generator_,
-                  MaybeReplaceConnectionId(TestConnectionId(conn_id), version_))
-          .WillOnce(Return(std::nullopt));
-    }
     EXPECT_CALL(
         *dispatcher_,
         CreateQuicSession(TestConnectionId(conn_id), _, client_addr_,
@@ -2928,8 +2955,7 @@ TEST_P(BufferedPacketStoreTest,
   MockConnectionIdGenerator generator2;
   EXPECT_CALL(*dispatcher_, ConnectionIdGenerator())
       .WillRepeatedly(ReturnRef(generator2));
-  const bool buffered_store_replace_cid =
-      store->replace_cid_on_first_packet() && version_.UsesTls();
+  const bool buffered_store_replace_cid = version_.UsesTls();
   if (buffered_store_replace_cid) {
     // generator2 should be used to replace the connection ID when the first
     // IETF INITIAL is enqueued.
@@ -2946,12 +2972,8 @@ TEST_P(BufferedPacketStoreTest,
 
   if (!buffered_store_replace_cid) {
     // QuicDispatcher should attempt to replace the CID when creating the
-    // QuicSession. If flag is false, it should use the latched |generator2|,
-    // otherwise it should use |connection_id_generator_|.
-    MockConnectionIdGenerator& generator = store->replace_cid_on_first_packet()
-                                               ? connection_id_generator_
-                                               : generator2;
-    EXPECT_CALL(generator,
+    // QuicSession.
+    EXPECT_CALL(connection_id_generator_,
                 MaybeReplaceConnectionId(TestConnectionId(conn_id), version_))
         .WillOnce(Return(std::nullopt));
   }
@@ -3079,13 +3101,8 @@ TEST_P(BufferedPacketStoreTest, BufferNonChloPacketsUptoLimitWithChloBuffered) {
           QuicBufferedPacketStorePeer::FindBufferedPackets(store,
                                                            last_connection_id);
   ASSERT_NE(last_connection_buffered_packets, nullptr);
-  if (store->replace_cid_on_first_packet()) {
-    ASSERT_EQ(last_connection_buffered_packets->buffered_packets.size(),
-              kDefaultMaxUndecryptablePackets);
-  } else {
-    ASSERT_EQ(last_connection_buffered_packets->buffered_packets.size(),
-              kDefaultMaxUndecryptablePackets + 1);
-  }
+  ASSERT_EQ(last_connection_buffered_packets->buffered_packets.size(),
+            kDefaultMaxUndecryptablePackets);
   // All buffered packets should be delivered to the session.
   EXPECT_CALL(*reinterpret_cast<MockQuicConnection*>(session1_->connection()),
               ProcessUdpPacket(_, _, _))
@@ -3131,7 +3148,7 @@ TEST_P(BufferedPacketStoreTest, ReceiveCHLOForBufferedConnection) {
                   ValidatePacket(TestConnectionId(conn_id), packet);
                 }
               })));
-    } else if (!(store->replace_cid_on_first_packet() && version_.UsesTls())) {
+    } else if (!version_.UsesTls()) {
       expect_generator_is_called_ = false;
     }
     ProcessFirstFlight(TestConnectionId(conn_id));
@@ -3208,7 +3225,6 @@ TEST_P(BufferedPacketStoreTest, BufferedChloWithEcn) {
   if (!version_.HasIetfQuicFrames()) {
     return;
   }
-  SetQuicRestartFlag(quic_support_ect1, true);
   InSequence s;
   QuicConnectionId conn_id = TestConnectionId(1);
   // Process non-CHLO packet. This ProcessUndecryptableEarlyPacket() but with
@@ -3266,10 +3282,6 @@ TEST_P(BufferedPacketStoreTest, BufferedChloWithEcn) {
 class DualCIDBufferedPacketStoreTest : public BufferedPacketStoreTest {
  protected:
   void SetUp() override {
-    if (!GetQuicRestartFlag(quic_dispatcher_replace_cid_on_first_packet)) {
-      GTEST_SKIP();
-    }
-
     BufferedPacketStoreTest::SetUp();
     QuicDispatcherPeer::set_new_sessions_allowed_per_event_loop(
         dispatcher_.get(), 0);

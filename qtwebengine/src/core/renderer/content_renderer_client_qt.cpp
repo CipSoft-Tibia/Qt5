@@ -46,8 +46,8 @@
 #if QT_CONFIG(webengine_printing_and_pdf)
 #include "renderer/print_web_view_helper_delegate_qt.h"
 
+#include "chrome/common/webui_url_constants.h"
 #include "components/pdf/renderer/internal_plugin_renderer_helpers.h"
-#include "components/pdf/renderer/pdf_internal_plugin_delegate.h"
 #include "components/printing/renderer/print_render_frame_helper.h"
 #endif
 
@@ -62,6 +62,7 @@
 
 #include "extensions/common/constants.h"
 #include "extensions/renderer/api/core_extensions_renderer_api_provider.h"
+#include "extensions/renderer/dispatcher.h"
 #include "extensions/renderer/guest_view/mime_handler_view/mime_handler_view_container_manager.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "services/service_manager/public/cpp/binder_registry.h"
@@ -204,17 +205,12 @@ void ContentRendererClientQt::RenderFrameCreated(content::RenderFrame *render_fr
 #endif
 
     auto password_autofill_agent =
-            std::make_unique<autofill::PasswordAutofillAgent>(render_frame, associated_interfaces, autofill::PasswordAutofillAgent::EnableHeavyFormDataScraping(false));
+            std::make_unique<autofill::PasswordAutofillAgent>(render_frame, associated_interfaces);
     auto password_generation_agent =
             std::make_unique<autofill::PasswordGenerationAgent>(render_frame, password_autofill_agent.get(), associated_interfaces);
 
     new autofill::AutofillAgent(
             render_frame,
-            {
-              autofill::AutofillAgent::ExtractAllDatalists(false), autofill::AutofillAgent::FocusRequiresScroll(true),
-              autofill::AutofillAgent::QueryPasswordSuggestions(false), autofill::AutofillAgent::SecureContextRequired(false),
-              autofill::AutofillAgent::UserGestureRequired(true), autofill::AutofillAgent::UsesKeyboardAccessoryForSuggestions(false)
-            },
             std::move(password_autofill_agent), std::move(password_generation_agent),
             associated_interfaces);
 }
@@ -307,7 +303,11 @@ void ContentRendererClientQt::GetNavigationErrorStringsInternal(content::RenderF
                 error_page::LocalizedError::GetPageState(
                         error.reason(), error.domain(), error.url(), isPost, false,
                         error.stale_copy_in_cache(), false,
-                        RenderConfiguration::is_incognito_process(), false, false, false, locale, false, &error_page_params);
+                        RenderConfiguration::is_incognito_process(),
+                        false, false,
+                        locale,
+                        false,
+                        &error_page_params);
 
         resourceId = IDR_NET_ERROR_HTML;
 
@@ -348,15 +348,15 @@ bool IsPdfExtensionOrigin(const url::Origin &origin)
 
 #if BUILDFLAG(ENABLE_PLUGINS)
 void AppendParams(const std::vector<content::WebPluginMimeType::Param> &additional_params,
-                  blink::WebVector<blink::WebString> *existing_names,
-                  blink::WebVector<blink::WebString> *existing_values)
+                  std::vector<blink::WebString> *existing_names,
+                  std::vector<blink::WebString> *existing_values)
 {
     DCHECK(existing_names->size() == existing_values->size());
     size_t existing_size = existing_names->size();
     size_t total_size = existing_size + additional_params.size();
 
-    blink::WebVector<blink::WebString> names(total_size);
-    blink::WebVector<blink::WebString> values(total_size);
+    std::vector<blink::WebString> names(total_size);
+    std::vector<blink::WebString> values(total_size);
 
     for (size_t i = 0; i < existing_size; ++i) {
         names[i] = (*existing_names)[i];
@@ -374,23 +374,9 @@ void AppendParams(const std::vector<content::WebPluginMimeType::Param> &addition
 #endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 #if QT_CONFIG(webengine_printing_and_pdf)
-// based on chrome/renderer/pdf/chrome_pdf_internal_plugin_delegate.cc:
-class PdfInternalPluginDelegateQt final
-    : public pdf::PdfInternalPluginDelegate
+std::vector<url::Origin> GetAdditionalPdfInternalPluginAllowedOrigins()
 {
-public:
-    PdfInternalPluginDelegateQt() = default;
-    PdfInternalPluginDelegateQt(const PdfInternalPluginDelegateQt &) = delete;
-    PdfInternalPluginDelegateQt& operator=(const PdfInternalPluginDelegateQt &) = delete;
-    ~PdfInternalPluginDelegateQt() override = default;
-
-    // `pdf::PdfInternalPluginDelegate`:
-    bool IsAllowedOrigin(const url::Origin &origin) const override;
-};
-
-bool PdfInternalPluginDelegateQt::IsAllowedOrigin(const url::Origin &origin) const
-{
-    return IsPdfExtensionOrigin(origin);
+    return {url::Origin::Create(GURL(chrome::kChromeUIPrintURL))};
 }
 #endif
 } // namespace
@@ -442,6 +428,7 @@ bool ContentRendererClientQt::OverrideCreatePlugin(content::RenderFrame *render_
         *plugin = LoadablePluginPlaceholderQt::CreateLoadableMissingPlugin(render_frame, params)->plugin();
         return true;
     }
+#if QT_CONFIG(webengine_printing_and_pdf)
     if (info.name == u"Chromium PDF Viewer") {
         blink::WebPluginParams new_params(params);
         for (const auto& mime_type : info.mime_types) {
@@ -452,9 +439,10 @@ bool ContentRendererClientQt::OverrideCreatePlugin(content::RenderFrame *render_
           }
         }
 
-        *plugin = pdf::CreateInternalPlugin(std::move(new_params), render_frame, std::make_unique<PdfInternalPluginDelegateQt>());
+        *plugin = pdf::CreateInternalPlugin(std::move(new_params), render_frame, GetAdditionalPdfInternalPluginAllowedOrigins());
         return true;
     }
+#endif
     *plugin = render_frame->CreatePlugin(info, params);
 #endif // BUILDFLAG(ENABLE_PLUGINS)
     return true;
@@ -475,6 +463,55 @@ chrome::WebRtcLoggingAgentImpl *ContentRendererClientQt::GetWebRtcLoggingAgent()
     return m_webrtcLoggingAgentImpl.get();
 }
 #endif // QT_CONFIG(webengine_webrtc) && QT_CONFIG(webengine_extensions)
+
+#if QT_CONFIG(webengine_extensions)
+void ContentRendererClientQt::WillEvaluateServiceWorkerOnWorkerThread(
+        blink::WebServiceWorkerContextProxy *context_proxy, v8::Local<v8::Context> v8_context,
+        int64_t service_worker_version_id, const GURL &service_worker_scope, const GURL &script_url,
+        const blink::ServiceWorkerToken &service_worker_token)
+{
+    ExtensionsRendererClientQt::GetInstance()
+            ->dispatcher()
+            ->WillEvaluateServiceWorkerOnWorkerThread(
+                    context_proxy, v8_context, service_worker_version_id, service_worker_scope,
+                    script_url, service_worker_token);
+}
+
+void ContentRendererClientQt::DidInitializeServiceWorkerContextOnWorkerThread(
+        blink::WebServiceWorkerContextProxy *context_proxy, const GURL &service_worker_scope,
+        const GURL &script_url)
+{
+    extensions::ExtensionsRendererClient::Get()
+            ->dispatcher()
+            ->DidInitializeServiceWorkerContextOnWorkerThread(context_proxy, service_worker_scope,
+                                                              script_url);
+}
+
+void ContentRendererClientQt::DidStartServiceWorkerContextOnWorkerThread(
+        int64_t service_worker_version_id, const GURL &service_worker_scope, const GURL &script_url)
+{
+    extensions::ExtensionsRendererClient::Get()
+            ->dispatcher()
+            ->DidStartServiceWorkerContextOnWorkerThread(service_worker_version_id,
+                                                         service_worker_scope, script_url);
+}
+
+void ContentRendererClientQt::WillDestroyServiceWorkerContextOnWorkerThread(
+        v8::Local<v8::Context> context, int64_t service_worker_version_id,
+        const GURL &service_worker_scope, const GURL &script_url)
+{
+    extensions::ExtensionsRendererClient::Get()
+            ->dispatcher()
+            ->WillDestroyServiceWorkerContextOnWorkerThread(context, service_worker_version_id,
+                                                            service_worker_scope, script_url);
+}
+
+bool ContentRendererClientQt::AllowScriptExtensionForServiceWorker(const url::Origin &script_origin)
+{
+    return script_origin.scheme() == extensions::kExtensionScheme;
+}
+
+#endif // QT_CONFIG(webengine_extensions)
 
 void ContentRendererClientQt::GetInterface(const std::string &interface_name, mojo::ScopedMessagePipeHandle interface_pipe)
 {

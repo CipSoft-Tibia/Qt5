@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLLOGGINGCATEGORYBASE_P_H
 #define QQMLLOGGINGCATEGORYBASE_P_H
@@ -32,11 +33,16 @@ class Q_QML_EXPORT QQmlLoggingCategoryBase : public QObject
 public:
     QQmlLoggingCategoryBase(QObject *parent = nullptr) : QObject(parent) {}
 
-    const QLoggingCategory *category() const { return m_category.get(); }
+    const QLoggingCategory *category() {
+        forceCompletion();
+        return m_category.get();
+    }
     void setCategory(const char *name, QtMsgType type)
     {
         m_category = std::make_unique<QLoggingCategory>(name, type);
     }
+
+    virtual void forceCompletion() = 0;
 
 private:
     std::unique_ptr<QLoggingCategory> m_category;

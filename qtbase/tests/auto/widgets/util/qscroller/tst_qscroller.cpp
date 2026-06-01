@@ -482,12 +482,12 @@ void tst_QScroller::overshoot()
 
     sp1.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy, QVariant::fromValue(QScrollerProperties::OvershootAlwaysOff));
     s1->setScrollerProperties(sp1);
-    kineticScrollNoTest(sw.data(), QPointF(500, 500), QPoint(0, 0), QPoint(200, 0), QPoint(215, 0));
+    kineticScrollNoTest(sw.data(), QPointF(500, 500), QPoint(0, 0), QPoint(200, 0), QPoint(250, 0));
 
     // Check that segment parameters are consistent
     QScrollerPrivate* priv = s1->d_func();
     QVERIFY(priv->xSegments.size() == 1);
-    auto& segment = priv->xSegments.head();
+    const auto& segment = priv->xSegments.head();
     QCOMPARE_LT(segment.startPos + segment.deltaPos, segment.stopPos);
 
     QTRY_COMPARE(s1->state(), QScroller::Inactive);

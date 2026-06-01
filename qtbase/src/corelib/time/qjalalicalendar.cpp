@@ -39,6 +39,7 @@ qint64 firstDayOfYear(int year, int cycleNo)
 
 /*!
     \since 5.14
+    \internal
 
     \class QJalaliCalendar
     \inmodule QtCore
@@ -96,7 +97,7 @@ bool QJalaliCalendar::isLeapYear(int year) const
     if (year == QCalendar::Unspecified)
         return false;
     if (year < 0)
-        year++;
+        ++year;
     return qMod<2820>((year + 2346) * 683) < 683;
 }
 
@@ -138,7 +139,7 @@ QCalendar::YearMonthDay QJalaliCalendar::julianDayToDate(qint64 jd) const
     int year = yearInCycle + 475 + c * cycleYears;
     int day = jd - firstDayOfYear(yearInCycle, c) + 1;
     if (day > daysInYear(year <= 0 ? year - 1 : year)) {
-        year++;
+        ++year;
         day = 1;
     }
     if (year <= 0)
@@ -155,10 +156,16 @@ QCalendar::YearMonthDay QJalaliCalendar::julianDayToDate(qint64 jd) const
 
 int QJalaliCalendar::daysInMonth(int month, int year) const
 {
-    if (year && month > 0 && month <= 12)
-        return month < 7 ? 31 : month < 12 || isLeapYear(year) ? 30 : 29;
+    if (!year || month < 1 || month > 12)
+        return 0;
 
-    return 0;
+    if (month < 7)
+        return 31;
+
+    if (month < 12 || year == QCalendar::Unspecified || isLeapYear(year))
+        return 30;
+
+    return 29;
 }
 
 const QCalendarLocale *QJalaliCalendar::localeMonthIndexData() const

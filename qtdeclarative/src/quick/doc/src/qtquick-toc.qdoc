@@ -57,10 +57,11 @@
             \li \l {Sprite Animations}
             \li \l {Qt Quick experimental animation types}
         \endlist
-    \li \l {Important Concepts In Qt Quick - Data - Models, Views and Data Storage}{Data - models, views and data storage}
+    \li \l {Important Concepts In Qt Quick - Data - Models, Views, and Data Storage}{Data - models, views, and data storage}
         \list
             \li \l {Models and Views in Qt Quick}
             \li \l {Using C++ Models with Qt Quick Views}
+            \li \l {Using SQL databases with Qt Quick Views}
             \li \l {Qt Labs FolderListModel QML Types}
             \li \l {Qt Quick Local Storage QML Types}
         \endlist

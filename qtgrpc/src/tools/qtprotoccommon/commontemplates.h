@@ -100,6 +100,8 @@ public:
     static const char *ClearMessageDefinitionTemplate();
     static const char *GetterMessageDeclarationTemplate();
     static const char *GetterMessageDefinitionTemplate();
+    static const char *GetterMessageMutableDeclarationTemplate();
+    static const char *GetterMessageMutableDefinitionTemplate();
     static const char *GetterComplexDeclarationTemplate();
     static const char *GetterComplexDefinitionTemplate();
     static const char *PrivateGetterOneofDeclarationTemplate();
@@ -187,6 +189,8 @@ public:
 
     static const char *QmlNamedElement();
     static const char *MocIncludeTemplate();
+
+    static const char *MutableGetterPrefix();
 };
 
 } // namespace qtprotoccommon

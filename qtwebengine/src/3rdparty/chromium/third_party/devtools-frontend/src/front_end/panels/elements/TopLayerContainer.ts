@@ -8,9 +8,8 @@ import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import * as ElementsComponents from './components/components.js';
+import type {ElementsTreeElement} from './ElementsTreeElement.js';
 import * as ElementsTreeOutline from './ElementsTreeOutline.js';
-
-import {type ElementsTreeElement} from './ElementsTreeElement.js';
 
 const UIStrings = {
   /**
@@ -96,8 +95,7 @@ export class TopLayerContainer extends UI.TreeOutline.TreeElement {
         ElementsComponents.AdornerManager.RegisteredAdorners.TOP_LAYER);
     const adornerContent = document.createElement('span');
     adornerContent.classList.add('adorner-with-icon');
-    const linkIcon = new IconButton.Icon.Icon();
-    linkIcon.name = 'select-element';
+    const linkIcon = IconButton.Icon.create('select-element');
     const adornerText = document.createElement('span');
     adornerText.textContent = `top-layer (${topLayerElementIndex})`;
     adornerContent.append(linkIcon);

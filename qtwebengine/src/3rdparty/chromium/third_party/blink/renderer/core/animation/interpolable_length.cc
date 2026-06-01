@@ -62,8 +62,9 @@ InterpolableLength* InterpolableLength::MaybeConvertCSSValue(
     return nullptr;
 
   if (!primitive_value->IsLength() && !primitive_value->IsPercentage() &&
-      !primitive_value->IsCalculatedPercentageWithLength())
+      primitive_value->IsResolvableBeforeLayout()) {
     return nullptr;
+  }
 
   CSSLengthArray length_array;
   if (primitive_value->AccumulateLengthArray(length_array))
@@ -93,6 +94,8 @@ CSSValueID InterpolableLength::LengthTypeToCSSValueID(Length::Type lt) {
       return CSSValueID::kMaxContent;
     case Length::Type::kFitContent:
       return CSSValueID::kFitContent;
+    case Length::Type::kStretch:
+      return CSSValueID::kStretch;
     case Length::Type::kFillAvailable:
       return CSSValueID::kWebkitFillAvailable;
     case Length::Type::kContent:  // only valid for flex-basis.
@@ -115,13 +118,14 @@ Length::Type InterpolableLength::CSSValueIDToLengthType(CSSValueID id) {
     case CSSValueID::kFitContent:
     case CSSValueID::kWebkitFitContent:
       return Length::Type::kFitContent;
+    case CSSValueID::kStretch:
+      return Length::Type::kStretch;
     case CSSValueID::kWebkitFillAvailable:
       return Length::Type::kFillAvailable;
     case CSSValueID::kContent:  // only valid for flex-basis.
       return Length::Type::kContent;
     default:
-      NOTREACHED_IN_MIGRATION();
-      return Length::Type::kFixed;
+      NOTREACHED();
   }
 }
 
@@ -132,9 +136,6 @@ InterpolableLength* InterpolableLength::MaybeConvertLength(
     float zoom,
     std::optional<EInterpolateSize> interpolate_size) {
   if (!length.IsSpecified()) {
-    if (!RuntimeEnabledFeatures::CSSCalcSizeFunctionEnabled()) {
-      return nullptr;
-    }
     CSSValueID keyword = LengthTypeToCSSValueID(length.GetType());
     if (keyword == CSSValueID::kInvalid ||
         !LengthPropertyFunctions::CanAnimateKeyword(property, keyword)) {
@@ -371,8 +372,7 @@ bool InterpolableLength::HasPercentage() const {
     case Type::kExpression:
       return expression_->HasPercentage();
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 void InterpolableLength::SetHasPercentage() {
@@ -413,6 +413,10 @@ void InterpolableLength::SubtractFromOneHundredPercent() {
   SetExpression(
       *CSSMathExpressionOperation::CreateArithmeticOperationAndSimplifyCalcSize(
           hundred_percent, expression_, CSSMathOperator::kSubtract));
+}
+
+bool InterpolableLength::IsNeutralValue() const {
+  return IsLengthArray() && length_array_.type_flags.none();
 }
 
 static double ClampToRange(double x, Length::ValueRange range) {

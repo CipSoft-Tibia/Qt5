@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "components/language_detection//core/language_detection_model.h"
+#include "components/language_detection/core/language_detection_model.h"
 
 #include <algorithm>
 #include <vector>
@@ -19,9 +19,9 @@
 #include "base/task/thread_pool.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/trace_event/trace_event.h"
+#include "components/language_detection/core/constants.h"
 #include "components/language_detection/core/language_detection_resolver.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
-#include "components/translate/core/common/translate_constants.h"
 #include "third_party/tflite_support/src/tensorflow_lite_support/cc/task/text/nlclassifier/nl_classifier.h"
 
 namespace language_detection {
@@ -49,11 +49,24 @@ class ScopedLanguageDetectionModelStateRecorder {
   language_detection::LanguageDetectionModelState state_;
 };
 
-#if BUILDFLAG(IS_IOS)
-// Loads model from |model_file| using |num_threads|. This can be called on
-// any thread.
-std::optional<std::unique_ptr<tflite::task::text::nlclassifier::NLClassifier>>
-LoadModelFromFile(base::File model_file, int num_threads) {
+}  // namespace
+
+#if !BUILDFLAG(IS_WIN)
+BASE_FEATURE(kMmapLanguageDetectionModel,
+             "MmapLanguageDetectionModel",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif
+
+Prediction TopPrediction(const std::vector<Prediction>& predictions) {
+  auto elem = std::max_element(predictions.begin(), predictions.end());
+  CHECK(elem != predictions.end());
+  return *elem;
+}
+
+// static
+std::optional<LanguageDetectionModel::ModelAndSize>
+LanguageDetectionModel::LoadModelFromFile(base::File model_file,
+                                          int num_threads) {
   ScopedLanguageDetectionModelStateRecorder recorder(
       LanguageDetectionModelState::kModelFileInvalid);
 
@@ -108,22 +121,8 @@ LoadModelFromFile(base::File model_file, int num_threads) {
 
   recorder.set_state(LanguageDetectionModelState::kModelAvailable);
 
-  return std::move(statusor_classifier).value();
-}
-#endif
-
-}  // namespace
-
-#if !BUILDFLAG(IS_WIN)
-BASE_FEATURE(kMmapLanguageDetectionModel,
-             "MmapLanguageDetectionModel",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-#endif
-
-Prediction TopPrediction(const std::vector<Prediction>& predictions) {
-  auto elem = std::max_element(predictions.begin(), predictions.end());
-  CHECK(elem != predictions.end());
-  return *elem;
+  return std::make_pair(std::move(statusor_classifier).value(),
+                        model_file.GetLength());
 }
 
 LanguageDetectionModel::LanguageDetectionModel()
@@ -135,21 +134,15 @@ LanguageDetectionModel::LanguageDetectionModel()
 LanguageDetectionModel::~LanguageDetectionModel() = default;
 
 std::vector<Prediction> LanguageDetectionModel::Predict(
-    const std::u16string& contents,
-    bool truncate) const {
-#if BUILDFLAG(IS_IOS)
+    std::u16string_view contents) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-#endif
   TRACE_EVENT("browser", "LanguageDetectionModel::DetectTopLanguage");
   base::ElapsedTimer timer;
 
   CHECK(IsAvailable());
 
+  size_t convert_length = std::min(kModelTruncationLength, contents.length());
   std::string utf8_contents;
-  size_t convert_length =
-      truncate ? std::min(kModelTruncationLength, contents.length())
-               : contents.length();
-
   base::UTF16ToUTF8(contents.data(), convert_length, &utf8_contents);
 
   // TFLite expects all strings to be aligned to 4 bytes.
@@ -174,7 +167,7 @@ std::vector<Prediction> LanguageDetectionModel::Predict(
   base::UmaHistogramBoolean(
       "LanguageDetection.TFLiteModel.ClassifyText.Detected", detected);
   if (!detected) {
-    return {Prediction(translate::kUnknownLanguageCode, 0.0)};
+    return {Prediction(kUnknownLanguageCode, 0.0)};
   }
   std::vector<Prediction> predictions;
   predictions.reserve(status_or_categories.value().size());
@@ -184,72 +177,74 @@ std::vector<Prediction> LanguageDetectionModel::Predict(
   return predictions;
 }
 
-#if !BUILDFLAG(IS_IOS)
-void LanguageDetectionModel::UpdateWithFile(base::File model_file) {
-  ScopedLanguageDetectionModelStateRecorder recorder(
-      LanguageDetectionModelState::kModelFileInvalid);
-
-  if (!model_file.IsValid()) {
-    NotifyModelLoaded();
-    return;
-  }
-
-  recorder.set_state(LanguageDetectionModelState::kModelFileValid);
-
-  tflite::task::text::NLClassifierOptions options;
-  options.set_input_tensor_index(0);
-  options.set_output_score_tensor_index(0);
-  options.set_output_label_tensor_index(2);
-
-  options.mutable_base_options()
-      ->mutable_compute_settings()
-      ->mutable_tflite_settings()
-      ->mutable_cpu_settings()
-      ->set_num_threads(num_threads_);
-
-  base::ElapsedTimer timer;
-// Windows doesn't support using mmap for the language detection model.
-#if !BUILDFLAG(IS_WIN)
-  if (base::FeatureList::IsEnabled(kMmapLanguageDetectionModel)) {
-    options.mutable_base_options()
-        ->mutable_model_file()
-        ->mutable_file_descriptor_meta()
-        ->set_fd(model_file.GetPlatformFile());
-  } else
-#endif
-  {
-    std::string file_content(model_file.GetLength(), '\0');
-    if (!model_file.ReadAndCheck(0,
-                                 base::as_writable_byte_span(file_content))) {
-      NotifyModelLoaded();
-      return;
+std::vector<Prediction> LanguageDetectionModel::PredictWithScan(
+    std::u16string_view contents) const {
+  std::map<std::string, double> score_by_language;
+  size_t pos = 0;
+  size_t count = 0;
+  while (pos < contents.length()) {
+    std::u16string_view substring = contents.substr(pos, kScanWindowSize);
+    pos += kScanWindowSize;
+    count++;
+    auto predictions = Predict(substring);
+    for (const auto& prediction : predictions) {
+      score_by_language[prediction.language] += prediction.score;
     }
-    *options.mutable_base_options()
-         ->mutable_model_file()
-         ->mutable_file_content() = std::move(file_content);
   }
-
-  auto statusor_classifier =
-      tflite::task::text::nlclassifier::NLClassifier::CreateFromOptions(
-          options, CreateLangIdResolver());
-  if (!statusor_classifier.ok()) {
-    LOCAL_HISTOGRAM_BOOLEAN("LanguageDetection.TFLiteModel.InvalidModelFile",
-                            true);
-    NotifyModelLoaded();
-    return;
+  std::vector<Prediction> predictions;
+  predictions.reserve(score_by_language.size());
+  for (const auto& it : score_by_language) {
+    predictions.emplace_back(it.first, it.second / count);
   }
-  base::UmaHistogramTimes("LanguageDetection.TFLiteModel.Create.Duration",
-                          timer.Elapsed());
-
-  recorder.set_state(LanguageDetectionModelState::kModelAvailable);
-
-  lang_detection_model_ = std::move(*statusor_classifier);
-  NotifyModelLoaded();
+  if (predictions.empty()) {
+    return {Prediction(kUnknownLanguageCode, 0.0)};
+  }
+  return predictions;
 }
 
-#endif
+Prediction LanguageDetectionModel::DetectTopLanguage(
+    std::u16string_view sampled_str) const {
+  TRACE_EVENT("browser", "LanguageDetectionModel::DetectTopLanguage");
 
-#if BUILDFLAG(IS_IOS)
+  std::vector<Prediction> predictions = Predict(sampled_str);
+  Prediction top_prediction = TopPrediction(predictions);
+  base::UmaHistogramSparse(
+      "LanguageDetection.TFLiteModel.ClassifyText.HighestConfidenceLanguage",
+      base::HashMetricName(top_prediction.language));
+  return top_prediction;
+}
+
+Prediction LanguageDetectionModel::PredictTopLanguageWithSamples(
+    std::u16string_view contents) const {
+  std::vector<Prediction> model_predictions;
+  // First evaluate the model on the entire contents based on the model's
+  // implementation, for v1 it is the first 128 tokens that are unicode
+  // "letters". We do not need to have the model's length in sync with
+  // the sampling logic for v1 as 128 tokens is unlikely to be changed.
+  model_predictions.emplace_back(DetectTopLanguage(contents));
+
+  if (contents.length() > kNumTextSamples * kTextSampleLength) {
+    // Strings with UTF-8 have different widths so substr should be performed on
+    // the UTF16 strings to ensure alignment and then convert down to UTF-8
+    // strings for model evaluation.
+    std::u16string_view sampled_str = contents.substr(
+        contents.length() - kTextSampleLength, kTextSampleLength);
+    // Evaluate on the last |kTextSampleLength| characters.
+    model_predictions.emplace_back(DetectTopLanguage(sampled_str));
+
+    // Sample and evaluate on the middle |kTextSampleLength| characters.
+    sampled_str = contents.substr(contents.length() / 2, kTextSampleLength);
+    model_predictions.emplace_back(DetectTopLanguage(sampled_str));
+  }
+  return *std::max_element(model_predictions.begin(), model_predictions.end());
+}
+
+void LanguageDetectionModel::UpdateWithFile(base::File model_file) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  SetModel(LoadModelFromFile(std::move(model_file), num_threads_));
+}
+
 void LanguageDetectionModel::UpdateWithFileAsync(base::File model_file,
                                                  base::OnceClosure callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -260,37 +255,41 @@ void LanguageDetectionModel::UpdateWithFileAsync(base::File model_file,
                      weak_factory_.GetWeakPtr())
           .Then(std::move(callback)));
 }
-#endif
 
 bool LanguageDetectionModel::IsAvailable() const {
-#if BUILDFLAG(IS_IOS)
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-#endif
   return lang_detection_model_ != nullptr;
 }
 
+int64_t LanguageDetectionModel::GetModelSize() const {
+  if (!IsAvailable()) {
+    return 0;
+  }
+  return model_file_size_;
+}
+
 std::string LanguageDetectionModel::GetModelVersion() const {
-#if BUILDFLAG(IS_IOS)
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-#endif
   // TODO(crbug.com/40748826): Return the model version provided
   // by the model itself.
   return kTFLiteModelVersion;
 }
 
-#if BUILDFLAG(IS_IOS)
 void LanguageDetectionModel::SetModel(
-    std::optional<OwnedNLClassifier> optional_model) {
+    std::optional<ModelAndSize> model_and_size) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  if (optional_model.has_value()) {
-    lang_detection_model_ = std::move(optional_model).value();
+  if (model_and_size.has_value()) {
+    lang_detection_model_ = std::move(model_and_size.value().first);
+    model_file_size_ = model_and_size.value().second;
+  } else {
+    model_file_size_ = 0;
   }
   NotifyModelLoaded();
 }
-#endif
 
 void LanguageDetectionModel::AddOnModelLoadedCallback(
     ModelLoadedCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (loaded_ || model_loaded_callbacks_.size() >= kMaxPendingCallbacksCount) {
     std::move(callback).Run(*this);
   } else {
@@ -299,17 +298,21 @@ void LanguageDetectionModel::AddOnModelLoadedCallback(
 }
 
 void LanguageDetectionModel::NotifyModelLoaded() {
-  std::vector<ModelLoadedCallback> model_loaded_callbacks;
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // Since the callbacks could result in modification of
-  // `model_loaded_callbacks_`, it's not safe to iterate over the member.
-  // TODO(https://crbug.com/381461495): Post a task for each callback.
-  model_loaded_callbacks.swap(model_loaded_callbacks_);
-
-  for (auto&& callback : model_loaded_callbacks) {
-    std::move(callback).Run(*this);
+  for (auto&& callback : model_loaded_callbacks_) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(
+                       [](ModelLoadedCallback callback,
+                          base::WeakPtr<LanguageDetectionModel> model) {
+                         if (model) {
+                           std::move(callback).Run(*model);
+                         }
+                       },
+                       std::move(callback), weak_factory_.GetWeakPtr()));
   }
   loaded_ = true;
+  model_loaded_callbacks_.clear();
 }
 
 }  // namespace language_detection

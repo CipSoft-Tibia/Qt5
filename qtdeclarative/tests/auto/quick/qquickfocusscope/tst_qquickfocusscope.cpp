@@ -9,6 +9,7 @@
 #include <private/qquicktextedit_p.h>
 #include <QtQuick/private/qquicktext_p.h>
 #include <QtQuick/private/qquickfocusscope_p.h>
+#include <QtQuickTest/quicktest.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
 
@@ -54,16 +55,16 @@ void tst_qquickfocusscope::basic()
     QTRY_COMPARE(view, qGuiApp->focusWindow());
 
     QVERIFY(view->isTopLevel());
-    QVERIFY(item0->hasActiveFocus());
-    QVERIFY(item1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item0);
+    QVERIFY_ACTIVE_FOCUS(item1);
     QVERIFY(!item2->hasActiveFocus());
     QVERIFY(!item3->hasActiveFocus());
 
     QTest::keyClick(view, Qt::Key_Right);
     QTest::qWait(50);
-    QVERIFY(item0->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item0);
     QVERIFY(!item1->hasActiveFocus());
-    QVERIFY(item2->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item2);
     QVERIFY(!item3->hasActiveFocus());
 
     QTest::keyClick(view, Qt::Key_Down);
@@ -71,7 +72,7 @@ void tst_qquickfocusscope::basic()
     QVERIFY(!item0->hasActiveFocus());
     QVERIFY(!item1->hasActiveFocus());
     QVERIFY(!item2->hasActiveFocus());
-    QVERIFY(item3->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item3);
 
     delete view;
 }
@@ -98,11 +99,11 @@ void tst_qquickfocusscope::nested()
     QVERIFY(QTest::qWaitForWindowActive(view));
     QTRY_COMPARE(view, qGuiApp->focusWindow());
 
-    QVERIFY(item1->hasActiveFocus());
-    QVERIFY(item2->hasActiveFocus());
-    QVERIFY(item3->hasActiveFocus());
-    QVERIFY(item4->hasActiveFocus());
-    QVERIFY(item5->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item1);
+    QVERIFY_ACTIVE_FOCUS(item2);
+    QVERIFY_ACTIVE_FOCUS(item3);
+    QVERIFY_ACTIVE_FOCUS(item4);
+    QVERIFY_ACTIVE_FOCUS(item5);
     delete view;
 }
 
@@ -165,14 +166,14 @@ void tst_qquickfocusscope::textEdit()
     QVERIFY(QTest::qWaitForWindowActive(view));
 
     QTRY_COMPARE(view, qGuiApp->focusWindow());
-    QVERIFY(item0->hasActiveFocus());
-    QVERIFY(item1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item0);
+    QVERIFY_ACTIVE_FOCUS(item1);
     QVERIFY(!item2->hasActiveFocus());
     QVERIFY(!item3->hasActiveFocus());
 
     QTest::keyClick(view, Qt::Key_Right);
-    QVERIFY(item0->hasActiveFocus());
-    QVERIFY(item1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item0);
+    QVERIFY_ACTIVE_FOCUS(item1);
     QVERIFY(!item2->hasActiveFocus());
     QVERIFY(!item3->hasActiveFocus());
 
@@ -181,16 +182,16 @@ void tst_qquickfocusscope::textEdit()
     QTest::keyClick(view, Qt::Key_Right);
     QTest::keyClick(view, Qt::Key_Right);
     QTest::keyClick(view, Qt::Key_Right);
-    QVERIFY(item0->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item0);
     QVERIFY(!item1->hasActiveFocus());
-    QVERIFY(item2->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item2);
     QVERIFY(!item3->hasActiveFocus());
 
     QTest::keyClick(view, Qt::Key_Down);
     QVERIFY(!item0->hasActiveFocus());
     QVERIFY(!item1->hasActiveFocus());
     QVERIFY(!item2->hasActiveFocus());
-    QVERIFY(item3->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item3);
 
     delete view;
 }
@@ -218,16 +219,16 @@ void tst_qquickfocusscope::forceFocus()
     QVERIFY(QTest::qWaitForWindowActive(view));
     QTRY_COMPARE(view, qGuiApp->focusWindow());
 
-    QVERIFY(item0->hasActiveFocus());
-    QVERIFY(item1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item0);
+    QVERIFY_ACTIVE_FOCUS(item1);
     QVERIFY(!item2->hasActiveFocus());
     QVERIFY(!item3->hasActiveFocus());
     QVERIFY(!item4->hasActiveFocus());
     QVERIFY(!item5->hasActiveFocus());
 
     QTest::keyClick(view, Qt::Key_4);
-    QVERIFY(item0->hasActiveFocus());
-    QVERIFY(item1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item0);
+    QVERIFY_ACTIVE_FOCUS(item1);
     QVERIFY(!item2->hasActiveFocus());
     QVERIFY(!item3->hasActiveFocus());
     QVERIFY(!item4->hasActiveFocus());
@@ -237,9 +238,9 @@ void tst_qquickfocusscope::forceFocus()
     QVERIFY(!item0->hasActiveFocus());
     QVERIFY(!item1->hasActiveFocus());
     QVERIFY(!item2->hasActiveFocus());
-    QVERIFY(item3->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item3);
     QVERIFY(!item4->hasActiveFocus());
-    QVERIFY(item5->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(item5);
 
     delete view;
 }
@@ -377,36 +378,36 @@ void tst_qquickfocusscope::forceActiveFocus()
 
     // First, walk the focus from item-a1 down to item-a2 and back again
     itemA1->forceActiveFocus();
-    QVERIFY(itemA1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(itemA1);
     QVERIFY(!rootObject->hasActiveFocus());
     QCOMPARE(rootSpy.size(), 0);
     QCOMPARE(scopeSpy.size(), 1);
 
     scopeA->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
-    QVERIFY(scopeA->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(scopeA);
     QCOMPARE(scopeASpy.size(), 1);
     QCOMPARE(rootSpy.size(), 0);
     QCOMPARE(scopeSpy.size(), 1);
 
     itemA2->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
-    QVERIFY(itemA2->hasActiveFocus());
-    QVERIFY(scopeA->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(itemA2);
+    QVERIFY_ACTIVE_FOCUS(scopeA);
     QCOMPARE(scopeASpy.size(), 1);
     QCOMPARE(rootSpy.size(), 0);
     QCOMPARE(scopeSpy.size(), 1);
 
     scopeA->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
-    QVERIFY(itemA2->hasActiveFocus());
-    QVERIFY(scopeA->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(itemA2);
+    QVERIFY_ACTIVE_FOCUS(scopeA);
     QCOMPARE(scopeASpy.size(), 1);
     QCOMPARE(rootSpy.size(), 0);
     QCOMPARE(scopeSpy.size(), 1);
 
     itemA1->forceActiveFocus();
-    QVERIFY(itemA1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(itemA1);
     QVERIFY(!scopeA->hasActiveFocus());
     QVERIFY(!itemA2->hasActiveFocus());
     QCOMPARE(scopeASpy.size(), 2);
@@ -415,14 +416,14 @@ void tst_qquickfocusscope::forceActiveFocus()
 
     // Then jump back and forth between branch 'a' and 'b'
     itemB1->forceActiveFocus();
-    QVERIFY(itemB1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(itemB1);
     QCOMPARE(rootSpy.size(), 0);
     QCOMPARE(scopeSpy.size(), 1);
 
     scopeA->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
     QVERIFY(!itemB1->hasActiveFocus());
-    QVERIFY(scopeA->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(scopeA);
     QCOMPARE(scopeASpy.size(), 3);
     QCOMPARE(rootSpy.size(), 0);
     QCOMPARE(scopeSpy.size(), 1);
@@ -430,7 +431,7 @@ void tst_qquickfocusscope::forceActiveFocus()
     scopeB->forceActiveFocus();
     QVERIFY(!scopeA->hasActiveFocus());
     QVERIFY(!itemB1->hasActiveFocus());
-    QVERIFY(scopeB->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(scopeB);
     QCOMPARE(scopeASpy.size(), 4);
     QCOMPARE(scopeBSpy.size(), 1);
     QCOMPARE(rootSpy.size(), 0);
@@ -438,7 +439,7 @@ void tst_qquickfocusscope::forceActiveFocus()
 
     itemA2->forceActiveFocus();
     QVERIFY(!scopeB->hasActiveFocus());
-    QVERIFY(itemA2->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(itemA2);
     QCOMPARE(scopeASpy.size(), 5);
     QCOMPARE(scopeBSpy.size(), 2);
     QCOMPARE(rootSpy.size(), 0);
@@ -446,7 +447,7 @@ void tst_qquickfocusscope::forceActiveFocus()
 
     itemB2->forceActiveFocus();
     QVERIFY(!itemA2->hasActiveFocus());
-    QVERIFY(itemB2->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(itemB2);
     QCOMPARE(scopeASpy.size(), 6);
     QCOMPARE(scopeBSpy.size(), 3);
     QCOMPARE(rootSpy.size(), 0);

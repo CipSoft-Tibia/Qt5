@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlayout.h"
 
@@ -109,7 +110,7 @@ QLayout::QLayout(QLayoutPrivate &dd, QLayout *lay, QWidget *w)
 QLayoutPrivate::QLayoutPrivate()
     : QObjectPrivate(), insideSpacing(-1), userLeftMargin(-1), userTopMargin(-1), userRightMargin(-1),
       userBottomMargin(-1), topLevel(false), enabled(true), activated(true), autoNewChild(false),
-      constraint(QLayout::SetDefaultConstraint), menubar(nullptr)
+      horizontalConstraint(QLayout::SetDefaultConstraint), verticalConstraint(QLayout::SetDefaultConstraint), menubar(nullptr)
 {
 }
 
@@ -841,13 +842,6 @@ void QLayout::addChildWidget(QWidget *w)
         QMetaObject::invokeMethod(w, "_q_showIfNotHidden", Qt::QueuedConnection); //show later
 }
 
-
-
-
-
-
-
-
 /*!
     Tells the geometry manager to place the menu bar \a widget at the
     top of parentWidget(), outside QWidget::contentsMargins(). All
@@ -987,43 +981,127 @@ bool QLayout::activate()
     uint explMin = md->extra ? md->extra->explicitMinSize : 0;
     uint explMax = md->extra ? md->extra->explicitMaxSize : 0;
 
-    switch (d->constraint) {
-    case SetFixedSize:
-        // will trigger resize
-        mw->setFixedSize(totalSizeHint());
-        break;
-    case SetMinimumSize:
-        mw->setMinimumSize(totalMinimumSize());
-        break;
-    case SetMaximumSize:
-        mw->setMaximumSize(totalMaximumSize());
-        break;
-    case SetMinAndMaxSize:
-        mw->setMinimumSize(totalMinimumSize());
-        mw->setMaximumSize(totalMaximumSize());
-        break;
-    case SetDefaultConstraint: {
-        bool widthSet = explMin & Qt::Horizontal;
-        bool heightSet = explMin & Qt::Vertical;
-        if (mw->isWindow()) {
-            QSize ms = totalMinimumSize();
-            if (widthSet)
-                ms.setWidth(mw->minimumSize().width());
-            if (heightSet)
-                ms.setHeight(mw->minimumSize().height());
-            mw->setMinimumSize(ms);
-        } else if (!widthSet || !heightSet) {
-            QSize ms = mw->minimumSize();
-            if (!widthSet)
-                ms.setWidth(0);
-            if (!heightSet)
-                ms.setHeight(0);
-            mw->setMinimumSize(ms);
+    // Do actual calculation
+    // Result values (needs to be zero or greater to be considered valid/set)
+    // We make some illegal values different from each other due a later compare.
+    // ### In the future we may want minSize(0, 0) and maxSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX)
+    // ### Also see comment below.
+    QSize minSize(-1, -1);
+    QSize maxSize(-2, -2);
+
+    // Potentially cached values to avoid calling the same function more times.
+    constexpr QSize empty(0, 0);
+    QSize totalSzH = empty;
+    QSize totalMinSz = empty;
+    QSize totalMaxSz = empty;
+
+    switch (d->verticalConstraint) {
+        case SetFixedSize:
+            totalSzH = totalSizeHint();
+            minSize.setHeight(totalSzH.height());
+            maxSize.setHeight(totalSzH.height());
+            break;
+        case SetMinimumSize:
+            totalMinSz = totalMinimumSize();
+            minSize.setHeight(totalMinSz.height());
+            break;
+        case SetMaximumSize:
+            totalMaxSz = totalMaximumSize();
+            maxSize.setHeight(totalMaxSz.height());
+            break;
+        case SetMinAndMaxSize:
+            totalMinSz = totalMinimumSize();
+            totalMaxSz = totalMaximumSize();
+            minSize.setHeight(totalMinSz.height());
+            maxSize.setHeight(totalMaxSz.height());
+            break;
+        case SetDefaultConstraint: {
+            bool heightSet = explMin & Qt::Vertical;
+            if (mw->isWindow()) {
+                if (!heightSet) {
+                    totalMinSz = totalMinimumSize();
+                    minSize.setHeight(totalMinSz.height());
+                } else {
+                    minSize.setHeight(mw->minimumHeight());
+                }
+            } else {
+                minSize.setHeight(heightSet ? mw->minimumHeight() : 0);
+            }
+            break;
         }
-        break;
+        case SetNoConstraint:
+            break;
     }
-    case SetNoConstraint:
-        break;
+    switch (d->horizontalConstraint) {
+        case SetFixedSize:
+            if (totalSzH == empty)
+                totalSzH = totalSizeHint();
+            minSize.setWidth(totalSzH.width());
+            maxSize.setWidth(totalSzH.width());
+            break;
+        case SetMinimumSize:
+            if (totalMinSz == empty)
+                totalMinSz = totalMinimumSize();
+            minSize.setWidth(totalMinSz.width());
+            break;
+        case SetMaximumSize:
+            if (totalMaxSz == empty)
+                totalMaxSz = totalMaximumSize();
+            maxSize.setWidth(totalMaxSz.width());
+            break;
+        case SetMinAndMaxSize:
+            if (totalMinSz == empty)
+                totalMinSz = totalMinimumSize();
+            if (totalMaxSz == empty)
+                totalMaxSz = totalMaximumSize();
+
+            minSize.setWidth(totalMinSz.width());
+            maxSize.setWidth(totalMaxSz.width());
+            break;
+        case SetDefaultConstraint: {
+            const bool widthSet = explMin & Qt::Horizontal;
+            if (mw->isWindow()) {
+                if (!widthSet) {
+                    if (totalMinSz == empty)
+                        totalMinSz = totalMinimumSize();
+                    minSize.setWidth(totalMinSz.width());
+                } else {
+                    minSize.setWidth(mw->minimumWidth());
+                }
+            } else {
+                minSize.setWidth(widthSet ? mw->minimumWidth() : 0);
+            }
+            break;
+        }
+        case SetNoConstraint:
+            break;
+    }
+    if (minSize == maxSize) {
+        mw->setFixedSize(minSize);
+    }
+    else {
+        // ### To preserve backward compatibility with behavior prior to introducing separate
+        // ### horizontal and vertical constraints, we only update the specific size properties
+        // ### dictated by the constraints. For example, if only minimum width is specified
+        // ### by the constraint, we leave the minimum height untouched.
+        // ### Like before we leave unconstrained values unchanged though it can
+        // ### (unintentionally?) retain stale values.
+
+        // handle min-size
+        if (minSize.isValid())
+            mw->setMinimumSize(minSize);
+        else if (minSize.width() >= 0)
+            mw->setMinimumWidth(minSize.width());
+        else if (minSize.height() >= 0)
+            mw->setMinimumHeight(minSize.height());
+
+        // handle max-size
+        if (maxSize.isValid())
+            mw->setMaximumSize(maxSize);
+        else if (maxSize.width() >= 0)
+            mw->setMaximumWidth(maxSize.width());
+        else if (maxSize.height() >= 0)
+            mw->setMaximumHeight(maxSize.height());
     }
 
     d->doResize();
@@ -1181,51 +1259,127 @@ int QLayout::indexOf(const QLayoutItem *layoutItem) const
 
 /*!
     \enum QLayout::SizeConstraint
+    Describes how the layout constrains the size of the widget.
+
+    A vertical constraint affects the widget's height, while a horizontal constraint affects its width.
 
     The possible values are:
 
-    \value SetDefaultConstraint The main widget's minimum size is set
-                    to minimumSize(), unless the widget already has
-                    a minimum size.
+    \value SetDefaultConstraint
+           In the constrained orientation(s), the widget’s minimum extent
+           is set to \l minimumSize(), unless a minimum size has already been set.
 
-    \value SetFixedSize The main widget's size is set to sizeHint(); it
-                    cannot be resized at all.
-    \value SetMinimumSize  The main widget's minimum size is set to
-                    minimumSize(); it cannot be smaller.
+    \value SetFixedSize
+           In the constrained orientation(s), the widget’s extent is set to
+           \l sizeHint(), and it cannot be resized in that direction.
 
-    \value SetMaximumSize  The main widget's maximum size is set to
-                    maximumSize(); it cannot be larger.
+    \value SetMinimumSize
+           In the constrained orientation(s), the widget’s minimum extent
+           is set to \l minimumSize().
 
-    \value SetMinAndMaxSize  The main widget's minimum size is set to
-                    minimumSize() and its maximum size is set to
-                    maximumSize().
+    \value SetMaximumSize
+           In the constrained orientation(s), the widget’s maximum extent
+           is set to \l maximumSize().
 
-    \value SetNoConstraint  The widget is not constrained.
+    \value SetMinAndMaxSize
+           In the constrained orientation(s), the widget’s minimum extent
+           is set to \l minimumSize(), and the maximum extent is set to \l maximumSize().
 
-    \sa setSizeConstraint()
+    \value SetNoConstraint
+           No size constraints are applied to the widget.
+
+    \sa setSizeConstraint(), setSizeConstraints(), horizontalSizeConstraint(), setHorizontalSizeConstraint(), setVerticalSizeConstraint()
 */
 
 /*!
     \property QLayout::sizeConstraint
-    \brief the resize mode of the layout
+    \brief the resize mode of the layout.
+    Setting the size constraint for the dialog.
+    Setting a vertical or horizontal size constraint will override this.
 
     The default mode is \l {QLayout::SetDefaultConstraint}
     {SetDefaultConstraint}.
+
+    \sa horizontalSizeConstraint(), verticalSizeConstraint()
 */
+
 void QLayout::setSizeConstraint(SizeConstraint constraint)
 {
-    Q_D(QLayout);
-    if (constraint == d->constraint)
-        return;
+    setSizeConstraints(constraint, constraint);
+}
 
-    d->constraint = constraint;
+/*!
+    \since 6.10
+
+    Sets both the \a horizontal and \a vertical size constraints.
+
+    \sa sizeConstraint(), horizontalSizeConstraint(), verticalSizeConstraint()
+ */
+void QLayout::setSizeConstraints(SizeConstraint horizontal, SizeConstraint vertical)
+{
+    Q_D(QLayout);
+    if (horizontal == d->horizontalConstraint && vertical == d->verticalConstraint)
+        return;
+    d->horizontalConstraint = horizontal;
+    d->verticalConstraint = vertical;
     invalidate();
 }
 
 QLayout::SizeConstraint QLayout::sizeConstraint() const
 {
     Q_D(const QLayout);
-    return d->constraint;
+    return d->horizontalConstraint;
+}
+
+/*!
+    \property QLayout::horizontalSizeConstraint
+    \since 6.10
+    \brief The horizontal size constraint.
+
+    The default mode is \l {QLayout::SetDefaultConstraint}
+
+    \sa verticalSizeConstraint(), sizeConstraint()
+*/
+
+void QLayout::setHorizontalSizeConstraint(SizeConstraint constraint)
+{
+    Q_D(QLayout);
+    if (constraint == d->horizontalConstraint)
+        return;
+    d->horizontalConstraint = constraint;
+    invalidate();
+}
+
+
+QLayout::SizeConstraint QLayout::horizontalSizeConstraint() const
+{
+    Q_D(const QLayout);
+    return d->horizontalConstraint;
+}
+
+/*!
+    \property QLayout::verticalSizeConstraint
+    \since 6.10
+    \brief The vertical size constraint.
+
+    The default mode is \l {QLayout::SetDefaultConstraint}
+
+    \sa horizontalSizeConstraint(), sizeConstraint()
+*/
+
+void QLayout::setVerticalSizeConstraint(SizeConstraint constraint)
+{
+    Q_D(QLayout);
+    if (constraint == d->verticalConstraint)
+        return;
+    d->verticalConstraint = constraint;
+    invalidate();
+}
+
+QLayout::SizeConstraint QLayout::verticalSizeConstraint() const
+{
+    Q_D(const QLayout);
+    return d->verticalConstraint;
 }
 
 /*!

@@ -135,9 +135,6 @@ void IndentingLineWriter::splitOnMaxLength(const QString &eol, bool eof)
     int possibleSplit = findSplitLocation(fStatus().lineTokens, minLen);
     if (possibleSplit > 0) {
         lineChanged();
-        quint32 oChange = eolToWrite().size();
-        changeAtOffset(m_utf16Offset + possibleSplit, oChange, 0,
-                        0); // line & col change updated in commitLine
         commitLine(eolToWrite(), TextAddType::NewlineSplit, possibleSplit);
         setReindent(true);
         reindentAndSplit(eol, eof);

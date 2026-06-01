@@ -12,15 +12,14 @@
 #include "third_party/blink/renderer/core/html/html_image_element.h"
 #include "third_party/blink/renderer/core/lcp_critical_path_predictor/element_locator.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
+#include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
 
 namespace blink {
 
 namespace {
 
 size_t GetLCPPFontURLPredictorMaxUrlLength() {
-  static size_t max_length = base::checked_cast<size_t>(
-      features::kLCPPFontURLPredictorMaxUrlLength.Get());
-  return max_length;
+  return features::kLCPPFontURLPredictorMaxUrlLength.Get();
 }
 
 bool IsTimingPredictorEnabled() {
@@ -29,9 +28,7 @@ bool IsTimingPredictorEnabled() {
     return true;
   }
   if (base::FeatureList::IsEnabled(blink::features::kLCPPDeferUnusedPreload)) {
-    static const features::LcppDeferUnusedPreloadTiming timing =
-        features::kLcppDeferUnusedPreloadTiming.Get();
-    switch (timing) {
+    switch (features::kLcppDeferUnusedPreloadTiming.Get()) {
       case features::LcppDeferUnusedPreloadTiming::kPostTask:
         return false;
       case features::LcppDeferUnusedPreloadTiming::kLcpTimingPredictor:
@@ -109,11 +106,13 @@ void LCPCriticalPathPredictor::Reset() {
   lcp_influencer_scripts_.clear();
   fetched_fonts_.clear();
   preconnected_origins_.clear();
+  unused_preloads_.clear();
 
   lcp_predicted_callbacks_.clear();
   are_predicted_callbacks_called_ = false;
   has_lcp_occurred_ = false;
   is_outermost_main_frame_document_loaded_ = false;
+  has_sent_unused_preloads_ = false;
 }
 
 void LCPCriticalPathPredictor::AddLCPPredictedCallback(LCPCallback callback) {
@@ -161,7 +160,7 @@ void LCPCriticalPathPredictor::OnLargestContentfulPaintUpdated(
   if (base::FeatureList::IsEnabled(features::kLCPCriticalPathPredictor) ||
       base::FeatureList::IsEnabled(features::kLCPPLazyLoadImagePreload) ||
       IsTimingPredictorEnabled()) {
-    std::string lcp_element_locator_string =
+    const std::string lcp_element_locator_string =
         element_locator::OfElement(lcp_element).SerializeAsString();
 
     has_lcp_occurred_ = true;
@@ -181,27 +180,28 @@ void LCPCriticalPathPredictor::OnLargestContentfulPaintUpdated(
 
     features::LcppRecordedLcpElementTypes recordable_lcp_element_type =
         features::kLCPCriticalPathPredictorRecordedLcpElementTypes.Get();
-    bool should_record_element_locator =
+    const bool is_image_element = IsA<HTMLImageElement>(lcp_element);
+    const bool is_recordable_type =
         (recordable_lcp_element_type ==
          features::LcppRecordedLcpElementTypes::kAll) ||
         (recordable_lcp_element_type ==
              features::LcppRecordedLcpElementTypes::kImageOnly &&
-         IsA<HTMLImageElement>(lcp_element));
+         is_image_element);
 
-    if (should_record_element_locator) {
-      base::UmaHistogramCounts10000(
-          "Blink.LCPP.LCPElementLocatorSize",
-          base::checked_cast<int>(lcp_element_locator_string.size()));
-
-      if (lcp_element_locator_string.size() <=
-          features::kLCPCriticalPathPredictorMaxElementLocatorLength.Get()) {
-        GetHost().SetLcpElementLocator(
-            lcp_element_locator_string,
-            predicted_lcp_index == kNotFound
-                ? std::nullopt
-                : std::optional<wtf_size_t>(predicted_lcp_index));
-      }
-    }
+    base::UmaHistogramCounts10000(
+        "Blink.LCPP.LCPElementLocatorSize",
+        base::checked_cast<int>(lcp_element_locator_string.size()));
+    const bool is_recordable =
+        is_recordable_type &&
+        (lcp_element_locator_string.size() <=
+         features::kLCPCriticalPathPredictorMaxElementLocatorLength.Get());
+    GetHost().OnLcpUpdated(
+        is_recordable ? std::optional<std::string>(lcp_element_locator_string)
+                      : std::nullopt,
+        is_image_element,
+        predicted_lcp_index == kNotFound
+            ? std::nullopt
+            : std::optional<wtf_size_t>(predicted_lcp_index));
   }
 
   if (base::FeatureList::IsEnabled(features::kLCPPAutoPreconnectLcpOrigin)) {
@@ -244,10 +244,10 @@ void LCPCriticalPathPredictor::OnLargestContentfulPaintUpdated(
     if (const HTMLImageElement* image_element =
             DynamicTo<HTMLImageElement>(lcp_element)) {
       auto& creators = image_element->creator_scripts();
-      size_t max_allowed_url_length = base::checked_cast<size_t>(
-          features::kLCPScriptObserverMaxUrlLength.Get());
-      size_t max_allowed_url_count = base::checked_cast<size_t>(
-          features::kLCPScriptObserverMaxUrlCountPerOrigin.Get());
+      size_t max_allowed_url_length =
+          features::kLCPScriptObserverMaxUrlLength.Get();
+      size_t max_allowed_url_count =
+          features::kLCPScriptObserverMaxUrlCountPerOrigin.Get();
       size_t max_url_length_encountered = 0;
       size_t prediction_match_count = 0;
 
@@ -306,9 +306,13 @@ void LCPCriticalPathPredictor::OnFontFetched(const KURL& url) {
   GetHost().NotifyFetchedFont(url, fetched_fonts_.Contains(url));
 }
 
-void LCPCriticalPathPredictor::OnStartPreload(const KURL& url) {
+void LCPCriticalPathPredictor::OnStartPreload(
+    const KURL& url,
+    const ResourceType& resource_type) {
   if (!base::FeatureList::IsEnabled(
-          blink::features::kHttpDiskCachePrewarming)) {
+          blink::features::kHttpDiskCachePrewarming) &&
+      !base::FeatureList::IsEnabled(
+          blink::features::kLCPPPrefetchSubresource)) {
     return;
   }
   if (!frame_->IsOutermostMainFrame()) {
@@ -317,9 +321,8 @@ void LCPCriticalPathPredictor::OnStartPreload(const KURL& url) {
   if (!url.ProtocolIsInHTTPFamily()) {
     return;
   }
-  static size_t max_url_length = base::checked_cast<size_t>(
-      features::kHttpDiskCachePrewarmingMaxUrlLength.Get());
-  if (url.GetString().length() > max_url_length) {
+  if (url.GetString().length() >
+      features::kHttpDiskCachePrewarmingMaxUrlLength.Get()) {
     return;
   }
   Document* document = frame_->GetDocument();
@@ -330,7 +333,9 @@ void LCPCriticalPathPredictor::OnStartPreload(const KURL& url) {
       base::TimeTicks::Now() -
       document->Loader()->GetTiming().NavigationStart();
   CHECK_GE(resource_load_start, base::Seconds(0));
-  GetHost().NotifyFetchedSubresource(url, resource_load_start);
+  GetHost().NotifyFetchedSubresource(
+      url, resource_load_start,
+      ResourceFetcher::DetermineRequestDestination(resource_type));
 }
 
 mojom::blink::LCPCriticalPathPredictorHost&

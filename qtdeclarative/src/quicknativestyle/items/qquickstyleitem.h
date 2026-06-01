@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKSTYLEITEM_H
 #define QQUICKSTYLEITEM_H
@@ -10,7 +11,7 @@
 #include <QtQuick/private/qquickitem_p.h>
 #include <QtQuickTemplates2/private/qquickcontrol_p.h>
 
-#include "qquicknativestyle.h"
+#include "qquicknativestyle_p.h"
 #include "qquickstyle.h"
 #include "qquickstyleoption.h"
 
@@ -219,7 +220,7 @@ protected:
     void initStyleOptionBase(QStyleOption &styleOption) const;
 
     inline QSize contentSize() const { return QSize(qCeil(m_contentSize.width()), qCeil(m_contentSize.height())); }
-    inline static QStyle *style() { return QQuickNativeStyle::style(); }
+    inline static QStyle *style() { return QQC2::style(); }
 
     template <class T> inline const T* control() const {
 #ifdef QT_DEBUG

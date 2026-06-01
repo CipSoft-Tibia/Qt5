@@ -28,12 +28,12 @@ namespace safe_browsing {
 // Mock ThreatDetails class that makes FinishCollection a no-op.
 class MockThreatDetails : public ThreatDetails {
  public:
-  MockThreatDetails() {}
+  MockThreatDetails() = default;
 
   MockThreatDetails(const MockThreatDetails&) = delete;
   MockThreatDetails& operator=(const MockThreatDetails&) = delete;
 
-  ~MockThreatDetails() override {}
+  ~MockThreatDetails() override = default;
   MOCK_METHOD4(
       FinishCollection,
       void(bool did_proceed,
@@ -45,7 +45,7 @@ class MockThreatDetails : public ThreatDetails {
 
 class MockThreatDetailsFactory : public ThreatDetailsFactory {
  public:
-  ~MockThreatDetailsFactory() override {}
+  ~MockThreatDetailsFactory() override = default;
 
   std::unique_ptr<ThreatDetails> CreateThreatDetails(
       BaseUIManager* ui_manager,
@@ -73,7 +73,7 @@ class TriggerManagerTest : public ::testing::Test {
   TriggerManagerTest(const TriggerManagerTest&) = delete;
   TriggerManagerTest& operator=(const TriggerManagerTest&) = delete;
 
-  ~TriggerManagerTest() override {}
+  ~TriggerManagerTest() override = default;
 
   void SetUp() override {
     ThreatDetails::RegisterFactory(&mock_threat_details_factory_);
@@ -123,11 +123,12 @@ class TriggerManagerTest : public ::testing::Test {
 
   bool StartCollectingThreatDetails(const TriggerType trigger_type,
                                     content::WebContents* web_contents) {
-    SBErrorOptions options =
-        TriggerManager::GetSBErrorDisplayOptions(pref_service_, web_contents);
+    TriggerManager::DataCollectionPermissions permissions =
+        TriggerManager::GetDataCollectionPermissions(pref_service_,
+                                                     web_contents);
     return trigger_manager_.StartCollectingThreatDetails(
         trigger_type, web_contents, security_interstitials::UnsafeResource(),
-        nullptr, nullptr, nullptr, options);
+        nullptr, nullptr, nullptr, permissions);
   }
 
   bool FinishCollectingThreatDetails(const TriggerType trigger_type,
@@ -140,10 +141,12 @@ class TriggerManagerTest : public ::testing::Test {
               .threat_details.get());
       EXPECT_CALL(*threat_details, FinishCollection(_, _, _, _)).Times(1);
     }
-    SBErrorOptions options =
-        TriggerManager::GetSBErrorDisplayOptions(pref_service_, web_contents);
+    TriggerManager::DataCollectionPermissions permissions =
+        TriggerManager::GetDataCollectionPermissions(pref_service_,
+                                                     web_contents);
     auto result = trigger_manager_.FinishCollectingThreatDetails(
-        trigger_type, web_contents_key, base::TimeDelta(), false, 0, options);
+        trigger_type, web_contents_key, base::TimeDelta(), false, 0,
+        permissions);
 
     // Invoke the callback if the report was to be sent.
     if (expect_report_sent) {

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 #ifndef QV4VTABLE_P_H
 #define QV4VTABLE_P_H
 
@@ -276,7 +277,8 @@ const QV4::VTable classname::static_vtbl = DEFINE_MANAGED_VTABLE_INT(classname, 
             dptr->_checkIsInitialized(); \
             return dptr; \
         } \
-        Q_STATIC_ASSERT(std::is_trivial_v<QV4::Heap::DataClass>);
+        static_assert(std::is_trivially_copyable_v<QV4::Heap::DataClass>); \
+        static_assert(std::is_trivially_default_constructible_v<QV4::Heap::DataClass>);
 
 #define V4_PROTOTYPE(p) \
     static QV4::Object *defaultPrototype(QV4::ExecutionEngine *e) \

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTEXTDOCUMENT_P_H
 #define QTEXTDOCUMENT_P_H
@@ -23,6 +24,8 @@
 #include <QtCore/qmutex.h>
 
 #include <optional>
+
+QT_BEGIN_NAMESPACE
 
 namespace Utils {
 
@@ -74,5 +77,7 @@ private:
     mutable QMutex m_mutex;
 };
 } // namespace Utils
+
+QT_END_NAMESPACE
 
 #endif // TEXTDOCUMENT_P_H

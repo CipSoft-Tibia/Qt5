@@ -1257,4 +1257,52 @@ TestCase {
             verify(control.activeFocus)
         mouseRelease(control, control.first.handle.x, control.first.handle.y, Qt.LeftButton)
     }
+
+    function mouseXForPosition(control, position) {
+        position = Math.min(Math.max(position, 0.0), 1.0)
+        // Shouldn't matter which handle we use for the width, assuming they're both the same.
+        compare(control.first.handle.width, control.second.handle.width)
+        return control.leftPadding + control.first.handle.width * 0.5
+            + position * (control.availableWidth - control.first.handle.width)
+    }
+
+    function test_integerStepping_data() {
+        return [
+            { tag: "mouse" },
+            { tag: "keyboard" }
+        ]
+    }
+
+    function test_integerStepping(data) {
+        let control = createTemporaryObject(sliderComponent, testCase,
+            { stepSize: Slider.SnapAlways })
+        verify(control)
+
+        control.from = 0
+        control.to = 7
+        control.stepSize = 1
+
+        const useMouse = data.tag === "mouse"
+        if (useMouse) {
+            // Start a drag on the second handle, which starts at 1.
+            mousePress(control, mouseXForPosition(control, 1 / control.to))
+        } else {
+            control.second.handle.forceActiveFocus()
+            verify(control.second.handle.activeFocus)
+        }
+
+        for (let i = 1; i < control.to; ++i) {
+            if (useMouse)
+                mouseMove(control, mouseXForPosition(control, i / control.to))
+
+            // Compare as strings to avoid a fuzzy compare; we want an exact match.
+            compare("" + control.second.value, "" + i)
+
+            if (!useMouse)
+                keyClick(Qt.Key_Right)
+        }
+
+        if (useMouse)
+            mouseRelease(control)
+    }
 }

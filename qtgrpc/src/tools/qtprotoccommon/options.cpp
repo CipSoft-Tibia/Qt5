@@ -16,6 +16,7 @@ static const char FieldEnumGenerationOption[] = "FIELD_ENUM";
 static const char ExtraNamespaceGenerationOption[] = "EXTRA_NAMESPACE";
 static const char ExportMacroGenerationOption[] = "EXPORT_MACRO";
 static const char HeaderGuardOption[] = "HEADER_GUARD";
+static const char MutableGetterConflicts[] = "ALLOW_MUTABLE_GETTER_CONFLICTS";
 
 static const char ExportSuffix[] = "_exports.qpb.h";
 
@@ -23,7 +24,8 @@ static constexpr std::string_view HeaderGuardPragma = "pragma";
 static constexpr std::string_view HeaderGuardProtoFilename = "filename";
 
 Options::Options()
-    : m_generateComments(false), m_isFolder(false), m_generateFieldEnum(true), m_generateMacroExportFile(false), m_qml(false)
+    : m_generateComments(false), m_isFolder(false), m_generateFieldEnum(true),
+      m_generateMacroExportFile(false), m_qml(false), m_mutableGetterConflicts(false)
 {
 }
 
@@ -111,6 +113,8 @@ void Options::setFromString(const std::string &options, GeneratorType /*unused*/
             } else if (headerGuardValue != HeaderGuardProtoFilename) {
                 QT_PROTOBUF_DEBUG("Unknown HEADER_GUARD option value");
             }
+        } else if (option == MutableGetterConflicts) {
+            instance.m_mutableGetterConflicts = true;
         }
     }
 }

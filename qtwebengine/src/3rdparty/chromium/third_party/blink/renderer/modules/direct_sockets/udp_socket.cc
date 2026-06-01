@@ -4,8 +4,9 @@
 
 #include "third_party/blink/renderer/modules/direct_sockets/udp_socket.h"
 
+#include <algorithm>
+
 #include "base/metrics/histogram_functions.h"
-#include "base/ranges/algorithm.h"
 #include "net/base/net_errors.h"
 #include "third_party/blink/public/mojom/direct_sockets/direct_sockets.mojom-blink.h"
 #include "third_party/blink/public/platform/task_type.h"
@@ -234,13 +235,13 @@ ScriptPromise<IDLUndefined> UDPSocket::close(ScriptState*,
       DOMExceptionCode::kAbortError, "Stream closed.");
 
   auto readable_cancel = readable_stream_wrapper_->Readable()->cancel(
-      script_state, ScriptValue::From(script_state, reason), exception_state);
-  DCHECK(!exception_state.HadException()) << exception_state.Message();
+      script_state, ScriptValue::From(script_state, reason),
+      ASSERT_NO_EXCEPTION);
   readable_cancel.MarkAsHandled();
 
   auto writable_abort = writable_stream_wrapper_->Writable()->abort(
-      script_state, ScriptValue::From(script_state, reason), exception_state);
-  DCHECK(!exception_state.HadException()) << exception_state.Message();
+      script_state, ScriptValue::From(script_state, reason),
+      ASSERT_NO_EXCEPTION);
   writable_abort.MarkAsHandled();
 
   return closed(script_state);

@@ -84,6 +84,7 @@ message ConnectionRequestFrame {
     WEB_RTC = 9;
     BLE_L2CAP = 10;
     USB = 11;
+    WEB_RTC_NON_CELLULAR = 12;
   }
   // LINT.ThenChange(//depot/google3/third_party/nearby/proto/connections_enums.proto)
 
@@ -119,6 +120,7 @@ message ConnectionRequestFrame {
     PresenceDevice presence_device = 13;
   }
   optional ConnectionMode connection_mode = 14;
+  optional LocationHint location_hint = 15;
 }
 
 message ConnectionResponseFrame {
@@ -152,6 +154,8 @@ message ConnectionResponseFrame {
   optional int32 multiplex_socket_bitmask = 5;
   optional int32 nearby_connections_version = 6 [deprecated = true];
   optional int32 safe_to_disconnect_version = 7;
+  optional LocationHint location_hint = 8;
+  optional int32 keep_alive_timeout_millis = 9;
 }
 
 message PayloadTransferFrame {
@@ -237,6 +241,7 @@ message BandwidthUpgradeNegotiationFrame {
       WEB_RTC = 9;
       // 10 is reserved.
       USB = 11;
+      WEB_RTC_NON_CELLULAR = 12;
     }
 
     // Accompanies Medium.WIFI_HOTSPOT.
@@ -346,6 +351,7 @@ message BandwidthUpgradeRetryFrame {
     WEB_RTC = 9;
     BLE_L2CAP = 10;
     USB = 11;
+    WEB_RTC_NON_CELLULAR = 12;
   }
   // LINT.ThenChange(//depot/google3/third_party/nearby/proto/connections_enums.proto)
 
@@ -420,6 +426,7 @@ message AutoReconnectFrame {
   }
   optional string endpoint_id = 1;
   optional EventType event_type = 2;
+  optional string last_endpoint_id = 3;
 }
 
 message MediumMetadata {

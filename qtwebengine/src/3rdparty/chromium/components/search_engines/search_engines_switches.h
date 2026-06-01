@@ -12,22 +12,13 @@
 #include "base/metrics/field_trial_params.h"
 #include "build/build_config.h"
 
+// TODO(crbug.com/390993114): Remove, replace with direct includes.
+#include "components/regional_capabilities/regional_capabilities_switches.h"  // IWYU pragma: export
+
 namespace switches {
 
 COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
 extern const char kExtraSearchQueryParams[];
-
-COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
-extern const char kSearchEngineChoiceCountry[];
-
-// `kDefaultListCountryOverride` and `kEeaRegionCountryOverrideString` are
-// special values for `kSearchEngineChoiceCountry`.
-// `kDefaultListCountryOverride` will override the list of search engines to
-// display the default set.
-// `kEeaListCountryOverride` will override the list
-// of search engines to display list of all EEA engines.
-inline const char kDefaultListCountryOverride[] = "DEFAULT_EEA";
-inline const char kEeaListCountryOverride[] = "EEA_ALL";
 
 COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
 extern const char kIgnoreNoFirstRunForSearchEngineChoiceScreen[];
@@ -46,7 +37,7 @@ BASE_DECLARE_FEATURE(kSearchEngineChoiceTrigger);
 
 #if BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
-BASE_DECLARE_FEATURE(kSearchEngineChoiceAttribution);
+BASE_DECLARE_FEATURE(kRemoveSearchEngineChoiceAttribution);
 #endif
 
 // The string that's passed to
@@ -81,6 +72,16 @@ extern const base::FeatureParam<int> kSearchEngineChoiceMaximumSkipCount;
 // default apps (for Browser & Search) in Android.
 COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
 BASE_DECLARE_FEATURE(kClayBlocking);
+
+// Enables the alternative behaviour for the connection to the default apps
+// choice internal backend in Android.
+COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
+BASE_DECLARE_FEATURE(kClayBackendConnectionV2);
+
+// Enables showing a snackbar when users change their default search engine in
+// Android.
+COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
+BASE_DECLARE_FEATURE(kClaySnackbar);
 #endif
 
 // Kill switch to revert the fix of using assistedQueryStats for prefetch source
@@ -96,6 +97,12 @@ BASE_DECLARE_FEATURE(kRemoveSearchboxStatsParamFromPrefetchRequests);
 // Switch guarding TemplateURL reconciliation mechanism.
 COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
 BASE_DECLARE_FEATURE(kTemplateUrlReconciliation);
+
+// Parameter associated with kTemplateUrlReconciliation flag.
+// When set to <true>, reconciliation is performed with all known Search Engine
+// definitions.
+COMPONENT_EXPORT(SEARCH_ENGINES_SWITCHES)
+extern const base::FeatureParam<bool> kReconcileWithAllKnownEngines;
 
 }  // namespace switches
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlengine_p.h"
 #include "qqmlengine.h"
@@ -614,6 +615,9 @@ void QQmlEngine::clearComponentCache()
 {
     Q_D(QQmlEngine);
 
+    // QQmlGadgetPtrWrapper can have QQmlData with various references.
+    qDeleteAll(std::exchange(d->cachedValueTypeInstances, {}));
+
     // Contexts can hold on to CUs but live on the JS heap.
     // Use a non-incremental GC run to get rid of those.
     QV4::MemoryManager *mm = handle()->memoryManager;
@@ -623,9 +627,7 @@ void QQmlEngine::clearComponentCache()
     mm->gcStateMachine->timeLimit = std::move(oldLimit);
 
     handle()->trimCompilationUnits();
-    d->typeLoader.lock();
     d->typeLoader.clearCache();
-    d->typeLoader.unlock();
     QQmlMetaType::freeUnusedTypesAndCaches();
 }
 
@@ -698,7 +700,7 @@ QQmlContext *QQmlEngine::rootContext() const
 QQmlAbstractUrlInterceptor *QQmlEngine::urlInterceptor() const
 {
     Q_D(const QQmlEngine);
-    return d->urlInterceptors.last();
+    return d->typeLoader.urlInterceptors().last();
 }
 #endif
 
@@ -714,7 +716,7 @@ QQmlAbstractUrlInterceptor *QQmlEngine::urlInterceptor() const
 void QQmlEngine::addUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor)
 {
     Q_D(QQmlEngine);
-    d->urlInterceptors.append(urlInterceptor);
+    d->typeLoader.addUrlInterceptor(urlInterceptor);
 }
 
 /*!
@@ -728,7 +730,7 @@ void QQmlEngine::addUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor)
 void QQmlEngine::removeUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor)
 {
     Q_D(QQmlEngine);
-    d->urlInterceptors.removeOne(urlInterceptor);
+    d->typeLoader.removeUrlInterceptor(urlInterceptor);
 }
 
 /*!
@@ -738,10 +740,7 @@ void QQmlEngine::removeUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor
 QUrl QQmlEngine::interceptUrl(const QUrl &url, QQmlAbstractUrlInterceptor::DataType type) const
 {
     Q_D(const QQmlEngine);
-    QUrl result = url;
-    for (QQmlAbstractUrlInterceptor *interceptor : d->urlInterceptors)
-        result = interceptor->intercept(result, type);
-    return result;
+    return d->typeLoader.interceptUrl(url, type);
 }
 
 /*!
@@ -750,7 +749,7 @@ QUrl QQmlEngine::interceptUrl(const QUrl &url, QQmlAbstractUrlInterceptor::DataT
 QList<QQmlAbstractUrlInterceptor *> QQmlEngine::urlInterceptors() const
 {
     Q_D(const QQmlEngine);
-    return d->urlInterceptors;
+    return d->typeLoader.urlInterceptors();
 }
 
 QSharedPointer<QQmlImageProviderBase> QQmlEnginePrivate::imageProvider(const QString &providerId) const
@@ -776,9 +775,10 @@ QSharedPointer<QQmlImageProviderBase> QQmlEnginePrivate::imageProvider(const QSt
 void QQmlEngine::setNetworkAccessManagerFactory(QQmlNetworkAccessManagerFactory *factory)
 {
     Q_D(QQmlEngine);
-    QMutexLocker locker(&d->networkAccessManagerMutex);
-    d->networkAccessManagerFactory = factory;
+    d->typeLoader.setNetworkAccessManagerFactory(factory);
 }
+
+class QQmlEnginePublicAPIToken {};
 
 /*!
   Returns the current QQmlNetworkAccessManagerFactory.
@@ -788,27 +788,14 @@ void QQmlEngine::setNetworkAccessManagerFactory(QQmlNetworkAccessManagerFactory 
 QQmlNetworkAccessManagerFactory *QQmlEngine::networkAccessManagerFactory() const
 {
     Q_D(const QQmlEngine);
-    return d->networkAccessManagerFactory;
+    return d->typeLoader.networkAccessManagerFactory().get(QQmlEnginePublicAPIToken());
 }
 
-QNetworkAccessManager *QQmlEnginePrivate::createNetworkAccessManager(QObject *parent) const
+QNetworkAccessManager *QQmlEnginePrivate::getNetworkAccessManager()
 {
-    QMutexLocker locker(&networkAccessManagerMutex);
-    QNetworkAccessManager *nam;
-    if (networkAccessManagerFactory) {
-        nam = networkAccessManagerFactory->create(parent);
-    } else {
-        nam = new QNetworkAccessManager(parent);
-    }
-
-    return nam;
-}
-
-QNetworkAccessManager *QQmlEnginePrivate::getNetworkAccessManager() const
-{
-    Q_Q(const QQmlEngine);
+    Q_Q(QQmlEngine);
     if (!networkAccessManager)
-        networkAccessManager = createNetworkAccessManager(const_cast<QQmlEngine*>(q));
+        networkAccessManager = typeLoader.createNetworkAccessManager(q);
     return networkAccessManager;
 }
 
@@ -826,8 +813,9 @@ QNetworkAccessManager *QQmlEnginePrivate::getNetworkAccessManager() const
 */
 QNetworkAccessManager *QQmlEngine::networkAccessManager() const
 {
+    // ### Qt7: This method is clearly not const since it _creates_ the network access manager.
     Q_D(const QQmlEngine);
-    return d->getNetworkAccessManager();
+    return const_cast<QQmlEnginePrivate *>(d)->getNetworkAccessManager();
 }
 #endif // qml_network
 
@@ -1001,7 +989,7 @@ void QQmlEngine::captureProperty(QObject *object, const QMetaProperty &property)
   \since 5.15
 
   The uiLanguage holds the name of the language to be used for user interface
-  string translations. It is exposed in C++ as QQmlEngine::uiLanguage property.
+  string translations. It is exposed in C++ as \l QJSEngine::uiLanguage property.
 
   You can set the value freely and use it in bindings. It is recommended to set it
   after installing translators in your application. By convention, an empty string
@@ -1627,7 +1615,7 @@ void QQmlEnginePrivate::cleanupScarceResources()
 void QQmlEngine::addImportPath(const QString& path)
 {
     Q_D(QQmlEngine);
-    d->importDatabase.addImportPath(path);
+    d->typeLoader.addImportPath(path);
 }
 
 /*!
@@ -1648,7 +1636,7 @@ void QQmlEngine::addImportPath(const QString& path)
 QStringList QQmlEngine::importPathList() const
 {
     Q_D(const QQmlEngine);
-    return d->importDatabase.importPathList();
+    return d->typeLoader.importPathList();
 }
 
 /*!
@@ -1666,7 +1654,7 @@ QStringList QQmlEngine::importPathList() const
 void QQmlEngine::setImportPathList(const QStringList &paths)
 {
     Q_D(QQmlEngine);
-    d->importDatabase.setImportPathList(paths);
+    d->typeLoader.setImportPathList(paths);
 }
 
 
@@ -1684,7 +1672,7 @@ void QQmlEngine::setImportPathList(const QStringList &paths)
 void QQmlEngine::addPluginPath(const QString& path)
 {
     Q_D(QQmlEngine);
-    d->importDatabase.addPluginPath(path);
+    d->typeLoader.addPluginPath(path);
 }
 
 /*!
@@ -1699,7 +1687,7 @@ void QQmlEngine::addPluginPath(const QString& path)
 QStringList QQmlEngine::pluginPathList() const
 {
     Q_D(const QQmlEngine);
-    return d->importDatabase.pluginPathList();
+    return d->typeLoader.pluginPathList();
 }
 
 /*!
@@ -1715,7 +1703,7 @@ QStringList QQmlEngine::pluginPathList() const
 void QQmlEngine::setPluginPathList(const QStringList &paths)
 {
     Q_D(QQmlEngine);
-    d->importDatabase.setPluginPathList(paths);
+    d->typeLoader.setPluginPathList(paths);
 }
 
 #if QT_CONFIG(library)
@@ -1738,8 +1726,7 @@ bool QQmlEngine::importPlugin(const QString &filePath, const QString &uri, QList
 {
     Q_D(QQmlEngine);
     QQmlTypeLoaderQmldirContent qmldir;
-    QQmlPluginImporter importer(
-                uri, QTypeRevision(), &d->importDatabase, &qmldir, &d->typeLoader, errors);
+    QQmlPluginImporter importer(uri, QTypeRevision(),  &qmldir, &d->typeLoader, errors);
     return importer.importDynamicPlugin(filePath, uri, false).isValid();
 }
 #endif
@@ -1899,7 +1886,7 @@ QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
         }
         QObject *o = component.beginCreate(q->rootContext());
         auto *compPriv = QQmlComponentPrivate::get(&component);
-        if (compPriv->state.hasUnsetRequiredProperties()) {
+        if (compPriv->hasUnsetRequiredProperties()) {
             /* We would only get the errors from the component after (complete)Create.
                 We can't call create, as we need to convertAndInsert before completeCreate (otherwise
                 tst_qqmllanguage::compositeSingletonCircular fails).
@@ -1907,7 +1894,7 @@ QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
                 So create the unset required component errors manually.
             */
             delete o;
-            const auto requiredProperties = compPriv->state.requiredProperties();
+            const auto requiredProperties = compPriv->requiredProperties();
             QList<QQmlError> errors (requiredProperties->size());
             for (const auto &reqProp: *requiredProperties)
                 errors.push_back(QQmlComponentPrivate::unsetRequiredPropertyToQQmlError(reqProp));
@@ -1953,7 +1940,7 @@ void QQmlEnginePrivate::executeRuntimeFunction(const QV4::ExecutableCompilationU
     Q_ASSERT(thisObject);
 
     QQmlData *ddata = QQmlData::get(thisObject);
-    Q_ASSERT(ddata && ddata->outerContext);
+    Q_ASSERT(ddata && ddata->context);
 
     QV4::Function *function = unit->runtimeFunctions[functionIndex];
     Q_ASSERT(function);
@@ -1968,7 +1955,7 @@ void QQmlEnginePrivate::executeRuntimeFunction(const QV4::ExecutableCompilationU
     QV4::Scope scope(v4);
     QV4::ExecutionContext *ctx = v4->scriptContext();
     QV4::Scoped<QV4::ExecutionContext> callContext(scope,
-        QV4::QmlContext::create(ctx, ddata->outerContext, thisObject));
+        QV4::QmlContext::create(ctx, ddata->context, thisObject));
 
     if (auto nested = function->nestedFunction()) {
         // if a nested function is already known, call the closure directly
@@ -2177,9 +2164,7 @@ LoadHelper::LoadHelper(
     , m_typeName(typeName.toString())
     , m_mode(mode)
 {
-    m_typeLoader->lock();
     m_typeLoader->loadWithStaticData(this, QByteArray(), m_mode);
-    m_typeLoader->unlock();
 }
 
 void LoadHelper::registerCallback(QQmlComponentPrivate *callback)

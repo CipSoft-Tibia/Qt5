@@ -16,14 +16,18 @@
 
 #include <QtMultimedia/private/qaudio_platform_implementation_support_p.h>
 #include <QtMultimedia/private/qcoreaudioutils_p.h>
+#include <QtMultimedia/private/qdarwinaudiodevices_p.h>
 
 #include <AudioUnit/AudioUnit.h>
+#include <vector>
+
+typedef struct OpaqueAudioConverter *AudioConverterRef;
 
 QT_BEGIN_NAMESPACE
 
 class QDarwinAudioSource;
 
-class QCoreAudioSourceStream final : QtMultimediaPrivate::QPlatformAudioSourceStream
+class QCoreAudioSourceStream final : public QtMultimediaPrivate::QPlatformAudioSourceStream
 {
     using QPlatformAudioSourceStream = QtMultimediaPrivate::QPlatformAudioSourceStream;
 
@@ -62,13 +66,14 @@ private:
                                   const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber,
                                   UInt32 inNumberFrames, AudioBufferList *ioData);
 
-    OSStatus processRingbuffer(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *,
-                               UInt32 inBusNumber, UInt32 inNumberFrames,
-                               AudioBufferList *ioData) noexcept QT_MM_NONBLOCKING;
+    OSStatus processInput(AudioUnitRenderActionFlags *ioActionFlags,
+                          const AudioTimeStamp *timeStamp, UInt32 inBusNumber,
+                          UInt32 inNumberFrames,
+                          AudioBufferList *ioData) noexcept QT_MM_NONBLOCKING;
 
-    OSStatus processAudioCallback(AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *,
-                                  UInt32 inBusNumber, UInt32 inNumberFrames,
-                                  AudioBufferList *ioData) noexcept QT_MM_NONBLOCKING;
+    OSStatus processRingbuffer(QSpan<const std::byte> inputSpan,
+                               UInt32 inNumberFrames) noexcept QT_MM_NONBLOCKING;
+    OSStatus processAudioCallback(QSpan<const std::byte> inputSpan) noexcept QT_MM_NONBLOCKING;
 
 #ifdef Q_OS_MACOS
     bool addDisconnectListener(AudioObjectID id);
@@ -85,6 +90,11 @@ private:
     QDarwinAudioSource *m_parent;
 
     AudioBufferList m_bufferList{};
+
+    // for run-time conversions
+    AudioConverterRef m_audioConverter{ nullptr };
+    std::vector<uint8_t> m_outputBuffer;
+    AudioBufferList m_outputBufferList{};
 };
 
 class QDarwinAudioSource final

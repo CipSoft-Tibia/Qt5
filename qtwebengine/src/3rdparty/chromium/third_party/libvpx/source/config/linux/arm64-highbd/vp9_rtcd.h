@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024 The WebM project authors. All Rights Reserved.
+ *  Copyright (c) 2025 The WebM project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -26,6 +26,9 @@
 #include "vp9/common/vp9_enums.h"
 #include "vp9/common/vp9_filter.h"
 #include "vpx/vpx_integer.h"
+#if !CONFIG_REALTIME_ONLY && CONFIG_VP9_ENCODER
+#include "vp9/encoder/vp9_temporal_filter.h"
+#endif
 
 struct macroblockd;
 

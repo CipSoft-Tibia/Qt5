@@ -12,7 +12,7 @@ endif()
 
 set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/wayland/custom-shell/plugins")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui WaylandClient)
+find_package(Qt6 REQUIRED COMPONENTS Core GuiPrivate WaylandClientPrivate)
 
 qt_add_plugin(exampleshellplugin)
 target_sources(exampleshellplugin PRIVATE

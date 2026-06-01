@@ -20,11 +20,6 @@
  *
  */
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_BOX_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_BOX_H_
 
@@ -688,7 +683,8 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
       const PhysicalBoxFragment& operator*() const;
 
       Iterator& operator++() {
-        ++iterator_;
+        // TODO(crbug.com/351564777): Resolve a buffer safety issue.
+        UNSAFE_TODO(++iterator_);
         return *this;
       }
       Iterator operator++(int) {
@@ -832,23 +828,13 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
     return HasNonVisibleOverflow() && StyleRef().ScrollsOverflowY();
   }
 
-  // Elements such as the <input> field override this to specify that they are
-  // scrollable outside the context of the CSS overflow style
-  virtual bool IsIntrinsicallyScrollable(
-      ScrollbarOrientation orientation) const {
-    NOT_DESTROYED();
-    return false;
-  }
-
   // Return true if this box is monolithic, i.e. unbreakable in a fragmentation
   // context.
   virtual bool IsMonolithic() const;
 
   bool HasUnsplittableScrollingOverflow() const;
 
-  PhysicalRect LocalCaretRect(
-      int caret_offset,
-      LayoutUnit* extra_width_to_end_of_line = nullptr) const override;
+  PhysicalRect LocalCaretRect(int caret_offset) const override;
 
   // Returns the intersection of all overflow clips which apply.
   virtual PhysicalRect OverflowClipRect(
@@ -956,9 +942,9 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
   // Returns true if reading flow should be used on this LayoutBox's content.
   // https://drafts.csswg.org/css-display-4/#reading-flow
   bool IsReadingFlowContainer() const;
-  // Returns the elements corresponding to this LayoutBox's layout children,
+  // Returns the nodes corresponding to this LayoutBox's layout children,
   // sorted in reading flow if IsReadingFlowContainer().
-  const HeapVector<Member<Element>>& ReadingFlowElements() const;
+  const HeapVector<Member<Node>>& ReadingFlowNodes() const;
 
   // See README.md for an explanation of scroll origin.
   gfx::Vector2d OriginAdjustmentForScrollbars() const;
@@ -1014,8 +1000,7 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
   virtual LayoutBox* CreateAnonymousBoxWithSameTypeAs(
       const LayoutObject*) const {
     NOT_DESTROYED();
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
 
   ShapeOutsideInfo* GetShapeOutsideInfo() const;
@@ -1154,8 +1139,6 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
     return std::nullopt;
   }
 
-  void UpdateScrollMarkerControlsAfterScroll() const;
-
   // Sets the min/max sizes for this box.
   void SetIntrinsicLogicalWidths(LayoutUnit initial_block_size,
                                  const MinMaxSizesResult& result) {
@@ -1244,6 +1227,7 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
 
   const BoxStrut& OutOfFlowInsetsForGetComputedStyle() const;
 
+  Element* AccessibilityAnchor() const;
   const HeapHashSet<Member<Element>>* DisplayLocksAffectedByAnchors() const;
   void NotifyContainingDisplayLocksForAnchorPositioning(
       const HeapHashSet<Member<Element>>*
@@ -1303,8 +1287,6 @@ class CORE_EXPORT LayoutBox : public LayoutBoxModelObject {
 
   static bool SkipContainingBlockForPercentHeightCalculation(
       const LayoutBox* containing_block);
-
-  PhysicalRect LocalVisualRectIgnoringVisibility() const override;
 
   virtual LayoutPoint LocationInternal() const {
     NOT_DESTROYED();

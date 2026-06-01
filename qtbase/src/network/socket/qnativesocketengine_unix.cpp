@@ -11,6 +11,7 @@
 #include "qhostaddress.h"
 #include "qvarlengtharray.h"
 #include "qnetworkinterface.h"
+#include "qnetworkinterface_p.h"
 #include "qendian.h"
 #ifdef Q_OS_WASM
 #include <private/qeventdispatcher_wasm_p.h>
@@ -81,6 +82,9 @@ static void convertToLevelAndOption(QNativeSocketEngine::SocketOption opt,
     case QNativeSocketEngine::BindExclusively:          // not handled on Unix
     case QNativeSocketEngine::MaxStreamsSocketOption:
         Q_UNREACHABLE();
+
+    case QNativeSocketEngine::BindInterfaceIndex:
+        Q_UNREACHABLE(); // handled directly in setOption()
 
     case QNativeSocketEngine::BroadcastSocketOption:
         n = SO_BROADCAST;
@@ -200,7 +204,7 @@ bool QNativeSocketEnginePrivate::createNewSocket(QAbstractSocket::SocketType soc
     int type = (socketType == QAbstractSocket::UdpSocket) ? SOCK_DGRAM : SOCK_STREAM;
 
     int socket = qt_safe_socket(domain, type, protocol, O_NONBLOCK);
-    if (socket < 0 && socketProtocol == QAbstractSocket::AnyIPProtocol && errno == EAFNOSUPPORT) {
+    if (socket < 0 && socketProtocol == QAbstractSocket::AnyIPProtocol && (errno == EAFNOSUPPORT || errno == ENOTSUP )) {
         domain = AF_INET;
         socket = qt_safe_socket(domain, type, protocol, O_NONBLOCK);
         socketProtocol = QAbstractSocket::IPv4Protocol;
@@ -234,6 +238,20 @@ bool QNativeSocketEnginePrivate::createNewSocket(QAbstractSocket::SocketType soc
 #endif
 
         return false;
+    }
+
+    // Attempt to enable dual-stack
+    if (domain == AF_INET6) {
+        const int ipv6only = 0;
+        [[maybe_unused]] const int ret = ::setsockopt(socket, IPPROTO_IPV6, IPV6_V6ONLY,
+                                                      &ipv6only, sizeof(ipv6only));
+#if defined (QNATIVESOCKETENGINE_DEBUG)
+        if (ret != 0) {
+            qDebug("QNativeSocketEnginePrivate::createNewSocket(%d, %d): "
+                   "failed to set IPV6_V6ONLY to %d.",
+                   socketType, socketProtocol, ipv6only);
+        }
+#endif
     }
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
@@ -308,6 +326,11 @@ int QNativeSocketEnginePrivate::option(QNativeSocketEngine::SocketOption opt) co
 */
 bool QNativeSocketEnginePrivate::setOption(QNativeSocketEngine::SocketOption opt, int v)
 {
+#ifdef QNATIVESOCKETENGINE_DEBUG
+#  define perrorDebug(msg)  perror("QNativeSocketEnginePrivate::setOption(): " msg)
+#else
+#  define perrorDebug(msg)  (void)0
+#endif
     Q_Q(QNativeSocketEngine);
     if (!q->isValid())
         return false;
@@ -319,25 +342,16 @@ bool QNativeSocketEnginePrivate::setOption(QNativeSocketEngine::SocketOption opt
 #if !defined(Q_OS_VXWORKS)
         int flags = ::fcntl(socketDescriptor, F_GETFL, 0);
         if (flags == -1) {
-#ifdef QNATIVESOCKETENGINE_DEBUG
-            perror("QNativeSocketEnginePrivate::setOption(): fcntl(F_GETFL) failed");
-#endif
+            perrorDebug("fcntl(F_GETFL) failed");
             return false;
         }
         if (::fcntl(socketDescriptor, F_SETFL, flags | O_NONBLOCK) == -1) {
-#ifdef QNATIVESOCKETENGINE_DEBUG
-            perror("QNativeSocketEnginePrivate::setOption(): fcntl(F_SETFL) failed");
-#endif
+            perrorDebug("fcntl(F_SETFL) failed");
             return false;
         }
 #else // Q_OS_VXWORKS
-        int onoff = 1;
-
-        if (qt_safe_ioctl(socketDescriptor, FIONBIO, &onoff) < 0) {
-
-#ifdef QNATIVESOCKETENGINE_DEBUG
-            perror("QNativeSocketEnginePrivate::setOption(): ioctl(FIONBIO, 1) failed");
-#endif
+        if (qt_safe_ioctl(socketDescriptor, FIONBIO, &v) < 0) {
+            perrorDebug("ioctl(FIONBIO, 1) failed");
             return false;
         }
 #endif // Q_OS_VXWORKS
@@ -359,7 +373,27 @@ bool QNativeSocketEnginePrivate::setOption(QNativeSocketEngine::SocketOption opt
 #endif
         return false;
     }
-
+    case QNativeSocketEngine::BindInterfaceIndex: {
+#if defined(SO_BINDTOIFINDEX) // seen on Linux
+        return ::setsockopt(socketDescriptor, SOL_SOCKET, SO_BINDTOIFINDEX,
+                            &v, sizeof(v)) == 0;
+#elif defined(IPV6_BOUND_IF) && defined(IP_BOUND_IF) // seen on Darwin
+        // note: on Darwin, this only limits sending the data, not receiving it
+        if (socketProtocol == QAbstractSocket::IPv6Protocol
+            || socketProtocol == QAbstractSocket::AnyIPProtocol) {
+            return ::setsockopt(socketDescriptor, IPPROTO_IPV6, IPV6_BOUND_IF, &v, sizeof(v)) == 0;
+        } else {
+            return ::setsockopt(socketDescriptor, IPPROTO_IP, IP_BOUND_IF, &v, sizeof(v)) == 0;
+        }
+#elif defined(SO_BINDTODEVICE) && QT_CONFIG(networkinterface)
+        // need to convert to interface name
+        const QByteArray name = QNetworkInterfaceManager::interfaceNameFromIndex(v).toLatin1();
+        return ::setsockopt(socketDescriptor, SOL_SOCKET, SO_BINDTODEVICE,
+                            name.data(), socklen_t(name.size())) == 0;
+#else
+        return false;
+#endif
+    }
     default:
         break;
     }
@@ -379,6 +413,7 @@ bool QNativeSocketEnginePrivate::setOption(QNativeSocketEngine::SocketOption opt
     if (n == -1)
         return false;
     return ::setsockopt(socketDescriptor, level, n, (char *) &v, sizeof(v)) == 0;
+#undef perrorDebug
 }
 
 bool QNativeSocketEnginePrivate::nativeConnect(const QHostAddress &addr, quint16 port)
@@ -1118,6 +1153,8 @@ qint64 QNativeSocketEnginePrivate::nativeSendDatagram(const char *data, qint64 l
             sentBytes = -2;
             break;
         case EMSGSIZE:
+        // seen on VxWorks
+        case ENOMEM:
             setError(QAbstractSocket::DatagramTooLargeError, DatagramTooLargeErrorString);
             break;
         case ECONNRESET:
@@ -1206,6 +1243,7 @@ bool QNativeSocketEnginePrivate::fetchConnectionParameters()
     QT_SOCKOPTLEN_T valueSize = sizeof(int);
     if (::getsockopt(socketDescriptor, SOL_SOCKET, SO_TYPE, &value, &valueSize) == 0) {
         if (value == SOCK_STREAM) {
+            socketType = QAbstractSocket::TcpSocket;
 #ifndef QT_NO_SCTP
             if (option(QNativeSocketEngine::MaxStreamsSocketOption) != -1) {
                 socketType = QAbstractSocket::SctpSocket;
@@ -1228,17 +1266,23 @@ bool QNativeSocketEnginePrivate::fetchConnectionParameters()
                         return false;
                     }
                 }
-            } else {
-                socketType = QAbstractSocket::TcpSocket;
             }
-#else
-                socketType = QAbstractSocket::TcpSocket;
+#endif
+        } else if (value == SOCK_DGRAM) {
+            socketType = QAbstractSocket::UdpSocket;
+#ifdef SOCK_SEQPACKET
+        } else if (value == SOCK_SEQPACKET) {
+            // We approximate the SEQPACKET socket type to TCP, because
+            // this enum is actually used to determine if the socket type has
+            // a notion of connection. SOCK_DGRAM are connectionless, while
+            // SOCK_STREAM and SOCK_SEQPACKET are connection-orientired.
+            // This mapping is still suboptimal, because it is possible to send
+            // a 0-byte packet via SEQPACKET socket and Qt will treat it as
+            // a disconnect.
+            socketType = QAbstractSocket::TcpSocket;
 #endif
         } else {
-            if (value == SOCK_DGRAM)
-                socketType = QAbstractSocket::UdpSocket;
-            else
-                socketType = QAbstractSocket::UnknownSocketType;
+            socketType = QAbstractSocket::UnknownSocketType;
         }
     }
 #if defined (QNATIVESOCKETENGINE_DEBUG)

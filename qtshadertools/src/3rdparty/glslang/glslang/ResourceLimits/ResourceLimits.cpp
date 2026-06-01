@@ -39,6 +39,8 @@
 
 #include "glslang/Public/ResourceLimits.h"
 
+namespace QtShaderTools {
+
 TBuiltInResource Resources;
 
 const TBuiltInResource DefaultTBuiltInResource = {
@@ -540,3 +542,6 @@ const TBuiltInResource* GetDefaultResources()
 {
     return &DefaultTBuiltInResource;
 }
+
+} // namespace QtShaderTools
+

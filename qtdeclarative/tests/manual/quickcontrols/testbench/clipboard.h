@@ -7,19 +7,19 @@
 #include <QObject>
 #include <QJSValue>
 #include <QVariant>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 class Clipboard : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+
 public:
     explicit Clipboard(QObject *parent = nullptr);
 
 public slots:
     void copy(const QJSValue &keyValueMap);
     QVariant paste() const;
-
-//    void copyPaletteSettingsToClipboard();
-//    void importPaletteSettingsFromClipboard();
 };
 
 #endif // CLIPBOARD_H

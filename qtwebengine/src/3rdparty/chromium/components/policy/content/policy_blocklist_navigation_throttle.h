@@ -84,7 +84,9 @@ class PolicyBlocklistNavigationThrottle : public content::NavigationThrottle {
 
   base::TimeTicks request_time_;
   base::TimeTicks defer_time_;
-  base::TimeDelta defer_duration_;
+  base::TimeDelta total_defer_duration_;
+  bool deferring_request_ = false;
+  bool deferring_response_ = false;
 
   std::unique_ptr<content::NavigationThrottle> safe_sites_navigation_throttle_;
 

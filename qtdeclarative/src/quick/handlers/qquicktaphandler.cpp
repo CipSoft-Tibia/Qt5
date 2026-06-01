@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktaphandler_p.h"
 #include "qquicksinglepointhandler_p_p.h"
@@ -30,7 +31,7 @@ int QQuickTapHandler::m_touchMultiTapDistanceSquared(-1);
 
     Detection of a valid tap gesture depends on \l gesturePolicy.  The default
     value is DragThreshold, which requires the press and release to be close
-    together in both space and time.  In this case, DragHandler is able to
+    together in both space and time.  In this case, TapHandler is able to
     function using only a passive grab, and therefore does not interfere with
     event delivery to any other Items or Input Handlers.  So the default
     gesturePolicy is useful when you want to modify behavior of an existing
@@ -385,7 +386,7 @@ void QQuickTapHandler::setPressed(bool press, bool cancel, QPointerEvent *event,
         if (!cancel && !press && parentContains(point)) {
             if (m_longPressed) {
                 qCDebug(lcTapHandler) << objectName() << "long press threshold" << longPressThreshold() << "exceeded:" << point.timeHeld();
-            } else {
+            } else if (event) {
                 // Assuming here that pointerEvent()->timestamp() is in ms.
                 const quint64 ts = event->timestamp();
                 const quint64 interval = ts - m_lastTapTimestamp;
@@ -454,9 +455,15 @@ void QQuickTapHandler::setPressed(bool press, bool cancel, QPointerEvent *event,
 void QQuickTapHandler::onGrabChanged(QQuickPointerHandler *grabber, QPointingDevice::GrabTransition transition,
                                      QPointerEvent *ev, QEventPoint &point)
 {
+    // QQuickPointerHandler::onGrabChanged() calls setActive(false) in many cases.
     QQuickSinglePointHandler::onGrabChanged(grabber, transition, ev, point);
-    bool isCanceled = transition == QPointingDevice::CancelGrabExclusive || transition == QPointingDevice::CancelGrabPassive;
-    if (grabber == this && (isCanceled || point.state() == QEventPoint::Released))
+    // We don't override onActiveChanged(): we could not call setPressed(false) from there anyway.
+    // But ensure that if the TapHandler just got deactivated, it's no longer pressed either.
+    const bool isCanceled = transition == QPointingDevice::CancelGrabExclusive || transition == QPointingDevice::CancelGrabPassive;
+    // But passive grab/ungrab does not change the active state, so that's not a reason to change pressed state either
+    // (i.e. when gesturePolicy == DragThreshold, TapHandler does not become active).
+    const bool passiveGrab = transition == QPointingDevice::GrabPassive || transition == QPointingDevice::UngrabPassive;
+    if (grabber == this && (isCanceled || point.state() == QEventPoint::Released || (!active() && !passiveGrab)))
         setPressed(false, isCanceled, ev, point);
 }
 

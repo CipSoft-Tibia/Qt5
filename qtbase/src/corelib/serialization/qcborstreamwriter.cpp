@@ -25,20 +25,10 @@ QT_WARNING_PUSH
 QT_WARNING_DISABLE_MSVC(4334) // '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
 
 #include <cborencoder.c>
+#include <cborencoder_close_container_checked.c>
+#include <cborencoder_float.c>
 
 QT_WARNING_POP
-
-// silence compilers that complain about this being a static function declared
-// but never defined
-[[maybe_unused]] static CborError cbor_encoder_close_container_checked(CborEncoder*, const CborEncoder*)
-{
-    Q_UNREACHABLE_RETURN(CborErrorInternalError);
-}
-
-[[maybe_unused]] static CborError cbor_encode_float_as_half_float(CborEncoder *, float)
-{
-    Q_UNREACHABLE_RETURN(CborErrorInternalError);
-}
 
 Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
 
@@ -278,6 +268,7 @@ QCborStreamWriter::QCborStreamWriter(QIODevice *device)
 {
 }
 
+#ifndef QT_BOOTSTRAPPED
 /*!
    Creates a QCborStreamWriter object that will append the stream to \a data.
    All streaming is done immediately to the byte array, without the need for
@@ -296,6 +287,7 @@ QCborStreamWriter::QCborStreamWriter(QByteArray *data)
     d->deleteDevice = true;
     d->device->open(QIODevice::WriteOnly | QIODevice::Unbuffered);
 }
+#endif
 
 /*!
    Destroys this QCborStreamWriter object and frees any resources associated.
@@ -396,6 +388,7 @@ void QCborStreamWriter::append(QCborNegativeInteger n)
 
 /*!
    \fn void QCborStreamWriter::append(const QByteArray &ba)
+   \fn void QCborStreamWriter::append(QByteArrayView ba)
    \overload
 
    Appends the byte array \a ba to the stream, creating a CBOR Byte String
@@ -410,9 +403,24 @@ void QCborStreamWriter::append(QCborNegativeInteger n)
    As the example shows, unlike JSON, CBOR requires no escaping for binary
    content.
 
+   \note The overload taking a \l QByteArrayView has been present since Qt
+   6.10.
+
    \sa appendByteString(), QCborStreamReader::isByteArray(),
        QCborStreamReader::readByteArray()
  */
+
+/*!
+   \fn void QCborStreamWriter::append(QUtf8StringView str)
+   \since 6.10
+   \overload
+
+   Appends the UTF-8 string viewed by \a str to the stream, creating a CBOR
+   Text String value. QCborStreamWriter will attempt to write the entire string
+   in one chunk.
+
+   \sa appendTextString(), QCborStreamReader::isString(), QCborStreamReader::readString()
+*/
 
 /*!
    \overload
@@ -430,7 +438,7 @@ void QCborStreamWriter::append(QCborNegativeInteger n)
    determine whether the contents are US-ASCII or not. If the string is found
    to contain characters outside of US-ASCII, it will allocate memory and
    convert to UTF-8. If this check is unnecessary, use appendTextString()
-   instead.
+   instead or the overload taking a \l QUtf8StringView.
 
    \sa QCborStreamReader::isString(), QCborStreamReader::readString()
  */

@@ -189,6 +189,7 @@ void tst_QCborStreamWriter::nonAsciiStrings()
 
     // will be wrong if !isLatin1
     QByteArray latin1 = input.toLatin1();
+    QByteArray utf8 = input.toUtf8();
 
     if (useDevice) {
         {
@@ -196,6 +197,14 @@ void tst_QCborStreamWriter::nonAsciiStrings()
             buffer.open(QIODevice::WriteOnly);
             QCborStreamWriter writer(&buffer);
             writer.append(input);
+            QCOMPARE(buffer.data(), output);
+        }
+
+        {
+            QBuffer buffer;
+            buffer.open(QIODevice::WriteOnly);
+            QCborStreamWriter writer(&buffer);
+            writer.append(QUtf8StringView(utf8));
             QCOMPARE(buffer.data(), output);
         }
 
@@ -211,6 +220,13 @@ void tst_QCborStreamWriter::nonAsciiStrings()
             QByteArray buffer;
             QCborStreamWriter writer(&buffer);
             encodeVariant(writer, input);
+            QCOMPARE(buffer, output);
+        }
+
+        {
+            QByteArray buffer;
+            QCborStreamWriter writer(&buffer);
+            writer.append(QUtf8StringView(utf8));
             QCOMPARE(buffer, output);
         }
 

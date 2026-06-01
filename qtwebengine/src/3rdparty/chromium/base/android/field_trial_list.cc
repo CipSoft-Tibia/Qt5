@@ -19,7 +19,7 @@ namespace {
 // Log trials and their groups on activation, for debugging purposes.
 class TrialLogger : public base::FieldTrialList::Observer {
  public:
-  TrialLogger() {}
+  TrialLogger() = default;
 
   TrialLogger(const TrialLogger&) = delete;
   TrialLogger& operator=(const TrialLogger&) = delete;
@@ -34,12 +34,12 @@ class TrialLogger : public base::FieldTrialList::Observer {
     // Changes to format of the log message below must be accompanied by
     // changes to finch smoke tests since they look for this log message
     // in the logcat.
-    LOG(INFO) << "Active field trial \"" << trial_name
-              << "\" in group \"" << group_name<< '"';
+    LOG(INFO) << "Active field trial \"" << trial_name << "\" in group \""
+              << group_name << '"';
   }
 
  protected:
-  ~TrialLogger() override {}
+  ~TrialLogger() override = default;
 };
 
 base::LazyInstance<TrialLogger>::Leaky g_trial_logger =
@@ -89,7 +89,7 @@ class AndroidFieldTrialListLogActiveTrialsFriendHelper {
 };
 
 static void JNI_FieldTrialList_LogActiveTrials(JNIEnv* env) {
-  DCHECK(!g_trial_logger.IsCreated()); // This need only be called once.
+  DCHECK(!g_trial_logger.IsCreated());  // This need only be called once.
 
   LOG(INFO) << "Logging active field trials...";
   AndroidFieldTrialListLogActiveTrialsFriendHelper::AddObserver(

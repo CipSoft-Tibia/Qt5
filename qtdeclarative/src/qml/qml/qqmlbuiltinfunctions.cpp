@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlbuiltinfunctions_p.h"
 
@@ -265,6 +266,10 @@ current context.
 QtObject::QtObject(ExecutionEngine *engine)
     : m_engine(engine)
 {
+#if QT_CONFIG(translation)
+    connect(m_engine->jsEngine(), &QJSEngine::uiLanguageChanged,
+            this, &QtObject::uiLanguageChanged);
+#endif
 }
 
 QtObject::Contexts QtObject::getContexts() const
@@ -335,14 +340,10 @@ QVariant QtObject::color(const QString &name) const
 */
 QVariant QtObject::rgba(double r, double g, double b, double a) const
 {
-    if (r < 0.0) r=0.0;
-    if (r > 1.0) r=1.0;
-    if (g < 0.0) g=0.0;
-    if (g > 1.0) g=1.0;
-    if (b < 0.0) b=0.0;
-    if (b > 1.0) b=1.0;
-    if (a < 0.0) a=0.0;
-    if (a > 1.0) a=1.0;
+    r = qBound(0.0, r, 1.0);
+    g = qBound(0.0, g, 1.0);
+    b = qBound(0.0, b, 1.0);
+    a = qBound(0.0, a, 1.0);
 
     return QQml_colorProvider()->fromRgbF(r, g, b, a);
 }
@@ -1387,7 +1388,7 @@ QObject *QtObject::createQmlObject(const QString &qml, QObject *parent, const QU
     QQmlComponent component(engine);
     QQmlComponentPrivate *componentPrivate = QQmlComponentPrivate::get(&component);
     componentPrivate->fromTypeData(typeData);
-    componentPrivate->progress = 1.0;
+    componentPrivate->setProgress(1.0);
 
     Scope scope(v4Engine());
     if (component.isError()) {
@@ -1422,6 +1423,7 @@ QObject *QtObject::createQmlObject(const QString &qml, QObject *parent, const QU
     }
     component.completeCreate();
 
+    v4Engine()->trimCompilationUnitsForUrl(resolvedUrl);
     if (component.isError()) {
         ScopedValue v(scope, Error::create(scope.engine, component.errors()));
         scope.engine->throwError(v);
@@ -1535,7 +1537,7 @@ QQmlComponent *QtObject::createComponent(const QUrl &url, QQmlComponent::Compila
         return nullptr;
 
     QQmlComponent *c = new QQmlComponent(engine, context->resolvedUrl(url), mode, parent);
-    QQmlComponentPrivate::get(c)->creationContext = effectiveContext;
+    QQmlComponentPrivate::get(c)->setCreationContext(std::move(effectiveContext));
     QQmlData::get(c, true)->explicitIndestructibleSet = false;
     QQmlData::get(c)->indestructible = false;
     return c;
@@ -1570,7 +1572,7 @@ QQmlComponent *QtObject::createComponent(const QString &moduleUri, const QString
         v4Engine()->throwTypeError(
                     QStringLiteral("Invalid arguments; did you swap mode and parent"));
     }
-    QQmlComponentPrivate::get(c)->creationContext = effectiveContext;
+    QQmlComponentPrivate::get(c)->setCreationContext(std::move(effectiveContext));
     QQmlData::get(c, true)->explicitIndestructibleSet = false;
     QQmlData::get(c)->indestructible = false;
     return c;
@@ -1718,6 +1720,77 @@ void QtObject::callLater(QQmlV4FunctionPtr args)
     m_engine->delayedCallQueue()->addUniquelyAndExecuteLater(m_engine, args);
 }
 
+/*!
+    \qmlmethod Qt::enumStringToValue(enumType, keyName)
+
+    Returns the numeric value of key \a keyName in enum \a enumType. If the
+    enum could not be found, a \c TypeError is thrown. If the key is not an
+    entry of the enum, a \c ReferenceError is thrown.
+ */
+double QtObject::enumStringToValue(const QJSManagedValue &enumType, const QString &string)
+{
+    return retrieveFromEnum<double>(
+            enumType,
+            [&](const QQmlType &type, QQmlTypeLoader *typeLoader, int enumIndex, bool *ok) {
+                return type.scopedEnumValue(typeLoader, enumIndex, string, ok);
+            }, [&](const QQmlType &type, QQmlTypeLoader *typeLoader, int enumIndex, bool *ok) {
+                return type.unscopedEnumValue(typeLoader, enumIndex, string, ok);
+            }, m_engine);
+}
+
+/*!
+    \qmlmethod Qt::enumValueToString(enumType, keyValue)
+
+    Returns the string representation of a key of enum \a enumType that has the
+    value \a keyValue. If the enum could not be found, a \c TypeError is
+    thrown. If the value does not match any key of the enum, a
+    \c ReferenceError is thrown.
+
+    \note If multiple keys match the value of \a keyValue, which of the
+    matching keys will be returned is unspecified. Use enumValueToStrings in
+    that case.
+ */
+QString QtObject::enumValueToString(const QJSManagedValue &enumType, double value)
+{
+    // Undefined -> double = NaN
+    if (std::isnan(value)) {
+        m_engine->throwReferenceError("Invalid second argument, entry"_L1);
+        return {};
+    }
+
+    return retrieveFromEnum<QString>(
+            enumType,
+            [&](const QQmlType &type, QQmlTypeLoader *typeLoader, int enumIndex, bool *ok) {
+                return type.scopedEnumKey(typeLoader, enumIndex, QtPrivate::qSaturateRound(value), ok);
+            }, [&](const QQmlType &type, QQmlTypeLoader *typeLoader, int enumIndex, bool *ok) {
+                return type.unscopedEnumKey(typeLoader, enumIndex, QtPrivate::qSaturateRound(value), ok);
+            }, m_engine);
+}
+
+/*!
+    \qmlmethod Qt::enumValueToStrings(enumType, keyValue)
+
+    Returns a list of the string representation of all the keys of enum
+    \a enumType that have the value \a keyValue. If the enum could not be
+    found, a \c TypeError is thrown. If no key in the enum has value
+    \a keyValue, a \c ReferenceError is thrown.
+ */
+QStringList QtObject::enumValueToStrings(const QJSManagedValue &enumType, double value)
+{
+    // Undefined -> double = NaN
+    if (std::isnan(value)) {
+        m_engine->throwReferenceError("Invalid second argument, entry"_L1);
+        return {};
+    }
+
+    return retrieveFromEnum<QStringList>(
+            enumType,
+            [&](const QQmlType &type, QQmlTypeLoader *typeLoader, int enumIndex, bool *ok) {
+                return type.scopedEnumKeys(typeLoader, enumIndex, QtPrivate::qSaturateRound(value), ok);
+            }, [&](const QQmlType &type, QQmlTypeLoader *typeLoader, int enumIndex, bool *ok) {
+                return type.unscopedEnumKeys(typeLoader, enumIndex, QtPrivate::qSaturateRound(value), ok);
+            }, m_engine);
+}
 
 QQmlPlatform *QtObject::platform()
 {

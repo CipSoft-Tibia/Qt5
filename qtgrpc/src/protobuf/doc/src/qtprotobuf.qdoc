@@ -87,6 +87,7 @@
         \li \l {Protobuf Qt Core Types Module} {Protobuf Qt Core Types}
         \li \l {Protobuf Qt GUI Types Module} {Protobuf Qt GUI Types}
         \li \l {Qt Protobuf Well-Known Types C++ Classes} {Qt Protobuf Well-Known types}
+        \li \l {Qt Protobuf Mutable Getters} {Qt Protobuf Mutable Getters}
     \endlist
 
     \section1 References
@@ -112,7 +113,7 @@
     Furthermore, the \c qtprotobufgen tool in Qt \QtVersion may contain third
     party modules under the following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtprotobuf-tools}
+    \annotatedlist attributions-qtprotobuf-tools
 */
 
 /*!
@@ -137,9 +138,9 @@
     \title Example of installation for Windows using vcpkg
     \brief Installing instructions for Protobuf and \gRPC on Windows.
 
-    You can install \c Protobuf and \c \gRPC packages on Windows using
+    You can install Protobuf and \gRPC packages on Windows using
     \e vcpkg.
-    \note As an alternative solution, you can build \c Protobuf and \c \gRPC
+    \note As an alternative solution, you can build Protobuf and \gRPC
     packages manually. Build instructions can be found for
     \l {https://github.com/protocolbuffers/protobuf/blob/main/cmake/README.md#windows-builds}{Protobuf}
     and \l{https://github.com/grpc/grpc/blob/v1.60.0/BUILDING.md#windows}{gRPC}
@@ -157,7 +158,7 @@
     \endlist
 
     The \c vcpkg is a cross-platform C/C++ package manager.
-    You can use the \c vcpkg for \c Protobuf, \c \gRPC and its dependencies
+    You can use the \c vcpkg for Protobuf, \gRPC and its dependencies
     installation:
     \badcode
         .\vcpkg.exe install protobuf protobuf:x64-windows
@@ -168,7 +169,7 @@
     the vcpkg.json name.
 
     Finally, you can build and execute Qt-based projects with
-    \c Protobuf and \c \gRPC support.
+    Protobuf and \gRPC support.
     For instance, run \l {Magic 8 Ball} from your installed version
     of Qt.
     The example requires both packages to be installed, since \c {Magic 8 Ball}
@@ -177,14 +178,18 @@
     Following steps are required to start \c {Magic 8 Ball} example:
     \list
         \li Find \l {Magic 8 Ball} in \c Examples section:
-            \image qt-creator.webp
+            \image qt-creator.webp {Screenshot showing the Qt Creator home
+                   menu, in examples section with "magic" typed in the
+                   search bar and shows the examples with this name}
         \li Choose MSVC-based building kit from Qt-creator configuration
             settings:
-            \image msvc-kit.webp
-        \li Add the paths to the installed \c Protobuf and \c \gRPC packages
+            \image msvc-kit.webp {Screenshot showing the msvc kit that
+                   built the project}
+        \li Add the paths to the installed Protobuf and \gRPC packages
             to the \c CMAKE_PREFIX_PATH environment variable inside
             \c {Initial Configuration} settings block:
-            \image path-env-variable.webp
+            \image path-env-variable.webp {Screenshot showing the build
+                   options from qt creator with the msvc kit}
         \li Build and Run.
     \endlist
 */

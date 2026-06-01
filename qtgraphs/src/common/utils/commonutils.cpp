@@ -14,6 +14,8 @@ QT_BEGIN_NAMESPACE
 
 static qreal s_maxTextureSize = 0.;
 
+Q_LOGGING_CATEGORY(lcGraphsUtils, "qt.graphs.common.utils")
+
 qreal CommonUtils::maxTextureSize()
 {
     // Query maximum texture size only once
@@ -38,7 +40,7 @@ qreal CommonUtils::maxTextureSize()
                 params.inst = &inst;
                 rhi.reset(QRhi::create(QRhi::Vulkan, &params));
             } else {
-                qWarning("Failed to create Vulkan instance");
+                qCWarning(lcGraphsUtils, "Failed to create Vulkan instance");
             }
         }
 #endif

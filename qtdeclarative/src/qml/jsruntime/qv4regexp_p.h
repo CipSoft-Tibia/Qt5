@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 #ifndef QV4REGEXP_H
 #define QV4REGEXP_H
 
@@ -14,21 +15,18 @@
 // We mean it.
 //
 
-#include <QString>
-#include <QVector>
-
-#include <wtf/RefPtr.h>
-#include <wtf/FastAllocBase.h>
-#include <wtf/BumpPointerAllocator.h>
-
-#include <limits.h>
+// Yarr.h is not self-contained. Make sure it sees uint8_t
+#include <cstdint>
 
 #include <yarr/Yarr.h>
 #include <yarr/YarrInterpreter.h>
 #include <yarr/YarrJIT.h>
 
-#include "qv4managed_p.h"
-#include "qv4engine_p.h"
+#include <private/qv4compileddata_p.h>
+#include <private/qv4managed_p.h>
+
+#include <QtCore/qstring.h>
+#include <QtCore/qvector.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -64,15 +62,20 @@ struct RegExp : Base {
 
     RegExpCache *cache;
     int subPatternCount;
-    uint flags;
-    bool valid;
-    bool jitFailed;
-    quint8 matchCount;
 
-    QString flagsAsString() const;
+#if ENABLE(YARR_JIT)
+    bool isJittable() const { return !jitFailed; }
+    int interpreterCallCount;
+    bool jitFailed;
+#endif
+
+    quint8 flags;
+    bool valid;
+
     int captureCount() const { return subPatternCount + 1; }
 };
-Q_STATIC_ASSERT(std::is_trivial_v<RegExp>);
+static_assert(std::is_trivially_copyable_v<RegExp>);
+static_assert(std::is_trivially_default_constructible_v<RegExp>);
 
 }
 
@@ -96,7 +99,9 @@ struct RegExp : public Managed
     bool unicode() const { return d()->unicode(); }
     bool sticky() const { return d()->sticky(); }
 
-    static Heap::RegExp *create(ExecutionEngine* engine, const QString& pattern, uint flags = CompiledData::RegExp::RegExp_NoFlags);
+    static Heap::RegExp *create(
+            ExecutionEngine *engine, const QString &pattern,
+            CompiledData::RegExp::Flags flags = CompiledData::RegExp::RegExp_NoFlags);
 
     bool isValid() const { return d()->valid; }
 
@@ -122,7 +127,7 @@ struct RegExpCacheKey
     { return !operator==(other); }
 
     QString pattern;
-    uint flags;
+    quint8 flags;
 };
 
 inline RegExpCacheKey::RegExpCacheKey(const RegExp::Data *re)
@@ -131,7 +136,7 @@ inline RegExpCacheKey::RegExpCacheKey(const RegExp::Data *re)
 {}
 
 inline size_t qHash(const RegExpCacheKey& key, size_t seed = 0) noexcept
-{ return qHash(key.pattern, seed); }
+{ return qHashMulti(seed, key.pattern, key.flags); }
 
 class RegExpCache : public QHash<RegExpCacheKey, WeakValue>
 {

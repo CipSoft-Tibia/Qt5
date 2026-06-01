@@ -9,10 +9,11 @@
 #ifndef COMPONENTS_WEBDATA_COMMON_WEB_DATA_REQUEST_MANAGER_H__
 #define COMPONENTS_WEBDATA_COMMON_WEB_DATA_REQUEST_MANAGER_H__
 
+#include <atomic>
 #include <map>
 #include <memory>
 
-#include "base/atomicops.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
@@ -77,7 +78,7 @@ class WebDataRequest {
   // The manager associated with this request. This is stored as a raw (untyped)
   // pointer value because it does double duty as the flag indicating whether or
   // not this request is active (non-nullptr => active).
-  base::subtle::AtomicWord atomic_manager_;
+  std::atomic<WebDataRequestManager*> atomic_manager_;
 
   // The originator of the service request.
   base::WeakPtr<WebDataServiceConsumer> consumer_;
@@ -130,7 +131,8 @@ class WebDataRequestManager
   // Next handle to be used for requests. Incremented for each use.
   WebDataServiceBase::Handle next_request_handle_;
 
-  std::map<WebDataServiceBase::Handle, WebDataRequest*> pending_requests_;
+  std::map<WebDataServiceBase::Handle, raw_ptr<WebDataRequest, CtnExperimental>>
+      pending_requests_;
 };
 
 #endif  // COMPONENTS_WEBDATA_COMMON_WEB_DATA_REQUEST_MANAGER_H__

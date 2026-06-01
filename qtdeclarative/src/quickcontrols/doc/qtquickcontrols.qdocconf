@@ -66,6 +66,8 @@ sources.fileextensions = "*.c++ *.cc *.cpp *.cxx *.mm *.qdoc"
 imagedirs += images \
              ..
 
+reportmissingalttextforimages = true
+
 navigation.landingpage  = "Qt Quick Controls"
 navigation.qmltypespage = "Qt Quick Controls QML Types"
 navigation.cppclassespage = "Qt Quick Controls C++ Classes"

@@ -162,6 +162,7 @@ QT_BEGIN_NAMESPACE
     The font of the title of the axis.
 */
 
+
 /*!
     \property QAbstractAxis::alignment
     \since 6.9
@@ -175,6 +176,23 @@ QT_BEGIN_NAMESPACE
     The alignment of the axis. Can be \l{Qt::AlignLeft}{Qt.AlignLeft},
     \l{Qt::AlignRight}{Qt.AlignRight}, \l{Qt::AlignBottom}{Qt.AlignBottom}, or
     \l{Qt::AlignTop}{Qt.AlignTop}.
+*/
+
+/*!
+    \property QAbstractAxis::textElideMode
+    \since 6.10
+    \brief Property specifies ellipsis placement for overflowing text.
+
+    Can be Qt::ElideLeft, Qt::ElideRight, Qt::ElideMiddle, or Qt::ElideNone.
+    By default, the value is \c Qt::ElideNone.
+*/
+/*!
+    \qmlproperty enumeration AbstractAxis::textElideMode
+    \since 6.10
+    This enum specifies ellipsis placement for overflowing text.
+    Can be \l{Qt::ElideLeft}{Qt.ElideLeft}, \l{Qt::ElideRight}{Qt.ElideRight},
+    \l{Qt::ElideMiddle}{Qt.ElideMiddle}, or \l{Qt::ElideNone}{Qt.ElideNone}.
+    By default, the value is \c Qt.ElideNone.
 */
 
 /*!
@@ -240,10 +258,18 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlsignal AbstractAxis::textElideModeChanged(enumeration elideMode)
+    This signal is emitted when the \l textElideMode changes. \a elideMode is the
+    new value of the \l Qt::TextElideMode type.
+*/
+
+/*!
     \internal
     Constructs a new axis object that is a child of \a parent. The ownership is taken by
     graph when the axis is added.
 */
+
+Q_LOGGING_CATEGORY(lcAxis2D, "qt.graphs2d.axis.properties")
 
 QAbstractAxis::QAbstractAxis(QAbstractAxisPrivate &dd, QObject *parent)
     : QObject(dd, parent)
@@ -267,6 +293,9 @@ void QAbstractAxis::setLineVisible(bool visible)
         d->m_lineVisible = visible;
         emit update();
         emit lineVisibleChanged(visible);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setLineVisible. Visibility is already set to:"
+                          << visible;
     }
 }
 
@@ -283,6 +312,9 @@ void QAbstractAxis::setGridVisible(bool visible)
         d->m_gridVisible = visible;
         emit update();
         emit gridVisibleChanged(visible);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setGridVisible. Visibility is already set to:"
+                          << visible;
     }
 }
 
@@ -299,6 +331,9 @@ void QAbstractAxis::setSubGridVisible(bool visible)
         d->m_subGridVisible = visible;
         emit update();
         emit subGridVisibleChanged(visible);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setSubGridVisible. Visibility is already set to:"
+                          << visible;
     }
 }
 
@@ -315,6 +350,9 @@ void QAbstractAxis::setLabelsVisible(bool visible)
         d->m_labelsVisible = visible;
         emit update();
         emit labelsVisibleChanged(visible);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setLabelsVisible. Visibility is already set to:"
+                          << visible;
     }
 }
 
@@ -331,6 +369,9 @@ void QAbstractAxis::setLabelsAngle(qreal angle)
         d->m_labelsAngle = angle;
         emit update();
         emit labelsAngleChanged(angle);
+    } else {
+        qCDebug(lcAxis2D, "QAbstractAxis::setLabelsAngle. Angle is already set to: %f",
+                angle);
     }
 }
 
@@ -349,8 +390,12 @@ QQmlComponent *QAbstractAxis::labelDelegate() const
 void QAbstractAxis::setLabelDelegate(QQmlComponent *newLabelDelegate)
 {
     Q_D(QAbstractAxis);
-    if (d->m_labelDelegate == newLabelDelegate)
+    if (d->m_labelDelegate == newLabelDelegate) {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setLabelDelegate. LabelDelegate is already set to:"
+                          << newLabelDelegate;
         return;
+    }
+
     d->m_labelDelegate = newLabelDelegate;
     emit labelDelegateChanged();
     emit update();
@@ -363,6 +408,9 @@ void QAbstractAxis::setTitleVisible(bool visible)
         d->m_titleVisible = visible;
         emit update();
         emit titleVisibleChanged(visible);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setTitleVisible. visibility is already set to:"
+                          << visible;
     }
 }
 
@@ -378,10 +426,16 @@ bool QAbstractAxis::isTitleVisible() const
 void QAbstractAxis::setTitleColor(QColor color)
 {
     Q_D(QAbstractAxis);
+    if (!color.isValid())
+        qCWarning(lcAxis2D) << "QAbstractAxis::setTitleColor. Tried to use invalid color.";
+
     if (d->m_titleColor != color) {
         d->m_titleColor = color;
         emit update();
         emit titleColorChanged(color);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setTitleColor. Color is already set to:"
+                          << color;
     }
 }
 
@@ -404,6 +458,9 @@ void QAbstractAxis::setTitleFont(const QFont &font)
         d->m_titleFont = font;
         emit update();
         emit titleFontChanged(font);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setTitleFont. Font is already set to:"
+                          << font;
     }
 }
 
@@ -423,6 +480,9 @@ void QAbstractAxis::setTitleText(const QString &title)
         d->m_title = title;
         emit update();
         emit titleTextChanged(title);
+    } else {
+        qCDebug(lcAxis2D, "QAbstractAxis::setTitleText. Title is already set to: %s",
+                qPrintable(title));
     }
 }
 
@@ -448,6 +508,9 @@ void QAbstractAxis::setVisible(bool visible)
         d->m_visible = visible;
         emit update();
         emit visibleChanged(visible);
+    } else {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setVisible. axis, labels and grid visibility is already set to:"
+                          << visible;
     }
 }
 
@@ -510,8 +573,11 @@ Qt::Alignment QAbstractAxis::alignment() const
 void QAbstractAxis::setAlignment(Qt::Alignment alignment)
 {
     Q_D(QAbstractAxis);
-    if (d->m_alignment == alignment)
+    if (d->m_alignment == alignment) {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setAlignment. Alignment is already set to:"
+                          << alignment;
         return;
+    }
     switch (alignment) {
     case Qt::AlignTop:
     case Qt::AlignBottom:
@@ -524,9 +590,28 @@ void QAbstractAxis::setAlignment(Qt::Alignment alignment)
         emit alignmentChanged(alignment);
         break;
     default:
-        qWarning("Invalid alignment.");
+        qCWarning(lcAxis2D, "invalid alignment.");
         break;
     }
+}
+
+Qt::TextElideMode QAbstractAxis::textElideMode() const
+{
+    Q_D(const QAbstractAxis);
+    return d->m_textElide;
+}
+
+void QAbstractAxis::setTextElideMode(Qt::TextElideMode elide)
+{
+    Q_D(QAbstractAxis);
+    if (d->m_textElide == elide) {
+        qCDebug(lcAxis2D) << "QAbstractAxis::setTextElide. Text elide is already set to:"
+            << elide;
+        return;
+    }
+
+    d->m_textElide = elide;
+    Q_EMIT textElideModeChanged(d->m_textElide);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -543,7 +628,7 @@ QAbstractAxisPrivate::~QAbstractAxisPrivate()
 void QAbstractAxisPrivate::setGraph(QGraphsView *graph)
 {
     if (m_graph && graph)
-        qWarning("%p axis already associated with %p", this, m_graph);
+        qCWarning(lcAxis2D, "%p axis already associated with %p", this, m_graph);
 
     m_graph = graph;
 }

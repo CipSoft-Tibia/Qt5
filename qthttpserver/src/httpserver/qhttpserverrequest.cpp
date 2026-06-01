@@ -1,9 +1,10 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
-// Qt-Security score:critical reason:network-protocol
+// Qt-Security score:significant reason:default
 
 #include "qhttpserverrequest_p.h"
 
+#include <QtHttpServer/private/qhttpserverparser_p.h>
 #include <QtHttpServer/qhttpserverrequest.h>
 #include <QtNetwork/qhttpheaders.h>
 
@@ -20,6 +21,8 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+
+QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QHttpServerRequestPrivate)
 
 #if !defined(QT_NO_DEBUG_STREAM)
 
@@ -44,239 +47,6 @@ Q_HTTPSERVER_EXPORT QDebug operator<<(QDebug debug, const QHttpServerRequest &re
 
 #endif
 
-namespace {
-
-QHttpServerRequest::Method parseRequestMethod(QByteArrayView str)
-{
-    if (str == "GET")
-        return QHttpServerRequest::Method::Get;
-    else if (str == "PUT")
-        return QHttpServerRequest::Method::Put;
-    else if (str == "DELETE")
-        return QHttpServerRequest::Method::Delete;
-    else if (str == "POST")
-        return QHttpServerRequest::Method::Post;
-    else if (str == "HEAD")
-        return QHttpServerRequest::Method::Head;
-    else if (str == "OPTIONS")
-        return QHttpServerRequest::Method::Options;
-    else if (str == "PATCH")
-        return QHttpServerRequest::Method::Patch;
-    else if (str == "CONNECT")
-        return QHttpServerRequest::Method::Connect;
-    else
-        return QHttpServerRequest::Method::Unknown;
-}
-
-} // anonymous namespace
-
-/*!
-    \internal
-*/
-bool QHttpServerRequestPrivate::parseRequestLine(QByteArrayView line)
-{
-    // Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
-    auto i = line.indexOf(' ');
-    if (i == -1)
-        return false;
-    const auto requestMethod = line.first(i);
-    i++;
-
-    while (i < line.size() && line[i] == ' ')
-        i++;
-
-    auto j = line.indexOf(' ', i);
-    if (j == -1)
-        return false;
-
-    const auto requestUrl = line.sliced(i, j - i);
-    i = j + 1;
-
-    while (i < line.size() && line[i] == ' ')
-        i++;
-
-    if (i >= line.size())
-        return false;
-
-    j = line.indexOf(' ', i);
-
-    const auto protocol = j == -1 ? line.sliced(i) : line.sliced(i, j - i);
-    if (protocol.size() != 8 || !protocol.startsWith("HTTP"))
-        return false;
-
-    parser.setMajorVersion(protocol[5] - '0');
-    parser.setMinorVersion(protocol[7] - '0');
-    majorVersion = protocol[5] - '0';
-    minorVersion = protocol[7] - '0';
-
-    method = parseRequestMethod(requestMethod);
-    url = QUrl::fromEncoded(requestUrl.toByteArray());
-    return true;
-}
-
-/*!
-    \internal
-*/
-qsizetype QHttpServerRequestPrivate::readRequestLine(QIODevice *socket)
-{
-    if (fragment.isEmpty()) {
-        // reserve bytes for the request line. This is better than always append() which reallocs
-        // the byte array
-        fragment.reserve(32);
-    }
-
-    qsizetype bytes = 0;
-    char c;
-    qsizetype haveRead = 0;
-
-    do {
-        haveRead = socket->read(&c, 1);
-        if (haveRead == -1)
-            return -1; // unexpected EOF
-        else if (haveRead == 0)
-            break; // read more later
-        else if (haveRead == 1 && fragment.size() == 0
-                 && (c == '\v' || c == '\n' || c == '\r' || c == ' ' || c == '\t'))
-            continue; // Ignore all whitespace that was trailing from a previous request on that
-                      // socket
-
-        bytes++;
-
-        // allow both CRLF & LF (only) line endings
-        if (c == '\n') {
-            // remove the CR at the end
-            if (fragment.endsWith('\r')) {
-                fragment.truncate(fragment.size() - 1);
-            }
-            bool ok = parseRequestLine(fragment);
-            state = State::ReadingHeader;
-            fragment.clear();
-            if (!ok) {
-                return -1;
-            }
-            break;
-        } else {
-            fragment.append(c);
-        }
-    } while (haveRead == 1);
-
-    return bytes;
-}
-
-/*!
-    \internal
-*/
-qint64 QHttpServerRequestPrivate::contentLength() const
-{
-    bool ok = false;
-    QByteArray value = parser.firstHeaderField("content-length");
-    qint64 length = value.toULongLong(&ok);
-    if (ok)
-        return length;
-    return -1; // the header field is not set
-}
-
-/*!
-    \internal
-*/
-qsizetype QHttpServerRequestPrivate::readHeader(QIODevice *socket)
-{
-    if (fragment.isEmpty()) {
-        // according to
-        // https://maqentaer.com/devopera-static-backup/http/dev.opera.com/articles/view/mama-http-headers/index.html
-        // the average size of the header block is 381 bytes. reserve bytes. This is better than
-        // always append() which reallocs the byte array.
-        fragment.reserve(512);
-    }
-
-    qint64 bytes = 0;
-    char c = 0;
-    bool allHeaders = false;
-    qint64 haveRead = 0;
-    do {
-        haveRead = socket->read(&c, 1);
-        if (haveRead == 0) {
-            // read more later
-            break;
-        } else if (haveRead == -1) {
-            // connection broke down
-            return -1;
-        } else {
-            fragment.append(c);
-            bytes++;
-
-            if (c == '\n') {
-                // check for possible header endings. As per HTTP rfc,
-                // the header endings will be marked by CRLFCRLF. But
-                // we will allow CRLFCRLF, CRLFLF, LFCRLF, LFLF
-                if (fragment.endsWith("\n\r\n") || fragment.endsWith("\n\n"))
-                    allHeaders = true;
-
-                // there is another case: We have no headers. Then the fragment equals just the line
-                // ending
-                if ((fragment.size() == 2 && fragment.endsWith("\r\n"))
-                    || (fragment.size() == 1 && fragment.endsWith("\n")))
-                    allHeaders = true;
-            }
-        }
-    } while (!allHeaders && haveRead > 0);
-
-    // we received all headers now parse them
-    if (allHeaders) {
-        parser.parseHeaders(fragment);
-        fragment.clear(); // next fragment
-
-        auto hostUrl = QString::fromUtf8(headerField("host"));
-        if (!hostUrl.isEmpty())
-            url.setAuthority(hostUrl);
-
-        if (url.scheme().isEmpty()) {
-#if QT_CONFIG(ssl)
-            auto sslSocket = qobject_cast<QSslSocket *>(socket);
-            url.setScheme(sslSocket && sslSocket->isEncrypted() ? u"https"_s : u"http"_s);
-#else
-            url.setScheme(u"http"_s);
-#endif
-        }
-
-        if (url.host().isEmpty())
-            url.setHost(u"127.0.0.1"_s);
-
-        if (url.port() == -1)
-            url.setPort(port);
-
-        bodyLength = contentLength(); // cache the length
-
-        // cache isChunked() since it is called often
-        // FIXME: the RFC says that anything but "identity" should be interpreted as chunked (4.4
-        // [2])
-        chunkedTransferEncoding = headerField("transfer-encoding").toLower().contains("chunked");
-
-        QByteArray connectionHeaderField = headerField("connection");
-        upgrade = connectionHeaderField.toLower().contains("upgrade");
-
-        if (chunkedTransferEncoding || bodyLength > 0) {
-            if (headerField("expect").compare("100-continue", Qt::CaseInsensitive) == 0)
-                state = State::ExpectContinue;
-            else
-                state = State::ReadingData;
-         } else {
-            state = State::AllDone;
-         }
-    }
-    return bytes;
-}
-
-/*!
-    \internal
-*/
-qsizetype QHttpServerRequestPrivate::sendContinue(QIODevice *socket)
-{
-    qsizetype ret = socket->write("HTTP/1.1 100 Continue\r\n\r\n");
-    state = State::ReadingData;
-    return ret;
-}
-
 /*!
     \internal
 */
@@ -289,7 +59,6 @@ QHttpServerRequestPrivate::QHttpServerRequestPrivate(const QHostAddress &remoteA
       localAddress(localAddress),
       localPort(localPort)
 {
-    clear();
 }
 
 #if QT_CONFIG(ssl)
@@ -307,282 +76,8 @@ QHttpServerRequestPrivate::QHttpServerRequestPrivate(const QHostAddress &remoteA
       localPort(localPort),
       sslConfiguration(sslConfiguration)
 {
-    clear();
 }
 #endif
-
-/*!
-    \internal
-*/
-bool QHttpServerRequestPrivate::parse(QIODevice *socket)
-{
-    qsizetype read;
-
-    do {
-        switch (state) {
-        case State::AllDone:
-            clear();
-            [[fallthrough]];
-        case State::NothingDone:
-            state = State::ReadingRequestLine;
-            [[fallthrough]];
-        case State::ReadingRequestLine:
-            read = readRequestLine(socket);
-            continue;
-        case State::ReadingHeader:
-            read = readHeader(socket);
-            continue;
-        case State::ExpectContinue:
-            read = sendContinue(socket);
-            continue;
-        case State::ReadingData:
-            if (chunkedTransferEncoding)
-                read = readRequestBodyChunked(socket);
-            else
-                read = readBodyFast(socket);
-
-            if (state == State::AllDone) {
-                body = bodyBuffer.readAll();
-                bodyBuffer.clear();
-            }
-
-            continue;
-        }
-        Q_UNREACHABLE(); // fixes GCC -Wmaybe-uninitialized warning on `read`
-    } while (state != State::AllDone && read > 0);
-
-    return read != -1;
-}
-
-#if QT_CONFIG(http)
-bool QHttpServerRequestPrivate::parse(QHttp2Stream *socket)
-{
-    parser.clear();
-
-    majorVersion = 2;
-    minorVersion = 0;
-
-    for (const auto &pair : socket->receivedHeaders()) {
-        if (pair.name == ":method") {
-            method = parseRequestMethod(pair.value);
-        } else if (pair.name == ":scheme") {
-            url.setScheme(QLatin1StringView(pair.value));
-        } else if (pair.name == ":authority") {
-            url.setAuthority(QLatin1StringView(pair.value));
-        } else if (pair.name == ":path") {
-            auto path = QUrl::fromEncoded(pair.value);
-            url.setPath(path.path());
-            url.setQuery(path.query());
-        } else {
-            parser.appendHeaderField(pair.name, pair.value);
-        }
-    }
-
-    if (url.scheme().isEmpty())
-        url.setScheme(u"https"_s);
-
-    if (url.host().isEmpty())
-        url.setHost(u"127.0.0.1"_s);
-
-    if (url.port() == -1)
-        url.setPort(port);
-
-    bodyLength = contentLength(); // cache the length
-
-    body = socket->downloadBuffer().readAll();
-
-    return true;
-}
-#endif
-
-/*!
-    \internal
-*/
-void QHttpServerRequestPrivate::clear()
-{
-    parser.clear();
-    bodyLength = -1;
-    contentRead = 0;
-    chunkedTransferEncoding = false;
-    lastChunkRead = false;
-    currentChunkRead = 0;
-    currentChunkSize = 0;
-    upgrade = false;
-    majorVersion = 0;
-    minorVersion = 0;
-
-    fragment.clear();
-    bodyBuffer.clear();
-    body.clear();
-}
-
-// The body reading functions were mostly copied from QHttpNetworkReplyPrivate
-
-/*!
-    \internal
-*/
-// note this function can only be used for non-chunked, non-compressed with
-// known content length
-qsizetype QHttpServerRequestPrivate::readBodyFast(QIODevice *socket)
-{
-
-    qsizetype toBeRead = qMin(socket->bytesAvailable(), bodyLength - contentRead);
-    if (!toBeRead)
-        return 0;
-
-    QByteArray bd;
-    bd.resize(toBeRead);
-    qsizetype haveRead = socket->read(bd.data(), toBeRead);
-    if (haveRead == -1) {
-        bd.clear();
-        return 0; // ### error checking here;
-    }
-    bd.resize(haveRead);
-
-    bodyBuffer.append(bd);
-
-    contentRead += haveRead;
-
-    if (contentRead == bodyLength)
-        state = State::AllDone;
-
-    return haveRead;
-}
-
-/*!
-    \internal
-*/
-qsizetype QHttpServerRequestPrivate::readRequestBodyRaw(QIODevice *socket, qsizetype size)
-{
-    // FIXME get rid of this function and just use readBodyFast and give it socket->bytesAvailable()
-    qsizetype bytes = 0;
-    Q_ASSERT(socket);
-
-    int toBeRead = qMin<qsizetype>(128 * 1024, qMin<qint64>(size, socket->bytesAvailable()));
-
-    while (toBeRead > 0) {
-        QByteArray byteData;
-        byteData.resize(toBeRead);
-        qsizetype haveRead = socket->read(byteData.data(), byteData.size());
-        if (haveRead <= 0) {
-            // ### error checking here
-            byteData.clear();
-            return bytes;
-        }
-
-        byteData.resize(haveRead);
-        bodyBuffer.append(byteData);
-        bytes += haveRead;
-        size -= haveRead;
-
-        toBeRead = qMin<qsizetype>(128 * 1024, qMin<qsizetype>(size, socket->bytesAvailable()));
-    }
-    return bytes;
-}
-
-/*!
-    \internal
-*/
-qsizetype QHttpServerRequestPrivate::readRequestBodyChunked(QIODevice *socket)
-{
-    qsizetype bytes = 0;
-    while (socket->bytesAvailable()) {
-        if (!lastChunkRead && currentChunkRead >= currentChunkSize) {
-            // For the first chunk and when we're done with a chunk
-            currentChunkSize = 0;
-            currentChunkRead = 0;
-            if (bytes) {
-                // After a chunk
-                char crlf[2];
-                // read the "\r\n" after the chunk
-                qsizetype haveRead = socket->read(crlf, 2);
-                // FIXME: This code is slightly broken and not optimal. What if the 2 bytes are not
-                // available yet?! For nice reasons (the toLong in getChunkSize accepting \n at the
-                // beginning it right now still works, but we should definitely fix this.
-
-                if (haveRead != 2)
-                    return bytes;
-                bytes += haveRead;
-            }
-            // Note that chunk size gets stored in currentChunkSize, what is returned is the bytes
-            // read
-            bytes += getChunkSize(socket, &currentChunkSize);
-            if (currentChunkSize == -1)
-                break;
-        }
-        // if the chunk size is 0, end of the stream
-        if (currentChunkSize == 0 || lastChunkRead) {
-            lastChunkRead = true;
-            // try to read the "\r\n" after the chunk
-            char crlf[2];
-            qsizetype haveRead = socket->read(crlf, 2);
-            if (haveRead > 0)
-                bytes += haveRead;
-
-            if ((haveRead == 2 && crlf[0] == '\r' && crlf[1] == '\n')
-                || (haveRead == 1 && crlf[0] == '\n')) {
-                state = State::AllDone;
-            } else if (haveRead == 1 && crlf[0] == '\r') {
-                break; // Still waiting for the last \n
-            } else if (haveRead > 0) {
-                // If we read something else then CRLF, we need to close the channel.
-                // FIXME forceConnectionCloseEnabled = true;
-                state = State::AllDone;
-            }
-            break;
-        }
-
-        // otherwise, try to begin reading this chunk / to read what is missing for this chunk
-        qsizetype haveRead = readRequestBodyRaw(socket, currentChunkSize - currentChunkRead);
-        currentChunkRead += haveRead;
-        bytes += haveRead;
-
-        // ### error checking here
-    }
-    return bytes;
-}
-
-/*!
-    \internal
-*/
-qsizetype QHttpServerRequestPrivate::getChunkSize(QIODevice *socket, qsizetype *chunkSize)
-{
-    qsizetype bytes = 0;
-    char crlf[2];
-    *chunkSize = -1;
-
-    int bytesAvailable = socket->bytesAvailable();
-    // FIXME rewrite to permanent loop without bytesAvailable
-    while (bytesAvailable > bytes) {
-        qsizetype sniffedBytes = socket->peek(crlf, 2);
-        int fragmentSize = fragment.size();
-
-        // check the next two bytes for a "\r\n", skip blank lines
-        if ((fragmentSize && sniffedBytes == 2 && crlf[0] == '\r' && crlf[1] == '\n')
-            || (fragmentSize > 1 && fragment.endsWith('\r') && crlf[0] == '\n')) {
-            bytes += socket->read(crlf, 1); // read the \r or \n
-            if (crlf[0] == '\r')
-                bytes += socket->read(crlf, 1); // read the \n
-            bool ok = false;
-            // ignore the chunk-extension
-            fragment = fragment.mid(0, fragment.indexOf(';')).trimmed();
-            *chunkSize = fragment.toLong(&ok, 16);
-            fragment.clear();
-            break; // size done
-        } else {
-            // read the fragment to the buffer
-            char c = 0;
-            qsizetype haveRead = socket->read(&c, 1);
-            if (haveRead < 0)
-                return -1;
-
-            bytes += haveRead;
-            fragment.append(c);
-        }
-    }
-
-    return bytes;
-}
 
 /*!
     \class QHttpServerRequest
@@ -637,24 +132,67 @@ QHttpServerRequest::QHttpServerRequest(const QHostAddress &remoteAddress, quint1
 QHttpServerRequest::QHttpServerRequest(const QHostAddress &remoteAddress, quint16 remotePort,
                                        const QHostAddress &localAddress, quint16 localPort,
                                        const QSslConfiguration &sslConfiguration)
-    : d(new QHttpServerRequestPrivate(remoteAddress, remotePort,
-                                      localAddress, localPort,
+    : d(new QHttpServerRequestPrivate(remoteAddress, remotePort, localAddress, localPort,
                                       sslConfiguration))
 {}
 #endif
 
 /*!
+    Constructs a QHttpServerRequest.
+
+    \since 6.10
+*/
+QHttpServerRequest::QHttpServerRequest() = default;
+
+/*!
+    Copy constructs a QHttpServerRequest using \a other.
+
+    \since 6.10
+*/
+QHttpServerRequest::QHttpServerRequest(const QHttpServerRequest &other) = default;
+
+/*!
+    Assigns a QHttpServerRequest using \a other.
+
+    \since 6.10
+*/
+QHttpServerRequest &QHttpServerRequest::operator=(const QHttpServerRequest &other) = default;
+
+/*!
+    \fn QHttpServerRequest::QHttpServerRequest(QHttpServerRequest &&other) noexcept
+
+    Move constructs a QHttpServerRequest using \a other.
+
+    \since 6.10
+*/
+
+/*!
+    \fn QHttpServerRequest &QHttpServerRequest::operator=(QHttpServerRequest &&other) noexcept
+
+    Move assigns a QHttpServerRequest using \a other.
+
+    \since 6.10
+*/
+
+/*!
+    \fn void QHttpServerRequest::swap(QHttpServerRequest &other) noexcept
+
+    Swaps values between this and \a other.
+
+    \since 6.10
+*/
+
+/*!
     Destroys a QHttpServerRequest
 */
-QHttpServerRequest::~QHttpServerRequest()
-{}
+QHttpServerRequest::~QHttpServerRequest() { }
 
 /*!
     Returns the combined value of all headers with the named \a key.
 */
 QByteArray QHttpServerRequest::value(const QByteArray &key) const
 {
-    return d->parser.combinedHeaderValue(key);
+    return d->headers.combinedValue(key);
 }
 
 /*!
@@ -689,12 +227,12 @@ QHttpServerRequest::Method QHttpServerRequest::method() const
 */
 const QHttpHeaders &QHttpServerRequest::headers() const &
 {
-    return d->parser.headers();
+    return d->headers;
 }
 
 QHttpHeaders QHttpServerRequest::headers() &&
 {
-    return std::move(d->parser).headers();
+    return std::move(d->headers);
 }
 
 /*!
@@ -754,6 +292,35 @@ quint16 QHttpServerRequest::localPort() const
 QSslConfiguration QHttpServerRequest::sslConfiguration() const
 {
     return d->sslConfiguration;
+}
+#endif
+
+/*!
+    \internal
+*/
+QHttpServerRequest QHttpServerRequest::create(const QHttpServerParser &parser)
+{
+    QHttpServerRequest request(parser.remoteAddress, parser.remotePort, parser.localAddress,
+                               parser.localPort);
+    request.d->url = parser.url;
+    request.d->method = parser.method;
+    request.d->headers = parser.headers;
+    request.d->body = parser.body;
+    request.d->majorVersion = parser.majorVersion;
+    request.d->minorVersion = parser.minorVersion;
+    return request;
+}
+
+#if QT_CONFIG(ssl)
+/*!
+    \internal
+*/
+QHttpServerRequest QHttpServerRequest::create(const QHttpServerParser &parser,
+                                              const QSslConfiguration &configuration)
+{
+    QHttpServerRequest request = create(parser);
+    request.d->sslConfiguration = configuration;
+    return request;
 }
 #endif
 

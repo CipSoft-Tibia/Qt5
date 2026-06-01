@@ -29,7 +29,7 @@ class StylusInterface {
 
 class COMPONENT_EXPORT(INPUT) InputRouterClient {
  public:
-  virtual ~InputRouterClient() {}
+  virtual ~InputRouterClient() = default;
 
   // Called just prior to events being sent to the renderer, giving the client
   // a chance to perform in-process event filtering.
@@ -47,11 +47,6 @@ class COMPONENT_EXPORT(INPUT) InputRouterClient {
   // Called each time a WebInputEvent ACK IPC is received.
   virtual void DecrementInFlightEventCount(
       blink::mojom::InputEventResultSource ack_source) = 0;
-
-  // Called each time the browser UI scheduler should be notified of a gesture
-  // event which is a scroll state update.
-  virtual void NotifyUISchedulerOfGestureEventUpdate(
-      blink::WebInputEvent::Type gesture_event) = 0;
 
   // Called when the router has received an overscroll notification from the
   // renderer.
@@ -114,6 +109,8 @@ class COMPONENT_EXPORT(INPUT) InputRouterClient {
       const std::optional<std::vector<gfx::Rect>>& line_bounds) = 0;
   virtual StylusInterface* GetStylusInterface() = 0;
   virtual void OnStartStylusWriting() = 0;
+
+  virtual DispatchToRendererCallback GetDispatchToRendererCallback() = 0;
 };
 
 }  // namespace input

@@ -38,6 +38,7 @@
 #include "dawn/common/Numeric.h"
 #include "dawn/native/BindGroup.h"
 #include "dawn/native/Buffer.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/CommandBufferStateTracker.h"
 #include "dawn/native/Commands.h"
 #include "dawn/native/Device.h"
@@ -187,35 +188,37 @@ MaybeError ValidateTimestampQuery(const DeviceBase* device,
 }
 
 MaybeError ValidatePassTimestampWrites(const DeviceBase* device,
-                                       const QuerySetBase* querySet,
-                                       uint32_t beginningOfPassWriteIndex,
-                                       uint32_t endOfPassWriteIndex) {
-    DAWN_TRY(device->ValidateObject(querySet));
-
+                                       const PassTimestampWrites* timestampWrites) {
     DAWN_INVALID_IF(!device->HasFeature(Feature::TimestampQuery),
                     "Timestamp queries used without the timestamp-query feature enabled.");
 
+    UnpackedPtr<PassTimestampWrites> unpacked;
+    DAWN_TRY_ASSIGN(unpacked, ValidateAndUnpack(timestampWrites));
+
+    QuerySetBase* querySet = unpacked->querySet;
+    DAWN_ASSERT(unpacked->querySet != nullptr);
+    DAWN_TRY(device->ValidateObject(querySet));
     DAWN_INVALID_IF(querySet->GetQueryType() != wgpu::QueryType::Timestamp,
                     "The type of %s is not %s.", querySet, wgpu::QueryType::Timestamp);
 
-    if (beginningOfPassWriteIndex != wgpu::kQuerySetIndexUndefined) {
-        DAWN_INVALID_IF(beginningOfPassWriteIndex >= querySet->GetQueryCount(),
+    if (unpacked->beginningOfPassWriteIndex != wgpu::kQuerySetIndexUndefined) {
+        DAWN_INVALID_IF(unpacked->beginningOfPassWriteIndex >= querySet->GetQueryCount(),
                         "beginningOfPassWriteIndex (%u) exceeds the number of queries (%u) in %s.",
-                        beginningOfPassWriteIndex, querySet->GetQueryCount(), querySet);
+                        unpacked->beginningOfPassWriteIndex, querySet->GetQueryCount(), querySet);
     }
-    if (endOfPassWriteIndex != wgpu::kQuerySetIndexUndefined) {
-        DAWN_INVALID_IF(endOfPassWriteIndex >= querySet->GetQueryCount(),
+    if (unpacked->endOfPassWriteIndex != wgpu::kQuerySetIndexUndefined) {
+        DAWN_INVALID_IF(unpacked->endOfPassWriteIndex >= querySet->GetQueryCount(),
                         "endOfPassWriteIndex (%u) exceeds the number of queries (%u) in %s.",
-                        endOfPassWriteIndex, querySet->GetQueryCount(), querySet);
+                        unpacked->endOfPassWriteIndex, querySet->GetQueryCount(), querySet);
     }
 
-    DAWN_INVALID_IF(beginningOfPassWriteIndex == wgpu::kQuerySetIndexUndefined &&
-                        endOfPassWriteIndex == wgpu::kQuerySetIndexUndefined,
+    DAWN_INVALID_IF(unpacked->beginningOfPassWriteIndex == wgpu::kQuerySetIndexUndefined &&
+                        unpacked->endOfPassWriteIndex == wgpu::kQuerySetIndexUndefined,
                     "Both beginningOfPassWriteIndex and endOfPassWriteIndex are undefined.");
 
-    DAWN_INVALID_IF(beginningOfPassWriteIndex == endOfPassWriteIndex,
+    DAWN_INVALID_IF(unpacked->beginningOfPassWriteIndex == unpacked->endOfPassWriteIndex,
                     "beginningOfPassWriteIndex (%u) is equal to endOfPassWriteIndex (%u).",
-                    beginningOfPassWriteIndex, endOfPassWriteIndex);
+                    unpacked->beginningOfPassWriteIndex, unpacked->endOfPassWriteIndex);
 
     return {};
 }
@@ -403,10 +406,15 @@ MaybeError ValidateLinearTextureData(const TextureDataLayout& layout,
 MaybeError ValidateImageCopyBuffer(DeviceBase const* device,
                                    const ImageCopyBuffer& imageCopyBuffer) {
     DAWN_TRY(device->ValidateObject(imageCopyBuffer.buffer));
+    auto alignment = kTextureBytesPerRowAlignment;
+    if (device->HasFeature(Feature::DawnTexelCopyBufferRowAlignment)) {
+        alignment =
+            device->GetLimits().texelCopyBufferRowAlignmentLimits.minTexelCopyBufferRowAlignment;
+    }
     if (imageCopyBuffer.layout.bytesPerRow != wgpu::kCopyStrideUndefined) {
-        DAWN_INVALID_IF(imageCopyBuffer.layout.bytesPerRow % kTextureBytesPerRowAlignment != 0,
+        DAWN_INVALID_IF(imageCopyBuffer.layout.bytesPerRow % alignment != 0,
                         "bytesPerRow (%u) is not a multiple of %u.",
-                        imageCopyBuffer.layout.bytesPerRow, kTextureBytesPerRowAlignment);
+                        imageCopyBuffer.layout.bytesPerRow, alignment);
     }
 
     return {};
@@ -648,6 +656,25 @@ MaybeError ValidateCanUseAs(const TextureBase* texture,
     return {};
 }
 
+MaybeError ValidateCanUseAs(const TextureViewBase* textureView,
+                            wgpu::TextureUsage usage,
+                            UsageValidationMode mode) {
+    DAWN_ASSERT(wgpu::HasZeroOrOneBits(usage));
+    DAWN_ASSERT(IsSubset(usage, kTextureViewOnlyUsages));
+    switch (mode) {
+        case UsageValidationMode::Default:
+            DAWN_INVALID_IF(!(textureView->GetUsage() & usage), "%s usage (%s) doesn't include %s.",
+                            textureView, textureView->GetUsage(), usage);
+            break;
+        case UsageValidationMode::Internal:
+            DAWN_INVALID_IF(!(textureView->GetInternalUsage() & usage),
+                            "%s internal usage (%s) doesn't include %s.", textureView,
+                            textureView->GetInternalUsage(), usage);
+            break;
+    }
+    return {};
+}
+
 MaybeError ValidateCanUseAs(const BufferBase* buffer, wgpu::BufferUsage usage) {
     DAWN_ASSERT(wgpu::HasZeroOrOneBits(usage));
     DAWN_INVALID_IF(!(buffer->GetUsage() & usage), "%s usage (%s) doesn't include %s.", buffer,
@@ -685,8 +712,11 @@ MaybeError ValidateColorAttachmentBytesPerSample(DeviceBase* device,
         device->GetLimits().v1.maxColorAttachmentBytesPerSample;
     DAWN_INVALID_IF(
         totalByteSize > maxColorAttachmentBytesPerSample,
-        "Total color attachment bytes per sample (%u) exceeds maximum (%u) with formats (%s).",
-        totalByteSize, maxColorAttachmentBytesPerSample, TextureFormatsToString(formats));
+        "Total color attachment bytes per sample (%u) exceeds maximum (%u) with formats "
+        "(%s).%s",
+        totalByteSize, maxColorAttachmentBytesPerSample, TextureFormatsToString(formats),
+        DAWN_INCREASE_LIMIT_MESSAGE(device->GetAdapter(), maxColorAttachmentBytesPerSample,
+                                    totalByteSize));
 
     return {};
 }

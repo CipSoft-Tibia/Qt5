@@ -16,4 +16,5 @@ qt_internal_add_test(tst_qdataurl
         tst_qdataurl.cpp
     LIBRARIES
         Qt::CorePrivate
+    TESTDATA "arrow-down-16.png"
 )

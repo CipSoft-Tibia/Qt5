@@ -13,11 +13,19 @@
 
 #include <optional>
 
-#include "common_video/corruption_detection_message.h"
+#include "api/transport/rtp/corruption_detection_message.h"
 #include "common_video/frame_instrumentation_data.h"
 
 namespace webrtc {
 
+std::optional<FrameInstrumentationData>
+ConvertCorruptionDetectionMessageToFrameInstrumentationData(
+    const CorruptionDetectionMessage& message,
+    int previous_sequence_index);
+std::optional<FrameInstrumentationSyncData>
+ConvertCorruptionDetectionMessageToFrameInstrumentationSyncData(
+    const CorruptionDetectionMessage& message,
+    int previous_sequence_index);
 std::optional<CorruptionDetectionMessage>
 ConvertFrameInstrumentationDataToCorruptionDetectionMessage(
     const FrameInstrumentationData& frame_instrumentation_data);

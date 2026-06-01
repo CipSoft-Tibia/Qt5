@@ -463,8 +463,6 @@ TEST(IDBValueUnwrapperTest, IsWrapped) {
                           non_throwable_exception_state);
   wrapper.set_wrapping_threshold_for_test(0);
   wrapper.DoneCloning();
-  Vector<scoped_refptr<BlobDataHandle>> blob_data_handles =
-      wrapper.TakeBlobDataHandles();
   Vector<WebBlobInfo> blob_infos = wrapper.TakeBlobInfo();
   Vector<char> wrapped_marker_buffer = wrapper.TakeWireBytes();
   IDBKeyPath key_path(String("primaryKey"));
@@ -482,7 +480,7 @@ TEST(IDBValueUnwrapperTest, IsWrapped) {
   ASSERT_LT(3U, wrapped_marker_bytes.size());
   for (wtf_size_t i = 0; i < 3; ++i) {
     auto mutant_value = std::make_unique<IDBValue>(
-        Vector<char>(base::span(wrapped_marker_bytes).subspan(0, i)),
+        Vector<char>(base::span(wrapped_marker_bytes).first(i)),
         std::move(blob_infos));
     mutant_value->SetIsolate(scope.GetIsolate());
 
@@ -550,8 +548,6 @@ TEST(IDBValueUnwrapperTest, Compression) {
     wrapper.set_wrapping_threshold_for_test(test_case.wrapping_threshold);
     wrapper.set_compression_threshold_for_test(test_case.compression_threshold);
     wrapper.DoneCloning();
-    Vector<scoped_refptr<BlobDataHandle>> blob_data_handles =
-        wrapper.TakeBlobDataHandles();
     Vector<WebBlobInfo> blob_infos = wrapper.TakeBlobInfo();
     Vector<char> buffer = wrapper.TakeWireBytes();
 
@@ -602,8 +598,6 @@ TEST(IDBValueUnwrapperTest, Decompression) {
                             SerializedScriptValue::SerializeOptions::kSerialize,
                             non_throwable_exception_state);
     wrapper.DoneCloning();
-    Vector<scoped_refptr<BlobDataHandle>> blob_data_handles =
-        wrapper.TakeBlobDataHandles();
     blob_infos = wrapper.TakeBlobInfo();
     buffer = wrapper.TakeWireBytes();
   }

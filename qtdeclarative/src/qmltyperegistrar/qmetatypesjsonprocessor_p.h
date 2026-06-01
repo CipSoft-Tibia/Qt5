@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef METATYPESJSONPROCESSOR_P_H
 #define METATYPESJSONPROCESSOR_P_H
@@ -84,6 +85,7 @@ struct Property
     QAnyStringView privateClass;
 
     int index = -1;
+    int lineNumber = 0;
 
     QTypeRevision revision;
 
@@ -117,6 +119,7 @@ struct Method
     QAnyStringView returnType;
 
     int index = InvalidIndex;
+    int lineNumber = 0;
 
     QTypeRevision revision;
 
@@ -141,6 +144,7 @@ struct Enum
 
     QList<QAnyStringView> values;
 
+    int lineNumber = 0;
     bool isFlag = false;
     bool isClass = false;
 };

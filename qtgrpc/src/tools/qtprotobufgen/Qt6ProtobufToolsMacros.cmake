@@ -9,6 +9,7 @@ macro(_qt_internal_get_protoc_common_options option_args single_args multi_args)
         COPY_COMMENTS
         GENERATE_PACKAGE_SUBFOLDERS
         QML
+        ALLOW_MUTABLE_GETTER_CONFLICTS
     )
     set(${single_args}
         EXTRA_NAMESPACE
@@ -349,6 +350,26 @@ function(qt6_add_protobuf target)
 
     _qt_internal_get_protoc_options(generation_options arg
         protoc_option_opt protoc_single_opt protoc_multi_opt)
+
+    if(arg_ALLOW_MUTABLE_GETTER_CONFLICTS)
+        set(moc_target ${QT_CMAKE_EXPORT_NAMESPACE}::moc)
+        if(TARGET ${moc_target})
+        _qt_internal_dealias_target(moc_target)
+            get_target_property(moc_version ${moc_target} _qt_package_version)
+        else()
+            message(AUTHOR_WARNING "Unable to determine the moc version. Qt installation might be"
+                " incomplete.")
+            set(moc_version 0)
+        endif()
+
+        # TODO: The Q_PROPERTY related issue QTBUG-119912 is not fixed, so we prohibit the use of
+        # ALLOW_MUTABLE_GETTER_CONFLICTS until then. The property will remain undocumented and for
+        # the internal use only. Replace '99' with the proper Qt version once the issue in moc is
+        # fixed.
+        if(moc_version VERSION_LESS 99 AND NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+            message(FATAL_ERROR "The use of 'ALLOW_MUTABLE_GETTER_CONFLICTS' is prohibited.")
+        endif()
+    endif()
 
     if(arg_QML_URI AND NOT arg_QML)
         message(FATAL_ERROR "QML_URI requires the QML option set, "

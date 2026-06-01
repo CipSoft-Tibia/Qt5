@@ -523,14 +523,13 @@ QSinglePointEvent::QSinglePointEvent(QEvent::Type type, const QPointingDevice *d
       m_reserved(0), m_reserved2(0),
       m_doubleClick(false), m_phase(0), m_invertedScrolling(0)
 {
-    bool isPress = (button != Qt::NoButton && (button | buttons) == buttons);
-    bool isWheel = (type == QEvent::Type::Wheel);
+    const bool isPress = (button != Qt::NoButton && (button | buttons) == buttons);
+    const bool isWheel = (type == QEvent::Type::Wheel);
     auto devPriv = QPointingDevicePrivate::get(const_cast<QPointingDevice *>(pointingDevice()));
     auto epd = devPriv->pointById(0);
     QEventPoint &p = epd->eventPoint;
+    QMutableEventPoint::detach(p);
     Q_ASSERT(p.device() == dev);
-    // p is a reference to a non-detached instance that lives in QPointingDevicePrivate::activePoints.
-    // Update persistent info in that instance.
     if (isPress || isWheel)
         QMutableEventPoint::setGlobalLastPosition(p, globalPos);
     else
@@ -547,8 +546,6 @@ QSinglePointEvent::QSinglePointEvent(QEvent::Type type, const QPointingDevice *d
     else
         QMutableEventPoint::setState(p, QEventPoint::State::Released);
     QMutableEventPoint::setScenePosition(p, scenePos);
-    // Now detach, and update the detached instance with ephemeral state.
-    QMutableEventPoint::detach(p);
     QMutableEventPoint::setPosition(p, localPos);
     m_points.append(p);
 }
@@ -964,7 +961,8 @@ Qt::MouseEventFlags QMouseEvent::flags() const
     consider a top-level window A containing a child B which in turn contains a
     child C (all with mouse tracking enabled):
 
-    \image hoverevents.png
+    \image hoverevents.png {Screenshot showing widgets A, B, C stacked on top
+           of each other}
 
     Now, if you move the cursor from the top to the bottom in the middle of A,
     you will get the following QEvent::MouseMove events:
@@ -2250,6 +2248,11 @@ QContextMenuEvent::QContextMenuEvent(Reason reason, const QPoint &pos)
     variable can be used to set a selection starting from that point.
     The value is unused.
 
+    \value MimeData
+    If set, the variant contains a QMimeData object representing the
+    committed text. The commitString() still provides the plain text
+    representation of the committed text.
+
     \sa Attribute
 */
 
@@ -2608,7 +2611,8 @@ Q_IMPL_POINTER_EVENT(QTabletEvent)
     Positive values are towards the tablet's physical right. The angle
     is in the range -60 to +60 degrees.
 
-    \image qtabletevent-tilt.png
+    \image qtabletevent-tilt.png {Illustration of a device that is tilted
+           in a 3 Dimensional coordinate system}
 
     \note The value is stored as a single-precision float.
 
@@ -4055,10 +4059,9 @@ static void formatTabletEvent(QDebug d, const QTabletEvent *e)
 
 QDebug operator<<(QDebug dbg, const QEventPoint *tp)
 {
-    if (!tp) {
-        dbg << "QEventPoint(0x0)";
-        return dbg;
-    }
+    if (!tp)
+        return dbg << "QEventPoint(0x0)";
+
     return operator<<(dbg, *tp);
 }
 
@@ -4098,10 +4101,9 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
 {
     QDebugStateSaver saver(dbg);
     dbg.nospace();
-    if (!e) {
-        dbg << "QEvent(this = 0x0)";
-        return dbg;
-    }
+    if (!e)
+        return dbg << "QEvent(0x0)";
+
     // More useful event output could be added here
     const QEvent::Type type = e->type();
     bool isMouse = false;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLLISTMODEL_H
 #define QQMLLISTMODEL_H
@@ -176,7 +177,8 @@ private:
     // returns true if a role was set
     bool applyProperty(
             const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
-            const QV4::CompiledData::Binding *binding, ListModel *model, int outterElementIndex);
+            const QV4::CompiledData::Binding *binding, ListModel *model, QQmlListModel *owner,
+            int outterElementIndex);
 
     static bool definesEmptyList(const QString &);
 

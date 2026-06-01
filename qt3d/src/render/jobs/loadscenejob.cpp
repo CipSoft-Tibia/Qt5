@@ -14,7 +14,9 @@
 #include <Qt3DRender/private/qsceneloader_p.h>
 #include <Qt3DRender/private/renderlogging_p.h>
 #include <QFileInfo>
+#if QT_CONFIG(mimetype)
 #include <QMimeDatabase>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -84,6 +86,7 @@ void LoadSceneJob::run()
                 qCWarning(SceneLoaders) << Q_FUNC_INFO << finfo.filePath() << "doesn't exist";
             }
         } else {
+#if QT_CONFIG(mimetype)
             QStringList extensions;
             QMimeDatabase db;
             const QMimeType mtype = db.mimeTypeForData(m_data);
@@ -100,6 +103,7 @@ void LoadSceneJob::run()
                                         [this, basePath] (QSceneImporter *importer) {
                 importer->setData(m_data, basePath);
             });
+#endif
         }
     }
 

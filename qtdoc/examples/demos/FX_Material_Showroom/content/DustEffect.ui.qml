@@ -4,10 +4,11 @@
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: dust
+
+    required property Camera sceneCamera
 
     ParticleEmitter3D {
         id: dustpointEmitter
@@ -32,7 +33,7 @@ ParticleSystem3D {
             color: "#40ffffff"
             unifiedColorVariation: false
             fadeInDuration: 3000
-            alignTargetPosition: sceneCamera.position
+            alignTargetPosition: dust.sceneCamera.position
             hasTransparency: true
             sortMode: Particle3D.SortDistance
             fadeOutDuration: 3000
@@ -77,7 +78,7 @@ ParticleSystem3D {
             color: "#ffffff"
             unifiedColorVariation: false
             fadeInDuration: 6000
-            alignTargetPosition: sceneCamera.position
+            alignTargetPosition: dust.sceneCamera.position
             hasTransparency: true
             sortMode: Particle3D.SortDistance
             fadeOutDuration: 6000
@@ -123,7 +124,7 @@ ParticleSystem3D {
         receivesShadows: true
         scale.z: 1
         instancing: particleRed6.instanceTable
-        materials: dustMat
+        materials: [dustMat]
         scale.y: 1
         scale.x: 1
         receivesReflections: true
@@ -140,7 +141,7 @@ ParticleSystem3D {
         uniquePaceVariation: 1
         globalPace.y: 0.1
         uniquePace.y: 100
-        particles: particleRed6
+        particles: [particleRed6]
         uniquePace.z: 100
         globalPaceStart.y: 0.1
         uniqueAmount.z: 0
@@ -166,7 +167,7 @@ ParticleSystem3D {
         castsShadows: false
         scale.z: 0.1
         instancing: particleRed7.instanceTable
-        materials: dustMat
+        materials: [dustMat]
         scale.y: 0.1
         receivesReflections: false
         scale.x: 0.1

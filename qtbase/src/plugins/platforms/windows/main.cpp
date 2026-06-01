@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #include <qpa/qplatformintegrationplugin.h>
@@ -25,17 +26,9 @@ using namespace Qt::StringLiterals;
     \li \c fontengine=native Indicates that native font engine should be used (default)
     \li \c fontengine=freetype Indicates that freetype font engine should be used
     \li \c gl=gdi Indicates that ARB Open GL functionality should not be used
+    \li \c verbose=<number> Chooses the verbosity level of the platform plugin logging (0-9).
     \endlist
 
-    \section1 Tips
-
-    \list
-    \li The environment variable \c QT_QPA_VERBOSE controls
-       the debug level. It takes the form
-       \c{<keyword1>:<level1>,<keyword2>:<level2>}, where
-       keyword is one of \c integration, \c windows, \c backingstore and
-       \c fonts. Level is an integer 0..9.
-    \endlist
     \internal
  */
 

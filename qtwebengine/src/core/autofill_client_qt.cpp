@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "autofill_client_qt.h"
 
@@ -12,7 +13,7 @@
 
 #include "chrome/browser/profiles/profile.h"
 #include "components/autofill/content/browser/content_autofill_driver.h"
-#include "components/autofill/core/browser/browser_autofill_manager.h"
+#include "components/autofill/core/browser/foundations/browser_autofill_manager.h"
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -35,11 +36,6 @@ AutofillClientQt::AutofillClientQt(content::WebContents *webContents)
 
 AutofillClientQt::~AutofillClientQt() { }
 
-autofill::PersonalDataManager *AutofillClientQt::GetPersonalDataManager()
-{
-    return nullptr;
-}
-
 autofill::AutocompleteHistoryManager *AutofillClientQt::GetAutocompleteHistoryManager()
 {
     return nullptr;
@@ -47,7 +43,7 @@ autofill::AutocompleteHistoryManager *AutofillClientQt::GetAutocompleteHistoryMa
 
 std::unique_ptr<autofill::AutofillManager> AutofillClientQt::CreateManager(base::PassKey<autofill::ContentAutofillDriver>, autofill::ContentAutofillDriver &driver)
 {
-    return base::WrapUnique(new autofill::BrowserAutofillManager(&driver, std::string()));
+    return base::WrapUnique(new autofill::BrowserAutofillManager(&driver));
 }
 
 PrefService *AutofillClientQt::GetPrefs()
@@ -85,12 +81,6 @@ void AutofillClientQt::UpdateAutofillDataListValues(
         HideAutofillSuggestions(autofill::SuggestionHidingReason::kNoSuggestions);
 }
 
-void AutofillClientQt::PinAutofillSuggestions()
-{
-    // Called by password_manager component only.
-    NOTIMPLEMENTED();
-}
-
 
 base::span<const autofill::Suggestion> AutofillClientQt::GetAutofillSuggestions() const
 {
@@ -104,14 +94,36 @@ void AutofillClientQt::HideAutofillSuggestions(autofill::SuggestionHidingReason)
     adapterClient()->hideAutofillPopup();
 }
 
+bool AutofillClientQt::IsAutofillEnabled() const
+{
+    // Returns false, this is not required to be enabled for <datalist>.
+    return IsAutofillProfileEnabled() || IsAutofillPaymentMethodsEnabled();
+}
+
+bool AutofillClientQt::IsAutofillProfileEnabled() const
+{
+    return autofill::prefs::IsAutofillProfileEnabled(GetPrefs());
+}
+
+bool AutofillClientQt::IsAutofillPaymentMethodsEnabled() const
+{
+    return autofill::prefs::IsAutofillPaymentMethodsEnabled(GetPrefs());
+}
+
 bool AutofillClientQt::IsAutocompleteEnabled() const
 {
     return autofill::prefs::IsAutocompleteEnabled(GetPrefs());
 }
 
-bool AutofillClientQt::IsPasswordManagerEnabled()
+bool AutofillClientQt::IsPasswordManagerEnabled() const
 {
     return false;
+}
+
+const std::string& AutofillClientQt::GetAppLocale() const
+{
+    static const std::string empty;
+    return empty;
 }
 
 bool AutofillClientQt::IsOffTheRecord() const
@@ -129,6 +141,11 @@ WebContentsAdapterClient *AutofillClientQt::adapterClient()
     return WebContentsViewQt::from(
                    static_cast<content::WebContentsImpl *>(web_contents())->GetView())
             ->client();
+}
+
+base::WeakPtr<autofill::AutofillClient> AutofillClientQt::GetWeakPtr()
+{
+    return weak_ptr_factory_.GetWeakPtr();
 }
 
 } // namespace QtWebEngineCore

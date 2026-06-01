@@ -10,6 +10,7 @@
 #include <QDir>
 
 using namespace QMakeInternal;
+using namespace Qt::Literals::StringLiterals;
 
 QT_BEGIN_NAMESPACE
 
@@ -110,7 +111,7 @@ QStringList ProFileEvaluator::absoluteFileValues(
             absEl = elWithSysroot;
         } else {
             for (const QString &dir : searchDirs) {
-                QString fn = QDir::cleanPath(dir + QLatin1Char('/') + el);
+                QString fn = QDir::cleanPath(dir + u'/' + el);
                 if (d->m_vfs->exists(fn, QMakeVfs::VfsCumulative)) {
                     result << fn;
                     goto next;
@@ -118,21 +119,21 @@ QStringList ProFileEvaluator::absoluteFileValues(
             }
             if (baseDirectory.isEmpty())
                 goto next;
-            absEl = QDir::cleanPath(baseDirectory + QLatin1Char('/') + el);
+            absEl = QDir::cleanPath(baseDirectory + u'/' + el);
         }
         {
-            int nameOff = absEl.lastIndexOf(QLatin1Char('/'));
+            int nameOff = absEl.lastIndexOf(u'/');
             QString absDir = d->m_tmp1.setRawData(absEl.constData(), nameOff);
             // NOTE: This does not support virtual files. That shouldn't be a problem,
             // because no sane project would add generated files by wildcard.
             if (IoUtils::fileType(absDir) == IoUtils::FileIsDir) {
                 QString wildcard = d->m_tmp2.setRawData(absEl.constData() + nameOff + 1,
                                                         absEl.size() - nameOff - 1);
-                if (wildcard.contains(QLatin1Char('*')) || wildcard.contains(QLatin1Char('?'))) {
+                if (wildcard.contains(u'*') || wildcard.contains(u'?')) {
                     QDir theDir(absDir);
                     for (const QString &fn : theDir.entryList(QStringList(wildcard)))
-                        if (fn != QLatin1String(".") && fn != QLatin1String(".."))
-                            result << absDir + QLatin1Char('/') + fn;
+                        if (fn != "."_L1 && fn != ".."_L1)
+                            result << absDir + u'/' + fn;
                 } // else if (acceptMissing)
             }
         }
@@ -146,15 +147,15 @@ ProFileEvaluator::TemplateType ProFileEvaluator::templateType() const
     const ProStringList &templ = d->values(ProKey("TEMPLATE"));
     if (templ.size() >= 1) {
         const QString &t = templ.at(0).toQString();
-        if (!t.compare(QLatin1String("app"), Qt::CaseInsensitive))
+        if (!t.compare("app"_L1, Qt::CaseInsensitive))
             return TT_Application;
-        if (!t.compare(QLatin1String("lib"), Qt::CaseInsensitive))
+        if (!t.compare("lib"_L1, Qt::CaseInsensitive))
             return TT_Library;
-        if (!t.compare(QLatin1String("script"), Qt::CaseInsensitive))
+        if (!t.compare("script"_L1, Qt::CaseInsensitive))
             return TT_Script;
-        if (!t.compare(QLatin1String("aux"), Qt::CaseInsensitive))
+        if (!t.compare("aux"_L1, Qt::CaseInsensitive))
             return TT_Aux;
-        if (!t.compare(QLatin1String("subdirs"), Qt::CaseInsensitive))
+        if (!t.compare("subdirs"_L1, Qt::CaseInsensitive))
             return TT_Subdirs;
     }
     return TT_Unknown;

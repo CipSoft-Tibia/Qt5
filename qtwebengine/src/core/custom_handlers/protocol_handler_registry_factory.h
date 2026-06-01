@@ -50,7 +50,7 @@ private:
     ~ProtocolHandlerRegistryFactory() override;
 
     // BrowserContextKeyedServiceFactory implementation.
-    KeyedService *BuildServiceInstanceFor(content::BrowserContext *profile) const override;
+    std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(content::BrowserContext *profile) const override;
 };
 
 } // namespace QtWebEngineCore

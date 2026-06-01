@@ -14,14 +14,16 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 static QString xmlProtect(const QString & str)
 {
     QString p = str;
-    p.replace(QLatin1Char('&'),  QLatin1String("&amp;"));
-    p.replace(QLatin1Char('\"'), QLatin1String("&quot;"));
-    p.replace(QLatin1Char('>'),  QLatin1String("&gt;"));
-    p.replace(QLatin1Char('<'),  QLatin1String("&lt;"));
-    p.replace(QLatin1Char('\''), QLatin1String("&apos;"));
+    p.replace(u'&', "&amp;"_L1);
+    p.replace(u'\"', "&quot;"_L1);
+    p.replace(u'>', "&gt;"_L1);
+    p.replace(u'<', "&lt;"_L1);
+    p.replace(QLatin1Char('\''), "&apos;"_L1);
     return p;
 }
 
@@ -113,10 +115,10 @@ bool QphHandler::startElement(QStringView namespaceURI, QStringView localName,
     Q_UNUSED(namespaceURI);
     Q_UNUSED(localName);
 
-    if (qName == QLatin1String("QPH")) {
-        m_language = atts.value(QLatin1String("language")).toString();
-        m_sourceLanguage = atts.value(QLatin1String("sourcelanguage")).toString();
-    } else if (qName == QLatin1String("phrase")) {
+    if (qName == "QPH"_L1) {
+        m_language = atts.value("language"_L1).toString();
+        m_sourceLanguage = atts.value("sourcelanguage"_L1).toString();
+    } else if (qName == "phrase"_L1) {
         source.truncate(0);
         target.truncate(0);
         definition.truncate(0);
@@ -131,13 +133,13 @@ bool QphHandler::endElement(QStringView namespaceURI, QStringView localName,
     Q_UNUSED(namespaceURI);
     Q_UNUSED(localName);
 
-    if (qName == QLatin1String("source"))
+    if (qName == "source"_L1)
         source = accum;
-    else if (qName == QLatin1String("target"))
+    else if (qName == "target"_L1)
         target = accum;
-    else if (qName == QLatin1String("definition"))
+    else if (qName == "definition"_L1)
         definition = accum;
-    else if (qName == QLatin1String("phrase"))
+    else if (qName == "phrase"_L1)
         pb->m_phrases.append(new Phrase(source, target, definition, pb));
     return true;
 }

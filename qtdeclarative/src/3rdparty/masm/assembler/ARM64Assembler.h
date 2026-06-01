@@ -43,6 +43,11 @@
 #include <INTEGRITY.h>
 #endif
 
+#if OS(VXWORKS)
+#include <cacheLib.h>
+#endif
+
+
 #define CHECK_DATASIZE_OF(datasize) ASSERT(datasize == 32 || datasize == 64)
 #define DATASIZE_OF(datasize) ((datasize == 64) ? Datasize_64 : Datasize_32)
 #define MEMOPSIZE_OF(datasize) ((datasize == 8 || datasize == 128) ? MemOpSize_8_or_128 : (datasize == 16) ? MemOpSize_16 : (datasize == 32) ? MemOpSize_32 : MemOpSize_64)
@@ -3054,6 +3059,9 @@ public:
 #endif
 #elif OS(INTEGRITY)
         ManageCaches((Address)code, size, ACCESS_DST_SYNC);
+#elif OS(VXWORKS)
+        ::cacheFlush(DATA_CACHE, code, size);
+        ::cacheInvalidate(INSTRUCTION_CACHE, code, size);
 #else
 #error "The cacheFlush support is missing on this platform."
 #endif

@@ -46,6 +46,9 @@ sourcedirs  += ..
 exampledirs += ../../../examples/ \
                snippets
 
+# Path to the root of qtactiveqt (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 imagedirs   += images
 
 navigation.landingpage = "Active Qt"

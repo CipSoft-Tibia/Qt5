@@ -155,6 +155,24 @@ bool operator<(const GlobalId<RendererId>& a, const GlobalId<RendererId>& b) {
          std::tie(b.frame_token, b.renderer_id);
 }
 
+template <typename RendererId>
+bool operator<=(const GlobalId<RendererId>& a, const GlobalId<RendererId>& b) {
+  return std::tie(a.frame_token, a.renderer_id) <=
+        std::tie(b.frame_token, b.renderer_id);
+}
+
+template <typename RendererId>
+bool operator>(const GlobalId<RendererId>& a, const GlobalId<RendererId>& b) {
+ return std::tie(a.frame_token, a.renderer_id) >
+         std::tie(b.frame_token, b.renderer_id);
+}
+
+template <typename RendererId>
+bool operator>=(const GlobalId<RendererId>& a, const GlobalId<RendererId>& b) {
+  return std::tie(a.frame_token, a.renderer_id) >=
+         std::tie(b.frame_token, b.renderer_id);
+}
+
 }  // namespace internal
 
 // FormGlobalId and FieldGlobalId uniquely identify a DOM form or field

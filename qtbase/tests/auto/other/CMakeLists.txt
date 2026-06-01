@@ -45,5 +45,5 @@ if(QT_FEATURE_xkbcommon AND TARGET Qt::Gui)
 endif()
 
 if(ANDROID AND QT_BUILD_STANDALONE_TESTS)
-    add_subdirectory(android_deployment_settings)
+    add_subdirectory(android)
 endif()

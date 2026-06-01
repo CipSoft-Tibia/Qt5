@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qaccessiblequickitem_p.h"
 
@@ -459,7 +460,32 @@ QAccessible::State QAccessibleQuickItem::state() const
         state.focusable = false;
         state.disabled = true;
     }
+    if (item()->property("readOnly").toBool() || role() == QAccessible::ProgressBar)
+        state.readOnly = true;
     return state;
+}
+
+QList<std::pair<QAccessibleInterface *, QAccessible::Relation>>
+QAccessibleQuickItem::relations(QAccessible::Relation match) const
+{
+    QList<std::pair<QAccessibleInterface *, QAccessible::Relation>> rels =
+            QAccessibleObject::relations(match);
+    if (QQuickAccessibleAttached *attached = QQuickAccessibleAttached::attachedProperties(item())) {
+        if (match & QAccessible::Labelled) {
+            if (auto *labelFor = attached->labelFor()) {
+                rels.append({QAccessible::queryAccessibleInterface(labelFor),
+                             QAccessible::Labelled});
+            }
+        }
+
+        if (match & QAccessible::Label) {
+            if (auto *labelledBy = attached->labelledBy()) {
+                rels.append({QAccessible::queryAccessibleInterface(labelledBy),
+                             QAccessible::Label});
+            }
+        }
+    }
+    return rels;
 }
 
 QAccessible::Role QAccessibleQuickItem::role() const
@@ -494,6 +520,7 @@ QStringList QAccessibleQuickItem::actionNames() const
     switch (role()) {
     case QAccessible::Link:
     case QAccessible::PushButton:
+    case QAccessible::MenuItem:
         actions << QAccessibleActionInterface::pressAction();
         break;
     case QAccessible::RadioButton:
@@ -842,7 +869,7 @@ QString QAccessibleQuickItem::textBeforeOffset(int offset, QAccessible::TextBoun
     if (m_doc) {
         QTextCursor cursor = QTextCursor(m_doc);
         cursor.setPosition(offset);
-        QPair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
+        std::pair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
         cursor.setPosition(boundaries.first - 1);
         boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
 
@@ -864,7 +891,7 @@ QString QAccessibleQuickItem::textAfterOffset(int offset, QAccessible::TextBound
     if (m_doc) {
         QTextCursor cursor = QTextCursor(m_doc);
         cursor.setPosition(offset);
-        QPair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
+        std::pair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
         cursor.setPosition(boundaries.second);
         boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
 
@@ -886,7 +913,7 @@ QString QAccessibleQuickItem::textAtOffset(int offset, QAccessible::TextBoundary
     if (m_doc) {
         QTextCursor cursor = QTextCursor(m_doc);
         cursor.setPosition(offset);
-        QPair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
+        std::pair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
 
         *startOffset = boundaries.first;
         *endOffset = boundaries.second;
@@ -914,9 +941,9 @@ int QAccessibleQuickItem::selectionCount() const
     return 0;
 }
 
-void QAccessibleQuickItem::addSelection(int /* startOffset */, int /* endOffset */)
+void QAccessibleQuickItem::addSelection(int startOffset, int endOffset)
 {
-
+    setSelection(0, startOffset, endOffset);
 }
 void QAccessibleQuickItem::removeSelection(int /* selectionIndex */)
 {

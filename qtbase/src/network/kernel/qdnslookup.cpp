@@ -777,7 +777,7 @@ void QDnsLookup::lookup()
     Q_D(QDnsLookup);
     d->isFinished = false;
     d->reply = QDnsLookupReply();
-    if (!QCoreApplication::instance()) {
+    if (!QCoreApplication::instanceExists()) {
         // NOT qCWarning because this isn't a result of the lookup
         qWarning("QDnsLookup requires a QCoreApplication");
         return;

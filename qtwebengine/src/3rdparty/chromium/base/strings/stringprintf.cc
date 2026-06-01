@@ -11,45 +11,16 @@
 
 #include "base/logging.h"
 #include "base/scoped_clear_last_error.h"
+#include "base/strings/span_printf.h"
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 
 namespace base {
-
-// `ENABLE_IF_ATTR()` is part of the function signature, so at least that
-// annotation, with a matching condition to the declaration, must be present, or
-// this would be considered a distinct overload (and other components will get
-// an unresolved symbol). The message need not match; anything put there will
-// only affect calls that see this definition instead of just the declaration,
-// i.e. calls within this file (i.e. none).
-std::string StringPrintf(const char* format, ...) ENABLE_IF_ATTR(!!format, "") {
-  va_list ap;
-  va_start(ap, format);
-  absl::Cleanup end_list = [&] { va_end(ap); };
-  return StringPrintV(format, ap);
-}
-
-#if HAS_ATTRIBUTE(enable_if)
-std::string StringPrintfNonConstexpr(const char* format, ...) {
-  va_list ap;
-  va_start(ap, format);
-  absl::Cleanup end_list = [&] { va_end(ap); };
-  return StringPrintV(format, ap);
-}
-#endif
 
 std::string StringPrintV(const char* format, va_list ap) {
   std::string result;
   StringAppendV(&result, format, ap);
   return result;
-}
-
-void StringAppendF(std::string* dst, const char* format, ...) {
-  va_list ap;
-  va_start(ap, format);
-  StringAppendV(dst, format, ap);
-  va_end(ap);
 }
 
 void StringAppendV(std::string* dst, const char* format, va_list ap) {
@@ -62,7 +33,7 @@ void StringAppendV(std::string* dst, const char* format, va_list ap) {
   va_copy(ap_copy, ap);
 
   base::ScopedClearLastError last_error;
-  int result = vsnprintf(stack_buf, std::size(stack_buf), format, ap_copy);
+  int result = VSpanPrintf(stack_buf, format, ap_copy);
   va_end(ap_copy);
 
   if (result >= 0 && static_cast<size_t>(result) < std::size(stack_buf)) {
@@ -105,7 +76,7 @@ void StringAppendV(std::string* dst, const char* format, va_list ap) {
     // NOTE: You can only use a va_list once.  Since we're in a while loop, we
     // need to make a new copy each time so we don't use up the original.
     va_copy(ap_copy, ap);
-    result = vsnprintf(&mem_buf[0], mem_length, format, ap_copy);
+    result = VSpanPrintf(mem_buf, format, ap_copy);
     va_end(ap_copy);
 
     if ((result >= 0) && (static_cast<size_t>(result) < mem_length)) {

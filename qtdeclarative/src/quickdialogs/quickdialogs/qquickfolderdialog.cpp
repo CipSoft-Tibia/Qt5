@@ -1,10 +1,15 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickfolderdialog_p.h"
 
 #include <QtCore/qloggingcategory.h>
 #include <QtQml/qqmlfile.h>
+#if QT_CONFIG(quick_listview) && QT_CONFIG(quick_draganddrop)
+#include <QtQuickDialogs2QuickImpl/private/qquickplatformfolderdialog_p.h>
+#include <QtQuickDialogs2QuickImpl/private/qquickfolderdialogimpl_p.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -255,6 +260,11 @@ void QQuickFolderDialog::onShow(QPlatformDialogHelper *dialog)
         if (m_firstShow && initialDir.isValid() && QDir(QQmlFile::urlToLocalFileOrQrc(initialDir)).exists())
             fileDialog->setDirectory(m_options->initialDirectory());
     }
+#if QT_CONFIG(quick_listview) && QT_CONFIG(quick_draganddrop)
+    if (QQuickPlatformFolderDialog *folderDialog = qobject_cast<QQuickPlatformFolderDialog *>(dialog))
+        folderDialog->dialog()->setPopupType(m_popupType);
+#endif
+
     QQuickAbstractDialog::onShow(dialog);
 }
 

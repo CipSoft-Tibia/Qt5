@@ -12,11 +12,11 @@
 #include "base/containers/span.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/system/sys_info.h"
-#include "content/common/features.h"
 #include "content/common/service_worker/race_network_request_url_loader_client.h"
+#include "content/public/common/content_features.h"
 #include "mojo/public/cpp/system/data_pipe.h"
 #include "mojo/public/cpp/system/simple_watcher.h"
-#include "services/network/public/cpp/features.h"
+#include "services/network/public/cpp/loading_params.h"
 
 namespace content {
 namespace {
@@ -56,8 +56,13 @@ uint32_t RaceNetworkRequestWriteBufferManager::GetDataPipeCapacityBytes() {
   // The feature param may override the buffer size.
   return base::GetFieldTrialParamByFeatureAsInt(
       features::kServiceWorkerAutoPreload, "data_pipe_capacity_num_bytes",
-      network::features::GetDataPipeDefaultAllocationSize(
-          network::features::DataPipeAllocationSize::kLargerSizeIfPossible));
+      network::GetDataPipeDefaultAllocationSize(
+          network::DataPipeAllocationSize::kLargerSizeIfPossible));
+}
+
+mojo::ScopedDataPipeProducerHandle
+RaceNetworkRequestWriteBufferManager::ReleaseProducerHandle() {
+  return std::move(producer_);
 }
 
 mojo::ScopedDataPipeConsumerHandle

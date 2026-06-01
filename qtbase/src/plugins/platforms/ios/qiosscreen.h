@@ -8,6 +8,8 @@
 
 #include <qpa/qplatformscreen.h>
 
+#include <QtCore/private/qcore_mac_p.h>
+
 @class QIOSOrientationListener;
 
 QT_BEGIN_NAMESPACE
@@ -53,6 +55,7 @@ private:
 
 #if !defined(Q_OS_VISIONOS)
     UIScreen *m_uiScreen = nullptr;
+    QMacNotificationObserver m_screenBrightnessObserver;
 #endif
     QRect m_geometry;
     QRect m_availableGeometry;

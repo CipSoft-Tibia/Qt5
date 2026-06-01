@@ -101,7 +101,7 @@ bool checkEdge(const QVector2D &p1, const QVector2D &p2, const QVector2D &p, flo
 
 // Check if lines l1 and l2 are intersecting and return the respective value. Solutions are stored to
 // the optional pointer solution.
-bool lineIntersection(const LinePoints &l1, const LinePoints &l2, QList<QPair<float, float>> *solution = nullptr)
+bool lineIntersection(const LinePoints &l1, const LinePoints &l2, QList<std::pair<float, float>> *solution = nullptr)
 {
     constexpr double eps2 = 1e-5; // Epsilon for parameter space t1-t2
 
@@ -127,7 +127,7 @@ bool lineIntersection(const LinePoints &l1, const LinePoints &l2, QList<QPair<fl
     bool intersecting = (s >= 0 && s <= 1. - eps2 && t >= 0 && t <= 1. - eps2);
 
     if (solution && intersecting)
-        solution->append(QPair<float, float>(t, s));
+        solution->append(std::pair<float, float>(t, s));
 
     return intersecting;
 }
@@ -217,7 +217,7 @@ static float angleBetween(const QVector2D v1, const QVector2D v2)
     return atan2(cross, dot);
 }
 
-static bool isIntersecting(const TrianglePoints &t1, const TrianglePoints &t2, QList<QPair<float, float>> *solutions = nullptr)
+static bool isIntersecting(const TrianglePoints &t1, const TrianglePoints &t2, QList<std::pair<float, float>> *solutions = nullptr)
 {
     constexpr double eps = 1e-5; // Epsilon for coordinate space x-y
     constexpr double eps2 = 1e-5; // Epsilon for parameter space t1-t2
@@ -304,7 +304,7 @@ static bool isIntersecting(const TrianglePoints &t1, const TrianglePoints &t2, Q
         return false;
 }
 
-static bool isIntersecting(const QQuadPath &path, int e1, int e2, QList<QPair<float, float>> *solutions = nullptr)
+static bool isIntersecting(const QQuadPath &path, int e1, int e2, QList<std::pair<float, float>> *solutions = nullptr)
 {
 
     const QQuadPath::Element &elem1 = path.elementAt(e1);
@@ -859,7 +859,7 @@ bool QSGCurveProcessor::solveOverlaps(QQuadPath &path)
 // triangles that define the elements.
 // We will order the elements first and then pool them depending on their x-values. This should
 // reduce the complexity to O(n log n), where n is the number of elements in the path.
-QList<QPair<int, int>> QSGCurveProcessor::findOverlappingCandidates(const QQuadPath &path)
+QList<std::pair<int, int>> QSGCurveProcessor::findOverlappingCandidates(const QQuadPath &path)
 {
     struct BRect { float xmin; float xmax; float ymin; float ymax; };
 
@@ -887,7 +887,7 @@ QList<QPair<int, int>> QSGCurveProcessor::findOverlappingCandidates(const QQuadP
     std::sort(elementEnds.begin(), elementEnds.end(), compareXmax);
 
     QList<int> bRpool;
-    QList<QPair<int, int>> overlappingBB;
+    QList<std::pair<int, int>> overlappingBB;
 
     // Start from x = xmin and move towards xmax. Add a rectangle to the pool and check for
     // intersections with all other rectangles in the pool. If a rectangles xmax is smaller
@@ -930,7 +930,7 @@ QList<QPair<int, int>> QSGCurveProcessor::findOverlappingCandidates(const QQuadP
             if (!isNeighbor && (r1.ymax < newR.ymin || newR.ymax < r1.ymin))
                 continue;
             // If the bounding boxes are overlapping it is a candidate for an intersection.
-            overlappingBB.append(QPair<int, int>(i, addIndex));
+            overlappingBB.append(std::pair<int, int>(i, addIndex));
         }
         bRpool.append(addIndex); //Add the new element to the pool.
     }
@@ -1097,10 +1097,10 @@ bool QSGCurveProcessor::solveIntersections(QQuadPath &path, bool removeNestedPat
     };
 
     // First make a O(n log n) search for candidates.
-    const QList<QPair<int, int>> candidates = findOverlappingCandidates(path);
+    const QList<std::pair<int, int>> candidates = findOverlappingCandidates(path);
     // Then check the candidates for actual intersections.
     for (const auto &candidate : candidates) {
-        QList<QPair<float,float>> res;
+        QList<std::pair<float,float>> res;
         int e1 = candidate.first;
         int e2 = candidate.second;
         if (isIntersecting(path, e1, e2, &res)) {

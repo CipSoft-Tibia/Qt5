@@ -45,6 +45,15 @@
         \li \l {Qt Quick Widgets C++ Classes}
     \endlist
 
+    \section1 Examples
+
+    \list
+        \li \l {Qt Quick Widgets Example}
+        \li \l {QQuickWidget - QQuickView Comparison Example}
+        \li \l {QML Previewer Example}
+    \endlist
+
+
     \section1 Licenses and Attributions
 
     Qt Quick Widget is available under commercial licenses from

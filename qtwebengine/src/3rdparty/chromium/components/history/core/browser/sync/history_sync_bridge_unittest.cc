@@ -30,6 +30,7 @@
 #include "components/sync/test/forwarding_data_type_local_change_processor.h"
 #include "sql/database.h"
 #include "sql/meta_table.h"
+#include "sql/test/test_helpers.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -149,14 +150,14 @@ class FakeDataTypeLocalChangeProcessor
   void Delete(const std::string& storage_key,
               const syncer::DeletionOrigin& origin,
               syncer::MetadataChangeList* metadata_change_list) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
   void UpdateStorageKey(
       const syncer::EntityData& entity_data,
       const std::string& storage_key,
       syncer::MetadataChangeList* metadata_change_list) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
   void UntrackEntityForStorageKey(const std::string& storage_key) override {
@@ -195,14 +196,12 @@ class FakeDataTypeLocalChangeProcessor
 
   base::Time GetEntityCreationTime(
       const std::string& storage_key) const override {
-    NOTREACHED_IN_MIGRATION();
-    return base::Time();
+    NOTREACHED();
   }
 
   base::Time GetEntityModificationTime(
       const std::string& storage_key) const override {
-    NOTREACHED_IN_MIGRATION();
-    return base::Time();
+    NOTREACHED();
   }
 
   void OnModelStarting(syncer::DataTypeSyncBridge* bridge) override {}
@@ -236,14 +235,12 @@ class FakeDataTypeLocalChangeProcessor
 
   base::WeakPtr<syncer::DataTypeControllerDelegate> GetControllerDelegate()
       override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
 
   const sync_pb::EntitySpecifics& GetPossiblyTrimmedRemoteSpecifics(
       const std::string& storage_key) const override {
-    NOTREACHED_IN_MIGRATION();
-    return sync_pb::EntitySpecifics::default_instance();
+    NOTREACHED();
   }
 
   sync_pb::UniquePosition UniquePositionAfter(
@@ -487,7 +484,7 @@ class HistorySyncBridgeTest : public testing::Test {
   base::test::SingleThreadTaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
 
-  sql::Database db_;
+  sql::Database db_{sql::test::kTestTag};
   sql::MetaTable meta_table_;
   HistorySyncMetadataDatabase metadata_db_;
 

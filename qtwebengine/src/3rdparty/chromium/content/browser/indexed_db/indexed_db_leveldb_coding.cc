@@ -207,7 +207,8 @@ void EncodeSortableDouble(double value, std::string* into) {
   }
 
   std::array<uint8_t, 8u> chars;
-  base::span(chars).copy_from(base::U64ToBigEndian(modified_bits));
+  base::span(chars).copy_from_nonoverlapping(
+      base::U64ToBigEndian(modified_bits));
   into->insert(into->end(), chars.begin(), chars.end());
 }
 
@@ -219,8 +220,8 @@ bool DecodeSortableDouble(std::string_view& data, double* output) {
     return false;
   }
 
-  uint64_t host_bits = base::U64FromBigEndian(base::as_bytes(
-      base::span<const char, kLengthInBytes>{data.data(), kLengthInBytes}));
+  uint64_t host_bits =
+      base::U64FromBigEndian(base::as_byte_span(data).first<kLengthInBytes>());
   data = data.substr(kLengthInBytes);
 
   static constexpr uint64_t kSignBit = base::bits::LeftmostBit<uint64_t>();
@@ -336,13 +337,13 @@ void EncodeString(const std::u16string& value, std::string* into) {
 
 void EncodeBinary(const std::string& value, std::string* into) {
   EncodeVarInt(value.length(), into);
-  into->append(value.begin(), value.end());
+  into->append(value);
   DCHECK_GE(into->size(), value.size());
 }
 
 void EncodeBinary(base::span<const uint8_t> value, std::string* into) {
   EncodeVarInt(value.size(), into);
-  into->append(value.begin(), value.end());
+  into->append(base::as_string_view(value));
   DCHECK_GE(into->size(), value.size());
 }
 
@@ -353,8 +354,8 @@ void EncodeStringWithLength(const std::u16string& value, std::string* into) {
 
 void EncodeDouble(double value, std::string* into) {
   // This always has host endianness.
-  const char* p = reinterpret_cast<char*>(&value);
-  into->insert(into->end(), p, p + sizeof(value));
+  into->append(base::as_string_view(
+      base::byte_span_from_ref(base::allow_nonunique_obj, value)));
 }
 
 // Return value is true iff successful.
@@ -604,7 +605,7 @@ bool DecodeBinary(std::string_view* slice, base::span<const uint8_t>* value) {
   if (slice->size() < size)
     return false;
 
-  *value = base::as_bytes(base::make_span(slice->substr(0, size)));
+  *value = base::as_byte_span(*slice).first(size);
   slice->remove_prefix(size);
   return true;
 }
@@ -742,8 +743,8 @@ bool DecodeDouble(std::string_view* slice, double* value) {
     return false;
   }
 
-  base::byte_span_from_ref(*value).copy_from(
-      base::as_byte_span(*slice).first<size>());
+  base::byte_span_from_ref(base::allow_nonunique_obj, *value)
+      .copy_from(base::as_byte_span(*slice).first<size>());
   slice->remove_prefix(size);
   return true;
 }
@@ -769,14 +770,16 @@ bool DecodeIDBKeyPath(std::string_view* slice, IndexedDBKeyPath* value) {
 
   switch (type) {
     case blink::mojom::IDBKeyPathType::Null:
-      DCHECK(slice->empty());
+      if (!slice->empty()) {
+        return false;
+      }
       *value = IndexedDBKeyPath();
       return true;
     case blink::mojom::IDBKeyPathType::String: {
       std::u16string string;
-      if (!DecodeStringWithLength(slice, &string))
+      if (!DecodeStringWithLength(slice, &string) || !slice->empty()) {
         return false;
-      DCHECK(slice->empty());
+      }
       *value = IndexedDBKeyPath(string);
       return true;
     }
@@ -791,12 +794,14 @@ bool DecodeIDBKeyPath(std::string_view* slice, IndexedDBKeyPath* value) {
           return false;
         array.push_back(string);
       }
-      DCHECK(slice->empty());
+      if (!slice->empty()) {
+        return false;
+      }
       *value = IndexedDBKeyPath(array);
       return true;
     }
   }
-  NOTREACHED_IN_MIGRATION();
+
   return false;
 }
 
@@ -864,8 +869,7 @@ bool ConsumeEncodedIDBKey(std::string_view* slice) {
       slice->remove_prefix(sizeof(double));
       return true;
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 bool ExtractEncodedIDBKey(std::string_view* slice, std::string* result) {
@@ -1040,8 +1044,7 @@ int CompareEncodedIDBKeys(std::string_view* slice_a,
     }
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 namespace {
@@ -1074,8 +1077,7 @@ int CompareSuffix(std::string_view* a,
                   std::string_view* b,
                   bool only_compare_index_keys,
                   bool* ok) {
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 }
 
 template <>
@@ -1287,9 +1289,7 @@ int Compare(std::string_view a,
       break;
   }
 
-  NOTREACHED_IN_MIGRATION();
-  *ok = false;
-  return 0;
+  NOTREACHED();
 }
 
 }  // namespace
@@ -1355,9 +1355,7 @@ std::string IndexedDBKeyToDebugString(std::string_view key) {
           break;
         case kScopesPrefixByte:
           result << "Scopes key: "
-                 << leveldb_scopes::KeyToDebugString(base::make_span(
-                        reinterpret_cast<const uint8_t*>(key.data()),
-                        key.size()));
+                 << leveldb_scopes::KeyToDebugString(base::as_byte_span(key));
           break;
         case kDatabaseFreeListTypeByte: {
           DatabaseFreeListKey db_free_list_key;
@@ -1745,8 +1743,7 @@ KeyPrefix::Type KeyPrefix::type() const {
   if (index_id_ >= kMinimumIndexId)
     return INDEX_DATA;
 
-  NOTREACHED_IN_MIGRATION();
-  return INVALID_TYPE;
+  NOTREACHED();
 }
 
 std::string SchemaVersionKey::Encode() {
@@ -1794,8 +1791,7 @@ std::string EarliestCompactionKey::Encode() {
 std::vector<uint8_t> ScopesPrefix::Encode() {
   std::string ret = KeyPrefix::EncodeEmpty();
   ret.push_back(kScopesPrefixByte);
-  auto span = base::make_span(ret);
-  return std::vector<uint8_t>(span.begin(), span.end());
+  return std::vector<uint8_t>(ret.begin(), ret.end());
 }
 
 DatabaseFreeListKey::DatabaseFreeListKey() : database_id_(-1) {}
@@ -2314,7 +2310,7 @@ bool ObjectStoreDataKey::Decode(std::string_view* slice,
 
 std::string ObjectStoreDataKey::Encode(int64_t database_id,
                                        int64_t object_store_id,
-                                       const std::string encoded_user_key) {
+                                       const std::string& encoded_user_key) {
   KeyPrefix prefix(KeyPrefix::CreateWithSpecialIndex(
       database_id, object_store_id, kSpecialIndexNumber));
   std::string ret = prefix.Encode();

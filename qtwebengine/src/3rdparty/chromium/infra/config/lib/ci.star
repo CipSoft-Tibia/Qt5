@@ -39,7 +39,6 @@ def ci_builder(
         tree_closing = args.DEFAULT,
         tree_closing_notifiers = None,
         resultdb_bigquery_exports = None,
-        experiments = None,
         **kwargs):
     """Define a CI builder.
 
@@ -78,21 +77,11 @@ def ci_builder(
         specified by the list's elements:
           chrome-luci-data.chromium.ci_test_results
           chrome-luci-data.chromium.gpu_ci_test_results
-      experiments: a dict of experiment name to the percentage chance (0-100)
-        that it will apply to builds generated from this builder.
       **kwargs: Additional keyword arguments that will be forwarded on to
         `builders.builder`.
     """
     if not branches.matches(branch_selector):
         return
-
-    experiments = experiments or {}
-
-    # TODO(crbug.com/40232671): Remove when the experiment is the default.
-    experiments.setdefault(
-        "chromium_swarming.expose_merge_script_failures",
-        5 if settings.project.startswith("chrome") else 100,
-    )
 
     try_only_kwargs = [k for k in ("mirrors", "try_settings") if k in kwargs]
     if try_only_kwargs:
@@ -130,7 +119,7 @@ def ci_builder(
             predicate = resultdb.test_result_predicate(
                 # Match the "blink_web_tests" target and all of its
                 # flag-specific versions, e.g. "vulkan_swiftshader_blink_web_tests".
-                test_id_regexp = "(ninja://[^/]*blink_web_tests/.+)|(ninja://[^/]*_wpt_tests/.+)",
+                test_id_regexp = "(ninja://[^/]*blink_web_tests/.+)|(ninja://[^/]*_wpt_tests/.+)|(ninja://[^/]*headless_shell_wpt/.+)",
             ),
         ),
     ]
@@ -151,7 +140,6 @@ def ci_builder(
         console_view_entry = console_view_entry,
         resultdb_bigquery_exports = merged_resultdb_bigquery_exports,
         gardener_rotations = gardener_rotations,
-        experiments = experiments,
         resultdb_index_by_timestamp = settings.project.startswith("chromium"),
         **kwargs
     )
@@ -231,6 +219,7 @@ def _gpu_windows_builder(*, name, **kwargs):
     kwargs.setdefault("builderless", True)
     kwargs.setdefault("cores", 8)
     kwargs.setdefault("os", os.WINDOWS_ANY)
+    kwargs.setdefault("ssd", None)
     return ci.builder(name = name, **kwargs)
 
 def thin_tester(

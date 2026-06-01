@@ -73,6 +73,24 @@ qt_internal_extend_target(QmlModels CONDITION QT_FEATURE_qml_delegate_model
         qquickpackage.cpp qquickpackage_p.h
 )
 
+qt_internal_extend_target(QmlModels CONDITION QT_FEATURE_qml_sfpm_model AND QT_FEATURE_proxymodel
+    SOURCES
+        sfpm/qqmlsortfilterproxymodel_p.h sfpm/qqmlsortfilterproxymodel.cpp
+        sfpm/qqmlsortfilterproxymodel_p_p.h sfpm/qsortfilterproxymodelhelper_p.h sfpm/qsortfilterproxymodelhelper.cpp
+        # sfpm filter specific source files
+        sfpm/filters/qqmlfilterbase_p.h sfpm/filters/qqmlfilterbase.cpp
+        sfpm/filters/qqmlfiltercompositor_p.h sfpm/filters/qqmlfiltercompositor.cpp
+        sfpm/filters/qqmlrolefilter_p.h sfpm/filters/qqmlrolefilter.cpp
+        sfpm/filters/qqmlvaluefilter_p.h sfpm/filters/qqmlvaluefilter.cpp
+        sfpm/filters/qqmlfunctionfilter_p.h sfpm/filters/qqmlfunctionfilter.cpp
+        # sfpm sorter specific source files
+        sfpm/sorters/qqmlsorterbase_p.h sfpm/sorters/qqmlsorterbase.cpp
+        sfpm/sorters/qqmlsortercompositor_p.h sfpm/sorters/qqmlsortercompositor.cpp
+        sfpm/sorters/qqmlstringsorter_p.h sfpm/sorters/qqmlstringsorter.cpp
+        sfpm/sorters/qqmlrolesorter_p.h sfpm/sorters/qqmlrolesorter.cpp
+        sfpm/sorters/qqmlfunctionsorter_p.h sfpm/sorters/qqmlfunctionsorter.cpp
+)
+
 qt_internal_add_docs(QmlModels
     doc/qtqmlmodels.qdocconf
 )

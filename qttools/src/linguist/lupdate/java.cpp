@@ -20,6 +20,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 enum { Tok_Eof, Tok_class, Tok_return, Tok_tr,
        Tok_translate, Tok_Ident, Tok_Package,
        Tok_Comment, Tok_String, Tok_Colon, Tok_Dot,
@@ -83,7 +85,7 @@ static QChar getChar()
         return QChar();
     }
     QChar c = yyInStr[yyInPos++];
-    if (c == QLatin1Char('\n'))
+    if (c == u'\n')
         ++yyCurLineNo;
     return c;
 }
@@ -109,28 +111,28 @@ static int getToken()
             if (yyTok != Tok_Dot) {
                 switch ( yyIdent.at(0).toLatin1() ) {
                     case 'r':
-                        if ( yyIdent == QLatin1String("return") )
+                        if (yyIdent == "return"_L1)
                             return Tok_return;
                         break;
                      case 'c':
-                        if ( yyIdent == QLatin1String("class") )
-                            return Tok_class;
-                        break;
+                         if (yyIdent == "class"_L1)
+                             return Tok_class;
+                         break;
                      case 'n':
-                         if ( yyIdent == QLatin1String("null") )
+                         if (yyIdent == "null"_L1)
                              return Tok_null;
                         break;
                 }
             }
             switch ( yyIdent.at(0).toLatin1() ) {
             case 'p':
-                if( yyIdent == QLatin1String("package") )
+                if (yyIdent == "package"_L1)
                     return Tok_Package;
                 break;
             case 't':
-                if ( yyIdent == QLatin1String("tr") )
+                if (yyIdent == "tr"_L1)
                     return Tok_tr;
-                if ( yyIdent == QLatin1String("translate") )
+                if (yyIdent == "translate"_L1)
                     return Tok_translate;
                 }
             return Tok_Ident;
@@ -139,16 +141,16 @@ static int getToken()
 
             case '/':
                 yyCh = getChar();
-                if ( yyCh == QLatin1Char('/') ) {
+                if (yyCh == u'/') {
                     do {
                         yyCh = getChar();
                         if (yyEOF)
                             break;
                         yyComment.append(yyCh);
-                    } while (yyCh != QLatin1Char('\n'));
+                    } while (yyCh != u'\n');
                     return Tok_Comment;
 
-                } else if ( yyCh == QLatin1Char('*') ) {
+                } else if (yyCh == u'*') {
                     bool metAster = false;
                     bool metAsterSlash = false;
 
@@ -161,9 +163,9 @@ static int getToken()
 
                         yyComment.append( yyCh );
 
-                        if ( yyCh == QLatin1Char('*') )
+                        if (yyCh == u'*')
                             metAster = true;
-                        else if ( metAster && yyCh == QLatin1Char('/') )
+                        else if (metAster && yyCh == u'/')
                             metAsterSlash = true;
                         else
                             metAster = false;
@@ -177,11 +179,11 @@ static int getToken()
             case '"':
                 yyCh = getChar();
 
-                while (!yyEOF && yyCh != QLatin1Char('\n') && yyCh != QLatin1Char('"')) {
+                while (!yyEOF && yyCh != u'\n' && yyCh != u'"') {
 
-                    if ( yyCh == QLatin1Char('\\') ) {
+                    if (yyCh == u'\\') {
                         yyCh = getChar();
-                        if ( yyCh == QLatin1Char('u') ) {
+                        if (yyCh == u'u') {
                             yyCh = getChar();
                             uint unicode(0);
                             for (int i = 4; i > 0; --i) {
@@ -200,12 +202,14 @@ static int getToken()
                                 yyCh = getChar();
                             }
                             yyString.append(QChar(unicode));
-                        }
-                        else if ( yyCh == QLatin1Char('\n') ) {
+                        } else if (yyCh == u'\n') {
                             yyCh = getChar();
-                        }
-                        else {
-                            yyString.append( QLatin1Char(backTab[strchr( tab, yyCh.toLatin1() ) - tab]) );
+                        } else if (const char *p = strchr(tab, yyCh.toLatin1()); p) {
+                            yyString.append(QLatin1Char(backTab[p - tab]));
+                            yyCh = getChar();
+                        } else {
+                            yyMsg() << "Invalid escaped character \'\\" << qPrintable(yyCh)
+                                    << "\'\n";
                             yyCh = getChar();
                         }
                     } else {
@@ -214,7 +218,7 @@ static int getToken()
                     }
                 }
 
-                if ( yyCh != QLatin1Char('"') )
+                if (yyCh != u'"')
                     yyMsg() << "Unterminated string.\n";
 
                 yyCh = getChar();
@@ -227,11 +231,11 @@ static int getToken()
             case '\'':
                 yyCh = getChar();
 
-                if ( yyCh == QLatin1Char('\\') )
+                if (yyCh == u'\\')
                     yyCh = getChar();
                 do {
                     yyCh = getChar();
-                } while (!yyEOF && yyCh != QLatin1Char('\''));
+                } while (!yyEOF && yyCh != u'\'');
                 yyCh = getChar();
                 break;
             case '{':
@@ -263,11 +267,11 @@ static int getToken()
                 return Tok_Semicolon;
             case '+':
                 yyCh = getChar();
-                if (yyCh == QLatin1Char('+')) {
+                if (yyCh == u'+') {
                     yyCh = getChar();
                     return Tok_PlusPlus;
                 }
-                if( yyCh == QLatin1Char('=') ){
+                if (yyCh == u'=') {
                     yyCh = getChar();
                     return Tok_PlusEq;
                 }
@@ -286,7 +290,7 @@ static int getToken()
                     QByteArray ba;
                     ba += yyCh.toLatin1();
                     yyCh = getChar();
-                    bool hex = yyCh == QLatin1Char('x');
+                    bool hex = yyCh == u'x';
                     if ( hex ) {
                         ba += yyCh.toLatin1();
                         yyCh = getChar();
@@ -398,9 +402,9 @@ static const QString context()
       for (int i = 0; i < yyScope.size(); ++i) {
          if (yyScope.at(i)->type == Scope::Clazz) {
              if (innerClass)
-                 context.append(QLatin1String("$"));
+                 context.append("$"_L1);
              else
-                 context.append(QLatin1String("."));
+                 context.append("."_L1);
 
              context.append(yyScope.at(i)->name);
              innerClass = true;
@@ -500,7 +504,7 @@ static void parse(Translator *tor, ConversionData &cd)
             break;
 
         case Tok_Comment:
-            if (yyComment.startsWith(QLatin1Char(':'))) {
+            if (yyComment.startsWith(u':')) {
                 yyComment.remove(0, 1);
                 extracomment.append(yyComment);
             }
@@ -535,7 +539,7 @@ static void parse(Translator *tor, ConversionData &cd)
                         yyPackage.append(yyIdent);
                         break;
                     case Tok_Dot:
-                        yyPackage.append(QLatin1String("."));
+                        yyPackage.append("."_L1);
                         break;
                     default:
                          yyMsg() << "'package' must be followed by package name.\n";

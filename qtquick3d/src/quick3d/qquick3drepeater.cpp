@@ -62,16 +62,70 @@ QQuick3DRepeater::QQuick3DRepeater(QQuick3DNode *parent)
     , m_model(nullptr)
     , m_itemCount(0)
     , m_ownModel(false)
-    , m_dataSourceIsObject(false)
     , m_delegateValidated(false)
     , m_explicitDelegate(false)
+    , m_explicitDelegateModelAccess(false)
 {
 }
 
 QQuick3DRepeater::~QQuick3DRepeater()
 {
-    if (m_ownModel)
+    if (m_ownModel) {
         delete m_model;
+    } else {
+        QQmlDelegateModelPointer model(m_model);
+        disconnectModel(&model);
+    }
+}
+
+void QQuick3DRepeater::connectModel(QQmlDelegateModelPointer *model)
+{
+    QQmlInstanceModel *instanceModel = model->instanceModel();
+    if (!instanceModel)
+        return;
+
+    connect(instanceModel, &QQmlInstanceModel::modelUpdated,
+            this, &QQuick3DRepeater::modelUpdated);
+    connect(instanceModel, &QQmlInstanceModel::createdItem,
+            this, &QQuick3DRepeater::createdObject);
+    connect(instanceModel, &QQmlInstanceModel::initItem,
+            this, &QQuick3DRepeater::initObject);
+    if (QQmlDelegateModel *dataModel = model->delegateModel()) {
+        QObject::connect(
+                dataModel, &QQmlDelegateModel::delegateChanged,
+                this, &QQuick3DRepeater::applyDelegateChange);
+        if (m_ownModel) {
+            QObject::connect(
+                    dataModel, &QQmlDelegateModel::modelChanged,
+                    this, &QQuick3DRepeater::modelChanged);
+        }
+    }
+
+    regenerate();
+}
+
+void QQuick3DRepeater::disconnectModel(QQmlDelegateModelPointer *model)
+{
+    QQmlInstanceModel *instanceModel = model->instanceModel();
+    if (!instanceModel)
+        return;
+
+    disconnect(instanceModel, &QQmlInstanceModel::modelUpdated,
+               this, &QQuick3DRepeater::modelUpdated);
+    disconnect(instanceModel, &QQmlInstanceModel::createdItem,
+               this, &QQuick3DRepeater::createdObject);
+    disconnect(instanceModel, &QQmlInstanceModel::initItem,
+               this, &QQuick3DRepeater::initObject);
+    if (QQmlDelegateModel *delegateModel = model->delegateModel()) {
+        QObject::disconnect(
+                delegateModel, &QQmlDelegateModel::delegateChanged,
+                this, &QQuick3DRepeater::applyDelegateChange);
+        if (m_ownModel) {
+            QObject::disconnect(
+                    delegateModel, &QQmlDelegateModel::modelChanged,
+                    this, &QQuick3DRepeater::modelChanged);
+        }
+    }
 }
 
 /*!
@@ -95,13 +149,11 @@ QQuick3DRepeater::~QQuick3DRepeater()
 
 QVariant QQuick3DRepeater::model() const
 {
-    if (m_dataSourceIsObject) {
-        QObject *o = m_dataSourceAsObject;
-        return QVariant::fromValue(o);
-    }
-
-    return m_dataSource;
-
+    if (m_ownModel)
+        return static_cast<QQmlDelegateModel *>(m_model.data())->model();
+    if (m_model)
+        return QVariant::fromValue(m_model.data());
+    return QVariant();
 }
 
 void QQuick3DRepeater::applyDelegateChange()
@@ -131,37 +183,29 @@ void QQuick3DRepeater::setModel(const QVariant &m)
     if (model.userType() == qMetaTypeId<QJSValue>())
         model = model.value<QJSValue>().toVariant();
 
-    if (m_dataSource == model)
+    QQmlDelegateModelPointer oldModel(m_model);
+    if (m_ownModel) {
+        if (oldModel.delegateModel()->model() == model)
+            return;
+    } else if (QVariant::fromValue(m_model) == model) {
         return;
-
-    clear();
-    if (m_model) {
-        qmlobject_disconnect(m_model, QQmlInstanceModel, SIGNAL(modelUpdated(QQmlChangeSet,bool)),
-                this, QQuick3DRepeater, SLOT(modelUpdated(QQmlChangeSet,bool)));
-        qmlobject_disconnect(m_model, QQmlInstanceModel, SIGNAL(createdItem(int,QObject*)),
-                this, QQuick3DRepeater, SLOT(createdObject(int,QObject*)));
-        qmlobject_disconnect(m_model, QQmlInstanceModel, SIGNAL(initItem(int,QObject*)),
-                this, QQuick3DRepeater, SLOT(initObject(int,QObject*)));
-        if (QQmlDelegateModel *delegateModel = qobject_cast<QQmlDelegateModel*>(m_model)) {
-            QObject::disconnect(
-                    delegateModel, &QQmlDelegateModel::delegateChanged,
-                    this, &QQuick3DRepeater::applyDelegateChange);
-        }
     }
 
-    QQmlInstanceModel *oldModel = m_model;
+    clear();
+
+    disconnectModel(&oldModel);
+
     m_model = nullptr;
-    m_dataSource = model;
-    QObject *object = qvariant_cast<QObject*>(model);
-    m_dataSourceAsObject = object;
-    m_dataSourceIsObject = object != nullptr;
-    QQmlInstanceModel *vim = nullptr;
-    if (object && (vim = qobject_cast<QQmlInstanceModel *>(object))) {
+
+    QObject *object = qvariant_cast<QObject *>(model);
+
+    QQmlDelegateModelPointer newModel(qobject_cast<QQmlInstanceModel *>(object));
+    if (newModel) {
         if (m_explicitDelegate) {
             QQmlComponent *delegate = nullptr;
-            if (QQmlDelegateModel *old = qobject_cast<QQmlDelegateModel *>(oldModel))
+            if (QQmlDelegateModel *old = oldModel.delegateModel())
                 delegate = old->delegate();
-            if (QQmlDelegateModel *delegateModel = qobject_cast<QQmlDelegateModel *>(vim)) {
+            if (QQmlDelegateModel *delegateModel = newModel.delegateModel()) {
                 delegateModel->setDelegate(delegate);
             } else if (delegate) {
                 qmlWarning(this) << "Cannot retain explicitly set delegate on non-DelegateModel";
@@ -169,40 +213,30 @@ void QQuick3DRepeater::setModel(const QVariant &m)
             }
         }
         if (m_ownModel) {
-            delete oldModel;
+            delete oldModel.instanceModel();
             m_ownModel = false;
         }
-        m_model = vim;
+        m_model = newModel.instanceModel();
+    } else if (m_ownModel) {
+        // m_ownModel can only be set if the old model is a QQmlDelegateModel.
+        Q_ASSERT(oldModel.delegateModel());
+        newModel = oldModel;
+        m_model = newModel.instanceModel();
+        newModel.delegateModel()->setModel(model);
     } else {
-        if (m_ownModel) {
-            m_model = oldModel;
-        } else {
-            if (m_explicitDelegate) {
-                QQmlComponent *delegate = nullptr;
-                if (QQmlDelegateModel *old = qobject_cast<QQmlDelegateModel *>(oldModel))
-                    delegate = old->delegate();
-                createDelegateModel()->setDelegate(delegate);
-            } else {
-                createDelegateModel();
-            }
+        newModel = createDelegateModel();
+        if (m_explicitDelegate) {
+            QQmlComponent *delegate = nullptr;
+            if (QQmlDelegateModel *old = oldModel.delegateModel())
+                delegate = old->delegate();
+            newModel.delegateModel()->setDelegate(delegate);
         }
-        if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel*>(m_model))
-            dataModel->setModel(model);
+
+        newModel.delegateModel()->setModel(model);
     }
-    if (m_model) {
-        qmlobject_connect(m_model, QQmlInstanceModel, SIGNAL(modelUpdated(QQmlChangeSet,bool)),
-                this, QQuick3DRepeater, SLOT(modelUpdated(QQmlChangeSet,bool)));
-        qmlobject_connect(m_model, QQmlInstanceModel, SIGNAL(createdItem(int,QObject*)),
-                this, QQuick3DRepeater, SLOT(createdObject(int,QObject*)));
-        qmlobject_connect(m_model, QQmlInstanceModel, SIGNAL(initItem(int,QObject*)),
-                this, QQuick3DRepeater, SLOT(initObject(int,QObject*)));
-        if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel *>(m_model)) {
-            QObject::connect(
-                    dataModel, &QQmlDelegateModel::delegateChanged,
-                    this, &QQuick3DRepeater::applyDelegateChange);
-        }
-        regenerate();
-    }
+
+    connectModel(&newModel);
+
     emit modelChanged();
     emit countChanged();
 }
@@ -308,6 +342,80 @@ QQuick3DObject *QQuick3DRepeater::objectAt(int index) const
     if (index >= 0 && index < m_deletables.size())
         return m_deletables[index];
     return nullptr;
+}
+
+/*!
+    \qmlproperty enumeration QtQuick3D::Repeater3D::delegateModelAccess
+    \since 6.10
+
+    This property determines how delegates can access the model.
+
+    \value DelegateModel.ReadOnly
+        Prohibit delegates from writing the model via either context properties,
+        the \c model object, or required properties.
+
+    \value DelegateModel.ReadWrite
+        Allow delegates to write the model via either context properties,
+        the \c model object, or required properties.
+
+    \value DelegateModel.Qt5ReadWrite
+        Allow delegates to write the model via the \c model object and context
+        properties but \e not via required properties.
+
+    The default is \c DelegateModel.Qt5ReadWrite.
+
+    \sa {Models and Views in Qt Quick#Changing Model Data}
+*/
+QQmlDelegateModel::DelegateModelAccess QQuick3DRepeater::delegateModelAccess() const
+{
+    if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel *>(m_model))
+        return dataModel->delegateModelAccess();
+    return QQmlDelegateModel::Qt5ReadWrite;
+}
+
+void QQuick3DRepeater::setDelegateModelAccess(QQmlDelegateModel::DelegateModelAccess delegateModelAccess)
+{
+    const auto setExplicitDelegateModelAccess = [&](QQmlDelegateModel *delegateModel) {
+        delegateModel->setDelegateModelAccess(delegateModelAccess);
+        m_explicitDelegateModelAccess = true;
+    };
+
+    if (!m_model) {
+        if (delegateModelAccess == QQmlDelegateModel::Qt5ReadWrite) {
+            // Explicitly set delegateModelAccess to Legacy. We can do this without model.
+            m_explicitDelegateModelAccess = true;
+            return;
+        }
+
+        QQmlDelegateModel *delegateModel = new QQmlDelegateModel(qmlContext(this), this);
+        m_model = delegateModel;
+        m_ownModel = true;
+        if (isComponentComplete())
+            delegateModel->componentComplete();
+
+        setExplicitDelegateModelAccess(delegateModel);
+
+        // The new model is not connected to applyDelegateModelAccessChange, yet. We only do this
+        // once there is actual data, via an explicit setModel(). So we have to manually emit the
+        // delegateModelAccessChanged() here.
+        emit delegateModelAccessChanged();
+        return;
+    }
+
+    if (QQmlDelegateModel *delegateModel = qobject_cast<QQmlDelegateModel *>(m_model)) {
+        // Disable the warning in applyDelegateModelAccessChange since the new delegate model
+        // access is also explicit.
+        m_explicitDelegateModelAccess = false;
+        setExplicitDelegateModelAccess(delegateModel);
+        return;
+    }
+
+    if (delegateModelAccess == QQmlDelegateModel::Qt5ReadWrite) {
+        m_explicitDelegateModelAccess = true; // Explicitly set null delegate always works
+    } else {
+        qmlWarning(this) << "Cannot set a delegateModelAccess on an explicitly provided "
+                            "non-DelegateModel";
+    }
 }
 
 void QQuick3DRepeater::clear()

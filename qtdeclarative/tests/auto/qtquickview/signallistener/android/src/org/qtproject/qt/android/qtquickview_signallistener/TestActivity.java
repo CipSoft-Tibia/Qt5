@@ -21,6 +21,7 @@ public class TestActivity extends Activity implements QtQmlStatusChangeListener
     native void onBoolSignal(Boolean value);
     native void onDoubleSignal(Double value);
     native void onStringSignal(String value);
+    native void onManyTypeSignal(Integer i, Boolean v, Double d, String s);
 
     private final TestView m_testView = new TestView();
     private QtQuickView m_quickView;
@@ -54,6 +55,10 @@ public class TestActivity extends Activity implements QtQmlStatusChangeListener
                     (String unused, Double value) -> onDoubleSignal(value));
             m_testView.connectStringSignalListener(
                     (String unused, String value) -> onStringSignal(value));
+            m_testView.connectManyTypeArgSignalListener((Integer i,
+                                                        Boolean b,
+                                                        Double d,
+                                                        String s) -> onManyTypeSignal(i, b, d, s));
         } else if (qtQmlStatus == QtQmlStatus.ERROR) {
             finish(); // Error loading QML tests, just exit the app
         }

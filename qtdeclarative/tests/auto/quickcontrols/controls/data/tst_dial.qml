@@ -659,10 +659,12 @@ TestCase {
         dial.from = 1
         dial.to = 8
         dial.stepSize = 1
+        dial.forceActiveFocus()
+        verify(dial.activeFocus)
 
         for (let i = 1; i < 8; ++i) {
             // compare as strings to avoid a fuzzy compare; we want an exact match
-            compare(""+dial.value, ""+1)
+            compare(""+dial.value, ""+i)
             keyClick(Qt.Key_Right)
         }
     }

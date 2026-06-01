@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qaccessibilityhints_p.h"
 #include <qstylehints.h>
 #include "qstylehints_p.h"
 #include <qpa/qplatformintegration.h>
@@ -177,6 +178,22 @@ void QStyleHints::setColorScheme(Qt::ColorScheme scheme)
     Restores the color scheme to the system's current color scheme.
 */
 
+
+/*!
+    \property QStyleHints::accessibility
+    \brief The application's accessibility hints.
+
+    The accessibility hints encapsulates platform dependent accessibility settings
+    such as whether the user wishes the application to be in high contrast or not.
+
+    \sa QAccessibilityHints
+    \since 6.10
+*/
+const QAccessibilityHints *QStyleHints::accessibility() const
+{
+    Q_D(const QStyleHints);
+    return d->accessibilityHints();
+}
 
 /*!
     Sets the \a mousePressAndHoldInterval.
@@ -477,6 +494,20 @@ void QStyleHints::setContextMenuTrigger(Qt::ContextMenuTrigger contextMenuTrigge
 }
 
 /*!
+    \property QStyleHints::menuSelectionWraps
+    \since 6.10
+    \brief menu selection wraps around.
+
+    Returns \c true if menu selection wraps. That is, whether key navigation moves
+    the selection to the first menu item again after the last menu item has been
+    reached, and vice versa.
+*/
+bool QStyleHints::menuSelectionWraps() const
+{
+    return themeableHint(QPlatformTheme::MenuSelectionWraps).toBool();
+}
+
+/*!
     \property QStyleHints::passwordMaskDelay
     \brief the time, in milliseconds, a typed letter is displayed unshrouded
     in a text input field in password mode.
@@ -689,6 +720,26 @@ void QStyleHintsPrivate::updateColorScheme(Qt::ColorScheme colorScheme)
     m_colorScheme = colorScheme;
     Q_Q(QStyleHints);
     emit q->colorSchemeChanged(colorScheme);
+}
+
+/*!
+    \internal
+
+    Helper function that updates the style hints when the theme changes
+*/
+void QStyleHintsPrivate::update(const QPlatformTheme *theme)
+{
+    Q_ASSERT(theme);
+    updateColorScheme(theme->colorScheme());
+    QAccessibilityHintsPrivate::get(accessibilityHints())->updateContrastPreference(theme->contrastPreference());
+}
+
+QAccessibilityHints *QStyleHintsPrivate::accessibilityHints() const
+{
+    Q_Q(const QStyleHints);
+    if (!m_accessibilityHints)
+        const_cast<QStyleHintsPrivate *>(this)->m_accessibilityHints = new QAccessibilityHints(const_cast<QStyleHints*>(q));
+    return m_accessibilityHints;
 }
 
 QStyleHintsPrivate *QStyleHintsPrivate::get(QStyleHints *q)

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qdebug.h>
 #include "qundostack.h"
@@ -418,13 +419,24 @@ void QUndoStackPrivate::setIndex(int idx, bool clean)
 
     bool was_clean = index == clean_index;
 
-    if (idx != index) {
+    const bool indexChanged = idx != index;
+    if (indexChanged) {
         index = idx;
         emit q->indexChanged(index);
-        emit q->canUndoChanged(q->canUndo());
-        emit q->undoTextChanged(q->undoText());
-        emit q->canRedoChanged(q->canRedo());
-        emit q->redoTextChanged(q->redoText());
+    }
+
+    if (ActionState newUndoState{q->canUndo(), q->undoText()};
+        indexChanged || newUndoState != undoActionState) {
+        undoActionState = std::move(newUndoState);
+        emit q->canUndoChanged(undoActionState.enabled);
+        emit q->undoTextChanged(undoActionState.text);
+    }
+
+    if (ActionState newRedoState{q->canRedo(), q->redoText()};
+        indexChanged || newRedoState != redoActionState) {
+        redoActionState = std::move(newRedoState);
+        emit q->canRedoChanged(redoActionState.enabled);
+        emit q->redoTextChanged(redoActionState.text);
     }
 
     if (clean)
@@ -795,6 +807,8 @@ void QUndoStack::redo()
 
         if (d->clean_index > idx)
             resetClean();
+
+        d->setIndex(idx, false);
     } else {
         d->setIndex(d->index + 1, false);
     }

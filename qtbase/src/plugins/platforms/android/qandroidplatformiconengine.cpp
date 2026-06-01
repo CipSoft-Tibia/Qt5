@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qandroidplatformiconengine.h"
 
@@ -447,6 +448,7 @@ static QString getGlyphs(QStringView iconName)
         {"emblem-system"_L1, u"\ue8b8"},
         //{"emblem-unreadable"_L1, u"\u"},
         {"folder"_L1, u"\ue2c7"},
+        {"text-x-generic"_L1, u"\ue66d"},
         //{"folder-remote"_L1, u"\u"},
         {"network-server"_L1, u"\ue875"},
         {"network-workgroup"_L1, u"\ue1a0"},

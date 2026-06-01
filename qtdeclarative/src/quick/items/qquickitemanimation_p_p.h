@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKANIMATION_P_H
 #define QQUICKANIMATION_P_H
@@ -59,7 +60,6 @@ public:
         fromIsSourced(false), fromIsDefined(false), toIsDefined(false),
         toX(0), toY(0), currentV(0), orientation(QQuickPathAnimation::Fixed),
         entryInterval(0), exitInterval(0) {}
-    ~QQuickPathAnimationUpdater() {}
 
     void setValue(qreal v) override;
 

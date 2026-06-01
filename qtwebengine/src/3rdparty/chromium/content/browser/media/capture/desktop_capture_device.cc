@@ -30,7 +30,6 @@
 #include "base/timer/timer.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "content/browser/media/capture/desktop_capture_device_uma_types.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -55,10 +54,6 @@
 #include "third_party/webrtc/modules/desktop_capture/fake_desktop_capturer.h"
 #include "third_party/webrtc/modules/desktop_capture/mouse_cursor_monitor.h"
 #include "ui/gfx/icc_profile.h"
-
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-#include "content/browser/media/capture/desktop_capturer_lacros.h"
-#endif
 
 namespace content {
 
@@ -647,7 +642,8 @@ void DesktopCaptureDevice::Core::OnCaptureResult(
           gfx::Size(output_size.width(), output_size.height()),
           requested_frame_rate_, media::PIXEL_FORMAT_ARGB),
       frame_color_space, 0 /* clockwise_rotation */, false /* flip_y */, now,
-      now - first_ref_time_, std::nullopt);
+      now - first_ref_time_, /*capture_begin_timestamp=*/std::nullopt,
+      /*metadata=*/std::nullopt);
 
   ScheduleNextCaptureFrame();
 }
@@ -815,16 +811,8 @@ std::unique_ptr<media::VideoCaptureDevice> DesktopCaptureDevice::Create(
 
   switch (source.type) {
     case DesktopMediaID::TYPE_SCREEN: {
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-      // TODO(crbug.com/40135428): Handle options.
-      std::unique_ptr<webrtc::DesktopCapturer> screen_capturer =
-          std::make_unique<DesktopCapturerLacros>(
-              DesktopCapturerLacros::CaptureType::kScreen,
-              webrtc::DesktopCaptureOptions());
-#else
       std::unique_ptr<webrtc::DesktopCapturer> screen_capturer(
           webrtc::DesktopCapturer::CreateScreenCapturer(options));
-#endif
       if (screen_capturer && screen_capturer->SelectSource(source.id)) {
         capturer = std::make_unique<webrtc::DesktopAndCursorComposer>(
             std::move(screen_capturer), options);
@@ -837,14 +825,8 @@ std::unique_ptr<media::VideoCaptureDevice> DesktopCaptureDevice::Create(
     }
 
     case DesktopMediaID::TYPE_WINDOW: {
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-      std::unique_ptr<webrtc::DesktopCapturer> window_capturer(
-          new DesktopCapturerLacros(DesktopCapturerLacros::CaptureType::kWindow,
-                                    webrtc::DesktopCaptureOptions()));
-#else
       std::unique_ptr<webrtc::DesktopCapturer> window_capturer =
           webrtc::DesktopCapturer::CreateWindowCapturer(options);
-#endif
       if (window_capturer && window_capturer->SelectSource(source.id)) {
         capturer = std::make_unique<webrtc::DesktopAndCursorComposer>(
             std::move(window_capturer), options);
@@ -854,7 +836,7 @@ std::unique_ptr<media::VideoCaptureDevice> DesktopCaptureDevice::Create(
     }
 
     default: {
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
     }
   }
 
@@ -865,7 +847,11 @@ std::unique_ptr<media::VideoCaptureDevice> DesktopCaptureDevice::Create(
 }
 
 DesktopCaptureDevice::~DesktopCaptureDevice() {
-  DCHECK(!core_);
+  // There is an edge case that `StopAndDeAllocate()` is not called before
+  // destruction, which might happen during shutdown (can't repro it though).
+  // It calls `StopAndDeAllocate()` here in order to ensure `core_` is deleted
+  // on the `desktopCaptureThread`.
+  StopAndDeAllocate();
 }
 
 void DesktopCaptureDevice::AllocateAndStart(
@@ -923,24 +909,18 @@ DesktopCaptureDevice::DesktopCaptureDevice(
       base::FeatureList::IsEnabled(features::kWebRtcAllowWgcScreenZeroHz);
   const bool wgc_window_zero_hertz =
       base::FeatureList::IsEnabled(features::kWebRtcAllowWgcWindowZeroHz);
-  // TODO(crbug.com/40259358): 0Hz mode seems to cause a flickering
-  // cursor in some setups. This flag allows us to disable 0Hz when needed.
-  const bool dxgi_gdi_zero_hertz =
-      base::FeatureList::IsEnabled(features::kWebRtcAllowDxgiGdiZeroHz);
   const bool wgc_screen_capturer =
       base::FeatureList::IsEnabled(features::kWebRtcAllowWgcScreenCapturer);
   const bool wgc_window_capturer =
       base::FeatureList::IsEnabled(features::kWebRtcAllowWgcWindowCapturer);
   if (!wgc_window_capturer && !wgc_screen_capturer) {
-    zero_hertz_is_supported = dxgi_gdi_zero_hertz;
+    zero_hertz_is_supported = true;
   } else if (!wgc_window_capturer && wgc_screen_capturer) {
-    zero_hertz_is_supported = (type == DesktopMediaID::TYPE_SCREEN)
-                                  ? wgc_screen_zero_hertz
-                                  : dxgi_gdi_zero_hertz;
+    zero_hertz_is_supported =
+        (type == DesktopMediaID::TYPE_SCREEN) ? wgc_screen_zero_hertz : true;
   } else if (wgc_window_capturer && !wgc_screen_capturer) {
-    zero_hertz_is_supported = (type == DesktopMediaID::TYPE_WINDOW)
-                                  ? wgc_window_zero_hertz
-                                  : dxgi_gdi_zero_hertz;
+    zero_hertz_is_supported =
+        (type == DesktopMediaID::TYPE_WINDOW) ? wgc_window_zero_hertz : true;
   } else {
     if (type == DesktopMediaID::TYPE_SCREEN) {
       zero_hertz_is_supported = wgc_screen_zero_hertz;

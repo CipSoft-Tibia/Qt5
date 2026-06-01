@@ -25,7 +25,9 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "quiche/http2/core/spdy_protocol.h"
 #include "quiche/quic/core/frames/quic_connection_close_frame.h"
+#include "quiche/quic/core/frames/quic_reset_stream_at_frame.h"
 #include "quiche/quic/core/frames/quic_rst_stream_frame.h"
 #include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_flow_controller.h"
@@ -39,7 +41,6 @@
 #include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/common/platform/api/quiche_mem_slice.h"
 #include "quiche/common/platform/api/quiche_reference_counted.h"
-#include "quiche/spdy/core/spdy_protocol.h"
 
 namespace quic {
 
@@ -82,6 +83,8 @@ class QUICHE_EXPORT PendingStream
   // If the final offset violates flow control, the connection will be closed.
   void OnRstStreamFrame(const QuicRstStreamFrame& frame);
 
+  void OnResetStreamAtFrame(const QuicResetStreamAtFrame& frame);
+
   void OnWindowUpdateFrame(const QuicWindowUpdateFrame& frame);
 
   void OnStopSending(QuicResetStreamError stop_sending_error_code);
@@ -103,6 +106,10 @@ class QUICHE_EXPORT PendingStream
   void StopReading();
 
   QuicTime creation_time() const { return creation_time_; }
+
+  std::optional<QuicResetStreamAtFrame> buffered_reset_stream_at() const {
+    return buffered_reset_stream_at_;
+  }
 
  private:
   friend class QuicStream;
@@ -138,6 +145,9 @@ class QUICHE_EXPORT PendingStream
   std::optional<QuicResetStreamError> stop_sending_error_code_;
   // The time when this pending stream is created.
   const QuicTime creation_time_;
+
+  // When RESET_STREAM_AT arrives,buffer it for when reliable_size is consumed.
+  std::optional<QuicResetStreamAtFrame> buffered_reset_stream_at_;
 };
 
 class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
@@ -171,9 +181,21 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
   // interface.
   void Reset(QuicRstStreamErrorCode error);
 
-  // Reset() sends both RESET_STREAM and STOP_SENDING; the two methods below
-  // allow to send only one of those.
+  // Record the current offset as the reliable size to be delivered if a partial
+  // reset is called. Returns false if a RST_STREAM or RESET_STREAM_AT has
+  // already been sent, the stream is receive-only, or the connection does not
+  // support RESET_STREAM_AT.
+  bool SetReliableSize();
+
+  // Send a RESET_STREAM_AT with a reliable size that had earlier been set by
+  // SetReliableSize(). Does not send STOP_SENDING and does not close the read
+  // side. Will trigger QUIC_BUG if reliable_size_ is zero.
+  void PartialResetWriteSide(QuicResetStreamError error);
+  // TODO(rch): Delete this function once Envoy has migrated to
+  // PartialResetWriteSide.
   void ResetWriteSide(QuicResetStreamError error);
+  // Reset() sends both RESET_STREAM and STOP_SENDING; this allows the caller to
+  // send only STOP_SENDING.
   void SendStopSending(QuicResetStreamError error);
 
   // Called by the subclass or the sequencer to close the entire connection from
@@ -195,6 +217,9 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
   // Called by the session when the endpoint receives a RST_STREAM from the
   // peer.
   virtual void OnStreamReset(const QuicRstStreamFrame& frame);
+  // Called by the session when the endpoint receives a RESET_STREAM_AT from the
+  // peer.
+  virtual void OnResetStreamAtFrame(const QuicResetStreamAtFrame& frame);
 
   // Called by the session when the endpoint receives or sends a connection
   // close, and should immediately close the stream.
@@ -399,6 +424,9 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
   // indicating it can start processing data.
   void OnStreamCreatedFromPendingStream();
 
+  // Called by the sessionwhen a closed stream is about to be destroyed.
+  virtual void OnSoonToBeDestroyed();
+
   void DisableConnectionFlowControlForThisStream() {
     stream_contributes_to_connection_flow_control_ = false;
   }
@@ -454,6 +482,8 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
 
   // Send RESET_STREAM if it hasn't been sent yet.
   void MaybeSendRstStream(QuicResetStreamError error);
+  // Send RESET_STREAM_AT if neither it nor RESET_STREAM has been sent yet.
+  void MaybeSendResetStreamAt(QuicResetStreamError error);
 
   // Convenience wrappers for two methods above.
   void MaybeSendRstStream(QuicRstStreamErrorCode error) {
@@ -470,6 +500,13 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
   // Can be called by the subclass or internally.
   // Does not send a FIN.  May cause the stream to be closed.
   virtual void CloseWriteSide();
+
+  // Called when any new data is acked.
+  virtual void OnNewDataAcked(QuicStreamOffset offset,
+                              QuicByteCount data_length,
+                              QuicByteCount newly_acked_length,
+                              QuicTime receive_timestamp,
+                              QuicTime::Delta ack_delay_time);
 
   void set_rst_received(bool rst_received) { rst_received_ = rst_received; }
   void set_stream_error(QuicResetStreamError error) { stream_error_ = error; }
@@ -497,6 +534,10 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
   std::optional<QuicByteCount> GetSendWindow() const;
   std::optional<QuicByteCount> GetReceiveWindow() const;
 
+  bool notify_ack_listener_earlier() const {
+    return notify_ack_listener_earlier_;
+  }
+
  private:
   friend class test::QuicStreamPeer;
   friend class QuicStreamUtils;
@@ -522,6 +563,10 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
 
   // Returns true if deadline_ has passed.
   bool HasDeadlinePassed() const;
+
+  // If we've received a RST_STREAM_AT and have processed all remaining data,
+  // then process buffered_reset_stream_at_.
+  void MaybeCloseStreamWithBufferedReset();
 
   QuicStreamSequencer sequencer_;
   QuicStreamId id_;
@@ -565,10 +610,11 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
   // StreamFrame with the FIN set.
   bool fin_received_;
 
-  // True if an RST_STREAM has been sent to the session.
-  // In combination with fin_sent_, used to ensure that a FIN and/or a
-  // RST_STREAM is always sent to terminate the stream.
+  // True if an RST_STREAM or RESET_STREAM_AT has been sent to the session.
+  // In combination with fin_sent_, used to ensure that a FIN, RST_STREAM, or
+  // RESET_STREAM_AT is always sent to terminate the stream.
   bool rst_sent_;
+  bool rst_stream_at_sent_;
 
   // True if this stream has received a RST_STREAM frame.
   bool rst_received_;
@@ -622,7 +668,17 @@ class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
   // before being moved to this QuicStream.
   const QuicTime::Delta pending_duration_;
 
+  // When RESET_STREAM_AT arrives,buffer it for when reliable_size is consumed.
+  std::optional<QuicResetStreamAtFrame> buffered_reset_stream_at_;
+
   Perspective perspective_;
+
+  const bool notify_ack_listener_earlier_ =
+      GetQuicReloadableFlag(quic_notify_ack_listener_earlier);
+
+  // If the stream is reset, outgoing data up to reliable_size_will be
+  // delivered (and acknowledged) before the write side of the stream is closed.
+  QuicStreamOffset reliable_size_;
 };
 
 }  // namespace quic

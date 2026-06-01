@@ -35,6 +35,7 @@ qt_internal_extend_target(QmlCore CONDITION QT_FEATURE_settings
 qt_internal_extend_target(QmlCore CONDITION QT_FEATURE_permissions
     SOURCES
         qqmlpermissions_p.h
+        qqmlpermissions.cpp
 )
 
 qt_internal_add_docs(QmlCore

@@ -65,7 +65,7 @@
     </message>
     <message>
         <source>The device supports only the ignoring policy</source>
-        <translation>Aygıt yalnızca yok sayma politikasını destekliyor</translation>
+        <translation type="vanished">Aygıt yalnızca yok sayma politikasını destekliyor</translation>
     </message>
 </context>
 </TS>

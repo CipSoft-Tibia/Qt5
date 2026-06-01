@@ -131,16 +131,16 @@ FieldFilter FieldFilter::defaultFilter()
     QMultiMap<QString, QString> fieldFilterAdd { { QLatin1String("ScriptExpression"),
                                                    QLatin1String("code") } };
     QMultiMap<QString, QString> fieldFilterRemove{
-        { QString(), QString::fromUtf16(Fields::code) },
-        { QString(), QString::fromUtf16(Fields::postCode) },
-        { QString(), QString::fromUtf16(Fields::preCode) },
-        { QString(), QString::fromUtf16(Fields::importScope) },
-        { QString(), QString::fromUtf16(Fields::fileLocationsTree) },
-        { QString(), QString::fromUtf16(Fields::astComments) },
-        { QString(), QString::fromUtf16(Fields::comments) },
-        { QString(), QString::fromUtf16(Fields::exports) },
-        { QString(), QString::fromUtf16(Fields::propertyInfos) },
-        { QLatin1String("FileLocationsNode"), QString::fromUtf16(Fields::parent) }
+        { QString(), Fields::code.toString() },
+        { QString(), Fields::postCode.toString() },
+        { QString(), Fields::preCode.toString() },
+        { QString(), Fields::importScope.toString() },
+        { QString(), Fields::fileLocationsTree.toString() },
+        { QString(), Fields::astComments.toString() },
+        { QString(), Fields::comments.toString() },
+        { QString(), Fields::exports.toString() },
+        { QString(), Fields::propertyInfos.toString() },
+        { QLatin1String("FileLocationsNode"), Fields::parent.toString() }
     };
     return FieldFilter { fieldFilterAdd, fieldFilterRemove };
 }
@@ -190,6 +190,7 @@ FieldFilter FieldFilter::compareNoCommentsFilter()
         { QLatin1String("QmlObject"), QLatin1String("prototypes") },
         { QLatin1String(), QLatin1String("code") },
         { QLatin1String("ScriptExpression"), QLatin1String("localOffset") },
+        { QLatin1String("ScriptExpression"), QLatin1String("astRelocatableDump") },
         { QLatin1String("FileLocationsNode"), QLatin1String("parent") },
         { QString(), QLatin1String("fileLocationsTree") },
         { QString(), QLatin1String("preCode") },
@@ -203,7 +204,6 @@ FieldFilter FieldFilter::compareNoCommentsFilter()
 
 void FieldFilter::setFiltred()
 {
-    auto types = domTypeToStringMap();
     QSet<QString> filtredFieldStrs;
     QSet<QString> filtredTypeStrs;
     static QHash<QString, DomType> fieldToId = []() {
@@ -224,7 +224,8 @@ void FieldFilter::setFiltred()
             filtredTypeStrs.insert(it.key());
             ++it;
         }
-        for (auto f : map.values(QString()))
+        const auto &fieldKeys = map.values(QString());
+        for (const auto &f : fieldKeys)
             filtredFieldStrs.insert(f);
     };
     addFilteredOfMap(m_fieldFilterAdd);
@@ -233,11 +234,11 @@ void FieldFilter::setFiltred()
     if (m_fieldFilterRemove.values(QString()).contains(QString()))
         m_filtredDefault = false;
     m_filtredFields.clear();
-    for (auto s : filtredFieldStrs)
+    for (const auto &s : filtredFieldStrs)
         if (!s.isEmpty())
             m_filtredFields.insert(qHash(QStringView(s)));
     m_filtredTypes.clear();
-    for (auto s : filtredTypeStrs) {
+    for (const auto &s : filtredTypeStrs) {
         if (s.isEmpty())
             continue;
         if (fieldToId.contains(s)) {

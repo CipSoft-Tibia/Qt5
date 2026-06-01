@@ -5,9 +5,7 @@
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
-import * as Root from '../../core/root/root.js';
-import * as CrUXManager from '../../models/crux-manager/crux-manager.js';
-import * as TraceEngine from '../../models/trace/trace.js';
+import * as Trace from '../../models/trace/trace.js';
 import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
@@ -19,7 +17,7 @@ import {
   TimelineEventOverviewResponsiveness,
 } from './TimelineEventOverview.js';
 import timelineHistoryManagerStyles from './timelineHistoryManager.css.js';
-import {type TimelineMiniMap} from './TimelineMiniMap.js';
+import type {TimelineMiniMap} from './TimelineMiniMap.js';
 
 /**
  * The dropdown works by returning an index which is the trace index; but we
@@ -41,30 +39,9 @@ const UIStrings = {
    */
   landingPageTitle: 'Live metrics',
   /**
-   *@description Text that shows there is no recording
+   * @description the title shown when the user is viewing the landing page which can be used to make a new performance recording.
    */
-  noRecordings: '(no recordings)',
-  /**
-   *@description Text in Timeline History Manager of the Performance panel
-   *@example {2s} PH1
-   */
-  sAgo: '({PH1} ago)',
-  /**
-   *@description Text in Timeline History Manager of the Performance panel
-   */
-  moments: 'moments',
-  /**
-   * @description Text in Timeline History Manager of the Performance panel.
-   * Placeholder is a number and the 'm' is the short form for 'minutes'.
-   * @example {2} PH1
-   */
-  sM: '{PH1} m',
-  /**
-   * @description Text in Timeline History Manager of the Performance panel.
-   * Placeholder is a number and the 'h' is the short form for 'hours'.
-   * @example {2} PH1
-   */
-  sH: '{PH1} h',
+  nodeLandingPageTitle: 'New recording',
   /**
    *@description Text in Timeline History Manager of the Performance panel
    *@example {example.com} PH1
@@ -75,6 +52,11 @@ const UIStrings = {
    *@description Accessible label for the timeline session selection menu
    */
   selectTimelineSession: 'Select timeline session',
+  /**
+   * @description Text label for a menu item indicating that a specific slowdown multiplier is applied.
+   * @example {2} PH1
+   */
+  dSlowdown: '{PH1}× slowdown',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/timeline/TimelineHistoryManager.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -88,7 +70,7 @@ interface TraceRecordingHistoryItem {
   type: 'TRACE_INDEX';
   // By storing only the index of this trace, the TimelinePanel can then look
   // up this trace's data (and metadata) via this index.
-  traceParseDataIndex: number;
+  parsedTraceIndex: number;
 }
 interface LandingPageHistoryItem {
   type: 'LANDING_PAGE';
@@ -99,12 +81,26 @@ export interface NewHistoryRecordingData {
   // The data we will save to restore later.
   data: TraceRecordingHistoryItem;
   // We do not store this, but need it to build the thumbnail preview.
-  filmStripForPreview: TraceEngine.Extras.FilmStrip.Data|null;
+  filmStripForPreview: Trace.Extras.FilmStrip.Data|null;
   // Also not stored, but used to create the preview overview for a new trace.
-  traceParsedData: TraceEngine.Handlers.Types.TraceParseData;
-  // Used for the preview text
-  startTime: number|null;
+  parsedTrace: Trace.Handlers.Types.ParsedTrace;
+  metadata: Trace.Types.File.MetaData|null;
 }
+
+// Lazily instantiate the formatter as the constructor takes 50ms+
+// TODO: move me and others like me to i18n module
+const listFormatter = (function defineFormatter() {
+  let intlListFormat: Intl.ListFormat;
+  return {
+    format(...args: Parameters<Intl.ListFormat['format']>): ReturnType<Intl.ListFormat['format']> {
+      if (!intlListFormat) {
+        const opts: Intl.ListFormatOptions = {type: 'unit', style: 'short'};
+        intlListFormat = new Intl.ListFormat(i18n.DevToolsLocale.DevToolsLocale.instance().locale, opts);
+      }
+      return intlListFormat.format(...args);
+    },
+  };
+})();
 
 export class TimelineHistoryManager {
   private recordings: TraceRecordingHistoryItem[];
@@ -112,19 +108,24 @@ export class TimelineHistoryManager {
   private readonly nextNumberByDomain: Map<string, number>;
   private readonly buttonInternal: ToolbarButton;
   private readonly allOverviews: {
-    constructor: (traceParsedData: TraceEngine.Handlers.Types.TraceParseData) => TimelineEventOverview,
+    constructor: (parsedTrace: Trace.Handlers.Types.ParsedTrace) => TimelineEventOverview,
     height: number,
   }[];
   private totalHeight: number;
   private enabled: boolean;
   private lastActiveTrace: RecordingData|null = null;
   #minimapComponent?: TimelineMiniMap;
-  constructor(minimapComponent?: TimelineMiniMap) {
+  #landingPageTitle: Common.UIString.LocalizedString;
+
+  constructor(minimapComponent?: TimelineMiniMap, isNode?: boolean) {
     this.recordings = [];
     this.#minimapComponent = minimapComponent;
     this.action = UI.ActionRegistry.ActionRegistry.instance().getAction('timeline.show-history');
     this.nextNumberByDomain = new Map();
     this.buttonInternal = new ToolbarButton(this.action);
+
+    this.#landingPageTitle =
+        isNode ? i18nString(UIStrings.nodeLandingPageTitle) : i18nString(UIStrings.landingPageTitle);
 
     UI.ARIAUtils.markAsMenuButton(this.buttonInternal.element);
     this.clear();
@@ -134,58 +135,39 @@ export class TimelineHistoryManager {
     this.allOverviews = [
       {
 
-        constructor: traceParsedData => {
+        constructor: parsedTrace => {
           const responsivenessOverviewFromMinimap =
               this.#minimapComponent?.getControls().find(
                   control => control instanceof TimelineEventOverviewResponsiveness) as
               TimelineEventOverviewResponsiveness;
-          return responsivenessOverviewFromMinimap || new TimelineEventOverviewResponsiveness(traceParsedData);
+          return responsivenessOverviewFromMinimap || new TimelineEventOverviewResponsiveness(parsedTrace);
         },
         height: 3,
       },
       {
-        constructor: traceParsedData => {
+        constructor: parsedTrace => {
           const cpuOverviewFromMinimap =
               this.#minimapComponent?.getControls().find(
                   control => control instanceof TimelineEventOverviewCPUActivity) as TimelineEventOverviewCPUActivity;
           if (cpuOverviewFromMinimap) {
             return cpuOverviewFromMinimap;
           }
-          return new TimelineEventOverviewCPUActivity(traceParsedData);
+          return new TimelineEventOverviewCPUActivity(parsedTrace);
         },
         height: 20,
       },
       {
-        constructor: traceParsedData => {
+        constructor: parsedTrace => {
           const networkOverviewFromMinimap =
               this.#minimapComponent?.getControls().find(control => control instanceof TimelineEventOverviewNetwork) as
               TimelineEventOverviewNetwork;
-          return networkOverviewFromMinimap || new TimelineEventOverviewNetwork(traceParsedData);
+          return networkOverviewFromMinimap || new TimelineEventOverviewNetwork(parsedTrace);
         },
         height: 8,
       },
     ];
     this.totalHeight = this.allOverviews.reduce((acc, entry) => acc + entry.height, 0);
     this.enabled = true;
-
-    CrUXManager.CrUXManager.instance().addEventListener(CrUXManager.Events.FIELD_DATA_CHANGED, () => {
-      this.#updateLandingPageTitleIfActive();
-    });
-  }
-
-  /**
-   * If the user changes the CrUX consent status, the title shown in the
-   * dropdown could be outdated, as we show "Local" or "Local and field"
-   * depending on if the user has consented.
-   * This method will be called whenever the CrUXManager detects a change, and
-   * we use it as a chance to re-evaluate if the title needs changing or not.
-   */
-  #updateLandingPageTitleIfActive(): void {
-    if (this.lastActiveTrace?.type === 'LANDING_PAGE') {
-      const title = this.title(this.lastActiveTrace);
-      this.buttonInternal.setTitle(title);
-      this.buttonInternal.setText(title);
-    }
   }
 
   addRecording(newInput: NewHistoryRecordingData): void {
@@ -195,8 +177,7 @@ export class TimelineHistoryManager {
 
     // Order is important: this needs to happen first because lots of the
     // subsequent code depends on us storing the preview data into the map.
-    this.#buildAndStorePreviewData(
-        newInput.data.traceParseDataIndex, newInput.traceParsedData, filmStrip, newInput.startTime);
+    this.#buildAndStorePreviewData(newInput.data.parsedTraceIndex, newInput.parsedTrace, newInput.metadata, filmStrip);
 
     const modelTitle = this.title(newInput.data);
     this.buttonInternal.setText(modelTitle);
@@ -207,8 +188,8 @@ export class TimelineHistoryManager {
     if (this.recordings.length <= maxRecordings) {
       return;
     }
-    const modelUsedMoreTimeAgo = this.recordings.reduce(
-        (a, b) => lastUsedTime(a.traceParseDataIndex) < lastUsedTime(b.traceParseDataIndex) ? a : b);
+    const modelUsedMoreTimeAgo =
+        this.recordings.reduce((a, b) => lastUsedTime(a.parsedTraceIndex) < lastUsedTime(b.parsedTraceIndex) ? a : b);
     this.recordings.splice(this.recordings.indexOf(modelUsedMoreTimeAgo), 1);
 
     function lastUsedTime(index: number): number {
@@ -233,22 +214,8 @@ export class TimelineHistoryManager {
     this.recordings = [];
     this.lastActiveTrace = null;
     this.updateState();
-    this.buttonInternal.setText(i18nString(UIStrings.noRecordings));
+    this.buttonInternal.setText(this.#landingPageTitle);
     this.nextNumberByDomain.clear();
-  }
-
-  /**
-   * If the observations landing page experiment is enabled, we show the
-   * dropdown when there is 1 or more traces active, as even with 1 trace we
-   * need to give the user a way to get back to the index page. However, if that
-   * experiment is disabled, there is no need to show the dropdown until there
-   * are 2+ traces.
-   */
-  #minimumRequiredRecordings(): number {
-    if (Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.TIMELINE_OBSERVATIONS)) {
-      return 1;
-    }
-    return 2;
   }
 
   #getActiveTraceIndexForListControl(): number {
@@ -258,18 +225,18 @@ export class TimelineHistoryManager {
     if (this.lastActiveTrace.type === 'LANDING_PAGE') {
       return LANDING_PAGE_INDEX_DROPDOWN_CHOICE;
     }
-    return this.lastActiveTrace.traceParseDataIndex;
+    return this.lastActiveTrace.parsedTraceIndex;
   }
 
   async showHistoryDropDown(): Promise<RecordingData|null> {
-    if (this.recordings.length < this.#minimumRequiredRecordings() || !this.enabled) {
+    if (this.recordings.length < 1 || !this.enabled) {
       return null;
     }
 
     // DropDown.show() function finishes when the dropdown menu is closed via selection or losing focus
     const activeTraceIndex = await DropDown.show(
-        this.recordings.map(recording => recording.traceParseDataIndex), this.#getActiveTraceIndexForListControl(),
-        this.buttonInternal.element);
+        this.recordings.map(recording => recording.parsedTraceIndex), this.#getActiveTraceIndexForListControl(),
+        this.buttonInternal.element, this.#landingPageTitle);
 
     if (activeTraceIndex === null) {
       return null;
@@ -282,7 +249,7 @@ export class TimelineHistoryManager {
       return {type: 'LANDING_PAGE'};
     }
 
-    const index = this.recordings.findIndex(recording => recording.traceParseDataIndex === activeTraceIndex);
+    const index = this.recordings.findIndex(recording => recording.parsedTraceIndex === activeTraceIndex);
     if (index < 0) {
       console.assert(false, 'selected recording not found');
       return null;
@@ -311,7 +278,7 @@ export class TimelineHistoryManager {
 
     const index = this.recordings.findIndex(recording => {
       return this.lastActiveTrace?.type === 'TRACE_INDEX' && recording.type === 'TRACE_INDEX' &&
-          recording.traceParseDataIndex === this.lastActiveTrace.traceParseDataIndex;
+          recording.parsedTraceIndex === this.lastActiveTrace.parsedTraceIndex;
     });
 
     if (index < 0) {
@@ -323,9 +290,13 @@ export class TimelineHistoryManager {
     return this.recordings[newIndex];
   }
 
+  navigateToLandingPage(): void {
+    this.#setActiveTrace({type: 'LANDING_PAGE'});
+  }
+
   #setActiveTrace(item: RecordingData): void {
     if (item.type === 'TRACE_INDEX') {
-      const data = TimelineHistoryManager.dataForTraceIndex(item.traceParseDataIndex);
+      const data = TimelineHistoryManager.dataForTraceIndex(item.parsedTraceIndex);
       if (!data) {
         throw new Error('Unable to find data for model');
       }
@@ -341,39 +312,23 @@ export class TimelineHistoryManager {
   }
 
   private updateState(): void {
-    this.action.setEnabled(this.recordings.length >= this.#minimumRequiredRecordings() && this.enabled);
+    this.action.setEnabled(this.recordings.length >= 1 && this.enabled);
   }
 
-  static previewElement(traceDataIndex: number): Element {
-    const data = TimelineHistoryManager.dataForTraceIndex(traceDataIndex);
+  static previewElement(parsedTraceIndex: number): Element {
+    const data = TimelineHistoryManager.dataForTraceIndex(parsedTraceIndex);
     if (!data) {
       throw new Error('Unable to find data for model');
     }
-    const startedAt = data.startTime;
-    data.time.textContent =
-        startedAt ? i18nString(UIStrings.sAgo, {PH1: TimelineHistoryManager.coarseAge(startedAt)}) : '';
     return data.preview;
-  }
-
-  private static coarseAge(time: number): string {
-    const seconds = Math.round((Date.now() - time) / 1000);
-    if (seconds < 50) {
-      return i18nString(UIStrings.moments);
-    }
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 50) {
-      return i18nString(UIStrings.sM, {PH1: minutes});
-    }
-    const hours = Math.round(minutes / 60);
-    return i18nString(UIStrings.sH, {PH1: hours});
   }
 
   private title(item: RecordingData): string {
     if (item.type === 'LANDING_PAGE') {
-      return i18nString(UIStrings.landingPageTitle);
+      return this.#landingPageTitle;
     }
 
-    const data = TimelineHistoryManager.dataForTraceIndex(item.traceParseDataIndex);
+    const data = TimelineHistoryManager.dataForTraceIndex(item.parsedTraceIndex);
     if (!data) {
       throw new Error('Unable to find data for model');
     }
@@ -381,53 +336,55 @@ export class TimelineHistoryManager {
   }
 
   #buildAndStorePreviewData(
-      traceParseDataIndex: number, traceParsedData: TraceEngine.Handlers.Types.TraceParseData,
-      filmStrip: TraceEngine.Extras.FilmStrip.Data|null, startTime: number|null): HTMLDivElement {
-    const parsedURL = Common.ParsedURL.ParsedURL.fromString(traceParsedData.Meta.mainFrameURL);
+      parsedTraceIndex: number, parsedTrace: Trace.Handlers.Types.ParsedTrace, metadata: Trace.Types.File.MetaData|null,
+      filmStrip: Trace.Extras.FilmStrip.Data|null): HTMLDivElement {
+    const parsedURL = Common.ParsedURL.ParsedURL.fromString(parsedTrace.Meta.mainFrameURL);
     const domain = parsedURL ? parsedURL.host : '';
 
     const sequenceNumber = this.nextNumberByDomain.get(domain) || 1;
     const titleWithSequenceNumber = i18nString(UIStrings.sD, {PH1: domain, PH2: sequenceNumber});
     this.nextNumberByDomain.set(domain, sequenceNumber + 1);
-    const timeElement = document.createElement('span');
 
     const preview = document.createElement('div');
     preview.classList.add('preview-item');
     preview.classList.add('vbox');
     preview.setAttribute('jslog', `${VisualLogging.dropDown('timeline.history-item').track({click: true})}`);
+    preview.style.width = `${previewWidth}px`;
     const data = {
       preview,
       title: titleWithSequenceNumber,
-      time: timeElement,
       lastUsed: Date.now(),
-      startTime,
     };
-    traceDataIndexToPerformancePreviewData.set(traceParseDataIndex, data);
+    parsedTraceIndexToPerformancePreviewData.set(parsedTraceIndex, data);
 
-    preview.appendChild(this.#buildTextDetails(traceParsedData, domain, timeElement));
+    preview.appendChild(this.#buildTextDetails(metadata, domain));
     const screenshotAndOverview = preview.createChild('div', 'hbox');
     screenshotAndOverview.appendChild(this.#buildScreenshotThumbnail(filmStrip));
-    screenshotAndOverview.appendChild(this.#buildOverview(traceParsedData));
+    screenshotAndOverview.appendChild(this.#buildOverview(parsedTrace));
     return data.preview;
   }
 
-  #buildTextDetails(traceParsedData: TraceEngine.Handlers.Types.TraceParseData, title: string, timeElement: Element):
-      Element {
+  #buildTextDetails(metadata: Trace.Types.File.MetaData|null, title: string): Element {
     const container = document.createElement('div');
     container.classList.add('text-details');
     container.classList.add('hbox');
     const nameSpan = container.createChild('span', 'name');
     nameSpan.textContent = title;
     UI.ARIAUtils.setLabel(nameSpan, title);
-    const bounds = TraceEngine.Helpers.Timing.traceWindowMilliSeconds(traceParsedData.Meta.traceBounds);
-    const duration = i18n.TimeUtilities.millisToString(bounds.range, false);
-    const timeContainer = container.createChild('span', 'time');
-    timeContainer.appendChild(document.createTextNode(duration));
-    timeContainer.appendChild(timeElement);
+
+    if (metadata) {
+      const parts = [
+        metadata.emulatedDeviceTitle,
+        metadata.cpuThrottling ? i18nString(UIStrings.dSlowdown, {PH1: metadata.cpuThrottling}) : undefined,
+        metadata.networkThrottling,
+      ].filter(Boolean);
+      container.createChild('span', 'metadata').textContent = listFormatter.format(parts as string[]);
+    }
+
     return container;
   }
 
-  #buildScreenshotThumbnail(filmStrip: TraceEngine.Extras.FilmStrip.Data|null): Element {
+  #buildScreenshotThumbnail(filmStrip: Trace.Extras.FilmStrip.Data|null): Element {
     const container = document.createElement('div');
     container.classList.add('screenshot-thumb');
     const thumbnailAspectRatio = 3 / 2;
@@ -440,7 +397,9 @@ export class TimelineHistoryManager {
     if (!lastFrame) {
       return container;
     }
-    void UI.UIUtils.loadImage(lastFrame.screenshotEvent.args.dataUri).then(img => {
+    // TODO(paulirish): Adopt Util.ImageCache
+    const uri = Trace.Handlers.ModelHandlers.Screenshots.screenshotImageDataUri(lastFrame.screenshotEvent);
+    void UI.UIUtils.loadImage(uri).then(img => {
       if (img) {
         container.appendChild(img);
       }
@@ -448,12 +407,12 @@ export class TimelineHistoryManager {
     return container;
   }
 
-  #buildOverview(traceParsedData: TraceEngine.Handlers.Types.TraceParseData): Element {
+  #buildOverview(parsedTrace: Trace.Handlers.Types.ParsedTrace): Element {
     const container = document.createElement('div');
     const dPR = window.devicePixelRatio;
     container.style.width = previewWidth + 'px';
     container.style.height = this.totalHeight + 'px';
-    const canvas = (container.createChild('canvas') as HTMLCanvasElement);
+    const canvas = container.createChild('canvas');
     canvas.width = dPR * previewWidth;
     canvas.height = dPR * this.totalHeight;
 
@@ -461,7 +420,7 @@ export class TimelineHistoryManager {
     let yOffset = 0;
 
     for (const overview of this.allOverviews) {
-      const timelineOverviewComponent = overview.constructor(traceParsedData);
+      const timelineOverviewComponent = overview.constructor(parsedTrace);
       timelineOverviewComponent.update();
       if (ctx) {
         ctx.drawImage(
@@ -473,21 +432,19 @@ export class TimelineHistoryManager {
   }
 
   private static dataForTraceIndex(index: number): PreviewData|null {
-    return traceDataIndexToPerformancePreviewData.get(index) || null;
+    return parsedTraceIndexToPerformancePreviewData.get(index) || null;
   }
 }
 
 export const maxRecordings = 5;
-export const previewWidth = 450;
+export const previewWidth = 500;
 // The reason we store a global map is because the Dropdown component needs to
 // be able to read the preview data in order to show a preview in the dropdown.
-const traceDataIndexToPerformancePreviewData = new Map<number, PreviewData>();
+const parsedTraceIndexToPerformancePreviewData = new Map<number, PreviewData>();
 
 export interface PreviewData {
   preview: Element;
-  time: Element;
   lastUsed: number;
-  startTime: number|null;
   title: string;
 }
 
@@ -496,8 +453,11 @@ export class DropDown implements UI.ListControl.ListDelegate<number> {
   private readonly listControl: UI.ListControl.ListControl<number>;
   private readonly focusRestorer: UI.UIUtils.ElementFocusRestorer;
   private selectionDone: ((arg0: number|null) => void)|null;
+  #landingPageTitle: Common.UIString.LocalizedString;
 
-  constructor(availableTraceDataIndexes: number[]) {
+  constructor(availableparsedTraceIndexes: number[], landingPageTitle: Common.UIString.LocalizedString) {
+    this.#landingPageTitle = landingPageTitle;
+
     this.glassPane = new UI.GlassPane.GlassPane();
     this.glassPane.setSizeBehavior(UI.GlassPane.SizeBehavior.MEASURE_CONTENT);
     this.glassPane.setOutsideClickCallback(() => this.close(null));
@@ -505,16 +465,14 @@ export class DropDown implements UI.ListControl.ListDelegate<number> {
     this.glassPane.setAnchorBehavior(UI.GlassPane.AnchorBehavior.PREFER_BOTTOM);
     this.glassPane.element.addEventListener('blur', () => this.close(null));
 
-    const shadowRoot = UI.UIUtils.createShadowRootWithCoreStyles(this.glassPane.contentElement, {
-      cssFile: [timelineHistoryManagerStyles],
-      delegatesFocus: undefined,
-    });
+    const shadowRoot = UI.UIUtils.createShadowRootWithCoreStyles(
+        this.glassPane.contentElement, {cssFile: timelineHistoryManagerStyles});
     const contentElement = shadowRoot.createChild('div', 'drop-down');
 
     const listModel = new UI.ListModel.ListModel<number>();
     this.listControl = new UI.ListControl.ListControl<number>(listModel, this, UI.ListControl.ListMode.NonViewport);
     this.listControl.element.addEventListener('mousemove', this.onMouseMove.bind(this), false);
-    listModel.replaceAll(availableTraceDataIndexes);
+    listModel.replaceAll(availableparsedTraceIndexes);
 
     UI.ARIAUtils.markAsMenu(this.listControl.element);
     UI.ARIAUtils.setLabel(this.listControl.element, i18nString(UIStrings.selectTimelineSession));
@@ -526,17 +484,17 @@ export class DropDown implements UI.ListControl.ListDelegate<number> {
     this.selectionDone = null;
   }
 
-  static show(availableTraceDataIndexes: number[], activeTraceDataIndex: number, anchor: Element):
+  static show(
+      availableparsedTraceIndexes: number[], activeparsedTraceIndex: number, anchor: Element,
+      landingPageTitle: Common.UIString.LocalizedString = i18nString(UIStrings.landingPageTitle)):
       Promise<number|null> {
     if (DropDown.instance) {
       return Promise.resolve(null);
     }
-    const availableDropdownChoices = [...availableTraceDataIndexes];
-    if (Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.TIMELINE_OBSERVATIONS)) {
-      availableDropdownChoices.unshift(LANDING_PAGE_INDEX_DROPDOWN_CHOICE);
-    }
-    const instance = new DropDown(availableDropdownChoices);
-    return instance.show(anchor, activeTraceDataIndex);
+    const availableDropdownChoices = [...availableparsedTraceIndexes];
+    availableDropdownChoices.unshift(LANDING_PAGE_INDEX_DROPDOWN_CHOICE);
+    const instance = new DropDown(availableDropdownChoices, landingPageTitle);
+    return instance.show(anchor, activeparsedTraceIndex);
   }
 
   static cancelIfShowing(): void {
@@ -546,12 +504,12 @@ export class DropDown implements UI.ListControl.ListDelegate<number> {
     DropDown.instance.close(null);
   }
 
-  private show(anchor: Element, activeTraceDataIndex: number): Promise<number|null> {
+  private show(anchor: Element, activeparsedTraceIndex: number): Promise<number|null> {
     DropDown.instance = this;
     this.glassPane.setContentAnchorBox(anchor.boxInWindow());
     this.glassPane.show(this.glassPane.contentElement.ownerDocument);
     this.listControl.element.focus();
-    this.listControl.selectItem(activeTraceDataIndex);
+    this.listControl.selectItem(activeparsedTraceIndex);
 
     return new Promise(fulfill => {
       this.selectionDone = fulfill;
@@ -600,11 +558,11 @@ export class DropDown implements UI.ListControl.ListDelegate<number> {
     DropDown.instance = null;
   }
 
-  createElementForItem(traceDataIndex: number): Element {
-    if (traceDataIndex === LANDING_PAGE_INDEX_DROPDOWN_CHOICE) {
+  createElementForItem(parsedTraceIndex: number): Element {
+    if (parsedTraceIndex === LANDING_PAGE_INDEX_DROPDOWN_CHOICE) {
       return this.#createLandingPageListItem();
     }
-    const element = TimelineHistoryManager.previewElement(traceDataIndex);
+    const element = TimelineHistoryManager.previewElement(parsedTraceIndex);
     UI.ARIAUtils.markAsMenuItem(element);
     element.classList.remove('selected');
     return element;
@@ -617,21 +575,23 @@ export class DropDown implements UI.ListControl.ListDelegate<number> {
     div.classList.add('preview-item');
     div.classList.add('landing-page-item');
 
+    div.style.width = `${previewWidth}px`;
+
     const icon = IconButton.Icon.create('arrow-back');
     div.appendChild(icon);
 
     const text = document.createElement('span');
-    text.innerText = i18nString(UIStrings.landingPageTitle);
+    text.innerText = this.#landingPageTitle;
     div.appendChild(text);
     return div;
   }
 
-  heightForItem(_traceDataIndex: number): number {
+  heightForItem(_parsedTraceIndex: number): number {
     console.assert(false, 'Should not be called');
     return 0;
   }
 
-  isItemSelectable(_traceDataIndex: number): boolean {
+  isItemSelectable(_parsedTraceIndex: number): boolean {
     return true;
   }
 

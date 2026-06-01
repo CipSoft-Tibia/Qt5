@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/callback_list.h"
@@ -182,7 +183,7 @@ class COMPONENT_EXPORT(UI_BASE_METADATA) ClassMetaData {
   ClassMemberIterator end();
 
  protected:
-  void SetTypeName(const std::string_view type_name);
+  void SetTypeName(std::string_view type_name);
 
  private:
   // `type_name_` is a static string stored in the binary.
@@ -229,7 +230,7 @@ class COMPONENT_EXPORT(UI_BASE_METADATA) MemberMetaDataBase {
   // available. For instance, an SkColor member type would add the "--" string
   // which tells the frontend to display a color swatch and a color editing
   // dialog.
-  virtual const char* GetMemberNamePrefix() const;
+  virtual std::string_view GetMemberNamePrefix() const;
 
   const std::string& member_name() const { return member_name_; }
   const std::string& member_type() const { return member_type_; }

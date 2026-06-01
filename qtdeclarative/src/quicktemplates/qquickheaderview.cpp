@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtQuickTemplates2/private/qquickheaderview_p_p.h>
 #include <algorithm>
@@ -80,6 +81,9 @@
 
 QT_BEGIN_NAMESPACE
 
+static const char *kRequiredProperty_headerView = "headerView";
+static const char *kRequiredProperty_model = "model";
+
 QQuickHeaderViewBasePrivate::QQuickHeaderViewBasePrivate()
     : QQuickTableViewPrivate()
 {
@@ -118,7 +122,22 @@ void QQuickHeaderViewBasePrivate::setModelImpl(const QVariant &newModel)
 {
     m_modelExplicitlySet = newModel.isValid();
 
-    if (auto qabstracttablemodel = qobject_cast<QAbstractTableModel *>(qaim(newModel))) {
+    auto asTableModel = [](QAbstractItemModel *model) -> QAbstractItemModel* {
+        if (qobject_cast<QAbstractTableModel *>(model))
+            return model;
+
+        // Since QQmlTableModel is not derived from QAbstractTableModel (QATM),
+        // we have to check for this model separately. We want it to behave like
+        // QATM to keep existing code working. This model is in the Labs module,
+        // and we cannot link to it to make a qobject_cast. Therefore, we are checking
+        // the class name.
+        // TODO: When QQmlTableModel leaves Labs, change to qobject_cast?
+        if (model && QByteArrayView(model->metaObject()->className()) == "QQmlTableModel")
+            return model;
+        return nullptr;
+    };
+
+    if (auto qabstracttablemodel = asTableModel(qaim(newModel))) {
         if (qabstracttablemodel != m_headerDataProxyModel.sourceModel()) {
             m_headerDataProxyModel.setSourceModel(qabstracttablemodel);
             assignedModel = QVariant::fromValue(std::addressof(m_headerDataProxyModel));
@@ -182,6 +201,24 @@ QAbstractItemModel *QQuickHeaderViewBasePrivate::selectionSourceModel()
     // modelIndex(cell) and cellAtIndex(index) have not been overridden either).
     // Instead, we set the internal proxy model as selection source model.
     return &m_headerDataProxyModel;
+}
+
+void QQuickHeaderViewBasePrivate::initItemCallback(int modelIndex, QObject *object)
+{
+    Q_Q(QQuickHeaderViewBase);
+
+    QQuickTableViewPrivate::initItemCallback(modelIndex, object);
+
+    auto item = qobject_cast<QQuickItem *>(object);
+    if (!item)
+        return;
+
+    QQmlDelegateModelItem *modelItem = tableModel->getModelItem(modelIndex);
+
+    setRequiredProperty(kRequiredProperty_headerView, QVariant::fromValue(q),
+                        modelIndex, item, true);
+    setRequiredProperty(kRequiredProperty_model, QVariant::fromValue(modelItem->modelObject()),
+                        modelIndex, item, true);
 }
 
 int QQuickHeaderViewBasePrivate::logicalRowIndex(const int visualIndex) const

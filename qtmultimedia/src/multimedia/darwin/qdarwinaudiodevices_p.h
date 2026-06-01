@@ -16,12 +16,15 @@
 //
 
 #include <private/qplatformaudiodevices_p.h>
-#include <qelapsedtimer.h>
-#include <qcameradevice.h>
+
+#ifdef Q_OS_MACOS
+#  include <QtCore/qfuture.h>
+#  include <CoreAudio/AudioHardware.h>
+#  include <dispatch/dispatch.h>
+#  include <optional>
+#endif
 
 QT_BEGIN_NAMESPACE
-
-class QCameraDevice;
 
 class QDarwinAudioDevices : public QPlatformAudioDevices
 {
@@ -39,10 +42,43 @@ public:
 
     QLatin1String backendName() const override { return QLatin1String{ "CoreAudio" }; }
 
-protected:
+private:
     QList<QAudioDevice> findAudioInputs() const override;
     QList<QAudioDevice> findAudioOutputs() const override;
+#ifdef Q_OS_MACOS
+    struct DispatchQueueDeleter
+    {
+        void operator()(dispatch_queue_t queue) const
+        {
+            if (queue)
+                dispatch_release(queue);
+        }
+    };
+    using UniqueDispatchQueue =
+            std::unique_ptr<std::remove_pointer_t<dispatch_queue_t>, DispatchQueueDeleter>;
+
+    std::unique_ptr<AudioObjectPropertyListenerBlock> m_deviceListenerBlock;
+    UniqueDispatchQueue m_listenerQueue;
+    std::shared_ptr<bool> m_destroyed = std::make_shared<bool>(false);
+#endif
 };
+
+namespace QCoreAudioUtils {
+
+#ifdef Q_OS_MACOS
+class DeviceDisconnectMonitor
+{
+public:
+    ~DeviceDisconnectMonitor();
+    std::optional<QFuture<void>> addDisconnectListener(AudioObjectID);
+    void removeDisconnectListener();
+
+private:
+    std::function<void()> m_disconnectFunction;
+};
+#endif
+
+} // namespace QCoreAudioUtils
 
 QT_END_NAMESPACE
 

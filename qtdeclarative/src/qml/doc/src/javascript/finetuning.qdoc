@@ -39,6 +39,13 @@ Running JavaScript code can be influenced by a few environment variables, partic
             If it contains a number, this environment variable is interpreted as the size in bytes
             of the memory area that will be allocated as the stack for the garbage collector.
     \row
+        \li \c{QV4_STACK_SOFT_LIMIT}
+        \li When this environment variable is set, the JavaScript engine will throw a "RangeError:
+            Maximum call stack size exceeded" exception once the call stack usage reaches the
+            defined soft limit. If the variable is not set, the engine defaults to runtime detected
+            or Qt predefined limits depending on the OS.
+
+    \row
         \li \c{QV4_CRASH_ON_STACKOVERFLOW}
         \li Usually the JavaScript engine tries to catch C++ stack overflows caused by
             excessively recursive JavaScript code, and generates a non-fatal error condition.

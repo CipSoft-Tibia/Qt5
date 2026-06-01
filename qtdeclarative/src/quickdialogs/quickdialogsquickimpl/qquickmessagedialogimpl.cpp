@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickmessagedialogimpl_p.h"
 #include "qquickmessagedialogimpl_p_p.h"
@@ -36,7 +37,6 @@ QQuickMessageDialogImplAttached *QQuickMessageDialogImplPrivate::attachedOrWarn(
 QQuickMessageDialogImpl::QQuickMessageDialogImpl(QObject *parent)
     : QQuickDialog(*(new QQuickMessageDialogImplPrivate), parent)
 {
-    setPopupType(QQuickPopup::Window);
 }
 
 QSharedPointer<QMessageDialogOptions> QQuickMessageDialogImpl::options() const

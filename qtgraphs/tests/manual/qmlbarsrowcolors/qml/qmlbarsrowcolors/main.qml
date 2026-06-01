@@ -301,6 +301,23 @@ Item {
             }
         }
 
+        Button {
+            id: itemlabelVisibleToggle
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            text: "Hide itemlabel"
+            clip: true
+
+            onClicked: {
+                barSeries.itemLabelVisible = !barSeries.itemLabelVisible
+
+                if (barSeries.itemLabelVisible)
+                    text = "Hide itemLabel"
+                else
+                    text = "Show itemLabel"
+            }
+        }
+
         Column {
             Label {
                 text: "ValueAxis Segments"

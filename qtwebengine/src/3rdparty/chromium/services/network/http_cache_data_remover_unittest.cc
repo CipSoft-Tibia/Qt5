@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,6 +19,7 @@
 #include "net/base/cache_type.h"
 #include "net/base/features.h"
 #include "net/base/net_errors.h"
+#include "net/base/schemeful_site.h"
 #include "net/base/test_completion_callback.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/disk_cache/disk_cache_test_util.h"
@@ -52,7 +54,7 @@ MakeHttpCacheDataRemoverCallback(base::OnceClosure callback) {
       std::move(callback));
 }
 
-constexpr CacheTestEntry kCacheEntries[] = {
+constexpr const auto kCacheEntries = std::to_array<CacheTestEntry>({
     {"http://www.google.com", "15 Jun 1975"},
     {"https://www.google.com", "15 Jun 1985"},
     {"http://www.wikipedia.com", "15 Jun 1995"},
@@ -60,7 +62,8 @@ constexpr CacheTestEntry kCacheEntries[] = {
     {"http://localhost:1234/mysite", "15 Jun 2015"},
     {"https://localhost:1234/mysite", "15 Jun 2016"},
     {"http://localhost:3456/yoursite", "15 Jun 2017"},
-    {"https://localhost:3456/yoursite", "15 Jun 2018"}};
+    {"https://localhost:3456/yoursite", "15 Jun 2018"},
+});
 
 mojom::NetworkContextParamsPtr CreateContextParams() {
   mojom::NetworkContextParamsPtr params = mojom::NetworkContextParams::New();
@@ -122,14 +125,13 @@ class HttpCacheDataRemoverTest : public testing::Test {
   std::string ComputeCacheKey(const std::string& url_string) {
     GURL url(url_string);
     const auto kOrigin = url::Origin::Create(url);
+    const net::SchemefulSite kSite = net::SchemefulSite(kOrigin);
     net::HttpRequestInfo request_info;
     request_info.url = url;
     request_info.method = "GET";
-    request_info.network_isolation_key =
-        net::NetworkIsolationKey(kOrigin, kOrigin);
+    request_info.network_isolation_key = net::NetworkIsolationKey(kSite, kSite);
     request_info.network_anonymization_key =
-        net::NetworkAnonymizationKey::CreateSameSite(
-            net::SchemefulSite(kOrigin));
+        net::NetworkAnonymizationKey::CreateSameSite(kSite);
     return *net::HttpCache::GenerateCacheKeyForRequest(&request_info);
   }
 

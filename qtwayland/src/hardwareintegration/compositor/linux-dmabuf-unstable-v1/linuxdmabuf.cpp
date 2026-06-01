@@ -251,14 +251,19 @@ LinuxDmabufWlBuffer::LinuxDmabufWlBuffer(::wl_client *client, LinuxDmabufClientB
 
 LinuxDmabufWlBuffer::~LinuxDmabufWlBuffer()
 {
-    m_clientBufferIntegration->removeBuffer(resource()->handle);
-    buffer_destroy(resource());
+    if (resource())
+        m_clientBufferIntegration->removeBuffer(resource()->handle);
+    deleteTextures();
 }
 
 void LinuxDmabufWlBuffer::buffer_destroy(Resource *resource)
 {
-    Q_UNUSED(resource);
+    m_clientBufferIntegration->removeBuffer(resource->handle);
+    wl_resource_destroy(resource->handle);
+}
 
+void LinuxDmabufWlBuffer::deleteTextures()
+{
     QMutexLocker locker(&m_texturesLock);
 
     for (uint32_t i = 0; i < m_planesNumber; ++i) {
@@ -328,8 +333,9 @@ void LinuxDmabufWlBuffer::initTexture(uint32_t plane, QOpenGLTexture *texture)
 
 void LinuxDmabufWlBuffer::buffer_destroy_resource(Resource *resource)
 {
-    Q_UNUSED(resource);
-    delete this;
+    // In most cases this is redundant, but for instance if a buffer has been created,
+    // but not committed and the client disconnects, it is vital
+    m_clientBufferIntegration->removeBuffer(resource->handle);
 }
 
 QT_END_NAMESPACE

@@ -1003,8 +1003,8 @@ Q_LOGGING_CATEGORY(QRHI_LOG_RUB, "qt.rhi.rub")
     \l{OneDimensionalTextures}, and Metal.
 
     \value ThreeDimensionalTextureMipmaps Indicates that generating 3D texture
-    mipmaps are supported. In practice this feature will be unsupported with
-    Direct 3D 12.
+    mipmaps are supported. This is typically supported with all backends starting
+    with Qt 6.10.
 
     \value MultiView Indicates that multiview, see e.g.
     \l{https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_multiview.html}{VK_KHR_multiview}
@@ -3022,6 +3022,17 @@ QRhiTextureSubresourceUploadDescription::QRhiTextureSubresourceUploadDescription
 /*!
     \fn void QRhiTextureSubresourceUploadDescription::setDestinationTopLeft(const QPoint &p)
     Sets the destination top-left position \a p.
+
+    \note In the most common case of sourcing the image data from a QImage, Qt
+    performs clamping of invalid texture upload sizes when the destination
+    position + the source size exceeds the size of the targeted texture
+    subresource (i.e, the size at the given mip level). There is also a
+    qWarning() message printed on the debug output in this case. This is done in
+    order to avoid confusion when the underlying 3D APIs crash and lead to GPU
+    device removals at a later point when submitting the commands. Regardless,
+    developers are encouraged to always validate applications by running with the
+    Vulkan, D3D12, or Metal validation/debug layers enabled, since those offer a
+    much wider range of checks on API usage.
  */
 
 /*!
@@ -3480,6 +3491,22 @@ QRhiReadbackDescription::QRhiReadbackDescription(QRhiTexture *texture)
 /*!
     \fn void QRhiReadbackDescription::setLevel(int level)
     Sets the mip \a level to read back.
+ */
+
+/*!
+    \fn const QRect &QRhiReadbackDescription::rect() const
+    \since 6.10
+
+    \return the rectangle to read back. Defaults to an invalid rectangle.
+
+    If invalid, the entire texture or swapchain backbuffer is read back.
+ */
+
+/*!
+    \fn void QRhiReadbackDescription::setRect(const QRect &rectangle)
+    \since 6.10
+
+    Sets the \a rectangle to read back.
  */
 
 /*!
@@ -4530,7 +4557,14 @@ bool QRhiRenderBuffer::createFrom(NativeRenderBuffer src)
     \value [since 6.9] R32UI One component, unsigned 32-bit. (32 bits total)
     \value [since 6.9] RG32UI Two components, unsigned 32-bit. (64 bits total)
     \value [since 6.9] RGBA32UI Four components, unsigned 32-bit. (128 bits total)
+
+    \value [since 6.10] R8SI One component, signed 8-bit. (8 bits total)
+    \value [since 6.10] R32SI One component, signed 32-bit. (32 bits total)
+    \value [since 6.10] RG32SI Two components, signed 32-bit. (64 bits total)
+    \value [since 6.10] RGBA32SI Four components, signed 32-bit. (128 bits total)
  */
+
+// When adding new texture formats, update void tst_QRhi::textureFormats_data().
 
 /*!
     \struct QRhiTexture::NativeTexture
@@ -6137,12 +6171,7 @@ QRhiShaderResourceBinding QRhiShaderResourceBinding::sampler(int binding, StageF
    layout compatible QRhiShaderResourceBindings with resources present passed
    to QRhiCommandBuffer::setShaderResources().
 
-   \note Image load/store is only guaranteed to be available within a compute
-   pipeline. While some backends may support using these resources in a
-   graphics pipeline as well, this is not universally supported, and even when
-   it is, unexpected problems may arise when it comes to barriers and
-   synchronization. Therefore, avoid using such resources with shaders other
-   than compute.
+   \note Image load/store is only available within the compute and fragment stages.
  */
 QRhiShaderResourceBinding QRhiShaderResourceBinding::imageLoad(
         int binding, StageFlags stage, QRhiTexture *tex, int level)
@@ -6172,12 +6201,7 @@ QRhiShaderResourceBinding QRhiShaderResourceBinding::imageLoad(
    layout compatible QRhiShaderResourceBindings with resources present passed
    to QRhiCommandBuffer::setShaderResources().
 
-   \note Image load/store is only guaranteed to be available within a compute
-   pipeline. While some backends may support using these resources in a
-   graphics pipeline as well, this is not universally supported, and even when
-   it is, unexpected problems may arise when it comes to barriers and
-   synchronization. Therefore, avoid using such resources with shaders other
-   than compute.
+   \note Image load/store is only available within the compute and fragment stages.
  */
 QRhiShaderResourceBinding QRhiShaderResourceBinding::imageStore(
         int binding, StageFlags stage, QRhiTexture *tex, int level)
@@ -6207,12 +6231,7 @@ QRhiShaderResourceBinding QRhiShaderResourceBinding::imageStore(
    layout compatible QRhiShaderResourceBindings with resources present passed
    to QRhiCommandBuffer::setShaderResources().
 
-   \note Image load/store is only guaranteed to be available within a compute
-   pipeline. While some backends may support using these resources in a
-   graphics pipeline as well, this is not universally supported, and even when
-   it is, unexpected problems may arise when it comes to barriers and
-   synchronization. Therefore, avoid using such resources with shaders other
-   than compute.
+   \note Image load/store is only available within the compute and fragment stages.
  */
 QRhiShaderResourceBinding QRhiShaderResourceBinding::imageLoadStore(
         int binding, StageFlags stage, QRhiTexture *tex, int level)
@@ -6538,7 +6557,7 @@ bool operator!=(const QRhiShaderResourceBinding &a, const QRhiShaderResourceBind
 size_t qHash(const QRhiShaderResourceBinding &b, size_t seed) noexcept
 {
     const QRhiShaderResourceBinding::Data *d = QRhiImplementation::shaderResourceBindingData(b);
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombineWithSeed hash(seed);
     seed = hash(seed, d->binding);
     seed = hash(seed, d->stage);
     seed = hash(seed, d->type);
@@ -8592,15 +8611,19 @@ void QRhiImplementation::textureFormatInfo(QRhiTexture::Format format, const QSi
         bpc = 8;
         break;
 
+    case QRhiTexture::R8SI:
     case QRhiTexture::R8UI:
         bpc = 1;
         break;
+    case QRhiTexture::R32SI:
     case QRhiTexture::R32UI:
         bpc = 4;
         break;
+    case QRhiTexture::RG32SI:
     case QRhiTexture::RG32UI:
         bpc = 8;
         break;
+    case QRhiTexture::RGBA32SI:
     case QRhiTexture::RGBA32UI:
         bpc = 16;
         break;
@@ -8799,7 +8822,7 @@ QRhi::~QRhi()
     if (!d)
         return;
 
-    runCleanup();
+    d->runCleanup();
 
     qDeleteAll(d->pendingDeleteResources);
     d->pendingDeleteResources.clear();
@@ -8808,7 +8831,74 @@ QRhi::~QRhi()
     delete d;
 }
 
-void QRhiImplementation::prepareForCreate(QRhi *rhi, QRhi::Implementation impl, QRhi::Flags flags)
+QRhiImplementation *QRhiImplementation::newInstance(QRhi::Implementation impl, QRhiInitParams *params, QRhiNativeHandles *importDevice)
+{
+    QRhiImplementation *d = nullptr;
+
+    switch (impl) {
+    case QRhi::Null:
+        d = new QRhiNull(static_cast<QRhiNullInitParams *>(params));
+        break;
+    case QRhi::Vulkan:
+#if QT_CONFIG(vulkan)
+        d = new QRhiVulkan(static_cast<QRhiVulkanInitParams *>(params),
+                           static_cast<QRhiVulkanNativeHandles *>(importDevice));
+        break;
+#else
+        Q_UNUSED(importDevice);
+        qWarning("This build of Qt has no Vulkan support");
+        break;
+#endif
+    case QRhi::OpenGLES2:
+#ifndef QT_NO_OPENGL
+        d = new QRhiGles2(static_cast<QRhiGles2InitParams *>(params),
+                          static_cast<QRhiGles2NativeHandles *>(importDevice));
+        break;
+#else
+        qWarning("This build of Qt has no OpenGL support");
+        break;
+#endif
+    case QRhi::D3D11:
+#ifdef Q_OS_WIN
+        d = new QRhiD3D11(static_cast<QRhiD3D11InitParams *>(params),
+                          static_cast<QRhiD3D11NativeHandles *>(importDevice));
+        break;
+#else
+        qWarning("This platform has no Direct3D 11 support");
+        break;
+#endif
+    case QRhi::Metal:
+#if QT_CONFIG(metal)
+        d = new QRhiMetal(static_cast<QRhiMetalInitParams *>(params),
+                          static_cast<QRhiMetalNativeHandles *>(importDevice));
+        break;
+#else
+        qWarning("This platform has no Metal support");
+        break;
+#endif
+    case QRhi::D3D12:
+#ifdef Q_OS_WIN
+#ifdef QRHI_D3D12_AVAILABLE
+        d = new QRhiD3D12(static_cast<QRhiD3D12InitParams *>(params),
+                          static_cast<QRhiD3D12NativeHandles *>(importDevice));
+        break;
+#else
+        qWarning("Qt was built without Direct3D 12 support. "
+                 "This is likely due to having ancient SDK headers (such as d3d12.h) in the Qt build environment. "
+                 "Rebuild Qt with an SDK supporting D3D12 features introduced in Windows 10 version 1703, "
+                 "or use an MSVC build as those typically are built with more up-to-date SDKs.");
+        break;
+#endif
+#else
+        qWarning("This platform has no Direct3D 12 support");
+        break;
+#endif
+    }
+
+    return d;
+}
+
+void QRhiImplementation::prepareForCreate(QRhi *rhi, QRhi::Implementation impl, QRhi::Flags flags, QRhiAdapter *adapter)
 {
     q = rhi;
 
@@ -8816,6 +8906,23 @@ void QRhiImplementation::prepareForCreate(QRhi *rhi, QRhi::Implementation impl, 
 
     implType = impl;
     implThread = QThread::currentThread();
+
+    requestedRhiAdapter = adapter;
+}
+
+QRhi::AdapterList QRhiImplementation::enumerateAdaptersBeforeCreate(QRhiNativeHandles *) const
+{
+    return {};
+}
+
+/*!
+    \overload
+
+    Equivalent to create(\a impl, \a params, \a flags, \a importDevice, \c nullptr).
+ */
+QRhi *QRhi::create(Implementation impl, QRhiInitParams *params, Flags flags, QRhiNativeHandles *importDevice)
+{
+    return create(impl, params, flags, importDevice, nullptr);
 }
 
 /*!
@@ -8847,79 +8954,31 @@ void QRhiImplementation::prepareForCreate(QRhi *rhi, QRhi::Implementation impl, 
     QRhiMetalNativeHandles, QRhiGles2NativeHandles. The exact details and
     semantics depend on the backand and the underlying graphics API.
 
+    Specifying a QRhiAdapter in \a adapter offers a transparent, cross-API
+    alternative to passing in a \c VkPhysicalDevice via QRhiVulkanNativeHandles,
+    or an adapter LUID via QRhiD3D12NativeHandles. The ownership of \a adapter
+    is not taken. See enumerateAdapters() for more information on this approach.
+
+    \note \a importDevice and \a adapter cannot be both specified.
+
     \sa probe()
  */
-QRhi *QRhi::create(Implementation impl, QRhiInitParams *params, Flags flags, QRhiNativeHandles *importDevice)
+QRhi *QRhi::create(Implementation impl, QRhiInitParams *params, Flags flags, QRhiNativeHandles *importDevice, QRhiAdapter *adapter)
 {
+    if (adapter && importDevice)
+        qWarning("adapter and importDevice should not both be non-null in QRhi::create()");
+
+    std::unique_ptr<QRhiImplementation> rd(QRhiImplementation::newInstance(impl, params, importDevice));
+    if (!rd)
+        return nullptr;
+
     std::unique_ptr<QRhi> r(new QRhi);
+    r->d = rd.release();
+    r->d->prepareForCreate(r.get(), impl, flags, adapter);
+    if (!r->d->create(flags))
+        return nullptr;
 
-    switch (impl) {
-    case Null:
-        r->d = new QRhiNull(static_cast<QRhiNullInitParams *>(params));
-        break;
-    case Vulkan:
-#if QT_CONFIG(vulkan)
-        r->d = new QRhiVulkan(static_cast<QRhiVulkanInitParams *>(params),
-                              static_cast<QRhiVulkanNativeHandles *>(importDevice));
-        break;
-#else
-        Q_UNUSED(importDevice);
-        qWarning("This build of Qt has no Vulkan support");
-        break;
-#endif
-    case OpenGLES2:
-#ifndef QT_NO_OPENGL
-        r->d = new QRhiGles2(static_cast<QRhiGles2InitParams *>(params),
-                             static_cast<QRhiGles2NativeHandles *>(importDevice));
-        break;
-#else
-        qWarning("This build of Qt has no OpenGL support");
-        break;
-#endif
-    case D3D11:
-#ifdef Q_OS_WIN
-        r->d = new QRhiD3D11(static_cast<QRhiD3D11InitParams *>(params),
-                             static_cast<QRhiD3D11NativeHandles *>(importDevice));
-        break;
-#else
-        qWarning("This platform has no Direct3D 11 support");
-        break;
-#endif
-    case Metal:
-#if QT_CONFIG(metal)
-        r->d = new QRhiMetal(static_cast<QRhiMetalInitParams *>(params),
-                             static_cast<QRhiMetalNativeHandles *>(importDevice));
-        break;
-#else
-        qWarning("This platform has no Metal support");
-        break;
-#endif
-    case D3D12:
-#ifdef Q_OS_WIN
-#ifdef QRHI_D3D12_AVAILABLE
-        r->d = new QRhiD3D12(static_cast<QRhiD3D12InitParams *>(params),
-                             static_cast<QRhiD3D12NativeHandles *>(importDevice));
-        break;
-#else
-        qWarning("Qt was built without Direct3D 12 support. "
-                 "This is likely due to having ancient SDK headers (such as d3d12.h) in the Qt build environment. "
-                 "Rebuild Qt with an SDK supporting D3D12 features introduced in Windows 10 version 1703, "
-                 "or use an MSVC build as those typically are built with more up-to-date SDKs.");
-        break;
-#endif
-#else
-        qWarning("This platform has no Direct3D 12 support");
-        break;
-#endif
-    }
-
-    if (r->d) {
-        r->d->prepareForCreate(r.get(), impl, flags);
-        if (r->d->create(flags))
-            return r.release();
-    }
-
-    return nullptr;
+    return r.release();
 }
 
 /*!
@@ -8954,6 +9013,111 @@ bool QRhi::probe(QRhi::Implementation impl, QRhiInitParams *params)
         delete rhi;
     }
     return ok;
+}
+
+/*!
+    \typedef QRhi::AdapterList
+    \relates QRhi
+    \since 6.10
+
+    Synonym for QVector<QRhiAdapter *>.
+*/
+
+/*!
+    \return the list of adapters (physical devices) present, or an empty list
+    when such control is not available with a given graphics API.
+
+    Backends where such level of control is not available, the returned list is
+    always empty. Thus an empty list does not indicate there are no graphics
+    devices in the system, but that fine-grained control over selecting which
+    one to use is not available.
+
+    Backends for Direct 3D 11, Direct 3D 12, and Vulkan can be expected to fully
+    support enumerating adapters. Others may not. The backend is specified by \a
+    impl. A QRhiAdapter returned from this function must only be used in a
+    create() call with the same \a impl. Some underlying APIs may present
+    further limitations, with Vulkan in particular the QRhiAdapter is specified
+    to the QVulkanInstance (\c VkInstance).
+
+    The caller is expected to destroy the QRhiAdapter objects in the list. Apart
+    from querying \l{QRhiAdapter::}{info()}, the only purpose of these objects is
+    to be passed on to create(), or the corresponding functions in higher layers
+    such as Qt Quick.
+
+    The following snippet, written specifically for Vulkan, shows how to
+    enumerate the available physical devices and request to create a QRhi for
+    the chosen one. This in practice is equivalent to passing in a \c
+    VkPhysicalDevice via a QRhiVulkanNativeHandles to create(), but it involves
+    less API-specific code on the application side:
+
+    \code
+      QRhiVulkanInitParams initParams;
+      initParams.inst = &vulkanInstance;
+      QRhi::AdapterList adapters = QRhi::enumerateAdapters(QRhi::Vulkan, &initParams);
+      QRhiAdapter *chosenAdapter = nullptr;
+      for (QRhiAdapter *adapter : adapters) {
+          if (looksGood(adapter->info())) {
+              chosenAdapter = adapter;
+              break;
+          }
+      }
+      QRhi *rhi = QRhi::create(QRhi::Vulkan, &initParams, {}, nullptr, chosenAdapter);
+      qDeleteAll(adapters);
+    \endcode
+
+    Passing in \a params is required due to some of the underlying graphics
+    APIs' design. With Vulkan in particular, the QVulkanInstance must be
+    provided, since enumerating is not possible without it. Other fields in the
+    backend-specific \a params will not actually be used by this function.
+
+    \a nativeHandles is optional. When specified, it must be a valid
+    QRhiD3D11NativeHandles, QRhiD3D12NativeHandles, or QRhiVulkanNativeHandles,
+    similarly to create(). However, unlike create(), only the physical device
+    (in case of Vulkan) or the adapter LUID (in case of D3D) fields are used,
+    all other fields are ignored. This can be used the restrict the results to a
+    given adapter. The returned list will contain 1 or 0 elements in this case.
+
+    Note how in the previous code snippet the looksGood() function
+    implementation cannot perform any platform-specific filtering based on the
+    true adapter / physical device identity, such as the adapter LUID on Windows
+    or the VkPhysicalDevice with Vulkan. This is because QRhiDriverInfo does not
+    contain platform-specific data. Instead, use \a nativeHandles to get the
+    results filtered already inside enumerateAdapters().
+
+    The following two snippets, using Direct 3D 12 as an example, are equivalent
+    in practice:
+
+    \code
+      // enumerateAdapters-based approach from Qt 6.10 on
+      QRhiD3D12InitParams initParams;
+      QRhiD3D12NativeHandles nativeHandles;
+      nativeHandles.adapterLuidLow = luid.LowPart; // retrieved a LUID from somewhere, now pass it on to Qt
+      nativeHandles.adapterLuidHigh = luid.HighPart;
+      QRhi::AdapterList adapters = QRhi::enumerateAdapters(QRhi::D3D12, &initParams, &nativeHandles);
+      if (adapters.isEmpty()) { qWarning("Requested adapter was not found"); }
+      QRhi *rhi = QRhi::create(QRhi::D3D12, &initParams, {}, nullptr, adapters[0]);
+      qDeleteAll(adapters);
+    \endcode
+
+    \code
+      // traditional approach, more lightweight
+      QRhiD3D12InitParams initParams;
+      QRhiD3D12NativeHandles nativeHandles;
+      nativeHandles.adapterLuidLow = luid.LowPart; // retrieved a LUID from somewhere, now pass it on to Qt
+      nativeHandles.adapterLuidHigh = luid.HighPart;
+      QRhi *rhi = QRhi::create(QRhi::D3D12, &initParams, {}, &nativeHandles, nullptr);
+    \endcode
+
+    \since 6.10
+    \sa create()
+ */
+QRhi::AdapterList QRhi::enumerateAdapters(Implementation impl, QRhiInitParams *params, QRhiNativeHandles *nativeHandles)
+{
+    std::unique_ptr<QRhiImplementation> rd(QRhiImplementation::newInstance(impl, params, nullptr));
+    if (!rd)
+        return {};
+
+    return rd->enumerateAdaptersBeforeCreate(nativeHandles);
 }
 
 /*!
@@ -9150,6 +9314,45 @@ QRhiDriverInfo QRhi::driverInfo() const
 }
 
 /*!
+    \class QRhiAdapter
+    \inmodule QtGuiPrivate
+    \inheaderfile rhi/qrhi.h
+    \since 6.10
+
+    \brief Represents a physical graphics device.
+
+    Some QRhi backends target graphics APIs that expose the concept of \c
+    adapters or \c{physical devices}. Call the static \l
+    {QRhi::}{enumerateAdapters()} function to retrieve a list of the adapters
+    present in the system. Pass one of the returned QRhiAdapter objects to \l
+    {QRhi::}{create()} in order to request using the adapter or physical device
+    the QRhiAdapter corresponds to. Other than exposing the QRhiDriverInfo,
+    QRhiAdapter is to be treated as an opaque handle.
+
+    \note With Vulkan, the QRhiAdapter is valid only as long as the
+    QVulkanInstance that was used for \l{QRhi::}{enumerateAdapters()} is valid.
+    This also means that a QRhiAdapter is tied to the Vulkan instance
+    (QVulkanInstance, \c VkInstance) and cannot be used in the context of
+    another Vulkan instance.
+
+    \note This is a RHI API with limited compatibility guarantees, see \l QRhi
+    for details.
+ */
+
+/*!
+    \fn virtual QRhiDriverInfo QRhiAdapter::info() const = 0
+
+    \return the corresponding QRhiDriverInfo.
+ */
+
+/*!
+    \internal
+ */
+QRhiAdapter::~QRhiAdapter()
+{
+}
+
+/*!
     \return the thread on which the QRhi was \l{QRhi::create()}{initialized}.
  */
 QThread *QRhi::thread() const
@@ -9158,8 +9361,7 @@ QThread *QRhi::thread() const
 }
 
 /*!
-    Registers a \a callback that is invoked either when the QRhi is destroyed,
-    or when runCleanup() is called.
+    Registers a \a callback that is invoked when the QRhi is destroyed.
 
     The callback will run with the graphics resource still available, so this
     provides an opportunity for the application to cleanly release QRhiResource
@@ -9167,7 +9369,7 @@ QThread *QRhi::thread() const
     the lifetime of resources stored in \c cache type of objects, where the
     cache holds QRhiResources or objects containing QRhiResources.
 
-    \sa runCleanup(), ~QRhi()
+    \sa ~QRhi()
  */
 void QRhi::addCleanupCallback(const CleanupCallback &callback)
 {
@@ -9177,10 +9379,9 @@ void QRhi::addCleanupCallback(const CleanupCallback &callback)
 /*!
     \overload
 
-    Registers \a callback to be invoked either when the QRhi is destroyed or
-    when runCleanup() is called. This overload takes an opaque pointer, \a key,
-    that is used to ensure that a given callback is registered (and so called)
-    only once.
+    Registers \a callback to be invoked when the QRhi is destroyed. This
+    overload takes an opaque pointer, \a key, that is used to ensure that a
+    given callback is registered (and so called) only once.
 
     \sa removeCleanupCallback()
  */
@@ -9201,25 +9402,17 @@ void QRhi::removeCleanupCallback(const void *key)
     d->removeCleanupCallback(key);
 }
 
-/*!
-    Invokes all registered cleanup functions. The list of cleanup callbacks it
-    then cleared. Normally destroying the QRhi does this automatically, but
-    sometimes it can be useful to trigger cleanup in order to release all
-    cached, non-essential resources.
-
-    \sa addCleanupCallback()
- */
-void QRhi::runCleanup()
+void QRhiImplementation::runCleanup()
 {
-    for (const CleanupCallback &f : std::as_const(d->cleanupCallbacks))
-        f(this);
+    for (const QRhi::CleanupCallback &f : std::as_const(cleanupCallbacks))
+        f(q);
 
-    d->cleanupCallbacks.clear();
+    cleanupCallbacks.clear();
 
-    for (auto it = d->keyedCleanupCallbacks.cbegin(), end = d->keyedCleanupCallbacks.cend(); it != end; ++it)
-        it.value()(this);
+    for (auto it = keyedCleanupCallbacks.cbegin(), end = keyedCleanupCallbacks.cend(); it != end; ++it)
+        it.value()(q);
 
-    d->keyedCleanupCallbacks.clear();
+    keyedCleanupCallbacks.clear();
 }
 
 /*!
@@ -9339,7 +9532,9 @@ bool QRhiResourceUpdateBatch::hasOptimalCapacity() const
 
     The region is specified \a offset and \a size. The actual bytes to write
     are specified by \a data which must have at least \a size bytes available.
-    \a data can safely be destroyed or changed once this function returns.
+
+    \a data is copied and can safely be destroyed or changed once this function
+    returns.
 
     \note If host writes are involved, which is the case with
     updateDynamicBuffer() typically as such buffers are backed by host visible
@@ -9365,12 +9560,35 @@ void QRhiResourceUpdateBatch::updateDynamicBuffer(QRhiBuffer *buf, quint32 offse
 }
 
 /*!
+    \overload
+    \since 6.10
+
+    Enqueues updating a region of a QRhiBuffer \a buf created with the type
+    QRhiBuffer::Dynamic.
+
+    \a data is moved into the batch instead of copied with this overload.
+ */
+void QRhiResourceUpdateBatch::updateDynamicBuffer(QRhiBuffer *buf, quint32 offset, QByteArray data)
+{
+    if (!data.isEmpty()) {
+        const int idx = d->activeBufferOpCount++;
+        const int opListSize = d->bufferOps.size();
+        if (idx < opListSize)
+            QRhiResourceUpdateBatchPrivate::BufferOp::changeToDynamicUpdate(&d->bufferOps[idx], buf, offset, std::move(data));
+        else
+            d->bufferOps.append(QRhiResourceUpdateBatchPrivate::BufferOp::dynamicUpdate(buf, offset, std::move(data)));
+    }
+}
+
+/*!
     Enqueues updating a region of a QRhiBuffer \a buf created with the type
     QRhiBuffer::Immutable or QRhiBuffer::Static.
 
     The region is specified \a offset and \a size. The actual bytes to write
     are specified by \a data which must have at least \a size bytes available.
-    \a data can safely be destroyed or changed once this function returns.
+
+    \a data is copied and can safely be destroyed or changed once this function
+    returns.
  */
 void QRhiResourceUpdateBatch::uploadStaticBuffer(QRhiBuffer *buf, quint32 offset, quint32 size, const void *data)
 {
@@ -9380,6 +9598,26 @@ void QRhiResourceUpdateBatch::uploadStaticBuffer(QRhiBuffer *buf, quint32 offset
             QRhiResourceUpdateBatchPrivate::BufferOp::changeToStaticUpload(&d->bufferOps[idx], buf, offset, size, data);
         else
             d->bufferOps.append(QRhiResourceUpdateBatchPrivate::BufferOp::staticUpload(buf, offset, size, data));
+    }
+}
+
+/*!
+    \overload
+    \since 6.10
+
+    Enqueues updating a region of a QRhiBuffer \a buf created with the type
+    QRhiBuffer::Immutable or QRhiBuffer::Static.
+
+    \a data is moved into the batch instead of copied with this overload.
+ */
+void QRhiResourceUpdateBatch::uploadStaticBuffer(QRhiBuffer *buf, quint32 offset, QByteArray data)
+{
+    if (!data.isEmpty()) {
+        const int idx = d->activeBufferOpCount++;
+        if (idx < d->bufferOps.size())
+            QRhiResourceUpdateBatchPrivate::BufferOp::changeToStaticUpload(&d->bufferOps[idx], buf, offset, std::move(data));
+        else
+            d->bufferOps.append(QRhiResourceUpdateBatchPrivate::BufferOp::staticUpload(buf, offset, std::move(data)));
     }
 }
 
@@ -9397,6 +9635,28 @@ void QRhiResourceUpdateBatch::uploadStaticBuffer(QRhiBuffer *buf, const void *da
             QRhiResourceUpdateBatchPrivate::BufferOp::changeToStaticUpload(&d->bufferOps[idx], buf, 0, 0, data);
         else
             d->bufferOps.append(QRhiResourceUpdateBatchPrivate::BufferOp::staticUpload(buf, 0, 0, data));
+    }
+}
+
+/*!
+    \overload
+    \since 6.10
+
+    Enqueues updating the entire QRhiBuffer \a buf created with the type
+    QRhiBuffer::Immutable or QRhiBuffer::Static.
+
+    \a data is moved into the batch instead of copied with this overload.
+
+    \a data size must equal the size of \a buf.
+ */
+void QRhiResourceUpdateBatch::uploadStaticBuffer(QRhiBuffer *buf, QByteArray data)
+{
+    if (buf->size() > 0 && quint32(data.size()) == buf->size()) {
+        const int idx = d->activeBufferOpCount++;
+        if (idx < d->bufferOps.size())
+            QRhiResourceUpdateBatchPrivate::BufferOp::changeToStaticUpload(&d->bufferOps[idx], buf, 0, std::move(data));
+        else
+            d->bufferOps.append(QRhiResourceUpdateBatchPrivate::BufferOp::staticUpload(buf, 0, std::move(data)));
     }
 }
 
@@ -11589,6 +11849,24 @@ QRhiPassResourceTracker::TextureStage QRhiPassResourceTracker::toPassTrackerText
         return QRhiPassResourceTracker::TexGeometryStage;
 
     Q_UNREACHABLE_RETURN(QRhiPassResourceTracker::TexVertexStage);
+}
+
+QSize QRhiImplementation::clampedSubResourceUploadSize(QSize size, QPoint dstPos, int level, QSize textureSizeAtLevelZero, bool warn)
+{
+    const QSize subResSize = q->sizeForMipLevel(level, textureSizeAtLevelZero);
+    const bool outOfBoundsHoriz = dstPos.x() + size.width() > subResSize.width();
+    const bool outOfBoundsVert = dstPos.y() + size.height() > subResSize.height();
+    if (Q_UNLIKELY(outOfBoundsHoriz || outOfBoundsVert)) {
+        if (warn) {
+            qWarning("Invalid texture upload issued; size %dx%d dst.position %d,%d dst.subresource size %dx%d; size will be clamped",
+                     size.width(), size.height(), dstPos.x(), dstPos.y(), subResSize.width(), subResSize.height());
+        }
+        if (outOfBoundsHoriz)
+            size.setWidth(subResSize.width() - dstPos.x());
+        if (outOfBoundsVert)
+            size.setHeight(subResSize.height() - dstPos.y());
+    }
+    return size;
 }
 
 QT_END_NAMESPACE

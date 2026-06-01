@@ -47,6 +47,8 @@ class Q_GRAPHS_EXPORT QAbstract3DSeries : public QObject
     Q_PROPERTY(QString itemLabel READ itemLabel NOTIFY itemLabelChanged)
     Q_PROPERTY(bool itemLabelVisible READ isItemLabelVisible WRITE setItemLabelVisible NOTIFY
                    itemLabelVisibleChanged)
+    Q_PROPERTY(QAbstract3DSeries::LightingMode lightingMode READ lightingMode WRITE setLightingMode
+               NOTIFY lightingModeChanged REVISION(6,10))
     QML_NAMED_ELEMENT(Abstract3DSeries)
     QML_UNCREATABLE("Uncreatable base type")
 public:
@@ -73,6 +75,12 @@ public:
         Point,
     };
     Q_ENUM(Mesh)
+
+    enum class LightingMode : bool {
+        Shaded,
+        Unshaded,
+    };
+    Q_ENUM(LightingMode)
 
 protected:
     explicit QAbstract3DSeries(QAbstract3DSeriesPrivate &d, QObject *parent = nullptr);
@@ -116,6 +124,9 @@ public:
     void setMultiHighlightGradient(const QLinearGradient &gradient);
     QLinearGradient multiHighlightGradient() const;
 
+    LightingMode lightingMode() const;
+    void setLightingMode(LightingMode lightingMode);
+
     void setName(const QString &name);
     QString name() const;
 
@@ -140,6 +151,7 @@ Q_SIGNALS:
     void nameChanged(const QString &name);
     void itemLabelChanged(const QString &label);
     void itemLabelVisibleChanged(bool visible);
+    void lightingModeChanged(QAbstract3DSeries::LightingMode lightingMode);
 
 private:
     Q_DISABLE_COPY(QAbstract3DSeries)

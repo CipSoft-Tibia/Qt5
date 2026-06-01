@@ -16,13 +16,12 @@
 //
 
 #include <QtMultimediaWidgets/qtmultimediawidgetsglobal.h>
-#include <qvideoframe.h>
-#include "qvideowidget.h"
-#include "private/qglobal_p.h"
+
+#include <QtMultimediaWidgets/qvideowidget.h>
+#include <QtMultimedia/qvideoframe.h>
 
 QT_BEGIN_NAMESPACE
 
-class QObject;
 class QVideoWindow;
 
 class QVideoWidgetPrivate
@@ -30,18 +29,16 @@ class QVideoWidgetPrivate
     Q_DECLARE_PUBLIC(QVideoWidget)
 public:
     QVideoWidget *q_ptr = nullptr;
-    Qt::AspectRatioMode aspectRatioMode = Qt::KeepAspectRatio;
     Qt::WindowFlags nonFullScreenFlags;
     bool wasFullScreen = false;
-
-    QVideoWindow *videoWindow = nullptr;
-    QWidget *windowContainer = nullptr;
     QPoint nonFullscreenPos;
 
-    bool createBackend();
+    QVideoWindow *videoWindow = nullptr;
+    QVideoSink *fakeVideoSink = nullptr;
+    QWidget *windowContainer = nullptr;
+    bool isEglfs = false;
 };
 
 QT_END_NAMESPACE
-
 
 #endif

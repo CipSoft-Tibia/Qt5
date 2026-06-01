@@ -200,6 +200,8 @@ static ParsedRfcDateTime rfcDateImpl(QStringView s)
             monthIndex = 0;
             yearIndex = words.size() > 3 && words.at(2).contains(colon) ? 3 : 2;
         }
+        if (words.at(yearIndex).size() != 4)
+            return result;
 
         int dayOfWeek = 0;
         if (!dayName.isEmpty()) {
@@ -2233,10 +2235,9 @@ QString QTime::toString(Qt::DateFormat format) const
     replaced by a single quote in the output. All other characters in the format
     string are included verbatim in the output string.
 
-    Formats without separators (e.g. "ddMM") are supported but must be used with
-    care, as the resulting strings aren't always reliably readable (e.g. if "dM"
-    produces "212" it could mean either the 2nd of December or the 21st of
-    February).
+    Formats without separators (e.g. "hhmm") are supported but must be used with
+    care, as the resulting strings aren't always reliably readable (e.g. if "Hm"
+    produces "212" it could mean either 02:12 or 21:02).
 
     Example format strings (assuming that the QTime is 14:13:09.042)
 
@@ -3958,7 +3959,7 @@ QDateTime::Data QDateTimePrivate::create(QDate toDate, QTime toTime, const QTime
     \c{'compatible'} option corresponds to \c RelativeToBefore (and Python's
     \c{fold = True}).
 
-    \sa {Timezone transitions}, QDateTime::TransitionResolution
+    \sa {Timezone transitions}
 */
 
 /*!

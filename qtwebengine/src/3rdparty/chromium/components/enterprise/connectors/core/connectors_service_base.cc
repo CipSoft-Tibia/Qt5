@@ -5,6 +5,7 @@
 #include "components/enterprise/connectors/core/connectors_service_base.h"
 
 #include "components/enterprise/connectors/core/connectors_prefs.h"
+#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
 #include "components/prefs/pref_service.h"
 
 namespace enterprise_connectors {
@@ -20,15 +21,18 @@ ConnectorsServiceBase::DmToken& ConnectorsServiceBase::DmToken::operator=(
     const DmToken&) = default;
 ConnectorsServiceBase::DmToken::~DmToken() = default;
 
-std::optional<std::string>
+base::expected<std::string,
+               ConnectorsServiceBase::NoDMTokenForRealTimeUrlCheckReason>
 ConnectorsServiceBase::GetDMTokenForRealTimeUrlCheck() const {
   if (!ConnectorsEnabled()) {
-    return std::nullopt;
+    return base::unexpected(
+        NoDMTokenForRealTimeUrlCheckReason::kConnectorsDisabled);
   }
 
   if (GetPrefs()->GetInteger(kEnterpriseRealTimeUrlCheckMode) ==
       REAL_TIME_CHECK_DISABLED) {
-    return std::nullopt;
+    return base::unexpected(
+        NoDMTokenForRealTimeUrlCheckReason::kPolicyDisabled);
   }
 
   std::optional<DmToken> dm_token =
@@ -37,7 +41,7 @@ ConnectorsServiceBase::GetDMTokenForRealTimeUrlCheck() const {
   if (dm_token.has_value()) {
     return dm_token.value().value;
   }
-  return std::nullopt;
+  return base::unexpected(NoDMTokenForRealTimeUrlCheckReason::kNoDmToken);
 }
 
 EnterpriseRealTimeUrlCheckMode
@@ -51,18 +55,8 @@ ConnectorsServiceBase::GetAppliedRealTimeUrlCheck() const {
       GetPrefs()->GetInteger(kEnterpriseRealTimeUrlCheckMode));
 }
 
-bool ConnectorsServiceBase::IsConnectorEnabled(
-    ReportingConnector connector) const {
-  if (!ConnectorsEnabled()) {
-    return false;
-  }
-
-  return GetConnectorsManagerBase()->IsReportingConnectorEnabled(connector);
-}
-
 std::vector<std::string>
-ConnectorsServiceBase::GetReportingServiceProviderNames(
-    ReportingConnector connector) {
+ConnectorsServiceBase::GetReportingServiceProviderNames() {
   if (!ConnectorsEnabled()) {
     return {};
   }
@@ -71,18 +65,16 @@ ConnectorsServiceBase::GetReportingServiceProviderNames(
     return {};
   }
 
-  return GetConnectorsManagerBase()->GetReportingServiceProviderNames(
-      connector);
+  return GetConnectorsManagerBase()->GetReportingServiceProviderNames();
 }
 
-std::optional<ReportingSettings> ConnectorsServiceBase::GetReportingSettings(
-    ReportingConnector connector) {
+std::optional<ReportingSettings> ConnectorsServiceBase::GetReportingSettings() {
   if (!ConnectorsEnabled()) {
     return std::nullopt;
   }
 
   std::optional<ReportingSettings> settings =
-      GetConnectorsManagerBase()->GetReportingSettings(connector);
+      GetConnectorsManagerBase()->GetReportingSettings();
   if (!settings.has_value()) {
     return std::nullopt;
   }
@@ -98,5 +90,20 @@ std::optional<ReportingSettings> ConnectorsServiceBase::GetReportingSettings(
 
   return settings;
 }
+
+#if !BUILDFLAG(IS_CHROMEOS)
+std::optional<std::string> ConnectorsServiceBase::GetProfileDmToken() const {
+  policy::CloudPolicyManager* policy_manager =
+      GetManagedUserCloudPolicyManager();
+  if (policy_manager && policy_manager->core() &&
+      policy_manager->core()->store() &&
+      policy_manager->core()->store()->has_policy() &&
+      policy_manager->core()->store()->policy()->has_request_token()) {
+    return policy_manager->core()->store()->policy()->request_token();
+  }
+
+  return std::nullopt;
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace enterprise_connectors

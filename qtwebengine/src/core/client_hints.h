@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef CLIENT_HINTS_H_
 #define CLIENT_HINTS_H_
@@ -37,7 +38,7 @@ private:
     ~ClientHintsFactory() override;
 
     // BrowserContextKeyedServiceFactory methods:
-    KeyedService *BuildServiceInstanceFor(content::BrowserContext *profile) const override;
+    std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(content::BrowserContext *profile) const override;
     content::BrowserContext *GetBrowserContextToUse(content::BrowserContext *context) const override;
 };
 
@@ -57,8 +58,6 @@ public:
     void GetAllowedClientHintsFromSource(const url::Origin &origin, blink::EnabledClientHints *client_hints) override;
 
     bool IsJavaScriptAllowed(const GURL &url, content::RenderFrameHost *parent_rfh) override;
-
-    bool AreThirdPartyCookiesBlocked(const GURL &url, content::RenderFrameHost *rfh) override;
 
     blink::UserAgentMetadata GetUserAgentMetadata() override;
 

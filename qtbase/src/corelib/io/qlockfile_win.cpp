@@ -6,13 +6,16 @@
 
 #include "private/qlockfile_p.h"
 #include "private/qfilesystementry_p.h"
+#include "wcharhelpers_win_p.h"
+
+#include "QtCore/qdatetime.h"
+#include "QtCore/qdir.h"
+#include "QtCore/qdebug.h"
+#include "QtCore/qfileinfo.h"
+#include "QtCore/qthread.h"
+
 #include <qt_windows.h>
 #include <psapi.h>
-
-#include "QtCore/qfileinfo.h"
-#include "QtCore/qdatetime.h"
-#include "QtCore/qdebug.h"
-#include "QtCore/qthread.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -20,6 +23,29 @@ static inline bool fileExists(const wchar_t *fileName)
 {
     WIN32_FILE_ATTRIBUTE_DATA  data;
     return GetFileAttributesEx(fileName, GetFileExInfoStandard, &data);
+}
+
+static bool deleteFile(const QString &fileName)
+{
+    const DWORD dwShareMode = 0;    // no sharing
+    SECURITY_ATTRIBUTES securityAtts = { sizeof(SECURITY_ATTRIBUTES), NULL, FALSE };
+    HANDLE fh = CreateFile(qt_castToWchar(QDir::toNativeSeparators(fileName)),
+                           GENERIC_READ | GENERIC_WRITE,
+                           dwShareMode,
+                           &securityAtts,
+                           OPEN_EXISTING, // error if it doesn't exist
+                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
+                           NULL);
+    bool success = (fh != INVALID_HANDLE_VALUE);
+    if (success) {
+        CloseHandle(fh);
+        // the file is now deleted
+    } else {
+        const DWORD lastError = GetLastError();
+        if (lastError == ERROR_FILE_NOT_FOUND)
+            success = true;
+    }
+    return success;
 }
 
 QLockFile::LockError QLockFilePrivate::tryLock_sys()
@@ -70,8 +96,8 @@ QLockFile::LockError QLockFilePrivate::tryLock_sys()
 
 bool QLockFilePrivate::removeStaleLock()
 {
-    // QFile::remove fails on Windows if the other process is still using the file, so it's not stale.
-    return QFile::remove(fileName);
+    // DeleteFile fails if the other process is still using the file, so it's not stale.
+    return deleteFile(fileName);
 }
 
 bool QLockFilePrivate::isProcessRunning(qint64 pid, const QString &appname)
@@ -124,7 +150,7 @@ void QLockFile::unlock()
     CloseHandle(d->fileHandle);
     int attempts = 0;
     static const int maxAttempts = 500; // 500ms
-    while (!QFile::remove(d->fileName) && ++attempts < maxAttempts) {
+    while (!deleteFile(d->fileName) && ++attempts < maxAttempts) {
         // Someone is reading the lock file right now (on Windows this prevents deleting it).
         QThread::msleep(1);
     }

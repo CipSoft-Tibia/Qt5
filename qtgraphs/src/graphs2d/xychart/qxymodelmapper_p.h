@@ -14,8 +14,11 @@
 
 #include <QtGraphs/QXYModelMapper>
 #include <private/qobject_p.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcModelMapper2D)
 
 class QXYModelMapperPrivate : public QObjectPrivate
 {

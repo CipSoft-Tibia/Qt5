@@ -123,42 +123,11 @@ std::unique_ptr<ResourceProvider> VulkanSharedContext::makeResourceProvider(
         SingleOwner* singleOwner,
         uint32_t recorderID,
         size_t resourceBudget) {
-    // Establish a uniform buffer that can be updated across multiple render passes and cmd buffers
-    size_t alignedIntrinsicConstantSize =
-            std::max(VulkanResourceProvider::kIntrinsicConstantSize,
-                     this->vulkanCaps().requiredUniformBufferAlignment());
-    sk_sp<Buffer> intrinsicConstantBuffer = VulkanBuffer::Make(
-            this, alignedIntrinsicConstantSize, BufferType::kUniform, AccessPattern::kGpuOnly);
-    if (!intrinsicConstantBuffer) {
-        SKGPU_LOG_E("Failed to create intrinsic constant uniform buffer");
-        return nullptr;
-    }
-    SkASSERT(static_cast<VulkanBuffer*>(intrinsicConstantBuffer.get())->bufferUsageFlags()
-             & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-    intrinsicConstantBuffer->setLabel("IntrinsicConstantBuffer");
-
-    // Establish a vertex buffer that can be updated across multiple render passes and cmd buffers
-    // for loading MSAA from resolve
-    sk_sp<Buffer> loadMSAAVertexBuffer =
-            VulkanBuffer::Make(this,
-                               VulkanResourceProvider::kLoadMSAAVertexBufferSize,
-                               BufferType::kVertex,
-                               AccessPattern::kGpuOnly);
-    if (!loadMSAAVertexBuffer) {
-        SKGPU_LOG_E("Failed to create vertex buffer for loading MSAA from resolve");
-        return nullptr;
-    }
-    SkASSERT(static_cast<VulkanBuffer*>(loadMSAAVertexBuffer.get())->bufferUsageFlags()
-             & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    loadMSAAVertexBuffer->setLabel("LoadMSAAVertexBuffer");
-
     return std::unique_ptr<ResourceProvider>(
             new VulkanResourceProvider(this,
                                        singleOwner,
                                        recorderID,
-                                       resourceBudget,
-                                       std::move(intrinsicConstantBuffer),
-                                       std::move(loadMSAAVertexBuffer)));
+                                       resourceBudget));
 }
 
 bool VulkanSharedContext::checkVkResult(VkResult result) const {

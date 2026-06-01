@@ -5,7 +5,6 @@
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QSaveFile>
-#include <QtCore/QScopedPointer>
 #include <QtCore/QTimer>
 #include <QtDBus/QDBusPendingCallWatcher>
 
@@ -19,6 +18,8 @@
 Q_DECLARE_LOGGING_CATEGORY(lcPositioningGeoclue2)
 
 QT_BEGIN_NAMESPACE
+
+using namespace QtPositioningPrivate;
 
 namespace {
 
@@ -320,7 +321,7 @@ bool QGeoPositionInfoSourceGeoclue2::configureClient()
     if (m_desktopId.isEmpty()) {
         qCCritical(lcPositioningGeoclue2)
                 << "Unable to configure the client due to the desktop id is not set via"
-                << desktopIdParameter << "plugin parameter or QCoreApplication::applicationName";
+                << desktopIdParameter << "plugin parameter or QGuiApplication::desktopFileName";
         setError(AccessError);
         return false;
     }
@@ -398,7 +399,7 @@ void QGeoPositionInfoSourceGeoclue2::handleNewLocation(const QDBusObjectPath &ol
 
         const auto accuracy = location.accuracy();
         // We assume that an accuracy as 0.0 means that it comes from a sattelite.
-        m_lastPositionFromSatellite = qFuzzyCompare(accuracy, 0.0);
+        m_lastPositionFromSatellite = qFuzzyIsNull(accuracy);
 
         m_lastPosition.setAttribute(QGeoPositionInfo::HorizontalAccuracy, accuracy);
         const auto speed = location.speed();
@@ -420,8 +421,17 @@ void QGeoPositionInfoSourceGeoclue2::parseParameters(const QVariantMap &paramete
     if (parameters.contains(desktopIdParameter))
         m_desktopId = parameters.value(desktopIdParameter).toString();
 
-    if (m_desktopId.isEmpty())
+    if (m_desktopId.isEmpty() && qApp)
+        m_desktopId = qApp->property("desktopFileName").toString();
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    if (m_desktopId.isEmpty()) {
+        qCWarning(lcPositioningGeoclue2) << "Neither" << desktopIdParameter
+                                         << "plugin parameter nor QGuiApplication::desktopFileName"
+                                         << "has been set. Please consider setting one of the two.";
         m_desktopId = QCoreApplication::applicationName();
+    }
+#endif
 }
 
 QT_END_NAMESPACE

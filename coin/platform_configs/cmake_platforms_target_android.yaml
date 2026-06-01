@@ -2,12 +2,12 @@ Version: 2
 Configurations:
 -
     Id: 'android-arm64-on-macos'
-    Template: 'qtci-macos-13-x86_64-103'
+    Template: 'qtci-macos-14-arm-106'
     Target os: 'Android_ANY'
     Target arch: 'arm64'
     Compiler: 'Clang'
     Target compiler: 'Clang'
-    Platform dependency: 'macos-universal-on-x86_64'
+    Platform dependency: 'macos-universal-on-arm64'
     Features: ['Packaging', 'Sccache', 'WarningsAreErrors', 'DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
     Environment variables: [
         'TARGET_CONFIGURE_ARGS=-nomake examples -release -force-debug-info -android-ndk {{.Env.ANDROID_NDK_ROOT_LATEST}} -android-sdk {{.Env.ANDROID_SDK_ROOT}} -android-abis arm64-v8a',
@@ -17,12 +17,12 @@ Configurations:
     ]
 -
     Id: 'android-armv7-on-windows'
-    Template: 'qtci-windows-10_22H2-x86_64-53'
+    Template: 'qtci-windows-11_24H2-x86_64-71'
     Target os: 'Android_ANY'
     Target arch: 'armv7'
     Compiler: 'Mingw'
     Target compiler: 'Clang'
-    Platform dependency: 'windows-10_22h2-mingw13'
+    Platform dependency: 'windows-11_24h2-mingw13'
     Features: ['Packaging', 'Sccache', 'WarningsAreErrors', 'DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
     Environment variables: [
         'Path={{.Env.MINGW_PATH}}\bin;{{.Env.Path}}',
@@ -33,12 +33,12 @@ Configurations:
     ]
 -
     Id: 'android-9-x86-on-linux'
-    Template: 'qtci-linux-RHEL-8.10-x86_64-51'
+    Template: 'qtci-linux-RHEL-9.4-x86_64-50'
     Target os: 'Android_ANY'
     Target arch: 'x86'
     Compiler: 'GCC'
     Target compiler: 'Clang'
-    Platform dependency: 'rhel-8.10'
+    Platform dependency: 'rhel-9.4'
     Features: ['Packaging', 'Sccache', 'WarningsAreErrors', 'AndroidTestRun', 'VMSize8', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
     Environment variables: [
         'TARGET_CONFIGURE_ARGS=-nomake examples -release -force-debug-info -android-ndk {{.Env.ANDROID_NDK_ROOT_LATEST}} -android-sdk {{.Env.ANDROID_SDK_ROOT}} -android-abis x86',
@@ -48,30 +48,46 @@ Configurations:
         'ANDROID_EMULATOR=emulator_x86_api_28'
     ]
 -
-    Id: 'android-15-x86_64-on-linux'
-    Template: 'qtci-linux-RHEL-8.10-x86_64-51'
+    Id: 'android-9-x86-on-linux-rhel_9_6'
+    Template: 'qtci-linux-RHEL-9.6-x86_64-51'
+    Target os: 'Android_ANY'
+    Target arch: 'x86'
+    Compiler: 'GCC'
+    Target compiler: 'Clang'
+    Platform dependency: 'rhel-9.6'
+    Features: ['Sccache', 'WarningsAreErrors', 'AndroidTestRun', 'VMSize8', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM', 'InsignificantTests', 'DoNotAbortTestingOnFirstFailure']
+    Environment variables: [
+        'TARGET_CONFIGURE_ARGS=-nomake examples -release -force-debug-info -android-ndk {{.Env.ANDROID_NDK_ROOT_LATEST}} -android-sdk {{.Env.ANDROID_SDK_ROOT}} -android-abis x86',
+        'TARGET_CMAKE_ARGS=-DCMAKE_C_COMPILER_FRONTEND_VARIANT=GNU -DCMAKE_CXX_COMPILER_FRONTEND_VARIANT=GNU -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_ANDROID_HOME_LATEST}} -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON',
+        'NON_QTBASE_TARGET_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR_ANDROID_X86_NDK_LATEST}} -DQT_DEPLOY_FFMPEG=TRUE -DQT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR=/usr/local/include',
+        'ANDROID_NDK_ROOT={{.Env.ANDROID_NDK_ROOT_LATEST}}',
+        'ANDROID_EMULATOR=emulator_x86_api_28'
+    ]
+-
+    Id: 'android-16-x86_64-on-linux'
+    Template: 'qtci-linux-RHEL-9.4-x86_64-50'
     Target os: 'Android_ANY'
     Target arch: 'x86_64'
     Compiler: 'GCC'
     Target compiler: 'Clang'
-    Platform dependency: 'rhel-8.10'
+    Platform dependency: 'rhel-9.4'
     Features: ['Packaging', 'Sccache', 'WarningsAreErrors', 'AndroidTestRun', 'VMSize8', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
     Environment variables: [
         'TARGET_CONFIGURE_ARGS=-nomake examples -release -force-debug-info -android-ndk {{.Env.ANDROID_NDK_ROOT_LATEST}} -android-sdk {{.Env.ANDROID_SDK_ROOT}} -android-abis x86_64',
         'TARGET_CMAKE_ARGS=-DCMAKE_C_COMPILER_FRONTEND_VARIANT=GNU -DCMAKE_CXX_COMPILER_FRONTEND_VARIANT=GNU -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_ANDROID_HOME_LATEST}} -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON',
         'NON_QTBASE_TARGET_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR_ANDROID_X86_64_NDK_LATEST}} -DQT_DEPLOY_FFMPEG=TRUE -DQT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR=/usr/local/include',
         'ANDROID_NDK_ROOT={{.Env.ANDROID_NDK_ROOT_LATEST}}',
-        'ANDROID_EMULATOR=emulator_x86_64_api_35'
+        'ANDROID_EMULATOR=emulator_x86_64_api_36'
     ]
 -
-    Id: 'android-16-x86_64-on-linux'
-    Template: 'qtci-linux-RHEL-8.10-x86_64-51'
+    Id: 'android-16-x86_64-on-linux-rhel_9_6'
+    Template: 'qtci-linux-RHEL-9.6-x86_64-51'
     Target os: 'Android_ANY'
     Target arch: 'x86_64'
     Compiler: 'GCC'
     Target compiler: 'Clang'
-    Platform dependency: 'rhel-8.10'
-    Features: ['Sccache', 'WarningsAreErrors', 'AndroidTestRun', 'VMSize8', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM', 'InsignificantTests']
+    Platform dependency: 'rhel-9.6'
+    Features: ['Sccache', 'WarningsAreErrors', 'AndroidTestRun', 'VMSize8', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM', 'InsignificantTests', 'DoNotAbortTestingOnFirstFailure']
     Environment variables: [
         'TARGET_CONFIGURE_ARGS=-nomake examples -release -force-debug-info -android-ndk {{.Env.ANDROID_NDK_ROOT_LATEST}} -android-sdk {{.Env.ANDROID_SDK_ROOT}} -android-abis x86_64',
         'TARGET_CMAKE_ARGS=-DCMAKE_C_COMPILER_FRONTEND_VARIANT=GNU -DCMAKE_CXX_COMPILER_FRONTEND_VARIANT=GNU -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_ANDROID_HOME_LATEST}} -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON',

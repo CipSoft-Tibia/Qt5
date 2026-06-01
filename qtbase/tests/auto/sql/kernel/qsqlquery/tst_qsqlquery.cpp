@@ -274,6 +274,9 @@ private slots:
     void prematureExec_data() { generic_data(); }
     void prematureExec();
 
+    void uuid_data() { generic_data(); }
+    void uuid();
+
 #if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
     // cleanup() is data-driven
     void qmetatypeDeprecatedCopy_data() { generic_data(); }
@@ -5276,6 +5279,45 @@ void tst_QSqlQuery::psqlJsonOperator()
     QCOMPARE(qry.value(1).toByteArray(), "{\"b\": [3, 4]}");
 }
 
+void tst_QSqlQuery::uuid()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    CHECK_DATABASE(db);
+    if (tst_Databases::getDatabaseType(db) != QSqlDriver::PostgreSQL &&
+        tst_Databases::getDatabaseType(db) != QSqlDriver::MimerSQL)
+        QSKIP("UUID only supported by PostgreSQL and MimerSQL");
+
+    TableScope ts(db, "uuid", __FILE__);
+    const QString &tableName = ts.tableName();
+    const QUuid uuid1(QUuid::createUuid());
+    const QUuid uuid2(QUuid::createUuid());
+
+    QSqlQuery qry(db);
+    QVERIFY_SQL(qry, exec("CREATE TABLE " + tableName + " (id integer, uuidcol uuid)"));
+    auto tableRecord = db.record(tableName);
+    QCOMPARE(tableRecord.value(0).metaType().id(), QMetaType::Int);
+    QCOMPARE(tableRecord.value(1).metaType().id(), QMetaType::QUuid);
+
+    QString stmt =
+            "INSERT INTO " + tableName + " (id, uuidcol) VALUES (1, '" + uuid1.toString() + "')";
+    QVERIFY_SQL(qry, exec(stmt));
+    QVERIFY_SQL(qry, prepare("INSERT INTO " + tableName + " (id, uuidcol) VALUES (:id, :uuid)"));
+    qry.bindValue(":id", 2);
+    qry.bindValue(":uuid", uuid2);
+    QVERIFY_SQL(qry, exec());
+    QVERIFY_SQL(qry, exec("SELECT id, uuidcol FROM " + tableName + " ORDER BY id"));
+    QVERIFY_SQL(qry, next());
+    QCOMPARE(qry.value(0).toInt(), 1);
+    QCOMPARE(qry.value(0).metaType().id(), QMetaType::Int);
+    QCOMPARE(qry.value(1).toUuid(), uuid1);
+    QCOMPARE(qry.value(1).metaType().id(), QMetaType::QUuid);
+    QVERIFY_SQL(qry, next());
+    QCOMPARE(qry.value(0).toInt(), 2);
+    QCOMPARE(qry.value(0).metaType().id(), QMetaType::Int);
+    QCOMPARE(qry.value(1).toUuid(), uuid2);
+    QCOMPARE(qry.value(1).metaType().id(), QMetaType::QUuid);
+}
 
 #if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
 void tst_QSqlQuery::qmetatypeDeprecatedCopy()

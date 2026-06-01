@@ -19,6 +19,7 @@
     \section1 ComboBox Control
 
     \image qtquickcontrols-combobox.gif
+           {Combo box expanding to show dropdown list}
 
     \l ComboBox is used to select a value from a static multiple-line drop-down list.
     It is not possible to add new values, and only one option can be selected.
@@ -36,6 +37,7 @@
     \section1 Dial Control
 
     \image qtquickcontrols-dial.png
+           {Dial control for circular value selection}
 
     \l Dial is similar to a traditional dial knob that is found on devices such
     as stereos or industrial equipment.
@@ -58,12 +60,14 @@
     \section1 TextArea Control
 
     \image qtquickcontrols-textarea.png
+           {Text area for multiline text input}
 
     \l TextArea is a multi-line text editor.
 
     \section1 TextField Control
 
     \image qtquickcontrols-textfield.png
+           {Text field for single line text input}
 
     \l TextField is a single line text editor.
 
@@ -72,12 +76,14 @@
     \section1 Slider Control
 
     \image qtquickcontrols-slider.gif
+           {Slider handle moving along track}
 
     \l Slider is used to select a value by sliding a handle along a track.
 
     \section1 RangeSlider Control
 
     \image qtquickcontrols-rangeslider.gif
+           {Range slider with two handles defining range}
 
     \l RangeSlider is used to select a range specified by two values,
     by sliding each handle along a track.
@@ -87,6 +93,7 @@
     \section1 Tumbler Control
 
     \image qtquickcontrols-tumbler.png
+           {Tumbler showing scrollable value selection}
 
     \l Tumbler is a spinnable wheel of items that can be selected.
 

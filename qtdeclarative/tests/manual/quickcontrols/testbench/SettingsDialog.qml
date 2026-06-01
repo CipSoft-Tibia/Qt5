@@ -5,10 +5,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Backend
-import "." as Ui
+import Testbench as Testbench
 
-Ui.Dialog {
+TestbenchDialog {
     id: settingsDialog
     title: "Settings"
     width: 500
@@ -98,11 +97,11 @@ Ui.Dialog {
         return map;
     }
 
-    Clipboard {
+    Testbench.Clipboard {
         id: clipboard
     }
 
-    DirectoryValidator {
+    Testbench.DirectoryValidator {
         id: directoryValidator
         path: imaginePathTextField.text
     }
@@ -131,7 +130,7 @@ Ui.Dialog {
 
                     ComboBox {
                         id: styleComboBox
-                        model: availableStyles
+                        model: Utils.availableStyles
 
                         property int styleIndex: -1
 

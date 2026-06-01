@@ -1,6 +1,9 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_extensions_dir(extensions_dir)
+
 # Generated from libhybris-egl-server.pro.
 
 #####################################################################
@@ -28,8 +31,8 @@ qt_internal_add_plugin(LibHybrisEglServerBufferIntegrationPlugin
 qt6_generate_wayland_protocol_server_sources(LibHybrisEglServerBufferIntegrationPlugin
     PRIVATE_CODE
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/libhybris-egl-server-buffer.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/server-buffer-extension.xml
+        ${extensions_dir}/libhybris-egl-server-buffer.xml
+        ${extensions_dir}/server-buffer-extension.xml
 )
 
 #### Keys ignored in scope 1:.:.:libhybris-egl-server.pro:<TRUE>:

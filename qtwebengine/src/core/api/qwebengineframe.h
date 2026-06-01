@@ -6,8 +6,6 @@
 #define QWEBENGINEFRAME_H
 
 #include <QtWebEngineCore/qtwebenginecoreglobal.h>
-#include <QtQml/qqmlregistration.h>
-#include <QtQml/qjsvalue.h>
 #include <QtCore/qcompare.h>
 #include <QtCore/QList>
 #include <QtCore/QSizeF>
@@ -20,6 +18,7 @@ class WebContentsAdapter;
 }
 
 QT_BEGIN_NAMESPACE
+class QJSValue;
 
 class QWebEngineFrame
 {
@@ -31,10 +30,15 @@ class QWebEngineFrame
     Q_PROPERTY(QUrl url READ url FINAL)
     Q_PROPERTY(QSizeF size READ size FINAL)
     Q_PROPERTY(bool isMainFrame READ isMainFrame FINAL)
+    Q_PROPERTY(QList<QWebEngineFrame> children READ children)
 
 public:
-    QML_VALUE_TYPE(webEngineFrame)
-    QML_ADDED_IN_VERSION(6, 8)
+    QWebEngineFrame() = default;
+    QWebEngineFrame(const QWebEngineFrame &other) = default;
+    QWebEngineFrame &operator=(const QWebEngineFrame &other) = default;
+    QWebEngineFrame(QWebEngineFrame &&other) = default;
+    QWebEngineFrame &operator=(QWebEngineFrame &&other) = default;
+    ~QWebEngineFrame() = default;
 
     Q_WEBENGINECORE_EXPORT bool isValid() const;
     Q_WEBENGINECORE_EXPORT QString name() const;
@@ -51,14 +55,18 @@ public:
                   const std::function<void(const QVariant &)> &callback);
     Q_WEBENGINECORE_EXPORT Q_INVOKABLE void runJavaScript(const QString &script,
                                                           quint32 worldId = 0);
+#if QT_DEPRECATED_SINCE(6, 10)
     Q_WEBENGINECORE_EXPORT Q_INVOKABLE void runJavaScript(const QString &script,
                                                           const QJSValue &callback);
     Q_WEBENGINECORE_EXPORT Q_INVOKABLE void runJavaScript(const QString &script, quint32 worldId,
                                                           const QJSValue &callback);
+#endif
 
     Q_WEBENGINECORE_EXPORT Q_INVOKABLE void printToPdf(const QString &filePath);
     Q_WEBENGINECORE_EXPORT void printToPdf(const std::function<void(const QByteArray &)> &callback);
+#if QT_DEPRECATED_SINCE(6, 10)
     Q_WEBENGINECORE_EXPORT Q_INVOKABLE void printToPdf(const QJSValue &callback);
+#endif
 
     friend inline bool comparesEqual(const QWebEngineFrame &lhs,
                                      const QWebEngineFrame &rhs) noexcept
@@ -72,7 +80,7 @@ private:
     friend class QWebEnginePage;
     friend class QWebEnginePagePrivate;
     friend class QQuickWebEngineView;
-    friend class QQuickWebEngineViewPrivate;
+    friend class QQuickWebEngineFrame;
 
     Q_WEBENGINECORE_EXPORT
     QWebEngineFrame(QWeakPointer<QtWebEngineCore::WebContentsAdapter> adapter, quint64 id);

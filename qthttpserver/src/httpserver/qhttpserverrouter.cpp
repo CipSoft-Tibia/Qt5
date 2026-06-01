@@ -51,18 +51,19 @@ static const QHash<QMetaType, QString> defaultConverters = {
     \brief Provides functions to bind a path to a \c ViewHandler.
     \inmodule QtHttpServer
 
-    QHttpServerRouter is a class to distribute HTTP requests to their
-    respective handlers with a rule based system.
+    QHttpServerRouter is a rule-based system for routing HTTP requests to
+    their appropriate handlers. You can add QHttpServerRouterRule
+    instances, which define a request path and its corresponding handler.
 
-    You can register new \l{QHttpServerRouterRule}{QHttpServerRouterRules},
-    that represent a request path and the respective handler. Variable parts in
-    the route can be specified with placeholder in the request path. The
-    handler gets the placeholders value as a \l QRegularExpressionMatch. The
+    Variable parts in the route can be specified with placeholders
+    (\c{"<arg>"}) in the request path, but it is not needed at the end. The
+    handler receives the matched values as a \l QRegularExpressionMatch. The
     arguments can be of any type for which a \l{converters}{converter} is
     available. The handler creation can be simplified with
-    QHttpServerRouterRule::bindCaptured(). A QHttpServerRouter instance must
-    not be modifed by its rules.
+    \l QHttpServerRouterRule::bindCaptured().
 
+
+    \note A QHttpServerRouter instance must not be modifed by its rules.
     \note This is a low-level routing API for an HTTP server.
 
     Minimal example:
@@ -114,15 +115,17 @@ static const QHash<QMetaType, QString> defaultConverters = {
     \sa converters, clearConverters
 */
 
-/*! \fn template <typename ViewHandler, typename ViewTraits = QHttpServerRouterViewTraits<ViewHandler>> bool QHttpServerRouter::addRule(std::unique_ptr<QHttpServerRouterRule> rule)
+/*! \fn template <typename ViewHandler, typename ViewTraits = QHttpServerRouterViewTraits<ViewHandler>> QHttpServerRouterRule *QHttpServerRouter::addRule(std::unique_ptr<QHttpServerRouterRule> rule)
     Adds a new \a rule to the router.
 
-    Returns a pointer to the new rule if successful or \c nullptr otherwise.
+    Returns a pointer to the new rule if successful; otherwise returns
+    \c nullptr.
 
     Inside addRule, we determine ViewHandler arguments and generate a list of
-    their QMetaType::Type ids. Then we parse the path and replace each \c <arg>
-    with a regexp for its type from the list. The \a rule must not modify the
-    QHttpServerRouter instance.
+    their QMetaType::Type ids. Then we parse the path and replace each
+    \c{"<arg>"} with a regexp for its type from the list.
+
+    The provided \a rule must not modify the QHttpServerRouter instance.
 
     \code
     QHttpServerRouter router;

@@ -1,9 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmllistwrapper_p.h"
 
 #include <QtQml/qqmlinfo.h>
+#include <QtQml/private/qqmlproperty_p.h>
 
 #include <private/qqmllist_p.h>
 
@@ -162,12 +164,33 @@ ReturnedValue QmlListWrapper::create(ExecutionEngine *engine, QMetaType propType
     return engine->memoryManager->allocate<QmlListWrapper>(propType)->asReturnedValue();
 }
 
+ReturnedValue QmlListWrapper::createOwned(ExecutionEngine *engine, const QQmlProperty &prop)
+{
+    Q_ASSERT(prop.propertyMetaType().flags() & QMetaType::IsQmlList);
+    QQmlPropertyPrivate *privProp = QQmlPropertyPrivate::get(prop);
+    QQmlListProperty<QObject> listProp;
+    privProp->core.readProperty(privProp->object, &listProp);
+    const qsizetype listSize = listProp.count(&listProp);
+    Scope scope(engine);
+    Scoped<QV4::QmlListWrapper> listWrapper(scope, QV4::QmlListWrapper::create(engine, privProp->propertyType()));
+    // compare with appendWrapped; we do not call appendWrapped directly as that would  put the setup code
+    // into the loop body
+    Heap::ArrayData *arrayData = listWrapper->arrayData();
+    ArrayData::realloc(listWrapper, Heap::ArrayData::Simple, listSize, false);
+    for (qsizetype i = 0; i != listSize; ++i) {
+        QObject *o = listProp.at(&listProp, i);
+        ScopedObject scopedO(scope, QV4::QObjectWrapper::wrap(engine, o));
+        arrayData->vtable()->put(listWrapper, i, scopedO);
+    }
+    return listWrapper.asReturnedValue();
+}
+
 QVariant QmlListWrapper::toVariant() const
 {
-    if (!d()->object())
-        return QVariant();
-
-    return QVariant::fromValue(toListReference());
+    Heap::QmlListWrapper *p = d();
+    return p->object()
+            ? QVariant::fromValue(toListReference())
+            : QVariant::fromValue(p->property()->toList<QObjectList>());
 }
 
 QQmlListReference QmlListWrapper::toListReference() const

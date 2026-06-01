@@ -13,14 +13,55 @@
     \e {Simple MQTT Client} demonstrates how to create a minimalistic client
     application.
 
-    To use the application, you first specify a broker, such as
-    \e test.mosquitto.org or \e broker.hivemq.com and the port number 1883, and
-    connect to it. You can then subscribe to a topic and send a message, which
-    you will also receive.
+    To use the application, you first specify a Host, a Port, Secure on/off,
+    WebSockets on/off, and Protocol. Then click on connect. Afterward you can
+    subscribe to a topic and send a message, which you will also receive.
+    You may also run the application twice. Publish in one and Subscribe in
+    the other, and the messages shall be transmitted.
 
-    \note Port number 1883 is not encrypted, and therefore it is suitable only
-    for development and testing purposes. In production, always use encrypted
-    connections.
+    \section1 simpleclient Options
+    \list
+        \li Host - you may use test.mosquitto.org or broker.hivemq.com
+        \li Port - port to connect to, will depend on WebSockets selection and Secure selection
+        \li WebSockets - you may specify: selected (enabled) or not selected (disabled)
+        \li Secure - you may specify: selected (enabled) or not selected (disabled)
+        \li Protocol - you may specify
+        \list
+             \li mqtt 3.1
+             \li mqtt 3.1.1
+             \li mqtt 5.0
+        \endlist
+        \li Topic - A topic to publish or subscribe to
+        \li Message - A message to send on the topic if you are publishing
+    \endlist
+
+    \section1 Connection Settings
+    These are the usual combinations, and will work with test.mosquitto.org.
+    For broker.hivemq.com check the information in the links. Note that if
+    Secure is enabled it might be necessary to install certificates on the
+    computer. It might also be necessary to add the certificate to the mqtt
+    client in code.
+
+    \section1
+    \list
+        \li Port 1883, Secure=disabled, WebSockets=disabled - mqtt over tcp
+        \li Port 8883, Secure=enabled,  WebSockets=disabled - mqtt over ssl
+        \li Port 8080, Secure=disabled, WebSockets=enabled  - mqtt over websockets
+        \li Port 8081, Secure=enabled,  WebSockets=enabled  - mqtt over secure websockets
+    \endlist
+
+    For more information about the brokers see:
+    \list
+        \li \l {https://test.mosquitto.org}
+        \li \l {https://broker.hivemq.com}
+        \li \l {https://www.hivemq.com/mqtt/public-mqtt-broker}
+    \endlist
+
+    \note Port numbers 1883 and 8080 are not encrypted, and therefore they are
+    suitable only for development and testing purposes. In production, always
+    use encrypted connections.
+
+    \note WebAssembly only supports WebSockets enabled.
 
     \section1 Creating a Client
 

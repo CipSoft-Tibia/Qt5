@@ -78,14 +78,25 @@ void tst_CreationTime::basic()
     doBenchmark(styleHelper, url);
 }
 
+static const QStringList commonExclusions = {
+    "ApplicationWindow",
+    // Singleton; can't be created.
+    "Calendar",
+    // Can only be created by HorizontalHeaderView.
+    "HorizontalHeaderViewDelegate",
+    // Can only be created by TreeView.
+    "TreeViewDelegate",
+    // Can only be created by TableView.
+    "TableViewDelegate",
+    // Can only be created by VerticalHeaderView.
+    "VerticalHeaderViewDelegate"
+};
+
 void tst_CreationTime::basic_data()
 {
     QTest::addColumn<QUrl>("url");
-    // Calendar is excluded because it's a singleton and can't be created.
-    // TreeViewDelegate is excluded since it's a delegate that can only be created by TreeView.
-    // TableViewDelegate is excluded since it's a delegate that can only be created by TableView.
-    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "basic", "QtQuick/Controls/Basic",
-        QStringList() << "ApplicationWindow" << "Calendar" << "TreeViewDelegate" << "TableViewDelegate");
+    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "basic",
+        "QtQuick/Controls/Basic", commonExclusions);
 }
 
 void tst_CreationTime::fusion()
@@ -97,9 +108,15 @@ void tst_CreationTime::fusion()
 void tst_CreationTime::fusion_data()
 {
     QTest::addColumn<QUrl>("url");
-    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "fusion", "QtQuick/Controls/Fusion",
-        QStringList() << "ApplicationWindow" << "ButtonPanel" << "CheckIndicator"
-            << "RadioIndicator" << "SliderGroove" << "SliderHandle" << "SwitchIndicator" << "TreeViewDelegate");
+    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "fusion",
+        "QtQuick/Controls/Fusion", QStringList()
+            << commonExclusions
+            << "ButtonPanel"
+            << "CheckIndicator"
+            << "RadioIndicator"
+            << "SliderGroove"
+            << "SliderHandle"
+            << "SwitchIndicator");
 }
 
 void tst_CreationTime::imagine()
@@ -111,8 +128,8 @@ void tst_CreationTime::imagine()
 void tst_CreationTime::imagine_data()
 {
     QTest::addColumn<QUrl>("url");
-    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "imagine", "QtQuick/Controls/Imagine",
-        QStringList() << "ApplicationWindow");
+    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "imagine",
+        "QtQuick/Controls/Imagine", commonExclusions);
 }
 
 void tst_CreationTime::material()
@@ -124,9 +141,17 @@ void tst_CreationTime::material()
 void tst_CreationTime::material_data()
 {
     QTest::addColumn<QUrl>("url");
-    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "material", "QtQuick/Controls/Material",
-        QStringList() << "ApplicationWindow" << "Ripple" << "SliderHandle" << "CheckIndicator" << "RadioIndicator"
-            << "SwitchIndicator" << "BoxShadow" << "ElevationEffect" << "CursorDelegate" << "TreeViewDelegate");
+    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "material",
+        "QtQuick/Controls/Material", QStringList()
+            << commonExclusions
+            << "BoxShadow"
+            << "CheckIndicator"
+            << "CursorDelegate"
+            << "ElevationEffect"
+            << "RadioIndicator"
+            << "Ripple"
+            << "SliderHandle"
+            << "SwitchIndicator");
 }
 
 void tst_CreationTime::universal()
@@ -138,8 +163,12 @@ void tst_CreationTime::universal()
 void tst_CreationTime::universal_data()
 {
     QTest::addColumn<QUrl>("url");
-    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "universal", "QtQuick/Controls/Universal",
-        QStringList() << "ApplicationWindow" << "CheckIndicator" << "RadioIndicator" << "SwitchIndicator");
+    addTestRowForEachControl(styleHelper.engine.data(), QQC2_IMPORT_PATH, "universal",
+        "QtQuick/Controls/Universal", QStringList()
+            << commonExclusions
+            << "CheckIndicator"
+            << "RadioIndicator"
+            << "SwitchIndicator");
 }
 
 QTEST_MAIN(tst_CreationTime)

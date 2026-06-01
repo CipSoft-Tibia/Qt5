@@ -4,8 +4,6 @@
 
 #include "tools/cddl/parse.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -76,7 +74,7 @@ std::string_view SkipComment(std::string_view view, bool skip_type_key = true) {
   size_t index = 0;
   if (view[index] == ';') {
     if (!skip_type_key) {
-      Parser p{view.data()};
+      Parser p = {view.data()};
       if (ParseTypeKeyFromComment(&p).has_value()) {
         return view;
       }
@@ -229,7 +227,7 @@ AstNode* ParseBytes(Parser* p) {
   return nullptr;
 }
 
-// Returns whether |c| could be the first character in a valid "value" string.
+// Returns whether `c` could be the first character in a valid "value" string.
 // This is not a guarantee however, since 'h' and 'b' could also indicate the
 // start of an ID, but value needs to be tried first.
 bool IsValue(char c) {
@@ -951,7 +949,8 @@ AstNode* ParseRule(Parser* p) {
   const char* assign_start = p->data;
   AssignType assign_type = ParseAssignmentType(p);
   if (assign_type != AssignType::kAssign) {
-    Logger::Error("No assignment operator found! assign_type: %d", assign_type);
+    Logger::Error("No assignment operator found! assign_type: " +
+                  std::to_string(static_cast<int>(assign_type)));
     return nullptr;
   }
   AstNode* assign_node =
@@ -989,7 +988,7 @@ ParseResult ParseCddl(std::string_view data) {
   if (data[0] == 0) {
     return {nullptr, {}};
   }
-  Parser p{data.data()};
+  Parser p = {data.data()};
 
   SkipStartWhitespace(&p);
   AstNode* root = nullptr;
@@ -997,11 +996,11 @@ ParseResult ParseCddl(std::string_view data) {
   do {
     AstNode* next = ParseRule(&p);
     if (!next) {
-      Logger::Error("Failed to parse next node. Failed starting at: '%s'",
-                    p.data);
+      Logger::Error("Failed to parse next node. Failed starting at: '" +
+                    std::string(p.data) + "'");
       return {nullptr, {}};
     } else {
-      Logger::Log("Processed text \"%s\" into node: ", next->text);
+      Logger::Log("Processed text \"" + next->text + "\" into node: ");
       DumpAst(next);
     }
 

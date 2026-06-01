@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2020 Alexey Edelev <semlanik@gmail.com>, Tatyana Borisova <tanusshhka@mail.ru>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:critical reason:data-parser
 
 #include "messagedeclarationprinter.h"
 #include "utils.h"
@@ -283,6 +284,9 @@ void MessageDeclarationPrinter::printGetters()
                     if (common::isPureMessage(field)) {
                         m_printer->Print(propertyMap,
                                          CommonTemplates::GetterMessageDeclarationTemplate());
+                        m_printer
+                            ->Print(propertyMap,
+                                    CommonTemplates::GetterMessageMutableDeclarationTemplate());
                         m_printer->Print(propertyMap,
                                          Options::instance().hasQml()
                                              ? CommonTemplates::ClearQmlMessageDeclarationTemplate()

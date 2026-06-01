@@ -16,7 +16,7 @@ using namespace ABI::Windows::Devices::Sensors;
 
 typedef ITypedEventHandler<SimpleOrientationSensor *, SimpleOrientationSensorOrientationChangedEventArgs *> SimpleOrientationReadingHandler;
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtOrientationSensorPrivate
 {
@@ -151,3 +151,5 @@ void WinRtOrientationSensor::stop()
 
     d->token.value = 0;
 }
+
+QT_END_NAMESPACE

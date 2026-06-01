@@ -11,7 +11,6 @@
 #include <compare>
 #include <iosfwd>
 #include <string_view>
-#include <tuple>
 
 #include "base/base_export.h"
 #include "base/check.h"
@@ -111,6 +110,7 @@ class BASE_EXPORT UnguessableToken {
     return token_ < other.token_;
   }
 
+  std::strong_ordering operator<=>(const UnguessableToken& other) const;
   bool operator==(const UnguessableToken& other) const;
 
   bool operator!=(const UnguessableToken& other) const {

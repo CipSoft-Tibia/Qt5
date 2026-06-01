@@ -11,6 +11,7 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qstring.h>
+#include <QtNetwork/qsslcertificate.h>
 
 #include <functional>
 #include <memory>
@@ -22,6 +23,7 @@ class QWebEngineClientCertificateStore;
 class QWebEngineClientHints;
 class QWebEngineCookieStore;
 class QWebEngineDownloadRequest;
+class QWebEngineExtensionManager;
 class QWebEngineNotification;
 class QWebEngineProfilePrivate;
 class QWebEngineSettings;
@@ -118,6 +120,7 @@ public:
     void setNotificationPresenter(std::function<void(std::unique_ptr<QWebEngineNotification>)> notificationPresenter);
 
     QWebEngineClientCertificateStore *clientCertificateStore();
+    QList<QSslCertificate> additionalTrustedCertificates() const;
 
     void requestIconForPageURL(const QUrl &url, int desiredSizeInPixel, std::function<void(const QIcon &, const QUrl &, const QUrl &)> iconAvailableCallback) const;
     void requestIconForIconURL(const QUrl &url, int desiredSizeInPixel, std::function<void(const QIcon &, const QUrl &)> iconAvailableCallback) const;
@@ -126,6 +129,8 @@ public:
     QList<QWebEnginePermission> listAllPermissions() const;
     QList<QWebEnginePermission> listPermissionsForOrigin(const QUrl &securityOrigin) const;
     QList<QWebEnginePermission> listPermissionsForPermissionType(QWebEnginePermission::PermissionType permissionType) const;
+
+    QWebEngineExtensionManager *extensionManager() const;
 
     static QWebEngineProfile *defaultProfile();
 

@@ -15,6 +15,7 @@
 #include "base/memory/weak_ptr.h"
 #include "components/attribution_reporting/features.h"
 #include "components/attribution_reporting/suitable_origin.h"
+#include "components/url_matcher/url_util.h"
 #include "content/browser/attribution_reporting/attribution_data_host_manager.h"
 #include "content/browser/attribution_reporting/attribution_host.h"
 #include "content/browser/attribution_reporting/attribution_input_event.h"
@@ -24,7 +25,7 @@
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/global_routing_id.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
 
 namespace content {
 
@@ -53,7 +54,7 @@ std::optional<AttributionSuitableContext> AttributionSuitableContext::Create(
   }
 
   if (!initiator_frame->IsFeatureEnabled(
-          blink::mojom::PermissionsPolicyFeature::kAttributionReporting)) {
+          network::mojom::PermissionsPolicyFeature::kAttributionReporting)) {
     return std::nullopt;
   }
   RenderFrameHostImpl* initiator_root_frame =
@@ -100,6 +101,9 @@ std::optional<AttributionSuitableContext> AttributionSuitableContext::Create(
       attribution_host->GetMostRecentNavigationInputEvent(),
       AttributionOsLevelManager::GetAttributionReportingOsRegistrars(
           web_contents),
+      !url_matcher::util::GetGoogleAmpViewerEmbeddedURL(
+           initiator_root_frame->GetLastCommittedURL())
+           .is_empty(),
       data_host_manager->AsWeakPtr());
 }
 
@@ -111,10 +115,12 @@ AttributionSuitableContext AttributionSuitableContext::CreateForTesting(
     int64_t last_navigation_id,
     AttributionInputEvent last_input_event,
     ContentBrowserClient::AttributionReportingOsRegistrars os_registrars,
-    AttributionDataHostManager* attribution_data_host_manager) {
+    AttributionDataHostManager* attribution_data_host_manager,
+    bool is_context_google_amp_viewer) {
   return AttributionSuitableContext(
       std::move(context_origin), is_nested_within_fenced_frame,
       root_render_frame_id, last_navigation_id, last_input_event, os_registrars,
+      is_context_google_amp_viewer,
       attribution_data_host_manager ? attribution_data_host_manager->AsWeakPtr()
                                     : nullptr);
 }
@@ -124,7 +130,9 @@ bool AttributionSuitableContext::operator==(
   const auto tie = [](const AttributionSuitableContext& c) {
     // We don't check the `attribution_data_host_manager_` property since we'd
     // consider two contexts equal even if the manager is no longer available.
-    return std::make_tuple(c.context_origin(), c.last_input_event(),
+    // We also don't check the `last_input_event_` property which is time
+    // sensitive.
+    return std::make_tuple(c.context_origin(),
                            c.is_nested_within_fenced_frame(),
                            c.last_navigation_id(), c.root_render_frame_id());
   };
@@ -138,6 +146,7 @@ AttributionSuitableContext::AttributionSuitableContext(
     int64_t last_navigation_id,
     AttributionInputEvent last_input_event,
     ContentBrowserClient::AttributionReportingOsRegistrars os_registrars,
+    bool is_context_google_amp_viewer,
     base::WeakPtr<AttributionDataHostManager> attribution_data_host_manager)
     : context_origin_(std::move(context_origin)),
       is_nested_within_fenced_frame_(is_nested_within_fenced_frame),
@@ -145,6 +154,7 @@ AttributionSuitableContext::AttributionSuitableContext(
       last_navigation_id_(last_navigation_id),
       last_input_event_(std::move(last_input_event)),
       os_registrars_(os_registrars),
+      is_context_google_amp_viewer_(is_context_google_amp_viewer),
       attribution_data_host_manager_(attribution_data_host_manager) {}
 
 AttributionSuitableContext::AttributionSuitableContext(

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKLAYOUT_P_H
 #define QQUICKLAYOUT_P_H
@@ -220,21 +221,27 @@ public:
     void setMaximumImplicitSize(const QSizeF &sz);
 
     bool fillWidth() const {
-        if (auto *itemPriv = itemForSizePolicy(m_isFillWidthSet)) {
+        bool effectiveFillWidth = m_fillWidth;
+        if (!m_isFillWidthSet && qobject_cast<QQuickLayout *>(item())) {
+            effectiveFillWidth = true;
+        } else if (auto *itemPriv = itemForSizePolicy(m_isFillWidthSet)) {
             QLayoutPolicy::Policy hPolicy = itemPriv->sizePolicy().horizontalPolicy();
-            return hPolicy & QLayoutPolicy::GrowFlag;
+            effectiveFillWidth = (hPolicy & QLayoutPolicy::GrowFlag);
         }
-        return m_fillWidth;
+        return effectiveFillWidth;
     }
     void setFillWidth(bool fill);
     bool isFillWidthSet() const { return m_isFillWidthSet; }
 
     bool fillHeight() const {
-        if (auto *itemPriv = itemForSizePolicy(m_isFillHeightSet)) {
+        bool effectiveFillHeight = m_fillHeight;
+        if (!m_isFillHeightSet && qobject_cast<QQuickLayout *>(item())) {
+            effectiveFillHeight = true;
+        } else if (auto *itemPriv = itemForSizePolicy(m_isFillHeightSet)) {
             QLayoutPolicy::Policy vPolicy = itemPriv->sizePolicy().verticalPolicy();
-            return vPolicy & QLayoutPolicy::GrowFlag;
+            effectiveFillHeight = (vPolicy & QLayoutPolicy::GrowFlag);
         }
-        return m_fillHeight;
+        return effectiveFillHeight;
     }
     void setFillHeight(bool fill);
     bool isFillHeightSet() const { return m_isFillHeightSet; }

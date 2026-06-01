@@ -64,7 +64,7 @@ TEST_F(AudioSendStreamCallTest, SupportsCName) {
 
     void ModifyAudioConfigs(AudioSendStream::Config* send_config,
                             std::vector<AudioReceiveStreamInterface::Config>*
-                                receive_configs) override {
+                            /* receive_configs */) override {
       send_config->rtp.c_name = kCName;
     }
 
@@ -84,8 +84,8 @@ TEST_F(AudioSendStreamCallTest, NoExtensionsByDefault) {
    private:
     Action OnSendRtp(rtc::ArrayView<const uint8_t> packet) override {
       RtpPacket rtp_packet;
-      EXPECT_TRUE(rtp_packet.Parse(packet));          // rtp packet is valid.
-      EXPECT_EQ(packet[0] & 0b0001'0000, 0);          // extension bit not set.
+      EXPECT_TRUE(rtp_packet.Parse(packet));  // rtp packet is valid.
+      EXPECT_EQ(packet[0] & 0b0001'0000, 0);  // extension bit not set.
 
       observation_complete_.Set();
       return SEND_PACKET;
@@ -93,7 +93,7 @@ TEST_F(AudioSendStreamCallTest, NoExtensionsByDefault) {
 
     void ModifyAudioConfigs(AudioSendStream::Config* send_config,
                             std::vector<AudioReceiveStreamInterface::Config>*
-                                receive_configs) override {
+                            /* receive_configs */) override {
       send_config->rtp.extensions.clear();
     }
 
@@ -131,7 +131,7 @@ TEST_F(AudioSendStreamCallTest, SupportsAudioLevel) {
 
     void ModifyAudioConfigs(AudioSendStream::Config* send_config,
                             std::vector<AudioReceiveStreamInterface::Config>*
-                                receive_configs) override {
+                            /* receive_configs */) override {
       send_config->rtp.extensions.clear();
       send_config->rtp.extensions.push_back(
           RtpExtension(RtpExtension::kAudioLevelUri, kAudioLevelExtensionId));
@@ -173,7 +173,7 @@ class TransportWideSequenceNumberObserver : public AudioSendTest {
 
   void ModifyAudioConfigs(AudioSendStream::Config* send_config,
                           std::vector<AudioReceiveStreamInterface::Config>*
-                              receive_configs) override {
+                          /* receive_configs */) override {
     send_config->rtp.extensions.clear();
     send_config->rtp.extensions.push_back(
         RtpExtension(RtpExtension::kTransportSequenceNumberUri,
@@ -225,7 +225,7 @@ TEST_F(AudioSendStreamCallTest, SendDtmf) {
 
     void OnAudioStreamsCreated(AudioSendStream* send_stream,
                                const std::vector<AudioReceiveStreamInterface*>&
-                                   receive_streams) override {
+                               /* receive_streams */) override {
       // Need to start stream here, else DTMF events are dropped.
       send_stream->Start();
       for (int event = kDtmfEventFirst; event <= kDtmfEventLast; ++event) {

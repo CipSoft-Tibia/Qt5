@@ -2,34 +2,44 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include <stdint.h>
 
 #include <cmath>
+#include <concepts>
 #include <type_traits>
 
 #include "base/containers/fixed_flat_set.h"
+#include "base/containers/flat_map.h"
 #include "base/notreached.h"
-#include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/test/bind.h"
+#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "build/build_config.h"
+#include "mojo/public/cpp/base/big_buffer.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/webnn/buildflags.h"
 #include "services/webnn/public/mojom/features.mojom-features.h"
+#include "services/webnn/public/mojom/webnn_context.mojom.h"
 #include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
-#include "services/webnn/public/mojom/webnn_graph.mojom-shared.h"
 #include "services/webnn/public/mojom/webnn_graph.mojom.h"
 #include "services/webnn/public/mojom/webnn_graph_builder.mojom.h"
+#include "services/webnn/public/mojom/webnn_tensor.mojom.h"
 #include "services/webnn/webnn_context_impl.h"
 #include "services/webnn/webnn_context_provider_impl.h"
 #include "services/webnn/webnn_test_utils.h"
 #include "services/webnn/webnn_utils.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/fp16/src/include/fp16.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -52,109 +62,169 @@
 #include "base/mac/mac_util.h"
 #endif  // BUILDFLAG(IS_MAC)
 
-#if BUILDFLAG(IS_CHROMEOS)
-#include "chromeos/services/machine_learning/public/cpp/fake_service_connection.h"
-#include "chromeos/services/machine_learning/public/cpp/service_connection.h"
-#endif
-
 namespace webnn::test {
 
 namespace {
 
-// Since there is no float16 data type in C++, use uint16_t to represent the
-// binary data.
-using float16 = uint16_t;
+// TODO(crbug.com/373443096): Consolidate with the other Float16 types declared
+// elsewhere.
+struct Float16 {
+  uint16_t data;
+};
 
-enum class BuildAndComputeExpectation { kSuccess, kCreateGraphFailure };
-void BuildAndCompute(
-    mojom::GraphInfoPtr graph_info,
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs,
-    base::flat_map<std::string, mojo_base::BigBuffer>& named_outputs,
-    BuildAndComputeExpectation expectation =
-        BuildAndComputeExpectation::kSuccess,
-    mojom::CreateContextOptions::Device device =
-        mojom::CreateContextOptions::Device::kGpu) {
-  mojo::Remote<mojom::WebNNContextProvider> webnn_provider_remote;
-  mojo::Remote<mojom::WebNNContext> webnn_context_remote;
-  mojo::AssociatedRemote<mojom::WebNNGraph> webnn_graph_remote;
-  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> webnn_graph_builder_remote;
+struct TensorRemoteAndHandle {
+  mojo::AssociatedRemote<mojom::WebNNTensor> remote;
+  blink::WebNNTensorToken handle;
+};
 
-  WebNNContextProviderImpl::CreateForTesting(
-      webnn_provider_remote.BindNewPipeAndPassReceiver());
+TensorRemoteAndHandle CreateTensor(
+    mojo::Remote<mojom::WebNNContext>& context_remote,
+    mojom::TensorInfoPtr tensor_info) {
+  mojo::AssociatedRemote<mojom::WebNNTensor> webnn_tensor_remote;
 
-  // Create the ContextImpl through context provider.
-  base::test::TestFuture<mojom::CreateContextResultPtr> create_context_future;
-  webnn_provider_remote->CreateWebNNContext(
-      mojom::CreateContextOptions::New(
-          device, mojom::CreateContextOptions::PowerPreference::kDefault,
-          /*thread_count_hint=*/0),
-      create_context_future.GetCallback());
-  mojom::CreateContextResultPtr create_context_result =
-      create_context_future.Take();
-  if (create_context_result->is_success()) {
-    webnn_context_remote.Bind(
-        std::move(create_context_result->get_success()->context_remote));
-  }
-  EXPECT_FALSE(create_context_result->is_error())
-      << create_context_result->get_error()->message;
-  EXPECT_TRUE(webnn_context_remote.is_bound());
+  base::test::TestFuture<mojom::CreateTensorResultPtr> create_tensor_future;
+  context_remote->CreateTensor(std::move(tensor_info),
+                               create_tensor_future.GetCallback());
+  mojom::CreateTensorResultPtr create_tensor_result =
+      create_tensor_future.Take();
+  EXPECT_TRUE(create_tensor_result->is_success());
+  webnn_tensor_remote.Bind(
+      std::move(create_tensor_result->get_success()->tensor_remote));
+  EXPECT_TRUE(webnn_tensor_remote.is_bound());
 
-  // Create the GraphBuilder through the context.
-  webnn_context_remote->CreateGraphBuilder(
-      webnn_graph_builder_remote.BindNewEndpointAndPassReceiver());
+  return TensorRemoteAndHandle{
+      .remote = std::move(webnn_tensor_remote),
+      .handle = create_tensor_result->get_success()->tensor_handle};
+}
 
-  // The GraphImpl should be built successfully.
-  base::test::TestFuture<mojom::CreateGraphResultPtr> create_graph_future;
-  webnn_graph_builder_remote->CreateGraph(std::move(graph_info),
-                                          create_graph_future.GetCallback());
-  mojom::CreateGraphResultPtr create_graph_result = create_graph_future.Take();
-  if (!create_graph_result->is_error()) {
-    webnn_graph_remote.Bind(std::move(create_graph_result->get_graph_remote()));
-  }
-
-  if (expectation == BuildAndComputeExpectation::kCreateGraphFailure) {
-    EXPECT_TRUE(create_graph_result->is_error());
-    EXPECT_FALSE(webnn_graph_remote.is_bound());
-    EXPECT_TRUE(webnn_context_remote.is_bound());
-    EXPECT_TRUE(webnn_graph_builder_remote.is_bound());
-    webnn_graph_remote.reset();
-    webnn_graph_builder_remote.reset();
-    webnn_context_remote.reset();
-    webnn_provider_remote.reset();
-    base::RunLoop().RunUntilIdle();
-    return;
-  }
-  EXPECT_FALSE(create_graph_result->is_error())
-      << create_graph_result->get_error()->message;
-  EXPECT_TRUE(webnn_graph_remote.is_bound());
-
-  // The GraphImpl should compute successfully.
-  base::test::TestFuture<mojom::ComputeResultPtr> compute_future;
-  webnn_graph_remote->Compute(std::move(named_inputs),
-                              compute_future.GetCallback());
-  mojom::ComputeResultPtr compute_result = compute_future.Take();
-  ASSERT_TRUE(compute_result->is_named_outputs());
-  EXPECT_FALSE(compute_result->get_named_outputs().empty());
-  named_outputs = std::move(compute_result->get_named_outputs());
-
-  webnn_graph_remote.reset();
-  webnn_graph_builder_remote.reset();
-  webnn_context_remote.reset();
-  webnn_provider_remote.reset();
-  base::RunLoop().RunUntilIdle();
-  EXPECT_EQ(expectation, BuildAndComputeExpectation::kSuccess);
+TensorRemoteAndHandle CreateTensorWithValues(
+    mojo::Remote<mojom::WebNNContext>& context_remote,
+    mojom::TensorInfoPtr tensor_info,
+    base::span<const uint8_t> data) {
+  auto remote_and_handle = CreateTensor(context_remote, std::move(tensor_info));
+  remote_and_handle.remote->WriteTensor(mojo_base::BigBuffer(data));
+  return remote_and_handle;
 }
 
 template <typename T>
-mojo_base::BigBuffer VectorToBigBuffer(const std::vector<T>& data) {
-  return mojo_base::BigBuffer(base::as_bytes(base::make_span(data)));
-}
-
-template <typename T>
-std::vector<T> BigBufferToVector(mojo_base::BigBuffer big_buffer) {
+std::vector<T> BigBufferToVector(const mojo_base::BigBuffer& big_buffer) {
   std::vector<T> data(big_buffer.size() / sizeof(T));
   memcpy(data.data(), big_buffer.data(), big_buffer.size());
   return data;
+}
+
+enum class BuildAndComputeExpectation { kSuccess, kCreateGraphFailure };
+
+template <typename InputDataType, typename OutputDataType = InputDataType>
+[[nodiscard]] base::flat_map<std::string, std::vector<OutputDataType>>
+BuildAndCompute(
+    mojo::Remote<mojom::WebNNContext>& context_remote,
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> graph_builder_remote,
+    mojom::GraphInfoPtr graph_info,
+    base::flat_map<std::string, base::span<const InputDataType>> named_inputs,
+    BuildAndComputeExpectation expectation =
+        BuildAndComputeExpectation::kSuccess) {
+  // Create input tensors.
+  std::vector<std::pair<std::string, TensorRemoteAndHandle>>
+      named_input_remotes_and_handles;
+  named_input_remotes_and_handles.reserve(graph_info->input_operands.size());
+
+  for (uint64_t operand_id : graph_info->input_operands) {
+    const mojom::Operand& operand =
+        *graph_info->id_to_operand_map.at(operand_id);
+    EXPECT_TRUE(operand.name.has_value());
+
+    auto it = named_inputs.find(*operand.name);
+    EXPECT_TRUE(it != named_inputs.end());
+
+    auto tensor_info = mojom::TensorInfo::New(
+        operand.descriptor, MLTensorUsage{MLTensorUsageFlags::kWrite});
+    base::span<const uint8_t> data;
+    if constexpr (std::floating_point<InputDataType>) {
+      // Floating point types do not have unique object representations, but
+      // this code appears to be using a byte span to type-erase, which is fine.
+      data = base::as_byte_span(base::allow_nonunique_obj, it->second);
+    } else {
+      data = base::as_byte_span(it->second);
+    }
+    named_input_remotes_and_handles.emplace_back(
+        *operand.name,
+        CreateTensorWithValues(context_remote, std::move(tensor_info), data));
+  }
+
+  // Create output tensors.
+  std::vector<std::pair<std::string, TensorRemoteAndHandle>>
+      named_output_remotes_and_handles;
+  named_output_remotes_and_handles.reserve(graph_info->output_operands.size());
+
+  for (uint64_t operand_id : graph_info->output_operands) {
+    const mojom::Operand& operand =
+        *graph_info->id_to_operand_map.at(operand_id);
+    EXPECT_TRUE(operand.name.has_value());
+
+    auto tensor_info = mojom::TensorInfo::New(
+        operand.descriptor, MLTensorUsage{MLTensorUsageFlags::kRead});
+    named_output_remotes_and_handles.emplace_back(
+        *operand.name, CreateTensor(context_remote, std::move(tensor_info)));
+  }
+
+  // The GraphImpl should be built successfully.
+  base::test::TestFuture<mojom::CreateGraphResultPtr> create_graph_future;
+  graph_builder_remote->CreateGraph(std::move(graph_info),
+                                    create_graph_future.GetCallback());
+  mojom::CreateGraphResultPtr create_graph_result = create_graph_future.Take();
+
+  switch (expectation) {
+    case BuildAndComputeExpectation::kSuccess:
+      EXPECT_TRUE(create_graph_result->is_graph_remote())
+          << create_graph_result->get_error()->message;
+      break;
+    case BuildAndComputeExpectation::kCreateGraphFailure:
+      EXPECT_TRUE(create_graph_result->is_error());
+      return {};
+  }
+
+  mojo::AssociatedRemote<mojom::WebNNGraph> graph_remote;
+  graph_remote.Bind(std::move(create_graph_result->get_graph_remote()));
+
+  std::vector<std::pair<std::string, blink::WebNNTensorToken>>
+      named_input_handles;
+  named_input_handles.reserve(named_input_remotes_and_handles.size());
+  std::ranges::transform(
+      named_input_remotes_and_handles, std::back_inserter(named_input_handles),
+      [](const auto& input) {
+        return std::make_pair(input.first, input.second.handle);
+      });
+
+  std::vector<std::pair<std::string, blink::WebNNTensorToken>>
+      named_output_handles;
+  named_output_handles.reserve(named_output_remotes_and_handles.size());
+  std::ranges::transform(
+      named_output_remotes_and_handles,
+      std::back_inserter(named_output_handles), [](const auto& output) {
+        return std::make_pair(output.first, output.second.handle);
+      });
+
+  // The GraphImpl should compute successfully.
+  graph_remote->Dispatch(named_input_handles, named_output_handles);
+
+  // Read back the results from the output buffers.
+  std::vector<std::pair<std::string, std::vector<OutputDataType>>>
+      named_output_results;
+  named_output_results.reserve(named_output_remotes_and_handles.size());
+  for (auto& output : named_output_remotes_and_handles) {
+    base::test::TestFuture<mojom::ReadTensorResultPtr> read_tensor_future;
+    output.second.remote->ReadTensor(read_tensor_future.GetCallback());
+    mojom::ReadTensorResultPtr result = read_tensor_future.Take();
+    EXPECT_FALSE(result->is_error());
+    named_output_results.emplace_back(
+        output.first, BigBufferToVector<OutputDataType>(result->get_buffer()));
+  }
+
+  EXPECT_EQ(expectation, BuildAndComputeExpectation::kSuccess);
+
+  return base::flat_map<std::string, std::vector<OutputDataType>>(
+      std::move(named_output_results));
 }
 
 void VerifyFloatDataIsEqual(base::span<const float> data,
@@ -164,12 +234,13 @@ void VerifyFloatDataIsEqual(base::span<const float> data,
 
 // Convert a vector of 32-bit floating-point data to a vector of 16-bit
 // floating-point data, both in IEEE precision format.
-std::vector<float16> Float16FromFloat32(const std::vector<float>& fp32_data) {
-  std::vector<float16> fp16_data;
+std::vector<Float16> Float16FromFloat32(const std::vector<float>& fp32_data) {
+  std::vector<Float16> fp16_data;
   fp16_data.reserve(fp32_data.size());
 
   for (size_t i = 0; i < fp32_data.size(); i++) {
-    fp16_data.push_back(fp16_ieee_from_fp32_value(fp32_data[i]));
+    fp16_data.push_back(
+        Float16{.data = fp16_ieee_from_fp32_value(fp32_data[i])});
   }
 
   return fp16_data;
@@ -177,35 +248,15 @@ std::vector<float16> Float16FromFloat32(const std::vector<float>& fp32_data) {
 
 // Convert a vector of 16-bit floating-point data to a vector of 32-bit
 // floating-point data, both in IEEE precision format.
-std::vector<float> Float16ToFloat32(const std::vector<float16>& fp16_data) {
+std::vector<float> Float16ToFloat32(const std::vector<Float16>& fp16_data) {
   std::vector<float> fp32_data;
   fp32_data.reserve(fp16_data.size());
 
   for (size_t i = 0; i < fp16_data.size(); i++) {
-    fp32_data.push_back(fp16_ieee_to_fp32_value(fp16_data[i]));
+    fp32_data.push_back(fp16_ieee_to_fp32_value(fp16_data[i].data));
   }
 
   return fp32_data;
-}
-
-// Get the output data from a `mojo_base::BigBuffer` as 32-bit floating-point
-// number.
-std::vector<float> GetFloatOutputData(mojo_base::BigBuffer big_buffer,
-                                      OperandDataType type) {
-  switch (type) {
-    case OperandDataType::kFloat32:
-      return BigBufferToVector<float>(std::move(big_buffer));
-    case OperandDataType::kFloat16:
-      return Float16ToFloat32(
-          BigBufferToVector<float16>(std::move(big_buffer)));
-    case OperandDataType::kInt32:
-    case OperandDataType::kUint32:
-    case OperandDataType::kInt64:
-    case OperandDataType::kUint64:
-    case OperandDataType::kInt8:
-    case OperandDataType::kUint8:
-      NOTREACHED();
-  }
 }
 
 template <typename T>
@@ -223,16 +274,16 @@ struct OperandInfo {
 #endif  // BUILDFLAG(IS_MAC)
 };
 
-void VerifyIsEqual(mojo_base::BigBuffer actual,
+void VerifyIsEqual(base::span<const float> actual,
                    const OperandInfo<float>& expected) {
-  VerifyFloatDataIsEqual(GetFloatOutputData(std::move(actual), expected.type),
-                         expected.values);
+  VerifyFloatDataIsEqual(actual, expected.values);
 }
+
 template <typename T>
-void VerifyIsEqual(mojo_base::BigBuffer actual,
-                   const OperandInfo<T>& expected) {
-  EXPECT_EQ(BigBufferToVector<T>(std::move(actual)), expected.values);
+void VerifyIsEqual(base::span<const T> actual, const OperandInfo<T>& expected) {
+  EXPECT_EQ(actual, expected.values);
 }
+
 }  // namespace
 
 #if BUILDFLAG(IS_WIN)
@@ -243,10 +294,19 @@ class WebNNGraphImplBackendTest : public dml::TestBase {
             webnn::mojom::features::kWebMachineLearningNeuralNetwork) {}
 
   void SetUp() override;
+  void SetUpBase();
+  void TearDown() override;
+
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> BindNewGraphBuilderRemote();
+
+  mojo::Remote<mojom::WebNNContext>& context() { return webnn_context_; }
 
  protected:
   base::test::ScopedFeatureList scoped_feature_list_;
   scoped_refptr<dml::Adapter> adapter_;
+
+  mojo::Remote<mojom::WebNNContextProvider> provider_remote_;
+  mojo::Remote<mojom::WebNNContext> webnn_context_;
 };
 
 void WebNNGraphImplBackendTest::SetUp() {
@@ -280,16 +340,12 @@ void WebNNGraphImplBackendTest::SetUp() {
        // DML_GEMM_OPERATOR_DESC support for 2 dimensions was introduced in
        // DML_FEATURE_LEVEL_4_0.
        {"BuildOneInputAndOneConstantOperand", DML_FEATURE_LEVEL_4_0},
-       // DML_GEMM_OPERATOR_DESC support for 2 dimensions was introduced in
-       // DML_FEATURE_LEVEL_4_0.
-       {"BuildOneGraphToComputeMultipleTimes", DML_FEATURE_LEVEL_4_0},
        // DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC support for 1~8
        // dimension
        // counts was introduced in DML_FEATURE_LEVEL_3_1.
        {"BuildSingleOperatorLayerNormalization", DML_FEATURE_LEVEL_3_1},
        // DML_GEMM_OPERATOR_DESC support for 2~4 dimensions was introduced in
        // DML_FEATURE_LEVEL_4_0.
-       {"BuildAndComputeSingleOperatorMatmul", DML_FEATURE_LEVEL_4_0},
        {"FuseStandaloneOperationsIntoMatmul", DML_FEATURE_LEVEL_4_0},
        // DML_GEMM_OPERATOR_DESC support for 2 dimensions was introduced in
        // DML_FEATURE_LEVEL_4_0.
@@ -315,6 +371,8 @@ void WebNNGraphImplBackendTest::SetUp() {
     const auto& required_feature_level = it->second;
     SKIP_TEST_IF(!adapter_->IsDMLFeatureLevelSupported(required_feature_level));
   }
+
+  SetUpBase();
 }
 #endif  // #if BUILDFLAG(IS_WIN)
 
@@ -326,10 +384,19 @@ class WebNNGraphImplBackendTest : public testing::Test {
             webnn::mojom::features::kWebMachineLearningNeuralNetwork) {}
 
   void SetUp() override;
+  void SetUpBase();
+  void TearDown() override;
+
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> BindNewGraphBuilderRemote();
+
+  mojo::Remote<mojom::WebNNContext>& context() { return webnn_context_; }
 
  protected:
   base::test::ScopedFeatureList scoped_feature_list_;
   base::test::TaskEnvironment task_environment_;
+
+  mojo::Remote<mojom::WebNNContextProvider> provider_remote_;
+  mojo::Remote<mojom::WebNNContext> webnn_context_;
 };
 
 void WebNNGraphImplBackendTest::SetUp() {
@@ -350,6 +417,8 @@ void WebNNGraphImplBackendTest::SetUp() {
   if (!kSupportedTests.contains(current_test_name)) {
     GTEST_SKIP() << "Skipping test because the operator is not yet supported.";
   }
+
+  SetUpBase();
 }
 #endif  // BUILDFLAG(IS_MAC)
 
@@ -359,37 +428,22 @@ class WebNNGraphImplBackendTest : public testing::Test {
  public:
   WebNNGraphImplBackendTest()
       : scoped_feature_list_(
-            webnn::mojom::features::kWebMachineLearningNeuralNetwork) {
-#if BUILDFLAG(IS_CHROMEOS)
-    chromeos::machine_learning::ServiceConnection::
-        UseFakeServiceConnectionForTesting(&fake_service_connection_);
-    chromeos::machine_learning::ServiceConnection::GetInstance()->Initialize();
-#endif
-  }
+            webnn::mojom::features::kWebMachineLearningNeuralNetwork) {}
 
   void SetUp() override;
+  void SetUpBase();
+  void TearDown() override;
 
-#if BUILDFLAG(IS_CHROMEOS)
-  template <typename DataType>
-  void SetComputeResult(
-      base::flat_map<std::string, std::vector<DataType>> name_to_data_map) {
-    base::flat_map<std::string, std::vector<uint8_t>> output_tensors;
-    for (auto& [output_name, output_data] : name_to_data_map) {
-      auto output_data_in_byte = base::as_bytes(base::make_span(output_data));
-      output_tensors[output_name] = std::vector<uint8_t>(
-          output_data_in_byte.begin(), output_data_in_byte.end());
-    }
-    fake_service_connection_.SetOutputWebPlatformModelCompute(output_tensors);
-  }
-#endif
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> BindNewGraphBuilderRemote();
+
+  mojo::Remote<mojom::WebNNContext>& context() { return webnn_context_; }
 
  protected:
   base::test::ScopedFeatureList scoped_feature_list_;
   base::test::TaskEnvironment task_environment_;
-#if BUILDFLAG(IS_CHROMEOS)
-  chromeos::machine_learning::FakeServiceConnectionImpl
-      fake_service_connection_;
-#endif
+
+  mojo::Remote<mojom::WebNNContextProvider> provider_remote_;
+  mojo::Remote<mojom::WebNNContext> webnn_context_;
 };
 
 void WebNNGraphImplBackendTest::SetUp() {
@@ -405,8 +459,45 @@ void WebNNGraphImplBackendTest::SetUp() {
   if (!kSupportedTests.contains(current_test_name)) {
     GTEST_SKIP() << "Skipping test because the operator is not yet supported.";
   }
+
+  SetUpBase();
 }
 #endif  // BUILDFLAG(WEBNN_USE_TFLITE) && !BUILDFLAG(IS_WIN)
+
+void WebNNGraphImplBackendTest::SetUpBase() {
+  WebNNContextProviderImpl::CreateForTesting(
+      provider_remote_.BindNewPipeAndPassReceiver());
+
+  // Create the ContextImpl through context provider.
+  base::test::TestFuture<mojom::CreateContextResultPtr> create_context_future;
+  provider_remote_->CreateWebNNContext(
+      mojom::CreateContextOptions::New(
+          mojom::CreateContextOptions::Device::kGpu,
+          mojom::CreateContextOptions::PowerPreference::kDefault),
+      create_context_future.GetCallback());
+  mojom::CreateContextResultPtr create_context_result =
+      create_context_future.Take();
+  if (create_context_result->is_success()) {
+    webnn_context_.Bind(
+        std::move(create_context_result->get_success()->context_remote));
+  }
+  EXPECT_FALSE(create_context_result->is_error())
+      << create_context_result->get_error()->message;
+  EXPECT_TRUE(webnn_context_.is_bound());
+}
+
+void WebNNGraphImplBackendTest::TearDown() {
+  webnn_context_.reset();
+  provider_remote_.reset();
+  EXPECT_TRUE(base::test::RunUntil([&]() { return true; }));
+}
+
+mojo::AssociatedRemote<mojom::WebNNGraphBuilder>
+WebNNGraphImplBackendTest::BindNewGraphBuilderRemote() {
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote;
+  webnn_context_->CreateGraphBuilder(remote.BindNewEndpointAndPassReceiver());
+  return remote;
+}
 
 struct FusibleOperationDescriptor {
   mojom::Operation::Tag kind;
@@ -482,9 +573,12 @@ struct BatchNormalizationTester {
   OperandInfo<T> output;
 
   void TestFusingOperation(
+      WebNNGraphImplBackendTest& test,
       const FusibleOperationDescriptor& fusible_operation) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t mean_operand_id =
@@ -511,22 +605,22 @@ struct BatchNormalizationTester {
     BuildFusibleOperation(builder, fusible_operation, intermediate_operand_id,
                           output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
-    named_inputs.insert({"mean", VectorToBigBuffer(mean.values)});
-    named_inputs.insert({"variance", VectorToBigBuffer(variance.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
+    named_inputs.insert({"mean", mean.values});
+    named_inputs.insert({"variance", variance.values});
     if (scale.has_value()) {
-      named_inputs.insert({"scale", VectorToBigBuffer(scale->values)});
+      named_inputs.insert({"scale", scale->values});
     }
     if (bias.has_value()) {
-      named_inputs.insert({"bias", VectorToBigBuffer(bias->values)});
+      named_inputs.insert({"bias", bias->values});
     }
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
+    base::flat_map<std::string, std::vector<T>> named_outputs =
+        BuildAndCompute(test.context(), std::move(remote),
+                        builder.TakeGraphInfo(), std::move(named_inputs));
 
-    VerifyIsEqual(std::move(named_outputs["output"]), output);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 };
 
@@ -556,8 +650,10 @@ TEST_F(WebNNGraphImplBackendTest,
                    .dimensions = {1, 2, 1, 3},
                    .values = {-8.999950000374997, 1, 10.999950000374997,
                               -1.2474078892909666, 11, 23.24740788929097}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kLinear, .alpha = 10, .beta = 1});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kLinear,
+                                        .alpha = 10,
+                                        .beta = 1});
   }
   {
     // Test batchNormalization with 4-D input with activation = hardsigmoid.
@@ -580,10 +676,11 @@ TEST_F(WebNNGraphImplBackendTest,
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 2, 1, 3},
                    .values = {1, 1, 1, 1, 1, 1}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kHardSigmoid,
-            .alpha = 1,
-            .beta = 3});
+        .TestFusingOperation(*this,
+                             FusibleOperationDescriptor{
+                                 .kind = mojom::Operation::Tag::kHardSigmoid,
+                                 .alpha = 1,
+                                 .beta = 3});
   }
   {
     // Test batchNormalization with 4-D input with activation = relu.
@@ -607,8 +704,8 @@ TEST_F(WebNNGraphImplBackendTest,
                    .dimensions = {1, 2, 1, 3},
                    .values = {0, 0, 0.9999950000374997, 0, 1,
                               2.224740788929097}}}
-        .TestFusingOperation(
-            FusibleOperationDescriptor{.kind = mojom::Operation::Tag::kRelu});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kRelu});
   }
   {
     // Test batchNormalization with 4-D input with activation = softplus.
@@ -632,8 +729,9 @@ TEST_F(WebNNGraphImplBackendTest,
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 2, 1, 3},
                    .values = {0, 0, 100, 99, 100, 101}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kSoftplus});
+        .TestFusingOperation(*this,
+                             FusibleOperationDescriptor{
+                                 .kind = mojom::Operation::Tag::kSoftplus});
   }
   {
     // Test batchNormalization with 1-D input with activation = softsign.
@@ -657,8 +755,9 @@ TEST_F(WebNNGraphImplBackendTest,
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {2},
                    .values = {0, 0.5}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kSoftsign});
+        .TestFusingOperation(*this,
+                             FusibleOperationDescriptor{
+                                 .kind = mojom::Operation::Tag::kSoftsign});
   }
 }
 
@@ -680,14 +779,17 @@ struct Conv2dTester {
   OperandInfo<float> output;
 
   void TestFusingOperation(
+      WebNNGraphImplBackendTest& test,
       const FusibleOperationDescriptor& fusible_operation) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
-    uint64_t filter_operand_id =
-        builder.BuildConstant(filter.dimensions, filter.type,
-                              base::as_bytes(base::make_span(filter.values)));
+    uint64_t filter_operand_id = builder.BuildConstant(
+        filter.dimensions, filter.type,
+        base::as_byte_span(base::allow_nonunique_obj, filter.values));
     uint64_t conv2d_output_operand_id =
         builder.BuildIntermediateOperand(output.dimensions, output.type);
 
@@ -695,7 +797,8 @@ struct Conv2dTester {
     if (attributes.bias.has_value()) {
       bias_operand_id = builder.BuildConstant(
           attributes.bias->dimensions, attributes.bias->type,
-          base::as_bytes(base::make_span(attributes.bias->values)));
+          base::as_byte_span(base::allow_nonunique_obj,
+                             attributes.bias->values));
     }
 
     builder.BuildConv2d(type, input_operand_id, filter_operand_id,
@@ -707,15 +810,14 @@ struct Conv2dTester {
     BuildFusibleOperation(builder, fusible_operation, conv2d_output_operand_id,
                           output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+    base::flat_map<std::string, base::span<const T>> named_inputs;
 
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+    named_inputs.insert({"input", input.values});
+    base::flat_map<std::string, std::vector<T>> named_outputs =
+        BuildAndCompute(test.context(), std::move(remote),
+                        builder.TakeGraphInfo(), std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
-    VerifyIsEqual(std::move(named_outputs["output"]), output);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 };
 
@@ -742,8 +844,9 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                    .values = {-0.7946096424007316, -0.7853474888890126,
                               -0.7601703453057089, -0.6917317734107099,
                               -0.5056964470628461, 0, 1, 2, 3}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kElu, .alpha = 0.8});
+        .TestFusingOperation(
+            *this, FusibleOperationDescriptor{
+                       .kind = mojom::Operation::Tag::kElu, .alpha = 0.8});
   }
   // Test conv2d with NCHW layout, float 32 data type, bias and fusing with
   // leakyRelu activation.
@@ -756,7 +859,7 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                              15}},
         .filter = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 1, 3, 3},
-                   .values = std::vector<float>(9, 1)},
+                   .values = {1, 1, 1, 1, 1, 1, 1, 1, 1}},
         .attributes = {.bias =
                            OperandInfo<float>{.type = OperandDataType::kFloat32,
                                               .dimensions = {1},
@@ -764,8 +867,10 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 1, 2, 2},
                    .values = {-0.3, -0.12, 21, 30}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kLeakyRelu, .alpha = 0.02});
+        .TestFusingOperation(
+            *this,
+            FusibleOperationDescriptor{
+                .kind = mojom::Operation::Tag::kLeakyRelu, .alpha = 0.02});
   }
   // Test conv2d with NCHW layout, float 32 data type, fusing with bias and
   // linear activation.
@@ -778,7 +883,7 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}},
         .filter = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 1, 3, 3},
-                   .values = std::vector<float>(9, 1)},
+                   .values = {1, 1, 1, 1, 1, 1, 1, 1, 1}},
         .attributes = {.padding = {1, 1, 1, 1},
                        .bias =
                            OperandInfo<float>{.type = OperandDataType::kFloat32,
@@ -790,8 +895,10 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                               1.64, 1.73, 1.52, 1.64, 2,    2.09, 2.18,
                               1.82, 1.94, 2.45, 2.54, 2.63, 2.12, 1.73,
                               2.12, 2.18, 2.24, 1.85}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kLinear, .alpha = 0.01, .beta = 1});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kLinear,
+                                        .alpha = 0.01,
+                                        .beta = 1});
   }
   // Test conv2d with NCHW layout, fusing with hardSigmoid activation.
   {
@@ -803,7 +910,7 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}},
         .filter = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 1, 3, 3},
-                   .values = std::vector<float>(9, 1)},
+                   .values = {1, 1, 1, 1, 1, 1, 1, 1, 1}},
         .attributes = {.padding = {1, 1, 1, 1},
                        .bias =
                            OperandInfo<float>{.type = OperandDataType::kFloat32,
@@ -814,10 +921,11 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                    .values = {0,    0,    0, 0,    0,    0,    0, 0,    0,
                               0,    0,    0, 0.09, 0.18, 0,    0, 0.45, 0.54,
                               0.63, 0.12, 0, 0.12, 0.18, 0.24, 0}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kHardSigmoid,
-            .alpha = 0.01,
-            .beta = -1});
+        .TestFusingOperation(*this,
+                             FusibleOperationDescriptor{
+                                 .kind = mojom::Operation::Tag::kHardSigmoid,
+                                 .alpha = 0.01,
+                                 .beta = -1});
   }
   // Test conv2d with NCHW layout, fusing with sigmoid activation.
   {
@@ -856,8 +964,9 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                               0.6934033632278442, 0.6633020043373108,
                               0.7144469618797302, 0.7469926476478577,
                               0.7747598886489868, 0.7273134589195251}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kSigmoid});
+        .TestFusingOperation(*this,
+                             FusibleOperationDescriptor{
+                                 .kind = mojom::Operation::Tag::kSigmoid});
   }
   // Test conv2d with NCHW layout, float 32 data type, bias and fusing with
   // softplus activation.
@@ -872,8 +981,9 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                         .output = {.type = OperandDataType::kFloat32,
                                    .dimensions = {1, 1, 2, 2},
                                    .values = {40, 48, 56, 64}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kSoftplus});
+        .TestFusingOperation(*this,
+                             FusibleOperationDescriptor{
+                                 .kind = mojom::Operation::Tag::kSoftplus});
   }
   // Test conv2d with NCHW layout, float 32 data type, fusing with softsign
   // activation.
@@ -884,12 +994,13 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                                   .values = {-3, -2, -1, -4, 0, 2, 1, 3, 4}},
                         .filter = {.type = OperandDataType::kFloat32,
                                    .dimensions = {1, 1, 2, 2},
-                                   .values = std::vector<float>(4, 1)},
+                                   .values = {1, 1, 1, 1}},
                         .output = {.type = OperandDataType::kFloat32,
                                    .dimensions = {1, 1, 2, 2},
                                    .values = {-0.9, -0.5, 0, 0.9}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kSoftsign});
+        .TestFusingOperation(*this,
+                             FusibleOperationDescriptor{
+                                 .kind = mojom::Operation::Tag::kSoftsign});
   }
   // Test conv2d with NCHW layout, fusing with tanh activation.
   {
@@ -901,7 +1012,8 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}},
         .filter = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 1, 3, 3},
-                   .values = std::vector<float>(9, 0.05)},
+                   .values = {0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05,
+                              0.05}},
         .attributes = {.padding = {1, 1, 1, 1}},
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 1, 5, 5},
@@ -918,8 +1030,8 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoConv2d) {
                               0.9985079423323266, 0.999969775809118,
                               0.9999834124992523, 0.9999908965525104,
                               0.9995503664595334}}}
-        .TestFusingOperation(
-            FusibleOperationDescriptor{.kind = mojom::Operation::Tag::kTanh});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kTanh});
   }
 }
 
@@ -933,13 +1045,10 @@ struct ElementWiseBinaryTester {
   mojom::ElementWiseBinary::Kind kind;
   OperandInfo<O> output;
   void Test(WebNNGraphImplBackendTest& helper) {
-#if BUILDFLAG(IS_CHROMEOS)
-    helper.SetComputeResult(base::flat_map<std::string, std::vector<O>>(
-        {{"output", output.values}}));
-#endif
-
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        helper.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t lhs_operand_id =
         builder.BuildInput("lhs", lhs.dimensions, lhs.type);
     uint64_t rhs_operand_id =
@@ -972,30 +1081,32 @@ struct ElementWiseBinaryTester {
     }
 #endif  // BUILD_FLAG(IS_MAC)
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"lhs", VectorToBigBuffer(lhs.values)});
-    named_inputs.insert({"rhs", VectorToBigBuffer(rhs.values)});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
+    base::flat_map<std::string, base::span<const I>> named_inputs;
+    named_inputs.insert({"lhs", lhs.values});
+    named_inputs.insert({"rhs", rhs.values});
+    base::flat_map<std::string, std::vector<O>> named_outputs =
+        BuildAndCompute<O>(std::move(remote), builder.TakeGraphInfo(),
+                           std::move(named_inputs));
 
 #if BUILDFLAG(IS_MAC)
     if (output.type == OperandDataType::kUint8) {
-      VerifyIsEqual(std::move(named_outputs["output"]), output.ToInt32());
+      VerifyIsEqual(named_outputs["output"], output.ToInt32());
       return;
     }
 #endif  // BUILD_FLAG(IS_MAC)
 
-    VerifyIsEqual(std::move(named_outputs["output"]), output);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 
   void TestFusingOperation(
+      WebNNGraphImplBackendTest& test,
       const FusibleOperationDescriptor& fusible_operation) {
     // Now only binary add supports fusing standalone activation.
     CHECK_EQ(kind, mojom::ElementWiseBinary::Kind::kAdd);
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t lhs_operand_id =
         builder.BuildInput("lhs", lhs.dimensions, lhs.type);
     uint64_t rhs_operand_id =
@@ -1011,15 +1122,14 @@ struct ElementWiseBinaryTester {
     BuildFusibleOperation(builder, fusible_operation, intermediate_operand_id,
                           output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"lhs", VectorToBigBuffer(lhs.values)});
-    named_inputs.insert({"rhs", VectorToBigBuffer(rhs.values)});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+    base::flat_map<std::string, base::span<const I>> named_inputs;
+    named_inputs.insert({"lhs", lhs.values});
+    named_inputs.insert({"rhs", rhs.values});
+    base::flat_map<std::string, std::vector<O>> named_outputs =
+        BuildAndCompute<O>(test.context(), std::move(remote),
+                           builder.TakeGraphInfo(), std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
-    VerifyIsEqual(std::move(named_outputs["output"]), output);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 };
 
@@ -1040,8 +1150,10 @@ TEST_F(WebNNGraphImplBackendTest,
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 2, 3, 1},
                    .values = {11, 72, 71, 71, 71, 61}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kLinear, .alpha = 10, .beta = 1});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kLinear,
+                                        .alpha = 10,
+                                        .beta = 1});
   }
   // Test add with relu activation.
   {
@@ -1055,8 +1167,8 @@ TEST_F(WebNNGraphImplBackendTest,
                                    .output = {.type = OperandDataType::kFloat32,
                                               .dimensions = {1, 2, 3, 1},
                                               .values = {0, 7, 7, 7, 7, 0}}}
-        .TestFusingOperation(
-            FusibleOperationDescriptor{.kind = mojom::Operation::Tag::kRelu});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kRelu});
   }
 }
 
@@ -1070,7 +1182,9 @@ TEST_F(WebNNGraphImplBackendTest,
 //             [output2]
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithSplitAndReshape) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {2, 5}, OperandDataType::kFloat32);
   uint64_t output1_operand_id =
@@ -1084,25 +1198,22 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithSplitAndReshape) {
       builder.BuildOutput("output2", {3, 2}, OperandDataType::kFloat32);
   builder.BuildReshape(split_operand_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   // [[ 1  2  3  4  5]
   //  [ 6  7  8  9 10]] with shape (2, 5)
   std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
   // [[1  2]
   //  [6  7]] with shape (2, 2)
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output1"])),
-            std::vector<float>({1, 2, 6, 7}));
+  VerifyFloatDataIsEqual(named_outputs["output1"], {1, 2, 6, 7});
   // [[3  4]
   //  [5  8]
   //  [9  10]] with shape (3, 2)
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output2"])),
-            std::vector<float>({3, 4, 5, 8, 9, 10}));
+  VerifyFloatDataIsEqual(named_outputs["output2"], {3, 4, 5, 8, 9, 10});
 }
 
 template <typename T>
@@ -1118,10 +1229,13 @@ struct UnaryOperatorTester {
   std::optional<float> linear_alpha;
   std::optional<float> linear_beta;
   OperandInfo<T> output;
-  void Test(BuildAndComputeExpectation expectation =
+  void Test(WebNNGraphImplBackendTest& test,
+            BuildAndComputeExpectation expectation =
                 BuildAndComputeExpectation::kSuccess) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t output_operand_id =
@@ -1172,18 +1286,17 @@ struct UnaryOperatorTester {
         builder.BuildTanh(input_operand_id, output_operand_id);
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs, expectation);
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
+    base::flat_map<std::string, std::vector<T>> named_outputs = BuildAndCompute(
+        test.context(), std::move(remote), builder.TakeGraphInfo(),
+        std::move(named_inputs), expectation);
 
     if (expectation == BuildAndComputeExpectation::kSuccess) {
-      VerifyIsEqual(std::move(named_outputs["output"]), output);
+      VerifyIsEqual(named_outputs["output"], output);
     }
   }
 };
@@ -1201,7 +1314,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorClamp) {
                                .output = {.type = OperandDataType::kFloat32,
                                           .dimensions = {},
                                           .values = {3}}}
-        .Test();
+        .Test(*this);
   }
 }
 
@@ -1218,7 +1331,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorHardSigmoid) {
                                .output = {.type = OperandDataType::kFloat32,
                                           .dimensions = {},
                                           .values = {1}}}
-        .Test();
+        .Test(*this);
   }
 }
 
@@ -1233,7 +1346,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorHardSwish) {
                                .output = {.type = OperandDataType::kFloat32,
                                           .dimensions = {},
                                           .values = {7.0}}}
-        .Test();
+        .Test(*this);
   }
 }
 
@@ -1248,7 +1361,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorTanh) {
                                .output = {.type = OperandDataType::kFloat32,
                                           .dimensions = {},
                                           .values = {-0.76159418}}}
-        .Test();
+        .Test(*this);
   }
 }
 
@@ -1260,7 +1373,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorTanh) {
 //      relu2
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoRelu) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
   uint64_t relu1_output_id =
@@ -1270,20 +1385,18 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoRelu) {
       builder.BuildOutput("output", {1, 2, 3, 4}, OperandDataType::kFloat32);
   builder.BuildRelu(relu1_output_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {-1, -2,  -3,  -4,  -5, -6, -7, -8,
                                    -9, -10, -11, -12, 13, 14, 15, 16,
                                    17, 18,  19,  20,  21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(
-      BigBufferToVector<float>(std::move(named_outputs["output"])),
-      std::vector<float>({0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
+  VerifyFloatDataIsEqual(named_outputs["output"],
+                         {0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
 }
 
 // Test building and computing a graph with two operators (reshape as the
@@ -1295,7 +1408,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoRelu) {
 //     reshape
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithReshapeAsLastNode) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
   uint64_t relu_output_id =
@@ -1305,18 +1420,16 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithReshapeAsLastNode) {
       builder.BuildOutput("output", {1, 1, 6, 4}, OperandDataType::kFloat32);
   builder.BuildReshape(relu_output_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1,  2,  3,  4,  5,  6,  7,  8,
                                    9,  10, 11, 12, 13, 14, 15, 16,
                                    17, 18, 19, 20, 21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            input_data);
+  VerifyFloatDataIsEqual(named_outputs["output"], input_data);
 }
 
 // Test building and computing a graph with two operators (reshape as an
@@ -1329,7 +1442,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithReshapeAsLastNode) {
 TEST_F(WebNNGraphImplBackendTest,
        BuildAndComputeGraphWithReshapeAsIntermediateNode) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
   uint64_t reshape_output_id =
@@ -1339,18 +1454,16 @@ TEST_F(WebNNGraphImplBackendTest,
       builder.BuildOutput("output", {1, 1, 6, 4}, OperandDataType::kFloat32);
   builder.BuildRelu(reshape_output_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1,  2,  3,  4,  5,  6,  7,  8,
                                    9,  10, 11, 12, 13, 14, 15, 16,
                                    17, 18, 19, 20, 21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            input_data);
+  VerifyFloatDataIsEqual(named_outputs["output"], input_data);
 }
 
 // Test building and computing a graph with two reshape operators
@@ -1361,7 +1474,9 @@ TEST_F(WebNNGraphImplBackendTest,
 //    reshape2
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoReshape) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
   uint64_t reshape_output_id =
@@ -1371,18 +1486,16 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoReshape) {
       builder.BuildOutput("output", {1, 2, 3, 4}, OperandDataType::kFloat32);
   builder.BuildReshape(reshape_output_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1,  2,  3,  4,  5,  6,  7,  8,
                                    9,  10, 11, 12, 13, 14, 15, 16,
                                    17, 18, 19, 20, 21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            input_data);
+  VerifyFloatDataIsEqual(named_outputs["output"], input_data);
 }
 
 // Test building and computing a graph with two operators and two outputs
@@ -1393,7 +1506,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoReshape) {
 // [output1] [output2]
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoOutputs) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
   uint64_t output1_operand_id =
@@ -1403,24 +1518,21 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoOutputs) {
       builder.BuildOutput("output2", {1, 2, 3, 4}, OperandDataType::kFloat32);
   builder.BuildRelu(input_operand_id, output2_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {-1, -2,  -3,  -4,  -5, -6, -7, -8,
                                    -9, -10, -11, -12, 13, 14, 15, 16,
                                    17, 18,  19,  20,  21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(
-      BigBufferToVector<float>(std::move(named_outputs["output1"])),
-      std::vector<float>({-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12,
-                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22,  23,  24}));
-  EXPECT_EQ(
-      BigBufferToVector<float>(std::move(named_outputs["output2"])),
-      std::vector<float>({0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
+  VerifyFloatDataIsEqual(named_outputs["output1"],
+                         {-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12,
+                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22,  23,  24});
+  VerifyFloatDataIsEqual(named_outputs["output2"],
+                         {0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+                          13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
 }
 
 struct GemmAttributes {
@@ -1441,9 +1553,12 @@ struct GemmTester {
   OperandInfo<float> output;
 
   void TestFusingOperation(
+      WebNNGraphImplBackendTest& test,
       const FusibleOperationDescriptor& fusible_operation) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_a_operand_id =
         builder.BuildInput("input_a", input_a.dimensions, input_a.type);
     uint64_t input_b_operand_id =
@@ -1463,18 +1578,17 @@ struct GemmTester {
     BuildFusibleOperation(builder, fusible_operation, intermediate_operand_id,
                           output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input_a", VectorToBigBuffer(input_a.values)});
-    named_inputs.insert({"input_b", VectorToBigBuffer(input_b.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input_a", input_a.values});
+    named_inputs.insert({"input_b", input_b.values});
     if (input_c.has_value()) {
-      named_inputs.insert({"input_c", VectorToBigBuffer(input_c->values)});
+      named_inputs.insert({"input_c", input_c->values});
     }
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+    base::flat_map<std::string, std::vector<float>> named_outputs =
+        BuildAndCompute(test.context(), std::move(remote),
+                        builder.TakeGraphInfo(), std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
-    VerifyIsEqual(std::move(named_outputs["output"]), output);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 };
 
@@ -1492,8 +1606,10 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoGemm) {
                       .output = {.type = OperandDataType::kFloat32,
                                  .dimensions = {2, 2},
                                  .values = {71, 101, 151, 221}}}
-        .TestFusingOperation(FusibleOperationDescriptor{
-            .kind = mojom::Operation::Tag::kLinear, .alpha = 10, .beta = 1});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kLinear,
+                                        .alpha = 10,
+                                        .beta = 1});
   }
 
   // Test gemm with a third input, activation = relu.
@@ -1511,8 +1627,8 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneActivationIntoGemm) {
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {2, 2},
                    .values = {8, 11, 0, 0}}}
-        .TestFusingOperation(
-            FusibleOperationDescriptor{.kind = mojom::Operation::Tag::kRelu});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kRelu});
   }
 }
 
@@ -1546,18 +1662,10 @@ struct GruTester {
   void Test(WebNNGraphImplBackendTest& helper,
             BuildAndComputeExpectation expectation =
                 BuildAndComputeExpectation::kSuccess) {
-#if BUILDFLAG(IS_CHROMEOS)
-    base::flat_map<std::string, std::vector<T>> name_to_data_map;
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      std::string output_name =
-          base::StrCat({"output", base::NumberToString(i)});
-      name_to_data_map[std::move(output_name)] = outputs[i].values;
-    }
-
-    helper.SetComputeResult(std::move(name_to_data_map));
-#endif
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        helper.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t weight_operand_id =
@@ -1576,7 +1684,8 @@ struct GruTester {
     if (initial_hidden_state.has_value()) {
       attributes.initial_hidden_state_operand_id = builder.BuildConstant(
           initial_hidden_state->dimensions, initial_hidden_state->type,
-          base::as_bytes(base::make_span(initial_hidden_state->values)));
+          base::as_byte_span(base::allow_nonunique_obj,
+                             initial_hidden_state->values));
     }
 
     std::vector<uint64_t> output_operand_ids;
@@ -1591,28 +1700,25 @@ struct GruTester {
                      recurrent_weight_operand_id, std::move(output_operand_ids),
                      steps, hidden_size, std::move(attributes));
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
-    named_inputs.insert({"weight", VectorToBigBuffer(weight.values)});
-    named_inputs.insert(
-        {"recurrentWeight", VectorToBigBuffer(recurrent_weight.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
+    named_inputs.insert({"weight", weight.values});
+    named_inputs.insert({"recurrentWeight", recurrent_weight.values});
     if (bias.has_value()) {
-      named_inputs.insert({"bias", VectorToBigBuffer(bias->values)});
+      named_inputs.insert({"bias", bias->values});
     }
     if (recurrent_bias.has_value()) {
-      named_inputs.insert(
-          {"recurrentBias", VectorToBigBuffer(recurrent_bias->values)});
+      named_inputs.insert({"recurrentBias", recurrent_bias->values});
     }
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs, expectation);
+    base::flat_map<std::string, std::vector<T>> named_outputs = BuildAndCompute(
+        helper.context(), std::move(remote), builder.TakeGraphInfo(),
+        std::move(named_inputs), expectation);
 
     if (expectation == BuildAndComputeExpectation::kSuccess) {
       for (size_t i = 0; i < outputs.size(); ++i) {
-        VerifyIsEqual(
-            std::move(named_outputs["output" + base::NumberToString(i)]),
-            outputs[i]);
+        VerifyIsEqual(named_outputs["output" + base::NumberToString(i)],
+                      outputs[i]);
       }
     }
   }
@@ -1897,13 +2003,10 @@ struct GruCellTester {
   void Test(WebNNGraphImplBackendTest& helper,
             BuildAndComputeExpectation expectation =
                 BuildAndComputeExpectation::kSuccess) {
-#if BUILDFLAG(IS_CHROMEOS)
-    helper.SetComputeResult(base::flat_map<std::string, std::vector<T>>(
-        {{"output", output.values}}));
-#endif
-
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        helper.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t weight_operand_id =
@@ -1929,27 +2032,24 @@ struct GruCellTester {
                          recurrent_weight_operand_id, hidden_state_operand_id,
                          output_operand_id, hidden_size, std::move(attributes));
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
-    named_inputs.insert({"weight", VectorToBigBuffer(weight.values)});
-    named_inputs.insert(
-        {"recurrentWeight", VectorToBigBuffer(recurrent_weight.values)});
-    named_inputs.insert(
-        {"hiddenState", VectorToBigBuffer(hidden_state.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
+    named_inputs.insert({"weight", weight.values});
+    named_inputs.insert({"recurrentWeight", recurrent_weight.values});
+    named_inputs.insert({"hiddenState", hidden_state.values});
     if (bias.has_value()) {
-      named_inputs.insert({"bias", VectorToBigBuffer(bias->values)});
+      named_inputs.insert({"bias", bias->values});
     }
     if (recurrent_bias.has_value()) {
-      named_inputs.insert(
-          {"recurrentBias", VectorToBigBuffer(recurrent_bias->values)});
+      named_inputs.insert({"recurrentBias", recurrent_bias->values});
     }
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs, expectation);
+    base::flat_map<std::string, std::vector<T>> named_outputs = BuildAndCompute(
+        helper.context(), std::move(remote), builder.TakeGraphInfo(),
+        std::move(named_inputs), expectation);
 
     if (expectation == BuildAndComputeExpectation::kSuccess) {
-      VerifyIsEqual(std::move(named_outputs["output"]), output);
+      VerifyIsEqual(named_outputs["output"], output);
     }
   }
 };
@@ -2036,7 +2136,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorGruCell) {
 //                       gemm
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeMultipleOperatorGemm) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {2, 2}, OperandDataType::kFloat32);
   uint64_t input_b_operand_id =
@@ -2054,154 +2156,43 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeMultipleOperatorGemm) {
   builder.BuildGemm(intermediate_1_operand_id, intermediate_2_operand_id,
                     output_operand_id, GemmAttributes());
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_a_data = {1, 2, 3, 4};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_a_data)});
+  named_inputs.insert({"input_a", input_a_data});
   std::vector<float> input_b_data = {1, 1, 1, 1};
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_b_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input_b", input_b_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({30, 30, 70, 70}));
+  VerifyFloatDataIsEqual(named_outputs["output"], {30, 30, 70, 70});
 }
 
 // Test building and computing a graph with one input and one constant.
 TEST_F(WebNNGraphImplBackendTest, BuildOneInputAndOneConstantOperand) {
   // Build the mojom graph info.
   std::vector<float> constant_data = {5, 6, 7, 8};
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {2, 2}, OperandDataType::kFloat32);
-  uint64_t input_b_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
+  uint64_t input_b_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
   uint64_t output_operand_id =
       builder.BuildOutput("output", {2, 2}, OperandDataType::kFloat32);
   builder.BuildGemm(input_a_operand_id, input_b_operand_id, output_operand_id,
                     GemmAttributes());
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_a_data = {1, 1, 1, 1};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_a_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input_a", input_a_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({12, 14, 12, 14}));
-}
-
-// Test building a graph with one input and one constant to compute for
-// multiple times.
-TEST_F(WebNNGraphImplBackendTest, BuildOneGraphToComputeMultipleTimes) {
-  // Build the mojom graph info.
-  std::vector<float> constant_data = {5, 6, 7, 8};
-  GraphInfoBuilder builder;
-  uint64_t input_a_operand_id =
-      builder.BuildInput("input_a", {2, 2}, OperandDataType::kFloat32);
-  uint64_t input_b_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
-  uint64_t output_operand_id =
-      builder.BuildOutput("output", {2, 2}, OperandDataType::kFloat32);
-  builder.BuildGemm(input_a_operand_id, input_b_operand_id, output_operand_id,
-                    GemmAttributes());
-
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  mojo::Remote<mojom::WebNNContextProvider> webnn_provider_remote;
-  mojo::Remote<mojom::WebNNContext> webnn_context_remote;
-  mojo::AssociatedRemote<mojom::WebNNGraph> webnn_graph_remote;
-  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> webnn_graph_builder_remote;
-  WebNNContextProviderImpl::CreateForTesting(
-      webnn_provider_remote.BindNewPipeAndPassReceiver());
-
-  // Create the ContextImpl through context provider.
-  base::test::TestFuture<mojom::CreateContextResultPtr> create_context_future;
-  webnn_provider_remote->CreateWebNNContext(
-      mojom::CreateContextOptions::New(
-          mojom::CreateContextOptions::Device::kGpu,
-          mojom::CreateContextOptions::PowerPreference::kDefault,
-          /*thread_count_hint=*/0),
-      create_context_future.GetCallback());
-  mojom::CreateContextResultPtr create_context_result =
-      create_context_future.Take();
-  if (create_context_result->is_success()) {
-    webnn_context_remote.Bind(
-        std::move(create_context_result->get_success()->context_remote));
-  }
-  EXPECT_TRUE(webnn_context_remote.is_bound());
-
-  // Create the GraphBuilder through the context.
-  webnn_context_remote->CreateGraphBuilder(
-      webnn_graph_builder_remote.BindNewEndpointAndPassReceiver());
-
-  // The GraphImpl should be built successfully.
-  base::test::TestFuture<mojom::CreateGraphResultPtr> create_graph_future;
-  webnn_graph_builder_remote->CreateGraph(builder.TakeGraphInfo(),
-                                          create_graph_future.GetCallback());
-  mojom::CreateGraphResultPtr create_graph_result = create_graph_future.Take();
-  EXPECT_FALSE(create_graph_result->is_error());
-  webnn_graph_remote.Bind(std::move(create_graph_result->get_graph_remote()));
-  EXPECT_TRUE(webnn_graph_remote.is_bound());
-  {
-    // Compute for the first time.
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input_a", VectorToBigBuffer<float>({1, 1, 1, 1})});
-
-    // The GraphImpl should compute successfully.
-    base::test::TestFuture<mojom::ComputeResultPtr> compute_future;
-    webnn_graph_remote->Compute(std::move(named_inputs),
-                                compute_future.GetCallback());
-    mojom::ComputeResultPtr compute_result = compute_future.Take();
-    ASSERT_TRUE(compute_result->is_named_outputs());
-    EXPECT_FALSE(compute_result->get_named_outputs().empty());
-    named_outputs = std::move(compute_result->get_named_outputs());
-
-    EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-              std::vector<float>({12, 14, 12, 14}));
-  }
-  {
-    // Compute for the second time.
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input_a", VectorToBigBuffer<float>({1, 1, 1, 1})});
-
-    // The GraphImpl should compute successfully.
-    base::test::TestFuture<mojom::ComputeResultPtr> compute_future;
-    webnn_graph_remote->Compute(std::move(named_inputs),
-                                compute_future.GetCallback());
-    mojom::ComputeResultPtr compute_result = compute_future.Take();
-    ASSERT_TRUE(compute_result->is_named_outputs());
-    EXPECT_FALSE(compute_result->get_named_outputs().empty());
-    named_outputs = std::move(compute_result->get_named_outputs());
-
-    EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-              std::vector<float>({12, 14, 12, 14}));
-  }
-  {
-    // Compute for the third time.
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input_a", VectorToBigBuffer<float>({2, 2, 2, 2})});
-
-    // The GraphImpl should compute successfully.
-    base::test::TestFuture<mojom::ComputeResultPtr> compute_future;
-    webnn_graph_remote->Compute(std::move(named_inputs),
-                                compute_future.GetCallback());
-    mojom::ComputeResultPtr compute_result = compute_future.Take();
-    ASSERT_TRUE(compute_result->is_named_outputs());
-    EXPECT_FALSE(compute_result->get_named_outputs().empty());
-    named_outputs = std::move(compute_result->get_named_outputs());
-
-    EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-              std::vector<float>({24, 28, 24, 28}));
-  }
-  webnn_graph_remote.reset();
-  webnn_context_remote.reset();
-  webnn_provider_remote.reset();
-  base::RunLoop().RunUntilIdle();
+  VerifyFloatDataIsEqual(named_outputs["output"], {12, 14, 12, 14});
 }
 
 template <typename T>
@@ -2220,9 +2211,12 @@ struct InstanceNormalizationTester {
   OperandInfo<T> output;
 
   void TestFusingOperation(
+      WebNNGraphImplBackendTest& test,
       const FusibleOperationDescriptor& fusible_operation) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t intermediate_operand_id =
@@ -2244,20 +2238,19 @@ struct InstanceNormalizationTester {
     BuildFusibleOperation(builder, fusible_operation, intermediate_operand_id,
                           output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
     if (scale.has_value()) {
-      named_inputs.insert({"scale", VectorToBigBuffer(scale->values)});
+      named_inputs.insert({"scale", scale->values});
     }
     if (bias.has_value()) {
-      named_inputs.insert({"bias", VectorToBigBuffer(bias->values)});
+      named_inputs.insert({"bias", bias->values});
     }
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+    base::flat_map<std::string, std::vector<T>> named_outputs =
+        BuildAndCompute(test.context(), std::move(remote),
+                        builder.TakeGraphInfo(), std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
-    VerifyIsEqual(std::move(named_outputs["output"]), output);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 };
 
@@ -2276,8 +2269,8 @@ TEST_F(WebNNGraphImplBackendTest,
                    .dimensions = {1, 2, 1, 3},
                    .values = {0, 0, 1.2247356859083902, 0, 0,
                               1.2247356859083902}}}
-        .TestFusingOperation(
-            FusibleOperationDescriptor{.kind = mojom::Operation::Tag::kRelu});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kRelu});
   }
 }
 
@@ -2295,10 +2288,13 @@ struct LayerNormalizationTester {
   LayerNormalizationAttributes attributes;
   OperandInfo<T> output;
 
-  void Test(BuildAndComputeExpectation expectation =
+  void Test(WebNNGraphImplBackendTest& test,
+            BuildAndComputeExpectation expectation =
                 BuildAndComputeExpectation::kSuccess) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t output_operand_id =
@@ -2315,28 +2311,30 @@ struct LayerNormalizationTester {
     builder.BuildLayerNormalization(input_operand_id, output_operand_id,
                                     std::move(attributes));
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
     if (scale.has_value()) {
-      named_inputs.insert({"scale", VectorToBigBuffer(scale->values)});
+      named_inputs.insert({"scale", scale->values});
     }
     if (bias.has_value()) {
-      named_inputs.insert({"bias", VectorToBigBuffer(bias->values)});
+      named_inputs.insert({"bias", bias->values});
     }
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs, expectation);
+    base::flat_map<std::string, std::vector<T>> named_outputs = BuildAndCompute(
+        test.context(), std::move(remote), builder.TakeGraphInfo(),
+        std::move(named_inputs), expectation);
 
     if (expectation == BuildAndComputeExpectation::kSuccess) {
-      VerifyIsEqual(std::move(named_outputs["output"]), output);
+      VerifyIsEqual(named_outputs["output"], output);
     }
   }
 
   void TestFusingOperation(
+      WebNNGraphImplBackendTest& test,
       const FusibleOperationDescriptor& fusible_operation) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t intermediate_operand_id =
@@ -2358,20 +2356,19 @@ struct LayerNormalizationTester {
     BuildFusibleOperation(builder, fusible_operation, intermediate_operand_id,
                           output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
     if (scale.has_value()) {
-      named_inputs.insert({"scale", VectorToBigBuffer(scale->values)});
+      named_inputs.insert({"scale", scale->values});
     }
     if (bias.has_value()) {
-      named_inputs.insert({"bias", VectorToBigBuffer(bias->values)});
+      named_inputs.insert({"bias", bias->values});
     }
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+    base::flat_map<std::string, std::vector<T>> named_outputs =
+        BuildAndCompute(test.context(), std::move(remote),
+                        builder.TakeGraphInfo(), std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
-    VerifyIsEqual(std::move(named_outputs["output"]), output);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 };
 
@@ -2390,8 +2387,8 @@ TEST_F(WebNNGraphImplBackendTest,
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {5},
                    .values = {0, 0, 0, 0.7071050134262237, 1.4142100268524473}}}
-        .TestFusingOperation(
-            FusibleOperationDescriptor{.kind = mojom::Operation::Tag::kRelu});
+        .TestFusingOperation(*this, FusibleOperationDescriptor{
+                                        .kind = mojom::Operation::Tag::kRelu});
   }
 }
 
@@ -2408,7 +2405,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildSingleOperatorLayerNormalization) {
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {},
                    .values = {0}}}
-        .Test();
+        .Test(*this);
   }
   {
     // Test layerNormalization with 6-D input with permuted axes = [4, 1, 2].
@@ -2430,7 +2427,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildSingleOperatorLayerNormalization) {
                               -0.47539614454389156, -0.5219944922055593, 0.2,
                               -0.17539614454389152, 0.2, -0.17539614454389152,
                               0.2, -0.17539614454389152}}}
-        .Test();
+        .Test(*this);
   }
 }
 
@@ -2467,18 +2464,10 @@ struct LstmTester {
   void Test(WebNNGraphImplBackendTest& helper,
             BuildAndComputeExpectation expectation =
                 BuildAndComputeExpectation::kSuccess) {
-#if BUILDFLAG(IS_CHROMEOS)
-    base::flat_map<std::string, std::vector<T>> name_to_data_map;
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      std::string output_name =
-          base::StrCat({"output", base::NumberToString(i)});
-      name_to_data_map[std::move(output_name)] = outputs[i].values;
-    }
-
-    helper.SetComputeResult(std::move(name_to_data_map));
-#endif
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        helper.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t weight_operand_id =
@@ -2522,40 +2511,34 @@ struct LstmTester {
                       std::move(output_operand_ids), steps, hidden_size,
                       std::move(attributes));
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
-    named_inputs.insert({"weight", VectorToBigBuffer(weight.values)});
-    named_inputs.insert(
-        {"recurrentWeight", VectorToBigBuffer(recurrent_weight.values)});
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
+    named_inputs.insert({"weight", weight.values});
+    named_inputs.insert({"recurrentWeight", recurrent_weight.values});
     if (bias.has_value()) {
-      named_inputs.insert({"bias", VectorToBigBuffer(bias->values)});
+      named_inputs.insert({"bias", bias->values});
     }
     if (recurrent_bias.has_value()) {
-      named_inputs.insert(
-          {"recurrentBias", VectorToBigBuffer(recurrent_bias->values)});
+      named_inputs.insert({"recurrentBias", recurrent_bias->values});
     }
     if (peephole_weight.has_value()) {
-      named_inputs.insert(
-          {"peepholeWeight", VectorToBigBuffer(peephole_weight->values)});
+      named_inputs.insert({"peepholeWeight", peephole_weight->values});
     }
     if (initial_hidden_state.has_value()) {
-      named_inputs.insert({"initialHiddenState",
-                           VectorToBigBuffer(initial_hidden_state->values)});
+      named_inputs.insert({"initialHiddenState", initial_hidden_state->values});
     }
     if (initial_cell_state.has_value()) {
-      named_inputs.insert(
-          {"initialCellState", VectorToBigBuffer(initial_cell_state->values)});
+      named_inputs.insert({"initialCellState", initial_cell_state->values});
     }
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs, expectation);
+    base::flat_map<std::string, std::vector<T>> named_outputs = BuildAndCompute(
+        helper.context(), std::move(remote), builder.TakeGraphInfo(),
+        std::move(named_inputs), expectation);
 
     if (expectation == BuildAndComputeExpectation::kSuccess) {
       for (size_t i = 0; i < outputs.size(); ++i) {
-        VerifyIsEqual(
-            std::move(named_outputs["output" + base::NumberToString(i)]),
-            outputs[i]);
+        VerifyIsEqual(named_outputs["output" + base::NumberToString(i)],
+                      outputs[i]);
       }
     }
   }
@@ -2577,21 +2560,21 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorLstm) {
                   .values = {-4, -3, -2, -1, 0, 1, 2, 3}},
         .weight = {.type = OperandDataType::kFloat32,
                    .dimensions = {direction_count, 4 * hidden_size, input_size},
-                   .values = std::vector<float>(8, 1)},
+                   .values = {1, 1, 1, 1, 1, 1, 1, 1}},
         .recurrent_weight = {.type = OperandDataType::kFloat32,
                              .dimensions = {direction_count, 4 * hidden_size,
                                             hidden_size},
-                             .values = std::vector<float>(4, 1)},
+                             .values = {1, 1, 1, 1}},
         .steps = steps,
         .hidden_size = hidden_size,
         .bias =
             OperandInfo<float>{.type = OperandDataType::kFloat32,
                                .dimensions = {direction_count, 4 * hidden_size},
-                               .values = std::vector<float>(4, 0.5)},
+                               .values = {0.5, 0.5, 0.5, 0.5}},
         .recurrent_bias =
             OperandInfo<float>{.type = OperandDataType::kFloat32,
                                .dimensions = {direction_count, 4 * hidden_size},
-                               .values = std::vector<float>(4, 0.5)},
+                               .values = {0.5, 0.5, 0.5, 0.5}},
         .attributes =
             {.activations = {mojom::RecurrentNetworkActivation::kRelu,
                              mojom::RecurrentNetworkActivation::kRelu,
@@ -2618,21 +2601,22 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorLstm) {
                   .values = {1, 2, 3, 4}},
         .weight = {.type = OperandDataType::kFloat32,
                    .dimensions = {direction_count, 4 * hidden_size, input_size},
-                   .values = std::vector<float>(16, 1)},
+                   .values = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
         .recurrent_weight = {.type = OperandDataType::kFloat32,
                              .dimensions = {direction_count, 4 * hidden_size,
                                             hidden_size},
-                             .values = std::vector<float>(16, 1)},
+                             .values = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                                        1, 1, 1}},
         .steps = steps,
         .hidden_size = hidden_size,
         .bias =
             OperandInfo<float>{.type = OperandDataType::kFloat32,
                                .dimensions = {direction_count, 4 * hidden_size},
-                               .values = std::vector<float>(8, 1)},
+                               .values = {1, 1, 1, 1, 1, 1, 1, 1}},
         .peephole_weight =
             OperandInfo<float>{.type = OperandDataType::kFloat32,
                                .dimensions = {direction_count, 3 * hidden_size},
-                               .values = std::vector<float>(6, 0)},
+                               .values = {0, 0, 0, 0, 0, 0}},
         .attributes =
             {.activations = {mojom::RecurrentNetworkActivation::kRelu,
                              mojom::RecurrentNetworkActivation::kRelu,
@@ -2661,34 +2645,32 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorLstm) {
     std::array<float, 4> initial_cell_state_data = {1, 1, 1, 1};
     std::vector<float> expected_data = {0, 0, 2, 2};
 
-#if BUILDFLAG(IS_CHROMEOS)
-    SetComputeResult(base::flat_map<std::string, std::vector<float>>(
-        {{"output0", expected_data}, {"output1", expected_data}}));
-#endif
-
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id = builder.BuildConstant(
         {steps, batch_size, input_size}, OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(input_data)));
-    uint64_t weight_operand_id =
-        builder.BuildConstant({direction_count, 4 * hidden_size, input_size},
-                              OperandDataType::kFloat32,
-                              base::as_bytes(base::make_span(weight_data)));
+        base::as_byte_span(base::allow_nonunique_obj, input_data));
+    uint64_t weight_operand_id = builder.BuildConstant(
+        {direction_count, 4 * hidden_size, input_size},
+        OperandDataType::kFloat32,
+        base::as_byte_span(base::allow_nonunique_obj, weight_data));
     uint64_t recurrent_weight_operand_id = builder.BuildConstant(
         {direction_count, 4 * hidden_size, hidden_size},
         OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(recurrent_weight_data)));
+        base::as_byte_span(base::allow_nonunique_obj, recurrent_weight_data));
 
     LstmTester<float>::LstmAttributes attributes;
     attributes.peephole_weight_operand_id = builder.BuildConstant(
         {direction_count, 3 * hidden_size}, OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(peephole_weight_data)));
+        base::as_byte_span(base::allow_nonunique_obj, peephole_weight_data));
     attributes.initial_hidden_state_operand_id = builder.BuildConstant(
         {direction_count, batch_size, hidden_size}, OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(initial_hidden_state_data)));
+        base::as_byte_span(base::allow_nonunique_obj,
+                           initial_hidden_state_data));
     attributes.initial_cell_state_operand_id = builder.BuildConstant(
         {direction_count, batch_size, hidden_size}, OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(initial_cell_state_data)));
+        base::as_byte_span(base::allow_nonunique_obj, initial_cell_state_data));
     attributes.activations = {mojom::RecurrentNetworkActivation::kRelu,
                               mojom::RecurrentNetworkActivation::kRelu,
                               mojom::RecurrentNetworkActivation::kRelu};
@@ -2706,15 +2688,14 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorLstm) {
                       std::move(output_operand_ids), steps, hidden_size,
                       std::move(attributes));
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-    BuildAndCompute(builder.TakeGraphInfo(), /*named_inputs=*/{},
-                    named_outputs);
+    base::flat_map<std::string, std::vector<float>> named_outputs =
+        BuildAndCompute<float>(context(), std::move(remote),
+                               builder.TakeGraphInfo(),
+                               /*named_inputs=*/{});
 
     ASSERT_EQ(named_outputs.size(), 2u);
-    EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output0"])),
-              expected_data);
-    EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output1"])),
-              expected_data);
+    VerifyFloatDataIsEqual(named_outputs["output0"], expected_data);
+    VerifyFloatDataIsEqual(named_outputs["output1"], expected_data);
   }
 }
 
@@ -2735,10 +2716,6 @@ struct LstmCellAttributes {
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorLstmCell) {
   std::vector<float> expected_output0 = {150, 150, 810, 810};
   std::vector<float> expected_output1 = {30, 30, 90, 90};
-#if BUILDFLAG(IS_CHROMEOS)
-  SetComputeResult(base::flat_map<std::string, std::vector<float>>(
-      {{"output0", expected_output0}, {"output1", expected_output1}}));
-#endif
   uint32_t batch_size = 2;
   uint32_t input_size = 2;
   uint32_t hidden_size = 2;
@@ -2748,7 +2725,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorLstmCell) {
   std::vector<float> initial_hidden_state_data(4, 1);
   std::vector<float> initial_cell_state_data(4, 1);
 
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id = builder.BuildInput(
       "input", {batch_size, input_size}, OperandDataType::kFloat32);
   uint64_t weight_operand_id = builder.BuildInput(
@@ -2777,25 +2756,19 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorLstmCell) {
                         cell_state_operand_id, std::move(output_operand_ids),
                         hidden_size, std::move(attributes));
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  named_inputs.insert({"weight", VectorToBigBuffer(weight_data)});
-  named_inputs.insert(
-      {"recurrentWeight", VectorToBigBuffer(recurrent_weight_data)});
-  named_inputs.insert(
-      {"hiddenState", VectorToBigBuffer(initial_hidden_state_data)});
-  named_inputs.insert(
-      {"cellState", VectorToBigBuffer(initial_cell_state_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  base::flat_map<std::string, base::span<const float>> named_inputs;
+  named_inputs.insert({"input", input_data});
+  named_inputs.insert({"weight", weight_data});
+  named_inputs.insert({"recurrentWeight", recurrent_weight_data});
+  named_inputs.insert({"hiddenState", initial_hidden_state_data});
+  named_inputs.insert({"cellState", initial_cell_state_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
   ASSERT_EQ(named_outputs.size(), 2u);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output0"])),
-            expected_output0);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output1"])),
-            expected_output1);
+  VerifyFloatDataIsEqual(named_outputs["output0"], expected_output0);
+  VerifyFloatDataIsEqual(named_outputs["output1"], expected_output1);
 }
 
 template <typename T>
@@ -2805,11 +2778,14 @@ struct MatmulTester {
   OperandInfo<T> output;
 
   void TestFusion(
+      WebNNGraphImplBackendTest& test,
       std::optional<std::vector<uint32_t>> permutation_a,
       std::optional<std::vector<uint32_t>> permutation_b,
       std::optional<const FusibleOperationDescriptor> fusible_operation) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_a_operand_id =
         builder.BuildInput("input_a", input_a.dimensions, input_a.type);
     if (permutation_a) {
@@ -2853,17 +2829,14 @@ struct MatmulTester {
                             intermediate_operand_id, output_operand_id);
     }
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input_a", VectorToBigBuffer(input_a.values)});
-    named_inputs.insert({"input_b", VectorToBigBuffer(input_b.values)});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input_a", input_a.values});
+    named_inputs.insert({"input_b", input_b.values});
+    base::flat_map<std::string, std::vector<T>> named_outputs =
+        BuildAndCompute(test.context(), std::move(remote),
+                        builder.TakeGraphInfo(), std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
-    VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output"]), output.type),
-        output.values);
+    VerifyIsEqual(named_outputs["output"], output);
   }
 };
 
@@ -2882,10 +2855,10 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneOperationsIntoMatmul) {
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 3, 3},
                    .values = {17, 22, 27, 22, 29, 36, 27, 36, 45}}}
-        .TestFusion(
-            /*transpose_a*/ std::vector<uint32_t>({0, 2, 1}),
-            /*transpose_b*/ std::nullopt,
-            /*activation*/ std::nullopt);
+        .TestFusion(*this,
+                    /*transpose_a*/ std::vector<uint32_t>({0, 2, 1}),
+                    /*transpose_b*/ std::nullopt,
+                    /*activation*/ std::nullopt);
   }
 
   // Test matmul with fusible transpose for input b.
@@ -2899,10 +2872,10 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneOperationsIntoMatmul) {
                         .output = {.type = OperandDataType::kFloat32,
                                    .dimensions = {1, 2, 2},
                                    .values = {14, 32, 32, 77}}}
-        .TestFusion(
-            /*transpose_a*/ std::nullopt,
-            /*transpose_b*/ std::vector<uint32_t>({0, 2, 1}),
-            /*activation*/ std::nullopt);
+        .TestFusion(*this,
+                    /*transpose_a*/ std::nullopt,
+                    /*transpose_b*/ std::vector<uint32_t>({0, 2, 1}),
+                    /*activation*/ std::nullopt);
   }
 
   // Test matmul with fusible transpose for both input a and b.
@@ -2916,10 +2889,10 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneOperationsIntoMatmul) {
                         .output = {.type = OperandDataType::kFloat32,
                                    .dimensions = {1, 2, 2},
                                    .values = {22, 49, 28, 64}}}
-        .TestFusion(
-            /*transpose_a*/ std::vector<uint32_t>({0, 2, 1}),
-            /*transpose_b*/ std::vector<uint32_t>({0, 2, 1}),
-            /*activation*/ std::nullopt);
+        .TestFusion(*this,
+                    /*transpose_a*/ std::vector<uint32_t>({0, 2, 1}),
+                    /*transpose_b*/ std::vector<uint32_t>({0, 2, 1}),
+                    /*activation*/ std::nullopt);
   }
 
   // Test matmul with unfusible transpose for input a.
@@ -2934,9 +2907,9 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneOperationsIntoMatmul) {
         .output = {.type = OperandDataType::kFloat32,
                    .dimensions = {1, 3, 3},
                    .values = {17, 22, 27, 22, 29, 36, 27, 36, 45}}}
-        .TestFusion(
-            /*transpose_a*/ std::vector<uint32_t>({2, 1, 0}),
-            /*transpose_b*/ std::nullopt, /*activation*/ std::nullopt);
+        .TestFusion(*this,
+                    /*transpose_a*/ std::vector<uint32_t>({2, 1, 0}),
+                    /*transpose_b*/ std::nullopt, /*activation*/ std::nullopt);
   }
 
   // Test matmul with 2-D * 2-D inputs, activation = linear.
@@ -2951,6 +2924,7 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneOperationsIntoMatmul) {
                                    .dimensions = {2, 2},
                                    .values = {71, 101, 151, 221}}}
         .TestFusion(
+            *this,
             /*transpose_a*/ std::nullopt, /*transpose_b*/ std::nullopt,
             /*activation*/
             FusibleOperationDescriptor{.kind = mojom::Operation::Tag::kLinear,
@@ -2970,6 +2944,7 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneOperationsIntoMatmul) {
                                    .dimensions = {1, 2, 2},
                                    .values = {221, 491, 281, 641}}}
         .TestFusion(
+            *this,
             /*transpose_a*/ std::vector<uint32_t>({0, 2, 1}),
             /*transpose_b*/ std::vector<uint32_t>({0, 2, 1}),
             /*activation*/
@@ -2988,18 +2963,20 @@ TEST_F(WebNNGraphImplBackendTest, FuseStandaloneOperationsIntoMatmul) {
 //                       gemm
 TEST_F(WebNNGraphImplBackendTest, BuildMultipleInputsAppendingConstants) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {2, 2}, OperandDataType::kFloat32);
   uint64_t input_b_operand_id =
       builder.BuildInput("input_b", {2, 2}, OperandDataType::kFloat32);
   std::vector<float> constant_data = {1, 1, 1, 1};
-  uint64_t constant_a_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
-  uint64_t constant_b_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
+  uint64_t constant_a_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
+  uint64_t constant_b_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
 
   // The order of inputs are [input_a, constant_a, input_b, constant_b].
   uint64_t intermediate_1_operand_id =
@@ -3015,17 +2992,15 @@ TEST_F(WebNNGraphImplBackendTest, BuildMultipleInputsAppendingConstants) {
   builder.BuildGemm(intermediate_1_operand_id, intermediate_2_operand_id,
                     output_operand_id, GemmAttributes());
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1, 2, 3, 4};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data)});
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input_a", input_data});
+  named_inputs.insert({"input_b", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({30, 30, 70, 70}));
+  VerifyFloatDataIsEqual(named_outputs["output"], {30, 30, 70, 70});
 }
 
 // Test building and computing a graph with two inputs and two constant in
@@ -3037,18 +3012,20 @@ TEST_F(WebNNGraphImplBackendTest, BuildMultipleInputsAppendingConstants) {
 //                       gemm
 TEST_F(WebNNGraphImplBackendTest, BuildMultipleConstantsAppendingInputs) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {2, 2}, OperandDataType::kFloat32);
   uint64_t input_b_operand_id =
       builder.BuildInput("input_b", {2, 2}, OperandDataType::kFloat32);
   std::vector<float> constant_data = {1, 2, 3, 4};
-  uint64_t constant_a_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
-  uint64_t constant_b_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
+  uint64_t constant_a_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
+  uint64_t constant_b_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
 
   // The order of inputs are [constant_a, input_a, constant_b, input_b].
   uint64_t intermediate_1_operand_id =
@@ -3064,17 +3041,15 @@ TEST_F(WebNNGraphImplBackendTest, BuildMultipleConstantsAppendingInputs) {
   builder.BuildGemm(intermediate_1_operand_id, intermediate_2_operand_id,
                     output_operand_id, GemmAttributes());
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1, 1, 1, 1};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data)});
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input_a", input_data});
+  named_inputs.insert({"input_b", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({30, 30, 70, 70}));
+  VerifyFloatDataIsEqual(named_outputs["output"], {30, 30, 70, 70});
 }
 
 // Test building and computing a graph whose gemm operator takes a reshaped
@@ -3089,15 +3064,17 @@ TEST_F(WebNNGraphImplBackendTest, BuildMultipleConstantsAppendingInputs) {
 // https://bugs.chromium.org/p/chromium/issues/detail?id=1509747
 TEST_F(WebNNGraphImplBackendTest, BuildGemmWithReshapedConstantOperand) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {2, 2}, OperandDataType::kFloat32);
   uint64_t input_b_operand_id =
       builder.BuildInput("input_b", {2, 2}, OperandDataType::kFloat32);
   std::vector<float> constant_data = {1, 1};
-  uint64_t constant_c_operand_id =
-      builder.BuildConstant({2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
+  uint64_t constant_c_operand_id = builder.BuildConstant(
+      {2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
   // Reshape constant_c from [2] to [1, 2] and use it as operand c for gemm.
   uint64_t reshape_operand_id =
       builder.BuildIntermediateOperand({1, 2}, OperandDataType::kFloat32);
@@ -3109,17 +3086,15 @@ TEST_F(WebNNGraphImplBackendTest, BuildGemmWithReshapedConstantOperand) {
   builder.BuildGemm(input_a_operand_id, input_b_operand_id, output_operand_id,
                     gemm_attributes);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1, 2, 3, 4};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data)});
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+  named_inputs.insert({"input_a", input_data});
+  named_inputs.insert({"input_b", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({8, 11, 16, 23}));
+  VerifyFloatDataIsEqual(named_outputs["output"], {8, 11, 16, 23});
 }
 
 // Test building a graph whose add operator takes a reshaped
@@ -3131,13 +3106,15 @@ TEST_F(WebNNGraphImplBackendTest, BuildGemmWithReshapedConstantOperand) {
 //            add
 TEST_F(WebNNGraphImplBackendTest, BuildAddWithReshapedConstantOperand) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {1, 1, 2, 2}, OperandDataType::kFloat32);
   std::vector<float> constant_data = {1, 1};
-  uint64_t constant_b_operand_id =
-      builder.BuildConstant({2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
+  uint64_t constant_b_operand_id = builder.BuildConstant(
+      {2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
   // Reshape constant_b from [2] to [1, 2] and use it as operand b for add.
   uint64_t reshape_operand_id =
       builder.BuildIntermediateOperand({1, 2}, OperandDataType::kFloat32);
@@ -3148,14 +3125,13 @@ TEST_F(WebNNGraphImplBackendTest, BuildAddWithReshapedConstantOperand) {
                                  input_a_operand_id, reshape_operand_id,
                                  output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1, 1, 1, 1};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({2, 2, 2, 2}));
+  named_inputs.insert({"input_a", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
+  VerifyFloatDataIsEqual(named_outputs["output"], {2, 2, 2, 2});
 }
 
 // Test building and computing a graph whose relu operator only has a
@@ -3165,21 +3141,22 @@ TEST_F(WebNNGraphImplBackendTest, BuildAddWithReshapedConstantOperand) {
 //       relu
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeReluWithOnlyConstantInput) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   std::vector<float> constant_data = {-1, 0, 1};
-  uint64_t constant_operand_id =
-      builder.BuildConstant({3}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data)));
+  uint64_t constant_operand_id = builder.BuildConstant(
+      {3}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data));
   uint64_t output_operand_id =
       builder.BuildOutput("output", {3}, OperandDataType::kFloat32);
   builder.BuildRelu(constant_operand_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({0, 0, 1}));
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute<float>(context(), std::move(remote),
+                             builder.TakeGraphInfo(),
+                             /*named_inputs=*/{});
+  VerifyFloatDataIsEqual(named_outputs["output"], {0, 0, 1});
 }
 
 // Test building and computing a graph whose add operator only has constant
@@ -3189,27 +3166,28 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeReluWithOnlyConstantInput) {
 //               add
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeAddWithOnlyConstantInputs) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   std::vector<float> constant_a_data = {1, 1, 1, 1};
-  uint64_t constant_a_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_a_data)));
+  uint64_t constant_a_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_a_data));
   std::vector<float> constant_b_data = {2, 2, 2, 2};
-  uint64_t constant_b_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_b_data)));
+  uint64_t constant_b_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_b_data));
   uint64_t output_operand_id =
       builder.BuildOutput("output", {2, 2}, OperandDataType::kFloat32);
   builder.BuildElementWiseBinary(mojom::ElementWiseBinary::Kind::kAdd,
                                  constant_a_operand_id, constant_b_operand_id,
                                  output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({3, 3, 3, 3}));
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute<float>(context(), std::move(remote),
+                             builder.TakeGraphInfo(),
+                             /*named_inputs=*/{});
+  VerifyFloatDataIsEqual(named_outputs["output"], {3, 3, 3, 3});
 }
 
 // Test building and computing a graph whose add and mul operators only have
@@ -3222,36 +3200,37 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeAddWithOnlyConstantInputs) {
 TEST_F(WebNNGraphImplBackendTest,
        BuildAndComputeAddAndMulWithOnlyConstantInputs) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   std::vector<float> constant_a_data = {1, 1, 1, 1};
-  uint64_t constant_a_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_a_data)));
+  uint64_t constant_a_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_a_data));
   std::vector<float> constant_b_data = {2, 2, 2, 2};
-  uint64_t constant_b_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_b_data)));
+  uint64_t constant_b_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_b_data));
   uint64_t intermediate_operand_id =
       builder.BuildIntermediateOperand({2, 2}, OperandDataType::kFloat32);
   builder.BuildElementWiseBinary(mojom::ElementWiseBinary::Kind::kAdd,
                                  constant_a_operand_id, constant_b_operand_id,
                                  intermediate_operand_id);
   std::vector<float> constant_c_data = {3, 3, 3, 3};
-  uint64_t constant_c_operand_id =
-      builder.BuildConstant({2, 2}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_c_data)));
+  uint64_t constant_c_operand_id = builder.BuildConstant(
+      {2, 2}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_c_data));
   uint64_t output_operand_id =
       builder.BuildOutput("output", {2, 2}, OperandDataType::kFloat32);
   builder.BuildElementWiseBinary(mojom::ElementWiseBinary::Kind::kMul,
                                  intermediate_operand_id, constant_c_operand_id,
                                  output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({9, 9, 9, 9}));
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute<float>(context(), std::move(remote),
+                             builder.TakeGraphInfo(),
+                             /*named_inputs=*/{});
+  VerifyFloatDataIsEqual(named_outputs["output"], {9, 9, 9, 9});
 }
 
 struct Pool2dAttributes {
@@ -3272,7 +3251,9 @@ struct Pool2dAttributes {
 //          max pooling
 TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsThirdOperator) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {1, 1, 2, 2}, OperandDataType::kFloat32);
   uint64_t input_b_operand_id =
@@ -3300,15 +3281,14 @@ TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsThirdOperator) {
                        .dilations = {1, 1},
                        .layout = mojom::InputOperandLayout::kChannelsFirst});
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1, 1, 1, 1};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data)});
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({2, 2, 2, 2}));
+  named_inputs.insert({"input_a", input_data});
+  named_inputs.insert({"input_b", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
+  VerifyFloatDataIsEqual(named_outputs["output"], {2, 2, 2, 2});
 }
 
 // Test building a graph in the following topology.
@@ -3321,7 +3301,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsThirdOperator) {
 //            relu
 TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsSecondOperator) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {1, 1, 2, 2}, OperandDataType::kFloat32);
   uint64_t input_b_operand_id =
@@ -3349,15 +3331,14 @@ TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsSecondOperator) {
       builder.BuildOutput("output", {1, 1, 2, 2}, OperandDataType::kFloat32);
   builder.BuildRelu(intermediate_2_operand_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1, 1, 1, 1};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data)});
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({2, 2, 2, 2}));
+  named_inputs.insert({"input_a", input_data});
+  named_inputs.insert({"input_b", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
+  VerifyFloatDataIsEqual(named_outputs["output"], {2, 2, 2, 2});
 }
 
 // Test building a graph in the following topology.
@@ -3371,7 +3352,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsSecondOperator) {
 //               relu
 TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsFirstOperator) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_a_operand_id =
       builder.BuildInput("input_a", {1, 1, 2, 2}, OperandDataType::kFloat32);
   uint64_t intermediate_1_operand_id =
@@ -3399,15 +3382,14 @@ TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsFirstOperator) {
       builder.BuildOutput("output", {1, 1, 2, 2}, OperandDataType::kFloat32);
   builder.BuildRelu(intermediate_2_operand_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   std::vector<float> input_data = {1, 1, 1, 1};
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data)});
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({2, 2, 2, 2}));
+  named_inputs.insert({"input_a", input_data});
+  named_inputs.insert({"input_b", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
+  VerifyFloatDataIsEqual(named_outputs["output"], {2, 2, 2, 2});
 }
 
 // Test building and computing a graph with float 16 data type in the
@@ -3421,7 +3403,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildMaxPooingAsFirstOperator) {
 //             clamp
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeReshapeConcatAndClamp) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id1 =
       builder.BuildInput("input_a", {4, 3}, OperandDataType::kFloat16);
   uint64_t input_operand_id2 =
@@ -3440,24 +3424,23 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeReshapeConcatAndClamp) {
       builder.BuildOutput("output", {1, 3, 2, 3}, OperandDataType::kFloat16);
   builder.BuildClamp(concat_operand_id, output_operand_id, 1.25, 8.75);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const Float16>> named_inputs;
   // [[ 1  2  3]
   //  [ 4  5  6]
   //  [ 7  8  9]
   //  [10 11 12]] with shape (4, 3)
-  std::vector<float16> input_data1 =
+  std::vector<Float16> input_data1 =
       Float16FromFloat32({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   // [[[[-6 -5 -4]
   //    [-3 -2 -1]]]] with shape (1, 1, 2, 3)
-  std::vector<float16> input_data2 =
+  std::vector<Float16> input_data2 =
       Float16FromFloat32({-6, -5, -4, -3, -2, -1});
 
-  named_inputs.insert({"input_a", VectorToBigBuffer(input_data1)});
-  named_inputs.insert({"input_b", VectorToBigBuffer(input_data2)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  named_inputs.insert({"input_a", input_data1});
+  named_inputs.insert({"input_b", input_data2});
+  base::flat_map<std::string, std::vector<Float16>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
   // [[[[1.25 2.   3.  ]
   //    [4.   5.   6.  ]]
@@ -3465,8 +3448,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeReshapeConcatAndClamp) {
   //    [8.75 8.75 8.75]]
   //   [[1.25 1.25 1.25]
   //    [1.25 1.25 1.25]]]] with shape (1, 3, 2, 3)
-  EXPECT_EQ(GetFloatOutputData(std::move(named_outputs["output"]),
-                               OperandDataType::kFloat16),
+  EXPECT_EQ(Float16ToFloat32(named_outputs["output"]),
             std::vector<float>({1.25, 2, 3, 4, 5, 6, 7, 8, 8.75, 8.75, 8.75,
                                 8.75, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25}));
 }
@@ -3480,28 +3462,26 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeReshapeConcatAndClamp) {
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeConcatWithConstants) {
   std::vector<float> expected_output = {0,  0,  0,  1,  2,  3,
                                         -1, -2, -3, -4, -5, -6};
-#if BUILDFLAG(IS_CHROMEOS)
-  SetComputeResult(base::flat_map<std::string, std::vector<float>>(
-      {{"output", expected_output}}));
-#endif
 
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 1, 1, 3}, OperandDataType::kFloat32);
 
   // [[[[1 2 3]]]] with shape (1, 1, 1, 3)
   std::vector<float> constant_data_a = {1, 2, 3};
-  uint64_t constant_a_operand_id =
-      builder.BuildConstant({1, 1, 1, 3}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data_a)));
+  uint64_t constant_a_operand_id = builder.BuildConstant(
+      {1, 1, 1, 3}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data_a));
 
   // [[[[-1 -2 -3]
   //    [-4 -5 -6]]]] with shape (1, 1, 2, 3)
   std::vector<float> constant_data_b = {-1, -2, -3, -4, -5, -6};
-  uint64_t constant_b_operand_id =
-      builder.BuildConstant({1, 1, 2, 3}, OperandDataType::kFloat32,
-                            base::as_bytes(base::make_span(constant_data_b)));
+  uint64_t constant_b_operand_id = builder.BuildConstant(
+      {1, 1, 2, 3}, OperandDataType::kFloat32,
+      base::as_byte_span(base::allow_nonunique_obj, constant_data_b));
 
   uint64_t concat_operand_id =
       builder.BuildIntermediateOperand({1, 1, 2, 3}, OperandDataType::kFloat32);
@@ -3513,22 +3493,20 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeConcatWithConstants) {
   builder.BuildConcat({concat_operand_id, constant_b_operand_id},
                       output_operand_id, 1);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   // [[[[0 0 0]]]] with shape (1, 1, 1, 3)
   std::vector<float> input_data = {0, 0, 0};
 
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
   // [[[[ 0  0  0]
   //    [ 1  2  3]]
   //   [[-1 -2 -3]
   //    [-4 -5 -6]]]] with shape (1, 2, 2, 3)
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            expected_output);
+  VerifyFloatDataIsEqual(named_outputs["output"], expected_output);
 }
 
 template <typename T>
@@ -3543,30 +3521,38 @@ struct Resample2dTester {
   Resample2dAttributes attributes;
   OperandInfo<float> output;
 
-  void Test() {
+  void Test(WebNNGraphImplBackendTest& test) {
     // Build the graph with mojo type.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        test.BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", input.dimensions, input.type);
     uint64_t output_operand_id =
         builder.BuildOutput("output", output.dimensions, output.type);
     builder.BuildResample2d(input_operand_id, output_operand_id, attributes);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
-    named_inputs.insert({"input", VectorToBigBuffer(input.values)});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+    base::flat_map<std::string, base::span<const T>> named_inputs;
+    named_inputs.insert({"input", input.values});
+    base::flat_map<std::string, std::vector<float>> named_outputs =
+        BuildAndCompute(test.context(), std::move(remote),
+                        builder.TakeGraphInfo(), std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
-    VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output"]), output.type),
-        output.values);
+    VerifyFloatDataIsEqual(named_outputs["output"], output.values);
   }
 };
 
 // Test building and computing a graph with single operator resample2d.
-TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorResample2d) {
+#if BUILDFLAG(IS_WIN) && defined(ARCH_CPU_ARM_FAMILY)
+// Test times out on Windows 11 / ARM bot, see https:  // crbug.com/381510750.
+#define MAYBE_BuildAndComputeSingleOperatorResample2d \
+  DISABLED_BuildAndComputeSingleOperatorResample2d
+#else
+#define MAYBE_BuildAndComputeSingleOperatorResample2d \
+  BuildAndComputeSingleOperatorResample2d
+#endif
+TEST_F(WebNNGraphImplBackendTest,
+       MAYBE_BuildAndComputeSingleOperatorResample2d) {
   // Test resample2d with "NearestNeighbor" mode, explicit scales = [2, 3] and
   // axes = [2, 3].
   {
@@ -3585,7 +3571,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorResample2d) {
                    //    [3 3 3 4 4 4]]]] with shape (1, 1, 4, 6)
                    .values = {1, 1, 1, 2, 2, 2, 1, 1, 1, 2, 2, 2,
                               3, 3, 3, 4, 4, 4, 3, 3, 3, 4, 4, 4}}}
-        .Test();
+        .Test(*this);
   }
 }
 
@@ -3597,7 +3583,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeSingleOperatorResample2d) {
 //     transpose
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoTranspose) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
 
@@ -3609,7 +3597,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoTranspose) {
       builder.BuildOutput("output", {4, 3, 1, 2}, OperandDataType::kFloat32);
   builder.BuildTranspose(transpose_operand_id, output_operand_id, {3, 2, 1, 0});
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   // [[[[ -1  -2  -3  -4]
   //    [ -5  -6  -7  -8]
   //    [ -9 -10 -11 -12]]
@@ -3619,11 +3607,10 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoTranspose) {
   std::vector<float> input_data = {-1, -2,  -3,  -4,  -5, -6, -7, -8,
                                    -9, -10, -11, -12, 13, 14, 15, 16,
                                    17, 18,  19,  20,  21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
   // [[[[ -1  13]]
   //   [[ -5  17]]
@@ -3637,10 +3624,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoTranspose) {
   //  [[[ -4  16]]
   //   [[ -8  20]]
   //   [[-12  24]]]] with shape (4, 3, 1, 2)
-  EXPECT_EQ(
-      BigBufferToVector<float>(std::move(named_outputs["output"])),
-      std::vector<float>({-1, 13, -5, 17, -9,  21, -2, 14, -6, 18, -10, 22,
-                          -3, 15, -7, 19, -11, 23, -4, 16, -8, 20, -12, 24}));
+  VerifyFloatDataIsEqual(named_outputs["output"],
+                         {-1, 13, -5, 17, -9,  21, -2, 14, -6, 18, -10, 22,
+                          -3, 15, -7, 19, -11, 23, -4, 16, -8, 20, -12, 24});
 }
 
 // Test building and computing a graph in the following topology.
@@ -3651,7 +3637,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTwoTranspose) {
 //       relu
 TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTransposeAndRelu) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
 
@@ -3663,7 +3651,7 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTransposeAndRelu) {
       builder.BuildOutput("output", {4, 3, 1, 2}, OperandDataType::kFloat32);
   builder.BuildRelu(transpose_operand_id, output_operand_id);
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   // [[[[ -1  -2  -3  -4]
   //    [ -5  -6  -7  -8]
   //    [ -9 -10 -11 -12]]
@@ -3673,11 +3661,10 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTransposeAndRelu) {
   std::vector<float> input_data = {-1, -2,  -3,  -4,  -5, -6, -7, -8,
                                    -9, -10, -11, -12, 13, 14, 15, 16,
                                    17, 18,  19,  20,  21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
   // [[[[ 0  13]]
   //   [[ 0  17]]
   //   [[ 0  21]]]
@@ -3690,9 +3677,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTransposeAndRelu) {
   //  [[[ 0  16]]
   //   [[ 0  20]]
   //   [[ 0  24]]]] wit shape (4, 3, 1, 2)
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output"])),
-            std::vector<float>({0, 13, 0, 17, 0, 21, 0, 14, 0, 18, 0, 22,
-                                0, 15, 0, 19, 0, 23, 0, 16, 0, 20, 0, 24}));
+  VerifyFloatDataIsEqual(named_outputs["output"],
+                         {0, 13, 0, 17, 0, 21, 0, 14, 0, 18, 0, 22,
+                          0, 15, 0, 19, 0, 23, 0, 16, 0, 20, 0, 24});
 }
 
 // Test building and computing a graph in the following topology.
@@ -3708,7 +3695,9 @@ TEST_F(WebNNGraphImplBackendTest, BuildAndComputeGraphWithTransposeAndRelu) {
 TEST_F(WebNNGraphImplBackendTest,
        BuildAndComputeGraphWithTransposeAndTwoReshape) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 4}, OperandDataType::kFloat32);
 
@@ -3728,7 +3717,7 @@ TEST_F(WebNNGraphImplBackendTest,
       builder.BuildOutput("output", {2, 12}, OperandDataType::kFloat32);
   builder.BuildTranspose(reshape_operand_id2, output_operand_id, {1, 0});
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   // [[[[ -1  -2  -3  -4]
   //    [ -5  -6  -7  -8]
   //    [ -9 -10 -11 -12]]
@@ -3738,18 +3727,16 @@ TEST_F(WebNNGraphImplBackendTest,
   std::vector<float> input_data = {-1, -2,  -3,  -4,  -5, -6, -7, -8,
                                    -9, -10, -11, -12, 13, 14, 15, 16,
                                    17, 18,  19,  20,  21, 22, 23, 24};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
 
   // [[ -1  -5  -9  -2  -6 -10  -3  -7 -11  -4  -8 -12]
   //  [ 13  17  21  14  18  22  15  19  23  16  20  24]] wit shape (2, 12)
-  EXPECT_EQ(
-      BigBufferToVector<float>(std::move(named_outputs["output"])),
-      std::vector<float>({-1, -5, -9, -2, -6, -10, -3, -7, -11, -4, -8, -12,
-                          13, 17, 21, 14, 18, 22,  15, 19, 23,  16, 20, 24}));
+  VerifyFloatDataIsEqual(named_outputs["output"],
+                         {-1, -5, -9, -2, -6, -10, -3, -7, -11, -4, -8, -12,
+                          13, 17, 21, 14, 18, 22,  15, 19, 23,  16, 20, 24});
 }
 
 // Test building and computing a graph in the following topology.
@@ -3763,7 +3750,9 @@ TEST_F(WebNNGraphImplBackendTest,
 TEST_F(WebNNGraphImplBackendTest,
        BuildAndComputeGraphWithTransposeAndTwoOutputs) {
   // Build the mojom graph info.
-  GraphInfoBuilder builder;
+  mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+      BindNewGraphBuilderRemote();
+  GraphInfoBuilder builder(remote);
   uint64_t input_operand_id =
       builder.BuildInput("input", {1, 2, 3, 2}, OperandDataType::kFloat32);
   uint64_t relu_operand_id =
@@ -3777,7 +3766,7 @@ TEST_F(WebNNGraphImplBackendTest,
   builder.BuildReshape(relu_operand_id, output1_operand_id);
   builder.BuildTranspose(relu_operand_id, output2_operand_id, {0, 3, 1, 2});
 
-  base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+  base::flat_map<std::string, base::span<const float>> named_inputs;
   // [[[[ -1  -2]
   //    [ -5 -10]
   //    [ -7   0]]
@@ -3785,22 +3774,21 @@ TEST_F(WebNNGraphImplBackendTest,
   //    [  3   6]
   //    [ 10  20]]]] with shape (1, 2, 3, 2)
   std::vector<float> input_data = {-1, -2, -5, -10, -7, 0, 1, 2, 3, 6, 10, 20};
-  named_inputs.insert({"input", VectorToBigBuffer(input_data)});
-  base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-  BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                  named_outputs);
+  named_inputs.insert({"input", input_data});
+  base::flat_map<std::string, std::vector<float>> named_outputs =
+      BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                      std::move(named_inputs));
   // [[ 0  0  0  0]
   //  [ 0  0  1  2]
   //  [ 3  6 10 20]] with shape (3, 4)
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output1"])),
-            std::vector<float>({0, 0, 0, 0, 0, 0, 1, 2, 3, 6, 10, 20}));
+  VerifyFloatDataIsEqual(named_outputs["output1"],
+                         {0, 0, 0, 0, 0, 0, 1, 2, 3, 6, 10, 20});
   // [[[[ 0  0  0]
   //    [ 1  3 10]]
   //   [[ 0  0  0]
   //    [ 2  6 20]]]] with shape (1, 2, 2, 3)
-  EXPECT_EQ(BigBufferToVector<float>(std::move(named_outputs["output2"])),
-            std::vector<float>({0, 0, 0, 1, 3, 10, 0, 0, 0, 2, 6, 20}));
+  VerifyFloatDataIsEqual(named_outputs["output2"],
+                         {0, 0, 0, 1, 3, 10, 0, 0, 0, 2, 6, 20});
 }
 
 // Test building and computing a graph which can't be automatically fused
@@ -3817,12 +3805,16 @@ TEST_F(WebNNGraphImplBackendTest,
   // [output1][output2]
   {
     // Build the mojom graph info.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", {1, 1, 5, 5}, OperandDataType::kFloat32);
     uint64_t filter_operand_id = builder.BuildConstant(
         {1, 1, 3, 3}, OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(std::vector<float>(9, 1))));
+        base::as_byte_span(
+            base::allow_nonunique_obj,
+            {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
     uint64_t conv2d_output_operand_id = builder.BuildIntermediateOperand(
         {1, 1, 5, 5}, OperandDataType::kFloat32);
 
@@ -3837,7 +3829,8 @@ TEST_F(WebNNGraphImplBackendTest,
     if (attributes.bias.has_value()) {
       bias_operand_id = builder.BuildConstant(
           attributes.bias->dimensions, attributes.bias->type,
-          base::as_bytes(base::make_span(attributes.bias->values)));
+          base::as_byte_span(base::allow_nonunique_obj,
+                             attributes.bias->values));
     }
 
     builder.BuildConv2d(mojom::Conv2d::Kind::kDirect, input_operand_id,
@@ -3852,28 +3845,20 @@ TEST_F(WebNNGraphImplBackendTest,
         builder.BuildOutput("output2", {1, 1, 5, 5}, OperandDataType::kFloat32);
     builder.BuildRelu(conv2d_output_operand_id, relu2_output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+    base::flat_map<std::string, base::span<const float>> named_inputs;
 
     named_inputs.insert(
-        {"input", VectorToBigBuffer(std::vector<float>{
-                      0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24})});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
+        {"input", {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                   13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}});
+    base::flat_map<std::string, std::vector<float>> named_outputs =
+        BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                        std::move(named_inputs));
 
     std::vector<float> expected_output_data{0,  0,  0, 0,  0,  0,  0, 0,  0,
                                             0,  0,  0, 8,  17, 0,  0, 44, 53,
                                             62, 11, 0, 11, 17, 23, 0};
-    VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output1"]),
-                           OperandDataType::kFloat32),
-        expected_output_data);
-    VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output2"]),
-                           OperandDataType::kFloat32),
-        expected_output_data);
+    VerifyFloatDataIsEqual(named_outputs["output1"], expected_output_data);
+    VerifyFloatDataIsEqual(named_outputs["output2"], expected_output_data);
   }
   //     [input]
   //        |
@@ -3885,12 +3870,16 @@ TEST_F(WebNNGraphImplBackendTest,
   // [output1][output2]
   {
     // Build the mojom graph info.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", {1, 1, 5, 5}, OperandDataType::kFloat32);
     uint64_t filter_operand_id = builder.BuildConstant(
         {1, 1, 3, 3}, OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(std::vector<float>(9, 1))));
+        base::as_byte_span(
+            base::allow_nonunique_obj,
+            {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
     uint64_t conv2d_output_operand_id = builder.BuildIntermediateOperand(
         {1, 1, 5, 5}, OperandDataType::kFloat32);
 
@@ -3905,7 +3894,8 @@ TEST_F(WebNNGraphImplBackendTest,
     if (attributes.bias.has_value()) {
       bias_operand_id = builder.BuildConstant(
           attributes.bias->dimensions, attributes.bias->type,
-          base::as_bytes(base::make_span(attributes.bias->values)));
+          base::as_byte_span(base::allow_nonunique_obj,
+                             attributes.bias->values));
     }
 
     builder.BuildConv2d(mojom::Conv2d::Kind::kDirect, input_operand_id,
@@ -3920,28 +3910,22 @@ TEST_F(WebNNGraphImplBackendTest,
         builder.BuildOutput("output2", {1, 1, 5, 5}, OperandDataType::kFloat32);
     builder.BuildRelu(conv2d_output_operand_id, relu_output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+    base::flat_map<std::string, base::span<const float>> named_inputs;
 
     named_inputs.insert(
-        {"input", VectorToBigBuffer(std::vector<float>{
-                      0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24})});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
-
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
+        {"input", {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                   13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}});
+    base::flat_map<std::string, std::vector<float>> named_outputs =
+        BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                        std::move(named_inputs));
 
     VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output1"]),
-                           OperandDataType::kFloat32),
-        std::vector<float>{-88, -79, -73, -67, -76, -67, -46, -37, -28,
-                           -49, -37, -1,  8,   17,  -19, -7,  44,  53,
-                           62,  11,  -28, 11,  17,  23,  -16});
-    VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output2"]),
-                           OperandDataType::kFloat32),
-        std::vector<float>{0,  0, 0, 0,  0,  0,  0,  0, 0,  0,  0,  0, 8,
-                           17, 0, 0, 44, 53, 62, 11, 0, 11, 17, 23, 0});
+        named_outputs["output1"],
+        {-88, -79, -73, -67, -76, -67, -46, -37, -28, -49, -37, -1, 8,
+         17,  -19, -7,  44,  53,  62,  11,  -28, 11,  17,  23,  -16});
+    VerifyFloatDataIsEqual(named_outputs["output2"],
+                           {0,  0, 0, 0,  0,  0,  0,  0, 0,  0,  0,  0, 8,
+                            17, 0, 0, 44, 53, 62, 11, 0, 11, 17, 23, 0});
   }
   //     [input]
   //        |
@@ -3953,12 +3937,16 @@ TEST_F(WebNNGraphImplBackendTest,
   // [output1] [output2]
   {
     // Build the mojom graph info.
-    GraphInfoBuilder builder;
+    mojo::AssociatedRemote<mojom::WebNNGraphBuilder> remote =
+        BindNewGraphBuilderRemote();
+    GraphInfoBuilder builder(remote);
     uint64_t input_operand_id =
         builder.BuildInput("input", {1, 1, 5, 5}, OperandDataType::kFloat32);
     uint64_t filter_operand_id = builder.BuildConstant(
         {1, 1, 3, 3}, OperandDataType::kFloat32,
-        base::as_bytes(base::make_span(std::vector<float>(9, 1))));
+        base::as_byte_span(
+            base::allow_nonunique_obj,
+            {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
     uint64_t conv2d_output_operand_id = builder.BuildIntermediateOperand(
         {1, 1, 5, 5}, OperandDataType::kFloat32);
 
@@ -3973,7 +3961,8 @@ TEST_F(WebNNGraphImplBackendTest,
     if (attributes.bias.has_value()) {
       bias_operand_id = builder.BuildConstant(
           attributes.bias->dimensions, attributes.bias->type,
-          base::as_bytes(base::make_span(attributes.bias->values)));
+          base::as_byte_span(base::allow_nonunique_obj,
+                             attributes.bias->values));
     }
 
     builder.BuildConv2d(mojom::Conv2d::Kind::kDirect, input_operand_id,
@@ -3985,28 +3974,22 @@ TEST_F(WebNNGraphImplBackendTest,
         builder.BuildOutput("output1", {1, 1, 5, 5}, OperandDataType::kFloat32);
     builder.BuildRelu(conv2d_output_operand_id, relu_output_operand_id);
 
-    base::flat_map<std::string, mojo_base::BigBuffer> named_inputs;
+    base::flat_map<std::string, base::span<const float>> named_inputs;
 
     named_inputs.insert(
-        {"input", VectorToBigBuffer(std::vector<float>{
-                      0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24})});
-    base::flat_map<std::string, mojo_base::BigBuffer> named_outputs;
+        {"input", {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                   13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}});
+    base::flat_map<std::string, std::vector<float>> named_outputs =
+        BuildAndCompute(context(), std::move(remote), builder.TakeGraphInfo(),
+                        std::move(named_inputs));
 
-    BuildAndCompute(builder.TakeGraphInfo(), std::move(named_inputs),
-                    named_outputs);
-
+    VerifyFloatDataIsEqual(named_outputs["output1"],
+                           {0,  0, 0, 0,  0,  0,  0,  0, 0,  0,  0,  0, 8,
+                            17, 0, 0, 44, 53, 62, 11, 0, 11, 17, 23, 0});
     VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output1"]),
-                           OperandDataType::kFloat32),
-        std::vector<float>{0,  0, 0, 0,  0,  0,  0,  0, 0,  0,  0,  0, 8,
-                           17, 0, 0, 44, 53, 62, 11, 0, 11, 17, 23, 0});
-    VerifyFloatDataIsEqual(
-        GetFloatOutputData(std::move(named_outputs["output2"]),
-                           OperandDataType::kFloat32),
-        std::vector<float>{-88, -79, -73, -67, -76, -67, -46, -37, -28,
-                           -49, -37, -1,  8,   17,  -19, -7,  44,  53,
-                           62,  11,  -28, 11,  17,  23,  -16});
+        named_outputs["output2"],
+        {-88, -79, -73, -67, -76, -67, -46, -37, -28, -49, -37, -1, 8,
+         17,  -19, -7,  44,  53,  62,  11,  -28, 11,  17,  23,  -16});
   }
 }
 

@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "base/time/time.h"
+#include "base/types/pass_key.h"
 #include "media/base/decoder_buffer.h"
 #include "media/base/demuxer_stream.h"
 #include "media/base/media_export.h"
@@ -131,7 +132,8 @@ class MEDIA_EXPORT StreamParserBuffer : public DecoderBuffer {
   typedef DemuxerStream::Type Type;
   typedef StreamParser::TrackId TrackId;
 
-  static scoped_refptr<StreamParserBuffer> CreateEOSBuffer();
+  static scoped_refptr<StreamParserBuffer> CreateEOSBuffer(
+      std::optional<ConfigVariant> next_config = std::nullopt);
 
   static scoped_refptr<StreamParserBuffer> CopyFrom(const uint8_t* data,
                                                     int data_size,
@@ -149,6 +151,25 @@ class MEDIA_EXPORT StreamParserBuffer : public DecoderBuffer {
       Type type,
       TrackId track_id);
 
+  StreamParserBuffer(base::PassKey<StreamParserBuffer>,
+                     base::HeapArray<uint8_t> heap_array,
+                     bool is_key_frame,
+                     Type type,
+                     TrackId track_id);
+  StreamParserBuffer(base::PassKey<StreamParserBuffer>,
+                     std::unique_ptr<ExternalMemory> external_memory,
+                     bool is_key_frame,
+                     Type type,
+                     TrackId track_id);
+  StreamParserBuffer(base::PassKey<StreamParserBuffer>,
+                     const uint8_t* data,
+                     int data_size,
+                     bool is_key_frame,
+                     Type type,
+                     TrackId track_id);
+  StreamParserBuffer(base::PassKey<StreamParserBuffer>,
+                     DecoderBufferType decoder_buffer_type,
+                     std::optional<ConfigVariant> next_config);
   StreamParserBuffer(const StreamParserBuffer&) = delete;
   StreamParserBuffer& operator=(const StreamParserBuffer&) = delete;
 
@@ -197,21 +218,6 @@ class MEDIA_EXPORT StreamParserBuffer : public DecoderBuffer {
   size_t GetMemoryUsage() const override;
 
  private:
-  StreamParserBuffer(base::HeapArray<uint8_t> heap_array,
-                     bool is_key_frame,
-                     Type type,
-                     TrackId track_id);
-
-  StreamParserBuffer(std::unique_ptr<ExternalMemory> external_memory,
-                     bool is_key_frame,
-                     Type type,
-                     TrackId track_id);
-  StreamParserBuffer(const uint8_t* data,
-                     int data_size,
-                     bool is_key_frame,
-                     Type type,
-                     TrackId track_id);
-  explicit StreamParserBuffer(DecoderBufferType decoder_buffer_type);
   ~StreamParserBuffer() override;
 
   // ***************************************************************************

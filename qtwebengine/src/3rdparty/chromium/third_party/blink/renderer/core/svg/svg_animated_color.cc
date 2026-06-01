@@ -22,7 +22,6 @@
 #include "third_party/blink/renderer/core/css/css_color.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/svg/animation/smil_animation_effect_parameters.h"
 #include "third_party/blink/renderer/core/svg/svg_element.h"
 
@@ -91,8 +90,7 @@ String SVGColorProperty::ValueAsString() const {
 
 SVGPropertyBase* SVGColorProperty::CloneForAnimation(const String&) const {
   // SVGAnimatedColor is deprecated. So No SVG DOM animation.
-  NOTREACHED_IN_MIGRATION();
-  return nullptr;
+  NOTREACHED();
 }
 
 void SVGColorProperty::Add(const SVGPropertyBase* other,

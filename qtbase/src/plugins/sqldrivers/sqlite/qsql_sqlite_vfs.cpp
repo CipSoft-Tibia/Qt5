@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qsql_sqlite_vfs_p.h"
 
@@ -15,6 +16,8 @@
 #if SQLITE_VERSION_NUMBER < 3040000
 typedef const char *sqlite3_filename;
 #endif
+
+QT_BEGIN_NAMESPACE
 
 namespace {
 struct Vfs : sqlite3_vfs {
@@ -256,3 +259,5 @@ void register_qt_vfs()
 
     sqlite3_vfs_register(&vfs, 0);
 }
+
+QT_END_NAMESPACE

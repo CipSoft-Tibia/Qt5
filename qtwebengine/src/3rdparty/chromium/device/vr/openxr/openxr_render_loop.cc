@@ -4,12 +4,12 @@
 
 #include "device/vr/openxr/openxr_render_loop.h"
 
+#include <algorithm>
 #include <optional>
 
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
@@ -339,6 +339,15 @@ void OpenXrRenderLoop::StartRuntimeFinish(
         device::mojom::XRPresentationTransportMethod::SUBMIT_AS_MAILBOX_HOLDER;
   }
 
+  if (graphics_binding_->IsWebGPUSession() &&
+      !graphics_binding_->IsUsingSharedImages()) {
+    // WebGPU sessions must use shared images. If not fail session creation.
+    TRACE_EVENT_INSTANT0("xr", "Failed to start WebGPU-compatible runtime",
+                         TRACE_EVENT_SCOPE_THREAD);
+    MaybeRejectSessionCallback();
+    return;
+  }
+
   // Only set boolean options that we need. Default is false, and we should be
   // able to safely ignore ones that our implementation doesn't care about.
   transport_options->wait_for_transfer_notification = true;
@@ -645,13 +654,17 @@ mojom::XRFrameDataPtr OpenXrRenderLoop::GetNextFrameData() {
 
   UpdateStageParameters();
 
+  std::optional<gfx::Transform> local_from_floor = openxr_->GetLocalFromFloor();
+  if (local_from_floor) {
+    frame_data->mojo_from_floor = mojo_from_local() * *local_from_floor;
+  }
+
   if (openxr_->HasFrameState()) {
     OpenXrAnchorManager* anchor_manager = openxr_->GetAnchorManager();
 
     if (anchor_manager) {
       frame_data->anchors_data = anchor_manager->ProcessAnchorsForFrame(
-          openxr_.get(), current_stage_parameters_,
-          frame_data->input_state.value(), frame_time);
+          openxr_.get(), frame_data->input_state.value(), frame_time);
     }
 
     OpenXrLightEstimator* light_estimator = openxr_->GetLightEstimator();
@@ -837,14 +850,8 @@ void OpenXrRenderLoop::OnWebXrTokenSignaled(
     return;
   }
 
-  // TODO(crbug.com/40917174): Unify OpenXr Rendering paths.
-#if BUILDFLAG(IS_WIN)
-  SubmitFrameWithTextureHandle(frame_index, mojo::PlatformHandle(),
-                               gpu::SyncToken());
-#elif BUILDFLAG(IS_ANDROID)
   MarkFrameSubmitted(frame_index);
   MaybeCompositeAndSubmit();
-#endif
 
   // Calling SubmitFrameWithTextureHandle can cause openxr_ and
   // context_provider_ to become nullptr if we decide to stop the runtime.
@@ -860,12 +867,7 @@ void OpenXrRenderLoop::UpdateStageParameters() {
   if (openxr_->GetStageParameters(stage_bounds, local_from_stage)) {
     mojom::VRStageParametersPtr stage_parameters =
         mojom::VRStageParameters::New();
-    // mojo_from_local is currently identity.
-    gfx::Transform mojo_from_local;
-    // stage_from_floor is identity.
-    gfx::Transform stage_from_floor;
-    stage_parameters->mojo_from_floor =
-        mojo_from_local * local_from_stage * stage_from_floor;
+    stage_parameters->mojo_from_stage = mojo_from_local() * local_from_stage;
     stage_parameters->bounds = std::move(stage_bounds);
     SetStageParameters(std::move(stage_parameters));
   } else {

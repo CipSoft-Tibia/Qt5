@@ -11,12 +11,27 @@ Item {
     }
 
     TextEdit {
-        id: txt
+        objectName: "txt"
         x: 100
         text: "enter text"
         Keys.onShortcutOverride: (event) => {
             who = "TextEdit"
             event.accepted = (event.key === Qt.Key_Escape)
+        }
+    }
+
+    Shortcut {
+        sequence: "A"
+        onActivated: who = "ShortcutA"
+    }
+
+    TextEdit {
+        objectName: "testOverride"
+        x: 100
+        y: 100
+        text: "enter text"
+        Keys.onTabPressed: (event) => {
+            who = "Superfluous" // Just for test and no intention to handle
         }
     }
 

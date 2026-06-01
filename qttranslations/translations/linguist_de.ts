@@ -983,12 +983,12 @@ Alle Dateien (*)</translation>
         <translation>Ctrl+M</translation>
     </message>
     <message>
-        <source>Display the manual for %1.</source>
-        <translation>Handbuch zu %1 anzeigen.</translation>
+        <source>Displays the manual for %1.</source>
+        <translation>Zeigt das Handbuch zu %1 an.</translation>
     </message>
     <message>
-        <source>Display information about %1.</source>
-        <translation>Informationen über %1 anzeigen.</translation>
+        <source>Displays information about %1.</source>
+        <translation>Zeigt Informationen über %1 an.</translation>
     </message>
     <message>
         <source>&amp;Save &apos;%1&apos;</source>
@@ -1288,6 +1288,14 @@ Alle Dateien (*)</translation>
     <message>
         <source>Shift+F3</source>
         <translation>Shift+F3</translation>
+    </message>
+    <message>
+        <source>&amp;QML preview</source>
+        <translation>&amp;QML-Vorschau</translation>
+    </message>
+    <message>
+        <source>Displays a preview of QML documents.</source>
+        <translation>Zeigt eine Vorschau von QML-Dokumenten.</translation>
     </message>
 </context>
 <context>
@@ -1705,6 +1713,17 @@ Zeile: %2</translation>
     <message>
         <source>Target language</source>
         <translation>Zielsprache</translation>
+    </message>
+</context>
+<context>
+    <name>QmlFormPreviewView</name>
+    <message>
+        <source>Qt Linguist</source>
+        <translation>Qt Linguist</translation>
+    </message>
+    <message>
+        <source>Error loading QML file: %1</source>
+        <translation>Fehler beim Laden der QML-Datei: %1</translation>
     </message>
 </context>
 </TS>

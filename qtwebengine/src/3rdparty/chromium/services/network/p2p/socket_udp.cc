@@ -296,9 +296,9 @@ void P2PSocketUdp::MaybeDrainReceivedPackets(bool force) {
 
 bool P2PSocketUdp::HandleReadResult(int result) {
   if (result > 0) {
-    base::span<const uint8_t> data =
-        base::make_span(reinterpret_cast<const uint8_t*>(recv_buffer_->data()),
-                        static_cast<size_t>(result));
+    auto data =
+        base::span(reinterpret_cast<const uint8_t*>(recv_buffer_->data()),
+                   static_cast<size_t>(result));
 
     if (!base::Contains(connected_peers_, recv_address_)) {
       P2PSocket::StunMessageType type;
@@ -359,8 +359,8 @@ bool P2PSocketUdp::DoSend(const P2PPendingPacket& packet) {
   if (!base::Contains(connected_peers_, packet.to)) {
     P2PSocket::StunMessageType type = P2PSocket::StunMessageType();
     bool stun = GetStunPacketType(
-        base::make_span(reinterpret_cast<const uint8_t*>(packet.data->data()),
-                        packet.size),
+        base::span(reinterpret_cast<const uint8_t*>(packet.data->data()),
+                   packet.size),
         &type);
     if (!stun || type == STUN_DATA_INDICATION) {
       LOG(ERROR) << "Page tried to send a data packet to "
@@ -432,8 +432,8 @@ bool P2PSocketUdp::DoSend(const P2PPendingPacket& packet) {
   }
 
   delegate_->DumpPacket(
-      base::make_span(reinterpret_cast<const uint8_t*>(packet.data->data()),
-                      packet.size),
+      base::span(reinterpret_cast<const uint8_t*>(packet.data->data()),
+                 packet.size),
       false);
 
   return true;
@@ -501,9 +501,7 @@ void P2PSocketUdp::Send(base::span<const uint8_t> data,
 bool P2PSocketUdp::SendPacket(base::span<const uint8_t> data,
                               const P2PPacketInfo& packet_info) {
   if (data.size() > kMaximumPacketSize) {
-    NOTREACHED_IN_MIGRATION();
-    OnError();
-    return false;
+    NOTREACHED();
   }
   if (interceptor_) {
     P2PPendingPacket packet(packet_info.destination, data,
@@ -563,7 +561,7 @@ void P2PSocketUdp::SetOption(P2PSocketOption option, int32_t value) {
       socket_->SetRecvTos();
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 }
 

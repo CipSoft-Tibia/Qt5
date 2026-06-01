@@ -9,9 +9,9 @@
 #include <utility>
 #include <vector>
 
+#include "base/auto_reset.h"
 #include "base/check.h"
 #include "base/memory/raw_ptr.h"
-#include "base/ranges/algorithm.h"
 #include "build/build_config.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
@@ -185,7 +185,7 @@ void DialogClientView::VisibilityChanged(View* starting_from, bool is_visible) {
   input_protector_->VisibilityChanged(is_visible);
 }
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 
 void DialogClientView::UpdateWindowRoundedCorners(int corner_radius) {
   DCHECK(GetWidget());
@@ -199,7 +199,7 @@ void DialogClientView::UpdateWindowRoundedCorners(int corner_radius) {
   SetBackgroundRadii(radii);
 }
 
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 ProposedLayout DialogClientView::CalculateProposedLayout(
     const SizeBounds& size_bounds) const {
@@ -222,6 +222,15 @@ ProposedLayout DialogClientView::CalculateProposedLayout(
   layouts.host_size =
       gfx::Size(size_bounds.width().value(), size_bounds.height().value());
   return layouts;
+}
+
+void DialogClientView::SetBackgroundColor(ui::ColorId background_color_id) {
+  if (background_color_id_ == background_color_id) {
+    return;
+  }
+
+  background_color_id_ = background_color_id;
+  UpdateBackground();
 }
 
 bool DialogClientView::AcceleratorPressed(const ui::Accelerator& accelerator) {
@@ -311,8 +320,7 @@ void DialogClientView::UpdateBackground() {
 
   if (dialog && !dialog->use_custom_frame()) {
     SetBackground(views::CreateRoundedRectBackground(
-        GetColorProvider()->GetColor(ui::kColorDialogBackground),
-        background_radii_));
+        GetColorProvider()->GetColor(background_color_id_), background_radii_));
   }
 }
 
@@ -459,7 +467,7 @@ void DialogClientView::SetupLayout() {
 
   std::array<View*, kNumButtons> views = GetButtonRowViews();
 
-  if (base::ranges::count(views, nullptr) == kNumButtons) {
+  if (std::ranges::count(views, nullptr) == kNumButtons) {
     return;
   }
 
@@ -548,7 +556,7 @@ void DialogClientView::SetupLayout() {
 }
 
 void DialogClientView::UpdateButtonsFromModel() {
-  if (PlatformStyle::kIsOkButtonLeading) {
+  if constexpr (PlatformStyle::kIsOkButtonLeading) {
     UpdateDialogButton(&ok_button_, ui::mojom::DialogButton::kOk);
     UpdateDialogButton(&cancel_button_, ui::mojom::DialogButton::kCancel);
   } else {

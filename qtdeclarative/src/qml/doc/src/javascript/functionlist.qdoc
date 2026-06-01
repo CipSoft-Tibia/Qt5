@@ -14,64 +14,64 @@
     \section2 Value Properties
 
     \list
-    \li NaN
-    \li Infinity
-    \li undefined
+    \li \c NaN
+    \li \c Infinity
+    \li \c undefined
     \endlist
 
     \section2 Function Properties
 
     \list
-    \li eval(x)
-    \li parseInt(string, radix)
-    \li parseFloat(string)
-    \li isNaN(number)
-    \li isFinite(number)
-    \li decodeURI(encodedURI)
-    \li decodeURIComponent(encodedURIComponent)
-    \li encodeURI(uri)
-    \li encodeURIComponent(uriComponent)
-    \li escape(string)
-    \li unescape(string)
+    \li \c {eval(x)}
+    \li \c {parseInt(string, radix)}
+    \li \c {parseFloat(string)}
+    \li \c {isNaN(number)}
+    \li \c {isFinite(number)}
+    \li \c {decodeURI(encodedURI)}
+    \li \c {decodeURIComponent(encodedURIComponent)}
+    \li \c {encodeURI(uri)}
+    \li \c {encodeURIComponent(uriComponent)}
+    \li \c {escape(string)}
+    \li \c {unescape(string)}
     \endlist
 
     \section2 Constructor Properties
 
     \list
-    \li Object
-    \li Function
-    \li Array
-    \li ArrayBuffer
-    \li String
-    \li Boolean
-    \li Number
-    \li DataView
-    \li Date
-    \li Promise
-    \li RegExp
-    \li Map
-    \li WeakMap
-    \li Set
-    \li WeakSet
-    \li SharedArrayBuffer
-    \li Symbol
-    \li Error
-    \li EvalError
-    \li RangeError
-    \li ReferenceError
-    \li SyntaxError
-    \li TypeError
-    \li URIError
+    \li \c Object
+    \li \c Function
+    \li \c Array
+    \li \c ArrayBuffer
+    \li \c String
+    \li \c Boolean
+    \li \c Number
+    \li \c DataView
+    \li \c Date
+    \li \c Promise
+    \li \c RegExp
+    \li \c Map
+    \li \c WeakMap
+    \li \c Set
+    \li \c WeakSet
+    \li \c SharedArrayBuffer
+    \li \c Symbol
+    \li \c Error
+    \li \c EvalError
+    \li \c RangeError
+    \li \c ReferenceError
+    \li \c SyntaxError
+    \li \c TypeError
+    \li \c URIError
     \endlist
 
     \section2 Other Properties
 
     \list
-    \li Atomics
-    \li Math
-    \li JSON
-    \li Reflect
-    \li Proxy
+    \li \c Atomics
+    \li \c Math
+    \li \c JSON
+    \li \c Reflect
+    \li \c Proxy
     \endlist
 
     \section1 The Object Object
@@ -81,26 +81,26 @@
     \section3 Function Properties
 
     \list
-    \li getPrototypeOf(O)
-    \li setPrototypeOf(O, P)
-    \li getOwnPropertyDescriptor(O, P)
-    \li getOwnPropertyDescriptors(O)
-    \li getOwnPropertyNames(O)
-    \li getOwnPropertySymbols(O)
-    \li assign(O [, Properties])
-    \li create(O [, Properties])
-    \li defineProperty(O, P, Attributes)
-    \li defineProperties(O, Properties)
-    \li entries(O)
-    \li is(V1, V2)
-    \li keys(O)
-    \li values(O)
-    \li seal(O)
-    \li isSealed(O)
-    \li freeze(O)
-    \li isFrozen(O)
-    \li preventExtensions(O)
-    \li isExtensible(O)
+    \li \c {getPrototypeOf(O)}
+    \li \c {setPrototypeOf(O, P)}
+    \li \c {getOwnPropertyDescriptor(O, P)}
+    \li \c {getOwnPropertyDescriptors(O)}
+    \li \c {getOwnPropertyNames(O)}
+    \li \c {getOwnPropertySymbols(O)}
+    \li \c {assign(O [, Properties])}
+    \li \c {create(O [, Properties])}
+    \li \c {defineProperty(O, P, Attributes)}
+    \li \c {defineProperties(O, Properties)}
+    \li \c {entries(O)}
+    \li \c {is(V1, V2)}
+    \li \c {keys(O)}
+    \li \c {values(O)}
+    \li \c {seal(O)}
+    \li \c {isSealed(O)}
+    \li \c {freeze(O)}
+    \li \c {isFrozen(O)}
+    \li \c {preventExtensions(O)}
+    \li \c {isExtensible(O)}
     \endlist
 
     \section2 Object Prototype
@@ -108,14 +108,14 @@
     \section3 Function Properties
 
     \list
-    \li toString()
-    \li toLocaleString()
-    \li valueOf()
-    \li hasOwnProperty(V)
-    \li isPrototypeOf(V)
-    \li propertyIsEnumerable(V)
-    \li __defineGetter__(P, F)
-    \li __defineSetter__(P, F)
+    \li \c {toString()}
+    \li \c {toLocaleString()}
+    \li \c {valueOf()}
+    \li \c {hasOwnProperty(V)}
+    \li \c {isPrototypeOf(V)}
+    \li \c {propertyIsEnumerable(V)}
+    \li \c {__defineGetter__(P, F)}
+    \li \c {__defineSetter__(P, F)}
     \endlist
 
     \section1 Function Objects
@@ -125,11 +125,11 @@
     \section3 Function Properties
 
     \list
-    \li toString()
-    \li apply(thisArg, argArray)
-    \li call(thisArg [, arg1 [, arg2, ...]])
-    \li bind((thisArg [, arg1 [, arg2, …]])
-    \li [Symbol.hasInstance](O)
+    \li \c {toString()}
+    \li \c {apply(thisArg, argArray)}
+    \li \c {call(thisArg [, arg1 [, arg2, ...]])}
+    \li \c {bind((thisArg [, arg1 [, arg2, …]])}
+    \li \c {[Symbol.hasInstance](O)}
     \endlist
 
     \section1 Array Objects
@@ -139,36 +139,36 @@
     \section3 Function Properties
 
     \list
-    \li toString()
-    \li toLocaleString()
-    \li concat([item1 [, item2 [, ...]]])
-    \li copyWithin([item1 [, item2 [, ...]]])
-    \li entries()
-    \li fill(item [, index1 [, index2]])
-    \li join(separator)
-    \li find(callbackfn [, thisArg]) // ECMAScript 6: Added in Qt 5.9
-    \li findIndex(callbackfn [, thisArg]) // ECMAScript 6: Added in Qt 5.9
-    \li includes(item)
-    \li keys()
-    \li pop()
-    \li push([item1 [, item2 [, ...]]])
-    \li reverse()
-    \li shift()
-    \li slice(start, end)
-    \li sort(comparefn)
-    \li splice(start, deleteCount[, item1 [, item2 [, ...]]])
-    \li unshift([item1 [, item2 [, ...]]])
-    \li indexOf(searchElement [, fromIndex])
-    \li lastIndexOf(searchElement [, fromIndex])
-    \li every(callbackfn [, thisArg])
-    \li some(callbackfn [, thisArg])
-    \li forEach(callbackfn [, thisArg])
-    \li map(callbackfn [, thisArg])
-    \li filter(callbackfn [, thisArg])
-    \li reduce(callbackfn [, initialValue])
-    \li reduceRight(callbackfn [, initialValue])
-    \li values()
-    \li [Symbol.iterator]()
+    \li \c {toString()}
+    \li \c {toLocaleString()}
+    \li \c {concat([item1 [, item2 [, ...]]])}
+    \li \c {copyWithin([item1 [, item2 [, ...]]])}
+    \li \c {entries()}
+    \li \c {fill(item [, index1 [, index2]])}
+    \li \c {join(separator)}
+    \li \c {find(callbackfn [, thisArg])} // ECMAScript 6: Added in Qt 5.9
+    \li \c {findIndex(callbackfn [, thisArg])} // ECMAScript 6: Added in Qt 5.9
+    \li \c {includes(item)}
+    \li \c {keys()}
+    \li \c {pop()}
+    \li \c {push([item1 [, item2 [, ...]]])}
+    \li \c {reverse()}
+    \li \c {shift()}
+    \li \c {slice(start, end)}
+    \li \c {sort(comparefn)}
+    \li \c {splice(start, deleteCount[, item1 [, item2 [, ...]]])}
+    \li \c {unshift([item1 [, item2 [, ...]]])}
+    \li \c {indexOf(searchElement [, fromIndex])}
+    \li \c {lastIndexOf(searchElement [, fromIndex])}
+    \li \c {every(callbackfn [, thisArg])}
+    \li \c {some(callbackfn [, thisArg])}
+    \li \c {forEach(callbackfn [, thisArg])}
+    \li \c {map(callbackfn [, thisArg])}
+    \li \c {filter(callbackfn [, thisArg])}
+    \li \c {reduce(callbackfn [, initialValue])}
+    \li \c {reduceRight(callbackfn [, initialValue])}
+    \li \c {values()}
+    \li \c {[Symbol.iterator]()}
     \endlist
 
     \section1 String Objects
@@ -178,35 +178,35 @@
     \section3 Function Properties
 
     \list
-    \li toString()
-    \li valueOf()
-    \li charAt(pos)
-    \li charCodeAt(pos)
-    \li codePointAt(pos)
-    \li concat([string1 [, string2 [, ...]]])
-    \li endsWith(searchString [, endPosition ]) // ECMAScript 6: Added in Qt 5.8
-    \li includes(searchString [, position ]) // ECMAScript 6: Added in 5.8
-    \li indexOf(searchString ,position)
-    \li lastIndexOf(searchString, position)
-    \li localeCompare(that)
-    \li match(regexp)
-    \li normalize()
-    \li padEnd(length [, string])
-    \li padStart(length [, string])
-    \li repeat(count) // ECMAScript 6: Added in Qt 5.9
-    \li replace(searchValue, replaceValue)
-    \li search(regexp)
-    \li slice(start, end)
-    \li split(separator, limit)
-    \li startsWith(searchString [, position ]) // ECMAScript 6: Added in Qt 5.8
-    \li substr(start, length)
-    \li substring(start, end)
-    \li toLowerCase()
-    \li toLocaleLowerCase()
-    \li toUpperCase()
-    \li toLocaleUpperCase()
-    \li trim()
-    \li [Symbol.iterator]()
+    \li \c {toString()}
+    \li \c {valueOf()}
+    \li \c {charAt(pos)}
+    \li \c {charCodeAt(pos)}
+    \li \c {codePointAt(pos)}
+    \li \c {concat([string1 [, string2 [, ...]]])}
+    \li \c {endsWith(searchString [, endPosition ])} // ECMAScript 6: Added in Qt 5.8
+    \li \c {includes(searchString [, position ])} // ECMAScript 6: Added in 5.8
+    \li \c {indexOf(searchString ,position)}
+    \li \c {lastIndexOf(searchString, position)}
+    \li \c {localeCompare(that)}
+    \li \c {match(regexp)}
+    \li \c {normalize()}
+    \li \c {padEnd(length [, string])}
+    \li \c {padStart(length [, string])}
+    \li \c {repeat(count)} // ECMAScript 6: Added in Qt 5.9
+    \li \c {replace(searchValue, replaceValue)}
+    \li \c {search(regexp)}
+    \li \c {slice(start, end)}
+    \li \c {split(separator, limit)}
+    \li \c {startsWith(searchString [, position ])} // ECMAScript 6: Added in Qt 5.8
+    \li \c {substr(start, length)}
+    \li \c {substring(start, end)}
+    \li \c {toLowerCase()}
+    \li \c {toLocaleLowerCase()}
+    \li \c {toUpperCase()}
+    \li \c {toLocaleUpperCase()}
+    \li \c {trim()}
+    \li \c {[Symbol.iterator]()}
     \endlist
 
     Additionally, the QML engine adds the following functions to the \c String prototype:
@@ -222,8 +222,8 @@
     \section3 Function Properties
 
     \list
-    \li toString()
-    \li valueOf()
+    \li \c {toString()}
+    \li \c {valueOf()}
     \endlist
 
     \section1 Number Objects
@@ -233,12 +233,12 @@
     \section3 Function Properties
 
     \list
-    \li toString(radix)
-    \li toLocaleString()
-    \li valueOf()
-    \li toFixed(fractionDigits)
-    \li toExponential(fractionDigits)
-    \li toPrecision(precision)
+    \li \c {toString(radix)}
+    \li \c {toLocaleString()}
+    \li \c {valueOf()}
+    \li \c {toFixed(fractionDigits)}
+    \li \c {toExponential(fractionDigits)}
+    \li \c {toPrecision(precision)}
     \endlist
 
     Additionally, the QML engine adds the following functions to the \l Number prototype:
@@ -253,23 +253,23 @@
     \section3 Value Properties
 
     \list
-    \li NaN
-    \li NEGATIVE_INFINITY
-    \li POSITIVE_INFINITY
-    \li MAX_VALUE
-    \li MIN_VALUE
-    \li EPSILON // ECMAScript 6: Added in Qt 5.8
-    \li MAX_SAFE_INTEGER
-    \li MIN_SAFE_INTEGER
+    \li \c {NaN}
+    \li \c {NEGATIVE_INFINITY}
+    \li \c {POSITIVE_INFINITY}
+    \li \c {MAX_VALUE}
+    \li \c {MIN_VALUE}
+    \li \c {EPSILON} // ECMAScript 6: Added in Qt 5.8
+    \li \c {MAX_SAFE_INTEGER}
+    \li \c {MIN_SAFE_INTEGER}
     \endlist
 
     \section3 Function Properties
 
     \list
-    \li isFinite(x) // ECMAScript 6: Added in Qt 5.8
-    \li isInteger(x)
-    \li isSafeInteger(x)
-    \li isNaN(x) // ECMAScript 6: Added in Qt 5.8
+    \li \c {isFinite(x)} // ECMAScript 6: Added in Qt 5.8
+    \li \c {isInteger(x)}
+    \li \c {isSafeInteger(x)}
+    \li \c {isNaN(x)} // ECMAScript 6: Added in Qt 5.8
     \endlist
 
     \section1 The Math Object
@@ -277,54 +277,54 @@
     \section2 Value Properties
 
     \list
-    \li E
-    \li LN10
-    \li LN2
-    \li LOG2E
-    \li LOG10E
-    \li PI
-    \li SQRT1_2
-    \li SQRT2
+    \li \c {E}
+    \li \c {LN10}
+    \li \c {LN2}
+    \li \c {LOG2E}
+    \li \c {LOG10E}
+    \li \c {PI}
+    \li \c {SQRT1_2}
+    \li \c {SQRT2}
     \endlist
 
     \section2 Function Properties
 
     \list
-    \li abs(x)
-    \li acos(x)
-    \li acosh(x)
-    \li asin(x)
-    \li asinh(x)
-    \li atan(x)
-    \li atanh(x)
-    \li atan2(y, x)
-    \li cbrt(x)
-    \li ceil(x)
-    \li clz32(x)
-    \li cos(x)
-    \li cosh(x)
-    \li exp(x)
-    \li expm1(x)
-    \li floor(x)
-    \li fround(x)
-    \li hypot(x, y)
-    \li imul(x, y)
-    \li log(x)
-    \li log10(x)
-    \li log1p(x)
-    \li log2(x)
-    \li max([value1 [, value2 [, ...]]])
-    \li min([value1 [, value2 [, ...]]])
-    \li pow(x, y)
-    \li random()
-    \li round(x)
-    \li sign(x) // ECMAScript 6: Added in Qt 5.8
-    \li sin(x)
-    \li sinh(x)
-    \li sqrt(x)
-    \li tan(x)
-    \li tanh(x)
-    \li trunc(x)
+    \li \c {abs(x)}
+    \li \c {acos(x)}
+    \li \c {acosh(x)}
+    \li \c {asin(x)}
+    \li \c {asinh(x)}
+    \li \c {atan(x)}
+    \li \c {atanh(x)}
+    \li \c {atan2(y, x)}
+    \li \c {cbrt(x)}
+    \li \c {ceil(x)}
+    \li \c {clz32(x)}
+    \li \c {cos(x)}
+    \li \c {cosh(x)}
+    \li \c {exp(x)}
+    \li \c {expm1(x)}
+    \li \c {floor(x)}
+    \li \c {fround(x)}
+    \li \c {hypot(x, y)}
+    \li \c {imul(x, y)}
+    \li \c {log(x)}
+    \li \c {log10(x)}
+    \li \c {log1p(x)}
+    \li \c {log2(x)}
+    \li \c {max([value1 [, value2 [, ...]]])}
+    \li \c {min([value1 [, value2 [, ...]]])}
+    \li \c {pow(x, y)}
+    \li \c {random()}
+    \li \c {round(x)}
+    \li \c {sign(x)} // ECMAScript 6: Added in Qt 5.8
+    \li \c {sin(x)}
+    \li \c {sinh(x)}
+    \li \c {sqrt(x)}
+    \li \c {tan(x)}
+    \li \c {tanh(x)}
+    \li \c {trunc(x)}
     \endlist
 
     \section1 Date Objects
@@ -334,52 +334,52 @@
     \section3 Function Properties
 
     \list
-    \li toString()
-    \li toDateString()
-    \li toTimeString()
-    \li toLocaleString()
-    \li toLocaleDateString()
-    \li toLocaleTimeString()
-    \li valueOf()
-    \li getTime()
-    \li getFullYear()
-    \li getUTCFullYear()
-    \li getMonth()
-    \li getUTCMonth()
-    \li getDate()
-    \li getUTCDate()
-    \li getDay()
-    \li getUTCDay()
-    \li getHours()
-    \li getUTCHours()
-    \li getMinutes()
-    \li getUTCMinutes()
-    \li getSeconds()
-    \li getUTCSeconds()
-    \li getMilliseconds()
-    \li getUTCMilliseconds()
-    \li getTimeZoneOffset()
-    \li setTime(time)
-    \li setMilliseconds(ms)
-    \li setUTCMilliseconds(ms)
-    \li setSeconds(sec [, ms])
-    \li setUTCSeconds(sec [, ms])
-    \li setMinutes(min [, sec [, ms]])
-    \li setUTCMinutes(min [, sec [, ms]])
-    \li setHours(hour [, min [, sec [, ms]]])
-    \li setUTCHours(hour [, min [, sec [, ms]]])
-    \li setDate(date)
-    \li setUTCDate(date)
-    \li setMonth(month [, date])
-    \li setUTCMonth(month [, date])
-    \li setYear(year)
-    \li setFullYear(year [, month [, date]])
-    \li setUTCFullYear(year [, month [, date]])
-    \li toUTCString()
-    \li toGMTString()
-    \li toISOString()
-    \li toJSON()
-    \li [Symbol.toPrimitive](hint)
+    \li \c {toString()}
+    \li \c {toDateString()}
+    \li \c {toTimeString()}
+    \li \c {toLocaleString()}
+    \li \c {toLocaleDateString()}
+    \li \c {toLocaleTimeString()}
+    \li \c {valueOf()}
+    \li \c {getTime()}
+    \li \c {getFullYear()}
+    \li \c {getUTCFullYear()}
+    \li \c {getMonth()}
+    \li \c {getUTCMonth()}
+    \li \c {getDate()}
+    \li \c {getUTCDate()}
+    \li \c {getDay()}
+    \li \c {getUTCDay()}
+    \li \c {getHours()}
+    \li \c {getUTCHours()}
+    \li \c {getMinutes()}
+    \li \c {getUTCMinutes()}
+    \li \c {getSeconds()}
+    \li \c {getUTCSeconds()}
+    \li \c {getMilliseconds()}
+    \li \c {getUTCMilliseconds()}
+    \li \c {getTimeZoneOffset()}
+    \li \c {setTime(time)}
+    \li \c {setMilliseconds(ms)}
+    \li \c {setUTCMilliseconds(ms)}
+    \li \c {setSeconds(sec [, ms])}
+    \li \c {setUTCSeconds(sec [, ms])}
+    \li \c {setMinutes(min [, sec [, ms]])}
+    \li \c {setUTCMinutes(min [, sec [, ms]])}
+    \li \c {setHours(hour [, min [, sec [, ms]]])}
+    \li \c {setUTCHours(hour [, min [, sec [, ms]]])}
+    \li \c {setDate(date)}
+    \li \c {setUTCDate(date)}
+    \li \c {setMonth(month [, date])}
+    \li \c {setUTCMonth(month [, date])}
+    \li \c {setYear(year)}
+    \li \c {setFullYear(year [, month [, date]])}
+    \li \c {setUTCFullYear(year [, month [, date]])}
+    \li \c {toUTCString()}
+    \li \c {toGMTString()}
+    \li \c {toISOString()}
+    \li \c {toJSON()}
+    \li \c {[Symbol.toPrimitive](hint)}
     \endlist
 
     Additionally, the QML engine adds the following functions to the \l Date prototype:
@@ -397,9 +397,9 @@
     \section3 Function Properties
 
     \list
-    \li exec(string)
-    \li test(string)
-    \li toString()
+    \li \c {exec(string)}
+    \li \c {test(string)}
+    \li \c {toString()}
     \endlist
 
     \section1 Error Objects
@@ -409,14 +409,14 @@
     \section3 Value Properties
 
     \list
-    \li name
-    \li message
+    \li \c name
+    \li \c message
     \endlist
 
     \section3 Function Properties
 
     \list
-    \li toString()
+    \li \c {toString()}
     \endlist
 
     \section1 The JSON Object
@@ -424,8 +424,8 @@
     \section2 Function Properties
 
     \list
-    \li parse(text [, reviver])
-    \li stringify(value [, replacer [, space]])
+    \li \c {parse(text [, reviver])}
+    \li \c {stringify(value [, replacer [, space]])}
     \endlist
 
 */

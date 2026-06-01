@@ -9,6 +9,8 @@
 #  include <locale.h>
 #endif
 
+using namespace Qt::StringLiterals;
+
 class tst_QTime : public QObject
 {
     Q_OBJECT
@@ -363,8 +365,8 @@ void tst_QTime::ordering_data()
     QTest::addColumn<Qt::strong_ordering>("expectedOrdering");
 
     auto generateRow = [](QTime t1, QTime t2, Qt::strong_ordering ordering) {
-        const QByteArray t1Str = t1.toString("hh:mm:ss.zz").toLatin1();
-        const QByteArray t2Str = t2.toString("hh:mm:ss.zz").toLatin1();
+        const QByteArray t1Str = t1.toString(u"hh:mm:ss.zz").toLatin1();
+        const QByteArray t2Str = t2.toString(u"hh:mm:ss.zz").toLatin1();
         QTest::addRow("%s_vs_%s", t1Str.constData(), t2Str.constData()) << t1 << t2 << ordering;
     };
 
@@ -396,34 +398,34 @@ void tst_QTime::fromStringFormat_data()
     QTest::addColumn<QString>("format");
     QTest::addColumn<QTime>("expected");
 
-    QTest::newRow("data0") << QString("1010") << QString("mmm") << QTime(0, 10, 0);
-    QTest::newRow("data1") << QString("00") << QString("hm") << invalidTime();
-    QTest::newRow("data2") << QString("10am") << QString("hap") << QTime(10, 0, 0);
-    QTest::newRow("data3") << QString("10pm") << QString("hap") << QTime(22, 0, 0);
-    QTest::newRow("data4") << QString("10pmam") << QString("hapap") << invalidTime();
-    QTest::newRow("data5") << QString("1070") << QString("hhm") << invalidTime();
-    QTest::newRow("data6") << QString("1011") << QString("hh") << invalidTime();
-    QTest::newRow("data7") << QString("25") << QString("hh") << invalidTime();
-    QTest::newRow("data8") << QString("22pm") << QString("Hap") << QTime(22, 0, 0);
-    QTest::newRow("data9") << QString("2221") << QString("hhhh") << invalidTime();
+    QTest::newRow("data0") << u"1010"_s << u"mmm"_s << QTime(0, 10, 0);
+    QTest::newRow("data1") << u"00"_s << u"hm"_s << invalidTime();
+    QTest::newRow("data2") << u"10am"_s << u"hap"_s << QTime(10, 0, 0);
+    QTest::newRow("data3") << u"10pm"_s << u"hap"_s << QTime(22, 0, 0);
+    QTest::newRow("data4") << u"10pmam"_s << u"hapap"_s << invalidTime();
+    QTest::newRow("data5") << u"1070"_s << u"hhm"_s << invalidTime();
+    QTest::newRow("data6") << u"1011"_s << u"hh"_s << invalidTime();
+    QTest::newRow("data7") << u"25"_s << u"hh"_s << invalidTime();
+    QTest::newRow("data8") << u"22pm"_s << u"Hap"_s << QTime(22, 0, 0);
+    QTest::newRow("data9") << u"2221"_s << u"hhhh"_s << invalidTime();
     // Parsing of am/pm indicators is case-insensitive
-    QTest::newRow("pm-upper") << QString("02:23PM") << QString("hh:mmAp") << QTime(14, 23);
-    QTest::newRow("pm-lower") << QString("02:23pm") << QString("hh:mmaP") << QTime(14, 23);
-    QTest::newRow("pm-as-upper") << QString("02:23Pm") << QString("hh:mmAP") << QTime(14, 23);
-    QTest::newRow("pm-as-lower") << QString("02:23pM") << QString("hh:mmap") << QTime(14, 23);
+    QTest::newRow("pm-upper") << u"02:23PM"_s << u"hh:mmAp"_s << QTime(14, 23);
+    QTest::newRow("pm-lower") << u"02:23pm"_s << u"hh:mmaP"_s << QTime(14, 23);
+    QTest::newRow("pm-as-upper") << u"02:23Pm"_s << u"hh:mmAP"_s << QTime(14, 23);
+    QTest::newRow("pm-as-lower") << u"02:23pM"_s << u"hh:mmap"_s << QTime(14, 23);
     // Millisecond parsing must interpolate 0s only at the end and notice them at the start.
     QTest::newRow("short-msecs-lt100")
-        << QString("10:12:34:045") << QString("hh:m:ss:z") << QTime(10, 12, 34, 45);
+        << u"10:12:34:045"_s << u"hh:m:ss:z"_s << QTime(10, 12, 34, 45);
     QTest::newRow("short-msecs-gt100")
-        << QString("10:12:34:45") << QString("hh:m:ss:z") << QTime(10, 12, 34, 450);
+        << u"10:12:34:45"_s << u"hh:m:ss:z"_s << QTime(10, 12, 34, 450);
     QTest::newRow("late")
-        << QString("23:59:59.999") << QString("hh:mm:ss.z") << QTime(23, 59, 59, 999);
+        << u"23:59:59.999"_s << u"hh:mm:ss.z"_s << QTime(23, 59, 59, 999);
 
     // Test unicode handling.
     QTest::newRow("emoji in format string 1")
-        << QString("12👍31:25.05") << QString("hh👍mm:ss.z") << QTime(12, 31, 25, 50);
+        << u"12👍31:25.05"_s << u"hh👍mm:ss.z"_s << QTime(12, 31, 25, 50);
     QTest::newRow("emoji in format string 2")
-        << QString("💖12👍31🌈25😺05🚀") << QString("💖hh👍mm🌈ss😺z🚀") << QTime(12, 31, 25, 50);
+        << u"💖12👍31🌈25😺05🚀"_s << u"💖hh👍mm🌈ss😺z🚀"_s << QTime(12, 31, 25, 50);
 }
 
 void tst_QTime::fromStringFormat()
@@ -443,139 +445,139 @@ void tst_QTime::fromStringDateFormat_data()
     QTest::addColumn<Qt::DateFormat>("format");
     QTest::addColumn<QTime>("expected");
 
-    QTest::newRow("TextDate - zero") << QString("00:00:00") << Qt::TextDate << QTime(0, 0);
+    QTest::newRow("TextDate - zero") << u"00:00:00"_s << Qt::TextDate << QTime(0, 0);
     QTest::newRow("TextDate - ordinary")
-        << QString("10:12:34") << Qt::TextDate << QTime(10, 12, 34);
+        << u"10:12:34"_s << Qt::TextDate << QTime(10, 12, 34);
     QTest::newRow("TextDate - milli-max")
-        << QString("19:03:54.998601") << Qt::TextDate << QTime(19, 3, 54, 999);
+        << u"19:03:54.998601"_s << Qt::TextDate << QTime(19, 3, 54, 999);
     QTest::newRow("TextDate - milli-wrap")
-        << QString("19:03:54.999601") << Qt::TextDate << QTime(19, 3, 55);
+        << u"19:03:54.999601"_s << Qt::TextDate << QTime(19, 3, 55);
     QTest::newRow("TextDate - no-secs")
-        << QString("10:12") << Qt::TextDate << QTime(10, 12);
+        << u"10:12"_s << Qt::TextDate << QTime(10, 12);
     QTest::newRow("TextDate - midnight-nowrap")
-        << QString("23:59:59.9999") << Qt::TextDate << QTime(23, 59, 59, 999);
-    QTest::newRow("TextDate - invalid, minutes") << QString::fromLatin1("23:XX:00") << Qt::TextDate << invalidTime();
-    QTest::newRow("TextDate - invalid, minute fraction") << QString::fromLatin1("23:00.123456") << Qt::TextDate << invalidTime();
-    QTest::newRow("TextDate - invalid, seconds") << QString::fromLatin1("23:00:XX") << Qt::TextDate << invalidTime();
-    QTest::newRow("TextDate - invalid, milliseconds") << QString::fromLatin1("23:01:01:XXXX") << Qt::TextDate
+        << u"23:59:59.9999"_s << Qt::TextDate << QTime(23, 59, 59, 999);
+    QTest::newRow("TextDate - invalid, minutes") << u"23:XX:00"_s << Qt::TextDate << invalidTime();
+    QTest::newRow("TextDate - invalid, minute fraction") << u"23:00.123456"_s << Qt::TextDate << invalidTime();
+    QTest::newRow("TextDate - invalid, seconds") << u"23:00:XX"_s << Qt::TextDate << invalidTime();
+    QTest::newRow("TextDate - invalid, milliseconds") << u"23:01:01:XXXX"_s << Qt::TextDate
         << invalidTime();
-    QTest::newRow("TextDate - midnight 24") << QString("24:00:00") << Qt::TextDate << QTime();
+    QTest::newRow("TextDate - midnight 24") << u"24:00:00"_s << Qt::TextDate << QTime();
 
-    QTest::newRow("IsoDate - valid, start of day, omit seconds") << QString::fromLatin1("00:00") << Qt::ISODate << QTime(0, 0, 0);
-    QTest::newRow("IsoDate - valid, omit seconds") << QString::fromLatin1("22:21") << Qt::ISODate << QTime(22, 21, 0);
+    QTest::newRow("IsoDate - valid, start of day, omit seconds") << u"00:00"_s << Qt::ISODate << QTime(0, 0, 0);
+    QTest::newRow("IsoDate - valid, omit seconds") << u"22:21"_s << Qt::ISODate << QTime(22, 21, 0);
     QTest::newRow("IsoDate - minute fraction") // 60 * 0.816666 = 48.99996 should round up:
-        << QString::fromLatin1("22:21.816666") << Qt::ISODate << QTime(22, 21, 49);
-    QTest::newRow("IsoDate - valid, omit seconds (2)") << QString::fromLatin1("23:59") << Qt::ISODate << QTime(23, 59, 0);
-    QTest::newRow("IsoDate - valid, end of day") << QString::fromLatin1("23:59:59") << Qt::ISODate << QTime(23, 59, 59);
+        << u"22:21.816666"_s << Qt::ISODate << QTime(22, 21, 49);
+    QTest::newRow("IsoDate - valid, omit seconds (2)") << u"23:59"_s << Qt::ISODate << QTime(23, 59, 0);
+    QTest::newRow("IsoDate - valid, end of day") << u"23:59:59"_s << Qt::ISODate << QTime(23, 59, 59);
 
-    QTest::newRow("IsoDate - invalid, empty string") << QString::fromLatin1("") << Qt::ISODate << invalidTime();
-    QTest::newRow("IsoDate - invalid, too many hours") << QString::fromLatin1("25:00") << Qt::ISODate << invalidTime();
-    QTest::newRow("IsoDate - invalid, too many minutes") << QString::fromLatin1("10:70") << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, empty string") << u""_s << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, too many hours") << u"25:00"_s << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, too many minutes") << u"10:70"_s << Qt::ISODate << invalidTime();
     // This is a valid time if it happens on June 30 or December 31 (leap seconds).
-    QTest::newRow("IsoDate - invalid, too many seconds") << QString::fromLatin1("23:59:60") << Qt::ISODate << invalidTime();
-    QTest::newRow("IsoDate - invalid, minutes") << QString::fromLatin1("23:XX:00") << Qt::ISODate << invalidTime();
-    QTest::newRow("IsoDate - invalid, not enough minutes") << QString::fromLatin1("23:0") << Qt::ISODate << invalidTime();
-    QTest::newRow("IsoDate - invalid, minute fraction") << QString::fromLatin1("23:00,XX") << Qt::ISODate << invalidTime();
-    QTest::newRow("IsoDate - invalid, seconds") << QString::fromLatin1("23:00:XX") << Qt::ISODate << invalidTime();
-    QTest::newRow("IsoDate - invalid, milliseconds") << QString::fromLatin1("23:01:01:XXXX") << Qt::ISODate
+    QTest::newRow("IsoDate - invalid, too many seconds") << u"23:59:60"_s << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, minutes") << u"23:XX:00"_s << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, not enough minutes") << u"23:0"_s << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, minute fraction") << u"23:00,XX"_s << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, seconds") << u"23:00:XX"_s << Qt::ISODate << invalidTime();
+    QTest::newRow("IsoDate - invalid, milliseconds") << u"23:01:01:XXXX"_s << Qt::ISODate
         << invalidTime();
-    QTest::newRow("IsoDate - zero") << QString("00:00:00") << Qt::ISODate << QTime(0, 0);
-    QTest::newRow("IsoDate - ordinary") << QString("10:12:34") << Qt::ISODate << QTime(10, 12, 34);
+    QTest::newRow("IsoDate - zero") << u"00:00:00"_s << Qt::ISODate << QTime(0, 0);
+    QTest::newRow("IsoDate - ordinary") << u"10:12:34"_s << Qt::ISODate << QTime(10, 12, 34);
     QTest::newRow("IsoDate - milli-max")
-        << QString("19:03:54.998601") << Qt::ISODate << QTime(19, 3, 54, 999);
+        << u"19:03:54.998601"_s << Qt::ISODate << QTime(19, 3, 54, 999);
     QTest::newRow("IsoDate - milli-wrap")
-        << QString("19:03:54.999601") << Qt::ISODate << QTime(19, 3, 55);
+        << u"19:03:54.999601"_s << Qt::ISODate << QTime(19, 3, 55);
     QTest::newRow("IsoDate - midnight-nowrap")
-        << QString("23:59:59.9999") << Qt::ISODate << QTime(23, 59, 59, 999);
+        << u"23:59:59.9999"_s << Qt::ISODate << QTime(23, 59, 59, 999);
     QTest::newRow("IsoDate - midnight 24")
-        << QString("24:00:00") << Qt::ISODate << QTime(0, 0);
+        << u"24:00:00"_s << Qt::ISODate << QTime(0, 0);
     QTest::newRow("IsoDate - minute fraction midnight")
-        << QString("24:00,0") << Qt::ISODate << QTime(0, 0);
+        << u"24:00,0"_s << Qt::ISODate << QTime(0, 0);
 
     // Test Qt::RFC2822Date format (RFC 2822).
-    QTest::newRow("RFC 2822") << QString::fromLatin1("13 Feb 1987 13:24:51 +0100")
+    QTest::newRow("RFC 2822") << u"13 Feb 1987 13:24:51 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
     QTest::newRow("RFC 2822 after space")
-        << QString::fromLatin1(" 13 Feb 1987 13:24:51 +0100")
+        << u" 13 Feb 1987 13:24:51 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
-    QTest::newRow("RFC 2822 with day") << QString::fromLatin1("Thu, 01 Jan 1970 00:12:34 +0000")
+    QTest::newRow("RFC 2822 with day") << u"Thu, 01 Jan 1970 00:12:34 +0000"_s
         << Qt::RFC2822Date << QTime(0, 12, 34);
     QTest::newRow("RFC 2822 with day after space")
-        << QString::fromLatin1(" Thu, 01 Jan 1970 00:12:34 +0000")
+        << u" Thu, 01 Jan 1970 00:12:34 +0000"_s
         << Qt::RFC2822Date << QTime(0, 12, 34);
     // No timezone
-    QTest::newRow("RFC 2822 no timezone") << QString::fromLatin1("01 Jan 1970 00:12:34")
+    QTest::newRow("RFC 2822 no timezone") << u"01 Jan 1970 00:12:34"_s
         << Qt::RFC2822Date << QTime(0, 12, 34);
     // No time specified
-    QTest::newRow("RFC 2822 date only") << QString::fromLatin1("01 Nov 2002")
+    QTest::newRow("RFC 2822 date only") << u"01 Nov 2002"_s
         << Qt::RFC2822Date << invalidTime();
-    QTest::newRow("RFC 2822 with day date only") << QString::fromLatin1("Fri, 01 Nov 2002")
+    QTest::newRow("RFC 2822 with day date only") << u"Fri, 01 Nov 2002"_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 2822 malformed time")
-        << QString::fromLatin1("01 Nov 2002 0:") << Qt::RFC2822Date << QTime();
+        << u"01 Nov 2002 0:"_s << Qt::RFC2822Date << QTime();
     // Test invalid month, day, year are ignored:
-    QTest::newRow("RFC 2822 invalid month name") << QString::fromLatin1("13 Fev 1987 13:24:51 +0100")
+    QTest::newRow("RFC 2822 invalid month name") << u"13 Fev 1987 13:24:51 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
-    QTest::newRow("RFC 2822 invalid day") << QString::fromLatin1("36 Feb 1987 13:24:51 +0100")
+    QTest::newRow("RFC 2822 invalid day") << u"36 Feb 1987 13:24:51 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
-    QTest::newRow("RFC 2822 invalid day name") << QString::fromLatin1("Mud, 23 Feb 1987 13:24:51 +0100")
+    QTest::newRow("RFC 2822 invalid day name") << u"Mud, 23 Feb 1987 13:24:51 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
-    QTest::newRow("RFC 2822 invalid year") << QString::fromLatin1("13 Feb 0000 13:24:51 +0100")
+    QTest::newRow("RFC 2822 invalid year") << u"13 Feb 0000 13:24:51 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
     // Test invalid characters:
     QTest::newRow("RFC 2822 invalid character at end")
-        << QString::fromLatin1("01 Jan 2012 08:00:00 +0100!")
+        << u"01 Jan 2012 08:00:00 +0100!"_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 2822 invalid character at front")
-        << QString::fromLatin1("!01 Jan 2012 08:00:00 +0100")
+        << u"!01 Jan 2012 08:00:00 +0100"_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 2822 invalid character both ends")
-        << QString::fromLatin1("!01 Jan 2012 08:00:00 +0100!")
+        << u"!01 Jan 2012 08:00:00 +0100!"_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 2822 invalid character at front, 2 at back")
-        << QString::fromLatin1("!01 Jan 2012 08:00:00 +0100..")
+        << u"!01 Jan 2012 08:00:00 +0100.."_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 2822 invalid character 2 at front")
-        << QString::fromLatin1("!!01 Jan 2012 08:00:00 +0100")
+        << u"!!01 Jan 2012 08:00:00 +0100"_s
         << Qt::RFC2822Date << invalidTime();
     // The common date text used by the "invalid character" tests, just to be
     // sure *it's* not what's invalid:
     QTest::newRow("RFC 2822 (not invalid)")
-        << QString::fromLatin1("01 Jan 2012 08:00:00 +0100")
+        << u"01 Jan 2012 08:00:00 +0100"_s
         << Qt::RFC2822Date << QTime(8, 0, 0);
 
     // Test Qt::RFC2822Date format (RFC 850 and 1036, permissive).
-    QTest::newRow("RFC 850 and 1036") << QString::fromLatin1("Fri Feb 13 13:24:51 1987 +0100")
+    QTest::newRow("RFC 850 and 1036") << u"Fri Feb 13 13:24:51 1987 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
     QTest::newRow("RFC 850 and 1036 after space")
-        << QString::fromLatin1(" Fri Feb 13 13:24:51 1987 +0100")
+        << u" Fri Feb 13 13:24:51 1987 +0100"_s
         << Qt::RFC2822Date << QTime(13, 24, 51);
     // No timezone
-    QTest::newRow("RFC 850 and 1036 no timezone") << QString::fromLatin1("Thu Jan 01 00:12:34 1970")
+    QTest::newRow("RFC 850 and 1036 no timezone") << u"Thu Jan 01 00:12:34 1970"_s
         << Qt::RFC2822Date << QTime(0, 12, 34);
     // No time specified
-    QTest::newRow("RFC 850 and 1036 date only") << QString::fromLatin1("Fri Nov 01 2002")
+    QTest::newRow("RFC 850 and 1036 date only") << u"Fri Nov 01 2002"_s
         << Qt::RFC2822Date << invalidTime();
     // Test invalid characters.
     QTest::newRow("RFC 850 and 1036 invalid character at end")
-        << QString::fromLatin1("Sun Jan 01 08:00:00 2012 +0100!")
+        << u"Sun Jan 01 08:00:00 2012 +0100!"_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 850 and 1036 invalid character at front")
-        << QString::fromLatin1("!Sun Jan 01 08:00:00 2012 +0100")
+        << u"!Sun Jan 01 08:00:00 2012 +0100"_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 850 and 1036 invalid character both ends")
-        << QString::fromLatin1("!Sun Jan 01 08:00:00 2012 +0100!")
+        << u"!Sun Jan 01 08:00:00 2012 +0100!"_s
         << Qt::RFC2822Date << invalidTime();
     QTest::newRow("RFC 850 and 1036 invalid character at front, 2 at back")
-        << QString::fromLatin1("!Sun Jan 01 08:00:00 2012 +0100..")
+        << u"!Sun Jan 01 08:00:00 2012 +0100.."_s
         << Qt::RFC2822Date << invalidTime();
     // The common date text used by the "invalid character" tests, just to be
     // sure *it's* not what's invalid:
     QTest::newRow("RFC 850 and 1036 no invalid character")
-        << QString::fromLatin1("Sun Jan 01 08:00:00 2012 +0100")
+        << u"Sun Jan 01 08:00:00 2012 +0100"_s
         << Qt::RFC2822Date << QTime(8, 0, 0);
 
-    QTest::newRow("RFC empty") << QString::fromLatin1("") << Qt::RFC2822Date << invalidTime();
+    QTest::newRow("RFC empty") << u""_s << Qt::RFC2822Date << invalidTime();
 }
 
 void tst_QTime::fromStringDateFormat()
@@ -594,18 +596,18 @@ void tst_QTime::toStringDateFormat_data()
     QTest::addColumn<Qt::DateFormat>("format");
     QTest::addColumn<QString>("expected");
 
-    QTest::newRow("00:00:00.000") << QTime(0, 0, 0, 0) << Qt::TextDate << QString("00:00:00");
-    QTest::newRow("ISO 00:00:00.000") << QTime(0, 0, 0, 0) << Qt::ISODate << QString("00:00:00");
-    QTest::newRow("Text 10:12:34.000") << QTime(10, 12, 34, 0) << Qt::TextDate << QString("10:12:34");
-    QTest::newRow("ISO 10:12:34.000") << QTime(10, 12, 34, 0) << Qt::ISODate << QString("10:12:34");
-    QTest::newRow("Text 10:12:34.001") << QTime(10, 12, 34, 001) << Qt::TextDate << QString("10:12:34");
-    QTest::newRow("ISO 10:12:34.001") << QTime(10, 12, 34, 001) << Qt::ISODate << QString("10:12:34");
-    QTest::newRow("Text 10:12:34.999") << QTime(10, 12, 34, 999) << Qt::TextDate << QString("10:12:34");
-    QTest::newRow("ISO 10:12:34.999") << QTime(10, 12, 34, 999) << Qt::ISODate << QString("10:12:34");
-    QTest::newRow("RFC2822Date") << QTime(10, 12, 34, 999) << Qt::RFC2822Date << QString("10:12:34");
-    QTest::newRow("ISOWithMs 10:12:34.000") << QTime(10, 12, 34, 0) << Qt::ISODateWithMs << QString("10:12:34.000");
-    QTest::newRow("ISOWithMs 10:12:34.020") << QTime(10, 12, 34, 20) << Qt::ISODateWithMs << QString("10:12:34.020");
-    QTest::newRow("ISOWithMs 10:12:34.999") << QTime(10, 12, 34, 999) << Qt::ISODateWithMs << QString("10:12:34.999");
+    QTest::newRow("00:00:00.000") << QTime(0, 0, 0, 0) << Qt::TextDate << u"00:00:00"_s;
+    QTest::newRow("ISO 00:00:00.000") << QTime(0, 0, 0, 0) << Qt::ISODate << u"00:00:00"_s;
+    QTest::newRow("Text 10:12:34.000") << QTime(10, 12, 34, 0) << Qt::TextDate << u"10:12:34"_s;
+    QTest::newRow("ISO 10:12:34.000") << QTime(10, 12, 34, 0) << Qt::ISODate << u"10:12:34"_s;
+    QTest::newRow("Text 10:12:34.001") << QTime(10, 12, 34, 001) << Qt::TextDate << u"10:12:34"_s;
+    QTest::newRow("ISO 10:12:34.001") << QTime(10, 12, 34, 001) << Qt::ISODate << u"10:12:34"_s;
+    QTest::newRow("Text 10:12:34.999") << QTime(10, 12, 34, 999) << Qt::TextDate << u"10:12:34"_s;
+    QTest::newRow("ISO 10:12:34.999") << QTime(10, 12, 34, 999) << Qt::ISODate << u"10:12:34"_s;
+    QTest::newRow("RFC2822Date") << QTime(10, 12, 34, 999) << Qt::RFC2822Date << u"10:12:34"_s;
+    QTest::newRow("ISOWithMs 10:12:34.000") << QTime(10, 12, 34, 0) << Qt::ISODateWithMs << u"10:12:34.000"_s;
+    QTest::newRow("ISOWithMs 10:12:34.020") << QTime(10, 12, 34, 20) << Qt::ISODateWithMs << u"10:12:34.020"_s;
+    QTest::newRow("ISOWithMs 10:12:34.999") << QTime(10, 12, 34, 999) << Qt::ISODateWithMs << u"10:12:34.999"_s;
 }
 
 void tst_QTime::toStringDateFormat()
@@ -623,14 +625,14 @@ void tst_QTime::toStringFormat_data()
     QTest::addColumn<QString>("format");
     QTest::addColumn<QString>("str");
 
-    QTest::newRow( "midnight" ) << QTime(0,0,0,0) << QString("h:m:s:z") << QString("0:0:0:0");
-    QTest::newRow( "full" ) << QTime(10,12,34,53) << QString("hh:mm:ss:zzz") << QString("10:12:34:053");
-    QTest::newRow( "short-msecs-lt100" ) << QTime(10,12,34,45) << QString("hh:m:ss:z") << QString("10:12:34:045");
-    QTest::newRow( "short-msecs-gt100" ) << QTime(10,12,34,450) << QString("hh:m:ss:z") << QString("10:12:34:45");
-    QTest::newRow( "am-pm" ) << QTime(10,12,34,45) << QString("hh:ss ap") << QString("10:34 am");
-    QTest::newRow( "AM-PM" ) << QTime(22,12,34,45) << QString("hh:zzz AP") << QString("10:045 PM");
-    QTest::newRow( "invalid" ) << QTime(230,230,230,230) << QString("hh:mm:ss") << QString();
-    QTest::newRow( "empty format" ) << QTime(4,5,6,6) << QString("") << QString("");
+    QTest::newRow( "midnight" ) << QTime(0,0,0,0) << u"h:m:s:z"_s << u"0:0:0:0"_s;
+    QTest::newRow( "full" ) << QTime(10,12,34,53) << u"hh:mm:ss:zzz"_s << u"10:12:34:053"_s;
+    QTest::newRow( "short-msecs-lt100" ) << QTime(10,12,34,45) << u"hh:m:ss:z"_s << u"10:12:34:045"_s;
+    QTest::newRow( "short-msecs-gt100" ) << QTime(10,12,34,450) << u"hh:m:ss:z"_s << u"10:12:34:45"_s;
+    QTest::newRow( "am-pm" ) << QTime(10,12,34,45) << u"hh:ss ap"_s << u"10:34 am"_s;
+    QTest::newRow( "AM-PM" ) << QTime(22,12,34,45) << u"hh:zzz AP"_s << u"10:045 PM"_s;
+    QTest::newRow( "invalid" ) << QTime(230,230,230,230) << u"hh:mm:ss"_s << QString();
+    QTest::newRow( "empty format" ) << QTime(4,5,6,6) << u""_s << u""_s;
 }
 
 void tst_QTime::toStringFormat()
@@ -677,10 +679,7 @@ void tst_QTime::msecsSinceStartOfDay()
 
     QTime time = QTime::fromMSecsSinceStartOfDay(msecs);
     QCOMPARE(time.isValid(), isValid);
-    if (msecs >= 0)
-        QCOMPARE(time.msecsSinceStartOfDay(), msecs);
-    else
-        QCOMPARE(time.msecsSinceStartOfDay(), 0);
+    QCOMPARE(time.msecsSinceStartOfDay(), msecs < 0 ? 0 : msecs);
     QCOMPARE(time.hour(), hour);
     QCOMPARE(time.minute(), minute);
     QCOMPARE(time.second(), second);

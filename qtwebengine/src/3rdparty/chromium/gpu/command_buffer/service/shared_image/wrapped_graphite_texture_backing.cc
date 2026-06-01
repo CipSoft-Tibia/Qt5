@@ -13,6 +13,7 @@
 #include "gpu/command_buffer/service/shared_image/gl_texture_passthrough_fallback_image_representation.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
+#include "gpu/command_buffer/service/shared_image/skia_gl_image_representation.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/core/SkSurface.h"
 #include "third_party/skia/include/core/SkSurfaceProps.h"
@@ -69,8 +70,7 @@ class WrappedGraphiteTextureBacking::SkiaGraphiteImageRepresentationImpl
     CHECK(write_surfaces_.empty());
     write_surfaces_.reserve(texture_holders.size());
     for (int plane = 0; plane < format().NumberOfPlanes(); ++plane) {
-      auto color_type =
-          viz::ToClosestSkColorType(/*gpu_compositing=*/true, format(), plane);
+      auto color_type = viz::ToClosestSkColorType(format(), plane);
       void* release_context =
           scoped_refptr<WrappedGraphiteTextureHolder>(texture_holders[plane])
               .release();
@@ -256,7 +256,7 @@ SharedImageBackingType WrappedGraphiteTextureBacking::GetType() const {
 
 void WrappedGraphiteTextureBacking::Update(
     std::unique_ptr<gfx::GpuFence> in_fence) {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 bool WrappedGraphiteTextureBacking::UploadFromMemory(
@@ -295,8 +295,7 @@ bool WrappedGraphiteTextureBacking::ReadbackToMemory(
 
   std::vector<ReadPixelsContext> contexts(format().NumberOfPlanes());
   for (int i = 0; i < format().NumberOfPlanes(); i++) {
-    const auto color_type =
-        viz::ToClosestSkColorType(/*gpu_compositing=*/true, format(), i);
+    const auto color_type = viz::ToClosestSkColorType(format(), i);
     sk_sp<SkImage> sk_image =
         SkImages::WrapTexture(context_state_->gpu_main_graphite_recorder(),
                               texture_holders_[i]->texture(), color_type,
@@ -378,12 +377,31 @@ WrappedGraphiteTextureBacking::ProduceSkiaGraphite(
       manager, this, tracker, std::move(context_state));
 }
 
+std::unique_ptr<SkiaGaneshImageRepresentation>
+WrappedGraphiteTextureBacking::ProduceSkiaGanesh(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
+  // Used with Graphite-Vulkan-Swiftshader backend for testing, but the context
+  // passed in is GLContext for passthrough command decoder. See
+  // crbug.com/394385381 for more details.
+  CHECK(context_state->IsUsingGL());
+  CHECK(usage().Has(SHARED_IMAGE_USAGE_GLES2_READ));
+  auto gl_representation = ProduceGLTexturePassthrough(manager, tracker);
+  if (!gl_representation) {
+    return nullptr;
+  }
+  return SkiaGLImageRepresentation::Create(std::move(gl_representation),
+                                           std::move(context_state), manager,
+                                           this, tracker);
+}
+
 #if BUILDFLAG(SKIA_USE_DAWN)
 std::unique_ptr<GLTexturePassthroughImageRepresentation>
 WrappedGraphiteTextureBacking::ProduceGLTexturePassthrough(
     SharedImageManager* manager,
     MemoryTypeTracker* tracker) {
-  CHECK(context_state_->IsGraphiteDawnVulkan());
+  //CHECK(context_state_->IsGraphiteDawnVulkan());
   if (context_state_->context_lost()) {
     return nullptr;
   }
@@ -400,7 +418,7 @@ WrappedGraphiteTextureBacking::ProduceDawn(
     wgpu::BackendType backend_type,
     std::vector<wgpu::TextureFormat> view_formats,
     scoped_refptr<SharedContextState> context_state) {
-  CHECK(context_state_->IsGraphiteDawnVulkan());
+  //CHECK(context_state_->IsGraphiteDawnVulkan());
   if (context_state_->context_lost()) {
     return nullptr;
   }

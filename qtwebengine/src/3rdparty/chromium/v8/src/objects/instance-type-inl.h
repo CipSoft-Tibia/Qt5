@@ -11,7 +11,6 @@
 #include "src/execution/isolate-utils-inl.h"
 #include "src/objects/instance-type-checker.h"
 #include "src/objects/instance-type.h"
-#include "src/objects/map-inl.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
@@ -516,6 +515,12 @@ V8_INLINE constexpr bool IsNativeContextSpecific(InstanceType instance_type) {
   } else if (InstanceTypeChecker::IsAlwaysSharedSpaceJSObject(instance_type)) {
     // JSObjects allocated in shared space are never tied to a native context.
     return false;
+
+#if V8_ENABLE_WEBASSEMBLY
+  } else if (InstanceTypeChecker::IsWasmObject(instance_type)) {
+    // Wasm structs/arrays are not tied to a native context.
+    return false;
+#endif
   }
   return true;
 }

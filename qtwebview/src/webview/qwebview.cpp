@@ -10,7 +10,7 @@
 QT_BEGIN_NAMESPACE
 
 QWebView::QWebView(QObject *p)
-    : QObject(p)
+    : QAbstractWebView(p)
     , d(QWebViewFactory::createWebView())
     , m_settings(new QWebViewSettings(d->getSettings()))
     , m_progress(0)
@@ -23,7 +23,6 @@ QWebView::QWebView(QObject *p)
     connect(d, &QAbstractWebView::loadingChanged, this, &QWebView::onLoadingChanged);
     connect(d, &QAbstractWebView::loadProgressChanged, this, &QWebView::onLoadProgressChanged);
     connect(d, &QAbstractWebView::httpUserAgentChanged, this, &QWebView::onHttpUserAgentChanged);
-    connect(d, &QAbstractWebView::requestFocus, this, &QWebView::requestFocus);
     connect(d, &QAbstractWebView::javaScriptResult,
             this, &QWebView::javaScriptResult);
     connect(d, &QAbstractWebView::cookieAdded, this, &QWebView::cookieAdded);
@@ -102,45 +101,14 @@ bool QWebView::isLoading() const
     return d->isLoading();
 }
 
-void QWebView::setParentView(QObject *view)
-{
-    d->setParentView(view);
-}
-
-QObject *QWebView::parentView() const
-{
-    return d->parentView();
-}
-
-void QWebView::setGeometry(const QRect &geometry)
-{
-    d->setGeometry(geometry);
-}
-
-void QWebView::setVisibility(QWindow::Visibility visibility)
-{
-    d->setVisibility(visibility);
-}
-
-void QWebView::setVisible(bool visible)
-{
-    d->setVisible(visible);
-}
-
-void QWebView::setFocus(bool focus)
-{
-    d->setFocus(focus);
-}
-
-void QWebView::updatePolish()
-{
-    d->updatePolish();
-
-}
-
 QWebViewSettings *QWebView::getSettings() const
 {
     return m_settings;
+}
+
+QWindow *QWebView::nativeWindow() const
+{
+    return d->nativeWindow();
 }
 
 void QWebView::loadHtml(const QString &html, const QUrl &baseUrl)
@@ -213,11 +181,6 @@ void QWebView::onHttpUserAgentChanged(const QString &userAgent)
     Q_EMIT httpUserAgentChanged();
 }
 
-void QWebView::init()
-{
-    d->init();
-}
-
 QWebViewSettings::QWebViewSettings(QAbstractWebViewSettings *settings)
     : d(settings)
 {
@@ -245,15 +208,15 @@ void QWebViewSettings::setLocalStorageEnabled(bool enabled)
 
 bool QWebViewSettings::javaScriptEnabled() const
 {
-    return d->javascriptEnabled();
+    return d->javaScriptEnabled();
 }
 
 void QWebViewSettings::setJavaScriptEnabled(bool enabled)
 {
-    if (d->javascriptEnabled() == enabled)
+    if (d->javaScriptEnabled() == enabled)
         return;
 
-    d->setJavascriptEnabled(enabled);
+    d->setJavaScriptEnabled(enabled);
     emit javaScriptEnabledChanged();
 }
 

@@ -34,7 +34,7 @@
   \target embedded eglfs
   \section2 EGLFS
 
-  \l {http://www.khronos.org/egl}{EGL} is an interface between OpenGL and the
+  \l {https://www.khronos.org/egl}{EGL} is an interface between OpenGL and the
   native windowing system. Qt can use EGL for context and surface management,
   however the API contains no platform-specifics. Creating a \e {native window},
   which won't necessarily be an actual window on the screen, must still be
@@ -415,6 +415,10 @@
 
   Most of these configuration options apply to all KMS/DRM-based backends,
   regardless of the buffer management technology (GBM or EGLStreams).
+
+  \note Configurations files are considered trusted content that is fully
+  controlled and managed by the device or platform creator. They are not
+  expected to be exposed to the end-user in any form.
 
   Here's an example configuration:
 
@@ -870,7 +874,7 @@
 
   This is the X11 plugin used on regular desktop Linux platforms. In some
   embedded environments, that provide X and the necessary development files for
-  \l {http://xcb.freedesktop.org}{xcb}, this plugin functions just like it
+  \l {https://xcb.freedesktop.org}{xcb}, this plugin functions just like it
   does on a regular PC desktop.
 
   \note On some devices there is no EGL and OpenGL support available under X
@@ -886,7 +890,7 @@
 
   \section2 Wayland
 
-  \l{http://wayland.freedesktop.org/}{Wayland} is a light-weight windowing
+  \l{https://wayland.freedesktop.org/}{Wayland} is a light-weight windowing
   system; or more precisely, it is a protocol for clients to talk to a display
   server.
 
@@ -899,7 +903,7 @@
 
   \section2 Use hardware rendering where possible
   When performance is critical to your application, avoid the use of Qt modules
-  that rely on software rendering, such as \l{Qt Charts}. Prefer modules that rely on
+  that rely on software rendering. Prefer modules that rely on
   hardware rendering instead, where possible.
 
   \section2 Follow the best practices for Qt Quick

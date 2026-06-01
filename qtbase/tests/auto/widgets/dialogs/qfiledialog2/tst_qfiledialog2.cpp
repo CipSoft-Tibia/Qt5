@@ -26,6 +26,7 @@
 #include <qmenu.h>
 #include <qrandom.h>
 #include <qpointer.h>
+#include <qsettings.h>
 #include "../../../../../src/widgets/dialogs/qsidebar_p.h"
 #include "../../../../../src/gui/itemmodels/qfilesystemmodel_p.h"
 #include "../../../../../src/widgets/dialogs/qfiledialog_p.h"

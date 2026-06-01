@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKRECTANGLE_P_P_H
 #define QQUICKRECTANGLE_P_P_H
@@ -44,17 +45,25 @@ public:
 
     struct ExtraData {
         ExtraData()
-            : topLeftRadius(-1.),
-              topRightRadius(-1.),
-              bottomLeftRadius(-1.),
-              bottomRightRadius(-1.)
+            : topLeftRadius(0),
+              topRightRadius(0),
+              bottomLeftRadius(0),
+              bottomRightRadius(0),
+              isTopLeftRadiusSet(false),
+              isTopRightRadiusSet(false),
+              isBottomLeftRadiusSet(false),
+              isBottomRightRadiusSet(false)
         {
         }
-
         qreal topLeftRadius;
         qreal topRightRadius;
         qreal bottomLeftRadius;
         qreal bottomRightRadius;
+
+        unsigned isTopLeftRadiusSet : 1;
+        unsigned isTopRightRadiusSet : 1;
+        unsigned isBottomLeftRadiusSet : 1;
+        unsigned isBottomRightRadiusSet : 1;
     };
     QLazilyAllocated<ExtraData> extraRectangle;
 

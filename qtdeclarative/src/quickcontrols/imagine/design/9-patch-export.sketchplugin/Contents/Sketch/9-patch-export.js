@@ -1,4 +1,5 @@
 // 9-patch export
+// Qt-Security score:significant reason:default
 //
 // This plugin crops upscaled 9-patch PNG assets when exported from Sketch,
 // to ensure that 9-patch borders remain 1px wide when upscaled.

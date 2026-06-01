@@ -7,6 +7,8 @@
 
 #include <QtDBus/QDBusPendingReply>
 
+using namespace QtSensorsPrivate;
+
 char const * const IIOSensorProxyProximitySensor::id("iio-sensor-proxy.proximitysensor");
 
 static inline QString dbusPath() { return QStringLiteral("/net/hadess/SensorProxy"); }

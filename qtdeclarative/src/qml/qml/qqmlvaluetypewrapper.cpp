@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlvaluetypewrapper_p.h"
 
@@ -545,6 +546,7 @@ bool QQmlValueTypeWrapper::write(QObject *target, int propertyIndex) const
     bool destructGadgetOnExit = false;
     auto cleanup = qScopeGuard([&]() {
         if (destructGadgetOnExit) {
+            d()->setDirty(true);
             d()->metaType().destruct(d()->gadgetPtr());
             d()->setGadgetPtr(nullptr);
         }
@@ -758,7 +760,10 @@ bool QQmlValueTypeWrapper::virtualPut(Managed *m, PropertyKey id, const Value &v
             return true;
         } else if (referenceObject) {
             if (Q_UNLIKELY(lcBuiltinsBindingRemoval().isInfoEnabled())) {
-                if (auto binding = QQmlPropertyPrivate::binding(referenceObject, QQmlPropertyIndex(referencePropertyIndex, pd.coreIndex()))) {
+                if (auto binding = QQmlPropertyPrivate::binding(
+                            referenceObject,
+                            QQmlPropertyIndex(referencePropertyIndex, pd.coreIndex()));
+                        binding && !binding->isSticky()) {
                     Q_ASSERT(binding->kind() == QQmlAbstractBinding::QmlBinding);
                     const auto qmlBinding = static_cast<const QQmlBinding*>(binding);
                     const auto stackFrame = v4->currentStackFrame;
@@ -770,7 +775,8 @@ bool QQmlValueTypeWrapper::virtualPut(Managed *m, PropertyKey id, const Value &v
                            qPrintable(stackFrame->source()), stackFrame->lineNumber());
                 }
             }
-            QQmlPropertyPrivate::removeBinding(referenceObject, QQmlPropertyIndex(referencePropertyIndex, pd.coreIndex()));
+            QQmlPropertyPrivate::removeBinding(
+                    referenceObject, QQmlPropertyIndex(referencePropertyIndex, pd.coreIndex()));
         }
     }
 

@@ -10,9 +10,7 @@
 #include <QtQml/private/qqmljslexer_p.h>
 
 #include <QString>
-
 #include <algorithm>
-#include <limits>
 
 QT_BEGIN_NAMESPACE
 namespace QQmlJS {
@@ -46,6 +44,10 @@ void ScriptFormatter::lnAcceptIndented(Node *node)
 
 bool ScriptFormatter::acceptBlockOrIndented(Node *ast, bool finishWithSpaceOrNewline)
 {
+    if (auto *es = cast<EmptyStatement *>(ast)) {
+        writeOutSemicolon(es);
+        return false;
+    }
     if (cast<Block *>(ast)) {
         lw.lineWriter.ensureSpace();
         accept(ast);
@@ -92,7 +94,7 @@ bool ScriptFormatter::visit(StringLiteral *ast)
     // correctly handle multiline literals
     if (ast->literalToken.length == 0)
         return true;
-    QStringView str = loc2Str(ast->literalToken);
+    QStringView str = m_script->loc2Str(ast->literalToken);
     if (lw.indentNextlines && str.contains(QLatin1Char('\n'))) {
         out(str.mid(0, 1));
         lw.indentNextlines = false;
@@ -208,6 +210,7 @@ bool ScriptFormatter::visit(AST::PatternProperty *property)
         out(f->lparenToken);
         accept(f->formals);
         out(f->rparenToken);
+        lw.lineWriter.ensureSpace();
         out(f->lbraceToken);
         const bool scoped = f->lbraceToken.isValid();
         if (scoped)
@@ -287,7 +290,7 @@ bool ScriptFormatter::visit(TemplateLiteral *ast)
 {
     // correctly handle multiline literals
     if (ast->literalToken.length != 0) {
-        QStringView str = loc2Str(ast->literalToken);
+        QStringView str = m_script->loc2Str(ast->literalToken);
         if (lw.indentNextlines && str.contains(QLatin1Char('\n'))) {
             out(str.mid(0, 1));
             lw.indentNextlines = false;
@@ -456,14 +459,33 @@ bool ScriptFormatter::visit(ConditionalExpression *ast)
 
 bool ScriptFormatter::visit(Block *ast)
 {
+    // write comments manually because we need to indent before writing a potential post comment
+    const CommentedElement *c =
+            comments->commentForNode(ast, CommentAnchor::from(ast->lbraceToken));
+    if (c)
+        c->writePre(lw);
     out(ast->lbraceToken);
+    const int indent = lw.increaseIndent();
+    if (c)
+        c->writePost(lw);
+
     if (ast->statements) {
         ++expressionDepth;
-        lnAcceptIndented(ast->statements);
-        newLine();
+        lw.lineWriter.ensureNewline();
+        accept(ast->statements);
+        lw.lineWriter.ensureNewline();
         --expressionDepth;
     }
+
+    // write comments manually because we need to write a potential pre-comment before decreasing
+    // the indentation
+    c = comments->commentForNode(ast, CommentAnchor::from(ast->rbraceToken));
+    if (c)
+        c->writePre(lw);
+    lw.decreaseIndent(1, indent);
     out(ast->rbraceToken);
+    if (c)
+        c->writePost(lw);
     return false;
 }
 
@@ -473,7 +495,7 @@ bool ScriptFormatter::visit(VariableStatement *ast)
     lw.lineWriter.ensureSpace();
     accept(ast->declarations);
     if (addSemicolons())
-        out(";");
+        writeOutSemicolon(ast);
     return false;
 }
 
@@ -508,12 +530,41 @@ bool ScriptFormatter::visit(PatternElement *ast)
         }
         accept(ast->initializer);
     }
+    accept(ast->typeAnnotation);
     return false;
 }
 
-bool ScriptFormatter::visit(EmptyStatement *ast)
+bool ScriptFormatter::visit(TypeAnnotation *ast)
 {
-    out(ast->semicolonToken);
+    out(ast->colonToken);
+    lw.lineWriter.ensureSpace();
+    accept(ast->type);
+    return false;
+}
+
+bool ScriptFormatter::visit(Type *ast)
+{
+    accept(ast->typeId);
+    if (ast->typeArgument) {
+        outWithComments(ast->lAngleBracketToken, ast);
+        accept(ast->typeArgument);
+        outWithComments(ast->rAngleBracketToken, ast);
+    }
+    return false;
+}
+
+bool ScriptFormatter::visit(UiQualifiedId *ast)
+{
+    for (UiQualifiedId *it = ast; it; it = it->next) {
+        outWithComments(it->dotToken, it);
+        outWithComments(it->identifierToken, it);
+    }
+    return false;
+}
+
+bool ScriptFormatter::visit(EmptyStatement *)
+{
+    lw.lineWriter.ensureSemicolon();
     return false;
 }
 
@@ -545,9 +596,9 @@ bool ScriptFormatter::visit(DoWhileStatement *ast)
     acceptBlockOrIndented(ast->statement, true);
     out(ast->whileToken);
     lw.lineWriter.ensureSpace();
-    out(ast->lparenToken);
+    outWithComments(ast->lparenToken, ast);
     accept(ast->expression);
-    out(ast->rparenToken);
+    outWithComments(ast->rparenToken, ast);
     return false;
 }
 
@@ -555,9 +606,9 @@ bool ScriptFormatter::visit(WhileStatement *ast)
 {
     out(ast->whileToken);
     lw.lineWriter.ensureSpace();
-    out(ast->lparenToken);
+    outWithComments(ast->lparenToken, ast);
     accept(ast->expression);
-    out(ast->rparenToken);
+    outWithComments(ast->rparenToken, ast);
     acceptBlockOrIndented(ast->statement);
     return false;
 }
@@ -566,7 +617,7 @@ bool ScriptFormatter::visit(ForStatement *ast)
 {
     out(ast->forToken);
     lw.lineWriter.ensureSpace();
-    out(ast->lparenToken);
+    outWithComments(ast->lparenToken, ast);
     if (ast->initialiser) {
         accept(ast->initialiser);
     } else if (ast->declarations) {
@@ -583,13 +634,15 @@ bool ScriptFormatter::visit(ForStatement *ast)
             accept(it->declaration);
         }
     }
-    out(";"); // ast->firstSemicolonToken
+    // We don't use writeOutSemicolon() here because we need a semicolon unconditionally.
+    // Repeats for the second semicolon token below.
+    out(u";"); // ast->firstSemicolonToken
     lw.lineWriter.ensureSpace();
     accept(ast->condition);
-    out(";"); // ast->secondSemicolonToken
+    out(u";"); // ast->secondSemicolonToken
     lw.lineWriter.ensureSpace();
     accept(ast->expression);
-    out(ast->rparenToken);
+    outWithComments(ast->rparenToken, ast);
     acceptBlockOrIndented(ast->statement);
     return false;
 }
@@ -621,7 +674,7 @@ bool ScriptFormatter::visit(ContinueStatement *ast)
         out(ast->identifierToken);
     }
     if (addSemicolons())
-        out(";");
+        writeOutSemicolon(ast);
     return false;
 }
 
@@ -633,7 +686,7 @@ bool ScriptFormatter::visit(BreakStatement *ast)
         out(ast->identifierToken);
     }
     if (addSemicolons())
-        out(";");
+        writeOutSemicolon(ast);
     return false;
 }
 
@@ -646,7 +699,7 @@ bool ScriptFormatter::visit(ReturnStatement *ast)
         accept(ast->expression);
     }
     if (ast->returnToken.length > 0 && addSemicolons())
-        out(";");
+        writeOutSemicolon(ast);
     return false;
 }
 
@@ -671,7 +724,7 @@ bool ScriptFormatter::visit(ThrowStatement *ast)
         accept(ast->expression);
     }
     if (addSemicolons())
-        out(";");
+        writeOutSemicolon(ast);
     return false;
 }
 
@@ -808,6 +861,7 @@ bool ScriptFormatter::visit(FunctionExpression *ast)
     accept(ast->formals);
     lw.decreaseIndent(1, baseIndent);
     outWithComments(ast->rparenToken, ast, removeParentheses ? OnlyComments : NoSpace);
+    accept(ast->typeAnnotation);
     lw.lineWriter.ensureSpace();
     if (ast->isArrowFunction) {
         out("=>");
@@ -864,7 +918,7 @@ bool ScriptFormatter::visit(StatementList *ast)
     for (StatementList *it = ast; it; it = it->next) {
         // ### work around parser bug: skip empty statements with wrong tokens
         if (EmptyStatement *emptyStatement = cast<EmptyStatement *>(it->statement)) {
-            if (loc2Str(emptyStatement->semicolonToken) != QLatin1String(";"))
+            if (m_script->loc2Str(emptyStatement->semicolonToken) != QLatin1String(";"))
                 continue;
         }
 
@@ -950,7 +1004,7 @@ bool ScriptFormatter::visit(CommaExpression *el)
 bool ScriptFormatter::visit(ExpressionStatement *el)
 {
     if (addSemicolons())
-        postOps[el->expression].append([this]() { out(";"); });
+        postOps[el->expression].append([this, el]() { writeOutSemicolon(el); });
     return true;
 }
 
@@ -1111,16 +1165,16 @@ void ScriptFormatter::endVisit(ComputedPropertyName *)
 void ScriptFormatter::endVisit(AST::ExportDeclaration *ast)
 {
     // add a semicolon at the end of the following expressions
-    // export * FromClause ;
+    // export * FromClause
     // export ExportClause FromClause ;
     if (ast->fromClause) {
-        out(";");
+        writeOutSemicolon(ast);
     }
 
     // add a semicolon at the end of the following expressions
     // export ExportClause ;
     if (ast->exportClause && !ast->fromClause) {
-        out(";");
+        writeOutSemicolon(ast);
     }
 
     // add a semicolon at the end of the following expressions
@@ -1129,7 +1183,7 @@ void ScriptFormatter::endVisit(AST::ExportDeclaration *ast)
         // lookahead ∉ { function, class }
         if (!(ast->variableStatementOrDeclaration->kind == Node::Kind_FunctionDeclaration
               || ast->variableStatementOrDeclaration->kind == Node::Kind_ClassDeclaration)) {
-            out(";");
+            writeOutSemicolon(ast);
         }
         // ArrowFunction in QQmlJS::AST is handled with the help of FunctionDeclaration
         // and not as part of AssignmentExpression (as per ECMA
@@ -1137,7 +1191,7 @@ void ScriptFormatter::endVisit(AST::ExportDeclaration *ast)
         if (ast->variableStatementOrDeclaration->kind == Node::Kind_FunctionDeclaration
             && static_cast<AST::FunctionDeclaration *>(ast->variableStatementOrDeclaration)
                        ->isArrowFunction) {
-            out(";");
+            writeOutSemicolon(ast);
         }
     }
 }
@@ -1158,9 +1212,9 @@ void ScriptFormatter::endVisit(AST::NamedImports *ast)
     out(ast->rightBraceToken);
 }
 
-void ScriptFormatter::endVisit(AST::ImportDeclaration *)
+void ScriptFormatter::endVisit(AST::ImportDeclaration *id)
 {
-    out(";");
+    writeOutSemicolon(id);
 }
 
 void ScriptFormatter::throwRecursionDepthError()
@@ -1168,12 +1222,82 @@ void ScriptFormatter::throwRecursionDepthError()
     out("/* ERROR: Hit recursion limit  ScriptFormatter::visiting AST, rewrite failed */");
 }
 
-void reformatAst(OutWriter &lw, const std::shared_ptr<AstComments> &comments,
-                 const std::function<QStringView(SourceLocation)> &loc2Str, AST::Node *n)
+// This is a set of characters that are not allowed to be at the beginning of a line
+// after a semicolon for ASI.
+
+static constexpr QStringView restrictedChars = u"([/+-";
+
+// Given an existing semicolon, can we safely remove it without changing behavior
+bool ScriptFormatter::canRemoveSemicolon(AST::Node *node)
 {
-    if (n) {
-        ScriptFormatter formatter(lw, comments, loc2Str, n);
+    const auto canRelyOnASI = [this](Node *node) {
+        auto nodeLoc = node->lastSourceLocation().offset + 1;
+        auto code = m_script->engine()->code();
+        // Bounds check for nodeLoc
+        if (qsizetype(nodeLoc) >= code.size())
+            return false;
+        auto startIt = code.begin() + nodeLoc;
+        auto endIt = std::find_first_of(startIt, code.end(), restrictedChars.begin(),
+                                        restrictedChars.end());
+        // No restricted character found, then it is safe to remove the semicolon
+        if (endIt == code.end())
+            return true;
+
+        // Check if there is at least one character between nodeLoc and the found character
+        // that are neither space chars nor semicolons.
+        bool hasOtherChars =
+                std::any_of(startIt, endIt, [](QChar ch) { return !(ch.isSpace() || ch == u';'); });
+
+        if (hasOtherChars)
+            return true;
+
+        // Check if there is no linebreak between nodeLoc and the found character
+        return std::none_of(startIt, endIt, [](QChar c) { return c == u'\n'; });
+    };
+
+    // Check if the node is a statement that requires a semicolon to avoid ASI issues
+    switch (node->kind) {
+    case AST::Node::Kind_ExpressionStatement:
+        return canRelyOnASI(cast<ExpressionStatement *>(node));
+    case AST::Node::Kind_VariableStatement:
+        return canRelyOnASI(cast<VariableStatement *>(node));
+    case AST::Node::Kind_EmptyStatement:
+        return false;
+    case AST::Node::Kind_ContinueStatement:
+    case AST::Node::Kind_BreakStatement:
+    case AST::Node::Kind_ReturnStatement:
+    case AST::Node::Kind_ThrowStatement:
+    case AST::Node::Kind_ExportDeclaration:
+    case AST::Node::Kind_ImportDeclaration:
+    case AST::Node::Kind_FromClause:
+    case AST::Node::Kind_ExportClause:
+    default:
+        return true;
     }
+}
+
+OutWriter &ScriptFormatter::writeOutSemicolon(AST::Node *node)
+{
+    if (!node)
+        return lw;
+    switch (lw.lineWriter.options().semicolonRule) {
+    case LineWriterOptions::SemicolonRule::Essential:
+        if (!canRemoveSemicolon(node))
+            out(u";");
+        lw.lineWriter.ensureNewline();
+        return lw;
+    case LineWriterOptions::SemicolonRule::Always:
+        out(u";");
+        return lw;
+    default:
+        Q_UNREACHABLE_RETURN(lw);
+    }
+}
+
+void reformatAst(OutWriter &lw, const QQmlJS::Dom::ScriptExpression *const script)
+{
+    if (script)
+        ScriptFormatter formatter(lw, script);
 }
 
 } // namespace Dom

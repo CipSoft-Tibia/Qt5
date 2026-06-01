@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "components/update_client/update_checker.h"
 
 #include <initializer_list>
@@ -65,11 +60,10 @@ class UpdateCheckerTest : public testing::TestWithParam<bool> {
   void SetUp() override;
   void TearDown() override;
 
-  void UpdateCheckComplete(
-      const std::optional<ProtocolParser::Results>& results,
-      ErrorCategory error_category,
-      int error,
-      int retry_after_sec);
+  void UpdateCheckComplete(std::optional<ProtocolParser::Results> results,
+                           ErrorCategory error_category,
+                           int error,
+                           int retry_after_sec);
 
  protected:
   void Quit();
@@ -162,7 +156,7 @@ void UpdateCheckerTest::Quit() {
 }
 
 void UpdateCheckerTest::UpdateCheckComplete(
-    const std::optional<ProtocolParser::Results>& results,
+    std::optional<ProtocolParser::Results> results,
     ErrorCategory error_category,
     int error,
     int retry_after_sec) {
@@ -174,12 +168,10 @@ void UpdateCheckerTest::UpdateCheckComplete(
 }
 
 scoped_refptr<UpdateContext> UpdateCheckerTest::MakeMockUpdateContext() const {
-  CrxCache::Options options(temp_dir_.GetPath());
   return base::MakeRefCounted<UpdateContext>(
-      config_, base::MakeRefCounted<CrxCache>(options), false, false,
-      std::vector<std::string>(), UpdateClient::CrxStateChangeCallback(),
-      UpdateEngine::NotifyObserversCallback(), UpdateEngine::Callback(),
-      nullptr,
+      config_, base::MakeRefCounted<CrxCache>(temp_dir_.GetPath()), false,
+      false, std::vector<std::string>(), UpdateClient::CrxStateChangeCallback(),
+      UpdateEngine::Callback(), nullptr,
       /*is_update_check_only=*/false);
 }
 
@@ -201,7 +193,7 @@ std::unique_ptr<Component> UpdateCheckerTest::MakeComponent(
   crx_component.brand = brand;
   crx_component.install_data_index = install_data_index;
   crx_component.name = "test_jebg";
-  crx_component.pk_hash.assign(jebg_hash, jebg_hash + std::size(jebg_hash));
+  crx_component.pk_hash.assign(std::begin(jebg_hash), std::end(jebg_hash));
   crx_component.installer = nullptr;
   crx_component.version = base::Version("0.9");
   crx_component.fingerprint = "fp1";
@@ -394,7 +386,6 @@ TEST_P(UpdateCheckerTest, UpdateCheckSuccess) {
   const auto& result = results_->list.front();
   EXPECT_STREQ("jebgalgnebhfojomionfpkfelancnnkf", result.extension_id.c_str());
   EXPECT_EQ("1.0", result.manifest.version);
-  EXPECT_EQ("11.0.1.0", result.manifest.browser_min_version);
   EXPECT_EQ(1u, result.manifest.packages.size());
   EXPECT_STREQ("jebgalgnebhfojomionfpkfelancnnkf.crx",
                result.manifest.packages.front().name.c_str());
@@ -1350,7 +1341,7 @@ TEST_P(UpdateCheckerTest, ParseErrorAppStatusErrorUnknownApplication) {
 }
 
 TEST_P(UpdateCheckerTest, DomainJoined) {
-  for (const auto is_managed :
+  for (const auto& is_managed :
        std::initializer_list<std::optional<bool>>{std::nullopt, false, true}) {
     EXPECT_TRUE(post_interceptor_->ExpectRequest(
         std::make_unique<PartialMatch>("updatecheck"),

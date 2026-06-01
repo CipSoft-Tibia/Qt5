@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include <QString>
 #include <QLocale>
@@ -1608,16 +1609,16 @@ void UiAnnotation::accept0(BaseVisitor *visitor)
 
 SourceLocation UiPropertyAttributes::firstSourceLocation() const
 {
-    std::array<const SourceLocation *, 4> tokens {&m_propertyToken, &m_defaultToken, &m_readonlyToken, &m_requiredToken};
-    const auto it = std::min_element(tokens.begin(), tokens.end(), compareLocationsByBegin<true>);
-    return **it;
+    return *std::min(
+            {&m_propertyToken, &m_defaultToken, &m_readonlyToken, &m_requiredToken, &m_finalToken},
+            compareLocationsByBegin<true>);
 }
 
 SourceLocation UiPropertyAttributes::lastSourceLocation() const
 {
-    std::array<const SourceLocation *, 4> tokens {&m_propertyToken, &m_defaultToken, &m_readonlyToken, &m_requiredToken};
-    const auto it = std::max_element(tokens.begin(), tokens.end(), compareLocationsByBegin<false>);
-    return **it;
+    return *std::max(
+            {&m_propertyToken, &m_defaultToken, &m_readonlyToken, &m_requiredToken, &m_finalToken},
+            compareLocationsByBegin<false>);
 }
 
 } } // namespace QQmlJS::AST

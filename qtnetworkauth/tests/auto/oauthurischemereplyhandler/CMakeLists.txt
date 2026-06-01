@@ -9,4 +9,5 @@ qt_internal_add_test(tst_oauthurischemereplyhandler
         Qt::Gui
         Qt::Network
         Qt::NetworkAuth
+        Qt::NetworkAuthPrivate
 )

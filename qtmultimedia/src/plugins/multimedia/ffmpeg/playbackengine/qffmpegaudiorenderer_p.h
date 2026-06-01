@@ -33,11 +33,14 @@ class AudioRenderer : public Renderer
 {
     Q_OBJECT
 public:
-    AudioRenderer(const TimeController &tc, QAudioOutput *output, QAudioBufferOutput *bufferOutput);
+    AudioRenderer(const PlaybackEngineObjectID &id, const TimeController &tc, QAudioOutput *output,
+                  QAudioBufferOutput *bufferOutput, bool pitchCompensation);
 
     void setOutput(QAudioOutput *output);
 
     void setOutput(QAudioBufferOutput *bufferOutput);
+
+    void setPitchCompensation(bool enabled);
 
     ~AudioRenderer() override;
 
@@ -84,7 +87,7 @@ protected:
 
     void onPlaybackRateChanged() override;
 
-    std::chrono::milliseconds timerInterval() const override;
+    TimePoint nextTimePoint() const override;
 
     void onPauseChanged() override;
 
@@ -126,7 +129,7 @@ private:
     bool m_firstFrameToSink = true;
 
     // pitch compensation
-    bool m_pitchCompensation = false; // TODO: we need an API to enable pitch compensation
+    bool m_pitchCompensation = false;
     std::unique_ptr<AbstractAudioFrameConverter> m_audioFrameConverter;
 };
 

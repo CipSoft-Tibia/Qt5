@@ -355,6 +355,10 @@ QQmlListProperty<QObject> QQuick3DViewport::data()
     This property specifies which \l Camera is used to render the scene. If this
     property is not set, then the first enabled camera in the scene will be used.
 
+    \note It is strongly recommended to explicitly set this property and not rely
+    on automatic camera selection. If there are multiple cameras in the scene, automatic
+    camera selection does not provide any guarantees regarding which camera will be selected.
+
     \note If this property contains a camera that's not \l {Node::visible}{visible} then
     no further attempts to find a camera will be done.
 
@@ -425,6 +429,12 @@ QQuick3DNode *QQuick3DViewport::scene() const
     viewport. The node does not have to be a child of the View3D. This
     referenced node becomes a sibling with child nodes of View3D, if there are
     any.
+
+    \note Scenes can only be shared between View3D items that are in the same
+    \l{QQuickWindow}{window}.
+
+    \note When sharing scenes between multiple View3D items the imported scene should
+    be imported in whole, that is, importing a subtree of a scene is not supported.
 
     \note This property can only be set once, and subsequent changes will have
     no effect.
@@ -566,8 +576,10 @@ QQuick3DSceneRenderer *QQuick3DViewport::createRenderer() const
             }
         }
 
-        if (rci)
+        if (rci) {
             renderer = new QQuick3DSceneRenderer(rci);
+            Q_QUICK3D_PROFILE_ASSIGN_ID(this, renderer);
+        }
     }
 
     return renderer;
@@ -1285,18 +1297,24 @@ void QQuick3DViewport::setTouchpoint(QQuickItem *target, const QPointF &position
 
     QPointingDevicePrivate *devPriv = QPointingDevicePrivate::get(m_syntheticTouchDevice);
 
-    auto makePoint = [devPriv](int id, QEventPoint::State pointState, QPointF pos) -> QEventPoint {
+    auto makePoint = [devPriv](int id, QEventPoint::State pointState, QPointF pos, quint64 timestamp) -> QEventPoint {
         auto epd = devPriv->pointById(id);
         auto &ep = epd->eventPoint;
         if (pointState != QEventPoint::State::Stationary)
             ep.setAccepted(false);
 
-        auto res = QMutableEventPoint::withTimeStamp(0, id, pointState, pos, pos, pos);
+        auto res = QMutableEventPoint::withTimeStamp(timestamp, id, pointState, pos, pos, pos);
         QMutableEventPoint::update(res, ep);
+
+        if (pointState == QEventPoint::State::Pressed)
+            QMutableEventPoint::setGlobalPressPosition(res, pos);
+        else if (ep.state() != QEventPoint::State::Unknown)
+            QMutableEventPoint::setGlobalPressPosition(res, ep.globalPressPosition());
+
         return res;
     };
 
-    auto sendTouchEvent = [&](QQuickItem *t, const QPointF &position, int pointId, QEventPoint::State pointState) -> void {
+    auto sendTouchEvent = [&](QQuickItem *t, const QPointF &position, int pointId, QEventPoint::State pointState, quint64 timestamp) -> void {
         QList<QEventPoint> points;
         bool otherPoint = false; // Does the event have another point already?
         for (int i = 0; i < m_touchState.size(); ++i) {
@@ -1304,11 +1322,11 @@ void QQuick3DViewport::setTouchpoint(QQuickItem *target, const QPointF &position
             if (ts.target != t)
                 continue;
             if (i == pointId) {
-                auto newPoint = makePoint(i, pointState, position);
+                auto newPoint = makePoint(i, pointState, position, timestamp);
                 points << newPoint;
             } else if (ts.isPressed) {
                 otherPoint = true;
-                points << makePoint(i, QEventPoint::Stationary, ts.position);
+                points << makePoint(i, QEventPoint::Stationary, ts.position, timestamp);
             }
         }
 
@@ -1321,6 +1339,7 @@ void QQuick3DViewport::setTouchpoint(QQuickItem *target, const QPointF &position
             type = QEvent::Type::TouchUpdate;
 
         QTouchEvent ev(type, m_syntheticTouchDevice, {}, points);
+        ev.setTimestamp(timestamp);
 
         if (t) {
             // Actually send event:
@@ -1340,13 +1359,15 @@ void QQuick3DViewport::setTouchpoint(QQuickItem *target, const QPointF &position
         }
     };
 
+    auto timestamp = QDateTime::currentMSecsSinceEpoch();
+
     // Send a release event to the previous target
     if (prevState.target && !sameTarget)
-        sendTouchEvent(prevState.target, prevState.position, pointId, QEventPoint::Released);
+        sendTouchEvent(prevState.target, prevState.position, pointId, QEventPoint::Released, timestamp);
 
     // Now send an event for the new state
     QEventPoint::State newState = isPress ? QEventPoint::Pressed : isRelease ? QEventPoint::Released : QEventPoint::Updated;
-    sendTouchEvent(target, position, pointId, newState);
+    sendTouchEvent(target, position, pointId, newState, timestamp);
 }
 
 QQuick3DLightmapBaker *QQuick3DViewport::maybeLightmapBaker()
@@ -1367,8 +1388,31 @@ QQuick3DLightmapBaker *QQuick3DViewport::lightmapBaker()
 */
 void QQuick3DViewport::bakeLightmap()
 {
-    lightmapBaker()->bake();
+    QQuick3DSceneRenderer *renderer = getRenderer();
+    if (!renderer || !renderer->m_layer->renderData)
+        return;
+
+    const bool currentlyBaking = renderer->m_layer->renderData->lightmapBaker != nullptr;
+
+    if (!currentlyBaking)
+        lightmapBaker()->bake();
 }
+
+/*!
+    \internal
+*/
+void QQuick3DViewport::denoiseLightmap()
+{
+    QQuick3DSceneRenderer *renderer = getRenderer();
+    if (!renderer || !renderer->m_layer->renderData)
+        return;
+
+    const bool currentlyBaking = renderer->m_layer->renderData->lightmapBaker != nullptr;
+
+    if (!currentlyBaking)
+        lightmapBaker()->denoise();
+}
+
 
 void QQuick3DViewport::setGlobalPickingEnabled(bool isEnabled)
 {
@@ -1985,6 +2029,7 @@ QQuick3DPickResult QQuick3DViewport::processPickResult(const QSSGRenderPickResul
                                   pickResult.m_scenePosition,
                                   pickResult.m_localPosition,
                                   pickResult.m_faceNormal,
+                                  pickResult.m_sceneNormal,
                                   pickResult.m_instanceIndex);
 
     QQuick3DItem2D *frontend2DItem = qobject_cast<QQuick3DItem2D *>(frontendObject);
@@ -2084,7 +2129,15 @@ void QQuick3DViewport::updateCameraForLayer(const QQuick3DViewport &view3D, QSSG
         for (QQuick3DCamera *camera : std::as_const(view3D.m_multiViewCameras))
             layerNode.explicitCameras.append(static_cast<QSSGRenderCamera *>(QQuick3DObjectPrivate::get(camera)->spatialNode));
     } else if (view3D.camera()) {
-        layerNode.explicitCameras.append(static_cast<QSSGRenderCamera *>(QQuick3DObjectPrivate::get(view3D.camera())->spatialNode));
+        if (QSSGRenderCamera *camera = static_cast<QSSGRenderCamera *>(QQuick3DObjectPrivate::get(view3D.camera())->spatialNode))
+            layerNode.explicitCameras.append(camera);
+    }
+
+    // Ensure these have a parent. All nodes need to be in the node tree somewhere, even if they're technically "parentless"
+    // or we'll not assign a storage slot for them or update them.
+    for (QSSGRenderCamera *camera : std::as_const(layerNode.explicitCameras)) {
+        if (!camera->parent)
+            layerNode.addChild(*camera);
     }
 }
 

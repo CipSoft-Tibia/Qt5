@@ -237,7 +237,7 @@ void UdpSocketPosix::SetMulticastOutboundInterface(
   switch (local_endpoint_.address.version()) {
     case UdpSocket::Version::kV4: {
       struct ip_mreqn multicast_properties {};
-      // Appropriate address is set based on |imr_ifindex| when set.
+      // Appropriate address is set based on `imr_ifindex` when set.
       multicast_properties.imr_address.s_addr = INADDR_ANY;
       multicast_properties.imr_multiaddr.s_addr = INADDR_ANY;
       multicast_properties.imr_ifindex =
@@ -281,7 +281,7 @@ void UdpSocketPosix::JoinMulticastGroup(const IPAddress& address,
         return;
       }
       struct ip_mreqn multicast_properties {};
-      // Appropriate address is set based on |imr_ifindex| when set.
+      // Appropriate address is set based on `imr_ifindex` when set.
       multicast_properties.imr_address.s_addr = INADDR_ANY;
       multicast_properties.imr_ifindex =
           static_cast<IPv4NetworkInterfaceIndex>(ifindex);
@@ -330,7 +330,7 @@ void UdpSocketPosix::JoinMulticastGroup(const IPAddress& address,
 
 namespace {
 
-// Examine |posix_errno| to determine whether the specific cause of a failure
+// Examine `posix_errno` to determine whether the specific cause of a failure
 // was transient or hard, and return the appropriate error response.
 Error ChooseError(decltype(errno) posix_errno, Error::Code hard_error_code) {
   if (posix_errno == EAGAIN || posix_errno == EWOULDBLOCK ||
@@ -398,8 +398,7 @@ ErrorOr<UdpPacket> ReceiveMessageInternal(int fd) {
   // getsocktopt(...NREAD...) to get the datagram size if possible.
   // Ref: https://www.unix.com/man-page/mojave/2/getsockopt/
   socklen_t optlen = sizeof(upper_bound_bytes);
-  if (getsockopt(fd, SOL_SOCKET, SO_NREAD, &upper_bound_bytes, &optlen) ==
-      -1) {
+  if (getsockopt(fd, SOL_SOCKET, SO_NREAD, &upper_bound_bytes, &optlen) == -1) {
     upper_bound_bytes = -1;
   }
 #endif  // BUILDFLAG(IS_LINUX)
@@ -586,7 +585,7 @@ void UdpSocketPosix::SetDscp(UdpSocket::DscpMode state) {
 }
 
 void UdpSocketPosix::OnError(Error::Code error_code) {
-  // The call to Close() may change |errno|, so save it here.
+  // The call to Close() may change `errno`, so save it here.
   const auto original_errno = errno;
 
   // Close the socket unless the error code represents a transient condition.
@@ -596,12 +595,12 @@ void UdpSocketPosix::OnError(Error::Code error_code) {
 
   if (client_) {
     // Call the thread-safe strerror_r() to get the human-readable form of
-    // |errno|. This is a real mess: 1. Since there seems to be no constant
+    // `errno`. This is a real mess: 1. Since there seems to be no constant
     // defined for the maximum buffer size in the standard library, 1024 is
     // used, as suggested by the man page for strerror_r(). 2. There are two
     // possible versions of this function: The POSIX one returns int(0) on
     // success, while the legacy GNU-specific one will provide a non-null char
-    // pointer (that may or may not be within the |buffer|).
+    // pointer (that may or may not be within the `buffer`).
     char buffer[1024];
     const auto result = strerror_r(original_errno, buffer, sizeof(buffer));
     const char* errno_str;

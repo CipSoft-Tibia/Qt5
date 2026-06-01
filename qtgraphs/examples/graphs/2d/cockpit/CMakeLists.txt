@@ -51,6 +51,7 @@ qt6_add_qml_module(cockpit
 )
 
 qt6_add_shaders(cockpit "cockpit_shaders"
+    GLSL "300es, 330"
     PREFIX
         ""
     FILES

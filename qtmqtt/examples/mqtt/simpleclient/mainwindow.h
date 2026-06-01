@@ -23,7 +23,9 @@ public:
 
 public slots:
     void setClientPort(int p);
-
+    void setSecure(bool s);
+    void setWebSockets(bool ws);
+    void setProtocol(QMqttClient::ProtocolVersion p);
 private slots:
     void on_buttonConnect_clicked();
     void on_buttonQuit_clicked();
@@ -36,8 +38,11 @@ private slots:
     void on_buttonSubscribe_clicked();
 
 private:
-    Ui::MainWindow *ui;
-    QMqttClient *m_client;
+    Ui::MainWindow *ui = nullptr;
+    QMqttClient *m_client = nullptr;
+    bool m_secure = false;
+    bool m_webSockets = false;
+    QMqttClient::ProtocolVersion m_protocol = QMqttClient::ProtocolVersion::MQTT_3_1_1;
 };
 
 #endif // MAINWINDOW_H

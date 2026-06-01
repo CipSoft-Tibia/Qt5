@@ -3,8 +3,8 @@
 import QtQuick
 import QtTest
 import QtQuick3D
+import QtQuick3D.Helpers
 import QtQuick3D.Physics
-import QtQuick3D.Physics.Helpers
 
 // Test loading a heightfield from both 'source' and 'image' property
 
@@ -16,8 +16,8 @@ Item {
     PhysicsWorld {
         scene: viewport.scene
         forceDebugDraw: true
-        maximumTimestep: 16
-        minimumTimestep: 16
+        maximumTimestep: 15
+        minimumTimestep: 15
     }
 
     View3D {

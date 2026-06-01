@@ -1112,7 +1112,7 @@ void tst_qqmlincubator::selfDelete()
     // We have to cheat and manually remove it from the creator->allCreatedObjects
     // otherwise we will do a double delete
     QQmlIncubatorPrivate *incubatorPriv = QQmlIncubatorPrivate::get(incubator);
-    incubatorPriv->creator->allCreatedObjects().pop();
+    incubatorPriv->creator->allCreatedObjects().pop_back();
     delete SelfRegisteringType::me();
 
     {

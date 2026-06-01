@@ -10,4 +10,24 @@ namespace input::features {
 BASE_FEATURE(kInputOnViz, "InputOnViz", base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kLogBubblingTouchscreenGesturesForDebug,
+             "LogBubblingTouchscreenGesturesForDebug",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#else
+BASE_FEATURE(kLogBubblingTouchscreenGesturesForDebug,
+             "LogBubblingTouchscreenGesturesForDebug",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif
+
+// Flag guard for fix for crbug.com/346629231.
+BASE_FEATURE(kIgnoreBubblingCollisionIfSourceDevicesMismatch,
+             "IgnoreBubblingCollisionIfSourceDevicesMismatch",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Flag guard for fix for crbug.com/346629231.
+BASE_FEATURE(kScrollBubblingFix,
+             "ScrollBubblingFix",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 }  // namespace input::features

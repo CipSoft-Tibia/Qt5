@@ -1,10 +1,10 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick3D
 import QtQuick3D.Particles3D
-import QtQuick3D.Helpers
 
 ParticleSystem3D {
     id: shockwave
@@ -39,7 +39,7 @@ ParticleSystem3D {
             source: "#Sphere"
             castsReflections: true
             receivesReflections: true
-            materials: shockwaveMat
+            materials: [shockwaveMat]
             receivesShadows: true
             scale.y: 1
             castsShadows: true
@@ -62,32 +62,44 @@ ParticleSystem3D {
 
     Connections {
         target: shockwaveTimer
-        onTriggered: shockwave.reset()
+        function onTriggered() {
+            shockwave.reset()
+        }
     }
 
     Connections {
         target: shockwaveTimer
-        onTriggered: pressurewave1.reset()
+        function onTriggered() {
+            pressurewave1.reset()
+        }
     }
 
     Connections {
         target: shockwaveTimer
-        onTriggered: debris.reset()
+        function onTriggered() {
+            debris.reset()
+        }
     }
 
     Connections {
         target: shockwaveTimer
-        onTriggered: debris.startTime = debris.time
+        function onTriggered() {
+            debris.startTime = debris.time
+        }
     }
 
     Connections {
         target: shockwaveTimer
-        onTriggered: debris1.reset()
+        function onTriggered() {
+            debris1.reset()
+        }
     }
 
     Connections {
         target: shockwaveTimer
-        onTriggered: debris1.startTime = debris1.time
+        function onTriggered() {
+            debris1.startTime = debris1.time
+        }
     }
 
     Timer {
@@ -103,7 +115,7 @@ ParticleSystem3D {
         visible: true
         ParticleEmitter3D {
             id: pressurewaveemitter1
-            emitBursts: dynamicBurst7
+            emitBursts: [dynamicBurst7]
             shape: targetShape10
             particleScaleVariation: 0.5
             particleRotationVelocityVariation.z: 0
@@ -133,7 +145,7 @@ ParticleSystem3D {
                 source: "#Sphere"
                 castsReflections: true
                 receivesReflections: true
-                materials: shockwavedebrisMat
+                materials: [shockwavedebrisMat]
                 receivesShadows: true
                 scale.y: 1
                 castsShadows: true
@@ -149,7 +161,7 @@ ParticleSystem3D {
                 durationVariation: (debris.time - debris.startTime) * 0.5
                 hideAtEnd: false
                 shape: targetShape10
-                particles: modelParticle7
+                particles: [modelParticle7]
                 system: debris
                 duration: (debris.time - debris.startTime) * 0.5
             }
@@ -196,7 +208,7 @@ ParticleSystem3D {
             particleEndScale: 0
             lifeSpan: 3000
             particleRotationVelocityVariation.z: 0
-            emitBursts: dynamicBurst8
+            emitBursts: [dynamicBurst8]
             ModelParticle3D {
                 id: modelParticle8
                 colorVariation.w: 0
@@ -215,7 +227,7 @@ ParticleSystem3D {
                 source: "#Sphere"
                 castsReflections: true
                 receivesReflections: true
-                materials: shockwavedebrisMat
+                materials: [shockwavedebrisMat]
                 receivesShadows: true
                 scale.y: 1
                 castsShadows: true
@@ -232,7 +244,7 @@ ParticleSystem3D {
                 hideAtEnd: false
                 duration: (debris1.time - debris1.startTime) * 0.5
                 useCachedPositions: false
-                particles: modelParticle8
+                particles: [modelParticle8]
                 shape: targetShape11
             }
 
@@ -328,7 +340,7 @@ ParticleSystem3D {
         ParticleEmitter3D {
             particleRotationVariation.y: 90
             particleRotationVelocityVariation.y: 360
-            emitBursts: diskburst
+            emitBursts: [diskburst]
             velocity: flatdiskdir
             emitRate: 0
             enabled: shockwave.visible
@@ -353,7 +365,7 @@ ParticleSystem3D {
                 receivesReflections: true
                 castsReflections: true
                 receivesShadows: true
-                materials: shockwaveMat2
+                materials: [shockwaveMat2]
                 scale.y: 0.05
                 castsShadows: true
             }

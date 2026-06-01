@@ -40,6 +40,8 @@
 #include <vector>
 #include <memory>
 
+#include <QtCore/qmutex.h>
+
 QT_BEGIN_NAMESPACE
 
 Q_STATIC_LOGGING_CATEGORY(lcTranslator, "qt.core.qtranslator")
@@ -260,6 +262,8 @@ class QTranslatorPrivate : public QObjectPrivate
 public:
     enum { Contexts = 0x2f, Hashes = 0x42, Messages = 0x69, NumerusRules = 0x88, Dependencies = 0x96, Language = 0xa7 };
 
+    mutable QMutex lock;
+
     QTranslatorPrivate() :
 #if defined(QT_USE_MMAP)
           used_mmap(0),
@@ -294,6 +298,8 @@ public:
     QString language;
     QString filePath;
 
+    bool load_translation(const QStringList &languages, const QString &filename, const QString &prefix,
+                          const QString &directory, const QString &suffix);
     bool do_load(const QString &filename, const QString &directory);
     bool do_load(const uchar *data, qsizetype len, const QString &directory);
     QString do_translate(const char *context, const char *sourceText, const char *comment,
@@ -406,7 +412,7 @@ QTranslator::QTranslator(QObject * parent)
 
 QTranslator::~QTranslator()
 {
-    if (QCoreApplication::instance())
+    if (QCoreApplication::instanceExists())
         QCoreApplication::removeTranslator(this);
     Q_D(QTranslator);
     d->clear();
@@ -462,6 +468,7 @@ bool QTranslator::load(const QString & filename, const QString & directory,
                        const QString & suffix)
 {
     Q_D(QTranslator);
+    QMutexLocker locker(&d->lock);
     d->clear();
 
     QString prefix;
@@ -608,24 +615,14 @@ bool QTranslatorPrivate::do_load(const QString &realname, const QString &directo
     return false;
 }
 
-Q_NEVER_INLINE
-static bool is_readable_file(const QString &name)
-{
-    const QFileInfo fi(name);
-    const bool isReadableFile = fi.isReadable() && fi.isFile();
-    qCDebug(lcTranslator) << "Testing file" << name << isReadableFile;
-
-    return isReadableFile;
-}
-
-static QString find_translation(const QLocale & locale,
-                                const QString & filename,
-                                const QString & prefix,
-                                const QString & directory,
-                                const QString & suffix)
+bool QTranslatorPrivate::load_translation(const QStringList &languages,
+                                          const QString &filename,
+                                          const QString &prefix,
+                                          const QString &directory,
+                                          const QString &suffix)
 {
     qCDebug(lcTranslator).noquote().nospace() << "Searching translation for "
-                          << filename << prefix << locale << suffix
+                          << filename << prefix << languages << suffix
                           << " in " << directory;
     QString path;
     if (QFileInfo(filename).isRelative()) {
@@ -647,8 +644,8 @@ static QString find_translation(const QLocale & locale,
     // something like "prefix_en_us.qm" won't be found under the "en_US"
     // locale. Note that the Qt resource system is always case-sensitive, even
     // on Windows (in other words: this codepath is *not* UNIX-only).
-    const QStringList languages = locale.uiLanguages(QLocale::TagSeparator::Underscore);
-    qCDebug(lcTranslator) << "Requested UI languages" << languages;
+
+    auto loadFile = [this, &realname, &directory] { return do_load(realname, directory); };
 
     for (const QString &localeName : languages) {
         QString loc = localeName;
@@ -656,13 +653,13 @@ static QString find_translation(const QLocale & locale,
         while (true) {
             // First, try with suffix:
             realname += loc + suffixOrDotQM;
-            if (is_readable_file(realname))
-                return realname;
+            if (loadFile())
+                return true;
 
             // Next, try without:
             realname.truncate(realNameBaseSize + loc.size());
-            if (is_readable_file(realname))
-                return realname;
+            if (loadFile())
+                return true;
             // Reset realname:
             realname.truncate(realNameBaseSize);
 
@@ -681,22 +678,18 @@ static QString find_translation(const QLocale & locale,
     if (!suffix.isNull()) {
         realname.replace(realNameBaseSizeFallbacks, prefix.size(), suffix);
         // realname == path + filename;
-        if (is_readable_file(realname))
-            return realname;
+        if (loadFile())
+            return true;
         realname.replace(realNameBaseSizeFallbacks, suffix.size(), prefix);
     }
 
     // realname == path + filename + prefix;
-    if (is_readable_file(realname))
-        return realname;
+    if (loadFile())
+        return true;
 
     realname.truncate(realNameBaseSizeFallbacks);
     // realname == path + filename;
-    if (is_readable_file(realname))
-        return realname;
-
-    realname.truncate(0);
-    return realname;
+    return loadFile();
 }
 
 /*!
@@ -749,9 +742,11 @@ bool QTranslator::load(const QLocale & locale,
                        const QString & suffix)
 {
     Q_D(QTranslator);
+    const QStringList languages = locale.uiLanguages(QLocale::TagSeparator::Underscore);
+    qCDebug(lcTranslator) << "Requested UI languages" << languages;
+    QMutexLocker locker(&d->lock);
     d->clear();
-    QString fname = find_translation(locale, filename, prefix, directory, suffix);
-    return !fname.isEmpty() && d->do_load(fname, directory);
+    return d->load_translation(languages, filename, prefix, directory, suffix);
 }
 
 /*!
@@ -769,6 +764,7 @@ bool QTranslator::load(const QLocale & locale,
 bool QTranslator::load(const uchar *data, int len, const QString &directory)
 {
     Q_D(QTranslator);
+    QMutexLocker locker(&d->lock);
     d->clear();
 
     if (!data || len < MagicLength || memcmp(data, magic, MagicLength))
@@ -1100,7 +1096,14 @@ QString QTranslator::translate(const char *context, const char *sourceText, cons
                                int n) const
 {
     Q_D(const QTranslator);
-    return d->do_translate(context, sourceText, disambiguation, n);
+
+    // Return early to avoid a deadlock in case translate() is called
+    // from a code path triggered by QTranslator::load()
+    if (!d->lock.tryLock())
+        return QString();
+    QString result = d->do_translate(context, sourceText, disambiguation, n);
+    d->lock.unlock();
+    return result;
 }
 
 /*!

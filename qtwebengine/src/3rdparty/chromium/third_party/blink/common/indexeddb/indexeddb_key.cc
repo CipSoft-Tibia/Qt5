@@ -2,35 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/public/common/indexeddb/indexeddb_key.h"
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <utility>
 
-#include "base/ranges/algorithm.h"
+#include "base/strings/string_number_conversions.h"
 
 namespace blink {
 
 namespace {
-std::string string_to_hex(const std::string& input) {
-  static const char* const lut = "0123456789ABCDEF";
-  size_t len = input.length();
-
-  std::string output;
-  output.reserve(2 * len);
-  for (size_t i = 0; i < len; ++i) {
-    const unsigned char c = input[i];
-    output.push_back(lut[c >> 4]);
-    output.push_back(lut[c & 0xF]);
-  }
-  return output;
-}
 
 // Very rough estimate of minimum key size overhead.
 const size_t kOverheadSize = 16;
@@ -95,7 +78,7 @@ IndexedDBKey& IndexedDBKey::operator=(const IndexedDBKey& other) = default;
 bool IndexedDBKey::IsValid() const {
   switch (type_) {
     case mojom::IDBKeyType::Array:
-      return base::ranges::all_of(array_, &IndexedDBKey::IsValid);
+      return std::ranges::all_of(array_, &IndexedDBKey::IsValid);
     case mojom::IDBKeyType::Binary:
     case mojom::IDBKeyType::String:
     case mojom::IDBKeyType::Date:
@@ -163,7 +146,7 @@ std::string IndexedDBKey::DebugString() const {
       break;
     }
     case mojom::IDBKeyType::Binary:
-      result << "binary: 0x" << string_to_hex(binary_);
+      result << "binary: 0x" << base::HexEncode(binary_);
       break;
     case mojom::IDBKeyType::String:
       result << "string: " << string_;
@@ -215,8 +198,7 @@ int IndexedDBKey::CompareTo(const IndexedDBKey& other) const {
     case mojom::IDBKeyType::None:
     case mojom::IDBKeyType::Min:
     default:
-      NOTREACHED_IN_MIGRATION();
-      return 0;
+      NOTREACHED();
   }
 }
 

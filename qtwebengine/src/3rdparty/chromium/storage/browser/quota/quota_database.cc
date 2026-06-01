@@ -67,9 +67,13 @@ const char kBucketTable[] = "buckets";
 // registered into the buckets table. Introduced 2022-05 (crrev.com/c/3594211).
 const char kBucketsTableBootstrapped[] = "IsBucketsBootstrapped";
 
+// Flag to not repeat MediaLicenseDatabase cleanup in all the bucket
+// directories. Introduced 2025-01 (crrev.com/c/6088694).
+const char kMediaLicenseDatabaseRemoved[] = "IsMediaLicenseDatabaseRemoved";
+
 const int kCommitIntervalMs = 30000;
 
-base::Clock* g_clock_for_testing = nullptr;
+const base::Clock* g_clock_for_testing = nullptr;
 
 void RecordDatabaseResetHistogram(const DatabaseResetReason reason) {
   base::UmaHistogramEnumeration("Quota.QuotaDatabaseReset", reason);
@@ -925,6 +929,28 @@ QuotaError QuotaDatabase::SetIsBootstrapped(bool bootstrap_flag) {
              : QuotaError::kDatabaseError;
 }
 
+bool QuotaDatabase::IsMediaLicenseDatabaseRemoved() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (EnsureOpened() != QuotaError::kNone) {
+    return false;
+  }
+
+  int flag = 0;
+  return meta_table_->GetValue(kMediaLicenseDatabaseRemoved, &flag) && flag;
+}
+
+QuotaError QuotaDatabase::SetIsMediaLicenseDatabaseRemoved(bool removed_flag) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  QuotaError open_error = EnsureOpened();
+  if (open_error != QuotaError::kNone) {
+    return open_error;
+  }
+
+  return meta_table_->SetValue(kMediaLicenseDatabaseRemoved, removed_flag)
+             ? QuotaError::kNone
+             : QuotaError::kDatabaseError;
+}
+
 bool QuotaDatabase::RecoverOrRaze(int error_code) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -974,7 +1000,7 @@ base::Time QuotaDatabase::GetNow() {
 }
 
 // static
-void QuotaDatabase::SetClockForTesting(base::Clock* clock) {
+void QuotaDatabase::SetClockForTesting(const base::Clock* clock) {
   g_clock_for_testing = clock;
 }
 
@@ -1026,22 +1052,14 @@ QuotaError QuotaDatabase::EnsureOpened() {
     return QuotaError::kDatabaseError;
   }
 
-  sql::DatabaseOptions options{
-      // The quota database is a critical storage component. If it's corrupted,
-      // all client-side storage APIs fail, because they don't know where their
-      // data is stored.
-      .flush_to_media = true,
-      .page_size = 4096,
-      .cache_size = 500,
-  };
-  if (base::FeatureList::IsEnabled(features::kDisableQuotaDbFullFSync)) {
-    options.flush_to_media = false;
-  }
-
-  db_ = std::make_unique<sql::Database>(std::move(options));
+  db_ = std::make_unique<sql::Database>(
+      sql::DatabaseOptions()
+          // The quota database is a critical storage component. If it's
+          // corrupted, all client-side storage APIs fail, because they don't
+          // know where their data is stored.
+          .set_flush_to_media(true),
+      sql::Database::Tag("Quota"));
   meta_table_ = std::make_unique<sql::MetaTable>();
-
-  db_->set_histogram_tag("Quota");
 
   db_->set_error_callback(base::BindRepeating(&QuotaDatabase::OnSqliteError,
                                               base::Unretained(this)));

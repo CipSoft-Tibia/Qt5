@@ -634,6 +634,9 @@ QList<QSslCertificate> QSslCertificate::fromPath(const QString &path,
     if (path.isEmpty())
         return {};
 
+    if (syntax == PatternSyntax::FixedString && QFileInfo(path).isFile())
+        return fromFile(path, format);
+
     // $, (,), *, +, ., ?, [, ,], ^, {, | and }.
 
     // make sure to use the same path separators on Windows and Unix like systems.
@@ -666,15 +669,8 @@ QList<QSslCertificate> QSslCertificate::fromPath(const QString &path,
             pathPrefix = {};
     } else {
         // Check if the path is a file.
-        if (QFileInfo(sourcePath).isFile()) {
-            QFile file(sourcePath);
-            QIODevice::OpenMode openMode = QIODevice::ReadOnly;
-            if (format == QSsl::Pem)
-                openMode |= QIODevice::Text;
-            if (file.open(openMode))
-                return QSslCertificate::fromData(file.readAll(), format);
-            return QList<QSslCertificate>();
-        }
+        if (QFileInfo(sourcePath).isFile())
+            return fromFile(sourcePath, format);
     }
 
     // Special case - if the prefix ends up being nothing, use "." instead.
@@ -711,12 +707,7 @@ QList<QSslCertificate> QSslCertificate::fromPath(const QString &path,
             continue;
 #endif
 
-        QFile file(filePath);
-        QIODevice::OpenMode openMode = QIODevice::ReadOnly;
-        if (format == QSsl::Pem)
-            openMode |= QIODevice::Text;
-        if (file.open(openMode))
-            certs += QSslCertificate::fromData(file.readAll(), format);
+        certs += QSslCertificate::fromFile(filePath, format);
     }
     return certs;
 }
@@ -759,6 +750,30 @@ QList<QSslCertificate> QSslCertificate::fromData(const QByteArray &data, QSsl::E
     }
 
     return reader(data, -1);
+}
+
+/*!
+    \since 6.10
+
+    Reads the data from the file \a filePath and parses all certificates
+    that are encoded in the specified \a format and returns a list of
+    QSslCertificate objects.
+
+    If \a filePath isn't a regular file, this method will return an empty
+    list.
+
+    \sa fromData(), fromPath()
+*/
+QList<QSslCertificate> QSslCertificate::fromFile(const QString &filePath,
+                                                 QSsl::EncodingFormat format)
+{
+    QFile file(filePath);
+    QIODevice::OpenMode openMode = QIODevice::ReadOnly;
+    if (format == QSsl::Pem)
+        openMode |= QIODevice::Text;
+    if (file.open(openMode))
+        return QSslCertificate::fromData(file.readAll(), format);
+    return {};
 }
 
 #ifndef QT_NO_SSL

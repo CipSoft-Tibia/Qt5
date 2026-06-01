@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlpreviewhandler.h"
 
@@ -119,6 +120,7 @@ void QQmlPreviewHandler::loadUrl(const QUrl &url)
     m_lastPosition.loadWindowPositionSettings(url);
 
     QQmlEngine *engine = m_engines.front();
+    engine->clearSingletons();
     engine->clearComponentCache();
     m_component.reset(new QQmlComponent(engine, url, this));
 
@@ -149,7 +151,8 @@ void QQmlPreviewHandler::loadUrl(const QUrl &url)
 void QQmlPreviewHandler::dropCU(const QUrl &url)
 {
     // Drop any existing compilation units for this URL from the type registry.
-    if (const auto cu = QQmlMetaType::obtainCompilationUnit(url))
+    // There can be multiple, one for each engine.
+    while (const auto cu = QQmlMetaType::obtainCompilationUnit(url))
         QQmlMetaType::unregisterInternalCompositeType(cu);
 }
 

@@ -9,6 +9,7 @@
 
 #include "base/containers/contains.h"
 #include "base/metrics/histogram_functions.h"
+#include "components/guest_view/buildflags/buildflags.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
@@ -59,30 +60,9 @@ namespace {
 bool ShouldBlockNavigationToPlatformAppResource(
     const Extension* platform_app,
     content::NavigationHandle& navigation_handle) {
-  content::WebContents* web_contents = navigation_handle.GetWebContents();
-  mojom::ViewType view_type = GetViewType(web_contents);
-  DCHECK_NE(mojom::ViewType::kInvalid, view_type);
-
-  // Navigation to platform app's background page.
-  if (view_type == mojom::ViewType::kExtensionBackgroundPage)
-    return false;
-
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // Navigation within an app window. The app window must belong to the
-  // |platform_app|.
-  if (view_type == mojom::ViewType::kAppWindow) {
-    AppWindowRegistry* registry =
-        AppWindowRegistry::Get(web_contents->GetBrowserContext());
-    DCHECK(registry);
-    AppWindow* app_window = registry->GetAppWindowForWebContents(web_contents);
-    DCHECK(app_window);
-    return app_window->extension_id() != platform_app->id();
-  }
-#endif
-
 #if BUILDFLAG(ENABLE_GUEST_VIEW)
-  // Navigation within a guest web contents.
-  if (view_type == mojom::ViewType::kExtensionGuest) {
+  if (auto* guest =
+          guest_view::GuestViewBase::FromNavigationHandle(&navigation_handle)) {
     // Navigating within a PDF viewer extension (see crbug.com/1252154). This
     // exemption is only for the PDF resource. The initial navigation to the PDF
     // loads the PDF viewer extension, which would have already passed the
@@ -97,19 +77,43 @@ bool ShouldBlockNavigationToPlatformAppResource(
 
     // Platform apps can be embedded by other platform apps using an <appview>
     // tag.
-    AppViewGuest* app_view = AppViewGuest::FromWebContents(web_contents);
-    if (app_view)
+    auto* app_view = AppViewGuest::FromGuestViewBase(guest);
+    if (app_view) {
       return false;
+    }
 
     // Webviews owned by the platform app can embed platform app resources via
     // "accessible_resources".
-    WebViewGuest* web_view_guest = WebViewGuest::FromWebContents(web_contents);
-    if (web_view_guest)
+    auto* web_view_guest = WebViewGuest::FromGuestViewBase(guest);
+    if (web_view_guest) {
       return web_view_guest->owner_host() != platform_app->id();
+    }
 
     // Otherwise, it's a guest view that's neither a webview nor an appview
     // (such as an extensionoptions view). Disallow.
     return true;
+  }
+#endif
+
+  content::WebContents* web_contents = navigation_handle.GetWebContents();
+  mojom::ViewType view_type = GetViewType(web_contents);
+  DCHECK_NE(mojom::ViewType::kInvalid, view_type);
+
+  // Navigation to platform app's background page.
+  if (view_type == mojom::ViewType::kExtensionBackgroundPage) {
+    return false;
+  }
+
+#if BUILDFLAG(ENABLE_PLATFORM_APPS)
+  // Navigation within an app window. The app window must belong to the
+  // |platform_app|.
+  if (view_type == mojom::ViewType::kAppWindow) {
+    AppWindowRegistry* registry =
+        AppWindowRegistry::Get(web_contents->GetBrowserContext());
+    DCHECK(registry);
+    AppWindow* app_window = registry->GetAppWindowForWebContents(web_contents);
+    DCHECK(app_window);
+    return app_window->extension_id() != platform_app->id();
   }
 #endif
 
@@ -161,8 +165,8 @@ ExtensionNavigationThrottle::WillStartOrRedirectRequest() {
 #if BUILDFLAG(ENABLE_GUEST_VIEW)
   // Some checks below will need to know whether this navigation is in a
   // <webview> guest.
-  guest_view::GuestViewBase* guest =
-      guest_view::GuestViewBase::FromWebContents(web_contents);
+  auto* guest =
+      guest_view::GuestViewBase::FromNavigationHandle(navigation_handle());
 #endif
 
   // Is this navigation targeting an extension resource?
@@ -174,7 +178,7 @@ ExtensionNavigationThrottle::WillStartOrRedirectRequest() {
   if (url_has_extension_scheme) {
     // "chrome-extension://" URL.
     target_extension = registry->enabled_extensions().GetExtensionOrAppByURL(
-        url, true /*include_guid*/);
+        url, /*include_guid=*/true);
   } else if (target_origin.scheme() == kExtensionScheme) {
     // "blob:chrome-extension://" or "filesystem:chrome-extension://" URL.
     DCHECK(url.SchemeIsFileSystem() || url.SchemeIsBlob());
@@ -427,8 +431,9 @@ ExtensionNavigationThrottle::WillProcessResponse() {
 #if BUILDFLAG(ENABLE_GUEST_VIEW)
   auto* mime_handler_view_embedder =
       MimeHandlerViewEmbedder::Get(navigation_handle()->GetFrameTreeNodeId());
-  if (!mime_handler_view_embedder)
+  if (!mime_handler_view_embedder) {
     return PROCEED;
+  }
 
   // If we have a MimeHandlerViewEmbedder, the frame might embed a resource. If
   // the frame is sandboxed, however, we shouldn't show the embedded resource.

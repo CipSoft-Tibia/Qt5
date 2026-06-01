@@ -50,6 +50,7 @@
 #include "third_party/blink/renderer/core/events/message_event.h"
 #include "third_party/blink/renderer/core/execution_context/agent.h"
 #include "third_party/blink/renderer/core/frame/font_matching_metrics.h"
+#include "third_party/blink/renderer/core/frame/reporting_context.h"
 #include "third_party/blink/renderer/core/frame/user_activation.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/inspector/console_message_storage.h"
@@ -244,12 +245,8 @@ void WorkerGlobalScope::importScripts(const Vector<String>& urls) {
 
 namespace {
 
-String NetworkErrorMessageAtImportScript(const char* const property_name,
-                                         const char* const interface_name,
-                                         const KURL& url) {
-  return ExceptionMessages::FailedToExecute(
-      property_name, interface_name,
-      "The script at '" + url.ElidedString() + "' failed to load.");
+String NetworkErrorMessageAtImportScript(const KURL& url) {
+  return "The script at '" + url.ElidedString() + "' failed to load.";
 }
 
 }  // namespace
@@ -261,19 +258,11 @@ void WorkerGlobalScope::ImportScriptsInternal(const Vector<String>& urls) {
   DCHECK(GetExecutionContext());
   v8::Isolate* isolate = GetThread()->GetIsolate();
 
-  // Previously, exceptions here were thrown via ExceptionState but now are
-  // thrown via V8ThrowException. To keep the existing error messages,
-  // ExceptionMessages::FailedToExecute() is called directly (crbug/1114610).
-  const char* const property_name = "importScripts";
-  const char* const interface_name = "WorkerGlobalScope";
-
   // Step 1: "If worker global scope's type is "module", throw a TypeError
   // exception."
   if (script_type_ == mojom::blink::ScriptType::kModule) {
     V8ThrowException::ThrowTypeError(
-        isolate, ExceptionMessages::FailedToExecute(
-                     property_name, interface_name,
-                     "Module scripts don't support importScripts()."));
+        isolate, "Module scripts don't support importScripts().");
     return;
   }
 
@@ -293,9 +282,7 @@ void WorkerGlobalScope::ImportScriptsInternal(const Vector<String>& urls) {
       V8ThrowException::ThrowException(
           isolate, V8ThrowDOMException::CreateOrEmpty(
                        isolate, DOMExceptionCode::kSyntaxError,
-                       ExceptionMessages::FailedToExecute(
-                           property_name, interface_name,
-                           "The URL '" + url_string + "' is invalid.")));
+                       "The URL '" + url_string + "' is invalid."));
       return;
     }
     if (!GetContentSecurityPolicy()->AllowScriptFromSource(
@@ -304,8 +291,7 @@ void WorkerGlobalScope::ImportScriptsInternal(const Vector<String>& urls) {
       V8ThrowException::ThrowException(
           isolate, V8ThrowDOMException::CreateOrEmpty(
                        isolate, DOMExceptionCode::kNetworkError,
-                       NetworkErrorMessageAtImportScript(property_name,
-                                                         interface_name, url)));
+                       NetworkErrorMessageAtImportScript(url)));
       return;
     }
     completed_urls.push_back(url);
@@ -316,8 +302,8 @@ void WorkerGlobalScope::ImportScriptsInternal(const Vector<String>& urls) {
     KURL response_url;
     String source_code;
     std::unique_ptr<Vector<uint8_t>> cached_meta_data;
-    const String error_message = NetworkErrorMessageAtImportScript(
-        property_name, interface_name, complete_url);
+    const String error_message =
+        NetworkErrorMessageAtImportScript(complete_url);
 
     // Step 5.1: "Fetch a classic worker-imported script given url and settings
     // object, passing along any custom perform the fetch steps provided. If
@@ -551,9 +537,7 @@ void WorkerGlobalScope::RunWorkerScript() {
               is_success = false;
               break;
             case v8::Promise::kPending:
-              NOTREACHED_IN_MIGRATION();
-              is_success = false;
-              break;
+              NOTREACHED();
           }
         } else {
           is_success = result.GetResultType() ==
@@ -715,6 +699,16 @@ WorkerGlobalScope::WorkerGlobalScope(
         GetTaskRunner(TaskType::kInternalDefault));
   }
 
+  if (creation_params->coep_reporting_observer) {
+    ReportingContext::From(this)->Bind(
+        std::move(creation_params->coep_reporting_observer));
+  }
+
+  if (creation_params->dip_reporting_observer) {
+    ReportingContext::From(this)->Bind(
+        std::move(creation_params->dip_reporting_observer));
+  }
+
   // A PermissionsPolicy is created by
   // PermissionsPolicy::CreateFromParentPolicy, even if the parent policy is
   // null.
@@ -772,12 +766,6 @@ void WorkerGlobalScope::SetWorkerMainScriptLoadingParametersForModules(
       std::move(worker_main_script_load_params_for_modules);
 }
 
-void WorkerGlobalScope::queueMicrotask(V8VoidFunction* callback) {
-  GetAgent()->event_loop()->EnqueueMicrotask(
-      WTF::BindOnce(&V8VoidFunction::InvokeAndReportException,
-                    WrapPersistent(callback), nullptr));
-}
-
 void WorkerGlobalScope::SetWorkerSettings(
     std::unique_ptr<WorkerSettings> worker_settings) {
   worker_settings_ = std::move(worker_settings);
@@ -818,6 +806,7 @@ void WorkerGlobalScope::Trace(Visitor* visitor) const {
   visitor->Trace(trusted_types_);
   visitor->Trace(worker_script_);
   visitor->Trace(browser_interface_broker_proxy_);
+  UniversalGlobalScope::Trace(visitor);
   WorkerOrWorkletGlobalScope::Trace(visitor);
   Supplementable<WorkerGlobalScope>::Trace(visitor);
 }

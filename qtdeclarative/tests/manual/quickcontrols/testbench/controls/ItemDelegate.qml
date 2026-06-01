@@ -10,7 +10,14 @@ QtObject {
         ["disabled"],
         ["pressed"],
         ["highlighted"],
-        ["highlighted", "pressed"]
+        ["highlighted", "pressed"],
+        ["icon"],
+        ["transparent-icon"],
+        ["icon", "disabled"],
+        ["icon", "pressed"],
+        ["icon", "highlighted"],
+        ["icon", "highlighted", "pressed"],
+        ["icon", "mirrored"]
     ]
 
     property Component component: ItemDelegate {
@@ -20,6 +27,8 @@ QtObject {
         // Only set it if it's pressed, or the non-pressed examples will have no press effects
         down: is("pressed") ? true : undefined
         highlighted: is("highlighted")
+        icon.source: anyStateContains("icon") ? Utils.iconUrl : ""
+        icon.color: is("transparent-icon") ? "transparent" : undefined
         focusPolicy: Qt.StrongFocus
     }
 

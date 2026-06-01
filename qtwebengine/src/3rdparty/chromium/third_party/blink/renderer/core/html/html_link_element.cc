@@ -97,14 +97,10 @@ void HTMLLinkElement::ParseAttribute(
     if (rel_attribute_.IsTermsOfService()) {
       UseCounter::Count(&GetDocument(), WebFeature::kLinkRelTermsOfService);
     }
-    if (rel_attribute_.IsPayment() && GetDocument().IsInOutermostMainFrame()) {
-      UseCounter::Count(&GetDocument(), WebFeature::kLinkRelPayment);
-#if BUILDFLAG(IS_ANDROID)
-      if (RuntimeEnabledFeatures::PaymentLinkDetectionEnabled()) {
-        GetDocument().HandlePaymentLink(
-            GetNonEmptyURLAttribute(html_names::kHrefAttr));
-      }
-#endif
+    if (rel_attribute_.IsFacilitatedPayment() &&
+        GetDocument().IsInOutermostMainFrame()) {
+      UseCounter::Count(&GetDocument(), WebFeature::kLinkRelFacilitatedPayment);
+      MaybeHandlePaymentLink();
     }
     rel_list_->DidUpdateAttributeValue(params.old_value, value);
     Process();
@@ -119,6 +115,7 @@ void HTMLLinkElement::ParseAttribute(
     // Log href attribute before logging resource fetching in process().
     LogUpdateAttributeIfIsolatedWorldAndInDocument("link", params);
     HandleExpectHrefChanges(params.old_value, value);
+    MaybeHandlePaymentLink();
     Process();
   } else if (name == html_names::kTypeAttr) {
     type_ = value;
@@ -135,7 +132,7 @@ void HTMLLinkElement::ParseAttribute(
     }
   } else if (name == html_names::kSizesAttr) {
     sizes_->DidUpdateAttributeValue(params.old_value, value);
-    WebVector<gfx::Size> web_icon_sizes =
+    std::vector<gfx::Size> web_icon_sizes =
         WebIconSizesParser::ParseIconSizes(value);
     icon_sizes_.resize(base::checked_cast<wtf_size_t>(web_icon_sizes.size()));
     for (wtf_size_t i = 0; i < icon_sizes_.size(); ++i)
@@ -261,6 +258,8 @@ Node::InsertionNotificationRequest HTMLLinkElement::InsertedInto(
     return kInsertionDone;
   DCHECK(isConnected());
 
+  MaybeHandlePaymentLink();
+
   GetDocument().GetStyleEngine().AddStyleSheetCandidateNode(*this);
 
   if (!ShouldLoadLink() && IsInShadowTree()) {
@@ -285,8 +284,10 @@ void HTMLLinkElement::RemovedFrom(ContainerNode& insertion_point) {
   // the flags.
   bool was_connected = isConnected();
   HTMLElement::RemovedFrom(insertion_point);
-  if (!insertion_point.isConnected())
+  if (!insertion_point.isConnected() ||
+      GetDocument().StatePreservingAtomicMoveInProgress()) {
     return;
+  }
 
   link_loader_->Abort();
 
@@ -518,6 +519,17 @@ void HTMLLinkElement::AddExpectRenderBlockingLinkIfNeeded(
     render_blocking_resource_manager->AddPendingParsingElementLink(
         ParseSameDocumentIdFromHref(href), this);
   }
+}
+
+void HTMLLinkElement::MaybeHandlePaymentLink() {
+#if BUILDFLAG(IS_ANDROID)
+  KURL payment_link = GetNonEmptyURLAttribute(html_names::kHrefAttr);
+  if (rel_attribute_.IsFacilitatedPayment() && !payment_link.IsEmpty() &&
+      isConnected() && GetDocument().IsInOutermostMainFrame() &&
+      RuntimeEnabledFeatures::PaymentLinkDetectionEnabled()) {
+    GetDocument().HandlePaymentLink(payment_link);
+  }
+#endif
 }
 
 }  // namespace blink

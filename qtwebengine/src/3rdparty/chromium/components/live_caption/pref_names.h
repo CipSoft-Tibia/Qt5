@@ -8,7 +8,6 @@
 #include <string>
 
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "components/soda/constants.h"
@@ -24,10 +23,6 @@ namespace prefs {
 // Whether the Live Caption bubble is expanded.
 inline constexpr char kLiveCaptionBubbleExpanded[] =
     "accessibility.captions.live_caption_bubble_expanded";
-
-// Whether the Live Caption bubble is pinned.
-inline constexpr char kLiveCaptionBubblePinned[] =
-    "accessibility.captions.live_caption_bubble_pinned";
 
 // Whether the Live Caption feature is enabled.
 inline constexpr char kLiveCaptionEnabled[] =
@@ -48,7 +43,7 @@ inline constexpr char kLiveCaptionMediaFoundationRendererErrorSilenced[] =
     "silenced";
 
 // This may be removed in the future but for now these preferences are ash only.
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 
 // Enables Captioning from microphone input.
 inline constexpr char kLiveCaptionUserMicrophoneEnabled[] =
@@ -63,7 +58,7 @@ const std::string GetUserMicrophoneCaptionLanguage(PrefService* profile_prefs);
 bool IsLanguageCodeForMicrophoneCaption(speech::LanguageCode language_code,
                                         PrefService* profile_prefs);
 
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 const std::string GetLiveCaptionLanguageCode(PrefService* profile_prefs);
 bool IsLanguageCodeForLiveCaption(speech::LanguageCode language_code,

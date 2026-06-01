@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcolordialog.h"
 
@@ -383,7 +384,7 @@ void QWellArray::setCurrent(int row, int col)
     if ((curRow == row) && (curCol == col))
         return;
 
-    if (row < 0 || col < 0)
+    if (row < 0 || col < 0 || row >= nrows || col >= ncols)
         row = col = -1;
 
     int oldRow = curRow;
@@ -498,6 +499,12 @@ public:
             break;
         }
         return false;
+    }
+
+    void applicationStateChanged(Qt::ApplicationState state)
+    {
+        if (state != Qt::ApplicationActive)
+            m_dp->releaseColorPicking();
     }
 
 private:
@@ -1625,6 +1632,8 @@ void QColorDialogPrivate::pickScreenColor()
     if (!colorPickingEventFilter)
         colorPickingEventFilter = new QColorPickingEventFilter(this, q);
     q->installEventFilter(colorPickingEventFilter);
+    QObject::connect(qApp, &QGuiApplication::applicationStateChanged,
+                     colorPickingEventFilter, &QColorPickingEventFilter::applicationStateChanged);
     // If user pushes Escape, the last color before picking will be restored.
     beforeScreenColorPicking = cs->currentColor();
 #ifndef QT_NO_CURSOR
@@ -1671,6 +1680,8 @@ void QColorDialogPrivate::releaseColorPicking()
     Q_Q(QColorDialog);
     cp->setCrossVisible(true);
     q->removeEventFilter(colorPickingEventFilter);
+    QObject::disconnect(qApp, &QGuiApplication::applicationStateChanged,
+                        colorPickingEventFilter, &QColorPickingEventFilter::applicationStateChanged);
     q->releaseMouse();
 #ifdef Q_OS_WIN32
     updateTimer->stop();

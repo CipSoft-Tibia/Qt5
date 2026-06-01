@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKFILEDIALOG_P_P_H
 #define QQUICKFILEDIALOG_P_P_H
@@ -83,6 +84,7 @@ public:
 
     QPointer<QQuickDialogButtonBox> buttonBox;
     QPointer<QQuickComboBox> nameFiltersComboBox;
+    QPointer<QQuickLabel> filterLabel;
     QPointer<QQuickListView> fileDialogListView;
     QPointer<QQuickFolderBreadcrumbBar> breadcrumbBar;
     QPointer<QQuickLabel> fileNameLabel;

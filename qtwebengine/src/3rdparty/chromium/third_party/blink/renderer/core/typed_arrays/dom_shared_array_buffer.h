@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_TYPED_ARRAYS_DOM_SHARED_ARRAY_BUFFER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_TYPED_ARRAYS_DOM_SHARED_ARRAY_BUFFER_H_
 
@@ -24,22 +29,21 @@ class CORE_EXPORT DOMSharedArrayBuffer final : public DOMArrayBufferBase {
 
   static DOMSharedArrayBuffer* Create(unsigned num_elements,
                                       unsigned element_byte_size) {
-    ArrayBufferContents contents(num_elements, element_byte_size,
-                                 ArrayBufferContents::kShared,
-                                 ArrayBufferContents::kZeroInitialize);
-    if (!contents.DataShared()) [[unlikely]] {
-      OOM_CRASH(num_elements * element_byte_size);
-    }
+    ArrayBufferContents contents(
+        num_elements, element_byte_size, ArrayBufferContents::kShared,
+        ArrayBufferContents::kZeroInitialize,
+        ArrayBufferContents::AllocationFailureBehavior::kCrash);
+    CHECK(contents.IsValid());
     return Create(std::move(contents));
   }
 
   static DOMSharedArrayBuffer* Create(const void* source,
                                       unsigned byte_length) {
-    ArrayBufferContents contents(byte_length, 1, ArrayBufferContents::kShared,
-                                 ArrayBufferContents::kDontInitialize);
-    if (!contents.DataShared()) [[unlikely]] {
-      OOM_CRASH(byte_length);
-    }
+    ArrayBufferContents contents(
+        byte_length, 1, ArrayBufferContents::kShared,
+        ArrayBufferContents::kDontInitialize,
+        ArrayBufferContents::AllocationFailureBehavior::kCrash);
+    CHECK(contents.IsValid());
     memcpy(contents.DataShared(), source, byte_length);
     return Create(std::move(contents));
   }

@@ -6,11 +6,11 @@
 
 #include <utility>
 
-#include "base/profiler/process_type.h"
 #include "base/profiler/profiler_buildflags.h"
 #include "base/test/bind.h"
 #include "base/test/gtest_util.h"
 #include "build/build_config.h"
+#include "components/sampling_profiler/process_type.h"
 #include "components/version_info/version_info.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -79,7 +79,11 @@ TEST_F(ThreadProfilerPlatformConfigurationTest, IsSupported) {
   EXPECT_TRUE(config()->IsSupported(version_info::Channel::CANARY));
   EXPECT_TRUE(config()->IsSupported(version_info::Channel::DEV));
   EXPECT_TRUE(config()->IsSupported(version_info::Channel::BETA));
+#if BUILDFLAG(IS_ANDROID)
   EXPECT_FALSE(config()->IsSupported(version_info::Channel::STABLE));
+#else   // BUILDFLAG(IS_ANDROID)
+  EXPECT_TRUE(config()->IsSupported(version_info::Channel::STABLE));
+#endif  // BUILDFLAG(IS_ANDROID)
 
   EXPECT_TRUE(config()->IsSupported(std::nullopt));
 #endif
@@ -90,25 +94,26 @@ MAYBE_PLATFORM_CONFIG_TEST_F(ThreadProfilerPlatformConfigurationTest,
   using RelativePopulations =
       ThreadProfilerPlatformConfiguration::RelativePopulations;
 #if BUILDFLAG(IS_ANDROID)
-  EXPECT_EQ((RelativePopulations{0, 0, 100}),
+  EXPECT_EQ((RelativePopulations{0.0, 0.0, 100.0}),
             config()->GetEnableRates(version_info::Channel::CANARY));
-  EXPECT_EQ((RelativePopulations{0, 0, 100}),
+  EXPECT_EQ((RelativePopulations{0.0, 0.0, 100.0}),
             config()->GetEnableRates(version_info::Channel::DEV));
-  EXPECT_EQ((RelativePopulations{0, 0, 100}),
+  EXPECT_EQ((RelativePopulations{0.0, 0.0, 100.0}),
             config()->GetEnableRates(version_info::Channel::BETA));
   // Note: death tests aren't supported on Android. Otherwise this test would
   // check that the other inputs result in CHECKs.
 #else
   EXPECT_CHECK_DEATH(config()->GetEnableRates(version_info::Channel::UNKNOWN));
-  EXPECT_EQ((RelativePopulations{0, 80, 20}),
+  EXPECT_EQ((RelativePopulations{0.0, 80.0, 20.0}),
             config()->GetEnableRates(version_info::Channel::CANARY));
-  EXPECT_EQ((RelativePopulations{0, 80, 20}),
+  EXPECT_EQ((RelativePopulations{0.0, 80.0, 20.0}),
             config()->GetEnableRates(version_info::Channel::DEV));
-  EXPECT_EQ((RelativePopulations{90, 0, 10}),
+  EXPECT_EQ((RelativePopulations{90.0, 0.0, 10.0}),
             config()->GetEnableRates(version_info::Channel::BETA));
-  EXPECT_CHECK_DEATH(config()->GetEnableRates(version_info::Channel::STABLE));
+  EXPECT_EQ((RelativePopulations{100.0 - 0.006, 0.0, 0.006}),
+            config()->GetEnableRates(version_info::Channel::STABLE));
 
-  EXPECT_EQ((RelativePopulations{0, 100, 0}),
+  EXPECT_EQ((RelativePopulations{0.0, 100.0, 0.0}),
             config()->GetEnableRates(std::nullopt));
 #endif
 }
@@ -116,22 +121,22 @@ MAYBE_PLATFORM_CONFIG_TEST_F(ThreadProfilerPlatformConfigurationTest,
 MAYBE_PLATFORM_CONFIG_TEST_F(ThreadProfilerPlatformConfigurationTest,
                              GetChildProcessPerExecutionEnableFraction) {
   EXPECT_EQ(1.0, config()->GetChildProcessPerExecutionEnableFraction(
-                     base::ProfilerProcessType::kGpu));
+                     sampling_profiler::ProfilerProcessType::kGpu));
   EXPECT_EQ(1.0, config()->GetChildProcessPerExecutionEnableFraction(
-                     base::ProfilerProcessType::kNetworkService));
+                     sampling_profiler::ProfilerProcessType::kNetworkService));
 
 #if BUILDFLAG(IS_ANDROID)
   // Android child processes that match ChooseEnabledProcess() should be
   // profiled unconditionally.
   EXPECT_EQ(1.0, config()->GetChildProcessPerExecutionEnableFraction(
-                     base::ProfilerProcessType::kRenderer));
+                     sampling_profiler::ProfilerProcessType::kRenderer));
   EXPECT_EQ(1.0, config()->GetChildProcessPerExecutionEnableFraction(
-                     base::ProfilerProcessType::kUnknown));
+                     sampling_profiler::ProfilerProcessType::kUnknown));
 #else
   EXPECT_EQ(0.2, config()->GetChildProcessPerExecutionEnableFraction(
-                     base::ProfilerProcessType::kRenderer));
+                     sampling_profiler::ProfilerProcessType::kRenderer));
   EXPECT_EQ(0.0, config()->GetChildProcessPerExecutionEnableFraction(
-                     base::ProfilerProcessType::kUnknown));
+                     sampling_profiler::ProfilerProcessType::kUnknown));
 #endif
 }
 
@@ -141,27 +146,25 @@ MAYBE_PLATFORM_CONFIG_TEST_F(ThreadProfilerPlatformConfigurationTest,
   // assuming it is enabled for corresponding process. Not all these
   // combinations actually make sense or are implemented in the code, but
   // iterating over all combinations is the simplest way to test.
-  for (int i = 0; i <= static_cast<int>(base::ProfilerProcessType::kMax); ++i) {
-    const auto process = static_cast<base::ProfilerProcessType>(i);
-    for (int j = 0; j <= static_cast<int>(base::ProfilerThreadType::kMax);
+  for (int i = 0;
+       i <= static_cast<int>(sampling_profiler::ProfilerProcessType::kMax);
+       ++i) {
+    const auto process = static_cast<sampling_profiler::ProfilerProcessType>(i);
+    for (int j = 0;
+         j <= static_cast<int>(sampling_profiler::ProfilerThreadType::kMax);
          ++j) {
-      const auto thread = static_cast<base::ProfilerThreadType>(j);
-
-#if BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_ARM64)
-      if (process == base::ProfilerProcessType::kBrowser &&
-          thread == base::ProfilerThreadType::kMain) {
-        EXPECT_TRUE(config()->IsEnabledForThread(
-            process, thread, version_info::Channel::CANARY));
-      } else {
-        EXPECT_FALSE(config()->IsEnabledForThread(
-            process, thread, version_info::Channel::CANARY));
+      const auto thread = static_cast<sampling_profiler::ProfilerThreadType>(j);
+      // TODO(crbug.com/40226611): Remove exception once ThreadPoolWorker
+      // profile sampling is enabled.
+      if (thread == sampling_profiler::ProfilerThreadType::kThreadPoolWorker) {
+        // Skip checking kThreadPoolWorker threads.
+        continue;
       }
-#else
+
       EXPECT_TRUE(config()->IsEnabledForThread(process, thread,
                                                version_info::Channel::CANARY));
-#endif
 
-#if BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_ARMEL)
+#if BUILDFLAG(IS_ANDROID)
       auto android_config1 = ThreadProfilerPlatformConfiguration::Create(
           /* browser_test_mode_enabled=*/false,
           base::BindLambdaForTesting([](double probability) { return true; }));
@@ -172,29 +175,28 @@ MAYBE_PLATFORM_CONFIG_TEST_F(ThreadProfilerPlatformConfigurationTest,
           base::BindLambdaForTesting([](double probability) { return false; }));
       EXPECT_FALSE(android_config2->IsEnabledForThread(
           process, thread, version_info::Channel::DEV));
-#elif BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_ARM64)
-      auto android_config1 = ThreadProfilerPlatformConfiguration::Create(
-          /* browser_test_mode_enabled=*/false,
-          base::BindLambdaForTesting([](double probability) { return true; }));
-      auto android_config2 = ThreadProfilerPlatformConfiguration::Create(
-          /* browser_test_mode_enabled=*/false,
-          base::BindLambdaForTesting([](double probability) { return false; }));
-
-      if (process == base::ProfilerProcessType::kBrowser &&
-          thread == base::ProfilerThreadType::kMain) {
-        EXPECT_TRUE(android_config1->IsEnabledForThread(
-            process, thread, version_info::Channel::DEV));
-      } else {
-        EXPECT_FALSE(android_config1->IsEnabledForThread(
-            process, thread, version_info::Channel::DEV));
-      }
-
-      EXPECT_FALSE(android_config2->IsEnabledForThread(
-          process, thread, version_info::Channel::DEV));
 #else
       EXPECT_TRUE(config()->IsEnabledForThread(process, thread,
                                                version_info::Channel::DEV));
 #endif
     }
+  }
+}
+
+// TODO(crbug.com/40226611): Remove test once ThreadPoolWorker profile sampling
+// is enabled.
+MAYBE_PLATFORM_CONFIG_TEST_F(ThreadProfilerPlatformConfigurationTest,
+                             IsDisabledForThreadPoolWorkerThread) {
+  for (int i = 0;
+       i <= static_cast<int>(sampling_profiler::ProfilerProcessType::kMax);
+       ++i) {
+    const auto process = static_cast<sampling_profiler::ProfilerProcessType>(i);
+    const auto thread =
+        sampling_profiler::ProfilerThreadType::kThreadPoolWorker;
+
+    EXPECT_FALSE(config()->IsEnabledForThread(process, thread,
+                                              version_info::Channel::CANARY));
+    EXPECT_FALSE(config()->IsEnabledForThread(process, thread,
+                                              version_info::Channel::DEV));
   }
 }

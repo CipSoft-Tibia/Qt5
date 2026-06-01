@@ -17,24 +17,26 @@ namespace autofill {
 struct CallTimerState {
   enum class CallSite {
     kApplyFieldsAction,
-    kBatchSelectOrSelectListOptionChange,
+    kBatchSelectOptionChange,
     kDidChangeScrollOffsetImpl,
     kExtractForm,
     kFocusedElementChanged,
-    kFocusedElementChangedDeprecated,
     kGetFormDataFromUnownedInputElements,
     kGetFormDataFromWebForm,
     kGetSubmittedForm,
     kHandleCaretMovedInFormField,
     kJavaScriptChangedValue,
     kNotifyPasswordManagerAboutClearedForm,
-    kOnFormSubmitted,
     kOnProvisionallySaveForm,
-    kOnTextFieldDidChange,
+    kOnTextFieldValueChanged,
     kQueryAutofillSuggestions,
     kShowSuggestionPopup,
     kUpdateFormCache,
     kUpdateLastInteractedElement,
+    kDidDispatchDomContentLoadedEvent,
+    kEmitFormIssuesToDevtools,
+    kExtractForms,
+    kExtractFormsAndNotifyPasswordAutofillAgent,
   };
 #if defined(IS_REQUIRED_SUPPORTED) && !BUILDFLAG(IS_QTWEBENGINE)
   CallSite call_site = internal::IsRequired();

@@ -16,6 +16,10 @@
         <translation>Duplikat egenskapsnamn</translation>
     </message>
     <message>
+        <source>Property duplicates alias name</source>
+        <translation>Egenskapen har duplikat aliasnamn</translation>
+    </message>
+    <message>
         <source>Property names cannot begin with an upper case letter</source>
         <translation>Egenskapsnamn får inte börja med en versal bokstav</translation>
     </message>
@@ -28,55 +32,16 @@
         <translation>Duplikat aliasnamn</translation>
     </message>
     <message>
+        <source>Alias has same name as existing property</source>
+        <translation>Alias har samma namn som befintlig egenskap</translation>
+    </message>
+    <message>
         <source>Alias names cannot begin with an upper case letter</source>
         <translation>Aliasnamn får inte börja med en versal bokstav</translation>
     </message>
     <message>
         <source>Property value set multiple times</source>
         <translation>Egenskapsvärdet inställt flera gånger</translation>
-    </message>
-</context>
-<context>
-    <name>QQmlAnonymousComponentResolver</name>
-    <message>
-        <source>Component objects cannot declare new functions.</source>
-        <translation>Komponentobjekt kan inte deklarera nya funktioner.</translation>
-    </message>
-    <message>
-        <source>Component objects cannot declare new properties.</source>
-        <translation>Komponentobjekt kan inte deklarera nya egenskaper.</translation>
-    </message>
-    <message>
-        <source>Component objects cannot declare new signals.</source>
-        <translation>Komponentobjekt kan inte deklarera nya signaler.</translation>
-    </message>
-    <message>
-        <source>Cannot create empty component specification</source>
-        <translation>Kan inte skapa tom komponentspecifikation</translation>
-    </message>
-    <message>
-        <source>Component elements may not contain properties other than id</source>
-        <translation>Komponentelement får inte innehålla egenskaper andra än id</translation>
-    </message>
-    <message>
-        <source>Invalid component body specification</source>
-        <translation>Ogiltig body-specifikation för komponent</translation>
-    </message>
-    <message>
-        <source>id is not unique</source>
-        <translation>id är inte unikt</translation>
-    </message>
-    <message>
-        <source>Circular alias reference detected</source>
-        <translation>Cirkulär aliasreferens upptäcktes</translation>
-    </message>
-    <message>
-        <source>Invalid alias reference. Unable to find id &quot;%1&quot;</source>
-        <translation>Ogiltig aliasreferens. Kunde inte hitta id &quot;%1&quot;</translation>
-    </message>
-    <message>
-        <source>Invalid alias target location: %1</source>
-        <translation>Ogiltig alias target location: %1</translation>
     </message>
 </context>
 <context>
@@ -414,10 +379,6 @@
 <context>
     <name>QQmlEngine</name>
     <message>
-        <source>Locale cannot be instantiated. Use Qt.locale()</source>
-        <translation>Locale kan inte instansieras. Använd Qt.locale()</translation>
-    </message>
-    <message>
         <source>There are still &quot;%1&quot; items in the process of being created at engine destruction.</source>
         <translation>Det finns fortfarande &quot;%1&quot;-poster i processen att bli skapade vid motordestruktion.</translation>
     </message>
@@ -453,13 +414,13 @@
         <source>SQL: database version mismatch</source>
         <translation>SQL: databasversionen stämmer inte</translation>
     </message>
+    <message>
+        <source>SQL: Cannot open database</source>
+        <translation>SQL: Kan inte öppna databasen</translation>
+    </message>
 </context>
 <context>
     <name>QQmlEnumTypeResolver</name>
-    <message>
-        <source>Invalid property assignment: Enum value &quot;%1&quot; cannot start with a lowercase letter</source>
-        <translation>Ogiltig egenskapstilldelning: Enum-värdet &quot;%1&quot; kan inte börja med en gemen bokstav</translation>
-    </message>
     <message>
         <source>Invalid property assignment: &quot;%1&quot; is a read-only property</source>
         <translation>Ogiltig egenskapstilldelning: &quot;%1&quot; är en skrivskyddad egenskap</translation>
@@ -520,12 +481,16 @@
         <translation>modulen har inte stöd för designern &quot;%1&quot;</translation>
     </message>
     <message>
-        <source>plugin cannot be loaded for module &quot;%1&quot;: %2</source>
-        <translation>insticksmodulen kan inte läsas in för modulen &quot;%1&quot;: %2</translation>
+        <source>Cannot resolve URL for import &quot;%1&quot;</source>
+        <translation>Kan inte slå upp URL för import: &quot;%1&quot;</translation>
     </message>
     <message>
         <source>&quot;%1&quot; version %2.%3 is defined more than once in module &quot;%4&quot;</source>
         <translation>&quot;%1&quot; version %2.%3 är definierad fler än en gång i modulen &quot;%4&quot;</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; is not a valid import URL. You can pass relative paths or URLs with schema, but not absolute paths or resource paths. Try &quot;%2&quot;.</source>
+        <translation>&quot;%1&quot; är inte en giltig import-URL. Du kan skicka relativa sökvägar eller URLer med schema, men inte absoluta sökvägar eller resurssökvägar. Prova &quot;%2&quot;.</translation>
     </message>
     <message>
         <source>&quot;%1&quot;: no such directory</source>
@@ -554,6 +519,18 @@
     <message>
         <source>module &quot;%1&quot; plugin &quot;%2&quot; not found</source>
         <translation>modulen &quot;%1&quot; insticksmodul &quot;%2&quot; hittades inte</translation>
+    </message>
+    <message>
+        <source>module &quot;%1&quot; version %2.%3 cannot be imported because:
+%4</source>
+        <translation>modulen &quot;%1&quot; version %2.%3 kan inte importeras därför att:
+%4</translation>
+    </message>
+    <message>
+        <source>module &quot;%1&quot; cannot be imported because:
+%2</source>
+        <translation>modulen &quot;%1&quot; kan inte importeras därför att:
+%2</translation>
     </message>
 </context>
 <context>
@@ -622,6 +599,14 @@
 <context>
     <name>QQmlObjectCreator</name>
     <message>
+        <source>Cannot instantiate bound inline component in different file</source>
+        <translation>Kan inte instansiera bound inline-komponent i annan fil</translation>
+    </message>
+    <message>
+        <source>Cannot instantiate bound component outside its creation context</source>
+        <translation>Kan inte instansiera bunden komponent utanför sin skapade kontext</translation>
+    </message>
+    <message>
         <source>Cannot assign value %1 to property %2</source>
         <translation>Kan inte tilldela värdet %1 till egenskap %2</translation>
     </message>
@@ -648,6 +633,10 @@
     <message>
         <source>Cannot assign object to read only list</source>
         <translation>Kan inte tilldela objekt till skrivskyddad lista</translation>
+    </message>
+    <message>
+        <source>Cannot construct value type from given object</source>
+        <translation>Kan inte konstruera värdestyp från angivet objekt</translation>
     </message>
     <message>
         <source>Cannot assign primitives to lists</source>
@@ -700,20 +689,20 @@
         <translation>Skriptimport kräver en bestämning</translation>
     </message>
     <message>
-        <source>Library import requires a version</source>
-        <translation>Biblioteksimport kräver en version</translation>
+        <source>Multiple %1 pragmas found</source>
+        <translation>Flera %1-pragman hittades</translation>
     </message>
     <message>
-        <source>Pragma requires a valid qualifier</source>
-        <translation>Pragma kräver en giltig bestämning</translation>
+        <source>Unknown %1 &apos;%2&apos; in pragma</source>
+        <translation>Okänd %1 &apos;%2&apos; i pragma</translation>
     </message>
     <message>
-        <source>Unexpected property type modifier</source>
-        <translation>Oväntad egenskapstypmodifierare</translation>
+        <source>Unknown pragma &apos;%1&apos;</source>
+        <translation>Okänt pragma &apos;%1&apos;</translation>
     </message>
     <message>
-        <source>Expected property type</source>
-        <translation>Förväntade egenskapstyp</translation>
+        <source>Empty pragma found</source>
+        <translation>Tom pragma hittades</translation>
     </message>
     <message>
         <source>Expected parameter type</source>
@@ -726,6 +715,10 @@
     <message>
         <source>Invalid property type modifier</source>
         <translation>Ogiltig modifierare för egenskapstyp</translation>
+    </message>
+    <message>
+        <source>Function declaration inside grouped property</source>
+        <translation>Funktionsdeklaration inne i grupperad egenskap</translation>
     </message>
     <message>
         <source>JavaScript declaration outside Script element</source>
@@ -758,6 +751,14 @@
     <message>
         <source>Unclosed string at end of line</source>
         <translation>Ostängd sträng på radslut</translation>
+    </message>
+    <message>
+        <source>There can be at most one numeric separator between digits</source>
+        <translation>Det kan finnas som mest en numerisk avgränsare mellan siffror</translation>
+    </message>
+    <message>
+        <source>A trailing numeric separator is not allowed in numeric literals</source>
+        <translation>En efterliggande numerisk avgränsare tillåts inte i numeriska literaler</translation>
     </message>
     <message>
         <source>At least one hexadecimal digit is required after &apos;0%1&apos;</source>
@@ -808,16 +809,8 @@
         <translation>Ogiltig modul-URI</translation>
     </message>
     <message>
-        <source>Module import requires a version</source>
-        <translation>Modulimport kräver en version</translation>
-    </message>
-    <message>
-        <source>Module import requires a minor version (missing dot)</source>
-        <translation>Modulimport kräver en minor version (saknar punkt)</translation>
-    </message>
-    <message>
-        <source>Module import requires a minor version (missing number)</source>
-        <translation>Modulimport krävs en minor version (saknar nummer)</translation>
+        <source>Incomplete version number (dot but no minor)</source>
+        <translation>Okomplett versionsnummer (punkt men inte minor)</translation>
     </message>
     <message>
         <source>File import requires a qualifier</source>
@@ -830,6 +823,14 @@
     <message>
         <source>Invalid import qualifier</source>
         <translation>Ogiltig importkvalificerare</translation>
+    </message>
+    <message>
+        <source>Unexpected token `%1&apos;</source>
+        <translation>Oväntat token `%1&apos;</translation>
+    </message>
+    <message>
+        <source>Expected token `%1&apos;</source>
+        <translation>Förväntade token `%1&apos;</translation>
     </message>
 </context>
 <context>
@@ -846,6 +847,10 @@
 <context>
     <name>QQmlPropertyCacheCreatorBase</name>
     <message>
+        <source>Type cannot be used for &apos;on&apos; assignment</source>
+        <translation>Typen kan inte användas för &apos;on&apos;-tilldelning</translation>
+    </message>
+    <message>
         <source>Fully dynamic types cannot declare new properties.</source>
         <translation>Fullt dynamiska typer kan inte deklarera nya egenskaper.</translation>
     </message>
@@ -856,6 +861,10 @@
     <message>
         <source>Fully Dynamic types cannot declare new functions.</source>
         <translation>Fullt dynamiska typer kan inte deklarera nya funktioner.</translation>
+    </message>
+    <message>
+        <source>Type &apos;%1&apos; cannot declare new members.</source>
+        <translation>Typen &quot;%1&quot; kan inte deklarera nya medlemmar.</translation>
     </message>
     <message>
         <source>Non-existent attached object</source>
@@ -917,6 +926,10 @@
         <translation>Ogiltigt fäst objekttilldelning</translation>
     </message>
     <message>
+        <source>%1 properties cannot be used here</source>
+        <translation>%1-egenskaper kan inte användas här</translation>
+    </message>
+    <message>
         <source>Invalid property assignment: &quot;%1&quot; is a read-only property</source>
         <translation>Ogiltig egenskapstilldelning: &quot;%1&quot; är en skrivskyddad egenskap</translation>
     </message>
@@ -941,6 +954,14 @@
         <translation>Ogiltig grupperad egenskapsåtkomst: Property &quot;%1&quot; med primitiva typen &quot;%2&quot;.</translation>
     </message>
     <message>
+        <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is neither a value nor an object type</source>
+        <translation>Ogiltig grupperad egenskapsåtkomst: Egenskapen &quot;%1&quot; med typen &quot;%2&quot; som varken är ett värde eller en objekttyp</translation>
+    </message>
+    <message>
+        <source>Unsupported grouped property access: Property &quot;%1&quot; with type &quot;%2&quot; has a dynamic meta-object.</source>
+        <translation>Grupperad egenskapsåtkomst som inte stöds: &quot;%1&quot; med typen &quot;%2&quot; har ett dynamiskt metaobjekt.</translation>
+    </message>
+    <message>
         <source>Cannot assign to non-existent default property</source>
         <translation>Kan inte tilldela till icke-existerande standardegenskapen</translation>
     </message>
@@ -959,10 +980,6 @@
     <message>
         <source>Invalid property assignment: unknown enumeration</source>
         <translation>Ogiltig egenskapstilldelning: okänd enumeration</translation>
-    </message>
-    <message>
-        <source> - Assigning null to incompatible properties in QML is deprecated. This will become a compile error in future versions of Qt.</source>
-        <translation> - Tilldelning av null till inkompatibla egenskaper i QML är föråldrat. Detta kommer att ge ett kompileringsfel i framtida versioner av Qt.</translation>
     </message>
     <message>
         <source>Invalid property assignment: string expected</source>
@@ -1025,6 +1042,10 @@
         <translation>Ogiltig egenskapstilldelning: boolean förväntades</translation>
     </message>
     <message>
+        <source>Invalid property assignment: %1 expected</source>
+        <translation>Ogiltig egenskaptilldelning: %1 förväntades</translation>
+    </message>
+    <message>
         <source>Invalid property assignment: regular expression expected; use /pattern/ syntax</source>
         <translation>Ogiltig egenskapstilldelning: reguljärt uttryck förväntades; använd /pattern/-syntax</translation>
     </message>
@@ -1069,34 +1090,6 @@
         <translation>Ogiltig egenskapstilldelning: script förväntades</translation>
     </message>
     <message>
-        <source>Cannot assign value of type &quot;%1&quot; to property &quot;%2&quot;, expecting an object</source>
-        <translation>Kan inte tilldela värde av typen &quot;%1&quot; till egenskapen &quot;%2&quot;, förväntar ett objekt</translation>
-    </message>
-    <message>
-        <source>Attached properties cannot be used here</source>
-        <translation>Fästa egenskaper kan inte användas här</translation>
-    </message>
-    <message>
-        <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is not a value type</source>
-        <translation>Ogiltig grupperad egenskapsåtkomst: Egenskapen &quot;%1&quot; med typen &quot;%2&quot;, som inte är en värdestyp</translation>
-    </message>
-    <message>
-        <source>Invalid property assignment: 2D vector expected</source>
-        <translation>Ogiltig egenskapstilldelning: 2D-vektor förväntades</translation>
-    </message>
-    <message>
-        <source>Invalid property assignment: 3D vector expected</source>
-        <translation>Ogiltig egenskapstilldelning: 3D-vektor förväntades</translation>
-    </message>
-    <message>
-        <source>Invalid property assignment: 4D vector expected</source>
-        <translation>Ogiltig egenskapstilldelning: 4D-vektor förväntades</translation>
-    </message>
-    <message>
-        <source>Invalid property assignment: quaternion expected</source>
-        <translation>Ogiltig egenskapstilldelning: quaternion förväntades</translation>
-    </message>
-    <message>
         <source>Cannot assign object of type &quot;%1&quot; to property of type &quot;%2&quot; as the former is neither the same as the latter nor a sub-class of it.</source>
         <translation>Kan inte tilldela objekt av typen &quot;%1&quot; till egenskap av typen &quot;%2&quot; eftersom den tidigare varken är samma som den senare eller en sub-class av den.</translation>
     </message>
@@ -1107,6 +1100,10 @@
 </context>
 <context>
     <name>QQmlRewrite</name>
+    <message>
+        <source>Signal has an excessive number of parameters: %1</source>
+        <translation>Signalen har ett överdrivet antal parametrar: %1</translation>
+    </message>
     <message>
         <source>Signal uses unnamed parameter followed by named parameter.</source>
         <translation>Signal använder namnlös parameter följt av namngiven parameter.</translation>
@@ -1290,8 +1287,8 @@
 <context>
     <name>QQuickLayoutMirroringAttached</name>
     <message>
-        <source>LayoutDirection attached property only works with Items and Windows</source>
-        <translation>LayoutDirection-fäst egenskap fungerar endast med poster och fönster</translation>
+        <source>LayoutMirroring attached property only works with Items and Windows</source>
+        <translation>LayoutMirroring-fäst egenskap fungerar endast på Items och Windows</translation>
     </message>
 </context>
 <context>
@@ -1422,39 +1419,182 @@
 <context>
     <name>QQuickWindow</name>
     <message>
-        <source>Failed to create %1 context for format %2.
-This is most likely caused by not having the necessary graphics drivers installed.
-
-Install a driver providing OpenGL 2.0 or higher, or, if this is not possible, make sure the ANGLE Open GL ES 2.0 emulation libraries (%3, %4 and d3dcompiler_*.dll) are available in the application executable&apos;s directory or in a location listed in PATH.</source>
-        <extracomment>%1 Context type (Open GL, EGL), %2 format, ANGLE %3, %4 library names</extracomment>
-        <translation>Misslyckades med att skapa %1-kontext för formatet %2.
-Detta är antagligen orsakat av att inte ha nödvändiga grafikdrivtuiner installerade.
-
-Installera en drivrutin som tillhandahåller OpenGL 2.0 eller högre, eller, om detta inte är möjligt, försäkra dig om att ANGLE Open GL ES 2.0-emuleringsbiblioteken (%3, %4 samt d3dcompiler_*.dll) finns tillgängliga i programmets körbara filkatalog eller i en plats listad i PATH.</translation>
-    </message>
-    <message>
-        <source>Failed to create %1 context for format %2</source>
-        <extracomment>%1 Context type (Open GL, EGL), %2 format specification</extracomment>
-        <translation>Misslyckades med att skapa %1-kontext för formatet %2</translation>
-    </message>
-    <message>
         <source>Failed to initialize graphics backend for %1.</source>
         <translation>Misslyckades med att initiera grafikbakände för %1.</translation>
     </message>
 </context>
 <context>
-    <name>QQuickWindowQmlImpl</name>
+    <name>qmlRegisterType</name>
     <message>
-        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos; for Window &apos;%1&apos;</source>
-        <translation>Egenskaperna &apos;visible&apos; och &apos;visibility&apos; för fönstret &apos;%1&apos; står i konflikt</translation>
+        <source>Invalid QML %1 name &quot;%2&quot;; type names must begin with an uppercase letter</source>
+        <translation>Ogiltigt QML %1 namn &quot;%2&quot;; type-nam måste börja med en versal bokstav</translation>
     </message>
     <message>
-        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos;</source>
-        <translation>Egenskaperna &apos;visible&apos; och &apos;visibility&apos; står i konflikt</translation>
+        <source>Invalid QML %1 name &quot;%2&quot;; value type names should begin with a lowercase letter</source>
+        <translation>Ogiltig QML %1 namn &quot;%2&quot;; namn för värdestyper bör börja med en gemen bokstav</translation>
+    </message>
+    <message>
+        <source>Invalid QML %1 name &quot;%2&quot;</source>
+        <translation>Ogiltigt QML %1 namn &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>Cannot install %1 &apos;%2&apos; into protected module &apos;%3&apos; version &apos;%4&apos;</source>
+        <translation>Kan inte installera %1 &apos;%2&apos; in i skyddade modulen &apos;%3&apos; version &apos;%4&apos;</translation>
     </message>
 </context>
 <context>
-    <name>SignalHandlerConverter</name>
+    <name>ColorDialog</name>
+    <message>
+        <source>Color</source>
+        <translation>Färg</translation>
+    </message>
+</context>
+<context>
+    <name>FileDialog</name>
+    <message>
+        <source>Overwrite file?</source>
+        <translation>Skriv över fil?</translation>
+    </message>
+    <message>
+        <source>File name</source>
+        <translation>Filnamn</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Filtrera</translation>
+    </message>
+    <message>
+        <source>“%1” already exists.
+Do you want to replace it?</source>
+        <translation>&quot;%1&quot; finns redan.
+Vill du ersätta den?</translation>
+    </message>
+</context>
+<context>
+    <name>FontDialog</name>
+    <message>
+        <source>Writing System</source>
+        <translation>Skrivsystem</translation>
+    </message>
+</context>
+<context>
+    <name>MessageDialog</name>
+    <message>
+        <source>Hide Details...</source>
+        <translation>Dölj detaljer...</translation>
+    </message>
+    <message>
+        <source>Show Details...</source>
+        <translation>Visa detaljer...</translation>
+    </message>
+</context>
+<context>
+    <name>ColorInputs</name>
+    <message>
+        <source>Hex</source>
+        <translation>Hex</translation>
+    </message>
+    <message>
+        <source>RGB</source>
+        <translation>RGB</translation>
+    </message>
+    <message>
+        <source>HSV</source>
+        <translation>HSV</translation>
+    </message>
+    <message>
+        <source>HSL</source>
+        <translation>HSL</translation>
+    </message>
+</context>
+<context>
+    <name>FontDialogContent</name>
+    <message>
+        <source>Family</source>
+        <translation>Familj</translation>
+    </message>
+    <message>
+        <source>Style</source>
+        <translation>Stil</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>Storlek</translation>
+    </message>
+    <message>
+        <source>Effects</source>
+        <translation>Effekter</translation>
+    </message>
+    <message>
+        <source>Underline</source>
+        <translation>Understruken</translation>
+    </message>
+    <message>
+        <source>Strikeout</source>
+        <translation>Genomstruken</translation>
+    </message>
+    <message>
+        <source>Sample</source>
+        <translation>Exempel</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlComponentAndAliasResolverBase</name>
+    <message>
+        <source>Cannot wrap implicit component</source>
+        <translation>Kan inte slå in implicit komponent</translation>
+    </message>
+    <message>
+        <source>Cannot mark object as component</source>
+        <translation>Kan inte markera objekt som komponent</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new functions.</source>
+        <translation>Komponentobjekt kan inte deklarera nya funktioner.</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new properties.</source>
+        <translation>Komponentobjekt kan inte deklarera nya egenskaper.</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new signals.</source>
+        <translation>Komponentobjekt kan inte deklarera nya signaler.</translation>
+    </message>
+    <message>
+        <source>Cannot create empty component specification</source>
+        <translation>Kan inte skapa tom komponentspecifikation</translation>
+    </message>
+    <message>
+        <source>Component elements may not contain properties other than id</source>
+        <translation>Komponentelement får inte innehålla egenskaper andra än id</translation>
+    </message>
+    <message>
+        <source>Invalid component body specification</source>
+        <translation>Ogiltig body-specifikation för komponent</translation>
+    </message>
+    <message>
+        <source>id is not unique</source>
+        <translation>id är inte unikt</translation>
+    </message>
+    <message>
+        <source>Circular alias reference detected</source>
+        <translation>Cirkulär aliasreferens upptäcktes</translation>
+    </message>
+    <message>
+        <source>Invalid alias reference. Unable to find id &quot;%1&quot;</source>
+        <translation>Ogiltig aliasreferens. Kunde inte hitta id &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Invalid alias target location: %1</source>
+        <translation>Ogiltig alias target location: %1</translation>
+    </message>
+    <message>
+        <source>Unresolved alias found</source>
+        <translation>Olöst alias hittades</translation>
+    </message>
+</context>
+<context>
+    <name>SignalHandlerResolver</name>
     <message>
         <source>Non-existent attached object</source>
         <translation>Icke-existerande fäst objekt</translation>
@@ -1485,33 +1625,635 @@ Installera en drivrutin som tillhandahåller OpenGL 2.0 eller högre, eller, om 
     </message>
 </context>
 <context>
-    <name>SignalTransition</name>
+    <name>QQmlDeferredAndCustomParserBindingScanner</name>
     <message>
-        <source>Specified signal does not exist.</source>
-        <translation>Angiven signal finns inte.</translation>
+        <source>You cannot define both DeferredPropertyNames and ImmediatePropertyNames on the same type.</source>
+        <translation>Du kan inte definiera både DeferredPropertyNames och ImmediatePropertyNames på samma type.</translation>
+    </message>
+    <message>
+        <source>You cannot assign an id to an object assigned to a deferred property.</source>
+        <translation>Du kan inte tilldela ett id till ett objekt tilldelat till en fördröjd egenskap.</translation>
     </message>
     <message>
         <source>Cannot assign to non-existent property &quot;%1&quot;</source>
-        <translation>Kan inte tilldela en icke-existerande egenskap &quot;%1&quot;</translation>
-    </message>
-    <message>
-        <source>SignalTransition: script expected</source>
-        <translation>SignalTransition:-skript förväntades</translation>
+        <translation>Kan inte tilldela till icke-existerande egenskapen &quot;%1&quot;</translation>
     </message>
 </context>
 <context>
-    <name>qmlRegisterType</name>
+    <name>QQmlJSTypeDescriptionReader</name>
     <message>
-        <source>Invalid QML %1 name &quot;%2&quot;; type names must begin with an uppercase letter</source>
-        <translation>Ogiltigt QML %1 namn &quot;%2&quot;; type-nam måste börja med en versal bokstav</translation>
+        <source>Could not parse document.</source>
+        <translation>Kunde inte tolka dokumentet.</translation>
     </message>
     <message>
-        <source>Invalid QML %1 name &quot;%2&quot;</source>
-        <translation>Ogiltigt QML %1 namn &quot;%2&quot;</translation>
+        <source>Expected a single import.</source>
+        <translation>Förväntade en enda import.</translation>
     </message>
     <message>
-        <source>Cannot install %1 &apos;%2&apos; into protected module &apos;%3&apos; version &apos;%4&apos;</source>
-        <translation>Kan inte installera %1 &apos;%2&apos; in i skyddade modulen &apos;%3&apos; version &apos;%4&apos;</translation>
+        <source>Expected import of QtQuick.tooling.</source>
+        <translation>Förväntade import av QtQuick.tooling.</translation>
+    </message>
+    <message>
+        <source>Import statement without version.</source>
+        <translation>Importvillkor utan version.</translation>
+    </message>
+    <message>
+        <source>Major version different from 1 not supported.</source>
+        <translation>Major version som skiljer sig från 1 stöds inte.</translation>
+    </message>
+    <message>
+        <source>Expected document to contain a single object definition.</source>
+        <translation>Förväntade document att innehålla en enda objektdefinition.</translation>
+    </message>
+    <message>
+        <source>Expected document to contain a Module {} member.</source>
+        <translation>Förväntade document att innehålla en Module {}-medlem.</translation>
+    </message>
+    <message>
+        <source>Expected dependency definitions</source>
+        <translation>Förväntade beroendedefinitioner</translation>
+    </message>
+    <message>
+        <source>Expected only Property, Method, Signal and Enum object definitions, not &quot;%1&quot;.</source>
+        <translation>Förväntade endast Property, Method, Signal och Enum-objektdefinitioner, inte &quot;%1&quot;.</translation>
+    </message>
+    <message>
+        <source>Unknown access semantics &quot;%1&quot;.</source>
+        <translation>Okänd access semantics &quot;%1&quot;.</translation>
+    </message>
+    <message>
+        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
+        <translation>Förväntade endast name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames samt immediateNames i skriptbindningar, inte &quot;%1&quot;.</translation>
+    </message>
+    <message>
+        <source>Expected only script bindings and object definitions.</source>
+        <translation>Förväntade endast skriptbindningar och objektdefinitioner.</translation>
+    </message>
+    <message>
+        <source>Component definition is missing a name binding.</source>
+        <translation>Komponentdefinition saknar en namnbindning.</translation>
+    </message>
+    <message>
+        <source>Expected only Parameter in object definitions.</source>
+        <translation>Förväntade endast Parameter i objektdefinitioner.</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant, and isJavaScriptFunction in script bindings.</source>
+        <translation>Förväntade endast name, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant, samt isJavaScriptFunction i skriptbindningar.</translation>
+    </message>
+    <message>
+        <source>Method or signal is missing a name script binding.</source>
+        <translation>Metod eller signal saknar en namnskriptsbindning.</translation>
+    </message>
+    <message>
+        <source>Expected script binding.</source>
+        <translation>Förväntade skriptbindning.</translation>
+    </message>
+    <message>
+        <source>Expected only type, name, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index, and privateClass and script bindings.</source>
+        <translation>Förväntade endast type, name, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index samt privateClass och skriptbindningar.</translation>
+    </message>
+    <message>
+        <source>Property object is missing a name script binding.</source>
+        <translation>Egenskapsobjektet saknar en namnskriptsbindning.</translation>
+    </message>
+    <message>
+        <source>Expected only name, alias, isFlag, values, isScoped, or type.</source>
+        <translation>Förväntade endast name, alias, isFlag, values, isScoped eller type.</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, isPointer, isTypeConstant, isReadonly, or IsList script bindings.</source>
+        <translation>Förväntade endast name, type, isPointer, isTypeConstant, isReadonly eller IsList-skriptbindningar.</translation>
+    </message>
+    <message>
+        <source>Expected string after colon.</source>
+        <translation>Förväntade sträng efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected boolean after colon.</source>
+        <translation>Förväntade boolean efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected true or false after colon.</source>
+        <translation>Förväntade true eller false efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected numeric literal after colon.</source>
+        <translation>Förväntade numerisk literal efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected integer after colon.</source>
+        <translation>Förväntade heltal efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected array of strings after colon.</source>
+        <translation>Förväntade array of strings efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected array literal with only string literal members.</source>
+        <translation>Förväntade array literal med endast string literal-medlemmar.</translation>
+    </message>
+    <message>
+        <source>Expected string literal to contain &apos;Package/Name major.minor&apos; or &apos;Name major.minor&apos;.</source>
+        <translation>Förväntade string literal att innehålla &apos;Package/Name major.minor&apos; eller &apos;Name major.minor&apos;.</translation>
+    </message>
+    <message>
+        <source>Expected array of numbers after colon.</source>
+        <translation>Förväntade array of numbers efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected array literal with only number literal members.</source>
+        <translation>Förväntade array literal med endast number literal-medlemmar.</translation>
+    </message>
+    <message>
+        <source>Meta object revision without matching export.</source>
+        <translation>Meta object-revision utan matchande export.</translation>
+    </message>
+    <message>
+        <source>Expected integer.</source>
+        <translation>Förväntade heltal.</translation>
+    </message>
+    <message>
+        <source>Meta object revision and export version differ.
+Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
+        <translation>Meta object-revision och export version skiljer sig.
+Revision %1 motsvarar version %2.%3; den bör vara %4.%5.</translation>
+    </message>
+    <message>
+        <source>Expected object literal after colon.</source>
+        <translation>Förväntade object literal efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected expression after colon.</source>
+        <translation>Förväntade uttryck efter kolon.</translation>
+    </message>
+    <message>
+        <source>Expected strings as enum keys.</source>
+        <translation>Förväntade strängar som enum-nycklar.</translation>
+    </message>
+    <message>
+        <source>Expected either array or object literal as enum definition.</source>
+        <translation>Förväntade antingen array eller object literal som enum-definition.</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlDomAstCreator</name>
+    <message>
+        <source>id is a special attribute, that should not be used as property name</source>
+        <translation>id är ett speciellt attribut som inte bör användas som egenskapsnamn</translation>
+    </message>
+    <message>
+        <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, assuming they refer to an id property</source>
+        <translation>id -attribut bör endast ha en gemen bokstav följt av bokstäver, siffror eller understreck, antar då de referer till en id-egenskap</translation>
+    </message>
+    <message>
+        <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1</source>
+        <translation>id-attribut bör endast ha en gemen bokstav följt av bokstäver, siffror eller understreck, inte %1</translation>
+    </message>
+    <message>
+        <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1 %2, assuming they refer to a property</source>
+        <translation>id-attribut bör endast ha en gemen bokstav följt av bokstäver, siffror eller understreck, inte %1 %2, antar då de refererar till en egenskap</translation>
+    </message>
+    <message>
+        <source>id attributes should have only simple strings as values</source>
+        <translation>id-attribut bör endast ha enkla strings som värden</translation>
+    </message>
+    <message>
+        <source>Maximum statement or expression depth exceeded in QmlDomAstCreator</source>
+        <translation>Maximalt villkor eller uttrycksdjup överstegs i QmlDomAstCreator</translation>
+    </message>
+</context>
+<context>
+    <name>CommentInfo</name>
+    <message>
+        <source>Unexpected comment start %1</source>
+        <translation>Oväntad kommentarsstart %1</translation>
+    </message>
+    <message>
+        <source>Non whitespace char %1 after comment end at %2</source>
+        <translation>Icke-blankstegstecknet %1 efter kommentarsslut vid %2</translation>
+    </message>
+</context>
+<context>
+    <name>ErrorGroup</name>
+    <message>
+        <source>Invalid module name in import %1</source>
+        <translation>Ogiltigt modulnamn i import %1</translation>
+    </message>
+    <message>
+        <source>Invalid Version %1</source>
+        <translation>Ogiltig Version %1</translation>
+    </message>
+    <message>
+        <source>Field expressions should start with a dot, even when at the start of the path %1.</source>
+        <translation>Field-uttryck bör börja med en punkt, även vid början av sökvägen %1.</translation>
+    </message>
+    <message>
+        <source>Error extracting integer from &apos;%1&apos; at char %2.</source>
+        <translation>Fel vid extrahering av heltal från &quot;%1&quot; vid tecknet %2.</translation>
+    </message>
+    <message>
+        <source>Unclosed quoted string at char %1.</source>
+        <translation>Ostängd citerad string vid tecknet %1.</translation>
+    </message>
+    <message>
+        <source>Expected a brace in filter after the question mark (at char %1).</source>
+        <translation>Förväntade en klammer i filter efter frågetecknet (vid tecknet %1).</translation>
+    </message>
+    <message>
+        <source>Expected a closing brace in filter after the question mark (at char %1).</source>
+        <translation>Förväntade en stängande klammer i filter efter frågetecknet (vid tecknet %1).</translation>
+    </message>
+    <message>
+        <source>Filter from string not yet implemented.</source>
+        <translation>Filter från string ännu inte implementerat.</translation>
+    </message>
+    <message>
+        <source>Unexpected character &apos;%1&apos; after square bracket at %2.</source>
+        <translation>Oväntat tecken &quot;%1&quot; efter klammerparantes vid %2.</translation>
+    </message>
+    <message>
+        <source>square braces misses closing brace at char %1.</source>
+        <translation>klammerparanteser saknar stängande klammer vid tecknet %1.</translation>
+    </message>
+    <message>
+        <source>Index should use square brackets and not a dot (at char %1).</source>
+        <translation>Index bör använda hakparanteser och inte en punkt (vid tecknet %1).</translation>
+    </message>
+    <message>
+        <source>Unexpected character &apos;%1&apos; after dot (at char %2).</source>
+        <translation>Oväntat tecken &quot;%1&quot; efter punkt (vid tecknet %2).</translation>
+    </message>
+    <message>
+        <source>Unexpected character &apos;%1&apos; after end of component (char %2).</source>
+        <translation>Oväntat tecken &quot;%1&quot; efter slut på komponent (tecknet %2).</translation>
+    </message>
+    <message>
+        <source>unclosed square brace at end.</source>
+        <translation>ostängd klammerparantes på slutet.</translation>
+    </message>
+</context>
+<context>
+    <name>Import</name>
+    <message>
+        <source>Version %1 in import string &apos;%2&apos; overridden by explicit version %3</source>
+        <translation>Version %1 i import-strängen &apos;%2&apos; åsidosatt av uttrycklig version %3</translation>
+    </message>
+    <message>
+        <source>namespace %1 in import string &apos;%2&apos; overridden by explicit importId %3</source>
+        <translation>namnrymden %1 i import-strängen &apos;%2&apos; åsidosatt av uttryckligt importId %3</translation>
+    </message>
+    <message>
+        <source>Unexpected URI format in import &apos;%1&apos;</source>
+        <translation>Oväntat URI-format i import &apos;%1&apos;</translation>
+    </message>
+</context>
+<context>
+    <name>QmlObject</name>
+    <message>
+        <source>Repeated PropertyDefinition with name %1</source>
+        <translation>Upprepad PropertyDefinition med namnet %1</translation>
+    </message>
+    <message>
+        <source>Repeated binding with name %1</source>
+        <translation>Upprepad binding med namnet %1</translation>
+    </message>
+    <message>
+        <source>Repeated Method with name %1</source>
+        <translation>Upprepad Method med namnet %1</translation>
+    </message>
+</context>
+<context>
+    <name>Export</name>
+    <message>
+        <source>Expected string literal to contain &apos;Package/Name major.minor&apos; or &apos;Name major.minor&apos; not &apos;%1&apos;.</source>
+        <translation>Förväntad strängliteral ska innehålla &apos;Package/Name major.minor&apos; eller &apos;Name major.minor&apos; inte &apos;%1&apos;.</translation>
+    </message>
+</context>
+<context>
+    <name>ScriptExpression</name>
+    <message>
+        <source>Parsing of code failed</source>
+        <translation>Tolkning av kod misslyckades</translation>
+    </message>
+</context>
+<context>
+    <name>ImportScope</name>
+    <message>
+        <source>Looking up &apos;%1&apos; expected a list of exports, not %2</source>
+        <translation>Uppslagning av &quot;%1&quot; förväntade en lista över exporter, inte %2</translation>
+    </message>
+    <message>
+        <source>Expected Export looking up &apos;%1&apos;, not %2</source>
+        <translation>Förväntade exportuppslagning av &quot;%1&quot;, inte %2</translation>
+    </message>
+</context>
+<context>
+    <name>ErrorMessage</name>
+    <message>
+        <source>Double registration of error %1: (%2) vs (%3)</source>
+        <translation>Dubbelregistrering av fel %1: (%2) mot (%3)</translation>
+    </message>
+</context>
+<context>
+    <name>QmldirFile</name>
+    <message>
+        <source>QmldirFile started from invalid path &apos;%1&apos;</source>
+        <translation>QmldirFile startad från ogiltig sökväg &apos;%1&apos;</translation>
+    </message>
+    <message>
+        <source>canonicalFilePath is empty</source>
+        <translation>canonicalFilePath är tom</translation>
+    </message>
+</context>
+<context>
+    <name>FileWriter</name>
+    <message>
+        <source>Could not create temp file for %1</source>
+        <translation>Kunde inte skapa temporärfil för %1</translation>
+    </message>
+    <message>
+        <source>Rename of file %1 to %2 failed</source>
+        <translation>Namnbyte av filen %1 till %2 misslyckades</translation>
+    </message>
+    <message>
+        <source>Error while writing</source>
+        <translation>Fel vid skrivning</translation>
+    </message>
+    <message>
+        <source>Exception trying to write file %1</source>
+        <translation>Undantag vid försök att skriva filen %1</translation>
+    </message>
+</context>
+<context>
+    <name>DomItem</name>
+    <message>
+        <source>Root context %1 is not known</source>
+        <translation>Rotkontexten %1 är inte känd</translation>
+    </message>
+    <message>
+        <source>Circular reference:</source>
+        <translation>Cirkulär referens:</translation>
+    </message>
+    <message>
+        <source>Resolve with path ending with empty path, matches nothing.</source>
+        <translation>Uppslag med sökväg som slutar med tom sökväg, matchar ingenting.</translation>
+    </message>
+    <message>
+        <source>After an empty path only key, field or indexes are supported, not %1.</source>
+        <translation>Efter en tom sökväg stöds endast key, field eller indexes, inte %1.</translation>
+    </message>
+    <message>
+        <source>Root path is supported only at the beginning, and only once, found %1 at %2 in %3</source>
+        <translation>Rotsökväg stöds endast i början, och endast en gång, hittade %1 vid %2 i %3</translation>
+    </message>
+    <message>
+        <source>Javascript lookups not yet implemented</source>
+        <translation>Javascript-uppslag ännu inte implementerade</translation>
+    </message>
+    <message>
+        <source>Premature end of path, expected a field specifying the type, and a key specifying the name to search after a lookup directive in %2</source>
+        <translation>För tidigt sökvägsslut, förväntade en field som anger type och en nyckel som anger namnet att söka efter ett lookup-direktiv i %2</translation>
+    </message>
+    <message>
+        <source>Expected a key path specifying the type to search after a lookup directive, not %1 at component %2 of %3</source>
+        <translation>Förväntade en nyckelsökväg som anger typen att söka efter ett uppslagsdirektiv, inte %1 vid komponent %2 av %3</translation>
+    </message>
+    <message>
+        <source>Type for lookup was expected to be one of &apos;%1&apos;, not %2</source>
+        <translation>Typ för lookup förväntades att vara en av &quot;%1&quot;, inte %2</translation>
+    </message>
+    <message>
+        <source>Expected a key specifying the path to search after the @lookup directive and type, not %1 at component %2 of %3</source>
+        <translation>Förväntade en nyckel som anger sökvägen att söka efter @loopup-direktiv och typ, inte %1 vid komponent %2 av %3</translation>
+    </message>
+    <message>
+        <source>Path with empty lookup at component %1 of %2 will match nothing in %3.</source>
+        <translation>Sökväg med tomt uppslag vid komponent %1 av %2 kommer inte matcha något i %3.</translation>
+    </message>
+    <message>
+        <source>Prototype chain called outside object</source>
+        <translation>Prototypkedja anropas utanför objekt</translation>
+    </message>
+    <message>
+        <source>Detected multiple visit of %1 visiting prototypes of %2</source>
+        <translation>Upptäckte flera besök av %1 som besöker prototyper för %2</translation>
+    </message>
+    <message>
+        <source>Called visitScopeChain outside scopes</source>
+        <translation>Anropade visitScopeChain utanför omfånget</translation>
+    </message>
+    <message>
+        <source>Unexpected non scope object %1 (%2) reached in visitScopeChain</source>
+        <translation>Oväntat non scope-objekt %1 (%2) nåddes i visitScopeChain</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlJS::Dom</name>
+    <message>
+        <source>could not resolve prototype %1 (%2)</source>
+        <translation>kunde inte slå upp prototypen %1 (%2)</translation>
+    </message>
+    <message>
+        <source>Multiple definitions found, using first only, resolving prototype %1 (%2): %3</source>
+        <translation>Flera definitioner hittades, använder endast första, slår upp prototypen %1 (%2): %3</translation>
+    </message>
+    <message>
+        <source>Unexpected prototype type %1 (%2)</source>
+        <translation>Oväntad prototype-typ %1 (%2)</translation>
+    </message>
+</context>
+<context>
+    <name>CppTypeInfo</name>
+    <message>
+        <source>Unexpected complex CppType %1</source>
+        <translation>Oväntat komplex CppType %1</translation>
+    </message>
+    <message>
+        <source>Unexpected complex CppType %1 (map with non QString key)</source>
+        <translation>Oväntat komplex CppType %1 (map med icke-QString-nyckel)</translation>
+    </message>
+</context>
+<context>
+    <name>ModuleIndex</name>
+    <message>
+        <source>Module %1 (unversioned) has versioned entries for &apos;%2&apos; from %3</source>
+        <translation>Modulen %1 (saknar version) har versioned-poster för &apos;%2&apos; från %3</translation>
+    </message>
+    <message>
+        <source>Module %1 (major version %2) has versioned and unversioned entries for &apos;%3&apos;</source>
+        <translation>Modulen %1 (major version %2) har versioned och icke-versioned poster för &apos;%3&apos;</translation>
+    </message>
+    <message>
+        <source>Failed to find main qmldir file for %1 %2 in %3.</source>
+        <translation>Misslyckades med att hitta main qmldir-fil för %1 %2 i %3.</translation>
+    </message>
+</context>
+<context>
+    <name>Dom::fileTypeForPath</name>
+    <message>
+        <source>Could not detect type of file %1</source>
+        <translation>Kunde inte upptäcka typen för filen %1</translation>
+    </message>
+</context>
+<context>
+    <name>DomUniverse</name>
+    <message>
+        <source>Ignoring request to load file %1 of unexpected type %2, calling callback immediately</source>
+        <translation>Ignorerar begäran att läsa in filen %1 av oväntade typen %2, anropar callback direkt</translation>
+    </message>
+    <message>
+        <source>Non existing path %1</source>
+        <translation>Icke-existerande sökväg %1</translation>
+    </message>
+    <message>
+        <source>Error opening path %1: %2 %3</source>
+        <translation>Fel vid öppning av sökvägen %1: %2 %3</translation>
+    </message>
+</context>
+<context>
+    <name>LoadInfo</name>
+    <message>
+        <source>advanceLoad called but found no work, which should never happen</source>
+        <translation>advanceLoad anropades men fungerar inte, vilket aldrig ska hända</translation>
+    </message>
+    <message>
+        <source>advanceLoad called after work should have been done, which should never happen</source>
+        <translation>advanceLoad andropades efter att arbete skulle ha gjorts, vilket aldrig ska hända</translation>
+    </message>
+    <message>
+        <source>Uninitialized LoadInfo %1</source>
+        <translation>Oinitierad LoadInfo %1</translation>
+    </message>
+    <message>
+        <source>Ignoring dependencies for empty (invalid) type %1</source>
+        <translation>Ignorerar beroenden för tom (ogiltig) typ %1</translation>
+    </message>
+    <message>
+        <source>dependencies of %1 (%2) not yet implemented</source>
+        <translation>beroenden för %1 (%2) ännu inte implementerade</translation>
+    </message>
+</context>
+<context>
+    <name>DomEnvironment</name>
+    <message>
+        <source>Non existing path to load: &apos;%1&apos;</source>
+        <translation>Icke-existerande sökväg att läsa in: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Unexpected file to load: &apos;%1&apos;</source>
+        <translation>Oväntad fil att läsa in: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>missing load info in </source>
+        <translation>saknar load info i </translation>
+    </message>
+    <message>
+        <source>Failed to find main qmldir file for %1 %2 in %3.</source>
+        <translation>Misslyckades med att hitta main qmldir-filen för %1 %2 i %3.</translation>
+    </message>
+    <message>
+        <source>Missing loadInfo for %1</source>
+        <translation>Saknar loadInfo för %1</translation>
+    </message>
+    <message>
+        <source>Could not find builtins.qmltypes file</source>
+        <translation>Kunde inte hitta builtins.qmltypes-filen</translation>
+    </message>
+    <message>
+        <source>A mutable module was requested in a multithreaded environment</source>
+        <translation>En föränderlig modul begärdes i en flertrådad miljö</translation>
+    </message>
+    <message>
+        <source>Could not get path for newly created ModuleIndex %1 %2</source>
+        <translation>Kunde inte få sökväg för nyligen skapat ModuleIndex %1 %2</translation>
+    </message>
+    <message>
+        <source>Unexpected path not ending with qmldir in qmldirFilePaths: %1</source>
+        <translation>Oväntad sökväg slutar inte med qmldir i qmldirFilePaths: %1</translation>
+    </message>
+    <message>
+        <source>addLoadinfo replaces unfinished load info for %1</source>
+        <translation>addLoadinfo ersätter ofärdig load info för %1</translation>
+    </message>
+</context>
+<context>
+    <name>TypeDescriptionReader</name>
+    <message>
+        <source>Property object is missing a name or type script binding.</source>
+        <translation>Egenskapsobjekt saknar ett namn eller type script-bindning.</translation>
+    </message>
+    <message>
+        <source>Method or signal is missing a name.</source>
+        <translation>Metod eller signal saknar ett namn.</translation>
+    </message>
+    <message>
+        <source>negative meta revision %1 not supported</source>
+        <translation>negativ meta version %1 stöds inte</translation>
+    </message>
+    <message>
+        <source>Component definition is missing a name binding.</source>
+        <translation>Komponentdefinition saknar en namnbindning.</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlXmlListModelRole</name>
+    <message>
+        <source>An XML element must not start with &apos;/&apos;</source>
+        <translation>Ett XML-element får inte börja med &apos;/&apos;</translation>
+    </message>
+    <message>
+        <source>An XML element must not end with &apos;/&apos;</source>
+        <translation>Ett XML-element får inte sluta med &apos;/&apos;</translation>
+    </message>
+    <message>
+        <source>An XML element must not contain &quot;//&quot;</source>
+        <translation>Ett XML-element får inte innehålla &quot;//&quot;</translation>
+    </message>
+</context>
+<context>
+    <name>XmlListModelRoleList</name>
+    <message>
+        <source>An XmlListModel query must start with &apos;/&apos;</source>
+        <translation>En XmlListModel-fråga måste börja med &apos;/&apos;</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlXmlListModel</name>
+    <message>
+        <source>&quot;%1&quot; duplicates a previous role name and will be disabled.</source>
+        <translation>&quot;%1&quot; duplicerar ett tidigare rollnamn och kommer att inaktiveras.</translation>
+    </message>
+    <message>
+        <source>Failed to create an instance of QRunnable query object</source>
+        <translation>Misslyckades med att skapa en instans av QRunnable-frågeobjekt</translation>
+    </message>
+    <message>
+        <source>Query error: &quot;%1&quot;</source>
+        <translation>Frågefel: &quot;%1&quot;</translation>
+    </message>
+</context>
+<context>
+    <name>QQuickTextDocument</name>
+    <message>
+        <source>Null document object: cannot load</source>
+        <translation>Null-dokumentobjekt: kan inte läsa in</translation>
+    </message>
+    <message>
+        <source>Failed to read: %1</source>
+        <translation>Misslyckades med att läsa: %1</translation>
+    </message>
+    <message>
+        <source>%1 does not exist</source>
+        <translation>%1 finns inte</translation>
+    </message>
+    <message>
+        <source>Cannot save: %1</source>
+        <translation>Kan inte spara: %1</translation>
+    </message>
+    <message>
+        <source>Can only save to local files</source>
+        <translation>Kan endast spara till lokala filer</translation>
     </message>
 </context>
 </TS>

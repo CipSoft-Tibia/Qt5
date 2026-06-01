@@ -2,8 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
-
 static_library("trusted_vault") {
   sources = [
     "trusted_vault_client.h",
@@ -33,8 +31,6 @@ static_library("trusted_vault") {
       "recovery_key_store_connection.h",
       "recovery_key_store_connection_impl.cc",
       "recovery_key_store_connection_impl.h",
-      "recovery_key_store_controller.cc",
-      "recovery_key_store_controller.h",
       "securebox.cc",
       "securebox.h",
       "standalone_trusted_vault_backend.cc",
@@ -74,21 +70,6 @@ static_library("trusted_vault") {
       "//third_party/boringssl",
     ]
   }
-
-  if (is_chromeos_ash) {
-    sources += [
-      "recovery_key_provider_ash.cc",
-      "recovery_key_provider_ash.h",
-    ]
-
-    deps += [
-      "//chromeos/ash/components/cryptohome",
-      "//chromeos/ash/components/dbus/cryptohome",
-      "//chromeos/ash/components/dbus/userdataauth",
-      "//chromeos/ash/components/dbus/userdataauth:userdataauth_proto",
-      "//components/account_id",
-    ]
-  }
 }
 
 if (!is_android) {
@@ -123,16 +104,6 @@ if (!is_android) {
       "//testing/gmock",
       "//testing/gtest",
     ]
-
-    if (is_chromeos_ash) {
-      sources += [ "recovery_key_store_controller_ash_unittest.cc" ]
-
-      deps += [
-        "//chromeos/ash/components/dbus/userdataauth",
-        "//chromeos/ash/components/dbus/userdataauth:test_support",
-        "//chromeos/ash/components/dbus/userdataauth:userdataauth_proto",
-      ]
-    }
   }
 }
 
@@ -172,21 +143,5 @@ static_library("test_support") {
       "//net:test_support",
       "//url",
     ]
-  }
-
-  if (is_chromeos_lacros) {
-    sources += [
-      "test/fake_crosapi_trusted_vault_backend.cc",
-      "test/fake_crosapi_trusted_vault_backend.h",
-      "test/fake_crosapi_trusted_vault_backend_service.cc",
-      "test/fake_crosapi_trusted_vault_backend_service.h",
-    ]
-
-    public_deps += [
-      "//chromeos/crosapi/mojom",
-      "//mojo/public/cpp/bindings",
-    ]
-
-    deps += [ "//components/account_manager_core" ]
   }
 }

@@ -445,22 +445,22 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
         AVContentLightMetadata *clli = (AVContentLightMetadata *) side_data->data;
         AV_WB32(s->buf, clli->MaxCLL * 10000);
         AV_WB32(s->buf + 4, clli->MaxFALL * 10000);
-        png_write_chunk(&s->bytestream, MKTAG('c', 'L', 'L', 'i'), s->buf, 8);
+        png_write_chunk(&s->bytestream, MKTAG('c', 'L', 'L', 'I'), s->buf, 8);
     }
 
     side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
     if (side_data) {
-        AVMasteringDisplayMetadata *mdvc = (AVMasteringDisplayMetadata *) side_data->data;
-        if (mdvc->has_luminance && mdvc->has_primaries) {
+        AVMasteringDisplayMetadata *mdcv = (AVMasteringDisplayMetadata *) side_data->data;
+        if (mdcv->has_luminance && mdcv->has_primaries) {
             for (int i = 0; i < 3; i++) {
-                AV_WB16(s->buf + 2*i, PNG_Q2D(mdvc->display_primaries[i][0], 50000));
-                AV_WB16(s->buf + 2*i + 2, PNG_Q2D(mdvc->display_primaries[i][1], 50000));
+                AV_WB16(s->buf + 2*i, PNG_Q2D(mdcv->display_primaries[i][0], 50000));
+                AV_WB16(s->buf + 2*i + 2, PNG_Q2D(mdcv->display_primaries[i][1], 50000));
             }
-            AV_WB16(s->buf + 12, PNG_Q2D(mdvc->white_point[0], 50000));
-            AV_WB16(s->buf + 14, PNG_Q2D(mdvc->white_point[1], 50000));
-            AV_WB32(s->buf + 16, PNG_Q2D(mdvc->max_luminance, 10000));
-            AV_WB32(s->buf + 20, PNG_Q2D(mdvc->min_luminance, 10000));
-            png_write_chunk(&s->bytestream, MKTAG('m', 'D', 'V', 'c'), s->buf, 24);
+            AV_WB16(s->buf + 12, PNG_Q2D(mdcv->white_point[0], 50000));
+            AV_WB16(s->buf + 14, PNG_Q2D(mdcv->white_point[1], 50000));
+            AV_WB32(s->buf + 16, PNG_Q2D(mdcv->max_luminance, 10000));
+            AV_WB32(s->buf + 20, PNG_Q2D(mdcv->min_luminance, 10000));
+            png_write_chunk(&s->bytestream, MKTAG('m', 'D', 'C', 'V'), s->buf, 24);
         }
     }
 
@@ -469,8 +469,9 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
     if (png_get_gama(pict->color_trc, s->buf))
         png_write_chunk(&s->bytestream, MKTAG('g', 'A', 'M', 'A'), s->buf, 4);
 
-    if (avctx->bits_per_raw_sample > 0 && avctx->bits_per_raw_sample < s->bit_depth) {
-        int len = ff_png_get_nb_channels(s->color_type);
+    if (avctx->bits_per_raw_sample > 0 &&
+            avctx->bits_per_raw_sample < (s->color_type & PNG_COLOR_MASK_PALETTE ? 8 : s->bit_depth)) {
+        int len = s->color_type & PNG_COLOR_MASK_PALETTE ? 3 : ff_png_get_nb_channels(s->color_type);
         memset(s->buf, avctx->bits_per_raw_sample, len);
         png_write_chunk(&s->bytestream, MKTAG('s', 'B', 'I', 'T'), s->buf, len);
     }

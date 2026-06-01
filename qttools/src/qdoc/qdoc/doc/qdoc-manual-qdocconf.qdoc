@@ -142,7 +142,7 @@
     \list
     \li \l {defines-variable} {defines}
     \li \l {depends-variable} {depends}
-    \li \l {documentationinheaders-variable} {documentationinheaders} (technical preview)
+    \li \l {documentationinheaders-variable} {documentationinheaders}
     \li \l {exampledirs-variable} {exampledirs}
     \li \l {examples-variable} {examples}
     \li \l {examplesinstallpath-variable} {examplesinstallpath}
@@ -183,6 +183,7 @@
     \li \l {tabsize-variable} {tabsize}
     \li \l {url-variable} {url}
     \li \l {url.examples-variable} {url.examples}
+    \li \l {url.sources-variable} {url.sources}
     \li \l {usealttextastitle-variable} {usealttextastitle}
     \li \l {version-variable} {version}
     \li \l {versionsym-variable} {versionsym}
@@ -330,9 +331,7 @@
     \l{url-variable}{url}.
 
     \target documentationinheaders-variable
-    \section1 documentationinheaders (technical preview)
-
-    \note This configuration flag enables a technical preview feature in QDoc.
+    \section1 documentationinheaders
 
     Set \c {documentationinheaders = true} to instruct QDoc to parse
     documentation comments also in header files when generating
@@ -340,6 +339,8 @@
 
     \warning In large code bases, this may impact QDoc's processing time.
     Therefore, you shouldn't set this flag unless you need it.
+
+    This feature was introduced to QDoc with Qt 6.9.
 
     \target exampledirs-variable
     \section1 exampledirs
@@ -1117,6 +1118,112 @@
     Qt 5.10 > Qt Quick > QML Types > Item QML Type
     \endcode
 
+    \section2 Table of contents and navigation links
+
+    If there are one or more pages that act as a table of contents (TOC),
+    list their titles in \c navigation.toctitles to automate
+    the navigational (\e {previous} and \e {next} page) link generation
+    for all pages listed in a TOC.
+
+    QDoc expects a \qdoccmd {list} of links on each TOC page. Nested
+    sub-lists are allowed.
+
+    For example,
+
+    \badcode
+    \list
+        \li \l {Home}
+        \li \l {Getting started}
+        \li What's new
+            \list
+                \li \l {What's new in v1.3} {v1.3}
+                \li \l {What's new in v1.2} {v1.2}
+                \li \l {What's new in v1.1} {v1.1}
+            \endlist
+    \endlist
+    \endcode
+
+    Since QDoc version 6.10, also \qdoccmd {generatelist} can appear
+    in the table of contents list:
+
+    \badcode
+    \list
+        \li \l {Home}
+        \li \l {Getting started}
+        \li What's new
+        \generatelist [descending] whatsnew
+    \endlist
+    \endcode
+
+    Here, the result is similar to the first \\list, assuming all
+    three `What's new` pages are part of the same \c whatsnew group.
+
+    See also \qdoccmd {ingroup}.
+
+    \target overloadedsignalstarget-variable
+    \section1 overloadedsignalstarget
+
+    \b {Default:} \c connecting-overloaded-signals
+
+    The \c overloadedsignalstarget variable specifies the link target used in
+    automatically generated notes for overloaded signals.
+
+    When QDoc encounters an overloaded signal, it generates a note with a link
+    to help documentation on connecting to overloaded signals. By default, this
+    links to a target named \c connecting-overloaded-signals.
+
+    Projects can customize this to link to their own documentation:
+
+    \badcode
+    # Link to a target within the project
+    overloadedsignalstarget = signals-guide.html#overloaded-signals
+
+    # Link to external documentation
+    overloadedsignalstarget = https://example.com/docs/signals.html#overloaded-signals
+    \endcode
+
+    The target can be:
+    \list
+        \li A simple target name (for use with \qdoccmd {target} commands):
+            \c {connecting-overloaded-signals}
+        \li A relative URL: \c {signals-guide.html#overloaded-signals}
+        \li An absolute URL: \c {https://example.com/docs/signals.html#overloaded-signals}
+    \endlist
+
+    See also \l {overloadedslotstarget-variable} {overloadedslotstarget}.
+
+    \target overloadedslotstarget-variable
+    \section1 overloadedslotstarget
+
+    \b {Default:} \c connecting-overloaded-slots
+
+    The \c overloadedslotstarget variable specifies the link target used in
+    automatically generated notes for overloaded slots.
+
+    When QDoc encounters an overloaded slot, it generates a note with a link
+    to help documentation on connecting to overloaded slots. By default, this
+    links to a target named \c connecting-overloaded-slots.
+
+    Projects can customize this to link to their own documentation:
+
+    \badcode
+    # Link to a target within the project
+    overloadedslotstarget = signals-guide.html#overloaded-slots
+
+    # Link to external documentation
+    overloadedslotstarget = https://example.com/docs/slots.html#overloaded-slots
+    \endcode
+
+    The target can be:
+    \list
+        \li A simple target name (for use with \qdoccmd {target} commands):
+            \c {connecting-overloaded-slots}
+        \li A relative URL: \c {signals-guide.html#overloaded-slots}
+        \li An absolute URL: \c {https://example.com/docs/slots.html#overloaded-slots}
+    \endlist
+
+    See also \l {overloadedsignalstarget-variable} {overloadedsignalstarget}.
+
     \target outputdir-variable
     \section1 outputdir
 
@@ -1619,13 +1726,40 @@
     \badcode
     qhp.QtCreator.subprojects = manual
     qhp.QtCreator.subprojects.manual.title = Qt Creator Manual
-    qhp.QtCreator.subprojects.manual.indexTitle = Qt Creator Manual
+    qhp.QtCreator.subprojects.manual.indexTitle = All topics
     qhp.QtCreator.subprojects.manual.type = manual
     \endcode
 
-    In this example, the page entitled "Qt Creator Manual" contains a nested
+    In this example, the page entitled "All topics" contains a nested
     list of links to pages in the documentation which is duplicated in
     Qt Assistant's Contents tab.
+
+    An example of such a list structure:
+
+    \badcode *
+    /\1!
+        \page qtcreator-toc.html
+        \title All topics
+
+        \list
+            \li \l {Installation}
+            \li \l {Getting started}
+            \list
+                \li \l {Configuring Qt Creator}
+                \li \l {Building and running an example}
+            \endlist
+            \li \l {Overview}
+            \li \l {Tutorials}
+                \generatelist tutorials
+            ...
+        \endlist
+    \1/
+    \endcode
+
+    Above, the \e {Getting started} topic has two pages as sub-topics.
+    The \e {Tutorials} topic is a \qdoccmd {group} page, and a \qdoccmd
+    {generatelist} command is used for listing individual tutorial pages
+    (members of \c tutorials group) as its sub-topics.
 */
 
 /*!
@@ -1937,6 +2071,46 @@
 
     See also \l url, \l examplesinstallpath, and \l {example-command}{\\example}.
 
+    \target url.sources-variable
+    \section1 url.sources
+
+    The \c {url.sources} variable holds the base URL for the C++ source
+    code associated with the current project. This is a URL for viewing
+    the project's sources in a repository, for example, on \e {github.com}.
+
+    Enable the source links by setting \c {url.sources.enabled} to
+    \c true. When enabled, QDoc generates a link to a declaration
+    in the \e synopsis (signature) of each documented C++ entity in its
+    \e {Detailed description} section.
+
+    In addition, define the root directory of the sources with
+    \c {url.sources.rootdir}. The generated link is composed of the
+    base URL (\c {url.sources}) and the path of the source file, relative
+    to \c {url.sources.rootdir}.
+
+    If the URL contains more components after the path (for example, a query
+    string specifying a branch), \\1 acts as a placeholder for
+    the path. Similarly, \\2 acts as a placeholder for the line number.
+
+    \c {url.sources.linktext} sets the user-visible link text for source
+    links. By default, the link text is an empty string; use the \c {a.srclink}
+    CSS selector to style the links in the HTML output.
+
+    For example, with the following configuration in
+    \c {qtbase/src/gui/doc/qtgui.qdocconf}:
+
+    \badcode
+    url.sources = "https://code.qt.io/cgit/qt/qtbase.git/tree/\1?h=$QT_VER#n\2"
+    url.sources.rootdir = ../../..    # root of the `qtbase` repository
+    url.sources.linktext = "(source)"
+    url.sources.enabled = true
+    \endcode
+
+    QDoc will generate links to \e code.qt.io for each documented C++
+    entity, specific to the branch defined with the \c QT_VER environment
+    variable.
+
+    The \c {url.sources} variable was introduced to QDoc with Qt 6.10.
 
     \target usealttextastitle-variable
     \section1 usealttextastitle

@@ -19,11 +19,13 @@ ScrollablePage {
         }
 
         TextArea {
+            enabled: !GalleryConfig.disabled
             width: page.availableWidth / 3
             anchors.horizontalCenter: parent.horizontalCenter
 
             wrapMode: TextArea.Wrap
             text: qsTr("TextArea\n...\n...\n...")
+            Accessible.name: qsTr("Demo text area")
         }
     }
 }

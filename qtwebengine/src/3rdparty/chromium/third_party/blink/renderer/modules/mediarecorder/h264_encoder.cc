@@ -9,6 +9,7 @@
 
 #include "third_party/blink/renderer/modules/mediarecorder/h264_encoder.h"
 
+#include <array>
 #include <optional>
 #include <utility>
 
@@ -129,7 +130,8 @@ void H264Encoder::EncodeFrame(scoped_refptr<media::VideoFrame> frame,
   const gfx::Size frame_size = frame->visible_rect().size();
   if (!openh264_encoder_ || configured_size_ != frame_size) {
     if (!ConfigureEncoder(frame_size)) {
-      on_error_cb_.Run();
+      on_error_cb_.Run(
+          media::EncoderStatus::Codes::kEncoderInitializationError);
       return;
     }
     first_frame_timestamp_ = capture_timestamp;
@@ -164,14 +166,16 @@ void H264Encoder::EncodeFrame(scoped_refptr<media::VideoFrame> frame,
         {media::EncoderStatus::Codes::kEncoderFailedEncode,
          base::StrCat(
              {"OpenH264 failed to encode: ", base::NumberToString(ret)})});
-    on_error_cb_.Run();
+    on_error_cb_.Run(media::EncoderStatus::Codes::kEncoderFailedEncode);
     return;
   }
   const media::Muxer::VideoParameters video_params(*frame);
   frame = nullptr;
 
   std::string data;
-  const uint8_t kNALStartCode[4] = {0, 0, 0, 1};
+  scoped_refptr<media::DecoderBuffer> buffer;
+
+  const std::array<uint8_t, 4> kNALStartCode = {0, 0, 0, 1};
   for (int layer = 0; layer < info.iLayerNum; ++layer) {
     const SLayerBSInfo& layerInfo = info.sLayerInfo[layer];
     // Iterate NAL units making up this layer, noting fragments.
@@ -189,19 +193,19 @@ void H264Encoder::EncodeFrame(scoped_refptr<media::VideoFrame> frame,
     // Copy the entire layer's data (including NAL start codes).
     data.append(reinterpret_cast<char*>(layerInfo.pBsBuf), layer_len);
   }
+  buffer = media::DecoderBuffer::CopyFrom(base::as_byte_span(data));
 
   metrics_provider_->IncrementEncodedFrameCount();
-  const bool is_key_frame = info.eFrameType == videoFrameTypeIDR;
-  on_encoded_video_cb_.Run(video_params, std::move(data), std::string(),
-                           std::nullopt, capture_timestamp, is_key_frame);
+  buffer->set_is_key_frame(info.eFrameType == videoFrameTypeIDR);
+  on_encoded_video_cb_.Run(video_params, std::move(buffer), std::nullopt,
+                           capture_timestamp);
 }
 
 bool H264Encoder::ConfigureEncoder(const gfx::Size& size) {
   TRACE_EVENT0("media", "H264Encoder::ConfigureEncoder");
   ISVCEncoder* temp_encoder = nullptr;
   if (WelsCreateSVCEncoder(&temp_encoder) != 0) {
-    NOTREACHED_IN_MIGRATION() << "Failed to create OpenH264 encoder";
-    return false;
+    NOTREACHED() << "Failed to create OpenH264 encoder";
   }
   openh264_encoder_.reset(temp_encoder);
   configured_size_ = size;
@@ -302,8 +306,7 @@ SEncParamExt H264Encoder::GetEncoderOptionForTesting() {
   SEncParamExt params;
   if (openh264_encoder_->GetOption(ENCODER_OPTION_SVC_ENCODE_PARAM_EXT,
                                    &params) != 0) {
-    NOTREACHED_IN_MIGRATION()
-        << "Failed to get ENCODER_OPTION_SVC_ENCODE_PARAM_EXT";
+    NOTREACHED() << "Failed to get ENCODER_OPTION_SVC_ENCODE_PARAM_EXT";
   }
 
   return params;

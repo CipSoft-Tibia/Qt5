@@ -3546,6 +3546,12 @@ const ScalarTypes &MessageTypes::field1() const &
     return *dptr->m_field1;
 }
 
+ScalarTypes &MessageTypes::mutField1() &
+{
+    dptr.detach();
+    return *dptr->m_field1;
+}
+
 void MessageTypes::clearField1()
 {
     if (dptr->m_field1) {
@@ -3573,6 +3579,12 @@ bool MessageTypes::hasField3() const
 
 const ScalarTypes &MessageTypes::field3() const &
 {
+    return *dptr->m_field3;
+}
+
+ScalarTypes &MessageTypes::mutField3() &
+{
+    dptr.detach();
     return *dptr->m_field3;
 }
 
@@ -3944,6 +3956,12 @@ const MessageTypes &NestedMessage::field2() const &
     return *dptr->m_field2;
 }
 
+MessageTypes &NestedMessage::mutField2() &
+{
+    dptr.detach();
+    return *dptr->m_field2;
+}
+
 void NestedMessage::clearField2()
 {
     if (dptr->m_field2) {
@@ -4093,6 +4111,12 @@ bool MessageNestedTypes::hasField1() const
 
 const MessageNestedTypes_QtProtobufNested::NestedMessage &MessageNestedTypes::field1() const &
 {
+    return *dptr->m_field1;
+}
+
+MessageNestedTypes_QtProtobufNested::NestedMessage &MessageNestedTypes::mutField1() &
+{
+    dptr.detach();
     return *dptr->m_field1;
 }
 

@@ -21,6 +21,7 @@
 #include "content/public/browser/reload_type.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/visibility.h"
+#include "content/public/browser/web_contents_capability_type.h"
 #include "ipc/ipc_message.h"
 #include "mojo/public/cpp/system/message_pipe.h"
 #include "services/network/public/mojom/fetch_api.mojom-forward.h"
@@ -35,6 +36,7 @@
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom-forward.h"
 #include "third_party/blink/public/mojom/media/capture_handle_config.mojom-forward.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/accessibility/ax_location_and_scroll_updates.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 
@@ -53,11 +55,15 @@ class Size;
 
 namespace ui {
 struct AXUpdatesAndEvents;
-struct AXLocationChanges;
+struct AXLocationAndScrollUpdates;
 namespace mojom {
 enum class VirtualKeyboardMode;
 }  // namespace mojom
 }  // namespace ui
+
+namespace net::device_bound_sessions {
+struct SessionAccess;
+}  // namespace net::device_bound_sessions
 
 namespace network::mojom {
 class SharedDictionaryAccessDetails;
@@ -73,7 +79,6 @@ class RenderProcessHost;
 class RenderViewHost;
 class RenderWidgetHost;
 class Page;
-class WebContents;
 struct CookieAccessDetails;
 struct EntryChangedDetails;
 struct FocusedNodeDetails;
@@ -83,6 +88,7 @@ struct MediaPlayerId;
 struct PrunedDetails;
 struct Referrer;
 struct TrustTokenAccessDetails;
+class WebContents;
 
 // Note: before adding a new `WebContentsObserver` subclass, consider if simpler
 // helpers will suffice:
@@ -117,6 +123,7 @@ struct TrustTokenAccessDetails;
 // returned by GetRenderViewHost().
 class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
  public:
+
   WebContentsObserver(WebContentsObserver&&) = delete;
   WebContentsObserver(const WebContentsObserver&) = delete;
   WebContentsObserver& operator=(WebContentsObserver&&) = delete;
@@ -531,6 +538,20 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
       NavigationHandle* navigation_handle,
       const network::mojom::SharedDictionaryAccessDetails& details) {}
 
+  // Called when a network request issued by the navivation accesses a
+  // device bound session
+  // (https://github.com/WICG/dbsc/blob/main/README.md).
+  virtual void OnDeviceBoundSessionAccessed(
+      RenderFrameHost* render_frame_host,
+      const net::device_bound_sessions::SessionAccess& access) {}
+
+  // Called when a document accesses a device bound session
+  // (https://github.com/WICG/dbsc/blob/main/README.md) by issuing a
+  // network request.
+  virtual void OnDeviceBoundSessionAccessed(
+      NavigationHandle* navigation_handle,
+      const net::device_bound_sessions::SessionAccess& access) {}
+
   // Called when the renderer requests access to storage.
   // Observers will be notified about the type of storage access requested
   // as well as whether access was blocked or not.
@@ -649,6 +670,10 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
   // This method is invoked when the title of the WebContents is set.
   virtual void TitleWasSet(NavigationEntry* entry) {}
 
+  // Invoked when the title is changed for any main frame in the WebContents
+  // (a primary main frame of a WebContents, a fenced frame or a MPArch guest).
+  virtual void TitleWasSetForMainFrame(RenderFrameHost* render_frame_host) {}
+
   // These methods are invoked when a Pepper plugin instance is created/deleted
   // in the DOM.
   virtual void PepperInstanceCreated() {}
@@ -656,6 +681,9 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
 
   // This method is called when the viewport fit of a WebContents changes.
   virtual void ViewportFitChanged(blink::mojom::ViewportFit value) {}
+
+  // This method is called when the safe area constraint changed.
+  virtual void SafeAreaConstraintChanged(bool has_constraint) {}
 
   // This method is called when the virtual keyboard mode of a WebContents
   // changes. This can happen as a result of the
@@ -701,6 +729,12 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
   // Invoked when the WebContents is being destroyed. Gives subclasses a chance
   // to cleanup. After the whole loop over all WebContentsObservers has been
   // finished, web_contents() returns nullptr.
+  // Do not use this method. It is invoked half-way through the destructor of
+  // WebContentsImpl and using it often results in crashes or surprising
+  // behavior. Conceptually, this is only necessary by objects that depend on,
+  // but outlive the WebContents. These objects should instead coordinate with
+  // the owner of the WebContents which is responsible for destroying the
+  // WebContents.
   virtual void WebContentsDestroyed() {}
 
   // Called when the user agent override for a WebContents has been changed.
@@ -752,13 +786,12 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
       RenderFrameHost* rfh,
       bool is_capturing_media_stream) {}
 
-  // Called when the connected to USB device state changes.
-  virtual void OnIsConnectedToUsbDeviceChanged(
-      bool is_connected_to_usb_device) {}
-
-  // Called when the connected to Bluetooth device state changes.
-  virtual void OnIsConnectedToBluetoothDeviceChanged(
-      bool is_connected_to_bluetooth_device) {}
+  // Called when WebContents starts/stops using a capability type. The
+  // arguments indicate the capability type that starts/stops being used
+  // and whether it is in use (true if it starts being used, false if it stops).
+  virtual void OnCapabilityTypesChanged(
+      WebContentsCapabilityType capability_type,
+      bool used) {}
 
   // Invoked when the WebContents is muted/unmuted.
   virtual void DidUpdateAudioMutingState(bool muted) {}
@@ -807,7 +840,8 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
   virtual void AccessibilityEventReceived(
       const ui::AXUpdatesAndEvents& details) {}
   virtual void AccessibilityLocationChangesReceived(
-      const std::vector<ui::AXLocationChanges>& details) {}
+      const ui::AXTreeID& tree_id,
+      ui::AXLocationAndScrollUpdates& details) {}
 
   // Invoked when theme color is changed.
   virtual void DidChangeThemeColor() {}
@@ -963,6 +997,9 @@ class CONTENT_EXPORT WebContentsObserver : public base::CheckedObserver {
 
   // Called when WebContents received a request to vibrate the page.
   virtual void VibrationRequested() {}
+
+  // Called when a first contentful paint happened in the primary main frame.
+  virtual void OnFirstContentfulPaintInPrimaryMainFrame() {}
 
   WebContents* web_contents() const;
 

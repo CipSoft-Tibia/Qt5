@@ -54,6 +54,7 @@ class QGtk3Storage;
 class QGtk3Interface
 {
     Q_GADGET
+    Q_DISABLE_COPY_MOVE(QGtk3Interface)
 public:
     QGtk3Interface(QGtk3Storage *);
     ~QGtk3Interface();

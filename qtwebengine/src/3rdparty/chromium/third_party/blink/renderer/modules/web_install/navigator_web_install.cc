@@ -12,6 +12,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_web_install_result.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/platform/bindings/exception_code.h"
@@ -45,10 +46,9 @@ NavigatorWebInstall::NavigatorWebInstall(Navigator& navigator)
 ScriptPromise<WebInstallResult> NavigatorWebInstall::install(
     ScriptState* script_state,
     Navigator& navigator,
-    const String& manifest_id,
     ExceptionState& exception_state) {
-  return NavigatorWebInstall::From(navigator).InstallImpl(
-      script_state, manifest_id, exception_state);
+  return NavigatorWebInstall::From(navigator).InstallImpl(script_state,
+                                                          exception_state);
 }
 
 // static:
@@ -64,7 +64,6 @@ ScriptPromise<WebInstallResult> NavigatorWebInstall::install(
 
 ScriptPromise<WebInstallResult> NavigatorWebInstall::InstallImpl(
     ScriptState* script_state,
-    const String& manifest_id,
     ExceptionState& exception_state) {
   if (!CheckPreconditionsMaybeThrow(script_state, exception_state)) {
     return ScriptPromise<WebInstallResult>();
@@ -79,20 +78,14 @@ ScriptPromise<WebInstallResult> NavigatorWebInstall::InstallImpl(
     return ScriptPromise<WebInstallResult>();
   }
 
-  KURL resolved_id = ResolveManifestId(manifest_id, exception_state);
-  if (!resolved_id.IsValid()) {
-    return ScriptPromise<WebInstallResult>();
-  }
-
   auto* resolver =
       MakeGarbageCollected<ScriptPromiseResolver<WebInstallResult>>(
           script_state);
   ScriptPromise<WebInstallResult> promise = resolver->Promise();
 
   CHECK(GetService());
-  GetService()->InstallCurrentDocument(
-      resolved_id,
-      WTF::BindOnce(&blink::OnInstallResponse, WrapPersistent(resolver)));
+  GetService()->Install(nullptr, WTF::BindOnce(&blink::OnInstallResponse,
+                                               WrapPersistent(resolver)));
   return promise;
 }
 
@@ -125,8 +118,12 @@ ScriptPromise<WebInstallResult> NavigatorWebInstall::InstallImpl(
   ScriptPromise<WebInstallResult> promise = resolver->Promise();
 
   CHECK(GetService());
-  GetService()->InstallBackgroundDocument(
-      resolved_id, KURL(install_url),
+  mojom::blink::InstallOptionsPtr options = mojom::blink::InstallOptions::New();
+  options->manifest_id = resolved_id;
+  options->install_url = KURL(install_url);
+
+  GetService()->Install(
+      std::move(options),
       WTF::BindOnce(&blink::OnInstallResponse, WrapPersistent(resolver)));
   return promise;
 }
@@ -169,8 +166,14 @@ void NavigatorWebInstall::OnConnectionError() {
 bool NavigatorWebInstall::CheckPreconditionsMaybeThrow(
     ScriptState* script_state,
     ExceptionState& exception_state) {
-  // TODO(crbug.com/333795265): Verify that site has been granted web install
-  // permission once implemented.
+  if (!ExecutionContext::From(script_state)
+           ->IsFeatureEnabled(
+               network::mojom::PermissionsPolicyFeature::kWebAppInstallation)) {
+    exception_state.ThrowSecurityError(
+        "Access to the feature \"web-app-installation\" is disallowed by "
+        "Permissions Policy.");
+    return false;
+  }
 
   Navigator* const navigator = GetSupplementable();
 

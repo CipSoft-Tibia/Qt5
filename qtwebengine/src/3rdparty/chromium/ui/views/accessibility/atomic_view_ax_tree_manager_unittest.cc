@@ -67,7 +67,7 @@ class AtomicViewAXTreeManagerTest : public ViewsTestBase {
     EXPECT_EQ(expected.relative_bounds, actual.relative_bounds);
   }
 
-  ui::AXNodeData delegate_data() { return delegate_->data(); }
+  const ui::AXNodeData& delegate_data() const { return delegate_->data(); }
 
  protected:
   raw_ptr<Textfield> textfield_ = nullptr;  // Owned by views hierarchy.
@@ -95,15 +95,13 @@ TEST_F(AtomicViewAXTreeManagerTest, GetRootAsAXNode) {
       delegate_->GetAtomicViewAXTreeManagerForTesting()->GetRoot()->data());
 }
 
-TEST_F(AtomicViewAXTreeManagerTest, GetNodeFromTree) {
+TEST_F(AtomicViewAXTreeManagerTest, GetNode) {
   CompareNodeData(
       delegate_data(),
       delegate_->GetAtomicViewAXTreeManagerForTesting()
-          ->GetNodeFromTree(
-              delegate_->GetAtomicViewAXTreeManagerForTesting()->GetTreeID(),
-              delegate_->GetAtomicViewAXTreeManagerForTesting()
-                  ->GetRoot()
-                  ->id())
+          ->GetNode(delegate_->GetAtomicViewAXTreeManagerForTesting()
+                        ->GetRoot()
+                        ->id())
           ->data());
 }
 

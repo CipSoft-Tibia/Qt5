@@ -23,6 +23,11 @@
  * DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "third_party/blink/renderer/modules/webaudio/wave_shaper_node.h"
 
 #include "third_party/blink/renderer/bindings/modules/v8/v8_wave_shaper_options.h"
@@ -133,7 +138,7 @@ NotShared<DOMFloat32Array> WaveShaperNode::curve() {
   return result;
 }
 
-void WaveShaperNode::setOversample(const String& type) {
+void WaveShaperNode::setOversample(const V8OverSampleType& type) {
   DCHECK(IsMainThread());
 
   // This is to synchronize with the changes made in
@@ -141,32 +146,35 @@ void WaveShaperNode::setOversample(const String& type) {
   // initialize() and uninitialize().
   DeferredTaskHandler::GraphAutoLocker context_locker(context());
 
-  if (type == "none") {
-    GetWaveShaperProcessor()->SetOversample(
-        WaveShaperProcessor::kOverSampleNone);
-  } else if (type == "2x") {
-    GetWaveShaperProcessor()->SetOversample(WaveShaperProcessor::kOverSample2x);
-  } else if (type == "4x") {
-    GetWaveShaperProcessor()->SetOversample(WaveShaperProcessor::kOverSample4x);
-  } else {
-    NOTREACHED_IN_MIGRATION();
+  switch (type.AsEnum()) {
+    case V8OverSampleType::Enum::kNone:
+      GetWaveShaperProcessor()->SetOversample(
+          WaveShaperProcessor::kOverSampleNone);
+      return;
+    case V8OverSampleType::Enum::k2X:
+      GetWaveShaperProcessor()->SetOversample(
+          WaveShaperProcessor::kOverSample2x);
+      return;
+    case V8OverSampleType::Enum::k4X:
+      GetWaveShaperProcessor()->SetOversample(
+          WaveShaperProcessor::kOverSample4x);
+      return;
   }
+  NOTREACHED();
 }
 
-String WaveShaperNode::oversample() const {
+V8OverSampleType WaveShaperNode::oversample() const {
   switch (const_cast<WaveShaperNode*>(this)
               ->GetWaveShaperProcessor()
               ->Oversample()) {
     case WaveShaperProcessor::kOverSampleNone:
-      return "none";
+      return V8OverSampleType(V8OverSampleType::Enum::kNone);
     case WaveShaperProcessor::kOverSample2x:
-      return "2x";
+      return V8OverSampleType(V8OverSampleType::Enum::k2X);
     case WaveShaperProcessor::kOverSample4x:
-      return "4x";
-    default:
-      NOTREACHED_IN_MIGRATION();
-      return "none";
+      return V8OverSampleType(V8OverSampleType::Enum::k4X);
   }
+  NOTREACHED();
 }
 
 void WaveShaperNode::ReportDidCreate() {

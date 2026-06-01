@@ -16,7 +16,7 @@
         "Comment": "no relevant CPE found",
         "LicenseId": "MIT",
         "License": "MIT License",
-        "LicenseFile": "../MIT_LICENSE.txt",
+        "LicenseFile": "MIT.txt",
         "Copyright": "Copyright (C) 2013 DENSO CORPORATION\nCopyright (c) 2013 BMW Car IT GmbH"
     }
 ]

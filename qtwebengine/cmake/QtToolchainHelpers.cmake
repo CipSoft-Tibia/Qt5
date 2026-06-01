@@ -256,8 +256,11 @@ macro(append_build_type_setup)
         use_partition_alloc=true
         use_partition_alloc_as_malloc=false
         use_custom_libcxx=false
+        use_custom_libcxx_for_host=false
         enable_rust=false # We do not yet support rust
         enable_chromium_prelude=false
+        enable_rust_png=false
+        pdf_enable_fontations=false
         assert_cpp20=false
     )
     if(${config} STREQUAL "Debug")
@@ -323,7 +326,7 @@ macro(append_build_type_setup)
 
     extend_gn_list(gnArgArg
         ARGS enable_precompiled_headers
-        CONDITION BUILD_WITH_PCH AND NOT LINUX
+        CONDITION QT_FEATURE_webengine_precompiled_headers
     )
     extend_gn_list(gnArgArg
         ARGS dcheck_always_on
@@ -424,8 +427,8 @@ macro(append_compiler_linker_sdk_setup)
             list(APPEND gnArgArg
                 android_ndk_root="${CMAKE_ANDROID_NDK}"
                 android_ndk_version="${CMAKE_ANDROID_NDK_VERSION}"
+                android_ndk_api_level=${ANDROID_NATIVE_API_LEVEL}
                 clang_use_default_sample_profile=false
-                #android_ndk_major_version=22
             )
         endif()
     else()
@@ -503,6 +506,10 @@ macro(append_compiler_linker_sdk_setup)
     extend_gn_list(gnArgArg
         ARGS use_lld
         CONDITION QT_FEATURE_use_lld_linker OR (MSVC AND CLANG)
+    )
+    extend_gn_list(gnArgArg
+        ARGS use_mold
+        CONDITION QT_FEATURE_use_mold_linker
     )
     unset(cpu)
 endmacro()

@@ -746,7 +746,6 @@ QString CppDumper::generateMetaObject(const QString &className,
     arg.type.rawName = arg.type.name;
     arg.normalizedType = arg.type.name;
     arg.name = "parent";
-    arg.typeNameForCast = arg.type.name + "*";
     constructor.arguments.append(arg);
     classDef.constructorList.append(constructor);
 
@@ -774,7 +773,6 @@ QString CppDumper::generateMetaObject(const QString &className,
         arg.type.rawName = arg.type.name;
         arg.normalizedType = arg.type.name;
         arg.name = "active";
-        arg.typeNameForCast = arg.type.name + "*";
         signal.arguments << arg;
         classDef.signalList << signal;
 

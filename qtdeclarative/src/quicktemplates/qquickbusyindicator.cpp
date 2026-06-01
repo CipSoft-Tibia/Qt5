@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickbusyindicator_p.h"
 #include "qquickcontrol_p_p.h"
@@ -16,6 +17,7 @@ QT_BEGIN_NAMESPACE
     \brief Indicates background activity, for example, while content is being loaded.
 
     \image qtquickcontrols-busyindicator.gif
+           {Spinning busy indicator showing activity in progress}
 
     The busy indicator should be used to indicate activity while content is
     being loaded or the UI is blocked waiting for a resource to become available.

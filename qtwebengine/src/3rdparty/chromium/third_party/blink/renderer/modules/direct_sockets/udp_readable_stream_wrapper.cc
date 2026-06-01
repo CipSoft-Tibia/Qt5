@@ -5,6 +5,7 @@
 #include "third_party/blink/renderer/modules/direct_sockets/udp_readable_stream_wrapper.h"
 
 #include "base/functional/callback_forward.h"
+#include "base/metrics/histogram_functions.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "net/base/net_errors.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
@@ -97,6 +98,10 @@ void UDPReadableStreamWrapper::ErrorStream(int32_t error_code) {
   if (GetState() != State::kOpen) {
     return;
   }
+
+  // Error codes are negative.
+  base::UmaHistogramSparse("DirectSockets.UDPReadableStreamError", -error_code);
+
   SetState(State::kAborted);
 
   socket_listener_.reset();
@@ -137,7 +142,21 @@ void UDPReadableStreamWrapper::OnReceived(
     int32_t result,
     const std::optional<::net::IPEndPoint>& src_addr,
     std::optional<::base::span<const ::uint8_t>> data) {
-  if (result != net::Error::OK) {
+  if (result != net::OK) {
+    if (result == net::ERR_MSG_TOO_BIG) {
+      // TODO(crbug.com/362145407): Figure out the root cause.
+      // Error codes are negative.
+      base::UmaHistogramSparse("DirectSockets.UDPReadableStreamError", -result);
+
+      DCHECK_GT(pending_receive_requests_, 0);
+      pending_receive_requests_--;
+
+      // For the success case pulling happens automatically after Enqueue();
+      // however, here we have to pull manually to request one more packet.
+      Pull();
+      return;
+    }
+
     ErrorStream(result);
     return;
   }

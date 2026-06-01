@@ -59,7 +59,6 @@ QT_BEGIN_NAMESPACE
 #  define QT_ELF_NOTE_OS_MINOR      16
 #  define QT_ELF_NOTE_OS_PATCH      0
 #else
-
 #  define QT_ELF_NOTE_OS_MAJOR      2
 #  define QT_ELF_NOTE_OS_MINOR      6
 #  define QT_ELF_NOTE_OS_PATCH      28

@@ -76,8 +76,10 @@ class CertVerifierServiceFactoryImpl
   // version of Chrome.
   void GetChromeRootStoreInfo(GetChromeRootStoreInfoCallback callback) override;
 
+#if !BUILDFLAG(IS_CHROMEOS)
   void GetPlatformRootStoreInfo(
       GetPlatformRootStoreInfoCallback callback) override;
+#endif
 #endif
   void UpdateNetworkTime(base::Time system_time,
                          base::TimeTicks system_ticks,
@@ -93,6 +95,8 @@ class CertVerifierServiceFactoryImpl
   const net::CertVerifyProc::ImplParams& get_impl_params() const {
     return proc_params_;
   }
+
+  base::WeakPtr<CertVerifierServiceFactoryImpl> GetWeakPtr();
 
  private:
   // Update all the `verifier_services_` with the current data.

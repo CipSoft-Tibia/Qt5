@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCALENDARWIDGET_H
 #define QCALENDARWIDGET_H
@@ -19,7 +20,6 @@ class QCalendarWidgetPrivate;
 class Q_WIDGETS_EXPORT QCalendarWidget : public QWidget
 {
     Q_OBJECT
-    Q_ENUMS(Qt::DayOfWeek)
     Q_PROPERTY(QDate selectedDate READ selectedDate WRITE setSelectedDate)
     Q_PROPERTY(QDate minimumDate READ minimumDate WRITE setMinimumDate RESET clearMinimumDate)
     Q_PROPERTY(QDate maximumDate READ maximumDate WRITE setMaximumDate RESET clearMaximumDate)

@@ -65,7 +65,7 @@ class DevToolsUIBindings : public DevToolsEmbedderMessageDispatcher::Delegate,
   public:
   class Delegate {
    public:
-    virtual ~Delegate() {}
+    virtual ~Delegate() = default;
     virtual void ActivateWindow() = 0;
     virtual void CloseWindow() = 0;
     virtual void Inspect(scoped_refptr<content::DevToolsAgentHost> host) = 0;
@@ -116,6 +116,7 @@ class DevToolsUIBindings : public DevToolsEmbedderMessageDispatcher::Delegate,
 
   // Takes ownership over the |delegate|.
   void SetDelegate(Delegate* delegate);
+  void TransferDelegate(DevToolsUIBindings& other);
   void CallClientMethod(
       const std::string& object_name,
       const std::string& method_name,
@@ -314,7 +315,7 @@ class DevToolsUIBindings : public DevToolsEmbedderMessageDispatcher::Delegate,
   void OnAidaConversationResponse(
       DispatchCallback callback,
       int stream_id,
-      const std::string& request,
+      const std::string request,
       base::TimeDelta delay,
       absl::variant<network::ResourceRequest, std::string>
           resource_request_or_error,
@@ -378,6 +379,7 @@ class DevToolsUIBindings : public DevToolsEmbedderMessageDispatcher::Delegate,
   base::TimeTicks session_start_time_;
 #if !BUILDFLAG(IS_QTWEBENGINE)
   std::unique_ptr<AidaClient> aida_client_;
+  bool can_access_aida_ = false;
 #endif  // !BUILDFLAG(IS_QTWEBENGINE)
   base::UnguessableToken session_id_for_logging_;
   base::WeakPtrFactory<DevToolsUIBindings> weak_factory_{this};

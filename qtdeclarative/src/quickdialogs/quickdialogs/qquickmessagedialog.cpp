@@ -1,7 +1,11 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickmessagedialog_p.h"
+
+#include <QtQuickDialogs2QuickImpl/private/qquickplatformmessagedialog_p.h>
+#include <QtQuickDialogs2QuickImpl/private/qquickmessagedialogimpl_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -240,6 +244,11 @@ void QQuickMessageDialog::onShow(QPlatformDialogHelper *dialog)
     if (QPlatformMessageDialogHelper *messageDialog =
                 qobject_cast<QPlatformMessageDialogHelper *>(dialog))
         messageDialog->setOptions(m_options); // setOptions only assigns a member and isn't virtual
+
+    if (QQuickPlatformMessageDialog *messageDialog = qobject_cast<QQuickPlatformMessageDialog *>(dialog))
+        messageDialog->dialog()->setPopupType(m_popupType);
+
+    QQuickAbstractDialog::onShow(dialog);
 }
 
 int QQuickMessageDialog::dialogCode() const

@@ -90,12 +90,18 @@ void QLineSeries::componentComplete()
     Q_D(QLineSeries);
 
     for (auto *child : children()) {
-        if (auto point = qobject_cast<QXYPoint *>(child))
+        if (auto point = qobject_cast<QXYPoint *>(child)) {
             append(point->x(), point->y());
+            qCDebug(lcSeries2D, "append points x: %.1f, y: %.1f to lineSeries",
+                    point->x(),
+                    point->y());
+        }
     }
 
     if (d->m_graphTransition)
         d->m_graphTransition->initialize();
+
+    qCDebug(lcEvents2D) << "QLineSeries::componentComplete.";
 
     QAbstractSeries::componentComplete();
 }
@@ -120,8 +126,12 @@ void QLineSeries::setWidth(qreal newWidth)
     Q_D(QLineSeries);
     if (newWidth < 0.0)
         newWidth = 0.0;
-    if (qFuzzyCompare(d->m_width, newWidth))
+    if (qFuzzyCompare(d->m_width + 1, newWidth + 1)) {
+        qCDebug(lcProperties2D, "QLineSeries::setWidth. Set value width is already %f",
+                newWidth);
         return;
+    }
+
     d->m_width = newWidth;
     emit widthChanged();
     emit update();
@@ -142,11 +152,33 @@ void QLineSeries::setCapStyle(Qt::PenCapStyle newCapStyle)
         && validCapStyle != Qt::PenCapStyle::MPenCapStyle) {
         validCapStyle = Qt::PenCapStyle::SquareCap;
     }
-    if (d->m_capStyle == validCapStyle)
+    if (d->m_capStyle == validCapStyle) {
+        qCDebug(lcProperties2D) << "QLineSeries::setCapStyle. CapStyle is already set to:"
+                                << newCapStyle;
         return;
+    }
     d->m_capStyle = validCapStyle;
     emit capStyleChanged();
     emit update();
+}
+
+
+/*!
+    \qmlmethod LineSeries::dataPointCoordinatesAt(real x, real y)
+    Returns \a x and \a y rendercoordinates converted into data point
+    coordinates.
+*/
+/*!
+    Returns \a x and \a y rendercoordinates converted into data point
+    coordinates.
+
+*/
+QPointF QLineSeries::dataPointCoordinatesAt(qreal x, qreal y)
+{
+    Q_D(QLineSeries);
+
+    auto oPoint = d->m_graph->getDataPointCoordinates(this, x, y);
+    return oPoint;
 }
 
 QT_END_NAMESPACE

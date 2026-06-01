@@ -179,7 +179,7 @@ bool QGeoCirclePrivate::contains(const QGeoCoordinate &coordinate) const
 
     // see QTBUG-41447 for details
     qreal distance = m_center.distanceTo(coordinate);
-    if (qFuzzyCompare(distance, m_radius) || distance <= m_radius)
+    if (distance <= m_radius || QtPrivate::fuzzyCompare(distance, m_radius))
         return true;
 
     return false;

@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2016, 2020-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2016, 2020-2024 Valve Corporation
- * Copyright (c) 2015-2016, 2020-2024 LunarG, Inc.
+/* Copyright (c) 2015-2016, 2020-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2016, 2020-2025 Valve Corporation
+ * Copyright (c) 2015-2016, 2020-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,94 +19,11 @@
 
 #include <string.h>
 #include <sys/stat.h>
+#include <vulkan/vk_enum_string_helper.h>
 
 #include "containers/range_vector.h"
-#include "vulkan/vulkan.h"
-
-// Debug callbacks get created in three ways:
-//   o  Application-defined debug callbacks
-//   o  Through settings in a vk_layer_settings.txt file
-//   o  By default, if neither an app-defined debug callback nor a vk_layer_settings.txt file is present
-//
-// At layer initialization time, default logging callbacks are created to output layer error messages.
-// If a vk_layer_settings.txt file is present its settings will override any default settings.
-//
-// If a vk_layer_settings.txt file is present and an application defines a debug callback, both callbacks
-// will be active.  If no vk_layer_settings.txt file is present, creating an application-defined debug
-// callback will cause the default callbacks to be unregisterd and removed.
-void LayerDebugMessengerActions(DebugReport *debug_report, const char *layer_identifier) {
-    VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
-
-    std::string report_flags_key = layer_identifier;
-    std::string debug_action_key = layer_identifier;
-    std::string log_filename_key = layer_identifier;
-    report_flags_key.append(".report_flags");
-    debug_action_key.append(".debug_action");
-    log_filename_key.append(".log_filename");
-
-    const vvl::unordered_map<std::string, VkFlags> debug_actions_option_definitions = {
-        {std::string("VK_DBG_LAYER_ACTION_IGNORE"), VK_DBG_LAYER_ACTION_IGNORE},
-        {std::string("VK_DBG_LAYER_ACTION_CALLBACK"), VK_DBG_LAYER_ACTION_CALLBACK},
-        {std::string("VK_DBG_LAYER_ACTION_LOG_MSG"), VK_DBG_LAYER_ACTION_LOG_MSG},
-        {std::string("VK_DBG_LAYER_ACTION_BREAK"), VK_DBG_LAYER_ACTION_BREAK},
-        {std::string("VK_DBG_LAYER_ACTION_DEBUG_OUTPUT"), VK_DBG_LAYER_ACTION_DEBUG_OUTPUT},
-        {std::string("VK_DBG_LAYER_ACTION_DEFAULT"), VK_DBG_LAYER_ACTION_DEFAULT}};
-
-    const vvl::unordered_map<std::string, VkFlags> log_msg_type_option_definitions = {{std::string("warn"), kWarningBit},
-                                                                                      {std::string("info"), kInformationBit},
-                                                                                      {std::string("perf"), kPerformanceWarningBit},
-                                                                                      {std::string("error"), kErrorBit},
-                                                                                      {std::string("verbose"), kVerboseBit}};
-
-    // Initialize layer options
-    LogMessageTypeFlags report_flags = GetLayerOptionFlags(report_flags_key, log_msg_type_option_definitions, 0);
-    VkLayerDbgActionFlags debug_action = GetLayerOptionFlags(debug_action_key, debug_actions_option_definitions, 0);
-    // Flag as default if these settings are not from a vk_layer_settings.txt file
-    const bool default_layer_callback = (debug_action & VK_DBG_LAYER_ACTION_DEFAULT) != 0;
-
-    VkDebugUtilsMessengerCreateInfoEXT dbg_create_info = vku::InitStructHelper();
-    dbg_create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
-    if (report_flags & kErrorBit) {
-        dbg_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    }
-    if (report_flags & kWarningBit) {
-        dbg_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
-    }
-    if (report_flags & kPerformanceWarningBit) {
-        dbg_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
-        dbg_create_info.messageType |= VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    }
-    if (report_flags & kInformationBit) {
-        dbg_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
-    }
-    if (report_flags & kVerboseBit) {
-        dbg_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
-    }
-
-    if (debug_action & VK_DBG_LAYER_ACTION_LOG_MSG) {
-        const char *log_filename = getLayerOption(log_filename_key.c_str());
-        FILE *log_output = getLayerLogOutput(log_filename, layer_identifier);
-        dbg_create_info.pfnUserCallback = MessengerLogCallback;
-        dbg_create_info.pUserData = (void *)log_output;
-        LayerCreateMessengerCallback(debug_report, default_layer_callback, &dbg_create_info, &messenger);
-    }
-
-    messenger = VK_NULL_HANDLE;
-
-    if (debug_action & VK_DBG_LAYER_ACTION_DEBUG_OUTPUT) {
-        dbg_create_info.pfnUserCallback = MessengerWin32DebugOutputMsg;
-        dbg_create_info.pUserData = NULL;
-        LayerCreateMessengerCallback(debug_report, default_layer_callback, &dbg_create_info, &messenger);
-    }
-
-    messenger = VK_NULL_HANDLE;
-
-    if (debug_action & VK_DBG_LAYER_ACTION_BREAK) {
-        dbg_create_info.pfnUserCallback = MessengerBreakCallback;
-        dbg_create_info.pUserData = NULL;
-        LayerCreateMessengerCallback(debug_report, default_layer_callback, &dbg_create_info, &messenger);
-    }
-}
+#include "vulkan/vulkan_core.h"
+#include "vk_layer_config.h"
 
 VkLayerInstanceCreateInfo *GetChainInfo(const VkInstanceCreateInfo *pCreateInfo, VkLayerFunction func) {
     VkLayerInstanceCreateInfo *chain_info = (VkLayerInstanceCreateInfo *)pCreateInfo->pNext;
@@ -188,4 +105,55 @@ VkExtent3D GetEffectiveExtent(const VkImageCreateInfo &ci, const VkImageAspectFl
 bool RangesIntersect(int64_t x, uint64_t x_size, int64_t y, uint64_t y_size) {
     auto intersection = GetRangeIntersection(x, x_size, y, y_size);
     return intersection.non_empty();
+}
+
+// Implements the vkspec.html#formats-size-compatibility section of the spec
+bool AreFormatsSizeCompatible(VkFormat a, VkFormat b) {
+    const bool is_a_a8 = a == VK_FORMAT_A8_UNORM;
+    const bool is_b_a8 = b == VK_FORMAT_A8_UNORM;
+    if ((is_a_a8 && !is_b_a8) || (!is_a_a8 && is_b_a8)) {
+        return false;
+    }
+
+    const bool is_a_depth_stencil = vkuFormatIsDepthOrStencil(a);
+    const bool is_b_depth_stencil = vkuFormatIsDepthOrStencil(b);
+    if (is_a_depth_stencil && !is_b_depth_stencil) {
+        return vkuFormatIsDepthStencilWithColorSizeCompatible(b, a);
+    } else if (!is_a_depth_stencil && is_b_depth_stencil) {
+        return vkuFormatIsDepthStencilWithColorSizeCompatible(a, b);
+    } else if (is_a_depth_stencil && is_b_depth_stencil) {
+        return a == b;
+    }
+
+    // Color formats are considered compatible if their texel block size in bytes is the same
+    return vkuFormatTexelBlockSize(a) == vkuFormatTexelBlockSize(b);
+}
+
+std::string DescribeFormatsSizeCompatible(VkFormat a, VkFormat b) {
+    std::stringstream ss;
+    const bool is_a_a8 = a == VK_FORMAT_A8_UNORM;
+    const bool is_b_a8 = b == VK_FORMAT_A8_UNORM;
+    if ((is_a_a8 && !is_b_a8) || (!is_a_a8 && is_b_a8)) {
+        ss << string_VkFormat(a) << " and " << string_VkFormat(b)
+           << " either both need to be VK_FORMAT_A8_UNORM or neither of them";
+        return ss.str();
+    }
+
+    const bool is_a_depth_stencil = vkuFormatIsDepthOrStencil(a);
+    const bool is_b_depth_stencil = vkuFormatIsDepthOrStencil(b);
+    if (is_a_depth_stencil && is_b_depth_stencil) {
+        ss << string_VkFormat(a) << " and " << string_VkFormat(b)
+           << " are both depth/stencil, therefor they must be the exact same format";
+    } else if (is_a_depth_stencil || is_b_depth_stencil) {
+        if (is_a_depth_stencil && !is_b_depth_stencil) {
+            ss << string_VkFormat(a) << " is a depth/stencil and " << string_VkFormat(b) << " is color";
+        } else if (!is_a_depth_stencil && is_b_depth_stencil) {
+            ss << string_VkFormat(a) << " is a color and " << string_VkFormat(b) << " is depth/stencil";
+        }
+        ss << " (this is only allowed with a certain set of formats during image copy with VK_KHR_maintenance8)";
+    } else {
+        ss << string_VkFormat(a) << " has a texel block size of " << vkuFormatTexelBlockSize(a) << " while " << string_VkFormat(b)
+           << " has a texel block size of " << vkuFormatTexelBlockSize(b);
+    }
+    return ss.str();
 }

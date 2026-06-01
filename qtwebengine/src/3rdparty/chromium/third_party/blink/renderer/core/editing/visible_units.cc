@@ -31,7 +31,6 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/first_letter_pseudo_element.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/node_traversal.h"
 #include "third_party/blink/renderer/core/dom/text.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
@@ -228,8 +227,16 @@ AdjustBackwardPositionToAvoidCrossingEditingBoundariesTemplate(
 
   // Return empty position if |pos| is not somewhere inside the editable
   // region containing this position
-  if (highest_root && !pos.AnchorNode()->IsDescendantOf(highest_root))
-    return PositionWithAffinityTemplate<Strategy>();
+  if (RuntimeEnabledFeatures::
+          CheckIfHighestRootContainsPositionAnchorNodeEnabled()) {
+    if (highest_root && !highest_root->contains(pos.AnchorNode())) {
+      return PositionWithAffinityTemplate<Strategy>();
+    }
+  } else {
+    if (highest_root && !pos.AnchorNode()->IsDescendantOf(highest_root)) {
+      return PositionWithAffinityTemplate<Strategy>();
+    }
+  }
 
   // Return |pos| itself if the two are from the very same editable region, or
   // both are non-editable
@@ -277,10 +284,25 @@ AdjustForwardPositionToAvoidCrossingEditingBoundariesTemplate(
 
   ContainerNode* highest_root = HighestEditableRoot(anchor);
 
-  // Return empty position if |pos| is not somewhere inside the editable
-  // region containing this position
-  if (highest_root && !pos.AnchorNode()->IsDescendantOf(highest_root))
-    return PositionWithAffinityTemplate<Strategy>();
+  if (highest_root && !pos.AnchorNode()->IsDescendantOf(highest_root)) {
+    if (RuntimeEnabledFeatures::EditableBoundaryAdjustmentEnabled()) {
+      // Return last position in node if |pos| is not somewhere inside the
+      // editable region containing this position
+      const Node* last_editable = anchor.ComputeContainerNode();
+      if (last_editable->IsTextNode()) {
+        PositionTemplate<Strategy> last_position =
+            PositionTemplate<Strategy>::LastPositionInNode(*last_editable);
+        if (anchor != last_position) {
+          return PositionWithAffinityTemplate<Strategy>(last_position);
+        }
+      }
+      return PositionWithAffinityTemplate<Strategy>();
+    } else {
+      // Return empty position if |pos| is not somewhere inside the editable
+      // region containing this position
+      return PositionWithAffinityTemplate<Strategy>();
+    }
+  }
 
   // Return |pos| itself if the two are from the very same editable region, or
   // both are non-editable
@@ -772,7 +794,7 @@ static PositionTemplate<Strategy> MostBackwardCaretPosition(
         IsA<Text>(current_node) ? current_pos.OffsetInTextNode() : 0,
         LayoutObjectSide::kFirstLetterIfOnBoundary);
     if (!layout_object ||
-        layout_object->Style()->UsedVisibility() != EVisibility::kVisible) {
+        layout_object->Style()->Visibility() != EVisibility::kVisible) {
       if (boundary_crossed && rule == kCannotCrossEditingBoundary)
         break;
       continue;
@@ -880,7 +902,7 @@ bool HasInvisibleFirstLetter(const Node* node) {
       DynamicTo<LayoutTextFragment>(AssociatedLayoutObjectOf(*node, 0));
   if (!first_letter || first_letter == remaining_text)
     return false;
-  return first_letter->StyleRef().UsedVisibility() != EVisibility::kVisible ||
+  return first_letter->StyleRef().Visibility() != EVisibility::kVisible ||
          DisplayLockUtilities::LockedAncestorPreventingPaint(*first_letter);
 }
 }  // namespace
@@ -965,7 +987,7 @@ PositionTemplate<Strategy> MostForwardCaretPosition(
         *current_node,
         IsA<Text>(current_node) ? current_pos.OffsetInTextNode() : 0);
     if (!layout_object ||
-        layout_object->Style()->UsedVisibility() != EVisibility::kVisible) {
+        layout_object->Style()->Visibility() != EVisibility::kVisible) {
       if (boundary_crossed && rule == kCannotCrossEditingBoundary)
         break;
       continue;
@@ -1087,7 +1109,7 @@ static bool IsVisuallyEquivalentCandidateAlgorithm(
   if (!layout_object)
     return false;
 
-  if (layout_object->Style()->UsedVisibility() != EVisibility::kVisible) {
+  if (layout_object->Style()->Visibility() != EVisibility::kVisible) {
     return false;
   }
 
@@ -1250,8 +1272,7 @@ static VisiblePositionTemplate<Strategy> NextPositionOfAlgorithm(
       return CreateVisiblePosition(SkipToEndOfEditingBoundary(
           next.DeepEquivalent(), position.GetPosition()));
   }
-  NOTREACHED_IN_MIGRATION();
-  return next;
+  NOTREACHED();
 }
 
 VisiblePosition NextPositionOf(const Position& position,
@@ -1337,8 +1358,7 @@ static VisiblePositionTemplate<Strategy> PreviousPositionOfAlgorithm(
           SkipToStartOfEditingBoundary(prev.DeepEquivalent(), position));
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return prev;
+  NOTREACHED();
 }
 
 VisiblePosition PreviousPositionOf(const VisiblePosition& visible_position,
@@ -1460,14 +1480,12 @@ gfx::Rect FirstRectForRange(const EphemeralRange& range) {
   DocumentLifecycle::DisallowTransitionScope disallow_transition(
       range.GetDocument().Lifecycle());
 
-  LayoutUnit extra_width_to_end_of_line;
   DCHECK(range.IsNotNull());
 
   const PositionWithAffinity start_position(
       CreateVisiblePosition(range.StartPosition()).DeepEquivalent(),
       TextAffinity::kDownstream);
-  gfx::Rect start_caret_rect =
-      AbsoluteCaretBoundsOf(start_position, &extra_width_to_end_of_line);
+  gfx::Rect start_caret_rect = AbsoluteCaretBoundsOf(start_position);
   if (start_caret_rect.IsEmpty())
     return gfx::Rect();
 
@@ -1487,8 +1505,7 @@ gfx::Rect FirstRectForRange(const EphemeralRange& range) {
   // e.g.
   //  - RenderViewImplTest.GetCompositionCharacterBoundsTest
   //  - LocalFrameTest.CharacterIndexAtPointWithPinchZoom
-  if (start_position.AnchorNode()
-          ->GetComputedStyle()
+  if (GetComputedStyleForElementOrLayoutObject(*start_position.AnchorNode())
           ->IsHorizontalWritingMode()) {
     end_caret_rect.set_width(0);
     start_caret_rect.set_width(0);

@@ -7,5 +7,7 @@ android
 android
 [touchEventPropagation]
 android
+[windowOpacity]
+macos # QTBUG-139950
 [createProxyForChildWidget]
 android # QTBUG-140133

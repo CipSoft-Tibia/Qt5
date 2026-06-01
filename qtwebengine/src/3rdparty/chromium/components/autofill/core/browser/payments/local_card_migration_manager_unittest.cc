@@ -23,9 +23,17 @@
 #include "base/time/time.h"
 #include "base/uuid.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/autofill_test_utils.h"
+#include "components/autofill/core/browser/crowdsourcing/test_votes_uploader.h"
+#include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
+#include "components/autofill/core/browser/data_manager/personal_data_manager.h"
+#include "components/autofill/core/browser/data_manager/test_personal_data_manager.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
+#include "components/autofill/core/browser/data_quality/validation.h"
+#include "components/autofill/core/browser/form_import/form_data_importer_test_api.h"
+#include "components/autofill/core/browser/foundations/test_autofill_client.h"
+#include "components/autofill/core/browser/foundations/test_autofill_driver.h"
+#include "components/autofill/core/browser/foundations/test_browser_autofill_manager.h"
 #include "components/autofill/core/browser/metrics/autofill_metrics.h"
 #include "components/autofill/core/browser/metrics/payments/local_card_migration_metrics.h"
 #include "components/autofill/core/browser/payments/iban_save_manager.h"
@@ -35,15 +43,8 @@
 #include "components/autofill/core/browser/payments/test_local_card_migration_manager.h"
 #include "components/autofill/core/browser/payments/test_payments_autofill_client.h"
 #include "components/autofill/core/browser/payments/test_payments_network_interface.h"
-#include "components/autofill/core/browser/payments_data_manager.h"
-#include "components/autofill/core/browser/personal_data_manager.h"
-#include "components/autofill/core/browser/test_autofill_client.h"
-#include "components/autofill/core/browser/test_autofill_clock.h"
-#include "components/autofill/core/browser/test_autofill_driver.h"
-#include "components/autofill/core/browser/test_browser_autofill_manager.h"
-#include "components/autofill/core/browser/test_form_data_importer.h"
-#include "components/autofill/core/browser/test_personal_data_manager.h"
-#include "components/autofill/core/browser/validation.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
+#include "components/autofill/core/browser/test_utils/test_autofill_clock.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
 #include "components/autofill/core/common/autofill_clock.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
@@ -78,7 +79,7 @@ class LocalCardMigrationManagerTest : public testing::Test {
         autofill_client_.GetURLLoaderFactory(),
         autofill_client_.GetIdentityManager(), &personal_data());
     autofill_client_.GetPaymentsAutofillClient()
-        ->set_test_payments_network_interface(
+        ->set_payments_network_interface(
             std::unique_ptr<payments::TestPaymentsNetworkInterface>(
                 payments_network_interface_));
     auto credit_card_save_manager =
@@ -86,22 +87,23 @@ class LocalCardMigrationManagerTest : public testing::Test {
     credit_card_save_manager_ = credit_card_save_manager.get();
     credit_card_save_manager_->SetCreditCardUploadEnabled(true);
     auto local_card_migration_manager =
-        std::make_unique<TestLocalCardMigrationManager>(&autofill_client_,
-                                                        "en-US");
+        std::make_unique<TestLocalCardMigrationManager>(&autofill_client_);
     local_card_migration_manager_ = local_card_migration_manager.get();
     std::unique_ptr<TestStrikeDatabase> test_strike_database =
         std::make_unique<TestStrikeDatabase>();
     strike_database_ = test_strike_database.get();
     autofill_client_.set_test_strike_database(std::move(test_strike_database));
-    autofill_client_.set_test_form_data_importer(
-        std::make_unique<TestFormDataImporter>(
-            &autofill_client_, std::move(credit_card_save_manager),
-            /*iban_save_manager=*/nullptr, "en-US",
-            std::move(local_card_migration_manager)));
+    test_api(*autofill_client_.GetFormDataImporter())
+        .set_credit_card_save_manager(std::move(credit_card_save_manager));
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+    test_api(*autofill_client_.GetFormDataImporter())
+        .set_local_card_migration_manager(
+            std::move(local_card_migration_manager));
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
     browser_autofill_manager_ =
         std::make_unique<TestBrowserAutofillManager>(autofill_driver_.get());
-    browser_autofill_manager_->SetExpectedObservedSubmission(true);
+    autofill_client_.GetVotesUploader().set_expected_observed_submission(true);
   }
 
   void TearDown() override {
@@ -121,7 +123,7 @@ class LocalCardMigrationManagerTest : public testing::Test {
 
   void FormSubmitted(const FormData& form) {
     browser_autofill_manager_->OnFormSubmitted(
-        form, false, mojom::SubmissionSource::FORM_SUBMISSION);
+        form, mojom::SubmissionSource::FORM_SUBMISSION);
   }
 
   void EditCreditCardForm(FormData& credit_card_form,
@@ -324,7 +326,7 @@ class LocalCardMigrationManagerTest : public testing::Test {
 
  protected:
   TestPersonalDataManager& personal_data() {
-    return *autofill_client_.GetPersonalDataManager();
+    return autofill_client_.GetPersonalDataManager();
   }
 
   payments::TestPaymentsAutofillClient& payments_autofill_client() {
@@ -597,8 +599,7 @@ TEST_F(LocalCardMigrationManagerTest,
   UseLocalCardWithOtherLocalCardsOnFile();
 
   // Confirm that the preflight request contained the correct UploadCardSource.
-  EXPECT_EQ(payments::PaymentsNetworkInterface::UploadCardSource::
-                LOCAL_CARD_MIGRATION_CHECKOUT_FLOW,
+  EXPECT_EQ(payments::UploadCardSource::LOCAL_CARD_MIGRATION_CHECKOUT_FLOW,
             payments_network_interface_->upload_card_source_in_request());
 }
 
@@ -623,8 +624,7 @@ TEST_F(LocalCardMigrationManagerTest,
   EXPECT_TRUE(local_card_migration_manager_->MainPromptWasShown());
 
   // Confirm that the preflight request contained the correct UploadCardSource.
-  EXPECT_EQ(payments::PaymentsNetworkInterface::UploadCardSource::
-                LOCAL_CARD_MIGRATION_SETTINGS_PAGE,
+  EXPECT_EQ(payments::UploadCardSource::LOCAL_CARD_MIGRATION_SETTINGS_PAGE,
             payments_network_interface_->upload_card_source_in_request());
 }
 
@@ -687,17 +687,17 @@ TEST_F(LocalCardMigrationManagerTest, MigrateCreditCard_MigrationSuccess) {
       local_card_migration_manager_->migratable_credit_cards_[0]
           .credit_card()
           .guid(),
-      autofill::kMigrationResultSuccess);
+      kMigrationResultSuccess);
 
   EXPECT_EQ(local_card_migration_manager_->migratable_credit_cards_[0]
                 .migration_status(),
-            autofill::MigratableCreditCard::MigrationStatus::UNKNOWN);
+            MigratableCreditCard::MigrationStatus::UNKNOWN);
 
   local_card_migration_manager_->AttemptToOfferLocalCardMigration(true);
 
   EXPECT_EQ(local_card_migration_manager_->migratable_credit_cards_[0]
                 .migration_status(),
-            autofill::MigratableCreditCard::MigrationStatus::SUCCESS_ON_UPLOAD);
+            MigratableCreditCard::MigrationStatus::SUCCESS_ON_UPLOAD);
 
   // Local card should *not* be present as it is migrated already.
   EXPECT_FALSE(personal_data().payments_data_manager().GetCreditCardByNumber(
@@ -731,18 +731,18 @@ TEST_F(LocalCardMigrationManagerTest,
       local_card_migration_manager_->migratable_credit_cards_[0]
           .credit_card()
           .guid(),
-      autofill::kMigrationResultTemporaryFailure);
+      kMigrationResultTemporaryFailure);
 
   EXPECT_EQ(local_card_migration_manager_->migratable_credit_cards_[0]
                 .migration_status(),
-            autofill::MigratableCreditCard::MigrationStatus::UNKNOWN);
+            MigratableCreditCard::MigrationStatus::UNKNOWN);
 
   // Start the migration.
   local_card_migration_manager_->AttemptToOfferLocalCardMigration(true);
 
   EXPECT_EQ(local_card_migration_manager_->migratable_credit_cards_[0]
                 .migration_status(),
-            autofill::MigratableCreditCard::MigrationStatus::FAILURE_ON_UPLOAD);
+            MigratableCreditCard::MigrationStatus::FAILURE_ON_UPLOAD);
 
   // Local card should be present as it is not migrated.
   EXPECT_TRUE(personal_data().payments_data_manager().GetCreditCardByNumber(
@@ -776,18 +776,18 @@ TEST_F(LocalCardMigrationManagerTest,
       local_card_migration_manager_->migratable_credit_cards_[0]
           .credit_card()
           .guid(),
-      autofill::kMigrationResultPermanentFailure);
+      kMigrationResultPermanentFailure);
 
   EXPECT_EQ(local_card_migration_manager_->migratable_credit_cards_[0]
                 .migration_status(),
-            autofill::MigratableCreditCard::MigrationStatus::UNKNOWN);
+            MigratableCreditCard::MigrationStatus::UNKNOWN);
 
   // Start the migration.
   local_card_migration_manager_->AttemptToOfferLocalCardMigration(true);
 
   EXPECT_EQ(local_card_migration_manager_->migratable_credit_cards_[0]
                 .migration_status(),
-            autofill::MigratableCreditCard::MigrationStatus::FAILURE_ON_UPLOAD);
+            MigratableCreditCard::MigrationStatus::FAILURE_ON_UPLOAD);
 
   // Local card should be present as it is not migrated.
   EXPECT_TRUE(personal_data().payments_data_manager().GetCreditCardByNumber(
@@ -1092,7 +1092,7 @@ TEST_F(
 TEST_F(LocalCardMigrationManagerTest, MigrateCreditCard_GetUploadDetailsFails) {
   // Anything other than "en-US" will cause GetUploadDetails to return a failure
   // response.
-  local_card_migration_manager_->SetAppLocaleForTesting("pt-BR");
+  autofill_client_.set_app_locale("pt-BR");
 
   UseLocalCardWithOtherLocalCardsOnFile();
 
@@ -1289,7 +1289,7 @@ TEST_F(LocalCardMigrationManagerTest,
        LogMigrationDecisionMetric_GetUploadDetailsFails) {
   // Anything other than "en-US" will cause GetUploadDetails to return a failure
   // response.
-  local_card_migration_manager_->SetAppLocaleForTesting("pt-BR");
+  autofill_client_.set_app_locale("pt-BR");
 
   base::HistogramTester histogram_tester;
   UseLocalCardWithOtherLocalCardsOnFile();

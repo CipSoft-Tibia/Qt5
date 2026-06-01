@@ -7,6 +7,8 @@
 #include <QObject>
 #include <QGeoPositionInfoSourceFactory>
 
+QT_BEGIN_NAMESPACE
+
 class QGeoPositionInfoSourceFactoryCL : public QObject, public QGeoPositionInfoSourceFactory
 {
     Q_OBJECT
@@ -18,5 +20,7 @@ public:
     QGeoSatelliteInfoSource *satelliteInfoSource(QObject *parent, const QVariantMap &parameters) override;
     QGeoAreaMonitorSource *areaMonitor(QObject *parent, const QVariantMap &parameters) override;
 };
+
+QT_END_NAMESPACE
 
 #endif // QGEOPOSITIONINFOSOURCEFACTORY_CL_H

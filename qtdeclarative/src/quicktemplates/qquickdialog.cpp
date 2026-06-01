@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickdialog_p.h"
 #include "qquickdialog_p_p.h"
@@ -7,6 +8,8 @@
 #include "qquickabstractbutton_p.h"
 #include "qquickpopupitem_p_p.h"
 #include "qquickpopupwindow_p_p.h"
+#include <qpa/qplatformintegration.h>
+#include <private/qguiapplication_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,6 +28,7 @@ QT_BEGIN_NAMESPACE
     into three sections: \l header, \l {Popup::}{contentItem}, and \l footer.
 
     \image qtquickcontrols-page-wireframe.webp
+           {Page wireframe with header, content area, and footer}
 
     The \l {Popup::}{padding} properties only affect the contentItem. Use the
     \l {Popup::}{spacing} property to affect the space between header,
@@ -164,11 +168,6 @@ void QQuickDialogPrivate::handleClick(QQuickAbstractButton *button)
     default:
         break;
     }
-}
-
-Qt::WindowFlags QQuickDialogPrivate::popupWindowType() const
-{
-    return Qt::Dialog;
 }
 
 QQuickDialog::QQuickDialog(QObject *parent)

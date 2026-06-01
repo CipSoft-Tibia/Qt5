@@ -7,7 +7,7 @@
 
     The Imagine Style is based on configurable image assets. \l{detailed-desc-imagine}{More...}
 
-    \styleimport {QtQuick.Controls.Imagine 2.12} {Qt 5.10}
+    \styleimport {QtQuick.Controls.Imagine} {Qt 5.10}
 
     \section1 Attached Properties
 
@@ -23,6 +23,7 @@
     with images using a predefined naming convention.
 
     \image qtquickcontrols-imagine.png
+           {Gallery of controls in Imagine style}
     \caption The Imagine style with the default images
 
     To run an application with the Imagine style, see
@@ -498,1770 +499,2065 @@
             \li background
             \li
             \li \image imagine/images/applicationwindow-background.png
+                       {ApplicationWindow background asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li
             \li overlay
             \li
             \li \image imagine/images/applicationwindow-overlay.png
+                       {ApplicationWindow overlay asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li
             \li overlay
             \li modal
             \li \image imagine/images/applicationwindow-overlay-modal.png
+                       {ApplicationWindow overlay modal asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li \l Button
             \li background
             \li
             \li \image imagine/images/button-background.9.png
+                       {Button background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/button-background-disabled.9.png
+                       {Button background disabled asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/button-background-focused.9.png
+                       {Button background focused asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/button-background-pressed.9.png
+                       {Button background pressed asset}
             \li
         \row
             \li
             \li background
             \li checked
             \li \image imagine/images/button-background-checked.9.png
+                       {Button background checked asset}
             \li
         \row
             \li
             \li background
             \li checked, disabled
             \li \image imagine/images/button-background-checked-disabled.9.png
+                       {Button background checked disabled asset}
             \li
         \row
             \li
             \li background
             \li checked, focused
             \li \image imagine/images/button-background-checked-focused.9.png
+                       {Button background checked focused asset}
             \li
         \row
             \li
             \li background
             \li checked, hovered
             \li \image imagine/images/button-background-checked-hovered.9.png
+                       {Button background checked hovered asset}
             \li
         \row
             \li
             \li background
             \li highlighted
             \li \image imagine/images/button-background-highlighted.9.png
+                       {Button background highlighted asset}
             \li
         \row
             \li
             \li background
             \li highlighted, disabled
             \li \image imagine/images/button-background-highlighted-disabled.9.png
+                       {Button background highlighted disabled asset}
             \li
         \row
             \li
             \li background
             \li highlighted, focused
             \li \image imagine/images/button-background-highlighted-focused.9.png
+                       {Button background highlighted focused asset}
             \li
         \row
             \li
             \li background
             \li highlighted, hovered
             \li \image imagine/images/button-background-highlighted-hovered.9.png
+                       {Button background highlighted hovered asset}
             \li
         \row
             \li
             \li background
             \li highlighted, pressed
             \li \image imagine/images/button-background-highlighted-pressed.9.png
+                       {Button background highlighted pressed asset}
             \li
         \row
             \li
             \li background
             \li highlighted, checked
             \li \image imagine/images/button-background-highlighted-checked.9.png
+                       {Button background highlighted checked asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/button-background-hovered.9.png
+                       {Button background hovered asset}
             \li
         \row
             \li
             \li background
             \li flat
             \li \image imagine/images/button-background-flat.9.png
+                       {Button background flat asset}
             \li
         \row
             \li
             \li background
             \li flat, disabled
             \li \image imagine/images/button-background-flat-disabled.9.png
+                       {Button background flat disabled asset}
             \li
         \row
             \li
             \li background
             \li flat, hovered
             \li \image imagine/images/button-background-flat-hovered.9.png
+                       {Button background flat hovered asset}
             \li
         \row
             \li
             \li background
             \li flat, pressed
             \li \image imagine/images/button-background-flat-pressed.9.png
+                       {Button background flat pressed asset}
             \li
         \row
             \li
             \li background
             \li flat, checked
             \li \image imagine/images/button-background-flat-checked.9.png
+                       {Button background flat checked asset}
             \li
         \row
             \li \l CheckBox
             \li indicator
             \li
             \li \image imagine/images/checkbox-indicator.png
+                       {CheckBox indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/checkbox-indicator-disabled.png
+                       {CheckBox indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li pressed
             \li \image imagine/images/checkbox-indicator-pressed.png
+                       {CheckBox indicator pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked
             \li \image imagine/images/checkbox-indicator-checked.png
+                       {CheckBox indicator checked asset}
             \li
         \row
             \li
             \li indicator
             \li checked, pressed
             \li \image imagine/images/checkbox-indicator-checked-pressed.png
+                       {CheckBox indicator checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked, hovered
             \li \image imagine/images/checkbox-indicator-checked-hovered.png
+                       {CheckBox indicator checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li checked, focused
             \li \image imagine/images/checkbox-indicator-checked-focused.png
+                       {CheckBox indicator checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked
             \li \image imagine/images/checkbox-indicator-partially-checked.png
+                       {CheckBox indicator partially checked asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked, pressed
             \li \image imagine/images/checkbox-indicator-partially-checked-pressed.png
+                       {CheckBox indicator partially checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked, focused
             \li \image imagine/images/checkbox-indicator-partially-checked-focused.png
+                       {CheckBox indicator partially checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked, hovered
             \li \image imagine/images/checkbox-indicator-partially-checked-hovered.png
+                       {CheckBox indicator partially checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li focused
             \li \image imagine/images/checkbox-indicator-focused.png
+                       {CheckBox indicator focused asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/checkbox-indicator-hovered.png
+                       {CheckBox indicator hovered asset}
             \li
         \row
             \li \l CheckDelegate
             \li background
             \li
             \li \image imagine/images/checkdelegate-background.9.png
+                       {CheckDelegate background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/checkdelegate-background-disabled.9.png
+                       {CheckDelegate background disabled asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/checkdelegate-background-pressed.9.png
+                       {CheckDelegate background pressed asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/checkdelegate-background-focused.9.png
+                       {CheckDelegate background focused asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/checkdelegate-background-hovered.9.png
+                       {CheckDelegate background hovered asset}
             \li
         \row
             \li
             \li indicator
             \li
             \li \image imagine/images/checkdelegate-indicator.png
+                       {CheckDelegate indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/checkdelegate-indicator-disabled.png
+                       {CheckDelegate indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li pressed
             \li \image imagine/images/checkdelegate-indicator-pressed.png
+                       {CheckDelegate indicator pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked
             \li \image imagine/images/checkdelegate-indicator-checked.png
+                       {CheckDelegate indicator checked asset}
             \li
         \row
             \li
             \li indicator
             \li checked, pressed
             \li \image imagine/images/checkdelegate-indicator-checked-pressed.png
+                       {CheckDelegate indicator checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked, focused
             \li \image imagine/images/checkdelegate-indicator-checked-focused.png
+                       {CheckDelegate indicator checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li checked, hovered
             \li \image imagine/images/checkdelegate-indicator-checked-hovered.png
+                       {CheckDelegate indicator checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li focused
             \li \image imagine/images/checkdelegate-indicator-focused.png
+                       {CheckDelegate indicator focused asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/checkdelegate-indicator-hovered.png
+                       {CheckDelegate indicator hovered asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked
             \li \image imagine/images/checkdelegate-indicator-partially-checked.png
+                       {CheckDelegate indicator partial checked asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked, pressed
             \li \image imagine/images/checkdelegate-indicator-partially-checked-pressed.png
+                       {CheckDelegate indicator partial checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked, focused
             \li \image imagine/images/checkdelegate-indicator-partially-checked-focused.png
+                       {CheckDelegate indicator partial checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li partially, checked, hovered
             \li \image imagine/images/checkdelegate-indicator-partially-checked-hovered.png
+                       {CheckDelegate indicator partial checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/checkdelegate-indicator-hovered.png
+                       {CheckDelegate indicator hovered asset}
             \li
         \row
             \li \l ComboBox
             \li background
             \li
             \li \image imagine/images/combobox-background.9.png
+                       {ComboBox background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/combobox-background-disabled.9.png
+                       {ComboBox background disabled asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/combobox-background-focused.9.png
+                       {ComboBox background focused asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/combobox-background-hovered.9.png
+                       {ComboBox background hovered asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/combobox-background-pressed.9.png
+                       {ComboBox background pressed asset}
             \li
         \row
             \li
             \li background
             \li open
             \li \image imagine/images/combobox-background-open.9.png
+                       {ComboBox background open asset}
             \li
         \row
             \li
             \li background
             \li editable
             \li \image imagine/images/combobox-background-editable.9.png
+                       {ComboBox background editable asset}
             \li
         \row
             \li
             \li background
             \li editable, focused
             \li \image imagine/images/combobox-background-editable-focused.9.png
+                       {ComboBox background editable focused asset}
             \li
         \row
             \li
             \li background
             \li editable, disabled
             \li \image imagine/images/combobox-background-editable-disabled.9.png
+                       {ComboBox background editable disabled asset}
             \li
         \row
             \li
             \li indicator
             \li
             \li \image imagine/images/combobox-indicator.png
+                       {ComboBox indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/combobox-indicator-disabled.png
+                       {ComboBox indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li editable
             \li \image imagine/images/combobox-indicator-editable.png
+                       {ComboBox indicator editable asset}
             \li
         \row
             \li
             \li indicator
             \li editable, disabled
             \li \image imagine/images/combobox-indicator-editable-disabled.png
+                       {ComboBox indicator editable disabled asset}
             \li
         \row
             \li
             \li indicator
             \li editable, mirrored
             \li \image imagine/images/combobox-indicator-editable-mirrored.png
+                       {ComboBox indicator editable mirrored asset}
             \li
         \row
             \li
             \li indicator
             \li editable, mirrored, disabled
             \li \image imagine/images/combobox-indicator-editable-mirrored-disabled.png
+                       {ComboBox indicator editable mirrored disabled asset}
             \li
         \row
             \li
             \li popup
             \li
             \li \image imagine/images/combobox-popup.9.png
+                       {ComboBox popup asset}
             \li
         \row
             \li \l DelayButton
             \li background
             \li
             \li \image imagine/images/delaybutton-background.9.png
+                       {DelayButton background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/delaybutton-background-disabled.9.png
+                       {DelayButton background disabled asset}
             \li
         \row
             \li
             \li background
             \li disabled, checked
             \li \image imagine/images/delaybutton-background-disabled-checked.9.png
+                       {DelayButton background disabled checked asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/delaybutton-background-focused.9.png
+                       {DelayButton background focused asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/delaybutton-background-pressed.9.png
+                       {DelayButton background pressed asset}
             \li
         \row
             \li
             \li background
             \li checked
             \li \image imagine/images/delaybutton-background-checked.9.png
+                       {DelayButton background checked asset}
             \li
         \row
             \li
             \li background
             \li checked, focused
             \li \image imagine/images/delaybutton-background-checked-focused.9.png
+                       {DelayButton background checked focused asset}
             \li
         \row
             \li
             \li background
             \li checked, hovered
             \li \image imagine/images/delaybutton-background-checked-hovered.9.png
+                       {DelayButton background checked hovered asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/delaybutton-background-hovered.9.png
+                       {DelayButton background hovered asset}
             \li
         \row
             \li
             \li progress
             \li
             \li \image imagine/images/delaybutton-progress.9.png
+                       {DelayButton progress asset}
             \li
         \row
             \li
             \li progress
             \li disabled
             \li \image imagine/images/delaybutton-progress-disabled.9.png
+                       {DelayButton progress disabled asset}
             \li
         \row
             \li
             \li mask
             \li
             \li \image imagine/images/delaybutton-mask.9.png
+                       {DelayButton mask asset}
             \li
         \row
             \li \l Dial
             \li background
             \li
             \li \image imagine/images/dial-background.png
+                       {Dial background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/dial-background-disabled.png
+                       {Dial background disabled asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/dial-background-focused.png
+                       {Dial background focused asset}
             \li
         \row
             \li
             \li handle
             \li
             \li \image imagine/images/dial-handle.png
+                       {Dial handle asset}
             \li
         \row
             \li
             \li handle
             \li disabled
             \li \image imagine/images/dial-handle-disabled.png
+                       {Dial handle disabled asset}
             \li
         \row
             \li
             \li handle
             \li focused
             \li \image imagine/images/dial-handle-focused.png
+                       {Dial handle focused asset}
             \li
         \row
             \li
             \li handle
             \li focused, pressed
             \li \image imagine/images/dial-handle-focused-pressed.png
+                       {Dial handle focused pressed asset}
             \li
         \row
             \li
             \li handle
             \li focused, hovered
             \li \image imagine/images/dial-handle-focused-hovered.png
+                       {Dial handle focused hovered asset}
             \li
         \row
             \li
             \li handle
             \li pressed
             \li \image imagine/images/dial-handle-pressed.png
+                       {Dial handle pressed asset}
             \li
         \row
             \li
             \li handle
             \li hovered
             \li \image imagine/images/dial-handle-hovered.png
+                       {Dial handle hovered asset}
             \li
         \row
             \li \l Dialog
             \li background
             \li
             \li \image imagine/images/dialog-background.9.png
+                       {Dialog background asset}
             \li
         \row
             \li
             \li overlay
             \li
             \li \image imagine/images/dialog-overlay.png
+                       {Dialog overlay asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li
             \li overlay
             \li modal
             \li \image imagine/images/dialog-overlay-modal.png
+                       {Dialog overlay modal asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li \l DialogButtonBox
             \li background
             \li
             \li \image imagine/images/dialogbuttonbox-background.9.png
+                       {DialogButtonBox background asset}
             \li
         \row
             \li \l Drawer
             \li background
             \li left
             \li \image imagine/images/drawer-background-left.9.png
+                       {Drawer background left asset}
             \li
         \row
             \li
             \li background
             \li right
             \li \image imagine/images/drawer-background-right.9.png
+                       {Drawer background right asset}
             \li
         \row
             \li
             \li background
             \li top
             \li \image imagine/images/drawer-background-top.9.png
+                       {Drawer background top asset}
             \li
         \row
             \li
             \li background
             \li bottom
             \li \image imagine/images/drawer-background-bottom.9.png
+                       {Drawer background bottom asset}
             \li
         \row
             \li
             \li overlay
             \li
             \li \image imagine/images/drawer-overlay.png
+                       {Drawer overlay asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li
             \li overlay
             \li modal
             \li \image imagine/images/drawer-overlay-modal.png
+                       {Drawer overlay modal asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li \l Frame
             \li background
             \li
             \li \image imagine/images/frame-background.9.png
+                       {Frame background asset}
             \li
         \row
             \li \l GroupBox
             \li background
             \li
             \li \image imagine/images/groupbox-background.9.png
+                       {GroupBox background asset}
             \li
         \row
             \li
             \li title
             \li
             \li \image imagine/images/groupbox-title.9.png
+                       {GroupBox title asset}
             \li
         \row
             \li \l ItemDelegate
             \li background
             \li
             \li \image imagine/images/itemdelegate-background.9.png
+                       {ItemDelegate background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/itemdelegate-background-disabled.9.png
+                       {ItemDelegate background disabled asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/itemdelegate-background-pressed.9.png
+                       {ItemDelegate background pressed asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/itemdelegate-background-focused.9.png
+                       {ItemDelegate background focused asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/itemdelegate-background-hovered.9.png
+                       {ItemDelegate background hovered asset}
             \li
         \row
             \li
             \li background
             \li highlighted
             \li \image imagine/images/itemdelegate-background-highlighted.9.png
+                       {ItemDelegate background highlighted asset}
             \li
         \row
             \li \l Menu
             \li background
             \li
             \li \image imagine/images/menu-background.9.png
+                       {Menu background asset}
             \li
         \row
             \li \l MenuItem
             \li background
             \li
             \li \image imagine/images/menuitem-background.9.png
+                       {MenuItem background asset}
             \li
         \row
             \li
             \li background
             \li highlighted
             \li \image imagine/images/menuitem-background-highlighted.9.png
+                       {MenuItem background highlighted asset}
             \li
         \row
             \li
             \li arrow
             \li
             \li \image imagine/images/menuitem-arrow.png
+                       {MenuItem arrow asset}
             \li
         \row
             \li
             \li arrow
             \li mirrored
             \li \image imagine/images/menuitem-arrow-mirrored.png
+                       {MenuItem arrow mirrored asset}
             \li
         \row
             \li
             \li arrow
             \li disabled
             \li \image imagine/images/menuitem-arrow-disabled.png
+                       {MenuItem arrow disabled asset}
             \li
         \row
             \li
             \li arrow
             \li mirrored, disabled
             \li \image imagine/images/menuitem-arrow-mirrored-disabled.png
+                       {MenuItem arrow mirrored disabled asset}
             \li
         \row
             \li
             \li indicator
             \li
             \li \image imagine/images/menuitem-indicator.png
+                       {MenuItem indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/menuitem-indicator-disabled.png
+                       {MenuItem indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li pressed
             \li \image imagine/images/menuitem-indicator-pressed.png
+                       {MenuItem indicator pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked
             \li \image imagine/images/menuitem-indicator-checked.png
+                       {MenuItem indicator checked asset}
             \li
         \row
             \li
             \li indicator
             \li checked, pressed
             \li \image imagine/images/menuitem-indicator-checked-pressed.png
+                       {MenuItem indicator checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked, focused
             \li \image imagine/images/menuitem-indicator-checked-focused.png
+                       {MenuItem indicator checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li checked, hovered
             \li \image imagine/images/menuitem-indicator-checked-hovered.png
+                       {MenuItem indicator checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li focused
             \li \image imagine/images/menuitem-indicator-focused.png
+                       {MenuItem indicator focused asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/menuitem-indicator-hovered.png
+                       {MenuItem indicator hovered asset}
             \li
         \row
             \li \l MenuSeparator
             \li separator
             \li
             \li \image imagine/images/menuseparator-separator.9.png
+                       {MenuSeparator separator asset}
             \li
         \row
             \li \l Page
             \li background
             \li
             \li \image imagine/images/page-background.png
+                       {Page background asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li \l PageIndicator
             \li delegate
             \li
             \li \image imagine/images/pageindicator-delegate.png
+                       {PageIndicator delegate asset}
             \li
         \row
             \li
             \li delegate
             \li disabled
             \li \image imagine/images/pageindicator-delegate-disabled.png
+                       {PageIndicator delegate disabled asset}
             \li
         \row
             \li
             \li delegate
             \li disabled, current
             \li \image imagine/images/pageindicator-delegate-disabled-current.png
+                       {PageIndicator delegate disabled current asset}
             \li
         \row
             \li
             \li delegate
             \li pressed
             \li \image imagine/images/pageindicator-delegate-pressed.png
+                       {PageIndicator delegate pressed asset}
             \li
         \row
             \li
             \li delegate
             \li current
             \li \image imagine/images/pageindicator-delegate-current.png
+                       {PageIndicator delegate current asset}
             \li
         \row
             \li \l Pane
             \li background
             \li
             \li \image imagine/images/pane-background.9.png
+                       {Pane background asset}
             \li
         \row
             \li \l Popup
             \li background
             \li
             \li \image imagine/images/popup-background.9.png
+                       {Popup background asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li
             \li overlay
             \li
             \li \image imagine/images/popup-overlay.png
+                       {Popup overlay asset}
             \li \l {sup1}{See footnote} \sup 1
         \row
             \li
             \li overlay
             \li modal
             \li \image imagine/images/popup-overlay-modal.png
+                       {Popup overlay modal asset}
             \li
         \row
             \li \l ProgressBar
             \li background
             \li
             \li \image imagine/images/progressbar-background.9.png
+                       {ProgressBar background asset}
             \li
         \row
             \li
             \li progress
             \li
             \li \image imagine/images/progressbar-progress.png
+                       {ProgressBar progress asset}
             \li
         \row
             \li
             \li mask
             \li
             \li \image imagine/images/progressbar-mask.9.png
+                       {ProgressBar mask asset}
             \li
         \row
             \li \l RadioButton
             \li indicator
             \li
             \li \image imagine/images/radiobutton-indicator.png
+                       {RadioButton indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/radiobutton-indicator-disabled.png
+                       {RadioButton indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li pressed
             \li \image imagine/images/radiobutton-indicator-pressed.png
+                       {RadioButton indicator pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked
             \li \image imagine/images/radiobutton-indicator-checked.png
+                       {RadioButton indicator checked asset}
             \li
         \row
             \li
             \li indicator
             \li checked, focused
             \li \image imagine/images/radiobutton-indicator-checked-focused.png
+                       {RadioButton indicator checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li checked, hovered
             \li \image imagine/images/radiobutton-indicator-checked-hovered.png
+                       {RadioButton indicator checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li checked, pressed
             \li \image imagine/images/radiobutton-indicator-checked-pressed.png
+                       {RadioButton indicator checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li focused
             \li \image imagine/images/radiobutton-indicator-focused.png
+                       {RadioButton indicator focused asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/radiobutton-indicator-hovered.png
+                       {RadioButton indicator hovered asset}
             \li
         \row
             \li \l RadioDelegate
             \li background
             \li
             \li \image imagine/images/radiodelegate-background.9.png
+                       {RadioDelegate background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/radiodelegate-background-disabled.9.png
+                       {RadioDelegate background disabled asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/radiodelegate-background-pressed.9.png
+                       {RadioDelegate background pressed asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/radiodelegate-background-focused.9.png
+                       {RadioDelegate background focused asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/radiodelegate-background-hovered.9.png
+                       {RadioDelegate background hovered asset}
             \li
         \row
             \li
             \li indicator
             \li
             \li \image imagine/images/radiodelegate-indicator.png
+                       {RadioDelegate indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/radiodelegate-indicator-disabled.png
+                       {RadioDelegate indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li pressed
             \li \image imagine/images/radiodelegate-indicator-pressed.png
+                       {RadioDelegate indicator pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked
             \li \image imagine/images/radiodelegate-indicator-checked.png
+                       {RadioDelegate indicator checked asset}
             \li
         \row
             \li
             \li indicator
             \li checked, focused
             \li \image imagine/images/radiodelegate-indicator-checked-focused.png
+                       {RadioDelegate indicator checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li checked, hovered
             \li \image imagine/images/radiodelegate-indicator-checked-hovered.png
+                       {RadioDelegate indicator checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li checked, pressed
             \li \image imagine/images/radiodelegate-indicator-checked-pressed.png
+                       {RadioDelegate indicator checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li focused
             \li \image imagine/images/radiodelegate-indicator-focused.png
+                       {RadioDelegate indicator focused asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/radiodelegate-indicator-hovered.png
+                       {RadioDelegate indicator hovered asset}
             \li
         \row
             \li \l RangeSlider
             \li background
             \li vertical
             \li \image imagine/images/rangeslider-background-vertical.9.png
+                       {RangeSlider background vertical asset}
             \li
         \row
             \li
             \li background
             \li horizontal
             \li \image imagine/images/rangeslider-background-horizontal.9.png
+                       {RangeSlider background horizontal asset}
             \li
         \row
             \li
             \li progress
             \li vertical
             \li \image imagine/images/rangeslider-progress-vertical.9.png
+                       {RangeSlider progress vertical asset}
             \li
         \row
             \li
             \li progress
             \li vertical, disabled
             \li \image imagine/images/rangeslider-progress-vertical-disabled.9.png
+                       {RangeSlider progress vertical disabled asset}
             \li
         \row
             \li
             \li progress
             \li horizontal
             \li \image imagine/images/rangeslider-progress-horizontal.9.png
+                       {RangeSlider progress horizontal asset}
             \li
         \row
             \li
             \li progress
             \li horizontal, disabled
             \li \image imagine/images/rangeslider-progress-horizontal-disabled.9.png
+                       {RangeSlider progress horizontal disabled asset}
             \li
         \row
             \li
             \li handle
             \li
             \li \image imagine/images/rangeslider-handle.png
+                       {RangeSlider handle asset}
             \li
         \row
             \li
             \li handle
             \li disabled
             \li \image imagine/images/rangeslider-handle-disabled.png
+                       {RangeSlider handle disabled asset}
             \li
         \row
             \li
             \li handle
             \li focused
             \li \image imagine/images/rangeslider-handle-focused.png
+                       {RangeSlider handle focused asset}
             \li
         \row
             \li
             \li handle
             \li focused, hovered
             \li \image imagine/images/rangeslider-handle-focused-hovered.png
+                       {RangeSlider handle focused hovered asset}
             \li
         \row
             \li
             \li handle
             \li focused, pressed
             \li \image imagine/images/rangeslider-handle-focused-pressed.png
+                       {RangeSlider handle focused pressed asset}
             \li
         \row
             \li
             \li handle
             \li hovered
             \li \image imagine/images/rangeslider-handle-hovered.png
+                       {RangeSlider handle hovered asset}
             \li
         \row
             \li
             \li handle
             \li pressed
             \li \image imagine/images/rangeslider-handle-pressed.png
+                       {RangeSlider handle pressed asset}
             \li
         \row
             \li \l RoundButton
             \li background
             \li
             \li \image imagine/images/roundbutton-background.png
+                       {RoundButton background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/roundbutton-background-disabled.png
+                       {RoundButton background disabled asset}
             \li
         \row
             \li
             \li background
             \li disabled, checked
             \li \image imagine/images/roundbutton-background-disabled-checked.png
+                       {RoundButton background disabled checked asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/roundbutton-background-focused.png
+                       {RoundButton background focused asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/roundbutton-background-pressed.png
+                       {RoundButton background pressed asset}
             \li
         \row
             \li
             \li background
             \li checked
             \li \image imagine/images/roundbutton-background-checked.png
+                       {RoundButton background checked asset}
             \li
         \row
             \li
             \li background
             \li checked, focused
             \li \image imagine/images/roundbutton-background-checked-focused.png
+                       {RoundButton background checked focused asset}
             \li
         \row
             \li
             \li background
             \li checked, hovered
             \li \image imagine/images/roundbutton-background-checked-hovered.png
+                       {RoundButton background checked hovered asset}
             \li
         \row
             \li
             \li background
             \li highlighted
             \li \image imagine/images/roundbutton-background-highlighted.png
+                       {RoundButton background highlighted asset}
             \li
         \row
             \li
             \li background
             \li highlighted, pressed
             \li \image imagine/images/roundbutton-background-highlighted-pressed.png
+                       {RoundButton background highlighted pressed asset}
             \li
         \row
             \li
             \li background
             \li highlighted, focused
             \li \image imagine/images/roundbutton-background-highlighted-focused.png
+                       {RoundButton background highlighted focused asset}
             \li
         \row
             \li
             \li background
             \li highlighted, hovered
             \li \image imagine/images/roundbutton-background-highlighted-hovered.png
+                       {RoundButton background highlighted hovered asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/roundbutton-background-hovered.png
+                       {RoundButton background hovered asset}
             \li
         \row
             \li \l ScrollBar
             \li handle
             \li
             \li \image imagine/images/scrollbar-handle.png
+                       {ScrollBar handle asset}
             \li
         \row
             \li
             \li handle
             \li disabled
             \li \image imagine/images/scrollbar-handle-disabled.png
+                       {ScrollBar handle disabled asset}
             \li
         \row
             \li
             \li handle
             \li interactive
             \li \image imagine/images/scrollbar-handle-interactive.png
+                       {ScrollBar handle interactive asset}
             \li
         \row
             \li
             \li handle
             \li interactive, disabled
             \li \image imagine/images/scrollbar-handle-interactive-disabled.png
+                       {ScrollBar handle interactive disabled asset}
             \li
         \row
             \li
             \li handle
             \li interactive, pressed
             \li \image imagine/images/scrollbar-handle-interactive-pressed.png
+                       {ScrollBar handle interactive pressed asset}
             \li
         \row
             \li
             \li handle
             \li interactive, hovered
             \li \image imagine/images/scrollbar-handle-interactive-hovered.png
+                       {ScrollBar handle interactive hovered asset}
             \li
         \row
             \li \l ScrollIndicator
             \li handle
             \li
             \li \image imagine/images/scrollindicator-handle.png
+                       {ScrollIndicator handle asset}
             \li
         \row
             \li \l Slider
             \li background
             \li vertical
             \li \image imagine/images/slider-background-vertical.9.png
+                       {Slider background vertical asset}
             \li
         \row
             \li
             \li background
             \li horizontal
             \li \image imagine/images/slider-background-horizontal.9.png
+                       {Slider background horizontal asset}
             \li
         \row
             \li
             \li progress
             \li vertical
             \li \image imagine/images/slider-progress-vertical.9.png
+                       {Slider progress vertical asset}
             \li
         \row
             \li
             \li progress
             \li vertical, disabled
             \li \image imagine/images/slider-progress-vertical-disabled.9.png
+                       {Slider progress vertical disabled asset}
             \li
         \row
             \li
             \li progress
             \li horizontal
             \li \image imagine/images/slider-progress-horizontal.9.png
+                       {Slider progress horizontal asset}
             \li
         \row
             \li
             \li progress
             \li horizontal, disabled
             \li \image imagine/images/slider-progress-horizontal-disabled.9.png
+                       {Slider progress horizontal disabled asset}
             \li
         \row
             \li
             \li handle
             \li
             \li \image imagine/images/slider-handle.png
+                       {Slider handle asset}
             \li
         \row
             \li
             \li handle
             \li disabled
             \li \image imagine/images/slider-handle-disabled.png
+                       {Slider handle disabled asset}
             \li
         \row
             \li
             \li handle
             \li focused
             \li \image imagine/images/slider-handle-focused.png
+                       {Slider handle focused asset}
             \li
         \row
             \li
             \li handle
             \li focused, hovered
             \li \image imagine/images/slider-handle-focused-hovered.png
+                       {Slider handle focused hovered asset}
             \li
         \row
             \li
             \li handle
             \li focused, pressed
             \li \image imagine/images/slider-handle-focused-pressed.png
+                       {Slider handle focused pressed asset}
             \li
         \row
             \li
             \li handle
             \li hovered
             \li \image imagine/images/slider-handle-hovered.png
+                       {Slider handle hovered asset}
             \li
         \row
             \li
             \li handle
             \li pressed
             \li \image imagine/images/slider-handle-pressed.png
+                       {Slider handle pressed asset}
             \li
         \row
             \li \l SpinBox
             \li background
             \li
             \li \image imagine/images/spinbox-background.9.png
+                       {SpinBox background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/spinbox-background-disabled.9.png
+                       {SpinBox background disabled asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/spinbox-background-focused.9.png
+                       {SpinBox background focused asset}
             \li
         \row
             \li
             \li background
             \li editable
             \li \image imagine/images/spinbox-background-editable.9.png
+                       {SpinBox background editable asset}
             \li
         \row
             \li
             \li indicator
             \li up
             \li \image imagine/images/spinbox-indicator-up.9.png
+                       {SpinBox indicator up asset}
             \li
         \row
             \li
             \li indicator
             \li up, disabled
             \li \image imagine/images/spinbox-indicator-up-disabled.9.png
+                       {SpinBox indicator up disabled asset}
             \li
         \row
             \li
             \li indicator
             \li up, pressed
             \li \image imagine/images/spinbox-indicator-up-pressed.9.png
+                       {SpinBox indicator up pressed asset}
             \li
         \row
             \li
             \li indicator
             \li up, focused
             \li \image imagine/images/spinbox-indicator-up-focused.9.png
+                       {SpinBox indicator up focused asset}
             \li
         \row
             \li
             \li indicator
             \li up, mirrored
             \li \image imagine/images/spinbox-indicator-up-mirrored.9.png
+                       {SpinBox indicator up mirrored asset}
             \li
         \row
             \li
             \li indicator
             \li up, hovered
             \li \image imagine/images/spinbox-indicator-up-hovered.9.png
+                       {SpinBox indicator up hovered asset}
             \li
         \row
             \li
             \li indicator
             \li up, editable
             \li \image imagine/images/spinbox-indicator-up-editable.9.png
+                       {SpinBox indicator up editable asset}
             \li
         \row
             \li
             \li indicator
             \li up, editable, pressed
             \li \image imagine/images/spinbox-indicator-up-editable-pressed.9.png
+                       {SpinBox indicator up editable pressed asset}
             \li
         \row
             \li
             \li indicator
             \li up, editable, focused
             \li \image imagine/images/spinbox-indicator-up-editable-focused.9.png
+                       {SpinBox indicator up editable focused asset}
             \li
         \row
             \li
             \li indicator
             \li up, editable, mirrored
             \li \image imagine/images/spinbox-indicator-up-editable-mirrored.9.png
+                       {SpinBox indicator up editable mirrored asset}
             \li
         \row
             \li
             \li indicator
             \li up, editable, hovered
             \li \image imagine/images/spinbox-indicator-up-editable-hovered.9.png
+                       {SpinBox indicator up editable hovered asset}
             \li
         \row
             \li
             \li indicator
             \li down
             \li \image imagine/images/spinbox-indicator-down.9.png
+                       {SpinBox indicator down asset}
             \li
         \row
             \li
             \li indicator
             \li down, disabled
             \li \image imagine/images/spinbox-indicator-down-disabled.9.png
+                       {SpinBox indicator down disabled asset}
             \li
         \row
             \li
             \li indicator
             \li down, pressed
             \li \image imagine/images/spinbox-indicator-down-pressed.9.png
+                       {SpinBox indicator down pressed asset}
             \li
         \row
             \li
             \li indicator
             \li down, focused
             \li \image imagine/images/spinbox-indicator-down-focused.9.png
+                       {SpinBox indicator down focused asset}
             \li
         \row
             \li
             \li indicator
             \li down, mirrored
             \li \image imagine/images/spinbox-indicator-down-mirrored.9.png
+                       {SpinBox indicator down mirrored asset}
             \li
         \row
             \li
             \li indicator
             \li down, hovered
             \li \image imagine/images/spinbox-indicator-down-hovered.9.png
+                       {SpinBox indicator down hovered asset}
             \li
         \row
             \li
             \li indicator
             \li down, editable
             \li \image imagine/images/spinbox-indicator-down-editable.9.png
+                       {SpinBox indicator down editable asset}
             \li
         \row
             \li
             \li indicator
             \li down, editable, pressed
             \li \image imagine/images/spinbox-indicator-down-editable-pressed.9.png
+                       {SpinBox indicator down editable pressed asset}
             \li
         \row
             \li
             \li indicator
             \li down, editable, focused
             \li \image imagine/images/spinbox-indicator-down-editable-focused.9.png
+                       {SpinBox indicator down editable focused asset}
             \li
         \row
             \li
             \li indicator
             \li down, editable, mirrored
             \li \image imagine/images/spinbox-indicator-down-editable-mirrored.9.png
+                       {SpinBox indicator down editable mirrored asset}
             \li
         \row
             \li
             \li indicator
             \li down, editable, hovered
             \li \image imagine/images/spinbox-indicator-down-editable-hovered.9.png
+                       {SpinBox indicator down editable hovered asset}
             \li
         \row
             \li \l SwipeDelegate
             \li background
             \li
             \li \image imagine/images/swipedelegate-background.9.png
+                       {SwipeDelegate background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/swipedelegate-background-disabled.9.png
+                       {SwipeDelegate background disabled asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/swipedelegate-background-pressed.9.png
+                       {SwipeDelegate background pressed asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/swipedelegate-background-focused.9.png
+                       {SwipeDelegate background focused asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/swipedelegate-background-hovered.9.png
+                       {SwipeDelegate background hovered asset}
             \li
         \row
             \li \l Switch
             \li indicator
             \li
             \li \image imagine/images/switch-indicator.png
+                       {Switch indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/switch-indicator-disabled.png
+                       {Switch indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li pressed
             \li \image imagine/images/switch-indicator-pressed.png
+                       {Switch indicator pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked
             \li \image imagine/images/switch-indicator-checked.png
+                       {Switch indicator checked asset}
             \li
         \row
             \li
             \li indicator
             \li checked, focused
             \li \image imagine/images/switch-indicator-checked-focused.png
+                       {Switch indicator checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li checked, hovered
             \li \image imagine/images/switch-indicator-checked-hovered.png
+                       {Switch indicator checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li checked, pressed
             \li \image imagine/images/switch-indicator-checked-pressed.png
+                       {Switch indicator checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li focused
             \li \image imagine/images/switch-indicator-focused.png
+                       {Switch indicator focused asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/switch-indicator-hovered.png
+                       {Switch indicator hovered asset}
             \li
         \row
             \li
             \li handle
             \li
             \li \image imagine/images/switch-handle.png
+                       {Switch handle asset}
             \li
         \row
             \li
             \li handle
             \li disabled
             \li \image imagine/images/switch-handle-disabled.png
+                       {Switch handle disabled asset}
             \li
         \row
             \li
             \li handle
             \li pressed
             \li \image imagine/images/switch-handle-pressed.png
+                       {Switch handle pressed asset}
             \li
         \row
             \li \l SwitchDelegate
             \li background
             \li
             \li \image imagine/images/switchdelegate-background.9.png
+                       {SwitchDelegate background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/switchdelegate-background-disabled.9.png
+                       {SwitchDelegate background disabled asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/switchdelegate-background-pressed.9.png
+                       {SwitchDelegate background pressed asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/switchdelegate-background-focused.9.png
+                       {SwitchDelegate background focused asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/switchdelegate-background-hovered.9.png
+                       {SwitchDelegate background hovered asset}
             \li
         \row
             \li
             \li indicator
             \li
             \li \image imagine/images/switchdelegate-indicator.png
+                       {SwitchDelegate indicator asset}
             \li
         \row
             \li
             \li indicator
             \li disabled
             \li \image imagine/images/switchdelegate-indicator-disabled.png
+                       {SwitchDelegate indicator disabled asset}
             \li
         \row
             \li
             \li indicator
             \li pressed
             \li \image imagine/images/switchdelegate-indicator-pressed.png
+                       {SwitchDelegate indicator pressed asset}
             \li
         \row
             \li
             \li indicator
             \li checked
             \li \image imagine/images/switchdelegate-indicator-checked.png
+                       {SwitchDelegate indicator checked asset}
             \li
         \row
             \li
             \li indicator
             \li checked, focused
             \li \image imagine/images/switchdelegate-indicator-checked-focused.png
+                       {SwitchDelegate indicator checked focused asset}
             \li
         \row
             \li
             \li indicator
             \li checked, hovered
             \li \image imagine/images/switchdelegate-indicator-checked-hovered.png
+                       {SwitchDelegate indicator checked hovered asset}
             \li
         \row
             \li
             \li indicator
             \li checked, pressed
             \li \image imagine/images/switchdelegate-indicator-checked-pressed.png
+                       {SwitchDelegate indicator checked pressed asset}
             \li
         \row
             \li
             \li indicator
             \li focused
             \li \image imagine/images/switchdelegate-indicator-focused.png
+                       {SwitchDelegate indicator focused asset}
             \li
         \row
             \li
             \li indicator
             \li hovered
             \li \image imagine/images/switchdelegate-indicator-hovered.png
+                       {SwitchDelegate indicator hovered asset}
             \li
         \row
             \li
             \li handle
             \li
             \li \image imagine/images/switchdelegate-handle.png
+                       {SwitchDelegate handle asset}
             \li
         \row
             \li
             \li handle
             \li disabled
             \li \image imagine/images/switchdelegate-handle-disabled.png
+                       {SwitchDelegate handle disabled asset}
             \li
         \row
             \li \l TabBar
             \li background
             \li
             \li \image imagine/images/tabbar-background.png
+                       {TabBar background asset}
             \li
         \row
             \li \l TabButton
             \li background
             \li
             \li \image imagine/images/tabbutton-background.9.png
+                       {TabButton background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/tabbutton-background-disabled.9.png
+                       {TabButton background disabled asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/tabbutton-background-pressed.9.png
+                       {TabButton background pressed asset}
             \li
         \row
             \li
             \li background
             \li checked
             \li \image imagine/images/tabbutton-background-checked.9.png
+                       {TabButton background checked asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/tabbutton-background-hovered.9.png
+                       {TabButton background hovered asset}
             \li
         \row
             \li
             \li background
             \li disabled, checked
             \li \image imagine/images/tabbutton-background-disabled-checked.9.png
+                       {TabButton background disabled checked asset}
             \li
         \row
             \li \l TextArea
             \li background
             \li
             \li \image imagine/images/textarea-background.9.png
+                       {TextArea background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/textarea-background-disabled.9.png
+                       {TextArea background disabled asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/textarea-background-focused.9.png
+                       {TextArea background focused asset}
             \li
         \row
             \li \l TextField
             \li background
             \li
             \li \image imagine/images/textfield-background.9.png
+                       {TextField background asset}
             \li
         \row
             \li
             \li background
             \li disabled
             \li \image imagine/images/textfield-background-disabled.9.png
+                       {TextField background disabled asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/textfield-background-focused.9.png
+                       {TextField background focused asset}
             \li
         \row
             \li \l ToolBar
             \li background
             \li
             \li \image imagine/images/toolbar-background.png
+                       {ToolBar background asset}
             \li
         \row
             \li \l ToolButton
             \li background
             \li
             \li \image imagine/images/toolbutton-background.9.png
+                       {ToolButton background asset}
             \li
         \row
             \li
             \li background
             \li disabled, checked
             \li \image imagine/images/toolbutton-background-disabled-checked.9.png
+                       {ToolButton background disabled checked asset}
             \li
         \row
             \li
             \li background
             \li focused
             \li \image imagine/images/toolbutton-background-focused.9.png
+                       {ToolButton background focused asset}
             \li
         \row
             \li
             \li background
             \li pressed
             \li \image imagine/images/toolbutton-background-pressed.9.png
+                       {ToolButton background pressed asset}
             \li
         \row
             \li
             \li background
             \li checked
             \li \image imagine/images/toolbutton-background-checked.9.png
+                       {ToolButton background checked asset}
             \li
         \row
             \li
             \li background
             \li checked, focused
             \li \image imagine/images/toolbutton-background-checked-focused.9.png
+                       {ToolButton background checked focused asset}
             \li
         \row
             \li
             \li background
             \li checked, hovered
             \li \image imagine/images/toolbutton-background-checked-hovered.9.png
+                       {ToolButton background checked hovered asset}
             \li
         \row
             \li
             \li background
             \li hovered
             \li \image imagine/images/toolbutton-background-hovered.9.png
+                       {ToolButton background hovered asset}
             \li
         \row
             \li \l ToolSeparator
             \li separator
             \li horizontal
             \li \image imagine/images/toolseparator-separator-horizontal.9.png
+                       {ToolSeparator separator horizontal asset}
             \li
         \row
             \li
             \li separator
             \li vertical
             \li \image imagine/images/toolseparator-separator-vertical.9.png
+                       {ToolSeparator separator vertical asset}
             \li
         \row
             \li \l ToolTip
             \li background
             \li
             \li \image imagine/images/tooltip-background.9.png
+                       {ToolTip background asset}
             \li
     \endtable
 
@@ -2278,6 +2574,7 @@
     magnified version (to make it easier to see the 9-patch lines):
 
     \image qtquickcontrols-imagine-9-patch-4x.png
+           {Button background 9-patch image showing stretch and padding lines}
 
     The content of the image is 44 pixels wide by 32 pixels high. Every 9-patch
     image needs a one pixel thick line (collectively referred to as
@@ -2291,6 +2588,7 @@
     or white:
 
     \image qtquickcontrols-imagine-9-patch-size.png
+           {Diagram showing 9-patch line color requirements}
 
     \section3 Stretchable Areas
 
@@ -2301,6 +2599,7 @@
     times its original size in various dimensions:
 
     \image qtquickcontrols-imagine-9-patch-resized-stretchable.png
+           {Examples of 9-patch image resized showing stretchable areas}
 
     Notice how the the rounded corners keep their original size, as they are
     outside the range of the lines.
@@ -2316,6 +2615,7 @@
     demonstrating how the padding 9-patch lines work.
 
     \image qtquickcontrols-imagine-9-patch-resized-padding.png
+           {Examples of 9-patch image resized showing padding areas}
 
     The \c contentItem can take up as much space as it needs within the shaded
     areas. If the padding lines are left out, the \c contentItem will take as
@@ -2332,12 +2632,14 @@
     the 9-patch image should go outside of the control:
 
     \image qtquickcontrols-imagine-9-patch-inset.png
+           {Diagram showing 9-patch inset lines for drop shadow}
 
     In the image below, the dashed line represents the button's clickable area,
     as well as the space that it will take up in a layout. The shadow is marked
     by the striped area behind it:
 
     \image qtquickcontrols-imagine-9-patch-inset-boundaries.png
+           {Button with drop shadow showing clickable area and insets}
 
     \section3 Exporting 9-Patch Images
 
@@ -2417,9 +2719,9 @@
         \row
             \li
                 \qml
-                import QtQuick 2.12
-                import QtQuick.Controls 2.12
-                import QtQuick.Controls.Imagine 2.12
+                import QtQuick
+                import QtQuick.Controls
+                import QtQuick.Controls.Imagine
 
                 ApplicationWindow {
                     visible: true
@@ -2437,6 +2739,8 @@
                 \endqml
             \li
                 \image qtquickcontrols-imagine-customization-dark.png
+                       {Small, Medium, Large radio buttons in Imagine dark
+                        theme}
     \endtable
 
     In addition to specifying the path in QML, it is also possible to specify

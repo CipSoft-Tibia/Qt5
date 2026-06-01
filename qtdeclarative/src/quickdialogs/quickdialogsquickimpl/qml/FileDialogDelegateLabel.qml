@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls
@@ -36,7 +37,7 @@ Item {
                 color: root.delegate.icon.color
                 y: (parent.height - height) / 2
             }
-            Label {
+            Text {
                 text: root.delegate.fileName
                 color: root.delegate.icon.color
                 y: (parent.height - height) / 2
@@ -49,7 +50,7 @@ Item {
             width: fileDetailRowWidth - x - root.delegate.leftPadding
             implicitHeight: childrenRect.height
 
-            Label {
+            Text {
                 text: {
                     const fileSize = root.delegate.fileSize;
                     return fileSize > Number.MAX_SAFE_INTEGER
@@ -59,7 +60,7 @@ Item {
                 font.pixelSize: root.delegate.font.pixelSize * 0.75
                 color: root.fileDetailRowTextColor
             }
-            Label {
+            Text {
                 text: Qt.formatDateTime(root.delegate.fileModified)
                 font.pixelSize: root.delegate.font.pixelSize * 0.75
                 color: root.fileDetailRowTextColor

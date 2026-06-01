@@ -14,9 +14,9 @@ import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import 'chrome://resources/cr_elements/cr_link_row/cr_link_row.js';
 // </if>
 import 'chrome://resources/cr_elements/cr_progress/cr_progress.js';
-import 'chrome://resources/cr_elements/icons_lit.html.js';
+import 'chrome://resources/cr_elements/icons.html.js';
 import 'chrome://resources/js/action_link.js';
-import './strings.m.js';
+import '/strings.m.js';
 
 import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
 import type {CrActionMenuElement} from 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
@@ -164,10 +164,10 @@ export class DownloadsItemElement extends DownloadsItemElementBase {
   /** Overrides FocusRowMixin. */
   override getCustomEquivalent(sampleElement: HTMLElement): HTMLElement|null {
     if (sampleElement.getAttribute('focus-type') === 'cancel') {
-      return this.shadowRoot!.querySelector('[focus-type="retry"]');
+      return this.shadowRoot.querySelector('[focus-type="retry"]');
     }
     if (sampleElement.getAttribute('focus-type') === 'retry') {
-      return this.shadowRoot!.querySelector('[focus-type="pauseOrResume"]');
+      return this.shadowRoot.querySelector('[focus-type="pauseOrResume"]');
     }
     return null;
   }
@@ -178,12 +178,12 @@ export class DownloadsItemElement extends DownloadsItemElementBase {
 
   getMoreActionsButton(): CrIconButtonElement|null {
     const button =
-        this.shadowRoot!.querySelector<CrIconButtonElement>('#more-actions');
+        this.shadowRoot.querySelector<CrIconButtonElement>('#more-actions');
     return button || null;
   }
 
   getMoreActionsMenu(): CrActionMenuElement {
-    const menu = this.shadowRoot!.querySelector<CrActionMenuElement>(
+    const menu = this.shadowRoot.querySelector<CrActionMenuElement>(
         '#more-actions-menu');
     assert(!!menu);
     return menu;
@@ -1026,7 +1026,7 @@ export class DownloadsItemElement extends DownloadsItemElementBase {
     const controlledBy = this.computeControlledBy_();
     this.$['controlled-by'].innerHTML = sanitizeInnerHtml(controlledBy);
     if (controlledBy) {
-      const link = this.shadowRoot!.querySelector('#controlled-by a');
+      const link = this.shadowRoot.querySelector('#controlled-by a');
       link!.setAttribute('focus-row-control', '');
       link!.setAttribute('focus-type', 'controlledBy');
     }

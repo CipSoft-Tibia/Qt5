@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "base/component_export.h"
 #include "base/memory/raw_ptr.h"
 #include "cc/paint/paint_canvas.h"
 #include "cc/paint/paint_flags.h"
@@ -51,7 +52,7 @@ class Vector2d;
 // source and destination colors are combined. Unless otherwise specified,
 // the variant that does not take a SkBlendMode uses a transfer mode
 // of kSrcOver_Mode.
-class GFX_EXPORT Canvas {
+class COMPONENT_EXPORT(GFX) Canvas {
  public:
   enum {
     // Specifies the alignment for text rendered with the DrawStringRect method.
@@ -429,17 +430,21 @@ class GFX_EXPORT Canvas {
   // Apply transformation on the canvas.
   void Transform(const Transform& transform);
 
+  // Text will be clipped when the canvas is scaled. See crbug.com/1469229.
+  // This method prevents clipping by increasing the clip rect size by 0.5f.
+  void AdjustClipRectForTextBounds(const Rect& text_bounds);
+
   // Note that writing to this bitmap will modify pixels stored in this canvas.
   SkBitmap GetBitmap() const;
+
+  // Tests whether the provided rectangle intersects the current clip rect.
+  bool IntersectsClipRect(const SkRect& rect) const;
 
   // TODO(enne): rename sk_canvas members and interface.
   cc::PaintCanvas* sk_canvas() { return canvas_; }
   float image_scale() const { return image_scale_; }
 
  private:
-  // Tests whether the provided rectangle intersects the current clip rect.
-  bool IntersectsClipRect(const SkRect& rect);
-
   // Helper for the DrawImageInt functions declared above. The
   // |remove_image_scale| parameter indicates if the scale of the |image_rep|
   // should be removed when drawing the image, to avoid double-scaling it.

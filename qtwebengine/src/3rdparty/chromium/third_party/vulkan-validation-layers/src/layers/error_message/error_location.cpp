@@ -50,9 +50,17 @@ std::string Location::Fields() const {
 
 std::string Location::Message() const {
     std::stringstream out;
+    if (debug_region && !debug_region->empty()) {
+        out << "[ Debug region: " << *debug_region << " ] ";
+    }
     out << StringFunc() << "(): ";
     AppendFields(out);
-    return out.str();
+    std::string message = out.str();
+    // Remove space in the end when no fields are added
+    if (message.back() == ' ') {
+        message.pop_back();
+    }
+    return message;
 }
 
 namespace vvl {
@@ -119,6 +127,11 @@ bool operator<(const Key& lhs, const Key& rhs) {
     }
 
     return false;
+}
+
+bool operator==(const Key& lhs, const Key& rhs) {
+    return lhs.function == rhs.function && lhs.structure == rhs.structure && lhs.field == rhs.field &&
+           lhs.recurse_field == rhs.recurse_field;
 }
 
 bool operator==(const Key& key, const Location& loc) {

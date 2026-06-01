@@ -238,6 +238,7 @@ private slots:
     void requestNotOverwritten();
     void multipleResponses();
     void contextObjectInOtherThreadWarning();
+    void keepAliveTimeout();
     void writeSequentialDevice();
     void writeMuchToSequentialDevice();
     void writeFromEmptySequentialDevice();
@@ -553,6 +554,13 @@ void tst_QHttpServer::initTestCase()
 
             QTest::qSleep(500);
             return QHttpServerResponse("future is coming");
+        });
+    });
+
+    httpserver.route("/wait/<arg>", this, [](qsizetype wait) {
+        return QtConcurrent::run([wait] () -> QHttpServerResponse {
+            QThread::msleep(wait);
+            return QString::number(wait);
         });
     });
 
@@ -1472,7 +1480,6 @@ void tst_QHttpServer::pipelinedFutureRequests()
 void tst_QHttpServer::requestNotOverwritten()
 {
 #if QT_CONFIG(concurrent)
-    using namespace std::chrono_literals;
     readySem.emplace();
     routeSem.emplace();
 
@@ -1530,10 +1537,6 @@ void tst_QHttpServer::requestNotOverwritten()
         int bodySize = header.toInt(&ok);
         QVERIFY(ok);
         bodySizes.insert(bodySize);
-    }
-    if (useHttp2) {
-        QEXPECT_FAIL("", "QTBUG-133519: QHttpServerRequest overwritten during concurrent handling",
-                     Continue);
     }
     QCOMPARE(bodySizes.size(), NumberProcessed);
     QCOMPARE(readySem->available(), 0);
@@ -1605,6 +1608,39 @@ void tst_QHttpServer::localSocket()
     }
 }
 #endif
+
+void tst_QHttpServer::keepAliveTimeout()
+{
+#if QT_CONFIG(concurrent)
+    QFETCH_GLOBAL(bool, useSsl);
+    QFETCH_GLOBAL(bool, useHttp2);
+
+    QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
+
+    QHttpServerConfiguration config;
+    config.setKeepAliveTimeout(1s);
+    httpserver.setConfiguration(config);
+
+    const auto slowWaitTime = QString::number(6000);
+    QNetworkRequest reqSlow(QUrl(urlBase.arg(u"/wait/"_s + slowWaitTime)));
+    reqSlow.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
+    reqSlow.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
+    QNetworkReply *slowReply = networkAccessManager.get(reqSlow);
+
+    const auto fastWaitTime = QString::number(1000);
+    QNetworkRequest reqFast(QUrl(urlBase.arg(u"/wait/"_s + fastWaitTime)));
+    reqFast.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
+    reqFast.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
+    QNetworkReply *fastReply = networkAccessManager.get(reqFast);
+
+    QTRY_VERIFY_WITH_TIMEOUT(slowReply->isFinished() && fastReply->isFinished(), 7000);
+
+    checkReply(slowReply, slowWaitTime);
+    checkReply(fastReply, fastWaitTime);
+#else
+    QSKIP("QtConcurrent is not available, skipping test");
+#endif // QT_CONFIG(concurrent)
+}
 
 void tst_QHttpServer::writeSequentialDevice()
 {

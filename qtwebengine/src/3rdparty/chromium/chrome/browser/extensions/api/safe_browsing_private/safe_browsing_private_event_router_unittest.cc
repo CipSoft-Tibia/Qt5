@@ -48,15 +48,18 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-#include "chrome/browser/ash/login/users/chrome_user_manager_impl.h"
+#if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/login/users/fake_chrome_user_manager.h"
+#include "chrome/browser/ash/login/users/user_manager_delegate_impl.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/ash/settings/scoped_cros_settings_test_helper.h"
+#include "chrome/browser/browser_process.h"
 #include "chromeos/ash/components/install_attributes/stub_install_attributes.h"
+#include "chromeos/ash/components/settings/cros_settings.h"
 #include "components/account_id/account_id.h"
 #include "components/user_manager/scoped_user_manager.h"
 #include "components/user_manager/user.h"
+#include "components/user_manager/user_manager_impl.h"
 #else
 #include "components/enterprise/browser/controller/fake_browser_dm_token_storage.h"
 #endif
@@ -71,7 +74,7 @@ namespace extensions {
 namespace {
 
 ACTION_P(CaptureArg, wrapper) {
-  *wrapper = arg2.Clone();
+  *wrapper = arg1.Clone();
 }
 
 constexpr char kConnectorsPrefValue[] = R"([
@@ -176,7 +179,7 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
             GURL("https://maybevil.com/warning.exe"),
             GURL("https://maybe.evil/"), "/path/to/warning.exe",
             "sha256_of_warning_exe", "POTENTIALLY_UNWANTED", "exe", "scan_id",
-            567, safe_browsing::EventResult::WARNED);
+            567, enterprise_connectors::EventResult::WARNED);
   }
 
   void TriggerOnDangerousDownloadEventBypass() {
@@ -187,7 +190,8 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
             "sha256_of_bypass_exe", "BYPASSED_WARNING", "exe", "scan_id", 890);
   }
 
-  void TriggerOnSensitiveDataEvent(safe_browsing::EventResult event_result) {
+  void TriggerOnSensitiveDataEvent(
+      enterprise_connectors::EventResult event_result) {
     enterprise_connectors::ContentAnalysisResponse::Result result;
     result.set_tag("dlp");
     result.set_status(
@@ -235,7 +239,7 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
                                      threat_type, response);
   }
 
-  void TriggerOnUnscannedFileEvent(safe_browsing::EventResult result) {
+  void TriggerOnUnscannedFileEvent(enterprise_connectors::EventResult result) {
     SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
         ->OnUnscannedFileEvent(
             GURL(kUrl), GURL(kTabUrl), kSource, kDestination,
@@ -268,7 +272,8 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
         ->OnDataControlsSensitiveDataEvent(
             GURL(kUrl), GURL(kTabUrl), kSource, kDestination, "text/plain",
             SafeBrowsingPrivateEventRouter::kTriggerWebContentUpload,
-            triggered_rules, safe_browsing::EventResult::BLOCKED, 12345);
+            triggered_rules, enterprise_connectors::EventResult::BLOCKED,
+            12345);
   }
 #endif  // BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 
@@ -339,22 +344,25 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
   raw_ptr<extensions::TestEventRouter> event_router_ = nullptr;
 
  private:
-#if !BUILDFLAG(IS_CHROMEOS_ASH)
+#if !BUILDFLAG(IS_CHROMEOS)
   policy::FakeBrowserDMTokenStorage dm_token_storage_;
-#endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 };
 
 class SafeBrowsingPrivateEventRouterTest
     : public SafeBrowsingPrivateEventRouterTestBase {
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
  public:
   SafeBrowsingPrivateEventRouterTest() = default;
 
  protected:
   ash::ScopedCrosSettingsTestHelper cros_settings_test_helper_;
-  user_manager::ScopedUserManager test_user_manager_{
-      ash::ChromeUserManagerImpl::CreateChromeUserManager()};
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+  user_manager::ScopedUserManager user_manager_{
+      std::make_unique<user_manager::UserManagerImpl>(
+          std::make_unique<ash::UserManagerDelegateImpl>(),
+          g_browser_process->local_state(),
+          ash::CrosSettings::Get())};
+#endif  // BUILDFLAG(IS_CHROMEOS)
 };
 
 TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnReuseDetected_Warned) {
@@ -391,8 +399,11 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnReuseDetected_Warned) {
   EXPECT_EQ("user_name_1",
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyUserName));
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::WARNED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::WARNED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
+  EXPECT_TRUE(
+      event->FindBool(SafeBrowsingPrivateEventRouter::kKeyIsPhishingUrl));
 }
 
 TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnReuseDetected_Allowed) {
@@ -429,8 +440,11 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnReuseDetected_Allowed) {
   EXPECT_EQ("user_name_1",
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyUserName));
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::ALLOWED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::ALLOWED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
+  EXPECT_TRUE(
+      event->FindBool(SafeBrowsingPrivateEventRouter::kKeyIsPhishingUrl));
 }
 
 TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnPasswordChanged) {
@@ -509,7 +523,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnDangerousDownloadOpened) {
   EXPECT_EQ(SafeBrowsingPrivateEventRouter::kTriggerFileDownload,
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyTrigger));
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::BYPASSED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::BYPASSED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("scan_id",
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyScanId));
@@ -628,7 +643,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnDangerousDownloadWarning) {
   EXPECT_EQ("POTENTIALLY_UNWANTED",
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyThreatType));
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::WARNED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::WARNED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("scan_id",
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyScanId));
@@ -672,7 +688,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   EXPECT_EQ("BYPASSED_WARNING",
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyThreatType));
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::BYPASSED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::BYPASSED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("scan_id",
             *event->FindString(SafeBrowsingPrivateEventRouter::kKeyScanId));
@@ -1024,7 +1041,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnSensitiveDataEvent_Allowed) {
   EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
-  TriggerOnSensitiveDataEvent(safe_browsing::EventResult::ALLOWED);
+  TriggerOnSensitiveDataEvent(enterprise_connectors::EventResult::ALLOWED);
   base::RunLoop().RunUntilIdle();
 
   Mock::VerifyAndClearExpectations(client_.get());
@@ -1062,7 +1079,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnSensitiveDataEvent_Allowed) {
   ASSERT_EQ(1u, triggered_rule_info->size());
   const base::Value::Dict& triggered_rule = (*triggered_rule_info)[0].GetDict();
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::ALLOWED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::ALLOWED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("fake rule",
             *triggered_rule.FindString(
@@ -1081,7 +1099,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnSensitiveDataEvent_Blocked) {
   EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
-  TriggerOnSensitiveDataEvent(safe_browsing::EventResult::BLOCKED);
+  TriggerOnSensitiveDataEvent(enterprise_connectors::EventResult::BLOCKED);
   base::RunLoop().RunUntilIdle();
 
   Mock::VerifyAndClearExpectations(client_.get());
@@ -1119,7 +1137,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnSensitiveDataEvent_Blocked) {
   ASSERT_EQ(1u, triggered_rule_info->size());
   const base::Value::Dict& triggered_rule = (*triggered_rule_info)[0].GetDict();
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::BLOCKED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::BLOCKED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("fake rule",
             *triggered_rule.FindString(
@@ -1163,7 +1182,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   ASSERT_EQ(1u, triggered_rule_info->size());
   const base::Value::Dict& triggered_rule = (*triggered_rule_info)[0].GetDict();
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::BLOCKED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::BLOCKED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("test rule name",
             *triggered_rule.FindString(
@@ -1205,7 +1225,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   ASSERT_EQ(1u, triggered_rule_info->size());
   const base::Value::Dict& triggered_rule = (*triggered_rule_info)[0].GetDict();
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::WARNED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::WARNED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("test rule name",
             *triggered_rule.FindString(
@@ -1246,7 +1267,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   ASSERT_EQ(1u, triggered_rule_info->size());
   const base::Value::Dict& triggered_rule = (*triggered_rule_info)[0].GetDict();
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::BYPASSED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::BYPASSED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("test rule name",
             *triggered_rule.FindString(
@@ -1287,7 +1309,8 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   ASSERT_EQ(1u, triggered_rule_info->size());
   const base::Value::Dict& triggered_rule = (*triggered_rule_info)[0].GetDict();
   EXPECT_EQ(
-      safe_browsing::EventResultToString(safe_browsing::EventResult::ALLOWED),
+      enterprise_connectors::EventResultToString(
+          enterprise_connectors::EventResult::ALLOWED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
   EXPECT_EQ("test rule name",
             *triggered_rule.FindString(
@@ -1303,7 +1326,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnUnscannedFileEvent_Allowed) {
   EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
-  TriggerOnUnscannedFileEvent(safe_browsing::EventResult::ALLOWED);
+  TriggerOnUnscannedFileEvent(enterprise_connectors::EventResult::ALLOWED);
   base::RunLoop().RunUntilIdle();
 
   Mock::VerifyAndClearExpectations(client_.get());
@@ -1338,7 +1361,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnUnscannedFileEvent_Allowed) {
       "filePasswordProtected",
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyUnscannedReason));
   EXPECT_EQ(
-      EventResultToString(safe_browsing::EventResult::ALLOWED),
+      EventResultToString(enterprise_connectors::EventResult::ALLOWED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
 }
 
@@ -1349,7 +1372,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnUnscannedFileEvent_Blocked) {
   EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
-  TriggerOnUnscannedFileEvent(safe_browsing::EventResult::BLOCKED);
+  TriggerOnUnscannedFileEvent(enterprise_connectors::EventResult::BLOCKED);
   base::RunLoop().RunUntilIdle();
 
   Mock::VerifyAndClearExpectations(client_.get());
@@ -1384,7 +1407,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnUnscannedFileEvent_Blocked) {
       "filePasswordProtected",
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyUnscannedReason));
   EXPECT_EQ(
-      EventResultToString(safe_browsing::EventResult::BLOCKED),
+      EventResultToString(enterprise_connectors::EventResult::BLOCKED),
       *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult));
 }
 
@@ -1536,7 +1559,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestSensitiveDataEnabled) {
                enabled_event_names);
 
   EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
-  TriggerOnSensitiveDataEvent(safe_browsing::EventResult::BLOCKED);
+  TriggerOnSensitiveDataEvent(enterprise_connectors::EventResult::BLOCKED);
   base::RunLoop().RunUntilIdle();
 
   // Make sure UploadSecurityEventReport was called the expected number of
@@ -1551,7 +1574,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestUnscannedFileEnabled) {
                enabled_event_names);
 
   EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
-  TriggerOnUnscannedFileEvent(safe_browsing::EventResult::ALLOWED);
+  TriggerOnUnscannedFileEvent(enterprise_connectors::EventResult::ALLOWED);
   base::RunLoop().RunUntilIdle();
 
   // Make sure UploadSecurityEventReport was called the expected number of
@@ -1596,9 +1619,9 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestDataControlsSensitiveDataEvent) {
             "text/plain");
   EXPECT_EQ(*event->FindString(SafeBrowsingPrivateEventRouter::kKeyTrigger),
             SafeBrowsingPrivateEventRouter::kTriggerWebContentUpload);
-  EXPECT_EQ(
-      *event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult),
-      safe_browsing::EventResultToString(safe_browsing::EventResult::BLOCKED));
+  EXPECT_EQ(*event->FindString(SafeBrowsingPrivateEventRouter::kKeyEventResult),
+            enterprise_connectors::EventResultToString(
+                enterprise_connectors::EventResult::BLOCKED));
 
   const base::Value::List* triggered_rule_info =
       event->FindList(SafeBrowsingPrivateEventRouter::kKeyTriggeredRuleInfo);
@@ -1637,7 +1660,7 @@ class SafeBrowsingIsRealtimeReportingEnabledTest
         is_policy_enabled_(testing::get<1>(GetParam())),
         is_authorized_(testing::get<2>(GetParam())) {
     // In chrome branded desktop builds, the browser is always manageable.
-#if !BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS_ASH)
+#if !BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS)
     if (is_manageable_) {
       base::CommandLine::ForCurrentProcess()->AppendSwitch(
           switches::kEnableChromeBrowserCloudManagement);
@@ -1652,7 +1675,7 @@ class SafeBrowsingIsRealtimeReportingEnabledTest
                                 *base::JSONReader::Read(kConnectorsPrefValue));
     }
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
     user_manager_.Reset(std::make_unique<ash::FakeChromeUserManager>());
     const AccountId account_id(
         AccountId::FromUserEmail(profile_->GetProfileUserName()));
@@ -1675,7 +1698,7 @@ class SafeBrowsingIsRealtimeReportingEnabledTest
   const bool is_policy_enabled_;
   const bool is_authorized_;
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
  private:
   user_manager::TypedScopedUserManager<ash::FakeChromeUserManager>
       user_manager_;
@@ -1775,8 +1798,8 @@ TEST_P(SafeBrowsingIsRealtimeReportingEventDisabledTest,
   TriggerOnSecurityInterstitialProceededEvent();
   TriggerOnDangerousDownloadEvent();
   TriggerOnDangerousDownloadEventBypass();
-  TriggerOnSensitiveDataEvent(safe_browsing::EventResult::BLOCKED);
-  TriggerOnUnscannedFileEvent(safe_browsing::EventResult::ALLOWED);
+  TriggerOnSensitiveDataEvent(enterprise_connectors::EventResult::BLOCKED);
+  TriggerOnUnscannedFileEvent(enterprise_connectors::EventResult::ALLOWED);
 
   base::RunLoop().RunUntilIdle();
 

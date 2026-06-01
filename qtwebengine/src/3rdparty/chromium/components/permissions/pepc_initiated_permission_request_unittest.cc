@@ -104,8 +104,7 @@ class PEPCInitiatedPermissionRequestTest
         permission_descriptor->name = PermissionName::AUDIO_CAPTURE;
         break;
       default:
-        NOTREACHED_IN_MIGRATION()
-            << "Unsupported permission type in this test fixture";
+        NOTREACHED() << "Unsupported permission type in this test fixture";
     }
 
     return permission_descriptor;
@@ -272,7 +271,7 @@ TEST_F(PEPCInitiatedPermissionRequestTest,
 
   blink::ParsedPermissionsPolicy frame_policy;
   frame_policy.emplace_back(
-      blink::mojom::PermissionsPolicyFeature::kMicrophone,
+      network::mojom::PermissionsPolicyFeature::kMicrophone,
       /*allowed_origins=*/
       std::vector{*blink::OriginWithPossibleWildcards::FromOrigin(
           url::Origin::Create(origin()))},
@@ -301,7 +300,7 @@ TEST_F(PEPCInitiatedPermissionRequestTest,
 TEST_F(PEPCInitiatedPermissionRequestTest,
        PEPCRequestBlockedWithoutFeaturePolicy) {
   blink::ParsedPermissionsPolicy frame_policy;
-  frame_policy.push_back({blink::mojom::PermissionsPolicyFeature::kMicrophone,
+  frame_policy.push_back({network::mojom::PermissionsPolicyFeature::kMicrophone,
                           /*allowed_origins=*/
                           {*blink::OriginWithPossibleWildcards::FromOrigin(
                               url::Origin::Create(GURL("http://fakeurl.com")))},

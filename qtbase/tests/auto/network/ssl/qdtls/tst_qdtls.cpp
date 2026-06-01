@@ -232,11 +232,7 @@ void tst_QDtls::construction()
 
     const auto params = dtls.cookieGeneratorParameters();
     QVERIFY(params.secret.size() > 0);
-#ifdef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
-    QCOMPARE(params.hash, QCryptographicHash::Sha1);
-#else
     QCOMPARE(params.hash, QCryptographicHash::Sha256);
-#endif
 
     QCOMPARE(dtls.dtlsConfiguration(), QSslConfiguration::defaultDtlsConfiguration());
 

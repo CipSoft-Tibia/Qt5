@@ -5,10 +5,8 @@
 #include "qqmlformatoptions_p.h"
 #include "qqmlformatsettings_p.h"
 
-#if QT_CONFIG(commandlineparser)
-#  include <QCommandLineParser>
-#  include <QCommandLineOption>
-#endif
+#include <QCommandLineParser>
+#include <QCommandLineOption>
 
 using namespace Qt::StringLiterals;
 
@@ -69,6 +67,16 @@ QQmlFormatOptionLineEndings QQmlFormatOptions::parseEndings(const QString &endin
 #endif
 }
 
+std::optional<QQmlJS::Dom::LineWriterOptions::SemicolonRule> parseSemicolonRule(const QString &value) {
+    if (value == "always"_L1) {
+        return QQmlJS::Dom::LineWriterOptions::SemicolonRule::Always;
+    } else if (value == "essential"_L1) {
+        return QQmlJS::Dom::LineWriterOptions::SemicolonRule::Essential;
+    } else {
+        return std::nullopt;
+    }
+}
+
 void QQmlFormatOptions::applySettings(const QQmlFormatSettings &settings)
 {
     // If the options is already set by commandline, don't override it with the values in the .ini
@@ -106,18 +114,39 @@ void QQmlFormatOptions::applySettings(const QQmlFormatSettings &settings)
         && settings.isSet(QQmlFormatSettings::s_functionsSpacingSetting)) {
         setFunctionsSpacing(settings.value(QQmlFormatSettings::s_functionsSpacingSetting).toBool());
     }
+
+    if (!isMarked(Settings::SortImports)
+        && settings.isSet(QQmlFormatSettings::s_sortImportsSetting)) {
+        setSortImports(settings.value(QQmlFormatSettings::s_sortImportsSetting).toBool());
+    }
+
+    if (!isMarked(Settings::SemicolonRule)
+        && settings.isSet(QQmlFormatSettings::s_semiColonRuleSetting)) {
+        const auto semicolonRule = parseSemicolonRule(
+                settings.value(QQmlFormatSettings::s_semiColonRuleSetting).toString());
+        if (!semicolonRule.has_value()) {
+            qWarning().noquote() << "Invalid semicolon rule in settings file, using 'always'";
+            setSemicolonRule(QQmlJS::Dom::LineWriterOptions::SemicolonRule::Always);
+        } else {
+            setSemicolonRule(semicolonRule.value());
+        }
+    }
 }
 
 QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &args)
 {
     QQmlFormatOptions options;
-#if QT_CONFIG(commandlineparser)
     QCommandLineParser parser;
     parser.setApplicationDescription(
-            "Formats QML files according to the QML Coding Conventions."_L1);
+            "Formats QML files according to the QML Coding Conventions.\n"_L1
+            "Options below the \"Formatting options\" section can also be set via .qmlformat.ini"_L1
+            " unless --ignore-settings is used"_L1);
     parser.addHelpOption();
     parser.addVersionOption();
 
+    //
+    // options that only are set via CLI
+    //
     parser.addOption(
             QCommandLineOption({ "V"_L1, "verbose"_L1 },
                                QStringLiteral("Verbose mode. Outputs more detailed information.")));
@@ -133,12 +162,42 @@ QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &
                                                     "command line options into consideration"_L1));
     parser.addOption(ignoreSettings);
 
+    QCommandLineOption filesOption(
+            { "F"_L1, "files"_L1 }, "Format all files listed in file, in-place"_L1, "file"_L1);
+    parser.addOption(filesOption);
+
+
+    QCommandLineOption dryrunOption(
+            QStringList() << "dry-run"_L1,
+            QStringLiteral("Prints the settings file that would be used for this instance."
+                           "This is useful to see what settings would be used "
+                           "without actually performing anything."));
+    parser.addOption(dryrunOption);
+
+    QCommandLineOption settingsOption(
+            { "s"_L1, "settings"_L1 },
+            QStringLiteral("Use the specified .qmlformat.ini file as the only configuration source."
+                           "Overrides any per-directory configuration lookup."),
+            "file"_L1);
+    parser.addOption(settingsOption);
+
     parser.addOption(QCommandLineOption(
             { "i"_L1, "inplace"_L1 },
             QStringLiteral("Edit file in-place instead of outputting to stdout.")));
 
+    // Note the blatant abuse of the option's help text to add a "section marker"
+    // Therefore, this needs to come last. Also, on Windows, the unicode characters seem to cause issues
     parser.addOption(QCommandLineOption({ "f"_L1, "force"_L1 },
-                                        QStringLiteral("Continue even if an error has occurred.")));
+                                        #ifdef Q_OS_WINDOWS
+                                        "Continue even if an error has occurred.\n<><><><><><><><><>\nFormatting options\n<><><><><><><><><>"_L1
+                                        #else
+                                        u"Continue even if an error has occurred.\n♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦\nFormatting options\n♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦♦"_s
+                                        #endif
+                                        ));
+
+    //
+    // options that can be configured by qmlformat.ini
+    //
 
     parser.addOption(QCommandLineOption({ "t"_L1, "tabs"_L1 },
                                         QStringLiteral("Use tabs instead of spaces.")));
@@ -149,7 +208,7 @@ QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &
 
     QCommandLineOption columnWidthOption(
             { "W"_L1, "column-width"_L1 },
-            QStringLiteral("Breaks the line into multiple lines if exceedes the specified width."
+            QStringLiteral("Breaks the line into multiple lines if exceedes the specified width. "
                            "Use -1 to disable line wrapping. (default)"),
             "width"_L1, "-1"_L1);
     parser.addOption(columnWidthOption);
@@ -157,9 +216,6 @@ QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &
                                         QStringLiteral("Reorders the attributes of the objects "
                                                        "according to the QML Coding Guidelines.")));
 
-    QCommandLineOption filesOption(
-            { "F"_L1, "files"_L1 }, "Format all files listed in file, in-place"_L1, "file"_L1);
-    parser.addOption(filesOption);
 
     parser.addOption(QCommandLineOption(
             { "l"_L1, "newline"_L1 },
@@ -173,6 +229,19 @@ QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &
     parser.addOption(QCommandLineOption(
             QStringList() << "functions-spacing"_L1,
             QStringLiteral("Ensure spaces between functions (only works with normalize option).")));
+
+    parser.addOption(
+            QCommandLineOption({ "S"_L1, "sort-imports"_L1 },
+                               QStringLiteral("Sort imports alphabetically "
+                                              "(Warning: this might change semantics if a given "
+                                              "name identifies types in multiple modules!).")));
+    QCommandLineOption semicolonRuleOption(
+            QStringList() << "semicolon-rule"_L1,
+            QStringLiteral("Specify the semicolon rule to use (always, essential).\n"
+                           "always: always adds semicolon [default].\n"
+                           "essential: adds only when ASI wouldn't be relied on."),
+            "rule"_L1, "always"_L1);
+    parser.addOption(semicolonRuleOption);
 
     parser.addPositionalArgument("filenames"_L1, "files to be processed by qmlformat"_L1);
 
@@ -257,6 +326,10 @@ QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &
         options.mark(Settings::FunctionsSpacing);
         options.setFunctionsSpacing(true);
     }
+    if (parser.isSet("sort-imports"_L1)) {
+        options.mark(Settings::SortImports);
+        options.setSortImports(true);
+    }
     if (parser.isSet("indent-width"_L1)) {
         options.mark(Settings::IndentWidth);
         options.setIndentWidth(indentWidth);
@@ -265,6 +338,17 @@ QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &
     if (parser.isSet("newline"_L1)) {
         options.mark(Settings::NewlineType);
         options.setNewline(QQmlFormatOptions::parseEndings(parser.value("newline"_L1)));
+    }
+
+    if (parser.isSet(semicolonRuleOption)) {
+        options.mark(Settings::SemicolonRule);
+        const auto value = parser.value(semicolonRuleOption);
+        auto semicolonRule = parseSemicolonRule(value);
+        if (!semicolonRule.has_value()) {
+            options.addError("Error: Invalid value passed to --semicolon-rule. Must be 'always' or 'essential'."_L1);
+            return options;
+        }
+        options.setSemicolonRule(semicolonRule.value());
     }
     options.setFiles(files);
     options.setArguments(parser.positionalArguments());
@@ -279,7 +363,6 @@ QQmlFormatOptions QQmlFormatOptions::buildCommandLineOptions(const QStringList &
         options.mark(Settings::MaxColumnWidth);
         options.setMaxColumnWidth(maxColumnWidth);
     }
-#endif
     return options;
 }
 

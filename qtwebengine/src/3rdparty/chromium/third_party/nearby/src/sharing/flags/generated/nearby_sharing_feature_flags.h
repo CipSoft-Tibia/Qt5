@@ -32,21 +32,12 @@ namespace nearby_sharing_feature {
 // Time to delay the endpoint loss in milliseconds.
 constexpr auto kDelayEndpointLossMs =
     flags::Flag<int64_t>(kConfigPackage, "45632386", 500);
-// When true, delete the file payload which received unexpectedly.
-constexpr auto kDeleteUnexpectedReceivedFile =
-    flags::Flag<bool>(kConfigPackage, "45627826", true);
 // Enable/disable the use of BLE as a connection medium.
 constexpr auto kEnableBleForTransfer =
     flags::Flag<bool>(kConfigPackage, "45427466", false);
 // Enable/disable certificates dump
 constexpr auto kEnableCertificatesDump =
     flags::Flag<bool>(kConfigPackage, "45409184", false);
-// Enable/disable dumping feature flags
-constexpr auto kEnableDumpingFeatureFlags =
-    flags::Flag<bool>(kConfigPackage, "45415713", true);
-// Enable/disable logging additional system info metrics
-constexpr auto kEnableLoggingSystemInfoMetrics =
-    flags::Flag<bool>(kConfigPackage, "45412418", true);
 // Enable/disable WebRTC medium in Nearby Share
 constexpr auto kEnableMediumWebRtc =
     flags::Flag<bool>(kConfigPackage, "45418905", false);
@@ -62,15 +53,12 @@ constexpr auto kEnableSelfShareUi =
 // Enable/disable sending desktop events
 constexpr auto kEnableSendingDesktopEvents =
     flags::Flag<bool>(kConfigPackage, "45459748", false);
-// Enable/disable optimization for transfer cancellation.
-constexpr auto kEnableTransferCancellationOptimization =
-    flags::Flag<bool>(kConfigPackage, "45429881", false);
 // Disable/enable the WebRTC medium in Nearby Sharing SDK.
 constexpr auto kEnableWebrtcMedium =
     flags::Flag<bool>(kConfigPackage, "45411620", false);
 // Set the logging level in Nearby Sharing SDK. The default logging level is
-// WARNING. The mapping of logging level to number:VERBOSE: -1, INFO: 0,
-// WARNING: 1, ERROR: 2, FATAL: 3
+// WARNING. The mapping of logging level to number: INFO: 0, WARNING: 1, ERROR:
+// 2, FATAL: 3,  negative values are -(verbosity level).
 constexpr auto kLoggingLevel =
     flags::Flag<int64_t>(kConfigPackage, "45401358", 1);
 // When true, the sender will not require confirming the ukey2 token.
@@ -79,46 +67,72 @@ constexpr auto kSenderSkipsConfirmation =
 // Enable/disable auto-update on settings page
 constexpr auto kShowAutoUpdateSetting =
     flags::Flag<bool>(kConfigPackage, "45409033", false);
-// When true, we only upgrade the bandwidth after accepting a connection.
-constexpr auto kUpgradeBandwidthAfterAccept =
-    flags::Flag<bool>(kConfigPackage, "45627824", true);
 // When true, use gRpc client to access backend.
 constexpr auto kUseGrpcClient =
     flags::Flag<bool>(kConfigPackage, "45630055", false);
+// When true, call the 3P Nearby Identity API instead of the 1P private API
+constexpr auto kCallNearbyIdentityApi =
+    flags::Flag<bool>(kConfigPackage, "45667328", false);
+// When true, dedup in UnregisterShareTarget.
+constexpr auto kDedupInUnregisterShareTarget =
+    flags::Flag<bool>(kConfigPackage, "45664277", false);
+// When true, delete the file payload which received unexpectedly.
+constexpr auto kDeleteUnexpectedReceivedFileFix =
+    flags::Flag<bool>(kConfigPackage, "45657036", false);
+// The default time in milliseconds a cached entry can be in LOST state.
+constexpr auto kDiscoveryCacheLostExpiryMs =
+    flags::Flag<int64_t>(kConfigPackage, "45658774", 500);
+// When true, enable wifi hotspot medium for HP Realtek devices.
+constexpr auto kEnableWifiHotspotForHpRealtekDevices =
+    flags::Flag<bool>(kConfigPackage, "45673628", false);
+// When true, honor 3P client_id & client_secret in the gRPC request
+constexpr auto kHonor3PClientIdAndSecret =
+    flags::Flag<bool>(kConfigPackage, "45665616", true);
+// The amount of time in milliseconds a share target stays in discovery cache in
+// receive disabled state after a transfer.
+constexpr auto kUnregisterTargetDiscoveryCacheLostExpiryMs =
+    flags::Flag<int64_t>(kConfigPackage, "45663103", 10000);
 // Enable/disable QR Code UI
 constexpr auto kEnableQrCodeUi =
     flags::Flag<bool>(kConfigPackage, "45417647", false);
 // Show Admin mode warning message in the app
 constexpr auto kShowAdminModeWarning =
     flags::Flag<bool>(kConfigPackage, "45410558", false);
-// Show/hide auto app start setting.
-constexpr auto kShowAutoAppStartSetting =
-    flags::Flag<bool>(kConfigPackage, "45411601", true);
 // Update track
 constexpr auto kUpdateTrack =
     flags::Flag<absl::string_view>(kConfigPackage, "45409861", "");
+// Timeout between displays of the conflict banner.
+constexpr auto kConflictBannerTimeout =
+    flags::Flag<int64_t>(kConfigPackage, "45668886", 604800);
+// Enable the info banner to display duplicate Quick Share apps.
+constexpr auto kEnableConflictBanner =
+    flags::Flag<bool>(kConfigPackage, "45661130", false);
+// Enable a persistent BETA label.
+constexpr auto kEnableMacosBetaLabel =
+    flags::Flag<bool>(kConfigPackage, "45662570", true);
 
 inline absl::btree_map<int, const flags::Flag<bool>&> GetBoolFlags() {
   return {
-      {45627826, kDeleteUnexpectedReceivedFile},
       {45427466, kEnableBleForTransfer},
       {45409184, kEnableCertificatesDump},
-      {45415713, kEnableDumpingFeatureFlags},
-      {45412418, kEnableLoggingSystemInfoMetrics},
       {45418905, kEnableMediumWebRtc},
       {45418906, kEnableMediumWifiLan},
       {45411589, kEnableRetryResumeTransfer},
       {45418908, kEnableSelfShareUi},
       {45459748, kEnableSendingDesktopEvents},
-      {45429881, kEnableTransferCancellationOptimization},
       {45411620, kEnableWebrtcMedium},
       {45411353, kSenderSkipsConfirmation},
       {45409033, kShowAutoUpdateSetting},
-      {45627824, kUpgradeBandwidthAfterAccept},
       {45630055, kUseGrpcClient},
+      {45667328, kCallNearbyIdentityApi},
+      {45664277, kDedupInUnregisterShareTarget},
+      {45657036, kDeleteUnexpectedReceivedFileFix},
+      {45673628, kEnableWifiHotspotForHpRealtekDevices},
+      {45665616, kHonor3PClientIdAndSecret},
       {45417647, kEnableQrCodeUi},
       {45410558, kShowAdminModeWarning},
-      {45411601, kShowAutoAppStartSetting},
+      {45661130, kEnableConflictBanner},
+      {45662570, kEnableMacosBetaLabel},
   };
 }
 
@@ -126,6 +140,9 @@ inline absl::btree_map<int, const flags::Flag<int64_t>&> GetInt64Flags() {
   return {
       {45632386, kDelayEndpointLossMs},
       {45401358, kLoggingLevel},
+      {45658774, kDiscoveryCacheLostExpiryMs},
+      {45663103, kUnregisterTargetDiscoveryCacheLostExpiryMs},
+      {45668886, kConflictBannerTimeout},
   };
 }
 

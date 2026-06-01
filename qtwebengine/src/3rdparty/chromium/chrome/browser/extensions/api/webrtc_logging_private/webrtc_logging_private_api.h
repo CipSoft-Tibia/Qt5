@@ -26,7 +26,7 @@ namespace extensions {
 
 class WebrtcLoggingPrivateFunction : public ExtensionFunction {
  protected:
-  ~WebrtcLoggingPrivateFunction() override {}
+  ~WebrtcLoggingPrivateFunction() override = default;
 
 #if BUILDFLAG(ENABLE_WEBRTC)
   // Returns the RenderProcessHost associated with the given |request|
@@ -47,7 +47,7 @@ class WebrtcLoggingPrivateFunction : public ExtensionFunction {
 class WebrtcLoggingPrivateFunctionWithGenericCallback
     : public WebrtcLoggingPrivateFunction {
  protected:
-  ~WebrtcLoggingPrivateFunctionWithGenericCallback() override {}
+  ~WebrtcLoggingPrivateFunctionWithGenericCallback() override = default;
 
 #if BUILDFLAG(ENABLE_WEBRTC)
   // Finds the appropriate logging controller for performing the task and
@@ -69,7 +69,7 @@ class WebrtcLoggingPrivateFunctionWithGenericCallback
 class WebrtcLoggingPrivateFunctionWithUploadCallback
     : public WebrtcLoggingPrivateFunction {
  protected:
-  ~WebrtcLoggingPrivateFunctionWithUploadCallback() override {}
+  ~WebrtcLoggingPrivateFunctionWithUploadCallback() override = default;
 
 #if BUILDFLAG(ENABLE_WEBRTC)
   // Must be called on UI thread.
@@ -81,7 +81,7 @@ class WebrtcLoggingPrivateFunctionWithUploadCallback
 class WebrtcLoggingPrivateFunctionWithRecordingDoneCallback
     : public WebrtcLoggingPrivateFunction {
  protected:
-  ~WebrtcLoggingPrivateFunctionWithRecordingDoneCallback() override {}
+  ~WebrtcLoggingPrivateFunctionWithRecordingDoneCallback() override = default;
 
 #if BUILDFLAG(ENABLE_WEBRTC)
   // Must be called on UI thread.
@@ -97,10 +97,10 @@ class WebrtcLoggingPrivateSetMetaDataFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.setMetaData",
                              WEBRTCLOGGINGPRIVATE_SETMETADATA)
-  WebrtcLoggingPrivateSetMetaDataFunction() {}
+  WebrtcLoggingPrivateSetMetaDataFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateSetMetaDataFunction() override {}
+  ~WebrtcLoggingPrivateSetMetaDataFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -111,10 +111,10 @@ class WebrtcLoggingPrivateStartFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.start",
                              WEBRTCLOGGINGPRIVATE_START)
-  WebrtcLoggingPrivateStartFunction() {}
+  WebrtcLoggingPrivateStartFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStartFunction() override {}
+  ~WebrtcLoggingPrivateStartFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -125,10 +125,10 @@ class WebrtcLoggingPrivateSetUploadOnRenderCloseFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.setUploadOnRenderClose",
                              WEBRTCLOGGINGPRIVATE_SETUPLOADONRENDERCLOSE)
-  WebrtcLoggingPrivateSetUploadOnRenderCloseFunction() {}
+  WebrtcLoggingPrivateSetUploadOnRenderCloseFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateSetUploadOnRenderCloseFunction() override {}
+  ~WebrtcLoggingPrivateSetUploadOnRenderCloseFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -139,10 +139,10 @@ class WebrtcLoggingPrivateStopFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.stop",
                              WEBRTCLOGGINGPRIVATE_STOP)
-  WebrtcLoggingPrivateStopFunction() {}
+  WebrtcLoggingPrivateStopFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStopFunction() override {}
+  ~WebrtcLoggingPrivateStopFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -153,10 +153,10 @@ class WebrtcLoggingPrivateStoreFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.store",
                              WEBRTCLOGGINGPRIVATE_STORE)
-  WebrtcLoggingPrivateStoreFunction() {}
+  WebrtcLoggingPrivateStoreFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStoreFunction() override {}
+  ~WebrtcLoggingPrivateStoreFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -167,10 +167,10 @@ class WebrtcLoggingPrivateUploadStoredFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.uploadStored",
                              WEBRTCLOGGINGPRIVATE_UPLOADSTORED)
-  WebrtcLoggingPrivateUploadStoredFunction() {}
+  WebrtcLoggingPrivateUploadStoredFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateUploadStoredFunction() override {}
+  ~WebrtcLoggingPrivateUploadStoredFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -181,10 +181,10 @@ class WebrtcLoggingPrivateUploadFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.upload",
                              WEBRTCLOGGINGPRIVATE_UPLOAD)
-  WebrtcLoggingPrivateUploadFunction() {}
+  WebrtcLoggingPrivateUploadFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateUploadFunction() override {}
+  ~WebrtcLoggingPrivateUploadFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -195,10 +195,10 @@ class WebrtcLoggingPrivateDiscardFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.discard",
                              WEBRTCLOGGINGPRIVATE_DISCARD)
-  WebrtcLoggingPrivateDiscardFunction() {}
+  WebrtcLoggingPrivateDiscardFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateDiscardFunction() override {}
+  ~WebrtcLoggingPrivateDiscardFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -209,10 +209,10 @@ class WebrtcLoggingPrivateStartRtpDumpFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.startRtpDump",
                              WEBRTCLOGGINGPRIVATE_STARTRTPDUMP)
-  WebrtcLoggingPrivateStartRtpDumpFunction() {}
+  WebrtcLoggingPrivateStartRtpDumpFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStartRtpDumpFunction() override {}
+  ~WebrtcLoggingPrivateStartRtpDumpFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -223,10 +223,10 @@ class WebrtcLoggingPrivateStopRtpDumpFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.stopRtpDump",
                              WEBRTCLOGGINGPRIVATE_STOPRTPDUMP)
-  WebrtcLoggingPrivateStopRtpDumpFunction() {}
+  WebrtcLoggingPrivateStopRtpDumpFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStopRtpDumpFunction() override {}
+  ~WebrtcLoggingPrivateStopRtpDumpFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -237,10 +237,10 @@ class WebrtcLoggingPrivateStartAudioDebugRecordingsFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.startAudioDebugRecordings",
                              WEBRTCLOGGINGPRIVATE_STARTAUDIODEBUGRECORDINGS)
-  WebrtcLoggingPrivateStartAudioDebugRecordingsFunction() {}
+  WebrtcLoggingPrivateStartAudioDebugRecordingsFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStartAudioDebugRecordingsFunction() override {}
+  ~WebrtcLoggingPrivateStartAudioDebugRecordingsFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -251,10 +251,10 @@ class WebrtcLoggingPrivateStopAudioDebugRecordingsFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.stopAudioDebugRecordings",
                              WEBRTCLOGGINGPRIVATE_STOPAUDIODEBUGRECORDINGS)
-  WebrtcLoggingPrivateStopAudioDebugRecordingsFunction() {}
+  WebrtcLoggingPrivateStopAudioDebugRecordingsFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStopAudioDebugRecordingsFunction() override {}
+  ~WebrtcLoggingPrivateStopAudioDebugRecordingsFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -265,10 +265,10 @@ class WebrtcLoggingPrivateStartEventLoggingFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.startEventLogging",
                              WEBRTCLOGGINGPRIVATE_STARTEVENTLOGGING)
-  WebrtcLoggingPrivateStartEventLoggingFunction() {}
+  WebrtcLoggingPrivateStartEventLoggingFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateStartEventLoggingFunction() override {}
+  ~WebrtcLoggingPrivateStartEventLoggingFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
@@ -286,10 +286,10 @@ class WebrtcLoggingPrivateGetLogsDirectoryFunction
  public:
   DECLARE_EXTENSION_FUNCTION("webrtcLoggingPrivate.getLogsDirectory",
                              WEBRTCLOGGINGPRIVATE_GETLOGSDIRECTORY)
-  WebrtcLoggingPrivateGetLogsDirectoryFunction() {}
+  WebrtcLoggingPrivateGetLogsDirectoryFunction() = default;
 
  private:
-  ~WebrtcLoggingPrivateGetLogsDirectoryFunction() override {}
+  ~WebrtcLoggingPrivateGetLogsDirectoryFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;

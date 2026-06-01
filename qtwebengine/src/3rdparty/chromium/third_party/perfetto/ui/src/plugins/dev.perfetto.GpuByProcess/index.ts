@@ -12,43 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {NUM_NULL, STR_NULL} from '../../trace_processor/query_result';
-import {Trace} from '../../public/trace';
-import {Slice} from '../../public/track';
-import {PerfettoPlugin, PluginDescriptor} from '../../public/plugin';
 import {
-  NAMED_ROW,
-  NamedRow,
-  NamedSliceTrack,
-} from '../../frontend/named_slice_track';
-import {NewTrackArgs} from '../../frontend/track';
+  LONG,
+  NUM,
+  NUM_NULL,
+  STR,
+  STR_NULL,
+} from '../../trace_processor/query_result';
+import {Trace} from '../../public/trace';
+import {PerfettoPlugin} from '../../public/plugin';
 import {TrackNode} from '../../public/workspace';
-class GpuPidTrack extends NamedSliceTrack {
-  upid: number;
+import {DatasetSliceTrack} from '../../components/tracks/dataset_slice_track';
+import {SourceDataset} from '../../trace_processor/dataset';
 
-  constructor(args: NewTrackArgs, upid: number) {
-    super(args);
-    this.upid = upid;
-  }
-
-  protected getRowSpec(): NamedRow {
-    return NAMED_ROW;
-  }
-
-  protected rowToSlice(row: NamedRow): Slice {
-    return this.rowToSliceBase(row);
-  }
-
-  getSqlSource(): string {
-    return `
-      SELECT *
-      FROM gpu_slice
-      WHERE upid = ${this.upid}
-    `;
-  }
-}
-
-class GpuByProcess implements PerfettoPlugin {
+export default class implements PerfettoPlugin {
+  static readonly id = 'dev.perfetto.GpuByProcess';
   async onTraceLoad(ctx: Trace): Promise<void> {
     // Find all unique upid values in gpu_slices and join with process table.
     const results = await ctx.engine.query(`
@@ -83,16 +61,28 @@ class GpuByProcess implements PerfettoPlugin {
       ctx.tracks.registerTrack({
         uri,
         title,
-        track: new GpuPidTrack({engine: ctx.engine, uri}, upid),
+        track: new DatasetSliceTrack({
+          trace: ctx,
+          uri,
+          dataset: new SourceDataset({
+            src: 'gpu_slice',
+            schema: {
+              id: NUM,
+              name: STR,
+              ts: LONG,
+              dur: LONG,
+              depth: NUM,
+              upid: NUM,
+            },
+            filter: {
+              col: 'upid',
+              eq: upid,
+            },
+          }),
+        }),
       });
-      ctx.workspace.insertChildInOrder(new TrackNode(uri, title));
+      const track = new TrackNode({uri, title});
+      ctx.workspace.addChildInOrder(track);
     }
   }
-
-  async onTraceUnload(_: Trace): Promise<void> {}
 }
-
-export const plugin: PluginDescriptor = {
-  pluginId: 'dev.perfetto.GpuByProcess',
-  plugin: GpuByProcess,
-};

@@ -83,6 +83,7 @@ qt_internal_add_qml_module(QuickTemplates2
         qquickscrollbar_p_p.h
         qquickscrollindicator.cpp qquickscrollindicator_p.h
         qquickscrollview.cpp qquickscrollview_p.h
+        qquicksearchfield.cpp qquicksearchfield_p.h
         qquickshortcutcontext.cpp
         qquickshortcutcontext_p_p.h
         qquickslider.cpp qquickslider_p.h
@@ -112,6 +113,7 @@ qt_internal_add_qml_module(QuickTemplates2
         qquickvelocitycalculator.cpp
         qquickvelocitycalculator_p_p.h
         qtquicktemplates2global.cpp qtquicktemplates2global_p.h
+        qtquicktemplates2math_p.h
     NO_UNITY_BUILD_SOURCES
         qquickpopupitem.cpp # redefinition of 'contentItemName' (from qquickcontrol.cpp)
     DEFINES
@@ -141,6 +143,7 @@ qt_internal_extend_target(QuickTemplates2 CONDITION TARGET Qt::QmlModels
 
 qt_internal_extend_target(QuickTemplates2 CONDITION QT_FEATURE_accessibility
     SOURCES
+        accessible/qaccessiblequickcontrol.cpp accessible/qaccessiblequickcontrol_p.h
         accessible/qaccessiblequickpage.cpp accessible/qaccessiblequickpage_p.h
 )
 
@@ -176,6 +179,8 @@ qt_internal_extend_target(QuickTemplates2 CONDITION QT_FEATURE_quick_tableview
         qquickselectionrectangle.cpp qquickselectionrectangle_p.h
         qquickselectionrectangle_p_p.h
         qquicktableviewdelegate.cpp qquicktableviewdelegate_p.h
+        qquicktableviewdelegate_p_p.h
+        qquickheaderviewdelegate.cpp qquickheaderviewdelegate_p.h
 )
 
 qt_internal_extend_target(QuickTemplates2 CONDITION QT_FEATURE_quick_treeview

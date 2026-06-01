@@ -67,6 +67,8 @@
     \list
         \li \l {OAuth 2.0 Overview}
         \li \l {Qt OAuth2 Browser Support}
+        \li \l {Qt Network Authorization Security Considerations}
+               {Security Considerations}
     \endlist
 
     \section1 Licenses

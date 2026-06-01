@@ -730,16 +730,16 @@ void tst_qmessagehandler::qMessagePattern_data()
 
     // %{file} is tricky because of shadow builds
     QTest::newRow("basic") << "%{type} %{appname} %{line} %{function} %{message}" << true << (QList<QByteArray>()
-            << "debug  14 T::T static constructor"
+            << "debug  15 T::T static constructor"
             //  we can't be sure whether the QT_MESSAGE_PATTERN is already destructed
             << "static destructor"
-            << "debug tst_qlogging 35 MyClass::myFunction from_a_function 34"
-            << "debug tst_qlogging 45 main qDebug"
-            << "info tst_qlogging 46 main qInfo"
-            << "warning tst_qlogging 47 main qWarning"
-            << "critical tst_qlogging 48 main qCritical"
-            << "warning tst_qlogging 51 main qDebug with category"
-            << "debug tst_qlogging 55 main qDebug2");
+            << "debug tst_qlogging 36 MyClass::myFunction from_a_function 34"
+            << "debug tst_qlogging 58 main qDebug"
+            << "info tst_qlogging 59 main qInfo"
+            << "warning tst_qlogging 60 main qWarning"
+            << "critical tst_qlogging 61 main qCritical"
+            << "warning tst_qlogging 64 main qDebug with category"
+            << "debug tst_qlogging 68 main qDebug2");
 
 
     QTest::newRow("invalid") << "PREFIX: %{unknown} %{message}" << false << (QList<QByteArray>()
@@ -773,6 +773,11 @@ void tst_qmessagehandler::qMessagePattern_data()
 
     QTest::newRow("pid-tid") << "%{pid}/%{threadid}: %{message}"
          << true << QList<QByteArray>(); // can't match anything, just test validity
+#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(Q_OS_FREEBSD) || defined(Q_OS_NETBSD) || defined(Q_OS_WIN)
+    QTest::newRow("threadname") << "%[%{threadname}] %{message}"
+         << true << (QList<QByteArray>()
+              << "[1234567890ABCDE] qDebug from another thread");
+#endif
     QTest::newRow("qthreadptr") << "ThreadId:%{qthreadptr}: %{message}"
          << true << (QList<QByteArray>()
               << "ThreadId:0x");

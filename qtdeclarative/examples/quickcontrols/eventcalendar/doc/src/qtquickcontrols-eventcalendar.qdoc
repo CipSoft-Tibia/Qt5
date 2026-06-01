@@ -10,6 +10,7 @@
     \brief A simple event calendar.
 
     \image qtquickcalendar-eventcalendar.png
+           {Calendar application displaying monthly view with event indicators}
 
     The Event Calendar example is a simple application that shows how to use
     \l DayOfWeekRow, \l WeekNumberColumn, and \l MonthGrid to create a calendar.

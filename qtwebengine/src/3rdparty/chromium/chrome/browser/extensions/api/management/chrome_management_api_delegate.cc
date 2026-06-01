@@ -34,6 +34,7 @@
 #include "chrome/browser/ui/tab_helpers.h"
 #include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
 #include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
+#include "chrome/browser/web_applications/commands/fetch_installability_for_chrome_management.h"
 #include "chrome/browser/web_applications/extension_status_utils.h"
 #include "chrome/browser/web_applications/mojom/user_display_mode.mojom.h"
 #include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
@@ -108,7 +109,7 @@ class ManagementSetEnabledFunctionInstallPromptDelegate
   ManagementSetEnabledFunctionInstallPromptDelegate& operator=(
       const ManagementSetEnabledFunctionInstallPromptDelegate&) = delete;
 
-  ~ManagementSetEnabledFunctionInstallPromptDelegate() override {}
+  ~ManagementSetEnabledFunctionInstallPromptDelegate() override = default;
 
  private:
   void OnInstallPromptDone(
@@ -177,7 +178,7 @@ class ManagementUninstallFunctionUninstallDialogDelegate
   ManagementUninstallFunctionUninstallDialogDelegate& operator=(
       const ManagementUninstallFunctionUninstallDialogDelegate&) = delete;
 
-  ~ManagementUninstallFunctionUninstallDialogDelegate() override {}
+  ~ManagementUninstallFunctionUninstallDialogDelegate() override = default;
 
   // ExtensionUninstallDialog::Delegate implementation.
   void OnExtensionUninstallDialogClosed(bool did_start_uninstall,
@@ -202,12 +203,12 @@ void OnGenerateAppForLinkCompleted(
 
 class ChromeAppForLinkDelegate : public extensions::AppForLinkDelegate {
  public:
-  ChromeAppForLinkDelegate() {}
+  ChromeAppForLinkDelegate() = default;
 
   ChromeAppForLinkDelegate(const ChromeAppForLinkDelegate&) = delete;
   ChromeAppForLinkDelegate& operator=(const ChromeAppForLinkDelegate&) = delete;
 
-  ~ChromeAppForLinkDelegate() override {}
+  ~ChromeAppForLinkDelegate() override = default;
 
   void OnFaviconForApp(
       extensions::ManagementGenerateAppForLinkFunction* function,
@@ -215,16 +216,6 @@ class ChromeAppForLinkDelegate : public extensions::AppForLinkDelegate {
       const std::string& title,
       const GURL& launch_url,
       const favicon_base::FaviconImageResult& image_result) {
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-    // Avoid accessing the WebAppProvider when web apps are enabled in Lacros
-    // (and thus disabled in Ash).
-    if (web_app::IsWebAppsCrosapiEnabled()) {
-      function->FinishCreateWebApp(std::string(),
-                                   /*install_success=*/false);
-      return;
-    }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
-
     // GenerateAppForLink API doesn't allow a manifest ID to be specified, so
     // just use the launch_url for both manifest ID and start URL. This is a
     // reasonable behavior for "DIY apps" generated for a specific URL but
@@ -267,8 +258,8 @@ class ChromeAppForLinkDelegate : public extensions::AppForLinkDelegate {
     extensions::api::management::ExtensionInfo info;
     info.id = app_id;
     info.name = registrar.GetAppShortName(app_id);
-    info.enabled = registrar.IsInstallState(
-        app_id, {web_app::proto::INSTALLED_WITH_OS_INTEGRATION});
+    info.enabled = registrar.GetInstallState(app_id) ==
+                   web_app::proto::INSTALLED_WITH_OS_INTEGRATION;
     info.install_type =
         extensions::api::management::ExtensionInstallType::kOther;
     info.is_app = true;
@@ -386,7 +377,7 @@ void OnWebAppInstallabilityChecked(
           base::BindOnce(&OnWebAppInstallCompleted, std::move(callback)));
       return;
   }
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 extensions::SupervisedUserExtensionsDelegate*
@@ -525,15 +516,6 @@ void ChromeManagementAPIDelegate::InstallOrLaunchReplacementWebApp(
     content::BrowserContext* context,
     const GURL& web_app_url,
     InstallOrLaunchWebAppCallback callback) const {
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-  // Avoid accessing the WebAppProvider when web apps are enabled in Lacros (and
-  // thus disabled in Ash).
-  if (web_app::IsWebAppsCrosapiEnabled()) {
-    std::move(callback).Run(InstallOrLaunchWebAppResult::kUnknownError);
-    return;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
-
   Profile* profile = Profile::FromBrowserContext(context);
   auto* provider = web_app::WebAppProvider::GetForWebApps(profile);
   DCHECK(provider);

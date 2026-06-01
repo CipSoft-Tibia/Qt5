@@ -510,10 +510,9 @@ void SourceBufferStream::UpdateLastAppendStateForRemove(
         ResetLastAppendedState();
       }
     } else {
-      NOTREACHED_IN_MIGRATION()
-          << __func__ << " " << GetStreamTypeName()
-          << " range_for_next_append_ set, but not tracking last"
-          << " append nor new coded frame group.";
+      NOTREACHED() << __func__ << " " << GetStreamTypeName()
+                   << " range_for_next_append_ set, but not tracking last"
+                   << " append nor new coded frame group.";
     }
   }
 }
@@ -1928,9 +1927,15 @@ void SourceBufferStream::SetSelectedRangeIfNeeded(
     return;
   }
 
+  auto* range = FindExistingRangeFor(seek_timestamp)->get();
+  if (!range->CanSeekTo(seek_timestamp)) {
+    DVLOG(2) << __func__ << " " << GetStreamTypeName()
+             << " couldn't find range seekable to timestamp";
+    return;
+  }
+
   DCHECK(track_buffer_.empty());
-  SeekAndSetSelectedRange(FindExistingRangeFor(seek_timestamp)->get(),
-                          seek_timestamp);
+  SeekAndSetSelectedRange(range, seek_timestamp);
 }
 
 base::TimeDelta SourceBufferStream::FindNewSelectedRangeSeekTimestamp(

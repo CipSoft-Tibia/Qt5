@@ -9,6 +9,7 @@
 #include "qmetaobject_p.h"
 
 #include <QtCore/private/qtclasshelper_p.h>
+#include <QtCore/qspan.h>
 #include "qabstracteventdispatcher.h"
 #include "qabstracteventdispatcher_p.h"
 #include "qcoreapplication.h"
@@ -103,8 +104,9 @@ static int *queuedConnectionTypes(const QMetaMethod &method)
 }
 
 // ### Future work: replace with an array of QMetaType or QtPrivate::QMetaTypeInterface *
-static int *queuedConnectionTypes(const QArgumentType *argumentTypes, int argc)
+static int *queuedConnectionTypes(QSpan<const QArgumentType> argumentTypes)
 {
+    const int argc = int(argumentTypes.size());
     auto types = std::make_unique<int[]>(argc + 1);
     for (int i = 0; i < argc; ++i) {
         const QArgumentType &type = argumentTypes[i];
@@ -159,11 +161,9 @@ const QMetaObject *QObjectData::dynamicMetaObject() const
     return metaObject->toDynamicMetaObject(q_ptr);
 }
 
-QObjectPrivate::QObjectPrivate(int version)
+QObjectPrivate::QObjectPrivate(decltype(QObjectPrivateVersion))
     : threadData(nullptr), currentChildBeingDeleted(nullptr)
 {
-    checkForIncompatibleLibraryVersion(version);
-
     // QObjectData initialization
     q_ptr = nullptr;
     parent = nullptr;                           // no parent yet. It is set by setParent()
@@ -627,25 +627,6 @@ void QMetaCallEvent::placeMetaCall(QObject *object)
         QMetaObject::metacall(object, QMetaObject::InvokeMetaMethod,
                               d.method_offset_ + d.method_relative_, d.args_);
     }
-}
-
-QMetaCallEvent* QMetaCallEvent::create_impl(QtPrivate::SlotObjUniquePtr slotObj,
-                                            const QObject *sender, int signal_index,
-                                            size_t argc, const void* const argp[],
-                                            const QMetaType metaTypes[])
-{
-    auto metaCallEvent = std::make_unique<QMetaCallEvent>(std::move(slotObj), sender,
-                                                          signal_index, int(argc));
-
-    void **args = metaCallEvent->args();
-    QMetaType *types = metaCallEvent->types();
-    for (size_t i = 0; i < argc; ++i) {
-        types[i] = metaTypes[i];
-        args[i] = types[i].create(argp[i]);
-        Q_CHECK_PTR(!i || args[i]);
-    }
-
-    return metaCallEvent.release();
 }
 
 /*!
@@ -1826,6 +1807,8 @@ void QObjectPrivate::setThreadData_helper(QThreadData *currentData, QThreadData 
     startTimer(std::chrono::milliseconds{interval}, timerType);
     \endcode
 
+    \include timers-common.qdocinc negative-intervals-not-allowed
+
     \sa timerEvent(), killTimer(), QChronoTimer, QBasicTimer
 */
 
@@ -1845,8 +1828,10 @@ int QObject::startTimer(int interval, Qt::TimerType timerType)
 
     A timer event will occur every \a interval until killTimer()
     is called. If \a interval is equal to \c{std::chrono::duration::zero()},
-    then the timer event occurs once every time there are no more window
-    system events to process.
+    then the timer event occurs once every time control returns to the event
+    loop, that is, there are no more native window system events to process.
+
+    \include timers-common.qdocinc negative-intervals-not-allowed
 
     The virtual timerEvent() function is called with the QTimerEvent
     event parameter class when a timer event occurs. Reimplement this
@@ -1892,22 +1877,24 @@ int QObject::startTimer(std::chrono::nanoseconds interval, Qt::TimerType timerTy
 
     using namespace std::chrono_literals;
 
-    if (Q_UNLIKELY(interval < 0ns)) {
-        qWarning("QObject::startTimer: Timers cannot have negative intervals");
-        return 0;
+    if (interval < 0ns) {
+        qWarning("QObject::startTimer: negative intervals aren't allowed; the "
+                 "interval will be set to 1ms.");
+        interval = 1ms;
     }
 
     auto thisThreadData = d->threadData.loadRelaxed();
-    if (Q_UNLIKELY(!thisThreadData->hasEventDispatcher())) {
-        qWarning("QObject::startTimer: Timers can only be used with threads started with QThread");
-        return 0;
-    }
-    if (Q_UNLIKELY(thread() != QThread::currentThread())) {
+    if (Q_UNLIKELY(thisThreadData != QThreadData::current())) {
         qWarning("QObject::startTimer: Timers cannot be started from another thread");
         return 0;
     }
 
     auto dispatcher = thisThreadData->eventDispatcher.loadRelaxed();
+    if (Q_UNLIKELY(!dispatcher)) {
+        qWarning("QObject::startTimer: current thread's event dispatcher has already been destroyed");
+        return 0;
+    }
+
     Qt::TimerId timerId = dispatcher->registerTimer(interval, timerType, this);
     d->ensureExtraData();
     d->extraData->runningTimers.append(timerId);
@@ -1940,7 +1927,7 @@ void QObject::killTimer(Qt::TimerId id)
         return;
     }
     if (id > Qt::TimerId::Invalid) {
-        int at = d->extraData ? d->extraData->runningTimers.indexOf(id) : -1;
+        qsizetype at = d->extraData ? d->extraData->runningTimers.indexOf(id) : -1;
         if (at == -1) {
             // timer isn't owned by this object
             qWarning("QObject::killTimer(): Error: timer id %d is not valid for object %p (%s, %ls), timer has not been killed",
@@ -2259,7 +2246,7 @@ void QObjectPrivate::setParent_helper(QObject *o)
             // don't do anything since QObjectPrivate::deleteChildren() already
             // cleared our entry in parentD->children.
         } else {
-            const int index = parentD->children.indexOf(q);
+            const qsizetype index = parentD->children.indexOf(q);
             if (index < 0) {
                 // we're probably recursing into setParent() from a ChildRemoved event, don't do anything
             } else if (parentD->isDeletingChildren) {
@@ -2628,23 +2615,52 @@ static void err_method_notfound(const QObject *object,
         case QSIGNAL_CODE: type = "signal"; break;
     }
     const char *loc = extract_location(method);
+    const char *err;
     if (strchr(method, ')') == nullptr) // common typing mistake
-        qCWarning(lcConnect, "QObject::%s: Parentheses expected, %s %s::%s%s%s", func, type,
-                  object->metaObject()->className(), method + 1, loc ? " in " : "", loc ? loc : "");
+        err = "Parentheses expected,";
     else
-        qCWarning(lcConnect, "QObject::%s: No such %s %s::%s%s%s", func, type,
-                  object->metaObject()->className(), method + 1, loc ? " in " : "", loc ? loc : "");
+        err = "No such";
+    qCWarning(lcConnect, "QObject::%s: %s %s %s::%s%s%s", func, err, type,
+              object->metaObject()->className(), method + 1, loc ? " in " : "", loc ? loc : "");
+}
+
+enum class ConnectionEnd : bool { Sender, Receiver };
+Q_DECL_COLD_FUNCTION
+static void err_info_about_object(const char *func, const QObject *o, ConnectionEnd end)
+{
+    if (!o)
+        return;
+    const QString name = o->objectName();
+    if (name.isEmpty())
+        return;
+    const bool sender = end == ConnectionEnd::Sender;
+    qCWarning(lcConnect, "QObject::%s:  (%s name:%*s'%ls')",
+              func,
+              sender ? "sender" : "receiver",
+              sender ? 3 : 1, // ← length of generated whitespace
+              "",
+              qUtf16Printable(name));
 }
 
 Q_DECL_COLD_FUNCTION
 static void err_info_about_objects(const char *func, const QObject *sender, const QObject *receiver)
 {
-    QString a = sender ? sender->objectName() : QString();
-    QString b = receiver ? receiver->objectName() : QString();
-    if (!a.isEmpty())
-        qCWarning(lcConnect, "QObject::%s:  (sender name:   '%s')", func, a.toLocal8Bit().data());
-    if (!b.isEmpty())
-        qCWarning(lcConnect, "QObject::%s:  (receiver name: '%s')", func, b.toLocal8Bit().data());
+    err_info_about_object(func, sender, ConnectionEnd::Sender);
+    err_info_about_object(func, receiver, ConnectionEnd::Receiver);
+}
+
+Q_DECL_COLD_FUNCTION
+static void connectWarning(const QObject *sender,
+                           const QMetaObject *senderMetaObject,
+                           const QObject *receiver,
+                           const char *message)
+{
+    const char *senderString = sender ? sender->metaObject()->className()
+                                      : senderMetaObject ? senderMetaObject->className()
+                                      : "Unknown";
+    const char *receiverString = receiver ? receiver->metaObject()->className()
+                                          : "Unknown";
+    qCWarning(lcConnect, "QObject::connect(%s, %s): %s", senderString, receiverString, message);
 }
 
 /*!
@@ -2917,12 +2933,6 @@ static inline void check_and_warn_compat(const QMetaObject *sender, const QMetaM
     Returns a handle to the connection that can be used to disconnect
     it later.
 
-    \a signal must be a member function decleared as a signal in \a sender.
-
-    \a method must be a member function declared as a signal, slot, or
-    \l{Q_INVOKABLE}{invokable} in \a receiver, that is, functions registered
-    with the meta-object system.
-
     You must use the \c SIGNAL() and \c SLOT() macros when specifying
     the \a signal and the \a method, for example:
 
@@ -2998,10 +3008,15 @@ QMetaObject::Connection QObject::connect(const QObject *sender, const char *sign
                   (method && *method) ? method + 1 : "(nullptr)");
         return QMetaObject::Connection(nullptr);
     }
-    QByteArray tmp_signal_name;
 
     if (!check_signal_macro(sender, signal, "connect", "bind"))
         return QMetaObject::Connection(nullptr);
+
+    int membcode = extract_code(method);
+    if (!check_method_code(membcode, receiver, method, "connect"))
+        return QMetaObject::Connection(nullptr);
+
+    QByteArray pinnedSignal;
     const QMetaObject *smeta = sender->metaObject();
     const char *signal_arg = signal;
     ++signal; // skip code
@@ -3012,8 +3027,8 @@ QMetaObject::Connection QObject::connect(const QObject *sender, const char *sign
             &smeta, signalName, signalTypes.size(), signalTypes.constData());
     if (signal_index < 0) {
         // check for normalized signatures
-        tmp_signal_name = QMetaObject::normalizedSignature(signal - 1);
-        signal = tmp_signal_name.constData() + 1;
+        pinnedSignal = QMetaObject::normalizedSignature(signal);
+        signal = pinnedSignal.constData();
 
         signalTypes.clear();
         signalName = QMetaObjectPrivate::decodeMethodSignature(signal, signalTypes);
@@ -3029,11 +3044,7 @@ QMetaObject::Connection QObject::connect(const QObject *sender, const char *sign
     signal_index = QMetaObjectPrivate::originalClone(smeta, signal_index);
     signal_index += QMetaObjectPrivate::signalOffset(smeta);
 
-    QByteArray tmp_method_name;
-    int membcode = extract_code(method);
-
-    if (!check_method_code(membcode, receiver, method, "connect"))
-        return QMetaObject::Connection(nullptr);
+    QByteArray pinnedMethod;
     const char *method_arg = method;
     ++method; // skip code
 
@@ -3054,8 +3065,8 @@ QMetaObject::Connection QObject::connect(const QObject *sender, const char *sign
     }
     if (method_index_relative < 0) {
         // check for normalized methods
-        tmp_method_name = QMetaObject::normalizedSignature(method);
-        method = tmp_method_name.constData();
+        pinnedMethod = QMetaObject::normalizedSignature(method);
+        method = pinnedMethod.constData();
 
         methodTypes.clear();
         methodName = QMetaObjectPrivate::decodeMethodSignature(method, methodTypes);
@@ -3092,8 +3103,7 @@ QMetaObject::Connection QObject::connect(const QObject *sender, const char *sign
     // ### Future work: attempt get the metatypes from the meta object first
     // because it's possible they're all registered.
     int *types = nullptr;
-    if ((type == Qt::QueuedConnection)
-            && !(types = queuedConnectionTypes(signalTypes.constData(), signalTypes.size()))) {
+    if (type == Qt::QueuedConnection && !(types = queuedConnectionTypes(signalTypes))) {
         return QMetaObject::Connection(nullptr);
     }
 
@@ -3209,13 +3219,6 @@ QMetaObject::Connection QObject::connect(const QObject *sender, const QMetaMetho
     \a receiver. Returns \c true if the connection is successfully broken;
     otherwise returns \c false.
 
-    \a signal, if not \nullptr, must be a member function decleared as a signal
-    in \a sender.
-
-    \a method, if not \nullptr, must be a member function declared as a signal,
-    slot, or \l{Q_INVOKABLE}{invokable} in \a receiver, that is, functions
-    registered with the meta-object system.
-
     A signal-slot connection is removed when either of the objects
     involved are destroyed.
 
@@ -3283,41 +3286,45 @@ bool QObject::disconnect(const QObject *sender, const char *signal,
     }
 
     const char *signal_arg = signal;
-    QByteArray signal_name;
-    bool signal_found = false;
     if (signal) {
-        QT_TRY {
-            signal_name = QMetaObject::normalizedSignature(signal);
-            signal = signal_name.constData();
-        } QT_CATCH (const std::bad_alloc &) {
-            // if the signal is already normalized, we can continue.
-            if (sender->metaObject()->indexOfSignal(signal + 1) == -1)
-                QT_RETHROW;
-        }
-
         if (!check_signal_macro(sender, signal, "disconnect", "unbind"))
             return false;
-        signal++; // skip code
+        ++signal; // skip code
     }
 
-    QByteArray method_name;
     const char *method_arg = method;
     int membcode = -1;
-    bool method_found = false;
     if (method) {
-        QT_TRY {
-            method_name = QMetaObject::normalizedSignature(method);
-            method = method_name.constData();
-        } QT_CATCH(const std::bad_alloc &) {
-            // if the method is already normalized, we can continue.
-            if (receiver->metaObject()->indexOfMethod(method + 1) == -1)
-                QT_RETHROW;
-        }
-
         membcode = extract_code(method);
         if (!check_method_code(membcode, receiver, method, "disconnect"))
             return false;
-        method++; // skip code
+        ++method; // skip code
+    }
+
+    QByteArray pinnedSignal;
+    bool signal_found = false;
+    if (signal) {
+        QT_TRY {
+            pinnedSignal = QMetaObject::normalizedSignature(signal);
+            signal = pinnedSignal.constData();
+        } QT_CATCH (const std::bad_alloc &) {
+            // if the signal is already normalized, we can continue.
+            if (sender->metaObject()->indexOfSignal(signal) == -1)
+                QT_RETHROW;
+        }
+    }
+
+    QByteArray pinnedMethod;
+    bool method_found = false;
+    if (method) {
+        QT_TRY {
+            pinnedMethod = QMetaObject::normalizedSignature(method);
+            method = pinnedMethod.constData();
+        } QT_CATCH(const std::bad_alloc &) {
+            // if the method is already normalized, we can continue.
+            if (receiver->metaObject()->indexOfMethod(method) == -1)
+                QT_RETHROW;
+        }
     }
 
     /* We now iterate through all the sender's and receiver's meta
@@ -3816,12 +3823,12 @@ static QByteArray formatConnectionSignature(const char *className, const QMetaMe
 {
     const auto signature = method.methodSignature();
     Q_ASSERT(signature.endsWith(')'));
-    const int openParen = signature.indexOf('(');
-    const bool hasParameters = openParen >= 0 && openParen < signature.size() - 2;
+    const qsizetype openParen = signature.indexOf('(');
+    const bool hasParameters = openParen > 0 && openParen < signature.size() - 2;
     QByteArray result;
     if (hasParameters) {
-        result += "qOverload<"
-            + signature.mid(openParen + 1, signature.size() - openParen - 2) + ">(";
+        const qsizetype len = signature.size() - openParen - 2;
+        result += "qOverload<" + QByteArrayView{signature}.slice(openParen + 1, len) + ">(";
     }
     result += '&';
     result += className + QByteArrayLiteral("::") + method.name();
@@ -3938,13 +3945,109 @@ void QMetaObject::connectSlotsByName(QObject *o)
                 ++i;
         } else if (!(mo->method(i).attributes() & QMetaMethod::Cloned)) {
             // check if the slot has the following signature: "on_..._...(..."
-            int iParen = slotSignature.indexOf('(');
-            int iLastUnderscore = slotSignature.lastIndexOf('_', iParen - 1);
+            qsizetype iParen = slotSignature.indexOf('(');
+            qsizetype iLastUnderscore = slotSignature.lastIndexOf('_', iParen - 1);
             if (iLastUnderscore > 3)
                 qCWarning(lcConnectSlotsByName,
                           "QMetaObject::connectSlotsByName: No matching signal for %s", slot);
         }
     }
+}
+
+/*!
+    \fn template<typename PointerToMemberFunction> QMetaObject::Connection QMetaObject::connect(
+        const QObject *sender, const QMetaMethod &signal, const QObject *receiver, PointerToMemberFunction method, Qt::ConnectionType type)
+
+    \threadsafe
+    \overload connect()
+
+    \since 6.10
+
+    Creates a connection of the given \a type from the \a signal in
+    the \a sender object to the \a method in the \a receiver object.
+    Returns a handle to the connection that can be used to disconnect
+    it later.
+
+    The Connection handle will be invalid if it cannot create the
+    connection, for example, the parameters were invalid.
+    You can check if the QMetaObject::Connection is valid by casting
+    it to a bool.
+    Pass the returned handle to QObject::disconnect() to disconnect
+    the connection.
+
+    A slot can be connected to a given signal if the signal has at
+    least as many arguments as the slot. There must be an exact match
+    between the corresponding signal and slot arguments, implicit
+    conversions and type checking are not handled by this function.
+    Overloaded slots need to be explicitly be resolved with
+    help of \l qOverload.
+    \a signal needs to be the meta-method of a signal, otherwise an
+    invalid connection will be returned.
+
+    \sa QObject::connect(), QObject::disconnect()
+ */
+
+/*!
+    \fn template<typename Functor> QMetaObject::Connection QMetaObject::connect(
+        const QObject *sender, const QMetaMethod &signal, const QObject *context, Functor functor, Qt::ConnectionType type)
+
+    \threadsafe
+    \overload connect()
+
+    \since 6.10
+
+    Creates a connection of a given \a type from \a signal in
+    \a sender object to \a functor to be placed in a specific event
+    loop of \a context.
+    Returns a handle to the connection that can be used to disconnect
+    it later.
+    This can be useful for connecting a signal retrieved from
+    meta-object introspection to a lambda capturing local variables.
+
+    \note Qt::UniqueConnections do not work for lambdas, non-member
+    functions and functors; they only apply to member functions.
+
+    The slot function can be any function or functor with with equal
+    or fewer arguments than the signal. There must be an exact match
+    between the corresponding signal and slot arguments, implicit
+    conversions and type checking are not handled by this function.
+    Overloaded functors need to be explicitly be resolved with
+    help of \l qOverload.
+    \a signal needs to be the meta-method of a signal, otherwise an
+    invalid connection will be returned.
+
+    The connection will automatically disconnect if the sender or
+    the context is destroyed.
+    However, you should take care that any objects used within
+    the functor are still alive when the signal is emitted.
+
+    \sa QObject::connect(), QObject::disconnect()
+ */
+QMetaObject::Connection QMetaObject::connectImpl(const QObject *sender, const QMetaMethod &signal,
+                                             const QObject *receiver, void **slot,
+                                             QtPrivate::QSlotObjectBase *slotObjRaw, Qt::ConnectionType type)
+{
+    QtPrivate::SlotObjUniquePtr slotObj(slotObjRaw);
+
+    const QMetaObject *senderMetaObject = sender->metaObject();
+    if (!signal.isValid() || signal.methodType() != QMetaMethod::Signal) {
+        connectWarning(sender, senderMetaObject, receiver, "invalid signal parameter");
+        return QMetaObject::Connection();
+    }
+
+    int signal_index;
+    {
+        int dummy;
+        QMetaObjectPrivate::memberIndexes(sender, signal, &signal_index, &dummy);
+    }
+
+    if (signal_index == -1) {
+        qCWarning(lcConnect, "QObject::connect: Can't find signal %s on instance of class %s",
+                  signal.methodSignature().constData(), senderMetaObject->className());
+        return QMetaObject::Connection();
+    }
+
+    return QObjectPrivate::connectImpl(sender, signal_index, receiver, slot, slotObj.release(), type, nullptr, senderMetaObject);
 }
 
 /*!
@@ -4316,10 +4419,9 @@ int QObjectPrivate::signalIndex(const char *signalName,
   \overload setProperty
 */
 
-bool QObject::doSetProperty(const char *name, const QVariant *lvalue, QVariant *rvalue)
+bool QObject::doSetProperty(const char *name, const QVariant &value, QVariant *rvalue)
 {
     Q_D(QObject);
-    const auto &value =*lvalue;
     const QMetaObject *meta = metaObject();
     if (!name || !meta)
         return false;
@@ -4328,7 +4430,7 @@ bool QObject::doSetProperty(const char *name, const QVariant *lvalue, QVariant *
     if (id < 0) {
         d->ensureExtraData();
 
-        const int idx = d->extraData->propertyNames.indexOf(name);
+        const qsizetype idx = d->extraData->propertyNames.indexOf(name);
 
         if (!value.isValid()) {
             if (idx == -1)
@@ -4358,7 +4460,7 @@ bool QObject::doSetProperty(const char *name, const QVariant *lvalue, QVariant *
         qWarning("%s::setProperty: Property \"%s\" invalid,"
                  " read-only or does not exist", metaObject()->className(), name);
 #endif
-    return rvalue ? p.write(this, std::move(*rvalue)) : p.write(this, *lvalue);
+    return rvalue ? p.write(this, std::move(*rvalue)) : p.write(this, value);
 }
 
 /*!
@@ -4382,7 +4484,7 @@ QVariant QObject::property(const char *name) const
     if (id < 0) {
         if (!d->extraData)
             return QVariant();
-        const int i = d->extraData->propertyNames.indexOf(name);
+        const qsizetype i = d->extraData->propertyNames.indexOf(name);
         return d->extraData->propertyValues.value(i);
     }
     QMetaProperty p = meta->property(id);
@@ -5251,7 +5353,7 @@ QMetaObject::Connection QObject::connectImpl(const QObject *sender, void **signa
 {
     QtPrivate::SlotObjUniquePtr slotObj(slotObjRaw);
     if (!signal) {
-        qCWarning(lcConnect, "QObject::connect: invalid nullptr parameter");
+        connectWarning(sender, senderMetaObject, receiver, "invalid nullptr parameter");
         return QMetaObject::Connection();
     }
 
@@ -5263,24 +5365,11 @@ QMetaObject::Connection QObject::connectImpl(const QObject *sender, void **signa
             break;
     }
     if (!senderMetaObject) {
-        qCWarning(lcConnect, "QObject::connect: signal not found in %s", sender->metaObject()->className());
+        connectWarning(sender, senderMetaObject, receiver, "signal not found");
         return QMetaObject::Connection(nullptr);
     }
     signal_index += QMetaObjectPrivate::signalOffset(senderMetaObject);
     return QObjectPrivate::connectImpl(sender, signal_index, receiver, slot, slotObj.release(), type, types, senderMetaObject);
-}
-
-static void connectWarning(const QObject *sender,
-                           const QMetaObject *senderMetaObject,
-                           const QObject *receiver,
-                           const char *message)
-{
-    const char *senderString = sender ? sender->metaObject()->className()
-                                      : senderMetaObject ? senderMetaObject->className()
-                                      : "Unknown";
-    const char *receiverString = receiver ? receiver->metaObject()->className()
-                                          : "Unknown";
-    qCWarning(lcConnect, "QObject::connect(%s, %s): %s", senderString, receiverString, message);
 }
 
 /*!
@@ -5313,7 +5402,7 @@ QMetaObject::Connection QObjectPrivate::connectImpl(const QObject *sender, int s
     QOrderedMutexLocker locker(signalSlotLock(sender),
                                signalSlotLock(receiver));
 
-    if (type & Qt::UniqueConnection && slot) {
+    if (type & Qt::UniqueConnection) {
         QObjectPrivate::ConnectionData *connections = QObjectPrivate::get(s)->connections.loadRelaxed();
         if (connections && connections->signalVectorCount() > signal_index) {
             const QObjectPrivate::Connection *c2 = connections->signalVector.loadRelaxed()->at(signal_index).first.loadRelaxed();
@@ -5501,7 +5590,7 @@ QMetaObject::Connection QObjectPrivate::connect(const QObject *sender, int signa
 {
     QtPrivate::SlotObjUniquePtr slotObj(slotObjRaw);
     if (!sender) {
-        qCWarning(lcConnect, "QObject::connect: invalid nullptr parameter");
+        connectWarning(sender, nullptr, receiver, "invalid nullptr parameter");
         return QMetaObject::Connection();
     }
     const QMetaObject *senderMetaObject = sender->metaObject();

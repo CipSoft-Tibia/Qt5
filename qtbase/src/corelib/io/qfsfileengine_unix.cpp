@@ -304,7 +304,7 @@ QString QFSFileEngine::currentPath(const QString &)
 QFileInfoList QFSFileEngine::drives()
 {
     QFileInfoList ret;
-    ret.append(QFileInfo(rootPath()));
+    ret.append(QFileInfo(QFileSystemEngine::rootPath()));
     return ret;
 }
 
@@ -649,15 +649,18 @@ bool QFSFileEnginePrivate::unmap(uchar *ptr)
 /*!
     \reimp
 */
-bool QFSFileEngine::cloneTo(QAbstractFileEngine *target)
+QAbstractFileEngine::TriStateResult QFSFileEngine::cloneTo(QAbstractFileEngine *target)
 {
     Q_D(QFSFileEngine);
     if ((target->fileFlags(LocalDiskFlag) & LocalDiskFlag) == 0)
-        return false;
+        return TriStateResult::NotSupported;
 
     int srcfd = d->nativeHandle();
     int dstfd = target->handle();
-    return QFileSystemEngine::cloneFile(srcfd, dstfd, d->metaData);
+    TriStateResult r = QFileSystemEngine::cloneFile(srcfd, dstfd, d->metaData);
+    if (r == TriStateResult::Failed)
+        setError(QFile::CopyError, qt_error_string(errno));
+    return r;
 }
 
 QT_END_NAMESPACE

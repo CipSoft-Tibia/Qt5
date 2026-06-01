@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
-import QtQuick3D
 
 Item {
     id: root
@@ -48,16 +47,16 @@ Item {
     DragHandler {
         id: dragHandler
         target: null
-        enabled: mouseEnabled
+        enabled: root.mouseEnabled
         onCentroidChanged: {
-            mouseMoved(Qt.vector2d(centroid.position.x, centroid.position.y));
+            root.mouseMoved(Qt.vector2d(centroid.position.x, centroid.position.y));
         }
 
         onActiveChanged: {
             if (active)
-                mousePressed(Qt.vector2d(centroid.position.x, centroid.position.y));
+                root.mousePressed(Qt.vector2d(centroid.position.x, centroid.position.y));
             else
-                mouseReleased(Qt.vector2d(centroid.position.x, centroid.position.y));
+                root.mouseReleased(Qt.vector2d(centroid.position.x, centroid.position.y));
         }
     }
 
@@ -216,7 +215,7 @@ Item {
         repeat: true
         running: root.inputsNeedProcessing
         onTriggered: {
-            processInputs();
+            root.processInputs();
         }
     }
 
@@ -244,7 +243,7 @@ Item {
         function updatePosition(vector, speed, position)
         {
             if (shiftDown)
-                speed *= shiftSpeed;
+                speed *= root.shiftSpeed;
             else
                 speed *= root.speed
 

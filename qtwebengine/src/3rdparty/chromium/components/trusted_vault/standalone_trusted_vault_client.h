@@ -17,7 +17,6 @@
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/trusted_vault/recovery_key_store_controller.h"
 #include "components/trusted_vault/trusted_vault_access_token_fetcher_frontend.h"
 #include "components/trusted_vault/trusted_vault_client.h"
 
@@ -54,16 +53,6 @@ class StandaloneTrustedVaultClient : public TrustedVaultClient {
   // |base_dir| is the directory in which to create snapshot
   // files. |identity_manager| must not be null and must outlive this object.
   // |url_loader_factory| must not be null.
-  // |recovery_key_provider| may be null, in which case
-  // |SetRecoveryKeyStoreUploadEnabled()| must not be called.
-  StandaloneTrustedVaultClient(
-      SecurityDomainId security_domain,
-      const base::FilePath& base_dir,
-      signin::IdentityManager* identity_manager,
-      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
-      std::unique_ptr<RecoveryKeyStoreController::RecoveryKeyProvider>
-          recovery_key_provider);
-
   StandaloneTrustedVaultClient(
       SecurityDomainId security_domain,
       const base::FilePath& base_dir,
@@ -83,14 +72,14 @@ class StandaloneTrustedVaultClient : public TrustedVaultClient {
       const CoreAccountInfo& account_info,
       base::OnceCallback<void(const std::vector<std::vector<uint8_t>>&)> cb)
       override;
-  void StoreKeys(const std::string& gaia_id,
+  void StoreKeys(const GaiaId& gaia_id,
                  const std::vector<std::vector<uint8_t>>& keys,
                  int last_key_version) override;
   void MarkLocalKeysAsStale(const CoreAccountInfo& account_info,
                             base::OnceCallback<void(bool)> cb) override;
   void GetIsRecoverabilityDegraded(const CoreAccountInfo& account_info,
                                    base::OnceCallback<void(bool)> cb) override;
-  void AddTrustedRecoveryMethod(const std::string& gaia_id,
+  void AddTrustedRecoveryMethod(const GaiaId& gaia_id,
                                 const std::vector<uint8_t>& public_key,
                                 int method_type_hint,
                                 base::OnceClosure cb) override;
@@ -102,7 +91,7 @@ class StandaloneTrustedVaultClient : public TrustedVaultClient {
       base::OnceCallback<void(const std::optional<CoreAccountInfo>&)> callback)
       const;
   void FetchIsDeviceRegisteredForTesting(
-      const std::string& gaia_id,
+      const GaiaId& gaia_id,
       base::OnceCallback<void(bool)> callback);
   void AddDebugObserverForTesting(DebugObserver* debug_observer);
   void RemoveDebugObserverForTesting(DebugObserver* debug_observer);
@@ -111,7 +100,7 @@ class StandaloneTrustedVaultClient : public TrustedVaultClient {
   void GetLastAddedRecoveryMethodPublicKeyForTesting(
       base::OnceCallback<void(const std::vector<uint8_t>&)> callback);
   void GetLastKeyVersionForTesting(
-      const std::string& gaia_id,
+      const GaiaId& gaia_id,
       base::OnceCallback<void(int last_key_version)> callback);
 
  private:

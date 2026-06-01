@@ -180,6 +180,17 @@ struct QD3D11TextureRenderTarget : public QRhiTextureRenderTarget
     friend class QRhiD3D11;
 };
 
+struct RenderTargetUavUpdateState
+{
+    ID3D11RenderTargetView *rtv[QD3D11RenderTargetData::MAX_COLOR_ATTACHMENTS];
+    ID3D11DepthStencilView *dsv = nullptr;
+    std::array<ID3D11UnorderedAccessView *, QD3D11RenderTargetData::MAX_COLOR_ATTACHMENTS> uav;
+    bool update(QD3D11RenderTargetData *data, ID3D11UnorderedAccessView * const *uavs = nullptr, int count = 0);
+};
+
+struct QD3D11GraphicsPipeline;
+struct QD3D11ComputePipeline;
+
 struct QD3D11ShaderResourceBindings : public QRhiShaderResourceBindings
 {
     QD3D11ShaderResourceBindings(QRhiImplementation *rhi);
@@ -191,6 +202,8 @@ struct QD3D11ShaderResourceBindings : public QRhiShaderResourceBindings
     bool hasDynamicOffset = false;
     QVarLengthArray<QRhiShaderResourceBinding, 8> sortedBindings;
     uint generation = 0;
+    QD3D11GraphicsPipeline *lastUsedGraphicsPipeline = nullptr;
+    QD3D11ComputePipeline *lastUsedComputePipeline = nullptr;
 
     // Keep track of the generation number of each referenced QRhi* to be able
     // to detect that the batched bindings are out of date.
@@ -270,21 +283,43 @@ struct QD3D11ShaderResourceBindings : public QRhiShaderResourceBindings
         }
     };
 
-    StageUniformBufferBatches vsUniformBufferBatches;
-    StageUniformBufferBatches hsUniformBufferBatches;
-    StageUniformBufferBatches dsUniformBufferBatches;
-    StageUniformBufferBatches gsUniformBufferBatches;
-    StageUniformBufferBatches fsUniformBufferBatches;
-    StageUniformBufferBatches csUniformBufferBatches;
+    struct ResourceBatches {
+        StageUniformBufferBatches vsUniformBufferBatches;
+        StageUniformBufferBatches hsUniformBufferBatches;
+        StageUniformBufferBatches dsUniformBufferBatches;
+        StageUniformBufferBatches gsUniformBufferBatches;
+        StageUniformBufferBatches fsUniformBufferBatches;
+        StageUniformBufferBatches csUniformBufferBatches;
 
-    StageSamplerBatches vsSamplerBatches;
-    StageSamplerBatches hsSamplerBatches;
-    StageSamplerBatches dsSamplerBatches;
-    StageSamplerBatches gsSamplerBatches;
-    StageSamplerBatches fsSamplerBatches;
-    StageSamplerBatches csSamplerBatches;
+        StageSamplerBatches vsSamplerBatches;
+        StageSamplerBatches hsSamplerBatches;
+        StageSamplerBatches dsSamplerBatches;
+        StageSamplerBatches gsSamplerBatches;
+        StageSamplerBatches fsSamplerBatches;
+        StageSamplerBatches csSamplerBatches;
 
-    StageUavBatches csUavBatches;
+        StageUavBatches csUavBatches;
+        StageUavBatches fsUavBatches;
+
+        void clear() {
+            vsUniformBufferBatches.clear();
+            hsUniformBufferBatches.clear();
+            dsUniformBufferBatches.clear();
+            gsUniformBufferBatches.clear();
+            fsUniformBufferBatches.clear();
+            csUniformBufferBatches.clear();
+
+            vsSamplerBatches.clear();
+            hsSamplerBatches.clear();
+            dsSamplerBatches.clear();
+            gsSamplerBatches.clear();
+            fsSamplerBatches.clear();
+            csSamplerBatches.clear();
+
+            csUavBatches.clear();
+            fsUavBatches.clear();
+        }
+    } resourceBatches;
 
     friend class QRhiD3D11;
 };
@@ -429,7 +464,7 @@ struct QD3D11CommandBuffer : public QRhiCommandBuffer
                 QD3D11GraphicsPipeline *ps;
             } bindGraphicsPipeline;
             struct {
-                QD3D11ShaderResourceBindings *srb;
+                int resourceBatchesIndex;
                 bool offsetOnlyChange;
                 int dynamicOffsetCount;
                 uint dynamicOffsetPairs[MAX_DYNAMIC_OFFSET_COUNT * 2]; // binding, offsetInConstants
@@ -521,10 +556,12 @@ struct QD3D11CommandBuffer : public QRhiCommandBuffer
     DXGI_FORMAT currentIndexFormat;
     ID3D11Buffer *currentVertexBuffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
     quint32 currentVertexOffsets[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
+    QD3D11RenderTargetData *prevRtD;
 
     QVarLengthArray<QByteArray, 4> dataRetainPool;
     QVarLengthArray<QRhiBufferData, 4> bufferDataRetainPool;
     QVarLengthArray<QImage, 4> imageRetainPool;
+    QVarLengthArray<QD3D11ShaderResourceBindings::ResourceBatches, 4> resourceBatchRetainPool;
 
     // relies heavily on implicit sharing (no copies of the actual data will be made)
     const uchar *retainData(const QByteArray &data) {
@@ -539,16 +576,23 @@ struct QD3D11CommandBuffer : public QRhiCommandBuffer
         imageRetainPool.append(image);
         return imageRetainPool.last().constBits();
     }
+    // except this one
+    int retainResourceBatches(const QD3D11ShaderResourceBindings::ResourceBatches &resourceBatches) {
+        resourceBatchRetainPool.append(resourceBatches);
+        return resourceBatchRetainPool.count() - 1;
+    }
     void resetCommands() {
         commands.reset();
         dataRetainPool.clear();
         bufferDataRetainPool.clear();
         imageRetainPool.clear();
+        resourceBatchRetainPool.clear();
     }
     void resetState() {
         recordingPass = NoPass;
         // do not zero lastGpuTime
         currentTarget = nullptr;
+        prevRtD = nullptr;
         resetCommands();
         resetCachedState();
     }
@@ -629,6 +673,15 @@ struct QD3D11SwapChain : public QRhiSwapChain
     int lastFrameLatencyWaitSlot = -1;
 };
 
+class QD3D11Adapter : public QRhiAdapter
+{
+public:
+    QRhiDriverInfo info() const override;
+
+    LUID luid;
+    QRhiDriverInfo adapterInfo;
+};
+
 class QRhiD3D11 : public QRhiImplementation
 {
 public:
@@ -636,6 +689,7 @@ public:
 
     bool create(QRhi::Flags flags) override;
     void destroy() override;
+    QRhi::AdapterList enumerateAdaptersBeforeCreate(QRhiNativeHandles *nativeHandles) const override;
 
     QRhiGraphicsPipeline *createGraphicsPipeline() override;
     QRhiComputePipeline *createComputePipeline() override;
@@ -752,10 +806,11 @@ public:
     void updateShaderResourceBindings(QD3D11ShaderResourceBindings *srbD,
                                       const QShader::NativeResourceBindingMap *nativeResourceBindingMaps[]);
     void executeBufferHostWrites(QD3D11Buffer *bufD);
-    void bindShaderResources(QD3D11ShaderResourceBindings *srbD,
+
+    void bindShaderResources(const QD3D11ShaderResourceBindings::ResourceBatches &allResourceBatches,
                              const uint *dynOfsPairs, int dynOfsPairCount,
-                             bool offsetOnlyChange);
-    void resetShaderResources();
+                             bool offsetOnlyChange, QD3D11RenderTargetData *rtD, RenderTargetUavUpdateState &rtUavState);
+    void resetShaderResources(QD3D11RenderTargetData *rtD, RenderTargetUavUpdateState &rtUavState);
     void executeCommandBuffer(QD3D11CommandBuffer *cbD);
     DXGI_SAMPLE_DESC effectiveSampleDesc(int sampleCount) const;
     void finishActiveReadbacks();
@@ -793,6 +848,7 @@ public:
         int fsHighestActiveSrvBinding = -1;
         int csHighestActiveSrvBinding = -1;
         int csHighestActiveUavBinding = -1;
+        int fsHighestActiveUavBinding = -1;
         QD3D11SwapChain *currentSwapChain = nullptr;
     } contextState;
 

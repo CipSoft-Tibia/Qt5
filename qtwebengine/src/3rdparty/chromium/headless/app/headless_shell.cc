@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "headless/public/headless_shell.h"
 
 #include <memory>
@@ -258,7 +263,7 @@ int HeadlessShellMain(content::ContentMainParams params) {
 
   if (!process_type.empty()) {
     HeadlessChildMain(std::move(params));
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 
 #if BUILDFLAG(IS_MAC)

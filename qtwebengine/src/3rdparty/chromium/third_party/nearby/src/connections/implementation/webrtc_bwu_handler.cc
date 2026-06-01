@@ -12,27 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/strings/str_cat.h"
 #ifndef NO_WEBRTC
 
 #include "connections/implementation/webrtc_bwu_handler.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/functional/bind_front.h"
+#include "absl/strings/str_cat.h"
 #include "connections/implementation/base_bwu_handler.h"
 #include "connections/implementation/client_proxy.h"
+#include "connections/implementation/endpoint_channel.h"
+#include "connections/implementation/mediums/mediums.h"
 #include "connections/implementation/mediums/utils.h"
 #include "connections/implementation/mediums/webrtc_peer_id.h"
+#include "connections/implementation/mediums/webrtc_socket.h"
 #include "connections/implementation/offline_frames.h"
 #include "connections/implementation/webrtc_endpoint_channel.h"
+#include "internal/platform/byte_array.h"
+#include "internal/platform/expected.h"
 #include "internal/platform/logging.h"
 
 namespace nearby {
 namespace connections {
+
+namespace {
 using ::location::nearby::connections::LocationHint;
 using ::location::nearby::connections::LocationStandard;
+using ::location::nearby::proto::connections::OperationResultCode;
+}  // namespace
 
 WebrtcBwuHandler::WebrtcIncomingSocket::WebrtcIncomingSocket(
     const std::string& name, mediums::WebRtcSocketWrapper socket)
@@ -49,7 +59,7 @@ WebrtcBwuHandler::WebrtcBwuHandler(
 
 // Called by BWU target. Retrieves a new medium info from incoming message,
 // and establishes connection over WebRTC using this info.
-std::unique_ptr<EndpointChannel>
+ErrorOr<std::unique_ptr<EndpointChannel>>
 WebrtcBwuHandler::CreateUpgradedEndpointChannel(
     ClientProxy* client, const std::string& service_id,
     const std::string& endpoint_id, const UpgradePathInfo& upgrade_path_info) {
@@ -67,14 +77,14 @@ WebrtcBwuHandler::CreateUpgradedEndpointChannel(
       << peer_id.GetId() << ", location hint "
       << absl::StrCat(location_hint.location());
 
-  mediums::WebRtcSocketWrapper socket =
-      webrtc_.Connect(service_id, peer_id, location_hint,
-                      client->GetCancellationFlag(endpoint_id));
-  if (!socket.IsValid()) {
+  ErrorOr<mediums::WebRtcSocketWrapper> socket_result = webrtc_.Connect(
+      service_id, peer_id, location_hint,
+      client->GetCancellationFlag(endpoint_id), client->GetWebRtcNonCellular());
+  if (socket_result.has_error()) {
     NEARBY_LOGS(ERROR) << "WebRtcBwuHandler failed to connect to remote peer ("
                        << peer_id.GetId() << ") on endpoint " << endpoint_id
                        << ", aborting upgrade.";
-    return nullptr;
+    return {Error(socket_result.error().operation_result_code().value())};
   }
 
   NEARBY_LOGS(INFO) << "WebRtcBwuHandler successfully connected to remote "
@@ -84,15 +94,17 @@ WebrtcBwuHandler::CreateUpgradedEndpointChannel(
 
   // Create a new WebRtcEndpointChannel.
   auto channel = std::make_unique<WebRtcEndpointChannel>(
-      service_id, /*channel_name=*/service_id, socket);
+      service_id, /*channel_name=*/service_id, socket_result.value());
   if (channel == nullptr) {
-    socket.Close();
+    socket_result.value().Close();
     NEARBY_LOGS(ERROR)
         << "WebRtcBwuHandler failed to create new EndpointChannel for "
            "outgoing socket, aborting upgrade.";
+    return {Error(
+        OperationResultCode::NEARBY_WEB_RTC_ENDPOINT_CHANNEL_CREATION_FAILURE)};
   }
 
-  return channel;
+  return {std::move(channel)};
 }
 
 void WebrtcBwuHandler::HandleRevertInitiatorStateForService(
@@ -117,7 +129,8 @@ ByteArray WebrtcBwuHandler::HandleInitializeUpgradedMediumForEndpoint(
     if (!webrtc_.StartAcceptingConnections(
             upgrade_service_id, self_id, location_hint,
             absl::bind_front(&WebrtcBwuHandler::OnIncomingWebrtcConnection,
-                             this, client))) {
+                             this, client),
+            client->GetWebRtcNonCellular())) {
       NEARBY_LOGS(ERROR) << "WebRtcBwuHandler couldn't initiate the WEB_RTC "
                             "upgrade for endpoint "
                          << endpoint_id

@@ -74,11 +74,11 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     <name>QDeclarativeNavigator</name>
     <message>
         <source>Plugin does not support navigation.</source>
-        <translation>Eklenti gezinmeyi desteklemiyor.</translation>
+        <translation type="vanished">Eklenti gezinmeyi desteklemiyor.</translation>
     </message>
     <message>
         <source>Failed to create a navigator object.</source>
-        <translation>Bir gezgin nesnesi oluşturulamadı.</translation>
+        <translation type="vanished">Bir gezgin nesnesi oluşturulamadı.</translation>
     </message>
 </context>
 <context>
@@ -1430,8 +1430,14 @@ Lütfen https://www.mapbox.com adresini ziyaret edin.</translation>
     <message>
         <source>Qt Location requires app_id and token parameters.
 Please register at https://developer.here.com/ to get your personal application credentials.</source>
-        <translation>Qt Location, app_id ve token parametreleri gerektirir.
+        <translation type="vanished">Qt Location, app_id ve token parametreleri gerektirir.
 Kişisel başvuru bilgilerinizi almak için lütfen https://developer.here.com/ adresinden kaydolun.</translation>
+    </message>
+    <message>
+        <source>Qt Location requires apiKey parameter.
+Please register at https://developer.here.com/ to get your personal application credentials.</source>
+        <translation>Qt Location, apiKey parametresine gereksinim duyuyor.
+Kişisel uygulama bilgilerinizi almak için https://developer.here.com adresinde kayıt olun.</translation>
     </message>
     <message>
         <source>Saving places is not supported.</source>

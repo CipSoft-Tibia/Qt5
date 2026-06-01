@@ -15,6 +15,7 @@
 
 #include "qcoreapplication.h"
 
+#include "private/qcoreapplication_p.h"
 #include "private/qfilesystementry_p.h"
 #include "archdetect.cpp"
 #include "qconfig.cpp"
@@ -63,14 +64,14 @@ QLibrarySettings::QLibrarySettings() : paths(false), reloadOnQAppAvailable(false
 
 QSettings *QLibrarySettings::configuration()
 {
-    if (reloadOnQAppAvailable && QCoreApplication::instance() != nullptr)
+    if (reloadOnQAppAvailable && QCoreApplication::instanceExists())
         load();
     return settings.get();
 }
 
 bool QLibrarySettings::havePaths()
 {
-    if (reloadOnQAppAvailable && QCoreApplication::instance() != nullptr)
+    if (reloadOnQAppAvailable && QCoreApplication::instanceExists())
         load();
     return paths;
 }
@@ -79,7 +80,7 @@ void QLibrarySettings::load()
 {
     // If we get any settings here, those won't change when the application shows up.
     settings = findConfiguration();
-    reloadOnQAppAvailable = !settings && !QCoreApplication::instance();
+    reloadOnQAppAvailable = !settings && !QCoreApplication::instanceExists();
 
     if (settings) {
         // This code needs to be in the regular library, as otherwise a qt.conf that
@@ -122,7 +123,7 @@ static std::unique_ptr<QSettings> findConfiguration()
         }
     }
 #endif
-    if (QCoreApplication::instance()) {
+    if (QCoreApplication::instanceExists()) {
         QString pwd = QCoreApplication::applicationDirPath();
         qtconfig = pwd + u"/qt" QT_STRINGIFY(QT_VERSION_MAJOR) ".conf"_s;
         if (QFile::exists(qtconfig))
@@ -194,8 +195,10 @@ QLibraryInfo::QLibraryInfo()
 #    define COMPILER_STRING "MSVC 2017"
 #  elif _MSC_VER < 1930
 #    define COMPILER_STRING "MSVC 2019"
-#  elif _MSC_VER < 2000
+#  elif _MSC_VER < 1950
 #    define COMPILER_STRING "MSVC 2022"
+#  elif _MSC_VER < 2000
+#    define COMPILER_STRING "MSVC 2026"
 #  else
 #    define COMPILER_STRING "MSVC _MSC_VER " QT_STRINGIFY(_MSC_VER)
 #  endif
@@ -271,7 +274,7 @@ QVersionNumber QLibraryInfo::version() noexcept
 
 static QString prefixFromAppDirHelper()
 {
-    if (QCoreApplication::instance()) {
+    if (QCoreApplication::instanceExists()) {
 #ifdef Q_OS_DARWIN
         CFBundleRef bundleRef = CFBundleGetMainBundle();
         if (bundleRef) {
@@ -390,7 +393,9 @@ static QString getRelocatablePrefix(QLibraryInfoPrivate::UsageMode usageMode)
     DWORD pathSize = GetModuleFileName(hModule, buffer, kBufferSize);
     const QString qtCoreFilePath = QString::fromWCharArray(buffer, int(pathSize));
     const QString qtCoreDirPath = QFileInfo(qtCoreFilePath).absolutePath();
-    pathSize = GetModuleFileName(NULL, buffer, kBufferSize);
+
+    hModule = reinterpret_cast<HMODULE>(QCoreApplicationPrivate::mainInstanceHandle);
+    pathSize = GetModuleFileName(hModule, buffer, kBufferSize);
     const QString exeDirPath = QFileInfo(QString::fromWCharArray(buffer, int(pathSize))).absolutePath();
     if (QFileInfo(exeDirPath) == QFileInfo(qtCoreDirPath)) {
         // QtCore DLL is next to the executable. This is either a windeployqt'ed executable or an

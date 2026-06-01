@@ -4,3 +4,4 @@
 if (TARGET Qt::Quick)
     add_subdirectory(quick)
 endif()
+add_subdirectory(qds)

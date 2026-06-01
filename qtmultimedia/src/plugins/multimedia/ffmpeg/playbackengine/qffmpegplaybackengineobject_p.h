@@ -16,26 +16,49 @@
 
 #include <QtCore/qatomic.h>
 #include <QtCore/qthread.h>
+#include <QtCore/qcoreevent.h>
+#include <QtCore/qcoreapplication.h>
 #include <QtMultimedia/qmediaplayer.h>
 #include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackenginedefs_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackutils_p.h>
 
 #include <chrono>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
-class QTimer;
+class QChronoTimer;
 
 namespace QFFmpeg {
 
 class PlaybackEngineObject : public QObject
 {
     Q_OBJECT
+
+    static constexpr QEvent::Type FuncEventType = QEvent::User;
+    class FuncEvent : public QEvent
+    {
+    public:
+        FuncEvent() : QEvent(FuncEventType) { }
+        virtual void invoke() = 0;
+    };
+
+    template <typename F>
+    class FuncEventImpl final : public FuncEvent
+    {
+    public:
+        explicit FuncEventImpl(F &&f) : m_func(std::forward<F>(f)) { }
+        void invoke() override { m_func(); }
+
+    private:
+        std::decay_t<F> m_func;
+    };
+
 public:
     using TimePoint = std::chrono::steady_clock::time_point;
     using TimePointOpt = std::optional<TimePoint>;
-    using Id = quint64;
 
-    PlaybackEngineObject();
+    explicit PlaybackEngineObject(const PlaybackEngineObjectID &id);
 
     ~PlaybackEngineObject() override;
 
@@ -47,23 +70,47 @@ public:
 
     void setPaused(bool isPaused);
 
-    Id id() const;
+    quint64 objectID() const { return m_id.objectID; }
 
 signals:
-    void atEnd();
+    void atEnd(PlaybackEngineObjectID id);
 
     void error(QMediaPlayer::Error, const QString &errorString);
 
 protected:
-    QTimer &timer();
+    bool event(QEvent *e) override;
 
-    void scheduleNextStep(bool allowDoImmediatelly = true);
+    bool checkSessionID(quint64 sessionID) const { return sessionID == m_id.sessionID; }
+
+    bool checkID(const PlaybackEngineObjectID &id) const
+    {
+        return checkSessionID(id.sessionID) && id.objectID == objectID();
+    }
+
+    const PlaybackEngineObjectID &id() const
+    {
+        Q_ASSERT(thread()->isCurrentThread());
+        return m_id;
+    }
+
+    template <typename F>
+    void invokePriorityMethod(F &&f)
+    {
+        Q_ASSERT(!thread()->isCurrentThread());
+        // Note, that the event loop takes ownership of the event
+        QCoreApplication::postEvent(this, new FuncEventImpl<F>(std::forward<F>(f)),
+                                    Qt::HighEventPriority);
+    }
+
+    QChronoTimer &timer();
+
+    void scheduleNextStep();
 
     virtual void onPauseChanged();
 
     virtual bool canDoNextStep() const;
 
-    virtual std::chrono::milliseconds timerInterval() const;
+    virtual TimePoint nextTimePoint() const;
 
     void setAtEnd(bool isAtEnd);
 
@@ -73,12 +120,22 @@ private slots:
     void onTimeout();
 
 private:
-    std::unique_ptr<QTimer> m_timer;
+    enum class StepType : uint8_t { None, Timeout, Immediate };
+
+    void doNextStep(StepType type);
+
+    bool isValid() const { return m_invalidateCounter.load(std::memory_order_relaxed) == 0; }
+
+    std::unique_ptr<QChronoTimer> m_timer;
 
     QAtomicInteger<bool> m_paused = true;
     QAtomicInteger<bool> m_atEnd = false;
-    QAtomicInteger<bool> m_deleting = false;
-    const Id m_id;
+    std::atomic_int m_invalidateCounter = 0;
+    PlaybackEngineObjectID m_id;
+
+    TimePointOpt m_nextTimePoint;
+    TimePointOpt m_timePoint;
+    StepType m_stepType = StepType::None;
 };
 } // namespace QFFmpeg
 

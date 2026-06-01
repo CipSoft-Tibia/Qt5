@@ -145,6 +145,12 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
         NavigationHandle& navigation_handle,
         WaitingForHeadersFinishedReason reason) {}
 
+    // Called from PrerenderHost::RecordFailedFinalStatusImpl when prerendering
+    // fails. This is called even when prerendering is intentionally cancelled
+    // by triggers (e.g., removing the speculation rules), but not called when
+    // the prerendered page is activated (i.e., `status` is never kActivated).
+    virtual void OnFailed(PrerenderFinalStatus status) {}
+
     // Called from the PrerenderHost's destructor. The observer should drop any
     // reference to the host.
     virtual void OnHostDestroyed(PrerenderFinalStatus status) {}
@@ -169,6 +175,9 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
 
   static bool AreHttpRequestHeadersCompatible(
       const std::string& potential_activation_headers_str,
+#if BUILDFLAG(IS_ANDROID)
+      const std::string& potential_activation_additional_headers_str,
+#endif  // BUILDFLAG(IS_ANDROID)
       const std::string& prerender_headers_str,
       PreloadingTriggerType trigger_type,
       const std::string& histogram_suffix,
@@ -205,6 +214,9 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
   void SetFocusedFrame(FrameTreeNode* node, SiteInstanceGroup* source) override;
   FrameTree* GetOwnedPictureInPictureFrameTree() override;
   FrameTree* GetPictureInPictureOpenerFrameTree() override;
+  bool OnRenderFrameProxyVisibilityChanged(
+      RenderFrameProxyHost* render_frame_proxy_host,
+      blink::mojom::FrameVisibility visibility) override;
 
   // NavigationControllerDelegate
   void NotifyNavigationStateChangedFromController(
@@ -319,7 +331,7 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
   std::optional<UrlMatchType> IsUrlMatch(const GURL& url) const;
 
   // Returns true if the given `url` might indicate the same destination to the
-  // initial_url based on `no_vary_search_expected`. Note that this returns
+  // initial_url based on `no_vary_search_hint`. Note that this returns
   // false if the given `url` exactly matches the initial_url, or matches it
   // with `attributes_.url_match_predicate` or the No-Vary-Search header that is
   // already received. These cases should be checked by `IsUrlMatch()`.
@@ -387,13 +399,15 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
     return no_vary_search_parse_error_;
   }
 
-  const std::optional<net::HttpNoVarySearchData>& no_vary_search_expected()
-      const {
-    return attributes_.no_vary_search_expected;
+  const std::optional<net::HttpNoVarySearchData>& no_vary_search_hint() const {
+    return attributes_.no_vary_search_hint;
   }
 
   bool should_warm_up_compositor() const {
     return attributes_.should_warm_up_compositor;
+  }
+  bool should_prepare_paint_tree() const {
+    return attributes_.should_prepare_paint_tree;
   }
 
   bool IsInitialNavigation(const NavigationRequest& navigation_request) const;
@@ -410,6 +424,17 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
   void OnWaitingForHeadersFinished(NavigationHandle& navigation_handle,
                                    WaitingForHeadersFinishedReason reason);
 
+  // Returns true iff prefetch ahead of prerender is not available for this
+  // prerender and this prerender should be aborted.
+  //
+  // If `kPrerender2FallbackPrefetchSpecRules` is enabled, `PrerendererImpl`
+  // triggers a prefetch ahead of prerender to reduce fetch in the case of that
+  // the prerender failed. If the prefetch failed, prerender initial navigation
+  // tries to fall back to normal request, i.e. without prefetch, which can be a
+  // second fetch if the prefetch reached to fetch phase. To avoid the second
+  // fetch, we need to abort the prerender. This method judges a condition.
+  bool ShouldAbortNavigationBecausePrefetchUnavailable() const;
+
  private:
   void RecordFailedFinalStatusImpl(const PrerenderCancellationReason& reason);
 
@@ -424,6 +449,7 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
 
   ActivationNavigationParamsMatch
   AreBeginNavigationParamsCompatibleWithNavigation(
+      const GURL& potential_activation_url,
       const blink::mojom::BeginNavigationParams& potential_activation,
       bool allow_initiator_and_transition_mismatch,
       PrerenderCancellationReason& reason);

@@ -27,6 +27,7 @@
 
 #include "src/tint/lang/spirv/writer/printer/printer.h"
 
+#include <string>
 #include <utility>
 
 #include "spirv/unified1/GLSL.std.450.h"
@@ -48,6 +49,7 @@
 #include "src/tint/lang/core/ir/continue.h"
 #include "src/tint/lang/core/ir/convert.h"
 #include "src/tint/lang/core/ir/core_builtin_call.h"
+#include "src/tint/lang/core/ir/discard.h"
 #include "src/tint/lang/core/ir/exit_if.h"
 #include "src/tint/lang/core/ir/exit_loop.h"
 #include "src/tint/lang/core/ir/exit_switch.h"
@@ -114,6 +116,7 @@ namespace tint::spirv::writer {
 namespace {
 
 constexpr uint32_t kWriterVersion = 1;
+constexpr const char* kGLSLstd450 = "GLSL.std.450";
 
 SpvStorageClass StorageClass(core::AddressSpace addrspace) {
     switch (addrspace) {
@@ -192,7 +195,7 @@ class Printer {
     }
 
     /// @returns the generated SPIR-V code on success, or failure
-    Result<std::vector<uint32_t>> Code() {
+    Result<Output> Code() {
         if (auto res = Generate(); res != Success) {
             return res.Failure();
         }
@@ -201,7 +204,9 @@ class Printer {
         BinaryWriter writer;
         writer.WriteHeader(module_.IdBound(), kWriterVersion);
         writer.WriteModule(module_);
-        return std::move(writer.Result());
+
+        output_.spirv = std::move(writer.Result());
+        return output_;
     }
 
   private:
@@ -210,6 +215,8 @@ class Printer {
     Options options_;
     writer::Module module_;
     BinaryWriter writer_;
+
+    Output output_;
 
     /// A function type used for an OpTypeFunction declaration.
     struct FunctionType {
@@ -278,7 +285,7 @@ class Printer {
 
     /// Builds the SPIR-V from the IR
     Result<SuccessType> Generate() {
-        auto valid = core::ir::ValidateAndDumpIfNeeded(ir_, "SPIR-V writer");
+        auto valid = core::ir::ValidateAndDumpIfNeeded(ir_, "spirv.Printer");
         if (valid != Success) {
             return valid.Failure();
         }
@@ -320,6 +327,8 @@ class Printer {
         switch (builtin) {
             case core::BuiltinValue::kPointSize:
                 return SpvBuiltInPointSize;
+            case core::BuiltinValue::kCullDistance:
+                return SpvBuiltInCullDistance;
             case core::BuiltinValue::kFragDepth:
                 return SpvBuiltInFragDepth;
             case core::BuiltinValue::kFrontFacing:
@@ -378,9 +387,7 @@ class Printer {
         auto id = Constant(constant->Value());
 
         // Set the name for the SPIR-V result ID if provided in the module.
-        if (auto name = ir_.NameOf(constant)) {
-            module_.PushDebug(spv::Op::OpName, {id, Operand(name.Name())});
-        }
+        PushName(id, constant);
 
         return id;
     }
@@ -593,10 +600,7 @@ class Printer {
                                    Operand(effective_row_count * matrix_type->Type()->Size())});
             }
 
-            if (member->Name().IsValid()) {
-                module_.PushDebug(spv::Op::OpMemberName,
-                                  {operands[0], member->Index(), Operand(member->Name().Name())});
-            }
+            PushMemberName(id, member->Index(), member->Name());
         }
         module_.PushType(spv::Op::OpTypeStruct, std::move(operands));
 
@@ -605,9 +609,7 @@ class Printer {
             module_.PushAnnot(spv::Op::OpDecorate, {id, U32Operand(SpvDecorationBlock)});
         }
 
-        if (str->Name().IsValid()) {
-            module_.PushDebug(spv::Op::OpName, {operands[0], Operand(str->Name().Name())});
-        }
+        PushName(id, str->Name());
     }
 
     /// Emit a texture type.
@@ -709,10 +711,10 @@ class Printer {
         auto id = Value(func);
 
         // Emit the function name.
-        module_.PushDebug(spv::Op::OpName, {id, Operand(ir_.NameOf(func).Name())});
+        PushName(id, func);
 
         // Emit OpEntryPoint and OpExecutionMode declarations if needed.
-        if (func->Stage() != core::ir::Function::PipelineStage::kUndefined) {
+        if (func->IsEntryPoint()) {
             EmitEntryPoint(func, id);
         }
 
@@ -729,9 +731,7 @@ class Printer {
             auto param_id = Value(param);
             params.push_back(Instruction(spv::Op::OpFunctionParameter, {param_type_id, param_id}));
             function_type.param_type_ids.Push(param_type_id);
-            if (auto name = ir_.NameOf(param)) {
-                module_.PushDebug(spv::Op::OpName, {param_id, Operand(name.Name())});
-            }
+            PushName(param_id, param);
         }
 
         // Get the ID for the function type (creating it if needed).
@@ -771,10 +771,20 @@ class Printer {
         switch (func->Stage()) {
             case core::ir::Function::PipelineStage::kCompute: {
                 stage = SpvExecutionModelGLCompute;
+
+                auto const_wg_size = func->WorkgroupSizeAsConst();
+                TINT_ASSERT(const_wg_size);
+                auto wg_size = *const_wg_size;
+
+                // Store the workgroup information away to return from the generator.
+                output_.workgroup_info.x = wg_size[0];
+                output_.workgroup_info.y = wg_size[1];
+                output_.workgroup_info.z = wg_size[2];
+
                 module_.PushExecutionMode(
                     spv::Op::OpExecutionMode,
-                    {id, U32Operand(SpvExecutionModeLocalSize), func->WorkgroupSize()->at(0),
-                     func->WorkgroupSize()->at(1), func->WorkgroupSize()->at(2)});
+                    {id, U32Operand(SpvExecutionModeLocalSize), const_wg_size->at(0),
+                     const_wg_size->at(1), const_wg_size->at(2)});
                 break;
             }
             case core::ir::Function::PipelineStage::kFragment: {
@@ -791,7 +801,16 @@ class Printer {
                 TINT_ICE() << "undefined pipeline stage for entry point";
         }
 
-        OperandList operands = {U32Operand(stage), id, ir_.NameOf(func).Name()};
+        // Use the remapped entry point name if requested, otherwise use the original name.
+        std::string name;
+        if (!options_.remapped_entry_point_name.empty()) {
+            name = options_.remapped_entry_point_name;
+        } else {
+            name = ir_.NameOf(func).Name();
+        }
+        TINT_ASSERT(!name.empty());
+
+        OperandList operands = {U32Operand(stage), id, name};
 
         // Add the list of all referenced shader IO variables.
         for (auto* global : *ir_.root_block) {
@@ -838,8 +857,8 @@ class Printer {
     void EmitRootBlock(core::ir::Block* root_block) {
         for (auto* inst : *root_block) {
             Switch(
-                inst,                                   //
-                [&](core::ir::Var* v) { EmitVar(v); },  //
+                inst,                                         //
+                [&](core::ir::Var* v) { EmitGlobalVar(v); },  //
                 TINT_ICE_ON_NO_MATCH);
         }
     }
@@ -849,17 +868,17 @@ class Printer {
     void EmitBlock(core::ir::Block* block) {
         // Emit the label.
         // Skip if this is the function's entry block, as it will be emitted by the function object.
-        if (!current_function_.instructions().empty()) {
-            current_function_.push_inst(spv::Op::OpLabel, {Label(block)});
+        if (!current_function_.Instructions().empty()) {
+            current_function_.PushInst(spv::Op::OpLabel, {Label(block)});
         }
 
         // If there are no instructions in the block, it's a dead end, so we shouldn't be able to
         // get here to begin with.
         if (block->IsEmpty()) {
             if (!block->Parent()->Results().IsEmpty()) {
-                current_function_.push_inst(spv::Op::OpBranch, {GetMergeLabel(block->Parent())});
+                current_function_.PushInst(spv::Op::OpBranch, {GetMergeLabel(block->Parent())});
             } else {
-                current_function_.push_inst(spv::Op::OpUnreachable, {});
+                current_function_.PushInst(spv::Op::OpUnreachable, {});
             }
             return;
         }
@@ -887,7 +906,7 @@ class Printer {
                 ops.push_back(GetTerminatorBlockLabel(incoming));
             }
 
-            current_function_.push_inst(spv::Op::OpPhi, std::move(ops));
+            current_function_.PushInst(spv::Op::OpPhi, std::move(ops));
         }
     }
 
@@ -918,14 +937,26 @@ class Printer {
                 [&](core::ir::Let* l) { EmitLet(l); },                                //
                 [&](core::ir::If* i) { EmitIf(i); },                                  //
                 [&](core::ir::Terminator* t) { EmitTerminator(t); },                  //
+                [&](core::ir::Discard* t) { EmitDiscard(t); },                        //
                 TINT_ICE_ON_NO_MATCH);
 
             // Set the name for the SPIR-V result ID if provided in the module.
             if (inst->Result(0) && !inst->Is<core::ir::Var>()) {
-                if (auto name = ir_.NameOf(inst)) {
-                    module_.PushDebug(spv::Op::OpName, {Value(inst), Operand(name.Name())});
-                }
+                PushName(Value(inst), inst);
             }
+        }
+    }
+
+    void EmitDiscard(core::ir::Discard*) {
+        if (options_.use_demote_to_helper_invocation_extensions) {
+            module_.PushExtension("SPV_EXT_demote_to_helper_invocation");
+            module_.PushCapability(SpvCapabilityDemoteToHelperInvocationEXT);
+            current_function_.PushInst(spv::Op::OpDemoteToHelperInvocationEXT, {});
+        } else {
+            // OpKill does not have the same behavioral semantics as demote to helper and will not
+            // be conformant. OpKill has also been deprecated and the alternative
+            // OpTerminateInvocation also does not have demote to helper semantics.
+            TINT_ICE() << "No substitute function for discard";
         }
     }
 
@@ -939,40 +970,40 @@ class Printer {
                     TINT_ASSERT(t->Args().Length() == 1u);
                     OperandList operands;
                     operands.push_back(Value(t->Args()[0]));
-                    current_function_.push_inst(spv::Op::OpReturnValue, operands);
+                    current_function_.PushInst(spv::Op::OpReturnValue, operands);
                 } else {
-                    current_function_.push_inst(spv::Op::OpReturn, {});
+                    current_function_.PushInst(spv::Op::OpReturn, {});
                 }
                 return;
             },
             [&](core::ir::BreakIf* breakif) {
-                current_function_.push_inst(spv::Op::OpBranchConditional,
-                                            {
-                                                Value(breakif->Condition()),
-                                                loop_merge_label_,
-                                                loop_header_label_,
-                                            });
+                current_function_.PushInst(spv::Op::OpBranchConditional,
+                                           {
+                                               Value(breakif->Condition()),
+                                               loop_merge_label_,
+                                               loop_header_label_,
+                                           });
             },
             [&](core::ir::Continue* cont) {
-                current_function_.push_inst(spv::Op::OpBranch, {Label(cont->Loop()->Continuing())});
+                current_function_.PushInst(spv::Op::OpBranch, {Label(cont->Loop()->Continuing())});
             },
             [&](core::ir::ExitIf*) {
-                current_function_.push_inst(spv::Op::OpBranch, {if_merge_label_});
+                current_function_.PushInst(spv::Op::OpBranch, {if_merge_label_});
             },
             [&](core::ir::ExitLoop*) {
-                current_function_.push_inst(spv::Op::OpBranch, {loop_merge_label_});
+                current_function_.PushInst(spv::Op::OpBranch, {loop_merge_label_});
             },
             [&](core::ir::ExitSwitch*) {
-                current_function_.push_inst(spv::Op::OpBranch, {switch_merge_label_});
+                current_function_.PushInst(spv::Op::OpBranch, {switch_merge_label_});
             },
             [&](core::ir::NextIteration*) {
-                current_function_.push_inst(spv::Op::OpBranch, {loop_header_label_});
+                current_function_.PushInst(spv::Op::OpBranch, {loop_header_label_});
             },
             [&](core::ir::TerminateInvocation*) {
-                current_function_.push_inst(spv::Op::OpKill, {});
+                current_function_.PushInst(spv::Op::OpKill, {});
             },
             [&](core::ir::Unreachable*) {
-                current_function_.push_inst(spv::Op::OpUnreachable, {});
+                current_function_.PushInst(spv::Op::OpUnreachable, {});
             },  //
             TINT_ICE_ON_NO_MATCH);
     }
@@ -1003,10 +1034,10 @@ class Printer {
         }
 
         // Emit the OpSelectionMerge and OpBranchConditional instructions.
-        current_function_.push_inst(spv::Op::OpSelectionMerge,
-                                    {merge_label, U32Operand(SpvSelectionControlMaskNone)});
-        current_function_.push_inst(spv::Op::OpBranchConditional,
-                                    {Value(i->Condition()), true_label, false_label});
+        current_function_.PushInst(spv::Op::OpSelectionMerge,
+                                   {merge_label, U32Operand(SpvSelectionControlMaskNone)});
+        current_function_.PushInst(spv::Op::OpBranchConditional,
+                                   {Value(i->Condition()), true_label, false_label});
 
         // Emit the `true` and `false` blocks, if they're not being skipped.
         if (true_label != merge_label) {
@@ -1016,7 +1047,7 @@ class Printer {
             EmitBlock(false_block);
         }
 
-        current_function_.push_inst(spv::Op::OpLabel, {merge_label});
+        current_function_.PushInst(spv::Op::OpLabel, {merge_label});
 
         // Emit the OpPhis for the ExitIfs
         EmitExitPhis(i);
@@ -1035,7 +1066,7 @@ class Printer {
             for (auto* idx : access->Indices()) {
                 operands.push_back(Value(idx));
             }
-            current_function_.push_inst(spv::Op::OpAccessChain, std::move(operands));
+            current_function_.PushInst(spv::Op::OpAccessChain, std::move(operands));
             return;
         }
 
@@ -1061,16 +1092,16 @@ class Printer {
                     vec_id = module_.NextId();
                     operands[0] = Type(source_ty);
                     operands[1] = vec_id;
-                    current_function_.push_inst(spv::Op::OpCompositeExtract, std::move(operands));
+                    current_function_.PushInst(spv::Op::OpCompositeExtract, std::move(operands));
                 }
 
                 // Now emit the OpVectorExtractDynamic instruction.
                 operands = {Type(ty), id, vec_id, Value(idx)};
-                current_function_.push_inst(spv::Op::OpVectorExtractDynamic, std::move(operands));
+                current_function_.PushInst(spv::Op::OpVectorExtractDynamic, std::move(operands));
                 return;
             }
         }
-        current_function_.push_inst(spv::Op::OpCompositeExtract, std::move(operands));
+        current_function_.PushInst(spv::Op::OpCompositeExtract, std::move(operands));
     }
 
     /// Emit a binary instruction.
@@ -1221,7 +1252,7 @@ class Printer {
         }
 
         // Emit the instruction.
-        current_function_.push_inst(op, {Type(ty), id, lhs, rhs});
+        current_function_.PushInst(op, {Type(ty), id, lhs, rhs});
     }
 
     /// Emit a bitcast instruction.
@@ -1232,8 +1263,8 @@ class Printer {
             values_.Add(bitcast->Result(0), Value(bitcast->Val()));
             return;
         }
-        current_function_.push_inst(spv::Op::OpBitcast,
-                                    {Type(ty), Value(bitcast), Value(bitcast->Val())});
+        current_function_.PushInst(spv::Op::OpBitcast,
+                                   {Type(ty), Value(bitcast), Value(bitcast->Val())});
     }
 
     /// Emit a builtin function call instruction.
@@ -1241,8 +1272,23 @@ class Printer {
     void EmitSpirvBuiltinCall(spirv::ir::BuiltinCall* builtin) {
         auto id = Value(builtin);
 
+        OperandList operands;
+        if (!builtin->Result(0)->Type()->Is<core::type::Void>()) {
+            operands = {Type(builtin->Result(0)->Type()), id};
+        }
+
         spv::Op op = spv::Op::Max;
+
+        auto ext_inst = [&](enum GLSLstd450 inst) {
+            op = spv::Op::OpExtInst;
+            operands.push_back(ImportGlslStd450());
+            operands.push_back(U32Operand(inst));
+        };
+
         switch (builtin->Func()) {
+            case spirv::BuiltinFn::kAbs:
+                ext_inst(GLSLstd450SAbs);
+                break;
             case spirv::BuiltinFn::kArrayLength:
                 op = spv::Op::OpArrayLength;
                 break;
@@ -1332,6 +1378,27 @@ class Printer {
             case spirv::BuiltinFn::kMatrixTimesVector:
                 op = spv::Op::OpMatrixTimesVector;
                 break;
+            case spirv::BuiltinFn::kSmax:
+                ext_inst(GLSLstd450SMax);
+                break;
+            case spirv::BuiltinFn::kSmin:
+                ext_inst(GLSLstd450SMin);
+                break;
+            case spirv::BuiltinFn::kSclamp:
+                ext_inst(GLSLstd450SClamp);
+                break;
+            case spirv::BuiltinFn::kUmax:
+                ext_inst(GLSLstd450UMax);
+                break;
+            case spirv::BuiltinFn::kUmin:
+                ext_inst(GLSLstd450UMin);
+                break;
+            case spirv::BuiltinFn::kUclamp:
+                ext_inst(GLSLstd450UClamp);
+                break;
+            case spirv::BuiltinFn::kNormalize:
+                ext_inst(GLSLstd450Normalize);
+                break;
             case spirv::BuiltinFn::kSampledImage:
                 op = spv::Op::OpSampledImage;
                 break;
@@ -1343,6 +1410,33 @@ class Printer {
                 break;
             case spirv::BuiltinFn::kSelect:
                 op = spv::Op::OpSelect;
+                break;
+            case spirv::BuiltinFn::kSign:
+                ext_inst(GLSLstd450SSign);
+                break;
+            case spirv::BuiltinFn::kInverse:
+                ext_inst(GLSLstd450MatrixInverse);
+                break;
+            case spirv::BuiltinFn::kFindILsb:
+                ext_inst(GLSLstd450FindILsb);
+                break;
+            case spirv::BuiltinFn::kFindSMsb:
+                ext_inst(GLSLstd450FindSMsb);
+                break;
+            case spirv::BuiltinFn::kFindUMsb:
+                ext_inst(GLSLstd450FindUMsb);
+                break;
+            case spirv::BuiltinFn::kRefract:
+                ext_inst(GLSLstd450Refract);
+                break;
+            case spirv::BuiltinFn::kReflect:
+                ext_inst(GLSLstd450Reflect);
+                break;
+            case spirv::BuiltinFn::kFaceForward:
+                ext_inst(GLSLstd450FaceForward);
+                break;
+            case spirv::BuiltinFn::kLdexp:
+                ext_inst(GLSLstd450Ldexp);
                 break;
             case spirv::BuiltinFn::kUdot:
                 module_.PushExtension("SPV_KHR_integer_dot_product");
@@ -1360,14 +1454,19 @@ class Printer {
                 TINT_ICE() << "undefined spirv ir function";
         }
 
-        OperandList operands;
-        if (!builtin->Result(0)->Type()->Is<core::type::Void>()) {
-            operands = {Type(builtin->Result(0)->Type()), id};
-        }
         for (auto* arg : builtin->Args()) {
             operands.push_back(Value(arg));
         }
-        current_function_.push_inst(op, operands);
+        current_function_.PushInst(op, operands);
+    }
+
+    uint32_t ImportGlslStd450() {
+        return imports_.GetOrAdd(kGLSLstd450, [&] {
+            // Import the instruction set the first time it is requested.
+            auto import = module_.NextId();
+            module_.PushExtImport(spv::Op::OpExtInstImport, {import, Operand(kGLSLstd450)});
+            return import;
+        });
     }
 
     /// Emit a builtin function call instruction.
@@ -1396,14 +1495,8 @@ class Printer {
 
         // Helper to set up the opcode and operand list for a GLSL extended instruction.
         auto glsl_ext_inst = [&](enum GLSLstd450 inst) {
-            constexpr const char* kGLSLstd450 = "GLSL.std.450";
             op = spv::Op::OpExtInst;
-            operands.push_back(imports_.GetOrAdd(kGLSLstd450, [&] {
-                // Import the instruction set the first time it is requested.
-                auto import = module_.NextId();
-                module_.PushExtImport(spv::Op::OpExtInstImport, {import, Operand(kGLSLstd450)});
-                return import;
-            }));
+            operands.push_back(ImportGlslStd450());
             operands.push_back(U32Operand(inst));
         };
 
@@ -1691,6 +1784,13 @@ class Printer {
                 operands.push_back(Constant(ir_.constant_values.Get(u32(spv::Scope::Subgroup))));
                 operands.push_back(U32Operand(u32(spv::GroupOperation::Reduce)));
                 break;
+            case core::BuiltinFn::kSubgroupInclusiveAdd:
+                module_.PushCapability(SpvCapabilityGroupNonUniformArithmetic);
+                op = result_ty->IsIntegerScalarOrVector() ? spv::Op::OpGroupNonUniformIAdd
+                                                          : spv::Op::OpGroupNonUniformFAdd;
+                operands.push_back(Constant(ir_.constant_values.Get(u32(spv::Scope::Subgroup))));
+                operands.push_back(U32Operand(u32(spv::GroupOperation::InclusiveScan)));
+                break;
             case core::BuiltinFn::kSubgroupExclusiveAdd:
                 module_.PushCapability(SpvCapabilityGroupNonUniformArithmetic);
                 op = result_ty->IsIntegerScalarOrVector() ? spv::Op::OpGroupNonUniformIAdd
@@ -1704,6 +1804,13 @@ class Printer {
                                                           : spv::Op::OpGroupNonUniformFMul;
                 operands.push_back(Constant(ir_.constant_values.Get(u32(spv::Scope::Subgroup))));
                 operands.push_back(U32Operand(u32(spv::GroupOperation::Reduce)));
+                break;
+            case core::BuiltinFn::kSubgroupInclusiveMul:
+                module_.PushCapability(SpvCapabilityGroupNonUniformArithmetic);
+                op = result_ty->IsIntegerScalarOrVector() ? spv::Op::OpGroupNonUniformIMul
+                                                          : spv::Op::OpGroupNonUniformFMul;
+                operands.push_back(Constant(ir_.constant_values.Get(u32(spv::Scope::Subgroup))));
+                operands.push_back(U32Operand(u32(spv::GroupOperation::InclusiveScan)));
                 break;
             case core::BuiltinFn::kSubgroupExclusiveMul:
                 module_.PushCapability(SpvCapabilityGroupNonUniformArithmetic);
@@ -1884,7 +1991,7 @@ class Printer {
         }
 
         // Emit the instruction.
-        current_function_.push_inst(op, operands);
+        current_function_.PushInst(op, operands);
     }
 
     /// Emit a construct instruction.
@@ -1902,7 +2009,7 @@ class Printer {
         for (auto* arg : construct->Args()) {
             operands.push_back(Value(arg));
         }
-        current_function_.push_inst(spv::Op::OpCompositeConstruct, std::move(operands));
+        current_function_.PushInst(spv::Op::OpCompositeConstruct, std::move(operands));
     }
 
     /// Emit a convert instruction.
@@ -1983,7 +2090,7 @@ class Printer {
             TINT_ICE() << "unhandled convert instruction";
         }
 
-        current_function_.push_inst(op, std::move(operands));
+        current_function_.PushInst(op, std::move(operands));
     }
 
     SpvMemoryAccessMask MemoryAccessMaskForPointer(const core::type::Pointer* ptr) {
@@ -2002,10 +2109,10 @@ class Printer {
     /// Emit a load instruction.
     /// @param load the load instruction to emit
     void EmitLoad(core::ir::Load* load) {
-        current_function_.push_inst(
-            spv::Op::OpLoad, {Type(load->Result(0)->Type()), Value(load), Value(load->From()),
-                              U32Operand(MemoryAccessMaskForPointer(
-                                  load->From()->Type()->As<core::type::Pointer>()))});
+        current_function_.PushInst(spv::Op::OpLoad,
+                                   {Type(load->Result(0)->Type()), Value(load), Value(load->From()),
+                                    U32Operand(MemoryAccessMaskForPointer(
+                                        load->From()->Type()->As<core::type::Pointer>()))});
     }
 
     /// Emit a load vector element instruction.
@@ -2015,12 +2122,12 @@ class Printer {
         auto* el_ty = load->Result(0)->Type();
         auto* el_ptr_ty = ir_.Types().ptr(vec_ptr_ty->AddressSpace(), el_ty, vec_ptr_ty->Access());
         auto el_ptr_id = module_.NextId();
-        current_function_.push_inst(
+        current_function_.PushInst(
             spv::Op::OpAccessChain,
             {Type(el_ptr_ty), el_ptr_id, Value(load->From()), Value(load->Index())});
-        current_function_.push_inst(spv::Op::OpLoad,
-                                    {Type(load->Result(0)->Type()), Value(load), el_ptr_id,
-                                     U32Operand(MemoryAccessMaskForPointer(vec_ptr_ty))});
+        current_function_.PushInst(spv::Op::OpLoad,
+                                   {Type(load->Result(0)->Type()), Value(load), el_ptr_id,
+                                    U32Operand(MemoryAccessMaskForPointer(vec_ptr_ty))});
     }
 
     /// Emit a loop instruction.
@@ -2038,23 +2145,23 @@ class Printer {
 
         if (init_label != 0) {
             // Emit the loop initializer.
-            current_function_.push_inst(spv::Op::OpBranch, {init_label});
+            current_function_.PushInst(spv::Op::OpBranch, {init_label});
             EmitBlock(loop->Initializer());
         } else {
             // No initializer. Branch to body.
-            current_function_.push_inst(spv::Op::OpBranch, {header_label});
+            current_function_.PushInst(spv::Op::OpBranch, {header_label});
         }
 
         // Emit the loop body header, which contains the OpLoopMerge and OpPhis.
         // This then unconditionally branches to body_label
-        current_function_.push_inst(spv::Op::OpLabel, {header_label});
+        current_function_.PushInst(spv::Op::OpLabel, {header_label});
         EmitIncomingPhis(loop->Body());
-        current_function_.push_inst(spv::Op::OpLoopMerge, {merge_label, continuing_label,
-                                                           U32Operand(SpvLoopControlMaskNone)});
-        current_function_.push_inst(spv::Op::OpBranch, {body_label});
+        current_function_.PushInst(spv::Op::OpLoopMerge, {merge_label, continuing_label,
+                                                          U32Operand(SpvLoopControlMaskNone)});
+        current_function_.PushInst(spv::Op::OpBranch, {body_label});
 
         // Emit the loop body
-        current_function_.push_inst(spv::Op::OpLabel, {body_label});
+        current_function_.PushInst(spv::Op::OpLabel, {body_label});
         EmitBlockInstructions(loop->Body());
 
         // Emit the loop continuing block.
@@ -2062,12 +2169,12 @@ class Printer {
             EmitBlock(loop->Continuing());
         } else {
             // We still need to emit a continuing block with a back-edge, even if it is unreachable.
-            current_function_.push_inst(spv::Op::OpLabel, {continuing_label});
-            current_function_.push_inst(spv::Op::OpBranch, {header_label});
+            current_function_.PushInst(spv::Op::OpLabel, {continuing_label});
+            current_function_.PushInst(spv::Op::OpBranch, {header_label});
         }
 
         // Emit the loop merge block.
-        current_function_.push_inst(spv::Op::OpLabel, {merge_label});
+        current_function_.PushInst(spv::Op::OpLabel, {merge_label});
 
         // Emit the OpPhis for the ExitLoops
         EmitExitPhis(loop);
@@ -2104,9 +2211,9 @@ class Printer {
         TINT_SCOPED_ASSIGNMENT(switch_merge_label_, merge_label);
 
         // Emit the OpSelectionMerge and OpSwitch instructions.
-        current_function_.push_inst(spv::Op::OpSelectionMerge,
-                                    {merge_label, U32Operand(SpvSelectionControlMaskNone)});
-        current_function_.push_inst(spv::Op::OpSwitch, switch_operands);
+        current_function_.PushInst(spv::Op::OpSelectionMerge,
+                                   {merge_label, U32Operand(SpvSelectionControlMaskNone)});
+        current_function_.PushInst(spv::Op::OpSwitch, switch_operands);
 
         // Emit the cases.
         for (auto& c : swtch->Cases()) {
@@ -2114,7 +2221,7 @@ class Printer {
         }
 
         // Emit the switch merge block.
-        current_function_.push_inst(spv::Op::OpLabel, {merge_label});
+        current_function_.PushInst(spv::Op::OpLabel, {merge_label});
 
         // Emit the OpPhis for the ExitSwitches
         EmitExitPhis(swtch);
@@ -2129,16 +2236,16 @@ class Printer {
         for (auto idx : swizzle->Indices()) {
             operands.push_back(idx);
         }
-        current_function_.push_inst(spv::Op::OpVectorShuffle, operands);
+        current_function_.PushInst(spv::Op::OpVectorShuffle, operands);
     }
 
     /// Emit a store instruction.
     /// @param store the store instruction to emit
     void EmitStore(core::ir::Store* store) {
-        current_function_.push_inst(spv::Op::OpStore,
-                                    {Value(store->To()), Value(store->From()),
-                                     U32Operand(MemoryAccessMaskForPointer(
-                                         store->To()->Type()->As<core::type::Pointer>()))});
+        current_function_.PushInst(spv::Op::OpStore,
+                                   {Value(store->To()), Value(store->From()),
+                                    U32Operand(MemoryAccessMaskForPointer(
+                                        store->To()->Type()->As<core::type::Pointer>()))});
     }
 
     /// Emit a store vector element instruction.
@@ -2148,10 +2255,10 @@ class Printer {
         auto* el_ty = store->Value()->Type();
         auto* el_ptr_ty = ir_.Types().ptr(vec_ptr_ty->AddressSpace(), el_ty, vec_ptr_ty->Access());
         auto el_ptr_id = module_.NextId();
-        current_function_.push_inst(
+        current_function_.PushInst(
             spv::Op::OpAccessChain,
             {Type(el_ptr_ty), el_ptr_id, Value(store->To()), Value(store->Index())});
-        current_function_.push_inst(
+        current_function_.PushInst(
             spv::Op::OpStore,
             {el_ptr_id, Value(store->Value()), U32Operand(MemoryAccessMaskForPointer(vec_ptr_ty))});
     }
@@ -2179,7 +2286,7 @@ class Printer {
             default:
                 TINT_UNIMPLEMENTED() << unary->Op();
         }
-        current_function_.push_inst(op, {Type(ty), id, Value(unary->Val())});
+        current_function_.PushInst(op, {Type(ty), id, Value(unary->Val())});
     }
 
     /// Emit a user call instruction.
@@ -2190,7 +2297,7 @@ class Printer {
         for (auto* arg : call->Args()) {
             operands.push_back(Value(arg));
         }
-        current_function_.push_inst(spv::Op::OpFunctionCall, operands);
+        current_function_.PushInst(spv::Op::OpFunctionCall, operands);
     }
 
     /// Emit IO attributes.
@@ -2245,6 +2352,20 @@ class Printer {
         }
     }
 
+    void EmitGlobalVar(core::ir::Var* var) {
+        auto* ptr = var->Result(0)->Type()->As<core::type::Pointer>();
+        if (ptr->AddressSpace() == core::AddressSpace::kWorkgroup) {
+            auto* ty = ptr->StoreType();
+            uint32_t align = ty->Align();
+            uint32_t size = ty->Size();
+
+            // This essentially matches std430 layout rules from GLSL, which are in
+            // turn specified as an upper bound for Vulkan layout sizing.
+            output_.workgroup_info.storage_size += tint::RoundUp(16u, tint::RoundUp(align, size));
+        }
+        EmitVar(var);
+    }
+
     /// Emit a var instruction.
     /// @param var the var instruction to emit
     void EmitVar(core::ir::Var* var) {
@@ -2257,10 +2378,10 @@ class Printer {
             case core::AddressSpace::kFunction: {
                 TINT_ASSERT(current_function_);
                 if (var->Initializer()) {
-                    current_function_.push_var({ty, id, U32Operand(SpvStorageClassFunction)});
-                    current_function_.push_inst(spv::Op::OpStore, {id, Value(var->Initializer())});
+                    current_function_.PushVar({ty, id, U32Operand(SpvStorageClassFunction)});
+                    current_function_.PushInst(spv::Op::OpStore, {id, Value(var->Initializer())});
                 } else {
-                    current_function_.push_var(
+                    current_function_.PushVar(
                         {ty, id, U32Operand(SpvStorageClassFunction), ConstantNull(store_ty)});
                 }
                 break;
@@ -2355,9 +2476,7 @@ class Printer {
         }
 
         // Set the name if present.
-        if (auto name = ir_.NameOf(var)) {
-            module_.PushDebug(spv::Op::OpName, {id, Operand(name.Name())});
-        }
+        PushName(id, var);
     }
 
     /// Emit a let instruction.
@@ -2406,7 +2525,7 @@ class Printer {
                 }
                 ops.push_back(branch.label);
             }
-            current_function_.push_inst(spv::Op::OpPhi, std::move(ops));
+            current_function_.PushInst(spv::Op::OpPhi, std::move(ops));
         }
     }
 
@@ -2486,11 +2605,30 @@ class Printer {
         }
         return SpvImageFormatUnknown;
     }
+
+    /// Set the debug name of an instruction.
+    void PushName(uint32_t id, core::ir::Instruction* inst) { PushName(id, ir_.NameOf(inst)); }
+    /// Set the debug name of a value.
+    void PushName(uint32_t id, core::ir::Value* value) { PushName(id, ir_.NameOf(value)); }
+    /// Set the debug name for a SPIR-V ID.
+    void PushName(uint32_t id, const Symbol& name) {
+        // Only set the name if it is valid and if we are not stripping user identifiers.
+        if (name && !options_.strip_all_names) {
+            module_.PushDebug(spv::Op::OpName, {id, Operand(name.Name())});
+        }
+    }
+    /// Set the debug member name for a SPIR-V ID.
+    void PushMemberName(uint32_t id, uint32_t index, const Symbol& name) {
+        // Only set the name if it is valid and if we are not stripping user identifiers.
+        if (name && !options_.strip_all_names) {
+            module_.PushDebug(spv::Op::OpMemberName, {id, index, Operand(name.Name())});
+        }
+    }
 };
 
 }  // namespace
 
-tint::Result<std::vector<uint32_t>> Print(core::ir::Module& module, const Options& options) {
+tint::Result<Output> Print(core::ir::Module& module, const Options& options) {
     return Printer{module, options}.Code();
 }
 

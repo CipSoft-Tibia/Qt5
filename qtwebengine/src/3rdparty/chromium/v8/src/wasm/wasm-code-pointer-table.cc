@@ -12,6 +12,7 @@ namespace v8::internal::wasm {
 void WasmCodePointerTable::Initialize() { Base::Initialize(); }
 
 void WasmCodePointerTable::TearDown() {
+  FreeNativeFunctionHandles();
   SweepSegments(0);
   DCHECK(freelist_head_.load().is_empty());
   Base::TearDown();
@@ -118,6 +119,33 @@ void WasmCodePointerTable::SweepSegments(size_t threshold) {
   FreelistHead new_freelist = VectorToFreelist(new_freelist_entries);
 
   LinkFreelist(new_freelist, last_element);
+}
+
+WasmCodePointer WasmCodePointerTable::GetOrCreateHandleForNativeFunction(
+    Address addr) {
+  base::SpinningMutexGuard guard(&native_function_map_mutex_);
+  auto it = native_function_map_.find(addr);
+  if (it != native_function_map_.end()) {
+    return it->second;
+  }
+
+  WasmCodePointer handle = AllocateAndInitializeEntry(addr, -1);
+  native_function_map_.insert({addr, handle});
+
+  return handle;
+}
+
+bool WasmCodePointerTable::EntrypointEqualTo(WasmCodePointer index,
+                                             Address address) {
+  return at(index.value()).GetEntrypointWithoutSignatureCheck() == address;
+}
+
+void WasmCodePointerTable::FreeNativeFunctionHandles() {
+  base::SpinningMutexGuard guard(&native_function_map_mutex_);
+  for (auto const& [address, handle] : native_function_map_) {
+    FreeEntry(handle);
+  }
+  native_function_map_.clear();
 }
 
 }  // namespace v8::internal::wasm

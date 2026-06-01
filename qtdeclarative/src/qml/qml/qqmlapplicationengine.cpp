@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Research In Motion.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include <QtQml/qqmlfile.h>
 #include <QtCore/QCoreApplication>
@@ -10,6 +11,8 @@
 #include <QtQml/private/qqmlcomponent_p.h>
 #include <QtQml/private/qqmldirdata_p.h>
 #include <QtQml/private/qqmlfileselector_p.h>
+
+using namespace Qt::Literals::StringLiterals;
 
 QT_BEGIN_NAMESPACE
 
@@ -85,18 +88,19 @@ void QQmlApplicationEnginePrivate::_q_loadTranslations()
 #endif
 }
 
+static QString translationsDirectoryFromLocalUrl(const QUrl &url)
+{
+    QFileInfo fi(QQmlFile::urlToLocalFileOrQrc(url));
+    return fi.path() + "/i18n"_L1;
+}
+
 void QQmlApplicationEnginePrivate::startLoad(const QUrl &url, const QByteArray &data, bool dataFlag)
 {
     Q_Q(QQmlApplicationEngine);
 
     ensureInitialized();
 
-    if (url.scheme() == QLatin1String("file") || url.scheme() == QLatin1String("qrc")) {
-        QFileInfo fi(QQmlFile::urlToLocalFileOrQrc(url));
-        translationsDirectory = fi.path() + QLatin1String("/i18n");
-    } else {
-        translationsDirectory.clear();
-    }
+    updateTranslationDirectory(url);
 
     _q_loadTranslations(); //Translations must be loaded before the QML file is
     QQmlComponent *c = new QQmlComponent(q, q);
@@ -120,17 +124,14 @@ void QQmlApplicationEnginePrivate::startLoad(QAnyStringView uri, QAnyStringView 
     auto *componentPriv = QQmlComponentPrivate::get(c);
     componentPriv->prepareLoadFromModule(uri, typeName, QQmlTypeLoader::Synchronous);
 
-    const QQmlType type = componentPriv->loadHelper->type();
+    const QQmlType type = componentPriv->loadHelperType();
 
     if (type.sourceUrl().isValid()) {
         const auto qmlDirData = typeLoader.getQmldir(type.sourceUrl());
         const QUrl url = qmlDirData->finalUrl();
-        if (url.scheme() == QLatin1String("file") || url.scheme() == QLatin1String("qrc")) {
-            QFileInfo fi(QQmlFile::urlToLocalFileOrQrc(url));
-            translationsDirectory = fi.path() + QLatin1String("/i18n");
-        } else {
-            translationsDirectory.clear();
-        }
+        // A QRC URL coming from a qmldir cannot contain a relative path
+        Q_ASSERT(url.scheme() != "qrc"_L1 || url.path().startsWith('/'_L1));
+        updateTranslationDirectory(url);
     }
 
     /* Translations must be loaded before the QML file. They require translationDirectory to
@@ -188,6 +189,18 @@ void QQmlApplicationEnginePrivate::ensureLoadingFinishes(QQmlComponent *c)
     QObject::connect(c, &QQmlComponent::statusChanged, q, [this, c] { this->finishLoad(c); });
 }
 
+void QQmlApplicationEnginePrivate::updateTranslationDirectory(const QUrl &url)
+{
+    const QString scheme = url.scheme();
+    if (scheme == "file"_L1) {
+        translationsDirectory = translationsDirectoryFromLocalUrl(url);
+    } else if (scheme == "qrc"_L1) {
+        translationsDirectory = translationsDirectoryFromLocalUrl(url);
+    } else {
+        translationsDirectory.clear();
+    }
+}
+
 /*!
   \class QQmlApplicationEngine
   \since 5.1
@@ -237,7 +250,7 @@ void QQmlApplicationEnginePrivate::ensureLoadingFinishes(QQmlComponent *c)
         needs to include the resource prefix of the main file's QML module
         (\e{/qt/qml} by default) and the module URI. For example, to provide
         translation files for a module called "Translated":
-        \snippet qml-i18n/CMakeLists.txt 0
+        \snippet cmake/qt_add_translations.cmake 0
 */
 
 /*!

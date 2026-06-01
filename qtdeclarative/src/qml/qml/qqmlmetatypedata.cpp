@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlmetatypedata_p.h"
 
@@ -241,7 +242,7 @@ QQmlPropertyCache::ConstPtr QQmlMetaTypeData::propertyCache(
     return raw;
 }
 
-static QQmlPropertyCache::ConstPtr propertyCacheForPotentialInlineComponentType(
+QQmlPropertyCache::ConstPtr QQmlMetaTypeData::propertyCacheForPotentialInlineComponentType(
         QMetaType t, const QQmlMetaTypeData::CompositeTypes::const_iterator &iter) {
     if (t != (*iter)->metaType()) {
         // this is an inline component, and what we have in the iterator is currently the parent compilation unit
@@ -254,6 +255,7 @@ static QQmlPropertyCache::ConstPtr propertyCacheForPotentialInlineComponentType(
 
 QQmlPropertyCache::ConstPtr QQmlMetaTypeData::findPropertyCacheInCompositeTypes(QMetaType t) const
 {
+    // Last inserted
     auto iter = compositeTypes.constFind(t.iface());
     return (iter == compositeTypes.constEnd())
             ? QQmlPropertyCache::ConstPtr()

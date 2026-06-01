@@ -79,7 +79,12 @@ QPulseAudioSinkStream::QPulseAudioSinkStream(QAudioDevice device, const QAudioFo
     }
 }
 
-QPulseAudioSinkStream::~QPulseAudioSinkStream() = default;
+QPulseAudioSinkStream::~QPulseAudioSinkStream()
+{
+    QPulseAudioContextManager *pulseEngine = QPulseAudioContextManager::instance();
+    std::lock_guard engineLock{ *pulseEngine };
+    m_stream = {};
+}
 
 bool QPulseAudioSinkStream::start(QIODevice *device)
 {
@@ -121,7 +126,7 @@ void QPulseAudioSinkStream::stop(ShutdownPolicy policy)
 
     uninstallCallbacks();
     // Note: we need to cork to ensure that the stream is stopped immediately
-    pa_stream_cork(m_stream.get(), 1, nullptr, nullptr);
+    std::ignore = streamCork(m_stream, true);
 
     if (m_audioCallback) {
         switch (policy) {
@@ -167,7 +172,7 @@ void QPulseAudioSinkStream::suspend()
     QPulseAudioContextManager *pulseEngine = QPulseAudioContextManager::instance();
     std::lock_guard engineLock{ *pulseEngine };
 
-    pa_stream_cork(m_stream.get(), 1, nullptr, nullptr);
+    std::ignore = streamCork(m_stream, true);
 }
 
 void QPulseAudioSinkStream::resume()
@@ -175,7 +180,7 @@ void QPulseAudioSinkStream::resume()
     QPulseAudioContextManager *pulseEngine = QPulseAudioContextManager::instance();
     std::lock_guard engineLock{ *pulseEngine };
 
-    pa_stream_cork(m_stream.get(), 0, nullptr, nullptr);
+    std::ignore = streamCork(m_stream, false);
 }
 
 bool QPulseAudioSinkStream::open() const
@@ -335,7 +340,7 @@ void QPulseAudioSinkStream::writeCallbackAudioCallback(size_t requestedBytes)
         });
     }
     QSpan<std::byte> hostBuffer{ reinterpret_cast<std::byte *>(dest), qsizetype(nbytes) };
-    runAudioCallback(*m_audioCallback, hostBuffer, m_format);
+    runAudioCallback(*m_audioCallback, hostBuffer, m_format, volume());
 
     status = pa_stream_write(m_stream.get(), hostBuffer.data(), nbytes,
                              /*free_cb= */ nullptr, /*offset=*/0, PA_SEEK_RELATIVE);

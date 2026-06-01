@@ -44,6 +44,8 @@ private slots:
     void freeze();
     void cachedSignals();
     void signalIndices();
+
+    void destroyAndToStringMethods();
 };
 
 class LazyPropertyMap : public QQmlPropertyMap, public QQmlParserStatus
@@ -673,6 +675,32 @@ void tst_QQmlPropertyMap::signalIndices()
     QSignalSpy spy(&map, method);
     map.insert(QLatin1String("key1"), 200);
     QCOMPARE(spy.size(), 1);
+}
+
+class Utils : public QObject {
+    Q_OBJECT
+public:
+    explicit Utils(QObject *parent = nullptr) : QObject(parent) { }
+
+public slots:
+    QQmlPropertyMap *createObject(QObject *parent = nullptr)
+    {
+        return new QQmlPropertyMap(parent);
+    }
+};
+
+void tst_QQmlPropertyMap::destroyAndToStringMethods()
+{
+    Utils utils;
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty("Utils", &utils);
+    QQmlComponent component(&engine, testFileUrl("destroyAndToStringMethods.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> o(component.create());
+    QVERIFY(!o.isNull());
+
+    const QRegularExpression objectNameRE("QQmlPropertyMap\\(0x[0-9a-f]+\\) 114514");
+    QVERIFY(objectNameRE.match(o->objectName()).hasMatch());
 }
 
 QTEST_MAIN(tst_QQmlPropertyMap)

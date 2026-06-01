@@ -833,7 +833,7 @@ QByteArray qUncompress(const uchar* data, qsizetype nbytes)
     \reentrant
 
     \compares strong
-    \compareswith strong {const char *} QByteArrayView
+    \compareswith strong {const char *}
     \endcompareswith
     \compareswith strong QChar char16_t QString QStringView QLatin1StringView \
                   QUtf8StringView
@@ -2023,6 +2023,51 @@ void QByteArray::expand(qsizetype i)
 }
 
 /*!
+    \since 6.10
+
+    If this byte array's data isn't null-terminated, this method will make
+    a deep-copy of the data and make it null-terminated.
+
+    A QByteArray is null-terminated by default, however in some cases
+    (e.g. when using fromRawData()), the data doesn't necessarily end with
+    a \c {\0} character, which could be a problem when calling methods that
+    expect a null-terminated string (for example, C API).
+
+    \sa nullTerminated(), fromRawData(), setRawData()
+*/
+QByteArray &QByteArray::nullTerminate()
+{
+    // Ensure \0-termination for fromRawData() byte arrays
+    if (!d.isMutable())
+        *this = QByteArray{constData(), size()};
+    return *this;
+}
+
+/*!
+    \fn QByteArray QByteArray::nullTerminated() const &
+    \fn QByteArray QByteArray::nullTerminated() &&
+    \since 6.10
+
+    Returns a copy of this byte array that is always null-terminated.
+    See nullTerminate().
+
+    \sa nullTerminate(), fromRawData(), setRawData()
+*/
+QByteArray QByteArray::nullTerminated() const &
+{
+    // Ensure \0-termination for fromRawData() byte arrays
+    if (!d.isMutable())
+        return QByteArray{constData(), size()};
+    return *this;
+}
+
+QByteArray QByteArray::nullTerminated() &&
+{
+    nullTerminate();
+    return std::move(*this);
+}
+
+/*!
     \fn QByteArray &QByteArray::prepend(QByteArrayView ba)
 
     Prepends the byte array view \a ba to this byte array and returns a
@@ -2461,22 +2506,62 @@ QByteArray &QByteArray::remove(qsizetype pos, qsizetype len)
 
 QByteArray &QByteArray::replace(qsizetype pos, qsizetype len, QByteArrayView after)
 {
-    if (QtPrivate::q_points_into_range(after.data(), d)) {
-        QVarLengthArray copy(after.data(), after.data() + after.size());
-        return replace(pos, len, QByteArrayView{copy});
-    }
-    if (len == after.size() && (pos + len <= size())) {
-        // same size: in-place replacement possible
-        if (len > 0) {
-            detach();
-            memcpy(d.data() + pos, after.data(), len*sizeof(char));
-        }
+    if (size_t(pos) > size_t(this->size()))
         return *this;
-    } else {
-        // ### optimize me
-        remove(pos, len);
+    if (len > this->size() - pos)
+        len = this->size() - pos;
+    // Historic behavior, negative len was the equivalent of:
+    // remove(pos, len); // does nothing
+    // insert(pos, after);
+    if (len <= 0)
         return insert(pos, after);
+
+    if (after.isEmpty())
+        return remove(pos, len);
+
+    using A = QStringAlgorithms<QByteArray>;
+    const qsizetype newlen = A::newSize(*this, len, after, {pos});
+    if (data_ptr().needsDetach() || A::needsReallocate(*this, newlen)) {
+        A::replace_into_copy(*this, len, after, {pos}, newlen);
+        return *this;
     }
+
+    // No detaching or reallocation -> change in-place
+    char *const begin = data_ptr().data(); // data(), without the detach() check
+    char *const before = begin + pos;
+    const char *beforeEnd = before + len;
+    if (len >= after.size()) {
+        memmove(before , after.cbegin(), after.size()); // sizeof(char) == 1
+
+        if (len > after.size()) {
+            memmove(before + after.size(), beforeEnd, d.size - (beforeEnd - begin));
+            A::setSize(*this, newlen);
+        }
+    } else { // len < after.size()
+        char *oldEnd = begin + d.size;
+        const qsizetype adjust = newlen - d.size;
+        A::setSize(*this, newlen);
+
+        QByteArrayView tail{beforeEnd, oldEnd};
+        QByteArrayView prefix = after;
+        QByteArrayView suffix;
+        if (QtPrivate::q_points_into_range(after.cend() - 1, tail)) {
+            if (QtPrivate::q_points_into_range(after.cbegin(), tail)) {
+                // `after` fully contained inside `tail`
+                prefix = {};
+                suffix = QByteArrayView{after.cbegin(), after.cend()};
+            } else { // after.cbegin() is in [begin, beforeEnd)
+                prefix = QByteArrayView{after.cbegin(), beforeEnd};
+                suffix = QByteArrayView{beforeEnd, after.cend()};
+            }
+        }
+        memmove(before + after.size(), tail.cbegin(), tail.size());
+        if (!prefix.isEmpty())
+            memmove(before, prefix.cbegin(), prefix.size()); // `prefix` may overlap `before`
+        if (!suffix.isEmpty()) // adjust suffix after calling memcpy() above
+            memcpy(before + prefix.size(), suffix.cbegin() + adjust, suffix.size()); // no overlap
+    }
+    return *this;
 }
 
 /*! \fn QByteArray &QByteArray::replace(qsizetype pos, qsizetype len, const char *after, qsizetype alen)
@@ -2517,107 +2602,42 @@ QByteArray &QByteArray::replace(QByteArrayView before, QByteArrayView after)
     const char *a = after.data();
     qsizetype asize = after.size();
 
+    if (isEmpty()) {
+        if (bsize)
+            return *this;
+    } else {
+        if (b == a && bsize == asize)
+            return *this;
+    }
+    if (asize == 0 && bsize == 0)
+        return *this;
+
     if (bsize == 1 && asize == 1)
         return replace(*b, *a); // use the fast char-char algorithm
 
-    if (isNull() || (b == a && bsize == asize))
-        return *this;
-
-    // protect against before or after being part of this
-    std::string pinnedNeedle, pinnedReplacement;
+    // protect against `after` being part of this
+    std::string pinnedReplacement;
     if (QtPrivate::q_points_into_range(a, d)) {
         pinnedReplacement.assign(a, a + asize);
-        a = pinnedReplacement.data();
-    }
-    if (QtPrivate::q_points_into_range(b, d)) {
-        pinnedNeedle.assign(b, b + bsize);
-        b = pinnedNeedle.data();
+        after = pinnedReplacement;
     }
 
     QByteArrayMatcher matcher(b, bsize);
+    // - create a table of replacement positions
+    // - figure out the needed size; modify in place; or allocate a new byte array
+    //   and copy characters to it as needed
+    // - do the replacements
+    QVarLengthArray<qsizetype> indices;
     qsizetype index = 0;
-    qsizetype len = size();
-    char *d = data(); // detaches
-
-    if (bsize == asize) {
-        if (bsize) {
-            while ((index = matcher.indexIn(*this, index)) != -1) {
-                memcpy(d + index, a, asize);
-                index += bsize;
-            }
-        }
-    } else if (asize < bsize) {
-        size_t to = 0;
-        size_t movestart = 0;
-        size_t num = 0;
-        while ((index = matcher.indexIn(*this, index)) != -1) {
-            if (num) {
-                qsizetype msize = index - movestart;
-                if (msize > 0) {
-                    memmove(d + to, d + movestart, msize);
-                    to += msize;
-                }
-            } else {
-                to = index;
-            }
-            if (asize > 0) {
-                memcpy(d + to, a, asize);
-                to += asize;
-            }
-            index += bsize;
-            movestart = index;
-            num++;
-        }
-        if (num) {
-            qsizetype msize = len - movestart;
-            if (msize > 0)
-                memmove(d + to, d + movestart, msize);
-            resize(len - num*(bsize-asize));
-        }
-    } else {
-        // the most complex case. We don't want to lose performance by doing repeated
-        // copies and reallocs of the data.
-        while (index != -1) {
-            size_t indices[4096];
-            size_t pos = 0;
-            while(pos < 4095) {
-                index = matcher.indexIn(*this, index);
-                if (index == -1)
-                    break;
-                indices[pos++] = index;
-                index += bsize;
-                // avoid infinite loop
-                if (!bsize)
-                    index++;
-            }
-            if (!pos)
-                break;
-
-            // we have a table of replacement positions, use them for fast replacing
-            qsizetype adjust = pos*(asize-bsize);
-            // index has to be adjusted in case we get back into the loop above.
-            if (index != -1)
-                index += adjust;
-            qsizetype newlen = len + adjust;
-            qsizetype moveend = len;
-            if (newlen > len) {
-                resize(newlen);
-                len = newlen;
-            }
-            d = this->d.data(); // data(), without the detach() check
-
-            while(pos) {
-                pos--;
-                qsizetype movestart = indices[pos] + bsize;
-                qsizetype insertstart = indices[pos] + pos*(asize-bsize);
-                qsizetype moveto = insertstart + asize;
-                memmove(d + moveto, d + movestart, (moveend - movestart));
-                if (asize)
-                    memcpy(d + insertstart, a, asize);
-                moveend = movestart - bsize;
-            }
-        }
+    while ((index = matcher.indexIn(*this, index)) != -1) {
+        indices.push_back(index);
+        if (bsize > 0)
+            index += bsize; // Step over before
+        else
+            ++index; // avoid infinite loop
     }
+
+    QStringAlgorithms<QByteArray>::replace_helper(*this, bsize, after, indices);
     return *this;
 }
 
@@ -4443,7 +4463,7 @@ QByteArray QByteArray::number(double n, char format, int precision)
     byte array to a function accepting a \c{const char *} expected to be
     '\\0'-terminated will fail.
 
-    \sa setRawData(), data(), constData()
+    \sa setRawData(), data(), constData(), nullTerminate(), nullTerminated()
 */
 
 /*!
@@ -4458,7 +4478,7 @@ QByteArray QByteArray::number(double n, char format, int precision)
     This function can be used instead of fromRawData() to re-use
     existing QByteArray objects to save memory re-allocations.
 
-    \sa fromRawData(), data(), constData()
+    \sa fromRawData(), data(), constData(), nullTerminate(), nullTerminated()
 */
 QByteArray &QByteArray::setRawData(const char *data, qsizetype size)
 {
@@ -4817,6 +4837,15 @@ std::string QByteArray::toStdString() const
 }
 
 /*!
+    \fn QByteArray::operator std::string_view() const noexcept
+    \since 6.10
+
+    Converts this QByteArray object to a \c{std::string_view} object.
+    The returned string view will span over the entirety of the byte
+    array.
+*/
+
+/*!
     \since 4.4
 
     Returns a URI/URL-style percent-encoded copy of this byte array. The
@@ -5081,7 +5110,7 @@ emscripten::val QByteArray::toEcmaUint8Array()
 
     The following code creates a QByteArray:
     \code
-    using namespace Qt::Literals::StringLiterals;
+    using namespace Qt::StringLiterals;
 
     auto str = "hello"_ba;
     \endcode

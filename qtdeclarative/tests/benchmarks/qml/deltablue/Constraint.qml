@@ -82,7 +82,7 @@ BaseConstraint {
     function chooseMethod(mark: int) {
         let ihn = myInput;
         let out = myOutput;
-        let outStrength = out.walkStrength;
+        let outStrength = +out.walkStrength;
 
         if (!ihn) {
             satisfaction = (out.mark !== mark && Strength.stronger(strength, outStrength))
@@ -91,7 +91,7 @@ BaseConstraint {
             return;
         }
 
-        let ihnStrength = ihn.walkStrength;
+        let ihnStrength = +ihn.walkStrength;
 
         if (Strength.weaker(ihnStrength, outStrength)) {
             satisfaction = Strength.stronger(strength, ihnStrength)

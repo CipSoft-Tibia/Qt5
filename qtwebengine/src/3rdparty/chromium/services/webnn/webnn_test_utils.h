@@ -8,9 +8,14 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ref.h"
+#include "base/memory/stack_allocated.h"
+#include "mojo/public/cpp/bindings/associated_remote.h"
 #include "services/webnn/public/cpp/operand_descriptor.h"
 #include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
 #include "services/webnn/public/mojom/webnn_graph.mojom.h"
+#include "services/webnn/public/mojom/webnn_graph_builder.mojom.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
 
 namespace webnn {
 
@@ -18,9 +23,15 @@ namespace webnn {
 // defined by mojom which describes an entire WebNN graph information. It
 // provides methods to create all of the operands and operators for the
 // GraphInfoPtr.
+//
+// The instances of the class may not be allocated on the heap, but as a member
+// variable of a non-stack-allocated class.
 class GraphInfoBuilder final {
+  STACK_ALLOCATED();
+
  public:
-  GraphInfoBuilder();
+  explicit GraphInfoBuilder(
+      mojo::AssociatedRemote<mojom::WebNNGraphBuilder>& graph_builder_remote);
   GraphInfoBuilder(const GraphInfoBuilder&) = delete;
   GraphInfoBuilder& operator=(const GraphInfoBuilder&) = delete;
   ~GraphInfoBuilder();
@@ -32,9 +43,13 @@ class GraphInfoBuilder final {
                       const std::vector<uint32_t>& dimensions,
                       OperandDataType type);
 
+  // Optionally provide `handle` to identify this constant operand; otherwise a
+  // handle will be generated automatically.
   uint64_t BuildConstant(const std::vector<uint32_t>& dimensions,
                          OperandDataType type,
-                         base::span<const uint8_t> values);
+                         base::span<const uint8_t> values,
+                         blink::WebNNPendingConstantToken handle =
+                             blink::WebNNPendingConstantToken());
 
   void AddOutput(const std::string& name, uint64_t operand_id);
 
@@ -162,6 +177,10 @@ class GraphInfoBuilder final {
                            uint64_t indices_operand_id,
                            uint64_t output_operand_id,
                            uint32_t axis);
+
+  void BuildGatherND(uint64_t input_operand_id,
+                     uint64_t indices_operand_id,
+                     uint64_t output_operand_id);
 
   void BuildGelu(uint64_t input_operand_id, uint64_t output_operand_id);
 
@@ -491,6 +510,16 @@ class GraphInfoBuilder final {
 
   void BuildReshape(uint64_t input_operand_id, uint64_t output_operand_id);
 
+  void BuildReverse(uint64_t input_operand_id,
+                    uint64_t output_operand_id,
+                    std::vector<uint32_t> axes);
+
+  void BuildScatterElements(uint64_t input_operand_id,
+                            uint64_t indices_operand_id,
+                            uint64_t updates_operand_id,
+                            uint64_t output_operand_id,
+                            uint32_t axis);
+
   void BuildScatterND(uint64_t input_operand_id,
                       uint64_t indices_operand_id,
                       uint64_t updates_operand_id,
@@ -532,8 +561,9 @@ class GraphInfoBuilder final {
 
   void BuildSlice(uint64_t input_operand_id,
                   uint64_t output_operand_id,
-                  std::vector<uint32_t> starts,
-                  std::vector<uint32_t> sizes);
+                  base::span<const uint32_t> starts,
+                  base::span<const uint32_t> sizes,
+                  base::span<const uint32_t> strides);
 
   const mojom::GraphInfo& GetGraphInfo() const { return *graph_info_; }
 
@@ -543,6 +573,9 @@ class GraphInfoBuilder final {
 
   mojom::GraphInfoPtr TakeGraphInfo();
 
+  [[nodiscard]] bool IsValidGraphForTesting(
+      const ContextProperties& context_properties);
+
  private:
   uint64_t BuildOperand(
       const std::vector<uint32_t>& dimensions,
@@ -551,7 +584,13 @@ class GraphInfoBuilder final {
 
   mojom::GraphInfoPtr graph_info_;
   uint64_t operand_id_ = 1;
+
+  base::raw_ref<mojo::AssociatedRemote<mojom::WebNNGraphBuilder>>
+      graph_builder_remote_;
 };
+
+mojom::GraphInfoPtr CloneGraphInfoForTesting(
+    const mojom::GraphInfo& graph_info);
 
 // A default set of WebNNContext properties for testing purposes.
 ContextProperties GetContextPropertiesForTesting();

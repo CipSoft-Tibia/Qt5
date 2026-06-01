@@ -1,14 +1,16 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicksidebar_p.h"
 #include "qquicksidebar_p_p.h"
-#include "qquickfiledialogimpl_p_p.h"
 #include <QtQml/qqmllist.h>
 #if QT_CONFIG(settings)
 #include <QtCore/qsettings.h>
 #endif
-
+#if QT_CONFIG(accessibility)
+#include <QtQuick/private/qquickaccessibleattached_p.h>
+#endif
 #include <QtQuickTemplates2/private/qquickaction_p.h>
 #include <QtQuickTemplates2/private/qquickcontextmenu_p.h>
 
@@ -231,7 +233,7 @@ void QQuickSideBarPrivate::repopulate()
     if (repopulating || !buttonDelegate || !separatorDelegate || !addFavoriteDelegate || !q->contentItem())
         return;
 
-    QBoolBlocker repopulateGuard(repopulating);
+    QScopedValueRollback repopulateGuard(repopulating, true);
 
     auto updateIconSourceAndSize = [this](QQuickAbstractButton *button, const QUrl &iconUrl) {
         // we need to preserve the default binding on icon.color, so
@@ -257,6 +259,10 @@ void QQuickSideBarPrivate::repopulate()
                 QObjectPrivate::connect(button, &QQuickAbstractButton::clicked, this,
                                         &QQuickSideBarPrivate::buttonClicked);
                 updateIconSourceAndSize(button, iconUrl);
+#if QT_CONFIG(accessibility)
+                if (QQuickAccessibleAttached *accessibleAttached = QQuickControlPrivate::accessibleAttached(button))
+                    accessibleAttached->setName(displayName);
+#endif
             }
             insertItem(q->count(), buttonItem);
         }
@@ -275,21 +281,33 @@ void QQuickSideBarPrivate::repopulate()
     for (auto &folder : folders)
         createButtonDelegate(insertIndex++, QStandardPaths::displayName(folder), folderIconSource(folder));
 
-    if (showSeparator)
-        if (QQuickItem *separatorItem = createDelegateItem(separatorDelegate, {}))
-            insertItem(insertIndex++, separatorItem);
 
-    if (showAddFavoriteDelegate()) {
-        // the variant needs to be QString, not a QLatin1StringView
-        const QString labelText = QCoreApplication::translate("FileDialog", "Add Favorite");
-        QVariantMap initialProperties = {
-                                          { "labelText"_L1, QVariant::fromValue(labelText) },
-                                          { "dragHovering"_L1, QVariant::fromValue(addFavoriteDelegateHovered()) },
-                                        };
-        if (auto *addFavoriteDelegateItem = createDelegateItem(addFavoriteDelegate, initialProperties)) {
+    if (QQuickItem *separatorItem = createDelegateItem(separatorDelegate, {{"visible"_L1, false}})) {
+        separatorImplicitSize = separatorItem->implicitHeight();
+        if (showSeparator) {
+            separatorItem->setVisible(true);
+            insertItem(insertIndex++, separatorItem);
+        } else {
+            separatorItem->deleteLater();
+        }
+    }
+
+    // The variant needs to be QString, not a QLatin1StringView
+    const QString labelText = QCoreApplication::translate("FileDialog", "Add Favorite");
+    const QVariantMap initialProperties = {
+                                      { "labelText"_L1, QVariant::fromValue(labelText) },
+                                      { "dragHovering"_L1, QVariant::fromValue(addFavoriteDelegateHovered()) },
+                                      { "visible"_L1, false}
+                                      };
+    if (auto *addFavoriteDelegateItem = createDelegateItem(addFavoriteDelegate, initialProperties)) {
+        addFavoriteButtonImplicitSize = addFavoriteDelegateItem->implicitHeight();
+        if (showAddFavoriteDelegate()) {
+            addFavoriteDelegateItem->setVisible(true);
             if (QQuickAbstractButton *button = qobject_cast<QQuickAbstractButton *>(addFavoriteDelegateItem))
                 updateIconSourceAndSize(button, addFavoriteIconUrl());
             insertItem(insertIndex++, addFavoriteDelegateItem);
+        } else {
+            addFavoriteDelegateItem->deleteLater();
         }
     }
 
@@ -525,4 +543,75 @@ void QQuickSideBarPrivate::handleRemoveAction()
     if (!urlToBeRemoved.isEmpty())
         removeFavorite(urlToBeRemoved);
     urlToBeRemoved.clear();
+}
+
+qreal QQuickSideBarPrivate::getContentWidth() const
+{
+    Q_Q(const QQuickSideBar);
+    if (!contentModel)
+        return 0;
+
+    const int count = contentModel->count();
+    qreal maxWidth = 0;
+    for (int i = 0; i < count; ++i) {
+        QQuickItem *item = q->itemAt(i);
+        if (item)
+            maxWidth = qMax(maxWidth, item->implicitWidth());
+    }
+    return maxWidth;
+}
+
+qreal QQuickSideBarPrivate::getContentHeight() const
+{
+    Q_Q(const QQuickSideBar);
+    if (!contentModel)
+        return 0;
+    // All StandardPaths buttons + spacing + separator + AddFavoriteButton
+    const int modelCount = contentModel->count();
+    const int folderPathCount = q->effectiveFolderPaths().count();
+    qreal spacing = 0;
+    if (contentItem) {
+         QQuickListView *listView = contentItem->findChild<QQuickListView*>();
+        if (listView)
+            spacing = listView->spacing();
+    }
+    qreal totalHeight = 0;
+    int i = 0;
+    for (; i < qMin(modelCount, folderPathCount); ++i) {
+        QQuickItem *item = q->itemAt(i);
+        if (item) {
+            totalHeight += item->implicitHeight();
+        }
+    }
+    // Add spacing
+    if (i)
+        totalHeight += (i - 1) * spacing;
+
+    if (!qFuzzyIsNull(separatorImplicitSize))
+        totalHeight += separatorImplicitSize + spacing;
+    if (!qFuzzyIsNull(addFavoriteButtonImplicitSize))
+        totalHeight += addFavoriteButtonImplicitSize + spacing;
+
+    return totalHeight;
+}
+
+void QQuickSideBarPrivate::itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &diff)
+{
+    QQuickContainerPrivate::itemGeometryChanged(item, change, diff);
+    if (change.sizeChange())
+        updateImplicitContentSize();
+}
+
+void QQuickSideBarPrivate::itemImplicitWidthChanged(QQuickItem *item)
+{
+    QQuickContainerPrivate::itemImplicitWidthChanged(item);
+    if (item != contentItem)
+        updateImplicitContentWidth();
+}
+
+void QQuickSideBarPrivate::itemImplicitHeightChanged(QQuickItem *item)
+{
+    QQuickContainerPrivate::itemImplicitHeightChanged(item);
+    if (item != contentItem)
+        updateImplicitContentHeight();
 }

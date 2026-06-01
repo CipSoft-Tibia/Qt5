@@ -31,7 +31,6 @@ class PLATFORM_EXPORT CanvasResourceHost : public cc::TextureLayerClient {
 
   // cc::TextureLayerClient implementation.
   bool PrepareTransferableResource(
-      cc::SharedBitmapIdRegistrar* bitmap_registrar,
       viz::TransferableResource* out_resource,
       viz::ReleaseCallback* out_release_callback) override;
 
@@ -45,15 +44,21 @@ class PLATFORM_EXPORT CanvasResourceHost : public cc::TextureLayerClient {
       RasterModeHint hint) = 0;
   virtual CanvasResourceProvider* GetOrCreateCanvasResourceProviderImpl(
       RasterModeHint hint) = 0;
+  CanvasResourceProvider*
+  GetOrCreateResourceProviderWithCurrentRasterModeHint() {
+    return GetOrCreateCanvasResourceProvider(preferred_2d_raster_mode());
+  }
+
+  // Initialize the indicated cc::Layer with the HTMLCanvasElement's CSS
+  // properties. This is a no-op if `this` is not an HTMLCanvasElement.
+  virtual void InitializeLayerWithCSSProperties(cc::Layer* layer) {}
+
   bool IsComposited() const;
   bool IsResourceValid();
+  virtual bool HasPlacedElements() const { return false; }
   gfx::Size Size() const { return size_; }
   virtual void SetSize(gfx::Size size) { size_ = size; }
 
-  virtual void SetFilterQuality(cc::PaintFlags::FilterQuality filter_quality);
-  cc::PaintFlags::FilterQuality FilterQuality() const {
-    return filter_quality_;
-  }
   void SetHdrMetadata(const gfx::HDRMetadata& hdr_metadata);
   const gfx::HDRMetadata& GetHDRMetadata() const { return hdr_metadata_; }
 
@@ -71,9 +76,9 @@ class PLATFORM_EXPORT CanvasResourceHost : public cc::TextureLayerClient {
   virtual void DiscardResourceProvider();
 
   void SetIsDisplayed(bool);
-  bool IsDisplayed() { return is_displayed_; }
+  bool IsDisplayed() const { return is_displayed_; }
 
-  virtual bool IsPageVisible() = 0;
+  virtual bool IsPageVisible() const = 0;
 
   virtual bool IsPrinting() const { return false; }
   virtual bool PrintedInCurrentTask() const = 0;
@@ -117,6 +122,9 @@ class PLATFORM_EXPORT CanvasResourceHost : public cc::TextureLayerClient {
     shared_bitmap_gpu_channel_lost_ = value;
   }
 
+  virtual void SetTransferToGPUTextureWasInvoked() {}
+  virtual bool TransferToGPUTextureWasInvoked() { return false; }
+
  private:
   bool is_displayed_ = false;
   bool context_lost_ = false;
@@ -124,12 +132,13 @@ class PLATFORM_EXPORT CanvasResourceHost : public cc::TextureLayerClient {
   unsigned frames_since_last_commit_ = 0;
   std::unique_ptr<SharedContextRateLimiter> rate_limiter_;
   std::unique_ptr<CanvasResourceProvider> resource_provider_;
-  cc::PaintFlags::FilterQuality filter_quality_ =
-      cc::PaintFlags::FilterQuality::kLow;
   gfx::HDRMetadata hdr_metadata_;
   RasterModeHint preferred_2d_raster_mode_ = RasterModeHint::kPreferCPU;
   gfx::Size size_;
   bool always_enable_raster_timers_for_testing_ = false;
+  // TODO(380896841): Extremely confusingly, this cc::TextureLayer, which in
+  // this superclass of CanvasRenderingContextHost, is only used by 2D
+  // canvases.
   scoped_refptr<cc::TextureLayer> cc_layer_;
   OpacityMode opacity_mode_ = kNonOpaque;
 };

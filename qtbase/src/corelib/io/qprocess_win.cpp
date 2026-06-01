@@ -514,6 +514,12 @@ bool QProcessPrivate::callCreateProcess(QProcess::CreateProcessArguments *cpargs
                                  cpargs->inheritHandles, cpargs->flags, cpargs->environment,
                                  cpargs->currentDirectory, cpargs->startupInfo,
                                  cpargs->processInformation);
+    if (!success) {
+        // don't CloseHandle here (we'll do that in cleanup()) so GetLastError()
+        // remains unmodified
+        return false;
+    }
+
     if (stdinChannel.pipe[0] != INVALID_Q_PIPE) {
         CloseHandle(stdinChannel.pipe[0]);
         stdinChannel.pipe[0] = INVALID_Q_PIPE;
@@ -577,9 +583,10 @@ void QProcessPrivate::startProcess()
 
     if (!callCreateProcess(&cpargs)) {
         // Capture the error string before we do CloseHandle below
-        QString errorString = QProcess::tr("Process failed to start: %1").arg(qt_error_string());
+        QString errorString = qt_error_string();
         cleanup();
-        setErrorAndEmit(QProcess::FailedToStart, errorString);
+        setErrorAndEmit(QProcess::FailedToStart,
+                        QProcess::tr("Process failed to start: %1").arg(errorString));
         return;
     }
 
@@ -947,7 +954,9 @@ bool QProcessPrivate::startDetached(qint64 *pid)
     if (!success) {
         if (pid)
             *pid = -1;
-        setErrorAndEmit(QProcess::FailedToStart);
+        QString errorString = qt_error_string();
+        setErrorAndEmit(QProcess::FailedToStart,
+                        QProcess::tr("Process failed to start: %1").arg(errorString));
     }
 
     closeChannels();

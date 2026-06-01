@@ -11,6 +11,7 @@ qt_internal_add_test(tst_certificateerror
         Qt::WebEngineCore
         Test::HttpServer
         Test::Util
+        Qt::TestPrivate
 )
 
 set(tst_certificateerror_resource_files

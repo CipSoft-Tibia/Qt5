@@ -5,6 +5,7 @@
 #define ENUMNODE_H
 
 #include "access.h"
+#include "genustypes.h"
 #include "node.h"
 #include "typedefnode.h"
 
@@ -20,8 +21,9 @@ class Aggregate;
 class EnumNode : public Node
 {
 public:
+    using Node::Node;
     EnumNode(Aggregate *parent, const QString &name, bool isScoped = false)
-        : Node(Enum, parent, name), m_isScoped(isScoped)
+        : Node(NodeType::Enum, parent, name), m_isScoped(isScoped)
     {
     }
 
@@ -29,18 +31,21 @@ public:
     void setFlagsType(TypedefNode *typedefNode);
     bool hasItem(const QString &name) const { return m_names.contains(name); }
     bool isScoped() const { return m_isScoped; }
+    bool isAnonymous() const { return m_isAnonymous; }
 
     const QList<EnumItem> &items() const { return m_items; }
     Access itemAccess(const QString &name) const;
     const TypedefNode *flagsType() const { return m_flagsType; }
     QString itemValue(const QString &name) const;
     Node *clone(Aggregate *parent) override;
+    void setAnonymous(bool anonymous) { m_isAnonymous = anonymous; }
     void setSince(const QString &value, const QString &since);
 
 private:
     QList<EnumItem> m_items {};
     QSet<QString> m_names {};
     const TypedefNode *m_flagsType { nullptr };
+    bool m_isAnonymous { false };
     bool m_isScoped { false };
 };
 

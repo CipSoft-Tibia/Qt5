@@ -4,20 +4,22 @@
 
 #include "third_party/blink/renderer/core/css/css_container_values.h"
 
-#include "third_party/blink/renderer/core/css/container_query_evaluator.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
+#include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
 
 namespace blink {
 
-CSSContainerValues::CSSContainerValues(Document& document,
-                                       Element& container,
-                                       std::optional<double> width,
-                                       std::optional<double> height,
-                                       ContainerStuckPhysical stuck_horizontal,
-                                       ContainerStuckPhysical stuck_vertical,
-                                       ContainerSnappedFlags snapped)
+CSSContainerValues::CSSContainerValues(
+    Document& document,
+    Element& container,
+    std::optional<double> width,
+    std::optional<double> height,
+    ContainerStuckPhysical stuck_horizontal,
+    ContainerStuckPhysical stuck_vertical,
+    ContainerSnappedFlags snapped,
+    ContainerScrollableFlags scrollable_horizontal,
+    ContainerScrollableFlags scrollable_vertical)
     : MediaValuesDynamic(document.GetFrame()),
       element_(&container),
       width_(width),
@@ -26,19 +28,23 @@ CSSContainerValues::CSSContainerValues(Document& document,
       stuck_horizontal_(stuck_horizontal),
       stuck_vertical_(stuck_vertical),
       snapped_(snapped),
+      scrollable_horizontal_(scrollable_horizontal),
+      scrollable_vertical_(scrollable_vertical),
       font_sizes_(CSSToLengthConversionData::FontSizes(
           container.ComputedStyleRef().GetFontSizeStyle(),
           document.documentElement()->GetComputedStyle())),
       line_height_size_(CSSToLengthConversionData::LineHeightSize(
           container.ComputedStyleRef().GetFontSizeStyle(),
           document.documentElement()->GetComputedStyle())),
-      container_sizes_(
-          ContainerQueryEvaluator::ParentContainerCandidateElement(container)) {
-}
+      font_style_(container.GetComputedStyle()),
+      root_font_style_(document.documentElement()->GetComputedStyle()),
+      container_sizes_(FlatTreeTraversal::ParentElement(container)) {}
 
 void CSSContainerValues::Trace(Visitor* visitor) const {
   visitor->Trace(element_);
   visitor->Trace(container_sizes_);
+  visitor->Trace(font_style_);
+  visitor->Trace(root_font_style_);
   visitor->Trace(font_sizes_);
   visitor->Trace(line_height_size_);
   MediaValuesDynamic::Trace(visitor);
@@ -121,11 +127,6 @@ ContainerStuckLogical PhysicalToLogicalLtrHorizontalTb(
 }  // namespace
 
 ContainerStuckLogical CSSContainerValues::StuckInline() const {
-  // TODO(crbug.com/1445189): The WritingDirection should be taken from the
-  // container's containing block, not the container. Otherwise the inset
-  // properties on the sticky positioned will not match the same inset features
-  // in container queries when writing-mode or direction changes on the sticky
-  // positioned itself.
   ContainerStuckPhysical physical =
       writing_direction_.IsHorizontal() ? StuckHorizontal() : StuckVertical();
   ContainerStuckLogical logical = PhysicalToLogicalLtrHorizontalTb(physical);
@@ -133,15 +134,26 @@ ContainerStuckLogical CSSContainerValues::StuckInline() const {
 }
 
 ContainerStuckLogical CSSContainerValues::StuckBlock() const {
-  // TODO(crbug.com/1445189): The WritingDirection should be taken from the
-  // container's containing block, not the container. Otherwise the inset
-  // properties on the sticky positioned will not match the same inset features
-  // in container queries when writing-mode or direction changes on the sticky
-  // positioned itself.
   ContainerStuckPhysical physical =
       writing_direction_.IsHorizontal() ? StuckVertical() : StuckHorizontal();
   ContainerStuckLogical logical = PhysicalToLogicalLtrHorizontalTb(physical);
   return writing_direction_.IsFlippedBlocks() ? Flip(logical) : logical;
+}
+
+ContainerScrollableFlags CSSContainerValues::ScrollableInline() const {
+  ContainerScrollableFlags scrollable_inline = writing_direction_.IsHorizontal()
+                                                   ? ScrollableHorizontal()
+                                                   : ScrollableVertical();
+  return writing_direction_.IsRtl() ? Flip(scrollable_inline)
+                                    : scrollable_inline;
+}
+
+ContainerScrollableFlags CSSContainerValues::ScrollableBlock() const {
+  ContainerScrollableFlags scrollable_block = writing_direction_.IsHorizontal()
+                                                  ? ScrollableVertical()
+                                                  : ScrollableHorizontal();
+  return writing_direction_.IsFlippedBlocks() ? Flip(scrollable_block)
+                                              : scrollable_block;
 }
 
 }  // namespace blink

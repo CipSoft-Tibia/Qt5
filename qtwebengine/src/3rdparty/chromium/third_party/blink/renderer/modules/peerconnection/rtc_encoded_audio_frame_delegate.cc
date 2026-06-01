@@ -10,6 +10,7 @@
 #include "third_party/blink/renderer/platform/bindings/exception_code.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/v8_binding.h"
+#include "third_party/blink/renderer/platform/peerconnection/webrtc_util.h"
 #include "third_party/webrtc/api/frame_transformer_factory.h"
 
 namespace blink {
@@ -49,12 +50,11 @@ DOMArrayBuffer* RTCEncodedAudioFrameDelegate::CreateDataBuffer(
     }
 
     auto data = webrtc_frame_->GetData();
-    contents =
-        ArrayBufferContents(data.size(), 1, ArrayBufferContents::kNotShared,
-                            ArrayBufferContents::kDontInitialize);
-    if (!contents.Data()) [[unlikely]] {
-      OOM_CRASH(data.size());
-    }
+    contents = ArrayBufferContents(
+        data.size(), 1, ArrayBufferContents::kNotShared,
+        ArrayBufferContents::kDontInitialize,
+        ArrayBufferContents::AllocationFailureBehavior::kCrash);
+    CHECK(contents.IsValid());
     contents.ByteSpan().copy_from(data);
   }
   return DOMArrayBuffer::Create(std::move(contents));
@@ -108,6 +108,15 @@ std::optional<uint64_t> RTCEncodedAudioFrameDelegate::AbsCaptureTime() const {
   base::AutoLock lock(lock_);
   return webrtc_frame_ ? webrtc_frame_->AbsoluteCaptureTimestamp()
                        : std::nullopt;
+}
+
+std::optional<base::TimeTicks> RTCEncodedAudioFrameDelegate::ReceiveTime()
+    const {
+  base::AutoLock lock(lock_);
+  return webrtc_frame_ && webrtc_frame_->ReceiveTime()
+             ? std::make_optional(
+                   ConvertToBaseTimeTicks(*webrtc_frame_->ReceiveTime()))
+             : std::nullopt;
 }
 
 std::unique_ptr<webrtc::TransformableAudioFrameInterface>

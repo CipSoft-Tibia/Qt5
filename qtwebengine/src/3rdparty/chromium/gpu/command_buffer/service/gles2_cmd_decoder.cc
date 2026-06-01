@@ -42,7 +42,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/numerics/safe_math.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
 #include "base/trace_event/trace_event.h"
@@ -268,8 +267,7 @@ static bool CharacterIsValidForGLES(unsigned char c) {
 }
 
 static bool StringIsValidForGLES(const std::string& str) {
-  return str.length() == 0 ||
-         base::ranges::all_of(str, CharacterIsValidForGLES);
+  return str.length() == 0 || std::ranges::all_of(str, CharacterIsValidForGLES);
 }
 
 DisallowedFeatures::DisallowedFeatures() = default;
@@ -531,8 +529,7 @@ Outputter* GLES2Decoder::outputter() const {
 }
 
 int GLES2Decoder::GetRasterDecoderId() const {
-  NOTREACHED_IN_MIGRATION();
-  return -1;
+  NOTREACHED();
 }
 
 // This class implements GLES2Decoder so we don't have to expose all the GLES2
@@ -995,14 +992,6 @@ class GLES2DecoderImpl : public GLES2Decoder,
       GLsizei height,
       GLint border);
 
-  // Wrapper for SwapBuffers.
-  void DoSwapBuffers(uint64_t swap_id, GLbitfield flags);
-
-  // Callback for async SwapBuffers.
-  void FinishAsyncSwapBuffers(uint64_t swap_id,
-                              gfx::SwapCompletionResult result);
-  void FinishSwapBuffers(gfx::SwapResult result);
-
   // Wrapper for CopyTexSubImage2D.
   void DoCopyTexSubImage2D(
       GLenum target,
@@ -1096,40 +1085,12 @@ class GLES2DecoderImpl : public GLES2Decoder,
   void DoBeginSharedImageAccessDirectCHROMIUM(GLuint client_id, GLenum mode);
   void DoEndSharedImageAccessDirectCHROMIUM(GLuint client_id);
 
-  void DoConvertRGBAToYUVAMailboxesINTERNAL(
-      GLenum yuv_color_space,
-      GLenum plane_config,
-      GLenum subsampling,
-      const volatile GLbyte* mailboxes_in);
-  void DoConvertYUVAMailboxesToRGBINTERNAL(GLint src_x,
-                                           GLint src_y,
-                                           GLsizei width,
-                                           GLsizei height,
-                                           GLenum yuv_color_space,
-                                           GLenum plane_config,
-                                           GLenum subsampling,
-                                           const volatile GLbyte* mailboxes_in);
-  void DoConvertYUVAMailboxesToTextureINTERNAL(
-      GLuint texture,
-      GLenum target,
-      GLuint internal_format,
-      GLenum type,
-      GLint src_x,
-      GLint src_y,
-      GLsizei width,
-      GLsizei height,
-      GLboolean flip_y,
-      GLenum yuv_color_space,
-      GLenum plane_config,
-      GLenum subsampling,
-      const volatile GLbyte* mailboxes_in);
   void DoCopySharedImageINTERNAL(GLint xoffset,
                                  GLint yoffset,
                                  GLint x,
                                  GLint y,
                                  GLsizei width,
                                  GLsizei height,
-                                 GLboolean unpack_flip_y,
                                  const volatile GLbyte* mailboxes);
   void DoCopySharedImageToTextureINTERNAL(GLuint texture,
                                           GLenum target,
@@ -2190,8 +2151,7 @@ class GLES2DecoderImpl : public GLES2Decoder,
       case GL_UNSIGNED_INT_SAMPLER_2D_ARRAY:
         return GL_TEXTURE_2D_ARRAY;
       default:
-        NOTREACHED_IN_MIGRATION();
-        return 0;
+        NOTREACHED();
     }
   }
 
@@ -2207,8 +2167,7 @@ class GLES2DecoderImpl : public GLES2Decoder,
         framebuffer = framebuffer_state_.bound_read_framebuffer.get();
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
     return framebuffer;
   }
@@ -2221,8 +2180,7 @@ class GLES2DecoderImpl : public GLES2Decoder,
         renderbuffer = state_.bound_renderbuffer.get();
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
     return renderbuffer;
   }
@@ -2474,8 +2432,6 @@ class GLES2DecoderImpl : public GLES2Decoder,
 
   // Backbuffer attachments that are currently undefined.
   uint32_t backbuffer_needs_clear_bits_;
-
-  uint64_t swaps_since_resize_;
 
   // The current decoder error communicates the decoder error through command
   // processing functions that do not return the error value. Should be set only
@@ -2943,7 +2899,6 @@ GLES2DecoderImpl::GLES2DecoderImpl(
       back_buffer_draw_buffer_(GL_BACK),
       surfaceless_(false),
       backbuffer_needs_clear_bits_(0),
-      swaps_since_resize_(0),
       current_decoder_error_(error::kNoError),
       validators_(group_->feature_info()->validators()),
       feature_info_(group_->feature_info()),
@@ -3227,7 +3182,7 @@ gpu::ContextResult GLES2DecoderImpl::Initialize(
   has_fragment_precision_high_ =
       PrecisionMeetsSpecForHighpFloat(range[0], range[1], precision);
 
-  GLint viewport_params[4] = { 0 };
+  GLint viewport_params[4] = {};
   api()->glGetIntegervFn(GL_MAX_VIEWPORT_DIMS, viewport_params);
   viewport_max_width_ = viewport_params[0];
   viewport_max_height_ = viewport_params[1];
@@ -3700,9 +3655,7 @@ bool GLES2DecoderImpl::InitializeShaderTranslator() {
           features().ext_blend_func_extended ? 1 : 0;
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      shader_spec = SH_GLES2_SPEC;
-      break;
+      NOTREACHED();
   }
 
   if (shader_spec == SH_WEBGL_SPEC || shader_spec == SH_WEBGL2_SPEC) {
@@ -3731,8 +3684,7 @@ bool GLES2DecoderImpl::InitializeShaderTranslator() {
     // hash. However, in practice, this seems to cause some tests to fail. See
     // https://crbug.com/963889.
     resources.HashFunction = +[](const char* data, size_t size) {
-      return base::legacy::CityHash64(
-          base::as_bytes(base::make_span(data, size)));
+      return base::legacy::CityHash64(base::as_bytes(base::span(data, size)));
     };
   } else {
     resources.HashFunction = nullptr;
@@ -4444,7 +4396,7 @@ void GLES2DecoderImpl::MarkDrawBufferAsCleared(
     default:
       // Caller is responsible for breaking GL_DEPTH_STENCIL into GL_DEPTH and
       // GL_STENCIL.
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
   framebuffer->MarkAttachmentAsCleared(
       renderbuffer_manager(), texture_manager(), attachment, true);
@@ -4822,57 +4774,6 @@ bool GLES2DecoderImpl::ResizeOffscreenFramebuffer(const gfx::Size& size) {
   return true;
 }
 
-error::Error GLES2DecoderImpl::HandleResizeCHROMIUM(
-    uint32_t immediate_data_size,
-    const volatile void* cmd_data) {
-  const volatile gles2::cmds::ResizeCHROMIUM& c =
-      *static_cast<const volatile gles2::cmds::ResizeCHROMIUM*>(cmd_data);
-
-  GLuint width = static_cast<GLuint>(c.width);
-  GLuint height = static_cast<GLuint>(c.height);
-  GLfloat scale_factor = c.scale_factor;
-  GLboolean has_alpha = c.alpha;
-  gfx::ColorSpace color_space;
-  if (!ReadColorSpace(c.shm_id, c.shm_offset, c.color_space_size,
-                      &color_space)) {
-    return error::kOutOfBounds;
-  }
-  TRACE_EVENT2("gpu", "glResizeChromium", "width", width, "height", height);
-
-  // gfx::Size uses integers, make sure width and height do not overflow
-  static_assert(sizeof(GLuint) >= sizeof(int), "Unexpected GLuint size.");
-  static const GLuint kMaxDimension =
-      static_cast<GLuint>(std::numeric_limits<int>::max());
-  width = std::clamp(width, 1U, kMaxDimension);
-  height = std::clamp(height, 1U, kMaxDimension);
-
-  bool is_offscreen = !!offscreen_target_frame_buffer_.get();
-  if (is_offscreen) {
-    // We don't support Resize on the offscreen contexts.
-    LOG(ERROR) << "Resize called for the offscreen context";
-    return error::kUnknownCommand;
-  } else {
-    if (!surface_->Resize(gfx::Size(width, height), scale_factor, color_space,
-                          !!has_alpha)) {
-      LOG(ERROR) << "GLES2DecoderImpl: Context lost because resize failed.";
-      return error::kLostContext;
-    }
-    DCHECK(context_->IsCurrent(surface_.get()));
-    if (!context_->IsCurrent(surface_.get())) {
-      LOG(ERROR) << "GLES2DecoderImpl: Context lost because context no longer "
-                 << "current after resize callback.";
-      return error::kLostContext;
-    }
-    if (surface_->BuffersFlipped()) {
-      backbuffer_needs_clear_bits_ |= GL_COLOR_BUFFER_BIT;
-    }
-  }
-
-  swaps_since_resize_ = 0;
-
-  return error::kNoError;
-}
-
 const char* GLES2DecoderImpl::GetCommandName(unsigned int command_id) const {
   if (command_id >= kFirstGLES2Command && command_id < kNumCommands) {
     return gles2::GetCommandName(static_cast<CommandId>(command_id));
@@ -5081,8 +4982,7 @@ void GLES2DecoderImpl::BindIndexedBufferImpl(
       break;
     }
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 
   if (function_type == BindIndexedBufferFunctionType::kBindBufferRange) {
@@ -5103,8 +5003,7 @@ void GLES2DecoderImpl::BindIndexedBufferImpl(
         break;
       }
       default:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
 
     if (client_id != 0) {
@@ -5154,8 +5053,7 @@ void GLES2DecoderImpl::BindIndexedBufferImpl(
       bindings = state_.indexed_uniform_buffer_bindings.get();
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
   DCHECK(bindings);
   switch (function_type) {
@@ -5166,8 +5064,7 @@ void GLES2DecoderImpl::BindIndexedBufferImpl(
       bindings->DoBindBufferRange(index, buffer, offset, size);
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
   state_.SetBoundBuffer(target, buffer);
 }
@@ -5812,8 +5709,7 @@ void GLES2DecoderImpl::InvalidateFramebufferImpl(
           attachment = GL_STENCIL_ATTACHMENT;
           break;
         default:
-          NOTREACHED_IN_MIGRATION();
-          return;
+          NOTREACHED();
       }
     }
     translated_attachments[i] = attachment;
@@ -5876,8 +5772,7 @@ void GLES2DecoderImpl::InvalidateFramebufferImpl(
           backbuffer_needs_clear_bits_ |= GL_STENCIL_BUFFER_BIT;
           break;
         default:
-          NOTREACHED_IN_MIGRATION();
-          break;
+          NOTREACHED();
       }
     }
   }
@@ -6571,7 +6466,7 @@ void GLES2DecoderImpl::DoGetIntegerv(GLenum pname,
     DCHECK_EQ(num_written, params_size);
     return;
   }
-  NOTREACHED_IN_MIGRATION() << "Unhandled enum " << pname;
+  NOTREACHED() << "Unhandled enum " << pname;
 }
 
 template <typename TYPE>
@@ -6621,8 +6516,7 @@ void GLES2DecoderImpl::GetIndexedIntegerImpl(
       // decoder
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
   DCHECK(bindings);
   switch (target) {
@@ -6652,8 +6546,7 @@ void GLES2DecoderImpl::GetIndexedIntegerImpl(
       // decoder
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 }
 
@@ -7512,7 +7405,7 @@ void GLES2DecoderImpl::DoFramebufferTextureMultiviewOVR(
     GLint base_view_index,
     GLsizei num_views) {
   // This is only supported in passthrough command buffer.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void GLES2DecoderImpl::DoGetFramebufferAttachmentParameteriv(
@@ -7565,8 +7458,7 @@ void GLES2DecoderImpl::DoGetFramebufferAttachmentParameteriv(
           attachment = GL_STENCIL_ATTACHMENT;
           break;
         default:
-          NOTREACHED_IN_MIGRATION();
-          break;
+          NOTREACHED();
       }
     }
   } else {
@@ -7998,11 +7890,7 @@ void GLES2DecoderImpl::DoBlitFramebufferCHROMIUM(
       unsigned int xoffset, yoffset;
       if (!checked_xoffset.AssignIfValid(&xoffset) ||
           !checked_yoffset.AssignIfValid(&yoffset)) {
-        NOTREACHED_IN_MIGRATION();
-        LOCAL_SET_GL_ERROR(
-            GL_INVALID_VALUE, func_name,
-            "the width or height of src or dst region overflowed");
-        return;
+        NOTREACHED();
       }
 
       // Adjust the src region by the same factor
@@ -10099,9 +9987,7 @@ void GLES2DecoderImpl::DoMultiDrawEndCHROMIUM() {
           result.baseinstances.data(), result.drawcount);
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      MarkContextLost(error::kGuilty);
-      group_->LoseContexts(error::kInnocent);
+      NOTREACHED();
   }
 }
 
@@ -10784,8 +10670,7 @@ void GLES2DecoderImpl::GetVertexAttribHelper(
       *params = attrib->integer();
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 }
 
@@ -11843,8 +11728,7 @@ error::Error GLES2DecoderImpl::HandlePixelStorei(
       break;
     default:
       // Validation should have prevented us from getting here.
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
   return error::kNoError;
 }
@@ -13046,11 +12930,11 @@ error::Error GLES2DecoderImpl::DoCompressedTexImage(
     framebuffer_state_.clear_state_dirty = true;
   }
 
-  std::unique_ptr<int8_t[]> zero;
+  base::HeapArray<int8_t> zero;
   if (!state_.bound_pixel_unpack_buffer && !data) {
-    zero.reset(new int8_t[image_size]);
-    memset(zero.get(), 0, image_size);
-    data = zero.get();
+    // Memory is already zero-initialized:
+    zero = base::HeapArray<int8_t>::WithSize(image_size);
+    data = zero.data();
   }
   LOCAL_COPY_REAL_GL_ERRORS_TO_WRAPPER(func_name);
   const CompressedFormatInfo* format_info =
@@ -14423,8 +14307,7 @@ error::Error GLES2DecoderImpl::HandleGetAttachedShaders(
   for (GLsizei ii = 0; ii < count; ++ii) {
     if (!shader_manager()->GetClientId(result->GetData()[ii],
                                        &result->GetData()[ii])) {
-      NOTREACHED_IN_MIGRATION();
-      return error::kGenericError;
+      NOTREACHED();
     }
   }
   result->SetNumResults(count);
@@ -14731,82 +14614,6 @@ error::Error GLES2DecoderImpl::HandleShaderBinary(
   // TODO(gman): call glShaderBinary
   return error::kNoError;
 #endif
-}
-
-void GLES2DecoderImpl::DoSwapBuffers(uint64_t swap_id, GLbitfield flags) {
-  bool is_offscreen = !!offscreen_target_frame_buffer_.get();
-
-  int this_frame_number = frame_number_++;
-  // TRACE_EVENT for gpu tests:
-  TRACE_EVENT_INSTANT2(
-      "test_gpu", "SwapBuffersLatency", TRACE_EVENT_SCOPE_THREAD, "GLImpl",
-      static_cast<int>(gl::GetGLImplementation()), "width",
-      (is_offscreen ? offscreen_size_.width() : surface_->GetSize().width()));
-  TRACE_EVENT2("gpu", "GLES2DecoderImpl::DoSwapBuffers",
-               "offscreen", is_offscreen,
-               "frame", this_frame_number);
-
-  ScopedGPUTrace scoped_gpu_trace(gpu_tracer_.get(), kTraceDecoder,
-                                  "GLES2Decoder", "SwapBuffer");
-
-  bool is_tracing;
-  TRACE_EVENT_CATEGORY_GROUP_ENABLED(TRACE_DISABLED_BY_DEFAULT("gpu.debug"),
-                                     &is_tracing);
-  if (is_tracing) {
-    ScopedFramebufferBinder binder(this, GetBoundDrawFramebufferServiceId());
-    gpu_state_tracer_->TakeSnapshotWithCurrentFramebuffer(
-        is_offscreen ? offscreen_size_ : surface_->GetSize());
-  }
-
-  if (is_offscreen) {
-    // We don't support SwapBuffers on the offscreen contexts.
-    LOG(ERROR) << "SwapBuffers called for the offscreen context";
-    return;
-  } else if (supports_async_swap_) {
-    TRACE_EVENT_NESTABLE_ASYNC_BEGIN0(
-        "gpu", "AsyncSwapBuffers",
-        TRACE_ID_WITH_SCOPE("AsyncSwapBuffers", swap_id));
-
-    client()->OnSwapBuffers(swap_id, flags);
-    surface_->SwapBuffersAsync(
-        base::BindOnce(&GLES2DecoderImpl::FinishAsyncSwapBuffers,
-                       weak_ptr_factory_.GetWeakPtr(), swap_id),
-        base::DoNothing(), gfx::FrameData());
-  } else {
-    client()->OnSwapBuffers(swap_id, flags);
-    FinishSwapBuffers(
-        surface_->SwapBuffers(base::DoNothing(), gfx::FrameData()));
-  }
-
-  // This may be a slow command.  Exit command processing to allow for
-  // context preemption and GPU watchdog checks.
-  ExitCommandProcessingEarly();
-}
-
-void GLES2DecoderImpl::FinishAsyncSwapBuffers(
-    uint64_t swap_id,
-    gfx::SwapCompletionResult result) {
-  TRACE_EVENT_NESTABLE_ASYNC_END0(
-      "gpu", "AsyncSwapBuffers",
-      TRACE_ID_WITH_SCOPE("AsyncSwapBuffers", swap_id));
-  FinishSwapBuffers(result.swap_result);
-}
-
-void GLES2DecoderImpl::FinishSwapBuffers(gfx::SwapResult result) {
-  if (result == gfx::SwapResult::SWAP_FAILED) {
-    // If SwapBuffers failed, we may not have a current context any more.
-    LOG(ERROR) << "Context lost because SwapBuffers failed.";
-    if (!context_->IsCurrent(surface_.get()) || !CheckResetStatus()) {
-      MarkContextLost(error::kUnknown);
-      group_->LoseContexts(error::kUnknown);
-    }
-  }
-  ++swaps_since_resize_;
-  if (swaps_since_resize_ == 1 && surface_->BuffersFlipped()) {
-    // The second buffer after a resize is new and needs to be cleared to
-    // known values.
-    backbuffer_needs_clear_bits_ |= GL_COLOR_BUFFER_BIT;
-  }
 }
 
 error::Error GLES2DecoderImpl::HandleEnableFeatureCHROMIUM(
@@ -15190,8 +14997,7 @@ bool GLES2DecoderImpl::CheckResetStatus() {
       MarkContextLost(error::kUnknown);
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      return false;
+      NOTREACHED();
   }
   reset_by_robustness_extension_ = true;
   return true;
@@ -16439,43 +16245,6 @@ void GLES2DecoderImpl::DoEndSharedImageAccessDirectCHROMIUM(GLuint client_id) {
   texture_ref->EndAccessSharedImage();
 }
 
-void GLES2DecoderImpl::DoConvertRGBAToYUVAMailboxesINTERNAL(
-    GLenum yuv_color_space,
-    GLenum plane_config,
-    GLenum subsampling,
-    const volatile GLbyte* mailboxes_in) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void GLES2DecoderImpl::DoConvertYUVAMailboxesToRGBINTERNAL(
-    GLint src_x,
-    GLint src_y,
-    GLsizei width,
-    GLsizei height,
-    GLenum yuv_color_space,
-    GLenum plane_config,
-    GLenum subsampling,
-    const volatile GLbyte* mailboxes_in) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void GLES2DecoderImpl::DoConvertYUVAMailboxesToTextureINTERNAL(
-    GLuint texture,
-    GLenum target,
-    GLuint internal_format,
-    GLenum type,
-    GLint src_x,
-    GLint src_y,
-    GLsizei width,
-    GLsizei height,
-    GLboolean flip_y,
-    GLenum yuv_color_space,
-    GLenum plane_config,
-    GLenum subsampling,
-    const volatile GLbyte* mailboxes_in) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
 void GLES2DecoderImpl::DoCopySharedImageINTERNAL(
     GLint xoffset,
     GLint yoffset,
@@ -16483,7 +16252,6 @@ void GLES2DecoderImpl::DoCopySharedImageINTERNAL(
     GLint y,
     GLsizei width,
     GLsizei height,
-    GLboolean unpack_flip_y,
     const volatile GLbyte* mailboxes) {
   NOTIMPLEMENTED_LOG_ONCE();
 }
@@ -16695,8 +16463,7 @@ error::Error GLES2DecoderImpl::HandleClientWaitSync(
       // If validation is complete, this only happens if the context is lost.
       return error::kLostContext;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
   *result_dst = status;
   return error::kNoError;
@@ -16843,8 +16610,7 @@ error::Error GLES2DecoderImpl::HandleGetInternalformativ(
       values = sample_counts.data();
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 
   uint32_t checked_size = 0;

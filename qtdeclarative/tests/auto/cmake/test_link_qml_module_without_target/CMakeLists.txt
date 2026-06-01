@@ -22,7 +22,7 @@ qt6_add_executable(test_link_qml_module_without_target main.cpp)
 target_link_libraries(test_link_qml_module_without_target PRIVATE
     Qt6::Core
     Qt6::Test
-    Qt6::QuickPrivate
+    Qt6::Quick
 )
 
 # Suppress running qmlimportscanner and auto linking of static qml plugins, to ensure we don't

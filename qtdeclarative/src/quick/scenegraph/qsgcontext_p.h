@@ -169,6 +169,7 @@ public:
 
     virtual void preprocess();
     virtual void invalidateGlyphCaches();
+    virtual void flushGlyphCaches();
     virtual QSGDistanceFieldGlyphCache *distanceFieldGlyphCache(const QRawFont &font, int renderTypeQuality);
     virtual QSGCurveGlyphAtlas *curveGlyphAtlas(const QRawFont &font);
     QSGTexture *textureForFactory(QQuickTextureFactory *factory, QQuickWindow *window);
@@ -213,6 +214,7 @@ protected:
     QHash<QObject *, QSGTexture *> m_textures;
     QSet<QSGTexture *> m_texturesToDelete;
     QHash<FontKey, QSGDistanceFieldGlyphCache *> m_glyphCaches;
+    QList<QSGDistanceFieldGlyphCache *> m_staleGlyphCaches;
 
     // References to font engines that are currently in use by native rendering glyph nodes
     // and which must be kept alive as long as they are used in the render thread.

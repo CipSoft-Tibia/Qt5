@@ -68,6 +68,10 @@ void IdleHelper::Shutdown() {
   weak_factory_.InvalidateWeakPtrs();
 }
 
+void IdleHelper::RemoveCancelledIdleTasks() {
+  idle_queue_->RemoveCancelledTasks();
+}
+
 IdleHelper::Delegate::Delegate() = default;
 
 IdleHelper::Delegate::~Delegate() = default;
@@ -514,8 +518,7 @@ const char* IdleHelper::IdlePeriodStateToString(
     case IdlePeriodState::kInLongIdlePeriodPaused:
       return "in_long_idle_period_paused";
     default:
-      NOTREACHED_IN_MIGRATION();
-      return nullptr;
+      NOTREACHED();
   }
 }
 

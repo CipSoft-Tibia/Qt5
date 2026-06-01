@@ -215,6 +215,8 @@ static DFA generateMachine(const Config &cfg)
 #if !defined(AUTOTEST)
 int main(int argc, char **argv)
 {
+    QHashSeed::setDeterministicGlobalSeed();
+
     QCoreApplication app(argc, argv);
     QString ruleFile;
     Config cfg;

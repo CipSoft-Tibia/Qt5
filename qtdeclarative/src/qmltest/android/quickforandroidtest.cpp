@@ -1,5 +1,6 @@
 // Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "quickforandroidtest_p.h"
 #include "androidtestutils_p.h"
@@ -14,7 +15,7 @@ QT_BEGIN_NAMESPACE
 /*
  * For testing Qt Quick for Android (QQ4A) applications with QuickTest
  * Usage:
- *  QUICK_FOR_ANDROID_TEST_MAIN("test_name")
+ *  QUICK_FOR_ANDROID_TEST_MAIN(test_name)
  *
  * This function does the same steps as the regular QtQuickTest macro, with one
  * exception: it does not parse tests from QML files. This is because in the

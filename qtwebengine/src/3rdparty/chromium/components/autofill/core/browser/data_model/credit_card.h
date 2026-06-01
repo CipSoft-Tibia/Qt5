@@ -13,8 +13,10 @@
 #include "base/gtest_prod_util.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/data_model/autofill_data_model.h"
-#include "components/autofill/core/browser/ui/suggestion.h"
+#include "components/autofill/core/browser/data_model/autofill_structured_address_component.h"
+#include "components/autofill/core/browser/data_model/form_group.h"
+#include "components/autofill/core/browser/data_model/usage_history_information.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
 #include "url/gurl.h"
 
 namespace autofill {
@@ -42,7 +44,7 @@ std::u16string GetObfuscatedStringForCardDigits(const std::u16string& digits,
 }  // namespace internal
 
 // A form group that stores card information.
-class CreditCard : public AutofillDataModel {
+class CreditCard : public FormGroup {
  public:
   enum class RecordType {
     // A card with a complete number managed by Chrome (and not representing
@@ -106,6 +108,34 @@ class CreditCard : public AutofillDataModel {
     kIssuer = 1,
     // Network-level enrollment.
     kNetwork = 2,
+  };
+
+  // Whether the card has been enrolled in the card info retrieval feature.
+  //
+  // 'CardInfoRetrieval' is a Payments server-side feature where some
+  // card information (such as card number, expiry, or CVC) may be
+  // dynamically retrieved from the card issuer during an unmasking call.
+  // From the Chrome client side this looks the same (the UnmaskCardRequest
+  // API call returns the full card number and CVC for use by the client),
+  // however whether or not a card is enrolled in this feature may affect
+  // some UX, authentication methods, feature offerings, user guidance, and
+  // logging.
+  //
+  // Local cards cannot be enrolled in `CardInfoRetrieval`, and always have
+  // their card information stored locally.
+  //
+  // This must stay in sync with the proto enum in autofill_specifics.proto.
+  // A java IntDef@ is generated from this.
+  // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.autofill
+  enum class CardInfoRetrievalEnrollmentState {
+    // State unspecified. This is the default value of this enum.
+    kRetrievalUnspecified = 0,
+    // Card is enrolled for card info retrieval.
+    kRetrievalEnrolled = 1,
+    // Card is not enrolled and is not eligible for enrollment.
+    kRetrievalUnenrolledAndNotEligible = 2,
+    // Card is not enrolled but is eligible for enrollment.
+    kRetrievalUnenrolledAndEligible = 3,
   };
 
   // Creates a copy of the passed in credit card, and sets its `record_type` to
@@ -183,15 +213,22 @@ class CreditCard : public AutofillDataModel {
   bool IsDeletable() const;
 
   // FormGroup:
-  void GetMatchingTypesWithProfileSources(
-      const std::u16string& text,
-      const std::string& app_locale,
-      FieldTypeSet* matching_types,
-      PossibleProfileValueSources* profile_value_sources) const override;
+  void GetMatchingTypes(const std::u16string& text,
+                        const std::string& app_locale,
+                        FieldTypeSet* matching_types) const override;
+  std::u16string GetInfo(FieldType type,
+                         const std::string& app_locale) const override;
+  std::u16string GetInfo(const AutofillType& type,
+                         const std::string& app_locale) const override;
   std::u16string GetRawInfo(FieldType type) const override;
   void SetRawInfoWithVerificationStatus(FieldType type,
                                         const std::u16string& value,
                                         VerificationStatus status) override;
+  bool SetInfoWithVerificationStatus(const AutofillType& type,
+                                     const std::u16string& value,
+                                     const std::string& app_locale,
+                                     VerificationStatus status) override;
+  VerificationStatus GetVerificationStatus(FieldType type) const override;
 
   // Special method to set value for HTML5 month input type.
   void SetInfoForMonthInputType(const std::u16string& value);
@@ -227,7 +264,7 @@ class CreditCard : public AutofillDataModel {
   Issuer card_issuer() const { return card_issuer_; }
   void set_card_issuer(Issuer card_issuer) { card_issuer_ = card_issuer; }
   const std::string& issuer_id() const { return issuer_id_; }
-  void set_issuer_id(const std::string_view issuer_id) {
+  void set_issuer_id(std::string_view issuer_id) {
     issuer_id_ = std::string(issuer_id);
   }
 
@@ -480,6 +517,19 @@ class CreditCard : public AutofillDataModel {
     cvc_modification_date_ = date;
   }
 
+  CardInfoRetrievalEnrollmentState card_info_retrieval_enrollment_state()
+      const {
+    return card_info_retrieval_enrollment_state_;
+  }
+  void set_card_info_retrieval_enrollment_state(
+      CardInfoRetrievalEnrollmentState card_info_retrieval_enrollment_state) {
+    card_info_retrieval_enrollment_state_ =
+        card_info_retrieval_enrollment_state;
+  }
+
+  UsageHistoryInformation& usage_history();
+  const UsageHistoryInformation& usage_history() const;
+
  private:
   friend class CreditCardTestApi;
 
@@ -488,12 +538,6 @@ class CreditCard : public AutofillDataModel {
 
   // FormGroup:
   void GetSupportedTypes(FieldTypeSet* supported_types) const override;
-  std::u16string GetInfoImpl(const AutofillType& type,
-                             const std::string& app_locale) const override;
-  bool SetInfoWithVerificationStatusImpl(const AutofillType& type,
-                                         const std::u16string& value,
-                                         const std::string& app_locale,
-                                         VerificationStatus status) override;
 
   // The issuer network of the card to fill in to the page, e.g. 'Mastercard'.
   std::u16string NetworkForFill() const;
@@ -611,6 +655,14 @@ class CreditCard : public AutofillDataModel {
   // CVCs can be updated independently of the card and track their modification
   // date independently. The timestamp `is_null()` for cards without CVC.
   base::Time cvc_modification_date_;
+
+  // The card info retrieval enrollment state of this card. Enrollment in
+  // 'CardInfoRetrieval' will enable runtime retrieval of card information from
+  // card issuer including card number, expiry and CVC.
+  CardInfoRetrievalEnrollmentState card_info_retrieval_enrollment_state_ =
+      CardInfoRetrievalEnrollmentState::kRetrievalUnspecified;
+
+  UsageHistoryInformation usage_history_information_;
 };
 
 // So we can compare CreditCards with EXPECT_EQ().

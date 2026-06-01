@@ -1,5 +1,6 @@
 -- Copyright (C) 2016 The Qt Company Ltd.
 -- SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+-- Qt-Security score:critical reason:dataparser
 
 %parser         QQmlJSGrammar
 %decl           qqmljsparser_p.h
@@ -12,7 +13,7 @@
 %token T_DEFAULT "default"      T_DELETE "delete"           T_DIVIDE_ "/"
 %token T_DIVIDE_EQ "/="         T_DO "do"                   T_DOT "."
 %token T_ELSE "else"            T_EQ "="                    T_EQ_EQ "=="
-%token T_EQ_EQ_EQ "==="         T_FINALLY "finally"         T_FOR "for"
+%token T_EQ_EQ_EQ "==="         T_FINAL "final"             T_FINALLY "finally"         T_FOR "for"
 %token T_FUNCTION "function"    T_GE ">="                   T_GT ">"
 %token T_GT_GT ">>"             T_GT_GT_EQ ">>="            T_GT_GT_GT ">>>"
 %token T_GT_GT_GT_EQ ">>>="     T_IDENTIFIER "identifier"   T_IF "if"
@@ -1064,13 +1065,16 @@ UiAnnotatedObjectMember: UiObjectMember;
 
 UiObjectMember: UiObjectDefinition;
 
-UiObjectMember: UiQualifiedId T_COLON ExpressionStatementLookahead T_LBRACKET UiArrayMemberList T_RBRACKET;
+CommaOpt: T_COMMA;
+CommaOpt: ;
+
+UiObjectMember: UiQualifiedId T_COLON ExpressionStatementLookahead T_LBRACKET UiArrayMemberList CommaOpt T_RBRACKET;
 /.
     case $rule_number: {
         AST::UiArrayBinding *node = new (pool) AST::UiArrayBinding(sym(1).UiQualifiedId, sym(5).UiArrayMemberList->finish());
         node->colonToken = loc(2);
         node->lbracketToken = loc(4);
-        node->rbracketToken = loc(6);
+        node->rbracketToken = loc(7);
         sym(1).Node = node;
     } break;
 ./
@@ -1179,6 +1183,8 @@ UiObjectMember: UiQualifiedId Semicolon;
 UiPropertyType: T_VAR;
 /.  case $rule_number: Q_FALLTHROUGH(); ./
 UiPropertyType: T_RESERVED_WORD;
+/.  case $rule_number: Q_FALLTHROUGH(); ./
+UiPropertyType: T_FINAL;
 /.  case $rule_number: Q_FALLTHROUGH(); ./
 UiPropertyType: T_IDENTIFIER;
 /.
@@ -1297,6 +1303,7 @@ UiObjectMember: T_SIGNAL T_IDENTIFIER Semicolon;
 AttrRequired:  T_REQUIRED %prec REDUCE_HERE;
 AttrReadonly:  T_READONLY %prec REDUCE_HERE;
 AttrDefault:  T_DEFAULT %prec REDUCE_HERE;
+AttrFinal: T_FINAL %prec REDUCE_HERE;
 
 UiPropertyAttributes: AttrRequired UiPropertyAttributes;
 /.
@@ -1327,6 +1334,17 @@ UiPropertyAttributes: AttrReadonly UiPropertyAttributes;
         if (node->isReadonly())
             diagnostic_messages.append(compileError(node->requiredToken(), QLatin1String("Duplicated 'readonly' attribute is not allowed."), QtCriticalMsg));
         node->m_readonlyToken = loc(1);
+        sym(1).UiPropertyAttributes = node;
+    } break;
+./
+
+UiPropertyAttributes: AttrFinal UiPropertyAttributes;
+/.
+    case $rule_number: {
+        AST::UiPropertyAttributes *node = sym(2).UiPropertyAttributes;
+        if (node->isFinal())
+            diagnostic_messages.append(compileError(node->finalToken(), QLatin1String("Duplicated 'final' attribute is not allowed."), QtCriticalMsg));
+        node->m_finalToken = loc(1);
         sym(1).UiPropertyAttributes = node;
     } break;
 ./
@@ -1429,7 +1447,7 @@ UiObjectMemberWithScriptStatement: UiPropertyAttributes T_IDENTIFIER T_LT UiProp
 
 UiObjectMember: UiObjectMemberWithScriptStatement;
 
-UiObjectMemberWithArray: UiPropertyAttributes T_IDENTIFIER T_LT UiPropertyType T_GT QmlIdentifier T_COLON ExpressionStatementLookahead T_LBRACKET UiArrayMemberList T_RBRACKET Semicolon;
+UiObjectMemberWithArray: UiPropertyAttributes T_IDENTIFIER T_LT UiPropertyType T_GT QmlIdentifier T_COLON ExpressionStatementLookahead T_LBRACKET UiArrayMemberList CommaOpt T_RBRACKET Semicolon;
 /.
     case $rule_number: {
         AST::UiPublicMember *node = new (pool) AST::UiPublicMember(sym(4).UiQualifiedId->finish(), stringRef(6));
@@ -1451,7 +1469,7 @@ UiObjectMemberWithArray: UiPropertyAttributes T_IDENTIFIER T_LT UiPropertyType T
         AST::UiArrayBinding *binding = new (pool) AST::UiArrayBinding(propertyName, sym(10).UiArrayMemberList->finish());
         binding->colonToken = loc(7);
         binding->lbracketToken = loc(9);
-        binding->rbracketToken = loc(11);
+        binding->rbracketToken = loc(12);
 
         node->binding = binding;
 
@@ -1670,11 +1688,19 @@ Type: UiQualifiedId T_LT SimpleType T_GT;
 /.
     case $rule_number: {
         sym(1).Type = new (pool) AST::Type(sym(1).UiQualifiedId, sym(3).Type);
+        sym(1).Type->lAngleBracketToken = loc(2);
+        sym(1).Type->rAngleBracketToken = loc(4);
     } break;
 ./
 
 Type: SimpleType;
 
+SimpleType: T_VAR;
+/.  case $rule_number: Q_FALLTHROUGH(); ./
+SimpleType: T_VOID;
+/.  case $rule_number: Q_FALLTHROUGH(); ./
+SimpleType: T_FINAL;
+/.  case $rule_number: Q_FALLTHROUGH(); ./
 SimpleType: T_RESERVED_WORD;
 /.
     case $rule_number: {
@@ -1688,18 +1714,6 @@ SimpleType: UiQualifiedId;
 /.
     case $rule_number: {
         sym(1).Type = new (pool) AST::Type(sym(1).UiQualifiedId);
-    } break;
-./
-
-SimpleType: T_VAR;
-/.  case $rule_number: Q_FALLTHROUGH(); ./
-
-SimpleType: T_VOID;
-/.
-    case $rule_number: {
-        AST::UiQualifiedId *id = new (pool) AST::UiQualifiedId(stringRef(1));
-        id->identifierToken = loc(1);
-        sym(1).Type = new (pool) AST::Type(id->finish());
     } break;
 ./
 
@@ -2201,6 +2215,7 @@ ReservedIdentifier: T_CONST;
 ReservedIdentifier: T_LET;
 ReservedIdentifier: T_DEBUGGER;
 ReservedIdentifier: T_RESERVED_WORD;
+ReservedIdentifier: T_FINAL;
 ReservedIdentifier: T_SUPER;
 ReservedIdentifier: T_WITH;
 ReservedIdentifier: T_CLASS;
@@ -3964,8 +3979,7 @@ FunctionDeclaration: Function BindingIdentifier T_LPAREN FormalParameters T_RPAR
     case $rule_number: {
         if (!ensureNoFunctionTypeAnnotations(sym(6).TypeAnnotation, sym(4).FormalParameterList))
             return false;
-        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(stringRef(2), sym(4).FormalParameterList, sym(8).StatementList,
-                                                                             /*type annotation*/nullptr);
+        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(stringRef(2), sym(4).FormalParameterList, sym(8).StatementList, sym(6).TypeAnnotation);
         node->functionToken = loc(1);
         node->identifierToken = loc(2);
         node->lparenToken = loc(3);
@@ -3998,7 +4012,7 @@ FunctionDeclaration_Default: Function T_LPAREN FormalParameters T_RPAREN TypeAnn
         if (!ensureNoFunctionTypeAnnotations(sym(5).TypeAnnotation, sym(3).FormalParameterList))
             return false;
         AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(QStringView(), sym(3).FormalParameterList, sym(7).StatementList,
-                                                                             /*type annotation*/nullptr);
+                                                                             sym(5).TypeAnnotation);
         node->functionToken = loc(1);
         node->lparenToken = loc(2);
         node->rparenToken = loc(4);
@@ -4014,7 +4028,7 @@ FunctionExpression: T_FUNCTION BindingIdentifier T_LPAREN FormalParameters T_RPA
         if (!ensureNoFunctionTypeAnnotations(sym(6).TypeAnnotation, sym(4).FormalParameterList))
             return false;
         AST::FunctionExpression *node = new (pool) AST::FunctionExpression(stringRef(2), sym(4).FormalParameterList, sym(8).StatementList,
-                                                                           /*type annotation*/nullptr);
+                                                                           sym(6).TypeAnnotation);
         node->functionToken = loc(1);
         if (! stringRef(2).isNull())
           node->identifierToken = loc(2);
@@ -4032,7 +4046,7 @@ FunctionExpression: T_FUNCTION T_LPAREN FormalParameters T_RPAREN TypeAnnotation
         if (!ensureNoFunctionTypeAnnotations(sym(5).TypeAnnotation, sym(3).FormalParameterList))
             return false;
         AST::FunctionExpression *node = new (pool) AST::FunctionExpression(QStringView(), sym(3).FormalParameterList, sym(7).StatementList,
-                                                                           /*type annotation*/nullptr);
+                                                                           sym(5).TypeAnnotation);
         node->functionToken = loc(1);
         node->lparenToken = loc(2);
         node->rparenToken = loc(4);

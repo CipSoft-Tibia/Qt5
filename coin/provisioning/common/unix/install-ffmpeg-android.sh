@@ -9,7 +9,8 @@ source "${BASH_SOURCE%/*}/../unix/ffmpeg-installation-utils.sh"
 
 os="$1"
 # Optional parameter to set output installation directory. Useful for local builds.
-target_install_dir_param="$2"
+page_size="$2"
+target_install_dir_param="$3"
 build_type=$(get_ffmpeg_build_type)
 ffmpeg_source_dir=$(download_ffmpeg)
 
@@ -48,6 +49,12 @@ build_ffmpeg_android() {
         target_cpu=i686
         openssl_libs="$openssl_android_path/x86"
         libs_prefix="_x86"
+    elif [ "$target_arch" == "arm32" ]; then
+        target_toolchain_arch="armv7a-linux-androideabi"
+        target_arch=arm
+        target_cpu=armv7-a
+        openssl_libs="$openssl_android_path/armeabi-v7a"
+        libs_prefix="_arm32-v7a"
     elif [ "$target_arch" == "arm64" ]; then
         target_toolchain_arch="aarch64-linux-android"
         target_arch=aarch64
@@ -75,14 +82,23 @@ build_ffmpeg_android() {
     local cc=${toolchain_bin}/${target_toolchain_arch}${api_version}-clang
     local ar=${toolchain_bin}/llvm-ar
     local ranlib=${toolchain_bin}/llvm-ranlib
+    local strip=${toolchain_bin}/llvm-strip
     local ffmpeg_config_options
 
     ffmpeg_config_options=$(get_ffmpeg_config_options $build_type)
     ffmpeg_config_options+=" --enable-cross-compile --target-os=android --enable-jni --enable-mediacodec --enable-openssl --enable-pthreads --enable-neon --disable-asm --disable-indev=android_camera"
     ffmpeg_config_options+=" --arch=$target_arch --cpu=${target_cpu} --sysroot=${sysroot} --sysinclude=${sysroot}/usr/include/"
-    ffmpeg_config_options+=" --cc=${cc} --cxx=${cxx} --ar=${ar} --ranlib=${ranlib}"
+    ffmpeg_config_options+=" --cc=${cc} --cxx=${cxx} --ar=${ar} --ranlib=${ranlib} --strip=${strip}"
     ffmpeg_config_options+=" --extra-cflags=-I${openssl_include} --extra-ldflags=-L${openssl_libs}"
-
+    if [ $page_size == "use_16kb_page_size" ]; then
+        ffmpeg_config_options+=" --extra-ldflags=-Wl,-z,max-page-size=16384"
+        echo "FFmpeg Android using 16KB page sizes"
+    elif [ $page_size == "use_4kb_page_size" ]; then
+        echo "FFmpeg Android using 4KB page sizes"
+    else
+        echo "Error: FFmpeg Android page_size must be: use_16kb_page_size or: use_4kb_page_size got: $page_size" >&2
+        exit 1
+    fi
     local build_dir="$ffmpeg_source_dir/build_android/$target_arch"
     mkdir -p "$build_dir"
     pushd "$build_dir"
@@ -100,7 +116,13 @@ build_ffmpeg_android() {
 
     if [[ "$build_type" == "shared" ]]; then
         local fix_dependencies="${BASH_SOURCE%/*}/../shared/fix_ffmpeg_dependencies.sh"
-        sudo "${fix_dependencies}" "${target_dir}" "${libs_prefix}" "no"
+
+        local page_size_arg=""
+        if [ $page_size == "use_16kb_page_size" ]; then
+            page_size_arg="16384"
+        fi
+
+        sudo "${fix_dependencies}" "${target_dir}" "${libs_prefix}" "no" "$page_size_arg"
     fi
 }
 
@@ -116,6 +138,12 @@ elif  [ "$os" == "android-x86_64" ]; then
     envvar_latest="FFMPEG_DIR_ANDROID_X86_64_NDK_LATEST"
     envvar_nightly1="FFMPEG_DIR_ANDROID_X86_64_NDK_NIGHTLY1"
     envvar_nightly2="FFMPEG_DIR_ANDROID_X86_64_NDK_NIGHTLY2"
+elif  [ "$os" == "android-arm32" ]; then
+    target_arch=arm32
+    target_dir="/usr/local/android/ffmpeg-arm32"
+    envvar_latest="FFMPEG_DIR_ANDROID_ARM32_NDK_LATEST"
+    envvar_nightly1="FFMPEG_DIR_ANDROID_ARM32_NDK_NIGHTLY1"
+    envvar_nightly2="FFMPEG_DIR_ANDROID_ARM32_NDK_NIGHTLY2"
 elif  [ "$os" == "android-arm64" ]; then
     target_arch=arm64
     target_dir="/usr/local/android/ffmpeg-arm64"

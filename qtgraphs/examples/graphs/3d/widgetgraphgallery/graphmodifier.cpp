@@ -377,7 +377,7 @@ void GraphModifier::setDataModeToWeather(bool enabled)
         changeDataMode(false);
 }
 
-void GraphModifier::setDataModeToCustom(bool enabled)
+void GraphModifier::setDataModeToModel(bool enabled)
 {
     if (enabled)
         changeDataMode(true);
@@ -432,11 +432,11 @@ void GraphModifier::setReverseValueAxis(int enabled)
     m_graph->valueAxis()->setReversed(enabled);
 }
 
-void GraphModifier::changeDataMode(bool customData)
+void GraphModifier::changeDataMode(bool modelData)
 {
     int enabled = false;
-    // Change between weather data and data from custom proxy
-    if (customData) {
+    // Change between weather data and data from model proxy
+    if (modelData) {
         m_graph->removeSeries(m_primarySeries);
         m_graph->removeSeries(m_secondarySeries);
         m_graph->addSeries(m_customData->customSeries());

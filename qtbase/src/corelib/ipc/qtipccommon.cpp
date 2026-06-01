@@ -201,7 +201,7 @@ QNativeIpcKey QtIpcCommon::platformSafeKey(const QString &key, QtIpcCommon::IpcT
             QStringView prefix;
             QStringView payload = key;
             // see https://learn.microsoft.com/en-us/windows/win32/termserv/kernel-object-namespaces
-            for (QStringView candidate : { u"Local\\", u"Global\\" }) {
+            for (QStringView candidate : { u"Local\\"_sv, u"Global\\"_sv }) {
                 if (!key.startsWith(candidate))
                     continue;
                 prefix = candidate;

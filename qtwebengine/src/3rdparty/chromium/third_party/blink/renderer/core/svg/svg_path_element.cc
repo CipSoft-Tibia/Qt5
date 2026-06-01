@@ -20,7 +20,8 @@
 
 #include "third_party/blink/renderer/core/svg/svg_path_element.h"
 
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_path.h"
 #include "third_party/blink/renderer/core/svg/svg_mpath_element.h"
 #include "third_party/blink/renderer/core/svg/svg_path_query.h"
@@ -103,29 +104,11 @@ void SVGPathElement::SvgAttributeChanged(
   const QualifiedName& attr_name = params.name;
   if (attr_name == svg_names::kDAttr) {
     InvalidateMPathDependencies();
-    GeometryPresentationAttributeChanged(attr_name);
+    GeometryPresentationAttributeChanged(params.property);
     return;
   }
 
   SVGGeometryElement::SvgAttributeChanged(params);
-}
-
-void SVGPathElement::CollectStyleForPresentationAttribute(
-    const QualifiedName& name,
-    const AtomicString& value,
-    MutableCSSPropertyValueSet* style) {
-  SVGAnimatedPropertyBase* property = PropertyFromAttribute(name);
-  if (property == path_) {
-    SVGAnimatedPath* path = GetPath();
-    // If this is a <use> instance, return the referenced path to maximize
-    // geometry sharing.
-    if (const SVGElement* element = CorrespondingElement())
-      path = To<SVGPathElement>(element)->GetPath();
-    AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kD,
-                                            path->CssValue());
-    return;
-  }
-  SVGGeometryElement::CollectStyleForPresentationAttribute(name, value, style);
 }
 
 void SVGPathElement::InvalidateMPathDependencies() {
@@ -173,12 +156,8 @@ void SVGPathElement::SynchronizeAllSVGAttributes() const {
 }
 
 void SVGPathElement::CollectExtraStyleForPresentationAttribute(
-    MutableCSSPropertyValueSet* style) {
-  DCHECK(path_->HasPresentationAttributeMapping());
-  if (path_->IsAnimating()) {
-    CollectStyleForPresentationAttribute(svg_names::kDAttr, g_empty_atom,
-                                         style);
-  }
+    HeapVector<CSSPropertyValue, 8>& style) {
+  AddAnimatedPropertyToPresentationAttributeStyle(*path_, style);
   SVGGeometryElement::CollectExtraStyleForPresentationAttribute(style);
 }
 

@@ -109,9 +109,6 @@ public:
     struct ImageResources {
         VkImage image = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
-        VkCommandBuffer cmdBuf = VK_NULL_HANDLE;
-        VkFence cmdFence = VK_NULL_HANDLE;
-        bool cmdFenceWaitable = false;
         VkFramebuffer fb = VK_NULL_HANDLE;
         VkCommandBuffer presTransCmdBuf = VK_NULL_HANDLE;
         VkImage msaaImage = VK_NULL_HANDLE;
@@ -123,13 +120,14 @@ public:
     uint32_t currentImage;
 
     struct FrameResources {
-        VkFence fence = VK_NULL_HANDLE;
-        bool fenceWaitable = false;
         VkSemaphore imageSem = VK_NULL_HANDLE;
         VkSemaphore drawSem = VK_NULL_HANDLE;
         VkSemaphore presTransSem = VK_NULL_HANDLE;
+        VkFence cmdFence = VK_NULL_HANDLE;
+        VkCommandBuffer cmdBuf = VK_NULL_HANDLE;
         bool imageAcquired = false;
         bool imageSemWaitable = false;
+        bool cmdFenceWaitable = false;
     } frameRes[MAX_FRAME_LAG];
 
     uint32_t currentFrame;

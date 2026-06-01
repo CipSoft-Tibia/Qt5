@@ -57,7 +57,12 @@ class ExecutionResult {
     uint64_t peak_rss_mb = 0;     // Peak RSS in Mb after executing the input.
 
     // For tests.
-    bool operator==(const Stats&) const = default;
+    bool operator==(const Stats& other) const {
+      return prep_time_usec == other.prep_time_usec &&
+             exec_time_usec == other.exec_time_usec &&
+             post_time_usec == other.post_time_usec &&
+             peak_rss_mb == other.peak_rss_mb;
+    }
   };
 
   // Accessors.
@@ -152,6 +157,8 @@ class BatchResult {
   std::vector<ExecutionResult> results_;
   std::string log_;  // log_ is populated optionally, e.g. if there was a crash.
   int exit_code_ = EXIT_SUCCESS;  // Process exit code.
+  // If the batch execution fails, this may optionally contain a failure
+  // description, e.g., the crash type, stack trace...
   std::string failure_description_;
   size_t num_outputs_read_ = 0;
 };

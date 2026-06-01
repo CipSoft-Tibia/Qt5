@@ -224,6 +224,8 @@ bool Window::event(QEvent *e)
 
 void Window::init()
 {
+    QRhi::AdapterList adapters;
+
     if (graphicsApi == Null) {
         QRhiNullInitParams params;
         m_r = QRhi::create(QRhi::Null, &params, rhiFlags);
@@ -244,6 +246,7 @@ void Window::init()
         QRhiVulkanInitParams params;
         params.inst = vulkanInstance();
         params.window = this;
+        adapters = QRhi::enumerateAdapters(QRhi::Vulkan, &params);
         m_r = QRhi::create(QRhi::Vulkan, &params, rhiFlags);
     }
 #endif
@@ -254,12 +257,14 @@ void Window::init()
         if (debugLayer)
             qDebug("Enabling D3D11 debug layer");
         params.enableDebugLayer = debugLayer;
+        adapters = QRhi::enumerateAdapters(QRhi::D3D11, &params);
         m_r = QRhi::create(QRhi::D3D11, &params, rhiFlags);
     } else if (graphicsApi == D3D12) {
         QRhiD3D12InitParams params;
         if (debugLayer)
             qDebug("Enabling D3D12 debug layer");
         params.enableDebugLayer = debugLayer;
+        adapters = QRhi::enumerateAdapters(QRhi::D3D12, &params);
         m_r = QRhi::create(QRhi::D3D12, &params, rhiFlags);
     }
 #endif
@@ -270,6 +275,12 @@ void Window::init()
         m_r = QRhi::create(QRhi::Metal, &params, rhiFlags);
     }
 #endif
+
+    if (!adapters.isEmpty()) {
+        qDebug() << "For information, enumerateAdapters() reports:";
+        for (qsizetype i = 0; i < adapters.count(); ++i)
+            qDebug() << "  QRhiAdapter #" << i << ":" << adapters[i]->info();
+    }
 
     if (!m_r)
         qFatal("Failed to create RHI backend");

@@ -5,6 +5,8 @@
 ## qtquickcontrols2windowsstyleplugin Plugin:
 #####################################################################
 
+add_subdirectory(impl)
+
 set(qml_files
     "ApplicationWindow.qml"
     "Button.qml"
@@ -25,6 +27,7 @@ set(qml_files
     "RadioDelegate.qml"
     "RangeSlider.qml"
     "ScrollIndicator.qml"
+    "SearchField.qml"
     "SelectionRectangle.qml"
     "Slider.qml"
     "SpinBox.qml"
@@ -57,6 +60,12 @@ qt_internal_add_qml_module(qtquickcontrols2windowsstyleplugin
         images/menuarrow.png
         images/menuarrow@2x.png
         images/menuarrow@3x.png
+        images/close_big.png
+        images/close_big@2x.png
+        images/close_big@3x.png
+        images/search-magnifier.png
+        images/search-magnifier@2x.png
+        images/search-magnifier@3x.png
     DEFINES
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
@@ -68,9 +77,8 @@ qt_internal_add_qml_module(qtquickcontrols2windowsstyleplugin
         Qt::QuickControls2WindowsStyleImpl
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
+        Qt::QuickControls2FusionPrivate
 )
-
-add_subdirectory(impl)
 
 # Native style is a dependency of the Windows style.
 _qt_internal_add_qml_static_plugin_dependency(qtquickcontrols2windowsstyleplugin

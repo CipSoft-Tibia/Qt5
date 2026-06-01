@@ -34,8 +34,7 @@ namespace tint::hlsl::writer {
 namespace {
 
 TEST_F(HlslWriterTest, AccessArray) {
-    auto* func = b.Function("a", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    func->SetWorkgroupSize(1, 1, 1);
+    auto* func = b.ComputeFunction("a");
 
     b.Append(func->Block(), [&] {
         auto* v = b.Var("v", b.Zero<array<f32, 3>>());
@@ -63,8 +62,7 @@ TEST_F(HlslWriterTest, AccessStruct) {
     };
     auto* strct = ty.Struct(b.ir.symbols.New("S"), std::move(members));
 
-    auto* f = b.Function("a", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    f->SetWorkgroupSize(1, 1, 1);
+    auto* f = b.ComputeFunction("a");
 
     b.Append(f->Block(), [&] {
         auto* v = b.Var("v", b.Zero(strct));
@@ -89,8 +87,7 @@ void a() {
 }
 
 TEST_F(HlslWriterTest, AccessVector) {
-    auto* func = b.Function("a", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    func->SetWorkgroupSize(1, 1, 1);
+    auto* func = b.ComputeFunction("a");
 
     b.Append(func->Block(), [&] {
         auto* v = b.Var("v", b.Zero<vec3<f32>>());
@@ -110,8 +107,7 @@ void a() {
 }
 
 TEST_F(HlslWriterTest, AccessMatrix) {
-    auto* func = b.Function("a", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    func->SetWorkgroupSize(1, 1, 1);
+    auto* func = b.ComputeFunction("a");
 
     b.Append(func->Block(), [&] {
         auto* v = b.Var("v", b.Zero<mat4x4<f32>>());
@@ -142,8 +138,8 @@ TEST_F(HlslWriterTest, AccessStoreVectorElementConstantIndex) {
     ASSERT_TRUE(Generate()) << err_ << output_.hlsl;
     EXPECT_EQ(output_.hlsl, R"(
 void foo() {
-  int4 vec = (0).xxxx;
-  vec[1u] = 42;
+  int4 vec = (int(0)).xxxx;
+  vec.y = int(42);
 }
 
 [numthreads(1, 1, 1)]
@@ -166,8 +162,8 @@ TEST_F(HlslWriterTest, AccessStoreVectorElementDynamicIndex) {
     ASSERT_TRUE(Generate()) << err_ << output_.hlsl;
     EXPECT_EQ(output_.hlsl, R"(
 void foo(int idx) {
-  int4 vec = (0).xxxx;
-  vec[min(uint(idx), 3u)] = 42;
+  int4 vec = (int(0)).xxxx;
+  vec[min(uint(idx), 3u)] = int(42);
 }
 
 [numthreads(1, 1, 1)]
@@ -196,8 +192,7 @@ TEST_F(HlslWriterTest, AccessNested) {
     };
     auto* s_strct = ty.Struct(b.ir.symbols.New("S"), std::move(members_s));
 
-    auto* f = b.Function("a", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    f->SetWorkgroupSize(1, 1, 1);
+    auto* f = b.ComputeFunction("a");
 
     b.Append(f->Block(), [&] {
         auto* v = b.Var("v", b.Zero(s_strct));
@@ -228,12 +223,11 @@ void a() {
 }
 
 TEST_F(HlslWriterTest, AccessSwizzle) {
-    auto* f = b.Function("a", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    f->SetWorkgroupSize(1, 1, 1);
+    auto* f = b.ComputeFunction("a");
 
     b.Append(f->Block(), [&] {
         auto* v = b.Var("v", b.Zero<vec3<f32>>());
-        b.Let("b", b.Swizzle(ty.f32(), v, {1u}));
+        b.Let("b", b.Swizzle(ty.f32(), b.Load(v), {1u}));
         b.Return(f);
     });
 
@@ -249,12 +243,11 @@ void a() {
 }
 
 TEST_F(HlslWriterTest, AccessSwizzleMulti) {
-    auto* f = b.Function("a", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    f->SetWorkgroupSize(1, 1, 1);
+    auto* f = b.ComputeFunction("a");
 
     b.Append(f->Block(), [&] {
         auto* v = b.Var("v", b.Zero<vec4<f32>>());
-        b.Let("b", b.Swizzle(ty.vec4<f32>(), v, {3u, 2u, 1u, 0u}));
+        b.Let("b", b.Swizzle(ty.vec4<f32>(), b.Load(v), {3u, 2u, 1u, 0u}));
         b.Return(f);
     });
 
@@ -345,10 +338,7 @@ TEST_F(HlslWriterTest, AccessStorageMatrix) {
     EXPECT_EQ(output_.hlsl, R"(
 ByteAddressBuffer v : register(t0);
 float4x4 v_1(uint offset) {
-  float4 v_2 = asfloat(v.Load4((offset + 0u)));
-  float4 v_3 = asfloat(v.Load4((offset + 16u)));
-  float4 v_4 = asfloat(v.Load4((offset + 32u)));
-  return float4x4(v_2, v_3, v_4, asfloat(v.Load4((offset + 48u))));
+  return float4x4(asfloat(v.Load4((offset + 0u))), asfloat(v.Load4((offset + 16u))), asfloat(v.Load4((offset + 32u))), asfloat(v.Load4((offset + 48u))));
 }
 
 void foo() {
@@ -431,9 +421,8 @@ TEST_F(HlslWriterTest, AccessStorageStruct) {
 
 ByteAddressBuffer v : register(t0);
 SB v_1(uint offset) {
-  int v_2 = asint(v.Load((offset + 0u)));
-  SB v_3 = {v_2, asfloat(v.Load((offset + 4u)))};
-  return v_3;
+  SB v_2 = {asint(v.Load((offset + 0u))), asfloat(v.Load((offset + 4u)))};
+  return v_2;
 }
 
 void foo() {
@@ -514,34 +503,32 @@ ary_ret v_1(uint offset) {
 }
 
 float3x3 v_5(uint offset) {
-  float3 v_6 = asfloat(v.Load3((offset + 0u)));
-  float3 v_7 = asfloat(v.Load3((offset + 16u)));
-  return float3x3(v_6, v_7, asfloat(v.Load3((offset + 32u))));
+  return float3x3(asfloat(v.Load3((offset + 0u))), asfloat(v.Load3((offset + 16u))), asfloat(v.Load3((offset + 32u))));
 }
 
-Inner v_8(uint offset) {
-  float3x3 v_9 = v_5((offset + 0u));
-  float3 v_10[5] = v_1((offset + 48u));
-  Inner v_11 = {v_9, v_10};
-  return v_11;
+Inner v_6(uint offset) {
+  float3x3 v_7 = v_5((offset + 0u));
+  float3 v_8[5] = v_1((offset + 48u));
+  Inner v_9 = {v_7, v_8};
+  return v_9;
 }
 
-Outer v_12(uint offset) {
-  float v_13 = asfloat(v.Load((offset + 0u)));
-  Inner v_14 = v_8((offset + 16u));
-  Outer v_15 = {v_13, v_14};
-  return v_15;
+Outer v_10(uint offset) {
+  float v_11 = asfloat(v.Load((offset + 0u)));
+  Inner v_12 = v_6((offset + 16u));
+  Outer v_13 = {v_11, v_12};
+  return v_13;
 }
 
-SB v_16(uint offset) {
-  int v_17 = asint(v.Load((offset + 0u)));
-  Outer v_18 = v_12((offset + 16u));
-  SB v_19 = {v_17, v_18};
-  return v_19;
+SB v_14(uint offset) {
+  int v_15 = asint(v.Load((offset + 0u)));
+  Outer v_16 = v_10((offset + 16u));
+  SB v_17 = {v_15, v_16};
+  return v_17;
 }
 
 void foo() {
-  SB a = v_16(0u);
+  SB a = v_14(0u);
   float b = asfloat(v.Load(136u));
 }
 
@@ -629,13 +616,13 @@ TEST_F(HlslWriterTest, AccessChainFromUnnamedAccessChain) {
                                                     {mod.symbols.New("b"), Inner},
                                                 });
 
-    auto* var = b.Var("v", storage, sb, core::Access::kReadWrite);
+    auto* var = b.Var("v", storage, ty.array(sb, 4), core::Access::kReadWrite);
     var->SetBindingPoint(0, 0);
     b.ir.root_block->Append(var);
 
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        auto* x = b.Access(ty.ptr(storage, sb, core::Access::kReadWrite), var);
+        auto* x = b.Access(ty.ptr(storage, sb, core::Access::kReadWrite), var, 2_u);
         auto* y = b.Access(ty.ptr(storage, Inner, core::Access::kReadWrite), x->Result(0), 1_u);
         b.Let("b", b.Load(b.Access(ty.ptr(storage, ty.u32(), core::Access::kReadWrite),
                                    y->Result(0), 1_u)));
@@ -646,7 +633,7 @@ TEST_F(HlslWriterTest, AccessChainFromUnnamedAccessChain) {
     EXPECT_EQ(output_.hlsl, R"(
 RWByteAddressBuffer v : register(u0);
 void foo() {
-  uint b = v.Load(8u);
+  uint b = v.Load(32u);
 }
 
 )");
@@ -723,20 +710,16 @@ TEST_F(HlslWriterTest, AccessComplexDynamicAccessChain) {
     EXPECT_EQ(output_.hlsl, R"(
 RWByteAddressBuffer sb : register(u0);
 void foo() {
-  int i = 4;
-  int v = i;
+  int i = int(4);
   uint j = 1u;
-  uint v_1 = j;
-  int k = 2;
-  int v_2 = k;
-  uint v_3 = 0u;
-  sb.GetDimensions(v_3);
-  uint v_4 = (((v_3 - 16u) / 128u) - 1u);
-  uint v_5 = min(uint(v), v_4);
-  uint v_6 = min(v_1, 2u);
-  uint v_7 = (uint(v_5) * 128u);
-  uint v_8 = (uint(v_6) * 32u);
-  float x = asfloat(sb.Load((((48u + v_7) + v_8) + (uint(min(uint(v_2), 2u)) * 4u))));
+  uint v = j;
+  int k = int(2);
+  int v_1 = k;
+  uint v_2 = 0u;
+  sb.GetDimensions(v_2);
+  uint v_3 = (((v_2 - 16u) / 128u) - 1u);
+  uint v_4 = (min(uint(i), v_3) * 128u);
+  float x = asfloat(sb.Load((((48u + v_4) + (min(v, 2u) * 32u)) + (min(uint(v_1), 2u) * 4u))));
 }
 
 )");
@@ -777,13 +760,9 @@ TEST_F(HlslWriterTest, AccessComplexDynamicAccessChainSplit) {
 RWByteAddressBuffer sb : register(u0);
 void foo() {
   uint j = 1u;
-  uint v = j;
-  uint v_1 = 0u;
-  sb.GetDimensions(v_1);
-  uint v_2 = min(4u, (((v_1 - 16u) / 128u) - 1u));
-  uint v_3 = min(v, 2u);
-  uint v_4 = (uint(v_2) * 128u);
-  float x = asfloat(sb.Load(((56u + v_4) + (uint(v_3) * 32u))));
+  uint v = 0u;
+  sb.GetDimensions(v);
+  float x = asfloat(sb.Load(((56u + (min(4u, (((v - 16u) / 128u) - 1u)) * 128u)) + (min(j, 2u) * 32u))));
 }
 
 )");
@@ -802,13 +781,13 @@ TEST_F(HlslWriterTest, AccessUniformChainFromUnnamedAccessChain) {
                                                   Inner->Size(), core::IOAttributes{}));
     auto* sb = ty.Struct(mod.symbols.New("SB"), members);
 
-    auto* var = b.Var("v", uniform, sb, core::Access::kRead);
+    auto* var = b.Var("v", uniform, ty.array(sb, 4), core::Access::kRead);
     var->SetBindingPoint(0, 0);
     b.ir.root_block->Append(var);
 
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        auto* x = b.Access(ty.ptr(uniform, sb, core::Access::kRead), var);
+        auto* x = b.Access(ty.ptr(uniform, sb, core::Access::kRead), var, 2_u);
         auto* y = b.Access(ty.ptr(uniform, Inner, core::Access::kRead), x->Result(0), 1_u);
         b.Let("b",
               b.Load(b.Access(ty.ptr(uniform, ty.u32(), core::Access::kRead), y->Result(0), 1_u)));
@@ -818,10 +797,10 @@ TEST_F(HlslWriterTest, AccessUniformChainFromUnnamedAccessChain) {
     ASSERT_TRUE(Generate()) << err_ << output_.hlsl;
     EXPECT_EQ(output_.hlsl, R"(
 cbuffer cbuffer_v : register(b0) {
-  uint4 v[2];
+  uint4 v[8];
 };
 void foo() {
-  uint b = v[1u].y;
+  uint b = v[5u].y;
 }
 
 )");
@@ -963,25 +942,25 @@ TEST_F(HlslWriterTest, AccessUniformVectorF16) {
 cbuffer cbuffer_v : register(b0) {
   uint4 v[1];
 };
-vector<float16_t, 4> tint_bitcast_to_f16(uint4 src) {
-  uint4 v = src;
-  uint4 mask = (65535u).xxxx;
-  uint4 shift = (16u).xxxx;
-  float4 t_low = f16tof32((v & mask));
-  float4 t_high = f16tof32(((v >> shift) & mask));
-  float16_t v_1 = float16_t(t_low.x);
-  float16_t v_2 = float16_t(t_high.x);
-  float16_t v_3 = float16_t(t_low.y);
-  return vector<float16_t, 4>(v_1, v_2, v_3, float16_t(t_high.y));
+vector<float16_t, 4> tint_bitcast_to_f16(uint2 src) {
+  uint2 v_1 = src;
+  uint2 mask = (65535u).xx;
+  uint2 shift = (16u).xx;
+  float2 t_low = f16tof32((v_1 & mask));
+  float2 t_high = f16tof32(((v_1 >> shift) & mask));
+  float16_t v_2 = float16_t(t_low.x);
+  float16_t v_3 = float16_t(t_high.x);
+  float16_t v_4 = float16_t(t_low.y);
+  return vector<float16_t, 4>(v_2, v_3, v_4, float16_t(t_high.y));
 }
 
 void foo() {
   uint x = 1u;
-  vector<float16_t, 4> a = tint_bitcast_to_f16(v[0u]);
+  vector<float16_t, 4> a = tint_bitcast_to_f16(v[0u].xy);
   float16_t b = float16_t(f16tof32(v[0u].x));
-  uint v_4 = (uint(min(x, 3u)) * 2u);
-  uint v_5 = v[(v_4 / 16u)][((v_4 % 16u) / 4u)];
-  float16_t c = float16_t(f16tof32((v_5 >> ((((v_4 % 4u) == 0u)) ? (0u) : (16u)))));
+  uint v_5 = (min(x, 3u) * 2u);
+  uint v_6 = v[(v_5 / 16u)][((v_5 % 16u) / 4u)];
+  float16_t c = float16_t(f16tof32((v_6 >> ((((v_5 % 4u) == 0u)) ? (0u) : (16u)))));
   float16_t d = float16_t(f16tof32(v[0u].y));
   float16_t e = float16_t(f16tof32((v[0u].y >> 16u)));
 }
@@ -1009,10 +988,7 @@ cbuffer cbuffer_v : register(b0) {
   uint4 v[4];
 };
 float4x4 v_1(uint start_byte_offset) {
-  float4 v_2 = asfloat(v[(start_byte_offset / 16u)]);
-  float4 v_3 = asfloat(v[((16u + start_byte_offset) / 16u)]);
-  float4 v_4 = asfloat(v[((32u + start_byte_offset) / 16u)]);
-  return float4x4(v_2, v_3, v_4, asfloat(v[((48u + start_byte_offset) / 16u)]));
+  return float4x4(asfloat(v[(start_byte_offset / 16u)]), asfloat(v[((16u + start_byte_offset) / 16u)]), asfloat(v[((32u + start_byte_offset) / 16u)]), asfloat(v[((48u + start_byte_offset) / 16u)]));
 }
 
 void foo() {
@@ -1044,8 +1020,7 @@ cbuffer cbuffer_v : register(b0) {
   uint4 v[2];
 };
 float2x3 v_1(uint start_byte_offset) {
-  float3 v_2 = asfloat(v[(start_byte_offset / 16u)].xyz);
-  return float2x3(v_2, asfloat(v[((16u + start_byte_offset) / 16u)].xyz));
+  return float2x3(asfloat(v[(start_byte_offset / 16u)].xyz), asfloat(v[((16u + start_byte_offset) / 16u)].xyz));
 }
 
 void foo() {
@@ -1075,26 +1050,28 @@ TEST_F(HlslWriterTest, AccessUniformMat2x3F16) {
 cbuffer cbuffer_v : register(b0) {
   uint4 v[1];
 };
-vector<float16_t, 4> tint_bitcast_to_f16(uint4 src) {
-  uint4 v = src;
-  uint4 mask = (65535u).xxxx;
-  uint4 shift = (16u).xxxx;
-  float4 t_low = f16tof32((v & mask));
-  float4 t_high = f16tof32(((v >> shift) & mask));
-  float16_t v_1 = float16_t(t_low.x);
-  float16_t v_2 = float16_t(t_high.x);
-  float16_t v_3 = float16_t(t_low.y);
-  return vector<float16_t, 4>(v_1, v_2, v_3, float16_t(t_high.y));
+vector<float16_t, 4> tint_bitcast_to_f16(uint2 src) {
+  uint2 v_1 = src;
+  uint2 mask = (65535u).xx;
+  uint2 shift = (16u).xx;
+  float2 t_low = f16tof32((v_1 & mask));
+  float2 t_high = f16tof32(((v_1 >> shift) & mask));
+  float16_t v_2 = float16_t(t_low.x);
+  float16_t v_3 = float16_t(t_high.x);
+  float16_t v_4 = float16_t(t_low.y);
+  return vector<float16_t, 4>(v_2, v_3, v_4, float16_t(t_high.y));
 }
 
-matrix<float16_t, 2, 3> v_4(uint start_byte_offset) {
-  vector<float16_t, 3> v_5 = tint_bitcast_to_f16(v[(start_byte_offset / 16u)]).xyz;
-  return matrix<float16_t, 2, 3>(v_5, tint_bitcast_to_f16(v[((8u + start_byte_offset) / 16u)]).xyz);
+matrix<float16_t, 2, 3> v_5(uint start_byte_offset) {
+  uint4 v_6 = v[(start_byte_offset / 16u)];
+  vector<float16_t, 3> v_7 = tint_bitcast_to_f16((((((start_byte_offset % 16u) / 4u) == 2u)) ? (v_6.zw) : (v_6.xy))).xyz;
+  uint4 v_8 = v[((8u + start_byte_offset) / 16u)];
+  return matrix<float16_t, 2, 3>(v_7, tint_bitcast_to_f16(((((((8u + start_byte_offset) % 16u) / 4u) == 2u)) ? (v_8.zw) : (v_8.xy))).xyz);
 }
 
 void foo() {
-  matrix<float16_t, 2, 3> a = v_4(0u);
-  vector<float16_t, 3> b = tint_bitcast_to_f16(v[0u]).xyz;
+  matrix<float16_t, 2, 3> a = v_5(0u);
+  vector<float16_t, 3> b = tint_bitcast_to_f16(v[0u].zw).xyz;
   float16_t c = float16_t(f16tof32(v[0u].w));
 }
 
@@ -1192,23 +1169,21 @@ cbuffer cbuffer_v : register(b0) {
   uint4 v[1];
 };
 vector<float16_t, 2> tint_bitcast_to_f16(uint src) {
-  uint v = src;
-  float t_low = f16tof32((v & 65535u));
-  float t_high = f16tof32(((v >> 16u) & 65535u));
-  float16_t v_1 = float16_t(t_low);
-  return vector<float16_t, 2>(v_1, float16_t(t_high));
+  uint v_1 = src;
+  float t_low = f16tof32((v_1 & 65535u));
+  float t_high = f16tof32(((v_1 >> 16u) & 65535u));
+  float16_t v_2 = float16_t(t_low);
+  return vector<float16_t, 2>(v_2, float16_t(t_high));
 }
 
-matrix<float16_t, 2, 2> v_2(uint start_byte_offset) {
-  uint4 v_3 = v[(start_byte_offset / 16u)];
-  vector<float16_t, 2> v_4 = tint_bitcast_to_f16((((((start_byte_offset % 16u) / 4u) == 2u)) ? (v_3.z) : (v_3.x)));
-  uint4 v_5 = v[((4u + start_byte_offset) / 16u)];
-  return matrix<float16_t, 2, 2>(v_4, tint_bitcast_to_f16(((((((4u + start_byte_offset) % 16u) / 4u) == 2u)) ? (v_5.z) : (v_5.x))));
+matrix<float16_t, 2, 2> v_3(uint start_byte_offset) {
+  vector<float16_t, 2> v_4 = tint_bitcast_to_f16(v[(start_byte_offset / 16u)][((start_byte_offset % 16u) / 4u)]);
+  return matrix<float16_t, 2, 2>(v_4, tint_bitcast_to_f16(v[((4u + start_byte_offset) / 16u)][(((4u + start_byte_offset) % 16u) / 4u)]));
 }
 
 void foo() {
-  matrix<float16_t, 2, 2> a = v_2(0u);
-  vector<float16_t, 2> b = tint_bitcast_to_f16(v[0u].x);
+  matrix<float16_t, 2, 2> a = v_3(0u);
+  vector<float16_t, 2> b = tint_bitcast_to_f16(v[0u].y);
   float16_t c = float16_t(f16tof32((v[0u].y >> 16u)));
 }
 
@@ -1279,43 +1254,44 @@ TEST_F(HlslWriterTest, AccessUniformArrayF16) {
 cbuffer cbuffer_v : register(b0) {
   uint4 v[3];
 };
-vector<float16_t, 4> tint_bitcast_to_f16(uint4 src) {
-  uint4 v = src;
-  uint4 mask = (65535u).xxxx;
-  uint4 shift = (16u).xxxx;
-  float4 t_low = f16tof32((v & mask));
-  float4 t_high = f16tof32(((v >> shift) & mask));
-  float16_t v_1 = float16_t(t_low.x);
-  float16_t v_2 = float16_t(t_high.x);
-  float16_t v_3 = float16_t(t_low.y);
-  return vector<float16_t, 4>(v_1, v_2, v_3, float16_t(t_high.y));
+vector<float16_t, 4> tint_bitcast_to_f16(uint2 src) {
+  uint2 v_1 = src;
+  uint2 mask = (65535u).xx;
+  uint2 shift = (16u).xx;
+  float2 t_low = f16tof32((v_1 & mask));
+  float2 t_high = f16tof32(((v_1 >> shift) & mask));
+  float16_t v_2 = float16_t(t_low.x);
+  float16_t v_3 = float16_t(t_high.x);
+  float16_t v_4 = float16_t(t_low.y);
+  return vector<float16_t, 4>(v_2, v_3, v_4, float16_t(t_high.y));
 }
 
 typedef vector<float16_t, 3> ary_ret[5];
-ary_ret v_4(uint start_byte_offset) {
+ary_ret v_5(uint start_byte_offset) {
   vector<float16_t, 3> a[5] = (vector<float16_t, 3>[5])0;
   {
-    uint v_5 = 0u;
-    v_5 = 0u;
+    uint v_6 = 0u;
+    v_6 = 0u;
     while(true) {
-      uint v_6 = v_5;
-      if ((v_6 >= 5u)) {
+      uint v_7 = v_6;
+      if ((v_7 >= 5u)) {
         break;
       }
-      a[v_6] = tint_bitcast_to_f16(v[((start_byte_offset + (v_6 * 8u)) / 16u)]).xyz;
+      uint4 v_8 = v[((start_byte_offset + (v_7 * 8u)) / 16u)];
+      a[v_7] = tint_bitcast_to_f16(((((((start_byte_offset + (v_7 * 8u)) % 16u) / 4u) == 2u)) ? (v_8.zw) : (v_8.xy))).xyz;
       {
-        v_5 = (v_6 + 1u);
+        v_6 = (v_7 + 1u);
       }
       continue;
     }
   }
-  vector<float16_t, 3> v_7[5] = a;
-  return v_7;
+  vector<float16_t, 3> v_9[5] = a;
+  return v_9;
 }
 
 void foo() {
-  vector<float16_t, 3> a[5] = v_4(0u);
-  vector<float16_t, 3> b = tint_bitcast_to_f16(v[1u]).xyz;
+  vector<float16_t, 3> a[5] = v_5(0u);
+  vector<float16_t, 3> b = tint_bitcast_to_f16(v[1u].zw).xyz;
 }
 
 )");
@@ -1396,9 +1372,8 @@ cbuffer cbuffer_v : register(b0) {
   uint4 v[1];
 };
 SB v_1(uint start_byte_offset) {
-  int v_2 = asint(v[(start_byte_offset / 16u)][((start_byte_offset % 16u) / 4u)]);
-  SB v_3 = {v_2, asfloat(v[((4u + start_byte_offset) / 16u)][(((4u + start_byte_offset) % 16u) / 4u)])};
-  return v_3;
+  SB v_2 = {asint(v[(start_byte_offset / 16u)][((start_byte_offset % 16u) / 4u)]), asfloat(v[((4u + start_byte_offset) / 16u)][(((4u + start_byte_offset) % 16u) / 4u)])};
+  return v_2;
 }
 
 void foo() {
@@ -1523,34 +1498,32 @@ ary_ret v_1(uint start_byte_offset) {
 }
 
 float3x3 v_5(uint start_byte_offset) {
-  float3 v_6 = asfloat(v[(start_byte_offset / 16u)].xyz);
-  float3 v_7 = asfloat(v[((16u + start_byte_offset) / 16u)].xyz);
-  return float3x3(v_6, v_7, asfloat(v[((32u + start_byte_offset) / 16u)].xyz));
+  return float3x3(asfloat(v[(start_byte_offset / 16u)].xyz), asfloat(v[((16u + start_byte_offset) / 16u)].xyz), asfloat(v[((32u + start_byte_offset) / 16u)].xyz));
 }
 
-Inner v_8(uint start_byte_offset) {
-  float3x3 v_9 = v_5(start_byte_offset);
-  float3 v_10[5] = v_1((48u + start_byte_offset));
-  Inner v_11 = {v_9, v_10};
-  return v_11;
+Inner v_6(uint start_byte_offset) {
+  float3x3 v_7 = v_5(start_byte_offset);
+  float3 v_8[5] = v_1((48u + start_byte_offset));
+  Inner v_9 = {v_7, v_8};
+  return v_9;
 }
 
-Outer v_12(uint start_byte_offset) {
-  float v_13 = asfloat(v[(start_byte_offset / 16u)][((start_byte_offset % 16u) / 4u)]);
-  Inner v_14 = v_8((16u + start_byte_offset));
-  Outer v_15 = {v_13, v_14};
-  return v_15;
+Outer v_10(uint start_byte_offset) {
+  float v_11 = asfloat(v[(start_byte_offset / 16u)][((start_byte_offset % 16u) / 4u)]);
+  Inner v_12 = v_6((16u + start_byte_offset));
+  Outer v_13 = {v_11, v_12};
+  return v_13;
 }
 
-SB v_16(uint start_byte_offset) {
-  int v_17 = asint(v[(start_byte_offset / 16u)][((start_byte_offset % 16u) / 4u)]);
-  Outer v_18 = v_12((16u + start_byte_offset));
-  SB v_19 = {v_17, v_18};
-  return v_19;
+SB v_14(uint start_byte_offset) {
+  int v_15 = asint(v[(start_byte_offset / 16u)][((start_byte_offset % 16u) / 4u)]);
+  Outer v_16 = v_10((16u + start_byte_offset));
+  SB v_17 = {v_15, v_16};
+  return v_17;
 }
 
 void foo() {
-  SB a = v_16(0u);
+  SB a = v_14(0u);
   float b = asfloat(v[8u].z);
 }
 
@@ -1564,7 +1537,7 @@ TEST_F(HlslWriterTest, AccessStoreScalar) {
     b.ir.root_block->Append(var);
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        b.Store(b.Access(ty.ptr<storage, f32, core::Access::kReadWrite>(), var), 2_f);
+        b.Store(var, 2_f);
         b.Return(func);
     });
 
@@ -1585,7 +1558,7 @@ TEST_F(HlslWriterTest, AccessStoreScalarF16) {
     b.ir.root_block->Append(var);
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        b.Store(b.Access(ty.ptr<storage, f16, core::Access::kReadWrite>(), var), 2_h);
+        b.Store(var, 2_h);
         b.Return(func);
     });
 
@@ -1606,8 +1579,7 @@ TEST_F(HlslWriterTest, AccessStoreVectorElement) {
     b.ir.root_block->Append(var);
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        b.StoreVectorElement(b.Access(ty.ptr<storage, vec3<f32>, core::Access::kReadWrite>(), var),
-                             1_u, 2_f);
+        b.StoreVectorElement(var, 1_u, 2_f);
         b.Return(func);
     });
 
@@ -1628,8 +1600,7 @@ TEST_F(HlslWriterTest, AccessStoreVectorElementF16) {
     b.ir.root_block->Append(var);
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        b.StoreVectorElement(b.Access(ty.ptr<storage, vec3<f16>, core::Access::kReadWrite>(), var),
-                             1_u, 2_h);
+        b.StoreVectorElement(var, 1_u, 2_h);
         b.Return(func);
     });
 
@@ -1650,8 +1621,7 @@ TEST_F(HlslWriterTest, AccessStoreVector) {
     b.ir.root_block->Append(var);
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        b.Store(b.Access(ty.ptr<storage, vec3<f32>, core::Access::kReadWrite>(), var),
-                b.Composite(ty.vec3<f32>(), 2_f, 3_f, 4_f));
+        b.Store(var, b.Composite(ty.vec3<f32>(), 2_f, 3_f, 4_f));
         b.Return(func);
     });
 
@@ -1672,8 +1642,7 @@ TEST_F(HlslWriterTest, AccessStoreVectorF16) {
     b.ir.root_block->Append(var);
     auto* func = b.Function("foo", ty.void_(), core::ir::Function::PipelineStage::kFragment);
     b.Append(func->Block(), [&] {
-        b.Store(b.Access(ty.ptr<storage, vec3<f16>, core::Access::kReadWrite>(), var),
-                b.Composite(ty.vec3<f16>(), 2_h, 3_h, 4_h));
+        b.Store(var, b.Composite(ty.vec3<f16>(), 2_h, 3_h, 4_h));
         b.Return(func);
     });
 
@@ -1907,8 +1876,7 @@ void v_1(uint offset, float3 obj[5]) {
 }
 
 void foo() {
-  float3 v_4[5] = (float3[5])0;
-  float3 ary[5] = v_4;
+  float3 ary[5] = (float3[5])0;
   v_1(0u, ary);
 }
 
@@ -2065,8 +2033,7 @@ void v_4(uint offset, SB obj) {
 }
 
 void foo() {
-  SB v_6 = (SB)0;
-  SB s = v_6;
+  SB s = (SB)0;
   v_4(0u, s);
 }
 
@@ -2161,8 +2128,7 @@ void v_9(uint offset, SB obj) {
 }
 
 void foo() {
-  SB v_11 = (SB)0;
-  SB s = v_11;
+  SB s = (SB)0;
   v_9(0u, s);
 }
 

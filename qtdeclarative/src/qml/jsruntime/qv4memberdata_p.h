@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef QV4MEMBERDATA_H
 #define QV4MEMBERDATA_H
 
@@ -29,7 +30,8 @@ namespace Heap {
 DECLARE_HEAP_OBJECT(MemberData, Base) {
     DECLARE_MARKOBJECTS(MemberData)
 };
-Q_STATIC_ASSERT(std::is_trivial_v<MemberData>);
+static_assert(std::is_trivially_copyable_v<MemberData>);
+static_assert(std::is_trivially_default_constructible_v<MemberData>);
 
 }
 

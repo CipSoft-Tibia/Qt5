@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwasmclipboard.h"
 #include "qwasminputcontext.h"
@@ -48,10 +49,6 @@ static void commonCopyEvent(val event)
 
 void QWasmClipboard::cut(val event)
 {
-    QWasmInputContext *wasmInput = QWasmIntegration::get()->wasmInputContext();
-    if (wasmInput && wasmInput->usingTextInput())
-        return;
-
     if (!QWasmIntegration::get()->getWasmClipboard()->hasClipboardApi()) {
         // Send synthetic Ctrl+X to make the app cut data to Qt's clipboard
          QWindowSystemInterface::handleKeyEvent(
@@ -63,10 +60,6 @@ void QWasmClipboard::cut(val event)
 
 void QWasmClipboard::copy(val event)
 {
-    QWasmInputContext *wasmInput = QWasmIntegration::get()->wasmInputContext();
-    if (wasmInput && wasmInput->usingTextInput())
-        return;
-
     if (!QWasmIntegration::get()->getWasmClipboard()->hasClipboardApi()) {
         // Send synthetic Ctrl+C to make the app copy data to Qt's clipboard
             QWindowSystemInterface::handleKeyEvent(
@@ -77,19 +70,9 @@ void QWasmClipboard::copy(val event)
 
 void QWasmClipboard::paste(val event)
 {
-    QWasmInputContext *wasmInput = QWasmIntegration::get()->wasmInputContext();
-    if (wasmInput && wasmInput->usingTextInput())
-        return;
-
     event.call<void>("preventDefault"); // prevent browser from handling drop event
 
     QWasmIntegration::get()->getWasmClipboard()->sendClipboardData(event);
-}
-
-EMSCRIPTEN_BINDINGS(qtClipboardModule) {
-    function("qtClipboardCutTo", &QWasmClipboard::cut);
-    function("qtClipboardCopyTo", &QWasmClipboard::copy);
-    function("qtClipboardPasteTo", &QWasmClipboard::paste);
 }
 
 QWasmClipboard::QWasmClipboard()
@@ -101,6 +84,13 @@ QWasmClipboard::QWasmClipboard()
 
     if (m_hasClipboardApi && hasPermissionsApi)
         initClipboardPermissions();
+
+    if (!shouldInstallWindowEventHandlers()) {
+        val document = val::global("document");
+        m_documentCut = QWasmEventHandler(document, "cut", QWasmClipboard::cut);
+        m_documentCopy = QWasmEventHandler(document, "copy", QWasmClipboard::copy);
+        m_documentPaste = QWasmEventHandler(document, "paste", QWasmClipboard::paste);
+    }
 }
 
 QWasmClipboard::~QWasmClipboard()
@@ -167,123 +157,57 @@ void QWasmClipboard::initClipboardPermissions()
                            })());
 }
 
-void QWasmClipboard::installEventHandlers(emscripten::val &target)
-{
-    emscripten::val cContext = val::undefined();
-    emscripten::val isChromium = val::global("window")["chrome"];
-    if (!isChromium.isUndefined()) {
-        cContext = val::global("document");
-    } else {
-        cContext = target;
-        // Set contentEditable so that the window gets clipboard events,
-        // then hide the resulting focus frame.
-        cContext.set("contentEditable", std::string("true"));
-        cContext["style"].set("outline", std::string("none"));
-
-        cContext.call<void>("addEventListener", val("beforeinput"),
-                            val::module_property("qtClipboardBeforeInput"), true);
-        cContext.call<void>("addEventListener", val("input"),
-                            val::module_property("qtClipboardInput"), true);
-    }
-
-    // Fallback path for browsers which do not support direct clipboard access
-    cContext.call<void>("addEventListener", val("cut"),
-                        val::module_property("qtClipboardCutTo"), true);
-    cContext.call<void>("addEventListener", val("copy"),
-                        val::module_property("qtClipboardCopyTo"), true);
-    cContext.call<void>("addEventListener", val("paste"),
-                        val::module_property("qtClipboardPasteTo"), true);
-}
-
 bool QWasmClipboard::hasClipboardApi()
 {
     return m_hasClipboardApi;
+}
+
+bool QWasmClipboard::shouldInstallWindowEventHandlers()
+{
+    // Chrome uses global handlers
+    return val::global("window")["chrome"].isUndefined();
 }
 
 void QWasmClipboard::writeToClipboardApi()
 {
     Q_ASSERT(m_hasClipboardApi);
 
-    // copy event
-    // browser event handler detected ctrl c if clipboard API
-    // or Qt call from keyboard event handler
-
-    QMimeData *_mimes = mimeData(QClipboard::Clipboard);
-    if (!_mimes)
+    QMimeData *mimeData = this->mimeData(QClipboard::Clipboard);
+    if (!mimeData)
         return;
 
-    emscripten::val clipboardWriteArray = emscripten::val::array();
-    QByteArray ba;
-
-    for (auto mimetype : _mimes->formats()) {
-        // we need to treat binary and text differently, as the blob method below
-        // fails for text mimetypes
-        // ignore text types
-
-        if (mimetype.contains("STRING", Qt::CaseSensitive) || mimetype.contains("TEXT", Qt::CaseSensitive))
-            continue;
-
-        if (_mimes->hasHtml()) { // prefer html over text
-            ba = _mimes->html().toLocal8Bit();
-            // force this mime
-            mimetype = "text/html";
-        } else if (mimetype.contains("text/plain")) {
-            ba = _mimes->text().toLocal8Bit();
-        } else if (mimetype.contains("image")) {
-            QImage img = qvariant_cast<QImage>( _mimes->imageData());
+    // Support for plain text, html and images (png) are standardized,
+    // copy those to the clipboard data object.
+    emscripten::val clipboardData = emscripten::val::object();
+    for (const QString &mimetype: mimeData->formats()) {
+        if (mimetype == QLatin1String("text/plain")) {
+            emscripten::val text = mimeData->text().toEcmaString();
+            clipboardData.set(mimetype.toEcmaString(), text);
+        } else if (mimetype == QLatin1String("text/html")) {
+            emscripten::val html = mimeData->html().toEcmaString();
+            clipboardData.set(mimetype.toEcmaString(), html);
+        } else if (mimetype.contains(QLatin1String("image"))) {
+            // Serialize the Qt image data to browser supported png
+            QImage img = qvariant_cast<QImage>(mimeData->imageData());
+            QByteArray ba;
             QBuffer buffer(&ba);
             buffer.open(QIODevice::WriteOnly);
             img.save(&buffer, "PNG");
-            mimetype = "image/png"; // chrome only allows png
-            // clipboard error "NotAllowedError" "Type application/x-qt-image not supported on write."
-            // safari silently fails
-            // so we use png internally for now
-        } else {
-            // DATA
-            ba = _mimes->data(mimetype);
+
+            qstdweb::Blob blob = qstdweb::Blob::fromArrayBuffer(qstdweb::Uint8Array::copyFrom(ba).buffer());
+            clipboardData.set(std::string("image/png"), blob.val());
         }
-        // Create file data Blob
-
-        const char *content = ba.data();
-        int dataLength = ba.length();
-        if (dataLength < 1) {
-            qDebug() << "no content found";
-            return;
-        }
-
-        emscripten::val document = emscripten::val::global("document");
-        emscripten::val window = emscripten::val::global("window");
-
-        emscripten::val fileContentView =
-                emscripten::val(emscripten::typed_memory_view(dataLength, content));
-        emscripten::val fileContentCopy = emscripten::val::global("ArrayBuffer").new_(dataLength);
-        emscripten::val fileContentCopyView =
-                emscripten::val::global("Uint8Array").new_(fileContentCopy);
-        fileContentCopyView.call<void>("set", fileContentView);
-
-        emscripten::val contentArray = emscripten::val::array();
-        contentArray.call<void>("push", fileContentCopyView);
-
-        // we have a blob, now create a ClipboardItem
-        emscripten::val type = emscripten::val::array();
-        type.set("type", mimetype.toEcmaString());
-
-        emscripten::val contentBlob = emscripten::val::global("Blob").new_(contentArray, type);
-
-        emscripten::val clipboardItemObject = emscripten::val::object();
-        clipboardItemObject.set(mimetype.toEcmaString(), contentBlob);
-
-        val clipboardItemData = val::global("ClipboardItem").new_(clipboardItemObject);
-
-        clipboardWriteArray.call<void>("push", clipboardItemData);
-
-        // Clipboard write is only supported with one ClipboardItem at the moment
-        // but somehow this still works?
-        // break;
     }
 
-    val navigator = val::global("navigator");
+    // Return if there is no data (creating an empty ClipboardItem is an error)
+    if (val::global("Object").call<val>("keys", clipboardData)["length"].as<int>() == 0)
+        return;
 
+    // Write a single clipboard item containing the data formats to the clipboard
+    emscripten::val clipboardItem = val::global("ClipboardItem").new_(clipboardData);
+    emscripten::val clipboardItemArray = emscripten::val::array();
+    clipboardItemArray.call<void>("push", clipboardItem);
+    val navigator = val::global("navigator");
     qstdweb::Promise::make(
         navigator["clipboard"], "write",
         {
@@ -293,7 +217,7 @@ void QWasmClipboard::writeToClipboardApi()
                     << QString::fromStdString(error["message"].as<std::string>());
             }
         },
-        clipboardWriteArray);
+        clipboardItemArray);
 }
 
 void QWasmClipboard::writeToClipboard()
@@ -308,8 +232,6 @@ void QWasmClipboard::writeToClipboard()
 
 void QWasmClipboard::sendClipboardData(emscripten::val event)
 {
-    qDebug() << "sendClipboardData";
-
     dom::DataTransfer *transfer = new dom::DataTransfer(event["clipboardData"]);
     const auto mimeCallback = std::function([transfer](QMimeData *data) {
 

@@ -11,6 +11,8 @@ ColumnLayout {
 
     property bool barsVisible: barsMode.checked
     property bool valueColoring: valueColoringChange.checked
+    property bool shaded: shadingChange.checked
+    property int transparencyTechnique: transparencyTechniqueChange.currentValue
 
     Label {
         text: "Bars3D Graph"
@@ -175,5 +177,30 @@ ColumnLayout {
         id: valueColoringChange
         checked: false
         visible: bars.visible && !colorStyle.checked
+    }
+
+    Label {
+        text: "Shaded lighting"
+        color: "gray"
+    }
+    CheckBox {
+        id: shadingChange
+        checked: true
+    }
+
+    Label {
+        text: "Transparency technique"
+        color: "gray"
+    }
+    ComboBox {
+        id: transparencyTechniqueChange
+        textRole: "text"
+        valueRole: "value"
+
+        model : [
+            { value: Graphs3D.TransparencyTechnique.Default, text: qsTr("Default") },
+            { value: Graphs3D.TransparencyTechnique.Approximate, text: qsTr("Approximate") },
+            { value: Graphs3D.TransparencyTechnique.Accurate, text: qsTr("Accurate") }
+        ]
     }
 }

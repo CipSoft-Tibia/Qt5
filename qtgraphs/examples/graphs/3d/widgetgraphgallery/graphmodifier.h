@@ -32,7 +32,7 @@ public:
     void setSmoothBars(int smooth);
     void setSeriesVisibility(int visible);
     void setReverseValueAxis(int enabled);
-    void changeDataMode(bool customData);
+    void changeDataMode(bool modelData);
 
 public Q_SLOTS:
     void changeRange(int range);
@@ -46,7 +46,7 @@ public Q_SLOTS:
     void setAxisTitleFixed(bool enabled);
     void zoomToSelectedBar();
     void setDataModeToWeather(bool enabled);
-    void setDataModeToCustom(bool enabled);
+    void setDataModeToModel(bool enabled);
 
 Q_SIGNALS:
     void shadowQualityChanged(int quality);

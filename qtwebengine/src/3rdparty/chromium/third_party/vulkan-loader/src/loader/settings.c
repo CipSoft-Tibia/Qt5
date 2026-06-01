@@ -27,7 +27,10 @@
 #include "cJSON.h"
 #include "loader.h"
 #include "loader_environment.h"
+#include "loader_json.h"
+#if defined(WIN32)
 #include "loader_windows.h"
+#endif
 #include "log.h"
 #include "stack_allocation.h"
 #include "vk_loader_platform.h"
@@ -106,17 +109,15 @@ uint32_t parse_log_filters_from_strings(struct loader_string_list* log_filters) 
     return filters;
 }
 
-bool parse_json_enable_disable_option(const struct loader_instance* inst, cJSON* object, const char* key) {
-    char* str = NULL;
-    VkResult res = loader_parse_json_string(object, key, &str);
-    if (res != VK_SUCCESS || NULL == str) {
+bool parse_json_enable_disable_option(cJSON* object) {
+    char* str = loader_cJSON_GetStringValue(object);
+    if (NULL == str) {
         return false;
     }
     bool enable = false;
     if (strcmp(str, "enabled") == 0) {
         enable = true;
     }
-    loader_instance_heap_free(inst, str);
     return enable;
 }
 
@@ -178,13 +179,14 @@ VkResult parse_layer_configurations(const struct loader_instance* inst, cJSON* s
         goto out;
     }
 
-    for (uint32_t i = 0; i < layer_configurations_count; i++) {
-        cJSON* layer = loader_cJSON_GetArrayItem(layer_configurations, i);
-        if (NULL == layer) {
+    cJSON* layer = NULL;
+    size_t i = 0;
+    cJSON_ArrayForEach(layer, layer_configurations) {
+        if (layer->type != cJSON_Object) {
             res = VK_ERROR_INITIALIZATION_FAILED;
             goto out;
         }
-        res = parse_layer_configuration(inst, layer, &(loader_settings->layer_configurations[i]));
+        res = parse_layer_configuration(inst, layer, &(loader_settings->layer_configurations[i++]));
         if (VK_SUCCESS != res) {
             goto out;
         }
@@ -192,8 +194,8 @@ VkResult parse_layer_configurations(const struct loader_instance* inst, cJSON* s
 out:
     if (res != VK_SUCCESS) {
         if (loader_settings->layer_configurations) {
-            for (uint32_t i = 0; i < loader_settings->layer_configuration_count; i++) {
-                free_layer_configuration(inst, &(loader_settings->layer_configurations[i]));
+            for (size_t index = 0; index < loader_settings->layer_configuration_count; index++) {
+                free_layer_configuration(inst, &(loader_settings->layer_configurations[index]));
             }
             loader_settings->layer_configuration_count = 0;
             loader_instance_heap_free(inst, loader_settings->layer_configurations);
@@ -276,12 +278,25 @@ void log_settings(const struct loader_instance* inst, loader_settings* settings)
     loader_log(inst, VULKAN_LOADER_INFO_BIT, 0, "Using layer configurations found in loader settings from %s",
                settings->settings_file_path);
 
+    char cmd_line_msg[64];
+    size_t cmd_line_size = sizeof(cmd_line_msg);
+    size_t num_used = 0;
+
+    cmd_line_msg[0] = '\0';
+
+    generate_debug_flag_str(settings->debug_level, cmd_line_size, cmd_line_msg, &num_used);
+    if (num_used > 0) {
+        loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0, "Loader Settings Filters for Logging to Standard Error: %s", cmd_line_msg);
+    }
+
     loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0, "Layer Configurations count = %d", settings->layer_configuration_count);
     for (uint32_t i = 0; i < settings->layer_configuration_count; i++) {
         loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0, "---- Layer Configuration [%d] ----", i);
         if (settings->layer_configurations[i].control != LOADER_SETTINGS_LAYER_UNORDERED_LAYER_LOCATION) {
             loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0, "Name: %s", settings->layer_configurations[i].name);
             loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0, "Path: %s", settings->layer_configurations[i].path);
+            loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0, "Layer Type: %s",
+                       settings->layer_configurations[i].treat_as_implicit_manifest ? "Implicit" : "Explicit");
         }
         loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0, "Control: %s",
                    loader_settings_layer_control_to_string(settings->layer_configurations[i].control));
@@ -300,12 +315,16 @@ VkResult get_loader_settings(const struct loader_instance* inst, loader_settings
 #if defined(WIN32)
     res = windows_get_loader_settings_file_path(inst, &settings_file_path);
     if (res != VK_SUCCESS) {
+        loader_log(inst, VULKAN_LOADER_INFO_BIT, 0,
+                   "No valid vk_loader_settings.json file found, no loader settings will be active");
         goto out;
     }
 
 #elif COMMON_UNIX_PLATFORMS
     res = get_unix_settings_path(inst, &settings_file_path);
     if (res != VK_SUCCESS) {
+        loader_log(inst, VULKAN_LOADER_INFO_BIT, 0,
+                   "No valid vk_loader_settings.json file found, no loader settings will be active");
         goto out;
     }
 #else
@@ -314,93 +333,101 @@ VkResult get_loader_settings(const struct loader_instance* inst, loader_settings
 
     res = loader_get_json(inst, settings_file_path, &json);
     // Make sure sure the top level json value is an object
-    if (res != VK_SUCCESS || NULL == json || json->type != 6) {
+    if (res != VK_SUCCESS || NULL == json || json->type != cJSON_Object) {
         goto out;
     }
 
     res = loader_parse_json_string(json, "file_format_version", &file_format_version_string);
     if (res != VK_SUCCESS) {
+        if (res != VK_ERROR_OUT_OF_HOST_MEMORY) {
+            loader_log(
+                inst, VULKAN_LOADER_DEBUG_BIT, 0,
+                "Loader settings file from %s missing required field file_format_version - no loader settings will be active",
+                settings_file_path);
+        }
         goto out;
     }
-    uint32_t settings_array_count = 0;
-    bool has_multi_setting_file = false;
+
+    // Because the file may contain either a "settings_array" or a single "settings" object, we need to create a cJSON so that we
+    // can iterate on both cases with common code
+    cJSON settings_iter_parent = {0};
+
     cJSON* settings_array = loader_cJSON_GetObjectItem(json, "settings_array");
     cJSON* single_settings_object = loader_cJSON_GetObjectItem(json, "settings");
     if (NULL != settings_array) {
-        has_multi_setting_file = true;
-        settings_array_count = loader_cJSON_GetArraySize(settings_array);
+        memcpy(&settings_iter_parent, settings_array, sizeof(cJSON));
     } else if (NULL != single_settings_object) {
-        settings_array_count = 1;
+        settings_iter_parent.child = single_settings_object;
+    } else if (settings_array == NULL && single_settings_object) {
+        loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0,
+                   "Loader settings file from %s missing required settings objects: Either one of the \"settings\" or "
+                   "\"settings_array\" objects must be present - no loader settings will be active",
+                   settings_file_path);
+        res = VK_ERROR_INITIALIZATION_FAILED;
+        goto out;
     }
 
     // Corresponds to the settings object that has no app keys
-    int global_settings_index = -1;
+    cJSON* global_settings = NULL;
     // Corresponds to the settings object which has a matching app key
-    int index_to_use = -1;
+    cJSON* settings_to_use = NULL;
 
     char current_process_path[1024];
     bool valid_exe_path = NULL != loader_platform_executable_path(current_process_path, 1024);
 
-    for (int i = 0; i < (int)settings_array_count; i++) {
-        if (has_multi_setting_file) {
-            single_settings_object = loader_cJSON_GetArrayItem(settings_array, i);
+    cJSON* settings_object_iter = NULL;
+    cJSON_ArrayForEach(settings_object_iter, &settings_iter_parent) {
+        if (settings_object_iter->type != cJSON_Object) {
+            loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0,
+                       "Loader settings file from %s has a settings element that is not an object", settings_file_path);
+            break;
         }
-        cJSON* app_keys = loader_cJSON_GetObjectItem(single_settings_object, "app_keys");
+
+        cJSON* app_keys = loader_cJSON_GetObjectItem(settings_object_iter, "app_keys");
         if (NULL == app_keys) {
-            if (global_settings_index == -1) {
-                global_settings_index = i;  // use the first 'global' settings that has no app keys as the global one
+            // use the first 'global' settings that has no app keys as the global one
+            if (global_settings == NULL) {
+                global_settings = settings_object_iter;
             }
             continue;
-        } else if (valid_exe_path) {
-            int app_key_count = loader_cJSON_GetArraySize(app_keys);
-            if (app_key_count == 0) {
-                continue;  // empty array
+        }
+        // No sense iterating if we couldn't get the executable path
+        if (!valid_exe_path) {
+            break;
+        }
+        cJSON* app_key = NULL;
+        cJSON_ArrayForEach(app_key, app_keys) {
+            char* app_key_str = loader_cJSON_GetStringValue(app_key);
+            if (app_key_str && strcmp(current_process_path, app_key_str) == 0) {
+                settings_to_use = settings_object_iter;
+                break;
             }
-            for (int j = 0; j < app_key_count; j++) {
-                cJSON* app_key_json = loader_cJSON_GetArrayItem(app_keys, j);
-                if (NULL == app_key_json) {
-                    continue;
-                }
-                char* app_key = loader_cJSON_Print(app_key_json);
-                if (NULL == app_key) {
-                    continue;
-                }
+        }
 
-                if (strcmp(current_process_path, app_key) == 0) {
-                    index_to_use = i;
-                }
-                loader_instance_heap_free(inst, app_key);
-                if (index_to_use == i) {
-                    break;  // break only after freeing the app key
-                }
-            }
+        // Break if we have found a matching current_process_path
+        if (NULL != settings_to_use) {
+            break;
         }
     }
 
     // No app specific settings match - either use global settings or exit
-    if (index_to_use == -1) {
-        if (global_settings_index == -1) {
+    if (settings_to_use == NULL) {
+        if (global_settings == NULL) {
+            loader_log(inst, VULKAN_LOADER_DEBUG_BIT, 0,
+                       "Loader settings file from %s missing global settings and none of the app specific settings matched the "
+                       "current application - no loader settings will be active",
+                       settings_file_path);
             goto out;  // No global settings were found - exit
         } else {
-            index_to_use = global_settings_index;  // Global settings are present - use it
-        }
-    }
-
-    // Now get the actual settings object to use - already have it if there is only one settings object
-    // If there are multiple settings, just need to set single_settings_object to the desired settings object
-    if (has_multi_setting_file) {
-        single_settings_object = loader_cJSON_GetArrayItem(settings_array, index_to_use);
-        if (NULL == single_settings_object) {
-            res = VK_ERROR_INITIALIZATION_FAILED;
-            goto out;
+            settings_to_use = global_settings;  // Global settings are present - use it
         }
     }
 
     // optional
-    cJSON* stderr_filter = loader_cJSON_GetObjectItem(single_settings_object, "stderr_log");
+    cJSON* stderr_filter = loader_cJSON_GetObjectItem(settings_to_use, "stderr_log");
     if (NULL != stderr_filter) {
         struct loader_string_list stderr_log = {0};
-        res = loader_parse_json_array_of_strings(inst, single_settings_object, "stderr_log", &stderr_log);
+        res = loader_parse_json_array_of_strings(inst, settings_to_use, "stderr_log", &stderr_log);
         if (VK_ERROR_OUT_OF_HOST_MEMORY == res) {
             goto out;
         }
@@ -409,30 +436,27 @@ VkResult get_loader_settings(const struct loader_instance* inst, loader_settings
     }
 
     // optional
-    cJSON* logs_to_use = loader_cJSON_GetObjectItem(single_settings_object, "log_locations");
+    cJSON* logs_to_use = loader_cJSON_GetObjectItem(settings_to_use, "log_locations");
     if (NULL != logs_to_use) {
-        int log_count = loader_cJSON_GetArraySize(logs_to_use);
-        for (int i = 0; i < log_count; i++) {
-            cJSON* log_element = loader_cJSON_GetArrayItem(logs_to_use, i);
+        cJSON* log_element = NULL;
+        cJSON_ArrayForEach(log_element, logs_to_use) {
             // bool is_valid = true;
-            if (NULL != log_element) {
-                struct loader_string_list log_destinations = {0};
-                res = loader_parse_json_array_of_strings(inst, log_element, "destinations", &log_destinations);
-                if (res != VK_SUCCESS) {
-                    // is_valid = false;
-                }
-                free_string_list(inst, &log_destinations);
-                struct loader_string_list log_filters = {0};
-                res = loader_parse_json_array_of_strings(inst, log_element, "filters", &log_filters);
-                if (res != VK_SUCCESS) {
-                    // is_valid = false;
-                }
-                free_string_list(inst, &log_filters);
+            struct loader_string_list log_destinations = {0};
+            res = loader_parse_json_array_of_strings(inst, log_element, "destinations", &log_destinations);
+            if (res != VK_SUCCESS) {
+                // is_valid = false;
             }
+            free_string_list(inst, &log_destinations);
+            struct loader_string_list log_filters = {0};
+            res = loader_parse_json_array_of_strings(inst, log_element, "filters", &log_filters);
+            if (res != VK_SUCCESS) {
+                // is_valid = false;
+            }
+            free_string_list(inst, &log_filters);
         }
     }
 
-    res = parse_layer_configurations(inst, single_settings_object, loader_settings);
+    res = parse_layer_configurations(inst, settings_to_use, loader_settings);
     if (res != VK_SUCCESS) {
         goto out;
     }
@@ -460,7 +484,7 @@ out:
     return res;
 }
 
-VkResult update_global_loader_settings(void) {
+TEST_FUNCTION_EXPORT VkResult update_global_loader_settings(void) {
     loader_settings settings = {0};
     VkResult res = get_loader_settings(NULL, &settings);
     loader_platform_thread_lock_mutex(&global_loader_settings_lock);
@@ -472,7 +496,7 @@ VkResult update_global_loader_settings(void) {
         }
 
         memcpy(&global_loader_settings, &settings, sizeof(loader_settings));
-        if (global_loader_settings.settings_active) {
+        if (global_loader_settings.settings_active && global_loader_settings.debug_level > 0) {
             loader_set_global_debug_level(global_loader_settings.debug_level);
         }
     }
@@ -514,8 +538,8 @@ void release_current_settings_lock(const struct loader_instance* inst) {
     }
 }
 
-VkResult get_settings_layers(const struct loader_instance* inst, struct loader_layer_list* settings_layers,
-                             bool* should_search_for_other_layers) {
+TEST_FUNCTION_EXPORT VkResult get_settings_layers(const struct loader_instance* inst, struct loader_layer_list* settings_layers,
+                                                  bool* should_search_for_other_layers) {
     VkResult res = VK_SUCCESS;
     *should_search_for_other_layers = true;  // default to true
 
@@ -577,6 +601,9 @@ VkResult get_settings_layers(const struct loader_instance* inst, struct loader_l
             continue;
         }
 
+        // Makes it possible to know if a new layer was added or not, since the only return value is VkResult
+        size_t count_before_adding = settings_layers->count;
+
         local_res =
             loader_add_layer_properties(inst, settings_layers, json, layer_config->treat_as_implicit_manifest, layer_config->path);
         loader_cJSON_Delete(json);
@@ -585,10 +612,15 @@ VkResult get_settings_layers(const struct loader_instance* inst, struct loader_l
         if (VK_ERROR_OUT_OF_HOST_MEMORY == local_res) {
             res = VK_ERROR_OUT_OF_HOST_MEMORY;
             goto out;
+        } else if (local_res != VK_SUCCESS || count_before_adding == settings_layers->count) {
+            // Indicates something was wrong with the layer, can't add it to the list
+            continue;
         }
+
         struct loader_layer_properties* newly_added_layer = &settings_layers->list[settings_layers->count - 1];
         newly_added_layer->settings_control_value = layer_config->control;
-        // If the manifest file found has a name that differs from the one in the settings, remove this layer from consideration
+        // If the manifest file found has a name that differs from the one in the settings, remove this layer from
+        // consideration
         bool should_remove = false;
         if (strncmp(newly_added_layer->info.layerName, layer_config->name, VK_MAX_EXTENSION_NAME_SIZE) != 0) {
             should_remove = true;
@@ -616,15 +648,23 @@ out:
 }
 
 // Check if layers has an element with the same name.
+// LAYER_CONTROL_OFF layers are missing some fields, just make sure the layerName is the same
+// If layer_property is a meta layer, just make sure the layerName is the same
+// Skip comparing to UNORDERED_LAYER_LOCATION
 // If layer_property is a regular layer, check if the lib_path is the same.
-// If layer_property is a meta layer, just use the layerName
+// Make sure that the lib_name pointers are non-null before calling strcmp.
 bool check_if_layer_is_in_list(struct loader_layer_list* layer_list, struct loader_layer_properties* layer_property) {
     // If the layer is a meta layer, just check against the name
     for (uint32_t i = 0; i < layer_list->count; i++) {
         if (0 == strncmp(layer_list->list[i].info.layerName, layer_property->info.layerName, VK_MAX_EXTENSION_NAME_SIZE)) {
-            if (0 == (layer_property->type_flags & VK_LAYER_TYPE_FLAG_META_LAYER) &&
-                strcmp(layer_list->list[i].lib_name, layer_property->lib_name) == 0) {
+            if (layer_list->list[i].settings_control_value == LOADER_SETTINGS_LAYER_CONTROL_OFF) {
                 return true;
+            }
+            if (VK_LAYER_TYPE_FLAG_META_LAYER == (layer_property->type_flags & VK_LAYER_TYPE_FLAG_META_LAYER)) {
+                return true;
+            }
+            if (layer_list->list[i].lib_name && layer_property->lib_name) {
+                return strcmp(layer_list->list[i].lib_name, layer_property->lib_name) == 0;
             }
         }
     }
@@ -724,6 +764,7 @@ VkResult enable_correct_layers_from_settings(const struct loader_instance* inst,
     if (vk_instance_layers_env != NULL) {
         vk_instance_layers_env_len = strlen(vk_instance_layers_env) + 1;
         vk_instance_layers_env_copy = loader_stack_alloc(vk_instance_layers_env_len);
+        memset(vk_instance_layers_env_copy, 0, vk_instance_layers_env_len);
 
         loader_log(inst, VULKAN_LOADER_WARN_BIT | VULKAN_LOADER_LAYER_BIT, 0, "env var \'%s\' defined and adding layers: %s",
                    ENABLED_LAYERS_ENV, vk_instance_layers_env);
@@ -732,6 +773,11 @@ VkResult enable_correct_layers_from_settings(const struct loader_instance* inst,
         bool enable_layer = false;
         struct loader_layer_properties* props = &instance_layers->list[i];
 
+        // Skip the sentinel unordered layer location
+        if (props->settings_control_value == LOADER_SETTINGS_LAYER_UNORDERED_LAYER_LOCATION) {
+            continue;
+        }
+
         // Do not enable the layer if the settings have it set as off
         if (props->settings_control_value == LOADER_SETTINGS_LAYER_CONTROL_OFF) {
             continue;
@@ -739,33 +785,45 @@ VkResult enable_correct_layers_from_settings(const struct loader_instance* inst,
         // Force enable it based on settings
         if (props->settings_control_value == LOADER_SETTINGS_LAYER_CONTROL_ON) {
             enable_layer = true;
-        }
+            props->enabled_by_what = ENABLED_BY_WHAT_LOADER_SETTINGS_FILE;
+        } else {
+            // Check if disable filter needs to skip the layer
+            if ((filters->disable_filter.disable_all || filters->disable_filter.disable_all_implicit ||
+                 check_name_matches_filter_environment_var(props->info.layerName, &filters->disable_filter.additional_filters)) &&
+                !check_name_matches_filter_environment_var(props->info.layerName, &filters->allow_filter)) {
+                // Report a message that we've forced off a layer if it would have been enabled normally.
+                loader_log(inst, VULKAN_LOADER_WARN_BIT | VULKAN_LOADER_LAYER_BIT, 0,
+                           "Layer \"%s\" forced disabled because name matches filter of env var \'%s\'.", props->info.layerName,
+                           VK_LAYERS_DISABLE_ENV_VAR);
 
-        // Check if disable filter needs to skip the layer
-        if ((filters->disable_filter.disable_all || filters->disable_filter.disable_all_implicit ||
-             check_name_matches_filter_environment_var(props->info.layerName, &filters->disable_filter.additional_filters)) &&
-            !check_name_matches_filter_environment_var(props->info.layerName, &filters->allow_filter)) {
-            continue;
+                continue;
+            }
         }
         // Check the enable filter
         if (!enable_layer && check_name_matches_filter_environment_var(props->info.layerName, &filters->enable_filter)) {
             enable_layer = true;
+            props->enabled_by_what = ENABLED_BY_WHAT_VK_LOADER_LAYERS_ENABLE;
+            loader_log(inst, VULKAN_LOADER_WARN_BIT | VULKAN_LOADER_LAYER_BIT, 0,
+                       "Layer \"%s\" forced enabled due to env var \'%s\'.", props->info.layerName, VK_LAYERS_ENABLE_ENV_VAR);
         }
 
         // First look for the old-fashion layers forced on with VK_INSTANCE_LAYERS
         if (!enable_layer && vk_instance_layers_env && vk_instance_layers_env_copy && vk_instance_layers_env_len > 0) {
             // Copy the env-var on each iteration, so that loader_get_next_path can correctly find the separators
-            // This solution only needs one stack allocation ahead of time rather than an allocation per layer in the env-var
+            // This solution only needs one stack allocation ahead of time rather than an allocation per layer in the
+            // env-var
             loader_strncpy(vk_instance_layers_env_copy, vk_instance_layers_env_len, vk_instance_layers_env,
                            vk_instance_layers_env_len);
 
-            while (vk_instance_layers_env_copy && *vk_instance_layers_env_copy) {
-                char* next = loader_get_next_path(vk_instance_layers_env_copy);
-                if (0 == strcmp(vk_instance_layers_env_copy, props->info.layerName)) {
+            char* instance_layers_env_iter = vk_instance_layers_env_copy;
+            while (instance_layers_env_iter && *instance_layers_env_iter) {
+                char* next = loader_get_next_path(instance_layers_env_iter);
+                if (0 == strcmp(instance_layers_env_iter, props->info.layerName)) {
                     enable_layer = true;
+                    props->enabled_by_what = ENABLED_BY_WHAT_VK_INSTANCE_LAYERS;
                     break;
                 }
-                vk_instance_layers_env_copy = next;
+                instance_layers_env_iter = next;
             }
         }
 
@@ -774,6 +832,7 @@ VkResult enable_correct_layers_from_settings(const struct loader_instance* inst,
             for (uint32_t j = 0; j < app_enabled_name_count; j++) {
                 if (strcmp(props->info.layerName, app_enabled_names[j]) == 0) {
                     enable_layer = true;
+                    props->enabled_by_what = ENABLED_BY_WHAT_IN_APPLICATION_API;
                     break;
                 }
             }
@@ -783,6 +842,7 @@ VkResult enable_correct_layers_from_settings(const struct loader_instance* inst,
         if (!enable_layer && (0 == (props->type_flags & VK_LAYER_TYPE_FLAG_EXPLICIT_LAYER)) &&
             loader_implicit_layer_is_enabled(inst, filters, props)) {
             enable_layer = true;
+            props->enabled_by_what = ENABLED_BY_WHAT_IMPLICIT_LAYER;
         }
 
         if (enable_layer) {

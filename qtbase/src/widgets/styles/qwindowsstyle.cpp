@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsstyle_p.h"
 #include "qwindowsstyle_p_p.h"
@@ -114,8 +115,7 @@ bool QWindowsStyle::eventFilter(QObject *o, QEvent *e)
             // Alt has been pressed - find all widgets that care
             const QList<QWidget *> children = widget->findChildren<QWidget *>();
             auto ignorable = [](QWidget *w) {
-                return w->isWindow() || !w->isVisible()
-                        || w->style()->styleHint(SH_UnderlineShortcut, nullptr, w);
+                return w->isWindow() || !w->isVisible();
             };
             // Update states before repainting
             d->seenAlt.append(widget);
@@ -162,7 +162,7 @@ bool QWindowsStyle::eventFilter(QObject *o, QEvent *e)
 
     This style is Qt's default GUI style on Windows.
 
-    \image qwindowsstyle.png
+    \image qwindowsstyle.png {Gallery of widgets using the default GUI style}
     \sa QWindowsVistaStyle, QMacStyle, QFusionStyle
 */
 
@@ -856,6 +856,13 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
         }
 #ifndef QT_NO_FRAME
     case PE_Frame:
+        if (w && w->inherits("QComboBoxPrivateContainer")){
+            QStyleOption copy = *opt;
+            copy.state |= State_Raised;
+            proxy()->drawPrimitive(PE_PanelMenu, &copy, p, w);
+            break;
+        }
+        Q_FALLTHROUGH();
     case PE_FrameMenu:
         if (const QStyleOptionFrame *frame = qstyleoption_cast<const QStyleOptionFrame *>(opt)) {
             if (frame->lineWidth == 2 || pe == PE_Frame) {
@@ -878,6 +885,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             }
         } else {
             QPalette popupPal = opt->palette;
+            p->drawRect(opt->rect);
             popupPal.setColor(QPalette::Light, opt->palette.window().color());
             popupPal.setColor(QPalette::Midlight, opt->palette.light().color());
             qDrawWinPanel(p, opt->rect, popupPal, opt->state & State_Sunken);
@@ -904,6 +912,15 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
                 p->drawRect(opt->rect);
         }
         break; }
+    case PE_PanelMenu:
+        if (w && w->inherits("QComboBoxPrivateContainer")){
+            const QBrush menuBackground = opt->palette.base().color();
+            QColor borderColor = opt->palette.window().color();
+            qDrawPlainRect(p, opt->rect, borderColor, 1, &menuBackground);
+        } else {
+            QCommonStyle::drawPrimitive(pe, opt, p, w);
+        }
+        break;
     case PE_FrameWindow: {
          QPalette popupPal = opt->palette;
          popupPal.setColor(QPalette::Light, opt->palette.window().color());

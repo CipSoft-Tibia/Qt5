@@ -4,9 +4,14 @@
 
 #include "third_party/blink/renderer/core/css/parser/css_variable_parser.h"
 
+#include <optional>
+
 #include "base/containers/contains.h"
 #include "third_party/blink/renderer/core/css/css_attr_type.h"
+#include "third_party/blink/renderer/core/css/css_syntax_component.h"
+#include "third_party/blink/renderer/core/css/css_syntax_definition.h"
 #include "third_party/blink/renderer/core/css/css_unparsed_declaration_value.h"
+#include "third_party/blink/renderer/core/css/parser/container_query_parser.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_token.h"
 #include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
 #include "third_party/blink/renderer/core/css/resolver/style_cascade.h"
@@ -44,8 +49,7 @@ const CSSValue* CSSVariableParser::ParseDeclarationIncludingCSSWide(
       /*allow_important_annotation=*/true, is_animation_tainted,
       /*must_contain_variable_reference=*/false,
       /*restricted_value=*/false,
-      /*comma_ends_declaration=*/false, important_ignored,
-      context.GetExecutionContext());
+      /*comma_ends_declaration=*/false, important_ignored, context);
   if (!variable_data) {
     return nullptr;
   }
@@ -66,8 +70,7 @@ CSSUnparsedDeclarationValue* CSSVariableParser::ParseDeclarationValue(
       /*allow_important_annotation=*/false, is_animation_tainted,
       /*must_contain_variable_reference=*/false,
       /*restricted_value=*/false,
-      /* comma_ends_declaration=*/false, important,
-      context.GetExecutionContext());
+      /* comma_ends_declaration=*/false, important, context);
   if (!variable_data) {
     return nullptr;
   }
@@ -82,14 +85,14 @@ static bool ConsumeUnparsedValue(CSSParserTokenStream& stream,
                                  bool& has_font_units,
                                  bool& has_root_font_units,
                                  bool& has_line_height_units,
-                                 const ExecutionContext* context);
+                                 const CSSParserContext& context);
 
 static bool ConsumeVariableReference(CSSParserTokenStream& stream,
                                      bool& has_references,
                                      bool& has_font_units,
                                      bool& has_root_font_units,
                                      bool& has_line_height_units,
-                                     const ExecutionContext* context) {
+                                     const CSSParserContext& context) {
   CSSParserTokenStream::BlockGuard guard(stream);
   stream.ConsumeWhitespace();
   if (stream.Peek().GetType() != kIdentToken ||
@@ -121,7 +124,7 @@ static bool ConsumeEnvVariableReference(CSSParserTokenStream& stream,
                                         bool& has_font_units,
                                         bool& has_root_font_units,
                                         bool& has_line_height_units,
-                                        const ExecutionContext* context) {
+                                        const CSSParserContext& context) {
   CSSParserTokenStream::BlockGuard guard(stream);
   stream.ConsumeWhitespace();
   if (stream.Peek().GetType() != kIdentToken) {
@@ -132,7 +135,8 @@ static bool ConsumeEnvVariableReference(CSSParserTokenStream& stream,
     return true;
   }
 
-  if (RuntimeEnabledFeatures::ViewportSegmentsEnabled(context)) {
+  if (RuntimeEnabledFeatures::ViewportSegmentsEnabled(
+          context.GetExecutionContext())) {
     // Consume any number of integer values that indicate the indices for a
     // multi-dimensional variable.
     while (stream.Peek().GetType() == kNumberToken) {
@@ -168,13 +172,14 @@ static bool ConsumeEnvVariableReference(CSSParserTokenStream& stream,
   return stream.AtEnd();
 }
 
-// attr() = attr( <attr-name> <attr-type>? , <declaration-value>?)
+// attr() = attr( <attr-name> [ type(<syntax>) | string | <unit> ]?,
+// <declaration-value>?) https://drafts.csswg.org/css-values-5/#attr-notation
 static bool ConsumeAttributeReference(CSSParserTokenStream& stream,
                                       bool& has_references,
                                       bool& has_font_units,
                                       bool& has_root_font_units,
                                       bool& has_line_height_units,
-                                      const ExecutionContext* context) {
+                                      const CSSParserContext& context) {
   CSSParserTokenStream::BlockGuard guard(stream);
   stream.ConsumeWhitespace();
   // Parse <attr-name>.
@@ -187,16 +192,11 @@ static bool ConsumeAttributeReference(CSSParserTokenStream& stream,
     return true;
   }
 
-  if (stream.Peek().GetType() == kIdentToken) {
-    // Parse <attr-type>.
-    CSSParserToken token = stream.ConsumeIncludingWhitespace();
-    if (!CSSAttrType::Parse(token.Value()).IsValid()) {
-      return false;
-    }
-    if (stream.AtEnd()) {
-      // attr = attr(<attr-name> <attr-type>) is allowed, so return true.
-      return true;
-    }
+  std::optional<CSSAttrType> attr_type = CSSAttrType::Consume(stream);
+  if (stream.AtEnd() && attr_type.has_value()) {
+    // attr = attr(<attr-name> [ type(<syntax>) | string | <unit> ]) is
+    // allowed, so return true.
+    return true;
   }
 
   if (stream.Peek().GetType() != kCommaToken) {
@@ -204,7 +204,7 @@ static bool ConsumeAttributeReference(CSSParserTokenStream& stream,
   }
   stream.Consume();
   if (stream.AtEnd()) {
-    // attr = attr(<attr-name>,) and attr = attr(<attr-name> <attr-type>,) is
+    // attr = attr(<attr-name> [ type(<syntax>) | string | <unit> ]?,) is
     // allowed, so return true.
     return true;
   }
@@ -212,6 +212,104 @@ static bool ConsumeAttributeReference(CSSParserTokenStream& stream,
   // Parse the fallback value.
   if (!ConsumeUnparsedValue(stream, /*restricted_value=*/false,
                             /*comma_ends_declaration=*/false, has_references,
+                            has_font_units, has_root_font_units,
+                            has_line_height_units, context)) {
+    return false;
+  }
+  return stream.AtEnd();
+}
+
+// <if-condition> = <boolean-expr[ <if-test> ]> | else
+// <if-test> =
+//   supports( [ <supports-condition> | <ident> : <declaration-value> ] ) |
+//   media( <media-query> ) |
+//   style( <style-query> )
+// https://www.w3.org/TR/css-values-5/#if-notation
+static bool ConsumeIfCondition(CSSParserTokenStream& stream,
+                               const CSSParserContext& context) {
+  if (stream.Peek().Id() == CSSValueID::kElse) {
+    stream.ConsumeIncludingWhitespace();
+    return true;
+  }
+
+  ContainerQueryParser parser(context);
+
+  const MediaQueryExpNode* exp_node = parser.ConsumeIfTest(stream);
+  if (!exp_node) {
+    return false;
+  }
+
+  stream.ConsumeWhitespace();
+  return true;
+}
+
+// <if()> = if( [ <if-condition> : <declaration-value>? ; ]*
+//              <if-condition> : <declaration-value>? ;? )
+// <if-condition> = <boolean-expr[ <if-test> ]> | else
+// <if-test> =
+//   supports( [ <supports-condition> | <ident> : <declaration-value> ] ) |
+//   media( <media-query> ) |
+//   style( <style-query> )
+// https://www.w3.org/TR/css-values-5/#if-notation
+static bool ConsumeIfReference(CSSParserTokenStream& stream,
+                               bool& has_references,
+                               bool& has_font_units,
+                               bool& has_root_font_units,
+                               bool& has_line_height_units,
+                               const CSSParserContext& context) {
+  CSSParserTokenStream::BlockGuard guard(stream);
+
+  stream.ConsumeWhitespace();
+  while (ConsumeIfCondition(stream, context)) {
+    if (stream.Peek().GetType() != kColonToken) {
+      return false;
+    }
+    stream.ConsumeIncludingWhitespace();
+    // Parse <declaration-value>
+    if (!ConsumeUnparsedValue(stream, /*restricted_value=*/false,
+                              /*comma_ends_declaration=*/false, has_references,
+                              has_font_units, has_root_font_units,
+                              has_line_height_units, context)) {
+      return false;
+    }
+    if (stream.AtEnd()) {
+      return true;
+    }
+    if (stream.Peek().GetType() != kSemicolonToken) {
+      return false;
+    }
+    stream.ConsumeIncludingWhitespace();
+    if (stream.AtEnd()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool ConsumeInternalAutoBase(
+    CSSParserTokenStream& stream,
+    bool& has_references,
+    bool& has_font_units,
+    bool& has_root_font_units,
+    bool& has_line_height_units,
+    const CSSParserContext& context) {
+  CSSParserTokenStream::BlockGuard guard(stream);
+  stream.ConsumeWhitespace();
+
+  if (!ConsumeUnparsedValue(stream, /*restricted_value=*/false,
+                            /*comma_ends_declaration=*/true, has_references,
+                            has_font_units, has_root_font_units,
+                            has_line_height_units, context)) {
+    return false;
+  }
+
+  if (stream.Peek().GetType() != kCommaToken) {
+    return false;
+  }
+  stream.ConsumeIncludingWhitespace();
+
+  if (!ConsumeUnparsedValue(stream, /*restricted_value=*/false,
+                            /*comma_ends_declaration=*/true, has_references,
                             has_font_units, has_root_font_units,
                             has_line_height_units, context)) {
     return false;
@@ -262,7 +360,7 @@ static bool ConsumeUnparsedValue(CSSParserTokenStream& stream,
                                  bool& has_font_units,
                                  bool& has_root_font_units,
                                  bool& has_line_height_units,
-                                 const ExecutionContext* context) {
+                                 const CSSParserContext& context) {
   size_t block_stack_size = 0;
 
   // https://drafts.csswg.org/css-syntax/#component-value
@@ -317,6 +415,28 @@ static bool ConsumeUnparsedValue(CSSParserTokenStream& stream,
           if (!ConsumeAttributeReference(stream, has_references, has_font_units,
                                          has_root_font_units,
                                          has_line_height_units, context)) {
+            error = true;
+          }
+          has_references = true;
+          continue;
+        case CSSValueID::kInternalAutoBase:
+          if (context.GetMode() != kUASheetMode) {
+            break;
+          }
+          if (!ConsumeInternalAutoBase(
+                  stream, has_references, has_font_units, has_root_font_units,
+                  has_line_height_units, context)) {
+            error = true;
+          }
+          has_references = true;
+          continue;
+        case CSSValueID::kIf:
+          if (!RuntimeEnabledFeatures::CSSInlineIfForStyleQueriesEnabled()) {
+            break;
+          }
+          if (!ConsumeIfReference(stream, has_references, has_font_units,
+                                  has_root_font_units, has_line_height_units,
+                                  context)) {
             error = true;
           }
           has_references = true;
@@ -400,7 +520,7 @@ CSSVariableData* CSSVariableParser::ConsumeUnparsedDeclaration(
     bool restricted_value,
     bool comma_ends_declaration,
     bool& important,
-    const ExecutionContext* context) {
+    const CSSParserContext& context) {
   // Consume leading whitespace and comments, as required by the spec.
   stream.ConsumeWhitespace();
   stream.EnsureLookAhead();
@@ -439,7 +559,7 @@ CSSVariableData* CSSVariableParser::ConsumeUnparsedDeclaration(
   original_text =
       CSSVariableParser::StripTrailingWhitespaceAndComments(original_text);
 
-  return CSSVariableData::Create(original_text, is_animation_tainted,
+  return CSSVariableData::Create(original_text, is_animation_tainted, false,
                                  /*needs_variable_resolution=*/has_references,
                                  has_font_units, has_root_font_units,
                                  has_line_height_units);
@@ -463,7 +583,7 @@ CSSUnparsedDeclarationValue* CSSVariableParser::ParseUniversalSyntaxValue(
           stream, /*allow_important_annotation=*/false, is_animation_tainted,
           /*must_contain_variable_reference=*/false,
           /*restricted_value=*/false, /*comma_ends_declaration=*/false,
-          important, context.GetExecutionContext());
+          important, context);
   if (!variable_data) {
     return nullptr;
   }

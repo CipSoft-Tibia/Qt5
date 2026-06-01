@@ -26,6 +26,8 @@
 #include <QtCore/qtimer.h>
 #include <QtCore/private/qglobal_p.h>
 
+#include <memory>
+
 QT_BEGIN_NAMESPACE
 
 #define USE_SATELLITE_NMEA_PIMPL 1
@@ -97,7 +99,7 @@ public:
     bool m_connectedReadyRead = false;
     QBasicTimer *m_updateTimer = nullptr; // the timer used in startUpdates()
     QTimer *m_requestTimer = nullptr; // the timer used in requestUpdate()
-    QScopedPointer<QNmeaSatelliteReader> m_nmeaReader;
+    std::unique_ptr<QNmeaSatelliteReader> m_nmeaReader;
     QNmeaSatelliteInfoSource::UpdateMode m_updateMode;
     int m_simulationUpdateInterval = 100;
 
@@ -137,7 +139,7 @@ public:
     int updateInterval() const;
 
 private:
-    QScopedPointer<QTimer> m_timer;
+    std::unique_ptr<QTimer> m_timer;
     int m_updateInterval;
 };
 

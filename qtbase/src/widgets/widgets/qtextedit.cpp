@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtextedit_p.h"
 #if QT_CONFIG(lineedit)
@@ -35,6 +36,7 @@
 #include <qapplication.h>
 #include <private/qapplication_p.h>
 #include <limits.h>
+#include <qtextobject.h>
 #include <qtexttable.h>
 #include <qvariant.h>
 
@@ -169,8 +171,9 @@ void QTextEditPrivate::init(const QString &html)
     if (!html.isEmpty())
         control->setHtml(html);
 
-    hbar->setSingleStep(20);
-    vbar->setSingleStep(20);
+    const auto singleStep = defaultSingleStep();
+    hbar->setSingleStep(singleStep);
+    vbar->setSingleStep(singleStep);
 
     viewport->setBackgroundRole(QPalette::Base);
     q->setMouseTracking(true);
@@ -1616,7 +1619,10 @@ void QTextEditPrivate::paint(QPainter *p, QPaintEvent *e)
         const QColor col = control->palette().placeholderText().color();
         p->setPen(col);
         const int margin = int(doc->documentMargin());
-        p->drawText(viewport->rect().adjusted(margin, margin, -margin, -margin), Qt::AlignTop | Qt::TextWordWrap, placeholderText);
+        QRectF boundingRect = layout ? layout->frameBoundingRect(doc->rootFrame()) : viewport->rect();
+        p->drawText(boundingRect.adjusted(margin, margin, -margin, -margin),
+                    Qt::AlignTop | Qt::TextWordWrap,
+                    placeholderText);
     }
 }
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTREEWIDGET_P_H
 #define QTREEWIDGET_P_H
@@ -96,6 +97,7 @@ public:
     bool dropMimeData(const QMimeData *data, Qt::DropAction action,
                       int row, int column, const QModelIndex &parent) override;
     Qt::DropActions supportedDropActions() const override;
+    Qt::DropActions supportedDragActions() const override;
 
     QMimeData *internalMimeData() const;
 
@@ -210,6 +212,7 @@ public:
     int explicitSortColumn;
 
     std::array<QMetaObject::Connection, 12> connections;
+    std::optional<Qt::DropActions> supportedDragActions;
 };
 
 QT_END_NAMESPACE

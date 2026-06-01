@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
 	printf("\tAVX512VP2INTERSECT: %s\n", cpuinfo_has_x86_avx512vp2intersect() ? "yes" : "no");
 	printf("\tAVX512_4VNNIW: %s\n", cpuinfo_has_x86_avx512_4vnniw() ? "yes" : "no");
 	printf("\tAVX512_4FMAPS: %s\n", cpuinfo_has_x86_avx512_4fmaps() ? "yes" : "no");
+	printf("\tAVX10_1: %s\n", cpuinfo_has_x86_avx10_1() ? "yes" : "no");
 	printf("\tAMX_BF16: %s\n", cpuinfo_has_x86_amx_bf16() ? "yes" : "no");
 	printf("\tAMX_TILE: %s\n", cpuinfo_has_x86_amx_tile() ? "yes" : "no");
 	printf("\tAMX_INT8: %s\n", cpuinfo_has_x86_amx_int8() ? "yes" : "no");
@@ -171,6 +172,9 @@ int main(int argc, char** argv) {
 	printf("SIMD extensions:\n");
 	printf("\tARM SVE: %s\n", cpuinfo_has_arm_sve() ? "yes" : "no");
 	printf("\tARM SVE 2: %s\n", cpuinfo_has_arm_sve2() ? "yes" : "no");
+
+	printf("ARM SVE Capabilities:\n");
+	printf("\tSVE max length: %d\n", cpuinfo_get_max_arm_sve_length());
 
 	printf("Cryptography extensions:\n");
 	printf("\tAES: %s\n", cpuinfo_has_arm_aes() ? "yes" : "no");

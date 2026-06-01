@@ -46,7 +46,7 @@ void tst_QDeclarativePosition::initTestCase()
 {
     m_mutatorFunc = [&]() { m_declarativePosition.setPosition(m_positionInfo); };
     m_doubleComparator = [](const double &lhs, const double &rhs) {
-        return (qIsNaN(lhs) && qIsNaN(rhs)) || qFuzzyCompare(lhs, rhs);
+        return (qIsNaN(lhs) && qIsNaN(rhs)) || QtPrivate::fuzzyCompare(lhs, rhs);
     };
 }
 

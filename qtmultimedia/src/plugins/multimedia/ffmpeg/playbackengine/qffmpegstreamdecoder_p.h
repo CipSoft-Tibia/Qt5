@@ -31,7 +31,8 @@ class StreamDecoder : public PlaybackEngineObject
 {
     Q_OBJECT
 public:
-    StreamDecoder(const CodecContext &codecContext, TrackPosition absSeekPos);
+    StreamDecoder(const PlaybackEngineObjectID &id, const CodecContext &codecContext,
+                  TrackPosition absSeekPos);
 
     ~StreamDecoder() override;
 
@@ -44,7 +45,7 @@ public slots:
 
     void decode(Packet);
 
-    void onFinalPacketReceived();
+    void onFinalPacketReceived(PlaybackEngineObjectID sourceID);
 
     void onFrameProcessed(Frame frame);
 
@@ -59,13 +60,13 @@ protected:
     void doNextStep() override;
 
 private:
-    void decodeMedia(Packet);
+    void decodeMedia(const Packet &packet);
 
-    void decodeSubtitle(Packet);
+    void decodeSubtitle(const Packet &packet);
 
     void onFrameFound(Frame frame);
 
-    int sendAVPacket(Packet);
+    int sendAVPacket(const Packet &packet);
 
     void receiveAVFrames(bool flushPacket = false);
 

@@ -32,6 +32,8 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import '../../ui/legacy/legacy.js';
+
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
@@ -47,7 +49,7 @@ import * as TextUtils from '../../models/text_utils/text_utils.js';
 import * as NetworkForward from '../../panels/network/forward/forward.js';
 import * as Sources from '../../panels/sources/sources.js';
 import * as Adorners from '../../ui/components/adorners/adorners.js';
-import * as Coordinator from '../../ui/components/render_coordinator/render_coordinator.js';
+import * as RenderCoordinator from '../../ui/components/render_coordinator/render_coordinator.js';
 import * as DataGrid from '../../ui/legacy/components/data_grid/data_grid.js';
 import * as PerfUI from '../../ui/legacy/components/perf_ui/perf_ui.js';
 import * as Components from '../../ui/legacy/components/utils/utils.js';
@@ -456,8 +458,6 @@ const enum FetchStyle {
   NODE_JS = 1,
 }
 
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
-
 export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, typeof UI.Widget.VBox>(UI.Widget.VBox)
     implements SDK.TargetManager.SDKModelObserver<SDK.NetworkManager.NetworkManager>, NetworkLogViewInterface {
   private readonly networkInvertFilterSetting: Common.Settings.Setting<boolean>;
@@ -510,6 +510,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
       filterBar: UI.FilterBar.FilterBar, progressBarContainer: Element,
       networkLogLargeRowsSetting: Common.Settings.Setting<boolean>) {
     super();
+    this.registerRequiredCSS(networkLogViewStyles);
     this.setMinimumSize(50, 64);
 
     this.element.id = 'network-container';
@@ -587,7 +588,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
     const filterItems =
         Object.entries(Common.ResourceType.resourceCategories).map(([key, category]) => ({
-                                                                     name: category.title(),
+                                                                     name: category.name,
                                                                      label: () => category.shortTitle(),
                                                                      title: category.title(),
                                                                      jslogContext:
@@ -666,8 +667,8 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     filterBar.filterButton().addEventListener(
         UI.Toolbar.ToolbarButton.Events.CLICK, this.dataGrid.scheduleUpdate.bind(this.dataGrid, true /* isFromUser */));
 
-    this.summaryToolbarInternal = new UI.Toolbar.Toolbar('network-summary-bar', this.element);
-    this.summaryToolbarInternal.element.setAttribute('role', 'status');
+    this.summaryToolbarInternal = this.element.createChild('devtools-toolbar', 'network-summary-bar');
+    this.summaryToolbarInternal.setAttribute('role', 'status');
 
     new UI.DropTarget.DropTarget(
         this.element, [UI.DropTarget.Type.File], i18nString(UIStrings.dropHarFilesHere), this.handleDrop.bind(this));
@@ -1122,7 +1123,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
   private setHidden(value: boolean): void {
     this.columnsInternal.setHidden(value);
-    UI.ARIAUtils.setHidden(this.summaryToolbarInternal.element, value);
+    UI.ARIAUtils.setHidden(this.summaryToolbarInternal, value);
   }
 
   override elementsToRestoreScrollPositionsFor(): Element[] {
@@ -1144,7 +1145,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
         this.handleContextMenuForRequest(contextMenu, request);
       }
     });
-    this.dataGrid.setStickToBottom(true);
+    this.dataGrid.setEnableAutoScrollToBottom(true);
     this.dataGrid.setName('network-log');
     this.dataGrid.setResizeMethod(DataGrid.DataGrid.ResizeMethod.LAST);
     this.dataGrid.element.classList.add('network-log-grid');
@@ -1272,26 +1273,26 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
       this.summaryToolbarInternal.appendSeparator();
       appendChunk(
           i18nString(UIStrings.sSTransferred, {
-            PH1: Platform.NumberUtilities.bytesToString(selectedTransferSize),
-            PH2: Platform.NumberUtilities.bytesToString(transferSize),
+            PH1: i18n.ByteUtilities.bytesToString(selectedTransferSize),
+            PH2: i18n.ByteUtilities.bytesToString(transferSize),
           }),
           i18nString(UIStrings.sBSBTransferredOverNetwork, {PH1: selectedTransferSize, PH2: transferSize}));
       this.summaryToolbarInternal.appendSeparator();
       appendChunk(
           i18nString(UIStrings.sSResources, {
-            PH1: Platform.NumberUtilities.bytesToString(selectedResourceSize),
-            PH2: Platform.NumberUtilities.bytesToString(resourceSize),
+            PH1: i18n.ByteUtilities.bytesToString(selectedResourceSize),
+            PH2: i18n.ByteUtilities.bytesToString(resourceSize),
           }),
           i18nString(UIStrings.sBSBResourcesLoadedByThePage, {PH1: selectedResourceSize, PH2: resourceSize}));
     } else {
       appendChunk(i18nString(UIStrings.sRequests, {PH1: nodeCount}));
       this.summaryToolbarInternal.appendSeparator();
       appendChunk(
-          i18nString(UIStrings.sTransferred, {PH1: Platform.NumberUtilities.bytesToString(transferSize)}),
+          i18nString(UIStrings.sTransferred, {PH1: i18n.ByteUtilities.bytesToString(transferSize)}),
           i18nString(UIStrings.sBTransferredOverNetwork, {PH1: transferSize}));
       this.summaryToolbarInternal.appendSeparator();
       appendChunk(
-          i18nString(UIStrings.sResources, {PH1: Platform.NumberUtilities.bytesToString(resourceSize)}),
+          i18nString(UIStrings.sResources, {PH1: i18n.ByteUtilities.bytesToString(resourceSize)}),
           i18nString(UIStrings.sBResourcesLoadedByThePage, {PH1: resourceSize}));
     }
 
@@ -1322,7 +1323,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     this.needsRefresh = true;
 
     if (this.isShowing()) {
-      void coordinator.write('NetworkLogView.render', this.refresh.bind(this));
+      void RenderCoordinator.write('NetworkLogView.render', this.refresh.bind(this));
     }
   }
 
@@ -1407,8 +1408,8 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   }
 
   override wasShown(): void {
+    super.wasShown();
     this.refreshIfNeeded();
-    this.registerCSSFiles([networkLogViewStyles]);
     this.columnsInternal.wasShown();
   }
 
@@ -1491,7 +1492,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     // While creating nodes it may add more entries into staleRequests because redirect request nodes update the parent
     // node so we loop until we have no more stale requests.
     while (this.staleRequests.size) {
-      const request = this.staleRequests.values().next().value;
+      const request = this.staleRequests.values().next().value as SDK.NetworkRequest.NetworkRequest;
       this.staleRequests.delete(request);
       let node = networkRequestToNode.get(request);
       if (!node) {
@@ -1595,7 +1596,6 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
     this.dataGrid.rootNode().removeChildren();
     this.updateSummaryBar();
-    this.dataGrid.setStickToBottom(true);
     this.scheduleRefresh();
   }
 
@@ -2000,7 +2000,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     if (this.timeFilter && !this.timeFilter(request)) {
       return false;
     }
-    const categoryName = request.resourceType().category().title();
+    const categoryName = request.resourceType().category().name;
     if (!this.resourceCategoryFilterUI.accept(categoryName)) {
       return false;
     }
@@ -2048,7 +2048,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     try {
       new URL(url);
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -2460,13 +2460,16 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
       if (ignoredHeaders.has(name.toLowerCase())) {
         continue;
       }
-      if (header.value.trim()) {
-        command.push('-H ' + escapeString(name + ': ' + header.value));
-      } else {
+      const value = header.value;
+      if (!value.trim()) {
         // A header passed with -H with no value or only whitespace as its
         // value tells curl to not set the header at all. To post an empty
         // header, you have to terminate it with a semicolon.
         command.push('-H ' + escapeString(name + ';'));
+      } else if (name.toLowerCase() === 'cookie') {
+        command.push('-b ' + escapeString(value));
+      } else {
+        command.push('-H ' + escapeString(name + ': ' + value));
       }
     }
     command = command.concat(data);
@@ -2587,11 +2590,11 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   }
 
   static getDCLEventColor(): string {
-    return '--sys-color-token-attribute-value';
+    return '--sys-color-blue';
   }
 
   static getLoadEventColor(): string {
-    return '--sys-color-token-property-special';
+    return '--sys-color-error';
   }
 }
 
@@ -2649,7 +2652,6 @@ export class MoreFiltersDropDownUI extends
   private contextMenu?: UI.ContextMenu.ContextMenu;
   private activeFiltersCount: HTMLElement;
   private activeFiltersCountAdorner: Adorners.Adorner.Adorner;
-  private hasChanged = false;
 
   constructor() {
     super();
@@ -2688,24 +2690,12 @@ export class MoreFiltersDropDownUI extends
     this.updateTooltip();
   }
 
-  emitUMA(): void {
-    if (this.hasChanged) {
-      const selectedFilters = this.selectedFilters();
-      Host.userMetrics.networkPanelMoreFiltersNumberOfSelectedChanged(selectedFilters.length);
-      for (const selectedFilter of selectedFilters) {
-        Host.userMetrics.networkPanelMoreFiltersItemSelected(selectedFilter);
-      }
-    }
-  }
-
   #onSettingChanged(): void {
-    this.hasChanged = true;
     this.dispatchEventToListeners(UI.FilterBar.FilterUIEvents.FILTER_CHANGED);
   }
 
   showMoreFiltersContextMenu(event: Common.EventTarget.EventTargetEvent<Event>): void {
     const mouseEvent = event.data;
-    this.hasChanged = false;
 
     this.networkHideDataURLSetting.addChangeListener(this.#onSettingChanged.bind(this));
     this.networkHideChromeExtensionsSetting.addChangeListener(this.#onSettingChanged.bind(this));
@@ -2718,7 +2708,6 @@ export class MoreFiltersDropDownUI extends
       x: this.dropDownButton.element.getBoundingClientRect().left,
       y: this.dropDownButton.element.getBoundingClientRect().top +
           (this.dropDownButton.element as HTMLElement).offsetHeight,
-      onSoftMenuClosed: this.emitUMA.bind(this),
     });
 
     this.contextMenu.defaultSection().appendCheckboxItem(

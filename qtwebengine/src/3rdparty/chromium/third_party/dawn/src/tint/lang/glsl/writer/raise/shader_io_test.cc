@@ -40,16 +40,14 @@ using namespace tint::core::number_suffixes;  // NOLINT
 using GlslWriter_ShaderIOTest = core::ir::transform::TransformTest;
 
 TEST_F(GlslWriter_ShaderIOTest, NoInputsOrOutputs) {
-    auto* ep = b.Function("foo", ty.void_());
-    ep->SetStage(core::ir::Function::PipelineStage::kCompute);
-    ep->SetWorkgroupSize(1, 1, 1);
+    auto* ep = b.ComputeFunction("foo");
 
     b.Append(ep->Block(), [&] {  //
         b.Return(ep);
     });
 
     auto* src = R"(
-%foo = @compute @workgroup_size(1, 1, 1) func():void {
+%foo = @compute @workgroup_size(1u, 1u, 1u) func():void {
   $B1: {
     ret
   }
@@ -59,7 +57,8 @@ TEST_F(GlslWriter_ShaderIOTest, NoInputsOrOutputs) {
 
     auto* expect = src;
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -109,8 +108,8 @@ TEST_F(GlslWriter_ShaderIOTest, Parameters_NonStruct) {
 
     auto* expect = R"(
 $B1: {  # root
-  %gl_FrontFacing:ptr<__in, bool, read> = var @builtin(front_facing)
-  %gl_FragCoord:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
+  %foo_front_facing:ptr<__in, bool, read> = var @builtin(front_facing)
+  %foo_position:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
   %foo_loc0_Input:ptr<__in, f32, read> = var @location(0)
   %foo_loc1_Input:ptr<__in, f32, read> = var @location(1) @interpolate(linear, sample)
 }
@@ -129,8 +128,8 @@ $B1: {  # root
 }
 %foo = @fragment func():void {
   $B4: {
-    %13:bool = load %gl_FrontFacing
-    %14:vec4<f32> = load %gl_FragCoord
+    %13:bool = load %foo_front_facing
+    %14:vec4<f32> = load %foo_position
     %15:f32 = load %foo_loc0_Input
     %16:f32 = load %foo_loc1_Input
     %17:void = call %foo_inner, %13, %14, %15, %16
@@ -139,7 +138,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -255,8 +255,8 @@ Inputs = struct @align(16) {
 }
 
 $B1: {  # root
-  %gl_FrontFacing:ptr<__in, bool, read> = var @builtin(front_facing)
-  %gl_FragCoord:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
+  %foo_front_facing:ptr<__in, bool, read> = var @builtin(front_facing)
+  %foo_position:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
   %foo_loc0_Input:ptr<__in, f32, read> = var @location(0)
   %foo_loc1_Input:ptr<__in, f32, read> = var @location(1) @interpolate(linear, sample)
 }
@@ -279,8 +279,8 @@ $B1: {  # root
 }
 %foo = @fragment func():void {
   $B4: {
-    %14:bool = load %gl_FrontFacing
-    %15:vec4<f32> = load %gl_FragCoord
+    %14:bool = load %foo_front_facing
+    %15:vec4<f32> = load %foo_position
     %16:f32 = load %foo_loc0_Input
     %17:f32 = load %foo_loc1_Input
     %18:Inputs = construct %14, %15, %16, %17
@@ -290,7 +290,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -378,8 +379,8 @@ Inputs = struct @align(16) {
 }
 
 $B1: {  # root
-  %gl_FrontFacing:ptr<__in, bool, read> = var @builtin(front_facing)
-  %gl_FragCoord:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
+  %foo_front_facing:ptr<__in, bool, read> = var @builtin(front_facing)
+  %foo_position:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
   %foo_loc0_Input:ptr<__in, f32, read> = var @location(0)
   %foo_loc1_Input:ptr<__in, f32, read> = var @location(1) @interpolate(linear, sample)
 }
@@ -400,8 +401,8 @@ $B1: {  # root
 }
 %foo = @fragment func():void {
   $B4: {
-    %14:bool = load %gl_FrontFacing
-    %15:vec4<f32> = load %gl_FragCoord
+    %14:bool = load %foo_front_facing
+    %15:vec4<f32> = load %foo_position
     %16:f32 = load %foo_loc0_Input
     %17:Inputs = construct %15, %16
     %18:f32 = load %foo_loc1_Input
@@ -411,7 +412,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -439,8 +441,8 @@ TEST_F(GlslWriter_ShaderIOTest, ReturnValue_NonStructBuiltin) {
 
     auto* expect = R"(
 $B1: {  # root
-  %gl_Position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
-  %gl_PointSize:ptr<__out, f32, write> = var @builtin(__point_size)
+  %foo_position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
+  %foo___point_size:ptr<__out, f32, write> = var @builtin(__point_size)
 }
 
 %foo_inner = func():vec4<f32> {
@@ -452,22 +454,23 @@ $B1: {  # root
 %foo = @vertex func():void {
   $B3: {
     %6:vec4<f32> = call %foo_inner
-    store %gl_Position, %6
-    %7:f32 = swizzle %gl_Position, y
-    %8:f32 = negation %7
-    store_vector_element %gl_Position, 1u, %8
-    %9:f32 = swizzle %gl_Position, z
-    %10:f32 = swizzle %gl_Position, w
-    %11:f32 = mul 2.0f, %9
-    %12:f32 = sub %11, %10
-    store_vector_element %gl_Position, 2u, %12
-    store %gl_PointSize, 1.0f
+    %7:f32 = swizzle %6, x
+    %8:f32 = swizzle %6, y
+    %9:f32 = negation %8
+    %10:f32 = swizzle %6, z
+    %11:f32 = swizzle %6, w
+    %12:f32 = mul 2.0f, %10
+    %13:f32 = sub %12, %11
+    %14:vec4<f32> = construct %7, %9, %13, %11
+    store %foo_position, %14
+    store %foo___point_size, 1.0f
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -512,7 +515,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -595,10 +599,10 @@ Outputs = struct @align(16) {
 }
 
 $B1: {  # root
-  %gl_Position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
+  %foo_position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
   %foo_loc0_Output:ptr<__out, f32, write> = var @location(0)
   %foo_loc1_Output:ptr<__out, f32, write> = var @location(1) @interpolate(linear, sample)
-  %gl_PointSize:ptr<__out, f32, write> = var @builtin(__point_size)
+  %foo___point_size:ptr<__out, f32, write> = var @builtin(__point_size)
 }
 
 %foo_inner = func():Outputs {
@@ -612,26 +616,27 @@ $B1: {  # root
   $B3: {
     %9:Outputs = call %foo_inner
     %10:vec4<f32> = access %9, 0u
-    store %gl_Position, %10
-    %11:f32 = swizzle %gl_Position, y
-    %12:f32 = negation %11
-    store_vector_element %gl_Position, 1u, %12
-    %13:f32 = swizzle %gl_Position, z
-    %14:f32 = swizzle %gl_Position, w
-    %15:f32 = mul 2.0f, %13
-    %16:f32 = sub %15, %14
-    store_vector_element %gl_Position, 2u, %16
-    %17:f32 = access %9, 1u
-    store %foo_loc0_Output, %17
-    %18:f32 = access %9, 2u
-    store %foo_loc1_Output, %18
-    store %gl_PointSize, 1.0f
+    %11:f32 = swizzle %10, x
+    %12:f32 = swizzle %10, y
+    %13:f32 = negation %12
+    %14:f32 = swizzle %10, z
+    %15:f32 = swizzle %10, w
+    %16:f32 = mul 2.0f, %14
+    %17:f32 = sub %16, %15
+    %18:vec4<f32> = construct %11, %13, %17, %15
+    store %foo_position, %18
+    %19:f32 = access %9, 1u
+    store %foo_loc0_Output, %19
+    %20:f32 = access %9, 2u
+    store %foo_loc1_Output, %20
+    store %foo___point_size, 1.0f
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -675,8 +680,8 @@ TEST_F(GlslWriter_ShaderIOTest, ReturnValue_DualSourceBlending) {
 
     auto* src = R"(
 Output = struct @align(4) {
-  color1:f32 @offset(0), @location(0)
-  color2:f32 @offset(4), @location(0)
+  color1:f32 @offset(0), @location(0), @blend_src(0)
+  color2:f32 @offset(4), @location(0), @blend_src(1)
 }
 
 %foo = @fragment func():Output {
@@ -717,7 +722,8 @@ $B1: {  # root
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -812,10 +818,10 @@ Interface = struct @align(16) {
 }
 
 $B1: {  # root
-  %gl_Position:ptr<__out, vec4<f32>, write> = var @builtin(position)
+  %vert_position:ptr<__out, vec4<f32>, write> = var @builtin(position)
   %vert_loc0_Output:ptr<__out, vec4<f32>, write> = var @location(0)
-  %gl_PointSize:ptr<__out, f32, write> = var @builtin(__point_size)
-  %gl_FragCoord:ptr<__in, vec4<f32>, read> = var @builtin(position)
+  %vert___point_size:ptr<__out, f32, write> = var @builtin(__point_size)
+  %frag_position:ptr<__in, vec4<f32>, read> = var @builtin(position)
   %frag_loc0_Input:ptr<__in, vec4<f32>, read> = var @location(0)
   %frag_loc0_Output:ptr<__out, vec4<f32>, write> = var @location(0)
 }
@@ -840,34 +846,35 @@ $B1: {  # root
   $B4: {
     %17:Interface = call %vert_inner
     %18:vec4<f32> = access %17, 0u
-    store %gl_Position, %18
-    %19:f32 = swizzle %gl_Position, y
-    %20:f32 = negation %19
-    store_vector_element %gl_Position, 1u, %20
-    %21:f32 = swizzle %gl_Position, z
-    %22:f32 = swizzle %gl_Position, w
-    %23:f32 = mul 2.0f, %21
-    %24:f32 = sub %23, %22
-    store_vector_element %gl_Position, 2u, %24
-    %25:vec4<f32> = access %17, 1u
-    store %vert_loc0_Output, %25
-    store %gl_PointSize, 1.0f
+    %19:f32 = swizzle %18, x
+    %20:f32 = swizzle %18, y
+    %21:f32 = negation %20
+    %22:f32 = swizzle %18, z
+    %23:f32 = swizzle %18, w
+    %24:f32 = mul 2.0f, %22
+    %25:f32 = sub %24, %23
+    %26:vec4<f32> = construct %19, %21, %25, %23
+    store %vert_position, %26
+    %27:vec4<f32> = access %17, 1u
+    store %vert_loc0_Output, %27
+    store %vert___point_size, 1.0f
     ret
   }
 }
 %frag = @fragment func():void {
   $B5: {
-    %27:vec4<f32> = load %gl_FragCoord
-    %28:vec4<f32> = load %frag_loc0_Input
-    %29:Interface = construct %27, %28
-    %30:vec4<f32> = call %frag_inner, %29
-    store %frag_loc0_Output, %30
+    %29:vec4<f32> = load %frag_position
+    %30:vec4<f32> = load %frag_loc0_Input
+    %31:Interface = construct %29, %30
+    %32:vec4<f32> = call %frag_inner, %31
+    store %frag_loc0_Output, %32
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -941,9 +948,9 @@ Outputs = struct @align(16) {
 
 $B1: {  # root
   %1:ptr<storage, Outputs, read> = var @binding_point(0, 0)
-  %gl_Position:ptr<__out, vec4<f32>, write> = var @builtin(position)
+  %vert_position:ptr<__out, vec4<f32>, write> = var @builtin(position)
   %vert_loc0_Output:ptr<__out, vec4<f32>, write> = var @location(0)
-  %gl_PointSize:ptr<__out, f32, write> = var @builtin(__point_size)
+  %vert___point_size:ptr<__out, f32, write> = var @builtin(__point_size)
 }
 
 %vert_inner = func():Outputs {
@@ -956,30 +963,31 @@ $B1: {  # root
   $B3: {
     %8:Outputs = call %vert_inner
     %9:vec4<f32> = access %8, 0u
-    store %gl_Position, %9
-    %10:f32 = swizzle %gl_Position, y
-    %11:f32 = negation %10
-    store_vector_element %gl_Position, 1u, %11
-    %12:f32 = swizzle %gl_Position, z
-    %13:f32 = swizzle %gl_Position, w
-    %14:f32 = mul 2.0f, %12
-    %15:f32 = sub %14, %13
-    store_vector_element %gl_Position, 2u, %15
-    %16:vec4<f32> = access %8, 1u
-    store %vert_loc0_Output, %16
-    store %gl_PointSize, 1.0f
+    %10:f32 = swizzle %9, x
+    %11:f32 = swizzle %9, y
+    %12:f32 = negation %11
+    %13:f32 = swizzle %9, z
+    %14:f32 = swizzle %9, w
+    %15:f32 = mul 2.0f, %13
+    %16:f32 = sub %15, %14
+    %17:vec4<f32> = construct %10, %12, %16, %14
+    store %vert_position, %17
+    %18:vec4<f32> = access %8, 1u
+    store %vert_loc0_Output, %18
+    store %vert___point_size, 1.0f
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
 }
 
-// Test that we change the type of the sample mask builtin to an array for SPIR-V.
+// Test that we change the type of the sample mask builtin to an array for GLSL
 TEST_F(GlslWriter_ShaderIOTest, SampleMask) {
     auto* str_ty = ty.Struct(mod.symbols.New("Outputs"),
                              {
@@ -1042,9 +1050,9 @@ Outputs = struct @align(4) {
 }
 
 $B1: {  # root
-  %gl_SampleMaskIn:ptr<__in, u32, read> = var @builtin(sample_mask)
+  %foo_sample_mask:ptr<__in, array<i32, 1>, read> = var @builtin(sample_mask)
   %foo_loc0_Output:ptr<__out, f32, write> = var @location(0)
-  %gl_SampleMask:ptr<__out, u32, write> = var @builtin(sample_mask)
+  %foo_sample_mask_1:ptr<__out, array<i32, 1>, write> = var @builtin(sample_mask)  # %foo_sample_mask_1: 'foo_sample_mask'
 }
 
 %foo_inner = func(%mask_in:u32):Outputs {
@@ -1055,18 +1063,23 @@ $B1: {  # root
 }
 %foo = @fragment func():void {
   $B3: {
-    %8:u32 = load %gl_SampleMaskIn
-    %9:Outputs = call %foo_inner, %8
-    %10:f32 = access %9, 0u
-    store %foo_loc0_Output, %10
-    %11:u32 = access %9, 1u
-    store %gl_SampleMask, %11
+    %8:array<i32, 1> = load %foo_sample_mask
+    %9:i32 = access %8, 0u
+    %10:u32 = convert %9
+    %11:Outputs = call %foo_inner, %10
+    %12:f32 = access %11, 0u
+    store %foo_loc0_Output, %12
+    %13:u32 = access %11, 1u
+    %14:ptr<__out, i32, write> = access %foo_sample_mask_1, 0u
+    %15:i32 = convert %13
+    store %14, %15
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
@@ -1167,8 +1180,8 @@ MyStruct = struct @align(4) {
 $B1: {  # root
   %vert_loc1_Input:ptr<__in, f32, read> = var @location(1)
   %vert_loc1_Input_1:ptr<__in, i32, read> = var @location(1)  # %vert_loc1_Input_1: 'vert_loc1_Input'
-  %gl_Position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
-  %gl_PointSize:ptr<__out, f32, write> = var @builtin(__point_size)
+  %vert_position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
+  %vert___point_size:ptr<__out, f32, write> = var @builtin(__point_size)
   %frag1_loc1_Output:ptr<__out, f32, write> = var @location(1)
   %frag2_loc0_Output:ptr<__out, i32, write> = var @location(0)
 }
@@ -1196,43 +1209,44 @@ $B1: {  # root
     %16:MyStruct = construct %15
     %17:i32 = load %vert_loc1_Input_1
     %18:vec4<f32> = call %vert_inner, %16, %17
-    store %gl_Position, %18
-    %19:f32 = swizzle %gl_Position, y
-    %20:f32 = negation %19
-    store_vector_element %gl_Position, 1u, %20
-    %21:f32 = swizzle %gl_Position, z
-    %22:f32 = swizzle %gl_Position, w
-    %23:f32 = mul 2.0f, %21
-    %24:f32 = sub %23, %22
-    store_vector_element %gl_Position, 2u, %24
-    store %gl_PointSize, 1.0f
+    %19:f32 = swizzle %18, x
+    %20:f32 = swizzle %18, y
+    %21:f32 = negation %20
+    %22:f32 = swizzle %18, z
+    %23:f32 = swizzle %18, w
+    %24:f32 = mul 2.0f, %22
+    %25:f32 = sub %24, %23
+    %26:vec4<f32> = construct %19, %21, %25, %23
+    store %vert_position, %26
+    store %vert___point_size, 1.0f
     ret
   }
 }
 %frag1 = @fragment func():void {
   $B6: {
-    %26:MyStruct = call %frag1_inner
-    %27:f32 = access %26, 0u
-    store %frag1_loc1_Output, %27
+    %28:MyStruct = call %frag1_inner
+    %29:f32 = access %28, 0u
+    store %frag1_loc1_Output, %29
     ret
   }
 }
 %frag2 = @fragment func():void {
   $B7: {
-    %29:i32 = call %frag2_inner
-    store %frag2_loc0_Output, %29
+    %31:i32 = call %frag2_inner
+    store %frag2_loc0_Output, %31
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
 }
 
-TEST_F(GlslWriter_ShaderIOTest, DISABLED_ClampFragDepth) {
+TEST_F(GlslWriter_ShaderIOTest, ClampFragDepth) {
     auto* str_ty = ty.Struct(mod.symbols.New("Outputs"),
                              {
                                  {
@@ -1289,38 +1303,54 @@ Outputs = struct @align(4) {
   depth:f32 @offset(4)
 }
 
+tint_push_constant_struct = struct @align(4), @block {
+  depth_min:f32 @offset(4)
+  depth_max:f32 @offset(8)
+}
+
 $B1: {  # root
+  %tint_push_constants:ptr<push_constant, tint_push_constant_struct, read> = var
   %foo_loc0_Output:ptr<__out, f32, write> = var @location(0)
-  %gl_FragDepth:ptr<__out, f32, write> = var @builtin(frag_depth)
+  %foo_frag_depth:ptr<__out, f32, write> = var @builtin(frag_depth)
 }
 
 %foo_inner = func():Outputs {
   $B2: {
-    %4:Outputs = construct 0.5f, 2.0f
-    ret %4
+    %5:Outputs = construct 0.5f, 2.0f
+    ret %5
   }
 }
 %foo = @fragment func():void {
   $B3: {
-    %6:Outputs = call %foo_inner
-    %7:f32 = access %6, 0u
-    store %foo_loc0_Output, %7
-    %8:f32 = access %6, 1u
-    %9:f32 = clamp %8, 2.0f, 3.0f
-    store %gl_FragDepth, %9
+    %7:Outputs = call %foo_inner
+    %8:f32 = access %7, 0u
+    store %foo_loc0_Output, %8
+    %9:f32 = access %7, 1u
+    %10:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %11:f32 = load %10
+    %12:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %13:f32 = load %12
+    %14:f32 = clamp %9, %11, %13
+    store %foo_frag_depth, %14
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
-    config.depth_range_offsets = {2, 3};
+    core::ir::transform::PreparePushConstantsConfig push_constants_config;
+    push_constants_config.AddInternalConstant(4, mod.symbols.New("depth_min"), ty.f32());
+    push_constants_config.AddInternalConstant(8, mod.symbols.New("depth_max"), ty.f32());
+    auto push_constants = PreparePushConstants(mod, push_constants_config);
+    EXPECT_EQ(push_constants, Success);
+
+    ShaderIOConfig config{push_constants.Get()};
+    config.depth_range_offsets = {4, 8};
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());
 }
 
-TEST_F(GlslWriter_ShaderIOTest, DISABLED_ClampFragDepth_MultipleFragmentShaders) {
+TEST_F(GlslWriter_ShaderIOTest, ClampFragDepth_MultipleFragmentShaders) {
     auto* str_ty = ty.Struct(mod.symbols.New("Outputs"),
                              {
                                  {
@@ -1393,69 +1423,255 @@ Outputs = struct @align(4) {
   depth:f32 @offset(4)
 }
 
+tint_push_constant_struct = struct @align(4), @block {
+  depth_min:f32 @offset(4)
+  depth_max:f32 @offset(8)
+}
+
 $B1: {  # root
+  %tint_push_constants:ptr<push_constant, tint_push_constant_struct, read> = var
   %ep1_loc0_Output:ptr<__out, f32, write> = var @location(0)
-  %gl_FragDepth:ptr<__out, f32, write> = var @builtin(frag_depth)
+  %ep1_frag_depth:ptr<__out, f32, write> = var @builtin(frag_depth)
   %ep2_loc0_Output:ptr<__out, f32, write> = var @location(0)
-  %gl_FragDepth_1:ptr<__out, f32, write> = var @builtin(frag_depth)  # %gl_FragDepth_1: 'gl_FragDepth'
+  %ep2_frag_depth:ptr<__out, f32, write> = var @builtin(frag_depth)
   %ep3_loc0_Output:ptr<__out, f32, write> = var @location(0)
-  %gl_FragDepth_2:ptr<__out, f32, write> = var @builtin(frag_depth)  # %gl_FragDepth_2: 'gl_FragDepth'
+  %ep3_frag_depth:ptr<__out, f32, write> = var @builtin(frag_depth)
 }
 
 %ep1_inner = func():Outputs {
   $B2: {
-    %8:Outputs = construct 0.5f, 2.0f
-    ret %8
+    %9:Outputs = construct 0.5f, 2.0f
+    ret %9
   }
 }
 %ep2_inner = func():Outputs {
   $B3: {
-    %10:Outputs = construct 0.5f, 2.0f
-    ret %10
+    %11:Outputs = construct 0.5f, 2.0f
+    ret %11
   }
 }
 %ep3_inner = func():Outputs {
   $B4: {
-    %12:Outputs = construct 0.5f, 2.0f
-    ret %12
+    %13:Outputs = construct 0.5f, 2.0f
+    ret %13
   }
 }
 %ep1 = @fragment func():void {
   $B5: {
-    %14:Outputs = call %ep1_inner
-    %15:f32 = access %14, 0u
-    store %ep1_loc0_Output, %15
-    %16:f32 = access %14, 1u
-    %17:f32 = clamp %16, 0.0f, 0.0f
-    store %gl_FragDepth, %17
+    %15:Outputs = call %ep1_inner
+    %16:f32 = access %15, 0u
+    store %ep1_loc0_Output, %16
+    %17:f32 = access %15, 1u
+    %18:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %19:f32 = load %18
+    %20:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %21:f32 = load %20
+    %22:f32 = clamp %17, %19, %21
+    store %ep1_frag_depth, %22
     ret
   }
 }
 %ep2 = @fragment func():void {
   $B6: {
-    %19:Outputs = call %ep2_inner
-    %20:f32 = access %19, 0u
-    store %ep2_loc0_Output, %20
-    %21:f32 = access %19, 1u
-    %22:f32 = clamp %21, 0.0f, 0.0f
-    store %gl_FragDepth_1, %22
+    %24:Outputs = call %ep2_inner
+    %25:f32 = access %24, 0u
+    store %ep2_loc0_Output, %25
+    %26:f32 = access %24, 1u
+    %27:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %28:f32 = load %27
+    %29:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %30:f32 = load %29
+    %31:f32 = clamp %26, %28, %30
+    store %ep2_frag_depth, %31
     ret
   }
 }
 %ep3 = @fragment func():void {
   $B7: {
-    %24:Outputs = call %ep3_inner
-    %25:f32 = access %24, 0u
-    store %ep3_loc0_Output, %25
-    %26:f32 = access %24, 1u
-    %27:f32 = clamp %26, 0.0f, 0.0f
-    store %gl_FragDepth_2, %27
+    %33:Outputs = call %ep3_inner
+    %34:f32 = access %33, 0u
+    store %ep3_loc0_Output, %34
+    %35:f32 = access %33, 1u
+    %36:ptr<push_constant, f32, read> = access %tint_push_constants, 0u
+    %37:f32 = load %36
+    %38:ptr<push_constant, f32, read> = access %tint_push_constants, 1u
+    %39:f32 = load %38
+    %40:f32 = clamp %35, %37, %39
+    store %ep3_frag_depth, %40
     ret
   }
 }
 )";
 
-    ShaderIOConfig config;
+    core::ir::transform::PreparePushConstantsConfig push_constants_config;
+    push_constants_config.AddInternalConstant(4, mod.symbols.New("depth_min"), ty.f32());
+    push_constants_config.AddInternalConstant(8, mod.symbols.New("depth_max"), ty.f32());
+    auto push_constants = PreparePushConstants(mod, push_constants_config);
+    EXPECT_EQ(push_constants, Success);
+
+    ShaderIOConfig config{push_constants.Get()};
+    config.depth_range_offsets = {4, 8};
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(GlslWriter_ShaderIOTest, BGRASwizzleSingleValue) {
+    auto* ep = b.Function("vert", ty.vec4<f32>());
+    ep->SetReturnBuiltin(core::BuiltinValue::kPosition);
+    ep->SetReturnInvariant(true);
+    ep->SetStage(core::ir::Function::PipelineStage::kVertex);
+
+    auto* val = b.FunctionParam("val", ty.vec4<f32>());
+    val->SetLocation(0);
+    ep->SetParams({val});
+
+    b.Append(ep->Block(), [&] {  //
+        b.Return(ep, b.Construct(ty.vec4<f32>(), 0.5_f));
+    });
+
+    auto* src = R"(
+%vert = @vertex func(%val:vec4<f32> [@location(0)]):vec4<f32> [@invariant, @position] {
+  $B1: {
+    %3:vec4<f32> = construct 0.5f
+    ret %3
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+$B1: {  # root
+  %vert_loc0_Input:ptr<__in, vec4<f32>, read> = var @location(0)
+  %vert_position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
+  %vert___point_size:ptr<__out, f32, write> = var @builtin(__point_size)
+}
+
+%vert_inner = func(%val:vec4<f32>):vec4<f32> {
+  $B2: {
+    %6:vec4<f32> = construct 0.5f
+    ret %6
+  }
+}
+%vert = @vertex func():void {
+  $B3: {
+    %8:vec4<f32> = load %vert_loc0_Input
+    %9:vec4<f32> = swizzle %8, zyxw
+    %10:vec4<f32> = call %vert_inner, %9
+    %11:f32 = swizzle %10, x
+    %12:f32 = swizzle %10, y
+    %13:f32 = negation %12
+    %14:f32 = swizzle %10, z
+    %15:f32 = swizzle %10, w
+    %16:f32 = mul 2.0f, %14
+    %17:f32 = sub %16, %15
+    %18:vec4<f32> = construct %11, %13, %17, %15
+    store %vert_position, %18
+    store %vert___point_size, 1.0f
+    ret
+  }
+}
+)";
+
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
+    config.bgra_swizzle_locations.insert(0u);
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(GlslWriter_ShaderIOTest, BGRASwizzleMultipleValueMixedTypes) {
+    auto* ep = b.Function("vert", ty.vec4<f32>());
+    ep->SetReturnBuiltin(core::BuiltinValue::kPosition);
+    ep->SetReturnInvariant(true);
+    ep->SetStage(core::ir::Function::PipelineStage::kVertex);
+
+    std::unordered_set<uint32_t> swizzled_locations;
+
+    // Checks swizzling happens before conversion to the original type.
+    auto* val1 = b.FunctionParam("val1", ty.f32());
+    val1->SetLocation(5);
+    swizzled_locations.insert(5);
+
+    auto* val2 = b.FunctionParam("val2", ty.vec2<f32>());
+    val2->SetLocation(0);
+    swizzled_locations.insert(0);
+
+    auto* val3 = b.FunctionParam("val3", ty.vec3<f32>());
+    val3->SetLocation(3);
+    swizzled_locations.insert(3);
+
+    auto* val4 = b.FunctionParam("val4", ty.vec4<f32>());
+    val4->SetLocation(7);
+    swizzled_locations.insert(7);
+
+    // Checks that the sentinel doesn't get swizzled.
+    auto* sentinel = b.FunctionParam("sentinel", ty.vec4<f32>());
+    sentinel->SetLocation(4);
+
+    ep->SetParams({val1, val2, sentinel, val3, val4});
+    b.Append(ep->Block(), [&] {  //
+        b.Return(ep, b.Construct(ty.vec4<f32>(), 0.5_f));
+    });
+
+    auto* src = R"(
+%vert = @vertex func(%val1:f32 [@location(5)], %val2:vec2<f32> [@location(0)], %sentinel:vec4<f32> [@location(4)], %val3:vec3<f32> [@location(3)], %val4:vec4<f32> [@location(7)]):vec4<f32> [@invariant, @position] {
+  $B1: {
+    %7:vec4<f32> = construct 0.5f
+    ret %7
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+$B1: {  # root
+  %vert_loc5_Input:ptr<__in, vec4<f32>, read> = var @location(5)
+  %vert_loc0_Input:ptr<__in, vec4<f32>, read> = var @location(0)
+  %vert_loc4_Input:ptr<__in, vec4<f32>, read> = var @location(4)
+  %vert_loc3_Input:ptr<__in, vec4<f32>, read> = var @location(3)
+  %vert_loc7_Input:ptr<__in, vec4<f32>, read> = var @location(7)
+  %vert_position:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
+  %vert___point_size:ptr<__out, f32, write> = var @builtin(__point_size)
+}
+
+%vert_inner = func(%val1:f32, %val2:vec2<f32>, %sentinel:vec4<f32>, %val3:vec3<f32>, %val4:vec4<f32>):vec4<f32> {
+  $B2: {
+    %14:vec4<f32> = construct 0.5f
+    ret %14
+  }
+}
+%vert = @vertex func():void {
+  $B3: {
+    %16:vec4<f32> = load %vert_loc5_Input
+    %17:f32 = swizzle %16, z
+    %18:vec4<f32> = load %vert_loc0_Input
+    %19:vec2<f32> = swizzle %18, zy
+    %20:vec4<f32> = load %vert_loc4_Input
+    %21:vec4<f32> = load %vert_loc3_Input
+    %22:vec3<f32> = swizzle %21, zyx
+    %23:vec4<f32> = load %vert_loc7_Input
+    %24:vec4<f32> = swizzle %23, zyxw
+    %25:vec4<f32> = call %vert_inner, %17, %19, %20, %22, %24
+    %26:f32 = swizzle %25, x
+    %27:f32 = swizzle %25, y
+    %28:f32 = negation %27
+    %29:f32 = swizzle %25, z
+    %30:f32 = swizzle %25, w
+    %31:f32 = mul 2.0f, %29
+    %32:f32 = sub %31, %30
+    %33:vec4<f32> = construct %26, %28, %32, %30
+    store %vert_position, %33
+    store %vert___point_size, 1.0f
+    ret
+  }
+}
+)";
+
+    core::ir::transform::PushConstantLayout push_constants;
+    ShaderIOConfig config{push_constants};
+    config.bgra_swizzle_locations = swizzled_locations;
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());

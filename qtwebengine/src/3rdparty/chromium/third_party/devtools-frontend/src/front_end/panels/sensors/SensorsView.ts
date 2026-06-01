@@ -8,6 +8,7 @@ import * as i18n from '../../core/i18n/i18n.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
+import * as MobileThrottling from '../mobile_throttling/mobile_throttling.js';
 
 import sensorsStyles from './sensors.css.js';
 
@@ -118,6 +119,10 @@ const UIStrings = {
    */
   forcesSelectedIdleStateEmulation: 'Forces selected idle state emulation',
   /**
+   *@description Description of the Emulate CPU Pressure State select in Sensors tab
+   */
+  forcesSelectedPressureStateEmulation: 'Forces selected pressure state emulation',
+  /**
    *@description Title for a group of configuration options in a drop-down input.
    */
   presets: 'Presets',
@@ -200,6 +205,7 @@ export class SensorsView extends UI.Widget.VBox {
 
   constructor() {
     super(true);
+    this.registerRequiredCSS(sensorsStyles);
     this.element.setAttribute('jslog', `${VisualLogging.panel('sensors').track({resize: true})}`);
     this.contentElement.classList.add('sensors-view');
 
@@ -227,11 +233,14 @@ export class SensorsView extends UI.Widget.VBox {
     this.appendIdleEmulator();
 
     this.createPanelSeparator();
-  }
 
-  override wasShown(): void {
-    super.wasShown();
-    this.registerCSSFiles([sensorsStyles]);
+    this.createHardwareConcurrencySection();
+
+    this.createPanelSeparator();
+
+    this.createPressureSection();
+
+    this.createPanelSeparator();
   }
 
   private createPanelSeparator(): void {
@@ -247,14 +256,14 @@ export class SensorsView extends UI.Widget.VBox {
     let selectedIndex = 0;
 
     const noOverrideOption = {title: i18nString(UIStrings.noOverride), location: NonPresetOptions.NoOverride};
-    this.locationSelectElement = (fields.createChild('select', 'chrome-select') as HTMLSelectElement);
+    this.locationSelectElement = fields.createChild('select');
     this.locationSelectElement.setAttribute('jslog', `${VisualLogging.dropDown().track({change: true})}`);
     UI.ARIAUtils.bindLabelToControl(geogroupTitle, this.locationSelectElement);
 
     // No override
     this.locationSelectElement.appendChild(
         UI.UIUtils.createOption(noOverrideOption.title, noOverrideOption.location, 'no-override'));
-    this.customLocationsGroup = (this.locationSelectElement.createChild('optgroup') as HTMLOptGroupElement);
+    this.customLocationsGroup = this.locationSelectElement.createChild('optgroup');
     this.customLocationsGroup.label = i18nString(UIStrings.overrides);
     const customLocations = Common.Settings.Settings.instance().moduleSetting('emulation.locations');
     const manageButton = UI.UIUtils.createTextButton(
@@ -285,14 +294,14 @@ export class SensorsView extends UI.Widget.VBox {
         UI.UIUtils.createOption(customLocationOption.title, customLocationOption.location, 'other'));
 
     // Error location.
-    const group = (this.locationSelectElement.createChild('optgroup') as HTMLOptGroupElement);
+    const group = this.locationSelectElement.createChild('optgroup');
     group.label = i18nString(UIStrings.error);
     group.appendChild(UI.UIUtils.createOption(
         i18nString(UIStrings.locationUnavailable), NonPresetOptions.Unavailable, 'unavailable'));
 
     this.locationSelectElement.selectedIndex = selectedIndex;
     this.locationSelectElement.addEventListener('change', this.#locationSelectChanged.bind(this));
-    this.fieldsetElement = (fields.createChild('fieldset') as HTMLFieldSetElement);
+    this.fieldsetElement = fields.createChild('fieldset');
     this.fieldsetElement.disabled = !this.#locationOverrideEnabled;
     this.fieldsetElement.id = 'location-override-section';
 
@@ -337,7 +346,7 @@ export class SensorsView extends UI.Widget.VBox {
     this.timezoneSetter(location.timezoneId);
     timezoneGroup.appendChild(
         UI.UIUtils.createLabel(i18nString(UIStrings.timezoneId), 'timezone-title', this.timezoneInput));
-    this.timezoneError = (timezoneGroup.createChild('div', 'timezone-error') as HTMLElement);
+    this.timezoneError = timezoneGroup.createChild('div', 'timezone-error');
 
     this.localeInput = UI.UIUtils.createInput('', 'text', 'locale');
     localeGroup.appendChild(this.localeInput);
@@ -346,7 +355,7 @@ export class SensorsView extends UI.Widget.VBox {
         this.localeInput, this.applyLocationUserInput.bind(this), SDK.EmulationModel.Location.localeValidator, false);
     this.localeSetter(location.locale);
     localeGroup.appendChild(UI.UIUtils.createLabel(i18nString(UIStrings.locale), 'locale-title', this.localeInput));
-    this.localeError = (localeGroup.createChild('div', 'locale-error') as HTMLElement);
+    this.localeError = localeGroup.createChild('div', 'locale-error');
   }
 
   #locationSelectChanged(): void {
@@ -462,7 +471,7 @@ export class SensorsView extends UI.Widget.VBox {
         {title: i18nString(UIStrings.displayDown), orientation: '[0, -180, 0]', jslogContext: 'displayUp-down'},
       ],
     }];
-    this.orientationSelectElement = (this.contentElement.createChild('select', 'chrome-select') as HTMLSelectElement);
+    this.orientationSelectElement = this.contentElement.createChild('select');
     this.orientationSelectElement.setAttribute('jslog', `${VisualLogging.dropDown().track({change: true})}`);
     UI.ARIAUtils.bindLabelToControl(orientationTitle, this.orientationSelectElement);
     this.orientationSelectElement.appendChild(UI.UIUtils.createOption(
@@ -471,7 +480,7 @@ export class SensorsView extends UI.Widget.VBox {
         UI.UIUtils.createOption(customOrientationOption.title, customOrientationOption.orientation, 'custom'));
 
     for (let i = 0; i < orientationGroups.length; ++i) {
-      const groupElement = (this.orientationSelectElement.createChild('optgroup') as HTMLOptGroupElement);
+      const groupElement = this.orientationSelectElement.createChild('optgroup');
       groupElement.label = orientationGroups[i].title;
       const group = orientationGroups[i].value;
       for (let j = 0; j < group.length; ++j) {
@@ -483,9 +492,9 @@ export class SensorsView extends UI.Widget.VBox {
     this.orientationSelectElement.addEventListener('change', this.orientationSelectChanged.bind(this));
 
     this.deviceOrientationFieldset = this.createDeviceOrientationOverrideElement(this.deviceOrientation);
-    this.stageElement = (orientationContent.createChild('div', 'orientation-stage') as HTMLElement);
+    this.stageElement = orientationContent.createChild('div', 'orientation-stage');
     this.stageElement.setAttribute('jslog', `${VisualLogging.preview().track({drag: true})}`);
-    this.orientationLayer = (this.stageElement.createChild('div', 'orientation-layer') as HTMLDivElement);
+    this.orientationLayer = this.stageElement.createChild('div', 'orientation-layer');
     this.boxElement = this.orientationLayer.createChild('section', 'orientation-box orientation-element');
 
     this.boxElement.createChild('section', 'orientation-front orientation-element');
@@ -502,6 +511,17 @@ export class SensorsView extends UI.Widget.VBox {
     fields.appendChild(this.deviceOrientationFieldset);
     this.enableOrientationFields(true);
     this.setBoxOrientation(this.deviceOrientation, false);
+  }
+
+  private createPressureSection(): void {
+    const container = this.contentElement.createChild('div', 'pressure-section');
+    const control = UI.SettingsUI.createControlForSetting(
+        Common.Settings.Settings.instance().moduleSetting('emulation.cpu-pressure'),
+        i18nString(UIStrings.forcesSelectedPressureStateEmulation));
+
+    if (control) {
+      container.appendChild(control);
+    }
   }
 
   private enableOrientationFields(disable: boolean|null): void {
@@ -764,6 +784,17 @@ export class SensorsView extends UI.Widget.VBox {
       container.appendChild(control);
     }
   }
+
+  private createHardwareConcurrencySection(): void {
+    const container = this.contentElement.createChild('div', 'concurrency-section');
+
+    const {checkbox, numericInput, reset, warning} =
+        MobileThrottling.ThrottlingManager.throttlingManager().createHardwareConcurrencySelector();
+    const div = document.createElement('div');
+    div.classList.add('concurrency-details');
+    div.append(numericInput.element, reset.element, warning.element);
+    container.append(checkbox, div);
+  }
 }
 
 export const enum DeviceOrientationModificationSource {
@@ -772,6 +803,14 @@ export const enum DeviceOrientationModificationSource {
   RESET_BUTTON = 'resetButton',
   SELECT_PRESET = 'selectPreset',
 }
+
+export const PressureOptions = {
+  NoOverride: 'no-override',
+  Nominal: 'nominal',
+  Fair: 'fair',
+  Serious: 'serious',
+  Critical: 'critical',
+};
 
 export const NonPresetOptions = {
   NoOverride: 'noOverride',

@@ -11,6 +11,7 @@
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/types/strong_alias.h"
+#include "components/autofill/core/common/aliases.h"
 #include "components/autofill/core/common/mojom/autofill_types.mojom-shared.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "ui/accessibility/ax_tree_id.h"
@@ -55,13 +56,8 @@ class PasswordManagerDriver {
 
   // Informs the driver that there are no saved credentials in the password
   // store for the current page.
-  // `should_show_popup_without_passwords` instructs the driver that the popup
-  // should be shown even without password suggestions. This is set to true if
-  // the popup will include another item that the driver doesn't know about
-  // (e.g. a promo to unlock passwords from the user's Google Account).
   // TODO(crbug.com/41259715): Remove and observe FormFetcher instead.
-  virtual void InformNoSavedCredentials(
-      bool should_show_popup_without_passwords) {}
+  virtual void InformNoSavedCredentials() {}
 
   // Notifies the driver that a password can be generated on the fields
   // identified by `form`.
@@ -81,25 +77,51 @@ class PasswordManagerDriver {
       autofill::FieldRendererId generation_element_id,
       const std::u16string& password) {}
 
+  // Notifies the driver that the user has rejected the generated password by
+  // clicking cancel button.
+  virtual void GeneratedPasswordRejected() {}
+
   // Notifies the driver that the focus should be advanced to the next input
   // field after password fields (assuming that password fields are adjacent
   // in account creation).
   virtual void FocusNextFieldAfterPasswords() {}
 
   // Tells the renderer to fill the given `value` into the triggering field.
-  virtual void FillField(const std::u16string& value) {}
+  // Also includes the `suggestion_source`, used to update the
+  // `FieldPropertiesMask` of the filled field.
+  virtual void FillField(
+      const std::u16string& value,
+      autofill::AutofillSuggestionTriggerSource suggestion_source) {}
+
+  // Tells the renderer to fill and submit a change password form, specifically
+  // `password_element_id` with `old_password` and `new_password_element_id`,
+  // `confirm_password_element_id` with `new_password`. Upon completion
+  // asynchronously returns `form_data` with filled values.
+  virtual void SubmitChangePasswordForm(
+      autofill::FieldRendererId password_element_id,
+      autofill::FieldRendererId new_password_element_id,
+      autofill::FieldRendererId confirm_password_element_id,
+      const std::u16string& old_password,
+      const std::u16string& new_password,
+      base::OnceCallback<void(const autofill::FormData&)> form_data_callback) {}
 
   // Tells the driver to fill the currently focused form with the `username` and
   // `password`.
-  virtual void FillSuggestion(const std::u16string& username,
-                              const std::u16string& password) = 0;
+  virtual void FillSuggestion(
+      const std::u16string& username,
+      const std::u16string& password,
+      base::OnceCallback<void(bool)> success_callback) = 0;
 
   // Similar to `FillSuggestion` but also passes the FieldRendererIds of the
   // elements to be filled.
-  virtual void FillSuggestionById(autofill::FieldRendererId username_element_id,
-                                  autofill::FieldRendererId password_element_id,
-                                  const std::u16string& username,
-                                  const std::u16string& password) = 0;
+  // Also includes the `suggestion_source`, used to update the
+  // `FieldPropertiesMask` of the filled field.
+  virtual void FillSuggestionById(
+      autofill::FieldRendererId username_element_id,
+      autofill::FieldRendererId password_element_id,
+      const std::u16string& username,
+      const std::u16string& password,
+      autofill::AutofillSuggestionTriggerSource suggestion_source) = 0;
 
   // Tells the renderer to fill the given credential into the focused element.
   // Always calls `completed_callback` with a status indicating success/error.

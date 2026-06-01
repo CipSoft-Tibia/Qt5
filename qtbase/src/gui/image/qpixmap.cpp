@@ -48,7 +48,7 @@ QT_WARNING_DISABLE_MSVC(4723)
 
 static bool qt_pixmap_thread_test()
 {
-    if (Q_UNLIKELY(!QCoreApplication::instance())) {
+    if (!QCoreApplication::instanceExists()) {
         qFatal("QPixmap: Must construct a QGuiApplication before a QPixmap");
         return false;
     }

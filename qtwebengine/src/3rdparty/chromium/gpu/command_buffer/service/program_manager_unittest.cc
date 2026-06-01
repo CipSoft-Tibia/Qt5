@@ -98,7 +98,6 @@ class ProgramManagerTestBase : public GpuServiceTest, public DecoderClient {
   void OnFenceSyncRelease(uint64_t release) override {}
   void OnDescheduleUntilFinished() override {}
   void OnRescheduleAfterFinished() override {}
-  void OnSwapBuffers(uint64_t swap_id, uint32_t flags) override {}
   void ScheduleGrContextCleanup() override {}
   void HandleReturnData(base::span<const uint8_t> data) override {}
   bool ShouldYield() override { return false; }
@@ -386,7 +385,7 @@ class ProgramManagerWithShaderTest : public ProgramManagerTestBase {
                   vertex_variables[ii].static_use, vertex_variables[ii].name));
           break;
         default:
-          NOTREACHED_IN_MIGRATION();
+          NOTREACHED();
       }
     }
 
@@ -432,7 +431,7 @@ class ProgramManagerWithShaderTest : public ProgramManagerTestBase {
                   fragment_variables[ii].name));
           break;
         default:
-          NOTREACHED_IN_MIGRATION();
+          NOTREACHED();
       }
     }
 

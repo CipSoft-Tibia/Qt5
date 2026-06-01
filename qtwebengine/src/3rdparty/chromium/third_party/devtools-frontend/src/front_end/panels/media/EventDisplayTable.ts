@@ -9,7 +9,7 @@ import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
 import eventDisplayTableStyles from './eventDisplayTable.css.js';
-import {type PlayerEvent} from './MediaModel.js';
+import type {PlayerEvent} from './MediaModel.js';
 
 const UIStrings = {
   /**
@@ -76,6 +76,7 @@ export class PlayerEventsView extends UI.Widget.VBox {
 
   constructor() {
     super();
+    this.registerRequiredCSS(eventDisplayTableStyles);
 
     this.element.setAttribute('jslog', `${VisualLogging.pane('events')}`);
 
@@ -143,7 +144,7 @@ export class PlayerEventsView extends UI.Widget.VBox {
       if (isAtBottom) {
         scroll.scrollTop = scroll.scrollHeight;
       }
-    } catch (e) {
+    } catch {
       // If this is a legacy message event, ignore it for now until they
       // are handled.
     }
@@ -164,9 +165,5 @@ export class PlayerEventsView extends UI.Widget.VBox {
       weight: columnConfig.weight || 0,
       sort: DataGrid.DataGrid.Order.Ascending,
     } as DataGrid.DataGrid.ColumnDescriptor;
-  }
-  override wasShown(): void {
-    super.wasShown();
-    this.registerCSSFiles([eventDisplayTableStyles]);
   }
 }

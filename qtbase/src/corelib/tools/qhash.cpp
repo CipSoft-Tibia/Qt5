@@ -2,6 +2,7 @@
 // Copyright (C) 2021 Intel Corporation.
 // Copyright (C) 2012 Giuseppe D'Angelo <dangelog@gmail.com>.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // for rand_s, _CRT_RAND_S must be #defined before #including stdlib.h.
 // put it at the beginning so some indirect inclusion doesn't break it
@@ -106,7 +107,7 @@ struct HashSeedStorage
     }
 
 private:
-    Q_DECL_COLD_FUNCTION Q_NEVER_INLINE StateResult initialize(int which) noexcept;
+    Q_NEVER_INLINE Q_DECL_COLD_FUNCTION StateResult initialize(int which) noexcept;
 };
 
 [[maybe_unused]] HashSeedStorage::StateResult HashSeedStorage::initialize(int which) noexcept
@@ -413,7 +414,7 @@ namespace {
     }
 
     // hash 16 bytes, running 3 scramble rounds of AES on itself (like label "final1")
-    static void Q_ALWAYS_INLINE QT_FUNCTION_TARGET(AES) QT_VECTORCALL
+    Q_ALWAYS_INLINE static void QT_FUNCTION_TARGET(AES) QT_VECTORCALL
     hash16bytes(__m128i &state0, __m128i data)
     {
         state0 = _mm_xor_si128(state0, data);
@@ -3316,7 +3317,7 @@ size_t qHash(long double key, size_t seed) noexcept
     Returns \c true if the hash contains an item with the \a key and
     \a value; otherwise returns \c false.
 
-    \sa contains()
+    \sa count()
 */
 
 /*!
@@ -3326,7 +3327,7 @@ size_t qHash(long double key, size_t seed) noexcept
     Removes all the items that have the \a key from the hash.
     Returns the number of items removed.
 
-    \sa remove()
+    \sa remove(const Key &key, const T &value)
 */
 
 /*!
@@ -3429,7 +3430,7 @@ size_t qHash(long double key, size_t seed) noexcept
 
     Returns the number of items with the \a key and \a value.
 
-    \sa count()
+    \sa contains()
 */
 
 /*!

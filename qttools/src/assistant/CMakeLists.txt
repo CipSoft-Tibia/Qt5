@@ -1,6 +1,12 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if(NOT QT_FEATURE_fullqthelp)
+    add_subdirectory(help)
+    add_subdirectory(plugins)
+    return()
+endif()
+
 if(NOT TARGET Qt::Sql OR NOT TARGET Qt::PrintSupport)
     return()
 endif()
@@ -44,6 +50,7 @@ if(TARGET qlitehtml)
         qt_disable_warnings(gumbo)
     endif()
     qt_disable_warnings(qlitehtml)
+    target_link_libraries(qlitehtml PRIVATE Qt::PlatformCommonInternal)
     set_target_properties(qlitehtml PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${QT_BUILD_DIR}/${INSTALL_BINDIR}"
         LIBRARY_OUTPUT_DIRECTORY "${QT_BUILD_DIR}/${INSTALL_LIBDIR}"

@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "extensions/browser/extension_protocols.h"
 
 #include <stddef.h>
@@ -21,6 +16,7 @@
 
 #include "base/base64.h"
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -47,6 +43,7 @@
 #include "base/timer/elapsed_timer.h"
 #include "base/types/optional_util.h"
 #include "build/build_config.h"
+#include "components/guest_view/buildflags/buildflags.h"
 #include "components/keyed_service/content/browser_context_keyed_service_shutdown_notifier_factory.h"
 #include "components/keyed_service/core/keyed_service_shutdown_notifier.h"
 #include "content/public/browser/browser_context.h"
@@ -144,8 +141,9 @@ void GenerateBackgroundPageContents(const Extension* extension,
 base::Time GetFileLastModifiedTime(const base::FilePath& filename) {
   if (base::PathExists(filename)) {
     base::File::Info info;
-    if (base::GetFileInfo(filename, &info))
+    if (base::GetFileInfo(filename, &info)) {
       return info.last_modified;
+    }
   }
   return base::Time();
 }
@@ -163,10 +161,12 @@ std::pair<base::FilePath, base::Time> ReadResourceFilePathAndLastModifiedTime(
 bool ExtensionCanLoadInIncognito(bool is_main_frame,
                                  const Extension* extension,
                                  bool extension_enabled_in_incognito) {
-  if (!extension || !extension_enabled_in_incognito)
+  if (!extension || !extension_enabled_in_incognito) {
     return false;
-  if (!is_main_frame || extension->is_login_screen_extension())
+  }
+  if (!is_main_frame || extension->is_login_screen_extension()) {
     return true;
+  }
 
   // Only allow incognito toplevel navigations to extension resources in
   // split mode. In spanning mode, the extension must run in a single process,
@@ -219,8 +219,9 @@ bool AllowExtensionResourceLoad(const network::ResourceRequest& request,
   // process to request each other's resources. We can't do a more precise
   // check, since the renderer can lie about which extension has made the
   // request.
-  if (process_map.Contains(request.url.host(), child_id))
+  if (process_map.Contains(request.url.host(), child_id)) {
     return true;
+  }
 
   // Frame navigations to extensions have already been checked in
   // the ExtensionNavigationThrottle.
@@ -252,8 +253,9 @@ bool AllowExtensionResourceLoad(const network::ResourceRequest& request,
 // Returns true if the given URL references an icon in the given extension.
 bool URLIsForExtensionIcon(const GURL& url, const Extension* extension) {
   DCHECK(url.SchemeIs(extensions::kExtensionScheme));
-  if (!extension)
+  if (!extension) {
     return false;
+  }
 
   DCHECK_EQ(url.host(), extension->id());
   std::string_view path = url.path_piece();
@@ -270,15 +272,17 @@ bool GetDirectoryForExtensionURL(const GURL& url,
                                  const ExtensionSet& disabled_extensions,
                                  base::FilePath* out_path) {
   base::FilePath path;
-  if (extension)
+  if (extension) {
     path = extension->path();
+  }
   const Extension* disabled_extension =
       disabled_extensions.GetByID(extension_id);
   if (path.empty()) {
     // For disabled extensions, we only resolve the directory path to service
     // extension icon URL requests.
-    if (URLIsForExtensionIcon(url, disabled_extension))
+    if (URLIsForExtensionIcon(url, disabled_extension)) {
       path = disabled_extension->path();
+    }
   }
 
   if (!path.empty()) {
@@ -342,10 +346,8 @@ bool IsPathEqualTo(const GURL& url, std::string_view test) {
 }
 
 bool IsFaviconURL(const GURL& url) {
-  return base::FeatureList::IsEnabled(
-             extensions_features::kNewExtensionFaviconHandling) &&
-         (IsPathEqualTo(url, kFaviconSourcePath) ||
-          IsPathEqualTo(url, base::StrCat({kFaviconSourcePath, "/"})));
+  return IsPathEqualTo(url, kFaviconSourcePath) ||
+         IsPathEqualTo(url, base::StrCat({kFaviconSourcePath, "/"}));
 }
 
 bool IsBackgroundPageURL(const GURL& url) {
@@ -469,8 +471,9 @@ class FileLoaderObserver : public content::FileURLLoaderObserver {
     // TODO(asargent) - we'll need to add proper support for range headers.
     // crbug.com/369895.
     const bool is_seek_contiguous = result == bytes_read_;
-    if (result > 0 && verify_job_.get() && !is_seek_contiguous)
+    if (result > 0 && verify_job_.get() && !is_seek_contiguous) {
       verify_job_ = nullptr;
+    }
   }
 
   void OnRead(base::span<char> buffer,
@@ -483,16 +486,18 @@ class FileLoaderObserver : public content::FileURLLoaderObserver {
         // Note: We still pass the data to |verify_job_|, even if there was a
         // read error, because some errors are ignorable. See
         // ContentVerifyJob::BytesRead() for more details.
-        verify_job_->BytesRead(static_cast<const char*>(buffer.data()),
-                               result->bytes_read, result->result);
+        verify_job_->BytesRead(
+            buffer.subspan(0u, static_cast<size_t>(result->bytes_read)),
+            result->result);
       }
     }
   }
 
   void OnDone() override {
     base::AutoLock auto_lock(lock_);
-    if (verify_job_.get())
+    if (verify_job_.get()) {
       verify_job_->DoneReading();
+    }
   }
 
  private:
@@ -542,8 +547,6 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
   }
   void SetPriority(net::RequestPriority priority,
                    int32_t intra_priority_value) override {}
-  void PauseReadingBodyFromNet() override {}
-  void ResumeReadingBodyFromNet() override {}
 
  private:
   ~ExtensionURLLoader() override = default;
@@ -669,9 +672,7 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
                           scoped_refptr<base::RefCountedMemory> bitmap_data) {
     if (bitmap_data) {
       head->mime_type = "image/bmp";
-      WriteData(std::move(head),
-                base::as_bytes(
-                    base::make_span(bitmap_data->data(), bitmap_data->size())));
+      WriteData(std::move(head), base::as_byte_span(*bitmap_data));
     } else {
       CompleteRequestAndDeleteThis(net::ERR_FAILED);
     }
@@ -763,7 +764,7 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
         std::string contents;
         GenerateBackgroundPageContents(extension.get(), &head->mime_type,
                                        &head->charset, &contents);
-        WriteData(std::move(head), base::as_bytes(base::make_span(contents)));
+        WriteData(std::move(head), base::as_byte_span(contents));
       } else if (is_favicon_url) {
         tracker_ = std::make_unique<base::CancelableTaskTracker>();
         ExtensionsBrowserClient::Get()->GetFavicon(
@@ -827,13 +828,15 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
       }
     }
 
-    if (g_test_handler)
+    if (g_test_handler) {
       g_test_handler->Run(&directory_path, &relative_path);
+    }
 
     extensions::ExtensionResource resource(extension_id, directory_path,
                                            relative_path);
-    if (follow_symlinks_anywhere)
+    if (follow_symlinks_anywhere) {
       resource.set_follow_symlinks_anywhere();
+    }
 
     scoped_refptr<ContentVerifier> content_verifier =
         extensions::ExtensionSystem::Get(browser_context_)->content_verifier();
@@ -891,8 +894,9 @@ class ExtensionURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
     // (no new ExtensionURLLoaderFactory should be created after BrowserContext
     // shutdown has started *if* all WebContents got closed before starting the
     // shutdown).
-    if (browser_context->ShutdownStarted())
+    if (browser_context->ShutdownStarted()) {
       return pending_remote;
+    }
 
     // Manages its own lifetime.
     new ExtensionURLLoaderFactory(
@@ -986,8 +990,7 @@ class ExtensionURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
 
     content::BrowserContext* GetBrowserContextToUse(
         content::BrowserContext* context) const override {
-      return ExtensionsBrowserClient::Get()->GetContextOwnInstance(
-          context, /*force_guest_profile=*/true);
+      return ExtensionsBrowserClient::Get()->GetContextOwnInstance(context);
     }
   };
 

@@ -19,8 +19,8 @@ Item {
         forceDebugDraw: true
         typicalLength: 1
         typicalSpeed: 10
-        minimumTimestep: 16.6667
-        maximumTimestep: 16.6667
+        minimumTimestep: 15
+        maximumTimestep: 15
         scene: viewport.scene
         property real elapsedTime: 0
     }
@@ -111,8 +111,8 @@ Item {
                     source: "#Cube"
                     scale: Qt.vector3d(2, 1, 2).times(0.01)
                     eulerRotation: Qt.vector3d(0, 90, 0)
-                    materials: DefaultMaterial {
-                        diffuseColor: "green"
+                    materials: PrincipledMaterial {
+                        baseColor: "green"
                     }
                 }
                 receiveContactReports: true
@@ -146,8 +146,8 @@ Item {
                     source: "#Cube"
                     scale: Qt.vector3d(2, 1, 2).times(0.01)
                     eulerRotation: Qt.vector3d(0, 90, 0)
-                    materials: DefaultMaterial {
-                        diffuseColor: "blue"
+                    materials: PrincipledMaterial {
+                        baseColor: "blue"
                     }
                 }
             }
@@ -224,8 +224,8 @@ Item {
                     source: "#Cube"
                     scale: Qt.vector3d(2, 1, 2).times(0.01)
                     eulerRotation: Qt.vector3d(0, 90, 0)
-                    materials: DefaultMaterial {
-                        diffuseColor: "blue"
+                    materials: PrincipledMaterial {
+                        baseColor: "blue"
                     }
                 }
             }

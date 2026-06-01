@@ -148,6 +148,15 @@ class GPU_EXPORT GpuChannelHost
       std::vector<SyncToken> sync_token_dependencies,
       uint64_t release_count,
       base::OnceCallback<void(bool)> callback);
+  void CopyNativeGmbToSharedMemorySync(
+      gfx::GpuMemoryBufferHandle buffer_handle,
+      base::UnsafeSharedMemoryRegion memory_region,
+      bool* status);
+  void CopyNativeGmbToSharedMemoryAsync(
+      gfx::GpuMemoryBufferHandle buffer_handle,
+      base::UnsafeSharedMemoryRegion memory_region,
+      base::OnceCallback<void(bool)> callback);
+  bool IsConnected();
 #endif
 
   // Crashes the GPU process. This functionality is added here because
@@ -177,6 +186,9 @@ class GPU_EXPORT GpuChannelHost
  protected:
   friend class base::RefCountedThreadSafe<GpuChannelHost>;
   virtual ~GpuChannelHost();
+
+  // Clears its SharedAssociatedRemote.
+  void ResetChannelRemoteForTesting();
 
  private:
   // Establishes shared memory communication with the GPU process. This memory

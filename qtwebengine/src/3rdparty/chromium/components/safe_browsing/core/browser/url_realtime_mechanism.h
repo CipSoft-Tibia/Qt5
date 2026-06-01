@@ -15,6 +15,7 @@
 #include "components/safe_browsing/core/browser/db/database_manager.h"
 #include "components/safe_browsing/core/browser/hash_realtime_mechanism.h"
 #include "components/safe_browsing/core/browser/realtime/url_lookup_service_base.h"
+#include "components/safe_browsing/core/browser/referring_app_info.h"
 #include "components/safe_browsing/core/browser/safe_browsing_lookup_mechanism.h"
 #include "components/safe_browsing/core/browser/url_checker_delegate.h"
 #include "components/safe_browsing/core/common/proto/realtimeapi.pb.h"
@@ -40,7 +41,8 @@ class UrlRealTimeMechanism : public SafeBrowsingLookupMechanism {
           web_contents_getter,
       SessionID tab_id,
       std::unique_ptr<SafeBrowsingLookupMechanism>
-          hash_realtime_lookup_mechanism);
+          hash_realtime_lookup_mechanism,
+      std::optional<internal::ReferringAppInfo> referring_app_info);
   UrlRealTimeMechanism(const UrlRealTimeMechanism&) = delete;
   UrlRealTimeMechanism& operator=(const UrlRealTimeMechanism&) = delete;
   ~UrlRealTimeMechanism() override;
@@ -51,7 +53,11 @@ class UrlRealTimeMechanism : public SafeBrowsingLookupMechanism {
 
   // If |did_match_allowlist| is true, this will fall back to the hash-based
   // check instead of performing the URL lookup.
-  void OnCheckUrlForHighConfidenceAllowlist(bool did_match_allowlist);
+  void OnCheckUrlForHighConfidenceAllowlist(
+      bool did_match_allowlist,
+      std::optional<SafeBrowsingDatabaseManager::
+                        HighConfidenceAllowlistCheckLoggingDetails>
+          logging_details);
 
   // This function has to be static because it is called in UI thread.
   // This function starts a real time url check if |url_lookup_service_on_ui| is
@@ -62,6 +68,7 @@ class UrlRealTimeMechanism : public SafeBrowsingLookupMechanism {
       const GURL& url,
       base::WeakPtr<RealTimeUrlLookupServiceBase> url_lookup_service_on_ui,
       SessionID tab_id,
+      std::optional<internal::ReferringAppInfo> referring_app_info,
       scoped_refptr<base::SequencedTaskRunner> io_task_runner);
 
   // Checks the eligibility of sending a sampled ping first;
@@ -71,6 +78,7 @@ class UrlRealTimeMechanism : public SafeBrowsingLookupMechanism {
       const GURL& url,
       base::WeakPtr<RealTimeUrlLookupServiceBase> url_lookup_service_on_ui,
       SessionID tab_id,
+      std::optional<internal::ReferringAppInfo> referring_app_info,
       scoped_refptr<base::SequencedTaskRunner> io_task_runner);
 
   // Called when the |response| from the real-time lookup service is received.
@@ -126,10 +134,6 @@ class UrlRealTimeMechanism : public SafeBrowsingLookupMechanism {
   // false when enterprise real time URL lookup is enabled.
   bool can_check_high_confidence_allowlist_;
 
-  // Whether the hash realtime look has completed when URL realtime lookup
-  // completes.
-  bool is_hash_realtime_lookup_complete_ = false;
-
   // URL Lookup service suffix for logging metrics.
   std::string url_lookup_service_metric_suffix_;
 
@@ -160,10 +164,30 @@ class UrlRealTimeMechanism : public SafeBrowsingLookupMechanism {
   // be |SessionID::InvalidValue()|.
   SessionID tab_id_;
 
+  // Store the verdict from the HPRT lookup result in this class. This verdict
+  // will be used when the URL real-time lookup completes.
+  std::optional<SBThreatType> hash_realtime_lookup_result_threat_type_;
+
+  // A helper method to log background HPRT related metrics and construct CSBRR
+  // reports.
+  void LogBackgroundHprtLookupResults(SBThreatType urt_threat_type);
+
+  // Converts a |SBThreatType| to the one used for
+  // the UrlRealTimeAndHashRealTimeDiscrepancyInfo threat type CSBRR.
+  static ClientSafeBrowsingReportRequest::
+      UrlRealTimeAndHashRealTimeDiscrepancyInfo::LookupThreatType
+      GetDiscrepancyThreatType(SBThreatType threat_type);
+
   // This will be populated in cases where the sampled HPRT lookup should be
   // sent.
   std::unique_ptr<SafeBrowsingLookupMechanism> hash_realtime_lookup_mechanism_ =
       nullptr;
+
+  // The Android app that launched a Chrome activity.
+  std::optional<internal::ReferringAppInfo> referring_app_info_;
+
+  base::OnceCallback<void(std::unique_ptr<ClientSafeBrowsingReportRequest>)>
+      save_report_info_for_testing_;
 
   base::WeakPtrFactory<UrlRealTimeMechanism> weak_factory_{this};
 };

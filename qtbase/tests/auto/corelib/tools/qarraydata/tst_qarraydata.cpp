@@ -1,8 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <QTest>
 #include <QtCore/QString>
 #include <QtCore/qarraydata.h>
@@ -75,22 +73,22 @@ void tst_QArrayData::referenceCounting()
         // Reference counting initialized to 1 (owned)
         QArrayData array = { Q_BASIC_ATOMIC_INITIALIZER(1), {}, 0 };
 
-        QCOMPARE(array.m_ref.loadRelaxed(), 1);
+        QCOMPARE(array.ref_.loadRelaxed(), 1);
 
         QVERIFY(array.ref());
-        QCOMPARE(array.m_ref.loadRelaxed(), 2);
+        QCOMPARE(array.ref_.loadRelaxed(), 2);
 
         QVERIFY(array.deref());
-        QCOMPARE(array.m_ref.loadRelaxed(), 1);
+        QCOMPARE(array.ref_.loadRelaxed(), 1);
 
         QVERIFY(array.ref());
-        QCOMPARE(array.m_ref.loadRelaxed(), 2);
+        QCOMPARE(array.ref_.loadRelaxed(), 2);
 
         QVERIFY(array.deref());
-        QCOMPARE(array.m_ref.loadRelaxed(), 1);
+        QCOMPARE(array.ref_.loadRelaxed(), 1);
 
         QVERIFY(!array.deref());
-        QCOMPARE(array.m_ref.loadRelaxed(), 0);
+        QCOMPARE(array.ref_.loadRelaxed(), 0);
 
         // Now would be a good time to free/release allocated data
     }
@@ -418,7 +416,7 @@ struct Deallocator
 
     ~Deallocator()
     {
-        Q_FOREACH (QArrayData *data, headers)
+        for (QArrayData *data : std::as_const(headers))
             QArrayData::deallocate(data, objectSize, alignment);
     }
 
@@ -586,7 +584,7 @@ void tst_QArrayData::typedData()
     {
         Deallocator keeper(sizeof(char),
                 alignof(QTypedArrayData<char>::AlignmentDummy));
-        QPair<QTypedArrayData<char> *, char *> pair = QTypedArrayData<char>::allocate(10);
+        std::pair<QTypedArrayData<char> *, char *> pair = QTypedArrayData<char>::allocate(10);
         QArrayData *array = pair.first;
         keeper.headers.append(array);
 
@@ -606,7 +604,7 @@ void tst_QArrayData::typedData()
     {
         Deallocator keeper(sizeof(short),
                 alignof(QTypedArrayData<short>::AlignmentDummy));
-        QPair<QTypedArrayData<short> *, short *> pair = QTypedArrayData<short>::allocate(10);
+        std::pair<QTypedArrayData<short> *, short *> pair = QTypedArrayData<short>::allocate(10);
         QArrayData *array = pair.first;
         keeper.headers.append(array);
 
@@ -626,7 +624,7 @@ void tst_QArrayData::typedData()
     {
         Deallocator keeper(sizeof(double),
                 alignof(QTypedArrayData<double>::AlignmentDummy));
-        QPair<QTypedArrayData<double> *, double *> pair = QTypedArrayData<double>::allocate(10);
+        std::pair<QTypedArrayData<double> *, double *> pair = QTypedArrayData<double>::allocate(10);
         QArrayData *array = pair.first;
         keeper.headers.append(array);
 
@@ -1076,7 +1074,6 @@ void tst_QArrayData::arrayOpsExtra_data()
 
 void tst_QArrayData::arrayOpsExtra()
 {
-    QSKIP("Skipped while changing QArrayData operations.");
     QFETCH(QArrayData::GrowthPosition, GrowthPosition);
     CountedObject::LeakChecker leakChecker; Q_UNUSED(leakChecker);
 
@@ -1102,9 +1099,18 @@ void tst_QArrayData::arrayOpsExtra()
         auto s = QArrayDataPointer<QString>::allocateGrow(QArrayDataPointer<QString>(), alloc, GrowthPosition);
         auto o = QArrayDataPointer<CountedObject>::allocateGrow(QArrayDataPointer<CountedObject>(), alloc, GrowthPosition);
         if (initialSize) {
-            i->appendInitialize(initialSize);
-            s->appendInitialize(initialSize);
-            o->appendInitialize(initialSize);
+            if (GrowthPosition == QArrayData::GrowsAtEnd) {
+                i->appendInitialize(initialSize);
+                s->appendInitialize(initialSize);
+                o->appendInitialize(initialSize);
+            } else {
+                // there's no prependInitialize()
+                for (qsizetype n = 0; n < initialSize; ++n) {
+                    i->emplace(0);
+                    s->emplace(0);
+                    o->emplace(0);
+                }
+            }
         }
 
         // assign unique values
@@ -1142,7 +1148,8 @@ void tst_QArrayData::arrayOpsExtra()
     }
 
     // copyAppend (iterator version)
-    {
+    // (appending requires growth at end)
+    if (GrowthPosition == QArrayData::GrowsAtEnd) {
         CountedObject::LeakChecker localLeakChecker; Q_UNUSED(localLeakChecker);
         const auto testCopyAppend = [&] (auto &dataPointer, auto first, auto last) {
             const size_t originalSize = dataPointer.size;
@@ -1191,7 +1198,8 @@ void tst_QArrayData::arrayOpsExtra()
     }
 
     // copyAppend (iterator version) - special case of copying from self iterators
-    {
+    // (appending requires growth at end)
+    if (GrowthPosition == QArrayData::GrowsAtEnd) {
         CountedObject::LeakChecker localLeakChecker; Q_UNUSED(localLeakChecker);
         const auto testCopyAppendSelf = [&] (auto &dataPointer, auto first, auto last) {
             const size_t originalSize = dataPointer.size;
@@ -1244,7 +1252,8 @@ void tst_QArrayData::arrayOpsExtra()
     }
 
     // copyAppend (value version)
-    {
+    // (appending requires growth at end)
+    if (GrowthPosition == QArrayData::GrowsAtEnd) {
         CountedObject::LeakChecker localLeakChecker; Q_UNUSED(localLeakChecker);
         const auto testCopyAppend = [&] (auto &dataPointer, size_t n, auto value) {
             const size_t originalSize = dataPointer.size;
@@ -1291,7 +1300,8 @@ void tst_QArrayData::arrayOpsExtra()
     }
 
     // copyAppend (value version) - special case of copying self value
-    {
+    // (appending requires growth at end)
+    if (GrowthPosition == QArrayData::GrowsAtEnd) {
         CountedObject::LeakChecker localLeakChecker; Q_UNUSED(localLeakChecker);
         const auto testCopyAppendSelf = [&] (auto &dataPointer, size_t n, const auto &value) {
             const size_t originalSize = dataPointer.size;
@@ -1337,7 +1347,8 @@ void tst_QArrayData::arrayOpsExtra()
     }
 
     // moveAppend
-    {
+    // (appending requires growth at end)
+    if (GrowthPosition == QArrayData::GrowsAtEnd) {
         CountedObject::LeakChecker localLeakChecker; Q_UNUSED(localLeakChecker);
         // now there's only one version that accepts "T*" as input parameters
         const auto testMoveAppend = [&] (auto &dataPointer, const auto &source)
@@ -1385,7 +1396,8 @@ void tst_QArrayData::arrayOpsExtra()
     }
 
     // moveAppend - special case of moving from self (this is legal yet rather useless)
-    {
+    // (appending requires growth at end)
+    if (GrowthPosition == QArrayData::GrowsAtEnd) {
         CountedObject::LeakChecker localLeakChecker; Q_UNUSED(localLeakChecker);
         const auto testMoveAppendSelf = [&] (auto &dataPointer, auto first, auto last) {
             const size_t originalSize = dataPointer.size;
@@ -1454,6 +1466,11 @@ void tst_QArrayData::arrayOpsExtra()
         };
 
         auto [intData, strData, objData] = setupDataPointers(inputSize, inputSize);
+        // truncate nothing
+        RUN_TEST_FUNC(testTruncate, intData, inputSize);
+        RUN_TEST_FUNC(testTruncate, strData, inputSize);
+        RUN_TEST_FUNC(testTruncate, objData, inputSize);
+
         // truncate one
         RUN_TEST_FUNC(testTruncate, intData, inputSize - 1);
         RUN_TEST_FUNC(testTruncate, strData, inputSize - 1);
@@ -1568,10 +1585,17 @@ void tst_QArrayData::arrayOpsExtra()
         CountedObject::LeakChecker localLeakChecker; Q_UNUSED(localLeakChecker);
         auto [intData, strData, objData] = setupDataPointers(inputSize * 2, inputSize / 2);
 
-        // make no free space at the begin
-        intData->insert(0, intData.freeSpaceAtBegin(), intData.data()[0]);
-        strData->insert(0, strData.freeSpaceAtBegin(), strData.data()[0]);
-        objData->insert(0, objData.freeSpaceAtBegin(), objData.data()[0]);
+        if (GrowthPosition == QArrayData::GrowsAtEnd) {
+            // make no free space at the begin
+            intData->insert(0, intData.freeSpaceAtBegin(), intData.data()[0]);
+            strData->insert(0, strData.freeSpaceAtBegin(), strData.data()[0]);
+            objData->insert(0, objData.freeSpaceAtBegin(), objData.data()[0]);
+        } else {
+            // make no free space at the end
+            intData->copyAppend(intData.freeSpaceAtEnd(), intData.data()[0]);
+            strData->copyAppend(strData.freeSpaceAtEnd(), strData.data()[0]);
+            objData->copyAppend(objData.freeSpaceAtEnd(), objData.data()[0]);
+        }
 
         // make all values unique. this would ensure that we do not have erroneously passed test
         int i = 0;
@@ -1580,12 +1604,21 @@ void tst_QArrayData::arrayOpsExtra()
         std::generate(objData.begin(), objData.end(), [] () { return CountedObject(); });
 
         // sanity checks:
-        QVERIFY(intData.freeSpaceAtEnd() > 0);
-        QVERIFY(strData.freeSpaceAtEnd() > 0);
-        QVERIFY(objData.freeSpaceAtEnd() > 0);
-        QVERIFY(intData.freeSpaceAtBegin() == 0);
-        QVERIFY(strData.freeSpaceAtBegin() == 0);
-        QVERIFY(objData.freeSpaceAtBegin() == 0);
+        if (GrowthPosition == QArrayData::GrowsAtEnd) {
+            QCOMPARE_GT(intData.freeSpaceAtEnd(), 0);
+            QCOMPARE_GT(strData.freeSpaceAtEnd(), 0);
+            QCOMPARE_GT(objData.freeSpaceAtEnd(), 0);
+            QCOMPARE(intData.freeSpaceAtBegin(), 0);
+            QCOMPARE(strData.freeSpaceAtBegin(), 0);
+            QCOMPARE(objData.freeSpaceAtBegin(), 0);
+        } else {
+            QCOMPARE(intData.freeSpaceAtEnd(), 0);
+            QCOMPARE(strData.freeSpaceAtEnd(), 0);
+            QCOMPARE(objData.freeSpaceAtEnd(), 0);
+            QCOMPARE_GT(intData.freeSpaceAtBegin(), 0);
+            QCOMPARE_GT(strData.freeSpaceAtBegin(), 0);
+            QCOMPARE_GT(objData.freeSpaceAtBegin(), 0);
+        }
 
         // now, prepend to full size causing the data to move internally. passed
         // value that refers to the object itself must be used correctly

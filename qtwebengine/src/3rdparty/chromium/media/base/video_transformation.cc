@@ -12,6 +12,9 @@
 #include <math.h>
 #include <stddef.h>
 
+#include <array>
+#include <cmath>
+
 #include "base/logging.h"
 #include "base/notreached.h"
 #include "base/numerics/angle_conversions.h"
@@ -60,7 +63,12 @@ VideoTransformation VideoTransformation::FromFFmpegDisplayMatrix(
 
 VideoTransformation::VideoTransformation(const int32_t matrix[4]) {
   // Promote to int64_t to avoid abs(int32_min) being undefined.
-  const int64_t matrix64[4] = {matrix[0], matrix[1], matrix[2], matrix[3]};
+  const std::array<int64_t, 4> matrix64 = {
+      matrix[0],
+      matrix[1],
+      matrix[2],
+      matrix[3],
+  };
 
   // Rotation by angle Θ is represented in the matrix as:
   // [ cos(Θ), -sin(Θ)]
@@ -123,6 +131,34 @@ VideoTransformation::VideoTransformation(const int32_t matrix[4]) {
     rotation = VIDEO_ROTATION_0;
     mirrored = false;
   }
+}
+
+VideoTransformation::VideoTransformation(double rotation, bool mirrored) {
+  // `bounded_rotation` is an integer in (-360, 360).
+  double bounded_rotation = std::fmod(std::floor(rotation), 360);
+
+  // Add 360 to ensure non-negative, and another 45 to round up.
+  // `quarter_turns` is in [0, 8].
+  int quarter_turns = (static_cast<int>(bounded_rotation) + 360 + 45) / 90;
+
+  // Convert back to degrees.
+  int snapped_rotation = (quarter_turns % 4) * 90;
+
+  this->rotation = static_cast<VideoRotation>(snapped_rotation);
+  this->mirrored = mirrored;
+}
+
+VideoTransformation VideoTransformation::add(VideoTransformation delta) const {
+  int base_rotation = static_cast<int>(rotation);
+  int delta_rotation = static_cast<int>(delta.rotation);
+  if (mirrored) {
+    int combined_rotation = (base_rotation + (360 - delta_rotation)) % 360;
+    return VideoTransformation(static_cast<VideoRotation>(combined_rotation),
+                               !delta.mirrored);
+  }
+  int combined_rotation = (base_rotation + delta_rotation) % 360;
+  return VideoTransformation(static_cast<VideoRotation>(combined_rotation),
+                             delta.mirrored);
 }
 
 }  // namespace media

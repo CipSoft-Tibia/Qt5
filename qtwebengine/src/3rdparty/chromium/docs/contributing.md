@@ -86,8 +86,7 @@ contribution can be accepted:
 
 ## Initial git setup
 
-1. Visit <https://chromium.googlesource.com/new-password> and follow the
-   on-screen instructions to get credentials for uploading changes.
+1. Set up [Gerrit access](https://www.chromium.org/developers/gerrit-guide/).
 2. Tell git about your name, email and some other settings.
    ```
    git config --global user.name "My Name"
@@ -213,6 +212,20 @@ To put this into an example, let‘s say you have a commit for feature A
 and this is in the process of being reviewed on Gerrit.  Now let’s say
 you want to start more work based on it before it lands on main.
 
+Gerrit has the concept of a “relation chain”. For our example above, we want to
+create a relation chain where the feature A change is the parent of the feature
+B change. Once we create the relation chain, the Gerrit review view for change B
+will show the diff vs. change A, rather than vs. the main branch.
+
+To create a relation chain, upload a change that has an upstream branch
+associated with the parent CL. The steps to do so are slightly different when
+you own the parent change vs. when someone else owns the parent change.
+
+#### When you own the parent change
+
+Using the example of features A and B above, if you own the change for feature A
+and you want to upload a dependent change for feature B:
+
 ```
 git checkout featureA
 git checkout -b featureB
@@ -223,15 +236,42 @@ git commit
 git cl upload
 ```
 
-In Gerrit, there would then be a “relation chain” shown where the
-feature A change is the parent of the feature B change.  If A
-introduces a new file which B changes, the review for B will only show
-the diff from A.
+#### When someone else owns the parent change
 
-## Code review
+If someone else owns the change for feature A:
 
-Code reviews are covered in more detail on the [code review
-policies][code-reviews] page.
+```
+# First, open the change for feature A in Gerrit -> "Download patch" -> copy and
+# run "Branch" command. Then, starting from the branch that command created:
+git cl patch --force <parent-CL-number>
+git checkout -b featureB
+git branch --set-upstream-to change-<parent-CL-number>
+# ... edit some files
+# ... git add ...
+git commit
+git cl upload
+```
+
+Note that, after running `git cl patch --force <parent-CL-number>`, if you
+upload changes from branch `change-<parent-CL-number>`, you will upload a new
+patchset to the original author's change.
+
+If the other author uploads a new patchset to the change your change depends on,
+you can update your local copy of their change by running:
+
+```
+git checkout change-<parent-CL-number>
+git fetch origin [sha hash for latest patchset] && git reset --hard FETCH_HEAD
+```
+
+## Code review {#code-review}
+
+This section describes the mechanics and process of code reviews. See also:
+- [Code review policies](code_reviews.md) page for committer, OWNERS, and other
+rules
+- [Code of conduct](../CODE_OF_CONDUCT.md)
+- [Respectful Changes](cl_respect.md)
+- [Respectful Code Reviews](cr_respect.md)
 
 ### Finding a reviewer
 
@@ -280,16 +320,22 @@ Reviewers expect to review code that compiles and passes tests. If you have
 access, now is a good time to run your change through the [automated
 tests](#running-automated-tests).
 
-Click **Add Reviewers** in the left column (if you don't see this link, make
-sure you are logged in). In the **Reviewers** field, enter a comma-separated
-list of the reviewers you picked.
+Click the big blue **Start Review** button near the top of the page. (If you are
+not signed in, the button will instead say "Sign In", so click it to sign in.)
+An in-page dialog will appear, and there will be a **Reviewers** field in which
+you can specify reviewers for the change. To the right of the field, in the
+upper-right of the in-page dialog, will be a link titled "Suggest Owners" which,
+when clicked, will suggest owners relevant to your change. Unless you have a
+specific reason not to, it is recommended to click it and rely on its suggestion
+of owners.
 
 In the same dialog, you can include an optional message to your reviewers. This
-space can be used for specific questions or instructions. Once you're done,
-make sure to click **Start Review**, which notifies the requested reviewers that
-they should review your change.
+space can be used for specific questions or instructions. Once you're done, make
+sure to click **Send and Start Review**, which notifies the requested reviewers
+that they should review your change.
 
-**IMPORTANT: UNTIL YOU SEND THE REVIEW REQUEST, NO ONE WILL LOOK AT THE REVIEW**
+**⚠️ Be sure to click the "Send and Start Review" button as NO ONE WILL LOOK AT
+YOUR CHANGE UNTIL YOU DO SO ⚠️**
 
 ### Review process
 
@@ -397,17 +443,18 @@ general rules of thumb can be helpful in navigating how to structure changes:
   product in the Chromium repositories that depends on that line of code or else
   the line of code should be removed.
 
-  When you are adding support for a new OS, a new architecture, a new port or
-  a new top-level directory, please send an email to
-  chrome-atls@google.com and get approval. For long-term maintenance
+  When you are adding support for a new OS, architecture, compiler/STL
+  implementation, platform, or simply a new top-level directory, please send an
+  email to chrome-atls@google.com and get approval. For long-term maintenance
   reasons, we will accept only things that are used by the Chromium project
   (including Chromium-supported projects like V8 and Skia) and things whose
   benefit to Chromium outweighs any cost increase in maintaining Chromium's
-  supported architectures / platforms (e.g. adding one ifdef branch for an
-  unsupported architecture / platform has negligible cost and is likely fine,
+  supported toolchains, architectures, and platforms (e.g. adding one ifdef
+  branch for an unsupported architecture has negligible cost and is likely fine,
   but introducing new abstractions or changes to higher level directories has
   a high cost and would need to provide Chromium with corresponding benefit).
-  Note that an unsupported architecture / platform will not have bots on
+  See the [documentation on toolchain support](toolchain_support.md) for more
+  details. Note that an unsupported configuration will not have bots on
   Google-managed waterfalls (even FYI bots) or maintained by Chromium
   developers. Please use existing ifdef branches as much as possible.
 

@@ -14,7 +14,6 @@
 #include "base/notreached.h"
 #include "base/task/task_runner.h"
 #include "base/time/time.h"
-#include "build/chromeos_buildflags.h"
 #include "components/policy/core/common/cloud/enterprise_metrics.h"
 #include "components/policy/core/common/policy_map.h"
 #include "components/policy/core/common/policy_pref_names.h"
@@ -171,7 +170,7 @@ void PolicyStatisticsCollector::CollectStatistics() {
         RecordPolicyUse(details->id, kRecommended);
       }
     } else {
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
     }
     source |= SimplifyPolicySource(policy_entry->source, it.key());
   }

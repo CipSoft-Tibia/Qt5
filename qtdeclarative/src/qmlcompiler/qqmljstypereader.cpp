@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljstypereader_p.h"
 #include "qqmljsimportvisitor_p.h"
@@ -51,6 +52,7 @@ bool QQmlJSTypeReader::operator ()(const QSharedPointer<QQmlJSScope> &scope)
     logger.setFilePath(m_file);
     logger.setCode(code);
     logger.setSilent(true);
+    logger.setIsDisabled(true);
 
     m_importer->runImportVisitor(rootNode,
                                  { scope,

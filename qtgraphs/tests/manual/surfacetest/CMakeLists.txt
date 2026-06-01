@@ -31,9 +31,13 @@ set_source_files_properties("Heightmap.png"
 set_source_files_properties("mapimage.png"
     PROPERTIES QT_RESOURCE_ALIAS "mapimage"
     )
+set_source_files_properties("opacitymask.png"
+    PROPERTIES QT_RESOURCE_ALIAS "opacitymask"
+    )
 set(surfacetest_resource_files
     "Heightmap.png"
     "mapimage.png"
+    "opacitymask.png"
     )
 
 qt_internal_add_resource(tst_surfacetest "surfacetest"

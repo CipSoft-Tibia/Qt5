@@ -6,6 +6,7 @@
 #include <private/qxypoint_p.h>
 #include <private/qscatterseries_p.h>
 #include <private/qgraphsview_p.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -118,12 +119,18 @@ void QScatterSeries::componentComplete()
     Q_D(QScatterSeries);
 
     for (auto *child : children()) {
-        if (auto point = qobject_cast<QXYPoint *>(child))
+        if (auto point = qobject_cast<QXYPoint *>(child)) {
             append(point->x(), point->y());
+            qCDebug(lcSeries2D, "append points x: %f, y: %f to scatterSeries",
+                    point->x(),
+                    point->y());
+        }
     }
 
     if (d->m_graphTransition)
         d->m_graphTransition->initialize();
+
+    qCDebug(lcEvents2D, "QScatterSeries::componentComplete");
 
     QAbstractSeries::componentComplete();
 }

@@ -1,32 +1,29 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtMultimedia/private/qplatformmediaplugin_p.h>
-#include <qcameradevice.h>
-#include "qffmpegmediaintegration_p.h"
-#include "qffmpegmediaformatinfo_p.h"
-#include "qffmpegmediaplayer_p.h"
-#include "qffmpegvideosink_p.h"
-#include "qffmpegmediacapturesession_p.h"
-#include "qffmpegmediarecorder_p.h"
-#include "qffmpegimagecapture_p.h"
-#include "qffmpegaudioinput_p.h"
-#include "qffmpegaudiodecoder_p.h"
-#include "qffmpegresampler_p.h"
-#include "qgrabwindowsurfacecapture_p.h"
-#include "qffmpegconverter_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegmediaintegration_p.h>
 
-#ifdef Q_OS_MACOS
-#include <QtFFmpegMediaPluginImpl/private/qcgcapturablewindows_p.h>
-#include <QtFFmpegMediaPluginImpl/private/qcgwindowcapture_p.h>
-#include <QtFFmpegMediaPluginImpl/private/qavfscreencapture_p.h>
-#endif
+#include <QtFFmpegMediaPluginImpl/private/qffmpegaudiodecoder_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegaudioinput_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegconverter_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegimagecapture_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegmediacapturesession_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegmediaformatinfo_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegmediaplayer_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegmediarecorder_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegresampler_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegvideosink_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qgrabwindowsurfacecapture_p.h>
+
+#include <QtMultimedia/private/qplatformmediaplugin_p.h>
+#include <QtMultimedia/qcameradevice.h>
 
 #ifdef Q_OS_DARWIN
-#include <QtFFmpegMediaPluginImpl/private/qavfcamera_p.h>
-#include <QtMultimedia/private/qavfvideodevices_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegdarwinintegrationfactory_p.h>
+#include <QtMultimedia/private/qdarwinintegrationfactory_p.h>
+#endif
 
-#elif defined(Q_OS_WINDOWS)
+#ifdef Q_OS_WINDOWS
 #  include <QtMultimedia/private/qwindowsresampler_p.h>
 #  include <QtMultimedia/private/qwindowsvideodevices_p.h>
 #  include "qwindowscamera_p.h"
@@ -36,11 +33,11 @@
 #endif
 
 #ifdef Q_OS_ANDROID
-#    include "jni.h"
-#    include "qandroidvideodevices_p.h"
-#    include "qandroidcamera_p.h"
-#    include "qandroidimagecapture_p.h"
-#    include "qandroidscreencapture_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qandroidcamera_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qandroidimagecapture_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qandroidscreencapture_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qandroidvideodevices_p.h>
+#include <jni.h>
 extern "C" {
 #  include <libavutil/log.h>
 #  include <libavcodec/jni.h>
@@ -132,7 +129,7 @@ static QPlatformSurfaceCapture *createScreenCaptureByBackend(QString backend)
         return new QFFmpegScreenCaptureDxgi;
 #elif defined(Q_OS_MACOS)
     if (backend == u"avf")
-        return new QAVFScreenCapture;
+        return QFFmpeg::makeQAvfScreenCapture().release();
 #endif
     return nullptr;
 }
@@ -154,7 +151,7 @@ static QPlatformSurfaceCapture *createWindowCaptureByBackend(QString backend)
 #endif
 #elif defined(Q_OS_MACOS)
     if (backend == u"cg")
-        return new QCGWindowCapture;
+        return QFFmpeg::makeQCgWindowCapture().release();
 #endif
     return nullptr;
 }
@@ -176,52 +173,55 @@ QFFmpegMediaIntegration::QFFmpegMediaIntegration()
         qCDebug(qLcFFmpeg) << "    " << av_hwdevice_get_type_name(type);
 }
 
-QMaybe<QPlatformAudioDecoder *> QFFmpegMediaIntegration::createAudioDecoder(QAudioDecoder *decoder)
+q23::expected<QPlatformAudioDecoder *, QString>
+QFFmpegMediaIntegration::createAudioDecoder(QAudioDecoder *decoder)
 {
     return new QFFmpegAudioDecoder(decoder);
 }
 
-QMaybe<std::unique_ptr<QPlatformAudioResampler>>
+q23::expected<std::unique_ptr<QPlatformAudioResampler>, QString>
 QFFmpegMediaIntegration::createAudioResampler(const QAudioFormat &inputFormat,
                                               const QAudioFormat &outputFormat)
 {
     auto ffmpegResampler = QFFmpegResampler::createFromInputFormat(inputFormat, outputFormat);
     if (ffmpegResampler)
-        return QMaybe<std::unique_ptr<QPlatformAudioResampler>>{std::move(ffmpegResampler)};
+        return ffmpegResampler;
 
 #ifdef Q_OS_WINDOWS
     auto windowsResampler = std::make_unique<QWindowsResampler>();
     if (windowsResampler->setup(inputFormat, outputFormat))
-        return QMaybe<std::unique_ptr<QPlatformAudioResampler>>{std::move(windowsResampler)};
-
+        return windowsResampler;
 #endif
 
-    return QUnexpected{ notAvailable };
+    return q23::unexpected{ notAvailable };
 }
 
-QMaybe<QPlatformMediaCaptureSession *> QFFmpegMediaIntegration::createCaptureSession()
+q23::expected<QPlatformMediaCaptureSession *, QString>
+QFFmpegMediaIntegration::createCaptureSession()
 {
     return new QFFmpegMediaCaptureSession();
 }
 
-QMaybe<QPlatformMediaPlayer *> QFFmpegMediaIntegration::createPlayer(QMediaPlayer *player)
+q23::expected<QPlatformMediaPlayer *, QString>
+QFFmpegMediaIntegration::createPlayer(QMediaPlayer *player)
 {
     return new QFFmpegMediaPlayer(player);
 }
 
-QMaybe<QPlatformCamera *> QFFmpegMediaIntegration::createCamera(QCamera *camera)
+q23::expected<QPlatformCamera *, QString> QFFmpegMediaIntegration::createCamera(QCamera *camera)
 {
+    Q_ASSERT(camera);
 #ifdef Q_OS_DARWIN
-    return new QAVFCamera(camera);
+    return QFFmpeg::makeQAvfCamera(*camera).release();
 #elif defined(Q_OS_ANDROID)
     return new QFFmpeg::QAndroidCamera(camera);
 #elif QT_CONFIG(linux_v4l)
     return new QV4L2Camera(camera);
 #elif defined(Q_OS_WINDOWS)
-    return new QWindowsCamera(camera);
+    return new QFFmpeg::QWindowsCamera(camera);
 #else
     Q_UNUSED(camera);
-    return { unexpect, notAvailable };
+    return q23::unexpected{ notAvailable };
 #endif
 }
 
@@ -255,7 +255,7 @@ QPlatformSurfaceCapture *QFFmpegMediaIntegration::createScreenCapture(QScreenCap
 #if defined(Q_OS_WINDOWS)
     return new QFFmpegScreenCaptureDxgi;
 #elif defined(Q_OS_MACOS) // TODO: probably use it for iOS as well
-    return new QAVFScreenCapture;
+    return QFFmpeg::makeQAvfScreenCapture().release();
 #elif defined(Q_OS_ANDROID)
     return new QAndroidScreenCapture;
 #else
@@ -288,32 +288,39 @@ QPlatformSurfaceCapture *QFFmpegMediaIntegration::createWindowCapture(QWindowCap
 
     return new QGdiWindowCapture;
 #elif defined(Q_OS_MACOS) // TODO: probably use it for iOS as well
-    return new QCGWindowCapture;
+    return QFFmpeg::makeQCgWindowCapture().release();
 #else
     return new QGrabWindowSurfaceCapture(QPlatformSurfaceCapture::WindowSource{});
 #endif
 }
 
-QMaybe<QPlatformMediaRecorder *> QFFmpegMediaIntegration::createRecorder(QMediaRecorder *recorder)
+q23::expected<QPlatformMediaRecorder *, QString>
+QFFmpegMediaIntegration::createRecorder(QMediaRecorder *recorder)
 {
     return new QFFmpegMediaRecorder(recorder);
 }
 
-QMaybe<QPlatformImageCapture *> QFFmpegMediaIntegration::createImageCapture(QImageCapture *imageCapture)
+q23::expected<QPlatformImageCapture *, QString>
+QFFmpegMediaIntegration::createImageCapture(QImageCapture *imageCapture)
 {
+    Q_ASSERT(imageCapture);
 #if defined(Q_OS_ANDROID)
     return new QFFmpeg::QAndroidImageCapture(imageCapture);
+#elif defined(Q_OS_DARWIN)
+    return QFFmpeg::makeQAvfImageCapture(*imageCapture).release();
 #else
     return new QFFmpegImageCapture(imageCapture);
 #endif
 }
 
-QMaybe<QPlatformVideoSink *> QFFmpegMediaIntegration::createVideoSink(QVideoSink *sink)
+q23::expected<QPlatformVideoSink *, QString>
+QFFmpegMediaIntegration::createVideoSink(QVideoSink *sink)
 {
     return new QFFmpegVideoSink(sink);
 }
 
-QMaybe<QPlatformAudioInput *> QFFmpegMediaIntegration::createAudioInput(QAudioInput *input)
+q23::expected<QPlatformAudioInput *, QString>
+QFFmpegMediaIntegration::createAudioInput(QAudioInput *input)
 {
     return new QFFmpegAudioInput(input);
 }
@@ -336,9 +343,9 @@ QPlatformVideoDevices *QFFmpegMediaIntegration::createVideoDevices()
 #elif QT_CONFIG(linux_v4l)
     return new QV4L2CameraDevices(this);
 #elif defined Q_OS_DARWIN
-    return new QAVFVideoDevices(
-        this,
-        &QFFmpeg::isCVFormatSupported);
+    return makeQAvfVideoDevices(
+        *this,
+        &QFFmpeg::isCVFormatSupported).release();
 #elif defined(Q_OS_WINDOWS)
     return new QWindowsVideoDevices(this);
 #else
@@ -352,16 +359,18 @@ QPlatformCapturableWindows *QFFmpegMediaIntegration::createCapturableWindows()
     if (QX11SurfaceCapture::isSupported())
         return new QX11CapturableWindows;
 #elif defined Q_OS_MACOS
-    return new QCGCapturableWindows;
+    return QFFmpeg::makeQCgCapturableWindows().release();
 #elif defined(Q_OS_WINDOWS)
     return new QWinCapturableWindows;
 #endif
     return nullptr;
 }
 
+QT_END_NAMESPACE
+
 #ifdef Q_OS_ANDROID
 
-Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
+extern "C" Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
 {
     static bool initialized = false;
     if (initialized)
@@ -385,5 +394,3 @@ Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
     return JNI_VERSION_1_6;
 }
 #endif
-
-QT_END_NAMESPACE

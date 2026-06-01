@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLLOCALE_H
 #define QQMLLOCALE_H
@@ -210,6 +211,11 @@ public:
             const QDateTime &dateTime, QLocale::FormatType format = QLocale::LongFormat) const
     {
         return locale.toString(dateTime, format);
+    }
+
+    Q_INVOKABLE QString createSeparatedList(const QStringList &list) const
+    {
+        return locale.createSeparatedList(list);
     }
 
     QQmlLocale::DayOfWeek firstDayOfWeek() const;

@@ -153,30 +153,30 @@ QString QQuickViewTestUtils::QaimModel::number(int index) const
 void QQuickViewTestUtils::QaimModel::addItem(const QString &name, const QString &number)
 {
     emit beginInsertRows(QModelIndex(), list.size(), list.size());
-    list.append(QPair<QString,QString>(name, number));
+    list.append(std::pair<QString,QString>(name, number));
     emit endInsertRows();
 }
 
-void QQuickViewTestUtils::QaimModel::addItems(const QList<QPair<QString, QString> > &items)
+void QQuickViewTestUtils::QaimModel::addItems(const QList<std::pair<QString, QString> > &items)
 {
     emit beginInsertRows(QModelIndex(), list.size(), list.size()+items.size()-1);
     for (int i=0; i<items.size(); i++)
-        list.append(QPair<QString,QString>(items[i].first, items[i].second));
+        list.append(std::pair<QString,QString>(items[i].first, items[i].second));
     emit endInsertRows();
 }
 
 void QQuickViewTestUtils::QaimModel::insertItem(int index, const QString &name, const QString &number)
 {
     emit beginInsertRows(QModelIndex(), index, index);
-    list.insert(index, QPair<QString,QString>(name, number));
+    list.insert(index, std::pair<QString,QString>(name, number));
     emit endInsertRows();
 }
 
-void QQuickViewTestUtils::QaimModel::insertItems(int index, const QList<QPair<QString, QString> > &items)
+void QQuickViewTestUtils::QaimModel::insertItems(int index, const QList<std::pair<QString, QString> > &items)
 {
     emit beginInsertRows(QModelIndex(), index, index+items.size()-1);
     for (int i=0; i<items.size(); i++)
-        list.insert(index + i, QPair<QString,QString>(items[i].first, items[i].second));
+        list.insert(index + i, std::pair<QString,QString>(items[i].first, items[i].second));
     emit endInsertRows();
 }
 
@@ -211,7 +211,7 @@ void QQuickViewTestUtils::QaimModel::moveItems(int from, int to, int count)
 
 void QQuickViewTestUtils::QaimModel::modifyItem(int idx, const QString &name, const QString &number)
 {
-    list[idx] = QPair<QString,QString>(name, number);
+    list[idx] = std::pair<QString,QString>(name, number);
     emit dataChanged(index(idx,0), index(idx,0));
 }
 
@@ -231,7 +231,7 @@ void QQuickViewTestUtils::QaimModel::reset()
     emit endResetModel();
 }
 
-void QQuickViewTestUtils::QaimModel::resetItems(const QList<QPair<QString, QString> > &items)
+void QQuickViewTestUtils::QaimModel::resetItems(const QList<std::pair<QString, QString> > &items)
 {
     beginResetModel();
     list = items;
@@ -252,7 +252,7 @@ private:
     const char *data;
 };
 
-void QQuickViewTestUtils::QaimModel::matchAgainst(const QList<QPair<QString, QString> > &other, const QString &error1, const QString &error2) {
+void QQuickViewTestUtils::QaimModel::matchAgainst(const QList<std::pair<QString, QString> > &other, const QString &error1, const QString &error2) {
     for (int i=0; i<other.size(); i++) {
         QVERIFY2(list.contains(other[i]),
                  ScopedPrintable(other[i].first + QLatin1Char(' ') + other[i].second + QLatin1Char(' ') + error1));
@@ -317,13 +317,13 @@ int QQuickViewTestUtils::ListRange::count() const
     return indexes.size();
 }
 
-QList<QPair<QString,QString> > QQuickViewTestUtils::ListRange::getModelDataValues(const QaimModel &model)
+QList<std::pair<QString,QString> > QQuickViewTestUtils::ListRange::getModelDataValues(const QaimModel &model)
 {
-    QList<QPair<QString,QString> > data;
+    QList<std::pair<QString,QString> > data;
     if (!valid)
         return data;
     for (int i=0; i<indexes.size(); i++)
-        data.append(qMakePair(model.name(indexes[i]), model.number(indexes[i])));
+        data.append(std::make_pair(model.name(indexes[i]), model.number(indexes[i])));
     return data;
 }
 
@@ -505,6 +505,10 @@ namespace QQuickTest {
         }
         if (view.flags().testFlag(Qt::FramelessWindowHint))
             return true;
+        if (!QGuiApplication::platformName().compare(QLatin1String("wayland"), Qt::CaseInsensitive)) {
+            qDebug() << "Setting position is not supported on Wayland";
+            return true;
+        }
         const bool positionOk = QTest::qWaitFor([&]{ return framePos != view.position(); });
         if (!positionOk) {
             qCritical() << "Position failed to update";

@@ -207,18 +207,19 @@ void QQuickGeoCoordinateAnimation::setTo(const QGeoCoordinate &t)
 
 /*!
     \qmlproperty enumeration CoordinateAnimation::direction
+
     This property holds the direction of the \l{longitude} animation of the \l{coordinate}.
 
-    Possible values are:
+    \value CoordinateAnimation.Shortest
+        The longitude animation goes in the direction
+        that produces the shortest animation path. This is the default.
+    \value CoordinateAnimation.West
+        The longitude animation always goes into western direction
+        and may cross the date line.
+    \value CoordinateAnimation.East
+        The longitude animation always goes into eastern direction
+        and may cross the date line.
 
-    \list
-    \li CoordinateAnimation.Shortest (default) - the longitude animation goes in the direction
-        that produces the shortest animation path.
-    \li CoordinateAnimation.West - the longitude animation always goes into western direction
-        and may cross the date line.
-    \li CoordinateAnimation.East - the longitude animation always goes into eastern direction
-        and may cross the date line.
-    \endlist
     \since 5.5
 */
 

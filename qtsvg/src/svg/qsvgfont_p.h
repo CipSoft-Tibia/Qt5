@@ -16,20 +16,22 @@
 //
 
 #include "qpainterpath.h"
-#include "qhash.h"
+#include "qlist.h"
 #include "qstring.h"
 #include "qsvgstyle_p.h"
 #include "qtsvgglobal_p.h"
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
 class Q_SVG_EXPORT QSvgGlyph
 {
 public:
-    QSvgGlyph(QChar unicode, const QPainterPath &path, qreal horizAdvX);
-    QSvgGlyph() : m_unicode(0), m_horizAdvX(0) {}
+    QSvgGlyph(const QString &unicode, const QPainterPath &path, qreal horizAdvX);
+    QSvgGlyph() : m_horizAdvX(0) {}
 
-    QChar m_unicode;
+    QString m_unicode;
     QPainterPath m_path;
     qreal m_horizAdvX;
 };
@@ -46,20 +48,32 @@ public:
 
     void setUnitsPerEm(qreal upem);
 
-    void addGlyph(QChar unicode, const QPainterPath &path, qreal horizAdvX = -1);
+    void addGlyph(const QString &unicode, const QPainterPath &path, qreal horizAdvX = -1);
+    bool addMissingGlyph(const QPainterPath &path, qreal horizAdvX);
 
     void draw(QPainter *p, const QPointF &point, const QString &str,
               qreal pixelSize, Qt::Alignment alignment) const;
     QRectF boundingRect(QPainter *p, const QPointF &point, const QString &str,
                         qreal pixelSize, Qt::Alignment alignment) const;
+    const QSvgGlyph *findFirstGlyphFor(QStringView text) const;
 
 public:
     QString m_familyName;
     qreal m_unitsPerEm = DEFAULT_UNITS_PER_EM;
     qreal m_horizAdvX;
-    QHash<QChar, QSvgGlyph> m_glyphs;
+    // not about a missing <glyph> element, but the font's <missing-glyph> element:
+    std::unique_ptr<const QSvgGlyph> m_missingGlyph;
+    // The following needs to preserve the order of glyphs because
+    // "17.6 Glyph selection rules" in SVG Tiny 1.2 reads:
+    // "the 'font' element must be searched from its first
+    // 'glyph' element to its last in logical order"
+    QList<QSvgGlyph> m_glyphs;
 
 private:
+    // to speed up finding glyphs
+    mutable QHash<char32_t, QList<qsizetype>> m_possibleGlyphIndicesForChar;
+    mutable qsizetype m_firstUnscannedGlyphIdx = 0;
+
     void draw_helper(QPainter *p, const QPointF &point, const QString &str, qreal pixelSize,
                      Qt::Alignment alignment, QRectF *boundingRect = nullptr) const;
 };

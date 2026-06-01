@@ -13,6 +13,7 @@
 #include "build/build_config.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/events/event_processor.h"
 #include "ui/views/bubble/bubble_border.h"
 #include "ui/views/bubble/bubble_frame_view.h"
@@ -119,8 +120,9 @@ class DialogTest : public ViewsTestBase {
   }
 
   void InitializeDialog() {
-    if (dialog_)
+    if (dialog_) {
       dialog_->TearDown();
+    }
 
     dialog_ = std::make_unique<TestDialog>();
     dialog_->Init();
@@ -144,8 +146,9 @@ class DialogTest : public ViewsTestBase {
 
   void SimulateKeyPress(ui::KeyboardCode key) {
     ui::KeyEvent event(ui::EventType::kKeyPressed, key, ui::EF_NONE);
-    if (dialog()->GetFocusManager()->OnKeyEvent(event))
+    if (dialog()->GetFocusManager()->OnKeyEvent(event)) {
       dialog()->GetWidget()->OnKeyEvent(&event);
+    }
   }
 
   TestDialog* dialog() const { return dialog_raw_; }
@@ -161,8 +164,6 @@ class DialogTest : public ViewsTestBase {
   std::unique_ptr<TestDialog> dialog_;
   raw_ptr<TestDialog> dialog_raw_ = nullptr;
 };
-
-}  // namespace
 
 TEST_F(DialogTest, InputIsInitiallyFocused) {
   EXPECT_EQ(dialog()->input(), dialog()->GetFocusManager()->GetFocusedView());
@@ -424,7 +425,7 @@ TEST_F(DialogTest, InitialFocusWithDeactivatedWidget) {
   // Set the initial focus while the Widget is unactivated to prevent the
   // initially focused View from receiving focus. Use a minimised state here to
   // prevent the Widget from being activated while this happens.
-  dialog_widget->SetInitialFocus(ui::SHOW_STATE_MINIMIZED);
+  dialog_widget->SetInitialFocus(ui::mojom::WindowShowState::kMinimized);
 
   // Nothing should be focused, because the Widget is still deactivated.
   EXPECT_EQ(nullptr, dialog_widget->GetFocusManager()->GetFocusedView());
@@ -510,8 +511,7 @@ TEST_F(DialogDelegateCloseTest,
   bool closed = false;
   bool accepted = false;
 
-  dialog.SetCloseCallback(
-      base::BindLambdaForTesting([&]() { closed = true; }));
+  dialog.SetCloseCallback(base::BindLambdaForTesting([&]() { closed = true; }));
   dialog.SetAcceptCallback(base::BindLambdaForTesting([&]() {
     accepted = true;
     dialog.Close();
@@ -650,5 +650,58 @@ TEST_F(DialogTest, CancelCallbackWithCloseDoesClose) {
   EXPECT_TRUE(widget->IsClosed());
   EXPECT_TRUE(canceled);
 }
+
+class MakeCloseSynchronousTest : public DialogTest {
+ public:
+  void CreateSynchronousCloseWidget() {
+    std::unique_ptr<DialogDelegateView> delegate =
+        std::make_unique<DialogDelegateView>();
+    synchronous_close_view_ = delegate.get();
+    delegate->SetOwnershipOfNewWidget(Widget::InitParams::CLIENT_OWNS_WIDGET);
+    synchronous_close_widget_ = base::WrapUnique(
+        DialogDelegate::CreateDialogWidget(std::move(delegate), GetContext(),
+                                           parent_widget()->GetNativeView()));
+    synchronous_close_widget_->MakeCloseSynchronous(base::BindOnce(
+        &MakeCloseSynchronousTest::OverrideClose, base::Unretained(this)));
+    synchronous_close_widget_->Show();
+  }
+
+  void OverrideClose(Widget::ClosedReason) {
+    synchronous_close_view_ = nullptr;
+    synchronous_close_widget_.reset();
+  }
+
+  // Owned by synchronous_close_widget_
+  raw_ptr<DialogDelegateView> synchronous_close_view_;
+  std::unique_ptr<Widget> synchronous_close_widget_;
+};
+
+// Check that unique_ptr is reset on call to Close().
+TEST_F(MakeCloseSynchronousTest, Close) {
+  CreateSynchronousCloseWidget();
+
+  synchronous_close_widget_->Close();
+  EXPECT_FALSE(synchronous_close_widget_);
+}
+
+// Check that there are no issues resetting the unique_ptr as usual.
+TEST_F(MakeCloseSynchronousTest, Reset) {
+  // Reset with same helper method.
+  CreateSynchronousCloseWidget();
+  OverrideClose(Widget::ClosedReason::kUnspecified);
+}
+
+// Check that unique_ptr is reset on call to Accept().
+TEST_F(MakeCloseSynchronousTest, Accept) {
+  CreateSynchronousCloseWidget();
+
+  ui::KeyEvent event(ui::EventType::kKeyPressed, ui::VKEY_RETURN, ui::EF_NONE);
+  if (synchronous_close_view_->GetFocusManager()->OnKeyEvent(event)) {
+    synchronous_close_view_->GetWidget()->OnKeyEvent(&event);
+  }
+  EXPECT_FALSE(synchronous_close_widget_);
+}
+
+}  // namespace
 
 }  // namespace views

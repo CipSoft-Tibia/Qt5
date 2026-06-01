@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "base/base64.h"
+#include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/metrics/histogram_functions.h"
@@ -60,6 +61,29 @@ std::string UpdateDebugInfoAndSerializeToHeader(
   std::string serialized = debug_info.SerializeAsString();
   return base::Base64Encode(serialized);
 }
+
+std::string_view GetRotationHttpResultHistogramName(
+    bool had_previously_received_challenge,
+    bool request_contained_challenge_response) {
+  static constexpr std::string_view kHistogramNameWithoutChallenge =
+      "Signin.BoundSessionCredentials.CookieRotationHttpResult."
+      "WithoutChallenge";
+  static constexpr std::string_view kHistogramNameWithCachedChallenge =
+      "Signin.BoundSessionCredentials.CookieRotationHttpResult."
+      "WithCachedChallenge";
+  static constexpr std::string_view kHistogramNameWithFreshChallenge =
+      "Signin.BoundSessionCredentials.CookieRotationHttpResult."
+      "WithFreshChallenge";
+  if (had_previously_received_challenge) {
+    DUMP_WILL_BE_CHECK(request_contained_challenge_response);
+    return kHistogramNameWithFreshChallenge;
+  }
+
+  return request_contained_challenge_response
+             ? kHistogramNameWithCachedChallenge
+             : kHistogramNameWithoutChallenge;
+}
+
 }  // namespace
 
 BoundSessionRefreshCookieFetcherImpl::BoundSessionRefreshCookieFetcherImpl(
@@ -78,6 +102,7 @@ BoundSessionRefreshCookieFetcherImpl::BoundSessionRefreshCookieFetcherImpl(
       expected_cookie_domain_(cookie_url),
       expected_cookie_names_(std::move(cookie_names)),
       is_off_the_record_profile_(is_off_the_record_profile),
+      non_refreshed_cookie_names_(expected_cookie_names_),
       debug_info_(std::move(debug_info)) {
   CHECK(refresh_url.is_valid());
 }
@@ -120,6 +145,11 @@ BoundSessionRefreshCookieFetcherImpl::TakeSecSessionChallengeResponseIfAny() {
   std::optional<std::string> response;
   std::swap(response, sec_session_challenge_response_);
   return response;
+}
+
+base::flat_set<std::string>
+BoundSessionRefreshCookieFetcherImpl::GetNonRefreshedCookieNames() {
+  return non_refreshed_cookie_names_;
 }
 
 void BoundSessionRefreshCookieFetcherImpl::StartRefreshRequest(
@@ -187,6 +217,11 @@ void BoundSessionRefreshCookieFetcherImpl::OnURLLoaderComplete(
               "BoundSessionRefreshCookieFetcherImpl::OnURLLoaderComplete",
               perfetto::Flow::FromPointer(this), "net_error", net_error);
 
+  base::UmaHistogramSparse(
+      GetRotationHttpResultHistogramName(
+          IsChallengeReceived(), sec_session_challenge_response_.has_value()),
+      headers ? headers->response_code() : net_error);
+
   std::optional<std::string> challenge_header_value =
       GetChallengeIfBindingKeyAssertionRequired(headers);
   if (challenge_header_value) {
@@ -242,6 +277,12 @@ BoundSessionRefreshCookieFetcherImpl::GetResultFromNetErrorAndHttpStatusCode(
     return Result::kServerTransientError;
   }
 
+  if (response_code == net::HTTP_PROXY_AUTHENTICATION_REQUIRED) {
+    // Treat proxy errors as connection errors. It makes sense to retry again
+    // once the user responds to the authentication challenge.
+    return Result::kConnectionError;
+  }
+
   if (response_code >= net::HTTP_BAD_REQUEST) {
     // Server error 4xx.
     return Result::kServerPersistentError;
@@ -254,7 +295,7 @@ BoundSessionRefreshCookieFetcherImpl::GetResultFromNetErrorAndHttpStatusCode(
 void BoundSessionRefreshCookieFetcherImpl::ReportRefreshResult() {
   reported_cookies_notified_timer_.Stop();
   CHECK(cookie_refresh_completed_);
-  if (result_ == Result::kSuccess && !expected_cookies_set_) {
+  if (result_ == Result::kSuccess && !non_refreshed_cookie_names_.empty()) {
     result_ = Result::kServerUnexepectedResponse;
   }
   TRACE_EVENT("browser",
@@ -280,9 +321,8 @@ BoundSessionRefreshCookieFetcherImpl::GetChallengeIfBindingKeyAssertionRequired(
     return std::nullopt;
   }
 
-  std::string challenge;
-  headers->GetNormalizedHeader(kRotationChallengeHeader, &challenge);
-  return challenge;
+  return headers->GetNormalizedHeader(kRotationChallengeHeader)
+      .value_or(std::string());
 }
 
 void BoundSessionRefreshCookieFetcherImpl::HandleBindingKeyAssertionRequired(
@@ -302,12 +342,11 @@ void BoundSessionRefreshCookieFetcherImpl::HandleBindingKeyAssertionRequired(
     return;
   }
 
-  // TODO(http://b/341261442): make this a requirement after confirming the
-  // number of affected users.
-  bool session_ids_match = items.session_id == session_id_;
-  base::UmaHistogramBoolean(
-      "Signin.BoundSessionCredentials.CookieRotationSessionIdsMatch",
-      session_ids_match);
+  if (items.session_id != session_id_) {
+    CompleteRequestAndReportRefreshResult(
+        Result::kChallengeRequiredSessionIdMismatch);
+    return;
+  }
 
   // Binding key assertion required.
   assertion_requests_count_++;
@@ -402,21 +441,18 @@ void BoundSessionRefreshCookieFetcherImpl::OnCookiesAccessed(
     }
 
     reported_cookies_notified_ = true;
-    bool all_cookies_set = true;
     for (const std::string& expected_cookie_name : expected_cookie_names_) {
-      auto it = base::ranges::find_if(
+      auto it = std::ranges::find_if(
           cookie_details->cookie_list,
           [this, &expected_cookie_name](
               const network::mojom::CookieOrLineWithAccessResultPtr& cookie) {
             return IsExpectedCookie(expected_cookie_domain_,
                                     expected_cookie_name, cookie);
           });
-      if (it == cookie_details->cookie_list.end()) {
-        all_cookies_set = false;
-        break;
+      if (it != cookie_details->cookie_list.end()) {
+        non_refreshed_cookie_names_.erase(expected_cookie_name);
       }
     }
-    expected_cookies_set_ = expected_cookies_set_ || all_cookies_set;
   }
 
   if (cookie_refresh_completed_ && reported_cookies_notified_) {

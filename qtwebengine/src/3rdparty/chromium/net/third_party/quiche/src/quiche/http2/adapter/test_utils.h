@@ -11,10 +11,10 @@
 #include "quiche/http2/adapter/data_source.h"
 #include "quiche/http2/adapter/http2_protocol.h"
 #include "quiche/http2/adapter/mock_http2_visitor.h"
+#include "quiche/http2/core/spdy_protocol.h"
 #include "quiche/common/http/http_header_block.h"
 #include "quiche/common/platform/api/quiche_export.h"
 #include "quiche/common/platform/api/quiche_test.h"
-#include "quiche/spdy/core/spdy_protocol.h"
 
 namespace http2 {
 namespace adapter {
@@ -102,22 +102,6 @@ class QUICHE_NO_EXPORT TestVisitor
   size_t send_limit_ = std::numeric_limits<size_t>::max();
   bool is_write_blocked_ = false;
   bool has_write_error_ = false;
-};
-
-// A DataFrameSource that invokes visitor methods.
-class QUICHE_NO_EXPORT VisitorDataSource : public DataFrameSource {
- public:
-  VisitorDataSource(Http2VisitorInterface& visitor, Http2StreamId stream_id);
-
-  std::pair<int64_t, bool> SelectPayloadLength(size_t max_length) override;
-  bool Send(absl::string_view frame_header, size_t payload_length) override;
-  bool send_fin() const override;
-
- private:
-  Http2VisitorInterface& visitor_;
-  const Http2StreamId stream_id_;
-  // Whether the stream should end with the final frame of data.
-  bool has_fin_ = false;
 };
 
 class QUICHE_NO_EXPORT TestMetadataSource : public MetadataSource {

@@ -4,6 +4,7 @@
 
 #include <jni.h>
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <vector>
@@ -20,9 +21,9 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/memory/raw_ptr.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "components/browser_ui/site_settings/android/storage_info_fetcher.h"
 #include "components/browser_ui/site_settings/android/website_preference_bridge_util.h"
 #include "components/browsing_data/content/cookie_helper.h"
@@ -229,7 +230,7 @@ ContentSetting GetPermissionSettingForOrigin(
         browser_context->GetPermissionController();
     content::PermissionResult result =
         permission_controller->GetPermissionResultForOriginWithoutContext(
-            permissions::PermissionUtil::ContentSettingTypeToPermissionType(
+            permissions::PermissionUtil::ContentSettingsTypeToPermissionType(
                 content_type),
             url::Origin::Create(requesting_origin),
             url::Origin::Create(embedding_origin));
@@ -256,6 +257,12 @@ void SetPermissionSettingForOrigin(
   GURL embedder_url =
       embedder ? GURL(ConvertJavaStringToUTF8(env, embedder)) : GURL();
   BrowserContext* browser_context = unwrap(jbrowser_context_handle);
+
+  // FILE_SYSTEM_WRITE_GUARD only allows ASK and BLOCK.
+  if (content_type == ContentSettingsType::FILE_SYSTEM_WRITE_GUARD &&
+      setting == CONTENT_SETTING_ALLOW) {
+    setting = CONTENT_SETTING_ASK;
+  }
 
   // The permission may have been blocked due to being under embargo, so if it
   // was changed away from BLOCK, clear embargo status if it exists.
@@ -612,11 +619,11 @@ void OnLocalStorageModelInfoLoaded(
 
   std::vector<std::pair<url::Origin, bool>> important_notations(
       local_storage_info.size());
-  base::ranges::transform(local_storage_info, important_notations.begin(),
-                          [](const content::StorageUsageInfo& info) {
-                            return std::make_pair(info.storage_key.origin(),
-                                                  false);
-                          });
+  std::ranges::transform(local_storage_info, important_notations.begin(),
+                         [](const content::StorageUsageInfo& info) {
+                           return std::make_pair(info.storage_key.origin(),
+                                                 false);
+                         });
   if (fetch_important) {
     permissions::PermissionsClient::Get()->AreSitesImportant(
         browser_context, &important_notations);
@@ -864,6 +871,7 @@ static void JNI_WebsitePreferenceBridge_SetContentSettingEnabled(
     jboolean allow) {
   ContentSettingsType type =
       static_cast<ContentSettingsType>(content_settings_type);
+  base::UmaHistogramEnumeration("Permissions.SiteSettingsChanged", type);
 
   if (type == ContentSettingsType::SOUND) {
     if (allow) {
@@ -883,6 +891,7 @@ static void JNI_WebsitePreferenceBridge_SetContentSettingEnabled(
       case ContentSettingsType::BLUETOOTH_GUARD:
       case ContentSettingsType::BLUETOOTH_SCANNING:
       case ContentSettingsType::CLIPBOARD_READ_WRITE:
+      case ContentSettingsType::FILE_SYSTEM_WRITE_GUARD:
       case ContentSettingsType::GEOLOCATION:
       case ContentSettingsType::HAND_TRACKING:
       case ContentSettingsType::IDLE_DETECTION:
@@ -902,6 +911,7 @@ static void JNI_WebsitePreferenceBridge_SetContentSettingEnabled(
       case ContentSettingsType::COOKIES:
       case ContentSettingsType::FEDERATED_IDENTITY_API:
       case ContentSettingsType::JAVASCRIPT:
+      case ContentSettingsType::JAVASCRIPT_OPTIMIZER:
       case ContentSettingsType::POPUPS:
       case ContentSettingsType::REQUEST_DESKTOP_SITE:
       case ContentSettingsType::SENSORS:
@@ -909,8 +919,7 @@ static void JNI_WebsitePreferenceBridge_SetContentSettingEnabled(
         value = CONTENT_SETTING_ALLOW;
         break;
       default:
-        NOTREACHED_IN_MIGRATION()
-            << static_cast<int>(type);  // Not supported on Android.
+        NOTREACHED() << static_cast<int>(type);  // Not supported on Android.
     }
   }
 

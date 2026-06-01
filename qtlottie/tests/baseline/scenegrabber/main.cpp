@@ -181,6 +181,8 @@ int main(int argc, char *argv[])
     }
     // End parsing
 
+    qputenv("QLT_FRAMENO", QByteArray::number(freezeFrame));
+
     GrabbingView v(ofile);
     v.loadFromModule("QtLottieAnimation", "Main");
     QQuickItem *lottieItem = v.rootObject()->findChild<QQuickItem *>("qtlottie_animation_item");

@@ -12,7 +12,7 @@ import * as Feedback from '../../ui/components/panel_feedback/panel_feedback.js'
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
-import {type AccessibilitySidebarView} from './AccessibilitySidebarView.js';
+import type {AccessibilitySidebarView} from './AccessibilitySidebarView.js';
 import {AccessibilitySubPane} from './AccessibilitySubPane.js';
 import axBreadcrumbsStyles from './axBreadcrumbs.css.js';
 
@@ -55,6 +55,7 @@ export class AXBreadcrumbsPane extends AccessibilitySubPane {
 
   constructor(axSidebarView: AccessibilitySidebarView) {
     super(i18nString(UIStrings.accessibilityTree));
+    this.registerRequiredCSS(axBreadcrumbsStyles);
 
     this.element.classList.add('ax-subpane');
     this.element.tabIndex = -1;
@@ -424,10 +425,6 @@ export class AXBreadcrumbsPane extends AccessibilitySubPane {
     }
     void contextMenu.show();
   }
-  override wasShown(): void {
-    super.wasShown();
-    this.registerCSSFiles([axBreadcrumbsStyles]);
-  }
 }
 
 const elementsToAXBreadcrumb = new WeakMap<Element, AXBreadcrumb>();
@@ -639,9 +636,9 @@ export class AXBreadcrumb {
   }
 }
 
-type RoleStyles = {
-  [type: string]: string,
-};
+interface RoleStyles {
+  [type: string]: string;
+}
 
 export const RoleStyles: RoleStyles = {
   internalRole: 'ax-internal-role',

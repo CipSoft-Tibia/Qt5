@@ -435,7 +435,7 @@ class ScrollIntoViewBrowserTestBase : public ContentBrowserTest {
     root_view->SetLastPointerType(ui::EventPointerType::kTouch);
     root_view->SetInsets(gfx::Insets::TLBR(0, 0, keyboard_height, 0));
 #else
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
 #endif
   }
 
@@ -796,7 +796,7 @@ IN_PROC_BROWSER_TEST_P(ZoomScrollIntoViewBrowserTest,
   RunTest();
 
   // width=device-width must prevent the zooming behavior.
-  EXPECT_EQ(kMobileMinimumScale, GetVisualViewport().scale);
+  EXPECT_LE(kMobileMinimumScale, GetVisualViewport().scale);
 }
 
 // Similar to above, an input in a touch-action region that disables pinch-zoom

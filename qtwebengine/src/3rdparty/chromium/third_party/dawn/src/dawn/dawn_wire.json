@@ -37,8 +37,7 @@
             { "name": "future", "type": "future" },
             { "name": "mode", "type": "map mode" },
             { "name": "offset", "type": "uint64_t"},
-            { "name": "size", "type": "uint64_t"},
-            { "name": "userdata count", "type": "uint8_t", "_comment": "TODO(crbug.com/dawn/2509): Remove this once Chromium overrides the correct functions in the proc table."}
+            { "name": "size", "type": "uint64_t"}
         ],
         "buffer update mapped data": [
             { "name": "buffer id", "type": "ObjectId", "id_type": "buffer" },
@@ -82,8 +81,7 @@
         "queue on submitted work done": [
             { "name": "queue id", "type": "ObjectId", "id_type": "queue" },
             { "name": "event manager handle", "type": "ObjectHandle" },
-            { "name": "future", "type": "future" },
-            { "name": "userdata count", "type": "uint8_t", "_comment": "TODO(crbug.com/dawn/2509): Remove this once Chromium overrides the correct functions in the proc table."}
+            { "name": "future", "type": "future" }
         ],
         "queue write buffer": [
             {"name": "queue id", "type": "ObjectId", "id_type": "queue" },
@@ -115,8 +113,7 @@
             { "name": "event manager handle", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
             { "name": "adapter object handle", "type": "ObjectHandle", "handle_type": "adapter"},
-            { "name": "options", "type": "request adapter options", "annotation": "const*", "optional": true },
-            { "name": "userdata count", "type": "uint8_t", "_comment": "TODO(crbug.com/dawn/2509): Remove this once Chromium overrides the correct functions in the proc table."}
+            { "name": "options", "type": "request adapter options", "annotation": "const*", "optional": true }
         ],
         "adapter request device": [
             { "name": "adapter id", "type": "ObjectId", "id_type": "adapter" },
@@ -124,18 +121,15 @@
             { "name": "future", "type": "future" },
             { "name": "device object handle", "type": "ObjectHandle", "handle_type": "device"},
             { "name": "device lost future", "type": "future" },
-            { "name": "descriptor", "type": "device descriptor", "annotation": "const*" },
-            { "name": "userdata count", "type": "uint8_t", "_comment": "TODO(crbug.com/dawn/2509): Remove this once Chromium overrides the correct functions in the proc table."}
+            { "name": "descriptor", "type": "device descriptor", "annotation": "const*" }
         ]
     },
     "return commands": {
         "buffer map async callback": [
             { "name": "event manager", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
-            { "name": "status", "type": "buffer map async status" },
-            { "name": "status2", "type": "map async status" },
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen", "optional": true },
-            { "name": "userdata count", "type": "uint8_t", "_comment": "TODO(crbug.com/dawn/2509): Remove this once Chromium overrides the correct functions in the proc table."},
+            { "name": "status", "type": "map async status" },
+            { "name": "message", "type": "string view" },
             { "name": "read data update info length", "type": "uint64_t" },
             { "name": "read data update info", "type": "uint8_t", "annotation": "const*", "length": "read data update info length", "skip_serialize": true }
         ],
@@ -143,35 +137,36 @@
             { "name": "event manager", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
             { "name": "status", "type": "create pipeline async status" },
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen" }
+            { "name": "message", "type": "string view"}
         ],
         "device create render pipeline async callback": [
             { "name": "event manager", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
             { "name": "status", "type": "create pipeline async status" },
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen" }
+            { "name": "message", "type": "string view"}
         ],
         "device uncaptured error callback": [
             { "name": "device", "type": "ObjectHandle", "handle_type": "device" },
             { "name": "type", "type": "error type"},
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen" }
+            { "name": "message", "type": "string view"}
         ],
         "device logging callback": [
             { "name": "device", "type": "ObjectHandle", "handle_type": "device" },
             { "name": "type", "type": "logging type"},
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen" }
+            { "name": "message", "type": "string view" }
         ],
         "device lost callback" : [
             { "name": "event manager", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
             { "name": "reason", "type": "device lost reason" },
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen" }
+            { "name": "message", "type": "string view"}
         ],
         "device pop error scope callback": [
             { "name": "event manager", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
+            { "name": "status", "type": "pop error scope status" },
             { "name": "type", "type": "error type" },
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen" }
+            { "name": "message", "type": "string view"}
         ],
         "queue work done callback": [
             { "name": "event manager", "type": "ObjectHandle" },
@@ -188,7 +183,7 @@
             { "name": "event manager", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
             { "name": "status", "type": "request adapter status" },
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen", "optional": true },
+            { "name": "message", "type": "string view" },
             { "name": "info", "type": "adapter info", "annotation": "const*", "optional": "true" },
             { "name": "limits", "type": "supported limits", "annotation": "const*", "optional": "true" },
             { "name": "features count", "type": "uint32_t"},
@@ -198,7 +193,7 @@
             { "name": "event manager", "type": "ObjectHandle" },
             { "name": "future", "type": "future" },
             { "name": "status", "type": "request device status" },
-            { "name": "message", "type": "char", "annotation": "const*", "length": "strlen", "optional": true },
+            { "name": "message", "type": "string view" },
             { "name": "limits", "type": "supported limits", "annotation": "const*", "optional": "true" },
             { "name": "features count", "type": "uint32_t"},
             { "name": "features", "type": "feature name", "annotation": "const*", "length": "features count"}
@@ -218,18 +213,14 @@
         ],
         "client_side_commands": [
             "AdapterCreateDevice",
+            "AdapterGetFeatures",
             "AdapterGetFormatCapabilities",
             "AdapterGetInfo",
             "AdapterGetInstance",
             "AdapterGetLimits",
             "AdapterHasFeature",
-            "AdapterEnumerateFeatures",
             "AdapterRequestDevice",
-            "AdapterRequestDeviceF",
-            "AdapterRequestDevice2",
             "BufferMapAsync",
-            "BufferMapAsyncF",
-            "BufferMapAsync2",
             "BufferGetConstMappedRange",
             "BufferGetMappedRange",
             "BufferGetMapState",
@@ -237,35 +228,25 @@
             "BufferGetUsage",
             "DeviceCreateBuffer",
             "DeviceCreateComputePipelineAsync",
-            "DeviceCreateComputePipelineAsyncF",
-            "DeviceCreateComputePipelineAsync2",
             "DeviceCreateRenderPipelineAsync",
-            "DeviceCreateRenderPipelineAsyncF",
-            "DeviceCreateRenderPipelineAsync2",
             "DeviceGetAdapter",
+            "DeviceGetAdapterInfo",
+            "DeviceGetFeatures",
             "DeviceGetLimits",
+            "DeviceGetLostFuture",
             "DeviceHasFeature",
-            "DeviceEnumerateFeatures",
             "DevicePopErrorScope",
             "DevicePopErrorScopeF",
             "DevicePopErrorScope2",
-            "DeviceSetDeviceLostCallback",
-            "DeviceSetUncapturedErrorCallback",
             "DeviceSetLoggingCallback",
-            "InstanceEnumerateWGSLLanguageFeatures",
+            "InstanceGetWGSLLanguageFeatures",
             "InstanceHasWGSLLanguageFeature",
             "InstanceCreateSurface",
             "InstanceRequestAdapter",
-            "InstanceRequestAdapterF",
-            "InstanceRequestAdapter2",
             "ShaderModuleGetCompilationInfo",
-            "ShaderModuleGetCompilationInfoF",
-            "ShaderModuleGetCompilationInfo2",
             "QuerySetGetType",
             "QuerySetGetCount",
             "QueueOnSubmittedWorkDone",
-            "QueueOnSubmittedWorkDoneF",
-            "QueueOnSubmittedWorkDone2",
             "QueueWriteBuffer",
             "QueueWriteTexture",
             "SurfaceGetCapabilities",
@@ -292,8 +273,7 @@
             "InstanceProcessEvents",
             "InstanceWaitAny",
             "SurfaceConfigure",
-            "SurfaceUnconfigure",
-            "SwapChainGetCurrentTexture"
+            "SurfaceUnconfigure"
         ],
         "client_special_objects": [
             "Adapter",
@@ -305,7 +285,6 @@
             "ShaderModule",
             "Surface",
             "SurfaceCapabilities",
-            "SwapChain",
             "Texture"
         ],
         "server_custom_pre_handler_commands": [

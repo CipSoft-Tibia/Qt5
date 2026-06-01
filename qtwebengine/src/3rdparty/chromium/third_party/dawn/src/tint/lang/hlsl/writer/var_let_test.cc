@@ -44,8 +44,7 @@ namespace tint::hlsl::writer {
 namespace {
 
 TEST_F(HlslWriterTest, Var) {
-    auto* func = b.Function("main", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    func->SetWorkgroupSize(1, 1, 1);
+    auto* func = b.ComputeFunction("main");
     b.Append(func->Block(), [&] {
         b.Var("a", 1_u);
         b.Return(func);
@@ -62,8 +61,7 @@ void main() {
 }
 
 TEST_F(HlslWriterTest, VarZeroInit) {
-    auto* func = b.Function("main", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    func->SetWorkgroupSize(1, 1, 1);
+    auto* func = b.ComputeFunction("main");
     b.Append(func->Block(), [&] {
         b.Var("a", function, ty.f32());
         b.Return(func);
@@ -80,8 +78,7 @@ void main() {
 }
 
 TEST_F(HlslWriterTest, Let) {
-    auto* func = b.Function("main", ty.void_(), core::ir::Function::PipelineStage::kCompute);
-    func->SetWorkgroupSize(1, 1, 1);
+    auto* func = b.ComputeFunction("main");
     b.Append(func->Block(), [&] {
         b.Let("a", 2_f);
         b.Return(func);
@@ -507,7 +504,6 @@ void unused_entry_point() {
 
 TEST_F(HlslWriterTest, VarPrivate) {
     auto* s = b.Var("u", ty.ptr<private_>(ty.vec4<f32>()));
-    s->SetBindingPoint(2, 1);
 
     b.ir.root_block->Append(s);
 
@@ -523,7 +519,6 @@ void unused_entry_point() {
 
 TEST_F(HlslWriterTest, VarWorkgroup) {
     auto* s = b.Var("u", ty.ptr<workgroup>(ty.vec4<f32>()));
-    s->SetBindingPoint(2, 1);
 
     b.ir.root_block->Append(s);
 

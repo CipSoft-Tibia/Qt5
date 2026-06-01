@@ -327,8 +327,9 @@ QLatin1String ErrorMessage::msg(const char *errorId, ErrorMessage &&err)
 
 QLatin1String ErrorMessage::msg(QLatin1String errorId, ErrorMessage &&err)
 {
+    using namespace Qt::StringLiterals;
     bool doubleRegister = false;
-    ErrorMessage old = myErrors().debug(u"dummy");
+    ErrorMessage old = myErrors().debug(u"dummy"_sv);
     {
         QMutexLocker l(registryMutex());
         auto &r = registry();

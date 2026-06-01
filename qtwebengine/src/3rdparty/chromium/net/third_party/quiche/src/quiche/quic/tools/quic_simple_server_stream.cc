@@ -14,6 +14,7 @@
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "quiche/http2/core/spdy_protocol.h"
 #include "quiche/quic/core/http/quic_spdy_stream.h"
 #include "quiche/quic/core/http/spdy_utils.h"
 #include "quiche/quic/core/http/web_transport_http3.h"
@@ -23,7 +24,6 @@
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
 #include "quiche/quic/tools/quic_simple_server_session.h"
-#include "quiche/spdy/core/spdy_protocol.h"
 
 using quiche::HttpHeaderBlock;
 
@@ -147,7 +147,7 @@ void QuicSimpleServerStream::HandleRequestConnectData(bool fin_received) {
 
   if (quic_simple_server_backend_ == nullptr) {
     QUIC_DVLOG(1) << "Backend is missing on CONNECT data.";
-    ResetWriteSide(
+    ResetWithError(
         QuicResetStreamError::FromInternal(QUIC_STREAM_CONNECT_ERROR));
     return;
   }
@@ -303,6 +303,15 @@ void QuicSimpleServerStream::Respond(const QuicBackendResponse* response) {
     return;
   }
 
+  if (response->response_type() ==
+      QuicBackendResponse::EMPTY_PAYLOAD_WITH_FIN) {
+    // Send an empty payload with FIN without any response headers or body.
+    absl::InlinedVector<quiche::QuicheMemSlice, 4> quic_slices;
+    absl::Span<quiche::QuicheMemSlice> span(quic_slices);
+    WriteMemSlices(std::move(span), true);
+    return;
+  }
+
   // Examing response status, if it was not pure integer as typical h2
   // response status, send error response. Notice that
   // QuicHttpResponseCache push urls are strictly authority + path only,
@@ -376,7 +385,7 @@ void QuicSimpleServerStream::TerminateStreamWithError(
     QuicResetStreamError error) {
   QUIC_DVLOG(1) << "Stream " << id() << " abruptly terminating with error "
                 << error.internal_code();
-  ResetWriteSide(error);
+  ResetWithError(error);
 }
 
 void QuicSimpleServerStream::OnCanWrite() {

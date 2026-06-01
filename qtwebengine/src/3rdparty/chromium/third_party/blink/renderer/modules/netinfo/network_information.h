@@ -19,6 +19,8 @@
 namespace blink {
 
 class NavigatorBase;
+class V8ConnectionType;
+class V8EffectiveConnectionType;
 
 class NetworkInformation final
     : public EventTarget,
@@ -37,9 +39,9 @@ class NetworkInformation final
   explicit NetworkInformation(NavigatorBase&);
   ~NetworkInformation() override;
 
-  String type() const;
+  V8ConnectionType type() const;
   double downlinkMax() const;
-  String effectiveType();
+  V8EffectiveConnectionType effectiveType();
   uint32_t rtt();
   double downlink();
   bool saveData() const;

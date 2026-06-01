@@ -15,7 +15,7 @@
 use crate::image::YuvRange;
 use crate::internal_utils::stream::*;
 use crate::internal_utils::*;
-use crate::parser::mp4box::CodecConfiguration;
+use crate::parser::mp4box::Av1CodecConfiguration;
 use crate::*;
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub struct Av1SequenceHeader {
     pub transfer_characteristics: TransferCharacteristics,
     pub matrix_coefficients: MatrixCoefficients,
     pub yuv_range: YuvRange,
-    config: CodecConfiguration,
+    config: Av1CodecConfiguration,
 }
 
 impl Av1SequenceHeader {
@@ -295,7 +295,7 @@ impl Av1SequenceHeader {
         Ok(ObuHeader { obu_type, size })
     }
 
-    pub fn parse_from_obus(data: &[u8]) -> AvifResult<Self> {
+    pub(crate) fn parse_from_obus(data: &[u8]) -> AvifResult<Self> {
         let mut stream = IStream::create(data);
 
         while stream.has_bytes_left()? {

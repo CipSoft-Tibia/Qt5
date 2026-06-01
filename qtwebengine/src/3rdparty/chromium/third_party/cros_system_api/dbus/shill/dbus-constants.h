@@ -95,6 +95,9 @@ constexpr char kSetParametersFunction[] = "SetParameters";
 constexpr char kSendPacketFunction[] = "SendPacket";
 constexpr char kUpdateConnectionStateFunction[] = "UpdateConnectionState";
 
+// WiFi interface priority function name.
+constexpr char kSetWiFiInterfacePriorityFunction[] = "SetWiFiInterfacePriority";
+
 // Manager property names.
 constexpr char kActiveProfileProperty[] = "ActiveProfile";
 constexpr char kAlwaysOnVpnPackageProperty[] = "AlwaysOnVpnPackage";
@@ -106,7 +109,6 @@ constexpr char kDefaultServiceProperty[] = "DefaultService";
 constexpr char kDefaultTechnologyProperty[] = "DefaultTechnology";
 constexpr char kDevicesProperty[] = "Devices";
 constexpr char kDhcpPropertyHostnameProperty[] = "DHCPProperty.Hostname";
-constexpr char kDisableLegacyDHCPCDProperty[] = "DisableLegacyDHCPCD";
 constexpr char kDisableWiFiVHTProperty[] = "DisableWiFiVHT";
 constexpr char kDisconnectWiFiOnEthernetProperty[] = "DisconnectWiFiOnEthernet";
 constexpr char kDNSProxyDOHProvidersProperty[] = "DNSProxyDOHProviders";
@@ -115,6 +117,10 @@ constexpr char kDOHIncludedDomainsProperty[] = "DOHIncludedDomains";
 constexpr char kEnabledTechnologiesProperty[] = "EnabledTechnologies";
 constexpr char kEnableDHCPQoSProperty[] = "EnableDHCPQoS";
 constexpr char kEnableRFC8925Property[] = "EnableRFC8925";
+constexpr char kEnableSingleCACertVerificationPhase1Property[] =
+    "EnableSingleCACertVerificationPhase1";
+constexpr char kEnableSingleCACertVerificationPhase2Property[] =
+    "EnableSingleCACertVerificationPhase2";
 constexpr char kExperimentalTetheringFunctionality[] =
     "ExperimentalTetheringFunctionality";
 constexpr char kLOHSConfigProperty[] = "LOHSConfig";
@@ -135,6 +141,7 @@ constexpr char kTetheringConfigProperty[] = "TetheringConfig";
 constexpr char kTetheringStatusProperty[] = "TetheringStatus";
 constexpr char kUninitializedTechnologiesProperty[] =
     "UninitializedTechnologies";
+constexpr char kUseLegacyDHCPCDProperty[] = "UseLegacyDHCPCD";
 constexpr char kWakeOnLanEnabledProperty[] = "WakeOnLanEnabled";
 constexpr char kWifiGlobalFTEnabledProperty[] = "WiFi.GlobalFTEnabled";
 constexpr char kWifiScanAllowRoamProperty[] = "WiFi.ScanAllowRoam";
@@ -168,6 +175,7 @@ constexpr char kErrorProperty[] = "Error";
 constexpr char kGuidProperty[] = "GUID";
 constexpr char kIPConfigProperty[] = "IPConfig";
 constexpr char kIsConnectedProperty[] = "IsConnected";
+// The LinkMonitorDisable should only used for testing purposes.
 constexpr char kLinkMonitorDisableProperty[] = "LinkMonitorDisable";
 constexpr char kManagedCredentialsProperty[] = "ManagedCredentials";
 constexpr char kMeteredProperty[] = "Metered";
@@ -200,6 +208,7 @@ constexpr char kNetworkIDProperty[] = "NetworkID";
 constexpr char kNetworkConfigProperty[] = "NetworkConfig";
 
 // Property names in the NetworkConfig dict.
+constexpr char kNetworkConfigSessionIDProperty[] = "SessionID";
 constexpr char kNetworkConfigIPv4AddressProperty[] = "IPv4Address";
 constexpr char kNetworkConfigIPv4GatewayProperty[] = "IPv4Gateway";
 constexpr char kNetworkConfigIPv6AddressesProperty[] = "IPv6Addresses";
@@ -466,10 +475,10 @@ constexpr char kSelectedNetworkProperty[] = "Cellular.SelectedNetwork";
 constexpr char kSIMPresentProperty[] = "Cellular.SIMPresent";
 constexpr char kSIMSlotInfoProperty[] = "Cellular.SIMSlotInfo";
 constexpr char kSupportNetworkScanProperty[] = "Cellular.SupportNetworkScan";
-constexpr char kUseAttachAPNProperty[] = "Cellular.UseAttachAPN";
 constexpr char kPrimaryMultiplexedInterfaceProperty[] =
     "Cellular.PrimaryMultiplexedInterface";
 constexpr char kFlashingProperty[] = "Cellular.Flashing";
+constexpr char kInitializingProperty[] = "Cellular.Initializing";
 
 constexpr char kDBusObjectProperty[] = "DBus.Object";
 constexpr char kDBusServiceProperty[] = "DBus.Service";
@@ -1270,6 +1279,10 @@ constexpr char kDisconnectFromP2PGroupResultOperationFailed[] =
 
 // Manager DNSProxyDOHProviders wildcard IP address value.
 constexpr char kDNSProxyDOHProvidersMatchAnyIPAddress[] = "*";
+
+// Default cellular interface name which may appear in the kInterfaceProperty of
+// Device. This value means that the Cellular Device is not active.
+constexpr char kCellularDefaultInterfaceName[] = "cell_iface";
 
 // Represents the priority level of a Wi-Fi interface. When a new interface is
 // requested, existing interfaces of lower priority may be destroyed to make

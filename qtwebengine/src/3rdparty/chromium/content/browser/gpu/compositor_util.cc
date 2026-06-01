@@ -24,7 +24,6 @@
 #include "base/system/sys_info.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "cc/base/switches.h"
 #include "components/viz/common/features.h"
 #include "content/browser/compositor/image_transport_factory.h"
@@ -154,7 +153,7 @@ std::vector<GpuFeatureData> GetGpuFeatureData(
       SafeGetFeatureStatus(
           gpu_feature_info, gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE,
 #if BUILDFLAG(IS_LINUX)
-          !base::FeatureList::IsEnabled(media::kVaapiVideoDecodeLinux) ||
+          !base::FeatureList::IsEnabled(media::kAcceleratedVideoDecodeLinux) ||
 #endif  // BUILDFLAG(IS_LINUX)
               command_line.HasSwitch(switches::kDisableAcceleratedVideoDecode)),
       DisableInfo::Problem(
@@ -166,7 +165,7 @@ std::vector<GpuFeatureData> GetGpuFeatureData(
       SafeGetFeatureStatus(
           gpu_feature_info, gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_ENCODE,
 #if BUILDFLAG(IS_LINUX)
-          !base::FeatureList::IsEnabled(media::kVaapiVideoEncodeLinux)),
+          !base::FeatureList::IsEnabled(media::kAcceleratedVideoEncodeLinux)),
 #else
           command_line.HasSwitch(switches::kDisableAcceleratedVideoEncode)),
 #endif  // BUILDFLAG(IS_LINUX)
@@ -290,7 +289,7 @@ base::Value GetFeatureStatusImpl(GpuFeatureInfoType type) {
       if (gpu_feature_data.name == "multiple_raster_threads") {
         const base::CommandLine& command_line =
             *base::CommandLine::ForCurrentProcess();
-        if (command_line.HasSwitch(cc::switches::kNumRasterThreads)) {
+        if (command_line.HasSwitch(switches::kNumRasterThreads)) {
           status += "_force";
         }
         status += "_on";
@@ -429,12 +428,12 @@ int NumberOfRendererRasterThreads() {
   const base::CommandLine& command_line =
       *base::CommandLine::ForCurrentProcess();
 
-  if (command_line.HasSwitch(cc::switches::kNumRasterThreads)) {
+  if (command_line.HasSwitch(switches::kNumRasterThreads)) {
     std::string string_value =
-        command_line.GetSwitchValueASCII(cc::switches::kNumRasterThreads);
+        command_line.GetSwitchValueASCII(switches::kNumRasterThreads);
     if (!base::StringToInt(string_value, &num_raster_threads)) {
-      DLOG(WARNING) << "Failed to parse switch "
-                    << cc::switches::kNumRasterThreads << ": " << string_value;
+      DLOG(WARNING) << "Failed to parse switch " << switches::kNumRasterThreads
+                    << ": " << string_value;
     }
   }
 
@@ -479,8 +478,6 @@ bool IsGpuMemoryBufferCompositorResourcesEnabled() {
 
 #if BUILDFLAG(IS_APPLE)
   return true;
-#elif BUILDFLAG(IS_CHROMEOS_LACROS)
-  return ::features::IsDelegatedCompositingEnabled();
 #elif BUILDFLAG(IS_WIN)
   return ::features::IsDelegatedCompositingEnabled() &&
          ::features::kDelegatedCompositingModeParam.Get() ==
@@ -521,8 +518,9 @@ bool IsMainFrameBeforeActivationEnabled() {
     return false;
 
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          cc::switches::kDisableMainFrameBeforeActivation))
+          switches::kDisableMainFrameBeforeActivation)) {
     return false;
+  }
 
   return true;
 }

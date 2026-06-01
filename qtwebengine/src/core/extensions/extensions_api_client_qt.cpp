@@ -7,6 +7,9 @@
 // found in the LICENSE file.
 
 #include "extensions_api_client_qt.h"
+
+#include "api/display_info_provider_qt.h"
+#include "api/management_api_delegate_qt.h"
 #include "file_system_delegate_qt.h"
 #include "messaging_delegate_qt.h"
 
@@ -67,6 +70,16 @@ MessagingDelegate *ExtensionsAPIClientQt::GetMessagingDelegate()
     if (!m_messagingDelegate)
         m_messagingDelegate = std::make_unique<MessagingDelegateQt>();
     return m_messagingDelegate.get();
+}
+
+std::unique_ptr<DisplayInfoProvider> ExtensionsAPIClientQt::CreateDisplayInfoProvider() const
+{
+    return std::make_unique<DisplayInfoProviderQt>();
+}
+
+ManagementAPIDelegate *ExtensionsAPIClientQt::CreateManagementAPIDelegate() const
+{
+    return new ManagementAPIDelegateQt;
 }
 
 } // namespace extensions

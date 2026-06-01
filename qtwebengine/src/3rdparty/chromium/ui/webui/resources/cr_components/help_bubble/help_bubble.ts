@@ -11,7 +11,7 @@
 import '//resources/cr_elements/cr_button/cr_button.js';
 import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import '//resources/cr_elements/cr_icon/cr_icon.js';
-import '//resources/cr_elements/icons_lit.html.js';
+import '//resources/cr_elements/icons.html.js';
 import './help_bubble_icons.html.js';
 
 import type {CrButtonElement} from '//resources/cr_elements/cr_button/cr_button.js';
@@ -196,11 +196,9 @@ export class HelpBubbleElement extends CrLitElement {
 
     if (this.timeoutMs !== null) {
       const timedOutCallback = () => {
-        this.dispatchEvent(new CustomEvent(HELP_BUBBLE_TIMED_OUT_EVENT, {
-          detail: {
-            nativeId: this.nativeId,
-          },
-        }));
+        this.fire(HELP_BUBBLE_TIMED_OUT_EVENT, {
+          nativeId: this.nativeId,
+        });
       };
       this.timeoutTimerId = setTimeout(timedOutCallback, this.timeoutMs);
     }
@@ -295,12 +293,10 @@ export class HelpBubbleElement extends CrLitElement {
 
   protected dismiss_() {
     assert(this.nativeId, 'Dismiss: expected help bubble to have a native id.');
-    this.dispatchEvent(new CustomEvent(HELP_BUBBLE_DISMISSED_EVENT, {
-      detail: {
-        nativeId: this.nativeId,
-        fromActionButton: false,
-      },
-    }));
+    this.fire(HELP_BUBBLE_DISMISSED_EVENT, {
+      nativeId: this.nativeId,
+      fromActionButton: false,
+    });
   }
 
   /**
@@ -351,13 +347,11 @@ export class HelpBubbleElement extends CrLitElement {
     // dom-repeat. However, the index is stored in the node's identifier.
     const index: number = parseInt(
         (e.target as Element).id.substring(ACTION_BUTTON_ID_PREFIX.length));
-    this.dispatchEvent(new CustomEvent(HELP_BUBBLE_DISMISSED_EVENT, {
-      detail: {
-        nativeId: this.nativeId,
-        fromActionButton: true,
-        buttonIndex: index,
-      },
-    }));
+    this.fire(HELP_BUBBLE_DISMISSED_EVENT, {
+      nativeId: this.nativeId,
+      fromActionButton: true,
+      buttonIndex: index,
+    });
   }
 
   protected getButtonId_(item: HelpBubbleButtonParams): string {

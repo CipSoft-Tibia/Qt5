@@ -6,6 +6,8 @@ import QtQuick.Controls as QQC2
 import WearableStyle
 
 Item {
+    clip: true
+
     function addAlarm() {
         alarms.append(
             {

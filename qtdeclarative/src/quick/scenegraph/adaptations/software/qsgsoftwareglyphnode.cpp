@@ -63,7 +63,18 @@ void QSGSoftwareGlyphNode::setGlyphs(const QPointF &position, const QGlyphRun &g
     m_glyphRun.setOverline(false);
     m_glyphRun.setStrikeOut(false);
     m_glyphRun.setUnderline(false);
-    m_bounding_rect = calculateBoundingRect(position, glyphs);
+
+    recalculateBoundingRect();
+}
+
+void QSGSoftwareGlyphNode::recalculateBoundingRect()
+{
+    int x1Offset = m_style == QQuickText::Outline ? -1 : 0;
+    int x2Offset = m_style == QQuickText::Outline ? 1 : 0;
+    int y1Offset = m_style == QQuickText::Outline || m_style == QQuickText::Sunken ? -1 : 0;
+    int y2Offset = m_style == QQuickText::Outline || m_style == QQuickText::Raised ? 1 : 0;
+
+    m_bounding_rect = calculateBoundingRect(m_position, m_glyphRun).adjusted(x1Offset, y1Offset, x2Offset, y2Offset);
 }
 
 void QSGSoftwareGlyphNode::setColor(const QColor &color)
@@ -74,6 +85,8 @@ void QSGSoftwareGlyphNode::setColor(const QColor &color)
 void QSGSoftwareGlyphNode::setStyle(QQuickText::TextStyle style)
 {
     m_style = style;
+
+    recalculateBoundingRect();
 }
 
 void QSGSoftwareGlyphNode::setStyleColor(const QColor &color)

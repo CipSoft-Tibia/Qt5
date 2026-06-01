@@ -1262,9 +1262,14 @@ static QString outputTextureAsset(const QSSGSceneDesc::TextureData &textureData,
 
     if (isCompressed) {
         QFile file(imagePath);
-        file.open(QIODevice::WriteOnly);
-        file.write(textureData.data);
-        file.close();
+        if (!file.open(QIODevice::WriteOnly)) {
+            qWarning("Failed to open file %s: %s",
+                     qPrintable(file.fileName()), qPrintable(file.errorString()));
+            return {};
+        } else {
+            file.write(textureData.data);
+            file.close();
+        }
     } else {
         const auto &texData = textureData.data;
         const auto &size = textureData.sz;

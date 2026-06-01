@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "complexwidgets_p.h"
 
@@ -173,7 +174,7 @@ private:
   Constructs a QAccessibleTabBar object for \a w.
 */
 QAccessibleTabBar::QAccessibleTabBar(QWidget *w)
-: QAccessibleWidget(w, QAccessible::PageTabList)
+: QAccessibleWidgetV2(w, QAccessible::PageTabList)
 {
     Q_ASSERT(tabBar());
 }
@@ -189,7 +190,7 @@ void *QAccessibleTabBar::interface_cast(QAccessible::InterfaceType t)
     if (t == QAccessible::SelectionInterface) {
         return static_cast<QAccessibleSelectionInterface*>(this);
     }
-    return QAccessibleWidget::interface_cast(t);
+    return QAccessibleWidgetV2::interface_cast(t);
 }
 
 /*! Returns the QTabBar. */
@@ -338,7 +339,7 @@ bool QAccessibleTabBar::clear()
   Constructs a QAccessibleComboBox object for \a w.
 */
 QAccessibleComboBox::QAccessibleComboBox(QWidget *w)
-: QAccessibleWidget(w, QAccessible::ComboBox)
+: QAccessibleWidgetV2(w, QAccessible::ComboBox)
 {
     Q_ASSERT(comboBox());
 }
@@ -413,7 +414,7 @@ QString QAccessibleComboBox::text(QAccessible::Text t) const
         switch (t) {
         case QAccessible::Name:
 #ifndef Q_OS_UNIX // on Linux we use relations for this, name is text (fall through to Value)
-        str = QAccessibleWidget::text(t);
+        str = QAccessibleWidgetV2::text(t);
         break;
 #endif
         case QAccessible::Value:
@@ -431,14 +432,14 @@ QString QAccessibleComboBox::text(QAccessible::Text t) const
             break;
         }
         if (str.isEmpty())
-            str = QAccessibleWidget::text(t);
+            str = QAccessibleWidgetV2::text(t);
     }
     return str;
 }
 
 QAccessible::State QAccessibleComboBox::state() const
 {
-    QAccessible::State s = QAccessibleWidget::state();
+    QAccessible::State s = QAccessibleWidgetV2::state();
 
     if (QComboBox *cBox = comboBox()) {
         s.expandable = true;
@@ -498,7 +499,7 @@ QStringList QAccessibleComboBox::keyBindingsForAction(const QString &/*actionNam
 #if QT_CONFIG(scrollarea)
 // ======================= QAccessibleAbstractScrollArea =======================
 QAccessibleAbstractScrollArea::QAccessibleAbstractScrollArea(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::Client)
+    : QAccessibleWidgetV2(widget, QAccessible::Client)
 {
     Q_ASSERT(qobject_cast<QAbstractScrollArea *>(widget));
 }
@@ -522,7 +523,7 @@ int QAccessibleAbstractScrollArea::indexOfChild(const QAccessibleInterface *chil
 
 bool QAccessibleAbstractScrollArea::isValid() const
 {
-    return (QAccessibleWidget::isValid() && abstractScrollArea() && abstractScrollArea()->viewport());
+    return (QAccessibleWidgetV2::isValid() && abstractScrollArea() && abstractScrollArea()->viewport());
 }
 
 QAccessibleInterface *QAccessibleAbstractScrollArea::childAt(int x, int y) const

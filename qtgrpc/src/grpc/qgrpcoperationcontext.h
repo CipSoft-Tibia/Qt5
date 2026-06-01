@@ -11,6 +11,7 @@
 #include <QtCore/qhash.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qstringfwd.h>
+#include <QtCore/qtdeprecationdefinitions.h>
 
 #include <memory>
 
@@ -36,13 +37,28 @@ public:
     [[nodiscard]] QLatin1StringView service() const noexcept;
     [[nodiscard]] QByteArrayView argument() const noexcept;
 
-    void callOptions() && = delete;
+    void callOptions() const && = delete;
     [[nodiscard]] const QGrpcCallOptions &callOptions() const & noexcept;
 
-    void serverMetadata() && = delete;
+#if QT_DEPRECATED_SINCE(6, 13)
+    void serverMetadata() const && = delete;
+    QT_DEPRECATED_VERSION_X_6_13("Use serverInitialMetadata()")
     [[nodiscard]] const QHash<QByteArray, QByteArray> &serverMetadata() const & noexcept;
+    QT_DEPRECATED_VERSION_X_6_13("Use setServerInitialMetadata(QMultiHash&&)")
     void setServerMetadata(const QHash<QByteArray, QByteArray> &metadata);
+    QT_DEPRECATED_VERSION_X_6_13("Use setServerInitialMetadata(QMultiHash&&)")
     void setServerMetadata(QHash<QByteArray, QByteArray> &&metadata);
+#endif // QT_DEPRECATED_SINCE(6, 13)
+
+    void serverInitialMetadata() const && = delete;
+    [[nodiscard]] const QMultiHash<QByteArray, QByteArray> &
+    serverInitialMetadata() const & noexcept;
+    void setServerInitialMetadata(QMultiHash<QByteArray, QByteArray> &&metadata);
+
+    void serverTrailingMetadata() const && = delete;
+    [[nodiscard]] const QMultiHash<QByteArray, QByteArray> &
+    serverTrailingMetadata() const & noexcept;
+    void setServerTrailingMetadata(QMultiHash<QByteArray, QByteArray> &&metadata);
 
     [[nodiscard]] QMetaType responseMetaType() const;
     void setResponseMetaType(QMetaType metaType);

@@ -450,6 +450,12 @@ Q_STATIC_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
                                 Defines the hierarchical level of an element within a structure,
                                 e.g. the heading level of a heading. This attribute conceptually
                                 matches the "aria-level" property in ARIA.
+    \value [since 6.10] Locale  value type: \a QLocale
+                                Locale of the element.
+                                This can be used to specify that an element has a locale that
+                                differs from the application's default locale, e.g. for documents
+                                or paragraphs within a document that use a language that differs
+                                from the application's user interface language.
 
     \sa QAccessibleAttributesInterface
 */
@@ -688,6 +694,11 @@ void QAccessible::installActivationObserver(QAccessible::ActivationObserver *obs
     if (qAccessibleActivationObservers()->contains(observer))
         return;
     qAccessibleActivationObservers()->append(observer);
+
+    // Make sure the newly added observer gets a callback on the next
+    // QPlatformAccessibility::setActive() callback
+    if (QPlatformAccessibility *pfAccessibility = platformAccessibility())
+        pfAccessibility->clearActiveNotificationState();
 }
 
 /*!
@@ -699,6 +710,17 @@ void QAccessible::installActivationObserver(QAccessible::ActivationObserver *obs
 void QAccessible::removeActivationObserver(ActivationObserver *observer)
 {
     qAccessibleActivationObservers()->removeAll(observer);
+}
+
+/*!
+    \internal
+
+    Sends accessibility activation notifications to all registered observers.
+*/
+void qAccessibleNotifyActivationObservers(bool active)
+{
+    for (int i = 0; i < qAccessibleActivationObservers()->size(); ++i)
+        qAccessibleActivationObservers()->at(i)->accessibilityActiveChanged(active);
 }
 
 /*!
@@ -870,10 +892,9 @@ bool QAccessible::isActive()
 */
 void QAccessible::setActive(bool active)
 {
-    for (int i = 0; i < qAccessibleActivationObservers()->size() ;++i)
-        qAccessibleActivationObservers()->at(i)->accessibilityActiveChanged(active);
+    if (QPlatformAccessibility *pfAccessibility = platformAccessibility())
+        pfAccessibility->setActive(active);
 }
-
 
 /*!
   Sets the root object of the accessible objects of this application
@@ -946,7 +967,7 @@ void QAccessible::updateAccessibility(QAccessibleEvent *event)
 
 /*!
     \internal
-    \brief getBoundaries is a helper function to find the accessible text boundaries for QTextCursor based documents.
+    \brief qAccessibleTextBoundaryHelper is a helper function to find the accessible text boundaries for QTextCursor based documents.
     \param documentCursor a valid cursor bound to the document (not null). It needs to ba at the position to look for the boundary
     \param boundaryType the type of boundary to find
     \return the boundaries as pair
@@ -1957,10 +1978,9 @@ const char *qAccessibleEventString(QAccessible::Event event)
 Q_GUI_EXPORT QDebug operator<<(QDebug d, const QAccessibleInterface *iface)
 {
     QDebugStateSaver saver(d);
-    if (!iface) {
-        d << "QAccessibleInterface(null)";
-        return d;
-    }
+    if (!iface)
+        return d << "QAccessibleInterface(0x0)";
+
     d.nospace();
     d << "QAccessibleInterface(" << Qt::hex << (const void *) iface << Qt::dec;
     if (iface->isValid()) {
@@ -2242,13 +2262,16 @@ QString QAccessibleTextInterface::textBeforeOffset(int offset, QAccessible::Text
             break;
     } while (boundary.toPreviousBoundary() > 0);
     Q_ASSERT(boundary.position() >= 0);
-    *endOffset = boundary.position();
+    const int endPos = boundary.position();
 
     while (boundary.toPreviousBoundary() > 0) {
         if ((boundary.boundaryReasons() & (QTextBoundaryFinder::StartOfItem | QTextBoundaryFinder::EndOfItem)))
             break;
     }
-    Q_ASSERT(boundary.position() >= 0);
+    if (boundary.position() < 0)
+        return QString();
+
+    *endOffset = endPos;
     *startOffset = boundary.position();
 
     return txt.mid(*startOffset, *endOffset - *startOffset);
@@ -2405,13 +2428,17 @@ QString QAccessibleTextInterface::textAtOffset(int offset, QAccessible::TextBoun
             break;
     } while (boundary.toPreviousBoundary() > 0);
     Q_ASSERT(boundary.position() >= 0);
-    *startOffset = boundary.position();
+    const int startPos = boundary.position();
 
     while (boundary.toNextBoundary() < txt.size()) {
         if ((boundary.boundaryReasons() & (QTextBoundaryFinder::StartOfItem | QTextBoundaryFinder::EndOfItem)))
             break;
+        if (boundary.position() == -1)
+            return QString();
     }
+
     Q_ASSERT(boundary.position() <= txt.size());
+    *startOffset = startPos;
     *endOffset = boundary.position();
 
     return txt.mid(*startOffset, *endOffset - *startOffset);

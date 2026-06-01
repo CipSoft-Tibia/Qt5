@@ -28,7 +28,16 @@
 
 using namespace Qt::StringLiterals;
 
-#define EXIT_ERROR -1
+
+// QTest-based test processes may exit with up to 127 for normal test failures
+static constexpr int HIGHEST_QTEST_EXITCODE = 127;
+// Something went wrong in androidtestrunner, in general
+static constexpr int EXIT_ERROR = 254;
+// More specific exit codes for failures in androidtestrunner:
+static constexpr int EXIT_NOEXITCODE = 253; // Failed to transfer exit code from device
+static constexpr int EXIT_ANR        = 252; // Android ANR error (Application Not Responding)
+static constexpr int EXIT_NORESULTS  = 251; // Failed to transfer result files from device
+
 
 struct Options
 {
@@ -38,6 +47,7 @@ struct Options
     int timeoutSecs = 600; // 10 minutes
     int resultsPullRetries = 3;
     QString buildPath;
+    QString manifestPath;
     QString adbCommand{"adb"_L1};
     QString serial;
     QString makeCommand;
@@ -67,6 +77,13 @@ struct TestInfo
 };
 
 static TestInfo g_testInfo;
+
+// QTest-based processes return 0 if all tests PASSed, or the number of FAILs up to 127.
+// Other exitcodes signify abnormal termination and are system-dependent.
+static bool isTestExitCodeNormal(const int ec)
+{
+    return (ec >= 0  &&  ec <= HIGHEST_QTEST_EXITCODE);
+}
 
 static bool execCommand(const QString &program, const QStringList &args,
                         QByteArray *output = nullptr, bool verbose = false)
@@ -137,6 +154,11 @@ static bool parseOptions()
                 g_options.helpRequested = true;
             else
                 g_options.buildPath = arguments.at(++i);
+        } else if (argument.compare("--manifest"_L1, Qt::CaseInsensitive) == 0) {
+            if (i + 1 == arguments.size())
+                g_options.helpRequested = true;
+            else
+                g_options.manifestPath = arguments.at(++i);
         } else if (argument.compare("--make"_L1, Qt::CaseInsensitive) == 0) {
             if (i + 1 == arguments.size())
                 g_options.helpRequested = true;
@@ -208,6 +230,9 @@ static bool parseOptions()
             g_options.ndkStackPath = ndkStackPath;
     }
 
+    if (g_options.manifestPath.isEmpty())
+        g_options.manifestPath = g_options.buildPath + "/AndroidManifest.xml"_L1;
+
     return true;
 }
 
@@ -242,7 +267,6 @@ static void printHelp()
                     "\n"
                     "    --show-logcat: Print Logcat output to stdout. If an ANR occurs during\n"
                     "       the test run, logs from the system_server process are included.\n"
-                    "       This argument is implied if a test crashes.\n"
                     "\n"
                     "    --ndk-stack: Path to ndk-stack tool that symbolizes crash stacktraces.\n"
                     "       By default, ANDROID_NDK_ROOT env var is used to deduce the tool path.\n"
@@ -253,6 +277,8 @@ static void printHelp()
                     "\n"
                     "    --pre-test-adb-command <command>: call the adb <command> after\n"
                     "       installation and before the test run.\n"
+                    "\n"
+                    "    --manifest <path>: Custom path to the AndroidManifest.xml.\n"
                     "\n"
                     "    --help: Displays this information.\n",
                     qPrintable(QCoreApplication::arguments().at(0))
@@ -656,9 +682,9 @@ void printLogcatCrash(const QByteArray &logcat)
     }
 
     if (!crashLogcat.startsWith("********** Crash dump"))
-        qDebug() << "********** Crash dump: **********";
+        qDebug() << "[androidtestrunner] ********** BEGIN crash dump **********";
     qDebug().noquote() << crashLogcat.trimmed();
-    qDebug() << "********** End crash dump **********";
+    qDebug() << "[androidtestrunner] ********** END crash dump **********";
 }
 
 void analyseLogcat(const QString &timeStamp, int *exitCode)
@@ -693,10 +719,13 @@ void analyseLogcat(const QString &timeStamp, int *exitCode)
     // Check for ANRs
     const bool anrOccurred = logcat.contains("ANR in %1"_L1.arg(g_options.package).toUtf8());
     if (anrOccurred) {
-        // Treat a found ANR as a test failure.
-        *exitCode = *exitCode < 1 ? 1 : *exitCode;
-        qCritical("An ANR has occurred while running the test %s. The logcat will include "
-                  "additional logs from the system_server process.",
+        // Rather improbable, but if the test managed to return a non-crash exitcode then overwrite
+        // it to signify that something blew up. Same if we didn't manage to collect an exit code.
+        // Preserve all other exitcodes, they might be useful crash information from the device.
+        if (isTestExitCodeNormal(*exitCode) || *exitCode == EXIT_NOEXITCODE)
+            *exitCode = EXIT_ANR;
+        qCritical("[androidtestrunner] An ANR has occurred while running the test '%s';"
+                  " consult logcat for additional logs from the system_server process",
                   qPrintable(g_options.package));
     }
 
@@ -730,13 +759,14 @@ void analyseLogcat(const QString &timeStamp, int *exitCode)
         }
     }
 
-    // If we have a crash, attempt to print both logcat and the crash buffer which
-    // includes the crash stacktrace that is not included in the default logcat.
-    const bool testCrashed = *exitCode == EXIT_ERROR && !g_testInfo.isTestRunnerInterrupted.load();
-    if (g_options.showLogcatOutput || testCrashed) {
-        qDebug() << "********** logcat dump **********";
+    // If we have an unpredictable exitcode, possibly a crash, attempt to print both logcat and the
+    // crash buffer which includes the crash stacktrace that is not included in the default logcat.
+    const bool testCrashed = (   !isTestExitCodeNormal(*exitCode)
+                              && !g_testInfo.isTestRunnerInterrupted.load());
+    if (testCrashed) {
+        qDebug() << "[androidtestrunner] ********** BEGIN logcat dump **********";
         qDebug().noquote() << testLogcat.join(u'\n').trimmed();
-        qDebug() << "********** End logcat dump **********";
+        qDebug() << "[androidtestrunner] ********** END logcat dump **********";
 
         if (!crashLogcat.isEmpty())
             printLogcatCrash(crashLogcat);
@@ -751,7 +781,7 @@ static QString getCurrentTimeString()
     QStringList dateArgs = { "shell"_L1, "date"_L1, "+'%1'"_L1.arg(timeFormat) };
     QByteArray output;
     if (!execAdbCommand(dateArgs, &output, false)) {
-        qWarning() << "Date/time adb command failed";
+        qWarning() << "[androidtestrunner] ERROR in command: adb shell date";
         return {};
     }
 
@@ -763,14 +793,15 @@ static int testExitCode()
     QByteArray exitCodeOutput;
     const QString exitCodeCmd = "cat files/qtest_last_exit_code 2> /dev/null"_L1;
     if (!execAdbCommand({ "shell"_L1, runCommandAsUserArgs(exitCodeCmd) }, &exitCodeOutput, false)) {
-        qCritical() << "Failed to retrieve the test exit code.";
-        return EXIT_ERROR;
+        qCritical() << "[androidtestrunner] ERROR in command: adb shell cat files/qtest_last_exit_code";
+        return EXIT_NOEXITCODE;
     }
+    qDebug() << "[androidtestrunner] Test exitcode: " << exitCodeOutput;
 
     bool ok;
     int exitCode = exitCodeOutput.toInt(&ok);
 
-    return ok ? exitCode : EXIT_ERROR;
+    return ok ? exitCode : EXIT_NOEXITCODE;
 }
 
 static bool uninstallTestPackage()
@@ -811,7 +842,7 @@ void sigHandler(int signal)
     // a main event loop. Since, there's no other alternative to do this,
     // let's do the cleanup anyway.
     if (!g_testInfo.isPackageInstalled.load())
-        _exit(-1);
+        _exit(EXIT_ERROR);
     g_testInfo.isTestRunnerInterrupted.store(true);
 }
 
@@ -860,14 +891,13 @@ int main(int argc, char *argv[])
 
     g_testInfo.userId = userId();
 
-    QString manifest = g_options.buildPath + "/AndroidManifest.xml"_L1;
-    if (!QFile::exists(manifest)) {
-        qCritical("Unable to find '%s'.", qPrintable(manifest));
+    if (!QFile::exists(g_options.manifestPath)) {
+        qCritical("Unable to find '%s'.", qPrintable(g_options.manifestPath));
         return EXIT_ERROR;
     }
-    g_options.package = packageNameFromAndroidManifest(manifest);
+    g_options.package = packageNameFromAndroidManifest(g_options.manifestPath);
     if (g_options.activity.isEmpty())
-        g_options.activity = activityFromAndroidManifest(manifest);
+        g_options.activity = activityFromAndroidManifest(g_options.manifestPath);
 
     // parseTestArgs depends on g_options.package
     if (!parseTestArgs())
@@ -912,9 +942,12 @@ int main(int argc, char *argv[])
 
     int exitCode = testExitCode();
 
-    analyseLogcat(formattedStartTime, &exitCode);
+    if (g_options.showLogcatOutput)
+        analyseLogcat(formattedStartTime, &exitCode);
 
-    exitCode = pullResults() ? exitCode : EXIT_ERROR;
+    const bool pullRes = pullResults();
+    if (!pullRes && isTestExitCodeNormal(exitCode))
+        exitCode = EXIT_NORESULTS;
 
     if (!uninstallTestPackage())
         return EXIT_ERROR;

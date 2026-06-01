@@ -79,8 +79,7 @@ class CORE_EXPORT ImageResource final
 
   void DidAddClient(ResourceClient*) override;
 
-  std::pair<ResourcePriority, ResourcePriority> PriorityFromObservers()
-      override;
+  ResourceStatus GetContentStatus() const override;
 
   void AllClientsAndObserversRemoved() override;
 
@@ -98,6 +97,11 @@ class CORE_EXPORT ImageResource final
 
   // For compatibility, images keep loading even if there are HTTP errors.
   bool ShouldIgnoreHTTPStatusCodeErrors() const override { return true; }
+
+  void UpdateResourceInfoFromObservers() override;
+  std::pair<ResourcePriority, ResourcePriority> PriorityFromObservers()
+      const override;
+  bool HasNonDegenerateSizeForDecode() const override;
 
   // MultipartImageResourceParser::Client
   void OnePartInMultipartReceived(const ResourceResponse&) final;

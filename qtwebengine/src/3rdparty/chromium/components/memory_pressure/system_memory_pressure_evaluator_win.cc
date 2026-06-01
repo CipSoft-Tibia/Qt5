@@ -6,9 +6,14 @@
 
 #include <windows.h>
 
+#include <psapi.h>
+
+#include <algorithm>
 #include <memory>
 
 #include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/system/sys_info.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
@@ -20,6 +25,41 @@ namespace memory_pressure {
 namespace win {
 
 namespace {
+
+// Whether to use available memory commit instead of available physical
+// memory for Windows memory pressure detection.
+BASE_FEATURE(kCommitAvailableMemoryPressure,
+             "UseAvailableMemoryThresholds",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When enabled, allows setting custom thresholds for commit-based
+// memory pressure detection via the |kCommitAvailableCriticalThresholdMB|
+// and |kCommitAvailableModerateThresholdMB| parameters.
+BASE_FEATURE(kCommitAvailableMemoryPressureThresholds,
+             "CommitAvailableMemoryPressureThresholds",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Default thresholds for commit-based memory pressure detection.
+const int kDefaultCommitAvailableCriticalThresholdMb = 200;
+const int kDefaultCommitAvailableModerateThresholdMb = 500;
+
+// The amount of commit available (in MB) below which the system is considered
+// to be under critical memory pressure. The default value is equal to
+// kSmallMemoryDefaultCriticalThresholdMb (200).
+BASE_FEATURE_PARAM(int,
+                   kCommitAvailableCriticalThresholdMB,
+                   &kCommitAvailableMemoryPressureThresholds,
+                   "CommitAvailableCriticalThresholdMB",
+                   kDefaultCommitAvailableCriticalThresholdMb);
+
+// The amount of commit available (in MB) below which the system is considered
+// to be under moderate memory pressure. The default value is equal to
+// kSmallMemoryDefaultModerateThresholdMb (500).
+BASE_FEATURE_PARAM(int,
+                   kCommitAvailableModerateThresholdMB,
+                   &kCommitAvailableMemoryPressureThresholds,
+                   "CommitAvailableModerateThresholdMB",
+                   kDefaultCommitAvailableModerateThresholdMb);
 
 static const DWORDLONG kMBBytes = 1024 * 1024;
 
@@ -111,54 +151,6 @@ const int
 const int
     SystemMemoryPressureEvaluator::kLargeMemoryDefaultCriticalThresholdMb = 400;
 
-// A memory pressure evaluator that receives memory pressure notifications from
-// the OS and forwards them to the memory pressure monitor.
-class SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator {
- public:
-  using MemoryPressureLevel = base::MemoryPressureListener::MemoryPressureLevel;
-
-  explicit OSSignalsMemoryPressureEvaluator(
-      std::unique_ptr<MemoryPressureVoter> voter);
-  ~OSSignalsMemoryPressureEvaluator();
-  OSSignalsMemoryPressureEvaluator(
-      const OSSignalsMemoryPressureEvaluator& other) = delete;
-  OSSignalsMemoryPressureEvaluator& operator=(
-      const OSSignalsMemoryPressureEvaluator&) = delete;
-
-  // Creates the watcher used to receive the low and high memory notifications.
-  void Start();
-
-  MemoryPressureWatcherDelegate* GetWatcherForTesting() const {
-    return memory_notification_watcher_.get();
-  }
-  void WaitForHighMemoryNotificationForTesting(base::OnceClosure closure);
-
- private:
-  // Called when receiving a low/high memory notification.
-  void OnLowMemoryNotification();
-  void OnHighMemoryNotification();
-
-  void StartLowMemoryNotificationWatcher();
-  void StartHighMemoryNotificationWatcher();
-
-  // The period of the critical pressure notification timer.
-  static constexpr base::TimeDelta kHighPressureNotificationInterval =
-      base::Seconds(2);
-
-  // The voter used to cast the votes.
-  std::unique_ptr<MemoryPressureVoter> voter_;
-
-  // The memory notification watcher.
-  std::unique_ptr<MemoryPressureWatcherDelegate> memory_notification_watcher_;
-
-  // Timer that will re-emit the critical memory pressure signal until the
-  // memory gets high again.
-  base::RepeatingTimer critical_pressure_notification_timer_;
-
-  // Ensures that this object is used from a single sequence.
-  SEQUENCE_CHECKER(sequence_checker_);
-};
-
 SystemMemoryPressureEvaluator::SystemMemoryPressureEvaluator(
     std::unique_ptr<MemoryPressureVoter> voter)
     : memory_pressure::SystemMemoryPressureEvaluator(std::move(voter)),
@@ -184,25 +176,6 @@ SystemMemoryPressureEvaluator::SystemMemoryPressureEvaluator(
 
 SystemMemoryPressureEvaluator::~SystemMemoryPressureEvaluator() {
   StopObserving();
-}
-
-void SystemMemoryPressureEvaluator::CreateOSSignalPressureEvaluator(
-    std::unique_ptr<MemoryPressureVoter> voter) {
-  os_signals_evaluator_ =
-      std::make_unique<OSSignalsMemoryPressureEvaluator>(std::move(voter));
-  os_signals_evaluator_->Start();
-}
-
-void SystemMemoryPressureEvaluator::ReplaceWatchedHandleForTesting(
-    base::win::ScopedHandle handle) {
-  os_signals_evaluator_->GetWatcherForTesting()->ReplaceWatchedHandleForTesting(
-      std::move(handle));
-}
-
-void SystemMemoryPressureEvaluator::WaitForHighMemoryNotificationForTesting(
-    base::OnceClosure closure) {
-  os_signals_evaluator_->WaitForHighMemoryNotificationForTesting(
-      std::move(closure));
 }
 
 void SystemMemoryPressureEvaluator::InferThresholds() {
@@ -286,12 +259,42 @@ void SystemMemoryPressureEvaluator::CheckMemoryPressure() {
 base::MemoryPressureListener::MemoryPressureLevel
 SystemMemoryPressureEvaluator::CalculateCurrentPressureLevel() {
   MEMORYSTATUSEX mem_status = {};
-  if (!GetSystemMemoryStatus(&mem_status)) {
+  bool got_system_memory_status = GetSystemMemoryStatus(&mem_status);
+  // Report retrieval outcome before early returning on failure.
+  base::UmaHistogramBoolean("Memory.MemoryStatusRetrievalSuccess",
+                            got_system_memory_status);
+
+  if (!got_system_memory_status) {
+    return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE;
+  }
+  RecordCommitHistograms(mem_status);
+
+  // How much physical system memory is available for use right now, in MBs.
+  int phys_free_mb = static_cast<int>(mem_status.ullAvailPhys / kMBBytes);
+
+  // The maximum amount of memory the current process can commit, in MBs.
+  int commit_available_mb =
+      static_cast<int>(mem_status.ullAvailPageFile / kMBBytes);
+
+  if (phys_free_mb > moderate_threshold_mb_ &&
+      commit_available_mb > kCommitAvailableModerateThresholdMB.Get()) {
+    // No memory pressure under any of the 2 detection systems. Return
+    // early to avoid activating the experiment for clients who don't
+    // have memory pressure.
     return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE;
   }
 
-  // How much system memory is actively available for use right now, in MBs.
-  int phys_free = static_cast<int>(mem_status.ullAvailPhys / kMBBytes);
+  if (base::FeatureList::IsEnabled(kCommitAvailableMemoryPressure)) {
+    if (commit_available_mb < kCommitAvailableCriticalThresholdMB.Get()) {
+      return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL;
+    }
+
+    if (commit_available_mb < kCommitAvailableModerateThresholdMB.Get()) {
+      return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE;
+    }
+
+    return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE;
+  }
 
   // TODO(chrisha): This should eventually care about address space pressure,
   // but the browser process (where this is running) effectively never runs out
@@ -302,12 +305,12 @@ SystemMemoryPressureEvaluator::CalculateCurrentPressureLevel() {
   // system memory pressure.
 
   // Determine if the physical memory is under critical memory pressure.
-  if (phys_free <= critical_threshold_mb_) {
+  if (phys_free_mb <= critical_threshold_mb_) {
     return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL;
   }
 
   // Determine if the physical memory is under moderate memory pressure.
-  if (phys_free <= moderate_threshold_mb_) {
+  if (phys_free_mb <= moderate_threshold_mb_) {
     return base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE;
   }
 
@@ -325,101 +328,32 @@ bool SystemMemoryPressureEvaluator::GetSystemMemoryStatus(
   return true;
 }
 
-SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-    OSSignalsMemoryPressureEvaluator(std::unique_ptr<MemoryPressureVoter> voter)
-    : voter_(std::move(voter)) {}
+void SystemMemoryPressureEvaluator::RecordCommitHistograms(
+    const MEMORYSTATUSEX& mem_status) {
+  // Calculate commit limit in MB.
+  uint64_t commit_limit_mb = mem_status.ullTotalPageFile / kMBBytes;
 
-SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-    ~OSSignalsMemoryPressureEvaluator() = default;
+  // Calculate amount of available commit space in MB.
+  uint64_t commit_available_mb = mem_status.ullAvailPageFile / kMBBytes;
 
-void SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::Start() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  // Start by observing the low memory notifications. If the system is already
-  // under pressure this will run the |OnLowMemoryNotification| callback and
-  // automatically switch to waiting for the high memory notification/
-  StartLowMemoryNotificationWatcher();
-}
+  base::UmaHistogramCounts10M("Memory.CommitLimitMB",
+                              base::saturated_cast<int>(commit_limit_mb));
+  base::UmaHistogramCounts10M("Memory.CommitAvailableMB",
+                              base::saturated_cast<int>(commit_available_mb));
 
-void SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-    OnLowMemoryNotification() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  voter_->SetVote(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL,
-                  /* notify = */ true);
-
-  // Start a timer to repeat the notification at regular interval until
-  // OnHighMemoryNotification gets called.
-  critical_pressure_notification_timer_.Start(
-      FROM_HERE, kHighPressureNotificationInterval,
-      base::BindRepeating(
-          &MemoryPressureVoter::SetVote, base::Unretained(voter_.get()),
-          base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL,
-          /* notify = */ true));
-
-  // Start the high memory notification watcher to be notified when the system
-  // exits memory pressure.
-  StartHighMemoryNotificationWatcher();
-}
-
-void SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-    OnHighMemoryNotification() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  critical_pressure_notification_timer_.Stop();
-  voter_->SetVote(base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE,
-                  /* notify = */ false);
-
-  // Start the low memory notification watcher to be notified the next time the
-  // system hits memory pressure.
-  StartLowMemoryNotificationWatcher();
-}
-
-void SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-    StartLowMemoryNotificationWatcher() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  DCHECK(base::SequencedTaskRunner::HasCurrentDefault());
-  memory_notification_watcher_ =
-      std::make_unique<MemoryPressureWatcherDelegate>(
-          base::win::ScopedHandle(::CreateMemoryResourceNotification(
-              ::LowMemoryResourceNotification)),
-          base::BindOnce(
-              &SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-                  OnLowMemoryNotification,
-              base::Unretained(this)));
-}
-
-void SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-    StartHighMemoryNotificationWatcher() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  memory_notification_watcher_ =
-      std::make_unique<MemoryPressureWatcherDelegate>(
-          base::win::ScopedHandle(::CreateMemoryResourceNotification(
-              ::HighMemoryResourceNotification)),
-          base::BindOnce(
-              &SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-                  OnHighMemoryNotification,
-              base::Unretained(this)));
-}
-
-void SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator::
-    WaitForHighMemoryNotificationForTesting(base::OnceClosure closure) {
-  // If the timer isn't running then it means that the high memory notification
-  // has already been received.
-  if (!critical_pressure_notification_timer_.IsRunning()) {
-    std::move(closure).Run();
-    return;
+  // Calculate percentage used
+  int percentage_used;
+  if (commit_limit_mb == 0) {
+    // Handle division by zero.
+    percentage_used = 0;
+  } else {
+    uint64_t percentage_remaining =
+        (commit_available_mb * 100) / commit_limit_mb;
+    percentage_used = static_cast<int>(
+        percentage_remaining > 100 ? 0u : 100 - percentage_remaining);
   }
 
-  memory_notification_watcher_->SetCallbackForTesting(base::BindOnce(
-      [](SystemMemoryPressureEvaluator::OSSignalsMemoryPressureEvaluator*
-             evaluator,
-         base::OnceClosure closure) {
-        evaluator->OnHighMemoryNotification();
-        std::move(closure).Run();
-      },
-      base::Unretained(this), std::move(closure)));
+  base::UmaHistogramPercentage("Memory.CommitPercentageUsed", percentage_used);
 }
 
 }  // namespace win

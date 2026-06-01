@@ -14,6 +14,8 @@
 #include <limits>
 #include <tuple>
 
+#include <AudioToolbox/AudioToolbox.h>
+
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(qLcCamera, "qt.multimedia.camera")
@@ -28,7 +30,7 @@ AVFPSRange qt_connection_framerates(AVCaptureConnection *videoConnection)
     // to the reciprocal of the minimum framerate."
     if (videoConnection.supportsVideoMinFrameDuration) {
         const CMTime cmMin = videoConnection.videoMinFrameDuration;
-        if (CMTimeCompare(cmMin, kCMTimeInvalid)) { // Has some non-default value:
+        if (CMTIME_IS_VALID(cmMin)) { // Has some non-default value:
             if (const Float64 minSeconds = CMTimeGetSeconds(cmMin))
                 newRange.second = 1. / minSeconds;
         }
@@ -36,7 +38,7 @@ AVFPSRange qt_connection_framerates(AVCaptureConnection *videoConnection)
 
     if (videoConnection.supportsVideoMaxFrameDuration) {
         const CMTime cmMax = videoConnection.videoMaxFrameDuration;
-        if (CMTimeCompare(cmMax, kCMTimeInvalid)) {
+        if (CMTIME_IS_VALID(cmMax)) {
             if (const Float64 maxSeconds = CMTimeGetSeconds(cmMax))
                 newRange.first = 1. / maxSeconds;
         }
@@ -549,17 +551,17 @@ void qt_set_framerate_limits(AVCaptureDevice *captureDevice, qreal minFPS, qreal
     [captureDevice setActiveVideoMinFrameDuration:minFrameDuration];
     [captureDevice setActiveVideoMaxFrameDuration:maxFrameDuration];
 #elif defined(Q_OS_MACOS)
-    if (CMTimeCompare(minFrameDuration, kCMTimeInvalid) == 0
-            && CMTimeCompare(maxFrameDuration, kCMTimeInvalid) == 0) {
+    if (CMTIME_IS_INVALID(minFrameDuration)
+            && CMTIME_IS_INVALID(maxFrameDuration)) {
         AVFrameRateRange *range = captureDevice.activeFormat.videoSupportedFrameRateRanges.firstObject;
         minFrameDuration = range.minFrameDuration;
         maxFrameDuration = range.maxFrameDuration;
     }
 
-    if (CMTimeCompare(minFrameDuration, kCMTimeInvalid))
+    if (CMTIME_IS_VALID(minFrameDuration))
         [captureDevice setActiveVideoMinFrameDuration:minFrameDuration];
 
-    if (CMTimeCompare(maxFrameDuration, kCMTimeInvalid))
+    if (CMTIME_IS_VALID(maxFrameDuration))
         [captureDevice setActiveVideoMaxFrameDuration:maxFrameDuration];
 #endif // Q_OS_MACOS
 }
@@ -579,13 +581,13 @@ AVFPSRange qt_current_framerates(AVCaptureDevice *captureDevice, AVCaptureConnec
 
     AVFPSRange fps;
     const CMTime minDuration = captureDevice.activeVideoMinFrameDuration;
-    if (CMTimeCompare(minDuration, kCMTimeInvalid)) {
+    if (CMTIME_IS_VALID(minDuration)) {
         if (const Float64 minSeconds = CMTimeGetSeconds(minDuration))
             fps.second = 1. / minSeconds; // Max FPS = 1 / MinDuration.
     }
 
     const CMTime maxDuration = captureDevice.activeVideoMaxFrameDuration;
-    if (CMTimeCompare(maxDuration, kCMTimeInvalid)) {
+    if (CMTIME_IS_VALID(maxDuration)) {
         if (const Float64 maxSeconds = CMTimeGetSeconds(maxDuration))
             fps.first = 1. / maxSeconds; // Min FPS = 1 / MaxDuration.
     }
@@ -710,18 +712,5 @@ QList<UInt32> qt_supported_channel_layout_tags_for_format(int codecId, int noCha
 
     return result;
 }
-
-#ifdef Q_OS_IOS
-int qt_ui_device_orientation_to_rotation_angle_degrees(UIDeviceOrientation orientation)
-{
-    switch (orientation) {
-    case UIDeviceOrientationLandscapeLeft: return 0;
-    case UIDeviceOrientationPortrait: return 90;
-    case UIDeviceOrientationLandscapeRight: return 180;
-    case UIDeviceOrientationPortraitUpsideDown: return 270;
-    default: return 0;
-    }
-}
-#endif
 
 QT_END_NAMESPACE

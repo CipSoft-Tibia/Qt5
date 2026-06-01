@@ -58,6 +58,12 @@ QStringList QLibraryPrivate::suffixes_sys(const QString &fullVersion)
     } else {
         suffixes << ".sl"_L1;
     }
+#elif defined(Q_OS_CYGWIN)
+    if (!fullVersion.isEmpty()) {
+        suffixes << "-%1.dll"_L1.arg(fullVersion);
+    } else {
+        suffixes << QStringLiteral(".dll");
+    }
 #elif defined(Q_OS_AIX)
     suffixes << ".a";
 

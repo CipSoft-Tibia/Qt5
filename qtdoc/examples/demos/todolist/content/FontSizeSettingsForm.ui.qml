@@ -54,7 +54,9 @@ Page {
             value: AppSettings.fontSize
             to: 21
 
-            onMoved: AppSettings.fontSize = value
+            Connections {
+                function onMoved() { AppSettings.fontSize = slider.value }
+            }
         }
 
         Label {

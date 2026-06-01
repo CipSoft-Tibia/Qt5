@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKPROFILER_P_H
 #define QQUICKPROFILER_P_H
@@ -122,7 +123,7 @@ private:
         qint64 values[size][s_numSceneGraphTimings + 1];
     };
 
-    QThreadStorage<TimingData<NumRenderThreadFrameTypes> > renderThreadTimings;
+    static inline thread_local TimingData<NumRenderThreadFrameTypes> renderThreadTimings;
     TimingData<NumGUIThreadFrameTypes> guiThreadTimings;
 
 public:
@@ -130,7 +131,7 @@ public:
     qint64 *timings()
     {
         if constexpr (type < NumRenderThreadFrameTypes)
-            return renderThreadTimings.localData().values[type];
+            return renderThreadTimings.values[type];
         else
             return guiThreadTimings.values[type - NumRenderThreadFrameTypes];
     }

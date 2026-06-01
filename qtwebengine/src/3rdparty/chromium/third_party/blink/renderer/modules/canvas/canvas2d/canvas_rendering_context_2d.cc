@@ -39,23 +39,26 @@
 #include <string_view>
 
 #include "base/check.h"
+#include "base/check_op.h"
 #include "base/compiler_specific.h"
+#include "base/feature_list.h"
 #include "base/location.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/time/time.h"
 #include "base/trace_event/common/trace_event_common.h"
 #include "cc/layers/texture_layer.h"  // IWYU pragma: keep (https://github.com/clangd/clangd/issues/2044)
+#include "cc/layers/texture_layer_impl.h"
 #include "cc/paint/paint_canvas.h"
+#include "cc/paint/paint_record.h"
+#include "components/viz/common/resources/transferable_resource.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/metrics/document_update_reason.h"
 #include "third_party/blink/public/common/privacy_budget/identifiable_token.h"
 #include "third_party/blink/public/mojom/frame/color_scheme.mojom-blink.h"
 #include "third_party/blink/public/mojom/scroll/scroll_enums.mojom-blink.h"
 #include "third_party/blink/public/mojom/scroll/scroll_into_view_params.mojom-blink.h"
 #include "third_party/blink/public/platform/task_type.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_rendering_context_2d_settings.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_will_read_frequently.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/modules/shorter_includes.h"
 #include SHORT_INCLUDE_FILE(third_party/blink/renderer/bindings/modules/v8/v8_union,canvasrenderingcontext2d_gpucanvascontext_imagebitmaprenderingcontext_webgl2renderingcontext_webglrenderingcontext)
@@ -72,12 +75,14 @@
 #include "third_party/blink/renderer/core/html/canvas/canvas_font_cache.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_performance_monitor.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context.h"
+#include "third_party/blink/renderer/core/html/canvas/predefined_color_space.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_offset.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
 #include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
 #include "third_party/blink/renderer/core/layout/layout_theme.h"
 #include "third_party/blink/renderer/core/layout/map_coordinates_flags.h"
+#include "third_party/blink/renderer/core/paint/paint_layer_painter.h"
 #include "third_party/blink/renderer/core/scroll/scroll_alignment.h"
 #include "third_party/blink/renderer/core/scroll/scroll_into_view_util.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
@@ -86,22 +91,27 @@
 #include "third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h"
 #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d_state.h"
 #include "third_party/blink/renderer/modules/canvas/canvas2d/path_2d.h"
+#include "third_party/blink/renderer/modules/canvas/htmlcanvas/canvas_context_creation_attributes_helpers.h"
 #include "third_party/blink/renderer/platform/fonts/font.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_2d_layer_bridge.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_deferred_paint_record.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_provider.h"
+#include "third_party/blink/renderer/platform/graphics/gpu/shared_context_rate_limiter.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types.h"
 #include "third_party/blink/renderer/platform/graphics/image_orientation.h"
 #include "third_party/blink/renderer/platform/graphics/memory_managed_paint_canvas.h"  // IWYU pragma: keep (https://github.com/clangd/clangd/issues/2044)
 #include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_filter.h"
-#include "third_party/blink/renderer/platform/graphics/paint/paint_record.h"
+#include "third_party/blink/renderer/platform/graphics/paint/paint_record_builder.h"
+#include "third_party/blink/renderer/platform/graphics/paint/property_tree_state.h"
 #include "third_party/blink/renderer/platform/graphics/skia/skia_utils.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/graphics/stroke_data.h"
+#include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
+#include "third_party/blink/renderer/platform/graphics/web_graphics_context_3d_provider_util.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/timer.h"
 #include "third_party/blink/renderer/platform/wtf/hash_table.h"
 #include "third_party/blink/renderer/platform/wtf/key_value_pair.h"
@@ -142,6 +152,17 @@ static mojom::blink::ColorScheme GetColorSchemeFromCanvas(
   return mojom::blink::ColorScheme::kLight;
 }
 
+namespace {
+
+// Serves as killswitch for changing CanCreateCanvasResourceProvider() to
+// create resource provider internally rather than Canvas2DLayerBridge.
+// TODO(crbug.com/40280152): Eliminate post safe-rollout.
+BASE_FEATURE(kAdjustCanCreateCanvas2dResourceProvider,
+             "AdjustCanCreateCanvas2dResourceProvider",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+}  // namespace
+
 CanvasRenderingContext* CanvasRenderingContext2D::Factory::Create(
     CanvasRenderingContextHost* host,
     const CanvasContextCreationAttributesCore& attrs) {
@@ -175,11 +196,6 @@ V8RenderingContext* CanvasRenderingContext2D::AsV8RenderingContext() {
 }
 
 CanvasRenderingContext2D::~CanvasRenderingContext2D() = default;
-
-bool CanvasRenderingContext2D::IsOriginTopLeft() const {
-  // Use top-left origin since Skia Graphite won't support bottom-left origin.
-  return true;
-}
 
 bool CanvasRenderingContext2D::IsComposited() const {
   // The following case is necessary for handling the special case of canvases
@@ -228,12 +244,13 @@ void CanvasRenderingContext2D::LoseContext(LostContextMode lost_mode) {
   needs_context_lost_event_ = true;
 }
 
-void CanvasRenderingContext2D::DidSetSurfaceSize() {
+void CanvasRenderingContext2D::RestoreProviderAndContextIfPossible() {
   if (!context_restorable_)
     return;
   // This code path is for restoring from an eviction
   // Restoring from surface failure is handled internally
-  DCHECK(context_lost_mode_ != kNotLostContext && !IsPaintable());
+  DCHECK(context_lost_mode_ != kNotLostContext &&
+         !canvas()->ResourceProvider());
 
   if (CanCreateCanvas2dResourceProvider()) {
     dispatch_context_restored_event_timer_.StartOneShot(base::TimeDelta(),
@@ -262,8 +279,7 @@ void CanvasRenderingContext2D::TryRestoreContextEvent(TimerBase* timer) {
   // true, it means context is forced to be lost for testing purpose. Restore
   // the context.
   if (context_lost_mode_ == kSyntheticLostContext) {
-    Canvas2DLayerBridge* bridge = canvas()->GetOrCreateCanvas2DLayerBridge();
-    if (bridge && bridge->GetOrCreateResourceProvider()) {
+    if (Host()->GetOrCreateResourceProviderWithCurrentRasterModeHint()) {
       try_restore_context_event_timer_.Stop();
       DispatchContextRestoredEvent(nullptr);
       return;
@@ -294,10 +310,11 @@ void CanvasRenderingContext2D::TryRestoreContextEvent(TimerBase* timer) {
 bool CanvasRenderingContext2D::Restore() {
   CanvasRenderingContextHost* host = Host();
   CHECK(host);
-  CHECK(host->context_lost());
   if (host->GetRasterMode() == RasterMode::kCPU) {
     return false;
   }
+
+  CHECK(host->context_lost());
   DCHECK(!host->ResourceProvider());
 
   host->ClearLayerTexture();
@@ -305,7 +322,7 @@ bool CanvasRenderingContext2D::Restore() {
   base::WeakPtr<WebGraphicsContext3DProviderWrapper> context_provider_wrapper =
       SharedGpuContext::ContextProviderWrapper();
 
-  if (!context_provider_wrapper->ContextProvider()->IsContextLost()) {
+  if (!context_provider_wrapper->ContextProvider().IsContextLost()) {
     CanvasResourceProvider* resource_provider =
         host->GetOrCreateCanvasResourceProviderImpl(RasterModeHint::kPreferGPU);
 
@@ -335,9 +352,42 @@ bool CanvasRenderingContext2D::WritePixels(const SkImageInfo& orig_info,
                                            size_t row_bytes,
                                            int x,
                                            int y) {
-  DCHECK(IsPaintable());
-  return canvas()->GetCanvas2DLayerBridge()->WritePixels(orig_info, pixels,
-                                                         row_bytes, x, y);
+  DCHECK(IsCanvas2DBufferValid());
+  CanvasRenderingContextHost* host = Host();
+  CHECK(host);
+
+  CanvasResourceProvider* provider =
+      canvas()->GetOrCreateResourceProviderWithCurrentRasterModeHint();
+  if (provider == nullptr) {
+    return false;
+  }
+
+  if (x <= 0 && y <= 0 && x + orig_info.width() >= host->Size().width() &&
+      y + orig_info.height() >= host->Size().height()) {
+    MemoryManagedPaintRecorder& recorder = provider->Recorder();
+    if (recorder.HasSideRecording()) {
+      // Even with opened layers, WritePixels would write to the main canvas
+      // surface under the layers. We can therefore clear the paint ops recorded
+      // before the first `beginLayer`, but the layers themselves must be kept
+      // untouched. Note that this operation makes little sense and is actually
+      // disabled in `putImageData` by raising an exception if layers are
+      // opened. Still, it's preferable to handle this scenario here because the
+      // alternative would be to crash or leave the canvas in an invalid state.
+      recorder.ReleaseMainRecording();
+    } else {
+      recorder.RestartRecording();
+    }
+  } else {
+    host->FlushRecording(FlushReason::kWritePixels);
+
+    // Short-circuit out if an error occurred while flushing the recording.
+    if (!host->ResourceProvider()->IsValid()) {
+      return false;
+    }
+  }
+
+  return host->ResourceProvider()->WritePixels(orig_info, pixels, row_bytes, x,
+                                               y);
 }
 
 void CanvasRenderingContext2D::Reset() {
@@ -440,11 +490,6 @@ cc::PaintCanvas* CanvasRenderingContext2D::GetOrCreatePaintCanvas() {
     return nullptr;
   }
 
-  Canvas2DLayerBridge* bridge = canvas()->GetOrCreateCanvas2DLayerBridge();
-  if (bridge == nullptr) [[unlikely]] {
-    return nullptr;
-  }
-
   CanvasResourceProvider* provider = ResourceProvider();
   if (provider != nullptr) [[likely]] {
     // If we already had a provider, we can check whether it recorded ops passed
@@ -455,7 +500,7 @@ cc::PaintCanvas* CanvasRenderingContext2D::GetOrCreatePaintCanvas() {
     }
   } else {
     // If we have no provider, try creating one.
-    provider = bridge->GetOrCreateResourceProvider();
+    provider = canvas()->GetOrCreateResourceProviderWithCurrentRasterModeHint();
     if (provider == nullptr) [[unlikely]] {
       return nullptr;
     }
@@ -677,14 +722,36 @@ int CanvasRenderingContext2D::Height() const {
 }
 
 bool CanvasRenderingContext2D::CanCreateCanvas2dResourceProvider() const {
-  return canvas()->GetOrCreateCanvas2DLayerBridge();
+  if (base::FeatureList::IsEnabled(kAdjustCanCreateCanvas2dResourceProvider)) {
+    return canvas()->GetOrCreateResourceProviderWithCurrentRasterModeHint();
+  } else {
+    return canvas()->GetOrCreateCanvas2DLayerBridge();
+  }
 }
 
 scoped_refptr<StaticBitmapImage> blink::CanvasRenderingContext2D::GetImage(
     FlushReason reason) {
-  if (!IsPaintable())
+  CanvasHibernationHandler* hibernation_handler =
+      canvas()->GetHibernationHandler();
+  if (!hibernation_handler) {
     return nullptr;
-  return canvas()->GetCanvas2DLayerBridge()->NewImageSnapshot(reason);
+  }
+
+  if (hibernation_handler->IsHibernating()) {
+    return UnacceleratedStaticBitmapImage::Create(
+        hibernation_handler->GetImage());
+  }
+
+  if (!Host()->IsResourceValid()) {
+    return nullptr;
+  }
+  // GetOrCreateResourceProvider needs to be called before FlushRecording, to
+  // make sure "hint" is properly taken into account.
+  if (!Host()->GetOrCreateResourceProviderWithCurrentRasterModeHint()) {
+    return nullptr;
+  }
+  Host()->FlushRecording(reason);
+  return Host()->ResourceProvider()->Snapshot(reason);
 }
 
 ImageData* CanvasRenderingContext2D::getImageDataInternal(
@@ -702,10 +769,107 @@ ImageData* CanvasRenderingContext2D::getImageDataInternal(
       sx, sy, sw, sh, image_data_settings, exception_state);
 }
 
+bool CanvasRenderingContext2D::HasPlacedElements() const {
+  return !placed_elements_.empty();
+}
+
+void CanvasRenderingContext2D::PaintPlacedElements() {
+  bool placed_elements_need_repainting = false;
+  for (auto deferred_paint_record : placed_elements_.Values()) {
+    if (deferred_paint_record->IsDirty()) {
+      placed_elements_need_repainting = true;
+      break;
+    }
+  }
+
+  if (!placed_elements_need_repainting) {
+    return;
+  }
+
+  DCHECK_EQ(canvas()->GetDocument().Lifecycle().GetState(),
+            DocumentLifecycle::LifecycleState::kInPaint);
+
+  for (auto& [element, deferred_paint_image] : placed_elements_) {
+    if (!element->GetLayoutBox() || element->parentElement() != canvas()) {
+      // The element is no longer visible or has been reparented.
+      deferred_paint_image->Clear();
+      continue;
+    }
+
+    if (!deferred_paint_image->IsDirty()) {
+      continue;
+    }
+
+    PaintRecordBuilder builder;
+    LayoutBox* layout_box = element->GetLayoutBox();
+    // All placed elements should have their own stacking contexts.
+    CHECK(layout_box->HasLayer());
+    CHECK(layout_box->IsStacked());
+    PaintLayer* layer = layout_box->EnclosingLayer();
+
+    PaintLayerPainter paint_layer_painter = PaintLayerPainter(*layer);
+    paint_layer_painter.Paint(builder.Context(), PaintFlag::kPlacedElement);
+
+    PropertyTreeState property_tree_state = layer->GetLayoutObject()
+                                                .FirstFragment()
+                                                .LocalBorderBoxProperties()
+                                                .Unalias();
+
+    cc::PaintRecord placed_element_picture =
+        builder.EndRecording(property_tree_state);
+
+    cc::RecordPaintCanvas canvas;
+    canvas.drawPicture(placed_element_picture);
+
+    // TODO(https://issues.chromium.org/379143302): Take the border box bounds
+    // of the layout object by walking over the paint chunks to compute the
+    // painted size.
+    deferred_paint_image->SetPaintRecord(
+        placed_element_picture, gfx::SizeF(layer->GetLayoutBox()->Size()));
+    deferred_paint_image->SetIsDirty(false);
+  }
+}
+
+void CanvasRenderingContext2D::MarkPlacedElementDirty(Element* placedElement) {
+  if (!placed_elements_.Contains(placedElement)) {
+    return;
+  }
+
+  placed_elements_.at(placedElement)->SetIsDirty(true);
+}
+
 void CanvasRenderingContext2D::FinalizeFrame(FlushReason reason) {
   TRACE_EVENT0("blink", "CanvasRenderingContext2D::FinalizeFrame");
-  if (IsPaintable())
-    canvas()->GetCanvas2DLayerBridge()->FinalizeFrame(reason);
+  if (!IsPaintable()) {
+    return;
+  }
+
+  // Make sure surface is ready for painting: fix the rendering mode now
+  // because it will be too late during the paint invalidation phase.
+  if (!canvas()->GetOrCreateResourceProviderWithCurrentRasterModeHint()) {
+    return;
+  }
+
+  CanvasRenderingContextHost* host = Host();
+  CHECK(host);
+
+  host->FlushRecording(reason);
+  if (reason == FlushReason::kCanvasPushFrame) {
+    if (host->IsDisplayed()) {
+      // Make sure the GPU is never more than two animation frames behind.
+      constexpr unsigned kMaxCanvasAnimationBacklog = 2;
+      if (host->IncrementFramesSinceLastCommit() >=
+          static_cast<int>(kMaxCanvasAnimationBacklog)) {
+        if (host->IsComposited() && !host->RateLimiter()) {
+          host->CreateRateLimiter();
+        }
+      }
+    }
+
+    if (host->RateLimiter()) {
+      host->RateLimiter()->Tick();
+    }
+  }
 }
 
 CanvasRenderingContextHost*
@@ -731,10 +895,60 @@ Color CanvasRenderingContext2D::GetCurrentColor() const {
 void CanvasRenderingContext2D::PageVisibilityChanged() {
   HTMLCanvasElement* const element = canvas();
   if (IsPaintable()) {
-    element->GetCanvas2DLayerBridge()->PageVisibilityChanged();
+    OnPageVisibilityChangeWhenPaintable();
   }
   if (!element->IsPageVisible()) {
     PruneLocalFontCache(0);
+  }
+}
+
+void CanvasRenderingContext2D::OnPageVisibilityChangeWhenPaintable() {
+  CHECK(IsPaintable());
+  HTMLCanvasElement* const element = canvas();
+
+  bool page_is_visible = element->IsPageVisible();
+  if (element->ResourceProvider()) {
+    element->ResourceProvider()->SetResourceRecyclingEnabled(page_is_visible);
+  }
+
+  // Conserve memory.
+  if (element->GetRasterMode() == RasterMode::kGPU) {
+    SetAggressivelyFreeSharedGpuContextResourcesIfPossible(!page_is_visible);
+  }
+
+  if (features::IsCanvas2DHibernationEnabled() && element->ResourceProvider() &&
+      element->GetRasterMode() == RasterMode::kGPU && !page_is_visible) {
+    element->GetHibernationHandler()->InitiateHibernationIfNecessary();
+  }
+
+  // The impl tree may have dropped the transferable resource for this canvas
+  // while it wasn't visible. Make sure that it gets pushed there again, now
+  // that we've visible.
+  //
+  // This is done all the time, but it is especially important when canvas
+  // hibernation is disabled. In this case, when the impl-side active tree
+  // releases the TextureLayer's transferable resource, it will not be freed
+  // since the texture has not been cleared above (there is a remaining
+  // reference held from the TextureLayer). Then the next time the page becomes
+  // visible, the TextureLayer will note the resource hasn't changed (in
+  // Update()), and will not add the layer to the list of those that need to
+  // push properties. But since the impl-side tree no longer holds the resource,
+  // we need TreeSynchronizer to always consider this layer.
+  //
+  // This makes sure that we do push properties. It is not needed when canvas
+  // hibernation is enabled (since the resource will have changed, it will be
+  // pushed), but we do it anyway, since these interactions are subtle.
+  bool resource_may_have_been_dropped =
+      cc::TextureLayerImpl::MayEvictResourceInBackground(
+          viz::TransferableResource::ResourceSource::kCanvas);
+  if (page_is_visible && resource_may_have_been_dropped) {
+    element->SetNeedsPushProperties();
+  }
+
+  if (page_is_visible && element->IsHibernating()) {
+    element
+        ->GetOrCreateResourceProviderWithCurrentRasterModeHint();  // Rude
+                                                                   // awakening
   }
 }
 
@@ -747,25 +961,7 @@ cc::Layer* CanvasRenderingContext2D::CcLayer() const {
 
 CanvasRenderingContext2DSettings*
 CanvasRenderingContext2D::getContextAttributes() const {
-  CanvasRenderingContext2DSettings* settings =
-      CanvasRenderingContext2DSettings::Create();
-  settings->setAlpha(CreationAttributes().alpha);
-  settings->setColorSpace(color_params_.GetColorSpaceAsString());
-  if (RuntimeEnabledFeatures::CanvasFloatingPointEnabled())
-    settings->setPixelFormat(color_params_.GetPixelFormatAsString());
-  settings->setDesynchronized(Host()->LowLatencyEnabled());
-  switch (CreationAttributes().will_read_frequently) {
-    case CanvasContextCreationAttributesCore::WillReadFrequently::kTrue:
-      settings->setWillReadFrequently(V8CanvasWillReadFrequently::Enum::kTrue);
-      break;
-    case CanvasContextCreationAttributesCore::WillReadFrequently::kFalse:
-      settings->setWillReadFrequently(V8CanvasWillReadFrequently::Enum::kFalse);
-      break;
-    case CanvasContextCreationAttributesCore::WillReadFrequently::kUndefined:
-      settings->setWillReadFrequently(
-          V8CanvasWillReadFrequently::Enum::kUndefined);
-  }
-  return settings;
+  return ToCanvasRenderingContext2DSettings(CreationAttributes());
 }
 
 void CanvasRenderingContext2D::drawFocusIfNeeded(Element* element) {

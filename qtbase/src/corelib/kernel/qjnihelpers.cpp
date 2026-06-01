@@ -454,6 +454,28 @@ void QtAndroidPrivate::releaseAndroidDeadlockProtector()
     g_androidDeadlockProtector.storeRelease(0);
 }
 
+QtAndroidPrivate::AndroidDeadlockProtector::AndroidDeadlockProtector(const QString &lockedBy)
+    : m_lockedBy(lockedBy)
+{ }
+
+QtAndroidPrivate::AndroidDeadlockProtector::~AndroidDeadlockProtector() {
+    if (m_acquired) {
+        QtAndroidPrivate::releaseAndroidDeadlockProtector();
+        s_lockers.removeOne(m_lockedBy);
+    }
+}
+
+bool QtAndroidPrivate::AndroidDeadlockProtector::acquire() {
+    m_acquired = QtAndroidPrivate::acquireAndroidDeadlockProtector();
+    if (m_acquired) {
+        s_lockers.append(m_lockedBy);
+    } else {
+        qWarning("Failed to acquire deadlock protector for '%s' while already locked by '%s'.",
+                 qPrintable(m_lockedBy), qPrintable(s_lockers.join(u',')));
+    }
+    return m_acquired;
+}
+
 QT_END_NAMESPACE
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)

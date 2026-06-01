@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickshortcut_p.h"
 
@@ -9,6 +10,8 @@
 #include <QtQuick/private/qtquickglobal_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtQml/qqmlinfo.h>
+
+QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Shortcut
@@ -87,8 +90,6 @@ Q_QUICK_EXPORT void qt_quick_set_shortcut_context_matcher(ContextMatcher matcher
     if (!ctxMatcher.isDestroyed())
         *ctxMatcher() = matcher;
 }
-
-QT_BEGIN_NAMESPACE
 
 static QKeySequence valueToKeySequence(const QVariant &value, const QQuickShortcut *const shortcut)
 {
@@ -171,6 +172,12 @@ void QQuickShortcut::setSequence(const QVariant &value)
     m_shortcut.keySequence = keySequence;
     grabShortcut(m_shortcut, m_context);
     emit sequenceChanged();
+    if (m_shortcuts.isEmpty()) {
+        // The text only changes if m_shortcuts contained no entry
+        // as we prefer the entry from there otherwise
+        emit nativeTextChanged();
+        emit portableTextChanged();
+    }
 }
 
 /*!
@@ -228,13 +235,23 @@ void QQuickShortcut::setSequences(const QVariantList &values)
         }
     }
 
+    const Shortcut oldUsedShortcut = m_shortcuts.isEmpty() ? m_shortcut
+                                                           : m_shortcuts.first();
+
     for (Shortcut &s : m_shortcuts)
         ungrabShortcut(s);
     m_shortcuts = requestedShortcuts;
     for (Shortcut &s : m_shortcuts)
         grabShortcut(s, m_context);
 
+    const Shortcut currentUsedShortcut = m_shortcuts.isEmpty() ? m_shortcut
+                                                               : m_shortcuts.first();
+
     emit sequencesChanged();
+    if (oldUsedShortcut.keySequence != currentUsedShortcut.keySequence) {
+        emit nativeTextChanged();
+        emit portableTextChanged();
+    }
 }
 
 /*!
@@ -246,11 +263,15 @@ void QQuickShortcut::setSequences(const QVariantList &values)
     resemble a key sequence from the menu bar. It is best to display this text
     to the user (for example, on a tooltip).
 
+    \include qquickshortcut.qdocinc multishortcut
+
     \sa sequence, portableText
 */
 QString QQuickShortcut::nativeText() const
 {
-    return m_shortcut.keySequence.toString(QKeySequence::NativeText);
+    const Shortcut &shortCut = m_shortcuts.isEmpty() ? m_shortcut
+                                                     : m_shortcuts.front();
+    return shortCut.keySequence.toString(QKeySequence::NativeText);
 }
 
 /*!
@@ -261,11 +282,15 @@ QString QQuickShortcut::nativeText() const
     "portable" format, suitable for reading and writing to a file. In many
     cases, it will look similar to the native text on Windows and X11.
 
+    \include qquickshortcut.qdocinc multishortcut
+
     \sa sequence, nativeText
 */
 QString QQuickShortcut::portableText() const
 {
-    return m_shortcut.keySequence.toString(QKeySequence::PortableText);
+    const Shortcut &shortCut = m_shortcuts.isEmpty() ? m_shortcut
+                                                     : m_shortcuts.front();
+    return shortCut.keySequence.toString(QKeySequence::PortableText);
 }
 
 /*!

@@ -6,6 +6,7 @@
 #define COMPONENTS_VISITED_URL_RANKING_PUBLIC_FETCH_OPTIONS_H_
 
 #include <map>
+#include <set>
 #include <vector>
 
 #include "base/containers/enum_set.h"
@@ -43,34 +44,6 @@ enum class URLVisitAggregatesTransformType {
 
 // The options that may be specified when fetching URL visit data.
 struct FetchOptions {
-  // Type of result URLVisitAggregate, note that each visit can match multiple
-  // types. If any of the types match, then the URL will be returned. Entries
-  // should not be renumbered and numeric values should never be reused.
-  enum class URLType {
-    kUnknown = 0,
-    // The visit has an active local tab.
-    kActiveLocalTab = 1,
-    // The visit has an active remote tab, based on the latest sync.
-    kActiveRemoteTab = 2,
-    // The visit is recorded in history, is not from remote client.
-    kLocalVisit = 3,
-    // The visit is recorded in history, is from a remote client.
-    kRemoteVisit = 4,
-    // The visit is local and registered with app ID from an Android CCT
-    // (Android only).
-    kCCTVisit = 5,
-    kMaxValue = kCCTVisit,
-  };
-  using URLTypeSet =
-      base::EnumSet<URLType, URLType::kUnknown, URLType::kMaxValue>;
-  static constexpr URLTypeSet kAllResultTypes = {
-      URLType::kActiveLocalTab, URLType::kActiveRemoteTab, URLType::kLocalVisit,
-      URLType::kRemoteVisit,
-#if BUILDFLAG(IS_ANDROID)
-      URLType::kCCTVisit
-#endif
-  };
-
   // Options to specify the expected results.
   struct ResultOption {
     // Any visit within the `age_limit` will be retained.
@@ -81,7 +54,7 @@ struct FetchOptions {
   using FetchSources =
       base::EnumSet<Source, Source::kNotApplicable, Source::kForeign>;
   FetchOptions(
-      std::map<URLType, ResultOption> result_sources_arg,
+      std::map<URLVisitAggregate::URLType, ResultOption> result_sources_arg,
       std::map<Fetcher, FetchSources> fetcher_sources_arg,
       base::Time begin_time_arg,
       std::vector<URLVisitAggregatesTransformType> transforms_arg = {});
@@ -95,7 +68,7 @@ struct FetchOptions {
                                                   Source::kForeign};
   // Return the desired fetch result types as specified via feature params or
   // the defaults if not specified.
-  static URLTypeSet GetFetchResultURLTypes();
+  static URLVisitAggregate::URLTypeSet GetFetchResultURLTypes();
 
   // Returns the default fetch options for tab resumption use cases.
   static FetchOptions CreateDefaultFetchOptionsForTabResumption();
@@ -103,11 +76,15 @@ struct FetchOptions {
   // Returns the default fetch options for fetching the expected
   // `result_sources`.
   static FetchOptions CreateFetchOptionsForTabResumption(
-      const URLTypeSet& result_sources);
+      const URLVisitAggregate::URLTypeSet& result_sources);
 
   // The source of expected results. A visit can have multiple types, if any of
   // the types match the `result_sources`, then the visit can be returned.
-  std::map<URLType, ResultOption> result_sources;
+  std::map<URLVisitAggregate::URLType, ResultOption> result_sources;
+
+  // A visit can have multiple types, if any of the types matches the
+  // `exclude_result_sources` , the visit will be discarded.
+  URLVisitAggregate::URLTypeSet exclude_results_containing_types;
 
   // The set of data fetchers that should participate in the data fetching and
   // computation of URLVisit data, including their data source characteristics.

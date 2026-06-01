@@ -1,109 +1,147 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="sv_SE">
+<TS version="2.1" language="sv">
 <context>
-    <name>AudioContainerControl</name>
+    <name>AVFAudioDecoder</name>
     <message>
-        <source>RAW (headerless) file format</source>
-        <translation>RAW-filformat (saknar header)</translation>
+        <source>Unable to read from specified device</source>
+        <translation>Kunde inte läsa från angiven enhet</translation>
     </message>
     <message>
-        <source>WAV file format</source>
-        <translation>WAV-filformat</translation>
+        <source>Could not load media source&apos;s tracks</source>
+        <translation>Kunde inte läsa in mediakällans spår</translation>
+    </message>
+    <message>
+        <source>No audio tracks found</source>
+        <translation>Inga ljudspår hittades</translation>
+    </message>
+    <message>
+        <source>Unsupported source format</source>
+        <translation>Källformatet stöds inte</translation>
+    </message>
+    <message>
+        <source>Failed to add asset reader output</source>
+        <translation>Misslyckades med att lägga till asset reader-utmatning</translation>
+    </message>
+    <message>
+        <source>Could not start reading</source>
+        <translation>Kunde inte starta läsning</translation>
     </message>
 </context>
 <context>
-    <name>AudioEncoderControl</name>
+    <name>AVFCameraSession</name>
     <message>
-        <source>Linear PCM audio data</source>
-        <translation>Linjär PCM-ljuddata</translation>
+        <source>Runtime camera error</source>
+        <translation>Kamerafel vid körtid</translation>
     </message>
 </context>
 <context>
-    <name>CameraBinImageCapture</name>
+    <name>AVFImageCapture</name>
     <message>
-        <source>Camera not ready</source>
-        <translation>Kameran är inte redo</translation>
+        <source>Could not open destination file:
+%1</source>
+        <translation>Kunde inte öppna målfilen:
+%1</translation>
     </message>
 </context>
 <context>
-    <name>CameraBinImageEncoder</name>
+    <name>AVFMediaEncoder</name>
     <message>
-        <source>JPEG image</source>
-        <translation>JPEG-bild</translation>
+        <source>No inputs specified</source>
+        <translation>Inga inmatningar angivna</translation>
+    </message>
+    <message>
+        <source>Invalid output file URL</source>
+        <translation>Ogiltig URL för utmatningsfil</translation>
+    </message>
+    <message>
+        <source>Non-writeable file location</source>
+        <translation>Icke-skrivbar filplats</translation>
+    </message>
+    <message>
+        <source>File already exists</source>
+        <translation>Filen finns redan</translation>
     </message>
 </context>
 <context>
-    <name>CameraBinRecorder</name>
+    <name>AVFMediaPlayer</name>
     <message>
-        <source>QMediaRecorder::pause() is not supported by camerabin2.</source>
-        <translation>QMediaRecorder::pause() stöds inte av camerabin2.</translation>
-    </message>
-    <message>
-        <source>Service has not been started</source>
-        <translation>Tjänsten har inte startats</translation>
-    </message>
-    <message>
-        <source>Recording permissions are not available</source>
-        <translation>Inspelningsrättigheter är inte tillgängliga</translation>
+        <source>Failed to load media</source>
+        <translation>Misslyckades med att läsa in media</translation>
     </message>
 </context>
 <context>
-    <name>CameraBinSession</name>
+    <name>Decoder</name>
     <message>
-        <source>Camera error</source>
-        <translation>Kamerafel</translation>
+        <source>Cannot set source, invalid mime type for the source provided.</source>
+        <translation>Kan inte ställa in källa, ogiltig mime-typ för källan angavs.</translation>
+    </message>
+    <message>
+        <source>Cannot open the file</source>
+        <translation>Kan inte öppna filen</translation>
+    </message>
+    <message>
+        <source>Invalid fileDescriptor for source.</source>
+        <translation>Ogiltig fileDescriptor för källan.</translation>
+    </message>
+    <message>
+        <source>Setting source for Audio Decoder failed.</source>
+        <translation>Inställning av källan för Audio Decoder misslyckades.</translation>
+    </message>
+    <message>
+        <source>Format not supported by Audio Decoder.</source>
+        <translation>Formatet stöds inte av Audio Decoder.</translation>
+    </message>
+    <message>
+        <source>Cannot decode, source not set.</source>
+        <translation>Kan inte dekoda, källan är inte inställd.</translation>
+    </message>
+    <message>
+        <source>Audio Decoder could not be created.</source>
+        <translation>Audio Decoder kunde inte skapas.</translation>
+    </message>
+    <message>
+        <source>Audio Decoder failed configuration.</source>
+        <translation>Audio Decoder misslyckades att konfigureras.</translation>
+    </message>
+    <message>
+        <source>Audio Decoder failed to start.</source>
+        <translation>Audio Decoder misslyckades att starta.</translation>
     </message>
 </context>
 <context>
-    <name>DSCameraSession</name>
+    <name>MFAudioDecoderControl</name>
     <message>
-        <source>Failed to configure preview format</source>
-        <translation>Misslyckades med att konfigurera förhandsvisningsformat</translation>
+        <source>Unsupported media type</source>
+        <translation>Mediatypen stöds inte</translation>
     </message>
     <message>
-        <source>Failed to connect graph</source>
-        <translation>Misslyckades med att ansluta graf</translation>
+        <source>Media not found</source>
+        <translation>Mediet hittades inte</translation>
     </message>
     <message>
-        <source>Failed to get stream control</source>
-        <translation>Misslyckades med att få strömkontroll</translation>
+        <source>Unable to load specified URL</source>
+        <translation>Kunde inte läsa in angiven URL</translation>
     </message>
     <message>
-        <source>Failed to start</source>
-        <translation>Misslyckades med att starta</translation>
+        <source>Could not instantiate MFDecoderSourceReader</source>
+        <translation>Kunde inte instansiera MFDecoderSourceReader</translation>
     </message>
     <message>
-        <source>Failed to stop</source>
-        <translation>Misslyckades med att stoppa</translation>
+        <source>Invalid media format</source>
+        <translation>Ogiltigt mediaformat</translation>
     </message>
     <message>
-        <source>Camera not ready for capture</source>
-        <translation>Kameran är inte redo att användas</translation>
+        <source>Unable to read from specified device</source>
+        <translation>Kunde inte läsa från angiven enhet</translation>
     </message>
     <message>
-        <source>Could not save image to file.</source>
-        <translation>Kunde inte spara bild till fil.</translation>
+        <source>No media source specified</source>
+        <translation>Ingen mediakälla angiven</translation>
     </message>
     <message>
-        <source>Failed to create filter graph</source>
-        <translation>Misslyckades med att skapa filtergraf</translation>
-    </message>
-    <message>
-        <source>Failed to create graph builder</source>
-        <translation>Misslyckades med att skapa grafbyggare</translation>
-    </message>
-    <message>
-        <source>Failed to connect capture graph and filter graph</source>
-        <translation>Misslyckades med att ansluta insamlingsgraf och filtergraf</translation>
-    </message>
-    <message>
-        <source>No capture device found</source>
-        <translation>Ingen insamlingsenhet hittades</translation>
-    </message>
-    <message>
-        <source>Failed to create null renderer</source>
-        <translation>Misslyckades med att skapa null-renderare</translation>
+        <source>Failed processing a sample</source>
+        <translation>Misslyckades att behandla en sampling</translation>
     </message>
 </context>
 <context>
@@ -127,6 +165,14 @@
     <message>
         <source>Unsupported media type.</source>
         <translation>Mediatypen stöds inte.</translation>
+    </message>
+    <message>
+        <source>Unsupported URL scheme.</source>
+        <translation>URL-schemat stöds inte.</translation>
+    </message>
+    <message>
+        <source>Connection to server could not be established.</source>
+        <translation>Anslutning till servern kunde inte etableras.</translation>
     </message>
     <message>
         <source>Failed to load source.</source>
@@ -189,6 +235,26 @@
         <translation>Mediasessionen har icke-ödesdigert fel.</translation>
     </message>
     <message>
+        <source>Error reading from the network.</source>
+        <translation>Fel vid läsning från nätverket.</translation>
+    </message>
+    <message>
+        <source>Error writing to the network.</source>
+        <translation>Fel vid skrivning till nätverket.</translation>
+    </message>
+    <message>
+        <source>Network packets might be blocked by a firewall.</source>
+        <translation>Nätverkspaket kanske blockeras av en brandvägg.</translation>
+    </message>
+    <message>
+        <source>Media session state error.</source>
+        <translation>Mediasessionen har tillståndfel.</translation>
+    </message>
+    <message>
+        <source>Invalid stream data.</source>
+        <translation>Ogiltigt strömdata.</translation>
+    </message>
+    <message>
         <source>Media session serious error.</source>
         <translation>Mediasessionen har allvarliga fel.</translation>
     </message>
@@ -198,31 +264,18 @@
     </message>
 </context>
 <context>
-    <name>QAndroidAudioEncoderSettingsControl</name>
+    <name>QAndroidAudioDecoder</name>
     <message>
-        <source>Adaptive Multi-Rate Narrowband (AMR-NB) audio codec</source>
-        <translation>Adaptive Multi-Rate Narrowband (AMR-NB) ljudkodek</translation>
+        <source>Error opening temporary file: %1</source>
+        <translation>Fel vid öppning av temporärfilen: %1</translation>
     </message>
     <message>
-        <source>Adaptive Multi-Rate Wideband (AMR-WB) audio codec</source>
-        <translation>Adaptive Multi-Rate Wideband (AMR-WB) ljudkodek</translation>
-    </message>
-    <message>
-        <source>AAC Low Complexity (AAC-LC) audio codec</source>
-        <translation>AAC Low Complexity (AAC-LC) ljudkodek</translation>
+        <source>Error while writing data to temporary file</source>
+        <translation>Fel vid skrivning av data till temporärfilen</translation>
     </message>
 </context>
 <context>
     <name>QAndroidCameraSession</name>
-    <message>
-        <source>Camera not ready</source>
-        <translation>Kameran är inte redo</translation>
-    </message>
-    <message>
-        <source>Drive mode not supported</source>
-        <extracomment>Drive mode is the camera&apos;s shutter mode, for example single shot, continuos exposure, etc.</extracomment>
-        <translation>Slutarläget stöds inte</translation>
-    </message>
     <message>
         <source>Failed to capture image</source>
         <translation>Misslyckades med att fånga bilden</translation>
@@ -232,163 +285,174 @@
         <translation>Kameraförhandsvisning misslyckades att starta.</translation>
     </message>
     <message>
-        <source>Could not open destination file: %1</source>
-        <translation>Kunde inte öppna målfilen: %1</translation>
-    </message>
-</context>
-<context>
-    <name>QAndroidImageEncoderControl</name>
-    <message>
-        <source>JPEG image</source>
-        <translation>JPEG-bild</translation>
-    </message>
-</context>
-<context>
-    <name>QAndroidMediaContainerControl</name>
-    <message>
-        <source>MPEG4 media file format</source>
-        <translation>MPEG4-mediafilformat</translation>
+        <source>File is not available: %1</source>
+        <translation>Filen är inte tillgänglig: %1</translation>
     </message>
     <message>
-        <source>3GPP media file format</source>
-        <translation>3GPP-mediafilformat</translation>
-    </message>
-    <message>
-        <source>AMR NB file format</source>
-        <translation>AMR NB-filformat</translation>
-    </message>
-    <message>
-        <source>AMR WB file format</source>
-        <translation>AMR WB-filformat</translation>
-    </message>
-</context>
-<context>
-    <name>QAndroidVideoEncoderSettingsControl</name>
-    <message>
-        <source>H.263 compression</source>
-        <translation>H.263-komprimering</translation>
-    </message>
-    <message>
-        <source>H.264 compression</source>
-        <translation>H.264-komprimering</translation>
-    </message>
-    <message>
-        <source>MPEG-4 SP compression</source>
-        <translation>MPEG-4 SP-komprimering</translation>
+        <source>Could not save to file: %1</source>
+        <translation>Kunde inte spara till filen: %1</translation>
     </message>
 </context>
 <context>
     <name>QAudioDecoder</name>
     <message>
-        <source>The QAudioDecoder object does not have a valid service</source>
-        <translation>QAudioDecoder-objektet har inte en giltig tjänst</translation>
+        <source>QAudioDecoder not supported.</source>
+        <translation>QAudioDecoder stöds inte.</translation>
     </message>
 </context>
 <context>
-    <name>QCamera</name>
+    <name>QFFmpegImageCapture</name>
     <message>
-        <source>The camera service is missing</source>
-        <translation>Kameratjänsten saknas</translation>
+        <source>No camera available.</source>
+        <translation>Ingen kamera tillgänglig.</translation>
     </message>
 </context>
 <context>
-    <name>QCameraImageCapture</name>
-    <message>
-        <source>Device does not support images capture.</source>
-        <translation>Enheten har inte stöd för bildinsamling.</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeAudio</name>
-    <message>
-        <source>volume should be between 0.0 and 1.0</source>
-        <translation>volymen ska vara mellan 0.0 och 1.0</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerAudioDecoderSession</name>
+    <name>QGstreamerAudioDecoder</name>
     <message>
         <source>Cannot play stream of type: &lt;unknown&gt;</source>
         <translation>Kan inte spela upp ström av typen: &lt;unknown&gt;</translation>
     </message>
 </context>
 <context>
-    <name>QGstreamerAudioInputSelector</name>
+    <name>QGstreamerImageCapture</name>
     <message>
-        <source>System default device</source>
-        <translation>Systemets standardenhet</translation>
+        <source>No camera available.</source>
+        <translation>Ingen kamera tillgänglig.</translation>
     </message>
 </context>
 <context>
-    <name>QGstreamerCameraControl</name>
+    <name>QImageCapture</name>
     <message>
-        <source>State not supported.</source>
-        <translation>Tillståndet stöds inte.</translation>
+        <source>Could not capture in stopped state</source>
+        <translation>Kunde inte fånga i stoppat tillstånd</translation>
+    </message>
+    <message>
+        <source>Camera is not ready.</source>
+        <translation>Kameran är inte redo.</translation>
+    </message>
+    <message>
+        <source>No instance of QImageCapture set on QMediaCaptureSession.</source>
+        <translation>Ingen instans av QImageCapture inställd på QMediaCaptureSession.</translation>
     </message>
 </context>
 <context>
-    <name>QGstreamerCaptureSession</name>
+    <name>QMediaMetaData</name>
     <message>
-        <source>Could not create an audio source element</source>
-        <translation>Kunde inte skapa ett ljudkällelement</translation>
+        <source>Title</source>
+        <translation>Titel</translation>
     </message>
     <message>
-        <source>Failed to build media capture pipeline.</source>
-        <translation>Misslyckades med att bygga pipeline för mediainsamling.</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerImageCaptureControl</name>
-    <message>
-        <source>Not ready to capture</source>
-        <translation>Inte redo att användas</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerImageEncode</name>
-    <message>
-        <source>JPEG image encoder</source>
-        <translation>JPEG-bildkodare</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerPlayerControl</name>
-    <message>
-        <source>Attempting to play invalid user stream</source>
-        <translation>Försöker att spela upp ogiltig användarström</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerPlayerSession</name>
-    <message>
-        <source>Cannot play stream of type: &lt;unknown&gt;</source>
-        <translation>Kan inte spela upp ström av typen: &lt;unknown&gt;</translation>
+        <source>Author</source>
+        <translation>Upphovsperson</translation>
     </message>
     <message>
-        <source>UDP source timeout</source>
-        <translation>Tidsgräns överstegs för UDP-källa</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerRecorderControl</name>
-    <message>
-        <source>Service has not been started</source>
-        <translation>Tjänsten har inte startats</translation>
+        <source>Comment</source>
+        <translation>Kommentar</translation>
     </message>
     <message>
-        <source>Not compatible codecs and container format.</source>
-        <translation>Inga kompatibla kodekar och containerformat.</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerVideoInputDeviceControl</name>
-    <message>
-        <source>Main camera</source>
-        <translation>Huvudkamera</translation>
+        <source>Description</source>
+        <translation>Beskrivning</translation>
     </message>
     <message>
-        <source>Front camera</source>
-        <translation>Främre kamera</translation>
+        <source>Genre</source>
+        <translation>Genre</translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation>Datum</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Språk</translation>
+    </message>
+    <message>
+        <source>Publisher</source>
+        <translation>Utgivare</translation>
+    </message>
+    <message>
+        <source>Copyright</source>
+        <translation>Upphovsrätt</translation>
+    </message>
+    <message>
+        <source>Url</source>
+        <translation>Url</translation>
+    </message>
+    <message>
+        <source>Duration</source>
+        <translation>Speltid</translation>
+    </message>
+    <message>
+        <source>Media type</source>
+        <translation>Mediatyp</translation>
+    </message>
+    <message>
+        <source>Container Format</source>
+        <translation>Containerformat</translation>
+    </message>
+    <message>
+        <source>Audio bit rate</source>
+        <translation>Ljudbitfrekvens</translation>
+    </message>
+    <message>
+        <source>Audio codec</source>
+        <translation>Ljudkodek</translation>
+    </message>
+    <message>
+        <source>Video bit rate</source>
+        <translation>Videobitfrekvens</translation>
+    </message>
+    <message>
+        <source>Video codec</source>
+        <translation>Videokodek</translation>
+    </message>
+    <message>
+        <source>Video frame rate</source>
+        <translation>Videobildfrekvens</translation>
+    </message>
+    <message>
+        <source>Album title</source>
+        <translation>Albumtitel</translation>
+    </message>
+    <message>
+        <source>Album artist</source>
+        <translation>Albumartist</translation>
+    </message>
+    <message>
+        <source>Contributing artist</source>
+        <translation>Bidragande artist</translation>
+    </message>
+    <message>
+        <source>Track number</source>
+        <translation>Spårnummer</translation>
+    </message>
+    <message>
+        <source>Composer</source>
+        <translation>Kompositör</translation>
+    </message>
+    <message>
+        <source>Thumbnail image</source>
+        <translation>Miniatyrbild</translation>
+    </message>
+    <message>
+        <source>Cover art image</source>
+        <translation>Omslagsbild</translation>
+    </message>
+    <message>
+        <source>Orientation</source>
+        <translation>Orientering</translation>
+    </message>
+    <message>
+        <source>Resolution</source>
+        <translation>Upplösning</translation>
+    </message>
+    <message>
+        <source>Lead performer</source>
+        <translation>Huvudartist</translation>
+    </message>
+    <message>
+        <source>Has HDR content</source>
+        <translation>Har HDR-innehåll</translation>
     </message>
 </context>
 <context>
@@ -398,103 +462,66 @@
         <translation>Försöker att spela upp ogiltig Qt-resurs</translation>
     </message>
     <message>
-        <source>The QMediaPlayer object does not have a valid service</source>
-        <translation>QMediaPlayer-objektet har inte en giltig tjänst</translation>
+        <source>Could not open file</source>
+        <translation>Kunde inte öppna filen</translation>
+    </message>
+    <message>
+        <source>Could not find stream information for media file</source>
+        <translation>Kunde inte hitta ströminformation för mediafilen</translation>
     </message>
 </context>
 <context>
-    <name>QMediaPlaylist</name>
+    <name>QMediaRecorder</name>
     <message>
-        <source>Could not add items to read only playlist.</source>
-        <translation>Kunde inte lägga till poster till skrivskyddad spellista.</translation>
+        <source>Pause not supported</source>
+        <translation>Paus stöds inte</translation>
     </message>
     <message>
-        <source>Playlist format is not supported</source>
-        <translation>Spellisteformatet stöds inte</translation>
+        <source>Resume not supported</source>
+        <translation>Återupptagning stöds inte</translation>
     </message>
     <message>
-        <source>The file could not be accessed.</source>
-        <translation>Filen kunde inte kommas åt.</translation>
+        <source>Failed to start recording</source>
+        <translation>Misslyckades med att starta inspelning</translation>
     </message>
     <message>
-        <source>Playlist format is not supported.</source>
-        <translation>Spellisteformatet stöds inte.</translation>
-    </message>
-</context>
-<context>
-    <name>QMultimediaDeclarativeModule</name>
-    <message>
-        <source>CameraCapture is provided by Camera</source>
-        <translation>CameraCapture tillhandahålls av Camera</translation>
+        <source>No video or audio input</source>
+        <translation>Ingen inmatning för video eller ljud</translation>
     </message>
     <message>
-        <source>CameraRecorder is provided by Camera</source>
-        <translation>CameraRecorder tillhandahålls av Camera</translation>
+        <source>Cannot open the output location for writing</source>
+        <translation>Kan inte öppna utmatningsplats för skrivning</translation>
     </message>
     <message>
-        <source>CameraExposure is provided by Camera</source>
-        <translation>CameraExposure tillhandahålls av Camera</translation>
-    </message>
-    <message>
-        <source>CameraFocus is provided by Camera</source>
-        <translation>CameraFocus tillhandahålls av Camera</translation>
-    </message>
-    <message>
-        <source>CameraFlash is provided by Camera</source>
-        <translation>CameraFlash tillhandahålls av Camera</translation>
-    </message>
-    <message>
-        <source>CameraImageProcessing is provided by Camera</source>
-        <translation>CameraImageProcessing tillhandahålls av Camera</translation>
-    </message>
-    <message>
-        <source>CameraViewfinder is provided by Camera</source>
-        <translation>CameraViewfinder tillhandahålls av Camera</translation>
+        <source>No camera or audio input</source>
+        <translation>Ingen inmatning för kamera eller ljud</translation>
     </message>
 </context>
 <context>
-    <name>QPlaylistFileParser</name>
+    <name>QWindowsMediaEncoder</name>
     <message>
-        <source>%1 playlist type is unknown</source>
-        <translation>%1 spellistetypen är okänd</translation>
+        <source>Failed to pause recording</source>
+        <translation>Misslyckades med att pausa inspelning</translation>
     </message>
     <message>
-        <source>invalid line in playlist file</source>
-        <translation>ogiltig rad i spellistefilen</translation>
+        <source>Failed to resume recording</source>
+        <translation>Misslyckades med att återuppta inspelning</translation>
     </message>
     <message>
-        <source>Invalid stream</source>
-        <translation>Ogiltig ström</translation>
+        <source>Camera is no longer present</source>
+        <translation>Kameran är inte längre där</translation>
     </message>
     <message>
-        <source>%1 does not exist</source>
-        <translation>%1 finns inte</translation>
+        <source>Audio input is no longer present</source>
+        <translation>Ljudinmatning är inte längre där</translation>
     </message>
     <message>
-        <source>Empty file provided</source>
-        <translation>Tom fil tillhandahölls</translation>
-    </message>
-</context>
-<context>
-    <name>QWinRTCameraImageCaptureControl</name>
-    <message>
-        <source>Camera not ready</source>
-        <translation>Kameran är inte redo</translation>
+        <source>Streaming error</source>
+        <translation>Strömningsfel</translation>
     </message>
     <message>
-        <source>Invalid photo data length.</source>
-        <translation>Ogiltig fotodatalängd.</translation>
-    </message>
-    <message>
-        <source>Image saving failed</source>
-        <translation>Bildsparning misslyckades</translation>
-    </message>
-</context>
-<context>
-    <name>QWinRTImageEncoderControl</name>
-    <message>
-        <source>JPEG image</source>
-        <translation>JPEG-bild</translation>
+        <source>Recording error</source>
+        <translation>Inspelningsfel</translation>
     </message>
 </context>
 </TS>

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-/* eslint-disable rulesdir/es_modules_import */
+/* eslint-disable rulesdir/es-modules-import */
 
 import {
   dispatchClickEvent,
@@ -398,12 +398,23 @@ describeWithLocale('LinearMemoryInspector', () => {
   it('returns undefined on parsing invalid address', () => {
     const address = '20a';
     const parsedAddress = LinearMemoryInspectorComponents.LinearMemoryInspectorUtils.parseAddress(address);
-    assert.strictEqual(parsedAddress, undefined);
+    assert.isUndefined(parsedAddress);
   });
 
   it('returns undefined on parsing negative address', () => {
     const address = '-20';
     const parsedAddress = LinearMemoryInspectorComponents.LinearMemoryInspectorUtils.parseAddress(address);
-    assert.strictEqual(parsedAddress, undefined);
+    assert.isUndefined(parsedAddress);
+  });
+
+  it('can hide the value inspector', async () => {
+    const {component, data} = await setUpComponent();
+    component.data = {
+      ...data,
+      hideValueInspector: true,
+    };
+
+    assert.isNotNull(component.shadowRoot);
+    assert.isNull(component.shadowRoot.querySelector(INTERPRETER_SELECTOR));
   });
 });

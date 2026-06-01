@@ -234,9 +234,8 @@ function(_qt_internal_sbom_handle_qt_entity_cpe target)
 
     set(cpe_list "")
 
-    # Add the qt-specific CPE if the target is a Qt entity type, or if it's a 3rd party entity type
-    # without any CPE specified.
-    if(is_qt_entity_type OR (is_qt_3rd_party_entity_type AND NOT arg_CPE))
+    # Add the qt-specific CPE if the target is a Qt entity type
+    if(is_qt_entity_type)
         _qt_internal_sbom_compute_security_cpe_for_qt(cpe_list)
     endif()
 
@@ -393,9 +392,11 @@ endfunction()
 function(_qt_internal_sbom_handle_qt_entity_purl_entries)
     _qt_internal_get_sbom_purl_handling_options(opt_args single_args multi_args)
     list(APPEND single_args
-        OUT_VAR # This is unused, but added by the calling function.
+        OUT_VAR_SPDX_EXT_REF_VALUES # This is unused, but added by the calling function.
+        OUT_VAR_PURL_VALUES # This is unused, but added by the calling function.
         OUT_VAR_IDS
     )
+
     cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
     _qt_internal_validate_all_args_are_parsed(arg)
 
@@ -418,7 +419,8 @@ endfunction()
 function(_qt_internal_sbom_handle_qt_entity_purl target)
     _qt_internal_get_sbom_purl_handling_options(opt_args single_args multi_args)
     list(APPEND single_args
-        OUT_VAR # This is unused, but added by the calling function.
+        OUT_VAR_SPDX_EXT_REF_VALUES # This is unused, but added by the calling function.
+        OUT_VAR_PURL_VALUES # This is unused, but added by the calling function.
         OUT_PURL_ARGS
         PURL_ID
     )

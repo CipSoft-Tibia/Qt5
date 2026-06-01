@@ -432,6 +432,12 @@ QList<QAbstract3DAxis *> Q3DBarsWidgetItem::axes() const
 }
 
 /*!
+ * \fn Q3DBarsWidgetItem::sliceImageChanged(const QImage &image)
+ * \since 6.10
+ * Emitted when \l renderSliceToImage has prepared the \a{image}.
+ */
+
+/*!
  * \internal
  */
 QQuickGraphsBars *Q3DBarsWidgetItem::graphBars()
@@ -447,6 +453,43 @@ const QQuickGraphsBars *Q3DBarsWidgetItem::graphBars() const
 {
     Q_D(const Q3DBarsWidgetItem);
     return static_cast<const QQuickGraphsBars *>(d->m_graphsItem.get());
+}
+
+/*!
+ * Exports the requested slice view to an image.
+ * The exported slice is bars of row or column, which is defined by \a sliceType,
+ * at a given \a requestedIndex.
+ *
+ * The \l sliceImageChanged signal is emitted when the image is ready, and can
+ * be captured as follows:
+ *
+ * \code
+ * connect(item, &Q3DBarsWidgetItem::sliceImageChanged, this, [](const QImage &image) {
+ *     // ~~~
+ * });
+ *
+ * item->renderSliceToImage(sliceType, index);
+ * \endcode
+ *
+ * The image is rendered with the current antialiasing settings.
+ *
+ * \sa QQuickItem::grabToImage(), sliceImageChanged()
+ *
+ * \since 6.10
+ */
+void Q3DBarsWidgetItem::renderSliceToImage(int requestedIndex,
+                                           QtGraphs3D::SliceCaptureType sliceType)
+{
+    auto graph = graphBars();
+    disconnect(graph,
+               &QQuickGraphsBars::sliceImageChanged,
+               this,
+               &Q3DBarsWidgetItem::sliceImageChanged);
+    connect(graph,
+            &QQuickGraphsBars::sliceImageChanged,
+            this,
+            &Q3DBarsWidgetItem::sliceImageChanged);
+    graphBars()->renderSliceToImage(requestedIndex, sliceType);
 }
 
 QT_END_NAMESPACE

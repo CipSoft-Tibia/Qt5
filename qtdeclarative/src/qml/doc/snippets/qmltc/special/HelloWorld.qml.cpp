@@ -19,7 +19,7 @@ class HelloWorld : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(QString hello WRITE setHello READ hello BINDABLE bindableHello)
+    Q_PROPERTY(QString hello READ hello WRITE setHello BINDABLE bindableHello)
 
 public:
     HelloWorld(QQmlEngine* engine, QObject* parent = nullptr, [[maybe_unused]] qxp::function_ref<void(PropertyInitializer&)> initializer = [](PropertyInitializer&){});
@@ -28,8 +28,8 @@ Q_SIGNALS:
     void created();
 
 public:
-    void setHello(const QString& hello_);
     QString hello();
+    void setHello(const QString& hello_);
     QBindable<QString> bindableHello();
     Q_INVOKABLE void printHello(passByConstRefOrValue<QString> prefix, passByConstRefOrValue<QString> suffix);
 

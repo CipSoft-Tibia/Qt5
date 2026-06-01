@@ -109,9 +109,7 @@ IN_PROC_BROWSER_TEST_P(BrowserTestWithParam, AnswerVectorIcons) {
   for (int answer_type = omnibox::ANSWER_TYPE_DICTIONARY;
        answer_type != omnibox::AnswerType_ARRAYSIZE; answer_type++) {
     AutocompleteMatch match;
-    SuggestionAnswer answer;
     match.answer_type = static_cast<omnibox::AnswerType>(answer_type);
-    match.answer = answer;
     const bool is_bookmark = BrowserTestWithParam::GetParam();
     const gfx::VectorIcon& vector_icon = match.GetVectorIcon(is_bookmark);
     const std::string& svg_name =
@@ -198,7 +196,6 @@ class RealboxSearchPreloadBrowserTest : public SearchPrefetchBaseBrowserTest {
     RealboxHandler realbox_handler = RealboxHandler(
         remote_page_handler.BindNewPipeAndPassReceiver(), browser()->profile(),
         GetWebContents(), /*metrics_reporter=*/nullptr,
-        /*lens_searchbox_client=*/nullptr,
         /*omnibox_controller=*/nullptr);
     realbox_handler.SetPage(page.GetRemotePage());
     content::test::PrerenderHostRegistryObserver registry_observer(

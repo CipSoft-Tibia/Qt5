@@ -36,7 +36,8 @@ class QTreeView;
 class BatchTranslationDialog;
 class ErrorsView;
 class FocusWatcher;
-class FormPreviewView;
+class UiFormPreviewView;
+class QmlFormPreviewView;
 class MessageEditor;
 class PhraseView;
 class SourceCodeView;
@@ -56,9 +57,6 @@ public:
 
     bool openFiles(const QStringList &names, bool readWrite = true);
     static QString friendlyString(const QString &str);
-
-public slots:
-    void updateViewMenu();
 
 protected:
     void readConfig();
@@ -131,7 +129,8 @@ private slots:
     void findNext(const QString &text, DataModel::FindLocation where,
                   FindDialog::FindOptions options, int statusFilter);
     void revalidate();
-    void toggleStatistics();
+    void showStatistics();
+    void toggleQmlPreview();
     void toggleVisualizeWhitespace();
     void onWhatsThis();
     void updatePhraseDicts();
@@ -145,6 +144,7 @@ private slots:
 private:
     QModelIndex nextContext(const QModelIndex &index) const;
     QModelIndex prevContext(const QModelIndex &index) const;
+    QModelIndex firstMessage() const;
     QModelIndex nextMessage(const QModelIndex &currentIndex, bool checkUnfinished = false) const;
     QModelIndex prevMessage(const QModelIndex &currentIndex, bool checkUnfinished = false) const;
     bool doNext(bool checkUnfinished);
@@ -181,7 +181,7 @@ private:
 
     // FIXME: move to DataModel
     void updateDanger(const MultiDataIndex &index, bool verbose);
-
+    void updateIcons();
     bool searchItem(DataModel::FindLocation where, const QString &searchWhat);
 
     QProcess *m_assistantProcess;
@@ -195,7 +195,8 @@ private:
     PhraseView *m_phraseView;
     QStackedWidget *m_sourceAndFormView;
     SourceCodeView *m_sourceCodeView;
-    FormPreviewView *m_formPreviewView;
+    UiFormPreviewView *m_uiFormPreviewView;
+    QmlFormPreviewView *m_qmlFormPreviewView;
     ErrorsView *m_errorsView;
     QLabel *m_progressLabel;
     QLabel *m_modifiedLabel;
@@ -218,7 +219,7 @@ private:
     TranslateDialog *m_translateDialog;
     QString m_latestFindText;
     int m_latestCaseSensitivity;
-    int m_remainingCount;
+    QModelIndex m_searchIndex;
     int m_hitCount;
 
     BatchTranslationDialog *m_batchTranslateDialog;

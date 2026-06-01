@@ -68,8 +68,12 @@ cc_binary(
         "@skia//:core",
         "@skia//:png_encode_codec",
     ] + select({
-        "@platforms//os:linux": ["@skia//:fontmgr_fontconfig_freetype"],
+        "@platforms//os:linux": [
+            "@skia//:fontmgr_fontconfig_freetype",
+            "@skia//:freetype_support",
+        ],
         "@platforms//os:macos": ["@skia//:fontmgr_coretext"],
+        "//conditions:default": ["@skia//:fontmgr_empty_freetype"],
     }),
 )
 
@@ -307,4 +311,17 @@ cc_binary(
         "@platforms//os:macos": ["@skia//:fontmgr_coretext"],
         "//conditions:default": [],
     }),
+)
+
+cc_binary(
+    name = "play_skottie",
+    srcs = ["src/play_skottie.cpp"],
+    linkopts = [
+        "-lpthread",
+    ],
+    deps = [
+        "@skia//:core",
+        "@skia//:png_encode_codec",
+        "@skia//:skottie",
+    ],
 )

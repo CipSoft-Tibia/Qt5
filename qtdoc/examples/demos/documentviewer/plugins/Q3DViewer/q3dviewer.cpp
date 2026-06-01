@@ -18,7 +18,7 @@
 #include <QQuickItem>
 #include <QQuick3D>
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 #include <QPrinter>
 #include <QPainter>
 #endif
@@ -33,6 +33,7 @@ Q3DViewer::Q3DViewer()
 void Q3DViewer::init(QFile *file, QWidget *parent, QMainWindow *mainWindow)
 {
     QSurfaceFormat::setDefaultFormat(QQuick3D::idealSurfaceFormat());
+    setTranslationBaseName("q3dviewer"_L1);
     m_quickView = new QQuickView;
     m_quickView->loadFromModule(u"Q3DViewer", "Viewer");
     Q_ASSERT(m_quickView->status() != QQuickView::Status::Error);
@@ -101,12 +102,12 @@ bool Q3DViewer::hasContent() const
     return false;
 }
 
-#ifdef QT_DOCUMENTVIEWER_PRINTSUPPORT
+#ifdef DOCUMENTVIEWER_PRINTSUPPORT
 void Q3DViewer::printDocument(QPrinter *printer) const
 {
     Q_UNUSED(printer);
 }
-#endif // QT_DOCUMENTVIEWER_PRINTSUPPORT
+#endif // DOCUMENTVIEWER_PRINTSUPPORT
 
 QByteArray Q3DViewer::saveState() const
 {

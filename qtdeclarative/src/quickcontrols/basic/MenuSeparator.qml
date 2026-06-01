@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -18,7 +19,7 @@ T.MenuSeparator {
 
     contentItem: Rectangle {
         implicitWidth: 188
-        implicitHeight: 1
+        implicitHeight: Qt.styleHints.accessibility.contrastPreference === Qt.HighContrast ? 2 : 1
         color: control.palette.mid
     }
 }

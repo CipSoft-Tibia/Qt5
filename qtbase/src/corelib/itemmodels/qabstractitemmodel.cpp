@@ -2087,6 +2087,9 @@ bool QAbstractItemModel::clearItemData(const QModelIndex &index)
 */
 bool QAbstractItemModel::setItemData(const QModelIndex &index, const QMap<int, QVariant> &roles)
 {
+    if (!index.isValid() || roles.isEmpty())
+        return false;
+
     // ### TODO: Consider change the semantics of this function,
     // or deprecating/removing it altogether.
     //

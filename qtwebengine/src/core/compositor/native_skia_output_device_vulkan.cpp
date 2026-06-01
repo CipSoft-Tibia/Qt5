@@ -22,7 +22,7 @@
 #include "gpu/vulkan/vulkan_function_pointers.h"
 #include "components/viz/common/gpu/vulkan_context_provider.h"
 #include "gpu/vulkan/vulkan_device_queue.h"
-#include "third_party/skia/include/gpu/vk/GrVkTypes.h"
+#include "third_party/skia/include/gpu/ganesh/vk/GrVkTypes.h"
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #endif // BUILDFLAG(IS_OZONE)
 
@@ -61,7 +61,7 @@ QSGTexture *NativeSkiaOutputDeviceVulkan::texture(QQuickWindow *win, uint32_t te
     scoped_refptr<gfx::NativePixmap> nativePixmap = m_frontBuffer->nativePixmap();
     if (!nativePixmap) {
         if (m_isNativeBufferSupported) {
-            qWarning("VULKAN: No NativePixmap.");
+            qWarning("VULKAN: Failed to get native pixmap despite dma_buf support.");
             return nullptr;
         }
 
@@ -187,8 +187,8 @@ QSGTexture *NativeSkiaOutputDeviceVulkan::texture(QQuickWindow *win, uint32_t te
     qCDebug(lcWebEngineCompositor, "VULKAN: Importing DXGI Resource into VkImage.");
     externalMemoryImageCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
 
-    Q_ASSERT(overlayImage->type() == gl::DCLayerOverlayType::kNV12Texture);
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> chromeTexture = overlayImage->nv12_texture();
+    Q_ASSERT(overlayImage->type() == gl::DCLayerOverlayType::kD3D11Texture);
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> chromeTexture = overlayImage->d3d11_video_texture();
     if (!chromeTexture) {
         qWarning("VULKAN: No D3D texture.");
         return nullptr;

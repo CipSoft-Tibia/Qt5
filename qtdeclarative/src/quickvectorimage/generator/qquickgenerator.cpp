@@ -1,6 +1,8 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include <QVarLengthArray>
+
 #include "qquickgenerator_p.h"
 #include "qsvgvisitorimpl_p.h"
 #include "qquicknodeinfo_p.h"
@@ -39,7 +41,7 @@ QQuickVectorImageGenerator::GeneratorFlags QQuickGenerator::generatorFlags()
 
 bool QQuickGenerator::generate()
 {
-    QSvgVisitorImpl loader(m_fileName, this);
+    QSvgVisitorImpl loader(m_fileName, this, m_flags.testFlag(QQuickVectorImageGenerator::AssumeTrustedSource));
     return loader.traverse();
 }
 

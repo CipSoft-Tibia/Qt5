@@ -18,6 +18,7 @@ qt_internal_add_test(tst_qquickmessagedialogimpl
         tst_qquickmessagedialogimpl.cpp
     DEFINES
         QQC2_IMPORT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../../../src/quickcontrols"
+        QTEST_THROW_ON_FAIL
     LIBRARIES
         Qt::CorePrivate
         Qt::Gui

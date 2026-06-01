@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickframe_p.h"
 #include "qquickframe_p_p.h"
@@ -29,6 +30,7 @@ QT_BEGIN_NAMESPACE
     for use together with layouts.
 
     \image qtquickcontrols-frame.png
+           {Frame with visible border containing grouped controls}
 
     \snippet qtquickcontrols-frame.qml 1
 

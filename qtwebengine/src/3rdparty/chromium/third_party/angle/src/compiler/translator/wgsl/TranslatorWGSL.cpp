@@ -11,23 +11,26 @@
 
 #include "GLSLANG/ShaderLang.h"
 #include "common/log_utils.h"
+#include "common/span.h"
 #include "compiler/translator/BaseTypes.h"
 #include "compiler/translator/Common.h"
 #include "compiler/translator/Diagnostics.h"
 #include "compiler/translator/ImmutableString.h"
+#include "compiler/translator/ImmutableStringBuilder.h"
 #include "compiler/translator/InfoSink.h"
 #include "compiler/translator/IntermNode.h"
 #include "compiler/translator/OutputTree.h"
 #include "compiler/translator/StaticType.h"
 #include "compiler/translator/SymbolUniqueId.h"
 #include "compiler/translator/Types.h"
-#include "compiler/translator/tree_util/BuiltIn_complete_autogen.h"
+#include "compiler/translator/tree_util/BuiltIn_autogen.h"
 #include "compiler/translator/tree_util/FindMain.h"
 #include "compiler/translator/tree_util/IntermNode_util.h"
 #include "compiler/translator/tree_util/IntermTraverse.h"
 #include "compiler/translator/tree_util/RunAtTheEndOfShader.h"
+#include "compiler/translator/wgsl/OutputUniformBlocks.h"
 #include "compiler/translator/wgsl/RewritePipelineVariables.h"
-#include "compiler/translator/wgsl/WriteTypeName.h"
+#include "compiler/translator/wgsl/Utils.h"
 
 namespace sh
 {
@@ -43,6 +46,12 @@ struct VarDecl
     const ImmutableString &symbolName;
     const TType &type;
 };
+
+bool IsDefaultUniform(const TType &type)
+{
+    return type.getQualifier() == EvqUniform && type.getInterfaceBlock() == nullptr &&
+           !IsOpaqueType(type.getBasicType());
+}
 
 // When emitting a list of statements, this determines whether a semicolon follows the statement.
 bool RequiresSemicolonTerminator(TIntermNode &node)
@@ -100,7 +109,10 @@ bool NewlinePad(TIntermNode &node)
 class OutputWGSLTraverser : public TIntermTraverser
 {
   public:
-    OutputWGSLTraverser(TCompiler *compiler, RewritePipelineVarOutput *rewritePipelineVarOutput);
+    OutputWGSLTraverser(TInfoSinkBase *sink,
+                        RewritePipelineVarOutput *rewritePipelineVarOutput,
+                        UniformBlockMetadata *uniformBlockMetadata,
+                        WGSLGenerationMetadataForUniforms *arrayElementTypesInUniforms);
     ~OutputWGSLTraverser() override;
 
   protected:
@@ -127,6 +139,7 @@ class OutputWGSLTraverser : public TIntermTraverser
   private:
     struct EmitVariableDeclarationConfig
     {
+        EmitTypeConfig typeConfig;
         bool isParameter            = false;
         bool disableStructSpecifier = false;
         bool needsVar               = false;
@@ -146,7 +159,7 @@ class OutputWGSLTraverser : public TIntermTraverser
     void emitIndentation();
     void emitOpenBrace();
     void emitCloseBrace();
-    bool emitBlock(TSpan<TIntermNode *> nodes);
+    bool emitBlock(angle::Span<TIntermNode *> nodes);
     void emitFunctionSignature(const TFunction &func);
     void emitFunctionReturn(const TFunction &func);
     void emitFunctionParameter(const TFunction &func, const TVariable &param);
@@ -154,23 +167,32 @@ class OutputWGSLTraverser : public TIntermTraverser
     void emitVariableDeclaration(const VarDecl &decl,
                                  const EmitVariableDeclarationConfig &evdConfig);
     void emitArrayIndex(TIntermTyped &leftNode, TIntermTyped &rightNode);
+    void emitStructIndex(TIntermBinary *binaryNode);
+    void emitStructIndexNoUnwrapping(TIntermBinary *binaryNode);
 
     bool emitForLoop(TIntermLoop *);
     bool emitWhileLoop(TIntermLoop *);
     bool emulateDoWhileLoop(TIntermLoop *);
 
     TInfoSinkBase &mSink;
-    RewritePipelineVarOutput *mRewritePipelineVarOutput;
+    const RewritePipelineVarOutput *mRewritePipelineVarOutput;
+    const UniformBlockMetadata *mUniformBlockMetadata;
+    WGSLGenerationMetadataForUniforms *mWGSLGenerationMetadataForUniforms;
 
     int mIndentLevel        = -1;
     int mLastIndentationPos = -1;
 };
 
-OutputWGSLTraverser::OutputWGSLTraverser(TCompiler *compiler,
-                                         RewritePipelineVarOutput *rewritePipelineVarOutput)
+OutputWGSLTraverser::OutputWGSLTraverser(
+    TInfoSinkBase *sink,
+    RewritePipelineVarOutput *rewritePipelineVarOutput,
+    UniformBlockMetadata *uniformBlockMetadata,
+    WGSLGenerationMetadataForUniforms *wgslGenerationMetadataForUniforms)
     : TIntermTraverser(true, false, false),
-      mSink(compiler->getInfoSink().obj),
-      mRewritePipelineVarOutput(rewritePipelineVarOutput)
+      mSink(*sink),
+      mRewritePipelineVarOutput(rewritePipelineVarOutput),
+      mUniformBlockMetadata(uniformBlockMetadata),
+      mWGSLGenerationMetadataForUniforms(wgslGenerationMetadataForUniforms)
 {}
 
 OutputWGSLTraverser::~OutputWGSLTraverser() = default;
@@ -255,6 +277,11 @@ void OutputWGSLTraverser::visitSymbol(TIntermSymbol *symbolNode)
         else if (mRewritePipelineVarOutput->IsOutputVar(var.uniqueId()))
         {
             mSink << kBuiltinOutputStructName << "." << var.name();
+        }
+        // Accesses of basic uniforms need to be converted to struct accesses.
+        else if (IsDefaultUniform(type))
+        {
+            mSink << kDefaultUniformBlockVarName << "." << var.name();
         }
         else
         {
@@ -398,8 +425,7 @@ void OutputWGSLTraverser::visitConstantUnion(TIntermConstantUnion *constValueNod
 bool OutputWGSLTraverser::visitSwizzle(Visit, TIntermSwizzle *swizzleNode)
 {
     groupedTraverse(*swizzleNode->getOperand());
-    mSink << ".";
-    swizzleNode->writeOffsetsAsXYZW(&mSink);
+    mSink << "." << swizzleNode->getOffsetsAsXYZW();
 
     return false;
 }
@@ -862,9 +888,6 @@ const char *GetOperatorString(TOperator op,
         case TOperator::EOpImulExtended:
         case TOperator::EOpEmitVertex:
         case TOperator::EOpEndPrimitive:
-        case TOperator::EOpFtransform:
-        case TOperator::EOpPackDouble2x32:
-        case TOperator::EOpUnpackDouble2x32:
         case TOperator::EOpArrayLength:
             UNIMPLEMENTED();
             return "TOperator_TODO";
@@ -925,59 +948,161 @@ const TField &OutputWGSLTraverser::getDirectField(const TIntermTyped &fieldsNode
 
 void OutputWGSLTraverser::emitArrayIndex(TIntermTyped &leftNode, TIntermTyped &rightNode)
 {
+    TType leftType = leftNode.getType();
 
+    // Some arrays within the uniform address space have their element types wrapped in a struct
+    // when generating WGSL, so this unwraps the element (as an optimization of converting the
+    // entire array back to the unwrapped type).
+    bool needsUnwrapping                  = false;
+    bool isUniformMatrixNeedingConversion = false;
+    TIntermBinary *leftNodeBinary         = leftNode.getAsBinaryNode();
+    if (leftNodeBinary && leftNodeBinary->getOp() == TOperator::EOpIndexDirectStruct)
     {
-        TType leftType = leftNode.getType();
-        groupedTraverse(leftNode);
-        mSink << "[";
-        const TConstantUnion *constIndex = rightNode.getConstantValue();
-        // If the array index is a constant that we can statically verify is within array
-        // bounds, just emit that constant.
-        if (!leftType.isUnsizedArray() && constIndex != nullptr &&
-            constIndex->getType() == EbtInt && constIndex->getIConst() >= 0 &&
-            constIndex->getIConst() < static_cast<int>(leftType.isArray()
-                                                           ? leftType.getOutermostArraySize()
-                                                           : leftType.getNominalSize()))
+        const TStructure *structure = leftNodeBinary->getLeft()->getType().getStruct();
+
+        bool isInUniformAddressSpace =
+            mUniformBlockMetadata->structsInUniformAddressSpace.count(structure->uniqueId().get());
+
+        needsUnwrapping =
+            structure && ElementTypeNeedsUniformWrapperStruct(isInUniformAddressSpace, &leftType);
+
+        isUniformMatrixNeedingConversion = isInUniformAddressSpace && IsMatCx2(&leftType);
+
+        ASSERT(!needsUnwrapping || !isUniformMatrixNeedingConversion);
+    }
+
+    // Emit the left side, which should be of type array.
+    if (needsUnwrapping || isUniformMatrixNeedingConversion)
+    {
+        if (isUniformMatrixNeedingConversion)
         {
-            emitSingleConstant(constIndex);
+            // If this array index expression is yielding an std140 matCx2 (i.e.
+            // array<ANGLE_wrapped_vec2, C>), just convert the entire expression to a WGSL matCx2,
+            // instead of converting the entire array of std140 matCx2s into an array of WGSL
+            // matCx2s and then indexing into it.
+            TType baseType = leftType;
+            baseType.toArrayBaseType();
+            mSink << MakeMatCx2ConversionFunctionName(&baseType) << "(";
+            // Make sure the conversion function referenced here is actually generated in the
+            // resulting WGSL.
+            mWGSLGenerationMetadataForUniforms->outputMatCx2Conversion.insert(baseType);
+        }
+        emitStructIndexNoUnwrapping(leftNodeBinary);
+    }
+    else
+    {
+        groupedTraverse(leftNode);
+    }
+
+    mSink << "[";
+    const TConstantUnion *constIndex = rightNode.getConstantValue();
+    // If the array index is a constant that we can statically verify is within array
+    // bounds, just emit that constant.
+    if (!leftType.isUnsizedArray() && constIndex != nullptr && constIndex->getType() == EbtInt &&
+        constIndex->getIConst() >= 0 &&
+        constIndex->getIConst() < static_cast<int>(leftType.isArray()
+                                                       ? leftType.getOutermostArraySize()
+                                                       : leftType.getNominalSize()))
+    {
+        emitSingleConstant(constIndex);
+    }
+    else
+    {
+        // If the array index is not a constant within the bounds of the array, clamp the
+        // index.
+        mSink << "clamp(";
+        groupedTraverse(rightNode);
+        mSink << ", 0, ";
+        // Now find the array size and clamp it.
+        if (leftType.isUnsizedArray())
+        {
+            // TODO(anglebug.com/42267100): This is a bug to traverse the `leftNode` a
+            // second time if `leftNode` has side effects (and could also have performance
+            // implications). This should be stored in a temporary variable. This might also
+            // be a bug in the MSL shader compiler.
+            mSink << "arrayLength(&";
+            groupedTraverse(leftNode);
+            mSink << ")";
         }
         else
         {
-            // If the array index is not a constant within the bounds of the array, clamp the
-            // index.
-            mSink << "clamp(";
-            groupedTraverse(rightNode);
-            mSink << ", 0, ";
-            // Now find the array size and clamp it.
-            if (leftType.isUnsizedArray())
+            uint32_t maxSize;
+            if (leftType.isArray())
             {
-                // TODO(anglebug.com/42267100): This is a bug to traverse the `leftNode` a
-                // second time if `leftNode` has side effects (and could also have performance
-                // implications). This should be stored in a temporary variable. This might also
-                // be a bug in the MSL shader compiler.
-                mSink << "arrayLength(&";
-                groupedTraverse(leftNode);
-                mSink << ")";
+                maxSize = leftType.getOutermostArraySize() - 1;
             }
             else
             {
-                uint32_t maxSize;
-                if (leftType.isArray())
-                {
-                    maxSize = leftType.getOutermostArraySize() - 1;
-                }
-                else
-                {
-                    maxSize = leftType.getNominalSize() - 1;
-                }
-                mSink << maxSize;
+                maxSize = leftType.getNominalSize() - 1;
             }
-            // End the clamp() function.
-            mSink << ")";
+            mSink << maxSize;
         }
-        // End the array index operation.
-        mSink << "]";
+        // End the clamp() function.
+        mSink << ")";
     }
+    // End the array index operation.
+    mSink << "]";
+
+    if (needsUnwrapping)
+    {
+        mSink << "." << kWrappedStructFieldName;
+    }
+    else if (isUniformMatrixNeedingConversion)
+    {
+        // Close conversion function call
+        mSink << ")";
+    }
+}
+
+void OutputWGSLTraverser::emitStructIndex(TIntermBinary *binaryNode)
+{
+    ASSERT(binaryNode->getOp() == TOperator::EOpIndexDirectStruct);
+    TIntermTyped &leftNode  = *binaryNode->getLeft();
+    const TType *binaryNodeType = &binaryNode->getType();
+
+    const TStructure *structure = leftNode.getType().getStruct();
+    ASSERT(structure);
+
+    bool isInUniformAddressSpace =
+        mUniformBlockMetadata->structsInUniformAddressSpace.count(structure->uniqueId().get());
+
+    bool isUniformMatrixNeedingConversion = isInUniformAddressSpace && IsMatCx2(binaryNodeType);
+
+    bool needsUnwrapping =
+        ElementTypeNeedsUniformWrapperStruct(isInUniformAddressSpace, binaryNodeType);
+    if (needsUnwrapping)
+    {
+        ASSERT(!isUniformMatrixNeedingConversion);
+
+        mSink << MakeUnwrappingArrayConversionFunctionName(&binaryNode->getType()) << "(";
+        // Make sure the conversion function referenced here is actually generated in the resulting
+        // WGSL.
+        mWGSLGenerationMetadataForUniforms->arrayElementTypesThatNeedUnwrappingConversions.insert(
+            *binaryNodeType);
+    }
+    else if (isUniformMatrixNeedingConversion)
+    {
+        mSink << MakeMatCx2ConversionFunctionName(binaryNodeType) << "(";
+        // Make sure the conversion function referenced here is actually generated in the resulting
+        // WGSL.
+        mWGSLGenerationMetadataForUniforms->outputMatCx2Conversion.insert(*binaryNodeType);
+    }
+    emitStructIndexNoUnwrapping(binaryNode);
+    if (needsUnwrapping || isUniformMatrixNeedingConversion)
+    {
+        mSink << ")";
+    }
+}
+
+void OutputWGSLTraverser::emitStructIndexNoUnwrapping(TIntermBinary *binaryNode)
+{
+    ASSERT(binaryNode->getOp() == TOperator::EOpIndexDirectStruct);
+    TIntermTyped &leftNode  = *binaryNode->getLeft();
+    TIntermTyped &rightNode = *binaryNode->getRight();
+
+    groupedTraverse(leftNode);
+    mSink << ".";
+    WriteNameOf(mSink, getDirectField(leftNode, rightNode));
 }
 
 bool OutputWGSLTraverser::visitBinary(Visit, TIntermBinary *binaryNode)
@@ -990,9 +1115,7 @@ bool OutputWGSLTraverser::visitBinary(Visit, TIntermBinary *binaryNode)
     {
         case TOperator::EOpIndexDirectStruct:
         case TOperator::EOpIndexDirectInterfaceBlock:
-            groupedTraverse(leftNode);
-            mSink << ".";
-            WriteNameOf(mSink, getDirectField(leftNode, rightNode));
+            emitStructIndex(binaryNode);
             break;
 
         case TOperator::EOpIndexDirect:
@@ -1086,10 +1209,11 @@ bool OutputWGSLTraverser::visitTernary(Visit, TIntermTernary *conditionalNode)
     // expression, which would also solve the comma operator problem.
     // TODO(anglebug.com/42267100): as mentioned above this is not correct if the operands have side
     // effects. Even if they don't have side effects it could have performance implications.
+    // It also doesn't work with all types that ternaries do, e.g. arrays or structs.
     mSink << "select(";
-    groupedTraverse(*conditionalNode->getTrueExpression());
-    mSink << ", ";
     groupedTraverse(*conditionalNode->getFalseExpression());
+    mSink << ", ";
+    groupedTraverse(*conditionalNode->getTrueExpression());
     mSink << ", ";
     groupedTraverse(*conditionalNode->getCondition());
     mSink << ")";
@@ -1184,8 +1308,8 @@ bool OutputWGSLTraverser::visitSwitch(Visit, TIntermSwitch *switchNode)
                  nextCaseStmt++)
             {
             }
-            TSpan<TIntermNode *> stmtListView(&stmtList.getSequence()->at(currStmt),
-                                              nextCaseStmt - currStmt);
+            angle::Span<TIntermNode *> stmtListView(&stmtList.getSequence()->at(currStmt),
+                                                    nextCaseStmt - currStmt);
             emitBlock(stmtListView);
             mSink << "\n";
 
@@ -1404,7 +1528,7 @@ bool OutputWGSLTraverser::visitAggregate(Visit, TIntermAggregate *aggregateNode)
     }
 }
 
-bool OutputWGSLTraverser::emitBlock(TSpan<TIntermNode *> nodes)
+bool OutputWGSLTraverser::emitBlock(angle::Span<TIntermNode *> nodes)
 {
     ASSERT(mIndentLevel >= -1);
     const bool isGlobalScope = mIndentLevel == -1;
@@ -1458,7 +1582,8 @@ bool OutputWGSLTraverser::emitBlock(TSpan<TIntermNode *> nodes)
 
 bool OutputWGSLTraverser::visitBlock(Visit, TIntermBlock *blockNode)
 {
-    return emitBlock(TSpan(blockNode->getSequence()->data(), blockNode->getSequence()->size()));
+    return emitBlock(
+        angle::Span(blockNode->getSequence()->data(), blockNode->getSequence()->size()));
 }
 
 bool OutputWGSLTraverser::visitGlobalQualifierDeclaration(Visit,
@@ -1479,14 +1604,59 @@ void OutputWGSLTraverser::emitStructDeclaration(const TType &type)
     emitOpenBrace();
 
     const TStructure &structure = *type.getStruct();
+    bool isInUniformAddressSpace =
+        mUniformBlockMetadata->structsInUniformAddressSpace.count(structure.uniqueId().get()) != 0;
 
+    bool alignTo16InUniformAddressSpace = true;
     for (const TField *field : structure.fields())
     {
+        const TType *fieldType = field->type();
+
         emitIndentation();
+        // If this struct is used in the uniform address space, it must obey the uniform address
+        // space's layout constaints (https://www.w3.org/TR/WGSL/#address-space-layout-constraints).
+        // WGSL's address space layout constraints nearly match std140, and the places they don't
+        // are handled elsewhere.
+        if (isInUniformAddressSpace)
+        {
+            // Here, the field must be aligned to 16 if:
+            // 1. The field is a struct or array (note that matCx2 is represented as an array of
+            // vec2)
+            // 2. The previous field is a struct
+            // 3. The field is the first in the struct (for convenience).
+            if (field->type()->getStruct() || fieldType->isArray() || IsMatCx2(fieldType))
+            {
+                alignTo16InUniformAddressSpace = true;
+            }
+            if (alignTo16InUniformAddressSpace)
+            {
+                mSink << "@align(16) ";
+            }
+
+            // If this field is a struct, the next member should be aligned to 16.
+            alignTo16InUniformAddressSpace = fieldType->getStruct();
+
+            // If the field is an array whose stride is not aligned to 16, the element type must be
+            // emitted with a wrapper struct. Record that the wrapper struct needs to be emitted.
+            // Note that if the array element type is already of struct type, it doesn't need
+            // another wrapper struct, it will automatically be aligned to 16 because its first
+            // member is aligned to 16 (implemented above).
+            if (ElementTypeNeedsUniformWrapperStruct(/*inUniformAddressSpace=*/true, fieldType))
+            {
+                TType innerType = *fieldType;
+                innerType.toArrayElementType();
+                // Multidimensional arrays not currently supported in uniforms in the WebGPU backend
+                ASSERT(!innerType.isArray());
+                mWGSLGenerationMetadataForUniforms->arrayElementTypesInUniforms.insert(innerType);
+            }
+        }
+
         // TODO(anglebug.com/42267100): emit qualifiers.
         EmitVariableDeclarationConfig evdConfig;
+        evdConfig.typeConfig.addressSpace =
+            isInUniformAddressSpace ? WgslAddressSpace::Uniform : WgslAddressSpace::NonUniform;
         evdConfig.disableStructSpecifier = true;
-        emitVariableDeclaration({field->symbolType(), field->name(), *field->type()}, evdConfig);
+        emitVariableDeclaration({field->symbolType(), field->name(), *fieldType}, evdConfig);
         mSink << ",\n";
     }
 
@@ -1497,6 +1667,12 @@ void OutputWGSLTraverser::emitVariableDeclaration(const VarDecl &decl,
                                                   const EmitVariableDeclarationConfig &evdConfig)
 {
     const TBasicType basicType = decl.type.getBasicType();
+
+    if (decl.type.getQualifier() == EvqUniform)
+    {
+        // Uniforms are declared in a pre-pass, and don't need to be outputted here.
+        return;
+    }
 
     if (basicType == TBasicType::EbtStruct && decl.type.isStructSpecifier() &&
         !evdConfig.disableStructSpecifier)
@@ -1524,13 +1700,7 @@ void OutputWGSLTraverser::emitVariableDeclaration(const VarDecl &decl,
         // readability, and the GLSL compiler constant folds most (all?) the consts anyway.
         mSink << "var";
         // TODO(anglebug.com/42267100): <workgroup> or <storage>?
-        if (decl.type.getQualifier() == EvqUniform)
-        {
-            // TODO(anglebug.com/42267100): uniform requires complex alignment of structs and
-            // arrays, as well as @group() and @binding() annotations.
-            mSink << "<uniform>";
-        }
-        else if (evdConfig.isGlobalScope)
+        if (evdConfig.isGlobalScope)
         {
             mSink << "<private>";
         }
@@ -1546,7 +1716,7 @@ void OutputWGSLTraverser::emitVariableDeclaration(const VarDecl &decl,
         emitNameOf(decl);
     }
     mSink << " : ";
-    emitType(decl.type);
+    WriteWgslType(mSink, decl.type, evdConfig.typeConfig);
 }
 
 bool OutputWGSLTraverser::visitDeclaration(Visit, TIntermDeclaration *declNode)
@@ -1758,12 +1928,12 @@ void OutputWGSLTraverser::visitPreprocessorDirective(TIntermPreprocessorDirectiv
 
 void OutputWGSLTraverser::emitBareTypeName(const TType &type)
 {
-    WriteWgslBareTypeName(mSink, type);
+    WriteWgslBareTypeName(mSink, type, {});
 }
 
 void OutputWGSLTraverser::emitType(const TType &type)
 {
-    WriteWgslType(mSink, type);
+    WriteWgslType(mSink, type, {});
 }
 
 }  // namespace
@@ -1783,6 +1953,7 @@ bool TranslatorWGSL::translate(TIntermBlock *root,
     }
 
     RewritePipelineVarOutput rewritePipelineVarOutput(getShaderType());
+    WGSLGenerationMetadataForUniforms wgslGenerationMetadataForUniforms;
 
     // WGSL's main() will need to take parameters or return values if any glsl (input/output)
     // builtin variables are used.
@@ -1798,9 +1969,29 @@ bool TranslatorWGSL::translate(TIntermBlock *root,
         return false;
     }
 
-    // Write the body of the WGSL including the GLSL main() function.
-    OutputWGSLTraverser traverser(this, &rewritePipelineVarOutput);
+    if (!OutputUniformBlocks(this, root))
+    {
+        return false;
+    }
+
+    UniformBlockMetadata uniformBlockMetadata;
+    if (!RecordUniformBlockMetadata(root, uniformBlockMetadata))
+    {
+        return false;
+    }
+
+    // Generate the body of the WGSL including the GLSL main() function.
+    TInfoSinkBase traverserOutput;
+    OutputWGSLTraverser traverser(&traverserOutput, &rewritePipelineVarOutput,
+                                  &uniformBlockMetadata, &wgslGenerationMetadataForUniforms);
     root->traverse(&traverser);
+
+    sink << "\n";
+    OutputUniformWrapperStructsAndConversions(sink, wgslGenerationMetadataForUniforms);
+
+    // The traverser output needs to be in the code after uniform wrapper structs are emitted above,
+    // since the traverser code references the wrapper struct types.
+    sink << traverserOutput.str();
 
     // Write the actual WGSL main function, wgslMain(), which calls the GLSL main function.
     if (!rewritePipelineVarOutput.OutputMainFunction(sink))

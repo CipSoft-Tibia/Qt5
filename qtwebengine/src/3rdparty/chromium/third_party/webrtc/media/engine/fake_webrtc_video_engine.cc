@@ -58,12 +58,11 @@ FakeWebRtcVideoDecoder::~FakeWebRtcVideoDecoder() {
   }
 }
 
-bool FakeWebRtcVideoDecoder::Configure(const Settings& settings) {
+bool FakeWebRtcVideoDecoder::Configure(const Settings& /* settings */) {
   return true;
 }
 
-int32_t FakeWebRtcVideoDecoder::Decode(const webrtc::EncodedImage&,
-                                       int64_t) {
+int32_t FakeWebRtcVideoDecoder::Decode(const webrtc::EncodedImage&, int64_t) {
   num_frames_received_++;
   return WEBRTC_VIDEO_CODEC_OK;
 }
@@ -99,7 +98,7 @@ FakeWebRtcVideoDecoderFactory::GetSupportedFormats() const {
 }
 
 std::unique_ptr<webrtc::VideoDecoder> FakeWebRtcVideoDecoderFactory::Create(
-    const webrtc::Environment& env,
+    const webrtc::Environment& /* env */,
     const webrtc::SdpVideoFormat& format) {
   if (format.IsCodecInList(supported_codec_formats_)) {
     num_created_decoders_++;
@@ -116,6 +115,11 @@ void FakeWebRtcVideoDecoderFactory::DecoderDestroyed(
     FakeWebRtcVideoDecoder* decoder) {
   decoders_.erase(std::remove(decoders_.begin(), decoders_.end(), decoder),
                   decoders_.end());
+}
+
+void FakeWebRtcVideoDecoderFactory::AddSupportedVideoCodec(
+    const webrtc::SdpVideoFormat& format) {
+  supported_codec_formats_.push_back(format);
 }
 
 void FakeWebRtcVideoDecoderFactory::AddSupportedVideoCodecType(
@@ -147,13 +151,13 @@ FakeWebRtcVideoEncoder::~FakeWebRtcVideoEncoder() {
 }
 
 void FakeWebRtcVideoEncoder::SetFecControllerOverride(
-    webrtc::FecControllerOverride* fec_controller_override) {
+    webrtc::FecControllerOverride* /* fec_controller_override */) {
   // Ignored.
 }
 
 int32_t FakeWebRtcVideoEncoder::InitEncode(
     const webrtc::VideoCodec* codecSettings,
-    const VideoEncoder::Settings& settings) {
+    const VideoEncoder::Settings& /* settings */) {
   webrtc::MutexLock lock(&mutex_);
   codec_settings_ = *codecSettings;
   init_encode_event_.Set();
@@ -161,8 +165,8 @@ int32_t FakeWebRtcVideoEncoder::InitEncode(
 }
 
 int32_t FakeWebRtcVideoEncoder::Encode(
-    const webrtc::VideoFrame& inputImage,
-    const std::vector<webrtc::VideoFrameType>* frame_types) {
+    const webrtc::VideoFrame& /* inputImage */,
+    const std::vector<webrtc::VideoFrameType>* /* frame_types */) {
   webrtc::MutexLock lock(&mutex_);
   ++num_frames_encoded_;
   init_encode_event_.Set();
@@ -170,7 +174,7 @@ int32_t FakeWebRtcVideoEncoder::Encode(
 }
 
 int32_t FakeWebRtcVideoEncoder::RegisterEncodeCompleteCallback(
-    webrtc::EncodedImageCallback* callback) {
+    webrtc::EncodedImageCallback* /* callback */) {
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
@@ -178,8 +182,8 @@ int32_t FakeWebRtcVideoEncoder::Release() {
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
-void FakeWebRtcVideoEncoder::SetRates(const RateControlParameters& parameters) {
-}
+void FakeWebRtcVideoEncoder::SetRates(
+    const RateControlParameters& /* parameters */) {}
 
 webrtc::VideoEncoder::EncoderInfo FakeWebRtcVideoEncoder::GetEncoderInfo()
     const {

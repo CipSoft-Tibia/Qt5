@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "base/check.h"
 
 #include <optional>
@@ -87,24 +92,35 @@ base::debug::CrashKeyString* GetDumpWillBeCheckCrashKey() {
 #endif  // BUILDFLAG(IS_NACL)
 }
 
+#if !BUILDFLAG(IS_NACL)
+base::debug::CrashKeyString* GetFatalMilestoneCrashKey() {
+  static auto* const key = ::base::debug::AllocateCrashKeyString(
+      "Logging-FATAL_MILESTONE", base::debug::CrashKeySize::Size32);
+  return key;
+}
+#endif  // BUILDFLAG(IS_NACL)
+
+void MaybeSetFatalMilestoneCrashKey(base::NotFatalUntil fatal_milestone) {
+#if !BUILDFLAG(IS_NACL)
+  if (fatal_milestone == base::NotFatalUntil::NoSpecifiedMilestoneInternal) {
+    return;
+  }
+  base::debug::SetCrashKeyString(
+      GetFatalMilestoneCrashKey(),
+      base::NumberToString(base::to_underlying(fatal_milestone)));
+#endif  // BUILDFLAG(IS_NACL)
+}
+
 void DumpWithoutCrashing(base::debug::CrashKeyString* message_key,
-                         const std::string& crash_string,
+                         const logging::LogMessage* log_message,
                          const base::Location& location,
                          base::NotFatalUntil fatal_milestone) {
+  const std::string crash_string = log_message->BuildCrashString();
 #if !BUILDFLAG(IS_NACL)
-  static auto* const fatal_milestone_key =
-      ::base::debug::AllocateCrashKeyString("Logging-FATAL_MILESTONE",
-                                            base::debug::CrashKeySize::Size32);
-  std::optional<base::debug::ScopedCrashKeyString> scoped_fatal_milestone_key;
-  // Store the fatal milestone only when one is provided.
-  if (fatal_milestone != base::NotFatalUntil::NoSpecifiedMilestoneInternal) {
-    scoped_fatal_milestone_key.emplace(
-        fatal_milestone_key,
-        base::NumberToString(base::to_underlying(fatal_milestone)));
-  }
-  // Always store the crash string.
   base::debug::ScopedCrashKeyString scoped_message_key(message_key,
                                                        crash_string);
+
+  MaybeSetFatalMilestoneCrashKey(fatal_milestone);
 #endif  // !BUILDFLAG(IS_NACL)
   // Copy the crash message to stack memory to make sure it can be recovered in
   // crash dumps. This is easier to recover in minidumps than crash keys during
@@ -115,6 +131,22 @@ void DumpWithoutCrashing(base::debug::CrashKeyString* message_key,
   // process has died). This attempts to prevent us from flooding ourselves with
   // repeat reports for the same bug.
   base::debug::DumpWithoutCrashing(location, base::Days(30));
+
+#if !BUILDFLAG(IS_NACL)
+  base::debug::ClearCrashKeyString(GetFatalMilestoneCrashKey());
+#endif  // !BUILDFLAG(IS_NACL)
+}
+
+void HandleCheckErrorLogMessage(base::debug::CrashKeyString* message_key,
+                                const logging::LogMessage* log_message,
+                                const base::Location& location,
+                                base::NotFatalUntil fatal_milestone) {
+  if (log_message->severity() == logging::LOGGING_FATAL) {
+    // Set NotFatalUntil key if applicable for when we die in ~LogMessage.
+    MaybeSetFatalMilestoneCrashKey(fatal_milestone);
+  } else {
+    DumpWithoutCrashing(message_key, log_message, location, fatal_milestone);
+  }
 }
 
 class NotReachedLogMessage : public LogMessage {
@@ -126,10 +158,8 @@ class NotReachedLogMessage : public LogMessage {
         location_(location),
         fatal_milestone_(fatal_milestone) {}
   ~NotReachedLogMessage() override {
-    if (severity() != logging::LOGGING_FATAL) {
-      DumpWithoutCrashing(GetNotReachedCrashKey(), BuildCrashString(),
-                          location_, fatal_milestone_);
-    }
+    HandleCheckErrorLogMessage(GetNotReachedCrashKey(), this, location_,
+                               fatal_milestone_);
   }
 
  private:
@@ -139,16 +169,15 @@ class NotReachedLogMessage : public LogMessage {
 
 class DCheckLogMessage : public LogMessage {
  public:
-  DCheckLogMessage(const base::Location& location)
+  explicit DCheckLogMessage(const base::Location& location)
       : LogMessage(location.file_name(),
                    location.line_number(),
                    LOGGING_DCHECK),
         location_(location) {}
   ~DCheckLogMessage() override {
-    if (severity() != logging::LOGGING_FATAL) {
-      DumpWithoutCrashing(GetDCheckCrashKey(), BuildCrashString(), location_,
-                          base::NotFatalUntil::NoSpecifiedMilestoneInternal);
-    }
+    HandleCheckErrorLogMessage(
+        GetDCheckCrashKey(), this, location_,
+        base::NotFatalUntil::NoSpecifiedMilestoneInternal);
   }
 
  private:
@@ -164,10 +193,8 @@ class CheckLogMessage : public LogMessage {
         location_(location),
         fatal_milestone_(fatal_milestone) {}
   ~CheckLogMessage() override {
-    if (severity() != logging::LOGGING_FATAL) {
-      DumpWithoutCrashing(GetDumpWillBeCheckCrashKey(), BuildCrashString(),
-                          location_, fatal_milestone_);
-    }
+    HandleCheckErrorLogMessage(GetDumpWillBeCheckCrashKey(), this, location_,
+                               fatal_milestone_);
   }
 
  private:
@@ -186,10 +213,9 @@ class DCheckWin32ErrorLogMessage : public Win32ErrorLogMessage {
                              err),
         location_(location) {}
   ~DCheckWin32ErrorLogMessage() override {
-    if (severity() != logging::LOGGING_FATAL) {
-      DumpWithoutCrashing(GetDCheckCrashKey(), BuildCrashString(), location_,
-                          base::NotFatalUntil::NoSpecifiedMilestoneInternal);
-    }
+    HandleCheckErrorLogMessage(
+        GetDCheckCrashKey(), this, location_,
+        base::NotFatalUntil::NoSpecifiedMilestoneInternal);
   }
 
  private:
@@ -205,10 +231,9 @@ class DCheckErrnoLogMessage : public ErrnoLogMessage {
                         err),
         location_(location) {}
   ~DCheckErrnoLogMessage() override {
-    if (severity() != logging::LOGGING_FATAL) {
-      DumpWithoutCrashing(GetDCheckCrashKey(), BuildCrashString(), location_,
-                          base::NotFatalUntil::NoSpecifiedMilestoneInternal);
-    }
+    HandleCheckErrorLogMessage(
+        GetDCheckCrashKey(), this, location_,
+        base::NotFatalUntil::NoSpecifiedMilestoneInternal);
   }
 
  private:
@@ -271,24 +296,6 @@ CheckError CheckError::DumpWillBeCheckOp(char* log_message_str,
   return CheckError(log_message);
 }
 
-CheckError CheckError::PCheck(const char* condition,
-                              const base::Location& location) {
-  SystemErrorCode err_code = logging::GetLastSystemErrorCode();
-#if BUILDFLAG(IS_WIN)
-  auto* const log_message = new Win32ErrorLogMessage(
-      location.file_name(), location.line_number(), LOGGING_FATAL, err_code);
-#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
-  auto* const log_message = new ErrnoLogMessage(
-      location.file_name(), location.line_number(), LOGGING_FATAL, err_code);
-#endif
-  log_message->stream() << "Check failed: " << condition << ". ";
-  return CheckError(log_message);
-}
-
-CheckError CheckError::PCheck(const base::Location& location) {
-  return PCheck("", location);
-}
-
 CheckError CheckError::DPCheck(const char* condition,
                                const base::Location& location) {
   SystemErrorCode err_code = logging::GetLastSystemErrorCode();
@@ -298,15 +305,6 @@ CheckError CheckError::DPCheck(const char* condition,
   auto* const log_message = new DCheckErrnoLogMessage(location, err_code);
 #endif
   log_message->stream() << "Check failed: " << condition << ". ";
-  return CheckError(log_message);
-}
-
-CheckError CheckError::DumpWillBeNotReachedNoreturn(
-    const base::Location& location) {
-  auto* const log_message = new NotReachedLogMessage(
-      location, GetDumpSeverity(),
-      base::NotFatalUntil::NoSpecifiedMilestoneInternal);
-  log_message->stream() << "NOTREACHED hit. ";
   return CheckError(log_message);
 }
 
@@ -344,6 +342,56 @@ CheckError::~CheckError() {
 
 CheckError::CheckError(LogMessage* log_message) : log_message_(log_message) {}
 
+// Note: This function ends up in crash stack traces. If its full name changes,
+// the crash server's magic signature logic needs to be updated. See
+// cl/306632920.
+CheckNoreturnError::~CheckNoreturnError() {
+  // Reset before `ImmediateCrash()` to ensure the message is flushed.
+  log_message_.reset();
+
+  // Make sure we die if we haven't.
+  // TODO(crbug.com/40254046): Replace this with NOTREACHED() once LOG(FATAL) is
+  // [[noreturn]].
+  base::ImmediateCrash();
+}
+
+CheckNoreturnError CheckNoreturnError::Check(const char* condition,
+                                             const base::Location& location) {
+  auto* const log_message =
+      new CheckLogMessage(location, LOGGING_FATAL,
+                          base::NotFatalUntil::NoSpecifiedMilestoneInternal);
+  log_message->stream() << "Check failed: " << condition << ". ";
+  return CheckNoreturnError(log_message);
+}
+
+CheckNoreturnError CheckNoreturnError::CheckOp(char* log_message_str,
+                                               const base::Location& location) {
+  auto* const log_message =
+      new CheckLogMessage(location, LOGGING_FATAL,
+                          base::NotFatalUntil::NoSpecifiedMilestoneInternal);
+  log_message->stream() << log_message_str;
+  free(log_message_str);
+  return CheckNoreturnError(log_message);
+}
+
+CheckNoreturnError CheckNoreturnError::PCheck(const char* condition,
+                                              const base::Location& location) {
+  SystemErrorCode err_code = logging::GetLastSystemErrorCode();
+#if BUILDFLAG(IS_WIN)
+  auto* const log_message = new Win32ErrorLogMessage(
+      location.file_name(), location.line_number(), LOGGING_FATAL, err_code);
+#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+  auto* const log_message = new ErrnoLogMessage(
+      location.file_name(), location.line_number(), LOGGING_FATAL, err_code);
+#endif
+  log_message->stream() << "Check failed: " << condition << ". ";
+  return CheckNoreturnError(log_message);
+}
+
+CheckNoreturnError CheckNoreturnError::PCheck(const base::Location& location) {
+  return PCheck("", location);
+}
+
 NotReachedError NotReachedError::NotReached(base::NotFatalUntil fatal_milestone,
                                             const base::Location& location) {
   auto* const log_message = new NotReachedLogMessage(
@@ -355,17 +403,19 @@ NotReachedError NotReachedError::NotReached(base::NotFatalUntil fatal_milestone,
   return NotReachedError(log_message);
 }
 
-void NotReachedError::TriggerNotReached() {
-  // This triggers a NOTREACHED_IN_MIGRATION() error as the returned
-  // NotReachedError goes out of scope.
-  NotReached()
-      << "NOTREACHED log messages are omitted in official builds. Sorry!";
+NotReachedError NotReachedError::DumpWillBeNotReached(
+    const base::Location& location) {
+  auto* const log_message = new NotReachedLogMessage(
+      location, GetDumpSeverity(),
+      base::NotFatalUntil::NoSpecifiedMilestoneInternal);
+  log_message->stream() << "NOTREACHED hit. ";
+  return NotReachedError(log_message);
 }
 
 NotReachedError::~NotReachedError() = default;
 
 NotReachedNoreturnError::NotReachedNoreturnError(const base::Location& location)
-    : CheckError([location]() {
+    : CheckError([location] {
         auto* const log_message = new NotReachedLogMessage(
             location, LOGGING_FATAL,
             base::NotFatalUntil::NoSpecifiedMilestoneInternal);

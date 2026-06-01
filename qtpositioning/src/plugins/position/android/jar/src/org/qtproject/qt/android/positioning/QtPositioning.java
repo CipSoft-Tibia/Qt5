@@ -464,7 +464,6 @@ class QtPositioning implements LocationListener
         public void run()
         {
             Looper.prepare();
-            Handler handler = new Handler();
 
             if (isSatelliteLooper)
                 addSatelliteInfoListener();

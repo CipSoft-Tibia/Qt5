@@ -195,19 +195,25 @@ void SharingService::EntryAddedLocally(
     return;
   }
 
-  auto large_icon_types = std::vector<favicon_base::IconTypeSet>(
-      {{favicon_base::IconType::kWebManifestIcon},
-       {favicon_base::IconType::kFavicon},
-       {favicon_base::IconType::kTouchIcon},
-       {favicon_base::IconType::kTouchPrecomposedIcon}});
+  if (send_tab_to_self::IsSendTabIOSPushNotificationsEnabledWithURLImage()) {
+    auto large_icon_types = std::vector<favicon_base::IconTypeSet>(
+        {{favicon_base::IconType::kWebManifestIcon},
+         {favicon_base::IconType::kFavicon},
+         {favicon_base::IconType::kTouchIcon},
+         {favicon_base::IconType::kTouchPrecomposedIcon}});
 
-  // Retrieve favicon to issue notification.
-  favicon_service_->GetLargestRawFaviconForPageURL(
-      entry->GetURL(), large_icon_types, kMinimumFaviconSize,
-      base::BindOnce(&SharingService::SendNotificationForSendTabToSelfPush,
-                     weak_ptr_factory_.GetWeakPtr(),
-                     send_tab_to_self::SendTabToSelfEntry(*entry)),
-      &task_tracker_);
+    // Retrieve favicon to issue notification.
+    favicon_service_->GetLargestRawFaviconForPageURL(
+        entry->GetURL(), large_icon_types, kMinimumFaviconSize,
+        base::BindOnce(&SharingService::SendNotificationForSendTabToSelfPush,
+                       weak_ptr_factory_.GetWeakPtr(),
+                       send_tab_to_self::SendTabToSelfEntry(*entry)),
+        &task_tracker_);
+  } else {
+    SendNotificationForSendTabToSelfPush(
+        send_tab_to_self::SendTabToSelfEntry(*entry),
+        favicon_base::FaviconRawBitmapResult{});
+  }
 }
 
 void SharingService::OnSyncShutdown(syncer::SyncService* sync) {
@@ -252,6 +258,7 @@ void SharingService::RegisterDeviceInTesting(
 void SharingService::UnregisterDevice() {
   sharing_device_registration_->UnregisterDevice(base::BindOnce(
       &SharingService::OnDeviceUnregistered, weak_ptr_factory_.GetWeakPtr()));
+  message_sender_->ClearPendingMessages();
 }
 
 void SharingService::OnDeviceRegistered(
@@ -297,7 +304,7 @@ void SharingService::OnDeviceRegistered(
       break;
     case SharingDeviceRegistrationResult::kDeviceNotRegistered:
       // Register device cannot return kDeviceNotRegistered.
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 }
 

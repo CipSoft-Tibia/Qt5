@@ -454,6 +454,8 @@ struct QGles2CommandBuffer : public QRhiCommandBuffer
             struct {
                 QRhiReadbackResult *result;
                 GLuint texture;
+                int x;
+                int y;
                 int w;
                 int h;
                 QRhiTexture::Format format;

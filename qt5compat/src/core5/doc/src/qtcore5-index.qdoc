@@ -1,5 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+// Qt-Security score:insignificant reason:docs
+
 /*!
     \page qtcore5-index.html
     \title Qt 5 Core Compatibility APIs
@@ -37,5 +39,5 @@
     Furthermore, Qt 5 Core Compat in Qt \QtVersion contains third party
     modules under the following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtcore5compat}
+    \annotatedlist attributions-qtcore5compat
 */

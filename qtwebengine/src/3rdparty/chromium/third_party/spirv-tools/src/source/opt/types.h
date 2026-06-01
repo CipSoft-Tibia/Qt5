@@ -1,4 +1,6 @@
 // Copyright (c) 2016 Google Inc.
+// Modifications Copyright (C) 2024 Advanced Micro Devices, Inc. All rights
+// reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,6 +48,7 @@ class Sampler;
 class SampledImage;
 class Array;
 class RuntimeArray;
+class NodePayloadArrayAMDX;
 class Struct;
 class Opaque;
 class Pointer;
@@ -61,8 +64,11 @@ class NamedBarrier;
 class AccelerationStructureNV;
 class CooperativeMatrixNV;
 class CooperativeMatrixKHR;
+class CooperativeVectorNV;
 class RayQueryKHR;
 class HitObjectNV;
+class TensorLayoutNV;
+class TensorViewNV;
 
 // Abstract class for a SPIR-V type. It has a bunch of As<sublcass>() methods,
 // which is used as a way to probe the actual <subclass>.
@@ -87,6 +93,7 @@ class Type {
     kSampledImage,
     kArray,
     kRuntimeArray,
+    kNodePayloadArrayAMDX,
     kStruct,
     kOpaque,
     kPointer,
@@ -102,8 +109,11 @@ class Type {
     kAccelerationStructureNV,
     kCooperativeMatrixNV,
     kCooperativeMatrixKHR,
+    kCooperativeVectorNV,
     kRayQueryKHR,
     kHitObjectNV,
+    kTensorLayoutNV,
+    kTensorViewNV,
     kLast
   };
 
@@ -189,6 +199,7 @@ class Type {
   DeclareCastMethod(SampledImage)
   DeclareCastMethod(Array)
   DeclareCastMethod(RuntimeArray)
+  DeclareCastMethod(NodePayloadArrayAMDX)
   DeclareCastMethod(Struct)
   DeclareCastMethod(Opaque)
   DeclareCastMethod(Pointer)
@@ -204,8 +215,11 @@ class Type {
   DeclareCastMethod(AccelerationStructureNV)
   DeclareCastMethod(CooperativeMatrixNV)
   DeclareCastMethod(CooperativeMatrixKHR)
+  DeclareCastMethod(CooperativeVectorNV)
   DeclareCastMethod(RayQueryKHR)
   DeclareCastMethod(HitObjectNV)
+  DeclareCastMethod(TensorLayoutNV)
+  DeclareCastMethod(TensorViewNV)
 #undef DeclareCastMethod
 
 protected:
@@ -215,7 +229,9 @@ protected:
  protected:
   // Decorations attached to this type. Each decoration is encoded as a vector
   // of uint32_t numbers. The first uint32_t number is the decoration value,
-  // and the rest are the parameters to the decoration (if exists).
+  // and the rest are the parameters to the decoration (if any exist).
+  // The parameters can be either all literals or all ids depending on the
+  // decoration value.
   std::vector<std::vector<uint32_t>> decorations_;
 
  private:
@@ -423,6 +439,29 @@ class RuntimeArray : public Type {
 
   RuntimeArray* AsRuntimeArray() override { return this; }
   const RuntimeArray* AsRuntimeArray() const override { return this; }
+
+  size_t ComputeExtraStateHash(size_t hash, SeenTypes* seen) const override;
+
+  void ReplaceElementType(const Type* element_type);
+
+ private:
+  bool IsSameImpl(const Type* that, IsSameCache*) const override;
+
+  const Type* element_type_;
+};
+
+class NodePayloadArrayAMDX : public Type {
+ public:
+  NodePayloadArrayAMDX(const Type* element_type);
+  NodePayloadArrayAMDX(const NodePayloadArrayAMDX&) = default;
+
+  std::string str() const override;
+  const Type* element_type() const { return element_type_; }
+
+  NodePayloadArrayAMDX* AsNodePayloadArrayAMDX() override { return this; }
+  const NodePayloadArrayAMDX* AsNodePayloadArrayAMDX() const override {
+    return this;
+  }
 
   size_t ComputeExtraStateHash(size_t hash, SeenTypes* seen) const override;
 
@@ -657,6 +696,77 @@ class CooperativeMatrixKHR : public Type {
   const uint32_t rows_id_;
   const uint32_t columns_id_;
   const uint32_t use_id_;
+};
+
+class TensorLayoutNV : public Type {
+ public:
+  TensorLayoutNV(const uint32_t dim, const uint32_t clamp_mode);
+  TensorLayoutNV(const TensorLayoutNV&) = default;
+
+  std::string str() const override;
+
+  TensorLayoutNV* AsTensorLayoutNV() override { return this; }
+  const TensorLayoutNV* AsTensorLayoutNV() const override { return this; }
+
+  size_t ComputeExtraStateHash(size_t hash, SeenTypes* seen) const override;
+
+  uint32_t dim_id() const { return dim_id_; }
+  uint32_t clamp_mode_id() const { return clamp_mode_id_; }
+
+ private:
+  bool IsSameImpl(const Type* that, IsSameCache*) const override;
+
+  const uint32_t dim_id_;
+  const uint32_t clamp_mode_id_;
+};
+
+class TensorViewNV : public Type {
+ public:
+  TensorViewNV(const uint32_t dim, const uint32_t clamp_mode,
+               const std::vector<uint32_t>& perm);
+  TensorViewNV(const TensorViewNV&) = default;
+
+  std::string str() const override;
+
+  TensorViewNV* AsTensorViewNV() override { return this; }
+  const TensorViewNV* AsTensorViewNV() const override { return this; }
+
+  size_t ComputeExtraStateHash(size_t hash, SeenTypes* seen) const override;
+
+  uint32_t dim_id() const { return dim_id_; }
+  uint32_t has_dimensions_id() const { return has_dimensions_id_; }
+  const std::vector<uint32_t>& perm() const { return perm_; }
+
+ private:
+  bool IsSameImpl(const Type* that, IsSameCache*) const override;
+
+  const uint32_t dim_id_;
+  const uint32_t has_dimensions_id_;
+  std::vector<uint32_t> perm_;
+};
+
+class CooperativeVectorNV : public Type {
+ public:
+  CooperativeVectorNV(const Type* type, const uint32_t components);
+  CooperativeVectorNV(const CooperativeVectorNV&) = default;
+
+  std::string str() const override;
+
+  CooperativeVectorNV* AsCooperativeVectorNV() override { return this; }
+  const CooperativeVectorNV* AsCooperativeVectorNV() const override {
+    return this;
+  }
+
+  size_t ComputeExtraStateHash(size_t hash, SeenTypes* seen) const override;
+
+  const Type* component_type() const { return component_type_; }
+  uint32_t components() const { return components_; }
+
+ private:
+  bool IsSameImpl(const Type* that, IsSameCache*) const override;
+
+  const Type* component_type_;
+  const uint32_t components_;
 };
 
 #define DefineParameterlessType(type, name)                                \

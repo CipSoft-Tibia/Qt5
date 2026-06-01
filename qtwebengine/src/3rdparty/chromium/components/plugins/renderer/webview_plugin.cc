@@ -50,7 +50,6 @@ using blink::WebPluginContainer;
 using blink::WebString;
 using blink::WebURLError;
 using blink::WebURLResponse;
-using blink::WebVector;
 using blink::WebView;
 using blink::web_pref::WebPreferences;
 
@@ -405,8 +404,9 @@ void WebViewPlugin::WebViewHelper::DidClearWindowObject() {
       .Check();
 }
 
-void WebViewPlugin::WebViewHelper::FrameDetached() {
-  frame_->Close();
+void WebViewPlugin::WebViewHelper::FrameDetached(
+    blink::DetachReason detach_reason) {
+  frame_->Close(detach_reason);
   frame_ = nullptr;
 }
 

@@ -15,6 +15,7 @@
 #include "partition_alloc/partition_address_space.h"
 #include "partition_alloc/partition_alloc_base/bits.h"
 #include "partition_alloc/partition_alloc_base/compiler_specific.h"
+#include "partition_alloc/partition_alloc_base/numerics/safe_conversions.h"
 #include "partition_alloc/partition_alloc_check.h"
 #include "partition_alloc/partition_alloc_constants.h"
 #include "partition_alloc/partition_alloc_forward.h"
@@ -133,6 +134,8 @@ SlotSpanMetadata<MetadataKind::kWritable>::RegisterEmpty() {
   if (current_index == root->global_empty_slot_span_ring_size) {
     current_index = 0;
   }
+  PA_DCHECK(current_index <
+            base::checked_cast<int16_t>(internal::kMaxEmptySlotSpanRingSize));
   root->global_empty_slot_span_ring_index = current_index;
 
   // Avoid wasting too much memory on empty slot spans. Note that we only divide
@@ -245,7 +248,7 @@ void SlotSpanMetadata<MetadataKind::kWritable>::Decommit(PartitionRoot* root) {
   size_t dirty_size =
       base::bits::AlignUp(GetProvisionedSize(), SystemPageSize());
   size_t size_to_decommit =
-      kUseLazyCommit ? dirty_size : bucket->get_bytes_per_span();
+      kUseLazyCommit ? dirty_size : bucket->SlotSpanCommittedSize(root);
 
   PA_DCHECK(root->empty_slot_spans_dirty_bytes >= dirty_size);
   root->empty_slot_spans_dirty_bytes -= dirty_size;
@@ -276,7 +279,7 @@ void SlotSpanMetadata<MetadataKind::kWritable>::DecommitIfPossible(
     PartitionRoot* root) {
   PartitionRootLock(root).AssertAcquired();
   PA_DCHECK(in_empty_cache_);
-  PA_DCHECK(empty_cache_index_ < kMaxFreeableSpans);
+  PA_DCHECK(empty_cache_index_ < kMaxEmptySlotSpanRingSize);
   PA_DCHECK(ToReadOnly(root) ==
             root->global_empty_slot_span_ring[empty_cache_index_]);
   in_empty_cache_ = 0;
@@ -409,6 +412,17 @@ void UnmapNow(uintptr_t reservation_start,
     *offset_ptr++ = kOffsetTagNotAllocated;
   }
 
+#if PA_CONFIG(ENABLE_SHADOW_METADATA)
+  // UnmapShadowMetadata must be done before unreserving memory, because
+  // Unreserved memory may be allocated by PartitionDirectMap() in another
+  // thread. In the case, MapShadowMetadata() and UnmapShadowMetadata()
+  // will be executed for the same system pages in wrong order. It causes
+  // memory access error.
+  if (internal::PartitionAddressSpace::IsShadowMetadataEnabled(pool)) {
+    PartitionAddressSpace::UnmapShadowMetadata(reservation_start, pool);
+  }
+#endif
+
 #if !PA_BUILDFLAG(HAS_64_BIT_POINTERS)
   AddressPoolManager::GetInstance().MarkUnused(pool, reservation_start,
                                                reservation_size);
@@ -417,12 +431,6 @@ void UnmapNow(uintptr_t reservation_start,
   // After resetting the table entries, unreserve and decommit the memory.
   AddressPoolManager::GetInstance().UnreserveAndDecommit(
       pool, reservation_start, reservation_size);
-
-#if PA_CONFIG(ENABLE_SHADOW_METADATA)
-  if (internal::PartitionAddressSpace::IsShadowMetadataEnabled(pool)) {
-    PartitionAddressSpace::UnmapShadowMetadata(reservation_start, pool);
-  }
-#endif
 }
 
 }  // namespace

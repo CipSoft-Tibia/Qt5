@@ -19,14 +19,6 @@ void tst_qmlls_cli::initTestCase()
     m_server.setProgram(m_qmllsPath);
 }
 
-void tst_qmlls_cli::cleanup()
-{
-    m_server.closeWriteChannel();
-    m_server.waitForFinished();
-    QTRY_COMPARE(m_server.state(), QProcess::NotRunning);
-    QCOMPARE(m_server.exitStatus(), QProcess::NormalExit);
-}
-
 // Helper structs to avoid confusions between expected and unexpected messages and between expected
 // and unexpected diagnostics.
 struct ExpectedMessages : public QStringList
@@ -47,9 +39,9 @@ struct UnexpectedDiagnostics : public QStringList
 };
 
 // Extra environment variables to be added to qmlls's environment.
-struct Environment : public QList<QPair<QString, QString>>
+struct Environment : public QList<std::pair<QString, QString>>
 {
-    using QList<QPair<QString, QString>>::QList;
+    using QList<std::pair<QString, QString>>::QList;
 };
 
 void tst_qmlls_cli::warnings_data()
@@ -259,6 +251,7 @@ void tst_qmlls_cli::warnings()
         // note: the lambda used in the "connect"-call references local variables, so disconnect the
         // lambda via QScopedGuard to avoid its captured references to dangle
         disconnect(&m_server, &QProcess::readyReadStandardOutput, nullptr, nullptr);
+        disconnect(&m_server, &QProcess::readyReadStandardError, nullptr, nullptr);
     });
     connect(&m_server, &QProcess::readyReadStandardError, this,
             [this, &expectedMessages, &countExpectedMessages, &unexpectedMessages,
@@ -320,6 +313,18 @@ void tst_qmlls_cli::warnings()
     // each unexpected diagnostic should appear exactly zero times
     QCOMPARE(countUnexpectedDiagnostics, QList<int>(unexpectedDiagnostics.size(), 0));
 
+}
+
+void tst_qmlls_cli::dontShutdownOnStartup()
+{
+    m_server.setArguments({});
+    m_server.start();
+    // it shouldn't shutdown before the close() call.
+    m_server.waitForFinished(3000);
+    QCOMPARE(m_server.state(), QProcess::Running);
+    m_server.close();
+    m_server.waitForFinished();
+    QTRY_COMPARE(m_server.state(), QProcess::NotRunning);
 }
 
 QTEST_MAIN(tst_qmlls_cli)

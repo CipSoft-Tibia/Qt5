@@ -26,6 +26,7 @@
     Save, Close and Help.
 
     \image qtquickcontrols-button.gif
+           {Button demonstrating hover and press interactions}
 
     Recommendations:
 
@@ -42,6 +43,7 @@
     \section1 CheckBox Control
 
     \image qtquickcontrols-checkbox.gif
+           {Check boxes in a multi-selection list with some options selected}
 
     \l CheckBox is used to build multi-selection option lists. Any number of
     options can be selected, including none, but the options should
@@ -81,6 +83,7 @@
     This delay prevents accidental presses.
 
     \image qtquickcontrols-delaybutton.gif
+           {Delay button with progress indicator showing timed delay}
 
     Recommendations:
     \list
@@ -93,6 +96,7 @@
     \section1 RadioButton Control
 
     \image qtquickcontrols-radiobutton.gif
+           {Radio buttons labeled First, Second, Third with First selected}
 
     \l RadioButton is used to select only one option from a set of options.
     Selecting one option automatically deselects the one selected before.
@@ -123,6 +127,7 @@
     \l Button, and can also be used as a floating action button.
 
     \image qtquickcontrols-roundbutton.png
+           {Round button with checkmark icon}
 
     Recommendations:
 
@@ -136,6 +141,7 @@
     \section1 Switch Control
 
     \image qtquickcontrols-switch.png
+           {Switch control labeled Switch in off state}
 
     \l Switch represents a physical switch that allows users to choose between an "on"
     or "off" state.
@@ -154,6 +160,7 @@
     \section1 ToolButton Control
 
     \image qtquickcontrols-toolbutton.png
+           {Tool button labeled ToolButton}
 
     \l ToolButton is nearly identical to \l Button, but it has a graphical
     appearance that makes it more suitable for insertion into a \l ToolBar.

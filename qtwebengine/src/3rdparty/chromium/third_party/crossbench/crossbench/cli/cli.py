@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import itertools
 import json
 import logging
+import os
 import sys
-import tempfile
 import textwrap
 import traceback
 from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
@@ -18,22 +19,30 @@ from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
 import tabulate as tbl
 
 import crossbench.benchmarks.all as benchmarks
-import crossbench.cli.config as cli_config
-from crossbench import __version__, cli_helper
+from crossbench import __version__, exception
 from crossbench import path as pth
 from crossbench import plt
 from crossbench.benchmarks.base import Benchmark
-from crossbench.browsers import splash_screen, viewport
-from crossbench.browsers.browser_helper import BROWSERS_CACHE
-from crossbench.browsers.secrets import SecretsConfig
-from crossbench.cli import ui
+from crossbench.browsers.splash_screen import SplashScreen
+from crossbench.browsers.viewport import Viewport, ViewportMode
+from crossbench.cli import exception_formatter, ui
+from crossbench.cli.config.browser import BrowserConfig
+from crossbench.cli.config.browser_variants import BrowserVariantsConfig
+from crossbench.cli.config.env import (ENV_CONFIG_PRESETS, EnvironmentConfig,
+                                       ValidationMode)
+from crossbench.cli.config.network import NetworkConfig
+from crossbench.cli.config.probe import PROBE_LOOKUP, ProbeConfig
+from crossbench.cli.config.probe_list import ProbeListConfig
+from crossbench.cli.config.secrets import Secrets
 from crossbench.cli.parser import CrossBenchArgumentParser
 from crossbench.cli.subcommand.devtools_recorder_proxy.default import \
     CrossbenchDevToolsRecorderProxy
-from crossbench.env import (HostEnvironment, HostEnvironmentConfig,
-                            ValidationMode)
+from crossbench.parse import (DurationParser, LateArgumentError, ObjectParser,
+                              PathParser)
 from crossbench.probes.all import GENERAL_PURPOSE_PROBES, DebuggerProbe
-from crossbench.probes.internal import ErrorsProbe
+from crossbench.probes.internal.errors import ErrorsProbe
+from crossbench.probes.thermal_monitor import ThermalStatus
+from crossbench.runner.run_annotation import RunAnnotation
 from crossbench.runner.runner import Runner
 from crossbench.runner.timing import Timing
 
@@ -64,7 +73,7 @@ class CrossBenchArgumentError(argparse.ArgumentError):
             f"{formatted}")
 
 
-argparse.ArgumentError = CrossBenchArgumentError
+argparse.ArgumentError = CrossBenchArgumentError  # type: ignore
 
 
 class EnableDebuggingAction(argparse.Action):
@@ -77,6 +86,7 @@ class EnableDebuggingAction(argparse.Action):
                option_string: Optional[str] = None) -> None:
     setattr(namespace, "throw", True)
     setattr(namespace, "verbosity", 3)
+    setattr(namespace, "driver_logging", True)
 
 
 class EnableFastAction(argparse.Action):
@@ -88,7 +98,7 @@ class EnableFastAction(argparse.Action):
                values: Union[str, Sequence[Any], None],
                option_string: Optional[str] = None) -> None:
     setattr(namespace, "cool_down_time", dt.timedelta())
-    setattr(namespace, "splash_screen", splash_screen.SplashScreen.NONE)
+    setattr(namespace, "splash_screen", SplashScreen.NONE)
     setattr(namespace, "env_validation", ValidationMode.SKIP)
 
 
@@ -104,11 +114,11 @@ class AppendDebuggerProbeAction(argparse.Action):
                namespace: argparse.Namespace,
                values: Union[str, Sequence[Any], None],
                option_string: Optional[str] = None) -> None:
-    probes: List[cli_config.ProbeConfig] = getattr(namespace, self.dest, [])
+    probes: List[ProbeConfig] = getattr(namespace, self.dest, [])
     probe_settings = {"debugger": "gdb"}
     if option_string and "lldb" in option_string:
       probe_settings["debugger"] = "lldb"
-    probes.append(cli_config.ProbeConfig(DebuggerProbe, probe_settings))
+    probes.append(ProbeConfig(DebuggerProbe, probe_settings))
     if not getattr(namespace, "timeout_unit", None):
       # Set a very large --timeout-unit to allow for very slow debugging without
       # causing timeouts (for instance when waiting on a breakpoint).
@@ -120,6 +130,8 @@ class MainCrossBenchArgumentParser(CrossBenchArgumentParser):
   def print_help(self, file=None) -> None:
     super().print_help(file=file)
     self.print_probes(file=file)
+    self.print_urls(file=file)
+    self.print_example(file=file)
 
   def print_probes(self, file=None) -> None:
     lines = [
@@ -142,6 +154,22 @@ class MainCrossBenchArgumentParser(CrossBenchArgumentParser):
     file.write(textwrap.indent(contents, "    "))
     file.write("\n")
 
+  def print_urls(self, file=None) -> None:
+    file = file or sys.stdout
+    file.write("\n")
+    file.write("URLS:\n")
+    file.write("  Source: https://chromium.googlesource.com/crossbench\n")
+    file.write("  Bugs:   "
+               "https://issues.chromium.org/u/1/issues/new?component=1456712\n")
+
+  def print_example(self, file=None) -> None:
+    file = file or sys.stdout
+    file.write("\n")
+    file.write("EXAMPLE:\n")
+    file.write("  ./cb.py speedometer --browser=chrome-m131 "
+               "--browser=out/release/chrome --probe=profiling\n\n")
+    readme_file = pth.AnyPath(__file__).parent / "README.md"
+    file.write(f"  See {readme_file} for more details.\n")
 
 class CrossBenchCLI:
   BENCHMARKS: Tuple[BenchmarkClsT, ...] = (
@@ -149,15 +177,15 @@ class CrossBenchCLI:
       benchmarks.JetStream21Benchmark,
       benchmarks.JetStream22Benchmark,
       benchmarks.JetStream30Benchmark,
+      benchmarks.LoadingBenchmark,
+      benchmarks.LoadLinePhoneBenchmark,
+      benchmarks.LoadLineTabletBenchmark,
       benchmarks.ManualBenchmark,
+      benchmarks.MemoryBenchmark,
       benchmarks.MotionMark10Benchmark,
       benchmarks.MotionMark11Benchmark,
       benchmarks.MotionMark12Benchmark,
       benchmarks.MotionMark13Benchmark,
-      benchmarks.PageLoadBenchmark,
-      benchmarks.PageLoadPhoneBenchmark,
-      benchmarks.PageLoadTabletBenchmark,
-      benchmarks.PowerBenchmark,
       benchmarks.Speedometer20Benchmark,
       benchmarks.Speedometer21Benchmark,
       benchmarks.Speedometer30Benchmark,
@@ -171,7 +199,7 @@ class CrossBenchCLI:
     self._subparsers: Dict[BenchmarkClsT, CrossBenchArgumentParser] = {}
     self.parser = MainCrossBenchArgumentParser(
         description=("A cross browser and cross benchmark runner "
-                     "with configurable measurement probes."))
+                     "with configurable measurement probes.\n"))
     self.describe_parser = CrossBenchArgumentParser()
     self.recorder_parser = CrossBenchArgumentParser()
     self.args = argparse.Namespace()
@@ -210,6 +238,13 @@ class CrossBenchCLI:
         default=0,
         help=("Increase output verbosity. "
               "Repeat for more verbose output (0..2)."))
+    debug_group.add_argument(
+        "--driver-logging",
+        "--verbose-driver",
+        action="store_true",
+        default=False,
+        help=("Enable verbose webdriver logging. "
+              "Disabled by default, automatically enable with --debug"))
     debug_group.add_argument(
         "--throw",
         action="store_true",
@@ -252,9 +287,10 @@ class CrossBenchCLI:
     self._setup_recorder_subparser()
 
   def _setup_recorder_subparser(self) -> None:
-    self.recorder_parser = CrossbenchDevToolsRecorderProxy.add_subcommand(
+    recorder_parser = CrossbenchDevToolsRecorderProxy.add_subcommand(
         self.subparsers)
-    assert isinstance(self.recorder_parser, CrossBenchArgumentParser)
+    assert isinstance(recorder_parser, CrossBenchArgumentParser)
+    self.recorder_parser = recorder_parser
     self._add_verbosity_argument(self.recorder_parser)
 
   def _setup_describe_subparser(self) -> None:
@@ -284,8 +320,15 @@ class CrossBenchCLI:
   def _setup_help_subparser(self) -> None:
     # Just for completeness we want to support "--help" and "help"
     help_parser = self.subparsers.add_parser(
-        "help", help="Print the top-level, same as --help")
+        "help",
+        help=("Print the top-level by default, same as --help. "
+              "Use `help $PROBE`, or `help $BENCHMARK` to print more details."))
+    help_parser.add_argument(
+        "probe_or_benchmark",
+        nargs="?",
+        help="Use a benchmark or probe name to display more details.")
     help_parser.set_defaults(subcommand_fn=self.help_subcommand)
+
     version_parser = self.subparsers.add_parser(
         "version",
         help="Show program's version number and exit, same as --version")
@@ -293,12 +336,25 @@ class CrossBenchCLI:
     assert isinstance(self.describe_parser, CrossBenchArgumentParser)
     self._add_verbosity_argument(self.describe_parser)
 
+  def help_subcommand(self, args: argparse.Namespace) -> None:
+    if search_str := args.probe_or_benchmark:
+      self._describe(search_str)
+    else:
+      self.parser.print_help()
+    sys.exit(0)
+
   def describe_subcommand(self, args: argparse.Namespace) -> None:
+    self._describe(args.filter, args.category, args.json)
+
+  def _describe(self,
+                search_str: Optional[str] = None,
+                category: Optional[str] = "all",
+                print_json: bool = False) -> None:
     benchmarks_data: Dict[str, Any] = {}
     for benchmark_cls in self.BENCHMARKS:
       aliases: Tuple[str, ...] = benchmark_cls.aliases()
-      if args.filter:
-        if benchmark_cls.NAME != args.filter and args.filter not in aliases:
+      if search_str:
+        if benchmark_cls.NAME != search_str and search_str not in aliases:
           continue
       benchmark_info = benchmark_cls.describe()
       benchmark_info["aliases"] = aliases or "None"
@@ -309,27 +365,27 @@ class CrossBenchCLI:
         "probes": {
             str(probe_cls.NAME): probe_cls.help_text()
             for probe_cls in GENERAL_PURPOSE_PROBES
-            if not args.filter or probe_cls.NAME == args.filter
+            if not search_str or probe_cls.NAME == search_str
         }
     }
-    if args.json:
-      if args.category in ("probe", "probes"):
+    if print_json:
+      if category in ("probe", "probes"):
         data = data["probes"]
         if not data:
-          self.error(f"No matching probe found: '{args.filter}'")
-      elif args.category in ("benchmark", "benchmarks"):
+          self.error(f"No matching probe found: '{search_str}'")
+      elif category in ("benchmark", "benchmarks"):
         data = data["benchmarks"]
         if not data:
-          self.error(f"No matching benchmark found: '{args.filter}'")
+          self.error(f"No matching benchmark found: '{search_str}'")
       else:
-        assert args.category == "all"
+        assert category == "all"
         if not data["benchmarks"] and not data["probes"]:
-          self.error(f"No matching benchmarks or probes found: '{args.filter}'")
+          self.error(f"No matching benchmarks or probes found: '{search_str}'")
       print(json.dumps(data, indent=2))
       return
     # Create tabular format
     printed_any = False
-    if args.category in ("all", "benchmark", "benchmarks"):
+    if category in ("all", "benchmark", "benchmarks"):
       table: List[List[Optional[str]]] = [["Benchmark", "Property", "Value"]]
       for benchmark_name, values in data["benchmarks"].items():
         table.append([
@@ -346,30 +402,25 @@ class CrossBenchCLI:
               value = tbl.tabulate(value.items(), tablefmt="plain", **kwargs)
           table.append([None, name, value])
       if len(table) <= 1:
-        if args.category != "all":
-          self.error(f"No matching benchmark found: '{args.filter}'")
+        if category != "all":
+          self.error(f"No matching benchmark found: '{search_str}'")
       else:
         printed_any = True
         print(tbl.tabulate(table, tablefmt="grid"))
 
-    if args.category in ("all", "probe", "probes"):
+    if category in ("all", "probe", "probes"):
       table = [["Probe", "Help"]]
       for probe_name, probe_desc in data["probes"].items():
         table.append([probe_name, probe_desc])
       if len(table) <= 1:
-        if args.category != "all":
-          self.error(f"No matching probe found: '{args.filter}'")
+        if category != "all":
+          self.error(f"No matching probe found: '{search_str}'")
       else:
         printed_any = True
         print(tbl.tabulate(table, tablefmt="grid"))
 
     if not printed_any:
-      self.error(f"No matching benchmarks or probes found: '{args.filter}'")
-
-  def help_subcommand(self, args: argparse.Namespace) -> None:
-    del args
-    self.parser.print_help()
-    sys.exit(0)
+      self.error(f"No matching benchmarks or probes found: '{search_str}'")
 
   def version_subcommand(self, args: argparse.Namespace) -> None:
     del args
@@ -389,19 +440,24 @@ class CrossBenchCLI:
     runner_group.add_argument(
         "--cache-dir",
         type=pth.LocalPath,
-        default=BROWSERS_CACHE,
+        default=None,
         help=("Used for caching browser binaries and archives. "
               "Defaults to binary_cache"))
 
     cooldown_group = runner_group.add_mutually_exclusive_group()
     cooldown_group.add_argument(
+        "--cool-down-threshold",
+        type=ThermalStatus.parse,
+        help=("Pause execution when the device reaches this thermal status. "
+              "Exucution resumes once the status drops below the threshold. "
+              "Only available on Android."))
+    cooldown_group.add_argument(
         "--cool-down-time",
         "--cool-down",
-        type=cli_helper.Duration.parse_zero,
+        type=DurationParser.positive_or_zero_duration,
         default=dt.timedelta(seconds=2),
-        help=("Time the runner waits between different runs or repetitions. "
-              "Increase this to let the CPU cool down between runs. "
-              f"Format: {cli_helper.Duration.help()}"))
+        help=("Wait between repetitions for a fixed amount of time. "
+              f"Format: {DurationParser.help()}"))
     cooldown_group.add_argument(
         "--no-cool-down",
         action="store_const",
@@ -419,52 +475,67 @@ class CrossBenchCLI:
 
     runner_group.add_argument(
         "--time-unit",
-        type=cli_helper.Duration.parse,
+        type=DurationParser.any_duration,
         default=dt.timedelta(seconds=1),
         help=("Absolute duration of 1 time unit in the runner. "
               "Increase this for slow builds or machines. "
-              f"Format: {cli_helper.Duration.help()}"))
+              f"Format: {DurationParser.help()}"))
     runner_group.add_argument(
         "--timeout-unit",
-        type=cli_helper.Duration.parse,
+        type=DurationParser.any_duration,
         default=dt.timedelta(),
         help=("Absolute duration of 1 time unit for timeouts in the runner. "
               "Unlike --time-unit, this does only apply for timeouts, "
               "as opposed to say initial wait times or sleeps."
-              f"Format: {cli_helper.Duration.help()}"))
+              f"Format: {DurationParser.help()}"))
     runner_group.add_argument(
         "--run-timeout",
-        type=cli_helper.Duration.parse_zero,
+        type=DurationParser.positive_or_zero_duration,
         default=dt.timedelta(),
         help=("Sets the same timeout per run on all browsers. "
               "Runs will be aborted after the given timeout. "
-              f"Format: {cli_helper.Duration.help()}"))
+              f"Format: {DurationParser.help()}"))
+    runner_group.add_argument(
+        "--start-delay",
+        "--startup-delay",
+        type=DurationParser.positive_or_zero_duration,
+        default=dt.timedelta(),
+        help=("Delay before running the core workload, "
+              "after a story's/workload's setup, "
+              "and after starting the browser."))
+    runner_group.add_argument(
+        "--stop-delay",
+        type=DurationParser.positive_or_zero_duration,
+        default=dt.timedelta(),
+        help=("Delay after running the core workload, "
+              "before story's/workload's teardown, "
+              "and before quitting the browser."))
 
     network_group = subparser.add_argument_group("Network Options", "")
     network_settings_group = network_group.add_mutually_exclusive_group()
     network_settings_group.add_argument(
         "--network",
-        type=cli_config.NetworkConfig.parse,
+        type=NetworkConfig.parse,
         help=("Either an inline network config or an file path to full "
               "network config hjson file (see --network-config)."))
     network_settings_group.add_argument(
         "--network-config",
         metavar="DIR",
-        type=cli_config.NetworkConfig.parse_config_path,
-        help=cli_config.NetworkConfig.help())
+        type=NetworkConfig.parse_config_path,
+        help=NetworkConfig.help())
     network_settings_group.add_argument(
         "--local-file-server",
         "--local-fileserver",
         "--file-server",
         "--fileserver",
-        type=cli_config.NetworkConfig.parse_local,
+        type=NetworkConfig.parse_local,
         metavar="DIR",
         dest="network",
         help="Start a local http file server at the given directory.")
     network_settings_group.add_argument(
         "--wpr",
         "--web-page-replay",
-        type=cli_config.NetworkConfig.parse_wpr,
+        type=NetworkConfig.parse_wpr,
         metavar="WPR_ARCHIVE",
         dest="network",
         help=("Use wpr.archive to replay network requests "
@@ -476,14 +547,14 @@ class CrossBenchCLI:
     env_settings_group = env_group.add_mutually_exclusive_group()
     env_settings_group.add_argument(
         "--env",
-        type=cli_config.parse_inline_env_config,
-        help=("Set default runner environment settings. "
-              f"Possible values: {', '.join(HostEnvironment.CONFIGS)}"
+        type=EnvironmentConfig.parse,
+        help=("Set default runner environment settings. {}"
+              f"Possible values: {', '.join(ENV_CONFIG_PRESETS.keys())}"
               "or an inline hjson configuration (see --env-config). "
               "Mutually exclusive with --env-config"))
     env_settings_group.add_argument(
         "--env-config",
-        type=cli_config.parse_env_config_file,
+        type=EnvironmentConfig.parse_config_path,
         help=("Path to an env.config.hjson file that specifies detailed "
               "runner environment settings and requirements. "
               "See config/env.config.hjson for more details."
@@ -492,7 +563,7 @@ class CrossBenchCLI:
     env_group.add_argument(
         "--env-validation",
         default=ValidationMode.PROMPT,
-        type=ValidationMode,
+        type=ValidationMode,  # type: ignore
         help=(
             "Set how runner env is validated (see als --env-config/--env):\n" +
             ValidationMode.help_text(indent=2)))
@@ -509,7 +580,7 @@ class CrossBenchCLI:
     browser_config_group.add_argument(
         "--browser",
         "-b",
-        type=cli_config.BrowserConfig.parse_with_range,
+        type=BrowserConfig.parse_with_range,
         action="extend",
         default=[],
         help=(
@@ -533,12 +604,13 @@ class CrossBenchCLI:
             "android devices or --browser='adb:chrome' if only once device is "
             "attached.\n"
             "Repeat for adding multiple browsers. "
-            "The browser result dir's name is '${BROWSER}_${PLATFORM}_${INDEX}' "
+            "The browser result dir's name is "
+            "'${BROWSER}_${PLATFORM}_${INDEX}' "
             "$INDEX corresponds to the order on the command line."
             "Cannot be used together with --browser-config"))
     browser_config_group.add_argument(
         "--browser-config",
-        type=cli_helper.parse_hjson_file_path,
+        type=PathParser.hjson_file_path,
         help=("Browser configuration.json file. "
               "Use this to run multiple browsers and/or multiple "
               "flag configurations. "
@@ -547,27 +619,48 @@ class CrossBenchCLI:
               "Cannot be used together with --browser."))
     browser_group.add_argument(
         "--driver-path",
-        type=cli_helper.parse_file_path,
+        type=PathParser.file_path,
         help=("Use the same custom driver path for all specified browsers. "
               "Version mismatches might cause crashes."))
     browser_group.add_argument(
+        "--remote-driver-path",
+        type=PathParser.any_path,
+        help=("Use the same custom driver path for all specified remote"
+              " browsers. Version mismatches might cause crashes."))
+    browser_group.add_argument(
         "--config",
-        type=cli_helper.parse_hjson_file_path,
+        type=PathParser.hjson_file_path,
         help=("Specify a common config for --probe-config, --browser-config, "
               "--network-config and --env-config."))
     browser_group.add_argument(
         "--secrets",
         dest="secrets",
-        type=SecretsConfig.parse,
+        type=Secrets.parse,
+        default=Secrets(),
         help="Path to file containing login secrets")
+
+    browser_group.add_argument(
+        "--wipe-system-user-data",
+        dest="wipe_system_user_data",
+        default=False,
+        action="store_true",
+        help="Clear user data at the beginning of the test "
+        "(be careful using it).")
+    browser_group.add_argument(
+        "--http-request-timeout",
+        type=DurationParser.positive_or_zero_duration,
+        default=dt.timedelta(),
+        help=("Set the timeout of http request. "
+              f"Format: {DurationParser.help()}. "
+              "When not specified, there will be no timeout."))
 
     splashscreen_group = browser_group.add_mutually_exclusive_group()
     splashscreen_group.add_argument(
         "--splash-screen",
         "--splashscreen",
         "--splash",
-        type=splash_screen.SplashScreen.parse,
-        default=splash_screen.SplashScreen.DETAILED,
+        type=SplashScreen.parse,
+        default=SplashScreen.DETAILED,
         help=("Set the splashscreen shown before each run. "
               "Choices: 'default', 'none', 'minimal', 'detailed,' or "
               "a path or a URL."))
@@ -575,7 +668,7 @@ class CrossBenchCLI:
         "--no-splash",
         "--nosplash",
         dest="splash_screen",
-        const=splash_screen.SplashScreen.NONE,
+        const=SplashScreen.NONE,
         action="store_const",
         help="Shortcut for --splash-screen=none")
 
@@ -583,18 +676,18 @@ class CrossBenchCLI:
     # pytype: disable=missing-parameter
     viewport_group.add_argument(
         "--viewport",
-        default=viewport.Viewport.DEFAULT,
-        type=viewport.Viewport.parse,
+        default=Viewport.DEFAULT,
+        type=Viewport.parse,
         help=("Set the browser window position."
               "Options: size and position, "
-              f"{', '.join(str(e) for e in viewport.ViewportMode)}. "
+              f"{', '.join(str(e) for e in ViewportMode)}. "
               "Examples: --viewport=1550x300 --viewport=fullscreen. "
-              f"Default: {viewport.Viewport.DEFAULT}"))
+              f"Default: {Viewport.DEFAULT}"))
     # pytype: enable=missing-parameter
     viewport_group.add_argument(
         "--headless",
         dest="viewport",
-        const=viewport.Viewport.HEADLESS,
+        const=Viewport.HEADLESS,
         action="store_const",
         help=("Start the browser in headless if supported. "
               "Equivalent to --viewport=headless."))
@@ -638,7 +731,7 @@ class CrossBenchCLI:
     probe_config_group.add_argument(
         "--probe",
         action="append",
-        type=cli_config.ProbeConfig.parse,
+        type=ProbeConfig.parse,
         default=[],
         help=(
             "Enable general purpose probes to measure data on all cb.stories. "
@@ -650,10 +743,10 @@ class CrossBenchCLI:
             "Use 'describe probes' or 'describe probe $NAME' for probe "
             "configuration details."
             "Cannot be used together with --probe-config."
-            f"\n\nChoices: {', '.join(cli_config.PROBE_LOOKUP.keys())}"))
+            f"\n\nChoices: {', '.join(PROBE_LOOKUP.keys())}"))
     probe_config_group.add_argument(
         "--probe-config",
-        type=cli_helper.parse_hjson_file_path,
+        type=PathParser.hjson_file_path,
         default=benchmark_cls.default_probe_config_path(),
         help=("Browser configuration.json file. "
               "Use this config file to specify more complex Probe settings."
@@ -666,20 +759,23 @@ class CrossBenchCLI:
     subparser.add_argument("other_browser_args", nargs="*")
 
   def benchmark_subcommand(self, args: argparse.Namespace) -> None:
-    benchmark = None
-    runner = None
+    benchmark: Optional[Benchmark] = None
+    runner: Optional[Runner] = None
+    if args.cache_dir:
+      plt.PLATFORM.set_cache_dir(args.cache_dir)
     self._benchmark_subcommand_helper(args)
     try:
       self._benchmark_subcommand_process_args(args)
       benchmark = self._get_benchmark(args)
-      with tempfile.TemporaryDirectory(prefix="crossbench") as tmp_dirname:
+      with plt.PLATFORM.TemporaryDirectory(prefix="crossbench") as tmp_dirname:
         if args.dry_run:
           args.out_dir = pth.LocalPath(tmp_dirname) / "results"
         args.browser = self._get_browsers(args)
-        probes = self._get_probes(args)
-        env_config = self._get_env_config(args)
-        env_validation_mode = self._get_env_validation_mode(args)
-        timing = self._get_timing(args)
+        probes: Sequence[Probe] = self._get_probes(args)
+        env_config: EnvironmentConfig = self._get_env_config(args)
+        env_validation_mode: ValidationMode = self._get_env_validation_mode(
+            args)
+        timing: Timing = self._get_timing(args)
         runner = self._get_runner(args, benchmark, env_config,
                                   env_validation_mode, timing)
 
@@ -703,7 +799,7 @@ class CrossBenchCLI:
         self._run_benchmark(args, runner)
     except KeyboardInterrupt:
       sys.exit(2)
-    except cli_helper.LateArgumentError as e:
+    except LateArgumentError as e:
       if args.throw:
         raise
       self.handle_late_argument_error(e)
@@ -750,7 +846,15 @@ class CrossBenchCLI:
     elif network_config := args.benchmark_cls.default_network_config_path():
       args.network = network_config
     else:
-      args.network = cli_config.NetworkConfig.default()
+      args.network = NetworkConfig.default()
+
+  def _process_env_args(self, args) -> None:
+    if network_config := args.env_config:
+      args.env = network_config
+    elif args.env:
+      pass
+    else:
+      args.env = EnvironmentConfig.default()
 
   def _benchmark_subcommand_process_args(self, args) -> None:
     if args.config:
@@ -776,25 +880,27 @@ class CrossBenchCLI:
           "--config cannot be used together with --probe-config")
 
     config_file = args.config
-    config_data = cli_helper.parse_hjson_file(config_file)
+    config_data = ObjectParser.hjson_file(config_file)
     found_any_config = False
 
-    if config_data.get("env"):
-      args.env_config = cli_config.parse_env_config_file(config_file)
+    if env_config_data := config_data.get("env"):
+      args.env = EnvironmentConfig.parse(env_config_data)
       found_any_config = True
     else:
       logging.warning("Skipping env config: no 'env' property in %s",
                       config_file)
+    if not args.env:
+      args.env = EnvironmentConfig.default()
 
     if network_config_data := config_data.get("network"):
       # TODO: migrate all --config helper to this format
-      args.network = cli_config.NetworkConfig.parse(network_config_data)
+      args.network = NetworkConfig.parse(network_config_data)
       found_any_config = True
     else:
       logging.warning("Skipping network config: no 'network' property in %s",
                       config_file)
     if not args.network:
-      args.network = cli_config.NetworkConfig.default()
+      args.network = NetworkConfig.default()
 
     if config_data.get("browsers"):
       args.browser_config = config_file
@@ -814,25 +920,25 @@ class CrossBenchCLI:
       raise argparse.ArgumentTypeError(
           f"--config: config file has no config properties {config_file}")
 
-
   def _log_benchmark_subcommand_failure(self, benchmark: Optional[Benchmark],
                                         runner: Optional[Runner],
                                         e: Exception) -> None:
     logging.debug(e)
     logging.error("")
     logging.error("#" * 80)
-    logging.error("SUBCOMMAND UNSUCCESSFUL got %s:", e.__class__.__name__)
+    message: str = "SUBCOMMAND"
+    if benchmark:
+      message = f"{benchmark.NAME.upper()} BENCHMARK"
+    logging.error("%s FAILED WITH %s:", message, e.__class__.__name__)
     logging.error("-" * 80)
     self._log_benchmark_subcommand_exception(e)
     logging.error("-" * 80)
-    if benchmark:
-      logging.error("Running '%s' was not successful:", benchmark.NAME)
-    logging.error(
-        "- Use --debug for very verbose output (equivalent to --throw -vvv)")
     if runner and runner.runs:
       self._log_runner_debug_hints(runner)
     else:
       logging.error("- Check %s.json detailed backtraces", ErrorsProbe.NAME)
+    logging.error(
+        "- Use --debug for very verbose output (equivalent to --throw -vvv)")
     logging.error("#" * 80)
     sys.exit(3)
 
@@ -845,8 +951,8 @@ class CrossBenchCLI:
       self._log_assertion_error_statement(e)
 
   def _log_assertion_error_statement(self, e: AssertionError) -> None:
-    _, exception, tb = sys.exc_info()
-    if exception is not e:
+    _, exc_exception, tb = sys.exc_info()
+    if exc_exception is not e:
       return
     tb_info = traceback.extract_tb(tb)
     filename, line, _, text = tb_info[-1]
@@ -864,7 +970,7 @@ class CrossBenchCLI:
       candidates.extend(failed_run.out_dir.glob("*.log"))
 
     failed_run = failed_runs[0]
-    logging.error("- Check log outputs (1 of %d failed runs):",
+    logging.error("- Check log outputs (example 1 of %d failed runs):",
                   len(failed_runs))
     limit = 3
     for log_file in candidates[:limit]:
@@ -951,6 +1057,7 @@ class CrossBenchCLI:
     else:
       logging.critical("RESULTS (maybe incomplete/broken): %s", runner.out_dir)
     logging.info("=" * 80)
+    self._log_run_annotations(runner)
     if not runner.has_browser_group:
       logging.debug("No browser group in %s", runner)
       return
@@ -963,23 +1070,30 @@ class CrossBenchCLI:
           raise
         logging.warning("log_result_summary failed: %s", e)
 
+  def _log_run_annotations(self, runner: Runner) -> None:
+    all_annotations = set(
+        itertools.chain.from_iterable(run.annotations for run in runner.runs))
+    RunAnnotation.log_all(all_annotations)
+
   def _get_browsers(self, args: argparse.Namespace) -> Sequence[Browser]:
     # TODO: move browser instance create to separate method.
     # TODO: move --browser-config parsing to BrowserVariantsConfig
-    args.browser_config = cli_config.BrowserVariantsConfig.from_cli_args(args)
+    args.browser_config = BrowserVariantsConfig.from_cli_args(args)
     return args.browser_config.variants
 
   def _get_probes(self, args: argparse.Namespace) -> Sequence[Probe]:
     # TODO: move probe creation to separate method
     # TODO: move --probe-config parsing to ProbeListConfig
-    args.probe_config = cli_config.ProbeListConfig.from_cli_args(args)
+    args.probe_config = ProbeListConfig.from_cli_args(args)
     return args.probe_config.probes
 
   def _get_benchmark(self, args: argparse.Namespace) -> Benchmark:
-    benchmark_cls = self._get_benchmark_cls(args)
+    benchmark_cls: Type[Benchmark] = self._get_benchmark_cls(args)
     assert (issubclass(benchmark_cls, Benchmark)), (
         f"benchmark_cls={benchmark_cls} is not subclass of Runner")
-    return benchmark_cls.from_cli_args(args)
+    with exception.annotate_argparsing(
+        f"Parsing {benchmark_cls.NAME} arguments"):
+      return benchmark_cls.from_cli_args(args)
 
   def _get_benchmark_cls(self, args: argparse.Namespace) -> Type[Benchmark]:
     return args.benchmark_cls
@@ -988,21 +1102,16 @@ class CrossBenchCLI:
                                args: argparse.Namespace) -> ValidationMode:
     return args.env_validation
 
-  def _get_env_config(self, args: argparse.Namespace) -> HostEnvironmentConfig:
-    # TODO: move env_config to args.env and use ConfigObject
-    if args.env:
-      return args.env
-    if args.env_config:
-      return args.env_config
-    return HostEnvironmentConfig()
+  def _get_env_config(self, args: argparse.Namespace) -> EnvironmentConfig:
+    return args.env
 
   def _get_timing(self, args: argparse.Namespace) -> Timing:
     timeout_unit: dt.timedelta = args.timeout_unit or args.time_unit
     return Timing(args.cool_down_time, args.time_unit, timeout_unit,
-                  args.run_timeout)
+                  args.run_timeout, args.start_delay, args.stop_delay)
 
   def _get_runner(self, args: argparse.Namespace, benchmark: Benchmark,
-                  env_config: HostEnvironmentConfig,
+                  env_config: EnvironmentConfig,
                   env_validation_mode: ValidationMode,
                   timing: Timing) -> Runner:
     runner_kwargs = self.RUNNER_CLS.kwargs_from_cli(args)
@@ -1036,7 +1145,7 @@ class CrossBenchCLI:
     finally:
       self._teardown_logging()
 
-  def handle_late_argument_error(self, e: cli_helper.LateArgumentError) -> None:
+  def handle_late_argument_error(self, e: LateArgumentError) -> None:
     self.error(f"error argument {e.flag}: {e.message}")
 
   def error(self, message: str) -> None:
@@ -1057,6 +1166,7 @@ class CrossBenchCLI:
       parser.fail(message)
 
   def _init_logging(self, argv: Sequence[str]) -> None:
+    sys.excepthook = exception_formatter.excepthook
     assert self._console_handler is None
     if not self._enable_logging:
       logging.getLogger().setLevel(logging.CRITICAL)
@@ -1065,6 +1175,8 @@ class CrossBenchCLI:
     self._console_handler.addFilter(logging.Filter("root"))
     self._console_handler.setLevel(logging.INFO)
     logging.getLogger().setLevel(logging.INFO)
+    # Clear existing handlers in case logging has been initialized prematurely.
+    logging.getLogger().handlers = []
     logging.getLogger().addHandler(self._console_handler)
 
     # Manually extract values to allow logging for failing arguments.
@@ -1072,9 +1184,16 @@ class CrossBenchCLI:
       self._console_handler.setLevel(logging.DEBUG)
       logging.getLogger().setLevel(logging.DEBUG)
     # TODO: move to ui helpers
-    ui.COLOR_LOGGING = "--no-color" not in argv
+    ui.COLOR_LOGGING = self._detect_terminal_color(argv)
     if ui.COLOR_LOGGING:
       self._console_handler.setFormatter(ui.ColoredLogFormatter())
+
+  def _detect_terminal_color(self, argv: Sequence[str]) -> bool:
+    if "--no-color" in argv:
+      return False
+    if os.environ.get("NO_COLOR", ""):
+      return False
+    return True
 
   def _setup_logging(self) -> None:
     if not self._enable_logging:
@@ -1087,7 +1206,8 @@ class CrossBenchCLI:
     elif self.args.verbosity >= 1:
       self._console_handler.setLevel(logging.DEBUG)
       logging.getLogger().setLevel(logging.DEBUG)
-    ui.COLOR_LOGGING = self.args.color
+    if not self.args.color:
+      ui.COLOR_LOGGING = False
     if ui.COLOR_LOGGING:
       self._console_handler.setFormatter(ui.ColoredLogFormatter())
     else:

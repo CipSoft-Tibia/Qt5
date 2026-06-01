@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #ifndef COMPONENTS_GUEST_VIEW_BROWSER_GUEST_VIEW_H_
 #define COMPONENTS_GUEST_VIEW_BROWSER_GUEST_VIEW_H_
 
@@ -9,8 +14,13 @@
 #include "components/guest_view/browser/guest_view_base.h"
 #include "components/guest_view/browser/guest_view_histogram_value.h"
 #include "components/guest_view/browser/guest_view_manager.h"
+#include "content/public/browser/frame_tree_node_id.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/render_frame_host.h"
+
+namespace content {
+class NavigationHandle;
+}  // namespace content
 
 namespace guest_view {
 
@@ -29,6 +39,12 @@ class GuestView : public GuestViewBase {
         GuestViewBase::FromInstanceID(embedder_process_id, guest_instance_id));
   }
 
+  static T* FromInstanceID(content::ChildProcessId embedder_process_id,
+                           int guest_instance_id) {
+    return AsDerivedGuest(
+        GuestViewBase::FromInstanceID(embedder_process_id, guest_instance_id));
+  }
+
   // Prefer using FromRenderFrameHost. See https://crbug.com/1362569.
   static T* FromWebContents(content::WebContents* contents) {
     return AsDerivedGuest(GuestViewBase::FromWebContents(contents));
@@ -42,6 +58,16 @@ class GuestView : public GuestViewBase {
     return AsDerivedGuest(GuestViewBase::FromRenderFrameHostId(rfh_id));
   }
 
+  static T* FromNavigationHandle(content::NavigationHandle* navigation_handle) {
+    return AsDerivedGuest(
+        GuestViewBase::FromNavigationHandle(navigation_handle));
+  }
+
+  static T* FromFrameTreeNodeId(content::FrameTreeNodeId frame_tree_node_id) {
+    return AsDerivedGuest(
+        GuestViewBase::FromFrameTreeNodeId(frame_tree_node_id));
+  }
+
   GuestView(const GuestView&) = delete;
   GuestView& operator=(const GuestView&) = delete;
 
@@ -53,8 +79,7 @@ class GuestView : public GuestViewBase {
  protected:
   explicit GuestView(content::RenderFrameHost* owner_rfh)
       : GuestViewBase(owner_rfh) {
-    base::UmaHistogramEnumeration("GuestView.GuestViewCreated",
-                                  T::HistogramValue);
+    LogUsage();
   }
   ~GuestView() override = default;
 
@@ -74,6 +99,15 @@ class GuestView : public GuestViewBase {
       return nullptr;
 
     return static_cast<T*>(guest);
+  }
+
+  void LogUsage() {
+    GuestViewHistogramValue value = T::HistogramValue;
+    if (value == GuestViewHistogramValue::kWebView &&
+        IsOwnedByControlledFrameEmbedder()) {
+      value = GuestViewHistogramValue::kControlledFrame;
+    }
+    base::UmaHistogramEnumeration("GuestView.GuestViewCreated", value);
   }
 };
 

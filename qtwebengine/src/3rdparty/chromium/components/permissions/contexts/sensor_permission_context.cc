@@ -15,12 +15,12 @@ namespace permissions {
 
 SensorPermissionContext::SensorPermissionContext(
     content::BrowserContext* browser_context)
-    : PermissionContextBase(browser_context,
-                            ContentSettingsType::SENSORS,
-                            blink::mojom::PermissionsPolicyFeature::kNotFound) {
-}
+    : PermissionContextBase(
+          browser_context,
+          ContentSettingsType::SENSORS,
+          network::mojom::PermissionsPolicyFeature::kNotFound) {}
 
-SensorPermissionContext::~SensorPermissionContext() {}
+SensorPermissionContext::~SensorPermissionContext() = default;
 
 void SensorPermissionContext::UpdateTabContext(const PermissionRequestID& id,
                                                const GURL& requesting_frame,

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 
 #include "qv4stringobject_p.h"
@@ -74,12 +75,13 @@ bool StringObject::virtualDeleteProperty(Managed *m, PropertyKey id)
     return Object::virtualDeleteProperty(m, id);
 }
 
+namespace {
 struct StringObjectOwnPropertyKeyIterator : ObjectOwnPropertyKeyIterator
 {
     ~StringObjectOwnPropertyKeyIterator() override = default;
     PropertyKey next(const QV4::Object *o, Property *pd = nullptr, PropertyAttributes *attrs = nullptr) override;
-
 };
+} // namespace
 
 PropertyKey StringObjectOwnPropertyKeyIterator::next(const QV4::Object *o, Property *pd, PropertyAttributes *attrs)
 {

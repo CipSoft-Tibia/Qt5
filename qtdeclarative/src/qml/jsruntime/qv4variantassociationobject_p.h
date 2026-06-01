@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QV4VARIANTASSOCIATIONOBJECT_P_H_
 #define QV4VARIANTASSOCIATIONOBJECT_P_H_
@@ -45,8 +46,13 @@ namespace QV4 {
 
     namespace Heap {
 
-        struct VariantAssociationObject : ReferenceObject
+        #define VariantAssociationObjectMembers(class, Member) \
+            Member(class, Pointer, ArrayObject *, propertyIndexMapping);
+
+        DECLARE_HEAP_OBJECT(VariantAssociationObject, ReferenceObject)
         {
+            DECLARE_MARKOBJECTS(VariantAssociationObject)
+
             enum class AssociationType: quint8 {
                 VariantMap,
                 VariantHash
@@ -96,7 +102,6 @@ namespace QV4 {
             alignas(alignment)
             std::byte m_variantAssociation[std::max(sizeof(QVariantMap), sizeof(QVariantHash))];
 
-            std::vector<QString>* propertyIndexMapping;
             AssociationType m_type;
         };
 

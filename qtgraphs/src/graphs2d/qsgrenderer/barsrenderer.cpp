@@ -10,7 +10,27 @@
 #include <private/qbarseries_p.h>
 #include <private/qgraphsview_p.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+              "class BarsRenderer;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateVerticalBars_entry, int setCount, int valuesPerSet, int barSeriesCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateVerticalBars_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateupdateHorizontalBars_entry, int setCount, int valuesPerSet, int barSeriesCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateupdateHorizontalBars_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateValueLabels_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateValueLabels_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateComponents_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarsRendererUpdateComponents_exit);
 
 static const char* TAG_BAR_COLOR = "barColor";
 static const char* TAG_BAR_BORDER_COLOR = "barBorderColor";
@@ -20,12 +40,12 @@ static const char* TAG_BAR_VALUE = "barValue";
 static const char* TAG_BAR_LABEL = "barLabel";
 static const char* TAG_BAR_INDEX = "barIndex";
 
-BarsRenderer::BarsRenderer(QGraphsView *graph)
+BarsRenderer::BarsRenderer(QGraphsView *graph, bool clipPlotArea)
     : QQuickItem(graph)
     , m_graph(graph)
 {
     setFlag(QQuickItem::ItemHasContents);
-    setClip(true);
+    setClip(clipPlotArea);
 
     m_tapHandler = new QQuickTapHandler(this);
     connect(m_tapHandler, &QQuickTapHandler::singleTapped, this, &BarsRenderer::onSingleTapped);
@@ -149,6 +169,7 @@ void BarsRenderer::updateComponents(QBarSeries *series)
     int barIndex = 0;
     auto &seriesData = m_seriesData[series];
     auto &barItems = m_barItems[series];
+    Q_TRACE(QGraphs2DBarsRendererUpdateComponents_entry);
     for (auto i = seriesData.cbegin(), end = seriesData.cend(); i != end; ++i) {
         if (barItems.size() <= barIndex) {
             QQuickItem *item = nullptr;
@@ -170,6 +191,7 @@ void BarsRenderer::updateComponents(QBarSeries *series)
                 auto &barItem = barItems[barIndex];
                 barItem->setX(d.rect.x());
                 barItem->setY(d.rect.y());
+                barItem->setZ(series->zValue());
                 barItem->setWidth(d.rect.width());
                 barItem->setHeight(d.rect.height());
                 barItem->setVisible(series->isVisible());
@@ -194,6 +216,7 @@ void BarsRenderer::updateComponents(QBarSeries *series)
                 if (barItem) {
                     barItem->setX(d.rect.x());
                     barItem->setY(d.rect.y());
+                    barItem->setZ(series->zValue());
                     barItem->setWidth(d.rect.width());
                     barItem->setHeight(d.rect.height());
                     barItem->setVisible(series->isVisible());
@@ -206,6 +229,7 @@ void BarsRenderer::updateComponents(QBarSeries *series)
         }
         barIndex++;
     }
+    Q_TRACE(QGraphs2DBarsRendererUpdateComponents_exit);
 }
 
 void BarsRenderer::updateValueLabels(QBarSeries *series)
@@ -215,6 +239,7 @@ void BarsRenderer::updateValueLabels(QBarSeries *series)
         int barIndex = 0;
         auto &seriesData = m_seriesData[series];
         auto &labelTextItems = m_labelTextItems[series];
+        Q_TRACE(QGraphs2DBarsRendererUpdateValueLabels_entry);
         for (auto i = seriesData.cbegin(), end = seriesData.cend(); i != end; ++i) {
             if (labelTextItems.size() <= barIndex) {
                 // Create more label items as needed
@@ -243,6 +268,7 @@ void BarsRenderer::updateValueLabels(QBarSeries *series)
             }
             barIndex++;
         }
+        Q_TRACE(QGraphs2DBarsRendererUpdateValueLabels_exit);
     } else {
         // Hide all possibly existing label items
         auto &labelTextItems = m_labelTextItems[series];
@@ -305,6 +331,9 @@ void BarsRenderer::updateVerticalBars(QBarSeries *series, qsizetype setCount, qs
     int barSeriesIndex = 0;
     QList<QLegendData> legendDataList;
     auto barsets = series->barSets();
+    Q_TRACE(QGraphs2DBarsRendererUpdateVerticalBars_entry, setCount, valuesPerSet,
+            std::count_if(m_graph->m_seriesList.begin(), m_graph->m_seriesList.end(),
+                          [](const auto &series) { return qobject_cast<QBarSeries *>(series); }));
     for (auto s : std::as_const(barsets)) {
         QVariantList v = s->values();
         qsizetype valuesCount = v.size();
@@ -319,6 +348,8 @@ void BarsRenderer::updateVerticalBars(QBarSeries *series, qsizetype setCount, qs
             barSelectionRect->barSet = s;
             barSelectionRect->series = series;
         }
+
+        auto &axisY = m_graph->m_axisRenderer->getAxisY(series);
 
         QColor color = getSetColor(series, s, barSeriesIndex);
         QColor borderColor = getSetBorderColor(series, s, barSeriesIndex);
@@ -336,13 +367,13 @@ void BarsRenderer::updateVerticalBars(QBarSeries *series, qsizetype setCount, qs
         const auto selectedBars = s->selectedBars();
         for (const auto &variantValue : std::as_const(v)) {
             const float realValue = variantValue.toReal();
-            float value = (realValue - m_graph->m_axisRenderer->m_axisVerticalMinValue) * series->valuesMultiplier();
+            float value = (realValue - axisY.minValue) * series->valuesMultiplier();
             if (percent) {
                 if (auto totalValue = totalValuesListInSet.at(barIndexInSet))
                     value *= (100.0 / totalValue);
             }
             const bool isSelected = selectedBars.contains(barIndexInSet);
-            double delta = m_graph->m_axisRenderer->m_axisVerticalMaxValue - m_graph->m_axisRenderer->m_axisVerticalMinValue;
+            double delta = axisY.maxValue - axisY.minValue;
             double maxValues = delta > 0 ? 1.0 / delta : 100.0;
             float barLength = h * value * maxValues;
             float barY = h - barLength;
@@ -375,6 +406,7 @@ void BarsRenderer::updateVerticalBars(QBarSeries *series, qsizetype setCount, qs
         posXInSet += barWidth + m_barMargin;
         barSeriesIndex++;
     }
+    Q_TRACE(QGraphs2DBarsRendererUpdateVerticalBars_exit);
     series->d_func()->setLegendData(legendDataList);
 }
 
@@ -416,6 +448,9 @@ void BarsRenderer::updateHorizontalBars(QBarSeries *series, qsizetype setCount, 
     int barSerieIndex = 0;
     QList<QLegendData> legendDataList;
     auto barsets = series->barSets();
+    Q_TRACE(QGraphs2DBarsRendererUpdateupdateHorizontalBars_entry, setCount, valuesPerSet,
+            std::count_if(m_graph->m_seriesList.begin(), m_graph->m_seriesList.end(),
+                          [](const auto &series) { return qobject_cast<QBarSeries *>(series); }));
     for (auto s : std::as_const(barsets)) {
         QVariantList v = s->values();
         qsizetype valuesCount = v.size();
@@ -430,6 +465,8 @@ void BarsRenderer::updateHorizontalBars(QBarSeries *series, qsizetype setCount, 
             barSelectionRect->barSet = s;
             barSelectionRect->series = series;
         }
+
+        auto &axisX = m_graph->m_axisRenderer->getAxisX(series);
 
         QColor color = getSetColor(series, s, barSerieIndex);
         QColor borderColor = getSetBorderColor(series, s, barSerieIndex);
@@ -446,13 +483,13 @@ void BarsRenderer::updateHorizontalBars(QBarSeries *series, qsizetype setCount, 
         const auto selectedBars = s->selectedBars();
         for (const auto &variantValue : std::as_const(v)) {
             const float realValue = variantValue.toReal();
-            float value = (realValue - m_graph->m_axisRenderer->m_axisHorizontalMinValue) * series->valuesMultiplier();
+            float value = (realValue - axisX.minValue) * series->valuesMultiplier();
             if (percent) {
                 if (auto totalValue = totalValuesListInSet.at(barIndexInSet))
                     value *= (100.0 / totalValue);
             }
             const bool isSelected = selectedBars.contains(barIndexInSet);
-            double delta = m_graph->m_axisRenderer->m_axisHorizontalMaxValue - m_graph->m_axisRenderer->m_axisHorizontalMinValue;
+            double delta = axisX.maxValue - axisX.minValue;
             double maxValues = delta > 0 ? 1.0 / delta : 100.0;
             float barLength = w * value * maxValues;
             float barY = seriesPos + posYInSet + barCentering;
@@ -485,17 +522,22 @@ void BarsRenderer::updateHorizontalBars(QBarSeries *series, qsizetype setCount, 
         posYInSet += barWidth + m_barMargin;
         barSerieIndex++;
     }
+    Q_TRACE(QGraphs2DBarsRendererUpdateVerticalBars_exit);
     series->d_func()->setLegendData(legendDataList);
 }
 
 void BarsRenderer::handlePolish(QBarSeries *series)
 {
     auto theme = m_graph->theme();
-    if (!theme)
+    if (!theme) {
+        qCCritical(lcCritical2D, "Theme not found.");
         return;
+    }
 
-    if (!m_graph->m_axisRenderer)
+    if (!m_graph->m_axisRenderer) {
+        qCCritical(lcCritical2D, "Axis renderer not found.");
         return;
+    }
 
     qsizetype setCount = series->barSets().size();
     auto &seriesData = m_seriesData[series];
@@ -525,7 +567,7 @@ void BarsRenderer::handlePolish(QBarSeries *series)
     }
 
     // Get bars values
-    qsizetype valuesPerSet = series->barSets().first()->values().size();
+    qsizetype valuesPerSet = series->barSets().constFirst()->values().size();
     if (m_graph->orientation() == Qt::Orientation::Vertical)
         updateVerticalBars(series, setCount, valuesPerSet);
     else
@@ -591,6 +633,7 @@ bool BarsRenderer::handleHoverMove(QHoverEvent *event)
 
                     if (!m_currentHoverSeries) {
                         m_currentHoverSeries = barSelection.series;
+                        barSelection.series->setHovered(true);
                         emit barSelection.series->hoverEnter(name, position, point);
                     }
 
@@ -604,6 +647,7 @@ bool BarsRenderer::handleHoverMove(QHoverEvent *event)
     }
 
     if (!hovering && m_currentHoverSeries) {
+        m_currentHoverSeries->setHovered(false);
         emit m_currentHoverSeries->hoverExit(m_currentHoverSeries->name(), position);
         m_currentHoverSeries = nullptr;
         handled = true;

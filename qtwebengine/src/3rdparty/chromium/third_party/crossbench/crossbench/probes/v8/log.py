@@ -9,22 +9,24 @@ import multiprocessing
 import os
 import re
 import subprocess
-from typing import TYPE_CHECKING, Iterable, List, Optional, cast
+from typing import TYPE_CHECKING, Iterable, List, Optional, Type, cast
 
-from crossbench import cli_helper, compat, helper, plt
-from crossbench.browsers.browser import Browser
-from crossbench.browsers.chromium.chromium import Chromium
+from crossbench import compat, plt
 from crossbench.flags.js_flags import JSFlags
+from crossbench.helper import fs_helper
 from crossbench.helper.path_finder import V8ToolsFinder
+from crossbench.helper.spinner import Spinner
+from crossbench.parse import PathParser
 from crossbench.probes.chromium_probe import ChromiumProbe
-from crossbench.probes.probe import (ProbeConfigParser, ProbeContext, ProbeKeyT,
-                                     ResultLocation)
-from crossbench.probes.results import ProbeResult
+from crossbench.probes.probe import ProbeConfigParser, ProbeContext, ProbeKeyT
+from crossbench.probes.result_location import ResultLocation
 
 if TYPE_CHECKING:
+  from crossbench.browsers.browser import Browser
   from crossbench.env import HostEnvironment
-  from crossbench.path import LocalPath, RemotePath
-  from crossbench.runner.groups import BrowsersRunGroup
+  from crossbench.path import AnyPath, LocalPath
+  from crossbench.probes.results import ProbeResult
+  from crossbench.runner.groups.browsers import BrowsersRunGroup
   from crossbench.runner.run import Run
 
 _PROF_FLAG = "--prof"
@@ -72,13 +74,13 @@ class V8LogProbe(ChromiumProbe):
         help="Manually pass --log-.* flags to V8")
     parser.add_argument(
         "d8_binary",
-        type=cli_helper.parse_file_path,
+        type=PathParser.file_path,
         help="Path to a D8 binary for extended log processing."
         "If not specified the $D8_PATH env variable is used and/or "
         "default build locations are tried.")
     parser.add_argument(
         "v8_checkout",
-        type=cli_helper.parse_dir_path,
+        type=PathParser.dir_path,
         help="Path to a V8 checkout for extended log processing."
         "If not specified it is auto inferred from either the provided"
         "d8_binary or standard installation locations.")
@@ -131,9 +133,9 @@ class V8LogProbe(ChromiumProbe):
 
   def validate_env(self, env: HostEnvironment) -> None:
     super().validate_env(env)
-    if env.runner.repetitions != 1:
+    if env.repetitions != 1:
       env.handle_warning(f"Probe({self.NAME}) cannot merge data over multiple "
-                         f"repetitions={env.runner.repetitions}.")
+                         f"repetitions={env.repetitions}.")
 
   def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
     super().validate_browser(env, browser)
@@ -149,16 +151,15 @@ class V8LogProbe(ChromiumProbe):
 
   def attach(self, browser: Browser) -> None:
     super().attach(browser)
-    assert isinstance(browser, Chromium)
-
-    browser = cast(Chromium, browser)
+    assert browser.attributes.is_chromium_based, (
+        f"Expected chromium-based browser, but got {browser}")
     browser.flags.set("--no-sandbox")
     browser.js_flags.update(self._js_flags)
 
-  def process_log_files(self, log_files: List[RemotePath]) -> List[RemotePath]:
+  def process_log_files(self, log_files: List[AnyPath]) -> List[AnyPath]:
     if not self._profview:
       return []
-    platform = self.runner_platform
+    platform = self.host_platform
     finder = V8ToolsFinder(platform, self._d8_binary, self._v8_checkout)
     if not finder.d8_binary or not finder.tick_processor or not log_files:
       logging.warning("Did not find $D8_PATH for profview processing.")
@@ -181,8 +182,8 @@ class V8LogProbe(ChromiumProbe):
                        [(finder.d8_binary, finder.tick_processor, log_file)
                         for log_file in log_files]))
 
-  def get_context(self, run: Run) -> V8LogProbeContext:
-    return V8LogProbeContext(self, run)
+  def get_context_cls(self) -> Type[V8LogProbeContext]:
+    return V8LogProbeContext
 
   def log_browsers_result(self, group: BrowsersRunGroup) -> None:
     runs: List[Run] = list(run for run in group.runs if self in run.results)
@@ -201,18 +202,18 @@ class V8LogProbe(ChromiumProbe):
       if not log_files:
         continue
       logging.info("Run %d: %s", i + 1, run.name)
-      largest_log_file = log_files[0]
+      largest_log_file = log_files[-1]
       logging.critical("    %s : %s", largest_log_file,
-                       helper.get_file_size(largest_log_file))
+                       fs_helper.get_file_size(largest_log_file))
       if len(log_files) > 1:
         logging.info("    %s/.*v8.log: %d files", largest_log_file.parent,
                      len(log_files))
       profview_files = run.results[self].json_list
       if not profview_files:
         continue
-      largest_profview_file = profview_files[0]
+      largest_profview_file = profview_files[-1]
       logging.critical("    %s : %s", largest_profview_file,
-                       helper.get_file_size(largest_profview_file))
+                       fs_helper.get_file_size(largest_profview_file))
       if len(profview_files) > 1:
         logging.info("    %s/*.profview.json: %d more files",
                      largest_profview_file.parent, len(profview_files))
@@ -220,7 +221,7 @@ class V8LogProbe(ChromiumProbe):
 
 class V8LogProbeContext(ProbeContext[V8LogProbe]):
 
-  def get_default_result_path(self) -> RemotePath:
+  def get_default_result_path(self) -> AnyPath:
     log_dir = super().get_default_result_path()
     self.browser_platform.mkdir(log_dir)
     return log_dir / self.probe.result_path_name
@@ -236,19 +237,19 @@ class V8LogProbeContext(ProbeContext[V8LogProbe]):
 
   def teardown(self) -> ProbeResult:
     log_dir = self.result_path.parent
-    log_files = helper.sort_by_file_size(
+    log_files = fs_helper.sort_by_file_size(
         self.browser_platform.glob(log_dir, "*-v8.log"), self.browser_platform)
     # Only convert a v8.log file with profile ticks.
-    json_list: List[RemotePath] = []
+    json_list: List[AnyPath] = []
     maybe_js_flags = getattr(self.browser, "js_flags", {})
     if _PROF_FLAG in maybe_js_flags or _LOG_ALL_FLAG in maybe_js_flags:
-      with helper.Spinner():
+      with Spinner():
         json_list = self.probe.process_log_files(log_files)
     return self.browser_result(file=tuple(log_files), json=json_list)
 
 
-def _process_profview_json(d8_binary: RemotePath, tick_processor: RemotePath,
-                           log_file: RemotePath) -> RemotePath:
+def _process_profview_json(d8_binary: AnyPath, tick_processor: AnyPath,
+                           log_file: AnyPath) -> AnyPath:
   env = os.environ.copy()
   # TODO: support remote platforms
   platform = plt.PLATFORM

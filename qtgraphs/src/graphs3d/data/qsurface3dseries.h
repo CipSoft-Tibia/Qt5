@@ -36,9 +36,10 @@ class Q_GRAPHS_EXPORT QSurface3DSeries : public QAbstract3DSeries
 
 public:
     enum DrawFlag {
-        DrawWireframe = 1,
-        DrawSurface = 2,
+        DrawWireframe = 0x1,
+        DrawSurface = 0x2,
         DrawSurfaceAndWireframe = DrawWireframe | DrawSurface,
+        DrawFilledSurface = 0x4,
     };
     Q_FLAG(DrawFlag)
     Q_DECLARE_FLAGS(DrawFlags, DrawFlag)

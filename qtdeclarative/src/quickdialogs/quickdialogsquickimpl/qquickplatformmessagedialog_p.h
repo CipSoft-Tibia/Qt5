@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKPLATFORMMESSAGEDIALOG_P_H
 #define QQUICKPLATFORMMESSAGEDIALOG_P_H
@@ -18,9 +19,10 @@
 #include <QtGui/qpa/qplatformdialoghelper.h>
 
 #include "qtquickdialogs2quickimplglobal_p.h"
-#include "qquickmessagedialogimpl_p.h"
 
 QT_BEGIN_NAMESPACE
+
+class QQuickMessageDialogImpl;
 
 class Q_QUICKDIALOGS2QUICKIMPL_EXPORT QQuickPlatformMessageDialog
     : public QPlatformMessageDialogHelper

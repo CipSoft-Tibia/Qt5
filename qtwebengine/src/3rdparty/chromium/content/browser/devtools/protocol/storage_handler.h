@@ -20,7 +20,7 @@
 #include "content/browser/interest_group/interest_group_manager_impl.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
-#include "content/browser/shared_storage/shared_storage_worklet_host_manager.h"
+#include "content/browser/shared_storage/shared_storage_runtime_manager.h"
 #include "storage/browser/quota/quota_manager.h"
 
 namespace storage {
@@ -77,20 +77,20 @@ class StorageHandler
   void GetQuotaOverrideHandle();
   void OverrideQuotaForOrigin(
       const String& origin,
-      Maybe<double> quota_size,
+      std::optional<double> quota_size,
       std::unique_ptr<OverrideQuotaForOriginCallback> callback) override;
 
   // Cookies management
   void GetCookies(
-      Maybe<std::string> browser_context_id,
+      std::optional<std::string> browser_context_id,
       std::unique_ptr<Storage::Backend::GetCookiesCallback> callback) override;
 
   void SetCookies(
       std::unique_ptr<protocol::Array<Network::CookieParam>> cookies,
-      Maybe<std::string> browser_context_id,
+      std::optional<std::string> browser_context_id,
       std::unique_ptr<Storage::Backend::SetCookiesCallback> callback) override;
 
-  void ClearCookies(Maybe<std::string> browser_context_id,
+  void ClearCookies(std::optional<std::string> browser_context_id,
                     std::unique_ptr<Storage::Backend::ClearCookiesCallback>
                         callback) override;
 
@@ -130,7 +130,7 @@ class StorageHandler
       const std::string& owner_origin_string,
       const std::string& key,
       const std::string& value,
-      Maybe<bool> ignore_if_present,
+      std::optional<bool> ignore_if_present,
       std::unique_ptr<SetSharedStorageEntryCallback> callback) override;
   void DeleteSharedStorageEntry(
       const std::string& owner_origin_string,
@@ -183,7 +183,7 @@ class StorageHandler
   CacheStorageObserver* GetCacheStorageObserver();
   IndexedDBObserver* GetIndexedDBObserver();
 
-  SharedStorageWorkletHostManager* GetSharedStorageWorkletHostManager();
+  SharedStorageRuntimeManager* GetSharedStorageRuntimeManager();
   absl::variant<protocol::Response, storage::SharedStorageManager*>
   GetSharedStorageManager();
   storage::QuotaManagerProxy* GetQuotaManagerProxy();
@@ -211,8 +211,8 @@ class StorageHandler
 
   void NotifySharedStorageAccessed(
       const base::Time& access_time,
-      SharedStorageWorkletHostManager::SharedStorageObserverInterface::
-          AccessType type,
+      SharedStorageRuntimeManager::SharedStorageObserverInterface::AccessType
+          type,
       FrameTreeNodeId main_frame_id,
       const std::string& owner_origin,
       const SharedStorageEventParams& params);
@@ -229,8 +229,9 @@ class StorageHandler
   void NotifyCreateOrUpdateBucket(const storage::BucketInfo& bucket_info);
   void NotifyDeleteBucket(const storage::BucketLocator& bucket_locator);
 
-  Response FindStoragePartition(const Maybe<std::string>& browser_context_id,
-                                StoragePartition** storage_partition);
+  Response FindStoragePartition(
+      const std::optional<std::string>& browser_context_id,
+      StoragePartition** storage_partition);
 
   void ResetAttributionReporting();
 

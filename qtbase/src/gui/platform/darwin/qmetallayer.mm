@@ -73,5 +73,4 @@ QT_USE_NAMESPACE
     return [super nextDrawable];
 }
 
-
 @end

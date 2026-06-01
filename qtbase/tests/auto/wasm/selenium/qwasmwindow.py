@@ -667,7 +667,7 @@ class Screen:
         shadow_container = self.element.find_element(By.CSS_SELECTOR, f'#qt-shadow-container')
         return [
             Window(self, element=element) for element in shadow_container.shadow_root.find_elements(
-                    By.CSS_SELECTOR, f'div#{self.name} > div.qt-window')]
+                    By.CSS_SELECTOR, f'div#{self.name} > div.qt-decorated-window')]
 
     def find_element(self, method, query):
         shadow_container = self.element.find_element(By.CSS_SELECTOR, f'#qt-shadow-container')

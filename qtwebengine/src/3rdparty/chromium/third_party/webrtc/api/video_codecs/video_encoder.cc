@@ -120,9 +120,7 @@ VideoEncoder::EncoderInfo::EncoderInfo(const EncoderInfo&) = default;
 VideoEncoder::EncoderInfo::~EncoderInfo() = default;
 
 std::string VideoEncoder::EncoderInfo::ToString() const {
-  char string_buf[2048];
-  rtc::SimpleStringBuilder oss(string_buf);
-
+  rtc::StringBuilder oss;
   oss << "EncoderInfo { "
          "ScalingSettings { ";
   if (scaling_settings.thresholds) {
@@ -310,7 +308,7 @@ bool VideoEncoder::RateControlParameters::operator!=(
 VideoEncoder::RateControlParameters::~RateControlParameters() = default;
 
 void VideoEncoder::SetFecControllerOverride(
-    FecControllerOverride* fec_controller_override) {}
+    FecControllerOverride* /* fec_controller_override */) {}
 
 int32_t VideoEncoder::InitEncode(const VideoCodec* codec_settings,
                                  int32_t number_of_cores,
@@ -335,11 +333,11 @@ int VideoEncoder::InitEncode(const VideoCodec* codec_settings,
                     settings.max_payload_size);
 }
 
-void VideoEncoder::OnPacketLossRateUpdate(float packet_loss_rate) {}
+void VideoEncoder::OnPacketLossRateUpdate(float /* packet_loss_rate */) {}
 
-void VideoEncoder::OnRttUpdate(int64_t rtt_ms) {}
+void VideoEncoder::OnRttUpdate(int64_t /* rtt_ms */) {}
 
 void VideoEncoder::OnLossNotification(
-    const LossNotification& loss_notification) {}
+    const LossNotification& /* loss_notification */) {}
 
 }  // namespace webrtc

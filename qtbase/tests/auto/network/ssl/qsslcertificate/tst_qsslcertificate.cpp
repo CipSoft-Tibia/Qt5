@@ -20,6 +20,8 @@
 #include <openssl/obj_mac.h>
 #endif
 
+using namespace Qt::StringLiterals;
+
 class tst_QSslCertificate : public QObject
 {
     Q_OBJECT
@@ -67,6 +69,7 @@ private slots:
     void subjectIssuerDisplayName();
     void publicKey_data();
     void publicKey();
+    void publicKeyFromBrokenCert();
     void toPemOrDer_data();
     void toPemOrDer();
     void fromDevice();
@@ -96,6 +99,9 @@ private slots:
 
     // helper for verbose test failure messages
     QString toString(const QList<QSslError>&);
+
+private:
+    void certInfo_helper(const char *methodName);
 
 // ### add tests for certificate bundles (multiple certificates concatenated into a single
 //     structure); both PEM and DER formatted
@@ -494,12 +500,23 @@ void tst_QSslCertificate::subjectIssuerDisplayName()
     QFETCH(const QString, certName);
     QFETCH(const QString, expectedName);
 
+    {
     const auto chain = QSslCertificate::fromPath(testDataDir + certName);
     QCOMPARE(chain.size(), 1);
     const auto cert = chain.at(0);
     QVERIFY(!cert.isNull());
     QCOMPARE(cert.subjectDisplayName(), expectedName);
     QCOMPARE(cert.issuerDisplayName(), expectedName);
+    }
+
+    {
+        const auto chain = QSslCertificate::fromFile(testDataDir + certName);
+        QCOMPARE(chain.size(), 1);
+        const auto cert = chain.at(0);
+        QVERIFY(!cert.isNull());
+        QCOMPARE(cert.subjectDisplayName(), expectedName);
+        QCOMPARE(cert.issuerDisplayName(), expectedName);
+    }
 }
 
 void tst_QSslCertificate::utf8SubjectNames()
@@ -565,6 +582,21 @@ void tst_QSslCertificate::publicKey()
     QVERIFY(!pubkey.isNull());
 
     QCOMPARE(certificate.publicKey(), pubkey);
+}
+
+void tst_QSslCertificate::publicKeyFromBrokenCert()
+{
+    if (!QSslSocket::supportsSsl())
+        return;
+
+    if (currentBackend() != TLSBackend::OpenSSL)
+        QSKIP("Only works with OpenSSL backend");
+
+    QByteArray certData = readFile(testDataDir + "more-certificates/broken-pubkey-cert.pem");
+    QSslCertificate cert(certData, QSsl::Pem);
+
+    QSslKey pubKey = cert.publicKey();
+    QVERIFY(pubKey.isNull());
 }
 
 void tst_QSslCertificate::toPemOrDer_data()
@@ -701,9 +733,14 @@ void tst_QSslCertificate::fromPath_qregularexpression()
                                        pemencoding ? QSsl::Pem : QSsl::Der,
                                        QSslCertificate::PatternSyntax(syntax)).size(),
              numCerts);
+
+    if (QSslCertificate::PatternSyntax(syntax) == QSslCertificate::PatternSyntax::FixedString) {
+        const auto list = QSslCertificate::fromFile(path, pemencoding ? QSsl::Pem : QSsl::Der);
+        QCOMPARE(list.size(), numCerts);
+    }
 }
 
-void tst_QSslCertificate::certInfo()
+void tst_QSslCertificate::certInfo_helper(const char *methodName)
 {
 // MD5 Fingerprint=B6:CF:57:34:DA:A9:73:21:82:F7:CF:4D:3D:85:31:88
 // SHA1 Fingerprint=B6:D1:51:82:E0:29:CA:59:96:38:BD:B6:F9:40:05:91:6D:49:09:60
@@ -788,8 +825,14 @@ void tst_QSslCertificate::certInfo()
         "dc:c2:eb:b7:bb:50:18:05:ba:ad:af:08:49:fe:98:63"
         "55:ba:e7:fb:95:5d:91";
 
-    QSslCertificate cert =  QSslCertificate::fromPath(testDataDir + "certificates/cert.pem", QSsl::Pem,
-                                                      QSslCertificate::PatternSyntax::FixedString).first();
+    QSslCertificate cert;
+    if (methodName == "fromPath"_L1) {
+        cert =  QSslCertificate::fromPath(testDataDir + "certificates/cert.pem", QSsl::Pem,
+                                          QSslCertificate::PatternSyntax::FixedString).first();
+    } else if (methodName == "fromFile"_L1)  {
+        cert = QSslCertificate::fromFile(testDataDir + "certificates/cert.pem", QSsl::Pem).first();
+    }
+
     QVERIFY(!cert.isNull());
 
     QCOMPARE(cert.issuerInfo(QSslCertificate::Organization)[0], QString("CryptSoft Pty Ltd"));
@@ -845,8 +888,15 @@ void tst_QSslCertificate::certInfo()
     QCOMPARE(cert, QSslCertificate(QByteArray::fromHex(der), QSsl::Der));
 }
 
+void tst_QSslCertificate::certInfo()
+{
+    certInfo_helper("fromPath");
+    certInfo_helper("fromFile");
+}
+
 void tst_QSslCertificate::certInfoQByteArray()
 {
+    {
     QSslCertificate cert =  QSslCertificate::fromPath(testDataDir + "certificates/cert.pem", QSsl::Pem,
                                                       QSslCertificate::PatternSyntax::FixedString).first();
     QVERIFY(!cert.isNull());
@@ -855,6 +905,18 @@ void tst_QSslCertificate::certInfoQByteArray()
     // we fixed a bug we had with lazy initialization of the values.
     QCOMPARE(cert.issuerInfo("CN")[0], QString("Test CA (1024 bit)"));
     QCOMPARE(cert.subjectInfo("CN")[0], QString("name/with/slashes"));
+    }
+
+    {
+        QSslCertificate cert =
+            QSslCertificate::fromFile(testDataDir + "certificates/cert.pem", QSsl::Pem).first();
+        QVERIFY(!cert.isNull());
+
+        // in this test, check the bytearray variants before the enum variants to see if
+        // we fixed a bug we had with lazy initialization of the values.
+        QCOMPARE(cert.issuerInfo("CN")[0], QString("Test CA (1024 bit)"));
+        QCOMPARE(cert.subjectInfo("CN")[0], QString("name/with/slashes"));
+    }
 }
 
 void tst_QSslCertificate::task256066toPem()

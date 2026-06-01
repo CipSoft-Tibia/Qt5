@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSET_H
 #define QSET_H
@@ -164,6 +165,7 @@ public:
     const_iterator find(const T &value) const { return q_hash.find(value); }
     inline const_iterator constFind(const T &value) const { return find(value); }
     QSet<T> &unite(const QSet<T> &other);
+    QSet &unite(QSet &&other);
     QSet<T> &intersect(const QSet<T> &other);
     bool intersects(const QSet<T> &other) const;
     QSet<T> &subtract(const QSet<T> &other);
@@ -185,23 +187,29 @@ public:
     // comfort
     inline QSet<T> &operator<<(const T &value) { insert(value); return *this; }
     inline QSet<T> &operator|=(const QSet<T> &other) { unite(other); return *this; }
+    QSet &operator|=(QSet &&other) { return unite(std::move(other)); }
     inline QSet<T> &operator|=(const T &value) { insert(value); return *this; }
     inline QSet<T> &operator&=(const QSet<T> &other) { intersect(other); return *this; }
     inline QSet<T> &operator&=(const T &value)
         { QSet<T> result; if (contains(value)) result.insert(value); return (*this = result); }
     inline QSet<T> &operator+=(const QSet<T> &other) { unite(other); return *this; }
+    QSet &operator+=(QSet &&other) { return unite(std::move(other)); }
     inline QSet<T> &operator+=(const T &value) { insert(value); return *this; }
     inline QSet<T> &operator-=(const QSet<T> &other) { subtract(other); return *this; }
     inline QSet<T> &operator-=(const T &value) { remove(value); return *this; }
 
     friend QSet operator|(const QSet &lhs, const QSet &rhs) { return QSet(lhs) |= rhs; }
     friend QSet operator|(QSet &&lhs, const QSet &rhs) { lhs |= rhs; return std::move(lhs); }
+    friend QSet operator|(const QSet &lhs, QSet &&rhs) { return QSet(lhs) |= std::move(rhs); }
+    friend QSet operator|(QSet &&lhs, QSet &&rhs) { return std::move(lhs) |= std::move(rhs); }
 
     friend QSet operator&(const QSet &lhs, const QSet &rhs) { return QSet(lhs) &= rhs; }
     friend QSet operator&(QSet &&lhs, const QSet &rhs) { lhs &= rhs; return std::move(lhs); }
 
     friend QSet operator+(const QSet &lhs, const QSet &rhs) { return QSet(lhs) += rhs; }
     friend QSet operator+(QSet &&lhs, const QSet &rhs) { lhs += rhs; return std::move(lhs); }
+    friend QSet operator+(const QSet &lhs, QSet &&rhs) { return QSet(lhs) += std::move(rhs); }
+    friend QSet operator+(QSet &&lhs, QSet &&rhs) { return std::move(lhs) += std::move(rhs); }
 
     friend QSet operator-(const QSet &lhs, const QSet &rhs) { return QSet(lhs) -= rhs; }
     friend QSet operator-(QSet &&lhs, const QSet &rhs) { lhs -= rhs; return std::move(lhs); }
@@ -210,6 +218,9 @@ public:
 
 private:
     static inline QSet intersected_helper(const QSet &lhs, const QSet &rhs);
+
+    template <typename E>
+    void _emplace_or_overwrite(E &&e);
 
     Hash q_hash;
 };
@@ -239,6 +250,48 @@ Q_INLINE_TEMPLATE QSet<T> &QSet<T>::unite(const QSet<T> &other)
             insert(e);
     }
     return *this;
+}
+
+template <class T>
+Q_INLINE_TEMPLATE auto QSet<T>::unite(QSet &&other) -> QSet&
+{
+    if (other.isDetached() && size() < other.size()) {
+
+        // We can change the state of `other`, so take the smaller *this and
+        // insert it into the larger `other`, making sure we take equivalent
+        // elements from *this:
+
+        swap(other);
+
+        // Now: iterate over `other`, insert into *this, making sure we take
+        //      equivalent elements from `other`:
+
+        if (other.isDetached()) { // can move elements from `other`
+            for (auto &e : other)
+                _emplace_or_overwrite(std::move(e));
+        } else { // need to copy elements from `other`
+            for (const auto &e : std::as_const(other))
+                _emplace_or_overwrite(e);
+        }
+
+        return *this;
+    }
+
+    // in all other cases, the lvalue overload is not worse:
+    return unite(other);
+}
+
+template <class T>
+template <typename E>
+Q_INLINE_TEMPLATE void QSet<T>::_emplace_or_overwrite(E &&e)
+{
+    const auto r = q_hash.tryEmplace(std::forward<E>(e));
+    if (!r.inserted) {
+        // QHash never overwrites the key, but that's what we need
+        // here, so do it using private QHash API:
+        // NB: `e` was _not_ moved from by tryEmplace()!
+        typename Hash::Data::Bucket(r.iterator.i).node()->key = std::forward<E>(e);
+    }
 }
 
 template <class T>

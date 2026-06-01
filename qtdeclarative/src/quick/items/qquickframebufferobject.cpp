@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickframebufferobject.h"
 
@@ -287,7 +288,7 @@ QSGNode *QQuickFramebufferObject::updatePaintNode(QSGNode *node, UpdatePaintNode
     QSize desiredFboSize(qMax<int>(minFboSize.width(), width()),
                          qMax<int>(minFboSize.height(), height()));
 
-    n->devicePixelRatio = window()->effectiveDevicePixelRatio();
+    n->devicePixelRatio = d->effectiveDevicePixelRatio();
     desiredFboSize *= n->devicePixelRatio;
 
     if (n->fbo && ((d->followsItemSize && n->fbo->size() != desiredFboSize) || n->invalidatePending)) {

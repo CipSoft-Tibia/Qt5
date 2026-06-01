@@ -86,7 +86,7 @@ const cfg = {
   startHttpServer: false,
   httpServerListenHost: '127.0.0.1',
   httpServerListenPort: 10000,
-  wasmModules: ['trace_processor', 'traceconv'],
+  wasmModules: ['trace_processor', 'traceconv', 'trace_config_utils'],
   crossOriginIsolation: false,
   testFilter: '',
   noOverrideGnArgs: false,
@@ -120,12 +120,8 @@ const RULES = [
   {r: /ui\/src\/assets\/((.*)[.]png)/, f: copyAssets},
   {r: /buildtools\/typefaces\/(.+[.]woff2)/, f: copyAssets},
   {r: /buildtools\/catapult_trace_viewer\/(.+(js|html))/, f: copyAssets},
-  {r: /ui\/src\/assets\/.+[.]scss/, f: compileScss},
+  {r: /ui\/src\/assets\/.+[.]scss|ui\/src\/(?:plugins|core_plugins)\/.+\/styles[.]scss/, f: compileScss},
   {r: /ui\/src\/chrome_extension\/.*/, f: copyExtensionAssets},
-  {
-    r: /ui\/src\/test\/diff_viewer\/(.+[.](?:html|js))/,
-    f: copyUiTestArtifactsAssets,
-  },
   {r: /.*\/dist\/.+\/(?!manifest\.json).*/, f: genServiceWorkerManifestJson},
   {r: /.*\/dist\/.*[.](js|html|css|wasm)$/, f: notifyLiveServer},
 ];
@@ -152,7 +148,6 @@ async function main() {
   parser.add_argument('--no-build', '-n', {action: 'store_true'});
   parser.add_argument('--no-wasm', '-W', {action: 'store_true'});
   parser.add_argument('--run-unittests', '-t', {action: 'store_true'});
-  parser.add_argument('--run-integrationtests', '-T', {action: 'store_true'});
   parser.add_argument('--debug', '-d', {action: 'store_true'});
   parser.add_argument('--bigtrace', {action: 'store_true'});
   parser.add_argument('--open-perfetto-trace', {action: 'store_true'});
@@ -214,8 +209,9 @@ async function main() {
   process.on('SIGINT', () => {
     console.log('\nSIGINT received. Killing all child processes and exiting');
     for (const proc of subprocesses) {
-      if (proc) proc.kill('SIGINT');
+      if (proc) proc.kill('SIGKILL');
     }
+    process.kill(0, 'SIGKILL');  // Kill the whole process group.
     process.exit(130);  // 130 -> Same behavior of bash when killed by SIGINT.
   });
 
@@ -253,15 +249,17 @@ async function main() {
     updateSymlinks();  // Links //ui/out -> //out/xxx/ui/
 
     buildWasm(args.no_wasm);
+    generateImports('ui/src/core_plugins', 'all_core_plugins');
+    generateImports('ui/src/plugins', 'all_plugins');
     scanDir('ui/src/assets');
+    scanDir('ui/src/plugins', /styles[.]scss$/);
+    scanDir('ui/src/core_plugins', /styles[.]scss$/);
     scanDir('ui/src/chrome_extension');
-    scanDir('ui/src/test/diff_viewer');
     scanDir('buildtools/typefaces');
     scanDir('buildtools/catapult_trace_viewer');
-    generateImports('ui/src/core_plugins', 'all_core_plugins.ts');
-    generateImports('ui/src/plugins', 'all_plugins.ts');
     compileProtos();
     genVersion();
+    generateStdlibDocs();
 
     const tsProjects = [
       'ui',
@@ -315,9 +313,6 @@ async function main() {
   }
   if (args.run_unittests) {
     runTests('jest.unittest.config.js');
-  }
-  if (args.run_integrationtests) {
-    runTests('jest.integrationtest.config.js');
   }
 }
 
@@ -413,6 +408,7 @@ function compileProtos() {
     'protos/perfetto/ipc/consumer_port.proto',
     'protos/perfetto/ipc/wire_protocol.proto',
     'protos/perfetto/trace/perfetto/perfetto_metatrace.proto',
+    'protos/perfetto/perfetto_sql/structured_query.proto',
     'protos/perfetto/trace_processor/trace_processor.proto',
   ];
   // Can't put --no-comments here - The comments are load bearing for
@@ -460,6 +456,25 @@ function genVersion() {
   const args =
       [VERSION_SCRIPT, '--ts_out', pjoin(cfg.outGenDir, 'perfetto_version.ts')];
   addTask(exec, [cmd, args]);
+}
+
+function generateStdlibDocs() {
+  const cmd = pjoin(ROOT_DIR, 'tools/gen_stdlib_docs_json.py');
+  const stdlibDir = pjoin(ROOT_DIR, 'src/trace_processor/perfetto_sql/stdlib');
+
+  const stdlibFiles =
+    listFilesRecursive(stdlibDir)
+    .filter((filePath) => path.extname(filePath) === '.sql');
+
+  addTask(exec, [
+    cmd,
+    [
+      '--json-out',
+      pjoin(cfg.outDistDir, 'stdlib_docs.json'),
+      '--minify',
+      ...stdlibFiles,
+    ],
+  ]);
 }
 
 function updateSymlinks() {
@@ -830,6 +845,18 @@ function walk(dir, callback, skipRegex) {
       callback(childPath);
     }
   }
+}
+
+// Recursively build a list of files in a given directory and return a list of
+// file paths, similar to `find -type f`.
+function listFilesRecursive(dir) {
+  const fileList = [];
+
+  walk(dir, (filePath) => {
+    fileList.push(filePath);
+  });
+
+  return fileList;
 }
 
 function ensureDir(dirPath, clean) {

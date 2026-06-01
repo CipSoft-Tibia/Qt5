@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:dataparser
 
 #include "qqmljslexer_p.h"
 #include "qqmljsengine_p.h"
@@ -945,12 +946,12 @@ again:
                 scanChar();
             }
 
-            _tokenLength = _codePtr - _tokenStartPtr - 1;
-
+            const auto token = QStringView(_tokenStartPtr, _codePtr - 1);
+            _tokenLength = token.size();
             int kind = T_IDENTIFIER;
 
             if (!identifierWithEscapeChars)
-                kind = classify(_tokenStartPtr, _tokenLength, parseModeFlags());
+                kind = classify(token, parseModeFlags());
 
             if (_engine) {
                 if (kind == T_IDENTIFIER && identifierWithEscapeChars)
@@ -1618,6 +1619,7 @@ static const int uriTokens[] = {
     QQmlJSGrammar::T_DO,
     QQmlJSGrammar::T_ELSE,
     QQmlJSGrammar::T_FALSE,
+    QQmlJSGrammar::T_FINAL,
     QQmlJSGrammar::T_FINALLY,
     QQmlJSGrammar::T_FOR,
     QQmlJSGrammar::T_FUNCTION,

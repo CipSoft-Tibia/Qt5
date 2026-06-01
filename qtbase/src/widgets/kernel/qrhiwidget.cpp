@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qrhiwidget_p.h"
 #include <private/qguiapplication_p.h>
@@ -90,7 +91,7 @@ QT_BEGIN_NAMESPACE
 
     The result is a widget that shows the following:
 
-    \image qrhiwidget-intro.jpg
+    \image qrhiwidget-intro.jpg {Multicolored triangle on a green background}
 
     For a complete, minimal, introductory example check out the \l{Simple RHI
     Widget Example}.
@@ -902,13 +903,29 @@ void QRhiWidget::setSampleCount(int samples)
     will appear stretched (scaled up) or scaled down onto the widget's area.
 
     For example, setting a size that is exactly twice the widget's (pixel) size
-    effectively performs 2x supersampling (rendering at twice the resolution
-    and then implicitly scaling down when texturing the quad corresponding to
-    the widget in the window).
+    effectively performs 2x supersampling (rendering at twice the resolution and
+    then implicitly scaling down when texturing the quad corresponding to the
+    widget in the window). On the other hand, setting a size that is half of the
+    widget's effectively achieves rendering at half resolution and then
+    upscaling the results.
 
     By default the value is a null QSize. A null or empty QSize means that the
     texture's size follows the QRhiWidget's size. (\c{texture size} = \c{widget
     size} * \c{device pixel ratio}).
+
+    \note The device pixel ratio (the system compositor's scale factor) can have
+    a big impact on performance, since a scale factor of 2 (200%) means
+    rendering at twice the resolution, so twice of what the developer and UI
+    designer perceives as the widget's size, and then effectively downscaling
+    the content, similarly to what happens when setting this property to twice
+    the widget's pixel size on a system where the device pixel ratio is 1.
+    Therefore, this property is expected to be rarely used with sizes bigger
+    than the widget's pixel size, since many modern desktop systems have neither
+    have the need nor the performance budget for it, when a larger than 1 device
+    pixel ratio is used anyway by the system. Instead, the main use case for
+    this property is to set a smaller size, in order to render at a reasonable
+    smaller resolution instead of blindly following the window geometry, however
+    big that may be.
  */
 
 QSize QRhiWidget::fixedColorBufferSize() const

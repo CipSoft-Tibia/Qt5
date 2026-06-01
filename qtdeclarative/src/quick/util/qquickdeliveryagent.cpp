@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qdebug.h>
 #include <QtGui/private/qevent_p.h>
@@ -34,6 +35,7 @@ Q_LOGGING_CATEGORY(lcPtr, "qt.quick.pointer")
 Q_STATIC_LOGGING_CATEGORY(lcPtrLoc, "qt.quick.pointer.localization")
 Q_STATIC_LOGGING_CATEGORY(lcWheelTarget, "qt.quick.wheel.target")
 Q_LOGGING_CATEGORY(lcHoverTrace, "qt.quick.hover.trace")
+Q_LOGGING_CATEGORY(lcHoverCursor, "qt.quick.hover.cursor")
 Q_LOGGING_CATEGORY(lcFocus, "qt.quick.focus")
 Q_STATIC_LOGGING_CATEGORY(lcContextMenu, "qt.quick.contextmenu")
 
@@ -1025,7 +1027,7 @@ void QQuickDeliveryAgentPrivate::deliverToPassiveGrabbers(const QVector<QPointer
 {
     const QVector<QObject *> &eventDeliveryTargets =
             QQuickPointerHandlerPrivate::deviceDeliveryTargets(pointerEvent->device());
-    QVarLengthArray<QPair<QQuickItem *, bool>, 4> sendFilteredPointerEventResult;
+    QVarLengthArray<std::pair<QQuickItem *, bool>, 4> sendFilteredPointerEventResult;
     hasFiltered.clear();
     for (QObject *grabberObject : passiveGrabbers) {
         // a null pointer in passiveGrabbers is unlikely, unless the grabbing handler was deleted dynamically
@@ -1039,14 +1041,14 @@ void QQuickDeliveryAgentPrivate::deliverToPassiveGrabbers(const QVector<QPointer
 
                 // see if we already have sent a filter event to the parent
                 auto it = std::find_if(sendFilteredPointerEventResult.begin(), sendFilteredPointerEventResult.end(),
-                                       [par](const QPair<QQuickItem *, bool> &pair) { return pair.first == par; });
+                                       [par](const std::pair<QQuickItem *, bool> &pair) { return pair.first == par; });
                 if (it != sendFilteredPointerEventResult.end()) {
                     // Yes, the event was sent to that parent for filtering: do not call it again, but use
                     // the result of the previous call to determine whether we should call the handler.
                     alreadyFiltered = it->second;
                 } else if (par) {
                     alreadyFiltered = sendFilteredPointerEvent(pointerEvent, par);
-                    sendFilteredPointerEventResult << qMakePair(par, alreadyFiltered);
+                    sendFilteredPointerEventResult << std::make_pair(par, alreadyFiltered);
                 }
                 if (!alreadyFiltered) {
                     if (par)
@@ -1199,8 +1201,14 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventRecursive(
 
     const QQuickItemPrivate *itemPrivate = QQuickItemPrivate::get(item);
     const QList<QQuickItem *> children = itemPrivate->paintOrderChildItems();
+    const bool hadChildrenChanged = itemPrivate->dirtyAttributes & QQuickItemPrivate::ChildrenChanged;
 
     for (int ii = children.size() - 1; ii >= 0; --ii) {
+        // If the children had not changed before we started the loop, but now they have changed,
+        // stop looping to avoid potentially dereferencing a dangling pointer.
+        // This is unusual, and hover delivery occurs frequently anyway, so just wait until next time.
+        if (!hadChildrenChanged && Q_UNLIKELY(itemPrivate->dirtyAttributes & QQuickItemPrivate::ChildrenChanged))
+            break;
         QQuickItem *child = children.at(ii);
         const QQuickItemPrivate *childPrivate = QQuickItemPrivate::get(child);
 
@@ -1550,6 +1558,7 @@ bool QQuickDeliveryAgentPrivate::isTouchEvent(const QPointerEvent *ev)
 
 bool QQuickDeliveryAgentPrivate::isTabletEvent(const QPointerEvent *ev)
 {
+#if QT_CONFIG(tabletevent)
     switch (ev->type()) {
     case QEvent::TabletPress:
     case QEvent::TabletMove:
@@ -1558,8 +1567,12 @@ bool QQuickDeliveryAgentPrivate::isTabletEvent(const QPointerEvent *ev)
     case QEvent::TabletLeaveProximity:
         return true;
     default:
-        return false;
+        break;
     }
+#else
+    Q_UNUSED(ev);
+#endif // tabletevent
+    return false;
 }
 
 bool QQuickDeliveryAgentPrivate::isEventFromMouseOrTouchpad(const QPointerEvent *ev)

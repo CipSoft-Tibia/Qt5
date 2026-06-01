@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
@@ -21,6 +21,7 @@
 #include "state_tracker/pipeline_state.h"
 #include "state_tracker/descriptor_sets.h"
 #include "state_tracker/shader_module.h"
+#include "generated/dispatch_functions.h"
 
 static VkImageSubresourceRange MakeImageFullRange(const VkImageCreateInfo &create_info) {
     const auto format = create_info.format;
@@ -94,8 +95,8 @@ static VkSwapchainKHR GetSwapchain(const VkImageCreateInfo *pCreateInfo) {
     return swapchain_info ? swapchain_info->swapchain : VK_NULL_HANDLE;
 }
 
-static vvl::Image::MemoryReqs GetMemoryRequirements(const ValidationStateTracker &dev_data, VkImage img,
-                                                    const VkImageCreateInfo *create_info, bool disjoint, bool is_external_ahb) {
+static vvl::Image::MemoryReqs GetMemoryRequirements(const vvl::Device &dev_data, VkImage img, const VkImageCreateInfo *create_info,
+                                                    bool disjoint, bool is_external_ahb) {
     vvl::Image::MemoryReqs result{};
     // Record the memory requirements in case they won't be queried
     // External AHB memory can't be queried until after memory is bound
@@ -115,7 +116,7 @@ static vvl::Image::MemoryReqs GetMemoryRequirements(const ValidationStateTracker
                 VkMemoryRequirements2 mem_reqs2 = vku::InitStructHelper();
 
                 image_plane_req.planeAspect = aspects[i];
-                switch (dev_data.device_extensions.vk_khr_get_memory_requirements2) {
+                switch (dev_data.extensions.vk_khr_get_memory_requirements2) {
                     case kEnabledByApiLevel:
                         DispatchGetImageMemoryRequirements2(dev_data.device, &mem_req_info2, &mem_reqs2);
                         break;
@@ -134,7 +135,7 @@ static vvl::Image::MemoryReqs GetMemoryRequirements(const ValidationStateTracker
     return result;
 }
 
-static vvl::Image::SparseReqs GetSparseRequirements(const ValidationStateTracker &dev_data, VkImage img, bool sparse_residency) {
+static vvl::Image::SparseReqs GetSparseRequirements(const vvl::Device &dev_data, VkImage img, bool sparse_residency) {
     vvl::Image::SparseReqs result;
     if (sparse_residency) {
         uint32_t count = 0;
@@ -172,7 +173,7 @@ static bool GetMetalExport(const VkImageCreateInfo *info, VkExportMetalObjectTyp
 
 namespace vvl {
 
-Image::Image(const ValidationStateTracker &dev_data, VkImage img, const VkImageCreateInfo *pCreateInfo, VkFormatFeatureFlags2KHR ff)
+Image::Image(const vvl::Device &dev_data, VkImage img, const VkImageCreateInfo *pCreateInfo, VkFormatFeatureFlags2KHR ff)
     : Bindable(img, kVulkanObjectTypeImage, (pCreateInfo->flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) != 0,
                (pCreateInfo->flags & VK_IMAGE_CREATE_PROTECTED_BIT) == 0, GetExternalHandleTypes(pCreateInfo)),
       safe_create_info(pCreateInfo),
@@ -214,7 +215,7 @@ Image::Image(const ValidationStateTracker &dev_data, VkImage img, const VkImageC
     }
 }
 
-Image::Image(const ValidationStateTracker &dev_data, VkImage img, const VkImageCreateInfo *pCreateInfo, VkSwapchainKHR swapchain,
+Image::Image(const vvl::Device &dev_data, VkImage img, const VkImageCreateInfo *pCreateInfo, VkSwapchainKHR swapchain,
              uint32_t swapchain_index, VkFormatFeatureFlags2KHR ff)
     : Bindable(img, kVulkanObjectTypeImage, (pCreateInfo->flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) != 0,
                (pCreateInfo->flags & VK_IMAGE_CREATE_PROTECTED_BIT) == 0, GetExternalHandleTypes(pCreateInfo)),
@@ -253,7 +254,7 @@ Image::Image(const ValidationStateTracker &dev_data, VkImage img, const VkImageC
 
 void Image::Destroy() {
     // NOTE: due to corner cases in aliased images, the layout_range_map MUST not be cleaned up here.
-    // If it is, bad local entries could be created by vvl::CommandBuffer::GetImageSubresourceLayoutMap()
+    // If it is, bad local entries could be created by vvl::CommandBuffer::GetOrCreateImageLayoutRegistry()
     // If an aliasing image was being destroyed (and layout_range_map was reset()), a nullptr keyed
     // entry could get put into vvl::CommandBuffer::aliased_image_layout_map.
     //
@@ -557,7 +558,7 @@ static vku::safe_VkImageCreateInfo GetImageCreateInfo(const VkSwapchainCreateInf
 
 namespace vvl {
 
-Swapchain::Swapchain(ValidationStateTracker &dev_data_, const VkSwapchainCreateInfoKHR *pCreateInfo, VkSwapchainKHR handle)
+Swapchain::Swapchain(vvl::Device &dev_data_, const VkSwapchainCreateInfoKHR *pCreateInfo, VkSwapchainKHR handle)
     : StateObject(handle, kVulkanObjectTypeSwapchainKHR),
       safe_create_info(pCreateInfo),
       create_info(*safe_create_info.ptr()),
@@ -568,7 +569,7 @@ Swapchain::Swapchain(ValidationStateTracker &dev_data_, const VkSwapchainCreateI
       image_create_info(GetImageCreateInfo(pCreateInfo)),
       dev_data(dev_data_) {}
 
-void Swapchain::PresentImage(uint32_t image_index, uint64_t present_id) {
+void Swapchain::PresentImage(uint32_t image_index, uint64_t present_id, const AcquireFenceSync &acquire_fence_sync) {
     if (image_index >= images.size()) return;
     assert(acquired_images > 0);
     if (!shared_presentable) {
@@ -579,9 +580,19 @@ void Swapchain::PresentImage(uint32_t image_index, uint64_t present_id) {
     } else {
         images[image_index].image_state->layout_locked = true;
     }
+    images[image_index].acquire_fence_sync = acquire_fence_sync;
     if (present_id > max_present_id) {
         max_present_id = present_id;
     }
+}
+
+void Swapchain::ReleaseImage(uint32_t image_index) {
+    if (image_index >= images.size()) return;
+    assert(acquired_images > 0);
+    acquired_images--;
+    images[image_index].acquired = false;
+    images[image_index].acquire_semaphore.reset();
+    images[image_index].acquire_fence.reset();
 }
 
 void Swapchain::AcquireImage(uint32_t image_index, const std::shared_ptr<vvl::Semaphore> &semaphore_state,
@@ -590,6 +601,10 @@ void Swapchain::AcquireImage(uint32_t image_index, const std::shared_ptr<vvl::Se
     images[image_index].acquired = true;
     images[image_index].acquire_semaphore = semaphore_state;
     images[image_index].acquire_fence = fence_state;
+    if (fence_state) {
+        fence_state->SetAcquireFenceSync(images[image_index].acquire_fence_sync);
+        images[image_index].acquire_fence_sync = {};
+    }
     if (shared_presentable) {
         images[image_index].image_state->shared_presentable = shared_presentable;
     }
@@ -673,8 +688,7 @@ void Surface::SetPresentModes(VkPhysicalDevice phys_dev, vvl::span<const VkPrese
 }
 
 // Helper for data obtained from vkGetPhysicalDeviceSurfacePresentModesKHR
-std::vector<VkPresentModeKHR> Surface::GetPresentModes(VkPhysicalDevice phys_dev, const Location &loc,
-                                                       const ValidationObject *validation_obj) const {
+std::vector<VkPresentModeKHR> Surface::GetPresentModes(VkPhysicalDevice phys_dev) const {
     if (auto guard = Lock(); auto cache = GetPhysDevCache(phys_dev)) {
         if (cache->present_modes.has_value()) {
             return cache->present_modes.value();
@@ -698,8 +712,7 @@ void Surface::SetFormats(VkPhysicalDevice phys_dev, std::vector<vku::safe_VkSurf
 }
 
 vvl::span<const vku::safe_VkSurfaceFormat2KHR> Surface::GetFormats(bool get_surface_capabilities2, VkPhysicalDevice phys_dev,
-                                                                   const void *surface_info2_pnext, const Location &loc,
-                                                                   const ValidationObject *validation_obj) const {
+                                                                   const void *surface_info2_pnext) const {
     auto guard = Lock();
 
     // TODO: BUG: format also depends on pNext. Rework this function similar to GetSurfaceCapabilities
@@ -765,14 +778,17 @@ const Surface::PhysDevCache *Surface::GetPhysDevCache(VkPhysicalDevice phys_dev)
 
 void Surface::UpdateCapabilitiesCache(VkPhysicalDevice phys_dev, const VkSurfaceCapabilitiesKHR &surface_caps) {
     auto guard = Lock();
-    cache_[phys_dev].capabilities = surface_caps;
+    PhysDevCache &cache = cache_[phys_dev];
+    cache.capabilities = surface_caps;
+    cache.last_capability_query_used_present_mode = false;
 }
 
 void Surface::UpdateCapabilitiesCache(VkPhysicalDevice phys_dev, const VkSurfaceCapabilities2KHR &surface_caps,
                                       VkPresentModeKHR present_mode) {
     auto guard = Lock();
     auto &cache = cache_[phys_dev];
-    // Get entry for a given presentation mode
+
+    // Get entry for the given presentation mode
     PresentModeInfo *info = nullptr;
     for (auto &cur_info : cache.present_mode_infos) {
         if (cur_info.present_mode == present_mode) {
@@ -785,6 +801,7 @@ void Surface::UpdateCapabilitiesCache(VkPhysicalDevice phys_dev, const VkSurface
         info = &cache.present_mode_infos.back();
         info->present_mode = present_mode;
     }
+
     // Update entry
     info->surface_capabilities = surface_caps.surfaceCapabilities;
     const auto *present_scaling_caps = vku::FindStructInPNextChain<VkSurfacePresentScalingCapabilitiesEXT>(surface_caps.pNext);
@@ -796,6 +813,14 @@ void Surface::UpdateCapabilitiesCache(VkPhysicalDevice phys_dev, const VkSurface
         info->compatible_present_modes.emplace(compat_modes->pPresentModes,
                                                compat_modes->pPresentModes + compat_modes->presentModeCount);
     }
+    cache.last_capability_query_used_present_mode = true;
+}
+
+bool Surface::IsLastCapabilityQueryUsedPresentMode(VkPhysicalDevice phys_dev) const {
+    if (auto guard = Lock(); auto cache = GetPhysDevCache(phys_dev)) {
+        return cache->last_capability_query_used_present_mode;
+    }
+    return false;
 }
 
 VkSurfaceCapabilitiesKHR Surface::GetSurfaceCapabilities(VkPhysicalDevice phys_dev, const void *surface_info_pnext) const {

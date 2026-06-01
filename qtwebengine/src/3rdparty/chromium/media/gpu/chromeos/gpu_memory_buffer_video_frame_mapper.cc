@@ -2,18 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "media/gpu/chromeos/gpu_memory_buffer_video_frame_mapper.h"
 
 #include <sys/mman.h>
 
+#include <array>
+
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
-#include "media/gpu/chromeos/chromeos_compressed_gpu_memory_buffer_video_frame_utils.h"
 #include "media/gpu/macros.h"
 #include "ui/gfx/gpu_memory_buffer.h"
 
@@ -48,12 +44,6 @@ scoped_refptr<VideoFrame> GpuMemoryBufferVideoFrameMapper::MapFrame(
     return nullptr;
   }
 
-  if (IsIntelMediaCompressedModifier(video_frame->layout().modifier())) {
-    VLOGF(1)
-        << "This mapper doesn't support Intel media compressed VideoFrames";
-    return nullptr;
-  }
-
   if (video_frame->format() != format_) {
     VLOGF(1) << "Unexpected format: " << video_frame->format()
              << ", expected: " << format_;
@@ -67,7 +57,7 @@ scoped_refptr<VideoFrame> GpuMemoryBufferVideoFrameMapper::MapFrame(
   }
 
   const size_t num_planes = VideoFrame::NumPlanes(format_);
-  uint8_t* plane_addrs[VideoFrame::kMaxPlanes] = {};
+  std::array<uint8_t*, VideoFrame::kMaxPlanes> plane_addrs = {};
   for (size_t i = 0; i < num_planes; i++)
     plane_addrs[i] = scoped_mapping->Memory(i);
 

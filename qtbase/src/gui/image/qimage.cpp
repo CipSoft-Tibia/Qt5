@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <qpa/qplatformpixmap.h>
+#include <qalloc.h>
 #include <private/qcolorspace_p.h>
 #include <private/qcolortransform_p.h>
 #include <private/qmemrotate_p.h>
@@ -94,12 +95,13 @@ QImageData::QImageData()
       format(QImage::Format_ARGB32), bytes_per_line(0),
       ser_no(next_qimage_serial_number()),
       detach_no(0),
-      dpmx(qt_defaultDpiX() * 100 / qreal(2.54)),
-      dpmy(qt_defaultDpiY() * 100 / qreal(2.54)),
       offset(0, 0), own_data(true), ro_data(false), has_alpha_clut(false),
       is_cached(false), cleanupFunction(nullptr), cleanupInfo(nullptr),
       paintEngine(nullptr)
 {
+    QPoint dpis = qt_defaultDpis();
+    dpmx = dpis.x() * 100 / qreal(2.54);
+    dpmy = dpis.y() * 100 / qreal(2.54);
 }
 
 /*! \fn QImageData * QImageData::create(const QSize &size, QImage::Format format)
@@ -162,7 +164,7 @@ QImageData::~QImageData()
         QImagePixmapCleanupHooks::executeImageHooks((((qint64) ser_no) << 32) | ((qint64) detach_no));
     delete paintEngine;
     if (data && own_data)
-        free(data);
+        QtPrivate::sizedFree(data, nbytes);
     data = nullptr;
 }
 
@@ -2524,41 +2526,52 @@ QRgb QImage::pixel(int x, int y) const
         }
         return d->colortable.at(index);
     }
-
+    std::optional<QRgb> out;
     switch (d->format) {
     case Format_RGB32:
-        return 0xff000000 | reinterpret_cast<const QRgb *>(s)[x];
     case Format_ARGB32: // Keep old behaviour.
     case Format_ARGB32_Premultiplied:
-        return reinterpret_cast<const QRgb *>(s)[x];
+        out = reinterpret_cast<const QRgb *>(s)[x];
+        break;
     case Format_RGBX8888:
     case Format_RGBA8888: // Match ARGB32 behavior.
     case Format_RGBA8888_Premultiplied:
-        return RGBA2ARGB(reinterpret_cast<const quint32 *>(s)[x]);
+        out = RGBA2ARGB(reinterpret_cast<const quint32 *>(s)[x]);
+        break;
     case Format_BGR30:
     case Format_A2BGR30_Premultiplied:
-        return qConvertA2rgb30ToArgb32<PixelOrderBGR>(reinterpret_cast<const quint32 *>(s)[x]);
+        out = qConvertA2rgb30ToArgb32<PixelOrderBGR>(reinterpret_cast<const quint32 *>(s)[x]);
+        break;
     case Format_RGB30:
     case Format_A2RGB30_Premultiplied:
-        return qConvertA2rgb30ToArgb32<PixelOrderRGB>(reinterpret_cast<const quint32 *>(s)[x]);
+        out = qConvertA2rgb30ToArgb32<PixelOrderRGB>(reinterpret_cast<const quint32 *>(s)[x]);
+        break;
     case Format_RGB16:
         return qConvertRgb16To32(reinterpret_cast<const quint16 *>(s)[x]);
     case Format_RGBX64:
     case Format_RGBA64: // Match ARGB32 behavior.
     case Format_RGBA64_Premultiplied:
-        return reinterpret_cast<const QRgba64 *>(s)[x].toArgb32();
+        out = reinterpret_cast<const QRgba64 *>(s)[x].toArgb32();
+        break;
     case Format_RGBX16FPx4:
     case Format_RGBA16FPx4: // Match ARGB32 behavior.
     case Format_RGBA16FPx4_Premultiplied:
-        return reinterpret_cast<const QRgbaFloat16 *>(s)[x].toArgb32();
+        out = reinterpret_cast<const QRgbaFloat16 *>(s)[x].toArgb32();
+        break;
     case Format_RGBX32FPx4:
     case Format_RGBA32FPx4: // Match ARGB32 behavior.
     case Format_RGBA32FPx4_Premultiplied:
-        return reinterpret_cast<const QRgbaFloat32 *>(s)[x].toArgb32();
+        out = reinterpret_cast<const QRgbaFloat32 *>(s)[x].toArgb32();
     default:
         break;
     }
     const QPixelLayout *layout = &qPixelLayouts[d->format];
+    if (out) {
+        // Fix up alpha
+        if (!layout->hasAlphaChannel)
+            *out |= 0xff000000;
+        return *out;
+    }
     uint result;
     return *layout->fetchToARGB32PM(&result, s, x, 1, nullptr, nullptr);
 }
@@ -2743,6 +2756,8 @@ QColor QImage::pixelColor(int x, int y) const
         QRgbaFloat16 p = reinterpret_cast<const QRgbaFloat16 *>(s)[x];
         if (d->format == Format_RGBA16FPx4_Premultiplied)
             p = p.unpremultiplied();
+        else if (d->format == Format_RGBX16FPx4)
+            p.setAlpha(1.0f);
         QColor color;
         color.setRgbF(p.red(), p.green(), p.blue(), p.alpha());
         return color;
@@ -2753,12 +2768,24 @@ QColor QImage::pixelColor(int x, int y) const
         QRgbaFloat32 p = reinterpret_cast<const QRgbaFloat32 *>(s)[x];
         if (d->format == Format_RGBA32FPx4_Premultiplied)
             p = p.unpremultiplied();
+        else if (d->format == Format_RGBX32FPx4)
+            p.setAlpha(1.0f);
         QColor color;
         color.setRgbF(p.red(), p.green(), p.blue(), p.alpha());
         return color;
     }
     default:
         c = QRgba64::fromArgb32(pixel(x, y));
+        break;
+    }
+    // Alpha fix up
+    switch (d->format) {
+    case Format_BGR30:
+    case Format_RGB30:
+    case Format_RGBX64:
+        c.setAlpha(65535);
+        break;
+    default:
         break;
     }
     // QColor is always unpremultiplied

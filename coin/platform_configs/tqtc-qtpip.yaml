@@ -6,7 +6,7 @@ Include: [
     "rhel-8.10"
   ],
   macos.yaml: [
-    "macos-universal-on-x86_64"
+    "macos-universal-on-arm64"
   ]
 ]
 Configurations: []

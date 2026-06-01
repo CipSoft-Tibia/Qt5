@@ -2,31 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 // Qt-Security score:critical reason:data-parser
 
-#include <qdebug.h>
-#include "qplatformdefs.h"
 #include "qsettings.h"
-
 #include "qsettings_p.h"
-#include "qcache.h"
-#include "qfile.h"
-#include "qdir.h"
-#include "qfileinfo.h"
-#include "qmutex.h"
-#include "private/qlocking_p.h"
-#include "private/qtools_p.h"
-#include "qlibraryinfo.h"
-#include "qtemporaryfile.h"
-#include "qstandardpaths.h"
-#include <qdatastream.h>
-#include "private/qstringconverter_p.h"
 
-#ifndef QT_NO_GEOM_VARIANT
-#include "qsize.h"
+#include "qcache.h"
+#include "qcoreapplication.h"
+#include "qdatastream.h"
+#include "qdir.h"
+#include "qfile.h"
+#include "qfileinfo.h"
+#include "qlibraryinfo.h"
+#include "private/qlocking_p.h"
+#include "qmutex.h"
 #include "qpoint.h"
 #include "qrect.h"
-#endif // !QT_NO_GEOM_VARIANT
-
-#include "qcoreapplication.h"
+#include "qsize.h"
+#include "qstandardpaths.h"
+#include "private/qstringconverter_p.h"
+#include "qtemporaryfile.h"
+#include "private/qtools_p.h"
 
 #ifndef QT_BOOTSTRAPPED
 #include "qsavefile.h"
@@ -402,7 +396,6 @@ QString QSettingsPrivate::variantToString(const QVariant &v)
                 result.prepend(u'@');
             break;
         }
-#ifndef QT_NO_GEOM_VARIANT
         case QMetaType::QRect: {
             QRect r = qvariant_cast<QRect>(v);
             result = QString::asprintf("@Rect(%d %d %d %d)", r.x(), r.y(), r.width(), r.height());
@@ -418,7 +411,6 @@ QString QSettingsPrivate::variantToString(const QVariant &v)
             result = QString::asprintf("@Point(%d %d)", p.x(), p.y());
             break;
         }
-#endif // !QT_NO_GEOM_VARIANT
 
         default: {
 #ifndef QT_NO_DATASTREAM
@@ -481,7 +473,6 @@ QVariant QSettingsPrivate::stringToVariant(const QString &s)
 #else
                 Q_ASSERT(!"QSettings: Cannot load custom types without QDataStream support");
 #endif
-#ifndef QT_NO_GEOM_VARIANT
             } else if (s.startsWith("@Rect("_L1)) {
                 QStringList args = QSettingsPrivate::splitArgs(s, 5);
                 if (args.size() == 4)
@@ -494,7 +485,6 @@ QVariant QSettingsPrivate::stringToVariant(const QString &s)
                 QStringList args = QSettingsPrivate::splitArgs(s, 6);
                 if (args.size() == 2)
                     return QVariant(QPoint(args[0].toInt(), args[1].toInt()));
-#endif
             } else if (s == "@Invalid()"_L1) {
                 return QVariant();
             }

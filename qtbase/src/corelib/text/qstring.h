@@ -17,9 +17,9 @@
 #include <QtCore/qbytearray.h>
 #include <QtCore/qbytearrayview.h>
 #include <QtCore/qarraydata.h>
+#include <QtCore/qarraydatapointer.h>
 #include <QtCore/qlatin1stringview.h>
 #include <QtCore/qnamespace.h>
-#include <QtCore/qstringliteral.h>
 #include <QtCore/qstringalgorithms.h>
 #include <QtCore/qanystringview.h>
 #include <QtCore/qstringtokenizer.h>
@@ -28,6 +28,7 @@
 #include <iterator>
 #include <QtCore/q20memory.h>
 #include <string_view>
+#include <QtCore/q23type_traits.h>
 
 #include <stdarg.h>
 
@@ -66,9 +67,6 @@ template <> struct treat_as_integral_arg<unsigned short> : std::true_type {};
 template <> struct treat_as_integral_arg<  signed short> : std::true_type {};
 template <> struct treat_as_integral_arg<unsigned  char> : std::true_type {};
 template <> struct treat_as_integral_arg<  signed  char> : std::true_type {};
-// QTBUG-126054, keep until we can fix it for all platforms, not just Windows
-// (where wchar_t does convert to QAnyStringView):
-template <> struct treat_as_integral_arg<wchar_t> : std::true_type {};
 }
 
 // Qt 4.x compatibility
@@ -137,6 +135,7 @@ constexpr QChar QAnyStringView::back() const
     return visit([] (auto that) { return QAnyStringView::toQChar(that.back()); });
 }
 
+using QStringPrivate = QArrayDataPointer<char16_t>;
 
 class Q_CORE_EXPORT QString
 {
@@ -183,9 +182,12 @@ class Q_CORE_EXPORT QString
 
     template <typename T>
     using if_integral_non_char = std::enable_if_t<std::conjunction_v<
-            std::disjunction< // unlike is_integral, also covers unscoped enums
-                std::is_convertible<T, qulonglong>,
-                std::is_convertible<T, qlonglong>
+            std::disjunction<
+                std::is_integral<T>,
+                std::conjunction<
+                    std::is_enum<T>,                       // (unscoped) enums yes,
+                    std::negation<q23::is_scoped_enum<T>>  // but not scoped ones
+                >
             >,
             std::negation<is_floating_point_like<T>>, // has its own overload
             std::negation<is_string_like<T>>          // ditto
@@ -233,13 +235,18 @@ public:
         // -1 to deal with the NUL terminator
         return Data::maxSize() - 1;
     }
-    inline qsizetype size() const noexcept { return d.size; }
+    constexpr qsizetype size() const noexcept
+    {
+        constexpr size_t MaxSize = maxSize();
+        Q_PRESUME(size_t(d.size) <= MaxSize);
+        return d.size;
+    }
 #if QT_DEPRECATED_SINCE(6, 4)
     QT_DEPRECATED_VERSION_X_6_4("Use size() or length() instead.")
-    inline qsizetype count() const { return d.size; }
+    constexpr qsizetype count() const { return size(); }
 #endif
-    inline qsizetype length() const noexcept { return d.size; }
-    inline bool isEmpty() const noexcept { return d.size == 0; }
+    constexpr qsizetype length() const noexcept { return size(); }
+    constexpr bool isEmpty() const noexcept { return size() == 0; }
     void resize(qsizetype size);
     void resize(qsizetype size, QChar fillChar);
     void resizeForOverwrite(qsizetype size);
@@ -597,7 +604,7 @@ public:
                 d.data()[d.size] = u'\0';
             return *this;
         } else {
-            d.assign(first, last, [](QChar ch) -> char16_t { return ch.unicode(); });
+            d.assign(first, last, [](QChar ch) noexcept -> char16_t { return ch.unicode(); });
             if (d.constAllocatedCapacity())
                 d.data()[d.size] = u'\0';
             return *this;
@@ -700,6 +707,9 @@ public:
     [[nodiscard]] QString repeated(qsizetype times) const;
 
     const ushort *utf16() const; // ### Qt 7 char16_t
+    [[nodiscard]] QString nullTerminated() const &;
+    [[nodiscard]] QString nullTerminated() &&;
+    QString &nullTerminate();
 
 #if !defined(Q_QDOC)
     [[nodiscard]] QByteArray toLatin1() const &
@@ -753,6 +763,11 @@ public:
     }
     static QString fromUtf16(const char16_t *, qsizetype size = -1);
     static QString fromUcs4(const char32_t *, qsizetype size = -1);
+    static QString fromRawData(const char16_t *unicode, qsizetype size)
+    {
+        return QString(DataPointer::fromRawData(unicode, size));
+    }
+    QT_CORE_INLINE_SINCE(6, 10)
     static QString fromRawData(const QChar *, qsizetype size);
 
 #if QT_DEPRECATED_SINCE(6, 0)
@@ -1052,7 +1067,7 @@ public:
     }
 
     static inline QString fromStdString(const std::string &s);
-    inline std::string toStdString() const;
+    std::string toStdString() const;
     static inline QString fromStdWString(const std::wstring &s);
     inline std::wstring toStdWString() const;
 
@@ -1075,7 +1090,7 @@ public:
     emscripten::val toEcmaString() const;
 #endif
 
-    inline bool isNull() const { return d.isNull(); }
+    constexpr bool isNull() const { return d.isNull(); }
 
     bool isRightToLeft() const;
     [[nodiscard]] bool isValidUtf16() const noexcept
@@ -1539,9 +1554,6 @@ QT_ASCII_CAST_WARN inline QString operator+(QString &&lhs, const QByteArray &rhs
 #  endif // QT_NO_CAST_FROM_ASCII
 #endif // QT_USE_QSTRINGBUILDER
 
-std::string QString::toStdString() const
-{ return toUtf8().toStdString(); }
-
 QString QString::fromStdString(const std::string &s)
 { return fromUtf8(s.data(), qsizetype(s.size())); }
 
@@ -1618,6 +1630,12 @@ qsizetype QString::lastIndexOf(QChar ch, qsizetype from, Qt::CaseSensitivity cs)
     return qToStringViewIgnoringNull(*this).lastIndexOf(ch, from, cs);
 }
 #endif
+#if QT_CORE_INLINE_IMPL_SINCE(6, 10)
+QString QString::fromRawData(const QChar *unicode, qsizetype size)
+{
+    return fromRawData(reinterpret_cast<const char16_t *>(unicode), size);
+}
+#endif
 
 namespace QtPrivate {
 // used by qPrintable() and qUtf8Printable() macros
@@ -1634,12 +1652,13 @@ inline QString &&asString(QString &&s)              { return std::move(s); }
 #endif
 
 /*
-    Wrap QString::utf16() with enough casts to allow passing it
+    Wrap QString::constData() with enough casts to allow passing it
     to QString::asprintf("%ls") without warnings.
 */
 #ifndef qUtf16Printable
 #  define qUtf16Printable(string) \
-    static_cast<const wchar_t*>(static_cast<const void*>(QtPrivate::asString(string).utf16()))
+    static_cast<const wchar_t *>( \
+        static_cast<const void *>(QtPrivate::asString(string).nullTerminated().constData()))
 #endif
 
 //
@@ -1749,6 +1768,25 @@ inline QString operator""_qs(const char16_t *str, size_t size) noexcept
 
 #endif // QT_DEPRECATED_SINCE(6, 8)
 } // QtLiterals
+
+// all our supported compilers support Unicode string literals,
+// even if their Q_COMPILER_UNICODE_STRING has been revoked due
+// to lacking stdlib support. But QStringLiteral only needs the
+// core language feature, so just use u"" here unconditionally:
+
+#define QT_UNICODE_LITERAL(str) u"" str
+
+namespace QtPrivate {
+template <qsizetype N>
+Q_ALWAYS_INLINE static QStringPrivate qMakeStringPrivate(const char16_t (&literal)[N])
+{
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
+    auto str = const_cast<char16_t *>(literal);
+    return { nullptr, str, N - 1 };
+}
+} // namespace QtPrivate
+
+#define QStringLiteral(str) (QString(QtPrivate::qMakeStringPrivate(QT_UNICODE_LITERAL(str)))) /**/
 
 QT_END_NAMESPACE
 

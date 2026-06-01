@@ -22,53 +22,60 @@ qt_internal_add_module(Help
         qhelpsearchindexreader.cpp qhelpsearchindexreader_p.h
         qhelpsearchindexwriter.cpp qhelpsearchindexwriter_p.h
         qhelpsearchresult.cpp qhelpsearchresult.h
-    # QtHelp
-        qfilternamedialog.cpp qfilternamedialog_p.h
-        qhelpcontentwidget.cpp qhelpcontentwidget.h
-        qhelpengine.cpp qhelpengine.h
-        qhelpfiltersettingswidget.cpp qhelpfiltersettingswidget.h
-        qhelpindexwidget.cpp qhelpindexwidget.h
-        qhelpsearchengine.cpp qhelpsearchengine.h
-        qhelpsearchquerywidget.cpp qhelpsearchquerywidget.h
-        qhelpsearchresultwidget.cpp qhelpsearchresultwidget.h
-        qoptionswidget.cpp qoptionswidget_p.h
     DEFINES
         # -QT_ASCII_CAST_WARNINGS # special case remove
         QHELP_LIB
     LIBRARIES
         Qt::CorePrivate
+        Qt::Tools
     PUBLIC_LIBRARIES
         Qt::Core
-        Qt::Gui
         Qt::Sql
-        Qt::Widgets
     NO_GENERATE_CPP_EXPORTS
 )
 
-qt_add_ui(Help
-    SOURCES
-        qfilternamedialog.ui
-        qhelpfiltersettingswidget.ui
-)
+if(QT_FEATURE_fullqthelp)
+    qt_internal_extend_target(Help
+        SOURCES
+            qfilternamedialog.cpp qfilternamedialog_p.h
+            qhelpcontentwidget.cpp qhelpcontentwidget.h
+            qhelpengine.cpp qhelpengine.h
+            qhelpfiltersettingswidget.cpp qhelpfiltersettingswidget.h
+            qhelpindexwidget.cpp qhelpindexwidget.h
+            qhelpsearchengine.cpp qhelpsearchengine.h
+            qhelpsearchquerywidget.cpp qhelpsearchquerywidget.h
+            qhelpsearchresultwidget.cpp qhelpsearchresultwidget.h
+            qoptionswidget.cpp qoptionswidget_p.h
+        PUBLIC_LIBRARIES
+            Qt::Gui
+            Qt::Widgets
+    )
 
-# Resources:
-set(helpsystem_resource_files
-    "images/1leftarrow.png"
-    "images/1rightarrow.png"
-    "images/3leftarrow.png"
-    "images/3rightarrow.png"
-    "images/mac/minus.png"
-    "images/mac/plus.png"
-    "images/win/minus.png"
-    "images/win/plus.png"
-)
+    qt_add_ui(Help
+        SOURCES
+            qfilternamedialog.ui
+            qhelpfiltersettingswidget.ui
+    )
 
-qt_internal_add_resource(Help "helpsystem"
-    PREFIX
-        "/qt-project.org/assistant"
-    FILES
-        ${helpsystem_resource_files}
-)
+    # Resources:
+    set(helpsystem_resource_files
+        "images/1leftarrow.png"
+        "images/1rightarrow.png"
+        "images/3leftarrow.png"
+        "images/3rightarrow.png"
+        "images/mac/minus.png"
+        "images/mac/plus.png"
+        "images/win/minus.png"
+        "images/win/plus.png"
+    )
+
+    qt_internal_add_resource(Help "helpsystem"
+        PREFIX
+            "/qt-project.org/assistant"
+        FILES
+            ${helpsystem_resource_files}
+    )
+endif()
 
 qt_internal_add_docs(Help
     doc/qthelp.qdocconf

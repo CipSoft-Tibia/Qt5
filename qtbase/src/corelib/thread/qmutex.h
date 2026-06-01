@@ -20,7 +20,7 @@ class QMutex;
 class QRecursiveMutex;
 class QMutexPrivate;
 
-class Q_CORE_EXPORT QBasicMutex
+class QT6_ONLY(Q_CORE_EXPORT) QBasicMutex
 {
     Q_DISABLE_COPY_MOVE(QBasicMutex)
 protected:
@@ -53,8 +53,15 @@ public:
 
         QtTsan::mutexPreUnlock(this, 0u);
 
-        if (!fastTryUnlock())
-            unlockInternal();
+        if constexpr (FutexAlwaysAvailable) {
+            // we always unlock if we have futexes
+            if (QMutexPrivate *d = d_ptr.fetchAndStoreRelease(nullptr); d != dummyLocked())
+                unlockInternalFutex(d);     // was contended
+        } else {
+            // if we don't have futexes, we can only unlock if not contended
+            if (QMutexPrivate *d; !d_ptr.testAndSetRelease(dummyLocked(), nullptr, d))
+                unlockInternal(d);          // was contended
+        }
 
         QtTsan::mutexPostUnlock(this, 0u);
     }
@@ -82,19 +89,28 @@ private:
             return false;
         return d_ptr.testAndSetAcquire(nullptr, dummyLocked());
     }
+#if QT_CORE_REMOVED_SINCE(6, 10)
     inline bool fastTryUnlock() noexcept {
         return d_ptr.testAndSetRelease(dummyLocked(), nullptr);
     }
+#endif
 
+    QT7_ONLY(Q_CORE_EXPORT)
     void lockInternal() noexcept(FutexAlwaysAvailable);
+    QT7_ONLY(Q_CORE_EXPORT)
     bool lockInternal(QDeadlineTimer timeout) noexcept(FutexAlwaysAvailable);
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     bool lockInternal(int timeout) noexcept(FutexAlwaysAvailable);
-#endif
     void unlockInternal() noexcept;
+#endif
+    QT7_ONLY(Q_CORE_EXPORT)
+    void unlockInternalFutex(void *d) noexcept;
+    QT7_ONLY(Q_CORE_EXPORT)
+    void unlockInternal(void *d) noexcept;
 #if QT_CORE_REMOVED_SINCE(6, 9)
     void destroyInternal(QMutexPrivate *d);
 #endif
+    QT7_ONLY(Q_CORE_EXPORT)
     void destroyInternal(void *d);
 
     QBasicAtomicPointer<QMutexPrivate> d_ptr;
@@ -106,7 +122,7 @@ private:
     friend class QMutexPrivate;
 };
 
-class Q_CORE_EXPORT QMutex : public QBasicMutex
+class QT6_ONLY(Q_CORE_EXPORT) QMutex : public QBasicMutex
 {
 public:
     constexpr QMutex() = default;
@@ -169,7 +185,7 @@ public:
     }
 };
 
-class Q_CORE_EXPORT QRecursiveMutex
+class QT6_ONLY(Q_CORE_EXPORT) QRecursiveMutex
 {
     Q_DISABLE_COPY_MOVE(QRecursiveMutex)
     // written to by the thread that first owns 'mutex';
@@ -182,6 +198,7 @@ class Q_CORE_EXPORT QRecursiveMutex
 
 public:
     constexpr QRecursiveMutex() = default;
+    QT7_ONLY(Q_CORE_EXPORT)
     ~QRecursiveMutex();
 
 
@@ -190,8 +207,10 @@ public:
     { tryLock(QDeadlineTimer(QDeadlineTimer::Forever)); }
     QT_CORE_INLINE_SINCE(6, 6)
     bool tryLock(int timeout) noexcept(LockIsNoexcept);
+    QT7_ONLY(Q_CORE_EXPORT)
     bool tryLock(QDeadlineTimer timer = {}) noexcept(LockIsNoexcept);
     // BasicLockable concept
+    QT7_ONLY(Q_CORE_EXPORT)
     void unlock() noexcept;
 
     // Lockable concept

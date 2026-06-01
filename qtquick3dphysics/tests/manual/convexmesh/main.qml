@@ -60,8 +60,8 @@ ApplicationWindow {
             Model {
                 source: "#Rectangle"
                 scale: Qt.vector3d(0.3, 0.3, 1)
-                materials: DefaultMaterial {
-                    diffuseColor: "green"
+                materials: PrincipledMaterial {
+                    baseColor: "green"
                 }
                 castsShadows: false
                 receivesShadows: true
@@ -303,8 +303,8 @@ ApplicationWindow {
 //                Model {
 //                    id: tableModel
 //                    source: "#Cube"
-//                    materials: DefaultMaterial {
-//                        diffuseColor: "gray"
+//                    materials: PrincipledMaterial {
+//                        baseColor: "gray"
 //                    }
 //                    scale: Qt.vector3d(4, 1, 4)
 //                }

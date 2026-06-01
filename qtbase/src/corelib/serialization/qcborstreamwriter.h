@@ -43,9 +43,14 @@ public:
     void append(quint64 u);
     void append(qint64 i);
     void append(QCborNegativeInteger n);
+#if !QT_CORE_REMOVED_SINCE(6, 10)   // wasn't a template until 6.10
+    Q_WEAK_OVERLOAD
+#endif
     void append(const QByteArray &ba)       { appendByteString(ba.constData(), ba.size()); }
+    void append(QByteArrayView ba)          { appendByteString(ba.data(), ba.size()); }
     void append(QLatin1StringView str);
     void append(QStringView str);
+    void append(QUtf8StringView str)        { appendTextString(str.data(), str.size()); }
     void append(QCborTag tag);
     void append(QCborKnownTags tag)         { append(QCborTag(tag)); }
     void append(QCborSimpleType st);

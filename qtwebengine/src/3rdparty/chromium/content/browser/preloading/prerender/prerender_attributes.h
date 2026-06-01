@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 
+#include "content/browser/preloading/preload_pipeline_info.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/frame_tree_node_id.h"
 #include "content/public/browser/preloading.h"
@@ -15,6 +16,7 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
 #include "net/http/http_no_vary_search_data.h"
+#include "net/http/http_request_headers.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/public/mojom/navigation/navigation_params.mojom.h"
 #include "third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom-shared.h"
@@ -25,6 +27,16 @@ namespace content {
 
 // Records the basic attributes of a prerender request.
 struct CONTENT_EXPORT PrerenderAttributes {
+  // - `prerendering_url` indicates the initial URL of the prerender request.
+  //    The real url might be changed during the prerendering navigation, e.g.,
+  //    redirection.
+  // - `initiator_render_frame_host`: the render frame host that initiates this
+  //    prerender request. It could be null if the prerender is initiated by
+  //    browser.
+  // - `initiator_web_contents`: the web contents that the initiator render
+  //    frame host belongs to. Note that `initiator_web_contents` is non-null
+  //    even if `initiator_render_frame_host` is null, because the attempted
+  //    prerender could be triggered by other components of a WebContents.
   PrerenderAttributes(
       const GURL& prerendering_url,
       PreloadingTriggerType trigger_type,
@@ -32,23 +44,18 @@ struct CONTENT_EXPORT PrerenderAttributes {
       std::optional<blink::mojom::SpeculationTargetHint> target_hint,
       Referrer referrer,
       std::optional<blink::mojom::SpeculationEagerness> eagerness,
-      std::optional<net::HttpNoVarySearchData> no_vary_search_expected,
-      std::optional<url::Origin> initiator_origin,
-      int initiator_process_id,
+      std::optional<net::HttpNoVarySearchData> no_vary_search_hint,
+      RenderFrameHost* initiator_render_frame_host,
       base::WeakPtr<WebContents> initiator_web_contents,
-      std::optional<blink::LocalFrameToken> initiator_frame_token,
-      FrameTreeNodeId initiator_frame_tree_node_id,
-      ukm::SourceId initiator_ukm_id,
       ui::PageTransition transition_type,
       bool should_warm_up_compositor,
+      bool should_prepare_paint_tree,
       base::RepeatingCallback<bool(const GURL&,
                                    const std::optional<UrlMatchType>&)>
           url_match_predicate,
       base::RepeatingCallback<void(NavigationHandle&)>
           prerender_navigation_handle_callback,
-      // TODO(crbug.com/40246462): use pattern other than default parameter.
-      const std::optional<base::UnguessableToken>&
-          initiator_devtools_navigation_token = std::nullopt);
+      scoped_refptr<PreloadPipelineInfo> preload_pipeline_info);
 
   ~PrerenderAttributes();
   PrerenderAttributes(const PrerenderAttributes&);
@@ -76,9 +83,15 @@ struct CONTENT_EXPORT PrerenderAttributes {
   // This is std::nullopt when prerendering is initiated by the browser.
   std::optional<blink::mojom::SpeculationEagerness> eagerness;
 
+#if BUILDFLAG(IS_ANDROID)
+  // Additional headers to be attached to prerendering navigation. Currently
+  // this is used only for Android WebView.
+  net::HttpRequestHeaders additional_headers;
+#endif  // BUILDFLAG(IS_ANDROID)
+
   // Records the No-Vary-Search hint of the corresponding speculation rule.
   // This is std::nullopt when No-Vary-Search hint is not specified.
-  std::optional<net::HttpNoVarySearchData> no_vary_search_expected;
+  std::optional<net::HttpNoVarySearchData> no_vary_search_hint;
 
   // This is std::nullopt when prerendering is initiated by the browser
   // (not by a renderer using Speculation Rules API).
@@ -108,6 +121,10 @@ struct CONTENT_EXPORT PrerenderAttributes {
   // Page::should_warm_up_compositor_on_prerender_ for more details.
   bool should_warm_up_compositor = false;
 
+  // Whether to dry run paint phase to pre-build a paint tree for the page, so
+  // then the intermediate result can be reused after activation.
+  bool should_prepare_paint_tree = false;
+
   // If the caller wants to override the default holdback processing, they can
   // set this. Otherwise, it will be computed as part of
   // PrerenderHostRegistry::CreateAndStartHost.
@@ -122,6 +139,9 @@ struct CONTENT_EXPORT PrerenderAttributes {
 
   base::RepeatingCallback<void(NavigationHandle&)>
       prerender_navigation_handle_callback;
+
+  // Information of preload pipeline that this prerender belongs to.
+  scoped_refptr<PreloadPipelineInfo> preload_pipeline_info;
 
   // This is std::nullopt when prerendering is initiated by the browser.
   std::optional<base::UnguessableToken> initiator_devtools_navigation_token;

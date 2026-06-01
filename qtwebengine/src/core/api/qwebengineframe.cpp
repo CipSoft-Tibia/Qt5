@@ -17,7 +17,7 @@ QT_BEGIN_NAMESPACE
 #define LOCK_ADAPTER(adapter_variable, return_value)                                               \
     auto adapter = m_adapter.lock();                                                               \
     if (!adapter)                                                                                  \
-    return return_value
+        return return_value
 
 /*!
     \class QWebEngineFrame
@@ -109,7 +109,10 @@ QUrl QWebEngineFrame::url() const
 }
 
 /*!
-    Returns the size of the frame within the viewport.
+    Returns the size of the frame within the viewport, measured in logical pixels. On devices
+    with a scale factor other than 100%, this will not correspond to the on-screen size;
+    instead, it will be the size before scaling is applied. In such cases, the size may contain
+    fractional values.
 
     If the frame could not be found, returns QSizeF().
  */
@@ -176,6 +179,7 @@ void QWebEngineFrame::runJavaScript(const QString &script, quint32 worldId)
     runJavaScript(script, worldId, std::function<void(const QVariant &)>{});
 }
 
+#if QT_DEPRECATED_SINCE(6, 10)
 void QWebEngineFrame::runJavaScript(const QString &script, const QJSValue &callback)
 {
     runJavaScript(script, QWebEngineScript::MainWorld, callback);
@@ -200,6 +204,7 @@ void QWebEngineFrame::runJavaScript(const QString &script, quint32 worldId,
     }
     runJavaScript(script, worldId, wrappedCallback);
 }
+#endif // QT_DEPRECATED_SINCE(6, 10)
 
 /*!
     Renders the current content of the frame into a PDF document and saves it in the location
@@ -245,6 +250,7 @@ void QWebEngineFrame::printToPdf(const std::function<void(const QByteArray &)> &
     adapter->adapterClient()->printToPdf(std::move(wrappedCallback), layout, QPageRanges(), m_id);
 }
 
+#if QT_DEPRECATED_SINCE(6, 10)
 void QWebEngineFrame::printToPdf(const QJSValue &callback)
 {
     LOCK_ADAPTER(adapter, );
@@ -264,6 +270,7 @@ void QWebEngineFrame::printToPdf(const QJSValue &callback)
     QPageLayout layout(QPageSize(QPageSize::A4), QPageLayout::Portrait, QMarginsF());
     adapter->adapterClient()->printToPdf(std::move(wrappedCallback), layout, QPageRanges(), m_id);
 }
+#endif // QT_DEPRECATED_SINCE(6, 10)
 
 /*! \fn bool QWebEngineFrame::operator==(const QWebEngineFrame &left, const QWebEngineFrame &right) noexcept
 

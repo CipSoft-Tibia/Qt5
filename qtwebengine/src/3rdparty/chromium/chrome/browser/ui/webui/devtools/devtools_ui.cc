@@ -25,10 +25,12 @@ GURL DevToolsUI::GetProxyURL(const std::string& frontend_url) {
 #ifndef TOOLKIT_QT
   GURL url(frontend_url);
   if (url.scheme() == content::kChromeDevToolsScheme &&
-      url.host() == chrome::kChromeUIDevToolsHost)
+      url.host() == chrome::kChromeUIDevToolsHost) {
     return GURL();
-  if (!url.is_valid() || url.host() != kRemoteFrontendDomain)
+  }
+  if (!url.is_valid() || url.host() != kRemoteFrontendDomain) {
     return GURL();
+  }
   return GURL(base::StringPrintf(
       "%s://%s/%s/%s?%s", content::kChromeDevToolsScheme,
       chrome::kChromeUIDevToolsHost, chrome::kChromeUIDevToolsRemotePath,
@@ -51,9 +53,10 @@ GURL DevToolsUI::GetRemoteBaseURL() {
 
 // static
 bool DevToolsUI::IsFrontendResourceURL(const GURL& url) {
-#ifndef TOOLKIT_QT
-  if (url.host_piece() == kRemoteFrontendDomain)
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  if (url.host_piece() == kRemoteFrontendDomain) {
     return true;
+  }
 #endif
 
   const base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();

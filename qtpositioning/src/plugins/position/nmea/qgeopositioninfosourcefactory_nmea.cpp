@@ -18,10 +18,11 @@
 #  include <QtSerialPort/QSerialPortInfo>
 #endif
 
-
-Q_LOGGING_CATEGORY(lcNmea, "qt.positioning.nmea")
+#include <memory>
 
 QT_BEGIN_NAMESPACE
+
+Q_STATIC_LOGGING_CATEGORY(lcNmea, "qt.positioning.nmea")
 
 static const auto sourceParameterName = QStringLiteral("nmea.source");
 static const auto socketScheme = QStringLiteral("socket:");
@@ -143,7 +144,7 @@ public:
     ~NmeaSource() override;
     bool isValid() const
     {
-        return !m_dataSource.isNull() || !m_fileSource.isNull() || !m_socket.isNull();
+        return !m_dataSource.isNull() || m_fileSource || m_socket;
     }
 
 private slots:
@@ -156,8 +157,8 @@ private:
     void connectSocket(const QString &source);
 
     QSharedPointer<QIOPipe> m_dataSource;
-    QScopedPointer<QFile> m_fileSource;
-    QScopedPointer<QTcpSocket> m_socket;
+    std::unique_ptr<QFile> m_fileSource;
+    std::unique_ptr<QTcpSocket> m_socket;
     QString m_sourceName;
 };
 
@@ -287,7 +288,7 @@ void NmeaSource::setFileName(const QString &fileName)
 
     qCDebug(lcNmea) << "Opened successfully";
 
-    setDevice(m_fileSource.data());
+    setDevice(m_fileSource.get());
 }
 
 void NmeaSource::connectSocket(const QString &source)
@@ -302,7 +303,7 @@ void NmeaSource::connectSocket(const QString &source)
         m_socket->connectToHost(host, port, QTcpSocket::ReadOnly);
         m_sourceName = source;
 
-        setDevice(m_socket.data());
+        setDevice(m_socket.get());
     } else {
         qWarning("nmea: incorrect socket parameters %s:%d", qPrintable(host), port);
     }
@@ -316,7 +317,7 @@ public:
     NmeaSatelliteSource(QObject *parent, const QString &fileName, const QVariantMap &parameters);
     ~NmeaSatelliteSource();
 
-    bool isValid() const { return !m_port.isNull() || !m_file.isNull() || !m_socket.isNull(); }
+    bool isValid() const { return !m_port.isNull() || m_file || m_socket; }
 
 private slots:
     void onSocketError(QAbstractSocket::SocketError error);
@@ -326,8 +327,8 @@ private:
     void parseSimulationSource(const QString &localFileName);
 
     QSharedPointer<QIOPipe> m_port;
-    QScopedPointer<QFile> m_file;
-    QScopedPointer<QTcpSocket> m_socket;
+    std::unique_ptr<QFile> m_file;
+    std::unique_ptr<QTcpSocket> m_socket;
     QString m_sourceName;
 };
 
@@ -399,7 +400,7 @@ void NmeaSatelliteSource::processRealtimeParameters(const NmeaParameters &parame
             m_socket->connectToHost(host, port, QTcpSocket::ReadOnly);
             m_sourceName = source;
 
-            setDevice(m_socket.data());
+            setDevice(m_socket.get());
         } else {
             qWarning("nmea: incorrect socket parameters %s:%d", qPrintable(host), port);
         }
@@ -438,7 +439,7 @@ void NmeaSatelliteSource::parseSimulationSource(const QString &localFileName)
     }
     qCDebug(lcNmea) << "Opened successfully";
 
-    setDevice(m_file.data());
+    setDevice(m_file.get());
 }
 
 /*!

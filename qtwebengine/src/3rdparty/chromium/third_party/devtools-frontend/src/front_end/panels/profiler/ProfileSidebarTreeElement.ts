@@ -35,8 +35,7 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
   small: boolean;
   readonly dataDisplayDelegate: DataDisplayDelegate;
   profile: ProfileHeader;
-  saveLinkElement?: HTMLElement;
-  editing?: UI.InplaceEditor.Controller|null;
+  editing: UI.InplaceEditor.Controller|null;
   constructor(dataDisplayDelegate: DataDisplayDelegate, profile: ProfileHeader, className: string) {
     super('', false);
     this.iconElement = document.createElement('div');
@@ -66,6 +65,7 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
     this.dataDisplayDelegate = dataDisplayDelegate;
     this.profile = profile;
     profile.addEventListener(ProfileHeaderEvents.UPDATE_STATUS, this.updateStatus, this);
+    this.editing = null;
   }
 
   updateStatus(event: Common.EventTarget.EventTargetEvent<StatusUpdate>): void {
@@ -93,17 +93,24 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
     if (!container) {
       return;
     }
-    const config = new UI.InplaceEditor.Config(this.editingCommitted.bind(this), this.editingCancelled.bind(this));
+    const config =
+        new UI.InplaceEditor.Config(this.editingCommitted.bind(this), this.editingCancelled.bind(this), undefined);
     this.editing = UI.InplaceEditor.InplaceEditor.startEditing(container, config);
   }
 
-  editingCommitted(container: Element, newTitle: string): void {
-    delete this.editing;
-    this.profile.setTitle(newTitle);
+  editingCommitted(_container: Element, newTitle: string): void {
+    if (newTitle.trim().length === 0) {
+      if (this.editing) {
+        this.editing.cancel();
+      }
+    } else {
+      this.editing = null;
+      this.profile.setTitle(newTitle);
+    }
   }
 
   editingCancelled(): void {
-    delete this.editing;
+    this.editing = null;
   }
 
   dispose(): void {

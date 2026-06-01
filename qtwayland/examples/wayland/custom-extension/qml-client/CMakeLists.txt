@@ -12,7 +12,7 @@ endif()
 
 set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/wayland/custom-extension/qml-client")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick WaylandClient)
+find_package(Qt6 REQUIRED COMPONENTS Core GuiPrivate Qml Quick WaylandClient)
 
 qt6_policy(SET QTP0001 NEW)
 qt_add_executable(custom-extension-qml-client

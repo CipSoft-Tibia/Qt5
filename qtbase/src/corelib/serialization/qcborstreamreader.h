@@ -12,6 +12,9 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qstringview.h>
 
+#ifdef __cpp_lib_bit_cast
+#include <bit>
+#endif
 #include <memory>
 
 QT_REQUIRE_CONFIG(cborstreamreader);
@@ -189,9 +192,13 @@ private:
     {
         using UIntFP = typename QIntegerForSizeof<FP>::Unsigned;
         UIntFP u = UIntFP(value64);
+#ifdef __cpp_lib_bit_cast
+        return std::bit_cast<FP>(u);
+#else
         FP f;
         memcpy(static_cast<void *>(&f), &u, sizeof(f));
         return f;
+#endif
     }
 
     friend QCborStreamReaderPrivate;

@@ -1278,6 +1278,8 @@ const ProcEntry g_procTable[] = {
     {"glTexStorage3DEXT", P(GL_TexStorage3DEXT)},
     {"glTexStorage3DMultisample", P(GL_TexStorage3DMultisample)},
     {"glTexStorage3DMultisampleOES", P(GL_TexStorage3DMultisampleOES)},
+    {"glTexStorageAttribs2DEXT", P(GL_TexStorageAttribs2DEXT)},
+    {"glTexStorageAttribs3DEXT", P(GL_TexStorageAttribs3DEXT)},
     {"glTexStorageMem2DEXT", P(GL_TexStorageMem2DEXT)},
     {"glTexStorageMem2DMultisampleEXT", P(GL_TexStorageMem2DMultisampleEXT)},
     {"glTexStorageMem3DEXT", P(GL_TexStorageMem3DEXT)},

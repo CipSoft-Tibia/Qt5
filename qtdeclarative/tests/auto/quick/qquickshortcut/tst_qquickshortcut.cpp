@@ -106,13 +106,25 @@ void tst_QQuickShortcut::standardShortcuts()
     shortcuts.push_back(standardKey);
     shortcut->setProperty("sequences", shortcuts);
 
-    // test all:
+
+    /* test that all keys trigger the shortcut, and also
+       test that we get a sensible value for nativeText
+       and portableText */
+    const QString nativeText = shortcut->property("nativeText").toString();
+    bool foundMatchingNativeText = false;
+    const QString portableText = shortcut->property("portableText").toString();
+    bool foundMatchingPortableText = false;
     QList<QKeySequence> allsequences = QKeySequence::keyBindings(standardKey);
     for (const QKeySequence &s : allsequences) {
+        foundMatchingNativeText |= s.toString(QKeySequence::NativeText) == nativeText;
+        foundMatchingPortableText |= s.toString(QKeySequence::PortableText) == portableText;
         window->setProperty("activated", false);
         QTest::keySequence(window, s);
         QCOMPARE(window->property("activated").toBool(), true);
     }
+
+    QVERIFY(foundMatchingNativeText);
+    QVERIFY(foundMatchingPortableText);
 }
 
 void tst_QQuickShortcut::shortcuts_data()
@@ -404,8 +416,13 @@ void tst_QQuickShortcut::context()
 }
 
 typedef bool (*ShortcutContextMatcher)(QObject *, Qt::ShortcutContext);
+
+QT_BEGIN_NAMESPACE
+
 extern ShortcutContextMatcher qt_quick_shortcut_context_matcher();
 extern void qt_quick_set_shortcut_context_matcher(ShortcutContextMatcher matcher);
+
+QT_END_NAMESPACE
 
 static ShortcutContextMatcher lastMatcher = nullptr;
 

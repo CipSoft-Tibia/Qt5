@@ -314,21 +314,16 @@ void tst_QWasmKeyTranslator::modifyByDeadKey()
 
     QWasmDeadKeySupport deadKeySupport;
 
-    KeyEvent event(EventType::KeyDown, makeDeadKeyJsEvent(deadKeyCode, deadKeyModifiers));
+    KeyEvent event(EventType::KeyDown, makeDeadKeyJsEvent(deadKeyCode, deadKeyModifiers), &deadKeySupport);
     QCOMPARE(event.deadKey, true);
 
-    deadKeySupport.applyDeadKeyTranslations(&event);
-
-    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent(targetKeyCode, targetKey, modifiers));
-    QCOMPARE(eDown.deadKey, false);
-    deadKeySupport.applyDeadKeyTranslations(&eDown);
+    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent(targetKeyCode, targetKey, modifiers), &deadKeySupport);
     QCOMPARE(eDown.deadKey, false);
     QCOMPARE(eDown.text, expectedModifiedKey);
     QCOMPARE(eDown.key, targetQtKey);
 
-    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent(targetKeyCode, targetKey, modifiers));
+    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent(targetKeyCode, targetKey, modifiers), &deadKeySupport);
     QCOMPARE(eUp.deadKey, false);
-    deadKeySupport.applyDeadKeyTranslations(&eUp);
     QCOMPARE(eUp.text, expectedModifiedKey);
     QCOMPARE(eUp.key, targetQtKey);
 }
@@ -336,26 +331,21 @@ void tst_QWasmKeyTranslator::modifyByDeadKey()
 void tst_QWasmKeyTranslator::deadKeyModifiesOnlyOneKeyPressAndUp()
 {
     QWasmDeadKeySupport deadKeySupport;
-    KeyEvent event(EventType::KeyDown, makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&event);
+    KeyEvent event(EventType::KeyDown, makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()), &deadKeySupport);
 
-    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eDown);
+    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eDown.text, "ü");
     QCOMPARE(eDown.key, Qt::Key_Udiaeresis);
 
-    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eUp);
+    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eUp.text, "ü");
     QCOMPARE(eUp.key, Qt::Key_Udiaeresis);
 
-    KeyEvent eDown2(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eDown2);
+    KeyEvent eDown2(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eDown2.text, "u");
     QCOMPARE(eDown2.key, Qt::Key_U);
 
-    KeyEvent eUp2(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eUp2);
+    KeyEvent eUp2(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eUp2.text, "u");
     QCOMPARE(eUp2.key, Qt::Key_U);
 }
@@ -365,27 +355,21 @@ void tst_QWasmKeyTranslator::deadKeyIgnoresKeyUpPrecedingKeyDown()
     QWasmDeadKeySupport deadKeySupport;
 
     KeyEvent deadKeyDownEvent(EventType::KeyDown,
-                              makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&deadKeyDownEvent);
+                              makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()), &deadKeySupport);
 
-    KeyEvent deadKeyUpEvent(EventType::KeyUp, makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&deadKeyUpEvent);
+    KeyEvent deadKeyUpEvent(EventType::KeyUp, makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()), &deadKeySupport);
 
     KeyEvent otherKeyUpEvent(EventType::KeyUp,
-                             makeKeyJsEvent("AltLeft", "Alt", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&otherKeyUpEvent);
+                             makeKeyJsEvent("AltLeft", "Alt", Qt::KeyboardModifiers()), &deadKeySupport);
 
-    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eDown);
+    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eDown.text, "ü");
     QCOMPARE(eDown.key, Qt::Key_Udiaeresis);
 
     KeyEvent yetAnotherKeyUpEvent(
-            EventType::KeyUp, makeKeyJsEvent("ControlLeft", "Control", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&yetAnotherKeyUpEvent);
+            EventType::KeyUp, makeKeyJsEvent("ControlLeft", "Control", Qt::KeyboardModifiers()), &deadKeySupport);
 
-    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eUp);
+    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eUp.text, "ü");
     QCOMPARE(eUp.key, Qt::Key_Udiaeresis);
 }
@@ -395,28 +379,23 @@ void tst_QWasmKeyTranslator::onlyKeysProducingTextAreModifiedByDeadKeys()
     QWasmDeadKeySupport deadKeySupport;
 
     KeyEvent deadKeyDownEvent(EventType::KeyDown,
-                              makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&deadKeyDownEvent);
+                              makeDeadKeyJsEvent("KeyU", Qt::KeyboardModifiers()), &deadKeySupport);
 
     KeyEvent noTextKeyDown(EventType::KeyDown,
-                           makeKeyJsEvent("AltLeft", "Alt", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&noTextKeyDown);
+                           makeKeyJsEvent("AltLeft", "Alt", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(noTextKeyDown.text, "");
     QCOMPARE(noTextKeyDown.key, Qt::Key_Alt);
 
     KeyEvent noTextKeyUp(EventType::KeyUp,
-                         makeKeyJsEvent("AltLeft", "Alt", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&noTextKeyUp);
+                         makeKeyJsEvent("AltLeft", "Alt", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(noTextKeyDown.text, "");
     QCOMPARE(noTextKeyDown.key, Qt::Key_Alt);
 
-    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eDown);
+    KeyEvent eDown(EventType::KeyDown, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eDown.text, "ü");
     QCOMPARE(eDown.key, Qt::Key_Udiaeresis);
 
-    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()));
-    deadKeySupport.applyDeadKeyTranslations(&eUp);
+    KeyEvent eUp(EventType::KeyUp, makeKeyJsEvent("KeyU", "u", Qt::KeyboardModifiers()), &deadKeySupport);
     QCOMPARE(eUp.text, "ü");
     QCOMPARE(eUp.key, Qt::Key_Udiaeresis);
 }

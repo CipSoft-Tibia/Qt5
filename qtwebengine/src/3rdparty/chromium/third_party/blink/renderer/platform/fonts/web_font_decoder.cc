@@ -28,6 +28,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "third_party/blink/renderer/platform/fonts/web_font_decoder.h"
 
 #include <hb.h>
@@ -88,8 +93,7 @@ void BlinkOTSContext::Message(int level, const char* format, ...) {
     va_start(args, format);
     vsnprintf(buffer.data(), buffer.size(), format, args);
     va_end(args);
-    error_string_ =
-        StringImpl::Create(reinterpret_cast<const LChar*>(buffer.data()), len);
+    error_string_ = StringImpl::Create(base::span(buffer).first(len));
   }
 }
 

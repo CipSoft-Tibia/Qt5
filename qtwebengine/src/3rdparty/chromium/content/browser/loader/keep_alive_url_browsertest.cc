@@ -18,6 +18,8 @@
 #include "base/test/bind.h"
 #include "base/test/mock_callback.h"
 #include "base/test/scoped_feature_list.h"
+#include "content/browser/attribution_reporting/test/mock_attribution_data_host_manager.h"
+#include "content/browser/attribution_reporting/test/mock_attribution_manager.h"
 #include "content/browser/back_forward_cache_test_util.h"
 #include "content/browser/loader/keep_alive_url_loader.h"
 #include "content/browser/loader/keep_alive_url_loader_service.h"
@@ -1591,10 +1593,100 @@ class FetchLaterBrowserTestBase : public KeepAliveURLBrowserTestBase {
     // by `total`, not by states.
   }
 
+  GURL GetFetchLaterPageURL(const std::string& host,
+                            const std::string& method) const {
+    std::string url = base::StrCat(
+        {"/set-header-with-file/content/test/data/fetch_later.html?"
+         "method=",
+         method});
+    return server()->GetURL(host, url);
+  }
+
  private:
   std::unique_ptr<RenderFrameHostImplWrapper> current_document_ = nullptr;
   std::unique_ptr<RenderFrameHostImplWrapper> previous_document_ = nullptr;
 };
+
+class FetchLaterBasicBrowserTest : public FetchLaterBrowserTestBase {
+ protected:
+  const FeaturesType& GetEnabledFeatures() override {
+    static const FeaturesType enabled_features = {
+        {blink::features::kFetchLaterAPI, {{}}}};
+    return enabled_features;
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(FetchLaterBasicBrowserTest, CallInMainDocument) {
+  const std::string target_url = kFetchLaterEndpoint;
+  ASSERT_TRUE(server()->Start());
+
+  RunScript(JsReplace(R"(
+    fetchLater($1);
+  )",
+                      target_url));
+  ASSERT_FALSE(current_document().IsDestroyed());
+
+  // The loader should still be connected as the page exists.
+  EXPECT_EQ(loader_service()->NumDisconnectedLoadersForTesting(), 0u);
+}
+
+IN_PROC_BROWSER_TEST_F(FetchLaterBasicBrowserTest, CallInSameOriginChild) {
+  ASSERT_TRUE(server()->Start());
+
+  RunScript(JsReplace(
+      R"(
+    var childPromise = new Promise((resolve, reject) => {
+      window.addEventListener('message', e => {
+        if (e.data.type === 'fetchLater.done') {
+          resolve(e.data.type);
+        } else {
+          reject(e.data.type);
+        }
+      });
+    });
+
+    const iframe = document.createElement("iframe");
+    iframe.src = $1;
+    document.body.appendChild(iframe);
+  )",
+      GetFetchLaterPageURL(kPrimaryHost, net::HttpRequestHeaders::kGetMethod)));
+  ASSERT_FALSE(current_document().IsDestroyed());
+
+  EXPECT_EQ("fetchLater.done", EvalJs(web_contents(), "childPromise"));
+  // The loader should still be connected as the page exists.
+  EXPECT_EQ(loader_service()->NumDisconnectedLoadersForTesting(), 0u);
+}
+
+// By default of `deferred-fetch-minimal` policy, `fetchLater()` should be
+// allowed in first X cross-origin child iframes.
+IN_PROC_BROWSER_TEST_F(FetchLaterBasicBrowserTest, CallInCrossOriginChild) {
+  const std::string target_url = kFetchLaterEndpoint;
+  ASSERT_TRUE(server()->Start());
+
+  RunScript(JsReplace(
+      R"(
+    var childPromise = new Promise((resolve, reject) => {
+      window.addEventListener('message', e => {
+        if (e.data.type === 'fetchLater.done') {
+          resolve(e.data.type);
+        } else {
+          reject(e.data.type + ': ' + e.data.error);
+        }
+      });
+    });
+
+    const iframe = document.createElement("iframe");
+    iframe.src = $1;
+    document.body.appendChild(iframe);
+  )",
+      GetFetchLaterPageURL(kSecondaryHost,
+                           net::HttpRequestHeaders::kGetMethod)));
+  ASSERT_FALSE(current_document().IsDestroyed());
+
+  EXPECT_EQ("fetchLater.done", EvalJs(web_contents(), "childPromise"));
+  // The loader should still exist as the page exists.
+  EXPECT_EQ(loader_service()->NumDisconnectedLoadersForTesting(), 0u);
+}
 
 // A type to support parameterized testing for timeout-related tests.
 struct TestTimeoutType {
@@ -1830,6 +1922,27 @@ class FetchLaterActivationTimeoutBrowserTest
   }
 };
 
+// When setting activateAfter=0, a pending FetchLater request should be sent
+// "roughly" immediately.
+IN_PROC_BROWSER_TEST_F(FetchLaterActivationTimeoutBrowserTest,
+                       SendOnZeroActivationTimeout) {
+  const std::string target_url = kFetchLaterEndpoint;
+  auto request_handlers = RegisterRequestHandlers({target_url});
+  ASSERT_TRUE(server()->Start());
+
+  // Creates a FetchLater request with activateAfter=0s.
+  RunScript(JsReplace(R"(
+    fetchLater($1, {activateAfter: 0});
+  )",
+                      target_url));
+  ASSERT_FALSE(current_document().IsDestroyed());
+
+  // The loader should still exist as the page exists.
+  EXPECT_EQ(loader_service()->NumDisconnectedLoadersForTesting(), 0u);
+  // The FetchLater request should be sent, triggered by its activateAfter.
+  ExpectFetchLaterRequests(1, request_handlers);
+}
+
 // When setting activateAfter>0, a pending FetchLater request should be sent
 // after around the specified time, if no navigation happens.
 IN_PROC_BROWSER_TEST_F(FetchLaterActivationTimeoutBrowserTest,
@@ -1883,5 +1996,81 @@ IN_PROC_BROWSER_TEST_F(FetchLaterActivationTimeoutBrowserTest,
 
 // All other send-on-BFCache behaviors are covered in
 // send-on-deactivate.tentative.https.window.js
+
+class KeepAliveURLAttributionReportingBrowserTest
+    : public KeepAliveURLBrowserTest {
+ protected:
+  void SetUp() override {
+    // Attribution Reporting API only supports HTTPS requests.
+    SetUseHttps();
+    KeepAliveURLBrowserTest::SetUp();
+  }
+
+  void SetUpOnMainThread() override {
+    auto mock_manager = std::make_unique<MockAttributionManager>();
+    auto mock_data_host_manager =
+        std::make_unique<MockAttributionDataHostManager>();
+    mock_manager->SetDataHostManager(std::move(mock_data_host_manager));
+    static_cast<StoragePartitionImpl*>(
+        web_contents()->GetBrowserContext()->GetDefaultStoragePartition())
+        ->OverrideAttributionManagerForTesting(std::move(mock_manager));
+
+    KeepAliveURLBrowserTest::SetUpOnMainThread();
+  }
+
+  const FeaturesType& GetEnabledFeatures() override {
+    static const FeaturesType enabled_features =
+        GetDefaultEnabledBackForwardCacheFeaturesForTesting(
+            {{blink::features::kKeepAliveInBrowserMigration, {}},
+             {blink::features::kAttributionReportingInBrowserMigration, {}}});
+    return enabled_features;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    KeepAliveURLAttributionReportingBrowserTest,
+    ::testing::Values(net::HttpRequestHeaders::kGetMethod,
+                      net::HttpRequestHeaders::kPostMethod),
+    [](const testing::TestParamInfo<KeepAliveURLBrowserTest::ParamType>& info) {
+      return info.param;
+    });
+
+IN_PROC_BROWSER_TEST_P(KeepAliveURLAttributionReportingBrowserTest,
+                       ReceiveViolatingCSPRedirect_NotForwarded) {
+  const std::string method = GetParam();
+  const char violating_csp_redirect_target[] =
+      "http://b.test/beacon-redirected";
+  auto request_handler =
+      std::move(RegisterRequestHandlers({kKeepAliveEndpoint})[0]);
+  ASSERT_TRUE(server()->Start());
+  const GURL allowed_csp_url = server()->GetURL(kAllowedCspHost, "/");
+
+  auto* data_host_manager = static_cast<MockAttributionDataHostManager*>(
+      AttributionManager::FromWebContents(web_contents())
+          ->GetDataHostManager());
+  EXPECT_CALL(*data_host_manager, NotifyBackgroundRegistrationStarted).Times(1);
+  EXPECT_CALL(*data_host_manager, NotifyBackgroundRegistrationData).Times(0);
+  EXPECT_CALL(*data_host_manager, NotifyBackgroundRegistrationCompleted)
+      .Times(1);
+
+  // Set up redirects according to the following redirect chain:
+  // fetch("http://a.test:<port>/beacon", keepalive: true)
+  // --> http://b.test/beacon-redirected
+  ASSERT_NO_FATAL_FAILURE(
+      LoadPageWithKeepAliveRequestAndSendResponseAfterUnload(
+          GetKeepAlivePageURL(
+              method, /*num_requests=*/1,
+              GetConnectSrcCSPHeader(url::Origin::Create(allowed_csp_url))),
+          request_handler.get(),
+          base::StringPrintf(k301Response, violating_csp_redirect_target)));
+
+  // The redirect doesn't match CSP source from the 1st page, so the loader is
+  // terminated.
+  // While the 1st page is unloaded, the disconnection may not propagate to
+  // browser process in time, such that calling
+  // `WaitforTotalCompleteProcessed()` here might be flaky.
+  loaders_observer().WaitForTotalOnComplete({net::ERR_BLOCKED_BY_CSP});
+}
 
 }  // namespace content

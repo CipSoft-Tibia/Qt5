@@ -56,10 +56,12 @@ void LayoutSVGBlock::WillBeDestroyed() {
 void LayoutSVGBlock::InsertedIntoTree() {
   NOT_DESTROYED();
   LayoutBlockFlow::InsertedIntoTree();
-  // Ensure that the viewport dependency flag gets set on the ancestor chain.
-  if (SVGSelfOrDescendantHasViewportDependency()) {
-    ClearSVGSelfOrDescendantHasViewportDependency();
-    SetSVGSelfOrDescendantHasViewportDependency();
+  if (!RuntimeEnabledFeatures::SvgViewportOptimizationEnabled()) {
+    // Ensure that the viewport dependency flag gets set on the ancestor chain.
+    if (SVGSelfOrDescendantHasViewportDependency()) {
+      ClearSVGSelfOrDescendantHasViewportDependency();
+      SetSVGSelfOrDescendantHasViewportDependency();
+    }
   }
   LayoutSVGResourceContainer::MarkForLayoutAndParentResourceInvalidation(*this,
                                                                          false);
@@ -97,8 +99,7 @@ bool LayoutSVGBlock::CheckForImplicitTransformChange(
     case ETransformBox::kBorderBox:
       return bbox_changed;
   }
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 void LayoutSVGBlock::UpdateTransformBeforeLayout() {
@@ -135,14 +136,18 @@ void LayoutSVGBlock::StyleDidChange(StyleDifference diff,
   NOT_DESTROYED();
   LayoutBlockFlow::StyleDidChange(diff, old_style);
 
+  const ComputedStyle& style = StyleRef();
+
   // |HasTransformRelatedProperty| is used for compositing so ensure it was
   // correctly set by the call to |StyleDidChange|.
   DCHECK_EQ(HasTransformRelatedProperty(),
-            StyleRef().HasTransformRelatedPropertyForSVG());
+            style.HasTransformRelatedPropertyForSVG());
 
   TransformHelper::UpdateOffsetPath(*GetElement(), old_style);
   transform_uses_reference_box_ =
-      TransformHelper::UpdateReferenceBoxDependency(*this);
+      RuntimeEnabledFeatures::SvgViewportOptimizationEnabled()
+          ? TransformHelper::DependsOnReferenceBox(style)
+          : TransformHelper::UpdateReferenceBoxDependency(*this);
 
   if (diff.NeedsFullLayout()) {
     if (diff.TransformChanged())
@@ -157,11 +162,11 @@ void LayoutSVGBlock::StyleDidChange(StyleDifference diff,
   if (diff.BlendModeChanged()) {
     DCHECK(IsBlendingAllowed());
     Parent()->DescendantIsolationRequirementsChanged(
-        StyleRef().HasBlendMode() ? kDescendantIsolationRequired
-                                  : kDescendantIsolationNeedsUpdate);
+        style.HasBlendMode() ? kDescendantIsolationRequired
+                             : kDescendantIsolationNeedsUpdate);
   }
 
-  if (StyleRef().HasCurrentTransformRelatedAnimation() &&
+  if (style.HasCurrentTransformRelatedAnimation() &&
       !old_style->HasCurrentTransformRelatedAnimation()) {
     Parent()->SetSVGDescendantMayHaveTransformRelatedAnimation();
   }
@@ -194,11 +199,6 @@ void LayoutSVGBlock::MapAncestorToLocal(const LayoutBoxModelObject* ancestor,
   SVGLayoutSupport::MapAncestorToLocal(*this, ancestor, transform_state, flags);
   // Convert from local SVG coordinates to local HTML coordinates.
   transform_state.Move(PhysicalLocation());
-}
-
-PhysicalRect LayoutSVGBlock::VisualRectInDocument(VisualRectFlags flags) const {
-  NOT_DESTROYED();
-  return SVGLayoutSupport::VisualRectInAncestorSpace(*this, *View(), flags);
 }
 
 bool LayoutSVGBlock::MapToVisualRectInAncestorSpaceInternal(

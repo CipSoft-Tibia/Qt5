@@ -16,6 +16,7 @@
     \section1 Menu Control
 
     \image qtquickcontrols-menu.png
+           {Menu displaying items with shortcuts}
 
     \l Menu control can be used for context menus; for example, after
     right-clicking. It can also be used for popup menus; for example, a
@@ -32,6 +33,7 @@
     \section1 MenuBar Control
 
     \image qtquickcontrols-menubar.png
+           {Menu bar with File, Edit, and View menus}
 
     \l MenuBar control can be used for window menu bars.
 

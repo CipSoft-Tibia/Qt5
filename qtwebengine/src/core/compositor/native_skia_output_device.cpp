@@ -14,13 +14,14 @@
 #include "gpu/command_buffer/service/shared_image/shared_image_factory.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 #include "gpu/command_buffer/service/skia_utils.h"
-#include "third_party/skia/include/gpu/GrDirectContext.h"
 #include "third_party/skia/include/core/SkSurfaceProps.h"
 #include "ui/gfx/native_pixmap.h"
 #include "ui/gfx/gpu_fence.h"
 #include "ui/gl/gl_fence.h"
 
 #if BUILDFLAG(IS_OZONE)
+#include "ozone/gl_ozone_qt.h"
+
 #include "ui/ozone/public/ozone_platform.h"
 #endif
 
@@ -64,6 +65,19 @@ NativeSkiaOutputDevice::NativeSkiaOutputDevice(
                                         .supports_native_pixmaps;
     qCDebug(lcWebEngineCompositor, "Native Buffer Supported: %s",
             m_isNativeBufferSupported ? "yes" : "no");
+
+    auto typeToString = [](ui::NativePixmapSupportType type) -> const char * {
+        switch (type) {
+        case ui::NativePixmapSupportType::kDMABuf:
+            return "DMABuf";
+        case ui::NativePixmapSupportType::kX11Pixmap:
+            return "X11Pixmap";
+        default:
+            return "None";
+        }
+    };
+    qCDebug(lcWebEngineCompositor, "Native Pixmap Support Type: %s",
+            typeToString(ui::GLOzoneQt::getNativePixmapSupportType()));
 #endif
 }
 

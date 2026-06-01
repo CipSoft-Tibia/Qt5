@@ -44,7 +44,7 @@ float ClampCoordinate(double value) {
 }
 
 HTMLAreaElement::HTMLAreaElement(Document& document)
-    : HTMLAnchorElement(html_names::kAreaTag, document), shape_(kRect) {}
+    : HTMLAnchorElementBase(html_names::kAreaTag, document), shape_(kRect) {}
 
 // An explicit empty destructor should be in html_area_element.cc, because
 // if an implicit destructor is used or an empty destructor is defined in
@@ -78,7 +78,7 @@ void HTMLAreaElement::ParseAttribute(
              params.name == html_names::kAccesskeyAttr) {
     // Do nothing.
   } else {
-    HTMLAnchorElement::ParseAttribute(params);
+    HTMLAnchorElementBase::ParseAttribute(params);
   }
 }
 
@@ -160,8 +160,7 @@ Path HTMLAreaElement::GetPath(const LayoutObject* container_object) const {
         }
         break;
       default:
-        NOTREACHED_IN_MIGRATION();
-        break;
+        NOTREACHED();
     }
 
     // Cache the original path, not depending on containerObject.
@@ -185,15 +184,15 @@ HTMLImageElement* HTMLAreaElement::ImageElement() const {
   return nullptr;
 }
 
-bool HTMLAreaElement::IsKeyboardFocusable(
+bool HTMLAreaElement::IsKeyboardFocusableSlow(
     UpdateBehavior update_behavior) const {
-  // Explicitly skip over the HTMLAnchorElement's keyboard focus behavior.
-  return Element::IsKeyboardFocusable(update_behavior);
+  // Explicitly skip over the HTMLAnchorElementBase's keyboard focus behavior.
+  return Element::IsKeyboardFocusableSlow(update_behavior);
 }
 
 FocusableState HTMLAreaElement::IsFocusableState(
     UpdateBehavior update_behavior) const {
-  // Explicitly skip over the HTMLAnchorElement's mouse focus behavior.
+  // Explicitly skip over the HTMLAnchorElementBase's mouse focus behavior.
   return HTMLElement::IsFocusableState(update_behavior);
 }
 
@@ -208,7 +207,7 @@ bool HTMLAreaElement::IsFocusableStyle(UpdateBehavior update_behavior) const {
   }
   const ComputedStyle& style = layout_object->StyleRef();
   // TODO(crbug.com/40911863): Why is this not just image->IsFocusableStyle()?
-  return !style.IsInert() && style.UsedVisibility() == EVisibility::kVisible &&
+  return !style.IsInert() && style.Visibility() == EVisibility::kVisible &&
          Element::tabIndex() >= 0 &&
          SupportsFocus(update_behavior) != FocusableState::kNotFocusable;
 }
@@ -218,7 +217,7 @@ void HTMLAreaElement::SetFocused(bool should_be_focused,
   if (IsFocused() == should_be_focused)
     return;
 
-  HTMLAnchorElement::SetFocused(should_be_focused, focus_type);
+  HTMLAnchorElementBase::SetFocused(should_be_focused, focus_type);
 
   HTMLImageElement* image_element = ImageElement();
   if (!image_element)
@@ -227,28 +226,6 @@ void HTMLAreaElement::SetFocused(bool should_be_focused,
   LayoutObject* layout_object = image_element->GetLayoutObject();
   if (auto* layout_image = DynamicTo<LayoutImage>(layout_object))
     layout_image->AreaElementFocusChanged(this);
-}
-
-Element* HTMLAreaElement::interestTargetElement() {
-  CHECK(RuntimeEnabledFeatures::HTMLInterestTargetAttributeEnabled());
-
-  if (!IsInTreeScope()) {
-    return nullptr;
-  }
-
-  return GetElementAttributeResolvingReferenceTarget(
-      html_names::kInteresttargetAttr);
-}
-
-AtomicString HTMLAreaElement::interestAction() const {
-  CHECK(RuntimeEnabledFeatures::HTMLInterestTargetAttributeEnabled());
-  const AtomicString& attribute_value =
-      FastGetAttribute(html_names::kInterestactionAttr);
-  if (attribute_value && !attribute_value.IsNull() &&
-      !attribute_value.empty()) {
-    return attribute_value;
-  }
-  return g_empty_atom;
 }
 
 void HTMLAreaElement::UpdateSelectionOnFocus(

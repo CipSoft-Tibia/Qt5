@@ -22,6 +22,8 @@
 QT_BEGIN_NAMESPACE
 
 class QKeyEvent;
+class QMimeData;
+class QInputMethodEvent;
 class Q_GUI_EXPORT QInputControl : public QObject
 {
     Q_OBJECT
@@ -35,6 +37,9 @@ public:
 
     bool isAcceptableInput(const QKeyEvent *event) const;
     static bool isCommonTextEditShortcut(const QKeyEvent *ke);
+
+    static QVariant selectionWrapper(QMimeData *mimeData);
+    static QMimeData *mimeDataForInputEvent(QInputMethodEvent *event);
 
 protected:
     explicit QInputControl(Type type, QObjectPrivate &dd, QObject *parent = nullptr);

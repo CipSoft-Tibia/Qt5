@@ -23,6 +23,7 @@
 #include <QtQuick3DRuntimeRender/private/qssgvertexpipelineimpl_p.h>
 #include "../qssgshadermapkey_p.h"
 #include "../qssgrenderpickresult_p.h"
+#include "../graphobjects/qssgrenderroot_p.h"
 
 #include <QtQuick3DUtils/private/qquick3dprofiler_p.h>
 #include <QtQuick3DUtils/private/qssgdataref_p.h>
@@ -70,7 +71,7 @@
 QT_BEGIN_NAMESPACE
 
 struct QSSGRenderableImage;
-struct QSSGSubsetRenderable;
+class QSSGSubsetRenderable;
 
 void QSSGRenderer::releaseCachedResources()
 {
@@ -78,54 +79,28 @@ void QSSGRenderer::releaseCachedResources()
     m_rhiCubeRenderer.reset();
 }
 
-void QSSGRenderer::registerItem2DData(const Item2DData &data)
+void QSSGRenderer::registerItem2DData(QSSGRenderItem2DData &data)
 {
-    const auto foundIt = std::find_if(item2DDataList.begin(), item2DDataList.end(), [&data](const Item2DData &i2dd) {
-        return i2dd.layer == data.layer && i2dd.item == data.item;
-    });
-
-    if (foundIt != item2DDataList.end()) {
-        // Update existing entry
-        *foundIt = data;
-        return;
+    // Check if data is already in the m_item2DDatas list, if not insert it.
+    for (const auto *item2DData : m_item2DDatas) {
+        if (item2DData == &data)
+            return;
     }
 
-    item2DDataList.push_back(data);
+    m_item2DDatas.push_back(&data);
 }
 
-void QSSGRenderer::populateItem2DDataMapForLayer(const QSSGRenderLayer &layer, Item2DDataMap &item2DDataMap) const
+void QSSGRenderer::unregisterItem2DData(QSSGRenderItem2DData &data)
 {
-    item2DDataMap.clear();
-    for (const auto &item2dData : std::as_const(item2DDataList)) {
-        if (item2dData.layer == &layer)
-            item2DDataMap[item2dData.item] = item2dData;
-    }
+    const auto foundIt = std::find(m_item2DDatas.begin(), m_item2DDatas.end(), &data);
+    if (foundIt != m_item2DDatas.end())
+        m_item2DDatas.erase(foundIt);
 }
 
 void QSSGRenderer::releaseItem2DData(const QSSGRenderItem2D &item2D)
 {
-    for (auto it = item2DDataList.begin(); it != item2DDataList.end(); /* no increment */) {
-        if (it->item == &item2D) {
-            delete it->rpd;
-            delete it->renderer;
-            it = item2DDataList.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
-void QSSGRenderer::releaseItem2DData(const QSSGRenderLayer &layer)
-{
-    for (auto it = item2DDataList.begin(); it != item2DDataList.end(); /* no increment */) {
-        if (it->layer == &layer) {
-            delete it->rpd;
-            delete it->renderer;
-            it = item2DDataList.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    for (auto *item2DData : m_item2DDatas)
+        item2DData->releaseRenderData(item2D);
 }
 
 QSSGRenderer::QSSGRenderer() = default;
@@ -151,6 +126,13 @@ bool QSSGRenderer::prepareLayerForRender(QSSGRenderLayer &inLayer)
 {
     QSSGLayerRenderData *theRenderData = getOrCreateLayerRenderData(inLayer);
     Q_ASSERT(theRenderData);
+
+    // Need to check if the world root node is dirty and if we need to trigger
+    // a reindex of the world root node.
+    Q_ASSERT(inLayer.rootNode);
+    if (inLayer.rootNode->isDirty(QSSGRenderRoot::DirtyFlag::TreeDirty))
+        inLayer.rootNode->reindex(); // Clears TreeDirty flag
+
     beginLayerRender(*theRenderData);
     theRenderData->resetForFrame();
     theRenderData->prepareForRender();
@@ -169,8 +151,8 @@ void QSSGRenderer::rhiPrepare(QSSGRenderLayer &inLayer)
         ///
         QSSGRhiContext *rhiCtx = contextInterface()->rhiContext().get();
         QSSG_ASSERT(rhiCtx->isValid() && rhiCtx->rhi()->isRecordingFrame(), return);
-        theRenderData->maybeBakeLightmap();
         beginLayerRender(*theRenderData);
+        theRenderData->maybeProcessLightmapBaking();
         // Process active passes. "PreMain" passes are individual passes
         // that does can and should be done in the rhi prepare phase.
         // It is assumed that passes are sorted in the list with regards to
@@ -401,7 +383,7 @@ QSSGRendererPrivate::PickResultList QSSGRendererPrivate::syncPick(const QSSGRend
     Q_ASSERT(layer.getGlobalState(QSSGRenderNode::GlobalState::Active));
     PickResultList pickResults;
     if (target)
-        intersectRayWithSubsetRenderable(*bufferManager, ray, *target, pickResults);
+        intersectRayWithSubsetRenderable(layer, *bufferManager, ray, *target, pickResults);
     else
         getLayerHitObjectList(layer, *bufferManager, ray, isGlobalPickingEnabled, pickResults);
 
@@ -420,7 +402,7 @@ QSSGRendererPrivate::PickResultList QSSGRendererPrivate::syncPickSubset(const QS
     Q_ASSERT(layer.getGlobalState(QSSGRenderNode::GlobalState::Active));
 
     for (auto target : subset)
-        intersectRayWithSubsetRenderable(bufferManager, ray, *target, pickResults);
+        intersectRayWithSubsetRenderable(layer, bufferManager, ray, *target, pickResults);
 
     std::stable_sort(pickResults.begin(), pickResults.end(), [](const QSSGRenderPickResult &lhs, const QSSGRenderPickResult &rhs) {
         return lhs.m_distanceSq < rhs.m_distanceSq;
@@ -509,19 +491,25 @@ void QSSGRendererPrivate::getLayerHitObjectList(const QSSGRenderLayer &layer,
     for (int idx = renderables.size() - 1; idx >= 0; --idx) {
         const auto &pickableObject = renderables.at(idx);
         if (inPickEverything || pickableObject->getLocalState(QSSGRenderNode::LocalState::Pickable))
-            intersectRayWithSubsetRenderable(bufferManager, ray, *pickableObject, outIntersectionResult);
+            intersectRayWithSubsetRenderable(layer, bufferManager, ray, *pickableObject, outIntersectionResult);
     }
 }
 
-void QSSGRendererPrivate::intersectRayWithSubsetRenderable(QSSGBufferManager &bufferManager,
+void QSSGRendererPrivate::intersectRayWithSubsetRenderable(const QSSGRenderLayer &layer,
+                                                           QSSGBufferManager &bufferManager,
                                                            const QSSGRenderRay &inRay,
                                                            const QSSGRenderNode &node,
                                                            PickResultList &outIntersectionResultList)
 {
+    if (!layer.renderData)
+        return;
+
+    const auto *renderData = layer.renderData;
+
     // Item2D's requires special handling
     if (node.type == QSSGRenderGraphObject::Type::Item2D) {
         const QSSGRenderItem2D &item2D = static_cast<const QSSGRenderItem2D &>(node);
-        intersectRayWithItem2D(inRay, item2D, outIntersectionResultList);
+        intersectRayWithItem2D(layer, inRay, item2D, outIntersectionResultList);
         return;
     }
 
@@ -555,9 +543,10 @@ void QSSGRendererPrivate::intersectRayWithSubsetRenderable(QSSGBufferManager &bu
 
         QMatrix4x4 modelTransform;
         if (instancing) {
-            modelTransform = model.globalInstanceTransform * model.instanceTable->getTransform(instanceIndex) * model.localInstanceTransform;
+            const auto &[localInstanceTransform, globalInstanceTransform] = renderData->getInstanceTransforms(model);
+            modelTransform = globalInstanceTransform * model.instanceTable->getTransform(instanceIndex) * localInstanceTransform;
         } else {
-            modelTransform = model.globalTransform;
+            modelTransform = renderData->getGlobalTransform(model);
         }
         auto rayData = QSSGRenderRay::createRayData(modelTransform, inRay);
 
@@ -609,17 +598,23 @@ void QSSGRendererPrivate::intersectRayWithSubsetRenderable(QSSGBufferManager &bu
                                                                        intersectionResult.scenePosition,
                                                                        intersectionResult.localPosition,
                                                                        intersectionResult.faceNormal,
+                                                                       intersectionResult.sceneFaceNormal,
                                                                        resultSubset,
                                                                        instanceIndex
                                                 });
     }
 }
 
-void QSSGRendererPrivate::intersectRayWithItem2D(const QSSGRenderRay &inRay, const QSSGRenderItem2D &item2D, PickResultList &outIntersectionResultList)
+void QSSGRendererPrivate::intersectRayWithItem2D(const QSSGRenderLayer &layer,
+                                                 const QSSGRenderRay &inRay,
+                                                 const QSSGRenderItem2D &item2D,
+                                                 PickResultList &outIntersectionResultList)
 {
+    const auto &globalTransform = layer.renderData->getGlobalTransform(item2D);
+
     // Get the plane (and normal) that the item 2D is on
-    const QVector3D p0 = item2D.getGlobalPos();
-    const QVector3D normal  = -item2D.getDirection();
+    const QVector3D p0 = QSSGRenderNode::getGlobalPos(globalTransform);
+    const QVector3D normal  = -QSSGRenderNode::getDirection(globalTransform);
 
     const float d = QVector3D::dotProduct(inRay.direction, normal);
     float intersectionTime = 0;
@@ -629,7 +624,7 @@ void QSSGRendererPrivate::intersectRayWithItem2D(const QSSGRenderRay &inRay, con
         if (intersectionTime >= 0) {
             // Intersection
             const QVector3D intersectionPoint = inRay.origin + inRay.direction * intersectionTime;
-            const QMatrix4x4 inverseGlobalTransform = item2D.globalTransform.inverted();
+            const QMatrix4x4 inverseGlobalTransform = globalTransform.inverted();
             const QVector3D localIntersectionPoint = QSSGUtils::mat44::transform(inverseGlobalTransform, intersectionPoint);
             const QVector2D qmlCoordinate(localIntersectionPoint.x(), -localIntersectionPoint.y());
             outIntersectionResultList.push_back(QSSGRenderPickResult { &item2D,
@@ -637,7 +632,7 @@ void QSSGRendererPrivate::intersectRayWithItem2D(const QSSGRenderRay &inRay, con
                                                                        qmlCoordinate,
                                                                        intersectionPoint,
                                                                        localIntersectionPoint,
-                                                                       -normal });
+                                                                       -normal, -normal });
         }
     }
 }

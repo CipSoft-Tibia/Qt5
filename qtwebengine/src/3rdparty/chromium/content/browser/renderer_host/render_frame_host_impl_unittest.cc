@@ -43,12 +43,6 @@
 #include "url/origin.h"
 #include "url/url_util.h"
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "content/browser/webauth/authenticator_environment.h"
-#include "content/public/common/content_switches.h"
-#include "third_party/blink/public/mojom/webauthn/virtual_authenticator.mojom.h"
-#endif
-
 namespace content {
 
 namespace {
@@ -882,7 +876,7 @@ TEST_F(RenderFrameHostImplTest,
           NavigationRequest::From(navigation->GetNavigationHandle());
       // Disable Storage Partitioning by enabling the deprecation trial.
       request->GetMutableRuntimeFeatureStateContext()
-          .SetDisableThirdPartyStoragePartitioning2Enabled(true);
+          .SetDisableThirdPartyStoragePartitioning3Enabled(true);
     }
 
     navigation->Commit();
@@ -1038,7 +1032,7 @@ TEST_F(RenderFrameHostImplTest,
       NavigationRequest* request =
           NavigationRequest::From(navigation->GetNavigationHandle());
       request->GetMutableRuntimeFeatureStateContext()
-          .SetDisableThirdPartyStoragePartitioning2Enabled(true);
+          .SetDisableThirdPartyStoragePartitioning3Enabled(true);
     }
 
     navigation->Commit();
@@ -1117,13 +1111,13 @@ TEST_F(RenderFrameHostImplTest, CalculateStorageKeyOfUnnavigatedFrame) {
 
   // Disable Storage Partitioning by enabling the deprecation trial.
   request->GetMutableRuntimeFeatureStateContext()
-      .SetDisableThirdPartyStoragePartitioning2Enabled(true);
+      .SetDisableThirdPartyStoragePartitioning3Enabled(true);
 
   navigation->Commit();
 
   EXPECT_TRUE(RuntimeFeatureStateDocumentData::GetForCurrentDocument(main_rfh())
                   ->runtime_feature_state_read_context()
-                  .IsDisableThirdPartyStoragePartitioning2Enabled());
+                  .IsDisableThirdPartyStoragePartitioning3Enabled());
 
   // Create a child frame and navigate to `child_url`.
   auto* child_frame = main_test_rfh()->AppendChild("child");
@@ -1201,6 +1195,109 @@ TEST_F(RenderFrameHostImplTest,
       RuntimeFeatureStateDocumentData::GetForCurrentDocument(child_frame)
           ->runtime_feature_state_read_context()
           .IsTestFeatureEnabled());
+}
+
+class TestUnpartitionedStorageAcessContentBrowserClient
+    : public ContentBrowserClient {
+ public:
+  TestUnpartitionedStorageAcessContentBrowserClient() = default;
+  ~TestUnpartitionedStorageAcessContentBrowserClient() override = default;
+
+  bool IsUnpartitionedStorageAccessAllowedByUserPreference(
+      BrowserContext* browser_context,
+      const GURL& url,
+      const net::SiteForCookies& site_for_cookies,
+      const url::Origin& top_frame_origin) override {
+    return is_unpartitioned_storage_access_allowed_by_user_preference_;
+  }
+
+  void SetIsUnpartitionedStorageAccessAllowedByUserPreference(bool value) {
+    is_unpartitioned_storage_access_allowed_by_user_preference_ = value;
+  }
+
+ private:
+  bool is_unpartitioned_storage_access_allowed_by_user_preference_ = false;
+};
+
+// Test that CalculateStorageKey will create a first-party or third-party key,
+// in the presence of a deprecation trial, depending on the state of
+// IsUnpartitionedStorageAccessAllowedByUserPreference()
+TEST_F(
+    RenderFrameHostImplTest,
+    CalculateStorageKeyWithIsUnpartitionedStorageAccessAllowedByUserPreference) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  // Because Storage partitioning's usage of RuntimeFeatureState is only meant
+  // to disable (i.e.: 1p only) partitioning, we need the make sure the feature
+  // is on first.
+  scoped_feature_list.InitAndEnableFeature(
+      net::features::kThirdPartyStoragePartitioning);
+
+  TestUnpartitionedStorageAcessContentBrowserClient client;
+  ContentBrowserClient* regular_client = SetBrowserClientForTesting(&client);
+
+  client.SetIsUnpartitionedStorageAccessAllowedByUserPreference(true);
+
+  // This test will create a main frame that has a storage partitioning
+  // deprecation trial active and a child frame that is navigated to a
+  // third-party site. Since IsUnpartitionedStorageAccessAllowedByUserPreference
+  // returns true the child frame's StorageKey should be first-party.
+
+  GURL url = GURL("https://a.com");
+  GURL child_url = GURL("https://b.com");
+
+  // Start by giving the main frame a SP disabled
+  // RuntimeFeatureStateReadContext.
+  auto navigation =
+      NavigationSimulator::CreateRendererInitiated(url, main_rfh());
+  navigation->Start();
+
+  NavigationRequest* request =
+      NavigationRequest::From(navigation->GetNavigationHandle());
+
+  // Disable Storage Partitioning by enabling the deprecation trial.
+  request->GetMutableRuntimeFeatureStateContext()
+      .SetDisableThirdPartyStoragePartitioning3Enabled(true);
+
+  navigation->Commit();
+
+  EXPECT_TRUE(RuntimeFeatureStateDocumentData::GetForCurrentDocument(main_rfh())
+                  ->runtime_feature_state_read_context()
+                  .IsDisableThirdPartyStoragePartitioning3Enabled());
+
+  // Create a child frame and navigate to `child_url`.
+  auto* child_frame = main_test_rfh()->AppendChild("child");
+  auto child_navigation =
+      NavigationSimulator::CreateRendererInitiated(child_url, child_frame);
+  child_navigation->Commit();
+  child_frame = static_cast<TestRenderFrameHost*>(
+      child_navigation->GetFinalRenderFrameHost());
+
+  // Since IsUnpartitionedStorageAccessAllowedByUserPreference is true the
+  // StorageKey should be first-party.
+  blink::StorageKey child_frame_key_1p =
+      blink::StorageKey::CreateFirstParty(url::Origin::Create(child_url));
+  EXPECT_EQ(child_frame_key_1p, child_frame->GetStorageKey());
+
+  // Now perform the same test, except
+  // IsUnpartitionedStorageAccessAllowedByUserPreference is false.
+  client.SetIsUnpartitionedStorageAccessAllowedByUserPreference(false);
+  GURL child_url2 = GURL("https://c.com");
+
+  child_navigation =
+      NavigationSimulator::CreateRendererInitiated(child_url2, child_frame);
+  child_navigation->Commit();
+  child_frame = static_cast<TestRenderFrameHost*>(
+      child_navigation->GetFinalRenderFrameHost());
+
+  // Since IsUnpartitionedStorageAccessAllowedByUserPreference is false the
+  // StorageKey should be third-party.
+  blink::StorageKey child_frame_key_3p =
+      blink::StorageKey::Create(url::Origin::Create(child_url2),
+                                net::SchemefulSite(url::Origin::Create(url)),
+                                blink::mojom::AncestorChainBit::kCrossSite);
+  EXPECT_EQ(child_frame_key_3p, child_frame->GetStorageKey());
+
+  SetBrowserClientForTesting(regular_client);
 }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -1374,59 +1471,6 @@ TEST_P(RenderFrameHostImplThirdPartyStorageTest,
         child_frame->GetStorageKey());
   }
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-TEST_F(RenderFrameHostImplTest, GetVirtualAuthenticatorManagerWhenInactiveRFH) {
-  base::CommandLine::ForCurrentProcess()->AppendSwitch(
-      switches::kEnableWebAuthDeprecatedMojoTestingApi);
-
-  // Enable a back forward cache.
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeaturesAndParameters(
-      GetBasicBackForwardCacheFeatureForTesting(),
-      GetDefaultDisabledBackForwardCacheFeaturesForTesting());
-
-  // Create a page with an iframe:
-  contents()->NavigateAndCommit(GURL("https://initial.example.test/"));
-
-  RenderFrameHostImpl* parent_rfh = main_test_rfh();
-  RenderFrameHostImpl* child_rfh = static_cast<RenderFrameHostImpl*>(
-      NavigationSimulator::NavigateAndCommitFromDocument(
-          GURL("https://childframe.com"),
-          RenderFrameHostTester::For(parent_rfh)->AppendChild("child")));
-  EXPECT_TRUE(child_rfh->IsActive());
-
-  // The active child document should enable VirtualAuthenticator.
-  {
-    mojo::Remote<blink::test::mojom::VirtualAuthenticatorManager> remote;
-    child_rfh->GetVirtualAuthenticatorManager(
-        remote.BindNewPipeAndPassReceiver());
-    EXPECT_TRUE(AuthenticatorEnvironment::GetInstance()
-                    ->IsVirtualAuthenticatorEnabledFor(
-                        contents()->GetPrimaryFrameTree().root()->child_at(0)));
-  }
-
-  // Navigate to another page, causing the two RenderFrameHost to become
-  // inactive.
-  RenderFrameDeletedObserver parent_rfh_deleted(parent_rfh);
-  auto navigation = NavigationSimulatorImpl::CreateBrowserInitiated(
-      GURL("https://final.example.test/"), contents());
-  navigation->set_drop_unload_ack(true);
-  navigation->Commit();
-  ASSERT_FALSE(parent_rfh_deleted.deleted());
-  EXPECT_FALSE(parent_rfh->IsActive());
-
-  // The inactive document should not enable VirtualAuthenticator.
-  {
-    mojo::Remote<blink::test::mojom::VirtualAuthenticatorManager> remote;
-    child_rfh->GetVirtualAuthenticatorManager(
-        remote.BindNewPipeAndPassReceiver());
-    EXPECT_FALSE(AuthenticatorEnvironment::GetInstance()
-                     ->IsVirtualAuthenticatorEnabledFor(
-                         contents()->GetPrimaryFrameTree().root()));
-  }
-}
-#endif
 
 namespace {
 

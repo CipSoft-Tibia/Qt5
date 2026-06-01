@@ -31,20 +31,16 @@ class SpirvValidationHelperOutputGenerator(BaseGenerator):
         # that require an update of the SPIRV-Headers which might not be ready to pull in.
         # Get the list of safe enum values to use from the SPIR-V grammar
         self.capabilityList = []
-        self.capabilityAliasList = []
+        self.provisionalList = []
         with open(grammar) as grammar_file:
             grammar_dict = json.load(grammar_file)
         for kind in grammar_dict['operand_kinds']:
             if kind['kind'] == 'Capability':
-                enum_values = set()
                 for enum in kind['enumerants']:
-                    if IsNonVulkanSprivCapability(enum['enumerant']):
-                        continue
-                    # Detect aliases
-                    if enum['value'] in enum_values:
-                        self.capabilityAliasList.append(enum['enumerant'])
-                    self.capabilityList.append(enum['enumerant'])
-                    enum_values.add(enum['value'])
+                    if not IsNonVulkanSprivCapability(enum['enumerant']):
+                        self.capabilityList.append(enum['enumerant'])
+                    if 'provisional' in enum:
+                        self.provisionalList.append(enum['enumerant'])
                 break
 
         # Promoted features structure in state_tracker.cpp are put in the VkPhysicalDeviceVulkan*Features structs
@@ -83,6 +79,7 @@ class SpirvValidationHelperOutputGenerator(BaseGenerator):
         self.propertyMap = {
             'VkPhysicalDeviceVulkan11Properties' : 'phys_dev_props_core11',
             'VkPhysicalDeviceVulkan12Properties' : 'phys_dev_props_core12',
+            'VkPhysicalDeviceVulkan13Properties' : 'phys_dev_props_core13', # Not used, but left for grep searching
         }
 
     #
@@ -150,8 +147,7 @@ class SpirvValidationHelperOutputGenerator(BaseGenerator):
             #include <functional>
             #include <spirv/unified1/spirv.hpp>
             #include "vk_extension_helper.h"
-            #include "state_tracker/shader_module.h"
-            #include "state_tracker/device_state.h"
+            #include "state_tracker/shader_instruction.h"
             #include "core_checks/core_validation.h"
             ''')
 
@@ -193,9 +189,13 @@ class SpirvValidationHelperOutputGenerator(BaseGenerator):
             for enable in [x for x in spirv.enable if x.struct is None or x.struct not in self.promotedFeatures]:
                 if spirv.name not in self.capabilityList:
                     out.append('\n        // Not found in current SPIR-V Headers\n        // ')
+                elif spirv.name in self.provisionalList:
+                    out.append('\n#ifdef VK_ENABLE_BETA_EXTENSIONS\n        ')
                 else:
                     out.append('\n        ')
                 out.append(f'{{spv::Capability{spirv.name}, {self.createMapValue(spirv.name, enable, False)}}},')
+
+                out.append('\n#endif') if spirv.name in self.provisionalList else None
         out.append('\n    };\n')
         out.append('// clang-format on\n')
         out.append('    return spirv_capabilities;\n')
@@ -221,9 +221,10 @@ class SpirvValidationHelperOutputGenerator(BaseGenerator):
         out.append('static inline const char* string_SpvCapability(uint32_t input_value) {\n')
         out.append('    switch ((spv::Capability)input_value) {\n')
         for name in self.capabilityList:
-            if name not in self.capabilityAliasList:
-                out.append(f'         case spv::Capability{name}:\n')
-                out.append(f'            return "{name}";\n')
+            out.append('#ifdef VK_ENABLE_BETA_EXTENSIONS\n') if name in self.provisionalList else None
+            out.append(f'         case spv::Capability{name}:\n')
+            out.append(f'            return "{name}";\n')
+            out.append('#endif\n') if name in self.provisionalList else None
         out.append('        default:\n')
         out.append('            return \"Unhandled OpCapability\";\n')
         out.append('    };\n')
@@ -264,7 +265,10 @@ static inline const char* SpvCapabilityRequirements(uint32_t capability) {
                     requirment += enable.extension
                 elif enable.property is not None:
                     requirment += f'({enable.property}::{enable.member} == {enable.value})'
+
+            out.append('#ifdef VK_ENABLE_BETA_EXTENSIONS\n') if spirv.name in self.provisionalList else None
             out.append(f'    {{spv::Capability{spirv.name}, "{requirment}"}},\n')
+            out.append('#endif  // VK_ENABLE_BETA_EXTENSIONS\n') if spirv.name in self.provisionalList else None
         out.append('''    };
 
     // VUs before catch unknown capabilities
@@ -340,7 +344,7 @@ static inline std::string SpvExtensionRequirments(std::string_view extension) {
                         } else if (it->second.extension) {
                             // kEnabledByApiLevel is not valid as some extension are promoted with feature bits to be used.
                             // If the new Api Level gives support, it will be caught in the "it->second.version" check instead.
-                            if (IsExtEnabledByCreateinfo(device_extensions.*(it->second.extension))) {
+                            if (IsExtEnabledByCreateinfo(extensions.*(it->second.extension))) {
                                 has_support = true;
                             }
                         } else if (it->second.property) {
@@ -380,7 +384,7 @@ static inline std::string SpvExtensionRequirments(std::string_view extension) {
                 }
 
                 // Portability checks
-                if (IsExtEnabled(device_extensions.vk_khr_portability_subset)) {
+                if (IsExtEnabled(extensions.vk_khr_portability_subset)) {
                     if ((VK_FALSE == enabled_features.shaderSampleRateInterpolationFunctions) &&
                         (spv::CapabilityInterpolationFunction == insn.Word(1))) {
                         skip |= LogError("VUID-RuntimeSpirv-shaderSampleRateInterpolationFunctions-06325", device, loc,
@@ -423,7 +427,7 @@ static inline std::string SpvExtensionRequirments(std::string_view extension) {
                             has_support = true;
                         }
                     } else if (it->second.extension) {
-                        if (IsExtEnabled(device_extensions.*(it->second.extension))) {
+                        if (IsExtEnabled(extensions.*(it->second.extension))) {
                             has_support = true;
                         }
                     }

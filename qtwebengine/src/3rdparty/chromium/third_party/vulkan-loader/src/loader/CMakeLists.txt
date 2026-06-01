@@ -82,6 +82,8 @@ set(NORMAL_LOADER_SRCS
     loader.h
     log.c
     log.h
+    loader_json.c
+    loader_json.h
     settings.c
     settings.h
     terminator.c
@@ -236,18 +238,11 @@ end
         set_target_properties(loader_asm_gen_files PROPERTIES FOLDER ${LOADER_HELPER_FOLDER})
 
         if(SYSTEM_PROCESSOR MATCHES "arm")
-            add_library(loader-unknown-chain STATIC unknown_ext_chain_marmasm.asm)
+            list(APPEND OPT_LOADER_SRCS unknown_ext_chain_marmasm.asm)
         else()
-            add_library(loader-unknown-chain STATIC unknown_ext_chain_masm.asm)
+            list(APPEND OPT_LOADER_SRCS unknown_ext_chain_masm.asm)
         endif()
-        target_include_directories(loader-unknown-chain PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-        add_dependencies(loader-unknown-chain loader_asm_gen_files)
         set(UNKNOWN_FUNCTIONS_SUPPORTED ON)
-
-        # Work around bug in CMake Ninja + MSVC/clang-cl, see https://discourse.cmake.org/t/building-lib-file-from-asm-cmake-bug/1959
-        if (CMAKE_C_COMPILER_ID STREQUAL "MSVC" OR (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_C_COMPILER_FRONTEND_VARIANT MATCHES "MSVC"))
-            set(CMAKE_ASM_MASM_CREATE_STATIC_LIBRARY "<CMAKE_AR> /OUT:<TARGET> <LINK_FLAGS> <OBJECTS>")
-        endif()
     else()
         message(WARNING "Could not find working ${} assembler\n${ASM_FAILURE_MSG}")
     endif()
@@ -275,17 +270,17 @@ elseif(UNIX OR MINGW OR (WIN32 AND USE_GAS)) # i.e.: Linux & Apple & MinGW & Win
             endif()
 
             if(ASSEMBLER_WORKS)
-                set(OPT_LOADER_SRCS ${OPT_LOADER_SRCS} unknown_ext_chain_gas_aarch.S)
+                list(APPEND OPT_LOADER_SRCS unknown_ext_chain_gas_aarch.S)
             endif()
         elseif (${SYSTEM_PROCESSOR} MATCHES "aarch64|arm64")
             try_compile(ASSEMBLER_WORKS ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/asm_test_aarch64.S OUTPUT_VARIABLE TRY_COMPILE_OUTPUT)
             if(ASSEMBLER_WORKS)
-                set(OPT_LOADER_SRCS ${OPT_LOADER_SRCS} unknown_ext_chain_gas_aarch.S)
+                list(APPEND OPT_LOADER_SRCS unknown_ext_chain_gas_aarch.S)
             endif()
-        elseif (${SYSTEM_PROCESSOR} MATCHES "aarch32|armhf")
+        elseif (${SYSTEM_PROCESSOR} MATCHES "aarch32|armhf|armv7l|armv8l")
             try_compile(ASSEMBLER_WORKS ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/asm_test_aarch32.S OUTPUT_VARIABLE TRY_COMPILE_OUTPUT)
             if(ASSEMBLER_WORKS)
-                set(OPT_LOADER_SRCS ${OPT_LOADER_SRCS} unknown_ext_chain_gas_aarch.S)
+                list(APPEND OPT_LOADER_SRCS unknown_ext_chain_gas_aarch.S)
             endif()
         # Covers x86_64, amd64, x86, i386, i686, I386, I686
         elseif(${SYSTEM_PROCESSOR} MATCHES "amd64|86")
@@ -296,7 +291,7 @@ elseif(UNIX OR MINGW OR (WIN32 AND USE_GAS)) # i.e.: Linux & Apple & MinGW & Win
 
             try_compile(ASSEMBLER_WORKS ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/asm_test_x86.S)
             if(ASSEMBLER_WORKS)
-                set(OPT_LOADER_SRCS ${OPT_LOADER_SRCS} unknown_ext_chain_gas_x86.S)
+                list(APPEND OPT_LOADER_SRCS unknown_ext_chain_gas_x86.S)
             endif()
         endif()
     endif()
@@ -386,10 +381,6 @@ if(WIN32)
                 ${RC_FILE_LOCATION})
 
     target_link_libraries(vulkan PRIVATE loader_specific_options)
-
-    if(UNKNOWN_FUNCTIONS_SUPPORTED AND TARGET loader-unknown-chain)
-        target_link_libraries(vulkan PRIVATE loader-unknown-chain)
-    endif()
 
     # when adding the suffix the import and runtime library names must be consistent
     # mingw: libvulkan-1.dll.a / vulkan-1.dll
@@ -524,6 +515,10 @@ add_library(Vulkan::Loader ALIAS vulkan)
 if (UNKNOWN_FUNCTIONS_SUPPORTED)
     target_compile_definitions(vulkan PRIVATE UNKNOWN_FUNCTIONS_SUPPORTED)
     add_dependencies(vulkan loader_asm_gen_files)
+endif()
+
+if (BUILD_TESTS)
+    target_compile_definitions(vulkan PRIVATE SHOULD_EXPORT_TEST_FUNCTIONS)
 endif()
 
 if (APPLE_STATIC_LOADER)

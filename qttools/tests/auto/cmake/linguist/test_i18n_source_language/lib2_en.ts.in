@@ -4,7 +4,7 @@
 <context>
     <name>QObject</name>
     <message>
-        <source>We must not see this in the native language&apos;s .tr file.</source>
+        <source>We must not see this in the source language&apos;s .ts file.</source>
         <translation>We oughta steer clear of layin&apos; eyes on this thing in da native file yo.</translation>
     </message>
     <message numerus="yes">

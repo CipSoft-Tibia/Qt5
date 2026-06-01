@@ -33,7 +33,6 @@ depends += \
     qtgui \
     qtquick \
     qtdoc \
-    qtlinguist \
     qtwidgets \
     qtquickcontrols \
     qmake \

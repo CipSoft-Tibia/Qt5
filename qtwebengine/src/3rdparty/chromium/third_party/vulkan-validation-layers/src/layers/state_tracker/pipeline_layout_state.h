@@ -1,7 +1,7 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
- * Copyright (C) 2015-2024 Google Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
+ * Copyright (C) 2015-2025 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,11 +27,10 @@
 
 // Fwd declarations -- including descriptor_set.h creates an ugly include loop
 namespace vvl {
+class Device;
 class DescriptorSetLayout;
 class DescriptorSetLayoutDef;
 }  // namespace vvl
-
-class ValidationStateTracker;
 
 // Canonical dictionary for the pipeline layout's layout of descriptorsetlayouts
 using DescriptorSetLayoutDef = vvl::DescriptorSetLayoutDef;
@@ -80,21 +79,13 @@ class PipelineLayout : public StateObject {
     const std::vector<PipelineLayoutCompatId> set_compat_ids;
     VkPipelineLayoutCreateFlags create_flags;
 
-    PipelineLayout(ValidationStateTracker &dev_data, VkPipelineLayout handle, const VkPipelineLayoutCreateInfo *pCreateInfo);
+    PipelineLayout(Device &dev_data, VkPipelineLayout handle, const VkPipelineLayoutCreateInfo *pCreateInfo);
     // Merge 2 or more non-overlapping layouts
     PipelineLayout(const vvl::span<const PipelineLayout *const> &layouts);
     template <typename Container>
     PipelineLayout(const Container &layouts) : PipelineLayout(vvl::span<const PipelineLayout *const>{layouts}) {}
 
     VkPipelineLayout VkHandle() const { return handle_.Cast<VkPipelineLayout>(); }
-
-    std::shared_ptr<vvl::DescriptorSetLayout const> GetDsl(uint32_t set) const {
-        std::shared_ptr<vvl::DescriptorSetLayout const> dsl = nullptr;
-        if (set < set_layouts.size()) {
-            dsl = set_layouts[set];
-        }
-        return dsl;
-    }
 
     VkPipelineLayoutCreateFlags CreateFlags() const { return create_flags; }
 };

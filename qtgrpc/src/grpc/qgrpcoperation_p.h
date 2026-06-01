@@ -16,9 +16,14 @@
 //
 
 #include <QtGrpc/qgrpcoperation.h>
+#include <QtGrpc/qgrpcoperationcontext.h>
 
 #include <QtCore/private/qobject_p.h>
 #include <QtCore/qatomic.h>
+#include <QtCore/qbytearray.h>
+
+#include <memory>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 

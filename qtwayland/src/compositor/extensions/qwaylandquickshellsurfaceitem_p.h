@@ -34,6 +34,8 @@ class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandQuickShellSurfaceItemPrivate : public Q
     Q_DECLARE_PUBLIC(QWaylandQuickShellSurfaceItem)
 public:
     QWaylandQuickShellSurfaceItemPrivate() {}
+
+    void setShellSurface(QWaylandShellSurface *shellSurface);
     QWaylandQuickShellSurfaceItem *maybeCreateAutoPopup(QWaylandShellSurface* shellSurface);
     static QWaylandQuickShellSurfaceItemPrivate *get(QWaylandQuickShellSurfaceItem *item) { return item->d_func(); }
 
@@ -41,7 +43,7 @@ public:
     void lower() override;
 
     QWaylandQuickShellIntegration *m_shellIntegration = nullptr;
-    QPointer<QWaylandShellSurface> m_shellSurface = nullptr;
+    QWaylandShellSurface *m_shellSurface = nullptr;
     QQuickItem *m_moveItem = nullptr;
     bool m_autoCreatePopupItems = true;
     bool staysOnTop = false;

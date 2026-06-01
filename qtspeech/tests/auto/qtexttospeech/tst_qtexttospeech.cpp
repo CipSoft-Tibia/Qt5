@@ -9,6 +9,7 @@
 #include <QAudioFormat>
 #include <QAudioDevice>
 #include <QAudioBuffer>
+#include <QElapsedTimer>
 #include <QOperatingSystemVersion>
 #include <QRegularExpression>
 #include <qttexttospeech-config.h>

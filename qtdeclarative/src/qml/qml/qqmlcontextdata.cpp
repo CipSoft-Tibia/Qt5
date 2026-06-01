@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlcontextdata_p.h"
 
@@ -329,7 +330,8 @@ void QQmlContextData::initFromTypeCompilationUnit(const QQmlRefPointer<QV4::Exec
     Q_ASSERT(!m_idValues);
     m_idValueCount = m_typeCompilationUnit->objectAt(m_componentObjectIndex)
             ->nNamedObjectsInComponent;
-    m_idValues = new ContextGuard[m_idValueCount];
+    if (m_idValueCount > 0)
+        m_idValues = new ContextGuard[m_idValueCount];
 }
 
 void QQmlContextData::addComponentAttached(QQmlComponentAttached *attached)

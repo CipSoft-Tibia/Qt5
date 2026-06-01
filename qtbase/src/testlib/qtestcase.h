@@ -15,6 +15,7 @@
 #include <QtCore/qtemporarydir.h>
 #include <QtCore/qthread.h>
 
+#include <chrono>
 #ifdef __cpp_concepts
 #include <concepts>
 #endif
@@ -175,10 +176,12 @@ inline void useVerifyThrowsException() {}
     if (!(expr)) { \
         QTest::qWait(0); \
     } \
-    int qt_test_i = 0; \
-    for (; qt_test_i < timeoutValue && !(QTest::runningTest() && QTest::currentTestResolved()) \
-             && !(expr); qt_test_i += step) { \
-        QTest::qWait(step); \
+    std::chrono::milliseconds timeoutValueMs(timeoutValue); \
+    std::chrono::milliseconds stepMs(step); \
+    auto qt_test_i = std::chrono::milliseconds(0); \
+    for (; qt_test_i < timeoutValueMs && !(QTest::runningTest() && QTest::currentTestResolved()) \
+             && !(expr); qt_test_i += stepMs) { \
+        QTest::qWait(stepMs); \
     }
 // Ends in a for-block, so doesn't want a following semicolon.
 
@@ -197,10 +200,11 @@ inline void useVerifyThrowsException() {}
             using namespace std::chrono_literals; \
             return std::chrono::milliseconds{timeoutAsGiven}; \
         }(); \
-    const int qt_test_step = qt_test_timeoutAsMs.count() < 350 ? qt_test_timeoutAsMs.count() / 7 + 1 : 50; \
-    const int qt_test_timeoutValue = qt_test_timeoutAsMs.count(); \
-    { QTRY_LOOP_IMPL(expr, qt_test_timeoutValue, qt_test_step) } \
-    QTRY_TIMEOUT_DEBUG_IMPL(expr, qt_test_timeoutValue, qt_test_step)
+    const auto qt_test_step = qt_test_timeoutAsMs < std::chrono::milliseconds(350) \
+                              ? qt_test_timeoutAsMs / 7 + std::chrono::milliseconds(1) \
+                              : std::chrono::milliseconds(50); \
+    { QTRY_LOOP_IMPL(expr, qt_test_timeoutAsMs, qt_test_step) } \
+    QTRY_TIMEOUT_DEBUG_IMPL(expr, qt_test_timeoutAsMs, qt_test_step)
 // Ends with an if-block, so doesn't want a following semicolon.
 
 // Will try to wait for the expression to become true while allowing event processing
@@ -210,7 +214,7 @@ do { \
     QVERIFY(expr); \
 } while (false)
 
-#define QTRY_VERIFY(expr) QTRY_VERIFY_WITH_TIMEOUT(expr, 5s)
+#define QTRY_VERIFY(expr) QTRY_VERIFY_WITH_TIMEOUT(expr, QTest::Internal::defaultTryTimeout)
 
 // Will try to wait for the expression to become true while allowing event processing
 #define QTRY_VERIFY2_WITH_TIMEOUT(expr, messageExpression, timeout) \
@@ -219,7 +223,8 @@ do { \
     QVERIFY2(expr, messageExpression); \
 } while (false)
 
-#define QTRY_VERIFY2(expr, messageExpression) QTRY_VERIFY2_WITH_TIMEOUT(expr, messageExpression, 5s)
+#define QTRY_VERIFY2(expr, messageExpression) \
+    QTRY_VERIFY2_WITH_TIMEOUT(expr, messageExpression, QTest::Internal::defaultTryTimeout)
 
 // Will try to wait for the comparison to become successful while allowing event processing
 #define QTRY_COMPARE_WITH_TIMEOUT(expr, expected, timeout) \
@@ -228,7 +233,8 @@ do { \
     QCOMPARE(expr, expected); \
 } while (false)
 
-#define QTRY_COMPARE(expr, expected) QTRY_COMPARE_WITH_TIMEOUT(expr, expected, 5s)
+#define QTRY_COMPARE(expr, expected) \
+    QTRY_COMPARE_WITH_TIMEOUT(expr, expected, QTest::Internal::defaultTryTimeout)
 
 #define QTRY_COMPARE_OP_WITH_TIMEOUT_IMPL(computed, baseline, op, opId, timeout) \
 do { \
@@ -240,32 +246,38 @@ do { \
 #define QTRY_COMPARE_EQ_WITH_TIMEOUT(computed, baseline, timeout) \
     QTRY_COMPARE_OP_WITH_TIMEOUT_IMPL(computed, baseline, ==, Equal, timeout)
 
-#define QTRY_COMPARE_EQ(computed, baseline) QTRY_COMPARE_EQ_WITH_TIMEOUT(computed, baseline, 5s)
+#define QTRY_COMPARE_EQ(computed, baseline) \
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(computed, baseline, QTest::Internal::defaultTryTimeout)
 
 #define QTRY_COMPARE_NE_WITH_TIMEOUT(computed, baseline, timeout) \
     QTRY_COMPARE_OP_WITH_TIMEOUT_IMPL(computed, baseline, !=, NotEqual, timeout)
 
-#define QTRY_COMPARE_NE(computed, baseline) QTRY_COMPARE_NE_WITH_TIMEOUT(computed, baseline, 5s)
+#define QTRY_COMPARE_NE(computed, baseline) \
+    QTRY_COMPARE_NE_WITH_TIMEOUT(computed, baseline, QTest::Internal::defaultTryTimeout)
 
 #define QTRY_COMPARE_LT_WITH_TIMEOUT(computed, baseline, timeout) \
     QTRY_COMPARE_OP_WITH_TIMEOUT_IMPL(computed, baseline, <, LessThan, timeout)
 
-#define QTRY_COMPARE_LT(computed, baseline) QTRY_COMPARE_LT_WITH_TIMEOUT(computed, baseline, 5s)
+#define QTRY_COMPARE_LT(computed, baseline) \
+    QTRY_COMPARE_LT_WITH_TIMEOUT(computed, baseline, QTest::Internal::defaultTryTimeout)
 
 #define QTRY_COMPARE_LE_WITH_TIMEOUT(computed, baseline, timeout) \
     QTRY_COMPARE_OP_WITH_TIMEOUT_IMPL(computed, baseline, <=, LessThanOrEqual, timeout)
 
-#define QTRY_COMPARE_LE(computed, baseline) QTRY_COMPARE_LE_WITH_TIMEOUT(computed, baseline, 5s)
+#define QTRY_COMPARE_LE(computed, baseline) \
+    QTRY_COMPARE_LE_WITH_TIMEOUT(computed, baseline, QTest::Internal::defaultTryTimeout)
 
 #define QTRY_COMPARE_GT_WITH_TIMEOUT(computed, baseline, timeout) \
     QTRY_COMPARE_OP_WITH_TIMEOUT_IMPL(computed, baseline, >, GreaterThan, timeout)
 
-#define QTRY_COMPARE_GT(computed, baseline) QTRY_COMPARE_GT_WITH_TIMEOUT(computed, baseline, 5s)
+#define QTRY_COMPARE_GT(computed, baseline) \
+    QTRY_COMPARE_GT_WITH_TIMEOUT(computed, baseline, QTest::Internal::defaultTryTimeout)
 
 #define QTRY_COMPARE_GE_WITH_TIMEOUT(computed, baseline, timeout) \
     QTRY_COMPARE_OP_WITH_TIMEOUT_IMPL(computed, baseline, >=, GreaterThanOrEqual, timeout)
 
-#define QTRY_COMPARE_GE(computed, baseline) QTRY_COMPARE_GE_WITH_TIMEOUT(computed, baseline, 5s)
+#define QTRY_COMPARE_GE(computed, baseline) \
+    QTRY_COMPARE_GE_WITH_TIMEOUT(computed, baseline, QTest::Internal::defaultTryTimeout)
 
 #define QSKIP_INTERNAL(statement) \
 do {\
@@ -333,7 +345,9 @@ namespace QTest
     Q_TESTLIB_EXPORT void maybeThrowOnSkip();
 
     Q_DECL_COLD_FUNCTION
-    Q_TESTLIB_EXPORT QString formatTryTimeoutDebugMessage(q_no_char8_t::QUtf8StringView expr, int timeout, int actual);
+    Q_TESTLIB_EXPORT QString formatTryTimeoutDebugMessage(q_no_char8_t::QUtf8StringView expr,
+                                                          std::chrono::milliseconds timeout,
+                                                          std::chrono::milliseconds actual);
     Q_TESTLIB_EXPORT Q_DECL_COLD_FUNCTION
     const char *formatPropertyTestHelperFailure(char *msg, size_t maxMsgLen,
                                                 const char *actual, const char *expected,

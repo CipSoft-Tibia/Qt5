@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QV4REFERENCEOBJECT_P_H
 #define QV4REFERENCEOBJECT_P_H
@@ -17,12 +18,23 @@
 
 #include <private/qv4object_p.h>
 #include <private/qv4stackframe_p.h>
+#include <private/qqmlnotifier_p.h>
+#include <private/qv4qobjectwrapper_p.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QV4 {
 namespace Heap {
 
+struct ReferenceObject;
+struct ReferenceObjectEndpoint : QQmlNotifierEndpoint {
+    ReferenceObjectEndpoint(ReferenceObject* reference)
+        : QQmlNotifierEndpoint(QQmlDirtyReferenceObject),
+          reference(reference)
+    {}
+
+    ReferenceObject* reference;
+};
 
 #define ReferenceObjectMembers(class, Member) \
     Member(class, Pointer, Object *, m_object)
@@ -35,6 +47,8 @@ DECLARE_HEAP_OBJECT(ReferenceObject, Object) {
         CanWriteBack     = 1 << 0,
         IsVariant        = 1 << 1,
         EnforcesLocation = 1 << 2,
+        IsDirty          = 1 << 3,
+        IsAlwaysDirty    = 1 << 4,
     };
     Q_DECLARE_FLAGS(Flags, Flag);
 
@@ -43,6 +57,12 @@ DECLARE_HEAP_OBJECT(ReferenceObject, Object) {
         setObject(object);
         m_property = property;
         m_flags = flags;
+
+        setDirty(true);
+        if (CppStackFrame *frame = internalClass->engine->currentStackFrame)
+            setLocation(frame->v4Function, frame->statementNumber());
+        else
+            setLocation(nullptr, -1);
         Object::init();
     }
 
@@ -82,55 +102,106 @@ DECLARE_HEAP_OBJECT(ReferenceObject, Object) {
 
     bool isReference() const { return m_object; }
 
-private:
+    bool isDirty() const { return hasFlag(IsDirty); }
+    void setDirty(bool dirty) { setFlag(IsDirty, dirty); }
 
-    bool hasFlag(Flag flag) const
-    {
-        return m_flags & quint8(flag);
+    bool isAlwaysDirty() const { return hasFlag(IsAlwaysDirty); }
+    void setAlwaysDirty(bool alwaysDirty) { setFlag(IsAlwaysDirty, alwaysDirty); }
+
+    bool isConnected() {
+        return (referenceEndpoint && referenceEndpoint->isConnected()) || bindableNotifier;
     }
 
-    void setFlag(Flag flag, bool set)
-    {
-        m_flags = set ? (m_flags | quint8(flag)) : (m_flags & ~quint8(flag));
-    }
-
-    const Function *m_function;
-    int m_property;
-    quint16 m_statementIndex;
-    quint8 m_flags;
-};
-
-Q_DECLARE_OPERATORS_FOR_FLAGS(ReferenceObject::Flags)
-
-} // namespace Heap
-
-
-struct ReferenceObject : public Object
-{
-    V4_OBJECT2(ReferenceObject, Object)
-    V4_NEEDS_DESTROY
-
-public:
-    static constexpr const int AllProperties = -1;
-
-    template<typename HeapObject>
-    static bool readReference(HeapObject *ref)
-    {
-        if (!ref->object())
-            return false;
-
-        QV4::Scope scope(ref->internalClass->engine);
-        QV4::ScopedObject object(scope, ref->object());
-
-        if (ref->isVariant()) {
-            QVariant variant;
-            void *a[] = { &variant };
-            return object->metacall(QMetaObject::ReadProperty, ref->property(), a)
-                    && ref->setVariant(variant);
+    void destroy() {
+        // If we allocated any connection then we must have connected
+        // to the destroyed signal too, and we should clean it up.
+        if (referenceEndpoint || bindableNotifier) {
+            QObject::disconnect(*reinterpret_cast<QMetaObject::Connection*>(&onDelete));
+            std::destroy_at(reinterpret_cast<QMetaObject::Connection*>(&onDelete));
         }
 
-        void *a[] = { ref->storagePointer() };
-        return object->metacall(QMetaObject::ReadProperty, ref->property(), a);
+        if (referenceEndpoint)
+            delete referenceEndpoint;
+
+        if (bindableNotifier)
+            delete bindableNotifier;
+    }
+
+    void connectToNotifySignal(QObject *obj, int property, QQmlEngine *engine);
+    void connectToBindable(QObject *obj, int property, QQmlEngine *engine);
+
+private:
+
+        bool hasFlag(Flag flag) const
+        {
+            return m_flags & quint8(flag);
+        }
+
+        void setFlag(Flag flag, bool set)
+        {
+            m_flags = set ? (m_flags | quint8(flag)) : (m_flags & ~quint8(flag));
+        }
+
+        const Function *m_function;
+        int m_property;
+        quint16 m_statementIndex;
+        quint8 m_flags;
+        ReferenceObjectEndpoint* referenceEndpoint;
+        QPropertyNotifier* bindableNotifier;
+        // We need to store an handle if we connect to the destroyed
+        // signal so that we can disconnect from it. To avoid yet
+        // another allocation, considering that
+        // QMetaObject::Connection is not trivial, we store it in
+        // block memory.
+        alignas(alignof(QMetaObject::Connection))
+        std::byte onDelete[sizeof(QMetaObject::Connection)];
+    };
+
+    Q_DECLARE_OPERATORS_FOR_FLAGS(ReferenceObject::Flags)
+
+    } // namespace Heap
+
+
+    struct ReferenceObject : public Object
+    {
+        V4_OBJECT2(ReferenceObject, Object)
+        Q_MANAGED_TYPE(V4ReferenceObject)
+        V4_NEEDS_DESTROY
+
+    public:
+        static constexpr const int AllProperties = -1;
+
+        static bool shouldConnect(Heap::ReferenceObject *ref);
+        static void connect(Heap::ReferenceObject *ref);
+
+        template<typename HeapObject>
+        static bool readReference(HeapObject *ref)
+        {
+            if (!ref->object())
+                return false;
+
+            if (!ref->isDirty())
+                return true;
+
+            QV4::Scope scope(ref->internalClass->engine);
+            QV4::ScopedObject object(scope, ref->object());
+
+            if (!ref->isConnected() && shouldConnect(ref))
+                connect(ref);
+
+            bool wasRead = false;
+            if (ref->isVariant()) {
+                QVariant variant;
+                void *a[] = { &variant };
+                wasRead = object->metacall(QMetaObject::ReadProperty, ref->property(), a)
+                    && ref->setVariant(variant);
+            } else {
+                void *a[] = { ref->storagePointer() };
+                wasRead = object->metacall(QMetaObject::ReadProperty, ref->property(), a);
+            }
+
+            ref->setDirty(!ref->isConnected() || !wasRead);
+        return wasRead;
     }
 
     template<typename HeapObject>

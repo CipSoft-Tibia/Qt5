@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLNOTIFIER_P_H
 #define QQMLNOTIFIER_P_H
@@ -56,7 +57,9 @@ public:
         QQmlBoundSignal = 1,
         QQmlJavaScriptExpressionGuard = 2,
         QQmlVMEMetaObjectEndpoint = 3,
-        QQmlPropertyGuard = 4,
+        QQmlUnbindableToUnbindableGuard = 4,
+        QQmlUnbindableToBindableGuard = 5,
+        QQmlDirtyReferenceObject = 6,
     };
 
     inline QQmlNotifierEndpoint(Callback callback);

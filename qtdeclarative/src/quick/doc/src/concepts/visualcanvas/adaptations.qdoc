@@ -107,7 +107,10 @@ platforms that do not have \l{topics-graphics}{hardware-accelerated 3D graphics 
 The Software adaptation was previously known as the Qt Quick 2D Renderer. However, unlike the 2D
 Renderer, this new, integrated version supports partial updates. This means that a full update
 of the window or screen contents is now avoided; only the changed areas are flushed. Partial
-updates can significantly improve performance for many applications.
+updates can significantly improve performance for many applications. It is also possible to disable
+this partial update behavior by setting the environment variable
+\c{QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0}, though doing so will have a negative impact on
+performance.
 
 \section2 Shader Effects
 
@@ -125,6 +128,18 @@ The text rendering with the Software adaptation is based on software rasterizati
 respond as well to transformations such as scaling, compared to when using a hardware-accelerated
 3D graphics API. The quality is similar to choosing \l [QML] {Text::renderType}{Text.NativeRendering}
 with \l [QML] {Text} items.
+
+
+\section2 High DPI
+
+The Software adaptation supports high DPI displays, but it does not support performing partial updates
+when the using fractional scaling. This means that when using a non-integer scaling factor, the partial
+update optimization is disabled, and the entire window is redrawn on every frame. This can be overridden
+by setting an environment variable to \c{QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=1} which forces
+the Software adaptation to use partial updates even when fractional scaling is in use. However, this
+may result in artifacts when scaling is not an integer value, and it is not recommended to use this
+without thorough testing.
+
 */
 
 

@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,17 @@
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #include <debugapi.h>
 #endif
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+#include "vk_layer_config.h"
+#endif
 
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/utility/vk_safe_struct.hpp>
 #include "generated/vk_validation_error_messages.h"
 #include "error_location.h"
 #include "utils/hash_util.h"
-#include "vk_layer_config.h"
+#include "utils/text_utils.h"
+#include "error_message/log_message_type.h"
 
 [[maybe_unused]] const char *kVUIDUndefined = "VUID_Undefined";
 
@@ -156,15 +160,13 @@ bool DebugReport::DebugLogMsg(VkFlags msg_flags, const LogObjectList &objects, c
         if (VK_OBJECT_TYPE_QUEUE == object_name_info.objectType) {
             auto label_iter = debug_utils_queue_labels.find(reinterpret_cast<VkQueue>(object_name_info.objectHandle));
             if (label_iter != debug_utils_queue_labels.end()) {
-                auto found_queue_labels = label_iter->second->Export();
-                queue_labels.insert(queue_labels.end(), found_queue_labels.begin(), found_queue_labels.end());
+                label_iter->second->Export(queue_labels);
             }
             // If this is a command buffer, add any command buffer labels to the callback data.
         } else if (VK_OBJECT_TYPE_COMMAND_BUFFER == object_name_info.objectType) {
             auto label_iter = debug_utils_cmd_buffer_labels.find(reinterpret_cast<VkCommandBuffer>(object_name_info.objectHandle));
             if (label_iter != debug_utils_cmd_buffer_labels.end()) {
-                auto found_cmd_buf_labels = label_iter->second->Export();
-                cmd_buf_labels.insert(cmd_buf_labels.end(), found_cmd_buf_labels.begin(), found_cmd_buf_labels.end());
+                label_iter->second->Export(cmd_buf_labels);
             }
         }
 
@@ -213,11 +215,14 @@ bool DebugReport::DebugLogMsg(VkFlags msg_flags, const LogObjectList &objects, c
     uint32_t index = 0;
     for (const auto &src_object : object_name_infos) {
         if (0 != src_object.objectHandle) {
-            oss << "Object " << index++ << ": handle = 0x" << std::hex << src_object.objectHandle;
+            oss << "Object " << index++ << ": ";
+            if (!debug_stable_messages) {
+                oss << "handle = 0x" << std::hex << src_object.objectHandle << ", ";
+            }
             if (src_object.pObjectName) {
-                oss << ", name = " << src_object.pObjectName << ", type = ";
+                oss << "name = " << src_object.pObjectName << ", type = ";
             } else {
-                oss << ", type = ";
+                oss << "type = ";
             }
             oss << string_VkObjectType(src_object.objectType) << "; ";
         } else {
@@ -320,8 +325,22 @@ std::string DebugReport::FormatHandle(const char *handle_type_name, uint64_t han
         handle_name = GetMarkerObjectNameNoLock(handle);
     }
 
+    bool print_handle = true;
+    if (debug_stable_messages) {
+        if (!strcmp(handle_type_name, "VkInstance") || !strcmp(handle_type_name, "VkPhysicalDevice") ||
+            !strcmp(handle_type_name, "VkDevice") || !strcmp(handle_type_name, "VkQueue") ||
+            !strcmp(handle_type_name, "VkCommandBuffer")) {
+            // In stable message mode do not print dispatchable handles because they vary
+            print_handle = false;
+        }
+    }
+
     std::ostringstream str;
-    str << handle_type_name << " 0x" << std::hex << handle << "[" << handle_name.c_str() << "]";
+    str << handle_type_name << " ";
+    if (print_handle) {
+        str << "0x" << std::hex << handle;
+    }
+    str << "[" << handle_name.c_str() << "]";
     return str.str();
 }
 
@@ -426,8 +445,6 @@ void DebugReport::EraseCmdDebugUtilsLabel(VkCommandBuffer command_buffer) {
     std::unique_lock<std::mutex> lock(debug_output_mutex);
     debug_utils_cmd_buffer_labels.erase(command_buffer);
 }
-
-VKAPI_ATTR void LayerDebugUtilsDestroyInstance(DebugReport *debug_report) { delete debug_report; }
 
 template <typename TCreateInfo, typename TCallback>
 static void LayerCreateCallback(DebugCallbackStatusFlags callback_status, DebugReport *debug_report, const TCreateInfo *create_info,
@@ -563,39 +580,8 @@ bool DebugReport::LogMsg(VkFlags msg_flags, const LogObjectList &objects, const 
         return false;
     }
 
-    // Best guess at an upper bound for message length. At least some of the extra space
-    // should get used to store the VUID URL and text in the common case, without additional allocations.
-    std::string str_plus_spec_text(1024, '\0');
-
-    // vsnprintf() returns the number of characters that *would* have been printed, if there was
-    // enough space. If we have a huge message, reallocate the string and try again.
-    int result;
-    size_t old_size = str_plus_spec_text.size();
-    // The va_list will be destroyed by the call to vsnprintf(), so use a copy in case we need
-    // to try again.
-    va_list arg_copy;
-    va_copy(arg_copy, argptr);
-    result = vsnprintf(str_plus_spec_text.data(), str_plus_spec_text.size(), format, arg_copy);
-    va_end(arg_copy);
-
-    assert(result >= 0);
-    if (result < 0) {
-        str_plus_spec_text = "Message generation failure";
-    } else if (static_cast<size_t>(result) <= old_size) {
-        // Shrink the string to exactly fit the successfully printed string
-        str_plus_spec_text.resize(result);
-    } else {
-        // Grow buffer to fit needed size. Note that the input size to vsnprintf() must
-        // include space for the trailing '\0' character, but the return value DOES NOT
-        // include the `\0' character.
-        str_plus_spec_text.resize(result + 1);
-        // consume the va_list passed to us by the caller
-        result = vsnprintf(str_plus_spec_text.data(), str_plus_spec_text.size(), format, argptr);
-        // remove the `\0' character from the string
-        str_plus_spec_text.resize(result);
-    }
-
-    str_plus_spec_text = loc.Message() + " " + str_plus_spec_text;
+    std::string full_message = text::VFormat(format, argptr);
+    full_message = loc.Message() + " " + full_message;
 
     // Append the spec error text to the error message, unless it contains a word treated as special
     if ((vuid_text.find("VUID-") != std::string::npos)) {
@@ -603,63 +589,47 @@ bool DebugReport::LogMsg(VkFlags msg_flags, const LogObjectList &objects, const 
         // this point in the error reporting path
         uint32_t num_vuids = sizeof(vuid_spec_text) / sizeof(vuid_spec_text_pair);
         const char *spec_text = nullptr;
-        std::string spec_type;
+        // Only the Antora site will make use of the sections
+        std::string spec_url_section;
         for (uint32_t i = 0; i < num_vuids; i++) {
             if (0 == strncmp(vuid_text.data(), vuid_spec_text[i].vuid, vuid_text.size())) {
                 spec_text = vuid_spec_text[i].spec_text;
-                spec_type = vuid_spec_text[i].url_id;
+                spec_url_section = vuid_spec_text[i].url_id;
                 break;
             }
         }
 
         // Construct and append the specification text and link to the appropriate version of the spec
         if (nullptr != spec_text) {
-            std::string spec_link = "https://www.khronos.org/registry/vulkan/specs/_MAGIC_KHRONOS_SPEC_TYPE_/html/vkspec.html";
 #ifdef ANNOTATED_SPEC_LINK
-            spec_link = ANNOTATED_SPEC_LINK;
+            std::string spec_url_base = ANNOTATED_SPEC_LINK;
+#else
+            std::string spec_url_base = "https://docs.vulkan.org/spec/latest/";
 #endif
-            static std::string kAtToken = "_MAGIC_ANNOTATED_SPEC_TYPE_";
-            static std::string kKtToken = "_MAGIC_KHRONOS_SPEC_TYPE_";
-            static std::string kVeToken = "_MAGIC_VERSION_ID_";
-            auto Replace = [](std::string &dest_string, const std::string &to_replace, const std::string &replace_with) {
-                if (dest_string.find(to_replace) != std::string::npos) {
-                    dest_string.replace(dest_string.find(to_replace), to_replace.size(), replace_with);
-                }
-            };
 
             // Add period at end if forgotten
             // This provides better seperation between error message and spec text
-            if (str_plus_spec_text.back() != '.' && str_plus_spec_text.back() != '\n') {
-                str_plus_spec_text.append(".");
+            if (full_message.back() != '.' && full_message.back() != '\n') {
+                full_message.append(".");
             }
 
             // Start Vulkan spec text with a new line to make it easier visually
-            if (str_plus_spec_text.back() != '\n') {
-                str_plus_spec_text.append("\n");
+            if (full_message.back() != '\n') {
+                full_message.append("\n");
             }
-            str_plus_spec_text.append("The Vulkan spec states: ");
-            str_plus_spec_text.append(spec_text);
-            if (0 == spec_type.compare("default")) {
-                str_plus_spec_text.append(" (https://github.com/KhronosGroup/Vulkan-Docs/search?q=)");
-            } else {
-                str_plus_spec_text.append(" (");
-                str_plus_spec_text.append(spec_link);
-                std::string major_version = std::to_string(VK_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE));
-                std::string minor_version = std::to_string(VK_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE));
-                std::string patch_version = std::to_string(VK_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE));
-                std::string header_version = major_version + "." + minor_version + "." + patch_version;
-                std::string annotated_spec_type = major_version + "." + minor_version + "-extensions";
-                Replace(str_plus_spec_text, kKtToken, spec_type);
-                Replace(str_plus_spec_text, kAtToken, annotated_spec_type);
-                Replace(str_plus_spec_text, kVeToken, header_version);
-                str_plus_spec_text.append("#");  // CMake hates hashes
-            }
-            str_plus_spec_text.append(vuid_text);
-            str_plus_spec_text.append(")");
+
+            full_message.append("The Vulkan spec states: ");
+            full_message.append(spec_text);
+            full_message.append(" (");
+            full_message.append(spec_url_base);
+            full_message.append(spec_url_section);
+            full_message.append("#");  // CMake hates hashes
+            full_message.append(vuid_text);
+            full_message.append(")");
         }
     }
 
-    return DebugLogMsg(msg_flags, objects, str_plus_spec_text.c_str(), vuid_text.data());
+    return DebugLogMsg(msg_flags, objects, full_message.c_str(), vuid_text.data());
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL MessengerBreakCallback([[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
@@ -676,19 +646,64 @@ VKAPI_ATTR VkBool32 VKAPI_CALL MessengerBreakCallback([[maybe_unused]] VkDebugUt
     return false;
 }
 
+static void PrintMessageSeverity(VkFlags vk_flags, char *msg_flags) {
+    bool separator = false;
+
+    msg_flags[0] = 0;
+    if (vk_flags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+        strcat(msg_flags, "VERBOSE");
+        separator = true;
+    }
+    if (vk_flags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+        if (separator) strcat(msg_flags, ",");
+        strcat(msg_flags, "INFO");
+        separator = true;
+    }
+    if (vk_flags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        if (separator) strcat(msg_flags, ",");
+        strcat(msg_flags, "WARN");
+        separator = true;
+    }
+    if (vk_flags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        if (separator) strcat(msg_flags, ",");
+        strcat(msg_flags, "ERROR");
+    }
+}
+
+static void PrintMessageType(VkFlags vk_flags, char *msg_flags) {
+    bool separator = false;
+
+    msg_flags[0] = 0;
+    if (vk_flags & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) {
+        strcat(msg_flags, "GEN");
+        separator = true;
+    }
+    if (vk_flags & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
+        if (separator) strcat(msg_flags, ",");
+        strcat(msg_flags, "SPEC");
+        separator = true;
+    }
+    if (vk_flags & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {
+        if (separator) strcat(msg_flags, ",");
+        strcat(msg_flags, "PERF");
+    }
+}
+
 VKAPI_ATTR VkBool32 VKAPI_CALL MessengerLogCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
                                                     VkDebugUtilsMessageTypeFlagsEXT message_type,
                                                     const VkDebugUtilsMessengerCallbackDataEXT *callback_data, void *user_data) {
     std::ostringstream msg_buffer;
-    char msg_severity[30];
-    char msg_type[30];
+    char msg_severity[8];  // larget word is "VERBOSE\0"
+    char msg_type[8];
 
     PrintMessageSeverity(message_severity, msg_severity);
     PrintMessageType(message_type, msg_type);
 
     msg_buffer << callback_data->pMessageIdName << "(" << msg_severity << " / " << msg_type
                << "): msgNum: " << callback_data->messageIdNumber << " - " << callback_data->pMessage << '\n';
-    msg_buffer << "    Objects: " << callback_data->objectCount << '\n';
+    if (callback_data->objectCount > 0) {
+        msg_buffer << "    Objects: " << callback_data->objectCount << '\n';
+    }
     for (uint32_t obj = 0; obj < callback_data->objectCount; ++obj) {
         msg_buffer << "        [" << obj << "] " << std::hex << std::showbase
                    << HandleToUint64(callback_data->pObjects[obj].objectHandle) << ", type: " << std::dec << std::noshowbase
@@ -696,13 +711,26 @@ VKAPI_ATTR VkBool32 VKAPI_CALL MessengerLogCallback(VkDebugUtilsMessageSeverityF
                    << ", name: " << (callback_data->pObjects[obj].pObjectName ? callback_data->pObjects[obj].pObjectName : "NULL")
                    << '\n';
     }
-    const std::string tmp = msg_buffer.str();
-    const char *cstr = tmp.c_str();
-    fprintf((FILE *)user_data, "%s", cstr);
+
+    const std::string msg_buffer_str = msg_buffer.str();
+
+    // Even if this is stdout, we still want to print for android
+    // VVL testing (and probably other systems now) call freopen() to map stdout to dedicated file
+    fprintf((FILE *)user_data, "%s", msg_buffer_str.c_str());
     fflush((FILE *)user_data);
 
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
-    LOGCONSOLE("%s", cstr);
+    // If the user uses there own callback, we can let them fix the formatting, but as a default, some error messages will be way to
+    // long for default logcat buffer. While one *can* adjust the logcat size, we assume 1024 is the max and chunk it up here. (note
+    // that \n will automatically print a new line in logcat, but still counts towards the 1024 limit)
+    const size_t chunk_size = 1024;
+    const size_t total_size = msg_buffer_str.size();
+    size_t offset = 0;
+    while (offset < total_size) {
+        size_t bytes_to_print = std::min(chunk_size, total_size - offset);
+        __android_log_print(ANDROID_LOG_INFO, "VALIDATION", "%s", msg_buffer_str.c_str() + offset);
+        offset += bytes_to_print;
+    }
 #endif
 
     return false;
@@ -713,15 +741,17 @@ VKAPI_ATTR VkBool32 VKAPI_CALL MessengerWin32DebugOutputMsg(VkDebugUtilsMessageS
                                                             const VkDebugUtilsMessengerCallbackDataEXT *callback_data,
                                                             [[maybe_unused]] void *user_data) {
     std::ostringstream msg_buffer;
-    char msg_severity[30];
-    char msg_type[30];
+    char msg_severity[8];  // larget word is "VERBOSE\0"
+    char msg_type[8];
 
     PrintMessageSeverity(message_severity, msg_severity);
     PrintMessageType(message_type, msg_type);
 
     msg_buffer << callback_data->pMessageIdName << "(" << msg_severity << " / " << msg_type
                << "): msgNum: " << callback_data->messageIdNumber << " - " << callback_data->pMessage << '\n';
-    msg_buffer << "    Objects: " << callback_data->objectCount << '\n';
+    if (callback_data->objectCount > 0) {
+        msg_buffer << "    Objects: " << callback_data->objectCount << '\n';
+    }
 
     for (uint32_t obj = 0; obj < callback_data->objectCount; ++obj) {
         msg_buffer << "       [" << obj << "]  " << std::hex << std::showbase

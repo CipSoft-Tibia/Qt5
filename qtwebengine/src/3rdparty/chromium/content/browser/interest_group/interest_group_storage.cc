@@ -23,6 +23,7 @@
 #include "base/format_macros.h"
 #include "base/functional/bind.h"
 #include "base/json/json_string_value_serializer.h"
+#include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
@@ -51,6 +52,7 @@
 #include "sql/statement.h"
 #include "sql/transaction.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/interest_group/ad_auction_constants.h"
 #include "third_party/blink/public/common/interest_group/interest_group.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/boringssl/src/include/openssl/curve25519.h"
@@ -63,8 +65,8 @@ namespace content {
 namespace {
 
 using PassKey = base::PassKey<InterestGroupStorage>;
-using auction_worklet::mojom::BiddingBrowserSignalsPtr;
-using auction_worklet::mojom::PreviousWinPtr;
+using blink::mojom::BiddingBrowserSignalsPtr;
+using blink::mojom::PreviousWinPtr;
 using SellerCapabilitiesType = blink::SellerCapabilitiesType;
 
 // These values are persisted to logs. Entries should not be renumbered and
@@ -238,8 +240,9 @@ const base::FilePath::CharType kDatabasePath[] =
 // Version 29 adds selectableBuyerAndSellerReportingIds field to ad object.
 // Version 30 compresses the AdsProto field using Snappy compression and runs a
 // VACUUM command.
+// Version 31 adds creative_scanning_metadata field to ad object.
 
-const int kCurrentVersionNumberIGS = 30;
+const int kCurrentVersionNumberIGS = 31;
 
 // Earliest version of the code which can use a |kCurrentVersionNumber| database
 // without failing.
@@ -432,6 +435,9 @@ AdProtos GetAdProtosFromAds(std::vector<blink::InterestGroup::Ad> ads) {
             allowed_reporting_origin.Serialize());
       }
     }
+    if (ad.creative_scanning_metadata.has_value()) {
+      ad_proto->set_creative_scanning_metadata(*ad.creative_scanning_metadata);
+    }
   }
   return ad_protos;
 }
@@ -543,7 +549,9 @@ DeserializeInterestGroupAdVectorProto(const PassKey& passkey,
       ad.buyer_and_seller_reporting_id =
           std::move(*ad_proto.mutable_buyer_and_seller_reporting_id());
     }
-    if (!ad_proto.selectable_buyer_and_seller_reporting_ids().empty()) {
+    if (base::FeatureList::IsEnabled(
+            blink::features::kFledgeAuctionDealSupport) &&
+        !ad_proto.selectable_buyer_and_seller_reporting_ids().empty()) {
       std::vector<std::string> selectable_buyer_and_seller_reporting_ids;
       for (const auto& id :
            ad_proto.selectable_buyer_and_seller_reporting_ids()) {
@@ -566,6 +574,10 @@ DeserializeInterestGroupAdVectorProto(const PassKey& passkey,
       }
       ad.allowed_reporting_origins =
           std::move(allowed_reporting_origins_vector);
+    }
+    if (ad_proto.has_creative_scanning_metadata()) {
+      ad.creative_scanning_metadata =
+          std::move(*ad_proto.mutable_creative_scanning_metadata());
     }
   }
   UMA_HISTOGRAM_TIMES("Storage.InterestGroup.AdProtoDeserializationTime",
@@ -846,11 +858,29 @@ std::set<std::string> GetAllKanonKeys(
       hashed_keys.emplace(blink::HashedKAnonKeyForAdNameReporting(
           interest_group, ad,
           /*selected_buyer_and_seller_reporting_id=*/std::nullopt));
-      if (ad.selectable_buyer_and_seller_reporting_ids) {
-        for (const std::string& selectable_id :
-             *ad.selectable_buyer_and_seller_reporting_ids) {
+      if (base::FeatureList::IsEnabled(
+              blink::features::kFledgeAuctionDealSupport) &&
+          ad.selectable_buyer_and_seller_reporting_ids) {
+        size_t num_selectable_kanon_keys =
+            ad.selectable_buyer_and_seller_reporting_ids->size();
+        if (base::FeatureList::IsEnabled(
+                features::
+                    kFledgeLimitSelectableBuyerAndSellerReportingIdsFetchedFromKAnon) &&
+            features::
+                    kFledgeSelectableBuyerAndSellerReportingIdsFetchedFromKAnonLimit
+                        .Get() >= 0) {
+          num_selectable_kanon_keys = std::min(
+              num_selectable_kanon_keys,
+              static_cast<size_t>(
+                  features::
+                      kFledgeSelectableBuyerAndSellerReportingIdsFetchedFromKAnonLimit
+                          .Get()));
+        }
+        for (size_t selectable_idx = 0;
+             selectable_idx < num_selectable_kanon_keys; ++selectable_idx) {
           hashed_keys.emplace(blink::HashedKAnonKeyForAdNameReporting(
-              interest_group, ad, selectable_id));
+              interest_group, ad,
+              (*ad.selectable_buyer_and_seller_reporting_ids)[selectable_idx]));
         }
       }
       hashed_keys.emplace(
@@ -2922,123 +2952,126 @@ bool UpgradeDB(sql::Database& db,
         if (!UpgradeV6SchemaToV7(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 7:
         if (!UpgradeV7SchemaToV8(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 8:
         if (!UpgradeV8SchemaToV9(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 9:
         if (!UpgradeV9SchemaToV10(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 10:
         if (!UpgradeV10SchemaToV11(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 11:
         if (!UpgradeV11SchemaToV12(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 12:
         if (!UpgradeV12SchemaToV13(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 13:
         if (!UpgradeV13SchemaToV14(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 14:
         if (!UpgradeV14SchemaToV15(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 15:
         if (!UpgradeV15SchemaToV16(db, meta_table, pass_key)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 16:
         if (!UpgradeV16SchemaToV17(db, meta_table, pass_key)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 17:
         if (!UpgradeV17SchemaToV18(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 18:
         if (!UpgradeV18SchemaToV19(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 19:
         if (!UpgradeV19SchemaToV20(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 20:
         if (!UpgradeV20SchemaToV21(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 21:
         if (!UpgradeV21SchemaToV22(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 22:
         if (!UpgradeV22SchemaToV23(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 23:
         if (!UpgradeV23SchemaToV24(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 24:
         if (!UpgradeV24SchemaToV25(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 25:
         vacuum_db_post_upgrade = true;
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 26:
         vacuum_db_post_upgrade = true;
         if (!UpgradeV26SchemaToV27(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 27:
         if (!UpgradeV27SchemaToV28(db, meta_table)) {
           return false;
         }
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 28:
         // v29 adds a new field in the IG.ads structure, and so doesn't require
         // any changes to the InterestGroup table. Existing data is
         // forwards-compatible because `FromInterestGroupAdValue` correctly
         // handles the lack of a value for
         // `selectable_buyer_and_seller_reporting_ids`.
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case 29:
         vacuum_db_post_upgrade = true;
         if (!UpgradeV29SchemaToV30(db, meta_table)) {
           return false;
         }
+        ABSL_FALLTHROUGH_INTENDED;
+      case 30:
+        // Conversion is a no-op, just bookkeeping for a proto change.
         if (!meta_table.SetVersionNumber(kCurrentVersionNumberIGS)) {
           return false;
         }
@@ -3064,9 +3097,9 @@ bool UpgradeDB(sql::Database& db,
     return true;
   }
 
-  NOTREACHED_IN_MIGRATION();  // Only versions 6 up to the current version
-                              // should have passed RazeIfIncompatible.
-  return false;
+  // Only versions 6 up to the current version should have passed
+  // RazeIfIncompatible.
+  NOTREACHED();
 }
 
 bool RemoveJoinHistory(sql::Database& db,
@@ -3242,6 +3275,7 @@ std::optional<std::vector<std::string>> DoClearOriginJoinedInterestGroups(
   "joining_origin,"                         \
   "exact_join_time,"                        \
   "last_updated,"                           \
+  "next_update_after,"                      \
   "priority,"                               \
   "enable_bidding_signals_prioritization,"  \
   "priority_vector,"                        \
@@ -3279,60 +3313,60 @@ void PopulateInterestGroupFromQueryResult(sql::Statement& load,
 
   group.join_time = load.ColumnTime(2);
   group.last_updated = load.ColumnTime(3);
-
-  group.interest_group.priority = load.ColumnDouble(4);
+  group.next_update_after = load.ColumnTime(4);
+  group.interest_group.priority = load.ColumnDouble(5);
   group.interest_group.enable_bidding_signals_prioritization =
-      load.ColumnBool(5);
+      load.ColumnBool(6);
   group.interest_group.priority_vector =
-      DeserializeStringDoubleMap(load.ColumnString(6));
-  group.interest_group.priority_signals_overrides =
       DeserializeStringDoubleMap(load.ColumnString(7));
+  group.interest_group.priority_signals_overrides =
+      DeserializeStringDoubleMap(load.ColumnString(8));
   group.interest_group.seller_capabilities =
-      DeserializeSellerCapabilitiesMap(load.ColumnString(8));
+      DeserializeSellerCapabilitiesMap(load.ColumnString(9));
   group.interest_group.all_sellers_capabilities =
-      DeserializeSellerCapabilities(load.ColumnInt64(9));
+      DeserializeSellerCapabilities(load.ColumnInt64(10));
   group.interest_group.execution_mode =
-      static_cast<blink::InterestGroup::ExecutionMode>(load.ColumnInt(10));
-  group.interest_group.bidding_url = DeserializeURL(load.ColumnString(11));
+      static_cast<blink::InterestGroup::ExecutionMode>(load.ColumnInt(11));
+  group.interest_group.bidding_url = DeserializeURL(load.ColumnString(12));
   group.interest_group.bidding_wasm_helper_url =
-      DeserializeURL(load.ColumnString(12));
-  group.interest_group.update_url = DeserializeURL(load.ColumnString(13));
+      DeserializeURL(load.ColumnString(13));
+  group.interest_group.update_url = DeserializeURL(load.ColumnString(14));
   group.interest_group.trusted_bidding_signals_url =
-      DeserializeURL(load.ColumnString(14));
+      DeserializeURL(load.ColumnString(15));
   group.interest_group.trusted_bidding_signals_keys =
-      DeserializeStringVector(load.ColumnString(15));
+      DeserializeStringVector(load.ColumnString(16));
   group.interest_group.trusted_bidding_signals_slot_size_mode =
       static_cast<blink::InterestGroup::TrustedBiddingSignalsSlotSizeMode>(
-          load.ColumnInt(16));
+          load.ColumnInt(17));
   group.interest_group.max_trusted_bidding_signals_url_length =
-      load.ColumnInt(17);
-  if (load.GetColumnType(18) != sql::ColumnType::kNull) {
-    group.interest_group.trusted_bidding_signals_coordinator =
-        DeserializeOrigin(load.ColumnString(18));
-  }
+      load.ColumnInt(18);
   if (load.GetColumnType(19) != sql::ColumnType::kNull) {
-    group.interest_group.user_bidding_signals = load.ColumnString(19);
+    group.interest_group.trusted_bidding_signals_coordinator =
+        DeserializeOrigin(load.ColumnString(19));
+  }
+  if (load.GetColumnType(20) != sql::ColumnType::kNull) {
+    group.interest_group.user_bidding_signals = load.ColumnString(20);
   }
   group.interest_group.ads = DecompressAndDeserializeInterestGroupAdVectorProto(
-      passkey, load.ColumnString(20));
+      passkey, load.ColumnString(21));
   group.interest_group.ad_components =
       DecompressAndDeserializeInterestGroupAdVectorProto(passkey,
-                                                         load.ColumnString(21));
+                                                         load.ColumnString(22));
   group.interest_group.ad_sizes =
-      DeserializeStringSizeMap(load.ColumnString(22));
+      DeserializeStringSizeMap(load.ColumnString(23));
   group.interest_group.size_groups =
-      DeserializeStringStringVectorMap(load.ColumnString(23));
+      DeserializeStringStringVectorMap(load.ColumnString(24));
   group.interest_group.auction_server_request_flags =
-      DeserializeAuctionServerRequestFlags(load.ColumnInt64(24));
+      DeserializeAuctionServerRequestFlags(load.ColumnInt64(25));
   group.interest_group.additional_bid_key =
-      DeserializeAdditionalBidKey(load.ColumnBlob(25));
-  if (load.GetColumnType(26) != sql::ColumnType::kNull) {
+      DeserializeAdditionalBidKey(load.ColumnBlob(26));
+  if (load.GetColumnType(27) != sql::ColumnType::kNull) {
     group.interest_group.aggregation_coordinator_origin =
-        DeserializeOrigin(load.ColumnString(26));
+        DeserializeOrigin(load.ColumnString(27));
   }
-  group.last_k_anon_updated = load.ColumnTime(27);
+  group.last_k_anon_updated = load.ColumnTime(28);
   KAnonKeyProtos keys_proto;
-  if (keys_proto.ParseFromString(load.ColumnString(28))) {
+  if (keys_proto.ParseFromString(load.ColumnString(29))) {
     base::UmaHistogramEnumeration(
         "Storage.InterestGroup.ProtoDeserializationResult.KAnonKeyProtos",
         InterestGroupStorageProtoDeserializationResult::kSucceeded);
@@ -3386,6 +3420,13 @@ bool DoRecordInterestGroupJoin(sql::Database& db,
   // enclose them in a transaction since only one will actually modify the
   // database.
 
+  // NOTE: Join and bid history can expire up to a few hours before the interest
+  // group, since join and bid history are floored to UTC days, but the
+  // interest group doesn't necessarily expire at UTC midnight.
+  //
+  // The reason for this is to reduce the number of join / bid rows stored.
+  //
+  // For joins, this can result in a join count of 0.
   int64_t join_day = join_time.ToDeltaSinceWindowsEpoch()
                          .FloorToMultiple(base::Days(1))
                          .InMicroseconds();
@@ -3440,7 +3481,7 @@ std::optional<InterestGroupKanonUpdateParameter> DoJoinInterestGroup(
     base::Time exact_join_time,
     base::Time last_updated,
     base::Time next_update_after) {
-  DCHECK(data.IsValid());
+  DCHECK(data.IsValid() && data.IsValidForJoinAndUpdate());
   url::Origin joining_origin = url::Origin::Create(joining_url);
   sql::Transaction transaction(&db);
   if (!transaction.Begin()) {
@@ -3863,7 +3904,7 @@ std::optional<InterestGroupKanonUpdateParameter> DoUpdateInterestGroup(
         std::move(update.aggregation_coordinator_origin);
   }
 
-  if (!updated_group.IsValid()) {
+  if (!updated_group.IsValid() || !updated_group.IsValidForJoinAndUpdate()) {
     // TODO(behamilton): Report errors to devtools.
     return std::nullopt;
   }
@@ -3961,6 +4002,11 @@ bool DoRecordInterestGroupBid(sql::Database& db,
   // enclose them in a transaction since only one will actually modify the
   // database.
 
+  // NOTE: Join and bid history can expire up to a few hours before the interest
+  // group, since join and bid history are floored to UTC days, but the
+  // interest group doesn't necessarily expire at UTC midnight.
+  //
+  // The reason for this is to reduce the number of join / bid rows stored.
   int64_t bid_day = bid_time.ToDeltaSinceWindowsEpoch()
                         .FloorToMultiple(base::Days(1))
                         .InMicroseconds();
@@ -4365,14 +4411,26 @@ bool GetPreviousWins(sql::Database& db,
   prev_wins.BindString(1, group_key.name);
   prev_wins.BindTime(2, win_time_after);
   while (prev_wins.Step()) {
-    PreviousWinPtr prev_win = auction_worklet::mojom::PreviousWin::New(
+    PreviousWinPtr prev_win = blink::mojom::PreviousWin::New(
         /*time=*/prev_wins.ColumnTime(0),
         /*ad_json=*/prev_wins.ColumnString(1));
     output->prev_wins.push_back(std::move(prev_win));
   }
-  return prev_wins.Succeeded();
+  bool succeeded = prev_wins.Succeeded();
+  if (succeeded) {
+    UMA_HISTOGRAM_COUNTS_100000("Storage.InterestGroup.PrevWinsNumEntries",
+                                output->prev_wins.size());
+  }
+  return succeeded;
 }
 
+// NOTE: Join and bid history can expire up to a few hours before the interest
+// group, since join and bid history are floored to UTC days, but the
+// interest group doesn't necessarily expire at UTC midnight.
+//
+// The reason for this is to reduce the number of join / bid rows stored.
+//
+// For joins, this can result in a join count of 0.
 bool GetJoinCount(sql::Database& db,
                   const blink::InterestGroupKey& group_key,
                   base::Time joined_after,
@@ -4399,6 +4457,11 @@ bool GetJoinCount(sql::Database& db,
   return join_count.Succeeded();
 }
 
+// NOTE: Join and bid history can expire up to a few hours before the interest
+// group, since join and bid history are floored to UTC days, but the
+// interest group doesn't necessarily expire at UTC midnight.
+//
+// The reason for this is to reduce the number of join / bid rows stored.
 bool GetBidCount(sql::Database& db,
                  const blink::InterestGroupKey& group_key,
                  base::Time now,
@@ -4418,7 +4481,7 @@ bool GetBidCount(sql::Database& db,
   bid_count.Reset(true);
   bid_count.BindString(0, Serialize(group_key.owner));
   bid_count.BindString(1, group_key.name);
-  bid_count.BindTime(2, now - InterestGroupStorage::kHistoryLength);
+  bid_count.BindTime(2, now - blink::MaxInterestGroupLifetimeForMetadata());
   while (bid_count.Step()) {
     output->bid_count = bid_count.ColumnInt64(0);
   }
@@ -4588,17 +4651,19 @@ bool DoGetStoredInterestGroup(sql::Database& db,
   }
 
   db_interest_group.bidding_browser_signals =
-      auction_worklet::mojom::BiddingBrowserSignals::New();
-  if (!GetJoinCount(db, group_key, now - InterestGroupStorage::kHistoryLength,
+      blink::mojom::BiddingBrowserSignals::New();
+  if (!GetJoinCount(db, group_key,
+                    now - blink::MaxInterestGroupLifetimeForMetadata(),
                     db_interest_group.bidding_browser_signals)) {
     return false;
   }
-  if (!GetBidCount(db, group_key, now - InterestGroupStorage::kHistoryLength,
+  if (!GetBidCount(db, group_key,
+                   now - blink::MaxInterestGroupLifetimeForMetadata(),
                    db_interest_group.bidding_browser_signals)) {
     return false;
   }
   return GetPreviousWins(db, group_key,
-                         now - InterestGroupStorage::kHistoryLength,
+                         now - blink::MaxInterestGroupLifetimeForMetadata(),
                          db_interest_group.bidding_browser_signals);
 }
 
@@ -4686,10 +4751,10 @@ std::optional<std::vector<StorageInterestGroup>> DoGetInterestGroupsForOwner(
     load.BindTime(1, now);
 
     while (load.Step()) {
-      std::string name = load.ColumnString(29);
+      std::string name = load.ColumnString(30);
       StorageInterestGroup& db_interest_group = interest_group_by_name[name];
       db_interest_group.bidding_browser_signals =
-          auction_worklet::mojom::BiddingBrowserSignals::New();
+          blink::mojom::BiddingBrowserSignals::New();
 
       db_interest_group.interest_group.owner = owner;
       db_interest_group.interest_group.name = name;
@@ -4714,7 +4779,7 @@ std::optional<std::vector<StorageInterestGroup>> DoGetInterestGroupsForOwner(
     // clang-format on
 
     join_count.BindString(0, Serialize(owner));
-    join_count.BindTime(1, now - InterestGroupStorage::kHistoryLength);
+    join_count.BindTime(1, now - blink::MaxInterestGroupLifetimeForMetadata());
 
     while (join_count.Step()) {
       std::string name = join_count.ColumnString(0);
@@ -4748,7 +4813,7 @@ std::optional<std::vector<StorageInterestGroup>> DoGetInterestGroupsForOwner(
     // clang-format on
 
     bid_count.BindString(0, Serialize(owner));
-    bid_count.BindTime(1, now - InterestGroupStorage::kHistoryLength);
+    bid_count.BindTime(1, now - blink::MaxInterestGroupLifetimeForMetadata());
 
     while (bid_count.Step()) {
       std::string name = bid_count.ColumnString(0);
@@ -4782,7 +4847,7 @@ std::optional<std::vector<StorageInterestGroup>> DoGetInterestGroupsForOwner(
     // clang-format on
 
     prev_wins.BindString(0, Serialize(owner));
-    prev_wins.BindTime(1, now - InterestGroupStorage::kHistoryLength);
+    prev_wins.BindTime(1, now - blink::MaxInterestGroupLifetimeForMetadata());
 
     while (prev_wins.Step()) {
       std::string name = prev_wins.ColumnString(0);
@@ -4795,7 +4860,7 @@ std::optional<std::vector<StorageInterestGroup>> DoGetInterestGroupsForOwner(
 
       StorageInterestGroup& db_interest_group = it->second;
 
-      PreviousWinPtr prev_win = auction_worklet::mojom::PreviousWin::New(
+      PreviousWinPtr prev_win = blink::mojom::PreviousWin::New(
           /*time=*/prev_wins.ColumnTime(1),
           /*ad_json=*/prev_wins.ColumnString(2));
       db_interest_group.bidding_browser_signals->prev_wins.push_back(
@@ -5105,11 +5170,7 @@ bool ClearExpiredInterestGroups(sql::Database& db,
   return transaction.Commit();
 }
 
-// Removes interest groups so that per-owner limit is respected. Note that
-// we're intentionally not trying to keep this in sync with
-// `blink::InterestGroup::EstimateSize()`. There's not a compelling reason to
-// keep those exactly aligned and keeping them in sync would require a
-// significant amount of extra work.
+// Removes interest groups so that per-owner limit is respected.
 bool ClearExcessiveStorage(sql::Database& db, size_t max_owner_storage_size) {
   sql::Transaction transaction(&db);
   if (!transaction.Begin()) {
@@ -5338,13 +5399,13 @@ bool DoPerformDatabaseMaintenance(sql::Database& db,
   if (!ClearExcessiveStorage(db, max_owner_storage_size)) {
     return false;
   }
-  if (!DeleteOldJoins(db, now - InterestGroupStorage::kHistoryLength)) {
+  if (!DeleteOldJoins(db, now - blink::MaxInterestGroupLifetimeForMetadata())) {
     return false;
   }
-  if (!DeleteOldBids(db, now - InterestGroupStorage::kHistoryLength)) {
+  if (!DeleteOldBids(db, now - blink::MaxInterestGroupLifetimeForMetadata())) {
     return false;
   }
-  if (!DeleteOldWins(db, now - InterestGroupStorage::kHistoryLength)) {
+  if (!DeleteOldWins(db, now - blink::MaxInterestGroupLifetimeForMetadata())) {
     return false;
   }
   if (!ClearExpiredKAnon(
@@ -5368,9 +5429,8 @@ base::FilePath DBPath(const base::FilePath& base) {
 }
 
 sql::DatabaseOptions GetDatabaseOptions() {
-  return sql::DatabaseOptions({
-      .wal_mode = base::FeatureList::IsEnabled(
-          ::features::kFledgeEnableWALForInterestGroupStorage)});
+  return sql::DatabaseOptions().set_wal_mode(base::FeatureList::IsEnabled(
+      ::features::kFledgeEnableWALForInterestGroupStorage));
 }
 
 void ReportCreateSchemaResult(
@@ -5444,27 +5504,26 @@ void ReportUpgradeDBResult(bool upgrade_succeeded, int db_version) {
 
 }  // namespace
 
-constexpr base::TimeDelta InterestGroupStorage::kHistoryLength;
 constexpr base::TimeDelta InterestGroupStorage::kMaintenanceInterval;
-constexpr base::TimeDelta InterestGroupStorage::kIdlePeriod;
+constexpr base::TimeDelta InterestGroupStorage::kDefaultIdlePeriod;
 constexpr base::TimeDelta InterestGroupStorage::kUpdateSucceededBackoffPeriod;
 constexpr base::TimeDelta InterestGroupStorage::kUpdateFailedBackoffPeriod;
 
 InterestGroupStorage::InterestGroupStorage(const base::FilePath& path)
+    : InterestGroupStorage(std::move(path),
+                           /*idle_period=*/kDefaultIdlePeriod) {}
+
+InterestGroupStorage::InterestGroupStorage(const base::FilePath& path,
+                                           base::TimeDelta idle_period)
     : path_to_database_(DBPath(path)),
       max_owners_(blink::features::kInterestGroupStorageMaxOwners.Get()),
-      max_owner_regular_interest_groups_(
-          blink::features::kInterestGroupStorageMaxGroupsPerOwner.Get()),
-      max_owner_negative_interest_groups_(
-          blink::features::kInterestGroupStorageMaxNegativeGroupsPerOwner
-              .Get()),
-      max_owner_storage_size_(
-          blink::features::kInterestGroupStorageMaxStoragePerOwner.Get()),
+      max_owner_regular_interest_groups_(MaxOwnerRegularInterestGroups()),
+      max_owner_negative_interest_groups_(MaxOwnerNegativeInterestGroups()),
+      max_owner_storage_size_(MaxOwnerStorageSize()),
       max_ops_before_maintenance_(
           blink::features::kInterestGroupStorageMaxOpsBeforeMaintenance.Get()),
-      db_(std::make_unique<sql::Database>(GetDatabaseOptions())),
       db_maintenance_timer_(FROM_HERE,
-                            kIdlePeriod,
+                            idle_period,
                             this,
                             &InterestGroupStorage::PerformDBMaintenance) {
   DETACH_FROM_SEQUENCE(sequence_checker_);
@@ -5498,10 +5557,10 @@ bool InterestGroupStorage::EnsureDBInitialized() {
 bool InterestGroupStorage::InitializeDB() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  db_ = std::make_unique<sql::Database>(GetDatabaseOptions());
+  db_ = std::make_unique<sql::Database>(GetDatabaseOptions(),
+                                        sql::Database::Tag("InterestGroups"));
   db_->set_error_callback(base::BindRepeating(
       &InterestGroupStorage::DatabaseErrorCallback, base::Unretained(this)));
-  db_->set_histogram_tag("InterestGroups");
 
   if (path_to_database_.empty()) {
     if (!db_->OpenInMemory()) {
@@ -5736,7 +5795,7 @@ InterestGroupStorage::UpdateInterestGroup(
 }
 
 void InterestGroupStorage::AllowUpdateIfOlderThan(
-    const blink::InterestGroupKey& group_key,
+    blink::InterestGroupKey group_key,
     base::TimeDelta update_if_older_than) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!EnsureDBInitialized()) {
@@ -5756,9 +5815,7 @@ void InterestGroupStorage::ReportUpdateFailed(
     bool parse_failure) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!EnsureDBInitialized()) {
-    NOTREACHED_IN_MIGRATION();  // We already fetched interest groups to
-                                // update...
-    return;
+    NOTREACHED();  // We already fetched interest groups to update...
   }
 
   if (!DoReportUpdateFailed(*db_, group_key, parse_failure,
@@ -6040,9 +6097,10 @@ void InterestGroupStorage::PerformDBMaintenance() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   last_maintenance_time_ = base::Time::Now();
   ops_since_last_maintenance_ = 0;
-  int64_t db_size;
-  if (base::GetFileSize(path_to_database_, &db_size)) {
-    UMA_HISTOGRAM_MEMORY_KB("Storage.InterestGroup.DBSize", db_size / 1024);
+  std::optional<int64_t> db_size = base::GetFileSize(path_to_database_);
+  if (db_size.has_value()) {
+    UMA_HISTOGRAM_MEMORY_KB("Storage.InterestGroup.DBSize",
+                            db_size.value() / 1024);
   }
   if (EnsureDBInitialized()) {
     DoPerformDatabaseMaintenance(
@@ -6099,6 +6157,21 @@ InterestGroupStorage::GetBiddingAndAuctionServerKeys(
   return DoGetBiddingAndAuctionServerKeys(*db_, coordinator);
 }
 
+// static
+size_t InterestGroupStorage::MaxOwnerRegularInterestGroups() {
+  return blink::features::kInterestGroupStorageMaxGroupsPerOwner.Get();
+}
+
+// static
+size_t InterestGroupStorage::MaxOwnerNegativeInterestGroups() {
+  return blink::features::kInterestGroupStorageMaxNegativeGroupsPerOwner.Get();
+}
+
+// static
+size_t InterestGroupStorage::MaxOwnerStorageSize() {
+  return blink::features::kInterestGroupStorageMaxStoragePerOwner.Get();
+}
+
 base::Time InterestGroupStorage::GetLastMaintenanceTimeForTesting() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return last_maintenance_time_;
@@ -6106,6 +6179,17 @@ base::Time InterestGroupStorage::GetLastMaintenanceTimeForTesting() const {
 
 /* static */ int InterestGroupStorage::GetCurrentVersionNumberForTesting() {
   return kCurrentVersionNumberIGS;
+}
+
+/*static */ std::unique_ptr<InterestGroupStorage>
+InterestGroupStorage::CreateWithIdlePeriodForTesting(
+    const base::FilePath& path,
+    base::TimeDelta idle_period) {
+  return base::WrapUnique(new InterestGroupStorage(path, idle_period));
+}
+
+void InterestGroupStorage::ResetIdleTimerForTesting() {
+  EnsureDBInitialized();
 }
 
 void InterestGroupStorage::DatabaseErrorCallback(int extended_error,

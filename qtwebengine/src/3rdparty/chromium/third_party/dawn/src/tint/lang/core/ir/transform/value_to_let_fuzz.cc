@@ -44,22 +44,18 @@ bool CanRun(Module& module) {
     return true;
 }
 
-void ValueToLetFuzzer(Module& module) {
+Result<SuccessType> ValueToLetFuzzer(Module& module,
+                                     const fuzz::ir::Context&,
+                                     ValueToLetConfig config) {
     if (!CanRun(module)) {
-        return;
+        return Failure{"Cannot run module"};
     }
 
-    if (auto res = ValueToLet(module); res != Success) {
-        return;
-    }
-
-    Capabilities capabilities;
-    if (auto res = Validate(module, capabilities); res != Success) {
-        TINT_ICE() << "result of ValueToLet failed IR validation\n" << res.Failure();
-    }
+    return ValueToLet(module, config);
 }
 
 }  // namespace
 }  // namespace tint::core::ir::transform
 
-TINT_IR_MODULE_FUZZER(tint::core::ir::transform::ValueToLetFuzzer);
+TINT_IR_MODULE_FUZZER(tint::core::ir::transform::ValueToLetFuzzer,
+                      tint::core::ir::transform::kValueToLetCapabilities);

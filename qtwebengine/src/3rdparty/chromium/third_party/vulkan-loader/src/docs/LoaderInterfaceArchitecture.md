@@ -430,6 +430,8 @@ These behaviors also result in ignoring certain environment variables, such as:
   * `VK_ADD_DRIVER_FILES`
   * `VK_LAYER_PATH`
   * `VK_ADD_LAYER_PATH`
+  * `VK_IMPLICIT_LAYER_PATH`
+  * `VK_ADD_IMPLICIT_LAYER_PATH`
   * `XDG_CONFIG_HOME` (Linux/Mac-specific)
   * `XDG_DATA_HOME` (Linux/Mac-specific)
 
@@ -606,8 +608,8 @@ discovery.
     </small></td>
     <td><small>
         Provide a list of additional paths that the loader will use to search
-        for layers in addition to the loader's standard Layer library search
-        folder when looking for explicit layer manifest files.
+        for explicit layers in addition to the loader's standard layer library
+        search paths when looking for layer manifest files.
         The paths will be added first, prior to the list of folders that would
         be searched normally.
     </small></td>
@@ -622,6 +624,31 @@ discovery.
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;:&lt;path_b&gt;<br/><br/>
         set<br/>
         &nbsp;&nbsp;VK_ADD_LAYER_PATH=<br/>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;;&lt;path_b&gt;</small>
+    </td>
+  </tr>
+    <tr>
+    <td><small>
+        <i>VK_ADD_IMPLICIT_LAYER_PATH</i>
+    </small></td>
+    <td><small>
+        Provide a list of additional paths that the loader will use to search
+        for implicit layers in addition to the loader's standard layer library
+        search paths when looking for layer manifest files.
+        The paths will be added first, prior to the list of folders that would
+        be searched normally.
+    </small></td>
+    <td><small>
+        <a href="#elevated-privilege-caveats">
+            Ignored when running Vulkan application with elevated privileges.
+        </a>
+    </small></td>
+    <td><small>
+        export<br/>
+        &nbsp;&nbsp;VK_ADD_IMPLICIT_LAYER_PATH=<br/>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;:&lt;path_b&gt;<br/><br/>
+        set<br/>
+        &nbsp;&nbsp;VK_ADD_IMPLICIT_LAYER_PATH=<br/>
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;;&lt;path_b&gt;</small>
     </td>
   </tr>
@@ -640,7 +667,11 @@ discovery.
         continue to work.
     </small></td>
     <td><small>
-        If a relative path not used, issues may be encountered.
+        This functionality is only available with Loaders built with version
+        1.3.207 of the Vulkan headers and later.<br/>
+        It is recommended to use absolute paths to JSON files.
+        Relative paths may have issues due to how the loader transforms relative library
+        paths into absolute ones.
         <br/> <br/>
         <a href="#elevated-privilege-caveats">
             Ignored when running Vulkan application with elevated privileges.
@@ -661,8 +692,8 @@ discovery.
     <td><small>
         <i>VK_LAYER_PATH</i></small></td>
     <td><small>
-        Override the loader's standard Layer library search folders and use the
-        provided delimited file and/or folders to locate explicit layer manifest files.
+        Override the loader's standard explicit layer search paths and use the
+        provided delimited files and/or folders to locate layer manifest files.
     </small></td>
     <td><small>
         <a href="#elevated-privilege-caveats">
@@ -675,6 +706,27 @@ discovery.
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;:&lt;path_b&gt;<br/><br/>
         set<br/>
         &nbsp;&nbsp;VK_LAYER_PATH=<br/>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;;&lt;path_b&gt;
+    </small></td>
+  </tr>
+  <tr>
+    <td><small>
+        <i>VK_IMPLICIT_LAYER_PATH</i></small></td>
+    <td><small>
+        Override the loader's standard implicit layer search paths and use the
+        provided delimited files and/or folders to locate layer manifest files.
+    </small></td>
+    <td><small>
+        <a href="#elevated-privilege-caveats">
+            Ignored when running Vulkan application with elevated privileges.
+        </a>
+    </small></td>
+    <td><small>
+        export<br/>
+        &nbsp;&nbsp;VK_IMPLICIT_LAYER_PATH=<br/>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;:&lt;path_b&gt;<br/><br/>
+        set<br/>
+        &nbsp;&nbsp;VK_IMPLICIT_LAYER_PATH=<br/>
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;path_a&gt;;&lt;path_b&gt;
     </small></td>
   </tr>

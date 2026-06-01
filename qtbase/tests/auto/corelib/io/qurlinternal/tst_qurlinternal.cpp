@@ -57,6 +57,9 @@ private Q_SLOTS:
     void encodingRecode();
     void encodingRecodeInvalidUtf8_data();
     void encodingRecodeInvalidUtf8();
+
+    void tldRestrictions_data();
+    void tldRestrictions();
 };
 #include "tst_qurlinternal.moc"
 
@@ -727,5 +730,90 @@ void tst_QUrlInternal::encodingRecodeInvalidUtf8()
                             .arg(ushort{output.at(i).unicode()}, 4, 16, u'0')));
     }
 }
+
+void tst_QUrlInternal::tldRestrictions_data()
+{
+    QTest::addColumn<QString>("tld");
+    QTest::addColumn<bool>("encode");
+
+    // current whitelist
+    QTest::newRow("ac")  << QString("ac")  << true;
+    QTest::newRow("ar")  << QString("ar")  << true;
+    QTest::newRow("asia")  << QString("asia")  << true;
+    QTest::newRow("at") << QString("at") << true;
+    QTest::newRow("biz")  << QString("biz")  << true;
+    QTest::newRow("br") << QString("br") << true;
+    QTest::newRow("cat")  << QString("cat")  << true;
+    QTest::newRow("ch")  << QString("ch")  << true;
+    QTest::newRow("cl")  << QString("cl")  << true;
+    QTest::newRow("cn") << QString("cn") << true;
+    QTest::newRow("com")  << QString("com")  << true;
+    QTest::newRow("de")  << QString("de")  << true;
+    QTest::newRow("dk") << QString("dk") << true;
+    QTest::newRow("es")  << QString("es")  << true;
+    QTest::newRow("fi") << QString("fi") << true;
+    QTest::newRow("gr")  << QString("gr")  << true;
+    QTest::newRow("hu") << QString("hu") << true;
+    QTest::newRow("il")  << QString("il")  << true;
+    QTest::newRow("info")  << QString("info")  << true;
+    QTest::newRow("io") << QString("io") << true;
+    QTest::newRow("is")  << QString("is")  << true;
+    QTest::newRow("ir")  << QString("ir")  << true;
+    QTest::newRow("jp") << QString("jp") << true;
+    QTest::newRow("kr") << QString("kr") << true;
+    QTest::newRow("li")  << QString("li")  << true;
+    QTest::newRow("lt") << QString("lt") << true;
+    QTest::newRow("lu")  << QString("lu")  << true;
+    QTest::newRow("lv")  << QString("lv")  << true;
+    QTest::newRow("museum") << QString("museum") << true;
+    QTest::newRow("name")  << QString("name")  << true;
+    QTest::newRow("net")  << QString("name")  << true;
+    QTest::newRow("no") << QString("no") << true;
+    QTest::newRow("nu")  << QString("nu")  << true;
+    QTest::newRow("nz")  << QString("nz")  << true;
+    QTest::newRow("org")  << QString("org")  << true;
+    QTest::newRow("pl")  << QString("pl")  << true;
+    QTest::newRow("pr")  << QString("pr")  << true;
+    QTest::newRow("se")  << QString("se")  << true;
+    QTest::newRow("sh") << QString("sh") << true;
+    QTest::newRow("tel")  << QString("tel")  << true;
+    QTest::newRow("th")  << QString("th")  << true;
+    QTest::newRow("tm")  << QString("tm")  << true;
+    QTest::newRow("tw") << QString("tw") << true;
+    QTest::newRow("ua")  << QString("ua")  << true;
+    QTest::newRow("vn") << QString("vn") << true;
+
+    // known blacklists:
+    QTest::newRow("foo") << QString("foo") << false;
+}
+
+void tst_QUrlInternal::tldRestrictions()
+{
+    QFETCH(QString, tld);
+
+    // www.brød.tld
+    QByteArray ascii = "www.xn--brd-1na." + tld.toLatin1();
+    QString unicode = QLatin1String("www.br\370d.") + tld;
+    QString encoded = QUrl::fromAce(ascii);
+    QTEST(!encoded.contains(".xn--"), "encode");
+    QTEST(encoded == unicode, "encode");
+
+    QUrl url = QUrl::fromEncoded("http://www.xn--brd-1na." + tld.toLatin1());
+    QTEST(!url.host().contains(".xn--"), "encode");
+    QTEST(url.host() == unicode, "encode");
+
+    url.setUrl(QLatin1String("http://www.xn--brd-1na.") + tld);
+    QTEST(!url.host().contains(".xn--"), "encode");
+    QTEST(url.host() == unicode, "encode");
+
+    url.setUrl(QLatin1String("http://www.br\370d.") + tld);
+    QTEST(!url.host().contains(".xn--"), "encode");
+    QTEST(url.host() == unicode, "encode");
+
+    url = QUrl::fromEncoded("http://www.br%C3%B8d." + tld.toLatin1());
+    QTEST(!url.host().contains(".xn--"), "encode");
+    QTEST(url.host() == unicode, "encode");
+}
+
 
 QTEST_APPLESS_MAIN(tst_QUrlInternal)

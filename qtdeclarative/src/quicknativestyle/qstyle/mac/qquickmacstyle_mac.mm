@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*
   Note: The qdoc comments for QMacStyle are contained in
@@ -22,6 +23,7 @@
 #include <QtCore/qvarlengtharray.h>
 
 #include <QtGui/qpainterpath.h>
+#include <QtGui/qstylehints.h>
 #include <QtGui/qpa/qplatformnativeinterface.h>
 #include <QtGui/qpa/qplatformfontdatabase.h>
 #include <QtGui/qpa/qplatformtheme.h>
@@ -29,6 +31,9 @@
 #include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/private/qcoregraphics_p.h>
 #include <QtGui/private/qguiapplication_p.h>
+
+using namespace QQC2;
+#include <QtGui/private/qmacstyle_p.h>
 
 #include <cmath>
 
@@ -187,7 +192,7 @@ static const qreal titleBarButtonSpacing = 8;
 // active: window is active
 // selected: tab is selected
 // hovered: tab is hovered
-bool isDarkMode() { return qt_mac_applicationIsInDarkMode(); }
+static bool isDarkMode() { return qGuiApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark; }
 
 static const QColor lightTabBarTabBackgroundActive(190, 190, 190);
 static const QColor darkTabBarTabBackgroundActive(38, 38, 38);
@@ -263,42 +268,6 @@ static const int toolButtonArrowSize = 7;
 static const int toolButtonArrowMargin = 2;
 
 static const qreal focusRingWidth = 3.5;
-
-// An application can force 'Aqua' theme while the system theme is one of
-// the 'Dark' variants. Since in Qt we sometimes use NSControls and even
-// NSCells directly without attaching them to any view hierarchy, we have
-// to set NSAppearance.currentAppearance to 'Aqua' manually, to make sure
-// the correct rendering path is triggered. Apple recommends us to un-set
-// the current appearance back after we finished with drawing. This is what
-// AppearanceSync is for.
-
-class AppearanceSync {
-public:
-    AppearanceSync()
-    {
-#if QT_MACOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_10_14)
-        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSMojave
-            && !qt_mac_applicationIsInDarkMode()) {
-            auto requiredAppearanceName = NSApplication.sharedApplication.effectiveAppearance.name;
-            if (![NSAppearance.currentAppearance.name isEqualToString:requiredAppearanceName]) {
-                previous = NSAppearance.currentAppearance;
-                NSAppearance.currentAppearance = [NSAppearance appearanceNamed:requiredAppearanceName];
-            }
-        }
-#endif // QT_MACOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_10_14)
-    }
-
-    ~AppearanceSync()
-    {
-        if (previous)
-            NSAppearance.currentAppearance = previous;
-    }
-
-private:
-    NSAppearance *previous = nil;
-
-    Q_DISABLE_COPY(AppearanceSync)
-};
 
 static bool setupScroller(NSScroller *scroller, const QStyleOptionSlider *sb)
 {
@@ -1175,8 +1144,12 @@ QRectF QMacStylePrivate::CocoaControl::adjustedControlFrame(const QRectF &rect) 
 QMarginsF QMacStylePrivate::CocoaControl::titleMargins() const
 {
     if (type == QMacStylePrivate::Button_PushButton) {
-        if (size == QStyleHelper::SizeLarge)
-            return QMarginsF(12, 5, 12, 9);
+        if (size == QStyleHelper::SizeLarge) {
+            if (qt_apple_runningWithLiquidGlass())
+                return QMarginsF(10, 5, 10, 5);
+            else
+                return QMarginsF(12, 5, 12, 7);
+        }
         if (size == QStyleHelper::SizeSmall)
             return QMarginsF(12, 4, 12, 9);
         if (size == QStyleHelper::SizeMini)
@@ -1380,7 +1353,7 @@ NSView *QMacStylePrivate::cocoaControl(CocoaControl cocoaControl) const
 
     if (cocoaControl.type == Box) {
         if (__builtin_available(macOS 10.14, *)) {
-            if (qt_mac_applicationIsInDarkMode()) {
+            if (isDarkMode()) {
                 // See render code in drawPrimitive(PE_FrameTabWidget)
                 cocoaControl.type = Box_Dark;
             }
@@ -1444,6 +1417,9 @@ NSView *QMacStylePrivate::cocoaControl(CocoaControl cocoaControl) const
             [bv retain];
             break;
         }
+        case SearchField:
+            bv = [[NSSearchField alloc] init];
+            break;
         case ComboBox:
             bv = [[NSComboBox alloc] init];
             break;
@@ -1612,6 +1588,11 @@ void QMacStylePrivate::drawNSViewInRect(NSView *view, const QRectF &rect, QPaint
 void QMacStylePrivate::resolveCurrentNSView(QWindow *window) const
 {
     backingStoreNSView = window ? (NSView *)window->winId() : nil;
+}
+
+QMacStyle *QMacStyle::create()
+{
+    return new QMacApperanceStyle<QMacStyle>;
 }
 
 QMacStyle::QMacStyle()
@@ -2007,8 +1988,12 @@ int QMacStyle::pixelMetric(PixelMetric metric, const QStyleOption *opt) const
     case PM_CheckBoxFocusFrameRadius:
         ret = LargeSmallMini(opt, 3, 2, 1);
         break;
+    case PM_SearchFieldFocusFrameRadius:
     case PM_ComboBoxFocusFrameRadius:
-        ret = LargeSmallMini(opt, 5, 4, 1);
+        if (qt_apple_runningWithLiquidGlass())
+            ret = LargeSmallMini(opt, 8, 4, 1);
+        else
+            ret = LargeSmallMini(opt, 5, 4, 1);
         break;
     case PM_RadioButtonFocusFrameRadius:
         ret = 7;
@@ -2024,7 +2009,7 @@ int QMacStyle::pixelMetric(PixelMetric metric, const QStyleOption *opt) const
     case PM_SpinBoxFocusFrameRadius:
     case PM_TextAreaFocusFrameRadius:
     case PM_TextFieldFocusFrameRadius:
-        ret = 0;
+        ret = qt_apple_runningWithLiquidGlass() ? 6 : 0;
         break;
     default:
         ret = QCommonStyle::pixelMetric(metric, opt);
@@ -2407,7 +2392,6 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 {
     Q_D(const QMacStyle);
 
-    const AppearanceSync appSync;
     QMacCGContext cg(p);
     d->resolveCurrentNSView(opt->window);
 
@@ -2522,7 +2506,7 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
         auto adjustedRect = opt->rect;
         bool needTranslation = false;
         if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSMojave
-            && !qt_mac_applicationIsInDarkMode()) {
+            && !isDarkMode()) {
             // In Aqua theme we have to use the 'default' NSBox (as opposite
             // to the 'custom' QDarkNSBox we use in dark theme). Since -drawRect:
             // does nothing in default NSBox, we call -displayRectIgnoringOpaticty:.
@@ -2571,7 +2555,7 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
             theStroker.setCapStyle(Qt::FlatCap);
             theStroker.setDashPattern(QVector<qreal>() << 1 << 2);
             path = theStroker.createStroke(path);
-            const auto dark = qt_mac_applicationIsInDarkMode() ? opt->palette.dark().color().darker()
+            const auto dark = isDarkMode() ? opt->palette.dark().color().darker()
                                                                : QColor(0, 0, 0, 119);
             p->fillPath(path, dark);
         }
@@ -2769,7 +2753,7 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
                 tf.frame = opt->rect.toCGRect();
                 d->drawNSViewInRect(tf, opt->rect, p, ^(CGContextRef, const CGRect &rect) {
                     QMacAutoReleasePool pool;
-                    if (!qt_mac_applicationIsInDarkMode()) {
+                    if (!isDarkMode()) {
                         // In 'Dark' mode controls are transparent, so we do not
                         // over-paint the (potentially custom) color in the background.
                         // In 'Light' mode we have to care about the correct
@@ -2792,7 +2776,15 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
                         }
                     }
 
-                    [tf.cell drawWithFrame:rect inView:tf];
+                    CGRect fixedRect = rect;
+                    if (qt_apple_runningWithLiquidGlass()) {
+                        // The text edit cell is drawn with a little offset to the left and
+                        // the size increase compared to the 'rect' we want it to be drawn in. As a
+                        // result, the cell's 'outline' is clipped away. Adjusting the rectangle
+                        // for this, so that it's inside the clip rect, as it was before Tahoe.
+                        fixedRect = CGRectInset(rect, 1., 1.);
+                    }
+                    [tf.cell drawWithFrame:fixedRect inView:tf];
                 });
             } else {
                 QCommonStyle::drawPrimitive(pe, opt, p);
@@ -2902,7 +2894,6 @@ void QMacStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 {
     Q_D(const QMacStyle);
 
-    const AppearanceSync sync;
     const QMacAutoReleasePool pool;
 
     QMacCGContext cg(p);
@@ -3854,7 +3845,7 @@ void QMacStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
         }
         break;
     case CE_ToolBar: {
-        const bool isDarkMode = qt_mac_applicationIsInDarkMode();
+        const bool isDarkMode = QT_PREPEND_NAMESPACE(QQC2_NAMESPACE::isDarkMode());
 
         // Unified title and toolbar drawing. In this mode the cocoa platform plugin will
         // fill the top toolbar area part with a background gradient that "unifies" with
@@ -4171,6 +4162,21 @@ QRect QMacStyle::subElementRect(SubElement sr, const QStyleOption *opt) const
             setLayoutItemMargins(-0, +0, -1, -0, &rect, opt->direction);
         }
         break;
+    case SE_SearchFieldLayoutItem:
+        if (qstyleoption_cast<const QStyleOptionSearchField *>(opt)) {
+            if (qt_apple_runningWithLiquidGlass()) {
+                rect = LargeSmallMini(opt,
+                                      opt->rect.adjusted(2, 4, -2, -4),
+                                      opt->rect.adjusted(2, 3, -2, -2),
+                                      opt->rect.adjusted(2, 3, -2, -2));
+            } else {
+                rect = LargeSmallMini(opt,
+                                      opt->rect.adjusted(2, 6, -2, -6),
+                                      opt->rect.adjusted(2, 3, -2, -2),
+                                      opt->rect.adjusted(2, 3, -2, -2));
+            }
+        }
+      break;
     case SE_ComboBoxLayoutItem:
         if (const auto *combo = qstyleoption_cast<const QStyleOptionComboBox *>(opt)) {
             //#ifndef QT_NO_TOOLBAR
@@ -4181,16 +4187,31 @@ QRect QMacStyle::subElementRect(SubElement sr, const QStyleOption *opt) const
             //            // all the hassle.
             //        } else
             //#endif
-            if (combo->editable)
-                rect = LargeSmallMini(opt,
-                                        opt->rect.adjusted(5, 6, -6, -7),
-                                        opt->rect.adjusted(4, 4, -5, -7),
-                                        opt->rect.adjusted(5, 4, -4, -6));
-            else
-                rect = LargeSmallMini(opt,
-                                        opt->rect.adjusted(6, 4, -7, -7),
-                                        opt->rect.adjusted(6, 7, -6, -5),
-                                        opt->rect.adjusted(9, 5, -5, -7));
+            if (combo->editable) {
+                if (qt_apple_runningWithLiquidGlass()) {
+                    rect = LargeSmallMini(opt,
+                                          opt->rect.adjusted(4, 4, -4, -4),
+                                          opt->rect.adjusted(4, 4, -5, -7),
+                                          opt->rect.adjusted(5, 4, -4, -6));
+                } else {
+                    rect = LargeSmallMini(opt,
+                                          opt->rect.adjusted(5, 6, -6, -7),
+                                          opt->rect.adjusted(4, 4, -5, -7),
+                                          opt->rect.adjusted(5, 4, -4, -6));
+                }
+            } else {
+                if (qt_apple_runningWithLiquidGlass()) {
+                    rect = LargeSmallMini(opt,
+                                          opt->rect.adjusted(4, 4, -4, -4),
+                                          opt->rect.adjusted(6, 7, -6, -5),
+                                          opt->rect.adjusted(9, 5, -5, -7));
+                } else {
+                    rect = LargeSmallMini(opt,
+                                          opt->rect.adjusted(6, 4, -7, -7),
+                                          opt->rect.adjusted(6, 7, -6, -5),
+                                          opt->rect.adjusted(9, 5, -5, -7));
+                }
+            }
         }
         break;
     case SE_LabelLayoutItem:
@@ -4215,10 +4236,17 @@ QRect QMacStyle::subElementRect(SubElement sr, const QStyleOption *opt) const
             if ((buttonOpt->features & QStyleOptionButton::Flat))
                 break;
         }
-        rect = LargeSmallMini(opt,
-                                opt->rect.adjusted(7, 5, -7, -7),
-                                opt->rect.adjusted(6, 6, -6, -6),
-                                opt->rect.adjusted(6, 5, -6, -6));
+        if (qt_apple_runningWithLiquidGlass()) {
+            rect = LargeSmallMini(opt,
+                                  opt->rect.adjusted(2, 5, -2, -7),
+                                  opt->rect.adjusted(6, 6, -6, -6),
+                                  opt->rect.adjusted(6, 5, -6, -6));
+        } else {
+            rect = LargeSmallMini(opt,
+                                  opt->rect.adjusted(7, 5, -7, -7),
+                                  opt->rect.adjusted(6, 6, -6, -6),
+                                  opt->rect.adjusted(6, 5, -6, -6));
+        }
         break;
     case SE_SpinBoxLayoutItem:
         rect = LargeSmallMini(opt,
@@ -4430,7 +4458,6 @@ void QMacStylePrivate::restoreNSGraphicsContext(CGContextRef cg) const
 void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex *opt, QPainter *p) const
 {
     Q_D(const QMacStyle);
-    const AppearanceSync sync;
 
     QMacCGContext cg(p);
     d->resolveCurrentNSView(opt->window);
@@ -4713,6 +4740,9 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                 const auto cw = QMacStylePrivate::CocoaControl(QMacStylePrivate::Stepper, aquaSize);
                 NSStepperCell *cell = static_cast<NSStepperCell *>(d->cocoaCell(cw));
                 cell.enabled = (sb->state & State_Enabled);
+                const auto controlSize = cell.controlSize;
+                 if (qt_apple_runningWithLiquidGlass())
+                     cell.controlSize = NSControlSizeMini;
 
                 const CGRect newRect = [cell drawingRectForBounds:updown.toCGRect()];
 
@@ -4732,6 +4762,8 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                     [cell stopTracking:pressPoint at:pressPoint inView:d->backingStoreNSView mouseIsUp:NO];
 
                 d->restoreNSGraphicsContext(cg);
+                if (qt_apple_runningWithLiquidGlass())
+                    cell.controlSize = controlSize;
             }
         }
         break;
@@ -4779,6 +4811,63 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                     // FIXME This is usually drawn in the control's superview, but we wouldn't get inactive look in this case
                     QMacAutoReleasePool pool;
                     [cb.cell drawWithFrame:r inView:cb];
+                });
+            }
+        }
+        break;
+    case CC_SearchField:
+        if (const auto *sf = qstyleoption_cast<const QStyleOptionSearchField *>(opt)) {
+            const bool isEnabled = sf->state & State_Enabled;
+
+            const auto cs = d->effectiveAquaSizeConstrain(sf);
+            const auto cw = QMacStylePrivate::CocoaControl(QMacStylePrivate::SearchField, cs);
+            auto *searchField = static_cast<NSSearchField *>(d->cocoaControl(cw));
+            auto *cell = static_cast<NSSearchFieldCell *>(searchField.cell);
+
+            searchField.enabled = isEnabled;
+
+            // QTBUG-141776
+            // macOS 26 (Tahoe) changed NSSearchFieldCell: the magnifying glass icon is taller.
+            // Drawing it at the button’s full rect causes the top to be clipped by the bezel,
+            // though the clear icon remains fine. To avoid this, on 26.0+ we render the search
+            // icon at a fixed, smaller size to prevent upscaling and eliminate clipping.
+            #if QT_MACOS_PLATFORM_SDK_EQUAL_OR_ABOVE(260000)
+                if (__builtin_available(macOS 26, *)) {
+                    NSButtonCell *btn = cell.searchButtonCell;
+                    NSImageSymbolConfiguration *imgCfg =
+                        [NSImageSymbolConfiguration configurationWithPointSize:11
+                                                                        weight:NSFontWeightMedium
+                                                                         scale:NSImageSymbolScaleMedium];
+                    btn.image = [btn.image imageWithSymbolConfiguration:imgCfg];
+                    [btn.image setTemplate:YES];
+                    btn.imageScaling = NSImageScaleNone;
+                }
+            #endif
+
+            QRectF frameRect = cw.adjustedControlFrame(sf->rect);
+
+            #if QT_MACOS_PLATFORM_SDK_EQUAL_OR_ABOVE(260000)
+            if (__builtin_available(macOS 26, *)) {
+                const auto oneDevicePx = 1.0 / p->device()->devicePixelRatioF();
+                frameRect = frameRect.adjusted(+oneDevicePx, -oneDevicePx, -oneDevicePx, +oneDevicePx);
+            }
+            #endif
+
+            searchField.frame = frameRect.toCGRect();
+
+            if (sf->subControls == QStyle::SC_SearchFieldSearch) {
+                // Draw only the search icon
+                CGRect rect = [cell searchButtonRectForBounds:searchField.bounds];
+                [cell drawWithFrame:rect inView:searchField];
+            } else if (sf->subControls == QStyle::SC_SearchFieldClear) {
+                // Draw only the clear icon
+                CGRect rect = [cell cancelButtonRectForBounds:searchField.bounds];
+                [cell drawWithFrame:rect inView:searchField];
+            } else {
+                // Draw the frame
+                [cell setStringValue:sf->text.toNSString()];
+                d->drawNSViewInRect(searchField, frameRect, p, ^(CGContextRef, const CGRect &r) {
+                    [cell drawWithFrame:r inView:searchField];
                 });
             }
         }
@@ -5045,6 +5134,37 @@ QStyle::SubControl QMacStyle::hitTestComplexControl(ComplexControl cc, const QSt
             }
         }
         break;
+    case CC_SearchField:
+        if (const auto *sf = qstyleoption_cast<const QStyleOptionSearchField *>(opt)) {
+            if (!sf->rect.contains(pt))
+                break;
+
+            const auto cs = d->effectiveAquaSizeConstrain(sf);
+            const auto cw = QMacStylePrivate::CocoaControl(QMacStylePrivate::SearchField, cs);
+            auto *searchField = static_cast<NSSearchField *>(d->cocoaControl(cw));
+            searchField.frame = cw.adjustedControlFrame(sf->rect).toCGRect();
+
+            auto *cell = static_cast<NSSearchFieldCell *>(searchField.cell);
+            const CGRect bounds = searchField.bounds;
+
+            const QRectF cancelRect = QRectF::fromCGRect([cell cancelButtonRectForBounds:bounds]);
+            const QRectF searchIconRect = QRectF::fromCGRect([cell searchButtonRectForBounds:bounds]);
+            const QRectF textFieldRect = QRectF::fromCGRect([cell searchTextRectForBounds:bounds]);
+
+            const QPointF localPt = pt - sf->rect.topLeft();
+
+            if (cancelRect.contains(localPt))
+                sc = SC_SearchFieldClear;
+            else if (searchIconRect.contains(localPt))
+                sc = SC_SearchFieldSearch;
+            else if (textFieldRect.contains(localPt))
+                sc = SC_SearchFieldEditField;
+            else
+                sc = SC_SearchFieldPopup;
+
+            break;
+        }
+        break;
     default:
         sc = QCommonStyle::hitTestComplexControl(cc, opt, pt);
         break;
@@ -5177,7 +5297,10 @@ QRect QMacStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
             QRectF editRect;
             switch (cs) {
             case QStyleHelper::SizeLarge:
-                editRect = combo->rect.adjusted(15, 7, -25, -9);
+                if (qt_apple_runningWithLiquidGlass())
+                    editRect = combo->rect.adjusted(15, 7, -25, -7);
+                else
+                    editRect = combo->rect.adjusted(15, 7, -25, -9);
                 break;
             case QStyleHelper::SizeSmall:
                 if (combo->editable)
@@ -5387,6 +5510,64 @@ QRect QMacStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
                 ret.adjust(-toolButtonArrowMargin, 0, 0, 0);
 #endif
             ret.adjust(-1, 0, 0, 0);
+        }
+        break;
+    case CC_SearchField:
+        if (const QStyleOptionSearchField *sf = qstyleoption_cast<const QStyleOptionSearchField *>(opt)) {
+          const auto cs = d->effectiveAquaSizeConstrain(sf);
+          const auto cw = QMacStylePrivate::CocoaControl(QMacStylePrivate::SearchField, cs);
+
+          QRectF editRect;
+          switch (cs) {
+          case QStyleHelper::SizeLarge:
+              editRect = sf->rect.adjusted(16, 0, -22, 0);
+              break;
+          case QStyleHelper::SizeSmall:
+              editRect = sf->rect.adjusted(16, 5, -22, -7);
+              break;
+          default:
+              editRect = sf->rect.adjusted(16, 5, -18, -7);
+              break;
+          }
+
+          auto *searchField = static_cast<NSSearchField *>(d->cocoaControl(cw));
+          auto *cell = static_cast<NSSearchFieldCell *>(searchField.cell);
+          const CGRect bounds = searchField.bounds;
+
+          switch (sc) {
+          case SC_SearchFieldEditField:{
+              ret = editRect.toAlignedRect();
+              ret.setX(ret.x() + QMacStylePrivate::PushButtonContentPadding);
+              break;
+          }
+          case SC_SearchFieldClear: {
+              const CGRect r = [cell cancelButtonRectForBounds:bounds];
+              ret = QRectF::fromCGRect(r).toRect();
+              ret.translate(0, -1);
+              ret = visualRect(sf->direction, sf->rect, ret);
+              ret.adjust(-3, -3, 3, 3);
+              break;
+          }
+          case SC_SearchFieldSearch: {
+              const CGRect r = [cell searchButtonRectForBounds:bounds];
+              ret = QRectF::fromCGRect(r).toRect();
+              ret.translate(0, -1);
+              ret = visualRect(sf->direction, sf->rect, ret);
+              ret.adjust(-3, -3, 3, 3);
+              break;
+          }
+          case SC_SearchFieldPopup: {
+              const CGRect inner = QMacStylePrivate::comboboxInnerBounds(sf->rect.toCGRect(), cw);
+              const int searchTop = sf->rect.top();
+              ret = QRect(qRound(inner.origin.x),
+                          searchTop,
+                          qRound(inner.origin.x - sf->rect.left() + inner.size.width),
+                          editRect.bottom() - searchTop + 2);
+              break;
+          }
+          default:
+              break;
+          }
         }
         break;
     default:
@@ -5683,6 +5864,44 @@ QSize QMacStyle::sizeFromContents(ContentsType ct, const QStyleOption *opt, cons
                 sz.setHeight(pushButtonDefaultHeight[controlSize]);
 
             return sz;
+        }
+        break;
+    case CT_SearchField:
+        if (const QStyleOptionSearchField *sf = qstyleoption_cast<const QStyleOptionSearchField *>(opt)) {
+            const QSize clearButton = proxy()->subControlRect(CC_SearchField, sf, SC_SearchFieldClear).size();
+            const QSize searchButton = proxy()->subControlRect(CC_SearchField, sf, SC_SearchFieldSearch).size();
+            if (sf->subControls == SC_SearchFieldFrame) {
+              const int controlSize = getControlSize(opt);
+              int padding;
+              int iconSpacing;
+
+              if (controlSize == QStyleHelper::SizeLarge) {
+                  padding = 6;
+                  iconSpacing = 6;
+                  sz.setHeight(32);
+              } else if (controlSize == QStyleHelper::SizeSmall) {
+                  padding = 5;
+                  iconSpacing = 5;
+                  sz.setHeight(28);
+              } else {
+                  padding = 4;
+                  iconSpacing = 4;
+                  sz.setHeight(22);
+              }
+
+              // minimum width
+              if (sz.width() < 60)
+                  sz.setWidth(60);
+
+              const int totalIconsSize = clearButton.width() + searchButton.width() + (padding + iconSpacing) * 2;
+              sz.rwidth() += totalIconsSize;
+
+              return sz;
+            } else if (sf->subControls == SC_SearchFieldClear) {
+              return clearButton;
+            } else if (sf->subControls == SC_SearchFieldSearch) {
+              return searchButton;
+            }
         }
         break;
     case CT_Menu: {

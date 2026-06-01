@@ -27,10 +27,6 @@ namespace base {
 class SequencedTaskRunner;
 }
 
-namespace content {
-class BrowserContext;
-}
-
 namespace network {
 class SharedURLLoaderFactory;
 }
@@ -77,6 +73,7 @@ class POLICY_EXPORT DeviceManagementService {
   static constexpr int kRequestTooLarge = 413;
   static constexpr int kConsumerAccountWithPackagedLicense = 417;
   static constexpr int kInvalidPackagedDeviceForKiosk = 418;
+  static constexpr int kOrgUnitEnrollmentLimitExceeded = 419;
   static constexpr int kTooManyRequests = 429;
   static constexpr int kInternalServerError = 500;
   static constexpr int kServiceUnavailable = 503;
@@ -112,11 +109,6 @@ class POLICY_EXPORT DeviceManagementService {
 
     // Server endpoint for encrypted events.
     virtual std::string GetEncryptedReportingServerUrl() const = 0;
-
-    // Server at which to contact the real time reporting service for
-    // enterprise connectors.
-    virtual std::string GetReportingConnectorServerUrl(
-        content::BrowserContext* context) const = 0;
   };
 
   // A DeviceManagementService job manages network requests to the device

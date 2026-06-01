@@ -354,6 +354,10 @@
         <translation>Bir DelegateModel temsilcisi onUpdated içinde değiştirilemez.</translation>
     </message>
     <message>
+        <source>The delegateModelAccess of a DelegateModel cannot be changed within onUpdated.</source>
+        <translation>Bir DelegateModel’in delegateModelAccess’i, onUpdated ile değiştirilemez.</translation>
+    </message>
+    <message>
         <source>The maximum number of supported DelegateModelGroups is 8</source>
         <translation>Desteklenen en yüksek DelegateModelGroup sayısı 8’dir</translation>
     </message>
@@ -751,7 +755,11 @@
     </message>
     <message>
         <source>Invalid import qualifier ID</source>
-        <translation>Geçersiz içe aktarma niteleyici kimliği</translation>
+        <translation type="vanished">Geçersiz içe aktarma niteleyici kimliği</translation>
+    </message>
+    <message>
+        <source>Invalid import qualifier &apos;%1&apos;: must start with an uppercase letter</source>
+        <translation>Geçersiz içe aktarma niteleyicisi “%1”: Bir BÜYÜK harfle başlamalı</translation>
     </message>
     <message>
         <source>Reserved name &quot;Qt&quot; cannot be used as an qualifier</source>
@@ -1084,7 +1092,7 @@
     </message>
     <message>
         <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is neither a value nor an object type</source>
-        <translation>Geçersiz gruplanmış özellik erişimi: “%2” türüne sahip “%1” özelliği ne bir değer ne de bir nesne türü.</translation>
+        <translation>Geçersiz gruplanmış özellik erişimi: “%2” türüne sahip “%1” özelliği ne bir değer ne de bir nesne türü</translation>
     </message>
     <message>
         <source>Unsupported grouped property access: Property &quot;%1&quot; with type &quot;%2&quot; has a dynamic meta-object.</source>
@@ -1155,6 +1163,10 @@
         <translation>Geçersiz özellik ataması: %1 bekleniyordus</translation>
     </message>
     <message>
+        <source>Cannot assign object of type &quot;%1&quot; to list property &quot;%2&quot;; expected &quot;%3&quot;</source>
+        <translation>“%1” türündeki nesne, “%2” liste özelliğine atanamıyor; “%3” bekleniyordu</translation>
+    </message>
+    <message>
         <source>Invalid property assignment: 2D vector expected</source>
         <translation type="vanished">sGeçersiz özellik ataması: 2B vektör bekleniyordu</translation>
     </message>
@@ -1204,7 +1216,7 @@
     </message>
     <message>
         <source>Cannot assign object to list property &quot;%1&quot;</source>
-        <translation>“%1” listesine nesne atanamıyor</translation>
+        <translation type="vanished">“%1” listesine nesne atanamıyor</translation>
     </message>
     <message>
         <source>Cannot assign value of type &quot;%1&quot; to property &quot;%2&quot;, expecting &quot;%3&quot;</source>
@@ -1357,7 +1369,7 @@
     </message>
     <message>
         <source>Possible anchor loop detected on centerIn.</source>
-        <translation>centerIn üzerinde olası bağlanma döngüsü tespit edildi.</translation>
+        <translation>centerIn üzerinde olası bağlanma döngüsü tespit edildi</translation>
     </message>
     <message>
         <source>Cannot anchor to an item that isn&apos;t a parent or sibling.</source>
@@ -1373,7 +1385,7 @@
     </message>
     <message>
         <source>Cannot specify left, right, and horizontalCenter anchors at the same time.</source>
-        <translation>left, right ve horizontalCenter sabitleyicileri aynı anda belirtilemez.</translation>
+        <translation>left, right ve horizontalCenter sabitleyicileri aynı anda belirtilemez</translation>
     </message>
     <message>
         <source>Cannot anchor to a null item.</source>
@@ -1828,39 +1840,51 @@ OpenGL 2.0 veya üstünü sağlayan bir sürücü kurun veya bu mümkün değils
     <name>CopyAction</name>
     <message>
         <source>Copy</source>
-        <translation>Kopyala</translation>
+        <translation type="vanished">Kopyala</translation>
     </message>
 </context>
 <context>
     <name>CutAction</name>
     <message>
         <source>Cut</source>
-        <translation>Kes</translation>
+        <translation type="vanished">Kes</translation>
     </message>
 </context>
 <context>
     <name>DeleteAction</name>
     <message>
         <source>Delete</source>
-        <translation>Sil</translation>
+        <translation type="vanished">Sil</translation>
     </message>
 </context>
 <context>
     <name>PasteAction</name>
     <message>
         <source>Paste</source>
-        <translation>Yapıştır</translation>
+        <translation type="vanished">Yapıştır</translation>
     </message>
 </context>
 <context>
     <name>SelectAllAction</name>
     <message>
         <source>Select All</source>
-        <translation>Tümünü Seç</translation>
+        <translation type="vanished">Tümünü Seç</translation>
     </message>
 </context>
 <context>
     <name>ColorDialog</name>
+    <message>
+        <source>Eye dropper</source>
+        <translation>Renk damlası</translation>
+    </message>
+    <message>
+        <source>Hue</source>
+        <translation>Ton</translation>
+    </message>
+    <message>
+        <source>Alpha</source>
+        <translation>Alfa</translation>
+    </message>
     <message>
         <source>Color</source>
         <translation>Renk</translation>
@@ -1939,12 +1963,24 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
         <translation>Aile</translation>
     </message>
     <message>
+        <source>Font family</source>
+        <translation>Yazıtipi ailesi</translation>
+    </message>
+    <message>
         <source>Style</source>
         <translation>Biçem</translation>
     </message>
     <message>
+        <source>Font style</source>
+        <translation>Yazıtipi biçemi</translation>
+    </message>
+    <message>
         <source>Size</source>
         <translation>Boyut</translation>
+    </message>
+    <message>
+        <source>Font point size</source>
+        <translation>Yazıtipi puntosu</translation>
     </message>
     <message>
         <source>Effects</source>
@@ -2015,7 +2051,7 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Unresolved alias found</source>
-        <translation>Çözülmemiş arma bulundu</translation>
+        <translation type="vanished">Çözülmemiş arma bulundu</translation>
     </message>
 </context>
 <context>
@@ -2098,11 +2134,19 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>static plugin for module &quot;%1&quot; with name &quot;%2&quot; has no metadata URI</source>
-        <translation>“%2” adında “%1” modülünün statik eklentisinde meta veri URI’si yok</translation>
+        <translation type="vanished">“%2” adında “%1” modülünün statik eklentisinde meta veri URI’si yok</translation>
     </message>
     <message>
         <source>static plugin for module &quot;%1&quot; with name &quot;%2&quot; cannot be loaded: %3</source>
-        <translation>“%2” adlı “%1” modülü için statik eklenti yüklenemiyor: %3</translation>
+        <translation type="vanished">“%2” adlı “%1” modülü için statik eklenti yüklenemiyor: %3</translation>
+    </message>
+    <message>
+        <source>Found plugin with old IID, this will be unsupported in upcoming Qt releases:</source>
+        <translation>Eski bir IID’li bir eklenti bulundu; bu, sonraki Qt yayımlarında desteklenmeyecek:</translation>
+    </message>
+    <message>
+        <source>qml static plugin with name &quot;%2&quot; has no metadata URI</source>
+        <translation>“%2” adındaki QML statik eklentisinde üst veri URI’si yok</translation>
     </message>
     <message>
         <source>could not resolve all plugins for module &quot;%1&quot;</source>
@@ -2203,7 +2247,7 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Expected dependency definitions</source>
-        <translation>Bağımlılık tanımları bekleniyordu.</translation>
+        <translation>Bağımlılık tanımları bekleniyordu</translation>
     </message>
     <message>
         <source>Expected only Property, Method, Signal and Enum object definitions, not &quot;%1&quot;.</source>
@@ -2215,7 +2259,7 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
-        <translation>Betik bağıntılarında yalnızca name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames ve immediateNames bekleniyordu, “%1” değil.</translation>
+        <translation type="vanished">Betik bağıntılarında yalnızca name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames ve immediateNames bekleniyordu, “%1” değil.</translation>
     </message>
     <message>
         <source>Expected only script bindings and object definitions.</source>
@@ -2231,7 +2275,7 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Expected only name, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant, and isJavaScriptFunction in script bindings.</source>
-        <translation>Betik bağıntılarında yalnızca name, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant ve isJavaScriptFunction bekleniyordu.</translation>
+        <translation type="vanished">Betik bağıntılarında yalnızca name, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant ve isJavaScriptFunction bekleniyordu.</translation>
     </message>
     <message>
         <source>Method or signal is missing a name script binding.</source>
@@ -2243,7 +2287,7 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Expected only type, name, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index, and privateClass and script bindings.</source>
-        <translation>Yalnızca type, name, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index ve privateClass ve betik bağıntıları bekleniyordu.</translation>
+        <translation type="vanished">Yalnızca type, name, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index ve privateClass ve betik bağıntıları bekleniyordu.</translation>
     </message>
     <message>
         <source>Property object is missing a name script binding.</source>
@@ -2251,7 +2295,23 @@ Onu başkasıyla değiştirmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Expected only name, alias, isFlag, values, isScoped, or type.</source>
-        <translation>Yalnızca name, alias, isFlag, values, isScoped veya tür bekleniyordu.</translation>
+        <translation type="vanished">Yalnızca name, alias, isFlag, values, isScoped veya tür bekleniyordu.</translation>
+    </message>
+    <message>
+        <source>Expected only lineNumber, name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
+        <translation>Betik bağıntılarında yalnızca lineNumber, name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames ve immediateNames bekleniyordu, “%1” değil.</translation>
+    </message>
+    <message>
+        <source>Expected only name, lineNumber, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant, and isJavaScriptFunction in script bindings.</source>
+        <translation>Betik bağıntılarında yalnızca name, lineNumber, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant ve isJavaScriptFunction bekleniyordu.</translation>
+    </message>
+    <message>
+        <source>Expected only type, name, lineNumber, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index, and privateClass and script bindings.</source>
+        <translation>Yalnızca type, name, lineNumber, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index ve privateClass ve betik bağıntıları bekleniyordu.</translation>
+    </message>
+    <message>
+        <source>Expected only name, alias, isFlag, values, isScoped, type, or lineNumber.</source>
+        <translation>Yalnızca name, alias, isFlag, values, isScoped, type veya lineNumber bekleniyordu.</translation>
     </message>
     <message>
         <source>Expected only name, type, isPointer, isTypeConstant, isReadonly, or IsList script bindings.</source>
@@ -2332,27 +2392,27 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     <name>QQmlDomAstCreator</name>
     <message>
         <source>id is a special attribute, that should not be used as property name</source>
-        <translation>id, özellik adı olarak kullanılmaması gereken özel bir öznitelik.</translation>
+        <translation>id, özellik adı olarak kullanılmaması gereken özel bir öznitelik</translation>
     </message>
     <message>
         <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, assuming they refer to an id property</source>
-        <translation>id öznitelikleri yalnızca bir küçük harften oluşmalı ve bunu harfler, sayılar veya alt çizgi izlemelidir (bir id özelliğine başvurdukları varsayılarak).</translation>
+        <translation>id öznitelikleri yalnızca bir küçük harften oluşmalı ve bunu harfler, sayılar veya alt çizgi izlemelidir (bir id özelliğine başvurdukları varsayılarak)</translation>
     </message>
     <message>
         <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1</source>
-        <translation>id öznitelikleri yalnızca bir küçük harften oluşmalı ve bunu harfler, sayılar veya alt çizgi izlemelidir, %1 değil.</translation>
+        <translation>id öznitelikleri yalnızca bir küçük harften oluşmalı ve bunu harfler, sayılar veya alt çizgi izlemelidir, %1 değil</translation>
     </message>
     <message>
         <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1 %2, assuming they refer to a property</source>
-        <translation>id öznitelikleri yalnızca bir küçük harften oluşmalı ve bunu harfler, sayılar veya alt çizgi izlemelidir, %1 %2 değil (bir özelliğe başvurdukları varsayılarak).</translation>
+        <translation>id öznitelikleri yalnızca bir küçük harften oluşmalı ve bunu harfler, sayılar veya alt çizgi izlemelidir, %1 %2 değil (bir özelliğe başvurdukları varsayılarak)</translation>
     </message>
     <message>
         <source>id attributes should have only simple strings as values</source>
-        <translation>id özniteliklerinde değerler olarak yalnızca basit diziler olmalıdır.</translation>
+        <translation>id özniteliklerinde değerler olarak yalnızca basit diziler olmalıdır</translation>
     </message>
     <message>
         <source>Maximum statement or expression depth exceeded in QmlDomAstCreator</source>
-        <translation>En büyük ifade veya ifade derinliği QmlDomAstCreator içinde aşıldı.</translation>
+        <translation>En büyük ifade veya ifade derinliği QmlDomAstCreator içinde aşıldı</translation>
     </message>
 </context>
 <context>
@@ -2363,7 +2423,7 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>Non whitespace char %1 after comment end at %2</source>
-        <translation>%2 konumundaki yorum bitişinden sonra beklenmedik boşluk olmayan karakter</translation>
+        <translation>%2 konumundaki yorum bitişinden sonra beklenmedik boşluk olmayan %1 karakteri</translation>
     </message>
 </context>
 <context>
@@ -2422,18 +2482,18 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>unclosed square brace at end.</source>
-        <translation>Sonda kapatılmamış kare ayraç.</translation>
+        <translation>Sonda kapatılmamış kare ayraç</translation>
     </message>
 </context>
 <context>
     <name>Import</name>
     <message>
         <source>Version %1 in import string &apos;%2&apos; overridden by explicit version %3</source>
-        <translation>“%2” içe aktarma dizisindeki %1 sürümü, açıkça belirtilen %3 sürümüyle geçersiz kılındı.</translation>
+        <translation>“%2” içe aktarma dizisindeki %1 sürümü, açıkça belirtilen %3 sürümüyle geçersiz kılındı</translation>
     </message>
     <message>
         <source>namespace %1 in import string &apos;%2&apos; overridden by explicit importId %3</source>
-        <translation>“%2” içe aktarma dizisindeki %1 ad alanı, açıkça belirtilen %3 içe aktarma kimliğiyle geçersiz kılındı.</translation>
+        <translation>“%2” içe aktarma dizisindeki %1 ad alanı, açıkça belirtilen %3 içe aktarma kimliğiyle geçersiz kılındı</translation>
     </message>
     <message>
         <source>Unexpected URI format in import &apos;%1&apos;</source>
@@ -2466,18 +2526,18 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     <name>ScriptExpression</name>
     <message>
         <source>Parsing of code failed</source>
-        <translation>Kod ayrıştırılamadı.</translation>
+        <translation>Kod ayrıştırılamadı</translation>
     </message>
 </context>
 <context>
     <name>ImportScope</name>
     <message>
         <source>Looking up &apos;%1&apos; expected a list of exports, not %2</source>
-        <translation>“%1” aramasının bir dışa aktarma listesi vermesi bekleniyordu, %2 değil.</translation>
+        <translation>“%1” aramasının bir dışa aktarma listesi vermesi bekleniyordu, %2 değil</translation>
     </message>
     <message>
         <source>Expected Export looking up &apos;%1&apos;, not %2</source>
-        <translation>“%1” aramasında dışa aktarma bekleniyordu, %2 değil.</translation>
+        <translation>“%1” aramasında dışa aktarma bekleniyordu, %2 değil</translation>
     </message>
 </context>
 <context>
@@ -2502,11 +2562,11 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     <name>FileWriter</name>
     <message>
         <source>Could not create temp file for %1</source>
-        <translation>%1 için geçici dosya oluşturulamadı.</translation>
+        <translation>%1 için geçici dosya oluşturulamadı</translation>
     </message>
     <message>
         <source>Rename of file %1 to %2 failed</source>
-        <translation>%1 dosyasının %2 olarak yeniden adlandırılması başarısız oldu.</translation>
+        <translation>%1 dosyasının %2 olarak yeniden adlandırılması başarısız oldu</translation>
     </message>
     <message>
         <source>Error while writing</source>
@@ -2521,7 +2581,7 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     <name>DomItem</name>
     <message>
         <source>Root context %1 is not known</source>
-        <translation>%1 kök bağlamı bilinmiyor.</translation>
+        <translation>%1 kök bağlamı bilinmiyor</translation>
     </message>
     <message>
         <source>Circular reference:</source>
@@ -2537,27 +2597,27 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>Root path is supported only at the beginning, and only once, found %1 at %2 in %3</source>
-        <translation>Kök yol yalnızca başta ve bir kez desteklenir, %3 içinde %2 üzerinde %1 bulundu.</translation>
+        <translation>Kök yol yalnızca başta ve bir kez desteklenir, %3 içinde %2 üzerinde %1 bulundu</translation>
     </message>
     <message>
         <source>Javascript lookups not yet implemented</source>
-        <translation>JavaScript bakmaları henüz gerçeklenmedi.</translation>
+        <translation>JavaScript bakmaları henüz gerçeklenmedi</translation>
     </message>
     <message>
         <source>Premature end of path, expected a field specifying the type, and a key specifying the name to search after a lookup directive in %2</source>
-        <translation>Beklenenden önce yol sonu; türü belirten bir alan ve %2 içindeki bir bakma direktifinden sonra arama yapmak için adı belirten bir ad bekleniyordu.</translation>
+        <translation>Beklenenden önce yol sonu; türü belirten bir alan ve %2 içindeki bir bakma direktifinden sonra arama yapmak için adı belirten bir ad bekleniyordu</translation>
     </message>
     <message>
         <source>Expected a key path specifying the type to search after a lookup directive, not %1 at component %2 of %3</source>
-        <translation>Beklenenden önce yol sonu; bir bakma direktifinden sonra arama yapmak için adı belirten bir ad bekleniyordu, %3 ögesinin %2 bileşenindeki %1 değil.</translation>
+        <translation>Beklenenden önce yol sonu; bir bakma direktifinden sonra arama yapmak için adı belirten bir ad bekleniyordu, %3 ögesinin %2 bileşenindeki %1 değil</translation>
     </message>
     <message>
         <source>Type for lookup was expected to be one of &apos;%1&apos;, not %2</source>
-        <translation>Bakma türünün “%1” arasından bir tanesinin olması bekleniyordu, %2 değil.</translation>
+        <translation>Bakma türünün “%1” arasından bir tanesinin olması bekleniyordu, %2 değil</translation>
     </message>
     <message>
         <source>Expected a key specifying the path to search after the @lookup directive and type, not %1 at component %2 of %3</source>
-        <translation>@lookup direktifinden ve türden sonra aramaya olan yolu belirten bir anahtar bekleniyordu, %3 ögesinin %2 bileşenindeki %1 değil.</translation>
+        <translation>@lookup direktifinden ve türden sonra aramaya olan yolu belirten bir anahtar bekleniyordu, %3 ögesinin %2 bileşenindeki %1 değil</translation>
     </message>
     <message>
         <source>Path with empty lookup at component %1 of %2 will match nothing in %3.</source>
@@ -2565,19 +2625,19 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>Prototype chain called outside object</source>
-        <translation>Prototip zincir nesne dışında çağrıldı.</translation>
+        <translation>Prototip zincir nesne dışında çağrıldı</translation>
     </message>
     <message>
         <source>Detected multiple visit of %1 visiting prototypes of %2</source>
-        <translation>%2 ögesinin ziyaret eden prototiplerinin %1 çoklu ziyareti algılandı.</translation>
+        <translation>%2 ögesinin ziyaret eden prototiplerinin %1 çoklu ziyareti algılandı</translation>
     </message>
     <message>
         <source>Called visitScopeChain outside scopes</source>
-        <translation>visitScopeChain kapsamlar dışında çağrıldı.</translation>
+        <translation>visitScopeChain kapsamlar dışında çağrıldı</translation>
     </message>
     <message>
         <source>Unexpected non scope object %1 (%2) reached in visitScopeChain</source>
-        <translation>visitScopeChain içinde beklenmedik kapsam dışı %1 (%2) nesnesine erişildi.</translation>
+        <translation>visitScopeChain içinde beklenmedik kapsam dışı %1 (%2) nesnesine erişildi</translation>
     </message>
 </context>
 <context>
@@ -2610,7 +2670,7 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     <name>ModuleIndex</name>
     <message>
         <source>Module %1 (unversioned) has versioned entries for &apos;%2&apos; from %3</source>
-        <translation>%1 modülünde (sürümlenmemiş) %3 ögesinden “%2” için sürümlenmemiş girdiler var.</translation>
+        <translation>%1 modülünde (sürümlenmemiş) %3 ögesinden “%2” için sürümlenmemiş girdiler var</translation>
     </message>
     <message>
         <source>Module %1 (major version %2) has versioned and unversioned entries for &apos;%3&apos;</source>
@@ -2625,14 +2685,14 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     <name>Dom::fileTypeForPath</name>
     <message>
         <source>Could not detect type of file %1</source>
-        <translation>%1 dosyasının türü algılanamadı.</translation>
+        <translation>%1 dosyasının türü algılanamadı</translation>
     </message>
 </context>
 <context>
     <name>DomUniverse</name>
     <message>
         <source>Ignoring request to load file %1 of unexpected type %2, calling callback immediately</source>
-        <translation>Beklenmedik %2 türünün yerel %1 dosyasını yükleme isteği yok sayılıyor; anında geri çağırma yapılıyor.</translation>
+        <translation>Beklenmedik %2 türünün yerel %1 dosyasını yükleme isteği yok sayılıyor; anında geri çağırma yapılıyor</translation>
     </message>
     <message>
         <source>Non existing path %1</source>
@@ -2647,11 +2707,11 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     <name>LoadInfo</name>
     <message>
         <source>advanceLoad called but found no work, which should never happen</source>
-        <translation>advanceLoad çağırdı; ancak bir iş bulunamadı; bu aslında hiç olmamalı.</translation>
+        <translation>advanceLoad çağırdı; ancak bir iş bulunamadı; bu aslında hiç olmamalı</translation>
     </message>
     <message>
         <source>advanceLoad called after work should have been done, which should never happen</source>
-        <translation>advanceLoad iş bittikten sonra çağırdı; bu aslında hiç olmamalı.</translation>
+        <translation>advanceLoad iş bittikten sonra çağırdı; bu aslında hiç olmamalı</translation>
     </message>
     <message>
         <source>Uninitialized LoadInfo %1</source>
@@ -2659,11 +2719,11 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>Ignoring dependencies for empty (invalid) type %1</source>
-        <translation>Boş (geçersiz) %1 türü için olan bağımlılıklar yok sayılıyor.</translation>
+        <translation>Boş (geçersiz) %1 türü için olan bağımlılıklar yok sayılıyor</translation>
     </message>
     <message>
         <source>dependencies of %1 (%2) not yet implemented</source>
-        <translation>%1 (%2) bağımlılıkları henüz gerçeklenmedi.</translation>
+        <translation>%1 (%2) bağımlılıkları henüz gerçeklenmedi</translation>
     </message>
 </context>
 <context>
@@ -2689,24 +2749,28 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
         <translation>%1 için eksik loadInfo</translation>
     </message>
     <message>
+        <source>Could not find the QML/plugins.qmltypes file</source>
+        <translation>QML/plugins.qmltypes dosyası bulunamadı</translation>
+    </message>
+    <message>
         <source>Could not find builtins.qmltypes file</source>
-        <translation>builtins.qmltypes dosyası bulunamadı.</translation>
+        <translation type="vanished">builtins.qmltypes dosyası bulunamadı.</translation>
     </message>
     <message>
         <source>A mutable module was requested in a multithreaded environment</source>
-        <translation>Çok iş parçacıklı bir ortamda değiştirilemez bir modül istendi.</translation>
+        <translation>Çok iş parçacıklı bir ortamda değiştirilemez bir modül istendi</translation>
     </message>
     <message>
         <source>Could not get path for newly created ModuleIndex %1 %2</source>
-        <translation>Yeni oluşturulmuş ModuleIndex %1 %2 için yol alınamadı.</translation>
+        <translation>Yeni oluşturulmuş ModuleIndex %1 %2 için yol alınamadı</translation>
     </message>
     <message>
         <source>Unexpected path not ending with qmldir in qmldirFilePaths: %1</source>
-        <translation>qmldir in qmldirFilePaths içinde qmldir ile bitmeyen beklenmedik yol: %1</translation>
+        <translation>qmldirFilePaths içinde qmldir ile bitmeyen beklenmedik yol: %1</translation>
     </message>
     <message>
         <source>addLoadinfo replaces unfinished load info for %1</source>
-        <translation>addLoadinfo %1 için olan bitmemiş yüklenme bilgisinin yerine geçiyor.</translation>
+        <translation>addLoadinfo %1 için olan bitmemiş yüklenme bilgisinin yerine geçiyor</translation>
     </message>
 </context>
 <context>
@@ -2721,7 +2785,7 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>negative meta revision %1 not supported</source>
-        <translation>Negatif meta revizyon %1 desteklenmiyor.</translation>
+        <translation>Negatif meta revizyon %1 desteklenmiyor</translation>
     </message>
     <message>
         <source>Component definition is missing a name binding.</source>
@@ -2758,7 +2822,7 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>Failed to create an instance of QRunnable query object</source>
-        <translation>QRunnable sorgu nesnesinin bir örneği oluşturulamadı.</translation>
+        <translation>QRunnable sorgu nesnesinin bir örneği oluşturulamadı</translation>
     </message>
     <message>
         <source>Query error: &quot;%1&quot;</source>
@@ -2785,7 +2849,21 @@ Revision %1 corresponds to version %2.%3; it should be %4.%5.</source>
     </message>
     <message>
         <source>Can only save to local files</source>
-        <translation>Yalnızca yerel dosyalara kaydedilebilir.</translation>
+        <translation>Yalnızca yerel dosyalara kaydedilebilir</translation>
+    </message>
+</context>
+<context>
+    <name>SideBar</name>
+    <message>
+        <source>Add Favorite</source>
+        <translation>Sık Kullanılanlara Ekle</translation>
+    </message>
+</context>
+<context>
+    <name>FolderBreadcrumbBar</name>
+    <message>
+        <source>Up</source>
+        <translation>Yukarı</translation>
     </message>
 </context>
 </TS>

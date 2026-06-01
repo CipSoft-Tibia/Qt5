@@ -123,7 +123,7 @@ jumbo_component("platform") {
     ]
   }
 
-  if (is_android || is_chromeos_ash) {
+  if (is_android || is_chromeos) {
     sources += [
       "ax_android_constants.cc",
       "ax_android_constants.h",
@@ -280,6 +280,7 @@ jumbo_component("platform") {
         "inspect/ax_tree_formatter_mac.h",
         "inspect/ax_tree_formatter_mac.mm",
         "inspect/ax_tree_indexer_mac.h",
+        "inspect/ax_tree_indexer_mac.mm",
       ]
 
       deps += [ "//ui/accelerated_widget_mac" ]

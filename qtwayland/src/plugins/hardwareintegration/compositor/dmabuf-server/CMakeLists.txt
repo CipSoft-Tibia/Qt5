@@ -1,11 +1,16 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_extensions_dir(extensions_dir)
+
 # Generated from dmabuf-server.pro.
 
 #####################################################################
 ## DmaBufServerBufferIntegrationPlugin Plugin:
 #####################################################################
+
+qt_find_package(EGL)
 
 qt_internal_add_plugin(DmaBufServerBufferIntegrationPlugin
     OUTPUT_NAME qt-wayland-compositor-dmabuf-server-buffer
@@ -28,8 +33,8 @@ qt_internal_add_plugin(DmaBufServerBufferIntegrationPlugin
 qt6_generate_wayland_protocol_server_sources(DmaBufServerBufferIntegrationPlugin
     PRIVATE_CODE
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/qt-dmabuf-server-buffer.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../extensions/server-buffer-extension.xml
+        ${extensions_dir}/qt-dmabuf-server-buffer.xml
+        ${extensions_dir}/server-buffer-extension.xml
 )
 
 #### Keys ignored in scope 1:.:.:dmabuf-server.pro:<TRUE>:

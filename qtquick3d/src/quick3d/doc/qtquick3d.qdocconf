@@ -7,6 +7,9 @@ buildversion            = Qt Quick 3D | Commercial or GPLv3
 
 examplesinstallpath     = quick3d
 url.examples            = "https://code.qt.io/cgit/qt/qtquick3d.git/tree/examples/\1?h=$QT_VER"
+url.sources             = "https://code.qt.io/cgit/qt/qtquick3d.git/tree/\1?h=$QT_VER#n\2"
+# Path to the root of qtquick3d (for automatic linking to source code)
+url.sources.rootdir     = ../../..
 
 qhp.projects            = QtQuick3D
 
@@ -58,6 +61,7 @@ headers += ../../helpers/gridgeometry_p.h \
            ../../helpers/spheregeometry_p.h \
            ../../helpers/planegeometry_p.h \
            ../../helpers/cuboidgeometry_p.h \
+           ../../helpers/capsulegeometry_p.h \
            ../../assetutils/qquick3druntimeloader_p.h \
            ../../runtimerender/qssgrendercontextcore.h \
            ../../runtimerender/qssgrhicontext.h \
@@ -85,6 +89,7 @@ sources += ../../helpers/gridgeometry.cpp \
            ../../helpers/spheregeometry.cpp \
            ../../helpers/planegeometry.cpp \
            ../../helpers/cuboidgeometry.cpp \
+           ../../helpers/capsulegeometry.cpp \
            ../../assetutils/qquick3druntimeloader.cpp \
            ../../runtimerender/qssgrendercontextcore.cpp \
            ../../runtimerender/qssgrhicontext.cpp

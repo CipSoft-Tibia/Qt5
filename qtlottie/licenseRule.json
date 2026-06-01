@@ -89,6 +89,21 @@
                 "file type": "test",
                 "spdx": ["LicenseRef-Qt-Commercial OR GPL-3.0-only"]
             },
+            "examples/lottie/lottietoqml/generated": {
+                "comment": "",
+                "file type": "3rd party",
+                "spdx": ["LicenseRef-Lottie-Simple-License-9.13.21"]
+            },
+            "examples/lottie/lottietoqml/original": {
+                "comment": "",
+                "file type": "3rd party",
+                "spdx": ["LicenseRef-Lottie-Simple-License-9.13.21"]
+            },
+            "examples/lottie/qtlottieviewer/logo.json": {
+                "comment": "",
+                "file type": "3rd party",
+                "spdx": ["MIT"]
+            },
             "(.*)(examples/|snippets/)": {
                 "comment": "Default",
                 "file type": "examples and snippets",
@@ -97,7 +112,12 @@
             "tests/baseline/data/docsamples/": {
                 "comment": "",
                 "file type": "3rd party",
-                "spdx": ["MIT"]
+                "spdx": ["CC-BY-4.0"]
+            },
+            "tools/": {
+                "comment": "Default",
+                "file type": "tools",
+                "spdx": ["LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0"]
             }
         }
     }

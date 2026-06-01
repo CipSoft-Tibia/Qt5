@@ -1,13 +1,13 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-qt_find_package(WrapPCRE2 PROVIDED_TARGETS WrapPCRE2::WrapPCRE2)
+qt_find_package(WrapPCRE2 MODULE PROVIDED_TARGETS WrapPCRE2::WrapPCRE2)
 qt_internal_extend_sbom(WrapPCRE2::WrapPCRE2
     CPE_VENDOR "pcre"
     CPE_PRODUCT "pcre2"
     DOWNLOAD_LOCATION "https://github.com/PCRE2Project/pcre2"
 )
-qt_find_package(WrapZLIB PROVIDED_TARGETS WrapZLIB::WrapZLIB)
+qt_find_package(WrapZLIB MODULE PROVIDED_TARGETS WrapZLIB::WrapZLIB)
 qt_internal_extend_sbom(WrapZLIB::WrapZLIB
     CPE_VENDOR "zlib"
     CPE_PRODUCT "zlib"
@@ -40,7 +40,9 @@ qt_internal_add_module(Core
         # Keep the rest alphabetical
         compat/removed_api.cpp
         global/archdetect.cpp
+        global/qalloc.cpp global/qalloc.h
         global/qassert.cpp global/qassert.h
+        global/qcheckedint_impl.h
         global/qcompare_impl.h
         global/qcompare.cpp global/qcompare.h
         global/qcomparehelpers.h
@@ -50,10 +52,12 @@ qt_internal_add_module(Core
         global/qdarwinhelpers.h
         global/qendian.cpp global/qendian.h global/qendian_p.h
         global/qexceptionhandling.h
+        global/qexpected_p.h
         global/qflags.h
         global/qfloat16.cpp global/qfloat16.h
         global/qforeach.h
         global/qfunctionpointer.h
+        global/qgettid_p.h
         global/qglobal.cpp global/qglobal.h global/qglobal_p.h
         global/qglobalstatic.h
         global/qhooks.cpp global/qhooks_p.h
@@ -134,7 +138,7 @@ qt_internal_add_module(Core
         io/qiodevicebase.h
         io/qipaddress.cpp io/qipaddress_p.h
         io/qlockfile.cpp io/qlockfile.h io/qlockfile_p.h
-        io/qloggingcategory.cpp io/qloggingcategory.h
+        io/qloggingcategory.cpp io/qloggingcategory.h io/qloggingcategory_p.h
         io/qloggingregistry.cpp io/qloggingregistry_p.h
         io/qnoncontiguousbytedevice.cpp io/qnoncontiguousbytedevice_p.h
         io/qresource.cpp io/qresource.h io/qresource_p.h
@@ -164,12 +168,14 @@ qt_internal_add_module(Core
         kernel/qelapsedtimer.cpp kernel/qelapsedtimer.h
         kernel/qeventloop.cpp kernel/qeventloop.h kernel/qeventloop_p.h
         kernel/qfunctions_p.h
-        kernel/qiterable.cpp kernel/qiterable.h kernel/qiterable_p.h
+        kernel/qiterable.cpp kernel/qiterable.h kernel/qiterable_impl.h
         kernel/qmath.cpp kernel/qmath.h
+        kernel/qmetaassociation.cpp
         kernel/qmetacontainer.cpp kernel/qmetacontainer.h
         kernel/qmetaobject.cpp kernel/qmetaobject.h kernel/qmetaobject_p.h
         kernel/qmetaobject_moc_p.h
         kernel/qmetaobjectbuilder.cpp kernel/qmetaobjectbuilder_p.h
+        kernel/qmetasequence.cpp
         kernel/qmetatype.cpp kernel/qmetatype.h kernel/qmetatype_p.h
         kernel/qmimedata.cpp kernel/qmimedata.h
         kernel/qtmetamacros.h kernel/qtmocconstants.h kernel/qtmochelpers.h
@@ -220,7 +226,6 @@ qt_internal_add_module(Core
         text/qbytearraylist.cpp text/qbytearraylist.h
         text/qbytearraymatcher.cpp text/qbytearraymatcher.h
         text/qbytearrayview.h
-        text/qbytedata_p.h
         text/qchar.h
         text/qcollator.cpp text/qcollator.h text/qcollator_p.h
         text/qdoublescanprint_p.h
@@ -258,6 +263,8 @@ qt_internal_add_module(Core
         thread/qrunnable.cpp thread/qrunnable.h
         thread/qthread.cpp thread/qthread.h thread/qthread_p.h
         thread/qthreadstorage.h
+        thread/qthreadpool.cpp thread/qthreadpool_p.h thread/qthreadpool.h
+        thread/qsemaphore.cpp thread/qsemaphore.h
         thread/qtsan_impl.h
         thread/qwaitcondition.h thread/qwaitcondition_p.h
         thread/qyieldcpu.h
@@ -368,6 +375,7 @@ qt_internal_add_module(Core
         QTP0003
     ATTRIBUTION_FILE_DIR_PATHS
         text
+        global
         ../3rdparty/siphash
         ../3rdparty/blake2
         ../3rdparty/md4
@@ -376,6 +384,8 @@ qt_internal_add_module(Core
         ../3rdparty/sha3
         ../3rdparty/rfc6234
         ../3rdparty/tinycbor
+    ELF_LINKER_DYNAMIC_LIST
+        QtCore.dynlist.in
 )
 _qt_internal_setup_deploy_support()
 
@@ -389,6 +399,9 @@ if (NOT QT_NAMESPACE STREQUAL "")
     target_compile_definitions(Core PUBLIC ${core_namespace_defs})
     set_target_properties(Core PROPERTIES _qt_namespace "${QT_NAMESPACE}")
     set_property(TARGET Core APPEND PROPERTY EXPORT_PROPERTIES _qt_namespace)
+
+    set_target_properties(Core PROPERTIES QT_NAMESPACE "${QT_NAMESPACE}")
+    set_property(TARGET Core APPEND PROPERTY EXPORT_PROPERTIES QT_NAMESPACE)
 endif()
 
 qt_generate_qconfig_cpp(global/qconfig.cpp.in global/qconfig.cpp)
@@ -466,11 +479,6 @@ qt_internal_add_simd_part(Core SIMD mips_dsp
         ../gui/painting/qt_mips_asm_dsp_p.h
         text/qstring_mips_dsp_asm.S
 )
-
-if(QT_FEATURE_reduce_relocations AND UNIX AND GCC)
-    target_link_options(Core PRIVATE
-                        "LINKER:--dynamic-list=${CMAKE_CURRENT_LIST_DIR}/QtCore.dynlist")
-endif()
 
 if(ANDROID)
     _qt_internal_add_android_executable_finalizer(Core)
@@ -560,6 +568,11 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_thread AND WIN32
         synchronization
 )
 
+qt_internal_extend_target(Core CONDITION CYGWIN
+    SOURCES
+        global/qt_windows.h
+)
+
 qt_internal_extend_target(Core CONDITION WIN32
     SOURCES
         global/qoperatingsystemversion_win.cpp global/qoperatingsystemversion_win_p.h
@@ -580,6 +593,7 @@ qt_internal_extend_target(Core CONDITION WIN32
         kernel/qwineventnotifier.cpp kernel/qwineventnotifier.h kernel/qwineventnotifier_p.h
         kernel/qwinregistry.cpp kernel/qwinregistry_p.h
         plugin/qsystemlibrary.cpp plugin/qsystemlibrary_p.h
+        text/qlocale_win.cpp
         thread/qthread_win.cpp
         platform/windows/qcomobject_p.h
         platform/windows/qcomptr_p.h
@@ -590,7 +604,9 @@ qt_internal_extend_target(Core CONDITION WIN32
         authz
         kernel32
         netapi32
+        ntdll
         ole32
+        runtimeobject
         shell32
         user32
         uuid
@@ -613,6 +629,7 @@ qt_internal_extend_target(Core CONDITION WIN32
         text/qlatin1stringmatcher.cpp
         text/qunicodetools.cpp
         tools/qhash.cpp # Q_DECL_INIT_PRIORITY
+        kernel/qwinregistry.cpp # ntstatus.h clashes
 )
 
 qt_internal_extend_target(Core CONDITION GCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13"
@@ -745,8 +762,6 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_thread
         thread/qfutex_p.h
         thread/qmutex.cpp thread/qmutex_p.h
         thread/qreadwritelock.cpp thread/qreadwritelock_p.h
-        thread/qsemaphore.cpp thread/qsemaphore.h
-        thread/qthreadpool.cpp thread/qthreadpool.h thread/qthreadpool_p.h
         thread/qthreadstorage.cpp thread/qthreadstorage_p.h
 )
 
@@ -873,19 +888,15 @@ qt_internal_extend_target(Core CONDITION UNIX AND NOT APPLE AND NOT WASM
         text/qlocale_unix.cpp
 )
 
-qt_internal_extend_target(Core CONDITION WIN32
-    SOURCES
-        text/qlocale_win.cpp
+# Switch this to just 'icu' once we can expect Windows 10 version 1903
+qt_internal_extend_target(Core CONDITION QT_FEATURE_winsdkicu
+    LIBRARIES
+        icuuc icuin
 )
 
 qt_internal_extend_target(Core CONDITION WASM
     SOURCES
         text/qlocale_wasm.cpp
-)
-
-qt_internal_extend_target(Core CONDITION MSVC
-    LIBRARIES
-        runtimeobject
 )
 
 qt_internal_extend_target(Core CONDITION MSVC AND CLANG
@@ -914,6 +925,11 @@ qt_internal_extend_target(Core CONDITION MACOS AND NOT QT_FEATURE_icu
 qt_internal_extend_target(Core CONDITION UNIX AND NOT MACOS AND NOT QT_FEATURE_icu
     SOURCES
         text/qcollator_posix.cpp
+)
+
+qt_internal_extend_target(Core CONDITION QT_FEATURE_jemalloc
+    PUBLIC_LIBRARIES
+        PkgConfig::JeMalloc
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_regularexpression
@@ -972,7 +988,7 @@ qt_internal_extend_target(Core
 
 qt_internal_extend_target(Core
     CONDITION
-        QT_FEATURE_timezone AND UNIX
+        QT_FEATURE_timezone AND UNIX AND NOT VXWORKS
         AND NOT ANDROID AND NOT APPLE AND NOT QT_FEATURE_timezone_tzdb
     SOURCES
         time/qtimezoneprivate_tz.cpp
@@ -981,7 +997,7 @@ qt_internal_extend_target(Core
 qt_internal_extend_target(Core
     CONDITION
         QT_FEATURE_icu AND QT_FEATURE_timezone
-        AND NOT UNIX AND NOT QT_FEATURE_timezone_tzdb
+        AND (VXWORKS OR NOT UNIX) AND NOT QT_FEATURE_timezone_tzdb
     SOURCES
         time/qtimezoneprivate_icu.cpp
 )
@@ -1042,6 +1058,10 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_processenvironment
     SOURCES
         io/qprocess.cpp io/qprocess.h io/qprocess_p.h
 )
+
+if (NOT QT_FEATURE_process)
+    set_source_files_properties(io/qprocess.cpp io/qprocess.h PROPERTIES SKIP_AUTOMOC TRUE)
+endif()
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_processenvironment AND WIN32
     SOURCES
@@ -1153,6 +1173,7 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_itemmodel
     SOURCES
         itemmodels/qabstractitemmodel.cpp itemmodels/qabstractitemmodel.h itemmodels/qabstractitemmodel_p.h
         itemmodels/qitemselectionmodel.cpp itemmodels/qitemselectionmodel.h itemmodels/qitemselectionmodel_p.h
+        itemmodels/qrangemodel.h itemmodels/qrangemodel_impl.h itemmodels/qrangemodel.cpp
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_proxymodel
@@ -1188,6 +1209,10 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_stringlistmodel
 qt_internal_extend_target(Core CONDITION QT_FEATURE_library
     SOURCES
         plugin/qlibrary.cpp plugin/qlibrary.h plugin/qlibrary_p.h
+)
+qt_internal_extend_target(Core CONDITION QT_FEATURE_library AND CYGWIN
+    SOURCES
+        plugin/qcoffpeparser.cpp plugin/qcoffpeparser_p.h
 )
 qt_internal_extend_target(Core CONDITION QT_FEATURE_library AND WIN32
     SOURCES
@@ -1443,8 +1468,10 @@ endif()
 
 qt_internal_extend_target(Core CONDITION WASM
     SOURCES
+        platform/wasm/qwasmglobal.cpp platform/wasm/qwasmglobal_p.h
         platform/wasm/qstdweb.cpp platform/wasm/qstdweb_p.h
         platform/wasm/qwasmsocket.cpp platform/wasm/qwasmsocket_p.h
+        platform/wasm/qwasmsuspendresumecontrol.cpp platform/wasm/qwasmsuspendresumecontrol_p.h
         kernel/qeventdispatcher_wasm.cpp kernel/qeventdispatcher_wasm_p.h
 )
 
@@ -1548,7 +1575,7 @@ if(IOS)
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/ios/PrivacyInfo.xcprivacy")
 endif()
 
-set(linker_script_contents "")
+set(elf_linker_script_contents "")
 if (QT_NAMESPACE STREQUAL "")
     set(tag_symbol "qt_version_tag")
 else()
@@ -1558,17 +1585,17 @@ foreach(minor_version RANGE ${PROJECT_VERSION_MINOR})
     set(previous "${current}")
     set(current "Qt_${PROJECT_VERSION_MAJOR}.${minor_version}")
     if (minor_version EQUAL ${PROJECT_VERSION_MINOR})
-        string(APPEND linker_script_contents "${current} { ${tag_symbol}; } ${previous};\n")
+        string(APPEND elf_linker_script_contents "${current} { ${tag_symbol}; } ${previous};\n")
     else()
-        string(APPEND linker_script_contents "${current} {} ${previous};\n")
+        string(APPEND elf_linker_script_contents "${current} {} ${previous};\n")
     endif()
 endforeach()
 qt_internal_extend_target(Core
-    EXTRA_LINKER_SCRIPT_CONTENT "${linker_script_contents}"
+    EXTRA_ELF_LINKER_SCRIPT_CONTENT "${elf_linker_script_contents}"
 
     # Workaround for QTBUG-117514:
     # Function called by inline methods taking a pointer to a private class as a parameter
-    EXTRA_LINKER_SCRIPT_EXPORTS
+    EXTRA_ELF_LINKER_SCRIPT_EXPORTS
         # QFutureInterfaceBase::setContinuation(std::function<void (QFutureInterfaceBase const&)>, QFutureInterfaceBasePrivate*)
         "_ZN*20QFutureInterfaceBase15setContinuationE*27QFutureInterfaceBasePrivate*"
         # QReadWriteLock::destroyRecursive(QReadWriteLockPrivate*)
@@ -1612,3 +1639,7 @@ function(qt_internal_library_deprecation_level)
     set_source_files_properties("${output_header}" PROPERTIES GENERATED TRUE)
 endfunction()
 qt_internal_library_deprecation_level()
+
+if(QT_FEATURE_doc_snippets)
+    add_subdirectory(doc/snippets)
+endif()

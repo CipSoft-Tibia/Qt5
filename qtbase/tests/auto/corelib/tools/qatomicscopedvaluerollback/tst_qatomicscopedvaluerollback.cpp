@@ -5,6 +5,10 @@
 
 #include <QTest>
 
+#include <chrono>
+
+using namespace std::chrono_literals;
+
 class tst_QAtomicScopedValueRollback : public QObject
 {
     Q_OBJECT
@@ -15,6 +19,8 @@ private Q_SLOTS:
     void rollbackToPreviousCommit();
     void exceptions();
     void earlyExitScope();
+    void mixedTypes();
+    void sharedPtr();
 private:
     void earlyExitScope_helper(int exitpoint, std::atomic<int> &member);
 };
@@ -130,6 +136,118 @@ void tst_QAtomicScopedValueRollback::earlyExitScope()
         earlyExitScope_helper(i, aj);
         QCOMPARE(aj.load(), 1 << i);
     }
+}
+
+template <typename T>
+struct Wrap {
+#if __cpp_deduction_guides < 201907L // no CTAD for aggregates
+    Q_IMPLICIT Wrap(T &t) : t{t} {}
+    Q_IMPLICIT Wrap(T &&t) : t{std::move(t)} {}
+#endif
+    T t;
+    Q_IMPLICIT operator T() const { return t; }
+};
+
+void tst_QAtomicScopedValueRollback::mixedTypes()
+{
+    const auto relaxed = std::memory_order_relaxed;
+    {
+        std::atomic a{10'000ms};
+        {
+            QAtomicScopedValueRollback rb(a, 5s);
+            QCOMPARE(a.load(relaxed), 5s);
+        }
+        QCOMPARE(a.load(relaxed), 10s);
+        {
+            QAtomicScopedValueRollback rb(a, 5s, relaxed);
+            QCOMPARE(a.load(relaxed), 5s);
+        }
+        QCOMPARE(a.load(relaxed), 10s);
+    }
+    {
+        QBasicAtomicInteger a{10'000};
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{5'000});
+            QCOMPARE(a.loadRelaxed(), 5'000);
+        }
+        QCOMPARE(a.loadRelaxed(), 10'000);
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{5'000}, relaxed);
+            QCOMPARE(a.loadRelaxed(), 5'000);
+        }
+        QCOMPARE(a.loadRelaxed(), 10'000);
+    }
+    {
+        QAtomicInteger a{10'000};
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{5'000});
+            QCOMPARE(a.loadRelaxed(), 5'000);
+        }
+        QCOMPARE(a.loadRelaxed(), 10'000);
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{5'000}, relaxed);
+            QCOMPARE(a.loadRelaxed(), 5'000);
+        }
+        QCOMPARE(a.loadRelaxed(), 10'000);
+    }
+    {
+        int i = 10'000;
+        int j =  5'000;
+        QBasicAtomicPointer a{&i};
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{&j});
+            QCOMPARE(a.loadRelaxed(), &j);
+        }
+        QCOMPARE(a.loadRelaxed(), &i);
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{&j}, relaxed);
+            QCOMPARE(a.loadRelaxed(), &j);
+        }
+        QCOMPARE(a.loadRelaxed(), &i);
+    }
+    {
+        int i = 10'000;
+        int j =  5'000;
+        QAtomicPointer a{&i};
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{&j});
+            QCOMPARE(a.loadRelaxed(), &j);
+        }
+        QCOMPARE(a.loadRelaxed(), &i);
+        {
+            QAtomicScopedValueRollback rb(a, Wrap{&j}, relaxed);
+            QCOMPARE(a.loadRelaxed(), &j);
+        }
+        QCOMPARE(a.loadRelaxed(), &i);
+    }
+}
+
+void tst_QAtomicScopedValueRollback::sharedPtr()
+{
+#ifdef __cpp_lib_atomic_shared_ptr
+    std::atomic<std::shared_ptr<int>> a{std::make_shared<int>(42)};
+    QCOMPARE_NE(a.load(), nullptr);
+    QCOMPARE_EQ(*a.load(), 42);
+    {
+        QAtomicScopedValueRollback rb(a, nullptr);
+        QCOMPARE_EQ(a.load(), nullptr);
+    }
+    QCOMPARE_NE(a.load(), nullptr);
+    QCOMPARE_EQ(*a.load(), 42);
+    {
+        QAtomicScopedValueRollback rb{a, std::make_shared<int>(123)};
+        QCOMPARE_NE(a.load(), nullptr);
+        QCOMPARE_EQ(*a.load(), 123);
+        rb.commit();
+        a.store(std::make_shared<int>(256));
+        QCOMPARE_NE(a.load(), nullptr);
+        QCOMPARE_EQ(*a.load(), 256);
+    }
+    QCOMPARE_NE(a.load(), nullptr);
+    QCOMPARE_EQ(*a.load(), 123);
+#else
+    QSKIP("This test requires atomic<shared_ptr> support enabled in the C++ standard library.");
+#endif
 }
 
 static void operator*=(std::atomic<int> &lhs, int rhs)

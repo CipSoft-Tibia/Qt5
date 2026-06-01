@@ -32,17 +32,10 @@ QT_WARNING_DISABLE_MSVC(4334) // '<<': result of 32-bit shift implicitly convert
 QT_WARNING_DISABLE_GCC("-Wimplicit-fallthrough")
 
 #include <cborparser.c>
+#include <cborparser_dup_string.c>
+#include <cborparser_float.c>
 
 QT_WARNING_POP
-
-static CborError _cbor_value_dup_string(const CborValue *, void **, size_t *, CborValue *)
-{
-    Q_UNREACHABLE_RETURN(CborErrorInternalError);
-}
-[[maybe_unused]] static CborError cbor_value_get_half_float_as_float(const CborValue *, float *)
-{
-    Q_UNREACHABLE_RETURN(CborErrorInternalError);
-}
 
 // confirm our constants match TinyCBOR's
 static_assert(int(QCborStreamReader::UnsignedInteger) == CborIntegerType);
@@ -575,7 +568,7 @@ public:
     char *bufferPtr()
     {
         Q_ASSERT(buffer.isDetached());
-        return const_cast<char *>(buffer.constData()) + bufferStart;
+        return const_cast<char *>(buffer.constBegin()) + bufferStart;
     }
 
     void preread()
@@ -672,7 +665,7 @@ static void *qt_cbor_decoder_read(void *token, void *userptr, size_t offset, siz
 
     // we must have pre-read the data
     Q_ASSERT(len + offset <= size_t(self->buffer.size() - self->bufferStart));
-    return memcpy(userptr, self->buffer.constData() + self->bufferStart + offset, len);
+    return memcpy(userptr, self->buffer.constBegin() + self->bufferStart + offset, len);
 }
 
 static CborError qt_cbor_decoder_transfer_string(void *token, const void **userptr, size_t offset, size_t len)
@@ -841,7 +834,7 @@ QIODevice *QCborStreamReader::device() const
  */
 void QCborStreamReader::addData(const QByteArray &data)
 {
-    addData(data.constData(), data.size());
+    addData(data.constBegin(), data.size());
 }
 
 /*!
@@ -1753,7 +1746,7 @@ QCborStreamReaderPrivate::readStringChunk_byte(ReadStringChunk params, qsizetype
             return -1;
         }
 
-        ptr = const_cast<char *>(params.array->constData()) + oldSize;
+        ptr = const_cast<char *>(params.array->constBegin()) + oldSize;
     }
 
     if (device) {
@@ -1773,7 +1766,7 @@ QCborStreamReaderPrivate::readStringChunk_byte(ReadStringChunk params, qsizetype
         }
     } else {
         actuallyRead = toRead;
-        memcpy(ptr, buffer.constData() + bufferStart, toRead);
+        memcpy(ptr, buffer.constBegin() + bufferStart, toRead);
     }
 
     return actuallyRead;
@@ -1799,12 +1792,12 @@ QCborStreamReaderPrivate::readStringChunk_unicode(ReadStringChunk params, qsizet
         return -1;
     }
 
-    QChar *begin = const_cast<QChar *>(params.string->constData());
+    QChar *begin = const_cast<QChar *>(params.string->constBegin());
     QChar *ptr = begin + currentSize;
     QStringConverter::State cs(QStringConverter::Flag::Stateless);
     if (device == nullptr) {
         // Easy case: we can decode straight from the buffer we already have
-        ptr = QUtf8::convertToUnicode(ptr, { buffer.constData() + bufferStart, utf8len }, &cs);
+        ptr = QUtf8::convertToUnicode(ptr, { buffer.constBegin() + bufferStart, utf8len }, &cs);
     } else {
         // read in chunks, to avoid creating large, intermediate buffers
         constexpr qsizetype StringChunkSize = 16384;

@@ -1,12 +1,13 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef TOUCH_HANDLE_DRAWABLE_QT_H
 #define TOUCH_HANDLE_DRAWABLE_QT_H
 
 #include "ui/touch_selection/touch_handle.h"
 #include "ui/touch_selection/touch_handle_orientation.h"
-#include "ui/gfx/image/image.h"
+#include "ui/base/models/image_model.h"
 
 #include <QtCore/QScopedPointer>
 
@@ -19,7 +20,7 @@ class TouchHandleDrawableQt : public ui::TouchHandleDrawable
 public:
     explicit TouchHandleDrawableQt(TouchHandleDrawableDelegate *delegate);
     ~TouchHandleDrawableQt() override;
-    static gfx::Image *GetHandleImage(ui::TouchHandleOrientation orientation);
+    static ui::ImageModel GetHandleVectorIcon(ui::TouchHandleOrientation orientation);
 
 private:
     void UpdateBounds();

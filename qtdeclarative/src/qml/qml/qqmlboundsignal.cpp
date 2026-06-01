@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlboundsignal_p.h"
 
@@ -51,7 +52,7 @@ QQmlBoundSignalExpression::QQmlBoundSignalExpression(const QObject *target, int 
         //TODO: look at using the property cache here (as in the compiler)
         //      for further optimization
         QMetaMethod signal = QMetaObjectPrivate::signal(m_target->metaObject(), m_index);
-        function += QQmlPropertyCache::signalParameterStringForJS(v4, signal.parameterNames(), &error);
+        function += QQmlPropertyCache::signalParameterStringForJS(signal.parameterNames(), &error);
 
         if (!error.isEmpty()) {
             qmlWarning(scopeObject()) << error;
@@ -83,7 +84,7 @@ QQmlBoundSignalExpression::QQmlBoundSignalExpression(const QObject *target, int 
         QList<QByteArray> signalParameters = QMetaObjectPrivate::signal(m_target->metaObject(), m_index).parameterNames();
         if (!signalParameters.isEmpty()) {
             QString error;
-            QQmlPropertyCache::signalParameterStringForJS(engine, signalParameters, &error);
+            QQmlPropertyCache::signalParameterStringForJS(signalParameters, &error);
             if (!error.isEmpty()) {
                 qmlWarning(scopeObject) << error;
                 return;

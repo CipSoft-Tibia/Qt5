@@ -8,6 +8,7 @@ It is supposed to be strictly declarative and only uses a subset of QML. If you 
 this file manually, you might introduce QML code that is not supported by Qt Design Studio.
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -177,8 +178,7 @@ Column {
             to: 0
         }
 
-        onFinished: tasksList.visible = false
-    }
+   }
 
     ParallelAnimation {
         id: showTasksList
@@ -196,6 +196,15 @@ Column {
             to: 1
         }
 
-        onStarted: tasksList.visible = true
     }
+
+   Connections {
+       target: hideTasksList
+       function onFinished() { tasksList.visible = false }
+   }
+
+   Connections {
+       target: showTasksList
+       function onStarted() { tasksList.visible = true }
+   }
 }

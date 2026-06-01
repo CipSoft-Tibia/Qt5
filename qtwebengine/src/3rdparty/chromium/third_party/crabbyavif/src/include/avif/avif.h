@@ -40,6 +40,14 @@ constexpr static const uint32_t AVIF_STRICT_ALPHA_ISPE_REQUIRED = (1 << 2);
 
 constexpr static const uint32_t AVIF_STRICT_ENABLED = ((AVIF_STRICT_PIXI_REQUIRED | AVIF_STRICT_CLAP_VALID) | AVIF_STRICT_ALPHA_ISPE_REQUIRED);
 
+constexpr static const uint32_t AVIF_IMAGE_CONTENT_NONE = 0;
+
+constexpr static const uint32_t AVIF_IMAGE_CONTENT_COLOR_AND_ALPHA = ((1 << 0) | (1 << 1));
+
+constexpr static const uint32_t AVIF_IMAGE_CONTENT_GAIN_MAP = (1 << 2);
+
+constexpr static const uint32_t AVIF_IMAGE_CONTENT_ALL = (AVIF_IMAGE_CONTENT_COLOR_AND_ALPHA | AVIF_IMAGE_CONTENT_GAIN_MAP);
+
 constexpr static const size_t CRABBY_AVIF_DIAGNOSTICS_ERROR_BUFFER_SIZE = 256;
 
 constexpr static const size_t CRABBY_AVIF_PLANE_COUNT_YUV = 3;
@@ -67,6 +75,11 @@ constexpr static const uint32_t AVIF_COLOR_PRIMARIES_BT2100 = 9;
 constexpr static const uint32_t AVIF_COLOR_PRIMARIES_DCI_P3 = 12;
 
 constexpr static const uint32_t AVIF_TRANSFER_CHARACTERISTICS_SMPTE2084 = 16;
+
+enum AndroidMediaCodecOutputColorFormat : int32_t {
+    ANDROID_MEDIA_CODEC_OUTPUT_COLOR_FORMAT_YUV420_FLEXIBLE = 2135033992,
+    ANDROID_MEDIA_CODEC_OUTPUT_COLOR_FORMAT_P010 = 54,
+};
 
 enum avifChromaDownsampling {
     AVIF_CHROMA_DOWNSAMPLING_AUTOMATIC,
@@ -107,6 +120,11 @@ enum avifColorPrimaries : uint16_t {
     AVIF_COLOR_PRIMARIES_EBU3213 = 22,
 };
 
+enum CompressionFormat {
+    COMPRESSION_FORMAT_AVIF = 0,
+    COMPRESSION_FORMAT_HEIC = 1,
+};
+
 enum avifRGBFormat {
     AVIF_RGB_FORMAT_RGB,
     AVIF_RGB_FORMAT_RGBA,
@@ -145,6 +163,8 @@ enum avifPixelFormat {
     AVIF_PIXEL_FORMAT_YUV420 = 3,
     AVIF_PIXEL_FORMAT_YUV400 = 4,
     AVIF_PIXEL_FORMAT_ANDROID_P010 = 5,
+    AVIF_PIXEL_FORMAT_ANDROID_NV12 = 6,
+    AVIF_PIXEL_FORMAT_ANDROID_NV21 = 7,
     AVIF_PIXEL_FORMAT_COUNT,
 };
 
@@ -301,27 +321,30 @@ struct avifImageMirror {
     uint8_t axis;
 };
 
-struct avifGainMapMetadata {
-    int32_t gainMapMinN[3];
-    uint32_t gainMapMinD[3];
-    int32_t gainMapMaxN[3];
-    uint32_t gainMapMaxD[3];
-    uint32_t gainMapGammaN[3];
-    uint32_t gainMapGammaD[3];
-    int32_t baseOffsetN[3];
-    uint32_t baseOffsetD[3];
-    int32_t alternateOffsetN[3];
-    uint32_t alternateOffsetD[3];
-    uint32_t baseHdrHeadroomN;
-    uint32_t baseHdrHeadroomD;
-    uint32_t alternateHdrHeadroomN;
-    uint32_t alternateHdrHeadroomD;
-    avifBool useBaseColorSpace;
+struct Fraction {
+    int32_t n;
+    uint32_t d;
 };
+
+using avifSignedFraction = Fraction;
+
+struct UFraction {
+    uint32_t n;
+    uint32_t d;
+};
+
+using avifUnsignedFraction = UFraction;
 
 struct avifGainMap {
     avifImage *image;
-    avifGainMapMetadata metadata;
+    avifSignedFraction gainMapMin[3];
+    avifSignedFraction gainMapMax[3];
+    avifUnsignedFraction gainMapGamma[3];
+    avifSignedFraction baseOffset[3];
+    avifSignedFraction alternateOffset[3];
+    avifUnsignedFraction baseHdrHeadroom;
+    avifUnsignedFraction alternateHdrHeadroom;
+    avifBool useBaseColorSpace;
     avifRWData altICC;
     avifColorPrimaries altColorPrimaries;
     avifTransferCharacteristics altTransferCharacteristics;
@@ -382,6 +405,8 @@ struct avifDecoderData {
 
 };
 
+using avifImageContentTypeFlags = uint32_t;
+
 struct avifDecoder {
     avifCodecChoice codecChoice;
     int32_t maxThreads;
@@ -407,10 +432,10 @@ struct avifDecoder {
     avifIOStats ioStats;
     avifDiagnostics diag;
     avifDecoderData *data;
-    avifBool gainMapPresent;
-    avifBool enableDecodingGainMap;
-    avifBool enableParsingGainMapMetadata;
+    avifImageContentTypeFlags imageContentToDecode;
     avifBool imageSequenceTrackPresent;
+    AndroidMediaCodecOutputColorFormat androidMediaCodecOutputColorFormat;
+    CompressionFormat compressionFormat;
     Box<Decoder> rust_decoder;
     avifImage image_object;
     avifGainMap gainmap_object;
@@ -548,6 +573,10 @@ avifImage *crabby_avifImageCreate(uint32_t width,
                                   uint32_t depth,
                                   avifPixelFormat yuvFormat);
 
+avifResult crabby_avifImageCopy(avifImage *dstImage,
+                                const avifImage *srcImage,
+                                avifPlanesFlags planes);
+
 avifResult crabby_avifImageAllocatePlanes(avifImage *image, avifPlanesFlags planes);
 
 void crabby_avifImageFreePlanes(avifImage *image, avifPlanesFlags planes);
@@ -601,7 +630,7 @@ avifResult crabby_avifImageScale(avifImage *image,
                                  uint32_t dstHeight,
                                  avifDiagnostics *_diag);
 
-const char *crabby_avifResultToString(avifResult _res);
+const char *crabby_avifResultToString(avifResult res);
 
 avifBool crabby_avifCropRectConvertCleanApertureBox(avifCropRect *cropRect,
                                                     const avifCleanApertureBox *clap,

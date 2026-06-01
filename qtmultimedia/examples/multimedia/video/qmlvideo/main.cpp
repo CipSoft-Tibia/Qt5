@@ -13,10 +13,6 @@
 #include <QString>
 #include <QStringList>
 
-#if QT_CONFIG(permissions)
-  #include <QPermission>
-#endif
-
 static const QString DefaultFileName1 = "";
 static const QString DefaultFileName2 = "";
 
@@ -66,16 +62,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    QUrl url1, url2;
-    if (sourceIsUrl) {
-        url1 = source1;
-        url2 = source2;
-    } else {
-        if (!source1.isEmpty())
-            url1 = QUrl::fromLocalFile(source1);
-        if (!source2.isEmpty())
-            url2 = QUrl::fromLocalFile(source2);
-    }
+    QUrl url1 = sourceIsUrl ? QUrl{source1} : QUrl::fromLocalFile(source1);
+    QUrl url2 = sourceIsUrl ? QUrl{source2} : QUrl::fromLocalFile(source2);
 
     const QStringList moviesLocation = QStandardPaths::standardLocations(QStandardPaths::MoviesLocation);
     const QUrl videoPath = QUrl::fromLocalFile(moviesLocation.isEmpty() ? app.applicationDirPath()
@@ -84,8 +72,8 @@ int main(int argc, char *argv[])
     QQuickView viewer;
     VideoSingleton* singleton = viewer.engine()->singletonInstance<VideoSingleton*>("qmlvideo", "VideoSingleton");
     singleton->setVideoPath(videoPath);
-    singleton->setSource1(source1);
-    singleton->setSource2(source2);
+    singleton->setSource1(url1);
+    singleton->setSource2(url2);
     singleton->setVolume(volume);
     viewer.loadFromModule("qmlvideo", "Main");
     QObject::connect(viewer.engine(), &QQmlEngine::quit, &viewer, &QQuickView::close);
@@ -97,23 +85,8 @@ int main(int argc, char *argv[])
 
     QMetaObject::invokeMethod(rootObject, "init");
 
-    auto setupView = [&viewer]() {
-        viewer.setMinimumSize(QSize(640, 360));
-        viewer.show();
-    };
-
-#if QT_CONFIG(permissions)
-    QCameraPermission cameraPermission;
-    qApp->requestPermission(cameraPermission, [&setupView](const QPermission &permission) {
-        // Show UI in any case. If there is no permission, the UI will just
-        // be disabled.
-        if (permission.status() != Qt::PermissionStatus::Granted)
-            qWarning("Camera permission is not granted! Camera will not be available.");
-        setupView();
-    });
-#else
-    setupView();
-#endif
+    viewer.setMinimumSize(QSize(640, 360));
+    viewer.show();
 
     return app.exec();
 }

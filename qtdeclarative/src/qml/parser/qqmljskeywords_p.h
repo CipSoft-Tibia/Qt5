@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QQMLJSKEYWORDS_P_H
 #define QQMLJSKEYWORDS_P_H
@@ -21,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QQmlJS {
 
-static inline int classify2(const QChar *s, int parseModeFlags) {
+static inline int classify2(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'a') {
     if (s[1].unicode() == 's') {
       return Lexer::T_AS;
@@ -51,7 +52,7 @@ static inline int classify2(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify3(const QChar *s, int parseModeFlags) {
+static inline int classify3(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'f') {
     if (s[1].unicode() == 'o') {
       if (s[2].unicode() == 'r') {
@@ -111,7 +112,7 @@ static inline int classify3(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify4(const QChar *s, int parseModeFlags) {
+static inline int classify4(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'b') {
     if (s[1].unicode() == 'y') {
       if (s[2].unicode() == 't') {
@@ -226,7 +227,7 @@ static inline int classify4(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify5(const QChar *s, int parseModeFlags) {
+static inline int classify5(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'b') {
     if (s[1].unicode() == 'r') {
       if (s[2].unicode() == 'e') {
@@ -352,7 +353,7 @@ static inline int classify5(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify6(const QChar *s, int parseModeFlags) {
+static inline int classify6(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'd') {
     if (s[1].unicode() == 'e') {
       if (s[2].unicode() == 'l') {
@@ -515,7 +516,7 @@ static inline int classify6(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify7(const QChar *s, int parseModeFlags) {
+static inline int classify7(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'b') {
     if (s[1].unicode() == 'o') {
       if (s[2].unicode() == 'o') {
@@ -607,7 +608,7 @@ static inline int classify7(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify8(const QChar *s, int parseModeFlags) {
+static inline int classify8(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'a') {
     if (s[1].unicode() == 'b') {
       if (s[2].unicode() == 's') {
@@ -742,7 +743,7 @@ static inline int classify8(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify9(const QChar *s, int parseModeFlags) {
+static inline int classify9(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'i') {
     if (s[1].unicode() == 'n') {
       if (s[2].unicode() == 't') {
@@ -822,7 +823,7 @@ static inline int classify9(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify10(const QChar *s, int parseModeFlags) {
+static inline int classify10(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 'i') {
     if (s[1].unicode() == 'm') {
       if (s[2].unicode() == 'p') {
@@ -866,7 +867,7 @@ static inline int classify10(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-static inline int classify12(const QChar *s, int parseModeFlags) {
+static inline int classify12(QStringView s, int parseModeFlags) {
   if (s[0].unicode() == 's') {
     if (s[1].unicode() == 'y') {
       if (s[2].unicode() == 'n') {
@@ -895,8 +896,8 @@ static inline int classify12(const QChar *s, int parseModeFlags) {
   return Lexer::T_IDENTIFIER;
 }
 
-int Lexer::classify(const QChar *s, int n, int parseModeFlags) {
-  switch (n) {
+int Lexer::classify(QStringView s, int parseModeFlags) {
+  switch (s.size()) {
     case 2: return classify2(s, parseModeFlags);
     case 3: return classify3(s, parseModeFlags);
     case 4: return classify4(s, parseModeFlags);

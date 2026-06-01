@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qapplication.h"
 #include "qapplication_p.h"
@@ -30,7 +31,7 @@
 #include "private/qwidgetwindow_p.h"
 #include "qpainter.h"
 #if QT_CONFIG(tooltip)
-#include "qtooltip.h"
+#include "private/qtooltip_p.h"
 #endif
 #if QT_CONFIG(whatsthis)
 #include "qwhatsthis.h"
@@ -108,7 +109,7 @@ extern bool qt_sendSpontaneousEvent(QObject*, QEvent*); // qapplication.cpp
 static void setAttribute_internal(Qt::WidgetAttribute attribute,
     bool on, QWidgetData *data, QWidgetPrivate *d);
 
-QWidgetPrivate::QWidgetPrivate(int version)
+QWidgetPrivate::QWidgetPrivate(decltype(QObjectPrivateVersion) version)
     : QObjectPrivate(version)
       , focus_next(nullptr)
       , focus_prev(nullptr)
@@ -160,6 +161,7 @@ QWidgetPrivate::QWidgetPrivate(int version)
       , childrenHiddenByWState(0)
       , childrenShownByExpose(0)
       , dontSetExplicitShowHide(0)
+      , inheritStyleRecursionGuard(0)
 #if defined(Q_OS_WIN)
       , noPaintOnScreen(0)
 #endif
@@ -168,16 +170,6 @@ QWidgetPrivate::QWidgetPrivate(int version)
         qFatal("QWidget: Must construct a QApplication before a QWidget");
         return;
     }
-
-#ifdef QT_BUILD_INTERNAL
-    // Don't check the version parameter in internal builds.
-    // This allows incompatible versions to be loaded, possibly for testing.
-    Q_UNUSED(version);
-#else
-    if (Q_UNLIKELY(version != QObjectPrivateVersion))
-        qFatal("Cannot mix incompatible Qt library (version 0x%x) with this library (version 0x%x)",
-                version, QObjectPrivateVersion);
-#endif
 
     willBeWidget = true; // used in QObject's ctor
     memset(high_attributes, 0, sizeof(high_attributes));
@@ -397,7 +389,9 @@ void QWidget::setAutoFillBackground(bool enabled)
     example, it is possible to display a button as a top-level window, but most
     people prefer to put their buttons inside other widgets, such as QDialog.
 
-    \image parent-child-widgets.png A parent widget containing various child widgets.
+    \image parent-child-widgets.png
+           {Appointment widget with labeled child widgets}
+    \caption A parent widget containing various child widgets.
 
     The diagram above shows a QGroupBox widget being used to hold various child
     widgets in a layout provided by QGridLayout. The QLabel child widgets have
@@ -697,6 +691,8 @@ void QWidget::setAutoFillBackground(bool enabled)
     can be fine-tuned to achieve different effects.
 
     \image propagation-custom.png
+           {Three pixmaps of a house with different background properties:
+           transparent, filled with white, and uninitialized}
 
     In the above diagram, a semi-transparent rectangular child widget with an
     area removed is constructed and added to a parent widget (a QLabel showing
@@ -740,6 +736,8 @@ void QWidget::setAutoFillBackground(bool enabled)
     in a non-standard way, as shown in the diagram below.
 
     \image propagation-standard.png
+           {One widget has a transparent background
+           and the other widget has a filled background}
 
     The scope for customizing the painting behavior of standard Qt widgets,
     without resorting to subclassing, is slightly less than that possible for
@@ -1436,7 +1434,9 @@ void QWidgetPrivate::createTLSysExtra()
         if (extra->topextra->opacity != 255 && q->isWindow())
             extra->topextra->window->setOpacity(qreal(extra->topextra->opacity) / qreal(255));
 
-        const bool isTipLabel = q->inherits("QTipLabel");
+#if QT_CONFIG(tooltip)
+        const bool isTipLabel = qobject_cast<const QTipLabel *>(q) != nullptr;
+#endif
         const bool isAlphaWidget = !isTipLabel && q->inherits("QAlphaWidget");
 #ifdef Q_OS_WIN
         // Pass on native parent handle for Widget embedded into Active X.
@@ -2690,7 +2690,7 @@ void QWidgetPrivate::setStyle_helper(QStyle *newStyle, bool propagate)
     extra->style = newStyle;
 
     // repolish
-    if (polished && q->windowType() != Qt::Desktop && oldStyle != q->style()) {
+    if (polished && q->windowType() != Qt::Desktop) {
         oldStyle->unpolish(q);
         q->style()->polish(q);
     }
@@ -2738,6 +2738,12 @@ void QWidgetPrivate::inheritStyle()
         proxy->repolish(q);
         return;
     }
+    if (inheritStyleRecursionGuard)
+        return;
+    inheritStyleRecursionGuard = true;
+    const auto resetGuard = qScopeGuard([&]() {
+            inheritStyleRecursionGuard = false;
+        });
 
     QStyle *origStyle = proxy ? proxy->base : extraStyle;
     QWidget *parent = q->parentWidget();
@@ -9514,14 +9520,14 @@ void QWidget::changeEvent(QEvent * event)
     tracking is switched on, mouse move events occur even if no mouse
     button is pressed.
 
-    QMouseEvent::pos() reports the position of the mouse cursor,
+    QMouseEvent::position() reports the position of the mouse cursor,
     relative to this widget. For press and release events, the
     position is usually the same as the position of the last mouse
     move event, but it might be different if the user's hand shakes.
     This is a feature of the underlying window system, not Qt.
 
     If you want to show a tooltip immediately, while the mouse is
-    moving (e.g., to get the mouse coordinates with QMouseEvent::pos()
+    moving (e.g., to get the mouse coordinates with QMouseEvent::position()
     and show them as a tooltip), you must first enable mouse tracking
     as described above. Then, to ensure that the tooltip is updated
     immediately, you must call QToolTip::showText() instead of
@@ -10599,6 +10605,10 @@ void QWidget::setWindowFlags(Qt::WindowFlags flags)
     Sets the window flag \a flag on this widget if \a on is true;
     otherwise clears the flag.
 
+    \note This function calls setParent() when changing the flags for
+    a window, causing the widget to be hidden. You must call show() to make
+    the widget visible again.
+
     \sa setWindowFlags(), windowFlags(), windowType()
 */
 void QWidget::setWindowFlag(Qt::WindowType flag, bool on)
@@ -10929,10 +10939,12 @@ void QWidget::setParent(QWidget *parent, Qt::WindowFlags f)
                         << "to support" << surfaceType;
                     const auto windowStateBeforeDestroy = newParentWithWindow->windowState();
                     const auto visibilityBeforeDestroy = newParentWithWindow->isVisible();
+                    const auto positionBeforeDestroy = newParentWithWindow->pos();
                     newParentWithWindow->destroy();
                     newParentWithWindow->create();
                     Q_ASSERT(newParentWithWindow->windowHandle());
                     newParentWithWindow->windowHandle()->setWindowStates(windowStateBeforeDestroy);
+                    newParentWithWindow->move(positionBeforeDestroy);
                     QWidgetPrivate::get(newParentWithWindow)->setVisible(visibilityBeforeDestroy);
                 } else if (auto *backingStore = newParentWithWindow->backingStore()) {
                     // If we don't recreate we still need to make sure the native parent
@@ -11131,6 +11143,7 @@ void QWidget::scroll(int dx, int dy)
         for (const QRect &rect : d->dirty)
             proxy->update(rect.translated(dx, dy));
         proxy->scroll(dx, dy, proxy->subWidgetRect(this));
+        d->scrollChildren(dx, dy); // QTBUG-138381: scroll item view cell widgets
         return;
     }
 #endif
@@ -13111,7 +13124,7 @@ void QWidget::initPainter(QPainter *painter) const
     const QPalette &pal = palette();
     painter->d_func()->state->pen = QPen(pal.brush(foregroundRole()), 1);
     painter->d_func()->state->bgBrush = pal.brush(backgroundRole());
-    QFont f(font(), const_cast<QWidget *>(this));
+    QFont f(font(), this);
     painter->d_func()->state->deviceFont = f;
     painter->d_func()->state->font = f;
 }

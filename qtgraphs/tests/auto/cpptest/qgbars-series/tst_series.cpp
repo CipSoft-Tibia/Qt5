@@ -80,6 +80,7 @@ void tst_series::initialProperties()
     QCOMPARE(m_series->isMeshSmooth(), false);
     QCOMPARE(m_series->multiHighlightColor(), QColor(Qt::black));
     QCOMPARE(m_series->multiHighlightGradient(), QLinearGradient());
+    QCOMPARE(m_series->lightingMode(), QAbstract3DSeries::LightingMode::Shaded);
     QCOMPARE(m_series->name(), QString(""));
     QCOMPARE(m_series->singleHighlightColor(), QColor(Qt::black));
     QCOMPARE(m_series->singleHighlightGradient(), QLinearGradient());
@@ -114,6 +115,7 @@ void tst_series::initializeProperties()
     QSignalSpy singleHighlightGradientSpy(m_series, &QBar3DSeries::singleHighlightGradientChanged);
     QSignalSpy multiHighlightColorSpy(m_series, &QBar3DSeries::multiHighlightColorChanged);
     QSignalSpy multiHighlightGradientSpy(m_series, &QBar3DSeries::multiHighlightGradientChanged);
+    QSignalSpy lightingModeSpy(m_series, &QBar3DSeries::lightingModeChanged);
     QSignalSpy nameSpy(m_series, &QBar3DSeries::nameChanged);
     QSignalSpy itemLabelSpy(m_series, &QBar3DSeries::itemLabelChanged);
     QSignalSpy itemLabelVisibleSpy(m_series, &QBar3DSeries::itemLabelVisibleChanged);
@@ -159,6 +161,7 @@ void tst_series::initializeProperties()
     m_series->setMeshSmooth(true);
     m_series->setMultiHighlightColor(QColor(Qt::green));
     m_series->setMultiHighlightGradient(gradient2);
+    m_series->setLightingMode(QAbstract3DSeries::LightingMode::Unshaded);
     m_series->setName("name");
     m_series->setSingleHighlightColor(QColor(Qt::red));
     m_series->setSingleHighlightGradient(gradient3);
@@ -179,6 +182,7 @@ void tst_series::initializeProperties()
     QCOMPARE(m_series->multiHighlightColor(), QColor(Qt::green));
     QCOMPARE(m_series->multiHighlightGradient(), gradient2);
     QCOMPARE(m_series->multiHighlightGradient().stops().at(0).second, QColor(Qt::yellow));
+    QCOMPARE(m_series->lightingMode(), QAbstract3DSeries::LightingMode::Unshaded);
     QCOMPARE(m_series->name(), QString("name"));
     QCOMPARE(m_series->singleHighlightColor(), QColor(Qt::red));
     QCOMPARE(m_series->singleHighlightGradient(), gradient3);
@@ -211,6 +215,7 @@ void tst_series::initializeProperties()
     QCOMPARE(singleHighlightGradientSpy.size(), 1);
     QCOMPARE(multiHighlightColorSpy.size(), 1);
     QCOMPARE(multiHighlightGradientSpy.size(), 1);
+    QCOMPARE(lightingModeSpy.size(), 1);
     QCOMPARE(nameSpy.size(), 1);
     QCOMPARE(itemLabelSpy.size(), 0);
     QCOMPARE(itemLabelVisibleSpy.size(), 1);

@@ -7,32 +7,21 @@ import * as Helpers from '../helpers/helpers.js';
 import * as Types from '../types/types.js';
 
 import {data as networkData} from './NetworkRequestsHandler.js';
-import {HandlerState, type TraceEventHandlerName} from './types.js';
+import type {HandlerName} from './types.js';
 
-const serverTimings: Types.TraceEvents.SyntheticServerTiming[] = [];
-
-let handlerState = HandlerState.UNINITIALIZED;
+const serverTimings: Types.Events.SyntheticServerTiming[] = [];
 
 export function reset(): void {
   serverTimings.length = 0;
-  handlerState = HandlerState.UNINITIALIZED;
 }
 
-export function initialize(): void {
-  handlerState = HandlerState.INITIALIZED;
-}
-
-export function handleEvent(_event: Types.TraceEvents.TraceEventData): void {
+export function handleEvent(_event: Types.Events.Event): void {
   // Implementation not needed because data is sourced from NetworkRequestsHandler
 }
 
 export async function finalize(): Promise<void> {
-  if (handlerState !== HandlerState.INITIALIZED) {
-    throw new Error('Server Timings handler is not initialized');
-  }
   extractServerTimings();
   Helpers.Trace.sortTraceEventsInPlace(serverTimings);
-  handlerState = HandlerState.FINALIZED;
 }
 
 const RESPONSE_START_METRIC_NAME = 'response-start';
@@ -84,12 +73,12 @@ function extractServerTimings(): void {
   }
 }
 function createSyntheticServerTiming(
-    request: Types.TraceEvents.SyntheticNetworkRequest, serverStart: number, serverEnd: number,
-    timingsInRequest: Platform.ServerTiming.ServerTiming[]): Types.TraceEvents.SyntheticServerTiming[] {
+    request: Types.Events.SyntheticNetworkRequest, serverStart: number, serverEnd: number,
+    timingsInRequest: Platform.ServerTiming.ServerTiming[]): Types.Events.SyntheticServerTiming[] {
   const clientStart = request.args.data.syntheticData.sendStartTime;
   const clientEndTime = request.args.data.syntheticData.sendStartTime + request.args.data.syntheticData.waiting;
-  const offset = Types.Timing.MicroSeconds((serverStart - clientStart + serverEnd - clientEndTime) / 2);
-  const convertedServerTimings: Types.TraceEvents.SyntheticServerTiming[] = [];
+  const offset = Types.Timing.Micro((serverStart - clientStart + serverEnd - clientEndTime) / 2);
+  const convertedServerTimings: Types.Events.SyntheticServerTiming[] = [];
   for (const timing of timingsInRequest) {
     if (timing.metric === RESPONSE_START_METRIC_NAME || timing.metric === RESPONSE_END_METRIC_NAME) {
       continue;
@@ -97,19 +86,18 @@ function createSyntheticServerTiming(
     if (timing.start === null) {
       continue;
     }
-    const convertedTimestamp =
-        Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(timing.start)) - offset;
+    const convertedTimestamp = Helpers.Timing.milliToMicro(Types.Timing.Milli(timing.start)) - offset;
     const parsedUrl = new URL(request.args.data.url);
     const origin = parsedUrl.origin;
 
     const serverTiming = Helpers.SyntheticEvents.SyntheticEventsManager.registerServerTiming({
       rawSourceEvent: request.rawSourceEvent,
       name: timing.metric,
-      ph: Types.TraceEvents.Phase.COMPLETE,
-      pid: Types.TraceEvents.ProcessID(0),
-      tid: Types.TraceEvents.ThreadID(0),
-      ts: Types.Timing.MicroSeconds(convertedTimestamp),
-      dur: Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(timing.value)),
+      ph: Types.Events.Phase.COMPLETE,
+      pid: Types.Events.ProcessID(0),
+      tid: Types.Events.ThreadID(0),
+      ts: Types.Timing.Micro(convertedTimestamp),
+      dur: Helpers.Timing.milliToMicro(Types.Timing.Milli(timing.value)),
       cat: 'devtools.server-timing',
       args: {data: {desc: timing.description || undefined, origin}},
     });
@@ -123,16 +111,12 @@ function createSyntheticServerTiming(
   return convertedServerTimings;
 }
 
-export function data(): {serverTimings: Types.TraceEvents.SyntheticServerTiming[]} {
-  if (handlerState !== HandlerState.FINALIZED) {
-    throw new Error('Server Timing handler is not finalized');
-  }
-
+export function data(): {serverTimings: Types.Events.SyntheticServerTiming[]} {
   return {
     serverTimings,
   };
 }
 
-export function deps(): TraceEventHandlerName[] {
+export function deps(): HandlerName[] {
   return ['NetworkRequests'];
 }

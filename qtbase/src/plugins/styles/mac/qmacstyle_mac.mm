@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*
   Note: The qdoc comments for QMacStyle are contained in
@@ -41,6 +42,8 @@
 #if QT_CONFIG(wizard)
 #include <QtWidgets/qwizard.h>
 #endif
+
+#include <QtGui/private/qmacstyle_p.h>
 
 #include <iterator>
 #include <cmath>
@@ -363,40 +366,6 @@ static const int toolButtonArrowSize = 7;
 static const int toolButtonArrowMargin = 2;
 
 static const qreal focusRingWidth = 3.5;
-
-// An application can force 'Aqua' theme while the system theme is one of
-// the 'Dark' variants. Since in Qt we sometimes use NSControls and even
-// NSCells directly without attaching them to any view hierarchy, we have
-// to set NSAppearance.currentAppearance to 'Aqua' manually, to make sure
-// the correct rendering path is triggered. Apple recommends us to un-set
-// the current appearance back after we finished with drawing. This is what
-// AppearanceSync is for.
-
-class AppearanceSync {
-public:
-    AppearanceSync()
-    {
-        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSMojave
-            && !isDarkMode()) {
-            auto requiredAppearanceName = NSApplication.sharedApplication.effectiveAppearance.name;
-            if (![NSAppearance.currentAppearance.name isEqualToString:requiredAppearanceName]) {
-                previous = NSAppearance.currentAppearance;
-                NSAppearance.currentAppearance = [NSAppearance appearanceNamed:requiredAppearanceName];
-            }
-        }
-    }
-
-    ~AppearanceSync()
-    {
-        if (previous)
-            NSAppearance.currentAppearance = previous;
-    }
-
-private:
-    NSAppearance *previous = nil;
-
-    Q_DISABLE_COPY(AppearanceSync)
-};
 
 static bool setupScroller(NSScroller *scroller, const QStyleOptionSlider *sb)
 {
@@ -798,6 +767,18 @@ static bool qt_macWindowMainWindow(const QWidget *window)
         }
     }
     return false;
+}
+
+static NSUserInterfaceLayoutDirection qt_macLayoutDirectionFromQt(Qt::LayoutDirection direction)
+{
+    switch (direction) {
+    case Qt::LeftToRight:
+        return NSUserInterfaceLayoutDirectionLeftToRight;
+    case Qt::RightToLeft:
+        return NSUserInterfaceLayoutDirectionRightToLeft;
+    case Qt::LayoutDirectionAuto:
+        return [NSApp userInterfaceLayoutDirection];
+    }
 }
 
 /*****************************************************************************
@@ -1781,8 +1762,11 @@ QMarginsF QMacStylePrivate::CocoaControl::titleMargins() const
                 return QMarginsF(12, 6, 12, 8);
             return QMarginsF(12, 5, 12, 9);
         }
-        if (size == QStyleHelper::SizeSmall)
+        if (size == QStyleHelper::SizeSmall) {
+            if (qt_apple_runningWithLiquidGlass())
+                return QMarginsF(12, 6, 12, 7);
             return QMarginsF(12, 4, 12, 9);
+        }
         if (size == QStyleHelper::SizeMini)
             return QMarginsF(10, 1, 10, 2);
     }
@@ -2221,6 +2205,100 @@ void QMacStylePrivate::drawNSViewInRect(NSView *view, const QRectF &rect, QPaint
 void QMacStylePrivate::resolveCurrentNSView(QWindow *window) const
 {
     backingStoreNSView = window ? (NSView *)window->winId() : nil;
+}
+
+void QMacStylePrivate::drawProgressBar(QPainter* p, const QStyleOptionProgressBar *pb) const
+{
+    const qreal progress = pb->progress / double(pb->maximum - pb->minimum);
+    const bool indeterminate = (pb->minimum == 0 && pb->maximum == 0);
+    const bool vertical = !(pb->state & QStyle::State_Horizontal);
+    const bool inverted = pb->invertedAppearance || (!vertical && (pb->direction == Qt::RightToLeft));
+    QRect rect = pb->rect;
+
+    // The height of a (horizontal) progressbar is fixed, and is found to have
+    // a value of 8 (from eyeballing an NSProgressIndicator in XCode 26)
+    const qreal fixedSize = 8;
+    const qreal radius = fixedSize / 2.;
+
+    QRectF groove;
+    QRectF track;
+
+    if (vertical)
+        groove = QRectF((rect.width() - fixedSize) / 2, rect.y(), fixedSize, rect.height());
+    else
+        groove = QRectF(rect.x(), (rect.height() - fixedSize) / 2, rect.width(), fixedSize);
+
+    if (indeterminate) {
+        const qreal velocity = 100;
+        const qreal minBlockSize = 15;
+        const qreal maxBlockFraction = 0.25;
+
+        // We use a static timer to dermine the progress position, since
+        // all indeterminate progressbars should animate in sync.
+        static QElapsedTimer timer;
+        if (!timer.isValid())
+          timer.start();
+
+        const qreal time = (timer.elapsed() / (1000.0 / 60.0));
+        const qreal normalizedPos = 0.5 - (0.5 * std::cos(time / velocity * 2 * M_PI)); // 0 -> 1
+
+        if (vertical) {
+            const qreal maxBlockSize = rect.height() * maxBlockFraction;
+            const qreal margin = (maxBlockSize - minBlockSize) / (2 * rect.height());
+            const qreal pos = -margin + (normalizedPos * (1 + (margin * 2)));
+            const qreal pixelPos = pos * rect.height();
+            const qreal top = pixelPos > (maxBlockSize / 2) ? pixelPos - (maxBlockSize / 2) : 0;
+            const qreal bottom = pixelPos > rect.height() - (maxBlockSize / 2)
+                ? rect.height() : pixelPos + (maxBlockSize / 2);
+            track = QRectF((rect.width() - fixedSize) / 2, top, fixedSize, bottom - top);
+        } else {
+            const qreal maxBlockSize = rect.width() * maxBlockFraction;
+            const qreal margin = (maxBlockSize - minBlockSize) / (2 * rect.width());
+            const qreal pos = -margin + (normalizedPos * (1 + (margin * 2)));
+            const qreal pixelPos = pos * rect.width();
+            const qreal left = pixelPos > (maxBlockSize / 2) ? pixelPos - (maxBlockSize / 2) : 0;
+            const qreal right = pixelPos > rect.width() - (maxBlockSize / 2)
+                ? rect.width() : pixelPos + (maxBlockSize / 2);
+            track = QRectF(left, (rect.height() - fixedSize) / 2, right - left, fixedSize);
+        }
+    } else {
+        if (vertical) {
+            const qreal trackSize = rect.height() * progress;
+            if (inverted)
+                track = QRectF((rect.width() - fixedSize) / 2, rect.y(), fixedSize, trackSize);
+            else
+                track = QRectF((rect.width() - fixedSize) / 2, rect.height() - trackSize, fixedSize, trackSize);
+        } else {
+            const qreal trackSize = rect.width() * progress;
+            if (inverted)
+                track = QRectF(rect.width() - trackSize, (rect.height() - fixedSize) / 2, trackSize, fixedSize);
+            else
+                track = QRectF(rect.x(), (rect.height() - fixedSize) / 2, trackSize, fixedSize);
+        }
+    }
+
+    // Draw groove
+    p->save();
+    p->setRenderHint(QPainter::Antialiasing, true);
+    if (@available(macOS 14.0, *)) { // silence compiler
+        p->setPen(qt_mac_toQBrush([NSColor secondarySystemFillColor]).color());
+        p->setBrush(qt_mac_toQBrush([NSColor tertiarySystemFillColor]).color());
+    } else {
+        p->setPen(Qt::NoPen);
+        p->setBrush(qt_mac_toQBrush([NSColor controlColor]).color());
+    }
+    p->drawRoundedRect(groove, radius, radius);
+
+    // Draw track / progress
+    p->setPen(Qt::NoPen);
+    p->setBrush(pb->state & QStyle::State_Active ? pb->palette.accent().color() : Qt::lightGray);
+    p->drawRoundedRect(track, radius, radius);
+    p->restore();
+}
+
+QMacStyle *QMacStyle::create()
+{
+    return new QMacApperanceStyle<QMacStyle>;
 }
 
 QMacStyle::QMacStyle()
@@ -2754,9 +2832,6 @@ int QMacStyle::styleHint(StyleHint sh, const QStyleOption *opt, const QWidget *w
     case SH_DialogButtonBox_ButtonsHaveIcons:
         ret = 0;
         break;
-    case SH_Menu_SelectionWrap:
-        ret = false;
-        break;
     case SH_Menu_KeyboardSearch:
         ret = true;
         break;
@@ -3117,7 +3192,6 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
                               const QWidget *w) const
 {
     Q_D(const QMacStyle);
-    const AppearanceSync appSync;
     QMacCGContext cg(p);
     if (!cg)
         qCWarning(lcMacStyle) << "drawPrimitive:" << pe << "invalid (nullptr) graphics context";
@@ -3451,6 +3525,7 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
         [triangleCell setState:(opt->state & State_Open) ? NSControlStateValueOn : NSControlStateValueOff];
         bool viewHasFocus = (w && w->hasFocus()) || (opt->state & State_HasFocus);
         [triangleCell setBackgroundStyle:((opt->state & State_Selected) && viewHasFocus) ? NSBackgroundStyleEmphasized : NSBackgroundStyleNormal];
+        [triangleCell setUserInterfaceLayoutDirection:qt_macLayoutDirectionFromQt(opt->direction)];
 
         d->setupNSGraphicsContext(cg, NO);
 
@@ -3662,7 +3737,6 @@ void QMacStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                             const QWidget *w) const
 {
     Q_D(const QMacStyle);
-    const AppearanceSync sync;
     const QMacAutoReleasePool pool;
     QMacCGContext cg(p);
     if (!cg)
@@ -4595,7 +4669,9 @@ void QMacStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                             withAttributes:@{ NSFontAttributeName:f, NSForegroundColorAttributeName:c,
                                                 NSObliquenessAttributeName: [NSNumber numberWithDouble: myFont.italic() ? 0.3 : 0.0],
                                                 NSUnderlineStyleAttributeName: [NSNumber numberWithInt: myFont.underline() ? NSUnderlineStyleSingle
-                                                                                                                           : NSUnderlineStyleNone]}];
+                                                                                                                           : NSUnderlineStyleNone],
+                                                NSStrikethroughStyleAttributeName: [NSNumber numberWithInt: myFont.strikeOut() ? NSUnderlineStyleSingle
+                                                                                                                               : NSUnderlineStyleNone]}];
 
                     d->restoreNSGraphicsContext(cgCtx);
                 } else {
@@ -4645,20 +4721,11 @@ void QMacStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
             bool reverse = (!vertical && (pb->direction == Qt::RightToLeft));
             if (inverted)
                 reverse = !reverse;
-
             QRect rect = pb->rect;
-            if (vertical)
-                rect = rect.transposed();
-            const CGRect cgRect = rect.toCGRect();
 
             const auto aquaSize = d->effectiveAquaSizeConstrain(opt, w);
             const QProgressStyleAnimation *animation = qobject_cast<QProgressStyleAnimation*>(d->animation(opt->styleObject));
-            QIndeterminateProgressIndicator *ipi = nil;
-            if (isIndeterminate || animation)
-                ipi = static_cast<QIndeterminateProgressIndicator *>(d->cocoaControl({ QMacStylePrivate::ProgressIndicator_Indeterminate, aquaSize }));
             if (isIndeterminate) {
-                if (!cg)
-                    break;
                 // QIndeterminateProgressIndicator derives from NSProgressIndicator. We use a single
                 // instance that we start animating as soon as one of the progress bars is indeterminate.
                 // Since they will be in sync (as it's the case in Cocoa), we just need to draw it with
@@ -4671,28 +4738,45 @@ void QMacStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                     // NSProgressIndicator is heavier to draw than the HITheme API, so we reduce the frame rate a couple notches.
                     animation->setFrameRate(QStyleAnimation::FifteenFps);
                     d->startAnimation(animation);
-                    [ipi startAnimation];
                 }
 
-                d->setupNSGraphicsContext(cg, NO);
-                d->setupVerticalInvertedXform(cg, reverse, vertical, cgRect);
-                [ipi drawWithFrame:cgRect inView:d->backingStoreNSView];
-                d->restoreNSGraphicsContext(cg);
+                if (qt_apple_runningWithLiquidGlass()) {
+                    d->drawProgressBar(p, pb);
+                } else if (cg) {
+                    if (vertical)
+                      rect = rect.transposed();
+                    d->setupNSGraphicsContext(cg, NO);
+                    d->setupVerticalInvertedXform(cg, reverse, vertical, rect.toCGRect());
+                    if (auto *ipi
+                        = static_cast<QIndeterminateProgressIndicator *>(
+                          d->cocoaControl({ QMacStylePrivate::ProgressIndicator_Indeterminate, aquaSize }))) {
+                        [ipi startAnimation];
+                        [ipi drawWithFrame:rect.toCGRect() inView:d->backingStoreNSView];
+                    }
+                    d->restoreNSGraphicsContext(cg);
+                }
             } else {
                 if (animation) {
                     d->stopAnimation(opt->styleObject);
-                    [ipi stopAnimation];
+                    if (auto *ipi
+                        = static_cast<QIndeterminateProgressIndicator *>(
+                          d->cocoaControl({ QMacStylePrivate::ProgressIndicator_Indeterminate, aquaSize })))
+                        [ipi stopAnimation];
                 }
-
-                const auto cw = QMacStylePrivate::CocoaControl(QMacStylePrivate::ProgressIndicator_Determinate, aquaSize);
-                auto *pi = static_cast<NSProgressIndicator *>(d->cocoaControl(cw));
-                d->drawNSViewInRect(pi, rect, p, ^(CGContextRef ctx, const CGRect &rect) {
-                    d->setupVerticalInvertedXform(ctx, reverse, vertical, rect);
-                    pi.minValue = pb->minimum;
-                    pi.maxValue = pb->maximum;
-                    pi.doubleValue = pb->progress;
-                    [pi drawRect:rect];
-                });
+                if (qt_apple_runningWithLiquidGlass()) {
+                    d->drawProgressBar(p, pb);
+                } else {
+                    if (vertical)
+                        rect = rect.transposed();
+                    const auto cw = QMacStylePrivate::CocoaControl(QMacStylePrivate::ProgressIndicator_Determinate, aquaSize);
+                    auto *pi = static_cast<NSProgressIndicator *>(d->cocoaControl(cw));
+                    d->drawNSViewInRect(pi, rect, p, ^(CGContextRef ctx, const CGRect &cgrect) {
+                        d->setupVerticalInvertedXform(ctx, reverse, vertical, cgrect);
+                        pi.minValue = pb->minimum;
+                        pi.maxValue = pb->maximum;
+                        pi.doubleValue = pb->progress;
+                        [pi drawRect:cgrect]; });
+                }
             }
         }
         break;
@@ -5392,7 +5476,6 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                                    const QWidget *widget) const
 {
     Q_D(const QMacStyle);
-    const AppearanceSync sync;
     QMacCGContext cg(p);
     if (!cg)
         qCWarning(lcMacStyle) << "drawComplexControl:" << cc << "invalid (nullptr) graphics context";
@@ -5766,6 +5849,9 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                 const auto aquaSize = d->effectiveAquaSizeConstrain(opt, widget);
                 const auto cw = QMacStylePrivate::CocoaControl(QMacStylePrivate::Stepper, aquaSize);
                 NSStepperCell *cell = static_cast<NSStepperCell *>(d->cocoaCell(cw));
+                const auto controlSize = cell.controlSize;
+                if (qt_apple_runningWithLiquidGlass())
+                    cell.controlSize = NSControlSizeMini;
                 cell.enabled = (sb->state & State_Enabled);
 
                 const CGRect newRect = [cell drawingRectForBounds:updown.toCGRect()];
@@ -5786,6 +5872,8 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                     [cell stopTracking:pressPoint at:pressPoint inView:d->backingStoreNSView mouseIsUp:NO];
 
                 d->restoreNSGraphicsContext(cg);
+                if (qt_apple_runningWithLiquidGlass())
+                    cell.controlSize = controlSize;
             }
         }
         break;
@@ -6873,30 +6961,6 @@ bool QMacStyle::event(QEvent *e)
             d->focusWidget->setWidget(0);
     }
     return false;
-}
-
-QIcon QMacStyle::standardIcon(StandardPixmap standardIcon, const QStyleOption *opt,
-                              const QWidget *widget) const
-{
-    switch (standardIcon) {
-    default:
-        return QCommonStyle::standardIcon(standardIcon, opt, widget);
-    case SP_ToolBarHorizontalExtensionButton:
-    case SP_ToolBarVerticalExtensionButton: {
-        QPixmap pixmap(QLatin1String(":/qt-project.org/styles/macstyle/images/toolbar-ext-macstyle.png"));
-        if (standardIcon == SP_ToolBarVerticalExtensionButton) {
-            QPixmap pix2(pixmap.height(), pixmap.width());
-            pix2.setDevicePixelRatio(pixmap.devicePixelRatio());
-            pix2.fill(Qt::transparent);
-            QPainter p(&pix2);
-            p.translate(pix2.width(), 0);
-            p.rotate(90);
-            p.drawPixmap(0, 0, pixmap);
-            return pix2;
-        }
-        return pixmap;
-    }
-    }
 }
 
 int QMacStyle::layoutSpacing(QSizePolicy::ControlType control1,

@@ -1,10 +1,6 @@
 [mouseSelection]
 *
 
-# QTBUG-78846
-[mouseSelectionMode]
-opensuse-leap
-
 # QTBUG-82052
 [linkHover]
 macos
@@ -31,17 +27,5 @@ android
 ubuntu-20.04
 
 # QTBUG-118066
-[inFlickableMouse]
-opensuse-leap
-
-# QTBUG-118066
 [inFlickableTouch]
-opensuse-leap
-
-# QTBUG-132632
-[cursorDelegate]
-opensuse-leap
-
-# QTBUG-132650
-[overwriteMode]
 opensuse-leap

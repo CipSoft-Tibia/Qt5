@@ -50,7 +50,6 @@
 #include "third_party/blink/renderer/core/dom/events/scoped_event_queue.h"
 #include "third_party/blink/renderer/core/dom/events/simulated_click_options.h"
 #include "third_party/blink/renderer/core/dom/id_target_observer.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
@@ -105,8 +104,6 @@ namespace blink {
 using mojom::blink::FormControlType;
 
 namespace {
-
-const unsigned kMaxEmailFieldLength = 254;
 
 static bool is_default_font_prewarmed_ = false;
 
@@ -305,9 +302,9 @@ bool HTMLInputElement::HasCustomFocusLogic() const {
   return input_type_view_->HasCustomFocusLogic();
 }
 
-bool HTMLInputElement::IsKeyboardFocusable(
+bool HTMLInputElement::IsKeyboardFocusableSlow(
     UpdateBehavior update_behavior) const {
-  return input_type_->IsKeyboardFocusable(update_behavior);
+  return input_type_->IsKeyboardFocusableSlow(update_behavior);
 }
 
 bool HTMLInputElement::MayTriggerVirtualKeyboard() const {
@@ -364,8 +361,6 @@ void HTMLInputElement::EndEditing() {
   LocalFrame* frame = GetDocument().GetFrame();
   frame->GetSpellChecker().DidEndEditingOnTextField(this);
   frame->GetPage()->GetChromeClient().DidEndEditingOnTextField(*this);
-
-  MaybeReportPiiMetrics();
 }
 
 void HTMLInputElement::DispatchFocusInEvent(
@@ -384,9 +379,6 @@ void HTMLInputElement::HandleBlurEvent() {
 }
 
 void HTMLInputElement::setType(const AtomicString& type) {
-  if (!RuntimeEnabledFeatures::CreateInputShadowTreeDuringLayoutEnabled()) {
-    EnsureShadowSubtree();
-  }
   setAttribute(html_names::kTypeAttr, type);
 }
 
@@ -409,8 +401,7 @@ void HTMLInputElement::InitializeTypeInParsing() {
   if (!default_value.IsNull())
     input_type_->WarnIfValueIsInvalid(default_value);
 
-  if (!RuntimeEnabledFeatures::CreateInputShadowTreeDuringLayoutEnabled() ||
-      input_type_view_->HasCreatedShadowSubtree()) {
+  if (input_type_view_->HasCreatedShadowSubtree()) {
     input_type_view_->UpdateView();
   } else {
     input_type_view_->set_needs_update_view_in_create_shadow_subtree(true);
@@ -497,9 +488,7 @@ void HTMLInputElement::UpdateType(const AtomicString& type_attribute_value) {
   // No need for CreateShadowSubtreeIfNeeded() to call UpdateView() as we'll
   // do that later on in this function (and calling UpdateView() here is
   // problematic as state hasn't fully been updated).
-  if (RuntimeEnabledFeatures::CreateInputShadowTreeDuringLayoutEnabled()) {
-    input_type_view_->set_needs_update_view_in_create_shadow_subtree(false);
-  }
+  input_type_view_->set_needs_update_view_in_create_shadow_subtree(false);
   input_type_view_->CreateShadowSubtreeIfNeeded(true);
 
   UpdateWillValidateCache();
@@ -628,8 +617,7 @@ void HTMLInputElement::UpdateType(const AtomicString& type_attribute_value) {
 void HTMLInputElement::SubtreeHasChanged() {
   input_type_view_->SubtreeHasChanged();
 
-  if (HasDirectionAuto() ||
-      !RuntimeEnabledFeatures::TextInputNotAlwaysDirAutoEnabled()) {
+  if (HasDirectionAuto()) {
     // When typing in an input field, childrenChanged is not called, so we
     // need to force the directionality check.
     CalculateAndAdjustAutoDirectionality();
@@ -792,7 +780,7 @@ bool HTMLInputElement::IsPresentationAttribute(
 void HTMLInputElement::CollectStyleForPresentationAttribute(
     const QualifiedName& name,
     const AtomicString& value,
-    MutableCSSPropertyValueSet* style) {
+    HeapVector<CSSPropertyValue, 8>& style) {
   if (name == html_names::kVspaceAttr) {
     AddHTMLLengthToStyle(style, CSSPropertyID::kMarginTop, value);
     AddHTMLLengthToStyle(style, CSSPropertyID::kMarginBottom, value);
@@ -844,7 +832,7 @@ void HTMLInputElement::ParseAttribute(
     AddToRadioButtonGroup();
     TextControlElement::ParseAttribute(params);
   } else if (name == html_names::kAutocompleteAttr) {
-    if (EqualIgnoringASCIICase(value, "off")) {
+    if (EqualIgnoringASCIICase(value, keywords::kOff)) {
       autocomplete_ = kOff;
     } else {
       if (value.empty())
@@ -873,7 +861,6 @@ void HTMLInputElement::ParseAttribute(
     input_type_->WarnIfValueIsInvalidAndElementIsVisible(value);
     input_type_->InRangeChanged();
     if (input_type_view_->HasCreatedShadowSubtree() ||
-        !RuntimeEnabledFeatures::CreateInputShadowTreeDuringLayoutEnabled() ||
         !input_type_view_->NeedsShadowSubtree()) {
       input_type_view_->ValueAttributeChanged();
     } else {
@@ -989,6 +976,9 @@ bool HTMLInputElement::LayoutObjectIsNeeded(const DisplayStyle& style) const {
 }
 
 LayoutObject* HTMLInputElement::CreateLayoutObject(const ComputedStyle& style) {
+  if (style.IsVerticalWritingMode()) {
+    UseCounter::Count(GetDocument(), WebFeature::kVerticalFormControls);
+  }
   return input_type_view_->CreateLayoutObject(style);
 }
 
@@ -1055,7 +1045,7 @@ void HTMLInputElement::ResetImpl() {
 }
 
 bool HTMLInputElement::IsTextField() const {
-  return input_type_->IsTextField();
+  return input_type_->IsTextFieldInputType();
 }
 
 bool HTMLInputElement::IsTelephone() const {
@@ -1202,8 +1192,7 @@ String HTMLInputElement::Value() const {
     case ValueMode::kValue:
       return non_attribute_value_;
   }
-  NOTREACHED_IN_MIGRATION();
-  return g_empty_string;
+  NOTREACHED();
 }
 
 String HTMLInputElement::ValueOrDefaultLabel() const {
@@ -1358,27 +1347,23 @@ void HTMLInputElement::UpdateView() {
   input_type_view_->UpdateView();
 }
 
-ScriptValue HTMLInputElement::valueAsDate(ScriptState* script_state) const {
+ScriptObject HTMLInputElement::valueAsDate(ScriptState* script_state) const {
   UseCounter::Count(GetDocument(), WebFeature::kInputElementValueAsDateGetter);
   // TODO(crbug.com/988343): InputType::ValueAsDate() should return
   // std::optional<base::Time>.
   double date = input_type_->ValueAsDate();
-  v8::Isolate* isolate = script_state->GetIsolate();
-  if (!std::isfinite(date))
-    return ScriptValue::CreateNull(isolate);
-  return ScriptValue(
-      isolate,
-      ToV8Traits<IDLNullable<IDLDate>>::ToV8(
-          script_state, base::Time::FromMillisecondsSinceUnixEpoch(date)));
+  if (!std::isfinite(date)) {
+    return ScriptObject::CreateNull(script_state->GetIsolate());
+  }
+  return ToV8FromDate(script_state,
+                      base::Time::FromMillisecondsSinceUnixEpoch(date));
 }
 
 void HTMLInputElement::setValueAsDate(ScriptState* script_state,
-                                      const ScriptValue& value,
+                                      const ScriptObject& value,
                                       ExceptionState& exception_state) {
   UseCounter::Count(GetDocument(), WebFeature::kInputElementValueAsDateSetter);
-  std::optional<base::Time> date =
-      NativeValueTraits<IDLNullable<IDLDate>>::NativeValue(
-          script_state->GetIsolate(), value.V8Value(), exception_state);
+  std::optional<base::Time> date = ToCoreNullableDate(value, exception_state);
   if (exception_state.HadException())
     return;
   input_type_->SetValueAsDate(date, exception_state);
@@ -1479,9 +1464,9 @@ void HTMLInputElement::DefaultEventHandler(Event& evt) {
       return;
   }
 
-  auto* keyboad_event = DynamicTo<KeyboardEvent>(evt);
-  if (keyboad_event && evt.type() == event_type_names::kKeydown) {
-    input_type_view_->HandleKeydownEvent(*keyboad_event);
+  auto* keyboard_event = DynamicTo<KeyboardEvent>(evt);
+  if (keyboard_event && evt.type() == event_type_names::kKeydown) {
+    input_type_view_->HandleKeydownEvent(*keyboard_event);
     if (evt.DefaultHandled())
       return;
   }
@@ -1512,14 +1497,14 @@ void HTMLInputElement::DefaultEventHandler(Event& evt) {
 
   // Use key press event here since sending simulated mouse events
   // on key down blocks the proper sending of the key press event.
-  if (keyboad_event && evt.type() == event_type_names::kKeypress) {
-    input_type_view_->HandleKeypressEvent(*keyboad_event);
+  if (keyboard_event && evt.type() == event_type_names::kKeypress) {
+    input_type_view_->HandleKeypressEvent(*keyboard_event);
     if (evt.DefaultHandled())
       return;
   }
 
-  if (keyboad_event && evt.type() == event_type_names::kKeyup) {
-    input_type_view_->HandleKeyupEvent(*keyboad_event);
+  if (keyboard_event && evt.type() == event_type_names::kKeyup) {
+    input_type_view_->HandleKeyupEvent(*keyboard_event);
     if (evt.DefaultHandled())
       return;
   }
@@ -1739,7 +1724,7 @@ bool HTMLInputElement::MatchesReadWritePseudoClass() const {
   return input_type_->SupportsReadOnly() && !IsDisabledOrReadOnly();
 }
 
-ControlPart HTMLInputElement::AutoAppearance() const {
+AppearanceValue HTMLInputElement::AutoAppearance() const {
   return input_type_view_->AutoAppearance();
 }
 
@@ -1774,8 +1759,7 @@ Node::InsertionNotificationRequest HTMLInputElement::InsertedInto(
     if (!Form()) {
       AddToRadioButtonGroup();
     }
-    if (RuntimeEnabledFeatures::CreateInputShadowTreeDuringLayoutEnabled() &&
-        !input_type_view_->HasCreatedShadowSubtree() &&
+    if (!input_type_view_->HasCreatedShadowSubtree() &&
         input_type_view_->NeedsShadowSubtree()) {
       scheduled_create_shadow_tree_ = true;
       GetDocument().ScheduleShadowTreeCreation(*this);
@@ -1784,10 +1768,6 @@ Node::InsertionNotificationRequest HTMLInputElement::InsertedInto(
   ResetListAttributeTargetObserver();
   LogAddElementIfIsolatedWorldAndInDocument("input", html_names::kTypeAttr,
                                             html_names::kFormactionAttr);
-  if (!RuntimeEnabledFeatures::CreateInputShadowTreeDuringLayoutEnabled()) {
-    EventDispatchForbiddenScope::AllowUserAgentEvents allow_events;
-    input_type_view_->CreateShadowSubtreeIfNeeded();
-  }
   return kInsertionShouldCallDidNotifySubtreeInsertions;
 }
 
@@ -2233,7 +2213,7 @@ bool HTMLInputElement::SetupDateTimeChooserParameters(
         continue;
       suggestion->localized_value = LocalizeValue(option->value());
       suggestion->label =
-          option->value() == option->label() ? String("") : option->label();
+          option->value() == option->label() ? g_empty_string : option->label();
       parameters.suggestions.push_back(std::move(suggestion));
     }
   }
@@ -2264,7 +2244,6 @@ void HTMLInputElement::SetShouldRevealPassword(bool value) {
   }
 }
 
-#if BUILDFLAG(IS_ANDROID)
 bool HTMLInputElement::IsLastInputElementInForm() {
   DCHECK(GetDocument().GetPage());
   return !GetDocument()
@@ -2281,7 +2260,6 @@ void HTMLInputElement::DispatchSimulatedEnter() {
 
   EventDispatcher::DispatchSimulatedEnterEvent(*this);
 }
-#endif
 
 bool HTMLInputElement::IsInteractiveContent() const {
   return input_type_->IsInteractiveContent();
@@ -2292,7 +2270,10 @@ void HTMLInputElement::AdjustStyle(ComputedStyleBuilder& builder) {
 }
 
 void HTMLInputElement::DidNotifySubtreeInsertionsToDocument() {
-  ListAttributeTargetChanged();
+  input_type_view_->ListAttributeTargetChanged();
+  if (!RuntimeEnabledFeatures::DOMInsertionFasterEnabled()) {
+    PseudoStateChanged(CSSSelector::kPseudoHasDatalist);
+  }
 }
 
 AXObject* HTMLInputElement::PopupRootAXObject() {
@@ -2340,38 +2321,6 @@ bool HTMLInputElement::IsDraggedSlider() const {
   return input_type_view_->IsDraggedSlider();
 }
 
-void HTMLInputElement::MaybeReportPiiMetrics() {
-  // Don't report metrics if the field is empty.
-  if (Value().empty())
-    return;
-
-  // Report the PII types derived from autofill field semantic type prediction.
-  if (GetFormElementPiiType() != FormElementPiiType::kUnknown) {
-    UseCounter::Count(GetDocument(),
-                      WebFeature::kUserDataFieldFilled_PredictedTypeMatch);
-
-    if (GetFormElementPiiType() == FormElementPiiType::kEmail) {
-      UseCounter::Count(GetDocument(),
-                        WebFeature::kEmailFieldFilled_PredictedTypeMatch);
-    } else if (GetFormElementPiiType() == FormElementPiiType::kPhone) {
-      UseCounter::Count(GetDocument(),
-                        WebFeature::kPhoneFieldFilled_PredictedTypeMatch);
-    }
-  }
-
-  // Report the PII types derived by matching the field value with patterns.
-
-  // For Email, we add a length limitation (based on
-  // https://www.rfc-editor.org/errata_search.php?rfc=3696) in addition to
-  // matching with the pattern given by the HTML standard.
-  if (Value().length() <= kMaxEmailFieldLength &&
-      EmailInputType::IsValidEmailAddress(GetDocument().EnsureEmailRegexp(),
-                                          Value())) {
-    UseCounter::Count(GetDocument(),
-                      WebFeature::kEmailFieldFilled_PatternMatch);
-  }
-}
-
 // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#concept-fe-mutable
 bool HTMLInputElement::isMutable() {
   return !IsDisabledFormControl() &&
@@ -2412,9 +2361,13 @@ void HTMLInputElement::showPicker(ExceptionState& exception_state) {
   input_type_view_->OpenPopupView();
 }
 
-bool HTMLInputElement::IsValidCommand(HTMLElement& invoker,
-                                      CommandEventType command) {
-  bool parent_is_valid = HTMLElement::IsValidCommand(invoker, command);
+bool HTMLInputElement::IsPickerVisible() const {
+  return input_type_view_->IsPickerVisible();
+}
+
+bool HTMLInputElement::IsValidBuiltinCommand(HTMLElement& invoker,
+                                             CommandEventType command) {
+  bool parent_is_valid = HTMLElement::IsValidBuiltinCommand(invoker, command);
   if (!RuntimeEnabledFeatures::HTMLInvokeActionsV2Enabled() ||
       parent_is_valid) {
     return parent_is_valid;
@@ -2432,7 +2385,7 @@ bool HTMLInputElement::IsValidCommand(HTMLElement& invoker,
 
 bool HTMLInputElement::HandleCommandInternal(HTMLElement& invoker,
                                              CommandEventType command) {
-  CHECK(IsValidCommand(invoker, command));
+  CHECK(IsValidBuiltinCommand(invoker, command));
 
   if (HTMLElement::HandleCommandInternal(invoker, command)) {
     return true;

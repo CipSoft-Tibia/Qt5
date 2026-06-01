@@ -30,9 +30,6 @@ class Q_OAUTH_EXPORT  QAbstractOAuth : public QObject
 {
     Q_OBJECT
 
-    Q_ENUMS(Status)
-    Q_ENUMS(Stage)
-    Q_ENUMS(Error)
     Q_PROPERTY(QString clientIdentifier
                READ clientIdentifier
                WRITE setClientIdentifier
@@ -56,6 +53,7 @@ public:
         Granted,
         RefreshingToken
     };
+    Q_ENUM(Status)
 
     enum class Stage {
         RequestingTemporaryCredentials,
@@ -63,6 +61,7 @@ public:
         RequestingAccessToken,
         RefreshingAccessToken
     };
+    Q_ENUM(Stage)
 
     enum class Error {
         NoError,
@@ -76,6 +75,7 @@ public:
         ClientError,
         ExpiredError,
     };
+    Q_ENUM(Error)
 
     enum class ContentType {
         WwwFormUrlEncoded,

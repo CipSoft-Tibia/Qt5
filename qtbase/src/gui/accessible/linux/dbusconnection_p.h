@@ -55,8 +55,8 @@ private:
     QString getAccessibilityBusAddress() const;
 
     QDBusServiceWatcher *dbusWatcher;
-    OrgFreedesktopDBusPropertiesInterface *m_dbusProperties;
-    OrgA11yStatusInterface *m_a11yStatus;
+    QtGuiPrivate::OrgFreedesktopDBusPropertiesInterface *m_dbusProperties;
+    QtGuiPrivate::OrgA11yStatusInterface *m_a11yStatus;
     QDBusConnection m_a11yConnection;
     bool m_enabled;
 };

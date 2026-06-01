@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include <private/qv4referenceobject_p.h>
 
@@ -135,6 +136,31 @@ DEFINE_OBJECT_VTABLE(QV4::ReferenceObject);
      }
   \endcode
 
+  \section2 Intitialization and the IsDirty flag
+
+  In certain cases, we try to avoid read-backs when we know that we
+  have the latest data available already, see \l{Limiting reads on a
+  QObject property}.
+
+  Certain implementation of ReferenceObject, might want to lazily load
+  the data on the first read, rather than on the initialization of the
+  reference. One such example would be `QQmlValueTypeWrapper`.
+
+  When that is the case, the IsDirty flag should be passed at
+  initialiazation time.
+  For example:
+
+  \code
+     void QV4::Heap::Foo::init(Heap::Object *object) {
+         ReferenceObject::init(object, 1, ReferenceObject::Flag::CanWriteBack | ReferenceObject::Flag::IsDirty);
+         // Some further initialization code
+         ...
+     }
+  \endcode
+
+  If the flag is not passed there the first read might be elided,
+  leaving the object in an incorrect state.
+
   \section1 Providing the Required Infrastructure for a Default Write-back
 
   Generally, to use the base implementation of write and read backs,
@@ -250,6 +276,92 @@ DEFINE_OBJECT_VTABLE(QV4::ReferenceObject);
     }
   \endcode
 
+  \section2 Limiting reads on a QObject property
+
+  In most cases we cannot know whether the original data was modified between
+  read accesses. This generally forces a read to be performed each time we
+  require the latest data, even if we might have it already.
+
+  This can have surprising results, as certain procedure might require reading
+  the data multiple times to be performed, which sometimes can be very
+  expensive.
+
+  When the original data comes from the property of a \c{QObject}, and the
+  property has a \tt{NOTIFY} signal or is \tt{BINDABLE}, we can subscribe to the
+  signal to know when the data is actually modified outside our control, so that
+  we need to fetch it again.
+
+  A ReferenceObject can take advantage of this to reduce the number of reads
+  that are required when dealing with a \c{QObject}'s property provening data.
+
+  When a property has a \tt{NOTIFY} signal and is a \tt{BINDABLE} at
+  the same time, we only need to use one such connection.
+  Currently, the \tt{BINDABLE} subscription will take predecedence.
+
+  ReferenceObjects that are part of a \l{Reference object chains}{chain}, will
+  traverse the chain up until a QOjbect holding root is found, and connect based
+  on that object.
+  As read/write backs in a chain are always propagated up the chain, this allow
+  ReferenceObjects that are not directly parented to relevant element to still
+  avoid unnecesary reads.
+
+  For example, the property of a value type exposed by a Q_GADGET, cannot have a
+  \tt{NOTIFY} signal.
+  Nonetheless, if a change were to occur to the parent value type or the
+  property itself, that change would be propagated up the chain, possibly
+  triggering a \tt{NOTIFY} signal that is part of the chain.
+  Thus, by connecting to that upper \tt{NOTIFY} signal, we can still reliably know
+  if a change was performed on the property itself and thus avoid reduce the
+  number of reads.
+
+  As changes in the chain that do not really invalidate the data of that
+  property will still trigger that same \tt{NOTIFY} signal, sometimes we will
+  perform a read that is unnecessary due to granularity at which we are working.
+  This is the case, returning to the example above, when a different
+  property of that same value type will be changed.
+
+  This should still be a win, as we still expect to cut off multiple reads that
+  would be performed without the optimization.
+
+  The default implementation for QV4::ReferenceObject::readReference will take
+  care of performing this optimization already.
+
+  Derived objects that provide their own readReference implementation can plug
+  into QV4::Heap::ReferenceObject::isDirty, QV4::Heap::ReferenceObject::setDirty
+  and QV4::Heap::ReferenceObject::isConnected to provide the same optimization.
+
+  A ReferenceObject uses a "dirty" flag to track whether the data should be read
+  again.
+  If the ReferenceObject refers to a \c{QObject}'s property that has a
+  \tt{NOTIFY} signal or is \tt{BINDABLE}, it will set the flag each time the
+  \tt{NOTIFY} signal is emitted or the \tt{BINDABLE} is changed.
+
+  isDirty returns whether the flag is set and, thus, a readReference
+  implementation should avoid performing the read itself when the method
+  returns true.
+
+  After a read is performed, the "dirty" flag should be set again if the read
+  was unsuccessful.
+  The flag can be modified by usages of `setDirty`.
+
+  Generally, this only applies to instances of ReferenceObject that provene from
+  a \c{QObject}'s property that has a notify signal, as that is the case that
+  allows us to know when a read is required.
+
+  In all other cases, a ReferenceObject should always be "dirty" and perform a
+  read, as it cannot know if the data was modified since its last read.
+  This case will initially be managed by the base constructor for
+  ReferenceObject, nonetheless derived objects with a custom readReference
+  implementation need to take it into accoutn when setting the "dirty" flag
+  after a read.
+
+  isConnected can be used to discern between the two cases, as it will only
+  return true when the ReferenceObject is connected to a NOTIFY signal that can
+  modify the "dirty" flag.
+  When isConnected is false, a read implementation should always keep the
+  ReferenceObject in a permanent "dirty" state, to ensure that the correct data
+  is fetched when required.
+
   \section1 Limiting Write-backs Based on Source Location
 
   \note We generally consider location-aware write-backs to be a
@@ -324,6 +436,190 @@ DEFINE_OBJECT_VTABLE(QV4::ReferenceObject);
   QV4::Heap::ReferenceObject::isAttachedToProperty can be used to
   recognize whether the reference is still suitable for write-backs in
   a location-enforcement-aware way.
+
+  \section1 Reference object chains
+
+  ReferenceObject can be nested.
+
+  For example, consider:
+
+  \code
+  a.b.c
+  \endcode
+
+  Where \c{a} is some object exposed to QML, \c{b} is a property of \c{a} and \c{c} is a property of \c{b}.
+
+  Based on what each of \c{a}, \c{b} and \c{c} is, multiple ReferenceObject
+  instances, parented to one another, might be introduced.
+
+  For example, if \c{a} is a Q_OBJECT, \c{b} is a value type and \c{c} is a type
+  that will be converted to a QV4::Sequence, \c{a} will be wrapped by a
+  QObjectWrapper, \c{b} will be wrapped by a QQmlValueTypeWrapper which is parented
+  to the QObjectWrapper wrapping \c{a} and \c{c} will be a Sequence that is
+  parented to the QQmlValueTypeWrapper wrapping \c{b}.
+
+  This parenting chain is used to enable recursive read/write backs, ensuring
+  that a read/write back travels up the chain as required so that the latest
+  data is available on every relevant element.
+
+  At certain points in the chain, it is possible that a non-reference object is
+  introduced.
+
+  For example, this is always the case when a Q_OBJECT is retrieved, as it will
+  be wrapped in a QObjectWrapper which is not a reference object.
+
+  This breaks the chain of parenting and introduces the start of a new chain.
+  As a QObjectWrapper directly stores a pointer to the original object, it
+  doesn't need to perform the same read/write backs that reference objects do.
+  Similarly, child reference objects only need to read up to the innermost
+  QObjectWrapper in a chain to obtain the latest data.
+
+  Returning to the example above, if \c{b} is a Q_OBJECT instead of a value
+  type, then it will be the root of the reference chain that has \c{c} has its
+  child, without the need to be related to the QObjectWrapper that has been
+  built by accessing \c{a}.
+
+  QQmlTypeWrapper, that can wrap a QObject pointer that represents a
+  singleton or an attached property, behaves as chain root in the
+  exact same way that QObjectWrapper does.
  */
+
+void QQmlDirtyReferenceObject_callback(QQmlNotifierEndpoint *e, void **) {
+    static_cast<QV4::Heap::ReferenceObjectEndpoint*>(e)->reference->setDirty(true);
+}
+
+namespace QV4 {
+
+void Heap::ReferenceObject::connectToNotifySignal(QObject *obj, int property, QQmlEngine *engine)
+{
+    Q_ASSERT(obj);
+    Q_ASSERT(engine);
+
+    Q_ASSERT(!referenceEndpoint);
+    Q_ASSERT(!bindableNotifier);
+
+    referenceEndpoint = new ReferenceObjectEndpoint(this);
+
+    // Connect and signal emission work on "signal indexes". Those are different from "method
+    // indexes".
+    // The public MetaObject interface can, generally, give us the "method index" of the notify
+    // signal.
+    // Quite unintuitively, this is true for "notifySignalIndex". As the "method index" and the
+    // "signal index" can be different, connecting the "method index" of the notify signal can
+    // incur in issues when the signal is being emitted and checking for connected endpoints.
+    // For example, we might be connected to the "method index" of the notify signal for the
+    // property and end up checking for the subscribers of a different signal when the notify
+    // signal is emitted, due to the different meaning of the same index.
+    // Thus we pass by the private interface to ensure that we are connecting based on the "signal
+    // index" instead.
+    const int index = QMetaObjectPrivate::signalIndex(obj->metaObject()->property(property)
+                                                                    .notifySignal());
+    referenceEndpoint->connect(obj, index, engine);
+
+    // When the object that is being referenced is destroyed, we
+    // need to ensure that one additional read is performed to
+    // invalidate the data we hold.
+    // As the object might be destroyed in a way that doesn't
+    // trigger the notify signal for the relevant property, we react
+    // directly to the destruction itself.
+    // We use a plain connection instead of a QQmlNotifierEndpoint
+    // based connection as, currently, declarative-side signals are
+    // always discarded during destruction (see
+    // QQmlData::signalEmitted).
+    // In theory it should be possible to relax that condition for
+    // the destroy signal specifically, which should allow a more
+    // optimized way of connecting.
+    // Nonetheless this seems to be the only place where we have
+    // this kind of need, and thus go for the simpler solution,
+    // which can be changed later if the need arises.
+    new (onDelete) QMetaObject::Connection(
+            QObject::connect(obj, &QObject::destroyed, obj, [this](){ setDirty(true); }));
+}
+
+void Heap::ReferenceObject::connectToBindable(QObject *obj, int property, QQmlEngine *engine)
+{
+    Q_ASSERT(obj);
+    Q_ASSERT(engine);
+
+    Q_ASSERT(!referenceEndpoint);
+    Q_ASSERT(!bindableNotifier);
+
+    bindableNotifier = new QPropertyNotifier(obj->metaObject()->property(property).bindable(obj)
+                                                     .addNotifier([this](){ setDirty(true); }));
+    new (onDelete) QMetaObject::Connection(
+            QObject::connect(obj, &QObject::destroyed, obj, [this]() { setDirty(true); }));
+}
+
+bool ReferenceObject::shouldConnect(Heap::ReferenceObject *ref)
+{
+    if (ref->isAlwaysDirty())
+        return false;
+
+    // We want to connect when we are reading the reference object from a statement that is not
+    // its creation statement. In other words, when first storing it in a variable and then
+    // reusing it, potentially multiple times. This ensures that the cost of the connection itself
+    // is only paid when the user separated the declaration from the usage in their code, in the
+    // hope that this catches more complex and frequent uses, like accesses in a loop, where
+    // unnecessary copies would impact performance more significantly, and not one time accesses.
+    if (CppStackFrame *frame = ref->internalClass->engine->currentStackFrame) {
+        const auto *refObject = static_cast<Heap::ReferenceObject *>(ref);
+        if (frame->v4Function && frame->v4Function == refObject->function()
+            && frame->statementNumber() == refObject->statementIndex()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void ReferenceObject::connect(Heap::ReferenceObject *ref)
+{
+    int property = ref->property();
+    Heap::Object *object = ref->object();
+
+    while (object
+           && object->internalClass->vtable->type != Managed::Type_V4QObjectWrapper
+           && object->internalClass->vtable->type != Managed::Type_QMLTypeWrapper)
+    {
+        const auto type = object->internalClass->vtable->type;
+        if (type != Managed::Type_V4ReferenceObject
+            && type != Managed::Type_V4Sequence
+            && type != Managed::Type_DateObject
+            && type != Managed::Type_QMLValueTypeWrapper) {
+            break;
+        }
+
+        property = static_cast<QV4::Heap::ReferenceObject *>(object)->property();
+        object = static_cast<QV4::Heap::ReferenceObject *>(object)->object();
+    }
+
+    const auto doConnect = [&](auto wrapper) {
+        // The object may be valid on the first read but not on the second, check for that.
+        if (QObject *obj = wrapper->object()) {
+            auto *refObject = static_cast<Heap::ReferenceObject *>(ref);
+
+            auto *qmlEngine = object->internalClass->engine->qmlEngine();
+            if (qmlEngine && obj->metaObject()->property(property).isBindable())
+                refObject->connectToBindable(obj, property, qmlEngine);
+            else if (qmlEngine && obj->metaObject()->property(property).hasNotifySignal())
+                refObject->connectToNotifySignal(obj, property, qmlEngine);
+        }
+    };
+
+    if (object && object->internalClass->vtable->type == Managed::Type_V4QObjectWrapper) {
+        doConnect(static_cast<QV4::Heap::QObjectWrapper *>(object));
+    } else if (object && object->internalClass->vtable->type == Managed::Type_QMLTypeWrapper) {
+        auto wrapper = static_cast<QV4::Heap::QQmlTypeWrapper *>(object);
+        Scope scope(object->internalClass->engine);
+        Scoped<QV4::QQmlTypeWrapper> scopedWrapper(scope, wrapper);
+        doConnect(scopedWrapper);
+    }
+
+    if (!ref->isConnected()) {
+        // Mark AlwaysDirty to prevent further connection failures on every read
+        ref->setAlwaysDirty(true);
+    }
+}
+
+} // namespace QV4
 
 QT_END_NAMESPACE

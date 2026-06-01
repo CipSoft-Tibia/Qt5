@@ -7,18 +7,20 @@
 #include <stddef.h>
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "base/check.h"
+#include "base/files/file_path.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
-#include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/error_utils.h"
-#include "extensions/common/extension.h"
 #include "extensions/common/icons/extension_icon_set.h"
 #include "extensions/common/manifest_constants.h"
+#include "net/base/mime_util.h"
+#include "third_party/blink/public/common/mime_util/mime_util.h"
 
 namespace extensions {
 
@@ -56,7 +58,8 @@ std::optional<int> LoadValidSizeFromString(const std::string& string_size) {
 
 bool LoadIconsFromDictionary(const base::Value::Dict& icons_value,
                              ExtensionIconSet* icons,
-                             std::u16string* error) {
+                             std::u16string* error,
+                             std::vector<std::string>* warnings) {
   DCHECK(icons);
   DCHECK(error);
   for (auto entry : icons_value) {
@@ -73,10 +76,36 @@ bool LoadIconsFromDictionary(const base::Value::Dict& icons_value,
                                                    entry.first);
       return false;
     }
+    if (!IsIconMimeTypeValid(base::FilePath::FromUTF8Unsafe(icon_path))) {
+      // Issue a warning and ignore this file. This is a warning and not a
+      // hard-error to preserve both backwards compatibility and potential
+      // future-compatibility if mime types change.
+      warnings->emplace_back(ErrorUtils::FormatErrorMessage(
+          errors::kInvalidIconMimeType, entry.first));
+      continue;
+    }
 
     icons->Add(size.value(), icon_path);
   }
   return true;
+}
+
+bool IsSupportedExtensionImageMimeType(const base::FilePath& relative_path) {
+  std::string mime_type;
+  if (!net::GetWellKnownMimeTypeFromFile(relative_path, &mime_type)) {
+    return false;
+  }
+
+  // SVG is text-based XML, even though it has an "image/" type. Allow it
+  // explicitly.
+  constexpr char kSvgMimeType[] = "image/svg+xml";
+
+  return blink::IsSupportedImageMimeType(mime_type) ||
+         mime_type == kSvgMimeType;
+}
+
+bool IsIconMimeTypeValid(const base::FilePath& relative_path) {
+  return IsSupportedExtensionImageMimeType(relative_path);
 }
 
 }  // namespace manifest_handler_helpers

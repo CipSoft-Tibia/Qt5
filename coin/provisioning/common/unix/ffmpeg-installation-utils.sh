@@ -2,9 +2,13 @@
 # Copyright (C) 2024 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+ffmpeg_version_default() {
+    echo "n7.1.3"
+}
+
 download_ffmpeg() {
-    local version="${1:-n7.1.1}"
-    local sha1="${2:-479291e8555fe036ca760f95cea829a21e9b8365}"
+    local version="${1:-$(ffmpeg_version_default)}"
+    local sha1="${2:-27051817deec88bed3b9652d49f9127d22268d83}"
 
     local ffmpeg_name="FFmpeg-$version"
     local target_dir="$HOME"
@@ -64,4 +68,12 @@ set_ffmpeg_dir_env_var() {
 
     source "${BASH_SOURCE%/*}/../unix/SetEnvVar.sh"
     SetEnvVar "$envvar" "$dir"
+}
+
+set_ffmpeg_env_var() {
+    local envvar="$1"
+    local value="$2"
+
+    source "${BASH_SOURCE%/*}/../unix/SetEnvVar.sh"
+    SetEnvVar "$envvar" "$value"
 }

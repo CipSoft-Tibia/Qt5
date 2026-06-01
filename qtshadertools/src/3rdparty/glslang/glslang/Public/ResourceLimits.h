@@ -40,6 +40,8 @@
 #include "../Include/ResourceLimits.h"
 #include "../Include/visibility.h"
 
+namespace QtShaderTools {
+
 // Return pointer to user-writable Resource to pass through API in
 // future-proof way.
 GLSLANG_EXPORT extern TBuiltInResource* GetResources();
@@ -54,5 +56,7 @@ GLSLANG_EXPORT std::string GetDefaultTBuiltInResourceString();
 
 // Decodes the resource limits from |config| to |resources|.
 GLSLANG_EXPORT void DecodeResourceLimits(TBuiltInResource* resources, char* config);
+
+}
 
 #endif  // _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_

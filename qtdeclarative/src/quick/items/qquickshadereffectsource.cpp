@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickshadereffectsource_p.h"
 
@@ -671,7 +672,7 @@ QSGNode *QQuickShaderEffectSource::updatePaintNode(QSGNode *oldNode, UpdatePaint
                       : m_sourceRect;
     m_texture->setRect(sourceRect);
     QQuickItemPrivate *d = static_cast<QQuickItemPrivate *>(QObjectPrivate::get(this));
-    const float dpr = d->window->effectiveDevicePixelRatio();
+    const float dpr = d->effectiveDevicePixelRatio();
     QSize textureSize = m_textureSize.isEmpty()
             ? QSize(qCeil(qAbs(sourceRect.width())), qCeil(qAbs(sourceRect.height()))) * dpr
             : m_textureSize;
@@ -684,7 +685,7 @@ QSGNode *QQuickShaderEffectSource::updatePaintNode(QSGNode *oldNode, UpdatePaint
     while (textureSize.height() < minTextureSize.height())
         textureSize.rheight() *= 2;
 
-    m_texture->setDevicePixelRatio(d->window->effectiveDevicePixelRatio());
+    m_texture->setDevicePixelRatio(d->effectiveDevicePixelRatio());
     m_texture->setSize(textureSize);
     m_texture->setRecursive(m_recursive);
     m_texture->setFormat(toLayerFormat(m_format));
@@ -735,8 +736,14 @@ QSGNode *QQuickShaderEffectSource::updatePaintNode(QSGNode *oldNode, UpdatePaint
     node->setFiltering(filtering);
     node->setHorizontalWrapMode(hWrap);
     node->setVerticalWrapMode(vWrap);
-    node->setTargetRect(QRectF(0, 0, width(), height()));
-    node->setInnerTargetRect(QRectF(0, 0, width(), height()));
+
+    qreal dummy;
+    qreal fx = std::modf(x(), &dummy);
+    qreal fy = std::modf(y(), &dummy);
+    QRectF targetRect(0, 0, qCeil(fx) + qCeil(width()), qCeil(fy) + qCeil(height()));
+    node->setTargetRect(targetRect);
+    node->setInnerTargetRect(targetRect);
+
     node->update();
 
     return node;

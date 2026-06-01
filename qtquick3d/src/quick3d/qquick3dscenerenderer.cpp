@@ -31,6 +31,7 @@
 #include <QtQuick3DRuntimeRender/private/qssgrhiquadrenderer_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrhicontext_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgcputonemapper_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderroot_p.h>
 #include <QtQuick3DUtils/private/qssgutils_p.h>
 #include <QtQuick3DUtils/private/qssgassert_p.h>
 
@@ -200,7 +201,23 @@ QQuick3DSceneRenderer::~QQuick3DSceneRenderer()
     const auto &rhiCtx = m_sgContext->rhiContext();
     QSSGRhiContextStats::get(*rhiCtx).cleanupLayerInfo(m_layer);
     m_sgContext->bufferManager()->releaseResourcesForLayer(m_layer);
-    delete m_layer;
+
+    if (m_layer) {
+        // The scene root is created by the scene manager and realeased by the
+        // the normal cleanup of scene nodes, since we're deleting the layer
+        // at a later point, we need to remove the scene root node from the layer now.
+        if (m_sceneRootNode)
+            removeNodeFromLayer(m_sceneRootNode);
+
+        // There might be nodes queued for cleanup that still reference the layer,
+        // so we schedule the layer for cleanup so that it is deleted after the nodes
+        // have been cleaned up.
+        if (winAttacment)
+            winAttacment->queueForCleanup(m_layer);
+        else
+            delete m_layer;
+        m_layer = nullptr;
+    }
 
     delete m_texture;
 
@@ -370,7 +387,7 @@ QRhiTexture *QQuick3DSceneRenderer::renderToRhiTexture(QQuickWindow *qw)
             QSSGLayerRenderData *theRenderData = renderer->getOrCreateLayerRenderData(*m_layer);
             Q_ASSERT(theRenderData);
             QRhiTexture *theDepthTexture = theRenderData->getRenderResult(QSSGFrameData::RenderResult::DepthTexture)->texture;
-            QVector2D cameraClipRange(m_layer->renderedCameras[0]->clipNear, m_layer->renderedCameras[0]->clipFar);
+            QVector2D cameraClipRange(m_layer->renderedCameras[0]->clipPlanes);
 
             currentTexture = m_effectSystem->process(*m_layer,
                                                      currentTexture,
@@ -597,6 +614,10 @@ void QQuick3DSceneRenderer::synchronize(QQuick3DViewport *view3D, const QSize &s
     QSSGRhiContext *rhiCtx = m_sgContext->rhiContext().get();
     Q_ASSERT(rhiCtx != nullptr);
 
+    // Generate layer node
+    if (!m_layer)
+        m_layer = new QSSGRenderLayer();
+
     bool newRenderStats = false;
     if (!m_renderStats) {
         m_renderStats = view3D->renderStats();
@@ -612,6 +633,37 @@ void QQuick3DSceneRenderer::synchronize(QQuick3DViewport *view3D, const QSize &s
     bool layerSizeIsDirty = m_surfaceSize != size;
     m_surfaceSize = size;
 
+    QQuick3DSceneEnvironment *environment = view3D->environment();
+    if (environment->lightmapper()) {
+        QQuick3DLightmapper *lightmapper = environment->lightmapper();
+        lmOptions.opacityThreshold = lightmapper->opacityThreshold();
+        lmOptions.bias = lightmapper->bias();
+        lmOptions.useAdaptiveBias = lightmapper->isAdaptiveBiasEnabled();
+        lmOptions.indirectLightEnabled = lightmapper->isIndirectLightEnabled();
+        lmOptions.indirectLightSamples = lightmapper->samples();
+        lmOptions.indirectLightWorkgroupSize = lightmapper->indirectLightWorkgroupSize();
+        lmOptions.indirectLightBounces = lightmapper->bounces();
+        lmOptions.indirectLightFactor = lightmapper->indirectLightFactor();
+        lmOptions.sigma = lightmapper->denoiseSigma();
+        lmOptions.texelsPerUnit = lightmapper->texelsPerUnit();
+    } else {
+        lmOptions = {};
+    }
+
+    { // Resolve lightmaps source url
+        const QQmlContext *context = qmlContext(view3D);
+        const QUrl originalSource = environment->lightmapper() ? environment->lightmapper()->source()
+                                                               : QUrl::fromLocalFile(QStringLiteral("lightmaps.bin"));
+        const auto resolvedUrl = context ? context->resolvedUrl(originalSource) : originalSource;
+        const auto qmlSource = QQmlFile::urlToLocalFileOrQrc(resolvedUrl);
+        const QString lightmapSource = qmlSource.isEmpty() ? originalSource.path() : qmlSource;
+        lmOptions.source = lightmapSource;
+        m_layer->lightmapSource = lightmapSource;
+        // HACK: this is also set in the render layer but we need to set it here since
+        // it is needed below when calculating bounding boxes from the stored lightmap mesh
+        m_sgContext->bufferManager()->setLightmapSource(lightmapSource);
+    }
+
     // Synchronize scene managers under this window
     QSet<QSSGRenderGraphObject *> resourceLoaders;
     QQuick3DWindowAttachment::SyncResult requestSharedUpdate = QQuick3DWindowAttachment::SyncResultFlag::None;
@@ -621,6 +673,14 @@ void QQuick3DSceneRenderer::synchronize(QQuick3DViewport *view3D, const QSize &s
 
         if (winAttacment && winAttacment->rci() != m_sgContext)
             winAttacment->setRci(m_sgContext);
+
+        QSSGRenderRoot *rootNode = winAttacment->rootNode();
+        if (m_layer->rootNode != rootNode) {
+            Q_ASSERT(m_layer->rootNode == nullptr);
+            rootNode->addChild(*m_layer);
+            rootNode->setStartVersion(m_layer->h.version());
+            m_layer->ref(rootNode);
+        }
 
         if (winAttacment)
             requestSharedUpdate |= winAttacment->synchronize(resourceLoaders);
@@ -654,10 +714,6 @@ void QQuick3DSceneRenderer::synchronize(QQuick3DViewport *view3D, const QSize &s
             }
         }
     }
-
-    // Generate layer node
-    if (!m_layer)
-        m_layer = new QSSGRenderLayer();
 
     // Update the layer node properties
     // Store the view count in the layer. If there are multiple, or nested views, sync is called multiple times and the view count
@@ -776,28 +832,31 @@ void QQuick3DSceneRenderer::synchronize(QQuick3DViewport *view3D, const QSize &s
     m_layer->scissorRect = QRect(view3D->environment()->scissorRect().topLeft() * dpr,
                                  view3D->environment()->scissorRect().size() * dpr);
 
-    // Set the root item for the scene to the layer
-    auto rootNode = static_cast<QSSGRenderNode*>(QQuick3DObjectPrivate::get(view3D->scene())->spatialNode);
-    if (rootNode != m_sceneRootNode) {
+    // Add the scene root node for the scene to the layer
+    // NOTE: The scene root is not the same as THE root node.
+    // The scene root is the root of the scene in a view (There can be multiple views.)
+    // THE root node, which there's only one of, is the root for all nodes in the window.
+    auto sceneRootNode = static_cast<QSSGRenderNode*>(QQuick3DObjectPrivate::get(view3D->scene())->spatialNode);
+    if (sceneRootNode != m_sceneRootNode) {
         if (m_sceneRootNode)
             removeNodeFromLayer(m_sceneRootNode);
 
-        if (rootNode)
-            addNodeToLayer(rootNode);
+        if (sceneRootNode)
+            addNodeToLayer(sceneRootNode);
 
-        m_sceneRootNode = rootNode;
+        m_sceneRootNode = sceneRootNode;
     }
 
     // Add the referenced scene root node to the layer as well if available
-    QSSGRenderNode *importRootNode = nullptr;
+    QSSGRenderNode *importSceneRootNode = nullptr;
     if (importScene)
-        importRootNode = static_cast<QSSGRenderNode*>(QQuick3DObjectPrivate::get(importScene)->spatialNode);
+        importSceneRootNode = static_cast<QSSGRenderNode*>(QQuick3DObjectPrivate::get(importScene)->spatialNode);
 
-    if (importRootNode != m_importRootNode) {
-        if (m_importRootNode)
-            m_layer->removeImportScene(*m_importRootNode);
+    if (importSceneRootNode != m_importSceneRootNode) {
+        if (m_importSceneRootNode)
+            m_layer->removeImportScene(*m_importSceneRootNode);
 
-        if (importRootNode) {
+        if (importSceneRootNode) {
             // if importScene has the rendered viewport as ancestor, it probably means
             // "importScene: MyScene { }" type of inclusion.
             // In this case don't duplicate content by adding it again.
@@ -811,56 +870,28 @@ void QQuick3DSceneRenderer::synchronize(QQuick3DViewport *view3D, const QSize &s
                 sceneParent = sceneParent->parent();
             }
             if (!isEmbedded)
-                m_layer->setImportScene(*importRootNode);
+                m_layer->setImportScene(*importSceneRootNode);
         }
 
-        m_importRootNode = importRootNode;
+        m_importSceneRootNode = importSceneRootNode;
     }
 
-    if (auto lightmapBaker = view3D->maybeLightmapBaker()) {
-        if (lightmapBaker->m_bakingRequested) {
-            m_layer->renderData->interactiveLightmapBakingRequested = true;
-
-            QQuick3DLightmapBaker::Callback qq3dCallback = lightmapBaker->m_callback;
-            QQuick3DLightmapBaker::BakingControl *qq3dBakingControl = lightmapBaker->m_bakingControl;
-            QSSGLightmapper::Callback callback =
-                    [qq3dCallback, qq3dBakingControl](
-                    QSSGLightmapper::BakingStatus qssgBakingStatus,
-                    std::optional<QString> msg,
-                    QSSGLightmapper::BakingControl *qssgBakingControl)
-            {
-                QQuick3DLightmapBaker::BakingStatus qq3dBakingStatus = QQuick3DLightmapBaker::BakingStatus::None;
-                switch (qssgBakingStatus)
-                {
-                case QSSGLightmapper::BakingStatus::None:
-                    break;
-                case QSSGLightmapper::BakingStatus::Progress:
-                    qq3dBakingStatus = QQuick3DLightmapBaker::BakingStatus::Progress;
-                    break;
-                case QSSGLightmapper::BakingStatus::Warning:
-                    qq3dBakingStatus = QQuick3DLightmapBaker::BakingStatus::Warning;
-                    break;
-                case QSSGLightmapper::BakingStatus::Error:
-                    qq3dBakingStatus = QQuick3DLightmapBaker::BakingStatus::Error;
-                    break;
-                case QSSGLightmapper::BakingStatus::Cancelled:
-                    qq3dBakingStatus = QQuick3DLightmapBaker::BakingStatus::Cancelled;
-                    break;
-                case QSSGLightmapper::BakingStatus::Complete:
-                    qq3dBakingStatus = QQuick3DLightmapBaker::BakingStatus::Complete;
-                    break;
-                }
-
-                qq3dCallback(qq3dBakingStatus, msg, qq3dBakingControl);
-
-                if (qq3dBakingControl->isCancelled() && !qssgBakingControl->cancelled)
-                    qssgBakingControl->cancelled = true;
-            };
-
-            m_layer->renderData->lightmapBakingOutputCallback = callback;
-            lightmapBaker->m_bakingRequested = false;
+    // If the tree is dirty, we need to mark all layers as dirty
+    // so that they get updated.
+    // The _layer_ dirty flag is cleared in the layer prep function and the reindex and
+    // root dirty flag is cleared right before the first layer is prepared (see: prepareLayerForRender().
+    {
+        QSSGRenderRoot *rootNode = winAttacment->rootNode();
+        if (rootNode->isDirty(QSSGRenderRoot::DirtyFlag::TreeDirty)) {
+            rootNode->reindex(); // Clears TreeDirty flag
+            for (QSSGRenderNode &layer : rootNode->children) {
+                if (QSSG_GUARD_X(layer.type == QSSGRenderGraphObject::Type::Layer, "Layer type mismatch"))
+                    static_cast<QSSGRenderLayer &>(layer).markDirty(QSSGRenderLayer::DirtyFlag::TreeDirty);
+            }
         }
     }
+
+    maybeSetupLightmapBaking(view3D);
 
     if (m_useFBO && rhiCtx->isValid()) {
         QRhi *rhi = rhiCtx->rhi();
@@ -1117,13 +1148,15 @@ void QQuick3DSceneRenderer::releaseCachedResources()
 
 std::optional<QSSGRenderRay> QQuick3DSceneRenderer::getRayFromViewportPos(const QPointF &pos)
 {
-    if (!m_layer)
+    if (!m_layer || !m_layer->renderData)
         return std::nullopt;
 
     QMutexLocker locker(&m_layer->renderedCamerasMutex);
 
     if (m_layer->renderedCameras.isEmpty())
         return std::nullopt;
+
+    QMatrix4x4 globalTransform = m_layer->renderData->getGlobalTransform(*m_layer->renderedCameras[0]);
 
     const QVector2D viewportSize(m_surfaceSize.width(), m_surfaceSize.height());
     const QVector2D position(float(pos.x()), float(pos.y()));
@@ -1137,7 +1170,7 @@ std::optional<QSSGRenderRay> QQuick3DSceneRenderer::getRayFromViewportPos(const 
          || theLocalMouse.y() >= viewportSize.y()))
         return std::nullopt;
 
-    return m_layer->renderedCameras[0]->unproject(theLocalMouse, viewportRect);
+    return m_layer->renderedCameras[0]->unproject(globalTransform, theLocalMouse, viewportRect);
 }
 
 QQuick3DSceneRenderer::PickResultList QQuick3DSceneRenderer::syncPick(const QSSGRenderRay &ray)
@@ -1301,20 +1334,6 @@ void QQuick3DSceneRenderer::updateLayerNode(QSSGRenderLayer &layerNode,
         layerNode.wireframeMode = false;
     }
 
-    if (environment->lightmapper()) {
-        QQuick3DLightmapper *lightmapper = environment->lightmapper();
-        layerNode.lmOptions.opacityThreshold = lightmapper->opacityThreshold();
-        layerNode.lmOptions.bias = lightmapper->bias();
-        layerNode.lmOptions.useAdaptiveBias = lightmapper->isAdaptiveBiasEnabled();
-        layerNode.lmOptions.indirectLightEnabled = lightmapper->isIndirectLightEnabled();
-        layerNode.lmOptions.indirectLightSamples = lightmapper->samples();
-        layerNode.lmOptions.indirectLightWorkgroupSize = lightmapper->indirectLightWorkgroupSize();
-        layerNode.lmOptions.indirectLightBounces = lightmapper->bounces();
-        layerNode.lmOptions.indirectLightFactor = lightmapper->indirectLightFactor();
-    } else {
-        layerNode.lmOptions = {};
-    }
-
     if (environment->fog() && environment->fog()->isEnabled()) {
         layerNode.fog.enabled = true;
         const QQuick3DFog *fog = environment->fog();
@@ -1392,6 +1411,89 @@ void QQuick3DSceneRenderer::removeNodeFromLayer(QSSGRenderNode *node)
     m_layer->removeChild(*node);
 }
 
+void QQuick3DSceneRenderer::maybeSetupLightmapBaking(QQuick3DViewport *view3D)
+{
+    if (m_layer->renderData && m_layer->renderData->lightmapBaker)
+        return;
+
+    // Check if we have interactive bake requested or if we are coming in here the second
+    // time from cmd line request (needs to wait a frame before starting to bake).
+    bool bakeRequested = false;
+    bool denoiseRequested = false;
+    bool fromCmd = false;
+    QQuick3DLightmapBaker *lightmapBaker = view3D->maybeLightmapBaker();
+    if (lightmapBaker && (lightmapBaker->m_bakingRequested || lightmapBaker->m_denoisingRequested)) {
+        bakeRequested = std::exchange(lightmapBaker->m_bakingRequested, false);
+        denoiseRequested = std::exchange(lightmapBaker->m_denoisingRequested, false);
+    } else {
+        bakeRequested = m_lightmapBakingFromCmdRequested;
+        denoiseRequested = m_lightmapDenoisingFromCmdRequested;
+        fromCmd = bakeRequested;
+    }
+
+    // Start the bake (we should have a valid layer render data at this point).
+    if (bakeRequested || denoiseRequested) {
+        QSSGLightmapBaker::Context ctx;
+        ctx.settings.bakeRequested = bakeRequested;
+        ctx.settings.denoiseRequested = denoiseRequested;
+        ctx.settings.quitWhenFinished = fromCmd;
+
+        // We want the frontend callback in the case that a QQuick3DLightmapBaker is present
+        if (lightmapBaker) {
+            QQuick3DLightmapBaker::Callback qq3dCallback = lightmapBaker->m_callback;
+            QQuick3DLightmapBaker::BakingControl *qq3dBakingControl = lightmapBaker->m_bakingControl;
+            QSSGLightmapper::Callback callback =
+                [qq3dCallback,
+                 qq3dBakingControl](const QVariantMap &payload,
+                                    QSSGLightmapper::BakingControl *qssgBakingControl) {
+                    qq3dCallback(payload, qq3dBakingControl);
+
+                    if (qq3dBakingControl->isCancelled() && !qssgBakingControl->cancelled)
+                        qssgBakingControl->cancelled = true;
+                };
+            ctx.callbacks.lightmapBakingOutput = callback;
+        }
+
+        // Both the QQuick3DLightmapBaker and cmd / env variant needs this
+        ctx.callbacks.triggerNewFrame = [view3D](bool releaseResources) {
+            if (releaseResources) {
+                QMetaObject::invokeMethod(view3D->window(),
+                                            &QQuickWindow::releaseResources,
+                                            Qt::QueuedConnection);
+            }
+            QMetaObject::invokeMethod(view3D, &QQuick3DViewport::update, Qt::QueuedConnection);
+        };
+        ctx.callbacks.setCurrentlyBaking = [this](bool value) {
+            m_sgContext->bufferManager()->setCurrentlyLightmapBaking(value);
+        };
+
+        ctx.env.rhiCtx = m_sgContext->rhiContext().get();
+        ctx.env.renderer = m_sgContext->renderer().get();
+        ctx.env.lmOptions = lmOptions;
+        m_layer->renderData->initializeLightmapBaking(ctx);
+
+    } else {
+        // Check cmd line and env flags for request
+        static bool flagsChecked = false;
+        if (flagsChecked)
+            return;
+        flagsChecked = true;
+
+        auto isLightmapFlagSet = [](const QString &flag, const char *envVar) {
+            return QCoreApplication::arguments().contains(flag)
+            || qEnvironmentVariableIntValue(envVar);
+        };
+
+        m_lightmapBakingFromCmdRequested = isLightmapFlagSet(QStringLiteral("--bake-lightmaps"), "QT_QUICK3D_BAKE_LIGHTMAPS");
+        m_lightmapDenoisingFromCmdRequested = isLightmapFlagSet(QStringLiteral("--denoise-lightmaps"), "QT_QUICK3D_DENOISE_LIGHTMAPS");
+
+        if (m_lightmapBakingFromCmdRequested || m_lightmapDenoisingFromCmdRequested) {
+            // Delay one frame so the render data is initialized
+            QMetaObject::invokeMethod(view3D, &QQuick3DViewport::update, Qt::QueuedConnection);
+        }
+    }
+}
+
 void QQuick3DSceneRenderer::addNodeToLayer(QSSGRenderNode *node)
 {
     if (!m_layer)
@@ -1442,7 +1544,8 @@ inline void queryMainRenderPassDescriptorAndCommandBuffer(QQuickWindow *window, 
                 rhiCtxD->setMainRenderPassDescriptor(rt->renderPassDescriptor());
                 rhiCtxD->setCommandBuffer(cb);
                 rhiCtxD->setRenderTarget(rt);
-                const QRhiColorAttachment *color0 = rt->description().cbeginColorAttachments();
+                const auto descr = rt->description();
+                const QRhiColorAttachment *color0 = descr.cbeginColorAttachments();
                 if (color0 && color0->texture()) {
                     sampleCount = color0->texture()->sampleCount();
                     if (rt->resourceType() == QRhiResource::TextureRenderTarget) {

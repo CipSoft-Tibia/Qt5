@@ -517,6 +517,7 @@ enum BuiltinValue {
     vertex_index = 13;
     workgroup_id = 14;
     clip_distances = 15;
+    cull_distance = 16;
 }
 
 enum BuiltinFn {
@@ -663,4 +664,6 @@ enum BuiltinFn {
     quad_swap_x = 140;
     quad_swap_y = 141;
     quad_swap_diagonal = 142;
+    subgroup_inclusive_add = 143;
+    subgroup_inclusive_mul = 144;
 }

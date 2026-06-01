@@ -13,6 +13,10 @@
 
 #include <QtCore/q26numeric.h>
 
+#if QT_POINTER_SIZE == 8 || defined(Q_INTRINSIC_MUL_OVERFLOW64)
+# define QT_HAS_128_BIT_MULTIPLICATION
+#endif
+
 namespace {
     template <typename F> struct Fuzzy {};
     /* Data taken from qglobal.h's implementation of qFuzzyCompare:
@@ -82,6 +86,7 @@ private slots:
     void mulOverflow_data();
     void mulOverflow();
     void signedOverflow();
+    void genericWideMultiplication();
 };
 
 // Floating-point tests:
@@ -717,7 +722,7 @@ void tst_QNumeric::mulOverflow()
     if (size == -32)
         MulOverflowDispatch<qint32>()();
     if (size == -64) {
-#if QT_POINTER_SIZE == 8 || defined(Q_INTRINSIC_MUL_OVERFLOW64)
+#ifdef QT_HAS_128_BIT_MULTIPLICATION
         MulOverflowDispatch<qint64>()();
 #else
         QFAIL("128-bit multiplication not supported on this platform");
@@ -754,6 +759,292 @@ void tst_QNumeric::signedOverflow()
     QCOMPARE(qMulOverflow(maxInt, int(2), &r), true);
     QCOMPARE(qMulOverflow(maxInt, maxInt, &r), true);
 }
+
+template <typename T>
+static bool genericWideMultiplication_impl_impl(T lhs, T rhs)
+{
+    T expectedResult;
+    bool expectedOverflow = qMulOverflow(lhs,
+                                         rhs,
+                                         &expectedResult);
+
+    T actualResult;
+    bool actualOverflow = QtPrivate::qMulOverflowWideMultiplication(lhs, rhs, &actualResult);
+
+    if (actualResult != expectedResult || actualOverflow != expectedOverflow) {
+        qDebug() << "LHS" << lhs << "RHS" << rhs;
+        qDebug() << "Actual" << actualResult
+                 << "Expected" << expectedResult;
+        qDebug() << "Actual overflow" << actualOverflow
+                 << "Expected overflow" << expectedOverflow;
+        return false;
+    }
+
+    return true;
+}
+
+
+template <typename T>
+static bool genericWideMultiplication_impl()
+{
+    using U = std::make_unsigned_t<T>;
+    constexpr int SIZE_IN_BITS = sizeof(T) * CHAR_BIT;
+    for (int i = 0; i < SIZE_IN_BITS; ++i) {
+        for (int j = 0; j < SIZE_IN_BITS; ++j) {
+            for (int offset = -5; offset <= 5; ++offset) {
+                const U lhs_tmp = (U(1) << i) + offset;
+                const U rhs_tmp = (U(1) << j) + offset;
+
+                const T lhs = T(lhs_tmp);
+                const T rhs = T(rhs_tmp);
+
+                if (!genericWideMultiplication_impl_impl(lhs, rhs))
+                    return false;
+            }
+        }
+    }
+
+    for (int i = -256; i <= 256; ++i) {
+        for (int j = -256; j <= 256; ++j) {
+            if (!genericWideMultiplication_impl_impl(T(i), T(j)))
+                return false;
+        }
+    }
+
+    constexpr T minimal = std::numeric_limits<T>::min();
+    constexpr T maximal = std::numeric_limits<T>::max();
+    for (int i = -5; i <= 5; ++i) {
+        for (T j = minimal; j < minimal + 10; ++j) {
+            if (!genericWideMultiplication_impl_impl(T(i), T(j)))
+                return false;
+        }
+        for (T j = maximal - 10; j < maximal; ++j) {
+            if (!genericWideMultiplication_impl_impl(T(i), T(j)))
+                return false;
+        }
+        if (!genericWideMultiplication_impl_impl(T(i), maximal))
+            return false;
+    }
+
+    return true;
+}
+
+void tst_QNumeric::genericWideMultiplication()
+{
+    QVERIFY(genericWideMultiplication_impl<int>());
+    QVERIFY(genericWideMultiplication_impl<unsigned int>());
+
+#if defined(QT_HAS_128_BIT_MULTIPLICATION)
+    QVERIFY(genericWideMultiplication_impl<long>());
+    QVERIFY(genericWideMultiplication_impl<unsigned long>());
+
+    QVERIFY(genericWideMultiplication_impl<long long>());
+    QVERIFY(genericWideMultiplication_impl<unsigned long long>());
+#endif
+}
+
+
+#if !defined(Q_CC_GHS)
+// Compile-time tests for overflow math
+namespace OverflowTest {
+template <typename T>
+constexpr bool add(T a, T b, bool expOverflow, T exp = {})
+{
+    T result{};
+    const bool overflowed = qAddOverflow(a, b, &result);
+    if (overflowed != expOverflow)
+        return false;
+    if (overflowed)
+        return true;
+    return result == exp;
+}
+
+template <typename T>
+constexpr bool sub(T a, T b, bool expOverflow, T exp = {})
+{
+    T result{};
+    const bool overflowed = qSubOverflow(a, b, &result);
+    if (overflowed != expOverflow)
+        return false;
+    if (overflowed)
+        return true;
+    return result == exp;
+}
+
+template <typename T>
+constexpr bool mul(T a, T b, bool expOverflow, T exp = {})
+{
+    T result{};
+    const bool overflowed = qMulOverflow(a, b, &result);
+    if (overflowed != expOverflow)
+        return false;
+    if (overflowed)
+        return true;
+    return result == exp;
+}
+
+// Addition
+#define ADD_OVERFLOW_COMMON_TEST(type, maximal) \
+    static_assert(add(type(0), type(0), false, type(0))); \
+    static_assert(add(type(0), type(1), false, type(1))); \
+    static_assert(add(type(1), type(1), false, type(2))); \
+    static_assert(add(type(maximal), type(0), false, type(maximal))); \
+    static_assert(add(type(0), type(maximal), false, type(maximal))); \
+    static_assert(add(type(maximal), type(1), true)); \
+    static_assert(add(type(maximal), type(2), true)); \
+    static_assert(add(type(maximal), type(maximal), true)); \
+    static_assert(add(type(type(maximal) / type(2)), \
+                      type(type(maximal) / type(2)), \
+                      false, \
+                      type(type(maximal) - type(1)))); \
+
+#define ADD_OVERFLOW_UNSIGNED_TYPE_TEST(type, maximal) \
+    ADD_OVERFLOW_COMMON_TEST(type, maximal) \
+
+#define ADD_OVERFLOW_SIGNED_TYPE_TEST(type, minimal, maximal) \
+    ADD_OVERFLOW_COMMON_TEST(type, maximal) \
+    static_assert(add(type(0), type(-1), false, type(-1))); \
+    static_assert(add(type(-1), type(-1), false, type(-2))); \
+    static_assert(add(type(-1), type(-1), false, type(-2))); \
+    static_assert(add(type(minimal), type(0), false, type(minimal))); \
+    static_assert(add(type(0), type(minimal), false, type(minimal))); \
+    static_assert(add(type(minimal), type(-1), true)); \
+    static_assert(add(type(minimal), type(minimal), true)); \
+    static_assert(add(type(maximal), type(minimal), false, type(-1))); \
+    static_assert(add(type(minimal), type(maximal), false, type(-1))); \
+    static_assert(add(type(maximal), type(-1), false, type(type(maximal) - type(1)))); \
+
+// Subtraction
+#define SUB_OVERFLOW_COMMON_TEST(type, minimal, maximal) \
+    static_assert(sub(type(minimal), type(0), false, type(minimal))); \
+    static_assert(sub(type(minimal), type(1), true)); \
+    static_assert(sub(type(minimal), type(2), true)); \
+    static_assert(sub(type(minimal), type(maximal), true)); \
+    static_assert(sub(type(0), type(0), false, type(0))); \
+    static_assert(sub(type(1), type(0), false, type(1))); \
+    static_assert(sub(type(3), type(0), false, type(3))); \
+    static_assert(sub(type(9), type(5), false, type(4))); \
+    static_assert(sub(type(9), type(9), false, type(0))); \
+    static_assert(sub(type(maximal), type(0), false, type(maximal))); \
+    static_assert(sub(type(maximal), type(maximal), false, type(0))); \
+
+#define SUB_OVERFLOW_UNSIGNED_TYPE_TEST(type, maximal) \
+    SUB_OVERFLOW_COMMON_TEST(type, 0, maximal) \
+    static_assert(sub(type(1), type(2), true)); \
+    static_assert(sub(type(0), type(maximal), true)); \
+    static_assert(sub(type(1), type(maximal), true)); \
+
+#define SUB_OVERFLOW_SIGNED_TYPE_TEST(type, minimal, maximal) \
+    SUB_OVERFLOW_COMMON_TEST(type, minimal, maximal) \
+    static_assert(sub(type(1), type(2), false, type(-1))); \
+    static_assert(sub(type(0), type(maximal), false, type(type(minimal) + type(1)))); \
+    static_assert(sub(type(1), type(maximal), false, type(type(minimal) + type(2)))); \
+    static_assert(sub(type(0), type(minimal), true)); \
+    static_assert(sub(type(maximal), type(-1), true)); \
+    static_assert(sub(type(maximal), type(minimal), true)); \
+
+// Multiplication
+#define MUL_OVERFLOW_COMMON_TEST(type, minimal, maximal) \
+    static_assert(mul(type(0), type(0), false, type(0))); \
+    static_assert(mul(type(1), type(0), false, type(0))); \
+    static_assert(mul(type(0), type(1), false, type(0))); \
+    static_assert(mul(type(1), type(1), false, type(1))); \
+    static_assert(mul(type(1), type(10), false, type(10))); \
+    static_assert(mul(type(5), type(2), false, type(10))); \
+    static_assert(mul(type(minimal), type(0), false, type(0))); \
+    static_assert(mul(type(maximal), type(0), false, type(0))); \
+    static_assert(mul(type(0), type(minimal), false, type(0))); \
+    static_assert(mul(type(0), type(maximal), false, type(0))); \
+    static_assert(mul(type(minimal), type(1), false, type(minimal))); \
+    static_assert(mul(type(maximal), type(1), false, type(maximal))); \
+    static_assert(mul(type(1), type(minimal), false, type(minimal))); \
+    static_assert(mul(type(1), type(maximal), false, type(maximal))); \
+    static_assert(mul(type(maximal), type(2), true)); \
+    static_assert(mul(type(maximal/2), type(2), false, type(type(maximal) - type(1)))); \
+    static_assert(mul(type(maximal/4), type(4), false, type(type(maximal) - type(3)))); \
+
+#define MUL_OVERFLOW_UNSIGNED_TYPE_TEST(type, maximal) \
+    MUL_OVERFLOW_COMMON_TEST(type, 0, maximal) \
+
+#define MUL_OVERFLOW_SIGNED_TYPE_TEST(type, minimal, maximal) \
+    MUL_OVERFLOW_COMMON_TEST(type, minimal, maximal) \
+    static_assert(mul(type(maximal), type(-1), false, type(-maximal))); \
+    static_assert(mul(type(minimal), type(-1), true)); \
+    static_assert(mul(type(minimal), type(2), true)); \
+    static_assert(mul(type(minimal/2), type(3), true)); \
+
+
+#define UNSIGNED_TYPE_TEST(type, maximal) \
+    ADD_OVERFLOW_UNSIGNED_TYPE_TEST(type, maximal) \
+    SUB_OVERFLOW_UNSIGNED_TYPE_TEST(type, maximal) \
+    MUL_OVERFLOW_UNSIGNED_TYPE_TEST(type, maximal) \
+
+#define SIGNED_TYPE_TEST(type, minimal, maximal) \
+    ADD_OVERFLOW_SIGNED_TYPE_TEST(type, minimal, maximal) \
+    SUB_OVERFLOW_SIGNED_TYPE_TEST(type, minimal, maximal) \
+    MUL_OVERFLOW_SIGNED_TYPE_TEST(type, minimal, maximal) \
+
+using schar = signed char;
+using uchar = unsigned char;
+using ushort = unsigned short;
+using uint = unsigned int;
+using ulong = unsigned long;
+
+#if CHAR_MAX == 127 // char is signed
+SIGNED_TYPE_TEST(char, CHAR_MIN, CHAR_MAX)
+#else
+UNSIGNED_TYPE_TEST(char, CHAR_MAX)
+#endif
+
+SIGNED_TYPE_TEST(schar, SCHAR_MIN, SCHAR_MAX)
+UNSIGNED_TYPE_TEST(uchar, UCHAR_MAX)
+
+SIGNED_TYPE_TEST(short, SHRT_MIN, SHRT_MAX)
+UNSIGNED_TYPE_TEST(ushort, USHRT_MAX)
+
+SIGNED_TYPE_TEST(int, INT_MIN, INT_MAX)
+UNSIGNED_TYPE_TEST(uint, UINT_MAX)
+
+#if LONG_MAX == 2147483647 || defined(QT_HAS_128_BIT_MULTIPLICATION)
+SIGNED_TYPE_TEST(long, LONG_MIN, LONG_MAX)
+UNSIGNED_TYPE_TEST(ulong, ULONG_MAX)
+#else
+ADD_OVERFLOW_SIGNED_TYPE_TEST(long, LONG_MIN, LONG_MAX)
+SUB_OVERFLOW_SIGNED_TYPE_TEST(long, LONG_MIN, LONG_MAX)
+ADD_OVERFLOW_UNSIGNED_TYPE_TEST(ulong, ULONG_MAX)
+SUB_OVERFLOW_UNSIGNED_TYPE_TEST(ulong, ULONG_MAX)
+#endif
+
+#if defined(QT_HAS_128_BIT_MULTIPLICATION)
+// Compiling this causes an ICE in MSVC, so skipping it
+#if !defined(Q_CC_MSVC) || Q_CC_MSVC > 1950
+SIGNED_TYPE_TEST(qlonglong, LLONG_MIN, LLONG_MAX)
+UNSIGNED_TYPE_TEST(qulonglong, ULLONG_MAX)
+#endif
+#else
+ADD_OVERFLOW_SIGNED_TYPE_TEST(qlonglong, LLONG_MIN, LLONG_MAX)
+SUB_OVERFLOW_SIGNED_TYPE_TEST(qlonglong, LLONG_MIN, LLONG_MAX)
+ADD_OVERFLOW_UNSIGNED_TYPE_TEST(qlonglong, ULLONG_MAX)
+SUB_OVERFLOW_UNSIGNED_TYPE_TEST(qlonglong, ULLONG_MAX)
+#endif
+
+#undef ADD_OVERFLOW_COMMON_TEST
+#undef ADD_OVERFLOW_UNSIGNED_TYPE_TEST
+#undef ADD_OVERFLOW_SIGNED_TYPE_TEST
+
+#undef SUB_OVERFLOW_COMMON_TEST
+#undef SUB_OVERFLOW_UNSIGNED_TYPE_TEST
+#undef SUB_OVERFLOW_SIGNED_TYPE_TEST
+
+#undef MUL_OVERFLOW_COMMON_TEST
+#undef MUL_OVERFLOW_UNSIGNED_TYPE_TEST
+#undef MUL_OVERFLOW_SIGNED_TYPE_TEST
+
+#undef UNSIGNED_TYPE_TEST
+#undef SIGNED_TYPE_TEST
+} // namespace OverflowTest
+
+#endif // !defined(Q_CC_GHS)
 
 namespace SaturateCastTest {
 

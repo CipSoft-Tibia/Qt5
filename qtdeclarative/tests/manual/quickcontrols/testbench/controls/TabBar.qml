@@ -25,7 +25,13 @@ QtObject {
             text: qsTr("TabButton 1")
         }
         TabButton {
-            text: qsTr("TabButton 2")
+            text: qsTr("Icon")
+            icon.source: Utils.iconUrl
+        }
+        TabButton {
+            text: qsTr("Transparent Icon")
+            icon.source: Utils.iconUrl
+            icon.color: "transparent"
         }
         TabButton {
             text: qsTr("TabButton 3")

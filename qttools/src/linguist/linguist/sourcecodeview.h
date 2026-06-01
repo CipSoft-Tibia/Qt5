@@ -28,7 +28,7 @@ private:
     int m_lineNumToLoad;
     QString m_currentFileName;
 
-    QHash<QString, QString> fileHash;
+    QHash<QPair<QString, QDateTime>, QString> fileHash;
 };
 
 QT_END_NAMESPACE

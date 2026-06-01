@@ -157,6 +157,11 @@ QRegion QSGAbstractSoftwareRenderer::optimizeRenderList()
             // Get the dirty region's to pass to the next nodes
             if (node->isOpaque()) {
                 // if isOpaque, subtract node's dirty rect from m_dirtyRegion
+                // node->boundingRectMax() is the area that might have been changed
+                // node->boundingRectMin() is the area that will have been changed
+                // This adding and subtracting will make sure that the "maybe" area is
+                // also marked dirty for the next nodes to prevent artifacts
+                m_dirtyRegion += node->boundingRectMax();
                 m_dirtyRegion -= node->boundingRectMin();
             } else {
                 // if isAlpha, add node's dirty rect to m_dirtyRegion

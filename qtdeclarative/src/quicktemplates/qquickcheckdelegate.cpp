@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickcheckdelegate_p.h"
 #include "qquickitemdelegate_p_p.h"
@@ -19,6 +20,7 @@ QT_BEGIN_NAMESPACE
     \brief Item delegate with a check indicator that can be toggled on or off.
 
     \image qtquickcontrols-checkdelegate.gif
+           {Check delegate in list showing checked and unchecked states}
 
     CheckDelegate presents an item delegate that can be toggled on (checked) or
     off (unchecked). Check delegates are typically used to select one or more
@@ -86,6 +88,7 @@ QQuickCheckDelegate::QQuickCheckDelegate(QQuickItem *parent)
     In the animation below, the first checkdelegate is tri-state:
 
     \image qtquickcontrols-checkdelegate-tristate.gif
+           {Check delegate cycling through three states}
 
     The default is \c false, i.e., the delegate has only two states.
 */

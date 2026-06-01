@@ -560,7 +560,7 @@ bool QDBusConnectionPrivate::handleMessage(const QDBusMessage &amsg)
         // run it through the spy filters (if any) before the regular processing:
         // a) if it's a local message, we're in the caller's thread, so invoke the filter directly
         // b) if it's an external message, post to the main thread
-        if (Q_UNLIKELY(qDBusSpyHookList.exists()) && qApp) {
+        if (Q_UNLIKELY(qDBusSpyHookList.exists()) && QCoreApplication::instanceExists()) {
             if (isLocal) {
                 Q_ASSERT(QThread::currentThread() != thread());
                 qDBusDebug() << this << "invoking message spies directly";

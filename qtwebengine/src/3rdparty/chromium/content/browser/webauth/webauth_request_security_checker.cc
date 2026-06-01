@@ -6,17 +6,15 @@
 
 #include <string_view>
 
-#include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "content/browser/bad_message.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_authentication_delegate.h"
 #include "content/public/browser/webauthn_security_utils.h"
 #include "content/public/common/content_client.h"
-#include "content/public/common/content_features.h"
-#include "device/fido/features.h"
 #include "device/fido/fido_transport_protocol.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/base/url_util.h"
@@ -26,8 +24,8 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom.h"
 #include "third_party/blink/public/mojom/webauthn/authenticator.mojom.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -283,13 +281,13 @@ WebAuthRequestSecurityChecker::ValidateAncestorOrigins(
   // policy and for SPC requests.
   if (type == RequestType::kMakeCredential &&
       render_frame_host_->IsFeatureEnabled(
-          blink::mojom::PermissionsPolicyFeature::
+          network::mojom::PermissionsPolicyFeature::
               kPublicKeyCredentialsCreate)) {
     return blink::mojom::AuthenticatorStatus::SUCCESS;
   }
   if (type == RequestType::kGetAssertion &&
       render_frame_host_->IsFeatureEnabled(
-          blink::mojom::PermissionsPolicyFeature::kPublicKeyCredentialsGet)) {
+          network::mojom::PermissionsPolicyFeature::kPublicKeyCredentialsGet)) {
     return blink::mojom::AuthenticatorStatus::SUCCESS;
   }
   // For credential creation, SPC credentials (i.e., credentials with the
@@ -297,17 +295,17 @@ WebAuthRequestSecurityChecker::ValidateAncestorOrigins(
   // 'payment' permissions policy.
   if (type == RequestType::kMakePaymentCredential) {
     if (render_frame_host_->IsFeatureEnabled(
-            blink::mojom::PermissionsPolicyFeature::
+            network::mojom::PermissionsPolicyFeature::
                 kPublicKeyCredentialsCreate) ||
         render_frame_host_->IsFeatureEnabled(
-            blink::mojom::PermissionsPolicyFeature::kPayment)) {
+            network::mojom::PermissionsPolicyFeature::kPayment)) {
       return blink::mojom::AuthenticatorStatus::SUCCESS;
     }
   }
 
   if (type == RequestType::kGetPaymentCredentialAssertion &&
       render_frame_host_->IsFeatureEnabled(
-          blink::mojom::PermissionsPolicyFeature::kPayment)) {
+          network::mojom::PermissionsPolicyFeature::kPayment)) {
     return blink::mojom::AuthenticatorStatus::SUCCESS;
   }
   // TODO(crbug.com/347727501): Add a permissions policy for report.
@@ -378,14 +376,8 @@ WebAuthRequestSecurityChecker::ValidateDomainAndRelyingPartyID(
     return nullptr;
   }
 
-  if (base::FeatureList::IsEnabled(device::kWebAuthnRelatedOrigin)) {
-    return RemoteValidation::Create(caller_origin, relying_party_id,
-                                    std::move(callback));
-  }
-
-  std::move(callback).Run(
-      blink::mojom::AuthenticatorStatus::BAD_RELYING_PARTY_ID);
-  return nullptr;
+  return RemoteValidation::Create(caller_origin, relying_party_id,
+                                  std::move(callback));
 }
 
 blink::mojom::AuthenticatorStatus
@@ -508,7 +500,7 @@ bool WebAuthRequestSecurityChecker::
       base::flat_set<device::FidoTransportProtocol> merged_transports;
       if (!it->transports.empty() &&
           !credential_descriptor.transports.empty()) {
-        base::ranges::set_union(
+        std::ranges::set_union(
             it->transports, credential_descriptor.transports,
             std::inserter(merged_transports, merged_transports.begin()));
       }

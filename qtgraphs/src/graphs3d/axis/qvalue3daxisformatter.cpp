@@ -3,6 +3,7 @@
 
 #include "qvalue3daxis_p.h"
 #include "qvalue3daxisformatter_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -62,6 +63,12 @@ QValue3DAxisFormatter::~QValue3DAxisFormatter() {}
 void QValue3DAxisFormatter::setAllowNegatives(bool allow)
 {
     Q_D(QValue3DAxisFormatter);
+    if (d->m_allowNegatives == allow) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "value is already set to: " << allow;
+        return;
+    }
+
     d->m_allowNegatives = allow;
 }
 
@@ -81,6 +88,12 @@ bool QValue3DAxisFormatter::allowNegatives() const
 void QValue3DAxisFormatter::setAllowZero(bool allow)
 {
     Q_D(QValue3DAxisFormatter);
+    if (d->m_allowZero == allow) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "value is already set to: " << allow;
+        return;
+    }
+
     d->m_allowZero = allow;
 }
 

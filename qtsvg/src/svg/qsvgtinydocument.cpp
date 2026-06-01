@@ -147,7 +147,9 @@ static QByteArray qt_inflateSvgzDataFrom(QIODevice *device, bool doCheckContent)
 
         if (doCheckContent) {
             // Quick format check, equivalent to QSvgIOHandler::canRead()
-            if (!hasSvgHeader(destination)) {
+            const qsizetype destinationContents = std::min(destination.size(), static_cast<qsizetype>(zlibStream.total_out));
+            Q_ASSERT(destinationContents == static_cast<qsizetype>(zlibStream.total_out));
+            if (!hasSvgHeader(QByteArray::fromRawData(destination.constData(), destinationContents))) {
                 inflateEnd(&zlibStream);
                 qCWarning(lcSvgHandler, "Error while inflating gzip file: SVG format check failed");
                 return QByteArray();
@@ -527,6 +529,9 @@ int QSvgTinyDocument::currentFrame() const
 void QSvgTinyDocument::setCurrentFrame(int frame)
 {
     const int totalFrames = m_fps * animationDuration() / 1000;
+    if (totalFrames == 0)
+        return;
+
     const int timeForFrame = frame * animationDuration() / totalFrames; //in ms
     const int timeToAdd = timeForFrame - currentElapsed();
     m_animator->setAnimatorTime(timeToAdd);

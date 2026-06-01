@@ -3,14 +3,24 @@
 import QtQuick
 
 ReadyForm {
+    id: readyForm
+
+    required property var appFlow
+    required property CoffeeConfig coffeeConfig
+
     property alias timer: timer
+    foamAmount: coffeeConfig.foamAmount
+    milkAmount: coffeeConfig.milkAmount
+    coffeeAmount: coffeeConfig.coffeeAmount
+    sugarAmount: coffeeConfig.sugarAmount
+    state: Config.mode
 
     Timer {
         id: timer
         interval: 3000
         running: true
         onTriggered: {
-            applicationFlow.onReturnToStart()
+            readyForm.appFlow.onReturnToStart()
         }
     }
     grid.states: [

@@ -417,7 +417,7 @@ ArchiveResource* MHTMLParser::ParseNextPart(
       }
       // Note that we use line.utf8() and not line.ascii() as ascii turns
       // special characters (such as tab, line-feed...) into '?'.
-      content.AppendSpan(base::span(line.Utf8()));
+      content.AppendSpan(base::span<const char>(line.Utf8()));
       if (content_transfer_encoding == MIMEHeader::Encoding::kQuotedPrintable) {
         // The line reader removes the \r\n, but we need them for the content in
         // this case as the QuotedPrintable decoder expects CR-LF terminated
@@ -434,7 +434,7 @@ ArchiveResource* MHTMLParser::ParseNextPart(
   Vector<char> data;
   switch (content_transfer_encoding) {
     case MIMEHeader::Encoding::kBase64:
-      if (!Base64Decode(StringView(content.data(), content.size()), data)) {
+      if (!Base64Decode(StringView(base::as_byte_span(content)), data)) {
         DVLOG(1) << "Invalid base64 content for MHTML part.";
         return nullptr;
       }

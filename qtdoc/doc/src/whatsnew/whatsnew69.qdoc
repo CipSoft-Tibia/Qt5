@@ -6,6 +6,7 @@
     \title What's New in Qt 6.9
     \ingroup whatsnewqt6
     \brief Lists the new features in Qt 6.9.
+    \meta sortkey 609
 
     \section1 New Features in Qt 6.9
 
@@ -214,7 +215,7 @@
             safety for performance on accessing custom protobuf serializers.
     \endlist
 
-    \section2 Qt QML Module
+    \section2 Qt Qml Module
     \list
         \li QML Language Server now provides an outline view of the document
             structure. This allows clients (e.g., IDEs or code editors) to represent
@@ -417,6 +418,11 @@
 
     \section3 Windows
     \list
+        \li Added new public CMake API:
+        \list
+            \li Added the \l{qt_add_win_app_sdk} CMake function to add Windows App SDK
+            to the project.
+        \endlist
         \li Added support for rendering additional emoji font formats, such as CBDT and COLRv1.
     \endlist
 
@@ -509,6 +515,7 @@
     \page newclasses69.html
     \title New Classes and Functions in Qt 6.9
     \ingroup whatsnewqt6-api
+    \meta sortkey 609
     \brief A list of new APIs in Qt 6.9.
 
     This page contains a comprehensive list of all new classes and functions

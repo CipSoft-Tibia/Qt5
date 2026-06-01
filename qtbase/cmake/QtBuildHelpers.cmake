@@ -6,6 +6,7 @@ function(qt_internal_validate_cmake_generator)
 
     if(NOT warning_shown
             AND NOT CMAKE_GENERATOR MATCHES "Ninja"
+            AND NOT (IOS AND QT_INTERNAL_IS_STANDALONE_TEST)
             AND NOT QT_SILENCE_CMAKE_GENERATOR_WARNING
             AND NOT DEFINED ENV{QT_SILENCE_CMAKE_GENERATOR_WARNING})
         set_property(GLOBAL PROPERTY _qt_validate_cmake_generator_warning_shown TRUE)
@@ -227,6 +228,7 @@ function(qt_internal_get_qt_build_private_files_to_install out_var)
         ModuleDescription.json.in
         PkgConfigLibrary.pc.in
         Qt3rdPartyLibraryConfig.cmake.in
+        QtTransitiveExtras.cmake.in
         QtBaseTopLevelHelpers.cmake
         QtBuild.cmake
         QtBuildHelpers.cmake
@@ -294,16 +296,23 @@ function(qt_internal_get_qt_build_public_helpers out_var)
         QtPublicPluginHelpers
         QtPublicPluginHelpers_v2
         QtPublicSbomAttributionHelpers
+        QtPublicSbomBuildToolHelpers
+        QtPublicSbomCommonGenerationHelpers
         QtPublicSbomCpeHelpers
+        QtPublicSbomCycloneDXHelpers
+        QtPublicSbomDocumentNamespaceHelpers
         QtPublicSbomDepHelpers
+        QtPublicSbomExternalReferenceHelpers
         QtPublicSbomFileHelpers
         QtPublicSbomGenerationHelpers
+        QtPublicSbomGenerationCycloneDXHelpers
         QtPublicSbomHelpers
         QtPublicSbomLicenseHelpers
         QtPublicSbomOpsHelpers
         QtPublicSbomPurlHelpers
         QtPublicSbomPythonHelpers
         QtPublicSbomQtEntityHelpers
+        QtPublicSbomRelationshipHelpers
         QtPublicSbomSystemDepHelpers
         QtPublicTargetHelpers
         QtPublicTestHelpers
@@ -445,8 +454,10 @@ macro(qt_internal_setup_build_and_global_variables)
     qt_internal_setup_build_examples()
 
     qt_internal_set_qt_host_path()
+    qt_internal_setup_find_host_info_package()
 
     qt_internal_setup_build_docs()
+    qt_internal_setup_build_java_docs_on_host()
 
     qt_internal_include_qt_platform_android()
 
@@ -466,7 +477,6 @@ macro(qt_internal_setup_build_and_global_variables)
     qt_internal_check_msvc_versions()
     qt_internal_check_host_path_set_for_cross_compiling()
     qt_internal_setup_android_platform_specifics()
-    qt_internal_setup_find_host_info_package()
     qt_internal_setup_tool_path_command()
     qt_internal_setup_default_target_function_options()
     qt_internal_set_default_rpath_settings()
@@ -484,7 +494,6 @@ macro(qt_internal_setup_build_and_global_variables)
 
     qt_set_language_standards()
     qt_internal_set_use_ccache()
-    qt_internal_set_unity_build()
     qt_internal_set_allow_symlink_in_paths()
     qt_internal_set_skip_setup_deployment()
     qt_internal_set_qt_allow_download()

@@ -7,7 +7,7 @@
 #include <QtQuickControls2/qquickstyle.h>
 #include <QtQuickControls2/private/qquickstyle_p.h>
 
-typedef QPair<QString, QString> QStringPair;
+typedef std::pair<QString, QString> QStringPair;
 
 class tst_Snippets : public QObject
 {
@@ -33,7 +33,7 @@ static QMap<QString, QStringPair> findSnippets(const QDir &inputDir, const QDir 
     while (it.hasNext()) {
         QFileInfo fi(it.next());
         const QString outDirPath = !outputDir.path().isEmpty() ? outputDir.filePath(fi.baseName() + ".png") : QString();
-        snippetPaths.insert(fi.baseName(), qMakePair(fi.filePath(), outDirPath));
+        snippetPaths.insert(fi.baseName(), std::make_pair(fi.filePath(), outDirPath));
     }
     return snippetPaths;
 }

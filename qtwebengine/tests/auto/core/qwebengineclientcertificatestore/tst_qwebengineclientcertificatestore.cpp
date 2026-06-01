@@ -4,14 +4,12 @@
 #include <httpsserver.h>
 #include <util.h>
 #include <QtTest/QtTest>
+#include <QtTest/private/qtesthelpers_p.h>
 #include <QtWebEngineCore/qwebengineclientcertificatestore.h>
 #include <QtWebEngineCore/qwebenginepage.h>
 #include <QtWebEngineCore/qwebengineprofile.h>
 #include <QtWebEngineCore/qwebenginecertificateerror.h>
 #include <QtWebEngineCore/qwebenginesettings.h>
-
-#include <QtCore/qoperatingsystemversion.h>
-#include <QtCore/qsystemdetection.h>
 
 class tst_QWebEngineClientCertificateStore : public QObject
 {
@@ -118,15 +116,10 @@ void tst_QWebEngineClientCertificateStore::clientAuthentication()
     QFETCH(bool, in_memory);
     QFETCH(bool, add_more_in_memory_certificates);
 
-#ifdef Q_OS_MACOS
-#if !QT_MACOS_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(150000, 180000)
-    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSSequoia
-        && QSslSocket::activeBackend() == QLatin1String("securetransport")) {
+    if (QTestPrivate::isSecureTransportBlockingTest()) {
         // Built with SDK < 15, with file-based keychains that no longer work on macOS >= 15.
         QSKIP("SecureTransport will block the test server while accessing the login keychain");
     }
-#endif
-#endif // Q_OS_MACOS
 
     HttpsServer server(":/resources/server.pem", ":/resources/server.key", ":resources/ca.pem");
     server.setExpectError(false);

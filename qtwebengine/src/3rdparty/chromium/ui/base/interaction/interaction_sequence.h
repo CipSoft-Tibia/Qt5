@@ -249,6 +249,10 @@ class COMPONENT_EXPORT(UI_BASE) InteractionSequence {
     // The identifier of the element used by the failed step.
     ElementIdentifier element_id;
 
+    // The context of the element expected by the failed step, or null if
+    // unknown/unspecified.
+    ui::ElementContext context;
+
     // The reason the step failed/the sequence was aborted.
     AbortedReason aborted_reason = AbortedReason::kSequenceDestroyed;
 
@@ -469,10 +473,9 @@ class COMPONENT_EXPORT(UI_BASE) InteractionSequence {
     // Sets the description of the step.
     StepBuilder& SetDescription(std::string_view description);
 
-    // Formats the existing description into a new string; allows for adding
-    // modifiers to an existing description. `format_string` should contain
-    // exactly one "%s".
-    StepBuilder& FormatDescription(std::string_view format_string);
+    // Prepends `prefix`, along with a colon and space, to this step's
+    // description.
+    StepBuilder& AddDescriptionPrefix(std::string_view prefix);
 
     // Builds the step. The builder will not be valid after calling Build().
     std::unique_ptr<Step> Build();

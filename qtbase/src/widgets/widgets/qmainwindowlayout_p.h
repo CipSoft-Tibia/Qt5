@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMAINWINDOWLAYOUT_P_H
 #define QMAINWINDOWLAYOUT_P_H
@@ -643,6 +644,7 @@ private Q_SLOTS:
 #endif
 private:
 #if QT_CONFIG(tabbar)
+    void showTabBars();
     void updateTabBarShapes();
 #endif
     bool isInRestoreState = false;

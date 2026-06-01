@@ -124,7 +124,7 @@ ChromeRenderThreadObserver::ChromeOSListener::ChromeOSListener()
           GetCallbackGroupTaskRunner())),
       merge_session_running_(true) {}
 
-ChromeRenderThreadObserver::ChromeOSListener::~ChromeOSListener() {}
+ChromeRenderThreadObserver::ChromeOSListener::~ChromeOSListener() = default;
 
 void ChromeRenderThreadObserver::ChromeOSListener::BindOnIOThread(
     mojo::PendingReceiver<chrome::mojom::ChromeOSListener>
@@ -140,7 +140,7 @@ ChromeRenderThreadObserver::ChromeRenderThreadObserver()
   media::SetLocalizedStringProvider(ChromeMediaLocalizedStringProvider);
 }
 
-ChromeRenderThreadObserver::~ChromeRenderThreadObserver() {}
+ChromeRenderThreadObserver::~ChromeRenderThreadObserver() = default;
 
 chrome::mojom::DynamicParamsPtr ChromeRenderThreadObserver::GetDynamicParams()
     const {
@@ -200,7 +200,7 @@ void ChromeRenderThreadObserver::SetInitialConfiguration(
         bound_session_request_throttled_handler) {
   if (content_settings_manager)
     content_settings_manager_.Bind(std::move(content_settings_manager));
-  chrome::SetIsIncognitoProcess(is_incognito_process);
+  SetIsIncognitoProcess(is_incognito_process);
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   if (chromeos_listener_receiver) {
     chromeos_listener_ =

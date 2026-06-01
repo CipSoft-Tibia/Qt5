@@ -70,8 +70,25 @@ if(QT_WILL_INSTALL)
         DESTINATION "${__build_internals_install_dir}")
 endif()
 
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtBuildInternals/${__build_internals_standalone_test_template_dir}/CMakeLists.txt")
+set(__build_internals_extra_files
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtBuildInternals/QtBuildInternalsHelpers.cmake"
+)
+
+qt_copy_or_install(
+    FILES ${__build_internals_extra_files}
+    DESTINATION "${__build_internals_install_dir}")
+
+# In prefix builds we also need to copy the files into the build dir.
+if(QT_WILL_INSTALL)
+    foreach(__build_internals_file ${__build_internals_extra_files})
+        file(COPY "${__build_internals_file}" DESTINATION "${__build_internals_install_dir}")
+    endforeach()
+endif()
+
+_qt_internal_append_cmake_configure_depends(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtBuildInternals/${__build_internals_standalone_test_template_dir}/CMakeLists.txt"
+    ${__build_internals_extra_files}
+)
 
 qt_internal_create_toolchain_file()
 
@@ -203,7 +220,18 @@ configure_package_config_file(
     INSTALL_DESTINATION "${__GlobalConfig_install_dir}"
 )
 
-_qt_internal_export_apple_sdk_and_xcode_version_requirements(QT_CONFIG_EXTRAS_CODE)
+set(QT_CONFIG_EXTRAS_CODE "")
+
+_qt_internal_export_apple_sdk_and_xcode_version_requirements(apple_requirements)
+if(apple_requirements)
+    string(APPEND QT_CONFIG_EXTRAS_CODE "${apple_requirements}")
+endif()
+
+if(EMSCRIPTEN)
+    string(APPEND QT_CONFIG_EXTRAS_CODE "\n
+_qt_internal_handle_target_supports_shared_libs()
+")
+endif()
 
 configure_file(
     "${PROJECT_SOURCE_DIR}/cmake/QtConfigExtras.cmake.in"

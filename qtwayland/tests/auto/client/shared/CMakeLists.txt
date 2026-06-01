@@ -1,6 +1,10 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(QtWaylandSetup)
+qt_internal_get_wayland_protocols_dir(protocols_dir)
+qt_internal_get_wayland_extensions_dir(extensions_dir)
+
 #####################################################################
 ##Client test shared components:
 #####################################################################
@@ -21,7 +25,7 @@ qt_manual_moc(moc_files
     xdgshell.h
 )
 
-add_library(SharedClientTest
+add_library(SharedWaylandClientTest
     OBJECT
         corecompositor.cpp corecompositor.h
         coreprotocol.cpp coreprotocol.h
@@ -39,29 +43,29 @@ add_library(SharedClientTest
         ${moc_files}
 )
 
-qt6_generate_wayland_protocol_server_sources(SharedClientTest
+qt6_generate_wayland_protocol_server_sources(SharedWaylandClientTest
     FILES
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/cursor-shape/cursor-shape-v1.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/fullscreen-shell/fullscreen-shell-unstable-v1.xml
+        ${protocols_dir}/cursor-shape/cursor-shape-v1.xml
+        ${protocols_dir}/fullscreen-shell/fullscreen-shell-unstable-v1.xml
         ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/ivi/ivi-application.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/wp-primary-selection/wp-primary-selection-unstable-v1.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/tablet/tablet-unstable-v2.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/text-input/v2/text-input-unstable-v2.xml
-        ${PROJECT_SOURCE_DIR}/src/extensions/qt-text-input-method-unstable-v1.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/fractional-scale/fractional-scale-v1.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/viewporter/viewporter.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/wayland/wayland.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/xdg-decoration/xdg-decoration-unstable-v1.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/xdg-dialog/xdg-dialog-v1.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/xdg-output/xdg-output-unstable-v1.xml
-        ${PROJECT_SOURCE_DIR}/src/3rdparty/protocol/xdg-shell/xdg-shell.xml
+        ${protocols_dir}/wp-primary-selection/wp-primary-selection-unstable-v1.xml
+        ${protocols_dir}/tablet/tablet-unstable-v2.xml
+        ${protocols_dir}/text-input/v2/text-input-unstable-v2.xml
+        ${extensions_dir}/qt-text-input-method-unstable-v1.xml
+        ${protocols_dir}/fractional-scale/fractional-scale-v1.xml
+        ${protocols_dir}/viewporter/viewporter.xml
+        ${protocols_dir}/wayland/wayland.xml
+        ${protocols_dir}/xdg-decoration/xdg-decoration-unstable-v1.xml
+        ${protocols_dir}/xdg-dialog/xdg-dialog-v1.xml
+        ${protocols_dir}/xdg-output/xdg-output-unstable-v1.xml
+        ${protocols_dir}/xdg-shell/xdg-shell.xml
 )
 
 if(QT_FEATURE_opengl)
     set(optional_libraries Qt::OpenGL)
 endif()
 
-target_link_libraries(SharedClientTest
+target_link_libraries(SharedWaylandClientTest
     PUBLIC
         Qt::Gui
         ${optional_libraries}
@@ -70,4 +74,4 @@ target_link_libraries(SharedClientTest
         Threads::Threads # special case
 )
 
-target_include_directories(SharedClientTest PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(SharedWaylandClientTest PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})

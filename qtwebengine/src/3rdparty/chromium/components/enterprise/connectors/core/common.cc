@@ -4,8 +4,9 @@
 
 #include "components/enterprise/connectors/core/common.h"
 
+#include <algorithm>
+
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/escape.h"
 #include "base/strings/strcat.h"
 #include "base/strings/utf_string_conversions.h"
@@ -36,10 +37,9 @@ ContentAnalysisAcknowledgement::FinalAction RuleActionToAckAction(
 }  // namespace
 
 ReportingSettings::ReportingSettings() = default;
-ReportingSettings::ReportingSettings(GURL url,
-                                     const std::string& dm_token,
+ReportingSettings::ReportingSettings(const std::string& dm_token,
                                      bool per_profile)
-    : reporting_url(url), dm_token(dm_token), per_profile(per_profile) {}
+    : dm_token(dm_token), per_profile(per_profile) {}
 ReportingSettings::ReportingSettings(ReportingSettings&&) = default;
 ReportingSettings::ReportingSettings(const ReportingSettings&) = default;
 ReportingSettings& ReportingSettings::operator=(ReportingSettings&&) = default;
@@ -60,8 +60,7 @@ const char* AnalysisConnectorPref(AnalysisConnector connector) {
       return kOnFileTransferPref;
 #endif
     case AnalysisConnector::ANALYSIS_CONNECTOR_UNSPECIFIED:
-      NOTREACHED_IN_MIGRATION() << "Using unspecified analysis connector";
-      return "";
+      NOTREACHED() << "Using unspecified analysis connector";
   }
 }
 
@@ -80,8 +79,7 @@ const char* AnalysisConnectorScopePref(AnalysisConnector connector) {
       return kOnFileTransferScopePref;
 #endif
     case AnalysisConnector::ANALYSIS_CONNECTOR_UNSPECIFIED:
-      NOTREACHED_IN_MIGRATION() << "Using unspecified analysis connector";
-      return "";
+      NOTREACHED() << "Using unspecified analysis connector";
   }
 }
 
@@ -129,8 +127,7 @@ TriggeredRule::Action GetHighestPrecedenceAction(
       action_2 == TriggeredRule::ACTION_UNSPECIFIED) {
     return TriggeredRule::ACTION_UNSPECIFIED;
   }
-  NOTREACHED_IN_MIGRATION();
-  return TriggeredRule::ACTION_UNSPECIFIED;
+  NOTREACHED();
 }
 
 ContentAnalysisAcknowledgement::FinalAction GetHighestPrecedenceAction(
@@ -160,8 +157,7 @@ ContentAnalysisAcknowledgement::FinalAction GetHighestPrecedenceAction(
       action_2 == ContentAnalysisAcknowledgement::ACTION_UNSPECIFIED) {
     return ContentAnalysisAcknowledgement::ACTION_UNSPECIFIED;
   }
-  NOTREACHED_IN_MIGRATION();
-  return ContentAnalysisAcknowledgement::ACTION_UNSPECIFIED;
+  NOTREACHED();
 }
 
 FileMetadata::FileMetadata(const std::string& filename,
@@ -297,7 +293,7 @@ GetDownloadsCustomRuleMessage(const download::DownloadItem* download_item,
 #endif  // BUILDFLAG(USE_BLINK)
 
 bool ContainsMalwareVerdict(const ContentAnalysisResponse& response) {
-  return base::ranges::any_of(response.results(), [](const auto& result) {
+  return std::ranges::any_of(response.results(), [](const auto& result) {
     return result.tag() == kMalwareTag && !result.triggered_rules().empty();
   });
 }
@@ -323,8 +319,31 @@ DataRegion ChromeDataRegionSettingToEnum(int chrome_data_region_setting) {
     case 2:
       return DataRegion::EUROPE;
   }
-  NOTREACHED_IN_MIGRATION();
-  return DataRegion::NO_PREFERENCE;
+  NOTREACHED();
+}
+
+EnterpriseReportingEventType GetUmaEnumFromEventName(
+    std::string_view eventName) {
+  auto it = kEventNameToUmaEnumMap.find(eventName);
+  return it != kEventNameToUmaEnumMap.end()
+             ? it->second
+             : EnterpriseReportingEventType::kUnknownEvent;
+}
+
+std::string EventResultToString(EventResult result) {
+  switch (result) {
+    case EventResult::UNKNOWN:
+      return "EVENT_RESULT_UNKNOWN";
+    case EventResult::ALLOWED:
+      return "EVENT_RESULT_ALLOWED";
+    case EventResult::WARNED:
+      return "EVENT_RESULT_WARNED";
+    case EventResult::BLOCKED:
+      return "EVENT_RESULT_BLOCKED";
+    case EventResult::BYPASSED:
+      return "EVENT_RESULT_BYPASSED";
+  }
+  NOTREACHED();
 }
 
 }  // namespace enterprise_connectors

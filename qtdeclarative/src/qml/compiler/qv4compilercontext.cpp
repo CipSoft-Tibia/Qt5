@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4codegen_p.h"
 #include "qv4compilercontext_p.h"
@@ -108,6 +109,7 @@ Context::ResolvedName Context::resolveName(const QString &name, const QQmlJS::So
 
         if (m.type != Context::UndefinedMember) {
             result.type = m.canEscape ? ResolvedName::Local : ResolvedName::Stack;
+            result.memberType = m.type;
             result.scope = scope;
             result.index = m.index;
             result.isConst = (m.scope == VariableScope::Const);
@@ -261,7 +263,7 @@ void Context::emitBlockHeader(Codegen *codegen)
         }
     }
 
-    if (usesArgumentsObject == Context::ArgumentsObjectUsed) {
+    if (usesArgumentsObject == Context::UsesArgumentsObject::Used) {
         Q_ASSERT(contextType != ContextType::Block);
         if (isStrict || (formals && !formals->isSimpleParameterList())) {
             Instruction::CreateUnmappedArgumentsObject setup;

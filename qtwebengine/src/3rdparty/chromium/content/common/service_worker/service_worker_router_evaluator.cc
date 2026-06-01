@@ -225,7 +225,7 @@ base::Value ConditionToValue(
 }
 
 bool IsValidSources(
-    const std::vector<blink::ServiceWorkerRouterSource> sources) {
+    const std::vector<blink::ServiceWorkerRouterSource>& sources) {
   if (sources.empty()) {
     // At least a source must exist.
     RecordSetupError(ServiceWorkerRouterEvaluatorErrorEnums::kEmptySource);
@@ -731,7 +731,12 @@ void ServiceWorkerRouterEvaluator::Compile() {
       bool has_fetch_event =
           (s.type ==
            network::mojom::ServiceWorkerRouterSourceType::kFetchEvent);
-      has_fetch_event_source_ |= has_fetch_event;
+      bool has_race_network_and_fetch_event =
+          (s.type == network::mojom::ServiceWorkerRouterSourceType::kRace &&
+           s.race_source->target == blink::ServiceWorkerRouterRaceSource::
+                                        TargetEnum::kNetworkAndFetchHandler);
+      require_fetch_handler_ |=
+          (has_fetch_event | has_race_network_and_fetch_event);
       has_non_fetch_event_source_ |= !has_fetch_event;
     }
     compiled_rules_.emplace_back(std::move(rule));
@@ -790,8 +795,9 @@ base::Value ServiceWorkerRouterEvaluator::ToValue() const {
           source.Append("network");
           break;
         case network::mojom::ServiceWorkerRouterSourceType::kRace:
-          // TODO(crbug.com/40241479): we may need to update the name per
-          // target.
+          CHECK_EQ(s.race_source->target,
+                   blink::ServiceWorkerRouterRaceSource::TargetEnum::
+                       kNetworkAndFetchHandler);
           source.Append("race-network-and-fetch-handler");
           break;
         case network::mojom::ServiceWorkerRouterSourceType::kFetchEvent:

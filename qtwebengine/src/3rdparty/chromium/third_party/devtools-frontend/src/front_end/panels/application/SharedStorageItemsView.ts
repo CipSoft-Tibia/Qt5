@@ -87,17 +87,17 @@ export namespace SharedStorageItemsDispatcher {
 
   export interface ItemEditedEvent {
     columnIdentifier: string;
-    oldText: string;
+    oldText: string|null;
     newText: string;
   }
 
-  export type EventTypes = {
-    [Events.FILTERED_ITEMS_CLEARED]: void,
-    [Events.ITEM_DELETED]: ItemDeletedEvent,
-    [Events.ITEM_EDITED]: ItemEditedEvent,
-    [Events.ITEMS_CLEARED]: void,
-    [Events.ITEMS_REFRESHED]: void,
-  };
+  export interface EventTypes {
+    [Events.FILTERED_ITEMS_CLEARED]: void;
+    [Events.ITEM_DELETED]: ItemDeletedEvent;
+    [Events.ITEM_EDITED]: ItemEditedEvent;
+    [Events.ITEMS_CLEARED]: void;
+    [Events.ITEMS_REFRESHED]: void;
+  }
 }
 
 export class SharedStorageItemsView extends StorageItemsView {
@@ -241,7 +241,7 @@ export class SharedStorageItemsView extends StorageItemsView {
 
   async #editingCallback(
       editingNode: DataGrid.DataGrid.DataGridNode<Protocol.Storage.SharedStorageEntry>, columnIdentifier: string,
-      oldText: string, newText: string): Promise<void> {
+      oldText: string|null, newText: string): Promise<void> {
     if (columnIdentifier === 'key' && newText === '') {
       // The Shared Storage backend does not currently allow '' as a key, so we only set a new entry with a new key if its new key is nonempty.
       await this.refreshItems();
@@ -249,7 +249,9 @@ export class SharedStorageItemsView extends StorageItemsView {
       return;
     }
     if (columnIdentifier === 'key') {
-      await this.#sharedStorage.deleteEntry(oldText);
+      if (oldText !== null) {
+        await this.#sharedStorage.deleteEntry(oldText);
+      }
       await this.#sharedStorage.setEntry(newText, editingNode.data.value || '', false);
     } else {
       // The Shared Storage backend does not currently allow '' as a key, so we use ' ' as the default key instead.

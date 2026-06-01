@@ -409,8 +409,9 @@ void BrowserWindow::handleNewIncognitoWindowTriggered()
 
 void BrowserWindow::handleFileOpenTriggered()
 {
-    QUrl url = QFileDialog::getOpenFileUrl(this, tr("Open Web Resource"), QString(),
-                                                tr("Web Resources (*.html *.htm *.svg *.png *.gif *.svgz);;All files (*.*)"));
+    QUrl url = QFileDialog::getOpenFileUrl(
+            this, tr("Open Web Resource"), QString(),
+            tr("Web Resources (*.html *.htm *.svg *.png *.gif *.svgz *.pdf);;All files (*.*)"));
     if (url.isEmpty())
         return;
     currentTab()->setUrl(url);

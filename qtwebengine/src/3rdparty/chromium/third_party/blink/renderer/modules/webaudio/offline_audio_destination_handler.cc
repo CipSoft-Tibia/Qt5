@@ -45,7 +45,7 @@ OfflineAudioDestinationHandler::OfflineAudioDestinationHandler(
   DCHECK(main_thread_task_runner_->BelongsToCurrentThread());
 
   channel_count_ = number_of_channels;
-  SetInternalChannelCountMode(kExplicit);
+  SetInternalChannelCountMode(V8ChannelCountMode::Enum::kExplicit);
   SetInternalChannelInterpretation(AudioBus::kSpeakers);
 }
 
@@ -128,15 +128,15 @@ void OfflineAudioDestinationHandler::StartRendering() {
 
 void OfflineAudioDestinationHandler::StopRendering() {
   // offline audio rendering CANNOT BE stopped by JavaScript.
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void OfflineAudioDestinationHandler::Pause() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void OfflineAudioDestinationHandler::Resume() {
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 void OfflineAudioDestinationHandler::InitializeOfflineRenderThread(
@@ -145,9 +145,13 @@ void OfflineAudioDestinationHandler::InitializeOfflineRenderThread(
 
   shared_render_target_ = render_target->CreateSharedAudioBuffer();
   render_bus_ =
-      AudioBus::Create(render_target->numberOfChannels(),
-                       GetDeferredTaskHandler().RenderQuantumFrames());
-  DCHECK(render_bus_);
+      AudioBus::TryCreate(render_target->numberOfChannels(),
+                          GetDeferredTaskHandler().RenderQuantumFrames());
+  if (!render_bus_) {
+    Context()->SetAllocationFailed();
+    render_bus_ = AudioBus::TryCreate(render_target->numberOfChannels(), 0);
+    CHECK(render_bus_);
+  }
 
   PrepareTaskRunnerForRendering();
 }

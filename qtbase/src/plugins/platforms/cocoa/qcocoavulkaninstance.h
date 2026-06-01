@@ -26,12 +26,13 @@ public:
     VkSurfaceKHR *surface(QWindow *window);
 
 private:
-    VkSurfaceKHR createSurface(NSView *view);
+    VkSurfaceKHR createSurface(CALayer *layer);
 
     QVulkanInstance *m_instance = nullptr;
     QLibrary m_lib;
     VkSurfaceKHR m_nullSurface = nullptr;
     PFN_vkCreateMacOSSurfaceMVK m_createSurface = nullptr;
+    PFN_vkCreateMetalSurfaceEXT m_createMetalSurface = nullptr;
 };
 
 QT_END_NAMESPACE

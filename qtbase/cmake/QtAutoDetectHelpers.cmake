@@ -64,7 +64,47 @@ function(qt_auto_detect_wasm)
     endif()
 endfunction()
 
+# Handle assignment of CMAKE_POLICY_VERSION_MINIMUM for Android NDK cmake toolchain files shipped
+# with NDK < r28, to avoid deprecation warnings.
+#
+# NOTE: If updating the version, also update
+# qt_internal_get_android_qt_default_cmake_policy_version_minimum.
+#
+# Use a macro, to make propagation of the variable in the parent scope of the calling function
+# easier.
+macro(qt_auto_detect_set_android_cmake_policy_version_minimum is_android_detected)
+    if("${is_android_detected}"
+            AND CMAKE_VERSION VERSION_GREATER_EQUAL "4.0"
+            AND NOT QT_NO_SET_ANDROID_CMAKE_POLICY_VERSION_MINIMUM
+        )
+
+        if(QT_ANDROID_CMAKE_POLICY_VERSION_MINIMUM)
+            set(min_policy_version "${QT_ANDROID_CMAKE_POLICY_VERSION_MINIMUM}")
+        elseif(CMAKE_POLICY_VERSION_MINIMUM)
+            set(min_policy_version "${CMAKE_POLICY_VERSION_MINIMUM}")
+        else()
+            set(min_policy_version "3.10")
+        endif()
+
+        message(DEBUG
+            "Setting CMAKE_POLICY_VERSION_MINIMUM to ${min_policy_version} for Android builds.")
+
+        # Set the variable in the qtbase directory scope for easier reading.
+        set(CMAKE_POLICY_VERSION_MINIMUM "${min_policy_version}" PARENT_SCOPE)
+
+        # Also set the environment variable, otherwise any try_compile project that's started
+        # by CMake itself, rather than Qt (e.g. compiler detection), will not inherit the
+        # assignment.
+        set(ENV{CMAKE_POLICY_VERSION_MINIMUM} "${min_policy_version}")
+    endif()
+endmacro()
+
 function(qt_auto_detect_android)
+    # Don't assume an Android build if we're requesting to build Java documentation on the host.
+    if(QT_BUILD_HOST_JAVA_DOCS)
+        return()
+    endif()
+
     # We assume an Android build if any of the ANDROID_* cache variables are set.
     if(DEFINED ANDROID_SDK_ROOT
             OR DEFINED ANDROID_NDK_ROOT
@@ -149,6 +189,8 @@ function(qt_auto_detect_android)
     elseif (QT_AUTODETECT_ANDROID)
         message(STATUS "Android build detected")
     endif()
+
+    qt_auto_detect_set_android_cmake_policy_version_minimum("${android_detected}")
 endfunction()
 
 function(qt_auto_detect_vcpkg)
@@ -243,7 +285,7 @@ function(qt_auto_detect_apple)
 
     if(QT_APPLE_SDK)
         set(CMAKE_OSX_SYSROOT "${QT_APPLE_SDK}" CACHE STRING "")
-    elseif(NOT CMAKE_SYSTEM_NAME)
+    elseif(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         # Persist SDK name for macOS builds, since CMake 4.x will pick arbitrary
         # SDK paths, ignoring xcode-select, if not given an explicit SDK.
         _qt_internal_get_apple_sdk_name(sdk_name)
@@ -268,7 +310,7 @@ function(qt_auto_detect_apple)
         "Minimum OS X version to target for deployment (at runtime); newer APIs weak linked."
         " Set to empty string for default value.")
     if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-        if(NOT CMAKE_SYSTEM_NAME)
+        if(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
             # macOS
             set(version "${QT_SUPPORTED_MIN_MACOS_VERSION}")
         elseif(CMAKE_SYSTEM_NAME STREQUAL iOS)
@@ -288,9 +330,11 @@ function(qt_auto_detect_apple)
     set(QT_MAC_SDK_VERSION "${apple_sdk_version}" CACHE STRING "Darwin SDK version.")
 
     _qt_internal_get_xcode_version_raw(xcode_version_raw)
-    set(QT_MAC_XCODE_VERSION "${xcode_version_raw}" CACHE STRING "Xcode version.")
+    if(xcode_version_raw)
+        set(QT_MAC_XCODE_VERSION "${xcode_version_raw}" CACHE STRING "Xcode version.")
+    endif()
 
-    if(NOT CMAKE_SYSTEM_NAME)
+    if(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         # macOS
         list(LENGTH CMAKE_OSX_ARCHITECTURES arch_count)
         if(arch_count GREATER 0)
@@ -452,6 +496,11 @@ function(qt_auto_detect_macos_single_arch_cross_compilation)
 
         # Exit early if check was previously done, so we don't need to do extra process calls.
         OR QT_INTERNAL_MACOS_SINGLE_ARCH_CROSS_COMPILING_DETECTION_DONE)
+        if(QT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING)
+            message(STATUS
+                "Skipping macOS single-arch cross-compilation detection as requested by "
+                "QT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING.")
+        endif()
         return()
     endif()
 
@@ -470,8 +519,15 @@ function(qt_auto_detect_macos_single_arch_cross_compilation)
         message(
             STATUS "Detected implicit macOS cross-compilation. "
             "Host arch: ${host_arch} Target arch: ${target_arch}. "
-            "Setting CMAKE_CROSSCOMPILING to TRUE."
+            "Setting CMAKE_CROSSCOMPILING to TRUE, and requiring a host Qt."
         )
+        if(host_arch MATCHES "arm64" AND NOT QT_HOST_PATH)
+            message(WARNING
+                "If you don't want to require a host Qt for the cross-build, and are ok "
+                "with relying on Rosetta for running the build tools, please reconfigure with "
+                "-DQT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING=ON in a clean build dir."
+            )
+        endif()
 
         # Setting these tells CMake we are cross-compiling. This gets set in the correct scope
         # for top-level builds as well, because it is included via

@@ -103,11 +103,19 @@ function(qt_internal_add_headersclean_target module_target module_headers)
     set(target_compile_flags_joined_genex
         "$<${compile_flags_exist_genex}:$<JOIN:${target_compile_flags_genex},;>>")
 
+    if (QT_FEATURE_cxx2c)
+        set(QT_HEADERS_CLEAN_CXX_STANDARD c++2c)
+    elseif (QT_FEATURE_cxx2b)
+        set(QT_HEADERS_CLEAN_CXX_STANDARD c++2b)
+    else()
+        set(QT_HEADERS_CLEAN_CXX_STANDARD c++20)
+    endif()
+
     if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
             OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang|IntelLLVM")
 
-        # Compile header in strict C++20 mode. Enable further warnings.
-        set(hcleanFLAGS -std=c++2a
+        # Compile header in strict C++20 (or later) mode for C++17 build. Enable further warnings.
+        set(hcleanFLAGS -std=${QT_HEADERS_CLEAN_CXX_STANDARD}
             -Wall -Wextra -Werror -pedantic-errors
             -Woverloaded-virtual -Wshadow -Wundef -Wfloat-equal
             -Wnon-virtual-dtor -Wpointer-arith -Wformat-security
@@ -239,8 +247,8 @@ function(qt_internal_add_headersclean_target module_target module_headers)
 
         set(possible_base_dirs "${CMAKE_BINARY_DIR}" "${CMAKE_SOURCE_DIR}")
         foreach(dir IN LISTS possible_base_dirs)
-            string(FIND "${input_path}" "${dir}" idx)
-            if(idx EQUAL "0")
+            _qt_internal_path_is_prefix(dir "${input_path}" dir_is_prefix)
+            if(dir_is_prefix)
                 set(input_base_dir "${dir}")
                 break()
             endif()

@@ -16,7 +16,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/ranges/ranges.h"
 #include "base/strings/utf_string_conversions.h"
 #include "services/screen_ai/public/mojom/screen_ai_service.mojom.h"
 #include "services/strings/grit/services_strings.h"
@@ -30,7 +29,7 @@
 #include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/transform.h"
 
-namespace ranges = base::ranges;
+namespace ranges = std::ranges;
 
 namespace {
 
@@ -121,9 +120,8 @@ void SerializeDirection(const chrome_screen_ai::Direction& direction,
       // additions to `chrome_screen_ai::Direction`. However, in this
       // case, both the screen_ai library and this code should always be in
       // sync.
-      NOTREACHED_IN_MIGRATION()
-          << "Unrecognized chrome_screen_ai::Direction value: " << direction;
-      break;
+      NOTREACHED() << "Unrecognized chrome_screen_ai::Direction value: "
+                   << direction;
   }
 }
 
@@ -168,10 +166,8 @@ void SerializeContentType(const chrome_screen_ai::ContentType& content_type,
       // additions to `chrome_screen_ai::ContentType`. However, in this
       // case, both the screen_ai library and this code should always be in
       // sync.
-      NOTREACHED_IN_MIGRATION()
-          << "Unrecognized chrome_screen_ai::ContentType value: "
-          << content_type;
-      break;
+      NOTREACHED() << "Unrecognized chrome_screen_ai::ContentType value: "
+                   << content_type;
   }
 }
 
@@ -423,8 +419,7 @@ screen_ai::mojom::Direction ProtoToMojo(chrome_screen_ai::Direction direction) {
 
     case chrome_screen_ai::Direction_INT_MIN_SENTINEL_DO_NOT_USE_:
     case chrome_screen_ai::Direction_INT_MAX_SENTINEL_DO_NOT_USE_:
-      NOTREACHED_IN_MIGRATION();
-      return screen_ai::mojom::Direction::DIRECTION_UNSPECIFIED;
+      NOTREACHED();
   }
 }
 
@@ -590,14 +585,14 @@ ui::AXTreeUpdate VisualAnnotationToAXTreeUpdate(
 
   // Filter out invalid / unrecognized / unused nodes from the update.
   update.nodes.resize(nodes.size());
-  const auto end_node_iter = ranges::copy_if(
+  const auto end_nodes = std::ranges::copy_if(
       nodes, std::ranges::begin(update.nodes),
       [](const ui::AXNodeData& node_data) {
         return node_data.role != ax::mojom::Role::kUnknown &&
                node_data.id != ui::kInvalidAXNodeID;
       });
   update.nodes.resize(
-      std::distance(std::ranges::begin(update.nodes), end_node_iter));
+      std::distance(std::ranges::begin(update.nodes), end_nodes.out));
 
   return update;
 }

@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 #include "components/safe_browsing/content/browser/client_report_util.h"
-#include "components/safe_browsing/content/browser/unsafe_resource_util.h"
+
+#include "components/safe_browsing/content/browser/content_unsafe_resource_util.h"
+#include "components/safe_browsing/core/common/web_ui_constants.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_entry.h"
 
@@ -22,8 +24,9 @@ CSBRR::SafeBrowsingUrlApiType GetUrlApiTypeForThreatSource(
       return CSBRR::ANDROID_SAFEBROWSING_REAL_TIME;
     case safe_browsing::ThreatSource::ANDROID_SAFEBROWSING:
       return CSBRR::ANDROID_SAFEBROWSING;
-    case safe_browsing::ThreatSource::UNKNOWN:
     case safe_browsing::ThreatSource::CLIENT_SIDE_DETECTION:
+      return CSBRR::CLIENT_SIDE_DETECTION;
+    case safe_browsing::ThreatSource::UNKNOWN:
       return CSBRR::SAFE_BROWSING_URL_API_TYPE_UNSPECIFIED;
   }
 }
@@ -70,9 +73,8 @@ CSBRR::ReportType GetReportTypeFromSBThreatType(SBThreatType threat_type) {
     case SB_THREAT_TYPE_MANAGED_POLICY_WARN:
     case SB_THREAT_TYPE_MANAGED_POLICY_BLOCK:
       // Gated by SafeBrowsingBlockingPage::ShouldReportThreatDetails.
-      NOTREACHED_IN_MIGRATION() << "We should not send report for threat type: "
-                                << static_cast<int>(threat_type);
-      return CSBRR::UNKNOWN;
+      NOTREACHED() << "We should not send report for threat type: "
+                   << static_cast<int>(threat_type);
   }
 }
 
@@ -112,9 +114,8 @@ CSBRR::WarningShownInfo::WarningUXType GetWarningUXTypeFromSBThreatType(
     case DEPRECATED_SB_THREAT_TYPE_URL_CLIENT_SIDE_MALWARE:
     case SB_THREAT_TYPE_MANAGED_POLICY_WARN:
     case SB_THREAT_TYPE_MANAGED_POLICY_BLOCK:
-      NOTREACHED_IN_MIGRATION() << "We should not send report for threat type: "
-                                << static_cast<int>(threat_type);
-      return CSBRR::WarningShownInfo::UNKNOWN;
+      NOTREACHED() << "We should not send report for threat type: "
+                   << static_cast<int>(threat_type);
   }
 }
 
@@ -166,7 +167,9 @@ GetSecurityInterstitialInteractionFromCommand(
 
 bool IsReportableUrl(const GURL& url) {
   // TODO(panayiotis): also skip internal urls.
-  return url.SchemeIs("http") || url.SchemeIs("https");
+  // chrome://safe-browsing/match?type=${THREAT_TYPE} is used for local tests.
+  return url.SchemeIs("http") || url.SchemeIs("https") ||
+         safe_browsing::IsSafeBrowsingWebUIUrl(url);
 }
 
 GURL GetPageUrl(const security_interstitials::UnsafeResource& resource) {

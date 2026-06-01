@@ -19,15 +19,18 @@ ScrollablePage {
         }
 
         Slider {
-            id: slider
+            enabled: !GalleryConfig.disabled
             value: 0.5
             anchors.horizontalCenter: parent.horizontalCenter
+            Accessible.name: qsTr("Horizontal slider")
         }
 
         Slider {
+            enabled: !GalleryConfig.disabled
             orientation: Qt.Vertical
             value: 0.5
             anchors.horizontalCenter: parent.horizontalCenter
+            Accessible.name: qsTr("Vertical slider")
         }
     }
 }

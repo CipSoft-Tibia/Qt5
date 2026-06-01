@@ -133,6 +133,32 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
         WeightedBlended
     };
 
+    enum class DirtyFlag : quint8
+    {
+        TreeDirty = 0x1
+    };
+    using FlagT = std::underlying_type_t<DirtyFlag>;
+
+    static constexpr DirtyFlag DirtyMask { std::numeric_limits<FlagT>::max() };
+
+    [[nodiscard]] bool isDirty(DirtyFlag dirtyFlag = DirtyMask) const
+    {
+        return ((m_layerDirtyFlags & FlagT(dirtyFlag)) != 0)
+        || ((dirtyFlag == DirtyMask) && QSSGRenderNode::isDirty());
+    }
+    void markDirty(DirtyFlag dirtyFlag);
+    void clearDirty(DirtyFlag dirtyFlag);
+
+    void ref(QSSGRenderRoot *inRootNode)
+    {
+        rootNode = inRootNode;
+        rootNodeRef = &rootNode;
+    }
+
+    QSSGRenderRoot *rootNode = nullptr;
+
+    QSSGRenderLayerHandle lh;
+
     // First effect in a list of effects.
     QSSGRenderEffect *firstEffect;
     QSSGLayerRenderData *renderData = nullptr;
@@ -145,6 +171,7 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     QSSGRenderLayer::Background background;
     QVector3D clearColor;
 
+    FlagT m_layerDirtyFlags = FlagT(DirtyFlag::TreeDirty);
     quint8 viewCount = 1;
 
     // Ambient occlusion
@@ -199,6 +226,7 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     QRhiShaderResourceBindings *skyBoxSrb = nullptr;
     QVarLengthArray<QRhiShaderResourceBindings *, 4> item2DSrbs;
     bool skyBoxIsRgbe8 = false;
+    bool skyBoxIsSrgb = false;
 
     // Skybox
     float skyboxBlurAmount = 0.0f;
@@ -208,9 +236,6 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     float gridScale = 1.0f;
     quint32 gridFlags = 0;
     QRhiShaderResourceBindings *gridSrb = nullptr;
-
-    // Lightmapper config
-    QSSGLightmapperOptions lmOptions;
 
     // Scissor
     QRect scissorRect;
@@ -244,6 +269,10 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     bool drawCascades = false;
     bool drawSceneCascadeIntersection = false;
     bool disableShadowCameraUpdate = false;
+
+    // Would ideally be in QSSGLayerRenderData but it is created too late
+    // so needs to be set here.
+    QString lightmapSource;
 
     QSSGRenderLayer();
     ~QSSGRenderLayer();

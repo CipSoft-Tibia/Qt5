@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickspinbox_p.h"
 
@@ -23,11 +24,12 @@ static const int AUTO_REPEAT_INTERVAL = 100;
 //!     \nativetype QQuickSpinBox
     \inqmlmodule QtQuick.Controls
     \since 5.7
-    \ingroup input
+    \ingroup qtquickcontrols-input
     \ingroup qtquickcontrols-focusscopes
     \brief Allows the user to select from a set of preset values.
 
     \image qtquickcontrols-spinbox.png
+           {Spin box with numeric value and buttons}
 
     SpinBox allows the user to choose an integer value by clicking the up
     or down indicator buttons, or by pressing up or down on the keyboard.
@@ -42,6 +44,7 @@ static const int AUTO_REPEAT_INTERVAL = 100;
     \section2 Custom Values
 
     \image qtquickcontrols-spinbox-textual.png
+           {Spin box displaying textual values}
 
     Even though SpinBox works on integer values, it can be customized to
     accept arbitrary input values. The following snippet demonstrates how
@@ -54,6 +57,7 @@ static const int AUTO_REPEAT_INTERVAL = 100;
     numbers:
 
     \image qtquickcontrols-spinbox-double.png
+           {Spin box displaying decimal values}
 
     \snippet qtquickcontrols-spinbox-double.qml 1
 
@@ -343,12 +347,17 @@ bool QQuickSpinBoxPrivate::handleMove(const QPointF &point, ulong timestamp)
 {
     Q_Q(QQuickSpinBox);
     QQuickControlPrivate::handleMove(point, timestamp);
-    QQuickItem *ui = up->indicator();
-    QQuickItem *di = down->indicator();
-    up->setHovered(ui && ui->isEnabled() && ui->contains(ui->mapFromItem(q, point)));
-    up->setPressed(up->isHovered());
-    down->setHovered(di && di->isEnabled() && di->contains(di->mapFromItem(q, point)));
-    down->setPressed(down->isHovered());
+    QQuickItem *upIndicator = up->indicator();
+    const bool upIndicatorContainsPoint = upIndicator && upIndicator->isEnabled()
+        && upIndicator->contains(upIndicator->mapFromItem(q, point));
+    up->setHovered(touchId == -1 && upIndicatorContainsPoint);
+    up->setPressed(upIndicatorContainsPoint);
+
+    QQuickItem *downIndicator = down->indicator();
+    const bool downIndicatorContainsPoint = downIndicator && downIndicator->isEnabled()
+        && downIndicator->contains(downIndicator->mapFromItem(q, point));
+    down->setHovered(touchId == -1 && downIndicatorContainsPoint);
+    down->setPressed(downIndicatorContainsPoint);
 
     bool pressed = up->isPressed() || down->isPressed();
     q->setAccessibleProperty("pressed", pressed);
@@ -475,6 +484,9 @@ QQuickSpinBox::QQuickSpinBox(QQuickItem *parent)
     setAcceptedMouseButtons(Qt::LeftButton);
 #if QT_CONFIG(cursor)
     setCursor(Qt::ArrowCursor);
+#endif
+#if QT_CONFIG(quicktemplates2_multitouch)
+    setAcceptTouchEvents(true);
 #endif
 }
 

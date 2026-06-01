@@ -5,6 +5,7 @@
 #include "third_party/blink/renderer/platform/audio/media_multi_channel_resampler.h"
 
 #include <memory>
+
 #include "base/functional/bind.h"
 #include "media/base/audio_bus.h"
 #include "third_party/blink/renderer/platform/audio/audio_bus.h"
@@ -32,11 +33,11 @@ void MediaMultiChannelResampler::Resample(
   CHECK_EQ(static_cast<int>(resampler_input_bus->NumberOfChannels()),
             resampler_input_bus_wrapper_->channels());
 
+  resampler_input_bus_wrapper_->set_frames(resampler_input_bus->length());
   for (unsigned int i = 0; i < resampler_input_bus->NumberOfChannels(); ++i) {
     resampler_input_bus_wrapper_->SetChannelData(
-        i, resampler_input_bus->Channel(i)->MutableData());
+        i, resampler_input_bus->Channel(i)->MutableSpan());
   }
-  resampler_input_bus_wrapper_->set_frames(resampler_input_bus->length());
   ResampleInternal(frames, resampler_input_bus_wrapper_.get());
 }
 

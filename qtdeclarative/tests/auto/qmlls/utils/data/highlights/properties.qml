@@ -9,5 +9,6 @@ Item {
         readonly property int kk
         required property int kkk
         default property int kkkk
+        final property int kkkkk
     }
 }

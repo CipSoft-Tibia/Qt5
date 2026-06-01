@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstractitemview.h"
 
@@ -2071,9 +2072,9 @@ void QAbstractItemView::dragMoveEvent(QDragMoveEvent *event)
             if (d->selectionBehavior == QAbstractItemView::SelectRows
                 && d->dropIndicatorPosition != OnViewport
                 && (d->dropIndicatorPosition != OnItem || event->source() == this)) {
-                if (index.column() > 0)
-                    rect = visualRect(index.siblingAtColumn(0));
-                rect.setWidth(viewport()->width() - 1 - rect.x());
+                const int maxCol = d->model->columnCount(index.parent()) - 1;
+                const auto idx = index.column() > 0 ? index.siblingAtColumn(0) : index;
+                rect = d->intersectedRect(viewport()->rect(), idx, idx.siblingAtColumn(maxCol));
             }
             switch (d->dropIndicatorPosition) {
             case AboveItem:
@@ -3297,7 +3298,8 @@ void QAbstractItemView::closePersistentEditor(const QModelIndex &index)
 bool QAbstractItemView::isPersistentEditorOpen(const QModelIndex &index) const
 {
     Q_D(const QAbstractItemView);
-    return d->editorForIndex(index).widget;
+    QWidget *editor = d->editorForIndex(index).widget;
+    return editor && d->persistent.contains(editor);
 }
 
 /*!
@@ -4737,6 +4739,7 @@ QPixmap QAbstractItemViewPrivate::renderToPixmap(const QModelIndexList &indexes,
 
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
+    painter.setLayoutDirection(q->layoutDirection());
     QStyleOptionViewItem option;
     q->initViewItemOption(&option);
     option.state |= QStyle::State_Selected;

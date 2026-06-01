@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLLISTWRAPPER_P_H
 #define QQMLLISTWRAPPER_P_H
@@ -26,6 +27,8 @@
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcIncompatibleElement)
+
+class QQmlProperty;
 
 namespace QV4 {
 
@@ -73,6 +76,7 @@ struct Q_QML_EXPORT QmlListWrapper : Object
     static ReturnedValue create(ExecutionEngine *engine, QObject *object, int propId, QMetaType propType);
     static ReturnedValue create(ExecutionEngine *engine, const QQmlListProperty<QObject> &prop, QMetaType propType);
     static ReturnedValue create(ExecutionEngine *engine, QMetaType propType);
+    static ReturnedValue createOwned(ExecutionEngine *engine, const QQmlProperty &prop);
 
     QVariant toVariant() const;
     QQmlListReference toListReference() const;

@@ -736,6 +736,9 @@ void tst_RenderControl::renderAndReadBackWithVulkanAndCustomDepthTexture()
     QRhi *rhi = renderControl->rhi();
     Q_ASSERT(rhi);
 
+    if (!rhi->isTextureFormatSupported(QRhiTexture::D24S8))
+        QSKIP("24-bit depth format not supported, skipping test");
+
     const QSize size = rootItem->size().toSize();
     QScopedPointer<QRhiTexture> tex(rhi->newTexture(QRhiTexture::RGBA8, size, 1,
                                                     QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));

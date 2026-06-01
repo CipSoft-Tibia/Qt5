@@ -20,6 +20,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <deque>
 #include <initializer_list>
 #include <limits>
@@ -57,6 +58,7 @@
 #include "./fuzztest/internal/domains/map_impl.h"
 #include "./fuzztest/internal/domains/one_of_impl.h"
 #include "./fuzztest/internal/domains/optional_of_impl.h"
+#include "./fuzztest/internal/domains/overlap_of_impl.h"
 #include "./fuzztest/internal/domains/smart_pointer_of_impl.h"
 #include "./fuzztest/internal/domains/unique_elements_container_of_impl.h"
 #include "./fuzztest/internal/domains/variant_of_impl.h"
@@ -115,8 +117,8 @@ class DomainBuilder {
           iter.second != nullptr && iter.second->has_value(),
           "Some domain is not set yet!");
     }
-    return OwningDomain<T>(GetIndirect<T>(name)->template GetAs<Domain<T>>(),
-                           std::move(domain_lookup_table_));
+    auto domain = GetIndirect<T>(name)->template GetAs<Domain<T>>();
+    return OwningDomain<T>(std::move(domain), std::move(domain_lookup_table_));
   }
 
  private:
@@ -161,12 +163,16 @@ class DomainBuilder {
       return GetInnerDomain().Init(prng);
     }
 
-    void Mutate(corpus_type& val, absl::BitGenRef prng, bool only_shrink) {
-      GetInnerDomain().Mutate(val, prng, only_shrink);
+    void Mutate(corpus_type& val, absl::BitGenRef prng,
+                const domain_implementor::MutationMetadata& metadata,
+                bool only_shrink) {
+      GetInnerDomain().Mutate(val, prng, metadata, only_shrink);
     }
 
-    void UpdateMemoryDictionary(const corpus_type& val) {
-      return GetInnerDomain().UpdateMemoryDictionary(val);
+    void UpdateMemoryDictionary(
+        const corpus_type& val,
+        domain_implementor::ConstCmpTablesPtr cmp_tables) {
+      return GetInnerDomain().UpdateMemoryDictionary(val, cmp_tables);
     }
 
     auto GetPrinter() const { return GetInnerDomain().GetPrinter(); }
@@ -215,12 +221,16 @@ class DomainBuilder {
 
     corpus_type Init(absl::BitGenRef prng) { return inner_.Init(prng); }
 
-    void Mutate(corpus_type& val, absl::BitGenRef prng, bool only_shrink) {
-      inner_.Mutate(val, prng, only_shrink);
+    void Mutate(corpus_type& val, absl::BitGenRef prng,
+                const domain_implementor::MutationMetadata& metadata,
+                bool only_shrink) {
+      inner_.Mutate(val, prng, metadata, only_shrink);
     }
 
-    void UpdateMemoryDictionary(const corpus_type& val) {
-      return inner_.UpdateMemoryDictionary(val);
+    void UpdateMemoryDictionary(
+        const corpus_type& val,
+        domain_implementor::ConstCmpTablesPtr cmp_tables) {
+      return inner_.UpdateMemoryDictionary(val, cmp_tables);
     }
 
     auto GetPrinter() const { return inner_.GetPrinter(); }
@@ -292,6 +302,12 @@ auto ElementOf(std::vector<T> values) {
   return internal::ElementOfImpl<T>(std::move(values));
 }
 
+template <typename T, std::size_t N>
+auto ElementOf(std::array<T, N> values) {
+  return internal::ElementOfImpl<T>(
+      std::vector<T>(values.begin(), values.end()));
+}
+
 template <typename T>
 auto Just(T val) {
   return internal::ElementOfImpl<T>({std::move(val)});
@@ -300,6 +316,17 @@ auto Just(T val) {
 template <int&... ExplicitArgumentBarrier, typename... Inner>
 auto OneOf(Inner... domains) {
   return internal::OneOfImpl<Inner...>(std::move(domains)...);
+}
+
+// TODO(xinhaoyuan): Documentation.
+template <int&... ExplicitArgumentBarrier, typename... Inner>
+auto OverlapOf(Inner... domains) {
+  auto MaybeWrapDomain =
+      [](auto domain) -> Domain<internal::value_type_t<decltype(domain)>> {
+    return domain;
+  };
+  return internal::OverlapOfImpl<Domain<internal::value_type_t<Inner>>...>(
+      MaybeWrapDomain(std::move(domains))...);
 }
 
 // Filter(predicate, inner) combinator creates a domain that filters out values
@@ -463,7 +490,7 @@ auto BitFlagCombinationOf(const std::vector<T>& flags) {
 template <typename T, int&... ExplicitArgumentBarrier, typename Inner>
 auto ContainerOf(Inner inner) {
   static_assert(
-      std::is_same_v<internal::DropConst<internal::value_type_t<T>>,
+      std::is_same_v<internal::DropConst<typename T::value_type>,
                      internal::DropConst<internal::value_type_t<Inner>>>);
   return internal::ContainerOfImpl<T, Inner>(std::move(inner));
 }
@@ -481,7 +508,7 @@ template <template <typename, typename...> class T,
           typename C = T<internal::value_type_t<Inner>>>
 auto ContainerOf(Inner inner) {
   static_assert(
-      std::is_same_v<internal::DropConst<internal::value_type_t<C>>,
+      std::is_same_v<internal::DropConst<typename C::value_type>,
                      internal::DropConst<internal::value_type_t<Inner>>>);
   return internal::ContainerOfImpl<C, Inner>(std::move(inner));
 }
@@ -954,7 +981,7 @@ auto ArrayOf(const Inner& inner) {
 template <typename T, int&... ExplicitArgumentBarrier, typename Inner>
 auto UniqueElementsContainerOf(Inner inner) {
   static_assert(
-      std::is_same_v<internal::DropConst<internal::value_type_t<T>>,
+      std::is_same_v<internal::DropConst<typename T::value_type>,
                      internal::DropConst<internal::value_type_t<Inner>>>);
   return internal::UniqueElementsContainerImpl<T, Inner>(std::move(inner));
 }

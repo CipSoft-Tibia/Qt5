@@ -120,7 +120,7 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>%1 (%2)</source>
-        <extracomment>&lt;language&gt; (&lt;country&gt;)</extracomment>
+        <extracomment>&lt;language&gt; (&lt;territory&gt;)</extracomment>
         <translation>%1 (%2)</translation>
     </message>
     <message>
@@ -161,33 +161,6 @@ Kommer att anta en enskild universell form.</translation>
     <message>
         <source>Unknown error</source>
         <translation>Okänt fel</translation>
-    </message>
-</context>
-<context>
-    <name>FMT</name>
-    <message>
-        <source>GNU Gettext localization files</source>
-        <translation>GNU Gettext-lokalanpassningsfiler</translation>
-    </message>
-    <message>
-        <source>GNU Gettext localization template files</source>
-        <translation>GNU Gettext lokalanpassningsmallfiler</translation>
-    </message>
-    <message>
-        <source>Compiled Qt translations</source>
-        <translation>Kompilerade Qt-översättningar</translation>
-    </message>
-    <message>
-        <source>Qt Linguist &apos;Phrase Book&apos;</source>
-        <translation>Qt Linguist &apos;ordbok&apos;</translation>
-    </message>
-    <message>
-        <source>Qt translation sources</source>
-        <translation>Qt-översättningskällor</translation>
-    </message>
-    <message>
-        <source>XLIFF localization files</source>
-        <translation>XLIFF lokalanpassningsfiler</translation>
     </message>
 </context>
 <context>
@@ -285,6 +258,26 @@ Kommer att anta en enskild universell form.</translation>
         <comment>Choose Edit|Find from the menu bar or press Ctrl+F to pop up the Find dialog</comment>
         <translation></translation>
     </message>
+    <message>
+        <source>T&amp;ranslation status:</source>
+        <translation>Ö&amp;versättningsstatus:</translation>
+    </message>
+    <message>
+        <source>Lets you filter the search target by translation status</source>
+        <translation>Låter dig filtrera sökningsmålet efter översättningsstatus</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation>Alla</translation>
+    </message>
+    <message>
+        <source>Finished</source>
+        <translation>Färdiga</translation>
+    </message>
+    <message>
+        <source>Unfinished</source>
+        <translation>Oavslutade</translation>
+    </message>
 </context>
 <context>
     <name>FormMultiWidget</name>
@@ -310,37 +303,6 @@ Kommer att anta en enskild universell form.</translation>
     <message>
         <source>Delete non-empty length variant?</source>
         <translation>Vill du ta bort icke tomma längdvarianter?</translation>
-    </message>
-</context>
-<context>
-    <name>LRelease</name>
-    <message numerus="yes">
-        <source>Dropped %n message(s) which had no ID.</source>
-        <translation>
-            <numerusform>Släppte %n meddelande som inte har något id.</numerusform>
-            <numerusform>Släppte %n meddelanden som inte har något id.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>Excess context/disambiguation dropped from %n message(s).</source>
-        <translation>
-            <numerusform>Överflödiga kontext/särskiljning släpptes från %n meddelande.</numerusform>
-            <numerusform>Överflödiga kontext/särskiljning släpptes från %n meddelanden.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>    Generated %n translation(s) (%1 finished and %2 unfinished)</source>
-        <translation>
-            <numerusform>    Genererade %n översättning (%1 slutförda och %2 oavslutade)</numerusform>
-            <numerusform>    Genererade %n översättningar (%1 slutförda och %2 oavslutade)</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>    Ignored %n untranslated source text(s)</source>
-        <translation>
-            <numerusform>    Ignorerade %n oavslutad källtext</numerusform>
-            <numerusform>    Ignorerade %n oavslutade källtexter</numerusform>
-        </translation>
     </message>
 </context>
 <context>
@@ -955,7 +917,7 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>Mark item as done</source>
-        <translation>Markera post som slutförd</translation>
+        <translation>Markera posten som slutförd</translation>
     </message>
     <message>
         <source>Mark this item as done.</source>
@@ -1181,10 +1143,6 @@ Alla filer (*)</translation>
         <translation>Qt Linguist är ett verktyg för att lägga till översättningar till Qt-program.</translation>
     </message>
     <message>
-        <source>Copyright (C) %1 The Qt Company Ltd.</source>
-        <translation>Copyright (C) %1 The Qt Company Ltd.</translation>
-    </message>
-    <message>
         <source>Do you want to save the modified files?</source>
         <translation>Vill du spara ändrade filer?</translation>
     </message>
@@ -1322,6 +1280,14 @@ Alla filer (*)</translation>
     <message>
         <source>Toggles visualize whitespace in editors</source>
         <translation>Växlar visualisera blanksteg i redigerare</translation>
+    </message>
+    <message>
+        <source>Find P&amp;revious</source>
+        <translation>Sök &amp;föregående</translation>
+    </message>
+    <message>
+        <source>Shift+F3</source>
+        <translation>Skift+F3</translation>
     </message>
 </context>
 <context>
@@ -1613,6 +1579,34 @@ Rad: %2</translation>
         <source>Characters (with spaces):</source>
         <translation>Tecken (inkl. blanksteg):</translation>
     </message>
+    <message>
+        <source>Unfinished</source>
+        <translation>Oavslutade</translation>
+    </message>
+    <message>
+        <source>Total translatable messages:</source>
+        <translation>Totalt översättningsbara meddelanden:</translation>
+    </message>
+    <message>
+        <source>Total finished:</source>
+        <translation>Totalt färdiga:</translation>
+    </message>
+    <message>
+        <source>Without warnings:</source>
+        <translation>Utan varningar:</translation>
+    </message>
+    <message>
+        <source>With warnings:</source>
+        <translation>Med varningar:</translation>
+    </message>
+    <message>
+        <source>Unfinished:</source>
+        <translation>Oavslutade:</translation>
+    </message>
+    <message>
+        <source>Total messages including obsolete:</source>
+        <translation>Totalt meddelanden inklusive föråldrade:</translation>
+    </message>
 </context>
 <context>
     <name>TranslateDialog</name>
@@ -1701,8 +1695,8 @@ Rad: %2</translation>
         <translation>Inställningar för &quot;%1&quot; - Qt Linguist</translation>
     </message>
     <message>
-        <source>Any Country</source>
-        <translation>Valfritt land</translation>
+        <source>Any Territory</source>
+        <translation>Valfritt territorium</translation>
     </message>
 </context>
 </TS>

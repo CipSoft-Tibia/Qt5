@@ -915,8 +915,6 @@ GLint GLES2InterfaceStub::GetProgramResourceLocation(
 }
 void GLES2InterfaceStub::MemoryBarrierEXT(GLbitfield /* barriers */) {}
 void GLES2InterfaceStub::MemoryBarrierByRegion(GLbitfield /* barriers */) {}
-void GLES2InterfaceStub::SwapBuffers(GLuint64 /* swap_id */,
-                                     GLbitfield /* flags */) {}
 GLuint GLES2InterfaceStub::GetMaxValueInBufferCHROMIUM(GLuint /* buffer_id */,
                                                        GLsizei /* count */,
                                                        GLenum /* type */,
@@ -964,11 +962,6 @@ void* GLES2InterfaceStub::MapTexSubImage2DCHROMIUM(GLenum /* target */,
   return 0;
 }
 void GLES2InterfaceStub::UnmapTexSubImage2DCHROMIUM(const void* /* mem */) {}
-void GLES2InterfaceStub::ResizeCHROMIUM(GLuint /* width */,
-                                        GLuint /* height */,
-                                        GLfloat /* scale_factor */,
-                                        GLcolorSpace /* color_space */,
-                                        GLboolean /* alpha */) {}
 const GLchar* GLES2InterfaceStub::GetRequestableExtensionsCHROMIUM() {
   return 0;
 }
@@ -1123,34 +1116,6 @@ void GLES2InterfaceStub::BeginSharedImageAccessDirectCHROMIUM(
     GLenum /* mode */) {}
 void GLES2InterfaceStub::EndSharedImageAccessDirectCHROMIUM(
     GLuint /* texture */) {}
-void GLES2InterfaceStub::ConvertRGBAToYUVAMailboxesINTERNAL(
-    GLenum /* planes_yuv_color_space */,
-    GLenum /* plane_config */,
-    GLenum /* subsampling */,
-    const GLbyte* /* mailboxes */) {}
-void GLES2InterfaceStub::ConvertYUVAMailboxesToRGBINTERNAL(
-    GLint /* src_x */,
-    GLint /* src_y */,
-    GLsizei /* width */,
-    GLsizei /* height */,
-    GLenum /* planes_yuv_color_space */,
-    GLenum /* plane_config */,
-    GLenum /* subsampling */,
-    const GLbyte* /* mailboxes */) {}
-void GLES2InterfaceStub::ConvertYUVAMailboxesToTextureINTERNAL(
-    GLuint /* texture */,
-    GLenum /* target */,
-    GLuint /* internal_format */,
-    GLenum /* type */,
-    GLint /* src_x */,
-    GLint /* src_y */,
-    GLsizei /* width */,
-    GLsizei /* height */,
-    GLboolean /* flip_y */,
-    GLenum /* planes_yuv_color_space */,
-    GLenum /* plane_config */,
-    GLenum /* subsampling */,
-    const GLbyte* /* mailboxes */) {}
 void GLES2InterfaceStub::CopySharedImageINTERNAL(
     GLint /* xoffset */,
     GLint /* yoffset */,
@@ -1158,7 +1123,6 @@ void GLES2InterfaceStub::CopySharedImageINTERNAL(
     GLint /* y */,
     GLsizei /* width */,
     GLsizei /* height */,
-    GLboolean /* unpack_flip_y */,
     const GLbyte* /* mailboxes */) {}
 void GLES2InterfaceStub::CopySharedImageToTextureINTERNAL(
     GLuint /* texture */,

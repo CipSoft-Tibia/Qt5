@@ -10,6 +10,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 TranslationSettingsDialog::TranslationSettingsDialog(QWidget *parent)
   : QDialog(parent)
 {
@@ -30,7 +32,7 @@ TranslationSettingsDialog::TranslationSettingsDialog(QWidget *parent)
         m_ui.srcCbLanguageList->addItem(lang, QVariant(i));
     }
     m_ui.srcCbLanguageList->model()->sort(0, Qt::AscendingOrder);
-    m_ui.srcCbLanguageList->insertItem(0, QLatin1String("POSIX"), QVariant(QLocale::C));
+    m_ui.srcCbLanguageList->insertItem(0, "POSIX"_L1, QVariant(QLocale::C));
 
     m_ui.tgtCbLanguageList->setModel(m_ui.srcCbLanguageList->model());
 }

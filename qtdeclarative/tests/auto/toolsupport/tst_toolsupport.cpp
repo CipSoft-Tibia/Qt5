@@ -6,6 +6,7 @@
 #include <QtCore/QDirIterator>
 #include <QtCore/QLibraryInfo>
 #include <QtQml/qqmlcomponent.h>
+#include <QtQml/qqmlengine.h>
 
 #include <private/qobject_p.h>
 #include <private/qv4compileddata_p.h>

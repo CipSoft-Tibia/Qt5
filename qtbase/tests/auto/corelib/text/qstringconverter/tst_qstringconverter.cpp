@@ -151,7 +151,7 @@ private slots:
 
     void convertL1U16();
 
-#if QT_CONFIG(icu)
+#if QT_CONFIG(icu) || QT_CONFIG(winsdkicu)
     void roundtripIcu_data();
     void roundtripIcu();
     void icuInvalidCharacter_data();
@@ -501,7 +501,7 @@ void tst_QStringConverter::convertL1U8()
     }
 }
 
-#if QT_CONFIG(icu)
+#if QT_CONFIG(icu) || QT_CONFIG(winsdkicu)
 
 void tst_QStringConverter::roundtripIcu_data()
 {

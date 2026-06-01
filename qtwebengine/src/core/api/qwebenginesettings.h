@@ -66,6 +66,7 @@ public:
         PrintHeaderAndFooter,
         PreferCSSMarginsForPrinting,
         TouchEventsApiEnabled,
+        BackForwardCacheEnabled,
     };
 
     enum FontSize {

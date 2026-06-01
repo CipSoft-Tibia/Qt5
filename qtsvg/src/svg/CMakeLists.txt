@@ -53,7 +53,9 @@ qt_internal_add_module(Svg
 
 qt_internal_extend_target(Svg CONDITION QT_FEATURE_cssparser
     SOURCES
-        qsvgcsshandler.cpp qsvgcsshandler_p.h
+        css/qsvgcsshandler.cpp css/qsvgcsshandler_p.h
+        css/qsvgstyleselector.cpp css/qsvgstyleselector_p.h
+        css/qsvgcssproperties.cpp css/qsvgcssproperties_p.h
 )
 
 qt_internal_extend_target(Svg CONDITION MSVC AND (TEST_architecture_arch STREQUAL "i386")

@@ -19,8 +19,7 @@ import crossbench
 import crossbench.exception
 from crossbench import path as pth
 from crossbench.browsers.attributes import BrowserAttributes
-from crossbench.browsers.browser_helper import BROWSERS_CACHE
-from crossbench.browsers.chromium.webdriver import ChromiumWebDriver
+from crossbench.browsers.chromium.webdriver import ChromiumBasedWebDriver
 from crossbench.browsers.edge.edge import EdgePathMixin
 
 if TYPE_CHECKING:
@@ -29,7 +28,7 @@ if TYPE_CHECKING:
   from crossbench import plt
 
 
-class EdgeWebDriver(EdgePathMixin, ChromiumWebDriver):
+class EdgeWebDriver(EdgePathMixin, ChromiumBasedWebDriver):
 
   WEB_DRIVER_OPTIONS = EdgeOptions
   WEB_DRIVER_SERVICE = EdgeService
@@ -38,13 +37,15 @@ class EdgeWebDriver(EdgePathMixin, ChromiumWebDriver):
   def type_name(self) -> str:
     return "edge"
 
-  def _find_driver(self) -> pth.RemotePath:
+  def _find_driver(self) -> pth.AnyPath:
     finder = EdgeWebDriverDownloader(self)
     return finder.download()
 
-  def _create_driver(self, options, service) -> ChromiumDriver:
-    return webdriver.Edge(  # pytype: disable=wrong-keyword-args
-        options=options, service=service)
+  def _create_driver(
+      self,
+      options: EdgeOptions,  # type: ignore
+      service: EdgeService) -> ChromiumDriver:  # type: ignore
+    return webdriver.Edge(options=options, service=service)
 
   @property
   def attributes(self) -> BrowserAttributes:
@@ -63,9 +64,9 @@ class EdgeWebDriverDownloader:
     self.extension: str = ""
     if self.platform.is_win:
       self.extension = ".exe"
+    cache_dir = self.platform.host_platform.local_cache_dir("driver")
     self.driver_path: pth.LocalPath = (
-        BROWSERS_CACHE /
-        f"edgedriver-{self.browser.major_version}{self.extension}")
+        cache_dir / f"edgedriver-{self.browser.major_version}{self.extension}")
 
   def download(self) -> pth.LocalPath:
     if not self.driver_path.exists():
@@ -83,11 +84,10 @@ class EdgeWebDriverDownloader:
       archive_file = pth.LocalPath(tmp_dir) / archive_name
       self.platform.download_to(url, archive_file)
       unpack_dir = pth.LocalPath(tmp_dir) / "extracted"
-      shutil.unpack_archive(archive_file, unpack_dir)
+      shutil.unpack_archive(os.fspath(archive_file), os.fspath(unpack_dir))
       driver = unpack_dir / f"msedgedriver{self.extension}"
       assert driver.is_file(), (f"Extracted driver at {driver} does not exist.")
-      BROWSERS_CACHE.mkdir(parents=True, exist_ok=True)
-      shutil.move(os.fspath(driver), self.driver_path)
+      shutil.move(os.fspath(driver), os.fspath(self.driver_path))
       self.driver_path.chmod(self.driver_path.stat().st_mode | stat.S_IEXEC)
 
   def _arch_identifier(self) -> str:

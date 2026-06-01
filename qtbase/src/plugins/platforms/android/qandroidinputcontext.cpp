@@ -2,10 +2,10 @@
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <android/log.h>
 
-#include "androiddeadlockprotector.h"
 #include "androidjniinput.h"
 #include "androidjnimain.h"
 #include "qandroideventdispatcher.h"
@@ -26,6 +26,8 @@
 #include <qpa/qplatformwindow.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
 
@@ -69,7 +71,8 @@ static jfieldID m_textFieldID = 0;
 
 static void runOnQtThread(const std::function<void()> &func)
 {
-    AndroidDeadlockProtector protector;
+    QtAndroidPrivate::AndroidDeadlockProtector protector(
+        u"QAndroidInputContext::runOnQtThread()"_s);
     if (!protector.acquire())
         return;
     QMetaObject::invokeMethod(m_androidInputContext, "safeCall", Qt::BlockingQueuedConnection, Q_ARG(std::function<void()>, func));
@@ -78,9 +81,6 @@ static void runOnQtThread(const std::function<void()> &func)
 static bool hasValidFocusObject()
 {
     if (!m_androidInputContext)
-        return false;
-
-    if (!m_androidInputContext->isInputPanelVisible())
         return false;
 
     const auto focusObject = m_androidInputContext->focusObject();
@@ -633,8 +633,7 @@ void QAndroidInputContext::updateSelectionHandles()
 
     if (cpos == anchor || im->anchorRectangle().isNull()) {
         auto curRect = cursorRectangle();
-        QPoint cursorPointGlobal = qPlatformWindow->mapToGlobal(
-                    QPoint(curRect.x() + (curRect.width() / 2), curRect.y() + curRect.height()));
+        QPoint cursorPointGlobal = QPoint(curRect.x() + (curRect.width() / 2), curRect.y() + curRect.height());
         QPoint cursorPoint(curRect.center().x(), curRect.bottom());
         int x = curRect.x();
         int y = curRect.y();
@@ -676,11 +675,13 @@ void QAndroidInputContext::updateSelectionHandles()
         int rightSideOfScreen = platformIntegration->screen()->availableGeometry().right();
         if (leftPoint.x() < m_selectHandleWidth)
             leftPoint.setX(m_selectHandleWidth);
+        leftPoint = qPlatformWindow->mapFromGlobal(leftPoint);
 
         if (rightPoint.x() > rightSideOfScreen - m_selectHandleWidth)
             rightPoint.setX(rightSideOfScreen - m_selectHandleWidth);
+        rightPoint = qPlatformWindow->mapFromGlobal(rightPoint);
 
-        QPoint editPoint(qPlatformWindow->mapToGlobal(leftRect.united(rightRect).topLeft().toPoint()));
+        QPoint editPoint(leftRect.united(rightRect).topLeft().toPoint());
         uint32_t buttons = readOnly ? EditContext::CopyButton | EditContext::SelectAllButton
                                     : EditContext::AllButtons;
 
@@ -953,7 +954,7 @@ void QAndroidInputContext::showInputPanel()
     else if (qGuiApp->focusObject()->metaObject()->indexOfSignal("cursorPositionChanged()") >= 0)
         m_updateCursorPosConnection = connect(qGuiApp->focusObject(), SIGNAL(cursorPositionChanged()), this, SLOT(updateCursorPosition()));
 
-    QRect rect = screenInputItemRectangle();
+    QRect rect = QPlatformInputContext::inputItemRectangle().toRect();
     QtAndroidInput::showSoftwareKeyboard(rect.left(), rect.top(), rect.width(), rect.height(),
                                          query->value(Qt::ImHints).toUInt(),
                                          query->value(Qt::ImEnterKeyType).toUInt());

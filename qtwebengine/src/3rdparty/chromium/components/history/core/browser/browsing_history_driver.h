@@ -83,8 +83,8 @@ class BrowsingHistoryDriver {
 #endif // !BUILDFLAG(IS_QTWEBENGINE)
 
  protected:
-  BrowsingHistoryDriver() {}
-  virtual ~BrowsingHistoryDriver() {}
+  BrowsingHistoryDriver() = default;
+  virtual ~BrowsingHistoryDriver() = default;
 };
 
 }  // namespace history

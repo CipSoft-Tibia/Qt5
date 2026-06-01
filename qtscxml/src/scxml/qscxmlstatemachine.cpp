@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qscxmlstatemachine_p.h"
 #include "qscxmlexecutablecontent_p.h"
@@ -483,10 +484,8 @@ void QScxmlStateMachinePrivate::postEvent(QScxmlEvent *event)
         }
     }
 
-    if (event->eventType() == QScxmlEvent::ExternalEvent)
-        m_router.route(event->name().split(QLatin1Char('.')), event);
-
     if (event->eventType() == QScxmlEvent::ExternalEvent) {
+        m_router.route(event->name().split(QLatin1Char('.')), event);
         qCDebug(qscxmlLog) << q << "posting external event" << event->name();
         m_externalQueue.enqueue(event);
     } else {

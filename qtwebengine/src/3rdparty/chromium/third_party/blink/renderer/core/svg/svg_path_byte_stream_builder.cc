@@ -36,7 +36,9 @@ class SVGPathByteStreamBuilder::CoalescingBuffer {
  public:
   explicit CoalescingBuffer(SVGPathByteStreamBuilderStorage& result)
       : current_offset_(0), result_(result) {}
-  ~CoalescingBuffer() { result_.Append(bytes_, current_offset_); }
+  ~CoalescingBuffer() {
+    result_.AppendSpan(base::span(bytes_).first(current_offset_));
+  }
 
   template <typename DataType>
   void WriteType(DataType value) {
@@ -114,7 +116,7 @@ void SVGPathByteStreamBuilder::EmitSegment(const PathSegmentData& segment) {
       buffer.WritePoint(segment.target_point);
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 }
 

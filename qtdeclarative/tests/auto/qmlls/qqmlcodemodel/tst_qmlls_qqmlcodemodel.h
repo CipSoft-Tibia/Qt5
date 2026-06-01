@@ -34,6 +34,9 @@ private slots:
     void openFiles();
     void importPathViaSettings();
     void reloadLotsOfFiles();
+
+    void withQmllsBuildIniRelativeImportPath();
+    void withQmllsIniRelativeImportPath();
 };
 
 #endif // TST_QMLLS_QQMLCODEMODEL_H

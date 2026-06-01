@@ -4,7 +4,6 @@
 /*!
 \page qtqml-tooling-qmlls.html
 \title \QMLLS
-\keyword \QMLLS Reference
 \brief A tool that helps you write code in your favorite LSP-supporting editor.
 \ingroup qtqml-tooling
 \ingroup qtqml-tooling-devtools
@@ -166,6 +165,7 @@ your editor should invoke \c{qmlls} as follows:
 \endcode
     \li The \c{QMLLS_NO_CMAKE_CALLS} environment variable.
     \li The \c{.qmlls.ini} settings file, see \l {Configuration File}.
+    \li The \l{QT_QML_GENERATE_QMLLS_INI_NO_CMAKE_CALLS} CMake variable.
 \endlist
 
 \section1 Configuration File
@@ -174,22 +174,19 @@ your editor should invoke \c{qmlls} as follows:
 This file should be in the root source directory of the project.
 It should be a text file in the ini-format.
 
-\note \c{.qmlls.ini} files can be generated automatically via
-\l{QT_QML_GENERATE_QMLLS_INI}.
-
-The configuration file should look like this:
+The configuration file can have the following entries:
 \code
 // .qmlls.ini
 [General]
-buildDir=<path/to/build-directory>
 no-cmake-calls=<true-or-false>
-docDir=<path/to/qt-documentation>
-importPaths=<path/to/imports>
+
+buildDir=<path/to/build-directory> # not required in Qt 6.10 and later
+docDir=<path/to/qt-documentation>  # not required in Qt 6.10 and later
+importPaths=<path/to/imports>      # not required in Qt 6.10 and later
 \endcode
 
-Currently, the configuration file can be used to set the build
-directory of the current project and optionally disable the automatic
-CMake rebuild functionality for C++ defined QML types.
+To use the configuration file to disable the automatic CMake rebuild
+functionality, set \c{no-cmake-calls} to \c{true}.
 
 \note \QMLLS can create default configuration files
 using the \c{--write-defaults} option. This will overwrite an
@@ -210,7 +207,6 @@ yet to be supported:
     \li using QMake or imperative type registration---see \l{Port QML modules to CMake}
     \li that were not built---\QMLLS uses the build information to find QML modules
     \li where QML modules don't follow the guidelines in \l{Modern QML modules}
-    \li not using \l QT_QML_GENERATE_QMLLS_INI
 \endlist
 
 */

@@ -81,17 +81,57 @@ function(get_copy_of_response_file result target rsp)
     add_dependencies(${cmakeTarget} ${cmakeTarget}_${rsp}_copy_${config})
 endfunction()
 
+# Creates an IMPORTED object library pointing to a single object file
+# that is the result of merging multiple Chromium object files with `clang -r`.
+#
+# The object file is added to the cmakeTarget static archive, without
+# propagating any usage requirements to the consumers of the cmakeTarget.
+#
+# Used exclusively for single-arch macOS static builds of QtPdf.
 function(add_archiver_options target buildDir completeStatic)
     get_target_property(config ${target} CONFIG)
     string(TOUPPER ${config} cfg)
     get_target_property(ninjaTarget ${target} NINJA_TARGET)
     get_target_property(cmakeTarget ${target} CMAKE_TARGET)
     set(objects_out "${buildDir}/${cmakeTarget}_objects.o")
-    add_library(GnObject_${cmakeTarget}_${config} OBJECT IMPORTED GLOBAL)
-    target_link_libraries(${cmakeTarget} PRIVATE $<$<CONFIG:${config}>:GnObject_${cmakeTarget}_${config}>)
-    set_property(TARGET GnObject_${cmakeTarget}_${config} PROPERTY IMPORTED_OBJECTS_${cfg} ${objects_out})
+
+    set(gn_object_target "GnObject_${cmakeTarget}_${config}")
+    add_library("${gn_object_target}" OBJECT IMPORTED GLOBAL)
+
+    # This genex construct is used to prevent leakage of the
+    # ${gn_object_target} target into the INTERFACE_LINK_LIBRARIES
+    # property of the <module> target in its exported
+    # <module>Targets.cmake file, and in the accompanying .prl file.
+    set(config_genex "$<CONFIG:${config}>")
+
+    # This prevents the .prl leakage, it always evaluates to true.
+    set(skip_walk_genex "$<BOOL:QT_SKIP_WALK_LIBS_PROCESSING>")
+
+    # This prevents the INTERFACE_LINK_LIBRARIES leakage.
+    if(CMAKE_VERSION VERSION_LESS "3.26")
+        set(build_genex "BUILD_INTERFACE")
+    else()
+        set(build_genex "BUILD_LOCAL_INTERFACE")
+    endif()
+
+    set(link_genex "$<${build_genex}:${gn_object_target}>")
+    set(condition "$<AND:${config_genex},${skip_walk_genex}>")
+    set(final_genex "$<${condition}:${link_genex}>")
+
+    target_link_libraries(${cmakeTarget} PRIVATE "${final_genex}")
+    set_property(TARGET "${gn_object_target}" PROPERTY IMPORTED_OBJECTS_${cfg} ${objects_out})
 endfunction()
 
+# Links Chromium object files and static libraries to a target Qt library (e.g. Pdf or
+# WebEngineCore), using response files.
+#
+# The function is used on all platforms except for:
+# - universal macOS
+# - static single-arch macOS
+# - iOS of any kind
+# The function IS used for single-arch shared-library macOS builds.
+# The function IS NOT used for static macOS builds and iOS, as the default macOS 'ar'
+# static library archiver does not support response files.
 function(add_linker_options target buildDir completeStatic)
     get_target_property(config ${target} CONFIG)
     get_target_property(ninjaTarget ${target} NINJA_TARGET)
@@ -138,7 +178,7 @@ function(add_linker_options target buildDir completeStatic)
             )
             # enable larger PDBs if webenginecore debug build
             if(cmakeTarget STREQUAL "WebEngineCore")
-                target_link_options(${cmakeTarget} PRIVATE "$<$<CONFIG:Debug>:/pdbpagesize:8192>")
+                target_link_options(${cmakeTarget} PRIVATE "$<$<CONFIG:Debug>:/pdbpagesize:16384>")
             endif()
         endif()
         target_link_options(${cmakeTarget} PRIVATE "$<$<CONFIG:${config}>:@${objects_rsp}>")
@@ -153,6 +193,23 @@ function(add_linker_options target buildDir completeStatic)
     endif()
 endfunction()
 
+# Creates a single config, arch-specific static library archive from multiple Chromium object
+# files and static libraries.
+#
+# Steps:
+# 1. Merges multiple object files into a single object file via partial linking, aka `clang -r`
+# 2. If completeStatic is false, merges all static archives into a single object (not archive)
+#    file with `clang -r`.
+#    This is done for WebEngineCore, but not Pdf, as Pdf uses only object files.
+# 3. Creates a single final archive with the above created object and archive object files with
+#    `ar -crs`.
+#
+# The complicated setup is used due to missing response file support in the macOS `ar` archiver.
+#
+# This is only used for universal macOS builds of QtPdf and QtWebEngineCore.
+#
+# TODO: This currently loses debug information for static Qt builds, because `clang -r` does NOT
+# transfer debug information, but only adds debug link info, see QTBUG-116619.
 function(add_intermediate_archive target buildDir completeStatic)
     get_target_property(config ${target} CONFIG)
     get_target_property(arch ${target} ARCH)
@@ -162,11 +219,18 @@ function(add_intermediate_archive target buildDir completeStatic)
     string(TOUPPER ${config} cfg)
     set(objects_rsp "${buildDir}/${ninjaTarget}_objects.rsp")
     set(objects_out "${buildDir}/${cmakeTarget}_objects.o")
+    if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(deployment_target_arg -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET})
+    else()
+        unset(deployment_target_arg)
+    endif()
+
     if(NOT completeStatic)
         set(archives_rsp "${buildDir}/${ninjaTarget}_archives.rsp")
         set(archives_out "${buildDir}/${cmakeTarget}_archives.o")
         set(archives_command
             COMMAND clang++ -r -nostdlib -arch ${arch}
+            ${deployment_target_arg}
             -o ${archives_out}
             -Wl,-keep_private_externs
             -Wl,-all_load
@@ -177,6 +241,7 @@ function(add_intermediate_archive target buildDir completeStatic)
         OUTPUT ${buildDir}/${cmakeTarget}.a
         BYPRODUCTS ${objects_out} ${archives_out}
         COMMAND clang++ -r -nostdlib -arch ${arch}
+            ${deployment_target_arg}
             -o ${objects_out}
             -Wl,-keep_private_externs
             @${objects_rsp}
@@ -195,6 +260,13 @@ function(add_intermediate_archive target buildDir completeStatic)
     )
 endfunction()
 
+# Merges multiple Chromium object files into a single object file using `clang -r`.
+# E.g. multiple Pdf object files into a single Pdf_objects.o file.
+#
+# This is used for iOS builds and single-arch static macOS builds of QtPdf.
+#
+# TODO: This currently loses debug information for static Qt builds, because `clang -r` does NOT
+# transfer debug information, but only adds debug link info, see QTBUG-116619.
 function(add_intermediate_object target buildDir completeStatic)
     get_target_property(config ${target} CONFIG)
     get_target_property(arch ${target} ARCH)
@@ -207,6 +279,9 @@ function(add_intermediate_object target buildDir completeStatic)
     endif()
     set(objects_rsp "${buildDir}/${ninjaTarget}_objects.rsp")
     set(objects_out "${buildDir}/${cmakeTarget}_objects.o")
+    if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
+        list(APPEND args -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET})
+    endif()
     add_custom_command(
         OUTPUT ${objects_out}
         COMMAND clang++ -r -nostdlib
@@ -243,8 +318,12 @@ function(create_lipo_command target buildDir fileName)
     )
 endfunction()
 
-# this function only deals with objects as it is only
-# used by qtpdf and we do not need anything more
+# Lipo-s object files into a single universal object file.
+#
+# The resulting lipo-ed object file is added to the STATIC_LIBRARY_OPTIONS of the module target
+# (e.g QtPdf).
+#
+# The function is only used for iOS QtPdf builds.
 function(add_ios_lipo_command target buildDir)
     get_target_property(config ${target} CONFIG)
     get_target_property(cmakeTarget ${target} CMAKE_TARGET)
@@ -260,6 +339,16 @@ function(add_ios_lipo_command target buildDir)
     )
 endfunction()
 
+# Lipos-s two arch-specific static archives into a single universal static archive.
+#
+# The resulting lipo-ed static archive is added as an IMPORTED static library, and is linked
+# to the module target (e.g. Pdf)
+#
+# Only used for universal macOS builds.
+#
+# TODO: Currently broken for universal static macOS builds, because target_link_libraries() will
+# not try to merge the lipo-ed static archive with the module static archive. The Qt build will
+# succeed, but user projects will fail with linker errors.
 function(add_lipo_command target buildDir)
     get_target_property(config ${target} CONFIG)
     get_target_property(cmakeTarget ${target} CMAKE_TARGET)
@@ -320,7 +409,10 @@ function(add_ninja_command)
             ${arg_BUILDDIR}/${arg_TARGET} # use generator expression in CMAKE 3.20
         BYPRODUCTS ${arg_BYPRODUCTS}
         COMMENT "Running ninja for ${arg_TARGET} in ${arg_BUILDDIR}"
-        COMMAND Ninja::ninja
+        COMMAND ${CMAKE_COMMAND}
+            -E env
+            "NODEJS_EXECUTABLE=${Nodejs_EXECUTABLE}"
+            $<TARGET_FILE:Ninja::ninja>
             ${ninja_flags}
             -C ${arg_BUILDDIR}
             ${arg_TARGET}
@@ -374,15 +466,28 @@ function(add_gn_build_artifacts_to_target)
                 LINK_DEPENDS ${arg_BUILDDIR}/${config}/${arch}/${arg_NINJA_STAMP}
             )
             if(QT_IS_MACOS_UNIVERSAL)
+                # For universal macOS builds we create (merge) per-arch intermediate archives from
+                # objects and static archives, to lipo them later, and then link them to the
+                # module target via target_link_libraries().
+                # TODO: Currently broken for static universal QtPdf builds. Static WebEngine are
+                # not supported, so not relevant for that.
                 add_intermediate_archive(${target} ${arg_BUILDDIR}/${config}/${arch} ${arg_COMPLETE_STATIC})
             elseif(IOS)
+                # For iOS builds that only support building QtPdf, but not QtWebEngine, we create
+                # a per-arch merged object file from all Pdf object files, and later (see below)
+                # lipo them together, and finally add them to STATIC_LIBRARY_OPTIONS of QtPdf.
                 add_intermediate_object(${target} ${arg_BUILDDIR}/${config}/${arch} ${arg_COMPLETE_STATIC})
             else()
                 if(MACOS AND QT_FEATURE_static)
-                    # mac archiver does not support @file notation, do intermediate object istead
+                    # The macOS archiver does not support response files (aka @file notation),
+                    # so we create a merged intermediate object like on iOS, create an IMPORTED
+                    # object library for it, and link that to the module target.
                     add_intermediate_object(${target} ${arg_BUILDDIR}/${config}/${arch} ${arg_COMPLETE_STATIC})
                     add_archiver_options(${target} ${arg_BUILDDIR}/${config}/${arch} ${arg_COMPLETE_STATIC})
                 else()
+                    # For single-arch macOS shared builds, and all other platforms (Linux, Windows,
+                    # Android), instead of merging objects, we directly link the response files to
+                    # the module target.
                     add_linker_options(${target} ${arg_BUILDDIR}/${config}/${arch} ${arg_COMPLETE_STATIC})
                 endif()
             endif()
@@ -395,7 +500,8 @@ function(add_gn_build_artifacts_to_target)
         # TODO: remove once this has been fixed by Apple. See issue FB13667242
         # or QTBUG-122655 for details.
         if(APPLECLANG)
-            if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "15.0.0")
+            if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "15.0.0" AND
+                    CMAKE_CXX_COMPILER_VERSION VERSION_LESS "17.0.0")
                 target_link_options(${arg_CMAKE_TARGET} PRIVATE -ld_classic)
                 set_target_properties(${arg_CMAKE_TARGET} PROPERTIES
                     QT_NO_DISABLE_WARN_DUPLICATE_LIBRARIES TRUE)
@@ -546,7 +652,6 @@ macro(qt_webengine_externalproject_add)
                    -DCMAKE_PREFIX_PATH:PATH=<INSTALL_DIR>
                    -DCMAKE_OSX_ARCHITECTURES=${OSX_ARCH_STR}
                    -DCMAKE_VERBOSE_MAKEFILE=${CMAKE_VERBOSE_MAKEFILE}
-                   -DWEBENGINE_ROOT_BUILD_DIR=${PROJECT_BINARY_DIR}
                    -DQT_ALLOW_SYMLINK_IN_PATHS=${QT_ALLOW_SYMLINK_IN_PATHS}
                    -DPython3_EXECUTABLE=${Python3_EXECUTABLE}
                    -DGCC_LEGACY_SUPPORT=${QT_FEATURE_webengine_gcc_legacy_support}

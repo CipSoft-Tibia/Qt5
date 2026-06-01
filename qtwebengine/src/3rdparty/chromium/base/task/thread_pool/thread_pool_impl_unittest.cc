@@ -63,8 +63,7 @@
 #include "base/win/com_init_util.h"
 #endif  // BUILDFLAG(IS_WIN)
 
-namespace base {
-namespace internal {
+namespace base::internal {
 
 namespace {
 
@@ -120,10 +119,11 @@ void VerifyTaskEnvironment(const TaskTraits& traits,
                                           : ThreadType::kDefault,
             PlatformThread::GetCurrentThreadType());
 
-  if (traits.may_block())
-    internal::AssertBlockingAllowed();
-  else
-    internal::AssertBlockingDisallowedForTesting();
+  if (traits.may_block()) {
+    AssertBlockingAllowed();
+  } else {
+    AssertBlockingDisallowedForTesting();
+  }
 
   // Verify that the thread the task is running on is named as expected.
   EXPECT_THAT(thread_name, ::testing::HasSubstr("ThreadPool"));
@@ -171,8 +171,9 @@ void VerifyOrderAndTaskEnvironmentAndSignalEvent(
     TestWaitableEvent* expected_previous_event,
     TestWaitableEvent* event) {
   DCHECK(event);
-  if (expected_previous_event)
+  if (expected_previous_event) {
     EXPECT_TRUE(expected_previous_event->IsSignaled());
+  }
   VerifyTaskEnvironment(traits, use_resource_efficient_group);
   event->Signal();
 }
@@ -316,8 +317,9 @@ class ThreadPoolImplTestBase : public testing::Test {
   }
 
   void TearDown() override {
-    if (did_tear_down_)
+    if (did_tear_down_) {
       return;
+    }
 
     if (thread_pool_) {
       thread_pool_->FlushForTesting();
@@ -615,7 +617,7 @@ TEST(ThreadPoolImplTest_Switch, DisableBestEffortTasksSwitch) {
   thread_pool.PostDelayedTask(
       FROM_HERE,
       {TaskPriority::BEST_EFFORT, TaskShutdownBehavior::BLOCK_SHUTDOWN},
-      BindLambdaForTesting([&]() {
+      BindLambdaForTesting([&] {
         EXPECT_TRUE(best_effort_can_run.IsSet());
         best_effort_did_run.Signal();
       }),
@@ -624,7 +626,7 @@ TEST(ThreadPoolImplTest_Switch, DisableBestEffortTasksSwitch) {
   TestWaitableEvent user_blocking_did_run;
   thread_pool.PostDelayedTask(
       FROM_HERE, {TaskPriority::USER_BLOCKING},
-      BindLambdaForTesting([&]() { user_blocking_did_run.Signal(); }),
+      BindLambdaForTesting([&] { user_blocking_did_run.Signal(); }),
       TimeDelta());
 
   // The USER_BLOCKING task should run.
@@ -655,7 +657,7 @@ TEST_P(ThreadPoolImplTest_CoverAllSchedulingOptions, Fence) {
 
   CreateTaskRunnerAndExecutionMode(thread_pool_.get(), GetTraits(),
                                    GetExecutionMode())
-      ->PostTask(FROM_HERE, BindLambdaForTesting([&]() {
+      ->PostTask(FROM_HERE, BindLambdaForTesting([&] {
                    EXPECT_TRUE(can_run.IsSet());
                    did_run.Signal();
                  }));
@@ -678,7 +680,7 @@ TEST_P(ThreadPoolImplTest_CoverAllSchedulingOptions, MultipleFences) {
 
   CreateTaskRunnerAndExecutionMode(thread_pool_.get(), GetTraits(),
                                    GetExecutionMode())
-      ->PostTask(FROM_HERE, BindLambdaForTesting([&]() {
+      ->PostTask(FROM_HERE, BindLambdaForTesting([&] {
                    EXPECT_TRUE(can_run.IsSet());
                    did_run.Signal();
                  }));
@@ -705,7 +707,7 @@ TEST_P(ThreadPoolImplTest_CoverAllSchedulingOptions, FenceBeforeStart) {
 
   CreateTaskRunnerAndExecutionMode(thread_pool_.get(), GetTraits(),
                                    GetExecutionMode())
-      ->PostTask(FROM_HERE, BindLambdaForTesting([&]() {
+      ->PostTask(FROM_HERE, BindLambdaForTesting([&] {
                    EXPECT_TRUE(can_run.IsSet());
                    did_run.Signal();
                  }));
@@ -727,9 +729,10 @@ TEST_P(ThreadPoolImplTest_CoverAllSchedulingOptions, BestEffortFence) {
 
   CreateTaskRunnerAndExecutionMode(thread_pool_.get(), GetTraits(),
                                    GetExecutionMode())
-      ->PostTask(FROM_HERE, BindLambdaForTesting([&]() {
-                   if (GetTraits().priority() == TaskPriority::BEST_EFFORT)
+      ->PostTask(FROM_HERE, BindLambdaForTesting([&] {
+                   if (GetTraits().priority() == TaskPriority::BEST_EFFORT) {
                      EXPECT_TRUE(can_run.IsSet());
+                   }
                    did_run.Signal();
                  }));
 
@@ -751,9 +754,10 @@ TEST_P(ThreadPoolImplTest_CoverAllSchedulingOptions, MultipleBestEffortFences) {
 
   CreateTaskRunnerAndExecutionMode(thread_pool_.get(), GetTraits(),
                                    GetExecutionMode())
-      ->PostTask(FROM_HERE, BindLambdaForTesting([&]() {
-                   if (GetTraits().priority() == TaskPriority::BEST_EFFORT)
+      ->PostTask(FROM_HERE, BindLambdaForTesting([&] {
+                   if (GetTraits().priority() == TaskPriority::BEST_EFFORT) {
                      EXPECT_TRUE(can_run.IsSet());
+                   }
                    did_run.Signal();
                  }));
 
@@ -780,9 +784,10 @@ TEST_P(ThreadPoolImplTest_CoverAllSchedulingOptions,
 
   CreateTaskRunnerAndExecutionMode(thread_pool_.get(), GetTraits(),
                                    GetExecutionMode())
-      ->PostTask(FROM_HERE, BindLambdaForTesting([&]() {
-                   if (GetTraits().priority() == TaskPriority::BEST_EFFORT)
+      ->PostTask(FROM_HERE, BindLambdaForTesting([&] {
+                   if (GetTraits().priority() == TaskPriority::BEST_EFFORT) {
                      EXPECT_TRUE(can_run.IsSet());
+                   }
                    did_run.Signal();
                  }));
 
@@ -925,8 +930,7 @@ TEST_P(ThreadPoolImplTest, DelayedTasksNotRunAfterShutdown) {
   // and signalling the WaitableEvent after Shutdown() on a different thread
   // since Shutdown() will block. However, the cost of managing this extra
   // thread was deemed to be too great for the unlikely race.
-  thread_pool_->PostDelayedTask(FROM_HERE, {},
-                                BindOnce([]() { ADD_FAILURE(); }),
+  thread_pool_->PostDelayedTask(FROM_HERE, {}, BindOnce([] { ADD_FAILURE(); }),
                                 TestTimeouts::tiny_timeout());
   thread_pool_->Shutdown();
   PlatformThread::Sleep(TestTimeouts::tiny_timeout() * 2);
@@ -949,7 +953,7 @@ TEST_P(ThreadPoolImplTest, FileDescriptorWatcherNoOpsAfterShutdown) {
           [](int read_fd) {
             std::unique_ptr<FileDescriptorWatcher::Controller> controller =
                 FileDescriptorWatcher::WatchReadable(
-                    read_fd, BindRepeating([]() { NOTREACHED(); }));
+                    read_fd, BindRepeating([] { NOTREACHED(); }));
 
             // This test is for components that intentionally leak their
             // watchers at shutdown. We can't clean |controller| up because its
@@ -1054,8 +1058,9 @@ void VerifyHasStringsOnStack(const std::string& pool_str,
   SCOPED_TRACE(stack);
   const bool stack_has_symbols =
       stack.find("WorkerThread") != std::string::npos;
-  if (!stack_has_symbols)
+  if (!stack_has_symbols) {
     return;
+  }
 
   EXPECT_THAT(stack, ::testing::HasSubstr(pool_str));
   EXPECT_THAT(stack, ::testing::HasSubstr(shutdown_behavior_str));
@@ -1290,8 +1295,9 @@ TEST_P(ThreadPoolImplTest, WorkerThreadObserver) {
       SingleThreadTaskRunnerThreadMode::DEDICATED));
 #endif
 
-  for (auto& task_runner : task_runners)
+  for (auto& task_runner : task_runners) {
     task_runner->PostTask(FROM_HERE, DoNothing());
+  }
 
   // Release single-threaded workers. This should cause dedicated workers to
   // invoke OnWorkerThreadMainExit().
@@ -1525,8 +1531,9 @@ void TestUpdatePrioritySequenceNotScheduled(ThreadPoolImplTest* test,
   // Allow tasks to run.
   test->thread_pool_->EndFence();
 
-  for (auto& task_runner_and_events : task_runners_and_events)
+  for (auto& task_runner_and_events : task_runners_and_events) {
     task_runner_and_events->task_ran.Wait();
+  }
 }
 
 // Update the priority of a sequence when it is scheduled, i.e. not currently
@@ -1541,7 +1548,7 @@ void TestUpdatePrioritySequenceScheduled(ThreadPoolImplTest* test,
   // scheduled later in the test.
   for (auto& task_runner_and_events : task_runners_and_events) {
     task_runner_and_events->task_runner->PostTask(
-        FROM_HERE, BindLambdaForTesting([&]() {
+        FROM_HERE, BindLambdaForTesting([&] {
           task_runner_and_events->scheduled.Signal();
           task_runner_and_events->blocked.Wait();
         }));
@@ -1627,5 +1634,4 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             GetTraitsExecutionModePairsToCoverAllSchedulingOptions())));
 
-}  // namespace internal
-}  // namespace base
+}  // namespace base::internal

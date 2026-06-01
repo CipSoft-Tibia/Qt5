@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSGINTERNALTEXTNODE_P_H
 #define QSGINTERNALTEXTNODE_P_H
@@ -168,7 +169,7 @@ public:
                             QSGNode *parentNode = 0);
 
     QSGInternalRectangleNode *cursorNode() const { return m_cursorNode; }
-    QPair<int, int> renderedLineRange() const { return { m_firstLineInViewport, m_firstLinePastViewport }; }
+    std::pair<int, int> renderedLineRange() const { return { m_firstLineInViewport, m_firstLinePastViewport }; }
 
 protected:
     void doAddTextLayout(QPointF position,

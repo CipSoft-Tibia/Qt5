@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLLOGGINGCATEGORY_P_H
 #define QQMLLOGGINGCATEGORY_P_H
@@ -59,6 +60,8 @@ public:
 
     void classBegin() override;
     void componentComplete() override;
+
+    void forceCompletion() final;
 
 private:
     QByteArray m_name;

@@ -8,8 +8,10 @@
 
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qset.h>
+#include <QtCore/qspan.h>
+#include <QtCore/qthread.h>
 
-#import <AVFoundation/AVFoundation.h>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 
@@ -30,7 +32,7 @@ namespace {
 }
 
 // Thread-safe
-[[nodiscard]] QList<AVCaptureDevice*> qEnumerateAVCaptureDevices()
+[[nodiscard]] std::vector<AVCaptureDevice *> qEnumerateAVCaptureDevices()
 {
     // List of all capture device types that we want to discover. Seems that this is the
     // only way to discover all types. This filter is mandatory and has no "unspecified"
@@ -54,7 +56,7 @@ namespace {
 #endif
     ];
 
-    if (@available(macOS 14, iOS 17, *)) {
+    if (@available(macOS 14, *)) {
         discoveryDevices = [discoveryDevices arrayByAddingObjectsFromArray: @[
             AVCaptureDeviceTypeExternal,
             AVCaptureDeviceTypeContinuityCamera
@@ -75,8 +77,9 @@ namespace {
         discoverySessionWithDeviceTypes:discoveryDevices
                               mediaType:AVMediaTypeVideo
                                position:AVCaptureDevicePositionUnspecified];
-    QList<AVCaptureDevice*> avCaptureDevices;
-    for (AVCaptureDevice* device in discoverySession.devices)
+    std::vector<AVCaptureDevice *> avCaptureDevices;
+    avCaptureDevices.reserve(discoverySession.devices.count);
+    for (AVCaptureDevice *device in discoverySession.devices)
         avCaptureDevices.push_back(device);
     return avCaptureDevices;
 }
@@ -85,12 +88,12 @@ namespace {
 // we want to expose to the user.
 // Thread-safe
 [[nodiscard]] QList<QCameraDevice> qGenerateQCameraDevices(
-    QList<AVCaptureDevice*> videoDevices,
+    QSpan<const AVCaptureDevice * const> videoDevices,
     const std::function<bool(CvPixelFormat)>& isCvPixelFormatSupported)
 {
     QList<QCameraDevice> cameras;
 
-    for (AVCaptureDevice *device : videoDevices) {
+    for (const AVCaptureDevice *device : videoDevices) {
         if ([device isSuspended])
             continue;
 
@@ -219,25 +222,19 @@ QAVFVideoDevices::QAVFVideoDevices(
     rebuildObserveredAvCaptureDevices();
 }
 
-QAVFVideoDevices::~QAVFVideoDevices()
-{
-    clearObservedAvCaptureDevices();
-}
+QAVFVideoDevices::~QAVFVideoDevices() = default;
 
 // Does NOT lock
-void QAVFVideoDevices::clearObservedAvCaptureDevices() {
-    for (ObservedAVCaptureDevice& observedDevice : m_observedAvCaptureDevices) {
-        // Observer must be cleared before the AVCaptureDevice.
-        observedDevice.observer = {};
-        [observedDevice.avCaptureDevice release];
-    }
+void QAVFVideoDevices::clearObservedAvCaptureDevices()
+{
+    Q_ASSERT(thread()->isCurrentThread());
     m_observedAvCaptureDevices.clear();
 }
 
 // Can be called from any thread as result of QMediaDevices::videoInputs()
 QList<QCameraDevice> QAVFVideoDevices::findVideoInputs() const
 {
-    const QList<AVCaptureDevice*> avCaptureDevices = qEnumerateAVCaptureDevices();
+    std::vector<AVCaptureDevice *> avCaptureDevices = qEnumerateAVCaptureDevices();
     return qGenerateQCameraDevices(
         avCaptureDevices,
         [this](uint32_t cvPixelFormat) {
@@ -251,18 +248,17 @@ bool QAVFVideoDevices::isCvPixelFormatSupported(uint32_t cvPixelFormat) const
 }
 
 // Refreshes list of connected AVCaptureDevices and their key-value observers.
-// Thread-safe.
 void QAVFVideoDevices::rebuildObserveredAvCaptureDevices()
 {
-    const QList<AVCaptureDevice*> avCaptureDevices = qEnumerateAVCaptureDevices();
+    Q_ASSERT(thread()->isCurrentThread());
+
+    std::vector<AVCaptureDevice *> avCaptureDevices = qEnumerateAVCaptureDevices();
 
     clearObservedAvCaptureDevices();
 
     for (AVCaptureDevice *captureDevice : avCaptureDevices) {
         ObservedAVCaptureDevice observedDevice;
-
-        observedDevice.avCaptureDevice = captureDevice;
-        [observedDevice.avCaptureDevice retain];
+        observedDevice.avCaptureDevice = AVFScopedPointer{ [captureDevice retain] };
 
         // When the suspended value changes, post an update job to
         // QAVFVideoDevices.

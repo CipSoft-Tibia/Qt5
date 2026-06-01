@@ -3,12 +3,10 @@
 // Qt-Security score:significant reason:default
 
 #include "qloggingcategory.h"
+#include "qloggingcategory_p.h"
 #include "qloggingregistry_p.h"
 
 QT_BEGIN_NAMESPACE
-
-const char qtDefaultCategoryName[] = "default";
-Q_GLOBAL_STATIC(QLoggingCategory, qtDefaultCategory, qtDefaultCategoryName)
 
 /*!
     \class QLoggingCategory
@@ -171,17 +169,10 @@ Q_GLOBAL_STATIC(QLoggingCategory, qtDefaultCategory, qtDefaultCategoryName)
     \since 5.4
 */
 QLoggingCategory::QLoggingCategory(const char *category, QtMsgType enableForLevel)
-    : d(nullptr),
-      name(nullptr)
+    : QLoggingCategory(UnregisteredInitialization{},
+                       category ? category : QLoggingRegistry::defaultCategoryName)
 {
-    enabled.storeRelaxed(0x01010101);   // enabledDebug = enabledWarning = enabledCritical = true;
-
-    if (category)
-        name = category;
-    else
-        name = qtDefaultCategoryName;
-
-    if (QLoggingRegistry *reg = QLoggingRegistry::instance())
+   if (QLoggingRegistry *reg = QLoggingRegistry::instance())
         reg->registerCategory(this, enableForLevel);
 }
 
@@ -190,6 +181,9 @@ QLoggingCategory::QLoggingCategory(const char *category, QtMsgType enableForLeve
 */
 QLoggingCategory::~QLoggingCategory()
 {
+    // Note: this destructor is never called for the defaultCategory(), so it
+    // is always registered. If we ever need to free memory, make
+    // QLoggingRegistry do it.
     if (QLoggingRegistry *reg = QLoggingRegistry::instance())
         reg->unregisterCategory(this);
 }
@@ -310,7 +304,7 @@ void QLoggingCategory::setEnabled(QtMsgType type, bool enable)
  */
 QLoggingCategory *QLoggingCategory::defaultCategory()
 {
-    return qtDefaultCategory();
+    return QLoggingRegistry::defaultCategory();
 }
 
 /*!

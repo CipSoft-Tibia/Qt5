@@ -18,7 +18,27 @@
 #include <private/qgraphsview_p.h>
 #include <private/qxyseries_p.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+              "class PointRenderer;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererAfterPolish_entry, int cleanupSeriesCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererAfterPolish_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererUpdateScatterSeries_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererUpdateScatterSeries_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererUpdateLineSeries_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererUpdateLineSeries_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererUpdateSplineSeries_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DPointRendererUpdateSplineSeries_exit);
 
 static const char *TAG_POINT_COLOR = "pointColor";
 static const char *TAG_POINT_BORDER_COLOR = "pointBorderColor";
@@ -29,12 +49,13 @@ static const char *TAG_POINT_VALUE_X = "pointValueX";
 static const char *TAG_POINT_VALUE_Y = "pointValueY";
 static const char *TAG_POINT_INDEX = "pointIndex";
 
-PointRenderer::PointRenderer(QGraphsView *graph)
+PointRenderer::PointRenderer(QGraphsView *graph, bool clipPlotArea)
     : QQuickItem(graph)
     , m_graph(graph)
 {
     setFlag(QQuickItem::ItemHasContents);
-    setClip(true);
+    setClip(clipPlotArea);
+
     m_shape.setParentItem(this);
     m_shape.setPreferredRendererType(QQuickShape::CurveRenderer);
 
@@ -71,6 +92,11 @@ PointRenderer::~PointRenderer()
     qDeleteAll(m_groups);
 }
 
+void PointRenderer::resetShapePathCount()
+{
+    m_currentShapePathIndex = 0;
+}
+
 qreal PointRenderer::defaultSize(QXYSeries *series)
 {
     qreal size = 16.0;
@@ -90,28 +116,46 @@ qreal PointRenderer::defaultSize(QXYSeries *series)
     return size;
 }
 
-void PointRenderer::calculateRenderCoordinates(
-    AxisRenderer *axisRenderer, qreal origX, qreal origY, qreal *renderX, qreal *renderY)
+void PointRenderer::calculateRenderCoordinates(AxisRenderer *axisRenderer,
+                                               QAbstractSeries *series,
+                                               qreal origX,
+                                               qreal origY,
+                                               qreal *renderX,
+                                               qreal *renderY)
 {
-    auto flipX = axisRenderer->m_axisHorizontalMaxValue < axisRenderer->m_axisHorizontalMinValue
-                     ? -1
-                     : 1;
-    auto flipY = axisRenderer->m_axisVerticalMaxValue < axisRenderer->m_axisVerticalMinValue ? -1
-                                                                                             : 1;
+    auto &axisX = axisRenderer->getAxisX(series);
+    auto &axisY = axisRenderer->getAxisY(series);
+
+    if (m_graph->orientation() != Qt::Vertical) {
+        std::swap(origX, origY);
+        origY = axisY.maxValue - origY;
+    }
+
+    auto flipX = axisX.maxValue < axisX.minValue ? -1 : 1;
+    auto flipY = axisY.maxValue < axisY.minValue ? -1 : 1;
 
     *renderX = m_areaWidth * flipX * origX * m_maxHorizontal - m_horizontalOffset;
     *renderY = m_areaHeight - m_areaHeight * flipY * origY * m_maxVertical
                + m_verticalOffset;
 }
 
-void PointRenderer::reverseRenderCoordinates(
-    AxisRenderer *axisRenderer, qreal renderX, qreal renderY, qreal *origX, qreal *origY)
+void PointRenderer::reverseRenderCoordinates(AxisRenderer *axisRenderer,
+                                             QAbstractSeries *series,
+                                             qreal renderX,
+                                             qreal renderY,
+                                             qreal *origX,
+                                             qreal *origY)
 {
-    auto flipX = axisRenderer->m_axisHorizontalMaxValue < axisRenderer->m_axisHorizontalMinValue
-                     ? -1
-                     : 1;
-    auto flipY = axisRenderer->m_axisVerticalMaxValue < axisRenderer->m_axisVerticalMinValue ? -1
-                                                                                             : 1;
+    auto &axisX = axisRenderer->getAxisX(series);
+    auto &axisY = axisRenderer->getAxisY(series);
+
+    if (m_graph->orientation() != Qt::Vertical) {
+        std::swap(renderX, renderY);
+        renderY = m_areaHeight - renderY;
+    }
+
+    auto flipX = axisX.maxValue < axisX.minValue ? -1 : 1;
+    auto flipY = axisY.maxValue < axisY.minValue ? -1 : 1;
 
     *origX = (renderX + m_horizontalOffset) / (m_areaWidth * flipX * m_maxHorizontal);
     *origY = (renderY - m_areaHeight - m_verticalOffset)
@@ -288,13 +332,19 @@ void PointRenderer::updateScatterSeries(QScatterSeries *series, QLegendData &leg
 {
     auto group = m_groups.value(series);
     const auto style = getSeriesStyle(group);
+    Q_TRACE(QGraphs2DPointRendererUpdateScatterSeries_entry);
 
     if (series->isVisible()) {
         auto &&points = series->points();
         group->rects.resize(points.size());
         for (int i = 0; i < points.size(); ++i) {
             qreal x, y;
-            calculateRenderCoordinates(m_graph->m_axisRenderer, points[i].x(), points[i].y(), &x, &y);
+            calculateRenderCoordinates(m_graph->m_axisRenderer,
+                                       series,
+                                       points[i].x(),
+                                       points[i].y(),
+                                       &x,
+                                       &y);
             y *= series->valuesMultiplier();
             if (group->currentMarker) {
                 updatePointDelegate(series, group, i, x, y);
@@ -307,6 +357,7 @@ void PointRenderer::updateScatterSeries(QScatterSeries *series, QLegendData &leg
     } else {
         hidePointDelegates(series);
     }
+    Q_TRACE(QGraphs2DPointRendererUpdateScatterSeries_exit);
 
     legendData = { style.color, style.borderColor, series->name() };
 }
@@ -333,12 +384,18 @@ void PointRenderer::updateLineSeries(QLineSeries *series, QLegendData &legendDat
     auto &painterPath = group->painterPath;
     painterPath.clear();
 
+    Q_TRACE(QGraphs2DPointRendererUpdateLineSeries_entry);
     if (series->isVisible()) {
         auto &&points = series->points();
         group->rects.resize(points.size());
         for (int i = 0; i < points.size(); ++i) {
             qreal x, y;
-            calculateRenderCoordinates(m_graph->m_axisRenderer, points[i].x(), points[i].y(), &x, &y);
+            calculateRenderCoordinates(m_graph->m_axisRenderer,
+                                       series,
+                                       points[i].x(),
+                                       points[i].y(),
+                                       &x,
+                                       &y);
             y *= series->valuesMultiplier();
             if (i == 0)
                 painterPath.moveTo(x, y);
@@ -357,6 +414,7 @@ void PointRenderer::updateLineSeries(QLineSeries *series, QLegendData &legendDat
         hidePointDelegates(series);
     }
     group->shapePath->setPath(painterPath);
+    Q_TRACE(QGraphs2DPointRendererUpdateLineSeries_exit);
     legendData = { style.color, style.borderColor, series->name() };
 }
 #endif
@@ -387,9 +445,15 @@ void PointRenderer::updateSplineSeries(QSplineSeries *series, QLegendData &legen
         group->rects.resize(points.size());
         auto fittedPoints = series->getControlPoints();
 
+        Q_TRACE(QGraphs2DPointRendererUpdateSplineSeries_entry);
         for (int i = 0, j = 0; i < points.size(); ++i, ++j) {
             qreal x, y;
-            calculateRenderCoordinates(m_graph->m_axisRenderer, points[i].x(), points[i].y(), &x, &y);
+            calculateRenderCoordinates(m_graph->m_axisRenderer,
+                                       series,
+                                       points[i].x(),
+                                       points[i].y(),
+                                       &x,
+                                       &y);
 
             qreal valuesMultiplier = series->valuesMultiplier();
             y *= valuesMultiplier;
@@ -398,11 +462,13 @@ void PointRenderer::updateSplineSeries(QSplineSeries *series, QLegendData &legen
             } else {
                 qreal x1, y1, x2, y2;
                 calculateRenderCoordinates(m_graph->m_axisRenderer,
+                                           series,
                                            fittedPoints[j - 1].x(),
                                            fittedPoints[j - 1].y(),
                                            &x1,
                                            &y1);
                 calculateRenderCoordinates(m_graph->m_axisRenderer,
+                                           series,
                                            fittedPoints[j].x(),
                                            fittedPoints[j].y(),
                                            &x2,
@@ -422,6 +488,7 @@ void PointRenderer::updateSplineSeries(QSplineSeries *series, QLegendData &legen
                 rect = QRectF(x - size / 2.0, y - size / 2.0, size, size);
             }
         }
+        Q_TRACE(QGraphs2DPointRendererUpdateSplineSeries_exit);
     } else {
         hidePointDelegates(series);
     }
@@ -434,11 +501,15 @@ void PointRenderer::updateSplineSeries(QSplineSeries *series, QLegendData &legen
 void PointRenderer::handlePolish(QXYSeries *series)
 {
     auto theme = m_graph->theme();
-    if (!theme)
+    if (!theme) {
+        qCCritical(lcCritical2D, "Theme not found");
         return;
+    }
 
-    if (!m_graph->m_axisRenderer)
+    if (!m_graph->m_axisRenderer) {
+        qCCritical(lcCritical2D, "Axis renderer not found.");
         return;
+    }
 
     if (series->points().isEmpty()) {
         auto group = m_groups.value(series);
@@ -465,26 +536,17 @@ void PointRenderer::handlePolish(QXYSeries *series)
     m_areaWidth = width();
     m_areaHeight = height();
 
-    m_maxVertical = m_graph->m_axisRenderer->m_axisVerticalValueRange > 0
-                        ? 1.0 / m_graph->m_axisRenderer->m_axisVerticalValueRange
-                        : 100.0;
-    m_maxHorizontal = m_graph->m_axisRenderer->m_axisHorizontalValueRange > 0
-                          ? 1.0 / m_graph->m_axisRenderer->m_axisHorizontalValueRange
-                          : 100.0;
+    auto &axisX = m_graph->m_axisRenderer->getAxisX(series);
+    auto &axisY = m_graph->m_axisRenderer->getAxisY(series);
 
-    auto vmin = m_graph->m_axisRenderer->m_axisVerticalMinValue
-                        > m_graph->m_axisRenderer->m_axisVerticalMaxValue
-                    ? std::abs(m_graph->m_axisRenderer->m_axisVerticalMinValue)
-                    : m_graph->m_axisRenderer->m_axisVerticalMinValue;
+    m_maxVertical = axisY.valueRange > 0 ? 1.0 / axisY.valueRange : 100.0;
+    m_maxHorizontal = axisX.valueRange > 0 ? 1.0 / axisX.valueRange : 100.0;
 
-    m_verticalOffset = (vmin / m_graph->m_axisRenderer->m_axisVerticalValueRange) * m_areaHeight;
+    auto vmin = axisY.minValue > axisY.maxValue ? std::abs(axisY.minValue) : axisY.minValue;
+    m_verticalOffset = (vmin / axisY.valueRange) * m_areaHeight;
 
-    auto hmin = m_graph->m_axisRenderer->m_axisHorizontalMinValue
-                        > m_graph->m_axisRenderer->m_axisHorizontalMaxValue
-                    ? std::abs(m_graph->m_axisRenderer->m_axisHorizontalMinValue)
-                    : m_graph->m_axisRenderer->m_axisHorizontalMinValue;
-
-    m_horizontalOffset = (hmin / m_graph->m_axisRenderer->m_axisHorizontalValueRange) * m_areaWidth;
+    auto hmin = axisX.minValue > axisX.maxValue ? std::abs(axisX.minValue) : axisX.minValue;
+    m_horizontalOffset = (hmin / axisX.valueRange) * m_areaWidth;
 
     if (!m_groups.contains(series)) {
         PointGroup *group = new PointGroup();
@@ -495,11 +557,18 @@ void PointRenderer::handlePolish(QXYSeries *series)
             group->shapePath = new QQuickShapePath(&m_shape);
             group->shapePath->setAsynchronous(true);
             auto data = m_shape.data();
-            data.append(&data, m_groups.value(series)->shapePath);
+            data.append(&data, group->shapePath);
         }
     }
 
     auto group = m_groups.value(series);
+
+    if (series->type() != QAbstractSeries::SeriesType::Scatter) {
+        auto data = m_shape.data();
+        group->shapePath = qobject_cast<QQuickShapePath *>(data.at(&data, m_currentShapePathIndex));
+
+        m_currentShapePathIndex++;
+    }
 
     qsizetype pointCount = series->points().size();
 
@@ -536,12 +605,12 @@ void PointRenderer::handlePolish(QXYSeries *series)
                         float w = width();
                         float h = height();
                         double maxVertical
-                            = m_graph->m_axisRenderer->m_axisVerticalValueRange > 0
-                                  ? 1.0 / m_graph->m_axisRenderer->m_axisVerticalValueRange
+                            = axisY.valueRange > 0
+                                  ? 1.0 / axisY.valueRange
                                   : 100.0;
                         double maxHorizontal
-                            = m_graph->m_axisRenderer->m_axisHorizontalValueRange > 0
-                                  ? 1.0 / m_graph->m_axisRenderer->m_axisHorizontalValueRange
+                            = axisX.valueRange > 0
+                                  ? 1.0 / axisX.valueRange
                                   : 100.0;
 
                         QPoint currentDelta =
@@ -579,6 +648,9 @@ void PointRenderer::handlePolish(QXYSeries *series)
         group->markers.clear();
     }
 
+    for (auto &&marker : group->markers)
+        marker->setZ(group->series->zValue());
+
     if (group->colorIndex < 0) {
         group->colorIndex = m_graph->graphSeriesCount();
         m_graph->setGraphSeriesCount(group->colorIndex + 1);
@@ -609,6 +681,7 @@ void PointRenderer::handlePolish(QXYSeries *series)
 
 void PointRenderer::afterPolish(QList<QAbstractSeries *> &cleanupSeries)
 {
+    Q_TRACE_SCOPE(QGraphs2DPointRendererAfterPolish, static_cast<int>(cleanupSeries.count()));
     for (auto series : cleanupSeries) {
         auto xySeries = qobject_cast<QXYSeries *>(series);
         if (xySeries && m_groups.contains(xySeries)) {
@@ -649,10 +722,11 @@ bool PointRenderer::handleHoverMove(QHoverEvent *event)
             continue;
 
         auto axisRenderer = group->series->graph()->m_axisRenderer;
-        bool isHNegative = axisRenderer->m_axisHorizontalMaxValue
-                           < axisRenderer->m_axisHorizontalMinValue;
-        bool isVNegative = axisRenderer->m_axisVerticalMaxValue
-                           < axisRenderer->m_axisVerticalMinValue;
+        auto &axisX = axisRenderer->getAxisX(group->series);
+        auto &axisY = axisRenderer->getAxisY(group->series);
+
+        bool isHNegative = axisX.maxValue < axisX.minValue;
+        bool isVNegative = axisY.maxValue < axisY.minValue;
 
         if (group->series->type() == QAbstractSeries::SeriesType::Scatter) {
             const QString &name = group->series->name();
@@ -688,6 +762,9 @@ bool PointRenderer::handleHoverMove(QHoverEvent *event)
             if (points.size() >= 2) {
                 bool hovering = false;
                 auto subpath = group->painterPath.toSubpathPolygons();
+
+                if (group->painterPath.elementCount() != points.size())
+                    m_graph->ensurePolished();
 
                 for (int i = 0; i < points.size() - 1; i++) {
                     qreal x1, y1, x2, y2;
@@ -756,6 +833,7 @@ bool PointRenderer::handleHoverMove(QHoverEvent *event)
 
                                 if (!group->hover) {
                                     group->hover = true;
+                                    group->series->setHovered(true);
                                     emit group->series->hoverEnter(name, position, point);
                                 }
 
@@ -800,11 +878,13 @@ bool PointRenderer::handleHoverMove(QHoverEvent *event)
                                     qreal cx1, cy1, cx2, cy2;
 
                                     reverseRenderCoordinates(axisRenderer,
+                                                             group->series,
                                                              it->x(),
                                                              it->y(),
                                                              &cx1,
                                                              &cy1);
                                     reverseRenderCoordinates(axisRenderer,
+                                                             group->series,
                                                              it2->x(),
                                                              it2->y(),
                                                              &cx2,
@@ -831,6 +911,7 @@ bool PointRenderer::handleHoverMove(QHoverEvent *event)
 
                 if (!hovering && group->hover) {
                     group->hover = false;
+                    group->series->setHovered(false);
                     emit group->series->hoverExit(name, position);
                     handled = true;
                 }
@@ -838,6 +919,32 @@ bool PointRenderer::handleHoverMove(QHoverEvent *event)
         }
     }
     return handled;
+}
+
+
+QPointF PointRenderer::reverseRenderCoordinates(QAbstractSeries *series, qreal x, qreal y)
+{
+    m_areaWidth = width();
+    m_areaHeight = height();
+
+    auto &axisX = m_graph->m_axisRenderer->getAxisX(series);
+    auto &axisY = m_graph->m_axisRenderer->getAxisY(series);
+
+    m_maxVertical = axisY.valueRange > 0 ? 1.0 / axisY.valueRange : 100.0;
+    m_maxHorizontal = axisX.valueRange > 0 ? 1.0 / axisX.valueRange : 100.0;
+
+    auto vmin = axisY.minValue > axisY.maxValue ? std::abs(axisY.minValue) : axisY.minValue;
+    m_verticalOffset = (vmin / axisY.valueRange) * m_areaHeight;
+
+    auto hmin = axisX.minValue > axisX.maxValue ? std::abs(axisX.minValue) : axisX.minValue;
+    m_horizontalOffset = (hmin / axisX.valueRange) * m_areaWidth;
+
+    qreal x0;
+    qreal y0;
+
+    reverseRenderCoordinates(m_graph->m_axisRenderer, series, x, y, &x0, &y0);
+
+    return QPointF(x0, y0);
 }
 
 QT_END_NAMESPACE

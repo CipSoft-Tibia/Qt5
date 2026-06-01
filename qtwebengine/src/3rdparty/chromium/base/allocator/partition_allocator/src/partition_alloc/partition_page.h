@@ -102,8 +102,11 @@ struct SlotSpanMetadataBase {
   // If |in_empty_cache_|==1, |empty_cache_index| is undefined and mustn't be
   // used.
   MaybeConstT<kind, uint16_t> in_empty_cache_ : 1 = 0u;
+  // Index of the page in the empty cache. This is in the range
+  // [0, `kMaxEmptySlotSpanRingSize - 1`] so it fits in
+  // `BitWidth(kMaxEmptySlotSpanRingSize - 1)`.
   MaybeConstT<kind, uint16_t> empty_cache_index_
-      : kMaxEmptyCacheIndexBits = 0u;  // < kMaxFreeableSpans.
+      : internal::base::bits::BitWidth(kMaxEmptySlotSpanRingSize - 1) = 0u;
   // Can use only 48 bits (6B) in this bitfield, as this structure is embedded
   // in PartitionPage which has 2B worth of fields and must fit in 32B.
 
@@ -170,7 +173,7 @@ struct SlotSpanMetadata<MetadataKind::kReadOnly>
       : SlotSpanMetadataBase<MetadataKind::kReadOnly>(b) {}
 #endif  // PA_CONFIG(ENABLE_SHADOW_METADATA)
   // pa_tcache_inspect needs the copy constructor.
-  SlotSpanMetadata(const SlotSpanMetadata&) = default;
+  SlotSpanMetadata(const SlotSpanMetadata<MetadataKind::kReadOnly>&) = default;
 
   // Public API
   // Pointer/address manipulation functions. These must be static as the input
@@ -935,8 +938,7 @@ PA_ALWAYS_INLINE void SlotSpanMetadata<MetadataKind::kWritable>::Reset() {
 // Iterates over all slot spans in a super-page. |Callback| must return true if
 // early return is needed.
 template <typename Callback>
-void IterateSlotSpans(uintptr_t super_page,
-                      Callback callback) {
+void IterateSlotSpans(uintptr_t super_page, Callback callback) {
 #if PA_BUILDFLAG(DCHECKS_ARE_ON)
   PA_DCHECK(!(super_page % kSuperPageAlignment));
   auto* extent_entry = PartitionSuperPageToExtent(super_page);

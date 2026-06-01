@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/features.gni")
 import("//build/config/ui.gni")
@@ -35,7 +34,7 @@ jumbo_component("shell_dialogs") {
   deps = [
     "//base",
     "//base:i18n",
-    "//build:chromeos_buildflags",
+    "//build/config/linux/dbus:buildflags",
     "//skia",
     "//ui/base",
     "//ui/strings",
@@ -56,22 +55,17 @@ jumbo_component("shell_dialogs") {
       "shell_dialog_linux.h",
     ]
     deps += [ "//ui/linux:linux_ui" ]
-    if (use_dbus && toolkit_views) {
-      defines += [ "USE_DBUS" ]
+    if (use_dbus) {
       sources += [
         "select_file_dialog_linux_portal.cc",
         "select_file_dialog_linux_portal.h",
       ]
       deps += [
-        "//components/dbus/thread_linux",
+        "//components/dbus",
         "//dbus",
-        "//ui/views",
       ]
-
-      if (is_qtwebengine) {
-        deps -= [
-          "//ui/views",
-        ]
+      if (toolkit_views) {
+        deps += [ "//ui/views" ]
       }
     }
   }
@@ -140,20 +134,6 @@ jumbo_component("shell_dialogs") {
 
   if (is_fuchsia) {
     sources += [ "select_file_dialog_fuchsia.cc" ]
-  }
-
-  # TODO(crbug.com/40118868): Rename is_chromeos_lacros.
-  if (is_chromeos_lacros) {
-    sources += [
-      "select_file_dialog_lacros.cc",
-      "select_file_dialog_lacros.h",
-    ]
-    deps += [
-      "//chromeos/crosapi/mojom",
-      "//chromeos/lacros",
-      "//mojo/public/cpp/bindings",
-      "//ui/platform_window",
-    ]
   }
 }
 

@@ -119,7 +119,7 @@ public:
     void OnUploadProgress(int64_t current_position, int64_t total_size, OnUploadProgressCallback callback) override;
     void OnTransferSizeUpdated(int32_t transfer_size_diff) override;
     void OnComplete(const network::URLLoaderCompletionStatus &status) override;
-    void OnReceiveEarlyHints(network::mojom::EarlyHintsPtr) override {}
+    void OnReceiveEarlyHints(network::mojom::EarlyHintsPtr) override;
 
     // network::mojom::URLLoader
     void FollowRedirect(const std::vector<std::string> &removed_headers,
@@ -127,8 +127,6 @@ public:
                         const net::HttpRequestHeaders &modified_cors_exempt_headers,
                         const std::optional<GURL> &new_url) override;
     void SetPriority(net::RequestPriority priority, int32_t intra_priority_value) override;
-    void PauseReadingBodyFromNet() override;
-    void ResumeReadingBodyFromNet() override;
 
 private:
     void InterceptOnUIThread();
@@ -299,7 +297,7 @@ void InterceptedRequest::Restart()
     if (!allow_local_ && local_access_) {
         // Check for specifically granted file access:
         if (auto *frame_tree = content::FrameTreeNode::GloballyFindByID(frame_tree_node_id_)) {
-            const int renderer_id = frame_tree->current_frame_host()->GetProcess()->GetID();
+            const int renderer_id = frame_tree->current_frame_host()->GetProcess()->GetDeprecatedID();
             base::FilePath file_path;
             if (net::FileURLToFilePath(request_.url, &file_path)) {
                 if (content::ChildProcessSecurityPolicy::GetInstance()->CanReadFile(renderer_id, file_path))
@@ -400,7 +398,7 @@ void InterceptedRequest::ContinueAfterIntercept()
                 request_.referrer_policy = redirectInfo.new_referrer_policy;
                 if (request_.method == net::HttpRequestHeaders::kGetMethod)
                     request_.request_body = nullptr;
-                // In case of multiple sequential rediredts, current_response_ has previously been moved to target_client_
+                // In case of multiple sequential redirects, current_response_ has previously been moved to target_client_
                 // so we create a new one using the redirect url.
                 if (!current_response_)
                     current_response_ = createResponse(request_);
@@ -420,6 +418,11 @@ void InterceptedRequest::ContinueAfterIntercept()
 }
 
 // URLLoaderClient methods.
+
+void InterceptedRequest::OnReceiveEarlyHints(network::mojom::EarlyHintsPtr early_hints)
+{
+    target_client_->OnReceiveEarlyHints(std::move(early_hints));
+}
 
 void InterceptedRequest::OnReceiveResponse(network::mojom::URLResponseHeadPtr head, mojo::ScopedDataPipeConsumerHandle handle, std::optional<mojo_base::BigBuffer> buffer)
 {
@@ -465,8 +468,14 @@ void InterceptedRequest::FollowRedirect(const std::vector<std::string> &removed_
                                         const net::HttpRequestHeaders &modified_cors_exempt_headers,
                                         const std::optional<GURL> &new_url)
 {
+    // On a redirect, Chromium will add User-Agent to the list of modified headers,
+    // which will erase any user-provided overrides. Remove it from the list to keep
+    // the user-supplied one for the redirect
+    net::HttpRequestHeaders interceptedModifiedHeaders = modified_headers;
+    interceptedModifiedHeaders.RemoveHeader("User-Agent");
+
     if (target_loader_)
-        target_loader_->FollowRedirect(removed_headers, modified_headers, modified_cors_exempt_headers, new_url);
+        target_loader_->FollowRedirect(removed_headers, interceptedModifiedHeaders, modified_cors_exempt_headers, new_url);
 
     // If |OnURLLoaderClientError| was called then we're just waiting for the
     // connection error handler of |proxied_loader_binding_|. Don't restart the
@@ -481,18 +490,6 @@ void InterceptedRequest::SetPriority(net::RequestPriority priority, int32_t intr
 {
     if (target_loader_)
         target_loader_->SetPriority(priority, intra_priority_value);
-}
-
-void InterceptedRequest::PauseReadingBodyFromNet()
-{
-    if (target_loader_)
-        target_loader_->PauseReadingBodyFromNet();
-}
-
-void InterceptedRequest::ResumeReadingBodyFromNet()
-{
-    if (target_loader_)
-        target_loader_->ResumeReadingBodyFromNet();
 }
 
 void InterceptedRequest::OnURLLoaderClientError()

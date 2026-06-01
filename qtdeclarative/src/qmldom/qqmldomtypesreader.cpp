@@ -163,8 +163,8 @@ void QmltypesReader::insertComponent(const QQmlJSScope::ConstPtr &jsScope,
     }
     comp.setFileName(jsScope->filePath());
     comp.setName(jsScope->internalName());
-    m_currentPath = m_currentPath.key(comp.name())
-                            .index(qmltypesFilePtr()->components().values(comp.name()).size());
+    m_currentPath = m_currentPath.withKey(comp.name())
+                            .withIndex(qmltypesFilePtr()->components().values(comp.name()).size());
     incrementedPath = true;
     prototype = jsScope->baseTypeName();
     defaultPropertyName = jsScope->ownDefaultPropertyName();
@@ -190,9 +190,9 @@ void QmltypesReader::insertComponent(const QQmlJSScope::ConstPtr &jsScope,
     QList<int> metaRevs;
     Path compPath = qmltypesFile()
                             .canonicalPath()
-                            .field(Fields::components)
-                            .key(comp.name())
-                            .index(qmltypesFilePtr()->components().values(comp.name()).size());
+                            .withField(Fields::components)
+                            .withKey(comp.name())
+                            .withIndex(qmltypesFilePtr()->components().values(comp.name()).size());
 
     // emit & map objs
     while (it != begin) {
@@ -201,8 +201,8 @@ void QmltypesReader::insertComponent(const QQmlJSScope::ConstPtr &jsScope,
             addError(readerParseErrors().error(
                     tr("negative meta revision %1 not supported").arg(it.key())));
         }
-        revToPath.insert(it.key(), compPath.field(Fields::objects).index(objectIndex));
-        Path nextObjectPath = compPath.field(Fields::objects).index(++objectIndex);
+        revToPath.insert(it.key(), compPath.withField(Fields::objects).withIndex(objectIndex));
+        Path nextObjectPath = compPath.withField(Fields::objects).withIndex(++objectIndex);
         if (it == begin) {
             if (!prototype.isEmpty())
                 it->addPrototypePath(Paths::lookupCppTypePath(prototype));

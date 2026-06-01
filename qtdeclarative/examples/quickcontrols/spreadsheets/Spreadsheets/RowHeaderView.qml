@@ -1,6 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 
@@ -22,42 +23,19 @@ VerticalHeaderView {
 
     selectionModel: HeaderSelectionModel {
         id: headerSelectionModel
-        selectionModel: spreadSelectionModel
+        selectionModel: root.spreadSelectionModel
         orientation: Qt.Vertical
     }
 
-    delegate: Rectangle {
+    textRole: "rowName"
+    delegate: VerticalHeaderViewDelegate {
         id: headerDelegate
 
-        required property var index
-        required property bool selected
-        required property bool current
         required property bool containsDrag
-        readonly property real cellPadding: 8
-        readonly property bool containsMenu: rowMenu.row === row
-
-        implicitHeight: title.implicitHeight + (cellPadding * 2)
-        implicitWidth: Math.max(root.width, title.implicitWidth + (cellPadding * 2))
-
-        border {
-            width: containsDrag || containsMenu ? 1 : 0
-            color: palette.highlight
-        }
-
-        color: selected ? palette.highlight : palette.button
-
-        gradient: Gradient {
-            GradientStop {
-                position: 0
-                color: Qt.styleHints.colorScheme === Qt.Light ? headerDelegate.color
-                                                              : Qt.lighter(headerDelegate.color, 1.3)
-            }
-            GradientStop {
-                position: 1
-                color: Qt.styleHints.colorScheme === Qt.Light ? Qt.darker(headerDelegate.color, 1.3)
-                                                              : headerDelegate.color
-            }
-        }
+        required property var index
+        required property int row
+        readonly property bool visibleBorder: ((rowMenu.row === row)
+                                               || containsDrag)
 
         function rightClicked() {
             rowMenu.row = index
@@ -65,20 +43,35 @@ VerticalHeaderView {
             rowMenu.popup(menu_pos)
         }
 
-        Label {
-            id: title
-            anchors.centerIn: parent
-            text: model.rowName
+        Binding {
+            target: headerDelegate.background
+            property: "color"
+            value: headerDelegate.palette.highlight
+            when: headerDelegate.highlighted
+        }
+
+        Binding {
+            target: headerDelegate.background
+            property: "border.width"
+            value: headerDelegate.visibleBorder ? 1 : 0
+            when: (headerDelegate.background as Rectangle) ?? false
+        }
+
+        Binding {
+            target: headerDelegate.background
+            property: "border.color"
+            value: headerDelegate.palette.highlight
+            when: (headerDelegate.background as Rectangle) ?? false
         }
 
         HeaderViewTapHandler {
             anchors.fill: parent
             onToggleRequested: {
-                spreadSelectionModel.toggleRow(index)
+                root.spreadSelectionModel.toggleRow(headerDelegate.index)
                 headerSelectionModel.setCurrent()
             }
             onSelectRequested: {
-                spreadSelectionModel.selectRow(index)
+                root.spreadSelectionModel.selectRow(headerDelegate.index)
                 headerSelectionModel.setCurrent()
             }
             onContextMenuRequested: headerDelegate.rightClicked()
@@ -128,7 +121,7 @@ VerticalHeaderView {
         }
 
         MenuItem {
-            text: selectionModel.hasSelection ? qsTr("Remove selected rows")
+            text: root.selectionModel.hasSelection ? qsTr("Remove selected rows")
                                               : qsTr("Remove row")
             icon {
                 source: "icons/remove_row.svg"
@@ -136,15 +129,15 @@ VerticalHeaderView {
             }
 
             onClicked: {
-                if (selectionModel.hasSelection)
-                    SpreadModel.removeRows(selectionModel.selectedRows())
+                if (root.selectionModel.hasSelection)
+                    SpreadModel.removeRows(root.selectionModel.selectedRows())
                 else if (rowMenu.row >= 0)
                     SpreadModel.removeRow(rowMenu.row)
             }
         }
 
         MenuItem {
-            text: selectionModel.hasSelection ? qsTr("Hide selected rows")
+            text: root.selectionModel.hasSelection ? qsTr("Hide selected rows")
                                               : qsTr("Hide row")
             icon {
                 source: "icons/hide.svg"
@@ -152,12 +145,12 @@ VerticalHeaderView {
             }
 
             onClicked: {
-                if (selectionModel.hasSelection) {
-                    let rows = selectionModel.selectedRows()
+                if (root.selectionModel.hasSelection) {
+                    let rows = root.selectionModel.selectedRows()
                     rows.sort(function(lhs, rhs){ return rhs.row - lhs.row })
                     for (let i in rows)
                         root.hideRequested(rows[i].row)
-                    spreadSelectionModel.clearSelection()
+                    root.spreadSelectionModel.clearSelection()
                 } else {
                     root.hideRequested(rowMenu.row)
                 }
@@ -174,7 +167,7 @@ VerticalHeaderView {
 
             onClicked: {
                 root.showRequested()
-                spreadSelectionModel.clearSelection()
+                root.spreadSelectionModel.clearSelection()
             }
         }
 

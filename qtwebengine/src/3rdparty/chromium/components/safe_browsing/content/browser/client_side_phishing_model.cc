@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "components/safe_browsing/content/browser/client_side_phishing_model.h"
 
 #include <stdint.h>
@@ -29,6 +34,7 @@
 #include "components/safe_browsing/core/common/fbs/client_model_generated.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/proto/client_model.pb.h"
+#include "components/safe_browsing/core/common/safebrowsing_switches.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -36,10 +42,6 @@
 namespace safe_browsing {
 
 namespace {
-
-// Command-line flag that can be used to override the current CSD model. Must be
-// provided with an absolute path.
-const char kOverrideCsdModelFlag[] = "csd-model-override-path";
 
 void ReturnModelOverrideFailure(
     base::OnceCallback<void(std::pair<std::string, base::File>)> callback) {
@@ -157,10 +159,10 @@ void RecordImageEmbeddingModelUpdateSuccess(bool success) {
 // --- ClientSidePhishingModel methods ---
 
 ClientSidePhishingModel::ClientSidePhishingModel(
-    optimization_guide::OptimizationGuideModelProvider* opt_guide,
-    const scoped_refptr<base::SequencedTaskRunner>& background_task_runner)
+    optimization_guide::OptimizationGuideModelProvider* opt_guide)
     : opt_guide_(opt_guide),
-      background_task_runner_(background_task_runner),
+      background_task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
+          {base::MayBlock(), base::TaskPriority::BEST_EFFORT})),
       beginning_time_(base::TimeTicks::Now()) {
   opt_guide_->AddObserverForOptimizationTargetModel(
       optimization_guide::proto::OPTIMIZATION_TARGET_CLIENT_SIDE_PHISHING,
@@ -275,7 +277,7 @@ void ClientSidePhishingModel::OnModelAndVisualTfLiteFileLoaded(
   bool model_valid = false;
   bool tflite_valid = visual_tflite_model.IsValid();
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
-          kOverrideCsdModelFlag) &&
+          switches::kOverrideCsdModelFlag) &&
       !model_str.empty()) {
     model_type_ = CSDModelType::kNone;
     flatbuffers::Verifier verifier(
@@ -566,7 +568,7 @@ void ClientSidePhishingModel::SetModelStringForTesting(
   // TODO (andysjlim): Move to a helper function once protobuf feature is
   // removed
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
-          kOverrideCsdModelFlag) &&
+          switches::kOverrideCsdModelFlag) &&
       !model_str.empty()) {
     model_type_ = CSDModelType::kNone;
     flatbuffers::Verifier verifier(
@@ -631,10 +633,10 @@ void* ClientSidePhishingModel::GetFlatBufferMemoryAddressForTesting() {
 // This function is used for testing in client_side_phishing_model_unittest
 void ClientSidePhishingModel::MaybeOverrideModel() {
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          kOverrideCsdModelFlag)) {
+          switches::kOverrideCsdModelFlag)) {
     base::FilePath overriden_model_directory =
         base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
-            kOverrideCsdModelFlag);
+            switches::kOverrideCsdModelFlag);
     base::ThreadPool::PostTask(
         FROM_HERE, {base::MayBlock()},
         base::BindOnce(
@@ -678,8 +680,7 @@ void ClientSidePhishingModel::OnGetOverridenModelData(
       break;
     }
     case CSDModelType::kNone:
-      NOTREACHED_IN_MIGRATION();
-      return;
+      NOTREACHED();
   }
 
   if (tflite_model.IsValid()) {

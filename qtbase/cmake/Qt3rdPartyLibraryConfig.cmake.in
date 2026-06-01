@@ -7,9 +7,6 @@ cmake_minimum_required(VERSION @min_new_policy_version@...@max_new_policy_versio
 
 include(CMakeFindDependencyMacro)
 
-get_filename_component(_import_prefix "${CMAKE_CURRENT_LIST_FILE}" PATH)
-get_filename_component(_import_prefix "${_import_prefix}" REALPATH)
-
 # Extra cmake code begin
 @extra_cmake_code@
 # Extra cmake code end

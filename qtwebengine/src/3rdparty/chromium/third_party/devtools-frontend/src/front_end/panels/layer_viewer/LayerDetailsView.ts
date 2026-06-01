@@ -30,7 +30,6 @@
 
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
-import * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import type * as Protocol from '../../generated/protocol.js';
 import * as UI from '../../ui/legacy/legacy.js';
@@ -51,6 +50,10 @@ const UIStrings = {
    *@description Text in Layer Details View of the Layers panel
    */
   selectALayerToSeeItsDetails: 'Select a layer to see its details',
+  /**
+   *@description Text in Layer Details View of the Layers panel if no layer is selected for viewing its content
+   */
+  noLayerSelected: 'No layer selected',
   /**
    *@description Element text content in Layer Details View of the Layers panel
    *@example {Touch event handler} PH1
@@ -179,11 +182,14 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
 
   constructor(layerViewHost: LayerViewHost) {
     super(true);
+    this.registerRequiredCSS(layerDetailsViewStyles);
     this.element.setAttribute('jslog', `${VisualLogging.pane('layers-details')}`);
+    this.contentElement.classList.add('layer-details-container');
 
     this.layerViewHost = layerViewHost;
     this.layerViewHost.registerView(this);
-    this.emptyWidget = new UI.EmptyWidget.EmptyWidget(i18nString(UIStrings.selectALayerToSeeItsDetails));
+    this.emptyWidget = new UI.EmptyWidget.EmptyWidget(
+        i18nString(UIStrings.noLayerSelected), i18nString(UIStrings.selectALayerToSeeItsDetails));
     this.layerSnapshotMap = this.layerViewHost.getLayerSnapshotMap();
 
     this.buildContent();
@@ -205,7 +211,6 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
 
   override wasShown(): void {
     super.wasShown();
-    this.registerCSSFiles([layerDetailsViewStyles]);
     this.update();
   }
 
@@ -316,7 +321,7 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
       this.paintCountCell.parentElement.classList.toggle('hidden', !layer.paintCount());
     }
     this.paintCountCell.textContent = String(layer.paintCount());
-    this.memoryEstimateCell.textContent = Platform.NumberUtilities.bytesToString(layer.gpuMemoryUsage());
+    this.memoryEstimateCell.textContent = i18n.ByteUtilities.bytesToString(layer.gpuMemoryUsage());
     void layer.requestCompositingReasons().then(this.updateCompositingReasons.bind(this));
     this.scrollRectsCell.removeChildren();
     layer.scrollRects().forEach(this.createScrollRectElement.bind(this));
@@ -329,16 +334,16 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
   }
 
   private buildContent(): void {
-    this.tableElement = this.contentElement.createChild('table') as HTMLElement;
-    this.tbodyElement = this.tableElement.createChild('tbody') as HTMLElement;
+    this.tableElement = this.contentElement.createChild('table');
+    this.tbodyElement = this.tableElement.createChild('tbody');
     this.sizeCell = this.createRow(i18nString(UIStrings.size));
     this.compositingReasonsCell = this.createRow(i18nString(UIStrings.compositingReasons));
     this.memoryEstimateCell = this.createRow(i18nString(UIStrings.memoryEstimate));
     this.paintCountCell = this.createRow(i18nString(UIStrings.paintCount));
     this.scrollRectsCell = this.createRow(i18nString(UIStrings.slowScrollRegions));
     this.stickyPositionConstraintCell = this.createRow(i18nString(UIStrings.stickyPositionConstraint));
-    this.paintProfilerLink = this.contentElement.createChild(
-                                 'button', 'hidden devtools-link link-margin text-button link-style') as HTMLElement;
+    this.paintProfilerLink =
+        this.contentElement.createChild('button', 'hidden devtools-link link-margin text-button link-style');
     UI.ARIAUtils.markAsLink(this.paintProfilerLink);
     this.paintProfilerLink.textContent = i18nString(UIStrings.paintProfiler);
     this.paintProfilerLink.tabIndex = 0;
@@ -374,9 +379,9 @@ export const enum Events {
   PAINT_PROFILER_REQUESTED = 'PaintProfilerRequested',
 }
 
-export type EventTypes = {
-  [Events.PAINT_PROFILER_REQUESTED]: Selection,
-};
+export interface EventTypes {
+  [Events.PAINT_PROFILER_REQUESTED]: Selection;
+}
 
 export const slowScrollRectNames = new Map([
   [SDK.LayerTreeBase.Layer.ScrollRectType.NON_FAST_SCROLLABLE, i18nLazyString(UIStrings.nonFastScrollable)],

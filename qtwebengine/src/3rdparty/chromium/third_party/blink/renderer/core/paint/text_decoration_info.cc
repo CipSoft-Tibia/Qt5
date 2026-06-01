@@ -422,9 +422,7 @@ void TextDecorationInfo::SetLineData(TextDecorationLine line,
       wavy_offset_factor = 0;
       break;
     default:
-      double_offset = 0.0f;
-      wavy_offset_factor = 0;
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 
   line_data_.line = line;
@@ -679,8 +677,7 @@ gfx::RectF TextDecorationInfo::Bounds() const {
     default:
       break;
   }
-  NOTREACHED_IN_MIGRATION();
-  return gfx::RectF();
+  NOTREACHED();
 }
 
 gfx::RectF TextDecorationInfo::BoundsForDottedOrDashed() const {

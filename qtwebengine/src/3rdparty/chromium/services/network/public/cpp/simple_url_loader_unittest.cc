@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "services/network/public/cpp/simple_url_loader.h"
 
 #include <stdint.h>
@@ -1210,8 +1215,9 @@ TEST_P(SimpleURLLoaderTest, OnResponseStartedCallback) {
          const mojom::URLResponseHead& response_head) {
         *out_final_url = final_url;
         if (response_head.headers) {
-          response_head.headers->EnumerateHeader(/*iter=*/nullptr, "foo",
-                                                 foo_header_value);
+          *foo_header_value =
+              response_head.headers->GetNormalizedHeader("foo").value_or(
+                  std::string());
         }
         std::move(quit_closure).Run();
       },
@@ -2347,10 +2353,8 @@ class MockURLLoader : public network::mojom::URLLoader {
       const std::optional<GURL>& new_url) override {}
   void SetPriority(net::RequestPriority priority,
                    int32_t intra_priority_value) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
-  void PauseReadingBodyFromNet() override {}
-  void ResumeReadingBodyFromNet() override {}
 
   network::mojom::URLLoaderClient* client() const { return client_.get(); }
 

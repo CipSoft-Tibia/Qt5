@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #include "qquickmonthgrid_p.h"
 #include "qquickmonthmodel_p.h"
 
@@ -22,6 +23,7 @@ QT_BEGIN_NAMESPACE
     \l {Control::locale}{locale}.
 
     \image qtquickcontrols-monthgrid.webp
+           {Month grid displaying calendar days}
     \snippet qtquickcontrols-monthgrid.qml 1
 
     MonthGrid can be used as a standalone control, but it is most often
@@ -29,6 +31,7 @@ QT_BEGIN_NAMESPACE
     of the use case, positioning of the grid is left to the user.
 
     \image qtquickcontrols-monthgrid-layout.webp
+           {Month grid in calendar layout}
     \snippet qtquickcontrols-monthgrid-layout.qml 1
 
     The visual appearance of MonthGrid can be changed by

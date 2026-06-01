@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import './strings.m.js';
+import '/strings.m.js';
 
 import {assert, assertInstanceof} from '//resources/js/assert.js';
 import {EventTracker} from '//resources/js/event_tracker.js';
@@ -249,7 +249,7 @@ export class ObjectLayerElement extends PolymerElement {
     this.objectsReceivedListenerId = null;
   }
 
-  handleUpGesture(event: GestureEvent): boolean {
+  handleGestureEnd(event: GestureEvent): boolean {
     const objectIndex = this.objectIndexFromPoint(event.clientX, event.clientY);
     // Ignore if the click is not on an object.
     if (objectIndex === null) {
@@ -268,6 +268,13 @@ export class ObjectLayerElement extends PolymerElement {
       bubbles: true,
       composed: true,
       detail: this.getPostSelectionRegion(selectionRegion),
+    }));
+
+    // Display selected region context menu if able.
+    this.dispatchEvent(new CustomEvent('detect-text-in-region', {
+      bubbles: true,
+      composed: true,
+      detail: selectionRegion,
     }));
 
     // Since the selection is made and rendering is being done by the post

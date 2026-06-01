@@ -15,7 +15,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "components/viz/common/quads/aggregated_render_pass.h"
 #include "components/viz/common/quads/quad_list.h"
 #include "components/viz/service/display/aggregated_frame.h"
@@ -33,10 +32,10 @@
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/overlay_transform.h"
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 // TODO(b/181974042):  Remove when color space is plumbed.
 #include "ui/gfx/color_space.h"
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace viz {
 
@@ -109,6 +108,11 @@ class VIZ_SERVICE_EXPORT OverlayProcessorUsingStrategy
   // the overlay on the display with the requirement only.
   virtual void RegisterOverlayRequirement(bool requires_overlay) {}
 
+  // Disable overlay if there has been a copy request in the last 10 frames
+  // 10 was chosen because worst case the copy request might be 15 fps and
+  // we might have display with 120 Hz.
+  static const int kCopyRequestSkipOverlayFrames = 10;
+
  protected:
   virtual gfx::Rect GetOverlayDamageRectForOutputSurface(
       const OverlayCandidate& overlay) const;
@@ -140,7 +144,7 @@ class VIZ_SERVICE_EXPORT OverlayProcessorUsingStrategy
   // confirmed in `OverlayProcessorOzone::ReceiveHardwareCapabilities`.
   int max_overlays_considered_ = 1;
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
  protected:
   // TODO(b/181974042):  Remove when color space is plumbed.
   gfx::ColorSpace primary_plane_color_space_;
@@ -206,6 +210,10 @@ class VIZ_SERVICE_EXPORT OverlayProcessorUsingStrategy
       OverlayCandidateList* candidates,
       std::vector<gfx::Rect>* content_bounds,
       gfx::Rect* incoming_damage);
+
+  // Skips overlay when we have recently had copy output requests
+  // on root render pass to avoid flickering during screen capture
+  bool BlockForCopyRequests(const AggregatedRenderPass* root_render_pass);
 
   // Determines if we should attempt multiple overlays. This is based on
   // `max_overlays_considered_`, the strategies proposed, and if any of the
@@ -281,6 +289,10 @@ class VIZ_SERVICE_EXPORT OverlayProcessorUsingStrategy
   OverlayStatusMap curr_overlays_;
 
   OverlayCombinationCache overlay_combination_cache_;
+
+  // Used to count the number of frames we should wait until enabling overlay
+  // again.
+  int copy_request_counter_ = 0;
 };
 
 }  // namespace viz

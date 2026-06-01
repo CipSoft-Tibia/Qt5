@@ -107,15 +107,15 @@ HttpNoVarySearchData HttpNoVarySearchData::CreateFromVaryParams(
 base::expected<HttpNoVarySearchData, HttpNoVarySearchData::ParseErrorEnum>
 HttpNoVarySearchData::ParseFromHeaders(
     const HttpResponseHeaders& response_headers) {
-  std::string normalized_header;
-  if (!response_headers.GetNormalizedHeader("No-Vary-Search",
-                                            &normalized_header)) {
-    // This means there is no No-Vary-Search header. Return nullopt.
+  std::optional<std::string> normalized_header =
+      response_headers.GetNormalizedHeader("No-Vary-Search");
+  if (!normalized_header) {
+    // This means there is no No-Vary-Search header.
     return base::unexpected(ParseErrorEnum::kOk);
   }
 
   // The no-vary-search header is a dictionary type structured field.
-  const auto dict = structured_headers::ParseDictionary(normalized_header);
+  const auto dict = structured_headers::ParseDictionary(*normalized_header);
   if (!dict.has_value()) {
     // We don't recognize anything else. So this is an authoring error.
     return base::unexpected(ParseErrorEnum::kNotDictionary);
@@ -123,6 +123,11 @@ HttpNoVarySearchData::ParseFromHeaders(
 
   return ParseNoVarySearchDictionary(dict.value());
 }
+
+bool HttpNoVarySearchData::operator==(const HttpNoVarySearchData& rhs) const =
+    default;
+std::strong_ordering HttpNoVarySearchData::operator<=>(
+    const HttpNoVarySearchData& rhs) const = default;
 
 const base::flat_set<std::string>& HttpNoVarySearchData::no_vary_params()
     const {
@@ -155,7 +160,7 @@ HttpNoVarySearchData::ParseNoVarySearchDictionary(
   bool vary_by_default = true;
 
   // If the dictionary contains unknown keys, maybe fail parsing.
-  const bool has_unrecognized_keys = !base::ranges::all_of(
+  const bool has_unrecognized_keys = !std::ranges::all_of(
       dict,
       [&](const auto& pair) { return base::Contains(kValidKeys, pair.first); });
 

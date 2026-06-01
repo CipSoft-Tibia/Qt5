@@ -20,6 +20,8 @@
 #include <QFontComboBox>
 #include <QFrame>
 #include <QDebug>
+#include <qcheckbox.h>
+#include <qobject.h>
 
 const int initialTheme = 4;
 
@@ -73,11 +75,16 @@ int main(int argc, char *argv[])
     seriesVisibleCB->setText(QStringLiteral("Series Visible"));
     seriesVisibleCB->setChecked(true);
 
+    QCheckBox *fillCB = new QCheckBox(widget);
+    fillCB->setText(QStringLiteral("Fill Surface"));
+    fillCB->setChecked(false);
+
 #ifdef MULTI_SERIES
     smoothCB->setText(QStringLiteral("S1 Flat Surface"));
     surfaceGridCB->setText(QStringLiteral("S1 Surface Grid"));
     surfaceCB->setText(QStringLiteral("S1 Surface Visible"));
     seriesVisibleCB->setText(QStringLiteral("Series 1 Visible"));
+    fillCB->setText(QStringLiteral("Series 1 Fill"));
 
     QCheckBox *smoothS2CB = new QCheckBox(widget);
     smoothS2CB->setText(QStringLiteral("S2 Flat Surface"));
@@ -95,6 +102,10 @@ int main(int argc, char *argv[])
     series2VisibleCB->setText(QStringLiteral("Series 2 Visible"));
     series2VisibleCB->setChecked(true);
 
+    QCheckBox *fillS2CB = new QCheckBox(widget);
+    fillS2CB->setText(QStringLiteral("Series 2 Fill"));
+    fillS2CB->setChecked(false);
+
     QCheckBox *smoothS3CB = new QCheckBox(widget);
     smoothS3CB->setText(QStringLiteral("S3 Flat Surface"));
     smoothS3CB->setChecked(true);
@@ -110,6 +121,10 @@ int main(int argc, char *argv[])
     QCheckBox *series3VisibleCB = new QCheckBox(widget);
     series3VisibleCB->setText(QStringLiteral("Series 3 Visible"));
     series3VisibleCB->setChecked(true);
+
+    QCheckBox *fillS3CB = new QCheckBox(widget);
+    fillS3CB->setText(QStringLiteral("Series 3 Fill"));
+    fillS3CB->setChecked(false);
 
     QCheckBox *smoothS4CB = new QCheckBox(widget);
     smoothS4CB->setText(QStringLiteral("S4 Flat Surface"));
@@ -127,6 +142,10 @@ int main(int argc, char *argv[])
     series4VisibleCB->setText(QStringLiteral("Series 4 Visible"));
     series4VisibleCB->setChecked(true);
 
+    QCheckBox *fillS4CB = new QCheckBox(widget);
+    fillS4CB->setText(QStringLiteral("Series 4 Fill"));
+    fillS4CB->setChecked(false);
+
     QCheckBox *series1CB = new QCheckBox(widget);
     series1CB->setText(QStringLiteral("Series 1"));
 
@@ -138,6 +157,22 @@ int main(int argc, char *argv[])
 
     QCheckBox *series4CB = new QCheckBox(widget);
     series4CB->setText(QStringLiteral("Series 4"));
+
+    QCheckBox *lineSeriesCB = new QCheckBox(widget);
+    lineSeriesCB->setText(QStringLiteral("Line Series"));
+
+    QCheckBox *surfaceGridLineCB = new QCheckBox(widget);
+    surfaceGridLineCB->setText(QStringLiteral("Line Surface Grid"));
+    surfaceGridLineCB->setChecked(false);
+
+    QCheckBox *lineSeriesVisibleCB = new QCheckBox(widget);
+    lineSeriesVisibleCB->setText(QStringLiteral("Line Series Visible"));
+    lineSeriesVisibleCB->setChecked(true);
+
+    QCheckBox *fillLineCB = new QCheckBox(widget);
+    fillLineCB->setText(QStringLiteral("Line Series Fill"));
+    fillLineCB->setChecked(false);
+
 #else
     //QCheckBox *sqrtSinCB = new QCheckBox(widget);
     QRadioButton *sqrtSinCB = new QRadioButton(widget);
@@ -179,7 +214,7 @@ int main(int argc, char *argv[])
     QSlider *axisRangeSliderY = new QSlider(Qt::Horizontal, widget);
     axisRangeSliderY->setTickInterval(1);
     axisRangeSliderY->setMinimum(1);
-    axisRangeSliderY->setValue(16);
+    axisRangeSliderY->setValue(20);
     axisRangeSliderY->setMaximum(100);
     axisRangeSliderY->setEnabled(true);
     QSlider *axisRangeSliderZ = new QSlider(Qt::Horizontal, widget);
@@ -369,6 +404,9 @@ int main(int argc, char *argv[])
     QPushButton *testDataOrderingButton = new QPushButton(widget);
     testDataOrderingButton->setText(QStringLiteral("Test data ordering"));
 
+    QPushButton *testNanSeriesButton = new QPushButton(widget);
+    testNanSeriesButton->setText(QStringLiteral("Test NaN series"));
+
     QFrame* line = new QFrame();
     line->setFrameShape(QFrame::HLine);
     line->setFrameShadow(QFrame::Sunken);
@@ -380,6 +418,10 @@ int main(int argc, char *argv[])
     QFrame* line3 = new QFrame();
     line3->setFrameShape(QFrame::HLine);
     line3->setFrameShadow(QFrame::Sunken);
+
+    QFrame* line4 = new QFrame();
+    line4->setFrameShape(QFrame::HLine);
+    line4->setFrameShadow(QFrame::Sunken);
 
     QCheckBox *axisTitlesVisibleCB = new QCheckBox(widget);
     axisTitlesVisibleCB->setText(QStringLiteral("Axis titles visible"));
@@ -423,6 +465,14 @@ int main(int argc, char *argv[])
     QCheckBox *surfaceTextureCB = new QCheckBox(widget);
     surfaceTextureCB->setText(QStringLiteral("Map texture"));
     surfaceTextureCB->setChecked(false);
+
+    QCheckBox *surfaceAlphaTextureCB = new QCheckBox(widget);
+    surfaceAlphaTextureCB->setText(QStringLiteral("Alpha texture"));
+    surfaceAlphaTextureCB->setChecked(false);
+
+    QCheckBox *surfaceAlphaTextureFileCB = new QCheckBox(widget);
+    surfaceAlphaTextureFileCB->setText(QStringLiteral("Alpha texture file"));
+    surfaceAlphaTextureFileCB->setChecked(false);
 
     QSlider *cameraTargetSliderX = new QSlider(Qt::Horizontal, widget);
     cameraTargetSliderX->setTickInterval(1);
@@ -484,6 +534,7 @@ int main(int argc, char *argv[])
     vLayout->addWidget(surfaceGridCB);
     vLayout->addWidget(surfaceCB);
     vLayout->addWidget(seriesVisibleCB);
+    vLayout->addWidget(fillCB);
 #ifdef MULTI_SERIES
     vLayout->addWidget(line);
     vLayout->addWidget(series2CB);
@@ -491,19 +542,29 @@ int main(int argc, char *argv[])
     vLayout->addWidget(surfaceGridS2CB);
     vLayout->addWidget(surfaceS2CB);
     vLayout->addWidget(series2VisibleCB);
+    vLayout->addWidget(fillS2CB);
+    vLayout->addWidget(surfaceAlphaTextureFileCB);
     vLayout->addWidget(line2);
     vLayout->addWidget(series3CB);
     vLayout->addWidget(smoothS3CB);
     vLayout->addWidget(surfaceGridS3CB);
     vLayout->addWidget(surfaceS3CB);
     vLayout->addWidget(series3VisibleCB);
+    vLayout->addWidget(fillS3CB);
+    vLayout->addWidget(surfaceAlphaTextureCB);
     vLayout->addWidget(line3);
     vLayout->addWidget(series4CB);
     vLayout->addWidget(smoothS4CB);
     vLayout->addWidget(surfaceGridS4CB);
     vLayout->addWidget(surfaceS4CB);
     vLayout->addWidget(series4VisibleCB);
-    vLayout->addWidget(surfaceTextureCB, 1, Qt::AlignTop);
+    vLayout->addWidget(fillS4CB);
+    vLayout->addWidget(surfaceTextureCB);
+    vLayout->addWidget(line4);
+    vLayout->addWidget(lineSeriesCB);
+    vLayout->addWidget(lineSeriesVisibleCB);
+    vLayout->addWidget(surfaceGridLineCB);
+    vLayout->addWidget(fillLineCB, 1, Qt::AlignTop);
 #endif
 #ifndef MULTI_SERIES
     vLayout->addWidget(new QLabel(QStringLiteral("Select surface sample")));
@@ -577,6 +638,7 @@ int main(int argc, char *argv[])
     vLayout3->addWidget(massiveDataTestButton);
     vLayout3->addWidget(testReverseButton);
     vLayout3->addWidget(testDataOrderingButton);
+    vLayout3->addWidget(testNanSeriesButton);
     vLayout3->addWidget(axisTitlesVisibleCB);
     vLayout3->addWidget(xAxisLabelsVisibleCB);
     vLayout3->addWidget(yAxisLabelsVisibleCB);
@@ -607,6 +669,8 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::toggleSurface);
     QObject::connect(seriesVisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeriesVisible);
+    QObject::connect(fillCB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleFill);
 #ifdef MULTI_SERIES
     QObject::connect(smoothS2CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSmoothS2);
@@ -616,6 +680,8 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::toggleSurfaceS2);
     QObject::connect(series2VisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries2Visible);
+    QObject::connect(fillS2CB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleFillS2);
 
     QObject::connect(smoothS3CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSmoothS3);
@@ -625,6 +691,8 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::toggleSurfaceS3);
     QObject::connect(series3VisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries3Visible);
+    QObject::connect(fillS3CB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleFillS3);
 
     QObject::connect(smoothS4CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSmoothS4);
@@ -634,6 +702,16 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::toggleSurfaceS4);
     QObject::connect(series4VisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries4Visible);
+    QObject::connect(fillS4CB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleFillS4);
+
+    QObject::connect(lineSeriesVisibleCB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleLineSeries);
+    QObject::connect(surfaceGridLineCB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleLineSurfaceGrid);
+    QObject::connect(fillLineCB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleFillLine);
+
 
     CheckBoxWrapper *series1SmoothCBWrapper = new CheckBoxWrapper(smoothCB);
     CheckBoxWrapper *series1SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridCB);
@@ -695,6 +773,19 @@ int main(int argc, char *argv[])
                      series4surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series4CB, &QCheckBox::checkStateChanged,
                      series4VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
+
+    CheckBoxWrapper *lineSeriesSurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridLineCB);
+    CheckBoxWrapper *lineSeriessurfaceCBWrapper = new CheckBoxWrapper(lineSeriesCB);
+    CheckBoxWrapper *lineSeriesVisibleCBWrapper = new CheckBoxWrapper(lineSeriesVisibleCB);
+    CheckBoxWrapper *lineSeriesFillCBWrapper = new CheckBoxWrapper(fillLineCB);
+    QObject::connect(lineSeriesCB, &QCheckBox::checkStateChanged,
+                     modifier, &GraphModifier::toggleLineSeries);
+    QObject::connect(lineSeriesCB, &QCheckBox::checkStateChanged,
+                     lineSeriesSurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
+    QObject::connect(lineSeriesCB, &QCheckBox::checkStateChanged,
+                     lineSeriesVisibleCBWrapper, &CheckBoxWrapper::setEnabled);
+    QObject::connect(lineSeriesCB, &QCheckBox::checkStateChanged,
+                     lineSeriesFillCBWrapper, &CheckBoxWrapper::setEnabled);
 #else
     QObject::connect(sqrtSinCB, &QRadioButton::toggled,
                      modifier, &GraphModifier::toggleSqrtSin);
@@ -779,6 +870,8 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::testAxisReverse);
     QObject::connect(testDataOrderingButton, &QPushButton::clicked,
                      modifier, &GraphModifier::testDataOrdering);
+    QObject::connect(testNanSeriesButton, &QPushButton::clicked,
+                     modifier, &GraphModifier::testNanSeries);
     QObject::connect(axisTitlesVisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleAxisTitleVisibility);
     QObject::connect(xAxisLabelsVisibleCB,
@@ -812,7 +905,17 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::setHorizontalAspectRatio);
     QObject::connect(surfaceTextureCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::setSurfaceTexture);
-    QObject::connect(cameraTargetSliderX, &QSlider::valueChanged, modifier,
+    QObject::connect(surfaceAlphaTextureCB,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::setSurfaceAlphaTexture);
+    QObject::connect(surfaceAlphaTextureFileCB,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::setSurfaceAlphaTextureFile);
+    QObject::connect(cameraTargetSliderX,
+                     &QSlider::valueChanged,
+                     modifier,
                      &GraphModifier::setCameraTargetX);
     QObject::connect(cameraTargetSliderY, &QSlider::valueChanged, modifier,
                      &GraphModifier::setCameraTargetY);
@@ -859,6 +962,7 @@ int main(int argc, char *argv[])
     series2CB->setChecked(true);
     series3CB->setChecked(true);
     series4CB->setChecked(true);
+    lineSeriesCB->setChecked(true);
 #endif
     modifier->setAxisRangeSliderX(axisRangeSliderX);
     modifier->setAxisRangeSliderZ(axisRangeSliderZ);

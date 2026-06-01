@@ -9,6 +9,8 @@
 #include "doc.h"
 #include "enumitem.h"
 #include "importrec.h"
+#include "inode.h"
+#include "genustypes.h"
 #include "parameters.h"
 #include "relatedclass.h"
 #include "template_declaration.h"
@@ -48,44 +50,9 @@ typedef QMap<QString, NodeMultiMap> NodeMultiMapMap;
 typedef QMap<QString, CollectionNode *> CNMap;
 typedef QMultiMap<QString, CollectionNode *> CNMultiMap;
 
-class Node
+class Node : public INode
 {
 public:
-    enum NodeType : unsigned char {
-        NoType,
-        Namespace,
-        Class,
-        Struct,
-        Union,
-        HeaderFile,
-        Page,
-        Enum,
-        Example,
-        ExternalPage,
-        Function,
-        Typedef,
-        TypeAlias,
-        Property,
-        Variable,
-        Group,
-        Module,
-        QmlType,
-        QmlModule,
-        QmlProperty,
-        QmlValueType,
-        SharedComment,
-        Collection,
-        Proxy
-    };
-
-    enum Genus : unsigned char {
-        DontCare = 0x0,
-        CPP = 0x1,
-        QML = 0x4,
-        DOC = 0x8,
-        API = CPP | QML
-        };
-
     enum Status : unsigned char {
         Deprecated,
         Preliminary,
@@ -118,52 +85,56 @@ public:
     [[nodiscard]] virtual Tree *tree() const;
     [[nodiscard]] Aggregate *root() const;
 
-    [[nodiscard]] NodeType nodeType() const { return m_nodeType; }
+    [[nodiscard]] NodeType nodeType() const override { return m_nodeType; }
     [[nodiscard]] QString nodeTypeString() const;
 
-    [[nodiscard]] Genus genus() const { return m_genus; }
+    [[nodiscard]] Genus genus() const override { return m_genus; }
     void setGenus(Genus t) { m_genus = t; }
     static Genus getGenus(NodeType t);
 
     [[nodiscard]] bool isActive() const { return m_status == Active; }
-    [[nodiscard]] bool isClass() const { return m_nodeType == Class; }
-    [[nodiscard]] bool isCppNode() const { return genus() == CPP; }
+    [[nodiscard]] bool isClass() const { return m_nodeType == NodeType::Class; }
+    [[nodiscard]] bool isCppNode() const { return genus() == Genus::CPP; }
     [[nodiscard]] bool isDontDocument() const { return (m_status == DontDocument); }
-    [[nodiscard]] bool isEnumType() const { return m_nodeType == Enum; }
-    [[nodiscard]] bool isExample() const { return m_nodeType == Example; }
-    [[nodiscard]] bool isExternalPage() const { return m_nodeType == ExternalPage; }
-    [[nodiscard]] bool isFunction(Genus g = DontCare) const
+    [[nodiscard]] bool isEnumType() const
     {
-        return m_nodeType == Function && (genus() == g || g == DontCare);
+        return m_nodeType == NodeType::Enum || m_nodeType == NodeType::QmlEnum;
     }
-    [[nodiscard]] bool isGroup() const { return m_nodeType == Group; }
-    [[nodiscard]] bool isHeader() const { return m_nodeType == HeaderFile; }
+    [[nodiscard]] bool isEnumType(Genus g) const { return (genus() == g) && isEnumType(); }
+    [[nodiscard]] bool isExample() const { return m_nodeType == NodeType::Example; }
+    [[nodiscard]] bool isExternalPage() const { return m_nodeType == NodeType::ExternalPage; }
+    [[nodiscard]] bool isFunction(Genus g = Genus::DontCare) const
+    {
+        return m_nodeType == NodeType::Function && (genus() == g || g == Genus::DontCare);
+    }
+    [[nodiscard]] bool isGroup() const { return m_nodeType == NodeType::Group; }
+    [[nodiscard]] bool isHeader() const { return m_nodeType == NodeType::HeaderFile; }
     [[nodiscard]] bool isIndexNode() const { return m_indexNodeFlag; }
-    [[nodiscard]] bool isModule() const { return m_nodeType == Module; }
-    [[nodiscard]] bool isNamespace() const { return m_nodeType == Namespace; }
-    [[nodiscard]] bool isPage() const { return m_nodeType == Page; }
+    [[nodiscard]] bool isModule() const { return m_nodeType == NodeType::Module; }
+    [[nodiscard]] bool isNamespace() const { return m_nodeType == NodeType::Namespace; }
+    [[nodiscard]] bool isPage() const { return m_nodeType == NodeType::Page; }
     [[nodiscard]] bool isPreliminary() const { return (m_status == Preliminary); }
     [[nodiscard]] bool isPrivate() const { return m_access == Access::Private; }
-    [[nodiscard]] bool isProperty() const { return m_nodeType == Property; }
-    [[nodiscard]] bool isProxyNode() const { return m_nodeType == Proxy; }
+    [[nodiscard]] bool isProperty() const { return m_nodeType == NodeType::Property; }
+    [[nodiscard]] bool isProxyNode() const { return m_nodeType == NodeType::Proxy; }
     [[nodiscard]] bool isPublic() const { return m_access == Access::Public; }
     [[nodiscard]] bool isProtected() const { return m_access == Access::Protected; }
-    [[nodiscard]] bool isQmlBasicType() const { return m_nodeType == QmlValueType; }
-    [[nodiscard]] bool isQmlModule() const { return m_nodeType == QmlModule; }
-    [[nodiscard]] bool isQmlNode() const { return genus() == QML; }
-    [[nodiscard]] bool isQmlProperty() const { return m_nodeType == QmlProperty; }
-    [[nodiscard]] bool isQmlType() const { return m_nodeType == QmlType || m_nodeType == QmlValueType; }
+    [[nodiscard]] bool isQmlBasicType() const { return m_nodeType == NodeType::QmlValueType; }
+    [[nodiscard]] bool isQmlModule() const { return m_nodeType == NodeType::QmlModule; }
+    [[nodiscard]] bool isQmlNode() const { return genus() == Genus::QML; }
+    [[nodiscard]] bool isQmlProperty() const { return m_nodeType == NodeType::QmlProperty; }
+    [[nodiscard]] bool isQmlType() const { return m_nodeType == NodeType::QmlType || m_nodeType == NodeType::QmlValueType; }
     [[nodiscard]] bool isRelatedNonmember() const { return m_relatedNonmember; }
-    [[nodiscard]] bool isStruct() const { return m_nodeType == Struct; }
-    [[nodiscard]] bool isSharedCommentNode() const { return m_nodeType == SharedComment; }
-    [[nodiscard]] bool isTypeAlias() const { return m_nodeType == TypeAlias; }
+    [[nodiscard]] bool isStruct() const { return m_nodeType == NodeType::Struct; }
+    [[nodiscard]] bool isSharedCommentNode() const { return m_nodeType == NodeType::SharedComment; }
+    [[nodiscard]] bool isTypeAlias() const { return m_nodeType == NodeType::TypeAlias; }
     [[nodiscard]] bool isTypedef() const
     {
-        return m_nodeType == Typedef || m_nodeType == TypeAlias;
+        return m_nodeType == NodeType::Typedef || m_nodeType == NodeType::TypeAlias;
     }
-    [[nodiscard]] bool isUnion() const { return m_nodeType == Union; }
-    [[nodiscard]] bool isVariable() const { return m_nodeType == Variable; }
-    [[nodiscard]] bool isGenericCollection() const { return (m_nodeType == Node::Collection); }
+    [[nodiscard]] bool isUnion() const { return m_nodeType == NodeType::Union; }
+    [[nodiscard]] bool isVariable() const { return m_nodeType == NodeType::Variable; }
+    [[nodiscard]] bool isGenericCollection() const { return (m_nodeType == NodeType::Collection); }
 
     [[nodiscard]] virtual bool isDeprecated() const { return (m_status == Deprecated); }
     [[nodiscard]] virtual bool isAbstract() const { return false; }
@@ -193,7 +164,8 @@ public:
     [[nodiscard]] QString plainName() const;
     QString plainFullName(const Node *relative = nullptr) const;
     [[nodiscard]] QString plainSignature() const;
-    QString fullName(const Node *relative = nullptr) const;
+    QString fullName() const override { return fullName(nullptr); }
+    QString fullName(const Node *relative) const;
     [[nodiscard]] virtual QString signature(Node::SignatureOptions) const { return plainName(); }
 
     [[nodiscard]] const QString &fileNameBase() const { return m_fileNameBase; }
@@ -242,7 +214,7 @@ public:
     virtual void markReadOnly(bool) {}
 
     [[nodiscard]] Aggregate *parent() const { return m_parent; }
-    [[nodiscard]] const QString &name() const { return m_name; }
+    [[nodiscard]] const QString &name() const override { return m_name; }
     [[nodiscard]] QString physicalModuleName() const { return m_physicalModuleName; }
     [[nodiscard]] QString url() const { return m_url; }
     virtual void setQtVariable(const QString &) {}
@@ -269,7 +241,7 @@ public:
         return (m_defLocation.isEmpty() ? m_declLocation : m_defLocation);
     }
     [[nodiscard]] const Doc &doc() const { return m_doc; }
-    [[nodiscard]] bool isInAPI() const
+    [[nodiscard]] virtual bool isInAPI() const
     {
         return !isPrivate() && !isInternal() && !isDontDocument() && hasDoc();
     }
@@ -306,6 +278,7 @@ public:
     static FlagValue toFlagValue(bool b);
     static bool fromFlagValue(FlagValue fv, bool defaultValue);
     static QString nodeTypeString(NodeType t);
+    [[nodiscard]] static bool nodeLessThan(const Node *first, const Node *second);
     [[nodiscard]] static bool nodeNameLessThan(const Node *first, const Node *second);
     [[nodiscard]] static bool nodeSortKeyOrNameLessThan(const Node *n1, const Node *n2);
 

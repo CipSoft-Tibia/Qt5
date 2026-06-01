@@ -5,8 +5,9 @@
 /* #css_wrapper_metadata_start
  * #type=style-lit
  * #import=//resources/cr_elements/cr_hidden_style_lit.css.js
+ * #import=//resources/cr_elements/cr_spinner_style_lit.css.js
  * #scheme=relative
- * #include=cr-hidden-style-lit
+ * #include=cr-hidden-style-lit cr-spinner-style-lit
  * #css_wrapper_metadata_end */
 
 :host {
@@ -156,36 +157,11 @@
 }
 
 .date-creation-value,
-.trace-skip-value,
+.trace-trigger-value,
 .trace-size-value {
   color: var(--cr-primary-text-color)
 }
 
-.trace-spinner {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  left: 0;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(0, 0, 0, 0.4);
-  border-radius: 4px;
-}
-
 .spinner {
-  --spinner-size: 20px;
-  mask-image: url(chrome://resources/images/throbber_small.svg);
-  mask-position: center;
-  mask-repeat: no-repeat;
-  background-color: var(--google-blue-500);
-  mask-size: var(--spinner-size) var(--spinner-size);
-  height: var(--spinner-size);
-  width: var(--spinner-size);
-}
-
-@media (prefers-color-scheme: dark) {
-  .spinner {
-    background-color: var(--google-blue-300);
-  }
+  --cr-spinner-size: 20px;
 }

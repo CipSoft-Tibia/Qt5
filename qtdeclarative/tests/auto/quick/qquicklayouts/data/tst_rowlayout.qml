@@ -100,6 +100,14 @@ Item {
             }
         }
 
+        function test_defaultSizePolicyForLayout() {
+            var layout = layout_columnLayout_Component.createObject(container)
+            waitForRendering(layout)
+            compare(layout.Layout.fillWidth, true)
+            compare(layout.Layout.fillHeight, true)
+            layout.destroy()
+        }
+
         function test_warnAboutLayoutItemsWithAnchors()
         {
             var regex = new RegExp(".*: Detected anchors on an item that is managed by a layout. "

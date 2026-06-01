@@ -3,19 +3,21 @@
 // found in the LICENSE file.
 
 import * as Common from '../../../core/common/common.js';
-import * as Coordinator from '../../../ui/components/render_coordinator/render_coordinator.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as RenderCoordinator from '../../../ui/components/render_coordinator/render_coordinator.js';
+import {html, render} from '../../../ui/lit/lit.js';
 
-import srgbOverlayStyles from './srgbOverlay.css.js';
+import srgbOverlayStylesRaw from './srgbOverlay.css.js';
 
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const srgbOverlayStyles = new CSSStyleSheet();
+srgbOverlayStyles.replaceSync(srgbOverlayStylesRaw.cssContent);
 
-type SrgbOverlayProps = {
+interface SrgbOverlayProps {
   // [0 - 1] corresponding to HSV hue
-  hue: number,
-  width: number,
-  height: number,
-};
+  hue: number;
+  width: number;
+  height: number;
+}
 
 const SRGB_LABEL_HEIGHT = 10;
 const SRGB_LABEL_BOTTOM = 3;
@@ -31,7 +33,6 @@ function isColorInSrgbGamut(hsv: Common.ColorUtils.Color3D): boolean {
 }
 
 export class SrgbOverlay extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-spectrum-srgb-overlay`;
   readonly #shadow = this.attachShadow({mode: 'open'});
 
   constructor() {
@@ -90,7 +91,7 @@ export class SrgbOverlay extends HTMLElement {
   }
 
   render({hue, width, height}: SrgbOverlayProps): Promise<void> {
-    return coordinator.write('Srgb Overlay render', () => {
+    return RenderCoordinator.write('Srgb Overlay render', () => {
       const points = this.#getLinePoints({hue, width, height});
       if (!points || points.length === 0) {
         return;
@@ -101,8 +102,8 @@ export class SrgbOverlay extends HTMLElement {
         return;
       }
 
-      LitHtml.render(
-          LitHtml.html`
+      render(
+          html`
           <span class="label" style="right: ${width - closestPoint.x}px">sRGB</span>
           <svg>
             <polyline points=${

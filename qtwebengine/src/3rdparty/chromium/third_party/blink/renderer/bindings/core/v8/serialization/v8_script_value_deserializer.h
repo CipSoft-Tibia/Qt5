@@ -72,6 +72,16 @@ class CORE_EXPORT V8ScriptValueDeserializer
   bool ReadRawBytes(size_t size, const void** data) {
     return deserializer_.ReadRawBytes(size, data);
   }
+  bool ReadRawBytesToSpan(size_t size, base::span<const uint8_t>* out_span) {
+    const void* data = nullptr;
+    if (!deserializer_.ReadRawBytes(size, &data)) {
+      return false;
+    }
+    // SAFETY: ReadRawBytes() ensures `data` and `size` are safe.
+    *out_span = UNSAFE_BUFFERS(
+        base::span(reinterpret_cast<const uint8_t*>(data), size));
+    return true;
+  }
   bool ReadUnguessableToken(base::UnguessableToken* token_out);
   bool ReadUTF8String(String* string_out);
   DOMRectReadOnly* ReadDOMRectReadOnly();
@@ -105,9 +115,7 @@ class CORE_EXPORT V8ScriptValueDeserializer
   File* ReadFile();
   File* ReadFileIndex();
 
-  scoped_refptr<BlobDataHandle> GetOrCreateBlobDataHandle(const String& uuid,
-                                                          const String& type,
-                                                          uint64_t size);
+  scoped_refptr<BlobDataHandle> GetBlobDataHandle(const String& uuid);
 
   // v8::ValueDeserializer::Delegate
   v8::MaybeLocal<v8::Object> ReadHostObject(v8::Isolate*) override;

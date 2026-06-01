@@ -198,7 +198,7 @@ void QT_FASTCALL comp_func_Source_sse2(uint *dst, const uint *src, int length, u
 }
 
 #ifndef __haswell__
-static Q_NEVER_INLINE
+Q_NEVER_INLINE static
 void Q_DECL_VECTORCALL qt_memfillXX_aligned(void *dest, __m128i value128, quintptr bytecount)
 {
     __m128i *dst128 = reinterpret_cast<__m128i *>(dest);

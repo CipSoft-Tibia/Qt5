@@ -24,7 +24,6 @@
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
 #include "formats.h"
-#include "internal.h"
 #include "filters.h"
 #include "video.h"
 #include "vulkan_filter.h"
@@ -144,7 +143,6 @@ typedef struct LibplaceboInput {
     pl_queue queue;
     enum pl_queue_status qstatus;
     struct pl_frame_mix mix; ///< temporary storage
-    AVFilterLink *link;
     AVFifo *out_pts; ///< timestamps of wanted output frames
     int64_t status_pts;
     int status;
@@ -194,6 +192,8 @@ typedef struct LibplaceboContext {
     int color_primaries;
     int color_trc;
     AVDictionary *extra_opts;
+
+    int have_hwdevice;
 
     /* pl_render_params */
     pl_options opts;
@@ -494,11 +494,13 @@ static int parse_shader(AVFilterContext *avctx, const void *shader, size_t len)
 
 static void libplacebo_uninit(AVFilterContext *avctx);
 static int libplacebo_config_input(AVFilterLink *inlink);
+static int init_vulkan(AVFilterContext *avctx, const AVVulkanDeviceContext *hwctx);
 
 static int libplacebo_init(AVFilterContext *avctx)
 {
     int err = 0;
     LibplaceboContext *s = avctx->priv;
+    const AVVulkanDeviceContext *vkhwctx = NULL;
 
     /* Create libplacebo log context */
     s->log = pl_log_create(PL_API_VER, pl_log_params(
@@ -560,7 +562,14 @@ static int libplacebo_init(AVFilterContext *avctx)
     if (strcmp(s->fps_string, "none") != 0)
         RET(av_parse_video_rate(&s->fps, s->fps_string));
 
-    /* Note: s->vulkan etc. are initialized later, when hwctx is available */
+    if (avctx->hw_device_ctx) {
+        const AVHWDeviceContext *avhwctx = (void *) avctx->hw_device_ctx->data;
+        if (avhwctx->type == AV_HWDEVICE_TYPE_VULKAN)
+            vkhwctx = avhwctx->hwctx;
+    }
+
+    RET(init_vulkan(avctx, vkhwctx));
+
     return 0;
 
 fail:
@@ -583,8 +592,7 @@ static void unlock_queue(void *priv, uint32_t qf, uint32_t qidx)
 }
 #endif
 
-static int input_init(AVFilterContext *avctx, AVFilterLink *link,
-                      LibplaceboInput *input, int idx)
+static int input_init(AVFilterContext *avctx, LibplaceboInput *input, int idx)
 {
     LibplaceboContext *s = avctx->priv;
 
@@ -593,7 +601,6 @@ static int input_init(AVFilterContext *avctx, AVFilterLink *link,
         return AVERROR(ENOMEM);
     input->queue = pl_queue_create(s->gpu);
     input->renderer = pl_renderer_create(s->log, s->gpu);
-    input->link = link;
     input->idx = idx;
 
     return 0;
@@ -649,6 +656,8 @@ static int init_vulkan(AVFilterContext *avctx, const AVVulkanDeviceContext *hwct
         err = AVERROR_EXTERNAL;
         goto fail;
 #endif
+
+        s->have_hwdevice = 1;
     } else {
         s->vulkan = pl_vulkan_create(s->log, pl_vulkan_params(
             .queue_count = 0, /* enable all queues for parallelization */
@@ -678,7 +687,7 @@ static int init_vulkan(AVFilterContext *avctx, const AVVulkanDeviceContext *hwct
     if (!s->inputs)
         return AVERROR(ENOMEM);
     for (int i = 0; i < s->nb_inputs; i++)
-        RET(input_init(avctx, avctx->inputs[i], &s->inputs[i], i));
+        RET(input_init(avctx, &s->inputs[i], i));
 
     /* fall through */
 fail:
@@ -742,7 +751,9 @@ static const AVFrame *ref_frame(const struct pl_frame_mix *mix)
 static void update_crops(AVFilterContext *ctx, LibplaceboInput *in,
                          struct pl_frame *target, double target_pts)
 {
+    FilterLink     *outl = ff_filter_link(ctx->outputs[0]);
     LibplaceboContext *s = ctx->priv;
+    const AVFilterLink *inlink = ctx->inputs[in->idx];
     const AVFrame *ref = ref_frame(&in->mix);
 
     for (int i = 0; i < in->mix.num_frames; i++) {
@@ -750,18 +761,18 @@ static void update_crops(AVFilterContext *ctx, LibplaceboInput *in,
         // own the entire pl_queue, and hence, the pointed-at frames.
         struct pl_frame *image = (struct pl_frame *) in->mix.frames[i];
         const AVFrame *src = pl_get_mapped_avframe(image);
-        double image_pts = src->pts * av_q2d(in->link->time_base);
+        double image_pts = src->pts * av_q2d(inlink->time_base);
 
         /* Update dynamic variables */
         s->var_values[VAR_IN_IDX] = s->var_values[VAR_IDX] = in->idx;
-        s->var_values[VAR_IN_W]   = s->var_values[VAR_IW] = in->link->w;
-        s->var_values[VAR_IN_H]   = s->var_values[VAR_IH] = in->link->h;
-        s->var_values[VAR_A]      = (double) in->link->w / in->link->h;
-        s->var_values[VAR_SAR]    = in->link->sample_aspect_ratio.num ?
-            av_q2d(in->link->sample_aspect_ratio) : 1.0;
+        s->var_values[VAR_IN_W]   = s->var_values[VAR_IW] = inlink->w;
+        s->var_values[VAR_IN_H]   = s->var_values[VAR_IH] = inlink->h;
+        s->var_values[VAR_A]      = (double) inlink->w / inlink->h;
+        s->var_values[VAR_SAR]    = inlink->sample_aspect_ratio.num ?
+            av_q2d(inlink->sample_aspect_ratio) : 1.0;
         s->var_values[VAR_IN_T]   = s->var_values[VAR_T]  = image_pts;
         s->var_values[VAR_OUT_T]  = s->var_values[VAR_OT] = target_pts;
-        s->var_values[VAR_N]      = ctx->outputs[0]->frame_count_out;
+        s->var_values[VAR_N]      = outl->frame_count_out;
 
         /* Clear these explicitly to avoid leaking previous frames' state */
         s->var_values[VAR_CROP_W] = s->var_values[VAR_CW] = NAN;
@@ -796,7 +807,7 @@ static void update_crops(AVFilterContext *ctx, LibplaceboInput *in,
             target->crop.y1 = target->crop.y0 + s->var_values[VAR_POS_H];
             if (s->normalize_sar) {
                 float aspect = pl_rect2df_aspect(&image->crop);
-                aspect *= av_q2d(in->link->sample_aspect_ratio);
+                aspect *= av_q2d(inlink->sample_aspect_ratio);
                 pl_rect2df_aspect_set(&target->crop, aspect, s->pad_crop_ratio);
             }
         }
@@ -886,7 +897,9 @@ static int output_frame(AVFilterContext *ctx, int64_t pts)
     opts->params.blend_params = NULL;
     for (int i = 0; i < s->nb_inputs; i++) {
         LibplaceboInput *in = &s->inputs[i];
-        int high_fps = av_cmp_q(in->link->frame_rate, outlink->frame_rate) >= 0;
+        FilterLink *il = ff_filter_link(ctx->inputs[in->idx]);
+        FilterLink *ol = ff_filter_link(outlink);
+        int high_fps = av_cmp_q(il->frame_rate, ol->frame_rate) >= 0;
         if (in->qstatus != PL_QUEUE_OK)
             continue;
         opts->params.skip_caching_single_frame = high_fps;
@@ -945,14 +958,15 @@ static int handle_input(AVFilterContext *ctx, LibplaceboInput *input)
     int ret, status;
     LibplaceboContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
+    AVFilterLink *inlink = ctx->inputs[input->idx];
     AVFrame *in;
     int64_t pts;
 
-    while ((ret = ff_inlink_consume_frame(input->link, &in)) > 0) {
+    while ((ret = ff_inlink_consume_frame(inlink, &in)) > 0) {
         in->opaque = s;
         pl_queue_push(input->queue, &(struct pl_source_frame) {
-            .pts         = in->pts * av_q2d(input->link->time_base),
-            .duration    = in->duration * av_q2d(input->link->time_base),
+            .pts         = in->pts * av_q2d(inlink->time_base),
+            .duration    = in->duration * av_q2d(inlink->time_base),
             .first_field = pl_field_from_avframe(in),
             .frame_data  = in,
             .map         = map_frame,
@@ -962,7 +976,7 @@ static int handle_input(AVFilterContext *ctx, LibplaceboInput *input)
 
         if (!s->fps.num) {
             /* Internally queue an output frame for the same PTS */
-            pts = av_rescale_q(in->pts, input->link->time_base, outlink->time_base);
+            pts = av_rescale_q(in->pts, inlink->time_base, outlink->time_base);
             av_fifo_write(input->out_pts, &pts, 1);
         }
     }
@@ -970,8 +984,8 @@ static int handle_input(AVFilterContext *ctx, LibplaceboInput *input)
     if (ret < 0)
         return ret;
 
-    if (!input->status && ff_inlink_acknowledge_status(input->link, &status, &pts)) {
-        pts = av_rescale_q_rnd(pts, input->link->time_base, outlink->time_base,
+    if (!input->status && ff_inlink_acknowledge_status(inlink, &status, &pts)) {
+        pts = av_rescale_q_rnd(pts, inlink->time_base, outlink->time_base,
                                AV_ROUND_UP);
         pl_queue_push(input->queue, NULL); /* Signal EOF to pl_queue */
         input->status = status;
@@ -998,6 +1012,7 @@ static int libplacebo_activate(AVFilterContext *ctx)
     int ret, ok = 0, retry = 0;
     LibplaceboContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
+    FilterLink *outl      = ff_filter_link(outlink);
     int64_t pts, out_pts;
 
     FF_FILTER_FORWARD_STATUS_BACK_ALL(outlink, ctx);
@@ -1010,7 +1025,7 @@ static int libplacebo_activate(AVFilterContext *ctx)
 
     if (ff_outlink_frame_wanted(outlink)) {
         if (s->fps.num) {
-            out_pts = outlink->frame_count_out;
+            out_pts = outl->frame_count_out;
         } else {
             /* Determine the PTS of the next frame from any active input */
             out_pts = INT64_MAX;
@@ -1019,7 +1034,7 @@ static int libplacebo_activate(AVFilterContext *ctx)
                 if (av_fifo_peek(in->out_pts, &pts, 1, 0) >= 0) {
                     out_pts = FFMIN(out_pts, pts);
                 } else if (!in->status) {
-                    ff_inlink_request_frame(in->link);
+                    ff_inlink_request_frame(ctx->inputs[in->idx]);
                     retry = true;
                 }
             }
@@ -1031,6 +1046,7 @@ static int libplacebo_activate(AVFilterContext *ctx)
         /* Update all input queues to the chosen out_pts */
         for (int i = 0; i < s->nb_inputs; i++) {
             LibplaceboInput *in = &s->inputs[i];
+            FilterLink *l = ff_filter_link(outlink);
             if (in->status && out_pts >= in->status_pts) {
                 in->qstatus = PL_QUEUE_EOF;
                 continue;
@@ -1039,12 +1055,12 @@ static int libplacebo_activate(AVFilterContext *ctx)
             in->qstatus = pl_queue_update(in->queue, &in->mix, pl_queue_params(
                 .pts            = out_pts * av_q2d(outlink->time_base),
                 .radius         = pl_frame_mix_radius(&s->opts->params),
-                .vsync_duration = av_q2d(av_inv_q(outlink->frame_rate)),
+                .vsync_duration = av_q2d(av_inv_q(l->frame_rate)),
             ));
 
             switch (in->qstatus) {
             case PL_QUEUE_MORE:
-                ff_inlink_request_frame(in->link);
+                ff_inlink_request_frame(ctx->inputs[in->idx]);
                 retry = true;
                 break;
             case PL_QUEUE_OK:
@@ -1073,21 +1089,14 @@ static int libplacebo_activate(AVFilterContext *ctx)
     return FFERROR_NOT_READY;
 }
 
-static int libplacebo_query_format(AVFilterContext *ctx)
+static int libplacebo_query_format(const AVFilterContext *ctx,
+                                   AVFilterFormatsConfig **cfg_in,
+                                   AVFilterFormatsConfig **cfg_out)
 {
     int err;
-    LibplaceboContext *s = ctx->priv;
-    const AVVulkanDeviceContext *vkhwctx = NULL;
+    const LibplaceboContext *s = ctx->priv;
     const AVPixFmtDescriptor *desc = NULL;
     AVFilterFormats *infmts = NULL, *outfmts = NULL;
-
-    if (ctx->hw_device_ctx) {
-        const AVHWDeviceContext *avhwctx = (void *) ctx->hw_device_ctx->data;
-        if (avhwctx->type == AV_HWDEVICE_TYPE_VULKAN)
-            vkhwctx = avhwctx->hwctx;
-    }
-
-    RET(init_vulkan(ctx, vkhwctx));
 
     while ((desc = av_pix_fmt_desc_next(desc))) {
         enum AVPixelFormat pixfmt = av_pix_fmt_desc_get_id(desc);
@@ -1099,10 +1108,8 @@ static int libplacebo_query_format(AVFilterContext *ctx)
             continue;
 #endif
 
-        if (pixfmt == AV_PIX_FMT_VULKAN) {
-            if (!vkhwctx || vkhwctx->act_dev != s->vulkan->device)
-                continue;
-        }
+        if (pixfmt == AV_PIX_FMT_VULKAN && !s->have_hwdevice)
+            continue;
 
         if (!pl_test_pixfmt(s->gpu, pixfmt))
             continue;
@@ -1133,29 +1140,25 @@ static int libplacebo_query_format(AVFilterContext *ctx)
     }
 
     if (!infmts || !outfmts) {
-        if (s->out_format) {
-            av_log(s, AV_LOG_ERROR, "Invalid output format '%s'!\n",
-                   av_get_pix_fmt_name(s->out_format));
-        }
         err = AVERROR(EINVAL);
         goto fail;
     }
 
     for (int i = 0; i < s->nb_inputs; i++)
-        RET(ff_formats_ref(infmts, &ctx->inputs[i]->outcfg.formats));
-    RET(ff_formats_ref(outfmts, &ctx->outputs[0]->incfg.formats));
+        RET(ff_formats_ref(infmts, &cfg_in[i]->formats));
+    RET(ff_formats_ref(outfmts, &cfg_out[0]->formats));
 
     /* Set colorspace properties */
-    RET(ff_formats_ref(ff_all_color_spaces(), &ctx->inputs[0]->outcfg.color_spaces));
-    RET(ff_formats_ref(ff_all_color_ranges(), &ctx->inputs[0]->outcfg.color_ranges));
+    RET(ff_formats_ref(ff_all_color_spaces(), &cfg_in[0]->color_spaces));
+    RET(ff_formats_ref(ff_all_color_ranges(), &cfg_in[0]->color_ranges));
 
     outfmts = s->colorspace > 0 ? ff_make_formats_list_singleton(s->colorspace)
                                 : ff_all_color_spaces();
-    RET(ff_formats_ref(outfmts, &ctx->outputs[0]->incfg.color_spaces));
+    RET(ff_formats_ref(outfmts, &cfg_out[0]->color_spaces));
 
     outfmts = s->color_range > 0 ? ff_make_formats_list_singleton(s->color_range)
                                  : ff_all_color_ranges();
-    RET(ff_formats_ref(outfmts, &ctx->outputs[0]->incfg.color_ranges));
+    RET(ff_formats_ref(outfmts, &cfg_out[0]->color_ranges));
     return 0;
 
 fail:
@@ -1188,9 +1191,11 @@ static inline AVRational max_q(AVRational a, AVRational b)
 static int libplacebo_config_output(AVFilterLink *outlink)
 {
     int err;
+    FilterLink          *l = ff_filter_link(outlink);
     AVFilterContext *avctx = outlink->src;
     LibplaceboContext *s   = avctx->priv;
     AVFilterLink *inlink   = outlink->src->inputs[0];
+    FilterLink       *ol   = ff_filter_link(outlink);
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
     const AVPixFmtDescriptor *out_desc = av_pix_fmt_desc_get(outlink->format);
     AVHWFramesContext *hwfc;
@@ -1217,14 +1222,15 @@ static int libplacebo_config_output(AVFilterLink *outlink)
 
     /* Frame rate */
     if (s->fps.num) {
-        outlink->frame_rate = s->fps;
+        ol->frame_rate = s->fps;
         outlink->time_base = av_inv_q(s->fps);
     } else {
-        outlink->frame_rate = avctx->inputs[0]->frame_rate;
+        FilterLink *il = ff_filter_link(avctx->inputs[0]);
+        ol->frame_rate = il->frame_rate;
         outlink->time_base = avctx->inputs[0]->time_base;
         for (int i = 1; i < s->nb_inputs; i++) {
-            outlink->frame_rate = max_q(outlink->frame_rate,
-                                        avctx->inputs[i]->frame_rate);
+            il = ff_filter_link(avctx->inputs[i]);
+            ol->frame_rate = max_q(ol->frame_rate, il->frame_rate);
             outlink->time_base = av_gcd_q(outlink->time_base,
                                           avctx->inputs[i]->time_base,
                                           AV_TIME_BASE / 2, AV_TIME_BASE_Q);
@@ -1253,7 +1259,7 @@ static int libplacebo_config_output(AVFilterLink *outlink)
         s->vkctx.output_format = s->out_format;
     }
     RET(ff_vk_filter_config_output(outlink));
-    hwfc = (AVHWFramesContext *) outlink->hw_frames_ctx->data;
+    hwfc = (AVHWFramesContext *)l->hw_frames_ctx->data;
     vkfc = hwfc->hwctx;
     vkfc->usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
@@ -1455,7 +1461,7 @@ const AVFilter ff_vf_libplacebo = {
     .activate       = &libplacebo_activate,
     .process_command = &libplacebo_process_command,
     FILTER_OUTPUTS(libplacebo_outputs),
-    FILTER_QUERY_FUNC(libplacebo_query_format),
+    FILTER_QUERY_FUNC2(libplacebo_query_format),
     .priv_class     = &libplacebo_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
     .flags          = AVFILTER_FLAG_HWDEVICE | AVFILTER_FLAG_DYNAMIC_INPUTS,

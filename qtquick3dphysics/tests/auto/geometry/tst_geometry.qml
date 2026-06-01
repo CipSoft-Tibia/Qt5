@@ -3,8 +3,8 @@
 import QtQuick
 import QtTest
 import QtQuick3D
+import QtQuick3D.Helpers
 import QtQuick3D.Physics
-import QtQuick3D.Physics.Helpers
 
 import Geometry
 
@@ -49,8 +49,8 @@ Item {
             Model {
                 source: "#Rectangle"
                 scale: Qt.vector3d(10, 10, 1)
-                materials: DefaultMaterial {
-                    diffuseColor: "green"
+                materials: PrincipledMaterial {
+                    baseColor: "green"
                 }
                 castsShadows: false
                 receivesShadows: true

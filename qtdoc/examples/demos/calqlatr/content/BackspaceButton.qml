@@ -16,6 +16,7 @@ RoundButton {
     // include this text property as the calculator engine
     // differentiates buttons through text. The text is never drawn.
     text: "bs"
+    Accessible.name: "backspace"
 
     property bool dimmable: true
     property bool dimmed: false
@@ -26,44 +27,39 @@ RoundButton {
 
     function getBackgroundColor() {
         if (button.dimmable && button.dimmed)
-            return backgroundColor
+            return backgroundColor;
         if (button.pressed)
-            return backspaceRedColor
-        return backgroundColor
+            return backspaceRedColor;
+        return backgroundColor;
     }
 
     function getBorderColor() {
         if (button.dimmable && button.dimmed)
-            return borderColor
+            return borderColor;
         if (button.pressed || button.hovered)
-            return backspaceRedColor
-        return borderColor
+            return backspaceRedColor;
+        return borderColor;
     }
 
     function getIconColor() {
         if (button.dimmable && button.dimmed)
-            return Qt.darker(backspaceRedColor)
+            return Qt.darker(backspaceRedColor);
         if (button.pressed)
-            return backgroundColor
-        return backspaceRedColor
+            return backgroundColor;
+        return backspaceRedColor;
     }
 
     function getIcon() {
         if (button.dimmable && button.dimmed)
-            return "images/backspace.svg"
+            return "images/backspace.svg";
         if (button.pressed)
-            return "images/backspace_fill.svg"
-        return "images/backspace.svg"
-    }
-
-    onReleased: {
-        root.operatorPressed("bs")
-        updateDimmed()
+            return "images/backspace_fill.svg";
+        return "images/backspace.svg";
     }
 
     background: Rectangle {
         radius: button.buttonRadius
-        color: getBackgroundColor()
-        border.color: getBorderColor()
+        color: button.getBackgroundColor()
+        border.color: button.getBorderColor()
     }
 }

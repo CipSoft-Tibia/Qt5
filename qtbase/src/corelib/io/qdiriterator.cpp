@@ -211,8 +211,9 @@ QDirIterator::~QDirIterator()
 
 /*!
     Advances the iterator to the next entry, and returns the file path of this
-    new entry. You should first check hasNext() before using this method, to
-    avoid unexpected results.
+    new entry. If hasNext() returns \c false, this function does nothing, and
+    returns an empty QString. Ideally you should always call hasNext() before
+    calling this method.
 
     You can call fileName() or filePath() to get the current entry's file name
     or path, or fileInfo() to get a QFileInfo for the current entry.
@@ -231,8 +232,9 @@ QString QDirIterator::next()
     \since 6.3
 
     Advances the iterator to the next entry, and returns the file info of this
-    new entry. You should first check hasNext() before using this method, to
-    avoid unexpected results.
+    new entry. If hasNext() returns \c false, this function does nothing, and
+    returns an empty QFileInfo. Ideally you should always call hasNext() before
+    calling this method.
 
     You can call fileName() or filePath() to get the current entry's file name
     or path, or fileInfo() to get a QFileInfo for the current entry.

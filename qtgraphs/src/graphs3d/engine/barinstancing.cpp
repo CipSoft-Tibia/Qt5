@@ -3,6 +3,8 @@
 
 #include "barinstancing_p.h"
 
+QT_BEGIN_NAMESPACE
+
 BarInstancing::BarInstancing() {}
 
 BarInstancing::~BarInstancing()
@@ -87,3 +89,5 @@ void BarInstancing::setDataArray(const QList<BarItemHolder *> &newDataArray)
     m_dataArray = newDataArray;
     markDataDirty();
 }
+
+QT_END_NAMESPACE

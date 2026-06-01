@@ -69,6 +69,12 @@ void Parser::error(const char *msg)
     exit(EXIT_FAILURE);
 }
 
+void Parser::error(const Symbol& symbol, const char *msg)
+{
+    printMsg("error: %s\n", msg, symbol);
+    exit(EXIT_FAILURE);
+}
+
 void Parser::warning(const Symbol &sym, QByteArrayView msg)
 {
     if (displayWarnings)

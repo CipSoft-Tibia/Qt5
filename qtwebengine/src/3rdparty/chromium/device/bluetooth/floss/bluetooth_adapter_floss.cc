@@ -164,8 +164,14 @@ void BluetoothAdapterFloss::Shutdown() {
   FlossDBusManager::Get()->GetManagerClient()->RemoveObserver(this);
   dbus_is_shutdown_ = true;
 
-  for (const auto& [key, scanner] : scanners_) {
-    scanner->OnRelease();
+  // Copy scanners_ to avoid iterating over it while it's being modified.
+  std::map<device::BluetoothUUID,
+           base::WeakPtr<BluetoothLowEnergyScanSessionFloss>>
+      scanners_copy(scanners_);
+  for (const auto& [_, scanner] : scanners_copy) {
+    if (scanner) {
+      scanner->OnRelease();
+    }
   }
   scanners_.clear();
 }
@@ -683,10 +689,9 @@ void BluetoothAdapterFloss::AdapterPresent(int adapter, bool present) {
     // changed until the clients are ready, so the observers could get the
     // correct power state right after present.
     FlossDBusManager::Get()->SwitchAdapter(
-        adapter,
-        base::BindOnce(&BluetoothAdapterFloss::OnAdapterClientsReady,
-                       weak_ptr_factory_.GetWeakPtr(), /* enabled = */ true,
-                       /* is_newly_present = */ true));
+        adapter, base::BindOnce(&BluetoothAdapterFloss::OnAdapterClientsReady,
+                                weak_ptr_factory_.GetWeakPtr(),
+                                /* is_newly_present = */ true));
   } else {
     // Notify observers
     PresentChanged(present);
@@ -705,42 +710,35 @@ void BluetoothAdapterFloss::AdapterEnabledChanged(int adapter, bool enabled) {
   if (enabled && adapter != FlossDBusManager::Get()->GetActiveAdapter()) {
     FlossDBusManager::Get()->SwitchAdapter(
         adapter, base::BindOnce(&BluetoothAdapterFloss::OnAdapterClientsReady,
-                                weak_ptr_factory_.GetWeakPtr(), enabled,
+                                weak_ptr_factory_.GetWeakPtr(),
                                 /* is_newly_present = */ false));
   } else if (!enabled && FlossDBusManager::Get()->HasActiveAdapter()) {
-    FlossDBusManager::Get()->SwitchAdapter(
-        FlossDBusManager::kInvalidAdapter,
-        base::BindOnce(&BluetoothAdapterFloss::OnAdapterClientsReady,
-                       weak_ptr_factory_.GetWeakPtr(), enabled,
-                       /* is_newly_present = */ false));
+    ClearAllDevices();
+    RemoveAdapterObservers();
+    FlossDBusManager::Get()->SwitchAdapter(FlossDBusManager::kInvalidAdapter,
+                                           base::DoNothing());
+    NotifyAdapterPoweredChanged(false);
   }
 }
 
-void BluetoothAdapterFloss::OnAdapterClientsReady(bool enabled,
-                                                  bool is_newly_present) {
-  if (enabled) {
-    AddAdapterObservers();
-    PopulateInitialDevices();
+void BluetoothAdapterFloss::OnAdapterClientsReady(bool is_newly_present) {
+  AddAdapterObservers();
+  PopulateInitialDevices();
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-    // No need to do this in Lacros because Ash would be around, and would have
-    // done this already.
-    SetStandardChromeOSAdapterName();
-    if (base::FeatureList::IsEnabled(
-            chromeos::bluetooth::features::kBluetoothFlossTelephony)) {
-      ConfigureBluetoothTelephony(true);
-    }
-
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
-  } else {
-    ClearAllDevices();
-    RemoveAdapterObservers();
+  // No need to do this in Lacros because Ash would be around, and would have
+  // done this already.
+  SetStandardChromeOSAdapterName();
+  if (base::FeatureList::IsEnabled(
+          chromeos::bluetooth::features::kBluetoothFlossTelephony)) {
+    ConfigureBluetoothTelephony(true);
   }
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
   if (is_newly_present) {
     PresentChanged(true);
   }
 
-  NotifyAdapterPoweredChanged(enabled);
+  NotifyAdapterPoweredChanged(true);
 }
 
 void BluetoothAdapterFloss::AdapterDiscoveringChanged(bool state) {
@@ -1072,6 +1070,8 @@ void BluetoothAdapterFloss::AdapterPinRequest(
     return;
   }
 
+  pairing->SetPairingExpectation(
+      BluetoothPairingFloss::PairingExpectation::kPinCode);
   pairing_delegate->RequestPinCode(device);
 }
 
@@ -1159,6 +1159,27 @@ void BluetoothAdapterFloss::AdapterDeviceConnected(
     NotifyDeviceChanged(device);
     NotifyDeviceConnectedStateChanged(device, true);
   }
+}
+
+void BluetoothAdapterFloss::AdapterDeviceConnectionFailed(
+    const FlossDeviceId& device_id,
+    uint32_t status) {
+  DCHECK(FlossDBusManager::Get());
+  DCHECK(IsPresent());
+
+  BLUETOOTH_LOG(EVENT) << __func__ << ": " << device_id
+                       << ", status: " << status;
+
+  BluetoothDeviceFloss* device =
+      static_cast<BluetoothDeviceFloss*>(GetDevice(device_id.address));
+  if (!device) {
+    LOG(WARNING) << "Connect failed for an unknown device "
+                 << device_id.address;
+    return;
+  }
+
+  device->OnDeviceConnectionFailed(
+      static_cast<FlossDBusClient::BtifStatus>(status));
 }
 
 std::optional<device::BluetoothDevice::BatteryType> variant_to_battery_type(
@@ -1250,7 +1271,7 @@ void BluetoothAdapterFloss::ServiceAllowlistChanged(
     const std::vector<device::BluetoothUUID>& allowlist) {
   std::vector<std::string> uuid_str(allowlist.size());
 
-  base::ranges::transform(
+  std::ranges::transform(
       allowlist, uuid_str.begin(),
       [](device::BluetoothUUID dev) { return dev.canonical_value(); });
 
@@ -1705,8 +1726,7 @@ base::WeakPtr<device::BluetoothAdapter> BluetoothAdapterFloss::GetWeakPtr() {
 }
 
 bool BluetoothAdapterFloss::SetPoweredImpl(bool powered) {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 void BluetoothAdapterFloss::StartScanWithFilter(

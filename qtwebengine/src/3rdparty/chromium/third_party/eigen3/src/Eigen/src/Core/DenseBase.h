@@ -243,6 +243,8 @@ class DenseBase
 #ifndef EIGEN_PARSED_BY_DOXYGEN
   /** \internal Represents a matrix with all coefficients equal to one another*/
   typedef CwiseNullaryOp<internal::scalar_constant_op<Scalar>, PlainObject> ConstantReturnType;
+  /** \internal Represents a matrix with all coefficients equal to zero*/
+  typedef CwiseNullaryOp<internal::scalar_zero_op<Scalar>, PlainObject> ZeroReturnType;
   /** \internal \deprecated Represents a vector with linearly spaced coefficients that allows sequential access only. */
   EIGEN_DEPRECATED typedef CwiseNullaryOp<internal::linspaced_op<Scalar>, PlainObject> SequentialLinSpacedReturnType;
   /** \internal Represents a vector with linearly spaced coefficients that allows random access. */
@@ -328,9 +330,9 @@ class DenseBase
   template <typename CustomNullaryOp>
   EIGEN_DEVICE_FUNC static const CwiseNullaryOp<CustomNullaryOp, PlainObject> NullaryExpr(const CustomNullaryOp& func);
 
-  EIGEN_DEVICE_FUNC static const ConstantReturnType Zero(Index rows, Index cols);
-  EIGEN_DEVICE_FUNC static const ConstantReturnType Zero(Index size);
-  EIGEN_DEVICE_FUNC static const ConstantReturnType Zero();
+  EIGEN_DEVICE_FUNC static const ZeroReturnType Zero(Index rows, Index cols);
+  EIGEN_DEVICE_FUNC static const ZeroReturnType Zero(Index size);
+  EIGEN_DEVICE_FUNC static const ZeroReturnType Zero();
   EIGEN_DEVICE_FUNC static const ConstantReturnType Ones(Index rows, Index cols);
   EIGEN_DEVICE_FUNC static const ConstantReturnType Ones(Index size);
   EIGEN_DEVICE_FUNC static const ConstantReturnType Ones();
@@ -641,6 +643,18 @@ class DenseBase
   template <typename OtherDerived>
   EIGEN_DEVICE_FUNC explicit DenseBase(const DenseBase<OtherDerived>&);
 };
+
+/** Free-function swap.
+ */
+template <typename DerivedA, typename DerivedB>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+    // Use forwarding references to capture all combinations of cv-qualified l+r-value cases.
+    std::enable_if_t<std::is_base_of<DenseBase<std::decay_t<DerivedA>>, std::decay_t<DerivedA>>::value &&
+                         std::is_base_of<DenseBase<std::decay_t<DerivedB>>, std::decay_t<DerivedB>>::value,
+                     void>
+    swap(DerivedA&& a, DerivedB&& b) {
+  a.swap(b);
+}
 
 }  // end namespace Eigen
 

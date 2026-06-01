@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSCOMPILERSTATSREPORTER_P_H
 #define QQMLJSCOMPILERSTATSREPORTER_P_H
@@ -35,7 +36,7 @@ public:
 private:
     void formatDetailedStats(QTextStream &) const;
     void formatSummary(QTextStream &) const;
-    QString formatSuccessRate(int codegens, int successes) const;
+    QString formatSuccessRate(int codegens, int successes, int skips) const;
 
     const AotStats &m_aotstats;
     const QStringList &m_emptyModules;
@@ -44,6 +45,7 @@ private:
     struct Counters
     {
         int successes = 0;
+        int skips = 0;
         int codegens = 0;
     };
 

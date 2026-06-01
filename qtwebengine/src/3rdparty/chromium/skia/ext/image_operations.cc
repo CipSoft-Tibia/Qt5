@@ -123,8 +123,7 @@ class ResizeFilter {
         // each direction as the size of the window = 3 for Lanczos3.
         return 3.0f;
       default:
-        NOTREACHED_IN_MIGRATION();
-        return 1.0f;
+        NOTREACHED();
     }
   }
 
@@ -153,8 +152,7 @@ class ResizeFilter {
       case ImageOperations::RESIZE_LANCZOS3:
         return EvalLanczos(3, pos);
       default:
-        NOTREACHED_IN_MIGRATION();
-        return 0;
+        NOTREACHED();
     }
   }
 
@@ -339,16 +337,17 @@ SkBitmap ImageOperations::Resize(const SkPixmap& source,
                "src_pixels", source.width() * source.height(), "dst_pixels",
                dest_width * dest_height);
   // Ensure that the ResizeMethod enumeration is sound.
-  SkASSERT(((RESIZE_FIRST_QUALITY_METHOD <= method) &&
-            (method <= RESIZE_LAST_QUALITY_METHOD)) ||
-           ((RESIZE_FIRST_ALGORITHM_METHOD <= method) &&
-            (method <= RESIZE_LAST_ALGORITHM_METHOD)));
+  DCHECK(((RESIZE_FIRST_QUALITY_METHOD <= method) &&
+          (method <= RESIZE_LAST_QUALITY_METHOD)) ||
+         ((RESIZE_FIRST_ALGORITHM_METHOD <= method) &&
+          (method <= RESIZE_LAST_ALGORITHM_METHOD)));
 
   // If the size of source or destination is 0, i.e. 0x0, 0xN or Nx0, just
   // return empty.
-  if (source.width() < 1 || source.height() < 1 ||
-      dest_width < 1 || dest_height < 1)
+  if (source.width() < 1 || source.height() < 1 || dest_width < 1 ||
+      dest_height < 1) {
     return SkBitmap();
+  }
 
   SkIRect dest = {0, 0, dest_width, dest_height};
   DCHECK(dest.contains(dest_subset))
@@ -356,11 +355,24 @@ SkBitmap ImageOperations::Resize(const SkPixmap& source,
 
   method = ResizeMethodToAlgorithmMethod(method);
   // Check that we deal with an "algorithm methods" from this point onward.
-  SkASSERT((ImageOperations::RESIZE_FIRST_ALGORITHM_METHOD <= method) &&
-           (method <= ImageOperations::RESIZE_LAST_ALGORITHM_METHOD));
+  DCHECK((ImageOperations::RESIZE_FIRST_ALGORITHM_METHOD <= method) &&
+         (method <= ImageOperations::RESIZE_LAST_ALGORITHM_METHOD));
 
-  if (!source.addr() || source.colorType() != kN32_SkColorType)
+  if (!source.addr() || source.colorType() != kN32_SkColorType) {
     return SkBitmap();
+  }
+
+  // Avoid overflows in the convolver
+  if (source.rowBytes() >
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return SkBitmap();
+  }
+
+  if (static_cast<int64_t>(source.height()) *
+          static_cast<int64_t>(source.rowBytes()) >
+      static_cast<int64_t>(std::numeric_limits<int>::max())) {
+    return SkBitmap();
+  }
 
   ResizeFilter filter(method, source.width(), source.height(),
                       dest_width, dest_height, dest_subset);
@@ -375,8 +387,9 @@ SkBitmap ImageOperations::Resize(const SkPixmap& source,
   SkBitmap result;
   result.setInfo(
       source.info().makeWH(dest_subset.width(), dest_subset.height()));
-  if (!result.tryAllocPixels(allocator) || !result.readyToDraw())
+  if (!result.tryAllocPixels(allocator) || !result.readyToDraw()) {
     return SkBitmap();
+  }
 
   BGRAConvolve2D(source_subset, static_cast<int>(source.rowBytes()),
                  !source.isOpaque(), filter.x_filter(), filter.y_filter(),

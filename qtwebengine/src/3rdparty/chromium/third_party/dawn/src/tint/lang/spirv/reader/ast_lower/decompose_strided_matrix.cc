@@ -57,7 +57,15 @@ struct MatrixInfo {
 
     /// @returns the identifier of an array that holds an vector column for each row of the matrix.
     ast::Type array(ast::Builder* b) const {
-        return b->ty.array(b->ty.vec<f32>(matrix->Rows()), u32(matrix->Columns()),
+        ast::Type col_type;
+        if (matrix->Type()->Is<core::type::F32>()) {
+            col_type = b->ty.vec<f32>(matrix->Rows());
+        } else if (matrix->Type()->Is<core::type::F16>()) {
+            col_type = b->ty.vec<f16>(matrix->Rows());
+        } else {
+            TINT_UNREACHABLE();
+        }
+        return b->ty.array(col_type, u32(matrix->Columns()),
                            Vector{
                                b->Stride(stride),
                            });
@@ -89,6 +97,7 @@ ast::transform::Transform::ApplyResult DecomposeStridedMatrix::Apply(
     // Scan the program for all storage and uniform structure matrix members with
     // a custom stride attribute. Replace these matrices with an equivalent array,
     // and populate the `decomposed` map with the members that have been replaced.
+    bool made_changes = false;
     Hashmap<const core::type::StructMember*, MatrixInfo, 8> decomposed;
     for (auto* node : src.ASTNodes().Objects()) {
         if (auto* str = node->As<ast::Struct>()) {
@@ -98,19 +107,41 @@ ast::transform::Transform::ApplyResult DecomposeStridedMatrix::Apply(
                 continue;
             }
             for (auto* member : str_ty->Members()) {
-                auto* matrix = member->Type()->As<core::type::Matrix>();
-                if (!matrix) {
-                    continue;
-                }
                 auto* attr =
                     ast::GetAttribute<ast::StrideAttribute>(member->Declaration()->attributes);
                 if (!attr) {
+                    // No stride attribute - nothing to do.
                     continue;
                 }
+
+                // Get the matrix type, which may be nested inside an array.
+                auto* ty = member->Type();
+                while (auto* arr = ty->As<core::type::Array>()) {
+                    ty = arr->ElemType();
+                }
+                auto* matrix = ty->As<core::type::Matrix>();
+                TINT_ASSERT(matrix);
+
+                made_changes = true;
+
                 uint32_t stride = attr->stride;
                 if (matrix->ColumnStride() == stride) {
+                    // The attribute specifies the natural stride, so just remove the attribute.
+                    auto* disable_validation = ast::GetAttribute<ast::DisableValidationAttribute>(
+                        member->Declaration()->attributes);
+                    TINT_ASSERT(disable_validation->validation ==
+                                ast::DisabledValidation::kIgnoreStrideAttribute);
+                    ctx.Remove(member->Declaration()->attributes, attr);
+                    ctx.Remove(member->Declaration()->attributes, disable_validation);
                     continue;
                 }
+
+                if (member->Type()->Is<core::type::Array>()) {
+                    b.Diagnostics().AddError(attr->source)
+                        << "custom matrix strides not currently supported on array of matrices";
+                    return Program(std::move(b));
+                }
+
                 // We've got ourselves a struct member of a matrix type with a custom
                 // stride. Replace this with an array of column vectors.
                 MatrixInfo info{stride, matrix};
@@ -122,7 +153,7 @@ ast::transform::Transform::ApplyResult DecomposeStridedMatrix::Apply(
         }
     }
 
-    if (decomposed.IsEmpty()) {
+    if (!made_changes) {
         return SkipTransform;
     }
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qerrormessage.h"
 
@@ -146,7 +147,7 @@ QSize QErrorMessageTextView::sizeHint() const
     The \l{dialogs/standarddialogs}{Standard Dialogs} example shows
     how to use QErrorMessage as well as other built-in Qt dialogs.
 
-    \image qerrormessage.png
+    \image qerrormessage.png {Dialog with a network-related error message}
 
     \sa QMessageBox, QStatusBar::showMessage(), {Standard Dialogs Example}
 */

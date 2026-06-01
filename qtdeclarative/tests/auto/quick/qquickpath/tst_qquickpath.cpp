@@ -28,6 +28,9 @@ private slots:
     void rectangleRadii();
     void appendRemove();
     void asynchronous();
+    void cornerProperties();
+    void splicePathList();
+    void pathChanges();
 
 private:
     void arc(QSizeF scale);
@@ -412,6 +415,7 @@ void tst_QuickPath::rectangleRadii()
     COMPARE_RADII(pathRectangle, quickRectangle);
     pathRectangle.setTopLeftRadius(-7);
     quickRectangle->setTopLeftRadius(-7);
+    QCOMPARE(pathRectangle.topLeftRadius(), quickRectangle->topLeftRadius());
     COMPARE_RADII(pathRectangle, quickRectangle);
     pathRectangle.setRadius(4);
     quickRectangle->setRadius(4);
@@ -481,6 +485,118 @@ void tst_QuickPath::asynchronous()
     QCOMPARE(pathElements.count(), 2);
     QTRY_VERIFY(!path->path().isEmpty());
     QCOMPARE(changedSpy.count(), 1);
+}
+
+void tst_QuickPath::cornerProperties()
+{
+    QQuickPathRectangle pathRectangle;
+
+    // Bevel
+    QVERIFY(!pathRectangle.hasBevel());
+    QCOMPARE(pathRectangle.hasTopLeftBevel(), false);
+    QCOMPARE(pathRectangle.hasTopRightBevel(), false);
+    QCOMPARE(pathRectangle.hasBottomLeftBevel(), false);
+    QCOMPARE(pathRectangle.hasBottomRightBevel(), false);
+
+    pathRectangle.setBevel(true);
+    QVERIFY(pathRectangle.hasBevel());
+    QCOMPARE(pathRectangle.hasTopLeftBevel(), true);
+    QCOMPARE(pathRectangle.hasTopRightBevel(), true);
+    QCOMPARE(pathRectangle.hasBottomLeftBevel(), true);
+    QCOMPARE(pathRectangle.hasBottomRightBevel(), true);
+
+    pathRectangle.setBevel(false);
+    pathRectangle.setBottomLeftBevel(true);
+    QCOMPARE(pathRectangle.hasTopLeftBevel(), false);
+    QCOMPARE(pathRectangle.hasTopRightBevel(), false);
+    QCOMPARE(pathRectangle.hasBottomLeftBevel(), true);
+    QCOMPARE(pathRectangle.hasBottomRightBevel(), false);
+
+    pathRectangle.setBottomLeftBevel(false);
+    pathRectangle.setTopRightBevel(true);
+    QCOMPARE(pathRectangle.hasTopLeftBevel(), false);
+    QCOMPARE(pathRectangle.hasTopRightBevel(), true);
+    QCOMPARE(pathRectangle.hasBottomLeftBevel(), false);
+    QCOMPARE(pathRectangle.hasBottomRightBevel(), false);
+
+    pathRectangle.resetTopRightBevel();
+    QCOMPARE(pathRectangle.hasTopRightBevel(), false);
+    QCOMPARE(pathRectangle.hasTopLeftBevel(), false);
+    QCOMPARE(pathRectangle.hasBottomLeftBevel(), false);
+    QCOMPARE(pathRectangle.hasBottomRightBevel(), false);
+
+    // Radius
+    pathRectangle.setRadius(10.0);
+    QCOMPARE(pathRectangle.radius(), 10.0);
+    QCOMPARE(pathRectangle.topRightRadius(), 10.0);
+    QCOMPARE(pathRectangle.topLeftRadius(), 10.0);
+    QCOMPARE(pathRectangle.bottomLeftRadius(), 10.0);
+    QCOMPARE(pathRectangle.bottomRightRadius(), 10.0);
+
+    pathRectangle.setTopRightRadius(3.0);
+    QCOMPARE(pathRectangle.topRightRadius(), 3.0);
+    QCOMPARE(pathRectangle.radius(), 10.0);
+    QCOMPARE(pathRectangle.topLeftRadius(), 10.0);
+    QCOMPARE(pathRectangle.bottomLeftRadius(), 10.0);
+    QCOMPARE(pathRectangle.bottomRightRadius(), 10.0);
+
+    pathRectangle.setRadius(0.0);
+    QCOMPARE(pathRectangle.topRightRadius(), 3.0);
+    QCOMPARE(pathRectangle.topLeftRadius(), 0.0);
+    QCOMPARE(pathRectangle.bottomLeftRadius(), 0.0);
+    QCOMPARE(pathRectangle.bottomRightRadius(), 0.0);
+
+    pathRectangle.resetTopRightRadius();
+    QCOMPARE(pathRectangle.topRightRadius(), 0.0);
+    QCOMPARE(pathRectangle.topLeftRadius(), 0.0);
+    QCOMPARE(pathRectangle.bottomLeftRadius(), 0.0);
+    QCOMPARE(pathRectangle.bottomRightRadius(), 0.0);
+}
+
+void tst_QuickPath::splicePathList()
+{
+    // We don't want to see warnings about connecting to nullptr, and we don't want to crash.
+    // And we don't want to hit the test timeout.
+    QTest::failOnWarning();
+
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("splicePathList.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+}
+
+void tst_QuickPath::pathChanges()
+{
+    QQmlEngine engine;
+    QQmlComponent c1(&engine);
+    c1.setData("import QtQuick\nPath { }", QUrl());
+    QScopedPointer<QObject> o1(c1.create());
+    QQuickPath *path = qobject_cast<QQuickPath *>(o1.data());
+    QVERIFY(path);
+
+    QQmlListReference pathElements(path, "pathElements");
+    QSignalSpy changedSpy(path, SIGNAL(changed()));
+
+    QCOMPARE(pathElements.count(), 0);
+    QCOMPARE(changedSpy.count(), 0);
+
+    QQuickPathLine *line = new QQuickPathLine(path);
+    line->setX(10.0);
+    pathElements.append(line);
+    QQuickPathLine *line2 = new QQuickPathLine(path);
+    line2->setX(20.0);
+    pathElements.append(line2);
+
+    QCOMPARE(pathElements.count(), 2);
+    QTRY_VERIFY(!path->path().isEmpty());
+    QCOMPARE(changedSpy.count(), 2);
+
+    line->setX(40.0);
+    QCOMPARE(changedSpy.count(), 3);
+
+    line2->setY(19.4);
+    QCOMPARE(changedSpy.count(), 4);
 }
 
 QTEST_MAIN(tst_QuickPath)

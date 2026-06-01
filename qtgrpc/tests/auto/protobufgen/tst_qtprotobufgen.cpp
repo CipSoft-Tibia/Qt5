@@ -6,7 +6,12 @@
 #include <QtProtobuf/qtprotobuftypes.h>
 
 #include <QtCore/qdir.h>
-#if QT_CONFIG(process)
+
+#if !QT_CONFIG(process) || defined(CROSSCOMPILING)
+#  define SKIP_COMMAND_LINE_TESTS
+#endif
+
+#if !defined(SKIP_COMMAND_LINE_TESTS)
 #  include <QtCore/qprocess.h>
 #endif
 #include <QtCore/qstring.h>
@@ -17,11 +22,10 @@ using namespace Qt::StringLiterals;
 using namespace ProtocPluginTest;
 
 namespace {
-#if QT_CONFIG(process)
+#if !defined(SKIP_COMMAND_LINE_TESTS)
 #  ifndef PROTOC_EXECUTABLE
 #    error PROTOC_EXECUTABLE definition must be set and point to the valid protoc executable
 #  endif
-constexpr QLatin1StringView ProtocPath(PROTOC_EXECUTABLE);
 
 #  ifndef PROTOC_PLUGIN
 #    error PROTOC_PLUGIN definition must be set and point to the valid protoc plugin
@@ -38,9 +42,10 @@ const QLatin1StringView allow_proto3_optional(" --experimental_allow_proto3_opti
 constexpr QLatin1StringView allow_proto3_optional;
 #  endif // ALLOW_PROTO3_OPTIONAL
 
-constexpr QLatin1StringView CmdLineGeneratedDir("cmd_line_generated");
+#endif // !defined(SKIP_COMMAND_LINE_TESTS)
 
-#endif // QT_CONFIG(process)
+constexpr QLatin1StringView ProtocPath(PROTOC_EXECUTABLE);
+constexpr QLatin1StringView CmdLineGeneratedDir("cmd_line_generated");
 
 #  ifndef BINARY_DIR
 #    error BINARY_DIR definition must be set
@@ -68,12 +73,14 @@ private Q_SLOTS:
     void cmakeGenerated_data();
     void cmakeGenerated();
 
-#if QT_CONFIG(process)
+#if !defined(SKIP_COMMAND_LINE_TESTS)
     //! Test command-line call of qtprotobufgen
     void cmdLineGenerated_data();
     void cmdLineGenerated();
     void cmdLineInvalidExportMacro_data();
     void cmdLineInvalidExportMacro();
+
+    void cmdLineMutableGetterConflicts();
 #endif
 
     void cleanupTestCase();
@@ -83,7 +90,7 @@ void qtprotobufgenTest::initTestCase()
 {
     initPaths(BinaryDir, CMakeGeneratedDir, CmdLineGeneratedDir);
     QVERIFY(!cmakeGeneratedPath().isEmpty());
-#if QT_CONFIG(process)
+#if !defined(SKIP_COMMAND_LINE_TESTS)
     QVERIFY(!cmdLineGeneratedPath().isEmpty());
     QVERIFY(protocolCompilerAvailableToRun(ProtocPath));
 #endif
@@ -115,7 +122,7 @@ void qtprotobufgenTest::cmakeGenerated()
                     cmakeGeneratedPath() + '/'_L1 + testName + '/'_L1 + filePath);
 }
 
-#if QT_CONFIG(process)
+#if !defined(SKIP_COMMAND_LINE_TESTS)
 void qtprotobufgenTest::cmdLineGenerated_data()
 {
     QTest::addColumn<QString>("directory");
@@ -266,7 +273,32 @@ void qtprotobufgenTest::cmdLineInvalidExportMacro()
     QVERIFY2(process.exitStatus() == QProcess::NormalExit, msgProcessCrashed(process).constData());
     QVERIFY2(process.exitCode() == result, msgProcessFailed(process).constData());
 }
-#endif // QT_CONFIG(process)
+
+void qtprotobufgenTest::cmdLineMutableGetterConflicts()
+{
+    static constexpr QLatin1StringView directory("invalid_export_macro");
+    QDir outputDirectory(cmdLineGeneratedPath());
+    if (!outputDirectory.exists(directory))
+        outputDirectory.mkdir(directory);
+    outputDirectory.cd(directory);
+
+    QProcess process;
+    process.setWorkingDirectory(cmdLineGeneratedPath());
+    process.startCommand(ProtocPath + QString(" ") + PluginKey + QtprotobufgenPath
+                         + OutKey + outputDirectory.absolutePath()
+                         + IncludeKey + expectedResultPath()
+                         + " " + expectedResultPath()
+                         + "/qtprotobufgen_mutable_getter_clashing.proto");
+    QVERIFY2(process.waitForStarted(), msgProcessStartFailed(process).constData());
+    if (!process.waitForFinished()) {
+        process.kill();
+        QFAIL(msgProcessTimeout(process).constData());
+    }
+    QVERIFY2(process.exitStatus() == QProcess::NormalExit, msgProcessCrashed(process).constData());
+    QVERIFY2(process.exitCode() == 1, msgProcessFailed(process).constData());
+}
+
+#endif // !defined(SKIP_COMMAND_LINE_TESTS)
 
 void qtprotobufgenTest::cleanupTestCase()
 {

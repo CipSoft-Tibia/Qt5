@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/background_url_loader.h"
 
 #include "base/check.h"
@@ -76,13 +71,6 @@ template <>
 struct CrossThreadCopier<std::optional<mojo_base::BigBuffer>> {
   STATIC_ONLY(CrossThreadCopier);
   using Type = std::optional<mojo_base::BigBuffer>;
-  static Type Copy(Type&& value) { return std::move(value); }
-};
-
-template <>
-struct CrossThreadCopier<SegmentedBuffer> {
-  STATIC_ONLY(CrossThreadCopier);
-  using Type = SegmentedBuffer;
   static Type Copy(Type&& value) { return std::move(value); }
 };
 
@@ -239,8 +227,7 @@ mojo::ScopedDataPipeConsumerHandle CreateTestBody() {
 
 SegmentedBuffer CreateTestBodyRawData() {
   SegmentedBuffer result;
-  result.Append(Vector<char>(
-      base::make_span(kTestBodyString.begin(), kTestBodyString.size())));
+  result.Append(kTestBodyString);
   return result;
 }
 
@@ -337,7 +324,7 @@ class FakeURLLoaderClient : public URLLoaderClient {
     return std::move(will_follow_callback).Run(new_url);
   }
   void DidSendData(uint64_t bytesSent, uint64_t totalBytesToBeSent) override {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
   void DidReceiveResponse(
       const WebURLResponse& response,
@@ -434,8 +421,6 @@ class FakeURLLoader : public network::mojom::URLLoader {
     set_priority_log_.push_back(PriorityInfo{
         .priority = priority, .intra_priority_value = intra_priority_value});
   }
-  void PauseReadingBodyFromNet() override {}
-  void ResumeReadingBodyFromNet() override {}
 
   bool follow_redirect_called() const { return follow_redirect_called_; }
   const std::vector<PriorityInfo>& set_priority_log() const {
@@ -761,7 +746,7 @@ TEST_F(BackgroundResourceFecherTest, CancelSoonAfterStart) {
                       mojo::PendingRemote<network::mojom::URLLoaderClient>
                           client) {
                     // CreateLoaderAndStart should not be called.
-                    CHECK(false);
+                    NOTREACHED();
                   }));
   std::unique_ptr<BackgroundURLLoader> background_url_loader =
       std::make_unique<BackgroundURLLoader>(
@@ -1241,8 +1226,7 @@ TEST_F(BackgroundResourceFecherTest,
   EXPECT_TRUE(client.cached_metadata());
   EXPECT_FALSE(client.response_body_handle());
   EXPECT_THAT(client.response_body_buffer().CopyAs<Vector<char>>(),
-              testing::ElementsAreArray(base::make_span(
-                  kTestBodyString.begin(), kTestBodyString.size())));
+              testing::ElementsAreArray(kTestBodyString));
 
   loader_client_remote->OnTransferSizeUpdated(10);
   // Call RunUntilIdle() to receive Mojo IPC.
@@ -1319,8 +1303,7 @@ TEST_F(BackgroundResourceFecherTest,
   EXPECT_TRUE(client.cached_metadata());
   EXPECT_FALSE(client.response_body_handle());
   EXPECT_THAT(client.response_body_buffer().CopyAs<Vector<char>>(),
-              testing::ElementsAreArray(base::make_span(
-                  kTestBodyString.begin(), kTestBodyString.size())));
+              testing::ElementsAreArray(kTestBodyString));
   EXPECT_THAT(client.transfer_size_diffs(), testing::ElementsAreArray({10}));
 
   loader_client_remote->OnComplete(network::URLLoaderCompletionStatus(net::OK));
@@ -1394,8 +1377,7 @@ TEST_F(BackgroundResourceFecherTest,
   EXPECT_TRUE(client.cached_metadata());
   EXPECT_FALSE(client.response_body_handle());
   EXPECT_THAT(client.response_body_buffer().CopyAs<Vector<char>>(),
-              testing::ElementsAreArray(base::make_span(
-                  kTestBodyString.begin(), kTestBodyString.size())));
+              testing::ElementsAreArray(kTestBodyString));
   EXPECT_THAT(client.transfer_size_diffs(), testing::ElementsAreArray({10}));
   EXPECT_TRUE(client.did_finish());
   EXPECT_FALSE(client.error());
@@ -1472,8 +1454,7 @@ TEST_F(BackgroundResourceFecherTest,
   EXPECT_TRUE(client.response());
   EXPECT_FALSE(client.response_body_handle());
   EXPECT_THAT(client.response_body_buffer().CopyAs<Vector<char>>(),
-              testing::ElementsAreArray(base::make_span(
-                  kTestBodyString.begin(), kTestBodyString.size())));
+              testing::ElementsAreArray(kTestBodyString));
   EXPECT_THAT(client.transfer_size_diffs(), testing::ElementsAreArray({10}));
   EXPECT_TRUE(client.did_finish());
   EXPECT_FALSE(client.error());
@@ -1546,8 +1527,7 @@ TEST_F(BackgroundResourceFecherTest,
   EXPECT_TRUE(client.response());
   EXPECT_FALSE(client.response_body_handle());
   EXPECT_THAT(client.response_body_buffer().CopyAs<Vector<char>>(),
-              testing::ElementsAreArray(base::make_span(
-                  kTestBodyString.begin(), kTestBodyString.size())));
+              testing::ElementsAreArray(kTestBodyString));
   EXPECT_THAT(client.transfer_size_diffs(), testing::ElementsAreArray({10}));
   EXPECT_TRUE(client.did_finish());
   EXPECT_FALSE(client.error());

@@ -16,8 +16,11 @@
 #include <QtGraphs/qgraphstheme.h>
 #include <QtQuick/private/qquickrectangle_p.h>
 #include <private/qobject_p.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcGraphsCommonTheme)
 
 class QGraphsThemePrivate : public QObjectPrivate
 {

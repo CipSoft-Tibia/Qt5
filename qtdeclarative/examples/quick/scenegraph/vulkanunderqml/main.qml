@@ -6,6 +6,7 @@ import QtQuick
 import VulkanUnderQML
 
 Item {
+    id: root
 
     width: 320
     height: 480
@@ -36,7 +37,10 @@ Item {
         anchors.right: parent.right
         anchors.left: parent.left
         anchors.bottom: parent.bottom
-        anchors.margins: 20
+        anchors.topMargin: root.SafeArea.margins.top + 20
+        anchors.leftMargin: root.SafeArea.margins.left + 20
+        anchors.rightMargin: root.SafeArea.margins.right + 20
+        anchors.bottomMargin: root.SafeArea.margins.bottom + 20
     }
 }
 //! [2]

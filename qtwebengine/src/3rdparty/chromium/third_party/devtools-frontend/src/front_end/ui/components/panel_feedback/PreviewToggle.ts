@@ -2,15 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import '../../../ui/legacy/legacy.js';
+
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as Root from '../../../core/root/root.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
-import * as IconButton from '../icon_button/icon_button.js';
+import {html, nothing, render} from '../../../ui/lit/lit.js';
 import * as Input from '../input/input.js';
 
-import previewToggleStyles from './previewToggle.css.js';
+import previewToggleStylesRaw from './previewToggle.css.js';
 
-const {render, html, nothing} = LitHtml;
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const previewToggleStyles = new CSSStyleSheet();
+previewToggleStyles.replaceSync(previewToggleStylesRaw.cssContent);
 
 export interface PreviewToggleData {
   name: string;
@@ -40,7 +43,6 @@ const str_ = i18n.i18n.registerUIStrings('ui/components/panel_feedback/PreviewTo
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
 export class PreviewToggle extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-preview-toggle`;
   readonly #shadow = this.attachShadow({mode: 'open'});
 
   #name = '';
@@ -72,14 +74,14 @@ export class PreviewToggle extends HTMLElement {
       html`
       <div class="container">
         <label class="experiment-preview">
-          <input type="checkbox" ?checked=${checked} @change=${this.#checkboxChanged} aria-label=${this.#name}/>
-          <${IconButton.Icon.Icon.litTagName} .data=${{
+          <input type="checkbox" ?checked=${checked} @change=${this.#checkboxChanged} aria-label=${this.#name} />
+          <devtools-icon .data=${{
             iconName: 'experiment',
             width: '16px',
             height: '16px',
             color: 'var(--icon-default)',
-          } as IconButton.Icon.IconData}>
-          </${IconButton.Icon.Icon.litTagName}>${this.#name}
+          }}>
+          </devtools-icon>${this.#name}
         </label>
         <div class="spacer"></div>
         ${this.#feedbackURL && !this.#helperText

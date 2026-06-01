@@ -125,8 +125,9 @@ float SVGLength::Value(const SVGLengthContext& context) const {
   if (const auto* math_function = DynamicTo<CSSMathFunctionValue>(*value_)) {
     return context.ResolveValue(*math_function, UnitMode());
   }
-  return context.ConvertValueToUserUnits(value_->GetFloatValue(), UnitMode(),
-                                         NumericLiteralType());
+  return context.ConvertValueToUserUnits(
+      To<CSSNumericLiteralValue>(*value_).DoubleValue(), UnitMode(),
+      NumericLiteralType());
 }
 
 void SVGLength::SetValueAsNumber(float value) {
@@ -343,9 +344,8 @@ void SVGLength::SetInitial(unsigned initial_value) {
 }
 
 bool SVGLength::IsNegativeNumericLiteral() const {
-  if (!value_->IsNumericLiteralValue())
-    return false;
-  return value_->GetDoubleValue() < 0;
+  std::optional<double> value = value_->GetValueIfKnown();
+  return value && *value < 0.0;
 }
 
 }  // namespace blink

@@ -95,8 +95,7 @@ struct BLINK_COMMON_EXPORT AdConfigMaybePromiseTraitsHelper {
       case Wrapper::Tag::kValue:
         return ViewTag::kValue;
     }
-    NOTREACHED_IN_MIGRATION();
-    return View::Tag::kPromise;
+    NOTREACHED();
   }
 
   static uint32_t promise(const Wrapper& wrapper) {
@@ -511,6 +510,11 @@ struct BLINK_COMMON_EXPORT
   static std::optional<url::Origin> aggregation_coordinator_origin(
       const blink::AuctionConfig& config) {
     return config.aggregation_coordinator_origin;
+  }
+
+  static std::optional<bool> send_creative_scanning_metadata(
+      const blink::AuctionConfig& config) {
+    return config.send_creative_scanning_metadata;
   }
 
   static bool Read(blink::mojom::AuctionAdConfigDataView data,

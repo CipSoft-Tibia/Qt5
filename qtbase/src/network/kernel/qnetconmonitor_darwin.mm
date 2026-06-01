@@ -2,20 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 // Qt-Security score:significant reason:default
 
-#include "private/qnativesocketengine_p_p.h"
 #include "private/qnetconmonitor_p.h"
 
 #include "private/qobject_p.h"
 
-#include <SystemConfiguration/SystemConfiguration.h>
-#include <CoreFoundation/CoreFoundation.h>
-
-#include <netinet/in.h>
+#include <Network/Network.h>
 
 #include <QtCore/qmutex.h>
-#include <QtCore/qwaitcondition.h>
-
-#include <cstring>
 
 QT_BEGIN_NAMESPACE
 
@@ -56,147 +49,172 @@ dispatch_queue_t qt_reachability_queue()
     return reachabilityQueue.data();
 }
 
-qt_sockaddr qt_hostaddress_to_sockaddr(const QHostAddress &src)
-{
-    if (src.isNull())
-        return {};
-
-    qt_sockaddr dst;
-    if (src.protocol() == QAbstractSocket::IPv4Protocol) {
-        dst.a4 = sockaddr_in{};
-        dst.a4.sin_family = AF_INET;
-        dst.a4.sin_addr.s_addr = htonl(src.toIPv4Address());
-        dst.a4.sin_len = sizeof(sockaddr_in);
-    } else if (src.protocol() == QAbstractSocket::IPv6Protocol) {
-        dst.a6 = sockaddr_in6{};
-        dst.a6.sin6_family = AF_INET6;
-        dst.a6.sin6_len = sizeof(sockaddr_in6);
-        const Q_IPV6ADDR ipv6 = src.toIPv6Address();
-        std::memcpy(&dst.a6.sin6_addr, &ipv6, sizeof ipv6);
-    } else {
-        Q_UNREACHABLE();
-    }
-
-    return dst;
-}
-
 } // unnamed namespace
 
 class QNetworkConnectionMonitorPrivate : public QObjectPrivate
 {
 public:
-    SCNetworkReachabilityRef probe = nullptr;
-    SCNetworkReachabilityFlags state = kSCNetworkReachabilityFlagsIsLocalAddress;
-    bool scheduled = false;
+    nw_path_status_t status = nw_path_status_invalid;
 
-    QWaitCondition refCounterWaitCondition;
-    QMutex refCounterMutex;
-    quint32 refCounter = 0;
+    struct QueueCallbackData
+    {
+        QMutex monitorMutex;
+        QNetworkConnectionMonitorPrivate *backend = nullptr;
+    } *callbackData = nullptr;
 
-    void updateState(SCNetworkReachabilityFlags newState);
+    nw_path_monitor_t monitor = nullptr;
+    using InterfaceType = QNetworkConnectionMonitor::InterfaceType;
+    InterfaceType interface = InterfaceType::Unknown;
+
+    void updateState(nw_path_t newState);
     void reset();
     bool isReachable() const;
-#ifdef QT_PLATFORM_UIKIT
-    bool isWwan() const;
-#endif
+    QNetworkConnectionMonitor::InterfaceType getInterfaceType() const;
 
-    void retain()
-    {
-        QMutexLocker locker(&refCounterMutex);
-        ++refCounter;
-    }
-
-    void release()
-    {
-        QMutexLocker locker(&refCounterMutex);
-        if (--refCounter == 0)
-            refCounterWaitCondition.wakeAll();
-    }
-
-    void waitForRefCountZero()
-    {
-        QMutexLocker locker(&refCounterMutex);
-        while (refCounter > 0) {
-            refCounterWaitCondition.wait(&refCounterMutex);
-        }
-    }
-
-    static void probeCallback(SCNetworkReachabilityRef probe, SCNetworkReachabilityFlags flags, void *info);
-    static const void *retainInfo(const void* info);
-    static void releaseInfo(const void* info);
+    bool startMonitoring();
+    void stopMonitoring();
+    bool isMonitoring() const;
 
     Q_DECLARE_PUBLIC(QNetworkConnectionMonitor)
 };
 
-void QNetworkConnectionMonitorPrivate::updateState(SCNetworkReachabilityFlags newState)
+void QNetworkConnectionMonitorPrivate::updateState(nw_path_t state)
 {
-    // To be executed only on the reachability queue.
     Q_Q(QNetworkConnectionMonitor);
 
-    // NETMONTODO: for now, 'online' for us means kSCNetworkReachabilityFlagsReachable
+    Q_ASSERT(callbackData);
+
+    // Lock is acquired in the callback (which is calling us).
+
+    // To be executed only on the reachability queue.
+
+    // NETMONTODO: for now, 'online' for us means nw_path_status_satisfied
     // is set. There are more possible flags that require more tests/some special
     // setup. So in future this part and related can change/be extended.
     const bool wasReachable = isReachable();
+    const QNetworkConnectionMonitor::InterfaceType hadInterfaceType = interface;
+    const nw_path_status_t previousStatus = status;
 
-#ifdef QT_PLATFORM_UIKIT
-    const bool hadWwan = isWwan();
-#endif
-
-    state = newState;
-    if (wasReachable != isReachable())
+    status = nw_path_get_status(state);
+    if (wasReachable != isReachable() || previousStatus == nw_path_status_invalid)
         emit q->reachabilityChanged(isReachable());
 
-#ifdef QT_PLATFORM_UIKIT
-    if (hadWwan != isWwan())
-        emit q->isWwanChanged(isWwan());
-#endif
+    nw_path_enumerate_interfaces(state, ^(nw_interface_t nwInterface) {
+        if (nw_path_uses_interface_type(state, nw_interface_get_type(nwInterface))) {
+            const nw_interface_type_t type = nw_interface_get_type(nwInterface);
+
+            switch (type) {
+                case nw_interface_type_wifi:
+                    interface = QNetworkConnectionMonitor::InterfaceType::WiFi;
+                    break;
+                case nw_interface_type_cellular:
+                    interface = QNetworkConnectionMonitor::InterfaceType::Cellular;
+                    break;
+                case nw_interface_type_wired:
+                    interface = QNetworkConnectionMonitor::InterfaceType::Ethernet;
+                    break;
+                default:
+                    interface = QNetworkConnectionMonitor::InterfaceType::Unknown;
+                    break;
+            }
+
+            return false;
+        }
+
+        return true;
+    });
+
+    if (hadInterfaceType != interface)
+        emit q->interfaceTypeChanged(interface);
 }
 
 void QNetworkConnectionMonitorPrivate::reset()
 {
-    if (probe) {
-        CFRelease(probe);
-        probe = nullptr;
-    }
-
-    state = kSCNetworkReachabilityFlagsIsLocalAddress;
-    scheduled = false;
-    waitForRefCountZero();
+    stopMonitoring();
+    status = nw_path_status_invalid;
 }
 
 bool QNetworkConnectionMonitorPrivate::isReachable() const
 {
-    return !!(state & kSCNetworkReachabilityFlagsReachable);
+    return status == nw_path_status_satisfied;
 }
 
-#ifdef QT_PLATFORM_UIKIT // The IsWWAN flag is not available on macOS
-bool QNetworkConnectionMonitorPrivate::isWwan() const
+QNetworkConnectionMonitor::InterfaceType QNetworkConnectionMonitorPrivate::getInterfaceType() const
 {
-    return !!(state & kSCNetworkReachabilityFlagsIsWWAN);
-}
-#endif
-
-void QNetworkConnectionMonitorPrivate::probeCallback(SCNetworkReachabilityRef probe, SCNetworkReachabilityFlags flags, void *info)
-{
-    // To be executed only on the reachability queue.
-    Q_UNUSED(probe);
-
-    auto monitorPrivate = static_cast<QNetworkConnectionMonitorPrivate *>(info);
-    Q_ASSERT(monitorPrivate);
-    monitorPrivate->updateState(flags);
+    return interface;
 }
 
-const void *QNetworkConnectionMonitorPrivate::retainInfo(const void *info)
+bool QNetworkConnectionMonitorPrivate::startMonitoring()
 {
-    auto monitorPrivate = static_cast<QNetworkConnectionMonitorPrivate*>(const_cast<void*>(info));
-    monitorPrivate->retain();
-    return info;
+    if (callbackData) {
+        qCWarning(lcNetMon, "Monitor is already active, call stopMonitoring() first");
+        return false;
+    }
+
+    monitor = nw_path_monitor_create();
+    if (monitor == nullptr) {
+        qCWarning(lcNetMon, "Failed to create a path monitor, cannot determine current reachability.");
+        return false;
+    }
+
+    auto queue = qt_reachability_queue();
+    if (!queue) {
+        qCWarning(lcNetMon, "Failed to create a dispatch queue to schedule a probe on");
+        nw_release(monitor);
+        monitor = nullptr;
+        return false;
+    }
+
+    callbackData = new QueueCallbackData;
+    auto *data = callbackData;
+    callbackData->backend = this;
+
+    nw_path_monitor_set_update_handler(monitor, [data](nw_path_t path){
+        const QMutexLocker lock(&data->monitorMutex);
+        if (data->backend)
+            data->backend->updateState(path);
+        // Else - we were cancelled and will delete 'data' in the callback below.
+        // Presumably, this never gets called after 'cancel handler'.
+    });
+
+    nw_path_monitor_set_cancel_handler(monitor, [data]{
+        delete data;
+    });
+
+    nw_path_monitor_set_queue(monitor, queue);
+    nw_path_monitor_start(monitor);
+    return true;
 }
 
-void QNetworkConnectionMonitorPrivate::releaseInfo(const void *info)
+void QNetworkConnectionMonitorPrivate::stopMonitoring()
 {
-    auto monitorPrivate = static_cast<QNetworkConnectionMonitorPrivate*>(const_cast<void*>(info));
-    monitorPrivate->release();
+    if (!callbackData) {
+        Q_ASSERT(!monitor);
+        return;
+    }
+
+    {
+        const QMutexLocker lock(&callbackData->monitorMutex); // Release the lock _before_ cancelling.
+        callbackData->backend = nullptr; // This will prevent updateState calls from the queue.
+        callbackData = nullptr; // To be deleted in the cancellation callback.
+    }
+
+    if (monitor) {
+        nw_path_monitor_cancel(monitor);
+        nw_release(monitor);
+        monitor = nullptr;
+    }
+}
+
+void QNetworkConnectionMonitor::stopMonitoring()
+{
+    Q_D(QNetworkConnectionMonitor);
+    d->stopMonitoring();
+}
+
+bool QNetworkConnectionMonitorPrivate::isMonitoring() const
+{
+    return monitor != nullptr;
 }
 
 QNetworkConnectionMonitor::QNetworkConnectionMonitor()
@@ -204,115 +222,27 @@ QNetworkConnectionMonitor::QNetworkConnectionMonitor()
 {
 }
 
-QNetworkConnectionMonitor::QNetworkConnectionMonitor(const QHostAddress &local, const QHostAddress &remote)
-    : QObject(*new QNetworkConnectionMonitorPrivate)
+QNetworkConnectionMonitor::QNetworkConnectionMonitor(const QHostAddress &/*local*/, const QHostAddress &/*remote*/)
+    : QNetworkConnectionMonitor()
 {
-    setTargets(local, remote);
 }
 
 QNetworkConnectionMonitor::~QNetworkConnectionMonitor()
 {
     Q_D(QNetworkConnectionMonitor);
-
-    stopMonitoring();
     d->reset();
 }
 
-bool QNetworkConnectionMonitor::setTargets(const QHostAddress &local, const QHostAddress &remote)
+bool QNetworkConnectionMonitor::setTargets(const QHostAddress &/*local*/, const QHostAddress &/*remote*/)
 {
-    Q_D(QNetworkConnectionMonitor);
-
-    if (isMonitoring()) {
-        qCWarning(lcNetMon, "Monitor is already active, call stopMonitoring() first");
-        return false;
-    }
-
-    if (local.isNull()) {
-        qCWarning(lcNetMon, "Invalid (null) local address, cannot create a reachability target");
-        return false;
-    }
-
-    // Clear the old target if needed:
-    d->reset();
-
-    qt_sockaddr client = qt_hostaddress_to_sockaddr(local);
-    if (remote.isNull()) {
-        // That's a special case our QNetworkInformation backend is using (AnyIpv4/6 address to check an overall status).
-        d->probe = SCNetworkReachabilityCreateWithAddress(kCFAllocatorDefault, reinterpret_cast<sockaddr *>(&client));
-    } else {
-        qt_sockaddr target = qt_hostaddress_to_sockaddr(remote);
-        d->probe = SCNetworkReachabilityCreateWithAddressPair(kCFAllocatorDefault,
-                                                              reinterpret_cast<sockaddr *>(&client),
-                                                              reinterpret_cast<sockaddr *>(&target));
-    }
-
-    if (d->probe) {
-        // Let's read the initial state so that callback coming later can
-        // see a difference. Ignore errors though.
-        SCNetworkReachabilityGetFlags(d->probe, &d->state);
-    }else {
-        qCWarning(lcNetMon, "Failed to create network reachability probe");
-        return false;
-    }
-
-    return true;
+    return false;
 }
 
 bool QNetworkConnectionMonitor::startMonitoring()
 {
     Q_D(QNetworkConnectionMonitor);
 
-    if (isMonitoring()) {
-        qCWarning(lcNetMon, "Monitor is already active, call stopMonitoring() first");
-        return false;
-    }
-
-    if (!d->probe) {
-        qCWarning(lcNetMon, "Can not start monitoring, set targets first");
-        return false;
-    }
-
-    auto queue = qt_reachability_queue();
-    if (!queue) {
-        qCWarning(lcNetMon, "Failed to create a dispatch queue to schedule a probe on");
-        return false;
-    }
-
-    SCNetworkReachabilityContext context = {};
-    context.info = d;
-    context.retain = QNetworkConnectionMonitorPrivate::retainInfo;
-    context.release = QNetworkConnectionMonitorPrivate::releaseInfo;
-    if (!SCNetworkReachabilitySetCallback(d->probe, QNetworkConnectionMonitorPrivate::probeCallback, &context)) {
-        qCWarning(lcNetMon, "Failed to set a reachability callback");
-        return false;
-    }
-
-
-    if (!SCNetworkReachabilitySetDispatchQueue(d->probe, queue)) {
-        qCWarning(lcNetMon, "Failed to schedule a reachability callback on a queue");
-        return false;
-    }
-
-    return d->scheduled = true;
-}
-
-bool QNetworkConnectionMonitor::isMonitoring() const
-{
-    Q_D(const QNetworkConnectionMonitor);
-
-    return d->scheduled;
-}
-
-void QNetworkConnectionMonitor::stopMonitoring()
-{
-    Q_D(QNetworkConnectionMonitor);
-
-    if (d->scheduled) {
-        Q_ASSERT(d->probe);
-        SCNetworkReachabilitySetDispatchQueue(d->probe, nullptr);
-        SCNetworkReachabilitySetCallback(d->probe, nullptr, nullptr);
-        d->scheduled = false;
-    }
+    return d->startMonitoring();
 }
 
 bool QNetworkConnectionMonitor::isReachable()
@@ -324,36 +254,30 @@ bool QNetworkConnectionMonitor::isReachable()
         return false;
     }
 
-    if (!d->probe) {
-        qCWarning(lcNetMon, "Reachability is unknown, set the target first");
-        return false;
-    }
-
     return d->isReachable();
 }
 
-#ifdef QT_PLATFORM_UIKIT
-bool QNetworkConnectionMonitor::isWwan() const
+QNetworkConnectionMonitor::InterfaceType QNetworkConnectionMonitor::getInterfaceType() const
 {
     Q_D(const QNetworkConnectionMonitor);
 
-    if (isMonitoring()) {
-        qCWarning(lcNetMon, "Calling isWwan() is unsafe after the monitoring started");
-        return false;
+    if (d->isMonitoring()) {
+        qCWarning(lcNetMon, "Calling getInterfaceType() is unsafe after the monitoring started");
+        return QNetworkConnectionMonitor::InterfaceType::Unknown;
     }
 
-    if (!d->probe) {
-        qCWarning(lcNetMon, "Medium is unknown, set the target first");
-        return false;
-    }
-
-    return d->isWwan();
+    return d->getInterfaceType();
 }
-#endif
 
 bool QNetworkConnectionMonitor::isEnabled()
 {
     return true;
+}
+
+bool QNetworkConnectionMonitor::isMonitoring() const
+{
+    Q_D(const QNetworkConnectionMonitor);
+    return d->isMonitoring();
 }
 
 QT_END_NAMESPACE

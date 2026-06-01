@@ -20,9 +20,6 @@ sudo timedatectl set-timezone Etc/UTC
 echo "Disable windows key from showing the GNOME Shell Activities overlay"
 gsettings set org.gnome.mutter overlay-key ""
 
-# Disable windows key from showing the GNOME Shell Activities overlay
-gsettings set org.gnome.mutter overlay-key ""
-
 sudo sed -i 's|GRUB_TIMEOUT=8|GRUB_TIMEOUT=0|g' /etc/default/grub
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 

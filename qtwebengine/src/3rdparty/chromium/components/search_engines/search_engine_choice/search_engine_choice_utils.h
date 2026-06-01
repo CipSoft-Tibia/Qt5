@@ -14,7 +14,6 @@
 #include "components/search_engines/choice_made_location.h"
 #include "components/search_engines/search_engine_type.h"
 #include "components/search_engines/template_url.h"
-#include "third_party/abseil-cpp/absl/types/variant.h"
 
 class PrefService;
 class SearchTermsData;
@@ -32,6 +31,9 @@ inline constexpr char kSearchEngineChoiceScreenEventsHistogram[] =
 inline constexpr char
     kSearchEngineChoiceScreenDefaultSearchEngineTypeHistogram[] =
         "Search.ChoiceScreenDefaultSearchEngineType";
+inline constexpr char
+    kSearchEngineChoiceScreenDefaultSearchEngineType2Histogram[] =
+        "Search.ChoiceScreenDefaultSearchEngineType2";
 inline constexpr char kSearchEngineChoiceScreenSelectedEngineIndexHistogram[] =
     "Search.ChoiceScreenSelectedEngineIndex";
 inline constexpr char
@@ -92,10 +94,13 @@ enum class SearchEngineChoiceScreenConditions {
   // The browser attempting to show the choice screen in a dialog is already
   // showing a choice screen.
   kAlreadyBeingShown = 16,
+  // The user made the choice in the guest session and opted to save it across
+  // guest sessions.
+  kUsingPersistedGuestSessionChoice = 17,
 
-  kMaxValue = kAlreadyBeingShown,
+  kMaxValue = kUsingPersistedGuestSessionChoice,
 };
-// LINT.ThenChange(/tools/metrics/histograms/enums.xml:SearchEngineChoiceScreenConditions)
+// LINT.ThenChange(/tools/metrics/histograms/metadata/search/enums.xml:SearchEngineChoiceScreenConditions)
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
@@ -130,7 +135,7 @@ enum class SearchEngineChoiceScreenEvents {
   kProfileCreationMoreButtonClicked = 12,
   kMaxValue = kProfileCreationMoreButtonClicked,
 };
-// LINT.ThenChange(/tools/metrics/histograms/enums.xml:SearchEngineChoiceScreenEvents)
+// LINT.ThenChange(/tools/metrics/histograms/metadata/search/enums.xml:SearchEngineChoiceScreenEvents)
 
 // The cause for wiping the search engine choice preferences. Only used for
 // metrics.
@@ -231,30 +236,10 @@ class ChoiceScreenData {
   const ChoiceScreenDisplayState display_state_;
 };
 
-// The state of the search engine choice country command line override.
-enum class SearchEngineCountryListOverride {
-  // Display all the search engines used in the EEA region.
-  kEeaAll,
-  // Display the search engines that we default to when the country is unknown.
-  kEeaDefault,
-};
-
-using SearchEngineCountryOverride =
-    absl::variant<int, SearchEngineCountryListOverride>;
-
-// Gets the search engine country command line override.
-// Returns an int if the country id is passed to the command line or a
-// `SearchEngineCountryListOverride` if the special values of
-// `kDefaultListCountryOverride` or `kEeaListCountryOverride` are passed.
-std::optional<SearchEngineCountryOverride> GetSearchEngineCountryOverride();
-
-// Returns whether the search engine list is overridden in the command line to
-// return the default list or the list of all eea engines.
-bool HasSearchEngineCountryListOverride();
-
 // Returns whether the provided `country_id` is eligible for the EEA default
 // search engine choice prompt.
 // See `//components/country_codes` for the Country ID format.
+// TODO(b:328040066): Move to `//components/regional_capabilities`.
 bool IsEeaChoiceCountry(int country_id);
 
 // Records the specified choice screen condition at profile initialization.
@@ -270,7 +255,9 @@ void RecordChoiceScreenEvent(SearchEngineChoiceScreenEvents event);
 
 // Records the type of the default search engine that was chosen by the user
 // in the search engine choice screen or in the settings page.
-void RecordChoiceScreenDefaultSearchProviderType(SearchEngineType engine_type);
+void RecordChoiceScreenDefaultSearchProviderType(
+    SearchEngineType engine_type,
+    ChoiceMadeLocation choice_location);
 
 // Records the index of the search engine that was chosen by the user as it was
 // displayed on the choice screen.

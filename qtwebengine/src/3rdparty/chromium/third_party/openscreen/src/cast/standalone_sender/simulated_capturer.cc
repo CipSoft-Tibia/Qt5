@@ -22,7 +22,7 @@ using clock_operators::operator<<;
 
 namespace {
 // Threshold at which a warning about media pausing should be logged.
-constexpr std::chrono::seconds kPauseWarningThreshold{3};
+constexpr std::chrono::seconds kPauseWarningThreshold(3);
 }  // namespace
 
 SimulatedCapturer::Observer::~Observer() = default;
@@ -396,7 +396,7 @@ void SimulatedVideoCapturer::SetAdditionalDecoderParameters(
     // Return AV_PIX_FMT_YUV420P if it's in the provided list of supported
     // formats. Otherwise, return AV_PIX_FMT_NONE.
     //
-    // |formats| is a NONE-terminated array.
+    // `formats` is a NONE-terminated array.
     for (; *formats != AV_PIX_FMT_NONE; ++formats) {
       if (*formats == AV_PIX_FMT_YUV420P) {
         break;

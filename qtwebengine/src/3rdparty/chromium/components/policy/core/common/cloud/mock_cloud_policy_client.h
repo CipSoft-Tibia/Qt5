@@ -63,7 +63,9 @@ class MockCloudPolicyClient : public CloudPolicyClient {
                const std::string&,
                const std::string&,
                const std::string&,
-               const base::TimeDelta&),
+               const base::TimeDelta&,
+               bool,
+               ResultCallback),
               (override));
   MOCK_METHOD(void, FetchPolicy, (PolicyFetchReason), (override));
   MOCK_METHOD(void,
@@ -72,6 +74,7 @@ class MockCloudPolicyClient : public CloudPolicyClient {
                const std::vector<enterprise_management::RemoteCommandResult>&,
                enterprise_management::PolicyFetchRequest::SignatureType,
                const std::string&,
+               RemoteCommandsFetchReason,
                RemoteCommandCallback),
               (override));
   MOCK_METHOD(void,
@@ -102,7 +105,16 @@ class MockCloudPolicyClient : public CloudPolicyClient {
               UploadPolicyValidationReport,
               (CloudPolicyValidatorBase::Status,
                const std::vector<ValueValidationIssue>&,
-               const ValidationAction,
+               ValidationAction,
+               const std::string&,
+               const std::string&,
+               ResultCallback),
+              (override));
+  MOCK_METHOD(void,
+              UploadPolicyValidationReport,
+              (CloudPolicyValidatorBase::Status,
+               const std::vector<ValueValidationIssue>&,
+               ValidationAction,
                const std::string&,
                const std::string&),
               (override));
@@ -129,11 +141,10 @@ class MockCloudPolicyClient : public CloudPolicyClient {
               (std::unique_ptr<enterprise_management::UploadEuiccInfoRequest>,
                StatusCallback),
               (override));
-  MOCK_METHOD(
-      void,
-      UploadSecurityEventReport,
-      (content::BrowserContext*, bool, base::Value::Dict, ResultCallback),
-      (override));
+  MOCK_METHOD(void,
+              UploadSecurityEventReport,
+              (bool, base::Value::Dict, ResultCallback),
+              (override));
   MOCK_METHOD(void,
               UploadAppInstallReport,
               (base::Value::Dict value, ResultCallback callback),

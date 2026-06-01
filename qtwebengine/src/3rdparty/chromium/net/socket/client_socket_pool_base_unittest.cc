@@ -2,13 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include <stdint.h>
 
+#include <array>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -214,7 +210,9 @@ class MockClientSocket : public StreamSocket {
   const NetLogWithSource& NetLog() const override { return net_log_; }
 
   bool WasEverUsed() const override { return was_used_to_convey_data_; }
-  NextProto GetNegotiatedProtocol() const override { return kProtoUnknown; }
+  NextProto GetNegotiatedProtocol() const override {
+    return NextProto::kProtoUnknown;
+  }
   bool GetSSLInfo(SSLInfo* ssl_info) override { return false; }
   int64_t GetTotalReceivedBytes() const override {
     NOTIMPLEMENTED();
@@ -239,8 +237,7 @@ class MockClientSocketFactory : public ClientSocketFactory {
       DatagramSocket::BindType bind_type,
       NetLog* net_log,
       const NetLogSource& source) override {
-    NOTREACHED_IN_MIGRATION();
-    return nullptr;
+    NOTREACHED();
   }
 
   std::unique_ptr<TransportClientSocket> CreateTransportClientSocket(
@@ -460,9 +457,7 @@ class TestConnectJob : public ConnectJob {
         DoAdvanceAuthChallenge(2, false /* succeed_after_last_challenge */);
         return ERR_IO_PENDING;
       default:
-        NOTREACHED_IN_MIGRATION();
-        SetSocket(std::unique_ptr<StreamSocket>(), std::nullopt);
-        return ERR_FAILED;
+        NOTREACHED();
     }
   }
 
@@ -1311,8 +1306,8 @@ TEST_F(ClientSocketPoolBaseTest, CancelStalledSocketAtSocketLimit) {
   connect_job_factory_->set_job_type(TestConnectJob::kMockJob);
 
   {
-    ClientSocketHandle handles[kDefaultMaxSockets];
-    TestCompletionCallback callbacks[kDefaultMaxSockets];
+    std::array<ClientSocketHandle, kDefaultMaxSockets> handles;
+    std::array<TestCompletionCallback, kDefaultMaxSockets> callbacks;
     for (int i = 0; i < kDefaultMaxSockets; ++i) {
       EXPECT_EQ(OK, handles[i].Init(TestGroupId("a" + base::NumberToString(i)),
                                     params_, std::nullopt, DEFAULT_PRIORITY,
@@ -1351,7 +1346,7 @@ TEST_F(ClientSocketPoolBaseTest, CancelPendingSocketAtSocketLimit) {
   connect_job_factory_->set_job_type(TestConnectJob::kMockWaitingJob);
 
   {
-    ClientSocketHandle handles[kDefaultMaxSockets];
+    std::array<ClientSocketHandle, kDefaultMaxSockets> handles;
     for (int i = 0; i < kDefaultMaxSockets; ++i) {
       TestCompletionCallback callback;
       EXPECT_EQ(ERR_IO_PENDING,
@@ -1417,7 +1412,7 @@ TEST_F(ClientSocketPoolBaseTest, WaitForStalledSocketAtSocketLimit) {
   TestCompletionCallback callback;
   {
     EXPECT_FALSE(pool_->IsStalled());
-    ClientSocketHandle handles[kDefaultMaxSockets];
+    std::array<ClientSocketHandle, kDefaultMaxSockets> handles;
     for (int i = 0; i < kDefaultMaxSockets; ++i) {
       EXPECT_EQ(
           OK, handles[i].Init(
@@ -2801,10 +2796,10 @@ TEST_F(ClientSocketPoolBaseTest, SocketLimitReleasingSockets) {
 
   // Max out the socket limit with 2 per group.
 
-  ClientSocketHandle handle_a[4];
-  TestCompletionCallback callback_a[4];
-  ClientSocketHandle handle_b[4];
-  TestCompletionCallback callback_b[4];
+  std::array<ClientSocketHandle, 4> handle_a;
+  std::array<TestCompletionCallback, 4> callback_a;
+  std::array<ClientSocketHandle, 4> handle_b;
+  std::array<TestCompletionCallback, 4> callback_b;
 
   for (int i = 0; i < 2; ++i) {
     EXPECT_EQ(OK, handle_a[i].Init(TestGroupId("a"), params_, std::nullopt,
@@ -3172,7 +3167,7 @@ TEST_F(ClientSocketPoolBaseTest, BackupSocketCancelAtMaxSockets) {
 
   // Start (MaxSockets - 1) connected sockets to reach max sockets.
   connect_job_factory_->set_job_type(TestConnectJob::kMockJob);
-  ClientSocketHandle handles[kDefaultMaxSockets];
+  std::array<ClientSocketHandle, kDefaultMaxSockets> handles;
   for (int i = 1; i < kDefaultMaxSockets; ++i) {
     EXPECT_EQ(OK, handles[i].Init(TestGroupId("bar"), params_, std::nullopt,
                                   DEFAULT_PRIORITY, SocketTag(),

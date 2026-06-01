@@ -61,6 +61,7 @@ class TaskAttributionTracker;
 
 namespace blink {
 
+class DictionaryConversionContext;
 class DOMWrapperWorld;
 class ScriptState;
 class StringCache;
@@ -251,6 +252,21 @@ class PLATFORM_EXPORT V8PerIsolateData final {
     user_data_[static_cast<size_t>(key)] = data;
   }
 
+  void SetTopOfDictionaryStack(DictionaryConversionContext* top) {
+    top_of_dictionary_stack_ = top;
+  }
+  DictionaryConversionContext* TopOfDictionaryStack() const {
+    return top_of_dictionary_stack_;
+  }
+
+  void SetOmitExceptionContextInformation(bool omit) {
+    CHECK_NE(omit_exception_context_information_, omit);
+    omit_exception_context_information_ = omit;
+  }
+  bool OmitExceptionContextInformation() const {
+    return omit_exception_context_information_;
+  }
+
  private:
   V8PerIsolateData(scoped_refptr<base::SingleThreadTaskRunner>,
                    scoped_refptr<base::SingleThreadTaskRunner>,
@@ -328,6 +344,9 @@ class PLATFORM_EXPORT V8PerIsolateData final {
   Persistent<DOMWrapperWorld> main_world_;
 
   std::unique_ptr<scheduler::TaskAttributionTracker> task_attribution_tracker_;
+
+  raw_ptr<DictionaryConversionContext> top_of_dictionary_stack_ = nullptr;
+  bool omit_exception_context_information_ = false;
 };
 
 // Creates a histogram for V8. The returned value is a base::Histogram, but

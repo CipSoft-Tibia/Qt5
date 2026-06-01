@@ -36,8 +36,8 @@ namespace QtAndroidQuickViewEmbedding
     jobject getRootObjectProperty(JNIEnv *env, jobject, jlong parentWindowReference,
                                   jstring propertyName);
     Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(getRootObjectProperty)
-    int addRootObjectSignalListener(JNIEnv *env, jobject, jlong parentWindowReference,
-                                   jstring signalName, jclass argType, jobject listener);
+    int addRootObjectSignalListener(JNIEnv *env, jobject, jlong windowReference, jstring signalName,
+                                    QJniArray<jclass> argTypes, jobject listener);
     Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(addRootObjectSignalListener)
     bool removeRootObjectSignalListener(JNIEnv *env, jobject, jlong parentWindowReference,
                                        jint signalListenerId);

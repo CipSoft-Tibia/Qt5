@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKITEMVIEW_P_P_H
 #define QQUICKITEMVIEW_P_P_H
@@ -169,7 +170,14 @@ public:
     qreal calculatedMinExtent() const;
     qreal calculatedMaxExtent() const;
 
+    void connectModel(QQuickItemView *q, QQmlDelegateModelPointer *model);
+    void disconnectModel(QQuickItemView *q, QQmlDelegateModelPointer *model);
+
     void applyDelegateChange();
+    void applyDelegateModelAccessChange()
+    {
+        QQmlDelegateModel::applyDelegateModelAccessChangeOnView(q_func(), this);
+    }
 
     void applyPendingChanges();
     bool applyModelChanges(ChangeResult *insertionResult, ChangeResult *removalResult);
@@ -235,7 +243,6 @@ public:
     virtual QQuickItemViewAttached *getAttachedObject(const QObject *) const { return nullptr; }
 
     QPointer<QQmlInstanceModel> model;
-    QVariant modelVariant;
     int itemCount;
     int buffer;
     int bufferMode;
@@ -312,6 +319,8 @@ public:
     bool delegateValidated : 1;
     bool isClearing : 1;
     bool explicitDelegate: 1;
+    bool explicitDelegateModelAccess: 1;
+    bool inRefill : 1;
 
 protected:
     virtual Qt::Orientation layoutOrientation() const = 0;

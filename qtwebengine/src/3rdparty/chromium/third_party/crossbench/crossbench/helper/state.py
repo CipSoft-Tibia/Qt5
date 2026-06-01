@@ -83,4 +83,4 @@ class StateMachine(Generic[StateT]):
       raise UnexpectedStateError(self._state, valid_states)
 
   def __str__(self) -> str:
-    return f"{self._state}"
+    return self._state.name

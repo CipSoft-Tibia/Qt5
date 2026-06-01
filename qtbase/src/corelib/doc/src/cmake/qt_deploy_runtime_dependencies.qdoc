@@ -38,6 +38,11 @@ qt_deploy_runtime_dependencies(
     [VERBOSE]
     [NO_OVERWRITE]
     [NO_APP_STORE_COMPLIANCE]
+    [NO_PLUGINS]                                  # since Qt 6.10
+    [EXCLUDE_PLUGIN_TYPES type...]                # since Qt 6.10
+    [INCLUDE_PLUGIN_TYPES type...]                # since Qt 6.10
+    [EXCLUDE_PLUGINS name...]                     # since Qt 6.10
+    [INCLUDE_PLUGINS name...]                     # since Qt 6.10
     [NO_TRANSLATIONS]
     [NO_COMPILER_RUNTIME]
     [DEPLOY_TOOL_OPTIONS]
@@ -183,6 +188,27 @@ The default value of \c{POST_EXCLUDE_REGEXES} is constructed from the value of
 \sa {qt6_generate_deploy_app_script}{qt_generate_deploy_app_script()},
     {qt6_deploy_qt_conf}{qt_deploy_qt_conf()},
     {qt6_deploy_qml_imports}{qt_deploy_qml_imports()}
+
+\section1 Controlling deployment of Qt plugins
+
+Qt plugins are automatically deployed into \l QT_DEPLOY_PLUGINS_DIR.
+
+You can turn off plugin deployment with the \c NO_PLUGINS argument.
+
+You can include all plugins of a specific type with the \c INCLUDE_PLUGIN_TYPES
+argument. You can exclude all plugins of a specific type with the \c
+EXCLUDE_PLUGIN_TYPES argument. Both arguments take plugin types, e.g. \c
+imageformats.
+
+You can include or exclude specific plugins with the arguments \c
+INCLUDE_PLUGINS and \c EXCLUDE_PLUGINS. Both arguments take plugin names, for
+example \c qjpeg.
+
+\note Plugin names must not be confused with plugin targets. For example, the \c
+Qt6::QJpegPlugin target's plugin name is \c qjpeg.
+
+\note The arguments \c EXCLUDE_PLUGINS, \c EXCLUDE_PLUGIN_TYPES, \c
+INCLUDE_PLUGINS, and \c INCLUDE_PLUGIN_TYPES only work on Windows and Linux.
 
 \section1 Example
 

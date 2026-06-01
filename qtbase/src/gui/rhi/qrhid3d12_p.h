@@ -507,7 +507,7 @@ struct Q_D3D12_SAMPLER_DESC
 
     friend size_t qHash(const Q_D3D12_SAMPLER_DESC &key, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, key.desc.Filter);
         seed = hash(seed, key.desc.AddressU);
         seed = hash(seed, key.desc.AddressV);
@@ -645,6 +645,17 @@ struct QD3D12Readback
 };
 
 struct QD3D12MipmapGenerator
+{
+    bool create(QRhiD3D12 *rhiD);
+    void destroy();
+    void generate(QD3D12CommandBuffer *cbD, const QD3D12ObjectHandle &textureHandle);
+
+    QRhiD3D12 *rhiD;
+    QD3D12ObjectHandle rootSigHandle;
+    QD3D12ObjectHandle pipelineHandle;
+};
+
+struct QD3D12MipmapGenerator3D
 {
     bool create(QRhiD3D12 *rhiD);
     void destroy();
@@ -846,6 +857,9 @@ struct QD3D12TextureRenderTarget : public QRhiTextureRenderTarget
     friend class QRhiD3D12;
 };
 
+struct QD3D12GraphicsPipeline;
+struct QD3D12ComputePipeline;
+
 struct QD3D12ShaderResourceBindings : public QRhiShaderResourceBindings
 {
     QD3D12ShaderResourceBindings(QRhiImplementation *rhi);
@@ -894,6 +908,8 @@ struct QD3D12ShaderResourceBindings : public QRhiShaderResourceBindings
 
     bool hasDynamicOffset = false;
     uint generation = 0;
+    QD3D12GraphicsPipeline *lastUsedGraphicsPipeline = nullptr;
+    QD3D12ComputePipeline *lastUsedComputePipeline = nullptr;
 
     friend class QRhiD3D12;
     friend struct QD3D12ShaderResourceVisitor;
@@ -1089,6 +1105,15 @@ struct alignas(void*) QD3D12PipelineStateSubObject
     T object = {};
 };
 
+class QD3D12Adapter : public QRhiAdapter
+{
+public:
+    QRhiDriverInfo info() const override;
+
+    LUID luid;
+    QRhiDriverInfo adapterInfo;
+};
+
 class QRhiD3D12 : public QRhiImplementation
 {
 public:
@@ -1102,6 +1127,7 @@ public:
 
     bool create(QRhi::Flags flags) override;
     void destroy() override;
+    QRhi::AdapterList enumerateAdaptersBeforeCreate(QRhiNativeHandles *nativeHandles) const override;
 
     QRhiGraphicsPipeline *createGraphicsPipeline() override;
     QRhiComputePipeline *createComputePipeline() override;
@@ -1255,6 +1281,7 @@ public:
     QD3D12ResourceBarrierGenerator barrierGen;
     QD3D12SamplerManager samplerMgr;
     QD3D12MipmapGenerator mipmapGen;
+    QD3D12MipmapGenerator3D mipmapGen3D;
     QD3D12StagingArea smallStagingAreas[QD3D12_FRAMES_IN_FLIGHT];
     QD3D12ShaderVisibleDescriptorHeap shaderVisibleCbvSrvUavHeap;
     UINT64 timestampTicksPerSecond = 0;

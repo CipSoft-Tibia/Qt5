@@ -17,12 +17,7 @@ public:
         return (key == QLatin1String("webview")) ? new QWebEngineWebViewPrivate() : nullptr;
     }
 
-    void prepare() const override
-    {
-#if !defined(Q_OS_WIN) || defined(QT_STATIC)
-        QtWebEngineQuick::initialize();
-#endif
-    }
+    void prepare() const override { }
 };
 
 QT_END_NAMESPACE

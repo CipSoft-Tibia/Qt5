@@ -27,7 +27,6 @@ import android.view.MotionEvent.PointerCoords;
 import android.view.View;
 
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -35,16 +34,13 @@ import org.mockito.MockitoAnnotations;
 import org.robolectric.annotation.Config;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
-import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
-import org.chromium.base.test.util.JniMocker;
 import org.chromium.ui.MotionEventUtils;
 
 /** Tests logic in the {@link EventForwarder} class. */
 @RunWith(BaseRobolectricTestRunner.class)
 @Config(manifest = Config.NONE)
 public class EventForwarderTest {
-    @Rule public JniMocker mocker = new JniMocker();
 
     @Mock EventForwarder.Natives mNativeMock;
 
@@ -53,7 +49,7 @@ public class EventForwarderTest {
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
-        mocker.mock(EventForwarderJni.TEST_HOOKS, mNativeMock);
+        EventForwarderJni.setInstanceForTesting(mNativeMock);
     }
 
     @Test
@@ -100,13 +96,22 @@ public class EventForwarderTest {
     }
 
     @Test
+    public void testSendTrackpadHoverAsMouseEventToNative() {
+        EventForwarder eventForwarder = new EventForwarder(NATIVE_EVENT_FORWARDER_ID, true, true);
+        MotionEvent hoverEvent = getTrackpadEvent(MotionEvent.ACTION_HOVER_MOVE, 0);
+        eventForwarder.onHoverEvent(hoverEvent);
+        verifyNativeMouseEventSent(NATIVE_EVENT_FORWARDER_ID, hoverEvent, eventForwarder, 1);
+    }
+
+    @Test
     public void testMotionEventWithHistory() {
         EventForwarder eventForwarder = new EventForwarder(NATIVE_EVENT_FORWARDER_ID, true, false);
+        final long downTime = 100;
         final long eventTime = 200;
         final long latestEventTime = 400;
         MotionEvent dragEvent =
                 MotionEvent.obtain(
-                        /* downTime= */ 100,
+                        downTime,
                         eventTime,
                         MotionEvent.ACTION_MOVE,
                         /* x= */ 14,
@@ -128,6 +133,7 @@ public class EventForwarderTest {
                         dragEvent,
                         eventTime * 1000_000,
                         latestEventTime * 1000_000,
+                        downTime,
                         dragEvent.getActionMasked(),
                         1,
                         /* historySize= */ 1,
@@ -166,6 +172,7 @@ public class EventForwarderTest {
                         anyLong(),
                         any(EventForwarder.class),
                         any(MotionEvent.class),
+                        anyLong(),
                         anyLong(),
                         anyLong(),
                         anyInt(),
@@ -235,7 +242,6 @@ public class EventForwarderTest {
                         anyInt());
     }
 
-    @EnableFeatures({UiAndroidFeatureList.DRAG_DROP_FILES})
     @Test
     public void testDragDropEvent() {
         // Text.

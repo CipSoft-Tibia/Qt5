@@ -13,10 +13,12 @@
 // limitations under the License.
 
 // Tests of various domains that don't fit naturally into the other test files
-// in this directory: BitFlagCombinationOf and OneOf.
+// in this directory: BitFlagCombinationOf, OneOf, and OverlapOf.
 
 #include <cstdlib>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,6 +28,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/numeric/int128.h"
 #include "absl/random/random.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "./fuzztest/domain_core.h"
 #include "./domain_tests/domain_testing.h"
@@ -33,10 +37,26 @@
 #include "./fuzztest/internal/type_support.h"
 
 namespace fuzztest {
+namespace internal {
+
+class OverlapOfTestPeer {
+ public:
+  template <typename D>
+  static void SetSerializationDomain(D& domain, size_t index) {
+    domain.WithSerializationDomain(index);
+  }
+};
+
+}  // namespace internal
+
 namespace {
 
 using ::testing::AllOf;
 using ::testing::Contains;
+using ::testing::Each;
+using ::testing::Ge;
+using ::testing::IsSupersetOf;
+using ::testing::Le;
 using ::testing::UnorderedElementsAre;
 using ::testing::UnorderedElementsAreArray;
 
@@ -57,7 +77,7 @@ TEST(BitFlagCombinationOf, Ints) {
   int val = 1 | 4 | 16 | 32;
   while (val != 0) {
     int prev = val;
-    domain.Mutate(val, bitgen, true);
+    domain.Mutate(val, bitgen, {}, true);
     // val can't have new bits set.
     EXPECT_EQ(prev & val, val);
     EXPECT_EQ(prev | val, prev);
@@ -129,7 +149,7 @@ TEST(OneOf, AllSubDomainsArePickedEventually) {
   elems.clear();
   Value mutated(domain, bitgen);
   while (elems.size() < 5) {
-    mutated.Mutate(domain, bitgen, false);
+    mutated.Mutate(domain, bitgen, {}, false);
     elems.insert(mutated.user_value);
 
     VerifyRoundTripThroughConversion(mutated, domain);
@@ -151,13 +171,13 @@ TEST(OneOf, Mutate) {
     } else {
       v.corpus_value = std::variant<int, int>(std::in_place_index_t<1>{}, k);
     }
-    v.Mutate(domain, bitgen, /*only_shrink=*/false);
+    v.Mutate(domain, bitgen, {}, false);
     ASSERT_NE(k, v.user_value);
   }
   for (int i = 0; i < kRuns; ++i) {
     Value v(domain, bitgen);
     int old_k = v.user_value;
-    v.Mutate(domain, bitgen, /*only_shrink=*/true);
+    v.Mutate(domain, bitgen, {}, true);
     int new_k = v.user_value;
     if ((new_k >= 0) == (old_k >= 0)) {
       EXPECT_LE(std::abs(new_k), std::abs(old_k))
@@ -177,7 +197,7 @@ TEST(OneOf, SwitchesDomains) {
   absl::flat_hash_set<Color> found;
   Value v(domain, bitgen);
   while (found.size() < all_colors.size()) {
-    v.Mutate(domain, bitgen, /*only_shrink=*/false);
+    v.Mutate(domain, bitgen, {}, false);
     found.insert(v.user_value);
   }
   ASSERT_THAT(found, UnorderedElementsAreArray(all_colors));
@@ -211,6 +231,80 @@ TEST(OneOf, FromValueReturnsValidCorpusValuesWhenPossible) {
 
   ASSERT_TRUE(corpus_value.has_value());
   EXPECT_OK(domain.ValidateCorpusValue(*corpus_value));
+}
+
+TEST(OverlapOf, ValidatesForAllDomains) {
+  auto domain = OverlapOf(InRange(0, 3), InRange(1, 4));
+  EXPECT_FALSE(domain.FromValue(0).has_value());
+  EXPECT_TRUE(domain.FromValue(1).has_value());
+  EXPECT_TRUE(domain.FromValue(2).has_value());
+  EXPECT_TRUE(domain.FromValue(3).has_value());
+  EXPECT_FALSE(domain.FromValue(4).has_value());
+}
+
+TEST(OverlapOf, GeneratesMultipleValidValues) {
+  auto domain = OverlapOf(InRange(0, 3), InRange(1, 4));
+  EXPECT_THAT(GenerateNonUniqueValues(domain),
+              AllOf(Each(AllOf(Ge(1), Le(3))), IsSupersetOf({1, 2, 3})));
+}
+
+TEST(OverlapOf, UsesSerializationDomain) {
+  auto domain_0 = Arbitrary<std::string>();
+  auto domain_1 =
+      ReversibleMap([](int x) -> std::string { return absl::StrCat(x); },
+                    [](const std::string& s) -> std::optional<std::tuple<int>> {
+                      int result = 0;
+                      if (!absl::SimpleAtoi(s, &result)) return std::nullopt;
+                      return result;
+                    },
+                    Arbitrary<int>());
+  auto overlapped_domain = OverlapOf(domain_0, domain_1);
+  for (const auto& v : GenerateNonUniqueValues(overlapped_domain)) {
+    auto domain_0_corpus = domain_0.FromValue(v.user_value);
+    ASSERT_TRUE(domain_0_corpus.has_value());
+    auto domain_1_corpus = domain_1.FromValue(v.user_value);
+    ASSERT_TRUE(domain_1_corpus.has_value());
+    EXPECT_NE(overlapped_domain.SerializeCorpus(v.corpus_value).ToString(),
+              domain_0.SerializeCorpus(*domain_0_corpus).ToString())
+        << "Expect different serialized corpora before "
+           "`WithSerializationDomain(...)`";
+    EXPECT_NE(overlapped_domain.SerializeCorpus(v.corpus_value).ToString(),
+              domain_1.SerializeCorpus(*domain_1_corpus).ToString())
+        << "Expect different serialized corpora before "
+           "`WithSerializationDomain(...)`";
+  }
+
+  internal::OverlapOfTestPeer::SetSerializationDomain(overlapped_domain, 0);
+  for (const auto& v : GenerateNonUniqueValues(overlapped_domain)) {
+    auto domain_0_corpus = domain_0.FromValue(v.user_value);
+    ASSERT_TRUE(domain_0_corpus.has_value());
+    auto domain_1_corpus = domain_1.FromValue(v.user_value);
+    ASSERT_TRUE(domain_1_corpus.has_value());
+    EXPECT_EQ(overlapped_domain.SerializeCorpus(v.corpus_value).ToString(),
+              domain_0.SerializeCorpus(*domain_0_corpus).ToString())
+        << "Expect the same serialized corpora after "
+           "`WithSerializationDomain(0)`";
+    EXPECT_NE(overlapped_domain.SerializeCorpus(v.corpus_value).ToString(),
+              domain_1.SerializeCorpus(*domain_1_corpus).ToString())
+        << "Expect different serialized corpora after "
+           "`WithSerializationDomain(0)`";
+  }
+
+  internal::OverlapOfTestPeer::SetSerializationDomain(overlapped_domain, 1);
+  for (const auto& v : GenerateNonUniqueValues(overlapped_domain)) {
+    auto domain_0_corpus = domain_0.FromValue(v.user_value);
+    ASSERT_TRUE(domain_0_corpus.has_value());
+    auto domain_1_corpus = domain_1.FromValue(v.user_value);
+    ASSERT_TRUE(domain_1_corpus.has_value());
+    EXPECT_NE(overlapped_domain.SerializeCorpus(v.corpus_value).ToString(),
+              domain_0.SerializeCorpus(*domain_0_corpus).ToString())
+        << "Expect different serialized corpora after "
+           "`WithSerializationDomain(1)`";
+    EXPECT_EQ(overlapped_domain.SerializeCorpus(v.corpus_value).ToString(),
+              domain_1.SerializeCorpus(*domain_1_corpus).ToString())
+        << "Expect the same serialized corpora after "
+           "`WithSerializationDomain(1)`";
+  }
 }
 
 }  // namespace

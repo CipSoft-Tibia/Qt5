@@ -221,6 +221,7 @@ class QOpenGLEngineShaderProg;
 class Q_OPENGL_EXPORT QOpenGLEngineSharedShaders
 {
     Q_GADGET
+    Q_DISABLE_COPY_MOVE(QOpenGLEngineSharedShaders)
 public:
 
     enum SnippetName {

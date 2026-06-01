@@ -10,7 +10,7 @@
 #include "base/time/time.h"
 #include "base/types/optional_ref.h"
 #include "cc/input/actively_scrolling_type.h"
-#include "cc/input/browser_controls_offset_tags_info.h"
+#include "cc/input/browser_controls_offset_tag_modifications.h"
 #include "cc/input/browser_controls_state.h"
 #include "cc/paint/element_id.h"
 #include "ui/gfx/geometry/size.h"
@@ -74,7 +74,7 @@ class InputDelegateForCompositor {
 
   // Called to let the input handler know that a scroll offset animation has
   // completed.
-  virtual void ScrollOffsetAnimationFinished() = 0;
+  virtual void ScrollOffsetAnimationFinished(ElementId element_id) = 0;
 
   // Called to inform the input handler when prefers-reduced-motion changes.
   virtual void SetPrefersReducedMotion(bool prefers_reduced_motion) = 0;
@@ -142,8 +142,8 @@ class CompositorDelegateForInput {
       BrowserControlsState constraints,
       BrowserControlsState current,
       bool animate,
-      base::optional_ref<const BrowserControlsOffsetTagsInfo>
-          offset_tags_info) = 0;
+      base::optional_ref<const BrowserControlsOffsetTagModifications>
+          offset_tag_modifications) = 0;
   virtual bool HasScrollLinkedAnimation(ElementId for_scroller) const = 0;
 
   // TODO(bokan): Temporary escape hatch for code that hasn't yet been

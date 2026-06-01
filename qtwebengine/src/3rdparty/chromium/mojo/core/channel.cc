@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <utility>
@@ -25,13 +26,13 @@
 #include "base/numerics/safe_math.h"
 #include "base/process/current_process.h"
 #include "base/process/process_handle.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/trace_event/typed_macros.h"
 #include "build/build_config.h"
 #include "mojo/core/configuration.h"
 #include "mojo/core/embedder/features.h"
+#include "mojo/core/ipcz_driver/envelope.h"
 
 #if BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
 #include "base/apple/mach_logging.h"
@@ -301,7 +302,7 @@ Channel::MessagePtr Channel::Message::CreateRawForFuzzing(
   message->size_ = data.size();
   if (data.size()) {
     message->data_ = MakeAlignedBuffer(data.size());
-    base::ranges::copy(data, message->data_.get());
+    std::ranges::copy(data, message->data_.get());
   }
   return base::WrapUnique<Channel::Message>(message.release());
 }
@@ -943,8 +944,8 @@ bool Channel::OnReadComplete(size_t bytes_read, size_t* next_read_size_hint) {
     }
 
     DispatchResult result =
-        TryDispatchMessage(base::make_span(read_buffer_->occupied_bytes(),
-                                           read_buffer_->num_occupied_bytes()),
+        TryDispatchMessage(base::span(read_buffer_->occupied_bytes(),
+                                      read_buffer_->num_occupied_bytes()),
                            next_read_size_hint);
     if (result == DispatchResult::kOK) {
       if (ShouldRecordSubsampledHistograms()) {
@@ -966,12 +967,13 @@ bool Channel::OnReadComplete(size_t bytes_read, size_t* next_read_size_hint) {
 Channel::DispatchResult Channel::TryDispatchMessage(
     base::span<const char> buffer,
     size_t* size_hint) {
-  return TryDispatchMessage(buffer, std::nullopt, size_hint);
+  return TryDispatchMessage(buffer, std::nullopt, nullptr, size_hint);
 }
 
 Channel::DispatchResult Channel::TryDispatchMessage(
     base::span<const char> buffer,
     std::optional<std::vector<PlatformHandle>> received_handles,
+    scoped_refptr<ipcz_driver::Envelope> envelope,
     size_t* size_hint) {
   TRACE_EVENT(TRACE_DISABLED_BY_DEFAULT("toplevel.ipc"),
               "Mojo dispatch message");
@@ -1021,7 +1023,8 @@ Channel::DispatchResult Channel::TryDispatchMessage(
     }
 
     auto data = buffer.first(num_bytes).subspan(header_size);
-    delegate_->OnChannelMessage(data.data(), data.size(), std::move(handles));
+    delegate_->OnChannelMessage(data.data(), data.size(), std::move(handles),
+                                std::move(envelope));
     *size_hint = num_bytes;
     return DispatchResult::kOK;
   }
@@ -1104,7 +1107,8 @@ Channel::DispatchResult Channel::TryDispatchMessage(
       return DispatchResult::kError;
     }
   } else if (!deferred && delegate_) {
-    delegate_->OnChannelMessage(payload, payload_size, std::move(handles));
+    delegate_->OnChannelMessage(payload, payload_size, std::move(handles),
+                                std::move(envelope));
   }
 
   *size_hint = legacy_header->num_bytes;
@@ -1149,6 +1153,13 @@ MOJO_SYSTEM_IMPL_EXPORT void Channel::OfferChannelUpgrade() {
   NOTREACHED();
 }
 #endif
+
+void Channel::RecordSentMessageMetrics(size_t payload_size) {
+  if (ShouldRecordSubsampledHistograms()) {
+    UMA_HISTOGRAM_COUNTS_100000("Mojo.Channel.WriteMessageSize", payload_size);
+    LogHistogramForIPCMetrics(MessageType::kSent);
+  }
+}
 
 bool Channel::ShouldRecordSubsampledHistograms() {
   base::AutoLock hold(lock_);

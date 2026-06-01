@@ -1,6 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <private/qspline3dseries_p.h>
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -182,10 +183,13 @@ QSpline3DSeries::~QSpline3DSeries() {}
 void QSpline3DSeries::setSplineVisible(bool visible)
 {
     Q_D(QSpline3DSeries);
-    if (d->m_splineVisible != visible) {
-        d->m_splineVisible = visible;
-        emit splineVisibilityChanged(visible);
+    if (d->m_splineVisible == visible) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << visible;
+        return;
     }
+    d->m_splineVisible = visible;
+    emit splineVisibilityChanged(visible);
 }
 
 bool QSpline3DSeries::isSplineVisible() const
@@ -209,11 +213,16 @@ void QSpline3DSeries::setSplineTension(qreal tension)
 {
     Q_D(QSpline3DSeries);
     if (tension < 0.0f || tension > 1.0f) {
-        qWarning("Invalid tension. Valid range for tension is 0.0f...1.0f");
-    } else if (d->m_tension != tension) {
-        d->m_tension = tension;
-        emit splineTensionChanged(tension);
+        qCWarning(lcProperties3D, "%s invalid tension. Valid range for tension is 0.0f...1.0f",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
+        return;
+    } else if (d->m_tension == tension) {
+        qCDebug(lcProperties3D, "%s value is already set to: %f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), tension);
+        return;
     }
+    d->m_tension = tension;
+    emit splineTensionChanged(tension);
 }
 
 qreal QSpline3DSeries::splineTension() const
@@ -240,11 +249,16 @@ void QSpline3DSeries::setSplineKnotting(qreal knotting)
 {
     Q_D(QSpline3DSeries);
     if (knotting < 0.0f || knotting > 1.0f) {
-        qWarning("Invalid knotting. Valid range for knotting is 0.0f...1.0f");
-    } else if (d->m_knotting != knotting) {
-        d->m_knotting = knotting;
-        emit splineKnottingChanged(knotting);
+        qCWarning(lcProperties3D, "%s invalid knotting. Valid range for knotting is 0.0f...1.0f",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
+        return;
+    } else if (d->m_knotting == knotting) {
+        qCDebug(lcProperties3D, "%s value is already set to: %f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), knotting);
+        return;
     }
+    d->m_knotting = knotting;
+    emit splineKnottingChanged(knotting);
 }
 
 qreal QSpline3DSeries::splineKnotting() const
@@ -267,10 +281,13 @@ qreal QSpline3DSeries::splineKnotting() const
 void QSpline3DSeries::setSplineLooping(bool looping)
 {
     Q_D(QSpline3DSeries);
-    if (d->m_looping != looping) {
-        d->m_looping = looping;
-        emit splineLoopingChanged(looping);
+    if (d->m_looping == looping) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << looping;
+        return;
     }
+    d->m_looping = looping;
+    emit splineLoopingChanged(looping);
 }
 
 bool QSpline3DSeries::isSplineLooping() const
@@ -288,10 +305,13 @@ bool QSpline3DSeries::isSplineLooping() const
 void QSpline3DSeries::setSplineColor(QColor color)
 {
     Q_D(QSpline3DSeries);
-    if (d->m_splineColor != color) {
-        d->m_splineColor = color;
-        emit splineColorChanged(color);
+    if (d->m_splineColor == color) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << color;
+        return;
     }
+    d->m_splineColor = color;
+    emit splineColorChanged(color);
 }
 
 QColor QSpline3DSeries::splineColor() const
@@ -316,11 +336,16 @@ void QSpline3DSeries::setSplineResolution(int resolution)
 {
     Q_D(QSpline3DSeries);
     if (resolution < 2) {
-        qWarning("Invalid resolution. The resolution must be 2 or above");
-    } else if (d->m_resolution != resolution) {
-        d->m_resolution = resolution;
-        emit splineResolutionChanged(resolution);
+        qCWarning(lcProperties3D, "%s invalid resolution. The resolution must be 2 or above",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
+        return;
+    } else if (d->m_resolution == resolution) {
+        qCDebug(lcProperties3D, "%s value is already set to: %d",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), resolution);
+        return;
     }
+    d->m_resolution = resolution;
+    emit splineResolutionChanged(resolution);
 }
 
 int QSpline3DSeries::splineResolution() const

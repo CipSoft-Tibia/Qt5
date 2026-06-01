@@ -125,19 +125,20 @@ def merge_csv(csv_list: Sequence[LocalPath],
             , File 1,           , File 2,
   Row Header, Data 1.1, Data 1.2, Data 2.1, Data 2.2
   """
-  # Fill in the header column taken from the first file
   table: List[List[Any]] = []
+  # Initial row-headers from the first csv file.
+  known_row_headers: Set[Tuple[str, ...]] = set()
+  row_header_len = _merge_csv_prepare_row_headers(table, known_row_headers,
+                                                  csv_list[0], row_header_len,
+                                                  delimiter)
+
+  # Fill in the header column taken from the first file
   if headers:
     table_headers = [None] * row_header_len
   else:
     table_headers = []
 
-  # Initial row-headers from the first csv file.
-  known_row_headers: Set[Tuple[str, ...]] = set()
-  _merge_csv_prepare_row_headers(table, known_row_headers, csv_list[0],
-                                 row_header_len, delimiter)
-
-  table_row_len: int = row_header_len
+  table_row_len = row_header_len
   for csv_file in csv_list:
     with csv_file.open(encoding="utf-8") as f:
       csv_data = list(csv.reader(f, delimiter=delimiter))
@@ -156,12 +157,25 @@ def _merge_csv_prepare_row_headers(table: List[List[Any]],
                                    delimiter: str):
   with csv_file.open(encoding="utf-8") as first_file:
     for csv_row in csv.reader(first_file, delimiter=delimiter):
+      if row_header_len == -1:
+        row_header_len = _detect_row_header_len(csv_row)
       assert csv_row, "Mergeable CSV files must have row names."
       row_headers = csv_row[:row_header_len]
       table.append(row_headers)
       csv_row_header_key = tuple(row_headers)
       known_row_headers.add(csv_row_header_key)
+  return row_header_len
 
+
+def _detect_row_header_len(row: List[str]) -> int:
+  # Input: ["header", "", "", "value 1", "value 2"]
+  #                        ^
+  # Output: 3
+  for i, value in enumerate(row):
+    if i == 0 or value == "":
+      continue
+    return i
+  return 1
 
 def _merge_csv_append(csv_data: List[List[Any]], table: List[List[Any]],
                       table_headers, row_header_len: int, headers,

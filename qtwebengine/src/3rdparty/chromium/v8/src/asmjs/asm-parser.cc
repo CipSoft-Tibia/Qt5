@@ -171,7 +171,7 @@ FunctionSig* AsmJsParser::ConvertSignature(AsmType* return_type,
       UNREACHABLE();
     }
   }
-  return sig_builder.Build();
+  return sig_builder.Get();
 }
 
 bool AsmJsParser::Run() {
@@ -357,7 +357,7 @@ void AsmJsParser::ValidateModule() {
     if (info.kind == VarKind::kImportedFunction && !info.function_defined) {
       // For imported functions without a single call site, we insert a dummy
       // import here to preserve the fact that there actually was an import.
-      FunctionSig* void_void_sig = FunctionSig::Builder(zone(), 0, 0).Build();
+      FunctionSig* void_void_sig = FunctionSig::Builder(zone(), 0, 0).Get();
       module_builder_->AddImport(info.import->function_name, void_void_sig);
     }
   }
@@ -374,7 +374,7 @@ void AsmJsParser::ValidateModule() {
   }
   start->Emit(kExprEnd);
   FunctionSig::Builder b(zone(), 0, 0);
-  start->SetSignature(b.Build());
+  start->SetSignature(b.Get());
 }
 
 // 6.1 ValidateModule - parameters
@@ -775,9 +775,7 @@ void AsmJsParser::ValidateFunction() {
 
   bool last_statement_is_return = false;
   while (!failed_ && !Peek('}')) {
-    // clang-format off
     last_statement_is_return = Peek(TOK(return));
-    // clang-format on
     RECURSE(ValidateStatement());
   }
 
@@ -1041,9 +1039,7 @@ void AsmJsParser::ValidateStatement() {
     RECURSE(EmptyStatement());
   } else if (Peek(TOK(if))) {
     RECURSE(IfStatement());
-    // clang-format off
   } else if (Peek(TOK(return))) {
-    // clang-format on
     RECURSE(ReturnStatement());
   } else if (IterationStatement()) {
     // Handled in IterationStatement.
@@ -1118,9 +1114,7 @@ void AsmJsParser::IfStatement() {
 
 // 6.5.5 ReturnStatement
 void AsmJsParser::ReturnStatement() {
-  // clang-format off
   EXPECT_TOKEN(TOK(return));
-  // clang-format on
   if (!Peek(';') && !Peek('}')) {
     // TODO(bradnelson): See if this can be factored out.
     AsmType* ret;
@@ -1861,7 +1855,6 @@ AsmType* AsmJsParser::ShiftExpression() {
     switch (scanner_.Token()) {
       case TOK(SAR): {
         EXPECT_TOKENn(TOK(SAR));
-        heap_access_shift_position_ = kNoHeapAccessShift;
         // Remember position allowing this shift-expression to be used as part
         // of a heap access operation expecting `a >> n:NumericLiteral`.
         bool imm = false;
@@ -1880,7 +1873,10 @@ AsmType* AsmJsParser::ShiftExpression() {
         if (imm && old_pos == scanner_.Position()) {
           heap_access_shift_position_ = old_code;
           heap_access_shift_value_ = shift_imm;
+        } else {
+          heap_access_shift_position_ = kNoHeapAccessShift;
         }
+
         if (!(a->IsA(AsmType::Intish()) && b->IsA(AsmType::Intish()))) {
           FAILn("Expected intish for operator >>.");
         }
@@ -1891,7 +1887,6 @@ AsmType* AsmJsParser::ShiftExpression() {
 #define HANDLE_CASE(op, opcode, name, result)                        \
   case TOK(op): {                                                    \
     EXPECT_TOKENn(TOK(op));                                          \
-    heap_access_shift_position_ = kNoHeapAccessShift;                \
     AsmType* b = nullptr;                                            \
     RECURSEn(b = AdditiveExpression());                              \
     if (!(a->IsA(AsmType::Intish()) && b->IsA(AsmType::Intish()))) { \
@@ -1899,6 +1894,8 @@ AsmType* AsmJsParser::ShiftExpression() {
     }                                                                \
     current_function_builder_->Emit(kExpr##opcode);                  \
     a = AsmType::result();                                           \
+    /* Must happen after the RECURSE call to unset its state! */     \
+    heap_access_shift_position_ = kNoHeapAccessShift;                \
     continue;                                                        \
   }
         HANDLE_CASE(SHL, I32Shl, "<<", Signed);
@@ -2240,7 +2237,7 @@ AsmType* AsmJsParser::ValidateCall() {
     function_type->AsFunctionType()->AddArgument(t);
   }
   FunctionSig* sig = ConvertSignature(return_type, param_types);
-  uint32_t signature_index = module_builder_->AddSignature(sig, true);
+  ModuleTypeIndex signature_index = module_builder_->AddSignature(sig, true);
 
   // Emit actual function invocation depending on the kind. At this point we
   // also determined the complete function type and can perform checking against

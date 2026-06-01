@@ -1,11 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlvme_p.h"
 
 #include <private/qmetaobjectbuilder_p.h>
 #include "qqmlengine.h"
-#include <private/qfinitestack_p.h>
 #include <QtQml/private/qqmlcomponent_p.h>
 
 #include <QStack>
@@ -52,10 +52,10 @@ void QQmlVMEGuard::guard(QQmlObjectCreator *creator)
 {
     clear();
 
-    QFiniteStack<QQmlGuard<QObject> > &objects = creator->allCreatedObjects();
-    m_objectCount = objects.count();
+    std::vector<QQmlGuard<QObject>> &objects = creator->allCreatedObjects();
+    m_objectCount = objects.size();
     m_objects = new QQmlGuard<QObject>[m_objectCount];
-    for (int ii = 0; ii < m_objectCount; ++ii)
+    for (size_t ii = 0; ii < m_objectCount; ++ii)
         m_objects[ii] = objects[ii];
 
     m_contextCount = 1;
@@ -76,7 +76,7 @@ void QQmlVMEGuard::clear()
 
 bool QQmlVMEGuard::isOK() const
 {
-    for (int ii = 0; ii < m_objectCount; ++ii)
+    for (size_t ii = 0; ii < m_objectCount; ++ii)
         if (m_objects[ii].isNull())
             return false;
 

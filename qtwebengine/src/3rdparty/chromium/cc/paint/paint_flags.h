@@ -77,6 +77,13 @@ class CC_PAINT_EXPORT CorePaintFlags {
     kHigh,
     kLast = kHigh,
   };
+
+  enum class ScalingOperation {
+    kDefault,  // legacy behavior
+    kUnknown,
+    kUpscale  // strict upscale (scaling up both horizontally and vertically)
+  };
+
   ALWAYS_INLINE void setFilterQuality(FilterQuality quality) {
     bitfields_.filter_quality_ = static_cast<uint32_t>(quality);
   }
@@ -92,7 +99,9 @@ class CC_PAINT_EXPORT CorePaintFlags {
   // Represents a weighted arithmetic mean of "standard", "constrained-high" and
   // "high" in log-luminance space (which is equivalent to a geometric mean in
   // linear luminance).
-  struct DynamicRangeLimitMixture {
+  struct CC_PAINT_EXPORT DynamicRangeLimitMixture {
+    // The default constructor is equivalent to DynamicRangeLimit::kHigh.
+    DynamicRangeLimitMixture() = default;
     explicit DynamicRangeLimitMixture(DynamicRangeLimit limit) {
       switch (limit) {
         case DynamicRangeLimit::kStandard:
@@ -110,6 +119,7 @@ class CC_PAINT_EXPORT CorePaintFlags {
           constrained_high_mix(constrained_high_mix) {}
     friend bool operator==(const DynamicRangeLimitMixture&,
                            const DynamicRangeLimitMixture&) = default;
+    float ComputeHdrHeadroom(float target_hdr_headroom) const;
     float standard_mix = 0.f;
     float constrained_high_mix = 0.f;
     // The weight for "high" is implicit and calculated as "one minus the
@@ -276,6 +286,9 @@ class CC_PAINT_EXPORT PaintFlags final : public CorePaintFlags {
 
   static SkSamplingOptions FilterQualityToSkSamplingOptions(
       FilterQuality filter_quality);
+  static SkSamplingOptions FilterQualityToSkSamplingOptions(
+      FilterQuality filter_quality,
+      ScalingOperation scaling_op);
 
   bool EqualsForTesting(const PaintFlags& other) const;
 

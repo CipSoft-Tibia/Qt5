@@ -251,7 +251,7 @@ class SharedDictionaryManagerOnDiskTest : public ::testing::Test {
 
   void ManipulateDatabase(const std::vector<std::string>& queries) {
     std::unique_ptr<sql::Database> db =
-        std::make_unique<sql::Database>(sql::DatabaseOptions{});
+        std::make_unique<sql::Database>(sql::test::kTestTag);
     ASSERT_TRUE(db->Open(database_path_));
 
     sql::MetaTable meta_table;
@@ -310,7 +310,7 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ReusingRefCountedSharedDictionary) {
   // `dict2` shares the same RefCountedSharedDictionary with `dict1`. So
   // ReadAll() must synchronously return OK.
   EXPECT_EQ(net::OK, dict2->ReadAll(base::BindLambdaForTesting(
-                         [&](int rv) { NOTREACHED_IN_MIGRATION(); })));
+                         [&](int rv) { NOTREACHED(); })));
   // `dict2` shares the same IOBuffer with `dict1`.
   EXPECT_EQ(dict1->data(), dict2->data());
   EXPECT_EQ(dict1->size(), dict2->size());

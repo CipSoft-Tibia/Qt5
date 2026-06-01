@@ -1,10 +1,11 @@
 Name: CrossBench multi-purpose benchark runner
 Short Name: crossbench
 URL: https://chromium.googlesource.com/crossbench
-Version: 0
+Version: N/A
+Revision: DEPS
 License: BSD
 License File: LICENSE
-Security Critical: not
+Security Critical: No
 Shipped: no
 
 Description:

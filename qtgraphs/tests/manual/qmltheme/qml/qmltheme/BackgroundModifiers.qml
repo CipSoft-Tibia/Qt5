@@ -20,7 +20,7 @@ ColumnLayout {
     Slider {
         visible: testgridChange.checked
         from: 0.0
-        to: 1.0
+        to: 10.0
         value: customTheme.grid.mainWidth
         onValueChanged: {
             if (testgridChange.checked) {

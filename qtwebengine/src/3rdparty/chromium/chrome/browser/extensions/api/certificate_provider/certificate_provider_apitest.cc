@@ -89,10 +89,6 @@
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_observer.h"
 
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-#include "chrome/browser/lacros/cert/cert_db_initializer_factory.h"
-#endif
-
 using testing::Return;
 using testing::_;
 
@@ -195,7 +191,7 @@ class JsFailureObserver : public extensions::TestApiObserver {
 
 class CertificateProviderApiTest : public extensions::ExtensionApiTest {
  public:
-  CertificateProviderApiTest() {}
+  CertificateProviderApiTest() = default;
 
   void SetUpInProcessBrowserTestFixture() override {
     provider_.SetDefaultReturns(
@@ -321,15 +317,6 @@ class CertificateProviderApiTest : public extensions::ExtensionApiTest {
 class CertificateProviderApiMockedExtensionTest
     : public CertificateProviderApiTest {
  public:
-  void SetUpInProcessBrowserTestFixture() override {
-#if BUILDFLAG(IS_CHROMEOS_LACROS)  // Needed for ClientCertStoreLacros
-    CertDbInitializerFactory::GetInstance()
-        ->SetCreateWithBrowserContextForTesting(
-            /*should_create=*/true);
-#endif
-    CertificateProviderApiTest::SetUpInProcessBrowserTestFixture();
-  }
-
   void SetUpOnMainThread() override {
     CertificateProviderApiTest::SetUpOnMainThread();
 
@@ -376,7 +363,7 @@ class CertificateProviderApiMockedExtensionTest
   scoped_refptr<net::X509Certificate> GetCertificate() const {
     std::string raw_certificate = GetCertificateData();
     return net::X509Certificate::CreateFromBytes(
-        base::as_bytes(base::make_span(raw_certificate)));
+        base::as_byte_span(raw_certificate));
   }
 
   // Tests the api by navigating to a webpage that requests to perform a
@@ -429,7 +416,7 @@ class CertificateProviderApiMockedExtensionTest
     std::string key_pk8 = GetKeyPk8();
     std::unique_ptr<crypto::RSAPrivateKey> key(
         crypto::RSAPrivateKey::CreateFromPrivateKeyInfo(
-            base::as_bytes(base::make_span(key_pk8))));
+            base::as_byte_span(key_pk8)));
     ASSERT_TRUE(key);
 
     // Sign using the private key.

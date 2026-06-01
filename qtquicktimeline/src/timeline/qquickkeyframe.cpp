@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qquickkeyframe_p.h"
 
@@ -69,7 +70,8 @@ void QQuickKeyframeGroupPrivate::setupKeyframes()
     });
 }
 
-// time, easingType, data
+// a valid frame : time, easingType, data
+// returns total size(data + 2) if valid, -1 otherwise
 static int validFrameSize(QMetaType::Type type)
 {
     switch (type) {
@@ -273,8 +275,12 @@ bool QQuickKeyframeGroupPrivate::loadKeyframes(bool fromBinary)
     // Start keyframes array
     QCborArray kfArray = kfSrcCborArray.at(3).toArray();
     const auto arraySize = kfArray.size();
+    if (arraySize % frameSize != 0)
+        return error(QStringLiteral("invalid keyframe array"));
+
     bool validKeyframeData = true;
-    for (qsizetype i = 0; i < arraySize - frameSize; i += frameSize) {
+    for (qsizetype i = 0; i < arraySize; i += frameSize) {
+        // An array element should be ( time, easingType, keyframeData )
         auto keyframe = std::make_unique<QQuickKeyframe>(q);
 
         keyframe->setFrame(kfArray.at(i).toDouble());

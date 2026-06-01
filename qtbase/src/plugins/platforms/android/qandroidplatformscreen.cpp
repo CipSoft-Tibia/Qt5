@@ -1,6 +1,7 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QDebug>
 #include <QTime>
@@ -12,7 +13,6 @@
 #include "qandroidplatformwindow.h"
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
-#include "androiddeadlockprotector.h"
 
 #include <android/bitmap.h>
 #include <android/native_window_jni.h>
@@ -63,10 +63,6 @@ Q_DECLARE_JNI_CLASS(DisplayMode, "android/view/Display$Mode")
 QAndroidPlatformScreen::QAndroidPlatformScreen(const QJniObject &displayObject)
     : QObject(), QPlatformScreen()
 {
-    m_availableGeometry = QAndroidPlatformIntegration::m_defaultAvailableGeometry;
-    m_size = QAndroidPlatformIntegration::m_defaultScreenSize;
-    m_physicalSize = QAndroidPlatformIntegration::m_defaultPhysicalSize;
-
     // Raster only apps should set QT_ANDROID_RASTER_IMAGE_DEPTH to 16
     // is way much faster than 32
     if (qEnvironmentVariableIntValue("QT_ANDROID_RASTER_IMAGE_DEPTH") == 16) {
@@ -86,26 +82,19 @@ QAndroidPlatformScreen::QAndroidPlatformScreen(const QJniObject &displayObject)
     m_name = displayObject.callObjectMethod<jstring>("getName").toString();
     m_refreshRate = displayObject.callMethod<jfloat>("getRefreshRate");
     m_displayId = displayObject.callMethod<jint>("getDisplayId");
+    m_size = sizeForDisplayId(m_displayId);
+    m_availableGeometry = defaultAvailableGeometry();
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    const auto displayContext = context.callMethod<QtJniTypes::Context>("createDisplayContext",
-                                                displayObject.object<QtJniTypes::Display>());
-
-    const auto sizeObj = QtJniTypes::QtDisplayManager::callStaticMethod<QtJniTypes::Size>(
-                                    "getDisplaySize", displayContext,
-                                    displayObject.object<QtJniTypes::Display>());
-    m_size = QSize(sizeObj.callMethod<int>("getWidth"), sizeObj.callMethod<int>("getHeight"));
-
-    const auto resources = displayContext.callMethod<QtJniTypes::Resources>("getResources");
+    const auto context = QNativeInterface::QAndroidApplication::context();
+    const auto resources = context.callMethod<QtJniTypes::Resources>("getResources");
     const auto metrics = resources.callMethod<QtJniTypes::DisplayMetrics>("getDisplayMetrics");
-    const float xdpi = metrics.getField<float>("xdpi");
-    const float ydpi = metrics.getField<float>("ydpi");
+    m_xdpi = QtJniTypes::QtDisplayManager::callStaticMethod<jfloat>("getXDpi", metrics);
+    m_ydpi = QtJniTypes::QtDisplayManager::callStaticMethod<jfloat>("getYDpi", metrics);
 
     // Potentially densityDpi could be used instead of xpdi/ydpi to do the calculation,
     // but the results are not consistent with devices specs.
     // (https://issuetracker.google.com/issues/194120500)
-    m_physicalSize.setWidth(qRound(m_size.width() / xdpi * 25.4));
-    m_physicalSize.setHeight(qRound(m_size.height() / ydpi * 25.4));
+    setPhysicalSizeFromPixels(m_size);
 
     if (QNativeInterface::QAndroidApplication::sdkVersion() >= 23) {
         const QJniObject currentMode = displayObject.callObjectMethod<QtJniTypes::DisplayMode>("getMode");
@@ -130,6 +119,19 @@ QAndroidPlatformScreen::QAndroidPlatformScreen(const QJniObject &displayObject)
 
 QAndroidPlatformScreen::~QAndroidPlatformScreen()
 {
+}
+
+QSize QAndroidPlatformScreen::sizeForDisplayId(int displayId)
+{
+    using namespace QtJniTypes;
+    const auto context = QNativeInterface::QAndroidApplication::context();
+    const auto display = QtDisplayManager::callStaticMethod<Display>(
+            "getDisplay", context, displayId);
+    const auto sizeObj = QtDisplayManager::callStaticMethod<Size>(
+                            "getDisplaySize", context, display);
+
+    return QSize(sizeObj.callMethod<int>("getWidth"), sizeObj.callMethod<int>("getHeight"));
+
 }
 
 QWindow *QAndroidPlatformScreen::topVisibleWindow() const
@@ -219,28 +221,18 @@ void QAndroidPlatformScreen::setPhysicalSize(const QSize &size)
     m_physicalSize = size;
 }
 
+void QAndroidPlatformScreen::setPhysicalSizeFromPixels(const QSize &size)
+{
+    m_physicalSize = QSize(
+        qRound(double(size.width()) / m_xdpi * 25.4),
+        qRound(double(size.height()) / m_ydpi * 25.4));
+}
+
 void QAndroidPlatformScreen::setSize(const QSize &size)
 {
     m_size = size;
-    QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(), availableGeometry());
-}
-
-void QAndroidPlatformScreen::setSizeParameters(const QSize &physicalSize, const QSize &size,
-                                               const QRect &availableGeometry)
-{
-    // The goal of this method is to set all geometry-related parameters
-    // at the same time and generate only one screen geometry change event.
-    m_physicalSize = physicalSize;
-    m_size = size;
-    // If available geometry has changed, the event will be handled in
-    // setAvailableGeometry. Otherwise we need to explicitly handle it to
-    // retain the behavior, because setSize() does the handling unconditionally.
-    if (m_availableGeometry != availableGeometry) {
-        setAvailableGeometry(availableGeometry);
-    } else {
-        QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(),
-                                                           this->availableGeometry());
-    }
+    QWindowSystemInterface::handleScreenGeometryChange(
+        QPlatformScreen::screen(), geometry(), availableGeometry());
 }
 
 int QAndroidPlatformScreen::displayId() const
@@ -269,6 +261,7 @@ void QAndroidPlatformScreen::setAvailableGeometry(const QRect &rect)
     QRect oldGeometry = m_availableGeometry;
 
     m_availableGeometry = rect;
+    m_size = sizeForDisplayId(m_displayId);
     QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(), availableGeometry());
     resizeMaximizedWindows();
 
@@ -299,7 +292,7 @@ void QAndroidPlatformScreen::topVisibleWindowChanged()
     if (w && w->handle()) {
         QAndroidPlatformWindow *platformWindow = static_cast<QAndroidPlatformWindow *>(w->handle());
         if (platformWindow) {
-            platformWindow->updateSystemUiVisibility();
+            platformWindow->updateSystemUiVisibility(w->windowStates(), w->flags());
             platformWindow->updateFocusedEditText();
         }
     }
@@ -326,5 +319,11 @@ Qt::ScreenOrientation QAndroidPlatformScreen::orientation() const
 Qt::ScreenOrientation QAndroidPlatformScreen::nativeOrientation() const
 {
     return QAndroidPlatformIntegration::m_nativeOrientation;
+}
+
+QRect &QAndroidPlatformScreen::defaultAvailableGeometry()
+{
+    static QRect defaultAvailableGeometry;
+    return defaultAvailableGeometry;
 }
 QT_END_NAMESPACE

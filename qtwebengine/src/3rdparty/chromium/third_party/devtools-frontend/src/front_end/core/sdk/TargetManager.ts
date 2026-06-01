@@ -289,7 +289,10 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   }
 
   rootTarget(): Target|null {
-    return this.#targetsInternal.size ? this.#targetsInternal.values().next().value : null;
+    if (this.#targetsInternal.size === 0) {
+      return null;
+    }
+    return this.#targetsInternal.values().next().value ?? null;
   }
 
   primaryPageTarget(): Target|null {
@@ -426,12 +429,12 @@ export const enum Events {
   SUSPEND_STATE_CHANGED = 'SuspendStateChanged',
 }
 
-export type EventTypes = {
-  [Events.AVAILABLE_TARGETS_CHANGED]: Protocol.Target.TargetInfo[],
-  [Events.INSPECTED_URL_CHANGED]: Target,
-  [Events.NAME_CHANGED]: Target,
-  [Events.SUSPEND_STATE_CHANGED]: void,
-};
+export interface EventTypes {
+  [Events.AVAILABLE_TARGETS_CHANGED]: Protocol.Target.TargetInfo[];
+  [Events.INSPECTED_URL_CHANGED]: Target;
+  [Events.NAME_CHANGED]: Target;
+  [Events.SUSPEND_STATE_CHANGED]: void;
+}
 
 export class Observer {
   targetAdded(_target: Target): void {

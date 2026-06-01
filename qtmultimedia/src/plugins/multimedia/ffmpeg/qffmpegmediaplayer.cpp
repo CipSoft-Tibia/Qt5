@@ -6,10 +6,10 @@
 #include "qvideosink.h"
 #include "qaudiooutput.h"
 #include "qaudiobufferoutput.h"
-
 #include "qffmpegplaybackengine_p.h"
 #include <qiodevice.h>
 #include <qvideosink.h>
+#include <QtMultimedia/qplaybackoptions.h>
 #include <qtimer.h>
 #include <QtConcurrent/QtConcurrent>
 
@@ -123,7 +123,7 @@ void QFFmpegMediaPlayer::mediaStatusChanged(QMediaPlayer::MediaStatus status)
             : status == QMediaPlayer::BufferedMedia                       ? 1.f
                                                                           : 0.f;
 
-    if (!qFuzzyCompare(newBufferProgress, m_bufferProgress)) {
+    if (!QtPrivate::fuzzyCompare(newBufferProgress, m_bufferProgress)) {
         m_bufferProgress = newBufferProgress;
         bufferProgressChanged(newBufferProgress);
     }
@@ -145,7 +145,7 @@ void QFFmpegMediaPlayer::setPlaybackRate(qreal rate)
 {
     const float effectiveRate = std::max(static_cast<float>(rate), 0.0f);
 
-    if (qFuzzyCompare(m_playbackRate, effectiveRate))
+    if (QtPrivate::fuzzyCompare(m_playbackRate, effectiveRate))
         return;
 
     m_playbackRate = effectiveRate;
@@ -203,7 +203,7 @@ void QFFmpegMediaPlayer::setMedia(const QUrl &media, QIODevice *stream)
     m_loadMedia = QtConcurrent::run([this, media, stream, cancelToken = m_cancelToken] {
         // On worker thread
         const MediaDataHolder::Maybe mediaHolder =
-                MediaDataHolder::create(media, stream, cancelToken);
+                MediaDataHolder::create(media, stream, playbackOptions(), cancelToken);
 
         // Transition back to calling thread using invokeMethod because
         // QFuture continuations back on calling thread may deadlock (QTBUG-117918)
@@ -235,7 +235,7 @@ void QFFmpegMediaPlayer::setMediaAsync(QFFmpeg::MediaDataHolder::Maybe mediaData
         return;
     }
 
-    m_playbackEngine = std::make_unique<PlaybackEngine>();
+    m_playbackEngine = std::make_unique<PlaybackEngine>(playbackOptions());
 
     connect(m_playbackEngine.get(), &PlaybackEngine::endOfStream, this,
             &QFFmpegMediaPlayer::endOfStream);
@@ -254,6 +254,7 @@ void QFFmpegMediaPlayer::setMediaAsync(QFFmpeg::MediaDataHolder::Maybe mediaData
 
     m_playbackEngine->setLoops(loops());
     m_playbackEngine->setPlaybackRate(m_playbackRate);
+    m_playbackEngine->setPitchCompensation(m_pitchCompensation);
 
     durationChanged(duration());
     tracksChanged();
@@ -405,6 +406,28 @@ void QFFmpegMediaPlayer::setLoops(int loops)
         m_playbackEngine->setLoops(loops);
 
     QPlatformMediaPlayer::setLoops(loops);
+}
+
+void QFFmpegMediaPlayer::setPitchCompensation(bool enabled)
+{
+    if (enabled == m_pitchCompensation)
+        return;
+
+    m_pitchCompensation = enabled;
+    if (m_playbackEngine)
+        m_playbackEngine->setPitchCompensation(enabled);
+    QPlatformMediaPlayer::pitchCompensationChanged(enabled);
+}
+
+bool QFFmpegMediaPlayer::pitchCompensation() const
+{
+    return m_pitchCompensation;
+}
+
+QPlatformMediaPlayer::PitchCompensationAvailability
+QFFmpegMediaPlayer::pitchCompensationAvailability() const
+{
+    return PitchCompensationAvailability::Available;
 }
 
 QT_END_NAMESPACE

@@ -201,9 +201,9 @@ void BarGraph::initialize()
     auto *modeGroup = new QButtonGroup(m_container);
     auto *modeWeather = new QRadioButton(u"Temperature Data"_s, m_container);
     modeWeather->setChecked(true);
-    auto *modeCustomProxy = new QRadioButton(u"Custom Proxy Data"_s, m_container);
+    auto *modelProxy = new QRadioButton(u"Model Proxy Data"_s, m_container);
     modeGroup->addButton(modeWeather);
-    modeGroup->addButton(modeCustomProxy);
+    modeGroup->addButton(modelProxy);
 
     //! [adding the slider]
     vLayout->addWidget(new QLabel(u"Rotate horizontally"_s));
@@ -238,7 +238,7 @@ void BarGraph::initialize()
     vLayout->addWidget(new QLabel(u"Axis label rotation"_s));
     vLayout->addWidget(axisLabelRotationSlider, 0, Qt::AlignTop);
     vLayout->addWidget(modeWeather, 0, Qt::AlignTop);
-    vLayout->addWidget(modeCustomProxy, 1, Qt::AlignTop);
+    vLayout->addWidget(modelProxy, 1, Qt::AlignTop);
 
     // Raise the graph to the top of the widget stack, to hide UI if resized smaller
     m_quickWidget->raise();
@@ -365,10 +365,10 @@ void BarGraph::initialize()
                      &QRadioButton::toggled,
                      m_modifier,
                      &GraphModifier::setDataModeToWeather);
-    QObject::connect(modeCustomProxy,
+    QObject::connect(modelProxy,
                      &QRadioButton::toggled,
                      m_modifier,
-                     &GraphModifier::setDataModeToCustom);
+                     &GraphModifier::setDataModeToModel);
     QObject::connect(modeWeather, &QRadioButton::toggled, seriesCheckBox, &QCheckBox::setEnabled);
     QObject::connect(modeWeather, &QRadioButton::toggled, rangeList, &QComboBox::setEnabled);
     QObject::connect(modeWeather,

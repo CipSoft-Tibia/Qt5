@@ -20,6 +20,7 @@ set(qml_files
     "Frame.qml"
     "GroupBox.qml"
     "HorizontalHeaderView.qml"
+    "HorizontalHeaderViewDelegate.qml"
     "ItemDelegate.qml"
     "Label.qml"
     "Menu.qml"
@@ -37,6 +38,7 @@ set(qml_files
     "ScrollView.qml"
     "ScrollBar.qml"
     "ScrollIndicator.qml"
+    "SearchField.qml"
     "SelectionRectangle.qml"
     "Slider.qml"
     "SpinBox.qml"
@@ -56,6 +58,7 @@ set(qml_files
     "ToolTip.qml"
     "Tumbler.qml"
     "VerticalHeaderView.qml"
+    "VerticalHeaderViewDelegate.qml"
 )
 set_source_files_properties(DelayButton.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.2;6.0"
@@ -68,6 +71,9 @@ set_source_files_properties(DialogButtonBox.qml PROPERTIES
 )
 set_source_files_properties(HorizontalHeaderView.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.15;6.0"
+)
+set_source_files_properties(HorizontalHeaderViewDelegate.qml PROPERTIES
+    QT_QML_SOURCE_VERSIONS "6.10"
 )
 set_source_files_properties(MenuSeparator.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.1;6.0"
@@ -83,6 +89,9 @@ set_source_files_properties(ToolSeparator.qml PROPERTIES
 )
 set_source_files_properties(VerticalHeaderView.qml PROPERTIES
     QT_QML_SOURCE_VERSIONS "2.15;6.0"
+)
+set_source_files_properties(VerticalHeaderViewDelegate.qml PROPERTIES
+    QT_QML_SOURCE_VERSIONS "6.10"
 )
 
 add_subdirectory(impl)
@@ -114,6 +123,7 @@ qt_internal_add_qml_module(QuickControls2Imagine
         Qt::QuickControls2Private
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
+        Qt::QuickControls2BasicPrivate
 )
 
 target_sources(qtquickcontrols2imaginestyleplugin

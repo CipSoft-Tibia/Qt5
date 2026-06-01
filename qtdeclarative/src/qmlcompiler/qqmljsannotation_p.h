@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSANNOTATION_P_H
 #define QQMLJSANNOTATION_P_H
@@ -21,6 +22,8 @@
 
 QT_BEGIN_NAMESPACE
 
+QT_ENABLE_P0846_SEMANTICS_FOR(get_if)
+
 struct QQQmlJSDeprecation
 {
     QString reason;
@@ -36,38 +39,16 @@ struct QQmlJSAnnotation
     bool isDeprecation() const;
     QQQmlJSDeprecation deprecation() const;
 
-    friend bool operator==(const QQmlJSAnnotation &a, const QQmlJSAnnotation &b) {
-        return a.name == b.name &&
-               a.bindings == b.bindings;
-    }
-
-    friend bool operator!=(const QQmlJSAnnotation &a, const QQmlJSAnnotation &b) {
+    friend bool operator==(const QQmlJSAnnotation &a, const QQmlJSAnnotation &b) noexcept;
+    friend bool operator!=(const QQmlJSAnnotation &a, const QQmlJSAnnotation &b) noexcept
+    {
         return !(a == b);
     }
 
-    friend size_t qHash(const QQmlJSAnnotation &annotation, size_t seed = 0)
+    friend size_t qHash(const QQmlJSAnnotation &annotation, size_t seed) noexcept;
+    friend size_t qHash(const QQmlJSAnnotation &annotation) noexcept
     {
-        QtPrivate::QHashCombine combine;
-        seed = combine(seed, annotation.name);
-
-        for (auto it = annotation.bindings.constBegin(); it != annotation.bindings.constEnd(); ++it) {
-            size_t h = combine(seed, it.key());
-            // use + to keep the result independent of the ordering of the keys
-
-            const auto &var = it.value();
-
-            if (var.index() == std::variant_npos)
-                continue;
-
-            if (std::holds_alternative<double>(var))
-                seed += combine(h, std::get<double>(var));
-            else if (std::holds_alternative<QString>(var))
-                seed += combine(h, std::get<QString>(var));
-            else
-                Q_UNREACHABLE();
-        }
-
-        return seed;
+        return qHash(annotation, size_t{0});
     }
 };
 

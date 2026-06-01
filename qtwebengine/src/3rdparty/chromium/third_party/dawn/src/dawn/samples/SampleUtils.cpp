@@ -43,6 +43,7 @@
 #include "dawn/utils/CommandLineParser.h"
 #include "dawn/utils/SystemUtils.h"
 #include "dawn/utils/WGPUHelpers.h"
+#include "dawn/webgpu_cpp_print.h"
 
 #ifndef __EMSCRIPTEN__
 #include "GLFW/glfw3.h"
@@ -125,11 +126,35 @@ int SampleBase::Run(unsigned int delay) {
         angleDefaultPlatform.Set("ANGLE_DEFAULT_PLATFORM", "swiftshader");
     }
 
-    // Setup base adapter options.
+    // Create the toggles descriptor if not using emscripten.
+    wgpu::ChainedStruct* togglesChain = nullptr;
+#ifndef __EMSCRIPTEN__
+    std::vector<const char*> enableToggleNames;
+    std::vector<const char*> disabledToggleNames;
+    for (const std::string& toggle : enableToggles) {
+        enableToggleNames.push_back(toggle.c_str());
+    }
+    for (const std::string& toggle : disableToggles) {
+        disabledToggleNames.push_back(toggle.c_str());
+    }
+
+    wgpu::DawnTogglesDescriptor toggles = {};
+    toggles.enabledToggles = enableToggleNames.data();
+    toggles.enabledToggleCount = enableToggleNames.size();
+    toggles.disabledToggles = disabledToggleNames.data();
+    toggles.disabledToggleCount = disabledToggleNames.size();
+
+    togglesChain = &toggles;
+#endif  // __EMSCRIPTEN__
+
+    // Setup base adapter options with toggles.
     wgpu::RequestAdapterOptions adapterOptions = {};
+    adapterOptions.nextInChain = togglesChain;
     adapterOptions.backendType = backendType;
     if (backendType != wgpu::BackendType::Undefined) {
-        adapterOptions.compatibilityMode = dawn::utils::BackendRequiresCompat(backendType);
+        adapterOptions.featureLevel = dawn::utils::BackendRequiresCompat(backendType)
+                                          ? wgpu::FeatureLevel::Compatibility
+                                          : wgpu::FeatureLevel::Core;
     }
 
     switch (adapterType) {
@@ -150,24 +175,9 @@ int SampleBase::Run(unsigned int delay) {
     dawnProcSetProcs(&dawn::native::GetProcs());
 
     // Create the instance with the toggles
-    std::vector<const char*> enableToggleNames;
-    std::vector<const char*> disabledToggleNames;
-    for (const std::string& toggle : enableToggles) {
-        enableToggleNames.push_back(toggle.c_str());
-    }
-
-    for (const std::string& toggle : disableToggles) {
-        disabledToggleNames.push_back(toggle.c_str());
-    }
-    wgpu::DawnTogglesDescriptor toggles = {};
-    toggles.enabledToggles = enableToggleNames.data();
-    toggles.enabledToggleCount = enableToggleNames.size();
-    toggles.disabledToggles = disabledToggleNames.data();
-    toggles.disabledToggleCount = disabledToggleNames.size();
-
     wgpu::InstanceDescriptor instanceDescriptor = {};
-    instanceDescriptor.nextInChain = &toggles;
-    instanceDescriptor.features.timedWaitAnyEnable = true;
+    instanceDescriptor.nextInChain = togglesChain;
+    instanceDescriptor.capabilities.timedWaitAnyEnable = true;
     sample->instance = wgpu::CreateInstance(&instanceDescriptor);
 #else
     // Create the instance
@@ -178,9 +188,9 @@ int SampleBase::Run(unsigned int delay) {
     sample->instance.WaitAny(
         sample->instance.RequestAdapter(
             &adapterOptions, wgpu::CallbackMode::WaitAnyOnly,
-            [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, const char* message) {
+            [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message) {
                 if (status != wgpu::RequestAdapterStatus::Success) {
-                    dawn::ErrorLog() << "Failed to get an adapter:" << message;
+                    dawn::ErrorLog() << "Failed to get an adapter: " << message;
                     return;
                 }
                 sample->adapter = std::move(adapter);
@@ -193,11 +203,12 @@ int SampleBase::Run(unsigned int delay) {
     sample->adapter.GetInfo(&info);
     dawn::InfoLog() << "Using adapter \"" << info.device << "\"";
 
-    // Set device callbacks
+    // Create device descriptor with callbacks and toggles
     wgpu::DeviceDescriptor deviceDesc = {};
+    deviceDesc.nextInChain = togglesChain;
     deviceDesc.SetDeviceLostCallback(
         wgpu::CallbackMode::AllowSpontaneous,
-        [](const wgpu::Device&, wgpu::DeviceLostReason reason, const char* message) {
+        [](const wgpu::Device&, wgpu::DeviceLostReason reason, wgpu::StringView message) {
             const char* reasonName = "";
             switch (reason) {
                 case wgpu::DeviceLostReason::Unknown:
@@ -218,7 +229,7 @@ int SampleBase::Run(unsigned int delay) {
             dawn::ErrorLog() << "Device lost because of " << reasonName << ": " << message;
         });
     deviceDesc.SetUncapturedErrorCallback(
-        [](const wgpu::Device&, wgpu::ErrorType type, const char* message) {
+        [](const wgpu::Device&, wgpu::ErrorType type, wgpu::StringView message) {
             const char* errorTypeName = "";
             switch (type) {
                 case wgpu::ErrorType::Validation:
@@ -227,11 +238,11 @@ int SampleBase::Run(unsigned int delay) {
                 case wgpu::ErrorType::OutOfMemory:
                     errorTypeName = "Out of memory";
                     break;
+                case wgpu::ErrorType::Internal:
+                    errorTypeName = "Internal";
+                    break;
                 case wgpu::ErrorType::Unknown:
                     errorTypeName = "Unknown";
-                    break;
-                case wgpu::ErrorType::DeviceLost:
-                    errorTypeName = "Device lost";
                     break;
                 default:
                     DAWN_UNREACHABLE();
@@ -243,9 +254,9 @@ int SampleBase::Run(unsigned int delay) {
     sample->instance.WaitAny(
         sample->adapter.RequestDevice(
             &deviceDesc, wgpu::CallbackMode::WaitAnyOnly,
-            [](wgpu::RequestDeviceStatus status, wgpu::Device device, const char* message) {
+            [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message) {
                 if (status != wgpu::RequestDeviceStatus::Success) {
-                    dawn::ErrorLog() << "Failed to get an device:" << message;
+                    dawn::ErrorLog() << "Failed to get an device: " << message;
                     return;
                 }
                 sample->device = std::move(device);
@@ -302,7 +313,7 @@ bool SampleBase::Setup() {
     surface = wgpu::glfw::CreateSurfaceForWindow(instance, window);
 #else
     // Create the surface.
-    wgpu::SurfaceDescriptorFromCanvasHTMLSelector canvasDesc{};
+    wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
     canvasDesc.selector = "#canvas";
 
     wgpu::SurfaceDescriptor surfaceDesc = {};

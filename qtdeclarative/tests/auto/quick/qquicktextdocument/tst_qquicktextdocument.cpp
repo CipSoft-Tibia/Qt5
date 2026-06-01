@@ -34,7 +34,7 @@ public:
     tst_qquicktextdocument();
 
 private:
-    QPair<int, int> fragmentsAndItalics(const QTextDocument *doc);
+    std::pair<int, int> fragmentsAndItalics(const QTextDocument *doc);
     bool isMainFontFixed();
 
 private slots:
@@ -97,7 +97,7 @@ tst_qquicktextdocument::tst_qquicktextdocument()
     Returns {fragmentCount, italicFragmentIndex}. If no italic fragment is found,
     italicFragmentIndex is -1.
 */
-QPair<int, int> tst_qquicktextdocument::fragmentsAndItalics(const QTextDocument *doc)
+std::pair<int, int> tst_qquicktextdocument::fragmentsAndItalics(const QTextDocument *doc)
 {
     int fragmentCount = 0;
     int italicFragment = -1;

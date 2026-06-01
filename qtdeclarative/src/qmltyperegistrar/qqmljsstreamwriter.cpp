@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsstreamwriter_p.h"
 #include "qanystringviewutils_p.h"
@@ -192,7 +193,7 @@ void QQmlJSStreamWriter::write(QByteArrayView data)
 }
 
 void QQmlJSStreamWriter::writeEnumObjectLiteralBinding(
-    QByteArrayView name, const QList<QPair<QAnyStringView, int> > &keyValue)
+    QByteArrayView name, const QList<std::pair<QAnyStringView, int> > &keyValue)
 {
     flushPotentialLinesWithNewlines();
     writeIndent();

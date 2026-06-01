@@ -97,6 +97,9 @@ void QSGSoftwareRenderContext::invalidate()
     qDeleteAll(m_glyphCaches);
     m_glyphCaches.clear();
 
+    qDeleteAll(m_staleGlyphCaches);
+    m_staleGlyphCaches.clear();
+
     m_sg->renderContextInvalidated(this);
     emit invalidated();
 }

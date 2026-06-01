@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "type_conversion.h"
 
@@ -254,7 +255,7 @@ QIcon toQIcon(const std::vector<SkBitmap> &bitmaps)
 int flagsFromModifiers(Qt::KeyboardModifiers modifiers)
 {
     int modifierFlags = ui::EF_NONE;
-#if defined(Q_OS_OSX)
+#if defined(Q_OS_MACOS)
     if (!qApp->testAttribute(Qt::AA_MacDontSwapCtrlAndMeta)) {
         if ((modifiers & Qt::ControlModifier) != 0)
             modifierFlags |= ui::EF_COMMAND_DOWN;

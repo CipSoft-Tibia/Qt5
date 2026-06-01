@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 pragma ComponentBehavior: Bound
 
@@ -40,6 +41,7 @@ T.ComboBox {
                                     : Config.controls.combobox[__currentState]) || {}
 
     readonly property Item __focusFrameTarget: control.editable ? null : control
+    readonly property bool __isHighContrast: Application.styleHints.accessibility.contrastPreference === Qt.HighContrast
 
     delegate: ItemDelegate {
         required property var model
@@ -52,10 +54,11 @@ T.ComboBox {
         hoverEnabled: control.hoverEnabled
     }
 
-    indicator: Image {
+    indicator: ColorImage {
         x: control.mirrored ? control.__config.leftPadding : control.width - width - control.__config.rightPadding
         y: (control.topPadding + (control.availableHeight - height) / 2) + (control.pressed ? 1 : 0)
         source: Qt.resolvedUrl(control.__config.indicator.filePath)
+        color: !control.__isHighContrast ? defaultColor : control.palette.buttonText
 
         Behavior on y {
             NumberAnimation{ easing.type: Easing.OutCubic; duration: 167 }
@@ -84,7 +87,7 @@ T.ComboBox {
                                                 ? Qt.rgba(control.palette.text.r, control.palette.text.g, control.palette.text.b, 0.62)
                                                 : Qt.rgba(control.palette.text.r, control.palette.text.g, control.palette.text.b, 0.7725)
 
-        color: control.down ? __pressedText : control.palette.text
+        color: !control.__isHighContrast && control.down ? __pressedText : control.palette.buttonText
         selectionColor: control.palette.highlight
         selectedTextColor: control.palette.highlightedText
         horizontalAlignment: control.__config.label_text.textHAlignment
@@ -93,19 +96,30 @@ T.ComboBox {
         readonly property Item __focusFrameControl: control
     }
 
-    background: Impl.StyleImage {
-        imageConfig: control.__config.background
-        Item {
-            visible: control.editable && ((control.down && control.popup.visible) || control.activeFocus)
-            width: parent.width
-            height: 2
-            y: parent.height - height
-            Impl.FocusStroke {
+    background: ItemGroup {
+        Impl.StyleImage {
+            visible: !control.__isHighContrast
+            imageConfig: control.__config.background
+            Item {
+                visible: control.editable && ((control.down && control.popup.visible) || control.activeFocus)
                 width: parent.width
-                height: parent.height
-                radius: control.down && control.popup.visible ? 0 : control.__config.background.bottomOffset
-                color: control.palette.accent
+                height: 2
+                y: parent.height - height
+                Impl.FocusStroke {
+                    width: parent.width
+                    height: parent.height
+                    radius: control.down && control.popup.visible ? 0 : control.__config.background.bottomOffset
+                    color: control.palette.accent
+                }
             }
+        }
+        Rectangle {
+            visible: control.__isHighContrast
+            implicitWidth: control.__config.background.width
+            implicitHeight: control.__config.background.height
+            color: control.palette.window
+            border.color: control.hovered ? control.palette.accent : control.palette.buttonText
+            radius: 4
         }
     }
 
@@ -127,18 +141,31 @@ T.ComboBox {
         y: control.editable ? control.height
                             : -0.25 * Math.max(implicitBackgroundHeight + topInset + bottomInset,
                                                 contentHeight + topPadding + bottomPadding)
-        height: Math.min(contentItem.implicitHeight + topPadding + bottomPadding, control.Window.height - topMargin - bottomMargin)
+        readonly property real __targetHeight: Math.min(contentItem.implicitHeight + topPadding + bottomPadding, control.Window.height - topMargin - bottomMargin)
+        property real __heightScale: 1
+        height: __heightScale * __targetHeight
         width: control.width
         topMargin: 8
         bottomMargin: 8
         palette: control.palette
 
         enter: Transition {
-            NumberAnimation { property: "height"; from: control.popup.height / 3; to: control.popup.height; easing.type: Easing.OutCubic; duration: 250 }
+            NumberAnimation { property: "__heightScale"; from: 0.33; to: 1; easing.type: Easing.OutCubic; duration: 250 }
         }
 
-        background: Impl.StyleImage {
-            imageConfig: control.__config.popup_background.filePath ? control.__config.popup_background : Config.controls.popup["normal"].background // fallback to regular popup
+        background: ItemGroup {
+            Impl.StyleImage {
+                visible: !control.__isHighContrast
+                imageConfig: control.__config.popup_background.filePath ? control.__config.popup_background : Config.controls.popup["normal"].background // fallback to regular popup
+            }
+            Rectangle {
+                visible: control.__isHighContrast
+                implicitWidth: Config.controls.popup["normal"].background.width
+                implicitHeight: Config.controls.popup["normal"].background.height
+                color: control.palette.window
+                border.color: control.palette.buttonText
+                radius: 4
+            }
         }
     }
 }

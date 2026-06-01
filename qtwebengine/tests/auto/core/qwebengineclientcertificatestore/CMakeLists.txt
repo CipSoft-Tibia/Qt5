@@ -11,6 +11,7 @@ qt_internal_add_test(tst_qwebengineclientcertificatestore
         Qt::WebEngineCore
         Test::HttpServer
         Test::Util
+        Qt::TestPrivate
 )
 
 set(tst_qwebengineclientcertificatestore_resource_files

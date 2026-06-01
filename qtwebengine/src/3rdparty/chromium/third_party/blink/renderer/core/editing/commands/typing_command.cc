@@ -608,7 +608,7 @@ void TypingCommand::DoApply(EditingState* editing_state) {
       return;
   }
 
-  NOTREACHED_IN_MIGRATION();
+  NOTREACHED();
 }
 
 InputEvent::InputType TypingCommand::GetInputType() const {
@@ -813,19 +813,16 @@ bool TypingCommand::MakeEditableRootEmpty(EditingState* editing_state) {
 
   // The selection is updated prior to the removal of the element
   // that makes the node empty. (see crbug.com/40876506)
-  if (RuntimeEnabledFeatures::
-          HandleSelectionChangeOnDeletingEmptyElementEnabled()) {
-    LocalFrame* const frame = GetDocument().GetFrame();
-    const SelectionInDOMTree& new_selection =
-        SelectionInDOMTree::Builder()
-            .Collapse(Position::FirstPositionInNode(*root))
-            .Build();
-    frame->Selection().SetSelection(
-        new_selection, SetSelectionOptions::Builder()
-                           .SetIsDirectional(SelectionIsDirectional())
-                           .Build());
-    SetEndingSelection(SelectionForUndoStep::From(new_selection));
-  }
+  LocalFrame* const frame = GetDocument().GetFrame();
+  const SelectionInDOMTree& new_selection =
+      SelectionInDOMTree::Builder()
+          .Collapse(Position::FirstPositionInNode(*root))
+          .Build();
+  frame->Selection().SetSelection(
+      new_selection, SetSelectionOptions::Builder()
+                         .SetIsDirectional(SelectionIsDirectional())
+                         .Build());
+  SetEndingSelection(SelectionForUndoStep::From(new_selection));
 
   RemoveAllChildrenIfPossible(root, editing_state);
   if (editing_state->IsAborted() || root->firstChild())
@@ -834,18 +831,6 @@ bool TypingCommand::MakeEditableRootEmpty(EditingState* editing_state) {
   AddBlockPlaceholderIfNeeded(root, editing_state);
   if (editing_state->IsAborted())
     return false;
-
-  // If the feature to handle selection change on deleting an empty element is
-  // not enabled, manually set the ending selection. Otherwise, the selection is
-  // already handled by the feature.
-  if (!(RuntimeEnabledFeatures::
-            HandleSelectionChangeOnDeletingEmptyElementEnabled())) {
-    const SelectionInDOMTree& selection =
-        SelectionInDOMTree::Builder()
-            .Collapse(Position::FirstPositionInNode(*root))
-            .Build();
-    SetEndingSelection(SelectionForUndoStep::From(selection));
-  }
 
   return true;
 }
@@ -902,8 +887,7 @@ void TypingCommand::DeleteKeyPressed(TextGranularity granularity,
   }
 
   if (!EndingSelection().IsCaret()) {
-    NOTREACHED_IN_MIGRATION();
-    return;
+    NOTREACHED();
   }
 
   // After breaking out of an empty mail blockquote, we still want continue
@@ -1089,8 +1073,7 @@ void TypingCommand::ForwardDeleteKeyPressed(TextGranularity granularity,
   }
 
   if (!EndingSelection().IsCaret()) {
-    NOTREACHED_IN_MIGRATION();
-    return;
+    NOTREACHED();
   }
 
   smart_delete_ = false;
@@ -1225,8 +1208,7 @@ void TypingCommand::UpdatePreservesTypingStyle(CommandType command_type) {
       preserves_typing_style_ = false;
       return;
   }
-  NOTREACHED_IN_MIGRATION();
-  preserves_typing_style_ = false;
+  NOTREACHED();
 }
 
 bool TypingCommand::IsTypingCommand() const {

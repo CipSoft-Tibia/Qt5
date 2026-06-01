@@ -8,6 +8,7 @@
 
 #include <QPainter>
 #include <QPagedPaintDevice>
+#include <QThread>
 
 namespace QtWebEngineCore {
 
@@ -27,7 +28,7 @@ void PrinterWorker::print()
     }
 
     // We will modify device settings for individual pages, but we don't own
-    // the device object. Make its settings restoreable.
+    // the device object. Make its settings restorable.
     QPageSize defaultPageSize = m_device->pageLayout().pageSize();
     QPageLayout::Orientation defaultOrientation = m_device->pageLayout().orientation();
     QMarginsF defaultMargins = m_device->pageLayout().margins();
@@ -89,6 +90,11 @@ void PrinterWorker::print()
                 m_device->newPage();
 
             for (int printedPages = 0; printedPages < pageCopies; printedPages++) {
+                // The page being printed requests interruption when it is destroyed; this lets
+                // us return early and avoid doing extra work in the background.
+                if (QThread::currentThread()->isInterruptionRequested())
+                    return finish(false);
+
                 if (printedPages > 0)
                     m_device->newPage();
 

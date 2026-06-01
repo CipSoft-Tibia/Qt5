@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/core/layout/inline/inline_items_builder.h"
 
 #include <type_traits>
@@ -423,8 +418,7 @@ bool InlineItemsBuilderTemplate<MappingBuilder>::AppendTextReusing(
           RestoreTrailingCollapsibleSpace(last_item);
           return false;
         case InlineItem::kOpaqueToCollapsing:
-          NOTREACHED_IN_MIGRATION();
-          break;
+          NOTREACHED();
       }
     } else if (last_item->EndCollapseType() == InlineItem::kCollapsed) {
       RestoreTrailingCollapsibleSpace(last_item);
@@ -533,8 +527,7 @@ template <>
 bool InlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendTextReusing(
     const InlineNodeData&,
     LayoutText*) {
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 }
 
 template <typename MappingBuilder>
@@ -577,9 +570,7 @@ void InlineItemsBuilderTemplate<MappingBuilder>::AppendText(
   const Vector<unsigned> length_map = TransformedString::CreateLengthMap(
       original_length, transformed.length(), offset_map);
   CHECK(transformed.length() == length_map.size() || length_map.size() == 0);
-  AppendText(
-      TransformedString(transformed, {length_map.data(), length_map.size()}),
-      *layout_text);
+  AppendText(TransformedString(transformed, length_map), *layout_text);
 }
 
 template <typename MappingBuilder>
@@ -1217,7 +1208,6 @@ void InlineItemsBuilderTemplate<MappingBuilder>::AppendAtomicInline(
                                                  layout_object);
   RestoreTrailingCollapsibleSpaceIfRemoved();
   Append(InlineItem::kAtomicInline, kObjectReplacementCharacter, layout_object);
-  has_ruby_ = has_ruby_ || layout_object->IsRubyColumn();
 
   // When this atomic inline is inside of an inline box, the height of the
   // inline box can be different from the height of the atomic inline. Ensure
@@ -1344,8 +1334,9 @@ void InlineItemsBuilderTemplate<MappingBuilder>::RemoveTrailingCollapsibleSpace(
 
   // Trailing spaces can be removed across non-character items.
   // Adjust their offsets if after the removed index.
-  for (item++; item != items_->data() + items_->size(); item++) {
-    item->SetOffset(item->StartOffset() - 1, item->EndOffset() - 1);
+  for (auto& i : base::span(*items_).subspan(
+           static_cast<size_t>(std::distance(items_->data(), item)) + 1)) {
+    i.SetOffset(i.StartOffset() - 1, i.EndOffset() - 1);
   }
 }
 
@@ -1384,8 +1375,9 @@ void InlineItemsBuilderTemplate<
   item->SetEndOffset(item->EndOffset() + 1);
   item->SetEndCollapseType(InlineItem::kCollapsible);
 
-  for (item++; item != items_->data() + items_->size(); item++) {
-    item->SetOffset(item->StartOffset() + 1, item->EndOffset() + 1);
+  for (auto& i : base::span(*items_).subspan(
+           static_cast<size_t>(std::distance(items_->data(), item) + 1))) {
+    i.SetOffset(i.StartOffset() + 1, i.EndOffset() + 1);
   }
 }
 

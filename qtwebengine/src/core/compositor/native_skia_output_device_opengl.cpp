@@ -13,6 +13,7 @@
 
 #if BUILDFLAG(IS_OZONE)
 #include "ozone/gl_helper.h"
+#include "ozone/gl_ozone_qt.h"
 #include "ozone/ozone_util_qt.h"
 
 #include "base/posix/eintr_wrapper.h"
@@ -39,7 +40,7 @@
 
 #include "components/viz/common/gpu/vulkan_context_provider.h"
 #include "gpu/vulkan/vulkan_device_queue.h"
-#include "third_party/skia/include/gpu/vk/GrVkTypes.h"
+#include "third_party/skia/include/gpu/ganesh/vk/GrVkTypes.h"
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #endif // BUILDFLAG(ENABLE_VULKAN)
 #endif // BUILDFLAG(IS_OZONE)
@@ -113,9 +114,15 @@ NativeSkiaOutputDeviceOpenGL::NativeSkiaOutputDeviceOpenGL(
     qCDebug(lcWebEngineCompositor, "Native Skia Output Device: OpenGL");
 
     SkColorType skColorType = kRGBA_8888_SkColorType;
-#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
-    if (OzoneUtilQt::usingGLX() && m_contextState->gr_context_type() == gpu::GrContextType::kGL)
+#if BUILDFLAG(IS_OZONE)
+    ui::NativePixmapSupportType type = ui::GLOzoneQt::getNativePixmapSupportType();
+    if (type == ui::NativePixmapSupportType::kX11Pixmap)
         skColorType = kBGRA_8888_SkColorType;
+
+    if (type == ui::NativePixmapSupportType::kDMABuf && OzoneUtilQt::usingGLX()
+        && gl::GetGLImplementation() == gl::kGLImplementationEGLGLES2) {
+        skColorType = kBGRA_8888_SkColorType;
+    }
 #endif
 
     capabilities_.sk_color_type_map[viz::SinglePlaneFormat::kRGBA_8888] = skColorType;
@@ -141,8 +148,13 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
     GrVkImageInfo vkImageInfo;
     if (!nativePixmap) {
         if (m_isNativeBufferSupported) {
-            qWarning("No native pixmap.");
+            qWarning("Failed to get native pixmap despite dma_buf support.");
             return nullptr;
+        }
+
+        if (m_contextState->gr_context_type() != gpu::GrContextType::kVulkan) {
+            // Unable to fall back to Vulkan; aborting.
+            qWarning("Failed to get native pixmap due to dma_buf acquisition failure.");
         }
 
         sk_sp<SkImage> skImage = m_frontBuffer->skImage();
@@ -393,8 +405,8 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
     qCDebug(lcWebEngineCompositor, "WGL: Importing DXGI Resource into GL Texture.");
     Q_ASSERT(m_contextState->gr_context_type() == gpu::GrContextType::kGL);
 
-    Q_ASSERT(overlayImage->type() == gl::DCLayerOverlayType::kNV12Texture);
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> chromeTexture = overlayImage->nv12_texture();
+    Q_ASSERT(overlayImage->type() == gl::DCLayerOverlayType::kD3D11Texture);
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> chromeTexture = overlayImage->d3d11_video_texture();
     if (!chromeTexture) {
         qWarning("WGL: No D3D texture.");
         return nullptr;

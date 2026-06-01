@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import QtQuick
 import QtQuick.Templates as T
@@ -8,6 +9,15 @@ import QtQuick.NativeStyle as NativeStyle
 NativeStyle.DefaultComboBox {
     id: control
     readonly property Item __focusFrameTarget: control
+
+    background: NativeStyle.ComboBox {
+        control: control
+        contentWidth: contentItem.implicitWidth
+        contentHeight: contentItem.implicitHeight
+        useNinePatchImage: false
+
+        readonly property bool __ignoreNotCustomizable: true
+    }
 
     contentItem: T.TextField {
         implicitWidth: contentWidth

@@ -6,7 +6,7 @@ set -ex
 
 sudo zypper -nq install elfutils binutils
 
-sudo zypper addrepo --no-gpgcheck https://download.opensuse.org/repositories/devel:gcc/SLE-15/devel:gcc.repo
+sudo zypper addrepo --no-gpgcheck http://repo-clones.ci.qt.io/repos/opensuse/repositories/devel/gcc/SLE-15/devel:gcc.repo
 sudo zypper refresh
 sudo zypper -nq install --force-resolution gcc11 gcc11-c++
 
@@ -44,7 +44,7 @@ sudo zypper -nq install libicu-devel libicu-suse65_1
 sudo zypper -nq install gtk3-devel
 
 # Xinput2
-sudo zypper addrepo --no-gpgcheck https://download.postgresql.org/pub/repos/zypp/repo/pgdg-sles-15-pg14.repo
+sudo zypper addrepo --no-gpgcheck http://repo-clones.ci.qt.io/repos/download.postgresql.org/pub/repos/zypp/14/suse/pgdg-sles-15-pg14.repo
 # Leaving postgresql14-devel out as dependency with clang15-devel doesn't yet have provider
 sudo zypper -nq install libXi-devel postgresql14 mysql-devel mysql mysql-server
 
@@ -53,7 +53,7 @@ sudo zypper -nq install xcb-util-devel xcb-util-image-devel xcb-util-keysyms-dev
          xcb-util-wm-devel xcb-util-renderutil-devel
 
 # temporary solution for libxcb-cursor0 xcb-util-cursor-devel
-sudo zypper addrepo --no-gpgcheck https://download.opensuse.org/repositories/home:/liangqi_qt:/branches:/SUSE:/SLE-15-SP6:/GA/standard/home:liangqi_qt:branches:SUSE:SLE-15-SP6:GA.repo
+sudo zypper addrepo --no-gpgcheck http://repo-clones.ci.qt.io/repos/opensuse/repositories/home/liangqi_qt/branches/SUSE/SLE-15-SP6/GA/pool-leap-15.6/home:liangqi_qt:branches:SUSE:SLE-15-SP6:GA.repo
 sudo zypper refresh
 sudo zypper -nq install --force-resolution libxcb-cursor0 xcb-util-cursor-devel
 
@@ -94,9 +94,6 @@ sudo zypper -nq update open-vm-tools
 # Tools to build Git
 sudo zypper -nq install autoconf libcurl-devel libexpat-devel
 
-# used for reading vcpkg packages version, from vcpkg.json
-sudo zypper -nq install jq
-
 # zip, needed for vcpkg caching
 sudo zypper -nq install zip
 
@@ -115,6 +112,9 @@ sudo zypper -nq install libtommath-devel
 
 # For tst_license.pl with all the machines generating SBOM
 sudo zypper -nq install perl-JSON
+
+# Keep zoneinfo up-to-date (COIN-1282)
+sudo zypper -nq install timezone
 
 gccVersion="$(gcc --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
 echo "GCC = $gccVersion" >> versions.txt

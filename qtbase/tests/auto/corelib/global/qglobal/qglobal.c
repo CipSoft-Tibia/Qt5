@@ -115,3 +115,4 @@ void thread_local_test()
 }
 #endif
 
+#include "expansion_to_defined_check.h"

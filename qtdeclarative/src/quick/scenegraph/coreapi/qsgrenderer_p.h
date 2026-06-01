@@ -29,9 +29,6 @@ class QRhiCommandBuffer;
 class QRhiRenderPassDescriptor;
 class QRhiResourceUpdateBatch;
 
-Q_QUICK_EXPORT bool qsg_test_and_clear_fatal_render_error();
-Q_QUICK_EXPORT void qsg_set_fatal_renderer_error();
-
 class Q_QUICK_EXPORT QSGRenderTarget
 {
 public:

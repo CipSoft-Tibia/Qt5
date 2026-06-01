@@ -66,6 +66,8 @@ if(QT_FEATURE_library)
         MODULE
         SOURCES
             apphelper_plugin.cpp
+        NO_PCH_SOURCES
+            apphelper_plugin.cpp
         LIBRARIES
             Qt::Core
     )

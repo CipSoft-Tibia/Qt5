@@ -13,10 +13,10 @@
 #import "base/test/scoped_feature_list.h"
 #import "base/time/time.h"
 #import "base/types/id_type.h"
-#import "components/autofill/core/browser/autofill_test_utils.h"
-#import "components/autofill/core/browser/browser_autofill_manager.h"
-#import "components/autofill/core/browser/test_autofill_client.h"
-#import "components/autofill/core/browser/test_autofill_manager_waiter.h"
+#import "components/autofill/core/browser/foundations/browser_autofill_manager.h"
+#import "components/autofill/core/browser/foundations/test_autofill_client.h"
+#import "components/autofill/core/browser/foundations/test_autofill_manager_waiter.h"
+#import "components/autofill/core/browser/test_utils/autofill_test_utils.h"
 #import "components/autofill/core/common/autofill_features.h"
 #import "components/autofill/core/common/form_data_test_api.h"
 #import "components/autofill/core/common/form_field_data.h"
@@ -26,8 +26,12 @@
 #import "components/autofill/ios/browser/autofill_driver_ios.h"
 #import "components/autofill/ios/browser/autofill_driver_ios_factory.h"
 #import "components/autofill/ios/browser/autofill_java_script_feature.h"
+#import "components/autofill/ios/browser/autofill_util.h"
 #import "components/autofill/ios/browser/mock_password_autofill_agent_delegate.h"
+#import "components/autofill/ios/browser/new_frame_catcher.h"
+#import "components/autofill/ios/browser/test_autofill_client_ios.h"
 #import "components/autofill/ios/browser/test_autofill_manager_injector.h"
+#import "components/autofill/ios/common/features.h"
 #import "components/autofill/ios/form_util/autofill_test_with_web_state.h"
 #import "components/autofill/ios/form_util/child_frame_registrar.h"
 #import "components/autofill/ios/form_util/form_handlers_java_script_feature.h"
@@ -44,6 +48,7 @@
 #import "testing/gtest/include/gtest/gtest.h"
 #import "url/gurl.h"
 
+using autofill::test::NewFrameCatcher;
 using base::test::ios::kWaitForJSCompletionTimeout;
 using net::test_server::EmbeddedTestServer;
 using ::testing::AllOf;
@@ -67,23 +72,23 @@ namespace {
 FormFieldData* GetFieldWithPlaceholder(const std::u16string& placeholder,
                                        std::vector<FormFieldData>* fields) {
   auto it =
-      base::ranges::find(*fields, placeholder, &FormFieldData::placeholder);
+      std::ranges::find(*fields, placeholder, &FormFieldData::placeholder);
   return it != fields->end() ? &(*it) : nullptr;
 }
 
 // Gets a mutable pointer to the first field with `id_attr` among `fields`.
 FormFieldData* GetMutableFieldWithId(const std::string& id_attr,
                                      std::vector<FormFieldData>* fields) {
-  auto it = base::ranges::find(*fields, base::UTF8ToUTF16(id_attr),
-                               &FormFieldData::id_attribute);
+  auto it = std::ranges::find(*fields, base::UTF8ToUTF16(id_attr),
+                              &FormFieldData::id_attribute);
   return it != fields->end() ? &*it : nullptr;
 }
 
 // Gets a const pointer to the first field with `id_attr` among `fields`.
 const FormFieldData* GetFieldWithId(const std::string& id_attr,
                                     const std::vector<FormFieldData>& fields) {
-  auto it = base::ranges::find(fields, base::UTF8ToUTF16(id_attr),
-                               &FormFieldData::id_attribute);
+  auto it = std::ranges::find(fields, base::UTF8ToUTF16(id_attr),
+                              &FormFieldData::id_attribute);
   return it != fields.end() ? &(*it) : nullptr;
 }
 
@@ -279,7 +284,7 @@ TestCreditCardForm GetTestCreditCardForm() {
 class TestAutofillManager : public BrowserAutofillManager {
  public:
   explicit TestAutofillManager(AutofillDriverIOS* driver)
-      : BrowserAutofillManager(driver, "en-US") {}
+      : BrowserAutofillManager(driver) {}
 
   [[nodiscard]] testing::AssertionResult WaitForFormsSeen(
       int min_num_awaited_calls) {
@@ -301,7 +306,7 @@ class TestAutofillManager : public BrowserAutofillManager {
     return ask_for_filldata_forms_waiter_.Wait(min_num_awaited_calls);
   }
 
-  [[nodiscard]] testing::AssertionResult WaitOnTextFieldDidChange(
+  [[nodiscard]] testing::AssertionResult WaitOnTextFieldValueChanged(
       int min_num_awaited_calls) {
     return text_field_did_change_forms_waiter_.Wait(min_num_awaited_calls);
   }
@@ -322,10 +327,9 @@ class TestAutofillManager : public BrowserAutofillManager {
   }
 
   void OnFormSubmitted(const FormData& form,
-                       const bool known_success,
                        const mojom::SubmissionSource source) override {
     submitted_forms_.emplace_back(form);
-    BrowserAutofillManager::OnFormSubmitted(form, known_success, source);
+    BrowserAutofillManager::OnFormSubmitted(form, source);
   }
 
   void OnAskForValuesToFill(
@@ -338,11 +342,11 @@ class TestAutofillManager : public BrowserAutofillManager {
                                                  trigger_source);
   }
 
-  void OnTextFieldDidChange(const FormData& form,
-                            const FieldGlobalId& field_id,
-                            const base::TimeTicks timestamp) override {
+  void OnTextFieldValueChanged(const FormData& form,
+                               const FieldGlobalId& field_id,
+                               const base::TimeTicks timestamp) override {
     text_field_did_change_forms_.emplace_back(form);
-    BrowserAutofillManager::OnTextFieldDidChange(form, field_id, timestamp);
+    BrowserAutofillManager::OnTextFieldValueChanged(form, field_id, timestamp);
   }
 
   const std::vector<FormData>& seen_forms() { return seen_forms_; }
@@ -391,30 +395,7 @@ class TestAutofillManager : public BrowserAutofillManager {
 
   TestAutofillManagerWaiter text_field_did_change_forms_waiter_{
       *this,
-      {AutofillManagerEvent::kTextFieldDidChange}};
-};
-
-// Catcher that captures the latest new frame reported by `manager`.
-class NewFrameCatcher : public web::WebFramesManager::Observer {
- public:
-  explicit NewFrameCatcher(web::WebFramesManager* manager) {
-    scoped_observer_.Observe(manager);
-  }
-
-  // Returns the latest new frame that was observed. Returns nullptr if nothing
-  // was seen.
-  web::WebFrame* latest_new_frame() { return latest_new_frame_; }
-
- private:
-  void WebFrameBecameAvailable(web::WebFramesManager* web_frames_manager,
-                               web::WebFrame* web_frame) override {
-    latest_new_frame_ = web_frame;
-  }
-
-  web::WebFrame* latest_new_frame_ = nullptr;
-  base::ScopedObservation<web::WebFramesManager,
-                          web::WebFramesManager::Observer>
-      scoped_observer_{this};
+      {AutofillManagerEvent::kTextFieldValueChanged}};
 };
 
 // A mock child frame registrar observer.
@@ -447,11 +428,8 @@ class AutofillAcrossIframesTest : public AutofillTestWithWebState {
     autofill_agent_ = [[AutofillAgent alloc] initWithPrefService:prefs_.get()
                                                         webState:web_state()];
 
-    // Driver factory needs to exist before any call to
-    // `AutofillDriverIOS::FromWebStateAndWebFrame`, or we crash.
-    autofill::AutofillDriverIOSFactory::CreateForWebState(
-        web_state(), &autofill_client_, /*bridge=*/autofill_agent_,
-        /*locale=*/"en");
+    autofill_client_ = std::make_unique<autofill::TestAutofillClientIOS>(
+        web_state(), autofill_agent_);
 
     // Password autofill agent needs to exist before any call to fill data.
     autofill::PasswordAutofillAgent::CreateForWebState(web_state(),
@@ -525,8 +503,7 @@ class AutofillAcrossIframesTest : public AutofillTestWithWebState {
   }
 
   web::WebFramesManager* web_frames_manager() {
-    return autofill::FormUtilJavaScriptFeature::GetInstance()
-        ->GetWebFramesManager(web_state());
+    return GetWebFramesManagerForAutofill(web_state());
   }
 
   autofill::ChildFrameRegistrar* registrar() {
@@ -597,7 +574,7 @@ class AutofillAcrossIframesTest : public AutofillTestWithWebState {
     GURL url = test_server_.GetURL("/testpage");
     web::test::LoadUrl(web_state(), url);
     web_state()->WasShown();
-    autofill_client_.set_last_committed_primary_main_frame_url(url);
+    autofill_client_->set_last_committed_primary_main_frame_url(url);
   }
 
   // Returns the frame that corresponds to `frame_id`.
@@ -661,8 +638,7 @@ class AutofillAcrossIframesTest : public AutofillTestWithWebState {
     web::WebFrame* trigger_frame =
         GetFrameForFieldWithIdAttr(trigger_field.id_attribute, fields);
     ASSERT_TRUE(trigger_frame);
-    url::Origin trigger_origin =
-        url::Origin::Create(trigger_frame->GetSecurityOrigin());
+    url::Origin trigger_origin = trigger_frame->GetSecurityOrigin();
     base::flat_set<FieldGlobalId> filled_field_ids =
         GetDriverForFrame(trigger_frame)
             ->ApplyFormAction(mojom::FormActionType::kFill,
@@ -693,7 +669,7 @@ class AutofillAcrossIframesTest : public AutofillTestWithWebState {
   std::unique_ptr<TestAutofillManagerInjector<TestAutofillManager>>
       autofill_manager_injector_;
   std::unique_ptr<PrefService> prefs_;
-  autofill::TestAutofillClient autofill_client_;
+  std::unique_ptr<autofill::TestAutofillClientIOS> autofill_client_;
   AutofillAgent* autofill_agent_;
   autofill::MockPasswordAutofillAgentDelegate delegate_mock_;
   base::test::ScopedFeatureList feature_list_;
@@ -1225,12 +1201,11 @@ TEST_F(AutofillAcrossIframesTest, SubmitMultiFrameForm) {
   ASSERT_EQ(form.fields().size(), 2u);
 
   std::vector<FieldGlobalId> field_global_ids(form.fields().size());
-  base::ranges::transform(
+  std::ranges::transform(
       form.fields(), field_global_ids.begin(),
       [](const FormFieldData& field) { return field.global_id(); });
 
   main_frame_driver()->FormSubmitted(main_frame_manager().seen_forms().front(),
-                                     /*known_success=*/true,
                                      mojom::SubmissionSource::FORM_SUBMISSION);
 
   // Wait on the main frame form to report itself as submitted, which is the
@@ -1275,7 +1250,7 @@ TEST_F(AutofillAcrossIframesTest, AskForFillDataOnMultiFrameForm) {
   ASSERT_EQ(form.fields().size(), 2u);
 
   std::vector<FieldGlobalId> field_global_ids(form.fields().size());
-  base::ranges::transform(
+  std::ranges::transform(
       form.fields(), field_global_ids.begin(),
       [](const FormFieldData& field) { return field.global_id(); });
 
@@ -1328,7 +1303,7 @@ TEST_F(AutofillAcrossIframesTest, TextChangeOnMultiFrameForm) {
   ASSERT_EQ(form.fields().size(), 2u);
 
   std::vector<FieldGlobalId> field_global_ids(form.fields().size());
-  base::ranges::transform(
+  std::ranges::transform(
       form.fields(), field_global_ids.begin(),
       [](const FormFieldData& field) { return field.global_id(); });
 
@@ -1337,12 +1312,12 @@ TEST_F(AutofillAcrossIframesTest, TextChangeOnMultiFrameForm) {
   FormFieldData* name_field =
       GetFieldWithPlaceholder(kNamePlaceholder, &fields);
 
-  main_frame_driver()->TextFieldDidChange(form, name_field->global_id(),
-                                          base::TimeTicks::Now());
+  main_frame_driver()->TextFieldValueChanged(form, name_field->global_id(),
+                                             base::TimeTicks::Now());
 
   // Wait on the main frame form to report itself as having fill data for the
   // entire browser form, across frames.
-  ASSERT_TRUE(main_frame_manager().WaitOnTextFieldDidChange(1));
+  ASSERT_TRUE(main_frame_manager().WaitOnTextFieldValueChanged(1));
   ASSERT_EQ(main_frame_manager().text_filled_did_change_forms().size(), 1u);
 
   // Verify that the form that we ask fill data for represents the browser form
@@ -1639,7 +1614,7 @@ TEST_F(AutofillAcrossIframesTest, FrameDoubleRegistration_Notify) {
 
   {
     const std::u16string script = base::StrCat(
-        {u"__gCrWeb.common.sendWebKitMessage('FormHandlersMessage', "
+        {u"__gCrWeb.common.sendWebKitMessage('FrameRegistrationMessage', "
          u"{'command': 'registerAsChildFrame', 'local_frame_id': "
          u"__gCrWeb.frameId, 'remote_frame_id':'",
          base::UTF8ToUTF16(stolen_remote_token.ToString()), u"'});"});
@@ -1771,9 +1746,14 @@ TEST_F(AutofillAcrossIframesTest, FeatureDisabled) {
 
   const FormData& form = main_frame_manager().seen_forms()[0];
   EXPECT_EQ(form.child_frames().size(), 0u);
-
-  EXPECT_FALSE(
-      autofill::ChildFrameRegistrar::GetOrCreateForWebState(web_state()));
+  {
+    // Disable isolated autofill which uses the registrar as well.
+    base::test::ScopedFeatureList disable_isolated_autofill;
+    disable_isolated_autofill.InitAndDisableFeature(
+        kAutofillIsolatedWorldForJavascriptIos);
+    EXPECT_FALSE(
+        autofill::ChildFrameRegistrar::GetOrCreateForWebState(web_state()));
+  }
 }
 
 // Suite of tests that focuses on testing the security of xframe filling.

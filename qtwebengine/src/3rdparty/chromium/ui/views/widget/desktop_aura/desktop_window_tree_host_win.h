@@ -12,8 +12,10 @@
 #include "base/memory/weak_ptr.h"
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/mojom/ui_base_types.mojom-shared.h"
+#include "ui/base/mojom/window_show_state.mojom-forward.h"
 #include "ui/views/views_export.h"
 #include "ui/views/widget/desktop_aura/desktop_window_tree_host.h"
+#include "ui/views/widget/widget_observer.h"
 #include "ui/views/win/hwnd_message_handler_delegate.h"
 #include "ui/wm/public/animation_host.h"
 
@@ -43,11 +45,11 @@ namespace test {
 class DesktopWindowTreeHostWinTestApi;
 }
 
-class VIEWS_EXPORT DesktopWindowTreeHostWin
-    : public DesktopWindowTreeHost,
-      public wm::AnimationHost,
-      public aura::WindowTreeHost,
-      public HWNDMessageHandlerDelegate {
+class VIEWS_EXPORT DesktopWindowTreeHostWin : public DesktopWindowTreeHost,
+                                              public wm::AnimationHost,
+                                              public aura::WindowTreeHost,
+                                              public HWNDMessageHandlerDelegate,
+                                              public WidgetObserver {
  public:
   DesktopWindowTreeHostWin(
       internal::NativeWidgetDelegate* native_widget_delegate,
@@ -102,7 +104,7 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
   void Close() override;
   void CloseNow() override;
   aura::WindowTreeHost* AsWindowTreeHost() override;
-  void Show(ui::WindowShowState show_state,
+  void Show(ui::mojom::WindowShowState show_state,
             const gfx::Rect& restore_bounds) override;
   bool IsVisible() const override;
   void SetSize(const gfx::Size& size) override;
@@ -110,8 +112,9 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
   void StackAtTop() override;
   bool IsStackedAbove(aura::Window* window) override;
   void CenterWindow(const gfx::Size& size) override;
-  void GetWindowPlacement(gfx::Rect* bounds,
-                          ui::WindowShowState* show_state) const override;
+  void GetWindowPlacement(
+      gfx::Rect* bounds,
+      ui::mojom::WindowShowState* show_state) const override;
   gfx::Rect GetWindowBoundsInScreen() const override;
   gfx::Rect GetClientAreaBoundsInScreen() const override;
   gfx::Rect GetRestoredBounds() const override;
@@ -230,7 +233,7 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
   void HandleCreate() override;
   void HandleDestroying() override;
   void HandleDestroyed() override;
-  bool HandleInitialFocus(ui::WindowShowState show_state) override;
+  bool HandleInitialFocus(ui::mojom::WindowShowState show_state) override;
   void HandleDisplayChange() override;
   void HandleBeginWMSizeMove() override;
   void HandleEndWMSizeMove() override;
@@ -264,6 +267,9 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
   void HandleWindowSizeUnchanged() override;
   void HandleWindowScaleFactorChanged(float window_scale_factor) override;
   void HandleHeadlessWindowBoundsChanged(const gfx::Rect& bounds) override;
+
+  // Overridden from WidgetObserver.
+  void OnWidgetThemeChanged(Widget* widget) override;
 
   Widget* GetWidget();
   const Widget* GetWidget() const;
@@ -333,6 +339,8 @@ class VIEWS_EXPORT DesktopWindowTreeHostWin
 
   // True if the window is allow to take screenshots, by default is true.
   bool allow_screenshots_ = true;
+
+  base::ScopedObservation<Widget, WidgetObserver> widget_observation_{this};
 
   // Visibility of the cursor. On Windows we can have multiple root windows and
   // the implementation of ::ShowCursor() is based on a counter, so making this

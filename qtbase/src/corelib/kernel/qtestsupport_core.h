@@ -16,9 +16,15 @@ namespace QTest {
 Q_CORE_EXPORT void qSleep(int ms);
 Q_CORE_EXPORT void qSleep(std::chrono::milliseconds msecs);
 
+namespace Internal
+{
+static inline constexpr std::chrono::milliseconds defaultTryTimeout
+    = std::chrono::milliseconds(5000);
+} // namespace Internal
+
 template <typename Functor>
 [[nodiscard]] bool
-qWaitFor(Functor predicate, QDeadlineTimer deadline = QDeadlineTimer(std::chrono::seconds{5}))
+qWaitFor(Functor predicate, QDeadlineTimer deadline = QDeadlineTimer(Internal::defaultTryTimeout))
 {
     // We should not spin the event loop in case the predicate is already true,
     // otherwise we might send new events that invalidate the predicate.

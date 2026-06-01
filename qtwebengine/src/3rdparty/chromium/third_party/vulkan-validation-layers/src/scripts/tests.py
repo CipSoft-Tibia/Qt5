@@ -200,7 +200,7 @@ def RunVVLTests(args):
     # lvt_env['VK_LAYER_TESTS_PRINT_DRIVER'] = '1'
 
     lvt_env['VK_INSTANCE_LAYERS'] = 'VK_LAYER_KHRONOS_validation' + os.pathsep + 'VK_LAYER_KHRONOS_profiles'
-    lvt_env['VK_KHRONOS_PROFILES_SIMULATE_CAPABILITIES'] = 'SIMULATE_API_VERSION_BIT,SIMULATE_FEATURES_BIT,SIMULATE_PROPERTIES_BIT,SIMULATE_EXTENSIONS_BIT,SIMULATE_FORMATS_BIT,SIMULATE_QUEUE_FAMILY_PROPERTIES_BIT'
+    lvt_env['VK_KHRONOS_PROFILES_SIMULATE_CAPABILITIES'] = 'SIMULATE_API_VERSION_BIT,SIMULATE_FEATURES_BIT,SIMULATE_PROPERTIES_BIT,SIMULATE_EXTENSIONS_BIT,SIMULATE_FORMATS_BIT,SIMULATE_QUEUE_FAMILY_PROPERTIES_BIT,SIMULATE_VIDEO_CAPABILITIES_BIT,SIMULATE_VIDEO_FORMATS_BIT'
 
     # By default use the max_profile.json
     if "VK_KHRONOS_PROFILES_PROFILE_FILE" not in os.environ:
@@ -218,6 +218,12 @@ def RunVVLTests(args):
         # TODO - only reason running this subset, is mockAndoid fails any test that does
         # a manual vkCreateDevice call and need to investigate more why
         common_ci.RunShellCmd(lvt_cmd + " --gtest_filter=*AndroidHardwareBuffer.*:*AndroidExternalResolve.*", env=lvt_env)
+        return
+    if args.tsan:
+        # These are tests we have decided are worth using Thread Sanitize as it will take about 9x longer to run a test
+        # We have also seen TSAN turn bug out and make each test incrementally take longer
+        # (https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8931)
+        common_ci.RunShellCmd(lvt_cmd + " --gtest_filter=*SyncVal.*:*Threading.*:*SyncObject.*:*Wsi.*:-*Video*", env=lvt_env)
         return
 
     common_ci.RunShellCmd(lvt_cmd, env=lvt_env)
@@ -266,6 +272,9 @@ if __name__ == '__main__':
     parser.add_argument(
         '--mockAndroid', dest='mockAndroid',
         action='store_true', help='Use Mock Android')
+    parser.add_argument(
+        '--tsan', dest='tsan',
+        action='store_true', help='Filter out tests for TSAN')
 
     args = parser.parse_args()
 

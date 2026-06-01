@@ -136,6 +136,25 @@ Item {
             }
 
             Button {
+                id: surfaceFillToggle
+                visible: tabBar.currentIndex == 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: 50
+                Layout.margins: 10
+                Layout.alignment: Qt.AlignCenter
+
+                property bool fillSurface: false
+                text: qsTr("Fill Surface: %1").arg(fillSurface? "true" : "false")
+                onClicked: {
+                    fillSurface =!fillSurface
+                    if (fillSurface)
+                        surfaceSeries.drawMode |= Surface3DSeries.DrawFilledSurface
+                    else
+                        surfaceSeries.drawMode &= ~Surface3DSeries.DrawFilledSurface
+                }
+            }
+
+            Button {
                 id: colorStyleToggle
                 visible: tabBar.currentIndex !== 0
                 property var activeTheme: (tabBar.currentIndex === 1 ? scatterTheme : barTheme);

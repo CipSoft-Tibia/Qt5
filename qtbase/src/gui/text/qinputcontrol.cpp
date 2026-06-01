@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qinputcontrol_p.h"
+
+#include <QtCore/qmimedata.h>
 #include <QtGui/qevent.h>
 
 QT_BEGIN_NAMESPACE
@@ -101,6 +103,39 @@ bool QInputControl::isCommonTextEditShortcut(const QKeyEvent *ke)
 #endif
     }
     return false;
+}
+
+/*!
+    \internal
+
+    Creates a wrapper for returning QMimeData in response to
+    Qt::ImCurrentSelection, while being backwards compatible
+    with clients who only read the plain text string.
+*/
+QVariant QInputControl::selectionWrapper(QMimeData *mimeData)
+{
+    struct MimeDataSelection
+    {
+        QMimeData *mimeData = nullptr;
+        operator QMimeData*() const { return mimeData; }
+        operator QString() const { return mimeData->text(); }
+    };
+
+    static bool registeredConversions = []{
+        return QMetaType::registerConverter<MimeDataSelection, QMimeData*>()
+            && QMetaType::registerConverter<MimeDataSelection, QString>();
+    }();
+    Q_ASSERT(registeredConversions);
+    return QVariant::fromValue(MimeDataSelection{mimeData});
+}
+
+QMimeData *QInputControl::mimeDataForInputEvent(QInputMethodEvent *event)
+{
+    const auto &attributes = event->attributes();
+    auto mimeDataAttr = std::find_if(attributes.begin(), attributes.end(),
+        [](auto a) { return a.type == QInputMethodEvent::MimeData; });
+    return mimeDataAttr != event->attributes().end() ?
+        mimeDataAttr->value.value<QMimeData*>() : nullptr;
 }
 
 QT_END_NAMESPACE

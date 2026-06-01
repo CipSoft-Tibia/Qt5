@@ -37,13 +37,13 @@ public:
                                             QObject *p = nullptr);
 
     bool localStorageEnabled() const;
-    bool javascriptEnabled() const;
+    bool javaScriptEnabled() const;
     bool localContentCanAccessFileUrls() const;
     bool allowFileAccess() const;
 
 public Q_SLOTS:
     void setLocalContentCanAccessFileUrls(bool enabled);
-    void setJavascriptEnabled(bool enabled);
+    void setJavaScriptEnabled(bool enabled);
     void setLocalStorageEnabled(bool enabled);
     void setAllowFileAccess(bool enabled);
 
@@ -67,11 +67,7 @@ public:
     int loadProgress() const override;
     bool isLoading() const override;
 
-    void setParentView(QObject *view) override;
-    QObject *parentView() const override;
-    void setGeometry(const QRect &geometry) override;
-    void setVisibility(QWindow::Visibility visibility) override;
-    void setVisible(bool visible) override;
+    QWindow *nativeWindow() const override { return m_window; }
 
 public Q_SLOTS:
     void goBack() override;

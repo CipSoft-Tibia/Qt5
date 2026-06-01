@@ -41,6 +41,7 @@
 #include "third_party/blink/renderer/core/style/position_area.h"
 #include "third_party/blink/renderer/platform/text/writing_mode.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
 
 namespace blink {
@@ -56,6 +57,10 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
   STACK_ALLOCATED();
 
  public:
+  // NOTE: Both `FontSizes` and `LineHeightSize` have a pointer to a `Font`.
+  // Typically these classes are just on the stack. However if they are heap
+  // allocated (as part of another object), you need to ensure that *something*
+  // (typically a `ComputedStyle`) is keeping the `Font` object alive.
   class CORE_EXPORT FontSizes {
     DISALLOW_NEW();
 
@@ -118,7 +123,6 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
     float rem_ = 0;
     Member<const Font> font_;
     Member<const Font> root_font_;
-
     // Font-metrics-based units (ex, ch, ic) are pre-zoomed by a factor of
     // `font_zoom_`.
     float font_zoom_ = 1;
@@ -277,7 +281,7 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
     std::optional<PositionAreaOffsets> position_area_offsets_;
   };
 
-  using Flags = uint16_t;
+  using Flags = uint32_t;
 
   // Flags represent the units seen in a conversion. They are used for targeted
   // invalidation, e.g. when root font-size changes, only elements dependent on
@@ -290,10 +294,10 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
     // ex, ch, ic, lh, cap, rcap
     kGlyphRelative = 1u << 2,
     // rex, rch, ric have both kRootFontRelative and kGlyphRelative
-    // lh
-    kLineHeightRelative = 1u << 3,
-    // sv*, lv*, v*
-    kStaticViewport = 1u << 4,
+    // v*
+    kViewport = 1u << 3,
+    // sv*, lv*
+    kSmallLargeViewport = 1u << 4,
     // dv*
     kDynamicViewport = 1u << 5,
     // cq*
@@ -305,10 +309,31 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
     // anchor(), anchor-size()
     // https://drafts.csswg.org/css-anchor-position-1
     kAnchorRelative = 1u << 9,
+    // cap
+    kCapRelative = 1u << 10,
+    // rcap
+    kRcapRelative = 1u << 11,
+    // ic
+    kIcRelative = 1u << 12,
+    // ric
+    kRicRelative = 1u << 13,
+    // lh
+    kLhRelative = 1u << 14,
+    // rlh
+    kRlhRelative = 1u << 15,
+    // ch
+    kChRelative = 1u << 16,
+    // rch
+    kRchRelative = 1u << 17,
+    // rex
+    kRexRelative = 1u << 18,
+    // sibling-index(), sibling-count()
+    kSiblingRelative = 1u << 19,
     // Adjust the Flags type above if adding more bits below.
   };
 
-  CSSToLengthConversionData() : CSSLengthResolver(1 /* zoom */) {}
+  explicit CSSToLengthConversionData(const Element* element)
+      : CSSLengthResolver(1 /* zoom */), element_(element) {}
   CSSToLengthConversionData(WritingMode,
                             const FontSizes&,
                             const LineHeightSize&,
@@ -316,7 +341,8 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
                             const ContainerSizes&,
                             const AnchorData&,
                             float zoom,
-                            Flags&);
+                            Flags&,
+                            const Element*);
   template <typename ComputedStyleOrBuilder>
   CSSToLengthConversionData(const ComputedStyleOrBuilder& element_style,
                             const ComputedStyle* parent_style,
@@ -325,7 +351,8 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
                             const ContainerSizes& container_sizes,
                             const AnchorData& anchor_data,
                             float zoom,
-                            Flags& flags)
+                            Flags& flags,
+                            const Element* element)
       : CSSToLengthConversionData(
             element_style.GetWritingMode(),
             FontSizes(element_style.GetFontSizeStyle(), root_style),
@@ -336,7 +363,8 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
             container_sizes,
             anchor_data,
             zoom,
-            flags) {}
+            flags,
+            element) {}
 
   float EmFontSize(float zoom) const override;
   float RemFontSize(float zoom) const override;
@@ -374,6 +402,7 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
   }
 
   void ReferenceAnchor() const override;
+  void ReferenceSibling() const override;
 
   AnchorEvaluator* GetAnchorEvaluator() const override {
     return anchor_data_.GetEvaluator();
@@ -385,6 +414,8 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
     return anchor_data_.GetPositionAreaOffsets();
   }
 
+  const Element* GetElement() const override { return element_; }
+
   // See ContainerSizes::PreCachedCopy.
   //
   // Calling this function will mark the associated ComputedStyle as
@@ -395,7 +426,7 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
     DCHECK(flags_);
     return CSSToLengthConversionData(
         writing_mode_, font_sizes_, line_height_size_, viewport_size_,
-        container_sizes_, anchor_data_, new_zoom, *flags_);
+        container_sizes_, anchor_data_, new_zoom, *flags_, element_);
   }
   CSSToLengthConversionData Unzoomed() const {
     return CopyWithAdjustedZoom(1.0f);
@@ -415,6 +446,7 @@ class CORE_EXPORT CSSToLengthConversionData : public CSSLengthResolver {
   ContainerSizes container_sizes_;
   AnchorData anchor_data_;
   mutable Flags* flags_ = nullptr;
+  const Element* element_;
 };
 
 }  // namespace blink

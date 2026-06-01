@@ -631,8 +631,7 @@ Position CompositeEditCommand::PositionOutsideTabSpan(const Position& pos) {
 
   switch (pos.AnchorType()) {
     case PositionAnchorType::kAfterChildren:
-      NOTREACHED_IN_MIGRATION();
-      return pos;
+      NOTREACHED();
     case PositionAnchorType::kOffsetInAnchor:
       break;
     case PositionAnchorType::kBeforeAnchor:
@@ -1556,10 +1555,17 @@ void CompositeEditCommand::MoveParagraphs(
 
   DCHECK(!GetDocument().NeedsLayoutTreeUpdate());
 
-  const VisibleSelection& selection_to_delete = CreateVisibleSelection(
-      SelectionInDOMTree::Builder().Collapse(start).Extend(end).Build());
-  SetEndingSelection(
-      SelectionForUndoStep::From(selection_to_delete.AsSelection()));
+  if (RuntimeEnabledFeatures::
+          RemoveSelectionCanonicalizationInMoveParagraphEnabled()) {
+    SetEndingSelection(SelectionForUndoStep::From(
+        SelectionInDOMTree::Builder().Collapse(start).Extend(end).Build()));
+  } else {
+    const VisibleSelection& selection_to_delete = CreateVisibleSelection(
+        SelectionInDOMTree::Builder().Collapse(start).Extend(end).Build());
+    SetEndingSelection(
+        SelectionForUndoStep::From(selection_to_delete.AsSelection()));
+  }
+
   if (!DeleteSelection(
           editing_state,
           DeleteSelectionOptions::Builder().SetSanitizeMarkup(true).Build()))

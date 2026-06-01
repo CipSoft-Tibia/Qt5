@@ -45,7 +45,6 @@ lucicfg.config(
         "luci/project.cfg",
         "luci/realms.cfg",
         "luci/testhaus.cfg",
-        "luci/tricium-prod.cfg",
         "outages.pyl",
         "sheriff-rotations/*.txt",
         "project.pyl",
@@ -67,12 +66,6 @@ lucicfg.config(
 lucicfg.emit(
     dest = "luci/testhaus.cfg",
     data = io.read_file("testhaus.cfg"),
-)
-
-# Just copy tricium-prod.cfg to the generated outputs
-lucicfg.emit(
-    dest = "luci/tricium-prod.cfg",
-    data = io.read_file("tricium-prod.cfg"),
 )
 
 # Just copy LUCI Analysis config to generated outputs.
@@ -330,6 +323,11 @@ exec("//generators/sort-consoles.star")
 # validating the final non-outages configuration
 exec("//validators/builder-group-triggers.star")
 exec("//validators/builders-in-consoles.star")
+
+# Notify findit about completed builds for code coverage purposes
+luci.buildbucket_notification_topic(
+    name = "projects/findit-for-me/topics/buildbucket_notification",
+)
 
 # Execute this file last so that any configuration changes needed for handling
 # outages gets final say

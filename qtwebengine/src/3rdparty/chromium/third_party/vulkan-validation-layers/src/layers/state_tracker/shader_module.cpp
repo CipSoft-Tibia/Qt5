@@ -1,4 +1,4 @@
-﻿/* Copyright (c) 2021-2024 The Khronos Group Inc.
+﻿/* Copyright (c) 2021-2025 The Khronos Group Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,12 @@
 
 #include "utils/hash_util.h"
 #include "generated/spirv_grammar_helper.h"
-#include "spirv/1.2/GLSL.std.450.h"
+
+#include <spirv/unified1/spirv.hpp>
+#include <spirv/1.2/GLSL.std.450.h>
+#include <spirv/unified1/NonSemanticShaderDebugInfo100.h>
+#include "error_message/spirv_logging.h"
+#include "utils/vk_layer_utils.h"
 
 namespace spirv {
 
@@ -280,6 +285,12 @@ void ExecutionModeSet::Add(const Instruction& insn) {
         case spv::ExecutionModeStencilRefReplacingEXT:
             flags |= stencil_ref_replacing_bit;
             break;
+        case spv::ExecutionModeDerivativeGroupLinearKHR:
+            flags |= derivative_group_linear;
+            break;
+        case spv::ExecutionModeDerivativeGroupQuadsKHR:
+            flags |= derivative_group_quads;
+            break;
         default:
             break;
     }
@@ -337,6 +348,10 @@ static void FindPointersAndObjects(const Instruction& insn, vvl::unordered_set<u
         case spv::OpAccessChain:
         case spv::OpInBoundsAccessChain:
             result.insert(insn.Word(3));  // base ptr
+            break;
+        case spv::OpArrayLength:
+            // This is not an access of memory, but counts as static usage of the variable
+            result.insert(insn.Word(3));
             break;
         case spv::OpSampledImage:
         case spv::OpImageSampleImplicitLod:
@@ -442,6 +457,15 @@ bool EntryPoint::IsBuiltInWritten(spv::BuiltIn built_in, const Module& module_st
             }
         }
         break;
+    }
+    return false;
+}
+
+bool EntryPoint::HasBuiltIn(spv::BuiltIn built_in) const {
+    for (const auto* variable : built_in_variables) {
+        if (variable->decorations.builtin == built_in) {
+            return true;
+        }
     }
     return false;
 }
@@ -804,9 +828,13 @@ EntryPoint::EntryPoint(const Module& module_state, const Instruction& entrypoint
         } else {
             user_defined_interface_variables.push_back(&variable);
 
+            if (variable.base_type.StorageClass() == spv::StorageClassPhysicalStorageBuffer) {
+                has_physical_storage_buffer_interface = true;
+            }
+
             // After creating, make lookup table
             if (variable.interface_slots.empty()) {
-                continue;
+                continue;  // will skip for things like PhysicalStorageBuffer
             }
             for (const auto& slot : variable.interface_slots) {
                 if (variable.storage_class == spv::StorageClassInput) {
@@ -1079,6 +1107,18 @@ Module::StaticData::StaticData(const Module& module_state, StatelessData* statel
                 break;
             }
 
+            case spv::OpLine:
+            case spv::OpSource: {
+                using_legacy_debug_info = true;
+                break;
+            }
+            case spv::OpExtInstImport: {
+                if (strcmp(insn.GetAsString(2), "NonSemantic.Shader.DebugInfo.100") == 0) {
+                    shader_debug_info_set_id = insn.ResultId();
+                }
+                break;
+            }
+
             // Build up Function mappings
             case spv::OpFunction:
                 last_func_id = insn.ResultId();
@@ -1339,6 +1379,38 @@ std::string Module::DescribeVariable(uint32_t id) const {
         }
         ss << '\n';
     }
+    return ss.str();
+}
+
+std::string Module::DescribeInstruction(const Instruction& error_insn) const {
+    if (static_data_.shader_debug_info_set_id == 0 && !static_data_.using_legacy_debug_info) {
+        return error_insn.Describe();
+    }
+
+    const Instruction* last_line_inst = nullptr;
+    for (const auto& insn : static_data_.instructions) {
+        const uint32_t opcode = insn.Opcode();
+        if (opcode == spv::OpExtInst && insn.Word(3) == static_data_.shader_debug_info_set_id &&
+            insn.Word(4) == NonSemanticShaderDebugInfo100DebugLine) {
+            last_line_inst = &insn;
+        } else if (opcode == spv::OpLine) {
+            last_line_inst = &insn;
+        } else if (opcode == spv::OpFunctionEnd) {
+            last_line_inst = nullptr;  // debug lines can't cross functions boundaries
+        }
+
+        if (insn == error_insn) {
+            break;
+        }
+    }
+    if (!last_line_inst) {
+        return error_insn.Describe();  // can't find a suitable line above instruciton
+    }
+
+    std::ostringstream ss;
+    ss << error_insn.Describe();
+    ss << "\nFrom shader debug information ";
+    GetShaderSourceInfo(ss, static_data_.instructions, *last_line_inst);
     return ss.str();
 }
 
@@ -1749,6 +1821,11 @@ std::vector<InterfaceSlot> StageInterfaceVariable::GetInterfaceSlots(StageInterf
         return slots;
     }
 
+    if (variable.base_type.StorageClass() == spv::StorageClassPhysicalStorageBuffer) {
+        // PhysicalStorageBuffer interfaces not supported (https://gitlab.khronos.org/spirv/SPIR-V/-/issues/779)
+        return slots;
+    }
+
     if (variable.type_struct_info) {
         // Structs has two options being labeled
         // 1. The block is given a Location, need to walk though and add up starting for that value
@@ -1763,11 +1840,8 @@ std::vector<InterfaceSlot> StageInterfaceVariable::GetInterfaceSlots(StageInterf
 
                 // Info needed to test type matching later
                 const Instruction* numerical_type = module_state.GetBaseTypeInstruction(member_id);
-                // TODO 5374 - Handle PhysicalStorageBuffer interfaces
-                if (!numerical_type) {
-                    variable.physical_storage_buffer = true;
-                    break;
-                }
+                ASSERT_AND_CONTINUE(numerical_type);
+
                 const uint32_t numerical_type_opcode = numerical_type->Opcode();
                 // TODO - Handle nested structs
                 if (numerical_type_opcode == spv::OpTypeStruct) {
@@ -1814,7 +1888,7 @@ std::vector<InterfaceSlot> StageInterfaceVariable::GetInterfaceSlots(StageInterf
     } else {
         uint32_t locations = 0;
         // Will have array peeled off already
-        uint32_t type_id = variable.base_type.ResultId();
+        const uint32_t type_id = variable.base_type.ResultId();
 
         locations = module_state.GetLocationsConsumedByType(type_id);
         const uint32_t components = module_state.GetComponentsConsumedByType(type_id);
@@ -1880,7 +1954,6 @@ StageInterfaceVariable::StageInterfaceVariable(const Module& module_state, const
       base_type(FindBaseType(*this, module_state)),
       is_builtin(IsBuiltin(*this, module_state)),
       nested_struct(false),
-      physical_storage_buffer(false),
       interface_slots(GetInterfaceSlots(*this, module_state)),
       builtin_block(GetBuiltinBlock(*this, module_state)),
       total_builtin_components(GetBuiltinComponents(*this, module_state)) {}
@@ -1912,57 +1985,6 @@ const Instruction& ResourceInterfaceVariable::FindBaseType(ResourceInterfaceVari
     return *type;
 }
 
-// Determines if the Resource variable itself is dynamic
-bool ResourceInterfaceVariable::IsDynamicAccessed(ResourceInterfaceVariable& variable, const Module& module_state,
-                                                  const AccessChainVariableMap& access_chain_map) {
-    // The 4 array edge cases to catch
-    //
-    // [Dynamic] true
-    // layout(set=0, binding=0) buffer storage_buffer_a {
-    //     int x[2];
-    // } a[];
-    //
-    // [Static] false
-    // layout(set=0, binding=1) buffer storage_buffer_b {
-    //     int x[2];
-    // } b[3];
-    //
-    // [Dynamic] true
-    // layout(set=0, binding=2) buffer storage_buffer_c {
-    //     int x[]; // only allowed in buffers (not images)
-    // } c;
-    //
-    // [Static] false
-    // layout(set=0, binding=3) buffer storage_buffer_d {
-    //     int x[2];
-    // } d;
-
-    if (module_state.HasRuntimeArray(variable.type_id)) {
-        return true;  // catches case A
-    }
-    // runtime array can only be found on last element of the struct
-    if (variable.type_struct_info &&
-        variable.type_struct_info->members[variable.type_struct_info->length - 1].insn->Opcode() == spv::OpTypeRuntimeArray) {
-        return true;  // catches case C
-    }
-
-    const auto it = access_chain_map.find(variable.id);
-    if (it == access_chain_map.end()) {
-        return false;  // nothing is accessing this in any known way
-    }
-
-    const uint32_t start = 4;  // first word of the Indexes operand
-    for (const auto access_chain_inst : it->second) {
-        for (uint32_t i = start; i < access_chain_inst->Length(); i++) {
-            const uint32_t index = access_chain_inst->Word(i);
-            if (module_state.FindDef(index)->Opcode() != spv::OpConstant) {
-                return true;  // access is dynamic
-            }
-        }
-    }
-    return false;
-}
-
 uint32_t ResourceInterfaceVariable::FindImageSampledTypeWidth(const Module& module_state, const Instruction& base_type) {
     return (base_type.Opcode() == spv::OpTypeImage) ? module_state.GetTypeBitsSize(&base_type) : 0;
 }
@@ -1992,7 +2014,7 @@ ResourceInterfaceVariable::ResourceInterfaceVariable(const Module& module_state,
       array_length(0),
       is_sampled_image(false),
       base_type(FindBaseType(*this, module_state)),
-      is_dynamic_accessed(IsDynamicAccessed(*this, module_state, access_chain_map)),
+      is_runtime_descriptor_array(module_state.HasRuntimeArray(type_id)),
       image_sampled_type_width(FindImageSampledTypeWidth(module_state, base_type)),
       is_storage_buffer(IsStorageBuffer(*this)) {
     // to make sure no padding in-between the struct produce noise and force same data to become a different hash
@@ -2033,10 +2055,6 @@ ResourceInterfaceVariable::ResourceInterfaceVariable(const Module& module_state,
                 info.is_sign_extended |= image_access.is_sign_extended;
                 info.is_zero_extended |= image_access.is_zero_extended;
                 access_mask |= image_access.access_mask;
-
-                if (array_length > 1 && array_length != spirv::kRuntimeArray) {
-                    image_access_chain_indexes.insert(image_access.image_access_chain_index);
-                }
 
                 const bool is_image_without_format =
                     ((is_sampled_without_sampler) && (base_type.Word(8) == spv::ImageFormatUnknown));
@@ -2144,11 +2162,11 @@ TypeStructSize TypeStructInfo::GetSize(const Module& module_state) const {
     for (uint32_t i = 0; i < members.size(); i++) {
         const auto& member = members[i];
         // all struct elements are required to have offset decorations in Block
-        const uint32_t memeber_offset = member.decorations->offset;
-        offset = std::min(offset, memeber_offset);
-        if (memeber_offset > highest_element_offset) {
+        const uint32_t member_offset = member.decorations->offset;
+        offset = std::min(offset, member_offset);
+        if (member_offset > highest_element_offset) {
             highest_element_index = i;
-            highest_element_offset = memeber_offset;
+            highest_element_offset = member_offset;
         }
     }
 

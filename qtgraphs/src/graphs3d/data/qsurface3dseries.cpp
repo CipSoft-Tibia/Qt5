@@ -5,6 +5,7 @@
 #include "qquickgraphssurface_p.h"
 #include "qsurface3dseries_p.h"
 #include "qvalue3daxis.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -166,8 +167,8 @@ QT_BEGIN_NAMESPACE
  * \qmlproperty DrawFlag Surface3DSeries::drawMode
  *
  * Sets the drawing mode to one of
- * \l{QSurface3DSeries::DrawFlag}{Surface3DSeries.DrawFlag}. Clearing all flags
- * is not allowed.
+ * \l{QSurface3DSeries::DrawFlag}{Surface3DSeries.DrawFlag}{QSurface3DSeries.DrawFilledSurface}. 
+ * Either DrawWireframe or DrawSurface must be set
  */
 
 /*!
@@ -248,6 +249,10 @@ QT_BEGIN_NAMESPACE
  *        Only the surface is drawn.
  * \value DrawSurfaceAndWireframe
  *        Both the surface and grid are drawn.
+ *
+ * \value [since 6.10] DrawFilledSurface
+ *        Draws a fill for a surface.
+ *        Setting this mode also sets DrawSurface if it is not already set.
  */
 
 /*!
@@ -370,10 +375,13 @@ QPoint QSurface3DSeries::invalidSelectionPosition()
 void QSurface3DSeries::setShading(const QSurface3DSeries::Shading shading)
 {
     Q_D(QSurface3DSeries);
-    if (d->m_shading != shading) {
-        d->setShading(shading);
-        emit shadingChanged(shading);
+    if (d->m_shading == shading) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << shading;
+        return;
     }
+    d->setShading(shading);
+    emit shadingChanged(shading);
 }
 
 QSurface3DSeries::Shading QSurface3DSeries::shading() const
@@ -412,10 +420,13 @@ bool QSurface3DSeries::isFlatShadingSupported() const
 void QSurface3DSeries::setDrawMode(QSurface3DSeries::DrawFlags mode)
 {
     Q_D(QSurface3DSeries);
-    if (d->m_drawMode != mode) {
-        d->setDrawMode(mode);
-        emit drawModeChanged(mode);
+    if (d->m_drawMode == mode) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << mode;
+        return;
     }
+    d->setDrawMode(mode);
+    emit drawModeChanged(mode);
 }
 
 QSurface3DSeries::DrawFlags QSurface3DSeries::drawMode() const
@@ -434,12 +445,15 @@ QSurface3DSeries::DrawFlags QSurface3DSeries::drawMode() const
 void QSurface3DSeries::setTexture(const QImage &texture)
 {
     Q_D(QSurface3DSeries);
-    if (d->m_texture != texture) {
-        d->setTexture(texture);
-
-        emit textureChanged(texture);
-        d->m_textureFile.clear();
+    if (d->m_texture == texture) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << texture;
+        return;
     }
+    d->setTexture(texture);
+
+    emit textureChanged(texture);
+    d->m_textureFile.clear();
 }
 
 QImage QSurface3DSeries::texture() const
@@ -458,21 +472,26 @@ QImage QSurface3DSeries::texture() const
 void QSurface3DSeries::setTextureFile(const QString &filename)
 {
     Q_D(QSurface3DSeries);
-    if (d->m_textureFile != filename) {
-        if (filename.isEmpty()) {
-            setTexture(QImage());
-        } else {
-            QImage image(filename);
-            if (image.isNull()) {
-                qWarning("Warning: Tried to set invalid image file as surface texture.");
-                return;
-            }
-            setTexture(image);
-        }
-
-        d->m_textureFile = filename;
-        emit textureFileChanged(filename);
+    if (d->m_textureFile == filename) {
+        qCDebug(lcProperties3D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(filename));
+        return;
     }
+
+    if (filename.isEmpty()) {
+        setTexture(QImage());
+    } else {
+        QImage image(filename);
+        if (image.isNull()) {
+            qCWarning(lcProperties3D, "%s tried to set invalid image file as surface texture.",
+                      qUtf8Printable(QLatin1String(__FUNCTION__)));
+            return;
+        }
+        setTexture(image);
+    }
+
+    d->m_textureFile = filename;
+    emit textureFileChanged(filename);
 }
 
 QString QSurface3DSeries::textureFile() const
@@ -489,10 +508,13 @@ QString QSurface3DSeries::textureFile() const
 void QSurface3DSeries::setWireframeColor(QColor color)
 {
     Q_D(QSurface3DSeries);
-    if (d->m_wireframeColor != color) {
-        d->setWireframeColor(color);
-        emit wireframeColorChanged(color);
+    if (d->m_wireframeColor == color) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << color;
+        return;
     }
+    d->setWireframeColor(color);
+    emit wireframeColorChanged(color);
 }
 
 QColor QSurface3DSeries::wireframeColor() const
@@ -521,10 +543,13 @@ QColor QSurface3DSeries::wireframeColor() const
 void QSurface3DSeries::setDataArray(const QSurfaceDataArray &newDataArray)
 {
     Q_D(QSurface3DSeries);
-    if (!d->m_dataArray.isSharedWith(newDataArray)) {
-        d->setDataArray(newDataArray);
-        emit dataArrayChanged(newDataArray);
+    if (d->m_dataArray.isSharedWith(newDataArray)) {
+        qCDebug(lcProperties3D, "%s newDataArray is the same than the current one",
+                qUtf8Printable(QLatin1String(__FUNCTION__)));
+        return;
     }
+    d->setDataArray(newDataArray);
+    emit dataArrayChanged(newDataArray);
 }
 
 /*!
@@ -679,11 +704,14 @@ void QSurface3DSeriesPrivate::createItemLabel()
 void QSurface3DSeriesPrivate::setSelectedPoint(QPoint position)
 {
     Q_Q(QSurface3DSeries);
-    if (position != m_selectedPoint) {
-        markItemLabelDirty();
-        m_selectedPoint = position;
-        emit q->selectedPointChanged(m_selectedPoint);
+    if (position == m_selectedPoint) {
+        qCDebug(lcProperties3D) << __FUNCTION__
+            << "value is already set to:" << position;
+        return;
     }
+    markItemLabelDirty();
+    m_selectedPoint = position;
+    emit q->selectedPointChanged(m_selectedPoint);
 }
 
 void QSurface3DSeriesPrivate::setShading(const QSurface3DSeries::Shading shading)
@@ -695,13 +723,20 @@ void QSurface3DSeriesPrivate::setShading(const QSurface3DSeries::Shading shading
 
 void QSurface3DSeriesPrivate::setDrawMode(QSurface3DSeries::DrawFlags mode)
 {
+    if (mode.testFlag(QSurface3DSeries::DrawFilledSurface)
+        && !mode.testFlag(QSurface3DSeries::DrawSurface)) {
+        qCWarning(lcProperties3D, "%s drawSurface was not set and is needed for DrawFilledSurface."
+                 " Setting it automatically", qUtf8Printable(QLatin1String(__FUNCTION__)));
+        mode |= QSurface3DSeries::DrawSurface;
+    }
     if (mode.testFlag(QSurface3DSeries::DrawWireframe)
         || mode.testFlag(QSurface3DSeries::DrawSurface)) {
         m_drawMode = mode;
         if (m_graph)
             m_graph->markSeriesVisualsDirty();
     } else {
-        qWarning("You may not clear all draw flags. Mode not changed.");
+        qCWarning(lcProperties3D, "%s drawWireframe or DrawSurface must be set. Mode not changed.",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
     }
 }
 
@@ -709,6 +744,8 @@ void QSurface3DSeriesPrivate::setTexture(const QImage &texture)
 {
     Q_Q(QSurface3DSeries);
     m_texture = texture;
+    if (m_graph)
+        m_graph->markSeriesVisualsDirty();
     if (static_cast<QQuickGraphsSurface *>(m_graph))
         static_cast<QQuickGraphsSurface *>(m_graph)->updateSurfaceTexture(q);
 }

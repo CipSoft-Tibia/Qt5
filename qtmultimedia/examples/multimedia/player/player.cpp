@@ -30,6 +30,9 @@
 #include <QVBoxLayout>
 #include <QAudioBufferOutput>
 
+using namespace Qt::Literals;
+using namespace Qt::StringLiterals;
+
 Player::Player(QWidget *parent) : QWidget(parent)
 {
     //! [create-objs]
@@ -39,8 +42,7 @@ Player::Player(QWidget *parent) : QWidget(parent)
     //! [create-objs]
     connect(m_player, &QMediaPlayer::durationChanged, this, &Player::durationChanged);
     connect(m_player, &QMediaPlayer::positionChanged, this, &Player::positionChanged);
-    connect(m_player, QOverload<>::of(&QMediaPlayer::metaDataChanged), this,
-            &Player::metaDataChanged);
+    connect(m_player, &QMediaPlayer::metaDataChanged, this, &Player::metaDataChanged);
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this, &Player::statusChanged);
     connect(m_player, &QMediaPlayer::bufferProgressChanged, this, &Player::bufferingProgress);
     connect(m_player, &QMediaPlayer::hasVideoChanged, this, &Player::videoAvailableChanged);
@@ -134,6 +136,36 @@ Player::Player(QWidget *parent) : QWidget(parent)
     m_fullScreenButton->setCheckable(true);
     controlLayout->addWidget(m_fullScreenButton);
 
+    m_pitchCompensationButton = new QPushButton(tr("Pitch compensation"), this);
+    m_pitchCompensationButton->setCheckable(true);
+    switch (m_player->pitchCompensationAvailability()) {
+    case QMediaPlayer::PitchCompensationAvailability::AlwaysOn:
+        m_pitchCompensationButton->setEnabled(false);
+        m_pitchCompensationButton->setChecked(true);
+        m_pitchCompensationButton->setToolTip(
+                u"Pitch compensation always enabled on this backend"_s);
+        break;
+    case QMediaPlayer::PitchCompensationAvailability::Unavailable:
+        m_pitchCompensationButton->setEnabled(false);
+        m_pitchCompensationButton->setChecked(false);
+        m_pitchCompensationButton->setToolTip(u"Pitch compensation unavailable on this backend"_s);
+        break;
+    case QMediaPlayer::PitchCompensationAvailability::Available:
+        m_pitchCompensationButton->setEnabled(true);
+        m_pitchCompensationButton->setChecked(m_player->pitchCompensation());
+        break;
+    default:
+        Q_UNREACHABLE();
+    }
+
+    controlLayout->addWidget(m_pitchCompensationButton);
+    connect(m_player, &QMediaPlayer::pitchCompensationChanged, this, [this] {
+        m_pitchCompensationButton->setChecked(m_player->pitchCompensation());
+    });
+    m_pitchCompensationButton->setChecked(m_player->pitchCompensation());
+    connect(m_pitchCompensationButton, &QPushButton::toggled, m_player,
+            &QMediaPlayer::setPitchCompensation);
+
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
     m_audioOutputCombo = new QComboBox(this);
     controlLayout->addWidget(m_audioOutputCombo);
@@ -212,8 +244,6 @@ Player::Player(QWidget *parent) : QWidget(parent)
     layout->addWidget(m_statusBar);
 #endif
 
-    setLayout(layout);
-
     if (!isPlayerAvailable()) {
         QMessageBox::warning(this, tr("Service not available"),
                              tr("The QMediaPlayer object does not have a valid service.\n"
@@ -288,9 +318,8 @@ void Player::positionChanged(qint64 progress)
 void Player::metaDataChanged()
 {
     auto metaData = m_player->metaData();
-    setTrackInfo(QStringLiteral("%1 - %2")
-                         .arg(metaData.value(QMediaMetaData::AlbumArtist).toString())
-                         .arg(metaData.value(QMediaMetaData::Title).toString()));
+    setTrackInfo(metaData.value(QMediaMetaData::AlbumArtist).toString() + " - "_L1
+                 + metaData.value(QMediaMetaData::Title).toString());
 
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
     for (int i = 0; i < QMediaMetaData::NumMetaData; i++) {
@@ -326,7 +355,9 @@ void Player::metaDataChanged()
     const int currentVideoTrack = m_player->activeVideoTrack();
     if (currentVideoTrack >= 0 && currentVideoTrack < tracks.size()) {
         const QMediaMetaData track = tracks.value(currentVideoTrack);
-        for (const QMediaMetaData::Key &key : track.keys()) {
+
+        const QList<QMediaMetaData::Key> trackKeys = track.keys();
+        for (const QMediaMetaData::Key &key : std::as_const(trackKeys)) {
             if (QLineEdit *field = qobject_cast<QLineEdit *>(m_metaDataFields[key])) {
                 QString stringValue = track.stringValue(key);
                 field->setText(stringValue);
@@ -353,7 +384,7 @@ QString Player::trackName(const QMediaMetaData &metaData, int index)
         if (lang == QLocale::Language::AnyLanguage)
             name = title;
         else
-            name = QStringLiteral("%1 - [%2]").arg(title).arg(QLocale::languageToString(lang));
+            name = title + " - ["_L1 + QLocale::languageToString(lang) + u']';
     }
     return name;
 }
@@ -365,18 +396,18 @@ void Player::tracksChanged()
     m_subtitleTracks->clear();
 
     const auto audioTracks = m_player->audioTracks();
-    m_audioTracks->addItem(QStringLiteral("No audio"), -1);
+    m_audioTracks->addItem(u"No audio"_s, -1);
     for (int i = 0; i < audioTracks.size(); ++i)
         m_audioTracks->addItem(trackName(audioTracks.at(i), i), i);
     m_audioTracks->setCurrentIndex(m_player->activeAudioTrack() + 1);
 
     const auto videoTracks = m_player->videoTracks();
-    m_videoTracks->addItem(QStringLiteral("No video"), -1);
+    m_videoTracks->addItem(u"No video"_s, -1);
     for (int i = 0; i < videoTracks.size(); ++i)
         m_videoTracks->addItem(trackName(videoTracks.at(i), i), i);
     m_videoTracks->setCurrentIndex(m_player->activeVideoTrack() + 1);
 
-    m_subtitleTracks->addItem(QStringLiteral("No subtitles"), -1);
+    m_subtitleTracks->addItem(u"No subtitles"_s, -1);
     const auto subtitleTracks = m_player->subtitleTracks();
     for (int i = 0; i < subtitleTracks.size(); ++i)
         m_subtitleTracks->addItem(trackName(subtitleTracks.at(i), i), i);
@@ -508,7 +539,7 @@ void Player::setTrackInfo(const QString &info)
         m_statusLabel->setText(m_statusInfo);
     } else {
         if (!m_statusInfo.isEmpty())
-            setWindowTitle(QStringLiteral("%1 | %2").arg(m_trackInfo).arg(m_statusInfo));
+            setWindowTitle(m_trackInfo + " | "_L1 + m_statusInfo);
         else
             setWindowTitle(m_trackInfo);
     }
@@ -523,7 +554,7 @@ void Player::setStatusInfo(const QString &info)
         m_statusLabel->setText(m_statusInfo);
     } else {
         if (!m_statusInfo.isEmpty())
-            setWindowTitle(QStringLiteral("%1 | %2").arg(m_trackInfo).arg(m_statusInfo));
+            setWindowTitle(m_trackInfo + " | "_L1 + m_statusInfo);
         else
             setWindowTitle(m_trackInfo);
     }
@@ -544,10 +575,8 @@ void Player::updateDurationInfo(qint64 currentInfo)
                           (currentInfo * 1000) % 1000);
         QTime totalTime((m_duration / 3600) % 60, (m_duration / 60) % 60, m_duration % 60,
                         (m_duration * 1000) % 1000);
-        QString format = "mm:ss";
-        if (m_duration > 3600)
-            format = "hh:mm:ss";
-        tStr = currentTime.toString(format) + " / " + totalTime.toString(format);
+        QString format = m_duration > 3600 ? u"hh:mm:ss"_s : u"mm:ss"_s;
+        tStr = currentTime.toString(format) + " / "_L1 + totalTime.toString(format);
     }
     m_labelDuration->setText(tStr);
 }
@@ -556,7 +585,7 @@ void Player::updateAudioDevices()
 {
     m_audioOutputCombo->clear();
 
-    m_audioOutputCombo->addItem(QStringLiteral("Default"), QVariant::fromValue(QAudioDevice()));
+    m_audioOutputCombo->addItem(u"Default"_s, QVariant::fromValue(QAudioDevice()));
     for (auto &deviceInfo : QMediaDevices::audioOutputs())
         m_audioOutputCombo->addItem(deviceInfo.description(), QVariant::fromValue(deviceInfo));
 }

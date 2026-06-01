@@ -6,7 +6,18 @@
 #include <private/qabstractitemmodel_p.h>
 #include <private/qbarmodelmapper_p.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+               "class QBarModelMapper;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarModelMapperInitBarsFromModel_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs2DBarModelMapperInitBarsFromModel_exit);
 
 /*!
     \class QBarModelMapper
@@ -49,6 +60,7 @@ QT_BEGIN_NAMESPACE
     The following QML code snippet creates a bar series with three bar sets (assuming the model
     has at least four columns). Each bar set contains data starting from row 1. The name
     of a bar set is defined by the column header.
+
     \code
         BarSeries {
             BarModelMapper {
@@ -520,6 +532,8 @@ void QBarModelMapperPrivate::initializeBarsFromModel()
     blockSeriesSignals();
     m_series->clear();
     m_barSets.clear();
+
+    Q_TRACE_SCOPE(QGraphs2DBarModelMapperInitBarsFromModel);
 
     // create the initial bar sets
     for (int i = m_firstBarSetSection; i <= m_lastBarSetSection; i++) {

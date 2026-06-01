@@ -21,7 +21,7 @@ ApplicationWindow {
     visible: true
     color: Colors.background
     flags: Qt.Window | Qt.FramelessWindowHint
-    title: qsTr("File System Explorer Example")
+    title: qsTr("File System Explorer")
 
     function getInfoText() : string {
         let out = root.currentFilePath

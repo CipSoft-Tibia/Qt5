@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QTOOLS_P_H
 #define QTOOLS_P_H
@@ -24,12 +25,12 @@
 QT_BEGIN_NAMESPACE
 
 namespace QtMiscUtils {
-constexpr inline char toHexUpper(char32_t value) noexcept
+[[nodiscard]] constexpr inline char toHexUpper(char32_t value) noexcept
 {
     return "0123456789ABCDEF"[value & 0xF];
 }
 
-constexpr inline char toHexLower(char32_t value) noexcept
+[[nodiscard]] constexpr inline char toHexLower(char32_t value) noexcept
 {
     return "0123456789abcdef"[value & 0xF];
 }
@@ -41,7 +42,7 @@ constexpr inline char toHexLower(char32_t value) noexcept
         || (c >= 'a' && c <= 'f');
 }
 
-constexpr inline int fromHex(char32_t c) noexcept
+[[nodiscard]] constexpr inline int fromHex(char32_t c) noexcept
 {
     return ((c >= '0') && (c <= '9')) ? int(c - '0') :
            ((c >= 'A') && (c <= 'F')) ? int(c - 'A' + 10) :
@@ -49,7 +50,7 @@ constexpr inline int fromHex(char32_t c) noexcept
            /* otherwise */              -1;
 }
 
-constexpr inline char toOct(char32_t value) noexcept
+[[nodiscard]] constexpr inline char toOct(char32_t value) noexcept
 {
     return char('0' + (value & 0x7));
 }
@@ -59,7 +60,7 @@ constexpr inline char toOct(char32_t value) noexcept
     return c >= '0' && c <= '7';
 }
 
-constexpr inline int fromOct(char32_t c) noexcept
+[[nodiscard]] constexpr inline int fromOct(char32_t c) noexcept
 {
     return isOctalDigit(c) ? int(c - '0') : -1;
 }
@@ -69,44 +70,44 @@ constexpr inline int fromOct(char32_t c) noexcept
     return c >= '0' && c <= '9';
 }
 
-constexpr inline bool isAsciiUpper(char32_t c) noexcept
+[[nodiscard]] constexpr inline bool isAsciiUpper(char32_t c) noexcept
 {
     return c >= 'A' && c <= 'Z';
 }
 
-constexpr inline bool isAsciiLower(char32_t c) noexcept
+[[nodiscard]] constexpr inline bool isAsciiLower(char32_t c) noexcept
 {
     return c >= 'a' && c <= 'z';
 }
 
-constexpr inline bool isAsciiLetterOrNumber(char32_t c) noexcept
+[[nodiscard]] constexpr inline bool isAsciiLetterOrNumber(char32_t c) noexcept
 {
     return  isAsciiDigit(c) || isAsciiLower(c) || isAsciiUpper(c);
 }
 
-constexpr inline char toAsciiLower(char ch) noexcept
+[[nodiscard]] constexpr inline char toAsciiLower(char ch) noexcept
 {
     return isAsciiUpper(ch) ? ch - 'A' + 'a' : ch;
 }
 
-constexpr inline char toAsciiUpper(char ch) noexcept
+[[nodiscard]] constexpr inline char toAsciiUpper(char ch) noexcept
 {
     return isAsciiLower(ch) ? ch - 'a' + 'A' : ch;
 }
 
-constexpr inline int caseCompareAscii(char lhs, char rhs) noexcept
+[[nodiscard]] constexpr inline int caseCompareAscii(char lhs, char rhs) noexcept
 {
     const char lhsLower = QtMiscUtils::toAsciiLower(lhs);
     const char rhsLower = QtMiscUtils::toAsciiLower(rhs);
     return int(uchar(lhsLower)) - int(uchar(rhsLower));
 }
 
-constexpr inline int isAsciiPrintable(char32_t ch) noexcept
+[[nodiscard]] constexpr inline int isAsciiPrintable(char32_t ch) noexcept
 {
     return ch >= ' ' && ch < 0x7f;
 }
 
-constexpr inline int qt_lencmp(qsizetype lhs, qsizetype rhs) noexcept
+[[nodiscard]] constexpr inline int qt_lencmp(qsizetype lhs, qsizetype rhs) noexcept
 {
     return lhs == rhs ? 0 :
            lhs >  rhs ? 1 :

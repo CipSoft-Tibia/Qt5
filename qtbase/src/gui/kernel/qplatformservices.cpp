@@ -9,6 +9,8 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_LOGGING_CATEGORY(lcQpaServices, "qt.qpa.services", QtWarningMsg)
+
 /*!
     \class QPlatformServices
     \since 5.0

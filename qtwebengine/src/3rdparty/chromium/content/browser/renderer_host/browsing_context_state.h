@@ -6,6 +6,7 @@
 #define CONTENT_BROWSER_RENDERER_HOST_BROWSING_CONTEXT_STATE_H_
 
 #include "base/feature_list.h"
+#include "base/functional/function_ref.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/safe_ref.h"
 #include "base/unguessable_token.h"
@@ -75,8 +76,7 @@ class CONTENT_EXPORT BrowsingContextState
  public:
   using RenderFrameProxyHostMap =
       std::unordered_map<SiteInstanceGroupId,
-                         std::unique_ptr<RenderFrameProxyHost>,
-                         SiteInstanceGroupId::Hasher>;
+                         std::unique_ptr<RenderFrameProxyHost>>;
 
   // Currently `browsing_instance_id` and `coop_related_group_id` will be null
   // iff the legacy mode is enabled, as the legacy mode BrowsingContextState is
@@ -263,7 +263,7 @@ class CONTENT_EXPORT BrowsingContextState
       const blink::mojom::FrameOwnerProperties& properties);
 
   void ExecuteRemoteFramesBroadcastMethod(
-      base::RepeatingCallback<void(RenderFrameProxyHost*)> callback,
+      base::FunctionRef<void(RenderFrameProxyHost*)> callback,
       SiteInstanceGroup* group_to_skip,
       RenderFrameProxyHost* outer_delegate_proxy);
 

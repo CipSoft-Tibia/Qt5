@@ -41,6 +41,10 @@ use_relative_paths = True
 vars = {
   'chromium_tsproxy_git': 'https://chromium.googlesource.com/external/github.com/catchpoint/WebPageTest.tsproxy.git',
   'chromium_webpagereplay_git': 'https://chromium.googlesource.com/webpagereplay',
+
+  # This variable is overridden in Chromium's DEPS file.
+  'build_with_chromium': False,
+
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling tsproxy
   # and whatever else without interference from each other.
@@ -59,5 +63,8 @@ allowed_hosts = [
 
 deps = {
   'third_party/tsproxy': Var('chromium_tsproxy_git') + '@' + Var('tsproxy_revision'),
-  'third_party/webpagereplay': Var('chromium_webpagereplay_git') + '@' + Var('webpagereplay_revision'),
+  'third_party/webpagereplay': {
+    'url': Var('chromium_webpagereplay_git') + '@' + Var('webpagereplay_revision'),
+    'condition': 'not build_with_chromium',
+  }
 }

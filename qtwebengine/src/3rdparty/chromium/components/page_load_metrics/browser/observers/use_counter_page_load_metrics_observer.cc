@@ -17,7 +17,7 @@ using UkmFeatureList = UseCounterMetricsRecorder::UkmFeatureList;
 using WebFeature = blink::mojom::WebFeature;
 using WebDXFeature = blink::mojom::WebDXFeature;
 using CSSSampleId = blink::mojom::CSSSampleId;
-using PermissionsPolicyFeature = blink::mojom::PermissionsPolicyFeature;
+using PermissionsPolicyFeature = network::mojom::PermissionsPolicyFeature;
 
 namespace {
 
@@ -80,13 +80,13 @@ UseCounterMetricsRecorder::UseCounterMetricsRecorder(
       std::make_unique<AtMostOnceEnumUmaDeferrer<blink::mojom::CSSSampleId>>(
           "Blink.UseCounter.AnimatedCSSProperties");
   uma_permissions_policy_violation_enforce_ = std::make_unique<
-      AtMostOnceEnumUmaDeferrer<blink::mojom::PermissionsPolicyFeature>>(
+      AtMostOnceEnumUmaDeferrer<network::mojom::PermissionsPolicyFeature>>(
       "Blink.UseCounter.PermissionsPolicy.Violation.Enforce");
   uma_permissions_policy_allow2_ = std::make_unique<
-      AtMostOnceEnumUmaDeferrer<blink::mojom::PermissionsPolicyFeature>>(
+      AtMostOnceEnumUmaDeferrer<network::mojom::PermissionsPolicyFeature>>(
       "Blink.UseCounter.PermissionsPolicy.Allow2");
   uma_permissions_policy_header2_ = std::make_unique<
-      AtMostOnceEnumUmaDeferrer<blink::mojom::PermissionsPolicyFeature>>(
+      AtMostOnceEnumUmaDeferrer<network::mojom::PermissionsPolicyFeature>>(
       "Blink.UseCounter.PermissionsPolicy.Header2");
 }
 
@@ -310,214 +310,8 @@ void UseCounterMetricsRecorder::RecordWebDXFeatures(
       static_cast<size_t>(WebDXFeature::kMaxValue));
 }
 
-const base::flat_map<blink::mojom::WebFeature, blink::mojom::WebDXFeature>&
-UseCounterMetricsRecorder::GetWebFeatureToWebDXFeatureMap() {
-  static const base::NoDestructor<
-      const base::flat_map<WebFeature, WebDXFeature>>
-      kMap{{
-          {WebFeature::kViewTransition, WebDXFeature::kViewTransitions},
-          {WebFeature::kValidPopoverAttribute, WebDXFeature::kPopover},
-          {WebFeature::kCSSSubgridLayout, WebDXFeature::kSubgrid},
-          {WebFeature::kCSSCascadeLayers, WebDXFeature::kCascadeLayers},
-          // If the compression or decompression stream constructors were
-          // invoked, WebDXFeature::count that as the CompressionStreams WebDX
-          // feature being used.
-          {WebFeature::kCompressionStreamConstructor,
-           WebDXFeature::kCompressionStreams},
-          {WebFeature::kDecompressionStreamConstructor,
-           WebDXFeature::kCompressionStreams},
-          {WebFeature::kAVIFImage, WebDXFeature::kAvif},
-          {WebFeature::kBlockingAttributeRenderToken,
-           WebDXFeature::kBlockingRender},
-          {WebFeature::kV8BroadcastChannel_Constructor,
-           WebDXFeature::kBroadcastChannel},
-          {WebFeature::kCanvasRenderingContext2DContextLostEvent,
-           WebDXFeature::kCanvasContextLost},
-          {WebFeature::kCSSCascadeLayers, WebDXFeature::kCascadeLayers},
-          {WebFeature::kPressureObserver_Constructor,
-           WebDXFeature::kComputePressure},
-          {WebFeature::kAdoptedStyleSheets,
-           WebDXFeature::kConstructedStylesheets},
-          {WebFeature::kCSSAtRuleContainer, WebDXFeature::kContainerQueries},
-          {WebFeature::kCSSStyleContainerQuery,
-           WebDXFeature::kContainerStyleQueries},
-          {WebFeature::kCSSAtRuleCounterStyle, WebDXFeature::kCounterStyle},
-          {WebFeature::kCreateCSSModuleScript, WebDXFeature::kCssModules},
-          {WebFeature::kStreamingDeclarativeShadowDOM,
-           WebDXFeature::kDeclarativeShadowDom},
-          {WebFeature::kHTMLDetailsElementNameAttribute,
-           WebDXFeature::kDetailsName},
-          {WebFeature::kElementCheckVisibility,
-           WebDXFeature::kElementCheckVisibility},
-          {WebFeature::kDialogElement, WebDXFeature::kDialog},
-          {WebFeature::kV8DocumentPictureInPicture_RequestWindow_Method,
-           WebDXFeature::kDocumentPictureInPicture},
-          {WebFeature::kFlexGapSpecified, WebDXFeature::kFlexboxGap},
-          {WebFeature::kCSSFlexibleBox, WebDXFeature::kFlexbox},
-          {WebFeature::kCSSSelectorPseudoFocusVisible,
-           WebDXFeature::kFocusVisible},
-          {WebFeature::kCSSGridLayout, WebDXFeature::kGrid},
-          {WebFeature::kCSSSelectorPseudoHas, WebDXFeature::kHas},
-          {WebFeature::kIdleDetectionStart, WebDXFeature::kIdleDetection},
-          {WebFeature::kImportMap, WebDXFeature::kImportMaps},
-          {WebFeature::kIntersectionObserverV2,
-           WebDXFeature::kIntersectionObserverV2},
-          {WebFeature::kIntersectionObserver_Constructor,
-           WebDXFeature::kIntersectionObserver},
-          {WebFeature::kCSSSelectorPseudoIs, WebDXFeature::kIs},
-          {WebFeature::kPrepareModuleScript, WebDXFeature::kJsModules},
-          {WebFeature::kInstantiateModuleScript, WebDXFeature::kJsModules},
-          {WebFeature::kV8MediaSession_Metadata_AttributeSetter,
-           WebDXFeature::kMediaSession},
-          {WebFeature::kOffscreenCanvas, WebDXFeature::kOffscreenCanvas},
-          {WebFeature::kV8StorageManager_GetDirectory_Method,
-           WebDXFeature::kOriginPrivateFileSystem},
-          {WebFeature::kV8HTMLVideoElement_RequestPictureInPicture_Method,
-           WebDXFeature::kPictureInPicture},
-          {WebFeature::kElementRequestPointerLock, WebDXFeature::kPointerLock},
-          {WebFeature::kCSSRelativeColor, WebDXFeature::kRelativeColor},
-          {WebFeature::kCSSAtRuleScope, WebDXFeature::kScope},
-          {WebFeature::kScrollend, WebDXFeature::kScrollend},
-          {WebFeature::kTextFragmentAnchor,
-           WebDXFeature::kScrollToTextFragment},
-          {WebFeature::kV8HTMLInputElement_ShowPicker_Method,
-           WebDXFeature::kShowPickerInput},
-          {WebFeature::kHTMLSlotElement, WebDXFeature::kSlot},
-          {WebFeature::kV8SpeechRecognition_Start_Method,
-           WebDXFeature::kSpeechRecognition},
-          {WebFeature::kV8SpeechSynthesis_Speak_Method,
-           WebDXFeature::kSpeechSynthesis},
-          {WebFeature::kStorageAccessAPI_HasStorageAccess_Method,
-           WebDXFeature::kStorageAccess},
-          {WebFeature::kStorageAccessAPI_requestStorageAccess_Method,
-           WebDXFeature::kStorageAccess},
-          {WebFeature::kStorageBucketsOpen, WebDXFeature::kStorageBuckets},
-          {WebFeature::kCSSSelectorTargetText, WebDXFeature::kTargetText},
-          {WebFeature::kHTMLTemplateElement, WebDXFeature::kTemplate},
-          {WebFeature::kTextWrapBalance, WebDXFeature::kTextWrapBalance},
-          {WebFeature::kTextWrapPretty, WebDXFeature::kTextWrapPretty},
-          {WebFeature::kCSSSelectorUserValid, WebDXFeature::kUserPseudos},
-          {WebFeature::kCSSSelectorUserInvalid, WebDXFeature::kUserPseudos},
-          {WebFeature::kWebCodecs, WebDXFeature::kWebcodecs},
-          {WebFeature::kHidDeviceOpen, WebDXFeature::kWebhid},
-          {WebFeature::kV8LockManager_Request_Method, WebDXFeature::kWebLocks},
-          {WebFeature::kWebPImage, WebDXFeature::kWebp},
-          {WebFeature::kWebTransport, WebDXFeature::kWebtransport},
-          {WebFeature::kUsbDeviceOpen, WebDXFeature::kWebusb},
-          {WebFeature::kVTTCue, WebDXFeature::kWebvtt},
-          {WebFeature::kCSSSelectorPseudoWhere, WebDXFeature::kWhere},
-          {WebFeature::kDataListElement, WebDXFeature::kDatalist},
-          {WebFeature::kCSSSelectorPseudoDir, WebDXFeature::kDirPseudo},
-          {WebFeature::kHiddenUntilFoundAttribute,
-           WebDXFeature::kHiddenUntilFound},
-          {WebFeature::kAbortSignalAny, WebDXFeature::kAbortsignalAny},
-          {WebFeature::kNavigationAPI, WebDXFeature::kNavigation},
-          {WebFeature::kMathMLMathElement, WebDXFeature::kMathml},
-          {WebFeature::kCanvasRenderingContext2DConicGradient,
-           WebDXFeature::kCanvasCreateconicgradient},
-          {WebFeature::kCanvasRenderingContext2DReset,
-           WebDXFeature::kCanvasReset},
-          {WebFeature::kCanvasRenderingContext2DRoundRect,
-           WebDXFeature::kCanvasRoundrect},
-          {WebFeature::kCSSColorMixFunction, WebDXFeature::kColorMix},
-          {WebFeature::kImageSet, WebDXFeature::kImageSet},
-          {WebFeature::kStructuredCloneMethod, WebDXFeature::kStructuredClone},
-          {WebFeature::kSlotAssignNode, WebDXFeature::kSlotAssign},
-          {WebFeature::kDeviceMotionSecureOrigin,
-           WebDXFeature::kDeviceOrientationEvents},
-          {WebFeature::kDeviceOrientationAbsoluteSecureOrigin,
-           WebDXFeature::kDeviceOrientationEvents},
-          {WebFeature::kDeviceOrientationSecureOrigin,
-           WebDXFeature::kDeviceOrientationEvents},
-          {WebFeature::kGamepadButtons, WebDXFeature::kDRAFT_Gamepad},
-          {WebFeature::kWakeLockAcquireScreenLock,
-           WebDXFeature::kScreenWakeLock},
-          {WebFeature::kWakeLockAcquireSystemLock,
-           WebDXFeature::kScreenWakeLock},
-          {WebFeature::kWebBluetoothRemoteServerConnect,
-           WebDXFeature::kWebBluetooth},
-          {WebFeature::kWebNfcNdefReaderScan, WebDXFeature::kWebNfc},
-          {WebFeature::kSerialPortOpen, WebDXFeature::kDRAFT_Serial},
-          {WebFeature::kModuleDedicatedWorker, WebDXFeature::kJsModulesWorkers},
-          {WebFeature::kModuleSharedWorker,
-           WebDXFeature::kJsModulesSharedWorkers},
-          {WebFeature::kCssDisplayPropertyMultipleValues,
-           WebDXFeature::kTwoValueDisplay},
-          {WebFeature::kTwoValuedOverflow, WebDXFeature::kOverflowShorthand},
-          {WebFeature::kKeyboardApiGetLayoutMap,
-           WebDXFeature::kKeyboardMap},
-      }};
-
-  return *kMap;
-}
-
-const base::flat_map<blink::mojom::CSSSampleId, blink::mojom::WebDXFeature>&
-UseCounterMetricsRecorder::GetCSSProperties2WebDXFeatureMap() {
-  static const base::NoDestructor<
-      const base::flat_map<CSSSampleId, WebDXFeature>>
-      kMap{{
-          {CSSSampleId::kAccentColor, WebDXFeature::kAccentColor},
-          {CSSSampleId::kAnchorName, WebDXFeature::kAnchorPositioning},
-          {CSSSampleId::kAnimationComposition,
-           WebDXFeature::kAnimationComposition},
-          {CSSSampleId::kAppearance, WebDXFeature::kAppearance},
-          {CSSSampleId::kAspectRatio, WebDXFeature::kAspectRatio},
-          {CSSSampleId::kBackdropFilter, WebDXFeature::kBackdropFilter},
-          {CSSSampleId::kBorderImage, WebDXFeature::kBorderImage},
-          {CSSSampleId::kColorScheme, WebDXFeature::kColorScheme},
-          {CSSSampleId::kContainIntrinsicSize,
-           WebDXFeature::kContainIntrinsicSize},
-          {CSSSampleId::kFieldSizing, WebDXFeature::kFieldSizing},
-          {CSSSampleId::kFontOpticalSizing, WebDXFeature::kFontOpticalSizing},
-          {CSSSampleId::kFontPalette, WebDXFeature::kFontPalette},
-          {CSSSampleId::kFontSynthesisSmallCaps,
-           WebDXFeature::kFontSynthesisSmallCaps},
-          {CSSSampleId::kFontSynthesisStyle, WebDXFeature::kFontSynthesisStyle},
-          {CSSSampleId::kFontSynthesisWeight,
-           WebDXFeature::kFontSynthesisWeight},
-          {CSSSampleId::kFontSynthesis, WebDXFeature::kFontSynthesis},
-          {CSSSampleId::kFontVariantAlternates,
-           WebDXFeature::kFontVariantAlternates},
-          {CSSSampleId::kHyphens, WebDXFeature::kHyphens},
-          {CSSSampleId::kScrollbarColor, WebDXFeature::kScrollbarColor},
-          {CSSSampleId::kScrollbarGutter, WebDXFeature::kScrollbarGutter},
-          {CSSSampleId::kScrollbarWidth, WebDXFeature::kScrollbarWidth},
-          {CSSSampleId::kScrollSnapType, WebDXFeature::kScrollSnap},
-          {CSSSampleId::kTextIndent, WebDXFeature::kTextIndent},
-          {CSSSampleId::kTextSpacingTrim, WebDXFeature::kTextSpacingTrim},
-          {CSSSampleId::kTransitionBehavior, WebDXFeature::kTransitionBehavior},
-          {CSSSampleId::kTranslate, WebDXFeature::kIndividualTransforms},
-          {CSSSampleId::kRotate, WebDXFeature::kIndividualTransforms},
-          {CSSSampleId::kScale, WebDXFeature::kIndividualTransforms},
-          {CSSSampleId::kWillChange, WebDXFeature::kWillChange},
-          {CSSSampleId::kMaskImage, WebDXFeature::kMasks},
-          {CSSSampleId::kMaskClip, WebDXFeature::kMasks},
-          {CSSSampleId::kMaskSize, WebDXFeature::kMasks},
-          {CSSSampleId::kMaskOrigin, WebDXFeature::kMasks},
-          {CSSSampleId::kMaskRepeat, WebDXFeature::kMasks},
-          {CSSSampleId::kMaskComposite, WebDXFeature::kMasks},
-          {CSSSampleId::kMaskPosition, WebDXFeature::kMasks},
-          {CSSSampleId::kMaskMode, WebDXFeature::kMasks},
-          {CSSSampleId::kMask, WebDXFeature::kMasks},
-      }};
-
-  return *kMap;
-}
-
-const base::flat_map<blink::mojom::CSSSampleId, blink::mojom::WebDXFeature>&
-UseCounterMetricsRecorder::GetAnimatedCSSProperties2WebDXFeatureMap() {
-  static const base::NoDestructor<
-      const base::flat_map<CSSSampleId, WebDXFeature>>
-      kMap{{
-          // TODO(jstenback): This animated kFontPalette is being investigated.
-          // Uncomment this once that's resolved, or replace this with something
-          // else that matches the resolution of the investigation
-          // {CSSSampleId::kFontPalette, WebDXFeature::kFontPaletteAnimation}
-      }};
-
-  return *kMap;
-}
-
+// WebDXFeature use counter mappings have been moved to
+// components/page_load_metrics/browser/observers/use_counter/webdx_feature_maps.cc
 UseCounterPageLoadMetricsObserver::UseCounterPageLoadMetricsObserver() =
     default;
 
@@ -575,6 +369,12 @@ UseCounterPageLoadMetricsObserver::OnCommit(
       static_cast<blink::UseCounterFeature::EnumValue>(WebFeature::kPageVisits);
   recorder_->RecordOrDeferUseCounterFeature(
       rfh, {FeatureType::kWebFeature, web_feature_page_visit});
+
+  auto webdx_feature_page_visit =
+      static_cast<blink::UseCounterFeature::EnumValue>(
+          WebDXFeature::kPageVisits);
+  recorder_->RecordOrDeferUseCounterFeature(
+      rfh, {FeatureType::kWebDXFeature, webdx_feature_page_visit});
 
   auto css_total_pages_measured =
       static_cast<blink::UseCounterFeature::EnumValue>(

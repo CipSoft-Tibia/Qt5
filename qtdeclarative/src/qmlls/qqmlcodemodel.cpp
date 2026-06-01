@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trusted-sources
 
 #include "qqmlcodemodel_p.h"
 #include "qqmllsplugin_p.h"
@@ -12,7 +13,13 @@
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qprocess.h>
 #include <QtCore/qdiriterator.h>
+
+#if QT_CONFIG(settings)
+#  include <QtCore/qsettings.h>
+#endif
+
 #include <QtQmlDom/private/qqmldomtop_p.h>
+#include <QtQmlCompiler/private/qqmljsutils_p.h>
 
 #include <memory>
 #include <algorithm>
@@ -103,9 +110,8 @@ void QQmlCodeModel::disableCMakeCalls()
     QObject::disconnect(&m_cppFileWatcher, &QFileSystemWatcher::fileChanged, nullptr, nullptr);
 }
 
-QQmlCodeModel::~QQmlCodeModel()
+void QQmlCodeModel::prepareForShutdown()
 {
-    QObject::disconnect(&m_cppFileWatcher, &QFileSystemWatcher::fileChanged, nullptr, nullptr);
     while (true) {
         bool shouldWait;
         {
@@ -118,6 +124,12 @@ QQmlCodeModel::~QQmlCodeModel()
             break;
         QThread::yieldCurrentThread();
     }
+}
+
+QQmlCodeModel::~QQmlCodeModel()
+{
+    QObject::disconnect(&m_cppFileWatcher, &QFileSystemWatcher::fileChanged, nullptr, nullptr);
+    prepareForShutdown();
 }
 
 OpenDocumentSnapshot QQmlCodeModel::snapshotByUrl(const QByteArray &url)
@@ -196,13 +208,17 @@ void QQmlCodeModel::openNeedUpdate()
     const int maxThreads = 1;
     {
         QMutexLocker l(&m_mutex);
-        if (m_openDocumentsToUpdate.isEmpty() || m_nUpdateInProgress >= maxThreads)
+        if (m_openDocumentsToUpdate.isEmpty() || m_nUpdateInProgress >= maxThreads
+            || m_state == State::Stopping) {
             return;
+        }
         if (++m_nUpdateInProgress == 1)
             openUpdateStart();
     }
     QThreadPool::globalInstance()->start([this]() {
+        QScopedValueRollback thread(m_openUpdateThread, QThread::currentThread());
         while (openUpdateSome()) { }
+        emit openUpdateThreadFinished();
     });
 }
 
@@ -212,6 +228,8 @@ bool QQmlCodeModel::openUpdateSome()
     QByteArray toUpdate;
     {
         QMutexLocker l(&m_mutex);
+        Q_ASSERT(QThread::currentThread() == m_openUpdateThread);
+
         if (m_openDocumentsToUpdate.isEmpty()) {
             if (--m_nUpdateInProgress == 0)
                 openUpdateEnd();
@@ -418,6 +436,8 @@ void QQmlCodeModel::addFileWatches(const DomItem &qmlFile)
 {
     const auto filesToWatch = fileNamesToWatch(qmlFile);
     const QStringList filepathsToWatch = findFilePathsFromFileNames(filesToWatch);
+    if (filepathsToWatch.isEmpty())
+        return;
     const auto unwatchedPaths = m_cppFileWatcher.addPaths(filepathsToWatch);
     if (!unwatchedPaths.isEmpty()) {
         qCDebug(codeModelLog) << "Cannot watch paths" << unwatchedPaths << "from requested"
@@ -432,6 +452,7 @@ void QQmlCodeModel::onCppFileChanged(const QString &)
 
 void QQmlCodeModel::newDocForOpenFile(const QByteArray &url, int version, const QString &docText)
 {
+    Q_ASSERT(QThread::currentThread() == m_openUpdateThread);
     qCDebug(codeModelLog) << "updating doc" << url << "to version" << version << "("
                           << docText.size() << "chars)";
 
@@ -567,14 +588,18 @@ static bool isNotSeparator(char c)
     return c != '/';
 }
 
-QStringList QQmlCodeModel::importPathsForFile(const QString &fileName) const
+QStringList QQmlCodeModel::importPathsForFile(const QString &fileName)
 {
     QStringList result = importPaths();
 
     const QString importPaths = u"importPaths"_s;
     if (m_settings && m_settings->search(fileName) && m_settings->isSet(importPaths)) {
-        result.append(m_settings->value(importPaths).toString().split(QDir::listSeparator()));
+        result.append(m_settings->valueAsAbsolutePathList(importPaths, fileName));
     }
+
+    const QStringList buildPath = buildPathsForFileUrl(m_path2url[fileName]);
+    m_buildInformation.loadSettingsFrom(buildPath);
+    result.append(m_buildInformation.importPathsFor(fileName));
 
     return result;
 }
@@ -702,6 +727,7 @@ void QQmlCodeModel::openUpdate(const QByteArray &url)
     std::shared_ptr<Utils::TextDocument> document;
     {
         QMutexLocker l(&m_mutex);
+        Q_ASSERT(QThread::currentThread() == m_openUpdateThread);
         OpenDocument &doc = m_openDocuments[url];
         document = doc.textDocument;
         if (!document)
@@ -773,6 +799,55 @@ QDebug OpenDocumentSnapshot::dump(QDebug dbg, DumpOptions options)
     dbg << "}";
     return dbg;
 }
+
+void QQmllsBuildInformation::loadSettingsFrom(const QStringList &buildPaths)
+{
+#if QT_CONFIG(settings)
+    for (const QString &path : buildPaths) {
+        if (m_seenSettings.contains(path))
+            continue;
+        m_seenSettings.insert(path);
+
+        const QString iniPath = QString(path).append("/.qt/.qmlls.build.ini"_L1);
+        if (!QFile::exists(iniPath))
+            continue;
+
+        QSettings settings(iniPath, QSettings::IniFormat);
+        m_docDir = settings.value("docDir"_L1).toString();
+        for (const QString &group : settings.childGroups()) {
+            settings.beginGroup(group);
+
+            ModuleSetting moduleSetting;
+            moduleSetting.sourceFolder = group;
+            moduleSetting.sourceFolder.replace("<SLASH>"_L1, "/"_L1);
+            moduleSetting.importPaths = settings.value("importPaths"_L1)
+                                                .toString()
+                                                .split(QDir::listSeparator(), Qt::SkipEmptyParts);
+            m_moduleSettings.append(moduleSetting);
+            settings.endGroup();
+        }
+    }
+#else
+    Q_UNUSED(buildPaths);
+#endif
+}
+
+QStringList QQmllsBuildInformation::importPathsFor(const QString &filePath)
+{
+    QStringList result;
+    qsizetype longestMatch = 0;
+    for (const ModuleSetting &setting : m_moduleSettings) {
+        const qsizetype matchLength = setting.sourceFolder.size();
+        if (filePath.startsWith(setting.sourceFolder) && matchLength > longestMatch) {
+            result = setting.importPaths;
+            longestMatch = matchLength;
+        }
+    }
+    QQmlToolingSettings::resolveRelativeImportPaths(filePath, &result);
+    return result;
+}
+
+QQmllsBuildInformation::QQmllsBuildInformation() { }
 
 } // namespace QmlLsp
 

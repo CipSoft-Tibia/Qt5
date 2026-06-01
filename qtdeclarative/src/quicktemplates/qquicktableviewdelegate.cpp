@@ -1,7 +1,9 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktableviewdelegate_p.h"
+#include "qquicktableviewdelegate_p_p.h"
 
 #include <QtQuickTemplates2/private/qquickitemdelegate_p_p.h>
 #include <QtQuick/private/qquicktaphandler_p.h>
@@ -20,6 +22,7 @@ QT_BEGIN_NAMESPACE
     \brief A delegate that can be assigned to a TableView.
 
     \image qtquickcontrols-tableviewdelegate.png
+           {Table view displaying addresses using a table view delegate}
 
     A TableViewDelegate is a delegate that can be assigned to the
     \l {TableView::delegate} {delegate property} of a \l TableView.
@@ -113,20 +116,6 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::Literals::StringLiterals;
 
-class QQuickTableViewDelegatePrivate : public QQuickItemDelegatePrivate
-{
-public:
-    Q_DECLARE_PUBLIC(QQuickTableViewDelegate)
-
-    QPalette defaultPalette() const override;
-
-public:
-    QPointer<QQuickTableView> m_tableView;
-    bool m_current = false;
-    bool m_selected = false;
-    bool m_editing = false;
-};
-
 QQuickTableViewDelegate::QQuickTableViewDelegate(QQuickItem *parent)
     : QQuickItemDelegate(*(new QQuickTableViewDelegatePrivate), parent)
 {
@@ -155,6 +144,11 @@ QQuickTableViewDelegate::QQuickTableViewDelegate(QQuickItem *parent)
         if (tapHandler->tapCount() > 1 && !tapHandler->isPressed())
             emit doubleClicked();
     }, Qt::DirectConnection);
+}
+
+QQuickTableViewDelegate::QQuickTableViewDelegate(QQuickTableViewDelegatePrivate &dd, QQuickItem *parent)
+    : QQuickItemDelegate(dd, parent)
+{
 }
 
 void QQuickTableViewDelegate::mousePressEvent(QMouseEvent *event)
@@ -186,46 +180,46 @@ QFont QQuickTableViewDelegate::defaultFont() const
 
 bool QQuickTableViewDelegate::current() const
 {
-    return d_func()->m_current;
+    return d_func()->current;
 }
 
 void QQuickTableViewDelegate::setCurrent(bool current)
 {
     Q_D(QQuickTableViewDelegate);
-    if (d->m_current == current)
+    if (d->current == current)
         return;
 
-    d->m_current = current;
+    d->current = current;
     emit currentChanged();
 }
 
 bool QQuickTableViewDelegate::selected() const
 {
-    return d_func()->m_selected;
+    return d_func()->selected;
 }
 
 void QQuickTableViewDelegate::setSelected(bool selected)
 {
     Q_D(QQuickTableViewDelegate);
-    if (d->m_selected == selected)
+    if (d->selected == selected)
         return;
 
-    d->m_selected = selected;
+    d->selected = selected;
     emit selectedChanged();
 }
 
 bool QQuickTableViewDelegate::editing() const
 {
-    return d_func()->m_editing;
+    return d_func()->editing;
 }
 
 void QQuickTableViewDelegate::setEditing(bool editing)
 {
     Q_D(QQuickTableViewDelegate);
-    if (d->m_editing == editing)
+    if (d->editing == editing)
         return;
 
-    d->m_editing = editing;
+    d->editing = editing;
     emit editingChanged();
 }
 

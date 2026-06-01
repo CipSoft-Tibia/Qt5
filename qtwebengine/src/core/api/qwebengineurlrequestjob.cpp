@@ -114,8 +114,8 @@ QMap<QByteArray, QByteArray> QWebEngineUrlRequestJob::requestHeaders() const
 
 /*!
     Returns a pointer to a QIODevice that gives access to the request body.
-    The request body can contain data for example when the request is
-    a POST request. If the request body is empty the QIODevice reflects this
+    The request body can contain data, for example, when the request is
+    a POST request. If the request body is empty, the QIODevice reflects this
     and does not return any data when performing read operations on it.
 
     \since 6.7
@@ -146,8 +146,8 @@ void QWebEngineUrlRequestJob::setAdditionalResponseHeaders(
 
     The user has to be aware that \a device will be used on another thread
     until the job is deleted. In case simultaneous access from the main thread
-    is desired, the user is reponsible for making access to \a device thread-safe
-    for example by using QMutex. Note that the \a device object is not owned by
+    is desired, the user is responsible for making access to \a device thread-safe
+    (for example, by using QMutex). Note that the \a device object is not owned by
     the web engine. Therefore, the signal QObject::destroyed() of
     QWebEngineUrlRequestJob must be monitored.
 

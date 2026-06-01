@@ -182,11 +182,12 @@ inline LayoutUnit ResolveInitialMaxBlockLength(
     const ConstraintSpace& constraint_space,
     const ComputedStyle& style,
     const BoxStrut& border_padding,
-    const Length& length) {
+    const Length& length,
+    LayoutUnit override_available_size = kIndefiniteSize) {
   const LayoutUnit result = ResolveBlockLengthInternal(
       constraint_space, style, border_padding, length,
       /* auto_length */ &Length::Auto(), LengthTypeInternal::kMax,
-      /* override_available_size */ kIndefiniteSize,
+      override_available_size,
       /* override_percentage_resolution_size */ nullptr,
       [](SizeType) { return kIndefiniteSize; });
   return result == kIndefiniteSize ? LayoutUnit::Max() : result;
@@ -242,9 +243,11 @@ inline LayoutUnit ResolveMainBlockLength(
 //
 // The initial variant of this function won't try and resolve
 // "min-block-size: min-content" and similar.
-MinMaxSizes ComputeInitialMinMaxBlockSizes(const ConstraintSpace&,
-                                           const BlockNode&,
-                                           const BoxStrut& border_padding);
+MinMaxSizes ComputeInitialMinMaxBlockSizes(
+    const ConstraintSpace&,
+    const BlockNode&,
+    const BoxStrut& border_padding,
+    LayoutUnit override_available_size = kIndefiniteSize);
 MinMaxSizes ComputeMinMaxBlockSizes(
     const ConstraintSpace&,
     const BlockNode&,
@@ -273,12 +276,18 @@ ComputeMinMaxInlineSizesFromAspectRatio(const ConstraintSpace&,
                                         const BlockNode&,
                                         const BoxStrut& border_padding);
 
+enum class TransferredSizesMode {
+  kNormal,  // Apply the transferred min/max sizes.
+  kIgnore   // Ignore the transferred min/max sizes.
+};
+
 MinMaxSizes ComputeMinMaxInlineSizes(
     const ConstraintSpace& space,
     const BlockNode& node,
     const BoxStrut& border_padding,
     const Length* auto_min_length,
     MinMaxSizesFunctionRef min_max_sizes_func,
+    TransferredSizesMode transferred_sizes_mode = TransferredSizesMode::kNormal,
     LayoutUnit override_available_size = kIndefiniteSize);
 
 // Returns block size of the node's border box by resolving the computed value
@@ -675,15 +684,10 @@ MinMaxSizesResult ComputeMinAndMaxContentContributionForSelf(
     const ConstraintSpace& space);
 
 // Same as above, but allows a custom function to compute min/max sizes.
-inline MinMaxSizesResult ComputeMinAndMaxContentContributionForSelf(
+MinMaxSizesResult ComputeMinAndMaxContentContributionForSelf(
     const BlockNode& child,
     const ConstraintSpace& space,
-    MinMaxSizesFunctionRef min_max_sizes_func) {
-  DCHECK(child.CreatesNewFormattingContext());
-
-  return ComputeMinAndMaxContentContributionInternal(
-      child.Style().GetWritingMode(), child, space, min_max_sizes_func);
-}
+    MinMaxSizesFunctionRef min_max_sizes_func);
 
 // Used for unit-tests.
 CORE_EXPORT MinMaxSizes

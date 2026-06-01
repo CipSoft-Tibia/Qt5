@@ -31,6 +31,8 @@ sudo su -
 echo "add_drivers+=\"virtio-blk\"" >/etc/dracut.conf.d/virtio.conf
 dracut -f
 
+sudo zypper -nq install qemu-guest-agent
+
 # Add these to /etc/polkit-default-privs.local
 org.freedesktop.udisks2.filesystem-mount yes
 org.freedesktop.udisks2.filesystem-mount-other-seat yes

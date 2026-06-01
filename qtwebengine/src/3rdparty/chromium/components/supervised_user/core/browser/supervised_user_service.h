@@ -6,6 +6,7 @@
 #define COMPONENTS_SUPERVISED_USER_CORE_BROWSER_SUPERVISED_USER_SERVICE_H_
 
 #include <stddef.h>
+
 #include <memory>
 #include <string>
 
@@ -20,6 +21,7 @@
 #include "components/supervised_user/core/browser/remote_web_approvals_manager.h"
 #include "components/supervised_user/core/browser/supervised_user_url_filter.h"
 #include "components/supervised_user/core/common/supervised_users.h"
+#include "google_apis/gaia/gaia_id.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 
 class PrefService;
@@ -45,7 +47,7 @@ class SupervisedUserService : public KeyedService {
   // Delegate encapsulating platform-specific logic that is invoked from SUS.
   class PlatformDelegate {
    public:
-    virtual ~PlatformDelegate() {}
+    virtual ~PlatformDelegate() = default;
 
     // Returns the country code stored for this client.
     // Country code is in the format of lowercase ISO 3166-1 alpha-2. Example:
@@ -81,7 +83,7 @@ class SupervisedUserService : public KeyedService {
   std::string GetCustodianEmailAddress() const;
 
   // Returns the obfuscated GAIA id of the custodian.
-  std::string GetCustodianObfuscatedGaiaId() const;
+  GaiaId GetCustodianObfuscatedGaiaId() const;
 
   // Returns the name of the custodian, or the email address if the name is
   // empty.
@@ -93,7 +95,7 @@ class SupervisedUserService : public KeyedService {
 
   // Returns the obfuscated GAIA id of the second custodian or the empty
   // string if there is no second custodian.
-  std::string GetSecondCustodianObfuscatedGaiaId() const;
+  GaiaId GetSecondCustodianObfuscatedGaiaId() const;
 
   // Returns the name of the second custodian, or the email address if the name
   // is empty, or the empty string if there is no second custodian.
@@ -122,14 +124,6 @@ class SupervisedUserService : public KeyedService {
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  // Updates the kFirstTimeInterstitialBannerState pref to indicate that the
-  // user has been shown the interstitial banner. This will only update users
-  // who haven't yet seen the banner.
-  void MarkFirstTimeInterstitialBannerShown() const;
-
-  // Returns true if the interstitial banner needs to be shown to user.
-  bool ShouldShowFirstTimeInterstitialBanner() const;
-
   // Use |SupervisedUserServiceFactory::GetForProfile(..)| to get
   // an instance of this service.
   // Public to allow visibility to iOS factory.
@@ -142,8 +136,7 @@ class SupervisedUserService : public KeyedService {
       std::unique_ptr<supervised_user::SupervisedUserURLFilter::Delegate>
           url_filter_delegate,
       std::unique_ptr<supervised_user::SupervisedUserService::PlatformDelegate>
-          platform_delegate,
-      bool can_show_first_time_interstitial_banner);
+          platform_delegate);
 
  private:
   friend class SupervisedUserServiceExtensionTestBase;
@@ -179,9 +172,6 @@ class SupervisedUserService : public KeyedService {
   // Method used in testing to set the given test_filter as the url_filter_
   void SetURLFilterForTesting(
       std::unique_ptr<SupervisedUserURLFilter> test_filter);
-
-  FirstTimeInterstitialBannerState GetUpdatedBannerState(
-      FirstTimeInterstitialBannerState original_state);
 
   void SetActive(bool active);
 
@@ -226,8 +216,6 @@ class SupervisedUserService : public KeyedService {
 
   std::unique_ptr<SupervisedUserURLFilter> url_filter_;
 
-  const bool can_show_first_time_interstitial_banner_;
-
   // Manages remote web approvals.
   RemoteWebApprovalsManager remote_web_approvals_manager_;
 
@@ -237,8 +225,6 @@ class SupervisedUserService : public KeyedService {
   bool signout_required_after_supervision_enabled_ = false;
 #endif
 
-  // TODO(https://crbug.com/1288986): Enable web filter metrics reporting in
-  // LaCrOS.
   // When there is change between WebFilterType::kTryToBlockMatureSites and
   // WebFilterType::kCertainSites, both
   // prefs::kDefaultSupervisedUserFilteringBehavior and

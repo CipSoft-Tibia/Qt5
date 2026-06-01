@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QATOMICSCOPEDVALUEROLLBACK_H
 #define QATOMICSCOPEDVALUEROLLBACK_H
@@ -11,6 +12,7 @@
 #include <QtCore/qtconfigmacros.h>
 
 #include <atomic>
+#include <type_traits>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,7 +74,7 @@ public:
     explicit constexpr
     QAtomicScopedValueRollback(std::atomic<T> &var, T value,
                                std::memory_order mo = std::memory_order_seq_cst)
-        : m_atomic(var), m_value(var.exchange(value, mo)), m_mo(mo) {}
+        : m_atomic(var), m_value(var.exchange(std::move(value), mo)), m_mo(mo) {}
 
     //
     // Q(Basic)AtomicInteger:
@@ -87,7 +89,7 @@ public:
     explicit constexpr
     QAtomicScopedValueRollback(QBasicAtomicInteger<T> &var, T value,
                                std::memory_order mo = std::memory_order_seq_cst)
-        : QAtomicScopedValueRollback(var._q_value, value, mo) {}
+        : QAtomicScopedValueRollback(var._q_value, std::move(value), mo) {}
 
     //
     // Q(Basic)AtomicPointer:
@@ -102,11 +104,11 @@ public:
     explicit constexpr
     QAtomicScopedValueRollback(QBasicAtomicPointer<std::remove_pointer_t<T>> &var, T value,
                                std::memory_order mo = std::memory_order_seq_cst)
-        : QAtomicScopedValueRollback(var._q_value, value, mo) {}
+        : QAtomicScopedValueRollback(var._q_value, std::move(value), mo) {}
 
     ~QAtomicScopedValueRollback()
     {
-        m_atomic.store(m_value, store_part(m_mo));
+        m_atomic.store(std::move(m_value), store_part(m_mo));
     }
 
     void commit()
@@ -120,6 +122,33 @@ QAtomicScopedValueRollback(QBasicAtomicPointer<T> &)
     -> QAtomicScopedValueRollback<T*>;
 template <typename T>
 QAtomicScopedValueRollback(QBasicAtomicPointer<T> &, std::memory_order)
+    -> QAtomicScopedValueRollback<T*>;
+
+template <typename T, typename V,
+          std::enable_if_t<std::is_convertible_v<V, T>, bool> = true>
+QAtomicScopedValueRollback(std::atomic<T>&, V)
+    -> QAtomicScopedValueRollback<T>;
+template <typename T, typename V,
+          std::enable_if_t<std::is_convertible_v<V, T>, bool> = true>
+QAtomicScopedValueRollback(std::atomic<T>&, V, std::memory_order)
+    -> QAtomicScopedValueRollback<T>;
+
+template <typename T, typename V,
+          std::enable_if_t<std::is_convertible_v<V, T>, bool> = true>
+QAtomicScopedValueRollback(QBasicAtomicInteger<T>&, V)
+    -> QAtomicScopedValueRollback<T>;
+template <typename T, typename V,
+          std::enable_if_t<std::is_convertible_v<V, T>, bool> = true>
+QAtomicScopedValueRollback(QBasicAtomicInteger<T>&, V, std::memory_order)
+    -> QAtomicScopedValueRollback<T>;
+
+template <typename T, typename V,
+          std::enable_if_t<std::is_convertible_v<V, T*>, bool> = true>
+QAtomicScopedValueRollback(QBasicAtomicPointer<T>&, V)
+    -> QAtomicScopedValueRollback<T*>;
+template <typename T, typename V,
+          std::enable_if_t<std::is_convertible_v<V, T*>, bool> = true>
+QAtomicScopedValueRollback(QBasicAtomicPointer<T>&, V, std::memory_order)
     -> QAtomicScopedValueRollback<T*>;
 
 QT_END_NAMESPACE

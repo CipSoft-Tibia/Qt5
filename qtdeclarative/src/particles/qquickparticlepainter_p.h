@@ -17,7 +17,7 @@
 
 #include <QObject>
 #include <QDebug>
-#include <QPair>
+#include <utility>
 #include "qquickparticlesystem_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -116,7 +116,7 @@ private: // methods
 
 private: // data
     QStringList m_groups;
-    QSet<QPair<int,int> > m_pendingCommits;
+    QSet<std::pair<int,int> > m_pendingCommits;
     mutable GroupIDs m_groupIds;
     mutable bool m_groupIdsNeedRecalculation;
 };

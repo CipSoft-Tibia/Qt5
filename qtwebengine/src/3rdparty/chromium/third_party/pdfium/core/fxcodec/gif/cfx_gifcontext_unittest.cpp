@@ -33,7 +33,7 @@ class CFX_GifContextForTest final : public CFX_GifContext {
   }
 };
 
-TEST(CFX_GifContext, SetInputBuffer) {
+TEST(CFXGifContextTest, SetInputBuffer) {
   uint8_t buffer[] = {0x00, 0x01, 0x02};
   CFX_GifContextForTest context;
 
@@ -50,7 +50,7 @@ TEST(CFX_GifContext, SetInputBuffer) {
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
 }
 
-TEST(CFX_GifContext, ReadAllOrNone) {
+TEST(CFXGifContextTest, ReadAllOrNone) {
   CFX_GifContextForTest context;
   context.SetTestInputBuffer({});
   EXPECT_FALSE(context.ReadAllOrNone(pdfium::span<uint8_t>()));
@@ -79,7 +79,7 @@ TEST(CFX_GifContext, ReadAllOrNone) {
   }
 }
 
-TEST(CFX_GifContext, ReadGifSignature) {
+TEST(CFXGifContextTest, ReadGifSignature) {
   CFX_GifContextForTest context;
   {
     uint8_t data[1];
@@ -137,7 +137,7 @@ TEST(CFX_GifContext, ReadGifSignature) {
   }
 }
 
-TEST(CFX_GifContext, ReadLocalScreenDescriptor) {
+TEST(CFXGifContextTest, ReadLocalScreenDescriptor) {
   CFX_GifContextForTest context;
   {
     uint8_t data[1];
@@ -207,13 +207,14 @@ TEST(CFX_GifContext, ReadLocalScreenDescriptor) {
     EXPECT_EQ(1u, context.global_palette_exp_);
     EXPECT_EQ(1, context.global_sort_flag_);
     EXPECT_EQ(2, context.global_color_resolution_);
-    EXPECT_EQ(0, memcmp(data.palette, context.global_palette_.data(),
-                        sizeof(data.palette)));
+    EXPECT_EQ(0,
+              UNSAFE_TODO(memcmp(data.palette, context.global_palette_.data(),
+                                 sizeof(data.palette))));
     context.SetTestInputBuffer({});
   }
 }
 
-TEST(CFX_GifContext, ReadHeader) {
+TEST(CFXGifContextTest, ReadHeader) {
   CFX_GifContextForTest context;
   // Bad signature
   {
@@ -280,8 +281,9 @@ TEST(CFX_GifContext, ReadHeader) {
     EXPECT_EQ(1u, context.global_palette_exp_);
     EXPECT_EQ(1, context.global_sort_flag_);
     EXPECT_EQ(2, context.global_color_resolution_);
-    EXPECT_EQ(0, memcmp(data.palette, context.global_palette_.data(),
-                        sizeof(data.palette)));
+    EXPECT_EQ(0,
+              UNSAFE_TODO(memcmp(data.palette, context.global_palette_.data(),
+                                 sizeof(data.palette))));
     context.SetTestInputBuffer({});
   }
 }

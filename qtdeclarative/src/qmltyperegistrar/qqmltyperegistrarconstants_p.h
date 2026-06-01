@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLTYPEREGISTRARCONSTANTS_P_H
 #define QQMLTYPEREGISTRARCONSTANTS_P_H
@@ -61,6 +62,7 @@ static constexpr QLatin1StringView S_IS_SCOPED                    { "isScoped" }
 static constexpr QLatin1StringView S_IS_SINGLETON                 { "isSingleton" };
 static constexpr QLatin1StringView S_IS_STRUCTURED                { "isStructured" };
 static constexpr QLatin1StringView S_IS_TYPE_CONSTANT             { "isTypeConstant" };
+static constexpr QLatin1StringView S_LINE_NUMBER                  { "lineNumber" };
 static constexpr QLatin1StringView S_METHOD                       { "Method" };
 static constexpr QLatin1StringView S_MODULE                       { "Module" };
 static constexpr QLatin1StringView S_NAME                         { "name" };

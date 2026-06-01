@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSCONTEXTUALTYPES_P_H
 #define QQMLJSCONTEXTUALTYPES_P_H
@@ -57,8 +58,8 @@ struct ContextualTypes
     void clearType(const QString &name)
     {
         auto &scope = m_types[name].scope;
-        auto it = m_names.constFind(scope);
-        while (it != m_names.constEnd() && it.key() == scope)
+        auto it = m_names.find(scope);
+        while (it != m_names.end() && it.key() == scope)
             it = m_names.erase(it);
         scope = QQmlJSScope::ConstPtr();
     }

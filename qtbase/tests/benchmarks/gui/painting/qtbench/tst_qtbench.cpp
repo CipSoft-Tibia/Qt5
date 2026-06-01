@@ -1,8 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <qtest.h>
 
 #include <QtCore/qmath.h>
@@ -195,7 +193,7 @@ void tst_QtBench::qtBench_data()
     benchmarks << (new DrawText(longString, DrawText::StaticTextBackendOptimizations));
     benchmarks << (new DrawText(superLongString, DrawText::StaticTextBackendOptimizations));
 
-    foreach (Benchmark *benchmark, benchmarks)
+    for (Benchmark *benchmark : std::as_const(benchmarks))
         QTest::newRow(qPrintable(benchmark->name())) << reinterpret_cast<void *>(benchmark);
 }
 

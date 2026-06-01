@@ -8,7 +8,7 @@ RandomSortModel::RandomSortModel(QObject* parent):
     QAbstractListModel(parent)
 {
     for (int i = 0; i < 10; ++i) {
-        mData.append(qMakePair(QString::fromLatin1("Item %1").arg(i), i * 10));
+        mData.append(std::make_pair(QString::fromLatin1("Item %1").arg(i), i * 10));
     }
 }
 
@@ -57,7 +57,7 @@ void RandomSortModel::randomize()
     do {
         exists = false;
         random = QRandomGenerator::global()->bounded(mData.size() * 10);
-        QList<QPair<QString, int> >::ConstIterator iter, end;
+        QList<std::pair<QString, int> >::ConstIterator iter, end;
         for (iter = mData.constBegin(), end = mData.constEnd(); iter != end; ++iter) {
             if ((*iter).second == random) {
                 exists = true;

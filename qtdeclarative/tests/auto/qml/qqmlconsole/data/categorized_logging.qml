@@ -21,7 +21,22 @@ Item {
         id: emptyCategory
     }
 
+    LoggingCategory {
+        id: early
+        name: "qt.test.early"
+    }
+
+    Item  {
+        id: forceCreation
+        objectName: {
+            console.warn(early, "in time");
+            return "test"
+        }
+    }
+
     Component.onCompleted: {
+        if (forceCreation.objectName !== "test")
+            return;
         console.debug(testCategory, "console.debug");
         console.log(testCategory, "console.log");
         console.info(testCategory, "console.info");

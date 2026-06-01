@@ -7,24 +7,26 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Iterable
 
 from crossbench.runner.groups.base import RunGroup
-from crossbench.runner.groups.repetitions import RepetitionsRunGroup
 
 if TYPE_CHECKING:
   from crossbench import exception
   from crossbench.browsers.browser import Browser
   from crossbench.probes.probe import Probe
   from crossbench.probes.results import ProbeResult
+  from crossbench.runner.groups.repetitions import RepetitionsRunGroup
   from crossbench.runner.groups.stories import StoriesRunGroup
   from crossbench.runner.run import Run
 
 
 class BrowsersRunGroup(RunGroup):
-  _story_groups: Iterable[StoriesRunGroup]
 
-  def __init__(self, story_groups, throw: bool) -> None:
+  def __init__(self, story_groups: Iterable[StoriesRunGroup],
+               throw: bool) -> None:
     super().__init__(throw)
-    self._story_groups = story_groups
-    self._set_path(story_groups[0].path.parents[1])
+    self._story_groups = tuple(story_groups)
+    if not story_groups:
+      raise ValueError("No story groups provided")
+    self._set_path(self._story_groups[0].path.parents[1])
 
   @property
   def story_groups(self) -> Iterable[StoriesRunGroup]:
@@ -50,4 +52,4 @@ class BrowsersRunGroup(RunGroup):
     return ("Merging results from multiple browsers",)
 
   def _merge_probe_results(self, probe: Probe) -> ProbeResult:
-    return probe.merge_browsers(self)  # pytype: disable=wrong-arg-types
+    return probe.merge_browsers(self)

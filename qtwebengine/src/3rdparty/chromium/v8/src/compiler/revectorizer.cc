@@ -1060,12 +1060,12 @@ Node* Revectorizer::VectorizeTree(PackNode* pnode) {
         // shuffling across 128-bit lane.
         if (wasm::SimdShuffle::TryMatchSplat<4>(shuffle, &index)) {
           new_op = mcgraph_->machine()->LoadTransform(
-              MemoryAccessKind::kProtected,
+              MemoryAccessKind::kProtectedByTrapHandler,
               LoadTransformation::kS256Load32Splat);
           offset = index * 4;
         } else if (wasm::SimdShuffle::TryMatchSplat<2>(shuffle, &index)) {
           new_op = mcgraph_->machine()->LoadTransform(
-              MemoryAccessKind::kProtected,
+              MemoryAccessKind::kProtectedByTrapHandler,
               LoadTransformation::kS256Load64Splat);
           offset = index * 8;
         } else {
@@ -1456,7 +1456,7 @@ void Revectorizer::PrintStores(ZoneMap<Node*, StoreNodeSet>* store_chains) {
   }
 }
 
-#undef TRACE(...)
+#undef TRACE
 
 }  // namespace compiler
 }  // namespace internal

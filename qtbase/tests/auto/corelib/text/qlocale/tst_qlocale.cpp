@@ -72,6 +72,10 @@ private slots:
     void stringToFloat();
     void doubleToString_data();
     void doubleToString();
+    void longlongToString_data();
+    void longlongToString();
+    void qulonglongToString_data();
+    void qulonglongToString();
     void strtod_data();
     void strtod();
     void long_long_conversion_data();
@@ -1466,6 +1470,318 @@ void tst_QLocale::doubleToString()
     QCOMPARE(locale.toString(num, mode, precision), numStr);
 }
 
+void tst_QLocale::longlongToString_data()
+{
+    QTest::addColumn<QString>("localeName");
+    QTest::addColumn<qlonglong>("number");
+    QTest::addColumn<int>("fieldWidth");
+    QTest::addColumn<char32_t>("fillChar");
+    QTest::addColumn<bool>("grouped");
+    QTest::addColumn<QString>("numStr");
+
+    QTest::newRow("C 0 0 'x' t")
+        << u"C"_s << qlonglong(0) << 0  << U'x' << true << u"0"_s;
+    QTest::newRow("C 0 0 'x' f")
+        << u"C"_s << qlonglong(0) << 0  << U'x' << false << u"0"_s;
+    QTest::newRow("en_US 0 0 'x' t")
+        << u"en_US"_s << qlonglong(0) << 0  << U'x' << true << u"0"_s;
+    QTest::newRow("en_US 0 0 'x' f")
+        << u"en_US"_s << qlonglong(0) << 0  << U'x' << false << u"0"_s;
+
+    QTest::newRow("pl_PL 23500 0 x f")
+            << u"pl_PL"_s << qlonglong(23500)  << 0   << U'x' << false << u"23500"_s;
+    QTest::newRow("pl_PL 23500 0 x t")
+            << u"pl_PL"_s << qlonglong(23500)  << 0   << U'x' << true  << u"23\u00A0500"_s;
+    QTest::newRow("pl_PL 23500 10 x f")
+            << u"pl_PL"_s << qlonglong(23500)  << 10  << U'x' << false << u"xxxxx23500"_s;
+    QTest::newRow("pl_PL 23500 10 x t")
+            << u"pl_PL"_s << qlonglong(23500)  << 10  << U'x' << true  << u"xxxx23\u00A0500"_s;
+    QTest::newRow("pl_PL 23500 -10 x f")
+            << u"pl_PL"_s << qlonglong(23500)  << -10 << U'x' << false << u"23500xxxxx"_s;
+    QTest::newRow("nb_NO 23500 -10 x t")
+            << u"nb_NO"_s << qlonglong(23500)  << -10 << U'x' << true  << u"23\u00A0500xxxx"_s;
+    QTest::newRow("pl_PL -23500 10 x f")
+            << u"pl_PL"_s << qlonglong(-23500) << 10  << U'x' << false << u"xxxx-23500"_s;
+    QTest::newRow("pl_PL -23500 10 x t")
+            << u"pl_PL"_s << qlonglong(-23500) << 10  << U'x' << true  << u"xxx-23\u00A0500"_s;
+    QTest::newRow("pl_PL -23500 -10 x f")
+            << u"pl_PL"_s << qlonglong(-23500) << -10 << U'x' << false << u"-23500xxxx"_s;
+    QTest::newRow("nb_NO -23500 -10 x t")
+            << u"nb_NO"_s << qlonglong(-23500) << -10 << U'x' << true  << u"\u221223\u00A0500xxx"_s;
+
+    QTest::newRow("pl_PL 23500 0 \u0020 f")
+            << u"pl_PL"_s << qlonglong(23500)  << 0   << U' ' << false << u"23500"_s;
+    QTest::newRow("pl_PL 23500 0 \u0020 t")
+            << u"pl_PL"_s << qlonglong(23500)  << 0   << U' ' << true  << u"23\u00A0500"_s;
+    QTest::newRow("pl_PL 23500 10 \u0020 f")
+            << u"pl_PL"_s << qlonglong(23500)  << 10  << U' ' << false << u"     23500"_s;
+    QTest::newRow("pl_PL 23500 10 \u0020 t")
+            << u"pl_PL"_s << qlonglong(23500)  << 10  << U' ' << true  << u"    23\u00A0500"_s;
+    QTest::newRow("pl_PL 23500 -10 \u0020 f")
+            << u"pl_PL"_s << qlonglong(23500)  << -10 << U' ' << false << u"23500     "_s;
+    QTest::newRow("nb_NO 23500 -10 \u0020 t")
+            << u"nb_NO"_s << qlonglong(23500)  << -10 << U' ' << true  << u"23\u00A0500    "_s;
+    QTest::newRow("pl_PL -23500 10 \u0020 f")
+            << u"pl_PL"_s << qlonglong(-23500) << 10  << U' ' << false << u"    -23500"_s;
+    QTest::newRow("pl_PL -23500 10 \u0020 t")
+            << u"pl_PL"_s << qlonglong(-23500) << 10  << U' ' << true  << u"   -23\u00A0500"_s;
+    QTest::newRow("pl_PL -23500 -10 \u0020 f")
+            << u"pl_PL"_s << qlonglong(-23500) << -10 << U' ' << false << u"-23500    "_s;
+    QTest::newRow("nb_NO -23500 -10 \u0020 t")
+            << u"nb_NO"_s << qlonglong(-23500) << -10 << U' ' << true  << u"\u221223\u00A0500   "_s;
+
+    QTest::newRow("pl_PL 23000000 0 0 t")
+            << u"pl_PL"_s << qlonglong(23000000)  << 0   << U'0' << true  << u"23\u00A0000\u00A0000"_s;
+    QTest::newRow("pl_PL 23000000 0 0 f")
+            << u"pl_PL"_s << qlonglong(23000000)  << 0   << U'0' << false << u"23000000"_s;
+    QTest::newRow("pl_PL 23000000 15 0 t")
+            << u"pl_PL"_s << qlonglong(23000000)  << 15  << U'0' << true  << u"0000023\u00A0000\u00A0000"_s;
+    QTest::newRow("pl_PL 23000000 15 0 f")
+            << u"pl_PL"_s << qlonglong(23000000)  << 15  << U'0' << false << u"000000023000000"_s;
+    QTest::newRow("pl_PL 23000000 -15 0 t")
+            << u"pl_PL"_s << qlonglong(23000000)  << -15 << U'0' << true  << u"23\u00A0000\u00A000000000"_s;
+    QTest::newRow("pl_PL 23000000 -15 0 f")
+            << u"pl_PL"_s << qlonglong(23000000)  << -15 << U'0' << false << u"230000000000000"_s;
+    QTest::newRow("ja_JP -23000000 -15 0 t")
+            << u"ja_JP"_s << qlonglong(-23000000) << -15 << U'0' << true  << u"-23,000,0000000"_s;
+    QTest::newRow("ja_JP -23000000 -15 0 f")
+            << u"ja_JP"_s << qlonglong(-23000000) << -15 << U'0' << false << u"-23000000000000"_s;
+    QTest::newRow("ja_JP -23000000 15 0 t")
+            << u"ja_JP"_s << qlonglong(-23000000) << 15  << U'0' << true  << u"-000023,000,000"_s;
+    QTest::newRow("ja_JP -23000000 15 0 f")
+            << u"ja_JP"_s << qlonglong(-23000000) << 15  << U'0' << false << u"-00000023000000"_s;
+
+    QTest::newRow("hi_IN 23500 0 0 f")
+            << u"hi_IN"_s << qlonglong(23500)  << 0   << U'0' << false << u"23500"_s;
+    QTest::newRow("hi_IN 23500 0 0 t")
+            << u"hi_IN"_s << qlonglong(23500)  << 0   << U'0' << true  << u"23,500"_s;
+    QTest::newRow("hi_IN 23500 10 0 f")
+            << u"hi_IN"_s << qlonglong(23500)  << 10  << U'0' << false << u"0000023500"_s;
+    QTest::newRow("hi_IN 23500 10 0 t")
+            << u"hi_IN"_s << qlonglong(23500)  << 10  << U'0' << true  << u"000023,500"_s;
+    QTest::newRow("hi_IN 23500 -10 0 f")
+            << u"hi_IN"_s << qlonglong(23500)  << -10 << U'0' << false << u"2350000000"_s;
+    QTest::newRow("hi_IN 23500 -10 0 t")
+            << u"hi_IN"_s << qlonglong(23500)  << -10 << U'0' << true  << u"23,5000000"_s;
+    QTest::newRow("hi_IN -23500 10 0 f")
+            << u"hi_IN"_s << qlonglong(-23500) << 10  << U'0' << false << u"-000023500"_s;
+    QTest::newRow("hi_IN -23500 10 0 t")
+            << u"hi_IN"_s << qlonglong(-23500) << 10  << U'0' << true  << u"-00023,500"_s;
+    QTest::newRow("hi_IN -23500 -10 0 f")
+            << u"hi_IN"_s << qlonglong(-23500) << -10 << U'0' << false << u"-235000000"_s;
+    QTest::newRow("hi_IN -23500 -10 0 t")
+            << u"hi_IN"_s << qlonglong(-23500) << -10 << U'0' << true  << u"-23,500000"_s;
+
+    QTest::newRow("hi_IN 23000000 0 0 t")
+            << u"hi_IN"_s << qlonglong(23000000)  << 0   << U'0' << true  << u"2,30,00,000"_s;
+    QTest::newRow("hi_IN 23000000 0 0 f")
+            << u"hi_IN"_s << qlonglong(23000000)  << 0   << U'0' << false << u"23000000"_s;
+    QTest::newRow("hi_IN 23000000 15 0 t")
+            << u"hi_IN"_s << qlonglong(23000000)  << 15  << U'0' << true  << u"00002,30,00,000"_s;
+    QTest::newRow("hi_IN 23000000 15 0 f")
+            << u"hi_IN"_s << qlonglong(23000000)  << 15  << U'0' << false << u"000000023000000"_s;
+    QTest::newRow("hi_IN 23000000 -15 0 t")
+            << u"hi_IN"_s << qlonglong(23000000)  << -15 << U'0' << true  << u"2,30,00,0000000"_s;
+    QTest::newRow("hi_IN 23000000 -15 0 f")
+            << u"hi_IN"_s << qlonglong(23000000)  << -15 << U'0' << false << u"230000000000000"_s;
+    QTest::newRow("hi_IN -23000000 -15 0 t")
+            << u"hi_IN"_s << qlonglong(-23000000) << -15 << U'0' << true  << u"-2,30,00,000000"_s;
+    QTest::newRow("hi_IN -23000000 -15 0 f")
+            << u"hi_IN"_s << qlonglong(-23000000) << -15 << U'0' << false << u"-23000000000000"_s;
+    QTest::newRow("hi_IN -23000000 15 0 t")
+            << u"hi_IN"_s << qlonglong(-23000000) << 15  << U'0' << true  << u"-0002,30,00,000"_s;
+    QTest::newRow("hi_IN -23000000 15 0 f")
+            << u"hi_IN"_s << qlonglong(-23000000) << 15  << U'0' << false << u"-00000023000000"_s;
+
+    QTest::newRow("emoji -2300 7 😀 f")
+        << u"en_US"_s << qlonglong(-23000) << 7  << U'😀' << false << u"😀-23000"_s;
+    QTest::newRow("emoji -2300 -7 😀 f")
+        << u"en_US"_s << qlonglong(-23000) << -7 << U'😀' << false << u"-23000😀"_s;
+    QTest::newRow("emoji -2300 8 😀 t")
+        << u"en_US"_s << qlonglong(-23000) << 8  << U'😀' << true  << u"😀-23,000"_s;
+    QTest::newRow("emoji -2300 -8 😀 t")
+        << u"en_US"_s << qlonglong(-23000) << -8 << U'😀' << true  << u"-23,000😀"_s;
+
+    QTest::newRow("ar_EG 0 0 x f")
+        << u"ar_EG"_s << qlonglong(0) << 0 << U'x' << false << u"\u0660"_s;
+    QTest::newRow("ar_EG 0 0 x t")
+        << u"ar_EG"_s << qlonglong(0) << 0 << U'x' << true << u"\u0660"_s;
+
+    QTest::newRow("ccp_BD 0 0 𑄃 t")
+        << u"ccp_BD"_s << qlonglong(0) << 0  << U'𑄃' << false << u"𑄶"_s;
+    QTest::newRow("ccp_BD 0 0 𑄃 f")
+        << u"ccp_BD"_s << qlonglong(0) << 0  << U'𑄃' << true << u"𑄶"_s;
+    QTest::newRow("ccp_BD -2300 6 𑄃 f")
+        << u"ccp_BD"_s << qlonglong(-2300) << 6  << U'𑄃' << false << u"𑄃-𑄸𑄹𑄶𑄶"_s;
+    QTest::newRow("ccp_BD -2300 -6 𑄃 f")
+        << u"ccp_BD"_s << qlonglong(-2300) << -6 << U'𑄃' << false << u"-𑄸𑄹𑄶𑄶𑄃"_s;
+    QTest::newRow("ccp_BD -2300 7 𑄃 t")
+        << u"ccp_BD"_s << qlonglong(-2300) << 7  << U'𑄃' << true  << u"𑄃-𑄸,𑄹𑄶𑄶"_s;
+    QTest::newRow("ccp_BD -2300 -7 𑄃 t")
+        << u"ccp_BD"_s << qlonglong(-2300) << -7 << U'𑄃' << true  << u"-𑄸,𑄹𑄶𑄶𑄃"_s;
+}
+
+void tst_QLocale::longlongToString()
+{
+    QFETCH(QString, localeName);
+    QFETCH(qlonglong, number);
+    QFETCH(int, fieldWidth);
+    QFETCH(char32_t, fillChar);
+    QFETCH(bool, grouped);
+    QFETCH(QString, numStr);
+
+    QLocale locale(localeName);
+    auto toCompare = locale.toString(number, fieldWidth, fillChar);
+    if (grouped) {
+        QCOMPARE(toCompare, numStr);
+    } else {
+        locale.setNumberOptions(QLocale::OmitGroupSeparator);
+        QCOMPARE(locale.toString(number, fieldWidth, fillChar), numStr);
+    }
+}
+
+void tst_QLocale::qulonglongToString_data()
+{
+    QTest::addColumn<QString>("localeName");
+    QTest::addColumn<qulonglong>("number");
+    QTest::addColumn<int>("fieldWidth");
+    QTest::addColumn<char32_t>("fillChar");
+    QTest::addColumn<bool>("grouped");
+    QTest::addColumn<QString>("numStr");
+
+    QTest::newRow("C 0 0 x f")
+            << u"C"_s << qulonglong(0)  << 0   << U'x' << false << u"0"_s;
+    QTest::newRow("C 0 0 x t")
+            << u"C"_s << qulonglong(0)  << 0   << U'x' << true << u"0"_s;
+    QTest::newRow("en_US 0 0 x f")
+            << u"en_US"_s << qulonglong(0)  << 0   << U'x' << false << u"0"_s;
+    QTest::newRow("en_US 0 0 x t")
+            << u"en_US"_s << qulonglong(0)  << 0   << U'x' << true << u"0"_s;
+
+    QTest::newRow("pl_PL 23500 0 x f")
+            << u"pl_PL"_s << qulonglong(23500)  << 0   << U'x' << false << u"23500"_s;
+    QTest::newRow("pl_PL 23500 0 x t")
+            << u"pl_PL"_s << qulonglong(23500)  << 0   << U'x' << true  << u"23\u00A0500"_s;
+    QTest::newRow("pl_PL 23500 10 x f")
+            << u"pl_PL"_s << qulonglong(23500)  << 10  << U'x' << false << u"xxxxx23500"_s;
+    QTest::newRow("pl_PL 23500 10 x t")
+            << u"pl_PL"_s << qulonglong(23500)  << 10  << U'x' << true  << u"xxxx23\u00A0500"_s;
+    QTest::newRow("pl_PL 23500 -10 x f")
+            << u"pl_PL"_s << qulonglong(23500)  << -10 << U'x' << false << u"23500xxxxx"_s;
+    QTest::newRow("nb_NO 23500 -10 x t")
+            << u"nb_NO"_s << qulonglong(23500)  << -10 << U'x' << true  << u"23\u00A0500xxxx"_s;
+
+    QTest::newRow("pl_PL 23000000 0 \u0020 t")
+            << u"pl_PL"_s << qulonglong(23000000) << 0   << U' ' << true  << u"23\u00A0000\u00A0000"_s;
+    QTest::newRow("pl_PL 23000000 0 \u0020 f")
+            << u"pl_PL"_s << qulonglong(23000000) << 0   << U' ' << false << u"23000000"_s;
+    QTest::newRow("nb_NO 23000000 15 \u0020 t")
+            << u"nb_NO"_s << qulonglong(23000000) << 15  << U' ' << true  << u"     23\u00A0000\u00A0000"_s;
+    QTest::newRow("nb_NO 23000000 15 \u0020 f")
+            << u"nb_NO"_s << qulonglong(23000000) << 15  << U' ' << false << u"       23000000"_s;
+    QTest::newRow("ja_JP 23000000 -15 \u0020 t")
+            << u"ja_JP"_s << qulonglong(23000000) << -15 << U' ' << true  << u"23,000,000     "_s;
+    QTest::newRow("ja_JP 23000000 -15 \u0020 f")
+            << u"ja_JP"_s << qulonglong(23000000) << -15 << U' ' << false << u"23000000       "_s;
+
+    QTest::newRow("ja_JP 23500 0 0 f")
+            << u"ja_JP"_s << qulonglong(23500) << 0   << U'0' << false << u"23500"_s;
+    QTest::newRow("ja_JP 23500 0 0 t")
+            << u"ja_JP"_s << qulonglong(23500) << 0   << U'0' << true  << u"23,500"_s;
+    QTest::newRow("nb_NO 23500 10 0 f")
+            << u"nb_NO"_s << qulonglong(23500) << 10  << U'0' << false << u"0000023500"_s;
+    QTest::newRow("nb_NO 23500 10 0 t")
+            << u"nb_NO"_s << qulonglong(23500) << 10  << U'0' << true  << u"000023\u00A0500"_s;
+    QTest::newRow("pl_PL 23500 -10 0 f")
+            << u"pl_PL"_s << qulonglong(23500) << -10 << U'0' << false << u"2350000000"_s;
+    QTest::newRow("pl_PL 23500 -10 0 t")
+            << u"pl_PL"_s << qulonglong(23500) << -10 << U'0' << true  << u"23\u00A05000000"_s;
+
+    QTest::newRow("pl_PL 23000000 0 0 t")
+            << u"pl_PL"_s << qulonglong(23000000) << 0   << U'0' << true  << u"23\u00A0000\u00A0000"_s;
+    QTest::newRow("pl_PL 23000000 0 0 f")
+            << u"pl_PL"_s << qulonglong(23000000) << 0   << U'0' << false << u"23000000"_s;
+    QTest::newRow("nb_NO 23000000 15 0 t")
+            << u"nb_NO"_s << qulonglong(23000000) << 15  << U'0' << true  << u"0000023\u00A0000\u00A0000"_s;
+    QTest::newRow("nb_NO 23000000 15 0 f")
+            << u"nb_NO"_s << qulonglong(23000000) << 15  << U'0' << false << u"000000023000000"_s;
+    QTest::newRow("ja_JP 23000000 -15 0 t")
+            << u"ja_JP"_s << qulonglong(23000000) << -15 << U'0' << true  << u"23,000,00000000"_s;
+    QTest::newRow("ja_JP 23000000 -15 0 f")
+            << u"ja_JP"_s << qulonglong(23000000) << -15 << U'0' << false << u"230000000000000"_s;
+
+    QTest::newRow("hi_IN 23500 0 0 f")
+            << u"hi_IN"_s << qulonglong(23500) << 0   << U'0' << false << u"23500"_s;
+    QTest::newRow("hi_IN 23500 0 0 t")
+            << u"hi_IN"_s << qulonglong(23500) << 0   << U'0' << true  << u"23,500"_s;
+    QTest::newRow("hi_IN 23500 10 0 f")
+            << u"hi_IN"_s << qulonglong(23500) << 10  << U'0' << false << u"0000023500"_s;
+    QTest::newRow("hi_IN 23500 10 0 t")
+            << u"hi_IN"_s << qulonglong(23500) << 10  << U'0' << true  << u"000023,500"_s;
+    QTest::newRow("hi_IN 23500 -10 0 f")
+            << u"hi_IN"_s << qulonglong(23500) << -10 << U'0' << false << u"2350000000"_s;
+    QTest::newRow("hi_IN 23500 -10 0 t")
+            << u"hi_IN"_s << qulonglong(23500) << -10 << U'0' << true  << u"23,5000000"_s;
+
+    QTest::newRow("hi_IN 23000000 0 0 t")
+            << u"hi_IN"_s << qulonglong(23000000) << 0   << U'0' << true  << u"2,30,00,000"_s;
+    QTest::newRow("hi_IN 23000000 0 0 f")
+            << u"hi_IN"_s << qulonglong(23000000) << 0   << U'0' << false << u"23000000"_s;
+    QTest::newRow("hi_IN 23000000 15 0 t")
+            << u"hi_IN"_s << qulonglong(23000000) << 15  << U'0' << true  << u"00002,30,00,000"_s;
+    QTest::newRow("hi_IN 23000000 15 0 f")
+            << u"hi_IN"_s << qulonglong(23000000) << 15  << U'0' << false << u"000000023000000"_s;
+    QTest::newRow("hi_IN 23000000 -15 0 t")
+            << u"hi_IN"_s << qulonglong(23000000) << -15 << U'0' << true  << u"2,30,00,0000000"_s;
+    QTest::newRow("hi_IN 23000000 -15 0 f")
+            << u"hi_IN"_s << qulonglong(23000000) << -15 << U'0' << false << u"230000000000000"_s;
+
+    QTest::newRow("emoji 2300 6 😀 f")
+        << u"en_US"_s << qulonglong(23000) << 6  << U'😀' << false << u"😀23000"_s;
+    QTest::newRow("emoji 2300 -6 😀 f")
+        << u"en_US"_s << qulonglong(23000) << -6 << U'😀' << false << u"23000😀"_s;
+    QTest::newRow("emoji 2300 7 😀 t")
+        << u"en_US"_s << qulonglong(23000) << 7  << U'😀' << true  << u"😀23,000"_s;
+    QTest::newRow("emoji 2300 -7 😀 t")
+        << u"en_US"_s << qulonglong(23000) << -7 << U'😀' << true  << u"23,000😀"_s;
+
+    QTest::newRow("ar_EG 0 0 x f")
+        << u"ar_EG"_s << qulonglong(0) << 0 << U'x' << false << u"\u0660"_s;
+    QTest::newRow("ar_EG 0 0 x t")
+        << u"ar_EG"_s << qulonglong(0) << 0 << U'x' << true << u"\u0660"_s;
+
+    QTest::newRow("ccp_BD 0 0 𑄃 t")
+        << u"ccp_BD"_s << qulonglong(0) << 0  << U'𑄃' << false << u"𑄶"_s;
+    QTest::newRow("ccp_BD 0 0 𑄃 f")
+        << u"ccp_BD"_s << qulonglong(0) << 0  << U'𑄃' << true << u"𑄶"_s;
+    QTest::newRow("ccp_BD 2300 5 𑄃 f")
+        << u"ccp_BD"_s << qulonglong(2300) << 5  << U'𑄃' << false << u"𑄃𑄸𑄹𑄶𑄶"_s;
+    QTest::newRow("ccp_BD 2300 -5 𑄃 f")
+        << u"ccp_BD"_s << qulonglong(2300) << -5 << U'𑄃' << false << u"𑄸𑄹𑄶𑄶𑄃"_s;
+    QTest::newRow("ccp_BD 2300 6 𑄃 t")
+        << u"ccp_BD"_s << qulonglong(2300) << 6  << U'𑄃' << true  << u"𑄃𑄸,𑄹𑄶𑄶"_s;
+    QTest::newRow("ccp_BD 2300 -6 𑄃 t")
+        << u"ccp_BD"_s << qulonglong(2300) << -6 << U'𑄃' << true  << u"𑄸,𑄹𑄶𑄶𑄃"_s;
+}
+
+void tst_QLocale::qulonglongToString()
+{
+    QFETCH(QString, localeName);
+    QFETCH(QString, numStr);
+    QFETCH(qulonglong, number);
+    QFETCH(int, fieldWidth);
+    QFETCH(char32_t, fillChar);
+    QFETCH(bool, grouped);
+
+    QLocale locale(localeName);
+    if (grouped) {
+        QCOMPARE(locale.toString(number, fieldWidth, fillChar), numStr);
+    } else {
+        locale.setNumberOptions(QLocale::OmitGroupSeparator);
+        QCOMPARE(locale.toString(number, fieldWidth, fillChar), numStr);
+    }
+}
+
 void tst_QLocale::strtod_data()
 {
     QTest::addColumn<QString>("num_str");
@@ -2035,6 +2351,13 @@ void tst_QLocale::formatTime_data()
         << QTime(1, 2, 3) << "cs_CZ" << "h:m:s AP" << "1:2:3 DOP.";
     QTest::newRow("cs_CZ-h:m:s+aP-am")
         << QTime(1, 2, 3) << "cs_CZ" << "h:m:s aP" << "1:2:3 dop.";
+
+    QTest::newRow("ff_Adlm-h:m:s.z") // Fulah, Adlam script: digits are surrogate pairs.
+        << QTime(1, 2, 3, 400) << u"ff_Adlm"_s << u"h:m:s.z"_s
+        << u"\U0001E951:\U0001E952:\U0001E953.\U0001E954"_s; // No trailing zeros
+    QTest::newRow("ff_Adlm-h:m:s.zzz")
+        << QTime(1, 2, 3, 400) << u"ff_Adlm"_s << u"h:m:s.zzz"_s
+        << u"\U0001E951:\U0001E952:\U0001E953.\U0001E954\U0001E950\U0001E950"_s;
 }
 
 void tst_QLocale::formatTime()
@@ -3523,7 +3846,7 @@ void tst_QLocale::dateFormat()
     QCOMPARE(ja.dateFormat(QLocale::ShortFormat), QLatin1String("yyyy/MM/dd"));
 
     const QLocale ir("ga_IE");
-    QCOMPARE(ir.dateFormat(QLocale::ShortFormat), QLatin1String("dd/MM/yyyy"));
+    QCOMPARE(ir.dateFormat(QLocale::ShortFormat), QLatin1String("d/M/yy"));
 
     QT_TEST_EQUALITY_OPS(c, no, false);
     QT_TEST_EQUALITY_OPS(ca, ja, false);
@@ -4366,6 +4689,21 @@ public:
                 return QVariant::fromValue(QLocaleData::GroupSizes{0,2,3});
             if (m_name == u"en-NP") // CLDR: 1,3,3
                 return QVariant::fromValue(QLocaleData::GroupSizes{0,2,0});
+            // See GroupSeparator:
+            if (m_name == u"en-MN") // (same as CLDR en)
+                return QVariant::fromValue(QLocaleData::GroupSizes{1,3,3});
+            if (m_name == u"es-MN") // (same as CLDR es-ES)
+                return QVariant::fromValue(QLocaleData::GroupSizes{2,3,3});
+            if (m_name == u"ccp-MN") // (same as CLDR ccp-IN)
+                return QVariant::fromValue(QLocaleData::GroupSizes{2,2,3});
+            break;
+        case GroupSeparator:
+        case DecimalPoint:
+            // CLDR v43 through v45 had the same group and fractional-part
+            // separator for mn_Mong_MN. A user might also misconfigure their
+            // system. Use made-up hybrids *-MN for that.
+            if (m_name.endsWith(u"-MN"))
+                return QVariant(u"."_s);
             break;
         default:
             break;
@@ -4402,8 +4740,8 @@ void tst_QLocale::mySystemLocale_data()
                        u"nb"_s};
     QTest::addRow("en-Latn") // Android crash
         << u"en-Latn"_s << QLocale::English
-        << QStringList{u"en-Latn-US"_s, u"en-US"_s, u"en-Latn"_s, u"en"_s,
-                       u"en-Latn-NO"_s, u"en-NO"_s};
+        << QStringList{u"en-Latn-NO"_s, u"en-NO"_s,
+                       u"en-Latn-US"_s, u"en-US"_s, u"en-Latn"_s, u"en"_s};
 
     QTest::addRow("anglo-dutch") // QTBUG-131894
         << u"en-NL"_s << QLocale::English
@@ -4433,8 +4771,8 @@ void tst_QLocale::mySystemLocale_data()
     QTest::addRow("english-germany")
         << u"en-DE"_s << QLocale::English
         // First two were missed out before fix to QTBUG-104930:
-        << QStringList{u"en-Latn-DE"_s, u"en-DE"_s,
-                       u"en-Latn-GB"_s, u"en-GB"_s,
+        << QStringList{u"en-Latn-GB"_s, u"en-GB"_s,
+                       u"en-Latn-DE"_s, u"en-DE"_s,
                        u"de-Latn-DE"_s, u"de-DE"_s, u"de-Latn"_s, u"de"_s,
                        // Fallbacks implied by those:
                        u"en-Latn"_s, u"en"_s};
@@ -4471,7 +4809,8 @@ void tst_QLocale::mySystemLocale_data()
 
     QTest::addRow("pa-Arab-GB")
         << u"pa-Arab-GB"_s << QLocale::Punjabi
-        << QStringList{u"pa-Arab-GB"_s, u"pa-Arab-PK"_s, u"pa-PK"_s, u"pa-Arab"_s,
+        << QStringList{u"pa-Arab-PK"_s, u"pa-PK"_s, u"pa-Arab"_s,
+            u"pa-Arab-GB"_s,
             u"en-Latn-GB"_s, u"en-GB"_s,
             // Truncations:
             u"en-Latn"_s, u"en"_s,
@@ -4486,8 +4825,9 @@ void tst_QLocale::mySystemLocale_data()
                        u"en-Latn-GB"_s, u"en-GB"_s, u"en-Latn"_s, u"en"_s};
     QTest::newRow("en-mixed")
         << u"en-FO"_s << QLocale::English
-        << QStringList{u"en-Latn-FO"_s, u"en-FO"_s, u"en-Latn-DK"_s, u"en-DK"_s,
+        << QStringList{u"en-Latn-DK"_s, u"en-DK"_s,
                        u"en-Latn-GB"_s, u"en-GB"_s,
+                       u"en-Latn-FO"_s, u"en-FO"_s,
                        u"fo-Latn-FO"_s, u"fo-FO"_s, u"fo-Latn"_s, u"fo"_s,
                        u"da-Latn-FO"_s, u"da-FO"_s,
                        u"da-Latn-DK"_s, u"da-DK"_s, u"da-Latn"_s, u"da"_s,
@@ -4495,12 +4835,12 @@ void tst_QLocale::mySystemLocale_data()
                        u"en-Latn"_s, u"en"_s};
     QTest::newRow("polylingual-CA")
         << u"de-CA"_s << QLocale::German
-        << QStringList{u"de-Latn-CA"_s, u"de-CA"_s, u"en-Latn-CA"_s, u"en-CA"_s,
-                       u"fr-Latn-CA"_s, u"fr-CA"_s, u"de-Latn-AT"_s, u"de-AT"_s,
+        << QStringList{u"en-Latn-CA"_s, u"en-CA"_s, u"fr-Latn-CA"_s, u"fr-CA"_s,
+                       u"de-Latn-AT"_s, u"de-AT"_s, u"de-Latn-CA"_s, u"de-CA"_s,
                        u"en-Latn-GB"_s, u"en-GB"_s,
                        u"fr-Latn-FR"_s, u"fr-FR"_s, u"fr-Latn"_s, u"fr"_s,
                        // Fallbacks:
-                       u"de-Latn"_s, u"de"_s, u"en-Latn"_s, u"en"_s};
+                       u"en-Latn"_s, u"en"_s, u"de-Latn"_s, u"de"_s};
 
     QTest::newRow("und-US")
         << u"und-US"_s << QLocale::C
@@ -4555,25 +4895,62 @@ void tst_QLocale::systemGrouping_data()
     QTest::addColumn<QString>("name");
     QTest::addColumn<QString>("separator");
     QTest::addColumn<QString>("zeroDigit");
-    QTest::addColumn<int>("number");
-    QTest::addColumn<QString>("formattedString");
+    QTest::addColumn<int>("whole");
+    QTest::addColumn<QString>("formattedWhole");
+    QTest::addColumn<double>("real");
+    QTest::addColumn<QString>("formattedReal");
+    QTest::addColumn<int>("precision");
 
-    // Testing locales with non {1, 3, 3} groupe sizes, plus some locales
-    // that return invalid group sizes to test that we fallbakc to CLDR data.
+    // Testing locales with non-{1, 3, 3} groupe sizes, plus some locales
+    // that return invalid group sizes to test that we fallback to CLDR data.
     QTest::newRow("en-ES") // {2,3,3}
-            << u"en-ES"_s << u"."_s << u"0"_s << 1234 << u"1234"_s;
+            << u"en-ES"_s << u"."_s << u"0"_s
+            << 1234 << u"1234"_s << 1234.567 << u"1234,567"_s << 3;
     QTest::newRow("en-ES-grouped")
-            << u"en-ES"_s << u"."_s << u"0"_s << 12345 << u"12.345"_s;
+            << u"en-ES"_s << u"."_s << u"0"_s
+            << 12345 << u"12.345"_s << 12345.678 << u"12.345,678"_s << 3;
     QTest::newRow("en-ES-long")
-            << u"en-ES"_s << u"."_s << u"0"_s << 1234567 << u"1.234.567"_s;
+            << u"en-ES"_s << u"."_s << u"0"_s << 1234567 << u"1.234.567"_s
+            << 1234567.089 << u"1.234.567,089"_s << 3;;
     QTest::newRow("en-BD") // {1,2,3}
-            << u"en-BD"_s << u","_s << u"0"_s << 123456789 << u"12,34,56,789"_s;
+            << u"en-BD"_s << u","_s << u"0"_s
+            << 123456789 << u"12,34,56,789"_s << 1234567.089 << u"12,34,567.089"_s << 3;
+    // Filling in the blanks where sys gives a zero:
     QTest::newRow("en-BT") // {1,2,3}
-            << u"en-BT"_s << u","_s << u"0"_s << 123456789 << u"12,34,56,789"_s;
+            << u"en-BT"_s << u","_s << u"0"_s
+            << 123456789 << u"12,34,56,789"_s << 1.234 << u"1.234"_s << 3;
     QTest::newRow("en-NP") // {1,2,3}
-            << u"en-NP"_s << u","_s << u"0"_s << 123456789 << u"12,34,56,789"_s;
+            << u"en-NP"_s << u","_s << u"0"_s
+            << 123456789 << u"12,34,56,789"_s << 1.234 << u"1.234"_s << 3;
+    // Test a locale in which fractional-part and group separators coincide.
+    // Floating-point handling in this scenario is in general ambiguous.
+    // When one reading violates grouping rules, use the other:
+    QTest::newRow("en-MN") // {1,3,3}
+            << u"en-MN"_s << u"."_s << u"0"_s << 1234 << u"1.234"_s
+            << 0.003 << u"0.003"_s << 3; // QTBUG-134913
+    QTest::newRow("es-MN") // {2,3,3},
+            << u"es-MN"_s << u"."_s << u"0"_s << 123456789 << u"123.456.789"_s
+            << 12345.6789 << u"12.345.6789"_s << 4; // long last group => fractional part
+    QTest::newRow("es-MN-short")
+            << u"es-MN"_s << u"."_s << u"0"_s << 1234 << u"1234"_s
+            << 1.234 << u"1.234"_s << 3; // short first "group" => not a group
+    QTest::newRow("es-MN-split")
+            << u"es-MN"_s << u"."_s << u"0"_s << 1234567 << u"1.234.567"_s
+            << 1234.567 << u"1234.567"_s << 3; // long first "group" => rest is fraction
+    QTest::newRow("es-MN-whole")
+            << u"es-MN"_s << u"."_s << u"0"_s << 1234567 << u"1.234.567"_s
+            << 1234567. << u"1.234.567"_s << 0; // short first group => later group separator
+    // Test the code's best guesses do match our intentions:
+    QTest::newRow("es-MN-plain")
+            << u"es-MN"_s << u"."_s << u"0"_s << 12345 << u"12.345"_s
+            << 12.345 << u"12.345"_s << 3; // Ambiguous, best guess
+    QTest::newRow("es-MN-long")
+            << u"es-MN"_s << u"."_s << u"0"_s << 1234567089 << u"1.234.567.089"_s
+            << 1234567.089 << u"1.234.567.089"_s << 3; // Ambiguous, best guess
+    // This last could equally be argued to be whole, based on "The two earlier
+    // separators were grouping, so read the last one the same way."
 
-    // Testing with Chakma locale
+    // Test handling of surrogates (non-BMP digits) in Chakma (ccp):
     const char32_t zeroVal = 0x11136; // Chakma zero
     const QChar data[] = {
         QChar::highSurrogate(zeroVal), QChar::lowSurrogate(zeroVal),
@@ -4583,8 +4960,13 @@ void tst_QLocale::systemGrouping_data()
         QChar::highSurrogate(zeroVal + 4), QChar::lowSurrogate(zeroVal + 4),
         QChar::highSurrogate(zeroVal + 5), QChar::lowSurrogate(zeroVal + 5),
         QChar::highSurrogate(zeroVal + 6), QChar::lowSurrogate(zeroVal + 6),
+        QChar::highSurrogate(zeroVal + 7), QChar::lowSurrogate(zeroVal + 7),
+        QChar::highSurrogate(zeroVal + 8), QChar::lowSurrogate(zeroVal + 8),
+        // QChar::highSurrogate(zeroVal + 9), QChar::lowSurrogate(zeroVal + 9),
     };
-    const QChar separator(QLatin1Char(',')); // Separator for the Chakma locale
+    const QChar separator(QLatin1Char(',')); // Group separator for the Chakma locale
+    const QChar fractional(QLatin1Char('.')); // Fractional-part (and group for ccp-MN)
+
     const QString
         // Copy zero so it persists through QFETCH(), after data falls off the stack.
         zero = QString(data, 2),
@@ -4593,21 +4975,46 @@ void tst_QLocale::systemGrouping_data()
         three = QString::fromRawData(data + 6, 2),
         four = QString::fromRawData(data + 8, 2),
         five = QString::fromRawData(data + 10, 2),
-        six = QString::fromRawData(data + 12, 2);
+        six = QString::fromRawData(data + 12, 2),
+        seven = QString::fromRawData(data + 14, 2),
+        eight = QString::fromRawData(data + 16, 2);
     QString fourDigit = one + two + three + four;
     QString fiveDigit = one + two  + separator + three + four + five;
     // Leading group can have single digit as long as there's a later separator:
     QString sixDigit =  one + separator  + two + three + separator + four + five + six;
 
+    QString fourFloat = one + fractional + two + three + four;
+    QString fiveFloat = one + two + fractional + three + four + five;
+    QString sevenFloat = one + two + three + four + fractional + five + six + seven;
+
     QTest::newRow("Chakma-short") // {2,2,3}
-            << u"ccp"_s << QString(separator)
-            << zero << 1234 << fourDigit;
+            << u"ccp"_s << QString(separator) << zero
+            << 1234 << fourDigit << 1.234 << fourFloat << 3;
     QTest::newRow("Chakma")
-            << u"ccp"_s << QString(separator)
-            << zero << 12345 << fiveDigit;
+            << u"ccp"_s << QString(separator) << zero
+            << 12345 << fiveDigit << 12.345 << fiveFloat << 3;
     QTest::newRow("Chakma-long")
             << u"ccp"_s << QString(separator) << zero
-            << 123456 << sixDigit;
+            << 123456 << sixDigit << 1234.567 << sevenFloat << 3;
+
+    // Floating-point forms for ccp-MN, whose group separator is the fractional-part separator:
+    // Leading "group" of four means too short to group, so rest is fractional part:
+    QTest::newRow("ccp-MN-short")
+            << u"ccp-MN"_s << QString(fractional) << zero
+            << 1234 << fourDigit << 1234.567 << sevenFloat << 3;
+    // Penultimate group of three implies final group must be fractional part:
+    QString groupFloat = one + two + fractional + three + four + five
+                         + fractional + six + seven + eight;
+    QTest::newRow("ccp-MN")
+            << u"ccp-MN"_s << QString(fractional) << zero
+            << 12345 << fiveFloat << 12345.678 << groupFloat << 3;
+
+    // Penultimate group of two implies rest must be grouping within the whole part:
+    QString eightDigit = one + fractional + two + three + fractional + four + five
+                         + fractional + six + seven + eight;
+    QTest::newRow("ccp-MN-long")
+            << u"ccp-MN"_s << QString(fractional) << zero
+            << 12345678 << eightDigit << 12345678. << eightDigit << 0;
 }
 
 void tst_QLocale::systemGrouping()
@@ -4615,8 +5022,11 @@ void tst_QLocale::systemGrouping()
     QFETCH(QString, name);
     QFETCH(QString, separator);
     QFETCH(QString, zeroDigit);
-    QFETCH(int, number);
-    QFETCH(QString, formattedString);
+    QFETCH(int, whole);
+    QFETCH(QString, formattedWhole);
+    QFETCH(double, real);
+    QFETCH(QString, formattedReal);
+    QFETCH(int, precision);
 
     {
         MySystemLocale sLocale(name);
@@ -4624,11 +5034,16 @@ void tst_QLocale::systemGrouping()
         QCOMPARE(sys.groupSeparator(), separator);
         QCOMPARE(sys.zeroDigit(), zeroDigit);
 
-        QCOMPARE(sys.toString(number), formattedString);
+        QCOMPARE(sys.toString(whole), formattedWhole);
         bool ok;
-        int count = sys.toInt(formattedString, &ok);
+        int count = sys.toInt(formattedWhole, &ok);
         QVERIFY2(ok, "Integer didn't round-trip");
-        QCOMPARE(count, number);
+        QCOMPARE(count, whole);
+
+        QCOMPARE(sys.toString(real, 'f', precision), formattedReal);
+        double apparent = sys.toDouble(formattedReal, &ok);
+        QVERIFY2(ok, "Floating-precision didn't round-trip");
+        QCOMPARE(apparent, real);
     }
 }
 

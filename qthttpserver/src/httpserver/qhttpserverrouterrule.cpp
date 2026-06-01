@@ -24,70 +24,77 @@ Q_STATIC_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
     \brief The QHttpServerRouterRule is the base class for QHttpServerRouter rules.
     \inmodule QtHttpServer
 
-    QHttpServerRouterRule expresses the connection between a request path, an
-    HTTP request method, and the respective handler callback. The \l
-    QHttpServerRouter is a collection of such rules from which the handlers are
-    called if the path and request method match the request. The handler
-    callback must provide the response to the request.
+    QHttpServerRouterRule defines the relationship between a request path, an
+    HTTP method, and the corresponding handler callback. A QHttpServerRouter
+    is a collection of these rules, executing the appropriate handler when a
+    request matches both the path and method. The handler is responsible for
+    generating the response.
 
-    \section1 Path and Patterns
+    \section1 Paths and Patterns
 
-    Every QHttpServerRouterRule contains a path or path pattern which defines
-    the paths for which it can provide a response through its handler. The path
-    can contain placeholders that are forwarded to the rule's handler. The
-    following examples of path patterns are shown with the \l
-    QHttpServer::route() convenience method, but can also be provided to the
-    QHttpServerRouterRule constructor.
+    Each QHttpServerRouterRule includes a path or pattern that determines
+    which requests it can handle. Paths may contain placeholders that
+    are passed to the handler. The examples below illustrate path patterns
+    using the QHttpServer::route() convenience method, though they can also
+    be set using the QHttpServerRouterRule constructor.
 
     In the simplest case the path is a string with a leading \c "/":
     \code
     QHttpServer server;
     server.route("/user", [] () { return "hello user"; } );
     \endcode
-    This path pattern creates a rule that forwards all requests with \c
-    "/user" to the provided handler, which in this case is a simple lambda
-    (Note that the handler syntax would look different when using
-    QHttpServerRouterRule directly, see below).
 
-    The path pattern can further contain a trailing \c "/" to create a rule
-    that addresses a collection of paths with arguments after the trailing
-    \c "/". Using the QHttpServer::route convenience method the argument is
-    directly forwarded to the lambda:
+    This path pattern defines a rule that directs all requests to \c "/user"
+    to the specified handler, which in this case is a simple lambda function.
+    (Note that when using QHttpServerRouterRule directly, the handler syntax
+    differs—see below.)
+
+    A trailing \c "/" in the path pattern allows the rule to match additional
+    paths with arguments after the \c "/". When using the QHttpServer::route()
+    convenience method, the argument is automatically passed to the lambda
+    function:
     \code
     server.route("/user/", [] ( qint64 id ) { return "hello user"; } );
     \endcode
-    This would match the request paths \c "/user/1", \c "/user/2" and so on.
+    This would match request paths such as \c "/user/1", \c "/user/2", and so
+    on.
 
-    The argument can be positioned freely within the path pattern by using
-    the \c "<arg>" placeholder. This keyword further allows multiple
-    placeholders.
+    \section2 Capturing Arguments in the Path
+
+    You can place arguments anywhere in the path pattern using the \c "<arg>"
+    placeholders, and multiple of them are supported in the path:
     \code
     server.route("/user/<arg>/history", [] (qint64 id){ return "hello user"; } );
     server.route("/user/<arg>/history/", [] (qint64 id, qint64 page){ return "hello user"; } );
     \endcode
-    This would, for example, match the request path \c "/user/1/history/2".
-    All types which are registered in \l QHttpServerRouter::converters() can be
-    used in the callback and the respective placeholder.
+    For example, this would match a request like \c "/user/1/history/2". Any
+    data type registered in QHttpServerRouter::converters() can be used in
+    both the callback function and the corresponding placeholders in
+    the path.
 
     \section1 Request Method
 
-    Request method is simply one of \l QHttpServerRequest::Method. If no
-    method is provided to any overload of the Rule construction, the rule will
-    match any request method.
+    The request method corresponds to one of the values in
+    QHttpServerRequest::Method. If no method is specified when constructing
+    a rule, it will match requests of any known method.
 
     \section1 Handler Signature
 
-    The handler is a callback with the signature
+    A handler is a callback function with the following signature:
     \code
     void (*)(const QRegularExpressionMatch &, const QHttpServerRequest &, QHttpServerResponder &);
     \endcode
+    \list
+        \li The first argument receives any matched capture groups from the
+        path.
+        \li The second argument contains request details.
+        \li The third argument is used to send the response.
+    \endlist
 
-    The handler callback receives any matched placeholders as its first argument.
-    The second argument contains details about the request and the response has
-    to be written on the last argument by the handler.
+    \section1 Adding Rules to QHttpServerRouter
 
-    The following code example shows how new rules with the respective handler can be created and
-    added to a \l QHttpServerRouter:
+    The example below demonstrates how to create and register a new rule with
+    a handler in \l QHttpServerRouter:
     \code
     template<typename ViewHandler>
     void route(const char *path, const QHttpServerRequest::Methods methods, ViewHandler &&viewHandler)
@@ -99,40 +106,37 @@ Q_STATIC_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
                                                  QHttpServerResponder &responder) mutable {
             auto boundViewHandler = QHttpServerRouterRule::bindCaptured<ViewHandler>(
                     this, std::move(viewHandler), match);
-            // call viewHandler
-            boundViewHandler();
+            boundViewHandler(); // Execute the handler
         });
 
-    // QHttpServerRouter
-    router.addRule<ViewHandler>(std::move(rule));
+        // Add rule to the router
+        router.addRule<ViewHandler>(std::move(rule));
     }
 
     // Valid:
-    route("/user/", [] (qint64 id) { } );                            // "/user/1"
-                                                                     // "/user/3"
-                                                                     //
-    route("/user/<arg>/history", [] (qint64 id) { } );               // "/user/1/history"
-                                                                     // "/user/2/history"
-                                                                     //
-    route("/user/<arg>/history/", [] (qint64 id, qint64 page) { } ); // "/user/1/history/1"
-                                                                     // "/user/2/history/2"
+    route("/user/", [] (qint64 id) { } );                            // Matches "/user/1", "/user/3", etc.
+    route("/user/<arg>/history", [] (qint64 id) { } );               // Matches "/user/1/history", "/user/2/history"
+    route("/user/<arg>/history/", [] (qint64 id, qint64 page) { } ); // Matches "/user/1/history/1", "/user/2/history/2"
     \endcode
 
-    \note This is a low level API, see \l QHttpServer for higher level alternatives.
+    \note This is a low-level API. For higher-level alternatives, see
+    \l QHttpServer.
 
-    \note Regular expressions in the path pattern are not supported, but
-    can be registered (to match a use of \c "<arg>" to a specific type) using
-    \l QHttpServerRouter::addConverter().
+    \note Regular expressions are not supported in path patterns, but you can
+    use \l QHttpServerRouter::addConverter() to match \c "<arg>" to a
+    specific type.
 */
 
 /*! \fn template <typename Functor, typename ViewTraits = QHttpServerRouterViewTraits<Functor>> static typename ViewTraits::BindableType QHttpServerRouterRule::bindCaptured(QObject *receiver, Functor &&slot, const QRegularExpressionMatch &match) const
 
-    Supplies the \a receiver and \a slot with arguments derived from a URL.
-    Returns the bound function that accepts whatever remaining arguments the
-    handler may take, supplying them to the slot after the URL-derived values.
-    Each match of the regex applied to the URL (as a string) is converted to
-    the type of the handler's parameter at its position, so that it can be
-    passed as \a match.
+    Binds the given \a receiver and \a slot with arguments extracted from the
+    URL. The function returns a bound callable that takes any remaining
+    arguments required by the handler, supplying them to \a slot after the
+    URL-derived values.
+
+    Each captured value from the URL (as a string) is converted to the
+    corresponding parameter type in the handler based on its position,
+    ensuring it can be passed as \a match.
 
     \code
     QHttpServerRouter router;
@@ -157,13 +161,15 @@ Q_STATIC_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
 
 /*! \fn template <typename Functor> QHttpServerRouterRule::QHttpServerRouterRule(const QString &pathPattern, const QHttpServerRequest::Methods methods, const QObject *receiver, Functor &&slot)
 
-    Constructs a rule for \a pathPattern, \a methods and connects it to \a
-    receiver and \a slot. The \a slot can also be a function pointer,
-    non-mutable lambda, or any other copyable callable with const call
-    operator. In that case the \a receiver will be a context object. The
-    handler will be valid until the receiver object is destroyed.
-
-    The rule accepts any combinations of available HTTP methods.
+    Creates a routing rule for \a pathPattern and \a methods, connecting it
+    to the specified \a receiver and \a slot.
+    \list
+        \li The \a slot can be a function pointer, non-mutable lambda, or any
+        other copyable callable with \c const call operator.
+        \li If \a slot is callable, \a receiver acts as its context object.
+        \li The handler remains valid until the \a receiver is destroyed.
+    \endlist
+    The rule can handle any combination of available HTTP methods.
 
     \sa QHttpServerRequest::Methods
 */
@@ -172,12 +178,16 @@ Q_STATIC_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
 
     \overload
 
-    Constructs a rule for \a pathPattern, \l
-    QHttpServerRequest::Method::AnyKnown and connects it to \a receiver and \a
-    slot. The \a slot can also be a function pointer, non-mutable lambda, or
-    any other copyable callable with const call operator. In that case the \a
-    receiver will be a context object. The handler will be valid until the
-    receiver object is destroyed.
+    This overload constructs a routing rule for \a pathPattern and associates
+    it with \a receiver and \a slot.
+    \list
+        \li It defaults to \l QHttpServerRequest::Method::AnyKnown, meaning
+        it will match any recognized HTTP method.
+        \li The \a slot can be a function pointer, non-mutable lambda, or any
+        other copyable callable with \c const call operator.
+        \li If \a slot is callable, \a receiver acts as its context object.
+        \li The handler remains valid until the \a receiver is destroyed.
+    \endlist
 */
 QHttpServerRouterRule::QHttpServerRouterRule(const QString &pathPattern,
                                              const QHttpServerRequest::Methods methods,
@@ -205,8 +215,8 @@ QHttpServerRouterRule::~QHttpServerRouterRule()
 }
 
 /*!
-    Returns the context object of this rule. This is the receiver that has to
-    handle the request.
+    Retrieves the context object associated with this rule. This object
+    serves as the receiver responsible for handling the request.
 */
 const QObject *QHttpServerRouterRule::contextObject() const
 {
@@ -215,7 +225,8 @@ const QObject *QHttpServerRouterRule::contextObject() const
 }
 
 /*!
-    Returns \c true if the methods is valid
+    Validates the Request Method. Returns \c true if the specified HTTP
+    method is valid.
 */
 bool QHttpServerRouterRule::hasValidMethods() const
 {
@@ -224,12 +235,16 @@ bool QHttpServerRouterRule::hasValidMethods() const
 }
 
 /*!
-    Executes this rule for the given \a request.
-
-    This function is called by \l QHttpServerRouter when it receives a new
-    request. If the given \a request matches this rule, this function handles
-    the request by delivering a response to the given \a responder, then returns
-    \c true. Otherwise, it returns \c false.
+    Executes the rule. Processes the given \a request by checking if it
+    matches this rule.
+    \list
+        \li This function is called by QHttpServerRouter when a new
+        \a request is received.
+        \li If the \a request matches the rule, it handles the request by
+        sending a response through the provided \a responder and returns
+        \c true.
+        \li If there is no match, it returns \c false.
+    \endlist
 */
 bool QHttpServerRouterRule::exec(const QHttpServerRequest &request,
                                  QHttpServerResponder &responder) const
@@ -249,12 +264,15 @@ bool QHttpServerRouterRule::exec(const QHttpServerRequest &request,
 }
 
 /*!
-    Determines whether a given \a request matches this rule.
-
-    This virtual function is called by exec() to check if \a request matches
-    this rule. If a match is found, it is stored in the object pointed to by
-    \a match (which \e{must not} be \nullptr) and this function returns
-    \c true. Otherwise, it returns \c false.
+    Determines whether the provided \a request meets the conditions of this
+    rule.
+    \list
+        \li This virtual function is called by \l exec() to evaluate the
+        \a request.
+        \li If the request matches, the details are stored in \a match
+        (which \e{must not} be \c nullptr), and the function returns \c true.
+        \li Otherwise, it returns \c false.
+    \endlist
 */
 bool QHttpServerRouterRule::matches(const QHttpServerRequest &request,
                                     QRegularExpressionMatch *match) const

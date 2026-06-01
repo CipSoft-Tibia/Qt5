@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLPREVIEWFILELOADER_H
 #define QQMLPREVIEWFILELOADER_H
@@ -41,7 +42,6 @@ public:
     };
 
     QQmlPreviewFileLoader(QQmlPreviewServiceImpl *service);
-    ~QQmlPreviewFileLoader();
 
     QMutex *loadMutex() { return &m_loadMutex; }
     Result load(const QString &file);
@@ -59,9 +59,6 @@ private:
     QMutex m_loadMutex;
     QMutex m_contentMutex;
     QWaitCondition m_waitCondition;
-
-    QThread m_thread;
-    QPointer<QQmlPreviewServiceImpl> m_service;
 
     QString m_path;
     QByteArray m_contents;

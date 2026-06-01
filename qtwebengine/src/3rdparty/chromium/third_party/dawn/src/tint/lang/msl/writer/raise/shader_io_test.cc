@@ -40,16 +40,14 @@ using namespace tint::core::number_suffixes;  // NOLINT
 using MslWriter_ShaderIOTest = core::ir::transform::TransformTest;
 
 TEST_F(MslWriter_ShaderIOTest, NoInputsOrOutputs) {
-    auto* ep = b.Function("foo", ty.void_());
-    ep->SetStage(core::ir::Function::PipelineStage::kCompute);
-    ep->SetWorkgroupSize(1, 1, 1);
+    auto* ep = b.ComputeFunction("foo");
 
     b.Append(ep->Block(), [&] {  //
         b.Return(ep);
     });
 
     auto* src = R"(
-%foo = @compute @workgroup_size(1, 1, 1) func():void {
+%foo = @compute @workgroup_size(1u, 1u, 1u) func():void {
   $B1: {
     ret
   }
@@ -654,8 +652,8 @@ TEST_F(MslWriter_ShaderIOTest, ReturnValue_DualSourceBlending) {
 
     auto* src = R"(
 Output = struct @align(4) {
-  color1:f32 @offset(0), @location(0)
-  color2:f32 @offset(4), @location(0)
+  color1:f32 @offset(0), @location(0), @blend_src(0)
+  color2:f32 @offset(4), @location(0), @blend_src(1)
 }
 
 %foo = @fragment func():Output {
@@ -674,8 +672,8 @@ Output = struct @align(4) {
 }
 
 foo_outputs = struct @align(4) {
-  Output_color1:f32 @offset(0), @location(0)
-  Output_color2:f32 @offset(4), @location(0)
+  Output_color1:f32 @offset(0), @location(0), @blend_src(0)
+  Output_color2:f32 @offset(4), @location(0), @blend_src(1)
 }
 
 %foo_inner = func():Output {
@@ -991,7 +989,7 @@ TEST_F(MslWriter_ShaderIOTest, StructWithAttributes_NotUsedForInterface) {
                                  },
                              });
 
-    auto* var = b.Var(ty.ptr(storage, str_ty, read));
+    auto* var = b.Var(ty.ptr(storage, str_ty, core::Access::kWrite));
     var->SetBindingPoint(0, 0);
 
     auto* buffer = mod.root_block->Append(var);
@@ -1011,7 +1009,7 @@ Outputs = struct @align(16) {
 }
 
 $B1: {  # root
-  %1:ptr<storage, Outputs, read> = var @binding_point(0, 0)
+  %1:ptr<storage, Outputs, write> = var @binding_point(0, 0)
 }
 
 %frag = @fragment func():void {
@@ -1031,7 +1029,7 @@ Outputs = struct @align(16) {
 }
 
 $B1: {  # root
-  %1:ptr<storage, Outputs, read> = var @binding_point(0, 0)
+  %1:ptr<storage, Outputs, write> = var @binding_point(0, 0)
 }
 
 %frag = @fragment func():void {

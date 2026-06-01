@@ -18,7 +18,6 @@
 #include "third_party/blink/renderer/core/loader/modulescript/module_script_fetch_request.h"
 #include "third_party/blink/renderer/core/loader/modulescript/module_tree_linker.h"
 #include "third_party/blink/renderer/core/loader/modulescript/module_tree_linker_registry.h"
-#include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
 #include "third_party/blink/renderer/core/script/dynamic_module_resolver.h"
 #include "third_party/blink/renderer/core/script/import_map.h"
 #include "third_party/blink/renderer/core/script/js_module_script.h"
@@ -27,6 +26,7 @@
 #include "third_party/blink/renderer/core/script/parsed_specifier.h"
 #include "third_party/blink/renderer/platform/bindings/v8_throw_exception.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/loader/integrity_report.h"
 #include "third_party/blink/renderer/platform/loader/subresource_integrity.h"
 
 namespace blink {
@@ -126,11 +126,12 @@ KURL ModulatorImplBase::ResolveModuleSpecifier(const String& specifier,
   // errors, but should be supressed (i.e. |logger| should be null) in normal
   // cases.
 
+  std::optional<KURL> result;
   std::optional<KURL> mapped_url;
-  if (GetImportMap()) {
+  if (import_map_) {
     String import_map_debug_message;
-    mapped_url = GetImportMap()->Resolve(parsed_specifier, base_url,
-                                         &import_map_debug_message);
+    mapped_url = import_map_->Resolve(parsed_specifier, base_url,
+                                      &import_map_debug_message);
 
     // Output the resolution log. This is too verbose to be always shown, but
     // will be helpful for Web developers (and also Chromium developers) for
@@ -142,9 +143,10 @@ KURL ModulatorImplBase::ResolveModuleSpecifier(const String& specifier,
       if (!url.IsValid()) {
         if (failure_reason)
           *failure_reason = import_map_debug_message;
-        return KURL();
+        result = KURL();
+      } else {
+        result = url;
       }
-      return url;
     }
   }
 
@@ -152,23 +154,32 @@ KURL ModulatorImplBase::ResolveModuleSpecifier(const String& specifier,
   // - There are no import maps, or
   // - The import map doesn't have an entry for |parsed_specifier|.
 
-  switch (parsed_specifier.GetType()) {
-    case ParsedSpecifier::Type::kInvalid:
-      NOTREACHED_IN_MIGRATION();
-      return KURL();
+  if (!result) {
+    switch (parsed_specifier.GetType()) {
+      case ParsedSpecifier::Type::kInvalid:
+        NOTREACHED();
 
-    case ParsedSpecifier::Type::kBare:
-      // Reject bare specifiers as specced by the pre-ImportMap spec.
-      if (failure_reason) {
-        *failure_reason =
-            "Relative references must start with either \"/\", \"./\", or "
-            "\"../\".";
-      }
-      return KURL();
+      case ParsedSpecifier::Type::kBare:
+        // Reject bare specifiers as specced by the pre-ImportMap spec.
+        if (failure_reason) {
+          *failure_reason =
+              "Relative references must start with either \"/\", \"./\", or "
+              "\"../\".";
+        }
+        return KURL();
 
-    case ParsedSpecifier::Type::kURL:
-      return parsed_specifier.GetUrl();
+      case ParsedSpecifier::Type::kURL:
+        result = parsed_specifier.GetUrl();
+    }
   }
+  // Step 13. If result is not null, then:
+  // Step 13.1. Add module to resolved module set given settingsObject,
+  // baseURLString, and normalizedSpecifier.
+  AddModuleToResolvedModuleSet(base_url.GetString(),
+                               parsed_specifier.GetImportMapKeyString());
+
+  // Step 13.2. Return result.
+  return result.value();
 }
 
 bool ModulatorImplBase::HasValidContext() {
@@ -209,11 +220,10 @@ ModuleImportMeta ModulatorImplBase::HostGetImportMetaProperties(
 }
 
 String ModulatorImplBase::GetIntegrityMetadataString(const KURL& url) const {
-  const ImportMap* import_map = GetImportMap();
-  if (!import_map) {
+  if (!import_map_) {
     return String();
   }
-  return import_map->GetIntegrity(url);
+  return import_map_->ResolveIntegrity(url);
 }
 
 IntegrityMetadataSet ModulatorImplBase::GetIntegrityMetadata(
@@ -221,11 +231,10 @@ IntegrityMetadataSet ModulatorImplBase::GetIntegrityMetadata(
   String value = GetIntegrityMetadataString(url);
   IntegrityMetadataSet integrity_metadata;
   if (!value.IsNull()) {
-    SubresourceIntegrity::ReportInfo report_info;
-    SubresourceIntegrity::ParseIntegrityAttribute(
-        value, SubresourceIntegrity::IntegrityFeatures::kDefault,
-        integrity_metadata, &report_info);
-    SubresourceIntegrityHelper::DoReport(*GetExecutionContext(), report_info);
+    IntegrityReport integrity_report;
+    SubresourceIntegrity::ParseIntegrityAttribute(value, integrity_metadata,
+                                                  &integrity_report);
+    integrity_report.SendReports(GetExecutionContext());
   }
   return integrity_metadata;
 }

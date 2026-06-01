@@ -10,22 +10,13 @@
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qalgorithms.h>
+#include <QtCore/qnumeric.h>
 
 #if __has_include(<bit>) && __cplusplus > 201703L
 #include <bit>
 #endif
 
-#ifndef _USE_MATH_DEFINES
-#  define _USE_MATH_DEFINES
-#  define undef_USE_MATH_DEFINES
-#endif
-
 #include <cmath>
-
-#ifdef undef_USE_MATH_DEFINES
-#  undef _USE_MATH_DEFINES
-#  undef undef_USE_MATH_DEFINES
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -36,13 +27,13 @@ extern Q_CORE_EXPORT const qreal qt_sine_table[QT_SINE_TABLE_SIZE];
 template <typename T> int qCeil(T v)
 {
     using std::ceil;
-    return int(ceil(v));
+    return QtPrivate::qCheckedFPConversionToInteger<int>(ceil(v));
 }
 
 template <typename T> int qFloor(T v)
 {
     using std::floor;
-    return int(floor(v));
+    return QtPrivate::qCheckedFPConversionToInteger<int>(floor(v));
 }
 
 template <typename T> auto qFabs(T v)

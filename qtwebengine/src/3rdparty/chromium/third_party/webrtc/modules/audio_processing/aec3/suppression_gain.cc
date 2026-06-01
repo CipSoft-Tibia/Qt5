@@ -22,7 +22,6 @@
 #include "modules/audio_processing/aec3/vector_math.h"
 #include "modules/audio_processing/logging/apm_data_dumper.h"
 #include "rtc_base/checks.h"
-#include "system_wrappers/include/field_trial.h"
 
 namespace webrtc {
 namespace {
@@ -323,7 +322,7 @@ void SuppressionGain::LowerBandGain(
 
 SuppressionGain::SuppressionGain(const EchoCanceller3Config& config,
                                  Aec3Optimization optimization,
-                                 int sample_rate_hz,
+                                 int /* sample_rate_hz */,
                                  size_t num_capture_channels)
     : data_dumper_(new ApmDataDumper(instance_count_.fetch_add(1) + 1)),
       optimization_(optimization),

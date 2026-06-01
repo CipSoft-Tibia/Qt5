@@ -24,10 +24,10 @@ public:
     void stopServerImpl();
 
 private slots:
-    void initTestCase();
-    void cleanup();
+    void initTestCase() final;
     void warnings_data();
     void warnings();
+    void dontShutdownOnStartup();
 
 public:
     QProcess m_server;

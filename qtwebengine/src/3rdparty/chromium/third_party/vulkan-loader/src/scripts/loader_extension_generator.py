@@ -22,10 +22,10 @@
 # Author: Mark Young <marky@lunarg.com>
 # Author: Mark Lobodzinski <mark@lunarg.com>
 
-import os,re,sys
-import xml.etree.ElementTree as etree
-from generator import *
+import re
+import sys
 from collections import namedtuple
+from generator import *
 from common_codegen import *
 
 
@@ -192,7 +192,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
         OutputGenerator.beginFile(self, genOpts)
 
         # User-supplied prefix text, if any (list of strings)
-        if (genOpts.prefixText):
+        if genOpts.prefixText:
             for s in genOpts.prefixText:
                 write(s, file=self.outFile)
 
@@ -231,12 +231,18 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
         if self.genOpts.filename == 'vk_loader_extensions.h':
             preamble += '#pragma once\n'
+            preamble += '\n'
+            preamble += '#include <stdbool.h>\n'
+            preamble += '#include <vulkan/vulkan.h>\n'
+            preamble += '#include <vulkan/vk_layer.h>\n'
+            preamble += '#include "vk_layer_dispatch_table.h"\n'
+            preamble += '\n'
+
 
         elif self.genOpts.filename == 'vk_loader_extensions.c':
             preamble += '#include <stdio.h>\n'
             preamble += '#include <stdlib.h>\n'
             preamble += '#include <string.h>\n'
-            preamble += '#include "vk_loader_platform.h"\n'
             preamble += '#include "loader.h"\n'
             preamble += '#include "vk_loader_extensions.h"\n'
             preamble += '#include <vulkan/vk_icd.h>\n'
@@ -246,6 +252,8 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
         elif self.genOpts.filename == 'vk_layer_dispatch_table.h':
             preamble += '#pragma once\n'
+            preamble += '\n'
+            preamble += '#include <vulkan/vulkan.h>\n'
             preamble += '\n'
             preamble += '#if !defined(PFN_GetPhysicalDeviceProcAddr)\n'
             preamble += 'typedef PFN_vkVoidFunction (VKAPI_PTR *PFN_GetPhysicalDeviceProcAddr)(VkInstance instance, const char* pName);\n'
@@ -286,7 +294,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
         file_data += '// clang-format on'
 
-        write(file_data, file=self.outFile);
+        write(file_data, file=self.outFile)
 
         # Finish processing in superclass
         OutputGenerator.endFile(self)
@@ -340,16 +348,16 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
     # Retrieve the value of the len tag
     def getLen(self, param):
         result = None
-        len = param.attrib.get('len')
-        if len and len != 'null-terminated':
+        length = param.attrib.get('len')
+        if length and length != 'null-terminated':
             # For string arrays, 'len' can look like 'count,null-terminated',
             # indicating that we have a null terminated array of strings.  We
             # strip the null-terminated from the 'len' field and only return
             # the parameter specifying the string count
-            if 'null-terminated' in len:
-                result = len.split(',')[0]
+            if 'null-terminated' in length:
+                result = length.split(',')[0]
             else:
-                result = len
+                result = length
             result = str(result).replace('::', '->')
         return result
 
@@ -380,11 +388,11 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
         return_type =  cmdinfo.elem.find('proto/type')
         if (return_type is not None and return_type.text == 'void'):
-           return_type = None
+            return_type = None
 
         require = None
         if name == 'vkGetDeviceGroupSurfacePresentModes2EXT':
-            require_node = self.registry.tree.find("./extensions/extension[@name='{}']/require/command[@name='{}']/..".format(extension_name, name))
+            require_node = self.registry.tree.find(f"./extensions/extension[@name='{extension_name}']/require/command[@name='{name}']/..")
             if 'depends' in require_node.attrib:
                 require = require_node.attrib['depends']
 
@@ -395,10 +403,10 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
         params = cmdinfo.elem.findall('param')
         lens = set()
         for param in params:
-            len = self.getLen(param)
-            if len:
-                lens.add(len)
-        paramsInfo = []
+            length = self.getLen(param)
+            if length:
+                lens.add(length)
+
         for param in params:
             paramInfo = self.getTypeNameTuple(param)
             param_type = paramInfo[0]
@@ -465,17 +473,17 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
     #
     # Retrieve the type and name for a parameter
     def getTypeNameTuple(self, param):
-        type = ''
-        name = ''
+        t = ''
+        n = ''
         for elem in param:
             if elem.tag == 'type':
-                type = noneStr(elem.text)
+                t = noneStr(elem.text)
             elif elem.tag == 'name':
-                name = noneStr(elem.text)
-        return (type, name)
+                n = noneStr(elem.text)
+        return (t, n)
 
     # Convert an XML dependency expression to a C expression, taking a callback to replace extension names
-    # See https://registry.khronos.org/vulkan/specs/1.3/registry.html#depends-expressions
+    # See https://registry.khronos.org/vulkan/specs/1.4/registry.html#depends-expressions
     @staticmethod
     def ConvertDependencyExpression(expr, replace_func):
         # '(' and ')' can pass through unchanged
@@ -590,21 +598,21 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
                     if cur_cmd.ext_name != cur_extension_name:
                         if version:
-                            table += '\n    // ---- Core %s commands\n' % version.name
+                            table += f'\n    // ---- Core {version.name} commands\n'
                         else:
-                            table += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                            table += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                         cur_extension_name = cur_cmd.ext_name
 
                     # Remove 'vk' from proto name
                     base_name = cur_cmd.name[2:]
 
                     if cur_cmd.protect is not None:
-                        table += '#if defined(%s)\n' % cur_cmd.protect
+                        table += f'#if defined({cur_cmd.protect})\n'
 
-                    table += '    PFN_%s %s;\n' % (cur_cmd.name, base_name)
+                    table += f'    PFN_{cur_cmd.name} {base_name};\n'
 
                     if cur_cmd.protect is not None:
-                        table += '#endif // %s\n' % cur_cmd.protect
+                        table += f'#endif // {cur_cmd.protect}\n'
 
         table += '} VkLayerInstanceDispatchTable;\n\n'
         return table
@@ -634,21 +642,20 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
                     if cur_cmd.ext_name != cur_extension_name:
                         if version:
-                            table += '\n    // ---- Core %s commands\n' % version.name
+                            table += f'\n    // ---- Core {version.name} commands\n'
                         else:
-                            table += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                            table += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                         cur_extension_name = cur_cmd.ext_name
 
                     # Remove 'vk' from proto name
                     base_name = cur_cmd.name[2:]
 
                     if cur_cmd.protect is not None:
-                        table += '#if defined(%s)\n' % cur_cmd.protect
+                        table += f'#if defined({cur_cmd.protect})\n'
 
-                    table += '    PFN_%s %s;\n' % (cur_cmd.name, base_name)
-
+                    table += f'    PFN_{cur_cmd.name} {base_name};\n'
                     if cur_cmd.protect is not None:
-                        table += '#endif // %s\n' % cur_cmd.protect
+                        table += f'#endif // {cur_cmd.protect}\n'
 
         table += '} VkLayerDispatchTable;\n\n'
         return table
@@ -681,24 +688,24 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
             for cur_cmd in commands:
                 version = self.getAPIVersion(cur_cmd.ext_name)
-                if (self.ShouldPrintInIcdDispatchTable(cur_cmd, skip_commands)):
+                if self.ShouldPrintInIcdDispatchTable(cur_cmd, skip_commands):
                     if cur_cmd.ext_name != cur_extension_name:
                         if version:
-                            table += '\n    // ---- Core %s commands\n' % version.name
+                            table += f'\n    // ---- Core {version.name} commands\n'
                         else:
-                            table += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                            table += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                         cur_extension_name = cur_cmd.ext_name
 
                     # Remove 'vk' from proto name
                     base_name = cur_cmd.name[2:]
 
                     if cur_cmd.protect is not None:
-                        table += '#if defined(%s)\n' % cur_cmd.protect
+                        table += f'#if defined({cur_cmd.protect})\n'
 
-                    table += '    PFN_%s %s;\n' % (cur_cmd.name, base_name)
+                    table += f'    PFN_{cur_cmd.name} {base_name};\n'
 
                     if cur_cmd.protect is not None:
-                        table += '#endif // %s\n' % cur_cmd.protect
+                        table += f'#endif // {cur_cmd.protect}\n'
 
         table += '};\n\n'
         return table
@@ -744,14 +751,14 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
             required = False
             for cur_cmd in commands:
                 version = self.getAPIVersion(cur_cmd.ext_name)
-                if (self.ShouldPrintInIcdDispatchTable(cur_cmd, skip_gipa_commands)):
+                if self.ShouldPrintInIcdDispatchTable(cur_cmd, skip_gipa_commands):
 
                     if cur_cmd.ext_name != cur_extension_name:
                         if version:
-                            table += '\n    // ---- Core %s\n' % version.name
+                            table += f'\n    // ---- Core {version.name}\n'
                             required = version.number == '1.0'
                         else:
-                            table += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                            table += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                             required = False
                         cur_extension_name = cur_cmd.ext_name
 
@@ -759,7 +766,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     base_name = cur_cmd.name[2:]
 
                     if cur_cmd.protect is not None:
-                        table += '#if defined(%s)\n' % cur_cmd.protect
+                        table += f'#if defined({cur_cmd.protect})\n'
 
                     if required:
                         # The Core Vulkan code will be wrapped in a feature called VK_VERSION_#_#
@@ -768,7 +775,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     else:
                         table += f'    LOOKUP_GIPA({base_name});\n'
                     if cur_cmd.protect is not None:
-                        table += '#endif // %s\n' % cur_cmd.protect
+                        table += f'#endif // {cur_cmd.protect}\n'
 
         table += '\n'
         table += '#undef LOOKUP_REQUIRED_GIPA\n'
@@ -790,7 +797,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 ext.type == 'device' or ext.num_commands == 0):
                 continue
 
-            union += '    uint8_t %s;\n' % ext.name[3:].lower()
+            union += f'    uint8_t {ext.name[3:].lower()};\n'
 
         union += '};\n\n'
         return union
@@ -814,7 +821,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     mod_string = mod_string.replace(cur_cmd.name[2:] + '(\n', cur_cmd.name[2:] + '(\n    const Vk' + cur_cmd.name[2:] + 'Chain* chain,\n')
 
                 if cur_cmd.protect is not None:
-                    terminators += '#if defined(%s)\n' % cur_cmd.protect
+                    terminators += f'#if defined({cur_cmd.protect})\n'
 
                 if cur_cmd.name in PRE_INSTANCE_FUNCTIONS:
                     terminators += pre_instance_basic_version
@@ -824,7 +831,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 terminators += '\n'
 
                 if cur_cmd.protect is not None:
-                    terminators += '#endif // %s\n' % cur_cmd.protect
+                    terminators += f'#endif // {cur_cmd.protect}\n'
 
         terminators += '\n'
         return terminators
@@ -889,9 +896,9 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 if ((cur_type == 'instance' and is_inst_handle_type) or (cur_type == 'device' and not is_inst_handle_type)):
                     if cur_cmd.ext_name != cur_extension_name:
                         if version:
-                            tables += '\n    // ---- Core %s commands\n' % version.name
+                            tables += f'\n    // ---- Core {version.name} commands\n'
                         else:
-                            tables += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                            tables += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                         cur_extension_name = cur_cmd.ext_name
 
                     # Remove 'vk' from proto name
@@ -905,7 +912,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                         continue
 
                     if cur_cmd.protect is not None:
-                        tables += '#if defined(%s)\n' % cur_cmd.protect
+                        tables += f'#if defined({cur_cmd.protect})\n'
 
                     # If we're looking for the proc we are passing in, just point the table to it.  This fixes the issue where
                     # a layer overrides the function name for the loader.
@@ -913,18 +920,18 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                         if base_name == 'GetDeviceProcAddr':
                             tables += '    table->GetDeviceProcAddr = gdpa;\n'
                         elif cur_cmd.ext_type == 'instance':
-                            tables += '    table->%s = (PFN_%s)gipa(inst, "%s");\n' % (base_name, cur_cmd.name, cur_cmd.name)
+                            tables += f'    table->{base_name} = (PFN_{cur_cmd.name})gipa(inst, "{cur_cmd.name}");\n'
                         else:
-                            tables += '    table->%s = (PFN_%s)gdpa(dev, "%s");\n' % (base_name, cur_cmd.name, cur_cmd.name)
+                            tables += f'    table->{base_name} = (PFN_{cur_cmd.name})gdpa(dev, "{cur_cmd.name}");\n'
                     elif (x < 1 and base_name == 'GetDeviceProcAddr'):
                         tables += '    table->GetDeviceProcAddr = gpa;\n'
                     elif (x > 1 and base_name == 'GetInstanceProcAddr'):
                         tables += '    table->GetInstanceProcAddr = gpa;\n'
                     else:
-                        tables += '    table->%s = (PFN_%s)gpa(%s, "%s");\n' % (base_name, cur_cmd.name, gpa_param, cur_cmd.name)
+                        tables += f'    table->{base_name} = (PFN_{cur_cmd.name})gpa({gpa_param}, "{cur_cmd.name}");\n'
 
                     if cur_cmd.protect is not None:
-                        tables += '#endif // %s\n' % cur_cmd.protect
+                        tables += f'#endif // {cur_cmd.protect}\n'
 
             tables += '}\n\n'
         return tables
@@ -982,12 +989,12 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     if ((cur_type == 'instance' and is_inst_handle_type) or (cur_type == 'device' and not is_inst_handle_type)):
                         if cur_cmd.ext_name != cur_extension_name:
                             if version:
-                                tables += '\n    // ---- Core %s commands\n' % version.name
+                                tables += f'\n    // ---- Core {version.name} commands\n'
                                 if cur_type == 'device':
                                     version_check = f'        if (dev->should_ignore_device_commands_from_newer_version && api_version < {version.constant}) return NULL;\n'
                             else:
 
-                                tables += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                                tables += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                                 version_check = ''
                             cur_extension_name = cur_cmd.ext_name
 
@@ -1001,7 +1008,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                             continue
 
                         if cur_cmd.protect is not None:
-                            tables += '#if defined(%s)\n' % cur_cmd.protect
+                            tables += f'#if defined({cur_cmd.protect})\n'
 
                         tables += f'    if (!strcmp(name, "{base_name}")) '
                         if cur_cmd.name in DEVICE_CMDS_MUST_USE_TRAMP:
@@ -1017,7 +1024,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                                 tables += f'return (void *)table->{base_name};\n'
 
                         if cur_cmd.protect is not None:
-                            tables += '#endif // %s\n' % cur_cmd.protect
+                            tables += f'#endif // {cur_cmd.protect}\n'
 
             tables += '\n'
             tables += '    *found_name = false;\n'
@@ -1028,7 +1035,6 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
     #
     # Create the appropriate trampoline (and possibly terminator) functions
     def CreateTrampTermFuncs(self):
-        entries = []
         funcs = ''
         cur_extension_name = ''
 
@@ -1070,13 +1076,13 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
             version = self.getAPIVersion(ext_cmd.ext_name)
             if ext_cmd.ext_name != cur_extension_name:
                 if version:
-                    funcs += '\n// ---- Core %s trampoline/terminators\n\n' % version.name
+                    funcs += f'\n// ---- Core {version.name} trampoline/terminators\n\n'
                 else:
-                    funcs += '\n// ---- %s extension trampoline/terminators\n\n' % ext_cmd.ext_name
+                    funcs += f'\n// ---- {ext_cmd.ext_name} extension trampoline/terminators\n\n'
                 cur_extension_name = ext_cmd.ext_name
 
             if ext_cmd.protect is not None:
-                funcs += '#if defined(%s)\n' % ext_cmd.protect
+                funcs += f'#if defined({ext_cmd.protect})\n'
 
             func_header = ext_cmd.cdecl.replace(";", " {\n")
             tramp_header = func_header.replace("VKAPI_CALL vk", "VKAPI_CALL ")
@@ -1124,7 +1130,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     requires_terminator = 1
                     instance_var_name = param.name
 
-            if (ext_cmd.return_type is not None):
+            if ext_cmd.return_type is not None:
                 return_prefix += 'return '
                 has_return_type = True
 
@@ -1140,20 +1146,20 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
                 if ext_cmd.handle_type == 'VkPhysicalDevice':
                     funcs += '    const VkLayerInstanceDispatchTable *disp;\n'
-                    funcs += '    VkPhysicalDevice unwrapped_phys_dev = loader_unwrap_physical_device(%s);\n' % (phys_dev_var_name)
+                    funcs += f'    VkPhysicalDevice unwrapped_phys_dev = loader_unwrap_physical_device({phys_dev_var_name});\n'
                     funcs += '    if (VK_NULL_HANDLE == unwrapped_phys_dev) {\n'
                     funcs += '        loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,\n'
-                    funcs += '                   "%s: Invalid %s "\n' % (ext_cmd.name, phys_dev_var_name)
-                    funcs += '                   "[VUID-%s-%s-parameter]");\n' % (ext_cmd.name, phys_dev_var_name)
+                    funcs += f'                   "{ext_cmd.name}: Invalid {phys_dev_var_name} "\n'
+                    funcs += f'                   "[VUID-{ext_cmd.name}-{phys_dev_var_name}-parameter]");\n'
                     funcs += '        abort(); /* Intentionally fail so user can correct issue. */\n'
                     funcs += '    }\n'
-                    funcs += '    disp = loader_get_instance_layer_dispatch(%s);\n' % (phys_dev_var_name)
+                    funcs += f'    disp = loader_get_instance_layer_dispatch({phys_dev_var_name});\n'
                 elif ext_cmd.handle_type == 'VkInstance':
-                    funcs += '    struct loader_instance *inst = loader_get_instance(%s);\n' % (instance_var_name)
+                    funcs += f'    struct loader_instance *inst = loader_get_instance({instance_var_name});\n'
                     funcs += '    if (NULL == inst) {\n'
                     funcs += '        loader_log(\n'
                     funcs += '            NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,\n'
-                    funcs += '            "%s: Invalid instance [VUID-%s-%s-parameter]");\n' % (ext_cmd.name, ext_cmd.name, instance_var_name)
+                    funcs += f'            "{ext_cmd.name}: Invalid instance [VUID-{ext_cmd.name}-{instance_var_name}-parameter]");\n'
                     funcs += '        abort(); /* Intentionally fail so user can correct issue. */\n'
                     funcs += '    }\n'
                     funcs += '#error("Not implemented. Likely needs to be manually generated!");\n'
@@ -1163,8 +1169,8 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     funcs += ');\n'
                     funcs += '    if (NULL == disp) {\n'
                     funcs += '        loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,\n'
-                    funcs += '                   "%s: Invalid %s "\n' % (ext_cmd.name, ext_cmd.params[0].name)
-                    funcs += '                   "[VUID-%s-%s-parameter]");\n' % (ext_cmd.name, ext_cmd.params[0].name)
+                    funcs += f'                   "{ext_cmd.name}: Invalid {ext_cmd.params[0].name} "\n'
+                    funcs += f'                   "[VUID-{ext_cmd.name}-{ext_cmd.params[0].name}-parameter]");\n'
                     funcs += '        abort(); /* Intentionally fail so user can correct issue. */\n'
                     funcs += '    }\n'
 
@@ -1234,9 +1240,9 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     if param.type == 'VkPhysicalDevice':
                         funcs += 'unwrapped_phys_dev'
                     elif ('DebugMarkerSetObject' in ext_cmd.name or 'SetDebugUtilsObject' in ext_cmd.name) and param.name == 'pNameInfo':
-                            funcs += '&local_name_info'
+                        funcs += '&local_name_info'
                     elif ('DebugMarkerSetObject' in ext_cmd.name or 'SetDebugUtilsObject' in ext_cmd.name) and param.name == 'pTagInfo':
-                            funcs += '&local_tag_info'
+                        funcs += '&local_tag_info'
                     else:
                         funcs += param.name
 
@@ -1251,7 +1257,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
                 funcs += term_header
                 if ext_cmd.handle_type == 'VkPhysicalDevice':
-                    funcs += '    struct loader_physical_device_term *phys_dev_term = (struct loader_physical_device_term *)%s;\n' % (phys_dev_var_name)
+                    funcs += f'    struct loader_physical_device_term *phys_dev_term = (struct loader_physical_device_term *){phys_dev_var_name};\n'
                     funcs += '    struct loader_icd_term *icd_term = phys_dev_term->this_icd_term;\n'
                     funcs += '    if (NULL == icd_term->dispatch.'
                     funcs += base_name
@@ -1271,8 +1277,11 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     funcs += '    }\n'
 
                     if has_surface == 1:
-                        funcs += '    VkIcdSurface *icd_surface = (VkIcdSurface *)(uintptr_t)(%s);\n' % (surface_var_name)
-                        funcs += '    if (NULL != icd_term->surface_list.list && icd_term->surface_list.capacity > icd_surface->surface_index * sizeof(VkSurfaceKHR) && icd_term->surface_list[icd_surface->surface_index]) {\n'
+                        funcs += '    VkIcdSurface *icd_surface = NULL;\n'
+                        funcs += f'    if (NULL != {surface_var_name}) {{\n'
+                        funcs += f'        icd_surface = (VkIcdSurface *)(uintptr_t)({surface_var_name});\n'
+                        funcs += '    }\n'
+                        funcs += '    if (NULL != icd_surface && NULL != icd_term->surface_list.list && icd_term->surface_list.capacity > icd_surface->surface_index * sizeof(VkSurfaceKHR) && icd_term->surface_list[icd_surface->surface_index]) {\n'
 
                         # If there's a structure with a surface, we need to update its internals with the correct surface for the ICD
                         if update_structure_surface == 1:
@@ -1321,11 +1330,11 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
 
 
                 elif ext_cmd.handle_type == 'VkInstance':
-                    funcs += '    struct loader_instance *inst = loader_get_instance(%s);\n' % (instance_var_name)
+                    funcs += f'    struct loader_instance *inst = loader_get_instance({instance_var_name});\n'
                     funcs += '    if (NULL == inst) {\n'
                     funcs += '        loader_log(\n'
                     funcs += '            NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,\n'
-                    funcs += '            "%s: Invalid instance [VUID-%s-%s-parameter]");\n' % (ext_cmd.name, ext_cmd.name, instance_var_name)
+                    funcs += f'            "{ext_cmd.name}: Invalid instance [VUID-{ext_cmd.name}-{instance_var_name}-parameter]");\n'
                     funcs += '        abort(); /* Intentionally fail so user can correct issue. */\n'
                     funcs += '    }\n'
                     funcs += '#error("Not implemented. Likely needs to be manually generated!");\n'
@@ -1412,8 +1421,8 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 funcs += ');\n'
                 funcs += '    if (NULL == disp) {\n'
                 funcs += '        loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,\n'
-                funcs += '                   "%s: Invalid %s "\n' % (ext_cmd.name, ext_cmd.params[0].name)
-                funcs += '                   "[VUID-%s-%s-parameter]");\n' % (ext_cmd.name, ext_cmd.params[0].name)
+                funcs += f'                   "{ext_cmd.name}: Invalid {ext_cmd.params[0].name} "\n'
+                funcs += f'                   "[VUID-{ext_cmd.name}-{ext_cmd.params[0].name}-parameter]");\n'
                 funcs += '        abort(); /* Intentionally fail so user can correct issue. */\n'
                 funcs += '    }\n'
 
@@ -1439,7 +1448,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 funcs += '}\n\n'
 
             if ext_cmd.protect is not None:
-                funcs += '#endif // %s\n' % ext_cmd.protect
+                funcs += f'#endif // {ext_cmd.protect}\n'
 
         return funcs
 
@@ -1447,7 +1456,6 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
     #
     # Create a function for the extension GPA call
     def InstExtensionGPA(self):
-        entries = []
         gpa_func = ''
         cur_extension_name = ''
 
@@ -1463,32 +1471,32 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 continue
 
             if cur_cmd.ext_name != cur_extension_name:
-                gpa_func += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                gpa_func += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                 cur_extension_name = cur_cmd.ext_name
 
             if cur_cmd.protect is not None:
-                gpa_func += '#if defined(%s)\n' % cur_cmd.protect
+                gpa_func += f'#if defined({cur_cmd.protect})\n'
 
             #base_name = cur_cmd.name[2:]
             base_name = SHARED_ALIASES[cur_cmd.name] if cur_cmd.name in SHARED_ALIASES else cur_cmd.name[2:]
 
-            if (cur_cmd.ext_type == 'instance'):
-                gpa_func += '    if (!strcmp("%s", name)) {\n' % (cur_cmd.name)
+            if cur_cmd.ext_type == 'instance':
+                gpa_func += f'    if (!strcmp("{cur_cmd.name}", name)) {{\n'
                 gpa_func += '        *addr = (ptr_instance->enabled_known_extensions.'
                 gpa_func += cur_cmd.ext_name[3:].lower()
                 gpa_func += ' == 1)\n'
-                gpa_func += '                     ? (void *)%s\n' % (base_name)
+                gpa_func += f'                     ? (void *){base_name}\n'
                 gpa_func += '                     : NULL;\n'
                 gpa_func += '        return true;\n'
                 gpa_func += '    }\n'
             else:
-                gpa_func += '    if (!strcmp("%s", name)) {\n' % (cur_cmd.name)
-                gpa_func += '        *addr = (void *)%s;\n' % (base_name)
+                gpa_func += f'    if (!strcmp("{cur_cmd.name}", name)) {{\n'
+                gpa_func += f'        *addr = (void *){base_name};\n'
                 gpa_func += '        return true;\n'
                 gpa_func += '    }\n'
 
             if cur_cmd.protect is not None:
-                gpa_func += '#endif // %s\n' % cur_cmd.protect
+                gpa_func += f'#endif // {cur_cmd.protect}\n'
 
         gpa_func += '    return false;\n'
         gpa_func += '}\n\n'
@@ -1514,11 +1522,11 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 continue
 
             if ext.name != cur_extension_name:
-                create_func += '\n    // ---- %s extension commands\n' % ext.name
+                create_func += f'\n    // ---- {ext.name} extension commands\n'
                 cur_extension_name = ext.name
 
             if ext.protect is not None:
-                create_func += '#if defined(%s)\n' % ext.protect
+                create_func += f'#if defined({ext.protect})\n'
             if count == 0:
                 create_func += '        if (0 == strcmp(pCreateInfo->ppEnabledExtensionNames[i], '
             else:
@@ -1530,7 +1538,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
             create_func += ' = 1;\n'
 
             if ext.protect is not None:
-                create_func += '#endif // %s\n' % ext.protect
+                create_func += f'#endif // {ext.protect}\n'
             count += 1
 
         create_func += '        }\n'
@@ -1565,22 +1573,22 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     last_protect = ext_cmd.protect
                     if ext_cmd.protect is not None:
                         term_func += f'#if defined({ext_cmd.protect})\n'
-                    if (last_ext != ext_cmd.ext_name):
+                    if last_ext != ext_cmd.ext_name:
                         term_func += f'    // ---- {ext_cmd.ext_name} extension commands\n'
                         last_ext = ext_cmd.ext_name
 
                 term_func += f'    if (!strcmp(name, "{ext_cmd.name[2:]}")) {{\n'
-                term_func += f'        *found_name = true;\n'
+                term_func += '        *found_name = true;\n'
                 if ext_cmd.require:
                     dep_expr = self.ConvertDependencyExpression(ext_cmd.require, lambda ext_name: f'dev->driver_extensions.{ext_name[3:].lower()}_enabled')
                     term_func += f'        return (dev->driver_extensions.{ext_cmd.ext_name[3:].lower()}_enabled && ({dep_expr})) ?\n'
                 else:
                     term_func += f'        return dev->driver_extensions.{ext_cmd.ext_name[3:].lower()}_enabled ?\n'
                 term_func += f'            (PFN_vkVoidFunction)terminator_{(ext_cmd.name[2:])} : NULL;\n'
-                term_func += f'    }}\n'
+                term_func += '    }\n'
 
         if last_protect is not None:
-            term_func += '#endif // %s\n' % last_protect
+            term_func += f'#endif // {last_protect}\n'
 
         term_func += '    return NULL;\n'
         term_func += '}\n\n'
@@ -1606,14 +1614,14 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     last_protect = ext_cmd.protect
                     if ext_cmd.protect is not None:
                         term_func += f'#if defined({ext_cmd.protect})\n'
-                    if (last_ext != ext_cmd.ext_name):
+                    if last_ext != ext_cmd.ext_name:
                         term_func += f'    // ---- {ext_cmd.ext_name} extension commands\n'
                         last_ext = ext_cmd.ext_name
 
                 term_func += f'    PFN_{ext_cmd.name} {ext_cmd.name[2:]};\n'
 
         if last_protect is not None:
-            term_func += '#endif // %s\n' % last_protect
+            term_func += f'#endif // {last_protect}\n'
 
         term_func += '};\n\n'
 
@@ -1634,14 +1642,14 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     last_protect = ext_cmd.protect
                     if ext_cmd.protect is not None:
                         tramp_protos += f'#if defined({ext_cmd.protect})\n'
-                    if (last_ext != ext_cmd.ext_name):
+                    if last_ext != ext_cmd.ext_name:
                         tramp_protos += f'    // ---- {ext_cmd.ext_name} extension commands\n'
                         last_ext = ext_cmd.ext_name
 
                 tramp_protos += f'{ext_cmd.cdecl.replace("VKAPI_CALL vk", "VKAPI_CALL ")}\n'
 
         if last_protect is not None:
-            tramp_protos += '#endif // %s\n' % last_protect
+            tramp_protos += f'#endif // {last_protect}\n'
         tramp_protos += '\n'
         return tramp_protos
 
@@ -1667,7 +1675,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     last_protect = ext_cmd.protect
                     if ext_cmd.protect is not None:
                         term_func += f'#if defined({ext_cmd.protect})\n'
-                    if (last_ext != ext_cmd.ext_name):
+                    if last_ext != ext_cmd.ext_name:
                         term_func += f'    // ---- {ext_cmd.ext_name} extension commands\n'
                         last_ext = ext_cmd.ext_name
 
@@ -1681,7 +1689,7 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                     term_func += f'       dispatch->{ext_cmd.name[2:]} = (PFN_{(ext_cmd.name)})gpda(dev->icd_device, "{(ext_cmd.name)}");\n'
 
         if last_protect is not None:
-            term_func += '#endif // %s\n' % last_protect
+            term_func += f'#endif // {last_protect}\n'
 
         term_func += '}\n\n'
 
@@ -1711,9 +1719,9 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 if cur_cmd.handle_type == 'VkInstance' or cur_cmd.handle_type == 'VkPhysicalDevice':
                     if cur_cmd.ext_name != cur_extension_name:
                         if version:
-                            table += '\n    // ---- Core %s commands\n' % version.name
+                            table += f'\n    // ---- Core {version.name} commands\n'
                         else:
-                            table += '\n    // ---- %s extension commands\n' % cur_cmd.ext_name
+                            table += f'\n    // ---- {cur_cmd.ext_name} extension commands\n'
                         cur_extension_name = cur_cmd.ext_name
 
                     # Remove 'vk' from proto name
@@ -1727,15 +1735,15 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                         continue
 
                     if cur_cmd.protect is not None:
-                        table += '#if defined(%s)\n' % cur_cmd.protect
+                        table += f'#if defined({cur_cmd.protect})\n'
 
                     if base_name == 'GetInstanceProcAddr':
-                        table += '    .%s = %s,\n' % (base_name, cur_cmd.name)
+                        table += f'    .{base_name} = {cur_cmd.name},\n'
                     else:
-                        table += '    .%s = terminator_%s,\n' % (base_name, aliased_name)
+                        table += f'    .{base_name} = terminator_{aliased_name},\n'
 
                     if cur_cmd.protect is not None:
-                        table += '#endif // %s\n' % cur_cmd.protect
+                        table += f'#endif // {cur_cmd.protect}\n'
         table += '};\n\n'
 
         return table
@@ -1756,12 +1764,11 @@ class LoaderExtensionOutputGenerator(OutputGenerator):
                 continue
 
             if ext.protect is not None:
-                table += '#if defined(%s)\n' % ext.protect
+                table += f'#if defined({ext.protect})\n'
             table += '                                                  '
             table += ext.define + ',\n'
 
             if ext.protect is not None:
-                table += '#endif // %s\n' % ext.protect
+                table += f'#endif // {ext.protect}\n'
         table += '                                                  NULL };\n'
         return table
-

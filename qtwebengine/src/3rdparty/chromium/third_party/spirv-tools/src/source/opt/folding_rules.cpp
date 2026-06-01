@@ -77,7 +77,10 @@ int32_t ImageOperandsMaskInOperandIndex(Instruction* inst) {
 
 // Returns the element width of |type|.
 uint32_t ElementWidth(const analysis::Type* type) {
-  if (const analysis::Vector* vec_type = type->AsVector()) {
+  if (const analysis::CooperativeVectorNV* coopvec_type =
+          type->AsCooperativeVectorNV()) {
+    return ElementWidth(coopvec_type->component_type());
+  } else if (const analysis::Vector* vec_type = type->AsVector()) {
     return ElementWidth(vec_type->element_type());
   } else if (const analysis::Float* float_type = type->AsFloat()) {
     return float_type->width();
@@ -422,36 +425,37 @@ FoldingRule MergeNegateMulDivArithmetic() {
     if (width != 32 && width != 64) return false;
 
     spv::Op opcode = op_inst->opcode();
-    if (opcode == spv::Op::OpFMul || opcode == spv::Op::OpFDiv ||
-        opcode == spv::Op::OpIMul || opcode == spv::Op::OpSDiv ||
-        opcode == spv::Op::OpUDiv) {
-      std::vector<const analysis::Constant*> op_constants =
-          const_mgr->GetOperandConstants(op_inst);
-      // Merge negate into mul or div if one operand is constant.
-      if (op_constants[0] || op_constants[1]) {
-        bool zero_is_variable = op_constants[0] == nullptr;
-        const analysis::Constant* c = ConstInput(op_constants);
-        uint32_t neg_id = NegateConstant(const_mgr, c);
-        uint32_t non_const_id = zero_is_variable
-                                    ? op_inst->GetSingleWordInOperand(0u)
-                                    : op_inst->GetSingleWordInOperand(1u);
-        // Change this instruction to a mul/div.
-        inst->SetOpcode(op_inst->opcode());
-        if (opcode == spv::Op::OpFDiv || opcode == spv::Op::OpUDiv ||
-            opcode == spv::Op::OpSDiv) {
-          uint32_t op0 = zero_is_variable ? non_const_id : neg_id;
-          uint32_t op1 = zero_is_variable ? neg_id : non_const_id;
-          inst->SetInOperands(
-              {{SPV_OPERAND_TYPE_ID, {op0}}, {SPV_OPERAND_TYPE_ID, {op1}}});
-        } else {
-          inst->SetInOperands({{SPV_OPERAND_TYPE_ID, {non_const_id}},
-                               {SPV_OPERAND_TYPE_ID, {neg_id}}});
-        }
-        return true;
-      }
+    if (opcode != spv::Op::OpFMul && opcode != spv::Op::OpFDiv &&
+        opcode != spv::Op::OpIMul && opcode != spv::Op::OpSDiv) {
+      return false;
     }
 
-    return false;
+    std::vector<const analysis::Constant*> op_constants =
+        const_mgr->GetOperandConstants(op_inst);
+    // Merge negate into mul or div if one operand is constant.
+    if (op_constants[0] == nullptr && op_constants[1] == nullptr) {
+      return false;
+    }
+
+    bool zero_is_variable = op_constants[0] == nullptr;
+    const analysis::Constant* c = ConstInput(op_constants);
+    uint32_t neg_id = NegateConstant(const_mgr, c);
+    uint32_t non_const_id = zero_is_variable
+                                ? op_inst->GetSingleWordInOperand(0u)
+                                : op_inst->GetSingleWordInOperand(1u);
+    // Change this instruction to a mul/div.
+    inst->SetOpcode(op_inst->opcode());
+    if (opcode == spv::Op::OpFDiv || opcode == spv::Op::OpUDiv ||
+        opcode == spv::Op::OpSDiv) {
+      uint32_t op0 = zero_is_variable ? non_const_id : neg_id;
+      uint32_t op1 = zero_is_variable ? neg_id : non_const_id;
+      inst->SetInOperands(
+          {{SPV_OPERAND_TYPE_ID, {op0}}, {SPV_OPERAND_TYPE_ID, {op1}}});
+    } else {
+      inst->SetInOperands({{SPV_OPERAND_TYPE_ID, {non_const_id}},
+                           {SPV_OPERAND_TYPE_ID, {neg_id}}});
+    }
+    return true;
   };
 }
 
@@ -1789,6 +1793,7 @@ bool CompositeExtractFeedingConstruct(
       return false;
     }
   }
+  assert(first_element_inst != nullptr);
 
   // The last check it to see that the object being extracted from is the
   // correct type.

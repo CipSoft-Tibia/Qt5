@@ -2,21 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "chrome/browser/ui/webui/privacy_sandbox/privacy_sandbox_dialog_ui.h"
 
 #include <memory>
 #include <utility>
 
+#include "base/strings/stringprintf.h"
 #include "base/values.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/themes/theme_service.h"
+#include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/webui/privacy_sandbox/privacy_sandbox_dialog_handler.h"
-#include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
@@ -30,6 +27,8 @@
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/web_ui_util.h"
+#include "ui/native_theme/native_theme.h"
+#include "ui/webui/webui_util.h"
 
 // The name of the on-click function when the privacy policy link is pressed.
 inline constexpr char16_t kPrivacyPolicyFunc[] = u"onPrivacyPolicyLinkClicked_";
@@ -37,15 +36,17 @@ inline constexpr char16_t kPrivacyPolicyFunc[] = u"onPrivacyPolicyLinkClicked_";
 // The id of the html element that opens the privacy policy link.
 inline constexpr char16_t kPrivacyPolicyId[] = u"privacyPolicyLink";
 
+// The V2 id of the html element that opens the privacy policy link.
+inline constexpr char16_t kPrivacyPolicyIdV2[] = u"privacyPolicyLinkV2";
+
 PrivacySandboxDialogUI::PrivacySandboxDialogUI(content::WebUI* web_ui)
     : content::WebUIController(web_ui) {
   auto* source = content::WebUIDataSource::CreateAndAdd(
       Profile::FromWebUI(web_ui), chrome::kChromeUIPrivacySandboxDialogHost);
 
   webui::SetupWebUIDataSource(
-      source,
-      base::make_span(kPrivacySandboxResources, kPrivacySandboxResourcesSize),
-      IDR_PRIVACY_SANDBOX_PRIVACY_SANDBOX_DIALOG_HTML);
+      source, kPrivacySandboxResources,
+      IDR_PRIVACY_SANDBOX_PRIVACY_SANDBOX_NOTICE_DIALOG_HTML);
 
   // Allow the chrome-untrusted://privacy-sandbox-dialog/privacy-policy page to
   // load as an iframe in the page.
@@ -77,51 +78,6 @@ PrivacySandboxDialogUI::PrivacySandboxDialogUI(content::WebUI* web_ui)
       IDR_PRIVACY_SANDBOX_PRIVACY_SANDBOX_NOTICE_RESTRICTED_DIALOG_HTML);
 
   static constexpr webui::LocalizedString kStrings[] = {
-      {"privacySandboxTitle", IDS_SETTINGS_PRIVACY_SANDBOX_TITLE},
-      {"consentTitle", IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_TITLE},
-      {"consentSubtitle", IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_SUBTITLE},
-      {"consentBodyHeader1", IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_BODY_HEADER_1},
-      {"consentBodyDescription1",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_BODY_DESCRIPTION_1},
-      {"consentBodyHeader2", IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_BODY_HEADER_2},
-      {"consentBodyDescription2",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_BODY_DESCRIPTION_2},
-      {"consentLearnMoreLabel",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_LABEL},
-      {"consentBottomSummary",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_BOTTOM_SUMMARY},
-      {"consentLearnMoreSection1Header",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_1_HEADER},
-      {"consentLearnMoreSection1BulletPoint1",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_1_BULLET_POINT_1},
-      {"consentLearnMoreSection1BulletPoint2",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_1_BULLET_POINT_2},
-      {"consentLearnMoreSection1BulletPoint3",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_1_BULLET_POINT_3},
-      {"consentLearnMoreSection2Header",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_2_HEADER},
-      {"consentLearnMoreSection2BulletPoint1",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_2_BULLET_POINT_1},
-      {"consentLearnMoreSection2BulletPoint2",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_2_BULLET_POINT_2},
-      {"consentLearnMoreSection2BulletPoint3",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_LEARN_MORE_SECTION_2_BULLET_POINT_3},
-      {"consentAcceptButton", IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_ACCEPT_BUTTON},
-      {"consentDeclineButton",
-       IDS_PRIVACY_SANDBOX_DIALOG_CONSENT_DECLINE_BUTTON},
-      {"noticeSubtitle", IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_SUBTITLE},
-      {"noticeBodyHeader1", IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_BODY_HEADER_1},
-      {"noticeBodyDescription1",
-       IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_BODY_DESCRIPTION_1},
-      {"noticeBodyHeader2", IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_BODY_HEADER_2},
-      {"noticeBodyDescription2",
-       IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_BODY_DESCRIPTION_2},
-      {"noticeBottomSummary", IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_BOTTOM_SUMMARY},
-      {"noticeAcknowledgeButton",
-       IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_ACKNOWLEDGE_BUTTON},
-      {"noticeOpenSettingsButton",
-       IDS_PRIVACY_SANDBOX_DIALOG_NOTICE_OPEN_SETTINGS_BUTTON},
-
       {"adPrivacyPageTitle", IDS_SETTINGS_AD_PRIVACY_PAGE_TITLE},
 
       // Strings for the consent step of the combined dialog (kM1Consent).
@@ -141,6 +97,21 @@ PrivacySandboxDialogUI::PrivacySandboxDialogUI(content::WebUI* web_ui)
        IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_BULLET_2},
       {"m1ConsentLearnMoreBullet3",
        IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_BULLET_3},
+
+      // Strings for the consent step of the combined dialog with the Ads API UX
+      // Enhancement.
+      {"m1ConsentDescription2V2",
+       IDS_PRIVACY_SANDBOX_M1_CONSENT_DESCRIPTION_2_V2},
+      {"m1ConsentDescription4V2",
+       IDS_PRIVACY_SANDBOX_M1_CONSENT_DESCRIPTION_4_V2},
+      {"m1ConsentLearnmoreBullet1V2",
+       IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_BULLET_1_V2},
+      {"m1ConsentLearnmoreBullet2V2",
+       IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_BULLET_2_V2},
+      {"m1ConsentLearnmoreBullet2DescriptionNoLink",
+       IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_BULLET_2_DESCRIPTION_NO_LINK},
+      {"m1ConsentLearnmoreBullet3V2",
+       IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_BULLET_3_V2},
 
       // Strings for the notice step of the combined dialog (kM1NoticeEEA).
       {"m1NoticeEeaTitle", IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_TITLE},
@@ -167,6 +138,32 @@ PrivacySandboxDialogUI::PrivacySandboxDialogUI(content::WebUI* web_ui)
        IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_LEARN_MORE_BULLET_2},
       {"m1NoticeEeaLearnMoreBullet3",
        IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_LEARN_MORE_BULLET_3},
+
+      // Strings for the notice step of the combined dialog with the Ads API UX
+      // Enhancement.
+      {"m1NoticeEEADescription1V2",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_DESCRIPTION_1_V2},
+      {"m1NoticeEEASiteSuggestedAdsTitle",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_SITE_SUGGESTED_ADS_TITLE},
+      {"m1NoticeEEASiteSuggestedAdsDescription",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_SITE_SUGGESTED_ADS_DESCRIPTION},
+      {"m1NoticeEEASiteSuggestedAdsLearnMoreLabel",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_SITE_SUGGESTED_ADS_LEARN_MORE_LABEL},
+      {"m1NoticeEEASiteSuggestedAdsLearnMoreBullet1",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_SITE_SUGGESTED_ADS_LEARN_MORE_BULLET_1},
+      {"m1NoticeEEASiteSuggestedAdsLearnMoreBullet1DescriptionNoLink",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_SITE_SUGGESTED_ADS_LEARN_MORE_BULLET_1_DESCRIPTION_NO_LINK},
+      {"m1NoticeEEASiteSuggestedAdsLearnMoreBullet2",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_SITE_SUGGESTED_ADS_LEARN_MORE_BULLET_2},
+      {"m1NoticeEEAAdMeasurementTitle",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_AD_MEASUREMENT_TITLE},
+      {"m1NoticeEEAAdMeasurementDescription",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_AD_MEASUREMENT_DESCRIPTION},
+      {"m1NoticeEEAAdMeasurementLearnMoreLabel",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_AD_MEASUREMENT_LEARN_MORE_LABEL},
+      {"m1NoticeEEAAdMeasurementLearnMoreBullet1",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_AD_MEASUREMENT_LEARN_MORE_BULLET_1},
+      {"m1NoticeEEALastText", IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_LAST_TEXT},
 
       // Strings for the notice dialog (kM1NoticeROW).
       {"m1NoticeRowTitle", IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_TITLE},
@@ -201,6 +198,18 @@ PrivacySandboxDialogUI::PrivacySandboxDialogUI(content::WebUI* web_ui)
        IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LEARN_MORE_DESCRIPTION_4},
       {"m1NoticeRowLearnMoreDescription5",
        IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LEARN_MORE_DESCRIPTION_5},
+
+      // Strings for the ROW notice with the Ads API UX Enhancement.
+      {"m1NoticeLearnMoreBullet2V2",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LEARN_MORE_BULLET_2_V2},
+      {"m1NoticeRowLearnMoreDesription2V2",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LEARN_MORE_DESCRIPTION_2_V2},
+      {"m1NoticeRowLearnMoreHeading3",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LEARN_MORE_HEADING_3},
+      {"m1NoticeRowLearnMoreDescription5V2NoLink",
+       IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LEARN_MORE_DESCRIPTION_5_V2_NO_LINK},
+      {"m1NoticeRowLastText", IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LAST_TEXT},
+
       // Strings for the restricted notice dialog (kM1NoticeRestricted).
       {"m1NoticeRestrictedTitle",
        IDS_PRIVACY_SANDBOX_M1_NOTICE_RESTRICTED_TITLE},
@@ -214,34 +223,72 @@ PrivacySandboxDialogUI::PrivacySandboxDialogUI(content::WebUI* web_ui)
        IDS_PRIVACY_SANDBOX_M1_NOTICE_RESTRICTED_ACK_BUTTON},
       {"m1NoticeRestrictedSettingsButton",
        IDS_PRIVACY_SANDBOX_M1_NOTICE_RESTRICTED_SETTINGS_BUTTON},
+      // Strings for the privacy policy page.
+      {"privacyPolicyBackButtonAria",
+       IDS_PRIVACY_SANDBOX_PRIVACY_POLICY_BACK_BUTTON},
       // Shared for all dialogs.
       {"m1DialogMoreButton", IDS_PRIVACY_SANDBOX_M1_DIALOG_MORE_BUTTON}};
 
-  // TODO(crbug.com/358087159): Make sure the privacy policy page is activated
-  // as the expand section containing the link is open.
-  source->AddBoolean("isPrivacySandboxPrivacyPolicyEnabled",
-                     base::FeatureList::IsEnabled(
-                         privacy_sandbox::kPrivacySandboxPrivacyPolicy));
   source->AddLocalizedStrings(kStrings);
-  if (base::FeatureList::IsEnabled(
-          privacy_sandbox::kPrivacySandboxPrivacyPolicy)) {
-    source->AddString(
-        "m1ConsentLearnMoreLink",
-        l10n_util::GetStringFUTF16(
-            IDS_PRIVACY_SANDBOX_M1_NOTICE_LEARN_MORE_V2_DESKTOP,
-            kPrivacyPolicyId,
-            l10n_util::GetStringUTF16(
-                IDS_PRIVACY_SANDBOX_M1_NOTICE_LEARN_MORE_V2_DESKTOP_ARIA_DESCRIPTION),
-            kPrivacyPolicyFunc));
-  } else {
-    source->AddLocalizedString("m1ConsentLearnMoreLink",
-                               IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_LINK);
-  }
+
+  // Adding Privacy Policy link to EEA Consent
+  source->AddString(
+      "m1ConsentLearnMorePrivacyPolicyLink",
+      l10n_util::GetStringFUTF16(
+          IDS_PRIVACY_SANDBOX_M1_NOTICE_LEARN_MORE_V2_DESKTOP, kPrivacyPolicyId,
+          l10n_util::GetStringUTF16(
+              IDS_PRIVACY_SANDBOX_M1_NOTICE_LEARN_MORE_V2_DESKTOP_ARIA_DESCRIPTION),
+          kPrivacyPolicyFunc));
+  source->AddLocalizedString("m1ConsentLearnMoreLink",
+                             IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_LINK);
+
+  source->AddBoolean("isPrivacySandboxAdsApiUxEnhancementsEnabled",
+                     base::FeatureList::IsEnabled(
+                         privacy_sandbox::kPrivacySandboxAdsApiUxEnhancements));
+
+  // Adding Privacy Policy Link to EEA Consent for V2 with Ads API UX
+  // Enhancements.
+  source->AddString(
+      "m1ConsentLearnmoreBullet2Description",
+      l10n_util::GetStringFUTF16(
+          IDS_PRIVACY_SANDBOX_M1_CONSENT_LEARN_MORE_BULLET_2_DESCRIPTION,
+          kPrivacyPolicyIdV2,
+          l10n_util::GetStringUTF16(
+              IDS_PRIVACY_SANDBOX_M1_NOTICE_LEARN_MORE_V2_DESKTOP_ARIA_DESCRIPTION),
+          kPrivacyPolicyFunc));
+
+  // Adding Privacy Policy Link to EEA Notice for V2 with Ads API UX
+  // Enhancements.
+  source->AddString(
+      "m1NoticeEEASiteSuggestedAdsLearnMoreBullet1Description",
+      l10n_util::GetStringFUTF16(
+          IDS_PRIVACY_SANDBOX_M1_NOTICE_EEA_SITE_SUGGESTED_ADS_LEARN_MORE_BULLET_1_DESCRIPTION,
+          kPrivacyPolicyIdV2,
+          l10n_util::GetStringUTF16(
+              IDS_PRIVACY_SANDBOX_M1_NOTICE_LEARN_MORE_V2_DESKTOP_ARIA_DESCRIPTION),
+          kPrivacyPolicyFunc));
+
+  // Adding Privacy Policy Link to ROW Notice for V2 with Ads API UX
+  // Enhancements.
+  source->AddString(
+      "m1NoticeRowLearnMoreDescription5V2",
+      l10n_util::GetStringFUTF16(
+          IDS_PRIVACY_SANDBOX_M1_NOTICE_ROW_LEARN_MORE_DESCRIPTION_5_V2,
+          kPrivacyPolicyIdV2,
+          l10n_util::GetStringUTF16(
+              IDS_PRIVACY_SANDBOX_M1_NOTICE_LEARN_MORE_V2_DESKTOP_ARIA_DESCRIPTION),
+          kPrivacyPolicyFunc));
+
+  // Equalized buttons variation.
+  source->AddBoolean(
+      "isEqualizedPromptButtons",
+      base::FeatureList::IsEnabled(
+          privacy_sandbox::kPrivacySandboxEqualizedPromptButtons));
 
   const GURL& url = web_ui->GetWebContents()->GetVisibleURL();
   if (url.query().find("debug") != std::string::npos) {
-    // Not intended to be hooked to anything. The dialog will not initialize it
-    // so we force it here.
+    // Not intended to be hooked to anything. The dialog will not initialize
+    // it so we force it here.
     InitializeForDebug(source);
   }
 }

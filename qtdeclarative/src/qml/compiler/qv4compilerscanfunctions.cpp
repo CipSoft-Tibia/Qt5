@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4compilerscanfunctions_p.h"
 
@@ -282,8 +283,8 @@ bool ScanFunctions::visit(CallExpression *ast)
     if (!_context->hasDirectEval) {
         if (IdentifierExpression *id = cast<IdentifierExpression *>(ast->base)) {
             if (id->name == QLatin1String("eval")) {
-                if (_context->usesArgumentsObject == Context::ArgumentsObjectUnknown)
-                    _context->usesArgumentsObject = Context::ArgumentsObjectUsed;
+                if (_context->usesArgumentsObject == Context::UsesArgumentsObject::Unknown)
+                    _context->usesArgumentsObject = Context::UsesArgumentsObject::Used;
                 _context->hasDirectEval = true;
             }
         }
@@ -313,7 +314,7 @@ bool ScanFunctions::visit(PatternElement *ast)
             _cg->throwSyntaxError(ast->identifierToken, QStringLiteral("Variable name may not be eval or arguments in strict mode"));
         checkName(QStringView(name.id), ast->identifierToken);
         if (name.id == QLatin1String("arguments"))
-            _context->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
+            _context->usesArgumentsObject = Context::UsesArgumentsObject::NotUsed;
         if (ast->scope == VariableScope::Const && !ast->initializer && !ast->isForDeclaration && !ast->destructuringPattern()) {
             _cg->throwSyntaxError(ast->identifierToken, QStringLiteral("Missing initializer in const declaration"));
             return false;
@@ -331,8 +332,8 @@ bool ScanFunctions::visit(IdentifierExpression *ast)
 {
     Q_ASSERT(_context);
     checkName(ast->name, ast->identifierToken);
-    if (_context->usesArgumentsObject == Context::ArgumentsObjectUnknown && ast->name == QLatin1String("arguments"))
-        _context->usesArgumentsObject = Context::ArgumentsObjectUsed;
+    if (_context->usesArgumentsObject == Context::UsesArgumentsObject::Unknown && ast->name == QLatin1String("arguments"))
+        _context->usesArgumentsObject = Context::UsesArgumentsObject::Used;
     _context->addUsedVariable(ast->name.toString());
     return true;
 }
@@ -655,20 +656,21 @@ bool ScanFunctions::enterFunction(
         outerContext->hasNestedFunctions = true;
         // The identifier of a function expression cannot be referenced from the enclosing environment.
         if (nameContext == FunctionNameContext::Outer) {
-            if (!outerContext->addLocalVar(name, Context::FunctionDefinition, VariableScope::Var, expr)) {
+            if (!outerContext->addLocalVar(name, Context::FunctionDefinition, VariableScope::Var,
+                                           expr, expr->identifierToken)) {
                 _cg->throwSyntaxError(ast->firstSourceLocation(), QStringLiteral("Identifier %1 has already been declared").arg(name));
                 return false;
             }
             outerContext->addLocalVar(name, Context::FunctionDefinition, VariableScope::Var, expr);
         }
         if (name == QLatin1String("arguments"))
-            outerContext->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
+            outerContext->usesArgumentsObject = Context::UsesArgumentsObject::NotUsed;
     }
 
     Q_ASSERT(_context);
     _context->name = name;
     if (formals && formals->containsName(QStringLiteral("arguments")))
-        _context->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
+        _context->usesArgumentsObject = Context::UsesArgumentsObject::NotUsed;
     if (expr) {
         if (expr->isArrowFunction)
             _context->isArrowFunction = true;
@@ -718,26 +720,76 @@ bool ScanFunctions::enterFunction(
     return true;
 }
 
+enum class Iteration { Continue, Break };
+
+struct ContextCounter
+{
+    Q_DISABLE_COPY_MOVE(ContextCounter)
+#ifdef QT_NO_DEBUG
+    ContextCounter(Module *) {}
+    void operator++() {}
+    void dismiss() {}
+#else
+    ContextCounter(Module *m) : module(m) {}
+    ~ContextCounter() { Q_ASSERT(numContexts == module->contextMap.size()); }
+
+    void operator++() { numContexts++; }
+    void dismiss() { numContexts = module->contextMap.size(); }
+
+private:
+    Module *module = nullptr;
+    qsizetype numContexts = 0;
+#endif
+};
+
+
+template<typename Action>
+void forEachContext(Module *m, Action &&action)
+{
+    ContextCounter counter(m);
+
+    if (!m->rootContext)
+        return;
+
+    QVarLengthArray<Context *> stack {m->rootContext};
+    do {
+        Context *current = stack.back();
+        stack.pop_back();
+
+        for (Context *child : std::as_const(current->nestedContexts))
+            stack.push_back(child);
+
+        if (action(current) == Iteration::Break) {
+            counter.dismiss();
+            return;
+        }
+
+        ++counter;
+    } while (!stack.empty());
+}
+
 void ScanFunctions::calcEscapingVariables()
 {
     Module *m = _cg->_module;
 
-    for (Context *inner : std::as_const(m->contextMap)) {
-        if (inner->usesArgumentsObject != Context::ArgumentsObjectUsed)
-            continue;
+    forEachContext(m, [](Context *inner) {
+        if (inner->usesArgumentsObject != Context::UsesArgumentsObject::Used)
+            return Iteration::Continue;
         if (inner->contextType != ContextType::Block && !inner->isArrowFunction)
-            continue;
+            return Iteration::Continue;
         Context *c = inner->parent;
         while (c && (c->contextType == ContextType::Block || c->isArrowFunction))
             c = c->parent;
         if (c)
-            c->usesArgumentsObject = Context::ArgumentsObjectUsed;
-        inner->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
-    }
-    for (Context *inner : std::as_const(m->contextMap)) {
-        if (!inner->parent || inner->usesArgumentsObject == Context::ArgumentsObjectUnknown)
-            inner->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
-        if (inner->usesArgumentsObject == Context::ArgumentsObjectUsed) {
+            c->usesArgumentsObject = Context::UsesArgumentsObject::Used;
+        inner->usesArgumentsObject = Context::UsesArgumentsObject::NotUsed;
+        return Iteration::Continue;
+    });
+
+    forEachContext(m, [](Context *inner) {
+        if (!inner->parent || inner->usesArgumentsObject == Context::UsesArgumentsObject::Unknown)
+            inner->usesArgumentsObject = Context::UsesArgumentsObject::NotUsed;
+        if (inner->usesArgumentsObject == Context::UsesArgumentsObject::Used) {
             QString arguments = QStringLiteral("arguments");
             inner->addLocalVar(arguments, Context::VariableDeclaration, AST::VariableScope::Var);
             if (!inner->isStrict) {
@@ -745,20 +797,21 @@ void ScanFunctions::calcEscapingVariables()
                 inner->requiresExecutionContext = true;
             }
         }
-    }
+        return Iteration::Continue;
+    });
 
-    for (Context *c : std::as_const(m->contextMap)) {
+    forEachContext(m, [](Context *c) {
         if (c->contextType != ContextType::ESModule)
-            continue;
-        for (const auto &entry: c->exportEntries) {
+            return Iteration::Continue;
+        for (const auto &entry: std::as_const(c->exportEntries)) {
             auto mIt = c->members.constFind(entry.localName);
             if (mIt != c->members.constEnd())
                 mIt->canEscape = true;
         }
-        break;
-    }
+        return Iteration::Break;
+    });
 
-    for (Context *inner : std::as_const(m->contextMap)) {
+    forEachContext(m, [](Context *inner) {
         for (const QString &var : std::as_const(inner->usedVariables)) {
             Context *c = inner;
             while (c) {
@@ -820,8 +873,11 @@ void ScanFunctions::calcEscapingVariables()
                 c->usesThis = true;
             c->innerFunctionAccessesThis |= innerFunctionAccessesThis;
         }
-    }
-    for (Context *c : std::as_const(m->contextMap)) {
+
+        return Iteration::Continue;
+    });
+
+    forEachContext(m, [m](Context *c) {
         if (c->innerFunctionAccessesThis) {
             // add an escaping 'this' variable
             c->addLocalVar(QStringLiteral("this"), Context::VariableDefinition, VariableScope::Let);
@@ -871,7 +927,9 @@ void ScanFunctions::calcEscapingVariables()
             for (const auto &m : std::as_const(c->members))
                 m.canEscape = true;
         }
-    }
+
+        return Iteration::Continue;
+    });
 
     static const bool showEscapingVars = qEnvironmentVariableIsSet("QV4_SHOW_ESCAPING_VARS");
     if (showEscapingVars) {

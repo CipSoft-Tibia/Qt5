@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSTHEMEDATA_P_H
 #define QWINDOWSTHEMEDATA_P_H
@@ -48,6 +49,8 @@
 #ifndef CBS_INACTIVE
 #define CBS_INACTIVE 5
 #endif
+
+QT_BEGIN_NAMESPACE
 
 // Declarations -----------------------------------------------------------------------------------
 class QWindowsThemeData
@@ -179,5 +182,7 @@ inline QMarginsF QWindowsThemeData::margins(int propId)
     }
     return result;
 }
+
+QT_END_NAMESPACE
 
 #endif // QWINDOWSTHEMEDATA_P_H

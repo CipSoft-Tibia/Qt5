@@ -12,8 +12,9 @@
 #include "components/viz/common/quads/compositor_render_pass_draw_quad.h"
 #include "components/viz/common/quads/solid_color_draw_quad.h"
 #include "components/viz/common/quads/tile_draw_quad.h"
-#include "components/viz/common/resources/bitmap_allocation.h"
 #include "components/viz/common/resources/resource_sizes.h"
+#include "gpu/command_buffer/client/client_shared_image.h"
+#include "gpu/command_buffer/client/test_shared_image_interface.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/geometry/mask_filter_info.h"
 
@@ -103,7 +104,7 @@ void ExpandToMinSize(gfx::Rect* rect, int min_size) {
 
 class FuzzedCompositorFrameBuilder {
  public:
-  FuzzedCompositorFrameBuilder() = default;
+  FuzzedCompositorFrameBuilder();
 
   FuzzedCompositorFrameBuilder(const FuzzedCompositorFrameBuilder&) = delete;
   FuzzedCompositorFrameBuilder& operator=(const FuzzedCompositorFrameBuilder&) =
@@ -151,6 +152,8 @@ class FuzzedCompositorFrameBuilder {
   // in memory (see TryReserveBitmapBytes).
   FuzzedBitmap* AllocateFuzzedBitmap(const gfx::Size& size, SkColor4f color);
 
+  scoped_refptr<gpu::TestSharedImageInterface> shared_image_interface_;
+
   // Number of bytes that have already been reserved for the allocation of
   // specific bitmaps/textures.
   uint64_t reserved_bytes_ = 0;
@@ -160,6 +163,10 @@ class FuzzedCompositorFrameBuilder {
   // Frame and data being built.
   FuzzedData data_;
 };
+
+FuzzedCompositorFrameBuilder::FuzzedCompositorFrameBuilder()
+    : shared_image_interface_(
+          base::MakeRefCounted<gpu::TestSharedImageInterface>()) {}
 
 FuzzedData FuzzedCompositorFrameBuilder::Build(
     const proto::CompositorRenderPass& render_pass_spec) {
@@ -229,7 +236,7 @@ CompositorRenderPassId FuzzedCompositorFrameBuilder::AddRenderPass(
         break;
       }
       case proto::DrawQuad::QUAD_NOT_SET: {
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
       }
     }
   }
@@ -237,7 +244,6 @@ CompositorRenderPassId FuzzedCompositorFrameBuilder::AddRenderPass(
   return data_.frame.render_pass_list.back()->id;
 }
 
-// TODO(crbug.com/40219248): Move proto::DrawQuad to SkColor4f
 void FuzzedCompositorFrameBuilder::AddSolidColorDrawQuad(
     CompositorRenderPass* pass,
     const gfx::Rect& rect,
@@ -246,9 +252,12 @@ void FuzzedCompositorFrameBuilder::AddSolidColorDrawQuad(
   auto* shared_quad_state = pass->CreateAndAppendSharedQuadState();
   ConfigureSharedQuadState(shared_quad_state, quad_spec);
   auto* quad = pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
-  quad->SetNew(shared_quad_state, rect, visible_rect,
-               GetColorFromProtobuf(quad_spec.solid_color_quad().color()),
-               quad_spec.solid_color_quad().force_anti_aliasing_off());
+  quad->shared_quad_state = shared_quad_state;
+  quad->rect = rect;
+  quad->visible_rect = visible_rect;
+  quad->color = GetColorFromProtobuf(quad_spec.solid_color_quad().color());
+  quad->force_anti_aliasing_off =
+      quad_spec.solid_color_quad().force_anti_aliasing_off();
 }
 
 void FuzzedCompositorFrameBuilder::TryAddTileDrawQuad(
@@ -271,20 +280,26 @@ void FuzzedCompositorFrameBuilder::TryAddTileDrawQuad(
   FuzzedBitmap* fuzzed_bitmap = AllocateFuzzedBitmap(
       tile_size, GetColorFromProtobuf(quad_spec.tile_quad().texture_color()));
   TransferableResource transferable_resource =
-      TransferableResource::MakeSoftwareSharedBitmap(
-          fuzzed_bitmap->id, gpu::SyncToken(), fuzzed_bitmap->size,
-          SinglePlaneFormat::kRGBA_8888);
+      TransferableResource::MakeSoftwareSharedImage(
+          fuzzed_bitmap->shared_image, fuzzed_bitmap->sync_token,
+          fuzzed_bitmap->size, SinglePlaneFormat::kBGRA_8888,
+          TransferableResource::ResourceSource::kTileRasterTask);
 
   auto* shared_quad_state = pass->CreateAndAppendSharedQuadState();
   ConfigureSharedQuadState(shared_quad_state, quad_spec);
   auto* quad = pass->CreateAndAppendDrawQuad<TileDrawQuad>();
-  quad->SetNew(
-      shared_quad_state, rect, visible_rect,
-      quad_spec.tile_quad().needs_blending(), transferable_resource.id,
-      gfx::RectF(GetRectFromProtobuf(quad_spec.tile_quad().tex_coord_rect())),
-      tile_size, quad_spec.tile_quad().is_premultiplied(),
-      quad_spec.tile_quad().nearest_neighbor(),
-      quad_spec.tile_quad().force_anti_aliasing_off());
+  quad->shared_quad_state = shared_quad_state;
+  quad->rect = rect;
+  quad->visible_rect = visible_rect;
+  quad->needs_blending = quad_spec.tile_quad().needs_blending();
+  quad->resource_id = transferable_resource.id;
+  quad->tex_coord_rect =
+      gfx::RectF(GetRectFromProtobuf(quad_spec.tile_quad().tex_coord_rect()));
+  quad->texture_size = tile_size;
+  quad->is_premultiplied = quad_spec.tile_quad().is_premultiplied();
+  quad->nearest_neighbor = quad_spec.tile_quad().nearest_neighbor();
+  quad->force_anti_aliasing_off =
+      quad_spec.tile_quad().force_anti_aliasing_off();
 
   data_.frame.resource_list.push_back(transferable_resource);
 }
@@ -336,51 +351,47 @@ void FuzzedCompositorFrameBuilder::TryAddRenderPassDrawQuad(
   auto* shared_quad_state = pass->CreateAndAppendSharedQuadState();
   ConfigureSharedQuadState(shared_quad_state, quad_spec);
   auto* quad = pass->CreateAndAppendDrawQuad<CompositorRenderPassDrawQuad>();
-  quad->SetNew(shared_quad_state, rect, visible_rect, child_pass_id,
-               /*mask_resource_id=*/ResourceId(),
-               /*mask_uv_rect=*/gfx::RectF(),
-               /*mask_texture_size=*/gfx::Size(),
-               /*filters_scale=*/gfx::Vector2dF(),
-               /*filters_origin=*/gfx::PointF(),
-               /*tex_coord_rect=*/tex_coord_rect,
-               /*force_anti_aliasing_off=*/false,
-               /*backdrop_filter_quality=*/1.0);
+  quad->shared_quad_state = shared_quad_state;
+  quad->rect = rect;
+  quad->visible_rect = visible_rect;
+  quad->render_pass_id = child_pass_id;
+  quad->tex_coord_rect = tex_coord_rect;
 }
 
 void FuzzedCompositorFrameBuilder::ConfigureSharedQuadState(
     SharedQuadState* shared_quad_state,
     const proto::DrawQuad& quad_spec) {
   if (quad_spec.has_sqs()) {
-    std::optional<gfx::Rect> clip_rect;
+    shared_quad_state->quad_to_target_transform =
+        GetTransformFromProtobuf(quad_spec.sqs().transform());
+    shared_quad_state->quad_layer_rect =
+        GetRectFromProtobuf(quad_spec.sqs().layer_rect());
+    shared_quad_state->visible_quad_layer_rect =
+        GetRectFromProtobuf(quad_spec.sqs().visible_rect());
     if (quad_spec.sqs().is_clipped()) {
-      clip_rect = GetRectFromProtobuf(quad_spec.sqs().clip_rect());
+      shared_quad_state->clip_rect =
+          GetRectFromProtobuf(quad_spec.sqs().clip_rect());
     }
-    shared_quad_state->SetAll(
-        GetTransformFromProtobuf(quad_spec.sqs().transform()),
-        GetRectFromProtobuf(quad_spec.sqs().layer_rect()),
-        GetRectFromProtobuf(quad_spec.sqs().visible_rect()),
-        gfx::MaskFilterInfo(), clip_rect, quad_spec.sqs().are_contents_opaque(),
-        Normalize(quad_spec.sqs().opacity()), SkBlendMode::kSrcOver,
-        quad_spec.sqs().sorting_context_id(), /*layer_id=*/0u,
-        /*fast_rounded_corner*/ false);
+    shared_quad_state->are_contents_opaque =
+        quad_spec.sqs().are_contents_opaque();
+    shared_quad_state->opacity = Normalize(quad_spec.sqs().opacity());
+    shared_quad_state->blend_mode = SkBlendMode::kSrcOver;
+    shared_quad_state->sorting_context_id =
+        quad_spec.sqs().sorting_context_id();
   } else {
-    gfx::Transform transform;
-
     if (quad_spec.quad_case() == proto::DrawQuad::kRenderPassQuad &&
         quad_spec.render_pass_quad()
             .render_pass()
             .has_transform_to_root_target()) {
-      transform = GetTransformFromProtobuf(quad_spec.render_pass_quad()
-                                               .render_pass()
-                                               .transform_to_root_target());
+      shared_quad_state->quad_to_target_transform =
+          GetTransformFromProtobuf(quad_spec.render_pass_quad()
+                                       .render_pass()
+                                       .transform_to_root_target());
     }
 
-    shared_quad_state->SetAll(
-        transform, GetRectFromProtobuf(quad_spec.rect()),
-        GetRectFromProtobuf(quad_spec.visible_rect()), gfx::MaskFilterInfo(),
-        /*clip_rect=*/std::nullopt, /*are_contents_opaque=*/true,
-        /*opacity=*/1.0, SkBlendMode::kSrcOver, /*sorting_context_id=*/0,
-        /*layer_id=*/0u, /*fast_rounded_corner*/ false);
+    shared_quad_state->quad_layer_rect = GetRectFromProtobuf(quad_spec.rect());
+    shared_quad_state->visible_quad_layer_rect =
+        GetRectFromProtobuf(quad_spec.visible_rect());
   }
 }
 
@@ -388,7 +399,7 @@ bool FuzzedCompositorFrameBuilder::TryReserveBitmapBytes(
     const gfx::Size& size) {
   uint64_t bitmap_bytes;
   if (!ResourceSizes::MaybeSizeInBytes<uint64_t>(
-          size, SinglePlaneFormat::kRGBA_8888, &bitmap_bytes) ||
+          size, SinglePlaneFormat::kBGRA_8888, &bitmap_bytes) ||
       bitmap_bytes > kMaxTextureMemory - reserved_bytes_) {
     return false;
   }
@@ -400,27 +411,35 @@ bool FuzzedCompositorFrameBuilder::TryReserveBitmapBytes(
 FuzzedBitmap* FuzzedCompositorFrameBuilder::AllocateFuzzedBitmap(
     const gfx::Size& size,
     SkColor4f color) {
-  SharedBitmapId shared_bitmap_id = SharedBitmap::GenerateId();
-  base::MappedReadOnlyRegion shm = bitmap_allocation::AllocateSharedBitmap(
-      size, SinglePlaneFormat::kRGBA_8888);
+  auto shared_image =
+      shared_image_interface_->CreateSharedImageForSoftwareCompositor(
+          {SinglePlaneFormat::kBGRA_8888, size, gfx::ColorSpace(),
+           gpu::SHARED_IMAGE_USAGE_CPU_WRITE_ONLY,
+           "FuzzedCompositorFrameBuilder"});
+
+  gpu::SyncToken sync_token = shared_image_interface_->GenVerifiedSyncToken();
 
   SkBitmap bitmap;
   SkImageInfo info = SkImageInfo::MakeN32Premul(size.width(), size.height());
-  bitmap.installPixels(info, shm.mapping.memory(), info.minRowBytes());
+  auto mapping = shared_image->Map();
+  bitmap.installPixels(info, mapping->GetMemoryForPlane(0).data(),
+                       info.minRowBytes());
   bitmap.eraseColor(color);
 
   data_.allocated_bitmaps.push_back(
-      {shared_bitmap_id, size, std::move(shm.region)});
+      {size, std::move(shared_image), sync_token});
 
   return &data_.allocated_bitmaps.back();
 }
 
 }  // namespace
 
-FuzzedBitmap::FuzzedBitmap(const SharedBitmapId& id,
-                           const gfx::Size& size,
-                           base::ReadOnlySharedMemoryRegion shared_region)
-    : id(id), size(size), shared_region(std::move(shared_region)) {}
+FuzzedBitmap::FuzzedBitmap(const gfx::Size& size,
+                           scoped_refptr<gpu::ClientSharedImage> shared_image,
+                           gpu::SyncToken sync_token)
+    : size(size),
+      shared_image(std::move(shared_image)),
+      sync_token(std::move(sync_token)) {}
 FuzzedBitmap::~FuzzedBitmap() = default;
 FuzzedBitmap::FuzzedBitmap(FuzzedBitmap&& other) noexcept = default;
 

@@ -22,9 +22,12 @@ avifResult ChangeBase(const avifImage& image, int depth,
   swapped->depth = depth;
   swapped->yuvFormat = yuvFormat;
 
+  if (image.gainMap->alternateHdrHeadroom.d == 0) {
+    return AVIF_RESULT_INVALID_ARGUMENT;
+  }
   const float headroom =
-      static_cast<float>(image.gainMap->metadata.alternateHdrHeadroomN) /
-      image.gainMap->metadata.alternateHdrHeadroomD;
+      static_cast<float>(image.gainMap->alternateHdrHeadroom.n) /
+      image.gainMap->alternateHdrHeadroom.d;
   const bool tone_mapping_to_sdr = (headroom == 0.0f);
 
   swapped->colorPrimaries = image.gainMap->altColorPrimaries;
@@ -97,14 +100,12 @@ avifResult ChangeBase(const avifImage& image, int depth,
       (image.yuvFormat == AVIF_PIXEL_FORMAT_YUV400) ? 1 : 3;
   swapped->gainMap->altCLLI = image.clli;
 
-  // Swap base and alternate in the gain map metadata.
-  avifGainMapMetadata& metadata = swapped->gainMap->metadata;
-  metadata.useBaseColorSpace = !metadata.useBaseColorSpace;
-  std::swap(metadata.baseHdrHeadroomN, metadata.alternateHdrHeadroomN);
-  std::swap(metadata.baseHdrHeadroomD, metadata.alternateHdrHeadroomD);
+  // Swap base and alternate in the gain map
+  avifGainMap* gainMap = swapped->gainMap;
+  gainMap->useBaseColorSpace = !gainMap->useBaseColorSpace;
+  std::swap(gainMap->baseHdrHeadroom, gainMap->alternateHdrHeadroom);
   for (int c = 0; c < 3; ++c) {
-    std::swap(metadata.baseOffsetN, metadata.alternateOffsetN);
-    std::swap(metadata.baseOffsetD, metadata.alternateOffsetD);
+    std::swap(gainMap->baseOffset, gainMap->alternateOffset);
   }
 
   return AVIF_RESULT_OK;
@@ -115,7 +116,7 @@ SwapBaseCommand::SwapBaseCommand()
           "swapbase",
           "Swaps the base and alternate images (e.g. if the base image is SDR "
           "and the alternate is HDR, makes the base HDR). The alternate image "
-          "is the result ot fully applying the gain map.") {
+          "is the result of fully applying the gain map.") {
   argparse_.add_argument(arg_input_filename_, "input_filename");
   argparse_.add_argument(arg_output_filename_, "output_filename");
   arg_image_read_.Init(argparse_);
@@ -127,11 +128,10 @@ SwapBaseCommand::SwapBaseCommand()
 
 avifResult SwapBaseCommand::Run() {
   DecoderPtr decoder(avifDecoderCreate());
-  if (decoder == NULL) {
+  if (decoder == nullptr) {
     return AVIF_RESULT_OUT_OF_MEMORY;
   }
-  decoder->enableParsingGainMapMetadata = true;
-  decoder->enableDecodingGainMap = true;
+  decoder->imageContentToDecode |= AVIF_IMAGE_CONTENT_GAIN_MAP;
   avifResult result = ReadAvif(decoder.get(), arg_input_filename_,
                                arg_image_read_.ignore_profile);
   if (result != AVIF_RESULT_OK) {

@@ -4,6 +4,8 @@
 #include "qmatrix4x4.h"
 #include <QtCore/qmath.h>
 #include <QtCore/qvariant.h>
+
+#include <QtGui/qquaternion.h>
 #include <QtGui/qtransform.h>
 
 #include <cmath>
@@ -239,10 +241,12 @@ QMatrix4x4::QMatrix4x4(const QTransform& transform)
 /*!
     \fn void QMatrix4x4::fill(float value)
 
-    Fills all elements of this matrx with \a value.
+    Fills all elements of this matrix with \a value.
 */
 
-static inline double matrixDet2(const double m[4][4], int col0, int col1, int row0, int row1)
+using Double4x4 = std::array<std::array<double, 4>, 4>;
+
+static double matrixDet2(const Double4x4 &m, int col0, int col1, int row0, int row1)
 {
     return m[col0][row0] * m[col1][row1] - m[col0][row1] * m[col1][row0];
 }
@@ -257,9 +261,9 @@ static inline double matrixDet2(const double m[4][4], int col0, int col1, int ro
 //     | A B C |
 // M = | D E F |   det(M) = A * (EI - HF) - B * (DI - GF) + C * (DH - GE)
 //     | G H I |
-static inline double matrixDet3
-    (const double m[4][4], int col0, int col1, int col2,
-     int row0, int row1, int row2)
+static double matrixDet3(const Double4x4 &m,
+                         int col0, int col1, int col2,
+                         int row0, int row1, int row2)
 {
     return m[col0][row0] * matrixDet2(m, col1, col2, row1, row2)
             - m[col1][row0] * matrixDet2(m, col0, col2, row1, row2)
@@ -267,7 +271,7 @@ static inline double matrixDet3
 }
 
 // Calculate the determinant of a 4x4 matrix.
-static inline double matrixDet4(const double m[4][4])
+static double matrixDet4(const Double4x4 &m)
 {
     double det;
     det  = m[0][0] * matrixDet3(m, 1, 2, 3, 1, 2, 3);
@@ -277,11 +281,14 @@ static inline double matrixDet4(const double m[4][4])
     return det;
 }
 
-static inline void copyToDoubles(const float m[4][4], double mm[4][4])
+static Double4x4 copyToDoubles(const float m[4][4])
 {
+    Q_DECL_UNINITIALIZED
+    Double4x4 mm;
     for (int i = 0; i < 4; ++i)
         for (int j = 0; j < 4; ++j)
             mm[i][j] = double(m[i][j]);
+    return mm;
 }
 
 /*!
@@ -291,11 +298,10 @@ double QMatrix4x4::determinant() const
 {
     if ((flagBits & ~(Translation | Rotation2D | Rotation)) == Identity)
         return 1.0;
-
-    double mm[4][4];
-    copyToDoubles(m, mm);
     if (flagBits < Rotation2D)
-        return mm[0][0] * mm[1][1] * mm[2][2]; // Translation | Scale
+        return 1.0 * m[0][0] * m[1][1] * m[2][2]; // Translation | Scale
+
+    const Double4x4 mm = copyToDoubles(m);
     if (flagBits < Perspective)
         return matrixDet3(mm, 0, 1, 2, 0, 1, 2);
     return matrixDet4(mm);
@@ -353,10 +359,10 @@ QMatrix4x4 QMatrix4x4::inverted(bool *invertible) const
             *invertible = true;
         return orthonormalInverse();
     } else if (flagBits < Perspective) {
+        Q_DECL_UNINITIALIZED
         QMatrix4x4 inv(Qt::Uninitialized);
 
-        double mm[4][4];
-        copyToDoubles(m, mm);
+        const Double4x4 mm = copyToDoubles(m);
 
         double det = matrixDet3(mm, 0, 1, 2, 0, 1, 2);
         if (det == 0.0f) {
@@ -389,10 +395,10 @@ QMatrix4x4 QMatrix4x4::inverted(bool *invertible) const
         return inv;
     }
 
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 inv(Qt::Uninitialized);
 
-    double mm[4][4];
-    copyToDoubles(m, mm);
+    const Double4x4 mm = copyToDoubles(m);
 
     double det = matrixDet4(mm);
     if (det == 0.0f) {
@@ -463,8 +469,7 @@ QMatrix3x3 QMatrix4x4::normalMatrix() const
         return inv;
     }
 
-    double mm[4][4];
-    copyToDoubles(m, mm);
+    const Double4x4 mm = copyToDoubles(m);
     double det = matrixDet3(mm, 0, 1, 2, 0, 1, 2);
     if (det == 0.0f)
         return inv;
@@ -491,6 +496,7 @@ QMatrix3x3 QMatrix4x4::normalMatrix() const
 */
 QMatrix4x4 QMatrix4x4::transposed() const
 {
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 result(Qt::Uninitialized);
     for (int row = 0; row < 4; ++row) {
         for (int col = 0; col < 4; ++col) {
@@ -707,6 +713,7 @@ QMatrix4x4& QMatrix4x4::operator/=(float divisor)
 */
 QMatrix4x4 operator/(const QMatrix4x4& matrix, float divisor)
 {
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 m(Qt::Uninitialized);
     m.m[0][0] = matrix.m[0][0] / divisor;
     m.m[0][1] = matrix.m[0][1] / divisor;
@@ -736,22 +743,22 @@ QMatrix4x4 operator/(const QMatrix4x4& matrix, float divisor)
 */
 bool qFuzzyCompare(const QMatrix4x4& m1, const QMatrix4x4& m2) noexcept
 {
-    return qFuzzyCompare(m1.m[0][0], m2.m[0][0]) &&
-            qFuzzyCompare(m1.m[0][1], m2.m[0][1]) &&
-            qFuzzyCompare(m1.m[0][2], m2.m[0][2]) &&
-            qFuzzyCompare(m1.m[0][3], m2.m[0][3]) &&
-            qFuzzyCompare(m1.m[1][0], m2.m[1][0]) &&
-            qFuzzyCompare(m1.m[1][1], m2.m[1][1]) &&
-            qFuzzyCompare(m1.m[1][2], m2.m[1][2]) &&
-            qFuzzyCompare(m1.m[1][3], m2.m[1][3]) &&
-            qFuzzyCompare(m1.m[2][0], m2.m[2][0]) &&
-            qFuzzyCompare(m1.m[2][1], m2.m[2][1]) &&
-            qFuzzyCompare(m1.m[2][2], m2.m[2][2]) &&
-            qFuzzyCompare(m1.m[2][3], m2.m[2][3]) &&
-            qFuzzyCompare(m1.m[3][0], m2.m[3][0]) &&
-            qFuzzyCompare(m1.m[3][1], m2.m[3][1]) &&
-            qFuzzyCompare(m1.m[3][2], m2.m[3][2]) &&
-            qFuzzyCompare(m1.m[3][3], m2.m[3][3]);
+    return QtPrivate::fuzzyCompare(m1.m[0][0], m2.m[0][0])
+        && QtPrivate::fuzzyCompare(m1.m[0][1], m2.m[0][1])
+        && QtPrivate::fuzzyCompare(m1.m[0][2], m2.m[0][2])
+        && QtPrivate::fuzzyCompare(m1.m[0][3], m2.m[0][3])
+        && QtPrivate::fuzzyCompare(m1.m[1][0], m2.m[1][0])
+        && QtPrivate::fuzzyCompare(m1.m[1][1], m2.m[1][1])
+        && QtPrivate::fuzzyCompare(m1.m[1][2], m2.m[1][2])
+        && QtPrivate::fuzzyCompare(m1.m[1][3], m2.m[1][3])
+        && QtPrivate::fuzzyCompare(m1.m[2][0], m2.m[2][0])
+        && QtPrivate::fuzzyCompare(m1.m[2][1], m2.m[2][1])
+        && QtPrivate::fuzzyCompare(m1.m[2][2], m2.m[2][2])
+        && QtPrivate::fuzzyCompare(m1.m[2][3], m2.m[2][3])
+        && QtPrivate::fuzzyCompare(m1.m[3][0], m2.m[3][0])
+        && QtPrivate::fuzzyCompare(m1.m[3][1], m2.m[3][1])
+        && QtPrivate::fuzzyCompare(m1.m[3][2], m2.m[3][2])
+        && QtPrivate::fuzzyCompare(m1.m[3][3], m2.m[3][3]);
 }
 
 
@@ -927,36 +934,7 @@ void QMatrix4x4::scale(float factor)
 
 void QMatrix4x4::translate(const QVector3D& vector)
 {
-    float vx = vector.x();
-    float vy = vector.y();
-    float vz = vector.z();
-    if (flagBits == Identity) {
-        m[3][0] = vx;
-        m[3][1] = vy;
-        m[3][2] = vz;
-    } else if (flagBits == Translation) {
-        m[3][0] += vx;
-        m[3][1] += vy;
-        m[3][2] += vz;
-    } else if (flagBits == Scale) {
-        m[3][0] = m[0][0] * vx;
-        m[3][1] = m[1][1] * vy;
-        m[3][2] = m[2][2] * vz;
-    } else if (flagBits == (Translation | Scale)) {
-        m[3][0] += m[0][0] * vx;
-        m[3][1] += m[1][1] * vy;
-        m[3][2] += m[2][2] * vz;
-    } else if (flagBits < Rotation) {
-        m[3][0] += m[0][0] * vx + m[1][0] * vy;
-        m[3][1] += m[0][1] * vx + m[1][1] * vy;
-        m[3][2] += m[2][2] * vz;
-    } else {
-        m[3][0] += m[0][0] * vx + m[1][0] * vy + m[2][0] * vz;
-        m[3][1] += m[0][1] * vx + m[1][1] * vy + m[2][1] * vz;
-        m[3][2] += m[0][2] * vx + m[1][2] * vy + m[2][2] * vz;
-        m[3][3] += m[0][3] * vx + m[1][3] * vy + m[2][3] * vz;
-    }
-    flagBits |= Translation;
+    translate(vector.x(), vector.y(), vector.z());
 }
 #endif
 
@@ -1139,6 +1117,7 @@ void QMatrix4x4::rotate(float angle, float x, float y, float z)
         z = float(double(z) / len);
     }
     float ic = 1.0f - c;
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 rot(Qt::Uninitialized);
     rot.m[0][0] = x * x * ic + c;
     rot.m[1][0] = x * y * ic - z * s;
@@ -1242,6 +1221,7 @@ void QMatrix4x4::projectedRotate(float angle, float x, float y, float z, float d
         z = float(double(z) / len);
     }
     const float ic = 1.0f - c;
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 rot(Qt::Uninitialized);
     rot.m[0][0] = x * x * ic + c;
     rot.m[1][0] = x * y * ic - z * s;
@@ -1279,7 +1259,7 @@ void QMatrix4x4::projectedRotate(float angle, float x, float y, float z)
 */
 
 /*!
-    \enum QMatrix4x4::Flags
+    \enum QMatrix4x4::Flag
     \internal
     \omitvalue Identity
     \omitvalue Translation
@@ -1304,6 +1284,7 @@ void QMatrix4x4::rotate(const QQuaternion& quaternion)
     // Algorithm from:
     // http://www.j3d.org/matrix_faq/matrfaq_latest.html#Q54
 
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 m(Qt::Uninitialized);
 
     const float f2x = quaternion.x() + quaternion.x();
@@ -1391,6 +1372,7 @@ void QMatrix4x4::ortho(float left, float right, float bottom, float top, float n
     const float width = right - left;
     const float invheight = top - bottom;
     const float clip = farPlane - nearPlane;
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 m(Qt::Uninitialized);
     m.m[0][0] = 2.0f / width;
     m.m[1][0] = 0.0f;
@@ -1429,6 +1411,7 @@ void QMatrix4x4::frustum(float left, float right, float bottom, float top, float
         return;
 
     // Construct the projection.
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 m(Qt::Uninitialized);
     const float width = right - left;
     const float invheight = top - bottom;
@@ -1472,6 +1455,7 @@ void QMatrix4x4::perspective(float verticalAngle, float aspectRatio, float nearP
         return;
 
     // Construct the projection.
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 m(Qt::Uninitialized);
     const float radians = qDegreesToRadians(verticalAngle / 2.0f);
     const float sine = std::sin(radians);
@@ -1522,6 +1506,7 @@ void QMatrix4x4::lookAt(const QVector3D& eye, const QVector3D& center, const QVe
     QVector3D side = QVector3D::crossProduct(forward, up).normalized();
     QVector3D upVector = QVector3D::crossProduct(side, forward);
 
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 m(Qt::Uninitialized);
     m.m[0][0] = side.x();
     m.m[1][0] = side.y();
@@ -1571,6 +1556,7 @@ void QMatrix4x4::viewport(float left, float bottom, float width, float height, f
     const float w2 = width / 2.0f;
     const float h2 = height / 2.0f;
 
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 m(Qt::Uninitialized);
     m.m[0][0] = w2;
     m.m[1][0] = 0.0f;
@@ -1869,6 +1855,7 @@ QRectF QMatrix4x4::mapRect(const QRectF& rect) const
 // of just rotations and translations.
 QMatrix4x4 QMatrix4x4::orthonormalInverse() const
 {
+    Q_DECL_UNINITIALIZED
     QMatrix4x4 result(Qt::Uninitialized);
 
     result.m[0][0] = m[0][0];
@@ -1941,8 +1928,7 @@ void QMatrix4x4::optimize()
                 flagBits &= ~Scale;
         } else {
             // If the columns are orthonormal and form a right-handed system, then there is no scale.
-            double mm[4][4];
-            copyToDoubles(m, mm);
+            const Double4x4 mm = copyToDoubles(m);
             double det = matrixDet2(mm, 0, 1, 0, 1);
             double lenX = mm[0][0] * mm[0][0] + mm[0][1] * mm[0][1];
             double lenY = mm[1][0] * mm[1][0] + mm[1][1] * mm[1][1];
@@ -1955,8 +1941,7 @@ void QMatrix4x4::optimize()
         }
     } else {
         // If the columns are orthonormal and form a right-handed system, then there is no scale.
-        double mm[4][4];
-        copyToDoubles(m, mm);
+        const Double4x4 mm = copyToDoubles(m);
         double det = matrixDet3(mm, 0, 1, 2, 0, 1, 2);
         double lenX = mm[0][0] * mm[0][0] + mm[0][1] * mm[0][1] + mm[0][2] * mm[0][2];
         double lenY = mm[1][0] * mm[1][0] + mm[1][1] * mm[1][1] + mm[1][2] * mm[1][2];

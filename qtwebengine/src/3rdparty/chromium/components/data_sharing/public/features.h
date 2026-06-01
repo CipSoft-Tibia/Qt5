@@ -14,7 +14,20 @@ namespace data_sharing::features {
 // implementation of the service is returned.
 BASE_DECLARE_FEATURE(kDataSharingFeature);
 
+// Join only feature flag for data sharing. Enabled partial data sharing related
+// functionalities.
+BASE_DECLARE_FEATURE(kDataSharingJoinOnly);
+
 extern const base::FeatureParam<std::string> kDataSharingURL;
+extern const base::FeatureParam<std::string> kLearnMoreSharedTabGroupPageURL;
+extern const base::FeatureParam<std::string> kLearnAboutBlockedAccountsURL;
+extern const base::FeatureParam<std::string> kActivityLogsURL;
+
+// Controls how often the group data should be polled from the server in the
+// absence of any other updates (such as upon receiving a CollaboratioGroup
+// changes).
+extern const base::FeatureParam<base::TimeDelta>
+    kDataSharingGroupDataPeriodicPollingInterval;
 
 }  // namespace data_sharing::features
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #include "qqmljsimporter_p.h"
 #include "qqmljstypedescriptionreader_p.h"
@@ -163,6 +164,10 @@ static QStringList aliases(const QQmlJSScope::ConstPtr &scope)
         : scope->aliases();
 }
 
+/*!
+    \class QQmlJSImporter
+    \internal
+*/
 QQmlJSImporter::QQmlJSImporter(const QStringList &importPaths, QQmlJSResourceFileMapper *mapper,
                                QQmlJSImporterFlags flags)
     : m_importPaths(importPaths),
@@ -418,6 +423,19 @@ static bool isVersionAllowed(const QQmlJSScope::Export &exportEntry,
             || exportVersion.minorVersion() <= importVersion.minorVersion();
 }
 
+/* This is a _rough_ heuristic; only meant for qmllint to avoid warnings about commonconstructs.
+   We might want to improve it in the future if it causes issues
+*/
+static bool fileSelectedScopesAreCompatibleHeuristic(const QQmlJSScope::ConstPtr &scope1, const QQmlJSScope::ConstPtr &scope2) {
+    for (const auto &[propertyName, prop]: scope1->properties().asKeyValueRange())
+        if (!scope2->hasProperty(propertyName))
+            return false;
+    for (const auto &[methodName, method]: scope1->methods().asKeyValueRange())
+        if (!scope2->hasMethod(methodName))
+            return false;
+    return true;
+}
+
 void QQmlJSImporter::processImport(
         const QQmlJS::Import &importDescription, const QQmlJSImporter::Import &import,
         QQmlJSImporter::AvailableTypes *types)
@@ -481,6 +499,36 @@ void QQmlJSImporter::processImport(
                 case LowerVersion:
                     break;
                 case SameVersion: {
+                    if (m_flags & QQmlJSImporterFlag::TolerateFileSelectors) {
+                        auto isFileSelected = [](const QQmlJSScope::ConstPtr &scope) -> bool
+                        {
+                            return scope->filePath().contains(u"+");
+                        };
+                        auto warnAboutFileSelector = [&](const QString &path) {
+                            types->warnings.append({
+                                QStringLiteral("Type %1 is ambiguous due to file selector usage, ignoring %2.")
+                                        .arg(qmlName, path),
+                                QtInfoMsg,
+                                QQmlJS::SourceLocation()
+                            });
+                        };
+                        if (it->scope) {
+                            if (isFileSelected(val.scope)) {
+                                // new entry is file selected, skip if it looks compatible
+                                if (fileSelectedScopesAreCompatibleHeuristic(it->scope, val.scope)) {
+                                    warnAboutFileSelector(val.scope->filePath());
+                                    continue;
+                                }
+                            } else if (isFileSelected(it->scope)) {
+                                // the first scope we saw is file selected. If they are compatible
+                                // we update to the new one without file selector
+                                if (fileSelectedScopesAreCompatibleHeuristic(it->scope, val.scope)) {
+                                    warnAboutFileSelector(it->scope->filePath());
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     types->warnings.append({
                         QStringLiteral("Ambiguous type detected. "
                                        "%1 %2.%3 is defined multiple times.")
@@ -780,7 +828,7 @@ bool QQmlJSImporter::importHelper(const QString &module, AvailableTypes *types,
                     QQmlJS::ContextualTypes::INTERNAL, {}, {}, types->cppNames.arrayType())));
     m_cachedImportTypes[cacheKey] = cacheTypes;
 
-    const QPair<QString, QTypeRevision> importId { module, version };
+    const std::pair<QString, QTypeRevision> importId { module, version };
     const auto it = m_seenImports.constFind(importId);
 
     if (it != m_seenImports.constEnd()) {
@@ -817,7 +865,7 @@ bool QQmlJSImporter::importHelper(const QString &module, AvailableTypes *types,
         modulePaths = qQmlResolveImportPaths(module, m_importPaths, version);
     }
 
-    for (auto const &modulePath : modulePaths) {
+    for (auto const &modulePath : std::as_const(modulePaths)) {
         QString qmldirPath = modulePath + SlashQmldir;
         if (modulePath.startsWith(u':')) {
             if (module == "QML"_L1) {

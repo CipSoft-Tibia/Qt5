@@ -19,6 +19,8 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/extensions/tab_helper.h"
+#include "chrome/browser/omnibox/omnibox_input_watcher_factory.h"
+#include "chrome/browser/omnibox/omnibox_suggestions_watcher_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/common/extensions/api/omnibox.h"
@@ -30,7 +32,11 @@
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_prefs_factory.h"
+#include "extensions/browser/install_prefs_helper.h"
+#include "extensions/common/extension_features.h"
 #include "extensions/common/extension_id.h"
+#include "extensions/common/mojom/api_permission_id.mojom.h"
+#include "extensions/common/permissions/permissions_data.h"
 #include "ui/gfx/image/image.h"
 
 namespace extensions {
@@ -90,6 +96,15 @@ std::string GetTemplateURLStringForExtension(const ExtensionId& extension_id) {
   // This URL is not actually used for navigation. It holds the extension's ID.
   return std::string(extensions::kExtensionScheme) + "://" +
       extension_id + "/?q={searchTerms}";
+}
+
+bool IsUnscopedModeAllowed(const Extension* extension) {
+  // The extension can use unscoepd mode if the feature is enabled and the
+  // permission has been granted.
+  return base::FeatureList::IsEnabled(
+             extensions_features::kExperimentalOmniboxLabs) &&
+         extension->permissions_data()->HasAPIPermission(
+             mojom::APIPermissionID::kOmniboxDirectInput);
 }
 
 }  // namespace
@@ -159,7 +174,8 @@ void ExtensionOmniboxEventRouter::OnInputEntered(
   EventRouter::Get(profile)
       ->DispatchEventToExtension(extension_id, std::move(event));
 
-  OmniboxInputWatcher::GetForBrowserContext(profile)->NotifyInputEntered();
+  OmniboxInputWatcherFactory::GetForBrowserContext(profile)
+      ->NotifyInputEntered();
 }
 
 // static
@@ -188,6 +204,28 @@ void ExtensionOmniboxEventRouter::OnDeleteSuggestion(
                                                       std::move(event));
 }
 
+// static
+void ExtensionOmniboxEventRouter::OnActionExecuted(
+    Profile* profile,
+    const ExtensionId& extension_id,
+    const std::string& action_name,
+    const std::string& content) {
+  EventRouter* event_router = EventRouter::Get(profile);
+  if (!event_router->ExtensionHasEventListener(
+          extension_id, omnibox::OnActionExecuted::kEventName)) {
+    return;
+  }
+
+  omnibox::ActionExecution action_execution;
+  action_execution.action_name = action_name;
+  action_execution.content = content;
+  auto event = std::make_unique<Event>(
+      events::OMNIBOX_ON_ACTION_EXECUTED, omnibox::OnActionExecuted::kEventName,
+      omnibox::OnActionExecuted::Create(std::move(action_execution)), profile);
+  event->user_gesture = EventRouter::USER_GESTURE_ENABLED;
+  event_router->DispatchEventToExtension(extension_id, std::move(event));
+}
+
 OmniboxAPI::OmniboxAPI(content::BrowserContext* context)
     : profile_(Profile::FromBrowserContext(context)),
       url_service_(TemplateURLServiceFactory::GetForProfile(profile_)) {
@@ -200,14 +238,16 @@ OmniboxAPI::OmniboxAPI(content::BrowserContext* context)
 
   // Use monochrome icons for Omnibox icons.
   omnibox_icon_manager_.set_monochrome(true);
+
+  permissions_manager_observation_.Observe(PermissionsManager::Get(profile_));
 }
 
 void OmniboxAPI::Shutdown() {
   template_url_subscription_ = {};
+  permissions_manager_observation_.Reset();
 }
 
-OmniboxAPI::~OmniboxAPI() {
-}
+OmniboxAPI::~OmniboxAPI() = default;
 
 static base::LazyInstance<BrowserContextKeyedAPIFactory<OmniboxAPI>>::
     DestructorAtExit g_omnibox_api_factory = LAZY_INSTANCE_INITIALIZER;
@@ -231,10 +271,11 @@ void OmniboxAPI::OnExtensionLoaded(content::BrowserContext* browser_context,
     if (url_service_) {
       url_service_->Load();
       if (url_service_->loaded()) {
-        url_service_->RegisterOmniboxKeyword(
+        url_service_->RegisterExtensionControlledTURL(
             extension->id(), extension->short_name(), keyword,
             GetTemplateURLStringForExtension(extension->id()),
-            ExtensionPrefs::Get(profile_)->GetLastUpdateTime(extension->id()));
+            GetLastUpdateTime(ExtensionPrefs::Get(profile_), extension->id()),
+            IsUnscopedModeAllowed(extension));
       } else {
         pending_extensions_.insert(extension);
       }
@@ -255,6 +296,24 @@ void OmniboxAPI::OnExtensionUnloaded(content::BrowserContext* browser_context,
   }
 }
 
+void OmniboxAPI::OnExtensionPermissionsUpdated(
+    const Extension& extension,
+    const PermissionSet& permissions,
+    PermissionsManager::UpdateReason reason) {
+  if (!permissions.HasAPIPermission(
+          mojom::APIPermissionID::kOmniboxDirectInput)) {
+    return;
+  }
+
+  if (reason == PermissionsManager::UpdateReason::kAdded &&
+      base::FeatureList::IsEnabled(
+          extensions_features::kExperimentalOmniboxLabs)) {
+    url_service_->AddToUnscopedModeExtensionIds(extension.id());
+  } else if (reason == PermissionsManager::UpdateReason::kRemoved) {
+    url_service_->RemoveFromUnscopedModeExtensionIdsIfPresent(extension.id());
+  }
+}
+
 gfx::Image OmniboxAPI::GetOmniboxIcon(const ExtensionId& extension_id) {
   return omnibox_icon_manager_.GetIcon(extension_id);
 }
@@ -263,10 +322,11 @@ void OmniboxAPI::OnTemplateURLsLoaded() {
   // Register keywords for pending extensions.
   template_url_subscription_ = {};
   for (const Extension* i : pending_extensions_) {
-    url_service_->RegisterOmniboxKeyword(
+    url_service_->RegisterExtensionControlledTURL(
         i->id(), i->short_name(), OmniboxInfo::GetKeyword(i),
         GetTemplateURLStringForExtension(i->id()),
-        ExtensionPrefs::Get(profile_)->GetLastUpdateTime(i->id()));
+        GetLastUpdateTime(ExtensionPrefs::Get(profile_), i->id()),
+        IsUnscopedModeAllowed(i));
   }
   pending_extensions_.clear();
 }
@@ -276,6 +336,7 @@ void BrowserContextKeyedAPIFactory<OmniboxAPI>::DeclareFactoryDependencies() {
   DependsOn(ExtensionsBrowserClient::Get()->GetExtensionSystemFactory());
   DependsOn(ExtensionPrefsFactory::GetInstance());
   DependsOn(TemplateURLServiceFactory::GetInstance());
+  DependsOn(PermissionsManager::GetFactory());
 }
 
 OmniboxSendSuggestionsFunction::OmniboxSendSuggestionsFunction() = default;
@@ -288,8 +349,23 @@ ExtensionFunction::ResponseAction OmniboxSendSuggestionsFunction::Run() {
   if (is_from_service_worker() && !params_->suggest_results.empty()) {
     std::vector<std::string_view> inputs;
     inputs.reserve(params_->suggest_results.size());
-    for (const auto& suggestion : params_->suggest_results)
+    for (const auto& suggestion : params_->suggest_results) {
       inputs.push_back(suggestion.description);
+      if (suggestion.actions) {
+        if (!IsUnscopedModeAllowed(extension())) {
+          return RespondNow(
+              Error(ExtensionOmniboxEventRouter::
+                        kActionsRequireDirectInputPermissionError));
+        }
+        if (suggestion.actions->size() >
+            ExtensionOmniboxEventRouter::kMaxSuggestionActions) {
+          return RespondNow(Error(base::StringPrintf(
+              ExtensionOmniboxEventRouter::kMaxSuggestionActionsExceededError,
+              suggestion.actions->size(),
+              ExtensionOmniboxEventRouter::kMaxSuggestionActions)));
+        }
+      }
+    }
 
     ParseDescriptionsAndStyles(
         inputs,
@@ -342,8 +418,8 @@ void OmniboxSendSuggestionsFunction::OnParsedDescriptionsAndStyles(
 void OmniboxSendSuggestionsFunction::NotifySuggestionsReady() {
   Profile* profile =
       Profile::FromBrowserContext(browser_context())->GetOriginalProfile();
-  OmniboxSuggestionsWatcher::GetForBrowserContext(profile)
-      ->NotifySuggestionsReady(&*params_);
+  OmniboxSuggestionsWatcherFactory::GetForBrowserContext(profile)
+      ->NotifySuggestionsReady(&*params_, extension_id());
 }
 
 ExtensionFunction::ResponseAction OmniboxSetDefaultSuggestionFunction::Run() {
@@ -386,7 +462,7 @@ void OmniboxSetDefaultSuggestionFunction::SetDefaultSuggestion(
     const omnibox::DefaultSuggestResult& suggestion) {
   Profile* profile = Profile::FromBrowserContext(browser_context());
   if (SetOmniboxDefaultSuggestion(profile, extension_id(), suggestion)) {
-    OmniboxSuggestionsWatcher::GetForBrowserContext(
+    OmniboxSuggestionsWatcherFactory::GetForBrowserContext(
         profile->GetOriginalProfile())
         ->NotifyDefaultSuggestionChanged();
   }

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmladaptormodel_p.h"
 
@@ -40,23 +41,35 @@ void QQmlAdaptorModel::setModel(const QVariant &variant)
         if (qobject_cast<QAbstractItemModel *>(object))
             accessors = new VDMAbstractItemModelDataType(this);
         else
-            accessors = new VDMObjectDelegateDataType;
-    } else if (list.type() == QQmlListAccessor::ListProperty) {
-        auto object = static_cast<const QQmlListReference *>(list.list().constData())->object();
-        if (QQmlData *ddata = QQmlData::get(object))
+            accessors = new VDMObjectDelegateDataType(this);
+        return;
+    }
+
+    switch (list.type()) {
+    case QQmlListAccessor::ListProperty:
+        setObject(static_cast<const QQmlListReference *>(list.list().constData())->object());
+        if (QQmlData *ddata = QQmlData::get(object()))
             modelStrongReference = ddata->jsWrapper;
-        setObject(object);
-        accessors = new VDMObjectDelegateDataType;
-    } else if (list.type() == QQmlListAccessor::ObjectList) {
+        accessors = new VDMObjectDelegateDataType(this);
+        break;
+    case QQmlListAccessor::ObjectList:
+    case QQmlListAccessor::ObjectSequence:
         setObject(nullptr);
-        accessors = new VDMObjectDelegateDataType;
-    } else if (list.type() != QQmlListAccessor::Invalid
-            && list.type() != QQmlListAccessor::Instance) { // Null QObject
+        accessors = new VDMObjectDelegateDataType(this);
+        break;
+    case QQmlListAccessor::StringList:
+    case QQmlListAccessor::UrlList:
+    case QQmlListAccessor::VariantList:
+    case QQmlListAccessor::Integer:
+    case QQmlListAccessor::ValueSequence:
         setObject(nullptr);
         accessors = new VDMListDelegateDataType(this);
-    } else {
+        break;
+    case QQmlListAccessor::Instance:
+    case QQmlListAccessor::Invalid:
         setObject(nullptr);
         accessors = &m_nullAccessors;
+        break;
     }
 }
 

@@ -41,6 +41,8 @@ su
 echo "add_drivers+=\"virtio-blk\"" >> /etc/dracut.conf.d/virtio.conf
 dracut -f
 
+yum -y install qemu-guest-agent
+
 # Fetch and run coin-setup
 Download http://coin/coin/binary/linux_amd64/coin-setup
 run './coin-setup'

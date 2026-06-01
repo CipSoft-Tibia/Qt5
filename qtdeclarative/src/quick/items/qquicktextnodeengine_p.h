@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qlist.h>
 #include <QtCore/qvarlengtharray.h>
@@ -80,7 +81,7 @@ public:
         int leftChildIndex;
         int rightChildIndex;
 
-        QList<QPair<int, int> > ranges;
+        QList<std::pair<int, int> > ranges;
 
         static void insert(QVarLengthArray<BinaryTreeNode, 16> *binaryTree, const QRectF &rect, const QImage &image, qreal ascent, SelectionState selectionState)
         { insert(binaryTree, BinaryTreeNode(rect, image, selectionState, ascent)); }
@@ -227,7 +228,7 @@ private:
     QTextLine m_currentLine;
     Qt::LayoutDirection m_currentTextDirection;
 
-    QList<QPair<QRectF, QColor> > m_backgrounds;
+    QList<std::pair<QRectF, QColor> > m_backgrounds;
     QList<QRectF> m_selectionRects;
     QVarLengthArray<BinaryTreeNode, 16> m_currentLineTree;
 

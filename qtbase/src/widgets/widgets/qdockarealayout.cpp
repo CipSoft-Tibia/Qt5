@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "QtWidgets/qapplication.h"
 #include "QtWidgets/qwidget.h"
@@ -1785,7 +1786,11 @@ QLayoutItem *QDockAreaLayoutInfo::takeAt(int *x, int index)
             }
         } else if (item.widgetItem) {
             if ((*x)++ == index) {
-                item.placeHolderItem = new QPlaceHolderItem(item.widgetItem->widget());
+                QWidget *widget = item.widgetItem->widget();
+                if (widget->isWidgetType())
+                    item.placeHolderItem = new QPlaceHolderItem(widget);
+                else
+                    qCDebug(lcQpaDockWidgets) << widget << "is in destruction. No gap created.";
                 QLayoutItem *ret = item.widgetItem;
                 item.widgetItem = nullptr;
                 if (item.size != -1)
@@ -1961,7 +1966,6 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
                 QPlaceHolderItem *placeHolder = new QPlaceHolderItem;
                 QDockAreaLayoutItem item(placeHolder);
 
-                placeHolder->objectName = name;
                 placeHolder->window = flags & StateFlagFloating;
                 placeHolder->hidden = !(flags & StateFlagVisible);
                 if (placeHolder->window) {
@@ -1974,6 +1978,7 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
                 }
                 if (item.size != -1)
                     item.flags |= QDockAreaLayoutItem::KeepSize;
+                placeHolder->objectName = std::move(name);
                 if (!testing)
                     item_list.append(item);
             } else {
@@ -2192,8 +2197,10 @@ bool QDockAreaLayoutInfo::updateTabBar() const
         QDockWidget *dw = qobject_cast<QDockWidget*>(item.widgetItem->widget());
         QString title = dw->d_func()->fixedWindowTitle;
         quintptr id = tabId(item);
+        const QIcon windowIcon = dw->testAttribute(Qt::WA_SetWindowIcon) ? dw->windowIcon()
+                                                                         : QIcon();
         if (tab_idx == tabBar->count()) {
-            tabBar->insertTab(tab_idx, title);
+            tabBar->insertTab(tab_idx, windowIcon, title);
 #if QT_CONFIG(tooltip)
             tabBar->setTabToolTip(tab_idx, title);
 #endif
@@ -2203,7 +2210,7 @@ bool QDockAreaLayoutInfo::updateTabBar() const
                     && qvariant_cast<quintptr>(tabBar->tabData(tab_idx + 1)) == id)
                 tabBar->removeTab(tab_idx);
             else {
-                tabBar->insertTab(tab_idx, title);
+                tabBar->insertTab(tab_idx, windowIcon, title);
 #if QT_CONFIG(tooltip)
                 tabBar->setTabToolTip(tab_idx, title);
 #endif

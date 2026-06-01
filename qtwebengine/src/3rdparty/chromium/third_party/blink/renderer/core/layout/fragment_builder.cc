@@ -7,6 +7,7 @@
 #include "base/containers/contains.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
+#include "third_party/blink/renderer/core/dom/column_pseudo_element.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/physical_fragment.h"
@@ -23,26 +24,26 @@ bool IsInlineContainerForNode(const BlockNode& node,
              node.Style().GetPosition());
 }
 
-LogicalAnchorQuery::SetOptions AnchorQuerySetOptions(
+PhysicalAnchorQuery::SetOptions AnchorQuerySetOptions(
     const PhysicalFragment& fragment,
     const LayoutInputNode& container,
     bool maybe_out_of_order_if_oof) {
   // If the |fragment| is not absolutely positioned, it's an in-flow anchor.
   // https://drafts.csswg.org/css-anchor-1/#determining
   if (!fragment.IsOutOfFlowPositioned()) {
-    return LogicalAnchorQuery::SetOptions::kInFlow;
+    return PhysicalAnchorQuery::SetOptions::kInFlow;
   }
 
   // If the OOF |fragment| is not in a block fragmentation context, it's a child
   // of its containing block. Make it out-of-flow.
   DCHECK(fragment.GetLayoutObject());
   if (!maybe_out_of_order_if_oof) {
-    return LogicalAnchorQuery::SetOptions::kOutOfFlow;
+    return PhysicalAnchorQuery::SetOptions::kOutOfFlow;
   }
 
   // |container| is null if it's an inline box.
   if (!container.GetLayoutBox()) {
-    return LogicalAnchorQuery::SetOptions::kOutOfFlow;
+    return PhysicalAnchorQuery::SetOptions::kOutOfFlow;
   }
 
   // If the OOF |fragment| is in a block fragmentation context, it's a child of
@@ -52,11 +53,11 @@ LogicalAnchorQuery::SetOptions AnchorQuerySetOptions(
   const LayoutObject* containing_block = layout_object->Container();
   DCHECK(containing_block);
   if (containing_block == container.GetLayoutBox()) {
-    return LogicalAnchorQuery::SetOptions::kOutOfFlow;
+    return PhysicalAnchorQuery::SetOptions::kOutOfFlow;
   }
   // Otherwise its containing block is a descendant of the block fragmentation
   // context, so it's in-flow.
-  return LogicalAnchorQuery::SetOptions::kInFlow;
+  return PhysicalAnchorQuery::SetOptions::kInFlow;
 }
 
 }  // namespace
@@ -109,7 +110,7 @@ void FragmentBuilder::ReplaceChild(wtf_size_t index,
                                    const PhysicalFragment& new_child,
                                    const LogicalOffset offset) {
   DCHECK_LT(index, children_.size());
-  children_[index] = LogicalFragmentLink{std::move(&new_child), offset};
+  children_[index] = LogicalFragmentLink(new_child, offset);
 }
 
 HeapVector<Member<LayoutBoxModelObject>>&
@@ -134,29 +135,37 @@ void FragmentBuilder::PropagateStickyDescendants(
   }
 }
 
-HeapVector<Member<LayoutBox>>& FragmentBuilder::EnsureSnapAreas() {
+HeapVector<Member<Element>>& FragmentBuilder::EnsureSnapAreas() {
   if (!snap_areas_) {
-    snap_areas_ = MakeGarbageCollected<HeapVector<Member<LayoutBox>>>();
+    snap_areas_ = MakeGarbageCollected<HeapVector<Member<Element>>>();
   }
   return *snap_areas_;
 }
 
 void FragmentBuilder::PropagateSnapAreas(const PhysicalFragment& child) {
-  auto get_insertion_pos = [&](LayoutBox* snap_area) {
+  auto get_insertion_pos = [&](Element* snap_area) {
     auto& snap_areas = EnsureSnapAreas();
+    // TODO(crbug.com/365680822): ::column pseudo elements don't have layout
+    // objects, and how snap areas established by them should be sorted,
+    // relatively to real elements, is undefined.
+    const LayoutBox* new_box = snap_area->GetLayoutBox();
+    if (!new_box) {
+      return snap_areas.size();
+    }
     // Ensure that snap areas are added in DOM order.
-    for (int i = snap_areas.size(); i >= 1; i--) {
-      if (snap_areas.at(i - 1)->IsBeforeInPreOrder(*snap_area)) {
+    for (wtf_size_t i = snap_areas.size(); i >= 1; i--) {
+      const LayoutBox* existing_box = snap_areas.at(i - 1)->GetLayoutBox();
+      if (existing_box && existing_box->IsBeforeInPreOrder(*new_box)) {
         return i;
       }
     }
-    return 0;
+    return 0u;
   };
   if (child.IsSnapArea()) {
     // Insert a new snap area *once* per node, when at the last fragment
     // (i.e. when there's no outgoing break token).
     if (!To<PhysicalBoxFragment>(child).GetBreakToken()) {
-      auto* snap_area = To<LayoutBox>(child.GetMutableLayoutObject());
+      auto* snap_area = To<Element>(child.GetLayoutObject()->GetNode());
       EnsureSnapAreas().insert(get_insertion_pos(snap_area), snap_area);
     }
   }
@@ -171,15 +180,19 @@ void FragmentBuilder::PropagateSnapAreas(const PhysicalFragment& child) {
   }
 }
 
-LogicalAnchorQuery& FragmentBuilder::EnsureAnchorQuery() {
+void FragmentBuilder::AddSnapAreaForColumn(ColumnPseudoElement* column_pseudo) {
+  EnsureSnapAreas().push_back(column_pseudo);
+}
+
+PhysicalAnchorQuery& FragmentBuilder::EnsureAnchorQuery() {
   if (!anchor_query_)
-    anchor_query_ = MakeGarbageCollected<LogicalAnchorQuery>();
+    anchor_query_ = MakeGarbageCollected<PhysicalAnchorQuery>();
   return *anchor_query_;
 }
 
 void FragmentBuilder::PropagateChildAnchors(const PhysicalFragment& child,
                                             const LogicalOffset& child_offset) {
-  std::optional<LogicalAnchorQuery::SetOptions> options;
+  std::optional<PhysicalAnchorQuery::SetOptions> options;
   Element* context = nullptr;
   if (auto* node = child.GetNode()) {
     if (auto* element = DynamicTo<Element>(node)) {
@@ -193,23 +206,26 @@ void FragmentBuilder::PropagateChildAnchors(const PhysicalFragment& child,
       }
     }
   }
-  if (child.IsBox() &&
-      (child.Style().AnchorName() || child.IsImplicitAnchor())) {
+  if (child.IsAnchor()) {
+    DCHECK(child.GetLayoutObject());
     // Set the child's `anchor-name` before propagating its descendants', so
     // that ancestors have precedence over their descendants.
-    LogicalRect rect{child_offset,
-                     child.Size().ConvertToLogical(GetWritingMode())};
+    LogicalRect logical_rect(child_offset,
+                             child.Size().ConvertToLogical(GetWritingMode()));
+    const WritingModeConverter converter(GetWritingDirection(), Size());
+    PhysicalRect rect = converter.ToPhysical(logical_rect);
     options = AnchorQuerySetOptions(
         child, node_, IsBlockFragmentationContextRoot() || HasItems());
-    if (child.Style().AnchorName()) {
+    if (child.IsExplicitAnchor()) {
       for (const ScopedCSSName* name : child.Style().AnchorName()->GetNames()) {
         EnsureAnchorQuery().Set(name, *child.GetLayoutObject(), rect, *options,
                                 context);
       }
     }
     if (child.IsImplicitAnchor()) {
-      EnsureAnchorQuery().Set(child.GetLayoutObject(), *child.GetLayoutObject(),
-                              rect, *options, context);
+      EnsureAnchorQuery().Set(To<Element>(child.GetNode()),
+                              *child.GetLayoutObject(), rect, *options,
+                              context);
     }
   }
 
@@ -219,9 +235,11 @@ void FragmentBuilder::PropagateChildAnchors(const PhysicalFragment& child,
       options = AnchorQuerySetOptions(
           child, node_, IsBlockFragmentationContextRoot() || HasItems());
     }
-    const WritingModeConverter converter(GetWritingDirection(), child.Size());
-    EnsureAnchorQuery().SetFromPhysical(*anchor_query, converter, child_offset,
-                                        *options, context);
+    const WritingModeConverter converter(GetWritingDirection(), Size());
+    PhysicalOffset additional_offset =
+        converter.ToPhysical(child_offset, child.Size());
+    EnsureAnchorQuery().SetFromChild(*anchor_query, additional_offset, *options,
+                                     context);
   }
 }
 
@@ -242,34 +260,26 @@ void FragmentBuilder::PropagateFromLayoutResult(
       child_result.HasOrthogonalFallbackSizeDescendant();
 }
 
-ScrollStartTargetCandidates& FragmentBuilder::EnsureScrollStartTargets() {
-  if (!scroll_start_targets_) {
-    scroll_start_targets_ = MakeGarbageCollected<ScrollStartTargetCandidates>();
+void FragmentBuilder::UpdateScrollInitialTarget(
+    const LayoutObject* new_target) {
+  if (new_target != scroll_start_target_ &&
+      (!scroll_start_target_ ||
+       new_target->IsBeforeInPreOrder(*scroll_start_target_))) {
+    scroll_start_target_ = new_target;
   }
-  return *scroll_start_targets_;
 }
 
-void FragmentBuilder::PropagateScrollStartTarget(
+void FragmentBuilder::PropagateScrollInitialTarget(
     const PhysicalFragment& child) {
-  auto UpdateScrollStartTarget = [](Member<const LayoutBox>& old_target,
-                                    const LayoutBox* new_target) {
-    if (new_target &&
-        (!old_target || old_target->IsBeforeInPreOrder(*new_target))) {
-      old_target = new_target;
+  if (child.Style().ScrollInitialTarget() != EScrollInitialTarget::kNone) {
+    if (auto* child_object = child.GetMutableLayoutObject()) {
+      UpdateScrollInitialTarget(child_object);
     }
-  };
-  const auto* child_box = DynamicTo<LayoutBox>(child.GetLayoutObject());
-  if (child.Style().ScrollStartTargetY() != EScrollStartTarget::kNone) {
-    UpdateScrollStartTarget(EnsureScrollStartTargets().y, child_box);
-  }
-  if (child.Style().ScrollStartTargetX() != EScrollStartTarget::kNone) {
-    UpdateScrollStartTarget(EnsureScrollStartTargets().x, child_box);
   }
 
-  // Prefer deeper scroll-start-targets.
-  if (const auto* targets = child.PropagatedScrollStartTargets()) {
-    UpdateScrollStartTarget(EnsureScrollStartTargets().y, targets->y);
-    UpdateScrollStartTarget(EnsureScrollStartTargets().x, targets->x);
+  if (const Member<const LayoutObject> target =
+          child.PropagatedScrollInitialTarget()) {
+    UpdateScrollInitialTarget(target);
   }
 }
 
@@ -287,13 +297,24 @@ void FragmentBuilder::PropagateFromFragment(
     return;
   }
 
-  // Propagate anchors from the |child|. Anchors are in |OofData| but the
-  // |child| itself may have an anchor.
-  PropagateChildAnchors(child, child_offset + relative_offset);
+  if (child.HasAnchorQueryToPropagate()) {
+    // This child either is an anchor, or has anchors inside (or both). They are
+    // to be propagated as soon as the container size is known.
+    LogicalOffset total_offset = child_offset + relative_offset;
+    if (HasFinalSize()) {
+      // When handling OOFs (after in-flow layout is finished) and an OOF wants
+      // to propagate anchors, it needs to be done right away, since there may
+      // be subsequent OOFs that have queries against those anchors.
+      PropagateChildAnchors(child, total_offset);
+    } else {
+      children_with_size_dependent_propagation_.push_back(
+          LogicalFragmentLink(child, total_offset));
+    }
+  }
 
   PropagateStickyDescendants(child);
   PropagateSnapAreas(child);
-  PropagateScrollStartTarget(child);
+  PropagateScrollInitialTarget(child);
 
   // Propagate info about OOF descendants if necessary. This part must be
   // skipped when adding OOF children to fragmentainers, as propagation is
@@ -404,7 +425,7 @@ void FragmentBuilder::AddChildInternal(const PhysicalFragment* child,
   // In order to know where list-markers are within the children list (for the
   // |SimplifiedLayoutAlgorithm|) we always place them as the first child.
   if (child->IsListMarker()) {
-    children_.push_front(LogicalFragmentLink{std::move(child), child_offset});
+    children_.push_front(LogicalFragmentLink(*child, child_offset));
     return;
   }
 
@@ -413,13 +434,12 @@ void FragmentBuilder::AddChildInternal(const PhysicalFragment* child,
     // ::placeholder earlier.
     const wtf_size_t size = children_.size();
     if (size > 0) {
-      children_.insert(size - 1,
-                       LogicalFragmentLink{std::move(child), child_offset});
+      children_.insert(size - 1, LogicalFragmentLink(*child, child_offset));
       return;
     }
   }
 
-  children_.push_back(LogicalFragmentLink{std::move(child), child_offset});
+  children_.push_back(LogicalFragmentLink(*child, child_offset));
 }
 
 void FragmentBuilder::AddOutOfFlowChildCandidate(
@@ -998,6 +1018,16 @@ void FragmentBuilder::PropagateSpaceShortage(
   UpdateMinimalSpaceShortage(space_shortage, &minimal_space_shortage_);
 }
 
+void FragmentBuilder::Finalize() {
+#if DCHECK_IS_ON()
+  DCHECK(!is_finalized_);
+  is_finalized_ = true;
+#endif
+
+  has_final_size_ = true;
+  PropagateSizeDependentData();
+}
+
 const LayoutResult* FragmentBuilder::Abort(LayoutResult::EStatus status) {
   return MakeGarbageCollected<LayoutResult>(
       LayoutResult::FragmentBuilderPassKey(), status, this);
@@ -1018,5 +1048,14 @@ String FragmentBuilder::ToString() const {
 }
 
 #endif
+
+void FragmentBuilder::PropagateSizeDependentData() {
+  DCHECK(has_final_size_);
+  for (const LogicalFragmentLink& link :
+       children_with_size_dependent_propagation_) {
+    PropagateChildAnchors(*link.fragment, link.offset);
+  }
+  children_with_size_dependent_propagation_.clear();
+}
 
 }  // namespace blink

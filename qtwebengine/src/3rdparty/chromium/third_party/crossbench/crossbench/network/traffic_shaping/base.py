@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Iterator
 from crossbench.flags.base import Flags
 
 if TYPE_CHECKING:
-  from crossbench.browsers.browser import Browser
+  from crossbench.browsers.attributes import BrowserAttributes
   from crossbench.network.base import Network
   from crossbench.plt.base import Platform
   from crossbench.runner.groups.session import BrowserSessionRunGroup
@@ -28,7 +28,7 @@ class TrafficShaper(abc.ABC):
     return self._browser_platform
 
   @property
-  def runner_platform(self) -> Platform:
+  def host_platform(self) -> Platform:
     return self._browser_platform.host_platform
 
   @property
@@ -39,8 +39,8 @@ class TrafficShaper(abc.ABC):
   def is_running(self) -> bool:
     return self._is_running
 
-  def extra_flags(self, browser: Browser) -> Flags:
-    del browser
+  def extra_flags(self, browser_attributes: BrowserAttributes) -> Flags:
+    del browser_attributes
     assert self.is_running, "TrafficShaper is not running."
     return Flags()
 
@@ -55,12 +55,7 @@ class TrafficShaper(abc.ABC):
     finally:
       self._is_running = False
 
-
-class NoTrafficShaper(TrafficShaper):
-
-  @property
-  def is_live(self) -> bool:
-    return True
-
-  def __str__(self) -> str:
-    return "full"
+  @contextlib.contextmanager
+  def pause(self):
+    """Temporarily pause traffic shaping if supported."""
+    yield None

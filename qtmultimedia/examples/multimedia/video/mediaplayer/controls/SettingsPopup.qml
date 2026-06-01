@@ -11,10 +11,18 @@ Popup {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    background: Rectangle {
-        color: "#F6F6F6"
+    // returns tool tip body, if any
+    function pcTooltip(availability) {
+        switch (availability) {
+        case MediaPlayer.AlwaysOn:
+            return qsTr("Pitch compensation enforced on by this backend")
+        case MediaPlayer.Available:
+            return mediaPlayer.playbackRate === 1 ?
+                        qsTr("Pitch compensation will not have any noticeable effect at normal speed") : ""
+        case MediaPlayer.Unavailable:
+            return qsTr("Pitch compensation is not supported on this backend")
+        }
     }
-
 
     required property MetadataInfo metadataInfo
     required property MediaPlayer mediaPlayer
@@ -36,7 +44,7 @@ Popup {
     Flickable {
         id: flickable
         implicitWidth: mainLayout.width
-        implicitHeight: landscapeSettingsPopup ? 200 : 340
+        implicitHeight: landscapeSettingsPopup ? 250 : 340
         contentWidth: mainLayout.width
         contentHeight: mainLayout.height
         flickableDirection: Flickable.VerticalFlick
@@ -103,6 +111,33 @@ Popup {
                     }
 
                     Label {
+                        text: qsTr("Pitch Compensation")
+                        Layout.fillWidth: true
+                        enabled: mediaPlayer.pitchCompensationAvailability === MediaPlayer.Available
+                        font.pixelSize: 14
+                    }
+
+                    Switch {
+                        id: pitchSwitch
+
+                        // initial value for pitchcompensation
+                        checked: mediaPlayer.pitchCompensation
+
+                        // enabled being false means greyed out, uninteractable switch
+                        enabled: mediaPlayer.pitchCompensationAvailability === MediaPlayer.Available
+
+                        ToolTip {
+                            visible: pitchSwitch.hovered && text !== ""
+                            text: pcTooltip(mediaPlayer.pitchCompensationAvailability)
+                        }
+
+                        // sets the backend based on switch status
+                        onToggled: {
+                            settingsController.mediaPlayer.pitchCompensation = checked
+                        }
+                    }
+
+                    Label {
                         text: qsTr("Audio Tracks")
                         enabled: audioCb.enabled
                         Layout.fillWidth: true
@@ -112,7 +147,6 @@ Popup {
                     CustomComboBox {
                         id: audioCb
                         tracksInfo: settingsController.audioTracksInfo
-
                     }
 
                     Label {
@@ -156,7 +190,8 @@ Popup {
                     id: metadataRect
                     implicitWidth: 240
                     implicitHeight: metadataList.height
-                    border.color: "#8E8E93"
+                    border.color: palette.dark
+                    color: palette.window
                     radius: 6
 
                     Column {
@@ -167,7 +202,7 @@ Popup {
                         Repeater {
                             Row {
                                 spacing: metadataList.padding
-                                Text {
+                                Label {
                                     text: model.name
                                     font.bold: true
                                     width: (metadataRect.width - 3 * metadataList.padding) / 2
@@ -176,7 +211,7 @@ Popup {
                                     font.pixelSize: 12
                                 }
 
-                                Text {
+                                Label {
                                     text: model.value
                                     width: (metadataRect.width - 3 * metadataList.padding) / 2
                                     horizontalAlignment: Text.AlignLeft
@@ -189,7 +224,7 @@ Popup {
                         }
                     }
 
-                    Text {
+                    Label {
                         id: metadataNoList
                         visible: settingsController.metadataInfo.count === 0
                         anchors.centerIn: parent
@@ -200,5 +235,4 @@ Popup {
             }
         }
     }
-
 }

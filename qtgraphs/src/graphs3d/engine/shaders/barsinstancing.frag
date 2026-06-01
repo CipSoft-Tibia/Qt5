@@ -63,3 +63,11 @@ void SPECULAR_LIGHT()
     const vec3 specularColor = vec3(specularBrightness);
     SPECULAR += shine * specularColor;
 }
+
+void POST_PROCESS()
+{
+    if (shaded)
+        COLOR_SUM = vec4(DIFFUSE.rgb + SPECULAR + EMISSIVE, DIFFUSE.a);
+    else
+        COLOR_SUM = diffuse;
+}

@@ -89,7 +89,7 @@ public:
     static bool hasAnchor(QQuickItem *item, const QString &name);
     static QQuickItem *anchorFillTargetItem(QQuickItem *item);
     static QQuickItem *anchorCenterInTargetItem(QQuickItem *item);
-    static QPair<QString, QObject*> anchorLineTarget(QQuickItem *item, const QString &name, QQmlContext *context);
+    static std::pair<QString, QObject*> anchorLineTarget(QQuickItem *item, const QString &name, QQmlContext *context);
     static void resetAnchor(QQuickItem *item, const QString &name);
     static void emitComponentCompleteSignalForAttachedProperty(QObject *item);
 

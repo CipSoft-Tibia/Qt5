@@ -31,22 +31,30 @@ public:
     void toggleSeries2(int enabled);
     void toggleSeries3(int enabled);
     void toggleSeries4(int enabled);
+    void toggleLineSeries(int enabled);
     void toggleSmooth(int enabled);
     void toggleSurfaceGrid(int enable);
     void toggleSurface(int enable);
     void toggleSeriesVisible(int enable);
+    void toggleFill(int enable);
     void toggleSmoothS2(int visible);
     void toggleSurfaceGridS2(int enable);
     void toggleSurfaceS2(int enable);
     void toggleSeries2Visible(int enable);
+    void toggleFillS2(int enable);
     void toggleSmoothS3(int visible);
     void toggleSurfaceGridS3(int enable);
     void toggleSurfaceS3(int enable);
     void toggleSeries3Visible(int enable);
+    void toggleFillS3(int enable);
     void toggleSmoothS4(int visible);
     void toggleSurfaceGridS4(int enable);
     void toggleSurfaceS4(int enable);
     void toggleSeries4Visible(int enable);
+    void toggleFillS4(int enable);
+    void toggleLineSurfaceGrid(int enable);
+    void toggleLineSurface(int enable);
+    void toggleFillLine(int enable);
 
     void toggleSqrtSin(int enable);
     void togglePlane(int enable);
@@ -95,9 +103,12 @@ public:
     void massiveTestAppendAndScroll();
     void testAxisReverse();
     void testDataOrdering();
+    void testNanSeries();
     void setAspectRatio(int ratio);
     void setHorizontalAspectRatio(int ratio);
     void setSurfaceTexture(int enabled);
+    void setSurfaceAlphaTexture(int enabled);
+    void setSurfaceAlphaTextureFile(int enabled);
 
 public Q_SLOTS:
     void changeShadowQuality(int quality);
@@ -143,6 +154,7 @@ private:
     QSurfaceDataRow createMultiRow(int row, int series, bool change);
     void populateRisingSeries(QSurface3DSeries *series, int rows, int columns, float minValue,
                               float maxValue, bool ascendingX, bool ascendingZ);
+    void populateNanSeries(QSurface3DSeries *series, int rows, int columns);
 
     Q3DSurfaceWidgetItem *m_graph;
     QSurface3DSeries *m_multiseries[4];
@@ -150,6 +162,7 @@ private:
     QSurface3DSeries *m_series2;
     QSurface3DSeries *m_series3;
     QSurface3DSeries *m_series4;
+    QSurface3DSeries *m_lineSeries;
     QSlider *m_gridSliderX;
     QSlider *m_gridSliderZ;
     QSlider *m_axisRangeSliderX;
@@ -160,6 +173,7 @@ private:
     QCheckBox *m_series2CB;
     QCheckBox *m_series3CB;
     QCheckBox *m_series4CB;
+    QCheckBox *m_lineSeriesCB;
     bool m_gridSlidersLocked;
     int m_xCount;
     int m_zCount;
@@ -182,6 +196,7 @@ private:
     QSurface3DSeries::DrawFlags m_drawMode2;
     QSurface3DSeries::DrawFlags m_drawMode3;
     QSurface3DSeries::DrawFlags m_drawMode4;
+    QSurface3DSeries::DrawFlags m_drawMode5;
     float m_limitX;
     float m_limitZ;
     float m_offset;

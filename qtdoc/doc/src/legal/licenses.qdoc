@@ -35,21 +35,19 @@
     //! TODO: Use grouping for automatically-generated list
     \details {Modules available under GNU General Public License v3}
         \list
-            \li \l {qtcharts-index.html}{Qt Charts}
             \li \l {qtcoap-index.html}{Qt CoAP}
-            \li \l {qtdatavisualization-index.html}{Qt Data Visualization}
             \li \l {qtgraphs-index.html}{Qt Graphs}
             \li \l {qtgrpc-index.html}{Qt GRPC}
             \li \l {qthttpserver-index.html}{Qt HTTP Server}
             \li \l {qtlottieanimation-index.html}{Qt Lottie Animation}
             \li \l {qtmqtt-index.html}{Qt MQTT}
             \li \l {qtnetworkauth-index.html}{Qt Network Authorization}
+            \li \l {qtqmlcompiler-index.html}{Qt Qml Compiler}
             \li \l {qtquick3d-index.html}{Qt Quick 3D}
             \li \l {qtquick3dphysics-index.html}{Qt Quick 3D Physics}
             \li \l {qtquicktimeline-index.html}{Qt Quick Timeline}
             \li \l {qtvirtualkeyboard-index.html}{Qt Virtual Keyboard}
             \li \l {qtwaylandcompositor-index.html}{Qt Wayland Compositor}
-            \li \l {qtgraphicaleffects5-index.html}{Qt 5 Compatibility APIs: Graphical Effects}
         \endlist
     \enddetails
 
@@ -67,14 +65,14 @@
     \l {Qt Educational License}{Educational licenses} are available for students
     and educators in qualified educational institutions or universities.
 
-    See \l{http://qt.io/licensing/} for an overview of Qt licensing.
+    See \l{https://qt.io/licensing/} for an overview of Qt licensing.
 
     \section1 Purchasing and Sales Information
 
-    To purchase a Qt license, visit \l{http://www.qt.io/download/}.
+    To purchase a Qt license, visit \l{https://www.qt.io/download/}.
 
     For further information and assistance about Qt licensing, contact our
-    sales; see \l{http://www.qt.io/locations/} for contact details.
+    sales; see \l{https://www.qt.io/locations/} for contact details.
 
     \section1 Third-Party Code in Qt
 

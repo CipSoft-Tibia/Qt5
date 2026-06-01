@@ -92,6 +92,7 @@ class WebContentsViewMac : public WebContentsView,
   void UpdateWindowControlsOverlay(const gfx::Rect& bounding_rect) override;
   BackForwardTransitionAnimationManager*
   GetBackForwardTransitionAnimationManager() override;
+  void DestroyBackForwardTransitionAnimationManager() override;
 
   // RenderViewHostDelegateView:
   void StartDragging(const DropData& drop_data,
@@ -114,7 +115,6 @@ class WebContentsViewMac : public WebContentsView,
       RenderFrameHost* render_frame_host,
       mojo::PendingRemote<blink::mojom::PopupMenuClient> popup_client,
       const gfx::Rect& bounds,
-      int item_height,
       double item_font_size,
       int selected_item,
       std::vector<blink::mojom::MenuItemPtr> menu_items,
@@ -150,6 +150,9 @@ class WebContentsViewMac : public WebContentsView,
   // Used to override the creation of RenderWidgetHostViews in tests.
   CONTENT_EXPORT static void InstallCreateHookForTests(
       RenderWidgetHostViewCreateFunction create_render_widget_host_view);
+
+  CONTENT_EXPORT static void SetReadWritePermissionsForFileForTests(
+      base::File& file);
 
  private:
   WebContentsViewCocoa* GetInProcessNSView() const;

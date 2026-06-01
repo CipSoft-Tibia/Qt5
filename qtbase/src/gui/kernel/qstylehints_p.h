@@ -19,6 +19,7 @@
 #include <QPalette>
 #include <private/qguiapplication_p.h>
 #include "qstylehints.h"
+#include "qaccessibilityhints.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -43,11 +44,15 @@ public:
 
     Qt::ColorScheme colorScheme() const { return m_colorScheme; }
     void updateColorScheme(Qt::ColorScheme colorScheme);
+    void update(const QPlatformTheme *theme);
+
+    QAccessibilityHints *accessibilityHints() const;
 
     static QStyleHintsPrivate *get(QStyleHints *q);
 
 private:
     Qt::ColorScheme m_colorScheme = Qt::ColorScheme::Unknown;
+    QAccessibilityHints* m_accessibilityHints = nullptr;
 };
 
 QT_END_NAMESPACE

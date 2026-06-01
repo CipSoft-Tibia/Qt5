@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2019 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QARRAYDATA_H
 #define QARRAYDATA_H
@@ -39,7 +40,7 @@ struct QArrayData
     };
     Q_DECLARE_FLAGS(ArrayOptions, ArrayOption)
 
-    QBasicAtomicInt m_ref;
+    QBasicAtomicInt ref_;
     ArrayOptions flags;
     qsizetype alloc;
 
@@ -56,19 +57,19 @@ struct QArrayData
     /// Returns true if sharing took place
     bool ref() noexcept
     {
-        m_ref.ref();
+        ref_.ref();
         return true;
     }
 
     /// Returns false if deallocation is necessary
     bool deref() noexcept
     {
-        return m_ref.deref();
+        return ref_.deref();
     }
 
     bool isShared() const noexcept
     {
-        return m_ref.loadRelaxed() != 1;
+        return ref_.loadRelaxed() != 1;
     }
 
     // Returns true if a detach is necessary before modifying the data
@@ -76,7 +77,7 @@ struct QArrayData
     // detaching is necessary, you should be in a non-const function already
     bool needsDetach() noexcept
     {
-        return m_ref.loadRelaxed() > 1;
+        return ref_.loadRelaxed() > 1;
     }
 
     qsizetype detachCapacity(qsizetype newSize) const noexcept

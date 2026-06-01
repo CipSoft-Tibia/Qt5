@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import {html, render} from '../../../ui/lit/lit.js';
 
 // clean-css does not compile this file correctly. So as a workaround adding styles inline.
 const styles = `
@@ -111,7 +111,6 @@ const splitViewStyles = new CSSStyleSheet();
 splitViewStyles.replaceSync(styles);
 
 export class SplitView extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-split-view`;
   readonly #shadow = this.attachShadow({mode: 'open'});
   #mousePos = [0, 0];
   #mainAxisIdx = 0;
@@ -178,8 +177,8 @@ export class SplitView extends HTMLElement {
 
   #render = (): void => {
     // clang-format off
-    LitHtml.render(
-      LitHtml.html`
+    render(
+      html`
         <div class="wrapper ${this.#mainAxisIdx === 1 ? 'horizontal' : ''}">
           <div class="container">
             <slot name="main"></slot>

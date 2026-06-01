@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKSATURATIONLIGHTNESSPICKER_P_H
 #define QQUICKSATURATIONLIGHTNESSPICKER_P_H
@@ -21,6 +22,32 @@
 QT_BEGIN_NAMESPACE
 
 class QQuickSaturationLightnessPickerPrivate;
+
+class Q_QUICKDIALOGS2QUICKIMPL_EXPORT QQuickSaturationLightnessPickerCanvas : public QQuickItem
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(SaturationLightnessPickerCanvas)
+    Q_PROPERTY(qreal hue READ hue WRITE setHue NOTIFY hueChanged FINAL)
+
+public:
+    QQuickSaturationLightnessPickerCanvas(QQuickItem *parent = nullptr);
+
+    qreal hue() const { return m_hue; }
+    void setHue(qreal h);
+
+signals:
+    void hueChanged();
+
+protected:
+    QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *) override;
+
+private:
+    qreal m_hue;
+    QImage m_image;
+    QSizeF m_lastSize;
+
+    QImage generateImage(int width, int height, double hue01) const;
+};
 
 class Q_QUICKDIALOGS2QUICKIMPL_EXPORT QQuickSaturationLightnessPicker
     : public QQuickAbstractColorPicker

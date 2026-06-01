@@ -152,16 +152,16 @@
             \l createWindow() or \l newWindowRequested().
 
     \value [since 5.10] ToggleBold
-           Toggles boldness for the selection or at the cursor position.
+           Toggles boldness for the selection, or at the cursor position.
            Requires \c contenteditable="true".
     \value [since 5.10] ToggleItalic
-           Toggles italics for the selection or at the cursor position.
+           Toggles italics for the selection, or at the cursor position.
            Requires \c contenteditable="true".
     \value [since 5.10] ToggleUnderline
-           Toggles underlining of the selection or at the cursor position.
+           Toggles underlining of the selection, or at the cursor position.
            Requires \c contenteditable="true".
     \value [since 5.10] ToggleStrikethrough
-           Toggles striking through the selection or at the cursor position.
+           Toggles striking through the selection, or at the cursor position.
            Requires \c contenteditable="true".
 
     \value [since 5.10] AlignLeft
@@ -590,7 +590,7 @@
     \fn void QWebEnginePage::geometryChangeRequested(const QRect& geom)
 
     This signal is emitted whenever the document wants to change the position and size of the
-    page to \a geom. This can happen for example through JavaScript.
+    page to \a geom. This can happen, for example, through JavaScript.
 
     \note \l{QWindow::}{setGeometry()} expects a size excluding the window
     decoration, while \a geom includes it. You have to remove the size of the frame margins
@@ -644,7 +644,7 @@
     \brief The title of the page as defined by the HTML \c <title> element.
 
     If the page has no \c <title> element, then the URL is used instead. For \c
-    file:// URLs only the filename is used and not the full path.
+    file:// URLs only the filename is used, and not the full path.
 
     By default, before any content has been loaded, this property contains an
     empty string.
@@ -703,10 +703,10 @@
 
     \note This method will not affect session or global history for the page.
 
-    \warning This function works only for HTML, for other mime types (such as XHTML and SVG)
+    \warning This function works only for HTML. For other MIME types (such as XHTML and SVG)
     setContent() should be used instead.
 
-    \warning The content will be percent encoded before being sent to the renderer via IPC.
+    \warning The content will be percent encoded before being sent to the renderer.
     This may increase its size. The maximum size of the percent encoded content is
     2 megabytes minus 30 bytes.
 
@@ -725,7 +725,7 @@
 
     \note This method will not affect session or global history for the page.
 
-    \warning The content will be percent encoded before being sent to the renderer via IPC.
+    \warning The content will be percent encoded before being sent to the renderer.
     This may increase its size. The maximum size of the percent encoded content is
     2 megabytes minus 6 bytes plus the length of the mime type string.
 
@@ -757,7 +757,7 @@
     \c MainWorld.
 
     When the script has been executed, \a resultCallback is called with the result of the last
-    executed statement. \c resultCallback can be any of a function pointer, a functor or a lambda,
+    executed statement. \c resultCallback can be any of a function pointer, a functor, or a lambda,
     and it is expected to take a QVariant parameter. For example:
 
     \code
@@ -807,9 +807,6 @@
 /*!
     \fn void QWebEnginePage::featurePermissionRequestCanceled(const QUrl &securityOrigin, Feature feature)
     \deprecated [6.8] This signal is no longer emitted.
-
-    This signal is emitted when the web site identified by \a securityOrigin cancels a previously issued
-    request to make use of \a feature.
 
     \sa featurePermissionRequested(), setFeaturePermission()
 

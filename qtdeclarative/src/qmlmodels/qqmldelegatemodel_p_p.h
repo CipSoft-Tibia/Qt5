@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDATAMODEL_P_P_H
 #define QQMLDATAMODEL_P_P_H
@@ -37,26 +38,46 @@ typedef QQmlListCompositor Compositor;
 
 class QQmlDelegateModelAttachedMetaObject;
 class QQmlAbstractDelegateComponent;
+class QQmlTableInstanceModel;
 
 class Q_QMLMODELS_EXPORT QQmlDelegateModelItemMetaType final
     : public QQmlRefCounted<QQmlDelegateModelItemMetaType>
 {
 public:
-    QQmlDelegateModelItemMetaType(QV4::ExecutionEngine *engine, QQmlDelegateModel *model, const QStringList &groupNames);
+    enum class ModelKind : quint8 {
+        InstanceModel,
+        DelegateModel,
+        TableInstanceModel,
+    };
+
+    QQmlDelegateModelItemMetaType(
+            QV4::ExecutionEngine *engine, QQmlDelegateModel *model, const QStringList &groupNames);
+    QQmlDelegateModelItemMetaType(
+            QV4::ExecutionEngine *engine, QQmlTableInstanceModel *model);
     ~QQmlDelegateModelItemMetaType();
 
-    void initializeMetaObject();
+    void initializeAttachedMetaObject();
     void initializePrototype();
 
     int parseGroups(const QStringList &groupNames) const;
     int parseGroups(const QV4::Value &groupNames) const;
 
-    QPointer<QQmlDelegateModel> model;
+    QQmlDelegateModel *delegateModel() const
+    {
+        return modelKind == ModelKind::DelegateModel
+                ? static_cast<QQmlDelegateModel *>(model.get())
+                : nullptr;
+    }
+
+    void emitModelChanged() const;
+
+    QPointer<QQmlInstanceModel> model;
     const int groupCount;
     QV4::ExecutionEngine * const v4Engine;
-    QQmlDelegateModelAttachedMetaObject *metaObject;
+    QQmlRefPointer<QQmlDelegateModelAttachedMetaObject> attachedMetaObject;
     const QStringList groupNames;
     QV4::PersistentValue modelItemProto;
+    ModelKind modelKind = ModelKind::InstanceModel;
 };
 
 class QQmlAdaptorModel;
@@ -90,7 +111,7 @@ public:
                 || ((groups & Compositor::UnresolvedFlag) && (groups & Compositor::GroupMask));
     }
 
-    void Dispose();
+    void dispose();
 
     QObject *modelObject() { return this; }
 
@@ -105,10 +126,11 @@ public:
     int modelIndex() const { return index; }
     virtual void setModelIndex(int idx, int newRow, int newColumn, bool alwaysEmit = false);
 
-    virtual QV4::ReturnedValue get() { return QV4::QObjectWrapper::wrap(v4, this); }
+    virtual QV4::ReturnedValue get() { return QV4::QObjectWrapper::wrap(metaType->v4Engine, this); }
 
     virtual void setValue(const QString &role, const QVariant &value) { Q_UNUSED(role); Q_UNUSED(value); }
     virtual bool resolveIndex(const QQmlAdaptorModel &, int) { return false; }
+    virtual QQmlRefPointer<QQmlContextData> initProxy() { return contextData; }
 
     static QV4::ReturnedValue get_model(const QV4::FunctionObject *, const QV4::Value *thisObject, const QV4::Value *argv, int argc);
     static QV4::ReturnedValue get_groups(const QV4::FunctionObject *, const QV4::Value *thisObject, const QV4::Value *argv, int argc);
@@ -117,18 +139,35 @@ public:
     static QV4::ReturnedValue set_member(QQmlDelegateModelItem *thisItem, uint flag, const QV4::Value &arg);
     static QV4::ReturnedValue get_index(QQmlDelegateModelItem *thisItem, uint flag, const QV4::Value &arg);
 
-    QV4::ExecutionEngine *v4;
-    QQmlRefPointer<QQmlDelegateModelItemMetaType> const metaType;
+    QQmlRefPointer<QQmlDelegateModelItemMetaType> metaType;
     QQmlRefPointer<QQmlContextData> contextData;
     QPointer<QObject> object;
-    QPointer<QQmlDelegateModelAttached> attached;
-    QQDMIncubationTask *incubationTask;
-    QQmlComponent *delegate;
-    int poolTime;
-    int objectRef;
-    int scriptRef;
-    int groups;
-    int index;
+    QQDMIncubationTask *incubationTask = nullptr;
+    QQmlComponent *delegate = nullptr;
+    int objectRef = 0;
+    int scriptRef = 0;
+    int groups = 0;
+
+    QQmlDelegateModelAttached *attached() const
+    {
+        if (!object)
+            return nullptr;
+
+        QQmlData *ddata = QQmlData::get(object);
+        if (!ddata || !ddata->hasExtendedData())
+            return nullptr;
+
+        return static_cast<QQmlDelegateModelAttached *>(
+                ddata->attachedProperties()->value(
+                        QQmlPrivate::attachedPropertiesFunc<QQmlDelegateModel>()));
+    }
+
+    void disableStructuredModelData() { useStructuredModelData = false; }
+
+    QDynamicMetaObjectData *exchangeMetaObject(QDynamicMetaObjectData *metaObject)
+    {
+        return std::exchange(d_ptr->metaObject, metaObject);
+    }
 
 Q_SIGNALS:
     void modelIndexChanged();
@@ -137,8 +176,11 @@ Q_SIGNALS:
 
 protected:
     void objectDestroyed(QObject *);
-    int row;
-    int column;
+
+    int index = -1;
+    int row = -1;
+    int column = -1;
+    bool useStructuredModelData = true;
 };
 
 namespace QV4 {
@@ -167,14 +209,74 @@ void QV4::Heap::QQmlDelegateModelItemObject::init(QQmlDelegateModelItem *item)
 class QQmlReusableDelegateModelItemsPool
 {
 public:
-    void insertItem(QQmlDelegateModelItem *modelItem);
+    bool insertItem(QQmlDelegateModelItem *modelItem);
     QQmlDelegateModelItem *takeItem(const QQmlComponent *delegate, int newIndexHint);
     void reuseItem(QQmlDelegateModelItem *item, int newModelIndex);
     void drain(int maxPoolTime, std::function<void(QQmlDelegateModelItem *cacheItem)> releaseItem);
-    int size() { return m_reusableItemsPool.size(); }
+    int size()
+    {
+        Q_ASSERT(m_reusableItemsPool.size() <= MaxSize);
+        return int(m_reusableItemsPool.size());
+    }
 
 private:
-    QList<QQmlDelegateModelItem *> m_reusableItemsPool;
+    struct PoolItem
+    {
+        QQmlDelegateModelItem *item = nullptr;
+        int poolTime = 0;
+    };
+
+    static constexpr size_t MaxSize = size_t(std::numeric_limits<int>::max());
+
+    std::vector<PoolItem> m_reusableItemsPool;
+};
+
+template<typename Target>
+class QQmlDelegateModelReadOnlyMetaObject : QDynamicMetaObjectData
+{
+    Q_DISABLE_COPY_MOVE(QQmlDelegateModelReadOnlyMetaObject)
+
+public:
+    QQmlDelegateModelReadOnlyMetaObject(const Target &target, int readOnlyProperty)
+        : target(target)
+        , readOnlyProperty(readOnlyProperty)
+    {
+        if (QQmlDelegateModelItem *object = target)
+            original = object->exchangeMetaObject(this);
+    }
+
+    ~QQmlDelegateModelReadOnlyMetaObject()
+    {
+        if (QQmlDelegateModelItem *object = target)
+            object->exchangeMetaObject(original);
+    }
+
+    void objectDestroyed(QObject *o) final
+    {
+        if (target)
+            original->objectDestroyed(o);
+    }
+
+    QMetaObject *toDynamicMetaObject(QObject *o) final
+    {
+        return target ? original->toDynamicMetaObject(o) : nullptr;
+    }
+
+    int metaCall(QObject *o, QMetaObject::Call call, int id, void **argv) final
+    {
+        if (!target)
+            return 0;
+
+        if (id == readOnlyProperty && call == QMetaObject::WriteProperty)
+            return 0;
+
+        return original->metaCall(o, call, id, argv);
+    }
+
+private:
+    Target target = {};
+    QDynamicMetaObjectData *original = nullptr;
+    int readOnlyProperty = -1;
 };
 
 class QQmlDelegateModelPrivate;
@@ -186,7 +288,9 @@ public:
         , incubating(nullptr)
         , vdm(l) {}
 
-    void initializeRequiredProperties(QQmlDelegateModelItem *modelItemToIncubate, QObject* object);
+    void initializeRequiredProperties(
+            QQmlDelegateModelItem *modelItemToIncubate, QObject* object,
+            QQmlDelegateModel::DelegateModelAccess access);
     void statusChanged(Status) override;
     void setInitialState(QObject *) override;
 
@@ -201,11 +305,11 @@ public:
 class QQmlDelegateModelGroupEmitter
 {
 public:
-    virtual ~QQmlDelegateModelGroupEmitter() {}
+    virtual ~QQmlDelegateModelGroupEmitter();
     virtual void emitModelUpdated(const QQmlChangeSet &changeSet, bool reset) = 0;
-    virtual void createdPackage(int, QQuickPackage *) {}
-    virtual void initPackage(int, QQuickPackage *) {}
-    virtual void destroyingPackage(QQuickPackage *) {}
+    virtual void createdPackage(int, QQuickPackage *);
+    virtual void initPackage(int, QQuickPackage *);
+    virtual void destroyingPackage(QQuickPackage *);
 
     QIntrusiveListNode emitterNode;
 };
@@ -325,7 +429,7 @@ public:
     QQmlStrongJSQObjectReference<QQmlComponent> m_delegate;
     QQmlAbstractDelegateComponent *m_delegateChooser;
     QMetaObject::Connection m_delegateChooserChanged;
-    QQmlDelegateModelItemMetaType *m_cacheMetaType;
+    QQmlRefPointer<QQmlDelegateModelItemMetaType> m_cacheMetaType;
     QPointer<QQmlContext> m_context;
     QQmlDelegateModelParts *m_parts;
     QQmlDelegateModelGroupEmitterList m_pendingParts;

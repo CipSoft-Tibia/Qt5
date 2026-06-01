@@ -4,6 +4,7 @@
 
 #include <inttypes.h>
 
+#include "base/strings/stringprintf.h"
 #include "ui/display/screen_info.h"
 
 namespace display {
@@ -24,8 +25,7 @@ const char* ToOrientationString(mojom::ScreenOrientation orientation_type) {
     case mojom::ScreenOrientation::kLandscapeSecondary:
       return "LandscapeSecondary";
   }
-  NOTREACHED_IN_MIGRATION();
-  return "unknown";
+  NOTREACHED();
 }
 
 }  // namespace

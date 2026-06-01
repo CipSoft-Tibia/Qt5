@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/public/common/page_state/page_state_serialization.h"
 
 #include <algorithm>
@@ -14,6 +9,8 @@
 #include <utility>
 
 #include "base/containers/span.h"
+#include "base/containers/to_vector.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/pickle.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -43,9 +40,8 @@ float g_device_scale_factor_for_testing = 0.0;
 
 void AppendDataToRequestBody(
     const scoped_refptr<network::ResourceRequestBody>& request_body,
-    const char* data,
-    size_t data_length) {
-  request_body->AppendBytes(data, data_length);
+    base::span<const uint8_t> data) {
+  request_body->AppendCopyOfBytes(data);
 }
 
 void AppendFileRangeToRequestBody(
@@ -86,6 +82,9 @@ bool AppendReferencedFilesFromDocumentState(
   //
   // For reference, see FormController::formStatesFromStateVector in
   // third_party/WebKit/Source/core/html/forms/FormController.cpp.
+  //
+  // Support for PageState version 14 was added to allow validation of the file
+  // list.
 
   size_t index = 0;
 
@@ -120,11 +119,37 @@ bool AppendReferencedFilesFromDocumentState(
       return false;
 
     if (type && base::EqualsASCII(*type, "file")) {
-      if (value_size != 2)
+      // `value_size` is expected to be either:
+      // - 0 for an empty file form field
+      // - 2 for legacy PageState versions that only contain file path and
+      //   display name.
+      // - A multiple of 3 for modern PageStates, which contain a list of
+      //   (file path, name, relative path) triples within a single item.
+      //   (See File::AppendToControlState.)
+      //
+      // Extract the file path(s) for sizes 2 and 3, and continue with
+      // validation for the zero-size empty file case. Any other values of
+      // `value_size` should be considered invalid.
+      if (value_size == 2) {
+        // PageState version < 14.
+        referenced_files->emplace_back(document_state[index++]);
+        index++;  // Skip over display name.
+      } else if (value_size > 2 && value_size % 3 == 0) {
+        // PageState version >= 14.
+        // Add the file path from each group of three.
+        for (size_t i = 0; i < value_size / 3; ++i) {
+          // Double-check bounds for the 3 elements we will look at.
+          if (index + 2 >= document_state.size()) {
+            return false;
+          }
+          referenced_files->emplace_back(document_state[index++]);
+          index++;  // Skip over name.
+          index++;  // Skip over relative path.
+        }
+      } else if (value_size != 0) {
         return false;
-
-      referenced_files->emplace_back(document_state[index++]);
-      index++;  // Skip over display name.
+      }
+      // If value_size is 0, the file form field is empty, so continue.
     } else {
       index += value_size;
     }
@@ -256,15 +281,15 @@ int64_t ReadInteger64(SerializeObject* obj) {
 }
 
 void WriteReal(double data, SerializeObject* obj) {
-  WriteData(base::byte_span_from_ref(data), obj);
+  WriteData(base::byte_span_from_ref(base::allow_nonunique_obj, data), obj);
 }
 
 double ReadReal(SerializeObject* obj) {
   std::optional<base::span<const uint8_t>> data = ReadData(obj);
   if (data && data->size() == sizeof(double)) {
     double value;
-    base::byte_span_from_ref(value).copy_from(
-        data.value().first<sizeof(double)>());
+    base::byte_span_from_ref(base::allow_nonunique_obj, value)
+        .copy_from(data.value().first<sizeof(double)>());
     return value;
   }
 
@@ -308,8 +333,7 @@ void WriteString(const std::u16string& str, SerializeObject* obj) {
   // bifurcation where the Pickle version originally wrote a Windows
   // std::wstring, which then turned into std::u16string, while this code
   // originally dealt with WebString(), which then turned into std::u16string.
-  obj->pickle.WriteData(base::span(reinterpret_cast<const uint8_t*>(str.data()),
-                                   str.length() * sizeof(char16_t)));
+  obj->pickle.WriteData(base::as_byte_span(str));
 }
 
 // If str is a null optional, this simply pickles a length of -1. Otherwise,
@@ -421,8 +445,7 @@ void WriteResourceRequestBody(const network::ResourceRequestBody& request_body,
         break;
       }
       default:
-        NOTREACHED_IN_MIGRATION();
-        continue;
+        NOTREACHED();
     }
   }
   WriteInteger64(request_body.identifier(), obj);
@@ -438,9 +461,7 @@ void ReadResourceRequestBody(
     if (type == HTTPBodyElementType::kTypeData) {
       std::optional<base::span<const uint8_t>> data = ReadData(obj);
       if (data) {
-        AppendDataToRequestBody(request_body,
-                                reinterpret_cast<const char*>(data->data()),
-                                data->size());
+        AppendDataToRequestBody(request_body, *data);
       }
     } else if (type == HTTPBodyElementType::kTypeFile) {
       std::optional<std::u16string> file_path = ReadString(obj);
@@ -686,9 +707,7 @@ void WriteResourceRequestBody(const network::ResourceRequestBody& request_body,
     switch (element.type()) {
       case network::DataElement::Tag::kBytes: {
         const auto& bytes = element.As<network::DataElementBytes>().bytes();
-        const char* data = reinterpret_cast<const char*>(bytes.data());
-        data_element = mojom::Element::NewBytes(
-            std::vector<unsigned char>(data, data + bytes.size()));
+        data_element = mojom::Element::NewBytes(base::ToVector(bytes));
         break;
       }
       case network::DataElement::Tag::kFile: {
@@ -703,8 +722,7 @@ void WriteResourceRequestBody(const network::ResourceRequestBody& request_body,
         NOTIMPLEMENTED();
         continue;
       case network::DataElement::Tag::kChunkedDataPipe:
-        NOTREACHED_IN_MIGRATION();
-        continue;
+        NOTREACHED();
     }
     mojo_body->elements.push_back(std::move(data_element));
   }
@@ -718,10 +736,7 @@ void ReadResourceRequestBody(
     mojom::Element::Tag tag = element->which();
     switch (tag) {
       case mojom::Element::Tag::kBytes:
-        AppendDataToRequestBody(
-            request_body,
-            reinterpret_cast<const char*>(element->get_bytes().data()),
-            element->get_bytes().size());
+        AppendDataToRequestBody(request_body, element->get_bytes());
         break;
       case mojom::Element::Tag::kFile: {
         mojom::File* file = element->get_file().get();
@@ -1011,6 +1026,13 @@ int DecodePageStateInternal(const std::string& encoded,
 
   SerializeObject obj(base::as_byte_span(encoded));
   ReadPageState(&obj, exploded);
+
+  if (obj.version < kCurrentVersion) {
+    // Record when a PageState with an earlier version number is decoded, to
+    // estimate how long older version support should be retained.
+    base::UmaHistogramSparse("SessionRestore.PageStateOldVersions",
+                             obj.version);
+  }
   return obj.parse_error ? -1 : obj.version;
 }
 
@@ -1040,6 +1062,37 @@ void LegacyEncodePageStateForTesting(const ExplodedPageState& exploded,
   *encoded = obj.GetAsString();
 }
 
+bool GetAllFilesInPageState(const std::string& encoded,
+                            std::vector<base::FilePath>* files) {
+  ExplodedPageState exploded;
+  if (!DecodePageState(encoded, &exploded)) {
+    // If the PageState can't be decoded at all, then there are no usable files
+    // in it and it is safe to leave the `files` set empty and return true.
+    return true;
+  }
+
+  // TODO(crbug.com/40241973): Refactor to avoid sending PageState objects to
+  // the browser process, so that this use of RecursivelyAppendReferencedFiles
+  // is not needed.
+  std::vector<std::optional<std::u16string>> referenced_files;
+  if (!RecursivelyAppendReferencedFiles(exploded.top, &referenced_files)) {
+    // If the PageState can be decoded but this function failed due to an issue
+    // parsing the DocumentState, it is important to return false to indicate
+    // that the PageState is not safe to use. Some files could otherwise be
+    // present and usable without showing up in the list.
+    return false;
+  }
+
+  // Copy all of the files found into the output parameter.
+  files->reserve(referenced_files.size());
+  for (const auto& file : referenced_files) {
+    if (file) {
+      files->push_back(base::FilePath::FromUTF16Unsafe(*file));
+    }
+  }
+  return true;
+}
+
 #if BUILDFLAG(IS_ANDROID)
 bool DecodePageStateWithDeviceScaleFactorForTesting(
     const std::string& encoded,
@@ -1052,11 +1105,10 @@ bool DecodePageStateWithDeviceScaleFactorForTesting(
 }
 
 scoped_refptr<network::ResourceRequestBody> DecodeResourceRequestBody(
-    const char* data,
-    size_t size) {
+    base::span<const uint8_t> data) {
   scoped_refptr<network::ResourceRequestBody> result =
       new network::ResourceRequestBody();
-  SerializeObject obj(base::as_bytes(base::span(data, size)));
+  SerializeObject obj(data);
   ReadResourceRequestBody(&obj, result);
   // Please see the EncodeResourceRequestBody() function below for information
   // about why the contains_sensitive_info() field is being explicitly

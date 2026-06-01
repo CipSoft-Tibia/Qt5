@@ -1,9 +1,9 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 pragma ComponentBehavior: Bound
 
-import QtQuick
 import QtQuick.Templates as T
 
 T.VerticalHeaderView {
@@ -17,27 +17,5 @@ T.VerticalHeaderView {
     implicitWidth: Math.max(1, contentWidth)
     implicitHeight: syncView ? syncView.height : 0
 
-    delegate: Rectangle {
-        id: delegate
-
-        required property var model
-
-        // Qt6: add cellPadding (and font etc) as public API in headerview
-        readonly property real cellPadding: 8
-
-        implicitWidth: Math.max(control.width, text.implicitWidth + (cellPadding * 2))
-        implicitHeight: text.implicitHeight + (cellPadding * 2)
-        color: "#f6f6f6"
-        border.color: "#e4e4e4"
-
-        Label {
-            id: text
-            text: delegate.model[control.textRole]
-            width: delegate.width
-            height: delegate.height
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            color: "#ff26282a"
-        }
-    }
+    delegate: VerticalHeaderViewDelegate { }
 }

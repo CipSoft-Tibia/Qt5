@@ -515,11 +515,17 @@ void QRhiNull::resourceUpdate(QRhiCommandBuffer *cb, QRhiResourceUpdateBatch *re
             QNullTexture *texD = QRHI_RES(QNullTexture, u.rb.texture());
             if (texD) {
                 result->format = texD->format();
-                result->pixelSize = q->sizeForMipLevel(u.rb.level(), texD->pixelSize());
+                if (u.rb.rect().isValid())
+                    result->pixelSize = u.rb.rect().size();
+                else
+                    result->pixelSize = q->sizeForMipLevel(u.rb.level(), texD->pixelSize());
             } else {
                 Q_ASSERT(currentSwapChain);
                 result->format = QRhiTexture::RGBA8;
-                result->pixelSize = currentSwapChain->currentPixelSize();
+                if (u.rb.rect().isValid())
+                    result->pixelSize = u.rb.rect().size();
+                else
+                    result->pixelSize = currentSwapChain->currentPixelSize();
             }
             quint32 bytesPerLine = 0;
             quint32 byteSize = 0;

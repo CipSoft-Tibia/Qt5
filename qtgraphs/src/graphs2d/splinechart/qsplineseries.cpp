@@ -6,7 +6,21 @@
 #include <private/qsplineseries_p.h>
 #include <private/qxypoint_p.h>
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+              "QT_BEGIN_NAMESPACE" \
+               "class QSplineSeries;" \
+              "QT_END_NAMESPACE"
+          )
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DSplineSeriesCalculateControlPoints_entry, int pointCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DSplineSeriesCalculateControlPoints_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs2DSplineSeriesCalculateSplinePoints_entry, int controlPointCount);
+Q_TRACE_POINT(qtgraphs, QGraphs2DSplineSeriesCalculateSplinePoints_exit);
 
 /*!
     \class QSplineSeries
@@ -71,8 +85,12 @@ void QSplineSeries::componentComplete()
     Q_D(QSplineSeries);
 
     for (auto *child : children()) {
-        if (auto point = qobject_cast<QXYPoint *>(child))
+        if (auto point = qobject_cast<QXYPoint *>(child)) {
             append(point->x(), point->y());
+            qCDebug(lcSeries2D, "append points x: %f y: %f to splineSeries",
+                    point->x(),
+                    point->y());
+        }
     }
 
     d->calculateSplinePoints();
@@ -99,6 +117,8 @@ void QSplineSeries::componentComplete()
 
     connect(this, &QSplineSeries::pointsReplaced, this, [d]() { d->calculateSplinePoints(); });
 
+    qCDebug(lcEvents2D, "QSplineSeries::componentComplete.");
+
     QAbstractSeries::componentComplete();
 }
 
@@ -123,11 +143,17 @@ void QSplineSeries::setWidth(qreal newWidth)
 {
     Q_D(QSplineSeries);
 
-    if (newWidth < 0)
+    if (newWidth < 0) {
+        qCWarning(lcProperties2D, "QSplineSeries::setWidth. Tried to use invalid width,"
+                  "width has been automatically set to 0");
         newWidth = 0;
+    }
 
-    if (qFuzzyCompare(d->m_width, newWidth))
+    if (qFuzzyCompare(d->m_width + 1, newWidth + 1)) {
+        qCDebug(lcProperties2D, "QSplineSeries::setWidth. Width is already set to: %f",
+                newWidth);
         return;
+    }
     d->m_width = newWidth;
     emit widthChanged();
     emit update();
@@ -142,8 +168,12 @@ Qt::PenCapStyle QSplineSeries::capStyle() const
 void QSplineSeries::setCapStyle(Qt::PenCapStyle newCapStyle)
 {
     Q_D(QSplineSeries);
-    if (d->m_capStyle == newCapStyle)
+    if (d->m_capStyle == newCapStyle) {
+        qCDebug(lcProperties2D) << "QSplineSeries::setCapStyle. CapStyle is already set to:"
+                                << newCapStyle;
         return;
+    }
+
     d->m_capStyle = newCapStyle;
     emit capStyleChanged();
     emit update();
@@ -160,8 +190,10 @@ void QSplineSeriesPrivate::calculateSplinePoints()
 {
     if (m_points.size() == 0) {
         m_controlPoints.clear();
+        qCWarning(lcSeries2D, "points list size is 0, can't calculate spline points.");
         return;
     } else if (m_points.size() == 1) {
+        qCWarning(lcSeries2D, "points list size is 1, can't calculate spline points.");
         m_controlPoints = {m_points[0], m_points[0]};
         return;
     }
@@ -170,6 +202,7 @@ void QSplineSeriesPrivate::calculateSplinePoints()
     controlPoints.resize(m_points.size() * 2 - 2);
 
     qsizetype n = m_points.size() - 1;
+    Q_TRACE_SCOPE(QGraphs2DSplineSeriesCalculateSplinePoints, n);
 
     if (n == 1) {
         //for n==1
@@ -236,6 +269,8 @@ QList<qreal> QSplineSeriesPrivate::calculateControlPoints(const QList<qreal> &li
     QList<qreal> result;
 
     qsizetype count = list.size();
+
+    Q_TRACE_SCOPE(QGraphs2DSplineSeriesCalculateControlPoints, count);
     result.resize(count);
     result[0] = list[0] / 2.0;
 

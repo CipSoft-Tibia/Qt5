@@ -17,11 +17,13 @@ source_set("android") {
 
   deps = [
     ":jni_headers",
+    "//chrome/browser:browser_process",
     "//chrome/browser/profiles",
     "//chrome/browser/safe_browsing:advanced_protection",
     "//components/password_manager/core/browser/leak_detection",
     "//components/password_manager/core/common",
     "//components/prefs",
+    "//components/safe_browsing/content/browser:safe_browsing_service",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
     "//components/safe_browsing/core/common/hashprefix_realtime:hash_realtime_utils",
     "//components/signin/public/identity_manager",
@@ -48,7 +50,6 @@ android_library("java") {
     "java/src/org/chromium/chrome/browser/safe_browsing/settings/RadioButtonGroupSafeBrowsingPreference.java",
     "java/src/org/chromium/chrome/browser/safe_browsing/settings/SafeBrowsingSettingsFragment.java",
     "java/src/org/chromium/chrome/browser/safe_browsing/settings/SafeBrowsingSettingsFragmentBase.java",
-    "java/src/org/chromium/chrome/browser/safe_browsing/settings/SafeBrowsingSettingsFragmentHelper.java",
     "java/src/org/chromium/chrome/browser/safe_browsing/settings/StandardProtectionSettingsFragment.java",
   ]
   deps = [
@@ -112,6 +113,7 @@ android_library("javatests") {
     "//components/policy/android:policy_java_test_support",
     "//components/prefs/android:java",
     "//components/signin/public/android:java",
+    "//components/signin/public/android:signin_java_test_support",
     "//components/user_prefs/android:java",
     "//content/public/android:content_java",
     "//content/public/test/android:content_java_test_support",

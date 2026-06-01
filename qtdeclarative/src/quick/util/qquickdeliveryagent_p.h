@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKDELIVERYAGENT_P_H
 #define QQUICKDELIVERYAGENT_P_H
@@ -27,6 +28,7 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcPtr)
 Q_DECLARE_LOGGING_CATEGORY(lcHoverTrace)
+Q_DECLARE_LOGGING_CATEGORY(lcHoverCursor)
 Q_DECLARE_LOGGING_CATEGORY(lcTouchTarget)
 
 class QQuickItem;

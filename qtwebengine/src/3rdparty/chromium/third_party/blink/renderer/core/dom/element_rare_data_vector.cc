@@ -5,7 +5,6 @@
 #include "third_party/blink/renderer/core/dom/element_rare_data_vector.h"
 
 #include "third_party/blink/renderer/core/animation/element_animations.h"
-#include "third_party/blink/renderer/core/aom/accessible_node.h"
 #include "third_party/blink/renderer/core/css/container_query_data.h"
 #include "third_party/blink/renderer/core/css/cssom/inline_style_property_map.h"
 #include "third_party/blink/renderer/core/css/inline_css_style_declaration.h"
@@ -16,6 +15,8 @@
 #include "third_party/blink/renderer/core/dom/dataset_dom_string_map.h"
 #include "third_party/blink/renderer/core/dom/dom_token_list.h"
 #include "third_party/blink/renderer/core/dom/has_invalidation_flags.h"
+#include "third_party/blink/renderer/core/dom/interest_invoker_data.h"
+#include "third_party/blink/renderer/core/dom/interest_invoker_target_data.h"
 #include "third_party/blink/renderer/core/dom/named_node_map.h"
 #include "third_party/blink/renderer/core/dom/names_map.h"
 #include "third_party/blink/renderer/core/dom/node_rare_data.h"
@@ -104,32 +105,44 @@ ElementRareDataVector::GetPseudoElements() const {
     return {};
   return data->GetPseudoElements();
 }
-void ElementRareDataVector::AddColumnScrollMarker(
-    ScrollMarkerPseudoElement& column_scroll_marker) {
+void ElementRareDataVector::AddColumnPseudoElement(
+    ColumnPseudoElement& column_pseudo_element) {
   PseudoElementData* data =
       static_cast<PseudoElementData*>(GetField(FieldId::kPseudoElementData));
   if (!data) {
     data = MakeGarbageCollected<PseudoElementData>();
     SetField(FieldId::kPseudoElementData, data);
   }
-  data->AddColumnScrollMarker(column_scroll_marker);
+  data->AddColumnPseudoElement(column_pseudo_element);
 }
-const PseudoElementData::ColumnScrollMarkersVector*
-ElementRareDataVector::GetColumnScrollMarkers() const {
+
+const ColumnPseudoElementsVector*
+ElementRareDataVector::GetColumnPseudoElements() const {
   PseudoElementData* data =
       static_cast<PseudoElementData*>(GetField(FieldId::kPseudoElementData));
   if (!data) {
     return nullptr;
   }
-  return data->GetColumnScrollMarkers();
+  return data->GetColumnPseudoElements();
 }
-void ElementRareDataVector::ClearColumnScrollMarkers() {
+
+ColumnPseudoElement* ElementRareDataVector::GetColumnPseudoElement(
+    wtf_size_t idx) const {
+  PseudoElementData* data =
+      static_cast<PseudoElementData*>(GetField(FieldId::kPseudoElementData));
+  if (!data) {
+    return nullptr;
+  }
+  return data->GetColumnPseudoElement(idx);
+}
+
+void ElementRareDataVector::ClearColumnPseudoElements(wtf_size_t to_keep) {
   PseudoElementData* data =
       static_cast<PseudoElementData*>(GetField(FieldId::kPseudoElementData));
   if (!data) {
     return;
   }
-  data->ClearColumnScrollMarkers();
+  data->ClearColumnPseudoElements(to_keep);
 }
 
 CSSStyleDeclaration& ElementRareDataVector::EnsureInlineCSSStyleDeclaration(
@@ -258,10 +271,10 @@ DOMTokenList* ElementRareDataVector::GetPart() const {
 }
 
 void ElementRareDataVector::SetPartNamesMap(const AtomicString part_names) {
-  EnsureWrappedField<NamesMap>(FieldId::kPartNamesMap).Set(part_names);
+  EnsureField<NamesMap>(FieldId::kPartNamesMap).Set(part_names);
 }
 const NamesMap* ElementRareDataVector::PartNamesMap() const {
-  return GetWrappedField<NamesMap>(FieldId::kPartNamesMap);
+  return static_cast<NamesMap*>(GetField(FieldId::kPartNamesMap));
 }
 
 InlineStylePropertyMap& ElementRareDataVector::EnsureInlineStylePropertyMap(
@@ -280,17 +293,6 @@ const ElementInternals* ElementRareDataVector::GetElementInternals() const {
 ElementInternals& ElementRareDataVector::EnsureElementInternals(
     HTMLElement& target) {
   return EnsureField<ElementInternals>(FieldId::kElementInternals, target);
-}
-
-AccessibleNode* ElementRareDataVector::GetAccessibleNode() const {
-  return static_cast<AccessibleNode*>(GetField(FieldId::kAccessibleNode));
-}
-AccessibleNode* ElementRareDataVector::EnsureAccessibleNode(
-    Element* owner_element) {
-  return &EnsureField<AccessibleNode>(FieldId::kAccessibleNode, owner_element);
-}
-void ElementRareDataVector::ClearAccessibleNode() {
-  SetField(FieldId::kAccessibleNode, nullptr);
 }
 
 DisplayLockContext* ElementRareDataVector::EnsureDisplayLockContext(
@@ -410,6 +412,31 @@ PopoverData& ElementRareDataVector::EnsurePopoverData() {
 }
 void ElementRareDataVector::RemovePopoverData() {
   SetField(FieldId::kPopoverData, nullptr);
+}
+
+InterestInvokerData* ElementRareDataVector::GetInterestInvokerData() const {
+  return static_cast<InterestInvokerData*>(
+      GetField(FieldId::kInterestInvokerData));
+}
+InterestInvokerData& ElementRareDataVector::EnsureInterestInvokerData() {
+  return EnsureField<InterestInvokerData>(FieldId::kInterestInvokerData);
+}
+void ElementRareDataVector::RemoveInterestInvokerData() {
+  SetField(FieldId::kInterestInvokerData, nullptr);
+}
+
+InterestInvokerTargetData* ElementRareDataVector::GetInterestInvokerTargetData()
+    const {
+  return static_cast<InterestInvokerTargetData*>(
+      GetField(FieldId::kInterestInvokerTargetData));
+}
+InterestInvokerTargetData&
+ElementRareDataVector::EnsureInterestInvokerTargetData() {
+  return EnsureField<InterestInvokerTargetData>(
+      FieldId::kInterestInvokerTargetData);
+}
+void ElementRareDataVector::RemoveInterestInvokerTargetData() {
+  SetField(FieldId::kInterestInvokerTargetData, nullptr);
 }
 
 AnchorPositionScrollData* ElementRareDataVector::GetAnchorPositionScrollData()

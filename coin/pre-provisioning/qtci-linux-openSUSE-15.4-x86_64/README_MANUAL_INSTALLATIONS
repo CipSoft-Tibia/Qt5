@@ -40,3 +40,5 @@ Display and Monitor - Display Configuration - 1280x800
 Power Management: Screen Energy Saving - unselect
 
 add 'qt ALL=NOPASSWD: ALL' to /etc/sudoers.d/qt
+
+sudo zypper -nq install qemu-guest-agent

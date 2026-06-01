@@ -32,17 +32,24 @@ void WebDataServiceBase::Init(ProfileErrorCallback callback) {
 }
 
 void WebDataServiceBase::ShutdownDatabase() {
-  if (wdbs_)
+  if (wdbs_) {
     wdbs_->ShutdownDatabase();
+  }
 }
 
 void WebDataServiceBase::CancelRequest(Handle h) {
-  if (wdbs_)
+  if (wdbs_) {
     wdbs_->CancelRequest(h);
+  }
 }
 
 WebDatabase* WebDataServiceBase::GetDatabase() {
   return wdbs_ ? wdbs_->GetDatabaseOnDB() : nullptr;
+}
+
+bool WebDataServiceBase::UsesInMemoryDatabaseForMetrics() const {
+  CHECK(wdbs_);
+  return wdbs_->UsesInMemoryDatabaseForMetrics();
 }
 
 WebDataServiceBase::~WebDataServiceBase() = default;

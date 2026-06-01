@@ -54,6 +54,10 @@ qt_internal_add_module(OpenGL
         Qt::GuiPrivate
 )
 
+if (QT_FEATURE_opengles2)
+    set_source_files_properties(qopengltimerquery.h PROPERTIES SKIP_AUTOMOC TRUE)
+endif()
+
 ## Scopes:
 #####################################################################
 

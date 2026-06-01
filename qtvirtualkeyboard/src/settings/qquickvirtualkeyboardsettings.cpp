@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickvirtualkeyboardsettings_p.h"
 #include <QtVirtualKeyboard/private/settings_p.h>
@@ -167,9 +168,9 @@ QQuickVirtualKeyboardSettings *QQuickVirtualKeyboardSettings::create(QQmlEngine 
 /*!
     \internal
 */
-QString QQuickVirtualKeyboardSettings::style() const
+QUrl QQuickVirtualKeyboardSettings::style() const
 {
-    return Settings::instance()->style();
+    return QUrl{Settings::instance()->style()};
 }
 
 /*!
@@ -403,7 +404,7 @@ void QQuickVirtualKeyboardSettings::resetStyle()
     QString customStyleName = QString::fromLatin1(qgetenv("QT_VIRTUALKEYBOARD_STYLE"));
     if (!customStyleName.isEmpty()) {
         bool found = false;
-        QRegularExpression styleNameValidator(QLatin1String("\\A(?:\\w+)\\z"));
+        static const QRegularExpression styleNameValidator(QLatin1String("\\A(?:\\w+)\\z"));
         QRegularExpressionMatch match = styleNameValidator.match(customStyleName);
         if (match.hasMatch()) {
             QString customStyle = d->stylePath(customStyleName);

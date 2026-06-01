@@ -271,6 +271,8 @@ void tst_QGeoCircle::contains_data()
                                        QGeoCoordinate(1.00077538, 0.99955527) << true;
     QTest::newRow("at 1.01*radius") << QGeoCoordinate(1,1) << qreal(100.0) <<
                                        QGeoCoordinate(1.00071413, 0.99943423) << false;
+    QTest::newRow("center with zero radius")
+            << QGeoCoordinate(1, 1) << qreal(0.0) << QGeoCoordinate(1, 1) << true;
     // TODO: add tests for edge circle cases: cross 1 pole, cross both poles
 }
 

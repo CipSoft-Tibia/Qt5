@@ -4,7 +4,21 @@
 #include "qsurface3dseries_p.h"
 #include "surfaceitemmodelhandler_p.h"
 
+#include <qtgraphs_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_PREFIX(qtgraphs,
+                  "QT_BEGIN_NAMESPACE" \
+                  "class QQuickGraphsScatter;" \
+                  "QT_END_NAMESPACE"
+              )
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DSurfaceItemModelHandlerResolveModel_entry);
+Q_TRACE_POINT(qtgraphs, QGraphs3DSurfaceItemModelHandlerResolveModel_exit);
+
+Q_TRACE_POINT(qtgraphs, QGraphs3DSurfaceItemModelHandlerHandleDataChanged_entry, bool useModelCategories);
+Q_TRACE_POINT(qtgraphs, QGraphs3DSurfaceItemModelHandlerHandleDataChanged_exit);
 
 SurfaceItemModelHandler::SurfaceItemModelHandler(QItemModelSurfaceDataProxy *proxy, QObject *parent)
     : AbstractItemModelHandler(parent)
@@ -26,6 +40,7 @@ void SurfaceItemModelHandler::handleDataChanged(const QModelIndex &topLeft,
 {
     // Do nothing if full reset already pending
     if (!m_fullReset) {
+        Q_TRACE(QGraphs3DSurfaceItemModelHandlerHandleDataChanged_entry, m_proxy->useModelCategories());
         if (!m_proxy->useModelCategories()) {
             // If the data model doesn't directly map rows and columns, we cannot
             // optimize
@@ -80,7 +95,8 @@ void SurfaceItemModelHandler::handleDataChanged(const QModelIndex &topLeft,
                 }
             }
         }
-    }
+        Q_TRACE(QGraphs3DSurfaceItemModelHandlerHandleDataChanged_exit);
+     }
 }
 
 // Resolve entire item model into QSurfaceDataArray.
@@ -99,6 +115,7 @@ void SurfaceItemModelHandler::resolveModel()
         return;
     }
 
+    Q_TRACE(QGraphs3DSurfaceItemModelHandlerResolveModel_entry);
     // Position patterns can be reused on single item changes, so store them to
     // member variables.
     QRegularExpression rowPattern(m_proxy->rowRolePattern());
@@ -312,7 +329,7 @@ void SurfaceItemModelHandler::resolveModel()
 
         delete matchCountMap;
     }
-
+    Q_TRACE(QGraphs3DSurfaceItemModelHandlerResolveModel_exit);
     m_proxy->resetArray(m_proxyArray);
 }
 

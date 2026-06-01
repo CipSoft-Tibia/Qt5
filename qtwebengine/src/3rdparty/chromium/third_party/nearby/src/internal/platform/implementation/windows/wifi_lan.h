@@ -18,26 +18,36 @@
 // Windows headers
 // clang-format off
 #include <windows.h>  // NOLINT
-#include <windns.h>   // NOLINT
 // clang-format on
 
 // Standard C/C++ headers
+#include <cstddef>
+#include <cstdint>
+#include <deque>
 #include <exception>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 // Nearby connections headers
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "internal/platform/byte_array.h"
+#include "internal/platform/cancellation_flag.h"
 #include "internal/platform/count_down_latch.h"
 #include "internal/platform/exception.h"
+#include "internal/platform/implementation/cancelable.h"
 #include "internal/platform/implementation/wifi_lan.h"
+#include "internal/platform/implementation/windows/nearby_client_socket.h"
+#include "internal/platform/implementation/windows/nearby_server_socket.h"
 #include "internal/platform/implementation/windows/scheduled_executor.h"
+#include "internal/platform/implementation/windows/wifi_lan_mdns.h"
 #include "internal/platform/input_stream.h"
 #include "internal/platform/mutex.h"
 #include "internal/platform/nsd_service_info.h"
@@ -91,7 +101,9 @@ using winrt::Windows::Storage::Streams::IOutputStream;
 // remote WiFi LAN service, also will return a WifiLanSocket to caller.
 class WifiLanSocket : public api::WifiLanSocket {
  public:
+  WifiLanSocket();
   explicit WifiLanSocket(StreamSocket socket);
+  explicit WifiLanSocket(std::unique_ptr<NearbyClientSocket> socket);
   WifiLanSocket(WifiLanSocket&) = default;
   WifiLanSocket(WifiLanSocket&&) = default;
   ~WifiLanSocket() override;
@@ -115,11 +127,14 @@ class WifiLanSocket : public api::WifiLanSocket {
   // Returns Exception::kIo on error, Exception::kSuccess otherwise.
   Exception Close() override;
 
+  bool Connect(const std::string& ip_address, int port);
+
  private:
   // A simple wrapper to handle input stream of socket
   class SocketInputStream : public InputStream {
    public:
-    SocketInputStream(IInputStream input_stream);
+    explicit SocketInputStream(IInputStream input_stream);
+    explicit SocketInputStream(NearbyClientSocket* client_socket);
     ~SocketInputStream() = default;
 
     ExceptionOr<ByteArray> Read(std::int64_t size) override;
@@ -127,13 +142,17 @@ class WifiLanSocket : public api::WifiLanSocket {
     Exception Close() override;
 
    private:
+    bool enable_blocking_socket_ = false;
     IInputStream input_stream_{nullptr};
+    Buffer read_buffer_{nullptr};
+    NearbyClientSocket* client_socket_{nullptr};
   };
 
   // A simple wrapper to handle output stream of socket
   class SocketOutputStream : public OutputStream {
    public:
-    SocketOutputStream(IOutputStream output_stream);
+    explicit SocketOutputStream(IOutputStream output_stream);
+    explicit SocketOutputStream(NearbyClientSocket* client_socket);
     ~SocketOutputStream() = default;
 
     Exception Write(const ByteArray& data) override;
@@ -141,13 +160,18 @@ class WifiLanSocket : public api::WifiLanSocket {
     Exception Close() override;
 
    private:
+    bool enable_blocking_socket_ = false;
     IOutputStream output_stream_{nullptr};
+    NearbyClientSocket* client_socket_{nullptr};
   };
 
   // Internal properties
   StreamSocket stream_soket_{nullptr};
   SocketInputStream input_stream_{nullptr};
   SocketOutputStream output_stream_{nullptr};
+
+  bool enable_blocking_socket_ = false;
+  std::unique_ptr<NearbyClientSocket> client_socket_;
 };
 
 // WifiLanServerSocket provides the support to server socket, this server socket
@@ -214,6 +238,10 @@ class WifiLanServerSocket : public api::WifiLanServerSocket {
   // Cache socket not be picked by upper layer
   int port_ = 0;
   bool closed_ = false;
+
+  // Flag to enable blocking socket.
+  bool enable_blocking_socket_ = false;
+  NearbyServerSocket server_socket_;
 };
 
 // Container of operations that can be performed over the WifiLan medium.
@@ -249,11 +277,6 @@ class WifiLanMedium : public api::WifiLanMedium {
 
   std::unique_ptr<api::WifiLanServerSocket> ListenForService(
       int port = 0) override;
-
-  // DnsServiceDeRegister is a async process, after operation finish, callback
-  // will call this method to notify the waiting method StopAdvertising to
-  // continue.
-  void NotifyDnsServiceUnregistered(DWORD status);
 
   absl::optional<std::pair<std::int32_t, std::int32_t>> GetDynamicPortRange()
       override {
@@ -312,8 +335,6 @@ class WifiLanMedium : public api::WifiLanMedium {
       DeviceWatcher sender, DeviceInformationUpdate deviceInfoUpdate);
   fire_and_forget Watcher_DeviceRemoved(
       DeviceWatcher sender, DeviceInformationUpdate deviceInfoUpdate);
-  static void Advertising_StopCompleted(DWORD Status, PVOID pQueryContext,
-                                        PDNS_SERVICE_INSTANCE pInstance);
 
   // Gets error message from exception pointer
   std::string GetErrorMessage(std::exception_ptr eptr);
@@ -327,13 +348,6 @@ class WifiLanMedium : public api::WifiLanMedium {
   // Advertising properties
   DnssdServiceInstance dnssd_service_instance_{nullptr};
   DnssdRegistrationResult dnssd_regirstraion_result_{nullptr};
-
-  // Stop advertising properties
-  DNS_SERVICE_INSTANCE dns_service_instance_{nullptr};
-  DNS_SERVICE_REGISTER_REQUEST dns_service_register_request_;
-  std::unique_ptr<std::wstring> dns_service_instance_name_{nullptr};
-  std::unique_ptr<CountDownLatch> dns_service_stop_latch_;
-  DWORD dns_service_stop_status_;
 
   // Discovery properties
   DeviceWatcher device_watcher_{nullptr};
@@ -349,6 +363,9 @@ class WifiLanMedium : public api::WifiLanMedium {
 
   // Used to keep the service name is advertising.
   std::string service_name_;
+
+  // mDNS service
+  WifiLanMdns wifi_lan_mdns_;
 
   // Keep the server sockets listener pointer
   absl::flat_hash_map<int /* port number of the WifiLanServerSocket*/,

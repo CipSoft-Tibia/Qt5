@@ -18,6 +18,7 @@
 #include "third_party/blink/renderer/platform/network/http_parsers.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -57,14 +58,6 @@ mojom::blink::ResourceTimingInfoPtr CreateResourceTimingInfo(
     info->server_timing = ParseServerTimingFromHeaderValueToMojo(
         response->HttpHeaderField(http_names::kServerTiming));
     info->cache_state = response->CacheState();
-    info->alpn_negotiated_protocol = response->AlpnNegotiatedProtocol().IsNull()
-                                         ? g_empty_string
-                                         : response->AlpnNegotiatedProtocol();
-    info->connection_info = response->ConnectionInfoString().IsNull()
-                                ? g_empty_string
-                                : response->ConnectionInfoString();
-
-    info->did_reuse_connection = response->ConnectionReused();
     // Use SecurityOrigin::Create to handle cases like blob:https://.
     info->is_secure_transport = base::Contains(
         url::GetSecureSchemes(),
@@ -72,6 +65,31 @@ mojom::blink::ResourceTimingInfoPtr CreateResourceTimingInfo(
     info->timing = response->GetResourceLoadTiming()
                        ? response->GetResourceLoadTiming()->ToMojo()
                        : nullptr;
+
+    if (response->WasFetchedViaServiceWorker()) {
+      // We don't forward connection info to the service worker's client.
+      // This information is available in the service worker's own performance
+      // timeline.
+      // Per-spec, the fetch-timing-info
+      // (https://fetch.spec.whatwg.org/#fetch-timing-info) is associated with
+      // the *fetch* and not attached to a response.
+      if (info->timing) {
+        info->timing->connect_timing =
+            network::mojom::blink::LoadTimingInfoConnectTiming::New();
+      }
+      info->alpn_negotiated_protocol = g_empty_string;
+      info->connection_info = g_empty_string;
+    } else {
+      info->alpn_negotiated_protocol =
+          response->AlpnNegotiatedProtocol().IsNull()
+              ? g_empty_string
+              : response->AlpnNegotiatedProtocol();
+      info->connection_info = response->ConnectionInfoString().IsNull()
+                                  ? g_empty_string
+                                  : response->ConnectionInfoString();
+
+      info->did_reuse_connection = response->ConnectionReused();
+    }
   } else {
     // [spec] https://fetch.spec.whatwg.org/#create-an-opaque-timing-info
 
@@ -95,12 +113,15 @@ mojom::blink::ResourceTimingInfoPtr CreateResourceTimingInfo(
   bool allow_response_details = response->IsCorsSameOrigin();
 
   info->content_type = g_empty_string;
+  info->content_encoding = g_empty_string;
 
   if (allow_response_details) {
     info->response_status = response->HttpStatusCode();
     if (!response->HttpContentType().IsNull()) {
       info->content_type = MinimizedMIMEType(response->HttpContentType());
     }
+
+    info->content_encoding = response->GetFilteredHttpContentEncoding();
   }
 
   bool expose_body_sizes =
@@ -111,6 +132,8 @@ mojom::blink::ResourceTimingInfoPtr CreateResourceTimingInfo(
   if (expose_body_sizes && response) {
     info->encoded_body_size = response->EncodedBodyLength();
     info->decoded_body_size = response->DecodedBodyLength();
+    info->service_worker_response_source =
+        response->GetServiceWorkerResponseSource();
   }
 
   return info;

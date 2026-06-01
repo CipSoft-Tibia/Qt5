@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSTYPEPROPAGATOR_P_H
 #define QQMLJSTYPEPROPAGATOR_P_H
@@ -17,6 +18,7 @@
 #include <private/qqmljsast_p.h>
 #include <private/qqmljsscope_p.h>
 #include <private/qqmljscompilepass_p.h>
+#include <private/qqmljscontextproperties_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -28,10 +30,10 @@ struct Q_QMLCOMPILER_EXPORT QQmlJSTypePropagator : public QQmlJSCompilePass
 {
     QQmlJSTypePropagator(const QV4::Compiler::JSUnitGenerator *unitGenerator,
                          const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                         QList<QQmlJS::DiagnosticMessage> *errors,
                          const BasicBlocks &basicBlocks = {},
                          const InstructionAnnotations &annotations = {},
-                         QQmlSA::PassManager *passManager = nullptr);
+                         QQmlSA::PassManager *passManager = nullptr,
+                         const QQmlJS::ContextProperties &knownContextProperties = {});
 
     BlocksAndAnnotations run(const Function *m_function);
 
@@ -203,9 +205,6 @@ private:
     };
 
     PropertyResolution propertyResolution(QQmlJSScope::ConstPtr scope, const QString &type) const;
-    QQmlJS::SourceLocation getCurrentSourceLocation() const;
-    QQmlJS::SourceLocation getCurrentBindingSourceLocation() const;
-    QQmlJS::SourceLocation getCurrentNonEmptySourceLocation() const;
 
     void checkConversion(QQmlJSRegisterContent from, QQmlJSRegisterContent to);
     void generateUnaryArithmeticOperation(QQmlJSTypeResolver::UnaryOperator op);
@@ -281,6 +280,10 @@ private:
                                        const QQmlJSScope::ConstPtr &callBase);
     void propagateCall_SAcheck(const QQmlJSMetaMethod &method,
                                const QQmlJSScope::ConstPtr &baseType);
+    void generate_GetOptionalLookup_SAcheck();
+
+    bool handleImportNamespaceLookup(const QString &propertyName);
+    void handleLookupError(const QString &propertyName);
 
     void addError(const QString &message)
     {
@@ -293,6 +296,7 @@ private:
         setAccumulator(m_typeResolver->syntheticType(m_typeResolver->varType()));
         m_state.instructionHasError = true;
     }
+    void warnAboutTypeCoercion(int lhs);
 
     QQmlJSRegisterContent m_returnType;
     QQmlSA::PassManager *m_passManager = nullptr;
@@ -302,6 +306,7 @@ private:
 
     InstructionAnnotations m_prevStateAnnotations;
     PassState m_state;
+    QQmlJS::ContextProperties m_knownContextProperties;
 };
 
 QT_END_NAMESPACE

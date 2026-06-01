@@ -41,6 +41,9 @@ MainWindow::MainWindow(QWidget *parent) :
 
     connect(ui->lineEditHost, &QLineEdit::textChanged, m_client, &QMqttClient::setHostname);
     connect(ui->spinBoxPort, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::setClientPort);
+    connect(ui->checkBoxWebSockets, &QCheckBox::checkStateChanged, this, [this](int ws) { setWebSockets(ws != 0); });
+    connect(ui->checkBoxSecure, &QCheckBox::checkStateChanged, this, [this](int s) { setSecure(s != 0); } );
+    connect(ui->comboBoxProtocol, &QComboBox::currentIndexChanged, this, [this](int p) { setProtocol(static_cast<QMqttClient::ProtocolVersion>(p + 3)); });
     updateLogStateChange();
 }
 
@@ -55,7 +58,27 @@ void MainWindow::on_buttonConnect_clicked()
         ui->lineEditHost->setEnabled(false);
         ui->spinBoxPort->setEnabled(false);
         ui->buttonConnect->setText(tr("Disconnect"));
-        m_client->connectToHost();
+
+        m_client->setProtocolVersion(m_protocol);
+
+        if (m_secure && m_webSockets)
+            m_client->connectToHostWebSocketEncrypted();
+#if !defined(QT_NO_SSL) && !defined(Q_OS_WASM)
+        if (m_secure && !m_webSockets)
+            m_client->connectToHostEncrypted({});
+#endif
+        if (!m_secure && m_webSockets)
+            m_client->connectToHostWebSocket();
+#if !defined(Q_OS_WASM)
+        if (!m_secure && !m_webSockets)
+            m_client->connectToHost();
+#endif
+        if (m_client->state() == QMqttClient::Disconnected) {
+            ui->lineEditHost->setEnabled(true);
+            ui->spinBoxPort->setEnabled(true);
+            ui->buttonConnect->setText(tr("Connect"));
+            m_client->disconnectFromHost();
+        }
     } else {
         ui->lineEditHost->setEnabled(true);
         ui->spinBoxPort->setEnabled(true);
@@ -88,6 +111,21 @@ void MainWindow::brokerDisconnected()
 void MainWindow::setClientPort(int p)
 {
     m_client->setPort(static_cast<quint16>(p));
+}
+
+void MainWindow::setSecure(bool s)
+{
+    m_secure = s;
+}
+
+void MainWindow::setWebSockets(bool ws)
+{
+    m_webSockets = ws;
+}
+
+void MainWindow::setProtocol(QMqttClient::ProtocolVersion p)
+{
+    m_protocol = p;
 }
 
 void MainWindow::on_buttonPublish_clicked()

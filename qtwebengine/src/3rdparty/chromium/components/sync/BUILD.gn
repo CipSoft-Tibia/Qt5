@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//testing/test.gni")
@@ -145,7 +144,6 @@ static_library("test_support") {
   deps = [
     "//base",
     "//base/test:test_support",
-    "//build:chromeos_buildflags",
     "//components/bookmarks/browser",
     "//components/pref_registry",
     "//components/prefs:test_support",
@@ -164,25 +162,6 @@ static_library("test_support") {
   ]
 
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
-  if (is_chromeos_lacros) {
-    sources += [
-      "test/fake_sync_explicit_passphrase_client_ash.cc",
-      "test/fake_sync_explicit_passphrase_client_ash.h",
-      "test/fake_sync_mojo_service.cc",
-      "test/fake_sync_mojo_service.h",
-      "test/fake_sync_user_settings_client_ash.cc",
-      "test/fake_sync_user_settings_client_ash.h",
-      "test/fake_synced_session_client_ash.cc",
-      "test/fake_synced_session_client_ash.h",
-    ]
-
-    public_deps += [
-      "//chromeos/crosapi/mojom",
-      "//mojo/public/cpp/bindings",
-      "//testing/gmock",
-    ]
-  }
 }
 
 source_set("unit_tests") {
@@ -195,6 +174,7 @@ source_set("unit_tests") {
     "base/protobuf_unittest.cc",
     "base/sync_util_unittest.cc",
     "base/unique_position_unittest.cc",
+    "base/user_selectable_type_unittest.cc",
     "base/weak_handle_unittest.cc",
     "engine/backoff_delay_provider_unittest.cc",
     "engine/bookmark_update_preprocessing_unittest.cc",
@@ -240,7 +220,6 @@ source_set("unit_tests") {
     "model/string_ordinal_unittest.cc",
     "model/sync_change_unittest.cc",
     "model/sync_data_unittest.cc",
-    "model/sync_error_unittest.cc",
     "model/syncable_service_based_bridge_unittest.cc",
     "nigori/cross_user_sharing_keys_unittest.cc",
     "nigori/cryptographer_impl_unittest.cc",
@@ -250,6 +229,7 @@ source_set("unit_tests") {
     "nigori/nigori_state_unittest.cc",
     "nigori/nigori_storage_impl_unittest.cc",
     "nigori/nigori_sync_bridge_impl_unittest.cc",
+    "protocol/collaboration_metadata_unittest.cc",
     "protocol/entity_data_unittest.cc",
     "protocol/proto_enum_conversions_unittest.cc",
     "protocol/proto_value_conversions_unittest.cc",
@@ -260,9 +240,11 @@ source_set("unit_tests") {
     "service/glue/sync_engine_impl_unittest.cc",
     "service/glue/sync_transport_data_prefs_unittest.cc",
     "service/local_data_description_unittest.cc",
+    "service/local_data_migration_item_queue_unittest.cc",
     "service/model_load_manager_unittest.cc",
     "service/passphrase_type_metrics_provider_unittest.cc",
     "service/sync_auth_manager_unittest.cc",
+    "service/sync_error_unittest.cc",
     "service/sync_feature_status_for_migrations_recorder_unittest.cc",
     "service/sync_internals_util_unittest.cc",
     "service/sync_prefs_unittest.cc",
@@ -293,11 +275,11 @@ source_set("unit_tests") {
     ":test_support",
     "//base",
     "//base/test:test_support",
-    "//build:chromeos_buildflags",
     "//components/gcm_driver:test_support",
     "//components/os_crypt/sync",
     "//components/os_crypt/sync:test_support",
     "//components/prefs:test_support",
+    "//components/saved_tab_groups/public:prefs",
     "//components/signin/public/base:test_support",
     "//components/signin/public/identity_manager:test_support",
     "//components/sync_preferences:test_support",

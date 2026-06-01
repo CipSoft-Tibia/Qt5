@@ -215,10 +215,14 @@ QColor QAreaSeries::color() const
 void QAreaSeries::setColor(QColor newColor)
 {
     Q_D(QAreaSeries);
-    if (color() != newColor) {
-        d->m_color = newColor;
-        emit colorChanged(newColor);
+    if (color() == newColor) {
+        qCDebug(lcProperties2D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(newColor.name()));
+        return;
     }
+    d->m_color = newColor;
+    emit colorChanged(newColor);
+    emit update();
 }
 
 QColor QAreaSeries::selectedColor() const
@@ -230,10 +234,15 @@ QColor QAreaSeries::selectedColor() const
 void QAreaSeries::setSelectedColor(QColor newSelectedColor)
 {
     Q_D(QAreaSeries);
-    if (selectedColor() != newSelectedColor) {
-        d->m_selectedColor = newSelectedColor;
-        emit selectedColorChanged(newSelectedColor);
+    if (selectedColor() == newSelectedColor) {
+        qCDebug(lcProperties2D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)),
+                qUtf8Printable(newSelectedColor.name()));
+        return;
     }
+    d->m_selectedColor = newSelectedColor;
+    emit selectedColorChanged(newSelectedColor);
+    emit update();
 }
 
 QColor QAreaSeries::borderColor() const
@@ -245,10 +254,15 @@ QColor QAreaSeries::borderColor() const
 void QAreaSeries::setBorderColor(QColor newBorderColor)
 {
     Q_D(QAreaSeries);
-    if (d->m_borderColor == newBorderColor)
+    if (d->m_borderColor == newBorderColor) {
+        qCDebug(lcProperties2D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)),
+                qUtf8Printable(newBorderColor.name()));
         return;
+    }
     d->m_borderColor = newBorderColor;
     emit borderColorChanged(newBorderColor);
+    emit update();
 }
 
 QColor QAreaSeries::selectedBorderColor() const
@@ -260,10 +274,15 @@ QColor QAreaSeries::selectedBorderColor() const
 void QAreaSeries::setSelectedBorderColor(QColor newSelectedBorderColor)
 {
     Q_D(QAreaSeries);
-    if (d->m_selectedBorderColor == newSelectedBorderColor)
+    if (d->m_selectedBorderColor == newSelectedBorderColor) {
+        qCDebug(lcProperties2D, "%s value is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)),
+                qUtf8Printable(newSelectedBorderColor.name()));
         return;
+    }
     d->m_selectedBorderColor = newSelectedBorderColor;
     emit selectedBorderColorChanged(newSelectedBorderColor);
+    emit update();
 }
 
 qreal QAreaSeries::borderWidth() const
@@ -275,10 +294,14 @@ qreal QAreaSeries::borderWidth() const
 void QAreaSeries::setBorderWidth(qreal newBorderWidth)
 {
     Q_D(QAreaSeries);
-    if (qFuzzyCompare(d->m_borderWidth, newBorderWidth))
+    if (QtPrivate::fuzzyCompare(d->m_borderWidth, newBorderWidth)) {
+        qCDebug(lcProperties2D, "%s value is already set to: %.1f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), newBorderWidth);
         return;
+    }
     d->m_borderWidth = newBorderWidth;
     emit borderWidthChanged();
+    emit update();
 }
 
 bool QAreaSeries::isSelected() const
@@ -290,8 +313,11 @@ bool QAreaSeries::isSelected() const
 void QAreaSeries::setSelected(bool newSelected)
 {
     Q_D(QAreaSeries);
-    if (d->m_selected == newSelected)
+    if (d->m_selected == newSelected) {
+        qCDebug(lcProperties2D) << __FUNCTION__
+            << "value is already set to:" << newSelected;
         return;
+    }
     d->m_selected = newSelected;
     emit selectedChanged();
 }
@@ -305,8 +331,11 @@ QXYSeries *QAreaSeries::upperSeries() const
 void QAreaSeries::setUpperSeries(QXYSeries *newUpperSeries)
 {
     Q_D(QAreaSeries);
-    if (d->m_upperSeries == newUpperSeries)
+    if (d->m_upperSeries == newUpperSeries) {
+        qCDebug(lcProperties2D) << __FUNCTION__
+            << "value is already set to:" << newUpperSeries;
         return;
+    }
 
     if (d->m_upperSeries)
         disconnect(newUpperSeries, &QXYSeries::update, this, &QAreaSeries::update);
@@ -316,6 +345,7 @@ void QAreaSeries::setUpperSeries(QXYSeries *newUpperSeries)
     connect(newUpperSeries, &QXYSeries::update, this, &QAreaSeries::update);
 
     emit upperSeriesChanged();
+    emit update();
 }
 
 QXYSeries *QAreaSeries::lowerSeries() const
@@ -327,8 +357,11 @@ QXYSeries *QAreaSeries::lowerSeries() const
 void QAreaSeries::setLowerSeries(QXYSeries *newLowerSeries)
 {
     Q_D(QAreaSeries);
-    if (d->m_lowerSeries == newLowerSeries)
+    if (d->m_lowerSeries == newLowerSeries) {
+        qCDebug(lcProperties2D) << __FUNCTION__
+            << "value is already set to:" << newLowerSeries;
         return;
+    }
 
     if (d->m_lowerSeries)
         disconnect(newLowerSeries, &QXYSeries::update, this, &QAreaSeries::update);
@@ -338,6 +371,7 @@ void QAreaSeries::setLowerSeries(QXYSeries *newLowerSeries)
     connect(newLowerSeries, &QXYSeries::update, this, &QAreaSeries::update);
 
     emit lowerSeriesChanged();
+    emit update();
 }
 
 QAreaSeriesPrivate::QAreaSeriesPrivate()

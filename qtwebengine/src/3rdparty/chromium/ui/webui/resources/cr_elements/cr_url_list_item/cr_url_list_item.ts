@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import '//resources/cr_elements/cr_auto_img/cr_auto_img.js';
+import '../cr_auto_img/cr_auto_img.js';
 
 import {assert} from '//resources/js/assert.js';
 import {FocusOutlineManager} from '//resources/js/focus_outline_manager.js';
@@ -193,7 +193,7 @@ export class CrUrlListItemElement extends CrUrlListItemElementBase {
 
   private resetFirstImageLoaded_() {
     this.firstImageLoaded_ = false;
-    const image = this.shadowRoot!.querySelector('img');
+    const image = this.shadowRoot.querySelector('img');
     if (!image) {
       return;
     }

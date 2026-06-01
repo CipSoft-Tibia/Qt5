@@ -286,7 +286,7 @@ QQuickItem *QQuickDesignerSupport::anchorCenterInTargetItem(QQuickItem *item)
 
 
 
-QPair<QString, QObject*> QQuickDesignerSupport::anchorLineTarget(QQuickItem *item, const QString &name, QQmlContext *context)
+std::pair<QString, QObject*> QQuickDesignerSupport::anchorLineTarget(QQuickItem *item, const QString &name, QQmlContext *context)
 {
     QObject *targetObject = nullptr;
     QString targetName;
@@ -298,7 +298,7 @@ QPair<QString, QObject*> QQuickDesignerSupport::anchorLineTarget(QQuickItem *ite
     } else {
         QQmlProperty metaProperty(item, name, context);
         if (!metaProperty.isValid())
-            return QPair<QString, QObject*>();
+            return std::pair<QString, QObject*>();
 
         QQuickAnchorLine anchorLine = metaProperty.read().value<QQuickAnchorLine>();
         if (anchorLine.anchorLine != QQuickAnchors::InvalidAnchor) {
@@ -308,7 +308,7 @@ QPair<QString, QObject*> QQuickDesignerSupport::anchorLineTarget(QQuickItem *ite
 
     }
 
-    return QPair<QString, QObject*>(targetName, targetObject);
+    return std::pair<QString, QObject*>(targetName, targetObject);
 }
 
 void QQuickDesignerSupport::resetAnchor(QQuickItem *item, const QString &name)

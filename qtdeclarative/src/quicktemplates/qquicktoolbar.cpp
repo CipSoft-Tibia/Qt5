@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicktoolbar_p.h"
 #include "qquickpane_p_p.h"
@@ -28,6 +29,7 @@ QT_BEGIN_NAMESPACE
     for use together with layouts.
 
     \image qtquickcontrols-toolbar.png
+           {Toolbar containing buttons and other controls}
 
     \code
     ApplicationWindow {

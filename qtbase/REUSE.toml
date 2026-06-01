@@ -4,7 +4,7 @@ version = 1
 path = ["tests/auto/opengl/CMakeLists.txt",
         "tests/benchmarks/widgets/graphicsview/functional/CMakeLists.txt"]
 precedence = "closest"
-SPDX-FileCopyrightText = "Copyright (C) 20242 The Qt Company Ltd."
+SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
 SPDX-License-Identifier = "BSD-3-Clause"
 
 [[annotations]]
@@ -24,7 +24,7 @@ SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR GPL-3.0-only"
 path = ["bin/*", "coin/**","libexec/*","**_clang-format", "**.cmake", "**.conf", "**.cmake.in",
         "**.prf", "libexec/qt-internal-configure-*", "config.tests/.qmake.conf",
         "**.pro", "**.pri", "**.yaml", "cmake/**.in", "cmake/ios/LaunchScreen.storyboard",
-        "cmake/**md", "**.yml", "**.dynlist", "cmake/**.plist",
+        "cmake/**md", "**.yml", "**.dynlist.in", "cmake/**.plist",
         "src/corelib/global/qconfig.cpp.in", "src/corelib/Qt6CoreConfigureFileTemplate.in",
         "**.cfg", "**/Makefile", "**/CMakeLists.txt", "**.qrc", ".tag"]
 precedence = "closest"
@@ -67,6 +67,12 @@ comment = "documentation"
 precedence = "closest"
 SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
 SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only"
+
+[[annotations]]
+path = ["src/corelib/global/patches/tlexpected/**", "src/corelib/global/qexpected_p.h"]
+precedence = "closest"
+SPDX-FileCopyrightText = "To the extent possible under law, Sy Brand has waived all copyright and related or neighboring rights to the expected library. This work is published from: United Kingdom."
+SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
 path = ["src/gui/doc/snippets/textdocument-images/images.qrc"]

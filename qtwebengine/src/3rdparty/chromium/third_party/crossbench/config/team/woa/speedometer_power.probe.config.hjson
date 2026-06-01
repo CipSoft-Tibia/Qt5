@@ -1,0 +1,38 @@
+{
+  probes: {
+    trace_processor: {
+      queries: ["speedometer_compute_power"],
+    },
+    perfetto: {
+      textproto: '''
+        buffers: {
+            size_kb: 63488
+            fill_policy: DISCARD
+        }
+        data_sources: {
+          config {
+            name: "track_event"
+            track_event_config {
+              disabled_categories: "*"
+              enabled_categories: "blink.user_timing"
+            }
+          }
+        }
+        data_sources {
+          config {
+            name: "org.chromium.trace_metadata"
+          }
+        }
+        data_sources: {
+            config {
+                name: "android.power"
+                android_power_config {
+                    battery_poll_ms: 200
+                    collect_power_rails: true
+                }
+            }
+        }
+      ''',
+    },
+  },
+}

@@ -13,7 +13,6 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QGuiApplication::setOrganizationName("QtProject");
     QGuiApplication::setApplicationName("File System Explorer");
-    QGuiApplication::setApplicationVersion(QT_VERSION_STR);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/FileSystemModule/icons/app_icon.svg"));
 
     // Setup the parser and parse the command-line arguments.

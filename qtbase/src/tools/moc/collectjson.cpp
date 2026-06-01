@@ -9,16 +9,19 @@
 #include <qstringlist.h>
 #include <cstdlib>
 
-static bool readFromDevice(QIODevice *device, QJsonArray *allMetaObjects)
+static bool readFromFile(QFile *device, QJsonArray *allMetaObjects)
 {
     const QByteArray contents = device->readAll();
-    if (contents.isEmpty())
-        return true;
+    if (contents.isEmpty()) {
+        fprintf(stderr, "%s:0: metatypes input file is empty\n", qPrintable(device->fileName()));
+        return false;
+    }
 
     QJsonParseError error {};
     QJsonDocument metaObjects = QJsonDocument::fromJson(contents, &error);
     if (error.error != QJsonParseError::NoError) {
-        fprintf(stderr, "%s at %d\n", error.errorString().toUtf8().constData(), error.offset);
+        fprintf(stderr, "%s:%d: %s\n", qPrintable(device->fileName()), error.offset,
+                qPrintable(error.errorString()));
         return false;
     }
 
@@ -33,13 +36,15 @@ int collectJson(const QStringList &jsonFiles, const QString &outputFile, bool sk
     QFile output;
     if (outputFile.isEmpty()) {
         if (!output.open(stdout, QIODevice::WriteOnly)) {
-            fprintf(stderr, "Error opening stdout for writing\n");
+            fprintf(stderr, "Error opening stdout for writing: %s\n",
+                    qPrintable(output.errorString()));
             return EXIT_FAILURE;
         }
     } else {
         output.setFileName(outputFile);
         if (!output.open(QIODevice::WriteOnly)) {
-            fprintf(stderr, "Error opening %s for writing\n", qPrintable(outputFile));
+            fprintf(stderr, "%s: Cannot open file for writing: %s\n", qPrintable(outputFile),
+                    qPrintable(output.errorString()));
             return EXIT_FAILURE;
         }
     }
@@ -48,14 +53,12 @@ int collectJson(const QStringList &jsonFiles, const QString &outputFile, bool sk
     if (jsonFiles.isEmpty() && !skipStdIn) {
         QFile f;
         if (!f.open(stdin, QIODevice::ReadOnly)) {
-            fprintf(stderr, "Error opening stdin for reading\n");
+            fprintf(stderr, "Error opening stdin for reading: %s\n", qPrintable(f.errorString()));
             return EXIT_FAILURE;
         }
 
-        if (!readFromDevice(&f, &allMetaObjects)) {
-            fprintf(stderr, "Error parsing data from stdin\n");
+        if (!readFromFile(&f, &allMetaObjects))
             return EXIT_FAILURE;
-        }
     }
 
     QStringList jsonFilesSorted = jsonFiles;
@@ -63,14 +66,13 @@ int collectJson(const QStringList &jsonFiles, const QString &outputFile, bool sk
     for (const QString &jsonFile : std::as_const(jsonFilesSorted)) {
         QFile f(jsonFile);
         if (!f.open(QIODevice::ReadOnly)) {
-            fprintf(stderr, "Error opening %s for reading\n", qPrintable(jsonFile));
+            fprintf(stderr, "%s: Cannot open file for reading: %s\n", qPrintable(jsonFile),
+                    qPrintable(f.errorString()));
             return EXIT_FAILURE;
         }
 
-        if (!readFromDevice(&f, &allMetaObjects)) {
-            fprintf(stderr, "Error parsing %s\n", qPrintable(jsonFile));
+        if (!readFromFile(&f, &allMetaObjects))
             return EXIT_FAILURE;
-        }
     }
 
     QJsonDocument doc(allMetaObjects);

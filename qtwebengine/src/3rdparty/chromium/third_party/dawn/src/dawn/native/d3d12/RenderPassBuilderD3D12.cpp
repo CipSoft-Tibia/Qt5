@@ -133,16 +133,29 @@ void RenderPassBuilder::SetRenderTargetView(ColorAttachmentIndex attachmentIndex
             mHighestColorAttachmentIndexPlusOne,
             ColorAttachmentIndex{static_cast<uint8_t>(static_cast<uint8_t>(attachmentIndex) + 1u)});
     } else {
-        // Null views should not be accessed
+        // Null views must be marked as preserved so that they keep using attachment slots.
+        // Otherwise the holes in the attachments would get compacted by D3D12.
+        // See the chapter "surfaces-that-beginrenderpass-binds-for-raster" in
+        // https://microsoft.github.io/DirectX-Specs/d3d/RenderPasses.html for more information.
         mRenderPassRenderTargetDescriptors[attachmentIndex].BeginningAccess.Type =
-            D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_NO_ACCESS;
+            D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_PRESERVE;
         mRenderPassRenderTargetDescriptors[attachmentIndex].EndingAccess.Type =
-            D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_NO_ACCESS;
+            D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
     }
 }
 
-void RenderPassBuilder::SetDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE baseDescriptor) {
+void RenderPassBuilder::SetDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE baseDescriptor,
+                                            bool isDepthReadOnly,
+                                            bool isStencilReadOnly) {
     mRenderPassDepthStencilDesc.cpuDescriptor = baseDescriptor;
+#if D3D12_SDK_VERSION >= 612
+    if (isDepthReadOnly) {
+        mRenderPassFlags |= D3D12_RENDER_PASS_FLAG_BIND_READ_ONLY_DEPTH;
+    }
+    if (isStencilReadOnly) {
+        mRenderPassFlags |= D3D12_RENDER_PASS_FLAG_BIND_READ_ONLY_STENCIL;
+    }
+#endif
 }
 
 ColorAttachmentIndex RenderPassBuilder::GetHighestColorAttachmentIndexPlusOne() const {

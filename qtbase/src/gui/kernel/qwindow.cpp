@@ -184,6 +184,12 @@ QWindow::QWindow(QWindowPrivate &dd, QWindow *parent)
 QWindow::~QWindow()
 {
     Q_D(QWindow);
+
+    // Delete child windows up front, instead of waiting for ~QObject,
+    // in case the destruction of the child references its parent as
+    // a (no longer valid) QWindow.
+    qDeleteAll(findChildren<QWindow *>(Qt::FindDirectChildrenOnly));
+
     d->destroy();
     // Decouple from parent before window goes under
     setParent(nullptr);
@@ -205,8 +211,9 @@ QWindow::~QWindow()
     d->isWindow = false;
 }
 
-QWindowPrivate::QWindowPrivate()
-    = default;
+QWindowPrivate::QWindowPrivate(decltype(QObjectPrivateVersion) version)
+    : QObjectPrivate(version)
+{}
 
 QWindowPrivate::~QWindowPrivate()
     = default;
@@ -987,6 +994,8 @@ void QWindow::setFlags(Qt::WindowFlags flags)
     if (d->platformWindow)
         d->platformWindow->setWindowFlags(flags);
     d->windowFlags = flags;
+
+    emit flagsChanged(this->flags());
 }
 
 Qt::WindowFlags QWindow::flags() const
@@ -1846,6 +1855,13 @@ void QWindow::setGeometry(const QRect &rect)
 
     d->positionPolicy = QWindowPrivate::WindowFrameExclusive;
     if (d->platformWindow) {
+        // Setting a new geometry may move the window to a new screen.
+        // The QHighDpi layer needs to know the new screen to be able
+        // to resolve the resulting geometry based on the screen's DPR,
+        // so we update the screen before passing the geometry on to
+        // the platform layer. FIXME: Find a way to tell QHighDpi about
+        // the new screen without actually changing the screen, so that
+        // the geometry change is the trigger for the screen change.
         QScreen *newScreen = d->screenForGeometry(rect);
         if (newScreen && isTopLevel())
             d->setTopLevelScreen(newScreen, true);

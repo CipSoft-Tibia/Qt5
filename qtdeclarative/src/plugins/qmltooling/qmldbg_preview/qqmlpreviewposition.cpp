@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlpreviewposition.h"
 
@@ -161,8 +162,6 @@ void QQmlPreviewPosition::readLastPositionFromByteArray(const QByteArray &array)
 
     QPoint nativePosition;
     stream >> nativePosition;
-    if (nativePosition.isNull())
-        return;
 
     QSize size;
     stream >> size;
@@ -173,8 +172,6 @@ void QQmlPreviewPosition::readLastPositionFromByteArray(const QByteArray &array)
 void QQmlPreviewPosition::setPosition(const QQmlPreviewPosition::Position &position,
                                       QWindow *window)
 {
-    if (position.nativePosition.isNull())
-        return;
     if (QScreen *screen = findScreen(position.screenName)) {
         window->setScreen(screen);
         const auto point = QHighDpiScaling::mapPositionFromNative(position.nativePosition,

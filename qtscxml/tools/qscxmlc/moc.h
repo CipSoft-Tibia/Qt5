@@ -66,7 +66,6 @@ struct ArgumentDef
     ArgumentDef() : isDefault(false) {}
     Type type;
     QByteArray rightType, normalizedType, name;
-    QByteArray typeNameForCast; // type name to be used in cast from void * in metacall
     bool isDefault;
 
     QJsonObject toJson() const;
@@ -208,6 +207,7 @@ struct ClassDef : BaseDef {
     QList<FunctionDef> signalList, slotList, methodList, publicList;
     QList<QByteArray> nonClassSignalList;
     QList<PropertyDef> propertyList;
+    QSet<QByteArray> allEnumNames;
     int revisionedMethods = 0;
 
     bool hasQObject = false;
@@ -253,6 +253,7 @@ public:
     QList<QString> parsedPluginMetadataFiles;
 
     void parse();
+    QByteArrayView strippedFileName() const;
     void generate(FILE *out, FILE *jsonOutput);
 
     bool parseClassHead(ClassDef *def);
@@ -270,7 +271,7 @@ public:
 
     Type parseType();
 
-    bool parseEnum(EnumDef *def);
+    bool parseEnum(EnumDef *def, ClassDef *containingClass);
 
     bool parseFunction(FunctionDef *def, bool inMacro = false);
     bool parseMaybeFunction(const ClassDef *cdef, FunctionDef *def);

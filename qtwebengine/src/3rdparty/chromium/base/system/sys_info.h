@@ -128,6 +128,12 @@ class BASE_EXPORT SysInfo {
   // https://deviceatlas.com/resources/clientside/ios-hardware-identification
   static std::string HardwareModelName();
 
+  // Returns the SOC manufacturer's name or an empty string if the manufacturer
+  // is unknown or an error occurred.
+  // e.g. "Google" on Pixel 8 Pro. Only implemented on Android, returns an
+  // empty string on other platforms.
+  static std::string SocManufacturer();
+
 #if BUILDFLAG(IS_MAC)
   struct HardwareModelNameSplit {
     std::string category;
@@ -262,6 +268,10 @@ class BASE_EXPORT SysInfo {
   // Returns the Android build ID.
   static std::string GetAndroidBuildID();
 
+  // Returns the Android hardware system property, equivalent to Java's
+  // Build.HARDWARE.
+  static std::string GetAndroidHardware();
+
   // Returns the Android hardware EGL system property.
   static std::string GetAndroidHardwareEGL();
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -283,11 +293,8 @@ class BASE_EXPORT SysInfo {
   // including user-visible changes, for acceptable performance.
   // For general memory optimizations, consider |AmountOfPhysicalMemoryMB|.
   //
-  // On Android this returns:
-  //   true when memory <= 1GB on Android O and later.
-  //   true when memory <= 512MB on Android N and earlier.
-  // This is not the same as "low-memory" and will be false on a large number of
-  // <=1GB pre-O Android devices. See: |detectLowEndDevice| in SysUtils.java.
+  // On Android this returns true when memory <= 1GB on Android O and later.
+  // This is not the same as "low-memory".
   // On Desktop this returns true when memory <= 2GB.
   static bool IsLowEndDevice();
 

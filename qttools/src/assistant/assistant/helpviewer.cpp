@@ -16,6 +16,7 @@
 #include <QtGui/QClipboard>
 #endif
 #include <QtGui/QGuiApplication>
+#include <QtGui/QStyleHints>
 #include <QtGui/QWheelEvent>
 
 #include <QtWidgets/QScrollBar>
@@ -68,15 +69,65 @@ const struct ExtensionMap {
     { nullptr, nullptr }
 };
 
-static QByteArray getData(const QUrl &url)
+static void setLight(QWidget *widget)
 {
-    // TODO: this is just a hack for Qt documentation
+    // Make docs' contents visible in dark theme
+    QPalette p = widget->palette();
+    p.setColor(QPalette::Inactive, QPalette::Highlight,
+               p.color(QPalette::Active, QPalette::Highlight));
+    p.setColor(QPalette::Inactive, QPalette::HighlightedText,
+               p.color(QPalette::Active, QPalette::HighlightedText));
+    p.setColor(QPalette::Base, Qt::white);
+    p.setColor(QPalette::Text, Qt::black);
+    widget->setPalette(p);
+}
+
+static bool isDarkTheme()
+{
+    // Either Qt realizes that it is dark, or the palette exposes it, by having
+    // the window background darker than the text
+    return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark
+            || QGuiApplication::palette().color(QPalette::Base).lightnessF()
+            < QGuiApplication::palette().color(QPalette::Text).lightnessF();
+}
+
+static void setPaletteFromApp(QWidget *widget)
+{
+    QPalette appPalette = QGuiApplication::palette();
+    // Detach the palette from the application palette, so it doesn't change directly when the
+    // application palette changes.
+    // That ensures that if the system is dark, and dark documentation is show, and the user
+    // switches the system to a light theme, that the documentation background stays dark for the
+    // visible page until either the we got informed by the change in application palette, or the
+    // user switched pages
+    appPalette.setColor(QPalette::Base, appPalette.color(QPalette::Base));
+    widget->setPalette(appPalette);
+}
+
+static QByteArray getData(const QUrl &url, QWidget *widget)
+{
+    // This is a hack for Qt documentation,
     // which decides to use a simpler CSS if the viewer does not have JavaScript
-    // which was a hack to decide if we are viewing in QTextBrowser or QtWebEngine et al
+    // which was a hack to decide if we are viewing in QTextBrowser or QtWebEngine et al.
+    // Force it to use the "normal" offline CSS even without JavaScript, since litehtml can
+    // handle that, and inject a dark themed CSS into Qt documentation for dark Qt Creator themes
     QUrl actualUrl = url;
     QString path = url.path(QUrl::FullyEncoded);
     static const char simpleCss[] = "/offline-simple.css";
     if (path.endsWith(simpleCss)) {
+        if (isDarkTheme()) {
+            // check if dark CSS is shipped with documentation
+            QString darkPath = path;
+            darkPath.replace(simpleCss, "/offline-dark.css");
+            actualUrl.setPath(darkPath);
+            QByteArray data = HelpEngineWrapper::instance().fileData(actualUrl);
+            if (!data.isEmpty()) {
+                // we found the dark style
+                // set background dark (by using app palette)
+                setPaletteFromApp(widget);
+                return data;
+            }
+        }
         path.replace(simpleCss, "/offline.css");
         actualUrl.setPath(path);
     }
@@ -129,8 +180,13 @@ void HelpViewerPrivate::setSourceInternal(const QUrl &url, int *vscroll, bool re
     newUrlWithoutFragment.setFragment({});
 
     m_viewer->setUrl(resolvedUrl);
-    if (currentUrlWithoutFragment != newUrlWithoutFragment || reload)
-        m_viewer->setHtml(QString::fromUtf8(getData(resolvedUrl)));
+    if (currentUrlWithoutFragment != newUrlWithoutFragment || reload) {
+        // Users can register arbitrary documentation, so we do not expect the documentation to
+        // support dark themes, and start with light palette.
+        // We override this if we find Qt's dark style
+        setLight(q);
+        m_viewer->setHtml(QString::fromUtf8(getData(resolvedUrl, q)));
+    }
     if (vscroll)
         m_viewer->verticalScrollBar()->setValue(*vscroll);
     else
@@ -166,7 +222,7 @@ HelpViewer::HelpViewer(qreal zoom, QWidget *parent)
     auto layout = new QVBoxLayout;
     d->q = this;
     d->m_viewer = new QLiteHtmlWidget(this);
-    d->m_viewer->setResourceHandler([](const QUrl &url) { return getData(url); });
+    d->m_viewer->setResourceHandler([this](const QUrl &url) { return getData(url, this); });
     d->m_viewer->viewport()->installEventFilter(this);
     const int zoomPercentage = zoom == 0 ? 100 : zoom * 100;
     d->applyZoom(zoomPercentage);
@@ -179,15 +235,15 @@ HelpViewer::HelpViewer(qreal zoom, QWidget *parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(d->m_viewer, 10);
 
-    // Make docs' contents visible in dark theme
-    QPalette p = palette();
-    p.setColor(QPalette::Inactive, QPalette::Highlight,
-        p.color(QPalette::Active, QPalette::Highlight));
-    p.setColor(QPalette::Inactive, QPalette::HighlightedText,
-        p.color(QPalette::Active, QPalette::HighlightedText));
-    p.setColor(QPalette::Base, Qt::white);
-    p.setColor(QPalette::Text, Qt::black);
-    setPalette(p);
+    // If the platform supports it, changes of color scheme light/dark take effect during runtime:
+    connect(
+            QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
+            [this] {
+                int vscroll = d->m_viewer->verticalScrollBar()->value();
+                d->setSourceInternal(source(), &vscroll, /*reload*/ true);
+            },
+            // Queue to make sure that the palette is actually applied on the application
+            Qt::QueuedConnection);
 }
 
 HelpViewer::~HelpViewer()

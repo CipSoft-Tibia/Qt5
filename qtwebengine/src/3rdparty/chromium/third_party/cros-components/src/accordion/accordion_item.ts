@@ -5,6 +5,7 @@
  */
 
 import '../icon_button/icon-button';
+import '../tooltip/tooltip';
 import '@material/web/focus/md-focus-ring.js';
 
 import {css, CSSResultGroup, html, LitElement, nothing, PropertyValues} from 'lit';
@@ -68,6 +69,9 @@ const CHEVRON_UP_ICON = html`
 
 const LEADING_PADDING =
     css`var(--cros-accordion-item-leading-padding-inline-end, 16px)`;
+
+// Anchor id for the button tooltip.
+const BUTTON_ANCHOR_ID = 'button-anchor';
 
 /** A chromeOS compliant accordion-item for use in <cros-accordion>. */
 export class AccordionItem extends LitElement {
@@ -194,7 +198,11 @@ export class AccordionItem extends LitElement {
     disabled: {type: Boolean, reflect: true},
     expanded: {type: Boolean, reflect: true},
     quick: {type: Boolean, reflect: true},
-    variant: {type: String, reflect: true}
+    variant: {type: String, reflect: true},
+    showButtonTooltip:
+        {type: Boolean, reflect: true, attribute: 'show-button-tooltip'},
+    buttonTooltipLabel:
+        {type: String, reflect: true, attribute: 'button-tooltip-label'},
   };
 
   /** @nocollapse */
@@ -232,12 +240,26 @@ export class AccordionItem extends LitElement {
    */
   variant: AccordionItemVariant;
 
+  /**
+   * Whether or not to show a tooltip on the arrow button.
+   * @export
+   */
+  showButtonTooltip: boolean;
+
+  /**
+   * The label for the button tooltip.
+   * @export
+   */
+  buttonTooltipLabel: string;
+
   constructor() {
     super();
     this.disabled = false;
     this.expanded = false;
     this.quick = false;
     this.variant = 'default';
+    this.showButtonTooltip = false;
+    this.buttonTooltipLabel = '';
   }
 
   override willUpdate(changedProperties: PropertyValues<this>) {
@@ -264,44 +286,41 @@ export class AccordionItem extends LitElement {
       '--cros-accordion-item-content-height': `${this.contentHeight}px`
     };
 
-    // The aria-level="3" and role="heading" are used to conform to the WAI
-    // ARIA pattern on accordions:
-    // https://www.w3.org/WAI/ARIA/apg/patterns/accordion/examples/accordion/
     return html`
       <div class="container ${classMap(containerClasses)}" >
-        <div aria-level="3" role="heading">
-          <div
-              class="accordion-row"
-              id="accordion-row"
-              part="row"
-              aria-expanded=${this.expanded ? 'true' : 'false'}
-              aria-controls="content-inner"
-              aria-labelledby="title-and-subtitle"
-              role="button"
-              @click=${this.onRowClick}
-              @keydown=${this.onRowKeyDown}
-              tabindex=${this.disabled ? -1 : 0}>
-            ${this.renderLeading()}
-            <section
-                aria-hidden="true"
-                class="title-and-subtitle"
-                id="title-and-subtitle">
-              <div class="title">
-                <slot name="title"></slot>
-              </div>
-              ${this.renderSubtitle()}
-            </section>
-            <cros-icon-button
-              tabindex="-1"
+        <div
+            class="accordion-row"
+            id="accordion-row"
+            part="row"
+            aria-expanded=${this.expanded ? 'true' : 'false'}
+            aria-controls="content-inner"
+            aria-labelledby="title-and-subtitle"
+            role="button"
+            @click=${this.onRowClick}
+            @keydown=${this.onRowKeyDown}
+            tabindex=${this.disabled ? -1 : 0}>
+          ${this.renderLeading()}
+          <section
               aria-hidden="true"
-              buttonStyle="floating"
-              size=${this.variant === 'compact' ? 'small' : 'default'}
-              surface="base"
-              shape="square">
+              class="title-and-subtitle"
+              id="title-and-subtitle">
+            <div class="title">
+              <slot name="title"></slot>
+            </div>
+            ${this.renderSubtitle()}
+          </section>
+          <cros-icon-button
+            id=${BUTTON_ANCHOR_ID}
+            tabindex="-1"
+            aria-hidden="true"
+            buttonStyle="floating"
+            size=${this.variant === 'compact' ? 'small' : 'default'}
+            surface="base"
+            shape="square">
               ${this.expanded ? CHEVRON_UP_ICON : CHEVRON_DOWN_ICON}
-            </cros-icon-button>
-            <md-focus-ring inward></md-focus-ring>
-          </div>
+          </cros-icon-button>
+          ${this.renderButtonTooltip()}
+          <md-focus-ring inward></md-focus-ring>
         </div>
         <section class="content"
             @transitionend=${this.onTransitionEnd}
@@ -342,6 +361,17 @@ export class AccordionItem extends LitElement {
       <div class="subtitle">
         <slot name="subtitle"></slot>
       </div>
+    `;
+  }
+
+  private renderButtonTooltip() {
+    if (!this.showButtonTooltip) {
+      return nothing;
+    }
+
+    return html`
+      <cros-tooltip anchor=${BUTTON_ANCHOR_ID} label=${this.buttonTooltipLabel}>
+      </cros-tooltip>
     `;
   }
 

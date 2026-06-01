@@ -34,11 +34,16 @@
 // keeps a “block stack” to know which end-of-block tokens actually correspond
 // to blocks we have descended into.
 
+#include <memory>
+
 #include "base/auto_reset.h"
 #include "base/check_op.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/parser/css_tokenizer.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
+#include "third_party/blink/renderer/platform/wtf/forward.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
 
 namespace blink {
 
@@ -151,14 +156,33 @@ class CORE_EXPORT CSSParserTokenStream {
   explicit CSSParserTokenStream(StringView text, wtf_size_t offset = 0)
       : tokenizer_(text, offset), next_(kEOFToken) {}
 
+  CSSParserTokenStream(
+      StringView text,
+      const Vector<std::pair<wtf_size_t, wtf_size_t>>* attr_taint_ranges)
+      : tokenizer_(text, 0),
+        next_(kEOFToken),
+        attr_taint_ranges_(attr_taint_ranges) {}
   CSSParserTokenStream(CSSParserTokenStream&&) = delete;
   CSSParserTokenStream(const CSSParserTokenStream&) = delete;
   CSSParserTokenStream& operator=(const CSSParserTokenStream&) = delete;
 
+  bool IsAttrTainted(wtf_size_t start_offset, wtf_size_t end_offset) {
+    if (!attr_taint_ranges_) {
+      return false;
+    }
+    for (auto [tainted_start, tainted_end] : *attr_taint_ranges_) {
+      int64_t end = std::min(end_offset, tainted_end);
+      int64_t start = std::max(start_offset, tainted_start);
+      if (end - start > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   inline void EnsureLookAhead() {
     if (!HasLookAhead()) {
-      has_look_ahead_ = true;
-      next_ = tokenizer_.TokenizeSingle();
+      LookAhead();
     }
   }
 
@@ -166,6 +190,9 @@ class CORE_EXPORT CSSParserTokenStream {
   inline void LookAhead() {
     DCHECK(!HasLookAhead());
     next_ = tokenizer_.TokenizeSingle();
+#if DCHECK_IS_ON()
+    peeked_at_next_ = false;
+#endif
     has_look_ahead_ = true;
   }
 
@@ -173,7 +200,7 @@ class CORE_EXPORT CSSParserTokenStream {
 
   inline const CSSParserToken& Peek() {
     EnsureLookAhead();
-    return next_;
+    return UncheckedPeek();
   }
 
   // Skips to the given offset, which _must_ be exactly the end of
@@ -193,6 +220,9 @@ class CORE_EXPORT CSSParserTokenStream {
 
   inline const CSSParserToken& UncheckedPeek() const {
     DCHECK(HasLookAhead());
+#if DCHECK_IS_ON()
+    peeked_at_next_ = true;
+#endif
     return next_;
   }
 
@@ -205,6 +235,15 @@ class CORE_EXPORT CSSParserTokenStream {
     DCHECK(HasLookAhead());
     DCHECK_NE(next_.GetBlockType(), CSSParserToken::kBlockStart);
     DCHECK_NE(next_.GetBlockType(), CSSParserToken::kBlockEnd);
+
+#if DCHECK_IS_ON()
+    // This isn't a fool-proof check, but will catch most abuses.
+    DCHECK(peeked_at_next_)
+        << "You blindly called Consume() without checking the token first, "
+        << "thus risking that it's a block-start or block-end token "
+        << "if the input data happened to contain one";
+#endif
+
     has_look_ahead_ = false;
     offset_ = tokenizer_.Offset();
     return next_;
@@ -283,6 +322,10 @@ class CORE_EXPORT CSSParserTokenStream {
     // ignore garbage after a declaration, and there usually is no such
     // garbage.)
     if (next_.IsEOF() || TokenMarksEnd<Types...>(next_)) {
+#if DCHECK_IS_ON()
+      // We know what type this is now.
+      peeked_at_next_ = true;
+#endif
       return;
     }
 
@@ -299,6 +342,10 @@ class CORE_EXPORT CSSParserTokenStream {
       if (token.IsEOF() ||
           (nesting_level == 0 && TokenMarksEnd<Types...>(token))) {
         next_ = token;
+#if DCHECK_IS_ON()
+        // We know what type this is now.
+        peeked_at_next_ = true;
+#endif
         offset_ = tokenizer_.PreviousOffset();
         return;
       } else if (token.GetBlockType() == CSSParserToken::kBlockStart) {
@@ -489,6 +536,9 @@ class CORE_EXPORT CSSParserTokenStream {
     offset_ = state;
 #endif  // DCHECK_IS_ON()
     next_ = tokenizer_.Restore(next_, offset_);
+#if DCHECK_IS_ON()
+    peeked_at_next_ = true;  // It's possible.
+#endif
   }
 
   // A RestoringBlockGuard is an object that allows you to enter a block,
@@ -623,6 +673,9 @@ class CORE_EXPORT CSSParserTokenStream {
   void RetokenizeLookAhead() {
     if (has_look_ahead_) {
       next_ = tokenizer_.Restore(next_, tokenizer_.PreviousOffset());
+#if DCHECK_IS_ON()
+      peeked_at_next_ = false;
+#endif
     }
   }
 
@@ -635,9 +688,14 @@ class CORE_EXPORT CSSParserTokenStream {
 
   CSSTokenizer tokenizer_;
   CSSParserToken next_;
+#if DCHECK_IS_ON()
+  mutable bool peeked_at_next_ = false;
+#endif
   wtf_size_t offset_ = 0;
   bool has_look_ahead_ = false;
   uint64_t boundaries_ = FlagForTokenType(kEOFToken);
+  // Attr tainted intervals [start, end).
+  const Vector<std::pair<wtf_size_t, wtf_size_t>>* attr_taint_ranges_ = nullptr;
 };
 
 }  // namespace blink

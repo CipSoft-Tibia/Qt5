@@ -71,4 +71,38 @@ Item {
 \sa {QML Value Types}
 \sa {QML Object Attributes#enumeration-attributes}{Enumeration Attributes}
 \sa {Data Type Conversion Between QML and C++#enumeration-types}{Enumeration Types}
+
+\section2 Enumeration key string <-> key value helpers
+
+The Qt global object provides helper methods that can map the name of a key in
+the enumeration to its numeric value or vice versa.
+
+\list
+    \li Qt.enumStringToValue: maps a string containing the name of a key to its numerical value
+    \li Qt.enumValueToString: maps a value to the name of a key with that value
+    \li Qt.enumValueToStrings: maps a value to a list of names of the keys with that value
+\endlist
+
+Example:
+\qml
+// Main.qml
+import QtQml
+
+Item {
+    enum E { Black = 0, White = 1, Grey = 2, Gray = 2 }
+
+    // 1 (White)
+    property int i: Qt.enumStringToValue(Main.E, "White")
+
+    // "Black"
+    property string s: Qt.enumValueToString(Main.E, Main.E.Black)
+
+    // ["Grey", "Gray"]
+    property list<string> ss: Qt.enumValueToStrings(Main.E, Main.E.Grey)
+}
+\endqml
+
+\sa QtQml::Qt::enumStringToValue
+\sa QtQml::Qt::enumValueToString
+\sa QtQml::Qt::enumValueToStrings
 */

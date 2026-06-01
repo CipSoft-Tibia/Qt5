@@ -166,7 +166,11 @@ PermissionPtr ConvertDictToPermission(const base::Value::Dict& dict) {
 }
 
 base::Value::List ConvertPermissionsToList(const Permissions& permissions) {
-  return base::ToValueList(permissions, &ConvertPermissionToDict);
+  auto container = base::Value::List::with_capacity(std::ranges::size(permissions));
+  for(auto &&perm: permissions)
+    container.Append(ConvertPermissionToDict(perm));
+  return container;
+  // return base::ToValueList(permissions, &ConvertPermissionToDict);
 }
 
 Permissions ConvertListToPermissions(const base::Value::List* list) {

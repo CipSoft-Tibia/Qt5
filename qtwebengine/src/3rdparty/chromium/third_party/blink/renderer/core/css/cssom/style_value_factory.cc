@@ -10,6 +10,7 @@
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
 #include "third_party/blink/renderer/core/css/css_image_value.h"
 #include "third_party/blink/renderer/core/css/css_property_name.h"
+#include "third_party/blink/renderer/core/css/css_scoped_keyword_value.h"
 #include "third_party/blink/renderer/core/css/css_unparsed_declaration_value.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/core/css/css_value_pair.h"
@@ -53,7 +54,8 @@ CSSStyleValue* CreateStyleValueWithoutProperty(const CSSValue& value) {
 }
 
 CSSStyleValue* CreateStyleValue(const CSSValue& value) {
-  if (IsA<CSSIdentifierValue>(value) || IsA<CSSCustomIdentValue>(value)) {
+  if (IsA<CSSIdentifierValue>(value) || IsA<CSSCustomIdentValue>(value) ||
+      IsA<cssvalue::CSSScopedKeywordValue>(value)) {
     return CSSKeywordValue::FromCSSValue(value);
   }
   if (auto* primitive_value = DynamicTo<CSSPrimitiveValue>(value)) {
@@ -315,8 +317,8 @@ CSSStyleValueVector StyleValueFactory::FromString(
           parser_context, parsed_properties, StyleRule::RuleType::kStyle)) {
     if (parsed_properties.size() == 1) {
       const auto result = StyleValueFactory::CssValueToStyleValueVector(
-          CSSPropertyName(parsed_properties[0].Id()),
-          *parsed_properties[0].Value());
+          CSSPropertyName(parsed_properties[0].PropertyID()),
+          parsed_properties[0].Value());
       // TODO(801935): Handle list-valued properties.
       if (result.size() == 1U) {
         result[0]->SetCSSText(css_text);
@@ -340,7 +342,7 @@ CSSStyleValueVector StyleValueFactory::FromString(
           /*is_animation_tainted=*/false,
           /*must_contain_variable_reference=*/false,
           /*restricted_value=*/false, /*comma_ends_declaration=*/false,
-          important_ignored, parser_context->GetExecutionContext());
+          important_ignored, *parser_context);
   if (variable_data) {
     if ((property_id == CSSPropertyID::kVariable &&
          variable_data->OriginalText().length() > 0) ||

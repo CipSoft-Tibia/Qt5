@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickfluentwinui3theme_p.h"
 
@@ -8,6 +9,7 @@
 #include <QtGui/qpa/qplatformtheme.h>
 #include <QtGui/qguiapplication.h>
 #include <QtGui/qstylehints.h>
+#include <QtGui/QAccessibilityHints>
 #include <QtGui/qcolor.h>
 #include <QtGui/qfontdatabase.h>
 #include <QtQuickTemplates2/private/qquicktheme_p.h>
@@ -38,6 +40,7 @@ enum WinUI3Color {
     accentDefault,                      // Default color for accent fills on controls
     accentDisabled,                     // Default color for accent fills on disabled controls
     accentSecondary,                    // Color for accent fills on hovered controls
+    inputActive,                        // Color for active text input backgrounds
 };
 
 const static QColor WINUI3ColorsLight [] {
@@ -58,6 +61,7 @@ const static QColor WINUI3ColorsLight [] {
     QColor(0x00,0x5F,0xB8,0xFF), //accentDefault
     QColor(0x00,0x00,0x00,0x37), //accentDisabled
     QColor(0x00,0x5F,0xB8,0xE6), //accentSecondary
+    QColor(0xFF,0xFF,0xFF,0xFF)  //inputActive
 };
 
 const static QColor WINUI3ColorsDark[] {
@@ -77,7 +81,8 @@ const static QColor WINUI3ColorsDark[] {
     QColor(0x00,0x00,0x00,0x23), //controlStrokeAccentSecondary
     QColor(0x60,0xCD,0xFF,0xFF), //accentDefault
     QColor(0xFF,0xFF,0xFF,0x28), //accentDisabled
-    QColor(0x60,0xCD,0xFF,0xE6) // accentSecondary
+    QColor(0x60,0xCD,0xFF,0xE6), // accentSecondary
+    QColor(0x1E,0x1E,0x1E,0xB3)  // inputActive
 };
 
 const static QColor* WINUI3Colors[] {
@@ -91,6 +96,10 @@ static void populateWinUI3Palette(QPalette &palette)
     const auto colorSchemeIndex = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Light ? 0 : 1;
 
     palette.setColor(QPalette::All, QPalette::Window, WINUI3Colors[colorSchemeIndex][solidBackground]);
+
+    palette.setColor(QPalette::All, QPalette::Base, WINUI3Colors[colorSchemeIndex][controlDefault]);
+    palette.setColor(QPalette::Active, QPalette::Base, WINUI3Colors[colorSchemeIndex][inputActive]);
+    palette.setColor(QPalette::Disabled, QPalette::Base, WINUI3Colors[colorSchemeIndex][controlDisabled]);
 
     palette.setColor(QPalette::All, QPalette::WindowText, WINUI3Colors[colorSchemeIndex][textPrimary]);
     palette.setColor(QPalette::Disabled, QPalette::WindowText, WINUI3Colors[colorSchemeIndex][textDisabled]);
@@ -151,25 +160,32 @@ QPalette QQuickFluentWinUI3Theme::initializeDefaultPalette()
 {
     QPalette palette;
 
-    populateWinUI3Palette(palette);
+    const auto *styleHints = QGuiApplication::styleHints();
+    const auto highContrastTheme = styleHints->accessibility()->contrastPreference() == Qt::ContrastPreference::HighContrast;
+    // HighContrast themes use system colors only
+    if (!highContrastTheme) {
+        populateWinUI3Palette(palette);
 
-    // Resolve against the platform palette
-    if (auto platformTheme = QGuiApplicationPrivate::platformTheme()) {
-        const auto platformPalette = platformTheme->palette();
-        if (platformPalette)
-            palette = palette.resolve(*platformPalette);
-    }
-    {
-        const auto colorSchemeIndex = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Light ? 0 : 1;
+        // Resolve against the platform palette
+        if (auto platformTheme = QGuiApplicationPrivate::platformTheme()) {
+            const auto platformPalette = platformTheme->palette();
+            if (platformPalette)
+                palette = palette.resolve(*platformPalette);
+        }
+        const auto colorSchemeIndex = styleHints->colorScheme() == Qt::ColorScheme::Light ? 0 : 1;
         // Ensure specific roles are set
         if (!palette.isBrushSet(QPalette::Active, QPalette::Accent))
             palette.setColor(QPalette::Active, QPalette::Accent, WINUI3Colors[colorSchemeIndex][accentDefault]);
 
-        palette.setColor(QPalette::Active, QPalette::Highlight, palette.accent().color());
-        // WinUI3 sets the inactive accent color to the same as the active one
-        palette.setColor(QPalette::Inactive, QPalette::Accent, palette.accent().color());
-        palette.setColor(QPalette::Inactive, QPalette::Highlight, palette.highlight().color());
+        if (!palette.isBrushSet(QPalette::Inactive, QPalette::Highlight))
+            palette.setColor(QPalette::Inactive, QPalette::Highlight, palette.accent().color());
+
+        palette.setColor(QPalette::Disabled, QPalette::Accent, WINUI3Colors[colorSchemeIndex][accentDisabled]);
+        palette.setColor(QPalette::Disabled, QPalette::Highlight, WINUI3Colors[colorSchemeIndex][accentDisabled]);
     }
+    // WinUI3 sets the inactive accent color to the same as the active one
+    palette.setColor(QPalette::Inactive, QPalette::Accent, palette.accent().color());
+    palette.setColor(QPalette::Inactive, QPalette::Highlight, palette.highlight().color());
 
     // Finally QGuiApp::palette() should take precedence over style palette
     palette = QGuiApplication::palette().resolve(palette);

@@ -14,15 +14,20 @@ qhp.QtNetworkAuth.virtualFolder       = qtnetworkauth
 qhp.QtNetworkAuth.indexTitle          = Qt Network Authorization
 qhp.QtNetworkAuth.indexRoot           =
 
-qhp.QtNetworkAuth.subprojects         = overview classes
-qhp.QtNetworkAuth.subprojects.overview.title = Overview
-qhp.QtNetworkAuth.subprojects.overview.indexTitle = OAuth 2.0 Overview
-qhp.QtNetworkAuth.subprojects.overview.selectors = group:none
+qhp.QtNetworkAuth.subprojects         = manual examples classes
+qhp.QtNetworkAuth.subprojects.manual.title          = Qt Network Authorization
+qhp.QtNetworkAuth.subprojects.manual.indexTitle     = Qt Network Authorization module topics
+qhp.QtNetworkAuth.subprojects.manual.type           = manual
 
-qhp.QtNetworkAuth.subprojects.classes.title = C++ Classes
-qhp.QtNetworkAuth.subprojects.classes.indexTitle = Qt Network Authorization C++ Classes
-qhp.QtNetworkAuth.subprojects.classes.selectors = class doc:headerfile
-qhp.QtNetworkAuth.subprojects.classes.sortPages = true
+qhp.QtNetworkAuth.subprojects.examples.title        = Examples
+qhp.QtNetworkAuth.subprojects.examples.indexTitle   = Qt Network Authorization Examples
+qhp.QtNetworkAuth.subprojects.examples.selectors    = example
+qhp.QtNetworkAuth.subprojects.examples.sortPages    = true
+
+qhp.QtNetworkAuth.subprojects.classes.title         = C++ Classes
+qhp.QtNetworkAuth.subprojects.classes.indexTitle    = Qt Network Authorization C++ Classes
+qhp.QtNetworkAuth.subprojects.classes.selectors     = class doc:headerfile
+qhp.QtNetworkAuth.subprojects.classes.sortPages     = true
 
 tagfile                 = qtnetworkauth.tags
 
@@ -39,6 +44,10 @@ exampledirs += ../../../examples/oauth snippets
 
 navigation.landingpage = "Qt Network Authorization"
 navigation.cppclassespage = "Qt Network Authorization C++ Classes"
+
+# Autogenerate navigation linking based on "Qt Network Authorization module topics":
+navigation.toctitles = "Qt Network Authorization module topics"
+navigation.toctitles.inclusive = false
 
 # Enforce zero documentation warnings
 warninglimit = 0

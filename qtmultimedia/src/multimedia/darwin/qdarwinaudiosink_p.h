@@ -18,6 +18,7 @@
 
 #include <AudioUnit/AudioUnit.h>
 #include <QtMultimedia/private/qcoreaudioutils_p.h>
+#include <QtMultimedia/private/qdarwinaudiodevices_p.h>
 #ifdef Q_OS_MACOS
 #  include <QtMultimedia/private/qmacosaudiodatautils_p.h>
 #else
@@ -29,7 +30,7 @@ QT_BEGIN_NAMESPACE
 class QDarwinAudioSink;
 
 class QCoreAudioSinkStream final : public std::enable_shared_from_this<QCoreAudioSinkStream>,
-                                   QtMultimediaPrivate::QPlatformAudioSinkStream
+                                   public QtMultimediaPrivate::QPlatformAudioSinkStream
 {
     using QPlatformAudioSinkStream = QtMultimediaPrivate::QPlatformAudioSinkStream;
     using AudioEndpointRole = QtMultimediaPrivate::AudioEndpointRole;
@@ -42,6 +43,7 @@ public:
                                   float volume, std::optional<int32_t> hardwareBufferFrames,
                                   AudioEndpointRole);
     Q_DISABLE_COPY_MOVE(QCoreAudioSinkStream)
+    ~QCoreAudioSinkStream();
 
     bool open();
     bool start(QIODevice *device);

@@ -2,8 +2,6 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include "tst_bench_qhash.h"
 
 #include <QFile>
@@ -14,7 +12,7 @@
 #include <QTest>
 
 static constexpr quint64 RandomSeed32 = 1045982819;
-static constexpr quint64 RandomSeed64 = QtPrivate::QHashCombine{}(RandomSeed32, RandomSeed32);
+static constexpr quint64 RandomSeed64 = qHashMulti(0, RandomSeed32, RandomSeed32);
 
 class tst_QHash : public QObject
 {
@@ -84,7 +82,7 @@ void tst_QHash::initTestCase()
     uuids.reserve(smallFilePaths.size());
     longstrings.reserve(smallFilePaths.size());
 
-    foreach (const QString &path, smallFilePaths)
+    for (const QString &path : std::as_const(smallFilePaths))
         uuids.append(QUuid::createUuidV5(ns, path).toString());
     for (qsizetype i = 0; i < uuids.size(); ++i)
         longstrings.append(uuids.at(i).repeated(8));
@@ -133,13 +131,14 @@ void tst_QHash::data()
     QTest::newRow("numbers") << numbers;
 }
 
-template <typename String> void tst_QHash::qhash_template()
+template <typename Str> void tst_QHash::qhash_template()
 {
-    QFETCH(QStringList, items);
-    QHash<String, int> hash;
+    QFETCH(const QStringList, items);
+    QHash<Str, int> hash;
 
-    QList<String> realitems;
-    foreach (const QString &s, items)
+    QList<Str> realitems;
+    realitems.reserve(items.size());
+    for (const QString &s : items)
         realitems.append(s);
 
     QBENCHMARK {
@@ -149,18 +148,18 @@ template <typename String> void tst_QHash::qhash_template()
     }
 }
 
-template <typename String, size_t Seed> void tst_QHash::hashing_template()
+template <typename Str, size_t Seed> void tst_QHash::hashing_template()
 {
     // just the hashing function
-    QFETCH(QStringList, items);
+    QFETCH(const QStringList, items);
 
-    QList<String> realitems;
+    QList<Str> realitems;
     realitems.reserve(items.size());
-    foreach (const QString &s, items) {
-        if constexpr (std::is_same_v<QString::value_type, typename String::value_type>) {
+    for (const QString &s : items) {
+        if constexpr (std::is_same_v<QString::value_type, typename Str::value_type>) {
             realitems.append(s);
-        } else if constexpr (sizeof(typename String::value_type) == 1) {
-            realitems.append(String(s.toLatin1()));
+        } else if constexpr (sizeof(typename Str::value_type) == 1) {
+            realitems.append(Str(s.toLatin1()));
         }
     }
 

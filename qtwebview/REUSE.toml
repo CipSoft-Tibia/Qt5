@@ -13,7 +13,8 @@ path = ["src/plugins/android/android.json",
         "src/plugins/darwin/darwin.json",
         "src/plugins/wasm/wasm.json",
         "src/plugins/webengine/webengine.json",
-        "src/plugins/winrt/winrt.json"]
+        "src/plugins/winrt/winrt.json",
+        "src/plugins/windows/windows.json"]
 comment = "module and plugin"
 precedence = "closest"
 SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
@@ -42,10 +43,10 @@ SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
 SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR BSD-3-Clause"
 
 [[annotations]]
-path = ["**/doc/images/**", "**.qdocconf"]
+path = ["**/doc/images/**", "**.qdocconf", "config_help.txt"]
 comment = "documentation"
 precedence = "closest"
-SPDX-FileCopyrightText = "Copyright (C) 2024 The Qt Company Ltd."
+SPDX-FileCopyrightText = "Copyright (C) 2025 The Qt Company Ltd."
 SPDX-License-Identifier = "LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only"
 
 [[annotations]]

@@ -1814,10 +1814,7 @@ struct RowOrColumnDefinition {
 };
 size_t qHash(const RowOrColumnDefinition &key, size_t seed = 0) noexcept
 {
-    QtPrivate::QHashCombine hash;
-    seed = hash(seed, key.parent);
-    seed = hash(seed, key.rowOrColumn);
-    return seed;
+    return qHashMulti(seed, key.parent, key.rowOrColumn);
 }
 
 QT_SPECIALIZE_STD_HASH_TO_CALL_QHASH_BY_CREF(RowOrColumnDefinition)

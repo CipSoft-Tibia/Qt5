@@ -24,13 +24,20 @@
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/address_data_manager.h"
-#include "components/autofill/core/browser/address_data_manager_test_api.h"
-#include "components/autofill/core/browser/autofill_experiments.h"
-#include "components/autofill/core/browser/autofill_test_utils.h"
+#include "components/autofill/core/browser/crowdsourcing/test_votes_uploader.h"
+#include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
+#include "components/autofill/core/browser/data_manager/addresses/address_data_manager_test_api.h"
+#include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
+#include "components/autofill/core/browser/data_manager/payments/test_payments_data_manager.h"
+#include "components/autofill/core/browser/data_manager/personal_data_manager.h"
+#include "components/autofill/core/browser/data_manager/test_personal_data_manager.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
-#include "components/autofill/core/browser/form_data_importer.h"
+#include "components/autofill/core/browser/form_import/form_data_importer.h"
+#include "components/autofill/core/browser/form_import/form_data_importer_test_api.h"
+#include "components/autofill/core/browser/foundations/test_autofill_client.h"
+#include "components/autofill/core/browser/foundations/test_autofill_driver.h"
+#include "components/autofill/core/browser/foundations/test_browser_autofill_manager.h"
 #include "components/autofill/core/browser/metrics/autofill_metrics.h"
 #include "components/autofill/core/browser/metrics/payments/credit_card_save_metrics.h"
 #include "components/autofill/core/browser/payments/client_behavior_constants.h"
@@ -43,16 +50,10 @@
 #include "components/autofill/core/browser/payments/test_payments_autofill_client.h"
 #include "components/autofill/core/browser/payments/test_payments_network_interface.h"
 #include "components/autofill/core/browser/payments/test_virtual_card_enrollment_manager.h"
-#include "components/autofill/core/browser/payments_data_manager.h"
-#include "components/autofill/core/browser/personal_data_manager.h"
 #include "components/autofill/core/browser/strike_databases/payments/test_credit_card_save_strike_database.h"
 #include "components/autofill/core/browser/strike_databases/payments/test_strike_database.h"
-#include "components/autofill/core/browser/test_autofill_client.h"
-#include "components/autofill/core/browser/test_autofill_driver.h"
-#include "components/autofill/core/browser/test_browser_autofill_manager.h"
-#include "components/autofill/core/browser/test_form_data_importer.h"
-#include "components/autofill/core/browser/test_payments_data_manager.h"
-#include "components/autofill/core/browser/test_personal_data_manager.h"
+#include "components/autofill/core/browser/studies/autofill_experiments.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
 #include "components/autofill/core/common/autocomplete_parsing_util.h"
 #include "components/autofill/core/common/autofill_features.h"
@@ -238,9 +239,8 @@ class MockPaymentsAutofillClient : public payments::TestPaymentsAutofillClient {
 class MockAutofillClient : public TestAutofillClient {
  public:
   MockAutofillClient() {
-    set_personal_data_manager(std::make_unique<TestPersonalDataManager>());
-    TestPersonalDataManager* pdm = GetPersonalDataManager();
-    pdm->set_payments_data_manager(std::make_unique<MockPaymentsDataManager>());
+    TestPersonalDataManager& pdm = GetPersonalDataManager();
+    pdm.set_payments_data_manager(std::make_unique<MockPaymentsDataManager>());
     set_payments_autofill_client(
         std::make_unique<MockPaymentsAutofillClient>(this));
   }
@@ -256,8 +256,7 @@ class MockVirtualCardEnrollmentManager
       InitVirtualCardEnroll,
       (const CreditCard& credit_card,
        VirtualCardEnrollmentSource virtual_card_enrollment_source,
-       std::optional<payments::PaymentsNetworkInterface::
-                         GetDetailsForEnrollmentResponseDetails>
+       std::optional<payments::GetDetailsForEnrollmentResponseDetails>
            get_details_for_enrollment_response_details,
        PrefService* user_prefs,
        VirtualCardEnrollmentManager::RiskAssessmentFunction
@@ -286,14 +285,14 @@ class CreditCardSaveManagerTest : public testing::Test {
     personal_data().SetSyncServiceForTest(&sync_service_);
     autofill_driver_ = std::make_unique<TestAutofillDriver>(&autofill_client_);
     autofill_client_.GetPaymentsAutofillClient()
-        ->set_test_payments_network_interface(
+        ->set_payments_network_interface(
             std::make_unique<payments::TestPaymentsNetworkInterface>(
                 autofill_client_.GetURLLoaderFactory(),
                 autofill_client_.GetIdentityManager(), &personal_data()));
     payments_client().set_virtual_card_enrollment_manager(
         std::make_unique<MockVirtualCardEnrollmentManager>(
-            autofill_client_.GetPersonalDataManager(),
-            &payments_network_interface(), &autofill_client_));
+            &payments_data_manager(), &payments_network_interface(),
+            &autofill_client_));
     payments_client().SetLocalSaveCallbackOfferDecision(
         SaveCardOfferUserDecision::kAccepted);
     payments_client().SetCloudSaveCallbackOfferDecision(
@@ -302,14 +301,12 @@ class CreditCardSaveManagerTest : public testing::Test {
         std::make_unique<TestCreditCardSaveManager>(&autofill_client_);
     credit_card_save_manager_ = credit_card_save_manager.get();
     credit_card_save_manager_->SetCreditCardUploadEnabled(true);
-    autofill_client_.set_test_form_data_importer(
-        std::make_unique<TestFormDataImporter>(
-            &autofill_client_, std::move(credit_card_save_manager),
-            /*iban_save_manager=*/nullptr, "en-US"));
+    test_api(*autofill_client_.GetFormDataImporter())
+        .set_credit_card_save_manager(std::move(credit_card_save_manager));
     autofill_client_.GetStrikeDatabase();
     browser_autofill_manager_ =
         std::make_unique<TestBrowserAutofillManager>(autofill_driver_.get());
-    browser_autofill_manager_->SetExpectedObservedSubmission(true);
+    autofill_client_.GetVotesUploader().set_expected_observed_submission(true);
   }
 
   void TearDown() override {
@@ -329,7 +326,7 @@ class CreditCardSaveManagerTest : public testing::Test {
 
   void FormSubmitted(const FormData& form) {
     browser_autofill_manager_->OnFormSubmitted(
-        form, false, mojom::SubmissionSource::FORM_SUBMISSION);
+        form, mojom::SubmissionSource::FORM_SUBMISSION);
   }
 
   void UserHasAcceptedCardUpload(
@@ -436,8 +433,7 @@ class CreditCardSaveManagerTest : public testing::Test {
   }
 
   void ExpectUniqueFillableFormParsedUkm() {
-    ukm::TestUkmRecorder* test_ukm_recorder =
-        autofill_client_.GetTestUkmRecorder();
+    ukm::TestUkmRecorder* test_ukm_recorder = autofill_client_.GetUkmRecorder();
     auto entries = test_ukm_recorder->GetEntriesByName(
         UkmDeveloperEngagementType::kEntryName);
     EXPECT_EQ(1u, entries.size());
@@ -484,8 +480,7 @@ class CreditCardSaveManagerTest : public testing::Test {
                     const char* entry_name,
                     int expected_metric_value,
                     size_t expected_num_matching_entries) {
-    ukm::TestUkmRecorder* test_ukm_recorder =
-        autofill_client_.GetTestUkmRecorder();
+    ukm::TestUkmRecorder* test_ukm_recorder = autofill_client_.GetUkmRecorder();
     auto entries = test_ukm_recorder->GetEntriesByName(entry_name);
     EXPECT_EQ(expected_num_matching_entries, entries.size());
     for (const ukm::mojom::UkmEntry* const entry : entries) {
@@ -496,7 +491,7 @@ class CreditCardSaveManagerTest : public testing::Test {
 
  protected:
   TestPersonalDataManager& personal_data() {
-    return *autofill_client_.GetPersonalDataManager();
+    return autofill_client_.GetPersonalDataManager();
   }
   MockPaymentsDataManager& payments_data_manager() {
     return static_cast<MockPaymentsDataManager&>(
@@ -507,8 +502,8 @@ class CreditCardSaveManagerTest : public testing::Test {
         *autofill_client_.GetPaymentsAutofillClient());
   }
   payments::TestPaymentsNetworkInterface& payments_network_interface() {
-    return *autofill_client_.GetPaymentsAutofillClient()
-                ->GetPaymentsNetworkInterface();
+    return static_cast<payments::TestPaymentsNetworkInterface&>(
+        *payments_client().GetPaymentsNetworkInterface());
   }
   TestStrikeDatabase& strike_database() {
     return *autofill_client_.GetStrikeDatabase();
@@ -531,8 +526,7 @@ class CreditCardSaveManagerTest : public testing::Test {
       if (metric & (1 << sample))
         return sample;
 
-    NOTREACHED_IN_MIGRATION();
-    return 0;
+    NOTREACHED();
   }
 };
 
@@ -614,8 +608,7 @@ TEST_F(CreditCardSaveManagerTest, InvalidCreditCardNumberIsNotSaved) {
 }
 
 TEST_F(CreditCardSaveManagerTest, CreditCardDisabledDoesNotSave) {
-  browser_autofill_manager_->SetAutofillPaymentMethodsEnabled(autofill_client_,
-                                                              false);
+  autofill_client_.SetAutofillPaymentMethodsEnabled(false);
   // Create, fill and submit an address form in order to establish a recent
   // profile which can be selected for the upload request.
   FormData address_form = CreateTestAddressFormData();
@@ -684,13 +677,14 @@ TEST_F(CreditCardSaveManagerTest, UploadCreditCard_OnlyCountryInAddresses) {
 
   EXPECT_TRUE(credit_card_save_manager_->CreditCardWasUploaded());
 #if BUILDFLAG(IS_ANDROID)
+  EXPECT_THAT(payments_network_interface().client_behavior_signals_in_request(),
+              UnorderedElementsAre(
+                  ClientBehaviorConstants::kShowAccountEmailInLegalMessage,
+                  ClientBehaviorConstants::kOfferingToSaveCvc));
+#else
   EXPECT_THAT(
       payments_network_interface().client_behavior_signals_in_request(),
-      ElementsAre(ClientBehaviorConstants::kShowAccountEmailInLegalMessage));
-#else
-  EXPECT_TRUE(payments_network_interface()
-                  .client_behavior_signals_in_request()
-                  .empty());
+      UnorderedElementsAre(ClientBehaviorConstants::kOfferingToSaveCvc));
 #endif
 
   // Verify that even though the full address profile was saved, only the
@@ -1267,8 +1261,7 @@ TEST_F(CreditCardSaveManagerTest, UploadCreditCard_NotSavedLocally) {
 
   credit_card_save_manager_->SetCreditCardUploadEnabled(true);
 
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
-      upload_card_response_details;
+  payments::UploadCardResponseDetails upload_card_response_details;
   payments_network_interface().SetUploadCardResponseDetailsForUploadCard(
       upload_card_response_details);
 
@@ -3428,7 +3421,7 @@ TEST_F(
 TEST_F(CreditCardSaveManagerTest, UploadCreditCard_UploadDetailsFails) {
   // Anything other than "en-US" will cause GetUploadDetails to return a failure
   // response.
-  credit_card_save_manager_->SetAppLocale("pt-BR");
+  autofill_client_.set_app_locale("pt-BR");
 
   // Create, fill and submit an address form in order to establish a recent
   // profile which can be selected for the upload request.
@@ -3483,7 +3476,7 @@ TEST_F(CreditCardSaveManagerTest, DuplicateMaskedCreditCard_NoUpload) {
   CreditCard credit_card(CreditCard::RecordType::kMaskedServerCard, "a123");
   test::SetCreditCardInfo(&credit_card, "Jane Doe", "1111",
                           test::NextMonth().c_str(), test::NextYear().c_str(),
-                          "1");
+                          "1", /*cvc=*/u"123");
   credit_card.SetNetworkForMaskedCard(kVisaCard);
   personal_data().test_payments_data_manager().AddServerCreditCard(credit_card);
 
@@ -4019,7 +4012,7 @@ TEST_F(CreditCardSaveManagerTest,
        UploadCreditCard_LogAdditionalErrorsWithUploadDetailsFailure) {
   // Anything other than "en-US" will cause GetUploadDetails to return a failure
   // response.
-  credit_card_save_manager_->SetAppLocale("pt-BR");
+  autofill_client_.set_app_locale("pt-BR");
 
   // Set up a new address profile without a name or postal code.
   AutofillProfile profile(AddressCountryCode("US"));
@@ -4076,7 +4069,7 @@ TEST_F(
     UploadCreditCard_ShouldOfferLocalSaveIfEverythingDetectedAndPaymentsDeclines) {
   // Anything other than "en-US" will cause GetUploadDetails to return a failure
   // response.
-  credit_card_save_manager_->SetAppLocale("pt-BR");
+  autofill_client_.set_app_locale("pt-BR");
 
   // Set up a new address profile.
   AutofillProfile profile(AddressCountryCode("US"));
@@ -4118,7 +4111,7 @@ TEST_F(
     UploadCreditCard_ShouldNotOfferLocalSaveIfSomethingNotDetectedAndPaymentsDeclines) {
   // Anything other than "en-US" will cause GetUploadDetails to return a failure
   // response.
-  credit_card_save_manager_->SetAppLocale("pt-BR");
+  autofill_client_.set_app_locale("pt-BR");
 
   // Set up a new address profile without a name or postal code.
   AutofillProfile profile(AddressCountryCode("US"));
@@ -4571,7 +4564,7 @@ TEST_F(CreditCardSaveManagerTest,
        UploadCreditCard_DenyingUploadOfLocalCardShouldNotOfferLocalSave) {
   // Anything other than "en-US" will cause GetUploadDetails to return a failure
   // response.
-  credit_card_save_manager_->SetAppLocale("pt-BR");
+  autofill_client_.set_app_locale("pt-BR");
 
   // Add a local credit card whose |TypeAndLastFourDigits| matches what we will
   // enter below.
@@ -4620,12 +4613,13 @@ TEST_F(CreditCardSaveManagerTest,
   histogram_tester.ExpectTotalCount("Autofill.UploadAcceptedCardOrigin", 0);
 }
 
-#if !BUILDFLAG(IS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 // Android is skipped because the show email client behavior signal is always
 // sent.
-TEST_F(
-    CreditCardSaveManagerTest,
-    UploadCreditCard_DoNotAddAnyClientBehaviorSignalsToRequestIfExperimentsOff) {
+// CVC storage isn't launched on iOS, so this test is skipped.
+
+TEST_F(CreditCardSaveManagerTest,
+       UploadCreditCard_VerifyCvcStorageIsPresentInClientBehaviorSignals) {
   // Create, fill and submit an address form in order to establish a recent
   // profile which can be selected for the upload request.
   FormData address_form = CreateTestAddressFormData();
@@ -4653,11 +4647,11 @@ TEST_F(
   FormSubmitted(credit_card_form);
 
   EXPECT_TRUE(credit_card_save_manager_->CreditCardWasUploaded());
-  EXPECT_TRUE(payments_network_interface()
-                  .client_behavior_signals_in_request()
-                  .empty());
+  EXPECT_THAT(
+      payments_network_interface().client_behavior_signals_in_request(),
+      UnorderedElementsAre(ClientBehaviorConstants::kOfferingToSaveCvc));
 }
-#endif  // !BUILDFLAG(IS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 TEST_F(CreditCardSaveManagerTest,
        UploadCreditCard_ShouldAddBillableServiceNumberInRequest) {
@@ -4746,8 +4740,7 @@ TEST_F(CreditCardSaveManagerTest,
 
   // Confirm that the preflight request contained the correct UploadCardSource.
   FormSubmitted(credit_card_form);
-  EXPECT_EQ(payments::PaymentsNetworkInterface::UploadCardSource::
-                UPSTREAM_CHECKOUT_FLOW,
+  EXPECT_EQ(payments::UploadCardSource::UPSTREAM_CHECKOUT_FLOW,
             payments_network_interface().upload_card_source_in_request());
 }
 
@@ -5305,8 +5298,7 @@ TEST_F(CreditCardSaveManagerTest, UploadCreditCard_NumStrikesLoggedOnAdd) {
 // bubble is shown.
 TEST_F(CreditCardSaveManagerTest,
        UploadCreditCard_NumStrikesLoggedOnUploadNotSuccess) {
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
-      upload_card_response_details;
+  payments::UploadCardResponseDetails upload_card_response_details;
   payments_network_interface().SetUploadCardResponseDetailsForUploadCard(
       upload_card_response_details);
   TestCreditCardSaveStrikeDatabase credit_card_save_strike_database =
@@ -5328,8 +5320,7 @@ TEST_F(CreditCardSaveManagerTest,
 // bubble is shown.
 TEST_F(CreditCardSaveManagerTest,
        UploadCreditCard_NumStrikesLoggedOnUploadClientSideTimeout) {
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
-      upload_card_response_details;
+  payments::UploadCardResponseDetails upload_card_response_details;
   payments_network_interface().SetUploadCardResponseDetailsForUploadCard(
       upload_card_response_details);
   TestCreditCardSaveStrikeDatabase credit_card_save_strike_database =
@@ -5620,8 +5611,7 @@ TEST_P(SaveCvcTest, OnDidUploadCard_SaveServerCvc) {
 
   // Set up upload card response and upload.
   const int64_t kInstrumentId = 12345L;
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
-      upload_card_response_details;
+  payments::UploadCardResponseDetails upload_card_response_details;
   upload_card_response_details.instrument_id = kInstrumentId;
 
   // Confirm CVC is added to PaymentsAutofillTable only if CVC storage feature
@@ -5654,17 +5644,16 @@ TEST_P(SaveCvcTest, ShouldNotOfferCvcSaveWithEmptyCvc) {
 TEST_P(SaveCvcTest, ShouldNotOfferCvcSaveWithoutExistingCard) {
   personal_data().payments_data_manager().ClearAllServerDataForTesting();
   personal_data().test_payments_data_manager().ClearAllLocalData();
+  CreditCard card =
+      test::WithCvc(CreditCardImportType() ==
+                            FormDataImporter::CreditCardImportType::kLocalCard
+                        ? test::GetCreditCard()
+                        : test::GetMaskedServerCard());
 
   // We should not offer CVC save if we don't have an existing card
   // that matches the card in the form.
   EXPECT_FALSE(credit_card_save_manager_->ShouldOfferCvcSave(
-      test::WithCvc(test::GetCreditCard()),
-      FormDataImporter::CreditCardImportType::kLocalCard,
-      IsCreditCardUpstreamEnabled()));
-  EXPECT_FALSE(credit_card_save_manager_->ShouldOfferCvcSave(
-      test::WithCvc(test::GetMaskedServerCard()),
-      FormDataImporter::CreditCardImportType::kServerCard,
-      IsCreditCardUpstreamEnabled()));
+      card, CreditCardImportType(), IsCreditCardUpstreamEnabled()));
 }
 
 // Tests that we should not offer CVC save with same CVC.
@@ -5673,14 +5662,31 @@ TEST_P(SaveCvcTest, ShouldNotOfferCvcSaveWithSameCvc) {
   personal_data().payments_data_manager().AddCreditCard(local_card);
   CreditCard server_card = test::WithCvc(test::GetMaskedServerCard(), u"123");
   personal_data().test_payments_data_manager().AddServerCreditCard(server_card);
+  CreditCard card = CreditCardImportType() ==
+                            FormDataImporter::CreditCardImportType::kLocalCard
+                        ? local_card
+                        : server_card;
 
   // We should not offer CVC save with same CVC.
   EXPECT_FALSE(credit_card_save_manager_->ShouldOfferCvcSave(
-      local_card, FormDataImporter::CreditCardImportType::kLocalCard,
-      IsCreditCardUpstreamEnabled()));
+      card, CreditCardImportType(), IsCreditCardUpstreamEnabled()));
+}
+
+// Tests that we should not offer CVC save for card info retrieval enrolled
+// cards.
+TEST_P(SaveCvcTest, ShouldNotOfferCvcSaveForCardInfoRetrievalEnrolled) {
+  if (CreditCardImportType() ==
+      FormDataImporter::CreditCardImportType::kLocalCard) {
+    GTEST_SKIP() << "This test should not run on local cards.";
+  }
+  CreditCard server_card = test::WithCvc(test::GetMaskedServerCard(), u"123");
+  server_card.set_card_info_retrieval_enrollment_state(
+      CreditCard::CardInfoRetrievalEnrollmentState::kRetrievalEnrolled);
+  personal_data().test_payments_data_manager().AddServerCreditCard(server_card);
+
+  // We should not offer CVC save for card info retrieval enrolled cards.
   EXPECT_FALSE(credit_card_save_manager_->ShouldOfferCvcSave(
-      server_card, FormDataImporter::CreditCardImportType::kServerCard,
-      IsCreditCardUpstreamEnabled()));
+      server_card, CreditCardImportType(), IsCreditCardUpstreamEnabled()));
 }
 
 // Tests that we should OfferCvcLocalSave with expected input.
@@ -5713,9 +5719,15 @@ TEST_P(SaveCvcTest, ShouldOfferCvcUploadSave) {
     EXPECT_TRUE(credit_card_save_manager_->ShouldOfferCvcSave(
         card, FormDataImporter::CreditCardImportType::kServerCard,
         IsCreditCardUpstreamEnabled()));
+    EXPECT_TRUE(credit_card_save_manager_->ShouldOfferCvcSave(
+        card, FormDataImporter::CreditCardImportType::kDuplicateLocalServerCard,
+        IsCreditCardUpstreamEnabled()));
   } else {
     EXPECT_FALSE(credit_card_save_manager_->ShouldOfferCvcSave(
         card, FormDataImporter::CreditCardImportType::kServerCard,
+        IsCreditCardUpstreamEnabled()));
+    EXPECT_FALSE(credit_card_save_manager_->ShouldOfferCvcSave(
+        card, FormDataImporter::CreditCardImportType::kDuplicateLocalServerCard,
         IsCreditCardUpstreamEnabled()));
   }
 }
@@ -5726,8 +5738,10 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         testing::Bool(),
         testing::Bool(),
-        testing::Values(FormDataImporter::CreditCardImportType::kServerCard,
-                        FormDataImporter::CreditCardImportType::kLocalCard),
+        testing::Values(
+            FormDataImporter::CreditCardImportType::kServerCard,
+            FormDataImporter::CreditCardImportType::kLocalCard,
+            FormDataImporter::CreditCardImportType::kDuplicateLocalServerCard),
         testing::Bool()));
 
 class ProceedWithSavingIfApplicableTest
@@ -5754,6 +5768,10 @@ class ProceedWithSavingIfApplicableTest
   }
   // This bool indicates whether the user has credit card upload enabled.
   bool IsCreditCardUpstreamEnabled() const { return std::get<3>(GetParam()); }
+
+  ukm::SourceId ukm_source_id() {
+    return autofill_driver_->GetPageUkmSourceId();
+  }
 
  private:
   base::test::ScopedFeatureList feature_list_;
@@ -5814,7 +5832,7 @@ TEST_P(ProceedWithSavingIfApplicableTest, ProceedWithSavingIfApplicable_Card) {
   CreditCard card = test::WithCvc(test::GetCreditCard(), u"123");
   credit_card_save_manager_->ProceedWithSavingIfApplicable(
       form_structure, card, CreditCardImportType(),
-      IsCreditCardUpstreamEnabled());
+      IsCreditCardUpstreamEnabled(), ukm_source_id());
   EXPECT_EQ(credit_card_save_manager_->CreditCardWasUploaded(),
             IsCreditCardUpstreamEnabled() &&
                 (CreditCardImportType() ==
@@ -5840,7 +5858,7 @@ TEST_P(ProceedWithSavingIfApplicableTest, ProceedWithSavingIfApplicable_Cvc) {
   credit_card_save_manager_->ProceedWithSavingIfApplicable(
       form_structure, local_card,
       FormDataImporter::CreditCardImportType::kLocalCard,
-      IsCreditCardUpstreamEnabled());
+      IsCreditCardUpstreamEnabled(), ukm_source_id());
   EXPECT_EQ(credit_card_save_manager_->CvcLocalSaveStarted(),
             IsSaveCvcFeatureEnabled() && IsSaveCvcPrefEnabled() &&
                 !IsCreditCardUpstreamEnabled());
@@ -5851,7 +5869,7 @@ TEST_P(ProceedWithSavingIfApplicableTest, ProceedWithSavingIfApplicable_Cvc) {
   credit_card_save_manager_->ProceedWithSavingIfApplicable(
       form_structure, server_card,
       FormDataImporter::CreditCardImportType::kServerCard,
-      IsCreditCardUpstreamEnabled());
+      IsCreditCardUpstreamEnabled(), ukm_source_id());
   EXPECT_EQ(credit_card_save_manager_->CvcUploadSaveStarted(),
             IsSaveCvcFeatureEnabled() && IsSaveCvcPrefEnabled() &&
                 IsCreditCardUpstreamEnabled());
@@ -5875,7 +5893,7 @@ TEST_P(ProceedWithSavingIfApplicableTest,
   credit_card_save_manager_->ProceedWithSavingIfApplicable(
       form_structure, local_card,
       FormDataImporter::CreditCardImportType::kDuplicateLocalServerCard,
-      /*is_credit_card_upstream_enabled=*/true);
+      /*is_credit_card_upstream_enabled=*/true, ukm_source_id());
   EXPECT_EQ(credit_card_save_manager_->CvcLocalSaveStarted(),
             IsSaveCvcFeatureEnabled() && IsSaveCvcPrefEnabled());
   EXPECT_FALSE(credit_card_save_manager_->CvcUploadSaveStarted());
@@ -5899,7 +5917,7 @@ TEST_P(ProceedWithSavingIfApplicableTest,
   credit_card_save_manager_->ProceedWithSavingIfApplicable(
       form_structure, server_card,
       FormDataImporter::CreditCardImportType::kDuplicateLocalServerCard,
-      IsCreditCardUpstreamEnabled());
+      IsCreditCardUpstreamEnabled(), ukm_source_id());
   EXPECT_EQ(credit_card_save_manager_->CvcUploadSaveStarted(),
             IsSaveCvcFeatureEnabled() && IsSaveCvcPrefEnabled() &&
                 IsCreditCardUpstreamEnabled());
@@ -5935,8 +5953,7 @@ TEST_F(CreditCardSaveManagerTest,
   credit_card_save_manager_->set_upload_request_card(card);
 
   // Set up upload card response and upload.
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
-      upload_card_response_details;
+  payments::UploadCardResponseDetails upload_card_response_details;
   upload_card_response_details.instrument_id = 12345L;
 
   // Confirm CVC is not added to PaymentsAutofillTable if CVC was empty.
@@ -5962,7 +5979,7 @@ TEST_F(CreditCardSaveManagerTest,
   credit_card_save_manager_->set_upload_request_card(card);
 
   // Set up upload card response without instrument_id and upload.
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
+  payments::UploadCardResponseDetails
       upload_card_response_details_without_instrument_id;
 
   // Confirm CVC is not added to PaymentsAutofillTable if instrument_id was
@@ -5977,7 +5994,7 @@ TEST_F(CreditCardSaveManagerTest,
 // Tests that `InitVirtualCardEnroll` hides the save card prompt before calling
 // `VirtualCardEnrollmentManager::InitVirtualCardEnroll`.
 TEST_F(CreditCardSaveManagerTest, InitVirtualCardEnroll) {
-  payments::PaymentsNetworkInterface::GetDetailsForEnrollmentResponseDetails
+  payments::GetDetailsForEnrollmentResponseDetails
       get_details_for_enrollment_response_details;
   EXPECT_CALL(payments_client(), HideSaveCardPrompt);
   EXPECT_CALL(*static_cast<MockVirtualCardEnrollmentManager*>(
@@ -5993,8 +6010,10 @@ class CreditCardSaveManagerWithLocalSaveFallbackTest
     : public CreditCardSaveManagerTest {
  public:
   CreditCardSaveManagerWithLocalSaveFallbackTest() {
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
     feature_list_.InitWithFeatureState(
         features::kAutofillEnableSaveCardLocalSaveFallback, true);
+#endif
   }
 
  private:
@@ -6010,7 +6029,7 @@ TEST_F(CreditCardSaveManagerWithLocalSaveFallbackTest,
 
   credit_card_save_manager_->OnDidUploadCard(
       payments::PaymentsAutofillClient::PaymentsRpcResult::kPermanentFailure,
-      payments::PaymentsNetworkInterface::UploadCardResponseDetails());
+      payments::UploadCardResponseDetails());
 }
 
 // Tests that the local card save is skipped if the card is missing the
@@ -6025,7 +6044,7 @@ TEST_F(CreditCardSaveManagerWithLocalSaveFallbackTest,
 
   credit_card_save_manager_->OnDidUploadCard(
       payments::PaymentsAutofillClient::PaymentsRpcResult::kPermanentFailure,
-      payments::PaymentsNetworkInterface::UploadCardResponseDetails());
+      payments::UploadCardResponseDetails());
 }
 
 // Tests that the `RanLocalSaveFallback` metric records that a new local card
@@ -6041,7 +6060,7 @@ TEST_F(CreditCardSaveManagerWithLocalSaveFallbackTest,
   credit_card_save_manager_->set_upload_request_card(test::GetCreditCard());
   credit_card_save_manager_->OnDidUploadCard(
       payments::PaymentsAutofillClient::PaymentsRpcResult::kPermanentFailure,
-      payments::PaymentsNetworkInterface::UploadCardResponseDetails());
+      payments::UploadCardResponseDetails());
 
   histogram_tester.ExpectUniqueSample(
       "Autofill.CreditCardUpload.RanLocalSaveFallback", true, 1);
@@ -6060,91 +6079,22 @@ TEST_F(CreditCardSaveManagerWithLocalSaveFallbackTest,
   credit_card_save_manager_->set_upload_request_card(test::GetCreditCard());
   credit_card_save_manager_->OnDidUploadCard(
       payments::PaymentsAutofillClient::PaymentsRpcResult::kPermanentFailure,
-      payments::PaymentsNetworkInterface::UploadCardResponseDetails());
+      payments::UploadCardResponseDetails());
 
   histogram_tester.ExpectUniqueSample(
       "Autofill.CreditCardUpload.RanLocalSaveFallback", false, 1);
 }
 
-class CreditCardSaveManagerWithLoadingAndConfirmation
-    : public CreditCardSaveManagerTest,
-      public testing::WithParamInterface<bool> {
- public:
-  CreditCardSaveManagerWithLoadingAndConfirmation() = default;
-  bool IsSaveCardLoadingAndConfirmationEnabled() const { return GetParam(); }
-};
-
-INSTANTIATE_TEST_SUITE_P(CreditCardSaveManagerTest,
-                         CreditCardSaveManagerWithLoadingAndConfirmation,
-                         testing::Bool());
-
-// Tests that `CreditCardSaveManager` directly calls `InitVirtualCardEnroll`
-// for uploaded card that is eligible for enrollment when loading and
-// confirmation is disabled.
-TEST_P(CreditCardSaveManagerWithLoadingAndConfirmation,
-       InitVirtualCardEnroll_LoadingAndConfirmation) {
-  base::test::ScopedFeatureList feature_list;
-  base::flat_map<base::test::FeatureRef, bool> feature_states;
-#if BUILDFLAG(IS_IOS)
-  feature_states.insert({features::kAutofillEnableVirtualCards, true});
-#endif
-  feature_states.insert(
-      {features::kAutofillEnableSaveCardLoadingAndConfirmation,
-       IsSaveCardLoadingAndConfirmationEnabled()});
-  feature_list.InitWithFeatureStates(feature_states);
-
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
-      upload_card_response_details;
-  upload_card_response_details.instrument_id = 9223372036854775807;
-  upload_card_response_details.virtual_card_enrollment_state =
-      CreditCard::VirtualCardEnrollmentState::kUnenrolledAndEligible;
-
-  payments::PaymentsNetworkInterface::GetDetailsForEnrollmentResponseDetails
-      get_details_for_enrollment_response_details;
-  get_details_for_enrollment_response_details.vcn_context_token =
-      "test_context_token";
-  get_details_for_enrollment_response_details.google_legal_message = {
-      TestLegalMessageLine("test_google_legal_message")};
-  get_details_for_enrollment_response_details.issuer_legal_message = {
-      TestLegalMessageLine("test_issuer_legal_message")};
-  upload_card_response_details.get_details_for_enrollment_response_details =
-      get_details_for_enrollment_response_details;
-  credit_card_save_manager_->set_upload_request_card(test::GetCreditCard());
-
-  EXPECT_CALL(payments_client(),
-              CreditCardUploadCompleted(
-                  payments::PaymentsAutofillClient::PaymentsRpcResult::kSuccess,
-                  A<std::optional<payments::PaymentsAutofillClient::
-                                      OnConfirmationClosedCallback>>()));
-
-  // If loading and confirmation is enabled, `InitVirtualCardEnroll` is passed
-  // as a closure to save card bubble controller that executes it after bubble
-  // is closed. When flag is disabled, since there is no confirmation bubble
-  // showing, CCSM calls `InitVirtualCardEnroll`.
-  int num_of_calls = IsSaveCardLoadingAndConfirmationEnabled() ? 0 : 1;
-  EXPECT_CALL(*static_cast<MockVirtualCardEnrollmentManager*>(
-                  payments_client().GetVirtualCardEnrollmentManager()),
-              InitVirtualCardEnroll)
-      .Times(num_of_calls);
-
-  credit_card_save_manager_->OnDidUploadCard(
-      payments::PaymentsAutofillClient::PaymentsRpcResult::kSuccess,
-      upload_card_response_details);
-}
 
 class CreditCardSaveManagerWithVirtualCardEnrollTestParameterized
     : public CreditCardSaveManagerTest,
       public testing::WithParamInterface<
-          std::tuple<CreditCard::VirtualCardEnrollmentState, bool>> {
+          std::tuple<CreditCard::VirtualCardEnrollmentState>> {
  public:
   CreditCardSaveManagerWithVirtualCardEnrollTestParameterized() = default;
 
   CreditCard::VirtualCardEnrollmentState GetEnrollmentState() const {
     return std::get<0>(GetParam());
-  }
-
-  bool IsVirtualCardEnrollmentEnabled() const {
-    return std::get<1>(GetParam());
   }
 };
 
@@ -6152,28 +6102,13 @@ class CreditCardSaveManagerWithVirtualCardEnrollTestParameterized
 // correctly only when a card becomes eligible after upload.
 TEST_P(CreditCardSaveManagerWithVirtualCardEnrollTestParameterized,
        PrepareUploadedCardForVirtualCardEnrollment) {
-  base::test::ScopedFeatureList feature_list;
-  base::flat_map<base::test::FeatureRef, bool> feature_states;
-#if !BUILDFLAG(IS_IOS)
-  if (!IsVirtualCardEnrollmentEnabled()) {
-    GTEST_SKIP() << "Virtual card enrollment is always enabled on non-iOS "
-                    "platforms.";
-  }
-#else
-  feature_states.insert({features::kAutofillEnableVirtualCards,
-                         IsVirtualCardEnrollmentEnabled()});
-#endif
-  feature_states.insert(
-      {features::kAutofillEnableSaveCardLoadingAndConfirmation, true});
-  feature_list.InitWithFeatureStates(feature_states);
-  payments::PaymentsNetworkInterface::UploadCardResponseDetails
-      upload_card_response_details;
+  payments::UploadCardResponseDetails upload_card_response_details;
   upload_card_response_details.card_art_url = GURL("https://www.example.com/");
   upload_card_response_details.instrument_id = 9223372036854775807;
   upload_card_response_details.virtual_card_enrollment_state =
       GetEnrollmentState();
 
-  payments::PaymentsNetworkInterface::GetDetailsForEnrollmentResponseDetails
+  payments::GetDetailsForEnrollmentResponseDetails
       get_details_for_enrollment_response_details;
   get_details_for_enrollment_response_details.vcn_context_token =
       "test_context_token";
@@ -6186,8 +6121,7 @@ TEST_P(CreditCardSaveManagerWithVirtualCardEnrollTestParameterized,
 
   CreditCard arg_credit_card;
   VirtualCardEnrollmentSource arg_virtual_card_enrollment_source;
-  std::optional<payments::PaymentsNetworkInterface::
-                    GetDetailsForEnrollmentResponseDetails>
+  std::optional<payments::GetDetailsForEnrollmentResponseDetails>
       arg_get_details_for_enrollment_response_details;
 
   EXPECT_CALL(payments_client(),
@@ -6196,9 +6130,8 @@ TEST_P(CreditCardSaveManagerWithVirtualCardEnrollTestParameterized,
                   A<std::optional<payments::PaymentsAutofillClient::
                                       OnConfirmationClosedCallback>>()));
 
-  if (IsVirtualCardEnrollmentEnabled() &&
-      GetEnrollmentState() ==
-          CreditCard::VirtualCardEnrollmentState::kUnenrolledAndEligible) {
+  if (GetEnrollmentState() ==
+      CreditCard::VirtualCardEnrollmentState::kUnenrolledAndEligible) {
     EXPECT_CALL(*static_cast<MockVirtualCardEnrollmentManager*>(
                     payments_client().GetVirtualCardEnrollmentManager()),
                 InitVirtualCardEnroll)
@@ -6212,10 +6145,9 @@ TEST_P(CreditCardSaveManagerWithVirtualCardEnrollTestParameterized,
       payments::PaymentsAutofillClient::PaymentsRpcResult::kSuccess,
       upload_card_response_details);
 
-  // If loading and confirmation is enabled, `InitVirtualCardEnroll` is passed
-  // as a closure to save card bubble controller that executes it after bubble
-  // is closed. Since there is no actual bubble, calling `InitVirtualCardEnroll`
-  // from here.
+  // `InitVirtualCardEnroll` is passed as a closure to save card bubble
+  // controller that executes it after bubble is closed. Since there is no
+  // actual bubble, calling `InitVirtualCardEnroll` from here.
   credit_card_save_manager_->InitVirtualCardEnroll(
       credit_card_save_manager_->upload_request()->card,
       std::move(upload_card_response_details
@@ -6223,9 +6155,8 @@ TEST_P(CreditCardSaveManagerWithVirtualCardEnrollTestParameterized,
 
   // The condition inside of this if-statement is true if virtual card
   // enrollment should be offered.
-  if (IsVirtualCardEnrollmentEnabled() &&
-      GetEnrollmentState() ==
-          CreditCard::VirtualCardEnrollmentState::kUnenrolledAndEligible) {
+  if (GetEnrollmentState() ==
+      CreditCard::VirtualCardEnrollmentState::kUnenrolledAndEligible) {
     EXPECT_EQ(arg_credit_card.card_art_url(),
               upload_card_response_details.card_art_url);
     EXPECT_EQ(arg_credit_card.instrument_id(),
@@ -6265,7 +6196,6 @@ INSTANTIATE_TEST_SUITE_P(
         /*enrollment_state*/ testing::Values(
             CreditCard::VirtualCardEnrollmentState::kUnenrolled,
             CreditCard::VirtualCardEnrollmentState::kUnenrolledAndEligible,
-            CreditCard::VirtualCardEnrollmentState::kEnrolled),
-        /*is_virtual_card_enrollment_enabled*/ testing::Bool()));
+            CreditCard::VirtualCardEnrollmentState::kEnrolled)));
 
 }  // namespace autofill

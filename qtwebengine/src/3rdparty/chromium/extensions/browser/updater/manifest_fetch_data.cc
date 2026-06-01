@@ -9,7 +9,6 @@
 
 #include "base/check.h"
 #include "base/containers/contains.h"
-#include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
@@ -91,8 +90,7 @@ std::string ManifestFetchData::GetSimpleLocationString(ManifestLocation loc) {
       result = kPolicyLocation;
       break;
     case ManifestLocation::kInvalidLocation:
-      NOTREACHED_IN_MIGRATION();
-      break;
+      NOTREACHED();
   }
 
   return result;
@@ -147,8 +145,7 @@ bool ManifestFetchData::AddExtension(const std::string& id,
   DCHECK(!is_all_external_policy_download_ ||
          extension_location == ManifestLocation::kExternalPolicyDownload);
   if (base::Contains(extensions_data_, id)) {
-    NOTREACHED_IN_MIGRATION() << "Duplicate extension id " << id;
-    return false;
+    NOTREACHED() << "Duplicate extension id " << id;
   }
 
   if (fetch_priority_ != DownloadFetchPriority::kForeground) {
@@ -210,10 +207,8 @@ bool ManifestFetchData::AddExtension(const std::string& id,
   // Check against our max url size, exempting the first extension added.
   int new_size = full_url_.possibly_invalid_spec().size() + extra.size();
   if (!extensions_data_.empty() && new_size > kExtensionsManifestMaxURLSize) {
-    UMA_HISTOGRAM_PERCENTAGE("Extensions.UpdateCheckHitUrlSizeLimit", 1);
     return false;
   }
-  UMA_HISTOGRAM_PERCENTAGE("Extensions.UpdateCheckHitUrlSizeLimit", 0);
 
   // We have room so go ahead and add the extension.
   extensions_data_[id] = ExtensionData(base::Version(version), update_url_data,
@@ -280,7 +275,7 @@ bool ManifestFetchData::DidPing(const ExtensionId& extension_id,
   else if (type == ACTIVE)
     value = i->second.active_days;
   else
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   return value == kNeverPinged || value > 0;
 }
 

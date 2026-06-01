@@ -471,6 +471,25 @@ void ScatterDataModifier::testAxisReverse()
     counter++;
 }
 
+void ScatterDataModifier::testNanSeries()
+{
+    static bool initialized = false;
+    const int rowCount = 16;
+    const int colCount = 16;
+    static QScatter3DSeries *series = 0;
+
+    if (!initialized) {
+        series = new QScatter3DSeries;
+        populateNanSeries(series, rowCount, colCount, 10.0f);
+        m_chart->addSeries(series);
+        initialized = true;
+    } else {
+        m_chart->removeSeries(series);
+        delete series;
+        initialized = false;
+    }
+}
+
 void ScatterDataModifier::addData()
 {
     // Add labels
@@ -617,6 +636,11 @@ void ScatterDataModifier::shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality
     int quality = int(sq);
      // Updates the UI component to show correct shadow quality
     emit shadowQualityChanged(quality);
+}
+
+void ScatterDataModifier::changeLightingMode(int mode)
+{
+    m_targetSeries->setLightingMode(static_cast<QAbstract3DSeries::LightingMode>(mode));
 }
 
 void ScatterDataModifier::clear()
@@ -1198,6 +1222,23 @@ void ScatterDataModifier::populateRisingSeries(QScatter3DSeries *series, int row
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < columns; j++) {
             float yValue = minValue + (range * i * j / arraySize);
+            dataArray[i * columns + j].setPosition(QVector3D(float(i), yValue, float(j)));
+        }
+    }
+    series->dataProxy()->resetArray(dataArray);
+}
+
+void ScatterDataModifier::populateNanSeries(QScatter3DSeries *series,
+                                            int rows,
+                                            int columns,
+                                            float value)
+{
+    QScatterDataArray dataArray;
+    int arraySize = rows * columns;
+    dataArray.resize(arraySize);
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < columns; j++) {
+            float yValue = i % 2 == 0 ? value : std::numeric_limits<float>::quiet_NaN();
             dataArray[i * columns + j].setPosition(QVector3D(float(i), yValue, float(j)));
         }
     }

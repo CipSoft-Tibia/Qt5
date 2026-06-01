@@ -11,6 +11,7 @@ Pane {
         id: view
         currentIndex: 1
         anchors.fill: parent
+        enabled: !GalleryConfig.disabled
 
         Repeater {
             model: 3

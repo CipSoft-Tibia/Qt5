@@ -36,14 +36,18 @@ class PointRenderer : public QQuickItem
 {
     Q_OBJECT
 public:
-    PointRenderer(QGraphsView *graph);
+    PointRenderer(QGraphsView *graph, bool clipPlotArea);
     ~PointRenderer() override;
+
+    void resetShapePathCount();
 
     void handlePolish(QXYSeries *series);
     void afterPolish(QList<QAbstractSeries *> &cleanupSeries);
     void updateSeries(QXYSeries *series);
     void afterUpdate(QList<QAbstractSeries *> &cleanupSeries);
     bool handleHoverMove(QHoverEvent *event);
+
+   QPointF reverseRenderCoordinates(QAbstractSeries *series, qreal x, qreal y);
 
 private:
     struct PointGroup
@@ -65,7 +69,7 @@ private:
     QGraphsView *m_graph = nullptr;
     QQuickShape m_shape;
     QMap<QXYSeries *, PointGroup *> m_groups;
-    qsizetype m_currentColorIndex = 0;
+    qsizetype m_currentShapePathIndex = 0;
 
     // Point drag variables
     QPoint m_previousDelta;
@@ -93,10 +97,18 @@ private:
 
     SeriesStyle getSeriesStyle(PointGroup *group);
 
-    void calculateRenderCoordinates(
-        AxisRenderer *axisRenderer, qreal origX, qreal origY, qreal *renderX, qreal *renderY);
-    void reverseRenderCoordinates(
-        AxisRenderer *axisRenderer, qreal renderX, qreal renderY, qreal *origX, qreal *origY);
+    void calculateRenderCoordinates(AxisRenderer *axisRenderer,
+                                    QAbstractSeries *series,
+                                    qreal origX,
+                                    qreal origY,
+                                    qreal *renderX,
+                                    qreal *renderY);
+    void reverseRenderCoordinates(AxisRenderer *axisRenderer,
+                                  QAbstractSeries *series,
+                                  qreal renderX,
+                                  qreal renderY,
+                                  qreal *origX,
+                                  qreal *origY);
     void updatePointDelegate(
         QXYSeries *series, PointGroup *group, qsizetype pointIndex, qreal x, qreal y);
     void hidePointDelegates(QXYSeries *series);

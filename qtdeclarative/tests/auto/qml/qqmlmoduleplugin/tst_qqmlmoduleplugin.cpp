@@ -336,6 +336,9 @@ void tst_qqmlmoduleplugin::importPluginWithQmlFile()
 
 void tst_qqmlmoduleplugin::remoteImportWithQuotedUrl()
 {
+#if !QT_CONFIG(qml_network)
+    QSKIP("QML networking not enabled, skipping test");
+#else
     ThreadedTestHTTPServer server(m_dataImportsDirectory);
 
     QQmlEngine engine;
@@ -352,6 +355,7 @@ void tst_qqmlmoduleplugin::remoteImportWithQuotedUrl()
     for (const QQmlError &err : errors)
         qWarning() << err;
     VERIFY_ERRORS(0);
+#endif
 }
 
 void tst_qqmlmoduleplugin::remoteImportWithUnquotedUri()

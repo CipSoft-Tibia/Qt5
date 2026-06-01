@@ -16,9 +16,9 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/utils/file_util.h"
 
-class CPDF_CreatorEmbedderTest : public EmbedderTest {};
+class CPDFCreatorEmbedderTest : public EmbedderTest {};
 
-TEST_F(CPDF_CreatorEmbedderTest, SavedDocsAreEqualAfterParse) {
+TEST_F(CPDFCreatorEmbedderTest, SavedDocsAreEqualAfterParse) {
   ASSERT_TRUE(OpenDocument("annotation_stamp_with_ap.pdf"));
   // Save without additional data reading.
   EXPECT_TRUE(FPDF_SaveAsCopy(document(), this, 0));
@@ -28,12 +28,11 @@ TEST_F(CPDF_CreatorEmbedderTest, SavedDocsAreEqualAfterParse) {
   {
     // Do some read only operations.
     ASSERT_GE(1, FPDF_GetPageCount(document()));
-    FPDF_PAGE page = LoadPage(0);
+    ScopedEmbedderTestPage page = LoadScopedPage(0);
     ASSERT_TRUE(page);
-    ScopedFPDFBitmap bitmap = RenderLoadedPageWithFlags(page, FPDF_ANNOT);
+    ScopedFPDFBitmap bitmap = RenderLoadedPageWithFlags(page.get(), FPDF_ANNOT);
     EXPECT_EQ(595, FPDFBitmap_GetWidth(bitmap.get()));
     EXPECT_EQ(842, FPDFBitmap_GetHeight(bitmap.get()));
-    UnloadPage(page);
   }
 
   // Save when we have additional loaded data.
@@ -45,7 +44,7 @@ TEST_F(CPDF_CreatorEmbedderTest, SavedDocsAreEqualAfterParse) {
   EXPECT_EQ(saved_doc_1.size(), saved_doc_2.size());
 }
 
-TEST_F(CPDF_CreatorEmbedderTest, Bug873) {
+TEST_F(CPDFCreatorEmbedderTest, Bug873) {
   ASSERT_TRUE(OpenDocument("embedded_attachments.pdf"));
   EXPECT_TRUE(FPDF_SaveAsCopy(document(), this, 0));
 
@@ -56,14 +55,14 @@ TEST_F(CPDF_CreatorEmbedderTest, Bug873) {
       "36/ID[<D889EB6B9ADF88E5EDA7DC08FE85978B><";
   ASSERT_THAT(saved_data, testing::HasSubstr(kTrailerBeforeSecondID));
   size_t trailer_start = saved_data.find(kTrailerBeforeSecondID);
-  constexpr size_t kIdLen = 32;
+  static constexpr size_t kIdLen = 32;
   size_t trailer_continuation =
-      trailer_start + strlen(kTrailerBeforeSecondID) + kIdLen;
+      trailer_start + UNSAFE_TODO(strlen(kTrailerBeforeSecondID)) + kIdLen;
   std::string data_after_second_id = saved_data.substr(trailer_continuation);
   EXPECT_THAT(data_after_second_id, testing::StartsWith(">]>>\r\n"));
 }
 
-TEST_F(CPDF_CreatorEmbedderTest, SaveLinearizedInfo) {
+TEST_F(CPDFCreatorEmbedderTest, SaveLinearizedInfo) {
   FileAccessForTesting file_acc("linearized.pdf");
   FakeFileAccess fake_acc(&file_acc);
 

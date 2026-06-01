@@ -4,10 +4,25 @@
 
 #include "ui/views/win/pen_event_processor.h"
 
+#include <combaseapi.h>
+#include <windows.devices.input.h>
+
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/win/scoped_winrt_initializer.h"
+#include "components/stylus_handwriting/win/features.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/events/win/stylus_handwriting_properties_win.h"
 #include "ui/gfx/sequential_id_generator.h"
+
+namespace {
+
+Microsoft::WRL::ComPtr<ABI::Windows::Devices::Input::IPenDeviceStatics>
+GetNullPenDeviceStatics() {
+  return nullptr;
+}
+
+}  // namespace
 
 namespace views {
 
@@ -18,18 +33,33 @@ class PenProcessorTest : public ::testing::Test {
 
   // testing::Test overrides.
   void SetUp() override;
+  void TearDown() override;
+
+  // Enables Stylus Handwriting feature.
+  void EnableStylusHandwriting();
 
  private:
   base::win::ScopedWinrtInitializer scoped_winrt_initializer_;
   base::test::TaskEnvironment task_environment_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+  views::PenIdHandler::ScopedPenIdStaticsForTesting pen_id_statics_scoper_{
+      &GetNullPenDeviceStatics};
 };
 
 void PenProcessorTest::SetUp() {
   ASSERT_TRUE(scoped_winrt_initializer_.Succeeded());
 }
 
+void PenProcessorTest::TearDown() {
+  scoped_feature_list_.Reset();
+}
+
+void PenProcessorTest::EnableStylusHandwriting() {
+  scoped_feature_list_.InitAndEnableFeature(
+      stylus_handwriting::win::kStylusHandwritingWin);
+}
+
 TEST_F(PenProcessorTest, TypicalCaseDMDisabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ false);
@@ -84,7 +114,6 @@ TEST_F(PenProcessorTest, TypicalCaseDMDisabled) {
 }
 
 TEST_F(PenProcessorTest, TypicalCaseDMEnabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ true);
@@ -150,7 +179,6 @@ TEST_F(PenProcessorTest, TypicalCaseDMEnabled) {
 }
 
 TEST_F(PenProcessorTest, UnpairedPointerDownTouchDMEnabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ true);
@@ -169,7 +197,6 @@ TEST_F(PenProcessorTest, UnpairedPointerDownTouchDMEnabled) {
 }
 
 TEST_F(PenProcessorTest, UnpairedPointerDownMouseDMEnabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ true);
@@ -187,7 +214,6 @@ TEST_F(PenProcessorTest, UnpairedPointerDownMouseDMEnabled) {
 }
 
 TEST_F(PenProcessorTest, TouchFlagDMEnabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ true);
@@ -218,7 +244,6 @@ TEST_F(PenProcessorTest, TouchFlagDMEnabled) {
 }
 
 TEST_F(PenProcessorTest, MouseFlagDMEnabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ true);
@@ -252,7 +277,6 @@ TEST_F(PenProcessorTest, MouseFlagDMEnabled) {
 }
 
 TEST_F(PenProcessorTest, PenEraserFlagDMEnabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ true);
@@ -286,7 +310,6 @@ TEST_F(PenProcessorTest, PenEraserFlagDMEnabled) {
 }
 
 TEST_F(PenProcessorTest, MultiPenDMEnabled) {
-  views::PenIdHandler::ScopedPenIdStaticsForTesting scoper(nullptr);
   ui::SequentialIDGenerator id_generator(0);
   PenEventProcessor processor(&id_generator,
                               /*direct_manipulation_enabled*/ true);
@@ -322,6 +345,47 @@ TEST_F(PenProcessorTest, MultiPenDMEnabled) {
     ASSERT_TRUE(event->IsTouchEvent());
     EXPECT_EQ(ui::EventType::kTouchReleased, event->AsTouchEvent()->type());
   }
+}
+
+TEST_F(PenProcessorTest, StylusHandwritingPropertiesDMEnabled) {
+  EnableStylusHandwriting();
+  ui::SequentialIDGenerator id_generator(/*min_id=*/0);
+  PenEventProcessor processor(&id_generator,
+                              /*direct_manipulation_enabled=*/true);
+  const uint32_t pointer_id = 1;
+  POINTER_PEN_INFO pen_info;
+  memset(&pen_info, 0, sizeof(POINTER_PEN_INFO));
+  pen_info.pointerInfo.pointerFlags =
+      POINTER_FLAG_INCONTACT | POINTER_FLAG_FIRSTBUTTON;
+  pen_info.pointerInfo.ButtonChangeType = POINTER_CHANGE_FIRSTBUTTON_DOWN;
+
+  const gfx::Point point(100, 100);
+  std::unique_ptr<ui::Event> event =
+      processor.GenerateEvent(WM_POINTERDOWN, pointer_id, pen_info, point);
+  ASSERT_TRUE(event);
+  ASSERT_TRUE(event->IsTouchEvent());
+  ASSERT_TRUE(event->AsTouchEvent()->properties());
+  EXPECT_FALSE(event->AsTouchEvent()->properties()->empty());
+
+  const std::optional<ui::StylusHandwritingPropertiesWin> properties =
+      ui::GetStylusHandwritingProperties(*event);
+  ASSERT_TRUE(properties.has_value());
+  EXPECT_EQ(properties->handwriting_pointer_id, pointer_id);
+  EXPECT_EQ(properties->handwriting_stroke_id, 0U);
+
+  pen_info.pointerInfo.pointerFlags = POINTER_FLAG_NONE;
+  pen_info.pointerInfo.ButtonChangeType = POINTER_CHANGE_FIRSTBUTTON_UP;
+  event = processor.GenerateEvent(WM_POINTERUP, pointer_id, pen_info, point);
+  ASSERT_TRUE(event);
+  ASSERT_TRUE(event->IsTouchEvent());
+  EXPECT_FALSE(event->AsTouchEvent()->properties());
+
+  pen_info.pointerInfo.ButtonChangeType = POINTER_CHANGE_NONE;
+  event =
+      processor.GenerateEvent(WM_POINTERUPDATE, pointer_id, pen_info, point);
+  ASSERT_TRUE(event);
+  ASSERT_TRUE(event->IsMouseEvent());
+  EXPECT_FALSE(event->AsMouseEvent()->properties());
 }
 
 }  // namespace views

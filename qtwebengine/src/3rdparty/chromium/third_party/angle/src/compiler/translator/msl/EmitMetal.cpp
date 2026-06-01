@@ -10,13 +10,13 @@
 #include "common/system_utils.h"
 #include "compiler/translator/BaseTypes.h"
 #include "compiler/translator/ImmutableStringBuilder.h"
+#include "compiler/translator/Name.h"
 #include "compiler/translator/OutputTree.h"
 #include "compiler/translator/SymbolTable.h"
 #include "compiler/translator/msl/AstHelpers.h"
 #include "compiler/translator/msl/DebugSink.h"
 #include "compiler/translator/msl/EmitMetal.h"
 #include "compiler/translator/msl/Layout.h"
-#include "compiler/translator/msl/Name.h"
 #include "compiler/translator/msl/ProgramPrelude.h"
 #include "compiler/translator/msl/RewritePipelines.h"
 #include "compiler/translator/msl/TranslatorMSL.h"
@@ -694,9 +694,6 @@ static const char *GetOperatorString(TOperator op,
         case TOperator::EOpAtomicCompSwap:
         case TOperator::EOpEmitVertex:
         case TOperator::EOpEndPrimitive:
-        case TOperator::EOpFtransform:
-        case TOperator::EOpPackDouble2x32:
-        case TOperator::EOpUnpackDouble2x32:
         case TOperator::EOpArrayLength:
             UNIMPLEMENTED();
             return "TOperator_TODO";
@@ -1038,7 +1035,7 @@ void GenMetalTraverser::emitType(const TType &type, const EmitTypeConfig &etConf
         {
             if (type.isArray())
             {
-                mOut << "ANGLE_tensor<";
+                mOut << "metal::array<";
             }
         }
         if (evdConfig.isPointer)
@@ -1057,7 +1054,7 @@ void GenMetalTraverser::emitType(const TType &type, const EmitTypeConfig &etConf
     {
         if (type.isArray())
         {
-            mOut << "ANGLE_tensor<";
+            mOut << "metal::array<";
         }
     }
 
@@ -2166,9 +2163,6 @@ GenMetalTraverser::FuncToName GenMetalTraverser::BuildFuncToName()
     putAngle("texelFetch");
     putAngle("texelFetchOffset");
     putAngle("texture");
-    putAngle("texture1D");
-    putAngle("texture1DLod");
-    putAngle("texture1DProjLod");
     putAngle("texture2D");
     putAngle("texture2DGradEXT");
     putAngle("texture2DLod");
@@ -2177,16 +2171,14 @@ GenMetalTraverser::FuncToName GenMetalTraverser::BuildFuncToName()
     putAngle("texture2DProjGradEXT");
     putAngle("texture2DProjLod");
     putAngle("texture2DProjLodEXT");
-    putAngle("texture2DRect");
-    putAngle("texture2DRectProj");
     putAngle("texture3D");
     putAngle("texture3DLod");
+    putAngle("texture3DProj");
     putAngle("texture3DProjLod");
     putAngle("textureCube");
     putAngle("textureCubeGradEXT");
     putAngle("textureCubeLod");
     putAngle("textureCubeLodEXT");
-    putAngle("textureCubeProjLod");
     putAngle("textureGrad");
     putAngle("textureGradOffset");
     putAngle("textureLod");

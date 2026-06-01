@@ -2,94 +2,53 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as i18n from '../../../../core/i18n/i18n.js';
-import type * as TraceEngine from '../../../../models/trace/trace.js';
-import * as LitHtml from '../../../../ui/lit-html/lit-html.js';
+import './NodeLink.js';
+
+import type {ViewportInsightModel} from '../../../../models/trace/insights/Viewport.js';
+import type * as Trace from '../../../../models/trace/trace.js';
+import * as Lit from '../../../../ui/lit/lit.js';
 import type * as Overlays from '../../overlays/overlays.js';
 
-import {BaseInsight, md, shouldRenderForCategory} from './Helpers.js';
-import {NodeLink, type NodeLinkData} from './NodeLink.js';
-import * as SidebarInsight from './SidebarInsight.js';
-import {InsightsCategories} from './types.js';
+import {BaseInsightComponent} from './BaseInsightComponent.js';
 
-const UIStrings = {
-  /**
-   * @description Text to tell the user how a viewport meta element can improve performance.
-   */
-  description: 'A viewport meta element not only optimizes your app for mobile screen sizes, ' +
-      'but also [prevents a 300 millisecond delay to user input](https://developer.chrome.com/blog/300ms-tap-delay-gone-away/).',
-};
+const {html} = Lit;
 
-const str_ = i18n.i18n.registerUIStrings('panels/timeline/components/insights/Viewport.ts', UIStrings);
-const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
-
-export function getViewportInsight(
-    insights: TraceEngine.Insights.Types.TraceInsightData|null,
-    navigationId: string|null): TraceEngine.Insights.Types.InsightResults['Viewport']|null {
-  if (!insights || !navigationId) {
-    return null;
-  }
-
-  const insightsByNavigation = insights.get(navigationId);
-  if (!insightsByNavigation) {
-    return null;
-  }
-
-  const viewportInsight = insightsByNavigation.Viewport;
-  if (viewportInsight instanceof Error) {
-    return null;
-  }
-  return viewportInsight;
-}
-
-export class Viewport extends BaseInsight {
-  static readonly litTagName = LitHtml.literal`devtools-performance-viewport`;
-  override insightCategory: InsightsCategories = InsightsCategories.INP;
+export class Viewport extends BaseInsightComponent<ViewportInsightModel> {
+  static override readonly litTagName = Lit.StaticHtml.literal`devtools-performance-viewport`;
   override internalName: string = 'viewport';
-  override userVisibleTitle: string = 'Mobile-optimized viewport';
 
   override createOverlays(): Overlays.Overlays.TimelineOverlay[] {
     // TODO(b/351757418): create overlay for synthetic input delay events
     return [];
   }
 
-  #render(data: TraceEngine.Insights.Types.InsightResults['Viewport']): LitHtml.TemplateResult {
-    const backendNodeId = data.viewportEvent?.args.data.node_id;
-
-    // clang-format off
-    return LitHtml.html`
-        <div class="insights">
-            <${SidebarInsight.SidebarInsight.litTagName} .data=${{
-            title: this.userVisibleTitle,
-            expanded: this.isActive(),
-            } as SidebarInsight.InsightDetails}
-            @insighttoggleclick=${this.onSidebarClick}>
-                <div slot="insight-description" class="insight-description">
-                  ${md(i18nString(UIStrings.description))}
-                </div>
-                <div slot="insight-content" class="insight-content">
-                  ${backendNodeId !== undefined ? LitHtml.html`<${NodeLink.litTagName}
-                    .data=${{
-                      backendNodeId,
-                      options: {tooltip: data.viewportEvent?.args.data.content},
-                    } as NodeLinkData}>
-                  </${NodeLink.litTagName}>` : LitHtml.nothing}
-                </div>
-            </${SidebarInsight.SidebarInsight}>
-        </div>`;
-    // clang-format on
+  override getEstimatedSavingsTime(): Trace.Types.Timing.Milli|null {
+    return this.model?.metricSavings?.INP ?? null;
   }
 
-  override render(): void {
-    const viewportInsight = getViewportInsight(this.data.insights, this.data.navigationId);
-    const shouldShow = viewportInsight && !viewportInsight.mobileOptimized;
+  renderContent(): Lit.LitTemplate {
+    if (!this.model || !this.model.viewportEvent) {
+      return Lit.nothing;
+    }
 
-    const matchesCategory = shouldRenderForCategory({
-      activeCategory: this.data.activeCategory,
-      insightCategory: this.insightCategory,
-    });
-    const output = shouldShow && matchesCategory ? this.#render(viewportInsight) : LitHtml.nothing;
-    LitHtml.render(output, this.shadow, {host: this});
+    const backendNodeId = this.model.viewportEvent.args.data.node_id;
+    if (backendNodeId === undefined) {
+      return Lit.nothing;
+    }
+
+    // clang-format off
+    return html`
+      <div>
+        <devtools-performance-node-link
+          .data=${{
+            backendNodeId,
+            frame: this.model.viewportEvent.args.data.frame ?? '',
+            options: {tooltip: this.model.viewportEvent.args.data.content},
+            fallbackHtmlSnippet: `<meta name=viewport content="${this.model.viewportEvent.args.data.content}">`,
+          }}>
+        </devtools-performance-node-link>
+      </div>`;
+    // clang-format on
   }
 }
 

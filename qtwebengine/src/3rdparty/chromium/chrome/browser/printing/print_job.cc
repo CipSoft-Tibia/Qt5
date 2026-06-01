@@ -221,8 +221,7 @@ void PrintJob::StartPrinting() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
   if (!worker_->IsRunning() || is_job_pending_) {
-    NOTREACHED_IN_MIGRATION();
-    return;
+    NOTREACHED();
   }
 
 #if BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_QTWEBENGINE)

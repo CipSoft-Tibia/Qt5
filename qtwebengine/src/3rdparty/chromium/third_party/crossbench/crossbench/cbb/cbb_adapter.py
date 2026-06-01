@@ -10,8 +10,10 @@ Any breaking changes in the function definitions here need to be coordinated
 with corresponding changes in CBB in google3
 """
 
+from __future__ import annotations
+
 import datetime as dt
-from typing import List, Optional, Type, TypeVar
+from typing import TYPE_CHECKING, List, Optional, Type
 
 from selenium import webdriver
 
@@ -21,11 +23,13 @@ import crossbench.browsers.webdriver as cb_webdriver
 import crossbench.env
 import crossbench.runner.runner
 from crossbench import path as pth
-from crossbench.benchmarks.base import PressBenchmark
-from crossbench.runner.groups.session import BrowserSessionRunGroup
 from crossbench.runner.run import Run
-from crossbench.stories.press_benchmark import PressBenchmarkStory
-from crossbench.stories.story import Story
+
+if TYPE_CHECKING:
+  from crossbench.benchmarks.base import PressBenchmark
+  from crossbench.runner.groups.session import BrowserSessionRunGroup
+  from crossbench.stories.press_benchmark import PressBenchmarkStory
+  from crossbench.stories.story import Story
 
 press_benchmarks: List[Type[PressBenchmark]] = [
     benchmarks.Speedometer20Benchmark,
@@ -124,7 +128,7 @@ class CbbRunner(crossbench.runner.runner.Runner):
 
 class CbbRun(Run):
 
-  def _create_session_dir(self) -> None:
+  def _setup_session_dir(self) -> None:
     # Don't create symlink loops and skip this step
     pass
 

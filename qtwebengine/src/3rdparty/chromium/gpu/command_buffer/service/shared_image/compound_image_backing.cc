@@ -8,6 +8,7 @@
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/strings/stringprintf.h"
 #include "base/trace_event/memory_allocator_dump_guid.h"
 #include "base/trace_event/process_memory_dump.h"
 #include "components/viz/common/resources/shared_image_format.h"
@@ -65,11 +66,11 @@ constexpr bool kAllowShmOverlays = false;
 gpu::SharedImageUsageSet GetShmSharedImageUsage(SharedImageUsageSet usage) {
   if (kAllowShmOverlays) {
     return usage.Has(gpu::SHARED_IMAGE_USAGE_SCANOUT)
-               ? SHARED_IMAGE_USAGE_CPU_WRITE | SHARED_IMAGE_USAGE_SCANOUT
-               : SHARED_IMAGE_USAGE_CPU_WRITE;
+               ? SHARED_IMAGE_USAGE_CPU_WRITE_ONLY | SHARED_IMAGE_USAGE_SCANOUT
+               : SHARED_IMAGE_USAGE_CPU_WRITE_ONLY;
   }
 
-  return SHARED_IMAGE_USAGE_CPU_WRITE;
+  return SHARED_IMAGE_USAGE_CPU_WRITE_ONLY;
 }
 
 }  // namespace
@@ -295,9 +296,7 @@ class WrappedDawnCompoundImageRepresentation : public DawnImageRepresentation {
                             wgpu::TextureUsage internal_usage) final {
     AccessMode access_mode =
         webgpu_usage & kWriteUsage ? AccessMode::kWrite : AccessMode::kRead;
-    if (base::FeatureList::IsEnabled(
-            features::kDawnSIRepsUseClientProvidedInternalUsages) &&
-        (internal_usage & kWriteUsage)) {
+    if (internal_usage & kWriteUsage) {
       access_mode = AccessMode::kWrite;
     }
     compound_backing()->NotifyBeginAccess(SharedImageAccessStream::kDawn,
@@ -770,8 +769,7 @@ CompoundImageBacking::ElementHolder& CompoundImageBacking::GetElement(
       return element;
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return elements_.back();
+  NOTREACHED();
 }
 
 SharedImageBacking* CompoundImageBacking::GetBacking(

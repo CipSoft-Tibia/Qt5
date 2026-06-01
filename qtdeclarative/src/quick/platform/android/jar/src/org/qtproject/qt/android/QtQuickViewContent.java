@@ -14,7 +14,7 @@ import java.util.HashSet;
  * This abstract class should be extended to be used by a QtQuickView. It provides QtQuickView with
  * essential information to load the QML component it represents.
  * It also offers convenient methods for seamless interaction with the QtQuickView that loads it.
- * @Since 6.8
+ * @since 6.8
  **/
 public abstract class QtQuickViewContent
 {
@@ -170,6 +170,22 @@ public abstract class QtQuickViewContent
     protected <T> int connectSignalListener(String signalName, Class<T> argType,
                                             QtSignalListener<T> listener)
     {
+        return connectSignalListener(signalName, new Class<?>[] { argType }, listener);
+    }
+
+    /**
+     * Connects a SignalListener to a signal of the QML component if it has already been attached
+     * and loaded by a QtQuickView instance.
+     *
+     * @param signalName the name of the root object signal
+     * @param argTypes   the Class types of the signal arguments
+     * @param listener   an instance of the QtSignalListener interface
+     * @return a connection ID between signal and listener or the existing connection ID if there is
+     *         an existing connection between the same signal and listener. Return a negative value
+     *         if the signal does not exist on the QML root object.
+     **/
+    protected int connectSignalListener(String signalName, Class<?>[] argTypes, Object listener)
+    {
         QtQuickView view = getQuickView();
         if (view == null) {
             Log.w(TAG,
@@ -177,14 +193,15 @@ public abstract class QtQuickViewContent
                           + "QtQuickView.");
             return -1;
         }
-        int signalListenerId = view.connectSignalListener(signalName, argType, listener);
+        int signalListenerId = view.connectSignalListener(signalName, argTypes, listener);
         m_signalListenerIds.add(signalListenerId);
         return signalListenerId;
     }
 
     /**
      * Disconnects a SignalListener with a given id obtained from
-     * {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} call,
+     * {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} or
+     * {@link QtQuickView#connectSignalListener(String, Class[], Object)} call,
      * from listening to a signal.
      *
      * @param signalListenerId the connection id

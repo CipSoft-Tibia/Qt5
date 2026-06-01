@@ -10,12 +10,15 @@ from crossbench.browsers.chrome.chrome import Chrome
 from crossbench.browsers.chrome.webdriver import (ChromeWebDriver,
                                                   ChromeWebDriverAndroid,
                                                   ChromeWebDriverChromeOsSsh,
-                                                  ChromeWebDriverSsh)
+                                                  ChromeWebDriverSsh,
+                                                  LocalChromeWebDriverAndroid)
 from crossbench.browsers.chromium.applescript import ChromiumAppleScript
 from crossbench.browsers.chromium.chromium import Chromium
 from crossbench.browsers.chromium.webdriver import (
-    ChromiumWebDriver, ChromiumWebDriverAndroid, ChromiumWebDriverChromeOsSsh,
-    ChromiumWebDriverSsh)
+    ChromiumBasedWebDriver, ChromiumWebDriver, ChromiumWebDriverAndroid,
+    ChromiumWebDriverChromeOsSsh, ChromiumWebDriverSsh,
+    LocalChromiumWebDriverAndroid)
+from crossbench.browsers.chromium_based.chromium_based import ChromiumBased
 from crossbench.browsers.edge.edge import Edge
 from crossbench.browsers.edge.webdriver import EdgeWebDriver
 from crossbench.browsers.firefox.firefox import Firefox

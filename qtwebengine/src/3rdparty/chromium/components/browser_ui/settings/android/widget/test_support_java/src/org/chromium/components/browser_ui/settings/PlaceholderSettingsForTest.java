@@ -14,8 +14,9 @@ import org.chromium.base.supplier.ObservableSupplier;
 import org.chromium.base.supplier.ObservableSupplierImpl;
 
 /** A placeholder {@link PreferenceFragmentCompat} for use in tests. */
-public class PlaceholderSettingsForTest extends PreferenceFragmentCompat implements SettingsPage {
-    private static final ObservableSupplier<String> sPageTitle =
+public class PlaceholderSettingsForTest extends PreferenceFragmentCompat
+        implements EmbeddableSettingsPage {
+    private final ObservableSupplier<String> mPageTitle =
             new ObservableSupplierImpl<>("Placeholder Settings");
 
     @Override
@@ -27,6 +28,6 @@ public class PlaceholderSettingsForTest extends PreferenceFragmentCompat impleme
 
     @Override
     public ObservableSupplier<String> getPageTitle() {
-        return sPageTitle;
+        return mPageTitle;
     }
 }

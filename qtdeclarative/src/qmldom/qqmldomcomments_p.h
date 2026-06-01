@@ -120,7 +120,7 @@ public:
     void setNewlinesBefore(int n) { m_newlinesBefore = n; }
     QStringView rawComment() const { return m_comment; }
     CommentInfo info() const { return CommentInfo(m_comment, m_location); }
-    void write(OutWriter &lw, SourceLocation *commentLocation = nullptr) const;
+    void write(OutWriter &lw) const;
 
     CommentType type() const { return m_type; }
 
@@ -144,8 +144,8 @@ public:
     DomType kind() const { return kindValue; }
 
     bool iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const;
-    void writePre(OutWriter &lw, QList<SourceLocation> *locations = nullptr) const;
-    void writePost(OutWriter &lw, QList<SourceLocation> *locations = nullptr) const;
+    void writePre(OutWriter &lw) const;
+    void writePost(OutWriter &lw) const;
 
     friend bool operator==(const CommentedElement &c1, const CommentedElement &c2)
     {
@@ -204,10 +204,10 @@ private:
         const auto preList = m_regionComments[region].preComments();
         index_type idx = preList.size();
         m_regionComments[region].addComment(comment);
-        return Path::Field(Fields::regionComments)
-                .key(fileLocationRegionName(region))
-                .field(Fields::preComments)
-                .index(idx);
+        return Path::fromField(Fields::regionComments)
+                .withKey(fileLocationRegionName(region))
+                .withField(Fields::preComments)
+                .withIndex(idx);
     }
 
     Path addPostComment(const Comment &comment, FileLocationRegion region)
@@ -215,10 +215,10 @@ private:
         const auto postList = m_regionComments[region].postComments();
         index_type idx = postList.size();
         m_regionComments[region].addComment(comment);
-        return Path::Field(Fields::regionComments)
-                .key(fileLocationRegionName(region))
-                .field(Fields::postComments)
-                .index(idx);
+        return Path::fromField(Fields::regionComments)
+                .withKey(fileLocationRegionName(region))
+                .withField(Fields::postComments)
+                .withIndex(idx);
     }
 
     QMap<FileLocationRegion, CommentedElement> m_regionComments;

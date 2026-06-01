@@ -18,7 +18,7 @@
 
 #include "QtCore/qlibrary.h"
 
-#include "QtCore/private/qfactoryloader_p.h"
+#include "QtCore/private/qplugin_p.h"
 #include "QtCore/qloggingcategory.h"
 #include "QtCore/qmutex.h"
 #include "QtCore/qplugin.h"
@@ -67,7 +67,7 @@ public:
 
     bool load();
     QtPluginInstanceFunction loadPlugin(); // loads and resolves instance
-    bool unload(UnloadFlag flag = UnloadSys);
+    Q_AUTOTEST_EXPORT bool unload(UnloadFlag flag = UnloadSys);
     void release();
     QFunctionPointer resolve(const char *);
 
@@ -83,6 +83,8 @@ public:
     {
 #ifdef Q_OS_WIN
         return {};
+#elif defined(Q_OS_CYGWIN)
+        return u"cyg";
 #else
         return u"lib";
 #endif
@@ -100,6 +102,11 @@ public:
 
     void updatePluginState();
     bool isPlugin();
+
+    static QLibraryPrivate* get(QLibrary* lib)
+    {
+        return lib->d.data();
+    }
 
 private:
     explicit QLibraryPrivate(const QString &canonicalFileName, const QString &version, QLibrary::LoadHints loadHints);

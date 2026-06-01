@@ -35,6 +35,8 @@ sudo su -
 echo 'add_drivers+=" virtio-blk "' >/etc/dracut.conf.d/virtio.conf
 dracut -f
 
+sudo zypper -nq install qemu-guest-agent
+
 # Disable coredump
 chkconfig kdump off
 echo 'Storage=none' >> /etc/systemd/coredump.conf.d/custom.conf

@@ -13,6 +13,7 @@ aggregate_vector_icons("chrome_vector_icons") {
   sources = [
     # go/keep-sorted start
     "account_add_chrome_refresh.icon",
+    "account_box.icon",
     "account_child_circle.icon",
     "account_circle.icon",
     "account_circle_chrome_refresh.icon",
@@ -48,6 +49,7 @@ aggregate_vector_icons("chrome_vector_icons") {
     "close_chrome_refresh.icon",
     "close_group_refresh.icon",
     "close_tab_chrome_refresh.icon",
+    "compare.icon",
     "computer_with_circle_background.icon",
     "copy.icon",
     "copy_menu.icon",
@@ -112,6 +114,7 @@ aggregate_vector_icons("chrome_vector_icons") {
     "leading_scroll.icon",
     "left_panel_close.icon",
     "link_chrome_refresh.icon",
+    "logout.icon",
     "media_controls_arrow_drop_down.icon",
     "media_controls_arrow_drop_up.icon",
     "media_toolbar_button_chrome_refresh.icon",
@@ -139,9 +142,11 @@ aggregate_vector_icons("chrome_vector_icons") {
     "overflow_button.icon",
     "overflow_button_touch.icon",
     "paintbrush.icon",
+    "password_field.icon",
     "paste_menu.icon",
     "payments/save_card_and_vcn_success_confirmation.icon",
     "payments/save_card_and_vcn_success_confirmation_dark.icon",
+    "people_group.icon",
     "performance.icon",
     "performance_speedometer.icon",
     "person.icon",
@@ -188,6 +193,7 @@ aggregate_vector_icons("chrome_vector_icons") {
     "sync_refresh.icon",
     "tab.icon",
     "tab_audio.icon",
+    "tab_close_inactive.icon",
     "tab_close_normal.icon",
     "tab_group.icon",
     "tab_group_sharing.icon",
@@ -195,6 +201,7 @@ aggregate_vector_icons("chrome_vector_icons") {
     "tab_usb_connected.icon",
     "tablet.icon",
     "task_manager.icon",
+    "text_analysis.icon",
     "toolbar_chrome_refresh.icon",
     "trailing_scroll.icon",
     "translate.icon",
@@ -202,10 +209,10 @@ aggregate_vector_icons("chrome_vector_icons") {
     "trash_can_refresh.icon",
     "tv.icon",
     "ungroup_refresh.icon",
-    "usb_cable.icon",
     "user_account_avatar.icon",
     "user_account_avatar_refresh.icon",
     "web.icon",
+    "webauthn/camera.icon",
     "webauthn/icloud_keychain.icon",
     "webauthn/passkey_aoa.icon",
     "webauthn/passkey_aoa_dark.icon",
@@ -259,14 +266,8 @@ aggregate_vector_icons("chrome_vector_icons") {
 
   if (is_chromeos) {
     sources += [
-      "crostini_mascot.icon",
-      "terminal_ssh.icon",
-    ]
-  }
-
-  if (is_chromeos_ash) {
-    sources += [
       "autocorrect_undo.icon",
+      "crostini_mascot.icon",
       "floating_workspace_notification.icon",
       "full_restore_notification.icon",
       "game_controls_add.icon",
@@ -301,6 +302,7 @@ aggregate_vector_icons("chrome_vector_icons") {
       "person_add.icon",
       "sharesheet_share_with_others.icon",
       "shutdown_guest_os.icon",
+      "terminal_ssh.icon",
       "tip.icon",
     ]
   }

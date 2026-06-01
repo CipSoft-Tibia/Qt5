@@ -31,7 +31,7 @@ struct TextDiffRange;
 class CORE_EXPORT InlineNode : public LayoutInputNode {
  public:
   explicit InlineNode(LayoutBlockFlow*);
-  explicit InlineNode(std::nullptr_t) : LayoutInputNode(nullptr) {}
+  InlineNode(std::nullptr_t) : LayoutInputNode(nullptr) {}
 
   LayoutBlockFlow* GetLayoutBlockFlow() const {
     return To<LayoutBlockFlow>(box_.Get());
@@ -210,11 +210,6 @@ inline bool InlineNode::IsStickyImagesQuirkForContentSize() const {
     const ComputedStyle& style = Style();
     if (style.Display() == EDisplay::kTableCell) [[unlikely]] {
       if (style.LogicalWidth().IsAuto()) {
-        return true;
-      }
-      if (!RuntimeEnabledFeatures::StricterCellWidthContentSizeQuirkEnabled() &&
-          (style.LogicalWidth().HasAutoOrContentOrIntrinsic() ||
-           style.LogicalWidth().HasStretch())) {
         return true;
       }
     }

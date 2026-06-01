@@ -60,8 +60,8 @@ enum class SharedStorageWorkletErrorType {
   kSelectURLWebVisible = 4,
   kOBSOLETE_SelectURLNonWebVisible = 5,  // Replaced by finer-grained types.
   kSuccess = 6,
-  kAddModuleNonWebVisibleMulipleWorkletsDisabled = 7,
-  kAddModuleNonWebVisibleCrossOriginWorkletsDisabled = 8,
+  kOBSOLETE_AddModuleNonWebVisibleMulipleWorkletsDisabled = 7,
+  kOBSOLETE_AddModuleNonWebVisibleCrossOriginWorkletsDisabled = 8,
   kAddModuleNonWebVisibleCrossOriginSharedStorageDisabled = 9,
   kAddModuleNonWebVisibleOther = 10,
   kRunNonWebVisibleInvalidContextId = 11,
@@ -91,9 +91,10 @@ enum class SharedStorageWorkletErrorType {
   kSelectURLNonWebVisibleOther = 35,
   kRunNonWebVisibleInvalidFilteringIdMaxBytes = 36,
   kSelectURLNonWebVisibleInvalidFilteringIdMaxBytes = 37,
+  kAddModuleNonWebVisibleCustomDataOriginDisabled = 38,
 
   // Keep this at the end and equal to the last entry.
-  kMaxValue = kSelectURLNonWebVisibleInvalidFilteringIdMaxBytes,
+  kMaxValue = kAddModuleNonWebVisibleCustomDataOriginDisabled,
 };
 
 // Whether or not there is sufficient budget for the `selectURL()` call, and if
@@ -115,12 +116,6 @@ enum class SharedStorageSelectUrlBudgetStatus {
 // Whether the length of the urls input parameter (of the
 // sharedStorage.runURLSelectionOperation method) is valid.
 BLINK_COMMON_EXPORT bool IsValidSharedStorageURLsArrayLength(size_t length);
-
-// Whether the length of a shared storage's key is valid.
-BLINK_COMMON_EXPORT bool IsValidSharedStorageKeyStringLength(size_t length);
-
-// Whether the length of shared storage's value is valid.
-BLINK_COMMON_EXPORT bool IsValidSharedStorageValueStringLength(size_t length);
 
 // Logs histogram of the calling method and error type for worklet errors.
 BLINK_COMMON_EXPORT void LogSharedStorageWorkletError(

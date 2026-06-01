@@ -12,7 +12,7 @@
 
 :host {
   --cr-focus-outline-color: var(--color-new-tab-page-focus-ring);
-  --cr-searchbox-height: 44px;
+  --cr-searchbox-height: 48px;
   --cr-searchbox-shadow: 0 1px 6px 0 var(--color-searchbox-shadow);
   --cr-searchbox-icon-left-position: 12px;
   --cr-searchbox-icon-size-in-searchbox: 20px;
@@ -24,9 +24,10 @@
   --ntp-menu-shadow:
       var(--color-new-tab-page-menu-inner-shadow) 0 1px 2px 0,
       var(--color-new-tab-page-menu-outer-shadow) 0 2px 6px 2px;
-  --ntp-module-width: var(--ntp-search-box-width);
-  --ntp-module-layout-width: var(--ntp-search-box-width);
-  --ntp-module-border-radius: 5px;
+  --ntp-module-width: 360px;
+  --ntp-module-layout-width: 360px;
+  --ntp-module-border-radius: 16px;
+  --ntp-module-item-border-radius: 12px;
   --ntp-protected-icon-background-color: transparent;
   --ntp-protected-icon-background-color-hovered: rgba(255, 255, 255, .1);
 }
@@ -36,7 +37,7 @@
  * point available to be shown.
  */
 :host([realbox-can-show-secondary-side][realbox-had-secondary-side]),
-:host([realbox-can-show-secondary-side][searchbox-width-behavior_='wide']) {
+:host([realbox-can-show-secondary-side]) {
   --ntp-search-box-width: 746px;
 }
 
@@ -52,13 +53,9 @@
   }
 }
 
-:host([realbox-is-tall_]) {
-  --cr-searchbox-height: 48px;
-}
-
 /*A module width of 768px with 18px gaps on each side. */
 @media (min-width: 804px) {
-  :host([wide-modules-enabled_]) {
+  :host {
     --ntp-module-layout-width: 768px;
     --ntp-module-width: 768px;
   }
@@ -69,13 +66,6 @@ cr-most-visited {
       var(--color-new-tab-page-add-shortcut-background);
   --add-shortcut-foreground-color:
       var(--color-new-tab-page-add-shortcut-foreground);
-}
-
-:host([modules-redesigned-enabled_]) {
-  --ntp-module-border-radius: 16px;
-  --ntp-module-item-border-radius: 12px;
-  --ntp-module-layout-width: 360px;
-  --ntp-module-width: 360px;
 }
 
 :host([show-background-image_]) {
@@ -272,13 +262,11 @@ ntp-middle-slot-promo:not([hidden]) ~ #modules {
 }
 
 @media (max-width: 1110px) {
-  :host([modules-redesigned-enabled_][modules-shown-to-user])
-      .customize-text {
+  :host([modules-shown-to-user]) .customize-text {
     display: none;
   }
 
-  :host([modules-redesigned-enabled_][modules-shown-to-user])
-      .customize-button {
+  :host([modules-shown-to-user]) .customize-button {
     padding-inline-end: 0;
     padding-inline-start: 8px;
   }
@@ -416,4 +404,12 @@ ntp-lens-upload-dialog {
 
 #webstoreToast {
   padding: 16px;
+}
+
+/*
+  Microsoft Auth's iframe is used for script sandboxing only and requires no
+  user interaction. It does not need to be visible.
+*/
+#microsoftAuth {
+  display: none;
 }

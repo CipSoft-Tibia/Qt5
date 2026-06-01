@@ -101,9 +101,14 @@ static int sps_chroma_qp_table(VVCSPS *sps)
 
         qp_out[0] = qp_in[0] = r->sps_qp_table_start_minus26[i] + 26;
         for (int j = 0; j < num_points_in_qp_table; j++ ) {
+            const uint8_t delta_qp_out = (r->sps_delta_qp_in_val_minus1[i][j] ^ r->sps_delta_qp_diff_val[i][j]);
             delta_qp_in[j] = r->sps_delta_qp_in_val_minus1[i][j] + 1;
+            // Note: we cannot check qp_{in,out}[j+1] here as qp_*[j] + delta_qp_*
+            //       may not fit in an 8-bit signed integer.
+            if (qp_in[j] + delta_qp_in[j] > 63 || qp_out[j] + delta_qp_out > 63)
+                return AVERROR(EINVAL);
             qp_in[j+1] = qp_in[j] + delta_qp_in[j];
-            qp_out[j+1] = qp_out[j] + (r->sps_delta_qp_in_val_minus1[i][j] ^ r->sps_delta_qp_diff_val[i][j]);
+            qp_out[j+1] = qp_out[j] + delta_qp_out;
         }
         sps->chroma_qp_table[i][qp_in[0] + off] = qp_out[0];
         for (int k = qp_in[0] - 1 + off; k >= 0; k--)
@@ -186,8 +191,11 @@ static int sps_derive(VVCSPS *sps, void *log_ctx)
     sps_inter(sps);
     sps_partition_constraints(sps);
     sps_ladf(sps);
-    if (r->sps_chroma_format_idc != 0)
-        sps_chroma_qp_table(sps);
+    if (r->sps_chroma_format_idc != 0) {
+        ret = sps_chroma_qp_table(sps);
+        if (ret < 0)
+            return ret;
+    }
 
     return 0;
 }
@@ -376,10 +384,10 @@ static void subpic_tiles(int *tile_x, int *tile_y, int *tile_x_end, int *tile_y_
 
     *tile_x = *tile_y = 0;
 
-    while (pps->col_bd[*tile_x] != rx)
+    while (pps->col_bd[*tile_x] < rx)
         (*tile_x)++;
 
-    while (pps->row_bd[*tile_y] != ry)
+    while (pps->row_bd[*tile_y] < ry)
         (*tile_y)++;
 
     *tile_x_end = (*tile_x);
@@ -641,6 +649,12 @@ static int decode_ps(VVCParamSets *ps, const CodedBitstreamH266Context *h266, vo
     if (ret < 0)
         return ret;
 
+    if (rsps->sps_log2_ctu_size_minus5 > 2) {
+        // CTU > 128 are reserved in vvc spec v3
+        av_log(log_ctx, AV_LOG_ERROR, "CTU size > 128. \n");
+        return AVERROR_PATCHWELCOME;
+    }
+
     ret = decode_pps(ps, rpps);
     if (ret < 0)
         return ret;
@@ -728,7 +742,7 @@ static int lmcs_derive_lut(VVCLMCS *lmcs, const H266RawAPS *rlmcs, const H266Raw
         return AVERROR_INVALIDDATA;
 
     lmcs->min_bin_idx = rlmcs->lmcs_min_bin_idx;
-    lmcs->max_bin_idx = LMCS_MAX_BIN_SIZE - 1 - rlmcs->lmcs_min_bin_idx;
+    lmcs->max_bin_idx = LMCS_MAX_BIN_SIZE - 1 - rlmcs->lmcs_delta_max_bin_idx;
 
     memset(cw, 0, sizeof(cw));
     for (int i = lmcs->min_bin_idx; i <= lmcs->max_bin_idx; i++)
@@ -788,14 +802,59 @@ static int ph_max_num_subblock_merge_cand(const H266RawSPS *sps, const H266RawPi
     return sps->sps_sbtmvp_enabled_flag && ph->ph_temporal_mvp_enabled_flag;
 }
 
+static int ph_vb_pos(uint16_t *vbs, uint8_t *num_vbs, const uint16_t *pos_minus_1, const uint8_t num_pos, uint16_t max, const int ctb_size_y)
+{
+    max = FF_CEIL_RSHIFT(max, 3) - 2;
+    for (int i = 0; i < num_pos; i++) {
+        if (pos_minus_1[i] > max)
+            return AVERROR_INVALIDDATA;
+
+        vbs[i] = (pos_minus_1[i] + 1) << 3;
+
+        // The distance between any two vertical virtual boundaries shall be greater than or equal to CtbSizeY luma samples
+        if (i && vbs[i] < vbs[i - 1] + ctb_size_y)
+            return AVERROR_INVALIDDATA;
+    }
+    *num_vbs = num_pos;
+
+    return 0;
+}
+
+#define VBF(f) (sps->sps_virtual_boundaries_present_flag ? sps->sps_##f : ph->r->ph_##f)
+#define VBFS(c, d) VBF(virtual_boundary_pos_##c##_minus1), VBF(num_##d##_virtual_boundaries)
+
+static int ph_vb(VVCPH *ph, const H266RawSPS *sps, const H266RawPPS *pps)
+{
+    const int ctb_size_y = 1 << (sps->sps_log2_ctu_size_minus5 + 5);
+    int ret;
+
+    if (!sps->sps_virtual_boundaries_enabled_flag)
+        return 0;
+
+    ret = ph_vb_pos(ph->vb_pos_x, &ph->num_ver_vbs, VBFS(x, ver), pps->pps_pic_width_in_luma_samples, ctb_size_y);
+    if (ret < 0)
+        return ret;
+
+    ret = ph_vb_pos(ph->vb_pos_y, &ph->num_hor_vbs, VBFS(y, hor), pps->pps_pic_height_in_luma_samples, ctb_size_y);
+    if (ret < 0)
+        return ret;
+
+    return 0;
+}
+
 static int ph_derive(VVCPH *ph, const H266RawSPS *sps, const H266RawPPS *pps, const int poc_tid0, const int is_clvss)
 {
+    int ret;
     ph->max_num_subblock_merge_cand = ph_max_num_subblock_merge_cand(sps, ph->r);
 
     ph->poc = ph_compute_poc(ph->r, sps, poc_tid0, is_clvss);
 
     if (pps->pps_wp_info_in_ph_flag)
         pred_weight_table(&ph->pwt, &ph->r->ph_pred_weight_table);
+
+    ret = ph_vb(ph, sps, pps);
+    if (ret < 0)
+        return ret;
 
     return 0;
 }
@@ -990,13 +1049,21 @@ static void alf_derive(VVCALF *alf, const H266RawAPS *aps)
     alf_cc(alf, aps);
 }
 
+static void alf_free(FFRefStructOpaque unused, void *obj)
+{
+    VVCALF *alf = obj;
+
+    ff_refstruct_unref(&alf->r);
+}
+
 static int aps_decode_alf(const VVCALF **alf, const H266RawAPS *aps)
 {
-    VVCALF *a = ff_refstruct_allocz(sizeof(*a));
+    VVCALF *a = ff_refstruct_alloc_ext(sizeof(*a), 0, NULL, alf_free);
     if (!a)
         return AVERROR(ENOMEM);
 
     alf_derive(a, aps);
+    ff_refstruct_replace(&a->r, aps);
     ff_refstruct_replace(alf, a);
     ff_refstruct_unref(&a);
 

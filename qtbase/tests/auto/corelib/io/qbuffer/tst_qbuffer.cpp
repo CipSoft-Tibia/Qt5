@@ -301,7 +301,7 @@ void tst_QBuffer::invalidSeeks()
         buffer.open(QIODevice::WriteOnly);
         QCOMPARE(buffer.buffer().size(), qsizetype(0));
         QCOMPARE(buffer.pos(), qint64(0));
-        constexpr qint64 MaxQByteArrayCapacity = (std::numeric_limits<qsizetype>::max)();
+        constexpr qint64 MaxQByteArrayCapacity = (std::numeric_limits<int>::max)();
         // this should fail fast, not after trying to allocate nearly 2 GiB of data,
         // potentially crashing in the process:
         QVERIFY(!buffer.seek(2 * MaxQByteArrayCapacity - 1));

@@ -45,7 +45,7 @@ class QtActivityLoader extends QtLoader {
         int size = m_activity.getResources().getDimensionPixelSize(android.R.dimen.app_icon_size);
         if (size < 36 || size > 512) { // check size sanity
             DisplayMetrics metrics = new DisplayMetrics();
-            m_activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
+            QtDisplayManager.getDisplay(m_activity).getMetrics(metrics);
             size = metrics.densityDpi / 10 * 3;
             if (size < 36)
                 size = 36;

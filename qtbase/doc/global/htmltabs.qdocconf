@@ -13,9 +13,10 @@
 
 # The {checked} argument ensures that the tab is selected
 # by default when the HTML page is loaded. For the other
-# tabs that are not selected, pass and empty argument {}.
+# tabs that are not selected, pass an empty argument {}.
 #
-# Note that these macros work with the online template only.
+# Note that these macros work with the online template and
+# DocBook only.
 #
 # Example:
 # \if defined(onlinedocs)
@@ -37,9 +38,13 @@
 #   \endtabcontent
 # \endif
 
-macro.tab.HTML = "<input type=\"radio\" name=\"tabs_\1\" id=\"\2\" \4/><label for=\"\2\">\3</label>\n<style>#\2:checked ~ .\2{display: block;}</style>\n"
-macro.tabcontent = "\\div {class=\"tabcontent \1\"}"
-macro.endtabcontent = "\\enddiv"
+macro.tab.HTML = "<input translate=\"no\" type=\"radio\" name=\"tabs_\1\" id=\"\2\" \4/>\n<label for=\"\2\">\3</label>\n<style translate=\"no\">#\2:checked ~ .\2{display: block;}</style>\n"
+macro.tabcontent.HTML = "<div class=\"tabcontent \1\">\n"
+macro.endtabcontent.HTML = "</div>\n"
+
+macro.tab.DocBook = "<db:bridgehead xml:id="\2" renderas="sect5" role="tabbed \4 tab-group_\1" xlink:href="#\2_contents">\3</db:bridgehead>"
+macro.tabcontent.DocBook = "<db:sidebar xml:id="\1_contents">"
+macro.endtabcontent.DocBook = "</db:sidebar>"
 
 HTML.extraimages += template/style/htmltabs.css
 

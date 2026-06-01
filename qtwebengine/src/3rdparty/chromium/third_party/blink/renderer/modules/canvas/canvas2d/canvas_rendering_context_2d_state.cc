@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d_state.h"
 
+#include <algorithm>
 #include <optional>
 
 #include "base/check.h"
@@ -11,7 +12,6 @@
 #include "base/compiler_specific.h"
 #include "base/dcheck_is_on.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "cc/paint/draw_looper.h"
 #include "cc/paint/paint_flags.h"
 #include "cc/paint/path_effect.h"
@@ -129,7 +129,7 @@ FontSelectionValue CanvasFontStretchToSelectionValue(
       stretch_value = kSemiExpandedWidthValue;
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
   return stretch_value;
 }
@@ -151,7 +151,7 @@ TextRenderingMode CanvasTextRenderingToTextRenderingMode(
       text_rendering_mode = TextRenderingMode::kGeometricPrecision;
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
   return text_rendering_mode;
 }
@@ -293,8 +293,8 @@ void CanvasRenderingContext2DState::SetLineDash(const Vector<double>& dash) {
   if (dash.size() % 2)
     line_dash_.AppendVector(dash);
   // clamp the double values to float
-  base::ranges::transform(line_dash_, line_dash_.begin(),
-                          [](double d) { return ClampTo<float>(d); });
+  std::ranges::transform(line_dash_, line_dash_.begin(),
+                         [](double d) { return ClampTo<float>(d); });
 
   line_dash_dirty_ = true;
 }
@@ -315,7 +315,7 @@ ALWAYS_INLINE void CanvasRenderingContext2DState::UpdateLineDash() const {
     stroke_flags_.setPathEffect(nullptr);
   } else {
     Vector<float> line_dash(line_dash_.size());
-    base::ranges::copy(line_dash_, line_dash.begin());
+    std::ranges::copy(line_dash_, line_dash.begin());
     stroke_flags_.setPathEffect(cc::PathEffect::MakeDash(
         line_dash.data(), line_dash.size(), line_dash_offset_));
   }
@@ -357,7 +357,8 @@ void CanvasRenderingContext2DState::SetFont(
   FontDescription font_description = passed_font_description;
   font_description.SetSubpixelAscentDescent(true);
 
-  CSSToLengthConversionData conversion_data = CSSToLengthConversionData();
+  CSSToLengthConversionData conversion_data =
+      CSSToLengthConversionData(/*element=*/nullptr);
   auto const font_size = CSSToLengthConversionData::FontSizes(
       font_description.ComputedSize(), font_description.ComputedSize(),
       MakeGarbageCollected<Font>(),
@@ -494,7 +495,7 @@ void CanvasRenderingContext2DState::ValidateFilterState() const {
       DCHECK(css_filter_value_ || canvas_filter_);
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
+      NOTREACHED();
   }
 #endif
 }
@@ -746,31 +747,36 @@ bool CanvasRenderingContext2DState::ImageSmoothingEnabled() const {
 }
 
 void CanvasRenderingContext2DState::SetImageSmoothingQuality(
-    const String& quality_string) {
-  if (quality_string == "low") {
-    image_smoothing_quality_ = cc::PaintFlags::FilterQuality::kLow;
-  } else if (quality_string == "medium") {
-    image_smoothing_quality_ = cc::PaintFlags::FilterQuality::kMedium;
-  } else if (quality_string == "high") {
-    image_smoothing_quality_ = cc::PaintFlags::FilterQuality::kHigh;
-  } else {
-    return;
+    const V8ImageSmoothingQuality& quality) {
+  switch (quality.AsEnum()) {
+    case V8ImageSmoothingQuality::Enum::kLow:
+      image_smoothing_quality_ = cc::PaintFlags::FilterQuality::kLow;
+      UpdateFilterQuality();
+      return;
+    case V8ImageSmoothingQuality::Enum::kMedium:
+      image_smoothing_quality_ = cc::PaintFlags::FilterQuality::kMedium;
+      UpdateFilterQuality();
+      return;
+    case V8ImageSmoothingQuality::Enum::kHigh:
+      image_smoothing_quality_ = cc::PaintFlags::FilterQuality::kHigh;
+      UpdateFilterQuality();
+      return;
   }
-  UpdateFilterQuality();
+  NOTREACHED();
 }
 
-String CanvasRenderingContext2DState::ImageSmoothingQuality() const {
+V8ImageSmoothingQuality CanvasRenderingContext2DState::ImageSmoothingQuality()
+    const {
   switch (image_smoothing_quality_) {
+    case cc::PaintFlags::FilterQuality::kNone:
     case cc::PaintFlags::FilterQuality::kLow:
-      return "low";
+      return V8ImageSmoothingQuality(V8ImageSmoothingQuality::Enum::kLow);
     case cc::PaintFlags::FilterQuality::kMedium:
-      return "medium";
+      return V8ImageSmoothingQuality(V8ImageSmoothingQuality::Enum::kMedium);
     case cc::PaintFlags::FilterQuality::kHigh:
-      return "high";
-    default:
-      NOTREACHED_IN_MIGRATION();
-      return "low";
+      return V8ImageSmoothingQuality(V8ImageSmoothingQuality::Enum::kHigh);
   }
+  NOTREACHED();
 }
 
 void CanvasRenderingContext2DState::UpdateFilterQuality() const {
@@ -800,10 +806,7 @@ const cc::PaintFlags* CanvasRenderingContext2DState::GetFlags(
       flags = &stroke_flags_;
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      // no break on purpose: flags needs to be assigned to avoid compiler
-      // warning about uninitialized variable.
-      [[fallthrough]];
+      NOTREACHED();
     case kFillPaintType:
       fill_style_.SyncFlags(fill_flags_, global_alpha_);
       flags = &fill_flags_;
@@ -871,7 +874,8 @@ void CanvasRenderingContext2DState::SetLetterSpacing(
   parsed_letter_spacing_ = builder.ToString();
   // Convert letter spacing to pixel length and set it in font_description.
   FontDescription font_description(GetFontDescription());
-  CSSToLengthConversionData conversion_data = CSSToLengthConversionData();
+  CSSToLengthConversionData conversion_data =
+      CSSToLengthConversionData(/*element=*/nullptr);
   auto const font_size = CSSToLengthConversionData::FontSizes(
       font_description.ComputedSize(), font_description.ComputedSize(), font_,
       1.0f /*Deliberately ignore zoom on the canvas element*/);
@@ -906,7 +910,8 @@ void CanvasRenderingContext2DState::SetWordSpacing(const String& word_spacing) {
   parsed_word_spacing_ = builder.ToString();
   // Convert letter spacing to pixel length and set it in font_description.
   FontDescription font_description(GetFontDescription());
-  CSSToLengthConversionData conversion_data = CSSToLengthConversionData();
+  CSSToLengthConversionData conversion_data =
+      CSSToLengthConversionData(/*element=*/nullptr);
   auto const font_size = CSSToLengthConversionData::FontSizes(
       font_description.ComputedSize(), font_description.ComputedSize(), font_,
       1.0f /*Deliberately ignore zoom on the canvas element*/);

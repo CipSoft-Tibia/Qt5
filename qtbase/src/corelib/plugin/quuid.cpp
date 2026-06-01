@@ -579,12 +579,10 @@ QUuid QUuid::fromString(QAnyStringView text) noexcept
 
   \sa variant(), version(), createUuidV3()
 */
-#ifndef QT_BOOTSTRAPPED
 QUuid QUuid::createUuidV3(QUuid ns, QByteArrayView baseData) noexcept
 {
     return createFromName(ns, baseData, QCryptographicHash::Md5, 3);
 }
-#endif
 
 QUuid QUuid::createUuidV5(QUuid ns, QByteArrayView baseData) noexcept
 {
@@ -603,12 +601,10 @@ QUuid QUuid::createUuidV5(QUuid ns, QByteArrayView baseData) noexcept
 
     \sa variant(), version(), createUuidV3(), createUuidV5()
 */
-#ifndef QT_BOOTSTRAPPED
 QUuid QUuid::createUuidV7()
 {
     return createUuidV7_internal(std::chrono::system_clock::now());
 }
-#endif // !defined(QT_BOOTSTRAPPED)
 
 /*!
   Creates a QUuid object from the binary representation of the UUID, as
@@ -948,7 +944,7 @@ QUuid QUuid::createUuid()
     return result;
 }
 
-#elif !defined(QT_BOOTSTRAPPED)
+#else
 
 QUuid QUuid::createUuid()
 {
@@ -962,7 +958,7 @@ QUuid QUuid::createUuid()
 
     return result;
 }
-#endif // !Q_OS_WIN && !QT_BOOTSTRAPPED
+#endif // !Q_OS_WIN
 
 /*!
     \fn bool QUuid::operator==(const QUuid &lhs, const GUID &rhs)

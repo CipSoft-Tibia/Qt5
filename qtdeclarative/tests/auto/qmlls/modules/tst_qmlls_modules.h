@@ -23,7 +23,7 @@
 
 class tst_qmlls_modules : public QQmlDataTest
 {
-    using ExpectedCompletion = QPair<QString, QLspSpecification::CompletionItemKind>;
+    using ExpectedCompletion = std::pair<QString, QLspSpecification::CompletionItemKind>;
     using ExpectedCompletions = QList<ExpectedCompletion>;
 
     using ExpectedDocumentation = std::tuple<QString, QString, QString>;
@@ -59,6 +59,14 @@ private slots:
     void renameUsages();
     void linting_data();
     void linting();
+
+private:
+    struct ExpectedWarnings
+    {
+        QStringList warnings;
+        QStringList extraImportPaths = {};
+    };
+private slots:
     void warnings_data();
     void warnings();
     void rangeFormatting_data();

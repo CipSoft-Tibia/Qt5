@@ -133,7 +133,7 @@ base::Value GetActiveFieldTrialList() {
 
 }  // namespace
 
-base::Value::Dict GetNetConstants() {
+base::Value::Dict GetNetConstants(NetConstantsRequestMode request_mode) {
   base::Value::Dict constants_dict;
 
   // Version of the file format.
@@ -227,8 +227,11 @@ base::Value::Dict GetNetConstants() {
   {
     base::Value::Dict dict;
 
-    for (const auto& error : kNetErrors)
+    // Zero represents OK.
+    dict.Set("net::OK", 0);
+    for (const auto& error : kNetErrors) {
       dict.Set(ErrorToShortString(error), error);
+    }
 
     constants_dict.Set("netError", std::move(dict));
   }
@@ -332,6 +335,10 @@ base::Value::Dict GetNetConstants() {
   // "clientInfo" key is required for some log readers. Provide a default empty
   // value for compatibility.
   constants_dict.Set("clientInfo", base::Value::Dict());
+
+  if (request_mode == NetConstantsRequestMode::kTracing) {
+    return constants_dict;
+  }
 
   // Add a list of field experiments active at the start of the capture.
   // Additional trials may be enabled later in the browser session.
@@ -513,9 +520,15 @@ NET_EXPORT void CreateNetLogEntriesForActiveObjects(
 
   // Create fake events.
   for (auto* request : requests) {
+    // Use default capture mode for simplicity. Can't call capture_mode() on
+    // `observer` because this method is typically called just before it starts
+    // observing, so it would CHECK. The capture mode only affects inlined
+    // credentials in the URL, which are pretty rare, so simplest to always
+    // redact them here. Can change later if needed.
     NetLogEntry entry(NetLogEventType::REQUEST_ALIVE,
                       request->net_log().source(), NetLogEventPhase::BEGIN,
-                      request->creation_time(), request->GetStateAsValue());
+                      request->creation_time(),
+                      request->GetStateAsValue(NetLogCaptureMode::kDefault));
     observer->OnAddEntry(entry);
   }
 }

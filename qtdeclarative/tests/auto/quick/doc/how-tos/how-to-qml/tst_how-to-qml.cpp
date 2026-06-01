@@ -13,6 +13,7 @@
 #include <QtQuickTemplates2/private/qquicktextfield_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopupwindow_p_p.h>
+#include <QtQuickTest/quicktest.h>
 #include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 #include <QtQuickControlsTestUtils/private/dialogstestutils_p.h>
 
@@ -70,13 +71,13 @@ void tst_HowToQml::activeFocusDebugging()
     auto *textField1 = window->findChild<QQuickTextField*>("textField1");
     QVERIFY(textField1);
     textField1->forceActiveFocus();
-    QVERIFY(textField1->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(textField1);
 
     QTest::ignoreMessage(QtDebugMsg, QRegularExpression("activeFocusItem: .*\"textField2\""));
     auto *textField2 = window->findChild<QQuickTextField*>("textField2");
     QVERIFY(textField2);
     QTest::keyClick(window, Qt::Key_Tab);
-    QVERIFY(textField2->hasActiveFocus());
+    QVERIFY_ACTIVE_FOCUS(textField2);
 }
 
 void tst_HowToQml::timePicker()

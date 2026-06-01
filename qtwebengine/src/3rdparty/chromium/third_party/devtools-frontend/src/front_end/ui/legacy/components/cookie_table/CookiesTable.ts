@@ -35,7 +35,6 @@
 import * as Common from '../../../../core/common/common.js';
 import * as i18n from '../../../../core/i18n/i18n.js';
 import * as Platform from '../../../../core/platform/platform.js';
-import * as Root from '../../../../core/root/root.js';
 import * as SDK from '../../../../core/sdk/sdk.js';
 import * as Protocol from '../../../../generated/protocol.js';
 import * as IssuesManager from '../../../../models/issues_manager/issues_manager.js';
@@ -78,7 +77,7 @@ const UIStrings = {
   /**
    *@description Text for Context Menu entry
    */
-  showRequestsWithThisCookie: 'Show Requests With This Cookie',
+  showRequestsWithThisCookie: 'Show requests with this cookie',
   /**
    *@description Text for Context Menu entry
    */
@@ -131,6 +130,7 @@ export class CookiesTable extends UI.Widget.VBox {
       refreshCallback?: (() => void), selectedCallback?: (() => void),
       deleteCallback?: ((arg0: SDK.Cookie.Cookie, arg1: () => void) => void)) {
     super();
+    this.registerRequiredCSS(cookiesTableStyles);
 
     this.element.classList.add('cookies-table');
 
@@ -237,7 +237,8 @@ export class CookiesTable extends UI.Widget.VBox {
       },
     ] as DataGrid.DataGrid.ColumnDescriptor[];
 
-    if (Root.Runtime.experiments.isEnabled('experimental-cookie-features')) {
+    const config = Common.Settings.Settings.instance().getHostConfig();
+    if (config.devToolsEnableOriginBoundCookies?.schemeBindingEnabled) {
       const additionalColumns = [
         {
           id: SDK.Cookie.Attribute.SOURCE_SCHEME,
@@ -247,6 +248,11 @@ export class CookiesTable extends UI.Widget.VBox {
           weight: 7,
           editable,
         },
+      ] as DataGrid.DataGrid.ColumnDescriptor[];
+      columns.push(...additionalColumns);
+    }
+    if (config.devToolsEnableOriginBoundCookies?.portBindingEnabled) {
+      const additionalColumns = [
         {
           id: SDK.Cookie.Attribute.SOURCE_PORT,
           title: 'SourcePort',
@@ -299,10 +305,6 @@ export class CookiesTable extends UI.Widget.VBox {
     this.cookieToBlockedReasons = null;
 
     this.cookieToExemptionReason = null;
-  }
-
-  override wasShown(): void {
-    this.registerCSSFiles([cookiesTableStyles]);
   }
 
   setCookies(

@@ -39,16 +39,10 @@ qt_internal_add_qml_module(qtgraphicaleffectsplugin
     DESIGNER_SUPPORTED
     CLASS_NAME QtGraphicalEffectsPlugin
     PLUGIN_TARGET qtgraphicaleffectsplugin
-    NO_GENERATE_PLUGIN_SOURCE
-    NO_PLUGIN_OPTIONAL
-    NO_GENERATE_QMLTYPES
     PAST_MAJOR_VERSIONS 1
-    INSTALL_SOURCE_QMLTYPES "plugins.qmltypes"
     DEPENDENCIES
         Qt5Compat.GraphicalEffects.private
         QtQuick.Window
-    SOURCES
-        plugin.cpp
     QML_FILES
         ${qml_files}
     LIBRARIES

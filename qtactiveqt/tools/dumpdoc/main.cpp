@@ -67,9 +67,13 @@ int main(int argc, char **argv)
         outfile.setFileName(QString::fromLatin1(outname.constData()));
         if (!outfile.open(QIODevice::WriteOnly | QIODevice::Text)) {
             qWarning("dumpdoc: Could not open output file '%s'", outname.data());
+            return -4;
         }
     } else {
-        outfile.open(stdout, QIODevice::WriteOnly);
+        if (!outfile.open(stdout, QIODevice::WriteOnly)) {
+            qWarning("dumpdoc: Could not open stdout for writing");
+            return -4;
+        }
     }
     QTextStream out(&outfile);
 

@@ -3,6 +3,7 @@
 
 #include <QtCore/qdebug.h>
 #include "qabstract3daxis_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -301,10 +302,14 @@ QAbstract3DAxis::AxisType QAbstract3DAxis::type() const
 void QAbstract3DAxis::setTitle(const QString &title)
 {
     Q_D(QAbstract3DAxis);
-    if (d->m_title != title) {
-        d->m_title = title;
-        emit titleChanged(title);
+    if (d->m_title == title) {
+        qCDebug(lcAProperties3D, "%s title is already set to: %s",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), qUtf8Printable(title));
+        return;
     }
+
+    d->m_title = title;
+    emit titleChanged(title);
 }
 
 QString QAbstract3DAxis::title() const
@@ -360,14 +365,28 @@ void QAbstract3DAxis::setRange(float min, float max)
 void QAbstract3DAxis::setLabelAutoAngle(float degree)
 {
     Q_D(QAbstract3DAxis);
-    if (degree < 0.0f)
+    if (degree < 0.0f) {
+        qCWarning(lcAProperties3D, "%s invalid angle degree."
+                  "degree has been set to 0.0f",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
         degree = 0.0f;
-    if (degree > 90.0f)
-        degree = 90.0f;
-    if (d->m_labelAutoAngle != degree) {
-        d->m_labelAutoAngle = degree;
-        emit labelAutoAngleChanged(degree);
     }
+
+    if (degree > 90.0f) {
+        qCWarning(lcAProperties3D, "%s invalid angle degree."
+                  "degree has been set to 90.0f",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
+        degree = 90.0f;
+    }
+
+    if (qFuzzyCompare(d->m_labelAutoAngle + 1, degree + 1)) {
+        qCDebug(lcAProperties3D, "%s angle value is already: %f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), degree);
+        return;
+    }
+
+    d->m_labelAutoAngle = degree;
+    emit labelAutoAngleChanged(degree);
 }
 
 float QAbstract3DAxis::labelAutoAngle() const
@@ -388,10 +407,14 @@ float QAbstract3DAxis::labelAutoAngle() const
 void QAbstract3DAxis::setTitleVisible(bool visible)
 {
     Q_D(QAbstract3DAxis);
-    if (d->m_titleVisible != visible) {
-        d->m_titleVisible = visible;
-        emit titleVisibleChanged(visible);
+    if (d->m_titleVisible == visible) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "visibility is already set to:" << visible;
+        return;
     }
+
+    d->m_titleVisible = visible;
+    emit titleVisibleChanged(visible);
 }
 
 bool QAbstract3DAxis::isTitleVisible() const
@@ -411,10 +434,14 @@ bool QAbstract3DAxis::isTitleVisible() const
 void QAbstract3DAxis::setLabelsVisible(bool visible)
 {
     Q_D(QAbstract3DAxis);
-    if (d->m_labelsVisible != visible) {
-        d->m_labelsVisible = visible;
-        emit labelVisibleChanged(visible);
+    if (d->m_labelsVisible == visible) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "visibility is already set to:" << visible;
+        return;
     }
+
+    d->m_labelsVisible = visible;
+    emit labelVisibleChanged(visible);
 }
 
 bool QAbstract3DAxis::labelsVisible() const
@@ -440,10 +467,14 @@ bool QAbstract3DAxis::labelsVisible() const
 void QAbstract3DAxis::setTitleFixed(bool fixed)
 {
     Q_D(QAbstract3DAxis);
-    if (d->m_titleFixed != fixed) {
-        d->m_titleFixed = fixed;
-        emit titleFixedChanged(fixed);
+    if (d->m_titleFixed == fixed) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "value is already set to:" << fixed;
+        return;
     }
+
+    d->m_titleFixed = fixed;
+    emit titleFixedChanged(fixed);
 }
 
 bool QAbstract3DAxis::isTitleFixed() const
@@ -509,10 +540,14 @@ float QAbstract3DAxis::max() const
 void QAbstract3DAxis::setAutoAdjustRange(bool autoAdjust)
 {
     Q_D(QAbstract3DAxis);
-    if (d->m_autoAdjust != autoAdjust) {
-        d->m_autoAdjust = autoAdjust;
-        emit autoAdjustRangeChanged(autoAdjust);
+    if (d->m_autoAdjust == autoAdjust) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "value is already set to:" << autoAdjust;
+        return;
     }
+
+    d->m_autoAdjust = autoAdjust;
+    emit autoAdjustRangeChanged(autoAdjust);
 }
 
 bool QAbstract3DAxis::isAutoAdjustRange() const
@@ -532,10 +567,15 @@ bool QAbstract3DAxis::isAutoAdjustRange() const
 void QAbstract3DAxis::setScaleLabelsByCount(bool adjust)
 {
     Q_D(QAbstract3DAxis);
-    if (d->m_scaleLabelsByCount != adjust) {
-        d->m_scaleLabelsByCount = adjust;
-        emit scaleLabelsByCountChanged(adjust);
+    if (d->m_scaleLabelsByCount == adjust) {
+        qCDebug(lcAProperties3D) << __FUNCTION__
+            << "value is already set to:" << adjust;
+        return;
     }
+
+    d->m_scaleLabelsByCount = adjust;
+    emit scaleLabelsByCountChanged(adjust);
+
 }
 
 bool QAbstract3DAxis::isScaleLabelsByCount() const
@@ -557,10 +597,14 @@ bool QAbstract3DAxis::isScaleLabelsByCount() const
 void QAbstract3DAxis::setLabelSize(qreal size)
 {
     Q_D(QAbstract3DAxis);
-    if (d->m_labelSize != size) {
-        d->m_labelSize = size;
-        emit labelSizeChanged(size);
+    if (QtPrivate::fuzzyCompare(d->m_labelSize, size)) {
+        qCDebug(lcAProperties3D, "%s Value is already set to: %f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), size);
+        return;
     }
+
+    d->m_labelSize = size;
+    emit labelSizeChanged(size);
 }
 
 qreal QAbstract3DAxis::labelSize() const
@@ -580,13 +624,18 @@ qreal QAbstract3DAxis::labelSize() const
 void QAbstract3DAxis::setTitleOffset(float offset)
 {
     Q_D(QAbstract3DAxis);
-    if (offset < -1.0f || offset > 1.0f) {
-        qWarning("Invalid value. Valid range for title offset is between "
-                 "-1.0f and 1.0f");
-    } else if (d->m_titleOffset != offset) {
-        d->m_titleOffset = offset;
-        emit titleOffsetChanged(offset);
+    if (QtPrivate::fuzzyCompare(d->m_titleOffset, offset)) {
+        qCDebug(lcAProperties3D, "%s offset value is already set to: %f",
+                qUtf8Printable(QLatin1String(__FUNCTION__)), offset);
+        return;
+    } else if (offset < -1.0f || offset > 1.0f) {
+        qCWarning(lcAProperties3D, "%s invalid value. Valid range for title offset is between "
+                 "-1.0f and 1.0f", qUtf8Printable(QLatin1String(__FUNCTION__)));
+        return;
     }
+
+    d->m_titleOffset = offset;
+    emit titleOffsetChanged(offset);
 }
 
 float QAbstract3DAxis::titleOffset() const
@@ -684,8 +733,9 @@ void QAbstract3DAxisPrivate::setRange(float min, float max, bool suppressWarning
 
     if (minDirty || maxDirty) {
         if (adjusted && !suppressWarnings) {
-            qWarning("Warning: Tried to set invalid range for axis. Range automatically adjusted "
+            qCWarning(lcAProperties3D, "%s tried to set invalid range for axis. Range automatically adjusted "
                      "to a valid one: %f - %f --> %f - %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      min,
                      max,
                      m_min,
@@ -707,16 +757,18 @@ void QAbstract3DAxisPrivate::setMin(float min)
         if (allowZero()) {
             if (min < 0.0f) {
                 min = 0.0f;
-                qWarning("Warning: Tried to set negative minimum for an axis that only"
+                qCWarning(lcAProperties3D, "%s tried to set negative minimum for an axis that only"
                          "supports positive values and zero: %f",
+                         qUtf8Printable(QLatin1String(__FUNCTION__)),
                          min);
             }
         } else {
             if (min <= 0.0f) {
                 min = 1.0f;
-                qWarning("Warning: Tried to set negative or zero minimum for an "
+                qCWarning(lcAProperties3D, "%s tried to set negative or zero minimum for an "
                          "axis that only"
                          "supports positive values: %f",
+                         qUtf8Printable(QLatin1String(__FUNCTION__)),
                          min);
             }
         }
@@ -727,8 +779,9 @@ void QAbstract3DAxisPrivate::setMin(float min)
         if (min > m_max || (!allowMinMaxSame() && min == m_max)) {
             float oldMax = m_max;
             m_max = min + 1.0f;
-            qWarning("Warning: Tried to set minimum to equal or larger than maximum for"
+            qCWarning(lcAProperties3D, "%s tried to set minimum to equal or larger than maximum for"
                      " value axis. Maximum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMax,
                      m_max);
             maxChanged = true;
@@ -749,16 +802,18 @@ void QAbstract3DAxisPrivate::setMax(float max)
         if (allowZero()) {
             if (max < 0.0f) {
                 max = 0.0f;
-                qWarning("Warning: Tried to set negative maximum for an axis that only"
-                         "supports positive values and zero: %f",
+                qCWarning(lcAProperties3D, "%s tried to set negative maximum for an axis that only"
+                         " supports positive values and zero: %f",
+                         qUtf8Printable(QLatin1String(__FUNCTION__)),
                          max);
             }
         } else {
             if (max <= 0.0f) {
                 max = 1.0f;
-                qWarning("Warning: Tried to set negative or zero maximum for an "
+                qCWarning(lcAProperties3D, "%s tried to set negative or zero maximum for an "
                          "axis that only"
-                         "supports positive values: %f",
+                         " supports positive values: %f",
+                         qUtf8Printable(QLatin1String(__FUNCTION__)),
                          max);
             }
         }
@@ -777,12 +832,14 @@ void QAbstract3DAxisPrivate::setMax(float max)
 
                 if (!allowMinMaxSame() && max == 0.0f) {
                     m_min = oldMin;
-                    qWarning("Unable to set maximum value to zero.");
+                    qCWarning(lcAProperties3D, "%s unable to set maximum value to zero.",
+                              qUtf8Printable(QLatin1String(__FUNCTION__)));
                     return;
                 }
             }
-            qWarning("Warning: Tried to set maximum to equal or smaller than minimum "
+            qCWarning(lcAProperties3D, "%s tried to set maximum to equal or smaller than minimum "
                      "for value axis. Minimum automatically adjusted to a valid one: %f --> %f",
+                     qUtf8Printable(QLatin1String(__FUNCTION__)),
                      oldMin,
                      m_min);
             minChanged = true;

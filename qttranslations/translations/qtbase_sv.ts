@@ -2,10 +2,26 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="sv_SE">
 <context>
-    <name>%1: key is empty</name>
+    <name>Assets::Downloader::AssetDownloader</name>
     <message>
-        <source>QSystemSemaphore</source>
-        <translation>QSystemSemaphore</translation>
+        <source>Downloading JSON file...</source>
+        <translation>Hämtar JSON-fil...</translation>
+    </message>
+    <message>
+        <source>Downloading zip file...</source>
+        <translation>Hämtar zip-fil...</translation>
+    </message>
+    <message>
+        <source>Unzipping...</source>
+        <translation>Zippar upp...</translation>
+    </message>
+    <message>
+        <source>Downloading assets...</source>
+        <translation>Hämtar tillgångar...</translation>
+    </message>
+    <message>
+        <source>Copying assets...</source>
+        <translation>Kopierar tillgångar...</translation>
     </message>
 </context>
 <context>
@@ -58,6 +74,41 @@
     <message>
         <source>Automatic</source>
         <translation>Automatisk</translation>
+    </message>
+</context>
+<context>
+    <name>QAbstractFileIconProvider</name>
+    <message>
+        <source>Drive</source>
+        <translation>Enhet</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>Fil</translation>
+    </message>
+    <message>
+        <source>File Folder</source>
+        <comment>Match Windows Explorer</comment>
+        <translation>Filmapp</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <comment>All other platforms</comment>
+        <translation>Mapp</translation>
+    </message>
+    <message>
+        <source>Alias</source>
+        <comment>macOS Finder</comment>
+        <translation>Alias</translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <comment>All other platforms</comment>
+        <translation>Genväg</translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation>Okänt</translation>
     </message>
 </context>
 <context>
@@ -231,12 +282,78 @@
 <context>
     <name>QApplication</name>
     <message>
-        <source>Executable &apos;%1&apos; requires Qt %2, found Qt %3.</source>
-        <translation>Körbara filen &quot;%1&quot; kräver Qt %2, hittade Qt %3.</translation>
+        <source>Application &quot;%1&quot; requires Qt %2, found Qt %3.</source>
+        <translation>Programmet &quot;%1&quot; kräver Qt %2, hittade Qt %3.</translation>
     </message>
     <message>
         <source>Incompatible Qt Library Error</source>
         <translation>Inkompatibelt Qt-biblioteksfel</translation>
+    </message>
+</context>
+<context>
+    <name>QAxSelect</name>
+    <message>
+        <source>Select ActiveX Control</source>
+        <translation>Välj ActiveX Control</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Filter</translation>
+    </message>
+    <message>
+        <source>COM &amp;Object:</source>
+        <translation>COM-&amp;objekt:</translation>
+    </message>
+    <message>
+        <source>Sandboxing:</source>
+        <translation>Sandboxing:</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Namn:</translation>
+    </message>
+    <message>
+        <source>Type:</source>
+        <translation>Typ:</translation>
+    </message>
+    <message>
+        <source>In process</source>
+        <translation>I process</translation>
+    </message>
+    <message>
+        <source>Out of process</source>
+        <translation>Utanför process</translation>
+    </message>
+    <message>
+        <source>CLSID:</source>
+        <translation>CLSID:</translation>
+    </message>
+    <message>
+        <source>Key:</source>
+        <translation>Nyckel:</translation>
+    </message>
+    <message>
+        <source>Word&amp;nbsp;size:</source>
+        <translation>Ordstorlek:</translation>
+    </message>
+    <message>
+        <source>DLL:</source>
+        <translation>DLL:</translation>
+    </message>
+    <message>
+        <source>Binary:</source>
+        <translation>Binär:</translation>
+    </message>
+    <message>
+        <source>Version:</source>
+        <translation>Version:</translation>
+    </message>
+</context>
+<context>
+    <name>QCocoaMenuBar</name>
+    <message>
+        <source>Edit</source>
+        <translation>Redigera</translation>
     </message>
 </context>
 <context>
@@ -388,8 +505,8 @@ Tryck ESC för att avbryta</translation>
         <translation>Visar hjälp för kommandoradsalternativ.</translation>
     </message>
     <message>
-        <source>Displays help including Qt specific options.</source>
-        <translation>Visar hjälp inklusive Qt-specifika alternativ.</translation>
+        <source>Displays help, including generic Qt options.</source>
+        <translation>Visar hjälp, inklusive allmänna Qt-alternativ.</translation>
     </message>
     <message>
         <source>Unknown option &apos;%1&apos;.</source>
@@ -422,24 +539,6 @@ Tryck ESC för att avbryta</translation>
     <message>
         <source>Arguments:</source>
         <translation>Argument:</translation>
-    </message>
-</context>
-<context>
-    <name>QCoreApplication</name>
-    <message>
-        <source>%1: key is empty</source>
-        <comment>QSystemSemaphore</comment>
-        <translation>%1: nyckeln är tom</translation>
-    </message>
-    <message>
-        <source>%1: unable to make key</source>
-        <comment>QSystemSemaphore</comment>
-        <translation>%1: kunde inte skapa nyckel</translation>
-    </message>
-    <message>
-        <source>%1: ftok failed</source>
-        <comment>QSystemSemaphore</comment>
-        <translation>%1: ftok misslyckades</translation>
     </message>
 </context>
 <context>
@@ -623,25 +722,6 @@ Tryck ESC för att avbryta</translation>
     </message>
 </context>
 <context>
-    <name>QDateTimeParser</name>
-    <message>
-        <source>AM</source>
-        <translation>AM</translation>
-    </message>
-    <message>
-        <source>am</source>
-        <translation>am</translation>
-    </message>
-    <message>
-        <source>PM</source>
-        <translation>PM</translation>
-    </message>
-    <message>
-        <source>pm</source>
-        <translation>pm</translation>
-    </message>
-</context>
-<context>
     <name>QDialog</name>
     <message>
         <source>What&apos;s This?</source>
@@ -656,58 +736,22 @@ Tryck ESC för att avbryta</translation>
     </message>
 </context>
 <context>
-    <name>QDirModel</name>
-    <message>
-        <source>Name</source>
-        <translation>Namn</translation>
-    </message>
-    <message>
-        <source>Size</source>
-        <translation>Storlek</translation>
-    </message>
-    <message>
-        <source>Kind</source>
-        <comment>Match OS X Finder</comment>
-        <translation>Typ</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <comment>All other platforms</comment>
-        <translation>Typ</translation>
-    </message>
-    <message>
-        <source>Date Modified</source>
-        <translation>Datum ändrad</translation>
-    </message>
-</context>
-<context>
     <name>QDnsLookup</name>
     <message>
         <source>Operation cancelled</source>
         <translation>Åtgärden avbröts</translation>
-    </message>
-</context>
-<context>
-    <name>QDnsLookupRunnable</name>
-    <message>
-        <source>IPv6 addresses for nameservers are currently not supported</source>
-        <translation>IPv6-adresser för namnservrar stöds för närvarande inte</translation>
     </message>
     <message>
         <source>Invalid domain name</source>
         <translation>Ogiltigt domännamn</translation>
     </message>
     <message>
-        <source>Not yet supported on Android</source>
-        <translation>Stöds ännu inte på Android</translation>
+        <source>SSL/TLS support not present</source>
+        <translation>SSL/TLS-stöd finns inte</translation>
     </message>
     <message>
-        <source>Resolver functions not found</source>
-        <translation>Uppslagsfunktioner hittades inte</translation>
-    </message>
-    <message>
-        <source>Resolver initialization failed</source>
-        <translation>Initiering av uppslag misslyckades</translation>
+        <source>Request timed out</source>
+        <translation>Begäran gick över tidsgränsen</translation>
     </message>
     <message>
         <source>Server could not process query</source>
@@ -726,8 +770,24 @@ Tryck ESC för att avbryta</translation>
         <translation>Servern vägrade svara</translation>
     </message>
     <message>
+        <source>Invalid reply received (rcode %1)</source>
+        <translation>Ogiltigt svar togs emot (rcode %1)</translation>
+    </message>
+    <message>
         <source>Invalid reply received</source>
         <translation>Ogiltigt svar togs emot</translation>
+    </message>
+    <message>
+        <source>Invalid reply received (%1)</source>
+        <translation>Ogiltigt svar togs emot (%1)</translation>
+    </message>
+    <message>
+        <source>IPv6 nameservers are currently not supported on this OS</source>
+        <translation>IPv6-namnservrar stöds för närvarande inte av detta operativsystem</translation>
+    </message>
+    <message>
+        <source>Reply was too large</source>
+        <translation>Svaret var för stort</translation>
     </message>
     <message>
         <source>Could not expand domain name</source>
@@ -762,28 +822,19 @@ Tryck ESC för att avbryta</translation>
         <translation>Ogiltig tjänstepost</translation>
     </message>
     <message>
+        <source>Invalid TLS association record</source>
+        <translation>Ogiltig TLS-associeringspost</translation>
+    </message>
+    <message>
         <source>Invalid text record</source>
         <translation>Ogiltig textpost</translation>
     </message>
+</context>
+<context>
+    <name>QDnsLookupRunnable</name>
     <message>
-        <source>Resolver library can&apos;t be loaded: No runtime library loading support</source>
-        <translation>Uppslagsbibliotek kan inte läsas in: Inget inläsningsstöd för körtidsbibliotek</translation>
-    </message>
-    <message>
-        <source>No hostname given</source>
-        <translation>Inget värdnamn angavs</translation>
-    </message>
-    <message>
-        <source>Invalid hostname</source>
-        <translation>Ogiltigt värdnamn</translation>
-    </message>
-    <message>
-        <source>Host %1 could not be found.</source>
-        <translation>Värden %1 kunde inte hittas.</translation>
-    </message>
-    <message>
-        <source>Unknown error</source>
-        <translation>Okänt fel</translation>
+        <source>Not yet supported on this OS</source>
+        <translation>Stöds ännu inte i detta operativsystem</translation>
     </message>
 </context>
 <context>
@@ -989,16 +1040,20 @@ Tryck ESC för att avbryta</translation>
 <context>
     <name>QDtlsClientVerifier</name>
     <message>
-        <source>BIO_ADDR_new failed, ignoring client hello</source>
-        <translation>BIO_ADDR_new misslyckades, ignorerar client hello</translation>
+        <source>A valid UDP socket, non-empty datagram, and valid address/port were expected</source>
+        <translation>Ett giltigt UDP-uttag, icke-tomt datagram och giltig adress/port förväntades</translation>
     </message>
     <message>
-        <source>A valid UDP socket, non-empty datagram, valid address/port were expected</source>
-        <translation>Ett giltigt UDP-uttag, icke-tomt datagram, giltig adress/port förväntades</translation>
+        <source>BIO_ADDR_new failed, ignoring client hello</source>
+        <translation>BIO_ADDR_new misslyckades, ignorerar client hello</translation>
     </message>
 </context>
 <context>
     <name>QErrorMessage</name>
+    <message>
+        <source>An error occurred</source>
+        <translation>Ett fel inträffade</translation>
+    </message>
     <message>
         <source>Debug Message:</source>
         <translation>Felsökningsmeddelande:</translation>
@@ -1026,6 +1081,21 @@ Tryck ESC för att avbryta</translation>
     <message>
         <source>&amp;OK</source>
         <translation>&amp;Ok</translation>
+    </message>
+</context>
+<context>
+    <name>QFactoryLoader</name>
+    <message>
+        <source>Metadata parsing error: %1</source>
+        <translation>Tolkningsfel av metadata: %1</translation>
+    </message>
+    <message>
+        <source>Invalid metadata version</source>
+        <translation>Ogiltig metadataversion</translation>
+    </message>
+    <message>
+        <source>Unexpected metadata contents</source>
+        <translation>Oväntat metadatainnehåll</translation>
     </message>
 </context>
 <context>
@@ -1071,12 +1141,12 @@ Tryck ESC för att avbryta</translation>
         <translation>Kan inte öppna för utmatning: %1</translation>
     </message>
     <message>
-        <source>Failure to write block</source>
-        <translation>Misslyckades med att skriva block</translation>
+        <source>Failure to write block: %1</source>
+        <translation>Misslyckades med att skriva block: %1</translation>
     </message>
     <message>
-        <source>Cannot create %1 for output</source>
-        <translation>Kan inte skapa %1 för utdata</translation>
+        <source>Cannot create %1 for output: %2</source>
+        <translation>Kan inte skapa %1 för utmatning: %2</translation>
     </message>
 </context>
 <context>
@@ -1288,58 +1358,9 @@ Vill du ta bort den ändå?</translation>
         <source>Remove</source>
         <translation>Ta bort</translation>
     </message>
-    <message>
-        <source>My Computer</source>
-        <translation>Min dator</translation>
-    </message>
-    <message>
-        <source>Drive</source>
-        <translation>Enhet</translation>
-    </message>
-    <message>
-        <source>%1 File</source>
-        <extracomment>%1 is a file name suffix, for example txt</extracomment>
-        <translation>%1-fil</translation>
-    </message>
-    <message>
-        <source>File</source>
-        <translation>Fil</translation>
-    </message>
-    <message>
-        <source>File Folder</source>
-        <comment>Match Windows Explorer</comment>
-        <translation>Filmapp</translation>
-    </message>
-    <message>
-        <source>Folder</source>
-        <comment>All other platforms</comment>
-        <translation>Mapp</translation>
-    </message>
-    <message>
-        <source>Alias</source>
-        <comment>OS X Finder</comment>
-        <translation>Alias</translation>
-    </message>
-    <message>
-        <source>Shortcut</source>
-        <comment>All other platforms</comment>
-        <translation>Genväg</translation>
-    </message>
-    <message>
-        <source>Unknown</source>
-        <translation>Okänt</translation>
-    </message>
 </context>
 <context>
     <name>QFileSystemModel</name>
-    <message>
-        <source>&lt;b&gt;The name &quot;%1&quot; cannot be used.&lt;/b&gt;&lt;p&gt;Try using another name, with fewer characters or no punctuation marks.</source>
-        <translation>&lt;b&gt;Namnet &quot;%1&quot; kan inte användas.&lt;/b&gt;&lt;p&gt;Försök använda ett annat namn med mindre antal tecken eller inga skiljetecken.</translation>
-    </message>
-    <message>
-        <source>Invalid filename</source>
-        <translation>Ogiltigt filnamn</translation>
-    </message>
     <message>
         <source>Name</source>
         <translation>Namn</translation>
@@ -1606,95 +1627,6 @@ Vill du ta bort den ändå?</translation>
     </message>
 </context>
 <context>
-    <name>QFtp</name>
-    <message>
-        <source>Not connected</source>
-        <translation>Inte ansluten</translation>
-    </message>
-    <message>
-        <source>Host %1 not found</source>
-        <translation>Värden %1 hittades inte</translation>
-    </message>
-    <message>
-        <source>Connection refused to host %1</source>
-        <translation>Anslutning vägrades till värden %1</translation>
-    </message>
-    <message>
-        <source>Connection timed out to host %1</source>
-        <translation>Anslutningens tidsgräns överstegs till värden %1</translation>
-    </message>
-    <message>
-        <source>Connected to host %1</source>
-        <translation>Ansluten till värden %1</translation>
-    </message>
-    <message>
-        <source>Data Connection refused</source>
-        <translation>Dataanslutning nekades</translation>
-    </message>
-    <message>
-        <source>Unknown error</source>
-        <translation>Okänt fel</translation>
-    </message>
-    <message>
-        <source>Connecting to host failed:
-%1</source>
-        <translation>Anslutning till värden misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Login failed:
-%1</source>
-        <translation>Inloggning misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Listing directory failed:
-%1</source>
-        <translation>Kataloglistning misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Changing directory failed:
-%1</source>
-        <translation>Byte av katalog misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Downloading file failed:
-%1</source>
-        <translation>Hämtning av fil misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Uploading file failed:
-%1</source>
-        <translation>Sändning av fil misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Removing file failed:
-%1</source>
-        <translation>Borttagning av fil misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Creating directory failed:
-%1</source>
-        <translation>Skapandet av katalog misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Removing directory failed:
-%1</source>
-        <translation>Borttagning av katalog misslyckades:
-%1</translation>
-    </message>
-    <message>
-        <source>Connection closed</source>
-        <translation>Anslutningen stängd</translation>
-    </message>
-</context>
-<context>
     <name>QGnomeTheme</name>
     <message>
         <source>&amp;OK</source>
@@ -1826,6 +1758,18 @@ Vill du ta bort den ändå?</translation>
 <context>
     <name>QHttp</name>
     <message>
+        <source>Unsupported content encoding: %1</source>
+        <translation>Oväntad innehållsenkodning: %1</translation>
+    </message>
+    <message>
+        <source>Failed to initialize the compression decoder.</source>
+        <translation>Misslyckades med att initiera komprimeringsdekodern.</translation>
+    </message>
+    <message>
+        <source>The decompressed output exceeds the limits specified by QNetworkRequest::decompressedSafetyCheckThreshold()</source>
+        <translation>Dekomprimerat utdata överstiger gränserna som angivets av QNetworkRequest::decompressedSafetyCheckThreshold()</translation>
+    </message>
+    <message>
         <source>Connection closed</source>
         <translation>Anslutningen stängd</translation>
     </message>
@@ -1864,6 +1808,18 @@ Vill du ta bort den ändå?</translation>
     <message>
         <source>Insecure redirect</source>
         <translation>Osäker omdirigering</translation>
+    </message>
+    <message>
+        <source>Decompression failed: %1</source>
+        <translation>Dekomprimering misslyckades: %1</translation>
+    </message>
+    <message>
+        <source>Data downloaded is too large to store</source>
+        <translation>Data hämtat är för stort att lagra</translation>
+    </message>
+    <message>
+        <source>Failed to initialize decompression: %1</source>
+        <translation>Misslyckades med att initiera dekomprimering: %1</translation>
     </message>
 </context>
 <context>
@@ -1923,6 +1879,14 @@ Vill du ta bort den ändå?</translation>
         <source>Unable to rollback transaction</source>
         <translation>Kunde inte rulla tillbaka transaktion</translation>
     </message>
+    <message>
+        <source>Could not subscribe to event notifications for %1.</source>
+        <translation>Kunde inte prenumerera på händelseaviseringar för %1.</translation>
+    </message>
+    <message>
+        <source>Could not unsubscribe from event notifications for %1.</source>
+        <translation>Kunde inte avprenumerera från händelseaviseringar för %1.</translation>
+    </message>
 </context>
 <context>
     <name>QIBaseResult</name>
@@ -1949,6 +1913,18 @@ Vill du ta bort den ändå?</translation>
     <message>
         <source>Could not get array data</source>
         <translation>Kunde inte få kedjedata</translation>
+    </message>
+    <message>
+        <source>Array size mismatch. Field name: %3, expected size: %1. Supplied size: %2</source>
+        <translation>Kedjestorleken stämmer inte. Fältnamn: %3, förväntad storlek: %1. Levererad storlek: %2</translation>
+    </message>
+    <message>
+        <source>Array dimensions mismatch. Field name: %1</source>
+        <translation>Kedjans dimensioner stämmer inte. Fältnamn: %1</translation>
+    </message>
+    <message>
+        <source>Array size mismatch: size of %1 is %2, size of provided list is %3</source>
+        <translation>Kedjans storlek stämmer inte: storlek för %1 är %2, storlek för tillhandahållen lista är %3</translation>
     </message>
     <message>
         <source>Could not get query info</source>
@@ -2157,79 +2133,156 @@ Vill du ta bort den ändå?</translation>
 <context>
     <name>QLibrary</name>
     <message>
+        <source>&apos;%1&apos; is not a valid Windows DLL (%2)</source>
+        <translation>&apos;%1&apos;är inte en giltig Windows DLL (%2)</translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is too small</source>
+        <translation>&apos;%1&apos; är för liten</translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is not a Qt plugin (%2)</source>
+        <translation>&apos;%1&apos; är inte ett Qt-instick (%2)</translation>
+    </message>
+    <message>
+        <source>metadata not found</source>
+        <translation>metadata hittades inte</translation>
+    </message>
+    <message>
+        <source>invalid signature</source>
+        <translation>ogiltig signatur</translation>
+    </message>
+    <message>
+        <source>file is for a different processor</source>
+        <translation>filen är för en annan processor</translation>
+    </message>
+    <message>
+        <source>file has no sections</source>
+        <translation>filen har inga sektioner</translation>
+    </message>
+    <message>
+        <source>wrong characteristics</source>
+        <translation>felaktiga egenskaper</translation>
+    </message>
+    <message>
+        <source>file is for a different word size</source>
+        <translation>filen är för en annan word-storlek</translation>
+    </message>
+    <message>
+        <source>file has no code</source>
+        <translation>filen är ingen kod</translation>
+    </message>
+    <message>
+        <source>a section name is empty or extends past the end of the file</source>
+        <translation>ett sektionsnamn är tomt eller överstiger filslutet</translation>
+    </message>
+    <message>
+        <source>section contents extend past the end of the file</source>
+        <translation>sektionsinnehållet överstiger filslutet</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section is too small</source>
+        <translation>.qtmetadata-sektionen är för liten</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section has incorrect magic</source>
+        <translation>.qtmetadata-sektionen har felaktig magic</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section is writable</source>
+        <translation>.qtmetadata-sektionen är skrivbar</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section is executable</source>
+        <translation>.qtmetadata-sektionen är körbar</translation>
+    </message>
+    <message>
+        <source>file is for the wrong endianness</source>
+        <translation>filen är för fel byteordning</translation>
+    </message>
+    <message>
+        <source>file has an unknown ELF version</source>
+        <translation>filen har en okänd ELF-version</translation>
+    </message>
+    <message>
+        <source>file has an unexpected ABI</source>
+        <translation>filen har en oväntad ABI</translation>
+    </message>
+    <message>
+        <source>file is not a shared object</source>
+        <translation>filen är inte ett delat objekt</translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is not a valid ELF object (%2)</source>
+        <translation>&apos;%1&apos; är inte ett giltigt ELF-objekt (%2)</translation>
+    </message>
+    <message>
+        <source>unimplemented: PN_XNUM program headers</source>
+        <translation>inte implementerat: PN_XNUM-programrubriker</translation>
+    </message>
+    <message>
+        <source>program header table extends past the end of the file</source>
+        <translation>programrubrikstabell sträcker sig över filens slut</translation>
+    </message>
+    <message>
+        <source>a program header entry extends past the end of the file</source>
+        <translation>en programrubrikspost sträcker sig över slutet på filen</translation>
+    </message>
+    <message>
+        <source>a note segment start is not properly aligned (offset 0x%1, alignment %2)</source>
+        <translation>en note-segmentstart är inte korrekt justerad (offset 0x%1, justering %2)</translation>
+    </message>
+    <message>
+        <source>section table extends past the end of the file</source>
+        <translation>sektionstabellen överstiger filslutet</translation>
+    </message>
+    <message>
+        <source>section header string table extends past the end of the file</source>
+        <translation>strängtabell för sektionshuvud sträcker sig över filens slut</translation>
+    </message>
+    <message>
+        <source>a section name extends past the end of the file</source>
+        <translation>ett sektionsnamn överstiger filslutet</translation>
+    </message>
+    <message>
         <source>file too small</source>
         <translation>filen är för liten</translation>
     </message>
     <message>
-        <source>&apos;%1&apos; is not an ELF object (%2)</source>
-        <translation>&apos;%1&apos; är inte ett ELF-objekt (%2)</translation>
+        <source>unexpected program header entry size (%1)</source>
+        <translation>oväntad storlek för programrubrikpost (%1)</translation>
     </message>
     <message>
-        <source>&apos;%1&apos; is not an ELF object</source>
-        <translation>&apos;%1&apos; är inte ett ELF-objekt</translation>
+        <source>unexpected section entry size (%1)</source>
+        <translation>oväntad storlek för sektionspost (%1)</translation>
     </message>
     <message>
-        <source>&apos;%1&apos; is an invalid ELF object (%2)</source>
-        <translation>&apos;%1&apos; är ett ogiltigt ELF-objekt (%2)</translation>
-    </message>
-    <message>
-        <source>odd cpu architecture</source>
-        <translation>udda cpu-arkitektur</translation>
-    </message>
-    <message>
-        <source>wrong cpu architecture</source>
-        <translation>felaktig cpu-arkitektur</translation>
-    </message>
-    <message>
-        <source>odd endianness</source>
-        <translation>udda byteordning</translation>
-    </message>
-    <message>
-        <source>unexpected e_shsize</source>
-        <translation>oväntad e_shsize</translation>
-    </message>
-    <message>
-        <source>unexpected e_shentsize</source>
-        <translation>oväntad e_shentsize</translation>
-    </message>
-    <message numerus="yes">
-        <source>announced %n section(s), each %1 byte(s), exceed file size</source>
-        <translation>
-            <numerusform>annonserade %n sektion, varje på %1 byte, översteg filstorlek</numerusform>
-            <numerusform>annonserade %n sektioner, varje på %1 byte, översteg filstorlek</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>shstrtab section header seems to be at %1</source>
-        <translation>shstrtab-sektionrubrik verkar vara vid %1</translation>
-    </message>
-    <message>
-        <source>string table seems to be at %1</source>
-        <translation>strängtabell verkar vara vid %1</translation>
-    </message>
-    <message>
-        <source>section name %1 of %2 behind end of file</source>
-        <translation>sektionsnamnet %1 för %2 är bakom filslutet</translation>
-    </message>
-    <message>
-        <source>empty .rodata. not a library.</source>
-        <translation>tom .rodata. inte ett bibliotek.</translation>
-    </message>
-    <message>
-        <source>missing section data. This is not a library.</source>
-        <translation>saknar sektionsdata. Detta är inte ett bibliotek.</translation>
+        <source>e_shstrndx greater than the number of sections e_shnum (%1 &gt;= %2)</source>
+        <translation>e_shstrndx större än antalet sektioner e_shnum (%1 &gt;= %2)</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a Qt plugin</source>
         <translation>&apos;%1&apos; är inte en Qt-insticksmodul</translation>
     </message>
     <message>
+        <source>Failed to extract plugin meta data from &apos;%1&apos;: %2</source>
+        <translation>Misslyckades med att extrahera metadata för insticksmodul från &quot;%1&quot;: %2</translation>
+    </message>
+    <message>
         <source>The shared library was not found.</source>
         <translation>Delade biblioteket hittades inte.</translation>
     </message>
     <message>
-        <source>Failed to extract plugin meta data from &apos;%1&apos;</source>
-        <translation>Misslyckades med att extrahera insticksmodulens metadata från &quot;%1&quot;</translation>
+        <source>Could not resolve &apos;qt_plugin_instance&apos; function</source>
+        <translation>Kunde inte slå upp funktionen &apos;qt_plugin_instance&apos;</translation>
+    </message>
+    <message>
+        <source>metadata too small</source>
+        <translation>metadata för litet</translation>
+    </message>
+    <message>
+        <source>entrypoint to query the plugin meta data not found</source>
+        <translation>ingångspunkt för fråga efter insticksmodulens metadata hittades inte</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; is not a valid Qt plugin.</source>
@@ -2391,6 +2444,10 @@ Vill du ta bort den ändå?</translation>
     <message>
         <source>Socket is not connected</source>
         <translation>Uttaget är inte anslutet</translation>
+    </message>
+    <message>
+        <source>Remote closed</source>
+        <translation>Fjärr stängde</translation>
     </message>
 </context>
 <context>
@@ -2564,13 +2621,124 @@ Vill du ta bort den ändå?</translation>
         <translation>&lt;h3&gt;Om Qt&lt;/h3&gt;&lt;p&gt;Detta program använder Qt version %1.&lt;/p&gt;</translation>
     </message>
     <message>
-        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
+        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
         <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
-        <translation>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
+        <translation>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About Qt</source>
         <translation>Om Qt</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQL</name>
+    <message>
+        <source>No Mimer SQL error for code %1</source>
+        <translation>Inget Mimer SQL-fel för kod %1</translation>
+    </message>
+    <message>
+        <source>Generic Mimer SQL error</source>
+        <translation>Allmänt Mimer SQL-fel</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQLDriver</name>
+    <message>
+        <source>Could not connect to database</source>
+        <translation>Kunde inte ansluta till databasen</translation>
+    </message>
+    <message>
+        <source>Could not start transaction</source>
+        <translation>Kunde inte starta transaktion</translation>
+    </message>
+    <message>
+        <source>Could not commit transaction</source>
+        <translation>Kunde inte verkställa transaktion</translation>
+    </message>
+    <message>
+        <source>Could not roll back transaction</source>
+        <translation>Kunde inte rulla tillbaka transaktion</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQLResult</name>
+    <message>
+        <source>Could not get %1, column %2</source>
+        <extracomment>Data type, column</extracomment>
+        <translation>Kunde inte få %1, kolumn %2</translation>
+    </message>
+    <message>
+        <source>Could not set %1, parameter %2</source>
+        <extracomment>Data type, parameter</extracomment>
+        <translation>Kunde inte ställa in %1, parameter %2</translation>
+    </message>
+    <message>
+        <source>Could not close cursor</source>
+        <translation>Kunde inte stänga markör</translation>
+    </message>
+    <message>
+        <source>Could not close statement</source>
+        <translation>Kunde inte stänga villkor</translation>
+    </message>
+    <message>
+        <source>Fetch did not succeed</source>
+        <translation>Hämtningen lyckades inte</translation>
+    </message>
+    <message>
+        <source>Fetch first did not succeed</source>
+        <translation>Hämta först lyckades inte</translation>
+    </message>
+    <message>
+        <source>Could not fetch next row</source>
+        <translation>Kunde inte hämta nästa rad</translation>
+    </message>
+    <message>
+        <source>Unknown data type %1</source>
+        <translation>Okänd datatyp %1</translation>
+    </message>
+    <message>
+        <source>Could not check null, column %1</source>
+        <translation>Kunde inte kontrollera null, kolumn %1</translation>
+    </message>
+    <message>
+        <source>Could not prepare/execute statement</source>
+        <translation>Kunde inte förbereda/köra frågesats</translation>
+    </message>
+    <message>
+        <source>Wrong number of parameters</source>
+        <translation>Felaktigt antal parametrar</translation>
+    </message>
+    <message>
+        <source>Unknown datatype, parameter %1</source>
+        <translation>Okänd datatyp, parameter %1</translation>
+    </message>
+    <message>
+        <source>Could not execute statement/open cursor</source>
+        <translation>Kunde inte köra villkor/öppen markör</translation>
+    </message>
+    <message>
+        <source>Only input parameters can be used in batch operations</source>
+        <translation>Endast inmatningsparametrar kan användas i satskörningar</translation>
+    </message>
+    <message>
+        <source>Could not add batch %1</source>
+        <extracomment>%1 is the batch number</extracomment>
+        <translation>Kunde inte lägga till sats %1</translation>
+    </message>
+    <message>
+        <source>Could not execute batch</source>
+        <translation>Kunde inte köra sats</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQLResult:</name>
+    <message>
+        <source>Fetch last did not succeed</source>
+        <translation>Hämtning sist lyckades inte</translation>
+    </message>
+    <message>
+        <source>Column %1 out of range</source>
+        <translation>Kolumn %1 utanför intervallet</translation>
     </message>
 </context>
 <context>
@@ -2745,29 +2913,6 @@ Vill du ta bort den ändå?</translation>
     </message>
 </context>
 <context>
-    <name>QNetworkAccessFtpBackend</name>
-    <message>
-        <source>No suitable proxy found</source>
-        <translation>Ingen lämplig proxy hittades</translation>
-    </message>
-    <message>
-        <source>Cannot open %1: is a directory</source>
-        <translation>Kan inte öppna %1: är en katalog</translation>
-    </message>
-    <message>
-        <source>Logging in to %1 failed: authentication required</source>
-        <translation>Inloggning till %1 misslyckades: autentisering krävs</translation>
-    </message>
-    <message>
-        <source>Error while downloading %1: %2</source>
-        <translation>Fel vid hämtning av %1: %2</translation>
-    </message>
-    <message>
-        <source>Error while uploading %1: %2</source>
-        <translation>Fel vid sändning av %1: %2</translation>
-    </message>
-</context>
-<context>
     <name>QNetworkReply</name>
     <message>
         <source>Error transferring %1 - server replied: %2</source>
@@ -2778,20 +2923,8 @@ Vill du ta bort den ändå?</translation>
         <translation>Protokollet &quot;%1&quot; är okänt</translation>
     </message>
     <message>
-        <source>Network session error.</source>
-        <translation>Fel i nätverkssession.</translation>
-    </message>
-    <message>
-        <source>Background request not allowed.</source>
-        <translation>Bakgrundsbegäran tillåts inte.</translation>
-    </message>
-    <message>
         <source>backend start error.</source>
         <translation>fel vid start av bakände.</translation>
-    </message>
-    <message>
-        <source>Temporary network failure.</source>
-        <translation>Temporärt nätverksfel.</translation>
     </message>
 </context>
 <context>
@@ -2810,36 +2943,6 @@ Vill du ta bort den ändå?</translation>
     <message>
         <source>Operation canceled</source>
         <translation>Åtgärden avbröts</translation>
-    </message>
-</context>
-<context>
-    <name>QNetworkSession</name>
-    <message>
-        <source>Invalid configuration.</source>
-        <translation>Ogiltig konfiguration.</translation>
-    </message>
-</context>
-<context>
-    <name>QNetworkSessionPrivateImpl</name>
-    <message>
-        <source>Unknown session error.</source>
-        <translation>Okänt sessionsfel.</translation>
-    </message>
-    <message>
-        <source>The session was aborted by the user or system.</source>
-        <translation>Sessionen avbröts av användaren eller systemet.</translation>
-    </message>
-    <message>
-        <source>The requested operation is not supported by the system.</source>
-        <translation>Begärd operation stöds inte av systemet.</translation>
-    </message>
-    <message>
-        <source>The specified configuration cannot be used.</source>
-        <translation>Angiven konfiguration kan inte användas.</translation>
-    </message>
-    <message>
-        <source>Roaming was aborted or is not possible.</source>
-        <translation>Roaming avbröts eller är inte möjlig.</translation>
     </message>
 </context>
 <context>
@@ -2935,6 +3038,10 @@ Vill du ta bort den ändå?</translation>
         <translation>Kunde inte hämta sista</translation>
     </message>
     <message>
+        <source>QODBCResult::reset: Unable to set &apos;SQL_ATTR_CURSOR_TYPE&apos; as statement attribute. Please check your ODBC driver configuration</source>
+        <translation>QODBCResult::reset: Kunde inte ställa in \&quot;SQL_ATTR_CURSOR_TYPE\&quot; som frågesatsattribut. Kontrollera konfigurationen för din ODBC-drivrutin</translation>
+    </message>
+    <message>
         <source>Unable to execute statement</source>
         <translation>Kunde inte köra villkor</translation>
     </message>
@@ -2972,6 +3079,10 @@ Vill du ta bort den ändå?</translation>
     <message>
         <source>Unable to connect</source>
         <translation>Kunde inte ansluta</translation>
+    </message>
+    <message>
+        <source>Unable to set client encoding to &apos;UNICODE&apos;</source>
+        <translation>Kunde inte ställa in klientenkodning till &apos;UNICODE&apos;</translation>
     </message>
     <message>
         <source>Could not begin transaction</source>
@@ -3864,10 +3975,6 @@ Stäng av ett av alternativen.</translation>
         <source>The &apos;From&apos; value cannot be greater than the &apos;To&apos; value.</source>
         <translation>Värdet &quot;Från&quot; får inte vara större än värdet för &quot;Till&quot;.</translation>
     </message>
-    <message>
-        <source>OK</source>
-        <translation>Ok</translation>
-    </message>
 </context>
 <context>
     <name>QPrintPreviewDialog</name>
@@ -4163,6 +4270,22 @@ Stäng av ett av alternativen.</translation>
         <translation>Resursfel (förgreningsfel): %1</translation>
     </message>
     <message>
+        <source>Child process modifier threw an exception: %1</source>
+        <translation>Barnprocessmodifierare kastade ett undantag: %1</translation>
+    </message>
+    <message>
+        <source>Child process modifier reported error: %1</source>
+        <translation>Barnprocessmodifierare rapporterade fel: %1</translation>
+    </message>
+    <message>
+        <source>Child process modifier reported error: %1: %2</source>
+        <translation>Barnprocessmodifierare rapporterade fel: %1: %2</translation>
+    </message>
+    <message>
+        <source>Child process set up failed: %1: %2</source>
+        <translation>Barnprocesskonfiguration misslyckades: %1: %2</translation>
+    </message>
+    <message>
         <source>Could not open output redirection for writing</source>
         <translation>Kunde inte öppna utmatningsomdirigering för skrivning</translation>
     </message>
@@ -4176,57 +4299,6 @@ Stäng av ett av alternativen.</translation>
     <message>
         <source>Cancel</source>
         <translation>Avbryt</translation>
-    </message>
-</context>
-<context>
-    <name>QRegExp</name>
-    <message>
-        <source>no error occurred</source>
-        <translation>inga fel inträffade</translation>
-    </message>
-    <message>
-        <source>disabled feature used</source>
-        <translation>inaktiverad funktion användes</translation>
-    </message>
-    <message>
-        <source>bad char class syntax</source>
-        <translation>fel syntax för teckenklass</translation>
-    </message>
-    <message>
-        <source>bad lookahead syntax</source>
-        <translation>felaktig lookahead-syntax</translation>
-    </message>
-    <message>
-        <source>lookbehinds not supported, see QTBUG-2371</source>
-        <translation>lookbehinds stöds inte, se QTBUG-2371</translation>
-    </message>
-    <message>
-        <source>bad repetition syntax</source>
-        <translation>felaktig upprepningssyntax</translation>
-    </message>
-    <message>
-        <source>invalid octal value</source>
-        <translation>ogiltigt oktalt värde</translation>
-    </message>
-    <message>
-        <source>missing left delim</source>
-        <translation>saknar vänster avgränsare</translation>
-    </message>
-    <message>
-        <source>unexpected end</source>
-        <translation>oväntat slut</translation>
-    </message>
-    <message>
-        <source>met internal limit</source>
-        <translation>nådde intern gräns</translation>
-    </message>
-    <message>
-        <source>invalid interval</source>
-        <translation>ogiltigt intervall</translation>
-    </message>
-    <message>
-        <source>invalid category</source>
-        <translation>ogiltig kategori</translation>
     </message>
 </context>
 <context>
@@ -4895,35 +4967,9 @@ Stäng av ett av alternativen.</translation>
         <source>PCRE2_MATCH_INVALID_UTF is not supported for DFA matching</source>
         <translation>PCRE2_MATCH_INVALID_UTF stöds inte för DFA-matchning</translation>
     </message>
-</context>
-<context>
-    <name>QSQLite2Driver</name>
     <message>
-        <source>Error opening database</source>
-        <translation>Fel vid öppnade av databas</translation>
-    </message>
-    <message>
-        <source>Unable to begin transaction</source>
-        <translation>Kunde inte påbörja transaktion</translation>
-    </message>
-    <message>
-        <source>Unable to commit transaction</source>
-        <translation>Kunde inte verkställa transaktion</translation>
-    </message>
-    <message>
-        <source>Unable to rollback transaction</source>
-        <translation>Kunde inte rulla tillbaka transaktion</translation>
-    </message>
-</context>
-<context>
-    <name>QSQLite2Result</name>
-    <message>
-        <source>Unable to fetch results</source>
-        <translation>Kunde inte hämta resultat</translation>
-    </message>
-    <message>
-        <source>Unable to execute statement</source>
-        <translation>Kunde inte köra villkor</translation>
+        <source>INTERNAL ERROR: invalid substring offset</source>
+        <translation>INTERNT FEL: ogiltig substring-offset</translation>
     </message>
 </context>
 <context>
@@ -5064,8 +5110,12 @@ Stäng av ett av alternativen.</translation>
 <context>
     <name>QSharedMemory</name>
     <message>
-        <source>%1: unable to set key on lock</source>
-        <translation>%1: kunde inte ställa in nyckel på lås</translation>
+        <source>%1: unsupported key type</source>
+        <translation>%1: nyckeltypen stöds inte</translation>
+    </message>
+    <message>
+        <source>%1: unable to set key on lock (%2)</source>
+        <translation>%1: kunde inte ställa in nyckel på låset (%2)</translation>
     </message>
     <message>
         <source>%1: create size is less then 0</source>
@@ -5096,8 +5146,8 @@ Stäng av ett av alternativen.</translation>
         <translation>%1: slut på resurser</translation>
     </message>
     <message>
-        <source>%1: unknown error %2</source>
-        <translation>%1: okänt fel %2</translation>
+        <source>%1: unknown error: %2</source>
+        <translation>%1: okänt fel: %2</translation>
     </message>
     <message>
         <source>%1: key is empty</source>
@@ -5106,14 +5156,6 @@ Stäng av ett av alternativen.</translation>
     <message>
         <source>%1: bad name</source>
         <translation>%1: felaktigt namn</translation>
-    </message>
-    <message>
-        <source>%1: UNIX key file doesn&apos;t exist</source>
-        <translation>%1: UNIX-nyckelfil finns inte</translation>
-    </message>
-    <message>
-        <source>%1: ftok failed</source>
-        <translation>%1: ftok misslyckades</translation>
     </message>
     <message>
         <source>%1: unable to make key</source>
@@ -6137,6 +6179,10 @@ Stäng av ett av alternativen.</translation>
         <translation>Skift</translation>
     </message>
     <message>
+        <source>Control</source>
+        <translation>Control</translation>
+    </message>
+    <message>
         <source>Alt</source>
         <translation>Alt</translation>
     </message>
@@ -6270,9 +6316,7 @@ Stäng av ett av alternativen.</translation>
     </message>
     <message>
         <source>frame</source>
-        <extracomment>Role of an accessible object: a window with frame and title
-----------
-Role of an accessible object</extracomment>
+        <extracomment>Role of an accessible object: a window with frame and title</extracomment>
         <translation>ram</translation>
     </message>
     <message>
@@ -6288,7 +6332,7 @@ Role of an accessible object</extracomment>
     <message>
         <source>menu item</source>
         <extracomment>Role of an accessible object</extracomment>
-        <translation>menyrad</translation>
+        <translation>menypost</translation>
     </message>
     <message>
         <source>tool tip</source>
@@ -6794,10 +6838,6 @@ Role of an accessible object</extracomment>
         <translation>Kan inte tillhandahålla ett certifikat utan en nyckel</translation>
     </message>
     <message>
-        <source>Cannot provide a certificate with no key, %1</source>
-        <translation>Kan inte tillhandahålla ett certifikat utan nyckel, %1</translation>
-    </message>
-    <message>
         <source>Error loading local certificate, %1</source>
         <translation>Fel vid inläsning av lokalt certifikat, %1</translation>
     </message>
@@ -7073,6 +7113,10 @@ Role of an accessible object</extracomment>
         <translation>Cache</translation>
     </message>
     <message>
+        <source>State</source>
+        <translation>Tillstånd</translation>
+    </message>
+    <message>
         <source>Shared Data</source>
         <translation>Delat data</translation>
     </message>
@@ -7093,6 +7137,10 @@ Role of an accessible object</extracomment>
         <translation>Delad cache</translation>
     </message>
     <message>
+        <source>Shared State</source>
+        <translation>Delat tillstånd</translation>
+    </message>
+    <message>
         <source>Download</source>
         <translation>Hämtat</translation>
     </message>
@@ -7100,32 +7148,26 @@ Role of an accessible object</extracomment>
         <source>Application Configuration</source>
         <translation>Programkonfiguration</translation>
     </message>
-</context>
-<context>
-    <name>QStateMachine</name>
     <message>
-        <source>Missing initial state in compound state &apos;%1&apos;</source>
-        <translation>Saknar initialt tillstånd i compound-tillstånd &quot;%1&quot;</translation>
+        <source>Public</source>
+        <translation>Publik</translation>
     </message>
     <message>
-        <source>Missing default state in history state &apos;%1&apos;</source>
-        <translation>Saknar standardtillstånd i historiskt tillstånd &quot;%1&quot;</translation>
+        <source>Templates</source>
+        <translation>Mallar</translation>
     </message>
     <message>
-        <source>No common ancestor for targets and source of transition from state &apos;%1&apos;</source>
-        <translation>Ingen gemensam ättling för mål och källa för övergång från tillståndet &quot;%1&quot;</translation>
-    </message>
-    <message>
-        <source>Child mode of state machine &apos;%1&apos; is not &apos;ExclusiveStates&apos;.</source>
-        <translation>Barnläget för tillståndsmaskin &quot;%1&quot; är inte &apos;ExclusiveStates&apos;.</translation>
-    </message>
-    <message>
-        <source>Unknown error</source>
-        <translation>Okänt fel</translation>
+        <source>Temporary Items</source>
+        <extracomment>macOS: Temporary directory</extracomment>
+        <translation>Temporära objekt</translation>
     </message>
 </context>
 <context>
     <name>QSystemSemaphore</name>
+    <message>
+        <source>%1: unsupported key type</source>
+        <translation>%1: nyckeltypen stöds inte</translation>
+    </message>
     <message>
         <source>%1: permission denied</source>
         <translation>%1: Behörighet nekad</translation>
@@ -7143,19 +7185,28 @@ Role of an accessible object</extracomment>
         <translation>%1: slut på resurser</translation>
     </message>
     <message>
-        <source>%1: unknown error %2</source>
-        <translation>%1: okänt fel %2</translation>
-    </message>
-</context>
-<context>
-    <name>QTDSDriver</name>
-    <message>
-        <source>Unable to open connection</source>
-        <translation>Kunde inte öppna anslutning</translation>
+        <source>%1: key too long</source>
+        <translation>%1: nyckeln är för lång</translation>
     </message>
     <message>
-        <source>Unable to use database</source>
-        <translation>Kunde inte använda databas</translation>
+        <source>%1: unknown error: %2</source>
+        <translation>%1: okänt fel: %2</translation>
+    </message>
+    <message>
+        <source>%1: key is empty</source>
+        <translation>%1: nyckeln är tom</translation>
+    </message>
+    <message>
+        <source>%1: System V semaphores are not available for sandboxed applications. Please build Qt with -feature-ipc_posix</source>
+        <translation>%1: System V-semaforer är inte tillgängliga för sandboxade program. Bygg Qt med -feature-ipc_posix</translation>
+    </message>
+    <message>
+        <source>%1: unable to make key</source>
+        <translation>%1: kunde inte skapa nyckel</translation>
+    </message>
+    <message>
+        <source>%1: ftok failed</source>
+        <translation>%1: ftok misslyckades</translation>
     </message>
 </context>
 <context>
@@ -7462,101 +7513,6 @@ Minsta Direct2D-versionen som krävs är %1. Direct2D-versionen på detta system
     </message>
 </context>
 <context>
-    <name>QXml</name>
-    <message>
-        <source>no error occurred</source>
-        <translation>inga fel inträffade</translation>
-    </message>
-    <message>
-        <source>error triggered by consumer</source>
-        <translation>fel utlöst av konsument</translation>
-    </message>
-    <message>
-        <source>unexpected end of file</source>
-        <translation>oväntat filslut</translation>
-    </message>
-    <message>
-        <source>more than one document type definition</source>
-        <translation>fler än en dokumenttypsdefinition</translation>
-    </message>
-    <message>
-        <source>error occurred while parsing element</source>
-        <translation>fel inträffade vid tolkning av element</translation>
-    </message>
-    <message>
-        <source>tag mismatch</source>
-        <translation>tagg stämmer inte</translation>
-    </message>
-    <message>
-        <source>error occurred while parsing content</source>
-        <translation>fel inträffade vid tolkning av innehåll</translation>
-    </message>
-    <message>
-        <source>unexpected character</source>
-        <translation>oväntat tecken</translation>
-    </message>
-    <message>
-        <source>invalid name for processing instruction</source>
-        <translation>ogiltigt namn för behandlande instruktion</translation>
-    </message>
-    <message>
-        <source>version expected while reading the XML declaration</source>
-        <translation>version förväntades vid läsning av XML-deklarationen</translation>
-    </message>
-    <message>
-        <source>wrong value for standalone declaration</source>
-        <translation>fel värde för fristående deklaration</translation>
-    </message>
-    <message>
-        <source>encoding declaration or standalone declaration expected while reading the XML declaration</source>
-        <translation>kodningdeklaration eller friståend deklaration förväntades vid läsning av XML-deklaration</translation>
-    </message>
-    <message>
-        <source>standalone declaration expected while reading the XML declaration</source>
-        <translation>fristående deklaration förväntades vid läsning av XML-deklarationen</translation>
-    </message>
-    <message>
-        <source>error occurred while parsing document type definition</source>
-        <translation>fel inträffade vid tolkning av dokumentets typdefinition</translation>
-    </message>
-    <message>
-        <source>letter is expected</source>
-        <translation>bokstav förväntades</translation>
-    </message>
-    <message>
-        <source>error occurred while parsing comment</source>
-        <translation>fel inträffade vid tolkning av kommentar</translation>
-    </message>
-    <message>
-        <source>error occurred while parsing reference</source>
-        <translation>fel inträffade vid tolkning av referens</translation>
-    </message>
-    <message>
-        <source>internal general entity reference not allowed in DTD</source>
-        <translation>intern allmän entitetsreferens tillåts inte i DTD</translation>
-    </message>
-    <message>
-        <source>external parsed general entity reference not allowed in attribute value</source>
-        <translation>externt tolkad allmän entitetsreferens tillåts inte i attributvärden</translation>
-    </message>
-    <message>
-        <source>external parsed general entity reference not allowed in DTD</source>
-        <translation>externt tolkad allmän entitetsreferens tillåts inte i DTD</translation>
-    </message>
-    <message>
-        <source>unparsed entity reference in wrong context</source>
-        <translation>otolkad entitetsreferens i fel kontext</translation>
-    </message>
-    <message>
-        <source>recursive entities</source>
-        <translation>rekursiva entiteter</translation>
-    </message>
-    <message>
-        <source>error in the text declaration of an external entity</source>
-        <translation>fel i textdeklarationen för en extern entitet</translation>
-    </message>
-</context>
-<context>
     <name>QXmlStream</name>
     <message>
         <source>Extra content at end of document.</source>
@@ -7619,8 +7575,8 @@ Minsta Direct2D-versionen som krävs är %1. Direct2D-versionen på detta system
         <translation>Standalone accepterar endast yes eller no.</translation>
     </message>
     <message>
-        <source>Invalid attribute in XML declaration.</source>
-        <translation>Ogiltigt attribut i XML-deklaration.</translation>
+        <source>Invalid attribute in XML declaration: %1 = %2</source>
+        <translation>Ogiltigt attribut i XML-deklaration: %1 = %2</translation>
     </message>
     <message>
         <source>Premature end of document.</source>
@@ -7669,6 +7625,14 @@ Minsta Direct2D-versionen som krävs är %1. Direct2D-versionen på detta system
     <message>
         <source>Expected character data.</source>
         <translation>Förväntade teckendata.</translation>
+    </message>
+    <message>
+        <source>Unexpected token type %1 in %2.</source>
+        <translation>Oväntad token-typ %1 i %2.</translation>
+    </message>
+    <message>
+        <source>Found second DTD token in %1.</source>
+        <translation>Hittade andra DTD-token i %1.</translation>
     </message>
     <message>
         <source>Self-referencing entity detected.</source>
@@ -7725,6 +7689,17 @@ Minsta Direct2D-versionen som krävs är %1. Direct2D-versionen på detta system
     <message>
         <source>Invalid character reference.</source>
         <translation>Ogiltig teckenreferens.</translation>
+    </message>
+</context>
+<context>
+    <name>quiaccessibilityelement</name>
+    <message>
+        <source>checked</source>
+        <translation>markerad</translation>
+    </message>
+    <message>
+        <source>unchecked</source>
+        <translation>avmarkerad</translation>
     </message>
 </context>
 </TS>

@@ -180,6 +180,27 @@ QIOSScreen::QIOSScreen(UIScreen *screen)
     m_displayLink.paused = YES; // Enabled when clients call QWindow::requestUpdate()
     [m_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
 
+
+    // The screen brightness might affect the EDR headroom of the display,
+    // which might affect the rendering of windows that opt in to EDR.
+    m_screenBrightnessObserver = QMacNotificationObserver(m_uiScreen,
+        UIScreenBrightnessDidChangeNotification, [&]() {
+            if (@available(iOS 17, *)) {
+                for (auto *window : QPlatformScreen::windows()) {
+                    auto *platformWindow = static_cast<QIOSWindow*>(window->handle());
+                    if (!platformWindow)
+                        continue;
+
+                    UIView *view = platformWindow->view();
+
+                    if (!view.layer.wantsExtendedDynamicRangeContent)
+                        continue;
+
+                    [view setNeedsDisplay];
+                }
+            }
+        });
+
     // We're pausing the display link if the application moves out of the active state,
     // so make sure to deliver to any windows that need it once the app becomes active.
     QObject::connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](auto newState) {

@@ -4,6 +4,7 @@
 
 #include "net/dns/host_resolver_mdns_task.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "base/check_op.h"
@@ -11,7 +12,6 @@
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "net/base/ip_endpoint.h"
@@ -105,7 +105,7 @@ class HostResolverMdnsTask::Transaction {
         break;
       default:
         // No other results should be possible with the request flags used.
-        NOTREACHED_IN_MIGRATION();
+        NOTREACHED();
     }
 
     results_ = HostResolverMdnsTask::ParseResult(error, query_type_, parsed,
@@ -170,11 +170,10 @@ HostCache::Entry HostResolverMdnsTask::GetResults() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!transactions_.empty());
   DCHECK(!completion_closure_);
-  DCHECK(base::ranges::all_of(transactions_,
-                              [](const Transaction& t) { return t.IsDone(); }));
+  DCHECK(std::ranges::all_of(transactions_,
+                             [](const Transaction& t) { return t.IsDone(); }));
 
-  auto found_error =
-      base::ranges::find_if(transactions_, &Transaction::IsError);
+  auto found_error = std::ranges::find_if(transactions_, &Transaction::IsError);
   if (found_error != transactions_.end()) {
     return found_error->results();
   }
@@ -210,8 +209,7 @@ HostCache::Entry HostResolverMdnsTask::ParseResult(
       // Not supported.
       // TODO(ericorth@chromium.org): Consider support for HTTPS in mDNS if it
       // is ever decided to support HTTPS via non-DoH.
-      NOTREACHED_IN_MIGRATION();
-      return HostCache::Entry(ERR_FAILED, HostCache::Entry::SOURCE_UNKNOWN);
+      NOTREACHED();
     case DnsQueryType::A:
       return HostCache::Entry(
           OK, {IPEndPoint(parsed->rdata<net::ARecordRdata>()->address(), 0)},
@@ -236,14 +234,14 @@ void HostResolverMdnsTask::CheckCompletion(bool post_needed) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   // Finish immediately if any transactions completed with an error.
-  if (base::ranges::any_of(transactions_,
-                           [](const Transaction& t) { return t.IsError(); })) {
+  if (std::ranges::any_of(transactions_,
+                          [](const Transaction& t) { return t.IsError(); })) {
     Complete(post_needed);
     return;
   }
 
-  if (base::ranges::all_of(transactions_,
-                           [](const Transaction& t) { return t.IsDone(); })) {
+  if (std::ranges::all_of(transactions_,
+                          [](const Transaction& t) { return t.IsDone(); })) {
     Complete(post_needed);
     return;
   }

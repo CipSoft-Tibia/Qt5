@@ -72,8 +72,8 @@ public:
 };
 }
 static QRegion infiniteRegion() {
-    return QRegion(QRect(QPoint(std::numeric_limits<int>::min(), std::numeric_limits<int>::min()),
-                         QPoint(std::numeric_limits<int>::max(), std::numeric_limits<int>::max())));
+    return QRegion(QRect(QPoint(std::numeric_limits<int>::min()/2+1, std::numeric_limits<int>::min()/2+1),
+                         QPoint(std::numeric_limits<int>::max()/2, std::numeric_limits<int>::max()/2)));
 }
 
 #ifndef QT_NO_DEBUG

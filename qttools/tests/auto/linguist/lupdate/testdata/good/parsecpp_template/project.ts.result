@@ -370,6 +370,14 @@
     </message>
 </context>
 <context>
+    <name>context</name>
+    <message>
+        <location filename="template_classes.cpp" line="430"/>
+        <source>text</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>global</name>
     <message>
         <location filename="template_classes.cpp" line="410"/>

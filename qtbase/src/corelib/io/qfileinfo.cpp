@@ -1180,6 +1180,57 @@ bool QFileInfo::isSymbolicLink() const
 }
 
 /*!
+    \since 6.10
+
+    Returns \c true if this QFileInfo refers to a file system entry that is
+    \e not a directory, regular file or symbolic link. Otherwise returns
+    \c false.
+
+    If this QFileInfo refers to a nonexistent entry, this method returns
+    \c false.
+
+    If the entry is a dangling symbolic link (the target doesn't exist), this
+    method returns \c false. For a non-dangling symbolic link, this function
+    returns information about the target, not the symbolic link.
+
+    On Unix a special (other) file system entry is a FIFO, socket, character
+    device, or block device. For more details, see the
+    \l{https://pubs.opengroup.org/onlinepubs/9699919799/functions/mknod.html}{\c mknod}
+    manual page.
+
+    On Windows (for historical reasons, see \l{Symbolic Links and Shortcuts})
+    this method returns \c true for \c .lnk files.
+
+    \sa isDir(), isFile(), isSymLink(), QDirListing::IteratorFlag::ExcludeOther
+*/
+bool QFileInfo::isOther() const
+{
+    Q_D(const QFileInfo);
+    using M = QFileSystemMetaData::MetaDataFlag;
+    // No M::LinkType to make QFileSystemEngine always call stat().
+    // M::WinLnkType is only relevant on Windows for '.lnk' files
+    constexpr auto mdFlags = M::ExistsAttribute | M::DirectoryType | M::FileType | M::WinLnkType;
+
+    auto fsLambda = [d]() {
+        // Check isLnkFile() first because currently exists() returns false for
+        // a broken '.lnk' where the target doesn't exist.
+        if (d->metaData.isLnkFile()) // Always false on non-Windows OSes
+            return true;
+        return d->metaData.exists() && !d->metaData.isDirectory() && !d->metaData.isFile();
+    };
+
+    auto engineLambda = [d]() {
+        using F = QAbstractFileEngine::FileFlag;
+        return d->getFileFlags(F::ExistsFlag)
+            && !d->getFileFlags(F::LinkType) // QAFE doesn't have a separate type for ".lnk" file
+            && !d->getFileFlags(F::DirectoryType)
+            && !d->getFileFlags(F::FileType);
+    };
+
+    return d->checkAttribute<bool>(mdFlags, std::move(fsLambda), std::move(engineLambda));
+}
+
+/*!
     Returns \c true if this object points to a shortcut;
     otherwise returns \c false.
 

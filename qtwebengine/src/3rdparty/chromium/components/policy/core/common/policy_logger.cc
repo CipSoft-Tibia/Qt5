@@ -100,7 +100,7 @@ bool IsLogExpired(PolicyLogger::Log& log) {
 PolicyLogger::Log::Log(const Severity log_severity,
                        const Source log_source,
                        const std::string& message,
-                       const std::string_view file,
+                       std::string_view file,
                        const int line)
     : log_severity_(log_severity),
       log_source_(log_source),
@@ -118,7 +118,7 @@ PolicyLogger::LogHelper::LogHelper(
     const PolicyLogger::Log::Severity log_severity,
     const int log_verbosity,
     const PolicyLogger::Log::Source log_source,
-    const std::string_view file,
+    std::string_view file,
     const int line)
     : log_type_(log_type),
       log_severity_(log_severity),
@@ -138,6 +138,9 @@ void PolicyLogger::LogHelper::StreamLog() const {
   if (log_type_ == LogHelper::LogType::kDLog) {
     return;
   }
+#else
+  // Suppress a -Wunused-private-field warning.
+  (void)log_type_;
 #endif
 
   // Check for verbose logging.

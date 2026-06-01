@@ -80,6 +80,10 @@ QSGBasicInternalRectangleNode::QSGBasicInternalRectangleNode()
     , m_gradient_is_opaque(true)
     , m_dirty_geometry(false)
     , m_gradient_is_vertical(true)
+    , m_isTopLeftRadiusSet(false)
+    , m_isTopRightRadiusSet(false)
+    , m_isBottomLeftRadiusSet(false)
+    , m_isBottomRightRadiusSet(false)
     , m_geometry(QSGGeometry::defaultAttributes_ColoredPoint2D(), 0)
 {
     setGeometry(&m_geometry);
@@ -156,30 +160,66 @@ void QSGBasicInternalRectangleNode::setRadius(qreal radius)
 
 void QSGBasicInternalRectangleNode::setTopLeftRadius(qreal radius)
 {
-    if (radius == m_topLeftRadius)
+    if (m_isTopLeftRadiusSet && m_topLeftRadius == radius)
         return;
+    m_isTopLeftRadiusSet = true;
     m_topLeftRadius = radius;
     m_dirty_geometry = true;
 }
 void QSGBasicInternalRectangleNode::setTopRightRadius(qreal radius)
 {
-    if (radius == m_topRightRadius)
+    if (m_isTopRightRadiusSet && m_topRightRadius == radius)
         return;
+    m_isTopRightRadiusSet = true;
     m_topRightRadius = radius;
     m_dirty_geometry = true;
 }
 void QSGBasicInternalRectangleNode::setBottomLeftRadius(qreal radius)
 {
-    if (radius == m_bottomLeftRadius)
+    if (m_isBottomLeftRadiusSet && m_bottomLeftRadius == radius)
         return;
+    m_isBottomLeftRadiusSet = true;
     m_bottomLeftRadius = radius;
     m_dirty_geometry = true;
 }
 void QSGBasicInternalRectangleNode::setBottomRightRadius(qreal radius)
 {
-    if (radius == m_bottomRightRadius)
+    if (m_isBottomRightRadiusSet && m_bottomRightRadius == radius)
         return;
+    m_isBottomRightRadiusSet = true;
     m_bottomRightRadius = radius;
+    m_dirty_geometry = true;
+}
+
+void QSGBasicInternalRectangleNode::resetTopLeftRadius()
+{
+    if (!m_isTopLeftRadiusSet)
+        return;
+    m_isTopLeftRadiusSet = false;
+    m_dirty_geometry = true;
+}
+
+void QSGBasicInternalRectangleNode::resetTopRightRadius()
+{
+    if (!m_isTopRightRadiusSet)
+        return;
+    m_isTopRightRadiusSet = false;
+    m_dirty_geometry = true;
+}
+
+void QSGBasicInternalRectangleNode::resetBottomLeftRadius()
+{
+    if (!m_isBottomLeftRadiusSet)
+        return;
+    m_isBottomLeftRadiusSet = false;
+    m_dirty_geometry = true;
+}
+
+void QSGBasicInternalRectangleNode::resetBottomRightRadius()
+{
+    if (!m_isBottomRightRadiusSet)
+        return;
+    m_isBottomRightRadiusSet = false;
     m_dirty_geometry = true;
 }
 
@@ -260,17 +300,21 @@ void QSGBasicInternalRectangleNode::updateGeometry()
     int gradientIntersections = (lastGradientStop - nextGradientStop + 1);
 
     if (m_radius > 0
-        || m_topLeftRadius > 0
-        || m_topRightRadius > 0
-        || m_bottomLeftRadius > 0
-        || m_bottomRightRadius > 0) {
+        || m_isTopLeftRadiusSet
+        || m_isTopRightRadiusSet
+        || m_isBottomLeftRadiusSet
+        || m_isBottomRightRadiusSet) {
         // Rounded corners.
 
         // Radius should never exceed half the width or half the height.
-        float radiusTL = qMin(qMin(width, height) * 0.4999f, float(m_topLeftRadius < 0 ? m_radius : m_topLeftRadius));
-        float radiusTR = qMin(qMin(width, height) * 0.4999f, float(m_topRightRadius < 0 ? m_radius : m_topRightRadius));
-        float radiusBL = qMin(qMin(width, height) * 0.4999f, float(m_bottomLeftRadius < 0 ? m_radius : m_bottomLeftRadius));
-        float radiusBR = qMin(qMin(width, height) * 0.4999f, float(m_bottomRightRadius < 0 ? m_radius : m_bottomRightRadius));
+        float radiusTL = qMin(qMin(width, height) * 0.4999f,
+                              float(m_isTopLeftRadiusSet ? m_topLeftRadius : m_radius));
+        float radiusTR = qMin(qMin(width, height) * 0.4999f,
+                              float(m_isTopRightRadiusSet ? m_topRightRadius : m_radius));
+        float radiusBL = qMin(qMin(width, height) * 0.4999f,
+                              float(m_isBottomLeftRadiusSet ? m_bottomLeftRadius : m_radius));
+        float radiusBR = qMin(qMin(width, height) * 0.4999f,
+                              float(m_isBottomRightRadiusSet ? m_bottomRightRadius : m_radius));
 
         // The code produces some artefacts when radius <= 0.5. A radius of half a pixel
         // does not make much sense anyway, so we draw a normal corner in such a case.

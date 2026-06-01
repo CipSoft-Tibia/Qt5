@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtableview.h"
 
@@ -554,7 +555,9 @@ class QTableCornerButton : public QAbstractButton
 {
     Q_OBJECT
 public:
-    QTableCornerButton(QWidget *parent) : QAbstractButton(parent) {}
+    QTableCornerButton(QWidget *parent) : QAbstractButton(parent) {
+        setObjectName(QLatin1String("qt_tableview_cornerbutton"));
+    }
     void paintEvent(QPaintEvent*) override {
         QStyleOptionHeader opt;
         opt.initFrom(this);
@@ -1160,7 +1163,7 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
     \ingroup advanced
     \inmodule QtWidgets
 
-    \image fusion-tableview.png
+    \image fusion-tableview.png {Table of months and amounts}
 
     A QTableView implements a table view that displays items from a
     model. This class is used to provide standard tables that were
@@ -1206,6 +1209,7 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
 
     \table
     \row \li \inlineimage qtableview-resized.png
+             {Table of names, addresses, and quantity}
     \li By default, the cells in a table do not expand to fill the available space.
 
     You can make the cells fill the available space by stretching the last
@@ -2040,6 +2044,25 @@ void QTableView::setSelection(const QRect &rect, QItemSelectionModel::SelectionF
     int left = tl.column();
     int right = br.column();
 
+    const auto updateVisualIndices = [&]() {
+        if (verticalMoved && horizontalMoved) {
+            top = d->visualRow(tl.row());
+            bottom = d->visualRow(br.row());
+            left = d->visualColumn(tl.column());
+            right = d->visualColumn(br.column());
+        } else if (horizontalMoved) {
+            top = tl.row();
+            bottom = br.row();
+            left = d->visualColumn(tl.column());
+            right = d->visualColumn(br.column());
+        } else if (verticalMoved) {
+            top = d->visualRow(tl.row());
+            bottom = d->visualRow(br.row());
+            left = tl.column();
+            right = br.column();
+        }
+    };
+
     if (d->hasSpans()) {
         bool expanded;
         // when the current selection does not intersect with any spans of merged cells,
@@ -2081,30 +2104,14 @@ void QTableView::setSelection(const QRect &rect, QItemSelectionModel::SelectionF
             }
         } while (expanded);
         if (!intersectsSpan) {
-            top = tl.row();
-            bottom = br.row();
-            left = tl.column();
-            right = br.column();
+            updateVisualIndices();
         } else if (!verticalMoved && !horizontalMoved) {
             // top/left/bottom/right are visual, update indexes
             tl = d->model->index(top, left, d->root);
             br = d->model->index(bottom, right, d->root);
         }
-    } else if (verticalMoved && horizontalMoved) {
-         top = d->visualRow(tl.row());
-         bottom = d->visualRow(br.row());
-         left = d->visualColumn(tl.column());
-         right = d->visualColumn(br.column());
-    } else if (horizontalMoved) {
-        top = tl.row();
-        bottom = br.row();
-        left = d->visualColumn(tl.column());
-        right = d->visualColumn(br.column());
-    } else if (verticalMoved) {
-        top = d->visualRow(tl.row());
-        bottom = d->visualRow(br.row());
-        left = tl.column();
-        right = br.column();
+    } else {
+        updateVisualIndices();
     }
 
     if (horizontalMoved && verticalMoved) {
@@ -2122,16 +2129,20 @@ void QTableView::setSelection(const QRect &rect, QItemSelectionModel::SelectionF
         for (int visual = left; visual <= right; ++visual) {
             int column = d->logicalColumn(visual);
             QModelIndex topLeft = d->model->index(top, column, d->root);
-            QModelIndex bottomRight = d->model->index(bottom, column, d->root);
-            selection.append(QItemSelectionRange(topLeft, bottomRight));
+            if (top == bottom)
+                selection.append(QItemSelectionRange(topLeft));
+            else
+                selection.append({ topLeft, topLeft.siblingAtRow(bottom) });
         }
     } else if (verticalMoved) {
         selection.reserve(bottom - top + 1);
         for (int visual = top; visual <= bottom; ++visual) {
             int row = d->logicalRow(visual);
             QModelIndex topLeft = d->model->index(row, left, d->root);
-            QModelIndex bottomRight = d->model->index(row, right, d->root);
-            selection.append(QItemSelectionRange(topLeft, bottomRight));
+            if (left == right)
+                selection.append(QItemSelectionRange(topLeft));
+            else
+                selection.append({ topLeft, topLeft.siblingAtColumn(right) });
         }
     } else { // nothing moved
         QItemSelectionRange range(tl, br);

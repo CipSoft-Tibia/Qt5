@@ -6,10 +6,12 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_VIEW_TRANSITION_VIEW_TRANSITION_H_
 
 #include <memory>
+#include <unordered_map>
 
 #include "base/memory/scoped_refptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/types/pass_key.h"
+#include "components/viz/common/view_transition_element_resource_id.h"
 #include "third_party/blink/public/common/frame/view_transition_state.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
@@ -243,6 +245,10 @@ class CORE_EXPORT ViewTransition : public GarbageCollected<ViewTransition>,
   };
   void SkipTransition(PromiseResponse response = PromiseResponse::kRejectAbort);
 
+  // This can be called inside of the lifecycle. It will skip the transition
+  // whenever view transition steps are run within the lifecycle.
+  void SkipTransitionSoon();
+
   // Dispatched when the promise returned from the author's update callback has
   // resolved and start phase of the animation can be initiated. Note: this is
   // called only if a callback is provided.
@@ -324,7 +330,9 @@ class CORE_EXPORT ViewTransition : public GarbageCollected<ViewTransition>,
 
   void ProcessCurrentState();
 
-  void NotifyCaptureFinished();
+  void NotifyCaptureFinished(
+      const std::unordered_map<viz::ViewTransitionElementResourceId,
+                               gfx::RectF>&);
 
   // Used to defer visual updates between transition prepare dispatching and
   // transition start to allow the page to set up the final scene
@@ -386,6 +394,7 @@ class CORE_EXPORT ViewTransition : public GarbageCollected<ViewTransition>,
   bool dom_callback_succeeded_ = false;
   bool first_animating_frame_ = true;
   bool context_destroyed_ = false;
+  bool pending_skip_view_transitions_ = false;
 };
 
 }  // namespace blink

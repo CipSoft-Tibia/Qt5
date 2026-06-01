@@ -22,38 +22,43 @@
 #include "perfetto/base/status.h"
 #include "perfetto/trace_processor/trace_blob_view.h"
 #include "src/trace_processor/importers/perf/aux_record.h"
+#include "src/trace_processor/importers/perf/itrace_start_record.h"
 #include "src/trace_processor/storage/stats.h"
 #include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/types/trace_processor_context.h"
 
 namespace perfetto::trace_processor::perf_importer {
-namespace {
-class DummyAuxDataTokenizer : public AuxDataTokenizer {
- public:
-  explicit DummyAuxDataTokenizer(TraceProcessorContext* context)
-      : context_(context) {}
-  void OnDataLoss(uint64_t size) override {
-    context_->storage->IncrementStats(stats::perf_aux_lost,
-                                      static_cast<int>(size));
-  }
-  base::Status Parse(AuxRecord, TraceBlobView data) override {
-    context_->storage->IncrementStats(stats::perf_aux_ignored,
-                                      static_cast<int>(data.size()));
-    return base::OkStatus();
-  }
-  base::Status NotifyEndOfStream() override { return base::OkStatus(); }
-
- private:
-  TraceProcessorContext* const context_;
-};
-}  // namespace
 
 AuxDataTokenizer::~AuxDataTokenizer() = default;
-AuxDataTokenizerFactory::~AuxDataTokenizerFactory() = default;
+AuxDataStream::~AuxDataStream() = default;
 
-base::StatusOr<std::unique_ptr<AuxDataTokenizer>>
-DummyAuxDataTokenizerFactory::CreateForCpu(uint32_t) {
-  return std::unique_ptr<AuxDataTokenizer>(new DummyAuxDataTokenizer(context_));
+DummyAuxDataTokenizer::DummyAuxDataTokenizer(TraceProcessorContext* context)
+    : stream_(context) {}
+
+DummyAuxDataTokenizer::~DummyAuxDataTokenizer() = default;
+
+base::StatusOr<AuxDataStream*> DummyAuxDataTokenizer::InitializeAuxDataStream(
+    AuxStream*) {
+  return &stream_;
+}
+
+DummyAuxDataStream::DummyAuxDataStream(TraceProcessorContext* context)
+    : context_(context) {}
+void DummyAuxDataStream::OnDataLoss(uint64_t size) {
+  context_->storage->IncrementStats(stats::perf_aux_lost,
+                                    static_cast<int>(size));
+}
+base::Status DummyAuxDataStream::Parse(AuxRecord, TraceBlobView data) {
+  context_->storage->IncrementStats(stats::perf_aux_ignored,
+                                    static_cast<int>(data.size()));
+  return base::OkStatus();
+}
+base::Status DummyAuxDataStream::NotifyEndOfStream() {
+  return base::OkStatus();
+}
+
+base::Status DummyAuxDataStream::OnItraceStartRecord(ItraceStartRecord) {
+  return base::OkStatus();
 }
 
 }  // namespace perfetto::trace_processor::perf_importer

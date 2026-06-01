@@ -162,6 +162,37 @@ void tst_qgeoshape::serialization()
 
         QCOMPARE(otherPolygon, polygon);
     }
+    // polygon with holes
+    {
+        QGeoPolygon polygon({ QGeoCoordinate(-50, 50),
+                              QGeoCoordinate(50, 50),
+                              QGeoCoordinate(50, -50),
+                              QGeoCoordinate(-50, -50) });
+
+        const QList<QGeoCoordinate> rectangle{ QGeoCoordinate(-20, 40),
+                                               QGeoCoordinate(30, 40),
+                                               QGeoCoordinate(30, 30),
+                                               QGeoCoordinate(-20, 30) };
+        const QList<QGeoCoordinate> triangle{ QGeoCoordinate(-10, -10),
+                                              QGeoCoordinate(-40, -40),
+                                              QGeoCoordinate(-20, -30) };
+
+        polygon.addHole(rectangle);
+        polygon.addHole(triangle);
+
+        QDataStream writeStream(&data, QDataStream::WriteOnly);
+        writeStream << polygon;
+
+        QGeoShape shape;
+        QDataStream readStream(&data, QDataStream::ReadOnly);
+        readStream >> shape;
+
+        QCOMPARE(shape, polygon);
+        QGeoPolygon polygonFromShape(shape);
+        QCOMPARE(polygonFromShape.holesCount(), 2);
+        QCOMPARE(polygonFromShape.holePath(0), rectangle);
+        QCOMPARE(polygonFromShape.holePath(1), triangle);
+    }
     // path
     {
         QGeoPath path({ QGeoCoordinate(30, 160), QGeoCoordinate(0, 170),

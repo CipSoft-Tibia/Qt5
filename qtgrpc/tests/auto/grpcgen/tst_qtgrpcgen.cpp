@@ -5,7 +5,14 @@
 
 #include <QtProtobuf/qtprotobuftypes.h>
 
-#include <QtCore/qprocess.h>
+#if !QT_CONFIG(process) || defined(CROSSCOMPILING)
+#  define SKIP_COMMAND_LINE_TESTS
+#endif
+
+#if !defined(SKIP_COMMAND_LINE_TESTS)
+#  include <QtCore/qprocess.h>
+#endif
+
 #include <QtCore/qstring.h>
 
 #include "protocplugintestcommon.h"
@@ -14,11 +21,10 @@ using namespace Qt::StringLiterals;
 using namespace ProtocPluginTest;
 
 namespace {
-#if QT_CONFIG(process)
+#if !defined(SKIP_COMMAND_LINE_TESTS)
 #  ifndef PROTOC_EXECUTABLE
 #    error PROTOC_EXECUTABLE definition must be set and point to the valid protoc executable
 #  endif
-constexpr QLatin1StringView ProtocPath(PROTOC_EXECUTABLE);
 
 #  ifndef PROTOC_PLUGIN
 #    error PROTOC_PLUGIN definition must be set and point to the valid protoc plugin
@@ -31,6 +37,7 @@ constexpr QLatin1StringView OutKey(" --qtgrpc_out=");
 constexpr QLatin1StringView IncludeKey(" -I");
 #endif
 
+constexpr QLatin1StringView ProtocPath(PROTOC_EXECUTABLE);
 constexpr QLatin1StringView CmdLineGeneratedDir("cmd_line_generated");
 
 #ifndef BINARY_DIR
@@ -61,7 +68,7 @@ private Q_SLOTS:
     void cmakeGenerated_data();
     void cmakeGenerated();
 
-#if QT_CONFIG(process)
+#if !defined(SKIP_COMMAND_LINE_TESTS)
     //! Test command-line call of qtgrpcgen
     void cmdLineGenerated_data();
     void cmdLineGenerated();
@@ -101,7 +108,7 @@ void qtgrpcgenTest::cmakeGenerated()
                     cmakeGeneratedPath() + '/'_L1 + testName + '/'_L1 + filePath);
 }
 
-#if QT_CONFIG(process)
+#if !defined(SKIP_COMMAND_LINE_TESTS)
 void qtgrpcgenTest::cmdLineGenerated_data()
 {
     QTest::addColumn<QString>("directory");

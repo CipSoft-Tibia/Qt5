@@ -1,6 +1,5 @@
 TEMPLATE = subdirs
-SUBDIRS = delegate \
-  qconcatenatetablesproxymodel \
+SUBDIRS = qconcatenatetablesproxymodel \
   qheaderview \
   qtreeview \
   qtreewidget \

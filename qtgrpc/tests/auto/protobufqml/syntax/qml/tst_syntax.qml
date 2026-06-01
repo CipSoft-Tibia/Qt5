@@ -21,6 +21,7 @@ TestCase {
     property messageReserved msgReserved;
     property priorMessageUnderscoreField underScoreMsg;
     property lowerCaseMessageName lowerCaseMsg;
+    property nameClashingMutableGetters mutableGettersMsg;
 
     function initTestCase() {
         underscore_name.testField = -7
@@ -104,5 +105,15 @@ TestCase {
 
     function test_enumValues(data) {
         compare(data.field, data.answer)
+    }
+
+    function test_mutableGetters() {
+        mutableGettersMsg.field.data = 1;
+        mutableGettersMsg.mutField.data = 2;
+
+        compare(Number(mutableGettersMsg.field.data), 1);
+        expectFailContinue("", "Property getter of 'mutField' accesses non-const getter,"+
+            " which clashes to mutable getter of 'field'. See QTBUG-119912.")
+        compare(Number(mutableGettersMsg.mutField.data), 2);
     }
 }

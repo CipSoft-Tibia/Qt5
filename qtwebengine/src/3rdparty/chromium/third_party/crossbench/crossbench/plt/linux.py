@@ -6,24 +6,25 @@ from __future__ import annotations
 
 import functools
 import os
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Type
 
 from crossbench import path as pth
 from crossbench.plt.base import SubprocessError
 from crossbench.plt.posix import PosixPlatform
 from crossbench.plt.remote import RemotePlatformMixin
+from crossbench.plt.signals import LinuxSignals
 
 
 class LinuxPlatform(PosixPlatform):
-  SEARCH_PATHS: Tuple[pth.RemotePath, ...] = (
-      pth.RemotePath("."),
-      pth.RemotePath("/usr/local/sbin"),
-      pth.RemotePath("/usr/local/bin"),
-      pth.RemotePath("/usr/sbin"),
-      pth.RemotePath("/usr/bin"),
-      pth.RemotePath("/sbin"),
-      pth.RemotePath("/bin"),
-      pth.RemotePath("/opt/google"),
+  SEARCH_PATHS: Tuple[pth.AnyPath, ...] = (
+      pth.AnyPosixPath("."),
+      pth.AnyPosixPath("/usr/local/sbin"),
+      pth.AnyPosixPath("/usr/local/bin"),
+      pth.AnyPosixPath("/usr/sbin"),
+      pth.AnyPosixPath("/usr/bin"),
+      pth.AnyPosixPath("/sbin"),
+      pth.AnyPosixPath("/bin"),
+      pth.AnyPosixPath("/opt/google"),
   )
 
   @property
@@ -33,6 +34,10 @@ class LinuxPlatform(PosixPlatform):
   @property
   def name(self) -> str:
     return "linux"
+
+  @property
+  def signals(self) -> Type[LinuxSignals]:
+    return LinuxSignals
 
   def check_system_monitoring(self, disable: bool = False) -> bool:
     return True
@@ -54,8 +59,8 @@ class LinuxPlatform(PosixPlatform):
       if line.startswith("model name"):
         _, cpu_str = line.split(":", maxsplit=2)
         break
-    if cores_info := self._get_cpu_cores_info():
-      cpu_str = f"{cpu_str} {cores_info}"
+    if num_cores := self.cpu_cores:
+      cpu_str = f"{cpu_str} {num_cores} cores"
     return cpu_str
 
   @property
@@ -66,20 +71,20 @@ class LinuxPlatform(PosixPlatform):
   def is_battery_powered(self) -> bool:
     if self.is_local:
       return super().is_battery_powered
-    if self.which("on_ac_power"):
-      return self.sh("on_ac_power", check=False).returncode == 1
+    if on_ac_power := self.which("on_ac_power"):
+      return self.sh(on_ac_power, check=False).returncode == 1
     return False
 
+  @functools.lru_cache(maxsize=1)
   def system_details(self) -> Dict[str, Any]:
     details = super().system_details()
     for info_bin in ("lscpu", "inxi"):
-      if self.which(info_bin):
-        details[info_bin] = self.sh_stdout(info_bin)
+      if info_bin_path := self.which(info_bin):
+        details[info_bin] = self.sh_stdout(info_bin_path)
     return details
 
-  def search_binary(self,
-                    app_or_bin: pth.RemotePathLike) -> Optional[pth.RemotePath]:
-    app_or_bin_path: pth.RemotePath = self.path(app_or_bin)
+  def search_binary(self, app_or_bin: pth.AnyPathLike) -> Optional[pth.AnyPath]:
+    app_or_bin_path: pth.AnyPath = self.path(app_or_bin)
     if not app_or_bin_path.parts:
       raise ValueError("Got empty path")
     if result_path := self.which(app_or_bin_path):
@@ -93,7 +98,7 @@ class LinuxPlatform(PosixPlatform):
         return result_path
     return None
 
-  def screenshot(self, result_path: pth.RemotePath) -> None:
+  def screenshot(self, result_path: pth.AnyPath) -> None:
     # TODO: maybe use imagemagick's 'import' as more portable alternative
     self.sh("gnome-screenshot", "--file", result_path)
 

@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
-## qdecompresshelper Binary:
+## tst_bench_qdecompresshelper Binary:
 #####################################################################
 
-qt_internal_add_benchmark(qdecompresshelper
+qt_internal_add_benchmark(tst_bench_qdecompresshelper
     SOURCES
         main.cpp
     DEFINES

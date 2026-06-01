@@ -22,12 +22,7 @@ QT_REQUIRE_CONFIG(directwrite3);
 
 #include "qwindowsfontdatabase_p.h"
 #include <QtCore/qloggingcategory.h>
-
-struct IDWriteFactory;
-struct IDWriteFont;
-struct IDWriteFont1;
-struct IDWriteFontFamily;
-struct IDWriteLocalizedStrings;
+#include <dwrite_3.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -62,12 +57,22 @@ public:
         return m_populatedFonts.contains(fontFamily);
     }
 
+    static QFont::Stretch fromDirectWriteStretch(DWRITE_FONT_STRETCH stretch);
+    static QFont::Weight fromDirectWriteWeight(DWRITE_FONT_WEIGHT weight);
+    static QFont::Style fromDirectWriteStyle(DWRITE_FONT_STYLE style);
+
 protected:
     void invalidate() override;
 
 private:
     friend class QWindowsFontEngineDirectWrite;
     static QString localeString(IDWriteLocalizedStrings *names, wchar_t localeName[]);
+
+    template<typename T>
+    static void collectAdditionalNames(T *fontFace,
+                                       wchar_t *defaultLocale,
+                                       wchar_t *englishLocale,
+                                       std::function<void(const std::pair<QString, QString> &)> registerFamily);
 
     QSupportedWritingSystems supportedWritingSystems(IDWriteFontFace *face) const;
 

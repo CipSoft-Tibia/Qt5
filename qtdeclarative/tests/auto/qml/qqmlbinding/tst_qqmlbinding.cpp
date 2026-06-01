@@ -52,7 +52,9 @@ private slots:
     void propertiesAttachedToBindingItself();
     void toggleEnableProperlyRemembersValues();
     void qQmlPropertyToPropertyBinding();
+    void qQmlPropertyToPropertyBindingReverse();
     void delayedBindingDestruction();
+    void restoreNotConfusedByTypeConversion();
     void deleteStashedObject();
     void multiValueTypeBinding();
 
@@ -721,12 +723,12 @@ class PropertyToPropertyObject : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QRectF a READ a WRITE setA NOTIFY aChanged)
-    Q_PROPERTY(QRectF b READ b BINDABLE bindableB)
+    Q_PROPERTY(QRectF b READ b BINDABLE bindableB WRITE default)
 
     Q_PROPERTY(qreal top READ top WRITE setTop NOTIFY topChanged)
-    Q_PROPERTY(qreal bottom READ bottom BINDABLE bindableBottom)
+    Q_PROPERTY(qreal bottom READ bottom BINDABLE bindableBottom WRITE default)
     Q_PROPERTY(qreal left READ left WRITE setLeft NOTIFY leftChanged)
-    Q_PROPERTY(qreal right READ right BINDABLE bindableRight)
+    Q_PROPERTY(qreal right READ right BINDABLE bindableRight WRITE default)
 public:
 
     QRectF a() const { return m_a; }
@@ -791,24 +793,16 @@ void tst_qqmlbinding::qQmlPropertyToPropertyBinding()
                   QObject *sourceObject, const QString &sourcePropertyName) {
         QQmlProperty targetProperty(targetObject, targetPropertyName);
         QQmlProperty sourceProperty(sourceObject, sourcePropertyName);
-        QQmlAnyBinding binding;
-
-        binding = new QQmlPropertyToPropertyBinding(
-                &engine,
-                sourceObject, QQmlPropertyPrivate::get(sourceProperty)->encodedIndex(),
-                targetObject, targetProperty.index());
+        QQmlAnyBinding binding
+                = QQmlPropertyToPropertyBinding::create(&engine, sourceProperty, targetProperty);
         binding.installOn(targetProperty);
     };
 
     installPropertyBinding(target.data(), "left"_L1,   source.data(), "a.left"_L1);
     installPropertyBinding(target.data(), "top"_L1,    source.data(), "b.top"_L1);
 
-    // TODO: We cannot install a QQmlPropertyToPropertyBinding on bindable properties
-    //       This is because it derives from QQmlAbstractBinding which is only meant for
-    //       non-bindable properties.
-
-    // installPropertyBinding(target.data(), "right"_L1,  source.data(), "a.right"_L1);
-    // installPropertyBinding(target.data(), "bottom"_L1, source.data(), "b.bottom"_L1);
+    installPropertyBinding(target.data(), "right"_L1,  source.data(), "a.right"_L1);
+    installPropertyBinding(target.data(), "bottom"_L1, source.data(), "b.bottom"_L1);
 
     QCOMPARE(target->top(), 0);
     QCOMPARE(target->bottom(), 0);
@@ -819,13 +813,55 @@ void tst_qqmlbinding::qQmlPropertyToPropertyBinding()
     QCOMPARE(target->top(), 0);
     QCOMPARE(target->bottom(), 0);
     QCOMPARE(target->left(), 11);
-    // QCOMPARE(target->right(), 33);
+    QCOMPARE(target->right(), 11 + 33);
 
     source->bindableB().setValue(QRectF(55, 66, 77, 88));
     QCOMPARE(target->top(), 66);
-    // QCOMPARE(target->bottom(), 88);
+    QCOMPARE(target->bottom(), 66 + 88);
     QCOMPARE(target->left(), 11);
-    // QCOMPARE(target->right(), 33);
+    QCOMPARE(target->right(), 11 + 33);
+}
+
+void tst_qqmlbinding::qQmlPropertyToPropertyBindingReverse()
+{
+    using namespace Qt::StringLiterals;
+
+    QScopedPointer<PropertyToPropertyObject> target(new PropertyToPropertyObject);
+    QScopedPointer<PropertyToPropertyObject> source(new PropertyToPropertyObject);
+
+    auto installPropertyBinding
+            = [&](QObject *targetObject, const QString &targetPropertyName,
+                  QObject *sourceObject, const QString &sourcePropertyName) {
+        QQmlProperty targetProperty(targetObject, targetPropertyName);
+        QQmlProperty sourceProperty(sourceObject, sourcePropertyName);
+        QQmlAnyBinding binding
+              = QQmlPropertyToPropertyBinding::create(&engine, sourceProperty, targetProperty);
+        binding.installOn(targetProperty);
+    };
+
+    // QQmlRectFValueType has no setters for left/right/top/bottom.
+    // It has setters for x/y/width/height, though.
+
+    installPropertyBinding(target.data(), "a.x"_L1,      source.data(), "left"_L1);
+    installPropertyBinding(target.data(), "b.y"_L1,      source.data(), "top"_L1);
+
+    installPropertyBinding(target.data(), "a.width"_L1,  source.data(), "right"_L1);
+    installPropertyBinding(target.data(), "b.height"_L1, source.data(), "bottom"_L1);
+
+    QCOMPARE(source->top(), 0);
+    QCOMPARE(source->bottom(), 0);
+    QCOMPARE(source->left(), 0);
+    QCOMPARE(source->right(), 0);
+
+    target->setA(QRectF(0, 22, 0, 44));
+    source->setLeft(11);
+    source->bindableRight().setValue(33);
+    QCOMPARE(target->a(), QRectF(11, 22, 33, 44));
+
+    target->bindableB().setValue(QRectF(55, 0, 77, 0));
+    source->setTop(66);
+    source->bindableBottom().setValue(88);
+    QCOMPARE(target->b(), QRectF(55, 66, 77, 88));
 }
 
 void tst_qqmlbinding::delayedBindingDestruction()
@@ -856,6 +892,47 @@ void tst_qqmlbinding::delayedBindingDestruction()
     QCoreApplication::processEvents();
     QCOMPARE(object->objectName(), QLatin1String("foo"));
     verifyDelegate(QLatin1String("foo"));
+}
+
+void tst_qqmlbinding::restoreNotConfusedByTypeConversion()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("restoreNotConfusedByTypeConversion.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(object);
+    {
+        // toggling the binding twice yields the blue color
+        // even if "blue" and QColor::fromString("blue") are different values
+        object->setProperty("isRectBlue", true);
+        QCOMPARE(object->property("color").value<QColor>(), QColor::fromString("blue"));
+        object->setProperty("isRectBlue", false);
+        QCOMPARE_NE(object->property("color").value<QColor>(), QColor::fromString("blue"));
+        // toggling the binding twice yields the blue color
+        // even if "blue" and QColor::fromString("blue") are different values
+        object->setProperty("isRectBlue", true);
+        QCOMPARE(object->property("color").value<QColor>(), QColor::fromString("blue"));
+    }
+    {
+        // now do the same with an Item list property, exercising another code path
+        QVERIFY(!object->property("hasListItem").toBool()); // initially empty
+        object->setProperty("shouldHaveListItem", true);
+        QVERIFY(object->property("hasListItem").toBool());
+        object->setProperty("shouldHaveListItem", false);
+        QVERIFY(!object->property("hasListItem").toBool());
+        object->setProperty("shouldHaveListItem", true);
+        QVERIFY(object->property("hasListItem").toBool());
+    }
+    {
+        // now do the same with a value list property, exercising yet another code path
+        QVERIFY(!object->property("hasListInt").toBool()); // initially empty
+        object->setProperty("shouldHaveListInt", true);
+        QVERIFY(object->property("hasListInt").toBool());
+        object->setProperty("shouldHaveListInt", false);
+        QVERIFY(!object->property("hasListInt").toBool());
+        object->setProperty("shouldHaveListInt", true);
+        QVERIFY(object->property("hasListInt").toBool());
+    }
 }
 
 void tst_qqmlbinding::deleteStashedObject()

@@ -466,10 +466,10 @@ g.test('copy_contents_from_2d_context_canvas')
   Then call copyExternalImageToTexture() to do a full copy to the 0 mipLevel
   of dst texture, and read the contents out to compare with the canvas contents.
 
-  Provide premultiplied input if 'premultipliedAlpha' in 'GPUImageCopyTextureTagged'
+  Provide premultiplied input if 'premultipliedAlpha' in 'GPUCopyExternalImageDestInfo'
   is set to 'true' and unpremultiplied input if it is set to 'false'.
 
-  If 'flipY' in 'GPUImageCopyExternalImage' is set to 'true', copy will ensure the result
+  If 'flipY' in 'GPUCopyExternalImageSourceInfo' is set to 'true', copy will ensure the result
   is flipped.
 
   The tests covers:
@@ -477,7 +477,7 @@ g.test('copy_contents_from_2d_context_canvas')
   - Valid 2d context type
   - Valid dstColorFormat of copyExternalImageToTexture()
   - Valid dest alphaMode
-  - Valid 'flipY' config in 'GPUImageCopyExternalImage' (named 'srcDoFlipYDuringCopy' in cases)
+  - Valid 'flipY' config in 'GPUCopyExternalImageSourceInfo' (named 'srcDoFlipYDuringCopy' in cases)
   - TODO(#913): color space tests need to be added
 
   And the expected results are all passed.
@@ -495,6 +495,7 @@ g.test('copy_contents_from_2d_context_canvas')
   )
   .beforeAllSubcases(t => {
     t.skipIfTextureFormatNotSupported(t.params.dstColorFormat);
+    t.skipIfColorRenderableNotSupportedForFormat(t.params.dstColorFormat);
   })
   .fn(t => {
     const { width, height, canvasType, dstAlphaMode } = t.params;
@@ -527,10 +528,10 @@ g.test('copy_contents_from_gl_context_canvas')
   Then call copyExternalImageToTexture() to do a full copy to the 0 mipLevel
   of dst texture, and read the contents out to compare with the canvas contents.
 
-  Provide premultiplied input if 'premultipliedAlpha' in 'GPUImageCopyTextureTagged'
+  Provide premultiplied input if 'premultipliedAlpha' in 'GPUCopyExternalImageDestInfo'
   is set to 'true' and unpremultiplied input if it is set to 'false'.
 
-  If 'flipY' in 'GPUImageCopyExternalImage' is set to 'true', copy will ensure the result
+  If 'flipY' in 'GPUCopyExternalImageSourceInfo' is set to 'true', copy will ensure the result
   is flipped.
 
   The tests covers:
@@ -539,7 +540,7 @@ g.test('copy_contents_from_gl_context_canvas')
   - Valid dstColorFormat of copyExternalImageToTexture()
   - Valid source image alphaMode
   - Valid dest alphaMode
-  - Valid 'flipY' config in 'GPUImageCopyExternalImage'(named 'srcDoFlipYDuringCopy' in cases)
+  - Valid 'flipY' config in 'GPUCopyExternalImageSourceInfo'(named 'srcDoFlipYDuringCopy' in cases)
   - TODO: color space tests need to be added
 
   And the expected results are all passed.
@@ -559,6 +560,7 @@ g.test('copy_contents_from_gl_context_canvas')
   )
   .beforeAllSubcases(t => {
     t.skipIfTextureFormatNotSupported(t.params.dstColorFormat);
+    t.skipIfColorRenderableNotSupportedForFormat(t.params.dstColorFormat);
   })
   .fn(t => {
     const { width, height, canvasType, contextName, srcPremultiplied, dstAlphaMode } = t.params;
@@ -595,10 +597,10 @@ g.test('copy_contents_from_gpu_context_canvas')
   Then call copyExternalImageToTexture() to do a full copy to the 0 mipLevel
   of dst texture, and read the contents out to compare with the canvas contents.
 
-  Provide premultiplied input if 'premultipliedAlpha' in 'GPUImageCopyTextureTagged'
+  Provide premultiplied input if 'premultipliedAlpha' in 'GPUCopyExternalImageDestInfo'
   is set to 'true' and unpremultiplied input if it is set to 'false'.
 
-  If 'flipY' in 'GPUImageCopyExternalImage' is set to 'true', copy will ensure the result
+  If 'flipY' in 'GPUCopyExternalImageSourceInfo' is set to 'true', copy will ensure the result
   is flipped.
 
   The tests covers:
@@ -607,7 +609,7 @@ g.test('copy_contents_from_gpu_context_canvas')
   - Valid dstColorFormat of copyExternalImageToTexture()
   - TODO: test more source image alphaMode
   - Valid dest alphaMode
-  - Valid 'flipY' config in 'GPUImageCopyExternalImage'(named 'srcDoFlipYDuringCopy' in cases)
+  - Valid 'flipY' config in 'GPUCopyExternalImageSourceInfo'(named 'srcDoFlipYDuringCopy' in cases)
   - TODO: color space tests need to be added
 
   And the expected results are all passed.
@@ -628,6 +630,7 @@ g.test('copy_contents_from_gpu_context_canvas')
   )
   .beforeAllSubcases(t => {
     t.skipIfTextureFormatNotSupported(t.params.dstColorFormat);
+    t.skipIfColorRenderableNotSupportedForFormat(t.params.dstColorFormat);
     t.selectMismatchedDeviceOrSkipTestCase(undefined);
   })
   .fn(t => {
@@ -665,10 +668,10 @@ g.test('copy_contents_from_bitmaprenderer_context_canvas')
   Then call copyExternalImageToTexture() to do a full copy to the 0 mipLevel
   of dst texture, and read the contents out to compare with the canvas contents.
 
-  Provide premultiplied input if 'premultipliedAlpha' in 'GPUImageCopyTextureTagged'
+  Provide premultiplied input if 'premultipliedAlpha' in 'GPUCopyExternalImageDestInfo'
   is set to 'true' and unpremultiplied input if it is set to 'false'.
 
-  If 'flipY' in 'GPUImageCopyExternalImage' is set to 'true', copy will ensure the result
+  If 'flipY' in 'GPUCopyExternalImageSourceInfo' is set to 'true', copy will ensure the result
   is flipped.
 
   The tests covers:
@@ -676,7 +679,7 @@ g.test('copy_contents_from_bitmaprenderer_context_canvas')
   - Valid ImageBitmapRendering context type
   - Valid dstColorFormat of copyExternalImageToTexture()
   - Valid dest alphaMode
-  - Valid 'flipY' config in 'GPUImageCopyExternalImage' (named 'srcDoFlipYDuringCopy' in cases)
+  - Valid 'flipY' config in 'GPUCopyExternalImageSourceInfo' (named 'srcDoFlipYDuringCopy' in cases)
   - TODO(#913): color space tests need to be added
 
   And the expected results are all passed.
@@ -694,6 +697,7 @@ g.test('copy_contents_from_bitmaprenderer_context_canvas')
   )
   .beforeAllSubcases(t => {
     t.skipIfTextureFormatNotSupported(t.params.dstColorFormat);
+    t.skipIfColorRenderableNotSupportedForFormat(t.params.dstColorFormat);
   })
   .fn(async t => {
     const { width, height, canvasType, dstAlphaMode } = t.params;
@@ -736,10 +740,10 @@ g.test('color_space_conversion')
     Then call copyExternalImageToTexture() to do a full copy to the 0 mipLevel
     of dst texture, and read the contents out to compare with the canvas contents.
 
-    Provide premultiplied input if 'premultipliedAlpha' in 'GPUImageCopyTextureTagged'
+    Provide premultiplied input if 'premultipliedAlpha' in 'GPUCopyExternalImageDestInfo'
     is set to 'true' and unpremultiplied input if it is set to 'false'.
 
-    If 'flipY' in 'GPUImageCopyExternalImage' is set to 'true', copy will ensure the result
+    If 'flipY' in 'GPUCopyExternalImageSourceInfo' is set to 'true', copy will ensure the result
     is flipped.
 
     If color space from source input and user defined dstTexture color space are different, the
@@ -748,7 +752,7 @@ g.test('color_space_conversion')
     The tests covers:
     - Valid dstColorFormat of copyExternalImageToTexture()
     - Valid dest alphaMode
-    - Valid 'flipY' config in 'GPUImageCopyExternalImage' (named 'srcDoFlipYDuringCopy' in cases)
+    - Valid 'flipY' config in 'GPUCopyExternalImageSourceInfo' (named 'srcDoFlipYDuringCopy' in cases)
     - Valid 'colorSpace' config in 'dstColorSpace'
 
     And the expected results are all passed.
@@ -770,6 +774,7 @@ g.test('color_space_conversion')
   )
   .beforeAllSubcases(t => {
     t.skipIfTextureFormatNotSupported(t.params.dstColorFormat);
+    t.skipIfColorRenderableNotSupportedForFormat(t.params.dstColorFormat);
   })
   .fn(t => {
     const {

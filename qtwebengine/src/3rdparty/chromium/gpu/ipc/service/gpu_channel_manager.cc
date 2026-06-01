@@ -342,7 +342,9 @@ GpuChannelManager::GpuChannelManager(
     viz::VulkanContextProvider* vulkan_context_provider,
     viz::MetalContextProvider* metal_context_provider,
     DawnContextProvider* dawn_context_provider,
-    webgpu::DawnCachingInterfaceFactory* dawn_caching_interface_factory)
+    webgpu::DawnCachingInterfaceFactory* dawn_caching_interface_factory,
+    const SharedContextState::GrContextOptionsProvider*
+        gr_context_options_provider)
     : task_runner_(task_runner),
       io_task_runner_(io_task_runner),
       gpu_preferences_(gpu_preferences),
@@ -370,7 +372,8 @@ GpuChannelManager::GpuChannelManager(
       vulkan_context_provider_(vulkan_context_provider),
       metal_context_provider_(metal_context_provider),
       dawn_context_provider_(dawn_context_provider),
-      peak_memory_monitor_(this, task_runner) {
+      peak_memory_monitor_(this, task_runner),
+      gr_context_options_provider_(gr_context_options_provider) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(task_runner->BelongsToCurrentThread());
   DCHECK(io_task_runner);
@@ -383,7 +386,13 @@ GpuChannelManager::GpuChannelManager(
       !gpu_preferences_.disable_gpu_shader_disk_cache;
   UMA_HISTOGRAM_BOOLEAN("Gpu.GrShaderCacheEnabled", enable_gr_shader_cache);
   if (enable_gr_shader_cache) {
-    gr_shader_cache_.emplace(gpu_preferences.gpu_program_cache_size, this);
+    size_t gr_shader_cache_size = gpu_preferences.gpu_program_cache_size;
+    if (base::FeatureList::IsEnabled(features::kANGLEPerContextBlobCache)) {
+      // When ANGLE shares the shader cache with Skia, double the size of the
+      // cache so that there is room for both APIs to cache together.
+      gr_shader_cache_size *= 2;
+    }
+    gr_shader_cache_.emplace(gr_shader_cache_size, this);
     gr_shader_cache_->CacheClientIdOnDisk(gpu::kDisplayCompositorClientId);
   }
 }
@@ -447,7 +456,8 @@ gles2::ProgramCache* GpuChannelManager::program_cache() {
 #if BUILDFLAG(IS_MAC)
       auto entries = BuiltInShaderCacheLoader::TakeEntries();
       for (auto& entry : *entries) {
-        cache->Set(std::move(entry.key), std::move(entry.value));
+        cache->Set(std::move(entry.key), std::move(entry.value),
+                   gles2::ProgramCache::CacheProgramCallback());
       }
 #endif
       program_cache_ = std::move(cache);
@@ -1000,7 +1010,8 @@ scoped_refptr<SharedContextState> GpuChannelManager::GetSharedContextState(
                      context_lost_count_ + 1),
       gpu_preferences_.gr_context_type, vulkan_context_provider_,
       metal_context_provider_, dawn_context_provider_,
-      peak_memory_monitor_.GetWeakPtr());
+      peak_memory_monitor_.GetWeakPtr(),
+      /*created_on_compositor_gpu_thread=*/false, gr_context_options_provider_);
 
   // Initialize GL context, so Vulkan and GL interop can work properly.
   auto feature_info = base::MakeRefCounted<gles2::FeatureInfo>(
@@ -1099,7 +1110,7 @@ void GpuChannelManager::OnContextLost(
   // Work around issues with recovery by allowing a new GPU process to launch.
   if (force_restart || gpu_driver_bug_workarounds_.exit_on_context_lost ||
       (shared_context_state_ && !shared_context_state_->GrContextIsGL())) {
-    delegate_->MaybeExitOnContextLost(synthetic_loss, context_lost_reason);
+    delegate_->MaybeExitOnContextLost(context_lost_reason);
   }
 }
 

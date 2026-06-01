@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquicksplitview_p.h"
 #include "qquicksplitview_p_p.h"
@@ -731,7 +732,7 @@ void QQuickSplitViewPrivate::layout()
     // We allow mouse events to instantly trigger layouts, whereas with e.g.
     // attached properties being set, we require a delayed layout.
     // To prevent recursive calls during mouse events, we need this guard.
-    QBoolBlocker guard(m_layingOut, true);
+    QScopedValueRollback guard(m_layingOut, true);
 
     const bool horizontal = isHorizontal();
     qCDebug(qlcQQuickSplitView) << "laying out" << count << "split items"

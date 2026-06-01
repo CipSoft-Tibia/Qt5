@@ -73,9 +73,9 @@ namespace QQuickViewTestUtils
         QString number(int index) const;
 
         Q_INVOKABLE void addItem(const QString &name, const QString &number);
-        void addItems(const QList<QPair<QString, QString> > &items);
+        void addItems(const QList<std::pair<QString, QString> > &items);
         void insertItem(int index, const QString &name, const QString &number);
-        void insertItems(int index, const QList<QPair<QString, QString> > &items);
+        void insertItems(int index, const QList<std::pair<QString, QString> > &items);
 
         Q_INVOKABLE void removeItem(int index);
         void removeItems(int index, int count);
@@ -87,16 +87,16 @@ namespace QQuickViewTestUtils
 
         void clear();
         void reset();
-        void resetItems(const QList<QPair<QString, QString> > &items);
+        void resetItems(const QList<std::pair<QString, QString> > &items);
 
-        void matchAgainst(const QList<QPair<QString, QString> > &other, const QString &error1, const QString &error2);
+        void matchAgainst(const QList<std::pair<QString, QString> > &other, const QString &error1, const QString &error2);
 
         using QAbstractListModel::dataChanged;
 
         int columns = 1;
 
     private:
-        QList<QPair<QString,QString> > list;
+        QList<std::pair<QString,QString> > list;
     };
 
     class ListRange
@@ -115,7 +115,7 @@ namespace QQuickViewTestUtils
         bool isValid() const;
         int count() const;
 
-        QList<QPair<QString,QString> > getModelDataValues(const QaimModel &model);
+        QList<std::pair<QString,QString> > getModelDataValues(const QaimModel &model);
 
         QList<int> indexes;
         bool valid;

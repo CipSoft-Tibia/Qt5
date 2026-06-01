@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
+
 #ifndef QQMLIRBUILDER_P_H
 #define QQMLIRBUILDER_P_H
 
@@ -283,8 +285,9 @@ struct RequiredPropertyExtraData : public QV4::CompiledData::RequiredPropertyExt
 struct Function
 {
     QV4::CompiledData::Location location;
-    int nameIndex;
-    quint32 index; // index in parsedQML::functions
+    quint32 nameIndex : 31;
+    quint32 isQmlFunction : 1;
+    quint32 index = 0; // index in parsedQML::functions
     QQmlJS::FixedPoolArray<Parameter> formals;
     QV4::CompiledData::ParameterType returnType;
 
@@ -366,6 +369,8 @@ public:
     QString appendSignal(Signal *signal);
     QString appendProperty(Property *prop, const QString &propertyName, bool isDefaultProperty, const QQmlJS::SourceLocation &defaultToken, QQmlJS::SourceLocation *errorLocation);
     QString appendAlias(Alias *prop, const QString &aliasName, bool isDefaultProperty, const QQmlJS::SourceLocation &defaultToken, QQmlJS::SourceLocation *errorLocation);
+    void setFirstAlias(Alias *alias) { aliases->first = alias; }
+
     void appendFunction(QmlIR::Function *f);
     void appendInlineComponent(InlineComponent *ic);
     void appendRequiredPropertyExtraData(RequiredPropertyExtraData *extraData);
@@ -506,7 +511,7 @@ struct Q_QML_COMPILER_EXPORT IRBuilder : public QQmlJS::AST::Visitor
 {
     Q_DECLARE_TR_FUNCTIONS(QQmlCodeGenerator)
 public:
-    IRBuilder(const QSet<QString> &illegalNames);
+    IRBuilder();
     bool generateFromQml(const QString &code, const QString &url, Document *output);
 
     using QQmlJS::AST::Visitor::visit;
@@ -564,8 +569,8 @@ public:
     QStringView textRefAt(const QQmlJS::SourceLocation &first,
                          const QQmlJS::SourceLocation &last) const;
 
-    void setBindingValue(QV4::CompiledData::Binding *binding, QQmlJS::AST::Statement *statement,
-                         QQmlJS::AST::Node *parentNode);
+    virtual void setBindingValue(QV4::CompiledData::Binding *binding,
+                                 QQmlJS::AST::Statement *statement, QQmlJS::AST::Node *parentNode);
     void tryGeneratingTranslationBinding(QStringView base, QQmlJS::AST::ArgumentList *args, QV4::CompiledData::Binding *binding);
 
     void appendBinding(QQmlJS::AST::UiQualifiedId *name, QQmlJS::AST::Statement *value,
@@ -579,6 +584,9 @@ public:
                        int objectIndex, bool isListItem = false, bool isOnAssignment = false);
 
     bool appendAlias(QQmlJS::AST::UiPublicMember *node);
+
+    enum class IsQmlFunction { Yes, No };
+    virtual void registerFunctionExpr(QQmlJS::AST::FunctionExpression *fexp, IsQmlFunction);
 
     Object *bindingsTarget() const;
 
@@ -598,11 +606,10 @@ public:
     static bool isStatementNodeScript(QQmlJS::AST::Statement *statement);
     static bool isRedundantNullInitializerForPropertyDeclaration(Property *property, QQmlJS::AST::Statement *statement);
 
-    QString sanityCheckFunctionNames(Object *obj, const QSet<QString> &illegalNames, QQmlJS::SourceLocation *errorLocation);
+    QString sanityCheckFunctionNames(Object *obj, QQmlJS::SourceLocation *errorLocation);
 
     QList<QQmlJS::DiagnosticMessage> errors;
 
-    QSet<QString> illegalNames;
     QSet<QString> inlineComponentsNames;
 
     QList<const QV4::CompiledData::Import *> _imports;
@@ -632,7 +639,7 @@ private:
 
 struct Q_QML_COMPILER_EXPORT JSCodeGen : public QV4::Compiler::Codegen
 {
-    JSCodeGen(Document *document, const QSet<QString> &globalNames,
+    JSCodeGen(Document *document,
               QV4::Compiler::CodegenWarningInterface *iface =
                       QV4::Compiler::defaultCodegenWarningInterface(),
               bool storeSourceLocations = false);

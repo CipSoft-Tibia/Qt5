@@ -2,18 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import '../../../ui/components/report_view/report_view.js';
+import '../../../ui/legacy/components/data_grid/data_grid.js';
+
 import * as i18n from '../../../core/i18n/i18n.js';
 import type * as Platform from '../../../core/platform/platform.js';
 import * as SDK from '../../../core/sdk/sdk.js';
 import * as Buttons from '../../../ui/components/buttons/buttons.js';
 import * as ChromeLink from '../../../ui/components/chrome_link/chrome_link.js';
-import * as DataGrid from '../../../ui/components/data_grid/data_grid.js';
 import * as LegacyWrapper from '../../../ui/components/legacy_wrapper/legacy_wrapper.js';
-import * as ReportView from '../../../ui/components/report_view/report_view.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as Lit from '../../../ui/lit/lit.js';
 import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 
-import bounceTrackingMitigationsViewStyles from './bounceTrackingMitigationsView.css.js';
+import bounceTrackingMitigationsViewStylesRaw from './bounceTrackingMitigationsView.css.js';
+
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const bounceTrackingMitigationsViewStyles = new CSSStyleSheet();
+bounceTrackingMitigationsViewStyles.replaceSync(bounceTrackingMitigationsViewStylesRaw.cssContent);
+
+const {html} = Lit;
 
 const UIStrings = {
   /**
@@ -73,7 +80,6 @@ export interface BounceTrackingMitigationsViewData {
 }
 
 export class BounceTrackingMitigationsView extends LegacyWrapper.LegacyWrapper.WrappableComponent {
-  static readonly litTagName = LitHtml.literal`devtools-bounce-tracking-mitigations-view`;
   readonly #shadow = this.attachShadow({mode: 'open'});
   #trackingSites: string[] = [];
   #screenStatus = ScreenStatusType.RESULT;
@@ -87,18 +93,16 @@ export class BounceTrackingMitigationsView extends LegacyWrapper.LegacyWrapper.W
 
   async #render(): Promise<void> {
     // clang-format off
-    LitHtml.render(LitHtml.html`
-      <${ReportView.ReportView.Report.litTagName} .data=${
-          {reportTitle: i18nString(UIStrings.bounceTrackingMitigationsTitle)} as ReportView.ReportView.ReportData
-      }
-      jslog=${VisualLogging.pane('bounce-tracking-mitigations')}>
+    Lit.render(html`
+      <devtools-report .data=${{reportTitle: i18nString(UIStrings.bounceTrackingMitigationsTitle)}}
+                       jslog=${VisualLogging.pane('bounce-tracking-mitigations')}>
         ${await this.#renderMainFrameInformation()}
-      </${ReportView.ReportView.Report.litTagName}>
+      </devtools-report>
     `, this.#shadow, {host: this});
     // clang-format on
   }
 
-  async #renderMainFrameInformation(): Promise<LitHtml.TemplateResult> {
+  async #renderMainFrameInformation(): Promise<Lit.TemplateResult> {
     if (!this.#checkedFeature) {
       await this.#checkFeatureState();
     }
@@ -109,98 +113,88 @@ export class BounceTrackingMitigationsView extends LegacyWrapper.LegacyWrapper.W
       mitigationsFlagLink.textContent = i18nString(UIStrings.featureFlag);
 
       // clang-format off
-      return LitHtml.html`
-        <${ReportView.ReportView.ReportSection.litTagName}>
+      return html`
+        <devtools-report-section>
           ${i18n.i18n.getFormatLocalizedString(
               str_, UIStrings.featureDisabled,
               {PH1: mitigationsFlagLink})}
-        </${ReportView.ReportView.ReportSection.litTagName}>
+        </devtools-report-section>
       `;
       // clang-format on
     }
 
     // clang-format off
-    return LitHtml.html`
-      <${ReportView.ReportView.ReportSection.litTagName}>
+    return html`
+      <devtools-report-section>
         ${this.#renderForceRunButton()}
-      </${ReportView.ReportView.ReportSection.litTagName}>
-        ${this.#renderDeletedSitesOrNoSitesMessage()}
-      <${ReportView.ReportView.ReportSectionDivider.litTagName}>
-      </${ReportView.ReportView.ReportSectionDivider.litTagName}>
-      <${ReportView.ReportView.ReportSection.litTagName}>
+      </devtools-report-section>
+      ${this.#renderDeletedSitesOrNoSitesMessage()}
+      <devtools-report-divider>
+      </devtools-report-divider>
+      <devtools-report-section>
         <x-link href="https://privacycg.github.io/nav-tracking-mitigations/#bounce-tracking-mitigations" class="link"
         jslog=${VisualLogging.link('learn-more').track({click: true})}>
           ${i18nString(UIStrings.learnMore)}
         </x-link>
-      </${ReportView.ReportView.ReportSection.litTagName}>
+      </devtools-report-section>
     `;
     // clang-format on
   }
 
-  #renderForceRunButton(): LitHtml.TemplateResult {
+  #renderForceRunButton(): Lit.TemplateResult {
     const isMitigationRunning = (this.#screenStatus === ScreenStatusType.RUNNING);
 
     // clang-format off
-    return LitHtml.html`
-      <${Buttons.Button.Button.litTagName}
+    return html`
+      <devtools-button
         aria-label=${i18nString(UIStrings.forceRun)}
         .disabled=${isMitigationRunning}
         .spinner=${isMitigationRunning}
         .variant=${Buttons.Button.Variant.PRIMARY}
         @click=${this.#runMitigations}
         jslog=${VisualLogging.action('force-run').track({click: true})}>
-        ${isMitigationRunning ? LitHtml.html`
+        ${isMitigationRunning ? html`
           ${i18nString(UIStrings.runningMitigations)}`:`
           ${i18nString(UIStrings.forceRun)}
         `}
-      </${Buttons.Button.Button.litTagName}>
+      </devtools-button>
     `;
     // clang-format on
   }
 
-  #renderDeletedSitesOrNoSitesMessage(): LitHtml.TemplateResult {
+  #renderDeletedSitesOrNoSitesMessage(): Lit.TemplateResult {
     if (!this.#seenButtonClick) {
-      return LitHtml.html``;
+      return html``;
     }
 
     if (this.#trackingSites.length === 0) {
       // clang-format off
-      return LitHtml.html`
-        <${ReportView.ReportView.ReportSection.litTagName}>
-        ${(this.#screenStatus === ScreenStatusType.RUNNING) ? LitHtml.html`
+      return html`
+        <devtools-report-section>
+        ${(this.#screenStatus === ScreenStatusType.RUNNING) ? html`
           ${i18nString(UIStrings.checkingPotentialTrackers)}`:`
           ${i18nString(UIStrings.noPotentialBounceTrackersIdentified)}
         `}
-        </${ReportView.ReportView.ReportSection.litTagName}>
+        </devtools-report-section>
       `;
       // clang-format on
     }
 
-    const gridData: DataGrid.DataGridController.DataGridControllerData = {
-      columns: [
-        {
-          id: 'sites',
-          title: i18nString(UIStrings.stateDeletedFor),
-          widthWeighting: 10,
-          hideable: false,
-          visible: true,
-          sortable: true,
-        },
-      ],
-      rows: this.#buildRowsFromDeletedSites(),
-      initialSort: {
-        columnId: 'sites',
-        direction: DataGrid.DataGridUtils.SortDirection.ASC,
-      },
-    };
-
     // clang-format off
-    return LitHtml.html`
-      <${ReportView.ReportView.ReportSection.litTagName}>
-        <${DataGrid.DataGridController.DataGridController.litTagName} .data=${
-            gridData as DataGrid.DataGridController.DataGridControllerData}>
-        </${DataGrid.DataGridController.DataGridController.litTagName}>
-      </${ReportView.ReportView.ReportSection.litTagName}>
+    return html`
+      <devtools-report-section>
+        <devtools-data-grid striped inline>
+          <table>
+            <tr>
+              <th id="sites" weight="10" sortable>
+                ${i18nString(UIStrings.stateDeletedFor)}
+              </th>
+            </tr>
+            ${this.#trackingSites.map(site => html`
+              <tr><td>${site}</td></tr>`)}
+          </table>
+        </devtools-data-grid>
+      </devtools-report-section>
     `;
     // clang-format on
   }
@@ -228,15 +222,6 @@ export class BounceTrackingMitigationsView extends LegacyWrapper.LegacyWrapper.W
   #renderMitigationsResult(): void {
     this.#screenStatus = ScreenStatusType.RESULT;
     void this.#render();
-  }
-
-  #buildRowsFromDeletedSites(): DataGrid.DataGridUtils.Row[] {
-    const trackingSites = this.#trackingSites;
-    return trackingSites.map(site => ({
-                               cells: [
-                                 {columnId: 'sites', value: site},
-                               ],
-                             }));
   }
 
   async #checkFeatureState(): Promise<void> {

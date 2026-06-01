@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
+// Qt-Security score:significant reason:default
 
 #ifndef QMACSTYLE_MAC_P_P_H
 #define QMACSTYLE_MAC_P_P_H
@@ -237,6 +237,7 @@ public:
     void drawNSViewInRect(NSView *view, const QRectF &rect, QPainter *p, __attribute__((noescape)) DrawRectBlock drawRectBlock = nil) const;
     void resolveCurrentNSView(QWindow *window) const;
 
+    void drawProgressBar(QPainter *p, const QStyleOptionProgressBar *pb) const;
     void drawFocusRing(QPainter *p, const QRectF &targetRect, int hMargin, int vMargin, const CocoaControl &cw) const;
 
     void drawToolbarButtonArrow(const QStyleOption *opt, QPainter *p) const;

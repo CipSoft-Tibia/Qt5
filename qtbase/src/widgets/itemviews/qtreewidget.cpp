@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtreewidget.h"
 
@@ -735,6 +736,15 @@ bool QTreeModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
 Qt::DropActions QTreeModel::supportedDropActions() const
 {
     return view()->supportedDropActions();
+}
+
+Qt::DropActions QTreeModel::supportedDragActions() const
+{
+#if QT_CONFIG(draganddrop)
+    return view()->supportedDragActions();
+#else
+    return Qt::DropActions(Qt::IgnoreAction);
+#endif
 }
 
 void QTreeModel::itemChanged(QTreeWidgetItem *item)
@@ -2391,7 +2401,7 @@ void QTreeWidgetPrivate::dataChanged(const QModelIndex &topLeft,
   \ingroup model-view
   \inmodule QtWidgets
 
-  \image fusion-treeview.png
+  \image fusion-treeview.png {Directory displaying its contents as a tree}
 
   The QTreeWidget class is a convenience class that provides a standard
   tree widget with a classic item-based interface similar to that used by
@@ -3193,7 +3203,7 @@ QMimeData *QTreeWidget::mimeData(const QList<QTreeWidgetItem *> &items) const
     successfully handled by decoding the mime data and inserting it
     into the model; otherwise it returns \c false.
 
-    \sa supportedDropActions()
+    \sa supportedDropActions(), supportedDragActions
 */
 bool QTreeWidget::dropMimeData(QTreeWidgetItem *parent, int index,
                                const QMimeData *data, Qt::DropAction action)
@@ -3206,12 +3216,33 @@ bool QTreeWidget::dropMimeData(QTreeWidgetItem *parent, int index,
 /*!
   Returns the drop actions supported by this view.
 
-  \sa Qt::DropActions
+  \sa Qt::DropActions, supportedDragActions, dropMimeData()
 */
 Qt::DropActions QTreeWidget::supportedDropActions() const
 {
     return model()->QAbstractItemModel::supportedDropActions() | Qt::MoveAction;
 }
+
+#if QT_CONFIG(draganddrop)
+/*!
+    \property QTreeWidget::supportedDragActions
+    \brief the drag actions supported by this view
+
+    \since 6.10
+    \sa Qt::DropActions, supportedDropActions()
+*/
+Qt::DropActions QTreeWidget::supportedDragActions() const
+{
+    Q_D(const QTreeWidget);
+    return d->supportedDragActions.value_or(supportedDropActions());
+}
+
+void QTreeWidget::setSupportedDragActions(Qt::DropActions actions)
+{
+    Q_D(QTreeWidget);
+    d->supportedDragActions = actions;
+}
+#endif // QT_CONFIG(draganddrop)
 
 /*!
     Returns the QModelIndex associated with the given \a item in the given \a column.

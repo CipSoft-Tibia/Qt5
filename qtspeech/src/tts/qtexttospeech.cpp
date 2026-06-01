@@ -264,7 +264,6 @@ void QTextToSpeechPrivate::disconnectSynthesizeFunctor()
     \dots
     \codeline
     \snippet quickspeech/Main.qml say0
-    \snippet quickspeech/Main.qml say1
     \snippet quickspeech/Main.qml pause
     \snippet quickspeech/Main.qml resume
     \dots
@@ -742,7 +741,6 @@ QString QTextToSpeech::errorString() const
     default audio output device.
 
     \snippet quickspeech/Main.qml say0
-    \snippet quickspeech/Main.qml say1
 
     \note All in-progress readings are stopped before beginning to read the recently
     synthesized text.
@@ -1204,7 +1202,7 @@ QLocale QTextToSpeech::locale() const
 }
 
 /*!
-    \qmlmethod list<Voice> TextToSpeech::availableLocales()
+    \qmlmethod list<voice> TextToSpeech::availableLocales()
 
     Holds the list of locales that are supported by the active \l engine.
 */
@@ -1223,7 +1221,7 @@ QList<QLocale> QTextToSpeech::availableLocales() const
 }
 
 /*!
-    \qmlproperty Voice TextToSpeech::voice
+    \qmlproperty voice TextToSpeech::voice
 
     \brief This property holds the voice that will be used for the speech.
 
@@ -1274,7 +1272,7 @@ QVoice QTextToSpeech::voice() const
 }
 
 /*!
-    \qmlmethod list<Voice> TextToSpeech::availableVoices()
+    \qmlmethod list<voice> TextToSpeech::availableVoices()
 
     Holds the list of voices available for the current \l locale.
 */

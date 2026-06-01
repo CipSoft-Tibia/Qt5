@@ -41,6 +41,7 @@ using CreateSurfaceLayerBridgeCB =
         WebSurfaceLayerBridgeObserver*,
         cc::UpdateSubmissionStateCB)>;
 
+class MediaPlayerClient;
 class MediaStreamAudioRenderer;
 class MediaStreamInternalFrameWrapper;
 class MediaStreamRendererFactory;
@@ -49,10 +50,10 @@ template <typename TimerFiredClass>
 class TaskRunnerTimer;
 class TimerBase;
 class WebLocalFrame;
-class WebMediaPlayerClient;
 class WebMediaPlayerMSCompositor;
 class WebString;
 class WebVideoFrameSubmitter;
+class WebMediaPlayerClient;
 
 // WebMediaPlayerMS delegates calls from WebCore::MediaPlayerPrivate to
 // Chrome's media player when "src" is from media stream.
@@ -65,7 +66,7 @@ class WebVideoFrameSubmitter;
 // MediaStreamVideoRenderer
 //   provides video frames for rendering.
 //
-// WebMediaPlayerClient
+// MediaPlayerClient
 //   WebKit client of this media player object.
 class BLINK_MODULES_EXPORT WebMediaPlayerMS
     : public WebMediaStreamObserver,
@@ -201,7 +202,7 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   void TrackAdded(const WebString& track_id) override;
   void TrackRemoved(const WebString& track_id) override;
   void ActiveStateChanged(bool is_active) override;
-  int GetDelegateId() override;
+  int GetPlayerId() override { return player_id_; }
   std::optional<viz::SurfaceId> GetSurfaceId() override;
 
   base::WeakPtr<WebMediaPlayer> AsWeakPtr() override;
@@ -238,7 +239,7 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   void SetReadyState(WebMediaPlayer::ReadyState state);
 
   // Getter method to |client_|.
-  WebMediaPlayerClient* get_client() { return client_; }
+  MediaPlayerClient* get_client() { return client_; }
 
   // To be run when tracks are added or removed.
   void Reload();
@@ -275,7 +276,7 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
 
   const WebTimeRanges buffered_;
 
-  const raw_ptr<WebMediaPlayerClient> client_;
+  const raw_ptr<MediaPlayerClient> client_;
 
   // WebMediaPlayer notifies the |delegate_| of playback state changes using
   // |delegate_id_|; an id provided after registering with the delegate.  The
@@ -292,7 +293,9 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   raw_ptr<WebMediaPlayerDelegate> delegate_;
   int delegate_id_;
 
-  // Inner class used for transfering frames on compositor thread to
+  const int player_id_;
+
+  // Inner class used for transferring frames on compositor thread to
   // |compositor_|.
   class FrameDeliverer;
   std::unique_ptr<FrameDeliverer> frame_deliverer_;

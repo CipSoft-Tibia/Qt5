@@ -89,7 +89,6 @@
 #pragma GCC diagnostic error   "-Wstring-conversion"
 #pragma GCC diagnostic error   "-Wswitch-enum"
 #pragma GCC diagnostic error   "-Wtautological-overlap-compare"
-#pragma GCC diagnostic error   "-Wuninitialized"
 #pragma GCC diagnostic error   "-Wunneeded-internal-declaration"
 #pragma GCC diagnostic error   "-Wunused"
 #pragma GCC diagnostic error   "-Wunused-local-typedefs"
@@ -110,11 +109,21 @@
 #pragma GCC diagnostic warning "-Wformat-signedness"
 #pragma GCC diagnostic warning "-Wignored-pragma-optimize"
 #pragma GCC diagnostic warning "-Wlogical-op"
-#pragma GCC diagnostic warning "-Wmaybe-uninitialized"
 #pragma GCC diagnostic warning "-Wmissing-format-attribute"
+#pragma GCC diagnostic warning "-Wpessimizing-move"
 #pragma GCC diagnostic warning "-Wundef"
 #pragma GCC diagnostic warning "-Wunsafe-loop-optimizations"
 #pragma GCC diagnostic warning "-Wunused-but-set-variable"
+#ifdef __clang__
+// The following are too buggy on gcc
+// https://github.com/harfbuzz/harfbuzz/issues/5589
+// https://github.com/harfbuzz/harfbuzz/pull/5367
+#pragma GCC diagnostic warning "-Wmaybe-uninitialized"
+#pragma GCC diagnostic warning "-Wuninitialized"
+#else
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#pragma GCC diagnostic ignored "-Wuninitialized"
+#endif
 #endif
 
 /* Ignored currently, but should be fixed at some point. */
@@ -517,7 +526,7 @@ static_assert ((sizeof (hb_var_int_t) == 4), "");
 
 /* Pie time. */
 // https://github.com/harfbuzz/harfbuzz/issues/4166
-#define HB_PI 3.14159265358979f
+#define HB_PI 3.14159265358979323846f
 #define HB_2_PI (2.f * HB_PI)
 
 /* Compile-time custom allocator support. */

@@ -13,4 +13,6 @@ QQmlFormatSettings::QQmlFormatSettings(const QString &toolName) : QQmlToolingSet
     addOption(s_newlineSetting, QStringLiteral("native"));
     addOption(s_objectsSpacingSetting, false);
     addOption(s_functionsSpacingSetting, false);
+    addOption(s_sortImportsSetting, false);
+    addOption(s_semiColonRuleSetting, QStringLiteral("always"));
 }

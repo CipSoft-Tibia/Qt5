@@ -20,15 +20,19 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "connections/implementation/mediums/webrtc/connection_flow.h"
+#include "connections/implementation/mediums/webrtc/session_description_wrapper.h"
 #include "connections/implementation/mediums/webrtc_peer_id.h"
 #include "connections/implementation/mediums/webrtc_socket.h"
 #include "internal/platform/byte_array.h"
 #include "internal/platform/cancelable_alarm.h"
 #include "internal/platform/cancellation_flag.h"
+#include "internal/platform/expected.h"
 #include "internal/platform/future.h"
 #include "internal/platform/mutex.h"
 #include "internal/platform/runnable.h"
@@ -70,7 +74,8 @@ class WebRtc {
   bool StartAcceptingConnections(
       const std::string& service_id, const WebrtcPeerId& self_peer_id,
       const location::nearby::connections::LocationHint& location_hint,
-      AcceptedConnectionCallback callback) ABSL_LOCKS_EXCLUDED(mutex_);
+      AcceptedConnectionCallback callback, bool non_cellular)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Try to stop (accepting) the specific connection with provided service id.
   // Runs on @MainThread
@@ -80,10 +85,13 @@ class WebRtc {
   // Initiates a WebRtc connection with peer device identified by |peer_id|
   // with internal retry for maximum attempts of kConnectAttemptsLimit.
   // Runs on @MainThread.
-  WebRtcSocketWrapper Connect(
+  ErrorOr<WebRtcSocketWrapper> Connect(
       const std::string& service_id, const WebrtcPeerId& peer_id,
       const location::nearby::connections::LocationHint& location_hint,
-      CancellationFlag* cancellation_flag) ABSL_LOCKS_EXCLUDED(mutex_);
+      CancellationFlag* cancellation_flag, bool non_cellular)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  bool IsUsingCellular() ABSL_LOCKS_EXCLUDED(mutex_);
 
  protected:
   // Use for unit tests only to inject a WebRtcMedium.
@@ -143,7 +151,7 @@ class WebRtc {
   // Attempt to initiates a WebRtc connection with peer device identified by
   // |peer_id|.
   // Runs on @MainThread.
-  WebRtcSocketWrapper AttemptToConnect(
+  ErrorOr<WebRtcSocketWrapper> AttemptToConnect(
       const std::string& service_id, const WebrtcPeerId& peer_id,
       const location::nearby::connections::LocationHint& location_hint,
       CancellationFlag* cancellation_flag) ABSL_LOCKS_EXCLUDED(mutex_);
@@ -227,6 +235,10 @@ class WebRtc {
   void RestartTachyonReceiveMessages(const std::string& service_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  // Runs on |single_thread_executor_|.
+  void AdapterTypeChangedHandler(rtc::AdapterType adapter_type)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   void OffloadFromThread(const std::string& name, Runnable runnable);
 
   Mutex mutex_;
@@ -251,6 +263,8 @@ class WebRtc {
   // a unique ConnectionFlow.
   absl::flat_hash_map<std::string, std::unique_ptr<ConnectionFlow>>
       connection_flows_ ABSL_GUARDED_BY(mutex_);
+
+  bool is_using_cellular_ ABSL_GUARDED_BY(mutex_) = true;
 };
 
 }  // namespace mediums

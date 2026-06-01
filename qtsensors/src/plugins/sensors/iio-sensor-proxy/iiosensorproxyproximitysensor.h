@@ -9,7 +9,11 @@
 
 #include <qproximitysensor.h>
 
+namespace QtSensorsPrivate {
+
 class NetHadessSensorProxyInterface;
+
+} // namespace QtSensorsPrivate
 
 class IIOSensorProxyProximitySensor : public IIOSensorProxySensorBase
 {
@@ -30,7 +34,7 @@ private:
     void updateProximityNear(bool proximityNear);
 
     QProximityReading m_reading;
-    NetHadessSensorProxyInterface *m_sensorProxyInterface;
+    QtSensorsPrivate::NetHadessSensorProxyInterface *m_sensorProxyInterface;
 };
 
 #endif // IIOSENSORPROXY_PROXIMITYSENSOR_H

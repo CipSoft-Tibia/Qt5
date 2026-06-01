@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef GLOBALINSPECTOR_H
 #define GLOBALINSPECTOR_H
@@ -47,7 +48,6 @@ private:
     bool destroyQmlObject(QObject *object, int requestId, int debugId);
     bool syncSelectedItems(const QList<QQuickItem *> &items);
 
-    // Hash< object to be destroyed, QPair<destroy eventId, object debugId> >
     QList<QQuickItem *> m_selectedItems;
     QHash<QQuickItem *, SelectionHighlight *> m_highlightItems;
     QList<QQuickWindowInspector *> m_windowInspectors;

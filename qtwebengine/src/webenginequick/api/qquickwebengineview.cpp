@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qquickwebengineaction_p.h"
 #include "qquickwebengineaction_p_p.h"
@@ -408,8 +409,6 @@ void QQuickWebEngineViewPrivate::contextMenuRequested(QWebEngineContextMenuReque
     m_contextMenuRequest = request;
 
     QQmlEngine *engine = qmlEngine(q);
-
-    // TODO: this is a workaround for QTBUG-65044
     if (!engine)
         return;
 
@@ -445,8 +444,14 @@ void QQuickWebEngineViewPrivate::contextMenuRequested(QWebEngineContextMenuReque
 void QQuickWebEngineViewPrivate::navigationRequested(int navigationType, const QUrl &url, bool &accepted, bool isMainFrame, bool hasFrameData)
 {
     Q_Q(QQuickWebEngineView);
+
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     auto request = new QWebEngineNavigationRequest(url, static_cast<QWebEngineNavigationRequest::NavigationType>(navigationType), isMainFrame, hasFrameData);
-    qmlEngine(q)->newQObject(request);
+
+    engine->newQObject(request);
     Q_EMIT q->navigationRequested(request);
 
     accepted = request->isAccepted();
@@ -457,9 +462,14 @@ void QQuickWebEngineViewPrivate::navigationRequested(int navigationType, const Q
 void QQuickWebEngineViewPrivate::javascriptDialog(QSharedPointer<JavaScriptDialogController> dialog)
 {
     Q_Q(QQuickWebEngineView);
+
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     QQuickWebEngineJavaScriptDialogRequest *request = new QQuickWebEngineJavaScriptDialogRequest(dialog);
     // mark the object for gc by creating temporary jsvalue
-    qmlEngine(q)->newQObject(request);
+    engine->newQObject(request);
     Q_EMIT q->javaScriptDialogRequested(request);
     if (!request->isAccepted())
         ui()->showDialog(dialog);
@@ -475,9 +485,14 @@ void QQuickWebEngineViewPrivate::selectClientCert(
         const QSharedPointer<QtWebEngineCore::ClientCertSelectController> &controller)
 {
     Q_Q(QQuickWebEngineView);
+
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     QQuickWebEngineClientCertificateSelection *certSelection = new QQuickWebEngineClientCertificateSelection(controller);
     // mark the object for gc by creating temporary jsvalue
-    qmlEngine(q)->newQObject(certSelection);
+    engine->newQObject(certSelection);
     Q_EMIT q->selectClientCertificate(certSelection);
 }
 
@@ -515,30 +530,43 @@ static QQuickWebEngineView::Feature toDeprecatedFeature(QWebEnginePermission::Pe
 QT_WARNING_POP
 #endif // QT_DEPRECATED_SINCE(6, 8)
 
-void QQuickWebEngineViewPrivate::runFeaturePermissionRequest(QWebEnginePermission::PermissionType permissionType, const QUrl &securityOrigin)
+void QQuickWebEngineViewPrivate::runFeaturePermissionRequest(
+        QWebEnginePermission::PermissionType permissionType,
+        const QUrl &securityOrigin,
+        int childId, const std::string &serializedToken)
 {
     Q_Q(QQuickWebEngineView);
 
-    if (QWebEnginePermission::isPersistent(permissionType)) {
-        Q_EMIT q->permissionRequested(createFeaturePermissionObject(securityOrigin, permissionType));
-#if QT_DEPRECATED_SINCE(6, 8)
-        QT_WARNING_PUSH
-        QT_WARNING_DISABLE_DEPRECATED
-        Q_EMIT q->featurePermissionRequested(securityOrigin, toDeprecatedFeature(permissionType));
-        QT_WARNING_POP
-#endif // QT_DEPRECATED_SINCE(6, 8)
+    if (permissionType == QWebEnginePermission::PermissionType::MouseLock) {
+        // Not supported in Qt Quick
+        auto permission = QWebEnginePermission(
+            new QWebEnginePermissionPrivate(securityOrigin, permissionType, profileAdapter(), childId, serializedToken));
+        permission.deny();
         return;
     }
 
-    Q_UNREACHABLE();
+    Q_EMIT q->permissionRequested(QWebEnginePermission(
+        new QWebEnginePermissionPrivate(securityOrigin, permissionType, profileAdapter(), childId, serializedToken)));
+#if QT_DEPRECATED_SINCE(6, 8)
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_DEPRECATED
+    Q_EMIT q->featurePermissionRequested(securityOrigin, toDeprecatedFeature(permissionType));
+    QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 8)
+    return;
 }
 
 void QQuickWebEngineViewPrivate::showColorDialog(QSharedPointer<ColorChooserController> controller)
 {
     Q_Q(QQuickWebEngineView);
+
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     QQuickWebEngineColorDialogRequest *request = new QQuickWebEngineColorDialogRequest(controller);
     // mark the object for gc by creating temporary jsvalue
-    qmlEngine(q)->newQObject(request);
+    engine->newQObject(request);
     Q_EMIT q->colorDialogRequested(request);
     if (!request->isAccepted())
         ui()->showColorDialog(controller);
@@ -547,9 +575,14 @@ void QQuickWebEngineViewPrivate::showColorDialog(QSharedPointer<ColorChooserCont
 void QQuickWebEngineViewPrivate::runFileChooser(QSharedPointer<FilePickerController> controller)
 {
     Q_Q(QQuickWebEngineView);
+
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     QQuickWebEngineFileDialogRequest *request = new QQuickWebEngineFileDialogRequest(controller);
     // mark the object for gc by creating temporary jsvalue
-    qmlEngine(q)->newQObject(request);
+    engine->newQObject(request);
     Q_EMIT q->fileDialogRequested(request);
     if (!request->isAccepted())
         ui()->showFilePicker(controller);
@@ -795,60 +828,17 @@ void QQuickWebEngineViewPrivate::javaScriptConsoleMessage(JavaScriptConsoleMessa
 void QQuickWebEngineViewPrivate::authenticationRequired(QSharedPointer<AuthenticationDialogController> controller)
 {
     Q_Q(QQuickWebEngineView);
+
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     QQuickWebEngineAuthenticationDialogRequest *request = new QQuickWebEngineAuthenticationDialogRequest(controller);
     // mark the object for gc by creating temporary jsvalue
-    qmlEngine(q)->newQObject(request);
+    engine->newQObject(request);
     Q_EMIT q->authenticationDialogRequested(request);
     if (!request->isAccepted())
         ui()->showDialog(controller);
-}
-
-void QQuickWebEngineViewPrivate::runMediaAccessPermissionRequest(const QUrl &securityOrigin, WebContentsAdapterClient::MediaRequestFlags requestFlags)
-{
-    Q_Q(QQuickWebEngineView);
-    if (!requestFlags)
-        return;
-    QWebEnginePermission::PermissionType permissionType;
-    if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture) && requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::MediaAudioVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture))
-        permissionType = QWebEnginePermission::PermissionType::MediaAudioCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::MediaVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopAudioCapture) &&
-             requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::DesktopAudioVideoCapture;
-    else // if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        permissionType = QWebEnginePermission::PermissionType::DesktopVideoCapture;
-    Q_EMIT q->permissionRequested(createFeaturePermissionObject(securityOrigin, permissionType));
-
-#if QT_DEPRECATED_SINCE(6, 8)
-    QT_WARNING_PUSH
-    QT_WARNING_DISABLE_DEPRECATED
-    QQuickWebEngineView::Feature deprecatedFeature;
-
-    if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture)
-            && requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        deprecatedFeature = QQuickWebEngineView::MediaAudioVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaAudioCapture))
-        deprecatedFeature = QQuickWebEngineView::MediaAudioCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaVideoCapture))
-        deprecatedFeature = QQuickWebEngineView::MediaVideoCapture;
-    else if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopAudioCapture)
-            && requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        deprecatedFeature = QQuickWebEngineView::DesktopAudioVideoCapture;
-    else // if (requestFlags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture))
-        deprecatedFeature = QQuickWebEngineView::DesktopVideoCapture;
-
-    Q_EMIT q->featurePermissionRequested(securityOrigin, deprecatedFeature);
-    QT_WARNING_POP
-#endif // QT_DEPRECATED_SINCE(6, 8)
-}
-
-void QQuickWebEngineViewPrivate::runMouseLockPermissionRequest(const QUrl &securityOrigin)
-{
-    // TODO: Add mouse lock support
-    adapter->grantMouseLockPermission(securityOrigin, false);
 }
 
 void QQuickWebEngineViewPrivate::runRegisterProtocolHandlerRequest(QWebEngineRegisterProtocolHandlerRequest request)
@@ -893,7 +883,7 @@ void QQuickWebEngineViewPrivate::printRequestedByFrame(quint64 frameId)
 {
     Q_Q(QQuickWebEngineView);
     QTimer::singleShot(0, q, [this, q, frameId]() {
-        Q_EMIT q->printRequestedByFrame(QWebEngineFrame(this->adapter, frameId));
+        Q_EMIT q->printRequestedByFrame(QQuickWebEngineFrame(this->adapter, frameId));
     });
 }
 
@@ -1427,9 +1417,14 @@ bool QQuickWebEngineViewPrivate::isEnabled() const
 void QQuickWebEngineViewPrivate::setToolTip(const QString &toolTipText)
 {
     Q_Q(QQuickWebEngineView);
+
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     QQuickWebEngineTooltipRequest *request = new QQuickWebEngineTooltipRequest(toolTipText, q);
     // mark the object for gc by creating temporary jsvalue
-    qmlEngine(q)->newQObject(request);
+    engine->newQObject(request);
     Q_EMIT q->tooltipRequested(request);
     if (!request->isAccepted())
         ui()->showToolTip(toolTipText);
@@ -1474,13 +1469,17 @@ void QQuickWebEngineViewPrivate::showTouchSelectionMenu(QtWebEngineCore::TouchSe
     Q_UNUSED(handleSize);
     Q_Q(QQuickWebEngineView);
 
+    QQmlEngine *engine = qmlEngine(q);
+    if (!engine)
+        return;
+
     const int kSpacingBetweenButtons = 2;
     const int kMenuButtonMinWidth = 63;
     const int kMenuButtonMinHeight = 38;
 
     QQuickWebEngineTouchSelectionMenuRequest *request = new QQuickWebEngineTouchSelectionMenuRequest(
                 selectionBounds, menuController);
-    qmlEngine(q)->newQObject(request);
+    engine->newQObject(request);
     Q_EMIT q->touchSelectionMenuRequested(request);
 
     if (request->isAccepted()) {
@@ -1511,12 +1510,6 @@ void QQuickWebEngineViewPrivate::showWebAuthDialog(QWebEngineWebAuthUxRequest *r
 {
     Q_Q(QQuickWebEngineView);
     Q_EMIT q->webAuthUxRequested(request);
-}
-
-QWebEnginePermission QQuickWebEngineViewPrivate::createFeaturePermissionObject(const QUrl &securityOrigin, QWebEnginePermission::PermissionType permissionType)
-{
-    auto *returnPrivate = new QWebEnginePermissionPrivate(securityOrigin, permissionType, adapter, profileAdapter());
-    return QWebEnginePermission(returnPrivate);
 }
 
 bool QQuickWebEngineView::isLoading() const
@@ -1892,19 +1885,47 @@ void QQuickWebEngineView::geometryChange(const QRectF &newGeometry, const QRectF
 {
     QQuickItem::geometryChange(newGeometry, oldGeometry);
     Q_D(QQuickWebEngineView);
-    if (d->delegateItem)
+    if (d->delegateItem) {
         d->delegateItem->setSize(newGeometry.size());
+        // this handles notifications of local offset changes
+        d->delegateItem->polish();
+    }
 }
 
 void QQuickWebEngineView::itemChange(ItemChange change, const ItemChangeData &value)
 {
-    Q_D(QQuickWebEngineView);
-    if (d && d->profileInitialized() && d->adapter->isInitialized()
+    QQuickItem::itemChange(change, value);
+    if (!d_ptr) // see releaseProfile()
+        return;
+    if (d_ptr->profileInitialized() && d_ptr->adapter->isInitialized()
             && (change == ItemSceneChange || change == ItemVisibleHasChanged)) {
         if (window())
-            d->adapter->setVisible(isVisible());
+            d_ptr->adapter->setVisible(isVisible());
     }
-    QQuickItem::itemChange(change, value);
+    if (change == ItemParentHasChanged) {
+        // track global offset changes
+        QQuickItem *item = value.item;
+        // detach
+        while (item) {
+            disconnect(item, nullptr, this, nullptr);
+            item = item->parentItem();
+        }
+        // attach
+        item = parentItem();
+        while (item) {
+            connect(item, &QQuickItem::xChanged, this, [this]() {
+                if (d_ptr && d_ptr->delegateItem)
+                    d_ptr->delegateItem->polish();
+            });
+            connect(item, &QQuickItem::yChanged, this, [this]() {
+                if (d_ptr && d_ptr->delegateItem)
+                    d_ptr->delegateItem->polish();
+            });
+            item = item->parentItem();
+        }
+        if (d_ptr->delegateItem)
+            d_ptr->delegateItem->polish();
+    }
 }
 
 void QQuickWebEngineView::acceptAsNewWindow(QWebEngineNewWindowRequest *request)
@@ -2589,17 +2610,17 @@ QQmlComponent *QQuickWebEngineView::touchHandleDelegate() const
     return d_ptr->m_touchHandleDelegate;
 }
 
-QWebEngineFrame QQuickWebEngineView::mainFrame()
+QQuickWebEngineFrame QQuickWebEngineView::mainFrame()
 {
     Q_D(QQuickWebEngineView);
-    return QWebEngineFrame(d->adapter, d->adapter->mainFrameId());
+    return QQuickWebEngineFrame(d->adapter, d->adapter->mainFrameId());
 }
 
-QWebEngineFrame QQuickWebEngineView::findFrameByName(const QString &name)
+QQuickWebEngineFrame QQuickWebEngineView::findFrameByName(const QString &name)
 {
     Q_D(QQuickWebEngineView);
     auto maybeId = d->adapter->findFrameIdByName(name);
-    return QWebEngineFrame(d->adapter, maybeId.value_or(WebContentsAdapter::kInvalidFrameId));
+    return QQuickWebEngineFrame(d->adapter, maybeId.value_or(WebContentsAdapter::kInvalidFrameId));
 }
 
 void QQuickWebEngineView::save(const QString &filePath,

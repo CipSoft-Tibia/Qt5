@@ -30,7 +30,6 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.ApiCompatibilityUtils;
 import org.chromium.base.Callback;
 import org.chromium.base.FakeTimeTestRule;
-import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.BaseActivityTestRule;
 import org.chromium.base.test.BaseJUnit4ClassRunner;
 import org.chromium.base.test.util.Batch;
@@ -56,7 +55,7 @@ public class SingleActionMessageTest {
 
     private static Activity sActivity;
 
-    private class MockDurationProvider implements MessageAutodismissDurationProvider {
+    private static class MockDurationProvider implements MessageAutodismissDurationProvider {
         private long mDuration;
 
         public MockDurationProvider(long duration) {
@@ -82,11 +81,7 @@ public class SingleActionMessageTest {
 
     @BeforeClass
     public static void setupSuite() {
-        sActivityTestRule.launchActivity(null);
-        ThreadUtils.runOnUiThreadBlocking(
-                () -> {
-                    sActivity = sActivityTestRule.getActivity();
-                });
+        sActivity = sActivityTestRule.launchActivity(null);
     }
 
     @Before
@@ -344,57 +339,6 @@ public class SingleActionMessageTest {
         sam2.show(Position.BACK, Position.FRONT);
         verify(callback2).onResult(true);
         fullyVisible.assertExpected("Messages should have been fully visible before");
-    }
-
-    @Test
-    @MediumTest
-    public void testOnFullyVisibleNotCalled() {
-        MessageContainer container = new MessageContainer(sActivity, null);
-        PropertyModel m1 = createBasicSingleActionMessageModel(MessageIdentifier.SYNC_ERROR);
-        m1.set(MessageBannerProperties.ON_FULLY_VISIBLE, (unused) -> {});
-
-        final var fullyVisible =
-                HistogramWatcher.newBuilder()
-                        .expectIntRecords(
-                                "Android.Messages.FullyVisible", MessageIdentifier.SYNC_ERROR)
-                        .build();
-
-        final var dismissal =
-                HistogramWatcher.newBuilder()
-                        .expectIntRecord("Android.Messages.TimeToFullyShow.SyncError", 1000)
-                        .expectIntRecord(
-                                "Android.Messages.Error.FullyVisibleNotInformed",
-                                MessageIdentifier.SYNC_ERROR)
-                        .build();
-
-        final MessageBannerView view1 = createMessageBannerView(container);
-        var sam1 =
-                new SingleActionMessage(
-                        container,
-                        m1,
-                        mEmptyDismissCallback,
-                        () -> 0,
-                        () -> 0,
-                        new MockDurationProvider(0L),
-                        mSwipeAnimationHandler) {
-                    @Override
-                    void notifyVisibilityChange(boolean fullyVisible) {
-                        // Do nothing
-                    }
-                };
-        view1.setId(R.id.message_banner);
-        PropertyModelChangeProcessor.create(m1, view1, MessageBannerViewBinder::bind);
-        sam1.setMessageBannerForTesting(mMessageBanner);
-        sam1.setViewForTesting(view1);
-
-        mFakeTime.advanceMillis(1000);
-        sam1.show(Position.INVISIBLE, Position.FRONT);
-
-        mFakeTime.advanceMillis(500);
-        sam1.dismiss(DismissReason.GESTURE);
-
-        fullyVisible.assertExpected("Messages should have been fully visible before");
-        dismissal.assertExpected("Incorrect histograms on dismiss");
     }
 
     private void executeAndVerifyRepeatedButtonClicks(

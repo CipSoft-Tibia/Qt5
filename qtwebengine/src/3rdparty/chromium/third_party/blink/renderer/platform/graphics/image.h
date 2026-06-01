@@ -117,7 +117,7 @@ class PLATFORM_EXPORT Image : public ThreadSafeRefCounted<Image> {
   virtual bool CurrentFrameHasSingleSecurityOrigin() const { return false; }
 
   static Image* NullImage();
-  bool IsNull() const { return Size().IsEmpty(); }
+  bool IsNull() const { return this == NullImage(); }
 
   virtual bool HasIntrinsicSize() const { return true; }
 
@@ -277,8 +277,7 @@ class PLATFORM_EXPORT Image : public ThreadSafeRefCounted<Image> {
         return PaintImage::DecodingMode::kAsync;
     }
 
-    NOTREACHED_IN_MIGRATION();
-    return PaintImage::DecodingMode::kUnspecified;
+    NOTREACHED();
   }
 
   virtual PaintImage PaintImageForCurrentFrame() = 0;

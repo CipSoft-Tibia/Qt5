@@ -1,0 +1,86 @@
+From ee947c59a2f5ee0e72816fe559a9755c1587c520 Mon Sep 17 00:00:00 2001
+From: Tim Blechmann <tim@klingt.org>
+Date: Mon, 1 Sep 2025 13:37:01 +0800
+Subject: [PATCH] glslang: fix missing namespacing
+
+* functions declared inside an extern "C" block are not name mangled,
+  even if they are in namespaces. We close the extern "C" block before
+  opening the namespace
+* the resource limit files were not namespaced inside a QtShaderTools
+  block, resulting in their symbols being exported.
+
+---
+ src/3rdparty/glslang/glslang/Public/ResourceLimits.h      | 4 ++++
+ src/3rdparty/glslang/glslang/Public/ShaderLang.h          | 8 ++++++++
+ .../glslang/glslang/ResourceLimits/ResourceLimits.cpp     | 5 +++++
+ 3 files changed, 17 insertions(+)
+
+diff --git a/src/3rdparty/glslang/glslang/Public/ResourceLimits.h b/src/3rdparty/glslang/glslang/Public/ResourceLimits.h
+index 8245e12..3dba0cb 100644
+--- a/src/3rdparty/glslang/glslang/Public/ResourceLimits.h
++++ b/src/3rdparty/glslang/glslang/Public/ResourceLimits.h
+@@ -40,6 +40,8 @@
+ #include "../Include/ResourceLimits.h"
+ #include "../Include/visibility.h"
+ 
++namespace QtShaderTools {
++
+ // Return pointer to user-writable Resource to pass through API in
+ // future-proof way.
+ GLSLANG_EXPORT extern TBuiltInResource* GetResources();
+@@ -55,4 +57,6 @@ GLSLANG_EXPORT std::string GetDefaultTBuiltInResourceString();
+ // Decodes the resource limits from |config| to |resources|.
+ GLSLANG_EXPORT void DecodeResourceLimits(TBuiltInResource* resources, char* config);
+ 
++}
++
+ #endif  // _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Public/ShaderLang.h b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+index 03b9b66..81aa7c7 100755
+--- a/src/3rdparty/glslang/glslang/Public/ShaderLang.h
++++ b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+@@ -126,6 +126,10 @@ typedef enum : unsigned {
+     LAST_ELEMENT_MARKER(EShLanguageMaskCount),
+ } EShLanguageMask;
+ 
++#ifdef __cplusplus
++    }
++#endif
++
+ namespace QtShaderTools {
+ namespace glslang {
+ 
+@@ -223,6 +227,10 @@ GLSLANG_EXPORT const char* StageName(EShLanguage);
+ } // end namespace glslang
+ } // namespace QtShaderTools
+ 
++#ifdef __cplusplus
++    extern "C" {
++#endif
++
+ //
+ // Types of output the linker will create.
+ //
+diff --git a/src/3rdparty/glslang/glslang/ResourceLimits/ResourceLimits.cpp b/src/3rdparty/glslang/glslang/ResourceLimits/ResourceLimits.cpp
+index 0e9d1b5..d9afaa9 100644
+--- a/src/3rdparty/glslang/glslang/ResourceLimits/ResourceLimits.cpp
++++ b/src/3rdparty/glslang/glslang/ResourceLimits/ResourceLimits.cpp
+@@ -39,6 +39,8 @@
+ 
+ #include "glslang/Public/ResourceLimits.h"
+ 
++namespace QtShaderTools {
++
+ TBuiltInResource Resources;
+ 
+ const TBuiltInResource DefaultTBuiltInResource = {
+@@ -540,3 +542,6 @@ const TBuiltInResource* GetDefaultResources()
+ {
+     return &DefaultTBuiltInResource;
+ }
++
++} // namespace QtShaderTools
++
+-- 
+2.51.0
+

@@ -4,6 +4,7 @@
 
 #include "components/safe_browsing/core/browser/db/v4_local_database_manager.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -23,13 +24,13 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/not_fatal_until.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
+#include "components/safe_browsing/core/browser/db/database_manager.h"
 #include "components/safe_browsing/core/browser/db/v4_protocol_manager_util.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/safebrowsing_switches.h"
@@ -55,11 +56,6 @@ const int64_t kBytesPerFullHashEntry = 32;
 // The minimum number of entries in the allowlist. If the actual size is
 // smaller than this number, the allowlist is considered as unavailable.
 const int kHighConfidenceAllowlistMinimumEntryCount = 100;
-
-// If the switch is present, any high-confidence allowlist check will return
-// that it does not match the allowlist.
-const char kSkipHighConfidenceAllowlist[] =
-    "safe-browsing-skip-high-confidence-allowlist";
 
 const ThreatSeverity kLeastSeverity =
     std::numeric_limits<ThreatSeverity>::max();
@@ -130,11 +126,12 @@ ListInfos GetListInfos() {
 base::span<const CommandLineSwitchAndThreatType> GetSwitchAndThreatTypes() {
   static constexpr CommandLineSwitchAndThreatType
       kCommandLineSwitchAndThreatType[] = {
-          {"mark_as_allowlisted_for_phish_guard", CSD_ALLOWLIST},
-          {"mark_as_allowlisted_for_real_time", HIGH_CONFIDENCE_ALLOWLIST},
+          {switches::kMarkAsPasswordProtectionAllowlisted, CSD_ALLOWLIST},
+          {switches::kMarkAsHighConfidenceAllowlisted,
+           HIGH_CONFIDENCE_ALLOWLIST},
           {switches::kMarkAsPhishing, SOCIAL_ENGINEERING},
-          {"mark_as_malware", MALWARE_THREAT},
-          {"mark_as_uws", UNWANTED_SOFTWARE}};
+          {switches::kMarkAsMalware, MALWARE_THREAT},
+          {switches::kMarkAsUws, UNWANTED_SOFTWARE}};
   return kCommandLineSwitchAndThreatType;
 }
 
@@ -163,9 +160,8 @@ ThreatSeverity GetThreatSeverity(const ListIdentifier& list_id) {
     case POTENTIALLY_HARMFUL_APPLICATION:
     case SOCIAL_ENGINEERING_PUBLIC:
     case THREAT_TYPE_UNSPECIFIED:
-      NOTREACHED_IN_MIGRATION()
-          << "Unexpected ThreatType encountered: " << list_id.threat_type();
-      return kLeastSeverity;
+      NOTREACHED() << "Unexpected ThreatType encountered: "
+                   << list_id.threat_type();
   }
 }
 
@@ -189,10 +185,28 @@ ListIdentifier GetUrlIdFromSBThreatType(SBThreatType sb_threat_type) {
     case SB_THREAT_TYPE_BILLING:
       return GetUrlBillingId();
 
-    default:
-      NOTREACHED_IN_MIGRATION();
-      // Compiler requires a return statement here.
-      return GetUrlMalwareId();
+    case SB_THREAT_TYPE_UNUSED:
+    case SB_THREAT_TYPE_SAFE:
+    case SB_THREAT_TYPE_URL_BINARY_MALWARE:
+    case SB_THREAT_TYPE_URL_CLIENT_SIDE_PHISHING:
+    case SB_THREAT_TYPE_EXTENSION:
+    case DEPRECATED_SB_THREAT_TYPE_URL_CLIENT_SIDE_MALWARE:
+    case SB_THREAT_TYPE_API_ABUSE:
+    case SB_THREAT_TYPE_SUBRESOURCE_FILTER:
+    case SB_THREAT_TYPE_CSD_ALLOWLIST:
+    case DEPRECATED_SB_THREAT_TYPE_URL_PASSWORD_PROTECTION_PHISHING:
+    case SB_THREAT_TYPE_SAVED_PASSWORD_REUSE:
+    case SB_THREAT_TYPE_SIGNED_IN_SYNC_PASSWORD_REUSE:
+    case SB_THREAT_TYPE_SIGNED_IN_NON_SYNC_PASSWORD_REUSE:
+    case SB_THREAT_TYPE_BLOCKED_AD_REDIRECT:
+    case SB_THREAT_TYPE_AD_SAMPLE:
+    case SB_THREAT_TYPE_BLOCKED_AD_POPUP:
+    case SB_THREAT_TYPE_ENTERPRISE_PASSWORD_REUSE:
+    case SB_THREAT_TYPE_APK_DOWNLOAD:
+    case SB_THREAT_TYPE_HIGH_CONFIDENCE_ALLOWLIST:
+    case SB_THREAT_TYPE_MANAGED_POLICY_WARN:
+    case SB_THREAT_TYPE_MANAGED_POLICY_BLOCK:
+      NOTREACHED();
   }
 }
 
@@ -222,6 +236,17 @@ void HandleUrlCallback(base::OnceCallback<void(bool)> callback,
   // This callback was already run asynchronously so no need for another
   // thread hop.
   std::move(callback).Run(allowed);
+}
+
+void OnCheckForUrlHighConfidenceAllowlistComplete(
+    SafeBrowsingDatabaseManager::CheckUrlForHighConfidenceAllowlistCallback
+        callback,
+    std::optional<
+        SafeBrowsingDatabaseManager::HighConfidenceAllowlistCheckLoggingDetails>
+        logging_details,
+    bool url_on_high_confidence_allowlist) {
+  std::move(callback).Run(url_on_high_confidence_allowlist,
+                          std::move(logging_details));
 }
 
 }  // namespace
@@ -275,11 +300,9 @@ scoped_refptr<V4LocalDatabaseManager> V4LocalDatabaseManager::Create(
     const base::FilePath& base_path,
     scoped_refptr<base::SequencedTaskRunner> ui_task_runner,
     scoped_refptr<base::SequencedTaskRunner> io_task_runner,
-    ExtendedReportingLevelCallback extended_reporting_level_callback,
-    RecordMigrationMetricsCallback record_migration_metrics_callback) {
+    ExtendedReportingLevelCallback extended_reporting_level_callback) {
   return base::WrapRefCounted(new V4LocalDatabaseManager(
-      base_path, extended_reporting_level_callback,
-      std::move(record_migration_metrics_callback), std::move(ui_task_runner),
+      base_path, extended_reporting_level_callback, std::move(ui_task_runner),
       std::move(io_task_runner), nullptr));
 }
 
@@ -303,15 +326,12 @@ void V4LocalDatabaseManager::CollectDatabaseManagerInfo(
 V4LocalDatabaseManager::V4LocalDatabaseManager(
     const base::FilePath& base_path,
     ExtendedReportingLevelCallback extended_reporting_level_callback,
-    RecordMigrationMetricsCallback record_migration_metrics_callback,
     scoped_refptr<base::SequencedTaskRunner> ui_task_runner,
     scoped_refptr<base::SequencedTaskRunner> io_task_runner,
     scoped_refptr<base::SequencedTaskRunner> task_runner_for_tests)
     : SafeBrowsingDatabaseManager(std::move(ui_task_runner)),
       base_path_(base_path),
       extended_reporting_level_callback_(extended_reporting_level_callback),
-      record_migration_metrics_callback_(
-          std::move(record_migration_metrics_callback)),
       list_infos_(GetListInfos()),
       task_runner_(task_runner_for_tests
                        ? task_runner_for_tests
@@ -345,14 +365,14 @@ void V4LocalDatabaseManager::CancelCheck(Client* client) {
   // being closed).
   DCHECK(enabled_ || is_shutdown_);
   auto pending_it =
-      base::ranges::find(pending_checks_, client, &PendingCheck::client);
+      std::ranges::find(pending_checks_, client, &PendingCheck::client);
   if (pending_it != pending_checks_.end()) {
     (*pending_it)->Abandon();
     RemovePendingCheck(pending_it);
   }
 
   auto queued_it =
-      base::ranges::find(queued_checks_, client, &PendingCheck::client);
+      std::ranges::find(queued_checks_, client, &PendingCheck::client);
   if (queued_it != queued_checks_.end()) {
     queued_checks_.erase(queued_it);
   }
@@ -429,17 +449,17 @@ bool V4LocalDatabaseManager::CheckExtensionIDs(
   return false;
 }
 
-std::optional<
-    SafeBrowsingDatabaseManager::HighConfidenceAllowlistCheckLoggingDetails>
-V4LocalDatabaseManager::CheckUrlForHighConfidenceAllowlist(
+void V4LocalDatabaseManager::CheckUrlForHighConfidenceAllowlist(
     const GURL& url,
-    base::OnceCallback<void(bool)> callback) {
+    CheckUrlForHighConfidenceAllowlistCallback callback) {
   DCHECK(ui_task_runner()->RunsTasksInCurrentSequence());
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          kSkipHighConfidenceAllowlist)) {
-    ui_task_runner()->PostTask(FROM_HERE,
-                               base::BindOnce(std::move(callback), false));
-    return std::nullopt;
+          switches::kSkipHighConfidenceAllowlist)) {
+    ui_task_runner()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback),
+                                  /*url_on_high_confidence_allowlist=*/false,
+                                  /*logging_details=*/std::nullopt));
+    return;
   }
 
   StoresToCheck stores_to_check({GetUrlHighConfidenceAllowlistId()});
@@ -449,8 +469,9 @@ V4LocalDatabaseManager::CheckUrlForHighConfidenceAllowlist(
   bool is_allowlist_too_small =
       IsStoreTooSmall(GetUrlHighConfidenceAllowlistId(), kBytesPerFullHashEntry,
                       kHighConfidenceAllowlistMinimumEntryCount);
-  auto logging_details = HighConfidenceAllowlistCheckLoggingDetails(
-      all_stores_available, is_allowlist_too_small);
+  HighConfidenceAllowlistCheckLoggingDetails logging_details;
+  logging_details.were_all_stores_available = all_stores_available;
+  logging_details.was_allowlist_size_too_small = is_allowlist_too_small;
   if (!IsDatabaseReady() ||
       (is_allowlist_too_small && is_artificial_prefix_empty) ||
       !CanCheckUrl(url) ||
@@ -460,18 +481,21 @@ V4LocalDatabaseManager::CheckUrlForHighConfidenceAllowlist(
     // is too small, return that there is a match. The full URL check won't be
     // performed, but hash-based check will still be done. If any artificial
     // matches are present, consider the allowlist as ready.
-    ui_task_runner()->PostTask(FROM_HERE,
-                               base::BindOnce(std::move(callback), true));
-    return logging_details;
+    ui_task_runner()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback),
+                                  /*url_on_high_confidence_allowlist=*/true,
+                                  std::move(logging_details)));
+    return;
   }
 
   std::unique_ptr<PendingCheck> check = std::make_unique<PendingCheck>(
       nullptr, ClientCallbackType::CHECK_OTHER, stores_to_check,
       std::vector<GURL>(1, url));
 
-  HandleAllowlistCheck(std::move(check), /*allow_async_full_hash_check=*/false,
-                       std::move(callback));
-  return logging_details;
+  HandleAllowlistCheck(
+      std::move(check), /*allow_async_full_hash_check=*/false,
+      base::BindOnce(&OnCheckForUrlHighConfidenceAllowlistComplete,
+                     std::move(callback), std::move(logging_details)));
 }
 
 bool V4LocalDatabaseManager::CheckUrlForSubresourceFilter(const GURL& url,
@@ -626,12 +650,6 @@ void V4LocalDatabaseManager::DatabaseReadyForChecks(
     v4_database_ = std::move(v4_database);
 
     v4_database_->RecordFileSizeHistograms();
-    if (record_migration_metrics_callback_) {
-      ui_task_runner()->PostTask(
-          FROM_HERE,
-          base::BindOnce(std::move(record_migration_metrics_callback_),
-                         v4_database_->GetMigrateResult()));
-    }
 
     PopulateArtificialDatabase();
 
@@ -719,7 +737,7 @@ void V4LocalDatabaseManager::GetSeverestThreatTypeAndMetadata(
     ThreatSeverity severity = GetThreatSeverity(fhi.list_id);
     SBThreatType threat_type = GetSBThreatTypeForList(fhi.list_id);
 
-    const auto& it = base::ranges::find(full_hashes, fhi.full_hash);
+    const auto& it = std::ranges::find(full_hashes, fhi.full_hash);
     CHECK(it != full_hashes.end(), base::NotFatalUntil::M130);
     (*full_hash_threat_types)[it - full_hashes.begin()] = threat_type;
 
@@ -746,7 +764,7 @@ std::unique_ptr<StoreStateMap> V4LocalDatabaseManager::GetStoreStateMap() {
 // Returns the SBThreatType corresponding to a given SafeBrowsing list.
 SBThreatType V4LocalDatabaseManager::GetSBThreatTypeForList(
     const ListIdentifier& list_id) {
-  auto it = base::ranges::find(list_infos_, list_id, &ListInfo::list_id);
+  auto it = std::ranges::find(list_infos_, list_id, &ListInfo::list_id);
   CHECK(list_infos_.end() != it, base::NotFatalUntil::M130);
   DCHECK_NE(SBThreatType::SB_THREAT_TYPE_SAFE, it->sb_threat_type());
   DCHECK_NE(SBThreatType::SB_THREAT_TYPE_UNUSED, it->sb_threat_type());
@@ -847,7 +865,7 @@ void V4LocalDatabaseManager::HandleAllowlistCheckContinuation(
                               : SBThreatType::SB_THREAT_TYPE_SAFE;
       RespondToClient(std::move(check));
   } else {
-    NOTREACHED_IN_MIGRATION();
+    NOTREACHED();
   }
 }
 
@@ -1140,8 +1158,7 @@ void V4LocalDatabaseManager::RespondToClientWithoutPendingCheckCleanup(
     }
 
     case ClientCallbackType::CHECK_OTHER:
-      NOTREACHED_IN_MIGRATION()
-          << "Unexpected client_callback_type encountered";
+      NOTREACHED() << "Unexpected client_callback_type encountered";
   }
 }
 
@@ -1167,7 +1184,7 @@ void V4LocalDatabaseManager::SetupUpdateProtocolManager(
       base::BindRepeating(&V4LocalDatabaseManager::UpdateRequestCompleted,
                           weak_factory_.GetWeakPtr());
 
-  v4_update_protocol_manager_ = V4UpdateProtocolManager::Create(
+  v4_update_protocol_manager_ = std::make_unique<V4UpdateProtocolManager>(
       url_loader_factory, config, update_callback,
       extended_reporting_level_callback_);
 }
@@ -1232,12 +1249,5 @@ V4LocalDatabaseManager::CopyAndRemoveAllPendingChecks() {
   }
   return pending_checks;
 }
-
-V4LocalDatabaseManager::HighConfidenceAllowlistCheckLoggingDetails::
-    HighConfidenceAllowlistCheckLoggingDetails(
-        bool were_all_stores_available,
-        bool was_allowlist_size_too_small)
-    : were_all_stores_available(were_all_stores_available),
-      was_allowlist_size_too_small(was_allowlist_size_too_small) {}
 
 }  // namespace safe_browsing

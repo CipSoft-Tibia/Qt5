@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickselectionrectangle_p.h"
 #include "qquickselectionrectangle_p_p.h"
@@ -25,6 +26,7 @@ QT_BEGIN_NAMESPACE
     \brief Used to select table cells inside a TableView.
 
     \image qtquickcontrols-selectionrectangle.png
+           {Selection rectangle for selecting table items}
 
     SelectionRectangle is used for selecting table cells in a TableView. It lets
     the user start a selection by doing a pointer drag inside the viewport, or by
@@ -173,7 +175,10 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
     m_dragHandler = new QQuickDragHandler();
     m_dragHandler->setTarget(nullptr);
 
-    QObject::connect(&m_scrollTimer, &QTimer::timeout, [&]{
+    // QObject::connect() calls in this constructor cannot use `q` as context,
+    // because at this point the public class constructor hasn't finished yet
+
+    QObject::connect(&m_scrollTimer, &QTimer::timeout, &m_scrollTimer, [&]{
         if (m_topLeftHandle && m_draggedHandle == m_topLeftHandle.data())
             m_selectable->setSelectionStartPos(m_scrollToPoint);
         else
@@ -185,7 +190,7 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
         m_scrollSpeed = QSizeF(qAbs(dist.width() * 0.007), qAbs(dist.height() * 0.007));
     });
 
-    QObject::connect(m_tapHandler, &QQuickTapHandler::pressedChanged, [this]() {
+    QObject::connect(m_tapHandler, &QQuickTapHandler::pressedChanged, m_tapHandler, [this]() {
         Q_Q(QQuickSelectionRectangle);
 
         if (!m_tapHandler->isPressed()) {
@@ -247,7 +252,7 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
         }
     });
 
-    QObject::connect(m_tapHandler, &QQuickTapHandler::longPressed, [this]() {
+    QObject::connect(m_tapHandler, &QQuickTapHandler::longPressed, m_tapHandler, [this]() {
         if (m_tapHandler->point().device()->type() == QInputDevice::DeviceType::TouchScreen &&
             m_selectionMode == QQuickSelectionRectangle::Auto) {
             const QQuickTableView *tableview = qobject_cast<QQuickTableView *>(m_target);
@@ -299,7 +304,7 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
         }
     });
 
-    QObject::connect(m_dragHandler, &QQuickDragHandler::activeChanged, [this]() {
+    QObject::connect(m_dragHandler, &QQuickDragHandler::activeChanged, m_dragHandler, [this]() {
         Q_ASSERT(m_effectiveSelectionMode == QQuickSelectionRectangle::Drag);
         const QPointF startPos = m_dragHandler->centroid().pressPosition();
         const QPointF dragPos = m_dragHandler->centroid().position();
@@ -336,7 +341,7 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
         }
     });
 
-    QObject::connect(m_dragHandler, &QQuickDragHandler::centroidChanged, [this]() {
+    QObject::connect(m_dragHandler, &QQuickDragHandler::centroidChanged, m_dragHandler, [this]() {
         if (!m_dragging)
             return;
         const QPointF pos = m_dragHandler->centroid().position();
@@ -443,7 +448,8 @@ QQuickItem *QQuickSelectionRectanglePrivate::createHandle(QQmlComponent *delegat
     // will get an exclusive grab already on press
     tapHandler->setGesturePolicy(QQuickTapHandler::DragWithinBounds);
 
-    QObject::connect(dragHandler, &QQuickDragHandler::activeChanged, [this, corner, handleItem, dragHandler]() {
+    QObject::connect(dragHandler, &QQuickDragHandler::activeChanged, q,
+                     [this, corner, handleItem, dragHandler]() {
         if (dragHandler->active()) {
             const QPointF localPos = dragHandler->centroid().position();
             const QPointF pos = handleItem->mapToItem(handleItem->parentItem(), localPos);
@@ -468,7 +474,8 @@ QQuickItem *QQuickSelectionRectanglePrivate::createHandle(QQmlComponent *delegat
         }
     });
 
-    QObject::connect(dragHandler, &QQuickDragHandler::centroidChanged, [this, corner, handleItem, dragHandler]() {
+    QObject::connect(dragHandler, &QQuickDragHandler::centroidChanged, q,
+                     [this, corner, handleItem, dragHandler]() {
         if (!m_dragging)
             return;
 
@@ -594,7 +601,7 @@ QQuickSelectionRectangle::QQuickSelectionRectangle(QQuickItem *parent)
     d->m_tapHandler->setParent(this);
     d->m_dragHandler->setParent(this);
 
-    QObject::connect(this, &QQuickItem::enabledChanged, [=]() {
+    QObject::connect(this, &QQuickItem::enabledChanged, this, [d] {
         d->m_scrollTimer.stop();
         d->updateSelectionMode();
         d->updateDraggingState(false);

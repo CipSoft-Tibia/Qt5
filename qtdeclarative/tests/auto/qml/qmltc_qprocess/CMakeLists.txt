@@ -37,7 +37,6 @@ qt6_add_qml_module(tst_qmltc_qprocess
         data/erroneousFile.qml
         data/invalidAliasRevision.qml
         data/ComponentType.qml
-        data/inlineComponentWithEnum.qml
         data/singletonUncreatable.qml
         data/uncreatable.qml
         data/invalidSignalHandlers.qml

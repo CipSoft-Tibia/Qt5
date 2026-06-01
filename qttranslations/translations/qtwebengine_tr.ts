@@ -28,11 +28,11 @@
     </message>
     <message>
         <source>&amp;Cancel</source>
-        <translation>İ&amp;ptal</translation>
+        <translation type="vanished">İ&amp;ptal</translation>
     </message>
     <message>
         <source>&amp;Log In</source>
-        <translation>&amp;Oturum Aç</translation>
+        <translation type="vanished">&amp;Oturum Aç</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -47,7 +47,11 @@
     <name>ConfirmDialog</name>
     <message>
         <source>Alert Dialog</source>
-        <translation>İkaz İletişim Kutusu</translation>
+        <translation type="vanished">İkaz İletişim Kutusu</translation>
+    </message>
+    <message>
+        <source>Confirm Dialog</source>
+        <translation>Onay İletişim Kutusu</translation>
     </message>
     <message>
         <source>OK</source>
@@ -70,7 +74,7 @@
     </message>
     <message>
         <source>The file cannot be written locally, due to access restrictions</source>
-        <translation>Erişim kısıtlamalarından dolayı dosyaya yerel olarak yazılamıyor.</translation>
+        <translation>Erişim kısıtlamalarından dolayı dosyaya yerel olarak yazılamıyor</translation>
     </message>
     <message>
         <source>Insufficient space on the target drive</source>
@@ -82,7 +86,7 @@
     </message>
     <message>
         <source>The file size exceeds the file system limitation</source>
-        <translation>Dosya boyutu, dosya sistemi sınırlamasını aşıyor.</translation>
+        <translation>Dosya boyutu, dosya sistemi sınırlamasını aşıyor</translation>
     </message>
     <message>
         <source>The file is infected with a virus</source>
@@ -94,11 +98,11 @@
     </message>
     <message>
         <source>The file was blocked due to local policy</source>
-        <translation>Dosya yerel politikadan dolayı engellendi.</translation>
+        <translation>Dosya yerel politikadan dolayı engellendi</translation>
     </message>
     <message>
         <source>Checking the safety of the download failed due to unexpected reasons</source>
-        <translation>İndirmenin güvenliğini denetleme bilinmeyen nedenlerden dolayı başarısız oldu.</translation>
+        <translation>İndirmenin güvenliğini denetleme bilinmeyen nedenlerden dolayı başarısız oldu</translation>
     </message>
     <message>
         <source>File seek past the end of a file (resuming previously interrupted download)</source>
@@ -106,7 +110,7 @@
     </message>
     <message>
         <source>The partial file did not match the expected hash</source>
-        <translation>Kısımsal dosya beklenen sağlamayla eşleşmedi.</translation>
+        <translation>Kısımsal dosya beklenen sağlamayla eşleşmedi</translation>
     </message>
     <message>
         <source>General network failure</source>
@@ -114,15 +118,15 @@
     </message>
     <message>
         <source>The network operation has timed out</source>
-        <translation>Ağ işlemi zaman aşımına uğradı.</translation>
+        <translation>Ağ işlemi zaman aşımına uğradı</translation>
     </message>
     <message>
         <source>The network connection has been terminated</source>
-        <translation>Ağ bağlantısı sonlandırıldı.</translation>
+        <translation>Ağ bağlantısı sonlandırıldı</translation>
     </message>
     <message>
         <source>The server has gone down</source>
-        <translation>Sunucu kapandı.</translation>
+        <translation>Sunucu kapandı</translation>
     </message>
     <message>
         <source>The network request was invalid (for example, the URL or scheme is invalid)</source>
@@ -142,11 +146,11 @@
     </message>
     <message>
         <source>A problem with the server certificate occurred</source>
-        <translation>Sunucu sertifikasıyla ilgili bir sorun oluştu.</translation>
+        <translation>Sunucu sertifikasıyla ilgili bir sorun oluştu</translation>
     </message>
     <message>
         <source>Access forbidden by the server</source>
-        <translation>Erişim, sunucu tarafından engellendi.</translation>
+        <translation>Erişim, sunucu tarafından engellendi</translation>
     </message>
     <message>
         <source>Unexpected server response</source>
@@ -154,7 +158,7 @@
     </message>
     <message>
         <source>Download canceled by the user</source>
-        <translation>İndirme, kullanıcı tarafından iptal edildi.</translation>
+        <translation>İndirme, kullanıcı tarafından iptal edildi</translation>
     </message>
 </context>
 <context>
@@ -174,6 +178,10 @@
 </context>
 <context>
     <name>QQuickPdfDocument</name>
+    <message>
+        <source>Cannot open: %1</source>
+        <translation>Açılamıyor: %1</translation>
+    </message>
     <message>
         <source>no error</source>
         <translation>Hata yok</translation>
@@ -207,79 +215,79 @@
     <name>QQuickWebEngineView</name>
     <message>
         <source>Stop</source>
-        <translation>Durdur</translation>
+        <translation type="vanished">Durdur</translation>
     </message>
     <message>
         <source>Reload and Bypass Cache</source>
-        <translation>Yeniden Yükle ve Önbelleği Atla</translation>
+        <translation type="vanished">Yeniden Yükle ve Önbelleği Atla</translation>
     </message>
     <message>
         <source>Open link in this window</source>
-        <translation>Bağlantıyı Bu Pencerede Aç</translation>
+        <translation type="vanished">Bağlantıyı Bu Pencerede Aç</translation>
     </message>
     <message>
         <source>Toggle Play/Pause</source>
-        <translation>Oynat/Çal–Duraklat</translation>
+        <translation type="vanished">Oynat/Çal–Duraklat</translation>
     </message>
     <message>
         <source>Toggle Mute</source>
-        <translation>Sesi Kapat–Aç</translation>
+        <translation type="vanished">Sesi Kapat–Aç</translation>
     </message>
     <message>
         <source>Close Page</source>
-        <translation>Sayfayı Kapat</translation>
+        <translation type="vanished">Sayfayı Kapat</translation>
     </message>
     <message>
         <source>Unselect</source>
-        <translation>Seçimi Kaldır</translation>
+        <translation type="vanished">Seçimi Kaldır</translation>
     </message>
     <message>
         <source>&amp;Bold</source>
-        <translation>&amp;Kalın</translation>
+        <translation type="vanished">&amp;Kalın</translation>
     </message>
     <message>
         <source>&amp;Italic</source>
-        <translation>&amp;Yatık</translation>
+        <translation type="vanished">&amp;Yatık</translation>
     </message>
     <message>
         <source>&amp;Underline</source>
-        <translation>&amp;Altı Çizili</translation>
+        <translation type="vanished">&amp;Altı Çizili</translation>
     </message>
     <message>
         <source>&amp;Strikethrough</source>
-        <translation>Üz&amp;eri Çizili</translation>
+        <translation type="vanished">Üz&amp;eri Çizili</translation>
     </message>
     <message>
         <source>Align &amp;Left</source>
-        <translation>&amp;Sola Hizala</translation>
+        <translation type="vanished">&amp;Sola Hizala</translation>
     </message>
     <message>
         <source>Align &amp;Center</source>
-        <translation>&amp;Ortaya Hizala</translation>
+        <translation type="vanished">&amp;Ortaya Hizala</translation>
     </message>
     <message>
         <source>Align &amp;Right</source>
-        <translation>Sağa &amp;Hizala</translation>
+        <translation type="vanished">Sağa &amp;Hizala</translation>
     </message>
     <message>
         <source>Align &amp;Justified</source>
-        <translation>İk&amp;i Yana Yasla</translation>
+        <translation type="vanished">İk&amp;i Yana Yasla</translation>
     </message>
     <message>
         <source>&amp;Indent</source>
-        <translation>&amp;Girintilendir</translation>
+        <translation type="vanished">&amp;Girintilendir</translation>
     </message>
     <message>
         <source>&amp;Outdent</source>
-        <translation>Giri&amp;ntiyi Azalt</translation>
+        <translation type="vanished">Giri&amp;ntiyi Azalt</translation>
     </message>
     <message>
         <source>Insert &amp;Ordered List</source>
-        <translation>Sı&amp;ralı Liste Ekle</translation>
+        <translation type="vanished">Sı&amp;ralı Liste Ekle</translation>
     </message>
     <message>
         <source>Insert &amp;Unordered List</source>
-        <translation>Sırası&amp;z Liste Ekle</translation>
+        <translation type="vanished">Sırası&amp;z Liste Ekle</translation>
     </message>
 </context>
 <context>
@@ -365,34 +373,42 @@
         <translation>Sırası&amp;z Liste Ekle</translation>
     </message>
     <message>
+        <source>Change text direction left to right</source>
+        <translation>Metin yönünü soldan sağa olarak değiştir</translation>
+    </message>
+    <message>
+        <source>Change text direction right to left</source>
+        <translation>Metin yönünü sağdan sola olarak değiştir</translation>
+    </message>
+    <message>
         <source>Are you sure you want to leave this page? Changes that you made may not be saved.</source>
         <translation>Bu sayfadan ayrılmak istediğinizden emin misiniz? Yaptığınız değişiklikler kaydedilmemiş olabilir.</translation>
     </message>
     <message>
         <source>Select folder to upload</source>
-        <translation>Yüklenecek Klasör Seç</translation>
+        <translation type="vanished">Yüklenecek Klasör Seç</translation>
     </message>
 </context>
 <context>
     <name>QtWebEnginePlugin</name>
     <message>
         <source>Cannot create separate instance of WebEngineNewViewRequest</source>
-        <translation>WebEngineNewViewRequest’in ayrı bir örneği oluşturulamıyor.</translation>
+        <translation type="vanished">WebEngineNewViewRequest’in ayrı bir örneği oluşturulamıyor.</translation>
     </message>
     <message>
         <source>Cannot create separate instance of %1</source>
-        <translation>%1 ögesinin ayrı bir örneği oluşturulamıyor.</translation>
+        <translation type="vanished">%1 ögesinin ayrı bir örneği oluşturulamıyor.</translation>
     </message>
 </context>
 <context>
     <name>QtWebEngineTestSupportPlugin</name>
     <message>
         <source>Cannot create a separate instance of WebEngineErrorPage</source>
-        <translation>WebEngineErrorPage’in ayrı bir örneği oluşturulamıyor.</translation>
+        <translation type="vanished">WebEngineErrorPage’in ayrı bir örneği oluşturulamıyor.</translation>
     </message>
     <message>
         <source>Cannot create a separate instance of WebEngineTestEvent</source>
-        <translation>WebEngineTestEvent’in ayrı bir örneği oluşturulamıyor.</translation>
+        <translation type="vanished">WebEngineTestEvent’in ayrı bir örneği oluşturulamıyor.</translation>
     </message>
 </context>
 <context>
@@ -533,7 +549,77 @@
     <name>WebContentsAdapter</name>
     <message>
         <source>HTTP-POST data can only be sent over HTTP(S) protocol</source>
-        <translation>HTTP-POST verisi yalnızca HTTP(S) protokolü üzerinden gönderilebilir.</translation>
+        <translation>HTTP-POST verisi yalnızca HTTP(S) protokolü üzerinden gönderilebilir</translation>
+    </message>
+</context>
+<context>
+    <name>PdfLinkDelegate</name>
+    <message>
+        <source>Page %1 location %2, %3 zoom %4</source>
+        <translation>Sayfa %1, konum %2, %3 yakınlaştırma %4</translation>
+    </message>
+</context>
+<context>
+    <name>ColorDialog</name>
+    <message>
+        <source>Color Picker Dialog</source>
+        <translation>Renk Seçicisi İletişim Kutusu</translation>
+    </message>
+    <message>
+        <source>Copy color</source>
+        <translation>Rengi Kopyala</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Yapıştır</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Uygula</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>İptal</translation>
+    </message>
+</context>
+<context>
+    <name>FilePickerController</name>
+    <message>
+        <source>Accepted types (%1)</source>
+        <translation>Kabul edilen türler (%1)</translation>
+    </message>
+</context>
+<context>
+    <name>QPdfLinkModel</name>
+    <message>
+        <source>Page %1 location %2, %3 zoom %4</source>
+        <translation>Sayfa %1, konum %2, %3 yakınlaştırma %4</translation>
+    </message>
+</context>
+<context>
+    <name>QWebEngineView</name>
+    <message>
+        <source>Select folder to upload</source>
+        <translation>Yüklenecek Klasör Seç</translation>
+    </message>
+</context>
+<context>
+    <name>QtWebEngineWidgetUI::TouchSelectionMenuWidget</name>
+    <message>
+        <source>Cut</source>
+        <translation>Kes</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Kopyala</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Yapıştır</translation>
+    </message>
+    <message>
+        <source>...</source>
+        <translation>…</translation>
     </message>
 </context>
 </TS>

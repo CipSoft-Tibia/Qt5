@@ -7,19 +7,19 @@ plugins {
 //! [build.gradle QtBuild config]
 QtBuild {
     // Relative for Qt (Installer or MaintenanceTool) installations.
-    qtPath = file("../../../../../../../6.9.2")
+    qtPath = file("../../../../../../../6.10.3")
     projectPath = file("../../qtabstractlistmodel")
 }
 //! [build.gradle QtBuild config]
 
 android {
     namespace = "com.example.qtabstractlistmodel_kotlin"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.qtabstractlistmodel_kotlin"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 

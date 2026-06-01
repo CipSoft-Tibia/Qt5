@@ -5,25 +5,27 @@
 from __future__ import annotations
 
 import abc
-import argparse
 import datetime as dt
 import enum
-from typing import Dict, Generic, Optional, Set, Type, TypeVar
+from typing import TYPE_CHECKING, Dict, Generic, Optional, Set, Type, TypeVar
 
 from crossbench import plt
 from crossbench.config import ConfigParser
+from crossbench.decor.target_protocol import DecoratorTargetProtocol
 from crossbench.helper.state import BaseState, StateMachine
-from crossbench.probes.results import EmptyProbeResult, ProbeResult
+from crossbench.probes.results import EmptyProbeResult
+
+if TYPE_CHECKING:
+  from crossbench.probes.results import ProbeResult
 
 DecoratorT = TypeVar("DecoratorT", bound="Decorator")
-DecoratorTargetT = TypeVar("DecoratorTargetT")
+DecoratorTargetT = TypeVar("DecoratorTargetT", bound=DecoratorTargetProtocol)
 
 
 class DecoratorConfigParser(ConfigParser[DecoratorT]):
 
   def __init__(self, probe_cls: Type[DecoratorT]) -> None:
-    super().__init__(
-        probe_cls.__name__, probe_cls, allow_unused_config_data=False)
+    super().__init__(probe_cls)
     self._probe_cls = probe_cls
 
 
@@ -54,7 +56,7 @@ class Decorator(abc.ABC, Generic[DecoratorTargetT]):
     return type(self).__name__
 
   @property
-  def runner_platform(self) -> plt.Platform:
+  def host_platform(self) -> plt.Platform:
     return plt.PLATFORM
 
   @property
@@ -94,7 +96,7 @@ class DecoratorContext(abc.ABC, Generic[DecoratorT, DecoratorTargetT]):
 
   def __init__(self, decorator: DecoratorT, target: DecoratorTargetT) -> None:
     self._decorator = decorator
-    self._target = target
+    self._target: DecoratorTargetT = target
     self._state = StateMachine(self._State.READY)
     self._is_success: bool = False
     self._start_time: Optional[dt.datetime] = None
@@ -134,7 +136,7 @@ class DecoratorContext(abc.ABC, Generic[DecoratorT, DecoratorTargetT]):
 
   def __enter__(self) -> None:
     self._state.transition(self._State.READY, to=self._State.STARTING)
-    with self._target.exception_handler(f"{self._label} start"):
+    with self._target.exception_capture(f"{self._label} start"):
       try:
         self.start()
         self._state.transition(self._State.STARTING, to=self._State.RUNNING)
@@ -144,7 +146,7 @@ class DecoratorContext(abc.ABC, Generic[DecoratorT, DecoratorTargetT]):
 
   def __exit__(self, exc_type, exc_value, traceback) -> None:
     self._state.expect(self._State.RUNNING, self._State.FAILURE)
-    with self._target.exception_handler(f"{self._label} stop"):
+    with self._target.exception_capture(f"{self._label} stop"):
       try:
         self.stop()
         if self._state == self._State.RUNNING:

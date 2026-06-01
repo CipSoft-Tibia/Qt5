@@ -14,6 +14,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 static const uchar englishStyleRules[] =
     { Q_EQ, 1 };
 static const uchar frenchStyleRules[] =
@@ -369,11 +371,11 @@ QString getNumerusInfoString()
                                                             : QLocale::AnyTerritory);
             QString lang = QLocale::languageToString(entry.languages[j]);
             if (loc.language() == QLocale::C)
-                lang += QLatin1String(" (!!!)");
+                lang += " (!!!)"_L1;
             else if (entry.countries && entry.countries[j] != QLocale::AnyTerritory)
-                lang += QLatin1String(" (%1)").arg(QLocale::territoryToString(loc.territory()));
+                lang += " (%1)"_L1.arg(QLocale::territoryToString(loc.territory()));
             else
-                lang += QLatin1String(" [%1]").arg(QLocale::territoryToString(loc.territory()));
+                lang += " [%1]"_L1.arg(QLocale::territoryToString(loc.territory()));
             langs << QString::fromLatin1("%1 %2 %3\n").arg(lang, -40).arg(loc.name(), -8)
                                 .arg(QString::fromLatin1(entry.gettextRules));
         }

@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWASMINPUTCONTEXT_H
 #define QWASMINPUTCONTEXT_H
@@ -33,27 +34,38 @@ public:
 
     const QString preeditString() { return m_preeditString; }
     void setPreeditString(QString preeditStr, int replaceSize);
-    void insertPreedit();
+    void insertPreedit(int repalcementLength = 0);
     void commitPreeditAndClear();
-    emscripten::val m_inputElement = emscripten::val::null();
 
     void insertText(QString inputStr, bool replace = false);
+    void replaceText(QString inputString, int replaceFrom, int replaceSize);
 
     bool usingTextInput() const { return m_inputMethodAccepted; }
     void setFocusObject(QObject *object) override;
 
+    void inputCallback(emscripten::val event);
+    void compositionEndCallback(emscripten::val event);
+    void compositionStartCallback(emscripten::val event);
+    void compositionUpdateCallback(emscripten::val event);
+    void beforeInputCallback(emscripten::val event);
+
     void updateGeometry();
+
+    bool isActive() const {
+        return m_focusObject && m_inputMethodAccepted;
+    }
 
 private:
     void updateInputElement();
 
 private:
     QString m_preeditString;
-    int m_replaceSize = 0;
+    int m_replaceIndex = 0;
 
-    bool m_visibleInputPanel = false;
     bool m_inputMethodAccepted = false;
     QObject *m_focusObject = nullptr;
+    emscripten::val m_inputElement = emscripten::val::null();
+    QPair<int, int> rangesPair;
 };
 
 QT_END_NAMESPACE

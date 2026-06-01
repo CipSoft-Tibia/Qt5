@@ -28,6 +28,8 @@
 #include "ipc/ipc_sender.h"
 #include "net/cookies/cookie_setting_override.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "services/network/public/cpp/cross_origin_embedder_policy.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-forward.h"
 #include "third_party/blink/public/common/frame/frame_owner_element_type.h"
 #include "third_party/blink/public/common/permissions_policy/permissions_policy_declaration.h"
@@ -40,7 +42,6 @@
 #include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom-forward.h"
 #include "third_party/blink/public/mojom/opengraph/metadata.mojom-forward.h"
 #include "third_party/blink/public/mojom/page/page_visibility_state.mojom-forward.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "ui/accessibility/ax_node_id_forward.h"
 #include "ui/gfx/geometry/rect.h"
@@ -88,7 +89,7 @@ namespace network {
 namespace mojom {
 class URLLoaderFactory;
 class URLResponseHead;
-}
+}  // namespace mojom
 }  // namespace network
 
 namespace perfetto::protos::pbzero {
@@ -115,6 +116,7 @@ class BrowserContext;
 class DocumentRef;
 struct GlobalRenderFrameHostId;
 struct GlobalRenderFrameHostToken;
+class NavigationController;
 class NavigationHandle;
 class RenderProcessHost;
 class RenderViewHost;
@@ -128,8 +130,8 @@ class Page;
 
 // The interface provides a communication conduit with a frame in the renderer.
 // The preferred way to keep a reference to a RenderFrameHost is storing a
-// GlobalRenderFrameHostId and using RenderFrameHost::FromID() when you need to
-// access it.
+// GlobalRenderFrameHostToken and using RenderFrameHost::FromFrameToken() when
+// you need to access it.
 //
 // Any code that uses RenderFrameHost must be aware of back-forward cache, see
 // LifecycleState. The main side-effect is that any IPCs that are processed on a
@@ -218,6 +220,15 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   virtual ui::AXTreeID GetAXTreeID() = 0;
 
   using AXTreeSnapshotCallback = base::OnceCallback<void(ui::AXTreeUpdate&)>;
+
+  // Gets the NavigationController for the frame tree of this RenderFrameHost.
+  // This method is preferred over other means to get the controller, e.g.
+  // getting it directly from the frame_tree().
+  // Note: this may be different than the NavigationController for the
+  // WebContents that includes this RenderFrameHost.
+  // Note: the controller may change over the lifetime of the RenderFrameHost,
+  // due to prerendering.
+  virtual NavigationController& GetController() = 0;
 
   // Returns the SiteInstance grouping all RenderFrameHosts that have script
   // access to this RenderFrameHost, and must therefore live in the same
@@ -870,7 +881,7 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   // Returns true if the queried PermissionsPolicyFeature is allowed by
   // permissions policy.
   virtual bool IsFeatureEnabled(
-      blink::mojom::PermissionsPolicyFeature feature) = 0;
+      network::mojom::PermissionsPolicyFeature feature) = 0;
 
   // Opens view-source tab for the document last committed in this
   // RenderFrameHost.
@@ -1109,12 +1120,14 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   // frame. Can only be called on a frame with a committed navigation.
   virtual net::CookieSettingOverrides GetCookieSettingOverrides() = 0;
 
-  // Whether a same-site navigation that happens when this RenderFrameHost is
-  // the current RenderFrameHost should initiate a RenderFrameHost change, due
-  // to RenderDocument. the result may differ depending on whether the
-  // RenderFrameHost is a main/local root/non-local-root frame, whether it has
-  // committed any navigations or not, and whether it's a crashed frame that
-  // must be replaced or not.
+  // Whether a same-SiteInstance navigation that happens when this
+  // RenderFrameHost is the current RenderFrameHost should initiate a
+  // RenderFrameHost change, due to RenderDocument. The result may differ
+  // depending on whether the RenderFrameHost is a main/local
+  // root/non-local-root frame, whether it has committed any navigations or not,
+  // and whether it's a crashed frame that must be replaced or not.
+  // TODO(crbug.com/40615943): Remove this from the content public API when
+  // RenderDocument is fully enabled.
   virtual bool ShouldChangeRenderFrameHostOnSameSiteNavigation() const = 0;
 
   // The embedder calls this method when a prediction model believes that the
@@ -1130,13 +1143,16 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   virtual bool IsClipboardOwner(
       ui::ClipboardSequenceNumberToken seqno) const = 0;
 
-  // Marks `seqno` as originating from this RFH.
-  virtual void MarkClipboardOwner(ui::ClipboardSequenceNumberToken seqno) = 0;
-
   // Returns true if RenderFrameHostImpl has non-null PolicyContainerHost.
   // TODO(crbug.com/346386726): Delete this method once we have solidified the
   //   lifetime expectations of the PolicyContainerHost object.
   virtual bool HasPolicyContainerHost() const = 0;
+
+  // Returns the cross origin embedder policy for this frame. Must have a
+  // non-null PolicyContainerHost, otherwise a crash will occur.
+  // `HasPolicyContainerHost()` can be used to check if it is non-null.
+  virtual const network::CrossOriginEmbedderPolicy&
+  GetCrossOriginEmbedderPolicy() const = 0;
 
  private:
   // This interface should only be implemented inside content.

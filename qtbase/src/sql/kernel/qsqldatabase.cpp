@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:credentials
 
 #include "qsqldatabase.h"
 #include "qsqlquery.h"
@@ -23,20 +24,18 @@ Q_STATIC_LOGGING_CATEGORY(lcSqlDb, "qt.sql.qsqldatabase")
 using namespace Qt::StringLiterals;
 
 #define CHECK_QCOREAPPLICATION \
-    if (Q_UNLIKELY(!QCoreApplication::instance())) { \
+    if (Q_UNLIKELY(!QCoreApplication::instanceExists())) { \
         qCWarning(lcSqlDb, "QSqlDatabase requires a QCoreApplication"); \
         return; \
     }
 #define CHECK_QCOREAPPLICATION_RETVAL \
-    if (Q_UNLIKELY(!QCoreApplication::instance())) { \
+    if (Q_UNLIKELY(!QCoreApplication::instanceExists())) { \
         qCWarning(lcSqlDb, "QSqlDatabase requires a QCoreApplication"); \
         return {}; \
     }
 
 Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
                           (QSqlDriverFactoryInterface_iid, "/sqldrivers"_L1))
-
-const char *QSqlDatabase::defaultConnection = "qt_sql_default_connection";
 
 namespace {
     struct QtSqlGlobals
@@ -663,7 +662,7 @@ void QSqlDatabasePrivate::init(const QString &type)
         qCWarning(lcSqlDb,
                   "QSqlDatabase: can not load requested driver '%ls', available drivers: %ls",
                   qUtf16Printable(type), qUtf16Printable(QSqlDatabase::drivers().join(u' ')));
-        if (QCoreApplication::instance() == nullptr)
+        if (!QCoreApplication::instanceExists())
             qCWarning(lcSqlDb, "QSqlDatabase: an instance of QCoreApplication is required for loading driver plugins");
         driver = shared_null()->driver;
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "base.h"
+#include "qapplication.h"
 
 base::base(QWidget *parent) :
     QWidget(parent)
@@ -15,7 +16,7 @@ base::base(QWidget *parent) :
 void base::periodicTimer()
 {
     if(m_modalStarted)
-        exit(0);
+        qApp->quit();
     m_modalDialog = new QDialog(this);
     m_modalDialog->setWindowTitle(QLatin1String("modal"));
     m_modalDialog->setModal(true);

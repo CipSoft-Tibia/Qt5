@@ -77,31 +77,32 @@ class MockEndpointChannel : public EndpointChannel {
                    EstablishedConnection::SafeDisconnectionResult result),
               (override));
   MOCK_METHOD(location::nearby::proto::connections::ConnectionTechnology,
-              GetTechnology, (), (const override));
+              GetTechnology, (), (const, override));
   MOCK_METHOD(location::nearby::proto::connections::ConnectionBand, GetBand, (),
-              (const override));
-  MOCK_METHOD(int, GetFrequency, (), (const override));
-  MOCK_METHOD(int, GetTryCount, (), (const override));
-  MOCK_METHOD(std::string, GetType, (), (const override));
-  MOCK_METHOD(std::string, GetServiceId, (), (const override));
-  MOCK_METHOD(std::string, GetName, (), (const override));
-  MOCK_METHOD(Medium, GetMedium, (), (const override));
-  MOCK_METHOD(int, GetMaxTransmitPacketSize, (), (const override));
+              (const, override));
+  MOCK_METHOD(int, GetFrequency, (), (const, override));
+  MOCK_METHOD(int, GetTryCount, (), (const, override));
+  MOCK_METHOD(std::string, GetType, (), (const, override));
+  MOCK_METHOD(std::string, GetServiceId, (), (const, override));
+  MOCK_METHOD(std::string, GetName, (), (const, override));
+  MOCK_METHOD(Medium, GetMedium, (), (const, override));
+  MOCK_METHOD(int, GetMaxTransmitPacketSize, (), (const, override));
   MOCK_METHOD(void, EnableEncryption,
               (std::shared_ptr<EncryptionContext> context), (override));
   MOCK_METHOD(void, DisableEncryption, (), (override));
-  MOCK_METHOD(bool, IsPaused, (), (const override));
+  MOCK_METHOD(bool, IsPaused, (), (const, override));
   MOCK_METHOD(bool, IsEncrypted, (), (override));
   MOCK_METHOD(ExceptionOr<ByteArray>, TryDecrypt, (const ByteArray& data),
               (override));
   MOCK_METHOD(void, Pause, (), (override));
   MOCK_METHOD(void, Resume, (), (override));
-  MOCK_METHOD(absl::Time, GetLastReadTimestamp, (), (const override));
-  MOCK_METHOD(absl::Time, GetLastWriteTimestamp, (), (const override));
+  MOCK_METHOD(absl::Time, GetLastReadTimestamp, (), (const, override));
+  MOCK_METHOD(absl::Time, GetLastWriteTimestamp, (), (const, override));
+  MOCK_METHOD(uint32_t, GetNextKeepAliveSeqNo, (), (const, override));
   MOCK_METHOD(void, SetAnalyticsRecorder,
               (analytics::AnalyticsRecorder*, const std::string&), (override));
 
-  bool IsClosed() const {
+  bool IsClosed() const override {
     absl::MutexLock lock(&mutex_);
     return closed_;
   }
@@ -133,8 +134,8 @@ class MockFrameProcessor : public EndpointManager::FrameProcessor {
 class SetSafeToDisconnect {
  public:
   SetSafeToDisconnect(bool safe_to_disconnect, bool auto_reconnect,
-                               bool payload_received_ack,
-                               std::int32_t safe_to_disconnect_version) {
+                      bool payload_received_ack,
+                      std::int32_t safe_to_disconnect_version) {
     NearbyFlags::GetInstance().OverrideBoolFlagValue(
         config_package_nearby::nearby_connections_feature::
             kEnableSafeToDisconnect,
@@ -236,9 +237,9 @@ TEST_F(EndpointManagerTest, RegisterEndpointCallsOnConnectionInitiated) {
 }
 
 TEST_F(EndpointManagerTest, UnregisterEndpointCallsOnDisconnected) {
-//  auto endpoint_channel = std::make_unique<MockEndpointChannel>();
-//  EXPECT_CALL(*endpoint_channel, Read())
-//      .WillRepeatedly(Return(ExceptionOr<ByteArray>(Exception::kIo)));
+  //  auto endpoint_channel = std::make_unique<MockEndpointChannel>();
+  //  EXPECT_CALL(*endpoint_channel, Read())
+  //      .WillRepeatedly(Return(ExceptionOr<ByteArray>(Exception::kIo)));
   RegisterEndpoint(std::make_unique<MockEndpointChannel>());
   // NOTE: disconnect_cb is not called, because we did not reach fully connected
   // state. On top of that, UnregisterEndpoint is suppressing this notification.
@@ -348,8 +349,8 @@ TEST_F(EndpointManagerTest, SendControlMessageAndPayloadAckWorks) {
   auto failed_ids_1 =
       em_.SendControlMessage(header, control, std::vector{endpoint_id_});
   EXPECT_EQ(failed_ids_1, std::vector<std::string>{});
-  auto failed_ids_2 = em_.SendPayloadAck(header.id(),
-      std::vector<std::string>{endpoint_id_});
+  auto failed_ids_2 =
+      em_.SendPayloadAck(header.id(), std::vector<std::string>{endpoint_id_});
   EXPECT_EQ(failed_ids_2, std::vector<std::string>{});
   NEARBY_LOGS(INFO) << "Will unregister endpoint now";
   em_.UnregisterEndpoint(client_.get(), endpoint_id_);

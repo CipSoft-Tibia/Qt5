@@ -2,17 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qavfcamerabase_p.h"
-#include <QtMultimedia/private/qavfcameradebug_p.h>
-#include <QtMultimedia/private/qavfcamerautility_p.h>
-#include <QtMultimedia/private/qavfhelpers_p.h>
-#include <QtMultimedia/private/qcameradevice_p.h>
-#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qpermissions.h>
 #include <QtCore/qset.h>
 #include <QtCore/qsystemdetection.h>
+#include <QtCore/private/qcore_mac_p.h>
+
+#include <QtMultimedia/private/qavfcameradebug_p.h>
+#include <QtMultimedia/private/qavfcamerautility_p.h>
+#include <QtMultimedia/private/qavfhelpers_p.h>
+#include <QtMultimedia/private/qcameradevice_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
 QT_USE_NAMESPACE
 
@@ -61,13 +63,13 @@ bool qt_exposure_duration_equal(AVCaptureDevice *captureDevice, qreal qDuration)
 bool qt_iso_equal(AVCaptureDevice *captureDevice, int iso)
 {
     Q_ASSERT(captureDevice);
-    return qFuzzyCompare(float(iso), captureDevice.ISO);
+    return QtPrivate::fuzzyCompare(float(iso), captureDevice.ISO);
 }
 
 bool qt_exposure_bias_equal(AVCaptureDevice *captureDevice, qreal bias)
 {
     Q_ASSERT(captureDevice);
-    return qFuzzyCompare(bias, qreal(captureDevice.exposureTargetBias));
+    return QtPrivate::fuzzyCompare(bias, qreal(captureDevice.exposureTargetBias));
 }
 
 // Converters:
@@ -134,15 +136,31 @@ void QAVFCameraBase::setCamera(const QCameraDevice &camera)
 {
     if (m_cameraDevice == camera)
         return;
+
+    // TODO: At the time of writing, a quirk in the QCamera code is that
+    // device-changes are implemented as setCamera() + setCameraFormat({}).
+    // This means that camera-changes always involve resetting the format
+    // to what is default for the new device. In the future, we should
+    // ideally pass down the new format as a parameter, and perform
+    // the two operations as a single atomic one.
+    //
+    // onCameraDeviceChanged() is allowed to shut down the camera session
+    // and clean up resources if configuration fails for the new device.
+    // This causes QTBUG-141376. Until we improve the architecture, this
+    // code will apply camera-device and format as one atomic operation.
+    QCameraFormat newFormat = findBestCameraFormat(camera);
+    Q_ASSERT(!newFormat.isNull());
+
+    // TODO: onCameraDeviceChanged can fail to keep the camera-session active
+    // if we are switching to a camera-device that is not available. In the
+    // future this should return a q23::expected and let us handle the error.
+    onCameraDeviceChanged(camera, newFormat);
+
     m_cameraDevice = camera;
+    m_cameraFormat = newFormat;
 
-    onCameraDeviceChanged(camera);
-
-    // Setting camera format and properties must happen after the
-    // backend applies backend specific device changes.
-    setCameraFormat({});
-    updateSupportedFeatures();
-    updateCameraConfiguration();
+    updateSupportedFeatures(camera);
+    updateCameraConfiguration(camera);
 }
 
 bool QAVFCameraBase::setCameraFormat(const QCameraFormat &newFormat)
@@ -167,14 +185,21 @@ bool QAVFCameraBase::setCameraFormat(const QCameraFormat &newFormat)
 
 AVCaptureDevice *QAVFCameraBase::device() const
 {
-    AVCaptureDevice *device = nullptr;
-    QByteArray deviceId = m_cameraDevice.id();
-    if (!deviceId.isEmpty()) {
-        device = [AVCaptureDevice deviceWithUniqueID:
-                    [NSString stringWithUTF8String:
-                        deviceId.constData()]];
-    }
-    return device;
+    return tryGetAvCaptureDevice(m_cameraDevice);
+}
+
+AVCaptureDevice *QAVFCameraBase::tryGetAvCaptureDevice(const QCameraDevice &device)
+{
+    QByteArray deviceId = device.id();
+    if (deviceId.isEmpty())
+        return nullptr;
+
+    QMacAutoReleasePool autoReleasePool;
+
+    NSString *nsString = [NSString stringWithUTF8String:deviceId.constData()];
+    if (nsString == nullptr)
+        return nullptr;
+    return [AVCaptureDevice deviceWithUniqueID:nsString];
 }
 
 namespace
@@ -332,7 +357,7 @@ void QAVFCameraBase::applyFocusDistanceToAVCaptureDevice(float distance)
 
 void QAVFCameraBase::setFocusDistance(float distance)
 {
-    if (qFuzzyCompare(focusDistance(), distance))
+    if (QtPrivate::fuzzyCompare(focusDistance(), distance))
         return;
 
     if (!(supportedFeatures() & QCamera::Feature::FocusDistance)) {
@@ -358,9 +383,14 @@ void QAVFCameraBase::setFocusDistance(float distance)
     focusDistanceChanged(distance);
 }
 
-void QAVFCameraBase::updateCameraConfiguration()
+void QAVFCameraBase::updateCameraConfiguration(const QCameraDevice &cameraDevice)
 {
-    AVCaptureDevice *captureDevice = device();
+    // TODO: Several of these properties should only be applied to the physical
+    // device if we are currently active.
+
+    AVCaptureDevice *captureDevice = tryGetAvCaptureDevice(cameraDevice);
+    // TODO: If the new incoming device is not connected, should reset
+    // existing capabilities.
     if (!captureDevice) {
         qCDebug(qLcCamera) << Q_FUNC_INFO << "capture device is nil when trying to update QAVFCamera";
         return;
@@ -501,12 +531,10 @@ void QAVFCameraBase::updateCameraConfiguration()
 #endif // Q_OS_IOS
 }
 
-// Updates the supportedFeatures() flags based on the current
-// AVCaptureDevice.
-void QAVFCameraBase::updateSupportedFeatures()
+void QAVFCameraBase::updateSupportedFeatures(const QCameraDevice &cameraDevice)
 {
     QCamera::Features features;
-    AVCaptureDevice *captureDevice = device();
+    AVCaptureDevice *captureDevice = tryGetAvCaptureDevice(cameraDevice);
 
     if (captureDevice) {
         if ([captureDevice isFocusPointOfInterestSupported])

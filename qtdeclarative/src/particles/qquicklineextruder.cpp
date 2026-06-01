@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qquicklineextruder_p.h"
 #include <QRandomGenerator>
-#include <cmath>
+
+QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype LineShape
@@ -47,5 +48,7 @@ QPointF QQuickLineExtruder::extrude(const QRectF &r)
     }
     return QPointF(x,y);
 }
+
+QT_END_NAMESPACE
 
 #include "moc_qquicklineextruder_p.cpp"

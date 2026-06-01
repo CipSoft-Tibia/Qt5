@@ -181,7 +181,6 @@ base::flat_set<FidoTransportProtocol> GetTransportsAllowedByRP(
           FidoTransportProtocol::kBluetoothLowEnergy,
           FidoTransportProtocol::kNearFieldCommunication,
           FidoTransportProtocol::kHybrid,
-          FidoTransportProtocol::kAndroidAccessory,
       };
     case AuthenticatorAttachment::kAny:
       return {
@@ -190,12 +189,10 @@ base::flat_set<FidoTransportProtocol> GetTransportsAllowedByRP(
           FidoTransportProtocol::kUsbHumanInterfaceDevice,
           FidoTransportProtocol::kBluetoothLowEnergy,
           FidoTransportProtocol::kHybrid,
-          FidoTransportProtocol::kAndroidAccessory,
       };
   }
 
-  NOTREACHED_IN_MIGRATION();
-  return base::flat_set<FidoTransportProtocol>();
+  NOTREACHED();
 }
 
 void ReportMakeCredentialResponseTransport(
@@ -391,12 +388,18 @@ MakeCredentialRequestHandler::MakeCredentialRequestHandler(
   }
 #endif
 
-  InitDiscoveries(
-      fido_discovery_factory, std::move(additional_discoveries),
+  auto available_transports =
       base::STLSetIntersection<base::flat_set<FidoTransportProtocol>>(
-          supported_transports, allowed_transports),
-      request.authenticator_attachment !=
-          AuthenticatorAttachment::kCrossPlatform);
+          supported_transports, allowed_transports);
+  bool consider_enclave = request.authenticator_attachment !=
+                          AuthenticatorAttachment::kCrossPlatform;
+  if (options_.is_passkey_upgrade_request) {
+    consider_enclave = true;
+    available_transports = {};
+  }
+
+  InitDiscoveries(fido_discovery_factory, std::move(additional_discoveries),
+                  std::move(available_transports), consider_enclave);
   std::string json_string;
   if (!options_.json ||
       !base::JSONWriter::WriteWithOptions(
@@ -532,8 +535,7 @@ void MakeCredentialRequestHandler::DispatchRequestAfterAppIdExclude(
       return;
     case PINUVDisposition::kUnsatisfiable:
       // |IsCandidateAuthenticatorPostTouch| should have handled this case.
-      NOTREACHED_IN_MIGRATION();
-      return;
+      NOTREACHED();
   }
 
   auto request_copy(*request.get());  // can't copy and move in the same stmt.
@@ -561,7 +563,7 @@ void MakeCredentialRequestHandler::AuthenticatorRemoved(
       state_ = State::kFinished;
       std::move(completion_callback_)
           .Run(MakeCredentialStatus::kAuthenticatorRemovedDuringPINEntry,
-               std::nullopt, nullptr);
+               std::nullopt, authenticator);
     }
   }
 }
@@ -886,7 +888,7 @@ void MakeCredentialRequestHandler::OnEnrollmentError(
   state_ = State::kFinished;
   std::move(completion_callback_)
       .Run(MakeCredentialStatus::kAuthenticatorResponseInvalid, std::nullopt,
-           nullptr);
+           bio_enroller_->authenticator());
 }
 
 void MakeCredentialRequestHandler::OnEnrollmentDismissed() {

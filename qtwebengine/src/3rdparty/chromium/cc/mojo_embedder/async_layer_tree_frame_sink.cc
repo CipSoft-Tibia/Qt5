@@ -22,6 +22,7 @@
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/hit_test/hit_test_region_list.h"
 #include "components/viz/common/quads/compositor_frame.h"
+#include "services/viz/public/mojom/compositing/thread.mojom.h"
 
 namespace cc {
 namespace mojo_embedder {
@@ -140,14 +141,15 @@ bool AsyncLayerTreeFrameSink::BindToClient(LayerTreeFrameSinkClient* client) {
       viz::mojom::CompositorFrameSinkType::kLayerTree);
 
 #if BUILDFLAG(IS_ANDROID)
-  std::vector<int32_t> thread_ids;
-  thread_ids.push_back(base::PlatformThread::CurrentId());
+  std::vector<viz::Thread> threads;
+  threads.push_back(
+      {base::PlatformThread::CurrentId(), viz::Thread::Type::kCompositor});
   if (io_thread_id_ != base::kInvalidThreadId)
-    thread_ids.push_back(io_thread_id_);
+    threads.push_back({io_thread_id_, viz::Thread::Type::kIO});
   if (main_thread_id_ != base::kInvalidThreadId) {
-    thread_ids.push_back(main_thread_id_);
+    threads.push_back({main_thread_id_, viz::Thread::Type::kMain});
   }
-  compositor_frame_sink_ptr_->SetThreadIds(thread_ids);
+  compositor_frame_sink_ptr_->SetThreads(threads);
 #endif
 
   return true;
@@ -186,18 +188,6 @@ void AsyncLayerTreeFrameSink::SubmitCompositorFrame(
     UpdateNeedsBeginFramesInternal(/*needs_begin_frames=*/true);
   }
 
-  TRACE_EVENT(
-      "viz,benchmark,graphics.pipeline", "Graphics.Pipeline",
-      perfetto::Flow::Global(frame.metadata.begin_frame_ack.trace_id),
-      [&](perfetto::EventContext ctx) {
-        auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
-        auto* data = event->set_chrome_graphics_pipeline();
-        data->set_step(perfetto::protos::pbzero::ChromeGraphicsPipeline::
-                           StepName::STEP_SUBMIT_COMPOSITOR_FRAME);
-        local_surface_id_.WriteIntoTrace(
-            ctx.Wrap(data->set_local_surface_id()));
-        data->set_display_trace_id(frame.metadata.begin_frame_ack.trace_id);
-      });
   if (local_surface_id_ == last_submitted_local_surface_id_) {
     DCHECK_EQ(last_submitted_device_scale_factor_, frame.device_scale_factor());
     DCHECK_EQ(last_submitted_size_in_pixels_.height(),
@@ -253,12 +243,23 @@ void AsyncLayerTreeFrameSink::SubmitCompositorFrame(
 
   // The trace_id is negated in order to keep the Graphics.Pipeline and
   // Event.Pipeline flows separated.
-  const int64_t trace_id = ~frame.metadata.begin_frame_ack.trace_id;
+  const int64_t trace_id = frame.metadata.begin_frame_ack.trace_id;
+  const int64_t negated_trace_id = ~trace_id;
   TRACE_EVENT_WITH_FLOW1(TRACE_DISABLED_BY_DEFAULT("viz.hit_testing_flow"),
-                         "Event.Pipeline", TRACE_ID_GLOBAL(trace_id),
+                         "Event.Pipeline", TRACE_ID_GLOBAL(negated_trace_id),
                          TRACE_EVENT_FLAG_FLOW_OUT, "step",
                          "SubmitHitTestData");
 
+  TRACE_EVENT(
+      "graphics.pipeline", "Graphics.Pipeline",
+      perfetto::Flow::Global(trace_id), [&](perfetto::EventContext ctx) {
+        auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
+        auto* data = event->set_chrome_graphics_pipeline();
+        data->set_step(
+            perfetto::protos::pbzero::ChromeGraphicsPipeline::StepName::
+                STEP_SEND_SUBMIT_COMPOSITOR_FRAME_MOJO_MESSAGE);
+        data->set_surface_frame_trace_id(trace_id);
+      });
   compositor_frame_sink_ptr_->SubmitCompositorFrame(
       local_surface_id_, std::move(frame), std::move(hit_test_region_list), 0);
 }
@@ -271,12 +272,13 @@ void AsyncLayerTreeFrameSink::DidNotProduceFrame(const viz::BeginFrameAck& ack,
   TRACE_EVENT(
       "viz,benchmark,graphics.pipeline", "Graphics.Pipeline",
       perfetto::Flow::Global(ack.trace_id), [&](perfetto::EventContext ctx) {
+        base::TaskAnnotator::EmitTaskTimingDetails(ctx);
         auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
         auto* data = event->set_chrome_graphics_pipeline();
         data->set_step(perfetto::protos::pbzero::ChromeGraphicsPipeline::
-                           StepName::STEP_DID_NOT_PRODUCE_FRAME);
+                           StepName::STEP_DID_NOT_PRODUCE_COMPOSITOR_FRAME);
         data->set_frame_skipped_reason(to_proto_enum(reason));
-        data->set_display_trace_id(ack.trace_id);
+        data->set_surface_frame_trace_id(ack.trace_id);
       });
   compositor_frame_sink_ptr_->DidNotProduceFrame(ack);
 }
@@ -286,19 +288,6 @@ std::unique_ptr<LayerContext> AsyncLayerTreeFrameSink::CreateLayerContext(
   CHECK(compositor_frame_sink_ptr_);
   return std::make_unique<VizLayerContext>(*compositor_frame_sink_ptr_,
                                            host_impl);
-}
-
-void AsyncLayerTreeFrameSink::DidAllocateSharedBitmap(
-    base::ReadOnlySharedMemoryRegion region,
-    const viz::SharedBitmapId& id) {
-  DCHECK(compositor_frame_sink_ptr_);
-  compositor_frame_sink_ptr_->DidAllocateSharedBitmap(std::move(region), id);
-}
-
-void AsyncLayerTreeFrameSink::DidDeleteSharedBitmap(
-    const viz::SharedBitmapId& id) {
-  DCHECK(compositor_frame_sink_ptr_);
-  compositor_frame_sink_ptr_->DidDeleteSharedBitmap(id);
 }
 
 void AsyncLayerTreeFrameSink::DidReceiveCompositorFrameAck(
@@ -320,6 +309,7 @@ void AsyncLayerTreeFrameSink::OnBeginFrame(
       "viz,benchmark,graphics.pipeline", "Graphics.Pipeline",
       perfetto::Flow::Global(adjusted_args.trace_id),
       [&](perfetto::EventContext ctx) {
+        base::TaskAnnotator::EmitTaskTimingDetails(ctx);
         auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
         auto* data = event->set_chrome_graphics_pipeline();
         data->set_step(needs_begin_frames_
@@ -330,7 +320,7 @@ void AsyncLayerTreeFrameSink::OnBeginFrame(
         if (needs_begin_frames_) {
           data->set_frame_sequence(adjusted_args.frame_id.sequence_number);
         }
-        data->set_display_trace_id(adjusted_args.trace_id);
+        data->set_surface_frame_trace_id(adjusted_args.trace_id);
       });
 
   if (features::IsOnBeginFrameAcksEnabled()) {

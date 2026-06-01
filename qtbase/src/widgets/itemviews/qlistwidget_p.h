@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLISTWIDGET_P_H
 #define QLISTWIDGET_P_H
@@ -50,6 +51,8 @@ public:
     QListModel(QListWidget *parent);
     ~QListModel();
 
+    inline QListWidget *view() const { return qobject_cast<QListWidget *>(QObject::parent()); }
+
     void clear();
     QListWidgetItem *at(int row) const;
     void insert(int row, QListWidgetItem *item);
@@ -95,8 +98,8 @@ public:
     bool dropMimeData(const QMimeData *data, Qt::DropAction action,
                       int row, int column, const QModelIndex &parent) override;
     Qt::DropActions supportedDropActions() const override;
+    Qt::DropActions supportedDragActions() const override;
 #endif
-
     QMimeData *internalMimeData()  const;
 private:
     QList<QListWidgetItem*> items;
@@ -124,9 +127,10 @@ public:
     void emitCurrentItemChanged(const QModelIndex &current, const QModelIndex &previous);
     void sort();
     void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+
     Qt::SortOrder sortOrder;
     bool sortingEnabled;
-
+    std::optional<Qt::DropActions> supportedDragActions;
     std::array<QMetaObject::Connection, 8> connections;
     std::array<QMetaObject::Connection, 2> selectionModelConnections;
 };

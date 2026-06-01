@@ -125,6 +125,7 @@ Prefix=${prefix}
         endif()
     endif()
 
+    qt_internal_get_host_info_var_prefix(host_info_var_prefix)
     string(APPEND content
         "[Paths]
 Prefix=${ext_prefix_relative_to_conf_file}
@@ -142,9 +143,9 @@ Examples=${INSTALL_EXAMPLESDIR}
 Tests=${INSTALL_TESTSDIR}
 Settings=${INSTALL_SYSCONFDIR}
 HostPrefix=${host_prefix_relative_to_conf_file}
-HostBinaries=${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BINDIR}
-HostLibraries=${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_LIBDIR}
-HostLibraryExecutables=${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_LIBEXECDIR}
+HostBinaries=${${host_info_var_prefix}_BINDIR}
+HostLibraries=${${host_info_var_prefix}_LIBDIR}
+HostLibraryExecutables=${${host_info_var_prefix}_LIBEXECDIR}
 HostData=${ext_datadir_relative_to_host_prefix}
 Sysroot=${sysroot}
 SysrootifyPrefix=${sysrootify_prefix}
@@ -169,7 +170,7 @@ HostSpec=${QT_QMAKE_HOST_MKSPEC}
         set(wrapper_prefix "host-")
     endif()
 
-    set(host_qt_bindir "${host_prefix}/${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BINDIR}")
+    set(host_qt_bindir "${host_prefix}/${${host_info_var_prefix}_BINDIR}")
     file(TO_NATIVE_PATH "${host_qt_bindir}" host_qt_bindir)
 
     if(QT_CREATE_VERSIONED_HARD_LINK AND QT_WILL_INSTALL)

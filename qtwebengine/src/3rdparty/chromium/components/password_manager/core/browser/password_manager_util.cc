@@ -4,6 +4,7 @@
 
 #include "components/password_manager/core/browser/password_manager_util.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -16,16 +17,15 @@
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
-#include "base/ranges/algorithm.h"
 #include "base/strings/strcat.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/affiliations/core/browser/affiliation_utils.h"
-#include "components/autofill/core/browser/autofill_client.h"
 #include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/foundations/autofill_client.h"
 #include "components/autofill/core/browser/logging/log_manager.h"
-#include "components/autofill/core/browser/ui/suggestion_type.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
 #include "components/autofill/core/common/password_generation_util.h"
 #include "components/password_manager/core/browser/features/password_features.h"
 #include "components/password_manager/core/browser/features/password_manager_features_util.h"
@@ -88,7 +88,7 @@ void UpdateMetadataForUsage(PasswordForm* credential) {
 }
 
 bool IsLoggingActive(password_manager::PasswordManagerClient* client) {
-  autofill::LogManager* log_manager = client->GetLogManager();
+  autofill::LogManager* log_manager = client->GetCurrentLogManager();
   return log_manager && log_manager->IsLoggingActive();
 }
 
@@ -130,31 +130,11 @@ void UserTriggeredManualGenerationFromContextMenu(
     autofill_client->HideAutofillSuggestions(
         autofill::SuggestionHidingReason::
             kOverlappingWithPasswordGenerationPopup);
-    autofill_client->HideAutofillFieldIphForManualFallbackFeature();
+    autofill_client->HideAutofillFieldIph();
   }
-  if (!password_manager_client->GetPasswordFeatureManager()
-           ->ShouldShowAccountStorageOptIn()) {
-    password_manager_client->GeneratePassword(PasswordGenerationType::kManual);
-    LogPasswordGenerationEvent(autofill::password_generation::
-                                   PASSWORD_GENERATION_CONTEXT_MENU_PRESSED);
-    return;
-  }
-  // The client ensures the callback won't be run if it is destroyed, so
-  // base::Unretained is safe.
-  password_manager_client->TriggerReauthForPrimaryAccount(
-      signin_metrics::ReauthAccessPoint::kGeneratePasswordContextMenu,
-      base::BindOnce(
-          [](password_manager::PasswordManagerClient* client,
-             password_manager::PasswordManagerClient::ReauthSucceeded
-                 succeeded) {
-            if (succeeded) {
-              client->GeneratePassword(PasswordGenerationType::kManual);
-              LogPasswordGenerationEvent(
-                  autofill::password_generation::
-                      PASSWORD_GENERATION_CONTEXT_MENU_PRESSED);
-            }
-          },
-          base::Unretained(password_manager_client)));
+  password_manager_client->GeneratePassword(PasswordGenerationType::kManual);
+  LogPasswordGenerationEvent(
+      autofill::password_generation::PASSWORD_GENERATION_CONTEXT_MENU_PRESSED);
 }
 
 bool IsAbleToSavePasswords(password_manager::PasswordManagerClient* client) {
@@ -208,10 +188,16 @@ GetLoginMatchType GetMatchType(const password_manager::PasswordForm& form) {
   NOTREACHED();
 }
 
-std::vector<PasswordForm> FindBestMatches(base::span<PasswordForm> matches) {
-  CHECK(base::ranges::none_of(matches, &PasswordForm::blocked_by_user));
+bool IsCredentialWeakMatch(const password_manager::PasswordForm& form) {
+  GetLoginMatchType match_type = GetMatchType(form);
+  return match_type == GetLoginMatchType::kPSL ||
+         match_type == GetLoginMatchType::kGrouped;
+}
 
-  base::ranges::sort(matches, IsBetterMatch, {});
+std::vector<PasswordForm> FindBestMatches(base::span<PasswordForm> matches) {
+  CHECK(std::ranges::none_of(matches, &PasswordForm::blocked_by_user));
+
+  std::ranges::sort(matches, IsBetterMatch, {});
 
   std::vector<PasswordForm> best_matches;
 
@@ -233,7 +219,7 @@ std::vector<PasswordForm> FindBestMatches(base::span<PasswordForm> matches) {
       };
       // If 2 credential have the same password and the same username, update
       // the in_store value in the best matches.
-      auto duplicate_match_it = base::ranges::find_if(
+      auto duplicate_match_it = std::ranges::find_if(
           best_matches, [&match](const PasswordForm& form) {
             return match.username_value == form.username_value &&
                    match.password_value == form.password_value;
@@ -278,7 +264,7 @@ const PasswordForm* GetMatchForUpdating(
     bool username_updated_in_bubble) {
   // This is the case for the credential management API. It should not depend on
   // form managers. Once that's the case, this should be turned into a DCHECK.
-  // TODO(crbug/40620575): turn it into a DCHECK.
+  // TODO(crbug.com/40620575): turn it into a DCHECK.
   if (submitted_form.IsFederatedCredential()) {
     return nullptr;
   }
@@ -287,7 +273,7 @@ const PasswordForm* GetMatchForUpdating(
   const PasswordForm* username_match =
       FindFormByUsername(credentials, submitted_form.username_value);
   if (username_match) {
-    if (GetMatchType(*username_match) != GetLoginMatchType::kPSL) {
+    if (!IsCredentialWeakMatch(*username_match)) {
       return username_match;
     }
 
@@ -354,24 +340,54 @@ PasswordForm MakeNormalizedBlocklistedForm(
 }
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
+// TODO(crbug.com/367336383): Make the this block Ash only for
+// ChromeOS.
 bool ShouldBiometricAuthenticationForFillingToggleBeVisible(
     const PrefService* local_state) {
-  return local_state->GetBoolean(
-      password_manager::prefs::kHadBiometricsAvailable);
+  bool hadBiometricsAvailable =
+      local_state->GetBoolean(password_manager::prefs::kHadBiometricsAvailable);
+#if BUILDFLAG(IS_CHROMEOS)
+  // We only want to check for feature flag if the device supports biometrics,
+  // else we dilute experiment population.
+  return hadBiometricsAvailable &&
+         base::FeatureList::IsEnabled(
+             password_manager::features::kBiometricsAuthForPwdFill);
+#else
+  return hadBiometricsAvailable;
+#endif
 }
-#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 bool ShouldShowBiometricAuthenticationBeforeFillingPromo(
     password_manager::PasswordManagerClient* client) {
+  // The following order of preference checks need to happen in order for us to
+  // preserve the experiment setup. Specifically, we only want to check for
+  // feature flag if the device supports biometrics, else we dilute experiment
+  // population.
+  if (!client) {
+    return false;
+  }
   std::unique_ptr<device_reauth::DeviceAuthenticator> device_authenticator =
       client->GetDeviceAuthenticator();
-  return client && device_authenticator &&
-         device_authenticator->CanAuthenticateWithBiometrics() &&
-         !client->GetPrefs()->GetBoolean(
-             password_manager::prefs::kBiometricAuthenticationBeforeFilling);
+  if (!device_authenticator) {
+    return false;
+  }
+
+  if (!device_authenticator->CanAuthenticateWithBiometrics()) {
+    return false;
+  }
+#if BUILDFLAG(IS_CHROMEOS)
+  // Note: Hitting IsEnabled enrolls users in the experiment. Therefore, we only
+  // want to limit this call to users who can authenticate with biometrics and
+  // if we are here, then we know that to be the case.
+  if (!base::FeatureList::IsEnabled(
+          password_manager::features::kBiometricsAuthForPwdFill)) {
+    return false;
+  }
+#endif
+  return !client->GetPrefs()->GetBoolean(
+      password_manager::prefs::kBiometricAuthenticationBeforeFilling);
 }
-#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
 
 GURL StripAuthAndParams(const GURL& gurl) {
   GURL::Replacements rep;
@@ -408,13 +424,14 @@ std::string GetSignonRealm(const GURL& url) {
 }
 
 #if BUILDFLAG(IS_IOS)
-bool IsCredentialProviderEnabledOnStartup(const PrefService* prefs) {
-  return prefs->GetBoolean(
+bool IsCredentialProviderEnabledOnStartup(const PrefService* local_state) {
+  return local_state->GetBoolean(
       password_manager::prefs::kCredentialProviderEnabledOnStartup);
 }
 
-void SetCredentialProviderEnabledOnStartup(PrefService* prefs, bool enabled) {
-  prefs->SetBoolean(
+void SetCredentialProviderEnabledOnStartup(PrefService* local_state,
+                                           bool enabled) {
+  local_state->SetBoolean(
       password_manager::prefs::kCredentialProviderEnabledOnStartup, enabled);
 }
 #endif
@@ -450,6 +467,22 @@ bool IsSingleUsernameType(autofill::FieldType type) {
           base::FeatureList::IsEnabled(
               password_manager::features::
                   kUsernameFirstFlowWithIntermediateValuesPredictions));
+}
+
+std::u16string GetHumanReadableRealm(const std::string& signon_realm) {
+  // For Android application realms, remove the hash component. Otherwise, make
+  // no changes.
+  affiliations::FacetURI maybe_facet_uri(
+      affiliations::FacetURI::FromPotentiallyInvalidSpec(signon_realm));
+  if (maybe_facet_uri.IsValidAndroidFacetURI()) {
+    return base::UTF8ToUTF16("android://" +
+                             maybe_facet_uri.android_package_name() + "/");
+  }
+  GURL realm(signon_realm);
+  if (realm.is_valid()) {
+    return base::UTF8ToUTF16(realm.host());
+  }
+  return base::UTF8ToUTF16(signon_realm);
 }
 
 }  // namespace password_manager_util

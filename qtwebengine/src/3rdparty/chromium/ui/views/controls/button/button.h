@@ -18,6 +18,7 @@
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "ui/actions/actions.h"
 #include "ui/base/metadata/metadata_types.h"
+#include "ui/base/mojom/menu_source_type.mojom-forward.h"
 #include "ui/events/event_constants.h"
 #include "ui/gfx/animation/throb_animation.h"
 #include "ui/native_theme/native_theme.h"
@@ -158,9 +159,6 @@ class VIEWS_EXPORT Button : public View, public AnimationDelegateViews {
 
   static ButtonState GetButtonStateFrom(ui::NativeTheme::State state);
 
-  void SetTooltipText(const std::u16string& tooltip_text);
-  const std::u16string& GetTooltipText() const;
-
   // Tag is now a property. These accessors are deprecated. Use GetTag() and
   // SetTag() below or even better, use SetID()/GetID() from the ancestor.
   int tag() const { return tag_; }
@@ -170,6 +168,14 @@ class VIEWS_EXPORT Button : public View, public AnimationDelegateViews {
 
   void AdjustAccessibleName(std::u16string& new_name,
                             ax::mojom::NameFrom& name_from) override;
+
+  // Button uses the tooltip text in `AdjustAccessibleName` to provide an
+  // alternative accessible name if there is no existing accessible name.
+  // However, some button subclasses have a custom locally cached tooltip text
+  // that should be used instead. Views that follow this pattern should override
+  // this method to provide an alternative accessible name if they cache a
+  // custom tooltip text that is different from the one cached in View.
+  virtual std::u16string GetAlternativeAccessibleName() const;
 
   // Get/sets the current display state of the button.
   ButtonState GetState() const;
@@ -243,9 +249,8 @@ class VIEWS_EXPORT Button : public View, public AnimationDelegateViews {
   void OnGestureEvent(ui::GestureEvent* event) override;
   bool AcceleratorPressed(const ui::Accelerator& accelerator) override;
   bool SkipDefaultKeyEventProcessing(const ui::KeyEvent& event) override;
-  std::u16string GetTooltipText(const gfx::Point& p) const override;
   void ShowContextMenu(const gfx::Point& p,
-                       ui::MenuSourceType source_type) override;
+                       ui::mojom::MenuSourceType source_type) override;
   void OnDragDone() override;
   // Instead of overriding this, subclasses that want custom painting should use
   // PaintButtonContents.
@@ -295,6 +300,8 @@ class VIEWS_EXPORT Button : public View, public AnimationDelegateViews {
   // Called when the tooltip is set.
   virtual void OnSetTooltipText(const std::u16string& tooltip_text);
 
+  void OnTooltipTextChanged(const std::u16string& old_tooltip_text) override;
+
   // Invoked from SetState() when SetState() is passed a value that differs from
   // the current node_data. Button's implementation of StateChanged() does
   // nothing; this method is provided for subclasses that wish to do something
@@ -340,6 +347,8 @@ class VIEWS_EXPORT Button : public View, public AnimationDelegateViews {
 
   virtual void OnEnabledChanged();
 
+  virtual void UpdateAccessibleCheckedState();
+
   // Sets the |default_action_verb_| for accessibility. Subclasses may
   // call this method to set their specific default action verb.
   void SetDefaultActionVerb(ax::mojom::DefaultActionVerb verb);
@@ -352,10 +361,6 @@ class VIEWS_EXPORT Button : public View, public AnimationDelegateViews {
   FRIEND_TEST_ALL_PREFIXES(BlueButtonTest, Border);
 
   void ReleaseAnchorHighlight();
-  void UpdateAccessibleCheckedState();
-
-  // The text shown in a tooltip.
-  std::u16string tooltip_text_;
 
   // The button's listener. Notified when clicked.
   PressedCallback callback_;

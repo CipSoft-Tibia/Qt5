@@ -4,6 +4,7 @@
 
 #include "extensions/renderer/api/core_extensions_renderer_api_provider.h"
 
+#include "components/guest_view/buildflags/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/grit/extensions_renderer_resources.h"
 #include "extensions/renderer/api/context_menus_custom_bindings.h"
@@ -174,6 +175,7 @@ void CoreExtensionsRendererAPIProvider::PopulateSourceMap(
 #if BUILDFLAG(ENABLE_GUEST_VIEW)
       {"guestView", IDR_GUEST_VIEW_JS},
       {"guestViewAttributes", IDR_GUEST_VIEW_ATTRIBUTES_JS},
+      {"guestViewConstants", IDR_GUEST_VIEW_CONSTANTS_JS},
       {"guestViewContainer", IDR_GUEST_VIEW_CONTAINER_JS},
       {"guestViewContainerElement", IDR_GUEST_VIEW_CONTAINER_ELEMENT_JS},
       {"guestViewDeny", IDR_GUEST_VIEW_DENY_JS},

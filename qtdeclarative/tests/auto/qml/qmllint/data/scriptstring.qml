@@ -67,6 +67,14 @@ Window {
                         horizontalCenter: undefined
                     }
                 }
+            },
+
+
+            State {
+                name: "noUnqualifiedLookupWarningForBindingToScriptString"
+                AnchorChanges {
+                    anchors.bottom: parent.anchors.bottom
+                }
             }
         ]
     }

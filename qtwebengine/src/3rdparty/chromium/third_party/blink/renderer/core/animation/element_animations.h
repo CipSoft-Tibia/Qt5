@@ -116,7 +116,12 @@ class CORE_EXPORT ElementAnimations final
   bool UpdateBoxSizeAndCheckTransformAxisAlignment(const gfx::SizeF& box_size);
   bool IsIdentityOrTranslation() const;
 
-  void RecalcCompositedStatus(Element* element, const CSSProperty& property);
+  bool HasCompositedPaintWorkletAnimation();
+
+  void RecalcCompositedStatusForKeyframeChange(
+      Element& element,
+      Animation::NativePaintWorkletReasons properties);
+  void RecalcCompositedStatus(Element* element);
 
   // TODO(crbug.com/1301961): Consider converting to an array or flat map of
   // fields for paint properties that can be composited.
@@ -136,8 +141,6 @@ class CORE_EXPORT ElementAnimations final
   void Trace(Visitor*) const override;
 
  private:
-  bool HasAnimationForProperty(const CSSProperty& property);
-
   EffectStack effect_stack_;
   CSSAnimations css_animations_;
   AnimationCountedSet animations_;

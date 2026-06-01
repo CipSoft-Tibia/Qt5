@@ -678,8 +678,9 @@ void tst_QShaderBaker::mslNativeBindingMap()
     QCOMPARE(nativeBindingPair.second, 1); // sampler
 
     baker.setSourceFileName(QLatin1String(":/data/manyresources.frag"));
-    targets = { { QShader::SpirvShader, QShaderVersion(100) },
-                { QShader::MslShader, QShaderVersion(12) } };
+    targets.clear();
+    targets.append({ QShader::SpirvShader, QShaderVersion(100) });
+    targets.append({ QShader::MslShader, QShaderVersion(12) });
     baker.setGeneratedShaders(targets);
     s = baker.bake();
     QVERIFY(s.isValid());

@@ -7,8 +7,6 @@ import static org.qtproject.qt.android.QtNative.ApplicationState.ApplicationSusp
 
 import android.app.Service;
 import android.content.res.Resources;
-import android.hardware.display.DisplayManager;
-import android.view.Display;
 import android.util.DisplayMetrics;
 
 import java.util.HashSet;
@@ -41,16 +39,11 @@ class QtServiceEmbeddedDelegate implements QtEmbeddedViewInterface, QtNative.App
 
                     final int maxWidth = metrics.widthPixels;
                     final int maxHeight = metrics.heightPixels;
-                    final int insetLeft = 0;
-                    final int insetTop = 0;
 
-                    final DisplayManager dm = m_service.getSystemService(DisplayManager.class);
-                    QtDisplayManager.setDisplayMetrics(
-                            maxWidth, maxHeight, insetLeft, insetTop, maxWidth, maxHeight,
-                            QtDisplayManager.getXDpi(metrics), QtDisplayManager.getYDpi(metrics),
-                            metrics.scaledDensity, metrics.density,
-                            QtDisplayManager.getRefreshRate(
-                                    dm.getDisplay(Display.DEFAULT_DISPLAY)));
+                    QtDisplayManager.handleLayoutSizeChanged(maxWidth, maxHeight);
+
+                    QtDisplayManager.updateRefreshRate(m_service);
+                    QtDisplayManager.handleScreenDensityChanged(metrics.density);
                 });
             }
         }

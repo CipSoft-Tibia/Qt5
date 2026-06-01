@@ -529,13 +529,13 @@ public:
     // the "end" parameters are like STL iterators: they point to one past the last valid element
     bool setScheme(const QString &value, qsizetype len, bool doSetError);
     void setAuthority(const QString &auth, qsizetype from, qsizetype end, QUrl::ParsingMode mode);
-    void setUserInfo(const QString &userInfo, qsizetype from, qsizetype end);
-    void setUserName(const QString &value, qsizetype from, qsizetype end);
-    void setPassword(const QString &value, qsizetype from, qsizetype end);
+    template <typename String> void setUserInfo(String &&value, QUrl::ParsingMode mode);
+    template <typename String> void setUserName(String &&value, QUrl::ParsingMode mode);
+    template <typename String> void setPassword(String &&value, QUrl::ParsingMode mode);
     bool setHost(const QString &value, qsizetype from, qsizetype end, QUrl::ParsingMode mode);
-    void setPath(const QString &value, qsizetype from, qsizetype end);
-    void setQuery(const QString &value, qsizetype from, qsizetype end);
-    void setFragment(const QString &value, qsizetype from, qsizetype end);
+    template <typename String> void setPath(String &&value, QUrl::ParsingMode mode);
+    template <typename String> void setQuery(String &&value, QUrl::ParsingMode mode);
+    template <typename String> void setFragment(String &&value, QUrl::ParsingMode mode);
 
     uint presentSections() const noexcept
     {
@@ -728,7 +728,8 @@ inline void QUrlPrivate::setError(ErrorCode errorCode, const QString &source, qs
 // mode in the following way:
 //  - spaces are decoded
 //  - valid UTF-8 sequences are decoded
-//  - gen-delims that can be unambiguously transformed are decoded
+//  - gen-delims that can be unambiguously transformed are decoded (exception:
+//    square brackets in path, query and fragment are left as they were)
 //  - characters controlled by DecodeReserved are often decoded, though this behavior
 //    can change depending on the subjective definition of "pretty"
 //
@@ -834,23 +835,29 @@ static const ushort * const pathInUrl = userNameInUrl + 5;
 static const ushort * const queryInUrl = userNameInUrl + 6;
 static const ushort * const fragmentInUrl = userNameInUrl + 6;
 
-static inline void parseDecodedComponent(QString &data, QUrlPrivate::Section section)
+static void
+recodeFromUser(QString &output, const QString &input, const ushort *actions, QUrl::ParsingMode mode)
 {
-    data.replace(u'%', "%25"_L1);
-    if (section != QUrlPrivate::Host)
-        data.replace(u'[', "%5B"_L1).replace(u']', "%5D"_L1);
+    output.resize(0);
+    qsizetype appended;
+    if (mode == QUrl::DecodedMode)
+        appended = qt_encodeFromUser(output, input, actions);
+    else
+        appended = qt_urlRecode(output, input, {}, actions);
+    if (!appended)
+        output = input;
 }
 
-static inline QString
-recodeFromUser(const QString &input, const ushort *actions, qsizetype from, qsizetype to)
+static void
+recodeFromUser(QString &output, QStringView input, const ushort *actions, QUrl::ParsingMode mode)
 {
-    QString output;
-    const QChar *begin = input.constData() + from;
-    const QChar *end = input.constData() + to;
-    if (qt_urlRecode(output, QStringView{begin, end}, {}, actions))
-        return output;
-
-    return input.mid(from, to - from);
+    Q_ASSERT_X(mode != QUrl::DecodedMode, "recodeFromUser",
+               "This function should only be called when parsing encoded components");
+    Q_UNUSED(mode);
+    output.resize(0);
+    if (qt_urlRecode(output, input, {}, actions))
+        return;
+    output.append(input);
 }
 
 // appendXXXX functions: copy from the internal form to the external, user form.
@@ -1050,6 +1057,8 @@ inline bool QUrlPrivate::setScheme(const QString &value, qsizetype len, bool doS
 
 inline void QUrlPrivate::setAuthority(const QString &auth, qsizetype from, qsizetype end, QUrl::ParsingMode mode)
 {
+    Q_ASSERT_X(mode != QUrl::DecodedMode, "setAuthority",
+               "This function should only be called when parsing encoded components");
     sectionIsPresent &= ~Authority;
     port = -1;
     if (from == end && !auth.isNull())
@@ -1059,7 +1068,7 @@ inline void QUrlPrivate::setAuthority(const QString &auth, qsizetype from, qsize
     while (from != end) {
         qsizetype userInfoIndex = auth.indexOf(u'@', from);
         if (size_t(userInfoIndex) < size_t(end)) {
-            setUserInfo(auth, from, userInfoIndex);
+            setUserInfo(QStringView(auth).sliced(from, userInfoIndex - from), mode);
             if (mode == QUrl::StrictMode && !validateComponent(UserInfo, auth, from, userInfoIndex))
                 break;
             from = userInfoIndex + 1;
@@ -1118,47 +1127,50 @@ inline void QUrlPrivate::setAuthority(const QString &auth, qsizetype from, qsize
     port = -1;
 }
 
-inline void QUrlPrivate::setUserInfo(const QString &userInfo, qsizetype from, qsizetype end)
+template <typename String> void QUrlPrivate::setUserInfo(String &&value, QUrl::ParsingMode mode)
 {
-    qsizetype delimIndex = userInfo.indexOf(u':', from);
-    setUserName(userInfo, from, qMin<size_t>(delimIndex, end));
-
-    if (size_t(delimIndex) >= size_t(end)) {
+    Q_ASSERT_X(mode != QUrl::DecodedMode, "setUserInfo",
+               "This function should only be called when parsing encoded components");
+    qsizetype delimIndex = value.indexOf(u':');
+    if (delimIndex < 0) {
+        // no password
+        setUserName(std::move(value), mode);
         password.clear();
         sectionIsPresent &= ~Password;
     } else {
-        setPassword(userInfo, delimIndex + 1, end);
+        setUserName(value.first(delimIndex), mode);
+        setPassword(value.sliced(delimIndex + 1), mode);
     }
 }
 
-inline void QUrlPrivate::setUserName(const QString &value, qsizetype from, qsizetype end)
+template <typename String> inline void QUrlPrivate::setUserName(String &&value, QUrl::ParsingMode mode)
 {
     sectionIsPresent |= UserName;
-    userName = recodeFromUser(value, userNameInIsolation, from, end);
+    recodeFromUser(userName, value, userNameInIsolation, mode);
 }
 
-inline void QUrlPrivate::setPassword(const QString &value, qsizetype from, qsizetype end)
+template <typename String> inline void QUrlPrivate::setPassword(String &&value, QUrl::ParsingMode mode)
 {
     sectionIsPresent |= Password;
-    password = recodeFromUser(value, passwordInIsolation, from, end);
+    recodeFromUser(password, value, passwordInIsolation, mode);
 }
 
-inline void QUrlPrivate::setPath(const QString &value, qsizetype from, qsizetype end)
+template <typename String> inline void QUrlPrivate::setPath(String &&value, QUrl::ParsingMode mode)
 {
     // sectionIsPresent |= Path; // not used, save some cycles
-    path = recodeFromUser(value, pathInIsolation, from, end);
+    recodeFromUser(path, value, pathInIsolation, mode);
 }
 
-inline void QUrlPrivate::setFragment(const QString &value, qsizetype from, qsizetype end)
+template <typename String> inline void QUrlPrivate::setFragment(String &&value, QUrl::ParsingMode mode)
 {
     sectionIsPresent |= Fragment;
-    fragment = recodeFromUser(value, fragmentInIsolation, from, end);
+    recodeFromUser(fragment, value, fragmentInIsolation, mode);
 }
 
-inline void QUrlPrivate::setQuery(const QString &value, qsizetype from, qsizetype iend)
+template <typename String> inline void QUrlPrivate::setQuery(String &&value, QUrl::ParsingMode mode)
 {
     sectionIsPresent |= Query;
-    query = recodeFromUser(value, queryInIsolation, from, iend);
+    recodeFromUser(query, value, queryInIsolation, mode);
 }
 
 // Host handling
@@ -1310,6 +1322,8 @@ static const QChar *parseIp6(QString &host, const QChar *begin, const QChar *end
 inline bool
 QUrlPrivate::setHost(const QString &value, qsizetype from, qsizetype iend, QUrl::ParsingMode mode)
 {
+    Q_ASSERT_X(mode != QUrl::DecodedMode, "setUserInfo",
+               "This function should only be called when parsing encoded components");
     const QChar *begin = value.constData() + from;
     const QChar *end = value.constData() + iend;
 
@@ -1411,6 +1425,8 @@ inline void QUrlPrivate::parse(const QString &url, QUrl::ParsingMode parsingMode
     //   relative-part = "//" authority path-abempty
     //                 /  other path types here
 
+    Q_ASSERT_X(parsingMode != QUrl::DecodedMode, "parse",
+               "This function should only be called when parsing encoded URLs");
     Q_ASSERT(sectionIsPresent == 0);
     Q_ASSERT(!error);
 
@@ -1466,7 +1482,7 @@ inline void QUrlPrivate::parse(const QString &url, QUrl::ParsingMode parsingMode
 
         // even if we failed to set the authority properly, let's try to recover
         pathStart = authorityEnd;
-        setPath(url, pathStart, hierEnd);
+        setPath(QStringView(url).sliced(pathStart, hierEnd - pathStart), parsingMode);
     } else {
         Q_ASSERT(userName.isNull());
         Q_ASSERT(password.isNull());
@@ -1475,18 +1491,19 @@ inline void QUrlPrivate::parse(const QString &url, QUrl::ParsingMode parsingMode
         pathStart = hierStart;
 
         if (hierStart < hierEnd)
-            setPath(url, hierStart, hierEnd);
+            setPath(QStringView(url).sliced(hierStart, hierEnd - hierStart), parsingMode);
         else
             path.clear();
     }
 
     Q_ASSERT(query.isNull());
     if (size_t(question) < size_t(hash))
-        setQuery(url, question + 1, qMin<size_t>(hash, len));
+        setQuery(QStringView(url).sliced(question + 1, qMin<size_t>(hash, len) - question - 1),
+                 parsingMode);
 
     Q_ASSERT(fragment.isNull());
     if (hash != -1)
-        setFragment(url, hash + 1, len);
+        setFragment(QStringView(url).sliced(hash + 1, len - hash - 1), parsingMode);
 
     if (error || parsingMode == QUrl::TolerantMode)
         return;
@@ -2073,7 +2090,7 @@ void QUrl::setUserInfo(const QString &userInfo, ParsingMode mode)
         return;
     }
 
-    d->setUserInfo(trimmed, 0, trimmed.size());
+    d->setUserInfo(std::move(trimmed), mode);
     if (userInfo.isNull()) {
         // QUrlPrivate::setUserInfo cleared almost everything
         // but it leaves the UserName bit set
@@ -2139,13 +2156,7 @@ void QUrl::setUserName(const QString &userName, ParsingMode mode)
     detach();
     d->clearError();
 
-    QString data = userName;
-    if (mode == DecodedMode) {
-        parseDecodedComponent(data, QUrlPrivate::UserName);
-        mode = TolerantMode;
-    }
-
-    d->setUserName(data, 0, data.size());
+    d->setUserName(userName, mode);
     if (userName.isNull())
         d->sectionIsPresent &= ~QUrlPrivate::UserName;
     else if (mode == StrictMode && !d->validateComponent(QUrlPrivate::UserName, userName))
@@ -2202,13 +2213,7 @@ void QUrl::setPassword(const QString &password, ParsingMode mode)
     detach();
     d->clearError();
 
-    QString data = password;
-    if (mode == DecodedMode) {
-        parseDecodedComponent(data, QUrlPrivate::Password);
-        mode = TolerantMode;
-    }
-
-    d->setPassword(data, 0, data.size());
+    d->setPassword(password, mode);
     if (password.isNull())
         d->sectionIsPresent &= ~QUrlPrivate::Password;
     else if (mode == StrictMode && !d->validateComponent(QUrlPrivate::Password, password))
@@ -2266,7 +2271,7 @@ void QUrl::setHost(const QString &host, ParsingMode mode)
 
     QString data = host;
     if (mode == DecodedMode) {
-        parseDecodedComponent(data, QUrlPrivate::Host);
+        data.replace(u'%', "%25"_L1);
         mode = TolerantMode;
     }
 
@@ -2389,13 +2394,7 @@ void QUrl::setPath(const QString &path, ParsingMode mode)
     detach();
     d->clearError();
 
-    QString data = path;
-    if (mode == DecodedMode) {
-        parseDecodedComponent(data, QUrlPrivate::Path);
-        mode = TolerantMode;
-    }
-
-    d->setPath(data, 0, data.size());
+    d->setPath(path, mode);
 
     // optimized out, since there is no path delimiter
 //    if (path.isNull())
@@ -2525,13 +2524,7 @@ void QUrl::setQuery(const QString &query, ParsingMode mode)
     detach();
     d->clearError();
 
-    QString data = query;
-    if (mode == DecodedMode) {
-        parseDecodedComponent(data, QUrlPrivate::Query);
-        mode = TolerantMode;
-    }
-
-    d->setQuery(data, 0, data.size());
+    d->setQuery(query, mode);
     if (query.isNull())
         d->sectionIsPresent &= ~QUrlPrivate::Query;
     else if (mode == StrictMode && !d->validateComponent(QUrlPrivate::Query, query))
@@ -2623,13 +2616,7 @@ void QUrl::setFragment(const QString &fragment, ParsingMode mode)
     detach();
     d->clearError();
 
-    QString data = fragment;
-    if (mode == DecodedMode) {
-        parseDecodedComponent(data, QUrlPrivate::Fragment);
-        mode = TolerantMode;
-    }
-
-    d->setFragment(data, 0, data.size());
+    d->setFragment(fragment, mode);
     if (fragment.isNull())
         d->sectionIsPresent &= ~QUrlPrivate::Fragment;
     else if (mode == StrictMode && !d->validateComponent(QUrlPrivate::Fragment, fragment))
@@ -3673,17 +3660,29 @@ QList<QUrl> QUrl::fromStringList(const QStringList &urls, ParsingMode mode)
 */
 size_t qHash(const QUrl &url, size_t seed) noexcept
 {
-    if (!url.d)
-        return qHash(-1, seed); // the hash of an unset port (-1)
+    QtPrivate::QHashCombineWithSeed hasher(seed);
 
-    return qHash(url.d->scheme) ^
-            qHash(url.d->userName) ^
-            qHash(url.d->password) ^
-            qHash(url.d->host) ^
-            qHash(url.d->port, seed) ^
-            qHash(url.d->path) ^
-            qHash(url.d->query) ^
-            qHash(url.d->fragment);
+    // non-commutative, we must hash the port first
+    if (!url.d)
+        return hasher(0, -1);
+    size_t state = hasher(0, url.d->port);
+
+    if (url.d->hasScheme())
+        state = hasher(state, url.d->scheme);
+    if (url.d->hasUserInfo()) {
+        // see presentSections(), appendUserName(), etc.
+        state = hasher(state, url.d->userName);
+        state = hasher(state, url.d->password);
+    }
+    if (url.d->hasHost() || url.d->isLocalFile())   // for XDG compatibility
+        state = hasher(state, url.d->host);
+    if (url.d->hasPath())
+        state = hasher(state, url.d->path);
+    if (url.d->hasQuery())
+        state = hasher(state, url.d->query);
+    if (url.d->hasFragment())
+        state = hasher(state, url.d->fragment);
+    return state;
 }
 
 static QUrl adjustFtpPath(QUrl url)

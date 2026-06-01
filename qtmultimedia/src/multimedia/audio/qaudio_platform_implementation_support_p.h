@@ -96,6 +96,8 @@ public:
     void setRole(AudioEndpointRole role) override;
 
 protected:
+    void handleStreamOpenError();
+
     friend class QtMultimediaPrivate::QPlatformAudioSinkStream;
     friend StreamType;
     using ShutdownPolicy = QPlatformAudioIOStream::ShutdownPolicy;
@@ -140,15 +142,25 @@ void QPlatformAudioSinkImplementation<StreamType, DerivedType>::start(QIODevice 
                                             static_cast<ConcreteSinkType *>(this), volume(),
                                             m_hardwareBufferFrames, m_role);
 
-    if (!m_stream->open()) {
-        setError(QAudio::OpenError);
-        m_stream = {};
-        return;
-    }
+    if (!m_stream->open())
+        return handleStreamOpenError();
 
-    m_stream->start(device);
+    bool started = m_stream->start(device);
+    if (!started)
+        return handleStreamOpenError();
+
     updateStreamState(QAudio::ActiveState);
 }
+
+
+template <STREAM_TYPE_ARG, typename DerivedType>
+void QPlatformAudioSinkImplementation<StreamType, DerivedType>::handleStreamOpenError()
+{
+    m_stream->requestStop();
+    setError(QAudio::OpenError);
+    m_stream = {};
+}
+
 
 template <STREAM_TYPE_ARG, typename DerivedType>
 void QPlatformAudioSinkImplementation<StreamType, DerivedType>::start(AudioCallback &&audioCallback)
@@ -168,18 +180,12 @@ void QPlatformAudioSinkImplementation<StreamType, DerivedType>::start(AudioCallb
                                             static_cast<ConcreteSinkType *>(this), volume(),
                                             m_hardwareBufferFrames, m_role);
 
-    if (!m_stream->open()) {
-        setError(QAudio::OpenError);
-        m_stream = {};
-        return;
-    }
+    if (!m_stream->open())
+        return handleStreamOpenError();
 
     bool started = m_stream->start(std::move(audioCallback));
-    if (!started) {
-        setError(QAudio::OpenError);
-        m_stream = {};
-        return;
-    }
+    if (!started)
+        return handleStreamOpenError();
 
     updateStreamState(QAudio::ActiveState);
 }
@@ -197,12 +203,16 @@ QIODevice *QPlatformAudioSinkImplementation<StreamType, DerivedType>::start()
                                             m_hardwareBufferFrames, m_role);
 
     if (!m_stream->open()) {
-        setError(QAudio::OpenError);
-        m_stream = {};
+        handleStreamOpenError();
         return nullptr;
     }
 
     QIODevice *device = m_stream->start();
+    if (!device) {
+        handleStreamOpenError();
+        return nullptr;
+    }
+
     QObject::connect(device, &QIODevice::readyRead, this, [this] {
         updateStreamIdle(false);
     });
@@ -219,6 +229,7 @@ void QPlatformAudioSinkImplementation<StreamType, DerivedType>::stop()
         m_stream = {};
         updateStreamState(QAudio::StoppedState);
     }
+    setError(QtAudio::NoError);
 }
 
 template <STREAM_TYPE_ARG, typename DerivedType>
@@ -229,12 +240,16 @@ void QPlatformAudioSinkImplementation<StreamType, DerivedType>::reset()
         m_stream = {};
         updateStreamState(QAudio::StoppedState);
     }
+    setError(QtAudio::NoError);
 }
 
 template <STREAM_TYPE_ARG, typename DerivedType>
 void QPlatformAudioSinkImplementation<StreamType, DerivedType>::suspend()
 {
     if (m_stream) {
+        if (state() == QAudio::SuspendedState)
+            return;
+
         m_stream->suspend();
         updateStreamState(QAudio::SuspendedState);
     }
@@ -244,6 +259,9 @@ template <STREAM_TYPE_ARG, typename DerivedType>
 void QPlatformAudioSinkImplementation<StreamType, DerivedType>::resume()
 {
     if (m_stream) {
+        if (state() != QAudio::SuspendedState)
+            return;
+
         updateStreamState(QAudio::ActiveState);
         m_stream->resume();
     }
@@ -386,6 +404,8 @@ public:
     void setVolume(float volume) override;
 
 protected:
+    void handleStreamOpenError();
+
     friend class QtMultimediaPrivate::QPlatformAudioSourceStream;
     friend StreamType;
     using ShutdownPolicy = QPlatformAudioIOStream::ShutdownPolicy;
@@ -414,6 +434,14 @@ QPlatformAudioSourceImplementation<StreamType, DerivedType>::~QPlatformAudioSour
 }
 
 template <STREAM_TYPE_ARG, typename DerivedType>
+void QPlatformAudioSourceImplementation<StreamType, DerivedType>::handleStreamOpenError()
+{
+    m_stream->requestStop();
+    setError(QAudio::OpenError);
+    m_stream = {};
+}
+
+template <STREAM_TYPE_ARG, typename DerivedType>
 void QPlatformAudioSourceImplementation<StreamType, DerivedType>::start(QIODevice *device)
 {
     if (!device) {
@@ -430,13 +458,13 @@ void QPlatformAudioSourceImplementation<StreamType, DerivedType>::start(QIODevic
                                             static_cast<ConcreteSourceType *>(this), volume(),
                                             m_hardwareBufferFrames);
 
-    if (!m_stream->open()) {
-        setError(QAudio::OpenError);
-        m_stream = {};
-        return;
-    }
+    if (!m_stream->open())
+        return handleStreamOpenError();
 
-    m_stream->start(device);
+    bool started = m_stream->start(device);
+    if (!started)
+        return handleStreamOpenError();
+
     updateStreamState(QAudio::ActiveState);
 }
 
@@ -453,12 +481,16 @@ QIODevice *QPlatformAudioSourceImplementation<StreamType, DerivedType>::start()
                                             m_hardwareBufferFrames);
 
     if (!m_stream->open()) {
-        setError(QAudio::OpenError);
-        m_stream = {};
+        handleStreamOpenError();
         return nullptr;
     }
 
     QIODevice *device = m_stream->start();
+    if (!device) {
+        handleStreamOpenError();
+        return nullptr;
+    }
+
     QObject::connect(device, &QIODevice::readyRead, this, [this] {
         updateStreamIdle(false);
     });
@@ -479,6 +511,7 @@ void QPlatformAudioSourceImplementation<StreamType, DerivedType>::stop()
 
     m_stream->stop(ShutdownPolicy::DrainRingbuffer);
     m_stream = {};
+    setError(QtAudio::NoError);
     updateStreamState(QAudio::StoppedState);
 }
 
@@ -492,6 +525,7 @@ void QPlatformAudioSourceImplementation<StreamType, DerivedType>::reset()
 
     m_stream->stop(ShutdownPolicy::DiscardRingbuffer);
     m_stream = {};
+    setError(QtAudio::NoError);
     updateStreamState(QAudio::StoppedState);
 }
 
@@ -598,18 +632,12 @@ void QPlatformAudioSourceImplementationWithCallback<StreamType, DerivedType>::st
             static_cast<typename BaseClass::ConcreteSourceType *>(this), BaseClass::volume(),
             BaseClass::m_hardwareBufferFrames);
 
-    if (!BaseClass::m_stream->open()) {
-        BaseClass::setError(QAudio::OpenError);
-        BaseClass::m_stream = {};
-        return;
-    }
+    if (!BaseClass::m_stream->open())
+        return BaseClass::handleStreamOpenError();
 
     bool started = BaseClass::m_stream->start(std::move(audioCallback));
-    if (!started) {
-        BaseClass::setError(QAudio::OpenError);
-        BaseClass::m_stream = {};
-        return;
-    }
+    if (!started)
+        return BaseClass::handleStreamOpenError();
 
     BaseClass::updateStreamState(QAudio::ActiveState);
 }

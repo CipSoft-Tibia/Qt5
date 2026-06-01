@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 /*
     !!!!!! Warning !!!!!
     Please don't save this file in emacs. It contains utf8 text sequences emacs will
@@ -2466,7 +2464,7 @@ void tst_QTextLayout::superscriptCrash_qtbug53911()
     }
 
     // This loop would crash before fix for QTBUG-53911
-    foreach (QTextLayout *textLayout, textLayouts) {
+    for (QTextLayout *textLayout : std::as_const(textLayouts)) {
         textLayout->beginLayout();
         while (textLayout->createLine().isValid());
         textLayout->endLayout();

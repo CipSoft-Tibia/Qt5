@@ -4,8 +4,6 @@
 
 #include "qchar.h"
 
-#include "qdatastream.h"
-
 #include "qunicodetables_p.h"
 #include "qunicodetables.cpp"
 
@@ -165,6 +163,7 @@ QT_BEGIN_NAMESPACE
     \value [since 6.5] Unicode_15_0 Version 15.0
     \value [since 6.8] Unicode_15_1 Version 15.1
     \value [since 6.9] Unicode_16_0 Version 16.0
+    \value [since 6.11] Unicode_17_0 Version 17.0
     \value Unicode_Unassigned  The value is not assigned to any character
                                in version 8.0 of Unicode.
 
@@ -275,6 +274,7 @@ QT_BEGIN_NAMESPACE
     \value [since 5.5] Script_BassaVah
     \value Script_Batak
     \value Script_Bengali
+    \value [since 6.11] Script_BeriaErfe
     \value [since 5.11] Script_Bhaiksuki
     \value Script_Bopomofo
     \value Script_Brahmi
@@ -397,6 +397,7 @@ QT_BEGIN_NAMESPACE
     \value Script_Sharada
     \value Script_Shavian
     \value [since 5.5] Script_Siddham
+    \value [since 6.11] Script_Sidetic
     \value [since 5.6] Script_SignWriting
     \value Script_Sinhala
     \value [since 5.15] Script_Sogdian
@@ -411,6 +412,7 @@ QT_BEGIN_NAMESPACE
     \value Script_TaiLe
     \value Script_TaiTham
     \value Script_TaiViet
+    \value [since 6.11] Script_TaiYo
     \value Script_Takri
     \value Script_Tamil
     \value [since 5.11] Script_Tangut
@@ -422,6 +424,7 @@ QT_BEGIN_NAMESPACE
     \value Script_Tifinagh
     \value [since 5.5] Script_Tirhuta
     \value [since 6.9] Script_Todhri
+    \value [since 6.11] Script_TolongSiki
     \value [since 6.3] Script_Toto
     \value [since 6.9] Script_TuluTigalari
     \value Script_Ugaritic
@@ -833,8 +836,9 @@ bool QChar::isPrint(char32_t ucs4) noexcept
 */
 bool QT_FASTCALL QChar::isSpace_helper(char32_t ucs4) noexcept
 {
-    if (ucs4 > LastValidCodePoint)
+    if (ucs4 > MaxSeparatorCodepoint)
         return false;
+
     const int test = FLAG(Separator_Space) |
                      FLAG(Separator_Line) |
                      FLAG(Separator_Paragraph);
@@ -1572,7 +1576,7 @@ static auto fullConvertCase(char32_t uc, QUnicodeTables::Case which) noexcept
 
     auto pp = result.chars;
 
-    const auto fold = qGetProp(uc)->cases[which];
+    const auto fold = caseConversion(uc)[which];
     const auto caseDiff = fold.diff;
 
     if (Q_UNLIKELY(fold.special)) {
@@ -1592,7 +1596,7 @@ static auto fullConvertCase(char32_t uc, QUnicodeTables::Case which) noexcept
 template <typename T>
 Q_DECL_CONST_FUNCTION static inline T convertCase_helper(T uc, QUnicodeTables::Case which) noexcept
 {
-    const auto fold = qGetProp(uc)->cases[which];
+    const auto fold = caseConversion(uc)[which];
 
     if (Q_UNLIKELY(fold.special)) {
         const ushort *specialCase = specialCaseMap + fold.diff;
@@ -1679,20 +1683,13 @@ char32_t QChar::toTitleCase(char32_t ucs4) noexcept
     return convertCase_helper(ucs4, QUnicodeTables::TitleCase);
 }
 
-static inline char32_t foldCase(const char16_t *ch, const char16_t *start)
+static inline char32_t foldCase(const char16_t *cur, const char16_t *start)
 {
-    char32_t ucs4 = *ch;
-    if (QChar::isLowSurrogate(ucs4) && ch > start && QChar::isHighSurrogate(*(ch - 1)))
-        ucs4 = QChar::surrogateToUcs4(*(ch - 1), ucs4);
-    return convertCase_helper(ucs4, QUnicodeTables::CaseFold);
-}
-
-static inline char32_t foldCase(char32_t ch, char32_t &last) noexcept
-{
-    char32_t ucs4 = ch;
-    if (QChar::isLowSurrogate(ucs4) && QChar::isHighSurrogate(last))
-        ucs4 = QChar::surrogateToUcs4(last, ucs4);
-    last = ch;
+    char32_t ucs4;
+    if (QChar::isLowSurrogate(*cur) && cur > start && QChar::isHighSurrogate(cur[-1]))
+        ucs4 = QChar::surrogateToUcs4(cur[-1], *cur);
+    else
+        ucs4 = *cur;
     return convertCase_helper(ucs4, QUnicodeTables::CaseFold);
 }
 
@@ -1749,36 +1746,6 @@ char32_t QChar::toCaseFolded(char32_t ucs4) noexcept
 
     \sa toLatin1(), unicode()
 */
-
-#ifndef QT_NO_DATASTREAM
-/*!
-    \relates QChar
-
-    Writes the char \a chr to the stream \a out.
-
-    \sa {Serializing Qt Data Types}
-*/
-QDataStream &operator<<(QDataStream &out, QChar chr)
-{
-    out << quint16(chr.unicode());
-    return out;
-}
-
-/*!
-    \relates QChar
-
-    Reads a char from the stream \a in into char \a chr.
-
-    \sa {Serializing Qt Data Types}
-*/
-QDataStream &operator>>(QDataStream &in, QChar &chr)
-{
-    quint16 u;
-    in >> u;
-    chr.unicode() = char16_t(u);
-    return in;
-}
-#endif // QT_NO_DATASTREAM
 
 /*!
     \fn QChar::unicode()
@@ -1848,7 +1815,7 @@ QDataStream &operator>>(QDataStream &in, QChar &chr)
 
     The following code creates a QLatin1Char:
     \code
-    using namespace Qt::Literals::StringLiterals;
+    using namespace Qt::StringLiterals;
 
     auto ch = 'a'_L1;
     \endcode
@@ -1870,13 +1837,18 @@ static void decomposeHelper(QString *str, bool canonical, QChar::UnicodeVersion 
     const unsigned short *utf16 = reinterpret_cast<unsigned short *>(s.data());
     const unsigned short *uc = utf16 + s.size();
     while (uc != utf16 + from) {
-        char32_t ucs4 = *(--uc);
-        if (QChar(ucs4).isLowSurrogate() && uc != utf16) {
+        const char16_t c = *(--uc);
+        char32_t ucs4;
+        if (QChar::isLowSurrogate(c) && uc != utf16) {
             ushort high = *(uc - 1);
             if (QChar(high).isHighSurrogate()) {
                 --uc;
-                ucs4 = QChar::surrogateToUcs4(high, ucs4);
+                ucs4 = QChar::surrogateToUcs4(high, c);
+            } else {
+                ucs4 = c; // keep lone surrogate
             }
+        } else {
+            ucs4 = c;
         }
 
         if (QChar::unicodeVersion(ucs4) > version)
@@ -1974,13 +1946,18 @@ static void composeHelper(QString *str, QChar::UnicodeVersion version, qsizetype
     qsizetype pos = from;
     while (pos < s.size()) {
         qsizetype i = pos;
-        char32_t uc = s.at(pos).unicode();
-        if (QChar(uc).isHighSurrogate() && pos < s.size()-1) {
+        char32_t uc;
+        const char16_t c = s.at(pos).unicode();
+        if (QChar::isHighSurrogate(c) && pos < s.size() - 1) {
             ushort low = s.at(pos+1).unicode();
             if (QChar(low).isLowSurrogate()) {
-                uc = QChar::surrogateToUcs4(uc, low);
+                uc = QChar::surrogateToUcs4(c, low);
                 ++pos;
+            } else {
+                uc = c; // keep lone surrogate
             }
+        } else {
+            uc = c;
         }
 
         const QUnicodeTables::Properties *p = qGetProp(uc);
@@ -2024,35 +2001,40 @@ static void canonicalOrderHelper(QString *str, QChar::UnicodeVersion version, qs
     QString &s = *str;
     const qsizetype l = s.size()-1;
 
-    char32_t u1, u2;
-    char16_t c1, c2;
-
     qsizetype pos = from;
     while (pos < l) {
         qsizetype p2 = pos+1;
-        u1 = s.at(pos).unicode();
-        if (QChar::isHighSurrogate(u1)) {
+        char32_t u1;
+        if (const char16_t hi = s.at(pos).unicode(); QChar::isHighSurrogate(hi)) {
             const char16_t low = s.at(p2).unicode();
             if (QChar::isLowSurrogate(low)) {
-                u1 = QChar::surrogateToUcs4(u1, low);
+                u1 = QChar::surrogateToUcs4(hi, low);
                 if (p2 >= l)
                     break;
                 ++p2;
+            } else {
+                u1 = hi;
             }
+        } else {
+            u1 = hi;
         }
-        c1 = 0;
+        ushort c1 = 0;
 
     advance:
-        u2 = s.at(p2).unicode();
-        if (QChar::isHighSurrogate(u2) && p2 < l) {
+        char32_t u2;
+        if (const char16_t hi = s.at(p2).unicode(); QChar::isHighSurrogate(hi) && p2 < l) {
             const char16_t low = s.at(p2+1).unicode();
             if (QChar::isLowSurrogate(low)) {
-                u2 = QChar::surrogateToUcs4(u2, low);
+                u2 = QChar::surrogateToUcs4(hi, low);
                 ++p2;
+            } else {
+                u2 = hi;
             }
+        } else {
+            u2 = hi;
         }
 
-        c2 = 0;
+        ushort c2 = 0;
         {
             const QUnicodeTables::Properties *p = qGetProp(u2);
             if (p->unicodeVersion <= version)
@@ -2120,7 +2102,7 @@ static bool normalizationQuickCheckHelper(QString *str, QString::NormalizationFo
     uchar lastCombining = 0;
     for (qsizetype i = from; i < length; ++i) {
         qsizetype pos = i;
-        char32_t uc = string[i];
+        const char16_t uc = string[i];
         if (uc < 0x80) {
             // ASCII characters are stable code points
             lastCombining = 0;
@@ -2128,6 +2110,7 @@ static bool normalizationQuickCheckHelper(QString *str, QString::NormalizationFo
             continue;
         }
 
+        char32_t ucs4;
         if (QChar::isHighSurrogate(uc)) {
             ushort low = string[i + 1];
             if (!QChar::isLowSurrogate(low)) {
@@ -2137,10 +2120,12 @@ static bool normalizationQuickCheckHelper(QString *str, QString::NormalizationFo
                 continue;
             }
             ++i;
-            uc = QChar::surrogateToUcs4(uc, low);
+            ucs4 = QChar::surrogateToUcs4(uc, low);
+        } else {
+            ucs4 = uc;
         }
 
-        const QUnicodeTables::Properties *p = qGetProp(uc);
+        const QUnicodeTables::Properties *p = qGetProp(ucs4);
 
         if (p->combiningClass < lastCombining && p->combiningClass > 0)
             return false;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdirectfbconvenience.h"
 #include "qdirectfbblitter.h"
@@ -251,6 +252,7 @@ QDirectFbKeyMap::QDirectFbKeyMap()
     insert(DIKS_INTERNET              , Qt::Key_HomePage);
     insert(DIKS_MAIL                  , Qt::Key_LaunchMail);
     insert(DIKS_FAVORITES             , Qt::Key_Favorites);
+    insert(DIKS_KEYBOARD              , Qt::Key_Keyboard);
     insert(DIKS_PHONE                 , Qt::Key_Phone);
     insert(DIKS_PROGRAM               , Qt::Key_Guide);
     insert(DIKS_TIME                  , Qt::Key_Time);

@@ -9,8 +9,11 @@ Rectangle {
     anchors.fill: parent
     color: "#404040"
 
+    property var queriedPoint
+    property bool selecting: true
+
     GraphsView {
-        id: chartView
+        id: graphView
         anchors.fill: parent
         anchors.margins: 20 * px
         anchors.topMargin: 80 * px
@@ -63,8 +66,8 @@ Rectangle {
         y: 20
         x: 80
         color: "#ffffff"
-        font.pixelSize: 20
-        text: "Selected points: " + lineSeries.selectedPoints
+        text: selecting ? "Selected points: " + lineSeries.selectedPoints
+                        : "Queried position: " + queriedPoint
     }
 
     SettingsView {
@@ -105,6 +108,20 @@ Rectangle {
             width: 250
             text: "Toggle points 1 and 2"
             onClicked: lineSeries.toggleSelection([1, 2]);
+        }
+        Button {
+            width: 250
+            text: "Toggle data point query and selection"
+            onClicked: selecting = !selecting
+        }
+    }
+
+    MouseArea {
+        enabled: !selecting
+        anchors.fill: graphView
+        onClicked: {
+            queriedPoint = lineSeries.dataPointCoordinatesAt(mouse.x - graphView.plotArea.x,
+                                                             mouse.y - graphView.plotArea.y)
         }
     }
 }

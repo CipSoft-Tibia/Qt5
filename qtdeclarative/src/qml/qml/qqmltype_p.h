@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLTYPE_P_H
 #define QQMLTYPE_P_H
@@ -108,8 +109,11 @@ public:
     QTypeRevision metaObjectRevision() const;
     bool containsRevisionedAttributes() const;
 
-    QQmlAttachedPropertiesFunc attachedPropertiesFunction(QQmlEnginePrivate *engine) const;
-    const QMetaObject *attachedPropertiesType(QQmlEnginePrivate *engine) const;
+    QQmlAttachedPropertiesFunc attachedPropertiesFunction(QQmlEnginePrivate *enginePrivate) const;
+    QQmlAttachedPropertiesFunc attachedPropertiesFunction(QQmlTypeLoader *typeLoader) const;
+
+    const QMetaObject *attachedPropertiesType(QQmlEnginePrivate *enginePrivate) const;
+    const QMetaObject *attachedPropertiesType(QQmlTypeLoader *typeLoader) const;
 
     int parserStatusCast() const;
     const char *interfaceIId() const;
@@ -148,13 +152,22 @@ public:
 
     int scopedEnumIndex(QQmlTypeLoader *typeLoader, const QV4::String *, bool *ok) const;
     int scopedEnumIndex(QQmlTypeLoader *typeLoader, const QString &, bool *ok) const;
-
     int unscopedEnumIndex(QQmlTypeLoader *typeLoader, const QV4::String *, bool *ok) const;
     int unscopedEnumIndex(QQmlTypeLoader *typeLoader, const QString &, bool *ok) const;
 
     int scopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QV4::String *, bool *ok) const;
     int scopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QString &, bool *ok) const;
     int scopedEnumValue(QQmlTypeLoader *typeLoader, const QHashedStringRef &, const QHashedStringRef &, bool *ok) const;
+
+    int unscopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QV4::String *, bool *ok) const;
+    int unscopedEnumValue(QQmlTypeLoader *typeLoader, int index, const QString &, bool *ok) const;
+    int unscopedEnumValue(QQmlTypeLoader *typeLoader, const QHashedStringRef &, const QHashedStringRef &, bool *ok) const;
+
+    QString scopedEnumKey(QQmlTypeLoader *typeLoader, int index, int value, bool *ok) const;
+    QStringList scopedEnumKeys(QQmlTypeLoader *typeLoader, int index, int value, bool *ok) const;
+
+    QString unscopedEnumKey(QQmlTypeLoader *typeLoader, int index, int value, bool *ok) const;
+    QStringList unscopedEnumKeys(QQmlTypeLoader *typeLoader, int index, int value, bool *ok) const;
 
     const QQmlTypePrivate *priv() const { return d.data(); }
     static void refHandle(const QQmlTypePrivate *priv);

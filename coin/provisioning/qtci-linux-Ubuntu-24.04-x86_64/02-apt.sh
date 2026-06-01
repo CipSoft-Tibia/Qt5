@@ -69,7 +69,9 @@ installPackages+=(libvpx-dev)
 installPackages+=(libxkbfile-dev)
 installPackages+=(libxshmfence-dev)
 installPackages+=(libxss-dev)
-# installPackages+=(nodejs) too old
+installPackages+=(rustc)
+installPackages+=(bindgen)
+installPackages+=(clang)
 installPackages+=(python3-html5lib)
 
 # Common event loop handling
@@ -243,10 +245,11 @@ installPackages+=(keyutils)
 installPackages+=(cifs-utils)
 # VxWorks QEMU network setup (tunctl)
 installPackages+=(uml-utilities)
-# used for reading vcpkg packages version, from vcpkg.json
-installPackages+=(jq)
-
+# Fix dependencies in shared ffmpeg libs
 installPackages+=(patchelf)
+
+# Keep zoneinfo up-to-date (COIN-1282)
+installPackages+=(tzdata)
 
 echo "Running update for apt"
 waitLoop
@@ -260,7 +263,7 @@ pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_
 pip config --user set global.extra-index-url https://pypi.org/simple/
 # Ubuntu 24.04 comes with a newer pip that disallows installing into the system site-packages,
 # so we explicitly ask it to allow it.
-pip install --user -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt" --break-system-packages
+pip install --user -r "${BASH_SOURCE%/*}/../common/shared/requirements.txt" --break-system-packages
 
 source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 # SetEnvVar "PATH" "/usr/lib/nodejs-mozilla/bin:\$PATH"

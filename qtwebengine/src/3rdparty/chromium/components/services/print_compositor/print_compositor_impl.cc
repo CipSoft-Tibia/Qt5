@@ -4,13 +4,13 @@
 
 #include "components/services/print_compositor/print_compositor_impl.h"
 
+#include <algorithm>
 #include <tuple>
 #include <utility>
 
 #include "base/containers/contains.h"
 #include "base/logging.h"
 #include "base/memory/discardable_memory.h"
-#include "base/ranges/algorithm.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
@@ -44,6 +44,7 @@
 
 #if BUILDFLAG(ENTERPRISE_WATERMARK)
 #include "components/enterprise/watermarking/features.h"  // nogncheck
+#include "components/enterprise/watermarking/mojom/watermark.mojom.h"  // nogncheck
 #include "components/enterprise/watermarking/watermark.h"  // nogncheck
 #endif
 
@@ -53,12 +54,6 @@ using MojoDiscardableSharedMemoryManager =
 namespace printing {
 
 namespace {
-
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-// Print UX requirement for watermarking. Values are in pixels.
-constexpr int kWatermarkBlockWidth = 350;
-constexpr float kTextSize = 24.0f;
-#endif
 
 sk_sp<SkDocument> MakeDocument(
     const std::string& creator,
@@ -80,31 +75,55 @@ sk_sp<SkDocument> MakeDocument(
 }
 
 #if BUILDFLAG(ENTERPRISE_WATERMARK)
-void DrawEnterpriseWatermark(SkCanvas* canvas, SkSize size) {
+
+void DrawWatermarkBlock(
+    SkCanvas* canvas,
+    SkSize size,
+    const watermark::mojom::WatermarkBlockPtr& watermark_block) {
+  if (!watermark_block) {
+    return;
+  }
+  base::ReadOnlySharedMemoryMapping mapping =
+      watermark_block->serialized_skpicture.Map();
+  if (!mapping.IsValid()) {
+    DLOG(ERROR)
+        << "Error serializing the watermark block received from the browser";
+    return;
+  }
+  auto skpicture_span = mapping.GetMemoryAsSpan<uint8_t>();
+  SkMemoryStream stream(skpicture_span.data(), skpicture_span.size());
+  sk_sp<SkPicture> picture = SkPicture::MakeFromStream(&stream);
+
+  enterprise_watermark::DrawWatermark(canvas, picture.get(),
+                                      watermark_block->width,
+                                      watermark_block->height, size);
+}
+
+#endif
+
+}  // namespace
+
+#if BUILDFLAG(ENTERPRISE_WATERMARK)
+
+void DrawEnterpriseWatermark(
+    SkCanvas* canvas,
+    SkSize size,
+    const watermark::mojom::WatermarkBlockPtr& watermark_block) {
   if (!base::FeatureList::IsEnabled(
           enterprise_watermark::features::kEnablePrintWatermark)) {
     return;
   }
-
-  // TODO(b/356446812): For now, use this hard-coded string to facilitate
-  // implementing UI tests. We must update the PrintCompositor mojo interface in
-  // order to pass the watermark string here from the browser process.
-  std::string text = "Private! Confidential!\n2024-05-24\nexample@gmail.com";
-  enterprise_watermark::DrawWatermark(canvas, size, text, kWatermarkBlockWidth,
-                                      kTextSize);
-}
-#endif
-
-void DrawPage(SkDocument* doc, const SkDocumentPage& page) {
-  SkCanvas* canvas = doc->beginPage(page.fSize.width(), page.fSize.height());
-  canvas->drawPicture(page.fPicture);
-#if BUILDFLAG(ENTERPRISE_WATERMARK)
-  DrawEnterpriseWatermark(canvas, page.fSize);
-#endif
-  doc->endPage();
+  DrawWatermarkBlock(canvas, size, watermark_block);
 }
 
-}  // namespace
+void DrawWatermarkBlockForTesting(
+    SkCanvas* canvas,
+    SkSize size,
+    const watermark::mojom::WatermarkBlockPtr& watermark_block) {
+  DrawWatermarkBlock(canvas, size, watermark_block);
+}
+
+#endif
 
 PrintCompositorImpl::PrintCompositorImpl(
     mojo::PendingReceiver<mojom::PrintCompositor> receiver,
@@ -292,8 +311,8 @@ void PrintCompositorImpl::UpdateRequestsWithSubframeInfo(
     // update with this frame's pending list.
     auto& pending_list = request->pending_subframes;
     if (pending_list.erase(frame_guid)) {
-      base::ranges::copy(pending_subframes,
-                         std::inserter(pending_list, pending_list.end()));
+      std::ranges::copy(pending_subframes,
+                        std::inserter(pending_list, pending_list.end()));
     }
 
     // If the request still has pending frames, or isn't at the front of the
@@ -421,7 +440,8 @@ mojom::PrintCompositor::Status PrintCompositorImpl::CompositePages(
   }
 
   std::vector<SkDocumentPage> pages(page_count);
-  SkDeserialProcs procs = DeserializationProcs(&subframes, &typefaces_);
+  SkDeserialProcs procs =
+      DeserializationProcs(&subframes, &typefaces_, &images_);
   if (!SkMultiPictureDocument::Read(&stream, pages.data(), page_count,
                                     &procs)) {
     DLOG(ERROR) << "CompositePages: Page reading failed.";
@@ -480,8 +500,8 @@ void PrintCompositorImpl::CompositeSubframe(FrameInfo* frame_info) {
   // Composite the entire frame.
   SkMemoryStream stream(frame_info->serialized_content.data(),
                         frame_info->serialized_content.size());
-  SkDeserialProcs procs =
-      DeserializationProcs(&subframes, &frame_info->typefaces);
+  SkDeserialProcs procs = DeserializationProcs(
+      &subframes, &frame_info->typefaces, &frame_info->images);
   frame_info->content = SkPicture::MakeFromStream(&stream, &procs);
 }
 
@@ -502,6 +522,16 @@ PrintCompositorImpl::GetPictureDeserializationContext(
     subframes[content_id] = frame_info->content;
   }
   return subframes;
+}
+
+void PrintCompositorImpl::DrawPage(SkDocument* doc,
+                                   const SkDocumentPage& page) {
+  SkCanvas* canvas = doc->beginPage(page.fSize.width(), page.fSize.height());
+  canvas->drawPicture(page.fPicture);
+#if BUILDFLAG(ENTERPRISE_WATERMARK)
+  DrawEnterpriseWatermark(canvas, page.fSize, watermark_block_);
+#endif
+  doc->endPage();
 }
 
 void PrintCompositorImpl::FulfillRequest(
@@ -578,5 +608,18 @@ void PrintCompositorImpl::SetGenerateDocumentOutline(
 void PrintCompositorImpl::SetTitle(const std::string& title) {
   title_ = title;
 }
+
+#if BUILDFLAG(ENTERPRISE_WATERMARK)
+void PrintCompositorImpl::SetWatermarkBlock(
+    watermark::mojom::WatermarkBlockPtr watermark_block) {
+  watermark_block_ = std::move(watermark_block);
+}
+
+const watermark::mojom::WatermarkBlockPtr&
+PrintCompositorImpl::watermark_block_for_testing() const {
+  return watermark_block_;
+}
+
+#endif
 
 }  // namespace printing

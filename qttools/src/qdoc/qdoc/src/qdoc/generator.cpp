@@ -15,6 +15,7 @@
 #include "enumnode.h"
 #include "examplenode.h"
 #include "functionnode.h"
+#include "inode.h"
 #include "node.h"
 #include "openedlist.h"
 #include "propertynode.h"
@@ -94,10 +95,8 @@ void Generator::appendFullName(Text &text, const Node *apparentNode, const Node 
 {
     if (actualNode == nullptr)
         actualNode = apparentNode;
-    text << Atom(Atom::LinkNode, CodeMarker::stringForNode(actualNode))
-         << Atom(Atom::FormattingLeft, ATOM_FORMATTING_LINK)
-         << Atom(Atom::String, apparentNode->plainFullName(relative))
-         << Atom(Atom::FormattingRight, ATOM_FORMATTING_LINK);
+
+    addNodeLink(text, actualNode, apparentNode->plainFullName(relative));
 }
 
 void Generator::appendFullName(Text &text, const Node *apparentNode, const QString &fullName,
@@ -105,9 +104,8 @@ void Generator::appendFullName(Text &text, const Node *apparentNode, const QStri
 {
     if (actualNode == nullptr)
         actualNode = apparentNode;
-    text << Atom(Atom::LinkNode, CodeMarker::stringForNode(actualNode))
-         << Atom(Atom::FormattingLeft, ATOM_FORMATTING_LINK) << Atom(Atom::String, fullName)
-         << Atom(Atom::FormattingRight, ATOM_FORMATTING_LINK);
+
+    addNodeLink(text, actualNode, fullName);
 }
 
 /*!
@@ -117,10 +115,7 @@ void Generator::appendFullName(Text &text, const Node *apparentNode, const QStri
  */
 void Generator::appendSignature(Text &text, const Node *node)
 {
-    text << Atom(Atom::LinkNode, CodeMarker::stringForNode(node))
-         << Atom(Atom::FormattingLeft, ATOM_FORMATTING_LINK)
-         << Atom(Atom::String, node->signature(Node::SignaturePlain))
-         << Atom(Atom::FormattingRight, ATOM_FORMATTING_LINK);
+    addNodeLink(text, node, node->signature(Node::SignaturePlain));
 }
 
 /*!
@@ -209,7 +204,7 @@ QFile *Generator::openSubPageFile(const PageNode *node, const QString &fileName)
 
     QString path = outputDir() + QLatin1Char('/') + fileName;
 
-    auto outPath = s_redirectDocumentationToDevNull ? QStringLiteral("/dev/null") : path;
+    const auto &outPath = s_redirectDocumentationToDevNull ? QStringLiteral("/dev/null") : path;
     auto outFile = new QFile(outPath);
 
     if (!s_redirectDocumentationToDevNull && outFile->exists()) {
@@ -484,14 +479,14 @@ QString Generator::fullDocumentLocation(const Node *node)
     }
 
     switch (node->nodeType()) {
-    case Node::Class:
-    case Node::Struct:
-    case Node::Union:
-    case Node::Namespace:
-    case Node::Proxy:
+    case NodeType::Class:
+    case NodeType::Struct:
+    case NodeType::Union:
+    case NodeType::Namespace:
+    case NodeType::Proxy:
         parentName = fileBase(node) + QLatin1Char('.') + currentGenerator()->fileExtension();
         break;
-    case Node::Function: {
+    case NodeType::Function: {
         const auto *fn = static_cast<const FunctionNode *>(node);
         switch (fn->metaness()) {
         case FunctionNode::QmlSignal:
@@ -522,39 +517,40 @@ QString Generator::fullDocumentLocation(const Node *node)
       the latter returns the name in lower-case. For
       HTML anchors, we need to preserve the case.
     */
-    case Node::Enum:
+    case NodeType::Enum:
+    case NodeType::QmlEnum:
         anchorRef = QLatin1Char('#') + node->name() + "-enum";
         break;
-    case Node::Typedef: {
+    case NodeType::Typedef: {
         const auto *tdef = static_cast<const TypedefNode *>(node);
         if (tdef->associatedEnum())
             return fullDocumentLocation(tdef->associatedEnum());
     } Q_FALLTHROUGH();
-    case Node::TypeAlias:
+    case NodeType::TypeAlias:
         anchorRef = QLatin1Char('#') + node->name() + "-typedef";
         break;
-    case Node::Property:
+    case NodeType::Property:
         anchorRef = QLatin1Char('#') + node->name() + "-prop";
         break;
-    case Node::SharedComment: {
+    case NodeType::SharedComment: {
         if (!node->isPropertyGroup())
             break;
     } Q_FALLTHROUGH();
-    case Node::QmlProperty:
+    case NodeType::QmlProperty:
         if (node->isAttached())
             anchorRef = QLatin1Char('#') + node->name() + "-attached-prop";
         else
             anchorRef = QLatin1Char('#') + node->name() + "-prop";
         break;
-    case Node::Variable:
+    case NodeType::Variable:
         anchorRef = QLatin1Char('#') + node->name() + "-var";
         break;
-    case Node::QmlType:
-    case Node::Page:
-    case Node::Group:
-    case Node::HeaderFile:
-    case Node::Module:
-    case Node::QmlModule: {
+    case NodeType::QmlType:
+    case NodeType::Page:
+    case NodeType::Group:
+    case NodeType::HeaderFile:
+    case NodeType::Module:
+    case NodeType::QmlModule: {
         parentName = fileBase(node);
         parentName.replace(QLatin1Char('/'), QLatin1Char('-'))
                 .replace(QLatin1Char('.'), QLatin1Char('-'));
@@ -573,6 +569,14 @@ QString Generator::fullDocumentLocation(const Node *node)
     return parentName.toLower() + anchorRef;
 }
 
+/*!
+    Generates text for a "see also" list for the given \a node and \a marker
+    if a list has been defined.
+
+    Check for links to the node containing the \sa command, looking for empty
+    ref fields to ensure that a link is referring to the node itself and not
+    a different section of a larger document.
+*/
 void Generator::generateAlsoList(const Node *node, CodeMarker *marker)
 {
     QList<Text> alsoList = node->doc().alsoList();
@@ -583,8 +587,25 @@ void Generator::generateAlsoList(const Node *node, CodeMarker *marker)
         text << Atom::ParaLeft << Atom(Atom::FormattingLeft, ATOM_FORMATTING_BOLD) << "See also "
              << Atom(Atom::FormattingRight, ATOM_FORMATTING_BOLD);
 
-        for (int i = 0; i < alsoList.size(); ++i)
-            text << alsoList.at(i) << Utilities::separator(i, alsoList.size());
+        QSet<QString> used;
+        QList<Text> items;
+        for (const auto &also : std::as_const(alsoList)) {
+            // Every item starts with a link atom.
+            const Atom *atom = also.firstAtom();
+            QString link = atom->string();
+            if (!used.contains(link)) {
+                items.append(also);
+                used.insert(link);
+
+                QString ref;
+                if (m_qdb->findNodeForAtom(atom, node, ref) == node && ref.isEmpty())
+                    node->doc().location().warning("Redundant link to self in \\sa command for %1"_L1.arg(node->name()));
+            }
+        }
+
+        int i = 0;
+        for (const auto &also : std::as_const(items))
+            text << also << Utilities::separator(i++, items.size());
 
         text << Atom::ParaRight;
         generateText(text, node, marker);
@@ -722,7 +743,8 @@ void Generator::generateBody(const Node *node, CodeMarker *marker)
                 generateAddendum(node, Invokable, marker);
             if (fn->hasAssociatedProperties())
                 generateAddendum(node, AssociatedProperties, marker);
-            if (fn->hasOverloads() && fn->doc().hasOverloadCommand())
+            if (fn->hasOverloads() && fn->doc().hasOverloadCommand()
+                && !fn->isSignal() && !fn->isSlot())
                 generateAddendum(node, OverloadNote, marker, AdmonitionPrefix::None);
         }
 
@@ -805,7 +827,7 @@ void Generator::generateBody(const Node *node, CodeMarker *marker)
                 qpn->doc().location().warning("Invalid QML property type: %1"_L1.arg(qpn->dataType()));
         }
     }
-    generateEnumValuesForQmlProperty(node, marker);
+    generateEnumValuesForQmlReference(node, marker);
     generateRequiredLinks(node, marker);
 }
 
@@ -955,9 +977,11 @@ void Generator::generateFileList(const ExampleNode *en, CodeMarker *marker, bool
             continue;
         }
 
-        auto file{*maybe_resolved_file};
-        if (images) addImageToCopy(en, file);
-        else        generateExampleFilePage(en, file, marker);
+        const auto &file{*maybe_resolved_file};
+        if (images)
+            addImageToCopy(en, file);
+        else
+            generateExampleFilePage(en, file, marker);
 
         openedList.next();
         text << Atom(Atom::ListItemNumber, openedList.numberString())
@@ -1160,7 +1184,7 @@ std::optional<QString> formatStatus(const Node *node, QDocDatabase *qdb)
         if (!status.isEmpty())
             return {status};
     }
-    const auto since = node->deprecatedSince();
+    const auto &since = node->deprecatedSince();
     if (node->status() == Node::Deprecated) {
         status = u"Deprecated"_s;
         if (!since.isEmpty())
@@ -1180,8 +1204,15 @@ void Generator::generateSince(const Node *node, CodeMarker *marker)
 {
     if (!node->since().isEmpty()) {
         Text text;
-        text << Atom::ParaLeft << "This " << typeString(node) << " was introduced in "
-             << formatSince(node) << "." << Atom::ParaRight;
+        if (node->isSharedCommentNode()) {
+            const auto &collective = static_cast<const SharedCommentNode *>(node)->collective();
+            QString typeStr = collective.size() > 1 ? typeString(collective.first()) + "s" : typeString(node);
+            text << Atom::ParaLeft << "These " << typeStr << " were introduced in "
+                 << formatSince(node) << "." << Atom::ParaRight;
+        } else {
+            text << Atom::ParaLeft << "This " << typeString(node) << " was introduced in "
+                 << formatSince(node) << "." << Atom::ParaRight;
+        }
         generateText(text, node, marker);
     }
 }
@@ -1196,8 +1227,8 @@ void Generator::generateNoexceptNote(const Node* node, CodeMarker* marker) {
 
     std::size_t counter{1};
     for (const Node* node : nodes) {
-        if (node->isFunction(Node::CPP)) {
-            if (auto exception_info = static_cast<const FunctionNode*>(node)->getNoexcept(); exception_info && !(*exception_info).isEmpty()) {
+        if (node->isFunction(Genus::CPP)) {
+            if (const auto &exception_info = static_cast<const FunctionNode*>(node)->getNoexcept(); exception_info && !(*exception_info).isEmpty()) {
                 Text text;
                 text << Atom::NoteLeft
                         << (nodes.size() > 1 ? QString::fromStdString(" ("s + std::to_string(counter) + ")"s) : QString::fromStdString("This ") + typeString(node))
@@ -1230,7 +1261,7 @@ void Generator::generateStatus(const Node *node, CodeMarker *marker)
                 break;
             }
         }
-        if (const auto version = node->deprecatedSince(); !version.isEmpty()) {
+        if (const auto &version = node->deprecatedSince(); !version.isEmpty()) {
             text << Atom::ParaLeft << "This " << typeString(node)
                  << " is scheduled for deprecation in version "
                  << version << "." << Atom::ParaRight;
@@ -1394,20 +1425,45 @@ void Generator::generateAddendum(const Node *node, Addendum type, CodeMarker *ma
     }
     case OverloadNote:
     {
-        const auto &args = node->doc().overloadList();
-        if (args.first().first.isEmpty()) {
-            text << "This is an overloaded function.";
-        } else {
-            QString target = args.first().first;
-            // If the target is not fully qualified and we have a parent class context,
-            // attempt to qualify it to improve link resolution
-            if (!target.contains("::") && node->isFunction()) {
-                const auto *parent = node->parent();
-                if (parent && (parent->isClassNode() || parent->isNamespace())) {
-                    target = parent->name() + "::" + target;
-                }
+        const auto *func = static_cast<const FunctionNode *>(node);
+
+        if (func->isSignal() || func->isSlot()) {
+            QString functionType = func->isSignal() ? "signal" : "slot";
+            const QString &configKey = func->isSignal() ? "overloadedsignalstarget" : "overloadedslotstarget";
+            const QString &defaultTarget = func->isSignal() ? "connecting-overloaded-signals" : "connecting-overloaded-slots";
+            const QString &linkTarget = Config::instance().get(configKey).asString(defaultTarget);
+
+            text << "This " << functionType << " is overloaded. ";
+
+            QString snippet = generateOverloadSnippet(func);
+            if (!snippet.isEmpty()) {
+                text << "To connect to this " << functionType << ":\n\n"
+                     << Atom(Atom::Code, snippet) << "\n";
             }
-            text << "This function overloads " << Atom(Atom::AutoLink, target) << ".";
+
+            if (!linkTarget.isEmpty()) {
+                text << "For more examples and approaches, see "
+                     << Atom(Atom::Link, linkTarget)
+                     << Atom(Atom::FormattingLeft, ATOM_FORMATTING_LINK)
+                     << "connecting to overloaded " << functionType << "s"
+                     << Atom(Atom::FormattingRight, ATOM_FORMATTING_LINK) << ".";
+            }
+        } else {
+            const auto &args = node->doc().overloadList();
+            if (args.first().first.isEmpty()) {
+                text << "This is an overloaded function.";
+            } else {
+                QString target = args.first().first;
+                // If the target is not fully qualified and we have a parent class context,
+                // attempt to qualify it to improve link resolution
+                if (!target.contains("::")) {
+                    const auto *parent = node->parent();
+                    if (parent && (parent->isClassNode() || parent->isNamespace())) {
+                        target = parent->name() + "::" + target;
+                    }
+                }
+                text << "This function overloads " << Atom(Atom::AutoLink, target) << ".";
+            }
         }
         break;
     }
@@ -1662,63 +1718,6 @@ bool Generator::generateComparisonList(const Node *node)
 }
 
 /*!
-  Returns the string containing an example code of the input node,
-  if it is an overloaded signal. Otherwise, returns an empty string.
- */
-QString Generator::getOverloadedSignalCode(const Node *node)
-{
-    if (!node->isFunction())
-        return QString();
-    const auto func = static_cast<const FunctionNode *>(node);
-    if (!func->isSignal() || !func->hasOverloads())
-        return QString();
-
-    // Compute a friendly name for the object of that instance.
-    // e.g:  "QAbstractSocket" -> "abstractSocket"
-    QString objectName = node->parent()->name();
-    if (objectName.size() >= 2) {
-        if (objectName[0] == 'Q')
-            objectName = objectName.mid(1);
-        objectName[0] = objectName[0].toLower();
-    }
-
-    // We have an overloaded signal, show an example. Note, for const
-    // overloaded signals, one should use Q{Const,NonConst}Overload, but
-    // it is very unlikely that we will ever have public API overloading
-    // signals by const.
-    QString code = "connect(" + objectName + ", QOverload<";
-    code += func->parameters().generateTypeList();
-    code += ">::of(&" + func->parent()->name() + "::" + func->name() + "),\n    [=](";
-    code += func->parameters().generateTypeAndNameList();
-    code += "){ /* ... */ });";
-
-    return code;
-}
-
-/*!
-    If the node is an overloaded signal, add a node with an example on how to connect to it
- */
-void Generator::generateOverloadedSignal(const Node *node, CodeMarker *marker)
-{
-    QString code = getOverloadedSignalCode(node);
-    if (code.isEmpty())
-        return;
-
-    Text text;
-    text << Atom::ParaLeft << Atom(Atom::FormattingLeft, ATOM_FORMATTING_BOLD)
-         << "Note:" << Atom(Atom::FormattingRight, ATOM_FORMATTING_BOLD) << " Signal "
-         << Atom(Atom::FormattingLeft, ATOM_FORMATTING_ITALIC) << node->name()
-         << Atom(Atom::FormattingRight, ATOM_FORMATTING_ITALIC)
-         << " is overloaded in this class. "
-            "To connect to this signal by using the function pointer syntax, Qt "
-            "provides a convenient helper for obtaining the function pointer as "
-            "shown in this example:"
-         << Atom(Atom::Code, marker->markedUpCode(code, node, node->location()));
-
-    generateText(text, node, marker);
-}
-
-/*!
   Traverses the database recursively to generate all the documentation.
  */
 void Generator::generateDocs()
@@ -1891,6 +1890,8 @@ void Generator::initializeFormat()
 
     if (s_outputFormats.isEmpty())
         return;
+    if (s_redirectDocumentationToDevNull)
+        return;
 
     s_outDir = config.getOutputDir(format());
     if (s_outDir.isEmpty()) {
@@ -1963,9 +1964,9 @@ QString Generator::outputPrefix(const Node *node)
     // Omit prefix for module pages
     if (node->isPageNode() && !node->isCollectionNode()) {
         switch (node->genus()) {
-        case Node::QML:
+        case Genus::QML:
             return s_outputPrefixes[u"QML"_s];
-        case Node::CPP:
+        case Genus::CPP:
             return s_outputPrefixes[u"CPP"_s];
         default:
             break;
@@ -1978,9 +1979,9 @@ QString Generator::outputSuffix(const Node *node)
 {
     if (node->isPageNode()) {
         switch (node->genus()) {
-        case Node::QML:
+        case Genus::QML:
             return s_outputSuffixes[u"QML"_s];
-        case Node::CPP:
+        case Genus::CPP:
             return s_outputSuffixes[u"CPP"_s];
         default:
             break;
@@ -2154,18 +2155,19 @@ void Generator::supplementAlsoList(const Node *node, QList<Text> &alsoList)
     }
 }
 
-void Generator::generateEnumValuesForQmlProperty(const Node *node, CodeMarker *marker)
+void Generator::generateEnumValuesForQmlReference(const Node *node, CodeMarker *marker)
 {
-    if (!node->isQmlProperty())
+    const NativeEnum *nativeEnum{nullptr};
+    if (auto *ne_if = dynamic_cast<const NativeEnumInterface *>(node))
+        nativeEnum = ne_if->nativeEnum();
+    else
         return;
 
-    const auto *qpn = static_cast<const QmlPropertyNode*>(node);
-
-    if (!qpn->enumNode())
+    if (!nativeEnum->enumNode())
         return;
 
     // Retrieve atoms from C++ enum \value list
-    const auto body{qpn->enumNode()->doc().body()};
+    const auto body{nativeEnum->enumNode()->doc().body()};
     const auto *start{body.firstAtom()};
     Text text;
 
@@ -2180,9 +2182,9 @@ void Generator::generateEnumValuesForQmlProperty(const Node *node, CodeMarker *m
 
     text << Atom(Atom::ListRight, ATOM_LIST_VALUE);
     if (marker)
-        generateText(text, qpn, marker);
+        generateText(text, node, marker);
     else
-        generateText(text, qpn);
+        generateText(text, node);
 }
 
 void Generator::terminate()
@@ -2243,53 +2245,58 @@ QString Generator::trimmedTrailing(const QString &string, const QString &prefix,
 QString Generator::typeString(const Node *node)
 {
     switch (node->nodeType()) {
-    case Node::Namespace:
-        return "namespace";
-    case Node::Class:
-        return "class";
-    case Node::Struct:
-        return "struct";
-    case Node::Union:
-        return "union";
-    case Node::QmlType:
-    case Node::QmlValueType:
-        return "type";
-    case Node::Page:
-        return "documentation";
-    case Node::Enum:
-        return "enum";
-    case Node::Typedef:
-    case Node::TypeAlias:
-        return "typedef";
-    case Node::Function: {
+    case NodeType::Namespace:
+        return "namespace"_L1;
+    case NodeType::Class:
+        return "class"_L1;
+    case NodeType::Struct:
+        return "struct"_L1;
+    case NodeType::Union:
+        return "union"_L1;
+    case NodeType::QmlType:
+    case NodeType::QmlValueType:
+        return "type"_L1;
+    case NodeType::Page:
+        return "documentation"_L1;
+    case NodeType::Enum:
+        return "enum"_L1;
+    case NodeType::Typedef:
+    case NodeType::TypeAlias:
+        return "typedef"_L1;
+    case NodeType::Function: {
         const auto fn = static_cast<const FunctionNode *>(node);
         switch (fn->metaness()) {
         case FunctionNode::QmlSignal:
-            return "signal";
+            return "signal"_L1;
         case FunctionNode::QmlSignalHandler:
-            return "signal handler";
+            return "signal handler"_L1;
         case FunctionNode::QmlMethod:
-            return "method";
+            return "method"_L1;
         case FunctionNode::MacroWithParams:
         case FunctionNode::MacroWithoutParams:
-            return "macro";
+            return "macro"_L1;
         default:
             break;
         }
-        return "function";
+        return "function"_L1;
     }
-    case Node::Property:
-    case Node::QmlProperty:
-        return "property";
-    case Node::Module:
-    case Node::QmlModule:
-        return "module";
-    case Node::SharedComment: {
-        const auto &collective = static_cast<const SharedCommentNode *>(node)->collective();
+    case NodeType::Property:
+    case NodeType::QmlProperty:
+        return "property"_L1;
+    case NodeType::Module:
+    case NodeType::QmlModule:
+        return "module"_L1;
+    case NodeType::Variable:
+        return "variable"_L1;
+    case NodeType::SharedComment: {
+        const auto *shared = static_cast<const SharedCommentNode *>(node);
+        if (shared->isPropertyGroup())
+            return "property group"_L1;
+        const auto &collective = shared->collective();
         return collective.first()->nodeTypeString();
     }
     default:
-        return "documentation";
+        return "documentation"_L1;
     }
 }
 
@@ -2363,5 +2370,102 @@ std::optional<std::pair<QString, QString>> Generator::cmakeRequisite(const Colle
 
     return std::make_pair(findPackageText, targetLinkLibrariesText);
 }
+
+/*!
+    \brief Adds a formatted link to the specified \a text stream.
+
+    This function creates a sequence of Atom objects that together form a link
+    and appends them to the \a text. The \a nodeRef parameter specifies the
+    target of the link (typically obtained via stringForNode()), and \a linkText
+    specifies the visible text for the link.
+
+    \sa Atom, stringForNode()
+*/
+void Generator::addNodeLink(Text &text, const QString &nodeRef, const QString &linkText) {
+    text << Atom(Atom::LinkNode, nodeRef)
+         << Atom(Atom::FormattingLeft, ATOM_FORMATTING_LINK)
+         << Atom(Atom::String, linkText)
+         << Atom(Atom::FormattingRight, ATOM_FORMATTING_LINK);
+}
+
+/*!
+    \overload
+
+    This convenience overload automatically obtains the node reference string
+    using stringForNode(). If \a linkText is empty, the node's name is used as
+    the link text; otherwise, the specified \a linkText is used.
+
+    \sa stringForNode()
+*/
+void Generator::addNodeLink(Text &text, const INode *node, const QString &linkText) {
+    addNodeLink(
+        text,
+        Utilities::stringForNode(node),
+        linkText.isEmpty() ? node->name() : linkText
+    );
+}
+
+/*!
+  Generates a contextual code snippet for connecting to an overloaded signal or
+  slot. Returns an empty string if the function is not a signal or slot.
+
+  For signals, the snippet shows the signal in the second argument position of
+  connect(). For slots, the snippet shows the slot in the fourth argument
+  position (receiver side).
+*/
+QString Generator::generateOverloadSnippet(const FunctionNode *func)
+{
+    if (!func || (!func->isSignal() && !func->isSlot()))
+        return QString();
+
+    QString className = func->parent()->name();
+    QString functionName = func->name();
+    QString typeList = func->parameters().generateTypeList();
+    QString typeAndNameList = func->parameters().generateTypeAndNameList();
+    QString nameList = func->parameters().generateNameList();
+    QString objectName = generateObjectName(className);
+
+    QString snippet;
+
+    if (func->isSignal()) {
+        snippet = QString(
+            "// Connect using qOverload:\n"
+            "connect(%1, qOverload<%2>(&%3::%4),\n"
+            "        receiver, &ReceiverClass::slot);\n\n"
+            "// Or using a lambda:\n"
+            "connect(%1, qOverload<%2>(&%3::%4),\n"
+            "        this, [](%5) { /* handle %4 */ });")
+            .arg(objectName, typeList, className, functionName, typeAndNameList);
+    } else {
+        snippet = QString(
+            "// Connect using qOverload:\n"
+            "connect(sender, &SenderClass::signal,\n"
+            "        %1, qOverload<%2>(&%3::%4));\n\n"
+            "// Or using a lambda as wrapper:\n"
+            "connect(sender, &SenderClass::signal,\n"
+            "        %1, [receiver = %1](%5) { receiver->%4(%6); });")
+            .arg(objectName, typeList, className, functionName, typeAndNameList, nameList);
+    }
+
+    return snippet;
+}
+
+/*!
+  Generates an appropriate object name for code snippets based on the class name.
+  Converts class names like "QComboBox" to "comboBox".
+*/
+QString Generator::generateObjectName(const QString &className)
+{
+    QString name = className;
+
+    if (name.startsWith('Q') && name.length() > 1)
+        name.remove(0, 1);
+
+    if (!name.isEmpty())
+        name[0] = name[0].toLower();
+
+    return name;
+}
+
 
 QT_END_NAMESPACE

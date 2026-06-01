@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 
 #include "qv4module_p.h"
@@ -183,6 +184,7 @@ bool Module::virtualDeleteProperty(Managed *m, PropertyKey id)
     return true;
 }
 
+namespace {
 struct ModuleNamespaceIterator : ObjectOwnPropertyKeyIterator
 {
     QStringList exportedNames;
@@ -190,8 +192,8 @@ struct ModuleNamespaceIterator : ObjectOwnPropertyKeyIterator
     ModuleNamespaceIterator(const QStringList &names) : exportedNames(names) {}
     ~ModuleNamespaceIterator() override = default;
     PropertyKey next(const Object *o, Property *pd = nullptr, PropertyAttributes *attrs = nullptr) override;
-
 };
+} // namespace
 
 PropertyKey ModuleNamespaceIterator::next(const Object *o, Property *pd, PropertyAttributes *attrs)
 {

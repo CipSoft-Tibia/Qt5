@@ -116,7 +116,7 @@ void QQuickCustomAffector::affectSystem(qreal dt)
     if (justAffected) {
         for (const QQuickParticleData *d : std::as_const(toAffect)) {//Not postAffect to avoid saying the particle changed
             if (m_onceOff)
-                m_onceOffed << qMakePair(d->groupId, d->index);
+                m_onceOffed << std::make_pair(d->groupId, d->index);
             emit affected(d->curX(m_system), d->curY(m_system));
         }
         return;

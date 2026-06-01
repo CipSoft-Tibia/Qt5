@@ -3,17 +3,29 @@
 import QtQuick
 
 ProgressForm {
+    id: progressForm
+
+    required property var appFlow
+    required property CoffeeConfig coffeeConfig
     property alias timer: timer
-    property int brewTime
+    property int brewTime: coffeeConfig.brewTime
     property int brewingAnimationVelocityFactor: 1200
+
+    coffeeAmount: coffeeConfig.coffeeAmount
+    milkAmount: coffeeConfig.milkAmount
+    foamAmount: coffeeConfig.foamAmount
+    sugarAmount: coffeeConfig.sugarAmount
+    state: Config.mode
+    progressBarValue: appFlow.progressBarValue
+    cup.state: appFlow.progressCupState
 
     //! [Timer]
     Timer {
         id: timer
-        interval: brewTime
+        interval: progressForm.brewTime
         running: true
         onTriggered: {
-            applicationFlow.onFinished()
+            progressForm.appFlow.onFinished()
         }
     }
     //! [Timer]
@@ -21,7 +33,7 @@ ProgressForm {
     Behavior on greenBar.width {
         SmoothedAnimation {
             easing.type: Easing.Linear
-            velocity: (contentItem.width / brewTime) * 1000
+            velocity: (progressForm.contentItem.width / progressForm.brewTime) * 1000
         }
     }
     //! [Behavior]
@@ -49,19 +61,19 @@ ProgressForm {
             name: "1"
             PropertyChanges {
                 target: cup
-                coffeeAmount: root.coffeeAmount
+                coffeeAmount: coffeeConfig.coffeeAmount
             }
             PropertyChanges {
                 target: cup
-                milkAmount: root.milkAmount
+                milkAmount: coffeeConfig.milkAmount
             }
             PropertyChanges {
                 target: cup
-                foamAmount: root.foamAmount
+                foamAmount: coffeeConfig.foamAmount
             }
             PropertyChanges {
                 target: cup
-                sugarAmount: root.sugarAmount
+                sugarAmount: coffeeConfig.sugarAmount
             }
         }
     ]
@@ -69,24 +81,24 @@ ProgressForm {
         from: "0"
         to: "1"
         SmoothedAnimation {
-            target: cup
+            target: progressForm.cup
             property: "coffeeAmount"
-            velocity: (coffeeAmount / brewTime) * brewingAnimationVelocityFactor
+            velocity: (progressForm.coffeeAmount / progressForm.brewTime) * progressForm.brewingAnimationVelocityFactor
         }
         SmoothedAnimation {
-            target: cup
+            target: progressForm.cup
             property: "milkAmount"
-            velocity: (milkAmount / brewTime) * brewingAnimationVelocityFactor
+            velocity: (progressForm.milkAmount / progressForm.brewTime) * progressForm.brewingAnimationVelocityFactor
         }
         SmoothedAnimation {
-            target: cup
+            target: progressForm.cup
             property: "foamAmount"
-            velocity: (foamAmount / brewTime) * brewingAnimationVelocityFactor
+            velocity: (progressForm.foamAmount / progressForm.brewTime) * progressForm.brewingAnimationVelocityFactor
         }
         SmoothedAnimation {
-            target: cup
+            target: progressForm.cup
             property: "sugarAmount"
-            velocity: (sugarAmount / brewTime) * brewingAnimationVelocityFactor
+            velocity: (progressForm.sugarAmount / progressForm.brewTime) * progressForm.brewingAnimationVelocityFactor
         }
     }
     caption.states: [

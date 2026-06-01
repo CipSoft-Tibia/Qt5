@@ -55,7 +55,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, ValidNonEOSDecoderBuffer) {
             base::strict_cast<size_t>(mojom_decoder_buffer->data_size));
   EXPECT_EQ(deserialized_decoder_buffer->is_key_frame(),
             mojom_decoder_buffer->is_key_frame);
-  EXPECT_FALSE(deserialized_decoder_buffer->has_side_data());
+  EXPECT_FALSE(deserialized_decoder_buffer->side_data());
 }
 
 TEST(StableVideoDecoderTypesMojomTraitsTest, InfiniteDecoderBufferDuration) {
@@ -111,7 +111,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, RawSideDataToValidSpatialLayers) {
   ASSERT_TRUE(deserialized_decoder_buffer);
 
   ASSERT_FALSE(deserialized_decoder_buffer->end_of_stream());
-  ASSERT_TRUE(deserialized_decoder_buffer->has_side_data());
+  ASSERT_TRUE(deserialized_decoder_buffer->side_data());
   EXPECT_EQ(deserialized_decoder_buffer->side_data()->spatial_layers,
             std::vector<uint32_t>(kValidSpatialLayers,
                                   kValidSpatialLayers + kLayersSize));
@@ -578,7 +578,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, EmptyVideoFrameMetadata) {
   EXPECT_TRUE(deserialized_video_frame_metadata.power_efficient);
   EXPECT_TRUE(deserialized_video_frame_metadata.read_lock_fences_enabled);
   EXPECT_FALSE(deserialized_video_frame_metadata.interactive_content);
-  EXPECT_FALSE(deserialized_video_frame_metadata.overlay_plane_id.has_value());
+  EXPECT_FALSE(deserialized_video_frame_metadata.tracking_token.has_value());
   EXPECT_FALSE(
       deserialized_video_frame_metadata.device_scale_factor.has_value());
   EXPECT_FALSE(deserialized_video_frame_metadata.page_scale_factor.has_value());
@@ -610,7 +610,6 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, EmptyVideoFrameMetadata) {
   EXPECT_FALSE(
       deserialized_video_frame_metadata.hw_va_protected_session_id.has_value());
 #endif
-  EXPECT_TRUE(deserialized_video_frame_metadata.texture_origin_is_top_left);
   EXPECT_FALSE(deserialized_video_frame_metadata
                    .maximum_composition_delay_in_frames.has_value());
 }
@@ -647,7 +646,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, ValidVideoFrameMetadata) {
   EXPECT_TRUE(deserialized_video_frame_metadata.power_efficient);
   EXPECT_TRUE(deserialized_video_frame_metadata.read_lock_fences_enabled);
   EXPECT_FALSE(deserialized_video_frame_metadata.interactive_content);
-  EXPECT_FALSE(deserialized_video_frame_metadata.overlay_plane_id.has_value());
+  EXPECT_FALSE(deserialized_video_frame_metadata.tracking_token.has_value());
   EXPECT_FALSE(
       deserialized_video_frame_metadata.device_scale_factor.has_value());
   EXPECT_FALSE(deserialized_video_frame_metadata.page_scale_factor.has_value());
@@ -679,7 +678,6 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, ValidVideoFrameMetadata) {
   EXPECT_FALSE(
       deserialized_video_frame_metadata.hw_va_protected_session_id.has_value());
 #endif
-  EXPECT_TRUE(deserialized_video_frame_metadata.texture_origin_is_top_left);
   EXPECT_FALSE(deserialized_video_frame_metadata
                    .maximum_composition_delay_in_frames.has_value());
 }
@@ -764,7 +762,6 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, ValidVideoDecoderConfig) {
             mojom_video_decoder_config->natural_size);
   EXPECT_EQ(deserialized_video_decoder_config.hdr_metadata(),
             mojom_video_decoder_config->hdr_metadata);
-  EXPECT_FALSE(deserialized_video_decoder_config.is_rtc());
   EXPECT_TRUE(deserialized_video_decoder_config.IsValidConfig());
 }
 
@@ -877,40 +874,42 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, ValidMediaLogRecord) {
 }
 
 TEST(StableVideoDecoderTypesMojomTraitsTest, ValidDecoderBufferSideData) {
-  auto decoder_buffer_side_data = DecoderBufferSideData();
-  decoder_buffer_side_data.spatial_layers = {1, 2, 3};
-  decoder_buffer_side_data.alpha_data = {0, 1, 2};
-  decoder_buffer_side_data.secure_handle = 14;
+  auto decoder_buffer_side_data = std::make_unique<DecoderBufferSideData>();
+  decoder_buffer_side_data->spatial_layers = {1, 2, 3};
+  decoder_buffer_side_data->alpha_data =
+      base::HeapArray<uint8_t>::CopiedFrom(base::as_byte_span("alpha_data"));
+  decoder_buffer_side_data->secure_handle = 14;
 
   std::vector<uint8_t> serialized_decoder_buffer_side_data =
       stable::mojom::DecoderBufferSideData::Serialize(
           &decoder_buffer_side_data);
 
-  DecoderBufferSideData deserialized_decoder_buffer_side_data;
+  std::unique_ptr<DecoderBufferSideData> deserialized_decoder_buffer_side_data;
   ASSERT_TRUE(stable::mojom::DecoderBufferSideData::Deserialize(
       serialized_decoder_buffer_side_data,
       &deserialized_decoder_buffer_side_data));
 
-  EXPECT_EQ(decoder_buffer_side_data.spatial_layers,
-            deserialized_decoder_buffer_side_data.spatial_layers);
-  EXPECT_EQ(decoder_buffer_side_data.alpha_data,
-            deserialized_decoder_buffer_side_data.alpha_data);
-  EXPECT_EQ(decoder_buffer_side_data.secure_handle,
-            deserialized_decoder_buffer_side_data.secure_handle);
+  EXPECT_EQ(decoder_buffer_side_data->spatial_layers,
+            deserialized_decoder_buffer_side_data->spatial_layers);
+  EXPECT_EQ(decoder_buffer_side_data->alpha_data.as_span(),
+            deserialized_decoder_buffer_side_data->alpha_data.as_span());
+  EXPECT_EQ(decoder_buffer_side_data->secure_handle,
+            deserialized_decoder_buffer_side_data->secure_handle);
 }
 
 TEST(StableVideoDecoderTypesMojomTraitsTest,
      DecoderBufferSideDataWithTooManySpatialLayers) {
-  auto decoder_buffer_side_data = DecoderBufferSideData();
-  decoder_buffer_side_data.spatial_layers = {1, 2, 3, 4};
-  decoder_buffer_side_data.alpha_data = {0, 1, 2};
-  decoder_buffer_side_data.secure_handle = 14;
+  auto decoder_buffer_side_data = std::make_unique<DecoderBufferSideData>();
+  decoder_buffer_side_data->spatial_layers = {1, 2, 3, 4};
+  decoder_buffer_side_data->alpha_data =
+      base::HeapArray<uint8_t>::CopiedFrom(base::as_byte_span("alpha_data"));
+  decoder_buffer_side_data->secure_handle = 14;
 
   std::vector<uint8_t> serialized_decoder_buffer_side_data =
       stable::mojom::DecoderBufferSideData::Serialize(
           &decoder_buffer_side_data);
 
-  DecoderBufferSideData deserialized_decoder_buffer_side_data;
+  std::unique_ptr<DecoderBufferSideData> deserialized_decoder_buffer_side_data;
   ASSERT_FALSE(stable::mojom::DecoderBufferSideData::Deserialize(
       serialized_decoder_buffer_side_data,
       &deserialized_decoder_buffer_side_data));
@@ -1073,7 +1072,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest,
   gfx::GpuMemoryBufferHandle gmb_handle;
   gmb_handle.id = gfx::GpuMemoryBufferId(10);
   gmb_handle.type = gfx::SHARED_MEMORY_BUFFER;
-  gmb_handle.region = base::UnsafeSharedMemoryRegion::Create(100);
+  gmb_handle.set_region(base::UnsafeSharedMemoryRegion::Create(100));
   gmb_handle.offset = 2;
   gmb_handle.stride = 10;
 

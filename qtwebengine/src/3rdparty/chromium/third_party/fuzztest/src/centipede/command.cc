@@ -20,11 +20,16 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <inttypes.h>
+#include <libproc.h>
+#endif  // __APPLE__
 
 #include <algorithm>
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>  // NOLINT
+#include <fstream>
 #include <string>
 #include <string_view>
 #include <system_error>  // NOLINT
@@ -35,6 +40,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -45,15 +51,59 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "./centipede/early_exit.h"
+#include "./centipede/stop.h"
 #include "./centipede/util.h"
 #include "./common/logging.h"
 
 namespace centipede {
+namespace {
 
 // See the definition of --fork_server flag.
-inline constexpr std::string_view kCommandLineSeparator(" \\\n");
-inline constexpr std::string_view kNoForkServerRequestPrefix("%f");
+constexpr std::string_view kCommandLineSeparator(" \\\n");
+constexpr std::string_view kNoForkServerRequestPrefix("%f");
+
+absl::StatusOr<std::string> GetProcessCreationStamp(pid_t pid) {
+#ifdef __APPLE__
+  struct proc_bsdinfo info = {};
+  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, PROC_PIDTBSDINFO_SIZE) !=
+      PROC_PIDTBSDINFO_SIZE) {
+    return absl::InternalError(
+        absl::StrCat("failed to get proc bsdinfo for ", pid));
+  }
+  return absl::StrFormat("%" PRIu64 ".%06" PRIu64, info.pbi_start_tvsec,
+                         info.pbi_start_tvusec);
+#else
+  constexpr int kFieldIndexOfStartTimeAfterComm = 19;  // From `man procfs`
+  const std::string proc_stat_path = absl::StrFormat("/proc/%d/stat", pid);
+  std::string proc_stat_line;
+  // Cannot use `ReadFromLocalFile` on procfs since seek does not work.
+  // This seems to work assuming the filename of the command does not contain
+  // newline, which should be in our control when the process is ours.
+  if (std::getline(std::ifstream(proc_stat_path), proc_stat_line).bad()) {
+    return absl::InternalError(absl::StrCat("failed to read ", proc_stat_path));
+  }
+  // According to the current format of `/proc/[pid]/stat`, only the comm field
+  // can contain ')'.
+  const size_t comm_end_pos = proc_stat_line.find_last_of(')');
+  if (comm_end_pos == proc_stat_line.npos) {
+    return absl::NotFoundError(
+        absl::StrCat("cannot find the end of command in the first line of ",
+                     proc_stat_path, ": ", proc_stat_line));
+  }
+  std::string_view proc_stat_after_comm =
+      std::string_view(proc_stat_line).substr(comm_end_pos + 1);
+  const std::vector<std::string_view> fields =
+      absl::StrSplit(proc_stat_after_comm, ' ', absl::SkipEmpty());
+  if (fields.size() <= kFieldIndexOfStartTimeAfterComm) {
+    return absl::NotFoundError(
+        absl::StrCat("not enough fields in the first line of ", proc_stat_path,
+                     ": ", proc_stat_line));
+  }
+  return std::string(fields[kFieldIndexOfStartTimeAfterComm]);
+#endif
+}
+
+}  // namespace
 
 // TODO(ussuri): Encapsulate as much of the fork server functionality from
 //  this source as possible in this struct, and make it a class.
@@ -67,10 +117,10 @@ struct Command::ForkServerProps {
   // The PID of the fork server process. Used to verify that the fork server is
   // running and the pipes are ready for comms.
   pid_t pid_ = -1;
-  // A `stat` of the fork server's binary right after it's started. Used to
-  // detect that the running process with `pid_` is still the original fork
-  // server, not a PID recycled by the OS.
-  struct stat exe_stat_ = {};
+  // The creation stamp of the fork server process. Used to detect that the
+  // running process with `pid_` is still the original fork server, not a PID
+  // recycled by the OS.
+  std::string creation_stamp;
 
   ~ForkServerProps() {
     for (int i = 0; i < 2; ++i) {
@@ -94,24 +144,23 @@ struct Command::ForkServerProps {
 Command::Command(Command &&other) noexcept = default;
 Command::~Command() = default;
 
-Command::Command(std::string_view path, std::vector<std::string> args,
-                 std::vector<std::string> env, std::string_view out,
-                 std::string_view err, absl::Duration timeout,
-                 std::string_view temp_file_path)
-    : path_(path),
-      args_(std::move(args)),
-      env_(std::move(env)),
-      out_(out),
-      err_(err),
-      timeout_(timeout),
-      temp_file_path_(temp_file_path) {}
+Command::Command(std::string_view path, Options options)
+    : path_(path), options_(std::move(options)) {}
+
+Command::Command(std::string_view path) : Command{path, {}} {}
 
 std::string Command::ToString() const {
   std::vector<std::string> ss;
+  ss.reserve(/*env*/ 1 + options_.env_add.size() + options_.env_remove.size() +
+             /*path*/ 1 + /*args*/ options_.args.size() + /*out/err*/ 2);
   // env.
-  ss.reserve(env_.size());
-  for (const auto &env : env_) {
-    ss.emplace_back(env);
+  ss.push_back("env");
+  // Arguments that unset environment variables must appear first.
+  for (const auto &var : options_.env_remove) {
+    ss.push_back(absl::StrCat("-u ", var));
+  }
+  for (const auto &var : options_.env_add) {
+    ss.push_back(var);
   }
   // path.
   std::string path = path_;
@@ -122,23 +171,24 @@ std::string Command::ToString() const {
   // Replace @@ with temp_file_path_.
   constexpr std::string_view kTempFileWildCard = "@@";
   if (absl::StrContains(path, kTempFileWildCard)) {
-    CHECK(!temp_file_path_.empty());
-    path = absl::StrReplaceAll(path, {{kTempFileWildCard, temp_file_path_}});
+    CHECK(!options_.temp_file_path.empty());
+    path = absl::StrReplaceAll(path,
+                               {{kTempFileWildCard, options_.temp_file_path}});
   }
-  ss.emplace_back(path);
+  ss.push_back(std::move(path));
   // args.
-  for (const auto &arg : args_) {
-    ss.emplace_back(arg);
+  for (const auto &arg : options_.args) {
+    ss.push_back(arg);
   }
   // out/err.
-  if (!out_.empty()) {
-    ss.emplace_back(absl::StrCat("> ", out_));
+  if (!options_.stdout_file.empty()) {
+    ss.push_back(absl::StrCat("> ", options_.stdout_file));
   }
-  if (!err_.empty()) {
-    if (out_ != err_) {
-      ss.emplace_back(absl::StrCat("2> ", err_));
+  if (!options_.stderr_file.empty()) {
+    if (options_.stdout_file != options_.stderr_file) {
+      ss.push_back(absl::StrCat("2> ", options_.stderr_file));
     } else {
-      ss.emplace_back("2>&1");
+      ss.push_back("2>&1");
     }
   }
   // Trim trailing space and return.
@@ -176,7 +226,7 @@ bool Command::StartForkServer(std::string_view temp_dir_path,
     CENTIPEDE_FORK_SERVER_FIFO1="%s" \
     %s
   } &
-  echo -n $! > "%s"
+  printf "%%s" $! > "%s"
 )sh";
   const std::string fork_server_command = absl::StrFormat(
       kForkServerCommandStub, fork_server_->fifo_path_[0],
@@ -215,22 +265,19 @@ bool Command::StartForkServer(std::string_view temp_dir_path,
     return false;
   }
 
-  // The fork server has started and the comms pipes got opened successfully.
-  // Read the fork server's PID and the initial /proc/<PID>/exe symlink pointing
-  // at the fork server's binary, written to the provided files by `command`.
-  // `Execute()` uses these to monitor the fork server health.
   std::string pid_str;
   ReadFromLocalFile(pid_file_path, pid_str);
   CHECK(absl::SimpleAtoi(pid_str, &fork_server_->pid_)) << VV(pid_str);
-  std::string proc_exe = absl::StrFormat("/proc/%d/exe", fork_server_->pid_);
-  if (stat(proc_exe.c_str(), &fork_server_->exe_stat_) != EXIT_SUCCESS) {
+  auto creation_stamp = GetProcessCreationStamp(fork_server_->pid_);
+  if (!creation_stamp.ok()) {
     LogProblemInfo(
-        absl::StrCat("Fork server appears not running; will proceed without it "
-                     "(failed to stat ",
-                     proc_exe, ")"));
+        absl::StrCat("Failed to get the fork server's creation stamp; will "
+                     "proceed without it "
+                     "(failure status: ",
+                     creation_stamp.status(), ")"));
     return false;
   }
-
+  fork_server_->creation_stamp = *std::move(creation_stamp);
   return true;
 }
 
@@ -249,24 +296,14 @@ absl::Status Command::VerifyForkServerIsHealthy() {
     return absl::UnknownError(absl::StrCat(
         "Can't communicate with fork server, PID=", fork_server_->pid_));
   }
-  // ...and it is a process with our expected binary, so it's practically
+  // ...and it is a process has the same creation stamp, so it's practically
   // guaranteed to be our original fork server process.
-  const std::string proc_exe =
-      absl::StrFormat("/proc/%d/exe", fork_server_->pid_);
-  struct stat proc_exe_stat = {};
-  if (stat(proc_exe.c_str(), &proc_exe_stat) != EXIT_SUCCESS) {
+  const auto creation_stamp = GetProcessCreationStamp(fork_server_->pid_);
+  if (!creation_stamp.ok()) return creation_stamp.status();
+  if (*creation_stamp != fork_server_->creation_stamp) {
     return absl::UnknownError(absl::StrCat(
-        "Failed to stat fork server's /proc/<PID>/exe symlink, PID=",
-        fork_server_->pid_));
-  }
-  // TODO(b/281882892): Disable for now. Find a proper solution later.
-  if constexpr (false) {
-    if (proc_exe_stat.st_dev != fork_server_->exe_stat_.st_dev ||
-        proc_exe_stat.st_ino != fork_server_->exe_stat_.st_ino) {
-      return absl::UnknownError(absl::StrCat(
-          "Fork server's /proc/<PID>/exe symlink changed (new process?), PID=",
-          fork_server_->pid_));
-    }
+        "Fork server's creation stamp changed (new process?) - expected ",
+        fork_server_->creation_stamp, ", but got ", *creation_stamp));
   }
   return absl::OkStatus();
 }
@@ -277,7 +314,8 @@ int Command::Execute() {
   int exit_code = EXIT_SUCCESS;
 
   if (fork_server_ != nullptr) {
-    VLOG(1) << "Sending execution request to fork server: " << VV(timeout_);
+    VLOG(1) << "Sending execution request to fork server: "
+            << VV(options_.timeout);
 
     if (const auto status = VerifyForkServerIsHealthy(); !status.ok()) {
       LogProblemInfo(absl::StrCat("Fork server should be running, but isn't: ",
@@ -294,7 +332,7 @@ int Command::Execute() {
     // execution result to it).
     struct pollfd poll_fd = {};
     int poll_ret = -1;
-    auto poll_deadline = absl::Now() + timeout_;
+    auto poll_deadline = absl::Now() + options_.timeout;
     // The `poll()` syscall can get interrupted: it sets errno==EINTR in that
     // case. We should tolerate that.
     do {
@@ -314,7 +352,7 @@ int Command::Execute() {
       if (poll_ret == 0) {
         LogProblemInfo(
             absl::StrCat("Timeout while waiting for fork server: timeout is ",
-                         absl::FormatDuration(timeout_)));
+                         absl::FormatDuration(options_.timeout)));
       } else {
         LogProblemInfo(absl::StrCat(
             "Error while waiting for fork server: poll() returned ", poll_ret));
@@ -362,7 +400,7 @@ int Command::Execute() {
   } else if (WIFSIGNALED(exit_code)) {
     const auto signal = WTERMSIG(exit_code);
     if (signal == SIGINT) {
-      RequestEarlyExit(EXIT_FAILURE);
+      RequestEarlyStop(EXIT_FAILURE);
       // When the user kills Centipede via ^C, they are unlikely to be
       // interested in any of the subprocesses' outputs. Also, ^C terminates all
       // the subprocesses, including all the runners, so all their outputs would
@@ -386,8 +424,8 @@ int Command::Execute() {
 
 std::string Command::ReadRedirectedStdout() const {
   std::string ret;
-  if (!out_.empty()) {
-    ReadFromLocalFile(out_, ret);
+  if (!options_.stdout_file.empty()) {
+    ReadFromLocalFile(options_.stdout_file, ret);
     if (ret.empty()) ret = "<EMPTY>";
   }
   return ret;
@@ -395,11 +433,12 @@ std::string Command::ReadRedirectedStdout() const {
 
 std::string Command::ReadRedirectedStderr() const {
   std::string ret;
-  if (!err_.empty()) {
-    if (err_ == "2>&1" || err_ == out_) {
+  if (!options_.stderr_file.empty()) {
+    if (options_.stderr_file == "2>&1" ||
+        options_.stderr_file == options_.stdout_file) {
       ret = "<DUPED TO STDOUT>";
     } else {
-      ReadFromLocalFile(err_, ret);
+      ReadFromLocalFile(options_.stderr_file, ret);
       if (ret.empty()) ret = "<EMPTY>";
     }
   }

@@ -751,6 +751,9 @@ class HashTable final : public ConditionalDestructor<
   void erase(KeyPeekInType);
   void erase(iterator);
   void erase(const_iterator);
+  template <typename Pred>
+  void erase_if(Pred pred);
+
   void clear();
 
   static bool IsEmptyBucket(const ValueType& value) {
@@ -936,12 +939,12 @@ class HashTable final : public ConditionalDestructor<
 
   struct TypeConstraints {
     constexpr TypeConstraints() {
-      static_assert(!IsStackAllocatedType<Key>);
-      static_assert(!IsStackAllocatedType<Value>);
+      static_assert(!IsStackAllocatedTypeV<Key>);
+      static_assert(!IsStackAllocatedTypeV<Value>);
       static_assert(
           Allocator::kIsGarbageCollected ||
-              (!IsPointerToGarbageCollectedType<Key>::value &&
-               !IsPointerToGarbageCollectedType<Value>::value),
+              (!IsPointerToGarbageCollectedType<Key> &&
+               !IsPointerToGarbageCollectedType<Value>),
           "Cannot put raw pointers to garbage-collected classes into an "
           "off-heap collection.");
     }
@@ -1478,6 +1481,40 @@ void HashTable<Key, Value, Extractor, Traits, KeyTraits, Allocator>::erase(
 
   if (ShouldShrink())
     Shrink();
+}
+
+template <typename Key,
+          typename Value,
+          typename Extractor,
+          typename Traits,
+          typename KeyTraits,
+          typename Allocator>
+template <typename Pred>
+void HashTable<Key, Value, Extractor, Traits, KeyTraits, Allocator>::erase_if(
+    Pred pred) {
+  RegisterModification();
+  EnterAccessForbiddenScope();
+
+  for (unsigned i = 0; i < table_size_; ++i) {
+    if (!IsEmptyOrDeletedBucket(table_[i]) && pred(table_[i])) {
+      DeleteBucket(table_[i]);
+#if DUMP_HASHTABLE_STATS
+      HashTableStats::instance().numRemoves.fetch_add(
+          1, std::memory_order_relaxed);
+#endif
+#if DUMP_HASHTABLE_STATS_PER_TABLE
+      stats_->numRemoves.fetch_add(1, std::memory_order_relaxed);
+#endif
+      ++deleted_count_;
+      --key_count_;
+    }
+  }
+
+  LeaveAccessForbiddenScope();
+
+  if (ShouldShrink()) {
+    Shrink();
+  }
 }
 
 template <typename Key,

@@ -5,7 +5,6 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_SCHEDULER_DOM_TASK_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SCHEDULER_DOM_TASK_H_
 
-#include <atomic>
 #include <optional>
 
 #include "base/time/time.h"
@@ -36,15 +35,20 @@ class DOMTask final : public GarbageCollected<DOMTask> {
           AbortSignal* abort_source,
           DOMTaskSignal* priority_source,
           DOMScheduler::DOMTaskQueue*,
-          base::TimeDelta delay);
+          base::TimeDelta delay,
+          uint64_t task_id_for_tracing);
 
   virtual void Trace(Visitor*) const;
 
+  void OnPendingPromiseSettled();
+
  private:
-  static uint64_t NextIdForTracing() {
-    static std::atomic<uint64_t> next_id(0);
-    return next_id.fetch_add(1, std::memory_order_relaxed);
-  }
+  enum class ExecutionState {
+    kNotStarted,
+    kRunningSync,
+    kRunningAsync,
+    kFinished,
+  };
 
   // Entry point for running this DOMTask's |callback_|.
   void Invoke();
@@ -67,6 +71,7 @@ class DOMTask final : public GarbageCollected<DOMTask> {
   Member<DOMScheduler::DOMTaskQueue> task_queue_;
   const base::TimeDelta delay_;
   const uint64_t task_id_for_tracing_;
+  ExecutionState execution_state_ = ExecutionState::kNotStarted;
   Member<scheduler::TaskAttributionInfo> parent_task_;
 };
 

@@ -6,7 +6,6 @@ import("//build/config/jumbo.gni")
 
 jumbo_component("geometry") {
   sources = [
-    "../gfx_export.h",
     "axis_transform2d.cc",
     "axis_transform2d.h",
     "box_f.cc",
@@ -19,7 +18,6 @@ jumbo_component("geometry") {
     "dip_util.cc",
     "dip_util.h",
     "double4.h",
-    "geometry_export.h",
     "insets.cc",
     "insets.h",
     "insets_conversions.cc",
@@ -75,7 +73,7 @@ jumbo_component("geometry") {
     "vector3d_f.h",
   ]
 
-  defines = [ "GEOMETRY_IMPLEMENTATION" ]
+  defines = [ "IS_GEOMETRY_IMPL" ]
 
   deps = [ "//base" ]
 
@@ -87,7 +85,6 @@ jumbo_component("geometry") {
 
 component("geometry_skia") {
   sources = [
-    "geometry_skia_export.h",
     "linear_gradient.cc",
     "linear_gradient.h",
     "mask_filter_info.cc",
@@ -115,5 +112,5 @@ component("geometry_skia") {
     "//base",
     "//skia",
   ]
-  defines = [ "GEOMETRY_SKIA_IMPLEMENTATION" ]
+  defines = [ "IS_GEOMETRY_SKIA_IMPL" ]
 }

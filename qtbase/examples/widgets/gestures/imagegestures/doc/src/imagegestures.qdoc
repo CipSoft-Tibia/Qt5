@@ -5,12 +5,13 @@
     \example gestures/imagegestures
     \title Image Gestures Example
     \examplecategory {User Interface Components}
+    \ingroup examples-user-input
     \brief Demonstrates the use of simple gestures in a widget.
 
     This example shows how to enable gestures for a widget and use gesture input
     to perform actions.
 
-    \image imagegestures-example.png
+    \image imagegestures-example.png {Gesture inputs on an image of a flower}
 
     We use two classes to create the user interface for the application: \c MainWidget
     and \c ImageWidget. The \c MainWidget class is simply used as a container for the

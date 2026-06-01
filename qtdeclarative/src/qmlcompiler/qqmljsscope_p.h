@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant
 
 #ifndef QQMLJSSCOPE_P_H
 #define QQMLJSSCOPE_P_H
@@ -39,58 +40,7 @@ class QQmlJSImporter;
 
 namespace QQmlJS {
 
-class ConstPtrWrapperIterator
-{
-public:
-    using Ptr = QDeferredSharedPointer<QQmlJSScope>;
-    using ConstPtr = QDeferredSharedPointer<const QQmlJSScope>;
-    using iterator_category = std::forward_iterator_tag;
-    using difference_type = std::ptrdiff_t;
-    using value_type = ConstPtr;
-    using pointer = value_type *;
-    using reference = value_type &;
-
-    ConstPtrWrapperIterator(QList<Ptr>::const_iterator iterator) : m_iterator(iterator) { }
-
-    friend bool operator==(const ConstPtrWrapperIterator &a, const ConstPtrWrapperIterator &b)
-    {
-        return a.m_iterator == b.m_iterator;
-    }
-    friend bool operator!=(const ConstPtrWrapperIterator &a, const ConstPtrWrapperIterator &b)
-    {
-        return a.m_iterator != b.m_iterator;
-    }
-
-    reference operator*()
-    {
-        if (!m_pointer)
-            m_pointer = *m_iterator;
-        return m_pointer;
-    }
-    pointer operator->()
-    {
-        if (!m_pointer)
-            m_pointer = *m_iterator;
-        return &m_pointer;
-    }
-
-    ConstPtrWrapperIterator &operator++()
-    {
-        m_iterator++;
-        m_pointer = {};
-        return *this;
-    }
-    ConstPtrWrapperIterator operator++(int)
-    {
-        auto before = *this;
-        ++(*this);
-        return before;
-    }
-
-private:
-    QList<Ptr>::const_iterator m_iterator;
-    ConstPtr m_pointer;
-};
+using ChildScopesIterator = QList<QDeferredSharedPointer<QQmlJSScope>>::const_iterator;
 
 class Export {
 public:
@@ -172,7 +122,6 @@ public:
         AssignedToUnknownProperty = 0x10000,
     };
     Q_DECLARE_FLAGS(Flags, Flag)
-    Q_FLAGS(Flags);
 
     using Export = QQmlJS::Export;
     template <typename Pointer>
@@ -203,7 +152,7 @@ public:
     };
 
     template <typename Key, typename Value>
-    using QMultiHashRange = QPair<typename QMultiHash<Key, Value>::iterator,
+    using QMultiHashRange = std::pair<typename QMultiHash<Key, Value>::iterator,
                                   typename QMultiHash<Key, Value>::iterator>;
 
     static QQmlJSScope::Ptr create() { return QSharedPointer<QQmlJSScope>(new QQmlJSScope); }
@@ -315,7 +264,7 @@ public:
             const QQmlJSMetaPropertyBinding &binding,
             BindingTargetSpecifier specifier = BindingTargetSpecifier::SimplePropertyTarget);
     QMultiHash<QString, QQmlJSMetaPropertyBinding> ownPropertyBindings() const;
-    QPair<QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator,
+    std::pair<QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator,
           QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator>
     ownPropertyBindings(const QString &name) const;
     QList<QQmlJSMetaPropertyBinding> ownPropertyBindingsInQmlIROrder() const;
@@ -437,16 +386,16 @@ public:
     std::optional<JavaScriptIdentifier> jsIdentifier(const QString &id) const;
     std::optional<JavaScriptIdentifier> ownJSIdentifier(const QString &id) const;
 
-    QQmlJS::ConstPtrWrapperIterator childScopesBegin() const { return m_childScopes.constBegin(); }
-    QQmlJS::ConstPtrWrapperIterator childScopesEnd() const { return m_childScopes.constEnd(); }
+    QQmlJS::ChildScopesIterator childScopesBegin() const { return m_childScopes.constBegin(); }
+    QQmlJS::ChildScopesIterator childScopesEnd() const { return m_childScopes.constEnd(); }
 
     void setInlineComponentName(const QString &inlineComponentName);
     std::optional<QString> inlineComponentName() const;
     InlineComponentOrDocumentRootName enclosingInlineComponentName() const;
 
-    QVector<QQmlJSScope::Ptr> childScopes();
+    QList<QQmlJSScope::Ptr> childScopes();
 
-    QVector<QQmlJSScope::ConstPtr> childScopes() const;
+    QList<QQmlJSScope::ConstPtr> childScopes() const;
 
     static QTypeRevision resolveTypes(
             const Ptr &self, const QQmlJS::ContextualTypes &contextualTypes,
@@ -466,6 +415,9 @@ public:
 
     void setSourceLocation(const QQmlJS::SourceLocation &sourceLocation);
     QQmlJS::SourceLocation sourceLocation() const;
+
+    void setIdSourceLocation(const QQmlJS::SourceLocation &sourceLocation);
+    QQmlJS::SourceLocation idSourceLocation() const;
 
     static QQmlJSScope::ConstPtr nonCompositeBaseType(const QQmlJSScope::ConstPtr &type);
 
@@ -538,8 +490,8 @@ private:
 
     QHash<QString, QQmlJSMetaEnum> m_enumerations;
 
-    QVector<QQmlJSAnnotation> m_annotations;
-    QVector<QQmlJSScope::Ptr> m_childScopes;
+    QList<QQmlJSAnnotation> m_annotations;
+    QList<QQmlJSScope::Ptr> m_childScopes;
     QQmlJSScope::WeakPtr m_parentScope;
 
     QString m_filePath;
@@ -588,6 +540,7 @@ private:
     AccessSemantics m_semantics = AccessSemantics::Reference;
 
     QQmlJS::SourceLocation m_sourceLocation;
+    QQmlJS::SourceLocation m_idSourceLocation;
 
     QString m_moduleName;
 
@@ -614,7 +567,7 @@ inline QMultiHash<QString, QQmlJSMetaPropertyBinding> QQmlJSScope::ownPropertyBi
             return m_propertyBindings;
 }
 
-inline QPair<QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator, QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator> QQmlJSScope::ownPropertyBindings(const QString &name) const
+inline std::pair<QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator, QMultiHash<QString, QQmlJSMetaPropertyBinding>::const_iterator> QQmlJSScope::ownPropertyBindings(const QString &name) const
 {
     return m_propertyBindings.equal_range(name);
 }
@@ -638,7 +591,7 @@ inline void QQmlJSScope::setInlineComponentName(const QString &inlineComponentNa
     m_inlineComponentName = inlineComponentName;
 }
 
-inline QVector<QQmlJSScope::Ptr> QQmlJSScope::childScopes()
+inline QList<QQmlJSScope::Ptr> QQmlJSScope::childScopes()
 {
     return m_childScopes;
 }
@@ -651,6 +604,18 @@ inline void QQmlJSScope::setSourceLocation(const QQmlJS::SourceLocation &sourceL
 inline QQmlJS::SourceLocation QQmlJSScope::sourceLocation() const
 {
     return m_sourceLocation;
+}
+
+inline void QQmlJSScope::setIdSourceLocation(const QQmlJS::SourceLocation &sourceLocation)
+{
+    Q_ASSERT(m_scopeType == QQmlSA::ScopeType::QMLScope);
+    m_idSourceLocation = sourceLocation;
+}
+
+inline QQmlJS::SourceLocation QQmlJSScope::idSourceLocation() const
+{
+    Q_ASSERT(m_scopeType == QQmlSA::ScopeType::QMLScope);
+    return m_idSourceLocation;
 }
 
 inline QQmlJSScope::ConstPtr QQmlJSScope::nonCompositeBaseType(const ConstPtr &type)

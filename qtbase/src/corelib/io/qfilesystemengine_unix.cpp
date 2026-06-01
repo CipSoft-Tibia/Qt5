@@ -981,9 +981,6 @@ bool QFileSystemEngine::fillMetaData(const QFileSystemEntry &entry, QFileSystemM
                     data.fillFromStatxBuf(statxBuffer);
                 else
                     data.fillFromStatBuf(statBuffer);
-                data.knownFlagsMask |= QFileSystemMetaData::PosixStatFlags
-                        | QFileSystemMetaData::ExistsAttribute;
-                data.entryFlags |= QFileSystemMetaData::ExistsAttribute;
             }
         } else {
             // it doesn't exist
@@ -1019,11 +1016,11 @@ bool QFileSystemEngine::fillMetaData(const QFileSystemEntry &entry, QFileSystemM
             data.size_ = 0;
             data.userId_ = (uint) -2;
             data.groupId_ = (uint) -2;
-        }
 
-        // reset the mask
-        data.knownFlagsMask |= QFileSystemMetaData::PosixStatFlags
-            | QFileSystemMetaData::ExistsAttribute;
+            // reset the mask
+            data.knownFlagsMask |= QFileSystemMetaData::PosixStatFlags
+                | QFileSystemMetaData::ExistsAttribute;
+        }
     }
 
     // third, we try access(2)
@@ -1144,7 +1141,7 @@ bool QFileSystemEngine::fillMetaData(const QFileSystemEntry &entry, QFileSystemM
 }
 
 // static
-bool QFileSystemEngine::cloneFile(int srcfd, int dstfd, const QFileSystemMetaData &knownData)
+auto QFileSystemEngine::cloneFile(int srcfd, int dstfd, const QFileSystemMetaData &knownData) -> TriStateResult
 {
     QT_STATBUF statBuffer;
     if (knownData.hasFlags(QFileSystemMetaData::PosixStatFlags) &&
@@ -1152,57 +1149,108 @@ bool QFileSystemEngine::cloneFile(int srcfd, int dstfd, const QFileSystemMetaDat
         statBuffer.st_mode = S_IFREG;
     } else if (knownData.hasFlags(QFileSystemMetaData::PosixStatFlags) &&
                knownData.isDirectory()) {
-        return false;   // fcopyfile(3) returns success on directories
+        errno = EISDIR;
+        return TriStateResult::Failed;   // fcopyfile(3) returns success on directories
     } else if (QT_FSTAT(srcfd, &statBuffer) == -1) {
-        return false;
+        // errno was set
+        return TriStateResult::Failed;
     } else if (!S_ISREG((statBuffer.st_mode))) {
         // not a regular file, let QFile do the copy
-        return false;
+        return TriStateResult::NotSupported;
     }
+
+    [[maybe_unused]] auto destinationIsEmpty = [dstfd]() {
+        QT_STATBUF statBuffer;
+        return QT_FSTAT(dstfd, &statBuffer) == 0 && statBuffer.st_size == 0;
+    };
+    Q_ASSERT(destinationIsEmpty());
 
 #if defined(Q_OS_LINUX)
     // first, try FICLONE (only works on regular files and only on certain fs)
     if (::ioctl(dstfd, FICLONE, srcfd) == 0)
-        return true;
+        return TriStateResult::Success;
+#elif defined(Q_OS_DARWIN)
+    // try fcopyfile
+    if (fcopyfile(srcfd, dstfd, nullptr, COPYFILE_DATA | COPYFILE_STAT) == 0)
+        return TriStateResult::Success;
+    switch (errno) {
+    case ENOTSUP:
+    case ENOMEM:
+        return TriStateResult::NotSupported;    // let QFile try
+    }
+    return TriStateResult::Failed;
+#endif
 
-    // Second, try sendfile (it can send to some special types too).
+#if QT_CONFIG(copy_file_range)
+    // Second, try copy_file_range. Tested on Linux & FreeBSD: FreeBSD can copy
+    // across mountpoints, Linux currently (6.12) can only if the source and
+    // destination mountpoints are the same filesystem type.
+    QT_OFF_T srcoffset = 0;
+    ssize_t copied;
+    do {
+        copied = ::copy_file_range(srcfd, &srcoffset, dstfd, nullptr, SSIZE_MAX, 0);
+    } while (copied > 0 || (copied < 0 && errno == EINTR));
+    if (copied == 0)
+        return TriStateResult::Success;         // EOF -> success
+    if (srcoffset) {
+        // some bytes were copied, so this is a real error (like ENOSPC).
+        copied = ftruncate(dstfd, 0);
+        return TriStateResult::Failed;
+    }
+
+    // We failed with no bytes copied, so is this a real filesystem failure
+    // that will remain with sendfile() or the copy pump? Or is it a
+    // copy_file_range() condition?
+    switch (errno) {
+    case EINVAL: // observed with some obscure filesystem combinations
+    case EXDEV: // Linux can't do xdev file copies (FreeBSD can)
+    case ENOSYS: // caused by some containers wrongly filtering the system call
+        break;
+
+    default:
+        return TriStateResult::Failed;
+    }
+#endif
+
+#if defined(Q_OS_LINUX)
+    // For Linux, try sendfile (it can send to some special types too).
     // sendfile(2) is limited in the kernel to 2G - 4k
     const size_t SendfileSize = 0x7ffff000;
 
     ssize_t n = ::sendfile(dstfd, srcfd, nullptr, SendfileSize);
     if (n == -1) {
+        switch (errno) {
+        case ENOSPC:
+        case EIO:
+            return TriStateResult::Failed;
+        }
+
         // if we got an error here, give up and try at an upper layer
-        return false;
+        return TriStateResult::NotSupported;
     }
 
     while (n) {
         n = ::sendfile(dstfd, srcfd, nullptr, SendfileSize);
         if (n == -1) {
-            // uh oh, this is probably a real error (like ENOSPC), but we have
-            // no way to notify QFile of partial success, so just erase any work
-            // done (hopefully we won't get any errors, because there's nothing
-            // we can do about them)
+            // uh oh, this is probably a real error (like ENOSPC)
             n = ftruncate(dstfd, 0);
             n = lseek(srcfd, 0, SEEK_SET);
             n = lseek(dstfd, 0, SEEK_SET);
-            return false;
+            return TriStateResult::Failed;
         }
     }
 
-    return true;
-#elif defined(Q_OS_DARWIN)
-    // try fcopyfile
-    return fcopyfile(srcfd, dstfd, nullptr, COPYFILE_DATA | COPYFILE_STAT) == 0;
+    return TriStateResult::Success;
 #else
     Q_UNUSED(dstfd);
-    return false;
+    return TriStateResult::NotSupported;
 #endif
 }
 
 static QSystemError createDirectoryWithParents(const QByteArray &path, mode_t mode)
 {
 #ifdef Q_OS_WASM
-    if (path == '/')
+    if (path == "/")
         return {};
 #endif
 
@@ -1433,8 +1481,8 @@ struct FreeDesktopTrashOperation
     }
 
     // opens or makes the XDG Trash hierarchy on parentfd (may be -1) called targetDir
-    bool getTrashDir(int parentfd, QString targetDir, const QFileSystemEntry &source,
-                     int openmode, QSystemError &error)
+    QSystemError getTrashDir(int parentfd, QString targetDir, const QFileSystemEntry &source,
+                             int openmode)
     {
         if (parentfd == AT_FDCWD)
             trashPath = targetDir;
@@ -1442,19 +1490,14 @@ struct FreeDesktopTrashOperation
 
         // open the directory
         int trashfd = openOrCreateDir(parentfd, nativePath, openmode);
-        if (trashfd < 0 && errno != ENOENT) {
-            error = QSystemError(errno, QSystemError::StandardLibraryError);
-            return false;
-        }
+        if (trashfd < 0 && errno != ENOENT)
+            return QSystemError::stdError(errno);
 
         // check if it is ours (even if we've just mkdirat'ed it)
-        if (QT_STATBUF st; QT_FSTAT(trashfd, &st) < 0) {
-            error = QSystemError(errno, QSystemError::StandardLibraryError);
-            return false;
-        } else if (st.st_uid != getuid()) {
-            error = QSystemError(EPERM, QSystemError::StandardLibraryError);
-            return false;
-        }
+        if (QT_STATBUF st; QT_FSTAT(trashfd, &st) < 0)
+            return QSystemError::stdError(errno);
+        else if (st.st_uid != getuid())
+            return QSystemError::stdError(errno);
 
         filesDirFd = openOrCreateDir(trashfd, "files");
         if (filesDirFd >= 0) {
@@ -1480,15 +1523,20 @@ struct FreeDesktopTrashOperation
             if (!tempTrashFileName.isEmpty() || errno == EPERM || errno == EMLINK)
                 infoDirFd = openOrCreateDir(trashfd, "info");
         }
-        error = QSystemError(errno, QSystemError::StandardLibraryError);
-        if (infoDirFd < 0)
+
+        if (infoDirFd < 0) {
+            int saved_errno = errno;
             close();
+            QT_CLOSE(trashfd);
+            return QSystemError::stdError(saved_errno);
+        }
+
         QT_CLOSE(trashfd);
-        return infoDirFd >= 0;
+        return {};
     }
 
-    bool openMountPointTrashLocation(const QFileSystemEntry &source,
-                                     const QStorageInfo &sourceStorage, QSystemError &error)
+    QSystemError openMountPointTrashLocation(const QFileSystemEntry &source,
+                                             const QStorageInfo &sourceStorage)
     {
         /*
             Method 1:
@@ -1501,6 +1549,7 @@ struct FreeDesktopTrashOperation
             of $topdir/.Trash."
         */
 
+        QSystemError error;
         const auto dotTrash = "/.Trash"_L1;
         const QString userID = QString::number(::getuid());
         QFileSystemEntry dotTrashDir(sourceStorage.rootPath() + dotTrash);
@@ -1534,7 +1583,7 @@ struct FreeDesktopTrashOperation
                      the implementation MUST immediately create it, without any warnings or
                      delays for the user."
                 */
-                if (getTrashDir(genericTrashFd, userID, source, O_NOFOLLOW, error)) {
+                if (error = getTrashDir(genericTrashFd, userID, source, O_NOFOLLOW); error.ok()) {
                     // recreate the resulting path
                     trashPath = dotTrashDir.filePath() + u'/' + userID;
                 }
@@ -1550,8 +1599,8 @@ struct FreeDesktopTrashOperation
              immediately create it, without any warnings or delays for the user."
         */
         if (!isTrashDirOpen())
-            getTrashDir(AT_FDCWD, sourceStorage.rootPath() + dotTrash + u'-' + userID, source,
-                        O_NOFOLLOW, error);
+            error = getTrashDir(AT_FDCWD, sourceStorage.rootPath() + dotTrash + u'-' + userID, source,
+                                O_NOFOLLOW);
 
         if (isTrashDirOpen()) {
             volumePrefixLength = sourceStorage.rootPath().size();
@@ -1560,17 +1609,17 @@ struct FreeDesktopTrashOperation
             else
                 ++volumePrefixLength;           // to include the slash
         }
-        return isTrashDirOpen();
+        return isTrashDirOpen() ? QSystemError() : error;
     }
 
-    bool openHomeTrashLocation(const QFileSystemEntry &source, QSystemError &error)
+    QSystemError openHomeTrashLocation(const QFileSystemEntry &source)
     {
         QString topDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
         int openmode = 0;   // do allow following symlinks
-        return getTrashDir(AT_FDCWD, topDir + "/Trash"_L1, source, openmode, error);
+        return getTrashDir(AT_FDCWD, topDir + "/Trash"_L1, source, openmode);
     }
 
-    bool findTrashFor(const QFileSystemEntry &source, QSystemError &error)
+    QSystemError findTrashFor(const QFileSystemEntry &source)
     {
         /*
            First, try the standard Trash in $XDG_DATA_DIRS:
@@ -1578,16 +1627,16 @@ struct FreeDesktopTrashOperation
            QStandardPaths returns for GenericDataLocation. If that doesn't exist, then
            we are not running on a freedesktop.org-compliant environment, and give up.
          */
-        if (openHomeTrashLocation(source, error))
-            return true;
-        if (error.errorCode != EXDEV)
-            return false;
+        if (QSystemError error = openHomeTrashLocation(source); error.ok())
+            return QSystemError();
+        else if (error.errorCode != EXDEV)
+            return error;
 
         // didn't work, try to find the trash outside the home filesystem
         const QStorageInfo sourceStorage(source.filePath());
         if (!sourceStorage.isValid())
-            return false;
-        return openMountPointTrashLocation(source, sourceStorage, error);
+            return QSystemError::stdError(ENODEV);
+        return openMountPointTrashLocation(source, sourceStorage);
     }
 };
 } // unnamed namespace
@@ -1604,7 +1653,7 @@ bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &source,
         return absoluteName(source);
     }();
     FreeDesktopTrashOperation op;
-    if (!op.findTrashFor(sourcePath, error))
+    if (error = op.findTrashFor(sourcePath); !error.ok())
         return false;
 
     /*

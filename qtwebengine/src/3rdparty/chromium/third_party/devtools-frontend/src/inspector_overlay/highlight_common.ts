@@ -28,14 +28,13 @@
 //  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 //  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// eslint-disable-next-line rulesdir/es_modules_import
 import {
+  type Color4D,
   rgbaToHsla,
   rgbaToHwba,
-  type Color4D,
 } from '../front_end/core/common/ColorUtils.js';
 
-import {type Bounds, type PathCommands, type Quad} from './common.js';
+import type {Bounds, PathCommands, Quad} from './common.js';
 
 export type PathBounds = Bounds&{
   leftmostXForY: {[key: string]: number},

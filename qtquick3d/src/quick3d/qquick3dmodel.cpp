@@ -42,6 +42,38 @@ QT_BEGIN_NAMESPACE
     }
     \endqml
 
+    The table below describes the built-in meshes in more detail.
+
+    \table
+    \header
+        \li Name
+        \li Description
+        \li No. faces
+    \row
+        \li #Cone
+        \li A cone with a height and diameter of \c{100}. The base is at the
+            origin and the cone is pointing upwards in the y direction.
+        \li \c{78}
+    \row
+        \li #Cube
+        \li A cube centered at the origin with \c{100} long sides along x, y and z.
+        \li \c{12}
+    \row
+        \li #Cylinder
+        \li A cylinder with \c{100} height and diameter centered at the origin
+            expanding along the y direction.
+        \li \c{316}
+    \row
+        \li #Rectangle
+        \li A rectangle with \c{100} width and height centered at the origin
+            lying in the xy plane.
+        \li \c{2}
+    \row
+        \li #Sphere
+        \li A sphere with \c{100} diameter centered at the origin.
+        \li \c{4900}
+    \endtable
+
     \section2 Custom geometry
 
     In addition to using static meshes, you can implement a
@@ -440,34 +472,7 @@ bool QQuick3DModel::isUsedInBakedLighting() const
 /*!
     \qmlproperty int Model::lightmapBaseResolution
 
-    Defines the approximate size of the lightmap for this model. The default
-    value is 1024, indicating 1024x1024 as the base size. The actual size of
-    the lightmap texture is likely to be different, often bigger, depending on
-    the mesh.
-
-    For simpler, smaller meshes, or when it is known that using a bigger
-    lightmap is unnecessary, the value can be set to something smaller, for
-    example, 512 or 256.
-
-    The minimum value is 128.
-
-    This setting applies both to persistently stored and for intermediate,
-    partial lightmaps. When baking lightmaps, all models that have \l
-    usedInBakedLighting enabled are part of the path-traced scene. Thus all of
-    them need to have lightmap UV unwrapping performed and the rasterization
-    steps necessary to compute direct lighting which then can be taken into
-    account for indirect light bounces in the scene. However, for models that
-    just contribute to, but do not store a lightmap the default value is often
-    sufficient. Fine-tuning is more relevant for models that store and then use
-    the generated lightmaps.
-
-    This property is relevant only when baking lightmaps. It has no effect
-    afterwards, when using the generated lightmaps during rendering.
-
-    Models that have lightmap UV data pre-generated during asset import time
-    (e.g. via the balsam tool) will ignore this property because the lightmap
-    UV unwrapping and the lightmap size hint evaluation have already been done,
-    and will not be performed again during lightmap baking.
+    \deprecated [6.10] This has no effect. Use Model::texelsPerUnit instead.
  */
 int QQuick3DModel::lightmapBaseResolution() const
 {
@@ -716,6 +721,8 @@ void QQuick3DModel::setLightmapBaseResolution(int resolution)
     if (m_lightmapBaseResolution == resolution)
         return;
 
+    qWarning() << "Model::lightmapBaseResolution is deprecated and will have no effect.";
+
     m_lightmapBaseResolution = resolution;
     emit lightmapBaseResolutionChanged();
     markDirty(PropertyDirty);
@@ -762,8 +769,11 @@ QSSGRenderGraphObject *QQuick3DModel::updateSpatialNode(QSSGRenderGraphObject *n
     int dirtyAttribute = 0;
 
     auto modelNode = static_cast<QSSGRenderModel *>(node);
-    if (m_dirtyAttributes & SourceDirty)
-        modelNode->meshPath = QSSGRenderPath(translateMeshSource(m_source, this));
+    if (m_dirtyAttributes & SourceDirty) {
+        const QString path = translateMeshSource(m_source, this);
+        const QString lightmapKey = m_bakedLightmap ? m_bakedLightmap->key() : QString();
+        modelNode->meshPath = QSSGRenderPath(path, lightmapKey);
+    }
     if (m_dirtyAttributes & PickingDirty)
         modelNode->setState(QSSGRenderModel::LocalState::Pickable, m_pickable);
 
@@ -892,18 +902,15 @@ QSSGRenderGraphObject *QQuick3DModel::updateSpatialNode(QSSGRenderGraphObject *n
     if (m_dirtyAttributes & PropertyDirty) {
         modelNode->m_depthBiasSq = QSSGRenderModel::signedSquared(m_depthBias);
         modelNode->usedInBakedLighting = m_usedInBakedLighting;
-        modelNode->lightmapBaseResolution = uint(m_lightmapBaseResolution);
+        modelNode->texelsPerUnit = m_texelsPerUnit;
         if (m_bakedLightmap && m_bakedLightmap->isEnabled()) {
             modelNode->lightmapKey = m_bakedLightmap->key();
-            const QString srcPrefix = m_bakedLightmap->loadPrefix();
-            const QString srcPath = srcPrefix.isEmpty() ? QStringLiteral(".") : srcPrefix;
-            const QQmlContext *context = qmlContext(m_bakedLightmap);
-            const QUrl resolvedUrl = context ? context->resolvedUrl(srcPath) : srcPath;
-            modelNode->lightmapLoadPath = QQmlFile::urlToLocalFileOrQrc(resolvedUrl);
         } else {
             modelNode->lightmapKey.clear();
-            modelNode->lightmapLoadPath.clear();
         }
+        // Need new hash if lightmapKey has changed
+        const QString path = translateMeshSource(m_source, this);
+        modelNode->meshPath = QSSGRenderPath(path, modelNode->lightmapKey);
         modelNode->levelOfDetailBias = m_levelOfDetailBias;
     }
 
@@ -1043,7 +1050,6 @@ void QQuick3DModel::onMorphTargetDestroyed(QObject *object)
     }
     if (found) {
         markDirty(QQuick3DModel::MorphTargetsDirty);
-        m_numMorphAttribs = 0;
     }
 }
 
@@ -1052,14 +1058,7 @@ void QQuick3DModel::qmlAppendMorphTarget(QQmlListProperty<QQuick3DMorphTarget> *
     if (morphTarget == nullptr)
         return;
     QQuick3DModel *self = static_cast<QQuick3DModel *>(list->object);
-    if (self->m_numMorphAttribs >= 8) {
-        qWarning("The number of morph attributes exceeds 8. This morph target will be ignored.");
-        return;
-    }
     self->m_morphTargets.push_back(morphTarget);
-    self->m_numMorphAttribs += morphTarget->numAttribs();
-    if (self->m_numMorphAttribs > 8)
-        qWarning("The number of morph attributes exceeds 8. This morph target will be supported partially.");
 
     self->markDirty(QQuick3DModel::MorphTargetsDirty);
 
@@ -1106,7 +1105,6 @@ void QQuick3DModel::qmlClearMorphTargets(QQmlListProperty<QQuick3DMorphTarget> *
         disconnect(morph, &QQuick3DMorphTarget::destroyed, self, &QQuick3DModel::onMorphTargetDestroyed);
     }
     self->m_morphTargets.clear();
-    self->m_numMorphAttribs = 0;
     self->markDirty(QQuick3DModel::MorphTargetsDirty);
 }
 
@@ -1164,6 +1162,32 @@ void QQuick3DModel::setLevelOfDetailBias(float newLevelOfDetailBias)
     m_levelOfDetailBias = newLevelOfDetailBias;
     emit levelOfDetailBiasChanged();
     markDirty(QQuick3DModel::PropertyDirty);
+}
+
+/*!
+    \qmlproperty real Model::texelsPerUnit
+    \since 6.10
+    \default 0.0
+
+    A value greater than zero means this value will override the
+    \l {Lightmapper::texelsPerUnit} value for this specific model during
+    lightmap baking.
+
+    \sa Lightmapper::texelsPerUnit
+*/
+
+float QQuick3DModel::texelsPerUnit() const
+{
+    return m_texelsPerUnit;
+}
+
+void QQuick3DModel::setTexelsPerUnit(float newTexelsPerUnit)
+{
+    if (qFuzzyCompare(m_texelsPerUnit, newTexelsPerUnit))
+        return;
+    m_texelsPerUnit = newTexelsPerUnit;
+    emit texelsPerUnitChanged();
+    markDirty(PropertyDirty);
 }
 
 QT_END_NAMESPACE

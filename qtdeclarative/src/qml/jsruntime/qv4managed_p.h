@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 #ifndef QMLJS_MANAGED_H
 #define QMLJS_MANAGED_H
 
@@ -59,7 +60,8 @@ inline void qYouForgotTheQ_MANAGED_Macro(T1, T2) {}
         DataClass() = delete; \
         Q_DISABLE_COPY(DataClass) \
         V4_MANAGED_ITSELF(DataClass, superClass) \
-        Q_STATIC_ASSERT(std::is_trivial_v<QV4::Heap::DataClass>);
+        static_assert(std::is_trivially_copyable_v<QV4::Heap::DataClass>); \
+        static_assert(std::is_trivially_default_constructible_v<QV4::Heap::DataClass>);
 
 #define Q_MANAGED_TYPE(type) \
     public: \
@@ -122,7 +124,10 @@ public:
 
         Type_V4Sequence,
         Type_QmlListProperty,
-
+        Type_V4QObjectWrapper,
+        Type_QMLTypeWrapper,
+        Type_V4ReferenceObject,
+        Type_QMLValueTypeWrapper,
     };
     Q_MANAGED_TYPE(Invalid)
 
@@ -131,6 +136,7 @@ public:
     inline ExecutionEngine *engine() const { return internalClass()->engine; }
 
     bool isV4SequenceType() const { return d()->internalClass->vtable->type == Type_V4Sequence; }
+    bool isV4QObjectWrapper() const { return d()->internalClass->vtable->type == Type_V4QObjectWrapper; }
     bool isQmlListPropertyType() const { return d()->internalClass->vtable->type == Type_QmlListProperty; }
     bool isArrayLike() const { return isArrayObject() || isV4SequenceType() || isQmlListPropertyType(); }
 

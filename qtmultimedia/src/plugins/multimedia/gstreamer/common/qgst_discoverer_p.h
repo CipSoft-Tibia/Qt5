@@ -18,6 +18,7 @@
 #include <QtCore/qglobal.h>
 #include <QtCore/qlocale.h>
 #include <QtCore/qsize.h>
+#include <QtCore/private/qexpected_p.h>
 
 #include <QtMultimedia/private/qmultimediautils_p.h>
 
@@ -100,19 +101,17 @@ struct QGstDiscovererInfo
     std::vector<QGstDiscovererContainerInfo> containerStreams;
 };
 
-// For now we only perform synchronous discovery. Our future selves may want to perform the
-// discovery asynchronously.
 class QGstDiscoverer
 {
 public:
     QGstDiscoverer();
 
-    QMaybe<QGstDiscovererInfo, QUniqueGErrorHandle> discover(const QString &uri);
-    QMaybe<QGstDiscovererInfo, QUniqueGErrorHandle> discover(const QUrl &);
-    QMaybe<QGstDiscovererInfo, QUniqueGErrorHandle> discover(QIODevice *);
+    q23::expected<QGstDiscovererInfo, QUniqueGErrorHandle> discover(const QString &uri);
+    q23::expected<QGstDiscovererInfo, QUniqueGErrorHandle> discover(const QUrl &);
+    q23::expected<QGstDiscovererInfo, QUniqueGErrorHandle> discover(QIODevice *);
 
 private:
-    QMaybe<QGstDiscovererInfo, QUniqueGErrorHandle> discover(const char *);
+    q23::expected<QGstDiscovererInfo, QUniqueGErrorHandle> discover(const char *);
     QGstDiscovererHandle m_instance;
 };
 

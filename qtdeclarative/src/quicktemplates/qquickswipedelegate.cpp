@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickswipedelegate_p.h"
 #include "qquickswipedelegate_p_p.h"
@@ -55,11 +56,13 @@ QT_BEGIN_NAMESPACE
     occur:
 
     \image qtquickcontrols-swipedelegate.gif
+           {Swipe delegate revealing actions on swipe gesture}
 
     If \c swipe.left and \c swipe.right are anchored to the left and
     right of the \l {Control::}{background} item (respectively), they'll behave like this:
 
     \image qtquickcontrols-swipedelegate-leading-trailing.gif
+           {Swipe delegate showing leading and trailing actions}
 
     When using \c swipe.left and \c swipe.right, the control cannot be
     swiped past the left and right edges. To achieve this type of "wrapping"
@@ -69,6 +72,7 @@ QT_BEGIN_NAMESPACE
     control repeatedly in both directions:
 
     \image qtquickcontrols-swipedelegate-behind.gif
+           {Swipe delegate showing behind swipe action}
 
     \sa {Customizing SwipeDelegate}, {Delegate Controls}, {Qt Quick Controls 2 - Gallery}{Gallery Example}
 */
@@ -784,9 +788,10 @@ bool QQuickSwipeDelegatePrivate::handleMouseMoveEvent(QQuickItem *item, QMouseEv
     if (item == q && !pressed)
         return false;
 
-    const qreal distance = (event->globalPosition().x() != qInf() && event->globalPosition().y() != qInf()) ?
+    static constexpr QGuiApplicationPrivate::QLastCursorPosition uninitializedCursorPosition;
+    const qreal distance = (event->globalPosition() == uninitializedCursorPosition ? 0 :
                               (item->mapFromGlobal(event->globalPosition()) -
-                               item->mapFromGlobal(event->points().first().globalPressPosition())).x() : 0;
+                               item->mapFromGlobal(event->points().first().globalPressPosition())).x());
     if (!q->keepMouseGrab()) {
         // We used to use the custom threshold that QQuickDrawerPrivate::grabMouse used,
         // but since it's larger than what Flickable uses, it results in Flickable

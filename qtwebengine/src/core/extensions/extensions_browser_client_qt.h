@@ -35,9 +35,9 @@ public:
     bool HasOffTheRecordContext(content::BrowserContext *context) override;
     content::BrowserContext *GetOffTheRecordContext(content::BrowserContext *context) override;
     content::BrowserContext *GetOriginalContext(content::BrowserContext *context) override;
-    content::BrowserContext *GetContextRedirectedToOriginal(content::BrowserContext*, bool) override;
-    content::BrowserContext *GetContextOwnInstance(content::BrowserContext*, bool) override;
-    content::BrowserContext *GetContextForOriginalOnly(content::BrowserContext*, bool) override;
+    content::BrowserContext *GetContextRedirectedToOriginal(content::BrowserContext*) override;
+    content::BrowserContext *GetContextOwnInstance(content::BrowserContext*) override;
+    content::BrowserContext *GetContextForOriginalOnly(content::BrowserContext*) override;
     bool IsGuestSession(content::BrowserContext *context) const override;
     bool IsExtensionIncognitoEnabled(const std::string &extension_id, content::BrowserContext *context) const override;
     bool CanExtensionCrossIncognito(const Extension *extension, content::BrowserContext *context) const override;
@@ -76,9 +76,6 @@ public:
     bool IsMinBrowserVersionSupported(const std::string &min_version) override;
     ExtensionWebContentsObserver *GetExtensionWebContentsObserver(content::WebContents *web_contents) override;
     KioskDelegate *GetKioskDelegate() override;
-
-    // Whether the browser context is associated with Chrome OS lock screen.
-    bool IsLockScreenContext(content::BrowserContext *context) override;
 
     bool IsAppModeForcedForApp(const ExtensionId &id) override;
     bool IsInDemoMode() override;

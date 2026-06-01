@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLPROPERTYCACHE_P_H
 #define QQMLPROPERTYCACHE_P_H
@@ -153,6 +154,9 @@ public:
             int propertyCount, int methodCount, int signalCount, int enumCount) const;
     void appendProperty(const QString &, QQmlPropertyData::Flags flags, int coreIndex,
                         QMetaType propType, QTypeRevision revision, int notifyIndex);
+    void appendAlias(const QString &, QQmlPropertyData::Flags flags, int coreIndex,
+                     QMetaType propType, QTypeRevision version, int notifyIndex,
+                     int encodedTargetIndex);
     void appendSignal(const QString &, QQmlPropertyData::Flags, int coreIndex,
                       const QMetaType *types = nullptr,
                       const QList<QByteArray> &names = QList<QByteArray>());
@@ -204,7 +208,8 @@ public:
     static int originalClone(const QObject *, int index);
 
     QList<QByteArray> signalParameterNames(int index) const;
-    static QString signalParameterStringForJS(QV4::ExecutionEngine *engine, const QList<QByteArray> &parameterNameList, QString *errorString = nullptr);
+    static QString signalParameterStringForJS(
+            const QList<QByteArray> &parameterNameList, QString *errorString = nullptr);
 
     const char *className() const;
 
@@ -251,7 +256,7 @@ private:
     QQmlPropertyCacheMethodArguments *createArgumentsObject(int count, const QList<QByteArray> &names);
 
     typedef QVector<QQmlPropertyData> IndexCache;
-    typedef QLinkedStringMultiHash<QPair<int, QQmlPropertyData *> > StringCache;
+    typedef QLinkedStringMultiHash<std::pair<int, QQmlPropertyData *> > StringCache;
     typedef QVector<QTypeRevision> AllowedRevisionCache;
 
     const QQmlPropertyData *findProperty(StringCache::ConstIterator it, QObject *,
@@ -269,7 +274,7 @@ private:
     template<typename K>
     void setNamedProperty(const K &key, int index, QQmlPropertyData *data)
     {
-        stringCache.insert(key, qMakePair(index, data));
+        stringCache.insert(key, std::make_pair(index, data));
     }
 
 private:
@@ -293,6 +298,22 @@ private:
     OverrideResult handleOverride(const String &name, QQmlPropertyData *data)
     {
         return handleOverride(name, data, findNamedProperty(name));
+    }
+
+    void doAppendPropertyData(const QString &name, QQmlPropertyData &&data)
+    {
+        QQmlPropertyData *old = findNamedProperty(name);
+        const OverrideResult overrideResult = handleOverride(name, &data, old);
+        if (overrideResult == InvalidOverride) {
+            // Insert the overridden member once more, to keep the counts in sync
+            propertyIndexCache.append(*old);
+            return;
+        }
+
+        const int index = propertyIndexCache.size();
+        propertyIndexCache.append(std::move(data));
+
+        setNamedProperty(name, index + propertyOffset(), propertyIndexCache.data() + index);
     }
 
     int propertyIndexCacheStart = 0; // placed here to avoid gap between QQmlRefCount and _parent

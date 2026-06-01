@@ -13,6 +13,8 @@
 #include <QtCore/qmap.h>
 #include <QtCore/qset.h>
 
+using namespace Qt::Literals::StringLiterals;
+
 MappingFileGenerator::MappingFileGenerator(const QList<XmlElement *> &generateMapping,
                                            const QString &path,
                                            const QString &prefix,
@@ -22,11 +24,12 @@ MappingFileGenerator::MappingFileGenerator(const QList<XmlElement *> &generateMa
     , m_prefix(prefix)
     , m_header(header)
 {
-    for (const auto &type : m_generateMapping) {
+    for (const auto &type : std::as_const(m_generateMapping)) {
         const auto structuredType = dynamic_cast<StructuredType *>(type);
         if (structuredType) {
-            for (const auto &possibleField : structuredType->fields()) {
-                for (const auto &field : structuredType->fields()) {
+            const auto typeFields = structuredType->fields();
+            for (const auto &possibleField : typeFields) {
+                for (const auto &field : typeFields) {
                     if (possibleField->name() == field->lengthField()
                         && !m_lengthFields.contains(possibleField))
                         m_lengthFields.push_back(possibleField);
@@ -47,11 +50,12 @@ void MappingFileGenerator::addGenerateMapping(
         if (!m_generateMapping.contains(mapping))
             m_generateMapping.push_back(mapping);
     }
-    for (const auto &mapping : m_generateMapping) {
+    for (const auto &mapping : std::as_const(m_generateMapping)) {
         const auto structuredType = dynamic_cast<StructuredType *>(mapping);
         if (structuredType) {
-            for (const auto &possibleField : structuredType->fields()) {
-                for (const auto &field : structuredType->fields()) {
+            const auto typeFields = structuredType->fields();
+            for (const auto &possibleField : typeFields) {
+                for (const auto &field : typeFields) {
                     if (possibleField->name() == field->lengthField()
                         && !m_lengthFields.contains(possibleField))
                         m_lengthFields.push_back(possibleField);
@@ -81,7 +85,7 @@ MappingFileGenerator::MappingError MappingFileGenerator::generateMapping()
 MappingFileGenerator::MappingError MappingFileGenerator::generateMappingHeader()
 {
     QFile file;
-    const auto fileName = QStringLiteral("%1binarydeencoder%2")
+    const auto fileName = u"%1binarydeencoder%2"_s
                               .arg(m_prefix.toLower(), StringIdentifier::headerIdentifier);
     QDir dir(m_path);
     if (!dir.exists(m_path))
@@ -89,7 +93,8 @@ MappingFileGenerator::MappingError MappingFileGenerator::generateMappingHeader()
             return UnanbleToWrite;
     file.setFileName(dir.absoluteFilePath(fileName));
 
-    file.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return UnanbleToWrite;
     QTextStream output(&file);
 
     // Print header (if present)
@@ -98,21 +103,21 @@ MappingFileGenerator::MappingError MappingFileGenerator::generateMappingHeader()
     output << "#pragma once"
            << Util::lineBreak(2);
     QList<QString> includes;
-    for (auto mapping : m_generateMapping) {
+    for (auto mapping : std::as_const(m_generateMapping)) {
         const auto enumeratedType = dynamic_cast<EnumeratedType *>(mapping);
         if (enumeratedType) {
             if (!includes.contains(
-                    QLatin1String("#include \"%1enumerations.h\"%2").arg(m_prefix.toLower(), Util::lineBreak())))
+                    u"#include \"%1enumerations.h\"%2"_s.arg(m_prefix.toLower(), Util::lineBreak())))
                 includes.push_back(
-                    QLatin1String("#include \"%1enumerations.h\"%2").arg(m_prefix.toLower(), Util::lineBreak()));
+                    u"#include \"%1enumerations.h\"%2"_s.arg(m_prefix.toLower(), Util::lineBreak()));
         } else {
             const auto structuredType = dynamic_cast<StructuredType *>(mapping);
             if (structuredType)
                 if (!includes.contains(
-                        QLatin1String("#include \"%1%2.h\"%3")
+                        u"#include \"%1%2.h\"%3"_s
                             .arg(m_prefix.toLower(), structuredType->name().toLower(), Util::lineBreak())))
                     includes.push_back(
-                        QLatin1String("#include \"%1%2.h\"%3")
+                        u"#include \"%1%2.h\"%3"_s
                             .arg(m_prefix.toLower(), structuredType->name().toLower(), Util::lineBreak()));
         }
     }
@@ -180,14 +185,16 @@ MappingFileGenerator::MappingError MappingFileGenerator::generateMappingCpp()
 {
     QFile file;
     QDir dir(m_path);
-    const auto fileName = QStringLiteral("%1binarydeencoder%2")
+    const auto fileName = u"%1binarydeencoder%2"_s
                               .arg(m_prefix.toLower(), StringIdentifier::cppIdentifier);
     if (!dir.exists(m_path))
         if (!dir.mkpath(m_path))
             return UnanbleToWrite;
     file.setFileName(dir.absoluteFilePath(fileName));
 
-    file.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return UnanbleToWrite;
+
     QTextStream output(&file);
 
     // Print header (if present)
@@ -272,7 +279,8 @@ void MappingFileGenerator::generateOptionalFieldDecoding(QTextStream &output, co
 {
     int index = -1;
     QSet<QString> usedSwitchFields;
-    for (const auto &current : structuredType->fields()) {
+    const auto typeFields = structuredType->fields();
+    for (const auto &current : typeFields) {
         if (!current->switchField().isEmpty() && !usedSwitchFields.contains(current->switchField())) {
             index++;
             usedSwitchFields.insert(current->switchField());
@@ -282,7 +290,7 @@ void MappingFileGenerator::generateOptionalFieldDecoding(QTextStream &output, co
             break;
     }
 
-    output << Util::indent(level) << "if (decodingMask & " << QStringLiteral("(1 << %1)").arg(index) << ") {" << Util::lineBreak();
+    output << Util::indent(level) << "if (decodingMask & " << u"(1 << %1)"_s.arg(index) << ") {" << Util::lineBreak();
     generateFieldDecoding(output, structuredType, field, level + 1);
     output << Util::indent(level + 1) << "temp.set" << field->switchField() << "(true);" << Util::lineBreak();
     output << Util::indent(level) << "}" << Util::lineBreak();
@@ -290,7 +298,7 @@ void MappingFileGenerator::generateOptionalFieldDecoding(QTextStream &output, co
 
 void MappingFileGenerator::generateUnionFieldDecoding(QTextStream &output, const StructuredType *structuredType, const Field *field, int level)
 {
-    output << Util::indent(level) << QStringLiteral("if (switchField == %1) {").arg(field->switchValue()) << Util::lineBreak();
+    output << Util::indent(level) << u"if (switchField == %1) {"_s.arg(field->switchValue()) << Util::lineBreak();
     generateFieldDecoding(output, structuredType, field, level + 1);
     output << Util::indent(level) << "}" << Util::lineBreak();
 }
@@ -410,7 +418,7 @@ void MappingFileGenerator::generateDeEncodingArray(QTextStream &output)
 
 void MappingFileGenerator::generateDeEncoding(QTextStream &output)
 {
-    for (const auto &mapping : m_generateMapping) {
+    for (const auto &mapping : std::as_const(m_generateMapping)) {
         const auto enumeratedType = dynamic_cast<EnumeratedType *>(mapping);
         if (enumeratedType) {
             generateDecodingEnumeratedType(output, enumeratedType);
@@ -482,7 +490,8 @@ void MappingFileGenerator::generateDecodingStructuredType(QTextStream &output,
                << Util::indent(2) << "return {};" << Util::lineBreak(2);
     }
 
-    for (const auto &field : structuredType->fields()) {
+    const auto typeFields = structuredType->fields();
+    for (const auto &field : typeFields) {
         if (field->isInStructuredTypeBitMask())
             continue;
 
@@ -490,7 +499,7 @@ void MappingFileGenerator::generateDecodingStructuredType(QTextStream &output,
             continue;
 
         // The switch field is not a member of the generated data class
-        if (structuredType->hasUnion() && field == structuredType->fields().constFirst())
+        if (structuredType->hasUnion() && field == typeFields.constFirst())
             continue;
 
         if (!field->switchField().isEmpty() && !field->isUnion())
@@ -519,11 +528,13 @@ void MappingFileGenerator::generateEncodingStructuredType(QTextStream &output,
     output << "{"
            << Util::lineBreak();
 
+    const auto typeFields = structuredType->fields();
+
     // Create encoding mask for bitmask
     if (structuredType->hasSwitchfield() && !structuredType->hasUnion()) {
         output << Util::indent(1) << "quint32 encodingMask = 0;" << Util::lineBreak();
         int index = 0;
-        for (const auto &field : structuredType->fields()) {
+        for (const auto &field : typeFields) {
             if (!m_switchFields.contains(field))
                 continue;
             output << Util::indent(1) << "encodingMask |= ((src." << field->lowerFirstName() << "() ? 1 : 0) << " << index++ << ");" << Util::lineBreak();
@@ -532,11 +543,11 @@ void MappingFileGenerator::generateEncodingStructuredType(QTextStream &output,
         output << Util::indent(1) << "if (!m_binaryDataEncoding->encode<quint32>(encodingMask))" << Util::lineBreak();
         output << Util::indent(2) << "return false;" << Util::lineBreak(2);
     } else if (structuredType->hasUnion()) {
-        output << Util::indent(1) << "if (!m_binaryDataEncoding->encode<quint32>(static_cast<quint32>(src." << structuredType->fields().constFirst()->lowerFirstName() << "())))" << Util::lineBreak();
+        output << Util::indent(1) << "if (!m_binaryDataEncoding->encode<quint32>(static_cast<quint32>(src." << typeFields.constFirst()->lowerFirstName() << "())))" << Util::lineBreak();
         output << Util::indent(2) << "return false;" << Util::lineBreak(2);
     }
 
-    for (const auto &field : structuredType->fields()) {
+    for (const auto &field : typeFields) {
         if (m_lengthFields.contains(field))
             continue;
 
@@ -565,11 +576,12 @@ MappingFileGenerator::MappingError MappingFileGenerator::sortMappings()
 {
     QList<XmlElement *> baseType;
     QList<XmlElement *> extendedType;
-    for (const auto &mapping : m_generateMapping) {
+    for (const auto &mapping : std::as_const(m_generateMapping)) {
         const auto structuredType = dynamic_cast<StructuredType *>(mapping);
         if (structuredType) {
+            const auto typeFields = structuredType->fields();
             bool isBaseType = true;
-            for (const auto &field : structuredType->fields()) {
+            for (const auto &field : typeFields) {
                 bool isPreCoded = false;
                 for (const auto &precodedType : StringIdentifier::opcUaPrecodedTypes) {
                     if (precodedType.contains(Util::removeNamespace(field->typeName()))) {
@@ -597,8 +609,9 @@ MappingFileGenerator::MappingError MappingFileGenerator::sortMappings()
         for (int i = 0; i < extendedType.size(); i++) {
             const auto structuredType = dynamic_cast<StructuredType *>(extendedType.at(i));
             if (structuredType) {
+                const auto typeFields = structuredType->fields();
                 bool independentExtended = true;
-                for (const auto &field : structuredType->fields()) {
+                for (const auto &field : typeFields) {
                     bool isPreCoded = false;
                     for (const auto &precodedType : StringIdentifier::opcUaPrecodedTypes) {
                         if (precodedType.contains(Util::removeNamespace(field->typeName()))) {
@@ -611,7 +624,7 @@ MappingFileGenerator::MappingError MappingFileGenerator::sortMappings()
                         basicdependecy = true;
                     else if (!isPreCoded
                              && Util::removeNamespace(field->typeName()) != structuredType->name()) {
-                        for (const auto &type : m_generateMapping) {
+                        for (const auto &type : std::as_const(m_generateMapping)) {
                             if (type->name() == Util::removeNamespace(field->typeName())) {
                                 basicdependecy = true;
                             }

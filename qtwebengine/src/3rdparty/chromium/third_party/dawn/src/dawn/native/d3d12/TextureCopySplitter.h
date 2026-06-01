@@ -30,6 +30,7 @@
 
 #include <array>
 
+#include "dawn/native/d3d12/UtilsD3D12.h"
 #include "dawn/native/dawn_platform.h"
 
 namespace dawn::native {
@@ -44,12 +45,20 @@ struct TextureCopySubresource {
     static constexpr unsigned int kMaxTextureCopyRegions = 4;
 
     struct CopyInfo {
-        uint64_t alignedOffset = 0;
-        Origin3D textureOffset;
-        Origin3D bufferOffset;
-        Extent3D bufferSize;
+        Origin3D destinationOffset;
 
-        Extent3D copySize;
+        D3D12_BOX sourceRegion;
+        D3D12_TEXTURE_COPY_LOCATION bufferLocation;
+
+        Origin3D GetBufferOffset(BufferTextureCopyDirection direction) const;
+        Origin3D GetTextureOffset(BufferTextureCopyDirection direction) const;
+        Extent3D GetCopySize() const;
+        uint64_t GetAlignedOffset() const;
+        Extent3D GetBufferSize() const;
+
+        void SetAlignedOffset(uint64_t alignedOffset);
+        void SetHeightInBufferLocation(uint32_t bufferHeight);
+        void SetDepthInBufferLocation(uint32_t bufferDepth);
     };
 
     CopyInfo* AddCopy();
@@ -86,25 +95,50 @@ struct TextureCopySplits {
 //   - Copy region(s) combined should exactly be equivalent to the texture region to be copied.
 //   - Every pixel accessed by every copy region should not be out of the bound of the copied
 //     texture and buffer.
-TextureCopySubresource Compute2DTextureCopySubresource(Origin3D origin,
+TextureCopySubresource Compute2DTextureCopySubresource(BufferTextureCopyDirection direction,
+                                                       Origin3D origin,
                                                        Extent3D copySize,
                                                        const TexelBlockInfo& blockInfo,
                                                        uint64_t offset,
                                                        uint32_t bytesPerRow);
 
-TextureCopySplits Compute2DTextureCopySplits(Origin3D origin,
+TextureCopySplits Compute2DTextureCopySplits(BufferTextureCopyDirection direction,
+                                             Origin3D origin,
                                              Extent3D copySize,
                                              const TexelBlockInfo& blockInfo,
                                              uint64_t offset,
                                              uint32_t bytesPerRow,
                                              uint32_t rowsPerImage);
 
-TextureCopySubresource Compute3DTextureCopySplits(Origin3D origin,
+TextureCopySubresource Compute3DTextureCopySplits(BufferTextureCopyDirection direction,
+                                                  Origin3D origin,
                                                   Extent3D copySize,
                                                   const TexelBlockInfo& blockInfo,
                                                   uint64_t offset,
                                                   uint32_t bytesPerRow,
                                                   uint32_t rowsPerImage);
+
+// Compute the `TextureCopySubresource` for one subresource of a 2D texture with relaxed row pitch
+// and offset.
+TextureCopySubresource Compute2DTextureCopySubresourceWithRelaxedRowPitchAndOffset(
+    BufferTextureCopyDirection direction,
+    Origin3D origin,
+    Extent3D copySize,
+    const TexelBlockInfo& blockInfo,
+    uint64_t offset,
+    uint32_t bytesPerRow);
+
+// Compute the `TextureCopySubresource` for one subresource of a 3D texture with relaxed row pitch
+// and offset.
+TextureCopySubresource Compute3DTextureCopySubresourceWithRelaxedRowPitchAndOffset(
+    BufferTextureCopyDirection direction,
+    Origin3D origin,
+    Extent3D copySize,
+    const TexelBlockInfo& blockInfo,
+    uint64_t offset,
+    uint32_t bytesPerRow,
+    uint32_t rowsPerImage);
+
 }  // namespace dawn::native::d3d12
 
 #endif  // SRC_DAWN_NATIVE_D3D12_TEXTURECOPYSPLITTER_H_

@@ -213,7 +213,10 @@ class VIZ_SERVICE_EXPORT SurfaceAggregator : public SurfaceObserver {
       const gfx::Transform& target_transform,
       const std::optional<gfx::Rect> clip_rect,
       const std::optional<gfx::Rect> dest_root_target_clip_rect,
-      const MaskFilterInfoExt& mask_filter_info_pair);
+      const MaskFilterInfoExt& mask_filter_info_pair,
+      std::optional<cc::PaintFlags::FilterQuality> filter_quality,
+      std::optional<cc::PaintFlags::DynamicRangeLimitMixture>
+          dynamic_range_limit);
 
   // Recursively walks through the render pass and updates the
   // |intersects_damage_under| flag on all RenderPassDrawQuads(RPDQ).
@@ -322,7 +325,8 @@ class VIZ_SERVICE_EXPORT SurfaceAggregator : public SurfaceObserver {
   // then store it in the |delegated_ink_metadata_| member.
   void TransformAndStoreDelegatedInkMetadata(
       const gfx::Transform& parent_quad_to_root_target_transform,
-      const gfx::DelegatedInkMetadata* metadata);
+      const gfx::DelegatedInkMetadata* metadata,
+      const AggregatedRenderPassId render_pass_id);
 
   // Preliminary check to see if a surface contained in |surface_quad| can
   // potentially merge its root render pass. If so, returns true.

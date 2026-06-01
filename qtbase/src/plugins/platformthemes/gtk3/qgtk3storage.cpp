@@ -16,6 +16,9 @@
 #include "qgtk3json_p.h"
 #include "qgtk3storage_p.h"
 #include <qpa/qwindowsysteminterface.h>
+#if QT_CONFIG(dbus)
+#  include <QtGui/private/qgnomeportalinterface_p.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -23,10 +26,12 @@ QGtk3Storage::QGtk3Storage()
 {
     m_interface.reset(new QGtk3Interface(this));
 #if QT_CONFIG(dbus)
-    m_portalInterface.reset(new QGtk3PortalInterface(this));
+    m_portalInterface.reset(new QGnomePortalInterface);
 #endif
     populateMap();
 }
+
+QGtk3Storage::~QGtk3Storage() { }
 
 /*!
     \internal

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtQml/qqmlextensionplugin.h>
 #include <QtQml/private/qqmlglobal_p.h>
@@ -8,13 +9,13 @@
 #if QT_CONFIG(shortcut)
 #include <QtQuickTemplates2/private/qquickshortcutcontext_p_p.h>
 
+QT_BEGIN_NAMESPACE
+
 // qtdeclarative/src/quick/util/qquickshortcut.cpp
 typedef bool (*ShortcutContextMatcher)(QObject *, Qt::ShortcutContext);
 extern ShortcutContextMatcher qt_quick_shortcut_context_matcher();
 extern void qt_quick_set_shortcut_context_matcher(ShortcutContextMatcher matcher);
 #endif
-
-QT_BEGIN_NAMESPACE
 
 Q_GHS_KEEP_REFERENCE(qml_register_types_QtQuick_Templates);
 Q_GHS_KEEP_REFERENCE(QQuickTemplates_initializeModule);

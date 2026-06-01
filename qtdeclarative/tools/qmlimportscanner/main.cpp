@@ -45,6 +45,7 @@ using FileImportsWithoutDepsCache = QHash<QString, QVariantList>;
 namespace {
 
 QStringList g_qmlImportPaths;
+bool g_addImportVersion = false;
 
 inline QString typeLiteral()         { return QStringLiteral("type"); }
 inline QString versionLiteral()      { return QStringLiteral("version"); }
@@ -151,9 +152,9 @@ QVariantMap pluginsForModulePath(const QString &modulePath,
                                  const QString &version,
                                  FileImportsWithoutDepsCache
                                  &fileImportsWithoutDepsCache) {
-    using Cache = QHash<QPair<QString, QString>, QVariantMap>;
+    using Cache = QHash<std::pair<QString, QString>, QVariantMap>;
     static Cache pluginsCache;
-    const QPair<QString, QString> cacheKey = std::make_pair(modulePath, version);
+    const std::pair<QString, QString> cacheKey = std::make_pair(modulePath, version);
     const Cache::const_iterator it = pluginsCache.find(cacheKey);
     if (it != pluginsCache.end()) {
         return *it;
@@ -275,14 +276,14 @@ QVariantMap pluginsForModulePath(const QString &modulePath,
 
 // Search for a given qml import in g_qmlImportPaths and return a pair
 // of absolute / relative paths (for deployment).
-QPair<QString, QString> resolveImportPath(const QString &uri, const QString &version)
+std::pair<QString, QString> resolveImportPath(const QString &uri, const QString &version)
 {
     const QLatin1Char dot('.');
     const QLatin1Char slash('/');
     const QStringList parts = uri.split(dot, Qt::SkipEmptyParts);
 
     QString ver = version;
-    QPair<QString, QString> candidate;
+    std::pair<QString, QString> candidate;
     while (true) {
         for (const QString &qmlImportPath : std::as_const(g_qmlImportPaths)) {
             // Search for the most specific version first, and search
@@ -299,7 +300,7 @@ QPair<QString, QString> resolveImportPath(const QString &uri, const QString &ver
                 const QString candidatePath = QDir::cleanPath(qmlImportPath + slash + relativePath);
                 const QDir candidateDir(candidatePath);
                 if (candidateDir.exists()) {
-                    const auto newCandidate = qMakePair(candidatePath, relativePath); // import found
+                    const auto newCandidate = std::make_pair(candidatePath, relativePath); // import found
                     if (candidateDir.exists(u"qmldir"_s)) // if it has a qmldir, we are fine
                         return newCandidate;
                     else if (candidate.first.isEmpty())
@@ -315,7 +316,7 @@ QPair<QString, QString> resolveImportPath(const QString &uri, const QString &ver
                     const QString candidatePath = QDir::cleanPath(qmlImportPath + slash + relativePath);
                     const QDir candidateDir(candidatePath);
                     if (candidateDir.exists()) {
-                        const auto newCandidate = qMakePair(candidatePath, relativePath); // import found
+                        const auto newCandidate = std::make_pair(candidatePath, relativePath); // import found
                         if (candidateDir.exists(u"qmldir"_s))
                             return newCandidate;
                         else if (candidate.first.isEmpty())
@@ -376,7 +377,7 @@ struct ImportVariantHasher {
    }
 };
 
-using ImportDetailsAndDeps = QPair<QVariantMap, QStringList>;
+using ImportDetailsAndDeps = std::pair<QVariantMap, QStringList>;
 
 // Returns the import information as it will be written out to the json / .cmake file.
 // The dependencies are not stored in the same QVariantMap because we don't currently need that
@@ -397,7 +398,7 @@ getImportDetails(const QVariant &inputImport,
     QStringList dependencies;
     if (import.value(typeLiteral()) == moduleLiteral()) {
         const QString version = import.value(versionLiteral()).toString();
-        const QPair<QString, QString> paths =
+        const std::pair<QString, QString> paths =
             resolveImportPath(import.value(nameLiteral()).toString(), version);
         QVariantMap plugininfo;
         if (!paths.first.isEmpty()) {
@@ -437,7 +438,8 @@ getImportDetails(const QVariant &inputImport,
             import.insert(preferLiteral(), prefer);
         }
     }
-    import.remove(versionLiteral());
+    if (!g_addImportVersion)
+        import.remove(versionLiteral());
 
     const ImportDetailsAndDeps result = {import, dependencies};
     cache.insert({inputImport, result});
@@ -942,6 +944,8 @@ int main(int argc, char *argv[])
             outputFile = args.at(i);
             ++i;
             continue;
+        } else if (arg == QLatin1String("-add-version")) {
+            g_addImportVersion = true;
         } else {
             std::cerr << qPrintable(appName) << ": Invalid argument: \""
                 << qPrintable(arg) << "\"\n";

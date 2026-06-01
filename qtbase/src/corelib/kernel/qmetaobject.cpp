@@ -26,6 +26,8 @@
 #include <ctype.h>
 #include <memory>
 
+#include <cstring>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -741,6 +743,31 @@ inline int QMetaObjectPrivate::indexOfMethodRelative(const QMetaObject **baseObj
     \sa constructor(), constructorCount(), normalizedSignature()
 */
 
+#if QT_DEPRECATED_SINCE(6, 10)
+Q_DECL_COLD_FUNCTION
+static int compat_indexOf(const char *what, const char *sig, const QMetaObject *mo,
+                          int (*indexOf)(const QMetaObject *, const char *))
+{
+    const QByteArray normalized = QByteArray(sig).replace("QVector<", "QList<");
+    const int i = indexOf(mo, normalized.data());
+    if (i >= 0) {
+        qWarning(R"(QMetaObject::indexOf%s: argument "%s" is not normalized, because it contains "QVector<". )"
+                 R"(Earlier versions of Qt 6 incorrectly normalized QVector< to QList<, silently. )"
+                 R"(This behavior is deprecated as of 6.10, and will be removed in a future version of Qt.)",
+                 what, sig);
+    }
+    return i;
+}
+
+#define INDEXOF_COMPAT(what, arg) \
+    do { \
+        if (i < 0 && Q_UNLIKELY(std::strstr(arg, "QVector<"))) \
+            i = compat_indexOf(#what, arg, this, &indexOf ## what ## _helper); \
+    } while (false)
+#else
+#define INDEXOF_COMPAT(what, arg)
+#endif // QT_DEPRECATED_SINCE(6, 10)
+
 static int indexOfConstructor_helper(const QMetaObject *mo, const char *constructor)
 {
     QArgumentTypeArray types;
@@ -752,6 +779,7 @@ int QMetaObject::indexOfConstructor(const char *constructor) const
 {
     Q_ASSERT(priv(d.data)->revision >= 7);
     int i = indexOfConstructor_helper(this, constructor);
+    INDEXOF_COMPAT(Constructor, constructor);
     return i;
 }
 
@@ -781,6 +809,7 @@ static int indexOfMethod_helper(const QMetaObject *m, const char *method)
 int QMetaObject::indexOfMethod(const char *method) const
 {
     int i = indexOfMethod_helper(this, method);
+    INDEXOF_COMPAT(Method, method);
     return i;
 }
 
@@ -802,9 +831,7 @@ static void argumentTypesFromString(const char *str, const char *end,
                 --level;
             ++str;
         }
-        QByteArray argType(begin, str - begin);
-        argType.replace("QVector<", "QList<");
-        types += QArgumentType(std::move(argType));
+        types.emplace_back(QByteArrayView{begin, str - begin});
     }
 }
 
@@ -854,6 +881,7 @@ static int indexOfSignal_helper(const QMetaObject *m, const char *signal)
 int QMetaObject::indexOfSignal(const char *signal) const
 {
     int i = indexOfSignal_helper(this, signal);
+    INDEXOF_COMPAT(Signal, signal);
     return i;
 }
 
@@ -909,8 +937,11 @@ static int indexOfSlot_helper(const QMetaObject *m, const char *slot)
 int QMetaObject::indexOfSlot(const char *slot) const
 {
     int i = indexOfSlot_helper(this, slot);
+    INDEXOF_COMPAT(Slot, slot);
     return i;
 }
+
+#undef INDEXOF_COMPAT
 
 // same as indexOfSignalRelative but for slots.
 int QMetaObjectPrivate::indexOfSlotRelative(const QMetaObject **m,
@@ -1344,28 +1375,27 @@ bool QMetaObject::checkConnectArgs(const QMetaMethod &signal,
             QMetaMethodPrivate::get(&method));
 }
 
-static void qRemoveWhitespace(const char *s, char *d)
+static const char *trimSpacesFromLeft(QByteArrayView in)
 {
-    char last = 0;
-    while (*s && is_space(*s))
-        s++;
-    while (*s) {
-        while (*s && !is_space(*s))
-            last = *d++ = *s++;
-        while (*s && is_space(*s))
-            s++;
-        if (*s && ((is_ident_char(*s) && is_ident_char(last))
-                   || ((*s == ':') && (last == '<')))) {
-            last = *d++ = ' ';
-        }
-    }
-    *d = '\0';
+    return std::find_if_not(in.begin(), in.end(), is_space);
 }
 
-static char *qNormalizeType(char *d, int &templdepth, QByteArray &result)
+static QByteArrayView trimSpacesFromRight(QByteArrayView in)
 {
+    auto rit = std::find_if_not(in.rbegin(), in.rend(), is_space);
+    in = in.first(rit.base() - in.begin());
+    return in;
+}
+
+static const char *qNormalizeType(QByteArrayView in, int &templdepth, QByteArray &result)
+{
+    const char *d = in.begin();
     const char *t = d;
-    while (*d && (templdepth
+    const char *end = in.end();
+
+    // e.g. "QMap<a, QList<int const>>, QList<b>)"
+    // `t` is at the beginning; `d` is advanced to the `,` after the closing >>
+    while (d != end && (templdepth
                    || (*d != ',' && *d != ')'))) {
         if (*d == '<')
             ++templdepth;
@@ -1375,8 +1405,15 @@ static char *qNormalizeType(char *d, int &templdepth, QByteArray &result)
     }
     // "void" should only be removed if this is part of a signature that has
     // an explicit void argument; e.g., "void foo(void)" --> "void foo()"
-    if (strncmp("void)", t, d - t + 1) != 0)
-        result += normalizeTypeInternal(t, d);
+    auto type = QByteArrayView{t, d - t};
+    type = trimSpacesFromRight(type);
+    if (type == "void") {
+        const char *next = trimSpacesFromLeft(QByteArrayView{d, end});
+        if (next != end && *next == ')')
+            return next;
+    }
+
+    result += normalizeTypeInternal(t, d);
 
     return d;
 }
@@ -1402,6 +1439,8 @@ QByteArray QMetaObject::normalizedType(const char *type)
 }
 
 /*!
+    \fn QByteArray QMetaObject::normalizedSignature(const char *method)
+
     Normalizes the signature of the given \a method.
 
     Qt uses normalized signatures to decide whether two given signals
@@ -1412,24 +1451,39 @@ QByteArray QMetaObject::normalizedType(const char *type)
 
     \sa checkConnectArgs(), normalizedType()
  */
-QByteArray QMetaObject::normalizedSignature(const char *method)
+QByteArray QMetaObject::normalizedSignature(const char *_method)
 {
-    QByteArray result;
-    if (!method || !*method)
-        return result;
-    int len = int(strlen(method));
-    QVarLengthArray<char> stackbuf(len + 1);
-    char *d = stackbuf.data();
-    qRemoveWhitespace(method, d);
+    QByteArrayView method = trimSpacesFromRight(_method);
+    if (method.isEmpty())
+        return {};
 
-    result.reserve(len);
+    const char *d = method.begin();
+    const char *end = method.end();
+    d = trimSpacesFromLeft({d, end});
+
+    QByteArray result;
+    result.reserve(method.size());
 
     int argdepth = 0;
     int templdepth = 0;
-    while (*d) {
+    while (d != end) {
+        if (is_space(*d)) {
+            Q_ASSERT(!result.isEmpty());
+            ++d;
+            d = trimSpacesFromLeft({d, end});
+            // keep spaces only between two identifiers: int bar ( int )
+            //                                                  x x   x
+            if (d != end && is_ident_char(*d) && is_ident_char(result.back())) {
+                result += ' ';
+                result += *d++;
+                continue;
+            }
+            if (d == end)
+                break;
+        }
         if (argdepth == 1) {
-            d = qNormalizeType(d, templdepth, result);
-            if (!*d) //most likely an invalid signature.
+            d = qNormalizeType(QByteArrayView{d, end}, templdepth, result);
+            if (d == end) //most likely an invalid signature.
                 break;
         }
         if (*d == '(')
@@ -4229,7 +4283,7 @@ int QMetaProperty::notifySignalIndex() const
     if (!(methodIndex & IsUnresolvedSignal))
         return methodIndex + mobj->methodOffset();
     methodIndex &= ~IsUnresolvedSignal;
-    const QByteArray signalName = stringData(mobj, methodIndex);
+    const QByteArrayView signalName = stringDataView(mobj, methodIndex);
     const QMetaObject *m = mobj;
     // try 0-arg signal
     int idx = QMetaObjectPrivate::indexOfMethodRelative<MethodSignal>(&m, signalName, 0, nullptr);
@@ -4556,15 +4610,22 @@ int QMetaObjectPrivate::originalClone(const QMetaObject *mobj, int local_method_
 
     Returns the parameter type names extracted from the given \a signature.
 */
-QList<QByteArray> QMetaObjectPrivate::parameterTypeNamesFromSignature(const char *signature)
+QList<QByteArray> QMetaObjectPrivate::parameterTypeNamesFromSignature(QByteArrayView sig)
 {
     QList<QByteArray> list;
-    while (*signature && *signature != '(')
-        ++signature;
-    while (*signature && *signature != ')' && *++signature != ')') {
+    const char *signature = static_cast<const char *>(memchr(sig.begin(), '(', sig.size()));
+    if (!signature)
+        return {};
+    ++signature; // skip '('
+    if (!sig.endsWith(')'))
+        return {};
+    const char *end = sig.end() - 1; // exclude ')'
+    while (signature != end) {
+        if (*signature == ',')
+            ++signature;
         const char *begin = signature;
         int level = 0;
-        while (*signature && (level > 0 || *signature != ',') && *signature != ')') {
+        while (signature != end && (level > 0 || *signature != ',')) {
             if (*signature == '<')
                 ++level;
             else if (*signature == '>')

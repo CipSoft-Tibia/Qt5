@@ -197,30 +197,10 @@ void VideoFrameSinkBundle::DidNotProduceFrame(uint32_t sink_id,
   }
 }
 
-void VideoFrameSinkBundle::DidAllocateSharedBitmap(
-    uint32_t sink_id,
-    base::ReadOnlySharedMemoryRegion region,
-    const viz::SharedBitmapId& id) {
-  bundle_->DidAllocateSharedBitmap(sink_id, std::move(region), id);
-}
-
-void VideoFrameSinkBundle::DidDeleteSharedBitmap(
-    uint32_t sink_id,
-    const viz::SharedBitmapId& id) {
-  // These messages are not urgent, but they must be well-ordered with respect
-  // to frame submissions. Hence they are batched in the same queue and
-  // flushed whenever any other messages are fit to flush.
-  submission_queue_.push_back(viz::mojom::blink::BundledFrameSubmission::New(
-      sink_id,
-      viz::mojom::blink::BundledFrameSubmissionData::NewDidDeleteSharedBitmap(
-          id)));
-}
-
 #if BUILDFLAG(IS_ANDROID)
-void VideoFrameSinkBundle::SetThreadIds(
-    uint32_t sink_id,
-    const WTF::Vector<int32_t>& thread_ids) {
-  bundle_->SetThreadIds(sink_id, thread_ids);
+void VideoFrameSinkBundle::SetThreads(uint32_t sink_id,
+                                      const WTF::Vector<viz::Thread>& threads) {
+  bundle_->SetThreads(sink_id, threads);
 }
 #endif
 

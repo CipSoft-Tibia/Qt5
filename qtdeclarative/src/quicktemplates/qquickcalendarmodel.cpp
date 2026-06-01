@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickcalendarmodel_p.h"
 
@@ -77,7 +78,7 @@ void QQuickCalendarModelPrivate::populate(QDate f, QDate t, bool force)
     if (!force && f == from && t == to)
         return;
 
-    int c = getCount(from, to);
+    int c = getCount(f, t);
     if (c != count) {
         q->beginResetModel();
         count = c;

@@ -1,5 +1,8 @@
 include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
 url.examples = "https://code.qt.io/cgit/qt/qtgraphs.git/tree/examples/\1?h=$QT_VER"
+url.sources  = "https://code.qt.io/cgit/qt/qtgraphs.git/tree/\1?h=$QT_VER#n\2"
+# Path to the root of qtgraphs (for automatic linking to source code)
+url.sources.rootdir     = ../..
 
 project             = QtGraphs
 description         = Qt Graphs Reference Documentation

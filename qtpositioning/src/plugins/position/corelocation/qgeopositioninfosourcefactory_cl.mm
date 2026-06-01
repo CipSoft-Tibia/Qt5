@@ -4,6 +4,8 @@
 #include "qgeopositioninfosource_cl_p.h"
 #include "qgeopositioninfosourcefactory_cl.h"
 
+QT_BEGIN_NAMESPACE
+
 QGeoPositionInfoSource *QGeoPositionInfoSourceFactoryCL::positionInfoSource(QObject *parent, const QVariantMap &parameters)
 {
     Q_UNUSED(parameters)
@@ -23,3 +25,5 @@ QGeoAreaMonitorSource *QGeoPositionInfoSourceFactoryCL::areaMonitor(QObject *par
     Q_UNUSED(parameters)
     return nullptr;
 }
+
+QT_END_NAMESPACE

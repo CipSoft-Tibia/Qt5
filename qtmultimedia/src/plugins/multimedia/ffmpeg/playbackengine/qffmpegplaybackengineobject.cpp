@@ -3,16 +3,15 @@
 
 #include "playbackengine/qffmpegplaybackengineobject_p.h"
 
-#include "qtimer.h"
-#include "qdebug.h"
+#include "QtCore/qchronotimer.h"
+#include "QtCore/qdebug.h"
+#include "QtCore/qscopedvaluerollback.h"
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 
-static QAtomicInteger<PlaybackEngineObject::Id> PersistentId = 0;
-
-PlaybackEngineObject::PlaybackEngineObject() : m_id(PersistentId.fetchAndAddRelaxed(1)) { }
+PlaybackEngineObject::PlaybackEngineObject(const PlaybackEngineObjectID &id) : m_id{ id } { }
 
 PlaybackEngineObject::~PlaybackEngineObject()
 {
@@ -28,7 +27,7 @@ bool PlaybackEngineObject::isPaused() const
 void PlaybackEngineObject::setAtEnd(bool isAtEnd)
 {
     if (m_atEnd.testAndSetRelease(!isAtEnd, isAtEnd) && isAtEnd)
-        emit atEnd();
+        emit atEnd(id());
 }
 
 bool PlaybackEngineObject::isAtEnd() const
@@ -36,20 +35,15 @@ bool PlaybackEngineObject::isAtEnd() const
     return m_atEnd;
 }
 
-PlaybackEngineObject::Id PlaybackEngineObject::id() const
-{
-    return m_id;
-}
-
 void PlaybackEngineObject::setPaused(bool isPaused)
 {
     if (m_paused.testAndSetRelease(!isPaused, isPaused))
-        QMetaObject::invokeMethod(this, &PlaybackEngineObject::onPauseChanged);
+        invokePriorityMethod([this]() { onPauseChanged(); });
 }
 
 void PlaybackEngineObject::kill()
 {
-    m_deleting.storeRelease(true);
+    m_invalidateCounter.fetch_add(1, std::memory_order_relaxed);
 
     disconnect();
     deleteLater();
@@ -60,13 +54,13 @@ bool PlaybackEngineObject::canDoNextStep() const
     return !m_paused;
 }
 
-QTimer &PlaybackEngineObject::timer()
+QChronoTimer &PlaybackEngineObject::timer()
 {
     if (!m_timer) {
-        m_timer = std::make_unique<QTimer>();
+        m_timer = std::make_unique<QChronoTimer>();
         m_timer->setTimerType(Qt::PreciseTimer);
         m_timer->setSingleShot(true);
-        connect(m_timer.get(), &QTimer::timeout, this, &PlaybackEngineObject::onTimeout);
+        connect(m_timer.get(), &QChronoTimer::timeout, this, &PlaybackEngineObject::onTimeout);
     }
 
     return *m_timer;
@@ -74,14 +68,16 @@ QTimer &PlaybackEngineObject::timer()
 
 void PlaybackEngineObject::onTimeout()
 {
-    if (!m_deleting && canDoNextStep())
-        doNextStep();
+    Q_ASSERT(m_timePoint && !m_nextTimePoint && m_stepType == StepType::None);
+
+    m_timePoint.reset();
+    if (isValid() && canDoNextStep())
+        doNextStep(StepType::Timeout);
 }
 
-std::chrono::milliseconds PlaybackEngineObject::timerInterval() const
+PlaybackEngineObject::TimePoint PlaybackEngineObject::nextTimePoint() const
 {
-    using namespace std::chrono_literals;
-    return 0ms;
+    return TimePoint::min();
 }
 
 void PlaybackEngineObject::onPauseChanged()
@@ -89,23 +85,62 @@ void PlaybackEngineObject::onPauseChanged()
     scheduleNextStep();
 }
 
-void PlaybackEngineObject::scheduleNextStep(bool allowDoImmediatelly)
+void PlaybackEngineObject::scheduleNextStep()
 {
     using std::chrono::milliseconds;
     using namespace std::chrono_literals;
 
-    if (!m_deleting && canDoNextStep()) {
-        const milliseconds interval = timerInterval();
-        if (interval == 0ms && allowDoImmediatelly) {
-            timer().stop();
-            doNextStep();
-        } else {
-            timer().start(static_cast<int>(interval.count()));
+    if (isValid() && canDoNextStep())
+        m_nextTimePoint = nextTimePoint();
+    else
+        m_nextTimePoint.reset();
+
+    if (m_stepType == StepType::Immediate)
+        return;
+
+    std::optional<TimePoint> now;
+
+    if (m_stepType == StepType::None && m_nextTimePoint) {
+        if (now = SteadyClock::now(); *m_nextTimePoint <= *now) {
+            m_nextTimePoint.reset();
+            doNextStep(StepType::Immediate);
+            now.reset(); // doNextStep() may take some time, 'now' is not valid anymore
         }
-    } else {
+    }
+
+    if (m_nextTimePoint) {
+        if (!now)
+            now = SteadyClock::now();
+        *m_nextTimePoint = std::max(*m_nextTimePoint, *now);
+        if (!m_timePoint || *m_nextTimePoint != std::max(*m_timePoint, *now)) {
+            timer().setInterval(*m_nextTimePoint - *now);
+            timer().start();
+        }
+    } else if (m_timePoint) {
         timer().stop();
     }
+
+    m_timePoint = std::exchange(m_nextTimePoint, std::nullopt);
 }
+
+void PlaybackEngineObject::doNextStep(StepType type)
+{
+    Q_ASSERT(m_stepType == StepType::None && type != StepType::None);
+    QScopedValueRollback rollback(m_stepType, type);
+    doNextStep();
+}
+
+bool PlaybackEngineObject::event(QEvent *e)
+{
+    if (e->type() == FuncEventType) {
+        e->accept();
+        static_cast<FuncEvent *>(e)->invoke();
+        return true;
+    }
+
+    return QObject::event(e);
+}
+
 } // namespace QFFmpeg
 
 QT_END_NAMESPACE

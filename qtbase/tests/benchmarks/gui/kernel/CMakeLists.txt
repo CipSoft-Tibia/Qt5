@@ -3,3 +3,4 @@
 
 add_subdirectory(qguimetatype)
 add_subdirectory(qguivariant)
+add_subdirectory(qkeysequence)

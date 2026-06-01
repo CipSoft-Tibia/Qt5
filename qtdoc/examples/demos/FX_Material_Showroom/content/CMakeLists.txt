@@ -2,7 +2,6 @@ qt_add_library(FXMaterialShowroomContent STATIC)
 
 qt_add_qml_module(FXMaterialShowroomContent
     URI "content"
-    VERSION 1.0
     QML_FILES
         AmbientEffect.ui.qml
         App.qml
@@ -29,14 +28,13 @@ qt_add_qml_module(FXMaterialShowroomContent
         Figma_Assets/Checkbox.ui.qml
         Figma_Assets/CheckboxImages.ui.qml
         Figma_Assets/CheckboxImages_1.ui.qml
-        Figma_Assets/Checkbox_1.ui.qml
         Figma_Assets/IconsCards.ui.qml
         Figma_Assets/IconsCheckbox.ui.qml
         Figma_Assets/IconsCheckbox_1.ui.qml
         Figma_Assets/IconsFunctional.ui.qml
         Figma_Assets/LabelQt.ui.qml
         Figma_Assets/LayoutFull.ui.qml
-        Figma_Assets/LayoutSidePanel.ui.qml
+        Figma_Assets/ListSelection.qml
         Figma_Assets/ListEffects.ui.qml
         Figma_Assets/ListMaterial.ui.qml
         Figma_Assets/ListModels.ui.qml
@@ -85,4 +83,7 @@ qt_add_qml_module(FXMaterialShowroomContent
         shaders/cloud.vert
         shaders/cloud.frag
         Figma_Assets/assets/qtlogo.png
+    DEPENDENCIES
+        TARGET PocketDemo
+        TARGET CB_MaterialBundle
 )

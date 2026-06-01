@@ -51,6 +51,7 @@
 #include <QtFFmpegMediaPluginImpl/private/qffmpegcodeccontext_p.h>
 #include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackutils_p.h>
 #include <QtFFmpegMediaPluginImpl/private/qffmpegtime_p.h>
+#include <QtMultimedia/qplaybackoptions.h>
 
 #include <QtCore/qpointer.h>
 
@@ -63,6 +64,7 @@ class QVideoSink;
 class QAudioOutput;
 class QAudioBufferOutput;
 class QFFmpegMediaPlayer;
+class QPlaybackOptions;
 
 namespace QFFmpeg
 {
@@ -71,7 +73,7 @@ class PlaybackEngine : public QObject
 {
     Q_OBJECT
 public:
-    PlaybackEngine();
+    explicit PlaybackEngine(const QPlaybackOptions &options);
 
     ~PlaybackEngine() override;
 
@@ -119,6 +121,8 @@ public:
     const QMediaMetaData &metaData() const;
 
     int activeTrack(QPlatformMediaPlayer::TrackType type) const;
+
+    void setPitchCompensation(bool enabled);
 
 signals:
     void endOfStream();
@@ -173,14 +177,15 @@ private:
 
     void deleteFreeThreads();
 
-    void onFirsPacketFound(quint64 id, TrackPosition absSeekPos);
+    void onFirstPacketFound(const PlaybackEngineObjectID &id, TrackPosition absSeekPos);
 
-    void onRendererSynchronized(quint64 id, RealClock::time_point timePoint,
+    void onRendererSynchronized(const PlaybackEngineObjectID &id, SteadyClock::time_point timePoint,
                                 TrackPosition trackPosition);
 
-    void onRendererFinished();
+    void onRendererFinished(const PlaybackEngineObjectID &id);
 
-    void onRendererLoopChanged(quint64 id, TrackPosition offset, int loopIndex);
+    void onRendererLoopChanged(const PlaybackEngineObjectID &id, TrackPosition offset,
+                               int loopIndex);
 
     void triggerStepIfNeeded();
 
@@ -194,11 +199,19 @@ private:
 
     void finalizeOutputs();
 
-    bool hasRenderer(quint64 id) const;
+    bool hasRenderer(const PlaybackEngineObjectID &id) const;
+
+    template <typename T>
+    bool checkObjectID(T &object, const PlaybackEngineObjectID &id) const
+    {
+        return object && object->objectID() == id.objectID && id.sessionID == m_currentID.sessionID;
+    }
 
     void updateVideoSinkSize(QVideoSink *prevSink = nullptr);
 
     TrackPosition boundPosition(TrackPosition position) const;
+
+    AudioRenderer *getAudioRenderer();
 
 private:
     MediaDataHolder m_media;
@@ -218,18 +231,22 @@ private:
     std::array<StreamPtr, QPlatformMediaPlayer::NTrackTypes> m_streams;
     std::array<RendererPtr, QPlatformMediaPlayer::NTrackTypes> m_renderers;
 
-    bool m_shouldUpdateTimeOnFirstPacket = false;
     bool m_seekPending = false;
 
     std::array<std::optional<CodecContext>, QPlatformMediaPlayer::NTrackTypes> m_codecContexts;
     int m_loops = QMediaPlayer::Once;
     LoopOffset m_currentLoopOffset;
+
+    bool m_pitchCompensation = true;
+    QPlaybackOptions m_options;
+    PlaybackEngineObjectID m_currentID{ 1, 1 };
 };
 
 template<typename T, typename... Args>
 PlaybackEngine::ObjectPtr<T> PlaybackEngine::createPlaybackEngineObject(Args &&...args)
 {
-    auto result = ObjectPtr<T>(new T(std::forward<Args>(args)...), { this });
+    ++m_currentID.objectID;
+    auto result = ObjectPtr<T>(new T(m_currentID, std::forward<Args>(args)...), { this });
     registerObject(*result);
     return result;
 }

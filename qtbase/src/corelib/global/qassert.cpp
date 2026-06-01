@@ -103,6 +103,7 @@ Q_NORETURN void qAbort()
     \sa Q_ASSERT(), qFatal(), {Debugging Techniques}
 */
 
+#if !defined(QT_BOOTSTRAPPED) || defined(QT_FORCE_ASSERTS) || !defined(QT_NO_DEBUG)
 /*
     The Q_ASSERT macro calls this function when the test fails.
 */
@@ -120,6 +121,7 @@ void qt_assert_x(const char *where, const char *what, const char *file, int line
     QMessageLogger(file, line, nullptr)
             .fatal("ASSERT failure in %s: \"%s\", file %s, line %d", where, what, file, line);
 }
+#endif // bootstrapped
 
 /*!
     \macro void Q_CHECK_PTR(void *pointer)

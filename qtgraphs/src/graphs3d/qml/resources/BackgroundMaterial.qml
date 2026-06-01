@@ -6,6 +6,7 @@ import QtQuick3D
 CustomMaterial {
     property TextureInput gridTex: TextureInput {}
     property vector3d scale
+    property vector3d rootScale
     property vector3d margin
     property color gridLineColor
     property color subgridLineColor

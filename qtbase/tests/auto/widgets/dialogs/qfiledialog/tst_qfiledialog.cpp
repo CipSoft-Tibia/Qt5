@@ -26,6 +26,7 @@
 #include <qsortfilterproxymodel.h>
 #include <qlineedit.h>
 #include <qlayout.h>
+#include <qsettings.h>
 #include <qtemporarydir.h>
 #include <private/qfiledialog_p.h>
 #if defined QT_BUILD_INTERNAL
@@ -270,21 +271,39 @@ void tst_QFiledialog::directoryEnteredSignal()
 Q_DECLARE_METATYPE(QFileDialog::FileMode)
 void tst_QFiledialog::filesSelectedSignal_data()
 {
+#ifdef Q_OS_ANDROID
+    const auto homePaths = QStandardPaths::standardLocations(QStandardPaths::HomeLocation);
+    QVERIFY(!homePaths.isEmpty());
+    QDir testDir(homePaths.first());
+
+    // Create a dir and a file because Android's home dir is initially empty
+    testDir.mkdir("qtest");
+    QVERIFY(testDir.exists("qtest"));
+
+    QFile file(testDir.filePath("file.txt"));
+    if (file.open(QIODevice::WriteOnly))
+        file.close();
+#else
+    QDir testDir(QT_TESTCASE_SOURCEDIR);
+#endif
+
+    QTest::addColumn<QDir>("testDir");
     QTest::addColumn<QFileDialog::FileMode>("fileMode");
-    QTest::newRow("any") << QFileDialog::AnyFile;
-    QTest::newRow("existing") << QFileDialog::ExistingFile;
-    QTest::newRow("directory") << QFileDialog::Directory;
-    QTest::newRow("existingFiles") << QFileDialog::ExistingFiles;
+    QTest::newRow("any") << testDir << QFileDialog::AnyFile;
+    QTest::newRow("existing") << testDir << QFileDialog::ExistingFile;
+    QTest::newRow("directory") << testDir << QFileDialog::Directory;
+    QTest::newRow("existingFiles") << testDir << QFileDialog::ExistingFiles;
 }
 
 // emitted when the dialog closes with the selected files
 void tst_QFiledialog::filesSelectedSignal()
 {
+    QFETCH(QDir, testDir);
+    QFETCH(QFileDialog::FileMode, fileMode);
+
     QFileDialog fd;
     fd.setViewMode(QFileDialog::List);
-    QDir testDir(QT_TESTCASE_SOURCEDIR);
     fd.setDirectory(testDir);
-    QFETCH(QFileDialog::FileMode, fileMode);
     fd.setFileMode(fileMode);
     QSignalSpy spyFilesSelected(&fd, SIGNAL(filesSelected(QStringList)));
 
@@ -307,6 +326,7 @@ void tst_QFiledialog::filesSelectedSignal()
         }
         file = QModelIndex();
     }
+
     QVERIFY(file.isValid());
     listView->selectionModel()->select(file, QItemSelectionModel::Select | QItemSelectionModel::Rows);
     listView->setCurrentIndex(file);
@@ -412,25 +432,28 @@ void tst_QFiledialog::completer_data()
     QTest::addColumn<QString>("input");
     QTest::addColumn<int>("expected");
 
-    const QString rootPath = QDir::rootPath();
-
     QTest::newRow("r, 10")   << QString() << "r"   << 10;
     QTest::newRow("x, 0")    << QString() << "x"   << 0;
     QTest::newRow("../, -1") << QString() << "../" << -1;
 
+
+#ifndef Q_OS_ANDROID
+    const QString rootPath = QDir::rootPath();
     QTest::newRow("goto root")     << QString()        << rootPath << -1;
     QTest::newRow("start at root") << rootPath << QString()        << -1;
+#endif
 
-    QDir dir = QDir::root();
 #ifdef Q_OS_ANDROID
     const auto homePaths = QStandardPaths::standardLocations(QStandardPaths::HomeLocation);
     QVERIFY(!homePaths.isEmpty());
-    dir = QDir(homePaths.first());
-#endif
-
+    const QString folder = homePaths.first();
+#else
+    QDir dir = QDir::root();
     QFileInfoList list = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
     QVERIFY(!list.isEmpty());
     const QString folder = list.first().absoluteFilePath();
+#endif
+
     QTest::newRow("start at one below root r") << folder << "r" << -1;
     QTest::newRow("start at one below root ../") << folder << "../" << -1;
 }
@@ -1412,9 +1435,9 @@ void tst_QFiledialog::widgetlessNativeDialog()
 {
     if (!QGuiApplicationPrivate::platformTheme()->usePlatformNativeDialog(QPlatformTheme::FileDialog))
         QSKIP("This platform always uses widgets to realize its QFileDialog, instead of the native file dialog.");
+
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This keeps the window open. Figure out why.");
+    QSKIP("It's not possible to hide the native file dialog because its owned by Android system.");
 #endif
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, false);
     QFileDialog fd;
@@ -1434,8 +1457,7 @@ void tst_QFiledialog::hideNativeByDestruction()
         QSKIP("This platform always uses widgets to realize its QFileDialog, instead of the native file dialog.");
 
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This keeps the native window open. Figure out why.");
+    QSKIP("It's not possible to hide the native file dialog because its owned by Android system.");
 #endif
 
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, false);
@@ -1572,9 +1594,11 @@ void tst_QFiledialog::rejectModalDialogs()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This freezes. Figure out why.");
+
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This freezes. Figure out why.");
+    // This would require android.permission.INJECT_EVENTS which is a system permission,
+    // or running the test with as Instrumentation Test which is not supported by Qt.
+    QSKIP("Rejecting dialog with escape or back button is not supported on Android tests.");
 #endif
 
     // QTBUG-38672 , static functions should return empty Urls
@@ -1609,10 +1633,8 @@ void tst_QFiledialog::QTBUG49600_nativeIconProviderCrash()
         QSKIP("This platform always uses widgets to realize its QFileDialog, instead of the native file dialog.");
 
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This hangs. Figure out why.");
+    QSKIP("It's not possible to hide the native file dialog because its owned by Android system.");
 #endif
-
     QFileDialog fd;
     fd.iconProvider();
 }
@@ -1644,9 +1666,11 @@ void tst_QFiledialog::focusObjectDuringDestruction()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This freezes. Figure out why.");
+
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This freezes. Figure out why.");
+    // This would require android.permission.INJECT_EVENTS which is a system permission,
+    // or running the test with as Instrumentation Test which is not supported by Qt.
+    QSKIP("Rejecting dialog with escape or back button is not supported on Android tests.");
 #endif
 
     QTRY_VERIFY(QGuiApplication::topLevelWindows().isEmpty());

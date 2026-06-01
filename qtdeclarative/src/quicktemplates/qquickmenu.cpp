@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickmenu_p.h"
 #include "qquickmenu_p_p.h"
@@ -61,8 +62,10 @@ static const int SUBMENU_DELAY = 225;
     \table
         \row
           \li \image qtquickcontrols-menu-native.png
+                     {Menu with New, Open, Save in native style}
              \caption Native macOS menu.
           \li \image qtquickcontrols-menu.png
+                     {Menu with New, Open, Save in Material style}
              \caption Non-native \l {Material Style}{Material style} menu.
    \endtable
 
@@ -90,8 +93,7 @@ static const int SUBMENU_DELAY = 225;
 
     \snippet qtquickcontrols-menu-closepolicy.qml closePolicy
 
-    Since QtQuick.Controls 2.3 (Qt 5.10), it is also possible to create sub-menus
-    and declare Action objects inside Menu:
+    You can create sub-menus and declare Action objects inside Menu:
 
     \snippet qtquickcontrols-menu-submenus-and-actions.qml root
 
@@ -297,6 +299,7 @@ QQuickPopup::PopupType QQuickMenuPrivate::resolvedPopupType() const
     QQuickMenu *root = rootMenu();
     QQuickMenuPrivate *root_d = QQuickMenuPrivate::get(rootMenu());
 
+#if QT_CONFIG(quicktemplates2_container)
     if (auto menuBar = QQuickMenuPrivate::get(root)->menuBar.get()) {
         // When a menu is inside a MenuBar, the MenuBar decides if the menu
         // should be native or not. The menu's popupType is therefore ignored.
@@ -304,7 +307,9 @@ QQuickPopup::PopupType QQuickMenuPrivate::resolvedPopupType() const
         // a non-native MenuBar can only contain non-native Menus.
         if (QQuickMenuBarPrivate::get(menuBar)->useNativeMenu(q_func()))
             return QQuickPopup::Native;
-    } else {
+    } else
+#endif
+    {
         // If the root menu is native, this menu needs to be native as well
         if (root_d->maybeNativeHandle()) {
             return QQuickPopup::Native;
@@ -354,12 +359,14 @@ bool QQuickMenuPrivate::createNativeMenu()
     qCDebug(lcNativeMenus) << "createNativeMenu called on" << q;
 
     if (auto menuBar = QQuickMenuPrivate::get(rootMenu())->menuBar) {
+#if QT_CONFIG(quicktemplates2_container)
         auto menuBarPrivate = QQuickMenuBarPrivate::get(menuBar);
         if (menuBarPrivate->useNativeMenuBar()) {
             qCDebug(lcNativeMenus) << "- creating native menu from native menubar";
             if (QPlatformMenuBar *menuBarHandle = menuBarPrivate->nativeHandle())
                 handle.reset(menuBarHandle->createMenu());
         }
+#endif
     }
 
     if (!handle) {
@@ -529,14 +536,16 @@ void QQuickMenuPrivate::setNativeMenuVisible(bool visible)
     this->visible = visible;
     syncWithNativeMenu();
 
-    QPoint offset;
-    QWindow *window = effectiveWindow(qGuiApp->topLevelWindows().first(), &offset);
-
     if (visible) {
-        lastDevicePixelRatio = window->devicePixelRatio();
+        QPoint offset;
+        QWindow *window = nullptr;
+        if (parentItem)
+            window = effectiveWindow(parentItem->window(), &offset);
+
+        lastDevicePixelRatio = window ? window->devicePixelRatio() : qGuiApp->devicePixelRatio();
 
         const QPointF globalPos = parentItem->mapToGlobal(x, y);
-        const QPoint windowPos = window->mapFromGlobal(globalPos.toPoint());
+        const QPoint windowPos = window ? window->mapFromGlobal(globalPos.toPoint()) : parentItem->mapToScene(QPoint(x, y)).toPoint();
         QRect targetRect(windowPos, QSize(0, 0));
         auto *daPriv = QQuickItemPrivate::get(parentItem)->deliveryAgentPrivate();
         Q_ASSERT(daPriv);
@@ -1701,15 +1710,12 @@ void QQuickMenu::setVisible(bool visible)
     Q_D(QQuickMenu);
     if (visible == d->visible)
         return;
-    if (visible && !parentItem()) {
-        qmlWarning(this) << "cannot show menu: parent is null";
-        return;
-    }
-    if (visible) {
+
+    auto *window = this->window();
+    if (visible && window) {
         // If a right mouse button event opens a menu, don't synthesize QContextMenuEvent
         // (avoid opening redundant menus, e.g. in parent items).
-        Q_ASSERT(window());
-        QQuickWindowPrivate::get(window())->rmbContextMenuEventEnabled = false;
+        QQuickWindowPrivate::get(window)->rmbContextMenuEventEnabled = false;
     }
 
     if (visible && ((d->useNativeMenu() && !d->maybeNativeHandle())

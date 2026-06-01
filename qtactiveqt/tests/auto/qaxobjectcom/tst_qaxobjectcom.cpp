@@ -89,7 +89,7 @@ private slots:
 
         const SafeArray receivedArg{ V_ARRAY(&observer->lastArg) };
 
-        QSpan<unsigned char> data = *receivedArg.data<unsigned char>();
+        QByteArray data = QByteArray(*receivedArg.data<unsigned char>());
 
         QCOMPARE_EQ(byteArray, data);
     }

@@ -184,9 +184,16 @@ function(qt_internal_add_executable name)
     set_target_properties("${name}" PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${arg_OUTPUT_DIRECTORY}"
         LIBRARY_OUTPUT_DIRECTORY "${arg_OUTPUT_DIRECTORY}"
-        WIN32_EXECUTABLE "${arg_GUI}"
-        MACOSX_BUNDLE "${arg_GUI}"
     )
+
+    if(arg_GUI)
+        # Only override if GUI is set. Otherwise leave up to
+        # CMake defaults, which may be set by the user elsewhere.
+        set_target_properties("${name}" PROPERTIES
+            MACOSX_BUNDLE ON
+            WIN32_EXECUTABLE ON
+    )
+    endif()
 
     if(NOT arg_EXCEPTIONS)
         qt_internal_set_exceptions_flags("${name}" "DEFAULT")
@@ -199,8 +206,9 @@ function(qt_internal_add_executable name)
     set(exclude_from_all FALSE)
     if(__qt_exclude_tool_directories)
         foreach(absolute_dir ${__qt_exclude_tool_directories})
-            string(FIND "${CMAKE_CURRENT_SOURCE_DIR}" "${absolute_dir}" dir_starting_pos)
-            if(dir_starting_pos EQUAL 0)
+            _qt_internal_path_is_prefix(absolute_dir "${CMAKE_CURRENT_SOURCE_DIR}"
+                in_current_source)
+            if(in_current_source)
                 set(exclude_from_all TRUE)
                 set_target_properties("${name}" PROPERTIES
                     EXCLUDE_FROM_ALL TRUE

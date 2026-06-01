@@ -16,7 +16,7 @@ using namespace ABI::Windows::Devices::Sensors;
 
 typedef ITypedEventHandler<LightSensor *, LightSensorReadingChangedEventArgs *> LightSensorReadingHandler;
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtAmbientLightSensorPrivate
 {
@@ -177,3 +177,5 @@ void WinRtAmbientLightSensor::stop()
     }
     d->token.value = 0;
 }
+
+QT_END_NAMESPACE

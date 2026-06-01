@@ -312,7 +312,9 @@ bool IsSubdomainOf(std::string_view subdomain, std::string_view superdomain) {
   return subdomain.back() == '.';
 }
 
+namespace {
 std::string CanonicalizeHost(std::string_view host,
+                             bool is_file_scheme,
                              url::CanonHostInfo* host_info) {
   // Try to canonicalize the host.
   const url::Component raw_host_component(0, static_cast<int>(host.length()));
@@ -329,8 +331,13 @@ std::string CanonicalizeHost(std::string_view host,
   // the output.
   const int kCxxMaxStringBufferSizeWithoutMalloc = 22;
   canon_host_output.Resize(kCxxMaxStringBufferSizeWithoutMalloc);
-  url::CanonicalizeHostVerbose(host.data(), raw_host_component,
-                               &canon_host_output, host_info);
+  if (is_file_scheme) {
+    url::CanonicalizeFileHostVerbose(host.data(), raw_host_component,
+                                     canon_host_output, *host_info);
+  } else {
+    url::CanonicalizeSpecialHostVerbose(host.data(), raw_host_component,
+                                        canon_host_output, *host_info);
+  }
 
   if (host_info->out_host.is_nonempty() &&
       host_info->family != url::CanonHostInfo::BROKEN) {
@@ -343,6 +350,17 @@ std::string CanonicalizeHost(std::string_view host,
   }
 
   return canon_host;
+}
+}  // namespace
+
+std::string CanonicalizeHost(std::string_view host,
+                             url::CanonHostInfo* host_info) {
+  return CanonicalizeHost(host, /*is_file_scheme=*/false, host_info);
+}
+
+std::string CanonicalizeFileHost(std::string_view host,
+                                 url::CanonHostInfo* host_info) {
+  return CanonicalizeHost(host, /*is_file_scheme=*/true, host_info);
 }
 
 bool IsCanonicalizedHostCompliant(std::string_view host) {
@@ -456,6 +474,18 @@ GURL SimplifyUrlForRequest(const GURL& url) {
   replacements.ClearUsername();
   replacements.ClearPassword();
   replacements.ClearRef();
+  return url.ReplaceComponents(replacements);
+}
+
+GURL RemoveCredentialsFromUrl(const GURL& url) {
+  DCHECK(url.is_valid());
+  // Fast path to avoid re-canonicalization via ReplaceComponents.
+  if (!url.has_username() && !url.has_password()) {
+    return url;
+  }
+  GURL::Replacements replacements;
+  replacements.ClearUsername();
+  replacements.ClearPassword();
   return url.ReplaceComponents(replacements);
 }
 

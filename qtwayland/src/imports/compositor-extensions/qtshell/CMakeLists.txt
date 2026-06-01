@@ -13,6 +13,8 @@ qt_internal_add_qml_module(WaylandCompositorQtShell
         qwaylandqtshell.cpp qwaylandqtshell.h qwaylandqtshell_p.h
         qwaylandqtshellintegration.cpp qwaylandqtshellintegration_p.h
         qwaylandqtshellchrome.cpp qwaylandqtshellchrome.h qwaylandqtshellchrome_p.h
+    INCLUDE_DIRECTORIES
+        ../../../compositor
     DEPENDENCIES
         QtQuick
     LIBRARIES

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtablewidget.h"
 
@@ -168,7 +169,7 @@ void QTableModel::setItem(int row, int column, QTableWidgetItem *item)
         oldItem->view = nullptr;
     delete tableItems.at(i);
 
-    QTableWidget *view = qobject_cast<QTableWidget*>(QObject::parent());
+    QTableWidget *view = this->view();
 
     // set new
     if (item)
@@ -264,7 +265,7 @@ void QTableModel::setHorizontalHeaderItem(int section, QTableWidgetItem *item)
         oldItem->view = nullptr;
     delete oldItem;
 
-    QTableWidget *view = qobject_cast<QTableWidget*>(QObject::parent());
+    QTableWidget *view = this->view();
 
     if (item) {
         item->view = view;
@@ -286,7 +287,7 @@ void QTableModel::setVerticalHeaderItem(int section, QTableWidgetItem *item)
         oldItem->view = nullptr;
     delete oldItem;
 
-    QTableWidget *view = qobject_cast<QTableWidget*>(QObject::parent());
+    QTableWidget *view = this->view();
 
     if (item) {
         item->view = view;
@@ -405,7 +406,7 @@ bool QTableModel::setData(const QModelIndex &index, const QVariant &value, int r
     if (!value.isValid())
         return false;
 
-    QTableWidget *view = qobject_cast<QTableWidget*>(QObject::parent());
+    QTableWidget *view = this->view();
     if (!view)
         return false;
 
@@ -434,7 +435,7 @@ bool QTableModel::setItemData(const QModelIndex &index, const QMap<int, QVariant
     if (!index.isValid())
         return false;
 
-    QTableWidget *view = qobject_cast<QTableWidget*>(QObject::parent());
+    QTableWidget *view = this->view();
     QTableWidgetItem *itm = item(index);
     if (itm) {
         itm->view = nullptr; // prohibits item from calling itemChanged()
@@ -817,8 +818,10 @@ void QTableModel::setItemPrototype(const QTableWidgetItem *item)
 
 QStringList QTableModel::mimeTypes() const
 {
-    const QTableWidget *view = qobject_cast<const QTableWidget*>(QObject::parent());
-    return (view ? view->mimeTypes() : QStringList());
+    auto v = view();
+    if (v)
+        return v->mimeTypes();
+    return {};
 }
 
 QMimeData *QTableModel::internalMimeData()  const
@@ -833,7 +836,7 @@ QMimeData *QTableModel::mimeData(const QModelIndexList &indexes) const
     items.reserve(indexesCount);
     for (int i = 0; i < indexesCount; ++i)
         items << item(indexes.at(i));
-    const QTableWidget *view = qobject_cast<const QTableWidget*>(QObject::parent());
+    const QTableWidget *view = this->view();
 
     // cachedIndexes is a little hack to avoid copying from QModelIndexList to
     // QList<QTreeWidgetItem*> and back again in the view
@@ -857,14 +860,24 @@ bool QTableModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
         column = 0;
     }
 
-    QTableWidget *view = qobject_cast<QTableWidget*>(QObject::parent());
+    QTableWidget *view = this->view();
     return (view ? view->dropMimeData(row, column, data, action) : false);
 }
 
 Qt::DropActions QTableModel::supportedDropActions() const
 {
-    const QTableWidget *view = qobject_cast<const QTableWidget*>(QObject::parent());
+    const QTableWidget *view = this->view();
     return (view ? view->supportedDropActions() : Qt::DropActions(Qt::IgnoreAction));
+}
+
+Qt::DropActions QTableModel::supportedDragActions() const
+{
+#if QT_CONFIG(draganddrop)
+    const QTableWidget *view = this->view();
+    return (view ? view->supportedDragActions() : Qt::DropActions(Qt::IgnoreAction));
+#else
+    return Qt::DropActions(Qt::IgnoreAction);
+#endif
 }
 
 /*!
@@ -1536,7 +1549,7 @@ QTableWidgetItem &QTableWidgetItem::operator=(const QTableWidgetItem &other)
     \ingroup model-view
     \inmodule QtWidgets
 
-    \image fusion-tableview.png
+    \image fusion-tableview.png {Table of months and amounts}
 
     Table widgets provide standard table display facilities for applications.
     The items in a QTableWidget are provided by QTableWidgetItem.
@@ -2603,7 +2616,7 @@ QMimeData *QTableWidget::mimeData(const QList<QTableWidgetItem *> &items) const
     Returns \c true if the data and action can be handled by the model;
     otherwise returns \c false.
 
-    \sa supportedDropActions()
+    \sa supportedDropActions(), supportedDragActions
 */
 bool QTableWidget::dropMimeData(int row, int column, const QMimeData *data, Qt::DropAction action)
 {
@@ -2622,12 +2635,33 @@ bool QTableWidget::dropMimeData(int row, int column, const QMimeData *data, Qt::
 /*!
   Returns the drop actions supported by this view.
 
-  \sa Qt::DropActions
+  \sa Qt::DropActions, supportedDragActions, dropMimeData()
 */
 Qt::DropActions QTableWidget::supportedDropActions() const
 {
     return d_func()->tableModel()->QAbstractTableModel::supportedDropActions() | Qt::MoveAction;
 }
+
+#if QT_CONFIG(draganddrop)
+/*!
+    \property QTableWidget::supportedDragActions
+    \brief the drag actions supported by this view
+
+    \since 6.10
+    \sa Qt::DropActions, supportedDropActions()
+*/
+Qt::DropActions QTableWidget::supportedDragActions() const
+{
+    Q_D(const QTableWidget);
+    return d->supportedDragActions.value_or(supportedDropActions());
+}
+
+void QTableWidget::setSupportedDragActions(Qt::DropActions actions)
+{
+    Q_D(QTableWidget);
+    d->supportedDragActions = actions;
+}
+#endif // QT_CONFIG(draganddrop)
 
 /*!
   Returns a list of pointers to the items contained in the \a data object.

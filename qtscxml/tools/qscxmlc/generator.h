@@ -53,6 +53,9 @@ private:
 #if 0 // -- QtScxml
     void generatePluginMetaData();
 #endif // -- QtScxml
+    QByteArray disambiguatedTypeName(const QByteArray &name);
+    QByteArray disambiguatedTypeName(const QByteArray &name, TypeTags tag);
+    QByteArray disambiguatedTypeNameForCast(const QByteArray &name);
     QMultiMap<QByteArray, int> automaticPropertyMetaTypesHelper();
     QMap<int, QMultiMap<QByteArray, int>>
     methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList);

@@ -16,16 +16,17 @@ import './shared_vars.css.js';
 import {assert} from '//resources/js/assert.js';
 import {getFaviconForPageURL} from '//resources/js/icon.js';
 import type {DomRepeat} from '//resources/polymer/v3_0/polymer/lib/elements/dom-repeat.js';
-import type {BrowserProxy} from 'chrome://resources/cr_components/commerce/browser_proxy.js';
-import {BrowserProxyImpl} from 'chrome://resources/cr_components/commerce/browser_proxy.js';
+import type {ShoppingServiceBrowserProxy} from 'chrome://resources/cr_components/commerce/shopping_service_browser_proxy.js';
+import {ShoppingServiceBrowserProxyImpl} from 'chrome://resources/cr_components/commerce/shopping_service_browser_proxy.js';
 import type {DomRepeatEvent} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import type {Content, TableColumn} from './app.js';
-import type {BuyingOptionsLink} from './buying_options_section.js';
+import type {BuyingOptions} from './buying_options_section.js';
 import type {ProductDescription} from './description_section.js';
 import {DragAndDropManager} from './drag_and_drop_manager.js';
 import type {SectionType} from './product_selection_menu.js';
+import type {ProductSelectorElement} from './product_selector.js';
 import {getTemplate} from './table.html.js';
 import {WindowProxy} from './window_proxy.js';
 
@@ -61,11 +62,18 @@ export class TableElement extends PolymerElement {
   private hoveredColumnIndex_: number|null = null;
 
   private dragAndDropManager_: DragAndDropManager = new DragAndDropManager();
-  private shoppingApi_: BrowserProxy = BrowserProxyImpl.getInstance();
+  private shoppingApi_: ShoppingServiceBrowserProxy =
+      ShoppingServiceBrowserProxyImpl.getInstance();
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.dragAndDropManager_.init(this);
+    // Prevent cursor from switching to not-allowed on Windows during drag and
+    // drop.
+    this.$.table.addEventListener(
+        'dragenter', (e: DragEvent) => e.preventDefault());
+    this.$.table.addEventListener(
+        'dragleave', (e: DragEvent) => e.preventDefault());
   }
 
   override disconnectedCallback(): void {
@@ -97,6 +105,13 @@ export class TableElement extends PolymerElement {
     ]);
 
     this.dispatchEvent(new Event('url-order-update'));
+  }
+
+  closeAllProductSelectionMenus() {
+    const productSelectors =
+        this.shadowRoot!.querySelectorAll<ProductSelectorElement>(
+            'product-selector');
+    productSelectors.forEach(productSelector => productSelector.closeMenu());
   }
 
   private onColumnsChanged_() {
@@ -161,6 +176,8 @@ export class TableElement extends PolymerElement {
     }
     this.shoppingApi_.switchToOrOpenTab(
         {url: this.columns[e.model.columnIndex].selectedItem.url});
+    chrome.metricsPrivate.recordUserAction(
+        'Commerce.Compare.ReopenedProductPage');
   }
 
   private onSelectedUrlChange_(
@@ -238,7 +255,7 @@ export class TableElement extends PolymerElement {
         column => column.productDetails && column.productDetails[rowIndex]);
 
     return rowDetails.some(
-        detail => detail && this.contentIsBuyingOptionsLink_(detail.content));
+        detail => detail && this.contentIsBuyingOptions_(detail.content));
   }
 
   private filterProductDescription_(
@@ -270,12 +287,12 @@ export class TableElement extends PolymerElement {
     return false;
   }
 
-  private contentIsBuyingOptionsLink_(content: Content):
-      content is BuyingOptionsLink {
+  private contentIsBuyingOptions_(content: Content): content is BuyingOptions {
     if (content) {
-      const buyingOptions = content as BuyingOptionsLink;
-      return (buyingOptions.jackpotUrl &&
-              buyingOptions.jackpotUrl.length > 0) as boolean;
+      const buyingOptions = content as BuyingOptions;
+      return (buyingOptions.price !== undefined &&
+              buyingOptions.jackpotUrl !== undefined &&
+              buyingOptions.price.length > 0) as boolean;
     }
     return false;
   }

@@ -11,6 +11,7 @@
 
 #include <QtCore/qprocessordetection.h>
 #include <QtCore/private/qcoreapplication_p.h>
+#include <QtCore/private/qsystemerror_p.h>
 #include <QtCore/private/qthread_p.h>
 
 #include <qpa/qwindowsysteminterface.h>
@@ -32,6 +33,8 @@
 
 static const size_t kBytesPerKiloByte = 1024;
 static const long kPageSize = sysconf(_SC_PAGESIZE);
+
+using namespace QT_PREPEND_NAMESPACE(QtPrivate);
 
 /*
     The following diagram shows the layout of the reserved
@@ -79,6 +82,9 @@ static const long kPageSize = sysconf(_SC_PAGESIZE);
 
 namespace
 {
+    rlimit stackLimit = {0, 0};
+    rlim_t originalStackSize = 0;
+
     struct Stack
     {
         uintptr_t base;
@@ -102,8 +108,7 @@ namespace
             stackSize = qMin(stackSize, ((1024 - 64) * kBytesPerKiloByte));
 
             // Which we verify, just in case
-            struct rlimit stackLimit = {0, 0};
-            if (Q_UNLIKELY(getrlimit(RLIMIT_STACK, &stackLimit) == 0 && stackSize > stackLimit.rlim_cur))
+            if (Q_UNLIKELY(stackSize > originalStackSize))
                 qFatal("Unexpectedly exceeded stack limit");
 
             return stackSize;
@@ -179,15 +184,42 @@ namespace
     } logActivity;
 
     static bool s_isQtApplication = false;
-}
 
-using namespace QT_PREPEND_NAMESPACE(QtPrivate);
+    void updateStackLimit()
+    {
+        qCDebug(lcEventDispatcher) << "Updating RLIMIT_STACK soft limit from"
+            << originalStackSize << "to" << userMainStack.size();
+
+        stackLimit.rlim_cur = userMainStack.size();
+        if (setrlimit(RLIMIT_STACK, &stackLimit) != 0) {
+            qCWarning(lcEventDispatcher) << "Failed to update RLIMIT_STACK soft limit"
+                                         << QSystemError::stdString();
+        }
+    }
+
+    void restoreStackLimit()
+    {
+        qCDebug(lcEventDispatcher) << "Restoring RLIMIT_STACK soft limit from"
+            << stackLimit.rlim_cur << "back to" << originalStackSize;
+
+        stackLimit.rlim_cur = originalStackSize;
+        if (setrlimit(RLIMIT_STACK, &stackLimit) != 0) {
+            qCWarning(lcEventDispatcher) << "Failed to update RLIMIT_STACK soft limit"
+                                         << QSystemError::stdString();
+        }
+    }
+}
 
 extern "C" int qt_main_wrapper(int argc, char *argv[])
 {
     s_isQtApplication = true;
 
     @autoreleasepool {
+        if (Q_UNLIKELY(getrlimit(RLIMIT_STACK, &stackLimit) != 0))
+            qFatal("Failed to get stack limits");
+
+        originalStackSize = stackLimit.rlim_cur;
+
         size_t defaultStackSize = 512 * kBytesPerKiloByte; // Same as secondary threads
 
         uint requestedStackSize = qMax(0, infoPlistValue(@"QtRunLoopIntegrationStackSize", defaultStackSize));
@@ -257,6 +289,8 @@ static void __attribute__((noinline, noreturn)) user_main_trampoline()
             qFatal("Could not convert argv[%d] to C string", i);
     }
 
+    updateStackLimit();
+
     int exitCode = main(argc, argv);
     delete[] argv;
 
@@ -265,6 +299,8 @@ static void __attribute__((noinline, noreturn)) user_main_trampoline()
 
     if (Q_UNLIKELY(debugStackUsage))
         userMainStack.printUsage();
+
+    restoreStackLimit();
 
     logActivity.applicationDidFinishLaunching.leave();
 
@@ -370,6 +406,8 @@ static bool rootLevelRunLoopIntegration()
 
         if (Q_UNLIKELY(debugStackUsage))
             userMainStack.printUsage();
+
+        restoreStackLimit();
 
         break;
     default:
@@ -510,6 +548,7 @@ bool __attribute__((returns_twice)) QIOSJumpingEventDispatcher::processEvents(QE
             // which will emit aboutToQuit if it's QApplication's event loop, and then return to the user's
             // main, which can do whatever it wants, including calling exec() on the application again.
             qCDebug(lcEventDispatcher) << "⇢ System runloop exited, returning with eventsProcessed = true";
+            updateStackLimit();
             return true;
         default:
             qFatal("Unexpected jump result in event loop integration");
@@ -555,6 +594,7 @@ void QIOSJumpingEventDispatcher::interruptEventLoopExec()
         // QEventLoop was re-executed
         logActivity.UIApplicationMain.enter();
         qCDebug(lcEventDispatcher) << "↳ Jumped from processEvents due to re-exec";
+        restoreStackLimit();
         break;
     default:
         qFatal("Unexpected jump result in event loop integration");

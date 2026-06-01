@@ -28,16 +28,14 @@
 #include "ui/ozone/platform/wayland/test/test_alpha_compositing.h"
 #include "ui/ozone/platform/wayland/test/test_compositor.h"
 #include "ui/ozone/platform/wayland/test/test_data_device_manager.h"
+#include "ui/ozone/platform/wayland/test/test_fractional_scale.h"
 #include "ui/ozone/platform/wayland/test/test_output.h"
 #include "ui/ozone/platform/wayland/test/test_overlay_prioritizer.h"
 #include "ui/ozone/platform/wayland/test/test_seat.h"
 #include "ui/ozone/platform/wayland/test/test_subcompositor.h"
-#include "ui/ozone/platform/wayland/test/test_surface_augmenter.h"
 #include "ui/ozone/platform/wayland/test/test_viewporter.h"
+#include "ui/ozone/platform/wayland/test/test_wp_linux_drm_syncobj.h"
 #include "ui/ozone/platform/wayland/test/test_wp_pointer_gestures.h"
-#include "ui/ozone/platform/wayland/test/test_zaura_output_manager_v2.h"
-#include "ui/ozone/platform/wayland/test/test_zaura_shell.h"
-#include "ui/ozone/platform/wayland/test/test_zcr_stylus.h"
 #include "ui/ozone/platform/wayland/test/test_zcr_text_input_extension.h"
 #include "ui/ozone/platform/wayland/test/test_zwp_linux_explicit_synchronization.h"
 #include "ui/ozone/platform/wayland/test/test_zwp_text_input_manager.h"
@@ -57,7 +55,7 @@ struct DisplayDeleter {
 // Server configuration related enums and structs.
 enum class PrimarySelectionProtocol { kNone, kGtk, kZwp };
 enum class ShouldUseExplicitSynchronizationProtocol { kNone, kUse };
-enum class EnableAuraShellProtocol { kEnabled, kDisabled };
+enum class ShouldUseLinuxDrmSyncobjProtocol { kNone, kUse };
 // Text input protocol type.
 enum class ZWPTextInputWrapperType { kV1, kV3 };
 
@@ -71,9 +69,8 @@ struct ServerConfig {
       PrimarySelectionProtocol::kNone;
   ShouldUseExplicitSynchronizationProtocol use_explicit_synchronization =
       ShouldUseExplicitSynchronizationProtocol::kUse;
-  EnableAuraShellProtocol enable_aura_shell =
-      EnableAuraShellProtocol::kDisabled;
-  bool surface_submission_in_pixel_coordinates = true;
+  ShouldUseLinuxDrmSyncobjProtocol use_linux_drm_syncobj =
+      ShouldUseLinuxDrmSyncobjProtocol::kNone;
   bool supports_viewporter_surface_scaling = false;
 };
 
@@ -90,8 +87,7 @@ struct TestServerListener {
 
 class TestSelectionDeviceManager;
 
-class TestWaylandServerThread : public TestOutput::Delegate,
-                                public base::Thread,
+class TestWaylandServerThread : public base::Thread,
                                 base::MessagePumpEpoll::FdWatcher {
  public:
   class OutputDelegate;
@@ -123,8 +119,6 @@ class TestWaylandServerThread : public TestOutput::Delegate,
   // Returns WpPresentation. If it hasn't been initialized yet, initializes that
   // first and then returns.
   MockWpPresentation* EnsureAndGetWpPresentation();
-  // Initializes and returns SurfaceAugmenter.
-  TestSurfaceAugmenter* EnsureSurfaceAugmenter();
 
   template <typename T>
   T* GetObject(uint32_t id) {
@@ -135,10 +129,7 @@ class TestWaylandServerThread : public TestOutput::Delegate,
   }
 
   TestOutput* CreateAndInitializeOutput(TestOutputMetrics metrics = {}) {
-    auto output = std::make_unique<TestOutput>(this, std::move(metrics));
-    if (output_.aura_shell_enabled()) {
-      output->set_aura_shell_enabled();
-    }
+    auto output = std::make_unique<TestOutput>(std::move(metrics));
     output->Initialize(display());
 
     TestOutput* output_ptr = output.get();
@@ -146,18 +137,9 @@ class TestWaylandServerThread : public TestOutput::Delegate,
     return output_ptr;
   }
 
-  // TestOutput::Delegate:
-  void OnTestOutputFlush(TestOutput* test_output,
-                         const TestOutputMetrics& metrics) override;
-  void OnTestOutputGlobalDestroy(TestOutput* test_output) override;
-
   TestDataDeviceManager* data_device_manager() { return &data_device_manager_; }
   TestSeat* seat() { return &seat_; }
   MockXdgShell* xdg_shell() { return &xdg_shell_; }
-  TestZAuraOutputManagerV2* zaura_output_manager_v2() {
-    return &zaura_output_manager_v2_;
-  }
-  TestZAuraShell* zaura_shell() { return &zaura_shell_; }
   TestOutput* output() { return &output_; }
   TestZcrTextInputExtensionV1* text_input_extension_v1() {
     return &zcr_text_input_extension_v1_;
@@ -171,6 +153,9 @@ class TestWaylandServerThread : public TestOutput::Delegate,
   TestZwpLinuxExplicitSynchronizationV1*
   zwp_linux_explicit_synchronization_v1() {
     return &zwp_linux_explicit_synchronization_v1_;
+  }
+  TestWpLinuxDrmSyncobjManagerV1* wp_linux_drm_syncobj_manager_v1() {
+    return &wp_linux_drm_syncobj_manager_v1_;
   }
   MockZwpLinuxDmabufV1* zwp_linux_dmabuf_v1() { return &zwp_linux_dmabuf_v1_; }
 
@@ -192,10 +177,6 @@ class TestWaylandServerThread : public TestOutput::Delegate,
     return &xdg_toplevel_icon_manager_v1_;
   }
 
-  void set_output_delegate(OutputDelegate* delegate) {
-    output_delegate_ = delegate;
-  }
-
   wl_client* client() const { return client_; }
 
   void OnClientDestroyed(wl_client* client);
@@ -207,10 +188,10 @@ class TestWaylandServerThread : public TestOutput::Delegate,
   uint32_t GetNextTime();
 
  private:
-  void SetupOutputs();
   bool SetupPrimarySelectionManager(PrimarySelectionProtocol protocol);
   bool SetupExplicitSynchronizationProtocol(
       ShouldUseExplicitSynchronizationProtocol usage);
+  bool SetupLinuxDrmSyncobjProtocol(ShouldUseLinuxDrmSyncobjProtocol usage);
 
   std::unique_ptr<base::MessagePump> CreateMessagePump(
       base::OnceClosure closure);
@@ -245,22 +226,20 @@ class TestWaylandServerThread : public TestOutput::Delegate,
 
   TestSubCompositor sub_compositor_;
   TestViewporter viewporter_;
+  TestFractionalScaleManager fractional_scale_manager_;
   TestAlphaCompositing alpha_compositing_;
   TestDataDeviceManager data_device_manager_;
   TestOutput output_;
   TestOverlayPrioritizer overlay_prioritizer_;
-  TestSurfaceAugmenter surface_augmenter_;
   TestSeat seat_;
   TestZXdgOutputManager zxdg_output_manager_;
   MockXdgShell xdg_shell_;
-  TestZAuraOutputManagerV2 zaura_output_manager_v2_;
-  TestZAuraShell zaura_shell_;
   ::testing::NiceMock<MockZcrColorManagerV1> zcr_color_manager_v1_;
-  TestZcrStylus zcr_stylus_;
   TestZcrTextInputExtensionV1 zcr_text_input_extension_v1_;
   TestZwpTextInputManagerV1 zwp_text_input_manager_v1_;
   TestZwpTextInputManagerV3 zwp_text_input_manager_v3_;
   TestZwpLinuxExplicitSynchronizationV1 zwp_linux_explicit_synchronization_v1_;
+  TestWpLinuxDrmSyncobjManagerV1 wp_linux_drm_syncobj_manager_v1_;
   MockZwpLinuxDmabufV1 zwp_linux_dmabuf_v1_;
   MockWpPresentation wp_presentation_;
   TestWpPointerGestures wp_pointer_gestures_;
@@ -272,22 +251,9 @@ class TestWaylandServerThread : public TestOutput::Delegate,
 
   base::MessagePumpEpoll::FdWatchController controller_;
 
-  raw_ptr<OutputDelegate> output_delegate_ = nullptr;
-
   THREAD_CHECKER(thread_checker_);
 
   base::WeakPtrFactory<TestWaylandServerThread> weak_ptr_factory_{this};
-};
-
-class TestWaylandServerThread::OutputDelegate {
- public:
-  // Tests may implement this such that it emulates different display/output
-  // test scenarios. For example, multi-screen, lazy configuration, arbitrary
-  // ordering of the outputs metadata events, etc.
-  virtual void SetupOutputs(TestOutput* primary_output) = 0;
-
- protected:
-  virtual ~OutputDelegate() = default;
 };
 
 }  // namespace wl

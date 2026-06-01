@@ -3,25 +3,20 @@
 // found in the LICENSE file.
 
 import * as Common from '../../core/common/common.js';
-
-import networkWaterfallColumnStyles from './networkWaterfallColumn.css.js';
-
 import type * as SDK from '../../core/sdk/sdk.js';
+import * as RenderCoordinator from '../../ui/components/render_coordinator/render_coordinator.js';
 import * as PerfUI from '../../ui/legacy/components/perf_ui/perf_ui.js';
-import * as Coordinator from '../../ui/components/render_coordinator/render_coordinator.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 
-import {type NetworkNode} from './NetworkDataGridNode.js';
+import type {NetworkNode} from './NetworkDataGridNode.js';
 import {RequestTimeRangeNameToColor} from './NetworkOverview.js';
-import {type Label, type NetworkTimeCalculator} from './NetworkTimeCalculator.js';
-
-import {RequestTimeRangeNames, RequestTimingView, type RequestTimeRange} from './RequestTimingView.js';
+import type {Label, NetworkTimeCalculator} from './NetworkTimeCalculator.js';
 import networkingTimingTableStyles from './networkTimingTable.css.js';
+import networkWaterfallColumnStyles from './networkWaterfallColumn.css.js';
+import {type RequestTimeRange, RequestTimeRangeNames, RequestTimingView} from './RequestTimingView.js';
 
 const BAR_SPACING = 1;
-
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
 
 export class NetworkWaterfallColumn extends UI.Widget.VBox {
   private canvas: HTMLCanvasElement;
@@ -53,8 +48,9 @@ export class NetworkWaterfallColumn extends UI.Widget.VBox {
   constructor(calculator: NetworkTimeCalculator) {
     // TODO(allada) Make this a shadowDOM when the NetworkWaterfallColumn gets moved into NetworkLogViewColumns.
     super(false);
+    this.registerRequiredCSS(networkWaterfallColumnStyles);
 
-    this.canvas = (this.contentElement.createChild('canvas') as HTMLCanvasElement);
+    this.canvas = this.contentElement.createChild('canvas');
     this.canvas.tabIndex = -1;
     this.setDefaultFocusedElement(this.canvas);
     this.canvasPosition = this.canvas.getBoundingClientRect();
@@ -212,11 +208,12 @@ export class NetworkWaterfallColumn extends UI.Widget.VBox {
 
   override willHide(): void {
     this.popoverHelper.hidePopover();
+    super.willHide();
   }
 
   override wasShown(): void {
+    super.wasShown();
     this.update();
-    this.registerCSSFiles([networkWaterfallColumnStyles]);
   }
 
   private onMouseMove(event: MouseEvent): void {
@@ -284,7 +281,7 @@ export class NetworkWaterfallColumn extends UI.Widget.VBox {
       show: (popover: UI.GlassPane.GlassPane) => {
         const content =
             RequestTimingView.createTimingTable((request as SDK.NetworkRequest.NetworkRequest), this.calculator);
-        popover.registerCSSFiles([networkingTimingTableStyles]);
+        popover.registerRequiredCSS(networkingTimingTableStyles);
         popover.contentElement.appendChild(content);
         return Promise.resolve(true);
       },
@@ -341,7 +338,7 @@ export class NetworkWaterfallColumn extends UI.Widget.VBox {
   }
 
   scheduleDraw(): void {
-    void coordinator.write('NetworkWaterfallColumn.render', () => this.update());
+    void RenderCoordinator.write('NetworkWaterfallColumn.render', () => this.update());
   }
 
   update(scrollTop?: number, eventDividers?: Map<string, number[]>, nodes?: NetworkNode[]): void {
@@ -508,6 +505,7 @@ export class NetworkWaterfallColumn extends UI.Widget.VBox {
     }
   }
 
+  // Used when `network-color-code-resource-types` is true
   private getSimplifiedBarRange(request: SDK.NetworkRequest.NetworkRequest, borderOffset: number): {
     start: number,
     mid: number,
@@ -522,6 +520,7 @@ export class NetworkWaterfallColumn extends UI.Widget.VBox {
     };
   }
 
+  // Used when `network-color-code-resource-types` is true
   private buildSimplifiedBarLayers(context: CanvasRenderingContext2D, node: NetworkNode, y: number): void {
     const request = node.request();
     if (!request) {

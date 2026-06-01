@@ -17,11 +17,10 @@
 #include <string>
 
 #include "gmock/gmock.h"
-#include "protobuf-matchers/protocol-buffer-matchers.h"
 #include "gtest/gtest.h"
 #include "absl/strings/escaping.h"
 
-namespace crypto {
+namespace nearby::crypto {
 namespace {
 
 using ::absl::StatusCode;
@@ -211,4 +210,4 @@ TEST(Ed25519SignerVerifierTest, NewKeypairFromRandomSeedRoundtrip) {
 }
 
 }  // namespace
-}  // namespace crypto
+}  // namespace nearby::crypto

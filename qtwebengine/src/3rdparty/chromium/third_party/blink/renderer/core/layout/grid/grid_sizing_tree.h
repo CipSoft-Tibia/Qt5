@@ -8,6 +8,7 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/grid/grid_data.h"
 #include "third_party/blink/renderer/core/layout/grid/grid_item.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 
 namespace blink {
 
@@ -15,9 +16,9 @@ namespace blink {
 // algorithm of an ancestor grid that may not be its parent grid.
 //
 // For a given subgridded item, this class encapsulates a pointer to its
-// |GridItemData| in the context of its parent grid (i.e., its properties are
+// `GridItemData` in the context of its parent grid (i.e., its properties are
 // relative to its parent's area and writing mode) and a pointer to the actual
-// |GridLayoutData| of the grid that directly contains the subgridded item.
+// `GridLayoutData` of the grid that directly contains the subgridded item.
 class SubgriddedItemData {
   DISALLOW_NEW();
 
@@ -68,12 +69,13 @@ class SubgriddedItemData {
   }
 
  private:
+  GC_PLUGIN_IGNORE("GC API violation: https://crbug.com/389707047")
   const GridItemData* item_data_in_parent_{nullptr};
   const GridLayoutData* parent_layout_data_{nullptr};
   WritingMode parent_writing_mode_{WritingMode::kHorizontalTb};
 };
 
-constexpr SubgriddedItemData kNoSubgriddedItemData;
+inline constexpr SubgriddedItemData kNoSubgriddedItemData;
 
 // This class represents a grid tree (see `grid_subtree.h`) and contains the
 // necessary data to perform the track sizing algorithm of its nested subgrids.
@@ -182,7 +184,7 @@ class GridSizingSubtree
 
     return GridSizingSubtree(
         *grid_tree_,
-        /* subtree_root */ grid_tree_->LookupSubgridIndex(subgrid_data.node));
+        /*subtree_root=*/grid_tree_->LookupSubgridIndex(subgrid_data.node));
   }
 
   // This method is only intended to be used to validate that the given grid
@@ -210,8 +212,11 @@ class GridSizingSubtree
   }
 };
 
-constexpr GridSizingSubtree kNoGridSizingSubtree;
+inline constexpr GridSizingSubtree kNoGridSizingSubtree;
 
 }  // namespace blink
+
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
+    blink::GridSizingTree::GridTreeNode)
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_GRID_GRID_SIZING_TREE_H_

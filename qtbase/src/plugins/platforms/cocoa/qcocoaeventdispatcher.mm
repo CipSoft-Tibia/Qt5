@@ -296,7 +296,7 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
             d->interrupt = true;
         d->propagateInterrupt = false;
     });
-    QBoolBlocker interruptBlocker(d->interrupt, false);
+    QScopedValueRollback interruptBlocker(d->interrupt, false);
 
     bool interruptLater = false;
     QtCocoaInterruptDispatcher::cancelInterruptLater();
@@ -342,7 +342,7 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
             // interrupted. This is mostly an optimization, but it allow us to use
             // [NSApp run], which is the normal code path for cocoa applications.
             if (NSModalSession session = d->currentModalSession()) {
-                QBoolBlocker execGuard(d->currentExecIsNSAppRun, false);
+                QScopedValueRollback execGuard(d->currentExecIsNSAppRun, false);
                 qCDebug(lcEventDispatcher) << "Running modal session" << session;
                 while ([NSApp runModalSession:session] == NSModalResponseContinue && !d->interrupt) {
                     qt_mac_waitForMoreEvents(NSModalPanelRunLoopMode);
@@ -370,7 +370,7 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
 
             } else {
                 d->nsAppRunCalledByQt = true;
-                QBoolBlocker execGuard(d->currentExecIsNSAppRun, true);
+                QScopedValueRollback execGuard(d->currentExecIsNSAppRun, true);
                 [NSApp run];
             }
             retVal = true;
@@ -562,7 +562,7 @@ void QCocoaEventDispatcherPrivate::ensureNSAppInitialized()
     // Stopping the application will still process runloop sources before
     // actually stopping, so we need to explicitly guard our sources from
     // doing anything, deferring their actions until later.
-    QBoolBlocker initializationGuard(initializingNSApplication, true);
+    QScopedValueRollback initializationGuard(initializingNSApplication, true);
 
     CFRunLoopPerformBlock(mainRunLoop(), kCFRunLoopCommonModes, ^{
         qCDebug(lcEventDispatcher) << "NSApplication has been initialized; Stopping NSApp";
@@ -624,7 +624,7 @@ NSModalSession QCocoaEventDispatcherPrivate::currentModalSession()
                 continue;
 
             ensureNSAppInitialized();
-            QBoolBlocker block1(blockSendPostedEvents, true);
+            QScopedValueRollback block1(blockSendPostedEvents, true);
             info.nswindow = nswindow;
             [(NSWindow*) info.nswindow retain];
             QRect rect = cocoaWindow->geometry();

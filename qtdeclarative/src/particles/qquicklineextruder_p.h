@@ -16,6 +16,8 @@
 //
 #include "qquickparticleextruder_p.h"
 
+QT_BEGIN_NAMESPACE
+
 class Q_QUICKPARTICLES_EXPORT QQuickLineExtruder : public QQuickParticleExtruder
 {
     Q_OBJECT
@@ -48,5 +50,7 @@ public Q_SLOTS:
 private:
     bool m_mirrored;
 };
+
+QT_END_NAMESPACE
 
 #endif // LINEEXTRUDER_H

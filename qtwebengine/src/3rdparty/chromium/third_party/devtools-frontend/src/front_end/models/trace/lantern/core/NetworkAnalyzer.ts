@@ -37,7 +37,7 @@ class UrlUtils {
       urlb.hash = '';
 
       return urla.href === urlb.href;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -70,11 +70,11 @@ interface RTTEstimateOptions {
   useHeadersEndEstimates?: boolean;
 }
 
-type RequestInfo = {
-  request: Lantern.NetworkRequest,
-  timing: Lantern.ResourceTiming,
-  connectionReused?: boolean,
-};
+interface RequestInfo {
+  request: Lantern.NetworkRequest;
+  timing: Lantern.ResourceTiming;
+  connectionReused?: boolean;
+}
 
 const INITIAL_CWD = 14 * 1024;
 
@@ -408,11 +408,10 @@ class NetworkAnalyzer {
     for (const [origin, originRequests] of groupedByOrigin.entries()) {
       const originEstimates: number[] = [];
 
-      // eslint-disable-next-line no-inner-declarations
       function collectEstimates(estimator: (e: RequestInfo) => number[] | number | undefined, multiplier = 1): void {
         for (const request of originRequests) {
           const timing = request.timing;
-          if (!timing) {
+          if (!timing || !request.transferSize) {
             continue;
           }
 
@@ -489,9 +488,9 @@ class NetworkAnalyzer {
   /**
    * Computes the average throughput for the given requests in bits/second.
    * Excludes data URI, failed or otherwise incomplete, and cached requests.
-   * Returns Infinity if there were no analyzable network requests.
+   * Returns null if there were no analyzable network requests.
    */
-  static estimateThroughput(records: Lantern.NetworkRequest[]): number {
+  static estimateThroughput(records: Lantern.NetworkRequest[]): number|null {
     let totalBytes = 0;
 
     // We will measure throughput by summing the total bytes downloaded by the total time spent
@@ -518,7 +517,7 @@ class NetworkAnalyzer {
                                .sort((a, b) => a.time - b.time);
 
     if (!timeBoundaries.length) {
-      return Infinity;
+      return null;
     }
 
     let inflight = 0;
@@ -576,8 +575,12 @@ class NetworkAnalyzer {
     };
   }
 
-  static analyze(records: Lantern.NetworkRequest[]): Lantern.Simulation.Settings['networkAnalysis'] {
+  static analyze(records: Lantern.NetworkRequest[]): Lantern.Simulation.Settings['networkAnalysis']|null {
     const throughput = NetworkAnalyzer.estimateThroughput(records);
+    if (throughput === null) {
+      return null;
+    }
+
     return {
       throughput,
       ...NetworkAnalyzer.computeRTTAndServerResponseTime(records),
@@ -594,7 +597,7 @@ class NetworkAnalyzer {
   static findLastDocumentForUrl<T extends Lantern.NetworkRequest>(records: Array<T>, resourceUrl: string): T|undefined {
     // equalWithExcludedFragments is expensive, so check that the resourceUrl starts with the request url first
     const matchingRequests = records.filter(
-        request => request.resourceType === 'Document' &&
+        request => request.resourceType === 'Document' && !request.failed &&
             // Note: `request.url` should never have a fragment, else this optimization gives wrong results.
             resourceUrl.startsWith(request.url) && UrlUtils.equalWithExcludedFragments(request.url, resourceUrl),
     );

@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "base/auto_reset.h"
 #include "base/containers/flat_map.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -48,6 +49,9 @@ enum class DynamicRuleUpdateAction;
 struct LoadRequestData;
 struct RuleCounts;
 
+using LoadRulesetThrottleCallback =
+    base::RepeatingCallback<void(base::OnceClosure)>;
+
 // Observes loading and unloading of extensions to load and unload their
 // rulesets for the Declarative Net Request API. Lives on the UI thread. Note: A
 // separate instance of RulesMonitorService is not created for incognito. Both
@@ -71,6 +75,7 @@ class RulesMonitorService : public BrowserContextKeyedAPI,
     virtual ~TestObserver() = default;
   };
 
+  explicit RulesMonitorService(content::BrowserContext* browser_context);
   RulesMonitorService(const RulesMonitorService&) = delete;
   RulesMonitorService& operator=(const RulesMonitorService&) = delete;
 
@@ -87,6 +92,12 @@ class RulesMonitorService : public BrowserContextKeyedAPI,
 
   static std::unique_ptr<RulesMonitorService> CreateInstanceForTesting(
       content::BrowserContext* context);
+
+  // Sets a `throttle` which blocks ruleset loads from completing on the UI
+  // thread until released.
+  static base::AutoReset<LoadRulesetThrottleCallback*>
+  SetLoadRulesetThrottleCallbackForTesting(
+      LoadRulesetThrottleCallback* throttle);
 
   // Updates the dynamic rules for the |extension| and then invokes
   // |callback| with an optional error.
@@ -160,10 +171,6 @@ class RulesMonitorService : public BrowserContextKeyedAPI,
   class ApiCallQueue;
 
   friend class BrowserContextKeyedAPIFactory<RulesMonitorService>;
-
-  // The constructor is kept private since this should only be created by the
-  // BrowserContextKeyedAPIFactory.
-  explicit RulesMonitorService(content::BrowserContext* browser_context);
 
   // BrowserContextKeyedAPI implementation.
   static const char* service_name() { return "RulesMonitorService"; }

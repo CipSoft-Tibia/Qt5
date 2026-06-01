@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLADAPTORMODEL_P_H
 #define QQMLADAPTORMODEL_P_H
@@ -17,12 +18,13 @@
 
 #include <QtCore/qabstractitemmodel.h>
 
-#include <private/qtqmlglobal_p.h>
-#include <private/qqmllistaccessor_p.h>
-#include <private/qtqmlmodelsglobal_p.h>
+#include <private/qqmldelegatemodel_p.h>
 #include <private/qqmlguard_p.h>
+#include <private/qqmllistaccessor_p.h>
 #include <private/qqmlnullablevalue_p.h>
 #include <private/qqmlpropertycache_p.h>
+#include <private/qtqmlglobal_p.h>
+#include <private/qtqmlmodelsglobal_p.h>
 
 QT_REQUIRE_CONFIG(qml_delegate_model);
 
@@ -30,7 +32,6 @@ QT_BEGIN_NAMESPACE
 
 class QQmlEngine;
 
-class QQmlDelegateModel;
 class QQmlDelegateModelItem;
 class QQmlDelegateModelItemMetaType;
 
@@ -84,6 +85,7 @@ public:
     QV4::PersistentValue modelStrongReference;
 
     QTypeRevision modelItemRevision = QTypeRevision::zero();
+    QQmlDelegateModel::DelegateModelAccess delegateModelAccess = QQmlDelegateModel::Qt5ReadWrite;
 
     QQmlAdaptorModel();
     ~QQmlAdaptorModel();
@@ -114,9 +116,16 @@ public:
         return accessors->createItem(*this, metaType, index, rowAt(index), columnAt(index));
     }
     inline bool hasProxyObject() const {
-        return list.type() == QQmlListAccessor::Instance
-                || list.type() == QQmlListAccessor::ListProperty
-                || list.type() == QQmlListAccessor::ObjectList;
+        switch (list.type()) {
+        case QQmlListAccessor::Instance:
+        case QQmlListAccessor::ListProperty:
+        case QQmlListAccessor::ObjectList:
+        case QQmlListAccessor::ObjectSequence:
+            return true;
+        default:
+            break;
+        }
+        return false;
     }
 
     inline bool notify(
@@ -139,18 +148,6 @@ private:
 
     Accessors m_nullAccessors;
 };
-
-class QQmlAdaptorModelProxyInterface
-{
-public:
-    virtual ~QQmlAdaptorModelProxyInterface() {}
-
-    virtual QObject *proxiedObject() = 0;
-};
-
-#define QQmlAdaptorModelProxyInterface_iid "org.qt-project.Qt.QQmlAdaptorModelProxyInterface"
-
-Q_DECLARE_INTERFACE(QQmlAdaptorModelProxyInterface, QQmlAdaptorModelProxyInterface_iid)
 
 QT_END_NAMESPACE
 

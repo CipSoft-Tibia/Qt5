@@ -236,14 +236,11 @@ size_t FindRunBreakingCharacter(const std::u16string& text,
   base::i18n::BreakIterator grapheme_iterator(
       run_text, base::i18n::BreakIterator::BREAK_CHARACTER);
   if (!grapheme_iterator.Init() || !grapheme_iterator.Advance()) {
-    // In case of error, isolate the first character in a separate run.
-    NOTREACHED_IN_MIGRATION();
-    return run_start + 1;
+    NOTREACHED();
   }
 
   // Retrieve the first grapheme and its codepoint properties.
-  const std::u16string_view first_grapheme_text =
-      grapheme_iterator.GetStringView();
+  const std::u16string_view first_grapheme_text = grapheme_iterator.GetString();
   const GraphemeProperties first_grapheme_properties =
       RetrieveGraphemeProperties(first_grapheme_text, is_common_script);
 
@@ -251,7 +248,7 @@ size_t FindRunBreakingCharacter(const std::u16string& text,
   // compatible, otherwise break the current run.
   while (grapheme_iterator.Advance()) {
     const std::u16string_view current_grapheme_text =
-        grapheme_iterator.GetStringView();
+        grapheme_iterator.GetString();
     const GraphemeProperties current_grapheme_properties =
         RetrieveGraphemeProperties(current_grapheme_text, is_common_script);
 
@@ -1135,7 +1132,7 @@ SkScalar TextRunHarfBuzz::GetGlyphWidthForCharRange(
   // colors for a single glyph). In this case it might cause the browser crash,
   // see crbug.com/526234.
   if (glyph_range.start() >= glyph_range.end()) {
-    NOTREACHED_IN_MIGRATION()
+    DUMP_WILL_BE_NOTREACHED()
         << "The glyph range is empty or invalid! Its char range: ["
         << char_range.start() << ", " << char_range.end()
         << "], and its glyph range: [" << glyph_range.start() << ", "
@@ -1254,7 +1251,7 @@ struct ShapeRunWithFontInput {
     hash = base::HashInts(hash, skia_face->uniqueID());
     hash = base::HashInts(hash, script);
     hash = base::HashInts(hash, font_size);
-    hash = base::FastHash(base::as_bytes(base::make_span(text)));
+    hash = base::FastHash(base::as_byte_span(text));
     hash = base::HashInts(hash, range.start());
     hash = base::HashInts(hash, range.length());
   }
@@ -1339,7 +1336,7 @@ void ShapeRunWithFont(const ShapeRunWithFontInput& in,
     hb_glyph_info_t* data = hb_buffer_get_glyph_infos(buffer, &count);
     // SAFETY: harfbuzz guarantees that hb_buffer_get_glyph_infos() writes the
     // count for the returned data array into count.
-    return UNSAFE_BUFFERS(base::make_span(data, count));
+    return UNSAFE_BUFFERS(base::span(data, count));
   }(buffer);
 
   out->glyph_count = infos.size();
@@ -1349,7 +1346,7 @@ void ShapeRunWithFont(const ShapeRunWithFontInput& in,
     hb_glyph_position_t* data = hb_buffer_get_glyph_positions(buffer, &count);
     // SAFETY: harfbuzz guarantees that hb_buffer_get_glyph_positions() writes
     // the count for the returned data array into count.
-    return UNSAFE_BUFFERS(base::make_span(data, count));
+    return UNSAFE_BUFFERS(base::span(data, count));
   }(buffer);
 
   out->glyphs.resize(out->glyph_count);
@@ -1902,8 +1899,9 @@ SelectionModel RenderTextHarfBuzz::LastSelectionModelInsideRun(
   return SelectionModel(position, CURSOR_FORWARD);
 }
 
-void RenderTextHarfBuzz::BuildResolvedTypefaceBreakList(
+bool RenderTextHarfBuzz::BuildResolvedTypefaceBreakList(
     internal::TextRunList* run_list) {
+  bool modified_breaklist = false;
   const Font& primary_font = font_list().GetPrimaryFont();
   for (auto& run : run_list->runs()) {
     if (run->CountMissingGlyphs() > 0) {
@@ -1939,13 +1937,16 @@ void RenderTextHarfBuzz::BuildResolvedTypefaceBreakList(
             const SkTypefaceID fallback_font_id = fallback_font.platform_font()
                                                       ->GetNativeSkTypeface()
                                                       ->uniqueID();
-            layout_resolved_typefaces().ApplyValue(fallback_font_id,
-                                                   display_range);
+            if (layout_resolved_typefaces().ApplyValue(fallback_font_id,
+                                                       display_range)) {
+              modified_breaklist = true;
+            }
           }
         }
       }
     }
   }
+  return modified_breaklist;
 }
 
 void RenderTextHarfBuzz::ItemizeAndShapeText(const std::u16string& text,
@@ -1956,15 +1957,11 @@ void RenderTextHarfBuzz::ItemizeAndShapeText(const std::u16string& text,
 
   // If we didn't successfully shape every run, break runs based on the resolved
   // typeface. This will ensure that missing glyphs are isolated to their own
-  // runs, maximizing fallback opportunities. If this is a display run list, do
-  // not invalidate the text layout, as that has already been established in the
-  // prior step.
+  // runs, maximizing fallback opportunities.
   if (!successfully_shaped_runs && !ignore_missing_glyph_breaks_for_test_) {
-    BuildResolvedTypefaceBreakList(run_list);
-
-    // TODO(kschmi): Only re-shape if `BuildResolvedTypefaceBreakList` made a
-    // difference.
-    ItemizeAndShapeTextImpl(&commonized_run_map, text, run_list);
+    if (BuildResolvedTypefaceBreakList(run_list)) {
+      ItemizeAndShapeTextImpl(&commonized_run_map, text, run_list);
+    }
 
     // Resolved typefaces are no longer used and can be cleared.
     layout_resolved_typefaces().Reset();

@@ -17,6 +17,7 @@
 
 #include <QtSvg/private/qsvgvisitor_p.h>
 #include "qquickgenerator_p.h"
+#include "qquickanimatedproperty_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -24,11 +25,13 @@ class QTextStream;
 class QSvgTinyDocument;
 class QString;
 class QQuickItem;
+class QSvgStyleResolver;
 
 class QSvgVisitorImpl : public QSvgVisitor
 {
 public:
-    QSvgVisitorImpl(const QString svgFileName, QQuickGenerator *generator);
+    QSvgVisitorImpl(const QString svgFileName, QQuickGenerator *generator, bool assumeTrustedSource);
+    ~QSvgVisitorImpl() override;
     bool traverse();
 
 protected:
@@ -53,9 +56,16 @@ protected:
     void visitSwitchNodeEnd(const QSvgSwitch *node) override;
 
 private:
+    typedef std::pair<const QSvgAbstractAnimation *, const QSvgAbstractAnimatedProperty *> AnimationPair;
+    QList<AnimationPair> collectAnimations(const QSvgNode *node, const QString &propertyName);
+    void applyAnimationsToProperty(const QList<AnimationPair> &animations,
+                                   QQuickAnimatedProperty *property,
+                                   std::function<QVariant(const QSvgAbstractAnimatedProperty *, int index, int subtype)> calculateValue);
+
     void fillCommonNodeInfo(const QSvgNode *node, NodeInfo &info);
+    void fillPathAnimationInfo(const QSvgNode *node, PathNodeInfo &info);
     void fillAnimationInfo(const QSvgNode *node, NodeInfo &info);
-    void fillColorAnimationInfo(const QSvgNode *node, NodeInfo &info);
+    void fillColorAnimationInfo(const QSvgNode *node, PathNodeInfo &info);
     void fillTransformAnimationInfo(const QSvgNode *node, NodeInfo &info);
     void handleBaseNodeSetup(const QSvgNode *node);
     void handleBaseNode(const QSvgNode *node);
@@ -68,6 +78,8 @@ private:
 private:
     QString m_svgFileName;
     QQuickGenerator *m_generator;
+    bool m_assumeTrustedSource;
+    std::unique_ptr<QSvgStyleResolver> m_styleResolver;
 };
 
 QT_END_NAMESPACE

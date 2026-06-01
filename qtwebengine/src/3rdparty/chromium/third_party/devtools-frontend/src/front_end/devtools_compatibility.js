@@ -1,7 +1,7 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-/* eslint-disable indent */
+
 (function(window) {
 
 // DevToolsAPI ----------------------------------------------------------------
@@ -423,7 +423,6 @@ const EnumeratedHistogram = {
   Language: 'DevTools.Language',
   LighthouseModeRun: 'DevTools.LighthouseModeRun',
   LighthouseCategoryUsed: 'DevTools.LighthouseCategoryUsed',
-  ManifestSectionSelected: 'DevTools.ManifestSectionSelected',
   PanelShown: 'DevTools.PanelShown',
   PanelShownInLocation: 'DevTools.PanelShownInLocation',
   RecordingAssertion: 'DevTools.RecordingAssertion',
@@ -439,19 +438,13 @@ const EnumeratedHistogram = {
   SourcesPanelFileDebugged: 'DevTools.SourcesPanelFileDebugged',
   SourcesPanelFileOpened: 'DevTools.SourcesPanelFileOpened',
   NetworkPanelResponsePreviewOpened: 'DevTools.NetworkPanelResponsePreviewOpened',
+  TimelineNavigationSettingState: 'DevTools.TimelineNavigationSettingState',
   StyleTextCopied: 'DevTools.StyleTextCopied',
   SyncSetting: 'DevTools.SyncSetting',
-  ColorPickerOpenedFrom: 'DevTools.ColorPickerOpenedFrom',
   CSSPropertyDocumentation: 'DevTools.CSSPropertyDocumentation',
   SwatchActivated: 'DevTools.SwatchActivated',
   AnimationPlaybackRateChanged: 'DevTools.AnimationPlaybackRateChanged',
   AnimationPointDragged: 'DevTools.AnimationPointDragged',
-  LegacyResourceTypeFilterNumberOfSelectedChanged: 'DevTools.LegacyResourceTypeFilterNumberOfSelectedChanged',
-  LegacyResourceTypeFilterItemSelected: 'DevTools.LegacyResourceTypeFilterItemSelected',
-  ResourceTypeFilterNumberOfSelectedChanged: 'DevTools.ResourceTypeFilterNumberOfSelectedChanged',
-  ResourceTypeFilterItemSelected: 'DevTools.ResourceTypeFilterItemSelected',
-  NetworkPanelMoreFiltersNumberOfSelectedChanged: 'DevTools.NetworkPanelMoreFiltersNumberOfSelectedChanged',
-  NetworkPanelMoreFiltersItemSelected: 'DevTools.NetworkPanelMoreFiltersItemSelected',
 };
 
 /**
@@ -667,9 +660,9 @@ const InspectorFrontendHostImpl = class {
       optIn: false,
     };
     const devToolsFreestylerDogfood = {
-      enabled: (newConfig.devToolsFreestylerDogfood?.enabled && newConfig.aidaAvailability?.enabled) ?? false,
-      aidaModelId: newConfig.devToolsFreestylerDogfood?.modelId ?? '',
-      aidaTemperature: newConfig.devToolsFreestylerDogfood?.temperature ?? 0,
+      enabled: (newConfig.devToolsFreestyler?.enabled && newConfig.aidaAvailability?.enabled) ?? false,
+      aidaModelId: newConfig.devToolsFreestyler?.modelId ?? '',
+      aidaTemperature: newConfig.devToolsFreestyler?.temperature ?? 0,
       blockedByAge: newConfig.aidaAvailability?.blockedByAge ?? true,
       blockedByEnterprisePolicy: newConfig.aidaAvailability?.blockedByEnterprisePolicy ?? true,
       blockedByGeo: newConfig.aidaAvailability?.blockedByGeo ?? true,
@@ -1541,7 +1534,7 @@ function installBackwardsCompatibility() {
     Element.prototype.createShadowRoot = function() {
       try {
         return this.attachShadow({mode: 'open'});
-      } catch (e) {
+      } catch {
         // some elements we use to add shadow roots can no
         // longer have shadow roots.
         const fakeShadowHost = document.createElement('span');
@@ -1692,7 +1685,7 @@ function getRemoteMajorVersion() {
     }
     const majorVersion = parseInt(remoteVersion.split('.')[0], 10);
     return majorVersion;
-  } catch (e) {
+  } catch {
     return null;
   }
 }

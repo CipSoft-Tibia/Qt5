@@ -17,20 +17,21 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_PERF_SAMPLE_TRACKER_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_PERF_SAMPLE_TRACKER_H_
 
-#include <stdint.h>
-
 #include <cstdint>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "src/trace_processor/importers/common/args_tracker.h"
 #include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/tables/profiler_tables_py.h"
 
 namespace perfetto {
-namespace protos {
-namespace pbzero {
+
+namespace protos::pbzero {
 class TracePacketDefaults_Decoder;
-}  // namespace pbzero
-}  // namespace protos
+}  // namespace protos::pbzero
+
 namespace trace_processor {
 class TraceProcessorContext;
 
@@ -39,15 +40,17 @@ class PerfSampleTracker {
   struct SamplingStreamInfo {
     tables::PerfSessionTable::Id perf_session_id;
     TrackId timebase_track_id = kInvalidTrackId;
+    std::vector<TrackId> follower_track_ids;
 
     SamplingStreamInfo(tables::PerfSessionTable::Id _perf_session_id,
-                       TrackId _timebase_track_id)
+                       TrackId _timebase_track_id,
+                       std::vector<TrackId> _follower_track_ids)
         : perf_session_id(_perf_session_id),
-          timebase_track_id(_timebase_track_id) {}
+          timebase_track_id(_timebase_track_id),
+          follower_track_ids(std::move(_follower_track_ids)) {}
   };
 
-  explicit PerfSampleTracker(TraceProcessorContext* context)
-      : context_(context) {}
+  explicit PerfSampleTracker(TraceProcessorContext* context);
 
   SamplingStreamInfo GetSamplingStreamInfo(
       uint32_t seq_id,
@@ -57,9 +60,12 @@ class PerfSampleTracker {
  private:
   struct CpuSequenceState {
     TrackId timebase_track_id = kInvalidTrackId;
+    std::vector<TrackId> follower_track_ids;
 
-    CpuSequenceState(TrackId _timebase_track_id)
-        : timebase_track_id(_timebase_track_id) {}
+    CpuSequenceState(TrackId _timebase_track_id,
+                     std::vector<TrackId> _follower_track_ids)
+        : timebase_track_id(_timebase_track_id),
+          follower_track_ids(std::move(_follower_track_ids)) {}
   };
 
   struct SequenceState {
@@ -73,7 +79,7 @@ class PerfSampleTracker {
   tables::PerfSessionTable::Id CreatePerfSession();
 
   std::unordered_map<uint32_t, SequenceState> seq_state_;
-
+  const StringId is_timebase_id_;
   TraceProcessorContext* const context_;
 };
 

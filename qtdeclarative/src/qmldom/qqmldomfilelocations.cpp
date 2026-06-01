@@ -40,7 +40,7 @@ bool Info::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) con
     });
     cont = cont
             && self.dvItemField(std::move(visitor), Fields::regions, [this, &self]() -> DomItem {
-        const Path pathFromOwner = self.pathFromOwner().field(Fields::regions);
+        const Path pathFromOwner = self.pathFromOwner().withField(Fields::regions);
         auto map = Map::fromFileRegionMap(pathFromOwner, regions);
         return self.subMapItem(map);
     });
@@ -79,7 +79,7 @@ bool visitTree(const Tree &base, function_ref<bool(const Path &, const Tree &)> 
                const Path &basePath)
 {
     if (base) {
-        Path pNow = basePath.path(base->path());
+        Path pNow = basePath.withPath(base->path());
         if (!visitor(pNow, base)) {
             return false;
         }
@@ -116,7 +116,7 @@ Tree treeOf(const DomItem &item)
         fLoc = o.field(Fields::fileLocationsTree);
         while (!fLoc && o) {
             DomItem c = o.container();
-            p = c.pathFromOwner().path(o.canonicalPath().last()).path(p);
+            p = c.pathFromOwner().withPath(o.canonicalPath().last()).withPath(p);
             o = c.owner();
             fLoc = o.field(Fields::fileLocationsTree);
         }
@@ -201,10 +201,10 @@ bool Node::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) con
             && self.dvValueLazyField(visitor, Fields::path, [this]() { return path().toString(); });
     cont = cont && self.dvItemField(visitor, Fields::subItems, [this, &self]() {
         return self.subMapItem(Map(
-                Path::Field(Fields::subItems),
+                Path::fromField(Fields::subItems),
                 [this](const DomItem &map, const QString &key) {
                     Path p = Path::fromString(key);
-                    return map.copy(m_subItems.value(p), map.canonicalPath().key(key));
+                    return map.copy(m_subItems.value(p), map.canonicalPath().withKey(key));
                 },
                 [this](const DomItem &) {
                     QSet<QString> res;
@@ -237,5 +237,3 @@ std::shared_ptr<OwningItem> Node::doCopy(const DomItem &) const
 } // namespace Dom
 } // namespace QQmlJS
 QT_END_NAMESPACE
-
-#include "moc_qqmldomfilelocations_p.cpp"

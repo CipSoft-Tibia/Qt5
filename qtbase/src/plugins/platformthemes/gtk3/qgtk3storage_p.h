@@ -17,9 +17,6 @@
 //
 
 #include "qgtk3interface_p.h"
-#if QT_CONFIG(dbus)
-#include "qgtk3portalinterface_p.h"
-#endif
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QCache>
@@ -31,11 +28,17 @@
 #include <private/qflatmap_p.h>
 
 QT_BEGIN_NAMESPACE
+
+#if QT_CONFIG(dbus)
+class QGnomePortalInterface;
+#endif
+
 class QGtk3Storage
 {
     Q_GADGET
 public:
     QGtk3Storage();
+    ~QGtk3Storage();
 
     // Enum documented in cpp file. Please keep it in line with updates made here.
     enum class SourceType {
@@ -243,7 +246,7 @@ private:
 
     std::unique_ptr<QGtk3Interface> m_interface;
 #if QT_CONFIG(dbus)
-    std::unique_ptr<QGtk3PortalInterface> m_portalInterface;
+    std::unique_ptr<QGnomePortalInterface> m_portalInterface;
 #endif
 
     Qt::ColorScheme m_colorScheme = Qt::ColorScheme::Unknown;

@@ -9,7 +9,7 @@ this file manually, you might introduce QML code that is not supported by Qt Des
 Check out https://doc.qt.io/qtcreator/creator-quick-ui-forms.html for details on .ui.qml files.
 */
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import ThermostatCustomControls
 import Thermostat
@@ -17,7 +17,7 @@ import Thermostat
 ScrollView {
     id: scrollView
 
-    required property var model
+    required property Room room
 
     property bool isOneColumn: false
     property bool isBackgroundVisible: false
@@ -27,7 +27,7 @@ ScrollView {
     property int delegateWidth: 350
 
     clip: true
-    padding: 0
+    bottomPadding: 10
     contentWidth: availableWidth
 
     background: Rectangle {
@@ -41,6 +41,7 @@ ScrollView {
 
         width: scrollView.width
         height: scrollView.height
+        anchors.horizontalCenter: parent.horizontalCenter
 
         columns: scrollView.isOneColumn ? 1 : 3
         rows: scrollView.isOneColumn ? 8 : 1
@@ -50,11 +51,6 @@ ScrollView {
 
         Pane {
             id: statistics
-
-            leftPadding: 53
-            rightPadding: 53
-            topPadding: 23
-            bottomPadding: 43
 
             Layout.columnSpan: scrollView.isOneColumn ? 1 : 3
             Layout.rowSpan: scrollView.isOneColumn ? 5 : 1
@@ -72,20 +68,19 @@ ScrollView {
                 id: statisticsChart
 
                 anchors.fill: parent
-                energyValuesModel: model.energyStats
-                tempValuesModel: model.tempStats
+                anchors.horizontalCenter: parent.horizontalCenter
+                energyValues: scrollView.room.energyStats
+                tempValues: scrollView.room.tempStats
             }
         }
 
         TemperatureInfo {
             id: tempInfo
-
             Layout.preferredHeight: scrollView.delegateHeight
             Layout.preferredWidth: scrollView.delegateWidth
             Layout.alignment: Qt.AlignHCenter
-            maxTempValue: statisticsChart.maxValue
-            minTempValue: statisticsChart.minValue
-            avgTempValue: statisticsChart.avgValue
+
+            temperatureValues: scrollView.room.tempStats
         }
 
         HumidityInfo {
@@ -94,7 +89,7 @@ ScrollView {
             Layout.preferredWidth: scrollView.delegateWidth
             Layout.alignment: Qt.AlignHCenter
 
-            humidityValuesModel: model.humidityStats
+            humidityValues: scrollView.room.humidityStats
         }
 
         EnergyInfo {
@@ -103,14 +98,14 @@ ScrollView {
             Layout.preferredWidth: scrollView.delegateWidth
             Layout.alignment: Qt.AlignHCenter
 
-            energyValuesModel: model.energyStats
+            energyValues: scrollView.room.energyStats
         }
     }
 
     states: [
         State {
-            name: "desktopLayout"
-            when: Constants.isBigDesktopLayout || Constants.isSmallDesktopLayout
+            name: "bigDesktopLayout"
+            when: Constants.isBigDesktopLayout
             PropertyChanges {
                 target: statistics
                 leftPadding: 53
@@ -123,8 +118,35 @@ ScrollView {
                 isBackgroundVisible: false
                 delegateWidth: 350
                 delegateHeight: 182
-                statisticsChartWidth: 1098
+                statisticsChartWidth: grid.width
                 statisticsChartHeight: 647
+            }
+            PropertyChanges {
+                target: grid
+                width: 1100
+            }
+        },
+        State {
+            name: "smallDesktopLayout"
+            when:  Constants.isSmallDesktopLayout
+            PropertyChanges {
+                target: statistics
+                leftPadding: 53
+                rightPadding: 53
+                topPadding: 23
+                bottomPadding: 43
+            }
+            PropertyChanges {
+                target: scrollView
+                isBackgroundVisible: false
+                delegateWidth: 290
+                delegateHeight: 182
+                statisticsChartWidth: grid.width
+                statisticsChartHeight: 541
+            }
+            PropertyChanges {
+                target: grid
+                width: 918
             }
         },
         State {
@@ -135,14 +157,14 @@ ScrollView {
                 leftPadding: 0
                 rightPadding: 0
                 topPadding: 0
-                bottomPadding: 43
+                bottomPadding: 0
             }
             PropertyChanges {
                 target: scrollView
                 isBackgroundVisible: false
                 delegateWidth: 327
-                delegateHeight: 100
-                statisticsChartWidth: 327
+                delegateHeight: 110
+                statisticsChartWidth: 346
                 statisticsChartHeight: 383
             }
         },
@@ -154,15 +176,15 @@ ScrollView {
                 leftPadding: 0
                 rightPadding: 0
                 topPadding: 0
-                bottomPadding: 43
+                bottomPadding: 0
             }
             PropertyChanges {
                 target: scrollView
                 isBackgroundVisible: true
                 delegateWidth: 332
-                delegateHeight: 80
-                statisticsChartWidth: 401
-                statisticsChartHeight: 280
+                delegateHeight: 90
+                statisticsChartWidth: 420
+                statisticsChartHeight: 240
             }
         }
     ]

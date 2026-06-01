@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/modules/webgpu/gpu_shader_module.h"
 
 #include "base/numerics/clamped_math.h"
@@ -35,6 +30,14 @@ GPUShaderModule* GPUShaderModule::Create(
   const WTF::String& wtf_wgsl_code = webgpu_desc->code();
   std::string wgsl_code = wtf_wgsl_code.Utf8();
   wgsl_desc.code = wgsl_code.c_str();
+
+  wgpu::ShaderModuleCompilationOptions compilation_options = {};
+  if (webgpu_desc->hasStrictMath() &&
+      device->GetHandle().HasFeature(
+          wgpu::FeatureName::ShaderModuleCompilationOptions)) {
+    compilation_options.strictMath = webgpu_desc->strictMath();
+    wgsl_desc.nextInChain = &compilation_options;
+  }
 
   wgpu::ShaderModuleDescriptor dawn_desc = {};
   dawn_desc.nextInChain = &wgsl_desc;
@@ -67,7 +70,8 @@ GPUShaderModule* GPUShaderModule::Create(
   //
   // TODO(crbug.com/dawn/2367): Get a real memory estimate from Tint.
   base::ClampedNumeric<int32_t> input_code_size = wgsl_code.size();
-  shader->tint_memory_estimate_.SetCurrentSize(input_code_size * 100);
+  shader->tint_memory_estimate_.Set(v8::Isolate::GetCurrent(),
+                                    input_code_size * 100);
 
   return shader;
 }
@@ -77,6 +81,7 @@ GPUShaderModule::GPUShaderModule(GPUDevice* device,
                                  const String& label)
     : DawnObject<wgpu::ShaderModule>(device, std::move(shader_module), label) {}
 
+// TODO(crbug.com/351564777): should be UNSAFE_BUFFER_USAGE
 void GPUShaderModule::OnCompilationInfoCallback(
     ScriptPromiseResolver<GPUCompilationInfo>* resolver,
     wgpu::CompilationInfoRequestStatus status,
@@ -85,21 +90,9 @@ void GPUShaderModule::OnCompilationInfoCallback(
     const char* message = nullptr;
     switch (status) {
       case wgpu::CompilationInfoRequestStatus::Success:
-        NOTREACHED_IN_MIGRATION();
-        break;
-      case wgpu::CompilationInfoRequestStatus::Error:
-        message = "Unexpected error in getCompilationInfo";
-        break;
-      case wgpu::CompilationInfoRequestStatus::DeviceLost:
-        message =
-            "Device lost during getCompilationInfo (do not use this error for "
-            "recovery - it is NOT guaranteed to happen on device loss)";
-        break;
+        NOTREACHED();
       case wgpu::CompilationInfoRequestStatus::InstanceDropped:
         message = "Instance dropped error in getCompilationInfo";
-        break;
-      case wgpu::CompilationInfoRequestStatus::Unknown:
-        message = "Unknown failure in getCompilationInfo";
         break;
     }
     resolver->RejectWithDOMException(DOMExceptionCode::kOperationError,
@@ -110,15 +103,21 @@ void GPUShaderModule::OnCompilationInfoCallback(
   // Temporarily immediately create the CompilationInfo info and resolve the
   // promise.
   GPUCompilationInfo* result = MakeGarbageCollected<GPUCompilationInfo>();
-  for (uint32_t i = 0; i < info->messageCount; ++i) {
-    const wgpu::CompilationMessage* message = &info->messages[i];
+  // SAFETY: Required from caller
+  const auto info_span =
+      UNSAFE_BUFFERS(base::span<const wgpu::CompilationMessage>(
+          info->messages, info->messageCount));
+  for (const auto& message : info_span) {
     result->AppendMessage(MakeGarbageCollected<GPUCompilationMessage>(
-        StringFromASCIIAndUTF8(message->message), message->type,
-        message->lineNum, message->utf16LinePos, message->utf16Offset,
-        message->utf16Length));
+        StringFromASCIIAndUTF8(message.message), message.type, message.lineNum,
+        message.utf16LinePos, message.utf16Offset, message.utf16Length));
   }
 
   resolver->Resolve(result);
+}
+
+GPUShaderModule::~GPUShaderModule() {
+  tint_memory_estimate_.Clear(v8::Isolate::GetCurrent());
 }
 
 ScriptPromise<GPUCompilationInfo> GPUShaderModule::getCompilationInfo(

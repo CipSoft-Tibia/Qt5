@@ -20,17 +20,15 @@ namespace content {
 
 namespace {
 
-FedCmRequesterFrameType ComputeRequesterFrameType(const RenderFrameHost& rfh,
-                                                  const url::Origin& requester,
-                                                  const url::Origin& embedder) {
-  // Since FedCM methods are not supported in FencedFrames, we can know whether
-  // this is a main frame by calling GetParent().
-  if (!rfh.GetParent()) {
-    return FedCmRequesterFrameType::kMainFrame;
+FedCmMetrics::NumAccounts ComputeNumMatchingAccounts(
+    size_t accounts_remaining) {
+  if (accounts_remaining == 0u) {
+    return FedCmMetrics::NumAccounts::kZero;
   }
-  return webid::IsSameSite(requester, embedder)
-             ? FedCmRequesterFrameType::kSameSiteIframe
-             : FedCmRequesterFrameType::kCrossSiteIframe;
+  if (accounts_remaining == 1u) {
+    return FedCmMetrics::NumAccounts::kOne;
+  }
+  return FedCmMetrics::NumAccounts::kMultiple;
 }
 
 }  // namespace
@@ -273,7 +271,11 @@ void FedCmMetrics::RecordRequestTokenStatus(
     const std::vector<GURL>& requested_providers,
     int num_idps_mismatch,
     const std::optional<GURL>& selected_idp_config_url,
-    const RpMode& rp_mode) {
+    const RpMode& rp_mode,
+    std::optional<FedCmUseOtherAccountResult> use_other_account_result,
+    std::optional<FedCmVerifyingDialogResult> verifying_dialog_result,
+    FedCmThirdPartyCookiesStatus tpc_status,
+    const FedCmRequesterFrameType& requester_frame_type) {
   // The following check is to avoid double recording in the following scenario:
   // 1. The request has failed but we have not yet rejected the promise, e.g.
   // when the API is disabled. We record a metric immediately but only post a
@@ -300,6 +302,17 @@ void FedCmMetrics::RecordRequestTokenStatus(
     ukm_builder.SetNumIdpsRequested(num_idps_requested);
     ukm_builder.SetNumIdpsMismatch(num_idps_mismatch);
     ukm_builder.SetRpMode(static_cast<int>(rp_mode));
+    ukm_builder.SetThirdPartyCookiesStatus(
+        std::underlying_type_t<FedCmThirdPartyCookiesStatus>(tpc_status));
+    if (use_other_account_result.has_value()) {
+      ukm_builder.SetUseOtherAccountResult(
+          static_cast<int>(*use_other_account_result));
+    }
+    if (verifying_dialog_result.has_value()) {
+      ukm_builder.SetVerifyingDialogResult(
+          static_cast<int>(*verifying_dialog_result));
+    }
+    ukm_builder.SetFrameType(static_cast<int>(requester_frame_type));
     ukm_builder.SetFedCmSessionID(session_id_);
     ukm_builder.Record(ukm::UkmRecorder::Get());
   };
@@ -327,6 +340,16 @@ void FedCmMetrics::RecordRequestTokenStatus(
   base::UmaHistogramEnumeration("Blink.FedCm.Status.RequestIdToken", status);
   base::UmaHistogramEnumeration("Blink.FedCm.Status.MediationRequirement",
                                 requirement);
+  base::UmaHistogramEnumeration("Blink.FedCm.RpMode", rp_mode);
+  base::UmaHistogramEnumeration("Blink.FedCm.FrameType", requester_frame_type);
+  if (use_other_account_result.has_value()) {
+    base::UmaHistogramEnumeration("Blink.FedCm.UseOtherAccountResult",
+                                  *use_other_account_result);
+  }
+  if (verifying_dialog_result.has_value()) {
+    base::UmaHistogramEnumeration("Blink.FedCm.VerifyingDialogResult",
+                                  *verifying_dialog_result);
+  }
   // Reset the `session_id_`. We expect no more metrics from this API call.
   session_id_ = -1;
 }
@@ -541,14 +564,10 @@ void FedCmMetrics::RecordAccountsRequestSent(const GURL& provider_url) {
 void FedCmMetrics::RecordDisconnectMetrics(
     FedCmDisconnectStatus status,
     std::optional<base::TimeDelta> duration,
-    const RenderFrameHost& rfh,
-    const url::Origin& requester,
-    const url::Origin& embedder,
+    const FedCmRequesterFrameType& requester_frame_type,
     const GURL& provider_url,
     int disconnect_session_id) {
   DCHECK_GT(disconnect_session_id, 0);
-  FedCmRequesterFrameType requester_frame_type =
-      ComputeRequesterFrameType(rfh, requester, embedder);
   auto RecordUkm = [&](auto& ukm_builder) {
     ukm_builder.SetStatus_Disconnect(static_cast<int>(status));
     ukm_builder.SetDisconnect_FrameType(static_cast<int>(requester_frame_type));
@@ -653,14 +672,14 @@ void FedCmMetrics::RecordMultipleRequestsRpMode(
     const std::vector<GURL>& requested_providers) {
   DCHECK_GT(session_id_, 0);
   FedCmMultipleRequestsRpMode status;
-  if (pending_request_rp_mode == blink::mojom::RpMode::kWidget) {
-    status = new_request_rp_mode == blink::mojom::RpMode::kWidget
-                 ? FedCmMultipleRequestsRpMode::kWidgetThenWidget
-                 : FedCmMultipleRequestsRpMode::kWidgetThenButton;
+  if (pending_request_rp_mode == blink::mojom::RpMode::kPassive) {
+    status = new_request_rp_mode == blink::mojom::RpMode::kPassive
+                 ? FedCmMultipleRequestsRpMode::kPassiveThenPassive
+                 : FedCmMultipleRequestsRpMode::kPassiveThenActive;
   } else {
-    status = new_request_rp_mode == blink::mojom::RpMode::kWidget
-                 ? FedCmMultipleRequestsRpMode::kButtonThenWidget
-                 : FedCmMultipleRequestsRpMode::kButtonThenButton;
+    status = new_request_rp_mode == blink::mojom::RpMode::kPassive
+                 ? FedCmMultipleRequestsRpMode::kActiveThenPassive
+                 : FedCmMultipleRequestsRpMode::kActiveThenActive;
   }
   auto RecordUkm = [&](auto& ukm_builder) {
     ukm_builder.SetMultipleRequestsRpMode(static_cast<int>(status));
@@ -679,7 +698,7 @@ void FedCmMetrics::RecordMultipleRequestsRpMode(
   base::UmaHistogramEnumeration("Blink.FedCm.MultipleRequestsRpMode", status);
 }
 
-void FedCmMetrics::RecordTimeBetweenUserInfoAndButtonModeAPI(
+void FedCmMetrics::RecordTimeBetweenUserInfoAndActiveModeAPI(
     base::TimeDelta duration) {
   DCHECK_GT(session_id_, 0);
   auto RecordUkm = [&](auto& ukm_builder) {
@@ -695,6 +714,45 @@ void FedCmMetrics::RecordTimeBetweenUserInfoAndButtonModeAPI(
                                 duration);
 }
 
+void FedCmMetrics::RecordNumMatchingAccounts(size_t accounts_remaining,
+                                             const std::string& filter_type) {
+  FedCmMetrics::NumAccounts num_matching =
+      ComputeNumMatchingAccounts(accounts_remaining);
+  base::UmaHistogramEnumeration(
+      "Blink.FedCm." + filter_type + ".NumMatchingAccounts", num_matching);
+
+  ukm::builders::Blink_FedCm fedcm_builder(page_source_id_);
+  if (filter_type == "LoginHint") {
+    fedcm_builder.SetLoginHint_NumMatchingAccounts(
+        static_cast<int>(num_matching));
+  } else if (filter_type == "AccountLabel") {
+    fedcm_builder.SetAccountLabel_NumMatchingAccounts(
+        static_cast<int>(num_matching));
+  } else if (filter_type == "DomainHint") {
+    fedcm_builder.SetDomainHint_NumMatchingAccounts(
+        static_cast<int>(num_matching));
+  } else {
+    NOTREACHED();
+  }
+  fedcm_builder.SetFedCmSessionID(session_id_);
+  fedcm_builder.Record(ukm::UkmRecorder::Get());
+}
+
+void FedCmMetrics::RecordMultipleRequestsFromDifferentIdPs(
+    bool from_different_idps) {
+  DCHECK_GT(session_id_, 0);
+  auto RecordUkm = [&](auto& ukm_builder) {
+    ukm_builder.SetMultipleRequestsFromDifferentIdPs(from_different_idps);
+    ukm_builder.SetFedCmSessionID(session_id_);
+    ukm_builder.Record(ukm::UkmRecorder::Get());
+  };
+  ukm::builders::Blink_FedCm fedcm_builder(page_source_id_);
+  RecordUkm(fedcm_builder);
+
+  base::UmaHistogramBoolean("Blink.FedCm.MultipleRequestsFromDifferentIdPs",
+                            from_different_idps);
+}
+
 ukm::SourceId FedCmMetrics::GetOrCreateProviderSourceId(const GURL& provider) {
   auto it = provider_source_ids_.find(provider);
   if (it != provider_source_ids_.end()) {
@@ -707,21 +765,13 @@ ukm::SourceId FedCmMetrics::GetOrCreateProviderSourceId(const GURL& provider) {
   return source_id;
 }
 
-void RecordPreventSilentAccess(RenderFrameHost& rfh,
-                               const url::Origin& requester,
-                               const url::Origin& embedder) {
-  FedCmRequesterFrameType requester_frame_type =
-      ComputeRequesterFrameType(rfh, requester, embedder);
+void RecordPreventSilentAccess(
+    const FedCmRequesterFrameType& requester_frame_type,
+    int source_id) {
   base::UmaHistogramEnumeration("Blink.FedCm.PreventSilentAccessFrameType",
                                 requester_frame_type);
 
-  // Ensure the lifecycle state as GetPageUkmSourceId doesn't support the
-  // prerendering page. As FederatedAithRequest runs behind the
-  // BrowserInterfaceBinders, the service doesn't receive any request while
-  // prerendering, and the CHECK should always meet the condition.
-  CHECK(
-      !rfh.IsInLifecycleState(RenderFrameHost::LifecycleState::kPrerendering));
-  ukm::builders::Blink_FedCm ukm_builder(rfh.GetPageUkmSourceId());
+  ukm::builders::Blink_FedCm ukm_builder(source_id);
   ukm_builder.SetPreventSilentAccessFrameType(
       static_cast<int>(requester_frame_type));
   ukm_builder.Record(ukm::UkmRecorder::Get());
@@ -775,6 +825,11 @@ void RecordReadyToShowAccountsSize(int size) {
   base::UmaHistogramCustomCounts("Blink.FedCm.AccountsSize.ReadyToShow", size,
                                  /*min=*/1,
                                  /*exclusive_max=*/10, /*buckets=*/10);
+}
+
+void RecordIdentityProvidersCount(int count) {
+  CHECK_GT(count, 0);
+  base::UmaHistogramCounts100("Blink.FedCm.IdentityProvidersCount", count);
 }
 
 }  // namespace content

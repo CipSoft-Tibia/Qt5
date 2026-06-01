@@ -337,7 +337,7 @@ const CPDFSDK_Widget* GetWidgetOfTypes(
 
 const CPDFSDK_Widget* GetRadioButtonOrCheckBoxWidget(FPDF_FORMHANDLE handle,
                                                      FPDF_ANNOTATION annot) {
-  constexpr std::array<CPDF_FormField::Type, 2> kAllowedTypes = {
+  static constexpr std::array<CPDF_FormField::Type, 2> kAllowedTypes = {
       CPDF_FormField::kCheckBox, CPDF_FormField::kRadioButton};
   return GetWidgetOfTypes(handle, annot, kAllowedTypes);
 }
@@ -1113,7 +1113,7 @@ FPDFAnnot_SetAP(FPDF_ANNOTATION annot,
   // Annotation object's non-empty bounding rect will be used as the /BBox
   // for the associated /XObject object
   CFX_FloatRect rect = pAnnotDict->GetRectFor(pdfium::annotation::kRect);
-  constexpr float kMinSize = 0.000001f;
+  static constexpr float kMinSize = 0.000001f;
   if (rect.Width() < kMinSize || rect.Height() < kMinSize) {
     return false;
   }
@@ -1317,8 +1317,11 @@ FPDFAnnot_GetFormFieldValue(FPDF_FORMHANDLE hHandle,
 
 FPDF_EXPORT int FPDF_CALLCONV FPDFAnnot_GetOptionCount(FPDF_FORMHANDLE hHandle,
                                                        FPDF_ANNOTATION annot) {
-  const CPDF_FormField* pFormField = GetFormField(hHandle, annot);
-  return pFormField ? pFormField->CountOptions() : -1;
+  const CPDF_FormField* form_field = GetFormField(hHandle, annot);
+  if (!form_field || !form_field->HasOptField()) {
+    return -1;
+  }
+  return form_field->CountOptions();
 }
 
 FPDF_EXPORT unsigned long FPDF_CALLCONV
@@ -1327,16 +1330,19 @@ FPDFAnnot_GetOptionLabel(FPDF_FORMHANDLE hHandle,
                          int index,
                          FPDF_WCHAR* buffer,
                          unsigned long buflen) {
-  if (index < 0)
+  if (index < 0) {
     return 0;
+  }
 
-  const CPDF_FormField* pFormField = GetFormField(hHandle, annot);
-  if (!pFormField || index >= pFormField->CountOptions())
+  const CPDF_FormField* form_field = GetFormField(hHandle, annot);
+  if (!form_field || !form_field->HasOptField() ||
+      index >= form_field->CountOptions()) {
     return 0;
+  }
 
   // SAFETY: required from caller.
   return Utf16EncodeMaybeCopyAndReturnLength(
-      pFormField->GetOptionLabel(index),
+      form_field->GetOptionLabel(index),
       UNSAFE_BUFFERS(SpanFromFPDFApiArgs(buffer, buflen)));
 }
 

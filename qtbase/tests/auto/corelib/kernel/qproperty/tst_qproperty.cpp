@@ -7,6 +7,7 @@
 #include <qproperty.h>
 #include <private/qproperty_p.h>
 #include <private/qobject_p.h>
+#include <private/qcomparisontesthelper_p.h>
 
 #if __has_include(<source_location>) && __cplusplus >= 202002L && !defined(Q_QDOC)
 #include <source_location>
@@ -71,6 +72,7 @@ private slots:
     void qobjectBindableManualNotify();
     void qobjectBindableReallocatedBindingStorage();
     void qobjectBindableSignalTakingNewValue();
+    void bindableStateAfterThreadRestart();
 
     void testNewStuff();
     void qobjectObservers();
@@ -81,6 +83,9 @@ private slots:
     void noDoubleCapture();
     void compatPropertyNoDobuleNotification();
     void compatPropertySignals();
+
+    void compareAgainstValueType();
+    void compareAgainstDifferentType();
 
     void noFakeDependencies();
 #if QT_CONFIG(thread)
@@ -111,6 +116,8 @@ private slots:
     void propertyUpdateViaSignaledProperty();
 
     void derefFromObserver();
+
+    void changeSignalIsNotADependency();
 };
 
 namespace {
@@ -1354,6 +1361,56 @@ void tst_QProperty::qobjectBindableSignalTakingNewValue()
     QCOMPARE(newValue, 3);
 }
 
+class TestWorker : public QObject
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE int work() {
+        // calling value will access the bindingStatus to see if we are in a binding
+        int old = testProp.value();
+        testProp.setValue(old+1);
+        return old;
+    }
+
+private:
+    Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(TestWorker, int, testProp, 0);
+};
+
+void tst_QProperty::bindableStateAfterThreadRestart()
+{
+    auto workerThread = new QThread(this);
+    auto worker = std::unique_ptr<TestWorker, QScopedPointerDeleteLater>(new TestWorker);
+    worker->moveToThread(workerThread);
+    workerThread->start();
+    int returnValue = -1;
+    QMetaObject::invokeMethod(worker.get(), &TestWorker::work, Qt::BlockingQueuedConnection,
+                              qReturnArg(returnValue));
+    QCOMPARE(returnValue, 0);
+    workerThread->quit();
+    workerThread->wait(); // the native thread is gone now
+
+    // accessing a property should work even if there is no actively running native thread for its QThread
+    returnValue = worker->work();
+    QCOMPARE(returnValue, 1);
+
+    // it should also work if we restart the thread
+    workerThread->start();
+    QVERIFY(workerThread->isRunning());
+    QMetaObject::invokeMethod(worker.get(), &TestWorker::work, Qt::BlockingQueuedConnection,
+                              qReturnArg(returnValue));
+    QCOMPARE(returnValue, 2);
+
+    // accessing a property should work even if the thread is gone completely
+    workerThread->quit();
+    workerThread->wait();
+    delete workerThread;
+    returnValue = worker->work();
+    QCOMPARE(returnValue, 3);
+
+    // deleteLater no longer works, because the thread+eventloop are gone
+    delete worker.release();
+}
+
 void tst_QProperty::testNewStuff()
 {
     MyQObject testReadOnly;
@@ -1704,6 +1761,11 @@ private:
 
 void tst_QProperty::compatPropertyNoDobuleNotification()
 {
+    QTest::ignoreMessage(
+            QtWarningMsg, "Property has a custom getter and also a change signal with arguments. "
+                          "This requires the getter to be called to retrieve the argument, "
+                          "possibly creating spurious binding dependencies");
+
     CompatPropertyTester tester;
     int counter = 0;
     QProperty<int> iprop {1};
@@ -1715,6 +1777,10 @@ void tst_QProperty::compatPropertyNoDobuleNotification()
 
 void tst_QProperty::compatPropertySignals()
 {
+    QTest::ignoreMessage(
+            QtWarningMsg, "Property has a custom getter and also a change signal with arguments. "
+                          "This requires the getter to be called to retrieve the argument, "
+                          "possibly creating spurious binding dependencies");
     CompatPropertyTester tester;
 
     // Compat property with signal. Signal has parameter.
@@ -1777,6 +1843,51 @@ void tst_QProperty::compatPropertySignals()
     QCOMPARE(arguments.size(), 1);
     QCOMPARE(arguments.at(0).metaType().id(), QMetaType::Int);
     QCOMPARE(arguments.at(0).toInt(), 42);
+}
+
+struct CompareTestObject : QObject{
+    Q_OBJECT
+public:
+    CompareTestObject(const QVariantList &l) { varList = l; }
+    Q_OBJECT_BINDABLE_PROPERTY(CompareTestObject, QVariantList, varList)
+};
+
+
+void tst_QProperty::compareAgainstValueType()
+{
+    {
+        // compile time checks
+        QTestPrivate::testEqualityOperatorsCompile<QProperty<QVariantList>>();
+        QTestPrivate::testEqualityOperatorsCompile<QProperty<QVariantList>, QVariantList>();
+
+        using ObjectBindableProperty = decltype(std::declval<CompareTestObject>().varList);
+
+        QTestPrivate::testEqualityOperatorsCompile<ObjectBindableProperty>();
+        QTestPrivate::testEqualityOperatorsCompile<ObjectBindableProperty, QVariantList>();
+    }
+
+    QVariantList vl {1, QString(), QByteArray {}};
+    QProperty<QVariantList> vlProp { vl };
+    CompareTestObject o { vl };
+
+    QCOMPARE_EQ(vl, vlProp);
+    QCOMPARE_EQ(vl, o.varList);
+
+    vl.pop_back();
+    QCOMPARE_NE(vl, vlProp);
+    QCOMPARE_NE(vl, o.varList);
+}
+
+void tst_QProperty::compareAgainstDifferentType()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QProperty<qsizetype>, int>();
+    QTestPrivate::testEqualityOperatorsCompile<QProperty<qsizetype>, double>();
+
+    QProperty<qsizetype> p1{1};
+    QCOMPARE_EQ(p1, 1);
+    QCOMPARE_EQ(1, p1);
+    QCOMPARE_NE(p1, 2.0);
+    QCOMPARE_NE(2.0, p1);
 }
 
 class FakeDependencyCreator : public QObject
@@ -2640,6 +2751,21 @@ void tst_QProperty::derefFromObserver()
     source = 26;
     QCOMPARE(triggered, 2);
     QCOMPARE(target, 8);
+}
+
+void tst_QProperty::changeSignalIsNotADependency()
+{
+    int counter = 0;
+    QObject foo;
+    QProperty<int> bar;
+    bar.setBinding([&]() {
+        foo.setObjectName("hello"_L1);
+        return ++counter;
+    });
+
+    QCOMPARE(bar.value(), 1);
+    foo.setObjectName("world"_L1);
+    QCOMPARE(bar.value(), 1);
 }
 
 QTEST_MAIN(tst_QProperty);

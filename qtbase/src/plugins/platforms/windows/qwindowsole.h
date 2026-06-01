@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSOLE_H
 #define QWINDOWSOLE_H
@@ -29,17 +30,17 @@ public:
     DWORD reportedPerformedEffect() const;
 
     // IDataObject methods
-    STDMETHOD(GetData)(LPFORMATETC pformatetcIn, LPSTGMEDIUM pmedium) override;
-    STDMETHOD(GetDataHere)(LPFORMATETC pformatetc, LPSTGMEDIUM pmedium) override;
-    STDMETHOD(QueryGetData)(LPFORMATETC pformatetc) override;
-    STDMETHOD(GetCanonicalFormatEtc)(LPFORMATETC pformatetc, LPFORMATETC pformatetcOut) override;
-    STDMETHOD(SetData)(LPFORMATETC pformatetc, STGMEDIUM FAR *pmedium, BOOL fRelease) override;
-    STDMETHOD(EnumFormatEtc)(DWORD dwDirection, LPENUMFORMATETC FAR *ppenumFormatEtc) override;
+    STDMETHOD(GetData)(LPFORMATETC pformatetcIn, LPSTGMEDIUM pmedium) noexcept override;
+    STDMETHOD(GetDataHere)(LPFORMATETC pformatetc, LPSTGMEDIUM pmedium) noexcept override;
+    STDMETHOD(QueryGetData)(LPFORMATETC pformatetc) noexcept override;
+    STDMETHOD(GetCanonicalFormatEtc)(LPFORMATETC pformatetc, LPFORMATETC pformatetcOut) noexcept override;
+    STDMETHOD(SetData)(LPFORMATETC pformatetc, STGMEDIUM FAR *pmedium, BOOL fRelease) noexcept override;
+    STDMETHOD(EnumFormatEtc)(DWORD dwDirection, LPENUMFORMATETC FAR *ppenumFormatEtc) noexcept override;
     STDMETHOD(DAdvise)
     (FORMATETC FAR *pFormatetc, DWORD advf, LPADVISESINK pAdvSink,
-     DWORD FAR *pdwConnection) override;
-    STDMETHOD(DUnadvise)(DWORD dwConnection) override;
-    STDMETHOD(EnumDAdvise)(LPENUMSTATDATA FAR *ppenumAdvise) override;
+     DWORD FAR *pdwConnection) noexcept override;
+    STDMETHOD(DUnadvise)(DWORD dwConnection) noexcept override;
+    STDMETHOD(EnumDAdvise)(LPENUMSTATDATA FAR *ppenumAdvise) noexcept override;
 
 private:
     QPointer<QMimeData> data;
@@ -57,10 +58,10 @@ public:
     bool isNull() const;
 
     // IEnumFORMATETC methods
-    STDMETHOD(Next)(ULONG celt, LPFORMATETC rgelt, ULONG FAR *pceltFetched) override;
-    STDMETHOD(Skip)(ULONG celt) override;
-    STDMETHOD(Reset)(void) override;
-    STDMETHOD(Clone)(LPENUMFORMATETC FAR *newEnum) override;
+    STDMETHOD(Next)(ULONG celt, LPFORMATETC rgelt, ULONG FAR *pceltFetched) noexcept override;
+    STDMETHOD(Skip)(ULONG celt) noexcept override;
+    STDMETHOD(Reset)(void) noexcept override;
+    STDMETHOD(Clone)(LPENUMFORMATETC FAR *newEnum) noexcept override;
 
 private:
     bool copyFormatEtc(LPFORMATETC dest, const FORMATETC *src) const;

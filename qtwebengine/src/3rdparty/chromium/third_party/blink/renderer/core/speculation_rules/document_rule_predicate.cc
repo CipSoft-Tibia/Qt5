@@ -11,7 +11,6 @@
 #include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 #include "third_party/blink/renderer/core/dom/element.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
@@ -35,8 +34,8 @@ class Conjunction : public DocumentRulePredicate {
       : clauses_(std::move(clauses)) {}
   ~Conjunction() override = default;
 
-  bool Matches(const HTMLAnchorElement& el) const override {
-    return base::ranges::all_of(clauses_, [&](DocumentRulePredicate* clause) {
+  bool Matches(const HTMLAnchorElementBase& el) const override {
+    return std::ranges::all_of(clauses_, [&](DocumentRulePredicate* clause) {
       return clause->Matches(el);
     });
   }
@@ -85,8 +84,8 @@ class Disjunction : public DocumentRulePredicate {
       : clauses_(std::move(clauses)) {}
   ~Disjunction() override = default;
 
-  bool Matches(const HTMLAnchorElement& el) const override {
-    return base::ranges::any_of(clauses_, [&](DocumentRulePredicate* clause) {
+  bool Matches(const HTMLAnchorElementBase& el) const override {
+    return std::ranges::any_of(clauses_, [&](DocumentRulePredicate* clause) {
       return clause->Matches(el);
     });
   }
@@ -134,7 +133,7 @@ class Negation : public DocumentRulePredicate {
   explicit Negation(DocumentRulePredicate* clause) : clause_(clause) {}
   ~Negation() override = default;
 
-  bool Matches(const HTMLAnchorElement& el) const override {
+  bool Matches(const HTMLAnchorElementBase& el) const override {
     return !clause_->Matches(el);
   }
 
@@ -179,7 +178,7 @@ class URLPatternPredicate : public DocumentRulePredicate {
       : patterns_(std::move(patterns)), execution_context_(execution_context) {}
   ~URLPatternPredicate() override = default;
 
-  bool Matches(const HTMLAnchorElement& el) const override {
+  bool Matches(const HTMLAnchorElementBase& el) const override {
     // Let href be the result of running el’s href getter steps.
     const KURL href = el.HrefURL();
     // For each pattern of predicate’s patterns:
@@ -232,7 +231,7 @@ class CSSSelectorPredicate : public DocumentRulePredicate {
   explicit CSSSelectorPredicate(HeapVector<Member<StyleRule>> style_rules)
       : style_rules_(std::move(style_rules)) {}
 
-  bool Matches(const HTMLAnchorElement& link) const override {
+  bool Matches(const HTMLAnchorElementBase& link) const override {
     DCHECK(!link.GetDocument().NeedsLayoutTreeUpdate());
     const ComputedStyle* computed_style = link.GetComputedStyle();
     DCHECK(computed_style);
@@ -548,10 +547,10 @@ DocumentRulePredicate* DocumentRulePredicate::Parse(
     for (JSONValue* raw_pattern : raw_patterns) {
       URLPattern* pattern =
           ParseRawPattern(execution_context->GetIsolate(), raw_pattern,
-                          base_url, exception_state, out_error);
-      // If those steps throw, catch the exception and return null.
-      if (exception_state.HadException()) {
-        exception_state.ClearException();
+                          base_url, IGNORE_EXCEPTION, out_error);
+      // If those steps throw, `pattern` will be null. Ignore the exception and
+      // return null.
+      if (!pattern) {
         SetParseErrorMessage(
             out_error,
             String::Format(
@@ -559,8 +558,6 @@ DocumentRulePredicate* DocumentRulePredicate::Parse(
                 raw_pattern->ToJSONString().Latin1().c_str()));
         return nullptr;
       }
-      if (!pattern)
-        return nullptr;
       // Append pattern to patterns.
       patterns.push_back(pattern);
     }
@@ -587,7 +584,8 @@ DocumentRulePredicate* DocumentRulePredicate::Parse(
     HeapVector<Member<StyleRule>> selectors;
     HeapVector<CSSSelector> arena;
     CSSPropertyValueSet* empty_properties =
-        ImmutableCSSPropertyValueSet::Create(nullptr, 0, kUASheetMode);
+        ImmutableCSSPropertyValueSet::Create(base::span<CSSPropertyValue>(),
+                                             kUASheetMode);
     CSSParserContext* css_parser_context =
         MakeGarbageCollected<CSSParserContext>(*execution_context);
     for (auto* raw_selector : raw_selectors) {
@@ -602,10 +600,10 @@ DocumentRulePredicate* DocumentRulePredicate::Parse(
 
       // Parse a selector from rawSelector. If the result is failure, then
       // return null. Otherwise, let selector be the result.
-      base::span<CSSSelector> selector_vector = CSSParser::ParseSelector(
-          css_parser_context, CSSNestingType::kNone,
-          /*parent_rule_for_nesting=*/nullptr, /*is_within_scope=*/false,
-          nullptr, raw_selector_string, arena);
+      base::span<CSSSelector> selector_vector =
+          CSSParser::ParseSelector(css_parser_context, CSSNestingType::kNone,
+                                   /*parent_rule_for_nesting=*/nullptr, nullptr,
+                                   raw_selector_string, arena);
       if (selector_vector.empty()) {
         SetParseErrorMessage(
             out_error, String::Format("\"%s\" is not a valid selector.",
@@ -633,20 +631,17 @@ DocumentRulePredicate* DocumentRulePredicate::MakeDefaultPredicate() {
 
 HeapVector<Member<DocumentRulePredicate>>
 DocumentRulePredicate::GetSubPredicatesForTesting() const {
-  NOTREACHED_IN_MIGRATION();
-  return {};
+  NOTREACHED();
 }
 
 HeapVector<Member<URLPattern>> DocumentRulePredicate::GetURLPatternsForTesting()
     const {
-  NOTREACHED_IN_MIGRATION();
-  return {};
+  NOTREACHED();
 }
 
 HeapVector<Member<StyleRule>> DocumentRulePredicate::GetStyleRulesForTesting()
     const {
-  NOTREACHED_IN_MIGRATION();
-  return {};
+  NOTREACHED();
 }
 
 void DocumentRulePredicate::Trace(Visitor*) const {}

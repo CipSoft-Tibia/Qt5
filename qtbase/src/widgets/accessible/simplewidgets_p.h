@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef SIMPLEWIDGETS_H
 #define SIMPLEWIDGETS_H
@@ -32,7 +33,7 @@ class QMessageBox;
 class QProgressBar;
 
 #if QT_CONFIG(abstractbutton)
-class QAccessibleButton : public QAccessibleWidget
+class QAccessibleButton : public QAccessibleWidgetV2
 {
     Q_DECLARE_TR_FUNCTIONS(QAccessibleButton)
 public:
@@ -78,7 +79,7 @@ protected:
 };
 #endif // QT_CONFIG(toolbutton)
 
-class QAccessibleDisplay : public QAccessibleWidget, public QAccessibleImageInterface
+class QAccessibleDisplay : public QAccessibleWidgetV2, public QAccessibleImageInterface
 {
 public:
     explicit QAccessibleDisplay(QWidget *w, QAccessible::Role role = QAccessible::StaticText);
@@ -98,7 +99,7 @@ public:
 };
 
 #if QT_CONFIG(groupbox)
-class QAccessibleGroupBox : public QAccessibleWidget
+class QAccessibleGroupBox : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleGroupBox(QWidget *w);
@@ -121,7 +122,7 @@ private:
 #endif
 
 #if QT_CONFIG(lineedit)
-class QAccessibleLineEdit : public QAccessibleWidget, public QAccessibleTextInterface, public QAccessibleEditableTextInterface
+class QAccessibleLineEdit : public QAccessibleWidgetV2, public QAccessibleTextInterface, public QAccessibleEditableTextInterface
 {
 public:
     explicit QAccessibleLineEdit(QWidget *o, const QString &name = QString());
@@ -182,7 +183,7 @@ protected:
 #endif
 
 class QWindowContainer;
-class QAccessibleWindowContainer : public QAccessibleWidget
+class QAccessibleWindowContainer : public QAccessibleWidgetV2
 {
 public:
     QAccessibleWindowContainer(QWidget *w);
@@ -195,7 +196,7 @@ private:
 };
 
 #if QT_CONFIG(messagebox)
-class QAccessibleMessageBox : public QAccessibleWidget
+class QAccessibleMessageBox : public QAccessibleWidgetV2
 {
 public:
     explicit QAccessibleMessageBox(QWidget *widget);

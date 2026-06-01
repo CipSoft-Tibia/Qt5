@@ -292,6 +292,18 @@ private:
 Q_DECLARE_OPERATORS_FOR_FLAGS(QProcess::UnixProcessFlags)
 #endif
 
+#else // !QT_CONFIG(process)
+
+class QProcess
+{
+public:
+    Q_CORE_EXPORT static QStringList splitCommand(QStringView command);
+
+private:
+    QProcess() = delete;
+    Q_DISABLE_COPY_MOVE(QProcess)
+};
+
 #endif // QT_CONFIG(process)
 
 QT_END_NAMESPACE

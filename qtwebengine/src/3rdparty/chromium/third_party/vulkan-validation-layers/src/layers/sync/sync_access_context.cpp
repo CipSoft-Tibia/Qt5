@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2019-2024 Valve Corporation
- * Copyright (c) 2019-2024 LunarG, Inc.
+ * Copyright (c) 2019-2025 Valve Corporation
+ * Copyright (c) 2019-2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-#include <cinttypes>
 #include "state_tracker/buffer_state.h"
 #include "state_tracker/video_session_state.h"
 #include "state_tracker/render_pass_state.h"
@@ -26,31 +25,31 @@ bool SimpleBinding(const vvl::Bindable &bindable) { return !bindable.sparse && b
 VkDeviceSize ResourceBaseAddress(const vvl::Buffer &buffer) { return buffer.GetFakeBaseAddress(); }
 
 class HazardDetector {
-    const SyncStageAccessInfoType &usage_info_;
+    const SyncAccessInfo &access_info_;
 
   public:
-    HazardResult Detect(const ResourceAccessRangeMap::const_iterator &pos) const { return pos->second.DetectHazard(usage_info_); }
+    HazardResult Detect(const ResourceAccessRangeMap::const_iterator &pos) const { return pos->second.DetectHazard(access_info_); }
     HazardResult DetectAsync(const ResourceAccessRangeMap::const_iterator &pos, ResourceUsageTag start_tag,
                              QueueId queue_id) const {
-        return pos->second.DetectAsyncHazard(usage_info_, start_tag, queue_id);
+        return pos->second.DetectAsyncHazard(access_info_, start_tag, queue_id);
     }
-    explicit HazardDetector(SyncStageAccessIndex usage_index) : usage_info_(SyncStageAccess::UsageInfo(usage_index)) {}
+    explicit HazardDetector(SyncAccessIndex access_index) : access_info_(SyncStageAccess::AccessInfo(access_index)) {}
 };
 
 class HazardDetectorWithOrdering {
-    const SyncStageAccessInfoType &usage_info_;
+    const SyncAccessInfo &access_info_;
     const SyncOrdering ordering_rule_;
 
   public:
     HazardResult Detect(const ResourceAccessRangeMap::const_iterator &pos) const {
-        return pos->second.DetectHazard(usage_info_, ordering_rule_, kQueueIdInvalid);
+        return pos->second.DetectHazard(access_info_, ordering_rule_, kQueueIdInvalid);
     }
     HazardResult DetectAsync(const ResourceAccessRangeMap::const_iterator &pos, ResourceUsageTag start_tag,
                              QueueId queue_id) const {
-        return pos->second.DetectAsyncHazard(usage_info_, start_tag, queue_id);
+        return pos->second.DetectAsyncHazard(access_info_, start_tag, queue_id);
     }
-    HazardDetectorWithOrdering(SyncStageAccessIndex usage_index, SyncOrdering ordering)
-        : usage_info_(SyncStageAccess::UsageInfo(usage_index)), ordering_rule_(ordering) {}
+    HazardDetectorWithOrdering(SyncAccessIndex access_index, SyncOrdering ordering)
+        : access_info_(SyncStageAccess::AccessInfo(access_index)), ordering_rule_(ordering) {}
 };
 
 class HazardDetectFirstUse {
@@ -179,7 +178,7 @@ void AccessContext::ResolvePreviousAccesses() {
     ResolvePreviousAccess(kFullRange, &access_state_map_, &default_state);
 }
 
-void AccessContext::UpdateAccessState(const vvl::Buffer &buffer, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
+void AccessContext::UpdateAccessState(const vvl::Buffer &buffer, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
                                       const ResourceAccessRange &range, ResourceUsageTagEx tag_ex) {
     if (current_usage == SYNC_ACCESS_INDEX_NONE) {
         return;
@@ -192,66 +191,65 @@ void AccessContext::UpdateAccessState(const vvl::Buffer &buffer, SyncStageAccess
     UpdateMemoryAccessRangeState(access_state_map_, action, range + base_address);
 }
 
-void AccessContext::UpdateAccessState(const ImageState &image, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
+void AccessContext::UpdateAccessState(const ImageState &image, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
                                       const VkImageSubresourceRange &subresource_range, const ResourceUsageTag &tag) {
     // range_gen is non-temporary to avoid an additional copy
     ImageRangeGen range_gen = image.MakeImageRangeGen(subresource_range, false);
-    UpdateAccessState(range_gen, current_usage, ordering_rule, tag);
+    UpdateAccessState(range_gen, current_usage, ordering_rule, ResourceUsageTagEx{tag});
 }
-void AccessContext::UpdateAccessState(const ImageState &image, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
+void AccessContext::UpdateAccessState(const ImageState &image, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
                                       const VkImageSubresourceRange &subresource_range, const VkOffset3D &offset,
-                                      const VkExtent3D &extent, const ResourceUsageTag tag) {
+                                      const VkExtent3D &extent, const ResourceUsageTagEx tag_ex) {
     // range_gen is non-temporary to avoid an additional copy
     ImageRangeGen range_gen = image.MakeImageRangeGen(subresource_range, offset, extent, false);
-    UpdateAccessState(range_gen, current_usage, ordering_rule, tag);
+    UpdateAccessState(range_gen, current_usage, ordering_rule, tag_ex);
 }
 
-void AccessContext::UpdateAccessState(const ImageViewState &image_view, SyncStageAccessIndex current_usage,
-                                      SyncOrdering ordering_rule, const VkOffset3D &offset, const VkExtent3D &extent,
-                                      const ResourceUsageTag tag) {
+void AccessContext::UpdateAccessState(const ImageViewState &image_view, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                                      const VkOffset3D &offset, const VkExtent3D &extent, const ResourceUsageTagEx tag_ex) {
     // range_gen is non-temporary to avoid an additional copy
     ImageRangeGen range_gen(image_view.MakeImageRangeGen(offset, extent));
-    UpdateAccessState(range_gen, current_usage, ordering_rule, tag);
+    UpdateAccessState(range_gen, current_usage, ordering_rule, tag_ex);
 }
 
-void AccessContext::UpdateAccessState(const ImageViewState &image_view, SyncStageAccessIndex current_usage,
-                                      SyncOrdering ordering_rule, ResourceUsageTag tag) {
+void AccessContext::UpdateAccessState(const ImageViewState &image_view, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                                      ResourceUsageTagEx tag_ex) {
     // Get is const, and will be copied in callee
-    UpdateAccessState(image_view.GetFullViewImageRangeGen(), current_usage, ordering_rule, tag);
+    UpdateAccessState(image_view.GetFullViewImageRangeGen(), current_usage, ordering_rule, tag_ex);
 }
 
 void AccessContext::UpdateAccessState(const AttachmentViewGen &view_gen, AttachmentViewGen::Gen gen_type,
-                                      SyncStageAccessIndex current_usage, SyncOrdering ordering_rule, const ResourceUsageTag tag) {
+                                      SyncAccessIndex current_usage, SyncOrdering ordering_rule, const ResourceUsageTag tag) {
     const std::optional<ImageRangeGen> &attachment_gen = view_gen.GetRangeGen(gen_type);
     if (attachment_gen) {
         // Value of const optional is const, and will be copied in callee
-        UpdateAccessState(*attachment_gen, current_usage, ordering_rule, tag);
+        UpdateAccessState(*attachment_gen, current_usage, ordering_rule, ResourceUsageTagEx{tag});
     }
 }
 
 void AccessContext::UpdateAccessState(const vvl::VideoSession &vs_state, const vvl::VideoPictureResource &resource,
-                                      SyncStageAccessIndex current_usage, ResourceUsageTag tag) {
+                                      SyncAccessIndex current_usage, ResourceUsageTag tag) {
     const auto image = static_cast<const ImageState *>(resource.image_state.get());
     const auto offset = resource.GetEffectiveImageOffset(vs_state);
     const auto extent = resource.GetEffectiveImageExtent(vs_state);
     ImageRangeGen range_gen(image->MakeImageRangeGen(resource.range, offset, extent, false));
-    UpdateAccessState(range_gen, current_usage, SyncOrdering::kNonAttachment, tag);
+    UpdateAccessState(range_gen, current_usage, SyncOrdering::kNonAttachment, ResourceUsageTagEx{tag});
 }
 
-void AccessContext::UpdateAccessState(ImageRangeGen &range_gen, SyncStageAccessIndex current_usage, SyncOrdering ordering_rule,
-                                      ResourceUsageTag tag) {
+void AccessContext::UpdateAccessState(ImageRangeGen &range_gen, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                                      ResourceUsageTagEx tag_ex) {
     if (current_usage == SYNC_ACCESS_INDEX_NONE) {
         return;
     }
-    UpdateMemoryAccessStateFunctor action(*this, current_usage, ordering_rule, ResourceUsageTagEx{tag});
+    UpdateMemoryAccessStateFunctor action(*this, current_usage, ordering_rule, tag_ex);
     UpdateMemoryAccessState(action, range_gen);
 }
 
-void AccessContext::UpdateAccessState(const ImageRangeGen &range_gen, SyncStageAccessIndex current_usage,
-                                      SyncOrdering ordering_rule, ResourceUsageTag tag) {
+void AccessContext::UpdateAccessState(const ImageRangeGen &range_gen, SyncAccessIndex current_usage, SyncOrdering ordering_rule,
+                                      ResourceUsageTagEx tag_ex) {
     // range_gen is non-temporary to avoid infinite call recursion
     ImageRangeGen mutable_range_gen(range_gen);
-    UpdateAccessState(mutable_range_gen, current_usage, ordering_rule, tag);
+    UpdateAccessState(mutable_range_gen, current_usage, ordering_rule, tag_ex);
 }
 
 void AccessContext::ResolveChildContexts(const std::vector<AccessContext> &contexts) {
@@ -293,11 +291,11 @@ void AccessContext::AddAsyncContext(const AccessContext *context, ResourceUsageT
     }
 }
 
-HazardResult AccessContext::DetectHazard(const vvl::Buffer &buffer, SyncStageAccessIndex usage_index,
+HazardResult AccessContext::DetectHazard(const vvl::Buffer &buffer, SyncAccessIndex access_index,
                                          const ResourceAccessRange &range) const {
     if (!SimpleBinding(buffer)) return HazardResult();
     const auto base_address = ResourceBaseAddress(buffer);
-    HazardDetector detector(usage_index);
+    HazardDetector detector(access_index);
     return DetectHazardRange(detector, (range + base_address), DetectOptions::kDetectAll);
 }
 
@@ -329,19 +327,19 @@ HazardResult AccessContext::DetectHazard(Detector &detector, const ImageState &i
     return DetectHazardGeneratedRanges(detector, range_gen, options);
 }
 
-HazardResult AccessContext::DetectHazard(const ImageState &image, SyncStageAccessIndex current_usage,
+HazardResult AccessContext::DetectHazard(const ImageState &image, SyncAccessIndex current_usage,
                                          const VkImageSubresourceRange &subresource_range, bool is_depth_sliced) const {
     HazardDetector detector(current_usage);
     return DetectHazard(detector, image, subresource_range, is_depth_sliced, DetectOptions::kDetectAll);
 }
 
-HazardResult AccessContext::DetectHazard(const ImageViewState &image_view, SyncStageAccessIndex current_usage) const {
+HazardResult AccessContext::DetectHazard(const ImageViewState &image_view, SyncAccessIndex current_usage) const {
     // Get is const, but callee will copy
     HazardDetector detector(current_usage);
     return DetectHazardGeneratedRanges(detector, image_view.GetFullViewImageRangeGen(), DetectOptions::kDetectAll);
 }
 
-HazardResult AccessContext::DetectHazard(const ImageRangeGen &ref_range_gen, SyncStageAccessIndex current_usage,
+HazardResult AccessContext::DetectHazard(const ImageRangeGen &ref_range_gen, SyncAccessIndex current_usage,
                                          const SyncOrdering ordering_rule) const {
     if (ordering_rule == SyncOrdering::kOrderingNone) {
         HazardDetector detector(current_usage);
@@ -353,7 +351,7 @@ HazardResult AccessContext::DetectHazard(const ImageRangeGen &ref_range_gen, Syn
 }
 
 HazardResult AccessContext::DetectHazard(const ImageViewState &image_view, const VkOffset3D &offset, const VkExtent3D &extent,
-                                         SyncStageAccessIndex current_usage, SyncOrdering ordering_rule) const {
+                                         SyncAccessIndex current_usage, SyncOrdering ordering_rule) const {
     // range_gen is non-temporary to avoid an additional copy
     ImageRangeGen range_gen(image_view.MakeImageRangeGen(offset, extent));
     HazardDetectorWithOrdering detector(current_usage, ordering_rule);
@@ -361,13 +359,13 @@ HazardResult AccessContext::DetectHazard(const ImageViewState &image_view, const
 }
 
 HazardResult AccessContext::DetectHazard(const AttachmentViewGen &view_gen, AttachmentViewGen::Gen gen_type,
-                                         SyncStageAccessIndex current_usage, SyncOrdering ordering_rule) const {
+                                         SyncAccessIndex current_usage, SyncOrdering ordering_rule) const {
     HazardDetectorWithOrdering detector(current_usage, ordering_rule);
     return DetectHazard(detector, view_gen, gen_type, DetectOptions::kDetectAll);
 }
 
 HazardResult AccessContext::DetectHazard(const vvl::VideoSession &vs_state, const vvl::VideoPictureResource &resource,
-                                         SyncStageAccessIndex current_usage) const {
+                                         SyncAccessIndex current_usage) const {
     const auto image = static_cast<const ImageState *>(resource.image_state.get());
     const auto offset = resource.GetEffectiveImageOffset(vs_state);
     const auto extent = resource.GetEffectiveImageExtent(vs_state);
@@ -378,7 +376,7 @@ HazardResult AccessContext::DetectHazard(const vvl::VideoSession &vs_state, cons
 
 HazardResult AccessContext::DetectHazard(const ImageState &image, const VkImageSubresourceRange &subresource_range,
                                          const VkOffset3D &offset, const VkExtent3D &extent, bool is_depth_sliced,
-                                         SyncStageAccessIndex current_usage, SyncOrdering ordering_rule) const {
+                                         SyncAccessIndex current_usage, SyncOrdering ordering_rule) const {
     if (ordering_rule == SyncOrdering::kOrderingNone) {
         HazardDetector detector(current_usage);
         return DetectHazard(detector, image, subresource_range, offset, extent, is_depth_sliced, DetectOptions::kDetectAll);
@@ -389,33 +387,31 @@ HazardResult AccessContext::DetectHazard(const ImageState &image, const VkImageS
 
 class BarrierHazardDetector {
   public:
-    BarrierHazardDetector(SyncStageAccessIndex usage_index, VkPipelineStageFlags2KHR src_exec_scope,
-                          SyncStageAccessFlags src_access_scope)
-        : usage_info_(SyncStageAccess::UsageInfo(usage_index)),
+    BarrierHazardDetector(SyncAccessIndex access_index, VkPipelineStageFlags2 src_exec_scope, SyncAccessFlags src_access_scope)
+        : access_info_(SyncStageAccess::AccessInfo(access_index)),
           src_exec_scope_(src_exec_scope),
           src_access_scope_(src_access_scope) {}
 
     HazardResult Detect(const ResourceAccessRangeMap::const_iterator &pos) const {
-        return pos->second.DetectBarrierHazard(usage_info_, kQueueIdInvalid, src_exec_scope_, src_access_scope_);
+        return pos->second.DetectBarrierHazard(access_info_, kQueueIdInvalid, src_exec_scope_, src_access_scope_);
     }
     HazardResult DetectAsync(const ResourceAccessRangeMap::const_iterator &pos, ResourceUsageTag start_tag,
                              QueueId queue_id) const {
         // Async barrier hazard detection can use the same path as the usage index is not IsRead, but is IsWrite
-        return pos->second.DetectAsyncHazard(usage_info_, start_tag, queue_id);
+        return pos->second.DetectAsyncHazard(access_info_, start_tag, queue_id);
     }
 
   private:
-    const SyncStageAccessInfoType &usage_info_;
-    VkPipelineStageFlags2KHR src_exec_scope_;
-    SyncStageAccessFlags src_access_scope_;
+    const SyncAccessInfo &access_info_;
+    VkPipelineStageFlags2 src_exec_scope_;
+    SyncAccessFlags src_access_scope_;
 };
 
 class EventBarrierHazardDetector {
   public:
-    EventBarrierHazardDetector(SyncStageAccessIndex usage_index, VkPipelineStageFlags2KHR src_exec_scope,
-                               SyncStageAccessFlags src_access_scope, const AccessContext::ScopeMap &event_scope, QueueId queue_id,
-                               ResourceUsageTag scope_tag)
-        : usage_info_(SyncStageAccess::UsageInfo(usage_index)),
+    EventBarrierHazardDetector(SyncAccessIndex access_index, VkPipelineStageFlags2 src_exec_scope, SyncAccessFlags src_access_scope,
+                               const AccessContext::ScopeMap &event_scope, QueueId queue_id, ResourceUsageTag scope_tag)
+        : access_info_(SyncStageAccess::AccessInfo(access_index)),
           src_exec_scope_(src_exec_scope),
           src_access_scope_(src_access_scope),
           event_scope_(event_scope),
@@ -437,13 +433,13 @@ class EventBarrierHazardDetector {
             if (range.begin < ScopeBegin()) {
                 if (!unscoped_tested) {
                     unscoped_tested = true;
-                    hazard = access.DetectHazard(usage_info_);
+                    hazard = access.DetectHazard(access_info_);
                 }
                 // Note: don't need to check for in_scope as AdvanceScope true means range and ScopeRange intersect.
                 // Thus a [ ScopeBegin, range.end ) will be non-empty.
                 range.begin = ScopeBegin();
             } else {  // in_scope implied that ScopeRange and range intersect
-                hazard = access.DetectBarrierHazard(usage_info_, ScopeState(), src_exec_scope_, src_access_scope_, scope_queue_id_,
+                hazard = access.DetectBarrierHazard(access_info_, ScopeState(), src_exec_scope_, src_access_scope_, scope_queue_id_,
                                                     scope_tag_);
                 if (!hazard.IsHazard()) {
                     range.begin = ScopeEnd();
@@ -452,7 +448,7 @@ class EventBarrierHazardDetector {
             }
         }
         if (range.non_empty() && !hazard.IsHazard() && !unscoped_tested) {
-            hazard = access.DetectHazard(usage_info_);
+            hazard = access.DetectHazard(access_info_);
         }
         return hazard;
     }
@@ -460,7 +456,7 @@ class EventBarrierHazardDetector {
     HazardResult DetectAsync(const ResourceAccessRangeMap::const_iterator &pos, ResourceUsageTag start_tag,
                              QueueId queue_id) const {
         // Async barrier hazard detection can use the same path as the usage index is not IsRead, but is IsWrite
-        return pos->second.DetectAsyncHazard(usage_info_, start_tag, queue_id);
+        return pos->second.DetectAsyncHazard(access_info_, start_tag, queue_id);
     }
 
   private:
@@ -486,9 +482,9 @@ class EventBarrierHazardDetector {
         return ScopeValid() && ScopeRange().intersects(range);
     }
 
-    const SyncStageAccessInfoType usage_info_;
-    VkPipelineStageFlags2KHR src_exec_scope_;
-    SyncStageAccessFlags src_access_scope_;
+    const SyncAccessInfo access_info_;
+    VkPipelineStageFlags2 src_exec_scope_;
+    SyncAccessFlags src_access_scope_;
     const AccessContext::ScopeMap &event_scope_;
     QueueId scope_queue_id_;
     const ResourceUsageTag scope_tag_;
@@ -497,27 +493,26 @@ class EventBarrierHazardDetector {
 };
 
 HazardResult AccessContext::DetectImageBarrierHazard(const ImageState &image, const VkImageSubresourceRange &subresource_range,
-                                                     VkPipelineStageFlags2KHR src_exec_scope,
-                                                     const SyncStageAccessFlags &src_access_scope, QueueId queue_id,
-                                                     const ScopeMap &scope_map, const ResourceUsageTag scope_tag,
+                                                     VkPipelineStageFlags2 src_exec_scope, const SyncAccessFlags &src_access_scope,
+                                                     QueueId queue_id, const ScopeMap &scope_map, const ResourceUsageTag scope_tag,
                                                      AccessContext::DetectOptions options) const {
-    EventBarrierHazardDetector detector(SyncStageAccessIndex::SYNC_IMAGE_LAYOUT_TRANSITION, src_exec_scope, src_access_scope,
-                                        scope_map, queue_id, scope_tag);
+    EventBarrierHazardDetector detector(SyncAccessIndex::SYNC_IMAGE_LAYOUT_TRANSITION, src_exec_scope, src_access_scope, scope_map,
+                                        queue_id, scope_tag);
     return DetectHazard(detector, image, subresource_range, false, options);
 }
 
 HazardResult AccessContext::DetectImageBarrierHazard(const AttachmentViewGen &view_gen, const SyncBarrier &barrier,
                                                      DetectOptions options) const {
-    BarrierHazardDetector detector(SyncStageAccessIndex::SYNC_IMAGE_LAYOUT_TRANSITION, barrier.src_exec_scope.exec_scope,
+    BarrierHazardDetector detector(SyncAccessIndex::SYNC_IMAGE_LAYOUT_TRANSITION, barrier.src_exec_scope.exec_scope,
                                    barrier.src_access_scope);
     return DetectHazard(detector, view_gen, AttachmentViewGen::Gen::kViewSubresource, options);
 }
 
-HazardResult AccessContext::DetectImageBarrierHazard(const ImageState &image, VkPipelineStageFlags2KHR src_exec_scope,
-                                                     const SyncStageAccessFlags &src_access_scope,
+HazardResult AccessContext::DetectImageBarrierHazard(const ImageState &image, VkPipelineStageFlags2 src_exec_scope,
+                                                     const SyncAccessFlags &src_access_scope,
                                                      const VkImageSubresourceRange &subresource_range,
                                                      const DetectOptions options) const {
-    BarrierHazardDetector detector(SyncStageAccessIndex::SYNC_IMAGE_LAYOUT_TRANSITION, src_exec_scope, src_access_scope);
+    BarrierHazardDetector detector(SyncAccessIndex::SYNC_IMAGE_LAYOUT_TRANSITION, src_exec_scope, src_access_scope);
     return DetectHazard(detector, image, subresource_range, false, options);
 }
 
@@ -538,16 +533,16 @@ void AccessContext::UpdateMemoryAccessStateFunctor::operator()(const ResourceAcc
 // hazards will be detected
 HazardResult AccessContext::DetectFirstUseHazard(QueueId queue_id, const ResourceUsageRange &tag_range,
                                                  const AccessContext &access_context) const {
-    HazardResult hazard;
     for (const auto &recorded_access : access_state_map_) {
         // Cull any entries not in the current tag range
         if (!recorded_access.second.FirstAccessInTagRange(tag_range)) continue;
         HazardDetectFirstUse detector(recorded_access.second, queue_id, tag_range);
-        hazard = access_context.DetectHazardRange(detector, recorded_access.first, DetectOptions::kDetectAll);
-        if (hazard.IsHazard()) break;
+        HazardResult hazard = access_context.DetectHazardRange(detector, recorded_access.first, DetectOptions::kDetectAll);
+        if (hazard.IsHazard()) {
+            return hazard;
+        }
     }
-
-    return hazard;
+    return {};
 }
 
 // For RenderPass time validation this is "start tag", for QueueSubmit, this is the earliest
@@ -556,17 +551,27 @@ ResourceUsageTag AccessContext::AsyncReference::StartTag() const { return (tag_ 
 
 AttachmentViewGen::AttachmentViewGen(const syncval_state::ImageViewState *image_view, const VkOffset3D &offset,
                                      const VkExtent3D &extent)
-    : view_(image_view), view_mask_(image_view->normalized_subresource_range.aspectMask), gen_store_() {
+    : view_(image_view) {
     gen_store_[Gen::kViewSubresource].emplace(image_view->GetFullViewImageRangeGen());
-    gen_store_[Gen::kRenderArea].emplace(image_view->MakeImageRangeGen(offset, extent));
 
-    const auto depth = view_mask_ & VK_IMAGE_ASPECT_DEPTH_BIT;
-    if (depth && (depth != view_mask_)) {
-        gen_store_[Gen::kDepthOnlyRenderArea].emplace(image_view->MakeImageRangeGen(offset, extent, depth));
+    const bool has_depth = vkuFormatHasDepth(image_view->create_info.format);
+    const bool has_stencil = vkuFormatHasStencil(image_view->create_info.format);
+
+    // For depth-stencil attachment, the view's aspect flags are ignored according to the spec.
+    // MakeImageRangeGen works with the aspect flags. Derive aspect from format.
+    VkImageAspectFlags override_aspect_flags = 0;
+    if (has_depth || has_stencil) {
+        override_aspect_flags |= has_depth ? VK_IMAGE_ASPECT_DEPTH_BIT : 0;
+        override_aspect_flags |= has_stencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0;
     }
-    const auto stencil = view_mask_ & VK_IMAGE_ASPECT_STENCIL_BIT;
-    if (stencil && (stencil != view_mask_)) {
-        gen_store_[Gen::kStencilOnlyRenderArea].emplace(image_view->MakeImageRangeGen(offset, extent, stencil));
+
+    // Range gen for attachment's render area
+    gen_store_[Gen::kRenderArea].emplace(image_view->MakeImageRangeGen(offset, extent, override_aspect_flags));
+
+    // If attachment has both depth and stencil aspects then add range gens to represent each aspect separately.
+    if (has_depth && has_stencil) {
+        gen_store_[Gen::kDepthOnlyRenderArea].emplace(image_view->MakeImageRangeGen(offset, extent, VK_IMAGE_ASPECT_DEPTH_BIT));
+        gen_store_[Gen::kStencilOnlyRenderArea].emplace(image_view->MakeImageRangeGen(offset, extent, VK_IMAGE_ASPECT_STENCIL_BIT));
     }
 }
 
@@ -575,8 +580,8 @@ const std::optional<ImageRangeGen> &AttachmentViewGen::GetRangeGen(AttachmentVie
     // If the view is a depth only view, then the depth only portion of the render area is simply the render area.
     // If the view is a depth stencil view, then the depth only portion of the render area will be a subset,
     // and thus needs the generator function that will produce the address ranges of that subset
-    const bool depth_only = (type == kDepthOnlyRenderArea) && (view_mask_ == VK_IMAGE_ASPECT_DEPTH_BIT);
-    const bool stencil_only = (type == kStencilOnlyRenderArea) && (view_mask_ == VK_IMAGE_ASPECT_STENCIL_BIT);
+    const bool depth_only = (type == kDepthOnlyRenderArea) && vkuFormatIsDepthOnly(view_->create_info.format);
+    const bool stencil_only = (type == kStencilOnlyRenderArea) && vkuFormatIsStencilOnly(view_->create_info.format);
     if (depth_only || stencil_only) {
         type = Gen::kRenderArea;
     }
@@ -585,20 +590,19 @@ const std::optional<ImageRangeGen> &AttachmentViewGen::GetRangeGen(AttachmentVie
 
 AttachmentViewGen::Gen AttachmentViewGen::GetDepthStencilRenderAreaGenType(bool depth_op, bool stencil_op) const {
     assert(IsValid());
-    assert(view_mask_ & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT));
+    assert(vkuFormatIsDepthOrStencil(view_->create_info.format));
     if (depth_op) {
-        assert(view_mask_ & VK_IMAGE_ASPECT_DEPTH_BIT);
+        assert(vkuFormatHasDepth(view_->create_info.format));
         if (stencil_op) {
-            assert(view_mask_ & VK_IMAGE_ASPECT_STENCIL_BIT);
+            assert(vkuFormatHasStencil(view_->create_info.format));
             return kRenderArea;
         }
         return kDepthOnlyRenderArea;
     }
     if (stencil_op) {
-        assert(view_mask_ & VK_IMAGE_ASPECT_STENCIL_BIT);
+        assert(vkuFormatHasStencil(view_->create_info.format));
         return kStencilOnlyRenderArea;
     }
-
     assert(depth_op || stencil_op);
     return kRenderArea;
 }

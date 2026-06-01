@@ -1123,12 +1123,14 @@ public:
 
     QPB_CUSTOM_EXPORT_NAME_EXPORT bool hasField1() const;
     QPB_CUSTOM_EXPORT_NAME_EXPORT const ScalarTypes &field1() const &;
+    QPB_CUSTOM_EXPORT_NAME_EXPORT ScalarTypes &mutField1() &;
     QPB_CUSTOM_EXPORT_NAME_EXPORT void clearField1();
 
     QPB_CUSTOM_EXPORT_NAME_EXPORT const QList<ScalarTypes> &field2() const &;
 
     QPB_CUSTOM_EXPORT_NAME_EXPORT bool hasField3() const;
     QPB_CUSTOM_EXPORT_NAME_EXPORT const ScalarTypes &field3() const &;
+    QPB_CUSTOM_EXPORT_NAME_EXPORT ScalarTypes &mutField3() &;
     QPB_CUSTOM_EXPORT_NAME_EXPORT void clearField3();
 
     QPB_CUSTOM_EXPORT_NAME_EXPORT EnumTypes_QtProtobufNested::NestedEnum field4() const;
@@ -1238,6 +1240,7 @@ public:
 
     QPB_CUSTOM_EXPORT_NAME_EXPORT bool hasField1() const;
     QPB_CUSTOM_EXPORT_NAME_EXPORT const MessageNestedTypes_QtProtobufNested::NestedMessage &field1() const &;
+    QPB_CUSTOM_EXPORT_NAME_EXPORT MessageNestedTypes_QtProtobufNested::NestedMessage &mutField1() &;
     QPB_CUSTOM_EXPORT_NAME_EXPORT void clearField1();
     QPB_CUSTOM_EXPORT_NAME_EXPORT void setField1(const MessageNestedTypes_QtProtobufNested::NestedMessage &field1);
     QPB_CUSTOM_EXPORT_NAME_EXPORT void setField1(MessageNestedTypes_QtProtobufNested::NestedMessage &&field1);
@@ -1297,6 +1300,7 @@ public:
 
     QPB_CUSTOM_EXPORT_NAME_EXPORT bool hasField2() const;
     QPB_CUSTOM_EXPORT_NAME_EXPORT const MessageTypes &field2() const &;
+    QPB_CUSTOM_EXPORT_NAME_EXPORT MessageTypes &mutField2() &;
     QPB_CUSTOM_EXPORT_NAME_EXPORT void clearField2();
     QPB_CUSTOM_EXPORT_NAME_EXPORT void setField1(QtProtobuf::int32 field1);
     QPB_CUSTOM_EXPORT_NAME_EXPORT void setField2(const MessageTypes &field2);

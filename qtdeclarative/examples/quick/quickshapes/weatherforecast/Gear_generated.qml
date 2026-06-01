@@ -2,19 +2,34 @@
 // SPDX-License-Identifier: MIT
 // Generated from SVG file gear-alt-stroke.svg
 import QtQuick
+import QtQuick.VectorImage
+import QtQuick.VectorImage.Helpers
 import QtQuick.Shapes
 
 Item {
     implicitWidth: 56
     implicitHeight: 56
+    component AnimationsInfo : QtObject
+    {
+        property bool paused: false
+        property int loops: 1
+        signal restart()
+    }
+    property AnimationsInfo animations : AnimationsInfo {}
     transform: [
         Scale { xScale: width / 56; yScale: height / 56 }
     ]
-        objectName: "svg4"
+    objectName: "svg4"
+    id: _qt_node0
     DemoShape {
         objectName: "path2"
-        transform: Translate { x: 4; y: 4 }
+        id: _qt_node1
+        transform: TransformGroup {
+            id: _qt_node1_transform_base_group
+            Matrix4x4 { id: _qt_node1_transform_base; matrix: PlanarTransform.fromAffineMatrix(1, 0, 0, 1, 4, 4)}
+        }
         ShapePath {
+            id: _qt_shapePath_0
             objectName: "svg_path:path2"
             strokeColor: "#ff333333"
             strokeWidth: 3

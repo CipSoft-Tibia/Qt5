@@ -17,6 +17,7 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
 using namespace QtJniTypes;
 
 class QAndroidParcelPrivate
@@ -1099,7 +1100,9 @@ requestPermissionsInternal(const QStringList &permissions)
         return QtFuture::makeReadyRangeFuture(result);
     }
 
-    if (!QtAndroidPrivate::acquireAndroidDeadlockProtector())
+    QtAndroidPrivate::AndroidDeadlockProtector protector(
+        u"requestPermissionsInternal()"_s);
+    if (!protector.acquire())
         return QtFuture::makeReadyValueFuture(QtAndroidPrivate::Denied);
 
     QSharedPointer<QPromise<QtAndroidPrivate::PermissionResult>> promise;

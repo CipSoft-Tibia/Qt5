@@ -74,7 +74,7 @@ void tst_QNmeaPositionInfoSource::userEquivalentRangeError()
     QNmeaPositionInfoSource source(m_mode);
     QVERIFY(qIsNaN(source.userEquivalentRangeError()));
     source.setUserEquivalentRangeError(5.1);
-    QVERIFY(qFuzzyCompare(source.userEquivalentRangeError(), 5.1));
+    QCOMPARE(source.userEquivalentRangeError(), 5.1);
 }
 
 void tst_QNmeaPositionInfoSource::setUpdateInterval_delayedUpdate()
@@ -377,14 +377,14 @@ void tst_QNmeaPositionInfoSource::startUpdates_waitForValidDateTime()
         QCOMPARE(pInfo.hasAttribute(QGeoPositionInfo::HorizontalAccuracy),
                  expectHorizontalAccuracy[i]);
         if (pInfo.hasAttribute(QGeoPositionInfo::HorizontalAccuracy))
-            QVERIFY(qFuzzyCompare(pInfo.attribute(QGeoPositionInfo::HorizontalAccuracy), 35.7));
+            QCOMPARE(pInfo.attribute(QGeoPositionInfo::HorizontalAccuracy), 35.7);
 
         // Generated GSA sentences have hard coded VDOP of 4.0, which corrisponds to a vertical
         // accuracy of 40.8, for the user equivalent range error of 5.1 set above.
         QCOMPARE(pInfo.hasAttribute(QGeoPositionInfo::VerticalAccuracy),
                  expectVerticalAccuracy[i]);
         if (pInfo.hasAttribute(QGeoPositionInfo::VerticalAccuracy))
-            QVERIFY(qFuzzyCompare(pInfo.attribute(QGeoPositionInfo::VerticalAccuracy), 40.8));
+            QCOMPARE(pInfo.attribute(QGeoPositionInfo::VerticalAccuracy), 40.8);
     }
 }
 

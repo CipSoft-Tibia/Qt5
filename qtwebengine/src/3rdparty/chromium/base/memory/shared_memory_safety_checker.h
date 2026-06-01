@@ -9,6 +9,8 @@
 #include <atomic>
 #include <type_traits>
 
+#include "base/containers/span.h"
+
 namespace base::subtle {
 
 // Constraints on types that can be copied across memory spaces. This is a
@@ -27,6 +29,12 @@ struct SharedMemorySafetyChecker {
 template <typename T>
   requires(std::is_pointer_v<T> || std::is_member_pointer_v<T>)
 struct SharedMemorySafetyChecker<T> {
+  static constexpr bool kIsAllowed = false;
+};
+
+// Spans can't be shared across memory spaces.
+template <typename ElementType, size_t Extent, typename InternalPtrType>
+struct SharedMemorySafetyChecker<span<ElementType, Extent, InternalPtrType>> {
   static constexpr bool kIsAllowed = false;
 };
 
@@ -50,7 +58,13 @@ struct SharedMemorySafetyChecker<std::array<T, N>> {
 };
 
 template <typename T>
-concept AllowedOverSharedMemory = SharedMemorySafetyChecker<T>::kIsAllowed;
+concept AllowedOverSharedMemory =
+    SharedMemorySafetyChecker<std::remove_cvref_t<T>>::kIsAllowed;
+
+// Convenience alias for atomics that are safe to share across memory spaces.
+template <typename T>
+  requires AllowedOverSharedMemory<std::atomic<T>>
+using SharedAtomic = std::atomic<T>;
 
 }  // namespace base::subtle
 
@@ -58,7 +72,7 @@ concept AllowedOverSharedMemory = SharedMemorySafetyChecker<T>::kIsAllowed;
 // which is non-trivially-copyable class on msvc, we can at lest check if used
 // atomic is lock free
 #if defined(COMPILER_MSVC)
-#define SKIP_SAFETY_CHECK_FOR(X)                   \
+#define SKIP_SHARED_MEMORY_SAFETY_CHECK_FOR(X)     \
   namespace base::subtle {                         \
   template <>                                      \
   struct SharedMemorySafetyChecker<X> {            \

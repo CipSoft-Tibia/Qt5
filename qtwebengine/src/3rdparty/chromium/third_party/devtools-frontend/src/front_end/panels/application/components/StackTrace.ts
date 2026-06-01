@@ -2,16 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import '../../../ui/components/expandable_list/expandable_list.js';
+
 import * as i18n from '../../../core/i18n/i18n.js';
 import type * as SDK from '../../../core/sdk/sdk.js';
 import type * as Protocol from '../../../generated/protocol.js';
-import * as ExpandableList from '../../../ui/components/expandable_list/expandable_list.js';
+import * as Bindings from '../../../models/bindings/bindings.js';
 import * as Components from '../../../ui/legacy/components/utils/utils.js';
-import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as Lit from '../../../ui/lit/lit.js';
 import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 
-import stackTraceLinkButtonStyles from './stackTraceLinkButton.css.js';
-import stackTraceRowStyles from './stackTraceRow.css.js';
+import stackTraceLinkButtonStylesRaw from './stackTraceLinkButton.css.js';
+import stackTraceRowStylesRaw from './stackTraceRow.css.js';
+
+// TODO(crbug.com/391381439): Fully migrate off of constructed style sheets.
+const stackTraceLinkButtonStyles = new CSSStyleSheet();
+stackTraceLinkButtonStyles.replaceSync(stackTraceLinkButtonStylesRaw.cssContent);
+const stackTraceRowStyles = new CSSStyleSheet();
+stackTraceRowStyles.replaceSync(stackTraceRowStylesRaw.cssContent);
+
+const {html} = Lit;
 
 const UIStrings = {
   /**
@@ -52,7 +62,6 @@ interface StackTraceRowData {
 }
 
 export class StackTraceRow extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-stack-trace-row`;
   readonly #shadow = this.attachShadow({mode: 'open'});
 
   #stackTraceRowItem: Components.JSPresentationUtils.StackTraceRegularRow|null = null;
@@ -70,8 +79,8 @@ export class StackTraceRow extends HTMLElement {
     if (!this.#stackTraceRowItem) {
       return;
     }
-    LitHtml.render(
-        LitHtml.html`
+    Lit.render(
+        html`
       <div class="stack-trace-row">
               <div class="stack-trace-function-name text-ellipsis" title=${this.#stackTraceRowItem.functionName}>
                 ${this.#stackTraceRowItem.functionName}
@@ -79,8 +88,8 @@ export class StackTraceRow extends HTMLElement {
               <div class="stack-trace-source-location">
                 ${
             this.#stackTraceRowItem.link ?
-                LitHtml.html`<div class="text-ellipsis">\xA0@\xA0${this.#stackTraceRowItem.link}</div>` :
-                LitHtml.nothing}
+                html`<div class="text-ellipsis">\xA0@\xA0${this.#stackTraceRowItem.link}</div>` :
+                Lit.nothing}
               </div>
             </div>
     `,
@@ -95,7 +104,6 @@ interface StackTraceLinkButtonData {
 }
 
 export class StackTraceLinkButton extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-stack-trace-link-button`;
   readonly #shadow = this.attachShadow({mode: 'open'});
 
   #onShowAllClick: () => void = () => {};
@@ -119,8 +127,8 @@ export class StackTraceLinkButton extends HTMLElement {
     }
     const linkText = this.#expandedView ? i18nString(UIStrings.showLess) :
                                           i18nString(UIStrings.showSMoreFrames, {n: this.#hiddenCallFramesCount});
-    LitHtml.render(
-        LitHtml.html`
+    Lit.render(
+        html`
       <div class="stack-trace-row">
           <button class="link" @click=${() => this.#onShowAllClick()}>
             ${linkText}
@@ -132,8 +140,6 @@ export class StackTraceLinkButton extends HTMLElement {
 }
 
 export class StackTrace extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-resources-stack-trace`;
-
   readonly #shadow = this.attachShadow({mode: 'open'});
   readonly #linkifier = new Components.Linkifier.Linkifier();
   #stackTraceRows: (Components.JSPresentationUtils.StackTraceRegularRow|
@@ -162,32 +168,46 @@ export class StackTrace extends HTMLElement {
     this.#render();
   }
 
-  createRowTemplates(): LitHtml.TemplateResult[] {
+  createRowTemplates(): Lit.TemplateResult[] {
     const expandableRows = [];
     let hiddenCallFramesCount = 0;
     for (const item of this.#stackTraceRows) {
-      if (this.#showHidden || !item.ignoreListHide) {
+      let ignoreListHide = false;
+      // TODO(crbug.com/1183325): fix race condition with uiLocation still being null here
+      // Note: This has always checked whether the call frame location *in the generated
+      // code* is ignore-listed or not. This can change after the live location updates,
+      // and is handled again in the linkifier live location update callback.
+      if ('link' in item && item.link) {
+        const uiLocation = Components.Linkifier.Linkifier.uiLocation(item.link);
+        if (uiLocation &&
+            Bindings.IgnoreListManager.IgnoreListManager.instance().isUserOrSourceMapIgnoreListedUISourceCode(
+                uiLocation.uiSourceCode)) {
+          ignoreListHide = true;
+        }
+      }
+      if (this.#showHidden || !ignoreListHide) {
         if ('functionName' in item) {
-          expandableRows.push(LitHtml.html`
-          <${StackTraceRow.litTagName} data-stack-trace-row .data=${{
-            stackTraceRowItem: item,
-          } as StackTraceRowData}></${StackTraceRow.litTagName}>`);
+          expandableRows.push(html`
+          <devtools-stack-trace-row data-stack-trace-row .data=${{
+            stackTraceRowItem:
+              item,
+          }}></devtools-stack-trace-row>`);
         }
         if ('asyncDescription' in item) {
-          expandableRows.push(LitHtml.html`
+          expandableRows.push(html`
             <div>${item.asyncDescription}</div>
           `);
         }
       }
-      if ('functionName' in item && item.ignoreListHide) {
+      if ('functionName' in item && ignoreListHide) {
         hiddenCallFramesCount++;
       }
     }
     if (hiddenCallFramesCount) {
       // Disabled until https://crbug.com/1079231 is fixed.
       // clang-format off
-      expandableRows.push(LitHtml.html`
-      <${StackTraceLinkButton.litTagName} data-stack-trace-row .data=${{onShowAllClick: this.#onToggleShowAllClick.bind(this), hiddenCallFramesCount, expandedView: this.#showHidden} as StackTraceLinkButtonData}></${StackTraceLinkButton.litTagName}>
+      expandableRows.push(html`
+      <devtools-stack-trace-link-button data-stack-trace-row .data=${{onShowAllClick: this.#onToggleShowAllClick.bind(this), hiddenCallFramesCount, expandedView: this.#showHidden}}></devtools-stack-trace-link-button>
       `);
       // clang-format on
     }
@@ -199,8 +219,8 @@ export class StackTrace extends HTMLElement {
     if (!this.#stackTraceRows.length) {
       // Disabled until https://crbug.com/1079231 is fixed.
       // clang-format off
-      LitHtml.render(
-        LitHtml.html`
+      Lit.render(
+        html`
           <span>${i18nString(UIStrings.cannotRenderStackTrace)}</span>
         `,
         this.#shadow, {host: this});
@@ -208,13 +228,11 @@ export class StackTrace extends HTMLElement {
     }
 
     const expandableRows = this.createRowTemplates();
-    LitHtml.render(
-      LitHtml.html`
-        <${ExpandableList.ExpandableList.ExpandableList.litTagName} .data=${{
-          rows: expandableRows, title: i18nString(UIStrings.creationStackTrace),
-        } as ExpandableList.ExpandableList.ExpandableListData}>
-        jslog=${VisualLogging.tree()}>
-        </${ExpandableList.ExpandableList.ExpandableList.litTagName}>
+    Lit.render(
+      html`
+        <devtools-expandable-list .data=${{rows: expandableRows, title: i18nString(UIStrings.creationStackTrace)}}
+                                  jslog=${VisualLogging.tree()}>
+        </devtools-expandable-list>
       `,
       this.#shadow, {host: this});
     // clang-format on

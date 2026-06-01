@@ -26,10 +26,9 @@
 #include <QtMultimedia/QMediaPlayer>
 #include <QtMultimedia/QVideoFrame>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(AVAsset);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVPlayerItemTrack);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVFMediaPlayerObserver);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVAssetTrack);
+#import <AVFoundation/AVFoundation.h>
+
+@class AVFMediaPlayerObserver;
 
 QT_BEGIN_NAMESPACE
 
@@ -77,6 +76,10 @@ public:
                                        QtVideo::Rotation &angle,
                                        bool &mirrored);
 
+    PitchCompensationAvailability pitchCompensationAvailability() const override;
+    void setPitchCompensation(bool enabled) override;
+    bool pitchCompensation() const override;
+
 public Q_SLOTS:
     void setPlaybackRate(qreal rate) override;
     void nativeSizeChanged(QSize size);
@@ -120,6 +123,7 @@ private:
     void setVideoAvailable(bool available);
     void setSeekable(bool seekable);
     void resetStream(QIODevice *stream = nullptr);
+    void applyPitchCompensation(bool enabled);
 
     void orientationChanged(QtVideo::Rotation rotation, bool mirrored);
 
@@ -140,6 +144,7 @@ private:
     bool m_videoAvailable;
     bool m_audioAvailable;
     bool m_seekable;
+    bool m_pitchCompensationEnabled{ false };
 
     AVFMediaPlayerObserver *m_observer;
 

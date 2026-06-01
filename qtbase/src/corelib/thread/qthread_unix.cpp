@@ -344,52 +344,79 @@ QAbstractEventDispatcher *QThreadPrivate::createEventDispatcher(QThreadData *dat
 
 #if QT_CONFIG(thread)
 
-#if (defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(Q_OS_QNX))
-static void setCurrentThreadName(const char *name)
+template <typename String>
+static void setCurrentThreadName(QThread *thr, String &objectName)
 {
+    auto setit = [](const char *name) {
 #  if defined(Q_OS_LINUX) && !defined(QT_LINUXBASE)
-    prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0);
+        prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0);
 #  elif defined(Q_OS_DARWIN)
-    pthread_setname_np(name);
+        pthread_setname_np(name);
 #  elif defined(Q_OS_QNX)
-    pthread_setname_np(pthread_self(), name);
+        pthread_setname_np(pthread_self(), name);
+#  else
+        Q_UNUSED(name)
 #  endif
+    };
+    if (Q_LIKELY(objectName.isEmpty()))
+        setit(thr->metaObject()->className());
+    else
+        setit(std::exchange(objectName, {}).toLocal8Bit());
 }
-#endif
 
 namespace {
+#if defined(__GLIBCXX__) && !defined(QT_NO_EXCEPTIONS)
 template <typename T>
 void terminate_on_exception(T &&t)
 {
-#ifndef QT_NO_EXCEPTIONS
     try {
-#endif
         std::forward<T>(t)();
-#ifndef QT_NO_EXCEPTIONS
-#ifdef __GLIBCXX__
-    // POSIX thread cancellation under glibc is implemented by throwing an exception
-    // of this type. Do what libstdc++ is doing and handle it specially in order not to
-    // abort the application if user's code calls a cancellation function.
     } catch (abi::__forced_unwind &) {
+        // POSIX thread cancellation under glibc is implemented by throwing an exception
+        // of this type. Do what libstdc++ is doing and handle it specially in order not to
+        // abort the application if user's code calls a cancellation function.
         throw;
-#endif // __GLIBCXX__
     } catch (...) {
         std::terminate();
     }
-#endif // QT_NO_EXCEPTIONS
 }
+#else
+template <typename T>
+void terminate_on_exception(T &&t) noexcept
+{
+    std::forward<T>(t)();
+}
+#endif // defined(__GLIBCXX__) && !defined(QT_NO_EXCEPTIONS)
 } // unnamed namespace
+
+static void setCancellationEnabled(bool enable)
+{
+#ifdef PTHREAD_CANCEL_DISABLE
+    if (enable) {
+        // may unwind the stack, see above
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, nullptr);
+        pthread_testcancel();
+    } else {
+        // this doesn't unwind the stack
+        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, nullptr);
+    }
+#else
+    Q_UNUSED(enable)
+#endif
+}
 
 void *QThreadPrivate::start(void *arg)
 {
-#ifdef PTHREAD_CANCEL_DISABLE
-    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, nullptr);
-#endif
+    setCancellationEnabled(false);
+
     QThread *thr = reinterpret_cast<QThread *>(arg);
     QThreadData *data = QThreadData::get2(thr);
 
     // this ensures the thread-local is created as early as possible
     set_thread_data(data);
+
+    // If a QThread is restarted, reuse the QBindingStatus, too
+    data->reuseBindingStatusForNewNativeThread();
 
     pthread_cleanup_push([](void *arg) { static_cast<QThread *>(arg)->d_func()->finish(); }, arg);
     terminate_on_exception([&] {
@@ -400,10 +427,6 @@ void *QThreadPrivate::start(void *arg)
             if (thr->d_func()->priority & ThreadPriorityResetFlag) {
                 thr->d_func()->setPriority(QThread::Priority(thr->d_func()->priority & ~ThreadPriorityResetFlag));
             }
-#ifndef Q_OS_DARWIN // For Darwin we set it as an attribute when starting the thread
-            if (thr->d_func()->serviceLevel != QThread::QualityOfService::Auto)
-                thr->d_func()->setQualityOfServiceLevel(thr->d_func()->serviceLevel);
-#endif
 
             // threadId is set in QThread::start()
             Q_ASSERT(data->threadId.loadRelaxed() == QThread::currentThreadId());
@@ -412,26 +435,16 @@ void *QThreadPrivate::start(void *arg)
             data->quitNow = thr->d_func()->exited;
         }
 
+        // Sets the name of the current thread. We can only do this
+        // when the thread is starting, as we don't have a cross
+        // platform way of setting the name of an arbitrary thread.
+        setCurrentThreadName(thr, thr->d_func()->objectName);
+
         data->ensureEventDispatcher();
         data->eventDispatcher.loadRelaxed()->startingUp();
 
-#if (defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(Q_OS_QNX))
-        {
-            // Sets the name of the current thread. We can only do this
-            // when the thread is starting, as we don't have a cross
-            // platform way of setting the name of an arbitrary thread.
-            if (Q_LIKELY(thr->d_func()->objectName.isEmpty()))
-                setCurrentThreadName(thr->metaObject()->className());
-            else
-                setCurrentThreadName(std::exchange(thr->d_func()->objectName, {}).toLocal8Bit());
-        }
-#endif
-
         emit thr->started(QThread::QPrivateSignal());
-#ifdef PTHREAD_CANCEL_DISABLE
-        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, nullptr);
-        pthread_testcancel();
-#endif
+        setCancellationEnabled(true);
         thr->run();
     });
 
@@ -450,9 +463,7 @@ void QThreadPrivate::finish()
         // Disable cancellation; we're already in the finishing touches of this
         // thread, and we don't want cleanup to be disturbed by
         // abi::__forced_unwind being thrown from all kinds of functions.
-#ifdef PTHREAD_CANCEL_DISABLE
-        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, nullptr);
-#endif
+        setCancellationEnabled(false);
 
         QMutexLocker locker(&d->mutex);
 
@@ -461,8 +472,7 @@ void QThreadPrivate::finish()
         emit thr->finished(QThread::QPrivateSignal());
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 
-        void *data = &d->data->tls;
-        QThreadStorageData::finish((void **)data);
+        QThreadStoragePrivate::finish(&d->data->tls);
     });
 
     if constexpr (QT_CONFIG(broken_threadlocal_dtors))
@@ -476,9 +486,7 @@ void QThreadPrivate::cleanup()
 
         // Disable cancellation again: we did it above, but some user code
         // running between finish() and cleanup() may have turned them back on.
-#ifdef PTHREAD_CANCEL_DISABLE
-        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, nullptr);
-#endif
+        setCancellationEnabled(false);
 
         QMutexLocker locker(&d->mutex);
         d->priority = QThread::InheritPriority;
@@ -531,6 +539,11 @@ Qt::HANDLE QThread::currentThreadIdImpl() noexcept
 int QThreadPrivate::idealThreadCount = 1;
 #endif
 
+#if QT_CONFIG(trivial_auto_var_init_pattern) && defined(Q_CC_GNU_ONLY)
+// Don't pre-fill the automatic-storage arrays used in this function
+// (important for the FreeBSD & Linux code using a VLA).
+__attribute__((optimize("trivial-auto-var-init=uninitialized")))
+#endif
 int QThread::idealThreadCount() noexcept
 {
     int cores = 1;
@@ -544,28 +557,24 @@ int QThread::idealThreadCount() noexcept
         cores = (int)psd.psd_proc_cnt;
     }
 #elif (defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)) || defined(Q_OS_FREEBSD)
-#  if defined(Q_OS_FREEBSD) && !defined(CPU_COUNT_S)
-#    define CPU_COUNT_S(setsize, cpusetp)   ((int)BIT_COUNT(setsize, cpusetp))
-    // match the Linux API for simplicity
-    using cpu_set_t = cpuset_t;
-    auto sched_getaffinity = [](pid_t, size_t cpusetsize, cpu_set_t *mask) {
-        return cpuset_getaffinity(CPU_LEVEL_WHICH, CPU_WHICH_PID, -1, cpusetsize, mask);
-    };
+    QT_WARNING_PUSH
+#  if defined(Q_CC_CLANG) && Q_CC_CLANG >= 1800
+    QT_WARNING_DISABLE_CLANG("-Wvla-cxx-extension")
 #  endif
 
     // get the number of threads we're assigned, not the total in the system
-    QVarLengthArray<cpu_set_t, 1> cpuset(1);
-    int size = 1;
-    if (Q_UNLIKELY(sched_getaffinity(0, sizeof(cpu_set_t), cpuset.data()) < 0)) {
-        for (size = 2; size <= 4; size *= 2) {
-            cpuset.resize(size);
-            if (sched_getaffinity(0, sizeof(cpu_set_t) * size, cpuset.data()) == 0)
-                break;
+    constexpr qsizetype MaxCpuCount = 1024 * 1024;
+    constexpr qsizetype MaxCpuSetArraySize = MaxCpuCount / sizeof(cpu_set_t) / 8;
+    qsizetype size = 1;
+    do {
+        cpu_set_t cpuset[size];
+        if (sched_getaffinity(0, sizeof(cpu_set_t) * size, cpuset) == 0) {
+            cores = CPU_COUNT_S(sizeof(cpu_set_t) * size, cpuset);
+            break;
         }
-        if (size > 4)
-            return 1;
-    }
-    cores = CPU_COUNT_S(sizeof(cpu_set_t) * size, cpuset.data());
+        size *= 4;
+    } while (size < MaxCpuSetArraySize);
+    QT_WARNING_POP
 #elif defined(Q_OS_BSD4)
     // OpenBSD, NetBSD, BSD/OS, Darwin (macOS, iOS, etc.)
     size_t len = sizeof(cores);
@@ -766,10 +775,14 @@ void QThread::start(Priority priority)
     pthread_attr_init(&attr);
     if constexpr (!UsingPThreadTimedJoin)
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (d->serviceLevel != QThread::QualityOfService::Auto) {
 #ifdef Q_OS_DARWIN
-    if (d->serviceLevel != QThread::QualityOfService::Auto)
         pthread_attr_set_qos_class_np(&attr, d->nativeQualityOfServiceClass(), 0);
+#else
+        // No such functionality on other OSes. We promise "no effect", so don't
+        // print a warning either.
 #endif
+    }
 
     d->priority = priority;
 
@@ -991,13 +1004,7 @@ void QThread::setTerminationEnabled(bool enabled)
                "Current thread was not started with QThread.");
 
     Q_UNUSED(thr);
-#if defined(Q_OS_ANDROID)
-    Q_UNUSED(enabled);
-#else
-    pthread_setcancelstate(enabled ? PTHREAD_CANCEL_ENABLE : PTHREAD_CANCEL_DISABLE, nullptr);
-    if (enabled)
-        pthread_testcancel();
-#endif
+    setCancellationEnabled(enabled);
 }
 
 // Caller must lock the mutex

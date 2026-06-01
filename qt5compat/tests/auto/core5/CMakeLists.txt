@@ -5,7 +5,9 @@
 
 add_subdirectory(codecs)
 add_subdirectory(io)
-add_subdirectory(sax)
+if (TARGET Qt::Xml)
+    add_subdirectory(sax)
+endif()
 add_subdirectory(serialization)
 add_subdirectory(text)
 add_subdirectory(tools)

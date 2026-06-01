@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQUICKWINDOW_P_H
 #define QQUICKWINDOW_P_H
@@ -142,7 +143,7 @@ public:
     QQuickItem *cursorItem = nullptr;
     QQuickPointerHandler *cursorHandler = nullptr;
     void updateCursor(const QPointF &scenePos, QQuickItem *rootItem = nullptr);
-    QPair<QQuickItem*, QQuickPointerHandler*> findCursorItemAndHandler(QQuickItem *item, const QPointF &scenePos) const;
+    std::pair<QQuickItem*, QQuickPointerHandler*> findCursorItemAndHandler(QQuickItem *item, const QPointF &scenePos) const;
 #endif
 
     void clearFocusObject() override;
@@ -194,6 +195,7 @@ public:
 
     qreal lastReportedItemDevicePixelRatio;
     QMetaObject::Connection physicalDpiChangedConnection;
+    std::array<QMetaObject::Connection, 7> connections;
 
     void updateDirtyNodes();
     void cleanupNodes();

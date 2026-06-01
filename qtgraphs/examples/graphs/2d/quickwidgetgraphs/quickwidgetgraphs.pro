@@ -13,6 +13,4 @@ HEADERS += piegraph.h \
     piewidget.h
 
 OTHER_FILES += doc/src/* \
-    doc/images/* \
-    qml/quickwidgetgraphs/*
-
+    doc/images/*

@@ -1,16 +1,26 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-if(ANDROID)
+if(QT_FEATURE_webview_android_plugin)
     add_subdirectory(android)
-elseif(IOS OR MACOS)
+endif()
+
+if(QT_FEATURE_webview_darwin_plugin)
     add_subdirectory(darwin)
-elseif(WASM)
+endif()
+
+if(QT_FEATURE_webview_wasm_plugin)
     add_subdirectory(wasm)
 endif()
-if(WINRT)
+
+if(QT_FEATURE_webview_webview2_plugin)
+    add_subdirectory(windows)
+endif()
+
+if(QT_FEATURE_webview_winrt_plugin)
     add_subdirectory(winrt)
 endif()
-if(TARGET Qt::WebEngineCore)
+
+if(QT_FEATURE_webview_webengine_plugin)
     add_subdirectory(webengine)
 endif()

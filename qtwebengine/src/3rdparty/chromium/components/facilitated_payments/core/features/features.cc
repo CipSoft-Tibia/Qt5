@@ -6,24 +6,6 @@
 
 namespace payments::facilitated {
 
-// When enabled, Chrome will detect PIX codes on allow-listed merchant websites.
-BASE_FEATURE(kEnablePixDetection,
-             "EnablePixDetection",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-// When enabled, Chrome will detect PIX codes when user copies a PIX code to the
-// clipboard.
-BASE_FEATURE(kEnablePixDetectionOnCopyEvent,
-             "EnablePixDetectionOnCopyEvent",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-// When enabled, Chrome will use `WebContentsObserver::DOMContentLoaded` event
-// as the trigger for PIX code detection instead of
-// `WebContentsObserver::DidDinishLoad`.
-BASE_FEATURE(kEnablePixDetectionOnDomContentLoaded,
-             "EnablePixDetectionOnDomContentLoaded",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // When enabled, Chrome will offer to pay with accounts supporting Pix.
 BASE_FEATURE(kEnablePixPayments,
              "EnablePixPayments",
@@ -42,5 +24,10 @@ BASE_FEATURE(kEwalletPayments,
              "EwalletPayments",
              base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID)
+
+// When enabled, Pix will be able to send multiple server request at a time.
+BASE_FEATURE(kSupportMultipleServerRequestsForPixPayments,
+             "SupportMultipleServerRequestsForPixPayments",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace payments::facilitated

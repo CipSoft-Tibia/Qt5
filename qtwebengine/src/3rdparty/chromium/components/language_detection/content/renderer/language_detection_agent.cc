@@ -5,11 +5,13 @@
 #include "components/language_detection/content/renderer/language_detection_agent.h"
 
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/trace_event/trace_event.h"
+#include "components/language_detection/content/renderer/language_detection_model_manager.h"
 #include "components/language_detection/core/features.h"
 #include "components/language_detection/core/language_detection_model.h"
 #include "components/language_detection/core/language_detection_provider.h"
@@ -19,15 +21,15 @@
 namespace language_detection {
 
 LanguageDetectionAgent::LanguageDetectionAgent(
-    content::RenderFrame* render_frame)
+    content::RenderFrame* render_frame,
+    language_detection::LanguageDetectionModel& language_detection_model)
     : content::RenderFrameObserver(render_frame),
-      waiting_for_first_foreground_(render_frame->IsHidden()) {
-  language_detection::LanguageDetectionModel& language_detection_model =
-      language_detection::GetLanguageDetectionModel();
-
+      waiting_for_first_foreground_(render_frame->IsHidden()),
+      language_detection_model_(language_detection_model),
+      language_detection_model_manager_(language_detection_model) {
   // If the language detection model is available, we do not
   // worry about requesting the model.
-  if (language_detection_model.IsAvailable()) {
+  if (language_detection_model_->IsAvailable()) {
     return;
   }
 
@@ -37,57 +39,11 @@ LanguageDetectionAgent::LanguageDetectionAgent(
   // Ensure the render frame is visible, otherwise the browser-side
   // driver may not exist yet (https://crbug.com/1199397).
   if (!waiting_for_first_foreground_) {
-    GetLanguageDetectionHandler()->GetLanguageDetectionModel(
-        base::BindOnce(&LanguageDetectionAgent::UpdateLanguageDetectionModel,
-                       weak_pointer_factory_.GetWeakPtr()));
+    RequestModel();
   }
 }
 
 LanguageDetectionAgent::~LanguageDetectionAgent() = default;
-
-const mojo::Remote<mojom::ContentLanguageDetectionDriver>&
-LanguageDetectionAgent::GetLanguageDetectionHandler() {
-  if (language_detection_handler_) {
-    if (language_detection_handler_.is_connected()) {
-      return language_detection_handler_;
-    }
-    // The handler can become unbound or disconnected in testing so this catches
-    // that case and reconnects so `this` can connect to the driver in the
-    // browser.
-    language_detection_handler_.reset();
-  }
-
-  render_frame()->GetBrowserInterfaceBroker().GetInterface(
-      language_detection_handler_.BindNewPipeAndPassReceiver());
-  return language_detection_handler_;
-}
-
-void LanguageDetectionAgent::UpdateLanguageDetectionModel(
-    base::File model_file) {
-  TRACE_EVENT("browser", "TranslateAgent::UpdateLanguageDetectionModel");
-  base::ScopedUmaHistogramTimer timer(
-      "LanguageDetection.TFLiteModel.UpdateLanaguageDetectionModelTime");
-
-  auto update_file = base::BindOnce(
-      [](base::File model_file) {
-        language_detection::LanguageDetectionModel& language_detection_model =
-            language_detection::GetLanguageDetectionModel();
-        language_detection_model.UpdateWithFile(std::move(model_file));
-      },
-      std::move(model_file));
-
-  // When enabled, we postpone updating the language detection model to avoid
-  // congesting the render main thread during navigation critical timing
-  // (crbug.com/361215212).
-  if (base::FeatureList::IsEnabled(
-          language_detection::features::kLazyUpdateTranslateModel)) {
-    base::ThreadPool::PostTask(
-        FROM_HERE, {base::TaskPriority::BEST_EFFORT, base::MayBlock()},
-        std::move(update_file));
-  } else {
-    std::move(update_file).Run();
-  }
-}
 
 void LanguageDetectionAgent::WasShown() {
   // Check if the the render frame was initially hidden and
@@ -99,9 +55,7 @@ void LanguageDetectionAgent::WasShown() {
 
   waiting_for_first_foreground_ = false;
 
-  language_detection::LanguageDetectionModel& language_detection_model =
-      language_detection::GetLanguageDetectionModel();
-  if (language_detection_model.IsAvailable()) {
+  if (language_detection_model_->IsAvailable()) {
     return;
   }
   // The model request was deferred because the frame was hidden
@@ -109,13 +63,16 @@ void LanguageDetectionAgent::WasShown() {
   // The browser-side translate driver should always be available at
   // this point so we should make the request and race to get the
   // model loaded for when the page content is available.
-  GetLanguageDetectionHandler()->GetLanguageDetectionModel(
-      base::BindOnce(&LanguageDetectionAgent::UpdateLanguageDetectionModel,
-                     weak_pointer_factory_.GetWeakPtr()));
+  RequestModel();
 }
 
 void LanguageDetectionAgent::OnDestruct() {
   delete this;
 }
 
+void LanguageDetectionAgent::RequestModel() {
+  language_detection_model_manager_.GetLanguageDetectionModel(
+      render_frame()->GetBrowserInterfaceBroker(),
+      base::BindOnce([](LanguageDetectionModel* model) {}));
+}
 }  // namespace language_detection

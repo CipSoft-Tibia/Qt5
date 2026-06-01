@@ -333,7 +333,7 @@ QSslCertificate QSslError::certificate() const
 */
 size_t qHash(const QSslError &key, size_t seed) noexcept
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombine hash(seed);
     seed = hash(seed, key.error());
     seed = hash(seed, key.certificate());
     return seed;

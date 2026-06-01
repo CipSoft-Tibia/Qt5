@@ -108,10 +108,35 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) LightweightQuarantineBranch {
   // as much as possible.  If the object is too large, this may return
   // `false`, meaning that quarantine request has failed (and freed
   // immediately). Otherwise, returns `true`.
-  bool Quarantine(void* object,
-                  SlotSpanMetadata<MetadataKind::kReadOnly>* slot_span,
-                  uintptr_t slot_start,
-                  size_t usable_size);
+  PA_ALWAYS_INLINE bool Quarantine(
+      void* object,
+      SlotSpanMetadata<MetadataKind::kReadOnly>* slot_span,
+      uintptr_t slot_start,
+      size_t usable_size) {
+    return lock_required_ ? QuarantineWithAcquiringLock(object, slot_span,
+                                                        slot_start, usable_size)
+                          : QuarantineWithoutAcquiringLock(
+                                object, slot_span, slot_start, usable_size);
+  }
+  // Despite that LightweightQuarantineBranchConfig::lock_required_ is already
+  // specified, we provide two versions `With/WithoutAcquiringLock` so that we
+  // can avoid the overhead of runtime conditional branches.
+  PA_ALWAYS_INLINE bool QuarantineWithAcquiringLock(
+      void* object,
+      SlotSpanMetadata<MetadataKind::kReadOnly>* slot_span,
+      uintptr_t slot_start,
+      size_t usable_size) {
+    PA_MUSTTAIL return QuarantineInternal<LockRequired::kRequired>(
+        object, slot_span, slot_start, usable_size);
+  }
+  PA_ALWAYS_INLINE bool QuarantineWithoutAcquiringLock(
+      void* object,
+      SlotSpanMetadata<MetadataKind::kReadOnly>* slot_span,
+      uintptr_t slot_start,
+      size_t usable_size) {
+    PA_MUSTTAIL return QuarantineInternal<LockRequired::kNotRequired>(
+        object, slot_span, slot_start, usable_size);
+  }
 
   // Dequarantine all entries **held by this branch**.
   // It is possible that another branch with entries and it remains untouched.
@@ -130,8 +155,26 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) LightweightQuarantineBranch {
   void SetCapacityInBytes(size_t capacity_in_bytes);
 
  private:
+  enum class LockRequired { kNotRequired, kRequired };
+  template <LockRequired lock_required>
+  class PA_SCOPED_LOCKABLE CompileTimeConditionalScopedGuard;
+  class PA_SCOPED_LOCKABLE RuntimeConditionalScopedGuard;
+  // `ToBeFreedArray` is used in `PurgeInternalInTwoPhases1of2` and
+  // `PurgeInternalInTwoPhases2of2`. See the function comment about the purpose.
+  // In order to avoid reentrancy issues, we must not deallocate any object in
+  // `Quarantine`. So, std::vector is not an option. std::array doesn't
+  // deallocate, plus, std::array has perf advantages.
+  static constexpr size_t kMaxFreeTimesPerPurge = 1024;
+  using ToBeFreedArray = std::array<uintptr_t, kMaxFreeTimesPerPurge>;
+
   LightweightQuarantineBranch(Root& root,
                               const LightweightQuarantineBranchConfig& config);
+
+  template <LockRequired lock_required>
+  bool QuarantineInternal(void* object,
+                          SlotSpanMetadata<MetadataKind::kReadOnly>* slot_span,
+                          uintptr_t slot_start,
+                          size_t usable_size);
 
   // Try to dequarantine entries to satisfy below:
   //   root_.size_in_bytes_ <=  target_size_in_bytes
@@ -140,6 +183,19 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) LightweightQuarantineBranch {
   // constraint, call `Purge()` for each branch in sequence, synchronously.
   PA_ALWAYS_INLINE void PurgeInternal(size_t target_size_in_bytes)
       PA_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  // In order to reduce thread contention, dequarantines entries in two phases:
+  //   Phase 1) With the lock acquired, saves `slot_start`s of the quarantined
+  //     objects in an array, and shrinks `slots_`. Then, releases the lock so
+  //     that another thread can quarantine an object.
+  //   Phase 2) Without the lock acquired, deallocates objects saved in the
+  //     array in Phase 1. This may take some time, but doesn't block other
+  //     threads.
+  PA_ALWAYS_INLINE void PurgeInternalWithDefferedFree(
+      size_t target_size_in_bytes,
+      ToBeFreedArray& to_be_freed,
+      size_t& num_of_slots) PA_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  PA_ALWAYS_INLINE void BatchFree(const ToBeFreedArray& to_be_freed,
+                                  size_t num_of_slots);
 
   Root& root_;
 
@@ -161,8 +217,34 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) LightweightQuarantineBranch {
   // Using `std::atomic` here so that other threads can update this value.
   std::atomic_size_t branch_capacity_in_bytes_;
 
+  // This working memory is temporarily needed only while dequarantining
+  // objects in slots_ when lock_required_ is true. However, allocating this
+  // working memory on stack may cause stack overflow [1]. Plus, it's non-
+  // negligible perf penalty to allocate and deallocate this working memory on
+  // heap only while dequarantining. So, we reserve one chunk of working memory
+  // on heap during the entire lifetime of this branch object and try to reuse
+  // this working memory among threads. Only when thread contention occurs, we
+  // allocate and deallocate another chunk of working memory.
+  // [1] https://issues.chromium.org/issues/387508217
+  std::atomic<ToBeFreedArray*> to_be_freed_working_memory_ = nullptr;
+
   friend class LightweightQuarantineRoot;
 };
+
+extern template PA_COMPONENT_EXPORT(
+    PARTITION_ALLOC) bool LightweightQuarantineBranch::
+    QuarantineInternal<LightweightQuarantineBranch::LockRequired::kNotRequired>(
+        void* object,
+        SlotSpanMetadata<MetadataKind::kReadOnly>* slot_span,
+        uintptr_t slot_start,
+        size_t usable_size);
+extern template PA_COMPONENT_EXPORT(
+    PARTITION_ALLOC) bool LightweightQuarantineBranch::
+    QuarantineInternal<LightweightQuarantineBranch::LockRequired::kRequired>(
+        void* object,
+        SlotSpanMetadata<MetadataKind::kReadOnly>* slot_span,
+        uintptr_t slot_start,
+        size_t usable_size);
 
 }  // namespace internal
 

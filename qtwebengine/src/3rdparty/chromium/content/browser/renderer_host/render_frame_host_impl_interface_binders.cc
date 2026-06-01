@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 
+#include "base/debug/dump_without_crashing.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
@@ -277,7 +278,7 @@ void RenderFrameHostImpl::SetUpMojoConnection() {
           base::Unretained(this)));
 
   file_system_manager_.reset(new FileSystemManagerImpl(
-      GetProcess()->GetID(),
+      GetProcess()->GetDeprecatedID(),
       GetProcess()->GetStoragePartition()->GetFileSystemContext(),
       ChromeBlobStorageContext::GetFor(GetProcess()->GetBrowserContext())));
 
@@ -336,12 +337,9 @@ void RenderFrameHostImpl::SetUpMojoConnection() {
           &RenderFrameHostImpl::BindBlobUrlStoreAssociatedReceiver,
           base::Unretained(this)));
 
-  if (base::FeatureList::IsEnabled(
-          blink::features::kEnableFileBackedBlobFactory)) {
-    associated_registry_->AddInterface<blink::mojom::FileBackedBlobFactory>(
-        base::BindRepeating(&RenderFrameHostImpl::BindFileBackedBlobFactory,
-                            base::Unretained(this)));
-  }
+  associated_registry_->AddInterface<blink::mojom::FileBackedBlobFactory>(
+      base::BindRepeating(&RenderFrameHostImpl::BindFileBackedBlobFactory,
+                          base::Unretained(this)));
 
   // Allow embedders to register their binders.
   GetContentClient()

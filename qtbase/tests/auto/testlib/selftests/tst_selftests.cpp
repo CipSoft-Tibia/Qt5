@@ -16,12 +16,12 @@ QT_REQUIRE_CONFIG(process);
 #include <QtCore/QFileInfo>
 #include <QtCore/QDir>
 #include <QtCore/QTemporaryDir>
+#include <QtCore/QProcess>
 
 #include <QTest>
 
-#include <QProcess>
-
-#include <private/cycle_p.h>
+#include <regex>
+#include <private/cycle_include_p.h>
 
 #include <QtTest/private/qemulationdetector_p.h>
 
@@ -88,7 +88,8 @@ static bool compareBenchmarkResult(BenchmarkResult const &r1, BenchmarkResult co
 
 // Split the passed block of text into an array of lines, replacing any
 // filenames and line numbers with generic markers to avoid failing the test
-// due to compiler-specific behaviour.
+// due to compiler-specific behavior. For some known differences in output,
+// it normalizes the stored text.
 static QList<QByteArray> splitLines(QByteArray ba)
 {
     ba.replace('\r', "");
@@ -113,6 +114,32 @@ static QList<QByteArray> splitLines(QByteArray ba)
                 continue;
             }
             line.replace(index, end-index + 1, markers[j][1]);
+        }
+
+        // There's some difference on how floating point numbers are printed by
+        // the various snprintf(), both in decimal and in hexadecimal form. The
+        // following regex catches them so we can normalize the output to the
+        // current running libc.
+        //
+        // Examples (most but not all attested):
+        //  1    0x1p+0     0x8p-3
+        //  1.00000000000000000   0x1.0000000000000p+0
+        //  1.5  0x1.8p+0   0xcp-3
+        //  1e6  1e+06      1e+6
+        //  1e-7 1e-07      1e-007
+        //  -1.797693134862316e+308 -0xf.ffffffffffff8p+1020 -0x1.fffffffffffffp+1023
+        static std::regex fpValueRx(R"(-?\d+(?:\.\d*)?(?:e[-+]\d\d+)? \((-?0x[\da-f.]+p[-+]?\d+)\))");
+        if (std::cmatch match; std::regex_search(line.cbegin(), line.cend(), match, fpValueRx)) {
+            if (double value; sscanf(match[1].first, "%la", &value) == 1) {
+                // remove the decimal and hexadecimal string representations
+                line.truncate(match[0].first - line.cbegin());
+
+                // append normalized hexfloat
+                // this won't fail and the buffer is definitely big enough
+                char buf[128];
+                int n = snprintf(buf, sizeof(buf), "%a", value);
+                line += std::string_view(buf, n);
+            }
         }
     }
 
@@ -713,6 +740,7 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
             || test == "benchliboptions"
             || test == "printdatatags"
             || test == "printdatatagswithglobaltags"
+            || test == "selected"
             || test == "silent"
             || test == "silent_fatal")
             return true;
@@ -776,6 +804,7 @@ void checkErrorOutput(const QString &test, const QByteArray &errorOutput)
         || test == "fetchbogus"
         || test == "watchdog"
         || test == "junit"
+        || test == "selected" // Reports unknown test functions to stderr
         || test == "benchlibcallgrind")
         return;
 

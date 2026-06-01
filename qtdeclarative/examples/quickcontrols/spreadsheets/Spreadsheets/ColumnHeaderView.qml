@@ -1,6 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 
@@ -22,39 +23,19 @@ HorizontalHeaderView {
 
     selectionModel: HeaderSelectionModel {
         id: headerSelectionModel
-        selectionModel: spreadSelectionModel
+        selectionModel: root.spreadSelectionModel
         orientation: Qt.Horizontal
     }
 
-    delegate: Rectangle {
+    textRole: "columnName"
+    delegate: HorizontalHeaderViewDelegate {
         id: headerDelegate
 
         required property var index
-        required property bool selected
+        required property int column
         required property bool containsDrag
-        readonly property real cellPadding: 8
-        readonly property bool containsMenu: columnMenu.column === column
-
-        implicitWidth: title.implicitWidth + (cellPadding * 2)
-        implicitHeight: Math.max(root.height, title.implicitHeight + (cellPadding * 2))
-        border {
-            width: containsDrag || containsMenu ? 1 : 0
-            color: palette.highlight
-        }
-        color: selected ? palette.highlight : palette.button
-
-        gradient: Gradient {
-            GradientStop {
-                position: 0
-                color: Qt.styleHints.colorScheme === Qt.Light ? headerDelegate.color
-                                                              : Qt.lighter(headerDelegate.color, 1.3)
-            }
-            GradientStop {
-                position: 1
-                color: Qt.styleHints.colorScheme === Qt.Light ? Qt.darker(headerDelegate.color, 1.3)
-                                                              : headerDelegate.color
-            }
-        }
+        readonly property bool visibleBorder: ((columnMenu.column === column)
+                                               || containsDrag)
 
         function rightClicked() {
             columnMenu.column = index
@@ -62,20 +43,35 @@ HorizontalHeaderView {
             columnMenu.popup(menu_pos)
         }
 
-        Label {
-            id: title
-            anchors.centerIn: parent
-            text: model.columnName
+        Binding {
+            target: headerDelegate.background
+            property: "color"
+            value: headerDelegate.palette.highlight
+            when: headerDelegate.highlighted
+        }
+
+        Binding {
+            target: headerDelegate.background
+            property: "border.width"
+            value: headerDelegate.visibleBorder ? 1 : 0
+            when: (headerDelegate.background as Rectangle) ?? false
+        }
+
+        Binding {
+            target: headerDelegate.background
+            property: "border.color"
+            value: headerDelegate.palette.highlight
+            when: (headerDelegate.background as Rectangle) ?? false
         }
 
         HeaderViewTapHandler {
             anchors.fill: parent
             onToggleRequested: {
-                spreadSelectionModel.toggleColumn(index)
+                root.spreadSelectionModel.toggleColumn(headerDelegate.index)
                 headerSelectionModel.setCurrent()
             }
             onSelectRequested: {
-                spreadSelectionModel.selectColumn(index)
+                root.spreadSelectionModel.selectColumn(headerDelegate.index)
                 headerSelectionModel.setCurrent()
             }
             onContextMenuRequested: headerDelegate.rightClicked()
@@ -125,7 +121,7 @@ HorizontalHeaderView {
         }
 
         MenuItem {
-            text: selectionModel.hasSelection ? qsTr("Remove selected columns")
+            text: root.selectionModel.hasSelection ? qsTr("Remove selected columns")
                                               : qsTr("Remove column")
             icon {
                 source: "icons/remove_column.svg"
@@ -133,15 +129,15 @@ HorizontalHeaderView {
             }
 
             onClicked: {
-                if (selectionModel.hasSelection)
-                    SpreadModel.removeColumns(spreadSelectionModel.selectedColumns())
+                if (root.selectionModel.hasSelection)
+                    SpreadModel.removeColumns(root.spreadSelectionModel.selectedColumns())
                 else if (columnMenu.column >= 0)
                     SpreadModel.removeColumn(columnMenu.column)
             }
         }
 
         MenuItem {
-            text: selectionModel.hasSelection ? qsTr("Hide selected columns")
+            text: root.selectionModel.hasSelection ? qsTr("Hide selected columns")
                                               : qsTr("Hide column")
             icon {
                 source: "icons/hide.svg"
@@ -149,12 +145,12 @@ HorizontalHeaderView {
             }
 
             onClicked: {
-                if (selectionModel.hasSelection) {
-                    let columns = spreadSelectionModel.selectedColumns()
+                if (root.selectionModel.hasSelection) {
+                    let columns = root.spreadSelectionModel.selectedColumns()
                     columns.sort(function(lhs, rhs){ return rhs.column - lhs.column })
                     for (let i in columns)
                         root.hideRequested(columns[i].column)
-                    spreadSelectionModel.clearSelection()
+                    root.spreadSelectionModel.clearSelection()
                 } else {
                     root.hideRequested(columnMenu.column)
                 }
@@ -171,7 +167,7 @@ HorizontalHeaderView {
 
             onClicked: {
                 root.showRequested()
-                spreadSelectionModel.clearSelection()
+                root.spreadSelectionModel.clearSelection()
             }
         }
 

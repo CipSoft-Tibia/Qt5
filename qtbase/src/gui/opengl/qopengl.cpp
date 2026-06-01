@@ -176,8 +176,8 @@ VersionTerm VersionTerm::fromJson(const QJsonValue &v)
     if (!v.isObject())
         return result;
     const QJsonObject o = v.toObject();
-    result.number = QVersionNumber::fromString(o.value("value"_L1).toString());
-    const QString opS = o.value("op"_L1).toString();
+    result.number = QVersionNumber::fromString(o.value("value"_L1).toStringView());
+    const auto opS = o.value("op"_L1).toStringView();
     for (size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); ++i) {
         if (opS == QLatin1StringView(operators[i])) {
             result.op = static_cast<Operator>(i);

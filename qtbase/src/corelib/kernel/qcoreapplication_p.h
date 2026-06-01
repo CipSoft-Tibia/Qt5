@@ -21,9 +21,6 @@
 #endif
 #include "QtCore/qreadwritelock.h"
 #include "QtCore/qtranslator.h"
-#if QT_CONFIG(settings)
-#include "QtCore/qsettings.h"
-#endif
 #ifndef QT_NO_QOBJECT
 #include "private/qobject_p.h"
 #include "private/qlocking_p.h"
@@ -64,7 +61,6 @@ public:
 #endif
     ~QCoreApplicationPrivate();
 
-    static bool isAlive() noexcept;
     void init();
 
     QString appName() const;
@@ -94,6 +90,7 @@ public:
 
     virtual void createEventDispatcher();
     virtual void eventDispatcherReady();
+    virtual bool compressEvent(QEvent *event, QObject *receiver, QPostEventList *postedEvents);
     static void removePostedEvent(QEvent *);
 #ifdef Q_OS_WIN
     static void removePostedTimerEvent(QObject *object, int timerId);
@@ -135,14 +132,8 @@ public:
     bool consoleAllocated = false;
     static void *mainInstanceHandle;    // HINSTANCE without <windows.h>
 #endif
-    void appendApplicationPathToLibraryPaths(void);
 
     Type application_type = Tty;
-
-    QString cachedApplicationDirPath;
-    static QString *cachedApplicationFilePath;
-    static void setApplicationFilePath(const QString &path);
-    static inline void clearApplicationFilePath() { delete cachedApplicationFilePath; cachedApplicationFilePath = nullptr; }
 
 #ifndef QT_NO_QOBJECT
     void execCleanup();
@@ -166,6 +157,7 @@ public:
     static inline bool testAttribute(uint flag) { return attribs & (1 << flag); }
 
     void processCommandLineArguments();
+    QString cachedApplicationFilePath;
     QString qmljs_debug_arguments; // a string containing arguments for js/qml debugging.
     inline QString qmljsDebugArgumentsString() const { return qmljs_debug_arguments; }
 

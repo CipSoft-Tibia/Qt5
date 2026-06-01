@@ -115,6 +115,12 @@ function(qt_internal_add_plugin target)
 
     qt_get_sanitized_plugin_type("${plugin_type}" plugin_type_escaped)
 
+    if(NOT TARGET qt_${plugin_type_escaped}_plugins_all)
+        add_custom_target(qt_${plugin_type_escaped}_plugins_all)
+    endif()
+    add_dependencies(qt_${plugin_type_escaped}_plugins_all ${target})
+
+
     set(output_directory_default "${QT_BUILD_DIR}/${INSTALL_PLUGINSDIR}/${plugin_type}")
     set(install_directory_default "${INSTALL_PLUGINSDIR}/${plugin_type}")
 
@@ -301,7 +307,6 @@ function(qt_internal_add_plugin target)
             ${deprecation_define}
         PUBLIC_DEFINES
             ${arg_PUBLIC_DEFINES}
-        FEATURE_DEPENDENCIES ${arg_FEATURE_DEPENDENCIES}
         DBUS_ADAPTOR_SOURCES ${arg_DBUS_ADAPTOR_SOURCES}
         DBUS_ADAPTOR_FLAGS ${arg_DBUS_ADAPTOR_FLAGS}
         DBUS_INTERFACE_SOURCES ${arg_DBUS_INTERFACE_SOURCES}
@@ -337,7 +342,10 @@ function(qt_internal_add_plugin target)
         list(APPEND qt_register_target_dependencies_args PUBLIC ${arg_PUBLIC_LIBRARIES})
     endif()
     if(qt_libs_private)
-        list(APPEND qt_register_target_dependencies_args PRIVATE ${qt_libs_private})
+        qt_internal_wrap_private_modules("${target}"
+            OUT_VAR qt_libs_private
+            LIBRARIES ${qt_libs_private})
+        list(APPEND qt_register_target_depentdencies_args PRIVATE ${qt_libs_private})
     endif()
     qt_internal_register_target_dependencies("${target}"
         ${qt_register_target_dependencies_args})
@@ -606,7 +614,11 @@ function(qt_internal_add_darwin_permission_plugin permission)
     set_property(TARGET ${plugin_target} APPEND PROPERTY
         EXPORT_PROPERTIES _qt_darwin_permissison_separate_request
     )
-    set(permission_request_symbol "_QDarwin${permission}PermissionRequest")
+    if (QT_NAMESPACE)
+        set(permission_request_symbol "_QDarwin${permission}PermissionRequest_${QT_NAMESPACE}")
+    else()
+        set(permission_request_symbol "_QDarwin${permission}PermissionRequest")
+    endif()
     set(permission_request_flag "-Wl,-u,${permission_request_symbol}")
     set(has_usage_description_property "_qt_has_${plugin_target}_usage_description")
     set(has_usage_description_genex "$<BOOL:$<TARGET_PROPERTY:${has_usage_description_property}>>")

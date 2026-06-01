@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Research In Motion.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLINSTANTIATOR_P_P_H
 #define QQMLINSTANTIATOR_P_P_H
@@ -52,11 +53,11 @@ public:
     bool async:1;
 #if QT_CONFIG(qml_delegate_model)
     bool ownModel:1;
+    QQmlDelegateModel::DelegateModelAccess delegateModelAccess = QQmlDelegateModel::Qt5ReadWrite;
 #endif
-    int requestedIndex;
-    QVariant model;
-    QQmlInstanceModel *instanceModel;
-    QQmlComponent *delegate;
+    int requestedIndex = -1;
+    QQmlInstanceModel *instanceModel = nullptr;
+    QQmlComponent *delegate = nullptr;
     QVector<QPointer<QObject> > objects;
 };
 

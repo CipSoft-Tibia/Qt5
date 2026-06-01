@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsclipboard.h"
 #include "qwindowscontext.h"
@@ -57,7 +58,7 @@ static QDebug operator<<(QDebug d, const QMimeData *mimeData)
         if (mimeData->hasUrls())
              d << ", urls=" << mimeData->urls();
     } else {
-        d << '0';
+        d << "0x0";
     }
     d << ')';
     return d;
@@ -100,7 +101,7 @@ void QWindowsClipboardRetrievalMimeData::releaseDataObject(IDataObject *dataObje
     dataObject->Release();
 }
 
-extern "C" LRESULT QT_WIN_CALLBACK qClipboardViewerWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT QT_WIN_CALLBACK qClipboardViewerWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     LRESULT result = 0;
     if (QWindowsClipboard::instance()

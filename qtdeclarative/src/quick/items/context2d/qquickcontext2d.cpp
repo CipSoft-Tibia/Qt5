@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qquickcontext2d_p.h"
 #include "qquickcontext2dcommandbuffer_p.h"
@@ -496,7 +497,11 @@ struct QQuickContext2DStyle : Object {
 struct QQuickJSContext2DPixelData : Object {
     void init();
     void destroy() {
-        delete image;
+        if (image) {
+            auto *mm = internalClass->engine->memoryManager;
+            mm->changeUnmanagedHeapSizeUsage(-image->sizeInBytes());
+            delete image;
+        }
         Object::destroy();
     }
 
@@ -939,6 +944,7 @@ static QV4::ReturnedValue qt_create_image_data(qreal w, qreal h, QV4::ExecutionE
     QV4::Scope scope(v4);
     QQuickContext2DEngineData *ed = engineData(scope.engine);
     QV4::Scoped<QQuickJSContext2DPixelData> pixelData(scope, scope.engine->memoryManager->allocate<QQuickJSContext2DPixelData>());
+    v4->memoryManager->changeUnmanagedHeapSizeUsage(image.sizeInBytes());
     QV4::ScopedObject p(scope, ed->pixelArrayProto.value());
     pixelData->setPrototypeOf(p);
 

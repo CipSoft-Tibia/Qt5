@@ -19,9 +19,17 @@ source_set("core") {
     "connectors_service_base.h",
     "enterprise_connectors_policy_handler.cc",
     "enterprise_connectors_policy_handler.h",
+    "enterprise_interstitial_base.cc",
+    "enterprise_interstitial_base.h",
+    "enterprise_interstitial_util.cc",
+    "enterprise_interstitial_util.h",
+    "realtime_reporting_client_base.cc",
+    "realtime_reporting_client_base.h",
     "reporting_constants.h",
     "reporting_service_settings.cc",
     "reporting_service_settings.h",
+    "reporting_utils.cc",
+    "reporting_utils.h",
     "service_provider_config.cc",
     "service_provider_config.h",
   ]
@@ -31,13 +39,22 @@ source_set("core") {
   deps = [
     "//base",
     "//build:blink_buildflags",
+    "//components/enterprise",
     "//components/enterprise/buildflags",
+    "//components/enterprise/common/proto:browser_events_proto",
     "//components/enterprise/device_trust",
+    "//components/keyed_service/core",
     "//components/policy/core/browser",
     "//components/policy/core/common",
     "//components/prefs",
+    "//components/safe_browsing/core/common:features",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
+    "//components/safe_browsing/core/common/proto:realtimeapi_proto",
+    "//components/security_interstitials/core",
+    "//components/security_interstitials/core:unsafe_resource",
     "//components/strings:components_strings_grit",
+    "//components/url_matcher:url_matcher",
+    "//ui/base",
     "//ui/gfx/range",
   ]
 
@@ -50,6 +67,24 @@ source_set("core") {
   }
 }
 
+source_set("test_support") {
+  testonly = true
+
+  sources = [
+    "reporting_test_utils.cc",
+    "reporting_test_utils.h",
+  ]
+
+  deps = [
+    ":core",
+    "//components/enterprise/common/proto:browser_events_proto",
+    "//components/policy/core/common:common_constants",
+    "//components/policy/core/common:test_support",
+    "//components/prefs",
+    "//testing/gmock:gmock",
+  ]
+}
+
 source_set("unit_tests") {
   testonly = true
 
@@ -58,6 +93,7 @@ source_set("unit_tests") {
     "connectors_service_base_unittest.cc",
     "enterprise_connectors_policy_handler_unittest.cc",
     "reporting_service_settings_unittest.cc",
+    "reporting_utils_unittest.cc",
     "service_provider_config_unittest.cc",
   ]
 
@@ -65,6 +101,7 @@ source_set("unit_tests") {
 
   deps = [
     "//base",
+    "//components/enterprise/common/proto:browser_events_proto",
     "//components/policy/core/browser",
     "//components/policy/core/common",
     "//components/prefs",

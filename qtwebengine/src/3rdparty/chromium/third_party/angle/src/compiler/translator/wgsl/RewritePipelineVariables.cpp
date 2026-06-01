@@ -23,11 +23,11 @@
 #include "compiler/translator/Symbol.h"
 #include "compiler/translator/SymbolUniqueId.h"
 #include "compiler/translator/Types.h"
-#include "compiler/translator/tree_util/BuiltIn_complete_autogen.h"
+#include "compiler/translator/tree_util/BuiltIn_autogen.h"
 #include "compiler/translator/tree_util/FindMain.h"
 #include "compiler/translator/tree_util/ReplaceVariable.h"
 #include "compiler/translator/util.h"
-#include "compiler/translator/wgsl/WriteTypeName.h"
+#include "compiler/translator/wgsl/Utils.h"
 
 namespace sh
 {
@@ -47,8 +47,10 @@ struct BuiltinAnnotation
 {
     ImmutableString wgslBuiltinName;
 };
+struct NoAnnotation
+{};
 
-using PipelineAnnotation = std::variant<LocationAnnotation, BuiltinAnnotation>;
+using PipelineAnnotation = std::variant<LocationAnnotation, BuiltinAnnotation, NoAnnotation>;
 
 enum class IOType
 {
@@ -100,6 +102,11 @@ bool GetWgslBuiltinName(std::string glslBuiltinName,
                   ImmutableString("gl_Position"), BuiltinAnnotation{ImmutableString("position")},
                   IOType::Output, BuiltInVariable::gl_Position(), ImmutableString("vec4<f32>"),
                   ImmutableString(nullptr), ImmutableString(nullptr)}},
+             {"gl_PointSize",
+              GlslToWgslBuiltinMapping{ImmutableString("gl_PointSize"), NoAnnotation{},
+                                       IOType::Output, BuiltInVariable::gl_PointSize(),
+                                       ImmutableString("f32"), ImmutableString(nullptr),
+                                       ImmutableString(nullptr)}},
              // TODO(anglebug.com/42267100): might have to emulate clip_distances, see
              // Metal's
              // https://source.chromium.org/chromium/chromium/src/+/main:third_party/angle/src/compiler/translator/msl/TranslatorMSL.cpp?q=symbol%3A%5Cbsh%3A%3AEmulateClipDistanceVaryings%5Cb%20case%3Ayes
@@ -189,22 +196,6 @@ ImmutableString CreateNameToReplaceBuiltin(ImmutableString glslBuiltinName)
     ImmutableStringBuilder newName(glslBuiltinName.length() + 1);
     newName << glslBuiltinName << '_';
     return newName;
-}
-
-using GlobalVars = TMap<ImmutableString, TIntermDeclaration *>;
-
-GlobalVars FindGlobalVars(TIntermBlock &root)
-{
-    GlobalVars globals;
-    for (TIntermNode *node : *root.getSequence())
-    {
-        if (TIntermDeclaration *declNode = node->getAsDeclarationNode())
-        {
-            Declaration decl = ViewDeclaration(*declNode);
-            globals.insert({decl.symbol.variable().name(), declNode});
-        }
-    }
-    return globals;
 }
 
 }  // namespace
@@ -322,11 +313,10 @@ class RewritePipelineVarOutputBuilder
                     builtinAnnotationEnd, builtinReplacement, " : ", wgslName.wgslBuiltinType, ",");
                 ioblock->angleAnnotatedMembers.push_back(annotatedStructVar);
             }
-            else
+            else if (auto *locationAnnotation =
+                         std::get_if<LocationAnnotation>(&wgslName.wgslPipelineAnnotation))
             {
-                auto &locationAnnotation =
-                    std::get<LocationAnnotation>(wgslName.wgslPipelineAnnotation);
-                ASSERT(locationAnnotation.location == 0);
+                ASSERT(locationAnnotation->location == 0);
                 // E.g. `@location(0) gl_FragColor_ : vec4<f32>,`.
                 const char *locationAnnotationStr = "@location(0) ";
                 ImmutableString annotatedStructVar =
@@ -334,22 +324,29 @@ class RewritePipelineVarOutputBuilder
                                                      " : ", wgslName.wgslBuiltinType, ",");
                 ioblock->angleAnnotatedMembers.push_back(annotatedStructVar);
             }
-
-            // E.g. `ANGLE_input_global.gl_VertexID_ = u32(ANGLE_input_annotated.gl_VertexID_);`
-            ImmutableString conversion(nullptr);
-            if (wgslName.conversionFunc.empty())
-            {
-                conversion =
-                    BuildConcatenatedImmutableString(toStruct, ".", builtinReplacement, " = ",
-                                                     fromStruct, ".", builtinReplacement, ";");
-            }
             else
             {
-                conversion = BuildConcatenatedImmutableString(
-                    toStruct, ".", builtinReplacement, " = ", wgslName.conversionFunc, "(",
-                    fromStruct, ".", builtinReplacement, ");");
+                ASSERT(std::get_if<NoAnnotation>(&wgslName.wgslPipelineAnnotation));
             }
-            ioblock->angleConversionFuncs.push_back(conversion);
+
+            if (!std::get_if<NoAnnotation>(&wgslName.wgslPipelineAnnotation))
+            {
+                // E.g. `ANGLE_input_global.gl_VertexID_ = u32(ANGLE_input_annotated.gl_VertexID_);`
+                ImmutableString conversion(nullptr);
+                if (wgslName.conversionFunc.empty())
+                {
+                    conversion =
+                        BuildConcatenatedImmutableString(toStruct, ".", builtinReplacement, " = ",
+                                                         fromStruct, ".", builtinReplacement, ";");
+                }
+                else
+                {
+                    conversion = BuildConcatenatedImmutableString(
+                        toStruct, ".", builtinReplacement, " = ", wgslName.conversionFunc, "(",
+                        fromStruct, ".", builtinReplacement, ");");
+                }
+                ioblock->angleConversionFuncs.push_back(conversion);
+            }
         }
         else
         {
@@ -368,7 +365,7 @@ class RewritePipelineVarOutputBuilder
 
             // E.g. `_uuserVar : i32,`.
             TStringStream typeStream;
-            WriteWgslType(typeStream, astVar->getType());
+            WriteWgslType(typeStream, astVar->getType(), {});
             TString type = typeStream.str();
             ImmutableString globalStructVar =
                 BuildConcatenatedImmutableString(userVarName, " : ", type.c_str(), ",");
@@ -395,8 +392,7 @@ bool RewritePipelineVarOutputBuilder::GenerateMainFunctionAndIOStructs(
     TIntermBlock &root,
     RewritePipelineVarOutput &outVarReplacements)
 {
-
-    GlobalVars globalVars = FindGlobalVars(root);
+    GlobalVars globalVars = FindGlobalVars(&root);
 
     if (!RewritePipelineVarOutputBuilder::GeneratePipelineStructStrings(
             &outVarReplacements.mInputBlock, &outVarReplacements.mAngleInputVars,
@@ -428,11 +424,11 @@ bool RewritePipelineVarOutputBuilder::GenerateMainFunctionAndIOStructs(
 RewritePipelineVarOutput::RewritePipelineVarOutput(sh::GLenum shaderType) : mShaderType(shaderType)
 {}
 
-bool RewritePipelineVarOutput::IsInputVar(TSymbolUniqueId angleInputVar)
+bool RewritePipelineVarOutput::IsInputVar(TSymbolUniqueId angleInputVar) const
 {
     return mAngleInputVars.count(angleInputVar.get()) > 0;
 }
-bool RewritePipelineVarOutput::IsOutputVar(TSymbolUniqueId angleOutputVar)
+bool RewritePipelineVarOutput::IsOutputVar(TSymbolUniqueId angleOutputVar) const
 {
     return mAngleOutputVars.count(angleOutputVar.get()) > 0;
 }
@@ -448,8 +444,6 @@ bool RewritePipelineVarOutput::OutputIOStruct(TInfoSinkBase &output,
     if (!block.angleGlobalMembers.empty())
     {
         // Output global struct definition.
-        ASSERT(block.angleGlobalMembers.size() == block.angleAnnotatedMembers.size());
-        ASSERT(block.angleGlobalMembers.size() == block.angleConversionFuncs.size());
         output << "struct " << builtinStructType << " {\n";
         for (const ImmutableString &globalMember : block.angleGlobalMembers)
         {

@@ -1096,6 +1096,146 @@ QMediaMetaData QMediaPlayer::metaData() const
     return d->control ? d->control->metaData() : QMediaMetaData{};
 }
 
+/*!
+    \qmlproperty bool QtMultimedia::MediaPlayer::pitchCompensation
+    \since 6.10
+
+    This property holds whether pitch compensation is enabled.
+*/
+
+/*!
+    \property QMediaPlayer::pitchCompensation
+    \brief The pitch compensation status of the media player.
+    \since 6.10
+
+    Indicates whether pitch compensation is enabled. When enabled, changing the playback rate
+    will not affect the pitch of the audio signal.
+
+    \note The pitch compensation will increase the CPU load of the QMediaPlayer.
+
+    By default is \c{true} if pitch compensation, is available, else \c{false}.
+*/
+
+/*!
+    Returns the state of pitch compensation.
+    \since 6.10
+*/
+bool QMediaPlayer::pitchCompensation() const
+{
+    Q_D(const QMediaPlayer);
+    return d->control ? d->control->pitchCompensation() : false;
+}
+
+/*!
+    Sets the state (\a enabled or disabled) of pitch compensation. This only
+    has an effect if the audio pitch compensation can be configured on the
+    backend at runtime.
+    \since 6.10
+*/
+void QMediaPlayer::setPitchCompensation(bool enabled) const
+{
+    Q_D(const QMediaPlayer);
+    if (d->control)
+        d->control->setPitchCompensation(enabled);
+}
+
+/*!
+    \enum QMediaPlayer::PitchCompensationAvailability
+    \since 6.10
+
+    Availablility of pitch compensation.
+
+    Different backends have different behavior regarding pitch compensation when changing
+    playback rate.
+
+    \value AlwaysOn The media player is always performing pitch compensation.
+    \value Available The media player can be configured to use pitch compensation.
+        If pitch compensation is available on the current platform, it will be enabled by default,
+        but users can disable if needed.
+    \value Unavailable The media player is not able to perform pitch compensation
+        on the current platform.
+*/
+
+/*!
+    \qmlproperty enumeration QtMultimedia::MediaPlayer::pitchCompensationAvailability
+    \since 6.10
+
+    Indicates the availability of pitch compensation of the \c MediaPlayer on the current backend.
+    The enumeration \c PitchCompensationAvailability is scoped.
+
+    \qmlenumeratorsfrom QMediaPlayer::PitchCompensationAvailability
+*/
+
+/*!
+    \property QMediaPlayer::pitchCompensationAvailability
+    \brief The pitch compensation availability of the current QtMultimedia backend.
+    \since 6.10
+
+    Indicates the availability of pitch compensation of the QMediaPlayer on the current backend.
+
+    \note Different backends may have different behavior.
+
+    For more information, see \l{QMediaPlayer::PitchCompensationAvailability}.
+*/
+
+/*!
+    Returns availability of pitch compensation of the current backend.
+    \since 6.10
+*/
+
+QMediaPlayer::PitchCompensationAvailability QMediaPlayer::pitchCompensationAvailability() const
+{
+    Q_D(const QMediaPlayer);
+    return d->control ? d->control->pitchCompensationAvailability()
+                      : PitchCompensationAvailability::Unavailable;
+}
+
+/*!
+    \qmlproperty playbackOptions MediaPlayer::playbackOptions
+    \since 6.10
+
+    This property exposes the \l playbackOptions API that gives low-level control of media playback
+    options. Although we strongly recommend to rely on the default settings of \l MediaPlayer,
+    this API can be used to optimize media playback for specific use cases where the default
+    options are not ideal.
+
+    Playback options take effect the next time \l MediaPlayer::source is changed.
+*/
+
+/*!
+    \property QMediaPlayer::playbackOptions
+    \brief Advanced playback options used to configure media playback and decoding.
+    \since 6.10
+
+    This property exposes the \l QPlaybackOptions API that gives low-level control of media
+    playback options. Although we strongly recommend to rely on the default settings of
+    \l QMediaPlayer, this API can be used to optimize media playback for specific use cases where
+    the default options are not ideal.
+
+    Playback options take effect the next time \l QMediaPlayer::setSource() is called.
+*/
+
+QPlaybackOptions QMediaPlayer::playbackOptions() const
+{
+    Q_D(const QMediaPlayer);
+    return d->playbackOptions;
+}
+
+void QMediaPlayer::setPlaybackOptions(const QPlaybackOptions &options)
+{
+    Q_D(QMediaPlayer);
+    if (std::exchange(d->playbackOptions, options) != options)
+        emit playbackOptionsChanged();
+}
+
+void QMediaPlayer::resetPlaybackOptions()
+{
+    Q_D(QMediaPlayer);
+    QPlaybackOptions defaultOptions{ };
+    if (std::exchange(d->playbackOptions, defaultOptions) != defaultOptions)
+        emit playbackOptionsChanged();
+}
+
 // Enums
 /*!
     \enum QMediaPlayer::PlaybackState
@@ -1162,27 +1302,7 @@ QMediaMetaData QMediaPlayer::metaData() const
 
     This property holds the status of media loading. It can be one of the following:
 
-    \table
-    \header
-        \li Property value
-        \li Description
-    \row \li NoMedia
-        \li No media has been set.
-    \row \li LoadingMedia
-        \li The media is currently being loaded.
-    \row \li LoadedMedia
-        \li The media has been loaded.
-    \row \li BufferingMedia
-        \li The media is buffering data.
-    \row \li StalledMedia
-        \li Playback has been interrupted while the media is buffering data.
-    \row \li BufferedMedia
-        \li The media has buffered data.
-    \row \li EndOfMedia
-        \li The media has played to the end.
-    \row \li InvalidMedia
-        \li The media cannot be played.
-    \endtable
+    \qmlenumeratorsfrom QMediaPlayer::MediaStatus
 */
 
 /*!
@@ -1190,19 +1310,7 @@ QMediaMetaData QMediaPlayer::metaData() const
 
     This property holds the error state of the audio. It can be one of the following.
 
-    \table
-    \header \li Value \li Description
-    \row \li NoError
-        \li There is no current error.
-    \row \li ResourceError
-        \li The audio cannot be played due to a problem allocating resources.
-    \row \li FormatError
-        \li The audio format is not supported.
-    \row \li NetworkError
-        \li The audio cannot be played due to network issues.
-    \row \li AccessDeniedError
-        \li The audio cannot be played due to insufficient permissions.
-    \endtable
+    \qmlenumeratorsfrom QMediaPlayer::Error
 */
 
 /*!

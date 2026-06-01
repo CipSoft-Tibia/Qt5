@@ -4,6 +4,7 @@
 #include "qabstract3daxis_p.h"
 #include "qsurface3dseries_p.h"
 #include "qsurfacedataproxy_p.h"
+#include "qgraphs3dlogging_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -41,8 +42,7 @@ QT_BEGIN_NAMESPACE
  * incorrectly if the whole surface does not completely fit within the visible
  * x-axis or z-axis ranges.
  *
- * \note Surfaces with less than two rows or columns are not considered valid
- * surfaces and will not be rendered.
+ * \note Surfaces with less than two rows or columns are rendered as lines.
  *
  * \note On some environments, surfaces with a lot of visible vertices may not
  * render, because they exceed the per-draw vertex count supported by the
@@ -144,7 +144,8 @@ QSurface3DSeries *QSurfaceDataProxy::series() const
 {
     Q_D(const QSurfaceDataProxy);
     if (!d->series())
-        qWarning("Series needs to be created to access data members");
+        qCWarning(lcProperties3D, "%s series needs to be created to access data members",
+                  qUtf8Printable(QLatin1String(__FUNCTION__)));
     return static_cast<QSurface3DSeries *>(d->series());
 }
 

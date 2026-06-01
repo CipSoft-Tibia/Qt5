@@ -1,9 +1,14 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
-// Qt-Security score:significant reason:default
+// Qt-Security score:critical reason:network-protocol
 
 #include "qmqttclient.h"
 #include "qmqttclient_p.h"
+
+#ifdef QT_MQTT_WITH_WEBSOCKETS
+#include "transportLayers/mqtt_websocket_io_p.h"
+#include "transportLayers/mqtt_secure_websocket_io_p.h"
+#endif // QT_MQTT_WITH_WEBSOCKETS
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QUuid>
@@ -164,6 +169,12 @@ Q_LOGGING_CATEGORY(lcMqttClient, "qt.mqtt.client")
            The transport uses a class based on a QAbstractSocket.
     \value SecureSocket
            The transport uses a class based on a QSslSocket.
+    \value [since 6.10] WebSocket
+           The transport uses a class based on a QIODevice,
+           which uses a QWebSocket internally.
+    \value [since 6.10] SecureWebSocket
+           The transport uses a class based on a QIODevice,
+           which uses a secure QWebSocket internally.
 */
 
 /*!
@@ -325,6 +336,7 @@ QMqttClient::QMqttClient(QObject *parent) : QObject(*(new QMqttClientPrivate(thi
 /*!
     Deletes a MQTT client. If the MQTT client was not already disconnected from the MQTT broker,
     it will be disconnected from automatically.
+    \note If a transport is specified with setTransport it must be valid at this point
 */
 QMqttClient::~QMqttClient()
 {
@@ -333,6 +345,7 @@ QMqttClient::~QMqttClient()
         d->m_connection.setClientDestruction();
         disconnectFromHost();
     }
+    d->m_connection.disconnectAndResetTransport();
 }
 
 /*!
@@ -343,7 +356,7 @@ QMqttClient::~QMqttClient()
     \l Disconnected state.
 
     \note Setting a custom transport for a client does not pass over responsibility
-    on connection management. The transport has to be opened for QIODevice based
+    on connection management or ownership. The transport has to be opened for QIODevice based
     transports or connected for socket type transports before calling QMqttClient::connectToHost().
  */
 void QMqttClient::setTransport(QIODevice *device, QMqttClient::TransportType transport)
@@ -511,6 +524,56 @@ quint16 QMqttClient::port() const
 {
     Q_D(const QMqttClient);
     return d->m_port;
+}
+
+/*!
+    \since 6.10
+
+    Set a web socket transport type and initiates a connection to the MQTT broker.
+    Earlier transport type is replaced.
+    If \a webSocket is given, hostname and port is ignored, and connection is done
+    with that websocket. webSocket is owned by the calling code, and must be valid
+    for the lifetime of the QMqttClient object.
+ */
+void QMqttClient::connectToHostWebSocket(QWebSocket *webSocket)
+{
+#ifndef QT_MQTT_WITH_WEBSOCKETS
+    Q_UNUSED(webSocket);
+    qWarning() << " Qt built without websocket support, connect skipped";
+#else
+    Q_D(QMqttClient);
+
+    d->m_connection.connectTransport(
+        TransportType::WebSocket,
+        std::make_shared<QMqttWebSocketIO>(nullptr, webSocket));
+    connectToHost();
+    d->m_connection.m_transportIsSet = false;
+#endif // QT_MQTT_WITH_WEBSOCKETS
+}
+
+/*!
+    \since 6.10
+
+    Set a secure websocket transport type and initiates a connection to the MQTT broker.
+    Earlier transport type is replaced.
+    If \a webSocket is given, hostname and port is ignored, and connection is done
+    with that websocket. webSocket is owned by the calling code, and must be valid
+    for the lifetime of the QMqttClient object.
+ */
+void QMqttClient::connectToHostWebSocketEncrypted(QWebSocket *webSocket)
+{
+#ifndef QT_MQTT_WITH_WEBSOCKETS
+    Q_UNUSED(webSocket);
+    qWarning() << " Qt built without websocket support, connect skipped";
+#else
+    Q_D(QMqttClient);
+
+    d->m_connection.connectTransport(
+        TransportType::SecureWebSocket,
+        std::make_shared<QMqttSecureWebSocketIO>(nullptr, webSocket));
+    connectToHost();
+    d->m_connection.m_transportIsSet = false;
+#endif // QT_MQTT_WITH_WEBSOCKETS
 }
 
 /*!

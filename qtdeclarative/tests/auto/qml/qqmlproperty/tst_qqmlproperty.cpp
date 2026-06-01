@@ -231,6 +231,11 @@ private slots:
 
     void propertyStartsWithOn();
 
+    void connectAliasPropertySignalWithCppSlot();
+
+    void convertToWriteTargetType_data();
+    void convertToWriteTargetType();
+
 private:
     QQmlEngine engine;
 };
@@ -2613,7 +2618,12 @@ void tst_qqmlproperty::listAssignmentSignals()
     QVERIFY(!root.isNull());
 
     QCOMPARE(root->property("signalCounter").toInt(), 1);
+
+    // Does not actually assign anything since all the objects are the same
     QMetaObject::invokeMethod(root.get(), "assignList");
+    QCOMPARE(root->property("signalCounter").toInt(), 1);
+
+    QMetaObject::invokeMethod(root.get(), "assignList2");
     QCOMPARE(root->property("signalCounter").toInt(), 2);
 }
 
@@ -2626,7 +2636,8 @@ void tst_qqmlproperty::invalidateQPropertyChangeTriggers()
     QVERIFY(!root.isNull());
 
     QStringList names;
-    QObject::connect(root.data(), &QObject::objectNameChanged, [&](const QString &name) {
+    QObject::connect(root.get(), &QObject::objectNameChanged,
+                     this, [&root, &names](const QString &name) {
         if (names.length() == 10)
             root->setProperty("running", false);
         else
@@ -2654,6 +2665,118 @@ void tst_qqmlproperty::propertyStartsWithOn()
     QScopedPointer<QObject> root(component.create());
     QVERIFY(!root.isNull());
     QCOMPARE(root->property("onlineStatus").toInt(), 12);
+}
+
+class SignalHandler : public QObject
+{
+    Q_OBJECT
+public:
+    SignalHandler() {}
+    bool triggered() const { return m_triggered; }
+public slots:
+    void handle() { m_triggered = true; }
+private:
+    bool m_triggered = false;
+};
+
+void tst_qqmlproperty::connectAliasPropertySignalWithCppSlot()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine);
+    c.setData(R"(
+        import QtQuick
+        Item {
+            id: root
+            property bool a: true
+            property alias b: root.a
+        }
+    )", QUrl());
+    QScopedPointer<QObject> root(c.create());
+    QVERIFY(root);
+
+    auto metaObject = root->metaObject();
+    auto idx = metaObject->indexOfMethod("bChanged()");
+    QVERIFY(idx >= 0);
+    auto signal = metaObject->method(idx);
+
+    SignalHandler signalHandler;
+    metaObject = signalHandler.metaObject();
+    idx = metaObject->indexOfMethod("handle()");
+    QVERIFY(idx >= 0);
+    auto slot = metaObject->method(idx);
+
+    QObject::connect(root.data(), signal, &signalHandler, slot);
+    root->setProperty("a", false);
+    QVERIFY(signalHandler.triggered());
+}
+
+struct Incompatible {};
+
+void tst_qqmlproperty::convertToWriteTargetType_data()
+{
+    QTest::addColumn<QVariant>("sourceValue");
+    QTest::addColumn<QMetaType>("targetType");
+    QTest::addColumn<QVariant>("targetValue");
+    QTest::addColumn<bool>("canConvert");
+
+    qmlRegisterInterface<Interface>("Interface", 1);
+    qmlRegisterType<A>("io.qt.bugs", 1, 0, "A");
+    auto interfaceImpl = new A();
+    interfaceImpl->setParent(this); // avoid leak
+    Interface *iface = interfaceImpl;
+    QUrl url("http:://example.org");
+
+    QTest::addRow("stringProvider") << QVariant::fromValue(u"red"_s)
+                                    << QMetaType::fromType<QColor>()
+                                    << QVariant::fromValue(QColor::fromString("red"))
+                                    << true;
+    QTest::addRow("plainVariantConvert") << QVariant::fromValue(QPointer(this))
+                                         << QMetaType::fromType<QObject *>()
+                                         << QVariant::fromValue(static_cast<QObject *>(this))
+                                         << true;
+    QTest::addRow("singleToList") << QVariant::fromValue(42l)
+                                  << QMetaType::fromType<QList<long>>()
+                                  << QVariant::fromValue(QList<long>() << 42l)
+                                  << true;
+    QTest::addRow("singleToList2") << QVariant::fromValue(42l)
+                                   << QMetaType::fromType<QList<int>>()
+                                   << QVariant::fromValue(QList<int>() << 42)
+                                   << true;
+    QTest::addRow("singleToList3") << QVariant::fromValue(url)
+                                   << QMetaType::fromType<QList<QUrl>>()
+                                   << QVariant::fromValue(QList<QUrl>() << url)
+                                   << true;
+    QTest::addRow("interface") << QVariant::fromValue(interfaceImpl)
+                               << QMetaType::fromType<Interface *>()
+                               << QVariant::fromValue(iface)
+                               << true;
+    auto myContainer = new MyContainer();
+    myContainer->setParent(this);
+    QTest::addRow("l2l") << QVariant::fromValue(QList<MyContainer*>{} << myContainer)
+                         << QMetaType::fromType<QList<QObject *>>()
+                         << QVariant::fromValue(QList<QObject *>{} << myContainer)
+                         << true;
+    // needs more tests
+    QTest::addRow("incompatible") << QVariant::fromValue(42l)
+                                  << QMetaType::fromType<Incompatible>()
+                                  << QVariant::fromValue(Incompatible {})
+                                  << false;
+}
+
+void tst_qqmlproperty::convertToWriteTargetType()
+{
+    QFETCH(QVariant, sourceValue);
+    QFETCH(QMetaType, targetType);
+    QFETCH(QVariant, targetValue);
+    QFETCH(bool, canConvert);
+
+    QVariant result = QQmlPropertyPrivate::convertToWriteTargetType(
+            sourceValue, targetType);
+    // TODO: We have code which attempts a list to list conversion, but should we really support that?
+    QEXPECT_FAIL("l2l", "Can't convert one list to another", Abort);
+    QCOMPARE(result.isValid(), canConvert);
+    if (canConvert)
+        QCOMPARE(result, targetValue);
 }
 
 QTEST_MAIN(tst_qqmlproperty)

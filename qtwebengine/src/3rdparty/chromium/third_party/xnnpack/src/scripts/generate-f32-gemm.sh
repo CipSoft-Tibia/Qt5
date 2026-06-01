@@ -598,17 +598,56 @@ tools/xngen src/f32-gemm/avx-shuffle4.c.in -D MR=6 -D NR=16 -D FMA=3 -D INC=1 -D
 
 ################################# x86 AVX-512 #################################
 ### AVX512F+BROADCAST micro-kernels
-tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=1 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-1x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=1  -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-1x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=4  -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-4x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=5  -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-5x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=6  -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-6x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=7  -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-7x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=8  -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-8x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=9  -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-9x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=10 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-10x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=11 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-11x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=12 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-12x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=13 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-13x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=14 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-14x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=15 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-15x16-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=16 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-16x16-minmax-avx512f-broadcast.c &
+
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=1  -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-1x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=4  -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-4x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=5  -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-5x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=6  -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-6x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=7  -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-7x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=8  -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-8x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=9  -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-9x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=10 -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-10x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=11 -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-11x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=12 -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-12x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=13 -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-13x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=14 -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-14x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=15 -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-15x32-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=16 -D NR=32 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-16x32-minmax-avx512f-broadcast.c &
+
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=1  -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-1x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=4  -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-4x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=5  -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-5x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=6  -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-6x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=7  -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-7x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=8  -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-8x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=9  -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-9x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=10 -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-10x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=11 -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-11x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=12 -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-12x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=13 -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-13x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=14 -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-14x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=15 -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-15x64-minmax-avx512f-broadcast.c &
+tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=16 -D NR=64 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-16x64-minmax-avx512f-broadcast.c &
+
 tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=1 -D NR=16 -D INC=1 -D DATATYPE=F32 -o src/f32-gemminc/gen/f32-gemminc-1x16-minmax-avx512f-broadcast.c &
-tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=4 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-4x16-minmax-avx512f-broadcast.c &
 tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=4 -D NR=16 -D INC=1 -D DATATYPE=F32 -o src/f32-gemminc/gen/f32-gemminc-4x16-minmax-avx512f-broadcast.c &
-tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=5 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-5x16-minmax-avx512f-broadcast.c &
 tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=5 -D NR=16 -D INC=1 -D DATATYPE=F32 -o src/f32-gemminc/gen/f32-gemminc-5x16-minmax-avx512f-broadcast.c &
-tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=6 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-6x16-minmax-avx512f-broadcast.c &
 tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=6 -D NR=16 -D INC=1 -D DATATYPE=F32 -o src/f32-gemminc/gen/f32-gemminc-6x16-minmax-avx512f-broadcast.c &
-tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=7 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-7x16-minmax-avx512f-broadcast.c &
 tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=7 -D NR=16 -D INC=1 -D DATATYPE=F32 -o src/f32-gemminc/gen/f32-gemminc-7x16-minmax-avx512f-broadcast.c &
-tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=8 -D NR=16 -D INC=0 -D DATATYPE=F32 -o src/f32-gemm/gen/f32-gemm-8x16-minmax-avx512f-broadcast.c &
 tools/xngen src/f32-gemm/avx512-broadcast.c.in -D MR=8 -D NR=16 -D INC=1 -D DATATYPE=F32 -o src/f32-gemminc/gen/f32-gemminc-8x16-minmax-avx512f-broadcast.c &
 
 ################################ RISC-V Vector ################################
@@ -628,29 +667,5 @@ tools/xngen src/f32-gemm/hvx-broadcast.c.in -D MR=4 -D NR=64 -o src/f32-gemm/gen
 tools/xngen src/f32-gemm/hvx-broadcast.c.in -D MR=7 -D NR=64 -o src/f32-gemm/gen/f32-gemm-7x64-minmax-hvx-broadcast.c &
 tools/xngen src/f32-gemm/hvx-broadcast.c.in -D MR=1 -D NR=128 -o src/f32-gemm/gen/f32-gemm-1x128-minmax-hvx-broadcast.c &
 tools/xngen src/f32-gemm/hvx-broadcast.c.in -D MR=2 -D NR=128 -o src/f32-gemm/gen/f32-gemm-2x128-minmax-hvx-broadcast.c &
-
-wait
- # JIT requires the assembly files to be generated first.
-
-##################################### JIT #####################################
-# AArch32
-scripts/convert-assembly-to-jit.py --force-prfm --reload-params -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch32-neon-cortex-a7.S     -o src/f32-gemm/gen/f32-gemm-4x8-aarch32-neon-cortex-a7.cc &
-scripts/convert-assembly-to-jit.py --reload-params              -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch32-neon-ld64.S          -o src/f32-gemm/gen/f32-gemm-4x8-aarch32-neon-ld64.cc &
-scripts/convert-assembly-to-jit.py --force-prfm                 -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch32-neon-cortex-a55.S    -o src/f32-gemm/gen/f32-gemm-4x8-aarch32-neon-cortex-a55.cc &
-scripts/convert-assembly-to-jit.py --reload-params              -i src/f32-gemm/gen/f32-gemm-1x8-minmax-asm-aarch32-neon-cortex-a53-prfm.S  -o src/f32-gemm/gen/f32-gemm-1x8-aarch32-neon-cortex-a53.cc
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch32-neon-cortex-a53-prfm.S  -o src/f32-gemm/gen/f32-gemm-4x8-aarch32-neon-cortex-a53.cc
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch32-neon-cortex-a75-prfm.S -o src/f32-gemm/gen/f32-gemm-4x8-aarch32-neon-cortex-a75.cc
-# AArch64
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-1x8-minmax-asm-aarch64-neonfma-ld64.S            -o src/f32-gemm/gen/f32-gemm-1x8-aarch64-neonfma-ld64.cc &
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-1x8-minmax-asm-aarch64-neonfma-cortex-a53-prfm.S -o src/f32-gemm/gen/f32-gemm-1x8-aarch64-neonfma-cortex-a53.cc
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-1x8-minmax-asm-aarch64-neonfma-cortex-a75-prfm.S -o src/f32-gemm/gen/f32-gemm-1x8-aarch64-neonfma-cortex-a75.cc &
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch64-neonfma-cortex-a53-prfm.S -o src/f32-gemm/gen/f32-gemm-4x8-aarch64-neonfma-cortex-a53.cc &
-scripts/convert-assembly-to-jit.py --force-prfm                 -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch64-neonfma-cortex-a55.S      -o src/f32-gemm/gen/f32-gemm-4x8-aarch64-neonfma-cortex-a55.cc &
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch64-neonfma-ld128.S           -o src/f32-gemm/gen/f32-gemm-4x8-aarch64-neonfma-ld128.cc &
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-4x8-minmax-asm-aarch64-neonfma-cortex-a75-prfm.S -o src/f32-gemm/gen/f32-gemm-4x8-aarch64-neonfma-cortex-a75.cc &
-scripts/convert-assembly-to-jit.py --force-prfm                 -i src/f32-gemm/gen/f32-gemm-6x8-minmax-asm-aarch64-neonfma-ld128.S           -o src/f32-gemm/gen/f32-gemm-6x8-aarch64-neonfma-ld128.cc &
-scripts/convert-assembly-to-jit.py --no-post-op                 -i src/f32-gemm/gen/f32-gemm-6x8-minmax-asm-aarch64-neonfma-cortex-a53-prfm.S -o src/f32-gemm/gen/f32-gemm-6x8-aarch64-neonfma-cortex-a53.cc &
-scripts/convert-assembly-to-jit.py --force-prfm --no-post-op    -i src/f32-gemm/gen/f32-gemm-6x8-minmax-asm-aarch64-neonfma-cortex-a55.S      -o src/f32-gemm/gen/f32-gemm-6x8-aarch64-neonfma-cortex-a55.cc &
-scripts/convert-assembly-to-jit.py                              -i src/f32-gemm/gen/f32-gemm-6x8-minmax-asm-aarch64-neonfma-cortex-a75-prfm.S -o src/f32-gemm/gen/f32-gemm-6x8-aarch64-neonfma-cortex-a75.cc &
 
 wait

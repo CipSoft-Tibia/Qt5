@@ -7,7 +7,7 @@
 #include <QtSensors/QSensorBackend>
 #include <QtCore/QScopedPointer>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtGyroscopePrivate;
 class WinRtGyroscope : public QSensorBackend
@@ -31,5 +31,7 @@ private:
     QScopedPointer<WinRtGyroscopePrivate> d_ptr;
     Q_DECLARE_PRIVATE(WinRtGyroscope)
 };
+
+QT_END_NAMESPACE
 
 #endif // WINRTGYROSCOPE_H

@@ -12,43 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import protos from '../protos';
 import {fetchWithTimeout} from '../base/http_utils';
 import {assertExists} from '../base/logging';
-import {StatusResult} from '../protos';
-import {EngineBase, LoadingTracker} from '../trace_processor/engine';
+import {EngineBase} from '../trace_processor/engine';
 
 const RPC_CONNECT_TIMEOUT_MS = 2000;
 
 export interface HttpRpcState {
   connected: boolean;
-  status?: StatusResult;
+  status?: protos.StatusResult;
   failure?: string;
 }
 
 export class HttpRpcEngine extends EngineBase {
+  readonly mode = 'HTTP_RPC';
   readonly id: string;
-  errorHandler: (err: string) => void = () => {};
   private requestQueue = new Array<Uint8Array>();
   private websocket?: WebSocket;
   private connected = false;
+  private disposed = false;
 
   // Can be changed by frontend/index.ts when passing ?rpc_port=1234 .
   static rpcPort = '9001';
 
-  constructor(id: string, loadingTracker?: LoadingTracker) {
-    super(loadingTracker);
+  constructor(id: string) {
+    super();
     this.id = id;
   }
 
   rpcSendRequestBytes(data: Uint8Array): void {
     if (this.websocket === undefined) {
+      if (this.disposed) return;
       const wsUrl = `ws://${HttpRpcEngine.hostAndPort}/websocket`;
       this.websocket = new WebSocket(wsUrl);
       this.websocket.onopen = () => this.onWebsocketConnected();
       this.websocket.onmessage = (e) => this.onWebsocketMessage(e);
       this.websocket.onclose = (e) => this.onWebsocketClosed(e);
       this.websocket.onerror = (e) =>
-        this.errorHandler(
+        super.fail(
           `WebSocket error rs=${(e.target as WebSocket)?.readyState} (ERR:ws)`,
         );
     }
@@ -70,6 +72,7 @@ export class HttpRpcEngine extends EngineBase {
   }
 
   private onWebsocketClosed(e: CloseEvent) {
+    if (this.disposed) return;
     if (e.code === 1006 && this.connected) {
       // On macbooks the act of closing the lid / suspending often causes socket
       // disconnections. Try to gracefully re-connect.
@@ -78,7 +81,7 @@ export class HttpRpcEngine extends EngineBase {
       this.connected = false;
       this.rpcSendRequestBytes(new Uint8Array()); // Triggers a reconnection.
     } else {
-      this.errorHandler(`Websocket closed (${e.code}: ${e.reason}) (ERR:ws)`);
+      super.fail(`Websocket closed (${e.code}: ${e.reason}) (ERR:ws)`);
     }
   }
 
@@ -109,7 +112,7 @@ export class HttpRpcEngine extends EngineBase {
       } else {
         const buf = new Uint8Array(await resp.arrayBuffer());
         httpRpcState.connected = true;
-        httpRpcState.status = StatusResult.decode(buf);
+        httpRpcState.status = protos.StatusResult.decode(buf);
       }
     } catch (err) {
       httpRpcState.failure = `${err}`;
@@ -119,5 +122,13 @@ export class HttpRpcEngine extends EngineBase {
 
   static get hostAndPort() {
     return `127.0.0.1:${HttpRpcEngine.rpcPort}`;
+  }
+
+  [Symbol.dispose]() {
+    this.disposed = true;
+    this.connected = false;
+    const websocket = this.websocket;
+    this.websocket = undefined;
+    websocket?.close();
   }
 }

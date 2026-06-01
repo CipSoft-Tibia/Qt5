@@ -10,6 +10,8 @@
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include "base/base_switches.h"
+#include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
@@ -260,8 +262,9 @@ OnScreenKeyboardDisplayManagerTabTip::OnScreenKeyboardDisplayManagerTabTip(
 OnScreenKeyboardDisplayManagerTabTip::~OnScreenKeyboardDisplayManagerTabTip() {}
 
 bool OnScreenKeyboardDisplayManagerTabTip::DisplayVirtualKeyboard() {
-  if (base::win::IsKeyboardPresentOnSlate(ui::GetHiddenWindow(), nullptr))
+  if (IsKeyboardAttachedToDevice(ui::GetHiddenWindow())) {
     return false;
+  }
 
   if (osk_path_.empty() && !GetOSKPath(&osk_path_)) {
     DLOG(WARNING) << "Failed to get on screen keyboard path from registry";
@@ -360,19 +363,39 @@ bool OnScreenKeyboardDisplayManagerTabTip::GetOSKPath(std::wstring* osk_path) {
   return !osk_path->empty();
 }
 
+bool OnScreenKeyboardDisplayManagerTabTip::IsKeyboardAttachedToDevice(
+    HWND hwnd) {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableUsbKeyboardDetect)) {
+    return false;
+  }
+  // If no touch screen detected, assume keyboard attached.
+  // TODO(crbug.com/383267933) If the device is mouse only with no touch screen,
+  // this will determine that the device has a keyboard.
+  if ((GetSystemMetrics(SM_DIGITIZER) & NID_INTEGRATED_TOUCH) !=
+      NID_INTEGRATED_TOUCH) {
+    return true;
+  }
+  // If it is a tablet device we assume that there is no keyboard attached.
+  if (base::win::IsWindows10TabletMode(hwnd) ||
+      base::win::IsDeviceUsedAsATablet(/*reason=*/nullptr)) {
+    return false;
+  }
+  return true;
+}
+
 bool OnScreenKeyboardDisplayManagerTabTip::IsKeyboardVisible() {
   return OnScreenKeyboardDetector::IsKeyboardVisible();
 }
 
 void OnScreenKeyboardDisplayManagerTabTip::NotifyKeyboardVisible(
     const gfx::Rect& occluded_rect) {
-  for (VirtualKeyboardControllerObserver& observer : observers_)
-    observer.OnKeyboardVisible(occluded_rect);
+  observers_.Notify(&VirtualKeyboardControllerObserver::OnKeyboardVisible,
+                    occluded_rect);
 }
 
 void OnScreenKeyboardDisplayManagerTabTip::NotifyKeyboardHidden() {
-  for (VirtualKeyboardControllerObserver& observer : observers_)
-    observer.OnKeyboardHidden();
+  observers_.Notify(&VirtualKeyboardControllerObserver::OnKeyboardHidden);
 }
 
 }  // namespace ui

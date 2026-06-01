@@ -37,7 +37,7 @@
 #include "third_party/blink/renderer/core/typed_arrays/array_buffer_view_helpers.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_color_params.h"
+#include "third_party/blink/renderer/platform/graphics/graphics_types.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/skia/include/core/SkPixmap.h"
@@ -47,6 +47,8 @@ namespace blink {
 
 class ExceptionState;
 class ImageBitmapOptions;
+class V8ImageDataStorageFormat;
+class V8PredefinedColorSpace;
 
 class CORE_EXPORT ImageData final : public ScriptWrappable,
                                     public ImageBitmapSource {
@@ -179,8 +181,8 @@ class CORE_EXPORT ImageData final : public ScriptWrappable,
   gfx::Size Size() const { return size_; }
   int width() const { return size_.width(); }
   int height() const { return size_.height(); }
-  String colorSpace() const;
-  String storageFormat() const;
+  V8PredefinedColorSpace colorSpace() const;
+  V8ImageDataStorageFormat storageFormat() const;
 
   // TODO(https://crbug.com/1198606): Remove this.
   ImageDataSettings* getSettings() const;
@@ -195,7 +197,7 @@ class CORE_EXPORT ImageData final : public ScriptWrappable,
   SkPixmap GetSkPixmap() const;
 
   // ImageBitmapSource implementation
-  gfx::Size BitmapSourceSize() const override { return size_; }
+  ImageBitmapSourceStatus CheckUsability() const override { return base::ok(); }
   ScriptPromise<ImageBitmap> CreateImageBitmap(
       ScriptState*,
       std::optional<gfx::Rect> crop_rect,

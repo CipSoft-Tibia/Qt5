@@ -388,7 +388,7 @@ public:
         ENUM_VALUE_1 = 1,
         ENUM_VALUE_2 = 2
     };
-    Q_ENUMS(Controller1Enum)
+    Q_ENUM(Controller1Enum)
 
     Controller1(QObject *parent = nullptr) : QObject(parent), m_string("Controller #1"),
         m_enumVal(ENUM_VALUE_1)
@@ -408,7 +408,7 @@ public:
         ENUM_VALUE_1 = 111,
         ENUM_VALUE_2 = 222
     };
-    Q_ENUMS(Controller2Enum)
+    Q_ENUM(Controller2Enum)
 
     Controller2(QObject *parent = nullptr) : QObject(parent), m_string("Controller #2"),
         m_enumVal(ENUM_VALUE_1)
@@ -583,11 +583,11 @@ void tst_qqmlmetatype::normalizeUrls()
     const QUrl url("qrc:///tstqqmlmetatype/data/CompositeType.qml");
     QVERIFY(!QQmlMetaType::qmlType(url).isValid());
     const auto registrationId = qmlRegisterType(url, "Test", 1, 0, "ResourceCompositeType");
-    QVERIFY(QQmlMetaType::qmlType(url, /*includeNonFileImports=*/true).isValid());
+    QVERIFY(QQmlMetaType::qmlType(url).isValid());
     QUrl normalizedURL("qrc:/tstqqmlmetatype/data/CompositeType.qml");
-    QVERIFY(QQmlMetaType::qmlType(normalizedURL, /*includeNonFileImports=*/true).isValid());
+    QVERIFY(QQmlMetaType::qmlType(normalizedURL).isValid());
     QQmlMetaType::unregisterType(registrationId);
-    QVERIFY(!QQmlMetaType::qmlType(url, /*includeNonFileImports=*/true).isValid());
+    QVERIFY(!QQmlMetaType::qmlType(url).isValid());
 }
 
 void tst_qqmlmetatype::unregisterAttachedProperties()

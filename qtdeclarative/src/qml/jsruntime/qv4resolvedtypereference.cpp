@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qv4resolvedtypereference_p.h"
 
@@ -77,8 +78,14 @@ bool ResolvedTypeReference::addToHash(
             Q_ASSERT(m_type.module() == QLatin1String("QML")); // a builtin without metaobject
         return ok;
     }
+
+    // If there is no compilation unit and no type, then it's a self reference.
+    // We don't have to add anything to the hash since if it changes, the QML document itself
+    // changes, leading to a new timestamp, which is checked before the checksum.
+    // Self references don't even set m_typePropertyCache, so there is nothing to check here.
     if (!m_compilationUnit)
-        return false;
+        return true;
+
     hash->addData({m_compilationUnit->unitData()->md5Checksum,
                   sizeof(m_compilationUnit->unitData()->md5Checksum)});
     return true;

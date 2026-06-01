@@ -17,6 +17,7 @@
     visually in the Qt Quick Designer.
 
     \image qtquickcontrols-contactlist.png
+           {Contact list application showing names and addresses}
 
     \section1 C++ Backend
 

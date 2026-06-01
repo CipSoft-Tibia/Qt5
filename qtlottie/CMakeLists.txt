@@ -12,7 +12,16 @@ project(QtLottie
 )
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
-find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG OPTIONAL_COMPONENTS Gui Qml Quick QuickTest)
+find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG
+    OPTIONAL_COMPONENTS
+        Gui
+        Qml
+        Quick
+        QuickShapesPrivate
+        QuickTest
+        QuickTestUtilsPrivate
+        QuickVectorImageGeneratorPrivate
+        QuickControls2)
 qt_internal_project_setup()
 
 if(NOT TARGET Qt6::Gui)

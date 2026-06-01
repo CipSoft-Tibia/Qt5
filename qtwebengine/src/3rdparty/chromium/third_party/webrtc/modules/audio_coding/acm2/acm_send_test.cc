@@ -119,12 +119,13 @@ std::unique_ptr<Packet> AcmSendTestOldApi::NextPacket() {
 }
 
 // This method receives the callback from ACM when a new packet is produced.
-int32_t AcmSendTestOldApi::SendData(AudioFrameType frame_type,
-                                    uint8_t payload_type,
-                                    uint32_t timestamp,
-                                    const uint8_t* payload_data,
-                                    size_t payload_len_bytes,
-                                    int64_t absolute_capture_timestamp_ms) {
+int32_t AcmSendTestOldApi::SendData(
+    AudioFrameType frame_type,
+    uint8_t payload_type,
+    uint32_t timestamp,
+    const uint8_t* payload_data,
+    size_t payload_len_bytes,
+    int64_t /* absolute_capture_timestamp_ms */) {
   // Store the packet locally.
   frame_type_ = frame_type;
   payload_type_ = payload_type;
@@ -144,7 +145,7 @@ std::unique_ptr<Packet> AcmSendTestOldApi::CreatePacket() {
   packet_memory[0] = 0x80;
   packet_memory[1] = static_cast<uint8_t>(payload_type_);
   packet_memory[2] = (sequence_number_ >> 8) & 0xFF;
-  packet_memory[3] = (sequence_number_)&0xFF;
+  packet_memory[3] = (sequence_number_) & 0xFF;
   packet_memory[4] = (timestamp_ >> 24) & 0xFF;
   packet_memory[5] = (timestamp_ >> 16) & 0xFF;
   packet_memory[6] = (timestamp_ >> 8) & 0xFF;

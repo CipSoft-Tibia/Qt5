@@ -24,7 +24,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/memory_dump_provider.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "components/viz/common/frame_sinks/begin_frame_source.h"
 #include "components/ml/buildflags.h"
 #include "components/viz/service/display_embedder/compositor_gpu_thread.h"
@@ -51,25 +50,25 @@
 #include "mojo/public/cpp/bindings/shared_remote.h"
 #include "services/viz/privileged/mojom/gl/gpu_host.mojom.h"
 #include "services/viz/privileged/mojom/gl/gpu_service.mojom.h"
+#include "services/viz/privileged/mojom/viz_main.mojom.h"
 #include "skia/buildflags.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "ui/gfx/gpu_extra_info.h"
 #include "ui/gfx/native_widget_types.h"
 
+#if BUILDFLAG(USE_ML)
+#include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
+#endif  // BUILDFLAG(USE_ML)
+
 #if BUILDFLAG(IS_WIN)
 #include "ui/gl/direct_composition_support.h"
-
-#if !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
-#include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
-#endif  // !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
-
 #endif  // BUILDFLAG(IS_WIN)
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 namespace arc {
 class ProtectedBufferManager;
 }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace gpu {
 class DawnContextProvider;
@@ -91,11 +90,9 @@ namespace media {
 class MediaGpuChannelManager;
 }  // namespace media
 
-#if !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
 namespace webnn {
 class WebNNContextProviderImpl;
 }  // namespace webnn
-#endif
 
 namespace viz {
 
@@ -132,7 +129,6 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
 #if BUILDFLAG(SKIA_USE_DAWN)
     std::unique_ptr<gpu::DawnContextProvider> dawn_context_provider;
 #endif
-    base::OnceCallback<void(ExitCode)> exit_callback;
   };
 
   GpuServiceImpl(const gpu::GpuPreferences& gpu_preferences,
@@ -152,15 +148,29 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
   void UpdateGPUInfo();
   void UpdateGPUInfoGL();
 
+#if BUILDFLAG(IS_ANDROID)
   void InitializeWithHost(
       mojo::PendingRemote<mojom::GpuHost> gpu_host,
       gpu::GpuProcessShmCount use_shader_cache_shm_count,
       scoped_refptr<gl::GLSurface> default_offscreen_surface,
+      mojom::GpuServiceCreationParamsPtr creation_params,
       gpu::SyncPointManager* sync_point_manager = nullptr,
       gpu::SharedImageManager* shared_image_manager = nullptr,
       gpu::Scheduler* scheduler = nullptr,
       base::WaitableEvent* shutdown_event = nullptr,
+      const gpu::SharedContextState::GrContextOptionsProvider*
+          gr_context_options_provider = nullptr,
       void* viz_delegate = nullptr);
+#else
+  void InitializeWithHost(
+      mojo::PendingRemote<mojom::GpuHost> gpu_host,
+      gpu::GpuProcessShmCount use_shader_cache_shm_count,
+      scoped_refptr<gl::GLSurface> default_offscreen_surface,
+      mojom::GpuServiceCreationParamsPtr creation_params,
+      base::WaitableEvent* shutdown_event = nullptr,
+      void* viz_delegate = nullptr);
+#endif
+
   void Bind(mojo::PendingReceiver<mojom::GpuService> pending_receiver);
 
   scoped_refptr<gpu::SharedContextState> GetContextState();
@@ -187,7 +197,7 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
   void OnDiskCacheHandleDestoyed(
       const gpu::GpuDiskCacheHandle& handle) override;
   void CloseChannel(int32_t client_id) override;
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 #if BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
   void CreateArcVideoDecodeAccelerator(
       mojo::PendingReceiver<arc::mojom::VideoDecodeAccelerator> vda_receiver)
@@ -210,7 +220,7 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
   void CreateJpegEncodeAccelerator(
       mojo::PendingReceiver<chromeos_camera::mojom::JpegEncodeAccelerator>
           jea_receiver) override;
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN)
   void RegisterDCOMPSurfaceHandle(
@@ -224,12 +234,12 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
       mojo::PendingReceiver<media::mojom::VideoEncodeAcceleratorProvider>
           vea_provider_receiver) override;
 
-#if !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
+#if BUILDFLAG(USE_ML)
   void BindWebNNContextProvider(
       mojo::PendingReceiver<webnn::mojom::WebNNContextProvider>
           pending_receiver,
       int client_id) override;
-#endif  // !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
+#endif  // BUILDFLAG(USE_ML)
 
   void BindClientGmbInterface(
       mojo::PendingReceiver<gpu::mojom::ClientGmbInterface> pending_receiver,
@@ -249,6 +259,8 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
                            CopyGpuMemoryBufferCallback callback) override;
   void GetVideoMemoryUsageStats(
       GetVideoMemoryUsageStatsCallback callback) override;
+  // These methods can be called from the CrBrowserMain thread and the
+  // VizCompositorThread (with InputVizard) for PeakGpuMemory tracking.
   void StartPeakMemoryMonitor(uint32_t sequence_num) override;
   void GetPeakMemoryUsage(uint32_t sequence_num,
                           GetPeakMemoryUsageCallback callback) override;
@@ -301,12 +313,9 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
                        const std::string& key,
                        const std::string& shader) override;
 
-  // Attempts to atomically shut down the process. Only does so if (a) not
-  // running in host process or (b) the context loss is irrecoverable and an
-  // immediate crash is better than entering a context loss loop. An error
-  // message will be logged.
+  // Attempts to atomically shut down the process. Only does so if not running
+  // in host process. An error message will be logged.
   void MaybeExitOnContextLost(
-      bool synthetic_loss,
       gpu::error::ContextLostReason context_lost_reason) override;
   bool IsExiting() const override;
   gpu::Scheduler* GetGpuScheduler() override;
@@ -498,13 +507,34 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
     base::WeakPtrFactory<ClientGmbInterfaceImpl> weak_ptr_factory_{this};
   };
 
+  void InitializeWithHostInternal(
+      mojo::PendingRemote<mojom::GpuHost> gpu_host,
+      gpu::GpuProcessShmCount use_shader_cache_shm_count,
+      scoped_refptr<gl::GLSurface> default_offscreen_surface,
+      mojom::GpuServiceCreationParamsPtr creation_params,
+      gpu::SyncPointManager* sync_point_manager,
+      gpu::SharedImageManager* shared_image_manager,
+      gpu::Scheduler* scheduler,
+      base::WaitableEvent* shutdown_event,
+      void* viz_delegate = nullptr
+  );
+
+  // Private helper methods to create objects needed by this class during init.
+  gpu::SyncPointManager* CreateSyncPointManager();
+  // supports_overlays is only queried when using Ozone.
+  // It should not be supplied otherwise.
+  gpu::SharedImageManager* CreateSharedImageManager(
+      bool supports_overlays = false);
+  gpu::Scheduler* CreateScheduler(gpu::SyncPointManager* sync_point_manager);
+  base::WaitableEvent* CreateShutdownEvent();
+
   bool IsNativeBufferSupported(gfx::BufferFormat format,
                                gfx::BufferUsage usage);
   void RecordLogMessage(int severity,
                         const std::string& header,
                         const std::string& message);
 
-#if BUILDFLAG(IS_CHROMEOS_ASH) && BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
+#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
   void CreateArcVideoDecodeAcceleratorOnMainThread(
       mojo::PendingReceiver<arc::mojom::VideoDecodeAccelerator> vda_receiver);
   void CreateArcVideoDecoderOnMainThread(
@@ -516,7 +546,7 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
           pba_receiver);
   void CreateArcProtectedBufferManagerOnMainThread(
       mojo::PendingReceiver<arc::mojom::ProtectedBufferManager> pbm_receiver);
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH) &&
+#endif  // BUILDFLAG(IS_CHROMEOS) &&
         // BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
 
 #if BUILDFLAG(IS_WIN)
@@ -533,8 +563,9 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
   // MemoryTracker are created on that thread. All requests made before
   // GpuServiceImpl::InitializeWithHost will be enqueued.
   void StartPeakMemoryMonitorOnMainThread(uint32_t sequence_num);
-  void GetPeakMemoryUsageOnMainThread(uint32_t sequence_num,
-                                      GetPeakMemoryUsageCallback callback);
+  virtual void GetPeakMemoryUsageOnMainThread(
+      uint32_t sequence_num,
+      GetPeakMemoryUsageCallback callback);  // virtual for testing.
 
   void WakeUpGpuOnMainThread();
 
@@ -633,7 +664,7 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
   std::unique_ptr<gpu::DawnContextProvider> dawn_context_provider_;
 #endif
 
-#if !BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_ML)
+#if BUILDFLAG(USE_ML)
   std::unique_ptr<webnn::WebNNContextProviderImpl> webnn_context_provider_;
 #endif
 
@@ -644,8 +675,9 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
   std::unique_ptr<base::WaitableEvent> owned_shutdown_event_;
   raw_ptr<base::WaitableEvent> shutdown_event_ = nullptr;
 
-  // Callback that safely exits GPU process.
-  base::OnceCallback<void(ExitCode)> exit_callback_;
+  raw_ptr<const gpu::SharedContextState::GrContextOptionsProvider>
+      gr_context_options_provider_ = nullptr;
+
   base::AtomicFlag is_exiting_;
 
   // Used for performing hardware decode acceleration of images. This is shared
@@ -666,9 +698,9 @@ class VIZ_SERVICE_EXPORT GpuServiceImpl
   // Map of client_id to ClientGmbInterfaceImpl object.
   std::unordered_map<int, std::unique_ptr<ClientGmbInterfaceImpl>> gmb_clients_;
 
-#if BUILDFLAG(IS_CHROMEOS_ASH) && BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
+#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
   scoped_refptr<arc::ProtectedBufferManager> protected_buffer_manager_;
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH) &&
+#endif  // BUILDFLAG(IS_CHROMEOS) &&
         // BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
 
   VisibilityChangedCallback visibility_changed_callback_;

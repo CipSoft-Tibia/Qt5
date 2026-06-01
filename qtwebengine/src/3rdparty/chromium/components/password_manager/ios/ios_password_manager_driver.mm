@@ -66,8 +66,7 @@ void IOSPasswordManagerDriver::SetPasswordFillData(
                      forSecurityOrigin:security_origin_];
 }
 
-void IOSPasswordManagerDriver::InformNoSavedCredentials(
-    bool should_show_popup_without_passwords) {
+void IOSPasswordManagerDriver::InformNoSavedCredentials() {
   // Allow using the proactive password generation bottom sheet from now on
   // since it is now known that there are no credentials saved for this page.
   // This signal won't work if the passwords are removed after the frame is
@@ -109,8 +108,10 @@ void IOSPasswordManagerDriver::GeneratedPasswordAccepted(
   NOTIMPLEMENTED();
 }
 
-void IOSPasswordManagerDriver::FillSuggestion(const std::u16string& username,
-                                              const std::u16string& password) {
+void IOSPasswordManagerDriver::FillSuggestion(
+    const std::u16string& username,
+    const std::u16string& password,
+    base::OnceCallback<void(bool)> success_callback) {
   NOTIMPLEMENTED();
 }
 
@@ -118,7 +119,8 @@ void IOSPasswordManagerDriver::FillSuggestionById(
     autofill::FieldRendererId username_element_id,
     autofill::FieldRendererId password_element_id,
     const std::u16string& username,
-    const std::u16string& password) {
+    const std::u16string& password,
+    autofill::AutofillSuggestionTriggerSource suggestion_source) {
   NOTIMPLEMENTED() << "This function is used for non-iOS manual fallback";
 }
 

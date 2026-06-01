@@ -7,6 +7,7 @@
 #include <QMetaProperty>
 #include <QSignalSpy>
 #include <QTest>
+#include <QDebug>
 
 #include <qtprotobuftestscommon.h>
 
@@ -21,6 +22,8 @@ private Q_SLOTS:
     void reservedEnumTest();
     void lowerCaseEnumTest();
     void upperCaseEnumTest();
+
+    void mutableGetterConflicts();
 };
 
 using namespace qtprotobufnamespace::tests;
@@ -117,6 +120,28 @@ void QtProtobufSyntaxTest::upperCaseEnumTest()
     QCOMPARE(simpleEnum.key(0), "EnumValue0");
     QCOMPARE(simpleEnum.key(1), "EnumValue1");
     QCOMPARE(simpleEnum.key(2), "EnumValue2");
+}
+
+void QtProtobufSyntaxTest::mutableGetterConflicts()
+{
+    NameClashingMutableGetters msg;
+    // Set 'data' field for the 'field' field using the mutable getter
+    msg.mutField().setData(1);
+
+    // Set 'data' field for the 'mutField' field using the mutable getter
+    msg.mutMutField().setData(2);
+
+    // Access the immutable 'field' field
+    QVERIFY(msg.field().data() == 1);
+    // Access the mutable 'field' field
+    QVERIFY(msg.mutField().data() == 1);
+
+    // Access the immutable 'mutField' field
+    QVERIFY(std::as_const(msg).mutField().data() == 2);
+
+    // Ensure we use the correct value in serialization
+    QVERIFY(!msg.property("mutField_p").isNull());
+    QVERIFY(msg.property("mutField_p").value<MutFieldMessage *>()->data() == 2);
 }
 
 QTEST_MAIN(QtProtobufSyntaxTest)

@@ -51,7 +51,6 @@ public:
     ~QFSFileEngine();
 
     bool open(QIODevice::OpenMode openMode, std::optional<QFile::Permissions> permissions) override;
-    bool open(QIODevice::OpenMode flags, FILE *fh);
     bool close() override;
     bool flush() override;
     bool syncToDisk() override;
@@ -94,7 +93,7 @@ public:
     qint64 read(char *data, qint64 maxlen) override;
     qint64 readLine(char *data, qint64 maxlen) override;
     qint64 write(const char *data, qint64 len) override;
-    bool cloneTo(QAbstractFileEngine *target) override;
+    TriStateResult cloneTo(QAbstractFileEngine *target) override;
 
     virtual bool isUnnamedFile() const
     { return false; }
@@ -103,14 +102,10 @@ public:
     bool supportsExtension(Extension extension) const override;
 
     //FS only!!
-    bool open(QIODevice::OpenMode flags, int fd);
     bool open(QIODevice::OpenMode flags, int fd, QFile::FileHandleFlags handleFlags);
     bool open(QIODevice::OpenMode flags, FILE *fh, QFile::FileHandleFlags handleFlags);
     static bool setCurrentPath(const QString &path);
     static QString currentPath(const QString &path = QString());
-    static QString homePath();
-    static QString rootPath();
-    static QString tempPath();
     static QFileInfoList drives();
 
 protected:

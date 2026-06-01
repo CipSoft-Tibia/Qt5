@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
+#pragma allow_unsafe_libc_calls
+#endif
+
 #include "base/check_op.h"
 
 #include <string.h>
@@ -76,7 +81,7 @@ char* CheckOpValueStr(std::string_view v) {
       // SAFETY: We allocated `ret` as `v.size() + 1` bytes above.
       UNSAFE_BUFFERS(base::span<char>(ret, v.size() + 1u)).split_at(v.size());
   val.copy_from(v);
-  nul.copy_from({{'\0'}});
+  nul.copy_from(base::span_from_ref('\0'));
   return ret;
 }
 

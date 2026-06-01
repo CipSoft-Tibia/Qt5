@@ -5,13 +5,11 @@
 from __future__ import annotations
 
 import abc
-import argparse
 import dataclasses
-import datetime as dt
 from typing import Any, Dict, Iterator
 
-from crossbench import cli_helper
 from crossbench.config import ConfigObject
+from crossbench.parse import NumberParser
 
 
 class TabController(ConfigObject):
@@ -24,11 +22,15 @@ class TabController(ConfigObject):
 
   @classmethod
   def parse_str(cls, value: str) -> TabController:
-    loops = cli_helper.parse_positive_int(value, "Repeat-count")
+    if not value or value == "single":
+      return cls.single()
+    if value in ("inf", "infinity"):
+      return cls.forever()
+    loops = NumberParser.positive_int(value, "Repeat-count")
     return cls.repeat(loops)
 
   @classmethod
-  def default(cls):
+  def default(cls) -> TabController:
     return cls.single()
 
   @classmethod
@@ -57,8 +59,8 @@ class SingleTabController(TabController):
   """
   Open given urls in one tab sequentially.
   """
-  multiple_tabs = False
-  is_forever = False
+  multiple_tabs: bool = False
+  is_forever: bool = False
 
   def __iter__(self) -> Iterator[None]:
     yield None
@@ -70,15 +72,13 @@ class ForeverTabController(TabController):
   Open given urls in separate tabs and repeat infinitely until
   one of the tabs gets discarded.
 
-  Example 1: if url='cnn', it keeps opening new tab for it until
-  finding a discarded tab.
+  Example 1: if url='cnn', it keeps opening new tabs loading cnn.
 
   Example 2: if urls='amazon,cnn', it keeps opening
-  amazon,cnn,amazon,cnn,amazon,cnn,.... .... until finding a
-  discarded tab.
+  amazon,cnn,amazon,cnn,amazon,cnn,.... ....
   """
-  multiple_tabs = True
-  is_forever = True
+  multiple_tabs: bool = True
+  is_forever: bool = True
 
   def __iter__(self) -> Iterator[None]:
     while True:
@@ -96,8 +96,8 @@ class RepeatTabController(TabController):
   amazon,cnn,amazon,cnn,amazon,cnn
   """
   count: int
-  multiple_tabs = True
-  is_forever = False
+  multiple_tabs: bool = True
+  is_forever: bool = False
 
   def __iter__(self) -> Iterator[None]:
     for _ in range(self.count):

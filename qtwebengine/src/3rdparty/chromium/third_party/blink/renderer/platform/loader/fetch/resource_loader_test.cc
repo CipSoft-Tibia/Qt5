@@ -199,7 +199,7 @@ TEST_F(ResourceLoaderTest, LoadResponseBody) {
   scoped_refptr<const SharedBuffer> buffer = resource->ResourceBuffer();
   StringBuilder data;
   for (const auto& span : *buffer) {
-    data.Append(span.data(), static_cast<wtf_size_t>(span.size()));
+    data.Append(base::as_bytes(span));
   }
   EXPECT_EQ(data.ToString(), "hello");
 }
@@ -224,7 +224,7 @@ TEST_F(ResourceLoaderTest, LoadDataURL_AsyncAndNonStream) {
   scoped_refptr<const SharedBuffer> buffer = resource->ResourceBuffer();
   StringBuilder data;
   for (const auto& span : *buffer) {
-    data.Append(span.data(), static_cast<wtf_size_t>(span.size()));
+    data.Append(base::as_bytes(span));
   }
   EXPECT_EQ(data.ToString(), "Hello World!");
 }
@@ -329,7 +329,7 @@ TEST_F(ResourceLoaderTest, LoadDataURL_Sync) {
   scoped_refptr<const SharedBuffer> buffer = resource->ResourceBuffer();
   StringBuilder data;
   for (const auto& span : *buffer) {
-    data.Append(span.data(), static_cast<wtf_size_t>(span.size()));
+    data.Append(base::as_bytes(span));
   }
   EXPECT_EQ(data.ToString(), "Hello World!");
 }
@@ -392,7 +392,7 @@ TEST_F(ResourceLoaderTest, LoadDataURL_DefersAsyncAndNonStream) {
   scoped_refptr<const SharedBuffer> buffer = resource->ResourceBuffer();
   StringBuilder data;
   for (const auto& span : *buffer) {
-    data.Append(span.data(), static_cast<wtf_size_t>(span.size()));
+    data.Append(base::as_bytes(span));
   }
   EXPECT_EQ(data.ToString(), "Hello World!");
 }
@@ -432,10 +432,8 @@ TEST_F(ResourceLoaderTest, LoadDataURL_DefersAsyncAndStream) {
   fetcher->SetDefersLoading(LoaderFreezeMode::kStrict);
   task_runner->RunUntilIdle();
   EXPECT_EQ(resource->GetStatus(), ResourceStatus::kPending);
-  const char* buffer;
-  size_t available;
-  BytesConsumer::Result result =
-      raw_resource_client->body()->BeginRead(&buffer, &available);
+  base::span<const char> buffer;
+  BytesConsumer::Result result = raw_resource_client->body()->BeginRead(buffer);
   EXPECT_EQ(BytesConsumer::Result::kShouldWait, result);
 
   // The resource should still be pending if it's unset and set in a single
@@ -444,7 +442,7 @@ TEST_F(ResourceLoaderTest, LoadDataURL_DefersAsyncAndStream) {
   fetcher->SetDefersLoading(LoaderFreezeMode::kStrict);
   task_runner->RunUntilIdle();
   EXPECT_EQ(resource->GetStatus(), ResourceStatus::kPending);
-  result = raw_resource_client->body()->BeginRead(&buffer, &available);
+  result = raw_resource_client->body()->BeginRead(buffer);
   EXPECT_EQ(BytesConsumer::Result::kShouldWait, result);
 
   // Read through the bytes consumer passed back from the ResourceLoader.
@@ -816,5 +814,53 @@ TEST_F(ResourceLoaderSubresourceFilterCnameAliasTest,
 
   ExpectCnameAliasInfoMatching(info, loader);
 }
+
+class ResourceLoaderBlockPartialResponseWithoutRangeTest
+    : public ResourceLoaderTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  ResourceLoaderBlockPartialResponseWithoutRangeTest() {
+    scoped_feature_list_.InitWithFeatureState(
+        features::kBlockPartialResponseWithoutRange, GetParam());
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+TEST_P(ResourceLoaderBlockPartialResponseWithoutRangeTest,
+       BlockOpaque416ResponseToNonRangeRequest) {
+  auto* properties = MakeGarbageCollected<TestResourceFetcherProperties>();
+  FetchContext* context = MakeGarbageCollected<MockFetchContext>();
+  auto* fetcher = MakeResourceFetcher(properties, context);
+
+  KURL url("https://www.example.com/");
+  ResourceRequest request(url);
+  request.SetRequestContext(mojom::blink::RequestContextType::FETCH);
+  ASSERT_FALSE(request.HttpHeaderFields().Contains(http_names::kRange));
+
+  FetchParameters params = FetchParameters::CreateForTest(std::move(request));
+  Resource* resource = RawResource::Fetch(params, fetcher, nullptr);
+  ResourceLoader* loader = resource->Loader();
+
+  ResourceResponse response(url);
+  response.SetHttpStatusCode(416);
+  response.SetType(network::mojom::FetchResponseType::kOpaque);
+  response.SetHasRangeRequested(true);
+
+  loader->DidReceiveResponse(WrappedResourceResponse(response),
+                             mojo::ScopedDataPipeConsumerHandle(),
+                             /*cached_metadata=*/std::nullopt);
+
+  if (GetParam()) {
+    EXPECT_EQ(resource->GetStatus(), ResourceStatus::kLoadError);
+  } else {
+    EXPECT_EQ(resource->GetStatus(), ResourceStatus::kPending);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ResourceLoaderBlockPartialResponseWithoutRangeTest,
+                         testing::Bool());
 
 }  // namespace blink

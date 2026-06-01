@@ -56,9 +56,11 @@ class QuicClient final : public ProtocolConnectionClient,
   bool Stop() override;
   bool Suspend() override;
   bool Resume() override;
-  State GetState() override;
-  MessageDemuxer& GetMessageDemuxer() override;
-  InstanceRequestIds& GetInstanceRequestIds() override;
+  State GetState() override { return state_; }
+  MessageDemuxer& GetMessageDemuxer() override { return demuxer_; }
+  InstanceRequestIds& GetInstanceRequestIds() override {
+    return instance_request_ids_;
+  }
   std::unique_ptr<ProtocolConnection> CreateProtocolConnection(
       uint64_t instance_id) override;
   bool Connect(std::string_view instance_name,
@@ -81,7 +83,7 @@ class QuicClient final : public ProtocolConnectionClient,
     std::string auth_token;
 
     // The network endpoints to create a new connection to the Open Screen
-    // service. At least one of them is valid and use |v4_endpoint| first if it
+    // service. At least one of them is valid and use `v4_endpoint` first if it
     // is valid.
     IPEndpoint v4_endpoint;
     IPEndpoint v6_endpoint;
@@ -97,12 +99,13 @@ class QuicClient final : public ProtocolConnectionClient,
   void OnReceiverRemoved(const ServiceInfo& info) override;
   void OnAllReceiversRemoved() override;
   void OnError(const Error& error) override;
-  void OnMetrics(ServiceListener::Metrics) override;
+
+  // ProtocolConnectionClient overrides.
+  void CancelConnectRequest(uint64_t request_id) override;
 
   bool StartConnectionRequest(std::string_view instance_name,
                               ConnectRequest& request,
                               ConnectRequestCallback* request_callback);
-  void CancelConnectRequest(uint64_t request_id) override;
 
   // Value that will be used for the next new connection request.
   uint64_t next_request_id_ = 1u;

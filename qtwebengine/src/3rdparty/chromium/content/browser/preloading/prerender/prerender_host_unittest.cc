@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "content/browser/preloading/prerender/prerender_host.h"
+
 #include <memory>
 
 #include "base/functional/bind.h"
@@ -12,6 +13,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "components/ukm/test_ukm_recorder.h"
+#include "content/browser/preloading/preload_pipeline_info.h"
 #include "content/browser/preloading/preloading.h"
 #include "content/browser/preloading/prerender/prerender_attributes.h"
 #include "content/browser/preloading/prerender/prerender_features.h"
@@ -284,12 +286,12 @@ class PrerenderHostTest : public RenderViewHostImplTestHarness {
         /*embedder_histogram_suffix=*/"",
         blink::mojom::SpeculationTargetHint::kNoHint, Referrer(),
         blink::mojom::SpeculationEagerness::kEager,
-        /*no_vary_search_expected=*/std::nullopt, rfh->GetLastCommittedOrigin(),
-        rfh->GetProcess()->GetID(), contents()->GetWeakPtr(),
-        rfh->GetFrameToken(), rfh->GetFrameTreeNodeId(),
-        rfh->GetPageUkmSourceId(), ui::PAGE_TRANSITION_LINK,
-        /*should_warm_up_compositor=*/false, std::move(url_match_predicate),
-        /*prerender_navigation_handle_callback=*/{});
+        /*no_vary_search_hint=*/std::nullopt, rfh, contents()->GetWeakPtr(),
+        ui::PAGE_TRANSITION_LINK,
+        /*should_warm_up_compositor=*/false,
+        /*should_prepare_paint_tree=*/false, std::move(url_match_predicate),
+        /*prerender_navigation_handle_callback=*/{},
+        base::MakeRefCounted<PreloadPipelineInfo>());
   }
 
   void ExpectFinalStatus(PrerenderFinalStatus status) {
@@ -735,8 +737,11 @@ TEST(AreHttpRequestHeadersCompatible, IgnoreRTT) {
   const std::string prerender_headers = "rtt: 1 \r\n downlink: 3";
   const std::string potential_activation_headers = "rtt: 2 \r\n downlink: 4";
   EXPECT_TRUE(PrerenderHost::AreHttpRequestHeadersCompatible(
-      potential_activation_headers, prerender_headers,
-      PreloadingTriggerType::kSpeculationRule,
+      potential_activation_headers,
+#if BUILDFLAG(IS_ANDROID)
+      /*potential_activation_additional_headers=*/"",
+#endif  // BUILDFLAG(IS_ANDROID)
+      prerender_headers, PreloadingTriggerType::kSpeculationRule,
       /*embedder_histogram_suffix=*/"", reason));
 }
 

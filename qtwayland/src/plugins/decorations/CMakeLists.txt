@@ -5,5 +5,3 @@
 if (QT_FEATURE_wayland_decoration_adwaita)
     add_subdirectory(adwaita)
 endif()
-
-add_subdirectory(bradient)

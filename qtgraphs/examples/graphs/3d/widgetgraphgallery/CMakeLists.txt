@@ -32,9 +32,6 @@ qt_add_executable(widgetgraphgallery
 
     graphmodifier.cpp graphmodifier.h
     rainfalldata.cpp rainfalldata.h
-    variantbardatamapping.cpp variantbardatamapping.h
-    variantbardataproxy.cpp variantbardataproxy.h
-    variantdataset.cpp variantdataset.h
 
     scattergraph.cpp scattergraph.h
     scattergraphwidget.cpp scattergraphwidget.h

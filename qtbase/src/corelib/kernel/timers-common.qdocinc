@@ -22,3 +22,11 @@
     A disadvantage of using timerEvent() is that some high-level features,
     such as single-shot timers and signals, aren't supported.
 //! [q-chrono-timer-alternatives]
+
+// \1 is the method argument's name e.g. `\a interval`
+//! [negative-intervals-not-allowed]
+    Starting from Qt 6.10, setting a negative interval will result in a run-time warning
+    and the value being reset to 1ms. Before Qt 6.10 a Qt Timer would let you set a negative
+    interval but behave in surprising ways (for example stop the timer if it was running or
+    not start it at all).
+//! [negative-intervals-not-allowed]

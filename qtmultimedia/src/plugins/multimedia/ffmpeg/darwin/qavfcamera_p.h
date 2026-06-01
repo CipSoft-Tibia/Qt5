@@ -17,31 +17,33 @@
 
 #include <QtMultimedia/private/qavfcamerabase_p.h>
 
+#include <QtCore/private/qexpected_p.h>
+
+#include <QtFFmpegMediaPluginImpl/private/qavfcamerarotationtracker_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qavfcapturephotooutputdelegate_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qavfsamplebufferdelegate_p.h>
 #define AVMediaType XAVMediaType
 #include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
 #undef AVMediaType
 
+#include <QtMultimedia/private/qavfcamerautility_p.h>
 #include <QtMultimedia/private/qplatformmediacapture_p.h>
+#include <QtMultimedia/qimagecapture.h>
 
-#include <dispatch/dispatch.h>
+#import <dispatch/dispatch.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureSession);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureDeviceInput);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureVideoDataOutput);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureDevice);
-Q_FORWARD_DECLARE_OBJC_CLASS(QAVFSampleBufferDelegate);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureDeviceRotationCoordinator);
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
-struct VideoTransformation;
+namespace QFFmpeg {
 
 class QAVFCamera : public QAVFCameraBase
 {
     Q_OBJECT
 
 public:
-    explicit QAVFCamera(QCamera *parent);
+    explicit QAVFCamera(QCamera &parent);
     ~QAVFCamera();
 
     void setCaptureSession(QPlatformMediaCaptureSession *) override;
@@ -53,51 +55,78 @@ public:
 
     QVideoFrameFormat frameFormat() const override;
 
+    [[nodiscard]] q23::expected<void, QString> requestStillPhotoCapture();
+
+signals:
+    void stillPhotoSucceeded(QVideoFrame image);
+    void stillPhotoFailed(QImageCapture::Error error, QString errorMsg);
+
 protected:
     void onActiveChanged(bool active) override;
-    void onCameraDeviceChanged(const QCameraDevice &device) override;
+    void onCameraDeviceChanged(const QCameraDevice &, const QCameraFormat &) override;
     bool tryApplyCameraFormat(const QCameraFormat&) override;
 
 private:
-    void updateCameraFormat(const QCameraFormat&);
-    void refreshAvCaptureSessionInputDevice();
-    void setPixelFormat(QVideoFrameFormat::PixelFormat pixelFormat, uint32_t inputCvPixFormat);
-    [[nodiscard]] QSize adjustedResolution(const QCameraFormat& format) const;
-    VideoTransformation surfaceTransform() const;
-
-    void updateRotationTracking();
+    void clearAvCaptureSessionInputDevice();
+    [[nodiscard]] q23::expected<void, QString> setupAvCaptureSessionInputDevice(AVCaptureDevice *);
+    void clearAvCaptureVideoDataOutput();
+    [[nodiscard]] q23::expected<void, QString> setupAvCaptureVideoDataOutput(AVCaptureDevice *);
+    [[nodiscard]] q23::expected<void, QString> tryApplyFormatToCaptureSession(
+        AVCaptureDevice *,
+        AVCaptureDeviceFormat *,
+        const QCameraFormat &);
     void clearRotationTracking();
-    int getCurrentRotationAngleDegrees() const;
+    void setupRotationTracking(AVCaptureDevice *);
+    void clearCaptureSessionConfiguration();
+    [[nodiscard]] q23::expected<void, QString> tryConfigureCaptureSession(
+        const QCameraDevice &,
+        const QCameraFormat &);
+    [[nodiscard]] q23::expected<void, QString> tryConfigureCaptureSession(
+        AVCaptureDevice *,
+        const QCameraFormat &);
+    [[nodiscard]] q23::expected<void, QString> tryConfigureCaptureSession(
+        AVCaptureDevice *,
+        AVCaptureDeviceFormat *,
+        const QCameraFormat &);
 
-    bool isFrontCamera() const;
+    void onStillPhotoDelegateSucceeded(const QVideoFrame &image);
+    void onStillPhotoDelegateFailed(QImageCapture::Error errType, const QString &errMsg);
+
+    [[nodiscard]] QSize adjustedResolution(const QCameraFormat& format) const;
+
+    [[nodiscard]] int getCurrentRotationAngleDegrees() const;
 
     QMediaCaptureSession *m_qMediaCaptureSession = nullptr;
-    AVCaptureSession *m_avCaptureSession = nullptr;
-    AVCaptureDeviceInput *m_avCaptureDeviceVideoInput = nullptr;
-    AVCaptureVideoDataOutput *m_avCaptureVideoDataOutput = nullptr;
-    QAVFSampleBufferDelegate *m_qAvfSampleBufferDelegate = nullptr;
-    dispatch_queue_t m_delegateQueue;
+    AVFScopedPointer<AVCaptureSession> m_avCaptureSession;
+    AVFScopedPointer<AVCapturePhotoOutput> m_avCapturePhotoOutput;
+    AVFScopedPointer<AVCaptureDeviceInput> m_avCaptureDeviceVideoInput;
+    AVFScopedPointer<AVCaptureVideoDataOutput> m_avCaptureVideoDataOutput;
+    AVFScopedPointer<QAVFSampleBufferDelegate> m_qAvfSampleBufferDelegate;
     AVPixelFormat m_hwPixelFormat = AV_PIX_FMT_NONE;
     // The current CVPixelFormat used by the AVCaptureVideoDataOutput.
     // This can in some cases be different from the AVCaptureDeviceFormat
     // used by the camera.
     uint32_t m_cvPixelFormat = 0;
 
-    // If running iOS 17+, we use AVCaptureDeviceRotationCoordinator
-    // to get the camera rotation directly from the camera-device.
+    std::optional<QFFmpeg::AvfCameraRotationTracker> m_qAvfCameraRotationTracker;
+
+    // Will be non-null whenever a still photo is in progress.
     //
-    // Gives us rotational information about the camera-device.
-    API_AVAILABLE(macos(14.0), ios(17.0))
-    AVCaptureDeviceRotationCoordinator *m_avRotationCoordinator = nullptr;
-#ifdef Q_OS_IOS
-    // If running iOS 16 or older, we use the UIDeviceOrientation
-    // and the AVCaptureCameraPosition to apply rotation metadata
-    // to the cameras frames.
-    bool m_receivingUiDeviceOrientationNotifications = false;
-#endif
+    // TODO: It can be problematic if we change QMediaCaptureSession in the midst of a capture.
+    // We might end up signaling a different QImageCapture than the one that requested
+    // the capture. We should likely cancel any on-going still photo captures when this
+    // happens.
+    AVFScopedPointer<QAVFCapturePhotoOutputDelegate> m_qAvfCapturePhotoOutputDelegate;
+    [[nodiscard]] bool stillPhotoCaptureInProgress() const
+    {
+        return m_qAvfCapturePhotoOutputDelegate.data();
+    }
+
+    AVFScopedPointer<dispatch_queue_t> m_delegateQueue;
 };
 
-QT_END_NAMESPACE
+} // namespace QFFmpeg
 
+QT_END_NAMESPACE
 
 #endif // QAVFCAMERA_P_H

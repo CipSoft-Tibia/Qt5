@@ -7,6 +7,9 @@ import 'chrome://resources/cr_elements/cr_checkbox/cr_checkbox.js';
 import 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 
 import type {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
+// <if expr="is_win">
+import type {CrToggleElement} from 'chrome://resources/cr_elements/cr_toggle/cr_toggle.js';
+// </if>
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import {TraceReportBrowserProxy} from './trace_report_browser_proxy.js';
@@ -16,7 +19,6 @@ import {getHtml} from './tracing_scenarios_config.html.js';
 interface Config {
   scenarioName: string;
   selected: boolean;
-  hash: string;
 }
 
 export interface TracingScenariosConfigElement {
@@ -44,7 +46,12 @@ export class TracingScenariosConfigElement extends CrLitElement {
       fieldConfig_: {type: Array},
       isEdited_: {type: Boolean},
       isLoading_: {type: Boolean},
+      privacyFilterEnabled_: {type: Boolean},
       toastMessage_: {type: String},
+      // <if expr="is_win">
+      tracingServiceSupported_: {type: Boolean},
+      tracingServiceRegistered_: {type: Boolean},
+      // </if>
     };
   }
 
@@ -55,7 +62,13 @@ export class TracingScenariosConfigElement extends CrLitElement {
   protected fieldConfig_: Config[] = [];
   protected isEdited_: boolean = false;
   protected isLoading_: boolean = false;
+  protected privacyFilterEnabled_: boolean = false;
   protected toastMessage_: string = '';
+  // <if expr="is_win">
+  protected tracingServiceSupported_: boolean = false;
+  protected tracingServiceRegistered_: boolean = false;
+  protected securityShieldIconUrl_: string = '';
+  // </if>
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -67,6 +80,9 @@ export class TracingScenariosConfigElement extends CrLitElement {
     this.isEdited_ = false;
     this.presetConfig_ = [];
     this.fieldConfig_ = [];
+    this.privacyFilterEnabled_ =
+        (await this.traceReportProxy_.handler.getPrivacyFilterEnabled())
+            .enabled;
 
     const enabledList =
         await this.traceReportProxy_.handler.getEnabledScenarios();
@@ -78,23 +94,46 @@ export class TracingScenariosConfigElement extends CrLitElement {
         await this.traceReportProxy_.handler.getAllFieldScenarios();
 
     for (const scenario of presetScenarios) {
-      const isSelected = enabledSet.has(scenario.hash);
+      const isSelected = enabledSet.has(scenario.scenarioName);
       this.presetConfig_.push({
         scenarioName: scenario.scenarioName,
         selected: isSelected,
-        hash: scenario.hash,
       });
     }
     for (const scenario of fieldScenarios) {
-      const isSelected = enabledSet.has(scenario.hash);
+      const isSelected = enabledSet.has(scenario.scenarioName);
       this.fieldConfig_.push({
         scenarioName: scenario.scenarioName,
         selected: isSelected,
-        hash: scenario.hash,
       });
     }
 
+    // <if expr="is_win">
+    const {
+      serviceSupported: serviceSupported,
+      serviceRegistered: serviceRegistered,
+    } = await this.traceReportProxy_.handler.getSystemTracingState();
+
+    this.tracingServiceSupported_ = serviceSupported;
+    this.tracingServiceRegistered_ = serviceRegistered;
+
+    if (this.tracingServiceSupported_) {
+      this.securityShieldIconUrl_ =
+          (await this.traceReportProxy_.handler.getSecurityShieldIconUrl())
+              .shieldIconUrl.url;
+    }
+    // </if>
+
     this.isLoading_ = false;
+  }
+
+  protected privacyFilterDidChange_(event: CustomEvent<{value: boolean}>):
+      void {
+    if (this.privacyFilterEnabled_ === event.detail.value) {
+      return;
+    }
+    this.privacyFilterEnabled_ = event.detail.value;
+    this.isEdited_ = true;
   }
 
   protected valueDidChange_(event: CustomEvent<{value: boolean}>): void {
@@ -114,10 +153,13 @@ export class TracingScenariosConfigElement extends CrLitElement {
   }
 
   protected async onConfirmClick_(): Promise<void> {
+    await this.traceReportProxy_.handler.setPrivacyFilterEnabled(
+        this.privacyFilterEnabled_);
+
     const enabledScenarios: string[] = [];
     for (const scenario of this.presetConfig_) {
       if (scenario.selected) {
-        enabledScenarios.push(scenario.hash);
+        enabledScenarios.push(scenario.scenarioName);
       }
     }
     const {success} = await this.traceReportProxy_.handler.setEnabledScenarios(
@@ -139,16 +181,36 @@ export class TracingScenariosConfigElement extends CrLitElement {
         this.fieldConfig_.some(scenario => scenario.selected);
   }
 
-  protected async clearAllClick_(): Promise<void> {
+  protected async resetAllClick_(): Promise<void> {
     const {success} =
         await this.traceReportProxy_.handler.setEnabledScenarios([]);
     if (!success) {
-      this.toastMessage_ = 'Failed to clear scenarios';
+      this.toastMessage_ = 'Failed to reset scenarios';
       this.$.toast.show();
       return;
     }
     await this.initScenariosConfig_();
   }
+
+  // <if expr="is_win">
+  protected async onSystemTracingChange_(e: CustomEvent<boolean>) {
+    const enable = e.detail;
+    if (enable === this.tracingServiceRegistered_) {
+      return;
+    }
+    const target = (e.target as CrToggleElement);
+    const {success} = enable ?
+        await this.traceReportProxy_.handler.enableSystemTracing() :
+        await this.traceReportProxy_.handler.disableSystemTracing();
+    if (success) {
+      // On success, update the instance's registration state.
+      this.tracingServiceRegistered_ = enable;
+    } else if (target) {
+      // On failure, put the toggle back to its previous state.
+      target.checked = !enable;
+    }
+  }
+  // </if>
 }
 
 declare global {

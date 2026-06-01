@@ -33,7 +33,7 @@ class BarsRenderer : public QQuickItem
 {
     Q_OBJECT
 public:
-    BarsRenderer(QGraphsView *graph);
+    BarsRenderer(QGraphsView *graph, bool clipPlotArea);
     ~BarsRenderer() override;
 
     void handlePolish(QBarSeries *series);

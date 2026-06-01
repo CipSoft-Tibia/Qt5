@@ -1,5 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// Qt-Security score:significant reason:default
+
 
 //#define QAX_NO_CLASSINFO
 
@@ -1435,6 +1437,30 @@ private:
         Bindable                = 0x02000000
     };
 
+    static inline bool checkForValidFunctionParameters(const QByteArray &name, const QList<QByteArray> &parameters)
+    {
+        qsizetype leftBrace = name.indexOf('(');
+        if (leftBrace == -1)
+            return false;
+        qsizetype rightBrace = name.indexOf(')', leftBrace + 1);
+        if (rightBrace == -1)
+            return false;
+
+        if (rightBrace - leftBrace == 1)
+            return true;
+
+        const QList<QByteArray> parameterTypes =
+                name.mid(leftBrace + 1, rightBrace - 1 - leftBrace).split(',');
+        if (parameterTypes.length() != parameters.length())
+            return false;
+
+        for (const auto &parameterType : parameterTypes)
+            if (parameterType.isEmpty())
+                return false;
+
+        return true;
+    };
+
     static inline QByteArrayList paramList(const QByteArray &prototype)
     {
         QByteArray parameters = prototype.mid(prototype.indexOf('(') + 1);
@@ -2384,14 +2410,15 @@ void MetaObjectGenerator::readFuncsInfo(ITypeInfo *typeinfo, ushort nFuncs)
         if (!funcdesc)
             break;
 
-        QByteArray type;
-        QByteArray prototype;
-        QByteArrayList parameters;
-
         // parse function description
         const QByteArrayList names = qaxTypeInfoNames(typeinfo, funcdesc->memid);
-        const int maxNamesOut = names.size();
+        if (names.isEmpty()) {
+            typeinfo->ReleaseFuncDesc(funcdesc);
+            continue;
+        }
+
         // function name
+        const auto maxNamesOut = names.size();
         const QByteArray &function = names.at(0);
         if ((maxNamesOut == 3 && function == "QueryInterface") ||
             (maxNamesOut == 1 && function == "AddRef") ||
@@ -2404,6 +2431,9 @@ void MetaObjectGenerator::readFuncsInfo(ITypeInfo *typeinfo, ushort nFuncs)
             continue;
         }
 
+        QByteArray type;
+        QByteArray prototype;
+        QByteArrayList parameters;
         prototype = createPrototype(/*in*/ funcdesc, typeinfo, names, /*out*/type, parameters);
 
         // get type of function
@@ -2916,9 +2946,18 @@ void MetaObjectGenerator::addMetaMethod(QMetaObjectBuilder &builder,
                                         const QByteArray &returnType,
                                         int attributes)
 {
+    const QList<QByteArray> parameterList = parameters.split(',');
+
+    // name is of format "functioneName(parameterType1,parameterType2)". If a parameter type is
+    // unknown (due to a missing dependency for example) the list of these parameter types will
+    // contain an empty sting. This situation will throw off QMetaMethodBuilder so we skip these
+    // functions.
+    if (!checkForValidFunctionParameters(name, parameterList))
+        return;
+
     QMetaMethodBuilder methodBuilder = (builder.*creationFunc)(name);
     if (!parameters.isEmpty())
-        methodBuilder.setParameterNames(parameters.split(','));
+        methodBuilder.setParameterNames(parameterList);
     if (!returnType.isEmpty() && returnType != QByteArrayLiteral("void"))
         methodBuilder.setReturnType(returnType);
     methodBuilder.setAttributes(attributes);

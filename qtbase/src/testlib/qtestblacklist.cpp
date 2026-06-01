@@ -156,8 +156,10 @@ static QSet<QByteArray> keywords()
             << "msvc-2017"
 #  elif _MSC_VER <= 1929
             << "msvc-2019"
-#  else
+#  elif _MSC_VER <= 1949
             << "msvc-2022"
+#  else
+            << "msvc-2026"
 #  endif
 #endif
 
@@ -238,7 +240,7 @@ static bool checkCondition(const QByteArray &condition)
 }
 
 static bool ignoreAll = false;
-static std::set<QByteArray> *ignoredTests = nullptr;
+static std::unique_ptr<std::set<QByteArray>> ignoredTests;
 
 namespace QTestPrivate {
 
@@ -271,7 +273,7 @@ void parseBlackList()
                 ignoreAll = true;
             } else {
                 if (!ignoredTests)
-                    ignoredTests = new std::set<QByteArray>;
+                    ignoredTests = std::make_unique<std::set<QByteArray>>();
                 ignoredTests->insert(function);
             }
         }

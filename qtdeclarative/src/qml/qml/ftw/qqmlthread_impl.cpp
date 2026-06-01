@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmlthread_p.h"
 
@@ -19,6 +20,13 @@ QT_BEGIN_NAMESPACE
 class QQmlThreadPrivate : public QThread
 {
 public:
+    struct ThreadObject : public QObject
+    {
+        ThreadObject(QQmlThreadPrivate *p);
+        bool event(QEvent *e) override;
+        QQmlThreadPrivate *p;
+    };
+
     QQmlThreadPrivate(QQmlThread *);
     QQmlThread *q;
 
@@ -27,16 +35,17 @@ public:
     inline void wait() { _wait.wait(&_mutex); }
     inline void wakeOne() { _wait.wakeOne(); }
 
-    bool m_threadProcessing; // Set when the thread is processing messages
-    bool m_mainProcessing; // Set when the main thread is processing messages
-    bool m_shutdown; // Set by main thread to request a shutdown
-    bool m_mainThreadWaiting; // Set by main thread if it is waiting for the message queue to empty
+    bool m_threadProcessing  = false; // Set when the thread is processing messages
+    bool m_mainProcessing    = false; // Set when the main thread is processing messages
+    bool m_mainThreadWaiting = false; // Set by main thread if it is waiting for the message queue to empty
+    bool m_shutdown          = false; // Set by main thread to announce shutdown in progress
 
     typedef QFieldList<QQmlThread::Message, &QQmlThread::Message::next> MessageList;
     MessageList threadList;
     MessageList mainList;
 
-    QQmlThread::Message *mainSync;
+    QQmlThread::Message *mainSync = nullptr;
+    ThreadObject m_threadObject;
 
     void triggerMainEvent();
     void triggerThreadEvent();
@@ -48,18 +57,11 @@ protected:
     bool event(QEvent *) override;
 
 private:
-    struct MainObject : public QObject {
-        MainObject(QQmlThreadPrivate *p);
-        bool event(QEvent *e) override;
-        QQmlThreadPrivate *p;
-    };
-    MainObject m_mainObject;
-
     QMutex _mutex;
     QWaitCondition _wait;
 };
 
-QQmlThreadPrivate::MainObject::MainObject(QQmlThreadPrivate *p)
+QQmlThreadPrivate::ThreadObject::ThreadObject(QQmlThreadPrivate *p)
 : p(p)
 {
 }
@@ -68,26 +70,24 @@ QQmlThreadPrivate::MainObject::MainObject(QQmlThreadPrivate *p)
 void QQmlThreadPrivate::triggerMainEvent()
 {
     Q_ASSERT(q->isThisThread());
-    QCoreApplication::postEvent(&m_mainObject, new QEvent(QEvent::User));
+    QCoreApplication::postEvent(this, new QEvent(QEvent::User));
 }
 
 // Trigger even in thread.  Must be called from main thread.
 void QQmlThreadPrivate::triggerThreadEvent()
 {
     Q_ASSERT(!q->isThisThread());
-    QCoreApplication::postEvent(this, new QEvent(QEvent::User));
+    QCoreApplication::postEvent(&m_threadObject, new QEvent(QEvent::User));
 }
 
-bool QQmlThreadPrivate::MainObject::event(QEvent *e)
+bool QQmlThreadPrivate::ThreadObject::event(QEvent *e)
 {
     if (e->type() == QEvent::User)
-        p->mainEvent();
+        p->threadEvent();
     return QObject::event(e);
 }
 
-QQmlThreadPrivate::QQmlThreadPrivate(QQmlThread *q)
-: q(q), m_threadProcessing(false), m_mainProcessing(false), m_shutdown(false),
-  m_mainThreadWaiting(false), mainSync(nullptr), m_mainObject(this)
+QQmlThreadPrivate::QQmlThreadPrivate(QQmlThread *q) : q(q), m_threadObject(this)
 {
     setObjectName(QStringLiteral("QQmlThread"));
     // This size is aligned with the recursion depth limits in the parser/codegen. In case of
@@ -98,7 +98,7 @@ QQmlThreadPrivate::QQmlThreadPrivate(QQmlThread *q)
 bool QQmlThreadPrivate::event(QEvent *e)
 {
     if (e->type() == QEvent::User)
-        threadEvent();
+        mainEvent();
     return QThread::event(e);
 }
 
@@ -146,12 +146,6 @@ void QQmlThreadPrivate::threadEvent()
             lock();
 
             delete threadList.takeFirst();
-        } else if (m_shutdown) {
-            quit();
-            wakeOne();
-            unlock();
-
-            return;
         } else {
             wakeOne();
 
@@ -180,36 +174,30 @@ QQmlThread::~QQmlThread()
  */
 void QQmlThread::startup()
 {
+    Q_ASSERT(!d->m_shutdown);
     d->start();
-    d->moveToThread(d);
+    d->m_threadObject.moveToThread(d);
 }
 
 void QQmlThread::shutdown()
 {
     d->lock();
-    Q_ASSERT(!d->m_shutdown);
 
+    // The type loader thread may have multiple messages that ask for a callback into the main
+    // thread. Simply deleting mainSync once is not enough to stop that. We need to explicitly
+    // tell the type loader thread not to wait for the main thread anymore. Therefore m_shutdown.
+    Q_ASSERT(!d->m_shutdown);
     d->m_shutdown = true;
+
+    d->quit();
 
     if (d->mainSync)
         d->wakeOne();
 
-    if (QCoreApplication::closingDown())
-        d->quit();
-    else
-        d->triggerThreadEvent();
-
     d->unlock();
     d->QThread::wait();
 
-    // Discard all remaining messages.
-    // We don't need the lock anymore because the thread is dead.
-    discardMessages();
-}
-
-bool QQmlThread::isShutdown() const
-{
-    return d->m_shutdown;
+    d->m_shutdown = false;
 }
 
 void QQmlThread::lock()
@@ -247,7 +235,7 @@ QThread *QQmlThread::thread() const
  */
 QObject *QQmlThread::threadObject() const
 {
-    return d;
+    return &d->m_threadObject;
 }
 
 void QQmlThread::internalCallMethodInThread(Message *message)

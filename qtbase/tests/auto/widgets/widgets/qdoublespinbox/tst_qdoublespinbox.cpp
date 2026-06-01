@@ -158,6 +158,8 @@ private slots:
 
     void editingFinished();
 
+    void returnPressed();
+
     void removeAll();
 
     void task199226_stateAfterEnter();
@@ -741,67 +743,67 @@ void tst_QDoubleSpinBox::valueFromTextAndValidate_data()
     QTest::addColumn<int>("state");
     QTest::addColumn<double>("mini");
     QTest::addColumn<double>("maxi");
-    QTest::addColumn<int>("language");
+    QTest::addColumn<QLocale::Language>("language");
     QTest::addColumn<QString>("expectedText"); // if empty we don't check
 
-    QTest::newRow("data0") << QString("2.2") << Intermediate << 3.0 << 5.0 << (int)QLocale::C << QString();
-    QTest::newRow("data1") << QString() << Intermediate << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data2") << QString("asd") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data3") << QString("2.2") << Acceptable << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data4") << QString(" ") << Intermediate << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data5") << QString(" ") << Intermediate << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data6") << QString(",") << Intermediate << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data7") << QString(",") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data8") << QString("1 ") << Acceptable << 0.0 << 1000.0 << (int)QLocale::NorwegianBokmal << QString("1");
-    QTest::newRow("data9") << QString("1 ") << Acceptable << 0.0 << 100.0 << (int)QLocale::C << QString("1");
-    QTest::newRow("data10") << QString(" 1") << Acceptable << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString("1");
-    QTest::newRow("data11") << QString(" 1") << Acceptable << 0.0 << 100.0 << (int)QLocale::C << QString("1");
-    QTest::newRow("data12") << QString("1,") << Acceptable << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data13") << QString("1,") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data14") << QString("1, ") << Acceptable << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString("1,");
-    QTest::newRow("data15") << QString("1, ") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data16") << QString("2") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data17") << QString("22.0") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data18") << QString("12.0") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data19") << QString("12.2") << Intermediate << 100. << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data20") << QString("21.") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data21") << QString("-21.") << Intermediate << -102.0 << -100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data22") << QString("-12.") << Intermediate << -102.0 << -100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data23") << QString("-11.11") << Intermediate << -102.0 << -101.2 << (int)QLocale::C << QString();
-    QTest::newRow("data24") << QString("-11.4") << Intermediate << -102.0 << -101.3 << (int)QLocale::C << QString();
-    QTest::newRow("data25") << QString("11.400") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data26") << QString(".4") << Intermediate << 0.45 << 0.5 << (int)QLocale::C << QString();
-    QTest::newRow("data27") << QString("+.4") << Intermediate << 0.45 << 0.5 << (int)QLocale::C << QString();
-    QTest::newRow("data28") << QString("-.4") << Intermediate << -0.5 << -0.45 << (int)QLocale::C << QString();
-    QTest::newRow("data29") << QString(".4") << Intermediate << 1.0 << 2.4 << (int)QLocale::C << QString();
-    QTest::newRow("data30") << QString("-.4") << Intermediate << -2.3 << -1.9 << (int)QLocale::C << QString();
-    QTest::newRow("data31") << QString("-42") << Invalid << -2.43 << -1.0 << (int)QLocale::C << QString();
-    QTest::newRow("data32") << QString("-4") << Invalid << -1.4 << -1.0 << (int)QLocale::C << QString();
-    QTest::newRow("data33") << QString("-42") << Invalid << -1.4 << -1.0 << (int)QLocale::C << QString();
-    QTest::newRow("data34") << QString("1000000000000") << Invalid << -140.0 << -120.2 << (int)QLocale::C << QString();
-    QTest::newRow("data35") << QString("+.12") << Invalid << -5.0 << -3.2 << (int)QLocale::C << QString();
-    QTest::newRow("data36") << QString("-.12") << Invalid << 5.0 << 33.2 << (int)QLocale::C << QString();
-    QTest::newRow("data37") << QString("12.2") << Intermediate << 100. << 103.0 << (int)QLocale::C << QString();
-    QTest::newRow("data38") << QString("12.2") << Intermediate << 100. << 102.3 << (int)QLocale::C << QString();
-    QTest::newRow("data39") << QString("-12.") << Acceptable << -102.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data40") << QString("12.") << Invalid << -102.0 << 11.0 << (int)QLocale::C << QString();
-    QTest::newRow("data41") << QString("103.") << Invalid << -102.0 << 11.0 << (int)QLocale::C << QString();
-    QTest::newRow("data42") << QString("122") << Invalid << 10.0 << 12.2 << (int)QLocale::C << QString();
-    QTest::newRow("data43") << QString("-2.2") << Intermediate << -12.2 << -3.2 << (int)QLocale::C << QString();
-    QTest::newRow("data44") << QString("-2.20") << Intermediate << -12.1 << -3.2 << (int)QLocale::C << QString();
-    QTest::newRow("data45") << QString("200,2") << Invalid << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data46") << QString("200,2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data47") << QString("2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data48") << QString("2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data49") << QString("2.2,00") << Acceptable << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data50") << QString("2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data51") << QString("2.2,00") << Invalid << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data52") << QString("2..2,00") << Invalid << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data53") << QString("2.2") << Invalid << 0.0 << 1000.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data54") << QString("  2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data55") << QString("2.2  ") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString("2.2");
-    QTest::newRow("data56") << QString("  2.2  ") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString("2.2");
-    QTest::newRow("data57") << QString("2 2") << Invalid << 0.0 << 1000.0 << (int)QLocale::C << QString();
+    QTest::newRow("data0") << QString("2.2") << Intermediate << 3.0 << 5.0 << QLocale::C << QString();
+    QTest::newRow("data1") << QString() << Intermediate << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data2") << QString("asd") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data3") << QString("2.2") << Acceptable << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data4") << QString(" ") << Intermediate << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data5") << QString(" ") << Intermediate << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data6") << QString(",") << Intermediate << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data7") << QString(",") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data8") << QString("1 ") << Acceptable << 0.0 << 1000.0 << QLocale::NorwegianBokmal << QString("1");
+    QTest::newRow("data9") << QString("1 ") << Acceptable << 0.0 << 100.0 << QLocale::C << QString("1");
+    QTest::newRow("data10") << QString(" 1") << Acceptable << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString("1");
+    QTest::newRow("data11") << QString(" 1") << Acceptable << 0.0 << 100.0 << QLocale::C << QString("1");
+    QTest::newRow("data12") << QString("1,") << Acceptable << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data13") << QString("1,") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data14") << QString("1, ") << Acceptable << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString("1,");
+    QTest::newRow("data15") << QString("1, ") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data16") << QString("2") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data17") << QString("22.0") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data18") << QString("12.0") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data19") << QString("12.2") << Intermediate << 100. << 102.0 << QLocale::C << QString();
+    QTest::newRow("data20") << QString("21.") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data21") << QString("-21.") << Intermediate << -102.0 << -100.0 << QLocale::C << QString();
+    QTest::newRow("data22") << QString("-12.") << Intermediate << -102.0 << -100.0 << QLocale::C << QString();
+    QTest::newRow("data23") << QString("-11.11") << Intermediate << -102.0 << -101.2 << QLocale::C << QString();
+    QTest::newRow("data24") << QString("-11.4") << Intermediate << -102.0 << -101.3 << QLocale::C << QString();
+    QTest::newRow("data25") << QString("11.400") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data26") << QString(".4") << Intermediate << 0.45 << 0.5 << QLocale::C << QString();
+    QTest::newRow("data27") << QString("+.4") << Intermediate << 0.45 << 0.5 << QLocale::C << QString();
+    QTest::newRow("data28") << QString("-.4") << Intermediate << -0.5 << -0.45 << QLocale::C << QString();
+    QTest::newRow("data29") << QString(".4") << Intermediate << 1.0 << 2.4 << QLocale::C << QString();
+    QTest::newRow("data30") << QString("-.4") << Intermediate << -2.3 << -1.9 << QLocale::C << QString();
+    QTest::newRow("data31") << QString("-42") << Invalid << -2.43 << -1.0 << QLocale::C << QString();
+    QTest::newRow("data32") << QString("-4") << Invalid << -1.4 << -1.0 << QLocale::C << QString();
+    QTest::newRow("data33") << QString("-42") << Invalid << -1.4 << -1.0 << QLocale::C << QString();
+    QTest::newRow("data34") << QString("1000000000000") << Invalid << -140.0 << -120.2 << QLocale::C << QString();
+    QTest::newRow("data35") << QString("+.12") << Invalid << -5.0 << -3.2 << QLocale::C << QString();
+    QTest::newRow("data36") << QString("-.12") << Invalid << 5.0 << 33.2 << QLocale::C << QString();
+    QTest::newRow("data37") << QString("12.2") << Intermediate << 100. << 103.0 << QLocale::C << QString();
+    QTest::newRow("data38") << QString("12.2") << Intermediate << 100. << 102.3 << QLocale::C << QString();
+    QTest::newRow("data39") << QString("-12.") << Acceptable << -102.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data40") << QString("12.") << Invalid << -102.0 << 11.0 << QLocale::C << QString();
+    QTest::newRow("data41") << QString("103.") << Invalid << -102.0 << 11.0 << QLocale::C << QString();
+    QTest::newRow("data42") << QString("122") << Invalid << 10.0 << 12.2 << QLocale::C << QString();
+    QTest::newRow("data43") << QString("-2.2") << Intermediate << -12.2 << -3.2 << QLocale::C << QString();
+    QTest::newRow("data44") << QString("-2.20") << Intermediate << -12.1 << -3.2 << QLocale::C << QString();
+    QTest::newRow("data45") << QString("200,2") << Invalid << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data46") << QString("200,2") << Acceptable << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data47") << QString("2.2") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data48") << QString("2.2") << Acceptable << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data49") << QString("2.2,00") << Acceptable << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data50") << QString("2.2") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data51") << QString("2.2,00") << Invalid << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data52") << QString("2..2,00") << Invalid << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data53") << QString("2.2") << Invalid << 0.0 << 1000.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data54") << QString("  2.2") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data55") << QString("2.2  ") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString("2.2");
+    QTest::newRow("data56") << QString("  2.2  ") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString("2.2");
+    QTest::newRow("data57") << QString("2 2") << Invalid << 0.0 << 1000.0 << QLocale::C << QString();
 }
 
 void tst_QDoubleSpinBox::valueFromTextAndValidate()
@@ -810,12 +812,12 @@ void tst_QDoubleSpinBox::valueFromTextAndValidate()
     QFETCH(int, state);
     QFETCH(double, mini);
     QFETCH(double, maxi);
-    QFETCH(int, language);
+    QFETCH(QLocale::Language, language);
     QFETCH(QString, expectedText);
     const auto restoreDefault = qScopeGuard([prior = QLocale()]() {
         QLocale::setDefault(prior);
     });
-    QLocale::setDefault(QLocale((QLocale::Language)language));
+    QLocale::setDefault(QLocale(language));
 
     DoubleSpinBox sb(0);
     sb.show();
@@ -906,6 +908,15 @@ void tst_QDoubleSpinBox::editingFinished()
     testFocusWidget.hide();
     QCOMPARE(editingFinishedSpy1.size(), 4);
     QCOMPARE(editingFinishedSpy2.size(), 4);
+}
+
+void tst_QDoubleSpinBox::returnPressed()
+{
+    QDoubleSpinBox spinBox;
+    QSignalSpy spyCurrentChanged(&spinBox, &QDoubleSpinBox::returnPressed);
+    spinBox.show();
+    QTest::keyClick(&spinBox, Qt::Key_Return);
+    QCOMPARE(spyCurrentChanged.size(), 1);
 }
 
 void tst_QDoubleSpinBox::removeAll()

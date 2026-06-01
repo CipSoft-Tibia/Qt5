@@ -21,6 +21,7 @@
 #include "extensions/browser/extension_event_histogram_value.h"
 #include "extensions/browser/extension_prefs_observer.h"
 #include "extensions/browser/extensions_browser_api_provider.h"
+#include "extensions/browser/script_executor.h"
 #include "extensions/common/api/declarative_net_request.h"
 #include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/view_type.mojom.h"
@@ -168,31 +169,24 @@ class ExtensionsBrowserClient {
   // //chrome where their implementation filters out Profiles based on their
   // types (Regular, Guest, System, etc..) and sub-implementation (Original vs
   // OTR).
-  //
-  // Returns the Original `BrowserContext` based on the input `context`:
+
+  // - if `context` is a System Profile: returns null.
   // - if `context` is Original: returns itself.
-  // - if `context` is OTR: returns the equivalent parent context.
-  // - returns nullptr if the underlying implementation of `context` is of type
-  // System Profile, or of type Guest Profile if `force_guest_profile` is false.
+  // - if `context` is OTR: returns the associated parent context.
   virtual content::BrowserContext* GetContextRedirectedToOriginal(
-      content::BrowserContext* context,
-      bool force_guest_profile) = 0;
-  // Returns its own instance of `BrowserContext` based on the input `context`:
+      content::BrowserContext* context) = 0;
+
+  // - if `context` is a System Profile: returns null.
   // - if `context` is Original: returns itself.
-  // - if `context` is OTR: returns nullptr.
-  // - returns nullptr if the underlying implementation of `context` is of type
-  // System Profile, or of type Guest Profile if `force_guest_profile` is false.
+  // - if `context` is OTR: returns itself.
   virtual content::BrowserContext* GetContextOwnInstance(
-      content::BrowserContext* context,
-      bool force_guest_profile) = 0;
-  // Returns the Original `BrowserContext` based on the input `context`:
+      content::BrowserContext* context) = 0;
+
+  // - if `context` is a System Profile: returns null.
   // - if `context` is Original: returns itself.
-  // - if `context` is OTR: returns nullptr.
-  // - returns nullptr if the underlying implementation of `context` is of type
-  // System Profile, or of type Guest Profile if `force_guest_profile` is false.
+  // - if `context` is OTR: returns null.
   virtual content::BrowserContext* GetContextForOriginalOnly(
-      content::BrowserContext* context,
-      bool force_guest_profile) = 0;
+      content::BrowserContext* context) = 0;
 
   // Returns whether the `context` has extensions disabled.
   // An example of an implementation of `BrowserContext` that has extensions
@@ -200,16 +194,15 @@ class ExtensionsBrowserClient {
   virtual bool AreExtensionsDisabledForContext(
       content::BrowserContext* context) = 0;
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
+  // Returns true if `browser_context` is the active one.
+  virtual bool IsActiveContext(
+      content::BrowserContext* browser_context) const = 0;
+
   // Returns a user id hash from |context| or an empty string if no hash could
   // be extracted.
   virtual std::string GetUserIdHashFromContext(
       content::BrowserContext* context) = 0;
-#endif
-
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  // Returns if a browser |context| belongs to the main profile or not.
-  virtual bool IsFromMainProfile(content::BrowserContext* context) = 0;
 #endif
 
   // Returns true if |context| corresponds to a guest session.
@@ -404,9 +397,6 @@ class ExtensionsBrowserClient {
   // Returns a delegate that provides kiosk mode functionality.
   virtual KioskDelegate* GetKioskDelegate() = 0;
 
-  // Whether the browser context is associated with Chrome OS lock screen.
-  virtual bool IsLockScreenContext(content::BrowserContext* context) = 0;
-
   // Returns the locale used by the application.
   virtual std::string GetApplicationLocale() = 0;
 
@@ -458,12 +448,19 @@ class ExtensionsBrowserClient {
   // Protection policy.
   virtual bool IsScreenshotRestricted(content::WebContents* web_contents) const;
 
-  // Returns true if the given |tab_id| exists.
-  virtual bool IsValidTabId(content::BrowserContext* context, int tab_id) const;
+  // Returns true if `tab_id` exists on `browser_context`.
+  virtual bool IsValidTabId(content::BrowserContext* browser_context,
+                            int tab_id,
+                            bool include_incognito,
+                            content::WebContents** web_contents) const;
 
   // Returns true if chrome extension telemetry service is enabled.
   virtual bool IsExtensionTelemetryServiceEnabled(
       content::BrowserContext* context) const;
+
+  // Returns the script executor for `web_contents`.
+  virtual ScriptExecutor* GetScriptExecutorForTab(
+      content::WebContents& web_contents);
 
   // TODO(anunoy): This is a temporary implementation of notifying the
   // extension telemetry service of the tabs.executeScript API invocation
@@ -487,14 +484,6 @@ class ExtensionsBrowserClient {
       const ExtensionId& extension_id,
       const GURL& request_url,
       const GURL& redirect_url) const;
-
-  // TODO(zackhan): This is a temporary implementation of notifying the
-  // extension telemetry service when there are web requests initiated from
-  // chrome extensions. Its usefulness will be evaluated.
-  virtual void NotifyExtensionRemoteHostContacted(
-      content::BrowserContext* context,
-      const ExtensionId& extension_id,
-      const GURL& url) const;
 
   // Return true if the USB device is allowed by policy.
   virtual bool IsUsbDeviceAllowedByPolicy(content::BrowserContext* context,

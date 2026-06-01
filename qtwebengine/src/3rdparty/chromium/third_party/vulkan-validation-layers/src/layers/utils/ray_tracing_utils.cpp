@@ -1,5 +1,5 @@
-/* Copyright (c) 2024 Valve Corporation
- * Copyright (c) 2024 LunarG, Inc.
+/* Copyright (c) 2025 Valve Corporation
+ * Copyright (c) 2025 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 #include "ray_tracing_utils.h"
 
-#include "generated/layer_chassis_dispatch.h"
+#include "generated/dispatch_functions.h"
 #include "containers/custom_containers.h"
 
 #include <cassert>
@@ -31,7 +31,7 @@ static VkAccelerationStructureBuildSizesInfoKHR ComputeBuildSizes(const VkDevice
                                                                   const VkAccelerationStructureBuildRangeInfoKHR *range_infos) {
     std::vector<uint32_t> primitive_counts(build_info.geometryCount);
     for (const auto [i, build_range] : vvl::enumerate(range_infos, build_info.geometryCount)) {
-        primitive_counts[i] = build_range->primitiveCount;
+        primitive_counts[i] = build_range.primitiveCount;
     }
     VkAccelerationStructureBuildSizesInfoKHR size_info = vku::InitStructHelper();
     DispatchGetAccelerationStructureBuildSizesKHR(device, build_type, &build_info, primitive_counts.data(), &size_info);

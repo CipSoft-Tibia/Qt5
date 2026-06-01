@@ -20,8 +20,11 @@ CustomMaterial {
     property real gradientMin
     property real gradientHeight
     property color uniformColor
+    property bool textured: false
     property bool flatShading: false
     property int colorStyle: 0
+    property bool fill: false
+    property bool lineData: false
 
     property bool flipU: false
     property bool flipV: false
@@ -32,9 +35,11 @@ CustomMaterial {
     property real specularBrightness: 0.25
     readonly property real shininess: (1.0 - specularBrightness) * 100
 
+    property bool shaded: false
+
     shadingMode: CustomMaterial.Shaded
     vertexShader: "qrc:/shaders/surfacevert"
     fragmentShader: "qrc:/shaders/surfacefrag"
-    sourceBlend: hasTransparency? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend;
-    destinationBlend: hasTransparency? CustomMaterial.OneMinusSrcAlpha : CustomMaterial.NoBlend;
+    sourceBlend: hasTransparency? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend
+    destinationBlend: hasTransparency? CustomMaterial.OneMinusSrcAlpha : CustomMaterial.NoBlend
 }

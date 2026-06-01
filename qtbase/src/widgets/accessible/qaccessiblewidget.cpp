@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qaccessiblewidget.h"
 
@@ -63,44 +64,10 @@ static QString buddyString(const QWidget *widget)
     return QString();
 }
 
-/* This function will return the offset of the '&' in the text that would be
-   preceding the accelerator character.
-   If this text does not have an accelerator, -1 will be returned. */
-static qsizetype qt_accAmpIndex(const QString &text)
-{
-#ifndef QT_NO_SHORTCUT
-    if (text.isEmpty())
-        return -1;
-
-    qsizetype fa = 0;
-    while ((fa = text.indexOf(u'&', fa)) != -1) {
-        ++fa;
-        if (fa < text.size()) {
-            // ignore "&&"
-            if (text.at(fa) == u'&') {
-
-                ++fa;
-                continue;
-            } else {
-                return fa - 1;
-                break;
-            }
-        }
-    }
-
-    return -1;
-#else
-    Q_UNUSED(text);
-    return -1;
-#endif
-}
-
 QString qt_accHotKey(const QString &text)
 {
 #ifndef QT_NO_SHORTCUT
-    qsizetype ampIndex = qt_accAmpIndex(text);
-    if (ampIndex != -1)
-        return QKeySequence(Qt::ALT).toString(QKeySequence::NativeText) + text.at(ampIndex + 1);
+    return QKeySequence::mnemonic(text).toString(QKeySequence::NativeText);
 #else
     Q_UNUSED(text);
 #endif
@@ -146,15 +113,24 @@ public:
 
 /*!
     Creates a QAccessibleWidget object for widget \a w.
-    \a role and \a name are optional parameters that set the object's
-    role and name properties.
+    \a role is an optional parameter that sets the object's role property.
 */
-QAccessibleWidget::QAccessibleWidget(QWidget *w, QAccessible::Role role, const QString &name)
+QAccessibleWidget::QAccessibleWidget(QWidget *w, QAccessible::Role role)
 : QAccessibleObject(w)
 {
     Q_ASSERT(widget());
     d = new QAccessibleWidgetPrivate();
     d->role = role;
+}
+
+/*!
+    Creates a QAccessibleWidget object for widget \a w.
+    \a role and \a name are optional parameters that set the object's
+    role and name properties.
+*/
+QAccessibleWidget::QAccessibleWidget(QWidget *w, QAccessible::Role role, const QString &name)
+    : QAccessibleWidget(w, role)
+{
     d->name = name;
 }
 
@@ -479,6 +455,44 @@ void *QAccessibleWidget::interface_cast(QAccessible::InterfaceType t)
     if (t == QAccessible::ActionInterface)
        return static_cast<QAccessibleActionInterface*>(this);
     return nullptr;
+}
+
+// QAccessibleWidgetV2 implementation
+
+QAccessibleWidgetV2::QAccessibleWidgetV2(QWidget *object, QAccessible::Role role,
+                                         const QString &name)
+    : QAccessibleWidget(object, role, name)
+{
+}
+
+QAccessibleWidgetV2::QAccessibleWidgetV2(QWidget *object, QAccessible::Role role)
+    : QAccessibleWidget(object, role)
+{
+}
+
+QAccessibleWidgetV2::~QAccessibleWidgetV2() = default;
+
+/*! \reimp */
+void *QAccessibleWidgetV2::interface_cast(QAccessible::InterfaceType t)
+{
+    if (t == QAccessible::AttributesInterface)
+        return static_cast<QAccessibleAttributesInterface *>(this);
+    return QAccessibleWidget::interface_cast(t);
+}
+
+/*! \reimp */
+QList<QAccessible::Attribute> QAccessibleWidgetV2::attributeKeys() const
+{
+    return { QAccessible::Attribute::Locale };
+}
+
+/*! \reimp */
+QVariant QAccessibleWidgetV2::attributeValue(QAccessible::Attribute key) const
+{
+    if (key == QAccessible::Attribute::Locale)
+        return QVariant::fromValue(widget()->locale());
+
+    return QVariant();
 }
 
 QT_END_NAMESPACE

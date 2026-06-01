@@ -97,7 +97,7 @@ let CdpFrame = (() => {
                 [MAIN_WORLD]: new IsolatedWorld(this, this._frameManager.timeoutSettings),
                 [PUPPETEER_WORLD]: new IsolatedWorld(this, this._frameManager.timeoutSettings),
             };
-            this.accessibility = new Accessibility(this.worlds[MAIN_WORLD]);
+            this.accessibility = new Accessibility(this.worlds[MAIN_WORLD], frameId);
             this.on(FrameEvent.FrameSwappedByActivation, () => {
                 // Emulate loading process for swapped frames.
                 this._onLoadingStarted();
@@ -328,6 +328,18 @@ let CdpFrame = (() => {
         }
         exposeFunction() {
             throw new UnsupportedOperation();
+        }
+        async frameElement() {
+            const parent = this.parentFrame();
+            if (!parent) {
+                return null;
+            }
+            const { backendNodeId } = await parent.client.send('DOM.getFrameOwner', {
+                frameId: this._id,
+            });
+            return (await parent
+                .mainRealm()
+                .adoptBackendNode(backendNodeId));
         }
     };
 })();

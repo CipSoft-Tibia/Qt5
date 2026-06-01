@@ -7,6 +7,9 @@
 
 #include "include/gpu/graphite/TextureInfo.h"
 
+#include "include/core/SkFourByteTag.h"
+#include "include/core/SkStream.h"
+#include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/TextureInfoPriv.h"
 
 namespace skgpu::graphite {
@@ -83,6 +86,10 @@ bool TextureInfo::isCompatible(const TextureInfo& that) const {
 }
 
 SkString TextureInfo::toString() const {
+    if (!fValid) {
+        return SkString("{}");
+    }
+
     SkString ret;
     switch (fBackend) {
         case BackendApi::kDawn:
@@ -93,8 +100,8 @@ SkString TextureInfo::toString() const {
         case BackendApi::kMock:
             ret += "Mock(";
             break;
-        default:
-            ret += "Invalid(";
+        case BackendApi::kUnsupported:
+            ret += "Unsupported(";
             break;
     }
     ret.appendf("bytesPerPixel=%zu,sampleCount=%u,mipmapped=%d,protected=%d)",
@@ -106,6 +113,10 @@ SkString TextureInfo::toString() const {
 }
 
 SkString TextureInfo::toRPAttachmentString() const {
+    if (!fValid) {
+        return SkString("{}");
+    }
+
     // For renderpass attachments, the string will contain the view format and sample count only
     switch (fBackend) {
         case BackendApi::kDawn:
@@ -114,9 +125,10 @@ SkString TextureInfo::toRPAttachmentString() const {
             return fTextureInfoData->toRPAttachmentString(fSampleCount);
         case BackendApi::kMock:
             return SkStringPrintf("Mock(s=%u)", fSampleCount);
-        default:
-            return SkString("Invalid");
+        case BackendApi::kUnsupported:
+            return SkString("Unsupported");
     }
+    SkUNREACHABLE;
 }
 
 size_t TextureInfo::bytesPerPixel() const {
@@ -165,5 +177,54 @@ bool TextureInfo::isMemoryless() const {
 }
 
 TextureInfoData::~TextureInfoData(){};
+
+bool TextureInfoPriv::Serialize(SkWStream* stream,
+                                const TextureInfo& textureInfo) {
+    if (!stream->write32(
+            SkSetFourByteTag(static_cast<uint8_t>(textureInfo.backend()),
+                             static_cast<uint8_t>(textureInfo.isValid()),
+                             static_cast<uint8_t>(textureInfo.mipmapped()),
+                             static_cast<uint8_t>(textureInfo.isProtected())))) {
+        return false;
+    }
+
+    if (!stream->write32(textureInfo.numSamples())) {
+        return false;
+    }
+
+    if (!textureInfo.isValid()) {
+        // We don't bother serializing the textureInfoData is it isn't valid
+        return true;
+    }
+
+    return textureInfo.fTextureInfoData.get()->serialize(stream);
+}
+
+bool TextureInfoPriv::Deserialize(const Caps* caps,
+                                  SkStream* stream,
+                                  TextureInfo* textureInfo) {
+    uint32_t tag;
+    if (!stream->readU32(&tag)) {
+        return false;
+    }
+
+    BackendApi backendAPI = static_cast<BackendApi>(0xF & (tag >> 24));
+    bool isValid = SkToBool(0xF & (tag >> 16));
+    Mipmapped mipmapped = static_cast<Mipmapped>(0xF & (tag >> 8));
+    Protected isProtected = static_cast<Protected>(0xF & tag);
+
+    uint32_t sampleCount;
+    if (!stream->readU32(&sampleCount)) {
+        return false;
+    }
+
+    if (!isValid) {
+        // It is okay to have a serialized, invalid TextureInfo
+        return true;
+    }
+
+    return caps->deserializeTextureInfo(stream, backendAPI, mipmapped, isProtected,
+                                        sampleCount, textureInfo);
+}
 
 } // namespace skgpu::graphite

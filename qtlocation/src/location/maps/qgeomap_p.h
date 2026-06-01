@@ -40,8 +40,6 @@ class Q_LOCATION_EXPORT QGeoMap : public QObject
     Q_OBJECT
     Q_DECLARE_PRIVATE(QGeoMap)
 
-    Q_ENUMS(Capability)
-    Q_FLAGS(Capabilities)
 public:
     enum ItemType {
         NoItem = 0x0000,
@@ -64,7 +62,9 @@ public:
         SupportsVisibleArea = 0x0010,
     };
 
+    Q_ENUM(Capability)
     Q_DECLARE_FLAGS(Capabilities, Capability)
+    Q_FLAG(Capabilities)
 
     virtual ~QGeoMap();
 

@@ -32,11 +32,10 @@ import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
-import {type FilesChangedData} from './FileSystemWorkspaceBinding.js';
 
+import type {FilesChangedData} from './FileSystemWorkspaceBinding.js';
 import {IsolatedFileSystem} from './IsolatedFileSystem.js';
-
-import {type PlatformFileSystem} from './PlatformFileSystem.js';
+import type {PlatformFileSystem} from './PlatformFileSystem.js';
 
 const UIStrings = {
   /**
@@ -83,7 +82,6 @@ export class IsolatedFileSystemManager extends Common.ObjectWrapper.ObjectWrappe
     // Initialize exclude pattern settings
     const defaultCommonExcludedFolders = [
       '/node_modules/',
-      '/bower_components/',
       '/\\.devtools',
       '/\\.git/',
       '/\\.sass-cache/',
@@ -134,10 +132,7 @@ export class IsolatedFileSystemManager extends Common.ObjectWrapper.ObjectWrappe
   }
 
   private requestFileSystems(): Promise<IsolatedFileSystem[]> {
-    let fulfill: (arg0: IsolatedFileSystem[]) => void;
-    const promise = new Promise<IsolatedFileSystem[]>(f => {
-      fulfill = f;
-    });
+    const {resolve, promise} = Promise.withResolvers<IsolatedFileSystem[]>();
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.addEventListener(
         Host.InspectorFrontendHostAPI.Events.FileSystemsLoaded, onFileSystemsLoaded, this);
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.requestFileSystems();
@@ -155,7 +150,7 @@ export class IsolatedFileSystemManager extends Common.ObjectWrapper.ObjectWrappe
     }
 
     function onFileSystemsAdded(fileSystems: (IsolatedFileSystem|null)[]): void {
-      fulfill(fileSystems.filter(fs => Boolean(fs)) as IsolatedFileSystem[]);
+      resolve(fileSystems.filter(fs => Boolean(fs)) as IsolatedFileSystem[]);
     }
   }
 
@@ -356,12 +351,12 @@ export enum Events {
   /* eslint-enable @typescript-eslint/naming-convention */
 }
 
-export type EventTypes = {
-  [Events.FileSystemAdded]: PlatformFileSystem,
-  [Events.FileSystemRemoved]: PlatformFileSystem,
-  [Events.FileSystemFilesChanged]: FilesChangedData,
-  [Events.ExcludedFolderAdded]: Platform.DevToolsPath.EncodedPathString,
-  [Events.ExcludedFolderRemoved]: Platform.DevToolsPath.EncodedPathString,
-};
+export interface EventTypes {
+  [Events.FileSystemAdded]: PlatformFileSystem;
+  [Events.FileSystemRemoved]: PlatformFileSystem;
+  [Events.FileSystemFilesChanged]: FilesChangedData;
+  [Events.ExcludedFolderAdded]: Platform.DevToolsPath.EncodedPathString;
+  [Events.ExcludedFolderRemoved]: Platform.DevToolsPath.EncodedPathString;
+}
 
 let lastRequestId = 0;

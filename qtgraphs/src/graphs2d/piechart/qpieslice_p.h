@@ -43,7 +43,7 @@ private:
     friend class QPieSeriesPrivate;
     friend class PieRenderer;
 
-    void setLabelVisible(bool visible);
+    void setLabelVisible(bool visible, bool forceHidden = false);
     void setLabelPosition(QPieSlice::LabelPosition position);
 
     QString m_labelText;
@@ -57,6 +57,7 @@ private:
     qreal m_percentage;
     qreal m_startAngle;
     qreal m_angleSpan;
+    bool m_hideLabel;
     bool m_isExploded;
     qreal m_explodeDistanceFactor;
 

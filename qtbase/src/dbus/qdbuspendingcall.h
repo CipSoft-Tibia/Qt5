@@ -12,6 +12,8 @@
 
 #ifndef QT_NO_DBUS
 
+class tst_QDBusPendingReply;
+
 QT_BEGIN_NAMESPACE
 
 
@@ -20,10 +22,14 @@ class QDBusError;
 class QDBusPendingCallWatcher;
 
 class QDBusPendingCallPrivate;
+
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR(QDBusPendingCallPrivate)
+
 class Q_DBUS_EXPORT QDBusPendingCall
 {
 public:
     QDBusPendingCall(const QDBusPendingCall &other);
+    QDBusPendingCall(QDBusPendingCall &&other) noexcept = default;
     ~QDBusPendingCall();
     QDBusPendingCall &operator=(QDBusPendingCall &&other) noexcept { swap(other); return *this; }
     QDBusPendingCall &operator=(const QDBusPendingCall &other);
@@ -54,6 +60,8 @@ protected:
 
 private:
     QDBusPendingCall();         // not defined
+
+    friend class ::tst_QDBusPendingReply;
 };
 
 Q_DECLARE_SHARED(QDBusPendingCall)

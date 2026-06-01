@@ -7,7 +7,7 @@
 #include <QtSensors/QSensorBackend>
 #include <QtCore/QScopedPointer>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class WinRtAmbientLightSensorPrivate;
 class WinRtAmbientLightSensor : public QSensorBackend
@@ -24,5 +24,7 @@ private:
     QScopedPointer<WinRtAmbientLightSensorPrivate> d_ptr;
     Q_DECLARE_PRIVATE(WinRtAmbientLightSensor)
 };
+
+QT_END_NAMESPACE
 
 #endif // WINRTAMBIENTLIGHTSENSOR_H

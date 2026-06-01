@@ -71,6 +71,11 @@ def default_location_filters(builder_name = None):
 
     return filters
 
+def default_owner_whitelist_group_for_cq_bots(project):
+    if project.startswith("chrome"):
+        return ["googlers", "project-chromium-robot-committers"]
+    return []
+
 def location_filters_without_defaults(tryjob_builder_proto):
     default_filters = default_location_filters(tryjob_builder_proto.name)
     return [f for f in tryjob_builder_proto.location_filters if cq.location_filter(
@@ -79,6 +84,15 @@ def location_filters_without_defaults(tryjob_builder_proto):
         path_regexp = f.path_regexp,
         exclude = f.exclude,
     ) not in default_filters]
+
+def owner_whitelist_group_without_defaults(tryjob_builder_proto):
+    project = tryjob_builder_proto.name.split("/")[0]
+    default_group = default_owner_whitelist_group_for_cq_bots(project)
+    return [
+        g
+        for g in tryjob_builder_proto.owner_whitelist_group
+        if g not in default_group
+    ]
 
 # Intended to be used for the `caches` builder arg when no source checkout is
 # required.
@@ -197,7 +211,6 @@ def try_builder(
         main_list_view = args.DEFAULT,
         subproject_list_view = args.DEFAULT,
         tryjob = None,
-        experiments = None,
         resultdb_bigquery_exports = args.DEFAULT,
         **kwargs):
     """Define a try builder.
@@ -230,8 +243,6 @@ def try_builder(
         default that defaults to None.
       tryjob - A struct containing the details of the tryjob verifier for the
         builder, obtained by calling the `tryjob` function.
-      experiments - a dict of experiment name to the percentage chance (0-100)
-        that it will apply to builds generated from this builder.
       resultdb_bigquery_exports - a list of resultdb.export_test_results(...)
         specifying additional parameters for exporting test results to BigQuery.
         Will always upload to the following tables in addition to any tables
@@ -241,18 +252,6 @@ def try_builder(
     """
     if not branches.matches(branch_selector):
         return None
-
-    experiments = experiments or {}
-
-    # TODO(crbug.com/40232671): Remove when the experiment is the default.
-    experiments.setdefault(
-        "chromium_swarming.expose_merge_script_failures",
-        5 if settings.project.startswith("chrome") else 100,
-    )
-
-    # TODO(crbug.com/40276579): Remove when the experiment is the default.
-    if settings.project.startswith("chromium"):
-        experiments.setdefault("swarming.prpc.cli", 100)
 
     bq_dataset_name = "chrome"
     if settings.project.startswith("chromium"):
@@ -276,7 +275,7 @@ def try_builder(
             predicate = resultdb.test_result_predicate(
                 # Match the "blink_web_tests" target and all of its
                 # flag-specific versions, e.g. "vulkan_swiftshader_blink_web_tests".
-                test_id_regexp = "(ninja://[^/]*blink_web_tests/.+)|(ninja://[^/]*_wpt_tests/.+)",
+                test_id_regexp = "(ninja://[^/]*blink_web_tests/.+)|(ninja://[^/]*_wpt_tests/.+)|(ninja://[^/]*headless_shell_wpt/.+)",
             ),
         ),
     ]
@@ -340,7 +339,6 @@ def try_builder(
         branch_selector = branch_selector,
         list_view = list_view,
         resultdb_bigquery_exports = merged_resultdb_bigquery_exports,
-        experiments = experiments,
         resultdb_index_by_timestamp = settings.project.startswith("chromium"),
         properties = properties,
         **kwargs

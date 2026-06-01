@@ -6,7 +6,7 @@
 #define COMPONENTS_AUTOFILL_CORE_COMMON_IS_REQUIRED_H_
 
 #if !defined(COMPILER_MSVC) &&  \
-    (!defined(__GNUC__) || (__GNUC__ >= 13))
+    (!defined(__GNUC__) || (__GNUC__ >= 12))
 #define IS_REQUIRED_SUPPORTED 1
 #endif
 

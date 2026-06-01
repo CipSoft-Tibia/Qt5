@@ -2,18 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "third_party/blink/renderer/core/frame/dom_window.h"
 
 #include <algorithm>
 #include <memory>
 
+#include "base/feature_list.h"
 #include "base/metrics/histogram_macros.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-blink.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/core/v8/capture_source_location.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/post_message_helper.h"
@@ -89,20 +86,11 @@ v8::Local<v8::Value> DOMWindow::Wrap(ScriptState* script_state) {
   if (!frame)
     return v8::Null(script_state->GetIsolate());
 
-  // TODO(yukishiino): We'd like to return a global proxy instead of undefined
-  // regardless of whether it's detached or not, in order to conform to spec.
-  //
-  // Getting the proxy also results in initializing it and eventually yields in
-  // `SetupWindowPrototypeChain()` calls for the window proxy.
-  v8::MaybeLocal<v8::Object> proxy =
-      frame->GetWindowProxy(script_state->World())->GlobalProxyIfNotDetached();
-  if (proxy.IsEmpty()) {
-    // Return Undefined instead of an empty to avoid crashes further along the
-    // way, as `Wrap()` is expected to return a non-empty value.
-    return v8::Undefined(script_state->GetIsolate());
-  } else {
-    return proxy.ToLocalChecked();
-  }
+  auto& world = script_state->World();
+  v8::Local<v8::Object> proxy =
+      window_proxy_manager_->GetWindowProxy(world)->GetGlobalProxy();
+  CHECK(!proxy.IsEmpty());
+  return proxy;
 }
 
 v8::Local<v8::Object> DOMWindow::AssociateWithWrapper(
@@ -292,12 +280,12 @@ DOMWindow* DOMWindow::top() const {
 void DOMWindow::postMessage(v8::Isolate* isolate,
                             const ScriptValue& message,
                             const String& target_origin,
-                            HeapVector<ScriptValue>& transfer,
+                            HeapVector<ScriptObject> transfer,
                             ExceptionState& exception_state) {
   WindowPostMessageOptions* options = WindowPostMessageOptions::Create();
   options->setTargetOrigin(target_origin);
   if (!transfer.empty())
-    options->setTransfer(transfer);
+    options->setTransfer(std::move(transfer));
   postMessage(isolate, message, options, exception_state);
 }
 
@@ -328,7 +316,8 @@ DOMWindow* DOMWindow::AnonymousIndexedGetter(uint32_t index) {
   RecordWindowProxyAccessMetrics(
       WebFeature::kWindowProxyCrossOriginAccessIndexedGetter,
       WebFeature::kWindowProxyCrossOriginAccessFromOtherPageIndexedGetter,
-      mojom::blink::WindowProxyAccessType::kAnonymousIndexedGetter);
+      mojom::blink::WindowProxyAccessType::kAnonymousIndexedGetter,
+      WebFeature::kWindowProxyIndexedGetter);
   ReportCoopAccess("indexed");
 
   if (!GetFrame())
@@ -756,7 +745,7 @@ void DOMWindow::ReportCoopAccess(const char* property_name) {
   // TODO(https://crbug.com/1183571): Check if crashes are still happening and
   // remove this block.
   if (!accessing_frame->Tree().Top().IsLocalFrame()) {
-    NOTREACHED_IN_MIGRATION();
+    DUMP_WILL_BE_NOTREACHED();
     return;
   }
 
@@ -765,67 +754,63 @@ void DOMWindow::ReportCoopAccess(const char* property_name) {
   const LocalFrameToken accessing_main_frame_token =
       accessing_main_frame.GetLocalFrameToken();
 
-  auto it = coop_access_monitor_.begin();
-  while (it != coop_access_monitor_.end()) {
-    if ((*it)->accessing_main_frame != accessing_main_frame_token) {
-      ++it;
-      continue;
-    }
+  WTF::EraseIf(
+      coop_access_monitor_, [&](const Member<CoopAccessMonitor>& monitor) {
+        if (monitor->accessing_main_frame != accessing_main_frame_token) {
+          return false;
+        }
 
-    String property_name_as_string = property_name;
-    if ((*it)->is_in_same_virtual_coop_related_group &&
-        (property_name_as_string == "postMessage" ||
-         property_name_as_string == "closed")) {
-      ++it;
-      continue;
-    }
+        String property_name_as_string = property_name;
+        if (monitor->is_in_same_virtual_coop_related_group &&
+            (property_name_as_string == "postMessage" ||
+             property_name_as_string == "closed")) {
+          return false;
+        }
 
-    // TODO(arthursonzogni): Send the blocked-window-url.
+        // TODO(arthursonzogni): Send the blocked-window-url.
 
-    auto location = CaptureSourceLocation(
-        ExecutionContext::From(isolate->GetCurrentContext()));
-    // TODO(crbug.com/349583610): Update to use SourceLocation typemap.
-    auto source_location = network::mojom::blink::SourceLocation::New(
-        location->Url() ? location->Url() : "", location->LineNumber(),
-        location->ColumnNumber());
+        auto location = CaptureSourceLocation(
+            ExecutionContext::From(isolate->GetCurrentContext()));
+        // TODO(crbug.com/349583610): Update to use SourceLocation typemap.
+        auto source_location = network::mojom::blink::SourceLocation::New(
+            location->Url() ? location->Url() : "", location->LineNumber(),
+            location->ColumnNumber());
 
-    accessing_window->GetFrameConsole()->AddMessage(
-        MakeGarbageCollected<ConsoleMessage>(
-            mojom::blink::ConsoleMessageSource::kJavaScript,
-            mojom::blink::ConsoleMessageLevel::kError,
-            CoopReportOnlyErrorMessage(property_name), location->Clone()));
+        accessing_window->GetFrameConsole()->AddMessage(
+            MakeGarbageCollected<ConsoleMessage>(
+                mojom::blink::ConsoleMessageSource::kJavaScript,
+                mojom::blink::ConsoleMessageLevel::kError,
+                CoopReportOnlyErrorMessage(property_name), location->Clone()));
 
-    CoopAccessMonitor* monitor = *it;
+        // If the reporting document hasn't specified any network report
+        // endpoint(s), then it is likely not interested in receiving
+        // ReportingObserver's reports.
+        //
+        // TODO(arthursonzogni): Reconsider this decision later, developers
+        // might be interested.
+        if (monitor->endpoint_defined) {
+          if (monitor->reporter.is_bound()) {
+            monitor->reporter->QueueAccessReport(
+                monitor->report_type, property_name, std::move(source_location),
+                std::move(monitor->reported_window_url));
+          }
+          // Send a coop-access-violation report.
+          if (network::IsAccessFromCoopPage(monitor->report_type)) {
+            ReportingContext::From(accessing_main_frame.DomWindow())
+                ->QueueReport(MakeGarbageCollected<Report>(
+                    ReportType::kCoopAccessViolation,
+                    accessing_main_frame.GetDocument()->Url().GetString(),
+                    MakeGarbageCollected<CoopAccessViolationReportBody>(
+                        std::move(location), monitor->report_type,
+                        String(property_name), monitor->reported_window_url)));
+          }
+        }
 
-    // If the reporting document hasn't specified any network report
-    // endpoint(s), then it is likely not interested in receiving
-    // ReportingObserver's reports.
-    //
-    // TODO(arthursonzogni): Reconsider this decision later, developers might be
-    // interested.
-    if (monitor->endpoint_defined) {
-      if (monitor->reporter.is_bound()) {
-        monitor->reporter->QueueAccessReport(
-            monitor->report_type, property_name, std::move(source_location),
-            std::move(monitor->reported_window_url));
-      }
-      // Send a coop-access-violation report.
-      if (network::IsAccessFromCoopPage(monitor->report_type)) {
-        ReportingContext::From(accessing_main_frame.DomWindow())
-            ->QueueReport(MakeGarbageCollected<Report>(
-                ReportType::kCoopAccessViolation,
-                accessing_main_frame.GetDocument()->Url().GetString(),
-                MakeGarbageCollected<CoopAccessViolationReportBody>(
-                    std::move(location), monitor->report_type,
-                    String(property_name), monitor->reported_window_url)));
-      }
-    }
-
-    // CoopAccessMonitor are used once and destroyed. This avoids sending
-    // multiple reports for the same access.
-    (*it)->reporter.reset();
-    it = coop_access_monitor_.erase(it);
-  }
+        // CoopAccessMonitor are used once and destroyed. This avoids sending
+        // multiple reports for the same access.
+        monitor->reporter.reset();
+        return true;
+      });
 }
 
 void DOMWindow::DoPostMessage(scoped_refptr<SerializedScriptValue> message,
@@ -985,9 +970,10 @@ void DOMWindow::DoPostMessage(scoped_refptr<SerializedScriptValue> message,
 }
 
 void DOMWindow::RecordWindowProxyAccessMetrics(
-    WebFeature property_access,
-    WebFeature property_access_from_other_page,
-    mojom::blink::WindowProxyAccessType access_type) const {
+    WebFeature cross_origin_property_access,
+    WebFeature cross_origin_property_access_from_other_page,
+    mojom::blink::WindowProxyAccessType access_type,
+    std::optional<WebFeature> property_access) const {
   if (!GetFrame())
     return;
 
@@ -1003,11 +989,24 @@ void DOMWindow::RecordWindowProxyAccessMetrics(
   if (!accessing_frame)
     return;
 
+  // We don't log instances of a frame accessing itself. This would cause
+  // unacceptable lag (via mojom) and rate-limiting on the UKM.
   if (GetFrame() != accessing_frame) {
-    // We don't log instances of a frame accessing itself. This would cause
-    // unacceptable lag (via mojom) and rate-limiting on the UKM.
-    accessing_frame->GetLocalFrameHostRemote().RecordWindowProxyUsageMetrics(
-        GetFrame()->GetFrameToken(), access_type);
+    // This sends a message to the browser process to record metrics. As of
+    // 2024, these metrics are heavily downsampled in the browser process,
+    // through the UKM downsampling mechanism. Perform the downsampling here, to
+    // save on the IPC cost. The sampling ratio is based on observed
+    // browser-side downsampling rates.
+    if (!base::FeatureList::IsEnabled(
+            features::kSubSampleWindowProxyUsageMetrics) ||
+        metrics_sub_sampler_.ShouldSample(0.0001)) {
+      accessing_frame->GetLocalFrameHostRemote().RecordWindowProxyUsageMetrics(
+          GetFrame()->GetFrameToken(), access_type);
+    }
+  }
+
+  if (property_access) {
+    UseCounter::Count(accessing_window, *property_access);
   }
 
   // Note that SecurityOrigin can be null in unit tests.
@@ -1019,10 +1018,11 @@ void DOMWindow::RecordWindowProxyAccessMetrics(
               GetFrame()->GetSecurityContext()->GetSecurityOrigin())) {
     return;
   }
-  UseCounter::Count(accessing_window->document(), property_access);
+  UseCounter::Count(accessing_window->document(), cross_origin_property_access);
 
   if (accessing_frame->GetPage() != GetFrame()->GetPage()) {
-    UseCounter::Count(accessing_window, property_access_from_other_page);
+    UseCounter::Count(accessing_window,
+                      cross_origin_property_access_from_other_page);
   }
 }
 
@@ -1118,14 +1118,11 @@ void DOMWindow::Trace(Visitor* visitor) const {
 
 void DOMWindow::DisconnectCoopAccessMonitor(
     const LocalFrameToken& accessing_main_frame) {
-  auto it = coop_access_monitor_.begin();
-  while (it != coop_access_monitor_.end()) {
-    if ((*it)->accessing_main_frame == accessing_main_frame) {
-      it = coop_access_monitor_.erase(it);
-    } else {
-      ++it;
-    }
-  }
+  WTF::EraseIf(
+      coop_access_monitor_,
+      [&accessing_main_frame](const Member<CoopAccessMonitor>& monitor) {
+        return monitor->accessing_main_frame == accessing_main_frame;
+      });
 }
 
 }  // namespace blink

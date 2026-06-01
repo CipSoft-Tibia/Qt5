@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="sv_SE">
+<TS version="2.1" language="sv">
 <context>
     <name>QQmlWebSocket</name>
     <message>
@@ -54,28 +54,41 @@
         <translation>Bytes skrivna %1 != %2.</translation>
     </message>
     <message>
-        <source>Invalid statusline in response: %1.</source>
-        <translation>Ogiltig statusline i svar: %1.</translation>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenge encountered.</source>
+        <extracomment>&apos;WWW-Authenticate&apos; is the HTTP header.</extracomment>
+        <translation>QWebSocketPrivate::processHandshake: WWW-Authenticate-challenge stöds inte.</translation>
     </message>
     <message>
-        <source>Malformed header in response: %1.</source>
-        <translation>Felformaterad rubrik i svar: %1.</translation>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenges encountered.</source>
+        <translation>QWebSocketPrivate::processHandshake: WWW-Authenticate-challenges stöds inte.</translation>
     </message>
     <message>
-        <source>QWebSocketPrivate::processHandshake: Connection closed while reading header.</source>
-        <translation>QWebSocketPrivate::processHandshake: Anslutningen stängdes vid läsning av rubrik.</translation>
+        <source>Header is too large</source>
+        <translation>Rubriken är för stor</translation>
     </message>
     <message>
-        <source>QWebSocketPrivate::processHandshake: Invalid statusline in response: %1.</source>
-        <translation>QWebSocketPrivate::processHandshake: Ogiltig statusline i svar: %1.</translation>
+        <source>Read handshake request header failed</source>
+        <translation>Rubrik för läshandskakningsbegäran misslyckades</translation>
     </message>
     <message>
-        <source>The protocols attribute contains newlines. Possible attack detected.</source>
-        <translation>Protokollets attribut innehåller nyrader. Potentiell attack upptäcktes.</translation>
+        <source>Read handshake request status failed</source>
+        <translation>Status för läshandskakningsbegäran misslyckades</translation>
+    </message>
+    <message>
+        <source>Parsing handshake request header failed</source>
+        <translation>Tolkning av begäransrubrik för handskakning misslyckades</translation>
+    </message>
+    <message>
+        <source>WebSocket server has chosen protocol %1 which has not been requested</source>
+        <translation>WebSocket-servern har valt protokollet %1 som inte har begärts</translation>
     </message>
     <message>
         <source>Accept-Key received from server %1 does not match the client key %2.</source>
         <translation>Accept-Key som togs emot från servern %1 matchar inte klientnyckeln %2.</translation>
+    </message>
+    <message>
+        <source>Invalid parameter encountered during protocol upgrade: %1</source>
+        <translation>Ogiltig parameter påträffades under protokolluppgradering :%1</translation>
     </message>
     <message>
         <source>Handshake: Server requests a version that we don&apos;t support: %1.</source>
@@ -84,6 +97,10 @@
     <message>
         <source>QWebSocketPrivate::processHandshake: Unknown error condition encountered. Aborting connection.</source>
         <translation>QWebSocketPrivate::processHandshake: Okänt felvillkor påträffades. Avbryter anslutningen.</translation>
+    </message>
+    <message>
+        <source>QWebSocket::processHandshake: Host requires authentication</source>
+        <translation>QWebSocket::processHandshake: Värden kräver autentisering</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unhandled http status code: %1 (%2).</source>
@@ -104,6 +121,10 @@
     <message>
         <source>The extensions attribute contains newlines. Possible attack detected.</source>
         <translation>Attributet tillägg innehåller nyrader. Potentiell attack upptäcktes.</translation>
+    </message>
+    <message>
+        <source>Connection refused</source>
+        <translation>Anslutningen nekades</translation>
     </message>
 </context>
 <context>

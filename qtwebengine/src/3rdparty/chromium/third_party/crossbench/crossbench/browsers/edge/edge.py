@@ -8,19 +8,19 @@ from typing import TYPE_CHECKING
 
 from crossbench import plt
 from crossbench.browsers.attributes import BrowserAttributes
-from crossbench.browsers.chromium.chromium import Chromium
+from crossbench.browsers.chromium_based.chromium_based import ChromiumBased
 
 if TYPE_CHECKING:
-  from crossbench.path import RemotePath
+  from crossbench.path import AnyPath
 
 
 class EdgePathMixin:
   @classmethod
-  def default_path(cls, platform: plt.Platform) -> RemotePath:
+  def default_path(cls, platform: plt.Platform) -> AnyPath:
     return cls.stable_path(platform)
 
   @classmethod
-  def stable_path(cls, platform: plt.Platform) -> RemotePath:
+  def stable_path(cls, platform: plt.Platform) -> AnyPath:
     return platform.search_app_or_executable(
         "Edge Stable",
         macos=["Microsoft Edge.app"],
@@ -28,7 +28,7 @@ class EdgePathMixin:
         win=["Microsoft/Edge/Application/msedge.exe"])
 
   @classmethod
-  def beta_path(cls, platform: plt.Platform) -> RemotePath:
+  def beta_path(cls, platform: plt.Platform) -> AnyPath:
     return platform.search_app_or_executable(
         "Edge Beta",
         macos=["Microsoft Edge Beta.app"],
@@ -36,7 +36,7 @@ class EdgePathMixin:
         win=["Microsoft/Edge Beta/Application/msedge.exe"])
 
   @classmethod
-  def dev_path(cls, platform: plt.Platform) -> RemotePath:
+  def dev_path(cls, platform: plt.Platform) -> AnyPath:
     return platform.search_app_or_executable(
         "Edge Dev",
         macos=["Microsoft Edge Dev.app"],
@@ -44,7 +44,7 @@ class EdgePathMixin:
         win=["Microsoft/Edge Dev/Application/msedge.exe"])
 
   @classmethod
-  def canary_path(cls, platform: plt.Platform) -> RemotePath:
+  def canary_path(cls, platform: plt.Platform) -> AnyPath:
     return platform.search_app_or_executable(
         "Edge Canary",
         macos=["Microsoft Edge Canary.app"],
@@ -56,7 +56,7 @@ class EdgePathMixin:
     return "edge"
 
 
-class Edge(EdgePathMixin, Chromium):
+class Edge(EdgePathMixin, ChromiumBased):
   DEFAULT_FLAGS = (
       "--enable-benchmarking",
       "--disable-extensions",

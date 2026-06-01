@@ -1,16 +1,16 @@
-/* Copyright (c) 2024, Google LLC
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
- * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
- * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+// Copyright 2024 The BoringSSL Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef OPENSSL_HEADER_MLDSA_H_
 #define OPENSSL_HEADER_MLDSA_H_
@@ -22,11 +22,17 @@ extern "C" {
 #endif
 
 
-// ML-DSA-65.
+// ML-DSA.
 //
 // This implements the Module-Lattice-Based Digital Signature Standard from
 // https://csrc.nist.gov/pubs/fips/204/final
 
+
+// MLDSA_SEED_BYTES is the number of bytes in an ML-DSA seed value.
+#define MLDSA_SEED_BYTES 32
+
+
+// ML-DSA-65.
 
 // MLDSA65_private_key contains an ML-DSA-65 private key. The contents of this
 // object should never leave the address space since the format is unstable.
@@ -57,9 +63,6 @@ struct MLDSA65_public_key {
 // MLDSA65_SIGNATURE_BYTES is the number of bytes in an encoded ML-DSA-65
 // signature.
 #define MLDSA65_SIGNATURE_BYTES 3309
-
-// MLDSA_SEED_BYTES is the number of bytes in an ML-DSA seed value.
-#define MLDSA_SEED_BYTES 32
 
 // MLDSA65_generate_key generates a random public/private key pair, writes the
 // encoded public key to |out_encoded_public_key|, writes the seed to
@@ -106,9 +109,6 @@ OPENSSL_EXPORT int MLDSA65_verify(const struct MLDSA65_public_key *public_key,
                                   size_t msg_len, const uint8_t *context,
                                   size_t context_len);
 
-
-// Serialisation of keys.
-
 // MLDSA65_marshal_public_key serializes |public_key| to |out| in the standard
 // format for ML-DSA-65 public keys. It returns 1 on success or 0 on
 // allocation error.
@@ -121,12 +121,6 @@ OPENSSL_EXPORT int MLDSA65_marshal_public_key(
 // there are trailing bytes in |in|.
 OPENSSL_EXPORT int MLDSA65_parse_public_key(
     struct MLDSA65_public_key *public_key, CBS *in);
-
-// MLDSA65_parse_private_key parses a private key, in the NIST format, from |in|
-// and writes the result to |out_private_key|. It returns 1 on success or 0 on
-// parse error or if there are trailing bytes in |in|.
-OPENSSL_EXPORT int MLDSA65_parse_private_key(
-    struct MLDSA65_private_key *private_key, CBS *in);
 
 
 #if defined(__cplusplus)

@@ -140,6 +140,7 @@ jumbo_source_set("audio") {
   ]
   deps = [
     "//base",
+    "//build:android_buildflags",
     "//build:chromecast_buildflags",
     "//build:chromeos_buildflags",
     "//media/base",
@@ -254,14 +255,18 @@ jumbo_source_set("audio") {
       "android/audio_track_output_stream.cc",
       "android/audio_track_output_stream.h",
       "android/muteable_audio_output_stream.h",
-      "android/opensles_input.cc",
-      "android/opensles_input.h",
-      "android/opensles_output.cc",
-      "android/opensles_output.h",
-      "android/opensles_util.cc",
-      "android/opensles_util.h",
-      "android/opensles_wrapper.cc",
     ]
+    if (media_use_opensles) {
+      sources += [
+        "android/opensles_input.cc",
+        "android/opensles_input.h",
+        "android/opensles_output.cc",
+        "android/opensles_output.h",
+        "android/opensles_util.cc",
+        "android/opensles_util.h",
+        "android/opensles_wrapper.cc",
+      ]
+    }
     libs += [ "aaudio" ]
 
     deps += [ "//media/base/android:media_jni_headers" ]

@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/check.h"
@@ -24,11 +25,16 @@
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
+#include "base/unguessable_token.h"
 #include "bidding_and_auction_server_key_fetcher.h"
 #include "components/cbor/values.h"
 #include "components/cbor/writer.h"
+#include "content/browser/renderer_host/private_network_access_util.h"
 #include "content/common/content_export.h"
+#include "content/services/auction_worklet/public/cpp/auction_downloader.h"
 #include "content/services/auction_worklet/public/mojom/trusted_signals_cache.mojom.h"
+#include "net/base/isolation_info.h"
+#include "net/cookies/site_for_cookies.h"
 #include "net/http/http_request_headers.h"
 #include "net/third_party/quiche/src/quiche/oblivious_http/buffers/oblivious_http_request.h"
 #include "net/third_party/quiche/src/quiche/oblivious_http/buffers/oblivious_http_response.h"
@@ -37,7 +43,10 @@
 #include "services/data_decoder/public/cpp/data_decoder.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/client_security_state.mojom.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
+#include "services/network/public/mojom/ip_address_space.mojom.h"
+#include "services/network/public/mojom/url_loader_completion_status.mojom-forward.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/boringssl/src/include/openssl/hpke.h"
 #include "url/gurl.h"
@@ -96,26 +105,40 @@ constexpr size_t kCborStringLengthSize = 4;   // bytes
 constexpr size_t kOhttpHeaderSizeTSF = 55;       // bytes
 
 // Creates a single entry for the "arguments" array of a partition, with a
-// single tag and a variable number of string data values, from a set of
-// strings.
-cbor::Value MakeArgument(std::string_view tag,
-                         const std::set<std::string>& data) {
+// single tag and an array of values.
+cbor::Value MakeArgument(std::string_view tag, cbor::Value::ArrayValue data) {
   cbor::Value::MapValue argument;
 
   cbor::Value::ArrayValue tags;
   tags.emplace_back(cbor::Value(tag));
   argument.try_emplace(cbor::Value("tags"), cbor::Value(std::move(tags)));
-
-  cbor::Value::ArrayValue cbor_data;
-  for (const auto& element : data) {
-    cbor_data.emplace_back(cbor::Value(element));
-  }
-  argument.try_emplace(cbor::Value("data"), cbor::Value(std::move(cbor_data)));
+  argument.try_emplace(cbor::Value("data"), std::move(data));
 
   return cbor::Value(std::move(argument));
 }
 
-cbor::Value::MapValue BuildMapForBiddingPartition(
+// Creates a single entry for the "arguments" array of a partition, with a
+// single tag and an array that contains the single passed-in `data` value.
+cbor::Value MakeArgument(std::string_view tag, cbor::Value data) {
+  cbor::Value::ArrayValue cbor_array;
+  cbor_array.emplace_back(std::move(data));
+  return MakeArgument(tag, std::move(cbor_array));
+}
+
+// Creates a single entry for the "arguments" array of a partition, with a
+// single tag and a variable number of string data values, from a set of
+// strings.
+cbor::Value MakeArgument(std::string_view tag,
+                         const std::set<std::string>& data) {
+  cbor::Value::ArrayValue cbor_data;
+  for (const auto& element : data) {
+    cbor_data.emplace_back(cbor::Value(element));
+  }
+  return MakeArgument(tag, std::move(cbor_data));
+}
+
+// BiddingPartition overload of BuildMapForPartition().
+cbor::Value::MapValue BuildMapForPartition(
     int compression_group_id,
     const TrustedSignalsFetcher::BiddingPartition& bidding_partition) {
   cbor::Value::MapValue partition_cbor_map;
@@ -125,30 +148,74 @@ cbor::Value::MapValue BuildMapForBiddingPartition(
   partition_cbor_map.try_emplace(cbor::Value("id"),
                                  cbor::Value(bidding_partition.partition_id));
 
-  cbor::Value::MapValue metadata;
-  // Hostname isn't in `additional_params` since it's used by the caller to
-  // partition fetches.
-  metadata.try_emplace(cbor::Value("hostname"),
-                       cbor::Value(*bidding_partition.hostname));
-  for (const auto param : *bidding_partition.additional_params) {
-    // TODO(crbug.com/333445540): Consider switching to taking
-    // `additional_params` as a cbor::Value, for greater flexibility. The
-    // `slotSizes` parameter, in particular, might be best represented as an
-    // array. cbor::Value doesn't have operator<, having a Less comparator
-    // instead, so would need to add that.
-    //
-    // Alternatively, could split this up into the data used to construct it.
-    CHECK(param.second.is_string());
-    metadata.try_emplace(cbor::Value(param.first),
-                         cbor::Value(param.second.GetString()));
+  if (!bidding_partition.additional_params->empty()) {
+    cbor::Value::MapValue metadata;
+    for (const auto param : *bidding_partition.additional_params) {
+      // TODO(crbug.com/333445540): Consider switching to taking
+      // `additional_params` as a cbor::Value, for greater flexibility. The
+      // `slotSizes` parameter, in particular, might be best represented as an
+      // array. cbor::Value doesn't have operator<, having a Less comparator
+      // instead, so would need to add that.
+      //
+      // Alternatively, could split this up into the data used to construct it.
+      CHECK(param.second.is_string());
+      metadata.try_emplace(cbor::Value(param.first),
+                           cbor::Value(param.second.GetString()));
+    }
+    partition_cbor_map.try_emplace(cbor::Value("metadata"),
+                                   cbor::Value(std::move(metadata)));
   }
-  partition_cbor_map.try_emplace(cbor::Value("metadata"),
-                                 cbor::Value(std::move(metadata)));
 
   cbor::Value::ArrayValue arguments;
   arguments.emplace_back(MakeArgument("interestGroupNames",
                                       *bidding_partition.interest_group_names));
   arguments.emplace_back(MakeArgument("keys", *bidding_partition.keys));
+  partition_cbor_map.try_emplace(cbor::Value("arguments"),
+                                 cbor::Value(std::move(arguments)));
+
+  return partition_cbor_map;
+}
+
+// ScoringPartition overload of BuildMapForPartition().
+cbor::Value::MapValue BuildMapForPartition(
+    int compression_group_id,
+    const TrustedSignalsFetcher::ScoringPartition& scoring_partition) {
+  cbor::Value::MapValue partition_cbor_map;
+
+  partition_cbor_map.try_emplace(cbor::Value("compressionGroupId"),
+                                 cbor::Value(compression_group_id));
+  partition_cbor_map.try_emplace(cbor::Value("id"),
+                                 cbor::Value(scoring_partition.partition_id));
+
+  if (!scoring_partition.additional_params->empty()) {
+    cbor::Value::MapValue metadata;
+    for (const auto param : *scoring_partition.additional_params) {
+      // TODO(crbug.com/333445540): Consider switching to taking
+      // `additional_params` as a cbor::Value, for greater flexibility.
+      //
+      // Alternatively, could split this up into the data used to construct it.
+      CHECK(param.second.is_string());
+      metadata.try_emplace(cbor::Value(param.first),
+                           cbor::Value(param.second.GetString()));
+    }
+    partition_cbor_map.try_emplace(cbor::Value("metadata"),
+                                   cbor::Value(std::move(metadata)));
+  }
+
+  cbor::Value::ArrayValue arguments;
+  arguments.emplace_back(MakeArgument(
+      "renderURLs", cbor::Value(scoring_partition.render_url->spec())));
+
+  if (!scoring_partition.component_render_urls->empty()) {
+    cbor::Value::ArrayValue component_urls;
+    for (const GURL& component_render_urls :
+         *scoring_partition.component_render_urls) {
+      component_urls.emplace_back(cbor::Value(component_render_urls.spec()));
+    }
+    arguments.emplace_back(
+        MakeArgument("adComponentRenderURLs", std::move(component_urls)));
+  }
+
   partition_cbor_map.try_emplace(cbor::Value("arguments"),
                                  cbor::Value(std::move(arguments)));
 
@@ -167,8 +234,7 @@ std::string CreateRequestBodyFromCbor(cbor::Value cbor_value) {
   size_t request_body_size = size_with_padding - kOhttpHeaderSizeTSF;
   request_body.resize(request_body_size, 0x00);
 
-  base::SpanWriter writer(
-      base::as_writable_bytes(base::make_span(request_body)));
+  base::SpanWriter writer(base::as_writable_byte_span(request_body));
 
   // Add framing header. First byte includes version and compression format.
   // Always set first byte to 0x00 because request body is uncompressed.
@@ -177,7 +243,7 @@ std::string CreateRequestBodyFromCbor(cbor::Value cbor_value) {
       base::checked_cast<uint32_t>(maybe_cbor_bytes->size()));
 
   // Add CBOR string.
-  writer.Write(base::as_bytes(base::make_span(*maybe_cbor_bytes)));
+  writer.Write(base::as_byte_span(*maybe_cbor_bytes));
 
   DCHECK_EQ(writer.num_written(), size_before_padding - kOhttpHeaderSizeTSF);
 
@@ -186,21 +252,30 @@ std::string CreateRequestBodyFromCbor(cbor::Value cbor_value) {
   return request_body;
 }
 
-std::string BuildBiddingSignalsRequestBody(
-    const std::map<int, std::vector<TrustedSignalsFetcher::BiddingPartition>>&
-        compression_groups) {
+// Builds the request body for bidding and scoring requests. The outer body is
+// the same, only the data in the partitions is different, so a template works
+// well for this. PartitionType is either BiddingPartition or ScoringPartition.
+template <typename PartitionType>
+std::string BuildSignalsRequestBody(
+    std::string_view hostname,
+    const std::map<int, std::vector<PartitionType>>& compression_groups) {
   cbor::Value::MapValue request_map_value;
   cbor::Value::ArrayValue accept_compression(kAcceptCompression.begin(),
                                              kAcceptCompression.end());
   request_map_value.emplace(cbor::Value("acceptCompression"),
                             cbor::Value(std::move(accept_compression)));
 
+  cbor::Value::MapValue metadata;
+  metadata.try_emplace(cbor::Value("hostname"), cbor::Value(hostname));
+  request_map_value.try_emplace(cbor::Value("metadata"),
+                                cbor::Value(std::move(metadata)));
+
   cbor::Value::ArrayValue partition_array;
   for (const auto& group_pair : compression_groups) {
     int compression_group_id = group_pair.first;
-    for (const auto& bidding_partition : group_pair.second) {
+    for (const auto& partition : group_pair.second) {
       cbor::Value::MapValue partition_cbor_map =
-          BuildMapForBiddingPartition(compression_group_id, bidding_partition);
+          BuildMapForPartition(compression_group_id, partition);
       partition_array.emplace_back(partition_cbor_map);
     }
   }
@@ -216,12 +291,10 @@ TrustedSignalsFetcher::BiddingPartition::BiddingPartition(
     int partition_id,
     const std::set<std::string>* interest_group_names,
     const std::set<std::string>* keys,
-    const std::string* hostname,
     const base::Value::Dict* additional_params)
     : partition_id(partition_id),
       interest_group_names(*interest_group_names),
       keys(*keys),
-      hostname(*hostname),
       additional_params(*additional_params) {}
 
 TrustedSignalsFetcher::BiddingPartition::BiddingPartition(BiddingPartition&&) =
@@ -237,12 +310,10 @@ TrustedSignalsFetcher::ScoringPartition::ScoringPartition(
     int partition_id,
     const GURL* render_url,
     const std::set<GURL>* component_render_urls,
-    const std::string* hostname,
     const base::Value::Dict* additional_params)
     : partition_id(partition_id),
       render_url(*render_url),
       component_render_urls(*component_render_urls),
-      hostname(*hostname),
       additional_params(*additional_params) {}
 
 TrustedSignalsFetcher::ScoringPartition::ScoringPartition(ScoringPartition&&) =
@@ -272,26 +343,46 @@ TrustedSignalsFetcher::~TrustedSignalsFetcher() = default;
 
 void TrustedSignalsFetcher::FetchBiddingSignals(
     network::mojom::URLLoaderFactory* url_loader_factory,
+    const url::Origin& main_frame_origin,
+    network::mojom::IPAddressSpace ip_address_space,
+    base::UnguessableToken network_partition_nonce,
+    const url::Origin& script_origin,
     const GURL& trusted_bidding_signals_url,
     const BiddingAndAuctionServerKey& bidding_and_auction_key,
     const std::map<int, std::vector<BiddingPartition>>& compression_groups,
     Callback callback) {
   EncryptRequestBodyAndStart(
-      url_loader_factory, trusted_bidding_signals_url, bidding_and_auction_key,
-      BuildBiddingSignalsRequestBody(compression_groups), std::move(callback));
+      url_loader_factory, main_frame_origin, ip_address_space,
+      network_partition_nonce, script_origin, trusted_bidding_signals_url,
+      bidding_and_auction_key,
+      BuildSignalsRequestBody(main_frame_origin.host(), compression_groups),
+      std::move(callback));
 }
 
 void TrustedSignalsFetcher::FetchScoringSignals(
     network::mojom::URLLoaderFactory* url_loader_factory,
+    const url::Origin& main_frame_origin,
+    network::mojom::IPAddressSpace ip_address_space,
+    base::UnguessableToken network_partition_nonce,
+    const url::Origin& script_origin,
     const GURL& trusted_scoring_signals_url,
     const BiddingAndAuctionServerKey& bidding_and_auction_key,
     const std::map<int, std::vector<ScoringPartition>>& compression_groups,
     Callback callback) {
-  NOTIMPLEMENTED();
+  EncryptRequestBodyAndStart(
+      url_loader_factory, main_frame_origin, ip_address_space,
+      network_partition_nonce, script_origin, trusted_scoring_signals_url,
+      bidding_and_auction_key,
+      BuildSignalsRequestBody(main_frame_origin.host(), compression_groups),
+      std::move(callback));
 }
 
 void TrustedSignalsFetcher::EncryptRequestBodyAndStart(
     network::mojom::URLLoaderFactory* url_loader_factory,
+    const url::Origin& main_frame_origin,
+    network::mojom::IPAddressSpace ip_address_space,
+    base::UnguessableToken network_partition_nonce,
+    const url::Origin& script_origin,
     const GURL& trusted_signals_url,
     const BiddingAndAuctionServerKey& bidding_and_auction_key,
     std::string plaintext_request_body,
@@ -317,16 +408,46 @@ void TrustedSignalsFetcher::EncryptRequestBodyAndStart(
   resource_request->method = net::HttpRequestHeaders::kPostMethod;
   resource_request->url = trusted_signals_url;
   resource_request->credentials_mode = network::mojom::CredentialsMode::kOmit;
-  resource_request->mode = network::mojom::RequestMode::kNoCors;
+  resource_request->request_initiator = script_origin;
+  resource_request->mode = network::mojom::RequestMode::kCors;
   resource_request->redirect_mode = network::mojom::RedirectMode::kError;
   resource_request->headers.SetHeader("Accept", kResponseMediaType);
+  resource_request->trusted_params =
+      std::make_optional<network::ResourceRequest::TrustedParams>();
+  // IsolationInfos usually use main frame origin and frame origin, to separate
+  // the disk cache, and prevent frames from spying on each other's cache
+  // entries. These requests aren't cached (due to being POSTs), and use their
+  // own nonce, so no frames can pull the responses from the cache, even the
+  // main frame.
+  //
+  // The frame origin is also used to populate a cross-origin bit in the
+  // NetworkIsolationKey, to separate out other network resources for connection
+  // spying. The nonce similarly makes that sort of spying not useful
+  // - the only leak is the run time of entire auction, which leaks minimal
+  // information about whether there's a pre-existing connection. There's no way
+  // for frames to probe in depth connection info more directly, since they
+  // can't make network requests directly using the `network_partition_nonce`.
+  resource_request->trusted_params->isolation_info = net::IsolationInfo::Create(
+      net::IsolationInfo::RequestType::kOther,
+      /*top_frame_origin=*/main_frame_origin,
+      /*frame_origin=*/main_frame_origin, net::SiteForCookies(),
+      network_partition_nonce);
 
-  // TODO(crbug.com/333445540): Set reasonable initiator, isolation info, client
-  // security state, and credentials mode, and select reasonable maximum body
-  // size. Also hook up to devtools.
+  auto client_security_state = network::mojom::ClientSecurityState::New();
+  client_security_state->ip_address_space = ip_address_space;
+  client_security_state->is_web_secure_context = true;
+  // This call is needed to respect the various features that affect the policy.
+  client_security_state->private_network_request_policy =
+      DerivePrivateNetworkRequestPolicy(
+          ip_address_space, /*is_web_secure_context=*/true,
+          PrivateNetworkRequestContext::kSubresource);
+  resource_request->trusted_params->client_security_state =
+      std::move(client_security_state);
 
   simple_url_loader_ = network::SimpleURLLoader::Create(
       std::move(resource_request), kTrafficAnnotationTSF);
+  simple_url_loader_->SetTimeoutDuration(
+      auction_worklet::AuctionDownloader::kRequestTimeout);
   simple_url_loader_->AttachStringForUpload(
       maybe_ciphertext_request_body->EncapsulateAndSerialize(),
       kRequestMediaType);
@@ -336,10 +457,25 @@ void TrustedSignalsFetcher::EncryptRequestBodyAndStart(
   // TrustedSignalsFetcher.
   ohttp_context_ = std::make_unique<quiche::ObliviousHttpRequest::Context>(
       std::move(maybe_ciphertext_request_body).value().ReleaseContext());
+  simple_url_loader_->SetOnResponseStartedCallback(base::BindOnce(
+      &TrustedSignalsFetcher::OnResponseStarted, base::Unretained(this)));
   simple_url_loader_->DownloadToStringOfUnboundedSizeUntilCrashAndDie(
       url_loader_factory,
       base::BindOnce(&TrustedSignalsFetcher::OnRequestComplete,
                      base::Unretained(this)));
+}
+
+void TrustedSignalsFetcher::OnResponseStarted(
+    const GURL& final_url,
+    const network::mojom::URLResponseHead& response_head) {
+  network::URLLoaderCompletionStatus status;
+  std::optional<std::string> error =
+      auction_worklet::AuctionDownloader::CheckResponseAllowed(
+          trusted_signals_url_, response_head, status);
+  if (error) {
+    simple_url_loader_.reset();
+    std::move(callback_).Run(base::unexpected(std::move(error).value()));
+  }
 }
 
 void TrustedSignalsFetcher::OnRequestComplete(
@@ -415,7 +551,7 @@ void TrustedSignalsFetcher::OnRequestComplete(
     return;
   }
 
-  base::span<const uint8_t> cbor = remaining_span.subspan(0, cbor_length);
+  base::span<const uint8_t> cbor = remaining_span.first(cbor_length);
   data_decoder::DataDecoder::ParseCborIsolated(
       cbor, base::BindOnce(&TrustedSignalsFetcher::OnCborParsed,
                            weak_ptr_factory_.GetWeakPtr()));

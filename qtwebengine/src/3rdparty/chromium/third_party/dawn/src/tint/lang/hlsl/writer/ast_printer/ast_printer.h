@@ -40,8 +40,8 @@
 #include "src/tint/lang/hlsl/writer/common/options.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/utils/containers/scope_stack.h"
-#include "src/tint/utils/generator/text_generator.h"
 #include "src/tint/utils/math/hash.h"
+#include "src/tint/utils/text_generator.h"
 
 // Forward declarations
 namespace tint::sem {
@@ -303,6 +303,17 @@ class ASTPrinter : public tint::TextGenerator {
     bool EmitSubgroupShuffleBuiltinCall(StringStream& out,
                                         const ast::CallExpression* expr,
                                         const sem::BuiltinFn* builtin);
+
+    /// Handles generating a call to the `WavePrefixSum` and `WavePrefixProduct` intrinsic for
+    /// subgroupInclusiveSum and subgroupInclusiveMul
+    /// @param out the output stream
+    /// @param expr the call expression
+    /// @param builtin the semantic information for the builtin
+    /// @returns true if the call expression is emitted
+    bool EmitSubgroupInclusiveBuiltinCall(StringStream& out,
+                                          const ast::CallExpression* expr,
+                                          const sem::BuiltinFn* builtin);
+
     /// Handles a case statement
     /// @param s the switch statement
     /// @param case_idx the index of the switch case in the switch statement

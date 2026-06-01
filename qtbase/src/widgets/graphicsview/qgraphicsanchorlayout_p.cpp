@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qgraphicsanchorlayout_p.h"
 
@@ -25,7 +26,7 @@ using namespace Qt::StringLiterals;
 // we use a tighter limit for the variables range.
 const qreal g_offset = (sizeof(qreal) == sizeof(double)) ? QWIDGETSIZE_MAX : QWIDGETSIZE_MAX / 32;
 
-QGraphicsAnchorPrivate::QGraphicsAnchorPrivate(int version)
+QGraphicsAnchorPrivate::QGraphicsAnchorPrivate(decltype(QObjectPrivateVersion) version)
     : QObjectPrivate(version), layoutPrivate(nullptr), data(nullptr),
       sizePolicy(QSizePolicy::Fixed), preferredSize(0),
       hasSize(true)

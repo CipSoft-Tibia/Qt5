@@ -186,7 +186,6 @@ leveldb::Status LevelDBScope::DeleteRange(const leveldb::Slice& begin,
   DCHECK(!committed_);
   DCHECK(!locks_.empty());
   switch (mode) {
-    case LevelDBScopeDeletionMode::kDeferred:
     case LevelDBScopeDeletionMode::kDeferredWithCompaction:
       deferred_delete_ranges_.emplace_back(begin.ToString(), end.ToString());
       break;
@@ -196,10 +195,6 @@ leveldb::Status LevelDBScope::DeleteRange(const leveldb::Slice& begin,
 #endif
   bool end_exclusive = true;
   switch (mode) {
-    case LevelDBScopeDeletionMode::kDeferred:
-      SetModeToUndoLog();
-      AddCleanupDeleteRangeTask(begin.ToString(), end.ToString());
-      return leveldb::Status::OK();
     case LevelDBScopeDeletionMode::kDeferredWithCompaction:
       SetModeToUndoLog();
       AddCleanupDeleteAndCompactRangeTask(begin.ToString(), end.ToString());
@@ -298,8 +293,7 @@ std::pair<leveldb::Status, LevelDBScope::Mode> LevelDBScope::Commit(
       s = WriteChangesAndUndoLogInternal(sync_on_commit);
       break;
     default:
-      NOTREACHED_IN_MIGRATION();
-      return {leveldb::Status::NotSupported("Unknown scopes mode."), mode_};
+      NOTREACHED();
   }
   locks_.clear();
   committed_ = true;
@@ -356,20 +350,9 @@ void LevelDBScope::AddBufferedUndoTask() {
   undo_task_buffer_.Clear();
 }
 
-void LevelDBScope::AddCleanupDeleteRangeTask(std::string begin,
-                                             std::string end) {
-  DCHECK(cleanup_task_buffer_.operation_case() ==
-         LevelDBScopesCleanupTask::OPERATION_NOT_SET);
-  auto* const range = cleanup_task_buffer_.mutable_delete_range();
-  range->set_begin(std::move(begin));
-  range->set_end(std::move(end));
-  AddBufferedCleanupTask();
-}
-
 void LevelDBScope::AddCleanupDeleteAndCompactRangeTask(std::string begin,
                                                        std::string end) {
-  DCHECK(cleanup_task_buffer_.operation_case() ==
-         LevelDBScopesCleanupTask::OPERATION_NOT_SET);
+  DCHECK(!cleanup_task_buffer_.has_delete_range_and_compact());
   auto* const range = cleanup_task_buffer_.mutable_delete_range_and_compact();
   range->set_begin(std::move(begin));
   range->set_end(std::move(end));

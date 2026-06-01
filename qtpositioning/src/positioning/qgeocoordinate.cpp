@@ -658,11 +658,11 @@ QString QGeoCoordinate::toString(CoordinateFormat format) const
 bool QGeoCoordinate::equals(const QGeoCoordinate &lhs, const QGeoCoordinate &rhs)
 {
     bool latEqual = (qIsNaN(lhs.d->lat) && qIsNaN(rhs.d->lat))
-                        || qFuzzyCompare(lhs.d->lat, rhs.d->lat);
+                        || QtPrivate::fuzzyCompare(lhs.d->lat, rhs.d->lat);
     bool lngEqual = (qIsNaN(lhs.d->lng) && qIsNaN(rhs.d->lng))
-                        || qFuzzyCompare(lhs.d->lng, rhs.d->lng);
+                        || QtPrivate::fuzzyCompare(lhs.d->lng, rhs.d->lng);
     bool altEqual = (qIsNaN(lhs.d->alt) && qIsNaN(rhs.d->alt))
-                        || qFuzzyCompare(lhs.d->alt, rhs.d->alt);
+                        || QtPrivate::fuzzyCompare(lhs.d->alt, rhs.d->alt);
 
     if (!qIsNaN(lhs.d->lat) && ((lhs.d->lat == 90.0) || (lhs.d->lat == -90.0)))
         lngEqual = true;
@@ -751,7 +751,7 @@ QDataStream &QGeoCoordinate::dataStreamIn(QDataStream &stream, QGeoCoordinate &c
 */
 size_t qHash(const QGeoCoordinate &coordinate, size_t seed)
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombine hash(seed);
     // north and south pole are geographically equivalent (no matter the longitude)
     if (coordinate.latitude() != 90.0 && coordinate.latitude() != -90.0)
         seed = hash(seed, coordinate.longitude());

@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2024 The Khronos Group Inc.
- * Copyright (c) 2015-2024 Valve Corporation
- * Copyright (c) 2015-2024 LunarG, Inc.
+/* Copyright (c) 2015-2025 The Khronos Group Inc.
+ * Copyright (c) 2015-2025 Valve Corporation
+ * Copyright (c) 2015-2025 LunarG, Inc.
  * Copyright (C) 2015-2024 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  * Modifications Copyright (C) 2022 RasterGrid Kft.
@@ -22,10 +22,9 @@
 #include "state_tracker/device_memory_state.h"
 #include "containers/range_vector.h"
 
-class ValidationStateTracker;
-
 namespace vvl {
 
+class Device;
 class VideoProfileDesc;
 
 class Buffer : public Bindable {
@@ -35,12 +34,12 @@ class Buffer : public Bindable {
 
     const VkMemoryRequirements requirements;
     VkDeviceAddress deviceAddress = 0;
-    // VkBufferUsageFlags2CreateInfoKHR can be used instead over the VkBufferCreateInfo::usage
+    // VkBufferUsageFlags2CreateInfo can be used instead over the VkBufferCreateInfo::usage
     const VkBufferUsageFlags2KHR usage;
 
     unordered_set<std::shared_ptr<const VideoProfileDesc>> supported_video_profiles;
 
-    Buffer(ValidationStateTracker &dev_data, VkBuffer handle, const VkBufferCreateInfo *pCreateInfo);
+    Buffer(Device &dev_data, VkBuffer handle, const VkBufferCreateInfo *pCreateInfo);
 
     Buffer(Buffer const &rh_obj) = delete;
 
@@ -53,16 +52,20 @@ class Buffer : public Bindable {
     }
 
     VkBuffer VkHandle() const { return handle_.Cast<VkBuffer>(); }
-    std::optional<VkDeviceSize> ComputeValidSize(VkDeviceSize offset, VkDeviceSize size) const {
-        return ::ComputeValidSize(offset, size, create_info.size);
+
+    VkDeviceSize GetRegionSize(VkDeviceSize offset, VkDeviceSize size) const {
+        if (offset < create_info.size) {
+            if (size == VK_WHOLE_SIZE) {
+                return create_info.size - offset;
+            } else if ((offset + size) <= create_info.size) {
+                return size;
+            }
+        }
+        return 0;
     }
-    VkDeviceSize ComputeSize(VkDeviceSize offset, VkDeviceSize size) const {
-        std::optional<VkDeviceSize> valid_size = ComputeValidSize(offset, size);
-        return valid_size.has_value() ? *valid_size : VkDeviceSize(0);
-    }
-    static VkDeviceSize ComputeSize(const std::shared_ptr<const Buffer> &buffer_state, VkDeviceSize offset,
-                                    VkDeviceSize size) {
-        return buffer_state ? buffer_state->ComputeSize(offset, size) : VkDeviceSize(0);
+
+    static VkDeviceSize GetRegionSize(const std::shared_ptr<const Buffer> &buffer_state, VkDeviceSize offset, VkDeviceSize size) {
+        return buffer_state ? buffer_state->GetRegionSize(offset, size) : 0;
     }
 
     sparse_container::range<VkDeviceAddress> DeviceAddressRange() const {

@@ -106,5 +106,5 @@
     Furthermore, Qt GRPC in Qt \QtVersion may contain third party modules under
     the following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtgrpc-examples}
+    \annotatedlist attributions-qtgrpc-examples
 */

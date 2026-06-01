@@ -149,19 +149,6 @@ int PaintOptions::numCombinations() const {
            this->numClipShaderCombinations();
 }
 
-namespace {
-
-DstReadRequirement get_dst_read_req(const Caps* caps,
-                                    Coverage coverage,
-                                    PrecompileBlender* blender) {
-    if (blender) {
-        return GetDstReadRequirement(caps, blender->priv().asBlendMode(), coverage);
-    }
-    return GetDstReadRequirement(caps, SkBlendMode::kSrcOver, coverage);
-}
-
-} // anonymous namespace
-
 void PaintOptions::createKey(const KeyContext& keyContext,
                              PaintParamsKeyBuilder* keyBuilder,
                              PipelineDataGatherer* gatherer,
@@ -204,9 +191,10 @@ void PaintOptions::createKey(const KeyContext& keyContext,
     if (!finalBlender.first) {
         finalBlender = { PrecompileBlenders::Mode(SkBlendMode::kSrcOver), 0 };
     }
-    DstReadRequirement dstReadReq = get_dst_read_req(keyContext.caps(), coverage,
-                                                     finalBlender.first.get());
 
+    PrecompileBlender* blender = finalBlender.first.get();
+    std::optional<SkBlendMode> blendMode = blender ? blender->priv().asBlendMode()
+                                                   : SkBlendMode::kSrcOver;
     PaintOption option(kOpaquePaintColor,
                        finalBlender,
                        PrecompileBase::SelectOption(SkSpan(fShaderOptions),
@@ -215,7 +203,7 @@ void PaintOptions::createKey(const KeyContext& keyContext,
                                                     desiredColorFilterCombination),
                        addPrimitiveBlender,
                        clipShader,
-                       dstReadReq,
+                       IsDstReadRequired(keyContext.caps(), blendMode, coverage),
                        fDither);
 
     option.toKey(keyContext, keyBuilder, gatherer);
@@ -225,8 +213,9 @@ namespace {
 
 void create_image_drawing_pipelines(const KeyContext& keyContext,
                                     PipelineDataGatherer* gatherer,
-                                    const PaintOptionsPriv::ProcessCombination& processCombination,
-                                    const PaintOptions& orig) {
+                                    const PaintOptions& orig,
+                                    const RenderPassDesc& renderPassDesc,
+                                    const PaintOptionsPriv::ProcessCombination& processCombination) {
     PaintOptions imagePaintOptions;
 
     // For imagefilters we know we don't have alpha-only textures and don't need cubic filtering.
@@ -244,6 +233,7 @@ void create_image_drawing_pipelines(const KeyContext& keyContext,
                                                DrawTypeFlags::kSimpleShape,
                                                /* withPrimitiveBlender= */ false,
                                                Coverage::kSingleChannel,
+                                               renderPassDesc,
                                                processCombination);
 }
 
@@ -255,6 +245,7 @@ void PaintOptions::buildCombinations(
         DrawTypeFlags drawTypes,
         bool withPrimitiveBlender,
         Coverage coverage,
+        const RenderPassDesc& renderPassDesc,
         const ProcessCombination& processCombination) const {
 
     PaintParamsKeyBuilder builder(keyContext.dict());
@@ -301,15 +292,16 @@ void PaintOptions::buildCombinations(
         }
 
         tmp.buildCombinations(keyContext, gatherer, drawTypes, withPrimitiveBlender, coverage,
-                              processCombination);
+                              renderPassDesc, processCombination);
 
-        create_image_drawing_pipelines(keyContext, gatherer, processCombination, *this);
+        create_image_drawing_pipelines(keyContext, gatherer, *this,
+                                       renderPassDesc, processCombination);
 
         for (const sk_sp<PrecompileImageFilter>& o : fImageFilterOptions) {
-            o->createPipelines(keyContext, gatherer, processCombination);
+            o->createPipelines(keyContext, gatherer, renderPassDesc, processCombination);
         }
         for (const sk_sp<PrecompileMaskFilter>& o : fMaskFilterOptions) {
-            o->createPipelines(keyContext, gatherer, processCombination);
+            o->createPipelines(keyContext, gatherer, *this, renderPassDesc, processCombination);
         }
     } else {
         int numCombinations = this->numCombinations();
@@ -324,7 +316,7 @@ void PaintOptions::buildCombinations(
             // PaintParamsKey. This serves to reset the builder.
             UniquePaintParamsID paintID = keyContext.dict()->findOrCreate(&builder);
 
-            processCombination(paintID, drawTypes, withPrimitiveBlender, coverage);
+            processCombination(paintID, drawTypes, withPrimitiveBlender, coverage, renderPassDesc);
         }
     }
 }

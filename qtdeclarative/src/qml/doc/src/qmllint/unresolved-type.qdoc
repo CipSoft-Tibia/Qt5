@@ -8,6 +8,8 @@
 \title Unresolved type
 \brief [unresolved-type] A used type was not found.
 
+\qmllintwarningcategory unresolved-type
+
 This category contains following warnings:
 \list
 \li Type is used but is not resolved
@@ -21,8 +23,6 @@ This category contains following warnings:
 
 These warnings usually indicate missing imports or faulty QML modules, depending
 on whether you are using or writing a QML module.
-
-\qmllintwarningcategory unresolved-type
 
 \section1 For QML module users
 

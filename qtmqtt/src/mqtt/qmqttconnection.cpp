@@ -9,6 +9,8 @@
 #include "qmqttpublishproperties_p.h"
 #include "qmqttsubscription_p.h"
 #include "qmqttclient_p.h"
+#include "transportLayers/mqtt_websocket_io_p.h"
+#include "transportLayers/mqtt_secure_websocket_io_p.h"
 
 #include <QtCore/QLoggingCategory>
 #include <QtNetwork/QSslSocket>
@@ -84,9 +86,7 @@ QMqttConnection::~QMqttConnection()
 {
     if (m_internalState == BrokerConnected)
         sendControlDisconnect();
-
-    if (m_ownTransport && m_transport)
-        delete m_transport;
+    m_transport = nullptr;
 }
 
 void QMqttConnection::timerEvent(QTimerEvent *event)
@@ -99,71 +99,156 @@ void QMqttConnection::timerEvent(QTimerEvent *event)
     QObject::timerEvent(event);
 }
 
+void QMqttConnection::disconnectAndResetTransport()
+{
+    if (m_transport) {
+        if (m_connectedTransport) {
+            //
+            // Looks weird. We know that m_transport is not set from
+            // the outside because m_connectedTransport is only set
+            // by us for the websocket cases, or in ensureTransport.
+            //
+            // Thus we can disconnect everything.
+            //
+            disconnect(m_transport.get());
+        } else {
+            //
+            // m_transport is set from outside with setTransport,
+            // there might be other connections that shall not
+            // be removed.
+            //
+            disconnect(m_transport.get(), &QIODevice::aboutToClose, this, &QMqttConnection::transportConnectionClosed);
+            disconnect(m_transport.get(), &QIODevice::readyRead, this, &QMqttConnection::transportReadyRead);
+        }
+    }
+    m_transport = nullptr;
+    m_transportType = QMqttClient::TransportType::IODevice;
+}
+
 void QMqttConnection::setTransport(QIODevice *device, QMqttClient::TransportType transport)
 {
     qCDebug(lcMqttConnection) << Q_FUNC_INFO << device << " Type:" << transport;
 
-    if (m_transport) {
-        disconnect(m_transport, &QIODevice::aboutToClose, this, &QMqttConnection::transportConnectionClosed);
-        disconnect(m_transport, &QIODevice::readyRead, this, &QMqttConnection::transportReadyRead);
-        if (m_ownTransport)
-            delete m_transport;
+    disconnectAndResetTransport();
+
+    m_transport = std::shared_ptr<QIODevice>(device, [](QIODevice *) { ; });
+    m_transportType = transport;
+    m_connectedTransport = false;
+    m_transportIsSet = true;
+
+    connect(m_transport.get(), &QIODevice::aboutToClose, this, &QMqttConnection::transportConnectionClosed);
+    connect(m_transport.get(), &QIODevice::readyRead, this, &QMqttConnection::transportReadyRead);
+}
+
+void QMqttConnection::connectTransport(QMqttClient::TransportType transportType, const std::shared_ptr<QIODevice> &transport)
+{
+    qCDebug(lcMqttConnection) << Q_FUNC_INFO << " Type:" << transportType;
+
+    disconnectAndResetTransport();
+
+    m_transportType = transportType;
+    m_transport = transport;
+    m_transportIsSet = true;
+    m_connectedTransport = true;
+
+    if (!m_transport) {
+        qWarning(lcMqttConnection) << " No transport created for " << transportType;
+        return;
     }
 
-    m_transport = device;
-    m_transportType = transport;
-    m_ownTransport = false;
+    QObject::connect(m_transport.get(), &QIODevice::aboutToClose, this, &QMqttConnection::transportConnectionClosed);
+    QObject::connect(m_transport.get(), &QIODevice::readyRead, this, &QMqttConnection::transportReadyRead);
 
-    connect(m_transport, &QIODevice::aboutToClose, this, &QMqttConnection::transportConnectionClosed);
-    connect(m_transport, &QIODevice::readyRead, this, &QMqttConnection::transportReadyRead);
+    switch (m_transportType) {
+        case QMqttClient::TransportType::IODevice:
+            break;
+        case QMqttClient::TransportType::AbstractSocket:
+            QObject::connect(qobject_cast<QAbstractSocket *>(m_transport.get()), &QAbstractSocket::connected, this, &QMqttConnection::transportConnectionEstablished);
+            QObject::connect(qobject_cast<QAbstractSocket *>(m_transport.get()), &QAbstractSocket::disconnected, this, &QMqttConnection::transportConnectionClosed);
+            QObject::connect(qobject_cast<QAbstractSocket *>(m_transport.get()), &QAbstractSocket::errorOccurred, this, &QMqttConnection::transportError);
+            break;
+        case QMqttClient::TransportType::WebSocket:
+#ifdef QT_MQTT_WITH_WEBSOCKETS
+            QObject::connect(qobject_cast<QMqttWebSocketIO *>(m_transport.get()), &QMqttWebSocketIO::connected, this, &QMqttConnection::transportConnectionEstablished);
+            QObject::connect(qobject_cast<QMqttWebSocketIO *>(m_transport.get()), &QMqttWebSocketIO::disconnected, this, &QMqttConnection::transportConnectionClosed);
+            QObject::connect(qobject_cast<QMqttWebSocketIO *>(m_transport.get()), &QMqttWebSocketIO::errorOccurred, this, &QMqttConnection::transportError);
+#endif
+            break;
+
+        case QMqttClient::TransportType::SecureSocket:
+#ifndef QT_NO_SSL
+            QObject::connect(qobject_cast<QSslSocket *>(m_transport.get()), &QSslSocket::encrypted, this, &QMqttConnection::transportConnectionEstablished);
+            QObject::connect(qobject_cast<QSslSocket *>(m_transport.get()), &QAbstractSocket::disconnected, this, &QMqttConnection::transportConnectionClosed);
+            QObject::connect(qobject_cast<QSslSocket *>(m_transport.get()), &QAbstractSocket::errorOccurred, this, &QMqttConnection::transportError);
+#endif
+            break;
+
+        case QMqttClient::TransportType::SecureWebSocket:
+#ifdef QT_MQTT_WITH_WEBSOCKETS
+            QObject::connect(qobject_cast<QMqttSecureWebSocketIO *>(m_transport.get()), &QMqttSecureWebSocketIO::encrypted, this, &QMqttConnection::transportConnectionEstablished);
+            QObject::connect(qobject_cast<QMqttSecureWebSocketIO *>(m_transport.get()), &QMqttSecureWebSocketIO::disconnected, this, &QMqttConnection::transportConnectionClosed);
+            QObject::connect(qobject_cast<QMqttSecureWebSocketIO *>(m_transport.get()), &QMqttSecureWebSocketIO::errorOccurred, this, &QMqttConnection::transportError);
+#endif
+            break;
+
+        default:
+            Q_ASSERT(false);
+            break;
+    } // end switch
 }
 
 QIODevice *QMqttConnection::transport() const
 {
-    return m_transport;
+    return m_transport.get();
 }
 
 bool QMqttConnection::ensureTransport(bool createSecureIfNeeded)
 {
     Q_UNUSED(createSecureIfNeeded); // QT_NO_SSL
-    qCDebug(lcMqttConnection) << Q_FUNC_INFO << m_transport;
+    qCDebug(lcMqttConnection) << Q_FUNC_INFO << m_transport.get();
 
-    if (m_transport) {
-        if (m_ownTransport)
-            delete m_transport;
-        else
-            return true;
-    }
+    if (m_transportIsSet)
+        return true; // transport set by setTransport
+
+    disconnectAndResetTransport();
 
     // We are asked to create a transport layer
     if (m_clientPrivate->m_hostname.isEmpty() || m_clientPrivate->m_port == 0) {
-        qCDebug(lcMqttConnection) << "No hostname specified, not able to create a transport layer.";
+        qCDebug(lcMqttConnection) << "No hostname specified, or port is 0. Not able to create a transport layer.";
         return false;
     }
-    auto socket =
-#ifndef QT_NO_SSL
-            createSecureIfNeeded ? new QSslSocket() :
+
+#ifdef Q_OS_WASM
+    qCWarning(lcMqttConnection) << "For WebAssembly, use connectToHostWebSocket[Encrypted]";
+    return false;
 #endif
-                                   new QTcpSocket();
-    m_transport = socket;
-    m_ownTransport = true;
-    m_transportType =
-#ifndef QT_NO_SSL
-        createSecureIfNeeded ? QMqttClient::SecureSocket :
-#endif
-                               QMqttClient::AbstractSocket;
 
 #ifndef QT_NO_SSL
-    if (QSslSocket *sslSocket = qobject_cast<QSslSocket *>(socket))
-        QObject::connect(sslSocket, &QSslSocket::encrypted, this, &QMqttConnection::transportConnectionEstablished);
-    else
-#endif
-    connect(socket, &QAbstractSocket::connected, this, &QMqttConnection::transportConnectionEstablished);
-    connect(socket, &QAbstractSocket::disconnected, this, &QMqttConnection::transportConnectionClosed);
-    connect(socket, &QAbstractSocket::errorOccurred, this, &QMqttConnection::transportError);
+    if (createSecureIfNeeded) {
+        auto socket = std::make_shared<QSslSocket>();
+        m_transport = socket;
+        m_connectedTransport = true;
+        m_transportType = QMqttClient::SecureSocket;
 
-    connect(m_transport, &QIODevice::aboutToClose, this, &QMqttConnection::transportConnectionClosed);
-    connect(m_transport, &QIODevice::readyRead, this, &QMqttConnection::transportReadyRead);
+        QObject::connect(socket.get(), &QSslSocket::encrypted, this, &QMqttConnection::transportConnectionEstablished);
+        QObject::connect(socket.get(), &QAbstractSocket::disconnected, this, &QMqttConnection::transportConnectionClosed);
+        QObject::connect(socket.get(), &QAbstractSocket::errorOccurred, this, &QMqttConnection::transportError);
+    }
+#endif
+
+    if (!m_transport) {
+        auto socket = std::make_shared<QTcpSocket>();
+        m_transport = socket;
+        m_connectedTransport = true;
+        m_transportType = QMqttClient::AbstractSocket;
+
+        QObject::connect(socket.get(), &QAbstractSocket::connected, this, &QMqttConnection::transportConnectionEstablished);
+        QObject::connect(socket.get(), &QAbstractSocket::disconnected, this, &QMqttConnection::transportConnectionClosed);
+        QObject::connect(socket.get(), &QAbstractSocket::errorOccurred, this, &QMqttConnection::transportError);
+    }
+    QObject::connect(m_transport.get(), &QIODevice::aboutToClose, this, &QMqttConnection::transportConnectionClosed);
+    QObject::connect(m_transport.get(), &QIODevice::readyRead, this, &QMqttConnection::transportReadyRead);
+
     return true;
 }
 
@@ -184,7 +269,7 @@ bool QMqttConnection::ensureTransportOpen(const QString &sslPeerName)
     }
 
     if (m_transportType == QMqttClient::AbstractSocket) {
-        auto socket = qobject_cast<QTcpSocket *>(m_transport);
+        auto socket = qobject_cast<QTcpSocket *>(m_transport.get());
         Q_ASSERT(socket);
         if (socket->state() == QAbstractSocket::ConnectedState)
             return sendControlConnect();
@@ -192,9 +277,31 @@ bool QMqttConnection::ensureTransportOpen(const QString &sslPeerName)
         m_internalState = BrokerConnecting;
         socket->connectToHost(m_clientPrivate->m_hostname, m_clientPrivate->m_port);
     }
+    else if (m_transportType == QMqttClient::WebSocket) {
+#ifdef QT_MQTT_WITH_WEBSOCKETS
+        auto socket = qobject_cast<QMqttWebSocketIO *>(m_transport.get());
+        Q_ASSERT(socket);
+        if (socket->state() == QAbstractSocket::ConnectedState)
+            return sendControlConnect();
+
+        m_internalState = BrokerConnecting;
+        socket->connectToHost(m_clientPrivate->m_hostname, m_clientPrivate->m_port, m_clientPrivate->m_protocolVersion);
+#endif
+    }
+    else if (m_transportType == QMqttClient::SecureWebSocket) {
+#ifdef QT_MQTT_WITH_WEBSOCKETS
+        auto socket = qobject_cast<QMqttSecureWebSocketIO *>(m_transport.get());
+        Q_ASSERT(socket);
+        if (socket->state() == QAbstractSocket::ConnectedState)
+            return sendControlConnect();
+
+        m_internalState = BrokerConnecting;
+        socket->connectToHostEncrypted(m_clientPrivate->m_hostname, m_clientPrivate->m_port, m_clientPrivate->m_protocolVersion);
+#endif
+    }
 #ifndef QT_NO_SSL
     else if (m_transportType == QMqttClient::SecureSocket) {
-        auto socket = qobject_cast<QSslSocket *>(m_transport);
+        auto socket = qobject_cast<QSslSocket *>(m_transport.get());
         Q_ASSERT(socket);
         if (socket->state() == QAbstractSocket::ConnectedState)
             return sendControlConnect();
@@ -204,10 +311,8 @@ bool QMqttConnection::ensureTransportOpen(const QString &sslPeerName)
             socket->setSslConfiguration(m_sslConfiguration);
         socket->connectToHostEncrypted(m_clientPrivate->m_hostname, m_clientPrivate->m_port, sslPeerName);
     }
-#else
-    Q_UNUSED(sslPeerName);
 #endif
-
+    Q_UNUSED(sslPeerName);
     return true;
 }
 

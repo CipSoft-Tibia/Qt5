@@ -13,21 +13,18 @@
 // limitations under the License.
 
 import m from 'mithril';
+import protos from '../protos';
 import {assertExists} from '../base/logging';
-import {Actions} from '../common/actions';
 import {VERSION} from '../gen/perfetto_version';
-import {StatusResult, TraceProcessorApiVersion} from '../protos';
 import {HttpRpcEngine} from '../trace_processor/http_rpc_engine';
 import {showModal} from '../widgets/modal';
-import {Router} from './router';
-import {globals} from './globals';
-import {publishHttpRpcState} from './publish';
+import {AppImpl} from '../core/app_impl';
 
 const CURRENT_API_VERSION =
-  TraceProcessorApiVersion.TRACE_PROCESSOR_CURRENT_API_VERSION;
+  protos.TraceProcessorApiVersion.TRACE_PROCESSOR_CURRENT_API_VERSION;
 
-function getPromptMessage(tpStatus: StatusResult): string {
-  return `Trace Processor Native Accelerator detected on ${HttpRpcEngine.hostAndPort} with:
+function getPromptMessage(tpStatus: protos.StatusResult): string {
+  return `Trace Processor detected on ${HttpRpcEngine.hostAndPort} with:
 ${tpStatus.loadedTraceName}
 
 YES, use loaded trace:
@@ -48,7 +45,7 @@ Using the native accelerator has some minor caveats:
 `;
 }
 
-function getIncompatibleRpcMessage(tpStatus: StatusResult): string {
+function getIncompatibleRpcMessage(tpStatus: protos.StatusResult): string {
   return `The Trace Processor instance on ${HttpRpcEngine.hostAndPort} is too old.
 
 This UI requires TraceProcessor features that are not present in the
@@ -70,8 +67,8 @@ Trace processor RPC API: ${tpStatus.apiVersion}
 `;
 }
 
-function getVersionMismatchMessage(tpStatus: StatusResult): string {
-  return `The trace processor instance on ${HttpRpcEngine.hostAndPort} is a different build from the UI.
+function getVersionMismatchMessage(tpStatus: protos.StatusResult): string {
+  return `The Trace Processor instance on ${HttpRpcEngine.hostAndPort} is a different build from the UI.
 
 This may cause problems. Where possible it is better to use the matched version of the UI.
 You can do this by clicking the button below.
@@ -153,7 +150,7 @@ Trace processor RPC API: ${tpStatus.apiVersion}
 // having to open a trace).
 export async function CheckHttpRpcConnection(): Promise<void> {
   const state = await HttpRpcEngine.checkConnection();
-  publishHttpRpcState(state);
+  AppImpl.instance.httpRpc.httpRpcAvailable = state.connected;
   if (!state.connected) {
     // No RPC = exit immediately to the WASM UI.
     return;
@@ -161,12 +158,12 @@ export async function CheckHttpRpcConnection(): Promise<void> {
   const tpStatus = assertExists(state.status);
 
   function forceWasm() {
-    globals.dispatch(Actions.setNewEngineMode({mode: 'FORCE_BUILTIN_WASM'}));
+    AppImpl.instance.httpRpc.newEngineMode = 'FORCE_BUILTIN_WASM';
   }
 
   // Check short version:
   if (tpStatus.versionCode !== '' && tpStatus.versionCode !== VERSION) {
-    const url = await Router.isVersionAvailable(tpStatus.versionCode);
+    const url = await isVersionAvailable(tpStatus.versionCode);
     if (url !== undefined) {
       // If matched UI available show a dialog asking the user to
       // switch.
@@ -174,7 +171,7 @@ export async function CheckHttpRpcConnection(): Promise<void> {
       switch (result) {
         case MismatchedVersionDialog.Dismissed:
         case MismatchedVersionDialog.UseMatchingUi:
-          Router.navigateToVersion(tpStatus.versionCode);
+          navigateToVersion(tpStatus.versionCode);
           return;
         case MismatchedVersionDialog.UseMismatchedRpc:
           break;
@@ -213,7 +210,7 @@ export async function CheckHttpRpcConnection(): Promise<void> {
     switch (result) {
       case PreloadedDialogResult.Dismissed:
       case PreloadedDialogResult.UseRpcWithPreloadedTrace:
-        globals.dispatch(Actions.openTraceFromHttpRpc({}));
+        AppImpl.instance.openTraceFromHttpRpc();
         return;
       case PreloadedDialogResult.UseRpc:
         // Resetting state is the default.
@@ -236,7 +233,7 @@ enum MismatchedVersionDialog {
 }
 
 async function showDialogVersionMismatch(
-  tpStatus: StatusResult,
+  tpStatus: protos.StatusResult,
   url: string,
 ): Promise<MismatchedVersionDialog> {
   let result = MismatchedVersionDialog.Dismissed;
@@ -275,7 +272,7 @@ enum IncompatibleRpcDialogResult {
 }
 
 async function showDialogIncompatibleRPC(
-  tpStatus: StatusResult,
+  tpStatus: protos.StatusResult,
 ): Promise<IncompatibleRpcDialogResult> {
   let result = IncompatibleRpcDialogResult.Dismissed;
   await showModal({
@@ -308,7 +305,7 @@ enum PreloadedDialogResult {
 }
 
 async function showDialogToUsePreloadedTrace(
-  tpStatus: StatusResult,
+  tpStatus: protos.StatusResult,
 ): Promise<PreloadedDialogResult> {
   let result = PreloadedDialogResult.Dismissed;
   await showModal({
@@ -337,4 +334,44 @@ async function showDialogToUsePreloadedTrace(
     ],
   });
   return result;
+}
+
+function getUrlForVersion(versionCode: string): string {
+  const url = `${window.location.origin}/${versionCode}/`;
+  return url;
+}
+
+async function isVersionAvailable(
+  versionCode: string,
+): Promise<string | undefined> {
+  if (versionCode === '') {
+    return undefined;
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1000);
+  const url = getUrlForVersion(versionCode);
+  let r;
+  try {
+    r = await fetch(url, {signal: controller.signal});
+  } catch (e) {
+    console.error(
+      `No UI version for ${versionCode} at ${url}. ` +
+        `This is an error if ${versionCode} is a released Perfetto version`,
+    );
+    return undefined;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!r.ok) {
+    return undefined;
+  }
+  return url;
+}
+
+function navigateToVersion(versionCode: string): void {
+  const url = getUrlForVersion(versionCode);
+  if (url === undefined) {
+    throw new Error(`No URL known for UI version ${versionCode}.`);
+  }
+  window.location.replace(url);
 }

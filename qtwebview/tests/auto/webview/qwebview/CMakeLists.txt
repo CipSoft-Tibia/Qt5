@@ -14,16 +14,12 @@ qt_internal_add_test(tst_qwebview
 )
 
 qt_internal_extend_target(tst_qwebview CONDITION TARGET Qt::WebViewQuick
-    DEFINES
-        QT_QQUICKWEBVIEW_TESTS
     LIBRARIES
         Qt::WebViewQuickPrivate
         Qt::Qml
 )
 
-qt_internal_extend_target(tst_qwebview CONDITION TARGET Qt::WebEngineQuick AND NOT APPLE
-    DEFINES
-        QT_WEBVIEW_WEBENGINE_BACKEND
+qt_internal_extend_target(tst_qwebview CONDITION TARGET Qt::WebEngineQuick
     LIBRARIES
         Qt::WebEngineQuickPrivate
         Qt::Qml

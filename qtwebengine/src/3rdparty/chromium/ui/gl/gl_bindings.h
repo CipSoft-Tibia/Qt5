@@ -367,6 +367,11 @@
 #define GL_RG8_EXT 0x822B
 #endif /* GL_EXT_texture_rg */
 
+#ifndef GL_EXT_texture_type_2_10_10_10_REV
+#define GL_EXT_texture_type_2_10_10_10_REV 1
+#define GL_UNSIGNED_INT_2_10_10_10_REV_EXT 0x8368
+#endif /* GL_EXT_texture_type_2_10_10_10_REV */
+
 // This is from NV_path_rendering, but the GL header is not up to date with the
 // most recent version of the extension. This definition could be removed once
 // glext.h r27498 or later is imported.
@@ -469,6 +474,18 @@
 // Forward declare EGL types.
 typedef uint64_t EGLuint64CHROMIUM;
 
+// GL_ANGLE_blob_cache
+typedef GLsizeiptr(APIENTRY* GLGETBLOBPROCANGLE)(const void* key,
+                                                 GLsizeiptr keySize,
+                                                 void* value,
+                                                 GLsizeiptr valueSize,
+                                                 const void* userParam);
+typedef void(APIENTRY* GLSETBLOBPROCANGLE)(const void* key,
+                                           GLsizeiptr keySize,
+                                           const void* value,
+                                           GLsizeiptr valueSize,
+                                           const void* userParam);
+
 #include "gl_bindings_autogen_gl.h"
 #include "gl_bindings_autogen_egl.h"
 
@@ -484,11 +501,6 @@ struct GL_EXPORT DriverGL {
 
   ProcsGL fn;
   ExtensionsGL ext;
-
-  DriverGL() {
-    // InitializeStaticBindings() requires that fn is null-initialized.
-    ClearBindings();
-  }
 };
 
 struct GL_EXPORT CurrentGL {

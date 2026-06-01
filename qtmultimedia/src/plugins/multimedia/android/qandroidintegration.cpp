@@ -64,7 +64,7 @@ public:
 
 QAndroidIntegration::QAndroidIntegration() : QPlatformMediaIntegration(QLatin1String("android")) { }
 
-QMaybe<QPlatformAudioDecoder *> QAndroidIntegration::createAudioDecoder(QAudioDecoder *decoder)
+q23::expected<QPlatformAudioDecoder *, QString> QAndroidIntegration::createAudioDecoder(QAudioDecoder *decoder)
 {
     return new QAndroidAudioDecoder(decoder);
 }
@@ -74,49 +74,71 @@ QPlatformMediaFormatInfo *QAndroidIntegration::createFormatInfo()
     return new QAndroidFormatInfo;
 }
 
-QMaybe<QPlatformMediaCaptureSession *> QAndroidIntegration::createCaptureSession()
+q23::expected<QPlatformMediaCaptureSession *, QString> QAndroidIntegration::createCaptureSession()
 {
     return new QAndroidMediaCaptureSession();
 }
 
-QMaybe<QPlatformMediaPlayer *> QAndroidIntegration::createPlayer(QMediaPlayer *player)
+q23::expected<QPlatformMediaPlayer *, QString> QAndroidIntegration::createPlayer(QMediaPlayer *player)
 {
     return new QAndroidMediaPlayer(player);
 }
 
-QMaybe<QPlatformCamera *> QAndroidIntegration::createCamera(QCamera *camera)
+q23::expected<QPlatformCamera *, QString> QAndroidIntegration::createCamera(QCamera *camera)
 {
     return new QAndroidCamera(camera);
 }
 
-QMaybe<QPlatformMediaRecorder *> QAndroidIntegration::createRecorder(QMediaRecorder *recorder)
+q23::expected<QPlatformMediaRecorder *, QString> QAndroidIntegration::createRecorder(QMediaRecorder *recorder)
 {
     return new QAndroidMediaEncoder(recorder);
 }
 
-QMaybe<QPlatformImageCapture *> QAndroidIntegration::createImageCapture(QImageCapture *imageCapture)
+q23::expected<QPlatformImageCapture *, QString> QAndroidIntegration::createImageCapture(QImageCapture *imageCapture)
 {
     return new QAndroidImageCapture(imageCapture);
 }
 
-QMaybe<QPlatformAudioOutput *> QAndroidIntegration::createAudioOutput(QAudioOutput *q)
+q23::expected<QPlatformAudioOutput *, QString> QAndroidIntegration::createAudioOutput(QAudioOutput *q)
 {
     return new QAndroidAudioOutput(q);
 }
 
-QMaybe<QPlatformAudioInput *> QAndroidIntegration::createAudioInput(QAudioInput *audioInput)
+q23::expected<QPlatformAudioInput *, QString> QAndroidIntegration::createAudioInput(QAudioInput *audioInput)
 {
     return new QAndroidAudioInput(audioInput);
 }
 
-QMaybe<QPlatformVideoSink *> QAndroidIntegration::createVideoSink(QVideoSink *sink)
+q23::expected<QPlatformVideoSink *, QString> QAndroidIntegration::createVideoSink(QVideoSink *sink)
 {
     return new QAndroidVideoSink(sink);
 }
 
 Q_DECLARE_JNI_CLASS(QtMultimediaUtils, "org/qtproject/qt/android/multimedia/QtMultimediaUtils")
 
-Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
+bool QAndroidIntegration::registerNativeMethods()
+{
+    static const bool result = []{
+        const auto context = QNativeInterface::QAndroidApplication::context();
+        QtJniTypes::QtMultimediaUtils::callStaticMethod<void>("setContext", context);
+
+        return AndroidCamera::registerNativeMethods()
+            && AndroidMediaRecorder::registerNativeMethods()
+            && AndroidMediaPlayer::registerNativeMethods()
+            && AndroidSurfaceHolder::registerNativeMethods()
+            && AndroidSurfaceTexture::registerNativeMethods();
+    }();
+    return result;
+}
+
+QPlatformVideoDevices *QAndroidIntegration::createVideoDevices()
+{
+    return new AndroidVideoDevices(this);
+}
+
+QT_END_NAMESPACE
+
+extern "C" Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
 {
     static bool initialized = false;
     if (initialized)
@@ -135,26 +157,10 @@ Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
     if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_6) != JNI_OK)
         return JNI_ERR;
 
-    const auto context = QNativeInterface::QAndroidApplication::context();
-    QtJniTypes::QtMultimediaUtils::callStaticMethod<void>("setContext", context);
-
-    if (!AndroidMediaPlayer::registerNativeMethods()
-            || !AndroidCamera::registerNativeMethods()
-            || !AndroidMediaRecorder::registerNativeMethods()
-            || !AndroidSurfaceHolder::registerNativeMethods()) {
+    if (!QAndroidIntegration::registerNativeMethods())
         return JNI_ERR;
-    }
-
-    AndroidSurfaceTexture::registerNativeMethods();
 
     return JNI_VERSION_1_6;
 }
-
-QPlatformVideoDevices *QAndroidIntegration::createVideoDevices()
-{
-    return new AndroidVideoDevices(this);
-}
-
-QT_END_NAMESPACE
 
 #include "qandroidintegration.moc"

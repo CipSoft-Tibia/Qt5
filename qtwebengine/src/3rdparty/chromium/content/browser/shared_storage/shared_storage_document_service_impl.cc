@@ -9,18 +9,21 @@
 #include <string>
 #include <utility>
 
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/strcat.h"
 #include "components/services/storage/shared_storage/shared_storage_database.h"
 #include "components/services/storage/shared_storage/shared_storage_manager.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/shared_storage/shared_storage_lock_manager.h"
+#include "content/browser/shared_storage/shared_storage_runtime_manager.h"
 #include "content/browser/shared_storage/shared_storage_worklet_host.h"
-#include "content/browser/shared_storage/shared_storage_worklet_host_manager.h"
 #include "content/browser/storage_partition_impl.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/content_client.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
+#include "services/network/public/mojom/shared_storage.mojom.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/shared_storage/shared_storage_utils.h"
 #include "url/url_constants.h"
@@ -53,13 +56,22 @@ bool CheckSecureContext(RenderFrameHost& frame) {
   return is_secure_frame;
 }
 
+using AccessScope = SharedStorageLockManager::AccessScope;
 using AccessType =
-    SharedStorageWorkletHostManager::SharedStorageObserverInterface::AccessType;
+    SharedStorageRuntimeManager::SharedStorageObserverInterface::AccessType;
 
 using OperationResult = storage::SharedStorageManager::OperationResult;
 using GetResult = storage::SharedStorageManager::GetResult;
 
 }  // namespace
+
+const char kFencedStorageReadDisabledMessage[] =
+    "Fenced storage read is disabled";
+
+const char kFencedStorageReadWithoutRevokeNetworkMessage[] =
+    "sharedStorage.get() is not allowed in a fenced frame until network "
+    "access for it and all descendent frames has been revoked with "
+    "window.fence.disableUntrustedNetwork()";
 
 const char kSharedStorageDisabledMessage[] = "sharedStorage is disabled";
 
@@ -90,7 +102,7 @@ std::string GetSharedStorageErrorMessage(const std::string& debug_message,
 }
 
 SharedStorageDocumentServiceImpl::~SharedStorageDocumentServiceImpl() {
-  GetSharedStorageWorkletHostManager()->OnDocumentServiceDestroyed(this);
+  GetSharedStorageRuntimeManager()->OnDocumentServiceDestroyed(this);
 }
 
 void SharedStorageDocumentServiceImpl::Bind(
@@ -106,40 +118,15 @@ void SharedStorageDocumentServiceImpl::CreateWorklet(
     const GURL& script_source_url,
     const url::Origin& data_origin,
     network::mojom::CredentialsMode credentials_mode,
+    blink::mojom::SharedStorageWorkletCreationMethod creation_method,
     const std::vector<blink::mojom::OriginTrialFeature>& origin_trial_features,
     mojo::PendingAssociatedReceiver<blink::mojom::SharedStorageWorkletHost>
         worklet_host,
     CreateWorkletCallback callback) {
-  // A document can only create multiple worklets with `kSharedStorageAPIM125`
-  // enabled.
-  if (!base::FeatureList::IsEnabled(blink::features::kSharedStorageAPIM125)) {
-    if (create_worklet_called_) {
-      // This could indicate a compromised renderer, so let's terminate it.
-      receiver_.ReportBadMessage("Attempted to create multiple worklets.");
-      LogSharedStorageWorkletError(
-          blink::SharedStorageWorkletErrorType::
-              kAddModuleNonWebVisibleMulipleWorkletsDisabled);
-      return;
-    }
-  }
-
   create_worklet_called_ = true;
   bool is_same_origin =
       render_frame_host().GetLastCommittedOrigin().IsSameOriginWith(
           data_origin);
-
-  // A document can only create cross-origin worklets with
-  // `kSharedStorageAPIM125` enabled.
-  if (!base::FeatureList::IsEnabled(blink::features::kSharedStorageAPIM125) &&
-      !is_same_origin) {
-    // This could indicate a compromised renderer, so let's terminate it.
-    receiver_.ReportBadMessage(
-        "Attempted to load a cross-origin module script.");
-    LogSharedStorageWorkletError(
-        blink::SharedStorageWorkletErrorType::
-            kAddModuleNonWebVisibleCrossOriginWorkletsDisabled);
-    return;
-  }
 
   // `CreateWorklet()` cannot differentiate between calls from addModule() and
   // createWorklet(). Hence, we skip the mojom validation for opaque origin
@@ -168,10 +155,10 @@ void SharedStorageDocumentServiceImpl::CreateWorklet(
     return;
   }
 
-  GetSharedStorageWorkletHostManager()->CreateWorkletHost(
+  GetSharedStorageRuntimeManager()->CreateWorkletHost(
       this, render_frame_host().GetLastCommittedOrigin(), data_origin,
-      script_source_url, credentials_mode, origin_trial_features,
-      std::move(worklet_host),
+      script_source_url, credentials_mode, creation_method,
+      origin_trial_features, std::move(worklet_host),
       base::BindOnce(
           &SharedStorageDocumentServiceImpl::OnCreateWorkletResponseIntercepted,
           weak_ptr_factory_.GetWeakPtr(), is_same_origin, prefs_success,
@@ -195,6 +182,16 @@ void SharedStorageDocumentServiceImpl::SharedStorageGet(
     return;
   }
 
+  if (!render_frame_host().GetPermissionsPolicy()->IsFeatureEnabled(
+          network::mojom::PermissionsPolicyFeature::
+              kFencedUnpartitionedStorageRead)) {
+    // We already check for this permissions policy in the renderer.
+    receiver_.ReportBadMessage("Attempted to call get() in a fenced frame "
+        "with the fenced-unpartitioned-storage-read permissions policy "
+        "disabled.");
+    return;
+  }
+
   if (render_frame_host().GetLastCommittedOrigin().opaque()) {
     receiver_.ReportBadMessage(
         "Attempted to call sharedStorage.get() from an opaque origin context.");
@@ -212,29 +209,25 @@ void SharedStorageDocumentServiceImpl::SharedStorageGet(
     return;
   }
 
-  std::string debug_message;
-  if (!IsSharedStorageAllowed(&debug_message)) {
+  if (!IsFencedStorageReadAllowed(
+          /*accessing_origin=*/render_frame_host().GetLastCommittedOrigin())) {
     std::move(callback).Run(blink::mojom::SharedStorageGetStatus::kError,
                             /*error_message=*/
-                            GetSharedStorageErrorMessage(
-                                debug_message, kSharedStorageDisabledMessage),
+                            kFencedStorageReadDisabledMessage,
                             /*value=*/{});
     return;
   }
 
   if (!(static_cast<RenderFrameHostImpl&>(render_frame_host())
             .CanReadFromSharedStorage())) {
-    std::move(callback).Run(
-        blink::mojom::SharedStorageGetStatus::kError,
-        /*error_message=*/
-        "sharedStorage.get() is not allowed in a fenced frame until network "
-        "access for it and all descendent frames has been revoked with "
-        "window.fence.disableUntrustedNetwork()",
-        /*value=*/{});
+    std::move(callback).Run(blink::mojom::SharedStorageGetStatus::kError,
+                            /*error_message=*/
+                            kFencedStorageReadWithoutRevokeNetworkMessage,
+                            /*value=*/{});
     return;
   }
 
-  GetSharedStorageWorkletHostManager()->NotifySharedStorageAccessed(
+  GetSharedStorageRuntimeManager()->NotifySharedStorageAccessed(
       AccessType::kDocumentGet, main_frame_id(), SerializeLastCommittedOrigin(),
       SharedStorageEventParams::CreateForGetOrDelete(base::UTF16ToUTF8(key)));
 
@@ -267,65 +260,19 @@ void SharedStorageDocumentServiceImpl::SharedStorageGet(
                                  key, std::move(operation_completed_callback));
 }
 
-void SharedStorageDocumentServiceImpl::SharedStorageSet(
-    const std::u16string& key,
-    const std::u16string& value,
-    bool ignore_if_present,
-    SharedStorageSetCallback callback) {
+void SharedStorageDocumentServiceImpl::SharedStorageUpdate(
+    network::mojom::SharedStorageModifierMethodWithOptionsPtr
+        method_with_options,
+    SharedStorageUpdateCallback callback) {
   if (render_frame_host().GetLastCommittedOrigin().opaque()) {
     receiver_.ReportBadMessage(
-        "Attempted to call sharedStorage.set() from an opaque origin context.");
-    return;
-  }
-
-  if (!CheckSecureContext(render_frame_host())) {
-    std::move(callback).Run(
-        /*success=*/false,
-        /*error_message=*/kSharedStorageMethodFromInsecureContextMessage);
-
-    // TODO(crbug.com/40068897): Invoke receiver_.ReportBadMessage here when
-    // we can be sure honest renderers won't hit this path.
-    return;
-  }
-
-  std::string debug_message;
-  if (!IsSharedStorageAllowed(&debug_message)) {
-    std::move(callback).Run(
-        /*success=*/false,
-        /*error_message=*/GetSharedStorageErrorMessage(
-            debug_message, kSharedStorageDisabledMessage));
-    return;
-  }
-
-  storage::SharedStorageDatabase::SetBehavior set_behavior =
-      ignore_if_present
-          ? storage::SharedStorageDatabase::SetBehavior::kIgnoreIfPresent
-          : storage::SharedStorageDatabase::SetBehavior::kDefault;
-
-  GetSharedStorageWorkletHostManager()->NotifySharedStorageAccessed(
-      AccessType::kDocumentSet, main_frame_id(), SerializeLastCommittedOrigin(),
-      SharedStorageEventParams::CreateForSet(
-          base::UTF16ToUTF8(key), base::UTF16ToUTF8(value), ignore_if_present));
-
-  GetSharedStorageManager()->Set(render_frame_host().GetLastCommittedOrigin(),
-                                 key, value, base::DoNothing(), set_behavior);
-  std::move(callback).Run(/*success=*/true, /*error_message=*/{});
-}
-
-void SharedStorageDocumentServiceImpl::SharedStorageAppend(
-    const std::u16string& key,
-    const std::u16string& value,
-    SharedStorageAppendCallback callback) {
-  if (render_frame_host().GetLastCommittedOrigin().opaque()) {
-    receiver_.ReportBadMessage(
-        "Attempted to call sharedStorage.append() from an opaque origin "
+        "Attempted to call SharedStorageUpdate() from an opaque origin "
         "context.");
     return;
   }
 
   if (!CheckSecureContext(render_frame_host())) {
     std::move(callback).Run(
-        /*success=*/false,
         /*error_message=*/kSharedStorageMethodFromInsecureContextMessage);
 
     // TODO(crbug.com/40068897): Invoke receiver_.ReportBadMessage here when
@@ -335,38 +282,33 @@ void SharedStorageDocumentServiceImpl::SharedStorageAppend(
 
   std::string debug_message;
   if (!IsSharedStorageAllowed(&debug_message)) {
-    std::move(callback).Run(
-        /*success=*/false,
-        /*error_message=*/GetSharedStorageErrorMessage(
-            debug_message, kSharedStorageDisabledMessage));
+    std::move(callback).Run(GetSharedStorageErrorMessage(
+        debug_message, kSharedStorageDisabledMessage));
     return;
   }
 
-  GetSharedStorageWorkletHostManager()->NotifySharedStorageAccessed(
-      AccessType::kDocumentAppend, main_frame_id(),
-      SerializeLastCommittedOrigin(),
-      SharedStorageEventParams::CreateForAppend(base::UTF16ToUTF8(key),
-                                                base::UTF16ToUTF8(value)));
+  GetSharedStorageRuntimeManager()->lock_manager().SharedStorageUpdate(
+      std::move(method_with_options),
+      /*shared_storage_origin=*/render_frame_host().GetLastCommittedOrigin(),
+      AccessScope::kWindow, main_frame_id(), base::DoNothing());
 
-  GetSharedStorageManager()->Append(
-      render_frame_host().GetLastCommittedOrigin(), key, value,
-      base::DoNothing());
-  std::move(callback).Run(/*success=*/true, /*error_message=*/{});
+  std::move(callback).Run(/*error_message=*/{});
 }
 
-void SharedStorageDocumentServiceImpl::SharedStorageDelete(
-    const std::u16string& key,
-    SharedStorageDeleteCallback callback) {
+void SharedStorageDocumentServiceImpl::SharedStorageBatchUpdate(
+    std::vector<network::mojom::SharedStorageModifierMethodWithOptionsPtr>
+        methods_with_options,
+    const std::optional<std::string>& with_lock,
+    SharedStorageBatchUpdateCallback callback) {
   if (render_frame_host().GetLastCommittedOrigin().opaque()) {
     receiver_.ReportBadMessage(
-        "Attempted to call sharedStorage.delete() from an opaque origin "
+        "Attempted to call SharedStorageBatchUpdate() from an opaque origin "
         "context.");
     return;
   }
 
   if (!CheckSecureContext(render_frame_host())) {
     std::move(callback).Run(
-        /*success=*/false,
         /*error_message=*/kSharedStorageMethodFromInsecureContextMessage);
 
     // TODO(crbug.com/40068897): Invoke receiver_.ReportBadMessage here when
@@ -376,59 +318,17 @@ void SharedStorageDocumentServiceImpl::SharedStorageDelete(
 
   std::string debug_message;
   if (!IsSharedStorageAllowed(&debug_message)) {
-    std::move(callback).Run(
-        /*success=*/false,
-        /*error_message=*/GetSharedStorageErrorMessage(
-            debug_message, kSharedStorageDisabledMessage));
+    std::move(callback).Run(GetSharedStorageErrorMessage(
+        debug_message, kSharedStorageDisabledMessage));
     return;
   }
 
-  GetSharedStorageWorkletHostManager()->NotifySharedStorageAccessed(
-      AccessType::kDocumentDelete, main_frame_id(),
-      SerializeLastCommittedOrigin(),
-      SharedStorageEventParams::CreateForGetOrDelete(base::UTF16ToUTF8(key)));
+  GetSharedStorageRuntimeManager()->lock_manager().SharedStorageBatchUpdate(
+      std::move(methods_with_options), with_lock,
+      /*shared_storage_origin=*/render_frame_host().GetLastCommittedOrigin(),
+      AccessScope::kWindow, main_frame_id(), base::DoNothing());
 
-  GetSharedStorageManager()->Delete(
-      render_frame_host().GetLastCommittedOrigin(), key, base::DoNothing());
-  std::move(callback).Run(/*success=*/true, /*error_message=*/{});
-}
-
-void SharedStorageDocumentServiceImpl::SharedStorageClear(
-    SharedStorageClearCallback callback) {
-  if (render_frame_host().GetLastCommittedOrigin().opaque()) {
-    receiver_.ReportBadMessage(
-        "Attempted to call sharedStorage.clear() from an opaque origin "
-        "context.");
-    return;
-  }
-
-  if (!CheckSecureContext(render_frame_host())) {
-    std::move(callback).Run(
-        /*success=*/false,
-        /*error_message=*/kSharedStorageMethodFromInsecureContextMessage);
-
-    // TODO(crbug.com/40068897): Invoke receiver_.ReportBadMessage here when
-    // we can be sure honest renderers won't hit this path.
-    return;
-  }
-
-  std::string debug_message;
-  if (!IsSharedStorageAllowed(&debug_message)) {
-    std::move(callback).Run(
-        /*success=*/false,
-        /*error_message=*/GetSharedStorageErrorMessage(
-            debug_message, kSharedStorageDisabledMessage));
-    return;
-  }
-
-  GetSharedStorageWorkletHostManager()->NotifySharedStorageAccessed(
-      AccessType::kDocumentClear, main_frame_id(),
-      SerializeLastCommittedOrigin(),
-      SharedStorageEventParams::CreateDefault());
-
-  GetSharedStorageManager()->Clear(render_frame_host().GetLastCommittedOrigin(),
-                                   base::DoNothing());
-  std::move(callback).Run(/*success=*/true, /*error_message=*/{});
+  std::move(callback).Run(/*error_message=*/{});
 }
 
 base::WeakPtr<SharedStorageDocumentServiceImpl>
@@ -493,11 +393,11 @@ SharedStorageDocumentServiceImpl::GetSharedStorageManager() {
   return shared_storage_manager;
 }
 
-SharedStorageWorkletHostManager*
-SharedStorageDocumentServiceImpl::GetSharedStorageWorkletHostManager() {
+SharedStorageRuntimeManager*
+SharedStorageDocumentServiceImpl::GetSharedStorageRuntimeManager() {
   return static_cast<StoragePartitionImpl*>(
              render_frame_host().GetProcess()->GetStoragePartition())
-      ->GetSharedStorageWorkletHostManager();
+      ->GetSharedStorageRuntimeManager();
 }
 
 bool SharedStorageDocumentServiceImpl::IsSharedStorageAllowed(
@@ -522,6 +422,14 @@ bool SharedStorageDocumentServiceImpl::IsSharedStorageAllowedForOrigin(
       render_frame_host().GetBrowserContext(), &render_frame_host(),
       main_frame_origin_, accessing_origin, out_debug_message,
       out_block_is_site_setting_specific);
+}
+
+bool SharedStorageDocumentServiceImpl::IsFencedStorageReadAllowed(
+    const url::Origin& accessing_origin) {
+  return GetContentClient()->browser()->IsFencedStorageReadAllowed(
+      render_frame_host().GetBrowserContext(), &render_frame_host(),
+      /*top_frame_origin=*/main_frame_origin_,
+      /*accessing_origin=*/accessing_origin);
 }
 
 bool SharedStorageDocumentServiceImpl::IsSharedStorageAddModuleAllowedForOrigin(

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLABSTRACTBINDING_P_H
 #define QQMLABSTRACTBINDING_P_H
@@ -72,6 +73,9 @@ public:
     void setCanUseAccessor(bool canUseAccessor)
     { m_target.setTag(m_target.tag().setFlag(CanUseAccessor, canUseAccessor)); }
 
+    bool isSticky() const { return m_target.tag().testFlag(IsSticky); }
+    void setSticky(bool isSticky) { m_target.setTag(m_target.tag().setFlag(IsSticky, isSticky)); }
+
     struct RefCount {
         RefCount() {}
         int refCount = 0;
@@ -93,6 +97,7 @@ public:
     enum TargetTag {
         NoTargetTag     = 0x0,
         CanUseAccessor  = 0x1,
+        IsSticky        = 0x2,
     };
     Q_DECLARE_FLAGS(TargetTags, TargetTag)
 

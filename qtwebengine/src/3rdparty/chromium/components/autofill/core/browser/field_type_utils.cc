@@ -21,6 +21,8 @@ const FieldTypeSet& GetDatabaseStoredTypesOfAutofillProfile() {
       NAME_LAST_FIRST,
       NAME_LAST_CONJUNCTION,
       NAME_LAST_SECOND,
+      NAME_LAST_PREFIX,
+      NAME_LAST_CORE,
       NAME_LAST,
       NAME_FULL,
       ADDRESS_HOME_STREET_ADDRESS,
@@ -49,14 +51,17 @@ const FieldTypeSet& GetDatabaseStoredTypesOfAutofillProfile() {
       ADDRESS_HOME_ADMIN_LEVEL2,
       ADDRESS_HOME_STREET_LOCATION_AND_LOCALITY,
       EMAIL_ADDRESS,
-      PHONE_HOME_WHOLE_NUMBER};
+      PHONE_HOME_WHOLE_NUMBER,
+      ALTERNATIVE_FULL_NAME,
+      ALTERNATIVE_GIVEN_NAME,
+      ALTERNATIVE_FAMILY_NAME};
   return stored_types;
 }
 
 size_t NumberOfPossibleFieldTypesInGroup(const AutofillField& field,
                                          FieldTypeGroup group) {
-  return base::ranges::count(field.possible_types(), group,
-                             GroupTypeOfFieldType);
+  return std::ranges::count(field.possible_types(), group,
+                            GroupTypeOfFieldType);
 }
 
 bool FieldHasMeaningfulPossibleFieldTypes(const AutofillField& field) {
@@ -93,7 +98,7 @@ bool IsAddressType(FieldType type) {
     case FieldTypeGroup::kTransaction:
     case FieldTypeGroup::kIban:
     case FieldTypeGroup::kStandaloneCvcField:
-    case FieldTypeGroup::kPredictionImprovements:
+    case FieldTypeGroup::kAutofillAi:
       return false;
   }
   NOTREACHED();
@@ -119,6 +124,11 @@ size_t DetermineExpirationYearLength(FieldType assumed_field_type) {
     default:
       NOTREACHED();
   }
+}
+
+bool IsAlternativeNameType(FieldType type) {
+  return type == ALTERNATIVE_FULL_NAME || type == ALTERNATIVE_GIVEN_NAME ||
+         type == ALTERNATIVE_FAMILY_NAME;
 }
 
 }  // namespace autofill

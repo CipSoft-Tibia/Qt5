@@ -33,6 +33,7 @@
     \li \l{Qt for Windows - Deployment}
     \li \l{Qt for Windows - Graphics Acceleration}
     \li \l{Qt for Windows - Specific Issues}
+    \li \l{Qt for Windows - Windows App SDK}
     \endlist
 
     \section1 Where to Go from Here
@@ -48,7 +49,7 @@
     \li \l{ActiveX in Qt}
     \endlist
 
-    Qt's vibrant and active community site, \l{http://qt.io} houses
+    Qt's vibrant and active community site, \l{https://qt.io} houses
     a wiki, a forum, and additional learning guides and presentations.
 
     \section2 Visual Studio Tools
@@ -150,8 +151,8 @@
     an OpenGL implementation with a non-standard name. The default name is
     \c{opengl32sw.dll}. This allows shipping a software-only OpenGL
     implementation, for example a build of
-    \l{http://www.mesa3d.org/llvmpipe.html}{Mesa with llvmpipe}, under this
-    name. If necessary, the filename can be overridden by setting the
+    \l{https://docs.mesa3d.org/drivers/llvmpipe.html}{Mesa with llvmpipe}, under
+    this name. If necessary, the filename can be overridden by setting the
     \c{QT_OPENGL_DLL} environment variable.
 
     It is possible to provide a JSON-format configuration file specifying which
@@ -274,6 +275,64 @@
     library is not possible.
 */
 
+
+/*!
+    \page windows-winappsdk.html
+    \title Qt for Windows - Windows App SDK
+    \brief Using Windows App SDK with Qt for Windows.
+
+    \section1 Configuration
+    To use
+    \l{https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/}{Windows App SDK}
+    in Qt apps, configure the SDK path.
+
+        \section2 Using \QC
+        To configure the Windows App SDK in \QC,
+        go to \uicontrol Preferences > \uicontrol SDKs.
+        \image qt-creator-sdks.webp "\QC SDKs Preferences."
+        For more information, see \l{\QC Documentation}.
+        \section2 From the command line
+        \list 1
+        \li Go to an empty directory.
+
+        Example:
+        \badcode
+            mkdir C:\Dev\wasdk
+            cd C:\Dev\wasdk
+        \endcode
+        \li Download \l{https://www.nuget.org/downloads}{NuGet} into that directory.
+
+        For example, to download with PowerShell from the command line:
+        \badcode
+            powershell.exe -Command "& {Invoke-WebRequest https://dist.nuget.org/win-x86-commandline/latest/nuget.exe -OutFile nuget.exe}"
+        \endcode
+        \li Download the Windows App SDK with NuGet.
+        \badcode
+            nuget.exe install Microsoft.WindowsAppSDK -OutputDirectory ./
+        \endcode
+        \li Set the \c WIN_APP_SDK_ROOT environment variable to the Windows APP SDK
+        directory, usually called \c{Microsoft.WindowsAppSDK.{Version}}.
+
+        For example, using the command-line:
+        \badcode
+            cd Microsoft.WindowsAppSDK.*
+            set WIN_APP_SDK_ROOT=%cd%
+            setX WIN_APP_SDK_ROOT %cd%
+        \endcode
+        \endlist
+
+    \section1 Using the Windows App SDK in Qt apps
+    Call \l{qt_add_win_app_sdk}(ProjectName) CMake function in the
+    project's CMake file. Replace \b ProjectName with your project name.
+
+    Use a condition to ensure the build is only for MSVC builds:
+    \badcode
+        if (MSVC)
+            qt_add_win_app_sdk(ProjectName)
+        endif()
+    \endcode
+*/
+
 /*!
     \page windows-issues.html
     \title Qt for Windows - Specific Issues
@@ -342,15 +401,26 @@
 
     This will give the full screen window a 1-pixel border, thus enabling the
     other top level windows to appear on top.
+
+    \section1 OLE Initialization
+
+    Qt uses \l {OLE} on Windows to be able to support functionality like dragging or clipboard
+    access. To use OLE, Qt has to call \l {OleInitialize}. This in turn will set the thread's
+    concurrency model to \c{COINIT_APARTMENTTHREADED}.
+
+    Calling \c{CoInitializeEx} or \c{winrt::init_apartment} on the UI thread and specifying a
+    concurrency model other than single-threaded apartment (\c{COINIT_APARTMENTTHREADED} or
+    \c{winrt::apartment_type::single_threaded}, respectively) might lead to bugs or application
+    hangs.
 */
 
 /*!
     \page windows-deployment.html
     \title Qt for Windows - Deployment
 
-    This documentation describes deployment process for \l{Qt for
+    This documentation describes the deployment process for \l{Qt for
     Windows}{Windows}. We refer to the \l{Plug & Paint Example}{Plug & Paint}
-    example application through out the document to demonstrate the deployment
+    example application throughout the document to demonstrate the deployment
     process.
 
     \note Add your Qt build directory to the list of excluded directories
@@ -366,7 +436,7 @@
     easily bundled into an installation package.
 
     The tool can be found in \c{QTDIR/bin/windeployqt}. It needs to be run
-    within the build environment in order to function correctly. When using
+    within the build environment in order to function correctly. When using the
     \QOI, the script \c{QTDIR/bin/qtenv2.bat} should be used to set it up.
 
     \c windeployqt takes an \c .exe file or a directory that contains an \c .exe
@@ -388,13 +458,13 @@
     the target machine. Otherwise, the shared libraries of the compiler runtime are used.
 
     The application may require additional 3rd-party libraries (for example,
-    database libraries), which are not taken into account by windeployqt.
+    database libraries), which are not taken into account by \c windeployqt.
 
-    Additional arguments are described in the tools' help output:
+    Additional arguments are described in the tool's help output:
 
     \badcode
     Usage: windeployqt.exe [options] [files]
-    Qt Deploy Tool 6.9.0
+    Qt Deploy Tool 6.10.0
 
     The simplest way to use windeployqt is to add the bin directory of your Qt
     installation (e.g. <QT_DIR\bin>) to the PATH variable and then run:
@@ -506,32 +576,31 @@
 
     If you later need to reconfigure and rebuild Qt from the
     same location, ensure that all traces of the previous configuration are
-    removed by entering the build directory and running \c{nmake distclean} or
-    \c{mingw32-make distclean} before running \c configure again.
+    removed.
 
     \section2 Linking the Application to the Static Version of Qt
 
     As an example, this section will build the \l{tools/plugandpaint/app}{Plug & Paint}
-    example statically.
+    example against a statically built Qt.
 
-    Once Qt finishes building, build the \l{tools/plugandpaint/app}{Plug & Paint}
-    application. First we must go into the directory that contains the
-    application:
+    Once Qt finishes building, build the \l{tools/plugandpaint/app}{Plug &
+    Paint} application. This section assumes that the static Qt build has been
+    installed to \e{C:\\path\\to\\static\\Qt}. First we must go into the directory that
+    contains the application:
 
     \snippet snippets/code/doc_src_deployment.qdoc 13
 
-    Run \c qmake to create a new makefile for the
-    application, and perform a clean build to create the statically linked
-    executable:
+    Now, we create a build directory and call \c qt-cmake to generate the build
+    system files.
 
     \snippet snippets/code/doc_src_deployment.qdoc 14
 
-    You probably want to link against the release libraries, and you can specify
-    this when invoking \c qmake. Now, provided that everything compiled and
-    linked without any errors, we should have a \c plugandpaint.exe file that is
-    ready for deployment. To check that the application has the required
-    libraries, copy the executable to a machine that does not have Qt or any Qt
-    applications installed, and run it on that machine.
+    You probably want to link against the release libraries, and we specified
+    this with the \c CMAKE_BUILD_TYPE variable. Now, provided that everything
+    compiled and linked without any errors, we should have a \c plugandpaint.exe
+    file that is ready for deployment. To check that the application has the
+    required libraries, copy the executable to a machine that does not have Qt
+    or any Qt applications installed, and run it on that machine.
 
     Remember that if your application depends on compiler specific
     libraries, these must still be redistributed along with your
@@ -567,15 +636,10 @@
 
     \snippet snippets/code/doc_src_deployment.qdoc 15
 
-    Now run \c qmake to create a new makefile for the application, and
-    do a clean build to create the dynamically linked executable:
+    Now create a dedicated build directory and run \c qt-cmake to create the
+    build system files:
 
     \snippet snippets/code/doc_src_deployment.qdoc 16
-
-    This builds the core application, the following will build the
-    plugins:
-
-    \snippet snippets/code/doc_src_deployment.qdoc 17
 
     If everything compiled and linked without any errors, we will get
     a \c plugandpaint.exe executable and the \c pnp_basictools.dll and
@@ -1021,17 +1085,27 @@
 
         \badcode
         cmake --build . --parallel
+        # or
+        ninja
         \endcode
 
         Period after \c {--build} means current folder.
 
         After building, you need to install the libraries and tools in the desired path
-        (unless you enabled a \l {Developer Builds}
-        {developer build}:
+        (unless you enabled a \l {Developer Builds}{developer build}):
 
         \badcode
         cmake --install .
+        # or
+        ninja install
         \endcode
+
+        \note \b {For CMake version < 4.0.} The \c {cmake --install .} command
+        installs only the release versions of the libraries and tools even if
+        you build both debug and release libraries. To install both the debug
+        and release libraries, use \c {ninja install}. You can also run both the
+        \c {cmake --install . --config Debug} and
+        \c {cmake --install . --config Release} commands.
 
     \section1 Step 4: Building Your Application
 

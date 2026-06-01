@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtQuick/private/qquicksafearea_p.h>
 
@@ -288,14 +289,14 @@ void QQuickSafeArea::updateSafeArea()
             return;
         }
 
-        QBoolBlocker blocker(emittingMarginsUpdate, true);
+        QScopedValueRollback blocker(emittingMarginsUpdate, true);
         emit marginsChanged();
 
         if (m_safeAreaMargins != newMargins) {
             qCDebug(lcSafeArea) << "⚠️ Possible binding loop for" << this
                 << newMargins << "changed to" << m_safeAreaMargins;
 
-            QBoolBlocker blocker(detectedPossibleBindingLoop, true);
+            QScopedValueRollback blocker(detectedPossibleBindingLoop, true);
 
             for (int i = 0; i < 5; ++i) {
                 auto marginsBeforeEmit = m_safeAreaMargins;

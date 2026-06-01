@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdial.h"
 
@@ -143,7 +144,7 @@ int QDialPrivate::valueFromPoint(const QPoint &p) const
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image fusion-dial.png
+    \image fusion-dial.png {Round dial with notches}
 
     QDial is used when the user needs to control a value within a
     program-definable range, and the range either wraps around

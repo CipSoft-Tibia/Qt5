@@ -32,7 +32,7 @@ Dialog {
                 implicitWidth: 90
                 color: palette.base
                 border.width: 1
-                border.color: Qt.styleHints.colorScheme === Qt.Light ? palette.dark : palette.light
+                border.color: Application.styleHints.colorScheme === Qt.Light ? palette.dark : palette.light
                 Layout.fillHeight: true
 
                 Label {

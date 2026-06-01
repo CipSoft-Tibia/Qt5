@@ -1,11 +1,1079 @@
 	AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         ;.arch           armv8.6-a+crc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	;.arch_extension nodotprod
 	;.arch_extension noi8mm
+	;.arch_extension nosve
+	;.arch_extension nosve2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_v_loop_filter_luma_neon
+
+
+
+
+
 ff_h264_v_loop_filter_luma_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -17,9 +1085,12 @@ ff_h264_v_loop_filter_luma_neon
         bge            temp_label_1
 temp_label_2
 temp_label_0
+
         ret
 temp_label_3
 temp_label_1
+
+
         ld1             {v0.16b},  [x0], x1
         ld1             {v2.16b},  [x0], x1
         ld1             {v4.16b},  [x0], x1
@@ -28,28 +1099,29 @@ temp_label_1
         ld1             {v20.16b},  [x0], x1
         ld1             {v18.16b},  [x0], x1
         ld1             {v16.16b},  [x0], x1
-        dup             v22.16b, w2
+
+        dup             v22.16b, w2                     
         ushll v24.8h, v24.8b, #0
-        uabd            v21.16b, v16.16b, v0.16b
+        uabd            v21.16b, v16.16b, v0.16b        
         ushll v24.4s, v24.4h, #0
-        uabd            v28.16b, v18.16b, v16.16b
+        uabd            v28.16b, v18.16b, v16.16b       
         sli             v24.8h,  v24.8h,  #8
-        uabd            v30.16b, v2.16b,  v0.16b
+        uabd            v30.16b, v2.16b,  v0.16b        
         sli             v24.4s,  v24.4s,  #16
-        cmhi            v21.16b, v22.16b, v21.16b
-        dup             v22.16b, w3
+        cmhi            v21.16b, v22.16b, v21.16b       
+        dup             v22.16b, w3                     
         cmlt            v23.16b, v24.16b, #0
-        cmhi            v28.16b, v22.16b, v28.16b
-        cmhi            v30.16b, v22.16b, v30.16b
+        cmhi            v28.16b, v22.16b, v28.16b       
+        cmhi            v30.16b, v22.16b, v30.16b       
         bic             v21.16b, v21.16b, v23.16b
-        uabd            v17.16b, v20.16b, v16.16b
+        uabd            v17.16b, v20.16b, v16.16b       
         and             v21.16b, v21.16b, v28.16b
-        uabd            v19.16b,  v4.16b,  v0.16b
-        and             v21.16b, v21.16b, v30.16b
+        uabd            v19.16b,  v4.16b,  v0.16b       
+        and             v21.16b, v21.16b, v30.16b      
         shrn            v30.8b,  v21.8h,  #4
         umov             x7, v30.d[0]
-        cmhi            v17.16b, v22.16b, v17.16b
-        cmhi            v19.16b, v22.16b, v19.16b
+        cmhi            v17.16b, v22.16b, v17.16b       
+        cmhi            v19.16b, v22.16b, v19.16b       
         cbz             x7,  temp_label_4
         and             v17.16b, v17.16b, v21.16b
         and             v19.16b, v19.16b, v21.16b
@@ -96,6 +1168,7 @@ temp_label_1
         sqxtun2         v16.16b, v21.8h
         sqxtun          v0.8b,   v22.8h
         sqxtun2         v0.16b,  v24.8h
+
         sub             x0,  x0,  x1, lsl #1
         st1             {v17.16b},  [x0], x1
         st1             {v16.16b}, [x0], x1
@@ -103,11 +1176,31 @@ temp_label_1
         st1             {v19.16b}, [x0]
 temp_label_5
 temp_label_4
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_luma_neon
+
+
+
+
+
 ff_h264_h_loop_filter_luma_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -119,9 +1212,12 @@ ff_h264_h_loop_filter_luma_neon
         bge            temp_label_7
 temp_label_8
 temp_label_6
+
         ret
 temp_label_9
 temp_label_7
+
+
         sub             x0,  x0,  #4
         ld1             {v6.8b},  [x0], x1
         ld1             {v20.8b}, [x0], x1
@@ -139,6 +1235,7 @@ temp_label_7
         ld1             {v2.d}[1],  [x0], x1
         ld1             {v4.d}[1],  [x0], x1
         ld1             {v26.d}[1], [x0], x1
+
         trn1            v21.16b, v6.16b, v20.16b
         trn2            v23.16b, v6.16b, v20.16b
         trn1            v20.16b, v18.16b, v16.16b
@@ -147,6 +1244,7 @@ temp_label_7
         trn2            v2.16b, v0.16b, v2.16b
         trn1            v18.16b, v4.16b, v26.16b
         trn2            v26.16b, v4.16b, v26.16b
+
         trn1            v0.8h,  v6.8h,  v18.8h
         trn2            v18.8h,  v6.8h,  v18.8h
         trn1            v4.8h,  v2.8h,  v26.8h
@@ -155,36 +1253,41 @@ temp_label_7
         trn2            v23.8h,  v23.8h,  v16.8h
         trn1            v16.8h,  v21.8h,  v20.8h
         trn2            v21.8h,  v21.8h,  v20.8h
+
         trn1            v6.4s,  v16.4s,  v0.4s
         trn2            v0.4s,  v16.4s,  v0.4s
+
         trn1            v20.4s,  v2.4s,  v4.4s
         trn2            v2.4s,  v2.4s,  v4.4s
+
         trn2            v4.4s,  v21.4s,  v18.4s
         trn1            v18.4s,  v21.4s,  v18.4s
+
         trn1            v16.4s,  v23.4s,  v26.4s
         trn2            v26.4s,  v23.4s,  v26.4s
-        dup             v22.16b, w2
+
+        dup             v22.16b, w2                     
         ushll v24.8h, v24.8b, #0
-        uabd            v21.16b, v16.16b, v0.16b
+        uabd            v21.16b, v16.16b, v0.16b        
         ushll v24.4s, v24.4h, #0
-        uabd            v28.16b, v18.16b, v16.16b
+        uabd            v28.16b, v18.16b, v16.16b       
         sli             v24.8h,  v24.8h,  #8
-        uabd            v30.16b, v2.16b,  v0.16b
+        uabd            v30.16b, v2.16b,  v0.16b        
         sli             v24.4s,  v24.4s,  #16
-        cmhi            v21.16b, v22.16b, v21.16b
-        dup             v22.16b, w3
+        cmhi            v21.16b, v22.16b, v21.16b       
+        dup             v22.16b, w3                     
         cmlt            v23.16b, v24.16b, #0
-        cmhi            v28.16b, v22.16b, v28.16b
-        cmhi            v30.16b, v22.16b, v30.16b
+        cmhi            v28.16b, v22.16b, v28.16b       
+        cmhi            v30.16b, v22.16b, v30.16b       
         bic             v21.16b, v21.16b, v23.16b
-        uabd            v17.16b, v20.16b, v16.16b
+        uabd            v17.16b, v20.16b, v16.16b       
         and             v21.16b, v21.16b, v28.16b
-        uabd            v19.16b,  v4.16b,  v0.16b
-        and             v21.16b, v21.16b, v30.16b
+        uabd            v19.16b,  v4.16b,  v0.16b       
+        and             v21.16b, v21.16b, v30.16b      
         shrn            v30.8b,  v21.8h,  #4
         umov             x7, v30.d[0]
-        cmhi            v17.16b, v22.16b, v17.16b
-        cmhi            v19.16b, v22.16b, v19.16b
+        cmhi            v17.16b, v22.16b, v17.16b       
+        cmhi            v19.16b, v22.16b, v19.16b       
         cbz             x7,  temp_label_10
         and             v17.16b, v17.16b, v21.16b
         and             v19.16b, v19.16b, v21.16b
@@ -231,14 +1334,17 @@ temp_label_7
         sqxtun2         v16.16b, v21.8h
         sqxtun          v0.8b,   v22.8h
         sqxtun2         v0.16b,  v24.8h
+
         trn1            v21.16b, v17.16b,  v16.16b
         trn2            v23.16b, v17.16b,  v16.16b
         trn1            v25.16b, v0.16b,  v19.16b
         trn2            v27.16b, v0.16b,  v19.16b
+
         trn1            v17.8h,  v21.8h,  v25.8h
         trn2            v0.8h,  v21.8h,  v25.8h
         trn1            v16.8h,  v23.8h,  v27.8h
         trn2            v19.8h,  v23.8h,  v27.8h
+
         sub             x0,  x0,  x1, lsl #4
         add             x0,  x0,  #2
         st1             {v17.s}[0],  [x0], x1
@@ -259,43 +1365,72 @@ temp_label_7
         st1             {v19.s}[3], [x0], x1
 temp_label_11
 temp_label_10
+
         ret
+
+
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_v_loop_filter_luma_intra_neon
+
+
+
+
+
 ff_h264_v_loop_filter_luma_intra_neon
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_12
         ret
 temp_label_13
 temp_label_12
-        dup             v30.16b, w2
-        dup             v31.16b, w3
-        ld1             {v0.16b},  [x0], x1
-        ld1             {v1.16b},  [x0], x1
-        ld1             {v2.16b},  [x0], x1
-        ld1             {v3.16b},  [x0], x1
+
+        dup             v30.16b, w2                
+        dup             v31.16b, w3                
+
+        ld1             {v0.16b},  [x0], x1 
+        ld1             {v1.16b},  [x0], x1 
+        ld1             {v2.16b},  [x0], x1 
+        ld1             {v3.16b},  [x0], x1 
         sub             x0,  x0,  x1, lsl #3
-        ld1             {v4.16b},  [x0], x1
-        ld1             {v5.16b},  [x0], x1
-        ld1             {v6.16b},  [x0], x1
-        ld1             {v7.16b},  [x0]
-        uabd            v16.16b, v7.16b,  v0.16b
-        uabd            v17.16b, v6.16b,  v7.16b
-        uabd            v18.16b, v1.16b,  v0.16b
-        cmhi            v19.16b, v30.16b, v16.16b
-        cmhi            v17.16b, v31.16b, v17.16b
-        cmhi            v18.16b, v31.16b, v18.16b
+        ld1             {v4.16b},  [x0], x1 
+        ld1             {v5.16b},  [x0], x1 
+        ld1             {v6.16b},  [x0], x1 
+        ld1             {v7.16b},  [x0]     
+
+        uabd            v16.16b, v7.16b,  v0.16b        
+        uabd            v17.16b, v6.16b,  v7.16b        
+        uabd            v18.16b, v1.16b,  v0.16b        
+        cmhi            v19.16b, v30.16b, v16.16b       
+        cmhi            v17.16b, v31.16b, v17.16b       
+        cmhi            v18.16b, v31.16b, v18.16b       
+
         movi            v29.16b, #2
-        ushr            v30.16b, v30.16b, #2
-        add             v30.16b, v30.16b, v29.16b
-        cmhi            v16.16b, v30.16b, v16.16b
+        ushr            v30.16b, v30.16b, #2            
+        add             v30.16b, v30.16b, v29.16b       
+        cmhi            v16.16b, v30.16b, v16.16b       
+
         and             v19.16b, v19.16b, v17.16b
         and             v19.16b, v19.16b, v18.16b
         shrn            v20.8b,  v19.8h,  #4
         umov             x4, v20.d[0]
         cbz             x4, temp_label_14
+
         ushll           v20.8h,  v6.8b,   #1
         ushll           v22.8h,  v1.8b,   #1
         ushll2          v21.8h,  v6.16b,  #1
@@ -308,23 +1443,30 @@ temp_label_12
         uaddw           v22.8h,  v22.8h,  v6.8b
         uaddw2          v21.8h,  v21.8h,  v1.16b
         uaddw2          v23.8h,  v23.8h,  v6.16b
-        rshrn           v24.8b,  v20.8h,  #2
-        rshrn           v25.8b,  v22.8h,  #2
-        rshrn2          v24.16b, v21.8h,  #2
-        rshrn2          v25.16b, v23.8h,  #2
-        uabd            v17.16b, v5.16b,  v7.16b
-        uabd            v18.16b, v2.16b,  v0.16b
-        cmhi            v17.16b, v31.16b, v17.16b
-        cmhi            v18.16b, v31.16b, v18.16b
-        and             v17.16b, v16.16b, v17.16b
-        and             v18.16b, v16.16b, v18.16b
+
+        rshrn           v24.8b,  v20.8h,  #2 
+        rshrn           v25.8b,  v22.8h,  #2 
+        rshrn2          v24.16b, v21.8h,  #2 
+        rshrn2          v25.16b, v23.8h,  #2 
+
+        uabd            v17.16b, v5.16b,  v7.16b        
+        uabd            v18.16b, v2.16b,  v0.16b        
+        cmhi            v17.16b, v31.16b, v17.16b       
+        cmhi            v18.16b, v31.16b, v18.16b       
+
+        and             v17.16b, v16.16b, v17.16b  
+        and             v18.16b, v16.16b, v18.16b  
+
         not             v30.16b, v17.16b
         not             v31.16b, v18.16b
-        and             v30.16b, v30.16b, v19.16b
-        and             v31.16b, v31.16b, v19.16b
-        and             v17.16b, v19.16b, v17.16b
-        and             v18.16b, v19.16b, v18.16b
 
+        and             v30.16b, v30.16b, v19.16b  
+        and             v31.16b, v31.16b, v19.16b  
+
+        and             v17.16b, v19.16b, v17.16b  
+        and             v18.16b, v19.16b, v18.16b  
+
+        
         uaddl           v26.8h,  v5.8b,   v7.8b
         uaddl2          v27.8h,  v5.16b,  v7.16b
         uaddw           v26.8h,  v26.8h,  v0.8b
@@ -333,21 +1475,22 @@ temp_label_12
         add             v21.8h,  v21.8h,  v27.8h
         uaddw           v20.8h,  v20.8h,  v0.8b
         uaddw2          v21.8h,  v21.8h,  v0.16b
-        rshrn           v20.8b,  v20.8h,  #3
-        rshrn2          v20.16b, v21.8h,  #3
+        rshrn           v20.8b,  v20.8h,  #3 
+        rshrn2          v20.16b, v21.8h,  #3 
         uaddw           v26.8h,  v26.8h,  v6.8b
         uaddw2          v27.8h,  v27.8h,  v6.16b
-        rshrn           v21.8b,  v26.8h,  #2
-        rshrn2          v21.16b, v27.8h,  #2
+        rshrn           v21.8b,  v26.8h,  #2 
+        rshrn2          v21.16b, v27.8h,  #2 
         uaddl           v28.8h,  v4.8b,   v5.8b
         uaddl2          v29.8h,  v4.16b,  v5.16b
         shl             v28.8h,  v28.8h,  #1
         shl             v29.8h,  v29.8h,  #1
         add             v28.8h,  v28.8h,  v26.8h
         add             v29.8h,  v29.8h,  v27.8h
-        rshrn           v19.8b,  v28.8h,  #3
-        rshrn2          v19.16b, v29.8h,  #3
+        rshrn           v19.8b,  v28.8h,  #3 
+        rshrn2          v19.16b, v29.8h,  #3 
 
+        
         uaddl           v26.8h,  v2.8b,   v0.8b
         uaddl2          v27.8h,  v2.16b,  v0.16b
         uaddw           v26.8h,  v26.8h,  v7.8b
@@ -356,50 +1499,74 @@ temp_label_12
         add             v23.8h,  v23.8h,  v27.8h
         uaddw           v22.8h,  v22.8h,  v7.8b
         uaddw2          v23.8h,  v23.8h,  v7.16b
-        rshrn           v22.8b,  v22.8h,  #3
-        rshrn2          v22.16b, v23.8h,  #3
+        rshrn           v22.8b,  v22.8h,  #3 
+        rshrn2          v22.16b, v23.8h,  #3 
         uaddw           v26.8h,  v26.8h,  v1.8b
         uaddw2          v27.8h,  v27.8h,  v1.16b
-        rshrn           v23.8b,  v26.8h,  #2
-        rshrn2          v23.16b, v27.8h,  #2
+        rshrn           v23.8b,  v26.8h,  #2 
+        rshrn2          v23.16b, v27.8h,  #2 
         uaddl           v28.8h,  v2.8b,   v3.8b
         uaddl2          v29.8h,  v2.16b,  v3.16b
         shl             v28.8h,  v28.8h,  #1
         shl             v29.8h,  v29.8h,  #1
         add             v28.8h,  v28.8h,  v26.8h
         add             v29.8h,  v29.8h,  v27.8h
-        rshrn           v26.8b,  v28.8h,  #3
-        rshrn2          v26.16b, v29.8h,  #3
-        bit             v7.16b,  v24.16b, v30.16b
-        bit             v0.16b,  v25.16b, v31.16b
-        bit             v7.16b,  v20.16b, v17.16b
-        bit             v6.16b,  v21.16b, v17.16b
-        bit             v5.16b,  v19.16b, v17.16b
-        bit             v0.16b,  v22.16b, v18.16b
-        bit             v1.16b,  v23.16b, v18.16b
-        bit             v2.16b,  v26.16b, v18.16b
+        rshrn           v26.8b,  v28.8h,  #3 
+        rshrn2          v26.16b, v29.8h,  #3 
+
+        bit             v7.16b,  v24.16b, v30.16b  
+        bit             v0.16b,  v25.16b, v31.16b  
+        bit             v7.16b,  v20.16b, v17.16b  
+        bit             v6.16b,  v21.16b, v17.16b  
+        bit             v5.16b,  v19.16b, v17.16b  
+        bit             v0.16b,  v22.16b, v18.16b  
+        bit             v1.16b,  v23.16b, v18.16b  
+        bit             v2.16b,  v26.16b, v18.16b  
+
         sub             x0,  x0,  x1, lsl #1
-        st1             {v5.16b}, [x0], x1
-        st1             {v6.16b}, [x0], x1
-        st1             {v7.16b}, [x0], x1
-        st1             {v0.16b}, [x0], x1
-        st1             {v1.16b}, [x0], x1
-        st1             {v2.16b}, [x0]
+        st1             {v5.16b}, [x0], x1  
+        st1             {v6.16b}, [x0], x1  
+        st1             {v7.16b}, [x0], x1  
+        st1             {v0.16b}, [x0], x1  
+        st1             {v1.16b}, [x0], x1  
+        st1             {v2.16b}, [x0]      
 temp_label_15
 temp_label_14
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_luma_intra_neon
+
+
+
+
+
 ff_h264_h_loop_filter_luma_intra_neon
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_16
         ret
 temp_label_17
 temp_label_16
-        dup             v30.16b, w2
-        dup             v31.16b, w3
+
+        dup             v30.16b, w2                
+        dup             v31.16b, w3                
+
         sub             x0,  x0,  #4
         ld1             {v4.8b},  [x0], x1
         ld1             {v5.8b},  [x0], x1
@@ -417,6 +1584,7 @@ temp_label_16
         ld1             {v1.d}[1],  [x0], x1
         ld1             {v2.d}[1],  [x0], x1
         ld1             {v3.d}[1],  [x0], x1
+
         trn1            v21.16b, v4.16b, v5.16b
         trn2            v23.16b, v4.16b, v5.16b
         trn1            v5.16b, v6.16b, v7.16b
@@ -425,6 +1593,7 @@ temp_label_16
         trn2            v1.16b, v0.16b, v1.16b
         trn1            v6.16b, v2.16b, v3.16b
         trn2            v3.16b, v2.16b, v3.16b
+
         trn1            v0.8h,  v4.8h,  v6.8h
         trn2            v6.8h,  v4.8h,  v6.8h
         trn1            v2.8h,  v1.8h,  v3.8h
@@ -433,29 +1602,37 @@ temp_label_16
         trn2            v23.8h,  v23.8h,  v7.8h
         trn1            v7.8h,  v21.8h,  v5.8h
         trn2            v21.8h,  v21.8h,  v5.8h
+
         trn1            v4.4s,  v7.4s,  v0.4s
         trn2            v0.4s,  v7.4s,  v0.4s
+
         trn1            v5.4s,  v1.4s,  v2.4s
         trn2            v1.4s,  v1.4s,  v2.4s
+
         trn2            v2.4s,  v21.4s,  v6.4s
         trn1            v6.4s,  v21.4s,  v6.4s
+
         trn1            v7.4s,  v23.4s,  v3.4s
         trn2            v3.4s,  v23.4s,  v3.4s
-        uabd            v16.16b, v7.16b,  v0.16b
-        uabd            v17.16b, v6.16b,  v7.16b
-        uabd            v18.16b, v1.16b,  v0.16b
-        cmhi            v19.16b, v30.16b, v16.16b
-        cmhi            v17.16b, v31.16b, v17.16b
-        cmhi            v18.16b, v31.16b, v18.16b
+
+        uabd            v16.16b, v7.16b,  v0.16b        
+        uabd            v17.16b, v6.16b,  v7.16b        
+        uabd            v18.16b, v1.16b,  v0.16b        
+        cmhi            v19.16b, v30.16b, v16.16b       
+        cmhi            v17.16b, v31.16b, v17.16b       
+        cmhi            v18.16b, v31.16b, v18.16b       
+
         movi            v29.16b, #2
-        ushr            v30.16b, v30.16b, #2
-        add             v30.16b, v30.16b, v29.16b
-        cmhi            v16.16b, v30.16b, v16.16b
+        ushr            v30.16b, v30.16b, #2            
+        add             v30.16b, v30.16b, v29.16b       
+        cmhi            v16.16b, v30.16b, v16.16b       
+
         and             v19.16b, v19.16b, v17.16b
         and             v19.16b, v19.16b, v18.16b
         shrn            v20.8b,  v19.8h,  #4
         umov             x4, v20.d[0]
         cbz             x4, temp_label_18
+
         ushll           v20.8h,  v6.8b,   #1
         ushll           v22.8h,  v1.8b,   #1
         ushll2          v21.8h,  v6.16b,  #1
@@ -468,23 +1645,30 @@ temp_label_16
         uaddw           v22.8h,  v22.8h,  v6.8b
         uaddw2          v21.8h,  v21.8h,  v1.16b
         uaddw2          v23.8h,  v23.8h,  v6.16b
-        rshrn           v24.8b,  v20.8h,  #2
-        rshrn           v25.8b,  v22.8h,  #2
-        rshrn2          v24.16b, v21.8h,  #2
-        rshrn2          v25.16b, v23.8h,  #2
-        uabd            v17.16b, v5.16b,  v7.16b
-        uabd            v18.16b, v2.16b,  v0.16b
-        cmhi            v17.16b, v31.16b, v17.16b
-        cmhi            v18.16b, v31.16b, v18.16b
-        and             v17.16b, v16.16b, v17.16b
-        and             v18.16b, v16.16b, v18.16b
+
+        rshrn           v24.8b,  v20.8h,  #2 
+        rshrn           v25.8b,  v22.8h,  #2 
+        rshrn2          v24.16b, v21.8h,  #2 
+        rshrn2          v25.16b, v23.8h,  #2 
+
+        uabd            v17.16b, v5.16b,  v7.16b        
+        uabd            v18.16b, v2.16b,  v0.16b        
+        cmhi            v17.16b, v31.16b, v17.16b       
+        cmhi            v18.16b, v31.16b, v18.16b       
+
+        and             v17.16b, v16.16b, v17.16b  
+        and             v18.16b, v16.16b, v18.16b  
+
         not             v30.16b, v17.16b
         not             v31.16b, v18.16b
-        and             v30.16b, v30.16b, v19.16b
-        and             v31.16b, v31.16b, v19.16b
-        and             v17.16b, v19.16b, v17.16b
-        and             v18.16b, v19.16b, v18.16b
 
+        and             v30.16b, v30.16b, v19.16b  
+        and             v31.16b, v31.16b, v19.16b  
+
+        and             v17.16b, v19.16b, v17.16b  
+        and             v18.16b, v19.16b, v18.16b  
+
+        
         uaddl           v26.8h,  v5.8b,   v7.8b
         uaddl2          v27.8h,  v5.16b,  v7.16b
         uaddw           v26.8h,  v26.8h,  v0.8b
@@ -493,21 +1677,22 @@ temp_label_16
         add             v21.8h,  v21.8h,  v27.8h
         uaddw           v20.8h,  v20.8h,  v0.8b
         uaddw2          v21.8h,  v21.8h,  v0.16b
-        rshrn           v20.8b,  v20.8h,  #3
-        rshrn2          v20.16b, v21.8h,  #3
+        rshrn           v20.8b,  v20.8h,  #3 
+        rshrn2          v20.16b, v21.8h,  #3 
         uaddw           v26.8h,  v26.8h,  v6.8b
         uaddw2          v27.8h,  v27.8h,  v6.16b
-        rshrn           v21.8b,  v26.8h,  #2
-        rshrn2          v21.16b, v27.8h,  #2
+        rshrn           v21.8b,  v26.8h,  #2 
+        rshrn2          v21.16b, v27.8h,  #2 
         uaddl           v28.8h,  v4.8b,   v5.8b
         uaddl2          v29.8h,  v4.16b,  v5.16b
         shl             v28.8h,  v28.8h,  #1
         shl             v29.8h,  v29.8h,  #1
         add             v28.8h,  v28.8h,  v26.8h
         add             v29.8h,  v29.8h,  v27.8h
-        rshrn           v19.8b,  v28.8h,  #3
-        rshrn2          v19.16b, v29.8h,  #3
+        rshrn           v19.8b,  v28.8h,  #3 
+        rshrn2          v19.16b, v29.8h,  #3 
 
+        
         uaddl           v26.8h,  v2.8b,   v0.8b
         uaddl2          v27.8h,  v2.16b,  v0.16b
         uaddw           v26.8h,  v26.8h,  v7.8b
@@ -516,28 +1701,30 @@ temp_label_16
         add             v23.8h,  v23.8h,  v27.8h
         uaddw           v22.8h,  v22.8h,  v7.8b
         uaddw2          v23.8h,  v23.8h,  v7.16b
-        rshrn           v22.8b,  v22.8h,  #3
-        rshrn2          v22.16b, v23.8h,  #3
+        rshrn           v22.8b,  v22.8h,  #3 
+        rshrn2          v22.16b, v23.8h,  #3 
         uaddw           v26.8h,  v26.8h,  v1.8b
         uaddw2          v27.8h,  v27.8h,  v1.16b
-        rshrn           v23.8b,  v26.8h,  #2
-        rshrn2          v23.16b, v27.8h,  #2
+        rshrn           v23.8b,  v26.8h,  #2 
+        rshrn2          v23.16b, v27.8h,  #2 
         uaddl           v28.8h,  v2.8b,   v3.8b
         uaddl2          v29.8h,  v2.16b,  v3.16b
         shl             v28.8h,  v28.8h,  #1
         shl             v29.8h,  v29.8h,  #1
         add             v28.8h,  v28.8h,  v26.8h
         add             v29.8h,  v29.8h,  v27.8h
-        rshrn           v26.8b,  v28.8h,  #3
-        rshrn2          v26.16b, v29.8h,  #3
-        bit             v7.16b,  v24.16b, v30.16b
-        bit             v0.16b,  v25.16b, v31.16b
-        bit             v7.16b,  v20.16b, v17.16b
-        bit             v6.16b,  v21.16b, v17.16b
-        bit             v5.16b,  v19.16b, v17.16b
-        bit             v0.16b,  v22.16b, v18.16b
-        bit             v1.16b,  v23.16b, v18.16b
-        bit             v2.16b,  v26.16b, v18.16b
+        rshrn           v26.8b,  v28.8h,  #3 
+        rshrn2          v26.16b, v29.8h,  #3 
+
+        bit             v7.16b,  v24.16b, v30.16b  
+        bit             v0.16b,  v25.16b, v31.16b  
+        bit             v7.16b,  v20.16b, v17.16b  
+        bit             v6.16b,  v21.16b, v17.16b  
+        bit             v5.16b,  v19.16b, v17.16b  
+        bit             v0.16b,  v22.16b, v18.16b  
+        bit             v1.16b,  v23.16b, v18.16b  
+        bit             v2.16b,  v26.16b, v18.16b  
+
         trn1            v21.16b, v4.16b, v5.16b
         trn2            v23.16b, v4.16b, v5.16b
         trn1            v5.16b, v6.16b, v7.16b
@@ -546,6 +1733,7 @@ temp_label_16
         trn2            v1.16b, v0.16b, v1.16b
         trn1            v6.16b, v2.16b, v3.16b
         trn2            v3.16b, v2.16b, v3.16b
+
         trn1            v0.8h,  v4.8h,  v6.8h
         trn2            v6.8h,  v4.8h,  v6.8h
         trn1            v2.8h,  v1.8h,  v3.8h
@@ -554,14 +1742,19 @@ temp_label_16
         trn2            v23.8h,  v23.8h,  v7.8h
         trn1            v7.8h,  v21.8h,  v5.8h
         trn2            v21.8h,  v21.8h,  v5.8h
+
         trn1            v4.4s,  v7.4s,  v0.4s
         trn2            v0.4s,  v7.4s,  v0.4s
+
         trn1            v5.4s,  v1.4s,  v2.4s
         trn2            v1.4s,  v1.4s,  v2.4s
+
         trn2            v2.4s,  v21.4s,  v6.4s
         trn1            v6.4s,  v21.4s,  v6.4s
+
         trn1            v7.4s,  v23.4s,  v3.4s
         trn2            v3.4s,  v23.4s,  v3.4s
+
         sub             x0,  x0,  x1, lsl #4
         st1             {v4.8b},  [x0], x1
         st1             {v5.8b},  [x0], x1
@@ -581,11 +1774,32 @@ temp_label_16
         st1             {v3.d}[1],  [x0], x1
 temp_label_19
 temp_label_18
+
         ret
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_v_loop_filter_chroma_neon
+
+
+
+
+
 ff_h264_v_loop_filter_chroma_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -597,23 +1811,27 @@ ff_h264_v_loop_filter_chroma_neon
         bge            temp_label_21
 temp_label_22
 temp_label_20
+
         ret
 temp_label_23
 temp_label_21
+
+
         sub             x0,  x0,  x1, lsl #1
         ld1             {v18.8b}, [x0], x1
         ld1             {v16.8b}, [x0], x1
         ld1             {v0.8b},  [x0], x1
         ld1             {v2.8b},  [x0]
-        dup             v22.8b, w2
-        dup             v23.8b, w3
+
+        dup             v22.8b, w2              
+        dup             v23.8b, w3              
         ushll v24.8h, v24.8b, #0
-        uabd            v26.8b, v16.8b, v0.8b
-        uabd            v28.8b, v18.8b, v16.8b
-        uabd            v30.8b, v2.8b,  v0.8b
-        cmhi            v26.8b, v22.8b, v26.8b
-        cmhi            v28.8b, v23.8b, v28.8b
-        cmhi            v30.8b, v23.8b, v30.8b
+        uabd            v26.8b, v16.8b, v0.8b   
+        uabd            v28.8b, v18.8b, v16.8b  
+        uabd            v30.8b, v2.8b,  v0.8b   
+        cmhi            v26.8b, v22.8b, v26.8b  
+        cmhi            v28.8b, v23.8b, v28.8b  
+        cmhi            v30.8b, v23.8b, v30.8b  
         ushll v4.8h, v0.8b, #0
         and             v26.8b, v26.8b, v28.8b
         usubw           v4.8h,  v4.8h,  v16.8b
@@ -635,16 +1853,37 @@ temp_label_21
         ssubw           v22.8h, v22.8h, v4.8b
         sqxtun          v16.8b, v28.8h
         sqxtun          v0.8b,  v22.8h
+
         sub             x0,  x0,  x1, lsl #1
         st1             {v16.8b}, [x0], x1
         st1             {v0.8b},  [x0], x1
 temp_label_25
 temp_label_24
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma_neon
+
+
+
+
+
 ff_h264_h_loop_filter_chroma_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -656,9 +1895,12 @@ ff_h264_h_loop_filter_chroma_neon
         bge            temp_label_27
 temp_label_28
 temp_label_26
+
         ret
 temp_label_29
 temp_label_27
+
+
         sub             x0,  x0,  #2
 h_loop_filter_chroma420
         ld1             {v18.s}[0], [x0], x1
@@ -669,23 +1911,26 @@ h_loop_filter_chroma420
         ld1             {v16.s}[1], [x0], x1
         ld1             {v0.s}[1],  [x0], x1
         ld1             {v2.s}[1],  [x0], x1
+
         trn1            v28.8b,  v18.8b,  v16.8b
         trn2            v29.8b,  v18.8b,  v16.8b
         trn1            v30.8b,  v0.8b,  v2.8b
         trn2            v31.8b,  v0.8b,  v2.8b
+
         trn1            v18.4h,  v28.4h,  v30.4h
         trn2            v0.4h,  v28.4h,  v30.4h
         trn1            v16.4h,  v29.4h,  v31.4h
         trn2            v2.4h,  v29.4h,  v31.4h
-        dup             v22.8b, w2
-        dup             v23.8b, w3
+
+        dup             v22.8b, w2              
+        dup             v23.8b, w3              
         ushll v24.8h, v24.8b, #0
-        uabd            v26.8b, v16.8b, v0.8b
-        uabd            v28.8b, v18.8b, v16.8b
-        uabd            v30.8b, v2.8b,  v0.8b
-        cmhi            v26.8b, v22.8b, v26.8b
-        cmhi            v28.8b, v23.8b, v28.8b
-        cmhi            v30.8b, v23.8b, v30.8b
+        uabd            v26.8b, v16.8b, v0.8b   
+        uabd            v28.8b, v18.8b, v16.8b  
+        uabd            v30.8b, v2.8b,  v0.8b   
+        cmhi            v26.8b, v22.8b, v26.8b  
+        cmhi            v28.8b, v23.8b, v28.8b  
+        cmhi            v30.8b, v23.8b, v30.8b  
         ushll v4.8h, v0.8b, #0
         and             v26.8b, v26.8b, v28.8b
         usubw           v4.8h,  v4.8h,  v16.8b
@@ -707,14 +1952,17 @@ h_loop_filter_chroma420
         ssubw           v22.8h, v22.8h, v4.8b
         sqxtun          v16.8b, v28.8h
         sqxtun          v0.8b,  v22.8h
+
         trn1            v28.8b,  v18.8b,  v16.8b
         trn2            v29.8b,  v18.8b,  v16.8b
         trn1            v30.8b,  v0.8b,  v2.8b
         trn2            v31.8b,  v0.8b,  v2.8b
+
         trn1            v18.4h,  v28.4h,  v30.4h
         trn2            v0.4h,  v28.4h,  v30.4h
         trn1            v16.4h,  v29.4h,  v31.4h
         trn2            v2.4h,  v29.4h,  v31.4h
+
         sub             x0,  x0,  x1, lsl #3
         st1             {v18.s}[0], [x0], x1
         st1             {v16.s}[0], [x0], x1
@@ -726,11 +1974,31 @@ h_loop_filter_chroma420
         st1             {v2.s}[1],  [x0], x1
 temp_label_31
 temp_label_30
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma422_neon
+
+
+
+
+
 ff_h264_h_loop_filter_chroma422_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -742,9 +2010,11 @@ ff_h264_h_loop_filter_chroma422_neon
         bge            temp_label_33
 temp_label_34
 temp_label_32
+
         ret
 temp_label_35
 temp_label_33
+
         add             x5,  x0,  x1
         sub             x0,  x0,  #2
         add             x1,  x1,  x1
@@ -754,32 +2024,56 @@ temp_label_33
         sub             x0,  x5,  #2
         mov             v24.s[0], w6
         b               h_loop_filter_chroma420
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_v_loop_filter_chroma_intra_neon
+
+
+
+
+
 ff_h264_v_loop_filter_chroma_intra_neon
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_36
         ret
 temp_label_37
 temp_label_36
-        dup             v30.16b, w2
-        dup             v31.16b, w3
+
+        dup             v30.16b, w2                
+        dup             v31.16b, w3                
+
         sub             x0,  x0,  x1, lsl #1
         ld1             {v18.8b}, [x0], x1
         ld1             {v16.8b}, [x0], x1
         ld1             {v17.8b}, [x0], x1
         ld1             {v19.8b}, [x0]
-        uabd            v26.8b,  v16.8b,  v17.8b
-        uabd            v27.8b,  v18.8b,  v16.8b
-        uabd            v28.8b,  v19.8b,  v17.8b
-        cmhi            v26.8b,  v30.8b,  v26.8b
-        cmhi            v27.8b,  v31.8b,  v27.8b
-        cmhi            v28.8b,  v31.8b,  v28.8b
+
+        uabd            v26.8b,  v16.8b,  v17.8b  
+        uabd            v27.8b,  v18.8b,  v16.8b  
+        uabd            v28.8b,  v19.8b,  v17.8b  
+        cmhi            v26.8b,  v30.8b,  v26.8b  
+        cmhi            v27.8b,  v31.8b,  v27.8b  
+        cmhi            v28.8b,  v31.8b,  v28.8b  
         and             v26.8b,  v26.8b,  v27.8b
         and             v26.8b,  v26.8b,  v28.8b
         umov             x2, v26.d[0]
+
         ushll           v4.8h,   v18.8b,  #1
         ushll           v6.8h,   v19.8b,  #1
         cbz             x2, temp_label_38
@@ -791,47 +2085,75 @@ temp_label_36
         uqrshrn         v25.8b,  v22.8h,  #2
         bit             v16.8b,  v24.8b,  v26.8b
         bit             v17.8b,  v25.8b,  v26.8b
+
         sub             x0,  x0,  x1, lsl #1
         st1             {v16.8b}, [x0], x1
         st1             {v17.8b}, [x0], x1
+
 temp_label_39
 temp_label_38
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma_mbaff_intra_neon
+
+
+
+
+
 ff_h264_h_loop_filter_chroma_mbaff_intra_neon
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_40
         ret
 temp_label_41
 temp_label_40
-        dup             v30.16b, w2
-        dup             v31.16b, w3
+
+        dup             v30.16b, w2                
+        dup             v31.16b, w3                
+
         sub             x4,  x0,  #2
         sub             x0,  x0,  #1
         ld1             {v18.8b}, [x4], x1
         ld1             {v16.8b}, [x4], x1
         ld1             {v17.8b}, [x4], x1
         ld1             {v19.8b}, [x4], x1
+
         trn1            v26.8b,  v18.8b,  v16.8b
         trn2            v27.8b,  v18.8b,  v16.8b
         trn1            v28.8b,  v17.8b,  v19.8b
         trn2            v29.8b,  v17.8b,  v19.8b
+
         trn1            v18.4h,  v26.4h,  v28.4h
         trn2            v17.4h,  v26.4h,  v28.4h
         trn1            v16.4h,  v27.4h,  v29.4h
         trn2            v19.4h,  v27.4h,  v29.4h
-        uabd            v26.8b,  v16.8b,  v17.8b
-        uabd            v27.8b,  v18.8b,  v16.8b
-        uabd            v28.8b,  v19.8b,  v17.8b
-        cmhi            v26.8b,  v30.8b,  v26.8b
-        cmhi            v27.8b,  v31.8b,  v27.8b
-        cmhi            v28.8b,  v31.8b,  v28.8b
+
+        uabd            v26.8b,  v16.8b,  v17.8b  
+        uabd            v27.8b,  v18.8b,  v16.8b  
+        uabd            v28.8b,  v19.8b,  v17.8b  
+        cmhi            v26.8b,  v30.8b,  v26.8b  
+        cmhi            v27.8b,  v31.8b,  v27.8b  
+        cmhi            v28.8b,  v31.8b,  v28.8b  
         and             v26.8b,  v26.8b,  v27.8b
         and             v26.8b,  v26.8b,  v28.8b
         umov             x2, v26.d[0]
+
         ushll           v4.8h,   v18.8b,  #1
         ushll           v6.8h,   v19.8b,  #1
         cbz             x2, temp_label_42
@@ -843,25 +2165,49 @@ temp_label_40
         uqrshrn         v25.8b,  v22.8h,  #2
         bit             v16.8b,  v24.8b,  v26.8b
         bit             v17.8b,  v25.8b,  v26.8b
+
         st2             {v16.b,v17.b}[0], [x0], x1
         st2             {v16.b,v17.b}[1], [x0], x1
         st2             {v16.b,v17.b}[2], [x0], x1
         st2             {v16.b,v17.b}[3], [x0], x1
+
 temp_label_43
 temp_label_42
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma_intra_neon
+
+
+
+
+
 ff_h264_h_loop_filter_chroma_intra_neon
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_44
         ret
 temp_label_45
 temp_label_44
-        dup             v30.16b, w2
-        dup             v31.16b, w3
+
+        dup             v30.16b, w2                
+        dup             v31.16b, w3                
+
         sub             x4,  x0,  #2
         sub             x0,  x0,  #1
 h_loop_filter_chroma420_intra
@@ -873,23 +2219,27 @@ h_loop_filter_chroma420_intra
         ld1             {v16.s}[1], [x4], x1
         ld1             {v17.s}[1], [x4], x1
         ld1             {v19.s}[1], [x4], x1
+
         trn1            v26.8b,  v18.8b,  v16.8b
         trn2            v27.8b,  v18.8b,  v16.8b
         trn1            v28.8b,  v17.8b,  v19.8b
         trn2            v29.8b,  v17.8b,  v19.8b
+
         trn1            v18.4h,  v26.4h,  v28.4h
         trn2            v17.4h,  v26.4h,  v28.4h
         trn1            v16.4h,  v27.4h,  v29.4h
         trn2            v19.4h,  v27.4h,  v29.4h
-        uabd            v26.8b,  v16.8b,  v17.8b
-        uabd            v27.8b,  v18.8b,  v16.8b
-        uabd            v28.8b,  v19.8b,  v17.8b
-        cmhi            v26.8b,  v30.8b,  v26.8b
-        cmhi            v27.8b,  v31.8b,  v27.8b
-        cmhi            v28.8b,  v31.8b,  v28.8b
+
+        uabd            v26.8b,  v16.8b,  v17.8b  
+        uabd            v27.8b,  v18.8b,  v16.8b  
+        uabd            v28.8b,  v19.8b,  v17.8b  
+        cmhi            v26.8b,  v30.8b,  v26.8b  
+        cmhi            v27.8b,  v31.8b,  v27.8b  
+        cmhi            v28.8b,  v31.8b,  v28.8b  
         and             v26.8b,  v26.8b,  v27.8b
         and             v26.8b,  v26.8b,  v28.8b
         umov             x2, v26.d[0]
+
         ushll           v4.8h,   v18.8b,  #1
         ushll           v6.8h,   v19.8b,  #1
         cbz             x2, temp_label_46
@@ -901,6 +2251,7 @@ h_loop_filter_chroma420_intra
         uqrshrn         v25.8b,  v22.8h,  #2
         bit             v16.8b,  v24.8b,  v26.8b
         bit             v17.8b,  v25.8b,  v26.8b
+
         st2             {v16.b,v17.b}[0], [x0], x1
         st2             {v16.b,v17.b}[1], [x0], x1
         st2             {v16.b,v17.b}[2], [x0], x1
@@ -909,21 +2260,43 @@ h_loop_filter_chroma420_intra
         st2             {v16.b,v17.b}[5], [x0], x1
         st2             {v16.b,v17.b}[6], [x0], x1
         st2             {v16.b,v17.b}[7], [x0], x1
+
 temp_label_47
 temp_label_46
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma422_intra_neon
+
+
+
+
+
 ff_h264_h_loop_filter_chroma422_intra_neon
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_48
         ret
 temp_label_49
 temp_label_48
-        dup             v30.16b, w2
-        dup             v31.16b, w3
+
+        dup             v30.16b, w2                
+        dup             v31.16b, w3                
         sub             x4,  x0,  #2
         add             x5,  x0,  x1, lsl #3
         sub             x0,  x0,  #1
@@ -932,10 +2305,33 @@ temp_label_48
         sub             x0,  x5,  #1
         mov             x30, x7
         b               h_loop_filter_chroma420_intra
+
+
+
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_biweight_h264_pixels_16_neon
+
+
+
+
+
 ff_biweight_h264_pixels_16_neon
+        
+
+
+
+
+
+
+
+
+
 
         lsr             w8,  w5,  #31
         add             w7,  w7,  #1
@@ -1100,10 +2496,28 @@ temp_label_61
         st1             {v24.16b}, [x7], x2
         bne            temp_label_61
         ret
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_biweight_h264_pixels_8_neon
+
+
+
+
+
 ff_biweight_h264_pixels_8_neon
+        
+
+
+
+
+
+
+
+
+
 
         lsr             w8,  w5,  #31
         add             w7,  w7,  #1
@@ -1228,10 +2642,28 @@ temp_label_73
         st1             {v4.8b}, [x7], x2
         bne            temp_label_73
         ret
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_biweight_h264_pixels_4_neon
+
+
+
+
+
 ff_biweight_h264_pixels_4_neon
+        
+
+
+
+
+
+
+
+
+
 
         lsr             w8,  w5,  #31
         add             w7,  w7,  #1
@@ -1412,10 +2844,33 @@ temp_label_92
         st1             {v2.s}[0], [x7], x2
         st1             {v2.s}[1], [x7], x2
         ret
+
+
+
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_weight_h264_pixels_16_neon
+
+
+
+
+
 ff_weight_h264_pixels_16_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w3,  #1
         mov             w6,  #1
@@ -1539,10 +2994,28 @@ temp_label_103
         st1             {v24.16b}, [x5], x1
         bne            temp_label_103
         ret
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_weight_h264_pixels_8_neon
+
+
+
+
+
 ff_weight_h264_pixels_8_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w3,  #1
         mov             w6,  #1
@@ -1634,10 +3107,28 @@ temp_label_113
         st1             {v4.8b}, [x5], x1
         bne            temp_label_113
         ret
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_weight_h264_pixels_4_neon
+
+
+
+
+
 ff_weight_h264_pixels_4_neon
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w3,  #1
         mov             w6,  #1
@@ -1781,10 +3272,32 @@ temp_label_130
         st1             {v2.s}[0], [x5], x1
         st1             {v2.s}[1], [x5], x1
         ret
+
+
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_v_loop_filter_chroma_neon_10
+
+
+
+
+
 ff_h264_v_loop_filter_chroma_neon_10
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -1798,24 +3311,30 @@ ff_h264_v_loop_filter_chroma_neon_10
         bge            temp_label_133
 temp_label_134
 temp_label_132
+
         ret
 temp_label_135
 temp_label_133
+
+
         mov             x10,  x0
         sub             x0,  x0,  x1, lsl #1
         ld1             {v18.8h}, [x0 ], x1
         ld1             {v0.8h},  [x10], x1
         ld1             {v16.8h}, [x0 ], x1
         ld1             {v2.8h},  [x10]
-        dup             v22.8h,  w2
-        dup             v23.8h,  w3
+
+        dup             v22.8h,  w2               
+        dup             v23.8h,  w3               
         ushll v24.8h, v24.8b, #0
-        uabd            v26.8h,  v16.8h,  v0.8h
-        uabd            v28.8h,  v18.8h,  v16.8h
-        uabd            v30.8h,  v2.8h,   v0.8h
-        cmhi            v26.8h,  v22.8h,  v26.8h
-        cmhi            v28.8h,  v23.8h,  v28.8h
-        cmhi            v30.8h,  v23.8h,  v30.8h
+
+        uabd            v26.8h,  v16.8h,  v0.8h   
+        uabd            v28.8h,  v18.8h,  v16.8h  
+        uabd            v30.8h,  v2.8h,   v0.8h   
+        cmhi            v26.8h,  v22.8h,  v26.8h  
+        cmhi            v28.8h,  v23.8h,  v28.8h  
+        cmhi            v30.8h,  v23.8h,  v30.8h  
+
         and             v26.16b, v26.16b, v28.16b
         orr v4.16b, v0.16b, v0.16b
         sub             v4.8h,   v4.8h,   v16.8h
@@ -1828,7 +3347,9 @@ temp_label_133
         add             v4.8h,   v4.8h,   v18.8h
         adds            x8,  x8,  x9
         shl             v24.8h,  v24.8h,  #2
+
         beq            temp_label_136
+
         movi v31.8h, #3, lsl #0
         uqsub           v24.8h,  v24.8h,  v31.8h
         sub             v4.8h,   v4.8h,   v2.8h
@@ -1839,22 +3360,44 @@ temp_label_133
         and             v4.16b,  v4.16b,  v26.16b
         add             v16.8h,  v16.8h,  v4.8h
         sub             v0.8h,   v0.8h,   v4.8h
-        mvni            v4.8h,   #0xFC, lsl #8
+
+        mvni            v4.8h,   #0xFC, lsl #8    
         movi v5.8h, #0, lsl #0
         smin            v0.8h,   v0.8h,   v4.8h
         smin            v16.8h,  v16.8h,  v4.8h
         smax            v0.8h,   v0.8h,   v5.8h
         smax            v16.8h,  v16.8h,  v5.8h
+
         sub             x0,  x10,  x1, lsl #1
         st1             {v16.8h}, [x0], x1
         st1             {v0.8h},  [x0], x1
 temp_label_137
 temp_label_136
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma_neon_10
+
+
+
+
+
 ff_h264_h_loop_filter_chroma_neon_10
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -1868,10 +3411,13 @@ ff_h264_h_loop_filter_chroma_neon_10
         bge            temp_label_139
 temp_label_140
 temp_label_138
+
         ret
 temp_label_141
 temp_label_139
-        sub             x0,  x0,  #4
+
+
+        sub             x0,  x0,  #4 
 h_loop_filter_chroma420_10
         add             x10,  x0,  x1,  lsl #2
         ld1             {v18.d}[0], [x0 ], x1
@@ -1882,23 +3428,28 @@ h_loop_filter_chroma420_10
         ld1             {v0.d}[1],  [x10], x1
         ld1             {v2.d}[0],  [x0 ], x1
         ld1             {v2.d}[1],  [x10], x1
+
         trn1            v28.8h,  v18.8h,  v16.8h
         trn2            v29.8h,  v18.8h,  v16.8h
         trn1            v30.8h,  v0.8h,  v2.8h
         trn2            v31.8h,  v0.8h,  v2.8h
+
         trn1            v18.4s,  v28.4s,  v30.4s
         trn2            v0.4s,  v28.4s,  v30.4s
         trn1            v16.4s,  v29.4s,  v31.4s
         trn2            v2.4s,  v29.4s,  v31.4s
-        dup             v22.8h,  w2
-        dup             v23.8h,  w3
+
+        dup             v22.8h,  w2               
+        dup             v23.8h,  w3               
         ushll v24.8h, v24.8b, #0
-        uabd            v26.8h,  v16.8h,  v0.8h
-        uabd            v28.8h,  v18.8h,  v16.8h
-        uabd            v30.8h,  v2.8h,   v0.8h
-        cmhi            v26.8h,  v22.8h,  v26.8h
-        cmhi            v28.8h,  v23.8h,  v28.8h
-        cmhi            v30.8h,  v23.8h,  v30.8h
+
+        uabd            v26.8h,  v16.8h,  v0.8h   
+        uabd            v28.8h,  v18.8h,  v16.8h  
+        uabd            v30.8h,  v2.8h,   v0.8h   
+        cmhi            v26.8h,  v22.8h,  v26.8h  
+        cmhi            v28.8h,  v23.8h,  v28.8h  
+        cmhi            v30.8h,  v23.8h,  v30.8h  
+
         and             v26.16b, v26.16b, v28.16b
         orr v4.16b, v0.16b, v0.16b
         sub             v4.8h,   v4.8h,   v16.8h
@@ -1911,7 +3462,9 @@ h_loop_filter_chroma420_10
         add             v4.8h,   v4.8h,   v18.8h
         adds            x8,  x8,  x9
         shl             v24.8h,  v24.8h,  #2
+
         beq            temp_label_142
+
         movi v31.8h, #3, lsl #0
         uqsub           v24.8h,  v24.8h,  v31.8h
         sub             v4.8h,   v4.8h,   v2.8h
@@ -1922,20 +3475,24 @@ h_loop_filter_chroma420_10
         and             v4.16b,  v4.16b,  v26.16b
         add             v16.8h,  v16.8h,  v4.8h
         sub             v0.8h,   v0.8h,   v4.8h
-        mvni            v4.8h,   #0xFC, lsl #8
+
+        mvni            v4.8h,   #0xFC, lsl #8    
         movi v5.8h, #0, lsl #0
         smin            v0.8h,   v0.8h,   v4.8h
         smin            v16.8h,  v16.8h,  v4.8h
         smax            v0.8h,   v0.8h,   v5.8h
         smax            v16.8h,  v16.8h,  v5.8h
+
         trn1            v28.8h,  v18.8h,  v16.8h
         trn2            v29.8h,  v18.8h,  v16.8h
         trn1            v30.8h,  v0.8h,  v2.8h
         trn2            v31.8h,  v0.8h,  v2.8h
+
         trn1            v18.4s,  v28.4s,  v30.4s
         trn2            v0.4s,  v28.4s,  v30.4s
         trn1            v16.4s,  v29.4s,  v31.4s
         trn2            v2.4s,  v29.4s,  v31.4s
+
         sub             x0,  x10,  x1, lsl #3
         st1             {v18.d}[0], [x0], x1
         st1             {v16.d}[0], [x0], x1
@@ -1947,11 +3504,31 @@ h_loop_filter_chroma420_10
         st1             {v2.d}[1],  [x0], x1
 temp_label_143
 temp_label_142
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma422_neon_10
+
+
+
+
+
 ff_h264_h_loop_filter_chroma422_neon_10
+        
+
+
+
+
+
+
+
+
+
 
         cmp             w2,  #0
         ldr             w6,  [x4]
@@ -1965,9 +3542,11 @@ ff_h264_h_loop_filter_chroma422_neon_10
         bge            temp_label_145
 temp_label_146
 temp_label_144
+
         ret
 temp_label_147
 temp_label_145
+
         add             x5,  x0,  x1
         sub             x0,  x0,  #4
         add             x1,  x1,  x1
@@ -1977,40 +3556,65 @@ temp_label_145
         sub             x0,  x5,  #4
         mov             v24.s[0], w6
         b               h_loop_filter_chroma420_10
+
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_v_loop_filter_chroma_intra_neon_10
+
+
+
+
+
 ff_h264_v_loop_filter_chroma_intra_neon_10
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_148
         ret
 temp_label_149
 temp_label_148
+
         lsl             w2,  w2,  #2
         lsl             w3,  w3,  #2
-        dup             v30.8h,   w2
-        dup             v31.8h,   w3
+        dup             v30.8h,   w2              
+        dup             v31.8h,   w3              
         mov             x9,  x0
         sub             x0,  x0,  x1, lsl #1
         ld1             {v18.8h}, [x0], x1
         ld1             {v17.8h}, [x9], x1
         ld1             {v16.8h}, [x0], x1
         ld1             {v19.8h}, [x9]
-        uabd            v26.8h,  v16.8h,  v17.8h
-        uabd            v27.8h,  v18.8h,  v16.8h
-        uabd            v28.8h,  v19.8h,  v17.8h
-        cmhi            v26.8h,  v30.8h,  v26.8h
-        cmhi            v27.8h,  v31.8h,  v27.8h
-        cmhi            v28.8h,  v31.8h,  v28.8h
+
+        uabd            v26.8h,  v16.8h,  v17.8h  
+        uabd            v27.8h,  v18.8h,  v16.8h  
+        uabd            v28.8h,  v19.8h,  v17.8h  
+        cmhi            v26.8h,  v30.8h,  v26.8h  
+        cmhi            v27.8h,  v31.8h,  v27.8h  
+        cmhi            v28.8h,  v31.8h,  v28.8h  
         and             v26.16b, v26.16b, v27.16b
         and             v26.16b, v26.16b, v28.16b
         umov             x2, v26.d[0]
         umov             x3, v26.d[1]
+
         shl             v4.8h,  v18.8h,  #1
         shl             v6.8h,  v19.8h,  #1
+
         adds            x2,  x2,  x3
         beq            temp_label_150
+
         add             v20.8h,  v16.8h,  v19.8h
         add             v22.8h,  v17.8h,  v18.8h
         add             v20.8h,  v20.8h,  v4.8h
@@ -2019,26 +3623,50 @@ temp_label_148
         urshr           v25.8h,  v22.8h,  #2
         bit             v16.16b, v24.16b, v26.16b
         bit             v17.16b, v25.16b, v26.16b
+
         sub             x0,  x9,  x1, lsl #1
         st1             {v16.8h}, [x0], x1
         st1             {v17.8h}, [x0], x1
+
 temp_label_151
 temp_label_150
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma_mbaff_intra_neon_10
+
+
+
+
+
 ff_h264_h_loop_filter_chroma_mbaff_intra_neon_10
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_152
         ret
 temp_label_153
 temp_label_152
+
         lsl             w2,  w2,  #2
         lsl             w3,  w3,  #2
-        dup             v30.8h,   w2
-        dup             v31.8h,   w3
+        dup             v30.8h,   w2              
+        dup             v31.8h,   w3              
+
         sub             x4,  x0,  #4
         sub             x0,  x0,  #2
         add             x9,  x4,  x1, lsl #1
@@ -2046,28 +3674,34 @@ temp_label_152
         ld1             {v17.8h}, [x9], x1
         ld1             {v16.8h}, [x4], x1
         ld1             {v19.8h}, [x9], x1
+
         trn1            v26.8h,  v18.8h,  v16.8h
         trn2            v27.8h,  v18.8h,  v16.8h
         trn1            v28.8h,  v17.8h,  v19.8h
         trn2            v29.8h,  v17.8h,  v19.8h
+
         trn1            v18.4s,  v26.4s,  v28.4s
         trn2            v17.4s,  v26.4s,  v28.4s
         trn1            v16.4s,  v27.4s,  v29.4s
         trn2            v19.4s,  v27.4s,  v29.4s
-        uabd            v26.8h,  v16.8h,  v17.8h
-        uabd            v27.8h,  v18.8h,  v16.8h
-        uabd            v28.8h,  v19.8h,  v17.8h
-        cmhi            v26.8h,  v30.8h,  v26.8h
-        cmhi            v27.8h,  v31.8h,  v27.8h
-        cmhi            v28.8h,  v31.8h,  v28.8h
+
+        uabd            v26.8h,  v16.8h,  v17.8h  
+        uabd            v27.8h,  v18.8h,  v16.8h  
+        uabd            v28.8h,  v19.8h,  v17.8h  
+        cmhi            v26.8h,  v30.8h,  v26.8h  
+        cmhi            v27.8h,  v31.8h,  v27.8h  
+        cmhi            v28.8h,  v31.8h,  v28.8h  
         and             v26.16b, v26.16b, v27.16b
         and             v26.16b, v26.16b, v28.16b
         umov             x2, v26.d[0]
         umov             x3, v26.d[1]
+
         shl             v4.8h,  v18.8h,  #1
         shl             v6.8h,  v19.8h,  #1
+
         adds            x2,  x2,  x3
         beq            temp_label_154
+
         add             v20.8h,  v16.8h,  v19.8h
         add             v22.8h,  v17.8h,  v18.8h
         add             v20.8h,  v20.8h,  v4.8h
@@ -2076,27 +3710,50 @@ temp_label_152
         urshr           v25.8h,  v22.8h,  #2
         bit             v16.16b, v24.16b, v26.16b
         bit             v17.16b, v25.16b, v26.16b
+
         st2             {v16.h,v17.h}[0], [x0], x1
         st2             {v16.h,v17.h}[1], [x0], x1
         st2             {v16.h,v17.h}[2], [x0], x1
         st2             {v16.h,v17.h}[3], [x0], x1
+
 temp_label_155
 temp_label_154
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma_intra_neon_10
+
+
+
+
+
 ff_h264_h_loop_filter_chroma_intra_neon_10
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_156
         ret
 temp_label_157
 temp_label_156
+
         lsl             w2,  w2,  #2
         lsl             w3,  w3,  #2
-        dup             v30.8h,   w2
-        dup             v31.8h,   w3
+        dup             v30.8h,   w2              
+        dup             v31.8h,   w3              
         sub             x4,  x0,  #4
         sub             x0,  x0,  #2
 h_loop_filter_chroma420_intra_10
@@ -2109,28 +3766,34 @@ h_loop_filter_chroma420_intra_10
         ld1             {v17.d}[1], [x9], x1
         ld1             {v19.4h},   [x4], x1
         ld1             {v19.d}[1], [x9], x1
+
         trn1            v26.8h,  v18.8h,  v16.8h
         trn2            v27.8h,  v18.8h,  v16.8h
         trn1            v28.8h,  v17.8h,  v19.8h
         trn2            v29.8h,  v17.8h,  v19.8h
+
         trn1            v18.4s,  v26.4s,  v28.4s
         trn2            v17.4s,  v26.4s,  v28.4s
         trn1            v16.4s,  v27.4s,  v29.4s
         trn2            v19.4s,  v27.4s,  v29.4s
-        uabd            v26.8h,  v16.8h,  v17.8h
-        uabd            v27.8h,  v18.8h,  v16.8h
-        uabd            v28.8h,  v19.8h,  v17.8h
-        cmhi            v26.8h,  v30.8h,  v26.8h
-        cmhi            v27.8h,  v31.8h,  v27.8h
-        cmhi            v28.8h,  v31.8h,  v28.8h
+
+        uabd            v26.8h,  v16.8h,  v17.8h  
+        uabd            v27.8h,  v18.8h,  v16.8h  
+        uabd            v28.8h,  v19.8h,  v17.8h  
+        cmhi            v26.8h,  v30.8h,  v26.8h  
+        cmhi            v27.8h,  v31.8h,  v27.8h  
+        cmhi            v28.8h,  v31.8h,  v28.8h  
         and             v26.16b, v26.16b, v27.16b
         and             v26.16b, v26.16b, v28.16b
         umov             x2, v26.d[0]
         umov             x3, v26.d[1]
+
         shl             v4.8h,  v18.8h,  #1
         shl             v6.8h,  v19.8h,  #1
+
         adds            x2,  x2,  x3
         beq            temp_label_158
+
         add             v20.8h,  v16.8h,  v19.8h
         add             v22.8h,  v17.8h,  v18.8h
         add             v20.8h,  v20.8h,  v4.8h
@@ -2139,6 +3802,7 @@ h_loop_filter_chroma420_intra_10
         urshr           v25.8h,  v22.8h,  #2
         bit             v16.16b, v24.16b, v26.16b
         bit             v17.16b, v25.16b, v26.16b
+
         st2             {v16.h,v17.h}[0], [x0], x1
         st2             {v16.h,v17.h}[1], [x0], x1
         st2             {v16.h,v17.h}[2], [x0], x1
@@ -2147,23 +3811,45 @@ h_loop_filter_chroma420_intra_10
         st2             {v16.h,v17.h}[5], [x0], x1
         st2             {v16.h,v17.h}[6], [x0], x1
         st2             {v16.h,v17.h}[7], [x0], x1
+
 temp_label_159
 temp_label_158
+
         ret
+
+
+
         AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN
         ALIGN 4
+
         EXPORT ff_h264_h_loop_filter_chroma422_intra_neon_10
+
+
+
+
+
 ff_h264_h_loop_filter_chroma422_intra_neon_10
+        
+
+
+
+
+
+
+
+
+
 
         orr             w4,  w2,  w3
         cbnz            w4,  temp_label_160
         ret
 temp_label_161
 temp_label_160
+
         lsl             w2,  w2,  #2
         lsl             w3,  w3,  #2
-        dup             v30.8h,   w2
-        dup             v31.8h,   w3
+        dup             v30.8h,   w2              
+        dup             v31.8h,   w3              
         sub             x4,  x0,  #4
         add             x5,  x0,  x1, lsl #3
         sub             x0,  x0,  #2
@@ -2173,4 +3859,8 @@ temp_label_160
         sub             x0,  x5,  #2
         mov             x30, x7
         b               h_loop_filter_chroma420_intra_10
+
+
+
+
 	END

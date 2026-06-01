@@ -7,6 +7,9 @@ version                 = $QT_VERSION
 examplesinstallpath     = protobuf
 examples.fileextensions += "*.proto"
 url.examples = "https://code.qt.io/cgit/qt/qtgrpc.git/tree/examples/\1?h=$QT_VER"
+url.sources  = "https://code.qt.io/cgit/qt/qtgrpc.git/tree/\1?h=$QT_VER#n\2"
+# Path to the root of qtgrpc (for automatic linking to source code)
+url.sources.rootdir     = ../../..
 
 qhp.projects            = QtProtobuf
 moduleheader            = ${project}Doc
@@ -60,6 +63,10 @@ depends += qtdoc qtcore qtgui qtcmake qtgrpc qtwidgets qtqml qtquick qtquickcont
 {headerdirs,sourcedirs} += .. \
                            ../../protobufqttypes \
                            ../../wellknown
+
+# Exclude auto-generated Protocol Buffer wrapper headers
+excludedirs += ../../wellknown/.tmp/google/protobuf
+internalfilepatterns = wrappers.qpb.h
 
 # Add additional documentation dirs
 sourcedirs  += ../../tools/doc

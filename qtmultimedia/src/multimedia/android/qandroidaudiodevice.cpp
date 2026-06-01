@@ -3,40 +3,37 @@
 
 #include "qandroidaudiodevice_p.h"
 
-#include "qopenslesengine_p.h"
-#include <algorithm>
+#include <private/qaudioformat_p.h>
+
+#include <QtCore/qjniobject.h>
 
 QT_BEGIN_NAMESPACE
 
-QOpenSLESDeviceInfo::QOpenSLESDeviceInfo(QByteArray device,
-                                         QString desc,
-                                         QAudioDevice::Mode mode,
+QAndroidAudioDevice::QAndroidAudioDevice(QByteArray device, QString desc, QAudioDevice::Mode mode,
+                                         QAudioFormat format, bool isBluetoothDevice,
                                          bool isDefaultDevice)
-    : QAudioDevicePrivate(std::move(device), mode, std::move(desc))
-    , m_engine(QOpenSLESEngine::instance())
+    : QAudioDevicePrivate(std::move(device), mode, std::move(desc)),
+      m_isBluetoothDevice(isBluetoothDevice)
 {
     isDefault = isDefaultDevice;
+    preferredFormat = format;
 
-    auto channels = m_engine->supportedChannelCounts(mode);
-    if (channels.size()) {
-        minimumChannelCount = channels.first();
-        maximumChannelCount = channels.last();
-    }
+    // Report support for everything that Qt supports, as Android should be able to resample and
+    // up/downmix if needed
+    minimumChannelCount = 1;
+    maximumChannelCount = 32;
+    minimumSampleRate = QtMultimediaPrivate::allSupportedSampleRates.front();
+    maximumSampleRate = QtMultimediaPrivate::allSupportedSampleRates.back();
+    supportedSampleFormats = QList<QAudioFormat::SampleFormat>{
+        QtMultimediaPrivate::allSupportedSampleFormats.begin(),
+        QtMultimediaPrivate::allSupportedSampleFormats.end()
+    };
+    channelConfiguration = preferredFormat.channelConfig();
+}
 
-    auto sampleRates = m_engine->supportedSampleRates(mode);
-    if (sampleRates.size()) {
-        minimumSampleRate = sampleRates.first();
-        maximumSampleRate = sampleRates.last();
-    }
-
-    supportedSampleFormats = m_engine->supportedSampleFormats(mode);
-
-    preferredFormat.setChannelCount(std::clamp(2, minimumChannelCount, maximumChannelCount));
-    preferredFormat.setSampleRate(std::clamp(48000, minimumSampleRate, maximumSampleRate));
-    QAudioFormat::SampleFormat f = QAudioFormat::Int16;
-    if (!supportedSampleFormats.contains(f))
-        f = supportedSampleFormats.value(0, QAudioFormat::Unknown);
-    preferredFormat.setSampleFormat(f);
+bool QAndroidAudioDevice::isBluetoothDevice() const
+{
+    return m_isBluetoothDevice;
 }
 
 QT_END_NAMESPACE

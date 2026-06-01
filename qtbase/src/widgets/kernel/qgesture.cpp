@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qgesture.h"
 #include "private/qgesture_p.h"
@@ -195,7 +196,7 @@ QGesture::GestureCancelPolicy QGesture::gestureCancelPolicy() const
     \ingroup gestures
     \inmodule QtWidgets
 
-    \image pangesture.png
+    \image pangesture.png {Demonstration of moving an image with pan gesture}
 
     For an overview of gesture handling in Qt and information on using gestures
     in your applications, see the \l{Gestures in Widgets and Graphics View} document.
@@ -326,7 +327,7 @@ void QPanGesture::setAcceleration(qreal value)
     For an overview of gesture handling in Qt and information on using gestures
     in your applications, see the \l{Gestures in Widgets and Graphics View} document.
 
-    \image pinchgesture.png
+    \image pinchgesture.png {Demonstration of pinch gesture with two fingers}
 
     Instead of repeatedly applying the same pinching gesture, the user may
     continue to touch the input device in one place, and apply a second touch
@@ -590,7 +591,7 @@ void QPinchGesture::setRotationAngle(qreal value)
     \ingroup gestures
     \inmodule QtWidgets
 
-    \image swipegesture.png
+    \image swipegesture.png {Demonstration of swipe gesture}
 
     For an overview of gesture handling in Qt and information on using gestures
     in your applications, see the \l{Gestures in Widgets and Graphics View} document.
@@ -1080,6 +1081,10 @@ Q_WIDGETS_EXPORT QDebug operator<<(QDebug d, const QGesture *gesture)
 {
     QDebugStateSaver saver(d);
     d.nospace();
+
+    if (!gesture)
+        return d << "QGesture(0x0)";
+
     switch (gesture->gestureType()) {
     case Qt::TapGesture:
         formatGestureHeader(d, "QTapGesture", gesture);
@@ -1148,8 +1153,12 @@ Q_WIDGETS_EXPORT QDebug operator<<(QDebug d, const QGestureEvent *gestureEvent)
 {
     QDebugStateSaver saver(d);
     d.nospace();
-    d << "QGestureEvent(" << gestureEvent->gestures() << ')';
-    return d;
+    d << "QGestureEvent(";
+    if (gestureEvent)
+        d << gestureEvent->gestures();
+    else
+        d << "0x0";
+    return d << ')';
 }
 
 #endif // !QT_NO_DEBUG_STREAM

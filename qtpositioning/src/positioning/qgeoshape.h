@@ -20,7 +20,6 @@ class Q_POSITIONING_EXPORT QGeoShape
     Q_PROPERTY(bool isValid READ isValid)
     Q_PROPERTY(bool isEmpty READ isEmpty)
     Q_PROPERTY(QGeoCoordinate center READ center)
-    Q_ENUMS(ShapeType)
 
 public:
     QGeoShape();
@@ -34,6 +33,7 @@ public:
         PathType,
         PolygonType
     };
+    Q_ENUM(ShapeType)
 
     ShapeType type() const;
 

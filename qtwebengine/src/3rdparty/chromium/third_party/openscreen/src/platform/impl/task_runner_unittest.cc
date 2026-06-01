@@ -4,8 +4,6 @@
 
 #include "platform/impl/task_runner.h"
 
-#include <unistd.h>
-
 #include <atomic>
 #include <chrono>
 #include <optional>
@@ -22,7 +20,7 @@ namespace {
 
 using ::testing::_;
 
-const auto kTaskRunnerSleepTime = milliseconds(1);
+constexpr auto kTaskRunnerSleepTime = milliseconds(1);
 constexpr Clock::duration kWaitTimeout = milliseconds(1000);
 
 void WaitUntilCondition(std::function<bool()> predicate) {
@@ -41,7 +39,7 @@ class FakeTaskWaiter final : public TaskRunnerImpl::TaskWaiter {
     Clock::time_point start = now_function_();
     waiting_.store(true);
     while (!has_event_.load() && (now_function_() - start) < timeout) {
-      EXPECT_EQ(usleep(100 /* microseconds */), 0);
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     waiting_.store(false);
     has_event_.store(false);
@@ -224,7 +222,7 @@ TEST(TaskRunnerImplTest, TaskRunnerUsesEventWaiter) {
   std::unique_ptr<TaskRunnerImpl> runner =
       TaskRunnerWithWaiterFactory::Create(Clock::now);
 
-  std::atomic<int> x{0};
+  std::atomic<int> x(0);
   std::thread t([&runner, &x] {
     runner.get()->RunUntilStopped();
     x = 1;
@@ -251,7 +249,7 @@ TEST(TaskRunnerImplTest, WakesEventWaiterOnPostTask) {
   std::unique_ptr<TaskRunnerImpl> runner =
       TaskRunnerWithWaiterFactory::Create(Clock::now);
 
-  std::atomic<int> x{0};
+  std::atomic<int> x(0);
   std::thread t([&runner] { runner.get()->RunUntilStopped(); });
 
   const Clock::time_point start1 = Clock::now();

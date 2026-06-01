@@ -103,6 +103,10 @@
 <context>
     <name>QQuickPdfDocument</name>
     <message>
+        <source>Cannot open: %1</source>
+        <translation>%1 kann nicht geöffnet werden</translation>
+    </message>
+    <message>
         <source>no error</source>
         <translation>kein Fehler</translation>
     </message>

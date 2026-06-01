@@ -3,25 +3,101 @@
 // found in the LICENSE file.
 
 import * as Common from '../common/common.js';
+import type * as Root from '../root/root.js';
 
 import {InspectorFrontendHostInstance} from './InspectorFrontendHost.js';
-import {type AidaClientResult, type SyncInformation} from './InspectorFrontendHostAPI.js';
+import type {AidaClientResult, SyncInformation} from './InspectorFrontendHostAPI.js';
 import {bindOutputStream} from './ResourceLoader.js';
 
-export enum Entity {
-  UNKNOWN = 0,
+export enum Role {
+  // Unspecified role.
+  ROLE_UNSPECIFIED = 0,
+  // The user.
   USER = 1,
-  SYSTEM = 2,
+  // The model.
+  MODEL = 2,
 }
 
 export const enum Rating {
+  SENTIMENT_UNSPECIFIED = 'SENTIMENT_UNSPECIFIED',
   POSITIVE = 'POSITIVE',
   NEGATIVE = 'NEGATIVE',
 }
 
-export interface Chunk {
-  text: string;
-  entity: Entity;
+// A `Content` represents a single turn message.
+export interface Content {
+  parts: Part[];
+  // The producer of the content.
+  role: Role;
+}
+
+export type Part = {
+  text: string,
+}|{
+  functionCall: {
+    name: string,
+    args: Record<string, unknown>,
+  },
+}|{
+  functionResponse: {
+    name: string,
+    response: Record<string, unknown>,
+  },
+}|{
+  // Inline media bytes.
+  inlineData: MediaBlob,
+};
+
+export const enum ParametersTypes {
+  STRING = 1,
+  NUMBER = 2,
+  INTEGER = 3,
+  BOOLEAN = 4,
+  ARRAY = 5,
+  OBJECT = 6,
+}
+
+interface BaseFunctionParam {
+  description: string;
+  nullable?: boolean;
+}
+
+export interface FunctionPrimitiveParams extends BaseFunctionParam {
+  type: ParametersTypes.BOOLEAN|ParametersTypes.INTEGER|ParametersTypes.STRING|ParametersTypes.BOOLEAN;
+}
+
+interface FunctionArrayParam extends BaseFunctionParam {
+  type: ParametersTypes.ARRAY;
+  items: FunctionPrimitiveParams;
+}
+
+export interface FunctionObjectParam extends BaseFunctionParam {
+  type: ParametersTypes.OBJECT;
+  // TODO: this can be also be ObjectParams
+  properties: {[Key in string]: FunctionPrimitiveParams|FunctionArrayParam};
+}
+
+/**
+ * More about function declaration can be read at
+ * https://ai.google.dev/gemini-api/docs/function-calling
+ */
+export interface FunctionDeclaration {
+  name: string;
+  /**
+   * A description for the LLM to understand what the specific function will do once called.
+   */
+  description: string;
+  parameters: FunctionObjectParam|FunctionPrimitiveParams|FunctionArrayParam;
+}
+
+// Raw media bytes.
+export interface MediaBlob {
+  // The IANA standard MIME type of the source data.
+  // Currently supported types are: image/png, image/jpeg.
+  // Format: base64-encoded
+  // For reference: google3/google/x/pitchfork/aida/v1/content.proto
+  mimeType: string;
+  data: string;
 }
 
 export enum FunctionalityType {
@@ -31,6 +107,7 @@ export enum FunctionalityType {
   CHAT = 1,
   // The explain error functionality.
   EXPLAIN_ERROR = 2,
+  AGENTIC_CHAT = 5,
 }
 
 export enum ClientFeature {
@@ -38,8 +115,16 @@ export enum ClientFeature {
   CLIENT_FEATURE_UNSPECIFIED = 0,
   // Chrome console insights feature.
   CHROME_CONSOLE_INSIGHTS = 1,
-  // Chrome freestyler.
-  CHROME_FREESTYLER = 2,
+  // Chrome AI Assistance Styling Agent.
+  CHROME_STYLING_AGENT = 2,
+  // Chrome AI Assistance Network Agent.
+  CHROME_NETWORK_AGENT = 7,
+  // Chrome AI Assistance Performance Agent.
+  CHROME_PERFORMANCE_AGENT = 8,
+  // Chrome AI Assistance File Agent.
+  CHROME_FILE_AGENT = 9,
+  // Chrome AI Patch Agent.
+  CHROME_PATCH_AGENT = 12,
 }
 
 export enum UserTier {
@@ -47,18 +132,25 @@ export enum UserTier {
   USER_TIER_UNSPECIFIED = 0,
   // Users who are internal testers.
   TESTERS = 1,
+  // Users who are early adopters.
+  BETA = 2,
   // Users in the general public.
   PUBLIC = 3,
 }
 
+export type RpcGlobalId = string|number;
+
 export interface AidaRequest {
-  input: string;
+  client: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  current_message: Content;
   preamble?: string;
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  chat_history?: Chunk[];
-  client: string;
+  historical_contexts?: Content[];
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  function_declarations?: FunctionDeclaration[];
   options?: {
-    temperature?: Number,
+    temperature?: number,
     // eslint-disable-next-line @typescript-eslint/naming-convention
     model_id?: string,
   };
@@ -78,7 +170,7 @@ export interface AidaRequest {
 
 export interface AidaDoConversationClientEvent {
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  corresponding_aida_rpc_global_id: number;
+  corresponding_aida_rpc_global_id: RpcGlobalId;
   // eslint-disable-next-line @typescript-eslint/naming-convention
   disable_user_content_logging: boolean;
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -102,10 +194,20 @@ export enum RecitationAction {
   EXEMPT_FOUND_IN_PROMPT = 'EXEMPT_FOUND_IN_PROMPT',
 }
 
+export enum CitationSourceType {
+  CITATION_SOURCE_TYPE_UNSPECIFIED = 'CITATION_SOURCE_TYPE_UNSPECIFIED',
+  TRAINING_DATA = 'TRAINING_DATA',
+  WORLD_FACTS = 'WORLD_FACTS',
+  LOCAL_FACTS = 'LOCAL_FACTS',
+  INDIRECT = 'INDERECT',
+}
+
 export interface Citation {
-  startIndex: number;
-  endIndex: number;
-  url: string;
+  startIndex?: number;
+  endIndex?: number;
+  uri?: string;
+  sourceType?: CitationSourceType;
+  repository?: string;
 }
 
 export interface AttributionMetadata {
@@ -113,46 +215,66 @@ export interface AttributionMetadata {
   citations: Citation[];
 }
 
+export interface AidaFunctionCallResponse {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface FactualityFact {
+  sourceUri?: string;
+}
+
+export interface FactualityMetadata {
+  facts: FactualityFact[];
+}
+
 export interface AidaResponseMetadata {
-  rpcGlobalId?: number;
-  attributionMetadata?: AttributionMetadata[];
+  rpcGlobalId?: RpcGlobalId;
+  attributionMetadata?: AttributionMetadata;
+  factualityMetadata?: FactualityMetadata;
 }
 
 export interface AidaResponse {
   explanation: string;
   metadata: AidaResponseMetadata;
+  functionCalls?: [AidaFunctionCallResponse, ...AidaFunctionCallResponse[]];
   completed: boolean;
 }
 
 export const enum AidaAccessPreconditions {
   AVAILABLE = 'available',
   NO_ACCOUNT_EMAIL = 'no-account-email',
-  NO_ACTIVE_SYNC = 'no-active-sync',
   NO_INTERNET = 'no-internet',
+  // This is the state (mostly enterprise) users are in, when they are automatically logged out from
+  // Chrome after a certain time period. For making AIDA requests, they need to log in again.
+  SYNC_IS_PAUSED = 'sync-is-paused',
 }
 
 export const CLIENT_NAME = 'CHROME_DEVTOOLS';
 
 const CODE_CHUNK_SEPARATOR = '\n`````\n';
 
+export class AidaAbortError extends Error {}
+export class AidaBlockError extends Error {}
+
 export class AidaClient {
   static buildConsoleInsightsRequest(input: string): AidaRequest {
     const request: AidaRequest = {
-      input,
+      current_message: {parts: [{text: input}], role: Role.USER},
       client: CLIENT_NAME,
       functionality_type: FunctionalityType.EXPLAIN_ERROR,
       client_feature: ClientFeature.CHROME_CONSOLE_INSIGHTS,
     };
     const config = Common.Settings.Settings.instance().getHostConfig();
-    let temperature = NaN;
+    let temperature = -1;
     let modelId = '';
     if (config.devToolsConsoleInsights?.enabled) {
-      temperature = config.devToolsConsoleInsights.temperature || 0;
+      temperature = config.devToolsConsoleInsights.temperature ?? -1;
       modelId = config.devToolsConsoleInsights.modelId || '';
     }
     const disallowLogging = config.aidaAvailability?.disallowLogging ?? true;
 
-    if (!isNaN(temperature)) {
+    if (temperature >= 0) {
       request.options ??= {};
       request.options.temperature = temperature;
     }
@@ -179,19 +301,22 @@ export class AidaClient {
       return AidaAccessPreconditions.NO_ACCOUNT_EMAIL;
     }
 
-    if (!syncInfo.isSyncActive) {
-      return AidaAccessPreconditions.NO_ACTIVE_SYNC;
+    if (syncInfo.isSyncPaused) {
+      return AidaAccessPreconditions.SYNC_IS_PAUSED;
     }
 
     return AidaAccessPreconditions.AVAILABLE;
   }
 
-  async * fetch(request: AidaRequest): AsyncGenerator<AidaResponse, void, void> {
+  async * fetch(request: AidaRequest, options?: {signal?: AbortSignal}): AsyncGenerator<AidaResponse, void, void> {
     if (!InspectorFrontendHostInstance.doAidaConversation) {
       throw new Error('doAidaConversation is not available');
     }
     const stream = (() => {
       let {promise, resolve, reject} = Promise.withResolvers<string|null>();
+      options?.signal?.addEventListener('abort', () => {
+        reject(new AidaAbortError());
+      });
       return {
         write: async(data: string): Promise<void> => {
           resolve(data);
@@ -212,6 +337,8 @@ export class AidaClient {
         stream.fail(new Error('Server responded: permission denied'));
       } else if (result.error) {
         stream.fail(new Error(`Cannot send request: ${result.error} ${result.detail || ''}`));
+      } else if (result.netErrorName === 'net::ERR_TIMED_OUT') {
+        stream.fail(new Error('doAidaConversation timed out'));
       } else if (result.statusCode !== 200) {
         stream.fail(new Error(`Request failed: ${JSON.stringify(result)}`));
       } else {
@@ -221,7 +348,8 @@ export class AidaClient {
     let chunk;
     const text = [];
     let inCodeChunk = false;
-    const metadata: AidaResponseMetadata = {rpcGlobalId: 0};
+    const functionCalls: AidaFunctionCallResponse[] = [];
+    let metadata: AidaResponseMetadata = {rpcGlobalId: 0};
     while ((chunk = await stream.read())) {
       let textUpdated = false;
       // The AIDA response is a JSON array of objects, split at the object
@@ -250,12 +378,9 @@ export class AidaClient {
 
       for (const result of results) {
         if ('metadata' in result) {
-          metadata.rpcGlobalId = result.metadata.rpcGlobalId;
-          if ('attributionMetadata' in result.metadata) {
-            if (!metadata.attributionMetadata) {
-              metadata.attributionMetadata = [];
-            }
-            metadata.attributionMetadata.push(result.metadata.attributionMetadata);
+          metadata = result.metadata;
+          if (metadata?.attributionMetadata?.attributionAction === RecitationAction.BLOCK) {
+            throw new AidaBlockError();
           }
         }
         if ('textChunk' in result) {
@@ -272,6 +397,11 @@ export class AidaClient {
           }
           text.push(result.codeChunk.code);
           textUpdated = true;
+        } else if ('functionCallChunk' in result) {
+          functionCalls.push({
+            name: result.functionCallChunk.functionCall.name,
+            args: result.functionCallChunk.functionCall.args,
+          });
         } else if ('error' in result) {
           throw new Error(`Server responded: ${JSON.stringify(result)}`);
         } else {
@@ -289,6 +419,8 @@ export class AidaClient {
     yield {
       explanation: text.join('') + (inCodeChunk ? CODE_CHUNK_SEPARATOR : ''),
       metadata,
+      functionCalls: functionCalls.length ? functionCalls as [AidaFunctionCallResponse, ...AidaFunctionCallResponse[]] :
+                                            undefined,
       completed: true,
     };
   }
@@ -313,9 +445,68 @@ export function convertToUserTierEnum(userTier: string|undefined): UserTier {
     switch (userTier) {
       case 'TESTERS':
         return UserTier.TESTERS;
+      case 'BETA':
+        return UserTier.BETA;
       case 'PUBLIC':
         return UserTier.PUBLIC;
     }
   }
-  return UserTier.TESTERS;
+  return UserTier.BETA;
+}
+
+let hostConfigTrackerInstance: HostConfigTracker|undefined;
+
+export class HostConfigTracker extends Common.ObjectWrapper.ObjectWrapper<EventTypes> {
+  #pollTimer?: number;
+  #aidaAvailability?: AidaAccessPreconditions;
+
+  private constructor() {
+    super();
+  }
+
+  static instance(): HostConfigTracker {
+    if (!hostConfigTrackerInstance) {
+      hostConfigTrackerInstance = new HostConfigTracker();
+    }
+    return hostConfigTrackerInstance;
+  }
+
+  override addEventListener(eventType: Events, listener: Common.EventTarget.EventListener<EventTypes, Events>):
+      Common.EventTarget.EventDescriptor<EventTypes> {
+    const isFirst = !this.hasEventListeners(eventType);
+    const eventDescriptor = super.addEventListener(eventType, listener);
+    if (isFirst) {
+      window.clearTimeout(this.#pollTimer);
+      void this.pollAidaAvailability();
+    }
+    return eventDescriptor;
+  }
+
+  override removeEventListener(eventType: Events, listener: Common.EventTarget.EventListener<EventTypes, Events>):
+      void {
+    super.removeEventListener(eventType, listener);
+    if (!this.hasEventListeners(eventType)) {
+      window.clearTimeout(this.#pollTimer);
+    }
+  }
+
+  private async pollAidaAvailability(): Promise<void> {
+    this.#pollTimer = window.setTimeout(() => this.pollAidaAvailability(), 2000);
+    const currentAidaAvailability = await AidaClient.checkAccessPreconditions();
+    if (currentAidaAvailability !== this.#aidaAvailability) {
+      this.#aidaAvailability = currentAidaAvailability;
+      const config = await new Promise<Root.Runtime.HostConfig>(
+          resolve => InspectorFrontendHostInstance.getHostConfig(config => resolve(config)));
+      Common.Settings.Settings.instance().setHostConfig(config);
+      this.dispatchEventToListeners(Events.AIDA_AVAILABILITY_CHANGED);
+    }
+  }
+}
+
+export const enum Events {
+  AIDA_AVAILABILITY_CHANGED = 'aidaAvailabilityChanged',
+}
+
+export interface EventTypes {
+  [Events.AIDA_AVAILABILITY_CHANGED]: void;
 }
